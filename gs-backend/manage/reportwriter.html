@@ -2921,5 +2921,31 @@ function goToReportWriter_(caseId, opts){
     createNewDoc('blank');
   }
 }
+
+// [2026.10.20] AI ↔ 편집창 연동 — work report-writer의 nx-get-content/nx-set-content(별도 창 시절 기능, 위 [2026.09 이식] 주석)를
+// 같은 앱 안의 함수 두 개로 되살린다. 사이드바 AI(aichat.html nxAiOpenFileContext_)가 이 화면을 보고 있을 때 부른다.
+//  rwAiOpenDoc_()  — 지금 편집창의 문서 {id, name, content}(html 형식 문서·빈 편집창은 null)
+//  rwAiApplyEdit_(id, content) — AI 수정안을 편집창에 넣는다(드라이브 저장은 사람이 💾). 그 사이 다른 문서로 바꿨으면 넣지 않는다.
+function rwAiOpenDoc_(){
+  const d = getSelected();
+  const mdInput = document.getElementById('mdInput');
+  if (!d || !mdInput || d.format === 'html') return null;
+  const driveId = currentDriveFileId_();
+  // 사건 문서만(드라이브에서 연 문서·사건 폴더에 처음 저장할 새 문서) — 기본 샘플 문서까지 매 질문 AI에 실어 보내지 않게(토큰)
+  if (!driveId && !pendingSaveFolderId) return null;
+  return { id: driveId || d.id, name: (d.name || '문서') + '.md', content: mdInput.value };
+}
+function rwAiApplyEdit_(id, content){
+  const cur = rwAiOpenDoc_();
+  if (!cur || cur.id !== id) return { error: '작성관리 편집창에 그 문서가 열려 있지 않습니다 — 그 문서를 다시 연 뒤 적용하세요.' };
+  const d = getSelected();
+  const mdInput = document.getElementById('mdInput');
+  const previous = mdInput.value;
+  mdInput.value = String(content == null ? '' : content);
+  d.md = mdInput.value;
+  persist();
+  render();
+  return { ok: true, previous: previous };
+}
 </script>
 <!--@@APP_ONLY:lawrel@@-->

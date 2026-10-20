@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 07:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 09:33 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -2507,6 +2507,35 @@ function nxMdOpenWindow(title, src, opts){
       <div style="font-weight:700; font-size:12.5px; margin:10px 0 4px; color:var(--sub);">🗂 사건 하위업무(완료 전 — 체크·추가는 작업관리·처리개요)</div>
       <div id="dashSubtasks"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026.10.20] 세무사님 "시스템이 띄워줘야지 내가 일일이 어떻게 파일을 찾아서 확인수정을 하겠나? … 대시보드에 할일에 포함하든 새로운 항목을 만들든 어쨌든 띄워라".
+         원본은 드라이브 0 NETAX/_확인조치사항.md 하나 — 이 카드는 그 파일을 읽고 쓰기만 한다(Followup.js). 할일 카드 안에 넣지 않고 따로 둔 이유:
+         할일 카드는 이미 구글 할일 + 사건 하위업무 두 목록이라, 절(제목)별로 묶이고 글이 긴 이 목록까지 넣으면 한 카드가 너무 길고 출처가 섞여 보인다. -->
+    <div class="card dash-cover" id="dashFollowCard">
+      <h3>📋 확인조치사항 <span id="dashFollowCount" style="font-size:12px; font-weight:600; color:var(--sub);"></span>
+        <span style="float:right; display:flex; gap:6px;">
+          <button type="button" id="dashFollowReload" class="ghost-btn" style="font-size:11px; padding:2px 8px;" title="파일을 다시 읽습니다">🔄</button>
+          <a id="dashFollowOpen" href="#" target="_blank" rel="noopener" class="ghost-btn" style="display:none; font-size:11px; padding:2px 8px; text-decoration:none;">📄 원본 파일</a>
+        </span>
+      </h3>
+      <div style="font-size:11.5px; color:var(--sub); margin-bottom:6px;">세무사님이 확인·결정하실 일 — 체크·고치기·추가가 원본 파일(_확인조치사항.md)에 바로 저장됩니다.</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+        <select id="dashFollowSec" style="max-width:100%; min-width:0; flex:0 1 180px;" title="어느 절에 넣을지"></select>
+        <input type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
+      </div>
+      <div id="dashFollowList"><div class="spinner">불러오는 중…</div></div>
+      <style>
+        #dashFollowList .fu-sec{ font-weight:700; font-size:12.5px; color:var(--sub); margin:10px 0 4px; }
+        #dashFollowList .fu-row{ display:flex; gap:8px; align-items:flex-start; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:4px; }
+        #dashFollowList .fu-body{ flex:1 1 auto; min-width:0; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+        #dashFollowList .fu-clamp{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        #dashFollowList .fu-detail{ white-space:pre-wrap; font-size:12px; color:var(--sub); margin-top:4px; }
+        #dashFollowList .fu-more{ background:none; border:none; padding:0; color:var(--gold); font-size:11.5px; font-weight:700; cursor:pointer; }
+        #dashFollowList .fu-edit{ flex:0 0 auto; background:none; border:none; cursor:pointer; font-size:13px; padding:0 2px; color:var(--sub); }
+        #dashFollowList .fu-done .fu-body{ color:var(--sub); text-decoration:line-through; }
+        #dashFollowList code{ font-size:12px; background:#f3f4f7; padding:0 3px; border-radius:3px; }
+        #dashFollowList textarea{ width:100%; box-sizing:border-box; font:inherit; font-size:13px; }
+      </style>
+    </div>
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
@@ -2579,6 +2608,7 @@ function nxMdOpenWindow(title, src, opts){
     loadDashEmails_();
     loadDashTasks_();
     loadDashSubtasks_();
+    loadDashFollow_();
     loadDashNightlyStatus_();
     loadDashFed_();
     dashMeasureLoad_();
@@ -3078,6 +3108,124 @@ function nxMdOpenWindow(title, src, opts){
         if (res.error){ toast('수정 실패: ' + res.error); btn.disabled = false; return; }
         loadDashTasks_();
       }).catch(function(err){ toast('수정 중 오류: ' + err.message); btn.disabled = false; });
+    }
+  });
+
+  // [2026.10.20] 📋 확인조치사항 — 원본 파일(0 NETAX/_확인조치사항.md)을 서버(Followup.js)가 읽어 절별로 준다.
+  // 체크·고치기·추가는 서버가 저장 직전 최신 파일에서 그 줄만 바꾸고, 바뀐 뒤의 목록을 다시 돌려준다(그대로 다시 그림).
+  var dashFollow_ = { items: {}, open: {}, doneOpen: false, sec: '' };
+  function dashFollowMd_(s){
+    return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  }
+  function dashFollowKey_(it){ return String(it.text || '').replace(/\s*\(\d{4}-\d{2}-\d{2} 완료\)$/, ''); }
+  function dashFollowRowHtml_(it, secLabel){
+    var key = dashFollowKey_(it);
+    var long = (it.text || '').length > 70 || !!it.detail;
+    var opened = !!dashFollow_.open[key];
+    return '<div class="fu-row' + (it.done ? ' fu-done' : '') + '" data-fu-line="' + it.line + '">'
+      + '<input type="checkbox" class="fuChk" style="margin-top:3px; flex:0 0 auto;" ' + (it.done ? 'checked' : '') + ' title="' + (it.done ? '체크 해제(다시 남은 일로)' : '끝났으면 체크') + '">'
+      + '<div class="fu-body">'
+      + (secLabel ? '<span style="font-size:11px; color:var(--sub);">[' + esc(secLabel) + '] </span>' : '')
+      + '<div class="fuText' + (long && !opened ? ' fu-clamp' : '') + '"' + (secLabel ? ' style="display:inline;"' : '') + '>' + dashFollowMd_(it.text) + '</div>'
+      + (opened && it.detail ? '<div class="fu-detail">' + dashFollowMd_(it.detail) + '</div>' : '')
+      + (long ? '<div><button type="button" class="fu-more fuMore">' + (opened ? '▴ 접기' : '▾ 펼치기' + (it.detail ? '(자세한 내용)' : '')) + '</button></div>' : '')
+      + '</div>'
+      + '<button type="button" class="fu-edit fuEdit" title="글 고치기">✏</button>'
+      + '</div>';
+  }
+  function dashFollowRender_(res){
+    var box = document.getElementById('dashFollowList');
+    if (!box) return;
+    if (!res || !res.sections){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res && res.error ? res.error : '목록을 받지 못했습니다') + '</div>'; return; }
+    dashFollow_.items = {};
+    var openHtml = '', doneRows = [];
+    res.sections.forEach(function(s){
+      var open = s.items.filter(function(x){ return !x.done; });
+      s.items.forEach(function(x){ x.sec = s.title; dashFollow_.items[x.line] = x; if (x.done) doneRows.push({ it: x, sec: s.title }); });
+      if (open.length) openHtml += '<div class="fu-sec">' + esc(s.title) + ' (' + open.length + ')</div>' + open.map(function(x){ return dashFollowRowHtml_(x, ''); }).join('');
+    });
+    var html = openHtml || '<div class="empty-row">남은 확인조치사항이 없습니다.</div>';
+    if (doneRows.length){
+      html += '<details id="dashFollowDone" style="margin-top:8px;"' + (dashFollow_.doneOpen ? ' open' : '') + '><summary style="cursor:pointer; font-size:12.5px; color:var(--sub);">✔ 끝난 항목 ' + doneRows.length + '건</summary>'
+        + doneRows.map(function(r){ return dashFollowRowHtml_(r.it, r.sec); }).join('') + '</details>';
+    }
+    box.innerHTML = html;
+    document.getElementById('dashFollowCount').textContent = '남은 ' + (res.open || 0) + '건 · 끝난 ' + (res.closed || 0) + '건';
+    var a = document.getElementById('dashFollowOpen');
+    if (res.file && res.file.url){ a.href = res.file.url; a.style.display = ''; a.title = res.file.name + ' (마지막 수정 ' + (res.file.modified || '') + ')'; }
+    var sel = document.getElementById('dashFollowSec');
+    var heads = (res.headings || []).filter(function(h, i, arr){ return arr.indexOf(h) === i; });
+    if (heads.indexOf('기타') < 0) heads.push('기타');
+    if (!dashFollow_.sec || heads.indexOf(dashFollow_.sec) < 0) dashFollow_.sec = '기타';
+    sel.innerHTML = heads.map(function(h){ return '<option value="' + esc(h) + '"' + (h === dashFollow_.sec ? ' selected' : '') + '>' + esc(h === '기타' && (res.headings || []).indexOf('기타') < 0 ? '기타(새 절)' : h) + '</option>'; }).join('');
+  }
+  function loadDashFollow_(){
+    callGas('followup_get', {}).then(dashFollowRender_).catch(function(e){
+      var box = document.getElementById('dashFollowList');
+      if (box) box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>';
+    });
+  }
+  // 저장 요청 공통 — 서버가 언제나 최신 목록을 같이 돌려주므로(실패해도) 그것으로 다시 그린다.
+  function dashFollowSave_(action, payload, onFail){
+    return callGas(action, payload).then(function(res){
+      if (res && res.error){ toast((res.stale ? '' : '저장 실패: ') + res.error); if (onFail) onFail(); }
+      if (res && res.sections) dashFollowRender_(res); else if (res && res.error) loadDashFollow_();
+      return res;
+    }).catch(function(e){ toast('저장 중 오류: ' + (e && e.message ? e.message : e)); if (onFail) onFail(); });
+  }
+  document.getElementById('dashFollowReload').addEventListener('click', loadDashFollow_);
+  document.getElementById('dashFollowSec').addEventListener('change', function(e){ dashFollow_.sec = e.target.value; });
+  document.getElementById('dashFollowNew').addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.keyCode !== 13) return;
+    if (e.isComposing) return; // 한글 조합 중 Enter는 무시(글자가 두 번 들어가지 않게)
+    var el = e.target, text = el.value.trim();
+    if (!text) return;
+    el.disabled = true;
+    dashFollowSave_('followup_add', { text: text, section: dashFollow_.sec || '기타' }).then(function(res){
+      el.disabled = false;
+      if (res && !res.error){ el.value = ''; toast('확인조치사항에 추가했습니다.'); }
+      el.focus();
+    });
+  });
+  document.getElementById('dashFollowList').addEventListener('toggle', function(e){
+    if (e.target && e.target.id === 'dashFollowDone') dashFollow_.doneOpen = e.target.open;
+  }, true);
+  document.getElementById('dashFollowList').addEventListener('click', function(e){
+    var row = e.target.closest('.fu-row[data-fu-line]');
+    if (!row) return;
+    var it = dashFollow_.items[row.getAttribute('data-fu-line')];
+    if (!it) return;
+    if (e.target.classList.contains('fuChk')){
+      var cb = e.target;
+      cb.disabled = true;
+      dashFollowSave_('followup_toggle', { raw: it.raw, line: it.line, done: cb.checked }, function(){ cb.checked = !cb.checked; cb.disabled = false; });
+      return;
+    }
+    if (e.target.classList.contains('fuMore')){
+      var k = dashFollowKey_(it);
+      dashFollow_.open[k] = !dashFollow_.open[k];
+      row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : '');
+      return;
+    }
+    if (e.target.classList.contains('fuEdit')){
+      if (row.querySelector('.fuEditBox')) return;
+      var bodyEl = row.querySelector('.fu-body');
+      bodyEl.innerHTML = '<textarea class="fuEditBox" rows="4">' + esc(it.text) + '</textarea>'
+        + '<div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">'
+        + '<button type="button" class="save-btn fuEditSave" style="padding:3px 10px; font-size:11.5px;">저장</button>'
+        + '<button type="button" class="ghost-btn fuEditCancel" style="padding:3px 10px; font-size:11.5px;">취소</button>'
+        + '<span style="font-size:11px; color:var(--sub); align-self:center;">첫 줄만 고칩니다(자세한 내용은 📄 원본 파일에서)</span></div>';
+      bodyEl.querySelector('.fuEditBox').focus();
+      return;
+    }
+    if (e.target.classList.contains('fuEditCancel')){ row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : ''); return; }
+    if (e.target.classList.contains('fuEditSave')){
+      var t = row.querySelector('.fuEditBox').value.replace(/\s*\n\s*/g, ' ').trim();
+      if (!t){ toast('글을 입력해 주세요.'); return; }
+      if (t === it.text){ row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : ''); return; }
+      var btn = e.target;
+      btn.disabled = true;
+      dashFollowSave_('followup_edit', { raw: it.raw, line: it.line, text: t }, function(){ btn.disabled = false; });
     }
   });
 
@@ -11166,15 +11314,42 @@ function nxMdOpenWindow(title, src, opts){
     if (f.mimeType === 'application/pdf') return 'pdf';
     if (f.mimeType && f.mimeType.indexOf('image/') === 0) return 'image';
     if (DOCS_HWP_EXT_RE_.test(name) || (f.mimeType || '').indexOf('hwp') !== -1) return 'hwp';
+    // [2026.10.20 기본기 5] 구글시트는 파일 자체(바이너리)가 없어 readFileBinary가 거절한다 — 예전엔 '엑셀'로 분류해 열 때마다 오류.
+    //  work처럼 구글 드라이브 미리보기로 연다(아래 kind === 'gsheet').
+    if (f.mimeType === MimeTypeGoogleSheets_) return 'gsheet';
     if (DOCS_EXCEL_EXT_RE_.test(name) || f.mimeType === 'application/vnd.ms-excel' ||
-        f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        f.mimeType === MimeTypeGoogleSheets_) return 'excel';
+        f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'excel';
     if (DOCS_TEXT_EXT_RE_.test(name) || (f.mimeType || '').indexOf('text/') === 0) return 'text';
     return 'other'; // 워드·파워포인트 등 — 드라이브 자체 미리보기로 대체
   }
   var MimeTypeGoogleSheets_ = 'application/vnd.google-apps.spreadsheet';
 
-  function docsOpenFileViewer_(f){
+  // [2026.10.20] 세무사님 "보고서가 열려야 하는 것은 오히려 ai탭에서 였지 않나? 증빙관리는 순수한 증빙관리일뿐인데" → "그렇게 하자":
+  // 사건 폴더 안의 .md(검토서·보고서)는 여기서 그리지 않고 그 사건을 연결한 AI 탭 작업대로 넘겨 연다(aichat.html nxAiOpenCaseDoc_ —
+  // 보고서 모양·✏ 원본 편집·작성관리에서 열기·AI가 그 문서를 알고 고침). 사건 폴더 밖의 .md(업무관리자 지침·템플릿 등)는 연결할 사건이
+  // 없으므로 예전처럼 이 자리에서 보고서 모양으로 본다(opts.inPlace).
+  function docsCaseOfCurrentFolder_(){
+    if (docsSelectedCaseId_) return Promise.resolve(docsSelectedCaseId_);
+    // 사건 폴더 두 단계보다 깊은 곳(docsSyncSelectedCase_는 두 단계까지만 봄) — 고객사건 루트 바로 밑 폴더 이름으로 사건을 찾는다
+    return getCustomerRootPath_().then(function(basePath){
+      var under = docsPath.length > basePath.length && basePath.every(function(seg, i){ return docsPath[i] === seg; });
+      if (!under) return null;
+      var top = docsPath[basePath.length];
+      return docsGetAllCases_().then(function(cases){
+        var c = cases.filter(function(x){ return String(x.사건명 || '').trim() === top; })[0];
+        return c ? c.id : null;
+      });
+    }).catch(function(){ return null; });
+  }
+  function docsOpenFileViewer_(f, opts){
+    opts = opts || {};
+    if (!opts.inPlace && /\.md$/i.test(f.name || '') && typeof nxAiOpenCaseDoc_ === 'function'){
+      docsCaseOfCurrentFolder_().then(function(caseId){
+        if (caseId){ nxAiOpenCaseDoc_(caseId, f); return; }
+        docsOpenFileViewer_(f, { inPlace: true });
+      });
+      return;
+    }
     var kind = docsViewKind_(f);
     if (kind === 'image' || kind === 'pdf'){
       if (f.url) window.open(f.url, '_blank');
@@ -11208,6 +11383,12 @@ function nxMdOpenWindow(title, src, opts){
       return;
     }
 
+    if (kind === 'gsheet'){
+      var gsUrl = 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(f.id) + '/preview';
+      bodyEl.innerHTML = '<iframe src="' + gsUrl + '" style="width:100%; height:65vh; border:1px solid var(--line); border-radius:8px;"></iframe>' +
+        '<div style="font-size:11.5px; margin-top:6px;"><a href="' + escapeHtml(f.url || ('https://docs.google.com/spreadsheets/d/' + f.id + '/edit')) + '" target="_blank" rel="noopener">↗ 구글시트에서 열기(고치기)</a></div>';
+      return;
+    }
     if (kind === 'excel'){
       if (typeof XLSX === 'undefined'){
         bodyEl.innerHTML = '<div class="docs-viewer-fallback">엑셀 처리 라이브러리를 불러오지 못했습니다. ' +
@@ -11262,6 +11443,7 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.10.20] 세무사님 "증빙관리에서 보고서를 클릭하면 원문만 읽히네? work에서는 그러지 않았잖아"·"랜더러를 연결만 하지 말고 흡수하라" —
         // .md(보고서·검토서)는 공용 렌더러(mdrender.html nxMdRender, 작성관리와 같은 처리)로 보고서 모양, 고치려면 ✏ 원본 편집. 그 밖의 텍스트는 원문.
         // 렌더러가 그리지 못하면(라이브러리 못 불러옴 등) nxMdRender가 이유와 함께 원문을 보여 준다.
+        // [2026.10.20] 사건 폴더 안의 .md는 AI 탭 작업대로 넘어가므로(위 docsOpenFileViewer_ 첫머리) 여기 오는 .md는 사건 폴더 밖 문서(지침·템플릿 등)뿐이다.
         var isMd = /\.md$/i.test(f.name || '');
         function showView(content){
           if (isMd){
@@ -44917,6 +45099,32 @@ function goToReportWriter_(caseId, opts){
     createNewDoc('blank');
   }
 }
+
+// [2026.10.20] AI ↔ 편집창 연동 — work report-writer의 nx-get-content/nx-set-content(별도 창 시절 기능, 위 [2026.09 이식] 주석)를
+// 같은 앱 안의 함수 두 개로 되살린다. 사이드바 AI(aichat.html nxAiOpenFileContext_)가 이 화면을 보고 있을 때 부른다.
+//  rwAiOpenDoc_()  — 지금 편집창의 문서 {id, name, content}(html 형식 문서·빈 편집창은 null)
+//  rwAiApplyEdit_(id, content) — AI 수정안을 편집창에 넣는다(드라이브 저장은 사람이 💾). 그 사이 다른 문서로 바꿨으면 넣지 않는다.
+function rwAiOpenDoc_(){
+  const d = getSelected();
+  const mdInput = document.getElementById('mdInput');
+  if (!d || !mdInput || d.format === 'html') return null;
+  const driveId = currentDriveFileId_();
+  // 사건 문서만(드라이브에서 연 문서·사건 폴더에 처음 저장할 새 문서) — 기본 샘플 문서까지 매 질문 AI에 실어 보내지 않게(토큰)
+  if (!driveId && !pendingSaveFolderId) return null;
+  return { id: driveId || d.id, name: (d.name || '문서') + '.md', content: mdInput.value };
+}
+function rwAiApplyEdit_(id, content){
+  const cur = rwAiOpenDoc_();
+  if (!cur || cur.id !== id) return { error: '작성관리 편집창에 그 문서가 열려 있지 않습니다 — 그 문서를 다시 연 뒤 적용하세요.' };
+  const d = getSelected();
+  const mdInput = document.getElementById('mdInput');
+  const previous = mdInput.value;
+  mdInput.value = String(content == null ? '' : content);
+  d.md = mdInput.value;
+  persist();
+  render();
+  return { ok: true, previous: previous };
+}
 </script>
 <!-- [2026.10.19] 📑 관련법령 만들기 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 reportwriter.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <script>
@@ -49699,6 +49907,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     <div class="nxai-pv-view" id="nxAiPvView" hidden>
       <div class="nxai-pv-viewhead">
         <b id="nxAiPvName">—</b>
+        <span class="nxai-pv-aisees" id="nxAiPvAiSees" hidden title="이 칸에 열린 문서는 다음 질문 때 AI에게 함께 전달됩니다 — '이 문서 고쳐줘'라고 하면 수정안이 이 칸에 뜹니다">🤖 AI가 함께 봄</span>
         <span class="nxai-spacer"></span>
         <!-- [2026.10.20] 세무사님 "검토서와 보고서는 편집할 수 있는 원본파일이 열리는데, 증빙관리에서 처럼 두가지 방법으로 볼 수 있어야" —
              증빙관리 파일보기와 같게: 누르면 먼저 보기 전용, 텍스트(md 등)는 ✏ 편집으로 고치기, PDF·사진은 🛠 파일관리(PDF관리·스캔)로 -->
@@ -49961,6 +50170,25 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-pv-tab{ border:none; background:none; padding:6px 10px; border-radius:7px; cursor:pointer; font-size:12.5px; color:var(--ink); }
   .nxai-pv-tab.on{ background:#e3e7ef; font-weight:700; }
   .nxai-pv-files{ flex:1; overflow-y:auto; padding:8px; min-height:0; }
+  /* [2026.10.20] 사건 작업대 — 위 칸 산출물 / 아래 칸 증빙(각자 스크롤) */
+  .nxai-pv-files:not([hidden]){ display:flex; flex-direction:column; }
+  .nxai-pv-files.split{ padding:0; overflow:hidden; }
+  .nxai-pv-sec{ min-height:0; }
+  .nxai-pv-sec.rep{ flex:0 1 auto; max-height:50%; overflow-y:auto; padding:6px 8px; border-bottom:2px solid var(--line); background:rgba(120,135,160,.07); }
+  .nxai-pv-sec.ev{ flex:1 1 auto; display:flex; flex-direction:column; overflow:hidden; padding:6px 8px 0; }
+  .nxai-pv-files:not(.split) .nxai-pv-sec.ev{ padding:0; }
+  .nxai-pv-evlist{ flex:1; min-height:0; overflow-y:auto; padding-bottom:6px; }
+  /* 증빙창 접힘 — 머리줄(개수·펼치기)만 남고 보고서창이 칸을 다 쓴다 */
+  .nxai-pv-files.split.ev-folded .nxai-pv-sec.rep{ flex:1 1 auto; max-height:none; border-bottom:none; }
+  .nxai-pv-files.split.ev-folded .nxai-pv-sec.ev{ flex:0 0 auto; border-top:2px solid var(--line); }
+  .nxai-pv-files.split.ev-folded .nxai-pv-evlist{ display:none; }
+  .nxai-pv-sechead{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:2px 4px 6px; font-size:12.5px; }
+  .nxai-pv-sechead .s{ font-size:11.5px; color:#7a8496; }
+  .nxai-pv-sechead .s + .nxai-btn{ margin-left:auto; }
+  .nxai-pv-sechead .nxai-btn{ padding:4px 9px; white-space:nowrap; }
+  .nxai-pv-sys summary{ cursor:pointer; font-size:12px; color:#7a8496; padding:4px; }
+  .nxai-file .t{ flex-shrink:1; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:#7a8496; }
+  .nxai-pv-sechead .t{ font-size:11.5px; color:#7a8496; }
   .nxai-pv-crumb{ font-size:12px; color:#7a8496; padding:2px 4px 8px; display:flex; flex-wrap:wrap; gap:3px; }
   .nxai-pv-crumb a{ color:var(--navy); cursor:pointer; text-decoration:underline; }
   .nxai-file{ display:flex; align-items:center; gap:6px; padding:6px 6px; border-radius:7px; cursor:pointer; font-size:13px; }
@@ -49970,6 +50198,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-file .a:hover{ opacity:1; }
   .nxai-pv-view{ flex:1; display:flex; flex-direction:column; min-height:0; }
   .nxai-pv-viewhead{ display:flex; align-items:center; gap:6px; padding:8px; border-bottom:1px solid var(--line); min-width:0; }
+  .nxai-pv-aisees{ flex-shrink:0; font-size:11px; color:#2f6b3a; background:#e5f3e7; border-radius:9px; padding:1px 7px; }
+  html.nx-dark .nxai-pv-aisees{ color:#a8e0b2; background:#1e3a26; }
+  .nxai-pv-viewhead{ flex-wrap:wrap; }
   .nxai-pv-viewhead b{ font-size:13px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nxai-pv-proposal{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px; background:#fff4d6; color:#7a5300; font-size:12.5px; }
   .nxai-pv-content{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
@@ -50295,7 +50526,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiPhoneTab_('chat');
     var loadingEl = nxAiAppendBubble_('assistant', '대화를 불러오는 중…');
     loadingEl.classList.add('nxai-loading');
-    nxAiFlushSave_().then(function(){
+    return nxAiFlushSave_().then(function(){
       return callGas('ai_conv_load', { id: id });
     }).then(function(res){
       loadingEl.remove();
@@ -50490,20 +50721,41 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     casesP.then(function(cases){
       var c = cases.filter(function(x){ return x.id === caseId; })[0];
       if (!c){ nxAiCaseCache = null; nxAiLastSyncedScreenCase_ = ''; return; } // 방금 만든 사건 등 목록이 낡았으면 다음 확인 때 새로 받는다
-      var name = c.사건명 || c.고객명 || '';
-      if (!nxAiConv.messages.length){ nxAiLinkCase_(c); nxAiToast_('이 화면의 사건(' + name + ')으로 대화를 연결했습니다.'); return; }
-      var listP = nxAiConvList.length ? Promise.resolve() : nxAiLoadConvListOnly_();
-      return listP.then(function(){
-        var mine = nxAiConvList.filter(function(x){ return x.caseId === caseId; }).sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
-        if (mine){ nxAiOpenConv_(mine.id); nxAiToast_('이 화면의 사건(' + name + ') 대화로 바꿨습니다 — 하던 대화는 목록에 있습니다.'); return; }
-        return nxAiFlushSave_().then(function(){
-          nxAiConv = Object.assign(nxAiBlankConv_(), { caseId: c.id, caseName: name, caseFolderId: c.폴더ID || '' });
-          nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiRefreshCaseUi_();
-          if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
-          nxAiToast_('이 화면의 사건(' + name + ')으로 새 대화를 시작했습니다 — 하던 대화는 목록에 있습니다.');
-        });
-      });
+      return nxAiSwitchToCase_(c).then(function(msg){ if (msg) nxAiToast_('이 화면의 ' + msg); });
     }).catch(function(){ nxAiLastSyncedScreenCase_ = ''; }).then(function(){ nxAiSyncBusy_ = false; });
+  }
+  // 대화를 사건 c로 옮긴다 — 빈 대화면 그대로 연결, 아니면 그 사건의 가장 최근 대화, 없으면 그 사건의 새 대화(하던 대화는 목록에 저장돼 있음).
+  // 다 바뀐 뒤 알림 글(앞에 "이 화면의 " 등을 붙여 씀)을 돌려준다. 이미 그 사건이면 ''.
+  function nxAiSwitchToCase_(c){
+    var caseId = c.id, name = c.사건명 || c.고객명 || '';
+    if (nxAiConv.caseId === caseId) return Promise.resolve('');
+    if (!nxAiConv.messages.length){ nxAiLinkCase_(c); return Promise.resolve('사건(' + name + ')으로 대화를 연결했습니다.'); }
+    var listP = nxAiConvList.length ? Promise.resolve() : nxAiLoadConvListOnly_();
+    return listP.then(function(){
+      var mine = nxAiConvList.filter(function(x){ return x.caseId === caseId; }).sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
+      if (mine) return Promise.resolve(nxAiOpenConv_(mine.id)).then(function(){ return '사건(' + name + ') 대화로 바꿨습니다 — 하던 대화는 목록에 있습니다.'; });
+      return nxAiFlushSave_().then(function(){
+        nxAiConv = Object.assign(nxAiBlankConv_(), { caseId: c.id, caseName: name, caseFolderId: c.폴더ID || '' });
+        nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiRefreshCaseUi_();
+        if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
+        return '사건(' + name + ')으로 새 대화를 시작했습니다 — 하던 대화는 목록에 있습니다.';
+      });
+    });
+  }
+  // [2026.10.20] 증빙관리에서 사건 폴더의 .md(검토서·보고서)를 누르면 — 그 사건을 연결한 AI 탭 작업대로 와서 그 문서를 보고서 모양으로 연다.
+  // caseId가 없거나(사건을 못 찾음) 답변을 받는 중이면 대화는 그대로 두고 문서만 연다.
+  function nxAiOpenCaseDoc_(caseId, f){
+    if (typeof goToView_ === 'function') goToView_('ai');
+    var casesP = !caseId ? Promise.resolve([]) : (nxAiCaseCache ? Promise.resolve(nxAiCaseCache) : callGas('work_get_cases', {}).then(function(res){ nxAiCaseCache = (res && res.cases) || []; return nxAiCaseCache; }));
+    return casesP.then(function(cases){
+      var c = cases.filter(function(x){ return x.id === caseId; })[0];
+      if (!c || nxAiConv.caseId === caseId) return '';
+      if (nxAiAbort) return '(답변을 받는 중이라 대화는 그대로 두고 문서만 열었습니다)';
+      return nxAiSwitchToCase_(c).then(function(msg){ return msg ? 'AI 탭 작업대: ' + msg : ''; });
+    }).catch(function(){ return ''; }).then(function(msg){
+      if (msg) nxAiToast_(msg);
+      return nxAiOpenPreview_(f, { role: 'report' });
+    });
   }
 
   // ============================================================
@@ -50535,15 +50787,177 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiPvRenderListing_(res);
     });
   }
+  // [2026.10.20] 세무사님 "보고서가 열려야 하는 것은 오히려 ai탭에서 였지 않나? 증빙관리는 순수한 증빙관리일뿐인데" → "그렇게 하자",
+  // 이어서 "ai탭을 증빙과 보고서의 2개 창으로 나누고, 증빙창은 그냥 증빙들을 볼 수 있게만 하고(미리보기까지 가능하도록) 보고서창은
+  // 보고서작업이 가능하도록 하자. 그리고 보고서들은 증빙창에 보이지 않게 하자. 여기서 보고서창에 보이는 파일을 보고서파일에 국한하지 말고
+  // 모든 md파일로 하면 보다 쉬워질 것이다", "그래 접었다 펴는 기능을 넣자".
+  //  · 나눔 기준은 하나: 사건 폴더(하위 폴더 포함)의 모든 .md = 📝 보고서창, 나머지 파일 전부 = 📂 증빙창(서식 인쇄물 PDF 등 계산 결과도 증빙창).
+  //    서버의 서류 종류 판별·발생문서 구분은 쓰지 않는다.
+  //  · 보고서창(위): 사건 폴더 전체의 .md 목록 — 열면 보고서 모양(nxMdRender), ✏ 원본 편집, ✍ 작성관리에서 열기, AI가 열린 문서를 알고 수정안.
+  //    _로 시작하는 폴더(_이전판 등) 안이나 _로 시작하는 .md는 "보관·시스템"으로 접어 둔다.
+  //  · 증빙창(아래): 폴더를 따라 들어가며 보는 보기 전용 목록(+미리보기). 편집·이동·이름 바꾸기 등 관리는 증빙관리에서. 접었다 펼 수 있음(브라우저에 기억).
+  //  · 위아래 배치를 고른 이유: 보고서를 보며 근거 증빙을 같이 확인하는 일이 많아 두 목록이 한 화면에 함께 보여야 하고(탭이면 하나가 가려짐),
+  //    휴대폰에서는 이 칸 자체가 "자료" 탭 한 화면이라 위아래가 그대로 맞으며, 칸이 낮을 때(아래 배치·휴대폰)는 증빙창을 접으면 보고서창이 다 쓴다.
+  function nxAiIsReportFile_(name){ return /\.md$/i.test(String(name || '')); }
+  var NXAI_FILED_DIR_RE_ = /^\s*양도\s*코리아\s*$/; // 이미 낸 신고서 보관(정답지) — 사건 자료 칸에서 숨김(Code.js caseIsFiledReturnFolder_)
+  var NXAI_SCAN_MAX_FOLDERS_ = 80;
+  var nxAiPvReports = null; // {caseFolderId, files:[{f, dir, keep}], evCount, partial} — 사건 폴더 전체를 훑은 결과(증빙창을 옮겨 다녀도 그대로)
+  // 사건 폴더를 하위 폴더까지 훑어 .md를 모으고 나머지 파일 수를 센다(한 층씩 동시에 listFolder). 폴더가 아주 많으면 80개까지만 보고 partial 표시.
+  function nxAiPvScanCase_(force){
+    var cf = nxAiConv.caseFolderId;
+    if (!cf) return Promise.resolve(null);
+    if (!force && nxAiPvReports && nxAiPvReports.caseFolderId === cf) return Promise.resolve(nxAiPvReports);
+    var out = { caseFolderId: cf, files: [], evCount: 0, partial: false };
+    var seen = 0;
+    var level = function(nodes){
+      if (!nodes.length) return Promise.resolve();
+      return Promise.all(nodes.map(function(nd){
+        return callGas('listFolder', { folderId: nd.id }).then(function(r){
+          if (!r || r.error) return [];
+          var sys = nd.rel.some(function(s){ return /^_/.test(s); });
+          (r.files || []).forEach(function(f){
+            if (nxAiIsReportFile_(f.name)) out.files.push({ f: f, dir: nd.rel.join(' › '), keep: !sys && !/^_/.test(f.name) });
+            else out.evCount++;
+          });
+          var subs = [];
+          (r.folders || []).forEach(function(d){
+            if (NXAI_FILED_DIR_RE_.test(d.name || '')) return;
+            if (seen >= NXAI_SCAN_MAX_FOLDERS_){ out.partial = true; return; }
+            seen++;
+            subs.push({ id: d.id, rel: nd.rel.concat([d.name]) });
+          });
+          return subs;
+        }).catch(function(){ return []; });
+      })).then(function(lists){ return level([].concat.apply([], lists)); });
+    };
+    return level([{ id: cf, rel: [] }]).then(function(){
+      // 최근에 고친 것이 위로(검토서를 고치면 바로 위에 보이게)
+      out.files.sort(function(a, b){ return String(b.f.modifiedDate || '').localeCompare(String(a.f.modifiedDate || '')); });
+      if (nxAiConv.caseFolderId !== cf) return null; // 그 사이 다른 사건으로 바꿨으면 버림
+      nxAiPvReports = out;
+      return out;
+    });
+  }
+  // 증빙창 접힘 — 그 브라우저에 기억
+  function nxAiEvFolded_(){ try { return localStorage.getItem('nxAiEvFolded') === '1'; } catch (e) { return false; } }
+  function nxAiSetEvFolded_(folded){
+    try { localStorage.setItem('nxAiEvFolded', folded ? '1' : '0'); } catch (e) {}
+    var box = nxAiEl_('nxAiPvFiles');
+    if (box) box.classList.toggle('ev-folded', !!folded);
+    var b = nxAiEl_('nxAiEvFoldBtn');
+    if (b){ b.textContent = folded ? '▸ 펼치기' : '▾ 접기'; b.title = folded ? '증빙창을 펼칩니다' : '증빙창을 접고 보고서창을 넓게 씁니다'; }
+  }
+  // [2026.10.20] 근거 서류 바로 열기 — 증빙창을 펼치고(접혀 있었으면) 그 파일을 보기 칸에 연다. folderId를 주면 증빙창도 그 폴더로 옮긴다.
+  //  나중에 "AI가 근거로 든 서류를 바로 연다"에 쓸 자리 — 아직 AI 답변과는 연결하지 않았다.
+  function nxAiOpenEvidence_(f, opts){
+    opts = opts || {};
+    if (!f || !f.id) return Promise.resolve();
+    if (nxAiMode !== 'tab') nxAiGoToView_('ai');
+    nxAiSetEvFolded_(false);
+    if (opts.folderId) nxAiPvNavigate_({ folderId: opts.folderId });
+    return nxAiOpenPreview_(f, { role: nxAiIsReportFile_(f.name) ? 'report' : 'evidence' });
+  }
+  // 파일 한 줄(두 창이 같이 씀) — 누르면 보기 칸에 열고, 📎는 채팅에 첨부
+  function nxAiPvFileRow_(f, role, tag){
+    var row = document.createElement('div');
+    row.className = 'nxai-file';
+    var when = role === 'report' ? String(f.modifiedDate || '').slice(5, 10) : ''; // yyyy.MM.dd → MM.dd
+    row.innerHTML = '<span>' + nxAiFileIcon_(f) + '</span><span class="n" title="' + nxAiEsc_(f.name) + '">' + nxAiEsc_(f.name) + '</span>'
+      + (tag ? '<span class="t" title="' + nxAiEsc_(tag) + '">' + nxAiEsc_(tag) + '</span>' : '')
+      + (when ? '<span class="t" title="마지막 수정">' + nxAiEsc_(when) + '</span>' : '')
+      + '<span class="a" title="채팅에 첨부">📎</span>';
+    row.querySelector('.a').addEventListener('click', function(e){ e.stopPropagation(); nxAiAddFileAttachment_(f); });
+    row.addEventListener('click', function(){ nxAiOpenPreview_(f, { role: role }); });
+    return row;
+  }
+  function nxAiPvFolderRow_(f, path){
+    var row = document.createElement('div');
+    row.className = 'nxai-file';
+    row.innerHTML = '<span>📁</span><span class="n">' + nxAiEsc_(f.name) + '</span><span class="a" title="이 폴더를 채팅에 첨부">📎</span>';
+    row.querySelector('.a').addEventListener('click', function(e){
+      e.stopPropagation();
+      nxAiAddFileAttachment_({ id: f.id, name: f.name, type: 'folder', path: path ? path.concat([f.name]) : undefined });
+    });
+    row.addEventListener('click', function(){ nxAiPvNavigate_({ folderId: f.id }); });
+    return row;
+  }
+  function nxAiPvRenderReports_(sec, rep){
+    sec.innerHTML = '';
+    var head = document.createElement('div');
+    head.className = 'nxai-pv-sechead';
+    var keep = rep ? rep.files.filter(function(it){ return it.keep; }) : [];
+    var arch = rep ? rep.files.filter(function(it){ return !it.keep; }) : [];
+    head.innerHTML = '<b>📝 보고서</b><span class="s">' + (rep ? '.md ' + keep.length + '개 — ' : '') + '열면 보고서 모양, AI가 열린 문서를 보고 고칩니다</span>';
+    var re = document.createElement('button');
+    re.type = 'button'; re.className = 'nxai-btn'; re.textContent = '🔄'; re.title = '보고서 목록 새로 받기';
+    re.addEventListener('click', function(){ nxAiPvRenderReports_(sec, null); nxAiPvScanCase_(true).then(function(r){ if (sec.isConnected && r) nxAiPvRenderReports_(sec, r); }); });
+    head.appendChild(re);
+    sec.appendChild(head);
+    if (!rep){ sec.insertAdjacentHTML('beforeend', '<div class="nxai-muted">사건 폴더의 .md를 모으는 중…</div>'); return; }
+    keep.forEach(function(it){ sec.appendChild(nxAiPvFileRow_(it.f, 'report', it.dir)); });
+    if (!keep.length) sec.insertAdjacentHTML('beforeend', '<div class="nxai-muted">아직 보고서(.md)가 없습니다 — AI에게 "검토서 만들어줘"라고 하거나 작성관리에서 새로 씁니다.</div>');
+    if (arch.length){
+      var det = document.createElement('details');
+      det.className = 'nxai-pv-sys';
+      det.innerHTML = '<summary>⚙ 보관·시스템 ' + arch.length + '개 (_이전판 등)</summary>';
+      arch.forEach(function(it){ det.appendChild(nxAiPvFileRow_(it.f, 'report', it.dir)); });
+      sec.appendChild(det);
+    }
+    if (rep.partial) sec.insertAdjacentHTML('beforeend', '<div class="nxai-muted">하위 폴더가 많아 앞 ' + NXAI_SCAN_MAX_FOLDERS_ + '개 폴더까지만 찾았습니다.</div>');
+    var cnt = nxAiEl_('nxAiEvCount');
+    if (cnt) cnt.textContent = rep.evCount + '개';
+  }
   function nxAiPvRenderListing_(res){
     var box = nxAiEl_('nxAiPvFiles');
     box.innerHTML = '';
+    var casePath = nxAiConv.casePath || [];
+    var path = res.path || [];
+    var atCaseRoot = !!nxAiConv.caseFolderId && res.folderId === nxAiConv.caseFolderId;
+    // 이 목록이 연결된 사건 폴더 안인가(경로 앞부분이 사건 폴더 경로와 같음)
+    var inCase = atCaseRoot || (!!nxAiConv.caseFolderId && casePath.length > 0 && path.length >= casePath.length
+      && casePath.every(function(seg, i){ return path[i] === seg; }));
+    box.classList.toggle('split', inCase);
+    box.classList.toggle('ev-folded', inCase && nxAiEvFolded_());
+    var repSec = null;
+    if (inCase){
+      repSec = document.createElement('div');
+      repSec.className = 'nxai-pv-sec rep';
+      box.appendChild(repSec);
+    }
+    var ev = document.createElement('div');
+    ev.className = 'nxai-pv-sec ev';
+    var evList = document.createElement('div');
+    evList.className = 'nxai-pv-evlist';
+    if (inCase){
+      var eh = document.createElement('div');
+      eh.className = 'nxai-pv-sechead';
+      eh.innerHTML = '<b>📂 증빙</b><span class="t" id="nxAiEvCount" title="사건 폴더 전체의 .md가 아닌 파일 수"></span><span class="s">보기 전용 — 정리는 증빙관리에서</span>';
+      var fold = document.createElement('button');
+      fold.type = 'button'; fold.className = 'nxai-btn'; fold.id = 'nxAiEvFoldBtn';
+      fold.addEventListener('click', function(){ nxAiSetEvFolded_(!nxAiEvFolded_()); });
+      eh.appendChild(fold);
+      var goDocs = document.createElement('button');
+      goDocs.type = 'button'; goDocs.className = 'nxai-btn'; goDocs.textContent = '📂 증빙관리';
+      goDocs.title = '지금 보는 폴더를 증빙관리(증빙확보) 화면에서 엽니다 — 올리기·이동·이름 정리·글자인식';
+      goDocs.addEventListener('click', function(){
+        if (typeof goToView_ === 'function') goToView_('docs');
+        if (typeof docsNavigateById_ === 'function') docsNavigateById_(res.folderId);
+      });
+      eh.appendChild(goDocs);
+      ev.appendChild(eh);
+    }
+    ev.appendChild(evList);
+    box.appendChild(ev);
+    if (inCase){
+      nxAiSetEvFolded_(nxAiEvFolded_());
+      var cached = nxAiPvReports && nxAiPvReports.caseFolderId === nxAiConv.caseFolderId ? nxAiPvReports : null;
+      nxAiPvRenderReports_(repSec, cached);
+      if (!cached) nxAiPvScanCase_(false).then(function(r){ if (repSec.isConnected && r) nxAiPvRenderReports_(repSec, r); });
+    }
     var crumb = document.createElement('div');
     crumb.className = 'nxai-pv-crumb';
-    var casePathLen = (nxAiConv.casePath || []).length;
-    var path = res.path || [];
     // 사건 폴더보다 위로는 못 올라가게(사건 자료 칸이므로) — 사건 폴더부터 현재 폴더까지만 보여준다.
-    var startIdx = casePathLen ? casePathLen - 1 : Math.max(0, path.length - 1);
+    var startIdx = casePath.length ? casePath.length - 1 : Math.max(0, path.length - 1);
     for (var i = startIdx; i < path.length; i++){
       (function(idx){
         var a = document.createElement('a');
@@ -50553,43 +50967,28 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (idx < path.length - 1) crumb.appendChild(document.createTextNode(' › '));
       })(i);
     }
-    box.appendChild(crumb);
+    evList.appendChild(crumb);
     // work.netax.kr이 사건 폴더에 남긴 대화기록(_대화기록.json)이 있으면 job 대화로 불러와 이어갈 수 있게 한다.
     var workHistory = (res.files || []).find(function(f){ return f.name === '_대화기록.json'; });
-    if (workHistory && res.folderId === nxAiConv.caseFolderId){
+    if (workHistory && atCaseRoot){
       var imp = document.createElement('button');
       imp.type = 'button';
       imp.className = 'nxai-btn';
       imp.style.margin = '0 4px 8px';
       imp.textContent = '💬 work에서 하던 이 사건 대화 불러오기';
       imp.addEventListener('click', function(){ nxAiImportWorkHistory_(workHistory); });
-      box.appendChild(imp);
+      evList.appendChild(imp);
     }
     // [2026.10.15] "양도코리아" = 이미 낸 신고서·납부서·접수증(정답지) 보관 폴더 — 사건 자료 칸에서 숨긴다(도구도 읽지 않음, Code.js caseIsFiledReturnFolder_)
-    var filedHidden = (res.folders || []).filter(function(f){ return /^\s*양도\s*코리아\s*$/.test(f.name || ''); });
-    res.folders = (res.folders || []).filter(function(f){ return filedHidden.indexOf(f) === -1; });
-    if (filedHidden.length) box.insertAdjacentHTML('beforeend', '<div class="nxai-muted" style="margin:0 4px 6px">📁 양도코리아(이미 낸 신고서 보관) — 처리에 쓰지 않아 숨김</div>');
-    (res.folders || []).forEach(function(f){
-      var row = document.createElement('div');
-      row.className = 'nxai-file';
-      row.innerHTML = '<span>📁</span><span class="n">' + nxAiEsc_(f.name) + '</span><span class="a" title="이 폴더를 채팅에 첨부">📎</span>';
-      row.querySelector('.a').addEventListener('click', function(e){
-        e.stopPropagation();
-        nxAiAddFileAttachment_({ id: f.id, name: f.name, type: 'folder', path: path.concat([f.name]) });
-      });
-      row.addEventListener('click', function(){ nxAiPvNavigate_({ folderId: f.id }); });
-      box.appendChild(row);
-    });
-    (res.files || []).forEach(function(f){
-      var row = document.createElement('div');
-      row.className = 'nxai-file';
-      row.innerHTML = '<span>' + nxAiFileIcon_(f) + '</span><span class="n" title="' + nxAiEsc_(f.name) + '">' + nxAiEsc_(f.name) + '</span><span class="a" title="채팅에 첨부">📎</span>';
-      row.querySelector('.a').addEventListener('click', function(e){ e.stopPropagation(); nxAiAddFileAttachment_(f); });
-      row.addEventListener('click', function(){ nxAiOpenPreview_(f); });
-      box.appendChild(row);
-    });
-    if (!(res.folders || []).length && !(res.files || []).length){
-      box.insertAdjacentHTML('beforeend', '<div class="nxai-muted">빈 폴더입니다.</div>');
+    var filedHidden = (res.folders || []).filter(function(f){ return NXAI_FILED_DIR_RE_.test(f.name || ''); });
+    var folders = (res.folders || []).filter(function(f){ return filedHidden.indexOf(f) === -1; });
+    // 사건 폴더 안에서는 .md(보고서)를 증빙창에 보이지 않는다 — 위 보고서창에 모여 있음
+    var files = (res.files || []).filter(function(f){ return !inCase || !nxAiIsReportFile_(f.name); });
+    if (filedHidden.length) evList.insertAdjacentHTML('beforeend', '<div class="nxai-muted" style="margin:0 4px 6px">📁 양도코리아(이미 낸 신고서 보관) — 처리에 쓰지 않아 숨김</div>');
+    folders.forEach(function(f){ evList.appendChild(nxAiPvFolderRow_(f, path)); });
+    files.forEach(function(f){ evList.appendChild(nxAiPvFileRow_(f, inCase ? 'evidence' : '', '')); });
+    if (!folders.length && !files.length){
+      evList.insertAdjacentHTML('beforeend', '<div class="nxai-muted">' + (atCaseRoot ? '증빙이 아직 없습니다 — 증빙관리에서 올립니다.' : '빈 폴더입니다.') + '</div>');
     }
   }
   // work 대화기록 → 새 job 대화로 복사(원본 파일은 그대로 둔다 — work에서도 계속 볼 수 있게).
@@ -50683,7 +51082,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
   // 파일 하나를 미리보기 칸에 연다. 텍스트 파일은 그 자리에서 고쳐서 저장할 수 있고, AI에게도
   // 지금 내용(liveContent)이 함께 전달돼 "이 문서 고쳐줘"에 수정안(apply_document_edit)을 낼 수 있다.
-  function nxAiOpenPreview_(f){
+  // opts.role: 'report'(보고서창 .md)·'evidence'(증빙창 — 보기 전용: ✏ 편집·🛠 파일관리 없음)·''(그 밖)
+  function nxAiOpenPreview_(f, opts){
+    opts = opts || {};
     if (nxAiMode !== 'tab'){
       // [2026.10.20] .md는 드라이브 원문 대신 보고서 모양 완성본으로(공용 렌더러 nxMdOpenWindow)
       if (/\.md$/i.test(f.name || '')){
@@ -50699,7 +51100,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (f.url) window.open(f.url, '_blank', 'noopener'); else window.open(nxAiDrivePreviewUrl_(f), '_blank', 'noopener');
       return Promise.resolve();
     }
-    nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view') };
+    nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : '') };
     nxAiPreviewText = null;
     nxAiPvHideProposal_();
     nxAiPvShowTab_('view');
@@ -50708,11 +51109,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiPvEditBar').hidden = true;
     var content = nxAiEl_('nxAiPvContent');
     var kind = nxAiFileKind_(f);
+    // [2026.10.20] AI에게 함께 가는 문서인지 표시 — 글 파일은 내용(liveContent), PDF·사진은 파일 자체가 다음 질문에 실린다
+    nxAiEl_('nxAiPvAiSees').hidden = !(kind === 'text' || kind === 'pdf' || kind === 'image');
     // [2026.10.20] 증빙관리처럼 두 가지 방법 — 텍스트는 ✏ 편집, PDF·사진은 🛠 파일관리(증빙관리의 PDF관리·스캔 함수를 그대로 부름)
     nxAiEl_('nxAiPvEdit').hidden = true;
     nxAiEl_('nxAiPvOpenRw').hidden = !(/\.md$/i.test(f.name || '') && typeof goToReportWriter_ === 'function');
     var mg = nxAiEl_('nxAiPvManage');
-    mg.hidden = !(kind === 'pdf' || kind === 'image');
+    // [2026.10.20] 증빙창은 보기 전용(세무사님 "증빙창은 그냥 증빙들을 볼 수 있게만") — 쪽 나누기·자르기 같은 관리는 증빙관리 화면에서
+    mg.hidden = !(kind === 'pdf' || kind === 'image') || nxAiPreviewFile.role === 'evidence';
     mg.textContent = kind === 'pdf' ? '📑 파일관리' : '📷 파일관리';
     mg.title = kind === 'pdf' ? '증빙확보의 PDF관리로 열기(쪽 나누기·합치기·서명 등)' : '증빙확보의 스캔으로 열기(자르기·보정 등)';
     if (kind === 'text'){
@@ -50764,7 +51168,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     var isMdFile = nxAiPreviewFile && /\.md$/i.test(nxAiPreviewFile.name || '');
     nxAiEl_('nxAiPvEdit').textContent = isMdFile ? '✏ 원본 편집' : '✏ 편집';
-    nxAiEl_('nxAiPvEdit').hidden = !!edit;
+    // 증빙 칸에서 연 글 파일(.md 아님)은 보기 전용 — 증빙을 고치는 일은 증빙관리에서
+    nxAiEl_('nxAiPvEdit').hidden = !!edit || (nxAiPreviewFile && nxAiPreviewFile.role === 'evidence' && !isMdFile);
     nxAiEl_('nxAiPvEditBar').hidden = !edit;
     nxAiPvUpdateDirty_();
   }
@@ -51161,7 +51566,30 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
     // 문서 수정안 — 미리보기 칸에 띄우고, 사람이 저장 버튼을 눌러야 반영된다.
     var editAction = actions.find(function(a){ return a && a.type === 'edit_document'; });
-    if (editAction){
+    if (editAction && editTargetFile && editTargetFile.where === 'reportwriter'){
+      // [2026.10.20] 작성관리 편집창에 열린 문서의 수정안 — work의 [📝 편집기에 적용하기]와 같게, 누르면 편집창 글만 바뀐다(드라이브 저장은 작성관리 💾)
+      var rwNote = document.createElement('div');
+      rwNote.className = 'nxai-notice';
+      rwNote.textContent = '📝 「' + (editTargetFile.name || '문서') + '」 수정안 — 아래 버튼을 누르면 작성관리 편집창에 들어갑니다(드라이브 저장은 작성관리의 💾 저장).';
+      bubbleEl.appendChild(rwNote);
+      var rwPrev = null;
+      addLink('📝 편집창에 적용하기', function(){
+        if (typeof rwAiApplyEdit_ !== 'function'){ nxAiToast_('작성관리 화면을 불러오지 못했습니다.'); return; }
+        var rwv = document.getElementById('view-reportwriter');
+        if (rwv && !rwv.classList.contains('active')) nxAiGoToView_('reportwriter');
+        var r = rwAiApplyEdit_(editTargetFile.id, editAction.content || '');
+        if (!r || r.error){ nxAiToast_((r && r.error) || '편집창에 넣지 못했습니다.'); return; }
+        rwPrev = r.previous;
+        nxAiToast_('편집창에 넣었습니다 — 확인 후 작성관리에서 💾 저장을 누르세요.');
+      });
+      addLink('↩ 적용 전으로', function(){
+        if (rwPrev === null || typeof rwAiApplyEdit_ !== 'function'){ nxAiToast_('아직 적용하지 않았습니다.'); return; }
+        var r = rwAiApplyEdit_(editTargetFile.id, rwPrev);
+        if (!r || r.error){ nxAiToast_((r && r.error) || '되돌리지 못했습니다.'); return; }
+        rwPrev = null;
+        nxAiToast_('편집창을 적용 전 내용으로 되돌렸습니다.');
+      });
+    } else if (editAction){
       var notice = document.createElement('div');
       notice.className = 'nxai-notice';
       notice.textContent = '⚠️ 아직 저장되지 않았습니다 — 미리보기 칸의 [이 수정안으로 저장]을 눌러야 실제 문서에 반영됩니다.';
@@ -51184,6 +51612,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         nxAiOpenPreview_({ id: fid, name: a.name, url: a.url, mimeType: /\.(md|txt|json|csv|html?)$/i.test(a.name || '') ? 'text/plain' : '' });
       });
     });
+    // [2026.10.20] AI가 검토서·보고서를 저장했으면 사건 자료 칸(위 보고서창)을 새로 받는다
+    if (saved.length && nxAiConv.caseFolderId && nxAiPvFolder && nxAiPvFolder.folderId){
+      nxAiPvReports = null;
+      nxAiPvNavigate_({ folderId: nxAiPvFolder.folderId });
+    }
 
     var claimed = NXAI_COMPLETION_CLAIM_RE.test(replyText || '');
     var realSignal = !!editAction || saved.length > 0
@@ -51227,8 +51660,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var us = (nxAiConv && nxAiConv.messages || []).filter(function(m){ return m && m.role === 'user'; }).slice(-3);
     return us.some(function(m){ return nxAiIsJudgeText_(typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.map(function(b){ return b && b.text || ''; }).join(' ') : '')); });
   }
+  // 자동(V)일 때만 부른다 — 세무사님이 고정(F)으로 고른 모델은 nxAiBuildSettingsPayload_가 그대로 쓴다.
+  // [2026.10.20 기본기 3] 사건이 연결된 대화는 기본 Sonnet — 새 대화 첫 질문 "등기부·공시가격·취득일 확인해줘"처럼 판단 낱말이 없어도
+  //  사건 자료를 읽고 따지는 일이라 Haiku로 보내면 놓친다. Haiku(저가)는 사건 없는 단순 질문에만(일정·메일 등은 ⚡·🔮가 먼저 받는다).
   function nxAiPickAutoModel_(text){
     if (nxAiIsJudgeText_(text) || nxAiConvInJudgement_()) return { model: 'claude-sonnet-5', effort: 'high' };
+    if (nxAiConv.caseId) return { model: 'claude-sonnet-5', effort: 'medium' };
     return { model: 'claude-haiku-4-5-20251001', effort: 'medium' };
   }
   function nxAiRefreshModelUi_(){
@@ -51357,12 +51794,33 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (nxAiPvFolder && nxAiPvFolder.path && nxAiPvFolder.path.length && nxAiConv.caseFolderId) return nxAiPvFolder.path;
     return [];
   }
+  // AI가 아는 "지금 열린 문서" — AI탭은 보기 칸, 사이드바로 작성관리를 보고 있으면 그 편집창(work report-writer의 편집기 연동과 같은 자리).
+  // where: 'preview'(AI탭 보기 칸) | 'reportwriter'(작성관리 편집창) — 수정안을 어디에 띄울지 정한다.
   function nxAiOpenFileContext_(){
-    if (nxAiMode !== 'tab' || !nxAiPreviewFile) return null;
-    var ctx = { id: nxAiPreviewFile.id, name: nxAiPreviewFile.name, mimeType: nxAiPreviewFile.mimeType };
+    if (nxAiMode !== 'tab'){
+      var rwActive = document.getElementById('view-reportwriter') && document.getElementById('view-reportwriter').classList.contains('active');
+      if (rwActive && typeof rwAiOpenDoc_ === 'function'){
+        var rd = rwAiOpenDoc_();
+        if (rd) return { id: rd.id, name: rd.name, mimeType: 'text/markdown', liveContent: rd.content, where: 'reportwriter' };
+      }
+      return null;
+    }
+    if (!nxAiPreviewFile) return null;
+    var ctx = { id: nxAiPreviewFile.id, name: nxAiPreviewFile.name, mimeType: nxAiPreviewFile.mimeType, where: 'preview' };
+    // [2026.10.20 고침] 보기 칸이 보고서 모양(보기 전용)일 때도 내용을 넘긴다 — 예전엔 편집칸(textarea)이 있을 때만 넘겨서,
+    // .md를 보고서 모양으로 연 뒤 "이 문서 고쳐줘"라고 하면 AI가 문서 내용을 모르고 수정안(apply_document_edit)도 못 냈다.
     var ta = nxAiEl_('nxAiPvText');
-    if (ta && !nxAiEl_('nxAiPvView').hidden) ctx.liveContent = ta.value;
+    if (!nxAiEl_('nxAiPvView').hidden){
+      if (ta) ctx.liveContent = ta.value;
+      else if (nxAiPreviewText !== null) ctx.liveContent = nxAiPreviewText;
+    }
     return ctx;
+  }
+  // 수정안을 받을 대상 — 보낼 때 열린 문서(내용이 같이 간 것만)
+  function nxAiEditTarget_(openFileCtx){
+    if (!openFileCtx || typeof openFileCtx.liveContent !== 'string') return null;
+    if (openFileCtx.where === 'reportwriter') return { id: openFileCtx.id, name: openFileCtx.name, where: 'reportwriter' };
+    return Object.assign({}, nxAiPreviewFile, { where: 'preview' });
   }
   // 미리보기에 이미지·PDF가 열려 있으면 그 파일 자체를 이번 요청에 실어 보낸다(work의 자동참조와 같은 동작).
   function nxAiOpenFileMediaBlock_(){
@@ -51479,8 +51937,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     // "일정"은 구글 캘린더 조회(🔮 제미니)로 남겨두고, 예약·마감·할 일만 여기서 처리
     if (/오늘/.test(t) && /(할\s*일|예약|마감|뭐\s*(있|해)|업무)/.test(t)) return { kind: 'today' };
-    if (/(연락처|전화\s*번호|전번|휴대\s*폰|핸드폰|주소|고객\s*정보)/.test(t) && !/(바꿔|변경|수정|등록|추가|저장|보내|문자)/.test(t)) return { kind: 'client_info' };
-    if (/(진행\s*상황|진행\s*상태|어디까지|사건\s*상태|상태\s*(는|가|좀|알려|보여))/.test(t) && !/예약/.test(t)) return { kind: 'case_status' };
+    // [2026.10.20 기본기 3] 사건이 연결된 대화(사건 작업 중)에서는 가로채기를 좁힌다 — "양도한 집 주소 맞아?"·"취득일 어디까지 확인됐어?"처럼
+    //  사건 자료를 묻는 말이 "주소"·"어디까지"·"상태는" 낱말 때문에 고객정보·사건상태 조회로 빠져 AI가 답하지 못했다.
+    //  사건 대화에서는 고객 연락처는 "연락처·전화번호·휴대폰·고객 정보"라고 분명히 말할 때만, 사건 상태는 "진행 상황·진행 상태·사건 상태"일 때만 바로 처리한다.
+    var inCaseConv = !!nxAiConv.caseId;
+    var clientInfoRe = inCaseConv ? /(연락처|전화\s*번호|전번|휴대\s*폰|핸드폰|고객\s*정보)/ : /(연락처|전화\s*번호|전번|휴대\s*폰|핸드폰|주소|고객\s*정보)/;
+    var caseStatusRe = inCaseConv ? /(진행\s*상황|진행\s*상태|사건\s*상태)/ : /(진행\s*상황|진행\s*상태|어디까지|사건\s*상태|상태\s*(는|가|좀|알려|보여))/;
+    if (clientInfoRe.test(t) && !/(바꿔|변경|수정|등록|추가|저장|보내|문자)/.test(t)) return { kind: 'client_info' };
+    if (caseStatusRe.test(t) && !/예약/.test(t)) return { kind: 'case_status' };
     if (/예약/.test(t) && !/(승인|거절|취소|연결|등록)/.test(t) && /(보여|목록|확인|대기|몇|있어|있나|현황|알려|내일|모레|이번\s*주|다음\s*주|이번\s*달)/.test(t)) return { kind: 'bookings' };
     // [2026.10.09] 미수금은 job이 받을 금액(보수)을 기록하지 않아 계산할 수 없다 — 유료 AI로 보내도 답이 없으므로 0원으로 바로 안내
     if (/(미수|못\s*받|안\s*받은|받을\s*돈|외상|밀린\s*(돈|보수|수임료))/.test(t)) return { kind: 'unpaid' };
@@ -54268,7 +54732,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     userBubble._nxMsgRef = userMsg;
 
     var openFileCtx = nxAiOpenFileContext_();
-    var editTarget = (openFileCtx && typeof openFileCtx.liveContent === 'string') ? Object.assign({}, nxAiPreviewFile) : null;
+    var editTarget = nxAiEditTarget_(openFileCtx);
     var thinking = nxAiAppendBubble_('assistant', '생각 중…');
     nxAiAbort = new AbortController();
     nxAiSetBusy_(true);
@@ -54408,7 +54872,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       for (var k = nxAiConv.messages.length - 1; k >= 0; k--){ if (nxAiConv.messages[k].role === 'user'){ lastUser = nxAiConv.messages[k].content; break; } }
       var thinking = nxAiAppendBubble_('assistant', '생각 중…');
       var openFileCtx = nxAiOpenFileContext_();
-      var editTarget = (openFileCtx && typeof openFileCtx.liveContent === 'string') ? Object.assign({}, nxAiPreviewFile) : null;
+      var editTarget = nxAiEditTarget_(openFileCtx);
       var convAtSend = nxAiConv;
       nxAiAbort = new AbortController(); nxAiSetBusy_(true);
       nxAiRunTurn_(nxAiTrimForRequest_(nxAiConv.messages), {

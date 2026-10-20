@@ -1,5 +1,6 @@
 // [2026.10.19 5번 — ai-lead2 시제품, 상수 자료] 조정대상지역 지정·해제 이력표(「주택법」 제63조의2)
-//  ※ 세무사님 확인 전에는 운영 판정에 쓰지 않는다. 지금은 재현기 재기(CASEPROC_AI_ADJ_TRIAL_ = true)에서만 읽는다.
+//  ※ [2026.10.20] 운영에서 씀 — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다". AI 지휘(AiLead.js CASEPROC_AI_ADJ_TRIAL_ = true)·
+//    AI 조회 도구 lookup_adjusted_area(아래 adjAreaLookupTool_, job·work 공용)·AI 지휘 public_lookup kind=adjusted. 표에 없거나 경계를 모르는 곳은 '확인 필요'로 돌려준다.
 //  출처: 국토교통부 행정규칙(훈령·예규·고시) 게시판 공고 원문(molit.go.kr …/m_45/dtl.jsp?idx=번호),
 //        2025·2026 공고는 국가법령정보센터 행정규칙 「조정대상지역 지정」 연혁(law.go.kr admRulSeq=번호). 기사·블로그는 쓰지 않았다.
 //  모든 공고는 "공고한 날부터 효력"(본문 4.). 예외 — 2017-1305호는 예정지 공고(법률 제14866호 「주택법」 부칙 §2)라 효력일 '확인 필요'.
@@ -215,3 +216,35 @@ function formNeeds_(caseId, input) {
   return out;
 }
 
+
+// ============================================================
+// [2026.10.20] AI 조회 도구 lookup_adjusted_area — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다".
+//  주소 하나 + 날짜 여러 개(취득일·양도일 등) → 날짜마다 위 이력표(caseProcAdjAreaAt_)의 판정·이유·근거 공고(번호·날짜·지정/해제·원문 주소).
+//  토큰 0(GAS 표). job·work AI 공용(Code.js DRIVE_TOOLS·BASIC_TOOL_NAMES_에 등록). '확인 필요'는 그대로 돌려주고 지어내지 않는다.
+//  [연결 지점] 조견표 세션(reftables 1부-01)의 판정 함수가 생기면 아래 caseProcAdjAreaAt_ 부름만 바꾼다(AiLead.js caseProcAiAdjSpot_와 같이).
+function adjAreaLookupTool_(input) {
+  input = input || {};
+  const addr = String(input.address || '').trim();
+  const dates = Array.isArray(input.dates) ? input.dates : [];
+  if (!addr) return { error: 'address(소재지 주소)가 필요합니다 — 시도·시군구·읍면동까지 넣으세요(예: 경기도 군포시 산본동 82-5).' };
+  if (!dates.length) return { error: 'dates가 필요합니다 — 예: [{label:"취득일", date:"2018-11-26"}, {label:"양도일", date:"2026-10-20"}]' };
+  const byNo = {};
+  CASEPROC_ADJ_EVENTS_.forEach(function (e) { (byNo[e.no] = byNo[e.no] || []).push(e); });
+  const out = dates.slice(0, 10).map(function (d) {
+    const date = String(d && d.date || '').slice(0, 10), purpose = d && d.purpose === '거주요건' ? '거주' : undefined;
+    const r = caseProcAdjAreaAt_(addr, date, purpose);
+    const basis = (r.근거 || []).map(function (no) {
+      const es = byNo[no] || [];
+      if (!es.length) return { 공고: no }; // 소득세법 시행령 등 조문 근거
+      return { 공고: '국토교통부 공고 제' + no + '호', 공고일: es[0].date, 종류: es.map(function (e) { return e.kind; }).filter(function (k, i, a) { return a.indexOf(k) === i; }).join('·'), 원문: es[0].src, 비고: es[0].dateNote || '' };
+    });
+    return { 기준: String(d && d.label || '') || '날짜', 날짜: date, 판정: r.판정, 이유: r.이유, 근거: basis };
+  });
+  return {
+    주소: addr,
+    결과: out,
+    표_범위: '「주택법」 §63의2 조정대상지역 지정·해제 공고(2017-1305호 ~ 2026-882호, 2026-07-01). 그 뒤 공고는 표에 없음 — 2026-07-01 이후 날짜는 다시 확인.',
+    아직_확인_안된_것: CASEPROC_ADJ_UNVERIFIED_,
+    안내: '판정이 "확인 필요"면 그 이유(택지지구 경계·예정지 공고·주소에 구·동 없음 등)를 사용자에게 그대로 알리고 단정하지 마라. 답에는 근거 공고번호를 밝혀라. 2016~2017 청약조정대상지역은 세법상 조정대상지역이 아니다.'
+  };
+}

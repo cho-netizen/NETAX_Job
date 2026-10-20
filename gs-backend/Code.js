@@ -156,7 +156,7 @@ const BASIC_TOOL_NAMES_ = new Set([
   // 아래는 계산기만큼 무겁지 않아(설명이 짧음) 굳이 분야별 탐색 대상에 안 넣고 항상 켜둠.
   'lookup_statute_article', 'lookup_real_estate_price', 'lookup_building_register', 'search_address',
   'lookup_official_price', 'lookup_business_status', 'verify_business_registration',
-  'get_building_price_index_tables',
+  'get_building_price_index_tables', 'lookup_adjusted_area',
   'list_business_managers', 'load_business_manager', 'audit_business_managers', 'propose_new_business_manager',
   'browse_tax_calculators',
   // [2026.08] 예규·판례도 국가법령정보센터 API로 GAS가 직접 가져오게 추가 — AI가 웹서치로
@@ -434,6 +434,31 @@ const DRIVE_TOOLS = [
         stdrYear: { type: 'string', description: '기준연도(YYYY, 생략하면 올해).' }
       },
       required: ['priceKind', 'admCd', 'mtYn', 'lnbrMnnm']
+    }
+  },
+  // [2026.10.20] 조정대상지역 이력표 조회(AdjArea.js adjAreaLookupTool_, 토큰 0) — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다"
+  {
+    name: 'lookup_adjusted_area',
+    description: '주택 소재지가 특정 날짜(취득일·양도일 등)에 「주택법」 §63의2 조정대상지역이었는지 국토교통부 지정·해제 공고 이력표(2017-1305호~2026-882호)로 조회한다. 날짜마다 판정(조정/비조정/확인 필요)·이유·근거 공고번호·공고 원문 주소를 준다. 다주택 중과(소득세법 §104⑦)·1세대1주택 거주요건(시행령 §154①)·장기보유특별공제 판단에서 조정대상지역 여부가 필요하면 기억이나 짐작으로 말하지 말고 반드시 이 도구로 취득일·양도일 기준을 조회하라. "확인 필요"(택지지구 경계·예정지 공고·주소에 구/동 없음 등)는 그 이유를 그대로 사용자에게 알려라.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: '소재지 주소 — 시도·시군구·(구)·읍면동까지(예: "경기도 군포시 산본동 82-5", "서울특별시 강남구 대치동"). 등기부·계약서 주소를 그대로 넣어도 된다.' },
+        dates: {
+          type: 'array',
+          description: '조회할 날짜들(최대 10개)',
+          items: {
+            type: 'object',
+            properties: {
+              label: { type: 'string', description: '날짜 이름(예: "취득일", "양도일", "잔금일")' },
+              date: { type: 'string', description: 'YYYY-MM-DD' },
+              purpose: { type: 'string', enum: ['일반', '거주요건'], description: '1세대1주택 거주요건(시행령 §154①) 판단용 취득일이면 "거주요건"(2017-08-03~11-09는 §154② 지역을 조정대상지역으로 봄), 그 밖은 "일반"' }
+            },
+            required: ['date']
+          }
+        }
+      },
+      required: ['address', 'dates']
     }
   },
   {
@@ -3998,6 +4023,11 @@ function dispatchClientAction0_(body) {
   if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
   if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
   // [2026.10.13] AI 회의(2026.10.19 재편)·개발자↔사용자 소통·2중 검증(Federation.js, docs/ai-federation.md)
+  // [2026.10.20] 대시보드 📋 확인조치사항 — 원본은 드라이브 0 NETAX/_확인조치사항.md 하나(Followup.js). 저장은 최신 내용에서 그 줄만 바꾼다.
+  if (body.action === 'followup_get') return jsonResponse(followupGet_());
+  if (body.action === 'followup_toggle') return jsonResponse(followupChange_(body, 'toggle'));
+  if (body.action === 'followup_edit') return jsonResponse(followupChange_(body, 'edit'));
+  if (body.action === 'followup_add') return jsonResponse(followupChange_(body, 'add'));
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
@@ -4466,7 +4496,9 @@ function buildContextSystemPrompt(basePrompt, body) {
   if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[세법 판단 답변 원칙] (1) 대화가 특정 세목(양도·증여·상속 등)을 검토 중이면 후속 질문도 그 세목 기준으로 답하라 — 다른 세목 이야기는 사용자가 물을 때만. '
     + '(2) 세율·중과·비과세·감면의 요건과 금액 기준은 lookup_statute_article로 조문을 확인하거나 계산기 결과로 말하고, 근거 조문을 함께 밝혀라. 확인하지 못한 기준은 사실처럼 말하지 말고 "확인 안 됨"이라고 밝혀라. '
     + '조정대상지역처럼 시기별로 바뀌는 지정 현황은 취득일·양도일 등 그 판단에 필요한 날짜 기준으로 따지고, 지정 공고를 확인하지 못했으면 그렇다고 밝혀라. '
-    + '(3) 주소를 아는 부동산의 공시가격·건축물 정보처럼 도구로 조회할 수 있는 사실은 사용자에게 묻기 전에 먼저 조회하라(search_address → lookup_official_price 등). 사건 폴더에 그 서류가 있으면 그것부터 읽어라.';
+    + '(3) 주소를 아는 부동산의 공시가격·건축물 정보처럼 도구로 조회할 수 있는 사실은 사용자에게 묻기 전에 먼저 조회하라(search_address → lookup_official_price 등). 사건 폴더에 그 서류가 있으면 그것부터 읽어라. '
+    // [2026.10.20] 조정대상지역 이력표를 AI가 쓰게 — [연결 지점] 조견표 세션 판정 함수가 생겨도 도구 이름(lookup_adjusted_area)은 그대로 두고 AdjArea.js adjAreaLookupTool_ 안만 바꾼다
+    + '(4) 다주택 중과·1세대1주택 거주요건·장기보유특별공제를 판단할 때 조정대상지역 여부는 기억으로 말하지 말고 lookup_adjusted_area로 취득일·양도일(필요한 날짜마다) 기준을 조회하라. 답에는 근거 공고번호를 밝히고, 결과가 "확인 필요"면 그 이유를 그대로 알리고 단정하지 마라.';
   staticExtra += '\n\n[화제 전환 처리] 이 대화에 사건·검토 관련 이전 내용이 쌓여 있더라도, 사용자의 새 메시지가 그 내용과 명백히 무관한 별개의 질문(예: 날씨, 간단한 계산, 일반 상식 등)이면 이전 화제(예: "~건 검토를 진행할까요?" 같은 직전 제안)를 다시 꺼내거나 그쪽으로 답을 끌고 가지 마라. 새 질문에만 집중해서 답하고, 답변이 끝난 뒤에도 먼저 이전 화제로 돌아가자고 제안하지 마라 — 사용자가 먼저 그 화제를 다시 꺼내면 그때 이어가라.';
 
   // [2026.08] 예전엔 이걸 화면의 "자동참조" 켜고끄기 토글로 사람이 미리 정해둬야 했다 — 다른
@@ -4520,10 +4552,14 @@ function buildContextSystemPrompt(basePrompt, body) {
           + '✍️[AI 작성: …] 자리(사건 고유 판단)와 ⚠[확인필요: …] 자리(사건 값)만 채워라 — 표준 문단의 나머지 문장·표·조문 부록은 다시 쓰지 말고, '
           + 'apply_document_edit의 edits로 그 표시가 있는 짧은 구간만 바꿔라. 사건 자료로 확인할 수 없는 값은 지어내지 말고 ⚠[확인필요]로 두고 이유를 한 줄로 적어라.';
       }
+      // [2026.10.20] 작성관리 편집창 문서(openFile.where==='reportwriter')는 미리보기 칸이 아니라 편집창에 적용된다 — 버튼 이름을 맞게 안내
+      const inRw_ = ctx.openFile.where === 'reportwriter';
       if (ctx.aiPanel) {
-        dynamicExtra += '\n\n[job AI — 문서 수정 방식] 이 문서는 AI탭 오른쪽 미리보기 칸에 열려 있다. 고칠 때는 apply_document_edit의 edits(바꿀 부분만)를 써라 — '
+        dynamicExtra += '\n\n[job AI — 문서 수정 방식] ' + (inRw_ ? '이 문서는 작성관리 편집창에 열려 있다(사이드바 AI가 함께 본다).' : '이 문서는 AI탭 오른쪽 미리보기 칸에 열려 있다.')
+          + ' 고칠 때는 apply_document_edit의 edits(바꿀 부분만)를 써라 — '
           + '이 경우에 한해 위의 "content 생략 금지" 규칙은 적용되지 않는다(edits를 쓰면 content는 비워둔다). 문서를 거의 새로 쓸 때만 content를 쓴다. '
-          + '사용자에게는 "미리보기 칸의 [이 수정안으로 저장]을 누르면 반영된다"고 안내하라.';
+          + (inRw_ ? '사용자에게는 "답변 아래 [📝 편집창에 적용하기]를 누르면 편집창에 들어가고, 되돌리려면 [↩ 적용 전으로]를 누르면 된다"고 안내하라.'
+            : '사용자에게는 "미리보기 칸의 [이 수정안으로 저장]을 누르면 반영된다"고 안내하라.');
       }
       dynamicExtra += '\n\n[중요] 지금 편집기에 열려 있는 바로 이 문서를 고치거나, 이 문서를 바탕으로 새로 정리해달라는 요청이면 — save_file_to_folder로 조용히 덮어쓰지 말고 반드시 apply_document_edit 도구를 사용하라(도구 설명 참고). save_file_to_folder를 쓰면 사용자가 "편집기에 적용하기" 버튼을 못 받아서 편집기 화면이 갱신 안 된 채로 남는다. 완전히 다른 새 파일을 만드는 경우(지금 열려있는 문서와 무관한 별도 파일)에만 save_file_to_folder를 써라. 문서 수정을 요청한 게 아니라면 둘 다 쓰지 마라.';
     } else if (ctx.openFile.mimeType && (ctx.openFile.mimeType.indexOf('image/') === 0 || ctx.openFile.mimeType === 'application/pdf')) {
@@ -14963,6 +14999,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         b.name === 'lookup_building_register' ||
         b.name === 'search_address' ||
         b.name === 'lookup_official_price' ||
+        b.name === 'lookup_adjusted_area' ||
         b.name === 'lookup_business_status' ||
         b.name === 'verify_business_registration' ||
         b.name === 'get_building_price_index_tables' ||
@@ -15220,6 +15257,11 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const resultObj = pnu
           ? handleLookupOfficialPrice({ pnu: pnu, priceKind: input.priceKind, dong: input.dong || '', ho: input.ho || '', stdrYear: input.stdrYear || '' })
           : { error: 'admCd·mtYn·lnbrMnnm이 필요합니다(search_address 결과를 그대로 넘기세요).' };
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
+      }
+
+      if (block.name === 'lookup_adjusted_area') {
+        const resultObj = typeof adjAreaLookupTool_ === 'function' ? adjAreaLookupTool_(block.input || {}) : { error: '조정대상지역 이력표(AdjArea.js)가 서버에 없습니다.' };
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -15930,8 +15972,12 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         if (isJobPanel_ && resultObj && resultObj.kind === 'binary' && !(block.input && block.input.raw)) {
           try {
             const dp = docParseFile_({ fileId: block.input.fileId });
-            if (dp && dp.type && dp.md) resultObj = { name: resultObj.name, mimeType: resultObj.mimeType, kind: 'text',
-              content: dp.md + '\n\n[안내] 위는 무료 글자인식+규칙으로 정리한 요약이다(✓ 검산된 값, ⚠ 확인필요). 특약 문구·도장·표 배치 등 원본을 직접 봐야 하면 read_drive_file를 raw: true로 다시 호출하라.' };
+            // [2026.10.20 기본기 2] 요약표만 주면 정리 규칙이 줄을 버려도 AI는 모른다(등기부 갑구 4번 누락 — 원문 글자엔 있었다). 요약표와 함께
+            //  같은 무료 글자인식 원문(글자인식 기억에서 꺼냄, 0원)을 주고 맞대어 보게 한다. 원본 PDF 첨부 대신 원문 글자를 고른 이유:
+            //  스캔 쪽마다 그림 토큰이 들고, 실측상 드라이브 글자인식이 숫자를 더 정확히 읽는다(사진 금액 오독 기록). 도장·배치는 여전히 raw:true.
+            let ocr = '';
+            if (dp && dp.type && dp.md) { try { ocr = String((docParseFile_({ fileId: block.input.fileId, withText: true }) || {}).text || '').trim(); } catch (e2) { ocr = ''; } }
+            if (dp && dp.type && dp.md) resultObj = { name: resultObj.name, mimeType: resultObj.mimeType, kind: 'text', content: aiDocSummaryWithOcr_(dp.md, ocr) };
           } catch (e) { /* 정리 실패 — 원본 첨부 그대로 */ }
         }
       } catch (err) {
@@ -42816,6 +42862,20 @@ function docParseFile_(body) {
   var res = { ok: true, name: name, type: p.type, label: p.label, isRegistry: p.type === 'registry', result: p.result, md: '**' + name + '**\n\n' + p.md };
   try { var s = JSON.stringify(res); if (p.type && s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
   return res;
+}
+// [2026.10.20 기본기 2] job AI의 read_drive_file 결과 — 규칙 요약표 + 무료 글자인식 원문. 요약에 ⚠(확인필요·빈 순위번호 경고 등)가 있으면 맨 앞에서 알린다.
+//  원문은 서류 한 건 20,000자까지(등기부 4쪽 약 7,000자) — 넘으면 앞부분만 주고 잘렸다고 밝힌다(지어내지 않게).
+var AI_DOC_OCR_MAX_CHARS_ = 20000;
+function aiDocSummaryWithOcr_(md, ocr) {
+  md = String(md || ''); ocr = String(ocr || '');
+  var warn = /⚠/.test(md);
+  if (!ocr) return md + '\n\n[안내] 위는 무료 글자인식+규칙으로 정리한 요약이다(✓ 검산된 값, ⚠ 확인필요). 원문 글자는 없다 — 판단에 필요하면 read_drive_file를 raw: true로 다시 호출해 원본을 보라.';
+  var cut = ocr.length > AI_DOC_OCR_MAX_CHARS_;
+  return (warn ? '[주의] 이 요약표에 ⚠ 표시(확인필요·읽지 못한 기재 등)가 있다 — 그 부분은 아래 ② 원문 글자에서 직접 찾아 확인한 뒤 답하라.\n\n' : '')
+    + '[읽는 법] ① 규칙 요약표와 ② 무료 글자인식 원문을 함께 준다. 요약표는 원문에서 규칙으로 뽑은 것이라 줄이 빠지거나 칸이 섞일 수 있다 — 판단·답변 전에 원문과 맞대어 보고, '
+    + '다르면 원문을 따르고 어디가 다른지 사용자에게 알려라. 원문도 글자인식 결과라 흐린 숫자·도장·표 배치가 중요하면 read_drive_file를 raw: true로 다시 불러 원본을 보라.\n\n'
+    + '## ① 규칙 요약표\n\n' + md
+    + '\n\n## ② 원문 글자(무료 글자인식' + (cut ? ', 앞 ' + AI_DOC_OCR_MAX_CHARS_.toLocaleString('ko-KR') + '자만 — 뒤는 잘림' : '') + ')\n\n```\n' + (cut ? ocr.slice(0, AI_DOC_OCR_MAX_CHARS_) : ocr).replace(/```/g, "'''") + '\n```';
 }
 
 // =========================================================

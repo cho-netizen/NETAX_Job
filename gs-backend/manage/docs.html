@@ -1214,15 +1214,42 @@
     if (f.mimeType === 'application/pdf') return 'pdf';
     if (f.mimeType && f.mimeType.indexOf('image/') === 0) return 'image';
     if (DOCS_HWP_EXT_RE_.test(name) || (f.mimeType || '').indexOf('hwp') !== -1) return 'hwp';
+    // [2026.10.20 기본기 5] 구글시트는 파일 자체(바이너리)가 없어 readFileBinary가 거절한다 — 예전엔 '엑셀'로 분류해 열 때마다 오류.
+    //  work처럼 구글 드라이브 미리보기로 연다(아래 kind === 'gsheet').
+    if (f.mimeType === MimeTypeGoogleSheets_) return 'gsheet';
     if (DOCS_EXCEL_EXT_RE_.test(name) || f.mimeType === 'application/vnd.ms-excel' ||
-        f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        f.mimeType === MimeTypeGoogleSheets_) return 'excel';
+        f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'excel';
     if (DOCS_TEXT_EXT_RE_.test(name) || (f.mimeType || '').indexOf('text/') === 0) return 'text';
     return 'other'; // 워드·파워포인트 등 — 드라이브 자체 미리보기로 대체
   }
   var MimeTypeGoogleSheets_ = 'application/vnd.google-apps.spreadsheet';
 
-  function docsOpenFileViewer_(f){
+  // [2026.10.20] 세무사님 "보고서가 열려야 하는 것은 오히려 ai탭에서 였지 않나? 증빙관리는 순수한 증빙관리일뿐인데" → "그렇게 하자":
+  // 사건 폴더 안의 .md(검토서·보고서)는 여기서 그리지 않고 그 사건을 연결한 AI 탭 작업대로 넘겨 연다(aichat.html nxAiOpenCaseDoc_ —
+  // 보고서 모양·✏ 원본 편집·작성관리에서 열기·AI가 그 문서를 알고 고침). 사건 폴더 밖의 .md(업무관리자 지침·템플릿 등)는 연결할 사건이
+  // 없으므로 예전처럼 이 자리에서 보고서 모양으로 본다(opts.inPlace).
+  function docsCaseOfCurrentFolder_(){
+    if (docsSelectedCaseId_) return Promise.resolve(docsSelectedCaseId_);
+    // 사건 폴더 두 단계보다 깊은 곳(docsSyncSelectedCase_는 두 단계까지만 봄) — 고객사건 루트 바로 밑 폴더 이름으로 사건을 찾는다
+    return getCustomerRootPath_().then(function(basePath){
+      var under = docsPath.length > basePath.length && basePath.every(function(seg, i){ return docsPath[i] === seg; });
+      if (!under) return null;
+      var top = docsPath[basePath.length];
+      return docsGetAllCases_().then(function(cases){
+        var c = cases.filter(function(x){ return String(x.사건명 || '').trim() === top; })[0];
+        return c ? c.id : null;
+      });
+    }).catch(function(){ return null; });
+  }
+  function docsOpenFileViewer_(f, opts){
+    opts = opts || {};
+    if (!opts.inPlace && /\.md$/i.test(f.name || '') && typeof nxAiOpenCaseDoc_ === 'function'){
+      docsCaseOfCurrentFolder_().then(function(caseId){
+        if (caseId){ nxAiOpenCaseDoc_(caseId, f); return; }
+        docsOpenFileViewer_(f, { inPlace: true });
+      });
+      return;
+    }
     var kind = docsViewKind_(f);
     if (kind === 'image' || kind === 'pdf'){
       if (f.url) window.open(f.url, '_blank');
@@ -1256,6 +1283,12 @@
       return;
     }
 
+    if (kind === 'gsheet'){
+      var gsUrl = 'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(f.id) + '/preview';
+      bodyEl.innerHTML = '<iframe src="' + gsUrl + '" style="width:100%; height:65vh; border:1px solid var(--line); border-radius:8px;"></iframe>' +
+        '<div style="font-size:11.5px; margin-top:6px;"><a href="' + escapeHtml(f.url || ('https://docs.google.com/spreadsheets/d/' + f.id + '/edit')) + '" target="_blank" rel="noopener">↗ 구글시트에서 열기(고치기)</a></div>';
+      return;
+    }
     if (kind === 'excel'){
       if (typeof XLSX === 'undefined'){
         bodyEl.innerHTML = '<div class="docs-viewer-fallback">엑셀 처리 라이브러리를 불러오지 못했습니다. ' +
@@ -1310,6 +1343,7 @@
         // [2026.10.20] 세무사님 "증빙관리에서 보고서를 클릭하면 원문만 읽히네? work에서는 그러지 않았잖아"·"랜더러를 연결만 하지 말고 흡수하라" —
         // .md(보고서·검토서)는 공용 렌더러(mdrender.html nxMdRender, 작성관리와 같은 처리)로 보고서 모양, 고치려면 ✏ 원본 편집. 그 밖의 텍스트는 원문.
         // 렌더러가 그리지 못하면(라이브러리 못 불러옴 등) nxMdRender가 이유와 함께 원문을 보여 준다.
+        // [2026.10.20] 사건 폴더 안의 .md는 AI 탭 작업대로 넘어가므로(위 docsOpenFileViewer_ 첫머리) 여기 오는 .md는 사건 폴더 밖 문서(지침·템플릿 등)뿐이다.
         var isMd = /\.md$/i.test(f.name || '');
         function showView(content){
           if (isMd){

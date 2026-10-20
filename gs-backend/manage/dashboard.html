@@ -19,6 +19,35 @@
       <div style="font-weight:700; font-size:12.5px; margin:10px 0 4px; color:var(--sub);">🗂 사건 하위업무(완료 전 — 체크·추가는 작업관리·처리개요)</div>
       <div id="dashSubtasks"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026.10.20] 세무사님 "시스템이 띄워줘야지 내가 일일이 어떻게 파일을 찾아서 확인수정을 하겠나? … 대시보드에 할일에 포함하든 새로운 항목을 만들든 어쨌든 띄워라".
+         원본은 드라이브 0 NETAX/_확인조치사항.md 하나 — 이 카드는 그 파일을 읽고 쓰기만 한다(Followup.js). 할일 카드 안에 넣지 않고 따로 둔 이유:
+         할일 카드는 이미 구글 할일 + 사건 하위업무 두 목록이라, 절(제목)별로 묶이고 글이 긴 이 목록까지 넣으면 한 카드가 너무 길고 출처가 섞여 보인다. -->
+    <div class="card dash-cover" id="dashFollowCard">
+      <h3>📋 확인조치사항 <span id="dashFollowCount" style="font-size:12px; font-weight:600; color:var(--sub);"></span>
+        <span style="float:right; display:flex; gap:6px;">
+          <button type="button" id="dashFollowReload" class="ghost-btn" style="font-size:11px; padding:2px 8px;" title="파일을 다시 읽습니다">🔄</button>
+          <a id="dashFollowOpen" href="#" target="_blank" rel="noopener" class="ghost-btn" style="display:none; font-size:11px; padding:2px 8px; text-decoration:none;">📄 원본 파일</a>
+        </span>
+      </h3>
+      <div style="font-size:11.5px; color:var(--sub); margin-bottom:6px;">세무사님이 확인·결정하실 일 — 체크·고치기·추가가 원본 파일(_확인조치사항.md)에 바로 저장됩니다.</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+        <select id="dashFollowSec" style="max-width:100%; min-width:0; flex:0 1 180px;" title="어느 절에 넣을지"></select>
+        <input type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
+      </div>
+      <div id="dashFollowList"><div class="spinner">불러오는 중…</div></div>
+      <style>
+        #dashFollowList .fu-sec{ font-weight:700; font-size:12.5px; color:var(--sub); margin:10px 0 4px; }
+        #dashFollowList .fu-row{ display:flex; gap:8px; align-items:flex-start; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:4px; }
+        #dashFollowList .fu-body{ flex:1 1 auto; min-width:0; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+        #dashFollowList .fu-clamp{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        #dashFollowList .fu-detail{ white-space:pre-wrap; font-size:12px; color:var(--sub); margin-top:4px; }
+        #dashFollowList .fu-more{ background:none; border:none; padding:0; color:var(--gold); font-size:11.5px; font-weight:700; cursor:pointer; }
+        #dashFollowList .fu-edit{ flex:0 0 auto; background:none; border:none; cursor:pointer; font-size:13px; padding:0 2px; color:var(--sub); }
+        #dashFollowList .fu-done .fu-body{ color:var(--sub); text-decoration:line-through; }
+        #dashFollowList code{ font-size:12px; background:#f3f4f7; padding:0 3px; border-radius:3px; }
+        #dashFollowList textarea{ width:100%; box-sizing:border-box; font:inherit; font-size:13px; }
+      </style>
+    </div>
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
@@ -91,6 +120,7 @@
     loadDashEmails_();
     loadDashTasks_();
     loadDashSubtasks_();
+    loadDashFollow_();
     loadDashNightlyStatus_();
     loadDashFed_();
     dashMeasureLoad_();
@@ -590,6 +620,124 @@
         if (res.error){ toast('수정 실패: ' + res.error); btn.disabled = false; return; }
         loadDashTasks_();
       }).catch(function(err){ toast('수정 중 오류: ' + err.message); btn.disabled = false; });
+    }
+  });
+
+  // [2026.10.20] 📋 확인조치사항 — 원본 파일(0 NETAX/_확인조치사항.md)을 서버(Followup.js)가 읽어 절별로 준다.
+  // 체크·고치기·추가는 서버가 저장 직전 최신 파일에서 그 줄만 바꾸고, 바뀐 뒤의 목록을 다시 돌려준다(그대로 다시 그림).
+  var dashFollow_ = { items: {}, open: {}, doneOpen: false, sec: '' };
+  function dashFollowMd_(s){
+    return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+  }
+  function dashFollowKey_(it){ return String(it.text || '').replace(/\s*\(\d{4}-\d{2}-\d{2} 완료\)$/, ''); }
+  function dashFollowRowHtml_(it, secLabel){
+    var key = dashFollowKey_(it);
+    var long = (it.text || '').length > 70 || !!it.detail;
+    var opened = !!dashFollow_.open[key];
+    return '<div class="fu-row' + (it.done ? ' fu-done' : '') + '" data-fu-line="' + it.line + '">'
+      + '<input type="checkbox" class="fuChk" style="margin-top:3px; flex:0 0 auto;" ' + (it.done ? 'checked' : '') + ' title="' + (it.done ? '체크 해제(다시 남은 일로)' : '끝났으면 체크') + '">'
+      + '<div class="fu-body">'
+      + (secLabel ? '<span style="font-size:11px; color:var(--sub);">[' + esc(secLabel) + '] </span>' : '')
+      + '<div class="fuText' + (long && !opened ? ' fu-clamp' : '') + '"' + (secLabel ? ' style="display:inline;"' : '') + '>' + dashFollowMd_(it.text) + '</div>'
+      + (opened && it.detail ? '<div class="fu-detail">' + dashFollowMd_(it.detail) + '</div>' : '')
+      + (long ? '<div><button type="button" class="fu-more fuMore">' + (opened ? '▴ 접기' : '▾ 펼치기' + (it.detail ? '(자세한 내용)' : '')) + '</button></div>' : '')
+      + '</div>'
+      + '<button type="button" class="fu-edit fuEdit" title="글 고치기">✏</button>'
+      + '</div>';
+  }
+  function dashFollowRender_(res){
+    var box = document.getElementById('dashFollowList');
+    if (!box) return;
+    if (!res || !res.sections){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res && res.error ? res.error : '목록을 받지 못했습니다') + '</div>'; return; }
+    dashFollow_.items = {};
+    var openHtml = '', doneRows = [];
+    res.sections.forEach(function(s){
+      var open = s.items.filter(function(x){ return !x.done; });
+      s.items.forEach(function(x){ x.sec = s.title; dashFollow_.items[x.line] = x; if (x.done) doneRows.push({ it: x, sec: s.title }); });
+      if (open.length) openHtml += '<div class="fu-sec">' + esc(s.title) + ' (' + open.length + ')</div>' + open.map(function(x){ return dashFollowRowHtml_(x, ''); }).join('');
+    });
+    var html = openHtml || '<div class="empty-row">남은 확인조치사항이 없습니다.</div>';
+    if (doneRows.length){
+      html += '<details id="dashFollowDone" style="margin-top:8px;"' + (dashFollow_.doneOpen ? ' open' : '') + '><summary style="cursor:pointer; font-size:12.5px; color:var(--sub);">✔ 끝난 항목 ' + doneRows.length + '건</summary>'
+        + doneRows.map(function(r){ return dashFollowRowHtml_(r.it, r.sec); }).join('') + '</details>';
+    }
+    box.innerHTML = html;
+    document.getElementById('dashFollowCount').textContent = '남은 ' + (res.open || 0) + '건 · 끝난 ' + (res.closed || 0) + '건';
+    var a = document.getElementById('dashFollowOpen');
+    if (res.file && res.file.url){ a.href = res.file.url; a.style.display = ''; a.title = res.file.name + ' (마지막 수정 ' + (res.file.modified || '') + ')'; }
+    var sel = document.getElementById('dashFollowSec');
+    var heads = (res.headings || []).filter(function(h, i, arr){ return arr.indexOf(h) === i; });
+    if (heads.indexOf('기타') < 0) heads.push('기타');
+    if (!dashFollow_.sec || heads.indexOf(dashFollow_.sec) < 0) dashFollow_.sec = '기타';
+    sel.innerHTML = heads.map(function(h){ return '<option value="' + esc(h) + '"' + (h === dashFollow_.sec ? ' selected' : '') + '>' + esc(h === '기타' && (res.headings || []).indexOf('기타') < 0 ? '기타(새 절)' : h) + '</option>'; }).join('');
+  }
+  function loadDashFollow_(){
+    callGas('followup_get', {}).then(dashFollowRender_).catch(function(e){
+      var box = document.getElementById('dashFollowList');
+      if (box) box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>';
+    });
+  }
+  // 저장 요청 공통 — 서버가 언제나 최신 목록을 같이 돌려주므로(실패해도) 그것으로 다시 그린다.
+  function dashFollowSave_(action, payload, onFail){
+    return callGas(action, payload).then(function(res){
+      if (res && res.error){ toast((res.stale ? '' : '저장 실패: ') + res.error); if (onFail) onFail(); }
+      if (res && res.sections) dashFollowRender_(res); else if (res && res.error) loadDashFollow_();
+      return res;
+    }).catch(function(e){ toast('저장 중 오류: ' + (e && e.message ? e.message : e)); if (onFail) onFail(); });
+  }
+  document.getElementById('dashFollowReload').addEventListener('click', loadDashFollow_);
+  document.getElementById('dashFollowSec').addEventListener('change', function(e){ dashFollow_.sec = e.target.value; });
+  document.getElementById('dashFollowNew').addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.keyCode !== 13) return;
+    if (e.isComposing) return; // 한글 조합 중 Enter는 무시(글자가 두 번 들어가지 않게)
+    var el = e.target, text = el.value.trim();
+    if (!text) return;
+    el.disabled = true;
+    dashFollowSave_('followup_add', { text: text, section: dashFollow_.sec || '기타' }).then(function(res){
+      el.disabled = false;
+      if (res && !res.error){ el.value = ''; toast('확인조치사항에 추가했습니다.'); }
+      el.focus();
+    });
+  });
+  document.getElementById('dashFollowList').addEventListener('toggle', function(e){
+    if (e.target && e.target.id === 'dashFollowDone') dashFollow_.doneOpen = e.target.open;
+  }, true);
+  document.getElementById('dashFollowList').addEventListener('click', function(e){
+    var row = e.target.closest('.fu-row[data-fu-line]');
+    if (!row) return;
+    var it = dashFollow_.items[row.getAttribute('data-fu-line')];
+    if (!it) return;
+    if (e.target.classList.contains('fuChk')){
+      var cb = e.target;
+      cb.disabled = true;
+      dashFollowSave_('followup_toggle', { raw: it.raw, line: it.line, done: cb.checked }, function(){ cb.checked = !cb.checked; cb.disabled = false; });
+      return;
+    }
+    if (e.target.classList.contains('fuMore')){
+      var k = dashFollowKey_(it);
+      dashFollow_.open[k] = !dashFollow_.open[k];
+      row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : '');
+      return;
+    }
+    if (e.target.classList.contains('fuEdit')){
+      if (row.querySelector('.fuEditBox')) return;
+      var bodyEl = row.querySelector('.fu-body');
+      bodyEl.innerHTML = '<textarea class="fuEditBox" rows="4">' + esc(it.text) + '</textarea>'
+        + '<div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">'
+        + '<button type="button" class="save-btn fuEditSave" style="padding:3px 10px; font-size:11.5px;">저장</button>'
+        + '<button type="button" class="ghost-btn fuEditCancel" style="padding:3px 10px; font-size:11.5px;">취소</button>'
+        + '<span style="font-size:11px; color:var(--sub); align-self:center;">첫 줄만 고칩니다(자세한 내용은 📄 원본 파일에서)</span></div>';
+      bodyEl.querySelector('.fuEditBox').focus();
+      return;
+    }
+    if (e.target.classList.contains('fuEditCancel')){ row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : ''); return; }
+    if (e.target.classList.contains('fuEditSave')){
+      var t = row.querySelector('.fuEditBox').value.replace(/\s*\n\s*/g, ' ').trim();
+      if (!t){ toast('글을 입력해 주세요.'); return; }
+      if (t === it.text){ row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : ''); return; }
+      var btn = e.target;
+      btn.disabled = true;
+      dashFollowSave_('followup_edit', { raw: it.raw, line: it.line, text: t }, function(){ btn.disabled = false; });
     }
   });
 

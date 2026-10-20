@@ -51,8 +51,8 @@ var CASEPROC_AI_TOOLS_ = [
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
   { name: 'law_checks', description: '법령 갈림길 재료 — 서류 사실로 본 특례·요건 확인 줄(판정 아님, 근거만).',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
-  { name: 'public_lookup', description: '공적 조회 — 조건을 정해 다시 조회: kind=official(공시가격, priceKind land/house/apartment, year) · real(매매사례, base 평가기준일, before/after 개월, area ㎡) · building(건축물대장). 결과 전부와 근거키(확보자료 PDF와 같은 근거).',
-    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, kind: { type: 'string', enum: ['official', 'real', 'building'] }, loc: { type: 'string' }, priceKind: { type: 'string' }, year: { type: 'number' }, base: { type: 'string' }, before: { type: 'number' }, after: { type: 'number' }, area: { type: 'number' } }, required: ['caseId', 'kind', 'loc'] } },
+  { name: 'public_lookup', description: '공적 조회 — 조건을 정해 다시 조회: kind=official(공시가격, priceKind land/house/apartment, year) · real(매매사례, base 평가기준일, before/after 개월, area ㎡) · building(건축물대장) · adjusted(조정대상지역 — loc + dates[{label,date,purpose}]로 날짜별 판정·근거 공고, 토큰 0). 결과 전부와 근거키(확보자료 PDF와 같은 근거).',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, kind: { type: 'string', enum: ['official', 'real', 'building', 'adjusted'] }, loc: { type: 'string' }, dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' }, purpose: { type: 'string', enum: ['일반', '거주요건'] } } } }, priceKind: { type: 'string' }, year: { type: 'number' }, base: { type: 'string' }, before: { type: 'number' }, after: { type: 'number' }, area: { type: 'number' } }, required: ['caseId', 'kind', 'loc'] } },
   { name: 'report_tool_gap', description: '도구 부족 기록 — "이런 도구가 있으면", "이 도구가 이런 값을 안 돌려준다"를 남긴다(고객 이름·주민번호·전화·주소 넣지 말 것). 처리는 그대로 이어간다.',
     input_schema: { type: 'object', properties: { want: { type: 'string' }, kind: { type: 'string', enum: ['없음', '값을 안 돌려줌', '틀림', '느림', '막힘'] }, tool: { type: 'string' }, shape: { type: 'string' }, instead: { type: 'string' } }, required: ['want', 'kind'] } }
 ];
@@ -329,8 +329,9 @@ var CASEPROC_AI_TOOL_ROLES_ = {
 // 도구 결과에서 "AI가 판단할 자리(변수)"를 센다 — 재현기가 그물 기록·AI 없이 끝날 수 있는지에 쓴다
 // '못 읽은 서류'는 AI 자리가 아니다 — 사진 보정·OCR은 GAS(상수) 몫이라 AI 없이 끝날 수 있는지 셀 때 빼고 따로 센다
 var CASEPROC_AI_GAS_SPOTS_ = { '못 읽은 서류': true, '재료 없음': true, '상수': true, 'GAS 표 필요': true, '이름으로 종류 앎': true, '참고자료': true };
-// [2026.10.19 5번] 조정지역 이력표 재기 스위치 — 세무사님 확인 전에는 false(운영 판정에 쓰지 않음). 재현기 재기에서만 true로 바꾼다
-var CASEPROC_AI_ADJ_TRIAL_ = false;
+// [2026.10.19 5번] 조정지역 이력표 스위치 — 처음엔 세무사님 확인 전이라 false(재현기 재기에서만 true)였다.
+// [2026.10.20] 운영에서 켬 — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다". '확인 필요'는 판정하지 않고 빈 칸(질문)으로 남는다
+var CASEPROC_AI_ADJ_TRIAL_ = true;
 // 계산기 상태의 자산 소재지·취득일·양도일로 이력표를 찾는다 — { ok: 모두 가려졌나, text, noResidence: 거주요건이 없다고 볼 근거(없으면 '') }
 function caseProcAiAdjSpot_(raw, caseId) {
   let s = null;
@@ -367,7 +368,7 @@ function caseProcAiVarSpots_(name, raw, caseId) {
       const subs = [];
       if (/1세대1주택|일시적2주택|2주택 중과|3주택/.test(opts)) {
         // [연결 지점 — 2026.10.19부터 조정지역 판정의 주인은 조견표 세션(reftables 1부-01). 그쪽 판정 함수가 생기면 caseProcAiAdjSpot_의 caseProcAdjAreaAt_ 부름만 바꾼다]
-        // [2026.10.19 5번 조정지역 이력표 — 재기 전용] CASEPROC_AI_ADJ_TRIAL_가 켜졌을 때만 AdjArea.js 이력표로 취득·양도 당시 조정대상지역을 가른다(운영 판정에 안 씀)
+        // [2026.10.19 5번 조정지역 이력표] CASEPROC_AI_ADJ_TRIAL_가 켜졌을 때 AdjArea.js 이력표로 취득·양도 당시 조정대상지역을 가른다(2026.10.20부터 운영에서 켬)
         const adj = (typeof CASEPROC_AI_ADJ_TRIAL_ !== 'undefined' && CASEPROC_AI_ADJ_TRIAL_ && typeof caseProcAdjAreaAt_ === 'function') ? caseProcAiAdjSpot_(raw, caseId) : null;
         subs.push({ 자리: 'cls:세대주택수', 이유: '빈 칸', 설명: '[사건분류 쪼개기 — 사용자 사실] 양도일 현재 세대 보유 주택 수(납세자 명의는 등기부로, 세대원·다른 집은 세무사님 확인)' });
         if (adj && adj.noResidence) subs.push({ 자리: 'cls:거주기간', 이유: '상수', 설명: '[조정지역 이력표] 거주요건 없음 — ' + adj.noResidence });
@@ -533,6 +534,9 @@ function caseProcAiExec_(caseId, name, input) {
       }
     } else if (/^(facts_find|owner_assets|contract_list|money_links|time_order|people_roster|law_checks)$/.test(name)) {
       r = caseProcAiFactTool_(caseId, name, input);
+    } else if (name === 'public_lookup' && input.kind === 'adjusted') {
+      // [2026.10.20] 조정대상지역 이력표(AdjArea.js adjAreaLookupTool_, 주소 좌표 조회 없이) — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다"
+      r = adjAreaLookupTool_({ address: input.loc, dates: input.dates || [] });
     } else if (name === 'public_lookup') {
       const geo = cpGeo_(input.loc);
       if (!geo || geo.error) r = { error: (geo && geo.error) || '주소를 찾지 못함' };
