@@ -4035,6 +4035,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'sysaudit_result') return jsonResponse(sysAuditResult_());
   if (body.action === 'sysaudit_run') return jsonResponse(sysAuditRunNow_());
   if (body.action === 'sysaudit_ai_run') return jsonResponse(sysAuditAiRunNow_());
+  // [2026.10.20] 🧭 📚 지침·템플릿 정비(KnowHow.js) — 제안 대기·채택/반려·보유 현황·대시보드 한 줄
+  if (/^knh_/.test(String(body.action)) && typeof knhDispatch_ === 'function') return jsonResponse(knhDispatch_(body));
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
@@ -13900,6 +13902,7 @@ function work_seedCaseTemplateIfAny_(caseFolder, candidateNames) {
     }
     if (f) {
       const rawName = f.getName();
+      try { if (typeof knhCountUse_ === 'function') knhCountUse_('의뢰서', rawName); } catch (e) { } // [2026.10.20] 쓰인 횟수
       if (TEXT_TEMPLATE_EXT_REGEX_.test(rawName)) {
         const content = f.getBlob().getDataAsString('UTF-8');
         const mimeType = /\.md$/i.test(rawName) ? 'text/markdown' : 'text/plain';
@@ -14075,6 +14078,7 @@ function handleGetReportTemplate(body) {
       if (!TEXT_TEMPLATE_EXT_REGEX_.test(rawName)) {
         return { found: false, error: '보고서 템플릿은 .md 또는 .txt 파일만 지원합니다: ' + rawName };
       }
+      try { if (typeof knhCountUse_ === 'function') knhCountUse_('보고서', nameWithoutExt); } catch (e) { } // [2026.10.20] 쓰인 횟수
       return { found: true, content: f.getBlob().getDataAsString('UTF-8') };
     }
     return { found: false };
@@ -14640,6 +14644,7 @@ function toolLoadBusinessManager(name) {
       const base = f.getName().replace(/\.(md|txt)$/i, '');
       if (/^_/.test(f.getName()) || !/\.(md|txt)$/i.test(f.getName())) continue; // [2026.10.20] 목록에 없는 것("_" 파일·json 등)은 불러오지 않는다
       if (base === target || f.getName() === target) {
+        try { if (typeof knhCountUse_ === 'function') knhCountUse_('지침', base); } catch (e) { } // [2026.10.20] 읽힌 횟수(폐기 후보 판정)
         return { name: base, content: f.getBlob().getDataAsString('UTF-8') };
       }
     }
@@ -17125,6 +17130,8 @@ function runNightlyChiefManager() {
   try { aiFedEnsureTrigger_(); } catch (err) { console.error('AI 회의 트리거 확인 실패: ' + err.message); }
   // [2026.10.20] 지침 무료 AI 점검(제미니, 바뀐 지침만)은 새벽 3시 별도 트리거(SysAudit.js runSysAuditAiNightly) — 있는지만 확인
   try { sysAuditEnsureTrigger_(); } catch (err) { console.error('지침 AI 점검 트리거 확인 실패: ' + err.message); }
+  // [2026.10.20] 지침·템플릿 정비 판정(KnowHow.js, 토큰 0) — 자기점검 다음·개선 후보 보고서 앞(보고서에 판정이 실리게)
+  try { if (typeof knhNightly_ === 'function') knhNightly_(); } catch (err) { console.error('지침·템플릿 정비 판정 실패: ' + err.message); }
   try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
@@ -37464,6 +37471,11 @@ function buildImprovementReport_() {
     report.guide.push('개발자 질문: 판단이 필요하면 추측하지 말고 docs/dev-questions.md에 "## Q-YYYYMMDD-n 제목" 블록(쉬운 말, 고객 정보 없이)을 추가하는 PR을 올린다. answers에 세무사님 답이 오면 반영하고 그 블록을 지운다.');
     report.guide.push('🛠 AI 회의(시스템 안건, 2026-10-19 재편): 이 보고서의 반복 오류·유료 비용·막힌 기능·요청과 개정 감시의 기술 변화가 안건이다. 위원 = Gemini API(무료 등급, 고객 정보 없이 묻기), 회장 = 이 정비 루틴. 결론은 고침 작업(PR)으로, 결론 안 난 것과 돈 드는 결정만 docs/dev-questions.md로 세무사님께. 위원 답은 틀릴 수 있으니 공식 문서로 사실 확인 후 반영.');
   } catch (e) { report.federation = { error: String(e && e.message || e).slice(0, 200) }; }
+  // [2026.10.20] 📚 지침·템플릿 정비(KnowHow.js, 토큰 0) — 밤 판정·현황판·재료·승인 대기·반려 사유 → 주간 루틴이 신규·수정 초안·폐기 제안 PR
+  try {
+    var kh = typeof knhForReport_ === 'function' ? knhForReport_() : null;
+    if (kh) { report.knowhow = kh.data; kh.head.forEach(function (h) { headline.push(h); }); report.candidateCount += kh.count; report.guide.push(kh.guide); }
+  } catch (e) { report.knowhowError = String(e && e.message || e).slice(0, 200); }
   try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
   return { success: true, report: report };
 }
@@ -37804,6 +37816,10 @@ function gh_deployApply_(body, stage) {
       if (tplSync.충돌.length) parts.push('⚠ 드라이브에서 직접 고친 템플릿 ' + tplSync.충돌.length + '개는 덮지 않음(' + tplSync.충돌.slice(0, 3).join(', ') + ')');
       tplMsg = parts.join(' · ');
     }
+    // [2026.10.20] 지침·템플릿 정비 제안(gs-backend/knowhow/)을 드라이브 "_제안함"에 — 바로 쓰이지 않고 🧭 📚 제안 대기에서 세무사님이 채택
+    try {
+      if (typeof knhSyncFromGithub_ === 'function') { var kns = knhSyncFromGithub_(head.sha); if (kns && kns.넣음 && kns.넣음.length) tplMsg += (tplMsg ? ' · ' : '') + '📚 지침·템플릿 제안 ' + kns.넣음.length + '건 → 🧭 시스템 관리에서 승인'; }
+    } catch (e) { console.log('지침·템플릿 제안 동기화 실패: ' + e.message); }
     // [2026.10.13] 배포 직후 자동 점검 — [2026.10.20] 여기서 하지 않는다(새 버전 점검이 약 100초라 한 요청에 다 넣으면 화면이 멈춘 듯 보였다).
     //  반영 작업(deployJobRun_)은 두 번째 트리거 deployJobCheck_에서, 옛 화면용 gh_deploy_apply는 그 자리에서 deploySmokeRemote_로 점검한다.
     return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc + (tplMsg ? ' / ' + tplMsg : ''), templates: tplSync };
