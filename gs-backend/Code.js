@@ -4461,6 +4461,12 @@ function buildContextSystemPrompt(basePrompt, body) {
   // [2026.10.16] job 화면에서만 — 같은 서버를 쓰는 work.netax.kr AI에게 job 안내·신고 지시를 하지 않는다
   if (ctx.aiPanel || ctx.currentView) try { staticExtra += commRecentChangesPrompt_(); } catch (e) {}
   if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[기능 부족 신고] 사용자가 원하는 일을 job 도구로 할 수 없으면(도구가 없거나, 막혀 있거나, 결과가 틀리는 등) report_capability_gap 도구로 "원한 것·막힌 이유·필요한 도구"를 개발자에게 남겨라(고객 이름·번호 등은 쓰지 말 것). 그다음 사용자에게는 할 수 있는 대안을 안내하라.';
+  // [2026.10.20] job 화면에서만 — 실사건에서 AI가 양도세 다주택 중과 질문에 종부세 기준("공시지가 6억 이상 중과")을 근거 없이 말하고,
+  //  조회 도구(search_address→lookup_official_price)가 있는데도 공시가격을 세무사님께 물었다. 세목 맥락·근거 확인·조회 먼저를 일반 규칙으로 둔다.
+  if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[세법 판단 답변 원칙] (1) 대화가 특정 세목(양도·증여·상속 등)을 검토 중이면 후속 질문도 그 세목 기준으로 답하라 — 다른 세목 이야기는 사용자가 물을 때만. '
+    + '(2) 세율·중과·비과세·감면의 요건과 금액 기준은 lookup_statute_article로 조문을 확인하거나 계산기 결과로 말하고, 근거 조문을 함께 밝혀라. 확인하지 못한 기준은 사실처럼 말하지 말고 "확인 안 됨"이라고 밝혀라. '
+    + '조정대상지역처럼 시기별로 바뀌는 지정 현황은 취득일·양도일 등 그 판단에 필요한 날짜 기준으로 따지고, 지정 공고를 확인하지 못했으면 그렇다고 밝혀라. '
+    + '(3) 주소를 아는 부동산의 공시가격·건축물 정보처럼 도구로 조회할 수 있는 사실은 사용자에게 묻기 전에 먼저 조회하라(search_address → lookup_official_price 등). 사건 폴더에 그 서류가 있으면 그것부터 읽어라.';
   staticExtra += '\n\n[화제 전환 처리] 이 대화에 사건·검토 관련 이전 내용이 쌓여 있더라도, 사용자의 새 메시지가 그 내용과 명백히 무관한 별개의 질문(예: 날씨, 간단한 계산, 일반 상식 등)이면 이전 화제(예: "~건 검토를 진행할까요?" 같은 직전 제안)를 다시 꺼내거나 그쪽으로 답을 끌고 가지 마라. 새 질문에만 집중해서 답하고, 답변이 끝난 뒤에도 먼저 이전 화제로 돌아가자고 제안하지 마라 — 사용자가 먼저 그 화제를 다시 꺼내면 그때 이어가라.';
 
   // [2026.08] 예전엔 이걸 화면의 "자동참조" 켜고끄기 토글로 사람이 미리 정해둬야 했다 — 다른
@@ -37799,12 +37805,15 @@ function regPartyAfter_(x, labelRe) {
 function registryStripHeader_(t) {
   return String(t || '').replace(/\s+/g, ' ')
     .replace(/순위번호|등\s*기\s*목\s*적|등\s*기\s*원\s*인|권\s*리\s*자\s*및\s*기\s*타\s*사\s*항|[【\[]\s*[갑을]\s*구\s*[】\]]|(^|\s)[갑을]\s+구(?=\s)|접\s+수(?=\s)/g, ' ')
+    // [2026.10.20] 순위번호 밑의 전산이기 전 순위 "(전 4)"가 순위번호와 목적 사이에 끼면 기재를 놓쳤다("1 (전 4) 소유권이전") — 걷어낸다
+    .replace(/\(\s*전\s*\d{1,3}(?:\s*-\s*\d{1,2})?\s*\)/g, ' ')
     .replace(/\s+/g, ' ');
 }
 function registryEvents_(s, headRe) {
   var out = [], re = /(^|\s)(\d{1,3}(?:-\d{1,2})?)\s+(?=\S)/g, m, last = 0;
   // [2026.10.18 정밀분석 07_2] "1번방현순지분전부이전청구권가등기"는 지분 가등기 — 지분이전으로 읽지 않게 가등기 갈래를 먼저(갑구기타로 감)
-  var refRe = /^((?:\d+\s*번\s*[가-힣]{0,14}?\s*(?:,|및|내지)?\s*)+)(지분\s*(?:전부|일부)?\s*이\s*전\s*(?:청\s*구\s*권|담\s*보)(?:\s*가\s*(?:등\s*기)?)?|지분\s*(?:전부|일부)?\s*이\s*전(?!\s*(?:청\s*구\s*권|담\s*보))|근저당권\s*(?:변경|이전)|전세권\s*변경|등기명의인\s*표시(?:\s*(?:변경|경정))?)/;
+  var refRe = /^((?:\d+\s*번\s*[가-힣]{0,14}?\s*(?:,|및|내지)?\s*)+)(지분\s*(?:전부|일부)?\s*이\s*전\s*(?:청\s*구\s*권|담\s*보)(?:\s*가\s*(?:등\s*기)?)?|지분\s*(?:전부|일부)?\s*이\s*전(?!\s*(?:청\s*구\s*권|담\s*보))|근저당권\s*(?:변경|이전)|전세권\s*변경|등기명의인\s*표시(?:\s*(?:변경|경정))?|[지자]\s*분\s*(?:전부|일부)?\s*(?:가\s*압(?:\s*류)?|압\s*류|가\s*처(?:\s*분)?)(?![가-힣]))/;
+    // [2026.10.20] "2번○○지분가압 [접수일·원인일] 류" — 칸이 좁아 "가압류"가 갈리면 기재를 통째로 놓쳤다(표본 32건 중 4건, 순위번호 교차검증으로 드러남). "지분가압"·"지분가처"까지만 보여도 가압류·가처분
   while ((m = re.exec(s))) {
     var rank = m[2], major = parseInt(rank, 10), bodyAt = re.lastIndex;
     re.lastIndex = m.index + m[1].length + rank.length; // 숫자만 소비 — 다음 후보("200-24 2 소유권이전"의 2)를 놓치지 않게
@@ -37814,7 +37823,7 @@ function registryEvents_(s, headRe) {
     // "n번…, m번… (등기)말소" — 사이에 OCR이 다른 칸 글(제NNNN호·원인 등)을 끼워 넣어도 "말소"까지 번호를 모은다
     // "n번 등기명의인표시 경정·근저당권변경·지분이전"이 먼저 — 말소 훑기가 이것들을 말소로 잘못 읽지 않게
     km = refRe.exec(rest);
-    if (km) kind = km[0].replace(/\s+/g, '');
+    if (km) kind = km[0].replace(/\s+/g, '').replace(/가압$/, '가압류').replace(/가처$/, '가처분').replace(/자분((?:전부|일부)?(?:가압류|압류|가처분))$/, '지분$1');
     // [2026.10.18 정밀분석 5 지분별] 표 칸이 좁아 "n번 ○○지분전부 / 이전"이 두 줄로 갈려 사이에 다른 칸 글(접수일·원인일·"공유자 지분 2분의 1")이 끼면
     //  기재 자체를 놓쳤다(고객L 갑9 "8번한○○지분전부 2014년12월2일 2014년12월2일 공유자 지분 2분의 1 / 이전 제172009호 증여" — 남편 지분 1/2 증여가 통째로 빠짐,
     //  고객A "1번조○○지분전부 … 이전", 고객AC "공유자전원지분전부 / 이전"). 다음 기재(순위번호 + 목적) 전 160자 안에 낱말 "이전"이 따로 나오면 지분이전 기재로 본다
@@ -37896,6 +37905,54 @@ function registryRepairCauses_(s, evs, cl, bad) {
     bad[i] = '원인 "' + cause + '" — 해제·해지는 소유권을 얻는 원인이 아님(날짜·원인 칸이 다른 기재와 섞였을 수 있음), 원문 확인';
   });
 }
+// [2026.10.20] 순위번호를 글자인식이 놓친 소유권 기재 되살리기 — 순위번호 칸은 좁아 한 자리 숫자("4")가 통째로 빠지기 쉽다(드라이브 글자인식·Vision 둘 다).
+//  예전엔 순위번호+목적이 없으면 기재로 안 봐서, 그 줄의 날짜 묶음(접수일·원인일·소유자·접수번호·거래가액)이 어느 기재에도 안 붙고 말없이 버려졌다.
+//  어느 기재에도 안 쓰인 날짜 묶음이 소유권 기재의 표지를 모두 갖추면(날짜 둘·"소유자/공유자"·주민번호 붙은 명의인·접수번호·소유권 원인) 소유권이전 기재로 되살린다.
+//  순위는 앞뒤 기재 사이의 빈 번호 수와 되살린 줄 수가 꼭 맞을 때만 그 번호로, 아니면 "?"로 두고 늘 ⚠확인필요(지어내지 않음).
+//  되살린 줄은 확인필요라 계산기 칸 자동 채움(확인필요 뺀 소유권 이력)에는 안 들어가고, 취득일 후보·회보서 대조·화면·AI 요약에는 보인다.
+function registryRecoverOrphans_(s, evs, cl, allCl) {
+  var used = cl.filter(function (c) { return c; });
+  var majorOf = function (e) { return parseInt(e.rank, 10); };
+  allCl.forEach(function (c) {
+    if (used.some(function (a) { return a.start <= c.start && c.start < (a.end == null ? a.start + 1 : a.end); })) return;
+    if (c.dates.length !== 2 || !/(소유자|공유자|수탁자)/.test(c.text) || !/제\s*\d{3,7}\s*호/.test(c.text) || !/\d{6}\s*-\s*[\d*]/.test(c.text)) return;
+    var cause = regCause_(c.text);
+    if (!cause || /^(해제|해지|설정계약|변경계약|확정채권양도|계약양도|보존)$/.test(cause)) return;
+    var hs = regHolders_(c.text).filter(function (h) { return !h.주민번호없음; });
+    if (!hs.length) return;
+    // 이미 읽은 소유권 기재와 같은 접수일·명의인이면 같은 줄을 두 번 읽은 것 — 되살리지 않음
+    if (evs.some(function (e, i) { return cl[i] && cl[i].접수일 === c.접수일 && /소유권|지분|공유자/.test(e.kind); })) return;
+    var pos = 0; while (pos < evs.length && evs[pos].at <= c.start) pos++;
+    var prev = null, next = null, k;
+    for (k = pos - 1; k >= 0; k--) if (!/^\d+-/.test(evs[k].rank)) { prev = evs[k]; break; }
+    for (k = pos; k < evs.length; k++) if (!/^\d+-/.test(evs[k].rank)) { next = evs[k]; break; }
+    // 날짜 순서도 맞아야 — 앞 기재 접수일 ≤ 이 접수일 ≤ 뒤 기재 접수일
+    var pc = prev ? cl[evs.indexOf(prev)] : null, nc = next ? cl[evs.indexOf(next)] : null;
+    if ((pc && pc.접수일 && pc.접수일 > c.접수일) || (nc && nc.접수일 && nc.접수일 < c.접수일)) return;
+    evs.splice(pos, 0, { rank: '?', kind: '소유권이전', at: c.start, recovered: '순위번호를 글자인식이 놓침 — 순위 확인필요' });
+    cl.splice(pos, 0, c);
+    used.push(c);
+  });
+  // 순위 채우기 — 읽은 앞뒤 기재 사이에 되살린 줄이 n개이고 빈 번호도 꼭 n개면 차례로 그 번호(첫 기재 앞이면 1번부터). 아니면 "?" 그대로
+  for (var i = 0; i < evs.length; i++) {
+    if (!evs[i].recovered) continue;
+    var j = i; while (j < evs.length && evs[j].recovered) j++;
+    var p = null, q = null, k;
+    for (k = i - 1; k >= 0; k--) if (!evs[k].recovered && !/^\d+-/.test(evs[k].rank)) { p = majorOf(evs[k]); break; }
+    for (k = j; k < evs.length; k++) if (!evs[k].recovered && !/^\d+-/.test(evs[k].rank)) { q = majorOf(evs[k]); break; }
+    var from = p != null ? p + 1 : 1;
+    if (q != null && q - from === j - i) for (k = i; k < j; k++) { evs[k].rank = String(from + k - i); evs[k].recovered = '순위번호를 글자인식이 놓침 — 앞뒤 순위로 ' + evs[k].rank + '번 추정'; }
+    i = j - 1;
+  }
+}
+// [2026.10.20] 순위번호 빈 번호 — 읽은 기재(말소·등기명의인표시 포함)의 주 순위번호 가장 작은 값~가장 큰 값 사이에서 없는 번호
+function registryRankGaps_(evs) {
+  var have = {}, mn = Infinity, mx = 0;
+  (evs || []).forEach(function (e) { var n = parseInt(e.rank, 10); if (n > 0) { have[n] = true; if (n < mn) mn = n; if (n > mx) mx = n; } });
+  var miss = [];
+  for (var n = mn; n < mx; n++) if (!have[n]) miss.push(n);
+  return miss;
+}
 // (예전 방식, 참고용) 기재별 본문 — 기본은 "이 기재 ~ 다음 기재". 칸이 섞인 등기부(목적만 먼저 몰려 나와 기재 뒤에 날짜가 없음)는
 // 접수번호(제NNNN호) 순서로 짝짓는다(개수가 맞을 때만). 반환 { spans:[{all, after}], warn }
 
@@ -37964,9 +38021,11 @@ function registryParseOne_(id, text) {
   //  예전엔 앞부분 "소유권이전"에 걸려 가등기권자가 지금 소유자가 됐다(고객M 000-0 고객M 관계인1, 고객N 000·000호 고객N 관계인1, 고객L 갑6 고객L 관계인2·고객L 관계인3). 소유자는 마지막 본등기로 정한다.
   //  글자인식이 "소유권이전청구권가 … 등기"처럼 끊어도 "청구권"까지 보이면 가등기로 본다
   var gEv = registryEvents_(g, /^(소유권(?:일부)?이전\s*(?:청\s*구\s*권|담\s*보)(?:\s*가\s*(?:등\s*기)?)?|소유권보존|소유권일부이전|소유권이전|공유자\s*전원\s*지분\s*전부\s*이\s*전|가압류|가처분|압류|임의경매개시결정|강제경매개시결정|신탁(?!재산)|등기명의인표시\s*(?:변경|경정))/);
-  var gCl = registryAssign_(gEv, registryClusters_(g, gEv));
+  var gAllCl = registryClusters_(g, gEv);
+  var gCl = registryAssign_(gEv, gAllCl);
   var badCause = {};
   registryRepairCauses_(g, gEv, gCl, badCause);
+  registryRecoverOrphans_(g, gEv, gCl, gAllCl);
   // 말소 기록: 번호 → 말소 문구. 소유권 기재는 문구에 "소유권"이 있을 때만 말소로 본다(신탁등기·별도등기 말소는 소유권 말소가 아님 —
   // #26 "1번신탁등기말소", #10 "2번 별도등기 말소"를 소유권 말소로 잘못 보면 "현재 소유자 없음"이 되는 위험한 오류).
   var erasedG = {};
@@ -37979,6 +38038,7 @@ function registryParseOne_(id, text) {
         // [2026.10.15] 2006년 이후 매매 등기에는 신고한 실거래가액이 "거래가액 금…원"으로 적힌다 — 계약서가 없는 양도·취득의 금액 출처
         거래가액: /거\s*래\s*가\s*액/.test(c.text) ? regAmount_(c.text.slice(c.text.search(/거\s*래\s*가\s*액/))) : null });
       if (badCause[i]) r.소유권이력[r.소유권이력.length - 1].원인확인 = badCause[i]; // [2026.10.18 정밀분석 5] 버리지 않고 확인필요로 남김
+      if (e.recovered) r.소유권이력[r.소유권이력.length - 1].순위추정 = e.recovered;
     } else if (/청구권|담보|가등기/.test(e.kind)) {
       // 가등기 — 가등기권자·원인(매매예약 등). 살아 있으면 본등기 때 순위가 가등기일로 소급되는 권리 제한(양도·증여·부담부 판단 참고)
       var gk = /청구권|가등기/.test(e.kind) && !/담보/.test(e.kind) ? '소유권이전청구권가등기' : '담보가등기';
@@ -37992,7 +38052,8 @@ function registryParseOne_(id, text) {
   // [2026.10.14] 협의분할 상속처럼 공유자 여럿이 다른 칸 글(옛 주소·전거) 뒤로 밀려 날짜 묶음 밖에 있으면 명의인이 비었다(실사건 → 현재 명의 "확인필요")
   r.소유권이력.forEach(function (x) {
     const frac = function (hs) { return hs.reduce(function (t, h) { const m = /(\d+)분의\s*(\d+)/.exec(h.지분 || ''); return t + (m ? Number(m[2]) / Number(m[1]) : 0); }, 0); };
-    if (/보존/.test(x.목적) || (x.권리자.length && (!x.권리자.some(function (h) { return h.지분; }) || frac(x.권리자) >= 0.999))) return; // 단독 명의이거나 지분 합이 1이면 그대로
+    // [2026.10.20] 되살린 줄(순위추정)은 순위로 자리를 못 찾으니 건너뜀 — 다른 기재의 공유자가 섞였다
+    if (/보존/.test(x.목적) || x.순위추정 || (x.권리자.length && (!x.권리자.some(function (h) { return h.지분; }) || frac(x.권리자) >= 0.999))) return; // 단독 명의이거나 지분 합이 1이면 그대로
     const k = gEv.findIndex(function (e) { return e.rank === x.순위; });
     if (k < 0) return;
     // [2026.10.18 정밀분석 5] 다음 기재 전까지만 — 예전엔 다음 "소유권" 기재까지 훑어, 사이의 가압류 채권자·법인(고객A 갑3·5 김흥권·주식회사네이버모터스)이
@@ -38047,7 +38108,25 @@ function registryParseOne_(id, text) {
     if (!/일부|지분/.test(x.목적) && x.권리자.length && x.권리자.every(function (h) { return h.지분; })) {
       var fs = x.권리자.reduce(function (t, h) { var q = /(\d+(?:\.\d+)?)분의\s*(\d+(?:\.\d+)?)/.exec(h.지분 || ''); return t + (q ? Number(q[2]) / Number(q[1]) : 0); }, 0);
       if (fs > 0 && Math.abs(fs - 1) > 0.001) { x.확인필요 = true; x.지분합계 = '공유자 지분 합 ' + Math.round(fs * 10000) / 10000 + ' ≠ 1 — 공유자를 놓쳤을 수 있음(원문 확인)'; }
-    } });
+    }
+    if (x.순위추정) x.확인필요 = true; });
+  // [2026.10.20] 순위번호 교차검증 — 갑구·을구 순위번호는 1부터 빠짐없이 이어진다(말소된 기재도 말소사항 포함 증명서에는 줄이 남음).
+  //  읽은 기재(말소 기재 포함) 사이에 빈 번호가 있으면 글자인식이 그 줄을 놓친 것 — 말없이 넘어가지 않고 경고로 알린다.
+  //  ("현재 유효사항" 증명서는 말소된 순위가 원래 빠지므로 검사하지 않음)
+  if (!/현\s*재\s*유\s*효\s*사\s*항/.test(text)) {
+    var gapMsg = function (evs, label) {
+      var miss = registryRankGaps_(evs); if (!miss.length) return;
+      // 빈 번호가 많으면 칸이 크게 섞였거나 주소 숫자를 순위로 읽은 것일 수 있다 — 번호를 다 늘어놓지 않고 개수·범위만
+      r.경고.push(label + ' 순위번호 ' + (miss.length <= 6 ? miss.join('·') + '번' : miss.length + '개(' + miss[0] + '~' + miss[miss.length - 1] + '번 사이)') + ' 기재를 읽지 못함 — 순위번호는 빠짐없이 이어지므로 글자인식이 그 줄을 놓친 것으로 보임' + (miss.length > 6 ? '(칸이 크게 섞였거나 다른 숫자를 순위로 읽었을 수도 있음)' : '') + ', 원문 확인');
+    };
+    gapMsg(gEv, '갑구'); gapMsg(uEv, '을구');
+  }
+  // [2026.10.20] 신탁 — 신탁은 위탁자가 수탁자에게 재산을 옮기는 것(신탁법 §2)이라 등기상 명의는 수탁자가 된다. 위탁자·수익자는 등기기록의 일부인 신탁원부에 적힌다(부동산등기법 §81).
+  //  신탁 직전의 (말소 안 된) 소유권 기재 명의인은 위탁자일 가능성이 크지만 확정은 아니다 — "추정"으로만 남기고, 확정은 신탁원부로.
+  r.소유권이력.forEach(function (x, i) {
+    if (!/신탁/.test(x.원인) || /신탁재산귀속/.test(x.원인) || x.말소 || !x.권리자.some(function (h) { return h.수탁자; })) return;
+    for (var k = i - 1; k >= 0; k--) { var p = r.소유권이력[k]; if (p.말소 || /신탁/.test(p.원인)) continue; if (p.권리자.length) x.위탁자추정 = { 이름: p.권리자.map(function (h) { return h.이름; }).join(', '), 순위: p.순위, 접수일: p.접수일 }; break; }
+  });
   return r;
 }
 // 등기부 정리 결과 → 화면용 마크다운 표. 확인필요·말소·경고를 그대로 드러낸다(지어내지 않음).
@@ -38070,14 +38149,16 @@ function registryToMarkdown_(p, fileName) {
       var last = cur[cur.length - 1];
       out.push('**현재 명의(마지막 소유권 기재 기준):** ' + (last.권리자.map(function (h) { return h.이름 + (h.지분 ? '(' + h.지분 + ')' : ''); }).join(', ') || '확인필요')
         + ' — ' + (last.접수일 || '?') + ' ' + (last.원인 || '') + (last.확인필요 ? ' ⚠확인필요' : ''));
+      if (last.위탁자추정) out.push('**신탁:** 등기상 명의는 수탁자. 신탁 직전 소유자 **' + last.위탁자추정.이름 + '**(갑구 ' + last.위탁자추정.순위 + '번, ' + (last.위탁자추정.접수일 || '?') + ')가 위탁자일 가능성이 큼(추정) — 신탁은 위탁자가 수탁자에게 재산을 옮기는 것(신탁법 §2), 위탁자·수익자는 신탁원부에 적힘(부동산등기법 §81). 위탁자 확정은 신탁원부로, 세법상 누구 재산으로 보는지는 세목별 규정으로 확인');
     }
     var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
     if (d.소유권이력.length) {
-      out.push('\n**갑구 · 소유권 이력**\n\n| 순위 | 목적 | 접수일 | 원인일 | 원인 | 명의인(지분) | 비고 |\n|---|---|---|---|---|---|---|');
+      // [2026.10.20] 거래가액 칸 — 읽어 놓고 표에 안 실어 AI·화면이 매매 금액을 못 봤다
+      out.push('\n**갑구 · 소유권 이력**\n\n| 순위 | 목적 | 접수일 | 원인일 | 원인 | 명의인(지분) | 거래가액 | 비고 |\n|---|---|---|---|---|---|---|---|');
       d.소유권이력.forEach(function (x) {
         out.push('| ' + [x.순위, x.목적, x.접수일, x.원인일, x.원인,
-          x.권리자.map(function (h) { return h.이름 + (h.지분 ? '(' + h.지분 + ')' : '') + (h.수탁자 ? '[수탁자]' : ''); }).join(', '),
-          (x.말소 ? '말소 ' : '') + (x.확인필요 || x.원인확인 ? '⚠확인필요' : '') + (x.원인확인 ? ' ' + x.원인확인 : '') + (x.지분합계 ? ' ' + x.지분합계 : '')].map(esc).join(' | ') + ' |');
+          x.권리자.map(function (h) { return h.이름 + (h.지분 ? '(' + h.지분 + ')' : '') + (h.수탁자 ? '[수탁자]' : ''); }).join(', '), won(x.거래가액),
+          (x.말소 ? '말소 ' : '') + (x.확인필요 || x.원인확인 ? '⚠확인필요' : '') + (x.순위추정 ? ' ' + x.순위추정 : '') + (x.원인확인 ? ' ' + x.원인확인 : '') + (x.지분합계 ? ' ' + x.지분합계 : '')].map(esc).join(' | ') + ' |');
       });
     }
     if (d.갑구기타.length) {
@@ -42682,7 +42763,8 @@ function docParseFile_(body) {
   if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지·엑셀(거래내역)만 정리할 수 있습니다.' };
   // [2026.10.14] 규칙을 만들고 고칠 때 — 글자인식 원문을 그대로 돌려준다(정리하지 않음). 파일 내려받기(readFile)와 같은 권한.
   if (body.withText) return { ok: true, name: name, text: String(tc_docText_({ id: id, mimeType: mime, modified: f.getLastUpdated().getTime() }) || '') };
-  var cache = CacheService.getScriptCache(), key = 'docp4_' + id + '_' + f.getLastUpdated().getTime();
+  // [2026.10.20] docp4→5: 등기부 순위번호 누락 기재 되살리기·거래가액 칸 — 배포 직후 6시간 동안 옛 요약이 나가지 않게
+  var cache = CacheService.getScriptCache(), key = 'docp5_' + id + '_' + f.getLastUpdated().getTime();
   var hit = cache.get(key);
   if (hit) return JSON.parse(hit);
   // [2026.10.15 1:1] 글자는 사건처리와 같은 기억분(tc_docText_)으로 — 따로 글자인식하다 한 번 빈 글자가 나오면 "읽을 글자 없음"을 6시간 기억해

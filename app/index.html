@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 03:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 04:43 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -51082,8 +51082,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 세무 조문·계산 등 어려운 판단이 필요해 보이면 Sonnet(높음), 그 외엔 Haiku(보통) — work와 같은 규칙.
   // work chat.js AUTO_MODEL_COMPLEX_RE와 똑같이 유지(토큰 절약 기준을 work와 맞춤 — 단어를 더 넣으면 비싼 모델로 가는 질문이 늘어난다)
   var NXAI_COMPLEX_RE = /(양도소득세|증여세|상속세|취득세|재산세|종합소득세|법인세|부가가치세|세법|시행령|시행규칙|판례|예규|조문|§|비과세|감면|공제|과세표준|세율|절세|불복|경정청구|가업승계|명의신탁|특수관계자|평가액|법정상속분|유류분|부담부증여|이월과세|양도차익)/;
+  // [2026.10.20] 세무사님 원칙("판단에는 최고급 AI, 단순 처리는 토큰 0")과 어긋난 두 곳 — 실사건에서 판단 질문이 Haiku로 갔다:
+  //  ① 낱말 목록에 양도세 판단의 핵심 낱말(중과·다주택·조정대상지역·1세대1주택 등)이 없었다 — "군포 주택이면 다주택자 중과에는 문제가 없나?"가 Haiku로 가서 종부세 이야기를 함.
+  //     위 NXAI_COMPLEX_RE는 work와 같게 두고, job에서만 이 낱말을 더 본다(단순 조회 낱말은 넣지 않음 — 2026-10-08 "계산" 추가로 낭비가 늘었던 일).
+  //  ② 질문 한 줄만 보고 골랐다 — 세법 검토 중인 대화의 짧은 후속 질문("등기부등본 확인해봐", "그럼 이건?")이 Haiku로 갔다.
+  //     이 대화의 최근 사용자 질문 3개 중 하나라도 세법 판단이면 그 대화는 판단 중으로 보고 같은 모델을 쓴다. ⚡바로 처리·🔮제미니로 가는 단순 요청은 이 앞에서 이미 걸러진다.
+  var NXAI_JUDGE_EXTRA_RE = /(중과|다주택|조정\s*대상|1세대\s*1주택|일시적\s*2주택|장기\s*보유|거주\s*요건|보유\s*기간|주택\s*수)/;
+  function nxAiIsJudgeText_(t){ return NXAI_COMPLEX_RE.test(t || '') || NXAI_JUDGE_EXTRA_RE.test(t || ''); }
+  function nxAiConvInJudgement_(){
+    var us = (nxAiConv && nxAiConv.messages || []).filter(function(m){ return m && m.role === 'user'; }).slice(-3);
+    return us.some(function(m){ return nxAiIsJudgeText_(typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.map(function(b){ return b && b.text || ''; }).join(' ') : '')); });
+  }
   function nxAiPickAutoModel_(text){
-    if (NXAI_COMPLEX_RE.test(text || '')) return { model: 'claude-sonnet-5', effort: 'high' };
+    if (nxAiIsJudgeText_(text) || nxAiConvInJudgement_()) return { model: 'claude-sonnet-5', effort: 'high' };
     return { model: 'claude-haiku-4-5-20251001', effort: 'medium' };
   }
   function nxAiRefreshModelUi_(){
