@@ -772,7 +772,7 @@ function rwAskDocTypeForFile_(fileName){
   });
 }
 
-async function rwLoadFileById_(fileId){
+async function rwLoadFileById_(fileId, loadOpts){
   if (!fileId) return false;
   // hydrateDocsFromIdb_()의 IndexedDB 조회와 동시에 진행될 수 있어(둘 다 페이지/화면을 여는
   // 시점에 시작됨), 이 파일 하나를 불러오는 동안엔 hydrateDocsFromIdb_가 docs 전체를 덮어쓰지
@@ -811,7 +811,8 @@ async function rwLoadFileById_(fileId){
     }
   } else {
     let docType = rwGuessDocTypeFromFilename_(name);
-    if (!docType) docType = await rwAskDocTypeForFile_(rawName);
+    // [2026.10.20] 설정 🧭 시스템 관리에서 연 지침 파일(마스터 프로필 등)은 보고서가 아니라 문서유형을 묻지 않는다(기본 모양)
+    if (!docType && !(loadOpts && loadOpts.noDocTypeAsk)) docType = await rwAskDocTypeForFile_(rawName);
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
     doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content, rwDriveSaved_: content };
     if (docType) doc.docType = docType;
@@ -2230,7 +2231,8 @@ async function saveToDrive(){
     if (rwIdxCase_) body.reportMeta = { caseId: rwIdxCase_.id, 고객명: rwIdxCase_.고객명, 사건명: rwIdxCase_.사건명, published: false };
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
-    flashSaveState('드라이브에 저장됨');
+    // [2026.10.20] 시스템 지침 파일(설정 🧭 시스템 관리)은 서버가 직전 판을 같은 폴더 _이전판에 보관한다(SysAdmin.js)
+    flashSaveState(data && data.systemFile && data.backedUp ? '드라이브에 저장됨 — 직전 판은 같은 폴더 _이전판에 보관' : '드라이브에 저장됨');
     // [2026.09 신규] 방금 저장한 내용을 스냅샷으로 남겨둔다 — rwHasUnsavedDriveChanges_가
     // "그 뒤로 또 고쳤는지"를 판단하는 기준이 된다(창 닫기/화면 이동 경고용).
     d.rwDriveSaved_ = content;
@@ -2885,7 +2887,7 @@ function goToReportWriter_(caseId, opts){
   opts = opts || {};
   var shouldCreateNew = false;
   if (opts.fileId) {
-    rwLoadFileById_(opts.fileId);
+    rwLoadFileById_(opts.fileId, opts);
   } else if (opts.saveFolderId) {
     pendingSaveFolderId = opts.saveFolderId;
     pendingSaveFolderName = opts.saveFileName || null;

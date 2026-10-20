@@ -4028,6 +4028,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'followup_toggle') return jsonResponse(followupChange_(body, 'toggle'));
   if (body.action === 'followup_edit') return jsonResponse(followupChange_(body, 'edit'));
   if (body.action === 'followup_add') return jsonResponse(followupChange_(body, 'add'));
+  // [2026.10.20] 설정 🧭 시스템 관리 — 시스템이 읽는 지침 파일 목록·새 업무관리자 지침(SysAdmin.js)
+  if (body.action === 'sysadmin_list') return jsonResponse(sysAdminList_());
+  if (body.action === 'sysadmin_new_bm') return jsonResponse(sysAdminNewBm_(body));
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
@@ -5643,6 +5646,9 @@ function handleUploadFile(body) {
     return withLock_(8000, function () {
       try {
         const file = DriveApp.getFileById(body.fileId);
+        // [2026.10.20] 시스템 지침 파일(마스터 프로필·장기개발계획·업무관리자 등)이면 직전 판을 "_이전판"에 보관(SysAdmin.js)
+        const sysSave = typeof sysAdminBeforeSave_ === 'function' ? sysAdminBeforeSave_(file, body) : null;
+        if (sysSave && sysSave.error) return { error: sysSave.error };
         // [2026.09 버그수정] 발행(고객에게 보고서 재발행)이 기존 파일을 그냥 setContent로
         // 덮어써서, 고객이 이미 열람한 버전이 흔적도 없이 사라졌다 — body.backupBeforeOverwrite가
         // true면 덮어쓰기 전에 지금 내용을 같은 폴더의 "이전버전" 하위폴더에 타임스탬프를 붙여
@@ -5664,8 +5670,11 @@ function handleUploadFile(body) {
         const bytes = Utilities.base64Decode(body.base64Data);
         const text = Utilities.newBlob(bytes).getDataAsString('UTF-8');
         file.setContent(text);
+        if (sysSave && sysSave.kind === 'master') { try { CacheService.getScriptCache().remove(MASTER_PROFILE_CACHE_KEY_); } catch (e) { } }
         rh_maybeUpdateReportIndexForUpload_(body, file);
-        return { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: true };
+        const upOut = { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: true };
+        if (sysSave && sysSave.kind) { upOut.systemFile = sysSave.kind; upOut.backedUp = !!sysSave.backedUp; }
+        return upOut;
       } catch (err) {
         return { error: '파일 갱신 중 오류: ' + err.message };
       }
