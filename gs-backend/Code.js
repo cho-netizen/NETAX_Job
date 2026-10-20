@@ -37333,7 +37333,7 @@ function buildImprovementReport_() {
       report.answerKey = ak;
       ak.fails.forEach(function (f) { headline.unshift('🧪 정답지 점검 불일치(사건 ' + f.caseId + ') — ' + (f.error || ('다른 칸 ' + f.fields.length + '·필요 없는 질문 ' + f.extra.length + '·빠진 질문 ' + f.missing))); });
       report.candidateCount += ak.fails.length;
-      report.guide.push('answerKey(🧪 정답지 점검): 실사건 정답지와 사건처리(서버 단계+화면 엔진) 결과의 불일치. 최우선 — 업무관리자/_정답지점검결과.json의 rows(칸·정답·도구값·출처)와 extra(정답지에 없는 질문)를 보고 서류 규칙·사건처리 단계를 고친다. 고객 정보(이름·주소·금액)는 PR·커밋에 쓰지 말 것(일반화).');
+      report.guide.push('answerKey(🧪 정답지 점검): 실사건 정답지와 사건처리(서버 단계+화면 엔진) 결과의 불일치. 최우선 — 총괄관리자/_정답지점검/_정답지점검결과.json의 rows(칸·정답·도구값·출처)와 extra(정답지에 없는 질문)를 보고 서류 규칙·사건처리 단계를 고친다. 고객 정보(이름·주소·금액)는 PR·커밋에 쓰지 말 것(일반화).');
     }
   } catch (e) { report.answerKeyError = String(e && e.message || e).slice(0, 200); }
   // [2026.10.18 교차검증 2번] 사건처리 AI 판단 점검(토큰 0) — GAS 규칙으로 옮길 후보·세무사님이 자주 고친 쟁점 종류·사건당 AI 호출 추이
