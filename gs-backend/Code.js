@@ -4491,7 +4491,12 @@ function buildContextSystemPrompt(basePrompt, body) {
 
   staticExtra += '\n\n[분야별 업무관리자 우선순위] load_business_manager로 불러온 분야별 지침이 다른 일반 지침과 충돌하면, 그 분야에 한해서는 분야별 지침을 우선하라.';
 
-  staticExtra += '\n\n[총괄관리자 — 시스템 자기점검] audit_business_managers(관리자들끼리 모순·중복 점검) / propose_new_business_manager(새 분야 관리자 초안 제안) 도구가 있다. ' +
+  // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
+  if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
+    + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
+    + '맞는 것만 load_business_manager로 읽어 그 판단 순서를 따른다 — 전부 읽지 말고 보통 한두 개, 같은 대화에서 이미 읽은 지침은 다시 읽지 않는다. 맞는 지침이 없으면 그냥 넘어간다. '
+    + '지침의 수치·조문은 개정될 수 있으니 세액·기한을 크게 가르는 것은 lookup_statute_article로 원문을 확인한다.';
+  else staticExtra += '\n\n[총괄관리자 — 시스템 자기점검] audit_business_managers(관리자들끼리 모순·중복 점검) / propose_new_business_manager(새 분야 관리자 초안 제안) 도구가 있다. ' +
     'propose_new_business_manager로 만든 초안은 "_제안함" 폴더에만 저장되고 자동으로 활성화되지 않는다 — 이건 의도된 안전장치이니, 마치 이미 적용된 것처럼 착각하지 말고 사용자에게 검토가 필요하다고 명확히 알려라.';
 
   // [2026.10.13] 개발자가 최근 바꾼 기능(📥 반영 때 기록, 배포 사이엔 그대로라 캐시가 깨지지 않음) — 사용자가 물으면 안내 + 기능 부족 신고 안내
@@ -14605,6 +14610,7 @@ function toolListBusinessManagers() {
     while (iter.hasNext()) {
       const f = iter.next();
       if (!/\.(md|txt)$/i.test(f.getName())) continue;
+      if (/^_/.test(f.getName())) continue; // [2026.10.20] 맨 위 "_" 파일(점검 결과·기록 등)은 지침이 아니다 — 하위폴더는 getFiles()가 원래 안 본다
       const firstLine = f.getBlob().getDataAsString('UTF-8').split('\n')[0].replace(/^#+\s*/, '').trim();
       items.push({ name: f.getName().replace(/\.(md|txt)$/i, ''), 설명: firstLine.slice(0, 80) });
     }
@@ -14628,6 +14634,7 @@ function toolLoadBusinessManager(name) {
     while (iter.hasNext()) {
       const f = iter.next();
       const base = f.getName().replace(/\.(md|txt)$/i, '');
+      if (/^_/.test(f.getName()) || !/\.(md|txt)$/i.test(f.getName())) continue; // [2026.10.20] 목록에 없는 것("_" 파일·json 등)은 불러오지 않는다
       if (base === target || f.getName() === target) {
         return { name: base, content: f.getBlob().getDataAsString('UTF-8') };
       }
@@ -14889,7 +14896,9 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   const isJobPanel_ = !!(body.context && body.context.aiPanel);
   const tools = DRIVE_TOOLS.filter(function (t) {
     // [2026.10.08] job 화면(AI탭·사이드바)에서는 담당자(업무관리자) 도구를 쓰지 않는다 — job에서 없앤 기능.
-    if (isJobPanel_ && /business_manager/.test(t.name)) return false;
+    // [2026.10.20] 세무사님 "업무관리자 지침을 업무별로 상세하게 구분하고 최대한 많이 만들라" — 목록·읽기 2개는 job에서도 켠다.
+    //  감사(전체 원문 한꺼번에 — 토큰 큼, 야간 🧾 지침 점검이 함)·새 관리자 제안(🧭 시스템 관리에 있음)은 계속 뺀다.
+    if (isJobPanel_ && (t.name === 'audit_business_managers' || t.name === 'propose_new_business_manager')) return false;
     if (BASIC_TOOL_NAMES_.has(t.name)) return true;
     const cat = TAX_TOOL_TO_CATEGORY_[t.name];
     return !!cat && browsedCats.has(cat);

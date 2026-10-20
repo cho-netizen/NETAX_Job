@@ -140,6 +140,11 @@ function caseProcAiLiveTools_() {
     input_schema: { type: 'object', properties: { category: { type: 'string' }, query: { type: 'string' } }, required: ['category', 'query'] } });
   tools.push({ name: 'law_attach', description: '근거 자료를 사건에 첨부("AI 첨부(미확인)" — 세무사님이 법령 탭에서 확정하거나 뺀다). 관련법령 파일·검토서 근거에 들어간다. 조문은 kind="statute"+lawName+articleNo(+hang 항 번호), 예규·판례는 kind=그 category+id. use=어느 쟁점·계산 칸에 쓰는지, why=왜(한 줄). 돌려준 id를 value_set의 attach에 넣는다.',
     input_schema: { type: 'object', properties: { kind: { type: 'string' }, lawName: { type: 'string' }, articleNo: { type: 'string' }, hang: { type: 'number' }, id: { type: 'string' }, title: { type: 'string' }, use: { type: 'string' }, why: { type: 'string' } }, required: ['kind', 'use', 'why'] } });
+  // [2026.10.20] 업무관리자 지침(업무별 판단 절차) — 세무사님 "이 업무관리자지침과 각종템플릿 작성이 추후 시스템의 성능을 좌우하게 된다". 사이드바 AI와 같은 이름·같은 실행 함수(Code.js toolListBusinessManagers·toolLoadBusinessManager)
+  tools.push({ name: 'list_business_managers', description: '업무관리자 지침 목록(토큰 적음) — 업무관리자 폴더 맨 위 지침의 이름과 한 줄 설명. 이 사건 세목·업무유형에 맞는 지침을 고를 때.',
+    input_schema: { type: 'object', properties: {} } });
+  tools.push({ name: 'load_business_manager', description: '업무관리자 지침 읽기 — list_business_managers 목록의 이름 하나의 전체 내용(판단 순서·필요 서류·자주 틀리는 곳·근거 조문). 이 사건에 맞는 것만, 보통 한두 개.',
+    input_schema: { type: 'object', properties: { name: { type: 'string', description: '목록에 나온 이름 그대로(예: 양도_일시적2주택)' } }, required: ['name'] } });
   tools.forEach(function (t) { if (t.name === 'value_set') t.input_schema.properties.attach = { type: 'array', items: { type: 'string' }, description: '이 판단의 근거로 쓴 첨부 자료 id(law_attach가 돌려준 id 또는 입구 요약의 첨부 목록 id)' }; });
   tools[tools.length - 1].cache_control = { type: 'ephemeral' };
   return tools;
@@ -154,6 +159,7 @@ function caseProcAiLiveSystem_(cap) {
     '- 도구로 안 되는 일을 네가 직접 하게 되면(원문을 뒤지고 싶음·여러 값을 머릿속으로 더하거나 나눔·날짜를 세어 봄 등) 그 일을 하지 말고 report_tool_gap으로 "이런 도구가 있으면"을 남긴 뒤 질문으로 돌린다. 그것이 GAS가 자라는 재료다.',
     '- 되돌리기 어려운 일(PDF 묶기·폴더 이름·문자·사건 정보 수정)은 도구가 없다. 필요하면 보고에 "▶실행 카드로 여쭐 것"으로 적는다.',
     '- 빈칸 메우기 고리(세무사님 "빈칸을 채우기 위해 다시 똥통을 뒤지게 되는 것"): ① fact_map으로 빈칸·어긋남을 본다 ② 빈칸마다 찾을서류 중 이 사건에 있는 파일을 고른다 ③ doc_find로 다시 뒤진다(읽기는 GAS) ④ 찾았으면 value_set(근거 doc·쪽), 못 찾았으면 다른 파일 ⑤ fact_map을 다시 불러 메워졌는지 본다 — 빈칸당 다시 뒤지기 2번까지, 더 안 메워지면 남은 빈칸만 추론(infer, 잠정)하거나 짧은 객관식 질문으로 모아 묻는다.',
+    '- 업무관리자 지침: case_view 다음, 판단을 시작하기 전에 list_business_managers로 목록을 보고 이 사건 세목·업무유형·AI 자리 주제에 맞는 지침만 load_business_manager로 읽어 그 판단 순서·필요 서류·주의를 따른다(양도 사건이면 "양도_"로 시작하는 것과 특수관계인_판정 같은 공통 지침 중 해당하는 것, 보통 한두 개). 이미 읽은 지침은 다시 읽지 않는다. 지침에 나온 도구 이름이 네 도구에 없으면 같은 일을 하는 네 도구(law_lookup·public_lookup 등)로 하고, 지침의 수치·조문이 세액을 가르면 law_lookup으로 원문을 확인한다. 위 [일하는 순서]·[한도]와 어긋나면 위가 먼저다.',
     '- 법령 근거: 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한 뒤(쓸 곳·이유 한 줄), value_set의 attach에 그 id를 넣는다. 입구 요약의 "첨부된 자료"(세무사님 직접 첨부)는 먼저 읽고 근거로 쓴다.',
     '- 모든 글(중간 메모·보고·질문 메모)은 한국어로 쓴다 — 화면에 그대로 보인다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.'
@@ -269,6 +275,8 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   if (name === 'value_set') return { text: JSON.stringify(caseProcAiValueSetLive_(caseId, input, ctx)) };
   if (name === 'fact_map') { ctx.loop = ctx.loop || { maps: 0, finds: 0, hits: 0, gaps0: null, gapsN: null }; const fm = caseProcAiFactMap_(akReadCase_(caseId), ctx.lastItems || []); ctx.loop.maps++; if (ctx.loop.gaps0 == null) ctx.loop.gaps0 = fm.빈칸.length; ctx.loop.gapsN = fm.빈칸.length; return { text: caseProcAiMask_(JSON.stringify(fm)).slice(0, 5000) }; }
   if (name === 'doc_find') { ctx.loop = ctx.loop || { maps: 0, finds: 0, hits: 0, gaps0: null, gapsN: null }; const df = caseProcAiDocFind_(akReadCase_(caseId), input); ctx.loop.finds++; if (df.찾음) ctx.loop.hits++; return { text: caseProcAiMask_(JSON.stringify(df)).slice(0, 4000) }; }
+  if (name === 'list_business_managers') return { text: JSON.stringify(toolListBusinessManagers()).slice(0, 12000) }; // 지침 하나 약 90자 — 지금 30여 개 3천 자, 대량 작성 중이라 넉넉히
+  if (name === 'load_business_manager') return { text: JSON.stringify(toolLoadBusinessManager(input.name)).slice(0, 16000) }; // 지침 한 개 6~9KB — 사건 내용이 아니라 가리기 안 함
   if (name === 'law_lookup' || name === 'law_search' || name === 'law_attach') return { text: caseProcAiMask_(JSON.stringify(caseProcAiLaw_(caseId, name, input, ctx))).slice(0, 6000) };
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
