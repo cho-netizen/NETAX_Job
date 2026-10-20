@@ -4020,7 +4020,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
-  if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
+  if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true, { flaggedOnly: !!body.flaggedOnly }) || { success: true });
   if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
   // [2026.10.13] AI 회의(2026.10.19 재편)·개발자↔사용자 소통·2중 검증(Federation.js, docs/ai-federation.md)
   // [2026.10.20] 대시보드 📋 확인조치사항 — 원본은 드라이브 0 NETAX/_확인조치사항.md 하나(Followup.js). 저장은 최신 내용에서 그 줄만 바꾼다.
@@ -4031,6 +4031,10 @@ function dispatchClientAction0_(body) {
   // [2026.10.20] 설정 🧭 시스템 관리 — 시스템이 읽는 지침 파일 목록·새 업무관리자 지침(SysAdmin.js)
   if (body.action === 'sysadmin_list') return jsonResponse(sysAdminList_());
   if (body.action === 'sysadmin_new_bm') return jsonResponse(sysAdminNewBm_(body));
+  // [2026.10.20] 🧭 시스템 관리 "점검 결과" — 규칙 점검(0원)·무료 AI 점검(SysAudit.js)
+  if (body.action === 'sysaudit_result') return jsonResponse(sysAuditResult_());
+  if (body.action === 'sysaudit_run') return jsonResponse(sysAuditRunNow_());
+  if (body.action === 'sysaudit_ai_run') return jsonResponse(sysAuditAiRunNow_());
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
@@ -14671,6 +14675,7 @@ function toolAuditBusinessManagers() {
     while (iter.hasNext()) {
       const f = iter.next();
       if (!/\.(md|txt)$/i.test(f.getName())) continue;
+      if (f.getName().charAt(0) === '_') continue; // [2026.10.20] "_"로 시작하는 파일은 시스템 기록(예: 옛 _정답지점검_*.md)이라 지침 점검에서 뺀다
       sections.push('=== ' + f.getName() + ' ===\n' + f.getBlob().getDataAsString('UTF-8'));
     }
 
@@ -16693,7 +16698,13 @@ function collectRecentUserQuestionsSample_(daysBack, maxFiles) {
  * 귀찮게 하는 패턴"이 있는지까지 판단하며, 새 업무관리자가 필요하다고 판단되면 그 자리에서
  * "_제안함"에 초안까지 자동으로 만들어둔다(활성화는 여전히 사람이 직접 해야 함).
  */
-function runNightlySystemAudit(force) {
+function runNightlySystemAudit(force, opts) {
+  // [2026.10.20] 시스템 자기점검 정상화 — 새벽(force 아님)에는 ① 규칙 점검(0원, SysAudit.js)만 하고, ② 무료 AI 점검은 새벽 3시 별도 트리거.
+  // 예전엔 여기서 "지침 바뀜"만 적고 실제 점검은 안 했는데 대시보드는 리포트 파일만 보고 ✅였다. 아래 유료(Sonnet) 점검은 🧾 버튼(force)으로만.
+  if (force !== true) {
+    if (typeof sysAuditNightly_ !== 'function') { console.error('SysAudit.js가 서버에 없어 규칙 점검을 못 함(clasp push 필요)'); return { success: false, error: 'SysAudit.js가 서버에 없습니다' }; }
+    return sysAuditNightly_({ trigger: '새벽 2시' });
+  }
   const chiefFolder = getChiefManagerFolder_();
   if (!chiefFolder) {
     console.error('총괄관리자 폴더가 설정되지 않아 야간점검을 건너뜁니다(CHIEF_MANAGER_FOLDER_ID 미설정).');
@@ -16702,12 +16713,21 @@ function runNightlySystemAudit(force) {
   const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
   const reportFolder = getOrCreateSubfolder_(chiefFolder, '_점검리포트');
 
+  // [2026.10.20] 같은 날 규칙 점검 리포트가 있으면 덮어쓰지 않고 아래에 덧붙인다(규칙 점검 결과가 사라지지 않게)
   function saveReport(text) {
-    writeFileOverwrite_(reportFolder, '점검리포트_' + today + '.md', text, 'text/markdown');
+    const name = '점검리포트_' + today + '.md';
+    const prev = readFileIfExists_(reportFolder, name);
+    const body = prev && prev.indexOf('## ① 규칙 점검') !== -1
+      ? prev.split('\n---\n## 🧾 유료 AI 점검')[0].replace(/\s+$/, '') + '\n\n---\n## 🧾 유료 AI 점검(버튼, Sonnet)\n\n' + String(text).replace(/^# 점검리포트[^\n]*\n+/, '')
+      : text;
+    writeFileOverwrite_(reportFolder, name, body, 'text/markdown');
   }
+  // [2026.10.20] 🧾 버튼 "판단 필요만" — ② 무료 AI가 "세법 판단 필요"로 표시한 항목과 그 파일만 유료 AI에게 보낸다
+  const flagged = opts && opts.flaggedOnly && typeof sysAuditFlaggedForPaid_ === 'function' ? sysAuditFlaggedForPaid_() : null;
+  if (opts && opts.flaggedOnly && !flagged) return { success: true, report: '무료 AI 점검에서 "세법 판단 필요"로 표시된 항목이 없습니다 — 유료 점검을 하지 않았습니다(0원).' };
 
   try {
-    const auditData = toolAuditBusinessManagers();
+    const auditData = flagged ? sysAuditFlaggedAuditData_(flagged) : toolAuditBusinessManagers();
     if (!auditData || !auditData.파일개수) {
       saveReport('# 점검리포트 ' + today + '\n\n업무관리자 파일이 아직 없어서 점검할 대상이 없습니다.');
       return;
@@ -16717,17 +16737,11 @@ function runNightlySystemAudit(force) {
     // 최대 15만 자를 Sonnet에 읽혔다(세무사님 원칙: 시스템 루틴은 토큰 0). 바뀐 날에만 점검한다.
     const auditProps = PropertiesService.getScriptProperties();
     const auditHash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(auditData.전체내용 || ''), Utilities.Charset.UTF_8));
-    if (auditProps.getProperty('AUDIT_LAST_HASH') === auditHash) {
+    if (!flagged && auditProps.getProperty('AUDIT_LAST_HASH') === auditHash) {
       saveReport('# 점검리포트 ' + today + '\n\n업무관리자·지침 파일이 지난 점검 이후 바뀌지 않아 AI 점검을 건너뛰었습니다(비용 0원).');
       return { success: true, report: '지침 파일이 지난 점검 이후 바뀌지 않았습니다 — 점검할 것 없음(비용 0원).' };
     }
-    // [2026.10.09 토큰0 전수조사] 지침이 바뀐 날에도 밤에는 AI를 부르지 않는다 — "바뀜"만 표시해 개선 후보 보고서에 띄우고,
-    // 실제 AI 점검은 설정 🐞 카드의 🧾 지침 점검 버튼(force=true)으로만 한다(템플릿 점검과 같은 방식).
-    if (force !== true) {
-      auditProps.setProperty('AUDIT_PENDING', today);
-      saveReport('# 점검리포트 ' + today + '\n\n업무관리자·지침 파일이 바뀌었습니다. AI 점검은 자동으로 하지 않습니다(비용 0원) — 필요하면 설정 🐞 카드의 🧾 지침 점검 버튼을 눌러 주세요.');
-      return;
-    }
+    // [2026.10.20] 예전 "밤에는 바뀜만 표시(AUDIT_PENDING)" 분기는 없앴다 — 밤에는 맨 위에서 SysAudit.js 규칙 점검으로 간다.
 
     const apiKey = auditProps.getProperty('ANTHROPIC_API_KEY');
     if (!apiKey) {
@@ -16735,12 +16749,14 @@ function runNightlySystemAudit(force) {
       return;
     }
 
-    const recentQuestions = collectRecentUserQuestionsSample_(14, 20);
+    const recentQuestions = flagged ? [] : collectRecentUserQuestionsSample_(14, 20);
     const recentSection = recentQuestions.length
       ? '\n\n=== 최근 14일간 여러 사건에서 사용자가 실제로 물어본 질문 샘플(사건별로 섞여있음) ===\n' + recentQuestions.join('\n')
       : '';
 
-    const prompt = '너는 이 세무 자문 시스템의 총괄관리자다. 다음 두 가지를 점검하라:\n\n'
+    const prompt = (flagged ? '[이번 점검 범위] 무료 AI 점검(' + flagged.at + ')이 "세법 판단 필요"로 표시한 아래 항목만 판단하라. 각 항목에 대해 어느 쪽 지침이 맞는지(근거 조문), 고칠 방향을 "- [파일명1 vs 파일명2] …" 목록으로 답하라. 아래 (B)는 하지 마라.\n'
+        + flagged.items.map(function (x, i) { return (i + 1) + '. [' + x.파일.join(' vs ') + '] ' + x.내용 + (x.근거.length ? ' (근거: ' + x.근거.join(' / ') + ')' : ''); }).join('\n') + '\n\n' : '')
+      + '너는 이 세무 자문 시스템의 총괄관리자다. 다음 두 가지를 점검하라:\n\n'
       + '(A) 지금 시스템에 등록된 마스터 프로필과 분야별 업무관리자들(그리고 있다면 점검 체크리스트, NX 시스템 장기개발계획)의 전체 원문을 보고, '
       + '서로 모순되거나 겹치거나 애매하게 충돌하는 지침이 있는지, 체크리스트에 있는데 아직 반영 안 된 항목이 있는지, 지금 하고 있는 일들이 장기개발계획의 지향점(Speed·Smart·Simple, 잡일 제로화 등)에 부합하는지 찾아라.\n\n'
       + '(B) 최근 여러 사건에서 사용자가 실제로 물어본 질문 샘플을 보고, 반복적으로 같은 유형의 요청이 나오는데 '
@@ -16772,7 +16788,7 @@ function runNightlySystemAudit(force) {
 
     const result = JSON.parse(response.getContentText());
     ai_logDirect_(result, DEFAULT_MODEL, 'audit', '🧾 지침 점검(버튼)');
-    auditProps.setProperty('AUDIT_LAST_HASH', auditHash);
+    if (!flagged) auditProps.setProperty('AUDIT_LAST_HASH', auditHash); // 판단 필요만 본 날은 전체를 본 게 아니라 기준을 안 바꿈
     auditProps.deleteProperty('AUDIT_PENDING');
     let text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
 
@@ -17095,6 +17111,8 @@ function runNightlyChiefManager() {
   try { envEnsureTrigger_(); } catch (err) { console.error('환경 감시 트리거 확인 실패: ' + err.message); }
   // [2026.10.13] AI 회의 위원 API 점검은 새벽 5시 별도 트리거(Federation.js aiFederationNightly) — 있는지만 확인
   try { aiFedEnsureTrigger_(); } catch (err) { console.error('AI 회의 트리거 확인 실패: ' + err.message); }
+  // [2026.10.20] 지침 무료 AI 점검(제미니, 바뀐 지침만)은 새벽 3시 별도 트리거(SysAudit.js runSysAuditAiNightly) — 있는지만 확인
+  try { sysAuditEnsureTrigger_(); } catch (err) { console.error('지침 AI 점검 트리거 확인 실패: ' + err.message); }
   try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
@@ -17136,13 +17154,26 @@ function handleGetNightlyStatus(body) {
     }
   }
 
-  const audit = latestOf('_점검리포트', '점검리포트_');
-  items.push({
-    label: '시스템 자기점검',
-    ok: !!audit,
-    date: audit ? audit.date : null,
-    message: audit ? audit.content.slice(0, 300) : '오늘·어제 리포트를 찾지 못했습니다 — 야간 작업이 실행되지 않았을 수 있습니다.'
-  });
+  // [2026.10.20] 예전엔 리포트 파일만 있으면 ✅였다(실제 점검은 안 돌았는데도). 이제 점검결과_최신.json(SysAudit.js)으로 "실제로 돌았나"를 본다:
+  //   ✅ = 오늘·어제 규칙 점검이 실제로 돌았고 문제 0·AI 어긋남 0 / ⚠ 점검 안 됨(이유) / ⚠ 지침 문제 N건
+  try {
+    const sa = typeof sysAuditResult_ === 'function' ? sysAuditResult_() : { error: 'SysAudit.js가 서버에 없음(clasp push 필요)' };
+    const r = sa && sa.result, s = r ? sysAuditSummary_(r) : null;
+    let ok = false, failLabel = '', message = '';
+    if (!sa || sa.error) { failLabel = '점검 안 됨(' + ((sa && sa.error) || '결과를 읽지 못함') + ')'; message = failLabel; }
+    else if (sa.stale) { failLabel = '점검 안 됨(' + (r ? '마지막 ' + r.at : '기록 없음') + ')'; message = sa.stale; }
+    else if (!s.ran) { failLabel = '점검 안 됨(' + String(s.reason).slice(0, 40) + ')'; message = r.at + ' — ' + s.reason; }
+    else {
+      ok = !s.problems && !s.aiItems;
+      failLabel = (s.problems ? '지침 문제 ' + s.problems + '건' : '') + (s.aiItems ? (s.problems ? ' · ' : '') + 'AI 어긋남 ' + s.aiItems + '건' : '');
+      message = r.at + ' 규칙 점검: 파일 ' + s.files + '개, 문제 ' + s.problems + ' · 주의 ' + s.warnings + ' · [확인 필요] ' + s.confirm + (s.changed ? ' · 바뀐 파일 ' + s.changed + '개' : '')
+        + '\n무료 AI 점검: ' + (s.aiStatus || '기록 없음') + (s.aiItems ? ' — 어긋남 후보 ' + s.aiItems + '건(세법 판단 필요 ' + s.aiLaw + ')' : '')
+        + '\n→ 설정 🧭 시스템 관리 "점검 결과"에서 파일·줄 보기';
+    }
+    items.push({ label: '시스템 자기점검 (규칙 0원 + 무료 AI)', ok: ok, failLabel: failLabel, date: r ? String(r.at).slice(0, 10) : null, message: message });
+  } catch (e) {
+    items.push({ label: '시스템 자기점검 (규칙 0원 + 무료 AI)', ok: false, failLabel: '점검 안 됨(상태 확인 오류)', message: '점검 결과를 확인하지 못했습니다: ' + e.message });
+  }
 
   // [2026.10.09] 개선 후보 보고서
   try {
@@ -37273,10 +37304,17 @@ function buildImprovementReport_() {
   //   반영됨(세무사님 확인 전)은 다시 고칠 대상이 아니라 requestsAwaitingConfirm으로 따로 싣는다(Federation.js commRequestsAll_).
   let requests = [], requestsAwaitingConfirm = [];
   try { const ra = commRequestsAll_().open; requests = ra.filter(function (r) { return r.status !== '반영됨'; }); requestsAwaitingConfirm = ra.filter(function (r) { return r.status === '반영됨'; }); } catch (e) {}
-  const auditPending = PropertiesService.getScriptProperties().getProperty('AUDIT_PENDING') || '';
+  // [2026.10.20] "지침 바뀜(AUDIT_PENDING)" 대신 실제 지침 점검 결과(SysAudit.js SYS_AUDIT_LAST) — 세무사님 확인용(코드 수정 대상 아님)
+  let auditLine = '';
+  try {
+    const sl = JSON.parse(PropertiesService.getScriptProperties().getProperty('SYS_AUDIT_LAST') || 'null');
+    if (!sl) auditLine = '📚 지침 자기점검이 아직 한 번도 돌지 않음 — 설정 🧭 시스템 관리 "점검 결과"';
+    else if (!sl.ran) auditLine = '📚 지침 자기점검 안 됨(' + sl.at + ') — ' + String(sl.reason).slice(0, 60);
+    else if (sl.problems || sl.aiItems) auditLine = '📚 지침 점검(' + sl.at.slice(5, 10) + '): 규칙 문제 ' + sl.problems + '건' + (sl.aiItems ? ' · 무료 AI 어긋남 후보 ' + sl.aiItems + '건(세법 판단 필요 ' + sl.aiLaw + ')' : '') + ' — 세무사님 확인용(지침 파일 고치기, 코드 수정 아님) · 설정 🧭 시스템 관리 "점검 결과"';
+  } catch (e) { }
   requests.slice().reverse().forEach(function (r) { headline.unshift('📝 개선요구사항(' + String(r.at).slice(5, 10) + ', ' + r.days + '일째' + (r.status === '재오픈' ? ', 다시 고쳐 달라심' : '') + ') — ' + String(r.text).replace(/\s+/g, ' ').slice(0, 60)); });
-  if (auditPending) headline.push('📚 업무관리자 지침이 바뀜(' + auditPending + ') — 설정 🐞 카드 🧾 지침 점검 버튼(유료)으로 점검');
-  const candidateCount = requests.length + scFails.length + errors.length + paidRepeats.length + (perfSlow ? 1 : 0) + (auditPending ? 1 : 0);
+  if (auditLine) headline.push(auditLine);
+  const candidateCount = requests.length + scFails.length + errors.length + paidRepeats.length + (perfSlow ? 1 : 0) + (auditLine ? 1 : 0);
 
   const report = {
     generatedAt: Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd HH:mm"),
@@ -37287,14 +37325,14 @@ function buildImprovementReport_() {
     guide: [
       'requests(📝)는 세무사님이 직접 적은 개선요구사항(버전업·새 기능·불편사항) = 직접 지시다. 날짜 제한 없이 아직 안 끝난 것 전부가 오래된 순으로 실린다(days=며칠째) — 오래된 것부터. requestsAwaitingConfirm은 이미 반영돼 세무사님 확인만 남은 것이라 다시 고치지 않는다. 우선순위: 🩺 자가점검 실패 > 📝 > 🐞 > 💸 > 🐢. 구현해서 PR로 올린다. 큰 기능이면 바로 쓸 수 있는 첫 단계까지 구현하고 나머지 계획은 PR "남은 단계"에. 모호하면 가장 보수적으로 해석하고 "확인 필요"에 질문.',
       '중복 방지: git fetch --all 후 git branch -r 과 최근 14일 main 커밋을 보고, 같은 내용을 이미 반영했거나 이미 올린 브랜치가 있으면 그 후보는 건너뛰고 이유만 적는다.',
-      'auditPending(📚)은 코드 수정 대상이 아니다 — 답변에 "설정 🐞 카드 🧾 지침 점검 버튼 권장"만 적는다.',
+      'auditPending(📚 지침 자기점검 결과)은 코드 수정 대상이 아니다 — 드라이브 지침 파일을 세무사님이 고칠 일이다. 답변에 "설정 🧭 시스템 관리 점검 결과 확인"만 적는다.',
       '새 기능에 유료 AI 호출을 넣지 않는다(꼭 필요하면 사람이 버튼을 누를 때만, PR에 예상 비용 명시). 바뀐 사용법은 gs-backend/manage/manual.html 에 한두 줄 추가.',
       '개선요구사항에 고객 정보가 섞여 있으면 PR·커밋에는 일반화해서 쓴다(저장소 공개).',
       'templates(📚 템플릿 순환)는 매주 볼 것: 공통추가제목(사본 여럿에 공통으로 새로 생긴 제목)·늘빈칸(아무도 안 채우는 칸)·새문단후보(자주 나오는데 문단 라이브러리에 없는 쟁점)를 보고 gs-backend/templates/(보고서·의뢰서·문단 md)에 수정안을 PR로 올린다. 반드시 templates.현재원문[종류][i].text(지금 드라이브 원문)에서 출발해 고치고, gs-backend/templates/_index.txt의 그 파일 줄 두 번째 칸을 templates.현재원문의 md5로 바꾼다(📥 반영 때 드라이브가 그 값과 같아야만 덮어씀 — 세무사님 직접 수정 보호). 새 문단은 기존 문단 머리말 형식(<!-- 문단정보 제목/세목/추천/조문 -->)·{변수}·{AI: …}를 따르고, 법령 내용은 현행 조문을 확인해 쓴다. 고객 이름·금액은 넣지 않는다. 바꿀 것이 없으면 PR을 만들지 않는다.'
     ],
     requests: requests,
     requestsAwaitingConfirm: requestsAwaitingConfirm,
-    auditPending: auditPending,
+    auditPending: auditLine,
     selfCheck: { at: sc.last ? sc.last.at : null, fresh: sc.fresh, fails: scFails },
     errors: errors,
     paid: { totalUsd: Math.round(paidTotal * 1e4) / 1e4, totalKrw: Math.round(paidTotal * 1400), byKind: paidByKind, repeats: paidRepeats },
