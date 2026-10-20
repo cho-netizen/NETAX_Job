@@ -39,6 +39,8 @@
     </div>
     <input type="search" id="nxAiListSearch" class="nxai-list-search" placeholder="대화·사건 검색">
     <div class="nxai-list-body" id="nxAiListBody"><div class="nxai-muted">불러오는 중…</div></div>
+    <!-- [2026.10.20] 세무사님 "대화목록창이 너무 좁아서 … 최소크기를 확보해 주고 창크기를 넓힐 수 있도록" — 경계를 끌어 폭(태블릿은 높이) 조절 -->
+    <span class="nxai-list-grip" id="nxAiListGrip" title="끌어서 대화 목록 폭 조절(두 번 누르면 기본 폭)"></span>
   </aside>
 
   <div class="nxai-main">
@@ -117,6 +119,10 @@
       <div class="nxai-pv-viewhead">
         <b id="nxAiPvName">—</b>
         <span class="nxai-spacer"></span>
+        <!-- [2026.10.20] 세무사님 "검토서와 보고서는 편집할 수 있는 원본파일이 열리는데, 증빙관리에서 처럼 두가지 방법으로 볼 수 있어야" —
+             증빙관리 파일보기와 같게: 누르면 먼저 보기 전용, 텍스트(md 등)는 ✏ 편집으로 고치기, PDF·사진은 🛠 파일관리(PDF관리·스캔)로 -->
+        <button type="button" class="nxai-btn" id="nxAiPvEdit" hidden title="이 파일을 고칠 수 있게 엽니다">✏ 편집</button>
+        <button type="button" class="nxai-btn" id="nxAiPvManage" hidden>🛠 파일관리</button>
         <button type="button" class="nxai-btn" id="nxAiPvAttach" title="이 파일을 채팅에 첨부">📎 첨부</button>
         <a class="nxai-btn" id="nxAiPvOpen" href="#" target="_blank" rel="noopener" title="새 창에서 열기">↗ 새 창</a>
       </div>
@@ -129,6 +135,7 @@
       <div class="nxai-pv-editbar" id="nxAiPvEditBar" hidden>
         <span class="nxai-muted" id="nxAiPvStatus"></span>
         <span class="nxai-spacer"></span>
+        <button type="button" class="nxai-btn" id="nxAiPvCancel" title="고친 것을 버리고 보기로 돌아갑니다">취소</button>
         <button type="button" class="nxai-btn primary" id="nxAiPvSave">💾 저장</button>
       </div>
     </div>
@@ -335,7 +342,12 @@
 
   /* ===== 대화 목록 / 미리보기 — AI탭에서만 보인다 ===== */
   .nxai-list, .nxai-preview{ display:none; }
-  .nxai-list{ width:230px; flex-shrink:0; border-right:1px solid var(--line); flex-direction:column; min-height:0; background:#f7f8fa; }
+  /* [2026.10.20] 230px 고정 → 기본 260px, 최소 200px(제목을 알아볼 폭), 끌어서 조절(--nxai-list-w, 이 기기에 기억).
+     상한: 창이 좁아져도 대화 칸 몫(340px)은 남긴다 — 미리보기 칸까지 계산한 정확한 상한은 끌 때 스크립트가 다시 맞춘다. */
+  .nxai-list{ position:relative; width:var(--nxai-list-w, 260px); min-width:200px; max-width:calc(100% - 340px); flex-shrink:0; border-right:1px solid var(--line); flex-direction:column; min-height:0; background:#f7f8fa; }
+  .nxai-list-grip{ display:none; position:absolute; top:0; right:-4px; bottom:0; width:8px; cursor:ew-resize; z-index:3; touch-action:none; }
+  .nxai.mode-tab .nxai-list-grip{ display:block; }
+  .nxai-list-grip:hover, .nxai-list-grip.dragging{ background:rgba(200,162,68,.35); }
   .nxai-list-head{ display:flex; align-items:center; padding:10px; gap:6px; }
   #nxAiListShow, #nxAiPvShow{ display:none; }
   .nxai.mode-tab.list-collapsed .nxai-list{ display:none; }
@@ -379,6 +391,7 @@
   .nxai-pv-proposal{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px; background:#fff4d6; color:#7a5300; font-size:12.5px; }
   .nxai-pv-content{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
   .nxai-pv-content iframe{ flex:1; border:none; width:100%; min-height:300px; }
+  .nxai-pv-content pre.nxai-pv-textview{ flex:1; margin:0; padding:12px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; line-height:1.55; }
   .nxai-pv-content textarea{ flex:1; border:none; resize:none; padding:12px; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; line-height:1.55; min-height:300px; }
   .nxai-pv-content img{ max-width:100%; margin:auto; }
   .nxai-pv-editbar{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-top:1px solid var(--line); }
@@ -430,7 +443,10 @@
      돌려 위아래를 가리키게 한다(모양 일관성 — 세무사님 지적). 숨기면 칸이 완전히 사라진다. */
   .nxai-phone-tabs{ display:none; }
   body.lay-tablet .nxai.mode-tab{ flex-direction:column; }
-  body.lay-tablet .nxai.mode-tab .nxai-list{ width:auto; height:18%; min-height:96px; flex-shrink:0; border-right:none; border-bottom:1px solid var(--line); }
+  /* [2026.10.20] 태블릿(목록이 위 띠)은 높이를 끌어 조절 — 최소 150px(대화 3줄쯤), 상한은 55%(대화 칸 몫) */
+  body.lay-tablet .nxai.mode-tab .nxai-list{ width:auto; min-width:0; max-width:none; height:var(--nxai-list-h, 22%); min-height:150px; max-height:55%; flex-shrink:0; border-right:none; border-bottom:1px solid var(--line); }
+  body.lay-tablet .nxai.mode-tab .nxai-list-grip{ top:auto; left:0; right:0; bottom:-4px; width:auto; height:8px; cursor:ns-resize; }
+  body.lay-phone .nxai.mode-tab .nxai-list-grip{ display:none; }
   body.lay-tablet .nxai.mode-tab #nxAiListHide, body.lay-tablet .nxai.mode-tab #nxAiListShow{ transform:rotate(90deg); }
   /* 폰: 한 번에 한 칸만 화면 가득 — 위쪽 탭으로 바꾼다. 숨기기 버튼은 필요 없다. */
   body.lay-phone .nxai.mode-tab{ flex-direction:column; }
@@ -806,12 +822,22 @@
       var hay = [c.사건명, c.고객명, c.납세자, c.세목, c.업무유형].join(' ');
       return !q || hay.indexOf(q) !== -1;
     });
+    // [2026.10.20] 세무사님 "사건들이 정렬이 되지 않아 스크롤이 의미가 없다"·"진행구분 이후에 의뢰인 기준으로" — 시트 행 순서 그대로 나오던 것을
+    // ① 진행구분(작업관리 WORK_STATUS_OPTIONS 순서: 진행 → 보류 → 완료, 그 밖의 값은 완료 앞) ② 의뢰인(고객명) 가나다 ③ 사건명 순으로.
+    var rank = function(st){ return st === '진행' ? 0 : st === '보류' ? 1 : st === '완료' ? 3 : 2; };
+    var ko = function(a, b){ return String(a || '').localeCompare(String(b || ''), 'ko'); };
+    cases.sort(function(a, b){
+      return (rank(a.상태) - rank(b.상태)) || ko(a.고객명 || a.납세자, b.고객명 || b.납세자) || ko(a.사건명, b.사건명);
+    });
     if (!cases.length){ listEl.innerHTML = '<div class="nxai-muted">' + (nxAiCaseCache ? '해당하는 사건이 없습니다.' : '불러오는 중…') + '</div>'; return; }
     listEl.innerHTML = '';
     cases.slice(0, 200).forEach(function(c){
       var row = document.createElement('div');
       row.className = 'nxai-case-row';
-      row.innerHTML = '<span>' + nxAiEsc_(c.사건명 || c.고객명 || '(이름 없음)') + '</span><span class="s">' + nxAiEsc_(c.상태 || '') + '</span>';
+      // 의뢰인 순으로 늘어서므로, 사건명에 의뢰인 이름이 없으면 앞에 붙여 보여 준다
+      var who = c.고객명 || c.납세자 || '', nm = c.사건명 || '';
+      var label = !nm ? (who || '(이름 없음)') : (who && nm.indexOf(who) === -1 ? who + ' · ' + nm : nm);
+      row.innerHTML = '<span>' + nxAiEsc_(label) + '</span><span class="s">' + nxAiEsc_(c.상태 || '') + '</span>';
       row.addEventListener('click', function(){ nxAiLinkCase_(c); });
       listEl.appendChild(row);
     });
@@ -1088,20 +1114,19 @@
     nxAiEl_('nxAiPvEditBar').hidden = true;
     var content = nxAiEl_('nxAiPvContent');
     var kind = nxAiFileKind_(f);
+    // [2026.10.20] 증빙관리처럼 두 가지 방법 — 텍스트는 ✏ 편집, PDF·사진은 🛠 파일관리(증빙관리의 PDF관리·스캔 함수를 그대로 부름)
+    nxAiEl_('nxAiPvEdit').hidden = true;
+    var mg = nxAiEl_('nxAiPvManage');
+    mg.hidden = !(kind === 'pdf' || kind === 'image');
+    mg.textContent = kind === 'pdf' ? '📑 파일관리' : '📷 파일관리';
+    mg.title = kind === 'pdf' ? '증빙확보의 PDF관리로 열기(쪽 나누기·합치기·서명 등)' : '증빙확보의 스캔으로 열기(자르기·보정 등)';
     if (kind === 'text'){
       content.innerHTML = '<div class="nxai-muted">불러오는 중…</div>';
       return callGas('readFile', { fileId: f.id }).then(function(res){
         if (nxAiPreviewFile.id !== f.id) return; // 그 사이 다른 파일을 열었으면 무시
         if (!res || res.error){ content.innerHTML = '<div class="nxai-muted">' + nxAiEsc_(res && res.error || '읽지 못했습니다.') + '</div>'; return; }
         nxAiPreviewText = res.content || '';
-        content.innerHTML = '';
-        var ta = document.createElement('textarea');
-        ta.id = 'nxAiPvText';
-        ta.value = nxAiPreviewText;
-        ta.addEventListener('input', nxAiPvUpdateDirty_);
-        content.appendChild(ta);
-        nxAiEl_('nxAiPvEditBar').hidden = false;
-        nxAiPvUpdateDirty_();
+        nxAiPvTextMode_(false); // 처음엔 보기 전용(증빙관리 파일보기와 같게) — 고치려면 ✏ 편집
       });
     }
     if (kind === 'image'){
@@ -1115,6 +1140,35 @@
     // PDF·구글문서·시트·그 밖의 파일 — 구글 드라이브 자체 미리보기. 안 보이면 "↗ 새 창"으로.
     content.innerHTML = '<iframe src="' + nxAiDrivePreviewUrl_(f) + '" allow="autoplay"></iframe>';
     return Promise.resolve();
+  }
+  // [2026.10.20] 텍스트 파일 보기 전용(pre) ↔ 편집(textarea) 전환 — 증빙관리 파일보기의 ✏ 편집·💾 저장·취소와 같은 흐름
+  function nxAiPvTextMode_(edit){
+    var content = nxAiEl_('nxAiPvContent');
+    if (!content || nxAiPreviewText === null) return;
+    content.innerHTML = '';
+    if (edit){
+      var ta = document.createElement('textarea');
+      ta.id = 'nxAiPvText';
+      ta.value = nxAiPreviewText;
+      ta.addEventListener('input', nxAiPvUpdateDirty_);
+      content.appendChild(ta);
+    } else {
+      var pre = document.createElement('pre');
+      pre.className = 'nxai-pv-textview';
+      pre.textContent = nxAiPreviewText || '(내용 없음)';
+      content.appendChild(pre);
+    }
+    nxAiEl_('nxAiPvEdit').hidden = !!edit;
+    nxAiEl_('nxAiPvEditBar').hidden = !edit;
+    nxAiPvUpdateDirty_();
+  }
+  function nxAiPvManage_(){
+    var f = nxAiPreviewFile; if (!f) return;
+    var kind = nxAiFileKind_(f);
+    var fn = kind === 'pdf' ? (typeof openExistingFileInPdfManager === 'function' && openExistingFileInPdfManager) : (typeof openExistingFileInScan === 'function' && openExistingFileInScan);
+    if (!fn){ nxAiToast_('파일관리 도구를 불러오지 못했습니다 — 증빙확보 화면에서 열어 주세요.'); return; }
+    if (typeof goToView_ === 'function') goToView_('docs');
+    fn({ id: f.id, name: f.name, mimeType: f.mimeType, url: f.url });
   }
   function nxAiPvUpdateDirty_(){
     var ta = nxAiEl_('nxAiPvText');
@@ -1146,6 +1200,7 @@
   function nxAiShowProposal_(targetFile, content){
     var show = function(){
       var ta = nxAiEl_('nxAiPvText');
+      if (!ta && nxAiPreviewText !== null){ nxAiPvTextMode_(true); ta = nxAiEl_('nxAiPvText'); } // [2026.10.20] 보기 전용이면 편집으로 바꿔 수정안을 띄움
       if (!ta){ nxAiToast_('이 파일은 미리보기에서 바로 고칠 수 없는 형식입니다.'); return; }
       nxAiPreviewProposalOriginal = ta.value;
       ta.value = content;
@@ -1153,7 +1208,7 @@
       nxAiPvUpdateDirty_();
     };
     if (nxAiMode !== 'tab') nxAiGoToView_('ai');
-    if (nxAiPreviewFile && targetFile && nxAiPreviewFile.id === targetFile.id && nxAiEl_('nxAiPvText')){ nxAiPvShowTab_('view'); show(); return; }
+    if (nxAiPreviewFile && targetFile && nxAiPreviewFile.id === targetFile.id && nxAiPreviewText !== null){ nxAiPvShowTab_('view'); show(); return; }
     nxAiOpenPreview_(targetFile).then(show);
   }
 
@@ -5197,6 +5252,51 @@
     nxAiEl_('nxAiListHide').addEventListener('click', function(){ setListHidden(true); });
     nxAiEl_('nxAiListShow').addEventListener('click', function(e){ e.stopPropagation(); setListHidden(false); });
     if (nxAiLs_(LIST_HIDDEN_KEY) === '1') nxAiEl_('nxAi').classList.add('list-collapsed');
+    // [2026.10.20] 대화 목록 폭(태블릿은 높이) 끌어서 조절 — 아래 사이드바 너비 조절과 같은 방식, 이 기기에 기억. 두 번 누르면 기본값.
+    (function(){
+      var root = nxAiEl_('nxAi'), list = nxAiEl_('nxAiList'), grip = nxAiEl_('nxAiListGrip');
+      if (!root || !list || !grip) return;
+      var W_KEY = 'nxAiListW', H_KEY = 'nxAiListH', MIN_W = 200, MAX_W = 600, CHAT_MIN = 340, MIN_H = 150;
+      var isTablet = function(){ return document.body.classList.contains('lay-tablet'); };
+      // 폭 상한: 전체 − 대화 칸 최소 몫 − (옆에 있는) 미리보기 칸
+      var maxW = function(){
+        var pv = root.querySelector('.nxai-preview'), pvW = 0;
+        if (pv && !root.classList.contains('pv-at-bottom') && pv.offsetWidth) pvW = pv.offsetWidth;
+        return Math.max(MIN_W, Math.min(MAX_W, root.clientWidth - CHAT_MIN - pvW));
+      };
+      var maxH = function(){ return Math.max(MIN_H, root.clientHeight * 0.55); };
+      var applyW = function(w){ root.style.setProperty('--nxai-list-w', Math.round(Math.min(Math.max(w, MIN_W), maxW())) + 'px'); };
+      var applyH = function(h){ root.style.setProperty('--nxai-list-h', Math.round(Math.min(Math.max(h, MIN_H), maxH())) + 'px'); };
+      var savedW = parseInt(nxAiLs_(W_KEY), 10), savedH = parseInt(nxAiLs_(H_KEY), 10);
+      if (savedW) root.style.setProperty('--nxai-list-w', savedW + 'px'); // 상한은 CSS가 우선 막고, 끌 때·창 크기 바뀔 때 다시 맞춘다
+      if (savedH) root.style.setProperty('--nxai-list-h', savedH + 'px');
+      grip.addEventListener('pointerdown', function(e){
+        if (nxAiMode !== 'tab' || document.body.classList.contains('lay-phone')) return;
+        e.preventDefault(); e.stopPropagation();
+        var tablet = isTablet(), r = list.getBoundingClientRect();
+        grip.classList.add('dragging'); grip.setPointerCapture(e.pointerId);
+        var onMove = function(ev){ if (tablet) applyH(ev.clientY - r.top); else applyW(ev.clientX - r.left); };
+        var onUp = function(){
+          grip.classList.remove('dragging');
+          grip.removeEventListener('pointermove', onMove); grip.removeEventListener('pointerup', onUp); grip.removeEventListener('pointercancel', onUp);
+          if (tablet) nxAiLs_(H_KEY, String(parseInt(root.style.getPropertyValue('--nxai-list-h'), 10) || ''));
+          else nxAiLs_(W_KEY, String(parseInt(root.style.getPropertyValue('--nxai-list-w'), 10) || ''));
+        };
+        grip.addEventListener('pointermove', onMove); grip.addEventListener('pointerup', onUp); grip.addEventListener('pointercancel', onUp);
+      });
+      grip.addEventListener('dblclick', function(e){
+        e.stopPropagation();
+        if (isTablet()){ root.style.removeProperty('--nxai-list-h'); nxAiLs_(H_KEY, ''); }
+        else { root.style.removeProperty('--nxai-list-w'); nxAiLs_(W_KEY, ''); }
+      });
+      // 창을 줄이면 저장된 폭이 대화 칸을 밀어내지 않게 다시 맞춘다(저장값은 그대로 — 창을 다시 키우면 원래 폭)
+      var refit = function(){
+        if (nxAiMode !== 'tab' || isTablet() || document.body.classList.contains('lay-phone')) return;
+        var w = parseInt(nxAiLs_(W_KEY), 10); if (w) applyW(w);
+      };
+      window.addEventListener('resize', refit);
+      document.addEventListener('nx-layout-change', refit);
+    })();
     nxAiEl_('nxAiNewBtnSide').addEventListener('click', function(e){ e.stopPropagation(); nxAiNewConv_(); });
     nxAiEl_('nxAiListSearch').addEventListener('input', nxAiRenderConvList_);
     nxAiEl_('nxAiTitle').addEventListener('click', function(){ nxAiRenameConv_(nxAiConv.id, nxAiConv.title); });
@@ -5334,7 +5434,10 @@
       b.addEventListener('click', function(){ nxAiPhoneTab_(b.getAttribute('data-ph')); });
     });
     nxAiEl_('nxAiPvAttach').addEventListener('click', function(){ if (nxAiPreviewFile) nxAiAddFileAttachment_(nxAiPreviewFile); });
-    nxAiEl_('nxAiPvSave').addEventListener('click', nxAiPvSave_);
+    nxAiEl_('nxAiPvSave').addEventListener('click', function(){ nxAiPvSave_().then(function(ok){ if (ok){ nxAiPvTextMode_(false); nxAiToast_('저장했습니다.'); } }); });
+    nxAiEl_('nxAiPvEdit').addEventListener('click', function(){ nxAiPvTextMode_(true); });
+    nxAiEl_('nxAiPvCancel').addEventListener('click', function(){ nxAiPvHideProposal_(); nxAiPvTextMode_(false); nxAiEl_('nxAiPvStatus').textContent = ''; });
+    nxAiEl_('nxAiPvManage').addEventListener('click', nxAiPvManage_);
     nxAiEl_('nxAiPvSaveProposal').addEventListener('click', nxAiPvSave_);
     nxAiEl_('nxAiPvDiscardProposal').addEventListener('click', function(){
       var ta = nxAiEl_('nxAiPvText');

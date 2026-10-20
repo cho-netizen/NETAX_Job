@@ -4010,6 +4010,10 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_ask_slots') return jsonResponse(aiAskSlots_(body));
   if (body.action === 'ai_cross_check') return jsonResponse(aiCrossCheck_(body));
   if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} return jsonResponse({ success: true, check: chk }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
+  if (body.action === 'gh_pr_list') return jsonResponse(gh_prList_(!!body.fresh)); // [2026.10.20] 승인 대기 수정안
+  if (body.action === 'gh_pr_merge') return jsonResponse(gh_prMerge_(body));
+  if (body.action === 'gh_pr_close') return jsonResponse(gh_prClose_(body));
+  if (body.action === 'gh_set_token') return jsonResponse(gh_setToken_(body));
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
   if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
   if (body.action === 'deploy_smoke') return jsonResponse(deploySmoke_()); // 배포 직후 자동 점검(토큰 0)
@@ -16961,14 +16965,15 @@ function generateDailyBriefing_() {
 }
 
 /**
- * 새벽 트리거가 실제로 부르는 진입함수 — 점검, 개선요구사항 처리, 오늘의 요약 생성을 순서대로 실행한다.
+ * 새벽 트리거가 실제로 부르는 진입함수 — 점검, 개선요구사항 처리 등을 순서대로 실행한다([2026.10.20] 오늘의 요약 생성은 중단).
  */
 function runNightlyChiefManager() {
   try { runNightlySystemAudit(); } catch (err) { console.error('야간 점검 실패: ' + err.message); }
   try { processImprovementRequests(); } catch (err) { console.error('개선요구사항 처리 실패: ' + err.message); }
   // [2026.10.09] 템플릿 점검(Sonnet)은 야간 자동 실행을 멈추고 "템플릿다듬기" 화면 버튼으로만 돈다 —
   // 세무사님 결정(시스템 루틴은 토큰 0). 함수·버튼은 그대로 있다.
-  try { generateDailyBriefing_(); } catch (err) { console.error('오늘의 요약 생성 실패: ' + err.message); }
+  // [2026.10.20] 세무사님 "중복이면 정리하자" — '오늘의 요약.md'(기본 작업폴더) 새벽 생성을 멈춘다. 내용(경과지 마감 현황·어젯밤
+  // 자기점검 한 줄·은퇴한 admin 안내)이 대시보드 "📋 사건 경과·마감 현황" 카드·"시스템 자기점검" 줄과 겹쳤다. 함수(generateDailyBriefing_)는 남겨 둠.
   // [2026.09 신규] 사건 폴더 안의 현금영수증 파일을 매일 밤 훑어 자문내역에 자동 기록.
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
   // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
@@ -17040,10 +17045,25 @@ function handleGetNightlyStatus(body) {
         ok: !r.candidateCount,
         failLabel: '개선 후보 ' + r.candidateCount + '건',
         date: String(r.generatedAt || '').slice(0, 10),
-        message: r.candidateCount ? (r.headline || []).slice(0, 4).join('\n') + '\n→ AI 탭 🛠(웹 Claude Code)가 고쳐 깃허브에 올림, 매주 월요일 아침 자동 — 승인 후 설정 🐞 카드 📥 수정 반영' : '최근 7일 개선할 거리 없음'
+        message: r.candidateCount ? (r.headline || []).slice(0, 4).join('\n') + '\n→ AI 탭 🛠(웹 Claude Code)가 고쳐 깃허브에 올림, 매주 월요일 아침 자동 — 설정 🐞 카드 🗳 승인 대기 수정안에서 승인·반영' : '최근 7일 개선할 거리 없음'
       });
     }
   } catch (e) { /* 보고서가 아직 없으면 생략 */ }
+
+  // [2026.10.20] 승인 대기 수정안 — 루틴이 올린 수정안이 깃허브에만 있어 아무도 모른 채 남던 것(10/18 #1)을 대시보드에 띄운다.
+  // 10분 기억(gh_prList_ 캐시)을 써서 대시보드를 열 때마다 깃허브를 부르지 않는다. 깃허브를 못 읽으면 이 줄은 생략.
+  try {
+    const pl = gh_prList_(false);
+    if (pl && pl.success) {
+      items.push({
+        label: '🗳 승인 대기 수정안',
+        ok: !pl.count,
+        failLabel: '승인 대기 ' + pl.count + '건',
+        date: String(pl.at || '').slice(0, 10),
+        message: pl.count ? pl.prs.map(function (p) { return '#' + p.number + ' ' + p.title + ' (' + p.at + ')'; }).join('\n') + '\n→ 설정 🐞 카드 🗳 승인 대기 수정안에서 설명을 보고 ✅ 승인·반영 또는 ✖ 반려' : '승인을 기다리는 수정안 없음'
+      });
+    }
+  } catch (e) { /* 깃허브 확인 실패는 대시보드를 막지 않음 */ }
 
   // [2026.10.13] 환경 감시(법령·예규판례·연례 고시·기술) — 경고·새 개정이 있으면 빨간 표시
   try {
@@ -17082,24 +17102,7 @@ function handleGetNightlyStatus(body) {
     message: tpl ? tpl.content.slice(0, 300) : '야간 자동 실행을 멈췄습니다(AI 비용 절약) — 필요할 때 템플릿다듬기 화면에서 실행하세요.'
   });
 
-  let briefingOk = false, briefingMsg = '파일이 아직 없습니다.', briefingDate = null;
-  try {
-    const defaultFolder = getDefaultFolder();
-    if (defaultFolder) {
-      const iter = defaultFolder.getFilesByName('오늘의 요약.md');
-      if (iter.hasNext()) {
-        const f = iter.next();
-        briefingDate = Utilities.formatDate(f.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd');
-        briefingOk = (briefingDate === todayStr);
-        briefingMsg = briefingOk
-          ? f.getBlob().getDataAsString('UTF-8').slice(0, 300)
-          : ('마지막 갱신일: ' + briefingDate + ' (오늘 아직 안 바뀜)');
-      }
-    }
-  } catch (err) {
-    briefingMsg = '확인 중 오류: ' + err.message;
-  }
-  items.push({ label: '오늘의 요약', ok: briefingOk, date: briefingDate, message: briefingMsg });
+  // [2026.10.20] '오늘의 요약' 줄 제거 — 새벽 생성을 멈췄다(runNightlyChiefManager 참고). 마감은 대시보드 "⏰ 마감임박 작업"(사건 기록 법정일)에서 본다 — 같은 날 "📋 사건 경과·마감 현황" 카드도 낡은 경과지 자료라 뺐다.
 
   return { items: items, allOk: items.every(function (i) { return i.ok; }) };
 }
@@ -37420,6 +37423,95 @@ function gh_fetchJson_(url) {
   const r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'netax-job' } });
   if (r.getResponseCode() !== 200) throw new Error('깃허브 응답 ' + r.getResponseCode() + (r.getResponseCode() === 403 ? ' (잠시 뒤 다시 — 깃허브 조회 한도)' : ''));
   return JSON.parse(r.getContentText());
+}
+// ============================================================
+// [2026.10.20] 승인 대기 수정안 — 세무사님 "당연히 그렇게 고쳐주어야지 무슨 설계를 그렇게 한 거냐?"
+// 주간 루틴이 올린 수정안(PR)을 깃허브 사이트에 직접 가야만 볼 수 있어서, 10/18 수정안이 아무도 모른 채 남아 있었다.
+// job 🐞 카드에서 목록·설명·바뀐 파일을 보고 ✅ 승인·반영(Merge → 📥) / ✖ 반려(닫기)까지 하게 한다.
+// 승인(Merge)·반려에는 깃허브 쓰기 열쇠가 필요하다 — 세무사님이 깃허브에서 만든 열쇠를 🔑로 넣으면 스크립트 속성 GH_TOKEN에 둔다
+// (이 저장소 하나만, 권한 Contents·Pull requests 쓰기). 열쇠가 있으면 목록 조회도 열쇠로 해서 깃허브 조회 한도(403)를 피한다.
+// ============================================================
+function gh_token_() { return PropertiesService.getScriptProperties().getProperty('GH_TOKEN') || ''; }
+function gh_api_(method, path, payload) {
+  const headers = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'netax-job', 'X-GitHub-Api-Version': '2022-11-28' };
+  const tok = gh_token_();
+  if (tok) headers.Authorization = 'Bearer ' + tok;
+  const opt = { method: method, muteHttpExceptions: true, headers: headers };
+  if (payload) { opt.contentType = 'application/json'; opt.payload = JSON.stringify(payload); }
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO_ + path, opt);
+  const code = r.getResponseCode();
+  let data = null;
+  try { data = JSON.parse(r.getContentText() || 'null'); } catch (e) {}
+  return { code: code, data: data, hasToken: !!tok };
+}
+function gh_apiError_(res) {
+  const msg = res.data && res.data.message ? String(res.data.message) : '';
+  if (res.code === 401) return '깃허브 열쇠가 틀렸거나 기한이 지났습니다 — 🔑 깃허브 열쇠를 다시 넣어 주세요.';
+  if (res.code === 403 && !res.hasToken) return '깃허브 조회 한도에 걸렸습니다 — 🔑 깃허브 열쇠를 넣으면 한도 없이 봅니다.';
+  if (res.code === 403 || res.code === 404) return '깃허브가 거절했습니다(' + res.code + ') — 열쇠 권한(이 저장소의 Contents·Pull requests 쓰기)을 확인해 주세요.' + (msg ? ' ' + msg : '');
+  if (res.code === 405 || res.code === 409) return '깃허브에서 합칠 수 없는 상태입니다(' + res.code + ')' + (msg ? ': ' + msg : '') + ' — 다음 루틴이 새로 고쳐 올리도록 반려해 주세요.';
+  return '깃허브 응답 ' + res.code + (msg ? ': ' + msg : '');
+}
+// 열린 수정안 목록(설명·바뀐 파일 포함). 대시보드 알림용으로 10분 기억한다(fresh면 새로 읽음).
+function gh_prList_(fresh) {
+  const cache = CacheService.getScriptCache();
+  if (!fresh) { const c = cache.get('gh_pr_list'); if (c) { try { return JSON.parse(c); } catch (e) {} } }
+  try {
+    const res = gh_api_('get', '/pulls?state=open&per_page=20');
+    if (res.code !== 200 || !Array.isArray(res.data)) return { success: false, error: gh_apiError_(res), hasToken: res.hasToken };
+    const prs = res.data.map(function (p) {
+      let files = [];
+      try {
+        const f = gh_api_('get', '/pulls/' + p.number + '/files?per_page=50');
+        if (f.code === 200 && Array.isArray(f.data)) files = f.data.map(function (x) { return x.filename + ' (+' + x.additions + ' -' + x.deletions + ')'; });
+      } catch (e) {}
+      return { number: p.number, title: p.title, body: String(p.body || '').slice(0, 4000), at: String(p.created_at || '').slice(0, 10),
+        branch: p.head && p.head.ref, url: p.html_url, files: files };
+    });
+    const out = { success: true, count: prs.length, prs: prs, hasToken: res.hasToken, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') };
+    try { cache.put('gh_pr_list', JSON.stringify(out).slice(0, 90000), 600); } catch (e) {}
+    return out;
+  } catch (e) { return { success: false, error: e.message }; }
+}
+// ✅ 승인 = 깃허브에서 합치기(Merge). 화면(app/)은 합치는 순간 깃허브 페이지로 바로 바뀌고, 서버는 이어서 📥(gh_deployApply_)로 바뀐다.
+function gh_prMerge_(body) {
+  const n = Number(body.number);
+  if (!(n > 0)) return { success: false, error: '수정안 번호가 없습니다.' };
+  if (!gh_token_()) return { success: false, needToken: true, error: '승인하려면 깃허브 열쇠가 필요합니다 — 🔑 깃허브 열쇠를 먼저 넣어 주세요.' };
+  const pr = gh_api_('get', '/pulls/' + n);
+  if (pr.code !== 200 || !pr.data) return { success: false, error: gh_apiError_(pr) };
+  if (pr.data.state !== 'open') return { success: false, error: '이미 닫힌 수정안입니다.' };
+  if (pr.data.mergeable === false) return { success: false, error: '이 수정안은 그사이 바뀐 코드와 겹쳐서 그대로 합칠 수 없습니다 — 반려하면 다음 루틴이 새로 고쳐 올립니다.' };
+  const m = gh_api_('put', '/pulls/' + n + '/merge', { merge_method: 'merge', commit_title: '[승인] ' + pr.data.title + ' (#' + n + ')' });
+  if (m.code !== 200 || !m.data || !m.data.merged) return { success: false, error: gh_apiError_(m) };
+  try { CacheService.getScriptCache().remove('gh_pr_list'); } catch (e) {}
+  return { success: true, sha: m.data.sha, title: pr.data.title };
+}
+// ✖ 반려 = 수정안 닫기(사유를 댓글로 남김 — 다음 루틴이 읽고 다르게 고치도록)
+function gh_prClose_(body) {
+  const n = Number(body.number);
+  if (!(n > 0)) return { success: false, error: '수정안 번호가 없습니다.' };
+  if (!gh_token_()) return { success: false, needToken: true, error: '반려하려면 깃허브 열쇠가 필요합니다 — 🔑 깃허브 열쇠를 먼저 넣어 주세요.' };
+  const reason = String(body.reason || '').trim().slice(0, 2000);
+  if (reason) gh_api_('post', '/issues/' + n + '/comments', { body: '세무사님 반려 사유: ' + reason });
+  const c = gh_api_('patch', '/pulls/' + n, { state: 'closed' });
+  if (c.code !== 200) return { success: false, error: gh_apiError_(c) };
+  try { CacheService.getScriptCache().remove('gh_pr_list'); } catch (e) {}
+  return { success: true };
+}
+// 🔑 열쇠 넣기 — 이 저장소를 실제로 읽을 수 있는지 확인한 뒤에만 저장(빈 값이면 지움)
+function gh_setToken_(body) {
+  const p = PropertiesService.getScriptProperties();
+  const t = String(body.token || '').trim();
+  if (!t) { p.deleteProperty('GH_TOKEN'); return { success: true, cleared: true }; }
+  if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(t)) return { success: false, error: '깃허브 열쇠 모양이 아닙니다(github_pat_… 로 시작).' };
+  const r = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO_, { muteHttpExceptions: true, headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'netax-job', 'Authorization': 'Bearer ' + t } });
+  if (r.getResponseCode() !== 200) return { success: false, error: '이 열쇠로 저장소를 열지 못했습니다(' + r.getResponseCode() + ') — 저장소 NETAX_Job을 골랐는지 확인해 주세요.' };
+  let perm = null;
+  try { perm = JSON.parse(r.getContentText()).permissions || null; } catch (e) {}
+  p.setProperty('GH_TOKEN', t);
+  try { CacheService.getScriptCache().remove('gh_pr_list'); } catch (e) {}
+  return { success: true, canWrite: !perm || !!perm.push };
 }
 // 깃허브 API(api.github.com)는 로그인 없이 부르면 구글 서버처럼 여럿이 같이 쓰는 주소에서 금방 "조회 한도 초과(403)"가 난다
 // (2026-10-09 첫 시험에서 바로 발생). 그래서 API 대신 공개 "최근 커밋 피드"(commits/main.atom)로 최신 커밋을 알아낸다.

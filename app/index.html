@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:58 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 03:48 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1064,11 +1064,13 @@
     <div class="card">
       <h3>📧 안읽은 메일
         <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 메일 열기</a>
+        <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
+        <button type="button" id="dashEmailsReadAll" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; margin-right:6px;">☑ 전체 읽음</button>
       </h3>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09 신규] "매일 밤 자동으로 뭘 하는지 내가 어떻게 아느냐"는 지적에 따라 추가 —
-         야간 자동점검(시스템 자기점검/템플릿 점검/오늘의 요약)이 실제로 어젯밤 돌았는지,
+         야간 자동점검(시스템 자기점검/템플릿 점검 등 — [2026.10.20] 오늘의 요약은 중복이라 뺌)이 실제로 어젯밤 돌았는지,
          결과가 뭐였는지를 대시보드에서 바로 확인한다. -->
     <div class="card">
       <h3>🌙 야간 자동점검 상태</h3>
@@ -1079,15 +1081,8 @@
       <h3>🤝 새 기능 · 개발자 소통 · AI 회의</h3>
       <div id="dashFedStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
-    <!-- [2026.09 신규] 증빙관리에 폴더별 "경과지" 기록판을 새로 만들면서 발견한 빈틈 — 각
-         폴더 안에서만 볼 수 있고 전체를 모아 보는 곳이 없으면, 마감일 넣은 항목을 깜빡 잊고
-         지나칠 수 있다(work.netax.kr의 "현황판"이 원래 이 역할을 했음). 폴더를 하나하나
-         열어보지 않아도 여기서 기한 지난/오늘/다가오는 항목을 한눈에 보고 클릭해서 바로
-         그 폴더로 이동할 수 있게 한다. -->
-    <div class="card">
-      <h3>📋 사건 경과·마감 현황</h3>
-      <div id="dashCaseLog"><div class="spinner">불러오는 중…</div></div>
-    </div>
+    <!-- [2026.10.20] "📋 사건 경과·마감 현황" 카드 제거 — 세무사님 "사건경과 마감현황도 실제 내용과 다른데"·"중복이면 정리하자".
+         옛 증빙관리 경과지 모음(_NX_전체일지.json, 9/12 이후 갱신 없음)을 읽어 실제 사건 진행(사건 기록)과 달랐다 — 마감은 "⏰ 마감임박 작업" 카드가 본다. -->
   </div>
 </div>
 <script>
@@ -1103,7 +1098,6 @@
     loadDashEmails_();
     loadDashTasks_();
     loadDashSubtasks_();
-    loadDashCaseLog_();
     loadDashNightlyStatus_();
     loadDashFed_();
     dashMeasureLoad_();
@@ -1418,6 +1412,27 @@
     }).catch(function(err){ nxAlert_('읽음 처리 실패: ' + err.message); cb.disabled = false; cb.checked = false; });
   });
 
+  // [2026.10.20] 전체 읽음 — 지금 목록에 보이는(아직 체크 안 한) 메일을 한꺼번에 읽음 처리하고,
+  // 남은 안읽은 메일이 있으면 다음 묶음이 보이도록 목록을 다시 불러온다.
+  document.getElementById('dashEmailsReadAll').addEventListener('click', function(){
+    var btn = this;
+    var cbs = Array.prototype.slice.call(document.querySelectorAll('#dashEmails .dash-email-read-cb'))
+      .filter(function(cb){ return !cb.disabled && cb.getAttribute('data-id'); });
+    if (!cbs.length) return;
+    btn.disabled = true;
+    cbs.forEach(function(cb){ cb.checked = true; cb.disabled = true; });
+    var fails = 0;
+    Promise.all(cbs.map(function(cb){
+      return callGas('mark_email_read', { threadId: cb.getAttribute('data-id') })
+        .then(function(res){ if (res.error) fails++; })
+        .catch(function(){ fails++; });
+    })).then(function(){
+      btn.disabled = false;
+      if (fails) nxAlert_('읽음 처리 실패 ' + fails + '통 — 목록을 다시 불러옵니다.');
+      loadDashEmails_();
+    });
+  });
+
   // [2026.09 신규] 구글 태스크(할일) — 종전 챗봇의 "할일 뭐있어"/"할일 추가해줘" 기능을
   // 대시보드 카드로 옮김. Tasks API가 이 프로젝트에서 고급서비스로 켜져있지 않으면
   // toolLookupGoogleTasks가 안내 메시지가 담긴 error를 돌려준다(그대로 화면에 표시).
@@ -1585,73 +1600,9 @@
     }
   });
 
-  // [2026.09 신규] 증빙관리(docs.html)의 폴더별 "경과지" 기록을 전부 모아 기한 지남/오늘/
-  // 다가오는 순으로 보여준다. syncGlobalLog(경과지 저장 시마다 자동 호출)가 쌓아둔 중앙
-  // 인덱스를 getGlobalLog로 그대로 읽는다 — 폴더를 하나하나 열어볼 필요가 없다.
-  function loadDashCaseLog_(){
-    callGas('getGlobalLog', {}).then(function(res){
-      var box = document.getElementById('dashCaseLog');
-      if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
-      var entries = res.entries || [];
-      if (!entries.length){ box.innerHTML = '<div class="empty-row">아직 어느 사건 폴더에도 경과지 기록이 없습니다.</div>'; return; }
-      var todayStr = new Date().toISOString().slice(0, 10);
-      var withDue = entries.filter(function(e){ return e.dueDate; });
-      var overdue = withDue.filter(function(e){ return e.dueDate < todayStr; }).sort(function(a,b){ return a.dueDate.localeCompare(b.dueDate); });
-      var dueToday = withDue.filter(function(e){ return e.dueDate === todayStr; });
-      var upcoming = withDue.filter(function(e){ return e.dueDate > todayStr; }).sort(function(a,b){ return a.dueDate.localeCompare(b.dueDate); }).slice(0, 8);
+  // [2026.10.20] 경과지 모음 표 불러오기·클릭 처리 제거 — 카드를 뺐다(위 마크업 주석 참고). getGlobalLog·syncGlobalLog는 서버에 그대로.
 
-      function rowHtml(e, showDue){
-        var due = (showDue && e.dueDate) ? ' <span style="color:#a83232; font-weight:600;">(📌 ' + esc(e.dueDate) + ')</span>' : '';
-        var pathStr = (e.path || []).join(' / ');
-        // [2026.09 버그수정] 날짜 열에 줄바꿈 방지가 없어서 표 폭이 좁아지면 "2026-08-07"이
-        // "2026-08-\n07"처럼 하이픈에서 그냥 잘려 두 줄로 쪼개져 보였다 — 날짜만 한 줄 고정.
-        // [2026.09 버그수정] data-path(이름 경로)만 있으면 사건명이 바뀌어 폴더명이 자동
-        // 갱신된 뒤엔 그 경로가 더 이상 존재하지 않아 이동이 실패한다 — 폴더ID가 있으면
-        // 그걸 우선 쓰고, 옛 기록(폴더ID 없음)만 이름 경로로 폴백.
-        // [2026.10.18 탭연결 4번] 바로 위 "마감임박 작업"은 처리개요로, 이 표는 증빙관리로 가서 헷갈렸다 — 줄을 누르면 똑같이 그 사건 처리개요로
-        // 가고(사건 폴더의 기록일 때), 경과지가 적힌 폴더를 보려면 오른쪽 📁을 누른다.
-        return '<tr data-path=\'' + esc(JSON.stringify(e.path || [])) + '\' data-folder-id="' + esc(e.folderId || '') + '" style="cursor:pointer;" title="눌러서 이 사건 처리개요로(📁는 폴더)">'
-          + '<td style="white-space:nowrap;">' + esc(e.date) + due + '</td>'
-          + '<td><span style="color:var(--sub); font-size:11.5px;">' + esc(pathStr) + '</span><br>' + esc(e.text) + '</td>'
-          + '<td style="width:34px; text-align:center;"><button type="button" class="ghost-btn" data-open-folder="1" title="경과지가 적힌 폴더 열기(증빙확보)" style="padding:1px 6px;">📁</button></td></tr>';
-      }
-
-      var sections = [];
-      if (overdue.length) sections.push('<div style="font-weight:700; color:#a83232; margin:6px 0 2px;">⏰ 기한 지남 (' + overdue.length + ')</div><table class="list-table">' + overdue.map(function(e){ return rowHtml(e, false); }).join('') + '</table>');
-      if (dueToday.length) sections.push('<div style="font-weight:700; margin:6px 0 2px;">📌 오늘 마감 (' + dueToday.length + ')</div><table class="list-table">' + dueToday.map(function(e){ return rowHtml(e, false); }).join('') + '</table>');
-      if (upcoming.length) sections.push('<div style="font-weight:700; margin:6px 0 2px;">다가오는 마감</div><table class="list-table">' + upcoming.map(function(e){ return rowHtml(e, true); }).join('') + '</table>');
-      if (!sections.length){
-        sections.push('<div class="empty-row">기한이 지났거나 다가오는 항목은 없습니다.</div>');
-      }
-      var recent = entries.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).slice(0, 5);
-      sections.push('<div style="font-weight:700; margin:10px 0 2px;">최근 기록</div><table class="list-table">' + recent.map(function(e){ return rowHtml(e, true); }).join('') + '</table>');
-      box.innerHTML = sections.join('');
-    }).catch(function(e){ document.getElementById('dashCaseLog').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
-  }
-  document.getElementById('dashCaseLog').addEventListener('click', function(e){
-    var tr = e.target.closest('tr[data-path]');
-    if (!tr) return;
-    var folderId = tr.getAttribute('data-folder-id');
-    var openFolder_ = function(){ dashOpenCaseLogFolder_(tr, folderId); };
-    if (e.target.closest('[data-open-folder]') || !folderId){ openFolder_(); return; }
-    // 그 폴더가 어느 사건의 폴더면 처리개요로, 아니면(사건 하위폴더·사건 밖 폴더) 예전처럼 증빙확보로
-    callGas('work_get_cases', {}).then(function(res){
-      var c = ((res && res.cases) || []).filter(function(x){ return x.폴더ID && x.폴더ID === folderId; })[0];
-      if (c && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); else openFolder_();
-    }).catch(openFolder_);
-  });
-  function dashOpenCaseLogFolder_(tr, folderId){
-    if (typeof goToView_ === 'function') goToView_('docs');
-    if (folderId && typeof docsNavigateById_ === 'function') {
-      docsNavigateById_(folderId);
-      return;
-    }
-    var path;
-    try { path = JSON.parse(tr.getAttribute('data-path')); } catch(err){ return; }
-    if (typeof docsNavigate === 'function') docsNavigate(path);
-  }
-
-  // [2026.09 신규] 야간 자동점검(시스템 자기점검/템플릿 점검/오늘의 요약)이 어젯밤 실제로
+  // [2026.09 신규] 야간 자동점검(시스템 자기점검/템플릿 점검 등 — [2026.10.20] 오늘의 요약은 중복이라 뺌)이 어젯밤 실제로
   // 돌았는지 확인 — 트리거 자체가 통째로 실패하면 오늘 날짜 파일이 하나도 안 생기므로,
   // 그 사실만으로도 "어젯밤 안 돌았다"를 알 수 있다(구글 Apps Script 트리거 화면까지 직접
   // 안 들어가도 여기서 바로 보임).
@@ -48463,6 +48414,8 @@ function goToReportWriter_(caseId, opts){
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
+        <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">🗳 승인 대기 수정안</button>
+        <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">🔑 깃허브 열쇠</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
         <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
@@ -49025,7 +48978,7 @@ function goToReportWriter_(caseId, opts){
         if (!r){ bugList.textContent = '보고서를 받지 못했습니다.'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.candidateCount ? '🛠 개선 후보 ' + r.candidateCount + '건' : '✅ 개선할 거리 없음') + '</b> · ' + escapeHtml(r.period + ' · ' + r.generatedAt) + '</div>'
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
-          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 깃허브 수정안 승인(Merge) → 📥 수정 반영</div>';
+          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 🗳 승인 대기 수정안에서 ✅ 승인·반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     // [2026.10.09 토큰0] ✍ 개선요구사항 — 총괄관리자 폴더 개선요구사항.md에 덧붙이고 개선 후보 보고서에 바로 올린다(0원)
@@ -49069,6 +49022,67 @@ function goToReportWriter_(caseId, opts){
           }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
         });
       }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.20] 🗳 승인 대기 수정안 — 깃허브 사이트에 가지 않고 여기서 보고 승인·반려(Code.js gh_prList_/gh_prMerge_/gh_prClose_)
+    function loadGhPrs_(){
+      bugList.textContent = '🗳 깃허브 수정안 확인 중…';
+      callGas('gh_pr_list', { fresh: true }).then(function(r){
+        if (!r || !r.success){ bugList.textContent = '수정안을 확인하지 못했습니다: ' + ((r && r.error) || ''); return; }
+        if (!r.count){ bugList.innerHTML = '<b>✅ 승인 대기 수정안이 없습니다.</b>'; return; }
+        bugList.innerHTML = '<div style="margin-bottom:4px;"><b>🗳 승인 대기 수정안 ' + r.count + '건</b>'
+          + (r.hasToken ? '' : ' · <span style="color:var(--danger,#c0392b);">승인·반려하려면 먼저 🔑 깃허브 열쇠를 넣어 주세요</span>') + '</div>'
+          + r.prs.map(function(p){
+            return '<div style="padding:6px 0; border-top:1px solid var(--line);">'
+              + '<div><b>#' + p.number + ' ' + escapeHtml(p.title) + '</b> · ' + escapeHtml(p.at) + '</div>'
+              + '<details style="margin:4px 0;"><summary>설명·바뀐 파일 보기</summary>'
+              + '<div style="white-space:pre-wrap; margin:4px 0;">' + escapeHtml(p.body || '(설명 없음)') + '</div>'
+              + '<div style="color:var(--sub);">바뀐 파일: ' + escapeHtml((p.files || []).join(', ') || '(알 수 없음)') + '</div>'
+              + '<a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener">깃허브에서 자세히</a></details>'
+              + '<div style="display:flex; gap:6px; flex-wrap:wrap;">'
+              + '<button type="button" class="ghost-btn st-pr-merge" data-n="' + p.number + '" data-title="' + escapeHtml(p.title) + '">✅ 승인·반영</button>'
+              + '<button type="button" class="ghost-btn st-pr-close" data-n="' + p.number + '" data-title="' + escapeHtml(p.title) + '">✖ 반려</button>'
+              + '</div></div>';
+          }).join('');
+      }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    }
+    document.getElementById('stBtnGhPrs').addEventListener('click', loadGhPrs_);
+    bugList.addEventListener('click', function(e){
+      var mb = e.target.closest('.st-pr-merge'), cb = e.target.closest('.st-pr-close');
+      if (mb){
+        var n = mb.getAttribute('data-n');
+        nxConfirm_('✅ 수정안 #' + n + ' "' + mb.getAttribute('data-title') + '"을 승인할까요?\n\n승인하면 깃허브에 합쳐지고, 이어서 📥 수정 반영으로 job이 새 버전으로 바뀝니다. 이상하면 ↩ 되돌리기로 돌아갈 수 있습니다.').then(function(ok){
+          if (!ok) return;
+          bugList.textContent = '✅ 승인(깃허브 합치기) 중…';
+          callGas('gh_pr_merge', { number: Number(n) }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '승인하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            bugList.textContent = '✅ 승인 완료 — 깃허브 반영을 기다렸다가 📥 수정 반영으로 넘어갑니다…';
+            // 깃허브 최근 커밋 피드가 합친 커밋을 보여 주기까지 몇 초 걸린다
+            setTimeout(function(){ document.getElementById('stBtnGhDeploy').click(); }, 5000);
+          }).catch(function(err){ bugList.textContent = '승인 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+        return;
+      }
+      if (cb){
+        var cn = cb.getAttribute('data-n');
+        nxPrompt_('✖ 수정안 #' + cn + ' "' + cb.getAttribute('data-title') + '"을 반려합니다.\n반려 사유를 적어 주시면 다음 루틴이 읽고 다르게 고칩니다(비워도 됨).', '').then(function(reason){
+          if (reason === null || reason === undefined || reason === false) return;
+          bugList.textContent = '✖ 반려 중…';
+          callGas('gh_pr_close', { number: Number(cn), reason: String(reason || '') }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '반려하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            loadGhPrs_();
+          }).catch(function(err){ bugList.textContent = '반려 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+      }
+    });
+    document.getElementById('stBtnGhToken').addEventListener('click', function(){
+      nxPrompt_('🔑 깃허브 열쇠(github_pat_…로 시작)를 붙여 넣어 주세요.\n저장소 NETAX_Job 하나만, 권한은 Contents·Pull requests "읽기와 쓰기"로 만든 열쇠여야 합니다.\n비워서 확인을 누르면 저장된 열쇠를 지웁니다.', '').then(function(tok){
+        if (tok === null || tok === undefined || tok === false) return;
+        bugList.textContent = '🔑 열쇠 확인 중…';
+        callGas('gh_set_token', { token: String(tok || '') }).then(function(r){
+          if (!r || !r.success){ bugList.textContent = '열쇠를 저장하지 못했습니다: ' + ((r && r.error) || ''); return; }
+          bugList.textContent = r.cleared ? '🔑 저장된 열쇠를 지웠습니다.' : (r.canWrite ? '✅ 열쇠를 저장했습니다 — 이제 🗳 승인 대기 수정안에서 승인·반려할 수 있습니다.' : '⚠ 열쇠는 저장했지만 쓰기 권한이 없어 보입니다 — Contents·Pull requests를 "읽기와 쓰기"로 다시 만들어 주세요.');
+        }).catch(function(err){ bugList.textContent = '열쇠 저장 중 오류: ' + (err && err.message ? err.message : err); });
+      });
     });
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){
@@ -49143,7 +49157,6 @@ function goToReportWriter_(caseId, opts){
         <li><b>마감이 임박한 사건을 바로 처리하려면</b>: "⏰ 마감임박 작업" 표에서 그 줄을 누릅니다 → 그 사건의 처리개요 화면으로 이동합니다(빨간 글씨는 이미 기한이 지난 사건입니다).</li>
         <li><b>안 읽은 메일을 읽음 처리하려면</b>: "📧 안읽은 메일" 목록에서 그 메일 앞 체크박스를 누릅니다.</li>
         <li><b>어젯밤 자동점검이 잘 됐는지 확인하려면</b>: "🌙 야간 자동점검 상태" 카드를 봅니다 — ✅면 정상, ⚠면 그날 밤 자동작업이 실패한 것이니 Apps Script 실행기록을 확인해야 합니다.</li>
-        <li><b>사건별 진행 기록·마감을 한눈에 보려면</b>: "📋 사건 경과·마감 현황" 카드에서 원하는 줄을 누르면 그 사건의 증빙확보 폴더로 이동합니다.</li>
       </ul>
     </section>
 
@@ -49232,7 +49245,7 @@ function goToReportWriter_(caseId, opts){
         <li><b>파일 이름을 바꾸려면</b>: 파일 하나만 체크한 뒤 ✏️(이름변경)을 누릅니다.</li>
         <li><b>PDF를 합치거나 일부만 뽑으려면</b>: 📑(PDF관리)를 누릅니다.</li>
         <li><b>파일 내용을 확인하려면</b>: 파일을 누릅니다(이미지·PDF는 바로 보기, 엑셀은 표로, 텍스트 파일은 화면에서 바로 고쳐 저장도 가능합니다).</li>
-        <li><b>진행 경과를 기록해두려면</b>: 화면에 같이 뜨는 경과지 패널에 항목을 추가합니다(마감일을 넣으면 캘린더·대시보드에도 자동으로 나타납니다).</li>
+        <li><b>진행 경과를 기록해두려면</b>: 화면에 같이 뜨는 경과지 패널에 항목을 추가합니다(마감일을 넣으면 구글 캘린더에도 자동으로 나타납니다 — 대시보드 마감은 사건 기록의 법정일 기준 "⏰ 마감임박 작업"에 나옵니다).</li>
       </ul>
     </section>
 
@@ -49408,10 +49421,11 @@ function goToReportWriter_(caseId, opts){
               </ul>
             </li>
             <li><b>결과 확인</b>: 대시보드 "야간 자동작업"의 🛰️ 줄과 개선 후보 보고서에 실립니다.</li>
-            <li><b>고치는 흐름</b>: 매주 웹 Claude Code 루틴이 영향을 분석해 엔진·자가점검 사례·문단 라이브러리 수정안(PR)을 올립니다. 막힌 기능 목록(docs/blocked-capabilities.md)과 새 기술을 대조해 대안도 제안합니다. 세무사님이 Merge하신 뒤 📥로 반영됩니다.</li>
+            <li><b>고치는 흐름</b>: 매주 웹 Claude Code 루틴이 영향을 분석해 엔진·자가점검 사례·문단 라이브러리 수정안(PR)을 올립니다. 막힌 기능 목록(docs/blocked-capabilities.md)과 새 기술을 대조해 대안도 제안합니다. 세무사님이 🐞 카드 🗳 승인 대기 수정안에서 ✅ 승인·반영하시면 반영됩니다.</li>
           </ul>
         </li>
-        <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 대시보드 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보 보기로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로, 또는 AI 탭 🛠 버튼 → 열린 화면에서 "지금 실행"을 누르면 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안 설명을 보시고 깃허브에서 <b>Merge</b>(승인)하신 뒤, 🐞 카드의 <b>📥 수정 반영</b>을 누르면 job이 스스로 새 버전으로 바뀝니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
+        <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 대시보드 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보 보기로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로, 또는 AI 탭 🛠 버튼 → 열린 화면에서 "지금 실행"을 누르면 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안이 올라오면 대시보드 "야간 자동작업"에 <b>🗳 승인 대기 N건</b>으로 뜹니다. 🐞 카드의 <b>🗳 승인 대기 수정안</b>에서 설명·바뀐 파일을 보시고 <b>✅ 승인·반영</b>을 누르면 깃허브에 합친 뒤 이어서 📥 수정 반영까지 해서 job이 새 버전으로 바뀝니다(깃허브 사이트에 가지 않아도 됨). 마음에 안 들면 <b>✖ 반려</b> — 적어 주신 사유를 다음 루틴이 읽고 다르게 고칩니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
+        <li><b>🔑 깃허브 열쇠(처음 한 번)</b>: 승인·반려에는 깃허브 쓰기 열쇠가 필요합니다. 깃허브(github.com) 로그인 → 오른쪽 위 사진 → Settings → 맨 아래 Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → Repository access에서 <b>NETAX_Job 하나만</b> 고르고, Permissions에서 <b>Contents</b>·<b>Pull requests</b>를 "Read and write"로 → 만든 열쇠(github_pat_…)를 복사해 🐞 카드 <b>🔑 깃허브 열쇠</b>에 붙여 넣습니다. 기한이 지나면 같은 방법으로 새로 만들어 넣으면 됩니다.</li>
         <li><b>🤝 AI 회의·개발자 소통(2026.10.19 재편)</b>: 설정 → <b>🤝 AI 회의 · 개발자 소통</b> 카드. 위원 AI(Gemini API, 무료 등급)가 안건마다 답하고 회장(Claude)이 결론을 내며, 결론이 안 난 것과 돈 드는 결정만 세무사님께 올라옵니다. ① <b>⚖️ 회의 기록(법령)</b> — 판단 대기 안건마다 위원 답·근거(법제처 실재 ✔/⚠)·회장 결론·결정(법령정보 탭 "🤝 판단 대기"와 같은 표). ② <b>🙋 세무사님 결정 필요</b> — 회장이 결론을 못 낸 안건만. ③ <b>🛠 시스템 안건</b> — 개선 후보 보고서(반복 오류·비용·막힌 기능·요청)를 주간 정비 루틴이 회장으로 처리(고침 작업으로). ④ <b>📝 요청 상태</b> — ✍로 적은 개선요구사항이 반영되면 👍 잘 됨 / ↩ 다시 고쳐 주세요. 요청 글에 "긴급"이 있으면 대시보드에 🚨. ⑤ <b>❓ 개발자 질문</b>. ⑥ <b>👥 위원 상태</b> — Gemini API 키·오늘 사용량, OpenRouter 칸(키를 넣으면 위원이 늘어남). 고객 자료는 위원에게 보내지 않습니다(자동 차단). 세액계산 <b>🔍 2중 검증</b>·대시보드 <b>🤝 새 기능</b>·AI의 "기능 부족 신고"는 그대로입니다. (무료 AI 3곳 다수결·AI 자문단·웹 AI 붙여넣기는 2026-10-19 삭제)</li>
         <li><b>🩹 자가치유 장치(2026.10.14, 모두 AI 비용 0)</b>: ① <b>계산 자가점검</b> — 매일 밤 양도·증여·상속 51개 사례(법조문으로 손계산한 정답, 근거 조문 포함)를 계산엔진에 돌려 하나라도 어긋나면 개선 후보에 🩺로 올립니다. ② <b>서류 정리 회귀시험</b> — 서류 종류별 표본 35건을 밤마다 8건씩, 일주일에 한 바퀴 다시 정리해 예전과 다르게 읽으면 🧾로 올립니다(고객 금액은 저장하지 않고 "숫자 묶음의 지문"만 비교). ③ <b>고친 값 = 학습 신호</b> — 세액계산 자동채우기(규칙·AI)가 넣은 값을 세무사님이 고치면 "어느 화면·어느 칸을 고쳤는지"만 기록하고, 같은 칸이 반복되면 ✏️로 올립니다. ④ <b>배포 직후 자동 점검</b> — 📥 수정 반영 직후 사건·고객·예약 목록, 계산엔진, 서류 정리 견본을 바로 돌려 보고, 이상하면 🐞 카드와 개선 후보에 🚨로 알립니다. ⑤ <b>↩ 되돌리기</b> — 반영 뒤 job이 이상하면 🐞 카드의 <b>↩ 되돌리기</b>로 바로 앞 버전으로 돌아갑니다(주소 그대로, 되돌린 뒤 자동 점검). 다시 최신으로는 📥 수정 반영. ⑥ <b>화면 배선 점검</b> — job을 열면 하루 한 번, 메뉴마다 화면과 버튼 기능이 제대로 연결돼 있는지 확인해 빠진 것을 오류 기록에 남깁니다. 올라온 후보는 매주 웹 Claude Code가 고쳐 수정안으로 올립니다.</li>
         <li><b>✍ 개선요구사항 적기</b>: 🐞 카드의 이 버튼으로 "이렇게 고쳐 달라", "이런 기능이 있으면 좋겠다"를 적어 두면 개선 후보에 올라가고, 다음 웹 Claude Code 실행 때 구현해서 수정안으로 올립니다(AI 비용 0 — 예전처럼 밤마다 유료 AI가 메모를 쓰지 않습니다).</li>
@@ -49497,6 +49511,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     </div>
     <input type="search" id="nxAiListSearch" class="nxai-list-search" placeholder="대화·사건 검색">
     <div class="nxai-list-body" id="nxAiListBody"><div class="nxai-muted">불러오는 중…</div></div>
+    <!-- [2026.10.20] 세무사님 "대화목록창이 너무 좁아서 … 최소크기를 확보해 주고 창크기를 넓힐 수 있도록" — 경계를 끌어 폭(태블릿은 높이) 조절 -->
+    <span class="nxai-list-grip" id="nxAiListGrip" title="끌어서 대화 목록 폭 조절(두 번 누르면 기본 폭)"></span>
   </aside>
 
   <div class="nxai-main">
@@ -49575,6 +49591,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <div class="nxai-pv-viewhead">
         <b id="nxAiPvName">—</b>
         <span class="nxai-spacer"></span>
+        <!-- [2026.10.20] 세무사님 "검토서와 보고서는 편집할 수 있는 원본파일이 열리는데, 증빙관리에서 처럼 두가지 방법으로 볼 수 있어야" —
+             증빙관리 파일보기와 같게: 누르면 먼저 보기 전용, 텍스트(md 등)는 ✏ 편집으로 고치기, PDF·사진은 🛠 파일관리(PDF관리·스캔)로 -->
+        <button type="button" class="nxai-btn" id="nxAiPvEdit" hidden title="이 파일을 고칠 수 있게 엽니다">✏ 편집</button>
+        <button type="button" class="nxai-btn" id="nxAiPvManage" hidden>🛠 파일관리</button>
         <button type="button" class="nxai-btn" id="nxAiPvAttach" title="이 파일을 채팅에 첨부">📎 첨부</button>
         <a class="nxai-btn" id="nxAiPvOpen" href="#" target="_blank" rel="noopener" title="새 창에서 열기">↗ 새 창</a>
       </div>
@@ -49587,6 +49607,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <div class="nxai-pv-editbar" id="nxAiPvEditBar" hidden>
         <span class="nxai-muted" id="nxAiPvStatus"></span>
         <span class="nxai-spacer"></span>
+        <button type="button" class="nxai-btn" id="nxAiPvCancel" title="고친 것을 버리고 보기로 돌아갑니다">취소</button>
         <button type="button" class="nxai-btn primary" id="nxAiPvSave">💾 저장</button>
       </div>
     </div>
@@ -49793,7 +49814,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
   /* ===== 대화 목록 / 미리보기 — AI탭에서만 보인다 ===== */
   .nxai-list, .nxai-preview{ display:none; }
-  .nxai-list{ width:230px; flex-shrink:0; border-right:1px solid var(--line); flex-direction:column; min-height:0; background:#f7f8fa; }
+  /* [2026.10.20] 230px 고정 → 기본 260px, 최소 200px(제목을 알아볼 폭), 끌어서 조절(--nxai-list-w, 이 기기에 기억).
+     상한: 창이 좁아져도 대화 칸 몫(340px)은 남긴다 — 미리보기 칸까지 계산한 정확한 상한은 끌 때 스크립트가 다시 맞춘다. */
+  .nxai-list{ position:relative; width:var(--nxai-list-w, 260px); min-width:200px; max-width:calc(100% - 340px); flex-shrink:0; border-right:1px solid var(--line); flex-direction:column; min-height:0; background:#f7f8fa; }
+  .nxai-list-grip{ display:none; position:absolute; top:0; right:-4px; bottom:0; width:8px; cursor:ew-resize; z-index:3; touch-action:none; }
+  .nxai.mode-tab .nxai-list-grip{ display:block; }
+  .nxai-list-grip:hover, .nxai-list-grip.dragging{ background:rgba(200,162,68,.35); }
   .nxai-list-head{ display:flex; align-items:center; padding:10px; gap:6px; }
   #nxAiListShow, #nxAiPvShow{ display:none; }
   .nxai.mode-tab.list-collapsed .nxai-list{ display:none; }
@@ -49837,6 +49863,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-pv-proposal{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px; background:#fff4d6; color:#7a5300; font-size:12.5px; }
   .nxai-pv-content{ flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
   .nxai-pv-content iframe{ flex:1; border:none; width:100%; min-height:300px; }
+  .nxai-pv-content pre.nxai-pv-textview{ flex:1; margin:0; padding:12px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; line-height:1.55; }
   .nxai-pv-content textarea{ flex:1; border:none; resize:none; padding:12px; font-family:ui-monospace,Consolas,monospace; font-size:12.5px; line-height:1.55; min-height:300px; }
   .nxai-pv-content img{ max-width:100%; margin:auto; }
   .nxai-pv-editbar{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-top:1px solid var(--line); }
@@ -49888,7 +49915,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
      돌려 위아래를 가리키게 한다(모양 일관성 — 세무사님 지적). 숨기면 칸이 완전히 사라진다. */
   .nxai-phone-tabs{ display:none; }
   body.lay-tablet .nxai.mode-tab{ flex-direction:column; }
-  body.lay-tablet .nxai.mode-tab .nxai-list{ width:auto; height:18%; min-height:96px; flex-shrink:0; border-right:none; border-bottom:1px solid var(--line); }
+  /* [2026.10.20] 태블릿(목록이 위 띠)은 높이를 끌어 조절 — 최소 150px(대화 3줄쯤), 상한은 55%(대화 칸 몫) */
+  body.lay-tablet .nxai.mode-tab .nxai-list{ width:auto; min-width:0; max-width:none; height:var(--nxai-list-h, 22%); min-height:150px; max-height:55%; flex-shrink:0; border-right:none; border-bottom:1px solid var(--line); }
+  body.lay-tablet .nxai.mode-tab .nxai-list-grip{ top:auto; left:0; right:0; bottom:-4px; width:auto; height:8px; cursor:ns-resize; }
+  body.lay-phone .nxai.mode-tab .nxai-list-grip{ display:none; }
   body.lay-tablet .nxai.mode-tab #nxAiListHide, body.lay-tablet .nxai.mode-tab #nxAiListShow{ transform:rotate(90deg); }
   /* 폰: 한 번에 한 칸만 화면 가득 — 위쪽 탭으로 바꾼다. 숨기기 버튼은 필요 없다. */
   body.lay-phone .nxai.mode-tab{ flex-direction:column; }
@@ -50264,12 +50294,22 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var hay = [c.사건명, c.고객명, c.납세자, c.세목, c.업무유형].join(' ');
       return !q || hay.indexOf(q) !== -1;
     });
+    // [2026.10.20] 세무사님 "사건들이 정렬이 되지 않아 스크롤이 의미가 없다"·"진행구분 이후에 의뢰인 기준으로" — 시트 행 순서 그대로 나오던 것을
+    // ① 진행구분(작업관리 WORK_STATUS_OPTIONS 순서: 진행 → 보류 → 완료, 그 밖의 값은 완료 앞) ② 의뢰인(고객명) 가나다 ③ 사건명 순으로.
+    var rank = function(st){ return st === '진행' ? 0 : st === '보류' ? 1 : st === '완료' ? 3 : 2; };
+    var ko = function(a, b){ return String(a || '').localeCompare(String(b || ''), 'ko'); };
+    cases.sort(function(a, b){
+      return (rank(a.상태) - rank(b.상태)) || ko(a.고객명 || a.납세자, b.고객명 || b.납세자) || ko(a.사건명, b.사건명);
+    });
     if (!cases.length){ listEl.innerHTML = '<div class="nxai-muted">' + (nxAiCaseCache ? '해당하는 사건이 없습니다.' : '불러오는 중…') + '</div>'; return; }
     listEl.innerHTML = '';
     cases.slice(0, 200).forEach(function(c){
       var row = document.createElement('div');
       row.className = 'nxai-case-row';
-      row.innerHTML = '<span>' + nxAiEsc_(c.사건명 || c.고객명 || '(이름 없음)') + '</span><span class="s">' + nxAiEsc_(c.상태 || '') + '</span>';
+      // 의뢰인 순으로 늘어서므로, 사건명에 의뢰인 이름이 없으면 앞에 붙여 보여 준다
+      var who = c.고객명 || c.납세자 || '', nm = c.사건명 || '';
+      var label = !nm ? (who || '(이름 없음)') : (who && nm.indexOf(who) === -1 ? who + ' · ' + nm : nm);
+      row.innerHTML = '<span>' + nxAiEsc_(label) + '</span><span class="s">' + nxAiEsc_(c.상태 || '') + '</span>';
       row.addEventListener('click', function(){ nxAiLinkCase_(c); });
       listEl.appendChild(row);
     });
@@ -50546,20 +50586,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiPvEditBar').hidden = true;
     var content = nxAiEl_('nxAiPvContent');
     var kind = nxAiFileKind_(f);
+    // [2026.10.20] 증빙관리처럼 두 가지 방법 — 텍스트는 ✏ 편집, PDF·사진은 🛠 파일관리(증빙관리의 PDF관리·스캔 함수를 그대로 부름)
+    nxAiEl_('nxAiPvEdit').hidden = true;
+    var mg = nxAiEl_('nxAiPvManage');
+    mg.hidden = !(kind === 'pdf' || kind === 'image');
+    mg.textContent = kind === 'pdf' ? '📑 파일관리' : '📷 파일관리';
+    mg.title = kind === 'pdf' ? '증빙확보의 PDF관리로 열기(쪽 나누기·합치기·서명 등)' : '증빙확보의 스캔으로 열기(자르기·보정 등)';
     if (kind === 'text'){
       content.innerHTML = '<div class="nxai-muted">불러오는 중…</div>';
       return callGas('readFile', { fileId: f.id }).then(function(res){
         if (nxAiPreviewFile.id !== f.id) return; // 그 사이 다른 파일을 열었으면 무시
         if (!res || res.error){ content.innerHTML = '<div class="nxai-muted">' + nxAiEsc_(res && res.error || '읽지 못했습니다.') + '</div>'; return; }
         nxAiPreviewText = res.content || '';
-        content.innerHTML = '';
-        var ta = document.createElement('textarea');
-        ta.id = 'nxAiPvText';
-        ta.value = nxAiPreviewText;
-        ta.addEventListener('input', nxAiPvUpdateDirty_);
-        content.appendChild(ta);
-        nxAiEl_('nxAiPvEditBar').hidden = false;
-        nxAiPvUpdateDirty_();
+        nxAiPvTextMode_(false); // 처음엔 보기 전용(증빙관리 파일보기와 같게) — 고치려면 ✏ 편집
       });
     }
     if (kind === 'image'){
@@ -50573,6 +50612,35 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // PDF·구글문서·시트·그 밖의 파일 — 구글 드라이브 자체 미리보기. 안 보이면 "↗ 새 창"으로.
     content.innerHTML = '<iframe src="' + nxAiDrivePreviewUrl_(f) + '" allow="autoplay"></iframe>';
     return Promise.resolve();
+  }
+  // [2026.10.20] 텍스트 파일 보기 전용(pre) ↔ 편집(textarea) 전환 — 증빙관리 파일보기의 ✏ 편집·💾 저장·취소와 같은 흐름
+  function nxAiPvTextMode_(edit){
+    var content = nxAiEl_('nxAiPvContent');
+    if (!content || nxAiPreviewText === null) return;
+    content.innerHTML = '';
+    if (edit){
+      var ta = document.createElement('textarea');
+      ta.id = 'nxAiPvText';
+      ta.value = nxAiPreviewText;
+      ta.addEventListener('input', nxAiPvUpdateDirty_);
+      content.appendChild(ta);
+    } else {
+      var pre = document.createElement('pre');
+      pre.className = 'nxai-pv-textview';
+      pre.textContent = nxAiPreviewText || '(내용 없음)';
+      content.appendChild(pre);
+    }
+    nxAiEl_('nxAiPvEdit').hidden = !!edit;
+    nxAiEl_('nxAiPvEditBar').hidden = !edit;
+    nxAiPvUpdateDirty_();
+  }
+  function nxAiPvManage_(){
+    var f = nxAiPreviewFile; if (!f) return;
+    var kind = nxAiFileKind_(f);
+    var fn = kind === 'pdf' ? (typeof openExistingFileInPdfManager === 'function' && openExistingFileInPdfManager) : (typeof openExistingFileInScan === 'function' && openExistingFileInScan);
+    if (!fn){ nxAiToast_('파일관리 도구를 불러오지 못했습니다 — 증빙확보 화면에서 열어 주세요.'); return; }
+    if (typeof goToView_ === 'function') goToView_('docs');
+    fn({ id: f.id, name: f.name, mimeType: f.mimeType, url: f.url });
   }
   function nxAiPvUpdateDirty_(){
     var ta = nxAiEl_('nxAiPvText');
@@ -50604,6 +50672,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiShowProposal_(targetFile, content){
     var show = function(){
       var ta = nxAiEl_('nxAiPvText');
+      if (!ta && nxAiPreviewText !== null){ nxAiPvTextMode_(true); ta = nxAiEl_('nxAiPvText'); } // [2026.10.20] 보기 전용이면 편집으로 바꿔 수정안을 띄움
       if (!ta){ nxAiToast_('이 파일은 미리보기에서 바로 고칠 수 없는 형식입니다.'); return; }
       nxAiPreviewProposalOriginal = ta.value;
       ta.value = content;
@@ -50611,7 +50680,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiPvUpdateDirty_();
     };
     if (nxAiMode !== 'tab') nxAiGoToView_('ai');
-    if (nxAiPreviewFile && targetFile && nxAiPreviewFile.id === targetFile.id && nxAiEl_('nxAiPvText')){ nxAiPvShowTab_('view'); show(); return; }
+    if (nxAiPreviewFile && targetFile && nxAiPreviewFile.id === targetFile.id && nxAiPreviewText !== null){ nxAiPvShowTab_('view'); show(); return; }
     nxAiOpenPreview_(targetFile).then(show);
   }
 
@@ -54655,6 +54724,51 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiListHide').addEventListener('click', function(){ setListHidden(true); });
     nxAiEl_('nxAiListShow').addEventListener('click', function(e){ e.stopPropagation(); setListHidden(false); });
     if (nxAiLs_(LIST_HIDDEN_KEY) === '1') nxAiEl_('nxAi').classList.add('list-collapsed');
+    // [2026.10.20] 대화 목록 폭(태블릿은 높이) 끌어서 조절 — 아래 사이드바 너비 조절과 같은 방식, 이 기기에 기억. 두 번 누르면 기본값.
+    (function(){
+      var root = nxAiEl_('nxAi'), list = nxAiEl_('nxAiList'), grip = nxAiEl_('nxAiListGrip');
+      if (!root || !list || !grip) return;
+      var W_KEY = 'nxAiListW', H_KEY = 'nxAiListH', MIN_W = 200, MAX_W = 600, CHAT_MIN = 340, MIN_H = 150;
+      var isTablet = function(){ return document.body.classList.contains('lay-tablet'); };
+      // 폭 상한: 전체 − 대화 칸 최소 몫 − (옆에 있는) 미리보기 칸
+      var maxW = function(){
+        var pv = root.querySelector('.nxai-preview'), pvW = 0;
+        if (pv && !root.classList.contains('pv-at-bottom') && pv.offsetWidth) pvW = pv.offsetWidth;
+        return Math.max(MIN_W, Math.min(MAX_W, root.clientWidth - CHAT_MIN - pvW));
+      };
+      var maxH = function(){ return Math.max(MIN_H, root.clientHeight * 0.55); };
+      var applyW = function(w){ root.style.setProperty('--nxai-list-w', Math.round(Math.min(Math.max(w, MIN_W), maxW())) + 'px'); };
+      var applyH = function(h){ root.style.setProperty('--nxai-list-h', Math.round(Math.min(Math.max(h, MIN_H), maxH())) + 'px'); };
+      var savedW = parseInt(nxAiLs_(W_KEY), 10), savedH = parseInt(nxAiLs_(H_KEY), 10);
+      if (savedW) root.style.setProperty('--nxai-list-w', savedW + 'px'); // 상한은 CSS가 우선 막고, 끌 때·창 크기 바뀔 때 다시 맞춘다
+      if (savedH) root.style.setProperty('--nxai-list-h', savedH + 'px');
+      grip.addEventListener('pointerdown', function(e){
+        if (nxAiMode !== 'tab' || document.body.classList.contains('lay-phone')) return;
+        e.preventDefault(); e.stopPropagation();
+        var tablet = isTablet(), r = list.getBoundingClientRect();
+        grip.classList.add('dragging'); grip.setPointerCapture(e.pointerId);
+        var onMove = function(ev){ if (tablet) applyH(ev.clientY - r.top); else applyW(ev.clientX - r.left); };
+        var onUp = function(){
+          grip.classList.remove('dragging');
+          grip.removeEventListener('pointermove', onMove); grip.removeEventListener('pointerup', onUp); grip.removeEventListener('pointercancel', onUp);
+          if (tablet) nxAiLs_(H_KEY, String(parseInt(root.style.getPropertyValue('--nxai-list-h'), 10) || ''));
+          else nxAiLs_(W_KEY, String(parseInt(root.style.getPropertyValue('--nxai-list-w'), 10) || ''));
+        };
+        grip.addEventListener('pointermove', onMove); grip.addEventListener('pointerup', onUp); grip.addEventListener('pointercancel', onUp);
+      });
+      grip.addEventListener('dblclick', function(e){
+        e.stopPropagation();
+        if (isTablet()){ root.style.removeProperty('--nxai-list-h'); nxAiLs_(H_KEY, ''); }
+        else { root.style.removeProperty('--nxai-list-w'); nxAiLs_(W_KEY, ''); }
+      });
+      // 창을 줄이면 저장된 폭이 대화 칸을 밀어내지 않게 다시 맞춘다(저장값은 그대로 — 창을 다시 키우면 원래 폭)
+      var refit = function(){
+        if (nxAiMode !== 'tab' || isTablet() || document.body.classList.contains('lay-phone')) return;
+        var w = parseInt(nxAiLs_(W_KEY), 10); if (w) applyW(w);
+      };
+      window.addEventListener('resize', refit);
+      document.addEventListener('nx-layout-change', refit);
+    })();
     nxAiEl_('nxAiNewBtnSide').addEventListener('click', function(e){ e.stopPropagation(); nxAiNewConv_(); });
     nxAiEl_('nxAiListSearch').addEventListener('input', nxAiRenderConvList_);
     nxAiEl_('nxAiTitle').addEventListener('click', function(){ nxAiRenameConv_(nxAiConv.id, nxAiConv.title); });
@@ -54792,7 +54906,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       b.addEventListener('click', function(){ nxAiPhoneTab_(b.getAttribute('data-ph')); });
     });
     nxAiEl_('nxAiPvAttach').addEventListener('click', function(){ if (nxAiPreviewFile) nxAiAddFileAttachment_(nxAiPreviewFile); });
-    nxAiEl_('nxAiPvSave').addEventListener('click', nxAiPvSave_);
+    nxAiEl_('nxAiPvSave').addEventListener('click', function(){ nxAiPvSave_().then(function(ok){ if (ok){ nxAiPvTextMode_(false); nxAiToast_('저장했습니다.'); } }); });
+    nxAiEl_('nxAiPvEdit').addEventListener('click', function(){ nxAiPvTextMode_(true); });
+    nxAiEl_('nxAiPvCancel').addEventListener('click', function(){ nxAiPvHideProposal_(); nxAiPvTextMode_(false); nxAiEl_('nxAiPvStatus').textContent = ''; });
+    nxAiEl_('nxAiPvManage').addEventListener('click', nxAiPvManage_);
     nxAiEl_('nxAiPvSaveProposal').addEventListener('click', nxAiPvSave_);
     nxAiEl_('nxAiPvDiscardProposal').addEventListener('click', function(){
       var ta = nxAiEl_('nxAiPvText');

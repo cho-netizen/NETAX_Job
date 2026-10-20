@@ -52,6 +52,8 @@
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
+        <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">🗳 승인 대기 수정안</button>
+        <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">🔑 깃허브 열쇠</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
         <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
@@ -614,7 +616,7 @@
         if (!r){ bugList.textContent = '보고서를 받지 못했습니다.'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.candidateCount ? '🛠 개선 후보 ' + r.candidateCount + '건' : '✅ 개선할 거리 없음') + '</b> · ' + escapeHtml(r.period + ' · ' + r.generatedAt) + '</div>'
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
-          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 깃허브 수정안 승인(Merge) → 📥 수정 반영</div>';
+          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 🗳 승인 대기 수정안에서 ✅ 승인·반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     // [2026.10.09 토큰0] ✍ 개선요구사항 — 총괄관리자 폴더 개선요구사항.md에 덧붙이고 개선 후보 보고서에 바로 올린다(0원)
@@ -658,6 +660,67 @@
           }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
         });
       }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.20] 🗳 승인 대기 수정안 — 깃허브 사이트에 가지 않고 여기서 보고 승인·반려(Code.js gh_prList_/gh_prMerge_/gh_prClose_)
+    function loadGhPrs_(){
+      bugList.textContent = '🗳 깃허브 수정안 확인 중…';
+      callGas('gh_pr_list', { fresh: true }).then(function(r){
+        if (!r || !r.success){ bugList.textContent = '수정안을 확인하지 못했습니다: ' + ((r && r.error) || ''); return; }
+        if (!r.count){ bugList.innerHTML = '<b>✅ 승인 대기 수정안이 없습니다.</b>'; return; }
+        bugList.innerHTML = '<div style="margin-bottom:4px;"><b>🗳 승인 대기 수정안 ' + r.count + '건</b>'
+          + (r.hasToken ? '' : ' · <span style="color:var(--danger,#c0392b);">승인·반려하려면 먼저 🔑 깃허브 열쇠를 넣어 주세요</span>') + '</div>'
+          + r.prs.map(function(p){
+            return '<div style="padding:6px 0; border-top:1px solid var(--line);">'
+              + '<div><b>#' + p.number + ' ' + escapeHtml(p.title) + '</b> · ' + escapeHtml(p.at) + '</div>'
+              + '<details style="margin:4px 0;"><summary>설명·바뀐 파일 보기</summary>'
+              + '<div style="white-space:pre-wrap; margin:4px 0;">' + escapeHtml(p.body || '(설명 없음)') + '</div>'
+              + '<div style="color:var(--sub);">바뀐 파일: ' + escapeHtml((p.files || []).join(', ') || '(알 수 없음)') + '</div>'
+              + '<a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener">깃허브에서 자세히</a></details>'
+              + '<div style="display:flex; gap:6px; flex-wrap:wrap;">'
+              + '<button type="button" class="ghost-btn st-pr-merge" data-n="' + p.number + '" data-title="' + escapeHtml(p.title) + '">✅ 승인·반영</button>'
+              + '<button type="button" class="ghost-btn st-pr-close" data-n="' + p.number + '" data-title="' + escapeHtml(p.title) + '">✖ 반려</button>'
+              + '</div></div>';
+          }).join('');
+      }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    }
+    document.getElementById('stBtnGhPrs').addEventListener('click', loadGhPrs_);
+    bugList.addEventListener('click', function(e){
+      var mb = e.target.closest('.st-pr-merge'), cb = e.target.closest('.st-pr-close');
+      if (mb){
+        var n = mb.getAttribute('data-n');
+        nxConfirm_('✅ 수정안 #' + n + ' "' + mb.getAttribute('data-title') + '"을 승인할까요?\n\n승인하면 깃허브에 합쳐지고, 이어서 📥 수정 반영으로 job이 새 버전으로 바뀝니다. 이상하면 ↩ 되돌리기로 돌아갈 수 있습니다.').then(function(ok){
+          if (!ok) return;
+          bugList.textContent = '✅ 승인(깃허브 합치기) 중…';
+          callGas('gh_pr_merge', { number: Number(n) }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '승인하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            bugList.textContent = '✅ 승인 완료 — 깃허브 반영을 기다렸다가 📥 수정 반영으로 넘어갑니다…';
+            // 깃허브 최근 커밋 피드가 합친 커밋을 보여 주기까지 몇 초 걸린다
+            setTimeout(function(){ document.getElementById('stBtnGhDeploy').click(); }, 5000);
+          }).catch(function(err){ bugList.textContent = '승인 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+        return;
+      }
+      if (cb){
+        var cn = cb.getAttribute('data-n');
+        nxPrompt_('✖ 수정안 #' + cn + ' "' + cb.getAttribute('data-title') + '"을 반려합니다.\n반려 사유를 적어 주시면 다음 루틴이 읽고 다르게 고칩니다(비워도 됨).', '').then(function(reason){
+          if (reason === null || reason === undefined || reason === false) return;
+          bugList.textContent = '✖ 반려 중…';
+          callGas('gh_pr_close', { number: Number(cn), reason: String(reason || '') }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '반려하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            loadGhPrs_();
+          }).catch(function(err){ bugList.textContent = '반려 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+      }
+    });
+    document.getElementById('stBtnGhToken').addEventListener('click', function(){
+      nxPrompt_('🔑 깃허브 열쇠(github_pat_…로 시작)를 붙여 넣어 주세요.\n저장소 NETAX_Job 하나만, 권한은 Contents·Pull requests "읽기와 쓰기"로 만든 열쇠여야 합니다.\n비워서 확인을 누르면 저장된 열쇠를 지웁니다.', '').then(function(tok){
+        if (tok === null || tok === undefined || tok === false) return;
+        bugList.textContent = '🔑 열쇠 확인 중…';
+        callGas('gh_set_token', { token: String(tok || '') }).then(function(r){
+          if (!r || !r.success){ bugList.textContent = '열쇠를 저장하지 못했습니다: ' + ((r && r.error) || ''); return; }
+          bugList.textContent = r.cleared ? '🔑 저장된 열쇠를 지웠습니다.' : (r.canWrite ? '✅ 열쇠를 저장했습니다 — 이제 🗳 승인 대기 수정안에서 승인·반려할 수 있습니다.' : '⚠ 열쇠는 저장했지만 쓰기 권한이 없어 보입니다 — Contents·Pull requests를 "읽기와 쓰기"로 다시 만들어 주세요.');
+        }).catch(function(err){ bugList.textContent = '열쇠 저장 중 오류: ' + (err && err.message ? err.message : err); });
+      });
     });
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){
