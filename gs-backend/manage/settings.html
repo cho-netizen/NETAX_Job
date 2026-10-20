@@ -35,8 +35,10 @@
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
       <div class="settings-tool-desc">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
-    <div class="card" style="max-width:720px;">
+    <div class="card" style="max-width:720px;" id="stBugCard">
       <h3>🐞 오류 기록</h3>
+      <!-- [2026.10.20] 운영 버전·최근 반영 내역·진행 중인 반영·배포 직후 점검 — 세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지" -->
+      <div id="stDeployInfo" class="settings-tool-desc" style="margin:0 0 8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">운영 버전 확인 중…</div>
       <div class="settings-tool-desc" style="margin:0 0 8px;">job 화면과 AI가 일하다 난 오류가 자동으로 쌓입니다. 이상한 점을 일일이 설명하지 않으셔도, Claude Code에게 "오류 기록 확인해줘"라고 하면 이 기록을 보고 원인을 찾습니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
@@ -643,6 +645,7 @@
     });
     // [2026.10.09] 📥 수정 반영 — 깃허브 main(승인된 수정)을 job 자신이 받아 배포한다(Code.js gh_deployApply_).
     document.getElementById('stBtnGhDeploy').addEventListener('click', function(){
+      if (djBusy_()) return;
       bugList.textContent = '📥 깃허브 확인 중…';
       callGas('gh_deploy_status', {}).then(function(st){
         if (!st || !st.success){ bugList.textContent = '깃허브를 확인하지 못했습니다: ' + ((st && st.error) || ''); return; }
@@ -651,13 +654,9 @@
           : st.pending ? '승인된 수정 ' + st.pending + '건이 반영을 기다립니다.' : '✅ job이 깃허브 최신본과 같습니다 — 반영할 것 없음.';
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + head + '</b></div>' + list;
         if (st.pending === 0) return;
-        nxConfirm_('📥 깃허브의 승인된 수정을 job에 반영할까요?\n\n반영하면 job이 새 버전으로 바뀝니다(1분쯤). 이상하면 Claude에게 "되돌려줘"라고 하시면 됩니다.').then(function(ok){
+        nxConfirm_('📥 깃허브의 승인된 수정을 job에 반영할까요?\n\n반영하면 job이 새 버전으로 바뀝니다(교체 1~2분, 이어서 점검 2분쯤). 진행 단계가 이 칸에 보입니다. 이상하면 ↩ 되돌리기를 누르세요.').then(function(ok){
           if (!ok) return;
-          bugList.textContent = '📥 반영 중… (1분쯤 걸립니다. 창을 닫지 마세요)';
-          callGas('gh_deploy_apply', { expectSha: st.head }).then(function(r){
-            if (!r || !r.success){ bugList.textContent = '반영하지 못했습니다: ' + ((r && r.error) || ''); return; }
-            bugList.innerHTML = '<b>✅ 반영 완료</b> — 버전 ' + r.version + ' · ' + escapeHtml(r.message) + '<br>화면을 새로고침하면 바뀐 화면이 보입니다.' + deployCheckHtml_(r.check);
-          }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
+          djStart_('apply', { expectSha: st.head });
         });
       }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
     });
@@ -687,15 +686,15 @@
     bugList.addEventListener('click', function(e){
       var mb = e.target.closest('.st-pr-merge'), cb = e.target.closest('.st-pr-close');
       if (mb){
+        if (djBusy_()) return;
         var n = mb.getAttribute('data-n');
         nxConfirm_('✅ 수정안 #' + n + ' "' + mb.getAttribute('data-title') + '"을 승인할까요?\n\n승인하면 깃허브에 합쳐지고, 이어서 📥 수정 반영으로 job이 새 버전으로 바뀝니다. 이상하면 ↩ 되돌리기로 돌아갈 수 있습니다.').then(function(ok){
           if (!ok) return;
           bugList.textContent = '✅ 승인(깃허브 합치기) 중…';
           callGas('gh_pr_merge', { number: Number(n) }).then(function(r){
             if (!r || !r.success){ bugList.textContent = '승인하지 못했습니다: ' + ((r && r.error) || ''); return; }
-            bugList.textContent = '✅ 승인 완료 — 깃허브 반영을 기다렸다가 📥 수정 반영으로 넘어갑니다…';
-            // 깃허브 최근 커밋 피드가 합친 커밋을 보여 주기까지 몇 초 걸린다
-            setTimeout(function(){ document.getElementById('stBtnGhDeploy').click(); }, 5000);
+            // [2026.10.20] 승인했으면 곧바로 반영 작업 시작(다시 묻지 않음) — 서버가 깃허브 최신본에 합친 커밋이 보일 때까지 기다렸다 반영한다
+            djStart_('merge', { waitSha: r.sha || '', title: '#' + n + ' ' + (mb.getAttribute('data-title') || r.title || '') });
           }).catch(function(err){ bugList.textContent = '승인 중 오류: ' + (err && err.message ? err.message : err); });
         });
         return;
@@ -722,6 +721,139 @@
         }).catch(function(err){ bugList.textContent = '열쇠 저장 중 오류: ' + (err && err.message ? err.message : err); });
       });
     });
+    // [2026.10.20] 반영 작업(📥 수정 반영·✅ 승인·반영·↩ 되돌리기) — 세무사님 "승인반영을 눌렀는데 계속 대기중이다".
+    //  예전엔 한 요청이 반영·점검을 다 끝낼 때까지(2~4분) 기다리다 화면이 끊겼다. 이제 서버에 "시작"만 요청하고(Code.js deployJobStart_),
+    //  4초마다 deploy_job_status로 단계·경과 시간을 본다. 새 버전이 확인되면 바로 "반영 완료 @NNNN", 점검이 끝나면 점검 결과.
+    //  3분이 지나도 교체가 안 끝나면(또는 점검이 5분 넘게 안 끝나면) "지연 또는 실패"와 확인 방법을 보인다. 진행 중엔 같은 버튼을 막는다.
+    //  맨 위 stDeployInfo 줄은 운영 버전·최근 반영 내역·진행 중인 반영·배포 직후 점검을 늘 보여 준다(PC clasp 배포 포함).
+    var DJ_POLL_MS = 4000, DJ_WARN_SWAP_MS = 180000, DJ_WARN_CHECK_MS = 300000, DJ_GIVEUP_MS = 900000;
+    var djWatch = null; // { id, t0, timer }
+    var djInfoBox = document.getElementById('stDeployInfo');
+    function djDur_(ms){ var s = Math.max(0, Math.round(ms / 1000)); return (s >= 60 ? Math.floor(s / 60) + '분 ' : '') + (s % 60) + '초'; }
+    function djAt_(at){
+      at = String(at || '');
+      var today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); // 한국 날짜
+      return at.slice(0, 10) === today ? '오늘 ' + at.slice(11, 16) : at.slice(5, 16);
+    }
+    function djKind_(st, k){ return (st && st.kinds && st.kinds[k]) || k || ''; }
+    function djBusy_(){
+      if (!djWatch) return false;
+      nxAlert_('반영이 진행 중입니다 — 이 칸에 단계가 보입니다. 끝날 때까지 기다려 주세요.');
+      return true;
+    }
+    function djCheckLine_(chk){
+      if (!chk) return '배포 직후 점검 기록 없음';
+      var bad = (chk.items || []).filter(function(x){ return !x.ok; });
+      return (chk.ok ? '✅ 배포 직후 점검 정상' : '🚨 배포 직후 점검 이상 ' + bad.length + '건') + ' (' + escapeHtml(djAt_(chk.at)) + ')';
+    }
+    function djRenderInfo_(st){
+      if (!djInfoBox || !st || !st.success) return;
+      var h = st.history || [], h0 = h[0], live = st.live, j = st.job;
+      var ver = (live && live.ver) || (h0 && h0.ver);
+      var line = '<b>🚀 운영 @' + escapeHtml(ver || '?') + '</b>';
+      if (h0 && (!live || !live.ver || live.ver === h0.ver)) line += ' · 커밋 ' + escapeHtml(h0.sha || '-') + ' · ' + escapeHtml(djAt_(h0.at)) + ' 반영(' + escapeHtml(djKind_(st, h0.kind)) + ')' + (h0.msg ? ' — ' + escapeHtml(h0.msg) : '');
+      else if (live) line += ' · ' + escapeHtml(String(live.desc || '').slice(0, 90)) + (live.updated ? ' · ' + escapeHtml(djAt_(new Date(Date.parse(live.updated) + 9 * 3600000).toISOString().replace('T', ' '))) + ' 반영' : '');
+      var html = '<div>' + line + '</div><div>' + djCheckLine_(st.check) + '</div>';
+      if (st.active && j) html += '<div style="color:var(--accent,#2b6cb0);">⏳ 진행 중: ' + escapeHtml(djKind_(st, j.kind)) + (j.title ? ' · ' + escapeHtml(j.title) : '') + ' — ' + escapeHtml(j.label || '') + ' · ' + djDur_(st.now - j.startedAt) + '째</div>';
+      else if (st.stale && j) html += '<div style="color:var(--danger,#c0392b);">⚠ ' + escapeHtml(djKind_(st, j.kind)) + '이(가) ' + djDur_(st.now - j.startedAt) + ' 전에 시작했는데 끝난 기록이 없습니다 — 실패했을 수 있습니다. 위 운영 버전이 바뀌었는지 보세요.</div>';
+      if (h.length) html += '<details style="margin-top:4px;"><summary>최근 반영 내역 ' + h.length + '건</summary>' + h.map(function(x){
+        return '<div style="padding:2px 0; border-top:1px solid var(--line);">' + escapeHtml(djAt_(x.at)) + ' · @' + escapeHtml(x.ver || '?') + ' · ' + escapeHtml(djKind_(st, x.kind))
+          + (x.sha ? ' · ' + escapeHtml(x.sha) : '') + (x.msg ? ' — ' + escapeHtml(x.msg) : '') + (x.checkOk === true ? ' · 점검 ✅' : x.checkOk === false ? ' · 점검 ⚠' : '') + '</div>';
+      }).join('') + '</details>';
+      else html += '<div style="color:var(--sub);">반영 기록은 다음 반영부터 쌓입니다.</div>';
+      djInfoBox.innerHTML = html;
+    }
+    function djRenderJob_(st){
+      var j = st.job; if (!j) return;
+      var el = st.now - j.startedAt;
+      var steps = (j.steps || []).map(function(x, i, a){ return '<div style="color:var(--sub);">' + (i < a.length - 1 || j.done ? '✓ ' : '… ') + escapeHtml(x.label) + '</div>'; }).join('');
+      var head = '<div><b>' + escapeHtml(djKind_(st, j.kind)) + '</b>' + (j.title ? ' · ' + escapeHtml(j.title) : '') + ' · 경과 ' + djDur_(el) + '</div>';
+      var html;
+      if (j.stage === 'failed'){
+        html = head + '<div style="color:var(--danger,#c0392b);"><b>❌ 반영하지 못했습니다</b> — ' + escapeHtml(j.error || '') + '</div>' + steps
+          + '<div>운영은 그대로입니다(위 운영 버전 줄). 원인이 깃허브 쪽이면 잠시 뒤 다시 누르고, 반복되면 Claude에게 이 문구를 알려 주세요.</div>';
+      } else if (j.version){
+        html = head + '<div><b>✅ 반영 완료 — 버전 @' + escapeHtml(j.version) + '</b>' + (j.sha ? ' · 커밋 ' + escapeHtml(j.sha) : '') + (j.from ? ' (@' + escapeHtml(j.from) + '에서 되돌림)' : '') + '</div>';
+        if (j.done) html += deployCheckHtml_(j.check) + '<div>화면을 새로고침하면 바뀐 화면이 보입니다.</div>';
+        else {
+          var ce = st.now - (j.swappedAt || j.startedAt);
+          html += '<div>⏳ ' + escapeHtml(j.label || '배포 직후 점검 중') + ' · ' + djDur_(ce) + '째</div>';
+          if (ce > DJ_WARN_CHECK_MS) html += '<div style="color:var(--danger,#c0392b);">⚠ 점검이 5분 넘게 끝나지 않습니다 — 반영은 끝났습니다. 점검 결과는 잠시 뒤 위 "배포 직후 점검" 줄에서 확인하세요.</div>';
+        }
+      } else {
+        html = head + steps + '<div>⏳ <b>' + escapeHtml(j.label || '') + '</b></div>';
+        if (st.stale || el > DJ_WARN_SWAP_MS) html += '<div style="color:var(--danger,#c0392b);">⚠ ' + (st.stale ? '진행 기록이 멈췄습니다' : '3분이 넘었습니다') + ' — 지연 또는 실패일 수 있습니다. 확인 방법: 위 "🚀 운영 @번호"가 바뀌면 반영된 것입니다. 10분이 지나도 그대로면 이 화면을 새로고침한 뒤 다시 누르거나, Claude에게 "반영 상태 확인해줘"라고 하세요.</div>';
+      }
+      bugList.innerHTML = html;
+    }
+    function djTick_(){
+      var w = djWatch;
+      if (!w) return;
+      clearTimeout(w.timer); w.timer = null;
+      var seq = w.seq = (w.seq || 0) + 1;
+      var next = function(){ if (djWatch === w && w.seq === seq && !w.timer) w.timer = setTimeout(djTick_, DJ_POLL_MS); };
+      // 상태 확인 하나가 30초 넘게 답이 없으면(구글 응답 받기 멈춤) 기다리지 않고 다음 확인으로 — 늦게 온 답은 버린다
+      var watchdog = setTimeout(function(){ if (djWatch === w && w.seq === seq){ w.seq++; seq = -1; if (!w.timer) w.timer = setTimeout(djTick_, 0); } }, 30000);
+      callGas('deploy_job_status', {}).then(function(st){
+        clearTimeout(watchdog);
+        if (djWatch !== w || w.seq !== seq) return; // 그 사이 새로 따라가기 시작했거나 늦게 온 답 — 버린다(확인이 두 줄로 돌지 않게)
+        djRenderInfo_(st);
+        var j = st && st.job;
+        // id를 아직 모르면(시작 요청의 답이 안 옴) 누른 뒤에 시작된 작업만 내 것으로 본다 — 서버 시계 기준 경과가 누른 뒤 경과(+15초)보다 짧은 것
+        if (j && (w.id ? j.id === w.id : (st.now - j.startedAt <= Date.now() - w.since + 15000))){
+          w.id = j.id;
+          djRenderJob_(st);
+          if (j.done || st.stale){ djWatch = null; return; }
+        } else if (!w.id && !w.starting && Date.now() - w.since > DJ_WARN_SWAP_MS){
+          djWatch = null;
+          bugList.innerHTML = '<div style="color:var(--danger,#c0392b);">⚠ 3분이 지나도 서버에 시작 기록이 보이지 않습니다 — 반영이 시작되지 않은 것 같습니다. 위 운영 버전 줄을 확인하고 다시 눌러 주세요.</div>';
+          return;
+        }
+        if (Date.now() - w.t0 > DJ_GIVEUP_MS){ djWatch = null; bugList.insertAdjacentHTML('beforeend', '<div>15분이 지나 자동 확인을 멈췄습니다 — 🔄 불러오기나 화면 새로고침으로 다시 확인하세요.</div>'); return; }
+        next();
+      }).catch(function(){ clearTimeout(watchdog); next(); }); // 서버가 바뀌는 중이면 잠깐 답이 없을 수 있다 — 계속 확인
+    }
+    function djFollow_(job, since){
+      if (djWatch && djWatch.timer) clearTimeout(djWatch.timer);
+      djWatch = { id: job && job.id, t0: Date.now(), since: since || (job && job.startedAt) || Date.now() };
+      djTick_();
+    }
+    function djStart_(kind, extra){
+      if (djWatch){ nxAlert_('반영이 진행 중입니다 — 끝날 때까지 기다려 주세요.'); return; }
+      var since = Date.now(), answered = false;
+      var myWatch = djWatch = { id: null, t0: since, since: since, starting: true }; // 시작 요청 중에도 같은 버튼을 막는다
+      bugList.textContent = '반영 시작 요청 중…';
+      // 시작 요청의 답이 20초 안에 안 오면(구글 응답 받기 실패 등) 기다리지 않고 상태 확인으로 넘어간다 — 작업은 서버에서 이미 시작됐을 수 있다
+      var noAnswer = setTimeout(function(){
+        if (answered || !djWatch || !djWatch.starting) return;
+        djWatch.starting = false;
+        bugList.textContent = '시작 요청의 답이 늦습니다 — 서버 진행 상황을 직접 확인합니다…';
+        djTick_();
+      }, 20000);
+      callGas('deploy_job_start', Object.assign({ kind: kind }, extra || {})).then(function(r){
+        answered = true; clearTimeout(noAnswer);
+        if (r && r.busy && r.job){ bugList.innerHTML = '<div>' + escapeHtml(r.error || '이미 진행 중입니다') + ' — 그 진행 상황을 보여 드립니다.</div>'; djFollow_(r.job); return; }
+        if (!r || !r.success){
+          if (djWatch && !djWatch.id){ if (djWatch.timer) clearTimeout(djWatch.timer); djWatch = null; }
+          bugList.textContent = '반영을 시작하지 못했습니다: ' + ((r && r.error) || ''); loadDeployInfo_(); return;
+        }
+        if (djWatch && djWatch.id === r.job.id && !djWatch.starting) return; // 이미 상태 확인으로 따라가는 중
+        djFollow_(r.job);
+      }).catch(function(err){
+        answered = true; clearTimeout(noAnswer);
+        if (djWatch !== myWatch) return; // 이미 상태 확인으로 따라가 끝났거나 멈춤 — 늦게 온 오류로 화면을 덮지 않는다
+        // 답을 못 받았어도 작업은 시작됐을 수 있다 — 누른 뒤 시작된 작업이 보이면 그것을 따라간다(상태 확인은 계속)
+        if (!djWatch.id) bugList.textContent = '시작 요청의 답을 받지 못했습니다(' + (err && err.message ? err.message : err) + ') — 서버 진행 상황을 직접 확인합니다…';
+        if (djWatch.starting){ djWatch.starting = false; djTick_(); }
+      });
+    }
+    function loadDeployInfo_(){
+      callGas('deploy_job_status', {}).then(function(st){
+        djRenderInfo_(st);
+        if (st && st.active && st.job && !djWatch){ djFollow_(st.job); } // 다른 곳(PC·다른 창)에서 시작한 반영도 따라간다
+      }).catch(function(){ if (djInfoBox) djInfoBox.textContent = '운영 버전을 확인하지 못했습니다.'; });
+    }
+    loadDeployInfo_();
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){
       if (!chk) return '';
@@ -734,13 +866,10 @@
       if (chk && !chk.ok && bugList) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
     }).catch(function(){});
     document.getElementById('stBtnRollback').addEventListener('click', function(){
+      if (djBusy_()) return;
       nxConfirm_('↩ 바로 앞 버전으로 되돌릴까요?\n\njob 주소는 그대로이고, 1분쯤 뒤 이전 화면·기능으로 돌아갑니다. 되돌린 뒤 자동으로 점검합니다. 다시 최신으로 올리려면 📥 수정 반영을 누르면 됩니다.').then(function(ok){
         if (!ok) return;
-        bugList.textContent = '↩ 되돌리는 중… (1~2분, 되돌린 버전 점검 포함)';
-        callGas('gh_rollback', {}).then(function(r){
-          if (!r || !r.success){ bugList.textContent = '되돌리지 못했습니다: ' + ((r && r.error) || ''); return; }
-          bugList.innerHTML = '<b>✅ 되돌림 완료</b> — 버전 ' + r.from + ' → ' + r.to + '<br>' + escapeHtml(r.message || '') + deployCheckHtml_(r.check) + '<div>화면을 새로고침하면 되돌린 화면이 보입니다.</div>';
-        }).catch(function(err){ bugList.textContent = '되돌리는 중 오류: ' + (err && err.message ? err.message : err); });
+        djStart_('rollback', {});
       });
     });
     document.getElementById('stBtnBugClear').addEventListener('click', function(){

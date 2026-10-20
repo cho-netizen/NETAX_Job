@@ -4039,16 +4039,20 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_judge_save') return jsonResponse(aiJudgeSave_(body));
   if (body.action === 'ai_ask_slots') return jsonResponse(aiAskSlots_(body));
   if (body.action === 'ai_cross_check') return jsonResponse(aiCrossCheck_(body));
-  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} return jsonResponse({ success: true, check: chk }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
+  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} let rec = null; try { rec = deployRecordPc_(body, chk); } catch (e) {} return jsonResponse({ success: true, check: chk, recorded: rec }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_pr_list') return jsonResponse(gh_prList_(!!body.fresh)); // [2026.10.20] 승인 대기 수정안
   if (body.action === 'gh_pr_merge') return jsonResponse(gh_prMerge_(body));
   if (body.action === 'gh_pr_close') return jsonResponse(gh_prClose_(body));
   if (body.action === 'gh_set_token') return jsonResponse(gh_setToken_(body));
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
-  if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
+  if (body.action === 'gh_deploy_apply') { const ga = gh_deployApply_(body); if (ga && ga.success) ga.check = deploySmokeRemote_(); return jsonResponse(ga); } // (옛 화면용 — 새 화면은 deploy_job_start)
+  // [2026.10.20] 반영 작업을 화면 요청 밖(1회용 트리거)에서 — 화면은 시작만 하고 deploy_job_status로 단계를 본다(세무사님 "승인반영을 눌렀는데 계속 대기중이다")
+  if (body.action === 'deploy_job_start') return jsonResponse(deployJobStart_(body));
+  if (body.action === 'deploy_job_status') return jsonResponse(deployJobStatus_());
+  if (body.action === 'deploy_job_pc_start') return jsonResponse(deployJobPcStart_(body)); // PC clasp 배포 시작 알림(tools/mark-deployed.js --start)
   if (body.action === 'deploy_smoke') return jsonResponse(deploySmoke_()); // 배포 직후 자동 점검(토큰 0)
   if (body.action === 'deploy_check_last') return jsonResponse(deployCheckLast_());
-  if (body.action === 'gh_rollback') { const rb = gh_rollback_(); rb.check = deploySmokeRemote_(); return jsonResponse(rb); } // ↩ 되돌리기 + 되돌린 버전 점검
+  if (body.action === 'gh_rollback') { const rb = gh_rollback_(); if (rb && rb.success) { rb.check = deploySmokeRemote_(); try { deployRecord_({ kind: 'rollback', ver: rb.to, msg: rb.message, check: rb.check }); } catch (e) {} } return jsonResponse(rb); } // ↩ 되돌리기 + 되돌린 버전 점검
   if (body.action === 'doc_regress_set_baseline') return jsonResponse(docRegressSetBaseline_(body)); // 서류 회귀시험 표본 기준값
   if (body.action === 'doc_regress_run') return jsonResponse(docRegressRunNightly_(!!body.force));
   if (body.action === 'corr_log') return jsonResponse(corrLog_(body)); // 자동 입력값을 세무사님이 고친 기록(고객 값 없음)
@@ -37126,7 +37130,7 @@ function deploySmoke_() {
   });
   check('개선 후보 보고서 만들기', function () { const r = buildImprovementReport_(); return r && r.success ? '' : '보고서를 만들지 못함'; });
   const ok = items.every(function (x) { return x.ok; });
-  const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ok: ok, items: items };
+  const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ts: Date.now(), ok: ok, items: items };
   try { PropertiesService.getScriptProperties().setProperty('DEPLOY_CHECK_LAST', JSON.stringify(last)); } catch (e) {}
   if (!ok) items.filter(function (x) { return !x.ok; }).forEach(function (x) { try { ai_logBug({ entry: { kind: 'deploy', where: '배포 직후 점검 · ' + x.name, message: x.msg } }); } catch (e) {} });
   return { success: true, last: last };
@@ -37648,7 +37652,8 @@ function ghDeployGuard_(fn) {
   cache.put('gh_deploying', String(Date.now()), 300);
   try { return fn(); } finally { try { cache.remove('gh_deploying'); } catch (e) {} }
 }
-function gh_deployApply_(body) {
+function gh_deployApply_(body, stage) {
+  stage = typeof stage === 'function' ? stage : function () {};
   // [2026.10.16] 공용 저장 잠금(withLock_) 대신 배포 전용 표시만 — 다른 저장·대화 저장이 잠금을 쥐면 📥가 거듭 "다른 저장 작업이 진행 중"으로 막혔다
   //  (배포는 시트 데이터를 고치지 않으므로 공용 잠금이 필요 없음, 같은 배포가 두 번 도는 것만 막는다)
   return ghDeployGuard_(function () {
@@ -37667,7 +37672,13 @@ function gh_deployApply_(body) {
       }
       return JSON.parse(r.getContentText() || '{}');
     };
-    const head = gh_feed_()[0];
+    stage('fetch', '깃허브에서 수정본 받는 중');
+    let head = gh_feed_()[0];
+    // [2026.10.20] ✅ 승인 직후에는 깃허브 커밋 피드가 합친 커밋을 보여 주기까지 몇 초~1분 걸린다 — 그 커밋이 보일 때까지 기다린다(최대 90초)
+    if (body && body.waitSha) {
+      for (var w = 0; w < 18 && head && head.sha !== body.waitSha; w++) { Utilities.sleep(5000); head = gh_feed_()[0]; }
+      if (head && head.sha !== body.waitSha) return { success: false, error: '승인한 수정이 90초가 지나도 깃허브 최신본에 보이지 않습니다 — 잠시 뒤 📥 수정 반영을 눌러 주세요.' };
+    }
     if (!head) throw new Error('깃허브 커밋 목록을 읽지 못했습니다');
     if (body && body.expectSha && body.expectSha !== head.sha) return { success: false, error: '그 사이 깃허브에 새 수정이 올라왔습니다 — 목록을 새로 보고 다시 눌러 주세요.' };
     head.commit = { message: head.msg };
@@ -37688,12 +37699,15 @@ function gh_deployApply_(body) {
     // 안전장치: 받은 Code.js가 너무 작거나 doPost·이 반영 기능이 없으면(잘린 파일) 반영하지 않는다
     const code = files.filter(function (f) { return f.name === 'Code'; })[0];
     if (!code || code.source.length < 100000 || code.source.indexOf('function doPost(') === -1 || code.source.indexOf('function gh_deployApply_(') === -1) throw new Error('받은 Code.js가 비정상입니다 — 반영하지 않음');
+    stage('swap', '서버 교체 중(새 코드 올리기·새 버전 만들기·배포 바꾸기)');
     api('put', '/content', { files: files });
     const desc = ('깃허브 ' + head.sha.slice(0, 7) + ' ' + String(head.commit.message || '').split('\n')[0]).slice(0, 100);
     const ver = api('post', '/versions', { description: desc });
     api('put', '/deployments/' + GH_DEPLOY_ID_, { deploymentConfig: { scriptId: scriptId, versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: desc } });
     gh_markDeployed_(head.sha);
     try { CacheService.getScriptCache().remove('dsc_ver_getNightlyStatus'); } catch (e) {}
+    try { deployRecord_({ kind: (body && body.kind) || 'apply', ver: ver.versionNumber, sha: head.sha, msg: (body && body.title) || head.msg }); } catch (e) {}
+    stage('templates', '서식(보고서·의뢰서 템플릿) 맞추는 중', { version: ver.versionNumber, sha: head.sha.slice(0, 7), message: desc });
     // [2026.10.13] 바뀐 템플릿(보고서·의뢰서·문단)을 드라이브에 — 세무사님이 드라이브에서 직접 고친 파일은 덮지 않고 경고
     var tplSync = null;
     try { tplSync = tplSyncFromGithub_(head.sha); } catch (e) { tplSync = { error: String(e && e.message || e).slice(0, 200) }; }
@@ -37705,10 +37719,187 @@ function gh_deployApply_(body) {
       if (tplSync.충돌.length) parts.push('⚠ 드라이브에서 직접 고친 템플릿 ' + tplSync.충돌.length + '개는 덮지 않음(' + tplSync.충돌.slice(0, 3).join(', ') + ')');
       tplMsg = parts.join(' · ');
     }
-    // [2026.10.13] 배포 직후 자동 점검 — 새 버전을 웹앱 주소로 불러 주요 기능을 한 바퀴(실패하면 설정 🐞 카드에 경고, ↩ 되돌리기 가능)
-    const check = deploySmokeRemote_();
-    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc + (tplMsg ? ' / ' + tplMsg : ''), templates: tplSync, check: check };
+    // [2026.10.13] 배포 직후 자동 점검 — [2026.10.20] 여기서 하지 않는다(새 버전 점검이 약 100초라 한 요청에 다 넣으면 화면이 멈춘 듯 보였다).
+    //  반영 작업(deployJobRun_)은 두 번째 트리거 deployJobCheck_에서, 옛 화면용 gh_deploy_apply는 그 자리에서 deploySmokeRemote_로 점검한다.
+    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc + (tplMsg ? ' / ' + tplMsg : ''), templates: tplSync };
   });
+}
+
+// =========================================================
+// [2026.10.20] 반영 작업(📥 수정 반영 · ✅ 승인·반영 · ↩ 되돌리기)을 화면 요청 밖에서 — 세무사님 "승인반영을 눌렀는데 계속 대기중이다"·
+//  "실제로는 반영이 끝났다고? 그걸 말이라고 하냐? 그게 정상이냐?"
+//  원인: 📥 한 번의 화면 요청 안에서 깃허브 받기·서버 교체·서식 맞추기·배포 직후 점검을 다 했다. 점검만 새 버전 deploy_smoke 한 번에
+//  약 100초(2026-10-20 실측 101.6초)라 요청 전체가 2~4분을 넘었고, 화면(gasbridge)은 25초마다 같은 요청번호로 다시 묻다가 4분에 포기했다 —
+//  그동안 "반영 중…"만 보였고, 반영 자체(@1184)는 이미 끝나 있었다. 서버가 자기 배포를 바꿔도 결과 기억(CacheService)은 프로젝트 공용이라
+//  그것이 원인은 아니다.
+//  이제: 화면은 deploy_job_start로 "시작"만 요청(곧바로 답) → 서버는 1회용 트리거 deployJobRun_로 따로 실행하며 단계를 DEPLOY_JOB에 적는다 →
+//  교체가 끝나면 두 번째 트리거 deployJobCheck_가 배포 직후 점검(6분 실행 한도를 나눠 씀) → 화면은 몇 초마다 deploy_job_status로 본다.
+//  반영 기록(DEPLOY_HISTORY)은 📥·✅·↩·PC(clasp, tools/mark-deployed.js) 모두 남겨 대시보드·설정 🐞 카드에 보인다
+//  (세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지").
+// =========================================================
+const DEPLOY_JOB_PROP_ = 'DEPLOY_JOB', DEPLOY_HIST_PROP_ = 'DEPLOY_HISTORY';
+const DEPLOY_JOB_STALE_MS_ = 12 * 60 * 1000; // 이보다 오래 안 끝난 작업은 죽은 것으로 보고 새 반영을 막지 않는다
+const DEPLOY_PC_STALE_MS_ = 20 * 60 * 1000;  // PC(clasp) 배포는 사람이 이어서 하므로 더 길게
+const DEPLOY_KIND_LABEL_ = { apply: '📥 수정 반영', merge: '✅ 승인·반영', rollback: '↩ 되돌리기', pc: 'PC에서 올림(clasp)' };
+function deployJobGet_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(DEPLOY_JOB_PROP_) || 'null'); } catch (e) { return null; } }
+function deployJobPut_(job) { job.updatedAt = Date.now(); PropertiesService.getScriptProperties().setProperty(DEPLOY_JOB_PROP_, JSON.stringify(job)); return job; }
+function deployJobActive_(j) { return !!(j && !j.done && Date.now() - (j.startedAt || 0) < (j.kind === 'pc' ? DEPLOY_PC_STALE_MS_ : DEPLOY_JOB_STALE_MS_)); }
+// 단계 기록 — gh_deployApply_가 stage(이름, 설명, 덧붙일 값)로 부른다
+function deployJobStage_(stage, label, info) {
+  const j = deployJobGet_();
+  if (!j || j.done) return;
+  j.stage = stage; j.label = label;
+  if (info) Object.keys(info).forEach(function (k) { j[k] = info[k]; });
+  (j.steps = j.steps || []).push({ stage: stage, label: label, at: Date.now() });
+  if (j.steps.length > 12) j.steps = j.steps.slice(-12);
+  deployJobPut_(j);
+}
+function deployJobTrigger_(fn, ms) {
+  deployJobClearTrigger_(fn);
+  ScriptApp.newTrigger(fn).timeBased().after(ms).create();
+}
+function deployJobClearTrigger_(fn) {
+  try { ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === fn) ScriptApp.deleteTrigger(t); }); } catch (e) {}
+}
+function deployJobStart_(body) {
+  const kind = String(body.kind || '');
+  if (!DEPLOY_KIND_LABEL_[kind] || kind === 'pc') return { success: false, error: '알 수 없는 반영 종류입니다.' };
+  return withLock_(10000, function () {
+    const cur = deployJobGet_();
+    if (deployJobActive_(cur)) return { success: false, busy: true, job: cur, error: '이미 ' + DEPLOY_KIND_LABEL_[cur.kind] + '이(가) 진행 중입니다 — 끝날 때까지 기다려 주세요.' };
+    if (CacheService.getScriptCache().get('gh_deploying')) return { success: false, busy: true, job: cur, error: '다른 반영이 진행 중입니다 — 1~2분 뒤 다시 눌러 주세요.' };
+    const job = { id: Utilities.getUuid().slice(0, 8), kind: kind, stage: 'queued', label: '시작 준비 중(서버가 따로 실행을 시작할 때까지 몇 초~1분)',
+      startedAt: Date.now(), expectSha: String(body.expectSha || ''), waitSha: String(body.waitSha || ''), title: String(body.title || '').slice(0, 100), steps: [] };
+    deployJobPut_(job);
+    deployJobTrigger_('deployJobRun_', 1000);
+    return { success: true, started: true, job: job };
+  });
+}
+// 트리거 1 — 깃허브 받기·서버 교체(또는 되돌리기)·서식 맞추기
+function deployJobRun_() {
+  deployJobClearTrigger_('deployJobRun_');
+  const j = deployJobGet_();
+  if (!j || j.done || j.stage !== 'queued') return;
+  try {
+    if (j.kind === 'rollback') {
+      deployJobStage_('swap', '이전 버전으로 바꾸는 중');
+      const rb = gh_rollback_();
+      if (!rb || !rb.success) throw new Error((rb && rb.error) || '되돌리지 못했습니다');
+      try { deployRecord_({ kind: 'rollback', ver: rb.to, msg: rb.message }); } catch (e) {}
+      deployJobSwapped_({ version: rb.to, from: rb.from, message: rb.message });
+    } else {
+      const r = gh_deployApply_({ expectSha: j.expectSha, waitSha: j.waitSha, kind: j.kind, title: j.title }, deployJobStage_);
+      if (!r || !r.success) throw new Error((r && r.error) || '반영하지 못했습니다');
+      deployJobSwapped_({ version: r.version, sha: r.sha, message: r.message });
+    }
+  } catch (e) {
+    const k = deployJobGet_() || j;
+    k.done = true; k.ok = false; k.stage = 'failed'; k.label = '실패'; k.error = String(e && e.message || e).slice(0, 400); k.finishedAt = Date.now();
+    deployJobPut_(k);
+  }
+}
+function deployJobSwapped_(info) {
+  const j = deployJobGet_();
+  if (!j) return;
+  Object.keys(info).forEach(function (k) { j[k] = info[k]; });
+  j.swappedAt = Date.now(); j.stage = 'check'; j.label = '배포 직후 점검 중(새 버전으로 주요 기능을 한 바퀴 — 2분쯤)';
+  (j.steps = j.steps || []).push({ stage: 'check', label: j.label, at: j.swappedAt });
+  deployJobPut_(j);
+  deployJobTrigger_('deployJobCheck_', 1000);
+}
+// 트리거 2 — 배포 직후 점검. 새 버전을 웹앱 주소로 불러 deploy_smoke(약 100초)를 돌리고, 응답이 늦으면 그 실행이 DEPLOY_CHECK_LAST를
+// 새로 쓰기를 기다린다(되돌리기는 HEAD 코드가 아니라 되돌린 버전을 점검해야 하므로 트리거 안에서 직접 돌리지 않고 주소로 부른다).
+function deployJobCheck_() {
+  deployJobClearTrigger_('deployJobCheck_');
+  const j = deployJobGet_();
+  if (!j || j.done || j.stage !== 'check') return;
+  let chk = null;
+  try { chk = deploySmokeAfter_(j.swappedAt || j.startedAt); } catch (e) { chk = { ok: false, at: '', items: [{ name: '배포 직후 점검', ok: false, msg: String(e && e.message || e).slice(0, 200) }] }; }
+  const k = deployJobGet_() || j;
+  k.check = chk; k.done = true; k.ok = true; k.stage = 'done'; k.label = '끝남'; k.finishedAt = Date.now();
+  deployJobPut_(k);
+  try { deployHistPatch_(k.version, { checkOk: !!(chk && chk.ok) }); } catch (e) {}
+}
+function deploySmokeAfter_(since) {
+  const props = PropertiesService.getScriptProperties();
+  const sinceMin = Utilities.formatDate(new Date(since), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  const fresh = function () {
+    let l = null; try { l = JSON.parse(props.getProperty('DEPLOY_CHECK_LAST') || 'null'); } catch (e) {}
+    return l && ((l.ts && l.ts >= since) || (!l.ts && String(l.at || '') >= sinceMin)) ? l : null;
+  };
+  const t0 = Date.now();
+  try {
+    const secret = props.getProperty('API_SECRET') || '';
+    Utilities.sleep(8000); // 배포 직후 잠깐은 예전 버전 응답이 섞일 수 있다
+    const r = UrlFetchApp.fetch('https://script.google.com/macros/s/' + GH_DEPLOY_ID_ + '/exec', { method: 'post', contentType: 'text/plain;charset=utf-8',
+      payload: JSON.stringify({ _key: secret, action: 'deploy_smoke' }), muteHttpExceptions: true, followRedirects: true });
+    let o = null; try { o = JSON.parse(r.getContentText()); } catch (e) {}
+    if (o && o.last) return o.last;
+  } catch (e) { /* 응답이 1분을 넘으면 여기로 온다 — 점검 실행은 서버에서 계속되므로 아래에서 결과를 기다린다 */ }
+  while (Date.now() - t0 < 250000) {
+    const l = fresh(); if (l) return l;
+    Utilities.sleep(10000);
+  }
+  const l = fresh(); if (l) return l;
+  return { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ts: Date.now(), ok: false,
+    items: [{ name: '배포 직후 점검', ok: false, msg: '4분 안에 점검 결과를 받지 못함 — 반영은 끝났습니다. 잠시 뒤 설정 🐞 카드의 "운영 버전" 줄에서 점검 결과를 다시 확인해 주세요.' }] };
+}
+// 반영 기록 — 최근 20건(스크립트 속성 한 칸 9KB 안). kind: apply/merge/rollback/pc
+function deployHistGet_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(DEPLOY_HIST_PROP_) || '[]') || []; } catch (e) { return []; } }
+function deployRecord_(x) {
+  const h = deployHistGet_().filter(function (e) { return !(x.ver && e.ver === x.ver); });
+  h.unshift({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ver: x.ver || null, sha: String(x.sha || '').slice(0, 7), kind: x.kind || '',
+    msg: String(x.msg || '').split('\n')[0].slice(0, 90), checkOk: x.check ? !!x.check.ok : null });
+  PropertiesService.getScriptProperties().setProperty(DEPLOY_HIST_PROP_, JSON.stringify(h.slice(0, 20)));
+  try { CacheService.getScriptCache().remove('deploy_live_ver'); } catch (e) {}
+}
+function deployHistPatch_(ver, patch) {
+  if (!ver) return;
+  const h = deployHistGet_();
+  h.forEach(function (e) { if (e.ver === ver) Object.keys(patch).forEach(function (k) { e[k] = patch[k]; }); });
+  PropertiesService.getScriptProperties().setProperty(DEPLOY_HIST_PROP_, JSON.stringify(h));
+}
+// 지금 운영 배포의 실제 버전 번호·설명(Apps Script API) — 기록이 빠져도 사실을 보이게. 30초 기억.
+function deployLiveVersion_() {
+  const cache = CacheService.getScriptCache();
+  const c = cache.get('deploy_live_ver');
+  if (c) { try { return JSON.parse(c); } catch (e) {} }
+  const r = UrlFetchApp.fetch('https://script.googleapis.com/v1/projects/' + ScriptApp.getScriptId() + '/deployments/' + GH_DEPLOY_ID_,
+    { muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+  if (r.getResponseCode() !== 200) return null;
+  const d = JSON.parse(r.getContentText() || '{}');
+  const out = { ver: d.deploymentConfig && d.deploymentConfig.versionNumber, desc: (d.deploymentConfig && d.deploymentConfig.description) || '', updated: d.updateTime || '' };
+  try { cache.put('deploy_live_ver', JSON.stringify(out), 30); } catch (e) {}
+  return out;
+}
+// PC에서 clasp로 올릴 때 — tools/mark-deployed.js --start "요약"이 시작을, 그냥 mark-deployed가 끝을 알린다
+function deployJobPcStart_(body) {
+  return withLock_(10000, function () {
+    const cur = deployJobGet_();
+    if (deployJobActive_(cur) && cur.kind !== 'pc') return { success: false, busy: true, job: cur, error: '화면에서 시작한 ' + DEPLOY_KIND_LABEL_[cur.kind] + '이(가) 진행 중입니다.' };
+    const now = Date.now();
+    deployJobPut_({ id: Utilities.getUuid().slice(0, 8), kind: 'pc', stage: 'pc', label: 'PC에서 올리는 중(clasp push·deploy → 깃허브 → 배포 직후 점검)', startedAt: now,
+      title: String(body.msg || '').slice(0, 100), steps: [{ stage: 'pc', label: 'PC에서 올리기 시작', at: now }] });
+    return { success: true };
+  });
+}
+function deployRecordPc_(body, chk) {
+  let live = null; try { live = deployLiveVersion_(); } catch (e) {}
+  const ver = live && live.ver;
+  const msg = String(body.msg || '') || String((live && live.desc) || '').replace(/^깃허브 [0-9a-f]{7}\s*/, '');
+  deployRecord_({ kind: 'pc', ver: ver, sha: body.sha, msg: msg, check: chk });
+  const j = deployJobGet_();
+  if (j && j.kind === 'pc' && !j.done) {
+    j.done = true; j.ok = true; j.stage = 'done'; j.label = '끝남'; j.version = ver; j.sha = String(body.sha || '').slice(0, 7); j.check = chk; j.finishedAt = Date.now();
+    deployJobPut_(j);
+  }
+  return { ver: ver };
+}
+function deployJobStatus_() {
+  const j = deployJobGet_();
+  let live = null; try { live = deployLiveVersion_(); } catch (e) {}
+  return { success: true, now: Date.now(), job: j, active: deployJobActive_(j), stale: !!(j && !j.done && !deployJobActive_(j)),
+    history: deployHistGet_().slice(0, 12), live: live, check: deployCheckLast_().last, kinds: DEPLOY_KIND_LABEL_ };
 }
 
 // =========================================================

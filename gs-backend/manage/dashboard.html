@@ -96,6 +96,8 @@
          결과가 뭐였는지를 대시보드에서 바로 확인한다. -->
     <div class="card">
       <h3>🌙 야간 자동점검 상태</h3>
+      <!-- [2026.10.20] 운영 버전 한 줄 — 세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지"(자세한 내역은 설정 🐞 카드) -->
+      <a href="#" id="dashDeployLine" style="display:block; font-size:12.5px; padding:4px 0 6px; border-bottom:1px solid var(--line); color:inherit; text-decoration:none;" title="눌러서 설정 🐞 카드의 반영 내역 보기">운영 버전 확인 중…</a>
       <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.10.13] 개발자 소통 요약 — 새 기능·확인할 요청·긴급 요청·개발자 질문 · [2026.10.19] AI 회의 결정 필요(자문단은 삭제, 자세한 것은 설정 🤝 카드) -->
@@ -122,6 +124,7 @@
     loadDashSubtasks_();
     loadDashFollow_();
     loadDashNightlyStatus_();
+    loadDashDeployLine_();
     loadDashFed_();
     dashMeasureLoad_();
   }
@@ -771,6 +774,36 @@
     ev.preventDefault();
     if (typeof goToView_ === 'function') goToView_(t.dataset.dashgo); else if (typeof showView === 'function') showView(t.dataset.dashgo);
     setTimeout(function(){ var c = document.getElementById('stFedCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
+  });
+  // [2026.10.20] "운영 @1185 · 오늘 18:52 반영 · 점검 정상" — 반영이 진행 중이면 단계·경과 시간(📥·✅·↩·PC clasp 모두, Code.js deployJobStatus_).
+  //  진행 중일 때만 10초마다 다시 본다. 누르면 설정 🐞 카드(운영 버전·최근 반영 내역)로.
+  var dashDeployTimer = null;
+  function loadDashDeployLine_(){
+    clearTimeout(dashDeployTimer);
+    callGas('deploy_job_status', {}).then(function(st){
+      var el = document.getElementById('dashDeployLine');
+      if (!el || !st || !st.success) return;
+      var h0 = (st.history || [])[0], live = st.live, chk = st.check, j = st.job;
+      var ver = (live && live.ver) || (h0 && h0.ver);
+      var today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      var at = h0 && (!live || !live.ver || live.ver === h0.ver) ? h0.at : '';
+      var atTxt = at ? (at.slice(0, 10) === today ? '오늘 ' + at.slice(11, 16) : at.slice(5, 16)) + ' 반영' : '';
+      var bad = chk ? (chk.items || []).filter(function(x){ return !x.ok; }).length : 0;
+      var parts = ['🚀 운영 @' + esc(ver || '?')];
+      if (atTxt) parts.push(esc(atTxt));
+      parts.push(!chk ? '점검 기록 없음' : chk.ok ? '점검 정상' : '<span style="color:#a83232; font-weight:700;">점검 이상 ' + bad + '건</span>');
+      var s = Math.max(0, Math.round((st.now - ((j && j.startedAt) || st.now)) / 1000));
+      if (st.active && j) parts.push('<span style="color:var(--accent,#2b6cb0); font-weight:700;">⏳ ' + esc((st.kinds && st.kinds[j.kind]) || '반영') + ' 진행 중 — ' + esc(j.version ? '@' + j.version + ' 반영됨, ' + (j.label || '') : (j.label || '')) + ' · ' + (s >= 60 ? Math.floor(s / 60) + '분 ' : '') + (s % 60) + '초째</span>');
+      else if (st.stale && j) parts.push('<span style="color:#a83232;">⚠ 끝나지 않은 반영 기록이 있음</span>');
+      else if (j && j.done && j.stage === 'failed' && st.now - (j.finishedAt || 0) < 86400000) parts.push('<span style="color:#a83232;">❌ 최근 반영 실패</span>');
+      el.innerHTML = parts.join(' · ');
+      if (st.active) dashDeployTimer = setTimeout(loadDashDeployLine_, 10000);
+    }).catch(function(){ var el = document.getElementById('dashDeployLine'); if (el) el.textContent = '운영 버전을 확인하지 못했습니다.'; });
+  }
+  document.getElementById('dashDeployLine').addEventListener('click', function(ev){
+    ev.preventDefault();
+    if (typeof goToView_ === 'function') goToView_('settings'); else if (typeof showView === 'function') showView('settings');
+    setTimeout(function(){ var c = document.getElementById('stBugCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
   });
   function loadDashNightlyStatus_(){
     callGas('getNightlyStatus', {}).then(function(res){
