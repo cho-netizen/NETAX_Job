@@ -53,7 +53,8 @@
 </style>
 <script>
 (function(){
-  var SA_GROUP_ORDER_ = ['기본 지침', '총괄관리자', '업무관리자 지침', '0 NETAX'];
+  // [2026.10.20] 'Claude 작업원칙' — 총괄관리자\Claude작업원칙(세무사님 컴퓨터의 Claude가 매번/작업별로 읽는 규칙, SysAdmin.js 2-1)
+  var SA_GROUP_ORDER_ = ['기본 지침', '총괄관리자', 'Claude 작업원칙', '업무관리자 지침', '0 NETAX'];
   var saState_ = { items: [], loading: false, loadedAt: 0 };
 
   function saEsc_(s){ return typeof escapeHtml === 'function' ? escapeHtml(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }

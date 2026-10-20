@@ -26,6 +26,31 @@ var SYSADMIN_USES_ = {
     + '중간을 고치면 새 요청 구분이 틀어지므로 여기서는 보기만 합니다 — 새 요청은 ✍ 버튼으로 적으세요.'
 };
 
+// [2026.10.20] Claude 작업원칙 — 세무사님 "단순 기억으로는 안되고 어디다 적어놓고 수시로 읽어봐라".
+// job 서버가 아니라 세무사님 컴퓨터의 Claude(코딩 도우미)가 읽는다: 세무사님 컴퓨터의 훅(C:\Users\assa\.claude\hooks\claude-rules-hook.js)이
+// 이 폴더 파일을 드라이브(J:)에서 직접 읽어 붙인다. 아래 "쓰임"은 그 훅의 판정 규칙을 옮긴 것 — 훅이 바뀌면 여기도 같이 고칠 것.
+var SYSADMIN_CLAUDE_RULES_FOLDER_ = 'Claude작업원칙';
+var SYSADMIN_CLAUDE_RULE_USES_ = {
+  'README.md': '이 폴더 안내(층 구조·언제 읽히는지). Claude가 자동으로 읽지는 않습니다.',
+  'L1_core.md': 'Claude가 매번 읽음 — 세무사님이 말씀하실 때마다, 대화를 새로 시작할 때마다 맨 앞에 붙습니다(1층 핵심 원칙).',
+  'L2_taxlaw.md': 'Claude가 세법·세액계산 작업 때 읽음 — 세액계산기·인쇄서식·조견표·법령 도구를 고치거나, 업무관리자(지침·법령·서식)·템플릿을 고치려는 순간 붙습니다.',
+  'L2_deploy.md': 'Claude가 배포 작업 때 읽음 — 서버 배포(clasp)·커밋·푸시·배포 기록 명령을 실행하려는 순간 붙습니다.',
+  'L2_sessions.md': 'Claude가 세션·작업자를 띄우거나 지시할 때 읽음 — 새 세션 시작·다른 세션에 메시지·작업자 띄우기 직전에 붙습니다.',
+  'L2_drive_files.md': 'Claude가 드라이브 파일을 옮기거나 지우거나 이름 바꿀 때 읽음 — 드라이브(J:) 경로에 옮기기·지우기 명령을 실행하려는 순간 붙습니다.',
+  'L2_screen_ui.md': 'Claude가 화면 코드를 고칠 때 읽음 — job 등 화면 파일(.html)을 고치려는 순간 붙습니다.',
+  'L2_job_server.md': 'Claude가 서버 코드·AI 연결을 고칠 때 읽음 — 서버 코드(.js)를 고치려는 순간 붙습니다.',
+  'L2_caseproc.md': 'Claude가 사건처리 자동화·점검 측정 작업 때 읽음 — 사건처리·교차검증·정답지 점검 코드를 고치거나 재현기를 돌리려는 순간 붙습니다.'
+};
+var SYSADMIN_CLAUDE_RULE_TITLES_ = {
+  'README.md': '안내', 'L1_core.md': '1층 — 매번 읽는 핵심 원칙',
+  'L2_taxlaw.md': '2층 — 세법·세액계산', 'L2_deploy.md': '2층 — 배포·커밋·푸시', 'L2_sessions.md': '2층 — 세션·작업자 띄우기',
+  'L2_drive_files.md': '2층 — 드라이브 파일 옮기기·지우기', 'L2_screen_ui.md': '2층 — 화면 코드', 'L2_job_server.md': '2층 — 서버 코드·AI 연결',
+  'L2_caseproc.md': '2층 — 사건처리 자동화·점검 측정'
+};
+function sysAdminClaudeRuleUse_(name) {
+  return SYSADMIN_CLAUDE_RULE_USES_[name] || 'Claude가 아직 자동으로 읽지 않는 파일입니다 — 언제 읽게 할지 Claude에게 말씀해 주세요(1층·2층 연결은 세무사님 컴퓨터의 훅이 정합니다).';
+}
+
 function sysAdminFileInfo_(file, extra) {
   var text = '';
   try { text = file.getBlob().getDataAsString('UTF-8').replace(/^﻿/, ''); } catch (e) { }
@@ -76,6 +101,30 @@ function sysAdminList_() {
     items.push(f ? sysAdminFileInfo_(f, base) : Object.assign(base, { name: d[1], exists: false }));
   });
   if (!chief) warn.push('총괄관리자 폴더가 설정되어 있지 않습니다(스크립트 속성 CHIEF_MANAGER_FOLDER_ID).');
+
+  // 2-1) 총괄관리자\Claude작업원칙 — 1층(매번)·2층(작업별) 규칙. README 먼저, L1, L2 순.
+  if (chief) {
+    try {
+      var crIt = chief.getFoldersByName(SYSADMIN_CLAUDE_RULES_FOLDER_);
+      var crFolder = null;
+      while (crIt.hasNext()) { var cf = crIt.next(); if (!cf.isTrashed()) { crFolder = cf; break; } }
+      if (crFolder) {
+        var crLabel = sysAdminFolderLabel_(crFolder);
+        var crs = [];
+        var ci = crFolder.getFiles();
+        while (ci.hasNext()) {
+          var crf = ci.next();
+          if (!/\.(md|txt)$/i.test(crf.getName()) || crf.isTrashed()) continue;
+          var crName = crf.getName();
+          var crTitle = SYSADMIN_CLAUDE_RULE_TITLES_[crName] || crName.replace(/\.(md|txt)$/i, '');
+          crs.push(sysAdminFileInfo_(crf, { key: 'claudeRule', group: 'Claude 작업원칙', title: crTitle, where: crLabel, use: sysAdminClaudeRuleUse_(crName), editable: true }));
+        }
+        var crRank = function (n) { return n === 'README.md' ? 0 : /^L1_/.test(n) ? 1 : /^L2_/.test(n) ? 2 : 3; };
+        crs.sort(function (a, b) { return crRank(a.name) - crRank(b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
+        items = items.concat(crs);
+      } else warn.push('총괄관리자 안에 「' + SYSADMIN_CLAUDE_RULES_FOLDER_ + '」 폴더가 없습니다 — Claude 작업원칙 파일을 찾지 못했습니다.');
+    } catch (e) { warn.push('Claude 작업원칙 폴더 확인 중 오류: ' + e.message); }
+  }
 
   // 3) 업무관리자 폴더 맨 위의 .md/.txt 전부(toolListBusinessManagers와 같은 범위 — 하위폴더 _제안함·_이전판 등은 안 봄)
   var bmFolder = getBusinessManagerFolder_();
@@ -138,6 +187,11 @@ function sysAdminKindOf_(file) {
   if (parent.getName() === '_제안함') return 'proposal';
   var props = PropertiesService.getScriptProperties();
   var chiefId = sanitizeDriveId_(props.getProperty(CHIEF_MANAGER_FOLDER_ID_PROPERTY));
+  // [2026.10.20] 총괄관리자\Claude작업원칙 안의 파일도 저장할 때 직전 판을 그 폴더 「_이전판」에 보관
+  if (chiefId && parent.getName() === SYSADMIN_CLAUDE_RULES_FOLDER_) {
+    var gps = parent.getParents();
+    if (gps.hasNext() && gps.next().getId() === chiefId) return 'claudeRule';
+  }
   if (chiefId && pid === chiefId) {
     if (name === SYSADMIN_PLAN_NAME_) return 'plan';
     if (name === SYSADMIN_CHECKLIST_NAME_) return 'checklist';
