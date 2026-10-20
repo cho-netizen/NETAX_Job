@@ -50,7 +50,7 @@
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
-        <button type="button" class="ghost-btn" id="stBtnAnswerKey" title="사건 폴더에 _정답지.json이 있는 실사건을 '이 사건 처리하자'와 같은 단계·세액계산 엔진으로 다시 처리해 정답과 칸별로 대조합니다(AI 비용 0). 결과는 업무관리자/_정답지점검결과.json, 불일치는 개선 후보에 올라감">🧪 정답지 점검</button>
+        <button type="button" class="ghost-btn" id="stBtnAnswerKey" title="사건 폴더에 _정답지.json이 있는 실사건을 '이 사건 처리하자'와 같은 단계·세액계산 엔진으로 다시 처리해 정답과 칸별로 대조합니다(AI 비용 0). 결과는 총괄관리자/_정답지점검/_정답지점검결과.json, 불일치는 개선 후보에 올라감">🧪 정답지 점검</button>
         <button type="button" class="ghost-btn" id="stBtnAnswerKeyDraft" title="사건 폴더의 양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)를 무료 글자인식으로 읽어 _정답지.json 초안을 만듭니다(AI 비용 0) — 세무사님이 확인해 '확정'으로 바꿔 주세요">📝 정답지 초안</button>
         <button type="button" class="ghost-btn" id="stBtnOcrCount" title="모든 사건 폴더의 서류 중 서버 글자인식 기억이 이미 있는 것·아직 없는 것·글자로 못 바꾸는 형식을 사건별로 셉니다(글자인식은 하지 않음, AI 비용 0)">🔤 글자인식 미리 세기</button>
         <button type="button" class="ghost-btn" id="stBtnOcrBatch" title="모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 무료 글자인식으로 읽어 기억에 쌓습니다(사건은 저장·정리하지 않음, AI 비용 0). 서류가 많으면 몇 시간 걸립니다 — 창을 닫아도 이어지게 하려면 ⏰ 자동 이어 읽기를 켜세요">🔤 글자인식 일괄 읽기</button>
@@ -107,13 +107,16 @@
     function showReq(){
       box().textContent = '불러오는 중…';
       loadStatus().then(function(r){
-        var list = r.requests || [];
-        if (!list.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
-        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '요청 상태') + '</b> · 흐름: 접수 → (개발자 수정안·승인·📥 반영) → 반영됨 → 세무사님 확인</div>'
-          + list.map(function(x){
-            var btns = x.status === '반영됨' ? ' <button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '">↩ 다시 고쳐 주세요</button>' : '';
-            return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10)) + '</span><br>' + h(x.text) + btns);
-          }).join('');
+        // [2026.10.20] 끝나지 않은 요청 전부(오래된 순·며칠째)를 앞에, 끝난 것(최근 15건)은 접어 둔다 — 대시보드 🛠 개선요구 카드와 같은 자료
+        var open = r.openRequests || [], done = r.doneRequests || [];
+        if (!open.length && !done.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
+        var one = function(x){
+          var btns = x.status === '반영됨' ? ' <button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '">↩ 다시 고쳐 주세요</button>' : '';
+          return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '')) + '</span><br>' + h(x.text) + (x.reopenNote ? '<br><span style="color:#a83232;">↩ ' + h(x.reopenNote) + '</span>' : '') + btns);
+        };
+        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '남은 요청 ' + open.length + '건') + '</b> · 흐름: 접수 → (개발자 수정안·승인·📥 반영) → 반영됨 → 세무사님 확인</div>'
+          + (open.length ? open.map(one).join('') : row('남은 요청이 없습니다.'))
+          + (done.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(one).join('') + '</details>' : '');
       }).catch(err);
     }
     function showQ(){

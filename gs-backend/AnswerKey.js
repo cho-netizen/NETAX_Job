@@ -2,7 +2,7 @@
 // [2026.10.14] 🧪 정답지 점검(토큰 0) — "이 사건 처리하자"를 고치고 브라우저로 하나씩 확인하던 핑퐁을 없애려고 만든 회귀시험.
 // 사건 폴더의 _정답지.json(세무사님이 확인한 정답 — 저장소에는 절대 넣지 않음, 고객 자료)과, 사이드바가 도는 것과 같은 서버 단계
 // (기본 → 증빙 → 처리개요)와 세액계산 화면 엔진(taxcalc-engine.html을 서버에서 그대로 실행)의 결과를 칸별로 대조한다.
-// AI 호출 없음. 결과는 업무관리자/_정답지점검 폴더 _정답지점검결과.json에 저장하고, 실패는 개선 후보 보고서(buildImprovementReport_)에 올라간다.
+// AI 호출 없음. 결과는 총괄관리자/_정답지점검 폴더([2026.10.20] 업무관리자에서 옮김 — 지침이 아닌 점검 기록) _정답지점검결과.json에 저장하고, 실패는 개선 후보 보고서(buildImprovementReport_)에 올라간다.
 //
 // 정답지 형식(일부 칸만 있어도 됨 — 있는 칸만 대조):
 // { "상태": "초안"|"확정", "출처": "…", "세목": "inheritance",
@@ -472,7 +472,7 @@ function answerKeyRun_(body) {
   const dc = {}; st.results.forEach(function (r) { ((r.usable && r.usable.defects) || []).forEach(function (d) { const k = d.replace(/[(—].*$/, '').replace(/\s*\d+건/, '').trim(); dc[k] = (dc[k] || 0) + 1; }); });
   result.defectTop = Object.keys(dc).sort(function (a, b) { return dc[b] - dc[a]; }).slice(0, 5).map(function (k) { return k + ' ' + dc[k] + '건'; });
   try {
-    // [2026.10.20] 업무관리자 맨 위 → 하위폴더 _정답지점검(0 NETAX 정리 결정 2). 옮기기 전 맨 위에 남은 파일은 akResultFolder_가 처음 쓸 때 데려온다
+    // [2026.10.20] 결과 자리 = 총괄관리자/_정답지점검(업무관리자 맨 위·업무관리자/_정답지점검에 남은 옛 파일은 akResultFolder_가 처음 쓸 때 데려온다
     const folder = akResultFolder_();
     // [2026.10.15] 세무사님 지시: 점검 내용을 없애지 말고 한 파일에 통합 보관 — 새 결과를 _정답지점검_보관.md 끝에 회차로 이어 붙인다(akArchiveMd_)
     if (folder) {
@@ -496,29 +496,42 @@ function answerKeyRun_(body) {
   } catch (e) { result.saveError = String(e && e.message || e); }
   return { ok: true, result: result };
 }
-// [2026.10.20] 정답지 점검 결과·보관 파일 자리 = 업무관리자/_정답지점검. 맨 위에 옛 파일이 남아 있고 하위폴더에 없으면 하위폴더로 옮겨
-//  두 곳에 갈라져 쌓이지 않게 한다(옮기기 실패해도 저장은 계속).
+// [2026.10.20 오전] 업무관리자 맨 위 → 업무관리자/_정답지점검(0 NETAX 정리 결정 2) → 오후에 아래처럼 총괄관리자로 다시 옮김.
+// [2026.10.20 오후] 세무사님 "항상 참조할 필요가 없는 파일을 항상 참조가 되면 안 되기에" — 정답지 점검 결과는 지침이 아니라 점검 기록이라
+//  업무관리자(지침 폴더) 밖, 총괄관리자의 다른 "_" 기록 폴더(_점검리포트·_자가치유·_사건처리점검) 옆 총괄관리자/_정답지점검으로 옮긴다.
+//  읽기·쓰기 모두 새 자리 → 업무관리자/_정답지점검 → 업무관리자 맨 위 순서(옮기는 동안 대비, akResultOldFolders_).
 const AK_RESULT_DIR_ = '_정답지점검';
+function akResultOldFolders_() {
+  const out = [], bm = getBusinessManagerFolder_();
+  if (!bm) return out;
+  try { const subs = bm.getFoldersByName(AK_RESULT_DIR_); if (subs.hasNext()) out.push(subs.next()); } catch (e) {}
+  out.push(bm);
+  return out;
+}
 function akResultFolder_() {
-  const bm = getBusinessManagerFolder_();
-  if (!bm) return null;
-  const sub = getOrCreateSubfolder_(bm, AK_RESULT_DIR_);
+  const chief = getChiefManagerFolder_();
+  if (!chief) { const bm = getBusinessManagerFolder_(); return bm ? getOrCreateSubfolder_(bm, AK_RESULT_DIR_) : null; } // 총괄관리자 설정이 없을 때만 예전 자리
+  const sub = getOrCreateSubfolder_(chief, AK_RESULT_DIR_);
+  // 새 자리에 없으면 옛 자리(업무관리자/_정답지점검 → 업무관리자 맨 위)의 파일을 데려와 두 곳에 갈라져 쌓이지 않게 한다(옮기기 실패해도 저장은 계속)
   [AK_RESULT_NAME_, AK_ARCHIVE_NAME_].forEach(function (n) {
-    try { if (!sub.getFilesByName(n).hasNext()) { const old = bm.getFilesByName(n); if (old.hasNext()) old.next().moveTo(sub); } } catch (e) {}
+    try {
+      if (sub.getFilesByName(n).hasNext()) return;
+      akResultOldFolders_().some(function (f) { const old = f.getFilesByName(n); if (old.hasNext()) { old.next().moveTo(sub); return true; } return false; });
+    } catch (e) {}
   });
   return sub;
 }
 function answerKeyLast_() {
   try {
-    // 읽기는 폴더를 만들지 않는다 — 하위폴더에 없으면 업무관리자 맨 위에서도 찾는다(옮기기 전후가 섞일 때)
-    const bm = getBusinessManagerFolder_();
-    let it = null;
-    if (bm) {
-      const subs = bm.getFoldersByName(AK_RESULT_DIR_);
-      if (subs.hasNext()) it = subs.next().getFilesByName(AK_RESULT_NAME_);
-      if (!it || !it.hasNext()) it = bm.getFilesByName(AK_RESULT_NAME_);
+    // 읽기는 폴더를 만들지 않는다 — 총괄관리자/_정답지점검 → 업무관리자/_정답지점검 → 업무관리자 맨 위
+    const places = [], chief = getChiefManagerFolder_();
+    if (chief) { const subs = chief.getFoldersByName(AK_RESULT_DIR_); if (subs.hasNext()) places.push(subs.next()); }
+    akResultOldFolders_().forEach(function (f) { places.push(f); });
+    for (let i = 0; i < places.length; i++) {
+      const it = places[i].getFilesByName(AK_RESULT_NAME_);
+      if (it.hasNext()) return { ok: true, result: JSON.parse(it.next().getBlob().getDataAsString('UTF-8') || 'null') };
     }
-    return it && it.hasNext() ? { ok: true, result: JSON.parse(it.next().getBlob().getDataAsString('UTF-8') || 'null') } : { ok: true, result: null };
+    return { ok: true, result: null };
   } catch (e) { return { error: String(e && e.message || e) }; }
 }
 // 개선 후보 보고서용 요약 — 고객 이름 없이 사건 id·칸 이름·종류만(보고서는 공개 저장소 루틴이 읽음)
@@ -722,7 +735,7 @@ function answerKeyDraft_(body) {
   return { ok: true, made: made, more: more };
 }
 
-// [2026.10.15] 🧪 결과를 업무관리자/_정답지점검/_정답지점검_보관.md([2026.10.20] 하위폴더로 옮김) 한 파일에 회차로 이어 붙인다(세무사님 지시: 사건별·회차별 파일 말고 통합 보관).
+// [2026.10.15] 🧪 결과를 총괄관리자/_정답지점검/_정답지점검_보관.md([2026.10.20] 업무관리자에서 옮김) 한 파일에 회차로 이어 붙인다(세무사님 지시: 사건별·회차별 파일 말고 통합 보관).
 // 형식: "## 회차: 규칙판 (일시, 통과 n/m)" + 목차 + 사건별 상세(칸 대조표·계산 입력값·서류 분류·증빙 메모·질문). 앞 회차는 건드리지 않는다.
 const AK_ARCHIVE_NAME_ = '_정답지점검_보관.md';
 function akArchiveMd_(folder, result) {

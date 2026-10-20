@@ -48,6 +48,12 @@
         #dashFollowList textarea{ width:100%; box-sizing:border-box; font:inherit; font-size:13px; }
       </style>
     </div>
+    <!-- [2026.10.20] 세무사님 "개선요구사항을 언제 조치하고 지우나? 계속 누적관리하나?" → "그렇게 하라"(원장은 누적, 할 일은 끝날 때까지, 화면엔 남은 것만 앞에).
+         설정 🐞 ✍로 적은 요청 중 끝나지 않은 것(접수·재오픈·반영됨)을 한 줄로 보이고, 누르면 목록(끝난 것은 접힘). 자료는 설정 🤝 📝 요청 상태와 같다(Federation.js commStatus_). -->
+    <div class="card dash-cover" id="dashImproveCard">
+      <h3 style="margin-bottom:0;"><button type="button" id="dashImproveHead" style="all:unset; cursor:pointer; display:block; width:100%;">🛠 개선요구 <span id="dashImproveSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span id="dashImproveArrow" style="float:right; font-size:12px; color:var(--sub);">▾</span></button></h3>
+      <div id="dashImproveList" style="display:none; margin-top:8px;"></div>
+    </div>
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
@@ -123,6 +129,7 @@
     loadDashTasks_();
     loadDashSubtasks_();
     loadDashFollow_();
+    loadDashImprove_();
     loadDashNightlyStatus_();
     loadDashDeployLine_();
     loadDashFed_();
@@ -742,6 +749,57 @@
       btn.disabled = true;
       dashFollowSave_('followup_edit', { raw: it.raw, line: it.line, text: t }, function(){ btn.disabled = false; });
     }
+  });
+
+  // [2026.10.20] 🛠 개선요구 — 끝나지 않은 요청 전부(오래된 순)·며칠째. 반영됨은 👍 잘 됨 / ↩ 다시 고쳐 주세요(설정 📝 요청 상태와 같은 서버 함수).
+  var dashImprove_ = { open: false, doneOpen: false };
+  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+  function dashImproveRowHtml_(x){
+    var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
+    var btns = x.status === '반영됨' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" data-impok="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">👍 잘 됨</button><button type="button" class="ghost-btn" data-impno="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">↩ 다시 고쳐 주세요</button></div>' : '';
+    return '<div style="padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:4px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">'
+      + '<span style="color:' + (DASH_IMPROVE_COLOR_[x.status] || 'var(--sub)') + '; font-weight:700;">[' + esc(label) + ']</span> '
+      + (x.urgent ? '🚨 ' : '') + '<span style="font-size:11.5px; color:var(--sub);">' + esc(String(x.at).slice(0, 10)) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + '</span>'
+      + '<div style="white-space:pre-wrap;">' + esc(x.text) + '</div>'
+      + (x.reopenNote ? '<div style="font-size:12px; color:#a83232;">↩ 세무사님 지적: ' + esc(x.reopenNote) + '</div>' : '')
+      + btns + '</div>';
+  }
+  function dashImproveRender_(r){
+    var sum = document.getElementById('dashImproveSum'), box = document.getElementById('dashImproveList');
+    if (!sum || !box) return;
+    if (!r || r.error){ sum.textContent = '불러오지 못했습니다' + (r && r.error ? ': ' + r.error : ''); return; }
+    var open = r.openRequests || [], done = r.doneRequests || [];
+    sum.textContent = open.length ? '대기 ' + open.length + '건 · 가장 오래된 것 ' + (r.oldestDays || 0) + '일째' + (r.toConfirm ? ' · 🔔 확인할 것 ' + r.toConfirm + '건' : '') : '남은 요청 없음';
+    var html = open.length ? open.map(dashImproveRowHtml_).join('') : '<div class="empty-row">남은 개선요구가 없습니다 — 설정 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.</div>';
+    if (done.length) html += '<details id="dashImproveDone" style="margin-top:8px;"' + (dashImprove_.doneOpen ? ' open' : '') + '><summary style="cursor:pointer; font-size:12.5px; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(dashImproveRowHtml_).join('') + '</details>';
+    html += '<div style="font-size:11px; color:var(--sub); margin-top:6px;">흐름: 대기 → 개발자 수정안(매주 월요일 루틴) → 승인·📥 반영 → 반영됨 → 세무사님 👍 확인. 원본 개선요구사항.md는 지우지 않고 계속 쌓입니다.</div>';
+    box.innerHTML = html;
+  }
+  function loadDashImprove_(){
+    callGas('comm_status', {}).then(dashImproveRender_).catch(function(e){ var s = document.getElementById('dashImproveSum'); if (s) s.textContent = '오류: ' + (e && e.message ? e.message : e); });
+  }
+  document.getElementById('dashImproveHead').addEventListener('click', function(){
+    dashImprove_.open = !dashImprove_.open;
+    document.getElementById('dashImproveList').style.display = dashImprove_.open ? '' : 'none';
+    document.getElementById('dashImproveArrow').textContent = dashImprove_.open ? '▴' : '▾';
+  });
+  document.getElementById('dashImproveList').addEventListener('toggle', function(e){
+    if (e.target && e.target.id === 'dashImproveDone') dashImprove_.doneOpen = e.target.open;
+  }, true);
+  document.getElementById('dashImproveList').addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-impok],[data-impno]');
+    if (!b) return;
+    var send = function(ok, note){
+      b.disabled = true;
+      return callGas('comm_request_confirm', { id: b.getAttribute(ok ? 'data-impok' : 'data-impno'), ok: ok, note: note || '' }).then(function(res){
+        if (res && res.error){ toast(res.error); b.disabled = false; return; }
+        toast(ok ? '확인 완료로 바꿨습니다.' : '다시 고쳐 달라고 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다.');
+        loadDashImprove_();
+      }).catch(function(err){ toast('오류: ' + (err && err.message ? err.message : err)); b.disabled = false; });
+    };
+    if (b.hasAttribute('data-impok')) return send(true);
+    var ask = typeof nxPrompt_ === 'function' ? nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '') : Promise.resolve(window.prompt('무엇이 아직 안 되는지 적어 주세요.', ''));
+    ask.then(function(note){ if (note === null) return; send(false, note); });
   });
 
   // [2026.10.20] 경과지 모음 표 불러오기·클릭 처리 제거 — 카드를 뺐다(위 마크업 주석 참고). getGlobalLog·syncGlobalLog는 서버에 그대로.

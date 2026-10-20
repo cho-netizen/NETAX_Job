@@ -210,6 +210,55 @@ function commRequestsLoad_() {
   });
   return { folder: chief, tracking: tr };
 }
+// [2026.10.20] 세무사님 "개선요구사항을 언제 조치하고 지우나? 계속 누적관리하나?" — 원장(개선요구사항.md)은 덧붙이기만,
+// 상태 기록(_개선요구사항_처리기록.json)은 끝나지 않은 요청(접수·재오픈·반영됨)을 날짜·개수와 상관없이 끝까지 남기고,
+// 세무사님이 👍 확인한 오래된 것만 줄인다. 예전엔 기록을 30건만 남기고(.slice(-30)) 보고서는 8일 안 요청만 담아, 10-11 요청이 10-19부터 루틴에서 빠졌다.
+var COMM_REQ_DONE_KEEP_ = 40;               // 👍 확인완료는 최근 40건만 남김(원장에는 그대로 있음)
+var COMM_REQ_RESTORE_SINCE_ = '2026-10-09'; // 원장 대조로 되살리는 범위 — 이날부터 루틴이 요청을 직접 처리(그 전은 옛 AI 메모 방식)
+function commTrimEntries_(entries) {
+  var done = 0;
+  entries.forEach(function (x) { if (x.status === '확인완료') done++; });
+  var drop = Math.max(0, done - COMM_REQ_DONE_KEEP_);
+  return entries.filter(function (x) { if (x.status === '확인완료' && drop > 0) { drop--; return false; } return true; });
+}
+function commReqNorm_(s) { return String(s || '').replace(/^\s*-\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*/gm, '').replace(/\s+/g, ''); }
+// 원장의 "- [yyyy-MM-dd HH:mm] 내용" 항목들
+function commLedgerItems_(md) {
+  return String(md || '').replace(/\r\n/g, '\n').split(/\n(?=-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\])/).map(function (b) {
+    var m = b.match(/^-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*([\s\S]*)$/);
+    return m ? { at: m[1], text: m[2].replace(/\n  /g, '\n').trim() } : null;
+  }).filter(function (x) { return x && x.text; });
+}
+// 상태 기록에서 빠진 원장 요청을 "접수"로 되살린다(30건 자르기로 잃은 것). 되살린 개수를 돌려준다.
+function commReconcile_(st, ledgerMd) {
+  if (!st.folder) return 0;
+  var md = ledgerMd != null ? ledgerMd : (readFileIfExists_(st.folder, '개선요구사항.md') || '');
+  var all = st.tracking.entries.map(function (x) { return commReqNorm_(x.text); }).join('|');
+  var ids = {}; st.tracking.entries.forEach(function (x) { ids[x.id] = 1; });
+  var added = 0;
+  commLedgerItems_(md).forEach(function (it) {
+    if (it.at.slice(0, 10) < COMM_REQ_RESTORE_SINCE_) return;
+    var key = commReqNorm_(it.text).slice(0, 40);
+    if (!key || all.indexOf(key) >= 0) return;
+    var base = 'R' + it.at.replace(/\D/g, '').slice(2, 12), id = base, n = 2;
+    while (ids[id]) id = base + '-' + (n++);
+    ids[id] = 1;
+    st.tracking.entries.push({ id: id, at: it.at, text: it.text.slice(0, 4000), status: '접수', urgent: /긴급|급함|급해|빨리|당장/.test(it.text), restored: true });
+    added++;
+  });
+  return added;
+}
+function commReqDays_(x) { var t = improve_parseAt_(x.firstAt || x.at); return t ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : 0; }
+// 끝나지 않은 요청 전부(오래된 순) + 최근 확인완료 15건. 되살린 것이 있으면 저장까지.
+function commRequestsAll_() {
+  var st = commRequestsLoad_();
+  if (st.folder && commReconcile_(st)) { try { commRequestsSave_(st); } catch (e) {} }
+  var pick = function (x) { return { id: x.id, at: x.firstAt || x.at, text: String(x.text || '').slice(0, 400), status: x.status, statusAt: x.statusAt || '', urgent: !!x.urgent, commit: x.commit || '', days: commReqDays_(x), reopenNote: x.reopenNote || '', restored: !!x.restored }; };
+  var open = st.tracking.entries.filter(function (x) { return x.status !== '확인완료'; }).map(pick)
+    .sort(function (a, b) { return improve_parseAt_(a.at) - improve_parseAt_(b.at); });
+  var done = st.tracking.entries.filter(function (x) { return x.status === '확인완료'; }).slice(-15).reverse().map(pick);
+  return { open: open, done: done };
+}
 function commRequestsSave_(st) { writeFileOverwrite_(st.folder, IMPROVEMENT_TRACKING_FILE, JSON.stringify(st.tracking), 'application/json'); }
 function commSetRequestStatus_(idMap, status) {
   var st = commRequestsLoad_();
@@ -225,7 +274,7 @@ function commRequestConfirm_(body) {
     if (!x) return { error: '요청을 찾지 못했습니다.' };
     x.status = ok ? '확인완료' : '재오픈';
     x.statusAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
-    if (!ok) { x.reopenNote = note.slice(0, 1000); x.at = x.statusAt; } // 재오픈은 날짜를 새로 — 다음 보고서에 다시 실린다
+    if (!ok) { x.reopenNote = note.slice(0, 1000); x.firstAt = x.firstAt || x.at; x.at = x.statusAt; } // 재오픈은 날짜를 새로 — 다음 보고서에 다시 실린다
     commRequestsSave_(st);
     try { buildImprovementReport_(); } catch (e) {}
     return { success: true, status: x.status };
@@ -283,9 +332,11 @@ function commDevAnswer_(body) {
 }
 // ⑤ 대시보드·설정 카드용 한 번에 받기
 function commStatus_() {
-  var st = commRequestsLoad_(), reqs = st.tracking.entries.slice(-15).reverse().map(function (x) { return { id: x.id, at: x.at, text: String(x.text || '').slice(0, 200), status: x.status, statusAt: x.statusAt || '', urgent: !!x.urgent, commit: x.commit || '' }; });
-    return { success: true, changes: commRecentChanges_().slice(0, 12), requests: reqs, urgent: reqs.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length,
-    toConfirm: reqs.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_ };
+  // [2026.10.20] 끝나지 않은 요청은 개수 제한 없이 전부(오래된 순), 확인완료는 최근 15건 — 대시보드 🛠 개선요구 카드·설정 📝 요청 상태가 같은 자료를 본다
+  var ra = commRequestsAll_(), reqs = ra.open.concat(ra.done);
+    return { success: true, changes: commRecentChanges_().slice(0, 12), requests: reqs, openRequests: ra.open, doneRequests: ra.done,
+    oldestDays: ra.open.length ? ra.open[0].days : 0, urgent: ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length,
+    toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_ };
 }
 // 🔑 OpenRouter 키 넣기(세무사님이 직접 입력 — 값은 되돌려 주지 않음)
 var AI_KEY_NAMES_ = ['OPENROUTER_API_KEY'];
