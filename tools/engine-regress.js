@@ -51,6 +51,8 @@ caseFiles.forEach((f) => {
     const keys = (KEYS[c.도구] || ['과세표준', '산출세액', '납부세액']).concat(Object.keys(Object.assign({}, c.참고 || {}, c.정답 || {})).filter((k) => (KEYS[c.도구] || []).indexOf(k) === -1));
     let caseChanged = false, caseBad = false;
     if (b.오류 || n.오류) { L.push('| ' + c.이름 + ' | 오류 | ' + (b.오류 || '') + ' | ' + (n.오류 || '') + ' | | ✗ |'); bad++; return; }
+    // [2026.10.20] 안쪽 묶음 값(예: "대납분재계산.추가납부세액")도 정답·참고 칸으로 대조
+    keys.forEach((k) => { if (k.indexOf('.') > 0) [b, n].forEach((o) => { if (!(k in o)) o[k] = k.split('.').reduce((x, s) => (x == null ? undefined : x[s]), o); }); });
     keys.forEach((k, i) => {
       const isNew = b[k] === undefined && n[k] !== undefined; // 기준 판에 없던 새 칸(표시용 등)은 바뀐 것으로 세지 않는다
       const diff = !isNew && JSON.stringify(b[k]) !== JSON.stringify(n[k]);

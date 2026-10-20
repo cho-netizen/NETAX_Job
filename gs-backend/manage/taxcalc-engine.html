@@ -3666,7 +3666,10 @@
   }
   window.calculateGiftTaxJS = function (p) {
     p = p || {};
-    const giftAmount = Number(p.giftAmount);
+    // [2026.10.21 취득 부대비용 대납] 상증세 집행기준 47-36-6 ③ "증여재산을 취득하는데 소요된 부수비용을 증여자가 부담하는 경우에는
+    //  그 부대비용을 증여가액에 포함한다" — 증여자가 대신 낸 취득세·등기비용 등은 같은 증여의 증여재산가액에 더한다(증여세 대납과 달리 재차증여 아님).
+    const incidentalPaid_ = Math.max(0, Number(p.donorPaidIncidentalCost) || 0);
+    const giftAmount = (Number(p.giftAmount) || 0) + incidentalPaid_;
     if (!giftAmount || giftAmount <= 0) return { error: '증여재산가액이 필요합니다.' };
     if (['배우자', '직계존속', '직계비속', '기타친족', '기타'].indexOf(p.relation) === -1) {
       return { error: '관계를 배우자/직계존속/직계비속/기타친족/기타 중에서 선택하세요.' };
@@ -3801,7 +3804,7 @@
       - businessSuccessionDeferredTaxAmount);
 
     return {
-      증여재산가액: giftAmount, 인수채무액: debtAssumedAmount,
+      증여재산가액: giftAmount, 부대비용대납액: incidentalPaid_ || undefined, 인수채무액: debtAssumedAmount,
       채무공제_배제여부: debtDeductionDenied,
       채무공제_배제사유: debtDeductionDenied ? '§47③ 배우자·직계존비속간 부담부증여는 채무 인수를 객관적으로 입증(국가·지자체 채무 등)하지 못하면 인수되지 않은 것으로 추정 — 채무액이 공제에서 제외됨' : '',
       비과세재산가액: nonTaxableAmount, 공익법인출연재산가액: publicInterestOrgAmount, 공익신탁재산가액: publicTrustAmount, 장애인신탁재산가액: disabledTrustAmount,
@@ -10932,6 +10935,66 @@
           if (L.length) { r.서식검산 = L; const w = formCheckWarning_(L); if (w) r.서식검산경고 = w; }
         } catch (e2) { r.서식검산_오류 = String(e2 && e2.message || e2); }
       }
+      return r;
+    };
+  })();
+  // [2026.10.20 증여세 대납 1회 재계산] 세무사님 원문: "1번은 자문사례에 나왔던 케이스이다. 무한루프를 돌릴수는 없고 최소한 1회 대납분을 더해 다시 계산하는 것은 반영해야 하는데"
+  //  근거(원문 확인): 상증세 집행기준 36-0-2 — ① 증여자가 연대납세의무자로서 납부하는 증여세액은 수증자에게 증여한 것으로 보지 않음,
+  //  ② 연대납세의무가 없는 상태에서 수증자를 대신하여 납부한 증여세액은 채무면제 등(상증법 §36)에 따른 증여이익 → 수증자에게 증여세 과세.
+  //  증여일 = §36① "면제등(면제·인수·변제)을 받은 날"(시행령 §26의2 각 호는 면제·인수만 정함) → 증여자가 대신 낸 날(donorPaidTaxDate).
+  //  같은 증여자라 §47② 10년 합산(§36은 §47① 합산배제 목록에 없음) — 1차 증여세과세가액을 가산하고, 그때 산출세액은 §58 납부세액공제
+  //  (한도 = 산출세액 × 가산한 증여재산 과세표준 ÷ 합산 과세표준, 집행기준 58-0-1)로 뺀다. 연대납세의무 사유(§4의2⑥ 1호 주소·거소 불분명,
+  //  2호 납부능력 없음, 3호 비거주자)면 증여가 아니므로 재계산하지 않는다(3호는 수증자 비거주자로 자동, 1·2호는 donorJointLiability).
+  //  대납분 세금을 증여자가 또 내면 그것도 증여지만 1회만 계산한다(무한 반복 안 함 — 안내로만 알림). 1차 결과 숫자는 바꾸지 않고 r.대납분재계산에 따로 붙인다.
+  (function () {
+    const g0 = window.calculateGiftTaxJS; if (typeof g0 !== 'function') return;
+    window.calculateGiftTaxJS = function (p) {
+      const r = g0(p);
+      if (!p || !p.donorPaysTax || !r || r.error) return r;
+      const won_ = function (n) { return (Math.round(Number(n) || 0)).toLocaleString('ko-KR') + '원'; };
+      const paid = Number(p.donorPaidTaxAmount) > 0 ? Math.round(Number(p.donorPaidTaxAmount)) : Math.round(Number(r.납부세액) || 0);
+      if (p.isDoneeResident === false || p.donorJointLiability) {
+        r.대납분재계산 = { 적용: false, 대납세액: paid, 안내: '증여자가 연대납세의무자로서 낸 증여세는 수증자에게 증여한 것으로 보지 않습니다(상증세 집행기준 36-0-2 ①, 상증법 §4의2⑥ ' + (p.isDoneeResident === false ? '3호 수증자 비거주자' : '1호·2호 주소불명·납부능력 없음') + ') — 대납분 재계산을 하지 않았습니다.' };
+        return r;
+      }
+      if (!(paid > 0)) { r.대납분재계산 = { 적용: false, 대납세액: 0, 안내: '대신 낼 증여세가 0원이라 대납분 재계산이 없습니다.' }; return r; }
+      const excl = !!p.isExcludedFromAggregation;
+      const keep = ['relation', 'isMinor', 'isDoneeResident', 'isGenerationSkip', 'isSubstituteGiftDueToDeath', 'generationSkipOver2Billion', 'priorRelationDeductionUsedOther', 'relationDeductionCap',
+        'doneeName', 'doneeRegNo', 'doneeAddress', 'donorName', 'donorRegNo', 'donorAddress', 'isOffshoreTransaction'];
+      const p2 = {};
+      keep.forEach(function (k) { if (p[k] !== undefined) p2[k] = p[k]; });
+      p2.giftAmount = paid;
+      p2.giftDate = String(p.donorPaidTaxDate || p.giftDate || p.giftReceivedDate || '');
+      p2.filingStatus = 'ontime'; p2.reportedInTime = p.donorPaidTaxReportedInTime !== false;
+      if (excl) {
+        // 1차가 합산배제증여재산(§47①)이면 그것과는 합산하지 않는다 — 같은 증여자의 다른 일반 증여(입력의 10년 합산분)만 그대로 합산
+        ['priorGiftAmount', 'priorPaidTax', 'priorGiftTaxableBase', 'priorRelationDeductionUsed', 'priorMarriageOrBirthDeductionUsed', 'priorMarriageOrBirthDeductionSameDonor10y', 'generationSkipGiftAmount', 'priorPaidGenerationSkipPremium']
+          .forEach(function (k) { if (p[k] !== undefined) p2[k] = p[k]; });
+      } else {
+        p2.priorGiftAmount = Number(r.증여세과세가액) || 0;               // §47② 가산: 1차 증여세과세가액(1차가 합산한 10년분 포함)
+        p2.priorPaidTax = Number(r.산출세액_할증전) || 0;                 // §58① 증여 당시 산출세액(1차가 이미 합산 계산한 산출세액)
+        p2.priorGiftTaxableBase = Number(r.과세표준) || 0;                // §58② 한도의 "가산한 증여재산의 과세표준"
+        p2.priorRelationDeductionUsed = Number(r.증여재산공제) || 0;      // 합산하므로 계산엔 안 쓰임(공제 한도는 합산 전체에 다시 적용)
+        p2.priorMarriageOrBirthDeductionUsed = (Number(p.priorMarriageOrBirthDeductionUsed) || 0) + (Number(r.혼인출산증여재산공제_이번분) || 0);
+        p2.priorMarriageOrBirthDeductionSameDonor10y = Number(r.혼인출산증여재산공제) || 0; // 합산한 증여에 쓴 혼인·출산공제는 다시 공제(대납분 자체엔 새로 주지 않음)
+        if (p.generationSkipGiftAmount != null && p.generationSkipGiftAmount !== '') p2.generationSkipGiftAmount = (Number(p.generationSkipGiftAmount) || 0) + paid;
+        p2.priorPaidGenerationSkipPremium = (Number(p.priorPaidGenerationSkipPremium) || 0) + (Number(r.세대생략할증액) || 0);
+      }
+      const r2 = g0(p2);
+      if (!r2 || r2.error) { r.대납분재계산 = { 적용: false, 대납세액: paid, 안내: '대납분 재계산 실패: ' + ((r2 && r2.error) || '결과 없음') }; return r; }
+      const extra = Math.round(Number(r2.납부세액) || 0);
+      r.대납분재계산 = {
+        적용: true, 대납세액: paid, 증여일: p.donorPaidTaxDate ? p2.giftDate : '', 합산배제_1차: excl,
+        증여재산가액: paid, 가산한_증여재산가액: Number(p2.priorGiftAmount) || 0, 증여세과세가액: r2.증여세과세가액,
+        증여재산공제: r2.증여재산공제, 혼인출산증여재산공제: r2.혼인출산증여재산공제, 과세표준: r2.과세표준, 산출세액_할증전: r2.산출세액_할증전, 세대생략할증액: r2.세대생략할증액,
+        납부세액공제: r2.기납부세액공제, 납부세액공제_한도: r2.기납부세액공제_비율한도, 신고세액공제: r2.신고세액공제,
+        추가납부세액: extra, 합계납부세액: Math.round(Number(r.납부세액) || 0) + extra,
+        입력: p2, 결과: r2,
+        안내: '증여자가 수증자 대신 낸 증여세 ' + won_(paid) + '을 ' + (p.donorPaidTaxDate ? p2.giftDate + '(대신 낸 날)' : '대신 낸 날(미입력 — 시점 판정은 증여일로 함)') + ' 같은 증여자에게서 받은 증여로 보아(상증세 집행기준 36-0-2 ②, 상증법 §36) '
+          + (excl ? '' : '1차 증여세과세가액 ' + won_(p2.priorGiftAmount) + '과 10년 합산(§47②)하고 1차 산출세액을 납부세액공제(§58)해 ')
+          + '다시 계산했습니다 — 추가 증여세 ' + won_(extra) + '. 이 추가 세액까지 증여자가 또 내면 그것도 증여가 되지만 계산은 1회만 했습니다. 대납분은 대신 낸 날이 속하는 달의 말일부터 3개월 안에 따로 신고합니다(§68①).'
+          + (p.donorPaidTaxAmount > 0 ? '' : ' 대신 낸 금액은 1차 납부세액으로 보았습니다 — 실제로 낸 금액이 다르면 그 금액을 넣으세요.')
+      };
       return r;
     };
   })();

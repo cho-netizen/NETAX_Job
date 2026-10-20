@@ -138,17 +138,18 @@ function runGift() {
   const r0 = E.calculateGiftTaxJS({ giftAmount: v0, relation: '직계존속', giftDate: dom.giftDate, isMarriageGift: true, priorMarriageOrBirthDeductionUsed: 20000000,
     priorMarriageOrBirthDeductionSameDonor10y: 20000000, priorGiftAmount: 50000000, priorPaidTax: 0, relationDeductionLimit: 50000000 });
   const r1 = E.calculateGiftTaxJS({ giftAmount: v1, relation: '직계존속', giftDate: dom.giftDate, isGenerationSkip: true });
-  const r2 = E.calculateGiftTaxJS({ giftAmount: v2, relation: '배우자', giftDate: dom.giftDate });
-  ctx.__r = [r0, r1, r2]; ctx.__amt = [v0, v1, v2];
+  const INC2 = 15000000; // [2026.10.21] 셋째 쌍: 증여자가 취득세 등 1,500만원을 대신 냄 → 부표1(05)에 현금 줄(재산분류 01·평가 06)
+  const r2 = E.calculateGiftTaxJS({ giftAmount: v2, relation: '배우자', giftDate: dom.giftDate, donorPaidIncidentalCost: INC2 });
+  ctx.__r = [r0, r1, r2]; ctx.__amt = [v0, v1, v2 + INC2];
   vm.runInContext(`
-    lastGiftResults_ = [{ donorIdxs: [0], doneeIdx: 0, amount: __amt[0], result: __r[0] }, { donorIdxs: [1], doneeIdx: 1, amount: __amt[1], result: __r[1] }, { donorIdxs: [2], doneeIdx: 2, amount: __amt[2], result: __r[2] }];
+    lastGiftResults_ = [{ donorIdxs: [0], doneeIdx: 0, amount: __amt[0], result: __r[0] }, { donorIdxs: [1], doneeIdx: 1, amount: __amt[1], result: __r[1] }, { donorIdxs: [2], doneeIdx: 2, amount: __amt[2], result: __r[2], input: { donorPaidIncidentalCost: 15000000 } }];
     lastInstallmentInput_ = null; lastInstallmentResult_ = null;
     lastSplitPaymentInput_ = { taxType: 'gift', totalTaxAmount: __r[0].납부세액 }; lastSplitPaymentResult_ = { 분납가능여부: true, 분납신청금액: 5000000 };
   `, ctx);
   const bytes = Array.from(vm.runInContext('gfBuildEfileBytes_()', ctx));
   const recs = splitRecords(bytes);
   check(recs.length > 0, '레코드가 하나도 안 만들어짐');
-  let lastCalc = null, pairNo = -1;
+  let lastCalc = null, pairNo = -1, cashRows = 0;
   const relWant = ['05', '40', '07'];
   recs.forEach((rec, k) => {
     const kind = fld(rec, 2, 2);
@@ -187,6 +188,7 @@ function runGift() {
       check(CODES.security.has(fld(rec, 322, 2)), '증여 05-25 유가증권구분');
       if (t === '09' || t === '10') check(fld(rec, 322, 2) === '01' && Number(fld(rec, 71, 18)) > 0, '증여 05 주식: 유가증권 01·수량');
       if (re) check(Number(fld(rec, 513, 10)) > 0, '증여 05-36 부동산 지분율');
+      if (t === '01') { cashRows++; check(fld(rec, 22, 2) === '06' && num(rec, 35, 13) === INC2 && fld(rec, 18, 3) === 'A11', '증여 05 현금 줄(대신 낸 취득세 등): 평가 06·금액·A11'); }
     }
     if (kind === '16' && lastCalc) {
       const f = (end) => num(rec, end, 13);
@@ -198,6 +200,7 @@ function runGift() {
       check(num(rec, 46, 13) === v0, '증여 17-7 증여재산가액 = 이번 증여재산가액(공제액 아님)');
     }
   });
+  check(cashRows === 1, '증여 05 현금 줄(대신 낸 취득세 등)이 셋째 쌍에 1줄 — 실제 ' + cashRows + '줄');
 }
 
 // ═════════ 상속 ═════════

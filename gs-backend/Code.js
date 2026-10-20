@@ -786,7 +786,13 @@ const DRIVE_TOOLS = [
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
         ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
-        reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
+        reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' },
+        // [2026.10.20 증여세 대납 1회 재계산] 엔진(taxcalc-engine.html)이 계산 — 결과의 대납분재계산
+        donorPaidIncidentalCost: { type: 'number', description: '[2026.10.21] 증여자가 대신 낸 취득세·지방교육세·농어촌특별세·등기비용 등 증여재산 취득 부대비용(원). 상증세 집행기준 47-36-6 ③에 따라 증여재산가액(giftAmount)에 더해 계산한다(giftAmount에는 넣지 말고 여기 따로). 증여세 대납(donorPaysTax)과 달리 재차증여가 아니라 같은 증여에 포함. 없으면 생략.' },
+        donorPaysTax: { type: 'boolean', description: '증여자가 수증자 대신 이 증여세를 냈는지(냈거나 낼 예정). true면 대신 낸 세액을 그 납부일에 같은 증여자에게서 받은 증여(상증세 집행기준 36-0-2②, 상증법 §36)로 보아 1차 증여와 10년 합산(§47②)·1차 산출세액 납부세액공제(§58)로 1회만 다시 계산해 결과의 대납분재계산(추가납부세액·합계납부세액)에 붙인다. 1차 결과 칸은 바뀌지 않는다. 수증자 비거주자 등 증여자 연대납세의무(§4의2⑥)로 낸 것은 증여가 아니라 재계산하지 않는다.' },
+        donorPaidTaxDate: { type: 'string', description: 'donorPaysTax일 때 증여자가 대신 낸 날(YYYY-MM-DD) — 대납분의 증여일. 없으면 giftDate로 본다.' },
+        donorPaidTaxAmount: { type: 'number', description: 'donorPaysTax일 때 증여자가 실제로 대신 낸 금액(원). 생략하면 1차 계산의 납부세액 전액으로 본다.' },
+        donorJointLiability: { type: 'boolean', description: 'donorPaysTax일 때 수증자 주소·거소 불분명 또는 납부능력 없음(§4의2⑥1호·2호)으로 증여자가 연대납세의무자로서 낸 것인지 — true면 증여가 아니므로 재계산하지 않는다(비거주자는 isDoneeResident=false로 자동).' }
       },
       required: ['giftAmount', 'relation']
     }
