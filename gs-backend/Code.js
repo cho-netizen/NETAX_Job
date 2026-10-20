@@ -16967,7 +16967,8 @@ function processImprovementRequests() {
   // [2026.10.09 토큰0 전수조사] 예전엔 새 요구사항마다 유료 AI(Sonnet)가 "고칠 방향 메모"를 썼다. 이제는 새로 적힌 부분을
   // 날짜와 함께 기록만 하고(0원), 개선 후보 보고서가 그것을 담아 웹 Claude Code 루틴(매주 월·AI탭 🛠)이 직접 구현해 수정안(PR)으로 올린다.
   const nowStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
-  tracking.entries = (tracking.entries || []).concat([{ at: nowStr, text: newRequestText.slice(0, 4000) }]).slice(-30);
+  tracking.entries = (tracking.entries || []).concat([{ at: nowStr, text: newRequestText.slice(0, 4000) }]);
+  tracking.entries = commTrimEntries_(tracking.entries); // [2026.10.20] 끝나지 않은 요청은 끝까지 남김(예전 .slice(-30)은 대기 요청까지 지웠음 — Federation.js)
   tracking.processedLength = requestText.length;
   writeFileOverwrite_(chiefFolder, IMPROVEMENT_TRACKING_FILE, JSON.stringify(tracking), 'application/json');
   return { success: true, added: newRequestText.length };
@@ -37254,11 +37255,13 @@ function buildImprovementReport_() {
   errors.slice(0, 5).forEach(function (e) { headline.push('🐞 ' + (e.where || e.kind) + ' — ' + e.message.slice(0, 60) + ' (' + e.count + '회)'); });
   paidRepeats.slice(0, 5).forEach(function (g) { headline.push('💸 유료 AI로 반복된 요청 "' + g.samples[0].slice(0, 30) + '…" ' + g.count + '회 — ⚡바로 처리 후보'); });
   if (perfSlow) headline.push('🐢 대시보드 표시 중앙값 ' + perf.median + '초(최대 ' + perf.max + '초)');
-  // [2026.10.09] 세무사님 개선요구사항(최근 8일, 주1회 루틴이 놓치지 않게 하루 겹침)·바뀐 지침(AI 점검 대기)
-  let requests = [];
-  try { requests = improve_recentRequests_(8); } catch (e) {}
+  // [2026.10.09] 세무사님 개선요구사항·바뀐 지침(AI 점검 대기)
+  // [2026.10.20] 예전엔 최근 8일 요청만 담아 그 안에 못 고친 요청이 루틴에서 빠졌다 — 이제 끝나지 않은 요청(접수·재오픈) 전부, 오래된 순·며칠째(days).
+  //   반영됨(세무사님 확인 전)은 다시 고칠 대상이 아니라 requestsAwaitingConfirm으로 따로 싣는다(Federation.js commRequestsAll_).
+  let requests = [], requestsAwaitingConfirm = [];
+  try { const ra = commRequestsAll_().open; requests = ra.filter(function (r) { return r.status !== '반영됨'; }); requestsAwaitingConfirm = ra.filter(function (r) { return r.status === '반영됨'; }); } catch (e) {}
   const auditPending = PropertiesService.getScriptProperties().getProperty('AUDIT_PENDING') || '';
-  requests.forEach(function (r) { headline.unshift('📝 개선요구사항(' + r.at.slice(5, 10) + ') — ' + r.text.replace(/\s+/g, ' ').slice(0, 60)); });
+  requests.slice().reverse().forEach(function (r) { headline.unshift('📝 개선요구사항(' + String(r.at).slice(5, 10) + ', ' + r.days + '일째' + (r.status === '재오픈' ? ', 다시 고쳐 달라심' : '') + ') — ' + String(r.text).replace(/\s+/g, ' ').slice(0, 60)); });
   if (auditPending) headline.push('📚 업무관리자 지침이 바뀜(' + auditPending + ') — 설정 🐞 카드 🧾 지침 점검 버튼(유료)으로 점검');
   const candidateCount = requests.length + scFails.length + errors.length + paidRepeats.length + (perfSlow ? 1 : 0) + (auditPending ? 1 : 0);
 
@@ -37269,7 +37272,7 @@ function buildImprovementReport_() {
     headline: headline,
     // 웹 Claude Code 루틴이 읽는 처리 안내(루틴 지시문을 고치지 않고도 새 항목 처리법을 알려 주려고 보고서에 함께 싣는다)
     guide: [
-      'requests(📝)는 세무사님이 직접 적은 개선요구사항(버전업·새 기능·불편사항) = 직접 지시다. 우선순위: 🩺 자가점검 실패 > 📝 > 🐞 > 💸 > 🐢. 구현해서 PR로 올린다. 큰 기능이면 바로 쓸 수 있는 첫 단계까지 구현하고 나머지 계획은 PR "남은 단계"에. 모호하면 가장 보수적으로 해석하고 "확인 필요"에 질문.',
+      'requests(📝)는 세무사님이 직접 적은 개선요구사항(버전업·새 기능·불편사항) = 직접 지시다. 날짜 제한 없이 아직 안 끝난 것 전부가 오래된 순으로 실린다(days=며칠째) — 오래된 것부터. requestsAwaitingConfirm은 이미 반영돼 세무사님 확인만 남은 것이라 다시 고치지 않는다. 우선순위: 🩺 자가점검 실패 > 📝 > 🐞 > 💸 > 🐢. 구현해서 PR로 올린다. 큰 기능이면 바로 쓸 수 있는 첫 단계까지 구현하고 나머지 계획은 PR "남은 단계"에. 모호하면 가장 보수적으로 해석하고 "확인 필요"에 질문.',
       '중복 방지: git fetch --all 후 git branch -r 과 최근 14일 main 커밋을 보고, 같은 내용을 이미 반영했거나 이미 올린 브랜치가 있으면 그 후보는 건너뛰고 이유만 적는다.',
       'auditPending(📚)은 코드 수정 대상이 아니다 — 답변에 "설정 🐞 카드 🧾 지침 점검 버튼 권장"만 적는다.',
       '새 기능에 유료 AI 호출을 넣지 않는다(꼭 필요하면 사람이 버튼을 누를 때만, PR에 예상 비용 명시). 바뀐 사용법은 gs-backend/manage/manual.html 에 한두 줄 추가.',
@@ -37277,6 +37280,7 @@ function buildImprovementReport_() {
       'templates(📚 템플릿 순환)는 매주 볼 것: 공통추가제목(사본 여럿에 공통으로 새로 생긴 제목)·늘빈칸(아무도 안 채우는 칸)·새문단후보(자주 나오는데 문단 라이브러리에 없는 쟁점)를 보고 gs-backend/templates/(보고서·의뢰서·문단 md)에 수정안을 PR로 올린다. 반드시 templates.현재원문[종류][i].text(지금 드라이브 원문)에서 출발해 고치고, gs-backend/templates/_index.txt의 그 파일 줄 두 번째 칸을 templates.현재원문의 md5로 바꾼다(📥 반영 때 드라이브가 그 값과 같아야만 덮어씀 — 세무사님 직접 수정 보호). 새 문단은 기존 문단 머리말 형식(<!-- 문단정보 제목/세목/추천/조문 -->)·{변수}·{AI: …}를 따르고, 법령 내용은 현행 조문을 확인해 쓴다. 고객 이름·금액은 넣지 않는다. 바꿀 것이 없으면 PR을 만들지 않는다.'
     ],
     requests: requests,
+    requestsAwaitingConfirm: requestsAwaitingConfirm,
     auditPending: auditPending,
     selfCheck: { at: sc.last ? sc.last.at : null, fresh: sc.fresh, fails: scFails },
     errors: errors,
@@ -37363,7 +37367,7 @@ function buildImprovementReport_() {
   try {
     var st = commRequestsLoad_(), byAt = {};
     st.tracking.entries.forEach(function (x) { byAt[x.at] = x; });
-    report.requests = report.requests.map(function (r) { var x = byAt[r.at] || {}; return { id: x.id || '', status: x.status || '접수', urgent: !!x.urgent, at: r.at, text: r.text, reopenNote: x.reopenNote || '' }; });
+    report.requests = report.requests.map(function (r) { if (r.id) return r; var x = byAt[r.at] || {}; return { id: x.id || '', status: x.status || '접수', urgent: !!x.urgent, at: r.at, text: r.text, reopenNote: x.reopenNote || '' }; });
     report.requests.filter(function (r) { return r.urgent; }).forEach(function (r) { headline.unshift('🚨 긴급 요청 ' + r.id + ' — ' + String(r.text).replace(/\s+/g, ' ').slice(0, 50)); });
     report.gaps = commRecentGaps_(14);
     if (report.gaps.length) headline.push('🧩 job AI가 할 수 없었던 요청 ' + report.gaps.length + '건(기능 부족 신고)');
