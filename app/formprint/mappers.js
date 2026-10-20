@@ -1636,6 +1636,9 @@
         }, 0);
         return ratio > 0 ? assetRow(a, Math.round(computeValuationAssetValue(a) * ratio), ratio) : null;
       }).filter(Boolean);
+      // [2026.10.21 취득 부대비용 대납] 세무사님: 증여자가 대신 낸 취득세 등은 부표1에 현금 증여 줄로 따로 — ② 01 현금, ⑧ 06 현금 등 시가(전자신고 gfAttach1AssetRecord_와 같음)
+      var incCash = item && item.input ? (numVal(item.input.donorPaidIncidentalCost) || 0) : 0;
+      if (incCash > 0) giftAssets.push({ method: 'cash', typeCode: '01', basisCode: '06', location: '현금(증여자가 대신 낸 취득세 등)', area: 0, unitPrice: 0, value: incCash, artwork: null });
       var mbThis = r ? (numVal(r.혼인출산증여재산공제_이번분 != null ? r.혼인출산증여재산공제_이번분 : r.혼인출산증여재산공제) || 0) : 0;
       var bdRes = i === 0 ? (typeof lastBdDeferralResult_ !== 'undefined' ? lastBdDeferralResult_ : null) : null;
       var bd = (bdRes && el('bdProvision') === 'gift') ? { totalAsset: numVal(el('bdTotalAsset')) || 0, nonBiz55: numVal(el('bdNonBiz55')) || 0, nonBiz49: numVal(el('bdNonBiz49')) || 0,
