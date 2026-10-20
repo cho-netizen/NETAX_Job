@@ -116,6 +116,8 @@
     <main id="centerWork">
       <!-- [2026.10.08] AI탭 — aichat.html의 AI 화면(#nxAi)이 이 메뉴를 열면 여기로, 다른 메뉴에선 오른쪽 사이드바로 옮겨간다 -->
       <div class="view" id="view-ai"><div id="nxAiTabHost"></div></div>
+      <!-- [2026.10.20] 공용 보고서 렌더러 — 작성관리·증빙확보·AI탭이 쓴다. 작성관리가 이 파일의 상수·함수를 쓰므로 먼저 둔다 -->
+      <?!= include_('manage/mdrender') ?>
       <?!= include_('manage/dashboard') ?>
       <?!= include_('manage/consultmemo') ?>
       <?!= include_('manage/clientcard') ?>

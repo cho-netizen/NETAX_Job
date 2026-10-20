@@ -99,6 +99,8 @@
            내려받지 않고 바로 여기서 고쳐 쓸 수 있게, "보기 전용"에 편집 모드를 추가한다. -->
       <div id="docsTextEditBar" style="display:none; margin-bottom:10px; gap:8px;">
         <button type="button" id="btnDocsTextEdit" class="ghost-btn">✏ 편집</button>
+        <!-- [2026.10.20] 세무사님 승인("추천대로 하마") — .md는 작성관리 편집창에서 바로 열기(goToReportWriter_ {fileId}, 처리개요와 같은 경로) -->
+        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">✍ 작성관리에서 열기</button>
         <button type="button" id="btnDocsTextSave" class="save-btn" style="display:none;">💾 저장</button>
         <button type="button" id="btnDocsTextCancel" class="ghost-btn" style="display:none;">취소</button>
         <span id="docsTextSaveStatus" style="font-size:11.5px; color:var(--sub);"></span>
@@ -1239,6 +1241,7 @@
     document.getElementById('btnDocsTextSave').style.display = 'none';
     document.getElementById('btnDocsTextCancel').style.display = 'none';
     document.getElementById('btnDocsTextEdit').style.display = '';
+    document.getElementById('btnDocsOpenRw').style.display = 'none';
     document.getElementById('docsTextSaveStatus').textContent = '';
     bodyEl.innerHTML = '<div class="spinner">불러오는 중…</div>';
     overlay.style.display = 'flex';
@@ -1304,7 +1307,26 @@
           return;
         }
         var originalContent = res.content || '';
-        bodyEl.innerHTML = '<pre class="docs-text-view">' + escapeHtml(originalContent || '(내용 없음)') + '</pre>';
+        // [2026.10.20] 세무사님 "증빙관리에서 보고서를 클릭하면 원문만 읽히네? work에서는 그러지 않았잖아"·"랜더러를 연결만 하지 말고 흡수하라" —
+        // .md(보고서·검토서)는 공용 렌더러(mdrender.html nxMdRender, 작성관리와 같은 처리)로 보고서 모양, 고치려면 ✏ 원본 편집. 그 밖의 텍스트는 원문.
+        // 렌더러가 그리지 못하면(라이브러리 못 불러옴 등) nxMdRender가 이유와 함께 원문을 보여 준다.
+        var isMd = /\.md$/i.test(f.name || '');
+        function showView(content){
+          if (isMd){
+            bodyEl.innerHTML = '';
+            var mdBox = document.createElement('div');
+            bodyEl.appendChild(mdBox);
+            nxMdRender(mdBox, content || '', { theme: nxMdThemeForName(f.name), rich: true, outline: false, extraClass: 'nx-md-view' });
+          } else bodyEl.innerHTML = '<pre class="docs-text-view">' + escapeHtml(content || '(내용 없음)') + '</pre>';
+        }
+        showView(originalContent);
+        document.getElementById('btnDocsTextEdit').textContent = isMd ? '✏ 원본 편집' : '✏ 편집';
+        var openRwBtn = document.getElementById('btnDocsOpenRw');
+        openRwBtn.style.display = (isMd && typeof goToReportWriter_ === 'function') ? '' : 'none';
+        openRwBtn.onclick = function(){
+          document.getElementById('docsViewerOverlay').style.display = 'none';
+          goToReportWriter_('', { fileId: f.id });
+        };
         document.getElementById('docsTextEditBar').style.display = 'flex';
 
         var editBtn = document.getElementById('btnDocsTextEdit');
@@ -1321,7 +1343,7 @@
           statusEl.textContent = '';
         }
         function exitViewMode(content){
-          bodyEl.innerHTML = '<pre class="docs-text-view">' + escapeHtml(content || '(내용 없음)') + '</pre>';
+          showView(content);
           editBtn.style.display = '';
           saveBtn.style.display = 'none';
           cancelBtn.style.display = 'none';
@@ -2822,7 +2844,7 @@
 
   // ============================================================
   // [2026.09 이식] 관계도 — mermaid 문법으로 그리는 가계도·지분관계·조직도 (explorer.js 이식).
-  // mermaid 라이브러리 자체와 NETAX 브랜드 테마 초기화는 reportwriter.html이 이미 해둔 것을 그대로 쓴다.
+  // mermaid 라이브러리 자체와 NETAX 브랜드 테마 초기화는 공용 렌더러 mdrender.html이 해둔 것을 그대로 쓴다([2026.10.20] 예전엔 reportwriter.html).
   // ============================================================
   var DOCS_DIAGRAM_FILE_NAME_ = '관계도.mmd';
   var DOCS_DIAGRAM_DEFAULT_ = 'graph TD\n  A[아버지] --> B[자녀1]\n  A --> C[자녀2]';
