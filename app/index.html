@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 13:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 15:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6724,6 +6724,7 @@ function nxMdOpenWindow(title, src, opts){
     <button type="button" class="lsi-tab active" data-lsitab="law">📜 법령</button>
     <button type="button" class="lsi-tab" data-lsitab="form">📄 서식</button>
     <button type="button" class="lsi-tab" data-lsitab="ref">📋 조견표</button>
+    <button type="button" class="lsi-tab" data-lsitab="reform">🧾 세제개편</button>
   </div>
   <div class="view-body">
     <div id="lsiPane-law">
@@ -6892,6 +6893,7 @@ function nxMdOpenWindow(title, src, opts){
     </div>
     <div id="lsiPane-form" style="display:none;"></div>
     <div id="lsiPane-ref" style="display:none;"></div>
+    <div id="lsiPane-reform" style="display:none;"></div>
   </div>
 </div>
 
@@ -7403,9 +7405,10 @@ function nxMdOpenWindow(title, src, opts){
   function lsiShowTab_(tab){
     lsiActiveTab_ = tab;
     document.querySelectorAll('.lsi-tab').forEach(function(b){ b.classList.toggle('active', b.dataset.lsitab === tab); });
-    ['law', 'form', 'ref'].forEach(function(t){ document.getElementById('lsiPane-' + t).style.display = t === tab ? '' : 'none'; });
+    ['law', 'form', 'ref', 'reform'].forEach(function(t){ document.getElementById('lsiPane-' + t).style.display = t === tab ? '' : 'none'; });
     if (tab === 'form') lsiRenderForms_();
     if (tab === 'ref') lsiRenderRefs_();
+    if (tab === 'reform') { lsiRenderReform_(); return; } // 세제개편은 확인 기록(조견표·서식용)을 쓰지 않는다
     if (tab !== 'law') lsiLoadReviews_(function(){ if (lsiActiveTab_ === 'form') lsiRenderForms_(); else if (lsiActiveTab_ === 'ref') lsiRenderRefs_(); });
   }
   document.querySelectorAll('.lsi-tab').forEach(function(b){ b.addEventListener('click', function(){ lsiShowTab_(b.dataset.lsitab); }); });
@@ -7990,6 +7993,88 @@ function nxMdOpenWindow(title, src, opts){
       document.getElementById('lsiAdjAddr').addEventListener('keydown', function(e){ if (e.key === 'Enter') runAdj(); });
     }
     if (box.scrollIntoView) box.scrollIntoView({ block: 'start' });
+  }
+
+  // ============================================================
+  // [2026.10.21 세제개편 하위 탭] 세무사님 말씀(원문): "법령정보탭에 세제개편 서브탭을 만들어서 세제개편안별 원문과 비교분석해설서를
+  //  만들어두면 좋겠다. 이후 확정되면 개정세법으로 재분류하면 되고 말야"
+  //  · 개편안 하나 = 드라이브 0 NETAX\업무관리자\법령\세제개편\<개편안 폴더>(원문 PDF·한글 + 비교분석 해설서 .md).
+  //  · 확정되면 그 폴더를 업무관리자\법령\개정세법\으로 옮긴다(이 탭의 "확정 — 개정세법으로" 버튼, 되돌리기도 있음). 폴더째 옮기므로 파일 ID는 그대로.
+  //  · 확정 전 개편안은 참고·상담용 — 세액계산 엔진·사건처리는 이 폴더를 읽지 않는다.
+  //  · 경로로 찾으므로(listFolder path) 폴더 ID를 코드에 박지 않는다. 서버 코드 변경 없음(listFolder·readFile·moveItem 기존 입구).
+  // ============================================================
+  var LSI_REFORM_PATH_ = ['0 NETAX', '업무관리자', '법령', '세제개편'];
+  var LSI_ENACTED_PATH_ = ['0 NETAX', '업무관리자', '법령', '개정세법'];
+  var lsiReform_ = null, lsiReformLoading_ = false, lsiReformError_ = '';
+  function lsiLoadReform_(){
+    if (lsiReformLoading_) return;
+    lsiReformLoading_ = true; lsiReformError_ = '';
+    var one = function(path, enacted){
+      return callGas('listFolder', { path: path }).then(function(res){
+        if (!res || res.error) throw new Error((res && res.error) || '폴더를 읽지 못했습니다');
+        return Promise.all((res.folders || []).map(function(d){
+          return callGas('listFolder', { folderId: d.id }).then(function(r){
+            return { id: d.id, name: d.name, enacted: enacted, files: (r && r.files) || [], error: r && r.error ? r.error : '' };
+          }).catch(function(e){ return { id: d.id, name: d.name, enacted: enacted, files: [], error: e.message }; });
+        }));
+      });
+    };
+    Promise.all([one(LSI_REFORM_PATH_, false), one(LSI_ENACTED_PATH_, true)]).then(function(r){
+      var all = r[0].concat(r[1]);
+      all.sort(function(a, b){ return b.name.localeCompare(a.name, 'ko'); }); // 폴더 이름이 날짜로 시작 — 최근 것 먼저
+      lsiReform_ = all;
+    }).catch(function(e){ lsiReformError_ = e.message; lsiReform_ = lsiReform_ || []; })
+      .then(function(){ lsiReformLoading_ = false; if (lsiActiveTab_ === 'reform') lsiRenderReform_(); });
+  }
+  function lsiRenderReform_(){
+    var pane = document.getElementById('lsiPane-reform');
+    if (!lsiReform_){ pane.innerHTML = '<div class="card"><div class="lsi-note">드라이브 업무관리자\\법령\\세제개편·개정세법 폴더를 읽는 중…</div></div>'; lsiLoadReform_(); return; }
+    var card = function(g){
+      var docs = g.files.filter(function(f){ return /\.md$/i.test(f.name); });
+      var srcs = g.files.filter(function(f){ return !/\.md$/i.test(f.name); });
+      return '<div class="card" data-lsirf="' + lsiEsc_(g.id) + '">' +
+        '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">' +
+          '<h3 style="margin:0;">' + lsiEsc_(g.name) + '</h3>' +
+          (g.enacted ? '<span class="lsi-badge ok">개정세법(확정)</span>' : '<span class="lsi-badge warn">개편안 — 확정 전, 계산·신고에 쓰지 않음</span>') +
+          '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfmove="' + (g.enacted ? 'back' : 'enact') + '">' + (g.enacted ? '↩ 개편안으로 되돌리기' : '✅ 확정 — 개정세법으로 옮기기') + '</button>' +
+        '</div>' +
+        (g.error ? '<div class="lsi-note" style="color:#a33;">이 폴더를 읽지 못했습니다: ' + lsiEsc_(g.error) + '</div>' : '') +
+        '<div style="margin-top:8px;"><b>비교분석 해설서</b> ' + (docs.length ? docs.map(function(f){ return '<button type="button" class="btn" style="margin:2px 6px 2px 0;" data-lsirfdoc="' + lsiEsc_(f.id) + '" data-lsirfname="' + lsiEsc_(f.name) + '">📖 ' + lsiEsc_(f.name.replace(/\.md$/i, '')) + '</button>'; }).join('') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
+        '<div class="lsi-files" style="margin-top:6px;"><b>원문</b> ' + (srcs.length ? srcs.map(function(f){ return '<a href="' + lsiEsc_(f.url) + '" target="_blank" rel="noopener noreferrer">📄 ' + lsiEsc_(f.name) + '</a>'; }).join('') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
+      '</div>';
+    };
+    var pend = lsiReform_.filter(function(g){ return !g.enacted; }), done = lsiReform_.filter(function(g){ return g.enacted; });
+    pane.innerHTML =
+      '<div class="card" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">' +
+        '<span class="lsi-note">세제개편안의 원문과 현행 세법과의 비교분석 해설서입니다. 확정되면 "확정 — 개정세법으로 옮기기"를 누르세요.</span>' +
+        '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfreload="1">↻ 새로 읽기</button>' +
+      '</div>' +
+      (lsiReformError_ ? '<div class="card lsi-note" style="color:#a33;">폴더를 읽지 못했습니다: ' + lsiEsc_(lsiReformError_) + '</div>' : '') +
+      '<h3 style="margin:14px 4px 6px;">개편안 (확정 전) <span class="lsi-note">' + pend.length + '건</span></h3>' + (pend.length ? pend.map(card).join('') : '<div class="card lsi-note">없음</div>') +
+      '<h3 style="margin:14px 4px 6px;">개정세법 (확정) <span class="lsi-note">' + done.length + '건</span></h3>' + (done.length ? done.map(card).join('') : '<div class="card lsi-note">없음</div>');
+    pane.querySelectorAll('[data-lsirfreload]').forEach(function(b){ b.addEventListener('click', function(){ lsiReform_ = null; lsiRenderReform_(); }); });
+    pane.querySelectorAll('[data-lsirfdoc]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.dataset.lsirfdoc, name = b.dataset.lsirfname;
+        nxMdOpenWindow(name, function(){ return callGas('readFile', { fileId: id }).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '읽지 못했습니다'); return r.content || ''; }); });
+      });
+    });
+    pane.querySelectorAll('[data-lsirfmove]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.closest('[data-lsirf]').dataset.lsirf, enact = b.dataset.lsirfmove === 'enact';
+        var g = (lsiReform_ || []).filter(function(x){ return x.id === id; })[0]; if (!g) return;
+        nxConfirm_(enact ? '「' + g.name + '」을(를) 확정된 개정세법으로 옮길까요?\n드라이브 업무관리자\\법령\\세제개편 → 개정세법 폴더로 폴더째 옮깁니다(되돌릴 수 있음).'
+          : '「' + g.name + '」을(를) 다시 확정 전 개편안으로 옮길까요?', enact ? '개정세법으로 재분류' : '개편안으로 되돌리기').then(function(ok){
+          if (!ok) return;
+          b.disabled = true;
+          callGas('moveItem', { id: id, type: 'folder', destPath: enact ? LSI_ENACTED_PATH_ : LSI_REFORM_PATH_ }).then(function(r){
+            if (!r || r.error) throw new Error((r && r.error) || '옮기지 못했습니다');
+            showToast(enact ? '개정세법으로 옮겼습니다.' : '개편안으로 되돌렸습니다.', 'success');
+            lsiReform_ = null; lsiRenderReform_();
+          }).catch(function(e){ b.disabled = false; showToast('옮기지 못했습니다: ' + e.message, 'warning'); });
+        });
+      });
+    });
   }
 </script>
 <!-- [2026.10.19] 법령 정비본 원문 보기·인용 복사 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html의 자리 표시에 끼움). 서버(구글) 화면 사본에는 없다 — 서버 10MB 한도. -->
