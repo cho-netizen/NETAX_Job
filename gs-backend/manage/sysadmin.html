@@ -193,7 +193,14 @@
       h += '<div class="sa-a-line">' + (t.problems ? '<span class="sa-a-bad">문제 ' + t.problems + '</span>' : '<span class="sa-a-ok">문제 0</span>') + ' · 주의 ' + t.warnings + ' · 참고 ' + t.infos
         + ' · [확인 필요] ' + t.confirm + (t.confirmOldest ? '(가장 오래된 것 ' + saEsc_(t.confirmOldest) + ')' : '') + ' — 파일 ' + t.files + '개</div>';
       h += '<div class="sa-a-line" style="color:var(--sub);">대조: 조문 ' + t.citations + '개(법령 정비본으로 확인 ' + t.citationsChecked + ') · 도구 이름 ' + t.toolRefs + '개(서버 도구 ' + (r.rules.toolCount || 0) + '개) · 드라이브 경로 ' + t.pathRefs + '개 · 다른 지침 가리킴 ' + t.guideRefs + '개</div>';
-      if (r.rules.changedFiles && r.rules.changedFiles.length) h += '<div class="sa-a-line">바뀐 파일: ' + r.rules.changedFiles.map(function(c){ return saEsc_(c.name) + '(' + saEsc_(c.changed) + ')'; }).join(', ') + '</div>';
+      // [2026.10.20] 지시문↔도구 일치 — 지시문·지침은 쓰라는데 그 경로(job AI·work AI·AI 지휘)에 없는 도구
+      var pc = r.rules.pathCheck;
+      if (pc) {
+        h += '<div class="sa-a-line">지시문↔도구: ' + pc.paths.map(function(p){ return saEsc_(p.label) + ' 도구 ' + p.toolCount + '개'; }).join(' · ') + ' — '
+          + (pc.problems.length ? '<span class="sa-a-bad">어긋남 ' + pc.problems.length + '건</span>' : '<span class="sa-a-ok">어긋남 없음</span>') + '</div>';
+        pc.problems.forEach(function(x){ h += '<div class="sa-a-line sa-a-bad" style="font-weight:400; padding-left:10px;">⚠ ' + saEsc_(x.text) + '</div>'; });
+      }
+      if (r.rules.changedFiles && r.rules.changedFiles.length) h +='<div class="sa-a-line">바뀐 파일: ' + r.rules.changedFiles.map(function(c){ return saEsc_(c.name) + '(' + saEsc_(c.changed) + ')'; }).join(', ') + '</div>';
       (r.warn || []).forEach(function(w){ h += '<div class="sa-a-line sa-a-bad">⚠ ' + saEsc_(w) + '</div>'; });
       var files = (r.rules.files || []).filter(function(f){ return (f.problems || []).length || (f.confirm && f.confirm.count); });
       files.sort(function(a, b){ return ((b.counts || {}).문제 || 0) - ((a.counts || {}).문제 || 0) || ((b.counts || {}).주의 || 0) - ((a.counts || {}).주의 || 0); });

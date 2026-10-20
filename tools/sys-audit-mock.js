@@ -50,6 +50,11 @@ function folderObj(p) {
 const props = { BUSINESS_MANAGER_FOLDER_ID: ID(ROOT), CHIEF_MANAGER_FOLDER_ID: ID(ROOT + '/총괄관리자'), GEMINI_API_KEY: 'test-key' };
 const cache = {};
 let fetchMode = 'ok', fetchCalls = 0, lastPrompt = '';
+// 가짜 깃허브 raw(main) — rawDir 저장소의 파일을 돌려준다(② 배포 비교 시험용)
+let rawDir = path.join(__dirname, '..');
+const PROBE_LINE = "  if (body.__probe && typeof SYS_AUDIT_PROBE_ !== 'undefined' && body.__probe === SYS_AUDIT_PROBE_) return { probeTools: tools.map(function (t) { return { name: t.name, description: String(t.description || '') }; }) };";
+// codeDir의 Code.js·AiLead*.js(다른 가지의 서버 코드)로 서버를 다시 만든다. 그 Code.js에 도구 목록 입구가 없으면 같은 한 줄을 메모리에서만 넣는다.
+function makeCtx(codeDir) {
 const ctx = {
   console: { log: () => { }, error: m => console.log('  (서버 console.error) ' + m) },
   DriveApp: {
@@ -68,26 +73,80 @@ const ctx = {
   },
   UrlFetchApp: {
     fetchAll: reqs => reqs.map(r => { fetchCalls++; lastPrompt = JSON.parse(r.payload).contents[0].parts[0].text; return fakeGemini(); }),
-    fetch: () => ({ getResponseCode: () => 500, getContentText: () => '{}' })
+    fetch: url => { const m = String(url).match(/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/main\/(.+)$/); const f = m && path.join(rawDir, decodeURIComponent(m[1])); return f && fs.existsSync(f) ? { getResponseCode: () => 200, getContentText: () => fs.readFileSync(f, 'utf8') } : { getResponseCode: () => 404, getContentText: () => '' }; }
   },
   ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create: () => { } }) }) }) }) },
   LockService: { getScriptLock: () => ({ waitLock: () => { }, tryLock: () => true, releaseLock: () => { } }) },
   Session: { getScriptTimeZone: () => 'Asia/Seoul' }
 };
+vm.createContext(ctx);
+const fromCode = ['Code.js', 'AiLead.js', 'AiLeadLive.js'];
+for (const f of fs.readdirSync(SRC).filter(n => /\.js$/.test(n))) {
+  let src = fs.readFileSync(path.join(fromCode.includes(f) && codeDir ? path.join(codeDir, 'gs-backend') : SRC, f), 'utf8');
+  if (f === 'Code.js' && src.indexOf('SYS_AUDIT_PROBE_') === -1) {
+    const before = src;
+    src = src.replace(/( {2}payload\.tools = body\.forceWrapUp \? \[\] : tools;\r?\n)/, '$1' + PROBE_LINE + '\n');
+    if (src === before) throw new Error(codeDir + ' Code.js에 도구 목록 입구를 넣을 자리를 못 찾음');
+  }
+  vm.runInContext(src, ctx, { filename: f });
+}
+return ctx;
+}
+let ctx = makeCtx(null);
 function fakeGemini() {
   const body = fetchMode === 'ok' ? { candidates: [{ content: { parts: [{ text: '```json\n[{"종류":"지침끼리","파일":["양도_일시적2주택.md","양도_1세대1주택_비과세.md"],"내용":"시험용 — 처분기한을 서로 다르게 적음","근거":["양도_일시적2주택.md: 3년","양도_1세대1주택_비과세.md: 2년"],"세법판단필요":true}]\n```' }] } }] }
     : fetchMode === 'quota' ? { error: { code: 429, message: 'Resource has been exhausted (e.g. check quota).' } }
       : { candidates: [{ content: { parts: [{ text: '어긋나는 곳은 없어 보입니다.' }] } }] };
   return { getResponseCode: () => fetchMode === 'quota' ? 429 : 200, getContentText: () => JSON.stringify(body) };
 }
-vm.createContext(ctx);
-for (const f of ['Code.js', 'SysAdmin.js', 'Federation.js', 'AiLead.js', 'SysAudit.js']) vm.runInContext(fs.readFileSync(path.join(SRC, f), 'utf8'), ctx, { filename: f });
 
 const RF = ROOT + '/총괄관리자/_점검리포트';
 const readJson = n => JSON.parse(mem[RF + '/' + n].content);
 let fails = 0;
 const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); if (!cond) fails++; };
 const dash = () => ctx.handleGetNightlyStatus({}).items.find(i => /시스템 자기점검/.test(i.label));
+
+// --paths [다른 가지 폴더]: ① 지시문↔도구 일치와 ② 배포마다 빠진 기능 감시만 시험한다.
+//   다른 가지(예: C:/GitHub/wt-bm-tools — 지침 도구를 job에 다시 연결한 가지)의 Code.js로도 돌려 전·후를 비교하고,
+//   "다시 연결 → 도로 뺌" 배포를 흉내 내 빠진 기능이 잡히는지 본다.
+if (args.indexOf('--paths') >= 0) {
+  const other = args[args.indexOf('--paths') + 1] && !/^--/.test(args[args.indexOf('--paths') + 1]) ? args[args.indexOf('--paths') + 1] : null;
+  let pf = 0;
+  const ck = (c, m) => { console.log((c ? '  ✓ ' : '  ✗ ') + m); if (!c) pf++; };
+  const show = (label, cx) => {
+    const col = cx.sysAuditCollectFiles_();
+    const pc = cx.sysAuditPathCheck_(cx.sysAuditPathData_(), col.files);
+    console.log('\n[' + label + '] ' + pc.paths.map(p => p.label + ' 도구 ' + p.toolCount + '개').join(' · ') + ' → 어긋남 ' + pc.problems.length + '건');
+    pc.problems.forEach(x => console.log('   ⚠ ' + x.text));
+    return pc;
+  };
+  const before = show('이 가지(origin/main be47c5b 기준 — job에서 지침 도구 4종 빠진 상태)', ctx);
+  const bmMiss = before.problems.filter(x => x.path === 'job' && /business_manager/.test(x.name));
+  ck(bmMiss.length >= 3, '지금 상태(job에 지침 도구 없음)를 잡음: job 경로 업무관리자 도구 어긋남 ' + bmMiss.length + '건(' + bmMiss.map(x => x.name).join(', ') + ')');
+  // ② 배포 비교: 이 가지로 첫 기록 → (다른 가지) 기록 → 이 가지로 되돌린 기록
+  console.log('\n② 배포마다 빠진 기능 감시');
+  let fr = ctx.sysAuditFeatureRecord_();
+  ck(fr.first && !fr.text, '첫 기록(비교 대상 없음): ' + JSON.stringify(JSON.parse(props.SYS_FEATURE_DIFF)).slice(0, 80));
+  const store0 = JSON.parse(mem[RF + '/_기능목록.json'].content).last;
+  console.log('   기록: ' + Object.keys(store0.tools).map(k => k + ' ' + store0.tools[k].length).join(' · ') + ' · 화면이 부르는 동작 ' + (store0.screen || []).length + ' · 서버가 받는 동작 ' + (store0.server || []).length + ' · 끊긴 연결 ' + ctx.sysAuditFeatureDiff_(null, store0).newBroken.length);
+  if (other) {
+    const ctx2 = makeCtx(other); rawDir = other;
+    show('다른 가지 ' + other, ctx2);
+    fr = ctx2.sysAuditFeatureRecord_();
+    ck(!/job AI 도구/.test(fr.text || ''), '다시 연결한 배포: job 도구가 줄지 않음' + (fr.text ? ' — ' + fr.text : ''));
+    rawDir = path.join(__dirname, '..');
+    fr = ctx.sysAuditFeatureRecord_();
+    ck(/job AI 도구 .*list_business_managers/.test(fr.text || '') && /load_business_manager/.test(fr.text || ''), '도로 뺀 배포를 잡음: ' + fr.text);
+    const ds = ctx.handleGetNightlyStatus({}).items.find(i => /빠진 기능/.test(i.label));
+    ck(ds && !ds.ok, '대시보드: ⚠ ' + (ds && ds.failLabel));
+  }
+  // 배포 직후 점검 항목으로 붙었는지(다른 점검 항목은 가짜 드라이브라 실패해도 상관없음 — 이 항목만 본다)
+  let smoke = null; try { smoke = ctx.deploySmoke_().last; } catch (e) { console.log('   (deploySmoke_ 전체 실행 오류: ' + e.message + ')'); }
+  const it = smoke && smoke.items.find(x => /빠진 기능 감시/.test(x.name));
+  ck(!!it, '배포 직후 점검(deploySmoke_)에 "빠진 기능 감시" 항목: ' + (it ? (it.ok ? '정상' : '⚠ ' + it.msg.slice(0, 80)) : '없음'));
+  console.log(pf ? '\n✗ 실패 ' + pf + '개' : '\n✓ 모두 통과');
+  process.exit(pf ? 1 : 0);
+}
 
 console.log('① 새벽 2시 runNightlySystemAudit() — 규칙 점검');
 let t0 = Date.now(), r = ctx.runNightlySystemAudit(); if (!mem[RF + '/점검결과_최신.json']) { console.log(r, Object.keys(mem)); process.exit(1); }
@@ -139,7 +198,8 @@ fetchCalls = 0; ctx.runSysAuditAiNightly();
 ai = readJson('점검결과_최신.json').ai;
 console.log('  ' + ai.status + ' (질문 ' + fetchCalls + '번, 남은 ' + ai.waiting + ')');
 for (let i = 0; i < 4 && ai.waiting; i++) { ctx.runSysAuditAiNightly(); ai = readJson('점검결과_최신.json').ai; }
-fetchCalls = 0; ctx.runSysAuditAiNightly(); ai = readJson('점검결과_최신.json').ai;
+// 실제 드라이브를 읽으므로 시험 도중 다른 세션이 지침을 고치면 그 파일만 다시 묻는다 — 몇 번 더 돌려 "바뀐 것 없음"에 닿는지 본다
+for (let i = 0; i < 4; i++) { fetchCalls = 0; ctx.runSysAuditAiNightly(); ai = readJson('점검결과_최신.json').ai; if (!fetchCalls) break; console.log('  (시험 중 바뀐 지침이 있어 다시 물음: ' + ai.status + ')'); }
 check(fetchCalls === 0 && /바뀐 지침 없음/.test(ai.status), '다 본 뒤엔 0번 질문: ' + ai.status);
 check(ai.items.length > 0, '옛 AI 항목은 유지(' + ai.items.length + '개)');
 

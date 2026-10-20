@@ -514,6 +514,10 @@ function sysAuditNightly_(opts) {
     });
     if (lawErr) result.warn.push('법령 정비본을 읽지 못해 조문 일부를 확인 못 함: ' + lawErr);
     rules.toolCount = tn.toolCount;
+    // [2026.10.20] 지시문↔도구 일치 — 경로별 실제 켜진 도구 목록과 대조(못 하면 조용히 넘기지 않고 경고)
+    try { rules.pathCheck = sysAuditPathCheck_(sysAuditPathData_(), col.files); }
+    catch (e) { rules.pathCheck = null; result.warn.push('경로별 도구 대조를 못 함: ' + e.message); }
+    rules.totals.pathProblems = rules.pathCheck ? rules.pathCheck.problems.length : 0;
     result.rules = rules;
     result.ran = true;
     var aiPrev = state.aiHashes || {};
@@ -585,7 +589,7 @@ function sysAuditSummary_(r) {
   if (!r) return null;
   var t = (r.rules && r.rules.totals) || {};
   var ai = r.ai || {};
-  return { at: r.at, ran: !!r.ran, reason: r.reason || '', files: t.files || 0, problems: t.problems || 0, warnings: t.warnings || 0, confirm: t.confirm || 0,
+  return { at: r.at, ran: !!r.ran, reason: r.reason || '', files: t.files || 0, problems: (t.problems || 0) + (t.pathProblems || 0), pathProblems: t.pathProblems || 0, warnings: t.warnings || 0, confirm: t.confirm || 0,
     changed: (r.rules && r.rules.changedFiles || []).length, aiRan: !!ai.ran, aiStatus: ai.status || '', aiItems: (ai.items || []).length,
     aiLaw: (ai.items || []).filter(function (x) { return x.세법판단필요; }).length };
 }
@@ -599,6 +603,11 @@ function sysAuditReportMd_(r) {
     + '- 본 파일 ' + t.files + '개 · 문제 ' + t.problems + ' · 주의 ' + t.warnings + ' · 참고 ' + t.infos + '\n'
     + '- 대조한 것: 조문 인용 ' + t.citations + '개(정비본으로 확인 ' + t.citationsChecked + ') · 도구 이름 ' + t.toolRefs + '개(서버 도구 ' + r.rules.toolCount + '개와 대조) · 드라이브 경로 ' + t.pathRefs + '개 · 다른 지침 가리킴 ' + t.guideRefs + '개\n'
     + '- [확인 필요] ' + t.confirm + '개' + (t.confirmOldest ? ' (가장 오래된 것 ' + t.confirmOldest + ')' : '') + '\n';
+  var pc = r.rules.pathCheck;
+  if (pc) {
+    md += '- 지시문↔도구: ' + pc.paths.map(function (p) { return p.label + ' 도구 ' + p.toolCount + '개'; }).join(' · ') + ' — 어긋남 ' + pc.problems.length + '건\n';
+    pc.problems.forEach(function (x) { md += '  - ⚠ ' + x.text + '\n'; });
+  }
   if (r.rules.changedFiles.length) md += '- 바뀐 파일: ' + r.rules.changedFiles.map(function (c) { return c.name + '(' + c.changed + ')'; }).join(', ') + '\n';
   (r.warn || []).forEach(function (w) { md += '- ⚠ ' + w + '\n'; });
   md += '\n';
@@ -663,4 +672,142 @@ function sysAuditFlaggedAuditData_(flagged) {
   var sections = col.files.filter(function (f) { return want[f.name] || f.role === 'plan' || f.role === 'checklist'; })
     .map(function (f) { return '=== ' + f.name + ' ===\n' + f.text; });
   return { 파일개수: sections.length, 전체내용: sections.join('\n\n') };
+}
+
+// =============================================================================================
+// [2026.10.20 추가] 세무사님 "아니 이런 말도 안되는 일이 있나? 내가 모르는 사이에 소리없이 시스템이 망가졌구나"
+//   work → job으로 옮길 때 업무관리자 지침 도구 4종이 job AI탭에서 빠졌는데, job 지시문에는 "그 도구를 쓰라"는 문장이 남아 있었고 아무 경고도 없었다.
+//   ① 지시문↔도구 일치(규칙 점검, 0원): 경로(job AI·work AI·AI 지휘)마다 실제로 켜진 도구 목록을 코드에서 그대로 받아,
+//      그 경로의 지시문·켜진 도구의 설명·업무관리자 지침(job)에 나오는 도구 이름이 그 목록에 있는지 본다. 마스터 프로필은 지시문에 들어 있어 함께 본다.
+//   ② 기능이 빠지는 것 감시: 배포 직후 점검(deploySmoke_)마다 경로별 도구 + 화면이 부르는 서버 동작(callGas) + 서버가 받는 동작을 기록하고,
+//      직전 배포보다 줄어든 것을 "⚠ 이번 반영으로 빠진 기능"으로 띄운다(의도된 제거라도 세무사님이 볼 수 있게).
+// =============================================================================================
+var SYS_AUDIT_PROBE_ = { probe: 'sys-audit' }; // callClaude가 이 객체와 같을 때만 도구 목록을 돌려준다(Code.js) — JSON 요청으로는 만들 수 없음
+var SYS_AUDIT_FEATURE_FILE_ = '_기능목록.json';
+var SYS_AUDIT_PATH_LABEL_ = { job: 'job AI', work: 'work AI', lead: 'AI 지휘' };
+
+// 경로별 켜진 도구(이름·설명)와 지시문 — 실제 코드 함수 그대로(callClaude·buildContextSystemPrompt·caseProcAiLiveTools_·caseProcAiLiveSystem_)
+function sysAuditPathData_() {
+  var cats = typeof TAX_TOOL_CATEGORIES_ !== 'undefined' ? Object.keys(TAX_TOOL_CATEGORIES_) : [];
+  // 계산기는 browse_tax_calculators로 분야를 연 뒤에 켜진다 — 모든 분야를 연 것으로 쳐서 "켤 수 있는 도구"를 받는다
+  var msgs = [{ role: 'assistant', content: cats.map(function (c, i) { return { type: 'tool_use', id: 'probe' + i, name: 'browse_tax_calculators', input: { category: c } }; }) }];
+  var probe = function (ctx) {
+    var r = callClaude({ __probe: SYS_AUDIT_PROBE_, context: ctx, messages: msgs, enableCodeExecution: true, enableAdvisor: true }, DEFAULT_MODEL, { codeExec: true }, {}, 1000, { static: '', dynamic: '' }, '');
+    if (!r || !r.probeTools) throw new Error('callClaude에서 도구 목록을 받지 못함(Code.js 입구가 없거나 바뀜)');
+    return r.probeTools;
+  };
+  var master = '';
+  try { master = getMasterProfileText_() || ''; } catch (e) { }
+  var prompt = function (ctx) { return buildContextSystemPrompt(DEFAULT_SYSTEM_PROMPT + '\n\n' + master, { context: ctx, messages: [] }).full; };
+  var paths = [
+    { key: 'job', label: 'job AI(AI탭·사이드바)', tools: probe({ aiPanel: 'tab', openFile: { liveContent: '' }, openDiagram: true }), prompt: prompt({ aiPanel: 'tab' }) },
+    { key: 'work', label: 'work AI', tools: probe({ openFile: { liveContent: '' }, openDiagram: true }), prompt: prompt({}) }
+  ];
+  if (typeof caseProcAiLiveTools_ === 'function') {
+    var lt = caseProcAiLiveTools_().map(function (t) { return { name: t.name, description: String(t.description || '') }; });
+    var ls = '';
+    try { ls = caseProcAiLiveSystem_(1000); } catch (e) { ls = ''; }
+    paths.push({ key: 'lead', label: 'AI 지휘(이 사건 처리하자)', tools: lt, prompt: ls });
+  }
+  return paths;
+}
+
+// 순수 함수 — paths:[{key,label,tools:[{name,description}],prompt}], files(규칙 점검과 같은 모양) → 어긋남 목록
+//   이름 후보는 어느 경로엔가 실제로 있는 도구 이름(전체 합집합)만 — 아예 없는 이름은 규칙 점검의 "없는 도구"가 따로 잡는다.
+function sysAuditPathCheck_(paths, files) {
+  var all = {};
+  paths.forEach(function (p) { p.tools.forEach(function (t) { all[t.name] = 1; }); });
+  var names = function (text) {
+    var out = {}, m, re = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b/g;
+    while ((m = re.exec(String(text || '')))) if (all[m[1]]) out[m[1]] = 1;
+    return Object.keys(out);
+  };
+  var probs = [], byKey = {};
+  var add = function (p, name, source) {
+    var k = p.key + '|' + name;
+    if (!byKey[k]) {
+      byKey[k] = { path: p.key, label: p.label, name: name, sources: [], level: '문제',
+        have: paths.filter(function (q) { return q.tools.some(function (t) { return t.name === name; }); }).map(function (q) { return q.label; }) };
+      probs.push(byKey[k]);
+    }
+    if (byKey[k].sources.indexOf(source) === -1) byKey[k].sources.push(source);
+  };
+  paths.forEach(function (p) {
+    var on = {};
+    p.tools.forEach(function (t) { on[t.name] = 1; });
+    names(p.prompt).forEach(function (n) { if (!on[n]) add(p, n, '지시문'); });
+    p.tools.forEach(function (t) { names(t.description).forEach(function (n) { if (!on[n]) add(p, n, '도구 설명(' + t.name + ')'); }); });
+    if (p.key === 'job') (files || []).forEach(function (f) { if (f.role === 'bm') names(f.text).forEach(function (n) { if (!on[n]) add(p, n, '지침 ' + f.name); }); });
+  });
+  probs.forEach(function (x) {
+    x.text = x.label + '에는 ' + x.name + ' 도구가 없는데 ' + x.sources.slice(0, 4).join('·') + (x.sources.length > 4 ? ' 외 ' + (x.sources.length - 4) + '곳' : '')
+      + '이(가) 그 도구를 씀' + (x.have.length ? ' (있는 곳: ' + x.have.join(', ') + ')' : '');
+  });
+  return { paths: paths.map(function (p) { return { key: p.key, label: p.label, toolCount: p.tools.length, promptChars: String(p.prompt || '').length }; }), problems: probs };
+}
+
+// ② 기능 목록 — 화면·서버 목록은 깃허브 main(job.netax.kr/app이 서빙하는 원본이자 📥의 원본)에서 읽는다.
+function sysAuditFeatureList_() {
+  var snap = { at: sysAuditNow_(), tools: {}, screen: null, server: null, warn: [] };
+  sysAuditPathData_().forEach(function (p) { snap.tools[p.key] = p.tools.map(function (t) { return t.name; }).filter(function (n, i, a) { return a.indexOf(n) === i; }).sort(); });
+  var raw = function (p) {
+    var r = UrlFetchApp.fetch('https://raw.githubusercontent.com/' + GH_REPO_ + '/main/' + p, { muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) throw new Error(p + ' 응답 ' + r.getResponseCode());
+    return r.getContentText();
+  };
+  try { snap.screen = sysAuditScreenActions_(raw('app/index.html')); } catch (e) { snap.warn.push('화면 목록을 못 읽음: ' + e.message); }
+  try { snap.server = sysAuditServerActions_(raw('gs-backend/Code.js')); } catch (e) { snap.warn.push('서버 동작 목록을 못 읽음: ' + e.message); }
+  return snap;
+}
+function sysAuditScreenActions_(html) {
+  var o = {}, m, re = /callGas(?:Raw_)?\(\s*['"]([A-Za-z0-9_]+)['"]/g;
+  while ((m = re.exec(String(html)))) o[m[1]] = 1;
+  return Object.keys(o).sort();
+}
+function sysAuditServerActions_(code) {
+  var o = {}, m, re = /\baction\s*===\s*['"]([A-Za-z0-9_]+)['"]/g;
+  while ((m = re.exec(String(code)))) o[m[1]] = 1;
+  return Object.keys(o).sort();
+}
+// 순수 함수 — 직전 기록과 비교: 경로별 빠진 도구, 화면이 더는 부르지 않는 동작, 서버가 더는 받지 않는 동작, 새로 끊긴 연결(화면은 부르는데 서버에 없음)
+function sysAuditFeatureDiff_(prev, cur) {
+  var minus = function (a, b) { var s = {}; (b || []).forEach(function (x) { s[x] = 1; }); return (a || []).filter(function (x) { return !s[x]; }); };
+  var broken = function (s) { return s && s.screen && s.server ? minus(s.screen, s.server) : null; };
+  var d = { at: cur.at, prevAt: prev ? prev.at : '', removedTools: {}, removedScreen: [], removedServer: [], newBroken: [], count: 0 };
+  if (!prev) return d;
+  Object.keys(prev.tools || {}).forEach(function (k) { var r = minus(prev.tools[k], (cur.tools || {})[k]); if (r.length) { d.removedTools[k] = r; d.count += r.length; } });
+  if (prev.screen && cur.screen) { d.removedScreen = minus(prev.screen, cur.screen); d.count += d.removedScreen.length; }
+  if (prev.server && cur.server) { d.removedServer = minus(prev.server, cur.server); d.count += d.removedServer.length; }
+  var pb = broken(prev), cb = broken(cur);
+  if (pb && cb) { d.newBroken = minus(cb, pb); d.count += d.newBroken.length; }
+  return d;
+}
+function sysAuditFeatureDiffText_(d) {
+  if (!d || !d.count) return '';
+  var cut = function (a) { return a.slice(0, 12).join('·') + (a.length > 12 ? ' 외 ' + (a.length - 12) + '개' : ''); };
+  var parts = [];
+  Object.keys(d.removedTools).forEach(function (k) { parts.push((SYS_AUDIT_PATH_LABEL_[k] || k) + ' 도구 ' + cut(d.removedTools[k])); });
+  if (d.removedScreen.length) parts.push('화면이 더는 부르지 않는 서버 동작 ' + cut(d.removedScreen));
+  if (d.removedServer.length) parts.push('서버가 더는 받지 않는 동작 ' + cut(d.removedServer));
+  if (d.newBroken.length) parts.push('새로 끊긴 화면 연결(화면은 부르는데 서버에 없음) ' + cut(d.newBroken));
+  return '이번 반영으로 빠진 기능 ' + d.count + '개 — ' + parts.join(' / ');
+}
+// deploySmoke_가 부른다: 지금 목록을 기록하고 직전 배포와 비교. text가 비어 있지 않으면 점검 항목에 ⚠로 보이고 대시보드에도 뜬다.
+function sysAuditFeatureRecord_() {
+  var folder = sysAuditReportFolder_();
+  if (!folder) return { text: '', warn: ['총괄관리자 폴더가 없어 기능 목록을 기록하지 못함'] };
+  var store = sysAuditReadJson_(folder, SYS_AUDIT_FEATURE_FILE_) || {};
+  var cur = sysAuditFeatureList_();
+  var prev = store.last || null;
+  // 이번에 화면·서버 목록을 못 읽었으면 직전 것을 이어 쓴다(못 읽은 것을 "다 빠졌다"로 보지 않게) — 대신 warn에 남긴다
+  if (!cur.screen && prev && prev.screen) { cur.screen = prev.screen; cur.screenCarried = true; }
+  if (!cur.server && prev && prev.server) { cur.server = prev.server; cur.serverCarried = true; }
+  var d = sysAuditFeatureDiff_(prev, cur), text = sysAuditFeatureDiffText_(d);
+  store.prev = prev ? { at: prev.at } : null;
+  store.last = cur;
+  store.lastCheck = { at: cur.at, count: d.count, text: text, warn: cur.warn, first: !prev };
+  if (d.count) store.lastDiff = d;
+  writeFileOverwrite_(folder, SYS_AUDIT_FEATURE_FILE_, JSON.stringify(store), 'application/json');
+  try { PropertiesService.getScriptProperties().setProperty('SYS_FEATURE_DIFF', JSON.stringify(store.lastCheck)); } catch (e) { }
+  return store.lastCheck;
 }

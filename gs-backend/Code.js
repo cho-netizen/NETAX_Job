@@ -14934,6 +14934,9 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   // [2026.08] 클라이언트가 도구 왕복 라운드 상한에 도달했을 때 보내는 플래그 — 도구 자체를
   // 아예 안 줘서, 모델이 지금까지 대화 내용만으로 텍스트로 마무리하게 강제한다.
   payload.tools = body.forceWrapUp ? [] : tools;
+  // [2026.10.20] 시스템 자기점검(SysAudit.js)이 "이 경로에서 실제로 켜진 도구"를 그대로 알아내는 입구 — API는 부르지 않는다.
+  // 서버 안의 객체(SYS_AUDIT_PROBE_)와 같은 것일 때만 열리므로 바깥 요청(JSON)으로는 열 수 없다.
+  if (body.__probe && typeof SYS_AUDIT_PROBE_ !== 'undefined' && body.__probe === SYS_AUDIT_PROBE_) return { probeTools: tools.map(function (t) { return { name: t.name, description: String(t.description || '') }; }) };
 
   const options = {
     method: 'post',
@@ -17166,7 +17169,7 @@ function handleGetNightlyStatus(body) {
     else {
       ok = !s.problems && !s.aiItems;
       failLabel = (s.problems ? '지침 문제 ' + s.problems + '건' : '') + (s.aiItems ? (s.problems ? ' · ' : '') + 'AI 어긋남 ' + s.aiItems + '건' : '');
-      message = r.at + ' 규칙 점검: 파일 ' + s.files + '개, 문제 ' + s.problems + ' · 주의 ' + s.warnings + ' · [확인 필요] ' + s.confirm + (s.changed ? ' · 바뀐 파일 ' + s.changed + '개' : '')
+      message = r.at + ' 규칙 점검: 파일 ' + s.files + '개, 문제 ' + s.problems + (s.pathProblems ? '(그중 지시문↔도구 어긋남 ' + s.pathProblems + ')' : '') + ' · 주의 ' + s.warnings + ' · [확인 필요] ' + s.confirm + (s.changed ? ' · 바뀐 파일 ' + s.changed + '개' : '')
         + '\n무료 AI 점검: ' + (s.aiStatus || '기록 없음') + (s.aiItems ? ' — 어긋남 후보 ' + s.aiItems + '건(세법 판단 필요 ' + s.aiLaw + ')' : '')
         + '\n→ 설정 🧭 시스템 관리 "점검 결과"에서 파일·줄 보기';
     }
@@ -17174,6 +17177,20 @@ function handleGetNightlyStatus(body) {
   } catch (e) {
     items.push({ label: '시스템 자기점검 (규칙 0원 + 무료 AI)', ok: false, failLabel: '점검 안 됨(상태 확인 오류)', message: '점검 결과를 확인하지 못했습니다: ' + e.message });
   }
+  // [2026.10.20] 배포마다 기능이 빠졌는지(SysAudit.js sysAuditFeatureRecord_ — 배포 직후 점검이 기록). 빠진 게 있으면 7일 동안 ⚠로 둔다.
+  try {
+    const fd = JSON.parse(PropertiesService.getScriptProperties().getProperty('SYS_FEATURE_DIFF') || 'null');
+    const recent = fd && fd.at && (Date.now() - new Date(String(fd.at).replace(' ', 'T') + ':00+09:00').getTime()) < 7 * 86400000;
+    items.push({
+      label: '🧩 빠진 기능 감시 (배포마다 AI 도구·화면 연결 비교)',
+      ok: !(fd && fd.count && recent),
+      failLabel: fd && fd.count ? '이번 반영으로 빠진 기능 ' + fd.count + '개' : '',
+      date: fd ? String(fd.at).slice(0, 10) : null,
+      message: !fd ? '아직 기록 없음 — 다음 배포 직후 점검부터 경로별 도구·화면 연결을 기록해 직전 배포와 비교합니다.'
+        : fd.count ? fd.at + ' ' + fd.text + '\n→ 의도한 제거가 아니면 설정 🐞 카드 ↩ 되돌리기' + (recent ? '' : '\n(7일 지난 알림)')
+          : fd.at + (fd.first ? ' 첫 기록 — 다음 배포부터 비교' : ' 직전 배포와 비교: 빠진 기능 없음') + ((fd.warn || []).length ? '\n⚠ ' + fd.warn.join(' / ') : '')
+    });
+  } catch (e) { /* 기록 없음 */ }
 
   // [2026.10.09] 개선 후보 보고서
   try {
@@ -37145,6 +37162,7 @@ function corrSummary_(sinceMs) {
 }
 
 // ③ 배포 직후 자동 점검 — 새 코드로 주요 기능을 한 바퀴 돌려 본다(토큰 0). PC 배포 후 mark-deployed와 📥 반영·↩ 되돌리기 뒤에 자동 실행.
+const SYS_FEATURE_CHECK_NAME_ = '빠진 기능 감시(AI 도구·화면 연결)';
 function deploySmoke_() {
   const items = [];
   const check = function (name, fn) {
@@ -37170,10 +37188,17 @@ function deploySmoke_() {
     return p && p.type === 'payment' && /1,234,000원/.test(p.md || '') ? '' : '견본 납부서를 알아보지 못함(' + (p && p.type) + ')';
   });
   check('개선 후보 보고서 만들기', function () { const r = buildImprovementReport_(); return r && r.success ? '' : '보고서를 만들지 못함'; });
+  // [2026.10.20] 기능이 소리 없이 빠지는 것 감시(SysAudit.js) — 경로별 AI 도구·화면 연결을 기록하고 직전 배포보다 줄었으면 ⚠(의도된 제거라도 보이게)
+  check(SYS_FEATURE_CHECK_NAME_, function () {
+    if (typeof sysAuditFeatureRecord_ !== 'function') return 'SysAudit.js가 서버에 없어 기능 목록을 기록하지 못함(clasp push 필요)';
+    const fr = sysAuditFeatureRecord_();
+    return fr.text || ((fr.warn || []).length ? '기능 목록 일부를 못 읽음 — ' + fr.warn.join(' / ') : '');
+  });
   const ok = items.every(function (x) { return x.ok; });
   const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ts: Date.now(), ok: ok, items: items };
   try { PropertiesService.getScriptProperties().setProperty('DEPLOY_CHECK_LAST', JSON.stringify(last)); } catch (e) {}
-  if (!ok) items.filter(function (x) { return !x.ok; }).forEach(function (x) { try { ai_logBug({ entry: { kind: 'deploy', where: '배포 직후 점검 · ' + x.name, message: x.msg } }); } catch (e) {} });
+  // 빠진 기능 알림은 고장이 아니라 "알려 드림"이라 오류 기록(개선 루틴이 고치려 드는 곳)에는 남기지 않는다
+  if (!ok) items.filter(function (x) { return !x.ok && x.name !== SYS_FEATURE_CHECK_NAME_; }).forEach(function (x) { try { ai_logBug({ entry: { kind: 'deploy', where: '배포 직후 점검 · ' + x.name, message: x.msg } }); } catch (e) {} });
   return { success: true, last: last };
 }
 function deployCheckLast_() {
