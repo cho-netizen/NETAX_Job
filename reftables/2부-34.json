@@ -415,6 +415,161 @@
     "상속세 및 증여세법 §57①",
     "상속세 및 증여세법 §69②"
    ]
+  },
+  {
+   "제목": "상속재산 규모별 상속세 대략 — 배우자 있음/없음(가정 계산)",
+   "설명": "가정: 거주자 사망, 상속재산(채무·장례비 뺀 뒤) 그대로 과세가액, 사전증여·금융재산공제·동거주택공제 없음, 배우자는 법정상속분만큼 실제 상속(배우자 1.5 : 자녀 각 1), 기한 안 신고(신고세액공제 3%). 끝수 처리는 생략한 대략값 — 실제 사건은 계산기로.",
+   "열": [
+    {
+     "h": "상속재산",
+     "w": 10
+    },
+    {
+     "h": "상속인",
+     "w": 16
+    },
+    {
+     "h": "배우자공제",
+     "w": 12
+    },
+    {
+     "h": "공제 합계",
+     "w": 24
+    },
+    {
+     "h": "과세표준",
+     "w": 10
+    },
+    {
+     "h": "산출세액",
+     "w": 14
+    },
+    {
+     "h": "신고 뒤 납부",
+     "w": 14
+    },
+    {
+     "h": "확인",
+     "w": 14
+    }
+   ],
+   "행": [
+    [
+     "10억",
+     "배우자 + 자녀 2",
+     "5억",
+     "5억 + 5억 = 10억",
+     "0억",
+     "0",
+     "0",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "15억",
+     "배우자 + 자녀 2",
+     "6.43억",
+     "5억 + 6.43억 = 11.43억",
+     "3.57억",
+     "약 6,143만원",
+     "약 5,959만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "20억",
+     "배우자 + 자녀 2",
+     "8.57억",
+     "5억 + 8.57억 = 13.57억",
+     "6.43억",
+     "약 13,286만원",
+     "약 12,887만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "30억",
+     "배우자 + 자녀 2",
+     "12.86억",
+     "5억 + 12.86억 = 17.86억",
+     "12.14억",
+     "약 32,571만원",
+     "약 31,594만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "50억",
+     "배우자 + 자녀 2",
+     "21.43억",
+     "5억 + 21.43억 = 26.43억",
+     "23.57억",
+     "약 78,286만원",
+     "약 75,937만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "10억",
+     "배우자 + 자녀 1",
+     "6억",
+     "5억 + 6억 = 10억",
+     "0억",
+     "0",
+     "0",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "20억",
+     "배우자 + 자녀 1",
+     "12억",
+     "5억 + 12억 = 17억",
+     "3억",
+     "약 5,000만원",
+     "약 4,850만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "5억",
+     "자녀 2",
+     "—",
+     "5억 + 0 = 5억",
+     "0억",
+     "0",
+     "0",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "10억",
+     "자녀 2",
+     "—",
+     "5억 + 0 = 5억",
+     "5억",
+     "약 9,000만원",
+     "약 8,730만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "20억",
+     "자녀 2",
+     "—",
+     "5억 + 0 = 5억",
+     "15억",
+     "약 44,000만원",
+     "약 42,680만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ],
+    [
+     "30억",
+     "자녀 2",
+     "—",
+     "5억 + 0 = 5억",
+     "25억",
+     "약 84,000만원",
+     "약 81,480만원",
+     "원문 대조됨(계산 + 세액 엔진 함수 progressiveGiftInheritTax·spouseInheritanceLimit·spouseInheritanceDeduction 대조 일치, 2026-10-21)"
+    ]
+   ],
+   "근거": [
+    "상속세 및 증여세법 §26",
+    "상속세 및 증여세법 §19",
+    "상속세 및 증여세법 §21"
+   ]
   }
  ],
  "개정": [
