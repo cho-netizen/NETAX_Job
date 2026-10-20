@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 09:53 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 10:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -42983,7 +42983,7 @@ function rwAskDocTypeForFile_(fileName){
   });
 }
 
-async function rwLoadFileById_(fileId){
+async function rwLoadFileById_(fileId, loadOpts){
   if (!fileId) return false;
   // hydrateDocsFromIdb_()의 IndexedDB 조회와 동시에 진행될 수 있어(둘 다 페이지/화면을 여는
   // 시점에 시작됨), 이 파일 하나를 불러오는 동안엔 hydrateDocsFromIdb_가 docs 전체를 덮어쓰지
@@ -43022,7 +43022,8 @@ async function rwLoadFileById_(fileId){
     }
   } else {
     let docType = rwGuessDocTypeFromFilename_(name);
-    if (!docType) docType = await rwAskDocTypeForFile_(rawName);
+    // [2026.10.20] 설정 🧭 시스템 관리에서 연 지침 파일(마스터 프로필 등)은 보고서가 아니라 문서유형을 묻지 않는다(기본 모양)
+    if (!docType && !(loadOpts && loadOpts.noDocTypeAsk)) docType = await rwAskDocTypeForFile_(rawName);
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
     doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content, rwDriveSaved_: content };
     if (docType) doc.docType = docType;
@@ -44441,7 +44442,8 @@ async function saveToDrive(){
     if (rwIdxCase_) body.reportMeta = { caseId: rwIdxCase_.id, 고객명: rwIdxCase_.고객명, 사건명: rwIdxCase_.사건명, published: false };
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
-    flashSaveState('드라이브에 저장됨');
+    // [2026.10.20] 시스템 지침 파일(설정 🧭 시스템 관리)은 서버가 직전 판을 같은 폴더 _이전판에 보관한다(SysAdmin.js)
+    flashSaveState(data && data.systemFile && data.backedUp ? '드라이브에 저장됨 — 직전 판은 같은 폴더 _이전판에 보관' : '드라이브에 저장됨');
     // [2026.09 신규] 방금 저장한 내용을 스냅샷으로 남겨둔다 — rwHasUnsavedDriveChanges_가
     // "그 뒤로 또 고쳤는지"를 판단하는 기준이 된다(창 닫기/화면 이동 경고용).
     d.rwDriveSaved_ = content;
@@ -45096,7 +45098,7 @@ function goToReportWriter_(caseId, opts){
   opts = opts || {};
   var shouldCreateNew = false;
   if (opts.fileId) {
-    rwLoadFileById_(opts.fileId);
+    rwLoadFileById_(opts.fileId, opts);
   } else if (opts.saveFolderId) {
     pendingSaveFolderId = opts.saveFolderId;
     pendingSaveFolderName = opts.saveFileName || null;
@@ -48747,6 +48749,12 @@ function rwAiApplyEdit_(id, content){
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
       <div class="settings-tool-desc">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
+    <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
+    <div class="card" style="max-width:720px;" id="stSysAdminCard">
+      <h3>🧭 시스템 관리</h3>
+      <div class="settings-tool-desc" style="margin:0 0 6px;">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 작성관리에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
+      <div id="stSysAdminBody"></div>
+    </div>
     <div class="card" style="max-width:720px;" id="stBugCard">
       <h3>🐞 오류 기록</h3>
       <!-- [2026.10.20] 운영 버전·최근 반영 내역·진행 중인 반영·배포 직후 점검 — 세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지" -->
@@ -49594,6 +49602,186 @@ function rwAiApplyEdit_(id, content){
     document.addEventListener('nx-layout-change', refresh);
     refresh();
   });
+</script>
+
+      <!-- ============================================================
+     [2026.10.20] 설정 🧭 시스템 관리 — 세무사님 "설정탭에 시스템관리라는 항목을 넣어서 장기계획이나 마스터파일 등 시스템이 참고해야 할
+     파일을 내가 직접 보고서작성처럼 만들고 수정하고 조회할 수 있어야 하는 거 아닌가?"
+     settings.html에는 자리(#stSysAdminCard)만 있고, 내용은 전부 여기서 채운다(설정 화면을 고치는 다른 작업과 겹치지 않게).
+       - 목록·쓰임·마지막 수정일: 서버 sysadmin_list(SysAdmin.js — 쓰임 설명은 코드에서 확인한 사실)
+       - 👁 보기: 공용 렌더러(mdrender.html nxMdRender)로 보고서 모양
+       - ✏ 작성관리에서 편집: goToReportWriter_('', {fileId}) — 처리개요·증빙관리와 같은 경로. AI 사이드바 편집창 연동도 그대로 된다.
+         저장할 때 서버가 직전 판을 같은 폴더 "_이전판"에 보관한다(handleUploadFile → sysAdminBeforeSave_).
+       - ➕ 새 업무관리자 지침: sysadmin_new_bm → 만든 파일을 작성관리로 연다. 첫 줄 = 이 지침이 다루는 것 한 줄.
+       - 개선요구사항.md·_확인조치사항.md는 보기만(각각 ✍ 버튼·대시보드 카드로 고친다).
+     서버에는 올리지 않는다(.claspignore).
+     ============================================================ -->
+<style>
+  #stSysAdminCard .sa-tools{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:4px 0 10px; }
+  #stSysAdminCard .sa-group{ margin:14px 0 6px; font-size:13px; font-weight:700; color:var(--navy); }
+  #stSysAdminCard .sa-item{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--panel); }
+  #stSysAdminCard .sa-head{ display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; }
+  #stSysAdminCard .sa-title{ font-size:14px; font-weight:700; color:var(--ink); }
+  #stSysAdminCard .sa-name{ font-size:12px; color:var(--sub); word-break:break-all; }
+  #stSysAdminCard .sa-meta{ font-size:12px; color:var(--sub); margin-top:3px; display:flex; flex-wrap:wrap; gap:2px 12px; }
+  #stSysAdminCard .sa-first{ font-size:12.5px; margin-top:4px; color:var(--ink); word-break:break-word; }
+  #stSysAdminCard .sa-use{ font-size:12.5px; color:var(--sub); margin-top:4px; line-height:1.45; word-break:keep-all; overflow-wrap:anywhere; }
+  #stSysAdminCard .sa-btns{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  #stSysAdminCard .sa-btns .ghost-btn{ font-size:12.5px; }
+  #stSysAdminCard .sa-missing{ font-size:12.5px; color:var(--danger); margin-top:4px; }
+  #stSysAdminCard .sa-warn{ font-size:12.5px; color:var(--danger); margin:4px 0; }
+  .sa-view-panel{ width:min(920px, 96vw) !important; max-height:92vh !important; display:flex; flex-direction:column; }
+  .sa-view-panel .modal-head span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sa-view-bar{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 14px; border-bottom:1px solid var(--line); background:#f9fafb; }
+  .sa-view-bar .sa-view-note{ font-size:12px; color:var(--sub); flex:1 1 220px; min-width:0; }
+  .sa-view-body{ overflow:auto; padding:6px 4px 14px; flex:1 1 auto; min-height:120px; background:#fff; }
+</style>
+<script>
+(function(){
+  var SA_GROUP_ORDER_ = ['기본 지침', '총괄관리자', '업무관리자 지침', '0 NETAX'];
+  var saState_ = { items: [], loading: false, loadedAt: 0 };
+
+  function saEsc_(s){ return typeof escapeHtml === 'function' ? escapeHtml(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+  function saBody_(){ return document.getElementById('stSysAdminBody'); }
+  function saToast_(m){ if (typeof toast === 'function') toast(m); }
+
+  function saItemHtml_(it, idx){
+    var h = '<div class="sa-item" data-sa-idx="' + idx + '">'
+      + '<div class="sa-head"><span class="sa-title">' + saEsc_(it.title) + '</span><span class="sa-name">' + saEsc_(it.name || '') + '</span></div>'
+      + '<div class="sa-meta">' + (it.where ? '<span>📁 ' + saEsc_(it.where) + '</span>' : '')
+      + (it.exists ? '<span>🕒 마지막 수정 ' + saEsc_(it.modified || '') + '</span><span>' + Number(it.chars || 0).toLocaleString() + '자</span>' : '') + '</div>';
+    if (it.key === 'bm' && it.exists) h += '<div class="sa-first">첫 줄: ' + (it.firstLine ? saEsc_(it.firstLine) : '<span style="color:var(--danger);">(비어 있음 — AI가 이 지침을 고르기 어렵습니다. 첫 줄에 다루는 것을 한 줄로 적어 주세요)</span>') + '</div>';
+    h += '<div class="sa-use">🔎 ' + saEsc_(it.use || '') + '</div>';
+    if (!it.exists) h += '<div class="sa-missing">드라이브에서 이 파일을 찾지 못했습니다.</div>';
+    else {
+      h += '<div class="sa-btns"><button type="button" class="ghost-btn" data-sa-act="view">👁 보기</button>';
+      if (it.editable) h += '<button type="button" class="ghost-btn" data-sa-act="edit">✏ 작성관리에서 편집</button>';
+      else if (it.key === 'improve') h += '<button type="button" class="ghost-btn" data-sa-act="improve">✍ 개선요구사항 적기로</button>';
+      else if (it.key === 'followup') h += '<button type="button" class="ghost-btn" data-sa-act="followup">📋 대시보드 카드에서 고치기</button>';
+      if (it.url) h += '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>';
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function saRender_(res){
+    var box = saBody_(); if (!box) return;
+    var items = saState_.items = (res && res.items) || [];
+    var html = '<div class="sa-tools">'
+      + '<button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button>'
+      + (res && res.canCreateBm ? '<button type="button" class="ghost-btn" data-sa-act="newbm">➕ 새 업무관리자 지침</button>' : '')
+      + '</div>';
+    ((res && res.warn) || []).forEach(function(w){ html += '<div class="sa-warn">⚠ ' + saEsc_(w) + '</div>'; });
+    SA_GROUP_ORDER_.forEach(function(g){
+      var rows = [];
+      items.forEach(function(it, i){ if (it.group === g) rows.push(saItemHtml_(it, i)); });
+      if (!rows.length) return;
+      html += '<div class="sa-group">' + saEsc_(g) + (g === '업무관리자 지침' ? ' (' + rows.length + '개)' : '') + '</div>' + rows.join('');
+    });
+    if (!items.length) html += '<div class="settings-tool-desc">표시할 파일이 없습니다.</div>';
+    box.innerHTML = html;
+  }
+
+  function saLoad_(force){
+    var box = saBody_(); if (!box || saState_.loading) return;
+    if (!force && saState_.loadedAt && Date.now() - saState_.loadedAt < 15000) return;
+    saState_.loading = true;
+    if (!saState_.items.length) box.innerHTML = '<div class="settings-tool-desc">불러오는 중…</div>';
+    callGas('sysadmin_list', {}).then(function(res){
+      saState_.loading = false;
+      if (!res || res.error){ box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button></div>'; return; }
+      saState_.loadedAt = Date.now();
+      saRender_(res);
+    }).catch(function(err){
+      saState_.loading = false;
+      box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button></div>';
+    });
+  }
+
+  function saOpenEditor_(fileId){
+    if (typeof goToReportWriter_ !== 'function'){ saToast_('작성관리 화면을 찾지 못했습니다.'); return; }
+    var ov = document.getElementById('saViewOverlay'); if (ov) ov.remove();
+    goToReportWriter_('', { fileId: fileId, noDocTypeAsk: true });
+  }
+
+  function saView_(it){
+    var old = document.getElementById('saViewOverlay'); if (old) old.remove();
+    var ov = document.createElement('div');
+    ov.id = 'saViewOverlay';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = '<div class="modal-panel sa-view-panel">'
+      + '<div class="modal-head"><span>' + saEsc_(it.title) + ' — ' + saEsc_(it.name || '') + '</span><span class="modal-close" data-sa-v="close" title="닫기">✕</span></div>'
+      + '<div class="sa-view-bar">'
+      + (it.editable ? '<button type="button" class="save-btn" data-sa-v="edit">✏ 작성관리에서 편집</button>' : '')
+      + (it.url ? '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>' : '')
+      + '<span class="sa-view-note">' + (it.editable ? '편집창에서 💾 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.' : (it.key === 'improve' ? '보기 전용 — 새 요청은 🐞 카드의 ✍ 개선요구사항 적기로.' : '보기 전용 — 고치기는 대시보드 📋 확인조치사항 카드에서.')) + '</span>'
+      + '</div>'
+      + '<div class="sa-view-body" id="saViewBody"><div class="settings-tool-desc" style="padding:14px;">불러오는 중…</div></div>'
+      + '</div>';
+    document.body.appendChild(ov);
+    function close(){ document.removeEventListener('keydown', onKey); ov.remove(); }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    ov.addEventListener('click', function(e){
+      if (e.target === ov) { close(); return; }
+      var b = e.target.closest('[data-sa-v]'); if (!b) return;
+      if (b.getAttribute('data-sa-v') === 'close') close();
+      else if (b.getAttribute('data-sa-v') === 'edit'){ close(); saOpenEditor_(it.fileId); }
+    });
+    callGas('readFile', { fileId: it.fileId }).then(function(res){
+      var body = document.getElementById('saViewBody'); if (!body) return;
+      if (!res || res.error){ body.innerHTML = '<div class="sa-warn" style="padding:14px;">파일을 읽지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div>'; return; }
+      body.innerHTML = '';
+      var md = document.createElement('div');
+      body.appendChild(md);
+      if (typeof nxMdRender === 'function') nxMdRender(md, res.content || '', { theme: 'advisory', rich: true, outline: false, extraClass: 'nx-md-view' });
+      else md.innerHTML = '<pre style="white-space:pre-wrap; padding:14px;">' + saEsc_(res.content || '') + '</pre>';
+    }).catch(function(err){
+      var body = document.getElementById('saViewBody');
+      if (body) body.innerHTML = '<div class="sa-warn" style="padding:14px;">파일을 읽지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div>';
+    });
+  }
+
+  function saNewBm_(){
+    nxPrompt_('새 업무관리자 지침의 파일 이름(예: 양도세_다주택)을 적어 주세요. 업무관리자 폴더에 .md로 만듭니다.', '', '➕ 새 업무관리자 지침').then(function(name){
+      if (!name || !name.trim()) return;
+      nxPrompt_('이 지침이 다루는 것을 한 줄로 적어 주세요 — 파일 첫 줄이 되고, AI가 어느 지침을 읽을지 고를 때 이 줄을 봅니다.\n(예: 1세대 다주택자의 양도세 중과·비과세 판단 순서)', '', '첫 줄 — 다루는 것 한 줄').then(function(first){
+        if (!first || !first.trim()) return;
+        callGas('sysadmin_new_bm', { name: name.trim(), firstLine: first.trim() }).then(function(res){
+          if (!res || res.error){ saToast_('만들지 못했습니다: ' + (res && res.error || '응답 없음')); return; }
+          saToast_('「' + res.name + '」을 만들었습니다 — 작성관리에서 내용을 채우고 💾 저장하세요.');
+          saState_.loadedAt = 0;
+          saOpenEditor_(res.fileId);
+        }).catch(function(err){ saToast_('만들지 못했습니다: ' + (err && err.message || String(err))); });
+      });
+    });
+  }
+
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('#stSysAdminCard [data-sa-act]'); if (!b) return;
+    var act = b.getAttribute('data-sa-act');
+    if (act === 'reload') { saLoad_(true); return; }
+    if (act === 'newbm') { saNewBm_(); return; }
+    var row = b.closest('[data-sa-idx]');
+    var it = row ? saState_.items[Number(row.getAttribute('data-sa-idx'))] : null;
+    if (!it) return;
+    if (act === 'view') saView_(it);
+    else if (act === 'edit') saOpenEditor_(it.fileId);
+    else if (act === 'improve') { var ib = document.getElementById('stBtnImproveReq'); if (ib) { ib.scrollIntoView({ block: 'center' }); ib.click(); } }
+    else if (act === 'followup') { if (typeof goToView_ === 'function') goToView_('dashboard'); }
+  });
+
+  // 설정 화면이 열릴 때마다(15초 안에 다시 열면 그대로) 목록을 새로 받는다 — 작성관리에서 고치고 돌아오면 수정일이 바로 맞게.
+  function saWatch_(){
+    var v = document.getElementById('view-settings');
+    if (!v) return;
+    var check = function(){ if (v.classList.contains('active')) saLoad_(false); };
+    new MutationObserver(check).observe(v, { attributes: true, attributeFilter: ['class'] });
+    check();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', saWatch_); else saWatch_();
+  window.nxSysAdminReload_ = function(){ saLoad_(true); };
+})();
 </script>
 
       <div class="view" id="view-manual">
