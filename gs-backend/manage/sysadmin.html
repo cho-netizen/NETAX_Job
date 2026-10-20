@@ -29,6 +29,27 @@
   .sa-view-bar{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 14px; border-bottom:1px solid var(--line); background:#f9fafb; }
   .sa-view-bar .sa-view-note{ font-size:12px; color:var(--sub); flex:1 1 220px; min-width:0; }
   .sa-view-body{ overflow:auto; padding:6px 4px 14px; flex:1 1 auto; min-height:120px; background:#fff; }
+  /* [2026.10.20] 점검 결과(SysAudit.js) */
+  #stSysAdminCard .sa-audit{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin:6px 0 12px; background:var(--panel); }
+  #stSysAdminCard .sa-audit h4{ margin:0 0 4px; font-size:14px; color:var(--navy); display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; }
+  #stSysAdminCard .sa-audit .sa-a-sub{ font-size:12px; color:var(--sub); font-weight:400; }
+  #stSysAdminCard .sa-a-line{ font-size:12.5px; margin:3px 0; line-height:1.45; word-break:keep-all; overflow-wrap:anywhere; }
+  #stSysAdminCard .sa-a-bad{ color:var(--danger); font-weight:700; }
+  #stSysAdminCard .sa-a-ok{ color:var(--success); font-weight:700; }
+  #stSysAdminCard .sa-a-sec{ margin:10px 0 4px; font-size:13px; font-weight:700; color:var(--ink); }
+  #stSysAdminCard .sa-audit details{ border-top:1px solid var(--line); padding:4px 0; }
+  #stSysAdminCard .sa-audit summary{ cursor:pointer; font-size:12.5px; padding:3px 0; word-break:break-all; }
+  #stSysAdminCard .sa-find{ display:block; width:100%; text-align:left; background:none; border:0; border-radius:4px; padding:4px 6px; font-size:12px; line-height:1.4; cursor:pointer; color:var(--ink); word-break:break-word; }
+  #stSysAdminCard .sa-find:hover{ background:rgba(0,0,0,.05); }
+  #stSysAdminCard .sa-find .sa-lv{ display:inline-block; min-width:30px; font-weight:700; }
+  #stSysAdminCard .sa-find .sa-lv.lv-문제{ color:var(--danger); }
+  #stSysAdminCard .sa-find .sa-lv.lv-주의{ color:#b7791f; }
+  #stSysAdminCard .sa-find .sa-lv.lv-참고{ color:var(--sub); }
+  #stSysAdminCard .sa-find .sa-snip{ display:block; color:var(--sub); font-size:11.5px; margin-top:1px; }
+  .sa-lines{ font:12.5px/1.55 ui-monospace, Consolas, monospace; margin:0; padding:8px 0; }
+  .sa-lines .ln{ display:flex; gap:10px; padding:0 12px; white-space:pre-wrap; word-break:break-word; }
+  .sa-lines .ln .no{ flex:0 0 38px; text-align:right; color:#9aa3ad; user-select:none; }
+  .sa-lines .ln.hit{ background:#fff3c4; }
 </style>
 <script>
 (function(){
@@ -66,6 +87,7 @@
       + (res && res.canCreateBm ? '<button type="button" class="ghost-btn" data-sa-act="newbm">➕ 새 업무관리자 지침</button>' : '')
       + '</div>';
     ((res && res.warn) || []).forEach(function(w){ html += '<div class="sa-warn">⚠ ' + saEsc_(w) + '</div>'; });
+    html += '<div class="sa-audit" id="saAuditBox">' + (saAudit_.html || '<div class="settings-tool-desc">점검 결과 불러오는 중…</div>') + '</div>';
     SA_GROUP_ORDER_.forEach(function(g){
       var rows = [];
       items.forEach(function(it, i){ if (it.group === g) rows.push(saItemHtml_(it, i)); });
@@ -86,6 +108,7 @@
       if (!res || res.error){ box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button></div>'; return; }
       saState_.loadedAt = Date.now();
       saRender_(res);
+      saAuditLoad_();
     }).catch(function(err){
       saState_.loading = false;
       box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button></div>';
@@ -136,6 +159,147 @@
     });
   }
 
+  // ---------------- [2026.10.20] 🔎 점검 결과 — 서버 sysaudit_result(SysAudit.js 점검결과_최신.json) ----------------
+  //   ① 규칙 점검(0원, 새벽 2시) ② 무료 AI 점검(제미니, 지침이 바뀐 날만 새벽 3시) ③ 🧾 유료 점검은 "세법 판단 필요" 항목만 골라 버튼으로.
+  //   찾은 것을 누르면 그 파일을 줄 번호와 함께 열어 그 줄을 노랗게 보여 준다.
+  var saAudit_ = { html: '', data: null, busy: false };
+  function saAuditBox_(){ return document.getElementById('saAuditBox'); }
+  function saAuditSet_(html){ saAudit_.html = html; var b = saAuditBox_(); if (b) b.innerHTML = html; }
+  function saAuditLoad_(){
+    callGas('sysaudit_result', {}).then(function(res){
+      if (!res || res.error){ saAuditSet_('<h4>🔎 점검 결과</h4><div class="sa-warn">점검 결과를 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div>' + saAuditBtns_(null)); return; }
+      saAudit_.data = res;
+      saAuditSet_(saAuditHtml_(res));
+    }).catch(function(err){ saAuditSet_('<h4>🔎 점검 결과</h4><div class="sa-warn">점검 결과를 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div>' + saAuditBtns_(null)); });
+  }
+  function saAuditBtns_(r){
+    var law = r && r.ai && r.ai.items ? r.ai.items.filter(function(x){ return x.세법판단필요; }).length : 0;
+    return '<div class="sa-tools" style="margin-top:8px;">'
+      + '<button type="button" class="ghost-btn" data-sa-act="arun" title="AI 없이 규칙으로만 — 비용 0원, 1분 안팎">🔎 지금 규칙 점검(0원)</button>'
+      + '<button type="button" class="ghost-btn" data-sa-act="aai" title="바뀐 지침만 무료 AI(제미니)에게 — 비용 0원, 최대 3분. 무료 한도를 넘으면 유료로 바꾸지 않고 다음 밤으로">🤖 무료 AI 점검 지금</button>'
+      + (law ? '<button type="button" class="ghost-btn" data-sa-act="apaid" title="무료 AI가 세법 판단이 필요하다고 표시한 항목과 그 파일만 유료 AI(Sonnet)에게 — 비용 발생">🧾 판단 필요 ' + law + '건만 유료 점검</button>' : '')
+      + '</div>';
+  }
+  function saAuditHtml_(res){
+    var r = res.result;
+    var h = '<h4>🔎 점검 결과 <span class="sa-a-sub">규칙 점검(0원, 매일 새벽) + 무료 AI 점검(지침이 바뀐 날만)</span></h4>';
+    if (!r){ return h + '<div class="sa-a-line sa-a-bad">⚠ 점검 안 됨 — ' + saEsc_(res.stale || '기록 없음') + '</div>' + saAuditBtns_(null); }
+    if (res.stale) h += '<div class="sa-a-line sa-a-bad">⚠ ' + saEsc_(res.stale) + '</div>';
+    h += '<div class="sa-a-line">마지막 규칙 점검: <b>' + saEsc_(r.at) + '</b> (' + saEsc_(r.trigger || '') + (r.secs != null ? ', ' + r.secs + '초' : '') + ')</div>';
+    if (!r.ran){
+      h += '<div class="sa-a-line sa-a-bad">⚠ 점검 안 됨 — ' + saEsc_(r.reason || '이유 기록 없음') + '</div>';
+    } else {
+      var t = r.rules.totals;
+      h += '<div class="sa-a-line">' + (t.problems ? '<span class="sa-a-bad">문제 ' + t.problems + '</span>' : '<span class="sa-a-ok">문제 0</span>') + ' · 주의 ' + t.warnings + ' · 참고 ' + t.infos
+        + ' · [확인 필요] ' + t.confirm + (t.confirmOldest ? '(가장 오래된 것 ' + saEsc_(t.confirmOldest) + ')' : '') + ' — 파일 ' + t.files + '개</div>';
+      h += '<div class="sa-a-line" style="color:var(--sub);">대조: 조문 ' + t.citations + '개(법령 정비본으로 확인 ' + t.citationsChecked + ') · 도구 이름 ' + t.toolRefs + '개(서버 도구 ' + (r.rules.toolCount || 0) + '개) · 드라이브 경로 ' + t.pathRefs + '개 · 다른 지침 가리킴 ' + t.guideRefs + '개</div>';
+      // [2026.10.20] 지시문↔도구 일치 — 지시문·지침은 쓰라는데 그 경로(job AI·work AI·AI 지휘)에 없는 도구
+      var pc = r.rules.pathCheck;
+      if (pc) {
+        h += '<div class="sa-a-line">지시문↔도구: ' + pc.paths.map(function(p){ return saEsc_(p.label) + ' 도구 ' + p.toolCount + '개'; }).join(' · ') + ' — '
+          + (pc.problems.length ? '<span class="sa-a-bad">어긋남 ' + pc.problems.length + '건</span>' : '<span class="sa-a-ok">어긋남 없음</span>') + '</div>';
+        pc.problems.forEach(function(x){ h += '<div class="sa-a-line sa-a-bad" style="font-weight:400; padding-left:10px;">⚠ ' + saEsc_(x.text) + '</div>'; });
+      }
+      if (r.rules.changedFiles && r.rules.changedFiles.length) h +='<div class="sa-a-line">바뀐 파일: ' + r.rules.changedFiles.map(function(c){ return saEsc_(c.name) + '(' + saEsc_(c.changed) + ')'; }).join(', ') + '</div>';
+      (r.warn || []).forEach(function(w){ h += '<div class="sa-a-line sa-a-bad">⚠ ' + saEsc_(w) + '</div>'; });
+      var files = (r.rules.files || []).filter(function(f){ return (f.problems || []).length || (f.confirm && f.confirm.count); });
+      files.sort(function(a, b){ return ((b.counts || {}).문제 || 0) - ((a.counts || {}).문제 || 0) || ((b.counts || {}).주의 || 0) - ((a.counts || {}).주의 || 0); });
+      if (files.length) h += '<div class="sa-a-sec">① 규칙 점검 — 파일별 (눌러서 펼치고, 줄을 누르면 그 줄로)</div>';
+      // 문제·주의가 있는 파일만 하나씩, [확인 필요]·참고만 있는 파일은 한 묶음으로 접는다(지침이 수십 개라 길어짐)
+      var quiet = files.filter(function(f){ var c = f.counts || {}; return !c.문제 && !c.주의; });
+      files = files.filter(function(f){ var c = f.counts || {}; return c.문제 || c.주의; });
+      if (!files.length) h += '<div class="sa-a-line sa-a-ok">문제·주의가 있는 파일 없음</div>';
+      var one = function(f){
+        var c = f.counts || {}, x = '';
+        x += '<details><summary>' + saEsc_(f.name) + ' — ' + (c.문제 ? '<span class="sa-a-bad">문제 ' + c.문제 + '</span>' : '문제 0') + ' · 주의 ' + (c.주의 || 0) + (c.참고 ? ' · 참고 ' + c.참고 : '')
+          + (f.confirm && f.confirm.count ? ' · [확인 필요] ' + f.confirm.count : '') + (f.changed ? ' · ' + saEsc_(f.changed) : '') + '</summary>';
+        (f.problems || []).forEach(function(p){
+          x += '<button type="button" class="sa-find" data-sa-act="aline" data-sa-file="' + saEsc_(f.name) + '" data-sa-line="' + p.line + '">'
+            + '<span class="sa-lv lv-' + saEsc_(p.level) + '">' + saEsc_(p.level) + '</span> ' + p.line + '줄 [' + saEsc_(p.kind) + '] ' + saEsc_(p.text)
+            + (p.snippet ? '<span class="sa-snip">' + saEsc_(p.snippet) + '</span>' : '') + '</button>';
+        });
+        if (f.confirm && f.confirm.count) x += '<button type="button" class="sa-find" data-sa-act="aline" data-sa-file="' + saEsc_(f.name) + '" data-sa-find="[확인 필요"><span class="sa-lv">확인</span> [확인 필요] ' + f.confirm.count + '개 (작성·수정 ' + saEsc_(f.confirm.since || '') + ') — 눌러서 첫 번째로</button>';
+        return x + '</details>';
+      };
+      files.forEach(function(f){ h += one(f); });
+      if (quiet.length) h += '<details><summary>그 밖에 [확인 필요]·참고만 있는 파일 ' + quiet.length + '개</summary><div style="padding-left:12px;">' + quiet.map(one).join('') + '</div></details>';
+    }
+    var ai = r.ai || {};
+    h += '<div class="sa-a-sec">② 무료 AI 점검(제미니)</div>';
+    h += '<div class="sa-a-line">' + (ai.at ? saEsc_(ai.at) + ' ' + saEsc_(ai.trigger || '') + ' — ' : '') + saEsc_(ai.status || '기록 없음') + '</div>';
+    if (ai.lastRunAt) h += '<div class="sa-a-line" style="color:var(--sub);">마지막으로 실제 AI 점검이 돈 때: ' + saEsc_(ai.lastRunAt) + '</div>';
+    if (ai.waiting) h += '<div class="sa-a-line">AI 점검을 기다리는 파일: ' + ai.waiting + '개(새벽 3시에 바뀐 것부터, 하룻밤 최대 6번 질문)</div>';
+    if (ai.masked) h += '<div class="sa-a-line" style="color:var(--sub);">고객 자료 차단 장치에 걸린 글 ' + ai.masked + '곳은 [가림]으로 바꿔 보냄</div>';
+    if (ai.blocked && ai.blocked.length) h += '<div class="sa-a-line sa-a-bad">가린 뒤에도 고객 자료처럼 보여 보내지 않은 파일: ' + saEsc_(ai.blocked.join(', ')) + '</div>';
+    (ai.errors || []).forEach(function(e){ h += '<div class="sa-a-line sa-a-bad">⚠ ' + saEsc_(e) + '</div>'; });
+    (ai.items || []).forEach(function(x){
+      h += '<div class="sa-a-line" style="border-top:1px dashed var(--line); padding-top:4px;">' + (x.세법판단필요 ? '<span class="sa-a-bad">세법 판단 필요</span> · ' : '') + saEsc_(x.종류) + ' — '
+        + (x.파일 || []).map(function(n){ return '<a href="#" data-sa-act="aline" data-sa-file="' + saEsc_(n) + '">' + saEsc_(n) + '</a>'; }).join(' vs ')
+        + '<br>' + saEsc_(x.내용) + ((x.근거 || []).length ? '<span class="sa-snip" style="display:block; color:var(--sub); font-size:11.5px;">근거: ' + saEsc_(x.근거.join(' / ')) + '</span>' : '') + '</div>';
+    });
+    if (ai.ran && !(ai.items || []).length) h += '<div class="sa-a-line sa-a-ok">AI가 찾은 어긋남 없음</div>';
+    return h + saAuditBtns_(r);
+  }
+  // 점검 결과의 파일 이름 → 파일 ID(마스터 프로필은 "마스터 프로필(…)" 이름으로 들어 있음)
+  function saAuditFileId_(name){
+    var r = saAudit_.data && saAudit_.data.result, f = r && r.rules ? (r.rules.files || []).filter(function(x){ return x.name === name; })[0] : null;
+    if (f && f.fileId) return f.fileId;
+    var it = saState_.items.filter(function(x){ return x.name === name || x.name === name + '.md'; })[0];
+    return it ? it.fileId : '';
+  }
+  function saLineView_(name, line, findText){
+    var fileId = saAuditFileId_(name);
+    if (!fileId){ saToast_('「' + name + '」 파일을 찾지 못했습니다(지워졌거나 이름이 바뀜) — 🔄로 다시 불러오세요.'); return; }
+    var old = document.getElementById('saViewOverlay'); if (old) old.remove();
+    var ov = document.createElement('div');
+    ov.id = 'saViewOverlay';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = '<div class="modal-panel sa-view-panel">'
+      + '<div class="modal-head"><span>' + saEsc_(name) + (line ? ' — ' + line + '줄' : '') + '</span><span class="modal-close" data-sa-v="close" title="닫기">✕</span></div>'
+      + '<div class="sa-view-bar"><button type="button" class="save-btn" data-sa-v="edit">✏ 작성관리에서 편집</button>'
+      + '<span class="sa-view-note">점검이 짚은 줄을 노랗게 표시했습니다. 고친 뒤 🔎 지금 규칙 점검(0원)으로 다시 확인하세요.</span></div>'
+      + '<div class="sa-view-body" id="saViewBody"><div class="settings-tool-desc" style="padding:14px;">불러오는 중…</div></div></div>';
+    document.body.appendChild(ov);
+    function close(){ document.removeEventListener('keydown', onKey); ov.remove(); }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    ov.addEventListener('click', function(e){
+      if (e.target === ov) { close(); return; }
+      var b = e.target.closest('[data-sa-v]'); if (!b) return;
+      if (b.getAttribute('data-sa-v') === 'close') close();
+      else if (b.getAttribute('data-sa-v') === 'edit'){ close(); saOpenEditor_(fileId); }
+    });
+    callGas('readFile', { fileId: fileId }).then(function(res){
+      var body = document.getElementById('saViewBody'); if (!body) return;
+      if (!res || res.error){ body.innerHTML = '<div class="sa-warn" style="padding:14px;">파일을 읽지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div>'; return; }
+      var lines = String(res.content || '').replace(/\r\n/g, '\n').split('\n');
+      if (!line && findText){ for (var i = 0; i < lines.length; i++) if (lines[i].indexOf(findText) !== -1){ line = i + 1; break; } }
+      body.innerHTML = '<div class="sa-lines">' + lines.map(function(t, i){ return '<div class="ln' + (i + 1 === line ? ' hit' : '') + '"' + (i + 1 === line ? ' id="saHitLine"' : '') + '><span class="no">' + (i + 1) + '</span><span>' + (saEsc_(t) || ' ') + '</span></div>'; }).join('') + '</div>';
+      var hit = document.getElementById('saHitLine'); if (hit) hit.scrollIntoView({ block: 'center' });
+    }).catch(function(err){
+      var body = document.getElementById('saViewBody');
+      if (body) body.innerHTML = '<div class="sa-warn" style="padding:14px;">파일을 읽지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div>';
+    });
+  }
+  function saAuditRun_(act){
+    if (saAudit_.busy){ saToast_('점검이 이미 진행 중입니다.'); return; }
+    var go = function(){
+      saAudit_.busy = true;
+      var label = act === 'arun' ? '🔎 규칙 점검 중… (1분 안팎)' : act === 'aai' ? '🤖 무료 AI 점검 중… (최대 3분)' : '🧾 유료 점검 중… (1~2분)';
+      var b = saAuditBox_(); if (b) b.insertAdjacentHTML('afterbegin', '<div class="sa-a-line" id="saAuditBusy"><b>' + label + '</b></div>');
+      var call = act === 'arun' ? callGas('sysaudit_run', {}) : act === 'aai' ? callGas('sysaudit_ai_run', {}) : callGas('system_audit_run', { flaggedOnly: true });
+      call.then(function(res){
+        saAudit_.busy = false;
+        if (!res || res.success === false) saToast_('점검: ' + ((res && res.error) || '응답 없음'));
+        else if (act === 'apaid') saToast_('유료 점검을 마쳤습니다 — 총괄관리자/_점검리포트 오늘 리포트 아래에 붙었습니다.');
+        else saToast_('점검을 마쳤습니다.');
+        saAuditLoad_();
+      }).catch(function(err){ saAudit_.busy = false; var x = document.getElementById('saAuditBusy'); if (x) x.remove(); saToast_('점검 중 오류: ' + (err && err.message || String(err))); });
+    };
+    if (act === 'apaid') nxConfirm_('🧾 무료 AI가 "세법 판단 필요"로 표시한 항목과 그 파일만 유료 AI(Sonnet)에게 보낼까요?\n\n전체 점검보다 적게 들지만 비용이 발생합니다(수십~수백 원).').then(function(ok){ if (ok) go(); });
+    else go();
+  }
+
   function saNewBm_(){
     nxPrompt_('새 업무관리자 지침의 파일 이름(예: 양도세_다주택)을 적어 주세요. 업무관리자 폴더에 .md로 만듭니다.', '', '➕ 새 업무관리자 지침').then(function(name){
       if (!name || !name.trim()) return;
@@ -156,6 +320,8 @@
     var act = b.getAttribute('data-sa-act');
     if (act === 'reload') { saLoad_(true); return; }
     if (act === 'newbm') { saNewBm_(); return; }
+    if (act === 'arun' || act === 'aai' || act === 'apaid') { saAuditRun_(act); return; }
+    if (act === 'aline') { e.preventDefault(); saLineView_(b.getAttribute('data-sa-file'), Number(b.getAttribute('data-sa-line') || 0), b.getAttribute('data-sa-find') || ''); return; }
     var row = b.closest('[data-sa-idx]');
     var it = row ? saState_.items[Number(row.getAttribute('data-sa-idx'))] : null;
     if (!it) return;
