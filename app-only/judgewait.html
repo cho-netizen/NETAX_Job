@@ -1,0 +1,137 @@
+<!-- [2026.10.19] ⚖️ 법령정보 → 📜 법령 탭 "🤝 판단 대기" 카드 — 앱에만(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
+<div class="card" id="jwCard">
+  <h3 style="margin-top:0;">🤝 판단 대기 — AI 회의 기록</h3>
+  <div class="lsi-note" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점(⚖️ 법령 안건)입니다. 위원(Gemini API)이 같은 질문지(쟁점·선택지·서식 칸 해설·조문 원문)에 답하고, 근거가 법제처에 실제로 있는지(✔/⚠) 확인한 뒤 회장(Claude)이 결론을 냅니다. 결론이 안 난 것(🙋 결정 필요)만 세무사님이 고릅니다. 엔진은 자동으로 고치지 않습니다.</div>
+  <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+    <button type="button" class="ghost-btn" id="jwLoad">📋 회의 기록</button>
+    <select id="jwFilter" aria-label="상태 고르기"><option value="">전체</option><option value="회의 전">회의 전</option><option value="위원 답함">위원 답함</option><option value="회장 결론">회장 결론</option><option value="결정 필요">🙋 결정 필요</option><option value="세무사님 결정">세무사님 결정</option></select>
+    <span id="jwCount" class="lsi-note"></span>
+  </div>
+  <div id="jwList" style="margin-top:8px;"></div>
+</div>
+<script>
+  // ============================================================
+  // [2026.10.19] 판단 대기 쟁점 → 질문지 → 🤝 AI 회의 사이드바(app-only/multiai.html). 세무사님 말씀(원문):
+  //  "법령을 정비하고 서식을 정비하면서 수정할 내용 중 바로 확인이 되지 않는 것이 있었지? 이것을 설정탭의 ai연합체 기능을 보완하여 해결해 보자."
+  //  쟁점 목록 = 드라이브 업무관리자/법령/_판단대기.json(서버 ai_judge_get·ai_judge_save, Federation.js). 만듦: netax-inventory/maps/법령도구/판단대기_만들기.js
+  //  질문지는 화면이 만든다(토큰 0): 쟁점 설명·선택지 + 서식 칸 해설(LSI_FORM_MAPS_) + 답 형식 + 정비본 조문 원문(law_lookup_article, 관계법령 모양).
+  //  법령 질문지에는 사건·고객 정보를 넣지 않는다(쟁점 파일에 고객 정보 없음, 서버 ai_ask_slots가 다시 검사).
+  // ============================================================
+  var jwDoc_ = null, jwSheets_ = {};
+  function jwEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // [2026.10.19 재편 — AI 회의] 상태: 회의 전 → 위원 답함 → 회장 결론(조정 세션이 결정에 누가 '회장(Claude)'로 저장) / 🙋 결정 필요(회장이 '보류') → 세무사님 결정
+  function jwState_(x){
+    var d = x.결정;
+    if (d && d.선택) return d.선택 === '보류' ? '결정 필요' : /회장/.test(d.누가 || '') ? '회장 결론' : '세무사님 결정';
+    return Object.keys(x.답 || {}).filter(function(k){ return k.charAt(0) !== '_'; }).length ? '위원 답함' : '회의 전';
+  }
+  // 위원 답 요약 — 결론은 글에서 다시 뽑는다(회의 기록에 결론 칸이 비어 있어도), 근거 실재는 저장된 확인 결과(사이드바를 열면 확인해 저장)
+  function jwAnsSum_(x){
+    var ids = Object.keys(x.답 || {}).filter(function(k){ return k.charAt(0) !== '_'; });
+    if (!ids.length) return { 결론: '—', 근거: '—' };
+    var parse = window.nxMultiAi_ && nxMultiAi_.parse;
+    var con = ids.map(function(k){ var a = x.답[k], c = a.결론 || (parse ? parse(a.글 || '', { choices: x.선택지 || [], defLaw: (x.조문 && x.조문[0] && x.조문[0].법령) || '' }).결론 : ''); return (a.이름 || k).replace(/\(.*\)/, '') + ' ' + (c || '?'); }).join(' · ');
+    var ok = 0, bad = 0, q = 0, none = 0;
+    ids.forEach(function(k){ var ev = x.답[k].근거 || []; if (!ev.length) none++; ev.forEach(function(e){ if (e.상태 === '실재') ok++; else if (e.상태 === '못 찾음') bad++; else q++; }); });
+    return { 결론: con, 근거: (ok ? '✔' + ok + ' ' : '') + (bad ? '⚠' + bad + ' ' : '') + (q ? '?' + q + ' ' : '') + (none ? '(열면 확인 ' + none + ')' : '') };
+  }
+  function jwLoad_(box, filter){
+    box = box || document.getElementById('jwList'); box.textContent = '불러오는 중…';
+    return callGas('ai_judge_get', {}).then(function(r){
+      if (!r || r.error){ box.textContent = (r && r.error) || '응답 없음'; return; }
+      jwDoc_ = r.doc; jwRender_(box, filter);
+    }).catch(function(e){ box.textContent = '불러오지 못했습니다: ' + (e && e.message || e); });
+  }
+  // 설정 🤝 AI 회의 카드도 같은 표를 쓴다(그 카드 상자에 그림)
+  function jwRenderInto_(box, filter){ return jwLoad_(box, filter); }
+  function jwRender_(box, filter){
+    box = box || document.getElementById('jwList');
+    var sel = document.getElementById('jwFilter'), f = filter != null && filter !== '' ? filter : (box.id === 'jwList' && sel ? sel.value : (filter || ''));
+    var all = jwDoc_ && jwDoc_.항목 || [], list = all.filter(function(x){ return !f || jwState_(x) === f; });
+    var cnt = function(st){ return all.filter(function(x){ return jwState_(x) === st; }).length; };
+    var head = '전체 ' + all.length + '건 · 회의 전 ' + cnt('회의 전') + ' · 위원 답함 ' + cnt('위원 답함') + ' · 회장 결론 ' + cnt('회장 결론') + ' · 🙋 결정 필요 ' + cnt('결정 필요') + ' · 세무사님 결정 ' + cnt('세무사님 결정');
+    var c = document.getElementById('jwCount'); if (c && box.id === 'jwList') c.textContent = head;
+    var cell = function(h, t){ return typeof lsiCell_ === 'function' ? lsiCell_(h, t || '') : '<span class="lsi-cell" title="' + jwEsc_(t || '') + '">' + h + '</span>'; };
+    var rows = list.map(function(x){
+      var a = jwAnsSum_(x), d = x.결정, st = jwState_(x);
+      var dec = d && d.선택 ? (st === '결정 필요' ? '🙋 ' : '') + '<b>' + jwEsc_(d.선택) + '</b> ' + jwEsc_((d.누가 || '') + ' ' + String(d.때 || '').slice(5)) : jwEsc_(st);
+      return [cell('<button type="button" class="lsi-link" data-jwopen="' + jwEsc_(x.id) + '">' + jwEsc_(x.id) + ' 열기</button>'), cell(jwEsc_(x.분류 + '·' + x.세목)), cell(jwEsc_(x.제목), x.제목), cell(jwEsc_(a.결론), a.결론), cell(jwEsc_(a.근거), '✔ 법제처에 있음 · ⚠ 못 찾음 · ? 확인 못 함'), cell(dec, d ? (d.내용 || '') + (d.메모 ? ' — ' + d.메모 : '') : '')];
+    });
+    var cols = [{ h: '안건', w: 6 }, { h: '분류', w: 8 }, { h: '무엇', w: 28 }, { h: '위원 답', w: 13 }, { h: '근거 실재', w: 9 }, { h: '회장 결론·결정', w: 14 }];
+    box.innerHTML = (box.id === 'jwList' ? '' : '<div style="margin-bottom:4px;">' + jwEsc_(head) + '</div>') + (rows.length ? (typeof lsiGridHtml_ === 'function' ? lsiGridHtml_(cols, rows) : '<table>' + rows.map(function(r){ return '<tr><td>' + r.join('</td><td>') + '</td></tr>'; }).join('') + '</table>') : '<div class="lsi-note">해당 안건이 없습니다.</div>');
+  }
+  // 서식 칸 해설 — LSI_FORM_MAPS_(앱에 든 칸 해설). 칸을 안 정했으면 서식 이름만.
+  function jwFormText_(refs){
+    var L = [];
+    (refs || []).forEach(function(r){
+      var fm = (typeof LSI_FORM_MAPS_ !== 'undefined' && LSI_FORM_MAPS_[r.서식]) || null;
+      var short = String(r.서식).replace(/^.*?\[/, '[');
+      L.push('■ ' + short + (fm ? ' ' + fm.이름 + (fm.서식판 ? ' (' + String(fm.서식판).replace(/\s*\(.*\)\s*$/, '') + ')' : '') : ' (칸 해설 아직 없음)'));
+      (r.칸 || []).forEach(function(k){
+        var hit = fm ? (fm.칸 || []).filter(function(e){ return e.칸 === k || String(e.칸).split(/[·,]/).indexOf(k) !== -1; }) : [];
+        if (!hit.length){ L.push('  ' + k + ' — 칸 해설 없음'); return; }
+        hit.forEach(function(e){
+          L.push('  ' + e.칸 + ' ' + (e.이름 || ''));
+          if (e.작성방법 && e.작성방법 !== '서식 칸 이름만 있음') L.push('    작성방법: ' + e.작성방법);
+          if (e.계산 && e.계산 !== '—') L.push('    칸 산식: ' + e.계산);
+          if ((e.근거조문 || []).length) L.push('    근거 조문: ' + e.근거조문.join(', '));
+        });
+      });
+    });
+    return L.join('\n');
+  }
+  // 조문 원문 — 정비본(서버 law_lookup_article), 관계법령 모양(고른 항만, 나머지 (생략))
+  function jwLawText_(refs){
+    var out = [];
+    return (refs || []).reduce(function(p, r){
+      return p.then(function(){
+        return callGas('law_lookup_article', { lawName: r.법령, articleNo: r.조, baseDate: r.기준일 || '' }).then(function(res){
+          var u = res && res.조문 && res.조문[0];
+          if (!u){ out.push('### 「' + r.법령 + '」 제' + r.조 + '조 — 조문을 찾지 못함'); return; }
+          var a = lsiCiteArt_(u), md = lsiRelArtMd_(a, r.항 || []);
+          out.push('### 「' + (res.법령명 || r.법령) + '」 ' + a.label + (a.title ? '(' + a.title + ')' : '') + ' — ' + lsiDbYmd_(res.시행일자) + ' 시행' + (r.기준일 ? ' (' + lsiDbYmd_(r.기준일) + ' 당시 판)' : ''));
+          out.push(md.map(function(l){ return l.replace(/\s+$/, ''); }).join('\n').replace(/\n{3,}/g, '\n\n'));
+        }).catch(function(e){ out.push('### 「' + r.법령 + '」 제' + r.조 + '조 — 읽지 못함(' + (e && e.message || e) + ')'); });
+      });
+    }, Promise.resolve()).then(function(){ return out.join('\n\n'); });
+  }
+  function jwSheet_(x){
+    if (jwSheets_[x.id]) return Promise.resolve(jwSheets_[x.id]);
+    var keys = (x.선택지 || []).map(function(c){ return c.기호; }).join(' / ');
+    var head = ['[NETAX 판단 대기 ' + x.id + '] ' + x.제목, '분류: ' + x.분류 + ' · 세목: ' + x.세목 + ' · 지금 계산기: ' + (x.지금 || '가'), '',
+      '1. 쟁점', x.설명, '',
+      '2. 선택지'].concat((x.선택지 || []).map(function(c){ return c.기호 + '. ' + c.내용; }));
+    var forms = jwFormText_(x.서식);
+    if (forms) head = head.concat(['', '3. 관련 서식 칸과 칸 해설(국세청 서식 원문·작성방법 기준)', forms]);
+    head = head.concat(['', (forms ? '4' : '3') + '. 답 형식 — 꼭 이 형식으로',
+      '결론: ' + keys + ' 중 하나',
+      '근거 조문: 「법령 이름」 제N조제N항 (여러 개면 쉼표)',
+      '근거 판례·예규·심판례 번호: 예) 대법원 2019두53075, 조심 2021서2400, 서면-2020-부동산-1234 (없으면 "없음")',
+      '이유: 3줄 이내',
+      '확실성: 높음 / 보통 / 낮음',
+      '※ 실제로 있는 번호만 적어 주세요. 적은 번호는 법제처에서 있는지 확인합니다. 모르면 "모름"이라고 적어 주세요.']);
+    return jwLawText_(x.조문).then(function(law){
+      var s = { head: head.join('\n'), law: law ? (forms ? '5' : '4') + '. 관련 조문 원문(법제처 국가법령정보센터, 시행판)\n\n' + law : '' };
+      jwSheets_[x.id] = s; return s;
+    });
+  }
+  function jwOpen_(id){
+    var x = (jwDoc_ && jwDoc_.항목 || []).filter(function(i){ return i.id === id; })[0]; if (!x) return;
+    if (typeof nxMultiAi_ === 'undefined'){ alert('멀티 AI 사이드바를 불러오지 못했습니다.'); return; }
+    if (typeof showToast === 'function') showToast('질문지 만드는 중 — 조문 ' + (x.조문 || []).length + '개 읽기');
+    jwSheet_(x).then(function(s){
+      var save = function(body){ body.id = x.id; return callGas('ai_judge_save', body).then(function(r){ if (r && r.item){ Object.assign(x, r.item); if (document.getElementById('jwList') && document.getElementById('jwList').innerHTML) jwRender_(); } return r; }); };
+      nxMultiAi_.open({ mode: 'law', title: x.id + ' ' + x.제목, head: s.head, law: s.law, choices: x.선택지 || [], defLaw: (x.조문 && x.조문[0] && x.조문[0].법령) || '', saved: x.답 || {}, decided: x.결정,
+        onAnswer: function(slot, text, p, how){ return save({ answer: { ai: slot.id, name: slot.name, text: text, 결론: p.결론 || p.결론글.slice(0, 60), 방식: how } }); },
+        onCheck: function(slot, ev){ return save({ check: { ai: slot.id, 근거: ev } }); },
+        onDecide: function(dec, att){ return save({ decision: dec, attach: att }); } });
+    });
+  }
+  document.addEventListener('click', function(ev){
+    var t = ev.target.closest && ev.target.closest('#jwLoad,[data-jwopen]'); if (!t) return;
+    if (t.id === 'jwLoad') return jwLoad_();
+    if (!jwDoc_) return;
+    jwOpen_(t.dataset.jwopen);
+  });
+  document.addEventListener('change', function(ev){ if (ev.target && ev.target.id === 'jwFilter' && jwDoc_) jwRender_(document.getElementById('jwList'), ev.target.value); });
+</script>

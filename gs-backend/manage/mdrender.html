@@ -1,0 +1,1479 @@
+<!-- ============================================================
+     [2026.10.20] 공용 보고서 렌더러 — 세무사님 "랜더러를 연결만 하지 말고 흡수하라".
+     마크다운(.md)을 보고서 모양으로 그리는 기능 전부를 job의 공용 부품 하나로 모았다. 원래 작성관리(reportwriter.html,
+     work report-writer에서 이식)에 들어 있던 것을 그대로 옮긴 것이다:
+       - 라이브러리: marked 12.0.2 · mermaid 10.9.1 · DOMPurify · KaTeX(+auto-render) · Chart.js · Prism · Noto 글꼴
+       - 전처리: 각주([^1]) · 볼드 버그 우회 · 불릿/공백 정리 · 홑물결표 · #제목 공백 · 개요번호(Ⅰ./1./A./ⅰ.) 제목화 · [PAGEBREAK]
+       - 후처리: Mermaid · compare 막대 · chart · timeline · Prism 코드 · KaTeX · 알림상자 색 · 목차 · 표 스크롤 · 조문 링크 팝업
+       - 모양: 문서 종류별 테마 CSS(.doc-*) · 인쇄 규칙 · 완성본 만들기(새 창·HTML 다운로드·고객 발행)
+     쓰는 곳: 작성관리 미리보기·완성본, 증빙확보 파일보기, AI탭 사건 보기 창(+↗ 새 창, 사이드바에서 누를 때).
+     index.html에서 다른 화면보다 먼저 들어간다(작성관리가 여기 상수·함수를 쓴다). 서버에는 올리지 않는다(.claspignore).
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<!-- [2026.09] mermaid SVG는 사용자가 입력하거나 다른 사람이 만든 폴더를 통해 들어올 수 있어
+     DOMPurify로 한 번 더 거른다(아래 여러 곳의 typeof DOMPurify 체크가 실제로 동작하도록,
+     이전에는 스크립트 자체가 없어서 항상 건너뛰고 있었음). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<style id="nxMdCss">
+  /* =========================================================
+     테마 1 : 불복청구서 / 심판청구서 (법정서식형)
+     ========================================================= */
+  /* [2026.10.20] 증빙확보 파일보기·AI탭 사건 보기 창처럼 좁은 칸에 그린 보고서(nxMdRender extraClass) — 그 칸을 꽉 채우고 그림자 없이 */
+  .doc-advisory.nx-md-view{ max-width:none; margin:0; padding:6px 14px 14px; box-shadow:none; }
+  .doc-appeal{
+    background:#fff; max-width:210mm; margin:0 auto; padding:20mm 20mm 15mm 20mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Serif KR','Batang',serif;
+    font-size:11.5pt; line-height:1.75; color:#111;
+    word-break:keep-all;
+  }
+  .doc-appeal h1{
+    text-align:center; font-size:22pt; font-weight:700;
+    letter-spacing:0.55em; text-indent:0.55em;
+    margin:2mm 0 6mm 0; padding:0;
+  }
+  .doc-appeal h1 + p em{
+    display:block; text-align:center; font-size:9.5pt; color:#333;
+    font-style:normal; margin-bottom:8mm;
+  }
+  .doc-appeal h2{
+    text-align:center; font-size:15pt; font-weight:700;
+    letter-spacing:0.4em; text-indent:0.4em;
+    margin:10mm 0 6mm 0; padding-bottom:0; border-bottom:none;
+  }
+  .doc-appeal h3{ font-size:12.5pt; font-weight:700; margin:6mm 0 3mm 0; }
+  .doc-appeal p{ margin:0 0 3mm 0; text-align:justify; }
+  .doc-appeal p strong:only-child{ display:block; font-size:12pt; margin:5mm 0 2.5mm 0; }
+  .doc-appeal ul{ margin:0 0 3mm 0; padding-left:0; list-style:none; }
+  .doc-appeal ul li{ position:relative; padding-left:4.2mm; margin-bottom:1.8mm; text-indent:-4.2mm; text-align:justify; }
+  .doc-appeal ul li::before{ content:"-"; padding-right:2mm; }
+  .doc-appeal table{ border-collapse:collapse; width:100%; table-layout:auto; margin:3mm 0 2mm 0; font-size:10pt; }
+  .doc-appeal table th, .doc-appeal table td{ border:0.75pt solid #000; padding:1.6mm 2.2mm; vertical-align:middle; overflow-wrap:break-word; }
+  .doc-appeal table thead th{ background:#efefef; font-weight:700; text-align:center; }
+  .doc-appeal table tbody tr:last-child td{ font-weight:700; background:#f5f5f5; }
+  .doc-appeal .caption{ text-align:left; font-size:12pt; font-weight:700; color:#111; margin:5mm 0 1mm 0; }
+  .doc-appeal .unit-note{ text-align:right; font-size:10pt; color:#333; line-height:1; margin:-1.5mm 0 0 0; }
+  .doc-appeal .unit-note + table{ margin-top:0.5mm; }
+  .doc-appeal img{
+    display:block; margin:0 0 4mm 0; width:100%; max-width:100%; height:auto;
+    border:none; padding:0; background:#fff;
+  }
+  .doc-appeal .signdate, .doc-appeal .signline{ text-align:right; margin:2mm 0; font-size:12pt; text-indent:0; }
+  .doc-appeal .addressee{ text-align:center; font-weight:700; font-size:14pt; margin-top:10mm; }
+  .doc-appeal hr{ border:none; border-top:0.5pt solid #999; margin:6mm 0; }
+
+  /* =========================================================
+     테마 2 : 검토보고서 · 해명서 (내부검토/관청제출 메모형)
+     ========================================================= */
+  .doc-memo{
+    background:#fff; max-width:210mm; margin:0 auto; padding:20mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.65; color:#1a1a1a;
+    word-break:keep-all;
+  }
+  .doc-memo h1{
+    font-size:19pt; font-weight:800; margin:0 0 2mm 0; padding-bottom:3mm;
+    border-bottom:2.5pt solid #2c3e60; color:#1a2540;
+  }
+  .doc-memo h1 + p em{
+    display:block; font-size:9.5pt; color:#555; font-style:normal; margin-bottom:6mm;
+  }
+  .doc-memo h2{
+    font-size:13pt; font-weight:800; margin:8mm 0 3.5mm 0;
+    padding-left:2.6mm; border-left:4.5pt solid #2c3e60; color:#1a2540;
+  }
+  .doc-memo h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#2c3e60; }
+  .doc-memo p{ margin:0 0 2.6mm 0; text-align:justify; }
+  .doc-memo ul{ margin:0 0 2.6mm 0; padding-left:0; list-style:none; }
+  .doc-memo ul li{ position:relative; padding-left:4mm; margin-bottom:1.4mm; text-indent:-4mm; text-align:justify; }
+  .doc-memo ul li::before{ content:"·"; padding-right:2mm; color:#2c3e60; font-weight:700; }
+  .doc-memo table{ border-collapse:collapse; width:100%; table-layout:auto; margin:2.6mm 0 2mm 0; font-size:9.6pt; }
+  .doc-memo table th, .doc-memo table td{ border:0.75pt solid #b8bfcc; padding:1.5mm 2mm; vertical-align:middle; overflow-wrap:break-word; }
+  .doc-memo table thead th{ background:#2c3e60; color:#fff; font-weight:700; text-align:center; }
+  .doc-memo table tbody tr:nth-child(even){ background:#f5f6f9; }
+  .doc-memo table tbody tr:last-child td{ font-weight:700; background:#e9ecf3; }
+  .doc-memo .caption{ text-align:center; font-size:9pt; color:#555; margin:-1mm 0 5mm 0; }
+  .doc-memo img{ display:block; margin:3.5mm auto 1mm auto; max-width:80%; border:0.75pt solid #ccc; }
+  .doc-memo .conclusion-box{
+    background:#eef1f7; border:1px solid #c3cadb; border-left:4.5pt solid #2c3e60;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-memo .conclusion-box p:last-child{ margin-bottom:0; }
+  .doc-memo .memo-meta{ border-collapse:collapse; width:100%; margin:0 0 7mm 0; font-size:10pt; }
+  .doc-memo .memo-meta td{ border:0.75pt solid #b8bfcc; padding:2mm 3mm; }
+  .doc-memo .memo-meta td.k{ background:#f0f1f5; font-weight:700; width:22mm; color:#2c3e60; }
+  .doc-memo hr{ border:none; border-top:0.75pt dashed #b8bfcc; margin:5mm 0; }
+  .doc-memo a{ color:#2c3e60; }
+
+  /* =========================================================
+     테마 3 : 자문보고서 (고객 발송용 — 이음세무컨설팅 브랜드 서신형)
+     [2026.09] 6개 문서유형 중 외부 5종은 목적·수요자가 다 다르니 스타일도 각각 달라야
+     한다는 지적에 따라 새로 만듦. 고객이 직접 받아보는 문서라 netax.kr과 같은 브랜드
+     색(남색 #0D1B3D · 금색 #C8A244)을 입혀서 "회사가 보내는 공식 문서"임을 드러낸다.
+     ========================================================= */
+  .doc-advisory{
+    background:#fff; max-width:210mm; margin:0 auto; padding:0 18mm 15mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.75; color:#22293A;
+    word-break:keep-all;
+  }
+  .doc-advisory .letterhead{
+    background:linear-gradient(135deg,#0D1B3D,#1A2B4D); border-bottom:3pt solid #C8A244;
+    color:#fff; padding:14mm 18mm 9mm 18mm; margin:0 -18mm 12mm -18mm;
+  }
+  .doc-advisory .letterhead .brand{
+    font-size:9pt; letter-spacing:0.25em; color:#C8A244; margin-bottom:4mm; font-weight:700;
+  }
+  .doc-advisory .letterhead h1{
+    font-family:'Noto Serif KR',serif; font-size:19pt; font-weight:700; color:#fff; margin:0;
+  }
+  .doc-advisory table.meta{ border-collapse:collapse; width:100%; margin:0 0 8mm 0; font-size:10pt; }
+  .doc-advisory table.meta td{ padding:1.8mm 0; border-bottom:0.75pt solid #E3DFD6; }
+  .doc-advisory table.meta td.k{ width:20mm; color:#8a8f99; font-weight:600; }
+  .doc-advisory h2{
+    font-family:'Noto Serif KR',serif; font-size:13.5pt; font-weight:700; color:#0D1B3D;
+    margin:9mm 0 4mm 0; padding-bottom:2mm; border-bottom:1.5pt solid #C8A244;
+  }
+  .doc-advisory h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#0D1B3D; }
+  .doc-advisory p{ margin:0 0 2.8mm 0; text-align:justify; }
+  .doc-advisory ul{ margin:0 0 2.8mm 0; padding-left:0; list-style:none; }
+  .doc-advisory ul li{ position:relative; padding-left:4mm; margin-bottom:1.4mm; text-indent:-4mm; text-align:justify; }
+  .doc-advisory ul li::before{ content:"·"; padding-right:2mm; color:#C8A244; font-weight:700; }
+  .doc-advisory table:not(.meta){ border-collapse:collapse; width:100%; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
+  .doc-advisory table:not(.meta) th, .doc-advisory table:not(.meta) td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; }
+  .doc-advisory table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-advisory table:not(.meta) tbody tr:nth-child(even){ background:#F8F6F2; }
+  .doc-advisory .highlight{
+    background:#F8F6F2; border:1px solid #C8A244; border-left:4pt solid #C8A244;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-advisory .highlight p:last-child{ margin-bottom:0; }
+  .doc-advisory hr{ border:none; border-top:0.75pt dashed #E3DFD6; margin:5mm 0; }
+  .doc-advisory a{ color:#0D1B3D; }
+  .doc-advisory .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
+
+  /* =========================================================
+     테마 3-2 : 신고보고서 (고객 발송용 — 자문보고서와 같은 브랜드지만, "결과보고"라
+     산출근거 표와 최종 세액을 중심으로 둔다. 자문보고서와 달리 표는 숫자 정렬이라
+     오른쪽정렬을, 합계행은 금색으로 강조한다.)
+     ========================================================= */
+  .doc-filing{
+    background:#fff; max-width:210mm; margin:0 auto; padding:0 18mm 15mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.75; color:#22293A;
+    word-break:keep-all;
+  }
+  .doc-filing .letterhead{
+    background:linear-gradient(135deg,#0D1B3D,#1A2B4D); border-bottom:3pt solid #C8A244;
+    color:#fff; padding:14mm 18mm 9mm 18mm; margin:0 -18mm 12mm -18mm;
+  }
+  .doc-filing .letterhead .brand{
+    font-size:9pt; letter-spacing:0.25em; color:#C8A244; margin-bottom:4mm; font-weight:700;
+  }
+  .doc-filing .letterhead h1{
+    font-family:'Noto Serif KR',serif; font-size:19pt; font-weight:700; color:#fff; margin:0;
+  }
+  .doc-filing table.meta{ border-collapse:collapse; width:100%; margin:0 0 6mm 0; font-size:10pt; }
+  .doc-filing table.meta td{ padding:1.8mm 0; border-bottom:0.75pt solid #E3DFD6; }
+  .doc-filing table.meta td.k{ width:20mm; color:#8a8f99; font-weight:600; }
+  .doc-filing .amount-box{
+    background:#0D1B3D; color:#fff; border-radius:4px; padding:6mm 7mm; margin:0 0 8mm 0;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .doc-filing .amount-box .label{ font-size:10pt; color:#C8A244; letter-spacing:0.08em; }
+  .doc-filing .amount-box .value{ font-family:'Noto Serif KR',serif; font-size:18pt; font-weight:700; }
+  .doc-filing h2{
+    font-family:'Noto Serif KR',serif; font-size:13.5pt; font-weight:700; color:#0D1B3D;
+    margin:9mm 0 4mm 0; padding-bottom:2mm; border-bottom:1.5pt solid #C8A244;
+  }
+  .doc-filing h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#0D1B3D; }
+  .doc-filing p{ margin:0 0 2.8mm 0; text-align:justify; }
+  .doc-filing ul{ margin:0 0 2.8mm 0; padding-left:0; list-style:none; }
+  .doc-filing ul li{ position:relative; padding-left:4mm; margin-bottom:1.4mm; text-indent:-4mm; text-align:justify; }
+  .doc-filing ul li::before{ content:"·"; padding-right:2mm; color:#C8A244; font-weight:700; }
+  .doc-filing table:not(.meta){ border-collapse:collapse; width:100%; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
+  .doc-filing table:not(.meta) th, .doc-filing table:not(.meta) td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; text-align:right; }
+  .doc-filing table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-filing table:not(.meta) td:first-child{ text-align:left; }
+  .doc-filing table:not(.meta) tbody tr:last-child td{ font-weight:700; background:#FBF3DD; border-top:1.5pt solid #C8A244; }
+  .doc-filing .highlight{
+    background:#F8F6F2; border:1px solid #C8A244; border-left:4pt solid #C8A244;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-filing .highlight p:last-child{ margin-bottom:0; }
+  .doc-filing hr{ border:none; border-top:0.75pt dashed #E3DFD6; margin:5mm 0; }
+  .doc-filing a{ color:#0D1B3D; }
+  .doc-filing .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
+
+  /* [2026.09] 용역서(md-content) 테마 흡수 — 순서도(Mermaid)・수식(KaTeX)・차트・타임라인・
+     비교막대・코드하이라이트・목차・조문링크는 전부 클래스명이 테마와 무관한 전역 요소라
+     자문/신고보고서에서도 손댈 것 없이 그대로 동작한다(render()에서 후처리 파이프라인만
+     이 두 테마에도 돌리면 됨). 다만 블록인용(콜아웃)・접고펼치기・표 가로스크롤은 원래
+     .md-content 안에서만 스타일이 있었으므로, 이 두 테마 전용으로 새로 옮겨왔다. */
+  .doc-advisory blockquote, .doc-filing blockquote{
+    margin:0 0 3mm 0; padding:3mm 4mm; background:#F5F1E8; border-left:3pt solid var(--gold);
+    color:#4A4A4A; font-size:9.8pt; line-height:1.6;
+  }
+  .doc-advisory blockquote p, .doc-filing blockquote p{ margin:0; }
+  .doc-advisory blockquote.callout-success, .doc-filing blockquote.callout-success{ background:#EAF7EE; border-color:#8FCB9F; }
+  .doc-advisory blockquote.callout-warning, .doc-filing blockquote.callout-warning{ background:#FFF6E0; border-color:#E8C363; }
+  .doc-advisory blockquote.callout-danger, .doc-filing blockquote.callout-danger{ background:#FCEBEB; border-color:#E29B9B; }
+  .doc-advisory blockquote.callout-info, .doc-filing blockquote.callout-info{ background:#E9F1FA; border-color:#9CC1E8; }
+  .doc-advisory details, .doc-filing details{ margin:0 0 3mm 0; border:0.75pt solid #E3DFD6; border-radius:3px; overflow:hidden; }
+  .doc-advisory summary, .doc-filing summary{
+    cursor:pointer; padding:3mm 4mm; background:#F5F1E8; font-weight:700; color:var(--navy); list-style:none;
+  }
+  .doc-advisory summary::-webkit-details-marker, .doc-filing summary::-webkit-details-marker{ display:none; }
+  .doc-advisory summary::before, .doc-filing summary::before{
+    content:"▶"; display:inline-block; margin-right:2mm; font-size:8pt; color:var(--gold); transition:transform .2s ease;
+  }
+  .doc-advisory details[open] summary::before, .doc-filing details[open] summary::before{ transform:rotate(90deg); }
+  .doc-advisory details > *:not(summary), .doc-filing details > *:not(summary){ padding:0 4mm; }
+  .doc-advisory details p:last-child, .doc-filing details p:last-child{ padding-bottom:4mm; }
+  .doc-advisory .table-scroll, .doc-filing .table-scroll{ position:relative; overflow-x:auto; margin:1.8mm 0 2mm 0; }
+  .doc-advisory .table-scroll.scrollable::after, .doc-advisory .table-scroll.scrollable::before,
+  .doc-filing .table-scroll.scrollable::after, .doc-filing .table-scroll.scrollable::before{
+    position:absolute; bottom:2pt; color:rgba(200,162,68,0.6); font-size:9pt; pointer-events:none;
+    text-shadow:-1px 0 3px rgba(255,255,255,0.9), 1px 0 3px rgba(255,255,255,0.9);
+    transition:opacity .15s ease; opacity:0;
+  }
+  .doc-advisory .table-scroll.scrollable::after, .doc-filing .table-scroll.scrollable::after{ content:'▸'; right:2pt; }
+  .doc-advisory .table-scroll.scrollable::before, .doc-filing .table-scroll.scrollable::before{ content:'◂'; left:2pt; }
+  .doc-advisory .table-scroll.scrollable.show-right::after, .doc-filing .table-scroll.scrollable.show-right::after{ opacity:1; }
+  .doc-advisory .table-scroll.scrollable.show-left::before, .doc-filing .table-scroll.scrollable.show-left::before{ opacity:1; }
+  .doc-advisory .katex-display, .doc-filing .katex-display{ overflow-x:auto; overflow-y:hidden; max-width:100%; }
+
+  /* =========================================================
+     테마 3-3 : 진행보고서 (고객 발송용 — 같은 브랜드지만, 정식 보고서라기보다 가벼운
+     상황 업데이트라 레터헤드를 더 작게, 목록은 타임라인(점+세로선)으로 단계감을 준다.)
+     ========================================================= */
+  .doc-progress{
+    background:#fff; max-width:210mm; margin:0 auto; padding:0 18mm 15mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.75; color:#22293A;
+    word-break:keep-all;
+  }
+  .doc-progress .letterhead{
+    background:linear-gradient(135deg,#0D1B3D,#1A2B4D); border-bottom:3pt solid #C8A244;
+    color:#fff; padding:10mm 18mm 7mm 18mm; margin:0 -18mm 12mm -18mm;
+  }
+  .doc-progress .letterhead .brand{
+    font-size:9pt; letter-spacing:0.25em; color:#C8A244; margin-bottom:3mm; font-weight:700;
+  }
+  .doc-progress .letterhead h1{
+    font-family:'Noto Sans KR',sans-serif; font-size:16pt; font-weight:800; color:#fff; margin:0;
+  }
+  .doc-progress table.meta{ border-collapse:collapse; width:100%; margin:0 0 6mm 0; font-size:10pt; }
+  .doc-progress table.meta td{ padding:1.8mm 0; border-bottom:0.75pt solid #E3DFD6; }
+  .doc-progress table.meta td.k{ width:20mm; color:#8a8f99; font-weight:600; }
+  .doc-progress h2{
+    font-size:12.5pt; font-weight:800; margin:8mm 0 4mm 0;
+    padding-left:2.6mm; border-left:4.5pt solid #C8A244; color:#0D1B3D;
+  }
+  .doc-progress h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#0D1B3D; }
+  .doc-progress p{ margin:0 0 2.8mm 0; text-align:justify; }
+  /* 진행 경과/향후 계획을 점+세로선으로 이어서 "단계"처럼 보이게 한다 */
+  .doc-progress ul{ margin:0 0 4mm 0; padding-left:0; list-style:none; }
+  .doc-progress ul li{ position:relative; padding:0 0 4mm 7mm; margin:0; text-align:justify; }
+  .doc-progress ul li::before{
+    content:""; position:absolute; left:0; top:1.6mm; width:2.6mm; height:2.6mm;
+    border-radius:50%; background:#C8A244;
+  }
+  .doc-progress ul li:not(:last-child)::after{
+    content:""; position:absolute; left:1.15mm; top:4.6mm; bottom:0; width:0.5pt; background:#E3DFD6;
+  }
+  .doc-progress table{ border-collapse:collapse; width:100%; table-layout:auto; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
+  .doc-progress table th, .doc-progress table td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; }
+  .doc-progress table th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-progress .highlight{
+    background:#F8F6F2; border:1px solid #C8A244; border-left:4pt solid #C8A244;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-progress .highlight p:last-child{ margin-bottom:0; }
+  .doc-progress hr{ border:none; border-top:0.75pt dashed #E3DFD6; margin:5mm 0; }
+  .doc-progress a{ color:#0D1B3D; }
+  .doc-progress .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
+
+  /* =========================================================
+     테마 3-4 : 참고보고서 (세무서 제출용 — 고객용 3종과 달리 과세관청이 읽는 공문서다.
+     화려한 레터헤드 대신 회사명은 작게만 넣고, 본문은 격식 있는 공문 톤・번호 매긴
+     개조식으로 구성한다.)
+     ========================================================= */
+  .doc-reference{
+    background:#fff; max-width:210mm; margin:0 auto; padding:18mm 20mm 15mm 20mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Serif KR','Batang',serif;
+    font-size:11pt; line-height:1.75; color:#111;
+    word-break:keep-all;
+  }
+  .doc-reference .letterhead{
+    display:flex; justify-content:space-between; align-items:baseline;
+    border-bottom:1pt solid #0D1B3D; padding-bottom:3mm; margin-bottom:10mm;
+    font-family:'Noto Sans KR',sans-serif;
+  }
+  .doc-reference .letterhead .brand{ font-size:9.5pt; color:#0D1B3D; font-weight:700; letter-spacing:0.05em; }
+  .doc-reference .letterhead .doc-date{ font-size:9pt; color:#666; }
+  .doc-reference h1{
+    text-align:center; font-size:18pt; font-weight:700;
+    letter-spacing:0.3em; text-indent:0.3em; margin:0 0 10mm 0;
+  }
+  .doc-reference table.meta{
+    border-collapse:collapse; width:100%; margin:0 0 8mm 0;
+    font-size:10.5pt; font-family:'Noto Sans KR',sans-serif;
+  }
+  .doc-reference table.meta td{ padding:1.6mm 0; border-bottom:0.75pt solid #ddd; }
+  .doc-reference table.meta td.k{ width:20mm; color:#555; font-weight:600; }
+  .doc-reference h2{
+    font-size:13pt; font-weight:700; margin:8mm 0 4mm 0;
+    padding-bottom:1.5mm; border-bottom:1pt solid #999;
+  }
+  .doc-reference h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; }
+  .doc-reference p{ margin:0 0 3mm 0; text-align:justify; }
+  /* 공문 특유의 "1. 2. 3." 번호 매긴 개조식 — 딱딱한 공문 톤에 맞춤 */
+  .doc-reference ul{ margin:0 0 3mm 0; padding-left:0; list-style:none; counter-reset:refitem; }
+  .doc-reference ul li{
+    position:relative; padding-left:6mm; margin-bottom:2mm; text-align:justify; counter-increment:refitem;
+  }
+  .doc-reference ul li::before{ content:counter(refitem) "."; position:absolute; left:0; font-weight:700; }
+  .doc-reference table:not(.meta){
+    border-collapse:collapse; width:100%; margin:3mm 0 2mm 0;
+    font-size:10pt; font-family:'Noto Sans KR',sans-serif;
+  }
+  .doc-reference table:not(.meta) th, .doc-reference table:not(.meta) td{ border:0.75pt solid #666; padding:1.8mm 2.4mm; overflow-wrap:break-word; }
+  .doc-reference table:not(.meta) th{ background:#f0f0f0; font-weight:700; text-align:center; }
+  .doc-reference .signline{ text-align:right; margin-top:14mm; font-size:11.5pt; }
+  .doc-reference hr{ border:none; border-top:0.5pt solid #999; margin:6mm 0; }
+  .doc-reference a{ color:#0D1B3D; }
+
+  /* =========================================================
+     테마 3-5 : 요약보고서 (지금까지 작성한 모든 보고서를 한 장으로 요약, 원칙상 1페이지 —
+     그래서 다른 외부 테마보다 글자·여백을 눈에 띄게 줄였다. 기호 글머리(■ ◇ ● ♡ ＊)로
+     항목 층위를 구분한다: ■=대분류 제목, ◇=중분류 소제목, ●=항목, ♡=하위항목, ＊=세부메모.
+     ========================================================= */
+  .doc-summary{
+    background:#fff; max-width:210mm; margin:0 auto; padding:15mm 16mm 12mm 16mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10pt; line-height:1.55; color:#1a1a1a;
+    word-break:keep-all;
+  }
+  .doc-summary .letterhead{
+    display:flex; justify-content:space-between; align-items:baseline;
+    border-bottom:2pt solid #0D1B3D; padding-bottom:2.5mm; margin-bottom:5mm;
+  }
+  .doc-summary .letterhead .brand{ font-size:9pt; color:#0D1B3D; font-weight:700; letter-spacing:0.05em; }
+  .doc-summary .letterhead .doc-date{ font-size:8.5pt; color:#666; }
+  .doc-summary h1{
+    text-align:center; font-size:15pt; font-weight:800; color:#0D1B3D; margin:0 0 5mm 0;
+  }
+  .doc-summary table.meta{ border-collapse:collapse; width:100%; margin:0 0 4mm 0; font-size:9.5pt; }
+  .doc-summary table.meta td{ padding:1mm 0; border-bottom:0.5pt solid #ddd; }
+  .doc-summary table.meta td.k{ width:18mm; color:#666; font-weight:600; }
+  .doc-summary h2{
+    font-size:11.5pt; font-weight:800; margin:4mm 0 2mm 0; color:#0D1B3D;
+  }
+  .doc-summary h2::before{ content:"■ "; color:#C8A244; }
+  .doc-summary h3{ font-size:10.5pt; font-weight:700; margin:3mm 0 1.5mm 0; color:#0D1B3D; }
+  .doc-summary h3::before{ content:"◇ "; color:#0D1B3D; }
+  .doc-summary p{ margin:0 0 1.8mm 0; text-align:justify; }
+  .doc-summary ul{ margin:0 0 1.8mm 0; padding-left:0; list-style:none; }
+  /* 줄바꿈 시 2행의 첫 글자가 1행의 두 번째 글자(글머리 다음 첫 글자) 아래가 아니라
+     그 다음 글자 위치에 오도록, padding-left를 글자 한 칸(약 3.5mm)만큼 늘리고
+     text-indent로 1행만 그만큼 당겨서 원래 위치를 유지한다. */
+  .doc-summary ul li{ position:relative; padding-left:6.5mm; text-indent:-3.5mm; margin-bottom:0.9mm; text-align:justify; }
+  .doc-summary ul li::before{ content:"●"; position:absolute; left:0; font-size:7pt; top:1.3mm; color:#0D1B3D; }
+  /* [2026.09 버그수정] 중첩 목록에 좌측 여백이 없어서 기호(♡・＊)만 바뀌고 실제로는 밀려나지
+     않던 문제 — margin-left를 넣어 한 단계씩 들여쓰기가 누적되게 한다.
+     위 text-indent만큼 다시 당겨서, 하위 글머리가 상위 항목의 첫 글자 위치에 오게 한다. */
+  .doc-summary ul ul{ margin:0.6mm 0 0.6mm -3.5mm; }
+  .doc-summary ul ul li::before{ content:"♡"; font-size:7.5pt; color:#C8A244; }
+  .doc-summary ul ul ul li::before{ content:"＊"; font-size:8pt; color:#666; }
+  .doc-summary table:not(.meta){ border-collapse:collapse; width:100%; margin:1.8mm 0 1.5mm 0; font-size:9pt; }
+  .doc-summary table:not(.meta) th, .doc-summary table:not(.meta) td{ border:0.5pt solid #ccc; padding:1mm 1.6mm; overflow-wrap:break-word; }
+  .doc-summary table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-summary hr{ border:none; border-top:0.5pt dashed #ccc; margin:3mm 0; }
+  .doc-summary a{ color:#0D1B3D; }
+
+  /* =========================================================
+     테마 4 : 첨부서류 번역본 (계약서・정산서 등 원문 재현형)
+     — 분석·설명용 장치(mermaid・차트・조문링크)를 쓰지 않고
+       원본 서식(표・체크박스・서명란)을 그대로 재현하는 데 집중.
+     ========================================================= */
+  .doc-translation{
+    background:#fff; max-width:210mm; margin:0 auto; padding:15mm 15mm 12mm 15mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR','Malgun Gothic',sans-serif;
+    font-size:10.5pt; line-height:1.6; color:#111;
+    word-break:keep-all;
+  }
+  .doc-translation .translation-badge{
+    display:block; text-align:center; font-weight:700; font-size:9.5pt;
+    background:#fff4e5; border:1px solid #e8a33d; color:#8a5a00;
+    padding:2mm 3mm; margin:0 0 6mm 0; border-radius:3px;
+  }
+  .doc-translation h1{ text-align:center; font-size:16pt; font-weight:800; margin:0 0 5mm 0; }
+  .doc-translation h2{
+    font-size:12.5pt; font-weight:800; margin:7mm 0 3mm 0;
+    padding-bottom:1.5mm; border-bottom:1.5pt solid #333;
+  }
+  .doc-translation h3{ font-size:11pt; font-weight:700; margin:4mm 0 2mm 0; }
+  .doc-translation p{ margin:0 0 2.4mm 0; }
+  .doc-translation ul{ margin:0 0 2.4mm 0; padding-left:0; list-style:none; }
+  .doc-translation ul li{ position:relative; padding-left:4mm; margin-bottom:1mm; text-indent:-4mm; }
+  .doc-translation ul li::before{ content:"-"; padding-right:2mm; }
+  .doc-translation table{ border-collapse:collapse; width:100%; table-layout:auto; margin:2mm 0 3mm 0; font-size:9.6pt; }
+  .doc-translation table th, .doc-translation table td{
+    border:0.75pt solid #666; padding:1.4mm 2mm; vertical-align:top; overflow-wrap:break-word;
+  }
+  .doc-translation table th{ background:#eee; font-weight:700; text-align:center; }
+  .doc-translation blockquote{
+    margin:2mm 0 3mm 0; padding:2mm 3mm; border-left:3pt solid #999;
+    background:#fafafa; font-size:9.8pt; color:#333;
+  }
+  .doc-translation blockquote p{ margin:0 0 1mm 0; }
+  .doc-translation blockquote p:last-child{ margin-bottom:0; }
+  /* 판독 불가・추정 항목은 본문에서 <span class="uncertain">...</span> 로 감싸 강조 표시 */
+  .doc-translation .uncertain, .doc-translation code{
+    background:#fff4e5; color:#8a5a00; padding:0 1mm; border-radius:2px; font-family:inherit;
+  }
+  .doc-translation em{ color:#555; }
+  .doc-translation hr{ border:none; border-top:0.5pt solid #999; margin:5mm 0; }
+  .doc-translation img{ display:block; margin:0 0 4mm 0; max-width:100%; height:auto; border:0.5pt solid #ccc; }
+  .doc-translation a{ color:#0645AD; }
+
+  /* ---------- 공통 : 페이지분리 ---------- */
+  .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak, .doc-advisory .doc-pagebreak, .doc-filing .doc-pagebreak, .doc-progress .doc-pagebreak, .doc-reference .doc-pagebreak, .doc-summary .doc-pagebreak{
+    break-before:page; page-break-before:always;
+    display:flex; align-items:center; gap:3mm;
+    margin:9mm 0; color:#999; font-size:8pt; letter-spacing:0.2em;
+  }
+  .doc-appeal .doc-pagebreak::before, .doc-appeal .doc-pagebreak::after,
+  .doc-memo .doc-pagebreak::before, .doc-memo .doc-pagebreak::after,
+  .doc-translation .doc-pagebreak::before, .doc-translation .doc-pagebreak::after,
+  .doc-advisory .doc-pagebreak::before, .doc-advisory .doc-pagebreak::after,
+  .doc-filing .doc-pagebreak::before, .doc-filing .doc-pagebreak::after,
+  .doc-progress .doc-pagebreak::before, .doc-progress .doc-pagebreak::after,
+  .doc-reference .doc-pagebreak::before, .doc-reference .doc-pagebreak::after,
+  .doc-summary .doc-pagebreak::before, .doc-summary .doc-pagebreak::after{
+    content:""; flex:1; border-top:0.75pt solid #bbb;
+  }
+
+  /* 인쇄 — 보고서 테마 여백·페이지분리·용지(작성관리 인쇄와 완성본 인쇄 공용) */
+  @media print{
+    .doc-appeal, .doc-memo, .doc-translation, .doc-advisory, .doc-filing, .doc-progress, .doc-reference, .doc-summary{box-shadow:none; margin:0; max-width:none; padding:0;}
+    /* [2026.09] 레터헤드가 있는 테마(doc-advisory/doc-filing/doc-progress)는 화면 미리보기에서
+       부모의 좌우 padding(18mm)만큼 음수 마진으로 가장자리까지 채우는 방식인데, 인쇄 모드는
+       그 padding을 0으로 초기화하므로(실제 여백은 @page margin이 담당) 음수 마진 값도 같이
+       0으로 되돌려야 어긋나지 않는다. (doc-reference는 이 방식을 안 써서 해당 없음.) */
+    .doc-advisory .letterhead, .doc-filing .letterhead, .doc-progress .letterhead{ margin:0 0 12mm 0; }
+    .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak, .doc-advisory .doc-pagebreak, .doc-filing .doc-pagebreak, .doc-progress .doc-pagebreak, .doc-reference .doc-pagebreak, .doc-summary .doc-pagebreak{ margin:0; height:0; overflow:hidden; }
+    .doc-appeal .doc-pagebreak::before, .doc-appeal .doc-pagebreak::after,
+    .doc-memo .doc-pagebreak::before, .doc-memo .doc-pagebreak::after,
+    .doc-translation .doc-pagebreak::before, .doc-translation .doc-pagebreak::after,
+    .doc-advisory .doc-pagebreak::before, .doc-advisory .doc-pagebreak::after,
+    .doc-filing .doc-pagebreak::before, .doc-filing .doc-pagebreak::after,
+    .doc-progress .doc-pagebreak::before, .doc-progress .doc-pagebreak::after,
+    .doc-reference .doc-pagebreak::before, .doc-reference .doc-pagebreak::after,
+    .doc-summary .doc-pagebreak::before, .doc-summary .doc-pagebreak::after{ border-top:none; }
+    @page{ size:A4; margin:30mm 25mm 25mm 25mm; } /* 위 30 우 25 아래 25 좌 25 - 인쇄 대화상자 "사용자 지정" 클릭시 이 값이 기본 입력되도록 함 */
+  }
+
+  /* ===== Chart.js 차트 (자문・신고보고서 공용, 테마 무관 전역 클래스) ===== */
+  .chart-wrapper {
+    margin: 12px 0 24px;
+    background: #FAFAF7;
+    border: 1px solid #E4E0D8;
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .chart-title {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--navy);
+    margin-bottom: 14px;
+    text-align: center;
+  }
+
+  /* ===== 타임라인 ===== */
+  .timeline-chart {
+    margin: 12px 0 24px;
+    padding: 8px 0;
+    position: relative;
+  }
+  .timeline-chart::before {
+    content: '';
+    position: absolute;
+    left: 90px;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--gold);
+    opacity: 0.4;
+  }
+  .timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .timeline-dot {
+    position: absolute;
+    left: 84px;
+    top: 4px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--gold);
+    border: 2px solid var(--navy);
+    flex-shrink: 0;
+  }
+  .timeline-date {
+    width: 78px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--navy);
+    text-align: right;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .timeline-label {
+    margin-left: 20px;
+    font-size: 13px;
+    color: #3A3A3A;
+    line-height: 1.6;
+  }
+
+  /* ===== 목차 ===== */
+  .toc {
+    background: #F5F1E8;
+    border: 1px solid rgba(200,162,68,0.35);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 0 0 28px;
+  }
+  .toc-title {
+    font-family: 'Noto Serif KR', serif;
+    font-weight: 700;
+    color: var(--navy);
+    font-size: 14px;
+    margin-bottom: 8px;
+    letter-spacing: 0.05em;
+  }
+  .toc ul {
+    list-style: none;
+    margin: 0;
+    padding-left: 4px;
+  }
+  .toc ul li::before { content: none; }
+  .toc li { margin-bottom: 4px; }
+  .toc a {
+    color: #2A3F63;
+    text-decoration: none;
+    font-size: 13.5px;
+  }
+  .toc a:hover { text-decoration: underline; color: var(--navy); }
+
+  /* ===== 숫자 비교 막대그래프 ===== */
+  .compare-chart {
+    margin: 8px 0 24px;
+    padding: 18px 20px;
+    background: #FAF8F3;
+    border-radius: 6px;
+  }
+  .compare-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .compare-row:last-child { margin-bottom: 0; }
+  .compare-label {
+    width: 90px;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: #444;
+  }
+  .compare-track {
+    flex: 1;
+    background: #E4E0D8;
+    border-radius: 4px;
+    height: 18px;
+    overflow: hidden;
+  }
+  .compare-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2A3F63, #0D1B3D);
+    border-radius: 4px;
+  }
+  .compare-value {
+    width: 90px;
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+  }
+
+  .mermaid-diagram {
+    margin: 16px 0 24px;
+    padding: 16px;
+    background: #FAF8F3;
+    border-radius: 6px;
+    overflow-x: auto;
+    text-align: center;
+  }
+
+  .mermaid-diagram svg {
+    max-width: 100%;
+    min-width: min(420px, 100%);
+    height: auto;
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* Mermaid 노드 내부 텍스트 행간·크기 축소 — 박스 밖으로 삐져나오는 문제 방지 */
+  .mermaid-diagram svg .nodeLabel,
+  .mermaid-diagram svg .edgeLabel,
+  .mermaid-diagram svg foreignObject div,
+  .mermaid-diagram svg foreignObject span {
+    font-size: 12.5px !important;
+    line-height: 1.25 !important;
+  }
+  .mermaid-diagram svg .label {
+    font-size: 12.5px !important;
+  }
+
+  .statute-link {
+    color: var(--navy);
+    background: rgba(200,162,68,0.16);
+    border-bottom: 1px solid var(--gold);
+    padding: 0 2px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .statute-link:hover { background: rgba(200,162,68,0.32); }
+
+  .statute-modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(13,27,61,0.55);
+    z-index: 7000; /* [2026.10.20] 공용화 — 증빙확보 파일보기 창·AI탭 위에서도 보이게(예전 500) */
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .statute-modal-box {
+    background: #FFFDF8;
+    border-top: 4px solid var(--gold);
+    border-radius: 8px;
+    max-width: 480px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 24px 22px 20px;
+    position: relative;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  }
+  /* [패치 2026.08] report-writer가 독립 팝업창(window.open)으로 뜨면서, 법령 모달이
+     창을 거의 다 채워 보이는 경우 사용자가 "이 팝업만" 닫는 방법을 못 찾고 report-writer
+     자체 상단 툴바의 닫기 버튼을 눌러버려 보고서 창 전체가 닫히는 문제가 있었다(모달은
+     원래 배경 클릭/Esc로만 닫히고 눈에 보이는 닫기 버튼이 없었음). 모달 박스 자체에
+     명확한 ✕ 버튼을 두어 report-writer 창 닫기와 절대 혼동되지 않게 한다. */
+  .statute-modal-close {
+    position: absolute; top: 12px; right: 14px;
+    font-size: 16px; color: #999; cursor: pointer;
+    line-height: 1; padding: 4px; user-select: none;
+  }
+  .statute-modal-close:hover { color: #333; }
+  .statute-modal-title {
+    font-family: 'Noto Serif KR', serif;
+    font-weight: 700;
+    font-size: 14.5px;
+    color: var(--navy);
+    margin-bottom: 12px;
+    line-height: 1.4;
+  }
+  .statute-modal-body {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 16px;
+  }
+  .statute-modal-link {
+    display: inline-block;
+    font-size: 12.5px;
+    color: var(--navy);
+    text-decoration: none;
+    border-bottom: 1px solid var(--gold);
+  }
+  .statute-modal-link:hover { color: var(--gold-light); }
+  .statute-modal-hint {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    font-size: 11px;
+    color: #999;
+    text-align: center;
+  }
+</style>
+
+<div class="statute-modal-backdrop" id="statuteModal" onclick="if(event.target===this) closeStatuteModal()">
+  <div class="statute-modal-box">
+    <span class="statute-modal-close" onclick="closeStatuteModal()" title="닫기">✕</span>
+    <div class="statute-modal-title" id="statuteModalTitle"></div>
+    <div class="statute-modal-body" id="statuteModalBody"></div>
+    <a class="statute-modal-link" id="statuteModalLink" target="_blank" rel="noopener">국가법령정보센터에서 전문 보기 ↗</a>
+  </div>
+</div>
+
+<script>
+// 문서 종류 → 테마 클래스 / 파일 이름 → 문서 종류 (작성관리와 공용)
+const THEME_CLASS = { appeal: 'doc-appeal', memo: 'doc-memo', translation: 'doc-translation', advisory: 'doc-advisory', filing: 'doc-filing', progress: 'doc-progress', reference: 'doc-reference', summary: 'doc-summary' };
+
+// 문서유형별 기본 인쇄 테마 — 내부(검토서)는 모양이 하나로 통일돼도 되지만, 외부로 나가는
+// 5종은 목적·수요자가 다 다르므로 각각 별도 테마를 쓴다(2026.09, 하나씩 만드는 중 —
+// 아직 전용 테마가 없는 유형은 우선 기존 "청구서" 테마를 임시로 쓴다).
+const RW_DOC_TYPE_THEME_ = {
+  review: 'memo', review_specific: 'memo', advisory: 'advisory', filing: 'filing',
+  reference: 'reference', progress: 'progress', appeal_petition: 'appeal', summary: 'summary', translation: 'translation'
+};
+
+// [2026.09] 드라이브에서 파일을 열 때(예: 다른 화면에서 fileId로 바로 이 문서를 열었을 때)
+// 파일명으로 문서유형을 자동 추정한다 — 이 시스템이 만든 문서는 이름이 "자문보고서_홍길동"처럼
+// 유형 라벨로 시작하므로 대부분 여기서 바로 맞는다. 못 맞히면(옛날 파일 등) 사용자에게 직접 물어본다.
+function rwGuessDocTypeFromFilename_(name){
+  if (!name) return null;
+  // [2026.09.17 재설계] "검토서"만으로는 종합/개별 중 어느 쪽인지 알 수 없어졌다 — 이름에
+  // 명확히 "종합검토서"/"개별검토서"라고 돼 있을 때만 자동 추정하고, 옛날식으로 그냥
+  // "검토서"만 있으면 사람이 rwAskDocTypeForFile_에서 직접 고르게 null을 돌려준다.
+  if (name.includes('종합검토서')) return 'review';
+  if (name.includes('개별검토서')) return 'review_specific';
+  if (name.includes('검토서')) return null;
+  if (name.includes('자문')) return 'advisory';
+  if (name.includes('신고') && name.includes('보고서')) return 'filing';
+  if (name.includes('참고') && name.includes('보고서')) return 'reference';
+  if (name.includes('진행') && name.includes('보고서')) return 'progress';
+  if (name.includes('요약') && name.includes('보고서')) return 'summary';
+  if (name.includes('번역서') || name.includes('번역본')) return 'translation';
+  if (name.includes('청구서') || name.includes('이의신청') || name.includes('심사청구') || name.includes('심판청구') || name.includes('불복')) return 'appeal_petition';
+  return null;
+}
+
+// [2026.10.20 보안] 미리보기·발행본에 넣기 직전 마지막 거름망 — DOMPurify가 없으면(CDN 실패) HTML로 그리지 않고 글자로만 보인다(fail-closed)
+function rwPurify_(html){
+  if (typeof DOMPurify === 'undefined' || !DOMPurify.sanitize) {
+    return '<p style="color:#a33;">⚠ 안전 검사 도구(DOMPurify)를 불러오지 못해 글자로만 보여 드립니다 — 새로고침해 주세요.</p><pre style="white-space:pre-wrap;">' + nxMdEsc_(String(html || '').replace(/<[^>]*>/g, '')) + '</pre>';
+  }
+  return DOMPurify.sanitize(String(html || ''), { ADD_ATTR: ['target'] });
+}
+
+// ---------- 렌더링 ----------
+// ===== 아래 4개 함수는 rpt.netax.kr(index.html)에서 이미 검증된 marked.js 버그 회피 로직을
+// 그대로 이식한 것 (2026.07). 두 시스템이 같은 marked.js 파싱 문제를 겪으므로,
+// 여기서 고치는 게 아니라 원본 로직을 그대로 가져와 동일하게 적용한다. =====
+
+// 유니코드 불릿 문자(•●▪◦‣ 등)가 섞이면(구글독스 자동서식 등) marked.js가
+// 목록으로 인식 못함 — 줄 앞머리(들여쓰기 허용)의 이런 문자를 표준 '-'로 치환
+function fixBulletChars(mdText) {
+  return mdText.replace(/^([ \t]*)[•●▪◦‣][ \t]+/gm, '$1- ');
+}
+
+// 비파괴공백(NBSP, U+00A0)·전각공백(U+3000)·기타 유니코드 공백류가 목록 들여쓰기·
+// 구분선(---) 자리에 섞이면 marked.js가 공백으로 인식 못해 파싱 실패함 — 일반 공백으로 정규화.
+// 전각공백은 시각적 폭이 2칸이므로 공백 2개로 치환(들여쓰기 단계 보존). 제로폭 문자는 제거.
+function sanitizeInvisibleChars(mdText) {
+  return mdText
+    .replace(/\u3000/g, '  ')
+    .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F]/g, ' ')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+}
+
+// marked.js 12.0.2는 닫는 **가 문장부호 바로 뒤에서 공백 없이 한글 등 비ASCII 문자와
+// 붙으면 볼드 파싱에 실패하는 버그가 있음 — **텍스트** 구간을 marked에 넘기기 전에
+// 직접 <strong> 태그로 선치환해 우회. 별표 앞 중첩 이스케이프(\*\*)도 함께 정리.
+function preprocessBold(mdText) {
+  mdText = sanitizeInvisibleChars(mdText);
+  mdText = fixBulletChars(mdText);
+  mdText = mdText.replace(/\\+(\*)/g, '$1');
+  mdText = mdText.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+  return mdText;
+}
+
+// 각주([^1] 형식)를 실제 각주로 변환. 대괄호가 실수로 이스케이프(\[^1])되어도 인식.
+function preprocessFootnotes(mdText) {
+  const defs = {};
+  const order = [];
+  mdText = mdText.replace(/^\\?\[\^([^\]]+)\]:\s*(.+)$/gm, (m, id, def) => {
+    defs[id] = def;
+    return '';
+  });
+  if (Object.keys(defs).length === 0) return mdText;
+
+  mdText = mdText.replace(/\\?\[\^([^\]]+)\]/g, (m, id) => {
+    if (!(id in defs)) return m;
+    if (!order.includes(id)) order.push(id);
+    const num = order.indexOf(id) + 1;
+    return `<sup id="fnref-${id}"><a href="#fn-${id}">[${num}]</a></sup>`;
+  });
+
+  if (order.length > 0) {
+    let footnoteSection = '\n\n## 각주\n\n';
+    order.forEach((id, i) => {
+      footnoteSection += `${i + 1}. <span id="fn-${id}">${defs[id]}</span> <a href="#fnref-${id}">↩</a>\n`;
+    });
+    mdText += footnoteSection;
+  }
+  return mdText;
+}
+
+// marked.js 12.0.2는 GFM 취소선(del) 토크나이저가 '~~물결 두 개~~'뿐 아니라 '~물결 한 개~'도
+// 짝을 지어 취소선으로 오인식하는 버그가 있음 — "1~6번", "2018~2019년"처럼 범위 표시로 쓰인
+// 홑물결표가 문장 뒤쪽의 다른 홑물결표와 임의로 짝지어져 그 사이 전체가 밑줄(취소선)로 표시됨.
+// marked에 넘기기 전, 짝이 아닌(앞뒤에 다른 물결표가 붙지 않은) 홑물결표만 backslash로 이스케이프
+// 처리해 리터럴 '~'로 렌더링되게 하고, 의도된 '~~강조~~' 취소선 문법은 그대로 보존한다.
+function escapeLoneTildes(mdText) {
+  return mdText.replace(/(?<!~)~(?!~)/g, '\\~');
+}
+
+// opts.outline === false 이면 개요번호(Ⅰ./1./A./ⅰ.) 제목 자동 변환을 하지 않는다 — [2026.10.20] 세무사님 승인("추천대로 하마"):
+// 작성관리(편집하며 쓰는 곳)에서만 켜고, 증빙확보·AI탭 같은 보기 화면에서는 평범한 번호 목록이 제목으로 커지지 않게 끈다.
+function preprocess(md, opts){
+  // 견본 문서 그림(IMG)은 작성관리 화면에만 있다 — 다른 화면에서 불러도 깨지지 않게 있을 때만 바꾼다
+  let img = null; try { img = IMG; } catch (e) {}
+  if (img){
+    md = md.replace(/GRIM1_PLACEHOLDER/g, img.GRIM1);
+    md = md.replace(/GRIM2_PLACEHOLDER/g, img.GRIM2);
+    md = md.replace(/GRIM3_PLACEHOLDER/g, img.GRIM3);
+  }
+  md = md.replace(/\[PAGEBREAK\]/g, '\n<div class="doc-pagebreak"><span>PAGE BREAK</span></div>\n');
+  // rpt.netax.kr과 동일한 순서로 적용: 각주 처리 → 볼드버그 우회(+공백/불릿 정규화 포함) → 홑물결표 취소선 오인식 방지
+  md = preprocessFootnotes(md);
+  md = preprocessBold(md);
+  md = escapeLoneTildes(md);
+  // [2026.09 신규] H버튼은 누를 때마다 #만 하나씩 넣는데(여러 번 눌러 ##/### 쌓기 위함),
+  // 표준 마크다운은 #과 글자 사이에 공백이 있어야만 제목으로 인식한다 — 공백 없는 "#제목"도
+  // 제목으로 인식되게 렌더링 직전에 공백을 채워 넣는다(저장되는 원본 글자는 그대로 둠).
+  md = md.replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
+  // [2026.09 신규] 법률/공문서식 개요번호(Ⅰ. → 1. → A. → ⅰ. 순서로 깊어지는 문단번호)를
+  // 그 레벨에 맞는 제목으로 자동 인식한다 — 번호 자체는 그대로 두고 앞에 #을 필요한 개수만큼
+  // 붙인다. 로마숫자는 일반 영문자(I,V,X 등)와 겹치는 유니코드 전용 로마숫자 문자만 인식해서
+  // "A."(알파벳) 표기와 헷갈리지 않게 한다(한글 워드프로세서의 "개요 번호" 기능과 같은 문자).
+  // [주의] "1."로 시작하는 줄은 이제 항상 제목3으로 취급되고, 평범한 번호 목록으로는 못 쓴다.
+  if (opts && opts.outline === false) return md;
+  md = md.replace(/^([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ]\.)/gm, '## $1');
+  md = md.replace(/^(\d+\.)/gm, '### $1');
+  md = md.replace(/^([A-Z]\.)/gm, '#### $1');
+  md = md.replace(/^([ⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹⅺⅻ]\.)/gm, '##### $1');
+  return md;
+}
+
+// ================================================================
+// 아래부터는 "외부보고서(용역보고서)" 테마 전용 렌더링 함수들.
+// rpt.netax.kr(index.html)에서 그대로 이식했다 (2026.07). 원본과 동일하게 유지해서,
+// 두 시스템이 같은 문서를 놓고 다르게 보이는 일이 없도록 한다.
+// ================================================================
+
+// ===== KaTeX 수식 렌더링 (인라인 $수식$, 블록 $$수식$$) =====
+function renderKatex(container) {
+  if (!window.renderMathInElement) return;
+  renderMathInElement(container, {
+    delimiters: [
+      { left: '$$', right: '$$', display: true },
+      { left: '$',  right: '$',  display: false },
+    ],
+    throwOnError: false,
+    output: 'html',
+  });
+}
+
+// ===== Chart.js 차트 렌더링 =====
+// 문법: ```chart
+// type: pie | line | bar | doughnut | radar
+// title: 차트 제목
+// labels: 항목1, 항목2, 항목3
+// data: 10, 20, 30
+// colors: #색1, #색2, #색3  (선택)
+// ```
+function renderChartBlocks(container) {
+  if (!window.Chart) return;
+  const blocks = container.querySelectorAll('code.language-chart');
+  let chartIdx = 0;
+  blocks.forEach(block => {
+    chartIdx++;
+    const lines = block.textContent.trim().split('\n');
+    const cfg = {};
+    lines.forEach(l => {
+      const m = l.match(/^(\w+)\s*:\s*(.+)$/);
+      if (m) cfg[m[1].trim().toLowerCase()] = m[2].trim();
+    });
+
+    const type    = cfg.type    || 'bar';
+    const title   = cfg.title   || '';
+    const labels  = (cfg.labels || '').split(',').map(s => s.trim());
+    const data    = (cfg.data   || '').split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+    const defaultColors = ['#0D1B3D','#C8A244','#4A6080','#8BA3C7','#D4A96A','#6B8E9F','#2A3F63','#E8D5A3'];
+    const colors  = cfg.colors
+      ? cfg.colors.split(',').map(s => s.trim())
+      : defaultColors.slice(0, data.length);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chart-wrapper';
+    if (title) {
+      const h = document.createElement('div');
+      h.className = 'chart-title';
+      h.textContent = title;
+      wrapper.appendChild(h);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.id = 'netax-chart-' + chartIdx;
+    canvas.style.maxHeight = '320px';
+    wrapper.appendChild(canvas);
+    block.closest('pre').replaceWith(wrapper);
+
+    new Chart(canvas, {
+      type,
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: colors,
+          borderColor: type === 'line' ? colors[0] : colors,
+          borderWidth: type === 'line' ? 2 : 1,
+          fill: type === 'line' ? false : undefined,
+          tension: 0.3,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: ['pie','doughnut','radar'].includes(type) },
+          title: { display: false },
+        },
+        scales: ['pie','doughnut','radar'].includes(type) ? {} : {
+          y: { beginAtZero: true, ticks: { font: { family: "'Noto Sans KR'" } } },
+          x: { ticks: { font: { family: "'Noto Sans KR'" } } },
+        },
+      }
+    });
+  });
+}
+
+// ===== Prism.js 코드 하이라이팅 (```js, ```python 등) =====
+function renderPrismBlocks(container) {
+  if (!window.Prism) return;
+  Prism.highlightAllUnder(container);
+}
+
+// ===== 타임라인 렌더링 =====
+// 문법: ```timeline
+// 2015.01 : 201호 취득
+// 2021.03 : 이혼·합가
+// ```
+function renderTimelineBlocks(container) {
+  const blocks = container.querySelectorAll('code.language-timeline');
+  blocks.forEach(block => {
+    const lines = block.textContent.trim().split('\n').filter(l => l.includes(':'));
+    const wrapper = document.createElement('div');
+    wrapper.className = 'timeline-chart';
+    lines.forEach(l => {
+      const idx = l.indexOf(':');
+      const date  = l.slice(0, idx).trim();
+      const label = l.slice(idx + 1).trim();
+      wrapper.innerHTML += `
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-date">${nxMdEsc_(date)}</div>
+          <div class="timeline-label">${nxMdEsc_(label)}</div>
+        </div>`;
+    });
+    block.closest('pre').replaceWith(wrapper);
+  });
+}
+
+// Mermaid 다이어그램을 NETAX 브랜드 컬러로 초기화 (rpt.netax.kr과 동일 설정)
+if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#0D1B3D',
+      primaryTextColor: '#F8F6F0',
+      primaryBorderColor: '#C8A244',
+      lineColor: '#C8A244',
+      secondaryColor: '#2A3F63',
+      tertiaryColor: '#F5F1E8',
+      fontFamily: "'Noto Sans KR', sans-serif",
+      fontSize: '13px',
+    },
+    flowchart: {
+      htmlLabels: true,
+      nodeSpacing: 24,
+      rankSpacing: 36,
+      padding: 8,
+      curve: 'basis',
+    },
+  });
+}
+
+// 마크다운 안의 ```mermaid 코드블록을 실제 도식으로 변환
+// 재렌더링(타이핑·테마전환 등)마다 renderMermaidBlocks가 반복 호출되므로,
+// 함수 호출마다 리셋되는 카운터를 쓰면 'mermaid-diagram-1' 같은 ID가 계속 재사용되어
+// mermaid가 "이미 존재하는 id"로 인식해 조용히 실패하는 버그가 있었음(2026.07 발견).
+// 세션 전체에서 절대 겹치지 않는 전역 일련번호로 교체.
+let mermaidRenderSeq = 0;
+
+async function renderMermaidBlocks(container) {
+  if (!window.mermaid) return;
+  const blocks = container.querySelectorAll('code.language-mermaid');
+  for (const block of blocks) {
+    mermaidRenderSeq++;
+    try {
+      const { svg } = await mermaid.render('mermaid-diagram-' + mermaidRenderSeq, block.textContent);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'mermaid-diagram';
+      wrapper.innerHTML = svg;
+      block.closest('pre').replaceWith(wrapper);
+    } catch (err) {
+      // 문법 오류 등으로 실패하면 원본 코드블록은 유지하되, 콘솔에는 원인을 남겨 진단 가능하게 함
+      console.error('[Mermaid 렌더링 실패]', err);
+    }
+  }
+}
+
+// ===== 숫자 비교 막대그래프 (```compare 코드블록) =====
+function renderCompareBars(container) {
+  const blocks = container.querySelectorAll('code.language-compare');
+  blocks.forEach(block => {
+    const lines = block.textContent.trim().split('\n').filter(l => l.includes(':'));
+    const items = lines.map(l => {
+      const idx = l.lastIndexOf(':');
+      return { label: l.slice(0, idx).trim(), value: parseFloat(l.slice(idx + 1).replace(/,/g, '').trim()) };
+    }).filter(it => !isNaN(it.value));
+    if (items.length === 0) return;
+
+    const max = Math.max(...items.map(it => it.value));
+    const wrapper = document.createElement('div');
+    wrapper.className = 'compare-chart';
+    items.forEach(it => {
+      const pct = max > 0 ? (it.value / max * 100) : 0;
+      const row = document.createElement('div');
+      row.className = 'compare-row';
+      row.innerHTML = `
+        <div class="compare-label">${nxMdEsc_(it.label)}</div>
+        <div class="compare-track"><div class="compare-fill" style="width:${pct}%"></div></div>
+        <div class="compare-value">${it.value.toLocaleString()}</div>
+      `;
+      wrapper.appendChild(row);
+    });
+    block.closest('pre').replaceWith(wrapper);
+  });
+}
+
+// ===== 표 스크롤 힌트: 실제로 화면보다 넓어 스크롤이 필요한 표에만 화살표 표시 =====
+function updateScrollHint(el) {
+  const maxScroll = el.scrollWidth - el.clientWidth;
+  el.classList.toggle('show-right', el.scrollLeft < maxScroll - 2);
+  el.classList.toggle('show-left', el.scrollLeft > 2);
+}
+
+function markScrollableTables(container) {
+  container.querySelectorAll('.table-scroll').forEach(el => {
+    if (el.scrollWidth > el.clientWidth + 1) {
+      const isNew = !el.classList.contains('scrollable');
+      el.classList.add('scrollable');
+      updateScrollHint(el);
+      if (isNew) el.addEventListener('scroll', () => updateScrollHint(el));
+    }
+  });
+}
+
+// ===== 알림 상자 색상 구분: blockquote 첫 글자(이모지)로 판별해 색상만 부여, 이모지는 화면에서 제거 =====
+function applyCalloutColors(container) {
+  const quotes = container.querySelectorAll('blockquote');
+  quotes.forEach(bq => {
+    const text = bq.textContent.trim();
+    let cls = null, stripRe = null;
+    if (text.startsWith('✅')) { cls = 'callout-success'; stripRe = /^✅\s*/; }
+    else if (text.startsWith('⚠️') || text.startsWith('⚠')) { cls = 'callout-warning'; stripRe = /^⚠️?\s*/; }
+    else if (text.startsWith('❌') || text.startsWith('🚫')) { cls = 'callout-danger'; stripRe = /^(❌|🚫)\s*/; }
+    else if (text.startsWith('ℹ️') || text.startsWith('ℹ')) { cls = 'callout-info'; stripRe = /^ℹ️?\s*/; }
+    if (!cls) return;
+    bq.classList.add(cls);
+    const walker = document.createTreeWalker(bq, NodeFilter.SHOW_TEXT);
+    const firstTextNode = walker.nextNode();
+    if (firstTextNode) {
+      firstTextNode.textContent = firstTextNode.textContent.replace(stripRe, '');
+    }
+  });
+}
+
+// ===== 목차 자동 생성: h2(장 제목) 기준 =====
+function buildTableOfContents(container) {
+  const EXCLUDE_HEADINGS = ['기본 사실관계'];
+  const headings = Array.from(container.querySelectorAll('h2')).filter(h => {
+    const text = h.textContent.trim();
+    return !EXCLUDE_HEADINGS.some(ex => text.startsWith(ex));
+  });
+  if (headings.length < 2) return;
+
+  const toc = document.createElement('nav');
+  toc.className = 'toc';
+  let tocHtml = '<div class="toc-title">목차</div><ul>';
+  headings.forEach((h, i) => {
+    const id = 'section-' + i;
+    h.id = id;
+    const label = h.textContent.trim();
+    tocHtml += `<li><a href="#${id}">${nxMdEsc_(label)}</a></li>`; // [2026.10.20 보안] textContent는 &lt;를 <로 되살린다 — 다시 이스케이프
+  });
+  tocHtml += '</ul>';
+  toc.innerHTML = tocHtml;
+
+  const firstH1 = container.querySelector('h1');
+  if (firstH1) {
+    firstH1.after(toc);
+  } else {
+    container.prepend(toc);
+  }
+}
+
+// ===== 조문 자동 하이퍼링크 + 팝업 =====
+const STATUTE_INFO = {
+  '상증세법 §37': {
+    title: '상속세및증여세법 §37 — 부동산 무상사용에 따른 이익의 증여의제',
+    summary: '타인의 부동산을 무상으로 사용함으로써 이익을 얻은 경우, 그 이익에 상당하는 금액을 사용자의 증여재산가액으로 봅니다. 실제 지급한 대가가 없거나 시가보다 현저히 낮은 경우에 적용됩니다.'
+  },
+  '상증세법 §41-4': {
+    title: '상속세및증여세법 §41-4 — 금전 무상대출 등에 따른 이익의 증여',
+    summary: '특수관계인으로부터 금전을 무상 또는 적정이자율보다 낮은 이자율로 대출받은 경우, 적정이자율과 실제 이자율의 차이에 상당하는 이익을 증여받은 것으로 봅니다.'
+  },
+  '상증세법 §42': {
+    title: '상속세및증여세법 §42 — 재산 사용 및 용역제공 등에 따른 이익의 증여',
+    summary: '금전 무상대출(§41-4)·부동산 무상사용(§37) 등 개별 규정으로 포착되지 않는 재산·용역 관련 이익을 폭넓게 과세하는 보충적 규정입니다. 대표적으로 ①타인의 재산을 무상 또는 저가로 사용, ②타인의 재산을 담보로 제공받아 금전 등을 차입, ③시가보다 현저히 낮거나 높은 대가로 용역을 제공받거나 제공하는 경우 등이 해당하며, 그 이익에 상당하는 금액에 증여세를 과세합니다.'
+  },
+  '상증세법 §45-3': {
+    title: '상속세및증여세법 §45-3 — 특수관계법인과의 거래를 통한 이익의 증여의제(일감몰아주기)',
+    summary: '수혜법인의 매출 중 지배주주의 특수관계법인에 대한 매출 비중이 정상거래비율(일반 30%, 중소 50%, 중견 40%)을 초과하고 지배주주 등의 지분이 한계보유비율(일반 3%, 중소·중견 10%)을 초과하면, 그 초과이익에 대해 지배주주에게 증여세를 과세합니다.'
+  },
+  '상증세법 §45-5': {
+    title: '상속세및증여세법 §45-5 — 특정법인과의 거래를 통한 이익의 증여의제',
+    summary: '지배주주와 그 친족이 30% 이상 지분을 보유한 법인(특정법인)이 지배주주의 특수관계인과 무상·저가·고가 거래를 하여 이익을 얻은 경우, 그 이익에 지배주주 등의 지분율을 곱한 금액을 지배주주 등이 증여받은 것으로 봅니다.'
+  },
+  '소득세법 §97-2': {
+    title: '소득세법 §97-2 — 양도소득의 필요경비 계산 특례(증여 후 양도 이월과세)',
+    summary: '배우자·직계존비속으로부터 증여받은 자산을 증여일로부터 10년 이내에 양도하면, 양도차익 계산 시 취득가액을 증여 당시가 아닌 증여자의 원 취득가액으로 계산합니다.'
+  },
+  '조특법 §32': {
+    title: '조세특례제한법 §32 — 법인전환에 대한 양도소득세의 이월과세',
+    summary: '거주자가 사업용고정자산을 현물출자하거나 사업양수도 방식으로 법인으로 전환하는 경우, 양도소득세를 법인 전환 시점에 과세하지 않고 법인이 그 자산을 양도할 때까지 이연합니다. "새로 설립되는 법인"에 대한 출자를 전제로 합니다.'
+  },
+  '지방세법 §13①': {
+    title: '지방세법 §13① — 과밀억제권역 내 본점 사업용 부동산 취득세 중과',
+    summary: '과밀억제권역에서 법인의 본점·주사무소 사업용 부동산을 신축·증축하는 경우 취득세를 중과(표준세율+중과기준세율의 200%)합니다.'
+  },
+  '지방세법 §13②': {
+    title: '지방세법 §13② — 대도시 내 법인 설립·전입에 따른 취득세 중과',
+    summary: '대도시에서 법인을 설립하거나 지점·분사무소를 설치함에 따라 대도시의 부동산을 취득하는 경우, 또는 법인이 대도시 밖에서 대도시로 전입하는 경우 취득세를 중과합니다. 본점소재지가 대도시 밖이면 이 중과 요건 자체가 성립하지 않습니다.'
+  },
+  '지특법 §57-2': {
+    title: '지방세특례제한법 §57-2 — 부동산임대업 등에 대한 취득세 감면 배제',
+    summary: '부동산임대 및 공급업은 지특법상 취득세 감면(창업중소기업 등에 대한 감면 등) 적용 대상에서 명시적으로 제외됩니다.'
+  }
+};
+
+const STATUTE_LAW_FULLNAME = {
+  '상증세법': '상속세 및 증여세법',
+  '소득세법': '소득세법',
+  '조특법': '조세특례제한법',
+  '지방세법': '지방세법',
+  '지특법': '지방세특례제한법'
+};
+
+function buildArticlePath(key) {
+  const m = key.match(/§(\d+)(?:-(\d+))?/);
+  if (!m) return null;
+  const article = m[1];
+  const branch = m[2];
+  return '제' + article + '조' + (branch ? '의' + branch : '');
+}
+
+function linkifyStatutes(container) {
+  const keys = Object.keys(STATUTE_INFO).sort((a, b) => b.length - a.length);
+  const escaped = keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(escaped.join('|'), 'g');
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue) return NodeFilter.FILTER_SKIP;
+      if (node.parentElement && node.parentElement.closest('.statute-link')) return NodeFilter.FILTER_SKIP;
+      pattern.lastIndex = 0;
+      return pattern.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
+  });
+  const targets = [];
+  let n;
+  while ((n = walker.nextNode())) targets.push(n);
+
+  targets.forEach(node => {
+    pattern.lastIndex = 0;
+    const text = node.nodeValue;
+    let lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let m;
+    while ((m = pattern.exec(text))) {
+      if (m.index > lastIndex) frag.appendChild(document.createTextNode(text.slice(lastIndex, m.index)));
+      const matchedText = m[0];
+      const span = document.createElement('span');
+      span.className = 'statute-link';
+      span.textContent = matchedText;
+      span.dataset.statuteKey = matchedText; // cloneNode()는 addEventListener 리스너를 복제하지 않으므로, 완성본 내보내기 시 이 값으로 클릭 기능을 재구성한다
+      span.addEventListener('click', () => showStatutePopup(matchedText));
+      frag.appendChild(span);
+      lastIndex = m.index + m[0].length;
+    }
+    if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+    node.parentNode.replaceChild(frag, node);
+  });
+}
+
+function showStatutePopup(key) {
+  const info = STATUTE_INFO[key];
+  if (!info) return;
+
+  document.getElementById('statuteModalTitle').textContent = info.title;
+  document.getElementById('statuteModalBody').textContent = info.summary;
+
+  const lawShort = key.split(' ')[0];
+  const lawFullName = STATUTE_LAW_FULLNAME[lawShort] || lawShort;
+  const articlePath = buildArticlePath(key);
+  const linkEl = document.getElementById('statuteModalLink');
+
+  linkEl.href = articlePath
+    ? 'https://www.law.go.kr/법령/' + encodeURIComponent(lawFullName) + '/' + encodeURIComponent(articlePath)
+    : 'https://www.law.go.kr/LSW/lsSc.do?section=&menuId=1&subMenuId=15&tabMenuId=81&query=' + encodeURIComponent(lawFullName);
+
+  document.getElementById('statuteModal').style.display = 'flex';
+  // [패치 2026.08] "새창으로 보기"로 연 완성본에는 좌상단에 '← 편집기로 돌아가기' 버튼이
+  // z-index:9999로 항상 최상단에 떠 있다. 법령 팝업(z-index:500)이 화면 대부분을 어둡게
+  // 덮어버리면 이 버튼만 유일하게 눈에 띄는 클릭 가능 요소로 남아, 사용자가 이걸 "팝업 닫기"로
+  // 착각해 누르면 보고서 창 전체가 닫혀버리는 사고가 있었다. 팝업이 떠 있는 동안은 숨긴다.
+  const backFloat = document.getElementById('nxBackFloat');
+  if (backFloat) backFloat.style.display = 'none';
+}
+
+function closeStatuteModal() {
+  document.getElementById('statuteModal').style.display = 'none';
+  const backFloat = document.getElementById('nxBackFloat');
+  if (backFloat) backFloat.style.display = '';
+}
+
+function nxMdStandaloneHtml(liveRoot, title, opts){
+  opts = opts || {};
+  const includeBackButton = !!opts.backButton;
+  title = title || '문서';
+
+  // Chart.js는 <canvas>에 픽셀을 그릴 뿐, 그 결과물은 DOM/outerHTML에 포함되지 않는다.
+  // cloneNode(true)로 캔버스를 복제해도 내용은 항상 빈 캔버스가 되므로(2026.07 확인된 버그),
+  // 완성본을 "그대로 표시만 하면 되는" 정적 문서로 만들려면 캔버스를 지금 그려진 화면 그대로
+  // <img>로 구워서(toDataURL) 대체해야 한다. 원본 캔버스 순서대로 매칭한다.
+  const liveCanvases = liveRoot.querySelectorAll('canvas');
+  const clone = liveRoot.cloneNode(true);
+  clone.style.zoom = ''; // 화면에서 확대/축소한 배율이 내보낸 파일에 섞여 들어가지 않도록 제거
+  clone.removeAttribute('id'); // #renderOut 전용 폭제한 해제 규칙이 내보낸 파일에는 적용되지 않도록(실제 인쇄/고객화면 폭 유지)
+  const cloneCanvases = clone.querySelectorAll('canvas');
+  liveCanvases.forEach((liveCanvas, i) => {
+    const cloneCanvas = cloneCanvases[i];
+    if (!cloneCanvas) return;
+    try {
+      const img = document.createElement('img');
+      img.src = liveCanvas.toDataURL('image/png');
+      img.style.cssText = cloneCanvas.style.cssText || '';
+      img.style.maxWidth = '100%';
+      cloneCanvas.replaceWith(img);
+    } catch (err) {
+      // toDataURL 실패(예: 캔버스가 아직 그려지기 전) 시에도 다운로드 자체는 막지 않고 넘어감
+      console.error('[차트 이미지 변환 실패]', err);
+    }
+  });
+
+  const articleHtml = clone.outerHTML;
+  // 보고서 모양 CSS = 이 파일의 <style id="nxMdCss">(테마·차트·목차·Mermaid·조문 팝업·인쇄). 색 변수는 완성본 단독으로도 쓰이게 앞에 둔다.
+  const cssEl = document.getElementById('nxMdCss');
+  const styleText = ':root{ --navy:#0D1B3D; --navy-deep:#081226; --gold:#C8A244; --gold-light:#DCC17E; }\n' + (cssEl ? cssEl.textContent : '');
+  // 조문 링크(.statute-link) 클릭 팝업: 원본 클릭 리스너와 모달 element는 #renderOut 밖에 있어
+  // 위 clone에 포함되지 않는다. 완성본이 report-writer 없이 단독으로도 동작하도록
+  // 모달 마크업과 필요한 데이터·함수를 함께 구워 넣는다.
+  const statuteModalHtml = document.getElementById('statuteModal').outerHTML;
+  const statuteScript = '<script>\n'
+    + 'const STATUTE_INFO = ' + JSON.stringify(STATUTE_INFO) + ';\n'
+    + 'const STATUTE_LAW_FULLNAME = ' + JSON.stringify(STATUTE_LAW_FULLNAME) + ';\n'
+    + buildArticlePath.toString() + '\n'
+    + 'function showStatutePopup(key){\n'
+    + '  const info = STATUTE_INFO[key];\n'
+    + '  if (!info) return;\n'
+    + '  document.getElementById("statuteModalTitle").textContent = info.title;\n'
+    + '  document.getElementById("statuteModalBody").textContent = info.summary;\n'
+    + '  const lawShort = key.split(" ")[0];\n'
+    + '  const lawFullName = STATUTE_LAW_FULLNAME[lawShort] || lawShort;\n'
+    + '  const articlePath = buildArticlePath(key);\n'
+    + '  const linkEl = document.getElementById("statuteModalLink");\n'
+    + '  linkEl.href = articlePath\n'
+    + '    ? "https://www.law.go.kr/법령/" + encodeURIComponent(lawFullName) + "/" + encodeURIComponent(articlePath)\n'
+    + '    : "https://www.law.go.kr/LSW/lsSc.do?section=&menuId=1&subMenuId=15&tabMenuId=81&query=" + encodeURIComponent(lawFullName);\n'
+    + '  document.getElementById("statuteModal").style.display = "flex";\n'
+    + '  var backFloat = document.getElementById("nxBackFloat");\n'
+    + '  if (backFloat) backFloat.style.display = "none";\n'
+    + '}\n'
+    + 'function closeStatuteModal(){\n'
+    + '  document.getElementById("statuteModal").style.display = "none";\n'
+    + '  var backFloat = document.getElementById("nxBackFloat");\n'
+    + '  if (backFloat) backFloat.style.display = "";\n'
+    + '}\n'
+    + 'document.querySelectorAll(".statute-link").forEach(function(span){\n'
+    + '  const key = span.dataset.statuteKey;\n'
+    + '  if (key) span.addEventListener("click", function(){ showStatutePopup(key); });\n'
+    + '});\n'
+    + 'document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeStatuteModal(); });\n'
+    + '</' + 'script>';
+  // 완성본은 marked/mermaid/KaTeX/Chart.js/Prism 등 어떤 렌더링 스크립트도 없이 열리므로,
+  // 이미 렌더링된 결과가 그대로 보이는 데 필요한 CSS(KaTeX 수식 레이아웃, Prism 코드 하이라이팅 색상)만
+  // 함께 담아 보낸다(둘 다 이전에는 head에 빠져 있어 완성본에서 수식·코드블록이 깨지는 버그가 있었음).
+  const fonts = '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+    + '<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">\n'
+    + '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">\n'
+    + '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">';
+  return '<!DOCTYPE html>\n<html lang="ko">\n<head>\n<meta charset="UTF-8">\n'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+    + '<meta name="color-scheme" content="light">\n'
+    + '<title>' + nxMdEsc_(title) + '</title>\n' + fonts + '\n'
+    + '<style>\n' + styleText
+    + '\n/* 이 완성본은 편집도구 화면이 아니라 독립 문서이므로, 툴 자체의 body 레이아웃(고정 높이・overflow 숨김)을 원래대로 되돌림 */'
+    + '\nhtml,body{height:auto !important;}'
+    + '\nbody{display:block !important; overflow:visible !important;}'
+    + '\n#standaloneWrap{overflow:auto; background:#e9eaee; padding:24px; min-height:100vh;}'
+    + '\n#nxBackFloat{position:fixed; top:14px; left:14px; z-index:9999;}'
+    + '\n#nxBackFloat button{font-family:\'Noto Sans KR\',sans-serif; font-size:13px; font-weight:700; padding:9px 16px; border-radius:20px; border:1px solid #4a5268; background:#20242c; color:#e8e8ec; cursor:pointer; box-shadow:0 3px 10px rgba(0,0,0,0.25);}'
+    + '\n#nxBackFloat button:hover{background:#333a48;}'
+    + '\n@media print{ #nxBackFloat{display:none !important;} }\n</style>\n'
+    + '</head>\n<body>\n'
+    // 이 완성본은 editor-writer와 별개의 새 창(탭)으로 열리는데, 지금까지는 다시 편집기로 돌아갈
+    // 방법이 없어서(브라우저 자체 탭 닫기 말고는) 사용자가 직접 탭을 찾아 닫아야 했다.
+    // window.opener(이 창을 연 report-writer 탭)가 있으면 이 창만 닫아서 자동으로 편집기 탭으로
+    // 돌아가게 하고, 없으면(브라우저가 opener를 안 넘겨주는 특수한 경우) 이전 기록으로 이동을
+    // 시도한다. 다운로드해서 배포하는 HTML(고객에게 보내거나 rpt.netax.kr에 올리는 파일)에는
+    // opener가 있을 수 없고 사용자 본인 화면도 아니므로, "새 창으로 보기" 때만 넣는다.
+    + (includeBackButton
+      ? '<div id="nxBackFloat"><button type="button" id="nxBackBtn">' + nxMdEsc_(opts.backLabel || '← 편집기로 돌아가기') + '</button></div>\n'
+        + '<script>\n'
+        + 'document.getElementById("nxBackBtn").addEventListener("click", function(){\n'
+        + '  if (window.opener && !window.opener.closed){ window.opener.focus(); window.close(); }\n'
+        + '  else if (history.length > 1){ history.back(); }\n'
+        + '  else { alert("이 창(탭)은 브라우저에서 직접 닫아주세요."); }\n'
+        + '});\n'
+        + '</' + 'script>\n'
+      : '')
+    + '<div id="standaloneWrap">\n' + articleHtml + '\n</div>\n'
+    + statuteModalHtml + '\n' + statuteScript + '\n</body>\n</html>';
+}
+
+// ============================================================
+// 공용 API — 작성관리·증빙확보·AI탭이 모두 이것만 부른다
+// ============================================================
+// 이 부품 안에서 쓰는 글자 이스케이프(앱 공용 escapeHtml과 같은 &<>"' 처리) — 부품 혼자서도 돌아가게
+function nxMdEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
+// 그리지 못했을 때만 원문으로 — 이유를 위에 보여 준다
+function nxMdFail_(reason, src){
+  return '<p style="color:#a33; font-weight:600;">⚠ ' + nxMdEsc_(reason) + '</p><pre style="white-space:pre-wrap; word-break:break-all; font-family:Consolas,monospace; font-size:12.5px;">' + nxMdEsc_(src) + '</pre>';
+}
+// 파일 이름 → 보고서 모양(테마). 작성관리가 파일을 열 때 쓰는 판정(rwGuessDocTypeFromFilename_)과 같다. 못 정하면 검토서 모양(memo).
+function nxMdThemeForName(name){
+  const dt = rwGuessDocTypeFromFilename_(String(name || ''));
+  return (dt && RW_DOC_TYPE_THEME_[dt]) || 'memo';
+}
+// 마크다운 → 보고서 모양. out: 그릴 칸. opts: theme(작성관리 테마 키), rich(고급 서식 후처리, 기본 켬), statutes(조문 링크, 기본 켬),
+//   extraClass(칸에 더할 클래스 — 좁은 칸은 'nx-md-view'), onChecklist(체크리스트를 눌러 바꿀 때 부를 함수 — 없으면 체크박스는 보기만),
+//   outline(개요번호 제목 변환, 기본 켬 — 보기 화면은 false).
+async function nxMdRender(out, src, opts){
+  opts = opts || {};
+  src = String(src == null ? '' : src);
+  const rich = opts.rich !== false;
+  out.className = (THEME_CLASS[opts.theme] || 'doc-appeal') + (opts.extraClass ? ' ' + opts.extraClass : '');
+  if (typeof marked === 'undefined' || !marked.parse) {
+    out.innerHTML = nxMdFail_('마크다운 해석 도구(marked)를 불러오지 못해 원문으로 보여 드립니다 — 인터넷 연결을 확인하고 새로고침해 주세요.', src);
+    return { ok: false, error: 'marked 없음' };
+  }
+  let html;
+  try {
+    // [2026.09 변경] breaks:true — 엔터 한 번만 쳐도 줄바꿈(세무사님 확인 후 적용)
+    html = marked.parse(preprocess(src, { outline: opts.outline }), { breaks: true, gfm: true });
+  } catch (err) {
+    console.error('[렌더링 오류]', err);
+    out.innerHTML = nxMdFail_('렌더링 중 오류가 나서 원문으로 보여 드립니다: ' + (err && err.message ? err.message : String(err)), src);
+    return { ok: false, error: String(err && err.message || err) };
+  }
+  if (rich) html = html.replace(/<table>/g, '<div class="table-scroll"><table>').replace(/<\/table>/g, '</table></div>');
+  // [2026.10.20 보안] 발행본까지 이어지므로 반드시 DOMPurify로 거른다(못 불러오면 rwPurify_가 글자로만)
+  out.innerHTML = rwPurify_(html);
+  // [패치 2026.08] 본문 링크는 무조건 새 탭 — 보고서 창이 다른 주소로 넘어가 사라지는 사고 방지
+  out.querySelectorAll('a[href]').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+  out.querySelectorAll('input[type="checkbox"]').forEach((cb, idx) => {
+    if (typeof opts.onChecklist === 'function') { cb.disabled = false; cb.addEventListener('change', () => opts.onChecklist(idx)); }
+    else cb.disabled = true;
+  });
+  if (rich) {
+    // rpt.netax.kr 완성본과 같은 순서로 후처리 (mermaid는 비동기라 완료를 기다린 뒤 나머지 실행)
+    try {
+      await renderMermaidBlocks(out);
+      renderCompareBars(out);
+      renderChartBlocks(out);
+      renderTimelineBlocks(out);
+      renderPrismBlocks(out);
+      renderKatex(out);
+      applyCalloutColors(out);
+      buildTableOfContents(out);
+      if (opts.statutes !== false) linkifyStatutes(out);
+      markScrollableTables(out);
+      // 폰트 로딩 등으로 초기 측정이 부정확할 수 있어 잠시 후 한 번 더 갱신
+      requestAnimationFrame(() => markScrollableTables(out));
+      setTimeout(() => markScrollableTables(out), 300);
+    } catch (err) {
+      console.error('[고급 서식 렌더링 후처리 오류]', err);
+    }
+  }
+  return { ok: true };
+}
+// .md를 보고서 모양 완성본으로 새 창에 연다(AI탭 ↗ 새 창 등). src: 글 또는 글을 돌려주는 함수(프라미스 가능).
+// 팝업 차단을 피하려고 창은 누르는 순간 먼저 열고, 다 그린 뒤 완성본을 써 넣는다.
+function nxMdOpenWindow(title, src, opts){
+  const w = window.open('', '_blank');
+  if (!w) { if (typeof toast === 'function') toast('팝업이 막혀 새 창을 열지 못했습니다 — 주소창 오른쪽의 팝업 허용을 눌러 주세요.'); return; }
+  try { w.document.write('<!DOCTYPE html><meta charset="utf-8"><title>' + nxMdEsc_(title) + '</title><p style="font-family:sans-serif; padding:24px; color:#555;">보고서 모양으로 그리는 중…</p>'); } catch (e) {}
+  opts = Object.assign({ theme: nxMdThemeForName(title), rich: true, outline: false }, opts || {}); // 보기용 — 개요번호 제목 변환 끔
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed; left:-12000px; top:0; width:820px;'; // 화면 밖에서 그린다(Mermaid·차트 크기 계산에 실제 칸이 필요)
+  document.body.appendChild(box);
+  Promise.resolve().then(() => (typeof src === 'function' ? src() : src))
+    .then(text => nxMdRender(box, text, opts))
+    .then(() => new Promise(r => setTimeout(r, box.querySelector('canvas') ? 900 : 0))) // 차트가 다 그려진 뒤 그림으로 굽는다
+    .then(() => { const html = nxMdStandaloneHtml(box, title, opts); w.document.open(); w.document.write(html); w.document.close(); })
+    .catch(err => { try { w.document.body.innerHTML = '<p style="color:#a33; font-family:sans-serif; padding:24px;">' + nxMdEsc_('보고서를 열지 못했습니다: ' + (err && err.message ? err.message : err)) + '</p>'; } catch (e) {} })
+    .finally(() => box.remove());
+}
+// 조문 팝업은 어느 화면 위에서도 보이도록 body 바로 아래로 옮긴다
+(function(){ const m = document.getElementById('statuteModal'); if (m && m.parentNode !== document.body && document.body) document.body.appendChild(m); })();
+</script>

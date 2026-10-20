@@ -87,7 +87,7 @@ function akToolValues_(c) {
     put('봉안시설', f.niche && f.niche.value !== null ? f.niche.value : 0, f.niche ? (f.niche.src || (f.niche.receipt ? '영수증 ' + f.niche.receipt.amount.toLocaleString('ko-KR') + '원(공제액 선택 전)' : '공제 0 — 계약서만 있고 납부 증빙 없음')) : '봉안 서류 없음(공제 0)', 'money'); // 계산에 들어가는 공제 대상 금액
     put('총상속재산', f.grossEstate, f.grossEstate ? '부동산 평가 + 금융재산' : '평가 안 끝남', 'money');
     if (f.grossEstate) {
-      // [2026.10.16] 과세가액 = 총상속재산 − 공과금 − 채무(§14) — 예전엔 총상속재산을 그대로 넣어 채무·공과금 있는 사건(김창호·박종헌 등)을 과다 계산했다.
+      // [2026.10.16] 과세가액 = 총상속재산 − 공과금 − 채무(§14) — 예전엔 총상속재산을 그대로 넣어 채무·공과금 있는 사건(고객C·고객B 등)을 과다 계산했다.
       //  채무는 세무사님이 확정한 목록, 없으면 서류로 확실한 것만. 감정평가수수료(§25①)도 화면과 같이 넣는다.
       const debtList = Array.isArray(f.debtsConfirmed) ? f.debtsConfirmed : (f.debts || []).filter(function (d) { return d.sure; });
       const debtSum = debtList.reduce(function (s, d) { return s + (Number(d.amount) || 0); }, 0);
@@ -95,6 +95,19 @@ function akToolValues_(c) {
       v._deductions = { debts: debtSum, dues: duesSum, appraisalFee: f.appraisalFee ? f.appraisalFee.value : 0 };
       const input = { taxableEstateAmount: Math.max(0, f.grossEstate - debtSum - duesSum), appraisalFeeAmount: f.appraisalFee ? f.appraisalFee.value : 0, hasSpouse: f.heirs.some(function (h) { return h.relation === '배우자'; }), childCount: f.heirs.filter(function (h) { return h.relation === '자녀'; }).length,
         netFinancialAssets: f.financialValue || 0, funeralCostAmount: f.funeral.value || 0, funeralNicheCostAmount: (f.niche && f.niche.value) || 0 };
+      // [2026.10.19 밤 2번 — 5번 모의에서 찾은 빈틈] 사전증여(§13 — 세무사님이 답한 통장 사전증여 f.priorGifts)를 화면과 똑같이 넘긴다.
+      //  화면(taxcalc.html 'apply-ih-estate-auto'·applyCaseProcFacts): 과세가액 = 총상속재산 − 채무·공과금 + 10년(상속인)·5년(그 밖) 사전증여, ihGiftToHeirs·ihPriorGiftedIncluded·ihNonHeirPriorGiftAmount
+      //  예전엔 점검기가 이 셋을 빼고 돌려 §24 공제한도·과세가액이 화면과 달랐다(고객C 2.3억, 고객B 1.6억). 엔진 계산식은 그대로.
+      const pgs = Array.isArray(f.priorGifts) ? f.priorGifts : [];
+      const pgHeir = pgs.filter(function (g) { return g.heir; }).reduce(function (s, g) { return s + (Number(g.v) || 0); }, 0);
+      const pgOther = pgs.filter(function (g) { return !g.heir; }).reduce(function (s, g) { return s + (Number(g.v) || 0); }, 0);
+      if (pgHeir + pgOther) {
+        input.taxableEstateAmount += pgHeir + pgOther;
+        input.priorGiftedAmountIncludedInEstate = pgHeir + pgOther;
+        if (pgHeir) input.giftToHeirsWithin10Years = pgHeir;
+        if (pgOther) input.nonHeirPriorGiftAmountTotal = pgOther;
+        v._deductions.priorGifts = pgHeir + pgOther;
+      }
       const r = runUiEngineCalcTool_('calculate_inheritance_tax', input) || { error: '엔진 없음' };
       v._engineInput = input;
       if (r.error) put('계산', '', '엔진 오류: ' + r.error);
@@ -253,8 +266,11 @@ function akSandbox_(caseId, fn, override) {
     caseProcPatch_ = function (id, mutate) { if (String(id) !== String(caseId)) return null; const s = copy(mem.saved); const o = mutate(s); mem.saved = s; return o === undefined ? s : o; };
     caseProcStore_ = function (id, s) { if (String(id) === String(caseId)) mem.saved = copy(s); };
     if (AK_BLIND_NO_CHAT_) caseProcChatTexts_ = function () { return []; };
+    // [2026.10.18 교차검증 2번] 점검 중에는 AI를 부르지 않는다 — "AI에게 물을 쟁점 목록"과 글자 수만 남김(CrossCheck.js)
+    if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = true;
     return fn();
   } finally {
+    if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = false;
     akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
     caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_; caseProcChatTexts_ = real.caseProcChatTexts_;
   }
@@ -284,7 +300,7 @@ function akRunCase0_(caseId, key) {
   akTrace_('증빙1 끝', ev.more ? ev.progress : 'done');
   if (ev.more) return { caseId: caseId, more: true, progress: ev.progress };
   TC_NO_NEW_OCR_ = true; // 이후 단계는 새 글자인식 없이(한도 넘친 서류는 다음 점검에서 증빙 단계가 이어 읽음)
-  // [2026.10.16] 서류가 많은 사건(노영환 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
+  // [2026.10.16] 서류가 많은 사건(고객A 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
   //  같은 사건을 3번 끊고 건너뛰었다. 서류 정리에 2분 넘게 걸렸으면 여기서 끊고 다음 호출에서 이어 간다(글자·정리 결과는 캐시에 남아 빨라짐).
   if (Date.now() - t0 > 120000) {
     const sc = CacheService.getScriptCache(), sk = 'ak_split_' + caseId; // 사건마다 한 번만 끊는다(10분) — 계속 끊기만 하는 반복 방지
@@ -315,7 +331,7 @@ function akRunCase0_(caseId, key) {
     out.rows.push({ field: field, expected: exp, tool: t.v === undefined || t.v === null ? '' : t.v, src: t.src, ok: akSame_(exp, t.v, kind || t.kind || AK_FIELD_KIND_[field]) });
   };
   Object.keys(key).forEach(function (k) {
-    if (/^(상태|출처|세목|남은항목|근거|메모|재산|초안판|오류|납세자)$/.test(k) || /^답_/.test(k)) return; // 답_ = 질문의 답으로만 쓰는 신고서 입력값(대조 칸 아님)
+    if (/^(상태|출처|세목|남은항목|근거|메모|재산|초안판|오류|납세자|검산보류)$/.test(k) || /^답_/.test(k)) return; // 답_ = 질문의 답으로만 쓰는 신고서 입력값(대조 칸 아님)
     if (k === '상속인수') { row('상속인수', key[k], tool.상속인수, 'number'); row('처리개요 상속인수', key[k], tool['처리개요 상속인수'], 'number'); return; }
     row(k, key[k], tool[k] || tool['처리개요 ' + k], AK_FIELD_KIND_[k]);
   });
@@ -354,6 +370,8 @@ function akRunCase0_(caseId, key) {
     try { const f = DriveApp.getFileById(d.id); out.ocr['미분류:' + d.name] = String(tc_docText_({ id: d.id, name: d.name, mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() }) || '').slice(0, 1500); } catch (e) {}
   });
   out.engineInput = tool._engineInput || null;
+  // [2026.10.18 교차검증 2번] 이 실행의 쟁점 기록(GAS로 푼 것·AI에게 물을 것·사용자에게 갈 것, 묶음/폴더 글자 수)
+  try { out.cx = typeof CX_LAST_ !== 'undefined' && CX_LAST_ && CX_LAST_.caseId === c.id ? JSON.parse(JSON.stringify(CX_LAST_)) : null; } catch (e) { out.cx = null; }
   out.why = tool._why || '';
   out.judge = !!tool._judge; if (tool._ref) out.ref = tool._ref;
   out.noSourceDocs = !ev.srcDocs;
@@ -438,7 +456,7 @@ function answerKeyRun_(body) {
     if (st.tries[q] > 3) r = { caseId: id, 사건명: c && c.사건명 || '', error: '서버 실행 시간 한도(6분)를 3번 넘겨 이 사건은 건너뜀 — 서류가 너무 많거나 한 서류 읽기가 오래 걸림(사건처리 화면에서 따로 처리하세요)' };
     else if (!c) r = { caseId: id, error: '사건 없음' };
     else if (!k || !k.key) r = { caseId: id, 사건명: c.사건명 || '', error: (k && k.error) || '이 사건 폴더에 ' + keyName + '이 없습니다.' };
-    else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류|납세자)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
+    else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류|납세자|검산보류)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
     else { try { r = akRunCase_(id, k.key); } catch (e) { r = { caseId: id, 사건명: c.사건명 || '', error: '점검 중 오류: ' + (e && e.message || e) }; } }
     if (r && keyName !== AK_KEY_NAME_) { r.keyName = keyName; r.수증자 = r.수증자 || k && k.key && k.key.납세자; }
     if (r.more) { st.tries[q] = 0; akSaveSt_(props, st); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; } // 진행이 있었으니 시도 횟수는 처음부터
@@ -460,7 +478,7 @@ function answerKeyRun_(body) {
       try { akArchiveMd_(folder, result); } catch (e) { result.archiveError = String(e && e.message || e); }
       const it = folder.getFilesByName(AK_RESULT_NAME_);
       // [2026.10.16] 사건 하나만 점검(caseId)한 결과로 전체 결과 파일을 덮어쓰지 않는다 — 그 사건 줄만 바꿔 끼운다
-      //  (2026-10-16 새벽: 노영환 1건 점검이 27건 결과를 덮어써 설정 🐞 카드와 오프라인 재현기의 파일 대응표가 1건만 남았다)
+      //  (2026-10-16 새벽: 고객A 1건 점검이 27건 결과를 덮어써 설정 🐞 카드와 오프라인 재현기의 파일 대응표가 1건만 남았다)
       if (st.only && it.hasNext()) {
         const file = it.next();
         let prev = null; try { prev = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) {}
@@ -525,9 +543,19 @@ const AK_BR_GI_ = [[1e8, 0.1, 0], [5e8, 0.2, 1e7], [1e9, 0.3, 6e7], [3e9, 0.4, 1
 const AK_BR_TR_ = [[1.4e7, 0.06, 0], [5e7, 0.15, 1.26e6], [8.8e7, 0.24, 5.76e6], [1.5e8, 0.35, 1.544e7], [3e8, 0.38, 1.994e7], [5e8, 0.4, 2.594e7], [1e9, 0.42, 3.594e7], [Infinity, 0.45, 6.594e7]];
 function akProg_(b, br) { for (let i = 0; i < br.length; i++) if (b <= br[i][0]) return Math.floor(b * br[i][1] - br[i][2]); return 0; }
 const AK_FORM_TITLE_ = { inheritance: /상\s*속\s*세\s*과\s*세\s*표\s*준/, gift: /증\s*여\s*세\s*과\s*세\s*표\s*준/, transfer: /양\s*도\s*소\s*득[^\n]{0,20}?과\s*세\s*표\s*준|양\s*도\s*소\s*득\s*세\s*(?:간\s*편\s*)?신\s*고/ };
+function akOldTransferDate_(t) {
+  const re = /양\s*도\s*(?:연\s*월\s*일|일\s*자|일)[^\d]{0,30}((?:19|20)\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/g;
+  let m, old = '';
+  while ((m = re.exec(t))) { const d = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); if (d < '2023-01-01' && (!old || d > old)) old = d; }
+  return old;
+}
 function akParseFormResult_(text, seMok) {
   const t = String(text || '').replace(/(\d)\.(\d{3})(?=[^\d]|$)/g, '$1,$2');
   if (!AK_FORM_TITLE_[seMok] || !AK_FORM_TITLE_[seMok].test(t)) return {}; // 다른 세목 서식(예: 양도 사건 폴더의 증여세 신고서)은 쓰지 않음
+  // [2026.10.19 조견표 0단계] 아래 세율 검산(AK_BR_TR_)은 2023-01-01 이후 양도분 구간이다. 신고서의 양도일이 그보다 앞이면 그때 세율과 달라
+  //  검산이 어긋나거나 우연히 맞을 수 있으므로 "검산 보류" 표시를 붙인다(초안 숫자는 그대로 — 세율 연혁 조견표 2부-01 확인 뒤 풀기).
+  const akHold = seMok === 'transfer' ? akOldTransferDate_(t) : '';
+  const akHoldWhy = akHold ? '양도일 ' + akHold + ' — 2023년 전 양도라 지금 세율 구간으로 한 검산이 맞지 않을 수 있음(세율 연혁 확인 전 검산 보류)' : '';
   const nums = [], seen = {};
   (t.match(/\d{1,3}(?:,\d{3})+/g) || []).forEach(function (x) { const v = Number(x.replace(/,/g, '')); if (v >= 1000 && !seen[v]) { seen[v] = true; nums.push(v); } });
   const has = function (v) { return !!seen[v]; };
@@ -539,7 +567,7 @@ function akParseFormResult_(text, seMok) {
     return out;
   };
   nums.forEach(function (b) { if (b < 1000000) return; taxes(b).forEach(function (tx) { if (tx >= 1000 && has(tx) && !pairs.some(function (p) { return p.b === b && p.t === tx; })) pairs.push({ b: b, t: tx }); }); });
-  if (!pairs.length) return {};
+  if (!pairs.length) return akHoldWhy ? { _검산보류: akHoldWhy } : {};
   // 세액공제 3%·납부세액까지 맞는 짝을 먼저(우연히 맞는 짝 — 예: 증여재산가액 1억 ↔ 공제액 1천만 — 을 거름), 같으면 큰 과세표준(합계 칸)
   const score = function (p) { if (seMok === 'transfer') return 0; const cr = Math.floor(p.t * 0.03); return (has(cr) ? 1 : 0) + (has(p.t - cr) ? 1 : 0); };
   pairs.forEach(function (p) { p.s = score(p); });
@@ -570,6 +598,7 @@ function akParseFormResult_(text, seMok) {
     //  여러 묶음이 맞으면 양도가액이 가장 큰 것, 같으면 취득가액이 큰 것(취득가액과 필요경비가 서로 바뀌어 맞는 경우). 안 맞으면 넣지 않음(지어내지 않음). 대조 칸이 아니라 실사용 판정 ③에서 질문에 답할 때만 쓴다.
     Object.assign(out, akTransferInputs_(nums, out.과세표준));
     const pm = /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액/.exec(t);
+    if (akHoldWhy) out._검산보류 = akHoldWhy;
     if (pm) { const p = (t.slice(pm.index, pm.index + 300).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v <= out.산출세액 * 1.5 && v >= 1000; })[0]; if (p) out.납부세액 = p; }
   }
   return out;
@@ -627,9 +656,11 @@ function answerKeyDraft_(body) {
     // 3판 초안에 숫자가 있고 신고서가 하나뿐이면 다시 읽지 않는다(세율 검산 규칙은 그대로) — 4판 표시만
     if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && c.세목 !== 'transfer' && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 7; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
     const found = []; // {owner, res, src, why}
+    let holdWhy = ''; // [2026.10.19] 2023 전 양도 — 검산 보류 표시
     files.slice(0, 8).forEach(function (f) {
       const txt = tc_docText_(f) || '';
       let r = akParseFormResult_(txt, c.세목), why = '';
+      if (r._검산보류) { holdWhy = holdWhy || r._검산보류; delete r._검산보류; }
       if (!(r.과세표준 && r.산출세액)) { const z = akZeroReturn_(txt, c.세목); if (!z) return; why = z._why; delete z._why; r = z; }
       const owner = c.세목 === 'gift' && files.length > 1 ? akReturnOwner_(f, all) : '';
       if (found.some(function (x) { return x.owner === owner && x.res.과세표준 === r.과세표준 && x.res.산출세액 === r.산출세액; })) return;
@@ -641,7 +672,7 @@ function answerKeyDraft_(body) {
       pays.forEach(function (f) { if (found.length) return; const v = akPaySlipAmount_(tc_docText_(f) || '', c.세목); if (v) found.push({ owner: '', res: { 납부세액: v }, src: f.name, why: '신고서가 폴더에 없어 국세 납부서의 ' + CASEPROC_TAX_LABEL_[c.세목] + ' 납부금액만(분납이면 1회차만일 수 있음)' }); });
     }
     if (!found.length) {
-      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 7, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
+      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 7, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' + (holdWhy ? ' — ' + holdWhy : '') : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
       if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 세율 계산이 맞는 과세표준·산출세액 짝을 찾지 못함(다른 세목 서식이거나 글자인식 불량)' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' });
       continue;
     }
@@ -661,6 +692,7 @@ function answerKeyDraft_(body) {
       const confirmed = cur.상태 === '확정';
       const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 7, 출처: x.src };
       if (own) key.납세자 = own;
+      if (holdWhy && !confirmed) key.검산보류 = holdWhy;
       Object.keys(x.res).forEach(function (f) { if (!(confirmed && key[f] !== undefined)) key[f] = x.res[f]; });
       key.근거 = Object.assign({}, confirmed ? (key.근거 || {}) : {}, Object.keys(x.res).reduce(function (o, f) { o[f] = (x.why ? x.why + ' — ' : '') + '신고서(' + x.src + ')' + (x.why ? '' : ' — 글자인식 + 세율 검산(과세표준↔산출세액' + (f === '신고세액공제' || f === '납부세액' ? '↔세액공제↔납부' : '') + ')으로 맞는 숫자') + ', 세무사님 확인 전'; return o; }, {}));
       answerKeySave_({ caseId: c.id, key: key, name: name });
@@ -819,7 +851,7 @@ function akTransferInputs_(nums, base) {
         if (tp <= g) return;
         nums.forEach(function (ap) {
           if (ap >= tp) return;
-          // [2026.10.16] "양도소득금액 − 기본공제 250만 = 과세표준"을 "양도가액 − 취득가액 = 양도차익"으로 짝짓던 것(김운래·김금옥·노오섭 정답지의 취득가액 250만원)
+          // [2026.10.16] "양도소득금액 − 기본공제 250만 = 과세표준"을 "양도가액 − 취득가액 = 양도차익"으로 짝짓던 것(고객Z·고객W·고객Q 정답지의 취득가액 250만원)
           if (ap === 2500000 && tp === base + 2500000) return;
           const ex = tp - ap - g;
           if (ex < 0 || (ex > 0 && !has(ex))) return;

@@ -1,13 +1,69 @@
+<!-- [2026.10.19 조견표 체계] 세무사님 말씀 — "서식관리도 조견표와 마찬가지로 법령탭속에 하위탭으로" — 법령조회를 "법령정보"로 바꾸고
+     하위 탭 [📜 법령][📄 서식][📋 조견표]. 법령 탭은 예전 법령조회 그대로(사건 첨부), 서식·조견표는 사건 없이 본다. 설계: netax-inventory/maps/설계_조견표체계.md -->
+<style>
+  .lsi-tabs{ display:flex; gap:0; border-bottom:1px solid var(--line); padding:0 14px; flex-wrap:wrap; }
+  .lsi-tab{ background:none; border:none; border-bottom:2px solid transparent; padding:9px 14px; font-size:14px; color:var(--sub); cursor:pointer; }
+  .lsi-tab.active{ color:var(--navy); font-weight:600; border-bottom-color:var(--gold); }
+  .lsi-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; align-items:center; }
+  .lsi-chip{ border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:4px 11px; font-size:12.5px; cursor:pointer; color:inherit; }
+  .lsi-chip.active{ border-color:var(--navy); color:var(--navy); font-weight:600; }
+  .lsi-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .lsi-table th, .lsi-table td{ border-bottom:1px solid var(--line); padding:6px 6px; text-align:left; vertical-align:top; }
+  .lsi-table th{ color:var(--sub); font-weight:600; white-space:nowrap; }
+  .lsi-badge{ display:inline-block; border-radius:9px; padding:1px 7px; font-size:11.5px; border:1px solid var(--line); white-space:nowrap; }
+  .lsi-badge.ok{ border-color:#2e7d32; color:#2e7d32; }
+  .lsi-badge.warn{ border-color:#b26a00; color:#b26a00; }
+  .lsi-link{ color:var(--navy); cursor:pointer; text-decoration:underline; background:none; border:none; padding:0; font-size:inherit; }
+  .lsi-note{ font-size:11.5px; color:var(--sub); }
+  .lsi-files a{ margin-right:8px; white-space:nowrap; }
+  .lsi-table-wrap{ overflow-x:auto; }
+  .lsi-table td.nw{ white-space:nowrap; }
+  .lsi-table td.w-mid{ min-width:9em; }
+  .lsi-table td.w-wide{ min-width:18em; }
+  .lsi-long summary{ cursor:pointer; color:var(--navy); }
+  /* [2026.10.19 세무사님 "별도칸으로 나누고 데이타길이가 길어질 경우 필드길이를 고정하여 행넘김없이 스크롤되도록 하라"]
+     서식 탭 표: 정보마다 칸, 칸 너비 고정, 칸 안은 줄바꿈 없이 가로 스크롤(마우스를 올리면 전체 글), 표가 넓으면 표째 가로 스크롤 + 첫 칸 고정 */
+  .lsi-grid-wrap{ overflow-x:auto; max-width:100%; }
+  .lsi-grid{ table-layout:fixed; border-collapse:collapse; font-size:12.5px; }
+  .lsi-grid th, .lsi-grid td{ border-bottom:1px solid var(--line); padding:5px 6px; text-align:left; vertical-align:middle; white-space:nowrap; overflow:hidden; }
+  .lsi-grid th{ color:var(--sub); font-weight:600; background:var(--panel); }
+  .lsi-grid th:first-child, .lsi-grid td:first-child{ position:sticky; left:0; z-index:1; background:var(--panel); box-shadow:1px 0 0 var(--line); }
+  .lsi-grid .lsi-cell{ display:block; width:100%; height:22px; line-height:18px; box-sizing:border-box; overflow-x:auto; overflow-y:hidden; white-space:nowrap; } /* 높이 고정 — 칸 안 스크롤 막대(4px)가 생겨도 행 높이가 같게 */
+  .lsi-grid .lsi-cell::-webkit-scrollbar{ height:4px; }
+  .lsi-grid .lsi-cell::-webkit-scrollbar-thumb{ background:var(--line); border-radius:2px; }
+  .lsi-grid .lsi-files a{ margin-right:6px; }
+</style>
 <div class="view" id="view-lawsearch">
-  <div class="view-head"><h2>⚖️ 법령조회</h2></div>
+  <div class="view-head"><h2>⚖️ 법령정보</h2></div>
+  <div class="lsi-tabs">
+    <button type="button" class="lsi-tab active" data-lsitab="law">📜 법령</button>
+    <button type="button" class="lsi-tab" data-lsitab="form">📄 서식</button>
+    <button type="button" class="lsi-tab" data-lsitab="ref">📋 조견표</button>
+  </div>
   <div class="view-body">
-    <div class="card">
-      <div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <select id="lsCaseSelect" style="min-width:220px; max-width:420px;"><option value="">사건을 선택하세요</option></select>
-        <button type="button" id="lsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
+    <div id="lsiPane-law">
+      <div class="card">
+        <div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <select id="lsCaseSelect" style="min-width:220px; max-width:420px;"><option value="">사건을 선택하세요</option></select>
+          <button type="button" id="lsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
+        </div>
       </div>
+      <!--@@APP_ONLY:lawdb-card@@-->
+      <!--@@APP_ONLY:judgewait@@-->
+      <div class="card">
+        <h3 style="margin-top:0;">조문으로 찾아보기</h3>
+        <div class="lsi-note" style="margin-bottom:8px;">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <select id="lsiArtLaw" style="min-width:200px;" aria-label="법령 고르기"></select>
+          <span>제</span><input type="text" id="lsiArtNo" style="width:80px;" placeholder="예: 24, 97의2" aria-label="조문 번호"><span>조</span>
+          <button type="button" class="btn" id="lsiArtGo">보기</button>
+        </div>
+        <div id="lsiArtResult" style="margin-top:10px;"></div>
+      </div>
+      <div id="lsBody"></div>
     </div>
-    <div id="lsBody"></div>
+    <div id="lsiPane-form" style="display:none;"></div>
+    <div id="lsiPane-ref" style="display:none;"></div>
   </div>
 </div>
 
@@ -44,7 +100,7 @@
   ];
   var LS_CATEGORY_LABELS_ = {
     precedent: '판례', interpretation: '법령해석례', administrative_rule: '행정규칙',
-    tax_tribunal: '조세심판원', constitutional: '헌재결정례', law: '법령', form: '별표·서식'
+    tax_tribunal: '조세심판원', constitutional: '헌재결정례', law: '법령', form: '별표·서식', statute: '법령 조문'
   };
   var LS_NO_DETAIL_ = { law: true, form: true }; // 상세조회 없이 검색결과만으로 첨부하는 카테고리
 
@@ -316,6 +372,9 @@
   function attachSelected_(){
     var checked = Array.prototype.map.call(document.querySelectorAll('.lsResultChk:checked'), function(el){ return Number(el.dataset.idx); });
     if (!checked.length){ showToast('첨부할 항목을 체크해주세요.', 'warning'); return; }
+    // [2026.10.19] 어디에 쓸지 한 줄 — 관련법령 파일·검토서 근거·AI 지휘가 이것으로 쓴다(비워도 됨, 취소하면 첨부 안 함)
+    var use = window.prompt('어디에 쓸 자료인가요? 쟁점이나 계산 칸을 적어 주세요(비워도 됩니다).', '');
+    if (use === null) return;
     var btn = document.getElementById('lsAttachSelectedBtn');
     btn.disabled = true;
     btn.textContent = '조회 중…';
@@ -336,7 +395,7 @@
     })).then(function(picked_results){
       var today = new Date().toISOString().slice(0, 10);
       var newEntries = picked.map(function(ri, i){
-        var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 첨부일: today };
+        var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 번호: ri.sub || '', 첨부일: today, 첨부: '직접', 쓸곳: String(use || '').trim() };
         if (picked_results[i].결과) entry.결과 = picked_results[i].결과;
         return entry;
       }).filter(function(entry){
@@ -372,8 +431,15 @@
         '<div class="log-date">' + escapeHtml(LS_CATEGORY_LABELS_[entry.category] || entry.category) +
         (entry.결과 ? '<br><span title="판결문 문장에서 자동으로 찾은 참고용 표시 — 정확한 분류 아님" style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; font-size:11px; color:var(--navy); display:inline-block; margin-top:3px;">' + escapeHtml(entry.결과) + '</span>' : '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.제목 || '') + '</b>' +
+        ' <span style="font-size:11.5px;color:var(--sub);">' + (entry.첨부 === 'AI' ? (entry.확인 ? '🤖 AI 첨부(확정)' : '🤖 AI 첨부(미확인)') : '직접 첨부') + (entry.판 ? ' · ' + escapeHtml(String(entry.판)) + ' 시행판' : '') + (entry.쓸곳 ? ' · 쓸 곳: ' + escapeHtml(entry.쓸곳) : '') + (entry.이유 ? ' · ' + escapeHtml(entry.이유) : '') + '</span>' +
+        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok" style="font-size:11.5px;padding:1px 6px;">✔ 확정</button>' : '') +
         (entry.요약 ? '<br><span style="color:var(--sub); font-size:12.5px; white-space:pre-wrap;">' + escapeHtml(entry.요약) + '</span>' : '') + '</div>' +
         '<span class="log-del" title="첨부 해제">✕</span>';
+      var okBtn = row.querySelector('.ls-ai-ok');
+      if (okBtn) okBtn.addEventListener('click', function(){
+        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: new Date().toISOString().slice(0, 10) }) : e; });
+        lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
+      });
       row.querySelector('.log-del').addEventListener('click', function(){
         var newList = list.filter(function(e){ return !(e.category === entry.category && e.id === entry.id); });
         lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
@@ -398,3 +464,705 @@
     if (wasAlreadyLoaded) loadLsCases_(caseId);
   }
 </script>
+
+<script>
+  // ============================================================
+  // [2026.10.19 조견표 체계] 법령정보 하위 탭 — [📜 법령][📄 서식][📋 조견표]
+  //  세무사님 말씀(원문): "세무서식도 세법해석이 함축적으로 녹아들어 있다는 점을 중요하게 생각한다면 서식관리도 조견표와
+  //  마찬가지로 법령탭속에 하위탭으로 구성해야 하지 않을까?" — 셋이 서로 이어진다:
+  //   조문 → 그 조문을 해석한 서식 칸 / 서식 칸 → 그 칸을 채우는 조견표·계산기 칸 / 조견표 행 → 근거 조문·서식 칸.
+  //  · 서식 목록은 세액인쇄의 PRINT_REGISTRY_(subForms)를 "읽기만" 한다 — 세액인쇄에 서식을 더하면 여기도 저절로 생긴다.
+  //  · 서식 원본은 드라이브 업무관리자\서식\법제처 원본(PDF)·한글 서식 폴더를 listFolder로 읽어 서식번호로 짝짓는다(조견표\해설서·책자는 참고자료로).
+  //  · 조문 → 계산 지도는 EngineLawMap.js(자동 생성)를 앱을 만들 때 tools/build-app.js가 아래 자리에 끼워 넣는다
+  //    (서버 호출 없음. 예전 구글 주소 화면에서는 null이라 "앱 화면에서만"이라고 알린다).
+  //  · 칸 지도(LSI_FORM_MAPS_)·조견표(LSI_REF_TABLES_)는 세무사님 확인 전 "초안" — 운영 판정·계산에는 쓰지 않는다.
+  // ============================================================
+  var LSI_ENGINE_LAW_MAP_ = /*@@ENGINE_LAW_MAP@@*/null;
+  // 서식번호(PRINT_REGISTRY_의 formNo 그대로) → 칸 지도 / 조견표 한 장씩(번호·이름·절차·행·개정·쓰는곳·확인필요)
+  // 아래 두 줄은 tools/build-reftables.js가 저장소 reftables/*.json으로 다시 쓴다 — 직접 고치지 말고 JSON을 고친 뒤 도구를 돌릴 것
+  /*@@REF_DATA_BEGIN@@*/
+  var LSI_FORM_MAPS_ = {};
+  var LSI_REF_TABLES_ = [];
+  var LSI_FORM_CATALOG_ = {"서식":[]};
+  /*@@REF_DATA_END@@*/
+  var lsiActiveTab_ = 'law';
+  var lsiFolderFiles_ = null;      // [{name,url,mimeType,folder,official,ref}] — 드라이브 서식·해설서 폴더
+  var lsiFolderLoading_ = false;
+  var lsiFormGroup_ = null;
+  var lsiOpenRef_ = null;
+  var lsiOpenFormMap_ = null;   // 열어 둔 칸 지도(폴더 목록이 늦게 와서 다시 그릴 때 그대로 다시 연다)
+  // [2026.10.19 폴더 정리(세무사님 승인)] 예전 업무관리자\세금계산\5 상속세·6 증여세·7 양도소득세 폴더는 비었다 —
+  //  [별지…] 한글 서식은 업무관리자\서식\한글 서식\<세목>, 서식이 아닌 책자·실수사례·작성 사례는 업무관리자\조견표\해설서·책자\<세목>로 옮겨졌다.
+  //  ref:true 폴더의 파일은 서식과 짝짓지 않고 '참고자료'로만 보여 준다.
+  var LSI_HWP_FOLDERS_ = [
+    { id: '1J1hH035TN_0zjJ4WfmC5K1s24zMCpfdY', label: '한글 서식·상속' },
+    { id: '1bsPwlyJV4cNLRe4wOhu0Vf5ArNuzRRyN', label: '한글 서식·증여' },
+    { id: '1OZh6Z11ss6JIg3wpbarUyNomXk14FXL2', label: '한글 서식·양도' },
+    { id: '1h3pnhIAhHruaVuvV-YNW-M1sdJgFPsyl', label: '해설서·책자·상속', ref: true },
+    { id: '1OWWGQQzfVcL1Equgz22ez3xMAxBbIEzD', label: '해설서·책자·증여', ref: true },
+    { id: '1Ja12Z8OX8efrwg7Pqp1V_fWxVeIqIt50', label: '해설서·책자·양도', ref: true }
+  ];
+  // [2026.10.19 세무사님 "그 폴더에 넣어라"] 법제처 공식 서식 PDF 144종 — 업무관리자\서식\법제처 원본(PDF)\<세목>(폴더 정리로 옮김, 폴더 ID 그대로), 이름 = 법제처 서식 이름 + _개정YYYY.M.D(목록: 그 폴더 _목록.md)
+  //  원본 열기는 이 PDF를 먼저 보여 주고, 예전부터 있던 hwp/pdf(위 세목 폴더)는 그 옆에 둔다.
+  var LSI_OFFICIAL_FOLDERS_ = { '상속': '11qD8IugSmXnNlI2RueaSrTCYrL74F937', '증여': '1wqtL3uPhNCuAwM8O3uHM1F-tt8QQLJ-3', '양도': '126zwjK9dcE8-ZgMYGdgj3FZiei78DsK7', '공통': '1L9OQq6HWSn_Jk0ap5IwbUYbU_NrdP90y' };
+  var LSI_BASE_LAWS_ = ['소득세법', '소득세법 시행령', '소득세법 시행규칙', '상속세 및 증여세법', '상속세 및 증여세법 시행령', '상속세 및 증여세법 시행규칙',
+    '조세특례제한법', '조세특례제한법 시행령', '조세특례제한법 시행규칙', '국세기본법', '국세기본법 시행령', '주택법', '부동산 거래신고 등에 관한 법률'];
+
+  function lsiEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // ---------- 세무사님 확인 기록(서버 스크립트 속성 — reftable_review_get/set). 기록만 하고, 확인해도 계산·판정에 바로 쓰이지 않는다 ----------
+  var lsiReviews_ = null, lsiReviewLoading_ = false, lsiReviewFailed_ = false, lsiReviewWaiters_ = [];
+  var lsiJudgments_ = null; // [2026.10.19] 세무사님 판단 대기 — 사건에서 고른 해석 기록(reftable_judgment_get)
+  function lsiLoadReviews_(after){
+    if (lsiReviews_){ if (after) after(); return; }
+    if (after) lsiReviewWaiters_.push(after);
+    if (lsiReviewLoading_) return;
+    lsiReviewLoading_ = true;
+    callGas('reftable_judgment_get', {}).then(function(r){ lsiJudgments_ = (r && r.judgments) || {}; }).catch(function(){ lsiJudgments_ = {}; });
+    callGas('reftable_review_get', {}).then(function(r){ lsiReviews_ = (r && r.reviews) || {}; lsiReviewFailed_ = !(r && r.reviews); })
+      .catch(function(){ lsiReviews_ = {}; lsiReviewFailed_ = true; })
+      .then(function(){ lsiReviewLoading_ = false; var w = lsiReviewWaiters_; lsiReviewWaiters_ = []; w.forEach(function(f){ f(); }); });
+  }
+  // 표 내용 지문 — 확인한 뒤 표가 바뀌면 "확인 뒤 바뀜"으로 알리려고(행·칸·절차·개정만 본다)
+  function lsiVer_(obj){
+    var s = JSON.stringify([obj.행 || obj.칸 || null, obj.절차 || null, obj.개정 || null]);
+    var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36) + '-' + s.length;
+  }
+  function lsiState_(key, obj){
+    var rv = lsiReviews_ && lsiReviews_[key];
+    if (rv && rv.상태 === '확인' && rv.판 === lsiVer_(obj)) return '세무사님 확인';
+    if (rv && rv.상태 === '보류') return '보류';
+    return obj.상태 || '초안';
+  }
+  function lsiReviewBarHtml_(key, obj){
+    var rv = lsiReviews_ && lsiReviews_[key];
+    var changed = rv && rv.판 && rv.판 !== lsiVer_(obj);
+    var line = lsiReviews_ === null ? '확인 기록을 불러오는 중…'
+      : lsiReviewFailed_ ? '확인 기록을 불러오지 못했습니다(서버 연결을 확인해 주세요).'
+      : !rv ? '아직 세무사님 확인 전입니다.'
+      : '세무사님 <b>' + lsiEsc_(rv.상태) + '</b> — ' + lsiEsc_(rv.시각 || '') + (changed ? ' · <span class="lsi-badge warn">확인한 뒤 표가 바뀌었습니다 — 다시 봐 주세요</span>' : '') + (rv.메모 ? '<br>메모: ' + lsiEsc_(rv.메모) : '');
+    return '<div class="lsi-review" data-lsirevkey="' + lsiEsc_(key) + '" style="margin:8px 0; padding:8px 10px; border:1px dashed var(--line); border-radius:6px;">' +
+      '<div style="font-size:12.5px; margin-bottom:6px;">' + line + '</div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+      '<button type="button" class="btn" data-lsirev="확인">✅ 이 표 확인</button>' +
+      '<button type="button" class="btn" data-lsirevmemo="1">✏ 고칠 곳 메모</button>' +
+      '<button type="button" class="btn" data-lsirev="보류">⏸ 보류</button>' +
+      (rv ? '<button type="button" class="ghost-btn" data-lsirev="지움">기록 지우기</button>' : '') + '</div>' +
+      '<div class="lsi-revmemo" style="display:none; margin-top:6px;"><textarea rows="2" style="width:100%;" aria-label="고칠 곳 메모" placeholder="어느 행·칸을 어떻게 고쳐야 하는지 적어 주세요">' + lsiEsc_(rv && rv.메모 || '') + '</textarea>' +
+      '<button type="button" class="btn" data-lsirev="메모" style="margin-top:4px;">메모 저장</button></div>' +
+      '<div class="lsi-note" style="margin-top:6px;">확인을 누르셔도 계산·판정에 바로 쓰이지는 않습니다. 확인된 표만 다음 반영 때 켭니다.</div></div>';
+  }
+  function lsiWireReview_(root, key, obj, redraw){
+    var bar = root.querySelector('.lsi-review'); if (!bar) return;
+    var memo = bar.querySelector('.lsi-revmemo');
+    var m = bar.querySelector('[data-lsirevmemo]'); if (m) m.addEventListener('click', function(){ memo.style.display = ''; memo.querySelector('textarea').focus(); });
+    bar.querySelectorAll('[data-lsirev]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var st = b.dataset.lsirev;
+        if (st === '메모' && !memo.querySelector('textarea').value.trim()){ showToast('메모를 적어 주세요.', 'warning'); return; }
+        b.disabled = true;
+        callGas('reftable_review_set', { key: key, state: st, ver: lsiVer_(obj), memo: memo.querySelector('textarea').value.trim() }).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '저장 실패');
+          lsiReviews_ = r.reviews || {}; lsiReviewFailed_ = false;
+          showToast(st === '지움' ? '기록을 지웠습니다.' : '저장했습니다.', 'success');
+          redraw();
+        }).catch(function(e){ b.disabled = false; showToast('저장하지 못했습니다: ' + e.message, 'warning'); });
+      });
+    });
+  }
+
+  function lsiShowTab_(tab){
+    lsiActiveTab_ = tab;
+    document.querySelectorAll('.lsi-tab').forEach(function(b){ b.classList.toggle('active', b.dataset.lsitab === tab); });
+    ['law', 'form', 'ref'].forEach(function(t){ document.getElementById('lsiPane-' + t).style.display = t === tab ? '' : 'none'; });
+    if (tab === 'form') lsiRenderForms_();
+    if (tab === 'ref') lsiRenderRefs_();
+    if (tab !== 'law') lsiLoadReviews_(function(){ if (lsiActiveTab_ === 'form') lsiRenderForms_(); else if (lsiActiveTab_ === 'ref') lsiRenderRefs_(); });
+  }
+  document.querySelectorAll('.lsi-tab').forEach(function(b){ b.addEventListener('click', function(){ lsiShowTab_(b.dataset.lsitab); }); });
+
+  // ---------- 서식번호 읽기: "소득세법 시행규칙 [별지 제84호서식 부표1]" → 법 + 번호 열쇠("84부표1") ----------
+  var LSI_LAW_ALIASES_ = [
+    [/조세특례제한법|조특법/, '조세특례제한법 시행규칙'], [/상속세\s*및\s*증여세법|상증세법|상증법/, '상속세 및 증여세법 시행규칙'],
+    [/국세기본법/, '국세기본법 시행규칙'], [/법인세법/, '법인세법 시행규칙'], [/지방세법/, '지방세법 시행규칙'], [/소득세법/, '소득세법 시행규칙']
+  ];
+  function lsiFormKey_(s){
+    var m = String(s || '').match(/별지\s*제\s*(\d+)\s*호\s*(의\s*\d+)?\s*서식(?:\s*부표\s*(\d+(?:\s*의\s*\d+)?)?\s*(?:\(\s*([갑을병정])\s*\))?)?/);
+    if (!m) return null;
+    return m[1] + (m[2] ? m[2].replace(/\s/g, '') : '') + (m[3] ? '부표' + m[3].replace(/\s/g, '') : (/부표/.test(m[0]) ? '부표' : '')) + (m[4] ? '(' + m[4] + ')' : '');
+  }
+  function lsiLawOf_(s){
+    s = String(s || '');
+    for (var i = 0; i < LSI_LAW_ALIASES_.length; i++) if (LSI_LAW_ALIASES_[i][0].test(s)) return LSI_LAW_ALIASES_[i][1];
+    return '';
+  }
+  function lsiNorm_(s){ return String(s || '').replace(/[\s·ㆍ,¸()\[\]「」.\-_]/g, ''); }
+
+  function lsiLoadFolderFiles_(){
+    if (lsiFolderFiles_ || lsiFolderLoading_) return;
+    lsiFolderLoading_ = true;
+    var list = LSI_HWP_FOLDERS_.map(function(d){ return { id: d.id, label: d.label, official: false, ref: !!d.ref }; })
+      .concat(Object.keys(LSI_OFFICIAL_FOLDERS_).map(function(k){ return { id: LSI_OFFICIAL_FOLDERS_[k], label: '법제처 원본·' + k, official: true }; }));
+    Promise.all(list.map(function(d){
+      return callGas('listFolder', { folderId: d.id }).then(function(res){
+        return (res && res.files || []).filter(function(f){ return !d.official || /\.pdf$/i.test(f.name); }).map(function(f){ return { name: f.name, url: f.url, mimeType: f.mimeType, folder: d.label, official: d.official, ref: !!d.ref }; });
+      }).catch(function(){ return [{ error: true, folder: d.label }]; });
+    })).then(function(lists){
+      lsiFolderFiles_ = [].concat.apply([], lists);
+      lsiFolderLoading_ = false;
+      if (lsiActiveTab_ === 'form') lsiRenderForms_();
+    });
+  }
+
+  // 서식 한 줄에 맞는 원본 파일 찾기 — ①번호+법 이름 같음 ②번호만 같음(파일 이름에 법 이름이 없음) ③본 서식 파일(부표가 본 서식 hwp 안에 같이 있는 경우)
+  //  ④제목이 파일 이름에 그대로 들어 있음. 짝을 어떻게 지었는지 그대로 보여 준다(지어내지 않음).
+  function lsiMatchFiles_(formNo, title){
+    // 법제처 원본 PDF는 번호·법이 같은 것만(이름 규칙이 정해져 있음), 맨 앞에. 나머지는 예전 방식대로 그 옆에.
+    var key0 = lsiFormKey_(formNo), law0 = lsiLawOf_(formNo);
+    var official = (lsiFolderFiles_ || []).filter(function(f){ return !f.error && f.official && key0 && lsiFormKey_(f.name) === key0 && lsiLawOf_(f.name) === law0; }).map(function(f){ return { f: f, how: '법제처 공식 서식(번호·법 같음)' }; });
+    return official.concat(lsiMatchOldFiles_(formNo, title));
+  }
+  function lsiMatchOldFiles_(formNo, title){
+    var files = (lsiFolderFiles_ || []).filter(function(f){ return !f.error && !f.official && !f.ref; }); // 해설서·책자는 서식과 짝짓지 않음
+    var key = lsiFormKey_(formNo), law = lsiLawOf_(formNo);
+    var out = [];
+    files.forEach(function(f){
+      var fk = lsiFormKey_(f.name), fl = lsiLawOf_(f.name);
+      if (key && fk === key && fl === law) out.push({ f: f, how: '번호·법 같음' });
+      else if (key && fk === key && !fl) out.push({ f: f, how: '번호만 같음(파일 이름에 법 이름 없음 — 확인 필요)' });
+    });
+    if (!out.length && key && key.indexOf('부표') !== -1){
+      var parent = key.split('부표')[0];
+      files.forEach(function(f){ if (lsiFormKey_(f.name) === parent && (lsiLawOf_(f.name) === law || !lsiLawOf_(f.name))) out.push({ f: f, how: '본 서식 파일 안에 함께 있음(추정)' }); });
+    }
+    if (!out.length && title){
+      var nt = lsiNorm_(title);
+      if (nt.length >= 6) files.forEach(function(f){ if (lsiNorm_(f.name).indexOf(nt) !== -1) out.push({ f: f, how: '제목이 같음' }); });
+    }
+    return out;
+  }
+
+  // [2026.10.19 서식 사전 전체] 서식 탭 목록은 법령 별지 기준 전체 목록(LSI_FORM_CATALOG_, 144종)을 쓴다 — 세액인쇄 목록(신고에 내는 서식)보다 넓다.
+  //  예전 구글 주소 화면처럼 목록 자료가 없으면 세액인쇄 목록으로 대신한다.
+  function lsiCatalogOn_(){ return typeof LSI_FORM_CATALOG_ !== 'undefined' && LSI_FORM_CATALOG_ && (LSI_FORM_CATALOG_.서식 || []).length > 0; }
+  function lsiFormGroups_(){ return lsiCatalogOn_() ? (LSI_FORM_CATALOG_.세목순서 || ['양도', '상속', '증여', '공통']) : (typeof PRINT_GROUP_ORDER_ !== 'undefined' ? PRINT_GROUP_ORDER_ : ['양도소득세', '상속세', '증여세', '증여·상속 공통']); }
+  function lsiGroupOfForm_(formNo){
+    if (lsiCatalogOn_()){ var c = LSI_FORM_CATALOG_.서식.filter(function(x){ return x.서식번호 === formNo; })[0]; return c ? c.세목 : null; }
+    return (typeof PRINT_REGISTRY_ !== 'undefined') ? (PRINT_REGISTRY_.filter(function(it){ return (it.subForms || []).some(function(sf){ return sf.formNo === formNo; }) || it.formNo === formNo; })[0] || {}).group : null;
+  }
+  // 세액인쇄 세목 이름 → 서식 사전 세목(세액인쇄의 '전체 서식 목록' 단추에서 넘어올 때)
+  function lsiGroupFromPrint_(g){ if (!lsiCatalogOn_()) return g; return ({ '양도소득세': '양도', '상속세': '상속', '증여세': '증여', '증여·상속 공통': '공통' })[g] || g; }
+  function lsiFormRows_(group){
+    if (!lsiCatalogOn_()) return lsiRegistryRows_(group);
+    return LSI_FORM_CATALOG_.서식.filter(function(x){ return x.세목 === group; }).map(function(x){ return { formNo: x.서식번호, title: x.이름, 개정일: x.개정일, 쓰임: x.쓰임, 법제처: x.법제처 }; });
+  }
+  function lsiRegistryRows_(group){
+    if (typeof PRINT_REGISTRY_ === 'undefined') return [];
+    var rows = [], seen = {};
+    PRINT_REGISTRY_.filter(function(it){ return it.group === group; }).forEach(function(it){
+      var itFormNo = typeof it.formNo === 'function' ? '' : it.formNo;
+      var list = it.subForms && it.subForms.length ? it.subForms : [{ formNo: itFormNo, title: it.label, section: 'required' }];
+      list.forEach(function(sf){
+        if (!sf.formNo || seen[sf.formNo]) return;
+        seen[sf.formNo] = true;
+        rows.push({ formNo: sf.formNo, title: sf.title, section: sf.section, source: it.label, printKey: it.key });
+      });
+    });
+    return rows;
+  }
+
+  function lsiRenderForms_(){
+    var pane = document.getElementById('lsiPane-form');
+    if (!lsiCatalogOn_() && typeof PRINT_REGISTRY_ === 'undefined'){ pane.innerHTML = '<div class="card">서식 목록(세액인쇄)을 아직 불러오지 못했습니다. 잠시 뒤 다시 눌러 주세요.</div>'; return; }
+    lsiLoadFolderFiles_();
+    var groups = lsiFormGroups_();
+    if (!lsiFormGroup_ || groups.indexOf(lsiFormGroup_) === -1) lsiFormGroup_ = lsiGroupFromPrint_(lsiFormGroup_) && groups.indexOf(lsiGroupFromPrint_(lsiFormGroup_)) !== -1 ? lsiGroupFromPrint_(lsiFormGroup_) : groups[0];
+    var rows = lsiFormRows_(lsiFormGroup_);
+    var allCount = groups.reduce(function(n, g){ return n + lsiFormRows_(g).length; }, 0);
+    var html = '<div class="card">' +
+      '<div class="lsi-note" style="margin-bottom:8px;">서식은 세법을 가장 먼저 정밀하게 해석한 기준입니다. 서식마다 <b>칸 해설</b>(칸 → 근거 조문 → 계산기 칸 → 쓰이는 조견표)을 쌓아 갑니다. ' +
+      (lsiCatalogOn_() ? '목록은 법령 시행규칙 별지 기준 전체 서식(모두 ' + allCount + '개, 지방세 신고서 제외 — 신고에 내는 서식은 세액인쇄가 고릅니다)이고, 원본은' : '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은') + ' 드라이브에서 서식번호로 찾습니다 — <b>법제처 PDF</b>(업무관리자\\서식\\법제처 원본(PDF)의 법제처 공식 서식)를 먼저, 한글 서식(업무관리자\\서식\\한글 서식)은 그 옆에 둡니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
+      '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' (' + lsiFormRows_(g).length + ')</button>'; }).join('') + '</div>';
+    var noFile = 0;
+    var gridRows = rows.map(function(r){
+      var files = lsiFolderFiles_ ? lsiMatchFiles_(r.formNo, r.title) : null;
+      if (files && !files.length) noFile++;
+      var fm = LSI_FORM_MAPS_[r.formNo];
+      var fileHtml = files === null ? '<span class="lsi-note">불러오는 중…</span>'
+        : files.length ? '<span class="lsi-files">' + files.map(function(x){ return '<a href="' + lsiEsc_(x.f.url) + '" target="_blank" rel="noopener" title="' + lsiEsc_(x.f.folder + ' 폴더 · ' + x.f.name + ' · ' + x.how) + '">' + (x.f.official ? '법제처 PDF' : /\.pdf$/i.test(x.f.name) ? 'PDF' : /\.hwpx?$/i.test(x.f.name) ? '한글' : '파일') + (x.how === '번호·법 같음' || x.f.official ? '' : '?') + '</a>'; }).join('') + '</span>'
+        : '<span class="lsi-badge warn">원본 없음</span>';
+      var mapHtml = fm ? '<button type="button" class="lsi-link" data-lsiformmap="' + lsiEsc_(r.formNo) + '">칸 ' + (fm.칸 || []).length + '개</button> <span class="lsi-badge' + (lsiState_(r.formNo, fm) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(r.formNo, fm)) + '</span>' : '<span class="lsi-note">아직 없음</span>';
+      // [2026.10.19 세무사님] 서식 탭은 서식 사전 — 필수/해당 시·전자/서면·찍기(세액인쇄로) 같은 신고·출력 표시는 세액인쇄에만 둔다
+      // [2026.10.19 세무사님 "별도칸으로 나누고…행넘김없이 스크롤"] 서식 이름 칸에 섞여 있던 법령·개정일·법제처 링크·옛 판을 각 칸으로
+      var shortNo = typeof printShortFormNo_ === 'function' ? printShortFormNo_(r.formNo) : r.formNo;
+      var lawName = r.formNo.split('[')[0].trim();
+      return [lsiCell_(lsiEsc_(shortNo), r.formNo), lsiTextCell_(r.title), lsiTextCell_(lawName), lsiTextCell_(r.개정일 || ''),
+        lsiCell_(r.법제처 ? '<a href="' + lsiEsc_(r.법제처) + '" target="_blank" rel="noopener">법제처 ↗</a>' : ''),
+        lsiCell_(fileHtml), lsiCell_(lsiOldFilesHtml_(r.formNo)), lsiCell_(mapHtml)];
+    });
+    html += lsiGridHtml_([{ h: '서식번호', w: 10 }, { h: '서식 이름', w: 24 }, { h: '법령', w: 15 }, { h: '개정일', w: 7 }, { h: '법제처', w: 5.5 }, { h: '원본', w: 13 }, { h: '옛 판(예전 폴더)', w: 12 }, { h: '칸 해설', w: 13 }], gridRows);
+    html += '<div class="lsi-note" style="margin-top:6px;">원본 옆 "?"는 서식번호만 같거나 제목으로 짝지은 것입니다(마우스를 올리면 이유가 보입니다).' + (lsiFolderFiles_ ? ' 이 세목에서 원본을 못 찾은 서식 ' + noFile + '개.' : '') + '</div></div>';
+    html += '<div id="lsiFormMapBox"></div>';
+    if (lsiFolderFiles_) html += lsiUnmatchedHtml_();
+    pane.innerHTML = html;
+    if (lsiOpenFormMap_ && LSI_FORM_MAPS_[lsiOpenFormMap_]) setTimeout(function(){ lsiShowFormMap_(lsiOpenFormMap_, true); }, 0);
+    pane.querySelectorAll('[data-lsigroup]').forEach(function(b){ b.addEventListener('click', function(){ lsiFormGroup_ = b.dataset.lsigroup; lsiRenderForms_(); }); });
+    pane.querySelectorAll('[data-lsiformmap]').forEach(function(b){ b.addEventListener('click', function(){ lsiShowFormMap_(b.dataset.lsiformmap); }); });
+  }
+
+  // 드라이브 서식 폴더에 있는데 세액인쇄 목록의 어느 서식과도 짝이 안 된 파일 — 목록에 빠진 서식을 찾는 데 쓴다
+  // [2026.10.19 세무사님 질문 "서식폴더에 있지만 목록과 짝이 안된 파일이 무척 많이 나열되어 있는데 이것이 무슨 의미인가?"]
+  //  한글 서식 폴더(업무관리자\서식\한글 서식 — 예전 세금계산\5 상속세·6 증여세·7 양도소득세에서 옮김)와 해설서·책자 폴더의 파일 중
+  //  서식 사전 줄과 바로 짝지어지지 않은 것을 세 묶음으로 나눈다.
+  //  ① 옛 판: 이름이 번호 없이 바뀌었지만 같은 서식(제목이 같음) — 그 서식 줄 아래 "옛 판"으로 붙인다.
+  //  ② 참고자료: 서식이 아닌 해설·안내·사례·파일설명서 — 세목별로 접어서 보여 준다(조견표 재료).
+  //  ③ 확인 필요: 서식처럼 보이지만 이 목록(법령 시행규칙 별지, 지방세 제외) 밖이거나 이름으로 알 수 없는 것 — 이유를 붙인다.
+  //  참고자료 말: 이 말이 있으면 서식 이름 같아도 참고자료(사례·설명·안내 등). 서식이 아닌 이름(신청서·신고서·명세서·계산서 등이 없음)도 참고자료.
+  var LSI_REF_WORDS_ = /사례|작성요령|설명|개요|흐름도|안내|가이드|요령|실수|체크포인트|포인트|상식|오해|책자|과세개요|지원제도/;
+  function lsiTitleKey_(name){
+    var t = String(name || '').replace(/\.(hwpx?|pdf|docx?)$/i, '').replace(/^\s*(\[[^\]]*\]|\([^)]*\))\s*/, '').replace(/^[\d_.\s]+/, '')
+      .replace(/\((?:[^()]*법[^()]*|수정|\d+)\)\s*$/, '').replace(/_?\d{2}년$/, '');
+    return lsiNorm_(t);
+  }
+  var lsiLeftCache_ = null, lsiLeftCacheOf_ = null;
+  function lsiClassifyLeftovers_(){
+    if (lsiLeftCacheOf_ === lsiFolderFiles_ && lsiLeftCache_) return lsiLeftCache_;
+    var used = {};
+    var rows = [];
+    lsiFormGroups_().forEach(function(g){ lsiFormRows_(g).forEach(function(r){ rows.push(r); lsiMatchFiles_(r.formNo, r.title).forEach(function(x){ used[x.f.url] = true; }); }); });
+    // 제목 열쇠 두 가지: 그대로, 괄호 속 글을 뺀 것(예: '양도소득(국외전출자)과세표준 신고…' ↔ '양도소득과세표준 신고…')
+    var noParen = function(t){ return lsiNorm_(String(t || '').replace(/\([^()]*\)/g, '')); };
+    var titles = rows.map(function(r){ return { formNo: r.formNo, keys: [lsiNorm_(r.title), noParen(r.title)] }; });
+    var out = { old: {}, oldCount: 0, ref: {}, refCount: 0, unknown: [], errs: (lsiFolderFiles_ || []).filter(function(f){ return f.error; }) };
+    (lsiFolderFiles_ || []).filter(function(f){ return !f.error && !f.official && !used[f.url]; }).forEach(function(f){
+      var key = lsiTitleKey_(f.name), key2 = noParen(lsiTitleKey_(f.name));
+      var isRefWord = f.ref || LSI_REF_WORDS_.test(f.name); // 조견표\해설서·책자 폴더 파일은 늘 참고자료
+      // 옛 판: 제목이 서식 이름과 같거나 서로 포함(8자 이상) — 가장 길게 겹치는 서식 하나에
+      //  서식번호가 이름에 따로 적힌 파일([별지 제57호의2서식] 등)과 다른 법령 서식은 제목으로 짝짓지 않는다(번호가 다르면 다른 서식)
+      //  점수: 똑같음 > 파일 제목이 서식 이름 안에 있음(서식 이름이 짧을수록) > 서식 이름이 파일 제목 안에 있음(서식 이름이 길수록)
+      var best = null, bestScore = 0;
+      if (!isRefWord && !lsiFormKey_(f.name) && !/법인세법|지방세|사무처리규정/.test(f.name) && key.length >= 6) titles.forEach(function(t){
+        [key, key2].forEach(function(k){ t.keys.forEach(function(tk){
+          if (tk.length < 6 || k.length < 6) return;
+          var sc = k === tk ? 1000 : (k.length >= 8 && tk.indexOf(k) !== -1) ? 500 - (tk.length - k.length) : (tk.length >= 8 && k.indexOf(tk) !== -1) ? 100 + tk.length : 0;
+          if (sc > bestScore){ bestScore = sc; best = t; }
+        }); });
+      });
+      if (best){ (out.old[best.formNo] = out.old[best.formNo] || []).push(f); out.oldCount++; return; }
+      var formLike = /\[별지|서식\]|신청서|신고서|명세서|계산서|합계표|확인서/.test(f.name);
+      if (isRefWord || !formLike){ (out.ref[f.folder] = out.ref[f.folder] || []).push(f); out.refCount++; return; }
+      var why = /사무처리규정/.test(f.name) ? '국세청 사무처리규정 서식(법령 시행규칙 별지가 아님)'
+        : /법인세법|지방세/.test(f.name) ? '다른 법령 서식(이 서식 사전 범위 밖)'
+        : lsiFormKey_(f.name) ? '서식번호는 읽었지만 이 목록에 없는 번호(삭제·이동된 옛 번호이거나 범위 밖)'
+        : '이름만으로는 어느 서식인지 알 수 없음';
+      out.unknown.push({ f: f, why: why });
+    });
+    lsiLeftCache_ = out; lsiLeftCacheOf_ = lsiFolderFiles_;
+    return out;
+  }
+  function lsiOldFilesHtml_(formNo){
+    if (!lsiFolderFiles_) return '';
+    var list = lsiClassifyLeftovers_().old[formNo] || [];
+    if (!list.length) return '';
+    return '<span class="lsi-note">' + list.map(function(f){
+      var yr = (String(f.name).match(/(\d{2})년/) || [])[1];
+      return '<a href="' + lsiEsc_(f.url) + '" target="_blank" rel="noopener" title="' + lsiEsc_(f.folder + ' 폴더 · ' + f.name + ' · 제목이 같아 짝지음(개정일은 파일에 없음)') + '">' + (/\.pdf$/i.test(f.name) ? 'PDF' : /\.hwpx?$/i.test(f.name) ? '한글' : '파일') + '(' + (yr ? '20' + yr + '년' : '개정일 모름') + ')</a>';
+    }).join(' ') + '</span>';
+  }
+  function lsiUnmatchedHtml_(){
+    var c = lsiClassifyLeftovers_();
+    // [2026.10.19 서식 탭 표 정리] 파일 이름·폴더·이유를 각 칸으로
+    var fileRow = function(f, extra){ return [lsiCell_('<a href="' + lsiEsc_(f.url) + '" target="_blank" rel="noopener">' + lsiEsc_(f.name) + '</a>', f.name), lsiTextCell_(f.folder), lsiTextCell_(extra || '')]; };
+    var fileGrid = function(rows, withWhy){ return lsiGridHtml_([{ h: '파일 이름', w: 36 }, { h: '폴더', w: 12 }].concat(withWhy ? [{ h: '이유', w: 30 }] : []), rows.map(function(r){ return withWhy ? r : r.slice(0, 2); })); };
+    var refFolders = Object.keys(c.ref);
+    return '<div class="card"><details><summary style="cursor:pointer;"><b>한글 서식·해설서 폴더의 다른 파일</b> <span class="lsi-note">— 옛 판 ' + c.oldCount + '개(각 서식 줄에 붙임) · 참고자료 ' + c.refCount + '개 · 확인 필요 ' + c.unknown.length + '개</span></summary>' +
+      (c.errs.length ? '<div class="lsi-note">폴더를 못 읽음: ' + c.errs.map(function(e){ return lsiEsc_(e.folder); }).join(', ') + '</div>' : '') +
+      '<div class="lsi-note" style="margin:6px 0;">드라이브 업무관리자\\서식\\한글 서식(예전 세금계산\\5 상속세·6 증여세·7 양도소득세의 서식)과 업무관리자\\조견표\\해설서·책자(책자·실수사례·작성 사례)의 파일 중 위 서식 줄과 번호로 바로 짝지어지지 않은 것입니다. 지우거나 옮기지 않았습니다.</div>' +
+      '<details style="margin:4px 0;"><summary class="lsi-note" style="cursor:pointer;">참고자료 ' + c.refCount + '개 — 서식이 아닌 해설·안내·사례·파일설명서(세목별)</summary>' +
+        refFolders.map(function(k){ return '<div style="margin:6px 0 0 6px;"><b style="font-size:12.5px;">' + lsiEsc_(k) + ' (' + c.ref[k].length + ')</b>' + fileGrid(c.ref[k].map(function(f){ return fileRow(f); }), false) + '</div>'; }).join('') + '</details>' +
+      '<details style="margin:4px 0;"><summary class="lsi-note" style="cursor:pointer;">확인 필요 ' + c.unknown.length + '개 — 서식처럼 보이지만 이 목록 밖이거나 이름으로 알 수 없음</summary>' + fileGrid(c.unknown.map(function(u){ return fileRow(u.f, u.why); }), true) + '</details>' +
+      '</details></div>';
+  }
+
+  // ---------- 조문 문자열 읽기: "상증세법 §24①" → { law: '상속세 및 증여세법', art: '24' } ----------
+  var LSI_ART_LAW_ALIASES_ = [
+    [/조특령|조세특례제한법\s*시행령|조특법\s*시행령/, '조세특례제한법 시행령'], [/조세특례제한법\s*시행규칙|조특법\s*시행규칙/, '조세특례제한법 시행규칙'], [/조특법|조세특례제한법/, '조세특례제한법'],
+    [/상속세\s*및\s*증여세법\s*시행령|상증(?:세)?법\s*시행령|상증령/, '상속세 및 증여세법 시행령'], [/상속세\s*및\s*증여세법\s*시행규칙|상증(?:세)?법\s*시행규칙/, '상속세 및 증여세법 시행규칙'], [/상증(?:세)?법|상속세\s*및\s*증여세법/, '상속세 및 증여세법'],
+    [/국세기본법\s*시행령|국기령/, '국세기본법 시행령'], [/국세기본법|국기법/, '국세기본법'],
+    [/소득세법\s*시행령|소득령/, '소득세법 시행령'], [/소득세법\s*시행규칙/, '소득세법 시행규칙'], [/소득세법|소법/, '소득세법'],
+    [/주택법/, '주택법'], [/부동산\s*거래신고/, '부동산 거래신고 등에 관한 법률']
+  ];
+  function lsiParseArticle_(s){
+    s = String(s || '');
+    var law = '';
+    for (var i = 0; i < LSI_ART_LAW_ALIASES_.length; i++) if (LSI_ART_LAW_ALIASES_[i][0].test(s)) { law = LSI_ART_LAW_ALIASES_[i][1]; break; }
+    var m = s.match(/(?:§|제)\s*(\d+)\s*(?:조)?\s*(의\s*\d+)?/);
+    if (!m) return null;
+    return { law: law, art: m[1] + (m[2] ? m[2].replace(/\s/g, '') : '') };
+  }
+  function lsiLawUrl_(law, art){
+    var a = String(art || '').match(/^(\d+)(?:의(\d+))?$/);
+    return 'https://www.law.go.kr/법령/' + encodeURIComponent(String(law).replace(/\s/g, '')) + (a ? '/' + encodeURIComponent('제' + a[1] + '조' + (a[2] ? '의' + a[2] : '')) : '');
+  }
+  function lsiSameArt_(s, law, art){ var p = lsiParseArticle_(s); return !!(p && p.art === art && (!p.law || p.law === law)); }
+
+  (function lsiFillLawSelect_(){
+    var sel = document.getElementById('lsiArtLaw');
+    var names = LSI_BASE_LAWS_.slice();
+    if (LSI_ENGINE_LAW_MAP_) Object.keys(LSI_ENGINE_LAW_MAP_).forEach(function(n){ if (names.indexOf(n) === -1) names.push(n); });
+    sel.innerHTML = names.map(function(n){ return '<option>' + lsiEsc_(n) + '</option>'; }).join('');
+  })();
+
+  function lsiOpenArticle_(law, art){
+    if (lsiActiveTab_ !== 'law') lsiShowTab_('law');
+    var sel = document.getElementById('lsiArtLaw');
+    if (law){ if (!Array.prototype.some.call(sel.options, function(o){ return o.value === law; })) sel.insertAdjacentHTML('beforeend', '<option>' + lsiEsc_(law) + '</option>'); sel.value = law; }
+    document.getElementById('lsiArtNo').value = art || '';
+    lsiShowArticle_();
+    var box = document.getElementById('lsiArtResult');
+    if (box && box.scrollIntoView) box.scrollIntoView({ block: 'nearest' });
+  }
+
+  function lsiShowArticle_(){
+    var law = document.getElementById('lsiArtLaw').value;
+    var art = String(document.getElementById('lsiArtNo').value || '').replace(/^제\s*/, '').replace(/\s*조\s*/, '').replace(/\s/g, '');
+    var box = document.getElementById('lsiArtResult');
+    if (!/^\d+(의\d+)?$/.test(art)){ box.innerHTML = '<div class="lsi-note">조문 번호를 숫자로 넣어 주세요(예: 24, 97의2).</div>'; return; }
+    // 1) 이 조문을 해석한 서식 칸
+    var cells = [];
+    Object.keys(LSI_FORM_MAPS_).forEach(function(fno){
+      (LSI_FORM_MAPS_[fno].칸 || []).forEach(function(k){ if ((k.근거조문 || []).some(function(s){ return lsiSameArt_(s, law, art); })) cells.push({ fno: fno, k: k }); });
+    });
+    // 2) 이 조문을 쓰는 조견표
+    var refs = LSI_REF_TABLES_.filter(function(t){
+      return (t.근거법령 || []).some(function(s){ return lsiSameArt_(s, law, art); }) || (t.행 || []).some(function(r){ return lsiSameArt_(r.근거조문, law, art); });
+    });
+    // 3) 이 조문을 쓰는 계산(EngineLawMap — 주석에 조문이 적힌 함수, 추정 포함)
+    var fns = LSI_ENGINE_LAW_MAP_ ? ((LSI_ENGINE_LAW_MAP_[law] || {})[art] || []) : null;
+    var place = function(f){ return /^taxcalc-engine:/.test(f) ? '세액계산 엔진' : /^taxcalc:/.test(f) ? '세액계산 화면' : '서버(AI 도구·사건처리)'; };
+    var byPlace = {};
+    (fns || []).forEach(function(f){ (byPlace[place(f)] = byPlace[place(f)] || []).push(f.replace(/^taxcalc(-engine)?:/, '')); });
+    var artLabel = '제' + art.replace(/^(\d+)의(\d+)$/, '$1조의$2').replace(/^(\d+)$/, '$1조');
+    box.innerHTML =
+      '<div style="margin-bottom:6px;"><b>' + lsiEsc_(law + ' ' + artLabel) + '</b> <a href="' + lsiEsc_(lsiLawUrl_(law, art)) + '" target="_blank" rel="noopener">법제처 원문 ↗</a></div>' +
+      '<div style="margin-bottom:6px;">📄 <b>이 조문을 해석한 서식 칸</b>: ' + (cells.length ? cells.map(function(c){ return '<button type="button" class="lsi-link" data-lsigoform="' + lsiEsc_(c.fno) + '">' + lsiEsc_((typeof printShortFormNo_ === 'function' ? printShortFormNo_(c.fno) : c.fno) + ' ' + (c.k.칸 || '') + ' ' + (c.k.이름 || '')) + '</button>'; }).join(', ') : '<span class="lsi-note">아직 없음(칸 해설을 만든 서식만 나옵니다)</span>') + '</div>' +
+      '<div style="margin-bottom:6px;">📋 <b>이 조문을 쓰는 조견표</b>: ' + (refs.length ? refs.map(function(t){ return '<button type="button" class="lsi-link" data-lsigoref="' + lsiEsc_(t.번호) + '">' + lsiEsc_(t.번호 + ' ' + t.이름) + '</button>'; }).join(', ') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
+      '<div>🧮 <b>이 조문을 쓰는 계산</b>: ' + (fns === null ? '<span class="lsi-note">이 목록은 job.netax.kr/app 화면에서 보입니다.</span>'
+        : fns.length ? Object.keys(byPlace).map(function(p){ return p + ' ' + byPlace[p].length + '곳'; }).join(' · ') + ' <details style="display:inline;"><summary class="lsi-note" style="display:inline; cursor:pointer;">(만드는 사람용 이름 보기)</summary><div class="lsi-note">' + Object.keys(byPlace).map(function(p){ return p + ': ' + byPlace[p].map(lsiEsc_).join(', '); }).join('<br>') + '<br>주석·문구에 이 조문이 적힌 함수입니다(추정 포함).</div></details>'
+        : '<span class="lsi-note">계산 코드에 이 조문이 적힌 곳이 없습니다(그래도 계산에 안 쓰인다는 뜻은 아닙니다 — 주석에 조문 번호가 안 적혔을 수 있음).</span>') + '</div>';
+    lsiWireLinks_(box);
+  }
+  document.getElementById('lsiArtGo').addEventListener('click', lsiShowArticle_);
+  document.getElementById('lsiArtNo').addEventListener('keydown', function(e){ if (e.key === 'Enter') lsiShowArticle_(); });
+
+  // ---------- 서로 잇는 단추(조문·조견표·서식 칸·계산기) ----------
+  function lsiArtLinks_(list){
+    return (list || []).map(function(s){
+      var p = lsiParseArticle_(s);
+      return p && p.law ? '<button type="button" class="lsi-link" data-lsiart="' + lsiEsc_(p.law + '|' + p.art) + '">' + lsiEsc_(s) + '</button>' : lsiEsc_(s);
+    }).join(', ');
+  }
+  function lsiRefLinks_(list){
+    return (list || []).map(function(s){
+      var no = String(s).match(/^[12]부-\d+/);
+      return no ? '<button type="button" class="lsi-link" data-lsigoref="' + lsiEsc_(no[0]) + '">' + lsiEsc_(s) + '</button>' : lsiEsc_(s);
+    }).join(', ');
+  }
+  function lsiFormCellLinks_(list){
+    return (list || []).map(function(s){
+      var fno = Object.keys(LSI_FORM_MAPS_).filter(function(f){ return lsiFormKey_(f) && lsiFormKey_(f) === lsiFormKey_(s) && lsiLawOf_(f) === lsiLawOf_(s); })[0];
+      return fno ? '<button type="button" class="lsi-link" data-lsigoform="' + lsiEsc_(fno) + '">' + lsiEsc_(s) + '</button>' : lsiEsc_(s);
+    }).join(', ');
+  }
+  function lsiWireLinks_(root){
+    root.querySelectorAll('[data-lsiart]').forEach(function(b){ b.addEventListener('click', function(){ var p = b.dataset.lsiart.split('|'); lsiOpenArticle_(p[0], p[1]); }); });
+    root.querySelectorAll('[data-lsigoref]').forEach(function(b){ b.addEventListener('click', function(){ lsiOpenRef_ = b.dataset.lsigoref; if (lsiActiveTab_ === 'ref') lsiShowRef_(lsiOpenRef_); else lsiShowTab_('ref'); }); });
+    root.querySelectorAll('[data-lsigoform]').forEach(function(b){ b.addEventListener('click', function(){ var f = b.dataset.lsigoform; var g = lsiGroupOfForm_(f); if (g) lsiFormGroup_ = g; lsiShowTab_('form'); lsiShowFormMap_(f); }); });
+    root.querySelectorAll('[data-lsicalc]').forEach(function(b){ b.addEventListener('click', function(){ if (typeof goToView_ === 'function') goToView_('taxcalc'); }); });
+  }
+
+  // ---------- 칸 지도 보기 ----------
+  function lsiShowFormMap_(formNo, noScroll){
+    lsiOpenFormMap_ = formNo;
+    var fm = LSI_FORM_MAPS_[formNo];
+    var box = document.getElementById('lsiFormMapBox');
+    if (!box){ lsiRenderForms_(); box = document.getElementById('lsiFormMapBox'); }
+    if (!fm || !box) return;
+    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">칸 해설 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
+      '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(formNo) + (fm.서식판 ? ' · 서식판 ' + lsiEsc_(fm.서식판) : '') + ' · 상태: <b>' + lsiEsc_(lsiState_(formNo, fm)) + '</b>(세무사님 확인 전에는 계산·판정에 쓰지 않습니다)' +
+      (fm.출처 || []).map(function(o){ return ' · <a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join('') + '</div>' +
+      (fm.설명 ? '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(fm.설명) + '</div>' : '') +
+      lsiReviewBarHtml_(formNo, fm) +
+      // [2026.10.19 서식 탭 표 정리] 칸마다 한 줄 — 긴 작성방법·확인 글은 칸 안에서 가로 스크롤(마우스를 올리면 전체 글). 조문 개정·시행일·지금 인쇄는 따로 칸
+      (function(){
+        var hasRev = (fm.칸 || []).some(function(k){ return k.조문개정; }), hasPrint = (fm.칸 || []).some(function(k){ return k.인쇄; });
+        var cols = [{ h: '칸', w: 4.5 }, { h: '칸 이름', w: 14 }, { h: '작성방법(요지)', w: 26 }, { h: '계산(칸끼리)', w: 16 }, { h: '근거 조문', w: 14 }]
+          .concat(hasRev ? [{ h: '조문 개정·시행', w: 18 }] : [])
+          .concat([{ h: '계산기 칸', w: 16 }, { h: '조견표', w: 8 }], hasPrint ? [{ h: '지금 인쇄', w: 16 }] : [], [{ h: '확인', w: 8 }, { h: '확인 내용', w: 30 }]);
+        var rows = (fm.칸 || []).map(function(k){
+          var calcBtns = (k.계산기칸 || []).map(function(c){ return '<button type="button" class="lsi-link" data-lsicalc="1">' + lsiEsc_(c) + '</button>'; }).join(', ');
+          return [lsiTextCell_(k.칸), lsiTextCell_(k.이름), lsiTextCell_(k.작성방법), lsiTextCell_(k.계산 || ''), lsiCell_(lsiArtLinks_(k.근거조문), lsiPlain_(k.근거조문))]
+            .concat(hasRev ? [lsiTextCell_(k.조문개정 || '')] : [])
+            .concat([lsiCell_(calcBtns, lsiPlain_(k.계산기칸)), lsiCell_(lsiRefLinks_(k.조견표), lsiPlain_(k.조견표))], hasPrint ? [lsiTextCell_(k.인쇄 || '')] : [], [lsiCell_(lsiCheckBadge_(k.확인)), lsiTextCell_(k.확인 || '')]);
+        });
+        return lsiGridHtml_(cols, rows);
+      })() +
+      ((fm.검산 || []).length ? '<div style="margin-top:8px;"><b>칸 산식 검산</b> <span class="lsi-note">(계산 결과를 서식 칸 계산대로 다시 맞춰 봄)</span><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.검산.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
+      (fm.핵심연결 ? '<div style="margin-top:8px;"><b>조견표와 잇는 곳</b><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + Object.keys(fm.핵심연결).map(function(k){ return '<li><b>' + lsiEsc_(k) + '</b>: ' + lsiEsc_(fm.핵심연결[k]) + '</li>'; }).join('') + '</ul></div>' : '') +
+      ((fm.발견 || []).length ? '<div style="margin-top:8px;"><b>칸 해설을 만들며 드러난 것</b> <span class="lsi-note">(계산기·인쇄와 서식이 다른 곳 — 고칠지 따로 정함)</span><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.발견.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
+      ((fm.확인필요 || []).length ? '<div style="margin-top:8px;"><b>확인 필요</b><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.확인필요.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
+      '</div>';
+    lsiWireLinks_(box);
+    lsiWireReview_(box, formNo, fm, function(){ lsiShowFormMap_(formNo, true); lsiRenderForms_(); });
+    if (!noScroll && box.scrollIntoView) box.scrollIntoView({ block: 'start' });
+  }
+
+  // ---------- [2026.10.19] 조정대상지역(1부-01) — 주소로 찾기·시기별 보기 ----------
+  //  세무사님과 정한 구성: 원본은 1부-01 하나(주소 × 지정일 × 해제일 × 근거 공고), 화면은 두 보기. 판정 규칙은 5번 AdjArea.js
+  //  (caseProcAdjMatch_·caseProcAdjAreaAt_)와 같다 — 읍·면·동·지구 경계를 주소로 못 가르면 '확인 필요'(토지이용계획 확인).
+  var LSI_ADJ_SIDO_ = { '서울특별시': '서울', '서울시': '서울', '부산광역시': '부산', '대구광역시': '대구', '인천광역시': '인천', '광주광역시': '광주', '대전광역시': '대전', '울산광역시': '울산', '세종특별자치시': '세종', '경기도': '경기', '충청북도': '충북', '충청남도': '충남', '전라북도': '전북', '전북특별자치도': '전북', '전라남도': '전남', '경상북도': '경북', '경상남도': '경남' };
+  function lsiAdjTok_(addr, t){ return new RegExp('(^|[\\s(,])' + t + '($|[\\s),])').test(addr) || new RegExp('(^|[\\s(,])[^\\s(,]*시' + t + '($|[\\s),])').test(addr); }
+  function lsiAdjMatch_(addr, m){
+    var a = ' ' + String(addr || '').replace(/[,·]/g, ' ') + ' ';
+    var sd = '';
+    Object.keys(LSI_ADJ_SIDO_).forEach(function(k){ if (a.indexOf(k) !== -1) sd = LSI_ADJ_SIDO_[k]; });
+    if (!sd) ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기'].forEach(function(k){ if (lsiAdjTok_(a, k)) sd = k; });
+    if (sd && sd !== m.sd) return 'no';
+    if (m.si){
+      if (m.si === '세종특별자치시'){ if (sd !== '세종') return 'no'; }
+      else if (!new RegExp('(^|[\\s(,])' + m.si).test(a)) return 'no';
+      if (m.si === '광주시' && sd !== '경기') return sd ? 'no' : 'unknown';
+    } else if (!sd) return 'unknown';
+    if (m.gu){
+      if (!lsiAdjTok_(a, m.gu)){
+        var rest = m.si ? (a.split(m.si)[1] || '') : a;
+        return (m.si ? /[가-힣]+구(\s|$)/ : /[가-힣]+(구|군)(\s|$)/).test(rest) ? 'no' : 'unknown';
+      }
+    }
+    var toks = a.split(/\s+/).filter(Boolean);
+    var dong = toks.filter(function(t){ return /[가-힣0-9]+(동|읍|면|리|가)$/.test(t) && !/(시|구|군)$/.test(t); });
+    if (m.only){
+      if (!dong.length) return 'unknown';
+      if (!m.only.some(function(x){ return dong.indexOf(x) !== -1; })) return 'no';
+      return m.zone ? 'unknown' : 'yes';
+    }
+    if (m.zone) return 'unknown';
+    if (m.ex && m.ex.some(function(x){ return dong.indexOf(x) !== -1; })) return 'no';
+    if (m.exRi){
+      var myeon = Object.keys(m.exRi).filter(function(k){ return dong.indexOf(k) !== -1; })[0];
+      if (myeon){
+        if (m.exRi[myeon].some(function(x){ return dong.indexOf(x) !== -1; })) return 'no';
+        if (!dong.some(function(t){ return /리$/.test(t); })) return 'unknown';
+      }
+    }
+    if ((m.ex || m.exRi) && !dong.length) return 'unknown';
+    return 'yes';
+  }
+  function lsiAdjAt_(E, addr, date, purpose){
+    var d = String(date || '').slice(0, 10);
+    if (!addr || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return { 판정: '확인 필요', 이유: !addr ? '주소를 넣어 주세요' : '날짜를 넣어 주세요', 근거: [] };
+    var st = false, unk = '', basis = [];
+    E.forEach(function(e){
+      if (e.date > d) return;
+      e.areas.forEach(function(m){
+        var r = lsiAdjMatch_(addr, m);
+        if (r === 'no') return;
+        if (r === 'unknown'){ unk = e.no + ' ' + e.kind + ' — ' + (m.zone || (/[가-힣0-9](동|읍|면|리|가)(\s|$)/.test(addr) ? '주소만으로는 지구·경계 안인지 못 가름' : '주소에 구·읍·면·동이 없어 못 가름')); if (basis.indexOf(e.no) === -1) basis.push(e.no); return; }
+        st = e.kind === '지정'; unk = ''; if (basis.indexOf(e.no) === -1) basis.push(e.no);
+      });
+    });
+    if (d >= '2017-08-03' && d < '2017-11-10'){
+      var ms = E[0].areas.map(function(m){ return lsiAdjMatch_(addr, m); });
+      if (purpose === '거주' && ms.indexOf('yes') !== -1) return { 판정: '조정', 이유: '소득세법 시행령 §154② — 2017-08-03~11-09는 2017-1305호 지역을 조정대상지역으로 봄(거주요건)', 근거: ['2017-1305'] };
+      if (ms.some(function(x){ return x !== 'no'; })) return { 판정: '확인 필요', 이유: purpose === '거주' ? '§154② 지역 경계(택지지구·예정지역) 확인 필요' : (E[0].dateNote || '') + ' — 거주요건은 §154②로 조정, 중과·장특공은 그 조문으로 확인', 근거: ['2017-1305'] };
+    }
+    var hw = E.filter(function(e){ return e.no === '2020-877'; })[0];
+    if (hw && d >= '2020-06-19' && d < '2020-06-29' && lsiAdjMatch_(addr, { sd: '경기', si: '화성시' }) !== 'no') return { 판정: '확인 필요', 이유: hw.dateNote || '2020-877호 정정공고 효력일', 근거: ['2020-877'] };
+    if (unk) return { 판정: '확인 필요', 이유: unk, 근거: basis };
+    return { 판정: st ? '조정' : '비조정', 이유: (st ? '지정' : basis.length ? '해제' : '지정된 적 없음') + (basis.length ? ' — 공고 ' + basis.join(', ') : ''), 근거: basis };
+  }
+  // [2026.10.19 조견표 1부-09] 경계 지구(동탄2·광교·고양·세종 예정지역) — 주소에 동과 지번이 있으면 토지이음 토지이용계획 열람 링크(PNU)를 만든다.
+  //  세무사님이 눌러 '다른 법령 등에 따른 지역·지구등' 줄에 택지개발지구·공공주택지구·도시개발구역·예정지역과 괄호 속 지구 이름이 있으면 안.
+  function lsiEumLink_(addr){
+    var t9 = LSI_REF_TABLES_.filter(function(x){ return x.번호 === '1부-09'; })[0];
+    var L = (t9 && t9.경계동코드 && t9.경계동코드.목록) || [];
+    var toks = String(addr || '').replace(/[,·]/g, ' ').split(/\s+/).filter(Boolean);
+    for (var i = 0; i < toks.length; i++){
+      var row = L.filter(function(r){ return r.동 === toks[i] && (r.시 === '세종' ? /세종/.test(addr) : String(addr).indexOf(r.시) !== -1); })[0];
+      if (!row) continue;
+      var rest = toks.slice(i + 1).join(' '), m = rest.match(/^(산\s*)?(\d{1,4})(?:-(\d{1,4}))?/);
+      var pad = function(n){ return ('0000' + (n || '0')).slice(-4); };
+      if (!m) return '<div style="margin-top:4px;">📍 ' + lsiEsc_(row.지구) + ' 경계 동입니다 — 주소 끝에 지번(예: ' + lsiEsc_(row.동) + ' 520)을 넣으면 토지이음 열람 링크를 만들어 드립니다.</div>';
+      var pnu = row.코드 + (m[1] ? '2' : '1') + pad(m[2]) + pad(m[3]);
+      return '<div style="margin-top:4px;">📍 <a href="https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?selGbn=umd&isNoScr=script&mode=search&pnu=' + pnu + '" target="_blank" rel="noopener">토지이음에서 이 지번(' + lsiEsc_(row.동 + ' ' + (m[1] ? '산' : '') + m[2] + (m[3] ? '-' + m[3] : '')) + ') 토지이용계획 보기 ↗</a> — \'다른 법령 등에 따른 지역·지구등\' 줄에 택지개발지구·공공주택지구·도시개발구역·예정지역과 지구 이름(' + lsiEsc_(row.지구) + ')이 있으면 안입니다. 토지이용계획은 지금 상태라 준공 뒤 표시가 지워졌거나 공고 뒤 경계가 바뀐 가장자리 필지는 조견표 1부-09로 확인하세요.</div>';
+    }
+    return '';
+  }
+  function lsiAdjAreaLabel_(m){
+    var s = [m.sd, m.si, m.gu].filter(Boolean).join(' ');
+    if (m.only) s += '(' + m.only.join('·') + '만)';
+    if (m.ex) s += '(' + m.ex.join('·') + ' 제외)';
+    if (m.exRi) s += '(' + Object.keys(m.exRi).map(function(k){ return k + ' ' + m.exRi[k].join('·'); }).join(', ') + ' 제외)';
+    if (m.zone) s += ' [' + m.zone + ']';
+    return s;
+  }
+  // 시기별 보기 — 공고를 날짜 순으로 따라가며 그 시기에 지정돼 있던 줄을 모은다(책자 모양). 해제가 지정 줄과 같은 범위(시도·시·구, 일부 동 해제 아님)면 지운다.
+  function lsiAdjPeriods_(E){
+    var cur = [], out = [];
+    var dates = E.map(function(e){ return e.date; }).filter(function(d, i, a){ return a.indexOf(d) === i; });
+    dates.forEach(function(d, i){
+      E.filter(function(e){ return e.date === d; }).forEach(function(e){
+        e.areas.forEach(function(m){
+          if (e.kind === '지정'){ cur.push({ m: m, no: e.no, note: '' }); return; }
+          var partial = !!(m.only || m.ex || m.exRi || m.zone);
+          cur = cur.filter(function(c){
+            var same = c.m.sd === m.sd && (!m.si || c.m.si === m.si) && (!m.gu || c.m.gu === m.gu);
+            if (!same) return true;
+            if (partial){ c.note = (c.note ? c.note + ' · ' : '') + e.no + ' 일부 해제: ' + lsiAdjAreaLabel_(m).replace(/^[^ ]+ /, ''); return true; }
+            return false;
+          });
+        });
+      });
+      var next = dates[i + 1];
+      out.push({ from: d, to: next ? next : '', rows: cur.map(function(c){ return { label: lsiAdjAreaLabel_(c.m), no: c.no, note: c.note }; }) });
+    });
+    return out;
+  }
+  function lsiAdjViewsHtml_(t){
+    var bk = (t.해설서대조 || []);
+    return '<h4>주소로 찾기</h4>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">' +
+      '<input type="text" id="lsiAdjAddr" style="min-width:260px; flex:1;" placeholder="예: 경기도 화성시 동탄구 오산동" aria-label="주소">' +
+      '<input type="date" id="lsiAdjDate" aria-label="날짜" min="2000-01-01" max="2099-12-31">' +
+      '<select id="lsiAdjPurpose" aria-label="쓰는 곳"><option value="거주">거주요건(취득일)</option><option value="">중과·그 밖(양도일 등)</option></select>' +
+      '<button type="button" class="btn" id="lsiAdjGo">찾기</button></div>' +
+      '<div id="lsiAdjResult" class="lsi-note" style="margin-bottom:6px;">주소(시·군·구, 가능하면 읍·면·동)와 날짜를 넣으면 그날 조정대상지역이었는지와 근거 공고를 보여 줍니다. 택지지구·예정지역처럼 주소로 못 가르는 곳은 \'확인 필요\'(토지이용계획으로 확인).</div>' +
+      '<h4>시기별 보기 <span class="lsi-note">(공고 원문 표에서 자동으로 만든 책자 모양 — 해설서 대조는 오른쪽 칸)</span></h4>' +
+      '<details><summary class="lsi-link">시기별 지정 지역 펼치기</summary>' +
+      lsiAdjPeriods_(t.공고구조).map(function(pd){
+        var b = bk.filter(function(x){ var m = String(x.시기).match(/(\d{4})\.(\d{1,2})\.(\d{1,2})/); if (!m) return false; var d = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); return d === pd.from || (d === '2017-08-03' && pd.from === '2017-09-06'); })[0]; // 첫 시기: 해설서는 2017.8.3.(§154② 의제)부터
+        return '<div style="margin:8px 0; padding:6px 8px; border-left:3px solid var(--gold);"><b>' + lsiEsc_(pd.from) + ' ~ ' + lsiEsc_(pd.to ? pd.to + ' 전날' : '지금까지') + '</b> <span class="lsi-note">' + pd.rows.length + '줄</span>' +
+          (b ? ' <span class="lsi-badge ' + (/^같음/.test(b.결과) ? 'ok' : 'warn') + '" title="' + lsiEsc_('해설서: ' + b.해설서 + ' / ' + b.결과) + '">해설서 ' + lsiEsc_(/^같음/.test(b.결과) ? '일치' : (b.결과.slice(0, 18) + '…')) + '</span>' : '') +
+          '<div style="font-size:12.5px; margin-top:4px;">' + pd.rows.map(function(r){ return lsiEsc_(r.label) + (r.note ? ' <span class="lsi-note">(' + lsiEsc_(r.note) + ')</span>' : ''); }).join(' · ') + '</div></div>';
+      }).join('') + '</details>';
+  }
+
+  // ---------- 조견표 ----------
+  function lsiFmtVal_(v){
+    if (v == null) return '';
+    if (typeof v === 'number' && Math.abs(v) >= 10000) return lsiEsc_(v.toLocaleString('ko-KR')); // [2026.10.19] 금액은 쉼표(600000000 → 600,000,000)
+    if (typeof v !== 'object'){ var tx = String(v); return tx.length > 160 ? '<details class="lsi-long"><summary>' + lsiEsc_(tx.slice(0, 120)) + '… (펼치기)</summary>' + lsiEsc_(tx) + '</details>' : lsiEsc_(tx); }
+    if (Array.isArray(v)){
+      if (v.length && typeof v[0] === 'object'){
+        var ks = Object.keys(v[0]);
+        return '<table class="lsi-table" style="font-size:12px;"><tr>' + ks.map(function(k){ return '<th>' + lsiEsc_(k) + '</th>'; }).join('') + '</tr>' +
+          v.map(function(o){ return '<tr>' + ks.map(function(k){ return '<td>' + lsiFmtVal_(o[k]) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+      }
+      return v.map(lsiFmtVal_).join(', ');
+    }
+    var ks2 = Object.keys(v);
+    // 보유연수 → 공제율(%) 같은 표 — {"3":10,"4":12,…} → "3년 10% · 4년 12% …"
+    if (ks2.length && ks2.every(function(k){ return /^\d+$/.test(k) && typeof v[k] === 'number'; })) return ks2.map(function(k){ return lsiEsc_(k + '년 ' + v[k] + '%'); }).join(' · ');
+    return ks2.map(function(k){ return lsiEsc_(k) + ': ' + lsiFmtVal_(v[k]); }).join('<br>');
+  }
+  // [2026.10.19 서식 탭 표 정리] 칸 하나 = 한 줄. 넘치는 글은 칸 안에서 가로 스크롤, 마우스를 올리면 전체 글(title)
+  function lsiPlain_(v){
+    if (v == null) return '';
+    if (typeof v === 'number') return Math.abs(v) >= 10000 ? v.toLocaleString('ko-KR') : String(v);
+    if (Array.isArray(v)) return v.map(lsiPlain_).filter(function(x){ return x !== ''; }).join(' · ');
+    if (typeof v === 'object') return Object.keys(v).map(function(k){ return k + ': ' + lsiPlain_(v[k]); }).join(' · ');
+    return String(v).replace(/\s*\n\s*/g, ' ');
+  }
+  function lsiCell_(html, title){ return '<span class="lsi-cell"' + (title ? ' title="' + lsiEsc_(title) + '"' : '') + '>' + (html || '') + '</span>'; }
+  function lsiTextCell_(v){ var t = lsiPlain_(v); return lsiCell_(lsiEsc_(t), t); }
+  // cols: [{ h: '칸 이름', w: 12 }] (w = em) / rows: [[칸 html, …]] — 각 칸 html은 lsiCell_로 감싼 것
+  function lsiGridHtml_(cols, rows){
+    var total = cols.reduce(function(n, c){ return n + c.w; }, 0);
+    return '<div class="lsi-grid-wrap"><table class="lsi-grid" style="width:' + total + 'em;"><colgroup>' + cols.map(function(c){ return '<col style="width:' + c.w + 'em;">'; }).join('') + '</colgroup>' +
+      '<thead><tr>' + cols.map(function(c){ return '<th>' + lsiCell_(lsiEsc_(c.h), c.h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      rows.map(function(r){ return '<tr>' + r.map(function(td){ return '<td>' + td + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+  }
+  function lsiCheckBadge_(txt){
+    txt = txt || '확인 필요';
+    if (/원문 대조됨/.test(txt)) return '<span class="lsi-badge ok" title="' + lsiEsc_(txt) + '">원문 대조됨</span>';
+    return '<span class="lsi-badge warn" title="' + lsiEsc_(txt) + '">' + lsiEsc_(txt.length > 24 ? txt.slice(0, 22) + '…' : txt) + '</span>';
+  }
+  // [2026.10.19] 세무사님 판단 대기 상자 — 두 해석, 지금까지 사건에서 고른 답(같은 답이 3건 이상이고 반대 답이 없으면 '기본값 후보')
+  function lsiJudgmentBoxHtml_(t){
+    if (!(t.판단대기 || []).length) return '';
+    return t.판단대기.map(function(j){
+      var log = (lsiJudgments_ && lsiJudgments_[j.id]) || [];
+      var a = log.filter(function(x){ return x.pick === 'A'; }).length, b = log.filter(function(x){ return x.pick === 'B'; }).length;
+      var cand = (a >= 3 && !b) ? 'A' : (b >= 3 && !a) ? 'B' : '';
+      return '<div style="border:1px solid #6a1b9a; border-radius:6px; padding:8px 10px; margin:8px 0; color:#4a148c; font-size:12.5px;">' +
+        '<b>⚖ 세무사님 판단 대기 — ' + lsiEsc_(j.제목) + '</b><br>해석 A(지금 기본): ' + lsiEsc_(j.A) + '<br>해석 B: ' + lsiEsc_(j.B) + '<br>' + lsiEsc_(j.안내 || '') +
+        '<br>사건에서 고른 답: ' + (lsiJudgments_ === null ? '불러오는 중…' : 'A ' + a + '건 · B ' + b + '건' + (cand ? ' — <b>기본값 후보: 해석 ' + cand + '</b>(세무사님 확인 뒤 바꿈)' : '')) +
+        (log.length ? '<details><summary class="lsi-link">기록 보기</summary>' + log.slice().reverse().map(function(x){ return lsiEsc_(x.at + ' · ' + (x.caseName || x.caseId || '사건 없음') + ' → 해석 ' + x.pick); }).join('<br>') + '</details>' : '') +
+        '</div>';
+    }).join('');
+  }
+  function lsiRenderRefs_(){
+    var pane = document.getElementById('lsiPane-ref');
+    var part = function(p){ return LSI_REF_TABLES_.filter(function(t){ return String(t.번호).indexOf(p) === 0; }); };
+    var item = function(t){
+      return '<li><button type="button" class="lsi-link" data-lsigoref="' + lsiEsc_(t.번호) + '">' + lsiEsc_(t.번호 + ' ' + t.이름) + '</button> ' +
+        '<span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span> <span class="lsi-note">' + (t.행 || []).length + '행</span>' + ((t.판단대기 || []).length ? ' <span class="lsi-badge" style="border-color:#6a1b9a;color:#4a148c;">⚖ 세무사님 판단 대기</span>' : '') + '</li>';
+    };
+    pane.innerHTML = '<div class="card"><div class="lsi-note" style="margin-bottom:8px;">조견표는 판정 순서(절차)와 요건·수치·기간(내용)을 한 장에 담은 표입니다. 행마다 공식 원문 근거가 있고, <b>세무사님 확인 전에는 계산·판정에 쓰지 않습니다.</b> ' +
+      '자료는 드라이브 "0 NETAX\\업무관리자\\조견표\\원자료" 폴더에 넣어 주시면 읽어서 초안을 만듭니다.</div>' +
+      // [2026.10.19 서버 용량] 조견표 자료는 job.netax.kr/app 화면에만 들어 있다(예전 구글 주소 화면은 빈 값)
+      (LSI_REF_TABLES_.length ? '' : '<div class="lsi-note" style="color:#b26a00; margin-bottom:8px;">이 화면(예전 구글 주소)에는 조견표 자료가 없습니다. <a href="https://job.netax.kr/app/" target="_blank" rel="noopener">job.netax.kr/app</a> 화면에서 보세요.</div>') +
+      '<div style="display:flex; gap:16px; flex-wrap:wrap;">' +
+      '<div style="flex:1; min-width:260px;"><b>1부 세법 외 사실 이력</b><ul style="margin:6px 0 0 18px;">' + (part('1부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
+      '<div style="flex:1; min-width:260px;"><b>2부 세법 안 조견표</b><ul style="margin:6px 0 0 18px;">' + (part('2부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
+      '</div></div><div id="lsiRefBox"></div>';
+    lsiWireLinks_(pane);
+    if (lsiOpenRef_) lsiShowRef_(lsiOpenRef_);
+  }
+  function lsiShowRef_(no){
+    lsiOpenRef_ = no;
+    var t = LSI_REF_TABLES_.filter(function(x){ return x.번호 === no; })[0];
+    var box = document.getElementById('lsiRefBox');
+    if (!box) return;
+    if (!t){ box.innerHTML = '<div class="card lsi-note">' + lsiEsc_(no) + ' 조견표는 아직 없습니다.</div>'; return; }
+    var tbl = function(head, rows){ return rows.length ? '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr>' + head.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' : '<div class="lsi-note">없음</div>'; };
+    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span></h3>' +
+      lsiReviewBarHtml_(t.번호, t) +
+      '<div class="lsi-note" style="margin-bottom:8px;">' + lsiEsc_(t.무엇 || '') + '<br>기준이 되는 날: ' + lsiEsc_(t.기준일 || '') + ' · 갱신: ' + lsiEsc_(t.갱신 || '') +
+      '<br>근거 법령: ' + lsiArtLinks_(t.근거법령) + (t.근거서식 && t.근거서식.length ? '<br>근거 서식: ' + lsiFormCellLinks_(t.근거서식) : '') +
+      '<br>출처: ' + (t.출처 || []).map(function(o){ return '<a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join(' · ') +
+      (t.대조 && t.대조.length ? '<br>대조 자료(근거 아님): ' + t.대조.map(lsiEsc_).join(', ') : '') + '</div>' +
+      (t.번호 === '1부-01' && Array.isArray(t.공고구조) && t.공고구조.length ? lsiAdjViewsHtml_(t) : '') +
+      lsiJudgmentBoxHtml_(t) +
+      '<h4>판정 순서</h4>' + tbl(['단계', '묻는 것', '예 →', '아니오 →', '근거'], (t.절차 || []).map(function(s){ return '<tr><td>' + lsiEsc_(s.단계) + '</td><td>' + lsiEsc_(s.묻는것) + '</td><td>' + lsiEsc_(s.예) + '</td><td>' + lsiEsc_(s.아니오) + '</td><td>' + lsiEsc_(s.근거) + '</td></tr>'; })) +
+      '<h4>값 표</h4>' + tbl(['구분', '적용 시작', '적용 끝', '값', '조건', '근거 조문', '서식 칸', '출처', '확인'], (t.행 || []).map(function(r){
+        return '<tr><td class="w-mid">' + lsiEsc_(r.구분) + '</td><td class="nw">' + lsiEsc_(r.시작 || '') + '</td><td class="nw">' + lsiEsc_(r.끝 || '지금까지') + '</td><td class="w-wide">' + lsiFmtVal_(r.값) + '</td><td class="w-mid">' + lsiFmtVal_(r.조건 || '') + '</td>' +
+          '<td>' + lsiArtLinks_(r.근거조문 ? [r.근거조문] : []) + '</td><td>' + lsiFormCellLinks_(r.서식칸 ? [r.서식칸] : []) + '</td><td>' + (r.출처 ? '<a href="' + lsiEsc_(r.출처) + '" target="_blank" rel="noopener">원문 ↗</a>' : '') + (r.책자 ? '<div class="lsi-note">' + lsiEsc_(r.책자) + '</div>' : '') + '</td>' +
+          '<td>' + lsiCheckBadge_(r.확인) + '</td></tr>';
+      })) +
+      '<h4>개정 이력</h4>' + tbl(['개정일', '시행일', '무엇이 바뀌었나', '어느 날 기준으로', '경과규정(부칙)'], (t.개정 || []).map(function(r){ return '<tr><td>' + lsiEsc_(r.개정일) + '</td><td>' + lsiEsc_(r.시행일) + '</td><td>' + lsiEsc_(r.내용) + '</td><td>' + lsiEsc_(r.적용기준) + '</td><td>' + lsiEsc_(r.부칙) + '</td></tr>'; })) +
+      '<h4>시스템이 쓰는 곳</h4>' + tbl(['쓰는 곳', '이름', '보는 날', '켜짐'], (t.쓰는곳 || []).map(function(r){ return '<tr><td>' + lsiEsc_(r.곳) + '</td><td>' + lsiEsc_(r.이름) + '</td><td>' + lsiEsc_(r.보는날) + '</td><td>' + (r.켜짐 ? '<span title="' + lsiEsc_(r.켜짐설명 || '') + '">켜짐' + (r.켜짐설명 ? ' — ' + lsiEsc_(r.켜짐설명) : '') + '</span>' : '꺼짐(세무사님 확인 전)') + '</td></tr>'; })) +
+      // [2026.10.19] 자료마다 더 적어 둔 것(책자 출처·책과 원문이 다른 곳·엔진과 다른 곳 등)도 그대로 보여 준다
+      [['책자', '책자 출처(대조용)'], ['책과원문다름', '책과 법령 원문이 다른 곳(원문을 따름)'], ['엔진차이', '계산기와 다른 곳(고칠 거리)'], ['엔진과다른곳', '계산기와 다른 곳(고칠 거리)'], ['현재 지정 중', '지금 지정 중'], ['1부-01 지역 대응', '조정대상지역 표와 맞춰 보기'], ['참고용', '참고용']].map(function(kv){ var v = t[kv[0]]; if (v == null || (Array.isArray(v) && !v.length)) return ''; return '<h4>' + lsiEsc_(kv[1]) + '</h4>' + (Array.isArray(v) && typeof v[0] !== 'object' ? '<ul style="margin:4px 0 0 18px; font-size:12.5px;">' + v.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul>' : '<div style="font-size:12.5px;">' + lsiFmtVal_(v) + '</div>'); }).join('') +
+      ((t.확인필요 || []).length ? '<h4>확인 필요(공식 출처로 확인 못 함 — 표에 넣지 않음)</h4><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + t.확인필요.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul>' : '') +
+      '</div>';
+    lsiWireLinks_(box);
+    lsiWireReview_(box, t.번호, t, function(){ lsiRenderRefs_(); });
+    var adjGo = document.getElementById('lsiAdjGo');
+    if (adjGo){
+      var runAdj = function(){
+        var r = lsiAdjAt_(t.공고구조, document.getElementById('lsiAdjAddr').value, document.getElementById('lsiAdjDate').value, document.getElementById('lsiAdjPurpose').value);
+        var cls = r.판정 === '조정' ? 'warn' : r.판정 === '비조정' ? 'ok' : 'warn';
+        document.getElementById('lsiAdjResult').innerHTML = '<span class="lsi-badge ' + cls + '" style="font-size:13px;">' + lsiEsc_(r.판정) + '</span> ' + lsiEsc_(r.이유) +
+          (r.근거 && r.근거.length ? ' · 근거 공고: ' + r.근거.map(function(no){ var e = t.공고구조.filter(function(x){ return x.no === no; })[0]; return e && e.src ? '<a href="' + lsiEsc_(e.src) + '" target="_blank" rel="noopener">' + lsiEsc_(no) + '호 ↗</a>' : lsiEsc_(no); }).join(', ') : '') +
+          (r.판정 === '확인 필요' ? lsiEumLink_(document.getElementById('lsiAdjAddr').value) : ''); // [2026.10.19 1부-09] 경계 지구면 토지이음 열람 링크
+      };
+      adjGo.addEventListener('click', runAdj);
+      document.getElementById('lsiAdjAddr').addEventListener('keydown', function(e){ if (e.key === 'Enter') runAdj(); });
+    }
+    if (box.scrollIntoView) box.scrollIntoView({ block: 'start' });
+  }
+</script>
+<!--@@APP_ONLY:lawdb@@-->
+<!--@@APP_ONLY:multiai@@-->

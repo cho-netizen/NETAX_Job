@@ -9,14 +9,18 @@
     <div id="repTab-lawref" style="display:none;">
       <div class="card">
         <h3>세법령·서식·전자신고파일작성법 — 즉시 열람</h3>
-        <div style="font-size:11.5px; color:var(--sub); margin-bottom:10px;">세무사님 구글드라이브(J:\내 드라이브\0 NETAX\업무관리자\세금계산)에 정리해두신 국세청 공식 서식·법령정보·전자신고파일 작성요령을 이 앱 안에서 바로 열람합니다(외부 사이트를 따로 열 필요 없음). 폴더에 새 자료를 넣으면 여기에도 바로 반영됩니다.</div>
+        <div style="font-size:11.5px; color:var(--sub); margin-bottom:10px;">세무사님 구글드라이브(J:\내 드라이브\0 NETAX\업무관리자\서식·조견표 — 2026.10.19 폴더 정리)에 정리해두신 국세청 공식 서식·법령정보·전자신고파일 작성요령을 이 앱 안에서 바로 열람합니다(외부 사이트를 따로 열 필요 없음). 폴더에 새 자료를 넣으면 여기에도 바로 반영됩니다.</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
           <button type="button" class="btn" data-lawreftab="5" style="font-weight:600;">상속세</button>
           <button type="button" class="btn" data-lawreftab="6">증여세</button>
           <button type="button" class="btn" data-lawreftab="7">양도소득세</button>
-          <a href="https://drive.google.com/drive/folders/1hiiqTqPpMm4GNJrvmgJiVzQtzT2HTAmx" target="_blank" rel="noopener" class="btn" style="margin-left:auto; text-decoration:none;">📂 드라이브에서 직접 열기 ↗</a>
+          <button type="button" class="btn" data-lawreftab="pdf">법제처 서식 PDF</button>
+          <button type="button" class="btn" data-lawreftab="b5">해설서·상속</button>
+          <button type="button" class="btn" data-lawreftab="b6">해설서·증여</button>
+          <button type="button" class="btn" data-lawreftab="b7">해설서·양도</button>
+          <a href="https://drive.google.com/drive/folders/1eyEDEL5K47_TNlzhKQ--qHMrIK3K8f3h" target="_blank" rel="noopener" class="btn" style="margin-left:auto; text-decoration:none;">📂 드라이브에서 직접 열기 ↗</a>
         </div>
-        <iframe id="lawrefFrame" src="https://drive.google.com/embeddedfolderview?id=1jz3BITVNVs2Wv90Nof0sDMSLFaMrcemc#list" style="width:100%; height:70vh; min-height:480px; border:1px solid var(--line); border-radius:6px;"></iframe>
+        <iframe id="lawrefFrame" src="https://drive.google.com/embeddedfolderview?id=1J1hH035TN_0zjJ4WfmC5K1s24zMCpfdY#list" style="width:100%; height:70vh; min-height:480px; border:1px solid var(--line); border-radius:6px;"></iframe>
       </div>
     </div>
 
@@ -61,10 +65,14 @@
 </div>
 
 <script>
+  // [2026.10.19 폴더 정리(세무사님 승인)] 예전 업무관리자\세금계산\5 상속세·6 증여세·7 양도소득세는 비었다 — 세목 단추는 업무관리자\서식\한글 서식\<세목>,
+  //  '해설서·책자' 단추는 업무관리자\조견표\해설서·책자\<세목>(책자·실수사례·작성 사례), '법제처 PDF'는 업무관리자\서식\법제처 원본(PDF)
   var REP_LAWREF_FOLDERS_ = {
-    5: '1jz3BITVNVs2Wv90Nof0sDMSLFaMrcemc', // 상속세
-    6: '1r9WMIy2ZzFE6nJZM-eUAaAUNvn4JAgyw', // 증여세
-    7: '1qRmfUCM2vdA5rtQqxxenkhbv_zbD7Pyp'  // 양도소득세
+    5: '1J1hH035TN_0zjJ4WfmC5K1s24zMCpfdY', // 한글 서식·상속
+    6: '1bsPwlyJV4cNLRe4wOhu0Vf5ArNuzRRyN', // 한글 서식·증여
+    7: '1OZh6Z11ss6JIg3wpbarUyNomXk14FXL2', // 한글 서식·양도
+    b5: '1h3pnhIAhHruaVuvV-YNW-M1sdJgFPsyl', b6: '1OWWGQQzfVcL1Equgz22ez3xMAxBbIEzD', b7: '1Ja12Z8OX8efrwg7Pqp1V_fWxVeIqIt50', // 해설서·책자
+    pdf: '1bXA_yLVb1Mc6-nGC7nPZXUqKe5ZCAe7M' // 법제처 원본(PDF)
   };
   function repSwitchMainTab_(tab){
     document.getElementById('repTab-issue').style.display = tab === 'issue' ? '' : 'none';

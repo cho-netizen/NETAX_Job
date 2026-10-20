@@ -108,8 +108,11 @@ function envDiffArticles_(a, b) {
   return changed;
 }
 // 엔진 의존 조문 지도(EngineLawMap.js, tools/build-engine-law-map.js가 Code.js 주석의 §표기로 생성)로 영향 함수 찾기
+// [2026.10.19] 지도(85KB)는 서버에 두지 않고 깃허브 페이지의 EngineLawMap.js를 실행마다 한 번 읽는다(서버 용량 10MB 한도, .claspignore)
+var ENV_ENGINE_MAP_ = null;
 function envImpactedFns_(lawName, articles) {
-  var map = (typeof ENGINE_LAW_MAP_ !== 'undefined' && ENGINE_LAW_MAP_[lawName]) || {};
+  if (!ENV_ENGINE_MAP_) { var r = envFetch_('https://job.netax.kr/gs-backend/EngineLawMap.js'), mm = r.code === 200 && r.text.match(/var ENGINE_LAW_MAP_ = (\{[\s\S]*\});?\s*$/); try { ENV_ENGINE_MAP_ = mm ? JSON.parse(mm[1]) : {}; } catch (e) { ENV_ENGINE_MAP_ = {}; } }
+  var map = ENV_ENGINE_MAP_[lawName] || {};
   var fns = {};
   articles.forEach(function (a) { var base = String(a.조).split('의')[0], key = String(a.조); (map[key] || map[base] || []).forEach(function (f) { fns[f] = 1; }); });
   return Object.keys(fns).slice(0, 30);
@@ -121,7 +124,8 @@ function envWatchLaws_(state, deadline) {
   if (state.lawsV !== 2) { state.laws = {}; state.lawsV = 2; }
   state.laws = state.laws || {};
   var items = [], pendingBaseline = 0;
-  ENV_WATCH_LAWS_.forEach(function (name) {
+  var wl = envWatchList_('법령'), corr = envDbJson_('산식보정', '산식보정.json', { 항목: [] }).항목 || [];
+  (wl ? wl.map(function (x) { return x.이름; }) : ENV_WATCH_LAWS_).forEach(function (name) {
     if (Date.now() > deadline) { items.push({ 법령: name, 상태: '시간 부족으로 다음 밤에 확인' }); return; }
     var v = envLawVersions_(oc, name);
     if (v.error) { items.push({ 법령: name, 오류: v.error }); return; }
@@ -132,6 +136,9 @@ function envWatchLaws_(state, deadline) {
       item.새로시행 = true;
       var nh = Date.now() < deadline ? envLawArticleHashes_(oc, v.cur.mst, v.cur.ef) : null;
       if (nh) { var fl = envFlagged_(nh); item.바뀐조문 = fl.length ? fl : (st.hashes ? envDiffArticles_(st.hashes, nh) : []); item.영향함수 = envImpactedFns_(name, item.바뀐조문); }
+      // 법령 정비본 갱신 대상 + 산식 보정 다시 확인할 조문(그 조문에 보정·Vision 판독이 있으면)
+      item.정비본 = '갱신 대상 — PC에서 node tools/law-build.js (새 판을 더하고 옛 판은 남김)';
+      item.보정재확인 = (item.바뀐조문 || []).filter(function (a) { return corr.some(function (c) { return c.법령 === name.replace(/\s/g, '') && c.조 === a.조; }); }).map(function (a) { return a.조; });
       if (nh) { st.hashes = nh; st.hashAt = envToday_(); }
     }
     // 처음 보는 법령은 현행 지문을 만들어 둔다(다음 개정 때 비교 기준)
@@ -419,6 +426,9 @@ function runEnvWatch_(opts) {
   var prev = envReadJson_(ENV_WATCH_RESULT_NAME_, {});
   var res = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') };
   try { res.laws = envWatchLaws_(state, deadline); } catch (e) { res.laws = { error: String(e && e.message || e) }; }
+  var lawItems = res.laws && res.laws.items, weeklyF = opts.weekly || !state.formsAt || (Date.now() - new Date(state.formsAt).getTime()) > 6 * 86400000;
+  try { res.forms = envWatchForms_(state, deadline + 60000, lawItems, weeklyF); if (weeklyF) state.formsAt = new Date().toISOString(); } catch (e) { res.forms = { error: String(e && e.message || e) }; }
+  try { res.refs = envWatchRefs_(state, deadline + 60000, lawItems); } catch (e) { res.refs = { error: String(e && e.message || e) }; }
   try { res.tech = envTechCheck_(); } catch (e) { res.tech = { error: String(e && e.message || e) }; }
   try { res.calendar = envCalendar_(); } catch (e) { res.calendar = []; }
   var weeklyDue = opts.weekly || !state.weeklyAt || (Date.now() - new Date(state.weeklyAt).getTime()) > 6 * 86400000 ||
@@ -433,6 +443,7 @@ function runEnvWatch_(opts) {
     // 주간 결과는 다음 주간 실행 때까지 그대로 보여 준다
     res.precedents = prev.precedents || null; res.capabilities = prev.capabilities || null; res.weeklyAt = prev.weeklyAt || null;
   }
+  try { res.lawVision = lawVisionRun_(Date.now() + 60000); } catch (e) { res.lawVision = { error: String(e && e.message || e) }; }
   res.secs = Math.round((Date.now() - started) / 1000);
   try { envWriteJson_(ENV_WATCH_STATE_NAME_, state); } catch (e) {}
   try { envWriteJson_(ENV_WATCH_RESULT_NAME_, res); } catch (e) {}
@@ -446,8 +457,12 @@ function envWatchForReport_() {
   var head = [], laws = r.laws && r.laws.items || [];
   laws.forEach(function (l) {
     if (l.새로시행) head.push('⚖️ ' + l.법령 + ' 새 개정 시행(' + l.현행.시행일 + ')' + (l.바뀐조문 ? ' — 바뀐 조문 ' + l.바뀐조문.length + '개' + (l.영향함수 && l.영향함수.length ? ', 영향 계산함수 ' + l.영향함수.length + '개' : '') : ''));
+    if (l.새로시행) head.push('⚖️ ' + l.법령 + ' — 법령 정비본 갱신 대상' + (l.보정재확인 && l.보정재확인.length ? ', 산식 보정 다시 확인 ' + l.보정재확인.map(function (j) { return '제' + j + '조'; }).join('·') : ''));
     (l.시행예정 || []).forEach(function (f) { if (f.신규) head.push('⏳ ' + l.법령 + ' 공포됨·시행 예정 ' + f.시행일 + (f.바뀔조문 ? ' — 바뀔 조문 ' + (f.바뀔조문수 || f.바뀔조문.length) + '개' + (f.영향함수 && f.영향함수.length ? ', 영향 계산함수 ' + f.영향함수.length + '개' : '') : '')); });
   });
+  ((r.forms && r.forms.items) || []).forEach(function (f) { head.push('📄 서식 ' + (f.이름 || f.법령 || '') + ' — ' + (f.구분 || f.오류)); });
+  ((r.refs && r.refs.items) || []).forEach(function (f) { head.push('📋 조견표 ' + f.이름 + ' — ' + f.구분); });
+  if (r.lawVision && r.lawVision.전체) head.push('👁 법령 그림 산식 Vision 판독 ' + r.lawVision.누계 + '/' + r.lawVision.전체 + (r.lawVision.오늘 ? '(오늘 ' + r.lawVision.오늘 + ')' : ''));
   var techItems = r.tech && r.tech.items || [];
   techItems.filter(function (t) { return t.수준 === '경고'; }).forEach(function (t) { head.push('🔧 ' + t.항목); });
   (r.calendar || []).forEach(function (c) { if (c.코드확인) head.push('📅 ' + c.항목.split(' — ')[0] + ' — ' + c.코드확인); });
@@ -455,7 +470,7 @@ function envWatchForReport_() {
   if (pc) head.push('📜 예규·판례·고시 신착 ' + pc + '건(주간)');
   var cc = r.capabilities && r.capabilities.items ? r.capabilities.items.length : 0;
   if (cc) head.push('🛰️ 새로 가능해진 기술 후보 ' + cc + '건(주간)');
-  return { at: r.at, head: head, laws: r.laws, precedents: r.precedents, calendar: r.calendar, tech: r.tech, capabilities: r.capabilities,
+  return { at: r.at, head: head, laws: r.laws, forms: r.forms, refs: r.refs, lawVision: r.lawVision, precedents: r.precedents, calendar: r.calendar, tech: r.tech, capabilities: r.capabilities,
     count: head.length };
 }
 // 새벽 4시 전용 실행(시간 트리거) — 감시 후 개선 후보 보고서를 다시 만든다(2시 묶음이 만든 보고서에 이 결과를 덧붙이려고)
@@ -468,4 +483,104 @@ function envEnsureTrigger_() {
   var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'runEnvWatchNightly'; });
   if (!has) ScriptApp.newTrigger('runEnvWatchNightly').timeBased().everyDays(1).atHour(4).create();
   return { ok: true, existed: has };
+}
+
+// ---------- [2026.10.19] 통합 개정 감시 — 법령·서식·조견표 (세무사님 "개정감시 기능은 법령,서식,조견표를 모두 관리해야 한다") ----------
+// 감시 목록은 드라이브 0 NETAX/업무관리자/법령/_감시/감시목록_{법령,서식,조견표}.json(주인: 법령·서식·조견표 세션, 서버 용량 때문에 코드 밖).
+// 항목 {id, 종류, 이름, 확인:{방법, 주소, 관련법령, 별표번호, 찾을것}, 주기, 기준값, 기준일, 영향[], 담당}. 감시가 본 값은 _환경감시상태.json에.
+// 자동으로 고치지 않고 갱신할 것 목록과 차이만 알린다(세무사님 확인 뒤 갱신). 설계: netax-inventory/maps/설계_법령원본.md 4절
+function envLawDbDir_(n) {
+  var f = getNetaxRootFolder_();
+  var g = function (p, x) { var it = p && p.getFoldersByName(x); return it && it.hasNext() ? it.next() : null; }, m = g(f, '업무관리자');
+  // [2026.10.19] 폴더 정리 — 업무관리자\법령정비본 → 업무관리자\법령(옛 이름도 찾음)
+  // 시스템 전용 폴더는 이름 앞에 _(세무사님 지시 — 사람이 열어 볼 폴더와 구분), 옛 이름도 찾음
+  var lw = g(m, '법령');
+  return g(lw, '_' + n) || g(lw, n) || g(g(m, '법령정비본'), n);
+}
+function envDbJson_(dir, name, dflt) {
+  try { var d = envLawDbDir_(dir), it = d && d.getFilesByName(name); if (it && it.hasNext()) return JSON.parse(it.next().getBlob().getDataAsString('UTF-8')); } catch (e) { }
+  return dflt;
+}
+function envWatchList_(kind) { var j = envDbJson_('감시', '감시목록_' + kind + '.json', null); return Array.isArray(j) ? j : (j && j.항목) || null; }
+var ENV_RECENT_DAYS_ = 30; // 바뀐 것은 30일 동안 계속 보여 준다
+function envRecent_(d) { return d && (new Date() - new Date(d.replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3'))) < ENV_RECENT_DAYS_ * 86400000; }
+// 서식: 감시목록_서식 항목을 그 시행규칙 현행판 XML의 별표단위(서식 PDF 파일번호)와 맞댄다. 시행규칙 새 판이 시행된 날 + 주 1회.
+function envWatchForms_(state, deadline, lawItems, weekly) {
+  var list = envWatchList_('서식'); if (!list) return { 상태: '감시목록_서식.json 없음(서식 세션 준비 중)' };
+  var oc = PropertiesService.getScriptProperties().getProperty('LAW_OC'), st = state.forms = state.forms || {}, out = [], byLaw = {};
+  list.forEach(function (x) { var l = x.확인 && x.확인.관련법령; if (l) (byLaw[l] = byLaw[l] || []).push(x); });
+  Object.keys(byLaw).forEach(function (law) {
+    var ls = state.laws && state.laws[law], li = (lawItems || []).filter(function (i) { return i.법령 === law; })[0];
+    if (ls && ls.mst && (weekly || (li && li.새로시행)) && Date.now() < deadline) {
+      var r = envFetch_('https://www.law.go.kr/DRF/lawService.do?OC=' + encodeURIComponent(oc) + '&target=eflaw&type=XML&MST=' + ls.mst + '&efYd=' + ls.ef), cur = {};
+      if (r.code !== 200) { out.push({ 법령: law, 오류: '법령 받기 실패(' + r.code + ')' }); return; }
+      r.text.replace(/<별표단위[^>]*>([\s\S]*?)<\/별표단위>/g, function (m, u) {
+        var g = function (t) { var mm = u.match(new RegExp('<' + t + '>(?:<!\\[CDATA\\[)?([^<\\]]*)')); return mm ? mm[1] : ''; };
+        cur[g('별표번호') + g('별표가지번호')] = { pdf: (g('별표서식PDF파일링크').match(/flSeq=(\d+)/) || [])[1] || '', 시행: g('별표시행일자') }; return '';
+      });
+      byLaw[law].forEach(function (x) {
+        var c = cur[String(x.확인.별표번호 || '')], s = st[x.id] || {}, prev = s.값 || String(x.기준값 || '');
+        if (!c) { s.없음 = envToday_(); }
+        else { if (prev && c.pdf && c.pdf !== prev) { s.전 = prev; s.바뀐날 = envToday_(); s.서식시행 = c.시행; } s.값 = c.pdf; delete s.없음; }
+        s.확인일 = envToday_(); st[x.id] = s;
+      });
+    }
+    byLaw[law].forEach(function (x) {
+      var s = st[x.id] || {};
+      if (envRecent_(s.바뀐날)) out.push({ id: x.id, 이름: x.이름, 구분: '서식 바뀜(' + s.바뀐날 + ')', 전: s.전, 새: s.값, 서식시행: s.서식시행, 영향: x.영향 });
+      else if (s.없음) out.push({ id: x.id, 이름: x.이름, 구분: '법령에서 그 서식번호를 못 찾음(삭제·번호 변경?)' });
+    });
+  });
+  return { items: out, 대상: list.length };
+}
+// 조견표: 표마다 주기가 되면 공고·고시 쪽을 열어 "찾을것"(정규식) 값이 바뀌었나 본다. 사람확인은 주기마다 알림, 법제처법령은 그 법령 새 판 때.
+function envDue_(p, last, today) {
+  if (!last) return true;
+  var d = (new Date(today.replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3')) - new Date(last.replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3'))) / 86400000, m = String(p || '').match(/매년:(\d+)/);
+  return p === '매일' ? d >= 1 : p === '매주' ? d >= 7 : p === '매월' ? d >= 28 : m ? (+today.slice(4, 6) === +m[1] && d >= 300) : false;
+}
+function envWatchRefs_(state, deadline, lawItems) {
+  var list = envWatchList_('조견표'); if (!list) return { 상태: '감시목록_조견표.json 없음(조견표 세션 준비 중)' };
+  var st = state.refs = state.refs || {}, out = [], today = envToday_();
+  list.forEach(function (x) {
+    var c = x.확인 || {}, s = st[x.id] || {}, last = s.확인일 || String(x.기준일 || '').replace(/-/g, '');
+    if (c.방법 === '법제처법령') {
+      var li = (lawItems || []).filter(function (i) { return i.법령 === c.관련법령; })[0];
+      if (li && li.새로시행) s.바뀐날 = today;
+    } else if (envDue_(x.주기, last, today) && Date.now() < deadline) {
+      s.확인일 = today;
+      if (c.방법 === '사람확인' || !c.주소) s.알림 = today;
+      else {
+        var r = envFetch_(c.주소), t = envStripHtml_(r.text), mm = r.code === 200 && c.찾을것 ? t.match(new RegExp(c.찾을것)) : null;
+        var v = mm ? (mm[1] || mm[0]).slice(0, 200) : '', prev = s.값 || String(x.기준값 || '');
+        if (!mm) s.오류 = r.code !== 200 ? '열기 실패(' + r.code + ')' : '찾을것이 페이지에 없음(모양 바뀜?)';
+        else { delete s.오류; if (prev && v !== prev) { s.전 = prev; s.바뀐날 = today; } s.값 = v; }
+      }
+    }
+    st[x.id] = s;
+    if (envRecent_(s.바뀐날)) out.push({ id: x.id, 이름: x.이름, 구분: (c.방법 === '법제처법령' ? '관련 법령 새 개정 — 표 확인' : '새 공고·고시') + '(' + s.바뀐날 + ')', 전: s.전, 새: s.값, 영향: x.영향 });
+    else if (s.알림 === today) out.push({ id: x.id, 이름: x.이름, 구분: '확인할 때 됨(사람 확인)', 주소: c.주소 || '' });
+    else if (s.오류) out.push({ id: x.id, 이름: x.이름, 구분: '자동 확인 안 됨 — ' + s.오류, 주소: c.주소 });
+  });
+  return { items: out, 대상: list.length };
+}
+// 법령 그림 산식 Vision 판독(세무사님 "법령의 이미지 부분은 시간나는 대로 꾸준이 텍스트화해야 한다 … 구글비젼으로") — 밤마다 하루 LAWVIS_DAY(기본 20)개,
+// 월 쪽수는 일괄 글자인식과 같은 OCRB_VIS_<월>·상한을 함께 쓴다. 여기서는 판독 글·단어 위치만 쌓고(토큰 0), 산식 표기로 다듬기·검산(세무사님 타이핑·
+// 법제처 글자상자·서식 칸·엔진과 맞대기)은 PC 도구와 Claude가 한다. 대상: 법령/_산식보정/그림목록.json(tools/law-build.js), 결과: Vision판독.json
+function lawVisionRun_(deadline) {
+  if (!ocrbVisOn_()) return { 상태: 'Vision 꺼짐(VISION_API_KEY 없음 또는 OCRB_VIS_OFF)' };
+  var list = envDbJson_('산식보정', '그림목록.json', null), items = list && (list.항목 || list);
+  if (!items) return { 상태: '그림목록.json 없음' };
+  var done = envDbJson_('산식보정', 'Vision판독.json', {}), cap = Number(ocrbVisProp_('LAWVIS_DAY', 20)) || 20, n = 0, err = '';
+  items.some(function (g) {
+    if (n >= cap || Date.now() > deadline || ocrbVisUsed_() >= ocrbVisCaps_().month) return true;
+    if (done[g.id]) return false;
+    try {
+      var p = (tcVisionOcr_(UrlFetchApp.fetch(g.url).getBlob()) || [])[0];
+      done[g.id] = { 법령: g.법령, 판: g.판, 조: g.조, 판독일: envToday_(), 글: p ? p.text : '', 크기: p ? [p.w, p.h] : null, 단어: p ? p.words.map(function (w) { return [w.t, Math.round(w.x), Math.round(w.y), Math.round(w.w), Math.round(w.h)]; }) : [] };
+      n++; PropertiesService.getScriptProperties().setProperty(ocrbVisMonthKey_(), String(ocrbVisUsed_() + 1));
+    } catch (e) { err = String(e && e.message || e); return true; }
+  });
+  if (n) { var d = envLawDbDir_('산식보정'), it = d.getFilesByName('Vision판독.json'), s = JSON.stringify(done); if (it.hasNext()) it.next().setContent(s); else d.createFile('Vision판독.json', s, 'application/json'); }
+  return { 오늘: n, 누계: Object.keys(done).length, 전체: items.length, 오류: err || undefined };
 }

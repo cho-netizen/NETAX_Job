@@ -46,28 +46,32 @@
         <button type="button" class="ghost-btn" id="stBtnAnswerKeyDraft" title="사건 폴더의 양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)를 무료 글자인식으로 읽어 _정답지.json 초안을 만듭니다(AI 비용 0) — 세무사님이 확인해 '확정'으로 바꿔 주세요">📝 정답지 초안</button>
         <button type="button" class="ghost-btn" id="stBtnOcrCount" title="모든 사건 폴더의 서류 중 서버 글자인식 기억이 이미 있는 것·아직 없는 것·글자로 못 바꾸는 형식을 사건별로 셉니다(글자인식은 하지 않음, AI 비용 0)">🔤 글자인식 미리 세기</button>
         <button type="button" class="ghost-btn" id="stBtnOcrBatch" title="모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 무료 글자인식으로 읽어 기억에 쌓습니다(사건은 저장·정리하지 않음, AI 비용 0). 서류가 많으면 몇 시간 걸립니다 — 창을 닫아도 이어지게 하려면 ⏰ 자동 이어 읽기를 켜세요">🔤 글자인식 일괄 읽기</button>
+        <button type="button" class="ghost-btn" id="stBtnOcrReread" title="글자인식 기억이 0자로 남은 PDF(웹 화면을 Print to PDF로 저장한 예규 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요(AI 비용 0)">🔤 빈 글자 PDF 다시 읽기</button>
         <button type="button" class="ghost-btn" id="stBtnOcrTrigger" title="서버가 5분마다 혼자 글자인식 일괄을 이어서 합니다(다 읽으면 저절로 꺼짐). 한 번 더 누르면 끕니다">⏰ 자동 이어 읽기</button>
         <button type="button" class="ghost-btn" id="stBtnTaxpayerFix" title="납세자가 비었거나(상속은) 의뢰인 이름으로 잘못 들어간 사건을, 사건 폴더 서류로 확인한 납세자로 고치고 사건명·폴더명을 '고객명(납세자)_세목_업무유형'으로 맞춥니다. 먼저 미리보기 → 확인 후 적용(AI 비용 0)">🏷 납세자·사건명 정리</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
+        <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">🗳 승인 대기 수정안</button>
+        <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">🔑 깃허브 열쇠</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
         <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
-    <!-- [2026.10.13] AI 연합체·개발자 소통 — 요청 상태(접수→반영→확인), 개발자 질문, AI 자문단(무료 AI 기술 조언),
-         무료 AI 3곳 다수결, AI 명단, 무료 API 키. 서버: Federation.js. 설명: docs/ai-federation.md -->
+    <!-- [2026.10.19] 🤝 AI 회의 · 개발자 소통 — 세무사님 "이 방향으로 수정하자"(AI 연합체를 회의 틀 하나로, 돌지 않는 것은 삭제).
+         안건 두 종류: ⚖️ 법령(판단 대기 — 회장 Claude=조정 세션), 🛠 시스템(개선 후보 보고서 — 회장=주간 정비 루틴). 위원 = Gemini API(무료 등급)·OpenRouter.
+         회의 기록 표는 앱 전용(app-only/judgewait.html — 법령 탭 "🤝 판단 대기"와 같은 표). 서버: Federation.js. 설명: docs/ai-federation.md -->
     <div class="card" style="max-width:720px;" id="stFedCard">
-      <h3>🤝 AI 연합체 · 개발자 소통</h3>
-      <div class="settings-tool-desc" style="margin:0 0 8px;">요청한 개선이 반영됐는지 확인하고, 개발자(웹 Claude Code)의 질문에 답하고, 여러 무료 AI에게 기술 조언을 받습니다. 고객 정보는 무료 AI로 보내지 않습니다(자동으로 막음).</div>
+      <h3>🤝 AI 회의 · 개발자 소통</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">위원 AI(Gemini API)가 안건마다 답하고 회장(Claude)이 결론을 냅니다. 결론이 안 난 것과 돈 드는 결정만 세무사님께 올라옵니다. 고객 정보는 위원에게 보내지 않습니다(자동 차단).</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+        <button type="button" class="ghost-btn" data-fed="law">⚖️ 회의 기록(법령)</button>
+        <button type="button" class="ghost-btn" data-fed="need">🙋 세무사님 결정 필요</button>
+        <button type="button" class="ghost-btn" data-fed="sys">🛠 시스템 안건</button>
         <button type="button" class="ghost-btn" data-fed="req">📝 요청 상태</button>
         <button type="button" class="ghost-btn" data-fed="q">❓ 개발자 질문</button>
-        <button type="button" class="ghost-btn" data-fed="advice">🧑‍🏫 AI 자문단</button>
-        <button type="button" class="ghost-btn" data-fed="ask" title="고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 맞는지 봅니다(0원)">🗳 무료 AI 3곳에 묻기</button>
-        <button type="button" class="ghost-btn" data-fed="reg">🤝 AI 명단</button>
-        <button type="button" class="ghost-btn" data-fed="key">🔑 무료 AI 키</button>
+        <button type="button" class="ghost-btn" data-fed="reg">👥 위원 상태</button>
       </div>
       <div id="stFedBox" class="settings-tool-desc">버튼을 누르면 내용이 보입니다.</div>
     </div>
@@ -77,9 +81,21 @@
     var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
     var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
-    var lastStatus = null, lastAdvice = null;
     var STATUS_COLOR = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
-    function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); lastStatus = r; return r; }); }
+    function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); return r; }); }
+    function showMeeting(onlyNeed){
+      if (typeof jwRenderInto_ !== 'function'){ box().textContent = '회의 기록 표는 앱(job.netax.kr/app)에서 보입니다.'; return; }
+      jwRenderInto_(box(), onlyNeed ? '결정 필요' : '');
+    }
+    function showSys(){
+      box().textContent = '불러오는 중…';
+      callGas('improve_report_get', {}).then(function(r){
+        var rep = r && r.report;
+        if (!rep){ box().innerHTML = '아직 개선 후보 보고서가 없습니다(매일 새벽에 만들어집니다).'; return; }
+        box().innerHTML = '<div style="margin-bottom:4px;">이번 보고서(' + h(String(rep.generatedAt || '').slice(0, 16)) + ')의 안건 — 위원(Gemini API)에게 묻고 회장(주간 정비 루틴)이 결론을 내 고침 작업(PR)으로 올립니다. 결론이 안 난 것·돈 드는 결정은 ❓ 개발자 질문으로 옵니다.</div>'
+          + ((rep.headline || []).length ? (rep.headline || []).map(function(x){ return row(h(x)); }).join('') : row('안건 없음'));
+      }).catch(err);
+    }
     function showReq(){
       box().textContent = '불러오는 중…';
       loadStatus().then(function(r){
@@ -104,117 +120,33 @@
         }).join('');
       }).catch(err);
     }
+    // 위원 상태 — Gemini API(키·오늘 사용량), OpenRouter 칸(키를 넣으면 위원 추가), Claude(기존 배차)
     function showReg(){
       box().textContent = '불러오는 중…';
       loadStatus().then(function(r){
-        var tierName = { A: 'A 무료 API(자동)', B: 'B 무료 웹(수동 — 약관상 자동화 금지)', C: 'C 유료·기기 안(고객 자료 허용)' };
-        var html = '';
-        ['A', 'B', 'C'].forEach(function(t){
-          var list = (r.registry || []).filter(function(x){ return x.tier === t; });
-          html += '<div style="margin-top:6px;"><b>' + tierName[t] + '</b></div>' + list.map(function(x){
-            return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + (x.dailyFree ? ' · 오늘 ' + x.usedToday + '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span><br>주특기: ' + h((x.specialties || []).join(', ')) + (x.tos ? '<br><span style="color:var(--sub);">약관: ' + h(x.tos) + '</span>' : '') + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : ''));
-          }).join('');
-        });
-        html += '<div style="margin-top:8px;"><b>배차표(GAS 운영팀장)</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
-        box().innerHTML = html;
-      }).catch(err);
-    }
-    var KEY_HELP = {
-      GEMINI_FREE_API_KEY: 'Google AI Studio(aistudio.google.com) → Get API key → 결제 연결 없는 프로젝트로 만든 키',
-      GROQ_API_KEY: 'console.groq.com → API Keys → Create API Key',
-      OPENROUTER_API_KEY: 'openrouter.ai → Keys → Create Key(무료 모델만 씀)',
-      MISTRAL_API_KEY: 'console.mistral.ai → API Keys(무료 실험 등급)',
-      HF_TOKEN: 'huggingface.co → Settings → Access Tokens(읽기 권한)'
-    };
-    function showKey(){
-      box().textContent = '불러오는 중…';
-      loadStatus().then(function(r){
         var reg = r.registry || [];
-        box().innerHTML = '<div style="margin-bottom:4px;">무료 API 키는 세무사님이 각 사이트에서 직접 발급해 여기에 붙여 넣습니다(Claude는 계정을 만들거나 키를 넣지 않습니다). 키는 저장만 되고 화면에 다시 보이지 않습니다.</div>'
-          + Object.keys(KEY_HELP).map(function(k){
-            var e = reg.filter(function(x){ return x.keyProp === k; })[0];
-            var set = e && !/키 없음/.test(e.status);
-            return row('<b>' + h(e ? e.name : k) + '</b> — ' + (set ? '<span style="color:var(--success);">설정됨</span>' : '<span style="color:var(--sub);">없음</span>') + '<br><span style="color:var(--sub);">' + h(KEY_HELP[k]) + '</span><br><button type="button" class="ghost-btn" data-fedkey="' + h(k) + '">🔑 ' + (set ? '바꾸기' : '넣기') + '</button>' + (set ? ' <button type="button" class="ghost-btn" data-fedkeydel="' + h(k) + '">지우기</button>' : ''));
-          }).join('');
-      }).catch(err);
-    }
-    function showAsk(){
-      nxPrompt_('고객 정보가 없는 일반 질문을 적어 주세요(예: "2026년 1세대1주택 고가주택 기준금액은?").\n무료 AI 3곳에 동시에 묻고 결론이 같은지 봅니다(0원).', '').then(function(q){
-        q = String(q || '').trim();
-        if (!q) return;
-        nxConfirm_('이 질문에 고객 이름·주민번호·전화·주소·사건 내용이 없나요?\n(무료 AI에는 고객 자료를 보내지 않습니다)').then(function(ok){
-          if (!ok) return;
-          box().textContent = '🗳 무료 AI에 묻는 중… (10~40초)';
-          callGas('ai_consensus', { question: q, noClientData: true }).then(function(r){
-            if (!r || r.error){ box().textContent = (r && r.error) || '응답 없음'; return; }
-            box().innerHTML = '<div style="margin-bottom:4px;"><b>' + h(r.verdict) + '</b>' + (r.adopted ? ' — 채택 결론: ' + h(r.adopted) : '') + '</div>'
-              + (r.answers || []).map(function(a){ return row('<b>' + h(a.name) + '</b> — 결론: ' + h(a.conclusion) + '<details><summary>전체 답</summary><div style="white-space:pre-wrap;">' + h(a.text) + '</div></details>'); }).join('')
-              + '<div style="color:var(--sub); margin-top:4px;">무료 AI 답은 참고용입니다 — 세무 판단은 법령 원문·유료 AI로 확인하세요.</div>';
-          }).catch(err);
-        });
-      });
-    }
-    function showAdvice(){
-      box().textContent = '불러오는 중…';
-      callGas('ai_advice_get', {}).then(function(r){
-        lastAdvice = r;
-        var L = r && r.latest;
-        var head = '<div style="margin-bottom:6px;">매주 월요일 밤 job이 막힌·비싼 기능과 오류를 바탕으로 기술 질문을 만들어 무료 AI들에 묻습니다(0원). 웹 AI(ChatGPT 등)는 약관상 자동으로 못 하므로 📋 복사 → 사이트에서 붙여넣어 보내기 → 답 복사 → ✍ 붙여넣기로 직접 넣습니다. 여러 AI가 같이 낸 제안은 "공통"으로 표시되고, 개발자(주간 루틴)가 공식 문서로 확인해 적용합니다.</div>'
-          + '<button type="button" class="ghost-btn" data-fedrun="1">🧑‍🏫 지금 질문 만들고 무료 AI에 묻기</button>';
-        if (!L){ box().innerHTML = head + '<div style="margin-top:6px;">아직 자문 기록이 없습니다.</div>'; return; }
-        var webs = r.registry || [];
-        var html = head + '<div style="margin-top:6px;"><b>' + h(L.week) + '</b> · ' + h(L.at) + '</div>';
-        L.questions.forEach(function(q){
-          html += row('<b>[' + h(q.topic) + ']</b> <span style="color:var(--sub);">' + h(q.id) + ' · 답 ' + q.answers.length + '개(' + h(q.answers.map(function(a){ return a.name + (a.mode === 'manual' ? '·수동' : ''); }).join(', ')) + ')</span>'
-            + '<details><summary>질문 보기</summary><div style="white-space:pre-wrap;">' + h(q.q) + '</div></details>'
-            + '<div style="margin:3px 0;">' + webs.map(function(w){ return '<button type="button" class="ghost-btn" data-fedweb="' + h(q.id) + '|' + h(w.id) + '" title="' + h(w.tos) + '">📋 ' + h(w.name) + '</button>'; }).join(' ') + '</div>'
-            + (q.suggestions || []).map(function(s, i){
-              return '<div style="padding:2px 0 2px 8px;">' + (s.common ? '⭐ 공통(' + s.ais.length + ')' : '· 단독') + ' ' + h(s.text) + ' <span style="color:var(--sub);">— ' + h(s.ais.join(', ')) + '</span>'
-                + (s.verdict ? ' <b>[' + h(s.verdict) + ']</b>' : '') + ' <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|채택">채택</button> <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|기각">기각</button></div>';
-            }).join(''));
-        });
-        var sc = r.scores || {};
-        var names = Object.keys(sc);
-        if (names.length) html += '<div style="margin-top:8px;"><b>AI 성적표</b> ' + names.map(function(n){ return h(n) + ' 채택 ' + sc[n].adopted + '/' + sc[n].proposed; }).join(' · ') + '</div>';
-        box().innerHTML = html;
+        var line = function(x){ return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + ' · 오늘 ' + (x.usedToday || 0) + '번' + (x.dailyFree ? '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span>' + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : '')
+          + (x.keyProp === 'OPENROUTER_API_KEY' ? '<br><span style="color:var(--sub);">openrouter.ai → Keys → Create Key(무료 모델만 씀)</span><br><button type="button" class="ghost-btn" data-fedkey="OPENROUTER_API_KEY">🔑 ' + (x.status === '키 없음' ? '넣기' : '바꾸기') + '</button>' + (x.status === '키 없음' ? '' : ' <button type="button" class="ghost-btn" data-fedkeydel="OPENROUTER_API_KEY">지우기</button>') : '')); };
+        box().innerHTML = '<div style="margin-top:2px;"><b>위원</b></div>' + reg.filter(function(x){ return x.member; }).map(line).join('')
+          + '<div style="margin-top:8px;"><b>Claude API(회장·기존 기능)</b></div>' + reg.filter(function(x){ return !x.member; }).map(line).join('')
+          + '<div style="margin-top:8px;"><b>배차표</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
       }).catch(err);
     }
     document.addEventListener('click', function(ev){
-      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel],[data-fedrun],[data-fedweb],[data-fedmark]');
+      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel]');
       if (!t || !document.getElementById('stFedCard') || !document.getElementById('stFedCard').contains(t)) return;
       var d = t.dataset;
+      if (d.fed === 'law') return showMeeting(false);
+      if (d.fed === 'need') return showMeeting(true);
+      if (d.fed === 'sys') return showSys();
       if (d.fed === 'req') return showReq();
       if (d.fed === 'q') return showQ();
       if (d.fed === 'reg') return showReg();
-      if (d.fed === 'key') return showKey();
-      if (d.fed === 'ask') return showAsk();
-      if (d.fed === 'advice') return showAdvice();
       if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
       if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
       if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
-      if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showKey(); }); }).catch(err);
-      if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showKey); }).catch(err);
-      if (d.fedrun){ box().textContent = '🧑‍🏫 질문을 만들고 무료 AI에 묻는 중… (1~3분)'; return callGas('ai_advice_run', { force: true }).then(function(r){ if (r && r.noFreeAi) toast('무료 AI 키가 아직 없어 자동 답은 없습니다 — 🔑 무료 AI 키를 넣거나 웹 AI에 수동으로 물어 주세요.'); showAdvice(); }).catch(err); }
-      if (d.fedweb){
-        var p = d.fedweb.split('|'), qid = p[0], ai = p[1];
-        var q = null; ((lastAdvice && lastAdvice.latest && lastAdvice.latest.questions) || []).forEach(function(x){ if (x.id === qid) q = x; });
-        var w = ((lastAdvice && lastAdvice.registry) || []).filter(function(x){ return x.id === ai; })[0];
-        if (!q || !w) return;
-        var text = q.q + '\n\n답은 번호 목록(1. 2. 3.)으로 구체적인 제안 위주로.';
-        var copy = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error('복사 불가'));
-        copy.catch(function(){}).then(function(){
-          window.open(w.url, '_blank', 'noopener');
-          setTimeout(function(){
-            nxPrompt_('질문을 복사했습니다 — 열린 ' + w.name + ' 창에 붙여 넣어 보내고, 답을 복사해 여기에 붙여 넣어 주세요.\n(약관상 자동 수집은 하지 않습니다)', '').then(function(ans){
-              ans = String(ans || '').trim();
-              if (!ans) return;
-              callGas('ai_advice_add_manual', { qid: qid, ai: ai, text: ans }).then(showAdvice).catch(err);
-            });
-          }, 600);
-        });
-        return;
-      }
-      if (d.fedmark){ var m = d.fedmark.split('|'); return callGas('ai_advice_mark', { qid: m[0], idx: Number(m[1]), verdict: m[2] }).then(showAdvice).catch(err); }
+      if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showReg(); }); }).catch(err);
+      if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showReg); }).catch(err);
     });
   })();
 </script>
@@ -361,6 +293,12 @@
       '<input type="text" id="setTaxAgentMgmtNo" style="width:100%;" placeholder="세무대리인 관리번호"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
       '<input type="text" id="setTaxAgentPhone" style="width:100%;" placeholder="02 1234 5678"></div>' +
+      // [2026.10.20 전자신고 대조] 전자신고 파일 머리 레코드 필수 값(사무소 고정값)
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">세무대리인 생년월일</label>' +
+      '<input type="text" id="setTaxAgentBirth" style="width:100%;" placeholder="YYYYMMDD (양도 전자신고 — 관리번호와 둘 중 하나 필수)"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">홈택스 사용자ID</label>' +
+      '<input type="text" id="setHometaxUserId" style="width:100%;" placeholder="전자신고 파일 머리 레코드의 사용자ID"></div>' +
+      '<div style="font-size:12px; color:var(--sub);">세무대리 대표자 주민등록번호는 저장하지 않습니다 — 양도 전자신고 파일을 만들 때만 그 자리에서 받고 지웁니다.</div>' +
       '<button type="button" id="setBtnTaxAgentSave" class="save-btn" style="align-self:flex-start;">저장</button>' +
       '<div id="setTaxAgentMsg" style="font-size:12px; min-height:16px;"></div>' +
       '</div>';
@@ -370,6 +308,8 @@
       document.getElementById('setTaxAgentBizNo').value = res.taxAgentBizNo || '';
       document.getElementById('setTaxAgentMgmtNo').value = res.taxAgentMgmtNo || '';
       document.getElementById('setTaxAgentPhone').value = res.taxAgentPhone || '';
+      document.getElementById('setTaxAgentBirth').value = res.taxAgentBirth || '';
+      document.getElementById('setHometaxUserId').value = res.hometaxUserId || '';
     }).catch(function(err){
       document.getElementById('setTaxAgentMsg').textContent = '불러오기 오류: ' + (err && err.message ? err.message : err);
     });
@@ -381,7 +321,9 @@
         taxAgentName: document.getElementById('setTaxAgentName').value,
         taxAgentBizNo: document.getElementById('setTaxAgentBizNo').value,
         taxAgentMgmtNo: document.getElementById('setTaxAgentMgmtNo').value,
-        taxAgentPhone: document.getElementById('setTaxAgentPhone').value
+        taxAgentPhone: document.getElementById('setTaxAgentPhone').value,
+        taxAgentBirth: document.getElementById('setTaxAgentBirth').value.replace(/\D/g, ''),
+        hometaxUserId: document.getElementById('setHometaxUserId').value
       }).then(function(res){
         btn.disabled = false;
         if (res && res.success){
@@ -589,11 +531,11 @@
         + ((r && r.fails || []).length ? '<details style="margin-top:6px;"><summary>실패 ' + r.fails.length + '건</summary>' + r.fails.slice(0, 200).map(function(x){ return '<div style="' + cell + '">' + escapeHtml((x.c || '') + ' / ' + (x.n || '') + ' — ' + (x.why || '')) + '</div>'; }).join('') + '</details>' : '')
         + ((r && r.long || []).length ? '<details style="margin-top:6px;"><summary>10쪽 넘는 PDF ' + r.long.length + '건(쪽수와 읽은 글자 수 — 뒤쪽을 못 읽었는지 확인용)</summary>' + r.long.map(function(x){ return '<div style="' + cell + '">' + escapeHtml(x.c + ' / ' + x.n + ' — ' + x.쪽 + '쪽 · 글자 ' + x.글자) + '</div>'; }).join('') + '</details>' : '');
     }
-    function ocrbRun_(dryRun){
-      var tries = 0, netFails = 0, label = dryRun ? '🔤 글자인식 미리 세기' : '🔤 글자인식 일괄 읽기';
+    function ocrbRun_(dryRun, extra){
+      var tries = 0, netFails = 0, label = extra && extra.rereadEmpty ? '🔤 빈 글자 PDF 다시 읽기' : dryRun ? '🔤 글자인식 미리 세기' : '🔤 글자인식 일괄 읽기';
       var bar = function(r){ var d = r.done || 0, t = r.total || 0, pct = t ? Math.floor(d * 100 / t) : 0, n = Math.round(pct / 5); return '█'.repeat(n) + '░'.repeat(20 - n) + ' ' + pct + '% · ' + (r.phase === 'scan' ? '폴더 세는 중 ' : '서류 읽는 중 ') + d + '/' + t; };
       var step = function(first){
-        return callGas('ocr_batch_run', first ? { dryRun: !!dryRun } : { cont: true }).then(function(r){
+        return callGas('ocr_batch_run', first ? Object.assign({ dryRun: !!dryRun }, extra || {}) : { cont: true }).then(function(r){
           if (r && r.error) throw new Error(r.error);
           netFails = 0;
           if (r && r.more && r.busy){
@@ -622,6 +564,7 @@
     }
     document.getElementById('stBtnOcrCount').addEventListener('click', function(){ ocrbRun_(true); });
     document.getElementById('stBtnOcrBatch').addEventListener('click', function(){ ocrbRun_(false); });
+    (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (confirm('글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
     document.getElementById('stBtnOcrTrigger').addEventListener('click', function(){
       callGas('ocr_batch_status', {}).then(function(s){
         if (s && s.error) throw new Error(s.error);
@@ -673,7 +616,7 @@
         if (!r){ bugList.textContent = '보고서를 받지 못했습니다.'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.candidateCount ? '🛠 개선 후보 ' + r.candidateCount + '건' : '✅ 개선할 거리 없음') + '</b> · ' + escapeHtml(r.period + ' · ' + r.generatedAt) + '</div>'
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
-          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 깃허브 수정안 승인(Merge) → 📥 수정 반영</div>';
+          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 🗳 승인 대기 수정안에서 ✅ 승인·반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     // [2026.10.09 토큰0] ✍ 개선요구사항 — 총괄관리자 폴더 개선요구사항.md에 덧붙이고 개선 후보 보고서에 바로 올린다(0원)
@@ -717,6 +660,67 @@
           }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
         });
       }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.20] 🗳 승인 대기 수정안 — 깃허브 사이트에 가지 않고 여기서 보고 승인·반려(Code.js gh_prList_/gh_prMerge_/gh_prClose_)
+    function loadGhPrs_(){
+      bugList.textContent = '🗳 깃허브 수정안 확인 중…';
+      callGas('gh_pr_list', { fresh: true }).then(function(r){
+        if (!r || !r.success){ bugList.textContent = '수정안을 확인하지 못했습니다: ' + ((r && r.error) || ''); return; }
+        if (!r.count){ bugList.innerHTML = '<b>✅ 승인 대기 수정안이 없습니다.</b>'; return; }
+        bugList.innerHTML = '<div style="margin-bottom:4px;"><b>🗳 승인 대기 수정안 ' + r.count + '건</b>'
+          + (r.hasToken ? '' : ' · <span style="color:var(--danger,#c0392b);">승인·반려하려면 먼저 🔑 깃허브 열쇠를 넣어 주세요</span>') + '</div>'
+          + r.prs.map(function(p){
+            return '<div style="padding:6px 0; border-top:1px solid var(--line);">'
+              + '<div><b>#' + p.number + ' ' + escapeHtml(p.title) + '</b> · ' + escapeHtml(p.at) + '</div>'
+              + '<details style="margin:4px 0;"><summary>설명·바뀐 파일 보기</summary>'
+              + '<div style="white-space:pre-wrap; margin:4px 0;">' + escapeHtml(p.body || '(설명 없음)') + '</div>'
+              + '<div style="color:var(--sub);">바뀐 파일: ' + escapeHtml((p.files || []).join(', ') || '(알 수 없음)') + '</div>'
+              + '<a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener">깃허브에서 자세히</a></details>'
+              + '<div style="display:flex; gap:6px; flex-wrap:wrap;">'
+              + '<button type="button" class="ghost-btn st-pr-merge" data-n="' + p.number + '" data-title="' + escapeHtml(p.title) + '">✅ 승인·반영</button>'
+              + '<button type="button" class="ghost-btn st-pr-close" data-n="' + p.number + '" data-title="' + escapeHtml(p.title) + '">✖ 반려</button>'
+              + '</div></div>';
+          }).join('');
+      }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    }
+    document.getElementById('stBtnGhPrs').addEventListener('click', loadGhPrs_);
+    bugList.addEventListener('click', function(e){
+      var mb = e.target.closest('.st-pr-merge'), cb = e.target.closest('.st-pr-close');
+      if (mb){
+        var n = mb.getAttribute('data-n');
+        nxConfirm_('✅ 수정안 #' + n + ' "' + mb.getAttribute('data-title') + '"을 승인할까요?\n\n승인하면 깃허브에 합쳐지고, 이어서 📥 수정 반영으로 job이 새 버전으로 바뀝니다. 이상하면 ↩ 되돌리기로 돌아갈 수 있습니다.').then(function(ok){
+          if (!ok) return;
+          bugList.textContent = '✅ 승인(깃허브 합치기) 중…';
+          callGas('gh_pr_merge', { number: Number(n) }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '승인하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            bugList.textContent = '✅ 승인 완료 — 깃허브 반영을 기다렸다가 📥 수정 반영으로 넘어갑니다…';
+            // 깃허브 최근 커밋 피드가 합친 커밋을 보여 주기까지 몇 초 걸린다
+            setTimeout(function(){ document.getElementById('stBtnGhDeploy').click(); }, 5000);
+          }).catch(function(err){ bugList.textContent = '승인 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+        return;
+      }
+      if (cb){
+        var cn = cb.getAttribute('data-n');
+        nxPrompt_('✖ 수정안 #' + cn + ' "' + cb.getAttribute('data-title') + '"을 반려합니다.\n반려 사유를 적어 주시면 다음 루틴이 읽고 다르게 고칩니다(비워도 됨).', '').then(function(reason){
+          if (reason === null || reason === undefined || reason === false) return;
+          bugList.textContent = '✖ 반려 중…';
+          callGas('gh_pr_close', { number: Number(cn), reason: String(reason || '') }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '반려하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            loadGhPrs_();
+          }).catch(function(err){ bugList.textContent = '반려 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+      }
+    });
+    document.getElementById('stBtnGhToken').addEventListener('click', function(){
+      nxPrompt_('🔑 깃허브 열쇠(github_pat_…로 시작)를 붙여 넣어 주세요.\n저장소 NETAX_Job 하나만, 권한은 Contents·Pull requests "읽기와 쓰기"로 만든 열쇠여야 합니다.\n비워서 확인을 누르면 저장된 열쇠를 지웁니다.', '').then(function(tok){
+        if (tok === null || tok === undefined || tok === false) return;
+        bugList.textContent = '🔑 열쇠 확인 중…';
+        callGas('gh_set_token', { token: String(tok || '') }).then(function(r){
+          if (!r || !r.success){ bugList.textContent = '열쇠를 저장하지 못했습니다: ' + ((r && r.error) || ''); return; }
+          bugList.textContent = r.cleared ? '🔑 저장된 열쇠를 지웠습니다.' : (r.canWrite ? '✅ 열쇠를 저장했습니다 — 이제 🗳 승인 대기 수정안에서 승인·반려할 수 있습니다.' : '⚠ 열쇠는 저장했지만 쓰기 권한이 없어 보입니다 — Contents·Pull requests를 "읽기와 쓰기"로 다시 만들어 주세요.');
+        }).catch(function(err){ bugList.textContent = '열쇠 저장 중 오류: ' + (err && err.message ? err.message : err); });
+      });
     });
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){

@@ -4,9 +4,8 @@
 // 주의: 반드시 clasp deploy와 git push가 둘 다 끝난 뒤에만 실행할 것(운영과 main이 실제로 같을 때).
 const fs = require('fs');
 const { execSync } = require('child_process');
-const cfg = fs.readFileSync('C:/GitHub/NETAX_Work/config.js', 'utf8');
-const KEY = (cfg.match(/API_SECRET:\s*'([^']+)'/) || [])[1];
-const GAS = (cfg.match(/GAS_URL:\s*'([^']+)'/) || [])[1];
+// [2026.10.19 보안] 열쇠는 저장소 밖 개인 파일(tools/nx-secret.js 설명)에서 — 공개 저장소의 NETAX_Work/config.js는 더 이상 안 읽는다
+const { key: KEY, gas: GAS } = require('./nx-secret.js').loadNxSecret();
 const sha = execSync('git rev-parse origin/main', { cwd: __dirname + '/..' }).toString().trim();
 const local = execSync('git rev-parse HEAD', { cwd: __dirname + '/..' }).toString().trim();
 if (sha !== local) { console.log('아직 푸시 안 된 커밋이 있습니다 — git push 후 다시 실행하세요.'); process.exit(1); }

@@ -34,9 +34,44 @@ let html = assemble('manage/index', 0, seen);
 const leftover = html.match(/<\?[\s\S]{0,80}?\?>/);
 if (leftover) throw new Error('처리되지 않은 템플릿 태그가 남아 있습니다: ' + leftover[0]);
 
+// [2026.10.19 조견표 체계] 법령정보 탭의 "이 조문을 쓰는 계산" — EngineLawMap.js(자동 생성 지도)를 화면에 끼워 넣는다(서버 호출 없이).
+//  자리 표시 `/*@@ENGINE_LAW_MAP@@*/null`가 없으면(화면이 바뀌었으면) 그냥 넘어간다.
+const LAW_MAP_SLOT = '/*@@ENGINE_LAW_MAP@@*/null';
+if (html.indexOf(LAW_MAP_SLOT) !== -1) {
+  const lawMapSrc = fs.readFileSync(path.join(SRC, 'EngineLawMap.js'), 'utf8');
+  const m = lawMapSrc.match(/var ENGINE_LAW_MAP_ = (\{[\s\S]*\});?\s*$/);
+  if (!m) throw new Error('EngineLawMap.js에서 ENGINE_LAW_MAP_를 못 읽었습니다');
+  JSON.parse(m[1]); // 깨진 지도는 넣지 않는다
+  html = html.split(LAW_MAP_SLOT).join(m[1]);
+}
+
+// [2026.10.19 서버 용량] 조견표·서식 칸 해설 자료(reftables/*.json, 약 1MB)는 서버 lawsearch.html엔 빈 값으로 두고 여기서 끼운다.
+{
+  const ref = require('./build-reftables.js');
+  const i = html.indexOf(ref.B), k = html.indexOf(ref.E);
+  if (i < 0 || k < i) throw new Error('lawsearch 자료 자리 표시(REF_DATA)를 못 찾았습니다');
+  if (html.indexOf(ref.B, i + 1) !== -1) throw new Error('REF_DATA 자리 표시가 두 군데입니다');
+  html = html.slice(0, i) + ref.refBlock(ref.collect()) + html.slice(k);
+}
+
+// [2026.10.19 서버 용량] 앱에만 들어가는 화면 코드 — 저장소 app-only/<이름>.html을 화면의 자리 표시 `<!--@@APP_ONLY:이름@@-->`에 끼운다.
+//  gs-backend 밖이라 clasp push(서버 10MB 한도)에 안 올라간다. 예전 구글 주소 화면에서는 이 기능이 비어 보인다.
+html = html.replace(/<!--@@APP_ONLY:([\w-]+)@@-->/g, (_, name) => {
+  const f = path.join(ROOT, 'app-only', name + '.html');
+  if (!fs.existsSync(f)) throw new Error('앱 전용 파일이 없습니다: ' + f);
+  return fs.readFileSync(f, 'utf8');
+});
+
 const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
 html = html.replace('<head>', '<head>\n  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (' + stamp + ' UTC) -->');
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.writeFileSync(path.join(OUT_DIR, 'index.html'), html);
 console.log('app/index.html 생성 — ' + (html.length / 1024 / 1024).toFixed(2) + 'MB, 포함 파일 ' + seen.length + '개');
+
+// [2026.10.20 보안] 공개 저장소라 고객 실명·주민번호·계좌번호가 다시 들어왔는지 경고만 한다(빌드는 막지 않음).
+//  자세한 위치: node tools/check-names.js (대응표: %USERPROFILE%\.netax\names-map.json, 저장소 밖)
+try {
+  const r = require('./check-names.js').scan();
+  if (r.hits.length) console.log('⚠ 실명 의심 ' + r.hits.length + '곳 — node tools/check-names.js 로 위치 확인' + (r.mapLoaded ? '' : ' (대응표 없음: 꼴 검사만)'));
+} catch (e) { console.log('⚠ 실명 검사 실패(빌드는 계속): ' + e.message); }

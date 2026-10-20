@@ -1,8 +1,10 @@
 # 이 저장소 전용 규칙
 
 ## 이 저장소의 두 가지 역할
-1. **루트의 `CNAME`/`index.html`** — job.netax.kr을 새 관리 앱(구글 앱스스크립트) 주소로 자동
-   이동시키는 리다이렉트 페이지. 깃허브 페이지로 서빙됨. 이 두 파일은 거의 안 바뀔 것이다.
+1. **루트의 `CNAME`/`index.html`** — job.netax.kr을 앱(`job.netax.kr/app/`)으로 자동 이동시키는
+   리다이렉트 페이지. 깃허브 페이지로 서빙됨. [2026.10.19] 세무사님 "2번게이트로만 들어가도록 하겠다" —
+   예전엔 구글 주소(`.../exec?app=manage`)로 보냈으나 앱으로 바꿈(54eaefc). 서버 용량(약 10MB 한도)
+   때문에 큰 자료는 앱에만 넣으므로, 구글 주소 화면은 일부 기능(조견표 등)이 비어 보인다.
 2. **`gs-backend/` 폴더** — 새 관리 앱("사건처리"부터 "작성관리"까지, `?app=manage`로 진입)의
    실제 소스코드. 2026-09-02에 `NETAX_Work-staging`(원래 종전 채팅앱의 스테이징 저장소)에서
    이 저장소로 옮겨왔다 — 종전 채팅앱은 언젠가 폐기될 예정이라, 그 폐기 시점에 새 관리 앱
@@ -24,7 +26,10 @@
 만들고, 깃허브 페이지가 그것을 `job.netax.kr/app/`로 서빙한다. 서버 호출은 `manage/gasbridge.html`이
 google.script.run 대신 doPost의 `__manage` 입구(Code.js `manageApp_dispatchHttpOnce_`)로 보낸다 —
 요청번호(rid)로 같은 요청이 두 번 실행되지 않게 한다(구글 응답 2단계 중 결과 받아가기가 자주 실패하기 때문).
-예전 구글 주소(`.../exec?app=manage`)도 그대로 동작한다(gasbridge는 그 안에서는 아무 일도 안 함).
+~~예전 구글 주소(`.../exec?app=manage`)도 그대로 동작한다~~ → [2026.10.19 보안·10.20 용량] 구글 주소는 이제 "job.netax.kr/app/에서
+여세요" 글자만 돌려준다(그 화면의 google.script.run으로 누구나 서버 함수를 부를 수 있었음). 그래서 **화면 원본 `manage/*.html`은
+서버에 올리지 않는다** — `gs-backend/.claspignore`에 들어 있고, 서버에 남는 화면 파일은 서버 세액 엔진 `manage/taxcalc-engine.html`
+하나뿐이다(약 3.85MB 절약). 새 화면 파일을 만들면 `.claspignore`에 한 줄 더하고 `node tools/check-clasp-trim.js`로 확인한다.
 
 **화면(`manage/*.html`)을 고쳤으면** 아래 GS 절차(clasp push/deploy)에 더해:
 1. `node tools/build-app.js` — `app/index.html` 다시 만들기 (직접 고치지 말 것, 자동 생성 파일)
