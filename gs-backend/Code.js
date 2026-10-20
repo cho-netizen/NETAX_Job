@@ -281,7 +281,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'save_file_to_folder',
-    description: '드라이브에 실제로 파일을 만들거나 저장한다. 사용자가 "이거 파일로 저장해줘", "보고서 만들어줘", "이 폴더에 저장해줘"처럼 결과물을 실제 파일로 남겨달라고 요청하면, 채팅 답변 텍스트로만 주지 말고 반드시 이 도구를 써서 실제 파일을 만들어라. path를 생략하면 사용자가 지금 화면에서 보고 있는 폴더에 저장된다. 같은 폴더에 이미 같은 이름의 파일이 있으면 덮어쓴다(새 버전으로 교체). 마크다운(.md)·일반 텍스트(.txt) 등 텍스트 기반 파일만 만들 수 있다(오피스 문서·PDF 등 바이너리 파일은 못 만듦). "워드처럼 받고 싶다", "구글독스로 내보내줘"처럼 서식 있는 문서를 원하면 이 도구 대신 export_to_google_doc을 써라 — 둘 중 뭘 원하는지 애매하면 사용자에게 물어봐라.',
+    description: '드라이브에 실제로 파일을 만들거나 저장한다. 사용자가 "이거 파일로 저장해줘", "보고서 만들어줘", "이 폴더에 저장해줘"처럼 결과물을 실제 파일로 남겨달라고 요청하면, 채팅 답변 텍스트로만 주지 말고 반드시 이 도구를 써서 실제 파일을 만들어라. path를 생략하면 사용자가 지금 화면에서 보고 있는 폴더에 저장된다. 같은 폴더에 이미 같은 이름의 파일이 있으면 그 파일을 갱신한다(직전 판은 같은 폴더 "_이전판"에 자동 보관) — 같은 사건의 같은 문서(검토서·보고서 등)를 고칠 때는 이름에 날짜·판 번호를 붙이지 말고 기존 파일과 똑같은 이름으로 저장하라. 단 지금 화면에 열려 있는 문서는 이 도구로 저장되지 않으니 apply_document_edit를 써라. 마크다운(.md)·일반 텍스트(.txt) 등 텍스트 기반 파일만 만들 수 있다(오피스 문서·PDF 등 바이너리 파일은 못 만듦). "워드처럼 받고 싶다", "구글독스로 내보내줘"처럼 서식 있는 문서를 원하면 이 도구 대신 export_to_google_doc을 써라 — 둘 중 뭘 원하는지 애매하면 사용자에게 물어봐라.',
     input_schema: {
       type: 'object',
       properties: {
@@ -4787,14 +4787,26 @@ function toolSaveFileToFolder(pathArr, name, content, opts) {
       let fileName = String(name).trim();
       const mimeType = /\.md$/i.test(fileName) ? 'text/markdown' : 'text/plain';
       let existingIter = folder.getFilesByName(fileName);
-      let file, updated, renamedFrom = '';
-      // [2026.10.20 보안] AI 도구 경로(opts.noOverwrite) — 같은 이름이 있으면 덮어쓰지 않고 "이름 (AI 새 판 날짜-시각).확장자"로 따로 저장
-      if (opts && opts.noOverwrite && existingIter.hasNext()) {
-        renamedFrom = fileName;
-        const dot = fileName.lastIndexOf('.');
-        const stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd-HHmmss');
-        fileName = (dot > 0 ? fileName.slice(0, dot) : fileName) + ' (AI 새 판 ' + stamp + ')' + (dot > 0 ? fileName.slice(dot) : '');
-        existingIter = folder.getFilesByName(fileName);
+      let file, updated, renamedFrom = '', backedUp = false;
+      // [2026.10.20 보안] AI 도구 경로(opts.aiTool)는 아무 파일이나 덮어쓰지 않는다(사건 서류 속 글에 속아 엉뚱한 파일을 망가뜨리지 않게).
+      // [2026.10.20 갱신] 다만 "AI 새 판 …" 파일이 고칠 때마다 늘어나 세무사님 지침(같은 건 검토서는 기존 파일 갱신)과 어긋났다 —
+      //   덮어써도 되는 파일(aiSaveCanOverwrite_: AI가 쓰는 .md/.txt 글 파일, 시스템 파일·폴더 아님)은 직전 판을 사건 폴더 "_이전판"에
+      //   한 개만 보관하고 기존 파일을 갱신한다. 그 밖의 파일(PDF·구글문서·_로 시작하는 시스템 파일 등)과 같은 이름이면 예전처럼 새 이름으로 따로 저장.
+      if (opts && opts.aiTool && existingIter.hasNext()) {
+        const ex = existingIter.next();
+        if (opts.openFileId && ex.getId() === opts.openFileId) {
+          return { error: '「' + fileName + '」은 지금 화면 미리보기·편집기에 열려 있는 문서라 save_file_to_folder로 덮어쓰지 않았다 — apply_document_edit로 수정안을 내라(사용자가 확인하고 저장한다).' };
+        }
+        if (aiSaveCanOverwrite_(ex, pathArr)) {
+          backedUp = aiSaveBackupPrev_(folder, ex);
+          existingIter = folder.getFilesByName(fileName);
+        } else {
+          renamedFrom = fileName;
+          const dot = fileName.lastIndexOf('.');
+          const stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd-HHmmss');
+          fileName = (dot > 0 ? fileName.slice(0, dot) : fileName) + ' (AI 새 판 ' + stamp + ')' + (dot > 0 ? fileName.slice(dot) : '');
+          existingIter = folder.getFilesByName(fileName);
+        }
       }
       if (existingIter.hasNext()) {
         file = existingIter.next();
@@ -4805,12 +4817,39 @@ function toolSaveFileToFolder(pathArr, name, content, opts) {
         updated = false;
       }
       const out = { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: updated, folderPath: pathArr || [] };
-      if (renamedFrom) out.note = '같은 이름 파일 「' + renamedFrom + '」이 있어 덮어쓰지 않고 「' + file.getName() + '」로 따로 저장했다 — 사용자에게 그렇게 알려라(기존 파일을 바꾸려면 사용자가 화면에서 직접).';
+      if (renamedFrom) out.note = '같은 이름 파일 「' + renamedFrom + '」이 AI가 덮어쓸 수 없는 파일(글 파일이 아니거나 시스템 파일)이라 「' + file.getName() + '」로 따로 저장했다 — 사용자에게 그렇게 알려라.';
+      else if (updated && opts && opts.aiTool) out.note = '기존 파일 「' + file.getName() + '」을 갱신했다' + (backedUp ? ' — 직전 판은 같은 폴더 "_이전판" 안에 한 개 보관했다' : '') + '. 새 파일을 만든 게 아니다.';
       return out;
     } catch (err) {
       return { error: '파일 저장 중 오류: ' + err.message };
     }
   });
+}
+
+// [2026.10.20 갱신] AI가 같은 이름 파일을 덮어써도 되는가 — 글 파일(.md·.txt, 구글 문서·PDF 등 아님)이고
+// 시스템 파일·폴더(_로 시작: _정답지·_이전판 등)가 아닐 때만. 아니면 toolSaveFileToFolder가 새 이름으로 따로 저장한다.
+function aiSaveCanOverwrite_(file, pathArr) {
+  const name = String(file.getName() || '');
+  if (!/.(md|txt|markdown)$/i.test(name)) return false;
+  if (name.indexOf(AUTO_REF_EXCLUDE_PREFIX) === 0) return false;
+  if ((Array.isArray(pathArr) ? pathArr : []).some(function (p) { return String(p || '').indexOf(AUTO_REF_EXCLUDE_PREFIX) === 0; })) return false;
+  const mime = String(file.getMimeType() || '');
+  return mime.indexOf('application/vnd.google-apps') !== 0 && mime !== 'application/pdf';
+}
+// 덮어쓰기 직전 판을 같은 폴더의 "_이전판"에 같은 이름으로 한 개만 둔다(이미 있으면 그 내용을 바꿔 끼움 — 파일이 늘지 않게).
+// 더 오래된 판은 드라이브 "버전 기록"에 남는다. 보관에 실패해도 저장은 계속한다.
+function aiSaveBackupPrev_(folder, file) {
+  try {
+    const prev = file.getBlob().getDataAsString('UTF-8');
+    const bk = my_getOrCreateSubfolder_(folder, '_이전판');
+    const it = bk.getFilesByName(file.getName());
+    if (it.hasNext()) it.next().setContent(prev);
+    else bk.createFile(Utilities.newBlob(prev, file.getMimeType() || 'text/plain', file.getName()));
+    return true;
+  } catch (e) {
+    console.log('AI 저장 전 이전판 보관 실패: ' + e.message);
+    return false;
+  }
 }
 
 /**
@@ -15099,8 +15138,9 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         // path를 모델이 생략했으면, 지금 사용자가 화면에서 보고 있는 폴더(요청에 실려온 currentPath)로 대신한다.
         const targetPath = (Array.isArray(input.path) && input.path.length) ? input.path
           : ((body.context && Array.isArray(body.context.currentPath)) ? body.context.currentPath : []);
-        // [2026.10.20 보안] AI는 같은 이름 파일을 덮어쓰지 않는다 — 새 이름으로 따로 저장(덮어쓰기는 사람이 화면에서)
-        const resultObj = toolSaveFileToFolder(targetPath, input.name, input.content, { noOverwrite: true });
+        // [2026.10.20 보안→갱신] 같은 이름 글 파일은 직전 판을 "_이전판"에 두고 갱신, 덮어쓰면 안 되는 파일만 새 이름, 화면에 열린 문서는 거절(apply_document_edit로)
+        const resultObj = toolSaveFileToFolder(targetPath, input.name, input.content,
+          { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '' });
         if (resultObj && !resultObj.error) {
           clientActions.push({ type: 'explorer_changed', path: targetPath });
           // [2026.08] "저장했다고 답했는데 실제로 안 바뀌어 있다"는 문제 대응 — AI의 말(환각 가능)이
