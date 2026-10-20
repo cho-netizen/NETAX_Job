@@ -14999,6 +14999,7 @@ function handleTaxCalcClick_(e){
         isSelfElectronicFiling: document.getElementById('trSelfEfiling').checked
       };
       const result = inputs.length ? calculateTransferTaxMultiJS(inputs, filingParams) : null;
+      window.tcLastTransferInputs_ = { inputs: inputs, filingParams: filingParams }; // [2026.10.21] 💡 절세플랜이 이 사건 값으로 비교 계산할 수 있게 보관(taxplan.html)
       // [2026.09.24 재구성] 법인전환 이월과세 사후관리(§31·§32) — 부동산·주식 어느 쪽이든
       // 같은 조문·같은 엔진함수라 입력칸을 "사후관리·특수사안 확인" 카드 하나로 합쳤다(재검토56).
       // "적용 대상"이 "주식등 양도소득세"면 이 부동산 계산에는 반영하지 않는다(아래
@@ -15868,6 +15869,7 @@ function handleTaxCalcClick_(e){
         if (a || b) idxs.forEach(function(i){ results[i].result = calculateGiftTaxJS(results[i].input); results[i].공제안분 = true; });
       });
     })();
+    window.tcLastGiftInputs_ = results.map(function(x){ return x.input; }); // [2026.10.21] 💡 절세플랜이 이 사건 값으로 비교 계산할 수 있게 보관(taxplan.html)
     // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
     // 특히 수증인이 2명 이상이면(사건개요의 "공동수증인"을 채우면 자동으로 그렇게 됨) 증여재산가액 칸을 쓰지 않고
     // 재산평가 자산 배분으로만 금액을 나누는데, 그걸 몰라 "계산이 안 된다"로 보였다(실사용 점검 중 발견).
