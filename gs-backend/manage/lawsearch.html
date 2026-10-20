@@ -1123,6 +1123,29 @@
     lsiWireLinks_(pane);
     if (lsiOpenRef_) lsiShowRef_(lsiOpenRef_);
   }
+  // [2026.10.21 조견표 갈림길] 세무사님 말씀(원문): "조견표를 얼마나 잘 만드느냐가 세법을 얼마나 입체적으로 해석했느냐 또는 세법을
+  //  수요자 측면에서 얼마나 정리했느냐의 실력이 나타나는 것이다" — 한 사실이 "누가·언제·무엇을·몇 개"에 따라 갈리는 결과를 한 표에.
+  //  자료: t.갈림길 = [{ 제목, 설명, 열:[{h,w}], 행:[[칸 글, …]], 근거:[조문], 확인 }]. 열 이름이 "확인"이면 그 칸은 확인 표시(원문 대조됨/확인 전).
+  //  칸 너비 고정, 줄바꿈 없이 칸 안 가로 스크롤(lsiGridHtml_), 마우스를 올리면 전체 글.
+  function lsiForksHtml_(t){
+    if (!(t.갈림길 || []).length) return '';
+    return '<h4>갈림길 — 경우마다 결과가 어떻게 갈리나</h4>' + t.갈림길.map(function(g){
+      var cols = g.열 || [];
+      var rows = (g.행 || []).map(function(r){
+        return cols.map(function(c, i){
+          var v = r[i];
+          if (c.h === '확인') return lsiCell_(lsiCheckBadge_(v || '확인 전'), v || '확인 전');
+          if (c.h === '근거' || c.h === '근거 조문') return lsiCell_(lsiArtLinks_(String(v || '').split(/\s*·\s*/).filter(Boolean)), lsiPlain_(v));
+          return lsiTextCell_(v);
+        });
+      });
+      return '<div style="margin:6px 0 12px;"><b>' + lsiEsc_(g.제목 || '') + '</b>' +
+        (g.설명 ? '<div class="lsi-note" style="margin:2px 0 4px;">' + lsiEsc_(g.설명) + '</div>' : '') +
+        lsiGridHtml_(cols, rows) +
+        ((g.근거 || []).length ? '<div class="lsi-note" style="margin-top:2px;">근거: ' + lsiArtLinks_(g.근거) + '</div>' : '') +
+        (g.확인 ? '<div style="margin-top:2px;">' + lsiCheckBadge_(g.확인) + '</div>' : '') + '</div>';
+    }).join('');
+  }
   function lsiShowRef_(no){
     lsiOpenRef_ = no;
     var t = LSI_REF_TABLES_.filter(function(x){ return x.번호 === no; })[0];
@@ -1138,6 +1161,7 @@
       (t.대조 && t.대조.length ? '<br>대조 자료(근거 아님): ' + t.대조.map(lsiEsc_).join(', ') : '') + '</div>' +
       (t.번호 === '1부-01' && Array.isArray(t.공고구조) && t.공고구조.length ? lsiAdjViewsHtml_(t) : '') +
       lsiJudgmentBoxHtml_(t) +
+      lsiForksHtml_(t) +
       '<h4>판정 순서</h4>' + tbl(['단계', '묻는 것', '예 →', '아니오 →', '근거'], (t.절차 || []).map(function(s){ return '<tr><td>' + lsiEsc_(s.단계) + '</td><td>' + lsiEsc_(s.묻는것) + '</td><td>' + lsiEsc_(s.예) + '</td><td>' + lsiEsc_(s.아니오) + '</td><td>' + lsiEsc_(s.근거) + '</td></tr>'; })) +
       '<h4>값 표</h4>' + tbl(['구분', '적용 시작', '적용 끝', '값', '조건', '근거 조문', '서식 칸', '출처', '확인'], (t.행 || []).map(function(r){
         return '<tr><td class="w-mid">' + lsiEsc_(r.구분) + '</td><td class="nw">' + lsiEsc_(r.시작 || '') + '</td><td class="nw">' + lsiEsc_(r.끝 || '지금까지') + '</td><td class="w-wide">' + lsiFmtVal_(r.값) + '</td><td class="w-mid">' + lsiFmtVal_(r.조건 || '') + '</td>' +
