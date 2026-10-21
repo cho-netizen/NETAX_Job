@@ -15030,6 +15030,8 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   let advisorModel = null;
   if (body.enableAdvisor) {
     advisorModel = MODEL_CONFIG[body.advisorModel] ? body.advisorModel : 'claude-opus-4-8';
+    // [2026.10.21 모델 맞추기] 소넷 5.5가 부르는 조언 모델은 오푸스 4.8·4.7·4.6·소넷 5면 400 — 오푸스 5.5로(공식 짝 표)
+    if (model === 'claude-sonnet-5-5' && ['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5', 'claude-fable-5-1', 'claude-sonnet-5-5'].indexOf(advisorModel) === -1) advisorModel = 'claude-opus-5-5';
     tools.push({ type: 'advisor_20260301', name: 'advisor', model: advisorModel, max_uses: 3 });
     betaFlags.push('advisor-tool-2026-03-01');
   }

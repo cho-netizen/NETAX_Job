@@ -85,7 +85,7 @@ function caseProcAiSpots_(body) {
   let lightApplied = 0;
   lp.done.forEach(function (rec) { const r = CASEPROC_AI_DRY_ ? { applied: false, why: '시험 — 넣지 않음' } : caseProcAiLightApply_(c, rec, items); rec.applied = r.applied; rec.result = r.why; if (r.applied) lightApplied++; tiers.저비용++; });
   lp.up.forEach(function (s) { s.tier = lp.off ? '총괄' : '올림'; lead.push(s); });
-  if (!lp.off && !CASEPROC_AI_DRY_) caseProcAiLogCx_(c, LIGHT_MODEL, lp.usd, lp.done.concat(lp.up.map(function (s) { return s.light ? Object.assign({ 자리: s.자리, topic: s.topic }, s.light) : null; }).filter(Boolean)).map(function (r) {
+  if (!lp.off && !CASEPROC_AI_DRY_) caseProcAiLogCx_(c, cxModelFor_('light'), lp.usd, lp.done.concat(lp.up.map(function (s) { return s.light ? Object.assign({ 자리: s.자리, topic: s.topic }, s.light) : null; }).filter(Boolean)).map(function (r) {
     const it = byId[r.자리] || {}, a = it.ask || {};
     return { iid: r.자리, topic: r.topic || caseProcAiTopic_(r.자리).topic, shape: '저비용|' + (/^doc:/.test(r.자리) ? '서류' : String(a.target || '').split(':')[0]), target: a.target || '', label: a.label || caseProcAiCut_(it.text || r.자리, 60), facts: r.quote || '', cands: caseProcAiOpts_(a).slice(0, 6).map(function (q) { return { v: q.v != null ? q.v : q.value, src: String(q.src || '').slice(0, 100) }; }), answer: r.answer, why: r.why, sure: r.sure, need: r.need || [] };
   }));

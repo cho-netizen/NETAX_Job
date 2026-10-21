@@ -75,14 +75,15 @@ function caseProcAiLightPass_(c, spots, items) {
     return '### 쟁점 ' + s.자리 + ' (종류: ' + s.이유 + ')\n질문: ' + String((it && it.text) || s.설명 || '').slice(0, 300) + (it && it.detail ? '\n자세히: ' + String(it.detail).slice(0, 500) : '') + (cs ? '\n후보:\n' + cs : '') + (a.aiJudge && a.aiJudge.q ? '\n쟁점 묶음:\n' + String(a.aiJudge.q).slice(0, 900) : '');
   });
   const user = '## 사건 요약\n' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ' · 기준일 ' + (c.기준일 || '?') + '\n\n' + parts.join('\n\n');
-  const res = cxCallAi_(LIGHT_MODEL, user);
+  const lightModel = cxModelFor_('light'); // [2026.10.21 모델 맞추기] 하이쿠 5.5(CrossCheck.js cxModelFor_ 설명)
+  const res = cxCallAi_(lightModel, user);
   out.sent = parts.length; out.calls = res.cached ? 0 : 1; out.usd = res.usd || 0;
   if (res.error) { out.up = spots.slice(); out.error = res.error; return out; }
   const got = (typeof cxParseAnswers_ === 'function') ? cxParseAnswers_(res.text) : [];
   spots.forEach(function (s, i) {
     const a = i < 12 ? got.filter(function (g) { return String(g.id) === String(s.자리); })[0] : null;
     const need = a && Array.isArray(a.need) ? a.need.slice(0, 4) : [];
-    const rec = { 자리: s.자리, 이유: s.이유, topic: s.topic, answer: a ? String(a.value == null ? '' : a.value).slice(0, 120) : '', sure: a ? (a.sure === '확실' ? '확실' : '불확실') : '답 없음', why: a ? String(a.why || '').slice(0, 200) : '', quote: a ? String(a.quote || '').slice(0, 200) : '', need: need, model: LIGHT_MODEL };
+    const rec = { 자리: s.자리, 이유: s.이유, topic: s.topic, answer: a ? String(a.value == null ? '' : a.value).slice(0, 120) : '', sure: a ? (a.sure === '확실' ? '확실' : '불확실') : '답 없음', why: a ? String(a.why || '').slice(0, 200) : '', quote: a ? String(a.quote || '').slice(0, 200) : '', need: need, model: lightModel };
     if (a && rec.sure === '확실' && !need.length && rec.answer) out.done.push(rec); else out.up.push(Object.assign({}, s, { light: rec }));
   });
   return out;
@@ -95,7 +96,7 @@ function caseProcAiLightApply_(c, rec, items) {
   if (!CASEPROC_AI_SCALAR_TARGET_RE_.test(a.target) || CASEPROC_AI_USER_ONLY_RE_.test([it.id, it.text, a.target, a.label].join(' ')) || cs.indexOf(caseProcAiNorm_(rec.answer)) === -1) return { applied: false, why: '후보 밖 값·여러 값 칸·세무사님 답 칸 — 넣지 않음' };
   let r;
   try { r = caseProc0_({ caseId: c.id, step: 'apply', target: a.target, value: rec.answer, src: ('🤖 AI 판단(저비용): ' + rec.why).slice(0, 80), label: a.label || '', ans: { qid: it.id, how: 'AI 판단(저비용)' } }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
-  if (r && r.ok !== false) caseProcAiMarkApplied_(c.id, { iid: it.id, target: a.target, label: a.label || caseProcAiCut_(it.text, 60), v: rec.answer, by: 'ai', model: LIGHT_MODEL, why: rec.why, sure: '확실', tier: '저비용', cands: caseProcAiOpts_(a).slice(0, 6).map(function (q) { return { v: q.v != null ? q.v : q.value, src: String(q.src || '').slice(0, 160) }; }) });
+  if (r && r.ok !== false) caseProcAiMarkApplied_(c.id, { iid: it.id, target: a.target, label: a.label || caseProcAiCut_(it.text, 60), v: rec.answer, by: 'ai', model: rec.model || cxModelFor_('light'), why: rec.why, sure: '확실', tier: '저비용', cands: caseProcAiOpts_(a).slice(0, 6).map(function (q) { return { v: q.v != null ? q.v : q.value, src: String(q.src || '').slice(0, 160) }; }) });
   return { applied: !!(r && r.ok !== false), why: (r && (r.message || r.error)) || '' };
 }
 // AI가 넣은 값을 2번 판정 기록(sv.cxAi.applied)에 — 다음 처리 때 2번 0) 단계가 세무사님 확인·수정을 보고 cxLogUserFix_로 기록에 붙인다

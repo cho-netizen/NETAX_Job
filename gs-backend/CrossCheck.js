@@ -47,7 +47,9 @@ function cxModelFor_(kind) {
     let gm = ''; try { gm = PropertiesService.getScriptProperties().getProperty('CX_GEMINI_MODEL') || ''; } catch (e) {}
     if (gm && MODEL_CONFIG[gm] && MODEL_CONFIG[gm].provider === 'gemini') return gm;
   }
-  return LIGHT_MODEL;
+  // [2026.10.21 모델 맞추기] 세무사님 "8번 모델 맞추기도 비교해서 진행하라" — 실제 사건 23건 쟁점 묶음 비교(하이쿠 4.5 vs 5.5)에서
+  //  하이쿠 5.5(생각 낮음·답 한도 6000)가 잘림 0번(4.5는 2번)·받은 답 96개(4.5는 82개)·비용 약 6분의 1, 숫자 오독·후보 밖 값은 비슷 → 저가 판단 자리는 지휘의 좁은 판단과 같은 하이쿠 5.5로 하나
+  return typeof CASEPROC_AI_LIGHT_MODEL_ !== 'undefined' ? CASEPROC_AI_LIGHT_MODEL_ : LIGHT_MODEL;
 }
 // 계산기에서 그 칸이 하는 일 — 쟁점 묶음 ⑤ (AI가 무엇을 위해 고르는지 알게)
 const CX_ROLE_ = [
@@ -442,7 +444,10 @@ function cxCallAi_(model, user) {
     const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
     if (!apiKey) return { error: 'ANTHROPIC_API_KEY 없음' };
     const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', { method: 'post', contentType: 'application/json', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, muteHttpExceptions: true,
-      payload: JSON.stringify({ model: model, max_tokens: 3000, system: CX_AI_SYSTEM_, messages: [{ role: 'user', content: user }] }) });
+      // [2026.10.21 모델 맞추기] 생각이 기본으로 켜지는 모델(하이쿠 5.5)은 생각 낮음·답 한도 6000 — 기본(medium·3000)이면 생각에 한도를 다 써 답이 잘림(10-21 23건 비교: 3000이면 잘림 6번, 6000이면 0번)
+      payload: JSON.stringify(cfg.thinkingMode === 'adaptive'
+        ? { model: model, max_tokens: 6000, thinking: { type: 'adaptive' }, output_config: { effort: 'low' }, system: CX_AI_SYSTEM_, messages: [{ role: 'user', content: user }] }
+        : { model: model, max_tokens: 3000, system: CX_AI_SYSTEM_, messages: [{ role: 'user', content: user }] }) });
     let j = {}; try { j = JSON.parse(res.getContentText() || '{}'); } catch (e) {}
     if (j.error) return { error: 'AI 호출 실패: ' + (j.error.message || '') };
     txt = (j.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');

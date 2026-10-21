@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 13:04 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 13:57 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -53932,7 +53932,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return Object.assign({}, NXAI_DEFAULT_SETTINGS);
   }
   var nxAiSettings = nxAiLoadSettings_();
-  var nxAiLastAutoModel = 'claude-sonnet-5';
+  var nxAiLastAutoModel = 'claude-sonnet-5-5';
   function nxAiSaveSettings_(){ nxAiLs_(NXAI_SETTINGS_KEY, JSON.stringify(nxAiSettings)); }
 
   // 세무 조문·계산 등 어려운 판단이 필요해 보이면 Sonnet(높음), 그 외엔 Haiku(보통) — work와 같은 규칙.
@@ -53952,10 +53952,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 자동(V)일 때만 부른다 — 세무사님이 고정(F)으로 고른 모델은 nxAiBuildSettingsPayload_가 그대로 쓴다.
   // [2026.10.20 기본기 3] 사건이 연결된 대화는 기본 Sonnet — 새 대화 첫 질문 "등기부·공시가격·취득일 확인해줘"처럼 판단 낱말이 없어도
   //  사건 자료를 읽고 따지는 일이라 Haiku로 보내면 놓친다. Haiku(저가)는 사건 없는 단순 질문에만(일정·메일 등은 ⚡·🔮가 먼저 받는다).
+  // [2026.10.21 모델 맞추기] 세무사님 "8번 모델 맞추기도 비교해서 진행하라" — 10-20 실제 대화의 질문 두 개(중과 여부·예비며느리 직접 취득)를
+  //  같은 대화로 네 모델에 보낸 비교에서 소넷 5.5만 둘 다 바르게 알아듣고 앞 답의 계산 잘못까지 짚음(소넷 5는 하나 답 못 함, 하이쿠 4.5는 둘 다 답 없음,
+  //  하이쿠 5.5는 하나 잘못 알아들음). 소넷 5.5는 소넷 5와 가격이 같고 사건 지휘 넥스와 같은 모델 → 판단·사건 대화는 소넷 5.5.
+  //  사건 없는 단순 질문은 하이쿠 5.5(하이쿠 4.5의 약 10분의 1 가격, 대화 답 한도 12000이라 생각이 켜져도 안 잘림).
   function nxAiPickAutoModel_(text){
-    if (nxAiIsJudgeText_(text) || nxAiConvInJudgement_()) return { model: 'claude-sonnet-5', effort: 'high' };
-    if (nxAiConv.caseId) return { model: 'claude-sonnet-5', effort: 'medium' };
-    return { model: 'claude-haiku-4-5-20251001', effort: 'medium' };
+    if (nxAiIsJudgeText_(text) || nxAiConvInJudgement_()) return { model: 'claude-sonnet-5-5', effort: 'high' };
+    if (nxAiConv.caseId) return { model: 'claude-sonnet-5-5', effort: 'medium' };
+    return { model: 'claude-haiku-5-5', effort: 'medium' };
   }
   function nxAiRefreshModelUi_(){
     var locked = nxAiSettings.model !== 'auto';
@@ -57082,7 +57086,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // 1단계(무료) — 정말 간단하고 NX 자료가 필요 없는 질문, 또는 구글 캘린더·Gmail·드라이브 조회는
     // 유료 AI보다 먼저 제미니에게 물어본다(work와 같은 규칙). 실패하면 조용히 원래 AI로 넘어간다.
     var gemRoute = nxAiDetectGemRoute_(text);
-    var gemModelOk = nxAiSettings.model === 'auto' || nxAiSettings.model === 'claude-haiku-4-5-20251001';
+    var gemModelOk = nxAiSettings.model === 'auto' || nxAiSettings.model === 'claude-haiku-4-5-20251001' || nxAiSettings.model === 'claude-haiku-5-5'; // [2026.10.21] 하이쿠 5.5로 고정해도 무료 제미니 먼저
     var gemEligible = !opts.noGem && !files.length && !images.length && !openFileCtx
       && ((gemModelOk && nxAiIsGemSafe_(text)) || !!gemRoute);
     var gemFail = ''; // 제미니를 시도했다가 실패한 이유 — 유료 AI 답변 위에 표시한다(조용히 넘어가면 토큰이 든 줄 모름)
