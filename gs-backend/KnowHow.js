@@ -209,10 +209,11 @@ function knhJudge_(input) {
 }
 // 본문에 그 날짜(2027-09-09 / 2027.9.9. / 2027. 9. 9. / 2027년 9월 9일)가 적혀 있나
 function knhMentionsDate_(text, ymd) {
-  var m = String(ymd || '').match(/^(d{4})-(d{2})-(d{2})$/);
+  // [2026.10.21] 역슬래시가 빠진 채(\d → d, '\s' → 's') 들어가 있어 늘 false였다 — 고침(법령 개정을 이미 본문에 반영한 파일도 "반영 필요"로 남던 원인)
+  var m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return false;
   var y = m[1], mo = String(+m[2]), d = String(+m[3]);
-  return new RegExp(y + '\s*[.\-년]\s*0?' + mo + '\s*[.\-월]\s*0?' + d + '(?!\d)').test(String(text || ''));
+  return new RegExp(y + '\\s*[.\\-년]\\s*0?' + mo + '\\s*[.\\-월]\\s*0?' + d + '(?!\\d)').test(String(text || ''));
 }
 
 // 저장소 gs-backend/knowhow/_index.txt — 탭 구분: id 종류 작업 대상 제안파일 기준MD5 이유
@@ -642,6 +643,9 @@ function knhForReport_() {
     판정: (r.files || []).map(function (f) { return { 종류: f.kind, 파일: f.name, 상태: f.status, 급함: f.priority, 이유: f.reasons, 표시: f.tags, 쓰임: f.uses, 고친날: f.modified, md5: f.md5 }; }),
     지금원문: texts, 신규필요: r.newNeeded || [], 현황: (r.coverage || []).map(function (c) { return { 업무: c.업무, 사건수: c.사건수, 지침: c.지침, 의뢰서: c.의뢰서, 보고서: c.보고서, 빈칸: c.빈칸 }; }),
     재료: r.material || {}, 법령개정: r.lawChanges || [], 제안원장: led, 승인대기: pend.map(function (p) { return { id: p.id, 종류: p.종류, 작업: p.작업, 대상: p.대상 }; }), 최근결정: decisions };
+  // [2026.10.21] 절세 아이템 현행화 필요(밤 판정) — 고치는 일은 세무사님·세션(드라이브 절세 폴더). 루틴은 목록을 보고 보고서에 올린다.
+  var tc = knhReadJson_(KNH_TAX_CURRENCY_, null);
+  if (tc) { data.절세현행화 = tc; if (tc.현행화필요) head.push('💡 절세 아이템 현행화 필요 ' + tc.현행화필요 + '건(전체 ' + tc.전체 + ', 시간에 따라 바뀌는 내용 있음 ' + tc.시간민감 + ') — 절세플랜 📚 ⚠ 거르기에서 보기'); }
   var guide = 'knowhow(📚 지침·템플릿 정비 — 세무사님 "노하우의 최종 결정체… 수정할 것은 수정하고 폐기할 것은 폐기하고 새로 만들 것은 만들어야"): 매주 한다. '
     + '① 판정의 수정 필요 — 급함(3=틀린 경로·도구·조문(시스템 자기점검)·법령 개정 반영, 2=세무사님이 반복해서 고친 곳·내용 없음, 1=[확인 필요]만) 높은 것부터 → 지금원문[종류/파일]에서 출발한 수정본([확인 필요]는 현행 원문으로 확인된 것만 채움). '
     + '② 신규필요(현황의 빈칸, 맞는 지침 없는 반복 질문)와 재료.cases(완료 사건의 판단 발췌·크게 고친 보고서 — 이미 가려져 있지만 더 일반화)로 새 지침·템플릿 초안. '
@@ -716,18 +720,115 @@ function knhIdxGist_(src) {
   var t = m[1].replace(/\*\*/g, '').replace(/\([^)]*§[^)]*\)/g, '').replace(/\s+/g, ' ').trim();
   return t.length > 90 ? t.slice(0, 88) + '…' : t;
 }
+// [2026.10.21 v2] 색인 항목에 근거·검토 상태·기준일·시간에 따라 바뀌는 내용(변동)·본문 날짜·인용 조문·[확인 필요]/해석 엇갈림 수를 더한다
+//  (세무사님 "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다" — 인용 근거 부기·정기 현행화의 재료).
+//  예전(v1) 항목은 그대로 읽히고, 다음 맞추기 때 v2로 다시 만든다(knhIdxCompare_).
+var KNH_IDX_V_ = 2;
 function knhIdxEntry_(f) {
   var src = String(f.text || '').replace(/^﻿/, ''), m = knhIdxMeta_(src);
-  return { id: f.id, 파일: f.name, 제목: knhIdxTitle_(f.name), 종류: m['종류'] || '', 요약: knhIdxGist_(src), 수정일: f.modified };
+  var e = { v: KNH_IDX_V_, id: f.id, 파일: f.name, 제목: knhIdxTitle_(f.name), 종류: m['종류'] || '', 요약: knhIdxGist_(src), 수정일: f.modified };
+  var x = knhItemFacts_(src, f.modified);
+  Object.keys(x).forEach(function (k) { e[k] = x[k]; });
+  return e;
 }
+// 화면·넥스 도구에 넘기는 색인 한 줄(파일ID·이름·수정일은 바깥에 따로)
+function knhIdxBrief_(e) {
+  if (!e) return null;
+  return { 제목: e.제목, 종류: e.종류, 요약: e.요약, 근거: e.근거 || '', 검토: e.검토 || '', 기준일: e.기준일 || '', 변동: e.변동 || [], 날짜: e.날짜 || [],
+    조문: e.조문 || [], 확인필요: e.확인필요 || 0, 엇갈림: e.엇갈림 || 0 };
+}
+
+// ---- 절세 아이템 안전장치 재료(순수 함수) ----
+// 날짜 꼴: 2026.5.10. / 2026-05-10 / 2026. 5. 10. / 2026년 5월 10일 → '2026-05-10'
+function knhItemDates_(text) {
+  var out = {}, re = /(20\d\d)\s*[.\-년]\s*(\d{1,2})\s*[.\-월]\s*(\d{1,2})(?!\d)/g, m;
+  while ((m = re.exec(String(text || '')))) {
+    var mo = +m[2], d = +m[3];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+    out[m[1] + '-' + (mo < 10 ? '0' : '') + mo + '-' + (d < 10 ? '0' : '') + d] = 1;
+  }
+  return Object.keys(out).sort();
+}
+// 아이템 근거 줄의 조문 → '소득세법시행령|167의3' 같은 키(법령 개정 감시 knhLawChanges_와 같은 꼴).
+// 아이템은 "소득세법 §104⑦, §95②, 시행령 §167의3①"처럼 법 이름을 한 번만 쓰므로 앞 법 이름을 이어 받는다.
+var KNH_LAW_ABBR_ = { '소득세법': '소득세법', '소득법': '소득세법', '소법': '소득세법', '상속세및증여세법': '상속세및증여세법', '상증법': '상속세및증여세법', '상증세법': '상속세및증여세법',
+  '조세특례제한법': '조세특례제한법', '조특법': '조세특례제한법', '국세기본법': '국세기본법', '국기법': '국세기본법' };
+function knhItemCites_(text) {
+  var keys = {}, law = '', sub = '';
+  var re = /(소득세법|소득법|소법|상속세\s*및\s*증여세법|상증세법|상증법|조세특례제한법|조특법|국세기본법|국기법)?\s*(시행령|시행규칙)?\s*(?:§\s*|제\s*)(\d+)(?:\s*조)?(?:\s*의\s*(\d+)(?!\s*[0-9년개월일세억만원배%명호]))?/g, m;
+  String(text || '').split('\n').forEach(function (line) { // 법 이름은 다음 줄로도 이어 받는다(근거 원문 절의 "- 시행령 §…" 줄)
+    re.lastIndex = 0;
+    while ((m = re.exec(line))) {
+      if (m[0].indexOf('§') === -1 && !/제\s*\d+\s*조/.test(m[0])) continue; // "제3" 같은 낱말은 조문이 아님
+      if (/부칙\s*$/.test(line.slice(Math.max(0, m.index - 6), m.index + (m[0].length - m[0].replace(/^[^§제]*/, '').length)))) continue; // "부칙 §2"는 본법·시행령 조문이 아님
+      if (m[1]) { law = KNH_LAW_ABBR_[m[1].replace(/\s/g, '')] || ''; sub = ''; }
+      if (m[2]) sub = m[2]; else if (m[1]) sub = '';
+      if (!law) continue;
+      keys[law + sub + '|' + m[3] + (m[4] ? '의' + m[4] : '')] = 1;
+    }
+  });
+  return Object.keys(keys);
+}
+// 시간에 따라 바뀌는 내용의 종류
+function knhItemVolatile_(text, dates, base) {
+  var t = String(text || ''), out = [];
+  if (/개편안|확정\s*전|입법\s*예고|정부안/.test(t)) out.push('개편안');
+  if (/유예|한시|일몰|종료/.test(t)) out.push('유예·종료');
+  if ((dates || []).some(function (d) { return d > base; })) out.push('기한·시행일');
+  if (/세율|공제액|공제\s*한도|한도액|\d+\s*%/.test(t)) out.push('세율·공제액');
+  return out;
+}
+function knhItemFacts_(src, modified) {
+  var m = knhIdxMeta_(src);
+  var made = String(m['작성'] || '').match(/(20\d\d)-(\d{2})-(\d{2})/);
+  var own = String(m['기준일'] || '').match(/(20\d\d)\D?(\d{1,2})\D?(\d{1,2})/);
+  var mod = String(modified || '').match(/(20\d\d)\D(\d{2})\D(\d{2})/);
+  var base = own ? own[1] + '-' + ('0' + own[2]).slice(-2) + '-' + ('0' + own[3]).slice(-2) : made ? made[1] + '-' + made[2] + '-' + made[3] : mod ? mod[1] + '-' + mod[2] + '-' + mod[3] : '';
+  var dates = knhItemDates_(src);
+  var sec = String(src).match(/##\s*근거 원문[^\n]*\n([\s\S]*?)(?=\n##\s|$)/);
+  return {
+    근거: String(m['근거'] || '').slice(0, 300),
+    검토: m['검토 상태'] || '',
+    기준일: base,
+    변동: knhItemVolatile_(src, dates, base),
+    날짜: dates.filter(function (d) { return d > base; }).slice(0, 12),
+    조문: knhItemCites_((m['근거'] || '') + '\n' + (sec ? sec[1] : '')).slice(0, 30),
+    확인필요: (String(src).match(/\[확인 필요/g) || []).length,
+    엇갈림: (String(src).match(/반대\s*취지|해석(이)?\s*엇갈|해석이\s*갈/g) || []).length
+  };
+}
+// 현행화 필요 판정 — e: 색인 한 줄(knhIdxBrief_), lawChanges: 법령 개정 감시 누적(knhLawChanges_), today 'yyyy-MM-dd'
+//  ① 인용 조문이 기준일 뒤에 개정(또는 개정 예정)됐는데 본문에 그 시행일이 없음 ② 기준일 뒤의 날짜(기한·시행일·유예 끝)가 오늘 지남
+//  ③ 개편안 아이템인데 기준일에서 60일 넘음 ④ 시간에 따라 바뀌는 내용이 있는데 기준일에서 1년 넘음
+function knhItemCurrency_(e, lawChanges, today) {
+  var why = [];
+  if (!e || !e.기준일) return { 필요: false, 이유: [] };
+  var cites = {}; (e.조문 || []).forEach(function (k) { cites[k] = 1; });
+  // 본문에 그 시행일을 적어 두었으면 반영한 것으로 본다. 시행 예정은 기준일 당일 이후에 감지됐으면(아이템이 그 개정을 모르고 쓰였을 수 있음),
+  // 이미 시행은 기준일 뒤에 시행·감지됐으면. — 사람이 확인·현행화한 뒤 머리 줄 "기준일"을 그날로 고치면 풀린다.
+  var hits = (lawChanges || []).filter(function (c) {
+    if (!cites[c.key + '|' + c.jo] || (e.날짜 || []).indexOf(c.시행일) !== -1) return false;
+    if (c.구분 === '시행예정') return String(c.감지일 || '') >= e.기준일;
+    return String(c.시행일 || '') > e.기준일 || String(c.감지일 || '') > e.기준일;
+  });
+  if (hits.length) why.push('인용 조문 개정 — ' + hits.slice(0, 3).map(function (c) { return c.법령 + ' §' + c.jo + '(' + c.시행일 + (c.구분 === '시행예정' ? ' 시행 예정' : ' 시행') + ')'; }).join(', ') + (hits.length > 3 ? ' 외 ' + (hits.length - 3) + '개' : ''));
+  var passed = (e.날짜 || []).filter(function (d) { return d <= today; });
+  if (passed.length) why.push('본문의 날짜(기한·시행일·유예 끝)가 지남 — ' + passed.slice(0, 3).join(', ') + ' (기준일 ' + e.기준일 + ')');
+  var age = knhDaysBetween_(e.기준일, today);
+  if ((e.변동 || []).indexOf('개편안') !== -1 && age > 60) why.push('개편안 내용 — 기준일에서 ' + age + '일 지남(국회 통과·수정 여부 확인)');
+  if ((e.변동 || []).length && age > 365) why.push('기준일에서 1년 넘음(' + age + '일) — 세율·공제액·기한 확인');
+  return { 필요: why.length > 0, 이유: why };
+}
+
 // 색인과 실제 파일 목록 맞대기 — 같은 ID·같은 이름·같은 수정일이면 그대로 쓰고, 나머지는 다시 읽을 것(stale), 없어진 파일 수(removed)
+// [2026.10.21] 예전 꼴(v1) 항목도 다시 읽을 것으로 본다(근거·기준일 칸 채우기)
 function knhIdxCompare_(items, listing) {
   var by = {}, keep = {}, stale = [], removed = 0, seen = {};
   (items || []).forEach(function (e) { if (e && e.id) by[e.id] = e; });
   (listing || []).forEach(function (f) {
     seen[f.id] = 1;
     var e = by[f.id];
-    if (e && e.수정일 === f.modified && e.파일 === f.name) keep[f.id] = e; else stale.push(f);
+    if (e && e.수정일 === f.modified && e.파일 === f.name && (e.v || 1) >= KNH_IDX_V_) keep[f.id] = e; else stale.push(f);
   });
   Object.keys(by).forEach(function (id) { if (!seen[id]) removed++; });
   return { keep: keep, stale: stale, removed: removed };
@@ -760,7 +861,7 @@ function knhIdxSync_(folder, deadline) {
       try { e = knhIdxEntry_({ id: f.id, name: f.name, modified: f.modified, text: f.file.getBlob().getDataAsString('UTF-8') }); read++; } catch (er) { e = null; }
     }
     if (e) items.push(e); else stale++;
-    files.push({ id: f.id, name: f.name, modifiedDate: f.modified, 색인: e ? { 제목: e.제목, 종류: e.종류, 요약: e.요약 } : null });
+    files.push({ id: f.id, name: f.name, modifiedDate: f.modified, 색인: knhIdxBrief_(e) });
   });
   var wrote = false;
   if (read || cmp.removed || (!idx && listing.length)) {
@@ -795,13 +896,96 @@ function knhIdxForScreen_(body) {
   var key = String(body && body.key || '');
   var root = knhIdxRoots_().filter(function (r) { return r.key === key; })[0];
   if (!root) return { error: '「' + key + '」 노하우 폴더를 찾지 못했습니다.' };
-  var deadline = Date.now() + 8000;
+  var g = knhIdxGather_(root, Date.now() + 8000);
+  // [2026.10.21] 절세 아이템은 줄마다 현행화 필요 판정(인용 조문 개정·날짜 지남·개편안·1년 넘음)을 붙인다 — 화면이 ⚠ 표시·거르기에 쓴다
+  if (key === '절세') knhIdxAddCurrency_(g);
+  return { success: true, folderId: root.folder.getId(), files: g.files, folders: g.folders, stale: g.stale };
+}
+function knhIdxGather_(root, deadline) {
   var top = knhIdxSync_(root.folder, deadline), stale = top.stale;
   var folders = root.subs ? knhIdxSubs_(root.folder).map(function (d) {
     try { var s = knhIdxSync_(d, deadline); stale += s.stale; return { id: d.getId(), name: d.getName(), files: s.files }; }
     catch (e) { return { id: d.getId(), name: d.getName(), files: [], error: String(e && e.message || e) }; }
   }) : [];
-  return { success: true, folderId: root.folder.getId(), files: top.files, folders: folders, stale: stale };
+  return { files: top.files, folders: folders, stale: stale };
+}
+function knhIdxAddCurrency_(g) {
+  var today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'), lc = [];
+  try { lc = (knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []; } catch (e) { }
+  g.files.concat.apply(g.files, g.folders.map(function (d) { return d.files; })).forEach(function (f) {
+    if (f.색인) f.색인.현행화 = knhItemCurrency_(f.색인, lc, today);
+  });
+  return g;
+}
+
+// ---- 넥스 도구 — 절세 아이템 찾기·읽기(토큰 0, 같은 색인) ----
+// 세무사님 원문(2026-10-21): "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다. 하라.
+//  1. 인용할때 근거를 부기하도록 하라 2. 절세아이템 중 시간에 따라 변경되는 내용은 정기적으로 업데이트를 해야 한다"
+// 대화창·사이드바(Code.js JOB_AI_TOOLS_)와 사건 지휘(AiLeadLive.js)가 같은 두 함수를 부른다(넥스 하나로).
+var KNH_ITEM_CITE_RULE_ = '이 아이템을 근거로 답하면: ① 답 끝에 "인용" 줄을 그대로 붙이고, 아이템 문장을 옮길 때는 그 문장에 적힌 근거 조문·해석 번호를 괄호로 함께 옮긴다(아이템에 없는 조문·번호를 지어 붙이지 않는다). '
+  + '② 옮긴 부분에 [확인 필요]·반대 취지·해석 엇갈림 표시가 있으면 그 표시를 그대로 옮기고 단정하지 않는다. ③ 검토 상태가 "세무사님 검토 전"이면 답에 그렇게 밝힌다. '
+  + '④ 현행화 필요면 그 이유를 먼저 말하고, 세율·기한·시행일은 조문 원문 조회로 확인한 뒤에만 단정한다. ⑤ 아이템은 일반 정리다 — 사건 사실에 대입한 결론은 네 판단임을 구분해 말한다.';
+function knhTaxItemsAll_(deadlineMs) {
+  var root = knhIdxRoots_().filter(function (r) { return r.key === '절세'; })[0];
+  if (!root) return null;
+  var g = knhIdxAddCurrency_(knhIdxGather_(root, Date.now() + (deadlineMs || 4000))), out = [];
+  g.files.forEach(function (f) { out.push({ f: f, 세목: '공통' }); });
+  g.folders.forEach(function (d) { d.files.forEach(function (f) { out.push({ f: f, 세목: d.name }); }); });
+  return out;
+}
+// 찾을 말 → 낱말(조사 떼기). 순수 함수
+function knhItemTerms_(q) {
+  return String(q || '').toLowerCase().split(/[\s,.;:!?·/()「」"'“”‘’\-]+/).map(function (w) {
+    return w.replace(/(으로|에서|에게|하면|하나요|인가요|되나요|나요|까요|은|는|이|가|을|를|에|의|로|와|과|도|만)$/, '');
+  }).filter(function (w) { return w.length >= 2; });
+}
+function knhItemScore_(b, title, terms) {
+  var s = 0, T = String(title || '').toLowerCase(), Y = String(b && b.요약 || '').toLowerCase(), G = String(b && b.근거 || '').toLowerCase(), K = String(b && b.종류 || '').toLowerCase();
+  terms.forEach(function (t) { if (T.indexOf(t) !== -1) s += 3; if (Y.indexOf(t) !== -1) s += 2; if (G.indexOf(t) !== -1) s += 1; if (K.indexOf(t) !== -1) s += 1; });
+  return s;
+}
+function knhTaxItemsSearch_(input) {
+  input = input || {};
+  var all = knhTaxItemsAll_(4000);
+  if (!all) return { 오류: '절세 아이템 폴더(업무관리자\\절세)를 찾지 못했습니다.' };
+  var terms = knhItemTerms_(input.query), want = String(input.세목 || input.semok || '').replace(/소득세|세$/g, '');
+  var rows = all.filter(function (x) { return !want || x.세목.indexOf(want) !== -1; }).map(function (x) {
+    return { x: x, s: terms.length ? knhItemScore_(x.f.색인, knhIdxTitle_(x.f.name), terms) : 1 };
+  }).filter(function (r) { return r.s > 0; }).sort(function (a, b) { return b.s - a.s; }).slice(0, Math.min(+input.limit || 8, 15));
+  return {
+    ok: true, 전체: all.length, 찾음: rows.length,
+    아이템: rows.map(function (r) {
+      var b = r.x.f.색인 || {};
+      return { id: r.x.f.id, 제목: b.제목 || knhIdxTitle_(r.x.f.name), 세목: r.x.세목, 종류: b.종류 || '', 요약: b.요약 || '', 근거: b.근거 || '', 검토: b.검토 || '', 기준일: b.기준일 || '',
+        현행화필요: b.현행화 && b.현행화.필요 ? b.현행화.이유 : null, 조심: (b.확인필요 ? '[확인 필요] ' + b.확인필요 + '곳' : '') + (b.엇갈림 ? (b.확인필요 ? ' · ' : '') + '반대 취지·해석 엇갈림 ' + b.엇갈림 + '곳' : '') };
+    }),
+    안내: rows.length ? '맞는 것만 read_tax_item(id)로 읽어라(보통 1~2개). ' + KNH_ITEM_CITE_RULE_ : '맞는 절세 아이템이 없다 — 아이템을 근거로 답한다고 말하지 마라(다른 낱말로 한 번 더 찾거나, 조문 원문 조회로 답한다).'
+  };
+}
+function knhTaxItemRead_(input) {
+  input = input || {};
+  var all = knhTaxItemsAll_(3000);
+  if (!all) return { 오류: '절세 아이템 폴더(업무관리자\\절세)를 찾지 못했습니다.' };
+  var id = String(input.id || ''), name = String(input.제목 || input.title || input.name || '').trim();
+  var hit = all.filter(function (x) { return id && x.f.id === id; })[0]
+    || all.filter(function (x) { return name && (knhIdxTitle_(x.f.name) === name || x.f.name === name); })[0]
+    || all.filter(function (x) { return name && knhIdxTitle_(x.f.name).indexOf(name) !== -1; })[0];
+  if (!hit) return { 오류: '그 절세 아이템을 찾지 못했습니다 — search_tax_items가 준 id를 그대로 써라.' };
+  var text = '';
+  try { text = DriveApp.getFileById(hit.f.id).getBlob().getDataAsString('UTF-8').replace(/^﻿/, ''); } catch (e) { return { 오류: '아이템을 읽지 못했습니다: ' + e.message }; }
+  // 색인이 낡았어도 방금 읽은 본문으로 다시 판정한다
+  var b = knhIdxBrief_(knhIdxEntry_({ id: hit.f.id, name: hit.f.name, modified: hit.f.modifiedDate, text: text }));
+  var lc = []; try { lc = (knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []; } catch (e) { }
+  var cur = knhItemCurrency_(b, lc, Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'));
+  var careful = text.split('\n').filter(function (l) { return /\[확인 필요|반대\s*취지|해석(이)?\s*엇갈|해석이\s*갈/.test(l); })
+    .map(function (l) { l = l.trim(); return l.length > 220 ? l.slice(0, 218) + '…' : l; }).slice(0, 20);
+  var cite = '〔근거: 절세 아이템 「' + b.제목 + '」(' + hit.세목 + ')' + (b.근거 ? ' · ' + b.근거 : '') + (b.기준일 ? ' · 기준일 ' + b.기준일 : '') + (b.검토 ? ' · ' + b.검토 : '')
+    + (cur.필요 ? ' · ⚠ 현행화 필요' : '') + '〕';
+  return {
+    ok: true, id: hit.f.id, 아이템: b.제목, 세목: hit.세목, 종류: b.종류, 근거조문: b.근거, 검토상태: b.검토 || '(표시 없음 — 검토 여부 모름으로 말할 것)', 기준일: b.기준일,
+    시간에따라바뀌는내용: b.변동, 현행화: cur, 조심할곳: careful, 인용: cite, 인용규칙: KNH_ITEM_CITE_RULE_,
+    본문: text.length > 16000 ? text.slice(0, 16000) + '\n…(뒤는 잘림)' : text
+  };
 }
 
 // 파일을 고쳐 저장한 직후 — 그 파일이 든 폴더에 색인이 있으면 그 폴더만 맞춘다(Code.js uploadFile의 knowIndex 표시, 제안 채택·폐기)
@@ -824,9 +1008,23 @@ function knhIdxNightly_(opts) {
       catch (e) { sum.오류.push(d.getName() + ': ' + String(e && e.message || e).slice(0, 80)); }
     });
   });
+  // [2026.10.21] 절세 아이템 현행화 — 밤마다 판정해 총괄관리자\_지침정비\절세현행화_최신.json에 남긴다(주간 정비 루틴·화면이 읽음).
+  //  내용 수정(현행화)은 세무사님·세션이 한다 — 여기서 세법 문장을 고치지 않는다.
+  try {
+    var all = knhTaxItemsAll_(Math.max(1000, deadline - Date.now()));
+    if (all) {
+      var need = all.filter(function (x) { return x.f.색인 && x.f.색인.현행화 && x.f.색인.현행화.필요; });
+      var cur = { at: knhNow_(), 전체: all.length, 시간민감: all.filter(function (x) { return x.f.색인 && (x.f.색인.변동 || []).length; }).length,
+        색인없음: all.filter(function (x) { return !x.f.색인; }).length, 현행화필요: need.length,
+        목록: need.map(function (x) { return { id: x.f.id, 제목: x.f.색인.제목, 세목: x.세목, 기준일: x.f.색인.기준일, 이유: x.f.색인.현행화.이유 }; }) };
+      knhWriteJson_(KNH_TAX_CURRENCY_, cur);
+      sum.절세현행화필요 = need.length;
+    }
+  } catch (e) { sum.오류.push('절세 현행화 판정: ' + String(e && e.message || e).slice(0, 80)); }
   try { PropertiesService.getScriptProperties().setProperty('KNH_IDX_LAST', JSON.stringify(sum)); } catch (e) { }
   return sum;
 }
+var KNH_TAX_CURRENCY_ = '절세현행화_최신.json';
 
 // ---- 나. 바탕 템플릿 판 기록 — 사건 폴더에 템플릿 사본을 만들 때 첫머리(글 파일) 또는 드라이브 파일 설명(그 밖)에 한 줄 ----
 // 판 = 템플릿 파일의 드라이브 수정 시각. 파일 이름엔 판을 붙이지 않는다(같은 이름 갱신·_이전판 보관이 기존 규칙).

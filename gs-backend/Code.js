@@ -3877,6 +3877,28 @@ const JOB_AI_TOOLS_ = [
       },
       required: ['view']
     }
+  },
+  // [2026.10.21] 절세 아이템(업무관리자\절세, 절세플랜 📚) — 세무사님 "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다".
+  //  찾기·읽기 모두 GAS(토큰 0, KnowHow.js knhTaxItemsSearch_·knhTaxItemRead_) — 사건 지휘(AiLeadLive.js)도 같은 함수.
+  {
+    name: 'search_tax_items',
+    description: '절세 아이템 찾기(토큰 0) — NETAX가 미리 정리한 절세·세금 상식·자주 묻는 질문·주요 이슈·함정 아이템(양도·증여·상속·공통 약 190건)의 목록(제목·한 줄 요약·근거 조문·검토 상태·기준일·현행화 필요 여부)에서 찾을 말과 맞는 것을 고른다. 본문은 read_tax_item으로.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '찾을 말(예: 부담부증여, 국외 부동산, 다주택 중과). 낱말 몇 개' },
+        세목: { type: 'string', enum: ['양도', '증여', '상속', '공통'], description: '좁힐 세목(선택)' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'read_tax_item',
+    description: '절세 아이템 하나 읽기(토큰 0) — 본문과 함께 근거 조문·검토 상태·기준일·현행화 필요 이유·조심할 곳([확인 필요]·반대 취지·해석 엇갈림 줄)·답 끝에 붙일 "인용" 줄을 준다. 이 아이템을 근거로 답하면 인용규칙을 반드시 따른다.',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'search_tax_items가 준 id' }, 제목: { type: 'string', description: 'id를 모를 때 제목' } }
+    }
   }
 ];
 
@@ -4587,6 +4609,13 @@ function buildContextSystemPrompt(basePrompt, body) {
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
     + '맞는 것만 load_business_manager로 읽어 그 판단 순서를 따른다 — 전부 읽지 말고 보통 한두 개, 같은 대화에서 이미 읽은 지침은 다시 읽지 않는다. 맞는 지침이 없으면 그냥 넘어간다. '
     + '지침의 수치·조문은 개정될 수 있으니 세액·기한을 크게 가르는 것은 lookup_statute_article로 원문을 확인한다.';
+  // [2026.10.21] 절세 아이템을 근거로 답하기 — 세무사님 원문: "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다. 하라.
+  //  1. 인용할때 근거를 부기하도록 하라 2. 절세아이템 중 시간에 따라 변경되는 내용은 정기적으로 업데이트를 해야 한다"
+  if (ctx.aiPanel) staticExtra += '\n\n[절세 아이템 — 근거로 답할 때] 절세 방법·세금 상식·자주 묻는 질문·주요 이슈·함정을 물으면 search_tax_items로 NETAX가 정리한 아이템을 찾고(토큰 0) 맞는 것만 read_tax_item으로 읽는다(보통 1~2개). '
+    + '아이템을 근거로 답하면 반드시: (1) 답 끝에 read_tax_item이 준 "인용" 줄을 그대로 붙이고, 아이템 문장을 옮길 때는 그 문장에 적힌 근거 조문·해석 번호를 괄호로 함께 옮긴다 — 아이템에 없는 조문·번호는 지어 붙이지 않는다. '
+    + '(2) 옮긴 부분에 [확인 필요]·반대 취지·해석 엇갈림 표시가 있으면 그 표시를 그대로 옮기고 단정하지 않는다. (3) 검토 상태가 "세무사님 검토 전"이면 그 사실을 답에 밝힌다. '
+    + '(4) "현행화 필요"면 그 이유를 먼저 말하고, 세율·공제액·기한·시행일은 lookup_statute_article로 원문을 확인한 뒤에만 단정한다. (5) 아이템은 일반 정리다 — 사건 사실에 대입한 결론은 네 판단임을 구분해 말한다. '
+    + '맞는 아이템이 없으면 아이템을 근거로 한다고 말하지 않는다.';
   else staticExtra += '\n\n[총괄관리자 — 시스템 자기점검] audit_business_managers(관리자들끼리 모순·중복 점검) / propose_new_business_manager(새 분야 관리자 초안 제안) 도구가 있다. ' +
     'propose_new_business_manager로 만든 초안은 "_제안함" 폴더에만 저장되고 자동으로 활성화되지 않는다 — 이건 의도된 안전장치이니, 마치 이미 적용된 것처럼 착각하지 말고 사용자에게 검토가 필요하다고 명확히 알려라.';
 
@@ -15283,6 +15312,8 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         b.name === 'apply_diagram_edit' ||
         b.name === 'navigate_to_folder' ||
         b.name === 'job_lookup' ||
+        b.name === 'search_tax_items' ||
+        b.name === 'read_tax_item' ||
         b.name === 'job_propose_action' ||
         b.name === 'job_open_screen'
       );
@@ -15298,6 +15329,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         try { r = job_lookup_(block.input || {}); } catch (err) { r = { error: '조회 중 오류: ' + err.message }; }
         const text = JSON.stringify(r);
         return { type: 'tool_result', tool_use_id: block.id, content: text.length > 60000 ? text.slice(0, 60000) + '…(너무 길어 잘림 — 조건을 좁혀 다시 조회하라)' : text };
+      }
+      // [2026.10.21] 절세 아이템 찾기·읽기(KnowHow.js) — 토큰 0, 결과에 근거·검토 상태·기준일·현행화 필요·인용 줄
+      if (block.name === 'search_tax_items' || block.name === 'read_tax_item') {
+        let r;
+        try { r = block.name === 'search_tax_items' ? knhTaxItemsSearch_(block.input || {}) : knhTaxItemRead_(block.input || {}); }
+        catch (err) { r = { 오류: '절세 아이템 조회 중 오류: ' + err.message }; }
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(r).slice(0, 30000) };
       }
       if (block.name === 'job_propose_action') {
         const r = job_buildProposal_(block.input || {});
