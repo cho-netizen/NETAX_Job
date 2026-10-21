@@ -81,6 +81,23 @@
     }
     html += '</div></details>';
 
+    // ①-2 [2026.10.22] 확인할 법령 개정 — 개정 하나를 한 번 확인하면(실질 변경 없음/있음) 그 조문을 인용한 지침·템플릿·절세 아이템 판정이 같이 쓴다
+    //  (10-22 소득세법 §88·89·95 2027.9.9. 시행 개정이 타법개정으로 법률 이름만 바뀐 것이었는데 파일마다 따로 확인해야 했음)
+    var laws = st.개정 || [], lawTodo = laws.filter(function(v){ return !v.확인 && (v.문서.length || v.절세); }).length;
+    if (laws.length) {
+      html += '<details class="kh-sec" id="khSecLaw"' + (lawTodo ? ' open' : '') + '><summary>⚖ 확인할 법령 개정 ' + lawTodo + '건' + (laws.length > lawTodo ? ' (확인함 ' + (laws.length - lawTodo) + ')' : '') + '</summary><div class="kh-in">'
+        + '<div class="kh-note">법령 개정 감시가 잡은 개정 중 지침·템플릿·절세 아이템이 인용한 조문입니다. 원문을 대조해 결론을 한 번 누르면 그 조문을 인용한 모든 파일에 같이 적용됩니다 — "실질 변경 없음"(예: 다른 법 개정으로 법률 이름만 바뀜)이면 표시가 풀리고, "있음"이면 반영할 때까지 남습니다. 파일 내용은 고치지 않습니다.</div>';
+      laws.forEach(function(v, i){
+        html += '<div class="kh-row">' + (v.확인 ? '<span class="kh-badge ' + (v.확인.결론 === '없음' ? 'kh-ok' : 'kh-del') + '">실질 변경 ' + esc_(v.확인.결론) + '</span>' : '<span class="kh-badge kh-fix">확인 전</span>')
+          + '<span class="kh-t">' + esc_(v.법령) + ' §' + esc_(v.jo) + (v.제목 ? ' ' + esc_(v.제목) : '') + '</span>'
+          + '<div class="kh-m">' + esc_(v.시행일) + (v.구분 === '시행예정' ? ' 시행 예정' : ' 시행') + ' · 감지 ' + esc_(v.감지일 || '') + ' · 걸린 지침·템플릿 ' + v.문서.length + '개 · 절세 아이템 ' + v.절세 + '개' + (v.확인 ? ' · 확인 ' + esc_(String(v.확인.at || '').slice(0, 10)) + (v.확인.메모 ? ' — ' + esc_(v.확인.메모) : '') : '') + '</div>'
+          + (v.문서.length ? '<details><summary class="kh-m" style="cursor:pointer;">걸린 파일 보기</summary><div class="kh-m">' + v.문서.map(esc_).join(' · ') + '</div></details>' : '')
+          + '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="없음">✔ 실질 변경 없음</button><button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="있음">⚠ 실질 변경 있음</button>'
+          + (v.확인 ? '<button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="">기록 지우기</button>' : '') + '</div></div>';
+      });
+      html += '</div></details>';
+    }
+
     // ② 판정 요약 + 파일별 판정
     var t = (r && r.totals) || {};
     html += '<details class="kh-sec" id="khSecJudge"><summary>🔎 지침·템플릿 정비 판정 — '
@@ -125,7 +142,7 @@
     } else html += '<div class="kh-note">아직 판정 결과가 없습니다 — 🔄 지금 다시 판정을 눌러 주세요.</div>';
     html += '</div></details>';
     // 열림 상태 유지
-    var openIds = {}; ['khSecPend', 'khSecJudge', 'khSecCov'].forEach(function(id){ var e = document.getElementById(id); if (e) openIds[id] = e.open; });
+    var openIds = {}; ['khSecPend', 'khSecLaw', 'khSecJudge', 'khSecCov'].forEach(function(id){ var e = document.getElementById(id); if (e) openIds[id] = e.open; });
     box.innerHTML = html;
     Object.keys(openIds).forEach(function(id){ var e = document.getElementById(id); if (e) e.open = openIds[id]; });
   }
@@ -253,6 +270,10 @@
     var a = b.getAttribute('data-kh'), st = kh_.status || {};
     if (a === 'open') openProposal_((st.pending || [])[Number(b.getAttribute('data-i'))]);
     else if (a === 'filter') { kh_.filter = b.getAttribute('data-f'); render_(); }
+    else if (a === 'law') {
+      var v = (st.개정 || [])[Number(b.getAttribute('data-i'))], to = b.getAttribute('data-v'); if (!v) return;
+      window.nxKnhLawConfirm_(v, to).then(function(ok){ if (ok) load_(true); });
+    }
     else if (a === 'run') {
       b.disabled = true; b.textContent = '판정 중…(1~2분)';
       callGas('knh_run', {}).then(function(res){ if (res && res.error) toast_('판정하지 못했습니다: ' + res.error); load_(true); }).catch(function(err){ toast_('판정하지 못했습니다: ' + (err && err.message || err)); load_(true); });
@@ -262,6 +283,21 @@
       else if (a === 'editfile' && typeof goToReportWriter_ === 'function') goToReportWriter_('', { fileId: f.fileId, noDocTypeAsk: true });
     }
   });
+
+  // [2026.10.22] 개정 확인 결론 기록 — 이 화면과 절세플랜 📚 아이템의 ⚠ 상자가 같이 쓴다(KnowHow.js knh_law_confirm)
+  window.nxKnhLawConfirm_ = function(v, to){
+    var label = v.법령 + ' §' + v.jo + '(' + v.시행일 + (v.구분 === '시행예정' ? ' 시행 예정' : ' 시행') + ')';
+    var ask = to === '' ? nxConfirm_(label + ' 확인 기록을 지울까요? 다시 "확인 전"으로 돌아갑니다.', '기록 지우기').then(function(ok){ return ok ? '' : null; })
+      : nxPrompt_(label + ' — "실질 변경 ' + to + '"으로 기록합니다. 무엇을 대조했는지 한 줄 적어 주세요' + (to === '없음' ? '(예: 다른 법 개정으로 법률 이름만 바뀜 — 법제처 시행일판 원문 대조)' : '(예: 세율 구간이 바뀜 — 반영 필요)') + '.', '', '기록');
+    return ask.then(function(memo){
+      if (memo === null || memo === undefined) return false;
+      if (to && !String(memo).trim()) { toast_('무엇을 대조했는지 한 줄 적어야 기록됩니다.'); return false; }
+      return callGas('knh_law_confirm', { key: v.key, jo: v.jo, 시행일: v.시행일, 결론: to, 메모: String(memo || '').trim() }).then(function(res){
+        if (!res || res.error){ toast_('기록하지 못했습니다: ' + (res && res.error || '응답 없음')); return false; }
+        toast_(res.message || '기록했습니다.'); return true;
+      });
+    }).catch(function(err){ toast_('기록하지 못했습니다: ' + (err && err.message || err)); return false; });
+  };
 
   // 설정 화면이 열릴 때마다(15초 안에 다시 열면 그대로) 새로 받는다
   function watch_(){

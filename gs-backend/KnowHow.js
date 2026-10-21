@@ -165,14 +165,12 @@ function knhJudge_(input) {
       var dupe = au.problems.filter(function (p) { return p.kind === '중복'; });
       if (dupe.length >= 5) add('참고', '다른 지침과 같은 문장 ' + dupe.length + '곳 — 한 곳에 두고 가리키기(통합 검토)');
     } else if (f.kind === '지침' && input.audit) tags.push('자기점검 결과 없음');
-    // 2) 법령 개정 — 이 파일이 인용한 조문이, 파일을 마지막으로 고친 뒤 바뀌었거나 바뀔 예정
-    var cites = knhCitationKeys_(text);
-    // 시행 예정: 그 시행일을 본문에 적어 두지 않았으면(아직 반영 안 함) / 이미 시행: 감지한 날 전에 마지막으로 고쳤고 시행일도 안 적혀 있으면
-    var hits = (input.lawChanges || []).filter(function (c) {
-      if (!cites[c.key + '|' + c.jo] || knhMentionsDate_(text, c.시행일)) return false;
-      return c.구분 === '시행예정' || String(f.modified || '').slice(0, 10) < String(c.감지일 || c.시행일 || '');
-    });
-    if (hits.length) add('수정', '법령 개정 반영 필요 — ' + hits.slice(0, 4).map(function (c) { return c.법령 + ' §' + c.jo + '(' + (c.구분 === '시행예정' ? c.시행일 + ' 시행 예정' : c.시행일 + ' 시행') + ')'; }).join(', ') + (hits.length > 4 ? ' 외 ' + (hits.length - 4) + '개' : ''), hits.map(function (c) { return c.법령 + ' §' + c.jo; }));
+    // 2) 현행화 — [2026.10.22] 절세 아이템과 같은 판정 함수(knhCurrency_) 하나로 합침. 세무사님 "2번 작업을 하자"(지침·의뢰서·보고서 템플릿에도 같은 현행화 점검).
+    //    인용 조문 개정(확인 결론 _개정확인.json 반영)·본문 날짜 지남·개편안 60일·기준일 1년. 조문은 본문 전체에서(지침은 근거가 본문 곳곳에 있음).
+    var cur = knhCurrency_(knhDocFacts_(text, f.modified, Object.keys(knhCitationKeys_(text))), input.lawChanges, today, input.confirms);
+    if (cur.법령.length) add('수정', '법령 개정 반영 필요 — ' + cur.법령.slice(0, 4).map(knhLawLabel_).join(', ') + (cur.법령.length > 4 ? ' 외 ' + (cur.법령.length - 4) + '개' : ''), cur.법령.map(function (c) { return c.법령 + ' §' + c.jo; }));
+    cur.이유.filter(function (r) { return !/^인용 조문 개정/.test(r); }).forEach(function (r) { add('수정', '현행화 필요 — ' + r); });
+    if (cur.필요) tags.push('현행화 필요');
     // 3) 아직 확인 못 한 곳·검토 전 초안
     var conf = (text.match(/\[확인 필요/g) || []).length;
     if (conf) add('보완', '"[확인 필요]" ' + conf + '곳 — 원문 확인해 채울 것');
@@ -480,7 +478,8 @@ function knhNightly_(opts) {
     // 의뢰서가 실제로 쓰이는 업무
     var reach = {};
     Object.keys(KNH_UPTYPES_).forEach(function (s) { KNH_UPTYPES_[s].forEach(function (up) { var p = knhPickIntake_(s, up, files.의뢰서.map(function (f) { return f.name; })); if (p) reach[p] = (reach[p] ? reach[p] + ', ' : '') + (s === '불복' ? up : s + ' ' + up); }); });
-    var judged = knhJudge_({ files: all, audit: Object.keys(audit).length ? audit : null, lawChanges: lawChanges, uses: uses.uses, useSince: uses.since, today: today, intakeReachable: reach, corrections: corrections, tplStats: tplStats });
+    var confirms = knhLawConfirmMap_((knhReadJson_(KNH_LAW_CONFIRM_, { items: [] }) || {}).items); // [2026.10.22] 개정 확인 결론(절세 아이템과 같은 기록)
+    var judged = knhJudge_({ files: all, audit: Object.keys(audit).length ? audit : null, lawChanges: lawChanges, confirms: confirms, uses: uses.uses, useSince: uses.since, today: today, intakeReachable: reach, corrections: corrections, tplStats: tplStats });
     var stBy = {}; judged.forEach(function (j) { stBy[j.kind + '/' + knhBase_(j.name)] = j.status; });
     var withSt = function (k) { return files[k].map(function (f) { return { name: f.name, modified: f.modified, status: stBy[k + '/' + knhBase_(f.name)] }; }); };
     var cov = knhCoverage_({ cases: cr.rows, bm: withSt('지침'), tpl: { 보고서: withSt('보고서'), 의뢰서: withSt('의뢰서') }, today: today });
@@ -673,8 +672,9 @@ function knhDispatch_(body) {
       var r = knhReadJson_(KNH_RESULT_, null);
       if (r) delete r.material; // 화면엔 재료(사건 발췌)를 싣지 않는다
       return { success: true, result: r, pending: knhProposals_().map(function (p) { return { id: p.id, 종류: p.종류, 작업: p.작업, 대상: p.대상, 이유: p.이유, at: p.at, 출처: p.출처 }; }),
-        decisions: knhDecisions_().items.slice(-20).reverse() };
+        decisions: knhDecisions_().items.slice(-20).reverse(), 개정: knhLawReview_(r) };
     }
+    if (a === 'knh_law_confirm') return knhLawConfirm_(body);
     if (a === 'knh_proposal') {
       var p = knhProposals_().filter(function (x) { return x.id === body.id; })[0];
       if (!p) return { error: '그 제안을 찾지 못했습니다(이미 처리했을 수 있음).' };
@@ -723,7 +723,7 @@ function knhIdxGist_(src) {
 // [2026.10.21 v2] 색인 항목에 근거·검토 상태·기준일·시간에 따라 바뀌는 내용(변동)·본문 날짜·인용 조문·[확인 필요]/해석 엇갈림 수를 더한다
 //  (세무사님 "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다" — 인용 근거 부기·정기 현행화의 재료).
 //  예전(v1) 항목은 그대로 읽히고, 다음 맞추기 때 v2로 다시 만든다(knhIdxCompare_).
-var KNH_IDX_V_ = 2;
+var KNH_IDX_V_ = 3; // [2026.10.22] v3 — 언급(글에 적힌 모든 날짜) 칸, 머리 줄 날짜는 지남 판정에서 뺌
 function knhIdxEntry_(f) {
   var src = String(f.text || '').replace(/^﻿/, ''), m = knhIdxMeta_(src);
   var e = { v: KNH_IDX_V_, id: f.id, 파일: f.name, 제목: knhIdxTitle_(f.name), 종류: m['종류'] || '', 요약: knhIdxGist_(src), 수정일: f.modified };
@@ -734,7 +734,7 @@ function knhIdxEntry_(f) {
 // 화면·넥스 도구에 넘기는 색인 한 줄(파일ID·이름·수정일은 바깥에 따로)
 function knhIdxBrief_(e) {
   if (!e) return null;
-  return { 제목: e.제목, 종류: e.종류, 요약: e.요약, 근거: e.근거 || '', 검토: e.검토 || '', 기준일: e.기준일 || '', 변동: e.변동 || [], 날짜: e.날짜 || [],
+  return { 제목: e.제목, 종류: e.종류, 요약: e.요약, 근거: e.근거 || '', 검토: e.검토 || '', 기준일: e.기준일 || '', 변동: e.변동 || [], 날짜: e.날짜 || [], 언급: e.언급 || [],
     조문: e.조문 || [], 확인필요: e.확인필요 || 0, 엇갈림: e.엇갈림 || 0 };
 }
 
@@ -778,48 +778,102 @@ function knhItemVolatile_(text, dates, base) {
   if (/세율|공제액|공제\s*한도|한도액|\d+\s*%/.test(t)) out.push('세율·공제액');
   return out;
 }
-function knhItemFacts_(src, modified) {
+// [2026.10.22] 현행화 재료(지침·의뢰서·보고서 템플릿·문단·절세 아이템 공용) — 세무사님 "2번 작업을 하자"
+//  기준일 = 머리 줄 "기준일:" > "작성:"의 날짜 > 파일 수정일.
+//  날짜(지남 판정용) = 본문 날짜 중 기준일 뒤의 것. 머리의 ">" 줄(작성일·"개정 확인" 기록 등)은 뺀다 — 확인 기록 날짜가 "본문 날짜 지남"으로 다시 잡힌 일(10-22) 때문.
+//  언급 = 머리 줄까지 포함해 글에 적힌 모든 날짜(개정 시행일을 적어 두면 "반영함"으로 본다 — 예: "> 개정 확인: … 2027. 9. 9. 시행 … 내용은 바뀌지 않음").
+//  cites: 인용 조문 키 목록(지침·템플릿은 본문 전체에서 knhCitationKeys_로, 절세 아이템은 근거 줄·근거 원문 절에서 knhItemCites_로).
+function knhDocFacts_(src, modified, cites) {
+  src = String(src || '').replace(/^﻿/, '');
   var m = knhIdxMeta_(src);
-  var made = String(m['작성'] || '').match(/(20\d\d)-(\d{2})-(\d{2})/);
-  var own = String(m['기준일'] || '').match(/(20\d\d)\D?(\d{1,2})\D?(\d{1,2})/);
+  var lines = src.split(/\r?\n/), head = [], body = [];
+  lines.forEach(function (l, i) { (i < 14 && /^\s*>/.test(l) ? head : body).push(l); });
+  // 작성일: "작성:" 칸, 없으면 머리 줄의 첫 yyyy-MM-dd(지침 "> 상태: 초안(…) · 2026-10-20 · …")
+  var made = String(m['작성'] || '').match(/(20\d\d)-(\d{2})-(\d{2})/) || head.join('\n').match(/(20\d\d)-(\d{2})-(\d{2})/);
+  var own = String(m['기준일'] || '').match(/(20\d\d)\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})/);
   var mod = String(modified || '').match(/(20\d\d)\D(\d{2})\D(\d{2})/);
   var base = own ? own[1] + '-' + ('0' + own[2]).slice(-2) + '-' + ('0' + own[3]).slice(-2) : made ? made[1] + '-' + made[2] + '-' + made[3] : mod ? mod[1] + '-' + mod[2] + '-' + mod[3] : '';
-  var dates = knhItemDates_(src);
-  var sec = String(src).match(/##\s*근거 원문[^\n]*\n([\s\S]*?)(?=\n##\s|$)/);
+  var bodyDates = knhItemDates_(body.join('\n'));
   return {
-    근거: String(m['근거'] || '').slice(0, 300),
-    검토: m['검토 상태'] || '',
     기준일: base,
-    변동: knhItemVolatile_(src, dates, base),
-    날짜: dates.filter(function (d) { return d > base; }).slice(0, 12),
-    조문: knhItemCites_((m['근거'] || '') + '\n' + (sec ? sec[1] : '')).slice(0, 30),
-    확인필요: (String(src).match(/\[확인 필요/g) || []).length,
-    엇갈림: (String(src).match(/반대\s*취지|해석(이)?\s*엇갈|해석이\s*갈/g) || []).length
+    변동: knhItemVolatile_(body.join('\n'), bodyDates, base),
+    날짜: bodyDates.filter(function (d) { return d > base; }).slice(0, 12),
+    언급: knhItemDates_(src).slice(-40),
+    조문: (cites || []).slice(0, 40)
   };
 }
-// 현행화 필요 판정 — e: 색인 한 줄(knhIdxBrief_), lawChanges: 법령 개정 감시 누적(knhLawChanges_), today 'yyyy-MM-dd'
-//  ① 인용 조문이 기준일 뒤에 개정(또는 개정 예정)됐는데 본문에 그 시행일이 없음 ② 기준일 뒤의 날짜(기한·시행일·유예 끝)가 오늘 지남
-//  ③ 개편안 아이템인데 기준일에서 60일 넘음 ④ 시간에 따라 바뀌는 내용이 있는데 기준일에서 1년 넘음
-function knhItemCurrency_(e, lawChanges, today) {
-  var why = [];
-  if (!e || !e.기준일) return { 필요: false, 이유: [] };
-  var cites = {}; (e.조문 || []).forEach(function (k) { cites[k] = 1; });
-  // 본문에 그 시행일을 적어 두었으면 반영한 것으로 본다. 시행 예정은 기준일 당일 이후에 감지됐으면(아이템이 그 개정을 모르고 쓰였을 수 있음),
-  // 이미 시행은 기준일 뒤에 시행·감지됐으면. — 사람이 확인·현행화한 뒤 머리 줄 "기준일"을 그날로 고치면 풀린다.
-  var hits = (lawChanges || []).filter(function (c) {
-    if (!cites[c.key + '|' + c.jo] || (e.날짜 || []).indexOf(c.시행일) !== -1) return false;
-    if (c.구분 === '시행예정') return String(c.감지일 || '') >= e.기준일;
-    return String(c.시행일 || '') > e.기준일 || String(c.감지일 || '') > e.기준일;
-  });
-  if (hits.length) why.push('인용 조문 개정 — ' + hits.slice(0, 3).map(function (c) { return c.법령 + ' §' + c.jo + '(' + c.시행일 + (c.구분 === '시행예정' ? ' 시행 예정' : ' 시행') + ')'; }).join(', ') + (hits.length > 3 ? ' 외 ' + (hits.length - 3) + '개' : ''));
-  var passed = (e.날짜 || []).filter(function (d) { return d <= today; });
-  if (passed.length) why.push('본문의 날짜(기한·시행일·유예 끝)가 지남 — ' + passed.slice(0, 3).join(', ') + ' (기준일 ' + e.기준일 + ')');
-  var age = knhDaysBetween_(e.기준일, today);
-  if ((e.변동 || []).indexOf('개편안') !== -1 && age > 60) why.push('개편안 내용 — 기준일에서 ' + age + '일 지남(국회 통과·수정 여부 확인)');
-  if ((e.변동 || []).length && age > 365) why.push('기준일에서 1년 넘음(' + age + '일) — 세율·공제액·기한 확인');
-  return { 필요: why.length > 0, 이유: why };
+function knhItemFacts_(src, modified) {
+  src = String(src || '').replace(/^﻿/, '');
+  var m = knhIdxMeta_(src);
+  var sec = src.match(/##\s*근거 원문[^\n]*\n([\s\S]*?)(?=\n##\s|$)/);
+  var f = knhDocFacts_(src, modified, knhItemCites_((m['근거'] || '') + '\n' + (sec ? sec[1] : '')));
+  f.근거 = String(m['근거'] || '').slice(0, 300);
+  f.검토 = m['검토 상태'] || '';
+  f.확인필요 = (src.match(/\[확인 필요/g) || []).length;
+  f.엇갈림 = (src.match(/반대\s*취지|해석(이)?\s*엇갈|해석이\s*갈/g) || []).length;
+  return f;
 }
-
+function knhLawLabel_(c) { return c.법령 + ' §' + c.jo + '(' + c.시행일 + (c.구분 === '시행예정' ? ' 시행 예정' : ' 시행') + (c.확인 === '있음' ? ' · 확인: 실질 변경 있음' : '') + ')'; }
+// 개정 확인 결론 — 총괄관리자\_지침정비\_개정확인.json { items:[{ key, jo, 시행일, 법령, 결론:'없음'|'있음', 메모, at }] }.
+//  개정 하나를 한 번만 확인하면 그 조문을 인용한 모든 지침·템플릿·절세 아이템 판정이 같이 쓴다(같은 개정을 파일마다 다시 확인하지 않게).
+//  "없음"(타법개정으로 법률 이름만 바뀜 등 실질 변경 없음) → 현행화 이유에서 뺀다. "있음" → 반영할 때까지 남기고 "확인: 실질 변경 있음"을 붙인다.
+var KNH_LAW_CONFIRM_ = '_개정확인.json';
+function knhLawConfirmKey_(c) { return String(c.key || '') + '|' + String(c.jo || '') + '|' + String(c.시행일 || ''); }
+function knhLawConfirmMap_(list) { var o = {}; (list || []).forEach(function (x) { o[knhLawConfirmKey_(x)] = x; }); return o; }
+// 화면(🧭 📚)용 — 확인할 개정 목록: 지금 판정에서 걸린 지침·템플릿 수, 절세 아이템 수, 확인 결론. 걸린 것도 확인한 것도 없는 개정은 싣지 않는다.
+function knhLawReview_(r) {
+  var lc = [], cf = {}, tax = null;
+  try { lc = (knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []; } catch (e) { }
+  try { cf = knhLawConfirmMap_((knhReadJson_(KNH_LAW_CONFIRM_, { items: [] }) || {}).items); } catch (e) { }
+  try { tax = knhReadJson_(KNH_TAX_CURRENCY_, null); } catch (e) { }
+  return lc.map(function (c) {
+    var tag = c.법령 + ' §' + c.jo, docs = [], items = 0;
+    ((r && r.files) || []).forEach(function (f) { (f.reasons || []).forEach(function (x) { if (/^법령 개정/.test(x.why) && (x.detail || []).indexOf(tag) !== -1) docs.push(f.kind + ' · ' + knhBase_(f.name)); }); });
+    ((tax && tax.목록) || []).forEach(function (t) { if ((t.이유 || []).some(function (s) { return s.indexOf(tag + '(' + c.시행일) !== -1; })) items++; });
+    var x = cf[knhLawConfirmKey_(c)] || null;
+    return { key: c.key, jo: c.jo, 법령: c.법령, 시행일: c.시행일, 구분: c.구분, 제목: c.제목 || '', 감지일: c.감지일, 문서: docs, 절세: items, 확인: x ? { 결론: x.결론, 메모: x.메모 || '', at: x.at } : null };
+  }).filter(function (v) { return v.문서.length || v.절세 || v.확인; });
+}
+// 개정 확인 결론 기록(사람이 원문을 대조한 뒤 🧭 📚·절세 아이템 칸에서 누름) — 결론 '없음'|'있음', ''이면 기록을 지운다
+function knhLawConfirm_(body) {
+  var c = { key: String(body && body.key || ''), jo: String(body && body.jo || ''), 시행일: String(body && body.시행일 || '') };
+  var 결론 = String(body && body.결론 || ''), 메모 = String(body && body.메모 || '').trim().slice(0, 300);
+  if (!c.key || !c.jo || !c.시행일 || ['없음', '있음', ''].indexOf(결론) === -1) return { error: '어느 개정을 어떻게 확인했는지 알 수 없습니다.' };
+  var known = ((knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []).filter(function (x) { return knhLawConfirmKey_(x) === knhLawConfirmKey_(c); })[0];
+  if (!known) return { error: '법령 개정 감시 기록에 없는 개정입니다 — 화면을 새로 불러 주세요.' };
+  return withLock_(10000, function () {
+    var d = knhReadJson_(KNH_LAW_CONFIRM_, { items: [] }) || { items: [] };
+    d.items = (d.items || []).filter(function (x) { return knhLawConfirmKey_(x) !== knhLawConfirmKey_(c); });
+    if (결론) d.items.push({ key: c.key, jo: c.jo, 시행일: c.시행일, 법령: known.법령, 제목: known.제목 || '', 결론: 결론, 메모: 메모, at: knhNow_() });
+    knhWriteJson_(KNH_LAW_CONFIRM_, d);
+    return { success: true, message: 결론 ? known.법령 + ' §' + c.jo + '(' + c.시행일 + ') — "실질 변경 ' + 결론 + '"으로 기록했습니다.' + (결론 === '없음' ? ' 이 개정으로 걸린 지침·템플릿·절세 아이템의 표시가 풀립니다(지침·템플릿은 🔄 다시 판정 뒤).' : ' 반영할 때까지 표시가 남습니다.') : '확인 기록을 지웠습니다.' };
+  });
+}
+// 현행화 필요 판정(공용) — f: knhDocFacts_ 결과(또는 같은 칸을 가진 색인 한 줄), lawChanges: 법령 개정 감시 누적(knhLawChanges_),
+//  today 'yyyy-MM-dd', confirms: knhLawConfirmMap_ 결과(없어도 됨)
+//  ① 인용 조문 개정 — 글에 그 시행일이 적혀 있지 않고, 확인 결론이 "없음"이 아니며, 시행 예정은 기준일 당일 이후 감지, 이미 시행은 기준일 뒤 시행·감지
+//  ② 본문의 날짜(기한·시행일·유예 끝)가 오늘 지남 ③ 개편안 내용인데 기준일에서 60일 넘음 ④ 시간에 따라 바뀌는 내용이 있는데 기준일에서 1년 넘음
+function knhCurrency_(f, lawChanges, today, confirms) {
+  var out = { 필요: false, 이유: [], 법령: [] };
+  if (!f || !f.기준일) return out;
+  var cites = {}; (f.조문 || []).forEach(function (k) { cites[k] = 1; });
+  var said = {}; (f.언급 || []).concat(f.날짜 || []).forEach(function (d) { said[d] = 1; });
+  (lawChanges || []).forEach(function (c) {
+    if (!cites[c.key + '|' + c.jo] || said[c.시행일]) return;
+    var cf = confirms && confirms[knhLawConfirmKey_(c)];
+    if (cf && cf.결론 === '없음') return;
+    var hit = c.구분 === '시행예정' ? String(c.감지일 || '') >= f.기준일 : (String(c.시행일 || '') > f.기준일 || String(c.감지일 || '') > f.기준일);
+    if (hit) out.법령.push({ key: c.key, jo: c.jo, 법령: c.법령, 시행일: c.시행일, 구분: c.구분, 제목: c.제목 || '', 확인: cf ? cf.결론 : '' });
+  });
+  if (out.법령.length) out.이유.push('인용 조문 개정 — ' + out.법령.slice(0, 3).map(knhLawLabel_).join(', ') + (out.법령.length > 3 ? ' 외 ' + (out.법령.length - 3) + '개' : ''));
+  var passed = (f.날짜 || []).filter(function (d) { return d <= today; });
+  if (passed.length) out.이유.push('본문의 날짜(기한·시행일·유예 끝)가 지남 — ' + passed.slice(0, 3).join(', ') + ' (기준일 ' + f.기준일 + ')');
+  var age = knhDaysBetween_(f.기준일, today);
+  if ((f.변동 || []).indexOf('개편안') !== -1 && age > 60) out.이유.push('개편안 내용 — 기준일에서 ' + age + '일 지남(국회 통과·수정 여부 확인)');
+  if ((f.변동 || []).length && age > 365) out.이유.push('기준일에서 1년 넘음(' + age + '일) — 세율·공제액·기한 확인');
+  out.필요 = out.이유.length > 0;
+  return out;
+}
 // 색인과 실제 파일 목록 맞대기 — 같은 ID·같은 이름·같은 수정일이면 그대로 쓰고, 나머지는 다시 읽을 것(stale), 없어진 파일 수(removed)
 // [2026.10.21] 예전 꼴(v1) 항목도 다시 읽을 것으로 본다(근거·기준일 칸 채우기)
 function knhIdxCompare_(items, listing) {
@@ -909,11 +963,23 @@ function knhIdxGather_(root, deadline) {
   }) : [];
   return { files: top.files, folders: folders, stale: stale };
 }
+// 지침·템플릿 한 파일의 현행화 판정을 지금 — Code.js toolLoadBusinessManager(넥스가 지침을 읽을 때)
+function knhDocCurrencyNow_(text, lastUpdated) {
+  var cx = knhCurrencyCtx_();
+  var mod = lastUpdated ? Utilities.formatDate(lastUpdated, 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '';
+  return knhCurrency_(knhDocFacts_(text, mod, Object.keys(knhCitationKeys_(text))), cx.lc, cx.today, cx.confirms);
+}
+// 현행화 판정에 드는 것 한 번에 — 법령 개정 감시 누적·개정 확인 결론·오늘
+function knhCurrencyCtx_() {
+  var c = { today: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'), lc: [], confirms: {} };
+  try { c.lc = (knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []; } catch (e) { }
+  try { c.confirms = knhLawConfirmMap_((knhReadJson_(KNH_LAW_CONFIRM_, { items: [] }) || {}).items); } catch (e) { }
+  return c;
+}
 function knhIdxAddCurrency_(g) {
-  var today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'), lc = [];
-  try { lc = (knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []; } catch (e) { }
+  var cx = knhCurrencyCtx_();
   g.files.concat.apply(g.files, g.folders.map(function (d) { return d.files; })).forEach(function (f) {
-    if (f.색인) f.색인.현행화 = knhItemCurrency_(f.색인, lc, today);
+    if (f.색인) f.색인.현행화 = knhCurrency_(f.색인, cx.lc, cx.today, cx.confirms);
   });
   return g;
 }
@@ -975,8 +1041,7 @@ function knhTaxItemRead_(input) {
   try { text = DriveApp.getFileById(hit.f.id).getBlob().getDataAsString('UTF-8').replace(/^﻿/, ''); } catch (e) { return { 오류: '아이템을 읽지 못했습니다: ' + e.message }; }
   // 색인이 낡았어도 방금 읽은 본문으로 다시 판정한다
   var b = knhIdxBrief_(knhIdxEntry_({ id: hit.f.id, name: hit.f.name, modified: hit.f.modifiedDate, text: text }));
-  var lc = []; try { lc = (knhReadJson_(KNH_STATE_, {}) || {}).lawChanges || []; } catch (e) { }
-  var cur = knhItemCurrency_(b, lc, Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'));
+  var cx = knhCurrencyCtx_(), cur = knhCurrency_(b, cx.lc, cx.today, cx.confirms);
   var careful = text.split('\n').filter(function (l) { return /\[확인 필요|반대\s*취지|해석(이)?\s*엇갈|해석이\s*갈/.test(l); })
     .map(function (l) { l = l.trim(); return l.length > 220 ? l.slice(0, 218) + '…' : l; }).slice(0, 20);
   var cite = '〔근거: 절세 아이템 「' + b.제목 + '」(' + hit.세목 + ')' + (b.근거 ? ' · ' + b.근거 : '') + (b.기준일 ? ' · 기준일 ' + b.기준일 : '') + (b.검토 ? ' · ' + b.검토 : '')
