@@ -15,6 +15,12 @@
   ],
   "shortcuts": [
     {
+      "name": "휴대폰 창구 메뉴(오늘 할 일·통화 메모·방문 기록 등)",
+      "short_name": "메뉴",
+      "url": "/m/?menu=1",
+      "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
       "name": "받은 파일 사건에 넣기",
       "short_name": "받은 파일",
       "url": "/m/?inbox=1",

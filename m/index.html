@@ -145,6 +145,22 @@
         '<form><input type="password" autocomplete="current-password" placeholder="비밀번호" required><button type="submit">로그인</button></form><div class="out"></div>';
       root.insertBefore(box, root.firstChild);
       var form = box.querySelector('form'), input = box.querySelector('input'), out = box.querySelector('.out'), btn = box.querySelector('button');
+      // [2026.10.22] 지문 로그인 — job 앱에서 켠 것과 같은 저장(같은 job.netax.kr). 켜져 있으면 지문 단추를 먼저.
+      if (window.PublicKeyCredential && lsGet('nxFpCred') && lsGet('nxFpDevTok')) {
+        var fb = document.createElement('button'); fb.type = 'button'; fb.textContent = '👆 지문으로 로그인'; form.parentNode.insertBefore(fb, form);
+        fb.onclick = function () {
+          fb.disabled = true; out.innerHTML = msg('info', '지문을 대 주세요…');
+          var raw = atob(lsGet('nxFpCred')), id = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) id[i] = raw.charCodeAt(i);
+          var ch = new Uint8Array(32); crypto.getRandomValues(ch);
+          navigator.credentials.get({ publicKey: { challenge: ch, rpId: location.hostname, allowCredentials: [{ type: 'public-key', id: id }], userVerification: 'required', timeout: 60000 } })
+            .then(function () { return gas('manageApp_deviceLogin', [lsGet('nxFpDevTok')]); })
+            .then(function (r) {
+              if (r && r.ok && r.token) { lsSet(TOKEN_KEY, r.token); box.remove(); resolve(); return; }
+              if (r && /무효|기한/.test(r.message || '')) { lsSet('nxFpCred', null); lsSet('nxFpDevTok', null); }
+              out.innerHTML = msg('err', esc((r && r.message) || '지문 로그인 실패 — 비밀번호로 들어오세요.')); fb.disabled = false;
+            }, function (err) { out.innerHTML = msg('err', '지문 확인을 못 했습니다: ' + esc(err.message) + ' — 비밀번호로 들어오세요.'); fb.disabled = false; });
+        };
+      }
       input.focus();
       form.addEventListener('submit', function (ev) {
         ev.preventDefault();
@@ -579,6 +595,167 @@
     };
   }
 
+  // =====================================================================================
+  // [2026.10.22] 기기 3종 2차 — 세무사님 "work는 보류하고 몽땅 구현하고 나서 일괄 배포하라" / "지문으로, 나머지는 권장대로"
+  // =====================================================================================
+  // 사건 고르기(공용) — 오늘 예약 사건을 맨 위에(③ 위치 대신 "오늘 일정 사건 바로 열기")
+  function pickCase(box, title, preferIds) {
+    preferIds = preferIds || [];
+    return new Promise(function (resolve) {
+      box.innerHTML = '<b>' + esc(title) + '</b><input type="search" id="pq" placeholder="고객명·사건명 검색" style="margin-top:8px"><div id="pl">' + msg('info', '사건 목록 불러오는 중…') + '</div>';
+      loadCases().then(function (all) {
+        var list = box.querySelector('#pl'), q = box.querySelector('#pq');
+        function render() {
+          var words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+          var hits = all.filter(function (c) { var s = (c.client + ' ' + c.name).toLowerCase(); return words.every(function (w) { return s.indexOf(w) !== -1; }); });
+          hits.sort(function (a, b) { return (preferIds.indexOf(b.id) !== -1) - (preferIds.indexOf(a.id) !== -1); });
+          list.innerHTML = hits.slice(0, 60).map(function (c) { return '<div class="case" data-id="' + esc(c.id) + '"><b>' + (preferIds.indexOf(c.id) !== -1 ? '📅 ' : '') + esc(c.name || c.client) + '</b><span>' + esc(c.client) + '</span></div>'; }).join('') || msg('info', '맞는 사건이 없습니다.');
+        }
+        q.addEventListener('input', render); render();
+        list.addEventListener('click', function (ev) { var el = ev.target.closest('.case'); if (!el) return; var c = all.filter(function (x) { return x.id === el.getAttribute('data-id'); })[0]; if (c) resolve(c); });
+      }, function (err) { box.querySelector('#pl').innerHTML = msg('err', esc(err.message)); });
+    });
+  }
+  function todayCaseIds() { return call('todo_list', {}, 60000).then(function (t) { return ((t && t.오늘예약) || []).map(function (b) { return b.caseId; }).filter(Boolean); }, function () { return []; }); }
+  function hhmm() { var d = new Date(); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+
+  // ---------- 메뉴(휴대폰 창구 기능 모음) ----------
+  function showMenu() {
+    var items = [['📋', '오늘 할 일', '/m/?todo=1'], ['📷', '현장 서류 찍기', '/m/?scan=1'], ['📞', '통화 메모', '/m/?memo=1'], ['🚶', '방문 시작·끝', '/m/?visit=1'],
+      ['🎙', '넥스에게 말하기', '/m/?talk=1'], ['✍', '서명 받기', '/m/?sign=1'], ['🖊', '펜으로 표시해 넥스에게', '/m/?pen=1'], ['🖥', '사무실 현황판', '/m/?board=1'],
+      ['📥', '보관함 파일 사건에 넣기', '/m/?inbox=1'], ['🗂', 'job 열기', APP_URL]];
+    root.innerHTML = '<div class="card"><b>NETAX job — 휴대폰 창구</b><div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px;">' +
+      items.map(function (it) { return '<a class="btn sub" style="margin:0; text-align:center;" href="' + it[2] + '">' + it[0] + ' ' + it[1] + '</a>'; }).join('') + '</div></div>';
+  }
+
+  // ---------- 오늘 할 일 / 사무실 현황판 ----------
+  function renderTodo(t, big) {
+    var sec = function (title, rows) { return rows.length ? '<div style="margin-top:10px"><b>' + title + '</b>' + rows.join('') + '</div>' : ''; };
+    var row = function (s) { return '<div class="item" style="display:block; padding:6px 0;' + (big ? 'font-size:18px;' : '') + '">' + s + '</div>'; };
+    var html = sec('⏰ 기한 지남', (t.지남 || []).map(function (c) { return row('<span style="color:#ff8a8a">' + esc(String(c.법정일).slice(5)) + '</span> ' + esc(c.사건)); }))
+      + sec('📅 3일 안 마감', (t.마감 || []).map(function (c) { return row(esc(String(c.법정일).slice(5)) + ' ' + esc(c.사건)); }))
+      + sec('👥 오늘 예약', (t.오늘예약 || []).map(function (b) { return row(esc(b.시각 || '') + ' ' + esc(b.이름) + (b.사건 ? ' · ' + esc(b.사건) : '')); }))
+      + sec('❓ 넥스가 묻는 질문', (t.넥스질문 || []).map(function (q) { return row(esc(q.사건) + ' — ' + q.질문수 + '개'); }))
+      + sec('📥 고객이 보낸 서류(3일)', (t.고객서류 || []).map(function (u) { return row(esc(String(u.at).slice(5)) + ' ' + esc(u.경로 || '') + ' · ' + esc(u.사건 || u.rid || '') + ' — ' + esc(u.파일 || '')); }))
+      + sec('🔔 답 안 한 알림', (t.알림대기 || []).map(function (a) { return row(esc(String(a.at).slice(5)) + ' ' + esc(a.text) + ' <a href="/m/?a=' + encodeURIComponent(a.id) + '">답하기</a>'); }));
+    var extra = [t.긴급요청 ? '🚨 긴급 요청 ' + t.긴급요청 + '건' : '', t.확인요청 ? '반영된 요청 확인 ' + t.확인요청 + '건' : '', t.카카오오류 ? '⚠ 카카오 오류 ' + t.카카오오류 + '건' : ''].filter(Boolean);
+    return (html || msg('ok', '지금 급한 일이 없습니다.')) + (extra.length ? '<div class="muted" style="margin-top:10px">' + extra.join(' · ') + ' — job 대시보드에서</div>' : '');
+  }
+  function showTodo() {
+    root.innerHTML = '<div class="card"><b>📋 오늘 할 일</b><div id="td">' + msg('info', '불러오는 중…') + '</div><a class="btn sub" href="/m/?menu=1">메뉴</a></div>';
+    withLogin(function () { return call('todo_list', {}, 60000); }).then(function (t) { document.getElementById('td').innerHTML = '<div class="muted">' + esc(t.at || '') + ' 기준</div>' + renderTodo(t, false); })
+      .catch(function (err) { document.getElementById('td').innerHTML = msg('err', esc(err.message)); });
+  }
+  // 사무실 현황판(태블릿 세워 두기) — 3분마다 새로(로그인 표가 있을 때만 — 로그인 전 서버 호출 금지). 폰으로 찍어 올린 서류도 "고객이 보낸 서류"·보관함에 뜸.
+  function showBoard() {
+    document.body.style.maxWidth = 'none';
+    root.innerHTML = '<div class="card" style="max-width:none"><div style="display:flex; justify-content:space-between; align-items:center"><b style="font-size:22px">🖥 사무실 현황판</b><span id="bdAt" class="muted"></span></div><div id="bd">' + msg('info', '불러오는 중…') + '</div></div>';
+    function tick() {
+      if (!tokenValid(lsGet(TOKEN_KEY))) { document.getElementById('bd').innerHTML = msg('info', '로그인이 끝났습니다 — 다시 로그인하면 이어서 보입니다.'); ensureLogin().then(tick); return; }
+      call('todo_list', {}, 60000).then(function (t) { document.getElementById('bd').innerHTML = renderTodo(t, true); document.getElementById('bdAt').textContent = (t.at || '') + ' (3분마다 새로)'; }, function (err) { document.getElementById('bdAt').textContent = '못 불러옴: ' + err.message; });
+    }
+    withLogin(function () { tick(); setInterval(tick, 180000); return Promise.resolve(); });
+  }
+
+  // ---------- 통화 메모 ----------
+  function showMemo() {
+    root.innerHTML = '<div class="card" id="mm"></div>';
+    var box = document.getElementById('mm');
+    withLogin(function () { return todayCaseIds().then(function (ids) { return pickCase(box, '📞 통화 메모 — 어느 사건?', ids); }); }).then(function (c) {
+      box.innerHTML = '<b>📞 ' + esc(c.name || c.client) + '</b><textarea id="mt" rows="6" style="width:100%; margin-top:8px; font-size:16px; border-radius:10px; padding:10px; box-sizing:border-box;" placeholder="통화 내용(🎤를 누르면 말로 받아 적음)"></textarea>' +
+        '<button id="mic" class="sub">🎤 말로 적기</button><button id="ms">상담 기록·작업일지에 남기기</button><div id="mo"></div>';
+      var ta = document.getElementById('mt'), SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      var rec = null, micBtn = document.getElementById('mic');
+      micBtn.onclick = function () {
+        if (rec) { rec.stop(); return; } // 듣는 중이면 멈춤
+        if (!SR) { alert('이 기기는 말로 적기를 지원하지 않습니다 — 키보드의 마이크를 쓰세요.'); return; }
+        rec = new SR(); rec.lang = 'ko-KR'; rec.interimResults = false; rec.continuous = true; micBtn.textContent = '🎤 듣는 중… (누르면 멈춤)';
+        rec.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) ta.value += (ta.value ? ' ' : '') + e.results[i][0].transcript; };
+        rec.onend = function () { rec = null; micBtn.textContent = '🎤 말로 적기'; };
+        rec.start();
+      };
+      document.getElementById('ms').onclick = function () {
+        var t = ta.value.trim(); if (!t) { alert('내용이 비어 있습니다.'); return; } var b = this; b.disabled = true;
+        call('work_append_log', { caseId: c.id, text: '[통화 ' + hhmm() + '] ' + t, consult: true, kind: '통화' }, 60000).then(function () {
+          document.getElementById('mo').innerHTML = msg('ok', '남겼습니다(사건 작업일지·고객 상담 기록).') + '<a class="btn sub" href="/m/?memo=1">다른 통화 메모</a>';
+        }, function (err) { b.disabled = false; document.getElementById('mo').innerHTML = msg('err', esc(err.message)); });
+      };
+    });
+  }
+
+  // ---------- 방문 시작·끝 ----------
+  function showVisit() {
+    root.innerHTML = '<div class="card" id="vv"></div>';
+    var box = document.getElementById('vv');
+    var cur = null; try { cur = JSON.parse(lsGet('nxVisitNow') || 'null'); } catch (e) { cur = null; }
+    if (cur) {
+      var mins = Math.round((Date.now() - cur.t) / 60000);
+      box.innerHTML = '<b>🚶 방문 중 — ' + esc(cur.name) + '</b><div class="muted" style="margin-top:6px">' + esc(cur.hm) + '부터 ' + mins + '분째</div><button id="vEnd">방문 끝</button><button id="vCancel" class="sub">잘못 눌렀음(기록 안 함)</button><div id="vo"></div>';
+      document.getElementById('vCancel').onclick = function () { lsSet('nxVisitNow', null); showVisit(); };
+      document.getElementById('vEnd').onclick = function () {
+        var b = this; b.disabled = true; var m = Math.max(1, Math.round((Date.now() - cur.t) / 60000));
+        withLogin(function () { return call('work_append_log', { caseId: cur.id, text: '[방문] ' + cur.hm + '~' + hhmm() + ' (' + m + '분)' }, 60000); }).then(function () {
+          lsSet('nxVisitNow', null); document.getElementById('vo').innerHTML = msg('ok', '방문 기록을 사건 작업일지에 남겼습니다(' + m + '분).');
+        }, function (err) { b.disabled = false; document.getElementById('vo').innerHTML = msg('err', esc(err.message)); });
+      };
+      return;
+    }
+    withLogin(function () { return todayCaseIds().then(function (ids) { return pickCase(box, '🚶 방문 시작 — 어느 사건?', ids); }); }).then(function (c) {
+      var now = { id: c.id, name: c.name || c.client, t: Date.now(), hm: hhmm() };
+      lsSet('nxVisitNow', JSON.stringify(now));
+      showVisit();
+    });
+  }
+
+  // ---------- 알림에서 바로 답하기(문자 끝 주소) ----------
+  function showAnswer(id) {
+    root.innerHTML = '<div class="card"><b>🔔 알림</b><div id="an">' + msg('info', '불러오는 중…') + '</div></div>';
+    withLogin(function () { return call('notify_get', { id: id }, 60000); }).then(function (r) {
+      var it = r && r.item, an = document.getElementById('an');
+      if (!it) { an.innerHTML = msg('err', '알림을 찾지 못했습니다(오래된 알림일 수 있음).'); return; }
+      an.innerHTML = '<div style="margin:8px 0">' + esc(it.at) + '<br>' + esc(it.text) + '</div>' + (it.status !== '대기' ? msg('ok', '이미 답함: ' + esc(it.status)) : '') +
+        '<div style="display:flex; gap:6px"><button data-a="확인">확인</button><button data-a="보류" class="sub">보류</button><button data-a="나중에" class="sub">나중에</button></div><div id="ao"></div>';
+      an.addEventListener('click', function (ev) {
+        var b = ev.target.closest('[data-a]'); if (!b) return;
+        call('notify_answer', { id: id, answer: b.getAttribute('data-a') }, 60000).then(function (x) {
+          document.getElementById('ao').innerHTML = msg('ok', '「' + esc(x.status) + '」로 남겼습니다' + (it.caseId && x.status !== '나중에' ? '(사건 작업일지에도)' : x.status === '나중에' ? '(내일 아침 알림에 다시)' : '') + '.');
+        }, function (err) { document.getElementById('ao').innerHTML = msg('err', esc(err.message)); });
+      });
+    }).catch(function (err) { document.getElementById('an').innerHTML = msg('err', esc(err.message)); });
+  }
+
+  // ---------- 펜으로 표시해 넥스에게(태블릿) ----------
+  // 검토서·서식 화면을 캡처한 그림(또는 사진) 위에 펜으로 표시 → 사건 폴더에 저장 + 넥스 대화에 그림을 붙여 열기(묻는 말은 세무사님이 보냄)
+  function showPen() {
+    root.innerHTML = '<div class="card" id="pp"></div>';
+    var box = document.getElementById('pp');
+    withLogin(function () { return pickCase(box, '🖊 펜 표시 — 어느 사건?', []); }).then(function (c) {
+      box.innerHTML = '<b>🖊 ' + esc(c.name || c.client) + '</b><div class="muted" style="margin-top:6px">표시할 그림(검토서·서식 화면 캡처나 사진)을 고르고 펜으로 표시하세요.</div>' +
+        '<input type="file" id="pf" accept="image/*" style="margin-top:8px"><div style="position:relative; margin-top:8px"><canvas id="pc" style="width:100%; touch-action:none; background:#fff; border-radius:8px"></canvas></div>' +
+        '<div style="display:flex; gap:6px"><button id="pclr" class="sub">표시 지우기</button><button id="psend">넥스에게 보내기</button></div><input id="pq" placeholder="넥스에게 할 말(비우면: 표시한 곳 고칠 점 정리)" style="margin-top:6px"><div id="po"></div>';
+      var cv = document.getElementById('pc'), g = cv.getContext('2d'), bg = null, drawing = false, inked = false;
+      function paintBg() { if (!bg) return; cv.width = bg.naturalWidth > 1600 ? 1600 : bg.naturalWidth; cv.height = Math.round(cv.width * bg.naturalHeight / bg.naturalWidth); g.drawImage(bg, 0, 0, cv.width, cv.height); g.lineWidth = Math.max(3, cv.width / 300); g.lineCap = 'round'; g.strokeStyle = '#e0242a'; }
+      document.getElementById('pf').onchange = function () { var f = this.files[0]; if (!f) return; var img = new Image(); img.onload = function () { bg = img; paintBg(); inked = false; }; img.src = URL.createObjectURL(f); };
+      function pt(e) { var r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; }
+      cv.addEventListener('pointerdown', function (e) { if (!bg) return; drawing = true; inked = true; var p = pt(e); g.beginPath(); g.moveTo(p.x, p.y); cv.setPointerCapture(e.pointerId); });
+      cv.addEventListener('pointermove', function (e) { if (!drawing) return; var p = pt(e); g.lineTo(p.x, p.y); g.stroke(); });
+      cv.addEventListener('pointerup', function () { drawing = false; });
+      document.getElementById('pclr').onclick = function () { paintBg(); inked = false; };
+      document.getElementById('psend').onclick = function () {
+        if (!bg || !inked) { alert('그림을 고르고 펜으로 표시해 주세요.'); return; }
+        var b = this; b.disabled = true; var dataUrl = cv.toDataURL('image/jpeg', 0.85), name = '펜표시_' + stamp() + '.jpg';
+        var out = document.getElementById('po'); out.innerHTML = msg('info', '사건 폴더에 저장하는 중…');
+        call('uploadFile', { name: name, mimeType: 'image/jpeg', base64Data: dataUrl.slice(dataUrl.indexOf(',') + 1), folderId: c.folderId }, 60000).then(function () {
+          return call('work_append_log', { caseId: c.id, text: '[펜 표시] ' + name + ' — 넥스에게 보냄' }, 60000).catch(function () {});
+        }).then(function () {
+          try { localStorage.setItem('nxPenPending', JSON.stringify({ dataUrl: dataUrl, name: name, text: document.getElementById('pq').value.trim(), caseName: c.name || c.client })); }
+          catch (e) { out.innerHTML = msg('err', '사건 폴더에는 저장했지만 그림이 커서 넥스 대화로 넘기지 못했습니다 — job에서 그 파일을 첨부해 주세요.'); return; }
+          handOffToken(); location.href = APP_URL;
+        }, function (err) { b.disabled = false; out.innerHTML = msg('err', esc(err.message)); });
+      };
+    });
+  }
+
   // ---------- 화면: 설치 안내(브라우저로 열었을 때) ----------
   var deferredPrompt = null;
   window.addEventListener('beforeinstallprompt', function (e) {
@@ -605,6 +782,13 @@
   // ---------- 시작 ----------
   if (params.get('share')) { history.replaceState(null, '', '/m/?share=1'); showShare(); }
   else if (params.get('inbox')) showInbox();
+  else if (params.get('menu')) showMenu();
+  else if (params.get('todo')) showTodo();
+  else if (params.get('board')) showBoard();
+  else if (params.get('memo')) showMemo();
+  else if (params.get('visit')) showVisit();
+  else if (params.get('pen')) showPen();
+  else if (params.get('a')) showAnswer(params.get('a'));
   else if (params.get('scan')) showScan();
   else if (params.get('sign')) showSign();
   // [2026.10.22] 넥스에게 말하기(워치·휴대폰) — 로그인표를 넘겨 job 앱의 "말하기 모드"(접는 폰 커버화면과 같은 화면·같은 대화)로

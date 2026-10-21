@@ -18,6 +18,40 @@
       <h3>비밀번호 변경</h3>
       <div id="settingsPwBody"></div>
     </div>
+    <!-- [2026.10.22] 지문 로그인·모든 기기 로그아웃 — 세무사님 "지문으로, 나머지는 권장대로"(기기 3종 2차) -->
+    <div class="card" style="max-width:360px;">
+      <h3>👆 로그인</h3>
+      <div id="stFpState" style="font-size:13px; margin-bottom:8px;"></div>
+      <button type="button" id="stFpToggle"></button>
+      <button type="button" id="stRevokeAll" style="margin-top:8px; background:#a83232; color:#fff;">모든 기기에서 로그아웃</button>
+      <div style="font-size:12px; color:var(--sub); margin-top:6px;">휴대폰을 잃어버렸을 때 — 모든 기기(이 기기 포함)의 로그인과 지문 로그인을 끊습니다. 다시 쓰려면 비밀번호로 들어오세요.</div>
+    </div>
+    <script>
+    (function(){
+      function paint(){
+        var on = typeof nxFp_ !== 'undefined' && nxFp_.ready();
+        document.getElementById('stFpState').textContent = on ? '이 기기: 지문 로그인 켜짐' : '이 기기: 지문 로그인 꺼짐';
+        document.getElementById('stFpToggle').textContent = on ? '이 기기 지문 로그인 끄기' : '이 기기에서 지문 로그인 켜기';
+      }
+      document.getElementById('stFpToggle').addEventListener('click', function(){
+        if (nxFp_.ready()){ nxFp_.disable(); paint(); toast('이 기기 지문 로그인을 껐습니다.'); return; }
+        nxFp_.supported().then(function(ok){
+          if (!ok){ toast('이 기기는 지문 로그인을 지원하지 않습니다.'); return; }
+          nxFp_.enable().then(function(){ paint(); toast('지문 로그인을 켰습니다.'); }, function(e){ toast('지문 로그인을 켜지 못했습니다: ' + ((e && e.message) || e)); });
+        });
+      });
+      document.getElementById('stRevokeAll').addEventListener('click', function(){
+        if (!confirm('모든 기기(이 기기 포함)에서 로그아웃할까요?\n지문 로그인도 모두 꺼지고, 다시 비밀번호로 들어와야 합니다.')) return;
+        callGas('sess_revoke_all', {}).then(function(r){
+          nxFp_.disable();
+          try{ sessionStorage.removeItem('nxManageSessionToken'); localStorage.removeItem('nxMobileToken'); }catch(e){}
+          alert((r && r.message) || '로그아웃했습니다.'); location.reload();
+        }).catch(function(e){ toast('로그아웃하지 못했습니다: ' + e.message); });
+      });
+      // 지문 도우미(script.html)가 이 화면 뒤에 실릴 수 있어 화면이 다 실린 뒤 그린다
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paint); else setTimeout(paint, 0);
+    })();
+    </script>
     <!-- [2026.10.08] work.netax.kr 설정 창에서 옮겨온 항목 — AI 관련 설정(강도·온도 등)은 대화하다
          바로 바꾸도록 AI 화면의 ⚙(Alt+S)에 두고, 앱 전체에 걸리는 것만 여기 둔다. 둘 다 이 기기에만 기억. -->
     <div class="card" style="max-width:480px;">

@@ -421,6 +421,36 @@
   };
 
   // ---- 로그인 게이트 ----
+  // [2026.10.22] 지문 로그인 도우미 — 휴대폰 창구(/m/)와 같은 저장 이름을 쓴다(같은 job.netax.kr이라 기기당 한 번 켜면 둘 다).
+  //  서버는 지문 서명을 검사하지 못해(구글 서버에 그 암호 계산이 없음) 기기 잠금(지문)을 통과해야 이 기기의 열쇠(90일, 서버 서명)를 꺼낸다.
+  //  "모든 기기 로그아웃"을 누르면 서버가 열쇠를 무효로 해 이 열쇠도 못 쓴다.
+  var nxFp_ = (function(){
+    var K_CRED = 'nxFpCred', K_TOK = 'nxFpDevTok', K_ASK = 'nxFpAsked';
+    function ls(k, v){ try{ if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){ return null; } }
+    function b64(buf){ return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))); }
+    function unb64(s){ var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+    function rnd(n){ var u = new Uint8Array(n); crypto.getRandomValues(u); return u; }
+    function run(fn, args){ return new Promise(function(res, rej){ var r = google.script.run.withSuccessHandler(res).withFailureHandler(function(e){ rej(new Error((e && e.message) || e)); }); r[fn].apply(r, args || []); }); }
+    return {
+      ready: function(){ return !!(window.PublicKeyCredential && ls(K_CRED) && ls(K_TOK)); },
+      asked: function(){ return !!ls(K_ASK); },
+      markAsked: function(){ ls(K_ASK, '1'); },
+      supported: function(){ try{ return window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable ? PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable() : Promise.resolve(false); }catch(e){ return Promise.resolve(false); } },
+      enable: function(){
+        return navigator.credentials.create({ publicKey: { challenge: rnd(32), rp: { name: 'NETAX job', id: location.hostname },
+          user: { id: rnd(16), name: 'netax', displayName: '세무사님' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+          authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' }, timeout: 60000 } })
+          .then(function(cred){ return run('manageApp_call', ['device_token_issue', {}, manageAppSessionToken_]).then(function(r){ if (!r || !r.deviceToken) throw new Error((r && r.error) || '기기 열쇠를 못 받았습니다.'); ls(K_CRED, b64(cred.rawId)); ls(K_TOK, r.deviceToken); }); });
+      },
+      login: function(){
+        return navigator.credentials.get({ publicKey: { challenge: rnd(32), rpId: location.hostname, allowCredentials: [{ type: 'public-key', id: unb64(ls(K_CRED)) }], userVerification: 'required', timeout: 60000 } })
+          .then(function(){ return run('manageApp_deviceLogin', [ls(K_TOK)]); })
+          .then(function(r){ if (r && r.ok && r.token) return r.token; if (r && /무효|기한/.test(r.message || '')) { ls(K_CRED, null); ls(K_TOK, null); } throw new Error((r && r.message) || '지문 로그인 실패'); });
+      },
+      disable: function(){ ls(K_CRED, null); ls(K_TOK, null); }
+    };
+  })();
+
   // [2026.09 보안수정] 예전에는 여기서 sessionStorage에 "로그인함" 표시만 남기고, 그 표시를
   // 서버로 전혀 보내지 않았다 — manageApp_call이 이제 세션 토큰을 요구하므로, 로그인 성공 시
   // 서버가 내려준 토큰을 저장해두고 매 호출마다 실어 보낸다.
@@ -474,8 +504,30 @@
       enterApp();
     } else {
       input.focus();
+      // [2026.10.22] 지문 로그인 — 이 기기에서 켜 두었으면 "👆 지문으로 입장" 단추(세무사님 "지문으로")
+      if (nxFp_.ready()){
+        var fpBtn = document.createElement('button'); fpBtn.type = 'button'; fpBtn.id = 'loginFpBtn'; fpBtn.textContent = '👆 지문으로 입장';
+        fpBtn.style.cssText = 'margin-top:10px; width:100%;';
+        (form || btn).parentNode.insertBefore(fpBtn, err);
+        fpBtn.addEventListener('click', function(){
+          fpBtn.disabled = true; err.textContent = '';
+          nxFp_.login().then(function(tok){
+            manageAppSessionToken_ = tok;
+            try{ sessionStorage.setItem(STORAGE_KEY, tok); }catch(e){}
+            enterApp();
+          }).catch(function(e){ fpBtn.disabled = false; err.textContent = (e && e.message) || '지문 확인을 못 했습니다 — 비밀번호로 들어오세요.'; });
+        });
+      }
     }
+    // 비밀번호로 들어온 뒤 이 기기에서 아직 지문 로그인을 안 켰으면 한 번 묻는다(아니요를 고르면 다시 묻지 않음 — 설정에서 켤 수 있음)
+    var _enter = enterApp;
+    enterApp = function(){
+      _enter.apply(this, arguments);
+      if (!nxFp_.ready() && !nxFp_.asked()) setTimeout(function(){ nxFp_.supported().then(function(ok){ if (ok && confirm('이 기기에서 다음부터 지문으로 들어오시겠어요?\n(비밀번호 대신 기기 잠금 지문을 씁니다. 90일마다 비밀번호로 한 번 다시 켭니다.)')) nxFp_.enable().then(function(){ toast('지문 로그인을 켰습니다.'); }, function(e){ toast('지문 로그인을 켜지 못했습니다: ' + ((e && e.message) || e)); }); nxFp_.markAsked(); }); }, 1500);
+    };
   })();
+
+
 
   function enterApp(){
     document.getElementById('loginGate').classList.add('hidden');
@@ -492,6 +544,7 @@
       tbCollapseInit_();
       showView('dashboard');
       if (typeof initDashboard === 'function') initDashboard();
+      setTimeout(nxPlaceOffer_, 2500); // [2026.10.22] 이어 보기 띠
       if (typeof initAiSidebar === 'function') initAiSidebar();
       // 작업관리 "새 사건" 폼의 고객명 자동완성(clientNameOptions)이 처음부터 채워져 있도록,
       // 고객관리 화면을 열지 않아도 미리 한 번 받아온다(client-manage.js 원본과 동일한 이유).
@@ -690,6 +743,7 @@
         if (typeof dashboardLoaded !== 'undefined') dashboardLoaded = false;
         initDashboard();
       }
+      nxPlaceSaveSoon_(); // [2026.10.22] 이어 보기 — 이 기기에서 보는 곳을 기억
     };
     if (needsUnsavedConfirm_){
       nxConfirm_('작성관리에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){
@@ -698,6 +752,49 @@
     } else {
       proceedShowView_();
     }
+  }
+
+  // [2026.10.22] 이어 보기(기기 3종 2차 #10) — 마지막으로 보던 화면·사건·넥스 대화를 서버에 기억(기기 이름과 함께).
+  //  다른 기기에서 앱을 열면 대시보드 위에 "○○(휴대폰)에서 보던 「…」 이어 열기" 띠. 워치로 물은 긴 답도 같은 넥스 대화라 휴대폰에서 이어 본다.
+  function nxDeviceId_(){
+    var id = null; try { id = localStorage.getItem('nxDeviceId'); } catch (e) {}
+    if (!id){ id = 'd' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('nxDeviceId', id); } catch (e) {} }
+    return id;
+  }
+  function nxDeviceLabel_(){ return window.nxCover ? '휴대폰 말하기' : ({ phone: '휴대폰', tablet: '태블릿', pc: 'PC' })[window.nxLayout] || '다른 기기'; }
+  var nxPlaceTimer_ = null;
+  function nxPlaceSaveSoon_(){
+    clearTimeout(nxPlaceTimer_);
+    nxPlaceTimer_ = setTimeout(function(){
+      var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+      if (!tok) return; // 로그인 전엔 서버를 부르지 않는다(10-14 장애)
+      var act = document.querySelector('.view.active'), view = act ? act.id.replace(/^view-/, '') : '';
+      var caseId = ''; try { caseId = typeof nxScreenCaseIdOf_ === 'function' ? nxScreenCaseIdOf_(view) : ''; } catch (e) {}
+      var conv = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id && (view === 'ai' || window.nxCover)) ? nxAiConv : null; // 넥스 대화 화면·말하기 모드일 때만 대화 이어 열기
+      callGas('place_save', { view: view, label: (window._currentViewLabel || view) + (conv && view === 'ai' ? ' — ' + String(conv.title || '').slice(0, 40) : ''), caseId: caseId,
+        convId: conv ? conv.id : '', device: nxDeviceId_() + '|' + nxDeviceLabel_() }).catch(function(){});
+    }, 4000);
+  }
+  function nxPlaceOffer_(){
+    callGas('place_get', {}).then(function(r){
+      var p = r && r.place; if (!p || !p.at || Date.now() - p.at > 12 * 3600000) return;
+      var parts = String(p.device || '').split('|'); if (parts[0] === nxDeviceId_()) return;
+      var dash = document.getElementById('view-dashboard'); if (!dash || document.getElementById('nxPlaceBar')) return;
+      var bar = document.createElement('div'); bar.id = 'nxPlaceBar';
+      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px;';
+      var mins = Math.max(1, Math.round((Date.now() - p.at) / 60000));
+      bar.innerHTML = '<span>' + escapeHtml(parts[1] || '다른 기기') + '에서 ' + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
+        + '<button type="button" class="save-btn" data-place="go" style="padding:3px 10px;">이어 열기</button><button type="button" class="ghost-btn" data-place="x" style="padding:3px 10px;">닫기</button>';
+      bar.addEventListener('click', function(e){
+        var b = e.target.closest('[data-place]'); if (!b) return; bar.remove();
+        if (b.getAttribute('data-place') !== 'go') return;
+        if (p.convId && typeof nxAiOpenConv_ === 'function'){ goToView_('ai'); setTimeout(function(){ nxAiOpenConv_(p.convId); }, 300); return; }
+        if (p.caseId && typeof nxCaseJump_ === 'function'){ nxCaseJump_(p.view, p.caseId); return; }
+        if (p.view) goToView_(p.view);
+      });
+      var head = dash.querySelector('.view-head');
+      if (head) head.insertAdjacentElement('afterend', bar); else dash.insertBefore(bar, dash.firstChild);
+    }).catch(function(){});
   }
 
   // 다른 화면의 버튼에서 메뉴를 직접 클릭한 것처럼 화면을 전환할 때 씀(예: 작업관리 사건

@@ -1,6 +1,12 @@
 <div class="view" id="view-dashboard">
   <div class="view-head"><h2>오늘의 현황</h2></div>
   <div class="view-body">
+    <!-- [2026.10.22] 오늘 할 일 한 줄(기기 3종 2차) — 휴대폰 창구·현황판과 같은 목록(todo_list)의 건수만. 목록 자체는 아래 각 카드에 있으므로
+         여기서는 되풀이하지 않고(시각적 중복 금지) 누르면 그 카드로 간다. 넥스가 묻는 질문만 다른 카드에 없어 펼쳐 보인다. -->
+    <div class="card dash-cover" id="dashTodayCard" style="padding:10px 14px;">
+      <div id="dashToday" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px;"><b>🧭 오늘</b> <span class="spinner">불러오는 중…</span></div>
+      <div id="dashTodayAsks" style="font-size:12.5px;"></div>
+    </div>
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
          바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
     <div class="card dash-cover">
@@ -121,9 +127,40 @@
 </div>
 <script>
   var dashboardLoaded = false;
+  // [2026.10.22] 오늘 할 일 한 줄 — 건수 칩, 누르면 해당 카드로(같은 내용을 두 번 보이지 않게)
+  function loadDashToday_(){
+    callGas('todo_list', {}).then(function(t){
+      var box = document.getElementById('dashToday'); if (!box) return;
+      if (!t || t.error){ box.innerHTML = '<b>🧭 오늘</b> <span style="color:var(--sub)">불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
+      var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#a83232' : 'var(--line)') + '; color:' + (warn ? '#a83232' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
+      var asksN = (t.넥스질문 || []).reduce(function(s, x){ return s + (x.질문수 || 0); }, 0);
+      var html = '<b>🧭 오늘</b>'
+        + chip((t.지남 || []).length, '기한 지남', 'dashDeadlines', true)
+        + chip((t.마감 || []).length, '3일 안 마감', 'dashDeadlines')
+        + chip((t.오늘예약 || []).length, '오늘 예약', 'dashBookings')
+        + chip(asksN, '넥스가 묻는 질문', 'dashTodayAsks')
+        + chip((t.고객서류 || []).length, '고객이 보낸 서류', 'dashFedStatus')
+        + chip(t.긴급요청, '🚨 긴급 요청', 'dashFedStatus', true)
+        + chip(t.확인요청, '반영된 요청 확인', 'dashFedStatus')
+        + chip(t.카카오오류, '카카오 오류', 'dashFedStatus', true)
+        + chip((t.알림대기 || []).length, '답 안 한 알림', 'dashTodayAsks');
+      if (html === '<b>🧭 오늘</b>') html += ' <span style="color:var(--sub)">급한 일 없음</span>';
+      box.innerHTML = html;
+      var asks = document.getElementById('dashTodayAsks');
+      asks.innerHTML = (t.넥스질문 || []).map(function(x){ return '<div style="padding-top:4px;">❓ ' + esc(x.사건) + ' — 넥스가 묻는 질문 ' + x.질문수 + '개 <a href="#" data-today-case="' + esc(x.caseId) + '">사건처리 열기</a></div>'; }).join('')
+        + (t.알림대기 || []).map(function(a){ return '<div style="padding-top:4px;">🔔 ' + esc(String(a.at).slice(5)) + ' ' + esc(a.text) + ' <a href="/m/?a=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">답하기</a></div>'; }).join('');
+    }).catch(function(e){ var b = document.getElementById('dashToday'); if (b) b.innerHTML = '<b>🧭 오늘</b> <span style="color:var(--sub)">오류: ' + esc(e.message) + '</span>'; });
+  }
+  document.addEventListener('click', function(ev){
+    var g = ev.target.closest && ev.target.closest('[data-today-go]');
+    if (g){ ev.preventDefault(); var el = document.getElementById(g.getAttribute('data-today-go')); if (el) (el.closest('.card') || el).scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    var c = ev.target.closest && ev.target.closest('[data-today-case]');
+    if (c){ ev.preventDefault(); var id = c.getAttribute('data-today-case'); if (typeof nxCaseJump_ === 'function') nxCaseJump_('casehandling', id); else if (typeof goToView_ === 'function') goToView_('casehandling'); }
+  });
   function initDashboard(){
     if (dashboardLoaded) return;
     dashboardLoaded = true;
+    loadDashToday_();
     loadDashDeadlines();
     loadDashBookings();
     loadDashUploads_();

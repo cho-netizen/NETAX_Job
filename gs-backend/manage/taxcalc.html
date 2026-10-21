@@ -18164,4 +18164,53 @@ function goToTaxCalc_(caseId){
   if (typeof goToView_ === 'function') goToView_('taxcalc');
   else loadTcCases_(caseId);
 }
+
+// [2026.10.22] 원본 서류 나란히(기기 3종 2차 #8) — 세무사님 "권장대로". 계산기 오른쪽에 이 사건 폴더의 원본을 띄워 칸과 대조한다.
+//  폴더 목록은 한 층씩(하위 폴더 눌러 들어감), 파일은 드라이브 미리보기(읽기만). 폰 화면에서는 단추를 숨긴다(좁아서 나란히가 안 됨).
+(function(){
+  var pane = null, caseFolderId = '', stack = [];
+  function el(id){ return document.getElementById(id); }
+  function close(){ if (pane){ pane.remove(); pane = null; } document.body.classList.remove('tc-docpane-open'); }
+  function list(folderId, title){
+    var box = pane.querySelector('.tcdp-list'), view = pane.querySelector('.tcdp-view');
+    view.style.display = 'none'; box.style.display = 'block';
+    box.innerHTML = '<div style="padding:8px; color:var(--sub);">불러오는 중…</div>';
+    pane.querySelector('.tcdp-title').textContent = title || '사건 폴더';
+    callGas('listFolder', { folderId: folderId }).then(function(r){
+      var fs = (r && r.folders) || [], files = (r && r.files) || [];
+      var html = (stack.length > 1 ? '<div class="tcdp-row" data-up="1">⬆ 위 폴더</div>' : '')
+        + fs.map(function(f){ return '<div class="tcdp-row" data-folder="' + escapeHtml(f.id) + '" data-name="' + escapeHtml(f.name) + '">📁 ' + escapeHtml(f.name) + '</div>'; }).join('')
+        + files.map(function(f){ return '<div class="tcdp-row" data-file="' + escapeHtml(f.id) + '" data-name="' + escapeHtml(f.name) + '">📄 ' + escapeHtml(f.name) + '</div>'; }).join('');
+      box.innerHTML = html || '<div style="padding:8px; color:var(--sub);">빈 폴더입니다.</div>';
+    }).catch(function(e){ box.innerHTML = '<div style="padding:8px; color:#a83232;">폴더를 못 읽었습니다: ' + escapeHtml(e.message) + '</div>'; });
+  }
+  function open(){
+    if (!tcSelectedId){ toast('먼저 위에서 사건을 골라 주세요.'); return; }
+    callGas('work_get_cases', {}).then(function(r){
+      var c = ((r && r.cases) || []).filter(function(x){ return x.id === tcSelectedId; })[0];
+      if (!c || !c.폴더ID){ toast('이 사건에는 폴더가 없습니다.'); return; }
+      caseFolderId = c.폴더ID; stack = [{ id: caseFolderId, name: c.사건명 || '사건 폴더' }];
+      close();
+      pane = document.createElement('div'); pane.id = 'tcDocPane';
+      pane.innerHTML = '<div class="tcdp-head"><b class="tcdp-title"></b><button type="button" class="ghost-btn tcdp-back" style="display:none;">← 목록</button><button type="button" class="ghost-btn tcdp-close">✕ 닫기</button></div>'
+        + '<div class="tcdp-list"></div><iframe class="tcdp-view" style="display:none;" allow="autoplay"></iframe>';
+      document.body.appendChild(pane); document.body.classList.add('tc-docpane-open');
+      pane.querySelector('.tcdp-close').onclick = close;
+      pane.querySelector('.tcdp-back').onclick = function(){ this.style.display = 'none'; var top = stack[stack.length - 1]; list(top.id, top.name); };
+      pane.querySelector('.tcdp-list').addEventListener('click', function(ev){
+        var r = ev.target.closest('.tcdp-row'); if (!r) return;
+        if (r.getAttribute('data-up')){ stack.pop(); var t = stack[stack.length - 1]; list(t.id, t.name); return; }
+        if (r.getAttribute('data-folder')){ stack.push({ id: r.getAttribute('data-folder'), name: r.getAttribute('data-name') }); list(r.getAttribute('data-folder'), r.getAttribute('data-name')); return; }
+        var v = pane.querySelector('.tcdp-view');
+        v.src = 'https://drive.google.com/file/d/' + encodeURIComponent(r.getAttribute('data-file')) + '/preview';
+        this.style.display = 'none'; v.style.display = 'block';
+        pane.querySelector('.tcdp-title').textContent = r.getAttribute('data-name'); pane.querySelector('.tcdp-back').style.display = '';
+      });
+      list(caseFolderId, stack[0].name);
+    }).catch(function(e){ toast('사건 정보를 못 받았습니다: ' + e.message); });
+  }
+  document.addEventListener('click', function(ev){ if (ev.target && ev.target.id === 'tcDocPaneBtn'){ if (pane) close(); else open(); } });
+  // 계산기 화면을 떠나면 닫는다
+  document.addEventListener('click', function(ev){ var m = ev.target.closest && ev.target.closest('.menu-item[data-view]'); if (m && m.getAttribute('data-view') !== 'taxcalc') close(); });
+})();
 </script>

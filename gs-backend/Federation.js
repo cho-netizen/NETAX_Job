@@ -425,6 +425,11 @@ function commSeamList_() {
     { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
     { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
     { 길: '휴대폰 창구 녹음 → 상담 녹음(받아쓰기·요약 → 사건)', fn: function () { return typeof consult_finish_ === 'function' && typeof consult_chunk_ === 'function' ? '' : '상담 녹음 서버 길이 이 판에 없음'; } },
+    // 기기 3종 2차(2026-10-22) — 세무사님 ↔ 시스템(휴대폰·태블릿·워치)
+    { 길: '오늘 할 일(대시보드·휴대폰 창구·현황판)', fn: function () { var t = todoList_(); return t && Array.isArray(t.마감) ? '' : '오늘 할 일을 못 만듦'; } },
+    { 길: '알림 문자 → 바로 답하기(확인·보류·나중에)', fn: function () { return typeof notifyAnswer_ === 'function' && Array.isArray(notifyLog_()) ? '' : '알림 답하기가 이 판에 없음'; } },
+    { 길: '지문 로그인·모든 기기 로그아웃', fn: function () { return typeof MANAGE_APP_HTTP_FUNCS_ !== 'undefined' && MANAGE_APP_HTTP_FUNCS_.manageApp_deviceLogin && typeof sessRevokeAll_ === 'function' ? '' : '지문 로그인 입구가 이 판에 없음'; } },
+    { 길: '이어 보기(다른 기기에서 보던 화면·넥스 대화)', fn: function () { return typeof placeGet_ === 'function' ? '' : '이어 보기가 이 판에 없음'; } },
     { 길: '카카오 봇 오류 기록 → 대시보드·주간 보고서', fn: function () { return Array.isArray(kakaoErrorsRecent_(7)) ? '' : '카카오오류 탭을 못 읽음'; } },
     { 길: '고객 카톡 글 → 넥스 사건처리 조회', fn: function () { return typeof kakaoCaseMessages_ === 'function' ? '' : '카톡 글 읽기가 이 판에 없음'; } }
   ];

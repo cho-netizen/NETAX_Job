@@ -71,7 +71,14 @@ Object.keys(byFile).forEach((f) => {
   });
 });
 // ⚠ 로그인 없이 열리는 입구(PUBLIC_ACTIONS_) 증가
-const pubOf = (src) => { const m = String(src || '').match(/const PUBLIC_ACTIONS_ = \[([\s\S]*?)\];/); return m ? (m[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)) : []; };
+// 로그인 없이 부를 수 있는 것 = PUBLIC_ACTIONS_ + 화면 입구 함수 MANAGE_APP_HTTP_FUNCS_의 이름들(2026-10-22 더함 — 지문 로그인 입구가 생겨서)
+const pubOf = (src) => {
+  const s = String(src || ''), m = s.match(/const PUBLIC_ACTIONS_ = \[([\s\S]*?)\];/);
+  const acts = m ? (m[1].match(/'([^']+)'/g) || []).map((x) => x.slice(1, -1)) : [];
+  const f = s.match(/const MANAGE_APP_HTTP_FUNCS_ = \{([\s\S]*?)\n\};/);
+  const fns = f ? (f[1].match(/^\s{2}([A-Za-z_][A-Za-z0-9_]*)\s*:/gm) || []).map((x) => '입구:' + x.trim().replace(/\s*:$/, '')) : [];
+  return acts.concat(fns);
+};
 let baseCode = ''; try { baseCode = git(['show', base + ':gs-backend/Code.js']); } catch (e) { }
 const curCode = fs.readFileSync(path.join(ROOT, 'gs-backend', 'Code.js'), 'utf8');
 const pubAdded = pubOf(curCode).filter((x) => pubOf(baseCode).indexOf(x) === -1);

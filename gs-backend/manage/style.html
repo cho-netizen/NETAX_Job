@@ -76,6 +76,16 @@
   body.nx-present #sideMenu, body.nx-present #sideAI, body.nx-present #globalHelpBtn{ display:none !important; }
   body.nx-present #centerWork{ zoom:1.15; }
   body.nx-present #nxPresentBtn{ right:18px; opacity:0.55; }
+  /* [2026.10.22] 원본 서류 나란히(계산기 오른쪽) — 폰에서는 단추 숨김 */
+  body.lay-phone #tcDocPaneBtn{ display:none; }
+  #tcDocPane{ position:fixed; top:0; right:0; bottom:0; width:44vw; z-index:60; background:var(--card, #fff); border-left:1px solid var(--line); display:flex; flex-direction:column; box-shadow:-4px 0 14px rgba(0,0,0,0.15); }
+  #tcDocPane .tcdp-head{ display:flex; gap:6px; align-items:center; padding:8px 10px; border-bottom:1px solid var(--line); }
+  #tcDocPane .tcdp-title{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #tcDocPane .tcdp-list{ flex:1; overflow:auto; }
+  #tcDocPane .tcdp-row{ padding:7px 12px; cursor:pointer; border-bottom:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #tcDocPane .tcdp-row:hover{ background:rgba(0,0,0,0.05); }
+  #tcDocPane .tcdp-view{ flex:1; width:100%; border:0; }
+  body.tc-docpane-open #centerWork{ margin-right:44vw; }
   .view{ position:absolute; inset:0; overflow-y:auto; display:none; }
   .view.active{ display:block; }
   #view-workmanage.active, #view-clientmanage.active, #view-docs.active,

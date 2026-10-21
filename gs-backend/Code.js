@@ -4087,6 +4087,15 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
   if (body.action === 'ai_voice_brief') return jsonResponse(ai_voiceBrief_(body)); // 커버화면 토킹모드 음성 답변(핵심만 최대 축약)
   // 커버화면 상담 음성메모(Consult.js) — 녹음 조각 받기 / 합쳐 저장·받아쓰기 예약 / 진행 상황
+  // [2026.10.22 2차] 기기 3종 — 모든 기기 로그아웃·지문 로그인 열쇠·작업일지 한 줄·오늘 할 일·알림 답·이어 보기(토큰 0)
+  if (body.action === 'sess_revoke_all') return jsonResponse(sessRevokeAll_());
+  if (body.action === 'device_token_issue') return jsonResponse(deviceTokenIssue_());
+  if (body.action === 'work_append_log') return jsonResponse(workAppendLog_(body));
+  if (body.action === 'todo_list') return jsonResponse(todoList_());
+  if (body.action === 'notify_get') return jsonResponse({ success: true, item: notifyGet_(body.id) });
+  if (body.action === 'notify_answer') return jsonResponse(notifyAnswer_(body));
+  if (body.action === 'place_save') return jsonResponse(placeSave_(body));
+  if (body.action === 'place_get') return jsonResponse(placeGet_());
   if (body.action === 'consult_chunk') return jsonResponse(consult_chunk_(body));
   if (body.action === 'consult_finish') return jsonResponse(withLock_(20000, function () { return consult_finish_(body); }));
   if (body.action === 'consult_status') return jsonResponse(consult_status_(body));
@@ -16848,12 +16857,14 @@ function sendSolapiSms_(apiKey, apiSecret, from, to, text) {
 //  → 같은 계정의 워치에도 뜬다. 보통(문자 실패 등)은 아침 9시 마감 알림 문자에 한 줄씩 모아 보낸다(NX_DIGEST_QUEUE).
 //  예약 신청·카카오 고객 글은 원래부터 바로 문자(그대로). 받는 번호: NX_REMINDER_PHONE(없으면 예약 알림 번호).
 const NOTIFY_DIGEST_PROP_ = 'NX_DIGEST_QUEUE';
-function notifyOwner_(level, text) {
+function notifyOwner_(level, text, caseId) {
   text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
   if (!text) return;
   if (level === 'urgent') {
     const to = PropertiesService.getScriptProperties().getProperty('NX_REMINDER_PHONE') || BOOKING_OWNER_PHONE;
-    const r = booking_sendSMS(to, '[NX] ' + text);
+    // [2026.10.22 2차] 알림에서 바로 답하기 — 문자 끝 짧은 주소를 누르면 확인/보류/나중에(job.netax.kr/m/?a=번호)
+    let link = ''; try { link = ' job.netax.kr/m/?a=' + notifyLogAdd_(text, caseId); } catch (e) { link = ''; }
+    const r = booking_sendSMS(to, '[NX] ' + text + link);
     if (r && r.success) return;
   }
   try {
@@ -16872,6 +16883,103 @@ function notifyDigestTake_() {
   return q;
 }
 // 아침 알림 트리거가 없으면 건다(예전엔 편집기에서 손으로 한 번 실행해야 했다) — 밤 작업이 매일 확인
+// ============================================================
+// [2026.10.22] 기기 3종 2차 — 세무사님 "work는 보류하고 몽땅 구현하고 나서 일괄 배포하라" / "지문으로, 나머지는 권장대로"
+//  계획서: 총괄관리자\_점검리포트\기기3종_활용검토_2026-10-22.md "2차" 절. 모두 토큰 0(AI 호출 없음).
+// ============================================================
+// ① 모든 기기 로그아웃 — 로그인 표 서명 열쇠를 새로 바꾼다. 그때까지 준 로그인 표(12시간)·지문 로그인 기기 열쇠(90일)가 모두 무효.
+function sessRevokeAll_() {
+  const bytes = Utilities.computeHmacSha256Signature(Utilities.getUuid() + Date.now(), Utilities.getUuid());
+  const key = bytes.map(function (b) { return ((b < 0 ? b + 256 : b)).toString(16).padStart(2, '0'); }).join('');
+  PropertiesService.getScriptProperties().setProperty('SESSION_SIGN_KEY', key);
+  return { success: true, message: '모든 기기에서 로그아웃했습니다. 이 기기도 다시 로그인해야 합니다(지문 로그인도 다시 켜야 함).' };
+}
+// ② 지문 로그인 — 기기 열쇠(90일). 기기 잠금(지문)을 통과해야 화면이 이 열쇠를 꺼내 로그인 표로 바꾼다.
+//  지문 서명 자체는 서버가 검사하지 못해(구글 서버에 그 암호 계산이 없음) 화면 쪽에서 기기 잠금으로 막는다 — 세무사님 "지문으로"(10-22).
+const DEVICE_TOKEN_TTL_MS_ = 90 * 86400000;
+function deviceTokenSign_(exp) {
+  const secret = manageApp_sessionSignKey_(); if (!secret) return '';
+  return Utilities.computeHmacSha256Signature('dev:' + exp, secret).map(function (b) { return ((b < 0 ? b + 256 : b)).toString(16).padStart(2, '0'); }).join('');
+}
+function deviceTokenIssue_() { const exp = String(Date.now() + DEVICE_TOKEN_TTL_MS_), sig = deviceTokenSign_(exp); return sig ? { success: true, deviceToken: 'd' + exp + '.' + sig } : { error: '열쇠를 만들지 못했습니다.' }; }
+function manageApp_deviceLogin(deviceToken) {
+  const m = String(deviceToken || '').match(/^d(\d{12,14})\.([0-9a-f]{64})$/);
+  if (!m || Date.now() > Number(m[1]) || Number(m[1]) > Date.now() + DEVICE_TOKEN_TTL_MS_ + 60000) return { ok: false, message: '지문 로그인 기한이 지났습니다 — 비밀번호로 한 번 들어와 다시 켜 주세요.' };
+  if (deviceTokenSign_(m[1]) !== m[2]) return { ok: false, message: '지문 로그인 열쇠가 무효입니다(모든 기기 로그아웃 뒤) — 비밀번호로 들어와 다시 켜 주세요.' };
+  const token = manageApp_issueSessionToken_();
+  return token ? { ok: true, token: token } : { ok: false, message: '로그인 표를 만들지 못했습니다.' };
+}
+// ③ 사건 작업일지에 한 줄(통화 메모·방문 기록·펜 표시·알림 답) — 고객 상담 기록에도 남길 것은 consult:true
+function workAppendLog_(body) {
+  const c = job_findCase_(String(body.caseId || ''));
+  if (!c) return { error: '사건을 찾을 수 없습니다.' };
+  const text = String(body.text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  if (!text) return { error: '남길 글이 없습니다.' };
+  const now = new Date();
+  work_updateCase({ id: c.id, 작업일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + now.getTime(), date: Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd'), text: text, dueDate: '' }]) });
+  if (body.consult && c.고객ID) { try { client_addConsultLog({ 고객ID: c.고객ID, 고객명: String(c.고객명 || ''), 유형: String(body.kind || '메모'), 내용: text, 사건ID: c.id, 담당자: '세무사님(휴대폰)' }); } catch (e) {} }
+  return { success: true, caseName: String(c.사건명 || c.고객명 || '') };
+}
+// ④ 오늘 할 일 — 대시보드 맨 위·휴대폰 창구·현황판이 같은 목록을 본다
+function todoList_() {
+  const tz = 'Asia/Seoul', today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), in3 = Utilities.formatDate(new Date(Date.now() + 3 * 86400000), tz, 'yyyy-MM-dd');
+  let cases = []; try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; cases = (o && o.cases) || []; } catch (e) { cases = []; }
+  const open = cases.filter(function (c) { return c.상태 !== '완료'; });
+  const pick = function (c) { return { caseId: c.id, 사건: String(c.사건명 || c.고객명 || ''), 법정일: String(c.법정일 || '') }; };
+  const out = { at: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), 마감: [], 지남: [], 오늘예약: [], 넥스질문: [], 고객서류: [], 확인요청: 0, 긴급요청: 0, 카카오오류: 0, 알림대기: [] };
+  open.filter(function (c) { return c.상태 !== '보류' && c.법정일; }).sort(function (a, b) { return String(a.법정일).localeCompare(String(b.법정일)); }).forEach(function (c) {
+    if (c.법정일 < today) out.지남.push(pick(c)); else if (c.법정일 <= in3) out.마감.push(pick(c));
+  });
+  try {
+    const r = booking_getBookings(); const o = r && r.getContent ? JSON.parse(r.getContent()) : r;
+    ((o && o.bookings) || []).filter(function (b) { return b.reservedDate === today && !/거절|취소/.test(String(b.status || '')); }).forEach(function (b) {
+      const c = b.caseId ? open.filter(function (x) { return x.id === b.caseId; })[0] : null;
+      out.오늘예약.push({ 시각: b.reservedTime, 이름: String(b.name || ''), caseId: b.caseId || '', 사건: c ? String(c.사건명 || '') : '' });
+    });
+    out.오늘예약.sort(function (a, b) { return String(a.시각).localeCompare(String(b.시각)); });
+  } catch (e) {}
+  // 넥스가 묻는 질문(사건처리 남은 질문 중 아직 답 없는 것) — 최근 14일 안에 고친 진행 사건만(사건마다 드라이브 파일을 읽으므로 많이 안 봄)
+  try {
+    const since = Utilities.formatDate(new Date(Date.now() - 14 * 86400000), tz, 'yyyy-MM-dd');
+    open.filter(function (c) { return String(c.수정일 || '') >= since; }).slice(0, 12).forEach(function (c) {
+      const sv = caseProcLoad_(c.id); if (!sv) return;
+      const dec = sv.decisions || {}, n = (sv.remaining || []).filter(function (it) { return !(dec[it.id] && dec[it.id].d); }).length;
+      if (n) out.넥스질문.push({ caseId: c.id, 사건: String(c.사건명 || c.고객명 || ''), 질문수: n });
+    });
+  } catch (e) {}
+  try { out.고객서류 = custUploadsRecent_(3).slice(0, 10); } catch (e) {}
+  try { const ra = commRequestsAll_(); out.확인요청 = ra.open.filter(function (r) { return r.status === '반영됨'; }).length; out.긴급요청 = ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length; } catch (e) {}
+  try { out.카카오오류 = kakaoErrorsRecent_(3).length; } catch (e) {}
+  try { out.알림대기 = notifyLog_().filter(function (x) { return x.status === '대기'; }).slice(0, 10); } catch (e) {}
+  return out;
+}
+// ⑤ 알림에서 바로 답하기 — 급한 알림 문자 끝에 job.netax.kr/m/?a=번호, 누르면 확인/보류/나중에
+const NOTIFY_LOG_PROP_ = 'NX_NOTIFY_LOG';
+function notifyLog_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(NOTIFY_LOG_PROP_) || '[]'); } catch (e) { return []; } }
+function notifyLogAdd_(text, caseId) {
+  const id = Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+  withLock_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.unshift({ id: id, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), text: String(text).slice(0, 200), caseId: caseId || '', status: '대기' }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a.slice(0, 50))); });
+  return id;
+}
+function notifyGet_(id) { return notifyLog_().filter(function (x) { return x.id === String(id || ''); })[0] || null; }
+function notifyAnswer_(body) {
+  const id = String(body.id || ''), ans = ({ '확인': '확인', '보류': '보류', '나중에': '나중에' })[String(body.answer || '')];
+  if (!ans) return { error: '확인·보류·나중에 중 하나를 고르세요.' };
+  let item = null;
+  withLock_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.forEach(function (x) { if (x.id === id) { x.status = ans; x.answeredAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); item = x; } }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a)); });
+  if (!item) return { error: '알림을 찾지 못했습니다(오래된 알림일 수 있음).' };
+  if (item.caseId && ans !== '나중에') { try { workAppendLog_({ caseId: item.caseId, text: '[알림 ' + ans + '] ' + item.text }); } catch (e) {} }
+  if (ans === '나중에') notifyOwner_('digest', '(나중에로 미룸) ' + item.text);
+  return { success: true, status: ans };
+}
+// ⑥ 이어 보기 — 마지막으로 보던 화면·사건·넥스 대화를 기억(기기 이름과 함께), 다른 기기에서 "이어 열기"
+const PLACE_PROP_ = 'NX_LAST_PLACE';
+function placeSave_(body) {
+  const v = { view: String(body.view || '').slice(0, 40), label: String(body.label || '').slice(0, 80), caseId: String(body.caseId || '').slice(0, 40), convId: String(body.convId || '').slice(0, 80), device: String(body.device || '').slice(0, 40), at: Date.now() };
+  PropertiesService.getScriptProperties().setProperty(PLACE_PROP_, JSON.stringify(v));
+  return { success: true };
+}
+function placeGet_() { try { return { success: true, place: JSON.parse(PropertiesService.getScriptProperties().getProperty(PLACE_PROP_) || 'null') }; } catch (e) { return { success: true, place: null }; } }
 function ensureDailyReminderTrigger_() {
   if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; })) installDailyReminderTrigger();
 }
@@ -17638,6 +17746,7 @@ function manageApp_verifySessionToken_(token) {
 // 같은 인자로 부른다 — 화면 쪽 코드는 그대로 두고 통신 방식만 바뀐다.
 const MANAGE_APP_HTTP_FUNCS_ = {
   manageApp_checkPassword: function (a) { return manageApp_checkPasswordThrottled_(a[0]); },
+  manageApp_deviceLogin: function (a) { return manageApp_deviceLogin(a[0]); }, // [2026.10.22] 지문 로그인(기기 열쇠 → 로그인 표)
   manageApp_getRptAdminCode: function (a) { return manageApp_getRptAdminCode(a[0]); },
   manageApp_changePassword: function (a) { return manageApp_changePassword(a[0], a[1]); },
   manageApp_call: function (a) { return manageApp_call(a[0], a[1], a[2]); },
@@ -19178,7 +19287,7 @@ function custUploadNote_(params, ctx) {
   // [2026.10.22] 알림 한 통로 — 고객이 서류를 보내면 바로 문자(휴대폰·워치). 여러 장을 연달아 올리면 사건당 10분에 한 번만.
   const ck = 'cust_up_sms_' + (wc ? wc.id : rid);
   const cache = CacheService.getScriptCache();
-  if (!cache.get(ck)) { cache.put(ck, '1', 600); notifyOwner_('urgent', '고객 서류 도착 — ' + (wc ? String(wc.사건명 || wc.고객명 || '') : '접속코드 ' + rid) + ': ' + (item ? item + ' ' : '') + fileName); }
+  if (!cache.get(ck)) { cache.put(ck, '1', 600); notifyOwner_('urgent', '고객 서류 도착 — ' + (wc ? String(wc.사건명 || wc.고객명 || '') : '접속코드 ' + rid) + ': ' + (item ? item + ' ' : '') + fileName, wc ? wc.id : ''); }
 }
 // 고객이 보낸 서류 목록 — 고객창구(my.netax.kr)와 카카오 봇(NETAX_Kakao)이 함께 쓰는 제출 기록표(SubmissionLog: 접속코드·파일·항목·시각)를 읽는다.
 //  rid(접속코드)를 주면 그 사건 것만. 사건 연결은 사건 목록의 my_report_id로.
@@ -37604,7 +37713,9 @@ function changeCheckSnapshot_() {
     bytes += Utilities.newBlob(src).getBytes().length;
     Object.keys(CHANGE_CHECK_AI_HOSTS_).forEach(function (h) { const n = src.split('https://' + h).length - 1; if (n) ai[f.name + ' · ' + CHANGE_CHECK_AI_HOSTS_[h]] = n; });
   });
-  return { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), pub: PUBLIC_ACTIONS_.slice().sort(), ai: ai, bytes: bytes };
+  // 로그인 없이 부를 수 있는 것 = 공개 화면용 동작(PUBLIC_ACTIONS_) + 화면 입구 함수(MANAGE_APP_HTTP_FUNCS_ — 비밀번호·지문 로그인 등, 2026-10-22 더함)
+  const fnKeys = typeof MANAGE_APP_HTTP_FUNCS_ !== 'undefined' ? Object.keys(MANAGE_APP_HTTP_FUNCS_).map(function (k) { return '입구:' + k; }) : [];
+  return { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), pub: PUBLIC_ACTIONS_.slice().concat(fnKeys).sort(), ai: ai, bytes: bytes };
 }
 function changeCheckRecord_() {
   const p = PropertiesService.getScriptProperties();
@@ -37612,7 +37723,8 @@ function changeCheckRecord_() {
   const cur = changeCheckSnapshot_(), warn = [];
   if (cur.bytes > CHANGE_CHECK_SIZE_WARN_) warn.push('서버 용량 ' + (cur.bytes / 1e6).toFixed(2) + 'MB — 10MB 한도 근처(큰 자료는 화면 쪽으로)');
   if (prev) {
-    const added = cur.pub.filter(function (a) { return prev.pub.indexOf(a) === -1; });
+    const prevHasFn = prev.pub.some(function (a) { return /^입구:/.test(a); }); // 입구 함수는 10-22부터 셈 — 첫 기록 땐 비교하지 않음
+    const added = cur.pub.filter(function (a) { return prev.pub.indexOf(a) === -1 && (prevHasFn || !/^입구:/.test(a)); });
     if (added.length) warn.push('로그인 없이 열리는 입구가 늘어남: ' + added.join(', ') + ' — 고객 비밀번호 등 따로 검사하는지 확인');
     const more = Object.keys(cur.ai).filter(function (k) { return cur.ai[k] > (prev.ai[k] || 0); });
     if (more.length) warn.push('바깥 AI로 보내는 곳이 늘어남: ' + more.map(function (k) { return k + ' ' + (prev.ai[k] || 0) + '→' + cur.ai[k]; }).join(', ') + ' — 고객 정보 가림·비용(토큰 0 원칙) 확인');
