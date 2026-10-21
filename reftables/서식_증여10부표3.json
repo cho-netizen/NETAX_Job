@@ -24,11 +24,14 @@
     "상증세법 §53의2①(혼인일 = 혼인관계증명서상 신고일)"
    ],
    "계산기칸": [
-    "화면 id=\"giftMarriageDate\" 하나(증여 건별 5칸 아님)"
+    "화면 「혼인일」 하나(증여 건별 5칸 아님)"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ①",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "화면 id=\"giftMarriageDate\" 하나(증여 건별 5칸 아님)"
+   ]
   },
   {
    "칸": "②",
@@ -37,11 +40,14 @@
    "계산": "—",
    "근거조문": [],
    "계산기칸": [
-    "화면 id=\"giftDate\""
+    "화면 「증여일자」"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ②",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "화면 id=\"giftDate\""
+   ]
   },
   {
    "칸": "③",
@@ -52,11 +58,14 @@
     "상증세법 §53의2①"
    ],
    "계산기칸": [
-    "계산기에 따로 없음 — 인쇄는 이번 혼인 공제액(gfMarriageBirthSplit_ 혼인분)을 증여재산가액 자리에 찍음"
+    "계산기에 따로 없음 — 인쇄는 이번 혼인 공제액(「혼인·출산 공제 나눔」 혼인분)을 증여재산가액 자리에 찍음"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ③ — 공제액을 찍음(증여재산가액 아님)",
-   "확인": "원문 대조됨 — 인쇄값이 서식 뜻과 다름"
+   "확인": "원문 대조됨 — 인쇄값이 서식 뜻과 다름",
+   "계산기칸_개발용": [
+    "계산기에 따로 없음 — 인쇄는 이번 혼인 공제액(gfMarriageBirthSplit_ 혼인분)을 증여재산가액 자리에 찍음"
+   ]
   },
   {
    "칸": "④",
@@ -80,11 +89,14 @@
     "상증세법 §53의2②(출생신고서상 출생일 또는 입양신고일)"
    ],
    "계산기칸": [
-    "화면 id=\"giftBirthDate\""
+    "화면 「출생일·입양일」"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 없음(출산 쪽은 pfRow_(0,…))",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "화면 id=\"giftBirthDate\""
+   ]
   },
   {
    "칸": "⑥",
@@ -93,11 +105,14 @@
    "계산": "—",
    "근거조문": [],
    "계산기칸": [
-    "화면 id=\"giftDate\""
+    "화면 「증여일자」"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 없음",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "화면 id=\"giftDate\""
+   ]
   },
   {
    "칸": "⑦",
@@ -136,11 +151,14 @@
     "상증세법 §53의2③"
    ],
    "계산기칸": [
-    "화면 id=\"giftPriorMarriageBirth\"(혼인·출산 합친 한 값)을 gfMarriageBirthSplit_로 나눈 혼인분"
+    "화면 「이전 혼인·출산 공제」(혼인·출산 합친 한 값)을 「혼인·출산 공제 나눔」로 나눈 혼인분"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ④ \"10년 이내 기존 공제액\"",
-   "확인": "원문 대조됨 — 혼인·출산을 나눠 받지 않아 근사치"
+   "확인": "원문 대조됨 — 혼인·출산을 나눠 받지 않아 근사치",
+   "계산기칸_개발용": [
+    "화면 id=\"giftPriorMarriageBirth\"(혼인·출산 합친 한 값)을 gfMarriageBirthSplit_로 나눈 혼인분"
+   ]
   },
   {
    "칸": "⑩",
@@ -151,11 +169,14 @@
     "상증세법 §53의2③"
    ],
    "계산기칸": [
-    "giftPriorMarriageBirth의 출산분(gfMarriageBirthSplit_)"
+    "「이전 혼인·출산 공제」의 출산분(「혼인·출산 공제 나눔」)"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 없음",
-   "확인": "원문 대조됨 — 근사치"
+   "확인": "원문 대조됨 — 근사치",
+   "계산기칸_개발용": [
+    "giftPriorMarriageBirth의 출산분(gfMarriageBirthSplit_)"
+   ]
   },
   {
    "칸": "⑪",
@@ -196,11 +217,14 @@
     "상증세법 §53의2③(1억원 한도)"
    ],
    "계산기칸": [
-    "인쇄 remaining = max(0, 1억 − giftPriorMarriageBirth)"
+    "인쇄 「남은 값」 = 큰 값(0, 1억 − 「이전 혼인·출산 공제」)"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ⑥",
-   "확인": "원문 대조됨 — 서식은 10년 도과분(⑪⑫)도 빼는데 계산기는 그 값을 받지 않음"
+   "확인": "원문 대조됨 — 서식은 10년 도과분(⑪⑫)도 빼는데 계산기는 그 값을 받지 않음",
+   "계산기칸_개발용": [
+    "인쇄 remaining = max(0, 1억 − giftPriorMarriageBirth)"
+   ]
   },
   {
    "칸": "⑭",
@@ -211,11 +235,14 @@
     "상증세법 §53의2①·③"
    ],
    "계산기칸": [
-    "결과 혼인출산증여재산공제의 혼인분(gfMarriageBirthSplit_)"
+    "결과 혼인출산증여재산공제의 혼인분(「혼인·출산 공제 나눔」)"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ⑦",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "결과 혼인출산증여재산공제의 혼인분(gfMarriageBirthSplit_)"
+   ]
   },
   {
    "칸": "⑮",
@@ -239,11 +266,14 @@
    "계산": "⑯ = ⑨ + ⑭ → 본표 ㉙",
    "근거조문": [],
    "계산기칸": [
-    "인쇄 priorSplit.marriage + currentSplit.marriage"
+    "인쇄 이전 「혼인」 + 이번 「혼인」"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 ⑧",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "인쇄 priorSplit.marriage + currentSplit.marriage"
+   ]
   },
   {
    "칸": "⑰",
@@ -252,11 +282,14 @@
    "계산": "⑰ = ⑩ + ⑮ → 본표 ㉚",
    "근거조문": [],
    "계산기칸": [
-    "인쇄 priorSplit.birth + currentSplit.birth"
+    "인쇄 이전 「출산」 + 이번 「출산」"
    ],
    "조견표": [],
    "인쇄": "gfMarriageBirthPrintPageHtml_(gs-backend/manage/taxcalc.html) 번호 없음",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "인쇄 priorSplit.birth + currentSplit.birth"
+   ]
   }
  ],
  "확인필요": [

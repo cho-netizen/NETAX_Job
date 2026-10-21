@@ -303,6 +303,32 @@ function envTechCheck_() {
     if (mr.code !== 200 || /SERVICE_KEY|SERVICE KEY|LIMITED|<returnAuthMsg>/i.test(mr.text) && !/<resultCode>0+<\/resultCode>/.test(mr.text)) out.push({ 수준: '경고', 항목: '실거래가 API 키(MOLIT_API_KEY) 응답 이상(' + mr.code + ') — 활용기간 만료·트래픽 초과 확인(공공데이터포털)' });
   } else out.push({ 수준: '주의', 항목: '실거래가 API 키(MOLIT_API_KEY) 없음' });
   ['BUILDING_HUB_API_KEY', 'JUSO_API_KEY', 'VWORLD_API_KEY', 'NTS_API_KEY'].forEach(function (k) { if (!props.getProperty(k)) out.push({ 수준: '주의', 항목: k + ' 없음 — 해당 조회 도구가 동작하지 않음' }); });
+  // [2026.10.22] 세무사님 "권장대로 하고, 모두 완료한 다음에 일괄 배포하라" — 바깥 프로그램 중 감시가 없던 셋(문자·환율·깃허브)
+  // 문자(SOLAPI): 예약 알림·마감 알림·고객 문자가 이 열쇠로 나간다. 열쇠·발신번호 확인 + 잔액 조회(조회만, 문자 안 보냄)
+  var sk = props.getProperty('SOLAPI_API_KEY'), ss = props.getProperty('SOLAPI_API_SECRET');
+  if (!sk || !ss || !props.getProperty('SOLAPI_SENDER_PHONE')) out.push({ 수준: '경고', 항목: '문자 서비스(SOLAPI) 열쇠·발신번호 없음 — 예약 알림·마감 알림·고객 문자가 나가지 않음' });
+  else {
+    try {
+      var sdate = new Date().toISOString(), ssalt = Utilities.getUuid();
+      var ssig = Utilities.computeHmacSha256Signature(sdate + ssalt, ss).map(function (b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('');
+      var sr = UrlFetchApp.fetch('https://api.solapi.com/cash/v1/balance', { muteHttpExceptions: true, headers: { Authorization: 'HMAC-SHA256 apiKey=' + sk + ', date=' + sdate + ', salt=' + ssalt + ', signature=' + ssig } });
+      if (sr.getResponseCode() !== 200) out.push({ 수준: '경고', 항목: '문자 서비스(SOLAPI) 잔액 조회 응답 이상(' + sr.getResponseCode() + ') — 열쇠가 바뀌었거나 막혔을 수 있음(문자가 안 나갈 수 있음)' });
+      else {
+        var sj = {}; try { sj = JSON.parse(sr.getContentText() || '{}'); } catch (e) { sj = {}; }
+        var bal = Number(sj.balance || 0) + Number(sj.point || 0);
+        if (!isNaN(bal) && bal < 3000) out.push({ 수준: '경고', 항목: '문자 서비스(SOLAPI) 잔액 ' + bal + '원 — 곧 문자가 안 나감(충전 필요)' });
+      }
+    } catch (e) { out.push({ 수준: '주의', 항목: '문자 서비스(SOLAPI) 잔액 조회 실패: ' + String(e && e.message || e).slice(0, 80) }); }
+  }
+  // 환율(한국은행 ECOS): 열쇠가 없으면 견본 열쇠('sample', 자료 제한)로 조용히 돌던 것
+  if (!props.getProperty('ECOS_API_KEY')) out.push({ 수준: '주의', 항목: '환율 열쇠(ECOS_API_KEY) 없음 — 견본 열쇠로 자료가 제한됨(조견표 환율 조회)' });
+  // 깃허브 열쇠: 📥 수정 반영·✅ 승인·🗳 수정안 목록이 쓴다
+  var gt = props.getProperty('GH_TOKEN');
+  if (!gt) out.push({ 수준: '주의', 항목: '깃허브 열쇠(GH_TOKEN) 없음 — ✅ 승인·🗳 수정안 목록이 동작하지 않음' });
+  else {
+    var gr = envFetch_('https://api.github.com/rate_limit', { headers: { Authorization: 'Bearer ' + gt, 'User-Agent': 'netax-job' } });
+    if (gr.code === 401) out.push({ 수준: '경고', 항목: '깃허브 열쇠(GH_TOKEN) 만료·무효 — ✅ 승인·🗳 수정안 목록이 멈춤(설정 🐞 카드에서 새 열쇠)' });
+  }
   // 네이버 블로그 토큰
   var nx = Number(props.getProperty('NAVER_TOKEN_EXPIRES_AT') || 0), nrt = props.getProperty('NAVER_REFRESH_TOKEN');
   if (props.getProperty('NAVER_CLIENT_ID') && !nrt) out.push({ 수준: '주의', 항목: '네이버 블로그 갱신 토큰 없음 — 블로그 자동 발행 전에 다시 로그인 필요' });

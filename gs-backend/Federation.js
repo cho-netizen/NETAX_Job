@@ -321,6 +321,7 @@ function commReportGap_(input) {
   if (e.urgent && res && res.success) { // 잠금 밖에서(개선요구사항 적기도 잠금을 씀)
     try {
       var add = improve_addRequest_({ text: '🚨 긴급 — 넥스 신고(세액·신고 결과 오류): ' + e.want + (e.blocker ? ' / 막힌 이유: ' + e.blocker : '') + (e.area ? ' / 분야: ' + e.area : '') });
+      try { if (typeof notifyOwner_ === 'function') notifyOwner_('urgent', '넥스 긴급 신고(세액·신고 결과 오류) — ' + e.want.slice(0, 80)); } catch (x) {} // [2026.10.22] 손목·휴대폰으로 바로
       res.message += add && add.success ? ' 세액·신고 결과 오류라 개선요구사항에 🚨 긴급으로도 올렸다 — 사용자에게 "긴급으로 올렸다"고 알리고, 고쳐지기 전까지 그 결과는 손으로 검산하라고 말하라.' : ' (긴급 등록은 실패 — 사용자에게 설정 🐞 카드에서 직접 적어 달라고 말하라.)';
     } catch (x) { res.message += ' (긴급 등록 실패: ' + String(x && x.message || x).slice(0, 80) + ')'; }
   }
@@ -416,7 +417,15 @@ function commSeamList_() {
     { 길: '신고 처리 장부(처리됨·다시 신고)', fn: function () { return Array.isArray(commGapsResolved_()) ? '' : '장부를 못 읽음'; } },
     { 길: '개발자 → 넥스(최근 바뀐 기능)', fn: function () { return commRecentChangesPrompt_() ? '' : '최근 바뀐 기능 기록이 비어 있음'; } },
     { 길: '세무사님 원칙 → 웹 Claude(보고서 공통원칙)', fn: function () { return getCommonPrinciplesText_() ? '' : '공통원칙.md를 못 읽음'; } },
-    { 길: '웹 Claude 실행 기록 → job', fn: function () { var r = commRoutineLog_(); return r && r.last ? '' : '실행 기록을 못 읽음'; } }
+    { 길: '웹 Claude 실행 기록 → job', fn: function () { var r = commRoutineLog_(); return r && r.last ? '' : '실행 기록을 못 읽음'; } },
+    // [2026.10.22] Claude 세션이 쓴 확인조치사항 판단 대기 ↔ 절세 아이템 [확인 필요] 표시 — 밤 분류 검사가 노하우 화면·개선 후보 보고서로 올린다(KnowHow.js knhClsNightly_)
+    { 길: '확인조치사항 판단 대기 ↔ 아이템 표시(분류 검사) → 노하우 화면·보고서', fn: function () { if (typeof knhClsNightly_ !== 'function') return '분류 검사가 이 판에 없음'; return followupFile_() ? '' : '확인조치사항 파일을 못 찾음'; } },
+    // 고객·바깥 프로그램 ↔ job(2026-10-22 "다른 프로그램 다른 어플과의 소통")
+    { 길: '고객 제출(my.netax.kr) → 사건 처리일지·대시보드', fn: function () { return typeof custUploadNote_ === 'function' && Array.isArray(custUploadsRecent_(7)) ? '' : '고객 제출 알림이 이 판에 없음'; } },
+    { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
+    { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
+    { 길: '휴대폰 창구 녹음 → 상담 녹음(받아쓰기·요약 → 사건)', fn: function () { return typeof consult_finish_ === 'function' && typeof consult_chunk_ === 'function' ? '' : '상담 녹음 서버 길이 이 판에 없음'; } },
+    { 길: '고객 카톡 글 → 넥스 사건처리 조회', fn: function () { return typeof kakaoCaseMessages_ === 'function' ? '' : '카톡 글 읽기가 이 판에 없음'; } }
   ];
 }
 function commSeamCheck_() {
@@ -435,7 +444,7 @@ function commStatus_() {
     return { success: true, changes: commRecentChanges_().slice(0, 12), requests: reqs, openRequests: ra.open, doneRequests: ra.done,
     oldestDays: ra.open.length ? ra.open[0].days : 0, urgent: ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length,
     toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_,
-    routine: commRoutineLog_() };
+    routine: commRoutineLog_(), uploads: (function () { try { return typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(7) : []; } catch (e) { return []; } })() }; // [2026.10.22] 고객이 올린 서류(최근 7일)
 }
 // ⑧ [2026.10.21] 고객 카톡 글 — 세무사님 결정("진행하고 다음으로 넘어가자"): 고객이 카톡으로 쓴 글이 넥스·job에 전달되지 않던 문제.
 //  카카오 봇(NETAX_Kakao, 별도 서버)은 이미 모든 수신 메시지를 사건 시트 "카카오웹훅로그" 탭에 남기고(시각·카카오ID·글·원본), 카카오ID↔접속코드는
