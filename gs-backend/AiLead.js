@@ -112,6 +112,8 @@ function caseProcAiSystem_() {
     "- infer: 후보도 서류 글자도 없는 값을 여러 사실로 추론할 때(예: 두 등기부로 본 가족 관계). 근거 사실 목록을",
     "  붙인다. infer 값은 잠정 계산에만 쓰고, 반드시 확인 질문을 함께 올린다(확정 값으로 저장되지 않음).",
     "근거에 없으면 거절된다. 거절되면 값을 바꾸어 다시 넣지 말고, 원문을 다시 보거나 질문으로 돌린다.",
+    "단, 판단 값(예/아니오·보기 고르기)이 '판단 값은 서류에 글자로 나오지 않음'으로 거절되면 같은 값에 quote(원문 문구) 또는 infer(근거 사실 목록)를",
+    "  붙여 한 칸에 한 번 더 낼 수 있다. 거절된 판단도 그 질문에 🤖 AI 의견으로 붙어 세무사님이 보신다.",
     "값을 지어내거나 머릿속으로 계산하지 않는다. 세무사님이 넣은 값은 덮어쓰지 않는다.",
     "",
     "[AI 판단 표시]",
@@ -298,8 +300,15 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
     const flat = t.replace(/\s+/g, '');
     // 판단형(보기 고르기) 값은 서류에 그대로 안 나온다 — 근거 문구(quote)를 주면 그 문구가 원문에 있는지로 대조한다
     if (basis.quote) { const q = String(basis.quote).replace(/\s+/g, ''); return q.length >= 4 && flat.indexOf(q) !== -1 ? { ok: true, why: '근거 서류 원문에 그 문구', file: f.name } : { ok: false, why: '근거 서류 원문에 그 문구가 없음 — 지어낸 근거일 수 있어 넣지 않음' }; }
-    const hit = caseProcAiValueForms_(value).some(function (x) { return x && caseProcAiHasWhole_(flat, x); });
-    return hit ? { ok: true, why: '근거 서류 원문에 같은 값', file: f.name } : { ok: false, why: '근거 서류 원문에 그 값이 없음 — 지어낸 값일 수 있어 넣지 않음', file: f.name };
+    // [2026.10.22] 숫자 없는 짧은 값(Y·N·예·일반 — 4글자 미만)은 원문 글자 맞추기로 받지 않는다 — "Y"가 "PROPERTY" 안에서 맞아 근거 없이 통과하던 구멍(모의시험에서 발견).
+    //  이런 판단 값은 위의 quote(원문 문구)로만 통과한다. 금액·날짜·이름·주소처럼 서류에 그대로 나오는 값은 그대로 원문 대조
+    const shortJudge = !/\d/.test(String(value)) && String(value).replace(/\s+/g, '').length < 4;
+    const hit = !shortJudge && caseProcAiValueForms_(value).some(function (x) { return x && caseProcAiHasWhole_(flat, x); });
+    if (hit) return { ok: true, why: '근거 서류 원문에 같은 값', file: f.name };
+    // [2026.10.22] 판단 값(예/아니오·보기 — 숫자 없는 값)은 서류에 글자로 나오지 않는다 — 가상양도1에서 「국외자산 여부」=Y·「5년 이상 국내 거주」=Y가
+    //  "원문에 그 값이 없음"으로만 거절되고 AI가 고칠 길을 몰라 넣은 값 0. 거절하되 무엇을 붙여 다시 낼지 알려 준다(값을 바꾼 재제출은 AiLeadLive가 막음)
+    if (!/\d/.test(String(value))) return { ok: false, retry: true, file: f.name, why: '판단 값(' + String(value).slice(0, 20) + ')은 서류에 글자로 나오지 않음 — 값은 그대로 두고 basis.quote(그 판단을 받치는 원문 문구 그대로, 4자 이상)를 붙이거나, 여러 서류를 묶어 내린 판단이면 {kind:"infer", facts:[…]}로 한 번 더 내라' };
+    return { ok: false, why: '근거 서류 원문에 그 값이 없음 — 지어낸 값일 수 있어 넣지 않음', file: f.name };
   }
   return { ok: false, why: '근거 종류가 없음(doc·lookup·user 중 하나)' };
 }
