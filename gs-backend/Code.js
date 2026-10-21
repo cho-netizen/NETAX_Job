@@ -5758,6 +5758,8 @@ function handleUploadFile(body) {
         file.setContent(text);
         if (sysSave && sysSave.kind === 'master') { try { CacheService.getScriptCache().remove(MASTER_PROFILE_CACHE_KEY_); } catch (e) { } }
         rh_maybeUpdateReportIndexForUpload_(body, file);
+        // [2026.10.21] 노하우 파일(절세 아이템 등)을 화면에서 고쳐 저장하면 그 폴더 목록 색인(_색인.json)도 바로 맞춘다(KnowHow.js)
+        if (body.knowIndex && typeof knhIdxTouch_ === 'function') knhIdxTouch_(file);
         const upOut = { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: true };
         if (sysSave && sysSave.kind) { upOut.systemFile = sysSave.kind; upOut.backedUp = !!sysSave.backedUp; }
         return upOut;
@@ -13931,12 +13933,17 @@ function handleSaveCaseFromTemplate(body) {
       if (typeof body.editedContent === 'string') {
         const mimeType = /\.md$/i.test(fileName) ? 'text/markdown' : 'text/plain';
         const existingIter = folder.getFilesByName(fileName);
+        // [2026.10.21] 어느 템플릿·어느 판에서 시작했는지 첫머리에 한 줄(KnowHow.js knhTplStampText_) — 화면이 templateFileId를 함께 줄 때
+        let content = body.editedContent;
+        if (body.templateFileId && typeof knhTplStampText_ === 'function') {
+          try { content = knhTplStampText_(DriveApp.getFileById(body.templateFileId), content); } catch (e) { }
+        }
         let file;
         if (existingIter.hasNext()) {
           file = existingIter.next();
-          file.setContent(body.editedContent);
+          file.setContent(content);
         } else {
-          file = folder.createFile(Utilities.newBlob(body.editedContent, mimeType, fileName));
+          file = folder.createFile(Utilities.newBlob(content, mimeType, fileName));
         }
         return { id: file.getId(), name: file.getName(), url: file.getUrl(), folderId: folder.getId() };
       }
@@ -13944,6 +13951,7 @@ function handleSaveCaseFromTemplate(body) {
       if (!body.templateFileId) return { error: '복사할 템플릿 파일이 지정되지 않았습니다.' };
       const templateFile = DriveApp.getFileById(body.templateFileId);
       const copied = templateFile.makeCopy(fileName, folder);
+      if (typeof knhTplStampDesc_ === 'function') knhTplStampDesc_(copied, templateFile); // [2026.10.21] 글 파일이 아니면 드라이브 파일 설명에 판 기록
       return { id: copied.getId(), name: copied.getName(), url: copied.getUrl(), folderId: folder.getId() };
     } catch (err) {
       return { error: '사건 파일 저장 중 오류: ' + err.message };
@@ -13987,12 +13995,15 @@ function work_seedCaseTemplateIfAny_(caseFolder, candidateNames) {
     if (f) {
       const rawName = f.getName();
       try { if (typeof knhCountUse_ === 'function') knhCountUse_('의뢰서', rawName); } catch (e) { } // [2026.10.20] 쓰인 횟수
+      // [2026.10.21] 바탕 템플릿 판 기록(KnowHow.js) — 글 파일은 첫머리 한 줄, 그 밖은 드라이브 파일 설명
       if (TEXT_TEMPLATE_EXT_REGEX_.test(rawName)) {
-        const content = f.getBlob().getDataAsString('UTF-8');
+        let content = f.getBlob().getDataAsString('UTF-8');
+        if (typeof knhTplStampText_ === 'function') content = knhTplStampText_(f, content);
         const mimeType = /\.md$/i.test(rawName) ? 'text/markdown' : 'text/plain';
         caseFolder.createFile(Utilities.newBlob(content, mimeType, rawName));
       } else {
-        f.makeCopy(rawName, caseFolder);
+        const copied = f.makeCopy(rawName, caseFolder);
+        if (typeof knhTplStampDesc_ === 'function') knhTplStampDesc_(copied, f);
       }
     }
   } catch (err) {
@@ -14163,7 +14174,10 @@ function handleGetReportTemplate(body) {
         return { found: false, error: '보고서 템플릿은 .md 또는 .txt 파일만 지원합니다: ' + rawName };
       }
       try { if (typeof knhCountUse_ === 'function') knhCountUse_('보고서', nameWithoutExt); } catch (e) { } // [2026.10.20] 쓰인 횟수
-      return { found: true, content: f.getBlob().getDataAsString('UTF-8') };
+      // [2026.10.21] 작성관리가 이 내용을 새 문서 초안으로 쓴다 — 첫머리에 바탕 템플릿 판 한 줄(KnowHow.js)
+      let content = f.getBlob().getDataAsString('UTF-8');
+      if (typeof knhTplStampText_ === 'function') content = knhTplStampText_(f, content);
+      return { found: true, content: content };
     }
     return { found: false };
   } catch (err) {
@@ -14312,6 +14326,7 @@ function handleCreateAdvisorySlideReport(body) {
       const 고객명 = String(body.고객명 || '');
       const fileName = '자문보고서_' + (고객명 || '고객') + '_슬라이드';
       const copied = templateFile.makeCopy(fileName, folder);
+      if (typeof knhTplStampDesc_ === 'function') knhTplStampDesc_(copied, templateFile); // [2026.10.21] 바탕 템플릿 판 기록(파일 설명)
       const pres = SlidesApp.openById(copied.getId());
       pres.replaceAllText('{{고객명}}', 고객명);
       pres.replaceAllText('{{사건명}}', String(body.사건명 || ''));
@@ -17216,6 +17231,8 @@ function runNightlyChiefManager() {
   try { sysAuditEnsureTrigger_(); } catch (err) { console.error('지침 AI 점검 트리거 확인 실패: ' + err.message); }
   // [2026.10.20] 지침·템플릿 정비 판정(KnowHow.js, 토큰 0) — 자기점검 다음·개선 후보 보고서 앞(보고서에 판정이 실리게)
   try { if (typeof knhNightly_ === 'function') knhNightly_(); } catch (err) { console.error('지침·템플릿 정비 판정 실패: ' + err.message); }
+  // [2026.10.21] 노하우 폴더 목록 색인(_색인.json)을 실제 파일 목록과 맞춘다(KnowHow.js, 토큰 0 — 바뀐 파일만 읽음)
+  try { if (typeof knhIdxNightly_ === 'function') knhIdxNightly_({ budgetMs: 40000 }); } catch (err) { console.error('노하우 색인 맞추기 실패: ' + err.message); }
   try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
@@ -37625,7 +37642,10 @@ function tplBuildUsageStats_() {
   var F = tplFolders_(), templates = {}, sizeCap = 6000, folderIds = [];
   ['보고서', '의뢰서', '문단'].forEach(function (k) {
     if (F[k]) folderIds.push(F[k].getId());
-    templates[k] = tplReadFolder_(F[k]).map(function (t) { return { name: t.name, md5: tplMd5_(t.text), chars: t.text.length, text: t.text.slice(0, sizeCap) }; });
+    templates[k] = tplReadFolder_(F[k]).map(function (t) {
+      var ver = ''; try { ver = Utilities.formatDate(t.file.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); } catch (e) {}
+      return { name: t.name, md5: tplMd5_(t.text), chars: t.text.length, text: t.text.slice(0, sizeCap), 판: ver };
+    });
   });
   // 사건 당사자 이름(통계 제목에서 빼려고) — 작업관리 고객명·납세자
   var names = [];
@@ -37643,7 +37663,10 @@ function tplBuildUsageStats_() {
     (res.files || []).forEach(function (f) {
       if ((f.parents || []).some(function (p) { return folderIds.indexOf(p) !== -1; })) return;
       if (copies.length >= 60) return;
-      try { copies.push({ name: f.name, text: DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8') }); } catch (e) {}
+      try {
+        var ctext = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
+        copies.push({ name: f.name, text: ctext, stamp: typeof knhTplParseStamp_ === 'function' ? knhTplParseStamp_(ctext) : null }); // [2026.10.21] 바탕 템플릿 판 줄
+      } catch (e) {}
     });
   } catch (e) {}
   var heads = function (t) { return (String(t).match(/^#{2,3}\s.+$/gm) || []).map(tplNormHead_).filter(function (h) { return h.length >= 2; }); };
@@ -37651,8 +37674,11 @@ function tplBuildUsageStats_() {
   ['보고서', '의뢰서'].forEach(function (k) {
     templates[k].forEach(function (tp) {
       var base = tp.name.replace(/\.(md|txt)$/i, '');
-      var mine = copies.filter(function (c) { return c.name.indexOf(base) !== -1 || (k === '의뢰서' && c.name.replace(/\.md$/, '') === base); });
+      // [2026.10.21] 사본 첫머리 "바탕 템플릿" 줄이 있으면 그것으로 짝짓는다(이름이 비슷한 다른 템플릿과 헷갈리지 않게), 없으면 예전처럼 파일 이름으로
+      var mine = copies.filter(function (c) { if (c.stamp) return c.stamp.name === base; return c.name.indexOf(base) !== -1 || (k === '의뢰서' && c.name.replace(/\.md$/, '') === base); });
       if (!mine.length) return;
+      var verCnt = {}, oldVer = 0;
+      mine.forEach(function (c) { if (!c.stamp) return; verCnt[c.stamp.ver] = (verCnt[c.stamp.ver] || 0) + 1; if (tp.판 && c.stamp.ver < tp.판) oldVer++; });
       var orig = heads(tp.text), added = {}, emptyCnt = {}, presentCnt = {}, labels = (tp.text.match(/^-\s*([^:\n]{1,20}):\s*$/gm) || []).map(function (x) { return x.replace(/^-\s*|:\s*$/g, ''); });
       mine.forEach(function (c) {
         var seen = {};
@@ -37661,7 +37687,7 @@ function tplBuildUsageStats_() {
         labels.forEach(function (lb) { var m = new RegExp('^-\\s*' + lb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*(.*)$', 'm').exec(c.text); if (!m) return; presentCnt[lb] = (presentCnt[lb] || 0) + 1; if (!m[1].trim()) emptyCnt[lb] = (emptyCnt[lb] || 0) + 1; });
       });
       var need = Math.max(2, Math.ceil(mine.length * 0.3));
-      perTemplate.push({ 종류: k, 템플릿: tp.name, 사본수: mine.length,
+      perTemplate.push({ 종류: k, 템플릿: tp.name, 사본수: mine.length, 지금판: tp.판, 사본판별: verCnt, 옛판사본: oldVer,
         공통추가제목: Object.keys(added).filter(function (h) { return added[h] >= need; }).sort(function (a, b) { return added[b] - added[a]; }).slice(0, 15).map(function (h) { return h + ' (' + added[h] + ')'; }),
         늘빈칸: labels.filter(function (lb) { var p = presentCnt[lb] || 0; return p >= 2 && (emptyCnt[lb] || 0) >= Math.ceil(p * 0.8); }) });
     });

@@ -353,12 +353,15 @@ function knhCaseMaterial_(cr, state, tplFiles, deadline) {
           if (!/\.md$/i.test(f.getName())) continue;
           n++;
           var text = f.getBlob().getDataAsString('UTF-8');
-          var tp = reps.filter(function (t) { return f.getName().indexOf(knhBase_(t.name)) !== -1; })[0];
+          // [2026.10.21] 사본 첫머리 "바탕 템플릿: <이름> · 판 <수정일>" 줄이 있으면 그것으로 템플릿을 짝짓고(없으면 예전처럼 파일 이름으로),
+          // 그 판이 지금 템플릿보다 옛것이면 표시한다 — 변경량은 지금 템플릿과 비교하므로 옛 판 사본은 템플릿이 고쳐진 만큼 크게 나온다.
+          var st = knhTplParseStamp_(text);
+          var tp = (st && reps.filter(function (t) { return knhBase_(t.name) === st.name; })[0]) || reps.filter(function (t) { return f.getName().indexOf(knhBase_(t.name)) !== -1; })[0];
           var ch = tp ? knhChangeRatio_(tp.text, text) : null;
           // 세무사님 판단이 담기는 절(판단·결론·검토의견·쟁점)만 짧게
           var secs = [];
           String(text).split(/\n(?=##\s)/).forEach(function (s) { if (/^##\s*[^\n]*(판단|결론|검토\s*의견|쟁점|세무사|유의|주의)/.test(s) && secs.join('').length < 1500) secs.push(s.slice(0, 700)); });
-          item.문서.push({ 템플릿: tp ? tp.name : '', 제목남은비율: ch ? ch.kept : null, 새제목: ch ? ch.added.slice(0, 8).map(function (h) { return knhMask_(h, cr.names); }) : [],
+          item.문서.push({ 템플릿: tp ? tp.name : '', 바탕판: st ? st.ver : '', 옛판으로씀: !!(st && tp && st.ver < tp.modified), 제목남은비율: ch ? ch.kept : null, 새제목: ch ? ch.added.slice(0, 8).map(function (h) { return knhMask_(h, cr.names); }) : [],
             크게고침: !!(ch && (ch.kept < 0.5 || ch.added.length >= 4)), 판단발췌: knhMask_(secs.join('\n'), cr.names).slice(0, 1500), 글자수: text.length });
         }
       }
@@ -570,6 +573,7 @@ function knhDecide_(body) {
       cur.moveTo(bin);
       result = '「' + p.대상 + '」을 같은 폴더 「_폐기」로 옮겼습니다(지우지 않음 — 되살리려면 드라이브에서 다시 옮기면 됩니다).';
     } else result = decision === 'reject' ? '반려했습니다 — 사유는 다음 주 루틴이 읽습니다.' : '유지하기로 했습니다 — 사유는 다음 주 루틴이 읽습니다.';
+    if (decision === 'adopt' || decision === 'retire') knhIdxTouch_(folder); // [2026.10.21] 그 폴더 목록 색인도 바로 맞춘다
     // 처리한 제안 파일은 _제안함/_처리됨으로(지우지 않음)
     if (p.fileId) { try { var pf = DriveApp.getFileById(p.fileId); pf.moveTo(knhSub_(knhSub_(folder, KNH_INBOX_, true), KNH_DONE_, true)); } catch (e) { } }
     var at = knhNow_();
@@ -674,6 +678,174 @@ function knhDispatch_(body) {
     }
     if (a === 'knh_decide') return knhDecide_(body);
     if (a === 'knh_run') return { success: true, result: knhNightly_({ trigger: '화면' }) };
+    if (a === 'knh_index') return knhIdxForScreen_(body);
     return { error: '모르는 동작: ' + a };
   } catch (e) { return { error: String(e && e.message || e) }; }
+}
+
+// =============================================================================================
+// [2026.10.21] 노하우 파일 공용 장치 두 가지 — 세무사님 "둘 다 공용방식으로 진행하라"(받아 오신 원칙 1·3):
+//  "1. 사건에는 템플릿 버전을 남길 것. 나중에 템플릿을 개선해도 과거 사건 보고서가 바뀌면 안 됩니다."
+//  "3. 목록은 캐시, 본문은 필요할 때만. 색인은 화면에 캐시해 두고 즉시 보여주고, 본문은 클릭할 때 불러옵니다."
+//  (원칙 2 "시트는 색인만, 본문은 파일로"는 이미 지켜짐 — 노하우 본문은 드라이브 .md 파일)
+// 대상: 의뢰서템플릿·보고서템플릿·문단·절세 아이템 등 "계속하여 노하우로서 축적할 데이타". 새 노하우 폴더는 knhIdxRoots_에 한 줄 더하면 같은 장치를 쓴다.
+// =============================================================================================
+
+// ---- 가. 목록 색인(_색인.json) — 폴더마다 제목·종류·한 줄 요약·수정일·파일ID만(본문 없음) ----
+var KNH_IDX_FILE_ = '_색인.json';
+// 순수 함수(드라이브 모름) — 화면(taxplan.html title_·meta_·gist_)과 같은 규칙
+function knhIdxIsItem_(name) { name = String(name || ''); return /\.(md|txt)$/i.test(name) && name.charAt(0) !== '_'; }
+function knhIdxTitle_(name) { return String(name || '').replace(/\.(md|txt)$/i, '').replace(/^\d+[\s._-]+/, ''); }
+// 머리 줄(> 로 시작하는 맨 앞 인용) 중 "종류:" "한 줄 요약:" 같은 칸
+function knhIdxMeta_(src) {
+  var m = {}, lines = String(src || '').split(/\r?\n/);
+  for (var i = 0; i < Math.min(lines.length, 14); i++) {
+    var L = lines[i];
+    if (!/^\s*>/.test(L)) continue;
+    L.replace(/^\s*>\s*/, '').split(/\s+·\s+/).forEach(function (part) {
+      var k = part.match(/^\s*([^:：]{1,12})\s*[:：]\s*(.+)$/);
+      if (k) m[k[1].trim()] = k[2].trim();
+    });
+  }
+  return m;
+}
+// 한 줄 요약 — "## 핵심" 아래 첫 "- " 줄(굵게·괄호 조문은 빼고 짧게)
+function knhIdxGist_(src) {
+  var m = String(src || '').match(/##\s*핵심[^\n]*\n+\s*-\s*([^\n]+)/);
+  if (!m) return '';
+  var t = m[1].replace(/\*\*/g, '').replace(/\([^)]*§[^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+  return t.length > 90 ? t.slice(0, 88) + '…' : t;
+}
+function knhIdxEntry_(f) {
+  var src = String(f.text || '').replace(/^﻿/, ''), m = knhIdxMeta_(src);
+  return { id: f.id, 파일: f.name, 제목: knhIdxTitle_(f.name), 종류: m['종류'] || '', 요약: knhIdxGist_(src), 수정일: f.modified };
+}
+// 색인과 실제 파일 목록 맞대기 — 같은 ID·같은 이름·같은 수정일이면 그대로 쓰고, 나머지는 다시 읽을 것(stale), 없어진 파일 수(removed)
+function knhIdxCompare_(items, listing) {
+  var by = {}, keep = {}, stale = [], removed = 0, seen = {};
+  (items || []).forEach(function (e) { if (e && e.id) by[e.id] = e; });
+  (listing || []).forEach(function (f) {
+    seen[f.id] = 1;
+    var e = by[f.id];
+    if (e && e.수정일 === f.modified && e.파일 === f.name) keep[f.id] = e; else stale.push(f);
+  });
+  Object.keys(by).forEach(function (id) { if (!seen[id]) removed++; });
+  return { keep: keep, stale: stale, removed: removed };
+}
+
+// GAS — 폴더 하나 맞추기. 바뀐 파일만 다시 읽고(deadline까지), 달라진 게 있으면 _색인.json을 고쳐 쓴다.
+function knhIdxMod_(d) { return Utilities.formatDate(d, 'Asia/Seoul', 'yyyy.MM.dd HH:mm:ss'); } // listFolder modifiedDate와 같은 꼴
+function knhIdxListing_(folder) {
+  var out = [], it = folder.getFiles();
+  while (it.hasNext()) {
+    var f = it.next(), n = f.getName();
+    if (!knhIdxIsItem_(n) || f.isTrashed()) continue;
+    out.push({ id: f.getId(), name: n, modified: knhIdxMod_(f.getLastUpdated()), file: f });
+  }
+  out.sort(function (a, b) { return a.name.localeCompare(b.name, 'ko', { numeric: true }); });
+  return out;
+}
+function knhIdxReadFile_(folder) {
+  var f = knhFindFile_(folder, KNH_IDX_FILE_);
+  if (!f) return null;
+  try { var j = JSON.parse(f.getBlob().getDataAsString('UTF-8') || 'null'); return j && Array.isArray(j.items) ? j : null; } catch (e) { return null; }
+}
+function knhIdxSync_(folder, deadline) {
+  var listing = knhIdxListing_(folder), idx = knhIdxReadFile_(folder);
+  var cmp = knhIdxCompare_(idx ? idx.items : [], listing);
+  var items = [], files = [], read = 0, stale = 0;
+  listing.forEach(function (f) {
+    var e = cmp.keep[f.id] || null;
+    if (!e && Date.now() < deadline) {
+      try { e = knhIdxEntry_({ id: f.id, name: f.name, modified: f.modified, text: f.file.getBlob().getDataAsString('UTF-8') }); read++; } catch (er) { e = null; }
+    }
+    if (e) items.push(e); else stale++;
+    files.push({ id: f.id, name: f.name, modifiedDate: f.modified, 색인: e ? { 제목: e.제목, 종류: e.종류, 요약: e.요약 } : null });
+  });
+  var wrote = false;
+  if (read || cmp.removed || (!idx && listing.length)) {
+    try { writeFileOverwrite_(folder, KNH_IDX_FILE_, JSON.stringify({ v: 1, at: knhNow_(), 폴더: folder.getName(), items: items }), 'application/json'); wrote = true; }
+    catch (e) { console.log('노하우 색인 쓰기 실패(' + folder.getName() + '): ' + e.message); }
+  }
+  return { files: files, total: listing.length, read: read, removed: cmp.removed, stale: stale, wrote: wrote };
+}
+
+// 노하우 폴더 등록부 — subs: 바로 아래 하위 폴더(_로 시작하는 것 빼고)도 각각 색인
+function knhIdxRoots_() {
+  var out = [], add = function (key, folder, subs) { if (folder) out.push({ key: key, folder: folder, subs: !!subs }); };
+  var bm = null;
+  try { bm = getBusinessManagerFolder_(); } catch (e) { }
+  add('절세', knhSub_(bm, '절세', false), true);
+  // 의뢰서템플릿은 아직 넣지 않는다 — work 화면(document-tools.js)·부가서비스 서버(gs-extra, clasp로만 올림)의 의뢰서 템플릿 목록이
+  // 폴더 파일을 거르지 않고 다 보여 줘서 _색인.json이 "템플릿"으로 섞인다. 넣으려면 먼저 Code.js handleListCaseTemplates가
+  // _로 시작하는 파일을 빼게 고치고 gs-extra를 다시 만들어(tools/build-light.js) 함께 올린 뒤 여기 add('의뢰서', knhFolder_('의뢰서'), false).
+  add('보고서', knhFolder_('보고서'), false);
+  add('문단', knhFolder_('문단'), false);
+  return out;
+}
+function knhIdxSubs_(folder) {
+  var out = [], it = folder.getFolders();
+  while (it.hasNext()) { var d = it.next(); if (d.getName().charAt(0) !== '_' && !d.isTrashed()) out.push(d); }
+  return out;
+}
+
+// 화면 입구 knh_index {key:'절세'} — 목록 + 색인(본문 없음). 색인이 낡은 파일은 몇 초 안에서만 고쳐 읽고, 나머지는 색인:null로 돌려
+// 화면이 예전 방식(본문 읽어 요약 뽑기)으로 물러서 채운다(기능이 소리 없이 빠지지 않게). 밤 점검이 나머지를 맞춘다.
+function knhIdxForScreen_(body) {
+  var key = String(body && body.key || '');
+  var root = knhIdxRoots_().filter(function (r) { return r.key === key; })[0];
+  if (!root) return { error: '「' + key + '」 노하우 폴더를 찾지 못했습니다.' };
+  var deadline = Date.now() + 8000;
+  var top = knhIdxSync_(root.folder, deadline), stale = top.stale;
+  var folders = root.subs ? knhIdxSubs_(root.folder).map(function (d) {
+    try { var s = knhIdxSync_(d, deadline); stale += s.stale; return { id: d.getId(), name: d.getName(), files: s.files }; }
+    catch (e) { return { id: d.getId(), name: d.getName(), files: [], error: String(e && e.message || e) }; }
+  }) : [];
+  return { success: true, folderId: root.folder.getId(), files: top.files, folders: folders, stale: stale };
+}
+
+// 파일을 고쳐 저장한 직후 — 그 파일이 든 폴더에 색인이 있으면 그 폴더만 맞춘다(Code.js uploadFile의 knowIndex 표시, 제안 채택·폐기)
+function knhIdxTouch_(fileOrFolder) {
+  try {
+    var ps = typeof fileOrFolder.getParents === 'function' && typeof fileOrFolder.getFiles !== 'function' ? fileOrFolder.getParents() : null;
+    var list = [];
+    if (ps) { while (ps.hasNext()) list.push(ps.next()); } else list.push(fileOrFolder);
+    list.forEach(function (p) { if (knhFindFile_(p, KNH_IDX_FILE_)) knhIdxSync_(p, Date.now() + 4000); });
+  } catch (e) { console.log('노하우 색인 갱신 실패(밤 점검이 다시 맞춤): ' + e.message); }
+}
+
+// 밤 점검(Code.js runNightlyChiefManager) — 등록된 모든 노하우 폴더의 색인을 실제 파일 목록과 맞춘다. 바뀐 파일만 읽어 보통 몇 초.
+function knhIdxNightly_(opts) {
+  var deadline = Date.now() + ((opts && opts.budgetMs) || 40000);
+  var sum = { at: knhNow_(), 폴더: 0, 항목: 0, 다시읽음: 0, 빠짐: 0, 남음: 0, 오류: [] };
+  knhIdxRoots_().forEach(function (r) {
+    [r.folder].concat(r.subs ? knhIdxSubs_(r.folder) : []).forEach(function (d) {
+      try { var s = knhIdxSync_(d, deadline); sum.폴더++; sum.항목 += s.total; sum.다시읽음 += s.read; sum.빠짐 += s.removed; sum.남음 += s.stale; }
+      catch (e) { sum.오류.push(d.getName() + ': ' + String(e && e.message || e).slice(0, 80)); }
+    });
+  });
+  try { PropertiesService.getScriptProperties().setProperty('KNH_IDX_LAST', JSON.stringify(sum)); } catch (e) { }
+  return sum;
+}
+
+// ---- 나. 바탕 템플릿 판 기록 — 사건 폴더에 템플릿 사본을 만들 때 첫머리(글 파일) 또는 드라이브 파일 설명(그 밖)에 한 줄 ----
+// 판 = 템플릿 파일의 드라이브 수정 시각. 파일 이름엔 판을 붙이지 않는다(같은 이름 갱신·_이전판 보관이 기존 규칙).
+// 글 파일에는 HTML 주석으로 넣는다 — 원문 편집창에선 보이고, 미리보기·고객 발행본에는 나타나지 않는다.
+function knhTplStampLine_(name, ver) { return '<!-- 바탕 템플릿: ' + knhBase_(name) + ' · 판 ' + ver + ' -->'; }
+var KNH_STAMP_RE_ = /^﻿?\s*<!--\s*바탕 템플릿:\s*(.+?)\s*·\s*판\s*([^>]*?)\s*-->[ \t]*\r?\n?/;
+function knhTplParseStamp_(text) {
+  var m = KNH_STAMP_RE_.exec(String(text || ''));
+  return m ? { name: m[1], ver: m[2] } : null;
+}
+// 맨 앞에 판 줄이 이미 있으면 바꿔 끼우고, 없으면 붙인다
+function knhTplApplyStamp_(text, line) {
+  var t = String(text == null ? '' : text).replace(/^﻿/, '');
+  return line + '\n' + t.replace(KNH_STAMP_RE_, '');
+}
+function knhTplVer_(tplFile) { return Utilities.formatDate(tplFile.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); }
+function knhTplStampText_(tplFile, text) {
+  try { return knhTplApplyStamp_(text, knhTplStampLine_(tplFile.getName(), knhTplVer_(tplFile))); } catch (e) { return text; }
+}
+function knhTplStampDesc_(copyFile, tplFile) {
+  try { copyFile.setDescription('바탕 템플릿: ' + knhBase_(tplFile.getName()) + ' · 판 ' + knhTplVer_(tplFile)); } catch (e) { console.log('바탕 템플릿 판 기록 실패: ' + e.message); }
 }
