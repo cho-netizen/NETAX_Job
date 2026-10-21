@@ -4089,7 +4089,7 @@ function dispatchClientAction0_(body) {
   // 커버화면 상담 음성메모(Consult.js) — 녹음 조각 받기 / 합쳐 저장·받아쓰기 예약 / 진행 상황
   // [2026.10.22 2차] 기기 3종 — 모든 기기 로그아웃·지문 로그인 열쇠·작업일지 한 줄·오늘 할 일·알림 답·이어 보기(토큰 0)
   if (body.action === 'sess_revoke_all') return jsonResponse(sessRevokeAll_());
-  if (body.action === 'device_token_issue') return jsonResponse(deviceTokenIssue_());
+  if (body.action === 'device_token_issue') return jsonResponse(deviceTokenIssue_(body));
   if (body.action === 'work_append_log') return jsonResponse(workAppendLog_(body));
   if (body.action === 'todo_list') return jsonResponse(todoList_());
   if (body.action === 'notify_get') return jsonResponse({ success: true, item: notifyGet_(body.id) });
@@ -16901,11 +16901,19 @@ function deviceTokenSign_(exp) {
   const secret = manageApp_sessionSignKey_(); if (!secret) return '';
   return Utilities.computeHmacSha256Signature('dev:' + exp, secret).map(function (b) { return ((b < 0 ? b + 256 : b)).toString(16).padStart(2, '0'); }).join('');
 }
-function deviceTokenIssue_() { const exp = String(Date.now() + DEVICE_TOKEN_TTL_MS_), sig = deviceTokenSign_(exp); return sig ? { success: true, deviceToken: 'd' + exp + '.' + sig } : { error: '열쇠를 만들지 못했습니다.' }; }
+// [2026.10.22] 워치 열쇠 — 세무사님 "워치에서 비밀번호가 12시간이라고? 120년으로 하라". 워치엔 지문 장치가 없어 비밀번호를 한 번 넣으면
+//  그 워치를 기억한다(앞 글자 w, 120년). 모든 기기 로그아웃(서명 열쇠 교체)이면 함께 무효.
+const WATCH_TOKEN_TTL_MS_ = 120 * 365 * 86400000;
+function deviceTokenIssue_(body) {
+  const watch = !!(body && body.watch), ttl = watch ? WATCH_TOKEN_TTL_MS_ : DEVICE_TOKEN_TTL_MS_;
+  const exp = String(Date.now() + ttl), sig = deviceTokenSign_((watch ? 'w' : '') + exp);
+  return sig ? { success: true, deviceToken: (watch ? 'w' : 'd') + exp + '.' + sig } : { error: '열쇠를 만들지 못했습니다.' };
+}
 function manageApp_deviceLogin(deviceToken) {
-  const m = String(deviceToken || '').match(/^d(\d{12,14})\.([0-9a-f]{64})$/);
-  if (!m || Date.now() > Number(m[1]) || Number(m[1]) > Date.now() + DEVICE_TOKEN_TTL_MS_ + 60000) return { ok: false, message: '지문 로그인 기한이 지났습니다 — 비밀번호로 한 번 들어와 다시 켜 주세요.' };
-  if (deviceTokenSign_(m[1]) !== m[2]) return { ok: false, message: '지문 로그인 열쇠가 무효입니다(모든 기기 로그아웃 뒤) — 비밀번호로 들어와 다시 켜 주세요.' };
+  const m = String(deviceToken || '').match(/^([dw])(\d{12,14})\.([0-9a-f]{64})$/);
+  const ttl = m && m[1] === 'w' ? WATCH_TOKEN_TTL_MS_ : DEVICE_TOKEN_TTL_MS_;
+  if (!m || Date.now() > Number(m[2]) || Number(m[2]) > Date.now() + ttl + 60000) return { ok: false, message: '기기 로그인 기한이 지났습니다 — 비밀번호로 한 번 들어와 주세요.' };
+  if (deviceTokenSign_((m[1] === 'w' ? 'w' : '') + m[2]) !== m[3]) return { ok: false, message: '기기 로그인 열쇠가 무효입니다(모든 기기 로그아웃 뒤) — 비밀번호로 들어와 주세요.' };
   const token = manageApp_issueSessionToken_();
   return token ? { ok: true, token: token } : { ok: false, message: '로그인 표를 만들지 못했습니다.' };
 }

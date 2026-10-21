@@ -44,7 +44,7 @@
         if (!confirm('모든 기기(이 기기 포함)에서 로그아웃할까요?\n지문 로그인도 모두 꺼지고, 다시 비밀번호로 들어와야 합니다.')) return;
         callGas('sess_revoke_all', {}).then(function(r){
           nxFp_.disable();
-          try{ sessionStorage.removeItem('nxManageSessionToken'); localStorage.removeItem('nxMobileToken'); }catch(e){}
+          try{ sessionStorage.removeItem('nxManageSessionToken'); localStorage.removeItem('nxMobileToken'); localStorage.removeItem('nxWatchTok'); }catch(e){}
           alert((r && r.message) || '로그아웃했습니다.'); location.reload();
         }).catch(function(e){ toast('로그아웃하지 못했습니다: ' + e.message); });
       });

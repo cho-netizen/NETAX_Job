@@ -213,6 +213,9 @@
           if (res && res.error === 'AUTH_REQUIRED'){
             // 세션 토큰이 없거나 만료됨 — 다시 로그인하도록 강제.
             try{ sessionStorage.removeItem('nxManageSessionToken'); }catch(e){}
+            // [2026.10.22] 워치로 기억된 기기면 알림 없이 다시 들어간다(워치 열쇠로 새 로그인 표를 받음)
+            var hasWatch = false; try { hasWatch = !!localStorage.getItem('nxWatchTok'); } catch (e) {}
+            if (hasWatch){ location.reload(); return; }
             nxAlert_('로그인이 만료되었습니다. 다시 로그인해주세요.').then(function(){ location.reload(); });
             return;
           }
@@ -502,6 +505,14 @@
     if (savedToken){
       manageAppSessionToken_ = savedToken;
       enterApp();
+    } else if ((function(){ try { return localStorage.getItem('nxWatchTok'); } catch (e) { return null; } })()){
+      // [2026.10.22] 워치 — 세무사님 "120년으로 하라": 이 기기를 워치로 기억해 두었으면 비밀번호 없이 바로 들어간다(12시간 표가 끝나도 다시 받음)
+      err.textContent = '들어가는 중…';
+      google.script.run.withSuccessHandler(function(r){
+        if (r && r.ok && r.token){ manageAppSessionToken_ = r.token; try{ sessionStorage.setItem(STORAGE_KEY, r.token); }catch(e){} err.textContent = ''; enterApp(); return; }
+        if (r && /무효|기한/.test(r.message || '')){ try { localStorage.removeItem('nxWatchTok'); } catch (e) {} }
+        err.textContent = (r && r.message) || '비밀번호로 들어와 주세요.'; input.focus();
+      }).withFailureHandler(function(e){ err.textContent = '확인 중 오류: ' + (e && e.message ? e.message : e); }).manageApp_deviceLogin(localStorage.getItem('nxWatchTok'));
     } else {
       input.focus();
       // [2026.10.22] 지문 로그인 — 이 기기에서 켜 두었으면 "👆 지문으로 입장" 단추(세무사님 "지문으로")

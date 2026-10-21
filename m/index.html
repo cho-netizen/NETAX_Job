@@ -619,6 +619,33 @@
   function todayCaseIds() { return call('todo_list', {}, 60000).then(function (t) { return ((t && t.오늘예약) || []).map(function (b) { return b.caseId; }).filter(Boolean); }, function () { return []; }); }
   function hhmm() { var d = new Date(); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
 
+  // ---------- 넥스에게 말하기(워치·휴대폰) ----------
+  // [2026.10.22] 세무사님 "워치에서 비밀번호가 12시간이라고? 120년으로 하라" — 워치엔 지문 장치가 없어, 여기서 비밀번호를 한 번 넣으면
+  //  그 워치를 기억한다(워치 열쇠 120년, 서버 서명). 다음부터는 열자마자 말하기 모드. 모든 기기 로그아웃이면 끊긴다.
+  //  워치 판단: 화면 짧은 쪽 300 미만이면 묻지 않고 기억, 아니면(휴대폰 등) 한 번 묻는다.
+  function talkGo() {
+    var go = function () { handOffToken(); location.replace(APP_URL + '?talk=1'); };
+    var wt = lsGet('nxWatchTok');
+    var viaPassword = function () {
+      ensureLogin().then(function () {
+        var small = Math.min(screen.width || 999, screen.height || 999) < 300;
+        if (!lsGet('nxWatchTok') && (small || confirm('이 기기(워치)에서는 다음부터 비밀번호를 묻지 않을까요?'))) {
+          return call('device_token_issue', { watch: true }, 60000).then(function (r) { if (r && r.deviceToken) lsSet('nxWatchTok', r.deviceToken); }, function () {});
+        }
+      }).then(go);
+    };
+    if (wt && !tokenValid(lsGet(TOKEN_KEY))) {
+      root.innerHTML = '<div class="card">' + msg('info', '들어가는 중…') + '</div>';
+      gas('manageApp_deviceLogin', [wt]).then(function (r) {
+        if (r && r.ok && r.token) { lsSet(TOKEN_KEY, r.token); go(); return; }
+        if (r && /무효|기한/.test(r.message || '')) lsSet('nxWatchTok', null);
+        root.innerHTML = ''; viaPassword();
+      }, function () { root.innerHTML = ''; viaPassword(); });
+      return;
+    }
+    viaPassword();
+  }
+
   // ---------- 메뉴(휴대폰 창구 기능 모음) ----------
   function showMenu() {
     var items = [['📋', '오늘 할 일', '/m/?todo=1'], ['📷', '현장 서류 찍기', '/m/?scan=1'], ['📞', '통화 메모', '/m/?memo=1'], ['🚶', '방문 시작·끝', '/m/?visit=1'],
@@ -792,7 +819,7 @@
   else if (params.get('scan')) showScan();
   else if (params.get('sign')) showSign();
   // [2026.10.22] 넥스에게 말하기(워치·휴대폰) — 로그인표를 넘겨 job 앱의 "말하기 모드"(접는 폰 커버화면과 같은 화면·같은 대화)로
-  else if (params.get('talk')) ensureLogin().then(function () { handOffToken(); location.replace(APP_URL + '?talk=1'); });
+  else if (params.get('talk')) talkGo();
   else if (params.get('launch') || isStandalone()) {
     // 앱 아이콘으로 열었을 때 — 공유받고 못 올린 것이 있으면 그것부터, 아니면 로그인 확인 후 곧바로 job(/app/)으로.
     // (구글 주소로 넘기던 처음 방식은 이 휴대폰에서 "페이지를 찾을 수 없음" — 위 jobHref 설명 참고)
