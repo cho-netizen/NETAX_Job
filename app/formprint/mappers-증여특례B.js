@@ -187,9 +187,12 @@
     o.set('㉓', gift).set('㉔', base).set('㉕', H.giftInheritRate(base)).set('㉖', calc).set('㉗', credit).set('㉘', pen).set('㉙', late).set('㉚', pay);
     o.check('㉖ = ㉔ × ㉕ − 누진공제', calc, Math.floor(progressive(base)));
     o.check('㉚ = ㉖ − ㉗ + ㉘ + ㉙', pay, Math.max(0, calc - credit + pen + late));
-    o.miss('㉛ 연부연납·㉜ 분납(금액·납부 및 신청일자)', '계산기에 없음(일감몰아주기 탭에 연부연납·분납 계산 없음)');
-    o.set('㉝@금액', pay);
-    o.note('㉝ 신고납부 = ㉚(연부연납·분납 없음으로 봄 — 신청하면 ㉝ = ㉚ − ㉛ − ㉜로 고칠 것)');
+    // [2026.10.22 증여-17 C7] ㉛ 연부연납·㉜ 분납 = 공통 연부연납·분납 도구 값(세목 증여세·총 납부세액이 ㉚과 같을 때만), ㉝ = ㉚ − ㉛ − ㉜
+    var pt_ = payToolsB_(pay);
+    if (pt_.installment) o.set('㉛@금액', pt_.installment); else o.miss('㉛ 연부연납', '연부연납 도구 결과 없음(세목 증여세·총 납부세액이 ㉚과 같을 때만 씀)');
+    if (pt_.split) o.set('㉜@금액', pt_.split); else o.miss('㉜ 분납', '분납 도구 결과 없음(세목 증여세·총 납부세액이 ㉚과 같을 때만 씀)');
+    o.set('㉝@금액', Math.max(0, pay - pt_.installment - pt_.split));
+    o.miss('㉛㉜㉝ 납부 및 신청일자', '계산기에 없음');
     o.miss('㉝ 납부 및 신청일자', '계산기에 없음');
     if (I.companySize === 'general' && n(I.tradeRatio) <= 30) o.note('과세요건: 일반기업 거래비율 30% 이하인데 과세됨 — 특수관계법인 매출액 1천억원 초과 대체요건(법 §45의3①1호나목2)으로 판정');
     sign(o, ctx);
@@ -550,7 +553,9 @@
     }
     o.set('㉑', n(I.dividendDeduction));
     if (n(I.dividendDeduction)) o.note('㉑ 배당소득공제 = 화면 입력 금액(시행령 §34의4⑤·⑥ 식은 계산기 밖에서 계산)');
-    o.note(JT_GROUP_NOTE);
+    // [2026.10.22 증여-17 C8] 수증자 본인 비율을 넣었으면 엔진은 그 비율로 이 수증자 몫만(법인세 상당액도 그 몫만) 계산 — 예전 알림은 넣지 않았을 때만
+    if (n((ctx.in || {}).doneeRatio) > 0) o.note('계산기는 수증자 본인 주식보유비율(' + r4(n(ctx.in.doneeRatio)) + '%)로 이 수증자 몫만 계산함(법인세 상당액도 그 몫만 — 법 §45의4①·③, 서식 작성방법 13 "신고하는 수증자 1인")');
+    else o.note(JT_GROUP_NOTE);
     var base = n(r.과세표준), calc = n(r.산출세액), prior = n(r.개시사업연도_산출세액), credit = n(r.신고세액공제),
       pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세), pay = n(r.납부세액), refund = n(r.환급세액);
     o.set('㉓', gift).set('㉔', base).set('㉕', H.giftInheritRate(base)).set('㉖', calc).set('㉗', prior).set('㉘', credit).set('㉙', pen).set('㉚', late).set('㉛', pay);
@@ -558,9 +563,11 @@
     if (calc >= prior) o.check('㉛ = ㉖ − ㉗ − ㉘ + ㉙ + ㉚', pay, calc - prior - credit + pen + late);
     else o.note('㉖ < ㉗ — 환급받을 세액 ' + refund + '원(법 §45의4③ 단서, 개시 때 낸 세액 한도). 서식에 환급 칸이 없어 ㉛은 0');
     if (initial) o.note('개시사업연도 신고 — ⑲ = 개시사업연도 이익, ㉒ = [{(⑲ × ⑳) − 법인세 상당액(' + n(I.corporateTax || 0) + '원 또는 자동계산)} ÷ 월수(' + (n(I.months) || 12) + ') × 12] × 3 − ㉑ (법 §45의4①)');
-    o.miss('㉜ 연부연납·㉝ 분납(금액·납부 및 신청일자)', '계산기에 없음(일감떼어주기 탭에 연부연납·분납 계산 없음)');
-    o.set('㉞@금액', pay).miss('㉞ 납부 및 신청일자', '계산기에 없음');
-    o.note('㉞ 신고납부 = ㉛(연부연납·분납 없음으로 봄 — 신청하면 ㉞ = ㉛ − ㉜ − ㉝로 고칠 것)');
+    // [2026.10.22 증여-17 C7] ㉜ 연부연납·㉝ 분납 = 공통 도구 값(세목 증여세·총 납부세액이 ㉛과 같을 때만), ㉞ = ㉛ − ㉜ − ㉝
+    var pt4_ = payToolsB_(pay);
+    if (pt4_.installment) o.set('㉜@금액', pt4_.installment); else o.miss('㉜ 연부연납', '연부연납 도구 결과 없음(세목 증여세·총 납부세액이 ㉛과 같을 때만 씀)');
+    if (pt4_.split) o.set('㉝@금액', pt4_.split); else o.miss('㉝ 분납', '분납 도구 결과 없음(세목 증여세·총 납부세액이 ㉛과 같을 때만 씀)');
+    o.set('㉞@금액', Math.max(0, pay - pt4_.installment - pt4_.split)).miss('㉜㉝㉞ 납부 및 신청일자', '계산기에 없음');
     sign(o, ctx);
     return o.result();
   };
@@ -720,7 +727,8 @@
     }
     if (div) { o.set('㉖', div).set('㉕', r4(share)).miss('㉓ 배당소득·㉔ 배당가능이익', '계산기에 없음 — 화면에 공제대상금액을 바로 넣음'); }
     else o.miss('㉓㉔㉕㉖ 라. 배당소득의 공제', '해당 없음 — 배당소득공제 0(화면 입력 없음)');
-    o.note(JT_DONEE_RATIO_NOTE);
+    if (n((ctx.in || {}).doneeRatio) > 0) o.note('㉕·㉙ 수증자의 주식보유비율 = 화면 "수증자 본인 주식보유비율" ' + r4(n(ctx.in.doneeRatio)) + '%(엔진도 이 비율로 계산)'); // [2026.10.22 증여-17 C8]
+    else o.note(JT_DONEE_RATIO_NOTE);
     // [2026.10.20 서식 감사] ㉕·㉙ "수증자의 주식보유비율"(법 §45의4①) — 🧮 수증자 본인 줄(같은 성명 합, 직접 + 간접)과 화면 비율이 다르면 드러냄(엔진도 화면 비율로 계산 — 세액 의심으로 보고)
     var meRows = (ctx.shareholders || []).filter(function (s) { return has(s.name) && s.name === (ctx.donee || {}).name; });
     var meR = meRows.reduce(function (a, s) { return a + n(s.directRatio) + n(s.indirectRaw); }, 0);
@@ -778,6 +786,16 @@
         indirectRaw: raw, indirect: cnt };
     });
   }
+  // [2026.10.22 증여-17 C7] 공통 연부연납·분납 도구 값 — 증여특례A의 payToolsFor와 같은 규칙(도구에 넣은 총 납부세액이 이 신고서 납부세액과 같을 때만)
+  function payToolsB_(total) {
+    var gg = function (k) { if (typeof window !== 'undefined' && typeof window[k] !== 'undefined') return window[k]; try { return (new Function('return typeof ' + k + " !== 'undefined' ? " + k + ' : undefined;'))(); } catch (e) { return undefined; } };
+    var ii = gg('lastInstallmentInput_'), ir = gg('lastInstallmentResult_'), si = gg('lastSplitPaymentInput_'), sr = gg('lastSplitPaymentResult_');
+    var same = function (inp) { return !!inp && inp.taxType === 'gift' && n(total) > 0 && Math.round(n(inp.totalTaxAmount)) === Math.round(n(total)); };
+    return {
+      installment: (same(ii) && ir) ? n(ir.연부연납대상금액) : 0,
+      split: (same(si) && sr && sr.분납가능여부) ? n(sr.분납신청금액 != null ? sr.분납신청금액 : sr.분납가능_최대금액) : 0
+    };
+  }
   function donee0() { return (typeof giftDonees !== 'undefined' && giftDonees && giftDonees[0]) || {}; }
   function jmCtx(extra) {
     var el = H.el;
@@ -801,7 +819,8 @@
     return Object.assign({ kind: 'jt', r: jtR(), donee: donee0(), taxAgent: H.agent(),
       in: { phase: el('jtPhase'), profit: n(el('jtProfit')), shareRatio: n(el('jtShareRatio')), corporateTax: n(el('jtCorporateTax')), corpTaxAfterCredit: n(el('jtCorpTaxAfterCredit')),
         corpTaxableIncome: n(el('jtCorpTaxableIncome')), months: n(el('jtMonths')), dividendDeduction: n(el('jtDividendDeduction')), initialTax: n(el('jtInitialTax')),
-        initialPaidTax: n(el('jtInitialPaidTax')), fiscalYearEnd: el('jtFiscalYearEnd'), filingStatus: el('jtFilingStatus') },
+        initialPaidTax: n(el('jtInitialPaidTax')), fiscalYearEnd: el('jtFiscalYearEnd'), filingStatus: el('jtFilingStatus'),
+        doneeRatio: n(el('jtDoneeRatio')) }, // [2026.10.22 증여-17 C8] 엔진은 이 값(수증자 본인 직접+간접)이 있으면 그 비율로 이 수증자 몫만 계산
       shareholders: shRows('jt'), segmentYears: years }, extra || {});
   }
   // 준비 조건 — 지금 인쇄와 같음: 본표는 결과가 있으면(isReady), 부표는 과세대상일 때 그 부표의 입력 표가 있으면
