@@ -444,8 +444,10 @@ function kakaoErrorsRecent_(days) {
   const sh = SpreadsheetApp.openById(WORK_SHEET_ID).getSheetByName('카카오오류');
   if (!sh || sh.getLastRow() < 2) return [];
   const since = Date.now() - (days || 7) * 86400000, n = Math.min(200, sh.getLastRow() - 1);
-  return sh.getRange(sh.getLastRow() - n + 1, 1, n, 4).getValues().filter(function (r) { const t = r[0] instanceof Date ? r[0].getTime() : Date.parse(r[0]); return t && t >= since; })
-    .reverse().slice(0, 30).map(function (r) { return { at: Utilities.formatDate(r[0] instanceof Date ? r[0] : new Date(r[0]), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 종류: String(r[1] || ''), rid: String(r[2] || ''), 내용: String(r[3] || '').slice(0, 200) }; });
+  // 시각: 봇이 한국 시각 글자(yyyy-MM-dd HH:mm:ss)로 남긴다(시트 시간대 어긋남 방지). 예전 날짜 값 줄도 읽는다.
+  const tsOf = function (v) { if (v instanceof Date) return v.getTime(); const m = String(v || '').match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?/); return m ? Date.parse(m[1] + 'T' + m[2] + (m[3] || ':00') + '+09:00') : 0; };
+  return sh.getRange(sh.getLastRow() - n + 1, 1, n, 4).getValues().filter(function (r) { const t = tsOf(r[0]); return t && t >= since; })
+    .reverse().slice(0, 30).map(function (r) { return { at: Utilities.formatDate(new Date(tsOf(r[0])), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 종류: String(r[1] || ''), rid: String(r[2] || ''), 내용: String(r[3] || '').slice(0, 200) }; });
 }
 // ⑤ 대시보드·설정 카드용 한 번에 받기
 function commStatus_() {
