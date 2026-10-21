@@ -288,7 +288,8 @@ const DRIVE_TOOLS = [
         userWanted: { type: 'string', description: '사용자가 하려던 일(일반화, 개인정보 없이)' },
         whyBlocked: { type: 'string', description: '왜 못 했는지 — 도구 없음/권한·외부 사이트 막힘/결과 부정확 등' },
         neededTool: { type: 'string', description: '있으면 좋을 도구·기능(한 줄)' },
-        area: { type: 'string', description: '화면·분야(예: 세액계산, 증빙확보, AI 탭)' }
+        area: { type: 'string', description: '화면·분야(예: 세액계산, 증빙확보, AI 탭)' },
+        urgent: { type: 'boolean', description: '세액·신고서 결과가 틀리게 나오는 경우에만 true(개선요구사항에 🚨 긴급으로도 올라감). 도구가 없거나 불편한 것은 false.' }
       },
       required: ['userWanted', 'whyBlocked']
     }
@@ -4615,7 +4616,8 @@ function buildContextSystemPrompt(basePrompt, body) {
   if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
     + '맞는 것만 load_business_manager로 읽어 그 판단 순서를 따른다 — 전부 읽지 말고 보통 한두 개, 같은 대화에서 이미 읽은 지침은 다시 읽지 않는다. 맞는 지침이 없으면 그냥 넘어간다. '
-    + '지침의 수치·조문은 개정될 수 있으니 세액·기한을 크게 가르는 것은 lookup_statute_article로 원문을 확인한다.';
+    + '지침의 수치·조문은 개정될 수 있으니 세액·기한을 크게 가르는 것은 lookup_statute_article로 원문을 확인한다. '
+    + 'load_business_manager 결과에 "현행화필요"가 있으면 그 지침을 근거로 답할 때 그 이유를 함께 밝힌다.';
   // [2026.10.21] 절세 아이템을 근거로 답하기 — 세무사님 원문: "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다. 하라.
   //  1. 인용할때 근거를 부기하도록 하라 2. 절세아이템 중 시간에 따라 변경되는 내용은 정기적으로 업데이트를 해야 한다"
   if (ctx.aiPanel) staticExtra += '\n\n[절세 아이템 — 근거로 답할 때] 절세 방법·세금 상식·자주 묻는 질문·주요 이슈·함정을 물으면 search_tax_items로 NETAX가 정리한 아이템을 찾고(토큰 0) 맞는 것만 read_tax_item으로 읽는다(보통 1~2개). '
@@ -14797,7 +14799,13 @@ function toolLoadBusinessManager(name) {
       if (/^_/.test(f.getName()) || !/\.(md|txt)$/i.test(f.getName())) continue; // [2026.10.20] 목록에 없는 것("_" 파일·json 등)은 불러오지 않는다
       if (base === target || f.getName() === target) {
         try { if (typeof knhCountUse_ === 'function') knhCountUse_('지침', base); } catch (e) { } // [2026.10.20] 읽힌 횟수(폐기 후보 판정)
-        return { name: base, content: f.getBlob().getDataAsString('UTF-8') };
+        const out = { name: base, content: f.getBlob().getDataAsString('UTF-8') };
+        // [2026.10.22] 현행화 필요(KnowHow.js 공용 판정 — 인용 조문 개정·본문 날짜 지남·개편안·1년)면 넥스가 인용할 때 함께 말하게
+        try {
+          const cur = typeof knhDocCurrencyNow_ === 'function' ? knhDocCurrencyNow_(out.content, f.getLastUpdated()) : null;
+          if (cur && cur.필요) { out.현행화필요 = cur.이유; out.안내 = '이 지침은 현행화 필요 표시가 있다 — 이 지침을 근거로 답하면 그 이유를 함께 말하고, 해당 세율·기한·조문은 조문 원문 조회로 확인한 뒤에만 단정하라.'; }
+        } catch (e) { }
+        return out;
       }
     }
     return { error: '"' + target + '"라는 업무관리자를 찾을 수 없습니다. list_business_managers로 정확한 이름을 다시 확인하세요.' };
@@ -37389,6 +37397,41 @@ function corrSummary_(sinceMs) {
   return Object.keys(g).map(function (k) { return g[k]; }).filter(function (o) { return o.count >= 2; }).sort(function (a, b) { return b.count - a.count; }).slice(0, 20);
 }
 
+// [2026.10.22] 변경 점검표 — 세무사님 "혹시 시스템변경시 보안점검을 기본적으로 하지 않고 있나? 그리고 보안점검처럼 점검해야 할 항목이 꽤 많을 텐데?"
+//  → "1.2.번 만들고 일괄배포하라". ①(이것) 배포마다 서버가 스스로: 로그인 없이 열리는 입구(PUBLIC_ACTIONS_) / 바깥 AI로 보내는 곳(파일별 주소 수)
+//  / 서버 용량(10MB 한도)을 직전 배포 기록과 비교. ②는 PC·웹 Claude가 올리기 전에 돌리는 tools/change-check.js(비밀번호·고객 정보·로그인 전 서버 호출).
+//  늘어난 것은 고장이 아니라 "알려 드림"(의도한 것이면 그대로 두고, 아니면 고친다) — 🐞 카드 배포 직후 점검에 뜬다.
+const CHANGE_CHECK_NAME_ = '변경 점검(로그인 없는 입구·바깥 AI·서버 용량)';
+const CHANGE_CHECK_PROP_ = 'CHANGE_CHECK_SNAP';
+const CHANGE_CHECK_AI_HOSTS_ = { 'api.anthropic.com': 'Claude(유료)', 'generativelanguage.googleapis.com': 'Gemini', 'api.openai.com': 'OpenAI(유료)' };
+const CHANGE_CHECK_SIZE_WARN_ = 9800000;
+function changeCheckSnapshot_() {
+  const r = UrlFetchApp.fetch('https://script.googleapis.com/v1/projects/' + ScriptApp.getScriptId() + '/content',
+    { muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+  if (r.getResponseCode() !== 200) throw new Error('서버 파일 목록 응답 ' + r.getResponseCode());
+  const files = JSON.parse(r.getContentText() || '{}').files || [];
+  let bytes = 0; const ai = {};
+  files.forEach(function (f) {
+    const src = String(f.source || '');
+    bytes += Utilities.newBlob(src).getBytes().length;
+    Object.keys(CHANGE_CHECK_AI_HOSTS_).forEach(function (h) { const n = src.split('https://' + h).length - 1; if (n) ai[f.name + ' · ' + CHANGE_CHECK_AI_HOSTS_[h]] = n; });
+  });
+  return { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), pub: PUBLIC_ACTIONS_.slice().sort(), ai: ai, bytes: bytes };
+}
+function changeCheckRecord_() {
+  const p = PropertiesService.getScriptProperties();
+  let prev = null; try { prev = JSON.parse(p.getProperty(CHANGE_CHECK_PROP_) || 'null'); } catch (e) {}
+  const cur = changeCheckSnapshot_(), warn = [];
+  if (cur.bytes > CHANGE_CHECK_SIZE_WARN_) warn.push('서버 용량 ' + (cur.bytes / 1e6).toFixed(2) + 'MB — 10MB 한도 근처(큰 자료는 화면 쪽으로)');
+  if (prev) {
+    const added = cur.pub.filter(function (a) { return prev.pub.indexOf(a) === -1; });
+    if (added.length) warn.push('로그인 없이 열리는 입구가 늘어남: ' + added.join(', ') + ' — 고객 비밀번호 등 따로 검사하는지 확인');
+    const more = Object.keys(cur.ai).filter(function (k) { return cur.ai[k] > (prev.ai[k] || 0); });
+    if (more.length) warn.push('바깥 AI로 보내는 곳이 늘어남: ' + more.map(function (k) { return k + ' ' + (prev.ai[k] || 0) + '→' + cur.ai[k]; }).join(', ') + ' — 고객 정보 가림·비용(토큰 0 원칙) 확인');
+  }
+  p.setProperty(CHANGE_CHECK_PROP_, JSON.stringify(cur));
+  return { cur: cur, prev: prev, warn: warn, text: warn.join(' / ') };
+}
 // ③ 배포 직후 자동 점검 — 새 코드로 주요 기능을 한 바퀴 돌려 본다(토큰 0). PC 배포 후 mark-deployed와 📥 반영·↩ 되돌리기 뒤에 자동 실행.
 const SYS_FEATURE_CHECK_NAME_ = '빠진 기능 감시(AI 도구·화면 연결)';
 function deploySmoke_() {
@@ -37422,11 +37465,19 @@ function deploySmoke_() {
     const fr = sysAuditFeatureRecord_();
     return fr.text || ((fr.warn || []).length ? '기능 목록 일부를 못 읽음 — ' + fr.warn.join(' / ') : '');
   });
+  // [2026.10.22] 변경 점검표(보안·개인정보·비용·용량) — 세무사님 "1.2.번 만들고 일괄배포하라": 직전 배포와 비교해 늘었으면 ⚠(고장이 아니라 알려 드림)
+  check(CHANGE_CHECK_NAME_, function () { return changeCheckRecord_().text; });
+  // [2026.10.22] 소통 이음매 점검(Federation.js commSeamCheck_) — 세무사님 "시스템 변경시 소통점검이 보안점검처럼 항상 이루지도록" — 배포마다 자동
+  check('소통 이음매(세무사님↔넥스↔도구↔개발자)', function () {
+    if (typeof commSeamCheck_ !== 'function') return 'Federation.js 소통 점검이 서버에 없음(clasp push 필요)';
+    const sc = commSeamCheck_();
+    return sc.ok ? '' : '끊긴 길 ' + sc.끊김.length + '개 — ' + sc.끊김.map(function (x) { return x.길 + ': ' + x.msg; }).join(' / ').slice(0, 400);
+  });
   const ok = items.every(function (x) { return x.ok; });
   const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ts: Date.now(), ok: ok, items: items };
   try { PropertiesService.getScriptProperties().setProperty('DEPLOY_CHECK_LAST', JSON.stringify(last)); } catch (e) {}
   // 빠진 기능 알림은 고장이 아니라 "알려 드림"이라 오류 기록(개선 루틴이 고치려 드는 곳)에는 남기지 않는다
-  if (!ok) items.filter(function (x) { return !x.ok && x.name !== SYS_FEATURE_CHECK_NAME_; }).forEach(function (x) { try { ai_logBug({ entry: { kind: 'deploy', where: '배포 직후 점검 · ' + x.name, message: x.msg } }); } catch (e) {} });
+  if (!ok) items.filter(function (x) { return !x.ok && x.name !== SYS_FEATURE_CHECK_NAME_ && x.name !== CHANGE_CHECK_NAME_; }).forEach(function (x) { try { ai_logBug({ entry: { kind: 'deploy', where: '배포 직후 점검 · ' + x.name, message: x.msg } }); } catch (e) {} });
   return { success: true, last: last };
 }
 function deployCheckLast_() {
@@ -37506,8 +37557,23 @@ function improve_parseAt_(s) {
   return m ? new Date(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00+09:00').getTime() : 0;
 }
 function improve_isTestNoise_(s) { return /\[점검 중|zz_|\[시험\]|harness/.test(String(s || '')); }
+// [2026.10.22] 개선 보고서 고객 정보 가리기 — 고객관리 명단 성명 + 사건 목록 고객명·납세자를 "[고객]"으로, 주민번호·전화·계좌는 caseProcAiMask_ 규칙.
+//  개선에 필요한 것은 "어떤 종류의 요청·오류가 몇 번"뿐 — 이름이 빠지면 같은 요청이 사람마다 따로 묶이던 것도 하나로 묶인다.
+function improve_peopleNames_() {
+  const set = {};
+  const add = function (v) { String(v || '').split(/[,·\/()（）\s]+/).forEach(function (n) { n = n.trim(); if (n.length >= 2 && !/^\d+$/.test(n)) set[n] = 1; }); };
+  try { const d = client_getSheets_().clients.getDataRange().getValues(), c = d[0].indexOf('성명'); for (let i = 1; i < d.length; i++) add(d[i][c]); } catch (e) {}
+  try { const d = work_getSheet_().getDataRange().getValues(), a = d[0].indexOf('고객명'), b = d[0].indexOf('납세자'); for (let i = 1; i < d.length; i++) { if (a >= 0) add(d[i][a]); if (b >= 0) add(d[i][b]); } } catch (e) {}
+  return Object.keys(set).sort(function (x, y) { return y.length - x.length; });
+}
+function improve_maskPeople_(s, names) {
+  s = String(s == null ? '' : s);
+  (names || []).forEach(function (n) { if (s.indexOf(n) !== -1) s = s.split(n).join('[고객]'); });
+  return typeof caseProcAiMask_ === 'function' ? caseProcAiMask_(s) : s;
+}
 function buildImprovementReport_() {
   const now = Date.now(), since = now - 7 * 86400000;
+  const peopleNames = improve_peopleNames_();
   // 오류기록
   let bugs = [];
   try { bugs = JSON.parse(ai_bugLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { bugs = []; }
@@ -37530,9 +37596,10 @@ function buildImprovementReport_() {
   const qGroups = {};
   paid.filter(function (p) { return p.kind === 'chat'; }).forEach(function (p) {
     // 사람 이름·숫자가 달라도 같은 유형의 요청이면 묶이도록 단순화(한글 2~4자 고유명은 그대로 두되 숫자·공백 제거, 앞 18자)
-    const norm = String(p.q || '').replace(/\d+/g, '').replace(/\s+/g, '').slice(0, 18);
+    const q = improve_maskPeople_(p.q, peopleNames); // [2026.10.22] 이름을 먼저 가려 사람이 달라도 같은 요청이면 한 묶음
+    const norm = q.replace(/\d+/g, '').replace(/\s+/g, '').slice(0, 18);
     const g = qGroups[norm] || (qGroups[norm] = { pattern: norm, count: 0, usd: 0, samples: [] });
-    g.count++; g.usd += (+p.usd || 0); if (g.samples.length < 3) g.samples.push(String(p.q).slice(0, 80));
+    g.count++; g.usd += (+p.usd || 0); if (g.samples.length < 3) g.samples.push(q.slice(0, 80));
   });
   const paidRepeats = Object.keys(qGroups).map(function (k) { return qGroups[k]; }).filter(function (g) { return g.count >= 2; })
     .sort(function (a, b) { return b.count - a.count; }).slice(0, 20)
@@ -37689,6 +37756,7 @@ function buildImprovementReport_() {
     report.candidateCount += report.gaps.length + report.answers.length;
     report.guide.push('요청 번호: requests의 id(R…)를 그 요청을 고친 커밋·PR 제목에 "[요청#R…]"으로 넣는다 — 📥 반영 때 job이 그 요청을 "반영됨"으로 바꾸고 세무사님 확인을 받는다. status=재오픈이면 reopenNote(세무사님 지적)를 우선 고친다. urgent(🚨)는 최우선.');
     report.guide.push('gaps(🧩 기능 부족 신고): job AI가 사용자 요청을 도구가 없어 못 한 기록. 반복되거나 쉬운 것부터 도구·⚡바로처리로 만든다(유료 AI 호출 추가 금지 원칙 그대로). 처리됨은 이미 빠져 있다. 상태=다시 신고는 고쳤는데 또 막힌 것(전에고친것 참고) — 최우선. 신고를 고치는 PR은 docs/gaps-resolved.json에 {want: 그 신고 want 앞 20~40자 그대로, at: "YYYY-MM-DD HH:mm"(고친 시각, KST), 처리: 무엇을 고쳤나 쉬운 말, 근거: 커밋·PR} 한 줄을 함께 더한다(aiLead.gaps의 AI 지휘 빠진 도구도 같은 장부). 실제로 막힘이 풀리는지 확인 못 했으면 더하지 않는다.');
+    report.guide.push('변경 점검(2026-10-22 세무사님 "1.2.번 만들고 일괄배포하라"): PR을 만들기 전에 node tools/change-check.js 를 돌린다 — 🚫(비밀번호·열쇠·주민번호)가 나오면 지우기 전엔 PR을 만들지 않는다. ⚠(전화번호·64자리 열쇠 모양·로그인 확인 없는 자동 서버 호출·로그인 없는 입구 증가·바깥 AI 호출 증가·서버 용량)는 PR 본문 "변경 점검" 절에 그대로 붙이고 의도한 것인지 한 줄씩 적는다. 새 AI 경로·도구·소통 길(넥스↔도구↔개발자↔세무사님)을 만들거나 바꾸면 gs-backend/Federation.js commSeamList_에 그 길을 한 줄 더한다(배포 직후 점검이 배포마다 살아 있는지 본다).');
     report.guide.push('개발자 질문: 판단이 필요하면 추측하지 말고 docs/dev-questions.md에 "## Q-YYYYMMDD-n 제목" 블록(쉬운 말, 고객 정보 없이)을 추가하는 PR을 올린다. answers에 세무사님 답이 오면 반영하고 그 블록을 지운다.');
     report.guide.push('🛠 AI 회의(시스템 안건, 2026-10-19 재편): 이 보고서의 반복 오류·유료 비용·막힌 기능·요청과 개정 감시의 기술 변화가 안건이다. 위원 = Gemini API(무료 등급, 고객 정보 없이 묻기), 회장 = 이 정비 루틴. 결론은 고침 작업(PR)으로, 결론 안 난 것과 돈 드는 결정만 docs/dev-questions.md로 세무사님께. 위원 답은 틀릴 수 있으니 공식 문서로 사실 확인 후 반영.');
   } catch (e) { report.federation = { error: String(e && e.message || e).slice(0, 200) }; }
@@ -37697,8 +37765,18 @@ function buildImprovementReport_() {
     var kh = typeof knhForReport_ === 'function' ? knhForReport_() : null;
     if (kh) { report.knowhow = kh.data; kh.head.forEach(function (h) { headline.push(h); }); report.candidateCount += kh.count; report.guide.push(kh.guide); }
   } catch (e) { report.knowhowError = String(e && e.message || e).slice(0, 200); }
-  try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
-  return { success: true, report: report };
+  // [2026.10.22] 세무사님 "개선하는데 고객정보가 왜 들어가야 하는지도 이해가 되지 않는다" — 저장 전에 보고서 전체에서 고객 이름·주민번호·전화·계좌를 가린다
+  //  안내문(guide·principles)은 우리가 쓴 글이라 가리지 않는다(짧은 이름이 낱말과 겹쳐 안내문이 깨지지 않게)
+  let saved;
+  try {
+    const keep = { guide: report.guide, principles: report.principles };
+    const body = {}; Object.keys(report).forEach(function (k) { if (!(k in keep)) body[k] = report[k]; });
+    saved = JSON.parse(improve_maskPeople_(JSON.stringify(body), peopleNames));
+    Object.keys(keep).forEach(function (k) { if (keep[k] !== undefined) saved[k] = keep[k]; });
+    saved.masked = peopleNames.length;
+  } catch (e) { saved = { error: '보고서 고객 정보 가리기 실패 — 내용 없이 저장: ' + String(e && e.message || e).slice(0, 200), generatedAt: new Date().toISOString(), candidateCount: 0 }; }
+  try { improve_reportFile_().setContent(JSON.stringify(saved)); } catch (e) {}
+  return { success: true, report: saved };
 }
 // ============================================================
 // [2026.10.13 토큰0] 템플릿 다양화·고도화 순환 — 세무사님: "템플릿을 다양화·고도화하는 것이 필요해서 야간작업에 반영한 적이
@@ -38099,6 +38177,15 @@ function deployJobStart_(body) {
     const cur = deployJobGet_();
     if (deployJobActive_(cur)) return { success: false, busy: true, job: cur, error: '이미 ' + DEPLOY_KIND_LABEL_[cur.kind] + '이(가) 진행 중입니다 — 끝날 때까지 기다려 주세요.' };
     if (CacheService.getScriptCache().get('gh_deploying')) return { success: false, busy: true, job: cur, error: '다른 반영이 진행 중입니다 — 1~2분 뒤 다시 눌러 주세요.' };
+    // [2026.10.22] 세무사님 "코드고치고 배포미루고 다음으로" — 📥·✅는 깃허브 main으로 운영을 통째로 바꾼다. 운영에 기록에 없는 판이 있으면
+    //  (PC에서 clasp로 올리고 mark-deployed를 안 한 것 = 깃허브에 없을 수 있는 수정) 그 수정이 말없이 사라지므로 멈춘다(10-19 재건축 수정 사라짐).
+    if (kind !== 'rollback' && !body.force) {
+      try {
+        const live = deployLiveVersion_(), hist = deployHistGet_();
+        const known = hist.reduce(function (m, e) { return Math.max(m, +e.ver || 0); }, 0);
+        if (live && +live.ver && known && +live.ver > known) return { success: false, error: '지금 운영(@' + live.ver + ' "' + String(live.desc || '').slice(0, 40) + '")은 배포 기록(@' + known + ')보다 새 판입니다 — PC에서 올린 수정이 깃허브에 아직 없을 수 있어, 반영하면 그 수정이 사라집니다. PC의 Claude에게 "운영과 깃허브를 맞춰 달라"고 하신 뒤 다시 눌러 주세요.' };
+      } catch (e) { /* 확인을 못 하면 예전처럼 진행 */ }
+    }
     const job = { id: Utilities.getUuid().slice(0, 8), kind: kind, stage: 'queued', label: '시작 준비 중(서버가 따로 실행을 시작할 때까지 몇 초~1분)',
       startedAt: Date.now(), expectSha: String(body.expectSha || ''), waitSha: String(body.waitSha || ''), title: String(body.title || '').slice(0, 100), steps: [] };
     deployJobPut_(job);
