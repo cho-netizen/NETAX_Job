@@ -852,7 +852,7 @@
 //  · 아이템 한 건 = 드라이브 0 NETAX\업무관리자\절세\<세목 폴더(양도·상속·증여·공통 등)>\<제목>.md. 세무사님이 직접 고칠 수 있게 파일로 둔다(✏ 고치기 = 증빙관리 원본 편집과 같은 uploadFile 입구).
 //  · 업무관리자 맨 위가 아니라 하위 폴더라 AI 지침 목록(list_business_managers, 맨 위만)에 섞이지 않는다.
 //  · 파일 안 머리 줄 "> 비교 계산: <유형키>"가 있으면 [🧮 이 내용으로 비교 계산] 버튼을 붙인다(유형키 = 비교 계산의 spouse·valuation·comp·split·joint·prior·burden·gen·loan).
-//  · 서버 코드 변경 없음(listFolder·readFile·uploadFile 기존 입구). 목록은 메뉴를 열 때 한 번 읽고, 로그인 전에는 부르지 않는다.
+//  · 목록은 메뉴를 열 때 한 번 읽고(knh_index 색인 → 없으면 listFolder), 본문은 readFile·저장은 uploadFile. 로그인 전에는 부르지 않는다.
 // ============================================================
 (function(){
   var PATH_ = ['0 NETAX', '업무관리자', '절세'];
@@ -879,11 +879,42 @@
     return m;
   };
 
-  function load_(){
+  // [2026.10.21] 목록 색인 — 세무사님 받아 오신 원칙 3 "목록은 캐시, 본문은 필요할 때만. 색인은 화면에 캐시해 두고 즉시 보여주고, 본문은 클릭할 때 불러옵니다."
+  //  · 서버 knh_index(KnowHow.js)가 폴더마다 _색인.json(제목·종류·한 줄 요약·수정일·파일ID)을 실제 파일 목록과 맞춰 돌려준다 — 본문은 싣지 않는다.
+  //  · 받은 목록은 이 브라우저에 보관(nxTpIdx)해 다음에 열 때 곧바로 보여 주고, 뒤에서 새 목록을 받아 바꾼다.
+  //  · 색인이 없거나 낡은 파일(색인:null)·옛 서버면 예전 방식(본문을 하나씩 읽어 요약 뽑기)으로 물러선다. 찾을 말을 넣으면 본문에서도 찾도록 그때 본문을 읽는다.
+  var LSI_ = 'nxTpIdx';
+  var lsIdxGet_ = function(){ try { var v = JSON.parse(localStorage.getItem(LSI_) || 'null'); return v && Array.isArray(v.groups) ? v : null; } catch (e) { return null; } };
+  var lsIdxSet_ = function(){ try { localStorage.setItem(LSI_, JSON.stringify({ rootUrl: rootUrl_, groups: groups_ })); } catch (e) {} };
+  var sortGroups_ = function(gs){
+    gs.forEach(function(g){ g.files.sort(function(a, b){ return a.name.localeCompare(b.name, 'ko', { numeric: true }); }); });
+    var order = ['양도', '증여', '상속', '공통'];
+    gs.sort(function(a, b){ var x = order.indexOf(a.name), y = order.indexOf(b.name); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.name.localeCompare(b.name, 'ko'); });
+    return gs;
+  };
+  // 목록이 새로 왔을 때 — 찾을 말을 치는 중이면 입력칸을 다시 그리지 않는다(글자·커서가 날아가지 않게)
+  var refresh_ = function(){
+    var q = document.getElementById('tpiQuery');
+    if (q && document.activeElement === q) { renderList_(); renderBar_(); } else render_();
+  };
+  function load_(fresh){
     if (loading_) return;
     if (!tok_()){ error_ = '로그인한 뒤 ↻ 새로 읽기를 눌러 주세요.'; groups_ = groups_ || []; render_(); return; }
     loading_ = true; error_ = '';
-    callGas('listFolder', { path: PATH_ }).then(function(res){
+    if (!groups_ && !fresh){ var c = lsIdxGet_(); if (c){ groups_ = c.groups; rootUrl_ = c.rootUrl || ''; render_(); } }
+    var gen = loadGen_;
+    callGas('knh_index', { key: '절세' }).then(function(res){
+      if (!res || res.error || !res.success) throw new Error((res && res.error) || '색인을 받지 못했습니다');
+      if (gen !== loadGen_) return;
+      rootUrl_ = res.folderId ? 'https://drive.google.com/drive/folders/' + res.folderId : '';
+      var gs = (res.folders || []).map(function(d){ return { id: d.id, name: d.name, files: d.files || [], error: d.error || '' }; });
+      if ((res.files || []).length) gs.unshift({ id: '', name: '공통', files: res.files });
+      groups_ = sortGroups_(gs); lsIdxSet_();
+    }).catch(function(){ return gen === loadGen_ ? loadByList_() : null; }) // 색인 입구가 없는 옛 서버·오류 → 예전 방식
+      .then(function(){ if (gen !== loadGen_) return; loading_ = false; refresh_(); fill_(); });
+  }
+  function loadByList_(){
+    return callGas('listFolder', { path: PATH_ }).then(function(res){
       if (!res || res.error) throw new Error((res && res.error) || '폴더를 읽지 못했습니다');
       rootUrl_ = res.folderId ? 'https://drive.google.com/drive/folders/' + res.folderId : '';
       var top = (res.files || []).filter(function(f){ return /\.md$/i.test(f.name) && !/^_/.test(f.name); });
@@ -893,14 +924,16 @@
         }).catch(function(e){ return { id: d.id, name: d.name, files: [], error: e.message }; });
       })).then(function(gs){
         if (top.length) gs.unshift({ id: '', name: '공통', files: top });
-        gs.forEach(function(g){ g.files.sort(function(a, b){ return a.name.localeCompare(b.name, 'ko', { numeric: true }); }); });
-        var order = ['양도', '증여', '상속', '공통'];
-        gs.sort(function(a, b){ var x = order.indexOf(a.name), y = order.indexOf(b.name); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.name.localeCompare(b.name, 'ko'); });
-        groups_ = gs;
+        groups_ = sortGroups_(gs);
       });
-    }).catch(function(e){ error_ = e.message; groups_ = groups_ || []; })
-      .then(function(){ loading_ = false; render_(); fill_(); });
+    }).catch(function(e){ error_ = e.message; groups_ = groups_ || []; });
   }
+  // 목록 줄에 보일 종류·한 줄 요약 — 본문을 읽었으면 본문에서, 아니면 색인에서
+  var sum_ = function(f){
+    var src = cache_[f.id];
+    if (src != null) return { 종류: meta_(src)['종류'] || '', 요약: gist_(src) };
+    return f.색인 ? { 종류: f.색인.종류 || '', 요약: f.색인.요약 || '' } : null;
+  };
 
   // [2026.10.21] 내용은 이 브라우저에 보관해 둔다(파일 ID + 드라이브 수정 시각이 같으면 다시 읽지 않음 — 보는 사람별 편의, 지워져도 다시 읽으면 됨)
   var LS_ = 'nxTpItem:';
@@ -915,7 +948,8 @@
     });
   }
 
-  // 목록을 받은 뒤 아직 안 읽은(또는 바뀐) 파일을 하나씩 차례로 읽는다 — 종류·핵심 첫 줄·내용 찾기에 쓴다(동시에 많이 부르지 않음)
+  // 아직 안 읽은(또는 바뀐) 파일 본문을 하나씩 차례로 읽는다(동시에 많이 부르지 않음).
+  // [2026.10.21] 색인이 있는 파일은 읽지 않는다 — 색인이 없거나 낡은 파일(요약 채우기)과, 찾을 말을 넣었을 때(본문에서 찾기)만.
   var fillLeft_ = 0;
   function fill_(){
     if (fullLoading_ || !groups_) return;
@@ -923,14 +957,14 @@
     groups_.forEach(function(g){ g.files.forEach(function(f){
       if (Object.prototype.hasOwnProperty.call(cache_, f.id)) return;
       var c = lsGet_(f.id, f.modifiedDate || '');
-      if (c != null) cache_[f.id] = c; else all.push(f.id);
+      if (c != null) cache_[f.id] = c; else if (!f.색인 || query_) all.push(f.id);
     }); });
     if (!all.length){ renderList_(); renderBar_(); return; }
     fullLoading_ = true; fillLeft_ = all.length; renderBar_();
     var i = 0, gen = loadGen_;
     var next = function(){
       if (gen !== loadGen_) { fullLoading_ = false; return; } // ↻ 새로 읽기로 목록이 바뀌면 멈춘다
-      if (i >= all.length){ fullLoading_ = false; fillLeft_ = 0; renderList_(); renderBar_(); return; }
+      if (i >= all.length){ fullLoading_ = false; fillLeft_ = 0; renderList_(); renderBar_(); if (query_) fill_(); return; } // 읽는 사이 찾을 말을 넣었으면 남은 본문도
       var id = all[i++];
       // 목록을 통째로 다시 그리면 누르는 순간 버튼이 바뀌어 클릭이 빗나간다 — 찾기·거르기 중이 아니면 그 줄의 요약만 제자리에서 바꾼다
       read_(id).catch(function(){ cache_[id] = ''; }).then(function(){
@@ -948,13 +982,13 @@
     var b = null, list = box.querySelectorAll('[data-tpi-open]');
     for (var j = 0; j < list.length; j++) if (list[j].getAttribute('data-tpi-open') === id) { b = list[j]; break; }
     if (!b || b.querySelector('small')) return;
-    var src = cache_[id], m = src != null ? meta_(src) : {}, gi = src != null ? gist_(src) : '';
-    if (!m['종류'] && !gi) return;
+    var su = sum_({ id: id });
+    if (!su || (!su.종류 && !su.요약)) return;
     var s = document.createElement('small');
-    s.textContent = (m['종류'] ? '[' + m['종류'] + '] ' : '') + gi;
+    s.textContent = (su.종류 ? '[' + su.종류 + '] ' : '') + su.요약;
     b.appendChild(s);
   }
-  function renderBar_(){ var el = document.getElementById('tpiFill'); if (el) el.textContent = fullLoading_ ? '내용 읽는 중… 남은 ' + fillLeft_ + '건(찾기·종류 거르기는 읽은 것까지)' : ''; }
+  function renderBar_(){ var el = document.getElementById('tpiFill'); if (el) el.textContent = fullLoading_ ? (query_ ? '본문에서도 찾는 중… 남은 ' + fillLeft_ + '건(제목·요약은 바로 찾음)' : '요약 채우는 중… 남은 ' + fillLeft_ + '건(찾기·종류 거르기는 읽은 것까지)') : ''; }
 
   // 핵심 첫 줄 — "## 핵심" 아래 첫 "- " 줄(굵게·괄호 조문은 빼고 짧게)
   var gist_ = function(src){
@@ -967,10 +1001,12 @@
   var kind_ = '';
 
   function matches_(f){
-    if (kind_){ var m = cache_[f.id] != null ? meta_(cache_[f.id]) : {}; if (String(m['종류'] || '').indexOf(kind_) === -1) return false; }
+    var su = sum_(f) || {};
+    if (kind_ && String(su.종류 || '').indexOf(kind_) === -1) return false;
     if (!query_) return true;
     var q = query_.toLowerCase();
     if (title_(f.name).toLowerCase().indexOf(q) !== -1) return true;
+    if (String(su.요약 || '').toLowerCase().indexOf(q) !== -1) return true;
     return String(cache_[f.id] || '').toLowerCase().indexOf(q) !== -1;
   }
 
@@ -985,9 +1021,9 @@
       if (g.error) h += '<div class="tpi-it tpi-note">이 폴더를 읽지 못했습니다: ' + esc_(g.error) + '</div>';
       fs.forEach(function(f){
         n++;
-        var src = cache_[f.id], m = src != null ? meta_(src) : {}, gi = src != null ? gist_(src) : '';
+        var su = sum_(f) || {};
         h += '<button type="button" class="tpi-it' + (cur_ && cur_.id === f.id ? ' on' : '') + '" data-tpi-open="' + esc_(f.id) + '" data-tpi-group="' + esc_(g.name) + '" data-tpi-name="' + esc_(f.name) + '">' + esc_(title_(f.name)) +
-          ((m['종류'] || gi) ? '<small>' + (m['종류'] ? '[' + esc_(m['종류']) + '] ' : '') + esc_(gi) + '</small>' : '') + '</button>';
+          ((su.종류 || su.요약) ? '<small>' + (su.종류 ? '[' + esc_(su.종류) + '] ' : '') + esc_(su.요약 || '') + '</small>' : '') + '</button>';
       });
     });
     if (!n) h += '<div class="tpi-it tpi-note">' + (query_ || kind_ ? '맞는 아이템이 없습니다.' + (fullLoading_ ? ' 아직 내용을 읽는 중입니다.' : '') : '아직 아이템이 없습니다.') + '</div>';
@@ -1072,7 +1108,7 @@
         return;
       }
       var act = t.getAttribute('data-tpi-act');
-      if (act === 'reload'){ groups_ = null; cache_ = {}; loadGen_++; fullLoading_ = false; render_(); }
+      if (act === 'reload'){ groups_ = null; cache_ = {}; loadGen_++; fullLoading_ = false; loading_ = false; pane_().innerHTML = '<div class="tpi-note">드라이브 업무관리자\\절세 폴더를 읽는 중…</div>'; load_(true); }
       else if (act === 'win' && cur_){ var c = cur_; nxMdOpenWindow(title_(c.name), function(){ return read_(c.id); }, { theme: 'memo' }); }
       else if (act === 'edit'){ editing_ = true; renderDoc_(); }
       else if (act === 'cancel'){ editing_ = false; renderDoc_(); }
@@ -1081,14 +1117,17 @@
         var ta = document.getElementById('tpiEdit'); if (!ta) return;
         var txt = ta.value, id = cur_.id;
         t.disabled = true;
-        callGas('uploadFile', { fileId: id, base64Data: utf8ToBase64(txt) }).then(function(r){
+        // [2026.10.21] 서버 uploadFile은 파일 이름(name)이 없으면 "파일명이 없습니다"로 거절한다 — 이름을 함께 보낸다.
+        //  knowIndex: 저장 직후 그 폴더 목록 색인(_색인.json)도 서버가 바로 맞춘다.
+        callGas('uploadFile', { fileId: id, name: cur_.name, base64Data: utf8ToBase64(txt), knowIndex: true }).then(function(r){
           if (!r || r.error) throw new Error((r && r.error) || '저장하지 못했습니다');
-          cache_[id] = txt; lsSet_(id, 'saved', txt); editing_ = false; // 다음 목록에서 드라이브 수정 시각이 달라 한 번 다시 읽는다 showToast('저장했습니다.', 'success'); renderDoc_(); renderList_();
+          cache_[id] = txt; lsSet_(id, 'saved', txt); editing_ = false; // 다음 목록에서 드라이브 수정 시각이 달라 한 번 다시 읽는다
+          showToast('저장했습니다.', 'success'); renderDoc_(); renderList_();
         }).catch(function(err){ t.disabled = false; showToast('저장하지 못했습니다: ' + err.message, 'warning'); });
       }
     });
     root.addEventListener('input', function(e){
-      if (e.target && e.target.id === 'tpiQuery'){ query_ = e.target.value.trim(); renderList_(); }
+      if (e.target && e.target.id === 'tpiQuery'){ query_ = e.target.value.trim(); renderList_(); if (query_) fill_(); renderBar_(); }
     });
   }
 
