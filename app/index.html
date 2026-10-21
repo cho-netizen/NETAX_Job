@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 21:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 21:49 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -52069,6 +52069,24 @@ function rwAiApplyEdit_(id, content){
       html += '</div></details>';
     }
 
+    // ①-3 [2026.10.22] 표시 분류 오류 후보 — 세무사님 "확인필요에서 확인하고 나서 판단대기로 분류하는 것 아닌가?" / "나는 분류시스템의 문제를 지적하는 것이다".
+    //  확인조치사항에 판단 대기로 올라간 쟁점인데 아이템·지침에 같은 쟁점의 [확인 필요]가 남은 곳(밤 점검, KnowHow.js knhClsNightly_). 고치지 않고 보이기만.
+    var cl = st.분류 || null, clc = (cl && cl.후보) || [];
+    html += '<details class="kh-sec" id="khSecCls"' + (clc.length ? ' open' : '') + '><summary>🔀 표시 분류 오류 후보 ' + (cl ? (cl.ran ? clc.length + '곳' : '⚠ 검사 안 됨') : '— 아직 검사 전') + '</summary><div class="kh-in">'
+      + '<div class="kh-note">규칙: 한 쟁점에 표시는 하나 — [확인 필요](근거 못 찾음) → 결론 나면 표시 지움 / 근거끼리 부딪히면 확인조치사항에 올리고 그 자리 표시를 "[판단 대기 — 확인조치사항 💡 절]"로 바꿈. 아래는 확인조치사항 미결 항목과 같은 쟁점 낱말이 든 [확인 필요] 줄이 아직 남은 곳입니다. 낱말 맞춤이라 헛잡힘이 있을 수 있습니다 — 보고 맞으면 그 줄 표시를 바꿔 주세요. 파일은 고치지 않습니다.</div>';
+    if (cl) html += '<div class="kh-note">' + esc_(cl.at || '') + ' 검사 · 확인조치사항 미결 ' + (cl.미결 || 0) + '건 · 읽은 아이템·지침 ' + (cl.파일 || 0) + '개' + (cl.파일안적은항목 ? ' · 💡 항목 중 파일 이름을 안 적은 것 ' + cl.파일안적은항목 + '건(낱말로 찾음)' : '') + '</div>';
+    if (cl && !cl.ran) html += '<div class="kh-warn">⚠ ' + esc_(cl.reason || '이유 모름') + '</div>';
+    ((cl && cl.warn) || []).forEach(function(w){ html += '<div class="kh-warn">⚠ ' + esc_(w) + '</div>'; });
+    if (cl && cl.ran && !clc.length) html += '<div class="kh-note">남은 분류 오류 후보가 없습니다.</div>';
+    clc.forEach(function(c, i){
+      html += '<div class="kh-row"><span class="kh-badge kh-fix">[확인 필요] 남음</span><span class="kh-t">' + esc_(String(c.파일 || '').replace(/\.(md|txt)$/i, '')) + '</span>'
+        + '<div>확인조치사항: ' + esc_(c.항목) + ' <span class="kh-m">(' + esc_(c.절 || '') + ' · ' + c.확인조치줄 + '줄)</span></div>'
+        + '<div class="kh-m">' + esc_(c.찾은방법) + ' · 쟁점 낱말: ' + esc_((c.쟁점낱말 || []).join(', ')) + '</div><ul>'
+        + c.줄들.map(function(x){ return '<li>' + x.줄 + '줄 ' + esc_(x.표시) + ' — ' + esc_(x.글) + ' <span class="kh-m">(맞은 낱말 ' + esc_(x.낱말.join(', ')) + ')</span></li>'; }).join('') + '</ul>'
+        + '<div class="kh-btns">' + (c.fileId ? '<button type="button" class="ghost-btn" data-kh="clsview" data-i="' + i + '">👁 이 파일 보기</button>' : '') + (cl.확인조치fileId ? '<button type="button" class="ghost-btn" data-kh="clsfollow">📋 확인조치사항 보기</button>' : '') + '</div></div>';
+    });
+    html += '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="clsrun" style="font-size:12px; padding:2px 9px;">🔄 지금 다시 검사(0원)</button></div></div></details>';
+
     // ② 판정 요약 + 파일별 판정
     var t = (r && r.totals) || {};
     html += '<details class="kh-sec" id="khSecJudge"><summary>🔎 지침·템플릿 정비 판정 — '
@@ -52113,7 +52131,7 @@ function rwAiApplyEdit_(id, content){
     } else html += '<div class="kh-note">아직 판정 결과가 없습니다 — 🔄 지금 다시 판정을 눌러 주세요.</div>';
     html += '</div></details>';
     // 열림 상태 유지
-    var openIds = {}; ['khSecPend', 'khSecLaw', 'khSecJudge', 'khSecCov'].forEach(function(id){ var e = document.getElementById(id); if (e) openIds[id] = e.open; });
+    var openIds = {}; ['khSecPend', 'khSecLaw', 'khSecCls', 'khSecJudge', 'khSecCov'].forEach(function(id){ var e = document.getElementById(id); if (e) openIds[id] = e.open; });
     box.innerHTML = html;
     Object.keys(openIds).forEach(function(id){ var e = document.getElementById(id); if (e) e.open = openIds[id]; });
   }
@@ -52244,6 +52262,12 @@ function rwAiApplyEdit_(id, content){
     else if (a === 'law') {
       var v = (st.개정 || [])[Number(b.getAttribute('data-i'))], to = b.getAttribute('data-v'); if (!v) return;
       window.nxKnhLawConfirm_(v, to).then(function(ok){ if (ok) load_(true); });
+    }
+    else if (a === 'clsview') { var c = ((st.분류 || {}).후보 || [])[Number(b.getAttribute('data-i'))]; if (c) viewFile_({ kind: c.종류 === '지침' ? '지침' : '절세 아이템', name: c.파일, fileId: c.fileId }); }
+    else if (a === 'clsfollow') { var cf = st.분류 || {}; if (cf.확인조치fileId) viewFile_({ kind: '0 NETAX', name: cf.확인조치파일 || '확인조치사항', fileId: cf.확인조치fileId }); }
+    else if (a === 'clsrun') {
+      b.disabled = true; b.textContent = '검사 중…(1분 안)';
+      callGas('knh_cls_run', {}).then(function(res){ if (res && res.error) toast_('검사하지 못했습니다: ' + res.error); load_(true); }).catch(function(err){ toast_('검사하지 못했습니다: ' + (err && err.message || err)); load_(true); });
     }
     else if (a === 'run') {
       b.disabled = true; b.textContent = '판정 중…(1~2분)';
