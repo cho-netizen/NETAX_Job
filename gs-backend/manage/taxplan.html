@@ -47,6 +47,11 @@
   #view-taxplan .tpi-it:hover{ background:var(--bg); }
   #view-taxplan .tpi-it.on{ background:var(--taxcalc-info-bg, #e7eef6); font-weight:700; }
   #view-taxplan .tpi-it small{ display:block; font-weight:400; font-size:11px; opacity:.75; margin-top:2px; }
+  #view-taxplan .tpi-warn{ display:inline-block; font-size:10.5px; font-weight:700; color:#9a5b00; background:#fff3d6; border:1px solid #f0c36d; border-radius:4px; padding:0 4px; margin-right:2px; }
+  #view-taxplan .tpi-curbox{ border:1px solid #f0c36d; background:#fff8e6; color:#5c3d00; border-radius:8px; padding:8px 10px; margin:0 0 8px; font-size:12.5px; }
+  #view-taxplan .tpi-curbox ul{ margin:4px 0 4px 18px; padding:0; }
+  #view-taxplan .tp-chip.tpi-curchip{ border-color:#f0c36d; color:#9a5b00; }
+  .nx-dark #view-taxplan .tpi-warn, .nx-dark #view-taxplan .tpi-curbox{ background:#3a2e12; color:#f5d48a; border-color:#7a5a1a; }
   #view-taxplan .tpi-doc{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:8px; background:var(--panel); padding:12px 14px; min-height:200px; }
   #view-taxplan .tpi-doc textarea{ width:100%; min-height:60vh; box-sizing:border-box; font-family:Consolas, monospace; font-size:12.5px; border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:8px; background:var(--panel); color:var(--ink); }
   #view-taxplan .tpi-note{ font-size:12px; opacity:.8; }
@@ -999,9 +1004,16 @@
   };
   var KINDS_ = ['자주 묻는 질문', '복잡한 사안 정리', '주요 이슈', '함정·오해'];
   var kind_ = '';
+  // [2026.10.21] 현행화 필요 — 세무사님 "절세아이템 중 시간에 따라 변경되는 내용은 정기적으로 업데이트를 해야 한다".
+  //  서버 색인(KnowHow.js knhItemCurrency_)이 인용 조문 개정·본문 날짜 지남·개편안·기준일 1년 넘음을 판정해 준다. 화면은 보여 주기·거르기만.
+  var curOnly_ = false;
+  var curOf_ = function(f){ var c = f && f.색인 && f.색인.현행화; return c && c.필요 ? c : null; };
+  var curCount_ = function(){ var n = 0; (groups_ || []).forEach(function(g){ g.files.forEach(function(f){ if (curOf_(f)) n++; }); }); return n; };
+  var entryOf_ = function(id){ var e = null; (groups_ || []).forEach(function(g){ g.files.forEach(function(f){ if (f.id === id) e = f; }); }); return e; };
 
   function matches_(f){
     var su = sum_(f) || {};
+    if (curOnly_ && !curOf_(f)) return false;
     if (kind_ && String(su.종류 || '').indexOf(kind_) === -1) return false;
     if (!query_) return true;
     var q = query_.toLowerCase();
@@ -1021,12 +1033,13 @@
       if (g.error) h += '<div class="tpi-it tpi-note">이 폴더를 읽지 못했습니다: ' + esc_(g.error) + '</div>';
       fs.forEach(function(f){
         n++;
-        var su = sum_(f) || {};
-        h += '<button type="button" class="tpi-it' + (cur_ && cur_.id === f.id ? ' on' : '') + '" data-tpi-open="' + esc_(f.id) + '" data-tpi-group="' + esc_(g.name) + '" data-tpi-name="' + esc_(f.name) + '">' + esc_(title_(f.name)) +
+        var su = sum_(f) || {}, cu = curOf_(f);
+        h += '<button type="button" class="tpi-it' + (cur_ && cur_.id === f.id ? ' on' : '') + '" data-tpi-open="' + esc_(f.id) + '" data-tpi-group="' + esc_(g.name) + '" data-tpi-name="' + esc_(f.name) + '">' +
+          (cu ? '<span class="tpi-warn" title="' + esc_(cu.이유.join('\n')) + '">⚠ 현행화</span> ' : '') + esc_(title_(f.name)) +
           ((su.종류 || su.요약) ? '<small>' + (su.종류 ? '[' + esc_(su.종류) + '] ' : '') + esc_(su.요약 || '') + '</small>' : '') + '</button>';
       });
     });
-    if (!n) h += '<div class="tpi-it tpi-note">' + (query_ || kind_ ? '맞는 아이템이 없습니다.' + (fullLoading_ ? ' 아직 내용을 읽는 중입니다.' : '') : '아직 아이템이 없습니다.') + '</div>';
+    if (!n) h += '<div class="tpi-it tpi-note">' + (query_ || kind_ || curOnly_ ? '맞는 아이템이 없습니다.' + (fullLoading_ ? ' 아직 내용을 읽는 중입니다.' : '') : '아직 아이템이 없습니다.') + '</div>';
     box.innerHTML = h;
   }
 
@@ -1050,7 +1063,18 @@
       box.innerHTML = head + '<textarea id="tpiEdit">' + esc_(src) + '</textarea><div class="tpi-note">드라이브 업무관리자\\절세\\' + esc_(cur_.group) + '\\' + esc_(cur_.name) + ' 파일을 그대로 고칩니다.</div>';
       return;
     }
-    box.innerHTML = head + '<div id="tpiMd"></div>';
+    // [2026.10.21] 본문 머리 줄(종류·근거·작성·검토 상태)에 없는 것만 한 줄 — 조심할 곳 수·시간에 따라 바뀌는 내용, 현행화 필요면 이유
+    var ent = entryOf_(cur_.id), ix = ent && ent.색인, cu = curOf_(ent), info = '';
+    if (ix){
+      var bits = [];
+      if (ix.확인필요) bits.push('[확인 필요] ' + ix.확인필요 + '곳');
+      if (ix.엇갈림) bits.push('반대 취지·해석 엇갈림 ' + ix.엇갈림 + '곳');
+      if ((ix.변동 || []).length) bits.push('시간에 따라 바뀌는 내용: ' + ix.변동.join(', ') + (ix.기준일 ? ' (기준일 ' + ix.기준일 + ')' : ''));
+      if (bits.length) info += '<div class="tpi-note" style="margin:0 0 6px;">' + esc_(bits.join(' · ')) + '</div>';
+      if (cu) info += '<div class="tpi-curbox"><b>⚠ 현행화 필요</b><ul>' + cu.이유.map(function(r){ return '<li>' + esc_(r) + '</li>'; }).join('') + '</ul>' +
+        '<div class="tpi-note">넥스는 이 아이템을 인용할 때 이 사실을 함께 말합니다. 확인·현행화한 뒤 ✏ 고치기로 머리 줄에 "&gt; 기준일: 고친 날짜"를 적거나(개정 예정이면 그 시행일을 본문에 적어 반영했음을 밝혀도 됨) 💾 저장하면, 다음 ↻ 새로 읽기부터 표시가 풀립니다.</div></div>';
+    }
+    box.innerHTML = head + info + '<div id="tpiMd"></div>';
     var m = meta_(src), key = String(m['비교 계산'] || '').trim();
     if (key && typeof window.nxTaxPlanGoCalc_ === 'function'){
       document.getElementById('tpiCalcBtn').innerHTML = '<button type="button" class="tp-btn ghost" data-tpi-act="calc" data-tpi-key="' + esc_(key) + '">🧮 이 내용으로 비교 계산</button>';
@@ -1073,6 +1097,7 @@
       '</div>' +
       '<div class="tp-kinds">' + [''].concat(names).map(function(nm){ return '<button type="button" class="tp-chip' + (group_ === nm ? ' on' : '') + '" data-tpi-g="' + esc_(nm) + '">' + esc_(nm || '전체') + ' ' + countOf_(nm) + '</button>'; }).join('') + '</div>' +
       '<div class="tp-kinds">' + [''].concat(KINDS_).map(function(k){ return '<button type="button" class="tp-chip' + (kind_ === k ? ' on' : '') + '" data-tpi-k="' + esc_(k) + '">' + esc_(k || '모든 종류') + '</button>'; }).join('') +
+        (curCount_() || curOnly_ ? '<button type="button" class="tp-chip tpi-curchip' + (curOnly_ ? ' on' : '') + '" data-tpi-cur="1" title="인용 조문 개정·본문 날짜 지남·개편안·기준일 1년 넘음 — 밤마다 판정">⚠ 현행화 필요 ' + curCount_() + '</button>' : '') +
         '<span class="tpi-note" style="align-self:center;">결정은 세무사님 — 계산은 🧮 비교 계산과 세액계산에서</span></div>' +
       (error_ ? '<div class="tp-err" style="margin-bottom:8px;">' + esc_(error_) + '</div>' : '') +
       '<div class="tpi-wrap"><div class="tpi-list" id="tpiList"></div><div class="tpi-doc" id="tpiDoc"></div></div>';
@@ -1094,11 +1119,12 @@
     if (bound_) return; bound_ = true;
     var root = document.getElementById('view-taxplan');
     root.addEventListener('click', function(e){
-      var t = e.target.closest ? e.target.closest('[data-tp-mode],[data-tpi-open],[data-tpi-act],[data-tpi-g],[data-tpi-k]') : null;
+      var t = e.target.closest ? e.target.closest('[data-tp-mode],[data-tpi-open],[data-tpi-act],[data-tpi-g],[data-tpi-k],[data-tpi-cur]') : null;
       if (!t || !root.contains(t)) return;
       if (t.hasAttribute('data-tp-mode')){ setMode_(t.getAttribute('data-tp-mode')); return; }
       if (t.hasAttribute('data-tpi-g')){ group_ = t.getAttribute('data-tpi-g'); render_(); return; }
       if (t.hasAttribute('data-tpi-k')){ kind_ = t.getAttribute('data-tpi-k'); render_(); return; }
+      if (t.hasAttribute('data-tpi-cur')){ curOnly_ = !curOnly_; render_(); return; }
       if (t.hasAttribute('data-tpi-open')){
         if (editing_ && !confirm('고치던 내용을 버리고 다른 아이템을 열까요?')) return;
         editing_ = false;
