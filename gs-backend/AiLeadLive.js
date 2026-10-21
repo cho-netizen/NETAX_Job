@@ -537,7 +537,9 @@ function caseProcAiModelDry_(body) {
   if (body.kind === 'cx') {
     const allow = [LIGHT_MODEL, 'claude-haiku-5-5', 'claude-sonnet-5-5'];
     if (allow.indexOf(body.model) === -1) return { ok: false, error: '비교 허용 모델이 아님: ' + body.model };
-    const r = caseProcAiCall_(body.model, CX_AI_SYSTEM_, null, [{ role: 'user', content: String(body.user || '').slice(0, 60000) }], 3000);
+    // 생각 깊이(effort low/medium)·답 한도(3000~8000)도 바꿔 본다 — 하이쿠 5.5는 기본(생각 켬·medium)이면 3000 한도를 생각에 다 써 답이 잘렸다(10-21 첫 시험)
+    const eff = /^(low|medium)$/.test(String(body.effort || '')) ? body.effort : undefined, mt = Math.min(8000, Math.max(3000, Number(body.maxTokens) || 3000));
+    const r = caseProcAiCall_(body.model, CX_AI_SYSTEM_, null, [{ role: 'user', content: String(body.user || '').slice(0, 60000) }], mt, eff);
     if (r.error) return { ok: false, error: r.error };
     return { ok: true, text: caseProcAiText_(r.json), stop: r.json.stop_reason, usage: r.json.usage, won: r.won };
   }
