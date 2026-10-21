@@ -211,6 +211,13 @@ function taxCalcDeadlineFromMonthEnd_(dateStr, monthsAfter){
   if (!dateStr) return null;
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d.getTime())) return null;
+  // [2026.10.22 검토대상 상속-10 B⑦] 2008.12.31. 이전 상속개시·증여분은 옛 §67①·§68① "상속개시일(증여받은 날)부터 6월(3월) 이내" —
+  //  "속하는 달의 말일부터"는 법률 제9269호(2009.1.1. 시행, 부칙 제2조 "이 법 시행 후 최초로 상속이 개시되거나 증여받는 분부터")부터.
+  //  초일 불산입이라 N개월 뒤 같은 날이 끝날(그날이 없는 달이면 그 달 말일 — 민법 §157·§160). 이 함수는 상속·증여 기한에만 쓰인다.
+  if (String(dateStr).slice(0, 10) < '2009-01-01'){
+    const last_ = new Date(d.getFullYear(), d.getMonth() + monthsAfter + 1, 0).getDate();
+    return taxCalcShiftDeadline_(new Date(d.getFullYear(), d.getMonth() + monthsAfter, Math.min(d.getDate(), last_)));
+  }
   return taxCalcShiftDeadline_(new Date(d.getFullYear(), d.getMonth() + 1 + monthsAfter, 0));
 }
 // [2026.10.19 조견표 1부-02·2부-17] 국세기본법 §5① — 기한 끝날이 토·일·공휴일(조견표 1부-02)·5월 1일이면 그다음 날이 기한.

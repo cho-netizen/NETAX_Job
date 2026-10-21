@@ -952,6 +952,12 @@
     if (kind === 'transfer') return addDaysStr_(shiftTaxDeadline_((y + 1) + '-05-31'), 1);
     // [2026.10.20 세액 고침 — 감사 D] 상속세는 피상속인이나 상속인이 외국에 주소를 둔 경우 9개월(상증법 §67④) — 호출부가 monthsOverride로 줌
     const add = monthsOverride || (kind === 'gift' ? 3 : 6);
+    // [2026.10.22 검토대상 상속-10 B⑦] 2008.12.31. 이전 상속개시·증여분은 옛 §67①·§68① "…날부터 6월(3월)" — N개월 뒤 같은 날(없으면 그 달 말일),
+    //  법률 제9269호 부칙 제2조(화면 taxCalcDeadlineFromMonthEnd_와 같은 규칙)
+    if (d < '2009-01-01') {
+      const dd_ = Number(d.slice(8, 10)), last_ = new Date(Date.UTC(y, m - 1 + add + 1, 0)).getUTCDate();
+      return addDaysStr_(shiftTaxDeadline_(new Date(Date.UTC(y, m - 1 + add, Math.min(dd_, last_))).toISOString().slice(0, 10)), 1);
+    }
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
     return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
@@ -5170,7 +5176,7 @@
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       납부세액: r.finalTax,
-      안내: '증여재산공제(§53)는 적용되지 않습니다(§55①1호 — 명의신탁재산의 금액 전액이 과세표준, 감정평가수수료만 차감). isNoTaxAvoidancePurpose·isTrustPropertyRegistration·isNonResidentAgentRegistration을 확인해서 명시적으로 넣지 않으면 이 배제사유를 검토하지 않은 채(과세대상으로 전제하고) 계산한 것이니 반드시 확인하세요. 실제소유자와 명의자 사이의 증여세는 실제소유자가 납부의무를 진다(§4의2②).' + presumptionNote
+      안내: '증여재산공제(§53)는 적용되지 않습니다(§55①1호 — 명의신탁재산의 금액 전액이 과세표준, 감정평가수수료만 차감). 세 가지 적용배제 사유(조세회피 목적 없음 §45의2①1호, 자본시장법상 신탁재산 등기 3호, 비거주자 법정대리인·재산관리인 명의 등기 4호)를 확인해 체크하지 않으면 이 배제사유를 검토하지 않은 채(과세대상으로 전제하고) 계산한 것이니 반드시 확인하세요. 실제소유자와 명의자 사이의 증여세는 실제소유자가 납부의무를 진다(§4의2②).' + presumptionNote
     };
   };
 

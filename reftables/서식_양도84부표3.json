@@ -29,11 +29,14 @@
     "소득세법 시행령 §163①1호"
    ],
    "계산기칸": [
-    "taxcalc.html asset.acquisitionPrice(엔진 입력 acquisitionPrice)"
+    "「취득가액(실지거래가액)」(엔진 입력 「취득가액(실지거래가액)」)"
    ],
    "조견표": [],
    "인쇄": "부표3 인쇄엔 없음(부표1 \"취득가액\" 줄)",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html asset.acquisitionPrice(엔진 입력 acquisitionPrice)"
+   ]
   },
   {
    "칸": "① 취득세(112)",
@@ -45,12 +48,16 @@
     "소득세법 시행령 §89①1호(매입가액에 취득세·등록면허세 기타 부대비용 가산)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"112\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"112\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"112\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "① 등록세(113)",
@@ -62,12 +69,16 @@
     "소득세법 시행령 §89①1호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"113\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"113\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"113\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "① 법무사비용(114)",
@@ -79,12 +90,16 @@
     "소득세법 시행령 §89①1호(기타 부대비용)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"114\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"114\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"114\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "① 취득중개수수료(115)",
@@ -96,12 +111,16 @@
     "소득세법 시행령 §89①1호(기타 부대비용)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"115\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"115\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"115\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "① 기타(116)",
@@ -113,13 +132,18 @@
     "소득세법 시행령 §89①1호(기타 부대비용)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"116\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)",
-    "코드가 빈 옛 자료는 116으로 채움(trExpenseCategoryCode_)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"116\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)",
+    "코드가 빈 옛 자료는 116으로 채움(「비용 구분 코드」)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"116\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)",
+    "코드가 빈 옛 자료는 116으로 채움(trExpenseCategoryCode_)"
+   ]
   },
   {
    "칸": "① 소계",
@@ -146,12 +170,16 @@
     "소득세법 시행령 §89①2호(원재료비·노무비·…·공과금(취득세·등록면허세 포함)·설치비 등)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"120\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"120\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"120\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "③ 취득시 쟁송비 — 변호사비용(131)",
@@ -162,12 +190,16 @@
     "소득세법 시행령 §163①2호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"131\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"131\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"131\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "③ 취득시 쟁송비 — 기타비용(132)",
@@ -178,12 +210,16 @@
     "소득세법 시행령 §163①2호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"132\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"132\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"132\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "③ 매수자부담 양도소득세(133)",
@@ -194,12 +230,16 @@
     "근거 조문 확인 필요(시행령 §163 각 호에서 직접 못 찾음)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"133\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"133\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "서식 그림·작성방법 대조됨. 근거 조문 확인 필요"
+   "확인": "서식 그림·작성방법 대조됨. 근거 조문 확인 필요",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"133\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "③ 기타(134)",
@@ -210,12 +250,16 @@
     "소득세법 시행령 §163①3호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"134\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"134\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"134\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "③ 소계",
@@ -241,11 +285,14 @@
     "소득세법 §97③"
    ],
    "계산기칸": [
-    "엔진 calculateTransferTaxSingleJS 입력 depreciationDeductedAsBusinessExpense(taxcalc-engine.html 785행 — 취득가액에서 뺌), 화면 \"사업용자산 감가상각비\""
+    "엔진 계산 엔진 입력 「사업용자산 감가상각비」 785행 — 취득가액에서 뺌), 화면 \"사업용자산 감가상각비\""
    ],
    "조견표": [],
    "인쇄": "없음",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "엔진 calculateTransferTaxSingleJS 입력 depreciationDeductedAsBusinessExpense(taxcalc-engine.html 785행 — 취득가액에서 뺌), 화면 \"사업용자산 감가상각비\""
+   ]
   },
   {
    "칸": "⑤ 계",
@@ -257,11 +304,14 @@
     "소득세법 §97③"
    ],
    "계산기칸": [
-    "계산기에 없음 — 계산기는 112~134 취득부대비용을 취득가액이 아니라 필요경비 합계(necessaryExpenses → 부표1 ⑭ 기타필요경비)에 넣음"
+    "계산기에 없음 — 계산기는 112~134 취득부대비용을 취득가액이 아니라 필요경비 합계(「필요경비」 → 부표1 ⑭ 기타필요경비)에 넣음"
    ],
    "조견표": [],
    "인쇄": "없음",
-   "확인": "서식 그림·유의사항 대조됨. \"부표1 ⑩\"은 지금 서식 번호와 다름 — 확인 필요"
+   "확인": "서식 그림·유의사항 대조됨. \"부표1 ⑩\"은 지금 서식 번호와 다름 — 확인 필요",
+   "계산기칸_개발용": [
+    "계산기에 없음 — 계산기는 112~134 취득부대비용을 취득가액이 아니라 필요경비 합계(necessaryExpenses → 부표1 ⑭ 기타필요경비)에 넣음"
+   ]
   },
   {
    "칸": "⑥ 용도변경ㆍ개량ㆍ이용편의를 위한 지출(260)",
@@ -273,12 +323,16 @@
     "소득세법 시행령 §163③3호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"260\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 엘리베이터 냉난방설치(260)",
@@ -290,12 +344,16 @@
     "소득세법 시행령 §67②2호(엘리베이터·냉난방장치 설치)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"260\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 피난시설 등 설치(260)",
@@ -307,12 +365,16 @@
     "소득세법 시행령 §67②3호(피난시설 등 설치)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"260\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 재해 등으로 인한 자산의 원상복구(260)",
@@ -324,12 +386,16 @@
     "소득세법 시행령 §67②4호(재해 등 멸실·훼손 자산의 원상복구)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"260\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 개발부담금ㆍ재건축부담금(261)",
@@ -340,12 +406,16 @@
     "소득세법 시행령 §163③3호의2·3호의3"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"261\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"261\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"261\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 자산가치 증가 등 수선비(260)",
@@ -357,12 +427,16 @@
     "소득세법 시행령 §67②(내용연수 연장·가치 증가 수선비)"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"260\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 기타(260)",
@@ -373,12 +447,16 @@
     "소득세법 시행령 §163③"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"260\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"260\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑥ 소계",
@@ -404,12 +482,16 @@
     "소득세법 시행령 §163③2호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"271\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"271\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"271\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑦ 기타소송ㆍ화해비용(272)",
@@ -420,12 +502,16 @@
     "소득세법 시행령 §163③2호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"272\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"272\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"272\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑧ 수익자부담금(281)",
@@ -437,12 +523,16 @@
     "소득세법 시행규칙 §79①1호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"281\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"281\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"281\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑧ 토지 장애 철거비(280)",
@@ -453,12 +543,16 @@
     "소득세법 시행규칙 §79①2호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"280\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑧ 도로시설비 등(280)",
@@ -469,12 +563,16 @@
     "소득세법 시행규칙 §79①3호·4호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"280\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑧ 사방사업소요비용(280)",
@@ -485,12 +583,16 @@
     "소득세법 시행규칙 §79①5호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"280\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑧ 기타(280)",
@@ -502,12 +604,16 @@
     "증여세 상당액: 소득세법 §97의2①3호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
-    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+    "자산 카드 취득비용 내역 「취득비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"280\"(「취득비용 구분표」) — 금액 「금액」·상호 「지급처」·사업자번호 「지급처 사업자등록번호」·지급일 「지급일자」·증빙 「증빙종류」(「증빙종류 코드」: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: 「필요경비」 6690행 — 취득비용+양도비용 합계)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 취득비용 내역 asset.acquisitionExpenseItems[] 중 expenseCode \"280\"(TR_EXPENSE_CODE_OPTIONS_.acquisition) — 금액 amount·상호 payee·사업자번호 payeeBizRegNo·지급일 payDate·증빙 receiptType(trReceiptTypeCode_: 현금영수증 01·카드 02·세금계산서 03·계산서 04·그 밖 10)",
+    "엔진에는 합계만: necessaryExpenses(taxcalc.html 6690행 — 취득비용+양도비용 합계)"
+   ]
   },
   {
    "칸": "⑧ 소계",
@@ -549,13 +655,18 @@
     "소득세법 시행령 §163⑤1호"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 양도비용 내역 asset.transferExpenseItems[] 중 expenseCode \"290\"(TR_EXPENSE_CODE_OPTIONS_.transfer)",
-    "엔진에는 합계만: necessaryExpenses",
-    "코드가 빈 옛 자료는 290으로 채움(trExpenseCategoryCode_)"
+    "자산 카드 양도비용 내역 「양도비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"290\"(「양도」)",
+    "엔진에는 합계만: 「필요경비」",
+    "코드가 빈 옛 자료는 290으로 채움(「비용 구분 코드」)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 양도비용 내역 asset.transferExpenseItems[] 중 expenseCode \"290\"(TR_EXPENSE_CODE_OPTIONS_.transfer)",
+    "엔진에는 합계만: necessaryExpenses",
+    "코드가 빈 옛 자료는 290으로 채움(trExpenseCategoryCode_)"
+   ]
   },
   {
    "칸": "⑪",
@@ -567,12 +678,16 @@
     "소득세법 시행규칙 §79③"
    ],
    "계산기칸": [
-    "taxcalc.html 자산 카드 양도비용 내역 asset.transferExpenseItems[] 중 expenseCode \"291\"(TR_EXPENSE_CODE_OPTIONS_.transfer)",
-    "엔진에는 합계만: necessaryExpenses"
+    "자산 카드 양도비용 내역 「양도비용 내역」 중 「구분(취득가액및필요경비계산상세명세서용)」 \"291\"(「양도」)",
+    "엔진에는 합계만: 「필요경비」"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ — 항목마다 한 줄(번호 없음, 구분코드 칸 없음, 항목 이름은 입력한 label) / 전자신고 trAttach3ExpenseRecords_ 4번 구분코드",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html 자산 카드 양도비용 내역 asset.transferExpenseItems[] 중 expenseCode \"291\"(TR_EXPENSE_CODE_OPTIONS_.transfer)",
+    "엔진에는 합계만: necessaryExpenses"
+   ]
   },
   {
    "칸": "⑫",
@@ -598,11 +713,14 @@
     "소득세법 §97①2호·3호"
    ],
    "계산기칸": [
-    "엔진 입력 necessaryExpenses(taxcalc.html 6690행: 취득비용+양도비용 합계 — 서식 ⑬보다 112~134 취득부대비용만큼 큼)"
+    "엔진 입력 「필요경비」 6690행: 취득비용+양도비용 합계 — 서식 ⑬보다 112~134 취득부대비용만큼 큼)"
    ],
    "조견표": [],
    "인쇄": "부표1 인쇄 trAttach1PrintPageHtml_ \"기타필요경비\" 줄(부표3 인쇄엔 없음)",
-   "확인": "서식 그림·유의사항 대조됨. \"부표1 ⑫\"는 지금 서식 번호와 다름 — 확인 필요"
+   "확인": "서식 그림·유의사항 대조됨. \"부표1 ⑫\"는 지금 서식 번호와 다름 — 확인 필요",
+   "계산기칸_개발용": [
+    "엔진 입력 necessaryExpenses(taxcalc.html 6690행: 취득비용+양도비용 합계 — 서식 ⑬보다 112~134 취득부대비용만큼 큼)"
+   ]
   },
   {
    "칸": "(2) 구분코드",
@@ -613,11 +731,14 @@
     "소득세법 §97"
    ],
    "계산기칸": [
-    "taxcalc.html expenseCode(trAttach3ExpenseRecords_ 4번)"
+    "「구분(취득가액및필요경비계산상세명세서용)」(「전자신고 비용 자료」 4번)"
    ],
    "조견표": [],
    "인쇄": "없음",
-   "확인": "서식 그림·작성방법 대조됨"
+   "확인": "서식 그림·작성방법 대조됨",
+   "계산기칸_개발용": [
+    "taxcalc.html expenseCode(trAttach3ExpenseRecords_ 4번)"
+   ]
   },
   {
    "칸": "(2) 구분",
@@ -626,11 +747,14 @@
    "계산": "—",
    "근거조문": [],
    "계산기칸": [
-    "taxcalc.html 항목 label"
+    "항목 「구분」"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ 항목 줄 이름",
-   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)"
+   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)",
+   "계산기칸_개발용": [
+    "taxcalc.html 항목 label"
+   ]
   },
   {
    "칸": "(2) 상호",
@@ -639,11 +763,14 @@
    "계산": "—",
    "근거조문": [],
    "계산기칸": [
-    "taxcalc.html payee"
+    "「지급처」"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ 줄 값 앞부분",
-   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)"
+   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)",
+   "계산기칸_개발용": [
+    "taxcalc.html payee"
+   ]
   },
   {
    "칸": "(2) 사업자등록번호",
@@ -652,11 +779,14 @@
    "계산": "—",
    "근거조문": [],
    "계산기칸": [
-    "taxcalc.html payeeBizRegNo(TR_EXPENSE_CODE_NEEDS_DETAIL_ 코드만 전자신고에 넣음)"
+    "「지급처 사업자등록번호」(「명세가 필요한 비용 구분」 코드만 전자신고에 넣음)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ 괄호 안 \"사업자등록번호 …\"",
-   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)"
+   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)",
+   "계산기칸_개발용": [
+    "taxcalc.html payeeBizRegNo(TR_EXPENSE_CODE_NEEDS_DETAIL_ 코드만 전자신고에 넣음)"
+   ]
   },
   {
    "칸": "(2) 지급일",
@@ -665,11 +795,14 @@
    "계산": "—",
    "근거조문": [],
    "계산기칸": [
-    "taxcalc.html payDate"
+    "「지급일자」"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ 괄호 안 \"지급일자 …\"",
-   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)"
+   "확인": "서식 그림 대조됨(근거 조문 없음 — 서식 기재사항)",
+   "계산기칸_개발용": [
+    "taxcalc.html payDate"
+   ]
   },
   {
    "칸": "(2) 지급금액",
@@ -681,11 +814,14 @@
     "소득세법 §160의2②(증명서류)"
    ],
    "계산기칸": [
-    "taxcalc.html amount"
+    "「금액」"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ 줄 값의 금액",
-   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
+   "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)",
+   "계산기칸_개발용": [
+    "taxcalc.html amount"
+   ]
   },
   {
    "칸": "(2) 증빙종류(코드)",
@@ -696,11 +832,14 @@
     "소득세법 시행령 §163③·⑤ 본문(법 §160의2② 증명서류 수취·보관)"
    ],
    "계산기칸": [
-    "taxcalc.html receiptType → trReceiptTypeCode_(계약서 05는 계산기에 없음 — 그 밖은 10)"
+    "「증빙종류」 → 「증빙종류 코드」(계약서 05는 계산기에 없음 — 그 밖은 10)"
    ],
    "조견표": [],
    "인쇄": "trAttach3PrintPageHtml_ 괄호 안 \"증빙 …\"(글자, 코드 아님)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "taxcalc.html receiptType → trReceiptTypeCode_(계약서 05는 계산기에 없음 — 그 밖은 10)"
+   ]
   }
  ],
  "확인필요": [
