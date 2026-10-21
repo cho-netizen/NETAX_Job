@@ -736,7 +736,7 @@ function recomputeHeirDerivedFields(){
   const nonSpouseNamedHeirs = heirs.filter(function(h){ return h.relation && h.relation !== '배우자'; });
   const isSpouseOnlyHeir = hasSpouse && nonSpouseNamedHeirs.length === 0;
   let spouseActual = 0, genSkipAmount = 0;
-  tcHeirPriorGiftSum_ = 0;
+  tcHeirPriorGiftSum_ = 0; tcGenSkipHeirs_ = [];
   heirs.forEach(function(h, hidx){
     // [2026.10.19 상속세책자 사례] 배우자가 실제 상속받은 금액 = 배우자 몫 재산 − 배우자가 승계한 채무·공과금
     if (h.relation === '배우자') spouseActual += Math.max(0, computeHeirActualValue_(hidx) - heirAssumedDebt_(hidx));
@@ -744,7 +744,12 @@ function recomputeHeirDerivedFields(){
     //  분자(그 상속인이 받았거나 받을 재산)에 그 세대생략 상속인의 사전증여를, 분모에 상속인 전체의 사전증여를 넣는다.
     const pg_ = h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0;
     tcHeirPriorGiftSum_ += pg_;
-    if ((h.relation || '').indexOf('세대생략') !== -1) genSkipAmount += computeHeirActualValue_(hidx) + pg_;
+    if ((h.relation || '').indexOf('세대생략') !== -1) {
+      genSkipAmount += computeHeirActualValue_(hidx) + pg_;
+      // [2026.10.22 상속-10 A⑨] 사람마다 몫·미성년 여부(§27 40%는 미성년 + 그 사람 몫 20억 초과일 때 그 몫만)
+      const ageG_ = calcAgeAt_(parseBirthDateFromRegNo_(h.regNo), deathDate);
+      tcGenSkipHeirs_.push({ amount: computeHeirActualValue_(hidx) + pg_, isMinor: ageG_ === null ? undefined : ageG_ < 19 });
+    }
   });
   const otherHeirsCount = childUnitCount > 0 ? childUnitCount : activeHeirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; }).length;
   // [2026.09 버그수정] §23의2 — 동거주택가액은 담보채무를 뺀 순액이어야 한다(음수는 0으로).
@@ -826,6 +831,7 @@ function recomputeHeirDerivedFields(){
 // 세대생략가산액(§27) 계산에 쓰는 "세대생략 상속인이 받는 재산 비율" — 비율을 직접 입력받는 대신
 // 세대생략상속인이 실제 받는 재산가액과 총 상속재산가액(입력돼 있으면 그 값, 아니면 상속세과세가액)을
 // 입력받아 나눗셈으로 자동 산출한다.
+var tcGenSkipHeirs_ = []; // [2026.10.22 상속-10 A⑨] 세대생략 상속인별 몫·미성년
 var tcHeirPriorGiftSum_ = 0; // [2026.10.22 상속-4] 상속인 명부의 사전증여(§13 가산분) 합계 — 세대생략 비율 분모용
 function recomputeGenSkipRatio(){
   const amountEl = document.getElementById('ihGenSkipAmount');
@@ -16715,6 +16721,7 @@ function handleTaxCalcClick_(e){
       generationSkipHeirRatio: numVal(document.getElementById('ihGenSkipRatio').value) || 0,
       generationSkipOver2Billion: document.getElementById('ihGenSkipOver2B').checked,
       generationSkipMinorHeir: document.getElementById('ihGenSkipMinorHeir').checked,
+      generationSkipHeirs: (typeof tcGenSkipHeirs_ !== 'undefined' && tcGenSkipHeirs_.length) ? tcGenSkipHeirs_.slice() : undefined, // [2026.10.22 상속-10 A⑨]
       foreignTaxPaidAmount: numVal(document.getElementById('ihForeignTax').value) || 0,
       foreignEstateTaxBase: numVal(document.getElementById('ihForeignBase') ? document.getElementById('ihForeignBase').value : 0) || 0,
       priorInheritanceTax: numVal(document.getElementById('ihPriorInheritanceTax').value) || 0,

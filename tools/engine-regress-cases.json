@@ -3500,5 +3500,45 @@
    "환산가산세": 15000000,
    "납부세액_합계": 117421000
   }
+ },
+ {
+  "이름": "[2026.10.22 상속-10 A⑨] 세대생략 상속인 둘(미성년 25억·성년 5억) — 40%는 미성년·20억 초과인 사람 몫에만(§27 괄호): 산출 22.875억 × 0.5 × (25/30×40% + 5/30×30%) = 438,437,500",
+  "도구": "calculateInheritanceTaxJS",
+  "입력": {
+   "taxableEstateAmount": 6000000000,
+   "childCount": 2,
+   "hasSpouse": false,
+   "inheritanceDate": "2026-01-10",
+   "generationSkipHeirRatio": 0.5,
+   "generationSkipOver2Billion": true,
+   "generationSkipMinorHeir": true,
+   "generationSkipHeirs": [
+    {
+     "amount": 2500000000,
+     "isMinor": true
+    },
+    {
+     "amount": 500000000,
+     "isMinor": false
+    }
+   ]
+  },
+  "정답": {
+   "세대생략가산액": 438437500
+  }
+ },
+ {
+  "이름": "[2026.10.22 증여-17 A⑩] 채무면제 증여(§36) 계산기 자체 세액에도 세대생략 할증 30%(§57): 산출 5천만 → 가산액 15,000,000",
+  "도구": "calculateDebtForgivenessGiftTaxJS",
+  "입력": {
+   "debtAmount": 300000000,
+   "relation": "직계존속",
+   "giftDate": "2026-03-01",
+   "isGenerationSkip": true
+  },
+  "정답": {
+   "세대생략가산액": 15000000,
+   "산출세액": 65000000
+  }
  }
 ]

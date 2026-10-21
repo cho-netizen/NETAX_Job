@@ -4143,7 +4143,18 @@
     const generationSkipMinorStatusUnverified = generationSkipHeirRatio > 0 && !p.isSubstituteInheritance
       && !!p.generationSkipOver2Billion && p.generationSkipMinorHeir == null;
     const generationSkipPremiumRate = p.isSubstituteInheritance ? 0 : ((p.generationSkipOver2Billion && p.generationSkipMinorHeir) ? genSkipMinorRateAt_(inhDate_) : 0.3);
-    const generationSkipPremium = Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate);
+    // [2026.10.22 검토대상 상속-10 A⑨] §27 괄호 "미성년자에 해당하는 상속인 또는 수유자가 받았거나 받을 상속재산의 가액이 20억원을 초과하는 경우" —
+    //  40%는 그 사람 몫에만. generationSkipHeirs([{amount, isMinor}], 사전증여 포함 몫)를 받으면 비율(generationSkipHeirRatio)을 사람별 금액 비율로 나눠
+    //  사람마다 30%/40%를 곱한다(isMinor가 없으면 화면 체크 generationSkipMinorHeir). 없으면 예전처럼 하나의 율.
+    const gsHeirs_ = Array.isArray(p.generationSkipHeirs) ? p.generationSkipHeirs.filter(function (h) { return h && Number(h.amount) > 0; }) : [];
+    const gsSum_ = gsHeirs_.reduce(function (s, h) { return s + Number(h.amount); }, 0);
+    const generationSkipPremium = (p.isSubstituteInheritance || !(gsSum_ > 0))
+      ? Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate)
+      : Math.round(gsHeirs_.reduce(function (s, h) {
+          const minor_ = (h.isMinor === true || h.isMinor === false) ? h.isMinor : !!p.generationSkipMinorHeir;
+          const rate_ = (minor_ && Number(h.amount) > 2000000000) ? genSkipMinorRateAt_(inhDate_) : 0.3;
+          return s + calculatedTax * generationSkipHeirRatio * (Number(h.amount) / gsSum_) * rate_;
+        }, 0));
     calculatedTax += generationSkipPremium;
 
     // §28 증여세액공제 — 상속인별 정밀 계산(위 priorGiftTaxCreditPrecise 참고). nonHeirPriorGiftTaxableBaseTotal·
@@ -5236,6 +5247,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -5247,7 +5261,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -5256,7 +5270,7 @@
     return {
       채무면제등이익: giftAmount, 증여재산공제: relationDeduction,
       감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount, 과세표준: taxBase,
-      산출세액: calculatedTax, 신고세액공제: reportCredit,
+      산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 면제·인수·변제를 받은 날입니다(§36②). 배우자·직계존비속 등 관계별 증여재산공제(§53) 한도는 10년간 합산 사용액을 감안해 직접 계산해서 넣어야 합니다.'
@@ -5309,6 +5323,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -5320,7 +5337,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -5329,7 +5346,7 @@
     return Object.assign({
       과세대상여부: true,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: (useType === 'occupancy'
@@ -5364,6 +5381,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
 
     if (transferType === 'bypass') {
       // §44②단서 비교대상 증여세액 — "재양도 재산가액을 증여추정할 경우의 증여세액"은 바로 아래에서
@@ -5391,7 +5411,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -5400,7 +5420,7 @@
     return {
       과세대상여부: true, 증여추정재산가액: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: transferType === 'direct'
@@ -5476,6 +5496,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -5487,7 +5510,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -5496,7 +5519,7 @@
     return {
       신탁이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 원칙적으로 원본·수익이 실제 지급되는 날입니다(위탁자 사망시 사망일, 약정일까지 미지급시 약정일 등 예외는 시행령§25①). 수익자가 특정·존재하지 않으면 위탁자(또는 상속인)를 수익자로 보아 과세하고, 나중에 수익자가 특정되면 그때 새로운 신탁이 있는 것으로 봅니다(§33②).'
@@ -5526,6 +5549,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -5537,7 +5563,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -5546,7 +5572,7 @@
     return {
       보험금상당액: proceedsShare, 증여받은재산으로낸보험료: premiumPaidFromGiftedAssets, 증여재산가액: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 보험사고(만기보험금 지급 포함)가 발생한 날입니다. 피상속인이 보험계약자로서 §8에 따라 이 보험금을 상속재산으로 보는 경우에는 이 조가 아니라 상속세로 과세됩니다(§34②).'
@@ -8615,13 +8641,16 @@
       taxBase = Math.max(0, giftAmount - 30000000 - appraisalFeeAmount);
     }
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     // §59·시행령§48(§21 준용) — 외국납부세액공제 비례산식(foreignGiftTaxBase 입력시 자동계산).
     const foreignGiftTaxBase = Number(p.foreignGiftTaxBase) || 0;
     const foreignTaxCreditByFormula = (foreignGiftTaxBase > 0 && taxBase > 0)
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), offshore60_(p), lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('gift', p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-11] 미납 기간 1일 율 연혁
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
@@ -8630,7 +8659,7 @@
       과세대상여부: true, 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount,
       감정평가수수료공제: appraisalFeeAmount,
       외국납부세액공제: foreignTaxCredit,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: (isAggregationExcluded
@@ -8693,6 +8722,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -8704,7 +8736,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -8713,7 +8745,7 @@
     return {
       과세대상여부: true, 현물출자후1주당평가액: Math.round(postValuePerShare), 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 현물출자 납입일 등입니다(시행령§29①을 준용). §39(증자에 따른 이익의 증여)와 계산구조가 같습니다.'
@@ -8939,6 +8971,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -8950,7 +8985,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -8959,7 +8994,7 @@
     return {
       과세대상여부: true, 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 감자를 위한 주주총회결의일 등입니다(시행령§29의2①). 대주주등의 판정기준은 §38·§39의2와 동일합니다.' + aggNote
@@ -9614,6 +9649,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -9625,7 +9663,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -9634,7 +9672,7 @@
     return {
       과세대상여부: true, 증자후1주당평가액: Math.round(postValuePerShare), 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 주식대금 납입일 등입니다(§39①, 시행령§29①). high_nonshareholder(시행령5호, 법§39①2호다·라목)는 시행령§29②5호 원문상 별도의 게이트(문턱금액) 조항이 없어 게이트 없이 계산합니다.'
@@ -10137,6 +10175,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -10148,7 +10189,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -10157,7 +10198,7 @@
     return {
       과세대상여부: true, 이번거래합병이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 합병이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '증여일은 합병등기일입니다(§38①). 대주주등이 2인 이상인 경우 각자 계산하며, 합병대가를 주식등 외 재산으로 받는 경우(1주당평가액이 액면가액에 미달하는 경우)는 이 계산기가 다루지 않으니 별도로 계산하세요.' + aggNote
@@ -10205,6 +10246,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -10216,7 +10260,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -10225,7 +10269,7 @@
     return {
       과세대상여부: true, 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '재산사용·용역제공 기간이 1년 이상이면 1년이 되는 날의 다음 날마다 새로 증여받은 것으로 봅니다(§42②). 특수관계인이 아닌 자 간의 거래는 거래관행상 정당한 사유가 없는 경우에만 적용됩니다(§42③).' + aggNote
@@ -10272,6 +10316,9 @@
     const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
+    // [2026.10.22 검토대상 증여-17 A⑩] §57 세대생략 할증 — 이 계산기 자체 세액에도(화면은 가액만 일반 계산으로 넘기지만 AI 도구는 이 세액을 씀).
+    //  할증은 기납부·외국납부 공제 기준(할증 전 산출세액) 밖에서 더하고, 신고세액공제(§69 "가산액 포함")는 더한 뒤 금액으로 — 초과배당 계산기와 같음.
+    const gsx_ = genSkipPremium_(calculatedTax, p, giftAmount);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
@@ -10283,7 +10330,7 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit) + gsx_.amount; // [2026.10.22 증여-17 A⑩] 할증 더함
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = Math.round(inTimeCreditBase_(p, filingStatus, calculatedTax, taxAfterCredit) * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-1] 과소신고 기한 안 신고분 // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -10292,7 +10339,7 @@
     return {
       과세대상여부: true, 이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: '특수관계인이 아닌 자 간의 거래는 거래관행상 정당한 사유가 없는 경우에만 적용됩니다(§42의2②).'
