@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 13:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 14:39 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3312,6 +3312,17 @@ function nxMdOpenWindow(title, src, opts){
       if (r.toConfirm) html += '<div style="padding:6px 0;">🔔 반영된 요청 <b>' + r.toConfirm + '건</b> — 잘 되는지 확인해 주세요 <a href="#" data-dashgo="settings">설정 → 🤝 → 📝 요청 상태</a></div>';
       var unanswered = (r.questions || []).filter(function(q){ return !q.answer; }).length;
       if (unanswered) html += '<div style="padding:6px 0;">❓ 개발자 질문 <b>' + unanswered + '건</b> <a href="#" data-dashgo="settings">답하러 가기</a></div>';
+      // [2026.10.21] 주간 개발자 실행(웹 Claude 루틴) 기록 — 세무사님 결정: 실패·넘긴 일이 job에 남게(10-12 한도 초과 실패가 "성공"으로 남아 아무도 몰랐음)
+      var rt = r.routine || {}, rl = rt.last;
+      if (rt.missing) html += '<div style="padding:6px 0; color:#a83232;"><b>⚠ 이번 주 개발자 실행 기록 없음</b> — 월요일 실행이 안 됐거나 기록 전에 멈췄습니다' + (rl ? ' (마지막 기록 ' + esc(String(rl.date).slice(5)) + ')' : '') + '</div>';
+      if (rl){
+        var rlSt = rl.status === 'error' ? '⚠ 멈춤' : rl.status === 'none' ? '후보 없음' : '고침 ' + (rl.fixed || []).length + '건 · 넘김 ' + (rl.skipped || []).length + '건';
+        var pcList = rt.pcTodo || [];
+        html += '<div style="padding:6px 0;"><b>🛠 주간 개발자 실행</b> ' + esc(String(rl.date).slice(5)) + ' — ' + rlSt + (/^https:\/\/github\.com\//.test(String(rl.pr || '')) ? ' <a href="' + esc(rl.pr) + '" target="_blank" rel="noopener">수정안</a>' : '')
+          + (rl.summary ? '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(rl.summary).slice(0, 200)) + '</div>' : '')
+          + (pcList.length ? '<details style="font-size:12px; padding-top:2px;"><summary style="cursor:pointer;">PC에서 할 일 ' + pcList.length + '건(클라우드에서 못 해 넘긴 것)</summary>' + pcList.map(function(s){ return '<div style="color:var(--sub); padding:2px 0 0 8px;">· ' + esc(s.item) + (s.reason ? ' — ' + esc(s.reason) : '') + '</div>'; }).join('') + '</details>' : '')
+          + '</div>';
+      }
       var ch = (r.changes || []).slice(0, 5);
       html += '<div style="padding:6px 0;"><b>✨ 최근 바뀐 기능</b>' + (ch.length ? ch.map(function(c){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(c.at).slice(5)) + ' · ' + esc(String(c.msg).slice(0, 90)) + '</div>'; }).join('') : '<div style="font-size:12px; color:var(--sub);">기록 없음(다음 반영부터 쌓입니다)</div>') + '</div>';
       html += '<div style="padding:6px 0;" id="dashMeetNeed"><b>🤝 AI 회의</b> 회의 기록·세무사님 결정 필요 <a href="#" data-dashgo="settings">설정 → 🤝 AI 회의</a></div>';

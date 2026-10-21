@@ -338,7 +338,27 @@ function commStatus_() {
   var ra = commRequestsAll_(), reqs = ra.open.concat(ra.done);
     return { success: true, changes: commRecentChanges_().slice(0, 12), requests: reqs, openRequests: ra.open, doneRequests: ra.done,
     oldestDays: ra.open.length ? ra.open[0].days : 0, urgent: ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length,
-    toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_ };
+    toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_,
+    routine: commRoutineLog_() };
+}
+// ⑦ [2026.10.21] 주간 개발자 실행 기록 — 웹 Claude 루틴이 끝날 때 tools/routine-log.js로 깃허브 routine-log 가지 docs/routine-log.json에 남긴다.
+//  세무사님 결정(2026-10-21 "진행하고 다음항목으로 넘어가자"): 10-12 실행이 주간 한도로 멈췄는데 "성공"으로 남아 아무도 몰랐고, 10-19 실행이 넘긴 38건의 사유가 수정안 글에만 있었다.
+//  job은 읽기만 한다. 이번 주 월요일 10시(한국)가 지났는데 그 주 기록이 없으면 missing — 실행이 안 됐거나 기록 전에 멈춘 것.
+function commRoutineLog_() {
+  var cache = CacheService.getScriptCache(), hit = cache.get('routine_log_json'), txt = hit;
+  if (hit === null) {
+    try { var r = UrlFetchApp.fetch('https://raw.githubusercontent.com/' + GH_REPO_ + '/routine-log/docs/routine-log.json?t=' + Date.now(), { muteHttpExceptions: true }); txt = r.getResponseCode() === 200 ? r.getContentText('UTF-8') : ''; } catch (e) { txt = ''; }
+    try { cache.put('routine_log_json', txt, 1800); } catch (e) {}
+  }
+  var arr = []; try { arr = JSON.parse(txt || '[]'); } catch (e) { arr = []; }
+  if (!Array.isArray(arr)) arr = [];
+  var kst = new Date(Date.now() + 9 * 3600000), dow = kst.getUTCDay(); // 0=일
+  var monday = new Date(kst.getTime() - ((dow + 6) % 7) * 86400000), mondayStr = monday.toISOString().slice(0, 10);
+  var pastMon10 = ((dow + 6) % 7) > 0 || kst.getUTCHours() >= 10;
+  var thisWeek = arr.filter(function (e) { return e && String(e.date || '') >= mondayStr; });
+  var last = arr.length ? arr[arr.length - 1] : null;
+  var pcTodo = last ? (last.skipped || []).filter(function (s) { return s && s.pc; }) : [];
+  return { last: last, recent: arr.slice(-6).reverse(), weekStart: mondayStr, missing: pastMon10 && !thisWeek.length, pcTodo: pcTodo };
 }
 // 🔑 OpenRouter 키 넣기(세무사님이 직접 입력 — 값은 되돌려 주지 않음)
 var AI_KEY_NAMES_ = ['OPENROUTER_API_KEY'];

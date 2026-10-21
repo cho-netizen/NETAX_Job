@@ -37516,8 +37516,11 @@ function buildImprovementReport_() {
     headline: headline,
     // [2026.10.21] 공통원칙 — 세무사님 원칙을 넥스·PC Claude·웹 Claude 루틴이 함께 읽게(총괄관리자\공통원칙.md 원문 그대로). 루틴은 드라이브를 못 읽어 보고서에 싣는다
     principles: (function () { try { return getCommonPrinciplesText_(); } catch (e) { return ''; } })(),
+    // [2026.10.21] 지난 주간 실행 기록(routine-log 가지) — 넘긴 일을 매주 다시 조사하지 않게
+    routineLast: (function () { try { return typeof commRoutineLog_ === 'function' ? commRoutineLog_().last : null; } catch (e) { return null; } })(),
     // 웹 Claude Code 루틴이 읽는 처리 안내(루틴 지시문을 고치지 않고도 새 항목 처리법을 알려 주려고 보고서에 함께 싣는다)
     guide: [
+      '실행 기록(필수, 마지막 단계): 일이 끝나면 PR이 있든 없든 node tools/routine-log.js --json \'{"status":"ok|none|error","summary":"한두 줄","fixed":["고친 것"],"skipped":[{"item":"넘긴 후보(일반화)","reason":"왜","pc":true}],"pr":"PR 주소"}\' 를 실행한다. pc=true는 여기서 못 하고 PC에서 해야 하는 일(드라이브 자료 필요 등). 도중에 막혀도 status "error"로 남긴다 — job 대시보드가 이 기록을 읽고, 월요일 기록이 없으면 "실행 안 됨"으로 띄운다. 고객 이름·사건명·질문 원문은 쓰지 않는다. routineLast는 지난 기록 — 거기서 pc=true로 넘긴 후보와 같은 것은 다시 조사하지 말고 skipped에 "지난주와 같음(PC 몫)"만 적는다.',
       'principles(공통원칙)는 세무사님이 정한 원칙 원문이다 — 무엇을 고치든 먼저 읽고 지킨다. 특히 세법 문장·세액 계산을 건드리면 조문 본문·단서·각 호·시행령까지 원문으로 확인하고, 세무사님 지침과 어긋나면 고치지 말고 PR "확인 필요"에 근거와 함께 적는다.',
       'requests(📝)는 세무사님이 직접 적은 개선요구사항(버전업·새 기능·불편사항) = 직접 지시다. 날짜 제한 없이 아직 안 끝난 것 전부가 오래된 순으로 실린다(days=며칠째) — 오래된 것부터. requestsAwaitingConfirm은 이미 반영돼 세무사님 확인만 남은 것이라 다시 고치지 않는다. 우선순위: 🩺 자가점검 실패 > 📝 > 🐞 > 💸 > 🐢. 구현해서 PR로 올린다. 큰 기능이면 바로 쓸 수 있는 첫 단계까지 구현하고 나머지 계획은 PR "남은 단계"에. 모호하면 가장 보수적으로 해석하고 "확인 필요"에 질문.',
       '중복 방지: git fetch --all 후 git branch -r 과 최근 14일 main 커밋을 보고, 같은 내용을 이미 반영했거나 이미 올린 브랜치가 있으면 그 후보는 건너뛰고 이유만 적는다.',
