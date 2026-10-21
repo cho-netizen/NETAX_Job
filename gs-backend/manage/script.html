@@ -31,6 +31,11 @@
   // 경우가 있어서, 창 크기(innerWidth/Height)가 커버화면만 할 때도 커버로 본다. 요즘 크롬은 키보드가 올라와도
   // 창 높이(innerHeight)를 줄이지 않으므로(가상 키보드는 화면 위에 겹침) 펼친 화면에서 잘못 바뀌지 않는다.
   function nxIsCoverScreen_(){
+    // [2026.10.22] 세무사님 "권장순서대로 하고…"(기기 3종 검토 D-3) — 워치·휴대폰 바로가기 "넥스에게 말하기"(/m/?talk=1 → /app/?talk=1)는
+    //  기기 크기와 상관없이 말하기 모드로 연다(그 창이 열려 있는 동안). 갤럭시워치(기종 SM-R…·SM-L…)도 말하기 모드.
+    try { if (/[?&]talk=1/.test(location.search)) sessionStorage.setItem('nxForceTalk', '1'); } catch (e) {}
+    try { if (sessionStorage.getItem('nxForceTalk') === '1') return true; } catch (e) {}
+    if (window.nxDeviceModel && /^SM-[RL]\d/i.test(window.nxDeviceModel)) return true;
     var o = nxLayoutOverride_();
     if (o === 'pc' || o === 'tablet') return false; // 설정에서 PC·태블릿으로 고정하면 커버화면 안 씀('폰' 고정은 씀)
     // 손가락으로 쓰는 기기에서만(PC 창을 작게 줄였을 때 바뀌지 않게). 커버화면은 거의 정사각형(세로/가로 0.75~1.45)이고
@@ -41,7 +46,8 @@
     // 기종도 본다(세무사님: 태블릿 화면 나누기처럼 크기·비율만 맞는 큰 기기에서 뜨면 안 됨) — 크롬이 알려 주는 기종명이
     // 있으면 갤럭시 Z플립(SM-F7…)일 때만. 기종명을 못 받는 브라우저면 아래 크기·비율 기준으로만 판단한다.
     if (window.nxDeviceModel && !/^SM-F7/i.test(window.nxDeviceModel)) return false;
-    function squareSmall(w, h){ var s = Math.min(w, h), l = Math.max(w, h); return s >= 240 && s <= 640 && l <= 760 && l / s <= 1.45; }
+    // 워치 화면(짧은 쪽 240 미만, 거의 정사각·원형)도 작은 정사각으로 본다(2026.10.22 — 150부터)
+    function squareSmall(w, h){ var s = Math.min(w, h), l = Math.max(w, h); return s >= 150 && s <= 640 && l <= 760 && l / s <= 1.45; }
     // 화면 크기(screen) 값은 접고 펼칠 때 늦게 바뀌어(시험에서 펼친 크기인데 커버로 판정) 쓰지 않고 실제 창 크기만 본다.
     return squareSmall(window.innerWidth, window.innerHeight);
   }

@@ -321,6 +321,7 @@ function commReportGap_(input) {
   if (e.urgent && res && res.success) { // 잠금 밖에서(개선요구사항 적기도 잠금을 씀)
     try {
       var add = improve_addRequest_({ text: '🚨 긴급 — 넥스 신고(세액·신고 결과 오류): ' + e.want + (e.blocker ? ' / 막힌 이유: ' + e.blocker : '') + (e.area ? ' / 분야: ' + e.area : '') });
+      try { if (typeof notifyOwner_ === 'function') notifyOwner_('urgent', '넥스 긴급 신고(세액·신고 결과 오류) — ' + e.want.slice(0, 80)); } catch (x) {} // [2026.10.22] 손목·휴대폰으로 바로
       res.message += add && add.success ? ' 세액·신고 결과 오류라 개선요구사항에 🚨 긴급으로도 올렸다 — 사용자에게 "긴급으로 올렸다"고 알리고, 고쳐지기 전까지 그 결과는 손으로 검산하라고 말하라.' : ' (긴급 등록은 실패 — 사용자에게 설정 🐞 카드에서 직접 적어 달라고 말하라.)';
     } catch (x) { res.message += ' (긴급 등록 실패: ' + String(x && x.message || x).slice(0, 80) + ')'; }
   }
@@ -422,6 +423,8 @@ function commSeamList_() {
     // 고객·바깥 프로그램 ↔ job(2026-10-22 "다른 프로그램 다른 어플과의 소통")
     { 길: '고객 제출(my.netax.kr) → 사건 처리일지·대시보드', fn: function () { return typeof custUploadNote_ === 'function' && Array.isArray(custUploadsRecent_(7)) ? '' : '고객 제출 알림이 이 판에 없음'; } },
     { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
+    { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
+    { 길: '휴대폰 창구 녹음 → 상담 녹음(받아쓰기·요약 → 사건)', fn: function () { return typeof consult_finish_ === 'function' && typeof consult_chunk_ === 'function' ? '' : '상담 녹음 서버 길이 이 판에 없음'; } },
     { 길: '고객 카톡 글 → 넥스 사건처리 조회', fn: function () { return typeof kakaoCaseMessages_ === 'function' ? '' : '카톡 글 읽기가 이 판에 없음'; } }
   ];
 }

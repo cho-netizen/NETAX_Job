@@ -19,6 +19,24 @@
       "short_name": "받은 파일",
       "url": "/m/?inbox=1",
       "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "현장 서류 찍기",
+      "short_name": "서류 찍기",
+      "url": "/m/?scan=1",
+      "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "넥스에게 말하기",
+      "short_name": "넥스 말하기",
+      "url": "/m/?talk=1",
+      "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "서명 받기",
+      "short_name": "서명",
+      "url": "/m/?sign=1",
+      "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "share_target": {
