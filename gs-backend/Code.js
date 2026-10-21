@@ -3820,6 +3820,8 @@ function job_buildProposal_(input) {
     payload = { caseId: c.id, step: 'apply', target: q.ask.target, value: params.value, src: src, label: label, ans: { qid: q.id, how: '넥스 대화', nCands: (q.ask.cands || []).length, pick: (q.ask.cands || []).map(function (x) { return String(x.v).replace(/[\s,]/g, ''); }).indexOf(String(params.value).replace(/[\s,]/g, '')), file: '' } };
     return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 「' + label + '」에 ' + String(params.value).slice(0, 120) + ' 넣기 (' + src + ')', gasAction: spec.gas, payload: payload, kind: input.action, caseId: c.id } };
   }
+  // [2026.10.21] 넥스가 쓴 고객 문자 — 넥스 초안 표시(상담 기록 담당자 칸), 사건이 있으면 사건 처리일지에도. 카드에서 세무사님이 글을 고쳐 보낼 수 있다(aichat.html)
+  if (input.action === 'client_sms') payload = Object.assign({}, params, { via: 'ai' });
   if (input.action === 'case_update') {
     const bad = Object.keys(params).filter(function (k) { return JOB_CASE_UPDATE_FORBIDDEN_.indexOf(k) !== -1; });
     if (bad.length) return { error: '이 항목은 AI가 바꿀 수 없습니다: ' + bad.join(', ') };
@@ -3848,7 +3850,7 @@ const JOB_AI_TOOLS_ = [
     name: 'job_propose_action',
     description: '되돌리기 어려운 job 작업을 사용자에게 "제안"한다 — 실행하지 않는다. 화면에 [실행] 버튼이 뜨고 사용자가 눌러야 실제로 실행된다. 반드시 summary에 무엇을 하는지 한두 문장으로 쓰고, 답변에서도 "제안을 띄웠으니 확인 후 실행을 누르라"고 안내하라(이미 했다고 말하지 마라). '
       + 'action별 params: booking_approve{rowIndex,eventId,phone,reservedDate,reservedTime} / booking_reject{rowIndex,phone} / booking_link_case{rowIndex,caseId} / booking_cancel{rowIndex} — 값은 job_lookup(bookings) 결과 그대로. '
-      + 'client_sms{고객ID,message}(고객ID는 list_clients로 확인) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
+      + 'client_sms{고객ID,message,caseId(선택: 이 문자가 걸린 사건 — 사건 처리일지에도 남음)}(고객ID는 list_clients로 확인; 보낸 문자는 상담 기록에 남고, 세무사님이 카드에서 글을 고쳐 보낼 수 있다) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
       + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
@@ -20535,7 +20537,19 @@ function client_sendSms(params) {
   if (!smsResult || smsResult.success === false) {
     return { success: false, message: '문자 발송에 실패했습니다' + (smsResult && smsResult.message ? ': ' + smsResult.message : '') + '.' };
   }
-  return { success: true };
+  // [2026.10.21] 보낸 문자를 그 고객 상담 기록(사건이 있으면 사건 처리일지에도)에 남긴다 — 세무사님 결정("진행하고 다음으로 넘어가자"):
+  //  고객에게 무엇을 요청했는지 넥스·사건처리가 다음에 알 수 있게(전엔 어디에도 안 남음). 고객관리 화면·넥스 [실행] 카드 모두 이 함수를 거친다.
+  //  기록이 실패해도 발송 결과는 그대로(이미 나감) — 실패는 안내에만.
+  let logNote = '';
+  try {
+    const caseId = String(params.caseId || params.사건ID || '').trim();
+    client_addConsultLog({ 고객ID: clientId, 고객명: String(found.row[col.고객명] || ''), 유형: '문자 발송', 내용: message.slice(0, 1000), 사건ID: caseId, 담당자: params.via === 'ai' ? '넥스 초안(세무사님 확인 후 발송)' : '' });
+    if (caseId) {
+      const wc = job_findCase_(caseId);
+      if (wc) work_updateCase({ id: wc.id, 작업일지: (Array.isArray(wc.작업일지) ? wc.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'), text: '[고객 문자] ' + message.replace(/\s+/g, ' ').slice(0, 200), dueDate: '' }]) });
+    }
+  } catch (e) { logNote = ' (상담 기록 남기기는 실패: ' + (e && e.message || e) + ')'; }
+  return { success: true, message: logNote ? '문자는 보냈습니다' + logNote : '' };
 }
 
 function client_getConsultLogs(params) {

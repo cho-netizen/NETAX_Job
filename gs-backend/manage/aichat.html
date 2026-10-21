@@ -1681,6 +1681,16 @@
       + '<div class="nxai-confirm-body"></div>'
       + '<div class="nxai-confirm-btns"><button type="button" class="nxai-btn primary">▶ 실행</button><button type="button" class="nxai-btn">취소</button></div>';
     card.querySelector('.nxai-confirm-body').textContent = a.summary || '';
+    // [2026.10.21] 고객 문자는 넥스가 쓴 글을 세무사님이 고쳐서 보낼 수 있게(세무사님 결정 — 보낸 문자는 상담 기록에 남음)
+    var smsBox = null;
+    if (a.kind === 'client_sms' && a.payload){
+      smsBox = document.createElement('textarea');
+      smsBox.className = 'nxai-confirm-edit';
+      smsBox.style.cssText = 'width:100%; box-sizing:border-box; min-height:84px; margin-top:6px; font:inherit; font-size:13px;';
+      smsBox.value = String(a.payload.message || '');
+      smsBox.title = '보낼 문자 — 고쳐서 보낼 수 있습니다';
+      card.querySelector('.nxai-confirm-body').appendChild(smsBox);
+    }
     var runBtn = card.querySelectorAll('button')[0], cancelBtn = card.querySelectorAll('button')[1];
     var finish = function(text, ok){
       card.querySelector('.nxai-confirm-btns').innerHTML = '';
@@ -1700,10 +1710,16 @@
         else finish('메모 저장 창을 열 수 없습니다.', false);
         return;
       }
+      if (smsBox){
+        var msgNow = smsBox.value.trim();
+        if (!msgNow){ nxAiToast_('보낼 문자가 비어 있습니다.'); return; }
+        a.payload = Object.assign({}, a.payload, { message: msgNow });
+        smsBox.disabled = true;
+      }
       runBtn.disabled = true; cancelBtn.disabled = true; runBtn.textContent = '실행 중…';
       callGas(a.gasAction, a.payload || {}).then(function(res){
         var ok = !(res && (res.success === false || res.error));
-        finish(ok ? ('✅ 실행했습니다' + (res && res.message ? ': ' + res.message : '')) : ('실행하지 못했습니다: ' + ((res && (res.message || res.error)) || '알 수 없는 오류')), ok);
+        finish(ok ? ('✅ 실행했습니다' + (res && res.message ? ': ' + res.message : '') + (smsBox ? ' — 보낸 문자: "' + String(a.payload.message).slice(0, 300) + '"' : '')) : ('실행하지 못했습니다: ' + ((res && (res.message || res.error)) || '알 수 없는 오류')), ok); // 고친 문자 그대로 대화 기록에(넥스가 실제 보낸 글을 알게)
         // [2026.10.21 넥스 하나로] 채팅으로 넣은 답 — 같은 사건의 처리 화면이 열려 있으면 칸 채우기를 다시 돌려 질문 목록을 맞춘다
         if (ok && a.kind === 'caseproc_answer' && typeof NXAI_CP_ACTIVE_ !== 'undefined'){ var cpSt = NXAI_CP_ACTIVE_.filter(function(s){ return s.caseId === a.caseId && !s.running && s.bubble && document.body.contains(s.bubble); }).pop(); if (cpSt) nxAiCaseProcLoop_(cpSt, 0).then(function(){ nxAiCaseProcFoot_(cpSt); }).catch(function(){}); }
         if (ok && /^(booking_)/.test(a.kind) && typeof initBooking === 'function' && document.getElementById('view-booking') && document.getElementById('view-booking').classList.contains('active')) initBooking();
