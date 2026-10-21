@@ -4143,7 +4143,18 @@
     const generationSkipMinorStatusUnverified = generationSkipHeirRatio > 0 && !p.isSubstituteInheritance
       && !!p.generationSkipOver2Billion && p.generationSkipMinorHeir == null;
     const generationSkipPremiumRate = p.isSubstituteInheritance ? 0 : ((p.generationSkipOver2Billion && p.generationSkipMinorHeir) ? genSkipMinorRateAt_(inhDate_) : 0.3);
-    const generationSkipPremium = Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate);
+    // [2026.10.22 검토대상 상속-10 A⑨] §27 괄호 "미성년자에 해당하는 상속인 또는 수유자가 받았거나 받을 상속재산의 가액이 20억원을 초과하는 경우" —
+    //  40%는 그 사람 몫에만. generationSkipHeirs([{amount, isMinor}], 사전증여 포함 몫)를 받으면 비율(generationSkipHeirRatio)을 사람별 금액 비율로 나눠
+    //  사람마다 30%/40%를 곱한다(isMinor가 없으면 화면 체크 generationSkipMinorHeir). 없으면 예전처럼 하나의 율.
+    const gsHeirs_ = Array.isArray(p.generationSkipHeirs) ? p.generationSkipHeirs.filter(function (h) { return h && Number(h.amount) > 0; }) : [];
+    const gsSum_ = gsHeirs_.reduce(function (s, h) { return s + Number(h.amount); }, 0);
+    const generationSkipPremium = (p.isSubstituteInheritance || !(gsSum_ > 0))
+      ? Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate)
+      : Math.round(gsHeirs_.reduce(function (s, h) {
+          const minor_ = (h.isMinor === true || h.isMinor === false) ? h.isMinor : !!p.generationSkipMinorHeir;
+          const rate_ = (minor_ && Number(h.amount) > 2000000000) ? genSkipMinorRateAt_(inhDate_) : 0.3;
+          return s + calculatedTax * generationSkipHeirRatio * (Number(h.amount) / gsSum_) * rate_;
+        }, 0));
     calculatedTax += generationSkipPremium;
 
     // §28 증여세액공제 — 상속인별 정밀 계산(위 priorGiftTaxCreditPrecise 참고). nonHeirPriorGiftTaxableBaseTotal·

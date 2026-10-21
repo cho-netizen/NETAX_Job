@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 22:12 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 22:18 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -17653,7 +17653,18 @@ function nxMdOpenWindow(title, src, opts){
     const generationSkipMinorStatusUnverified = generationSkipHeirRatio > 0 && !p.isSubstituteInheritance
       && !!p.generationSkipOver2Billion && p.generationSkipMinorHeir == null;
     const generationSkipPremiumRate = p.isSubstituteInheritance ? 0 : ((p.generationSkipOver2Billion && p.generationSkipMinorHeir) ? genSkipMinorRateAt_(inhDate_) : 0.3);
-    const generationSkipPremium = Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate);
+    // [2026.10.22 검토대상 상속-10 A⑨] §27 괄호 "미성년자에 해당하는 상속인 또는 수유자가 받았거나 받을 상속재산의 가액이 20억원을 초과하는 경우" —
+    //  40%는 그 사람 몫에만. generationSkipHeirs([{amount, isMinor}], 사전증여 포함 몫)를 받으면 비율(generationSkipHeirRatio)을 사람별 금액 비율로 나눠
+    //  사람마다 30%/40%를 곱한다(isMinor가 없으면 화면 체크 generationSkipMinorHeir). 없으면 예전처럼 하나의 율.
+    const gsHeirs_ = Array.isArray(p.generationSkipHeirs) ? p.generationSkipHeirs.filter(function (h) { return h && Number(h.amount) > 0; }) : [];
+    const gsSum_ = gsHeirs_.reduce(function (s, h) { return s + Number(h.amount); }, 0);
+    const generationSkipPremium = (p.isSubstituteInheritance || !(gsSum_ > 0))
+      ? Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate)
+      : Math.round(gsHeirs_.reduce(function (s, h) {
+          const minor_ = (h.isMinor === true || h.isMinor === false) ? h.isMinor : !!p.generationSkipMinorHeir;
+          const rate_ = (minor_ && Number(h.amount) > 2000000000) ? genSkipMinorRateAt_(inhDate_) : 0.3;
+          return s + calculatedTax * generationSkipHeirRatio * (Number(h.amount) / gsSum_) * rate_;
+        }, 0));
     calculatedTax += generationSkipPremium;
 
     // §28 증여세액공제 — 상속인별 정밀 계산(위 priorGiftTaxCreditPrecise 참고). nonHeirPriorGiftTaxableBaseTotal·
@@ -25737,7 +25748,7 @@ function recomputeHeirDerivedFields(){
   const nonSpouseNamedHeirs = heirs.filter(function(h){ return h.relation && h.relation !== '배우자'; });
   const isSpouseOnlyHeir = hasSpouse && nonSpouseNamedHeirs.length === 0;
   let spouseActual = 0, genSkipAmount = 0;
-  tcHeirPriorGiftSum_ = 0;
+  tcHeirPriorGiftSum_ = 0; tcGenSkipHeirs_ = [];
   heirs.forEach(function(h, hidx){
     // [2026.10.19 상속세책자 사례] 배우자가 실제 상속받은 금액 = 배우자 몫 재산 − 배우자가 승계한 채무·공과금
     if (h.relation === '배우자') spouseActual += Math.max(0, computeHeirActualValue_(hidx) - heirAssumedDebt_(hidx));
@@ -25745,7 +25756,12 @@ function recomputeHeirDerivedFields(){
     //  분자(그 상속인이 받았거나 받을 재산)에 그 세대생략 상속인의 사전증여를, 분모에 상속인 전체의 사전증여를 넣는다.
     const pg_ = h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0;
     tcHeirPriorGiftSum_ += pg_;
-    if ((h.relation || '').indexOf('세대생략') !== -1) genSkipAmount += computeHeirActualValue_(hidx) + pg_;
+    if ((h.relation || '').indexOf('세대생략') !== -1) {
+      genSkipAmount += computeHeirActualValue_(hidx) + pg_;
+      // [2026.10.22 상속-10 A⑨] 사람마다 몫·미성년 여부(§27 40%는 미성년 + 그 사람 몫 20억 초과일 때 그 몫만)
+      const ageG_ = calcAgeAt_(parseBirthDateFromRegNo_(h.regNo), deathDate);
+      tcGenSkipHeirs_.push({ amount: computeHeirActualValue_(hidx) + pg_, isMinor: ageG_ === null ? undefined : ageG_ < 19 });
+    }
   });
   const otherHeirsCount = childUnitCount > 0 ? childUnitCount : activeHeirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; }).length;
   // [2026.09 버그수정] §23의2 — 동거주택가액은 담보채무를 뺀 순액이어야 한다(음수는 0으로).
@@ -25827,6 +25843,7 @@ function recomputeHeirDerivedFields(){
 // 세대생략가산액(§27) 계산에 쓰는 "세대생략 상속인이 받는 재산 비율" — 비율을 직접 입력받는 대신
 // 세대생략상속인이 실제 받는 재산가액과 총 상속재산가액(입력돼 있으면 그 값, 아니면 상속세과세가액)을
 // 입력받아 나눗셈으로 자동 산출한다.
+var tcGenSkipHeirs_ = []; // [2026.10.22 상속-10 A⑨] 세대생략 상속인별 몫·미성년
 var tcHeirPriorGiftSum_ = 0; // [2026.10.22 상속-4] 상속인 명부의 사전증여(§13 가산분) 합계 — 세대생략 비율 분모용
 function recomputeGenSkipRatio(){
   const amountEl = document.getElementById('ihGenSkipAmount');
@@ -41716,6 +41733,7 @@ function handleTaxCalcClick_(e){
       generationSkipHeirRatio: numVal(document.getElementById('ihGenSkipRatio').value) || 0,
       generationSkipOver2Billion: document.getElementById('ihGenSkipOver2B').checked,
       generationSkipMinorHeir: document.getElementById('ihGenSkipMinorHeir').checked,
+      generationSkipHeirs: (typeof tcGenSkipHeirs_ !== 'undefined' && tcGenSkipHeirs_.length) ? tcGenSkipHeirs_.slice() : undefined, // [2026.10.22 상속-10 A⑨]
       foreignTaxPaidAmount: numVal(document.getElementById('ihForeignTax').value) || 0,
       foreignEstateTaxBase: numVal(document.getElementById('ihForeignBase') ? document.getElementById('ihForeignBase').value : 0) || 0,
       priorInheritanceTax: numVal(document.getElementById('ihPriorInheritanceTax').value) || 0,
