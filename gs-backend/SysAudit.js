@@ -756,17 +756,51 @@ function sysAuditFeatureList_() {
     return r.getContentText();
   };
   try { snap.screen = sysAuditScreenActions_(raw('app/index.html')); } catch (e) { snap.warn.push('화면 목록을 못 읽음: ' + e.message); }
-  try { snap.server = sysAuditServerActions_(raw('gs-backend/Code.js')); } catch (e) { snap.warn.push('서버 동작 목록을 못 읽음: ' + e.message); }
+  // [2026.10.21] Code.js가 접두어로 다른 서버 파일에 넘기는 입구(예: knh_ → KnowHow.js knhDispatch_)도 센다.
+  //   전엔 Code.js 글자만 세서 KnowHow.js의 knh_index를 "화면은 부르는데 서버에 없음"으로 잘못 잡았다(10-21 @1196 헛경고).
+  try {
+    var code = raw('gs-backend/Code.js'), others = {};
+    if (sysAuditPrefixRoutes_(code).length) {
+      var list = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO_ + '/contents/gs-backend?ref=main', { muteHttpExceptions: true });
+      if (list.getResponseCode() !== 200) throw new Error('서버 파일 목록 응답 ' + list.getResponseCode());
+      JSON.parse(list.getContentText()).forEach(function (f) {
+        if (f.type === 'file' && /\.js$/.test(f.name) && f.name !== 'Code.js') others[f.name] = raw('gs-backend/' + f.name);
+      });
+    }
+    snap.server = sysAuditServerActions_(code, others);
+  } catch (e) { snap.warn.push('서버 동작 목록을 못 읽음: ' + e.message); }
   return snap;
+}
+// 순수 함수 — Code.js에서 「/^접두어/.test(String(body.action)) && typeof 넘길함수 === 'function'」 줄을 찾아 [{prefix, fn}]
+function sysAuditPrefixRoutes_(code) {
+  var out = [], m, re = /\/\^([A-Za-z0-9_]+)\/\.test\(\s*String\(\s*body\.action\s*\)\s*\)\s*&&\s*typeof\s+([A-Za-z0-9_$]+)\s*===\s*['"]function['"]/g;
+  while ((m = re.exec(String(code)))) out.push({ prefix: m[1], fn: m[2] });
+  return out;
 }
 function sysAuditScreenActions_(html) {
   var o = {}, m, re = /callGas(?:Raw_)?\(\s*['"]([A-Za-z0-9_]+)['"]/g;
   while ((m = re.exec(String(html)))) o[m[1]] = 1;
   return Object.keys(o).sort();
 }
-function sysAuditServerActions_(code) {
+// others = { 파일이름: 글 } — 접두어 입구가 넘기는 함수가 정의된 파일에서 「=== '접두어…'」로 받는 이름을 더한다(그 함수가 없는 파일은 안 봄)
+function sysAuditServerActions_(code, others) {
   var o = {}, m, re = /\baction\s*===\s*['"]([A-Za-z0-9_]+)['"]/g;
   while ((m = re.exec(String(code)))) o[m[1]] = 1;
+  // [2026.10.21] 이름 목록 배열로 받는 입구(예: WORK_ACTIONS.indexOf(body.action) !== -1 → 작업관리 처리)도 센다 — 전엔 빠져 고객관리·작업관리 등 48개를 "서버에 없음"으로 셌다
+  var arrRe = /\b(?:const|var|let)\s+([A-Z][A-Z0-9_]*ACTIONS_?)\s*=\s*\[([^\]]*)\]/g, am;
+  while ((am = arrRe.exec(String(code)))) {
+    if (!new RegExp('\\b' + am[1] + '\\.indexOf\\(\\s*(?:body\\.)?action\\s*\\)').test(String(code))) continue;
+    var nm, nre = /['"]([A-Za-z0-9_]+)['"]/g;
+    while ((nm = nre.exec(am[2]))) o[nm[1]] = 1;
+  }
+  sysAuditPrefixRoutes_(code).forEach(function (r) {
+    Object.keys(others || {}).forEach(function (name) {
+      var t = String(others[name]);
+      if (t.indexOf('function ' + r.fn + '(') === -1) return;
+      var re2 = new RegExp('===\\s*[\'"](' + r.prefix + '[A-Za-z0-9_]*)[\'"]', 'g'), m2;
+      while ((m2 = re2.exec(t))) o[m2[1]] = 1;
+    });
+  });
   return Object.keys(o).sort();
 }
 // 순수 함수 — 직전 기록과 비교: 경로별 빠진 도구, 화면이 더는 부르지 않는 동작, 서버가 더는 받지 않는 동작, 새로 끊긴 연결(화면은 부르는데 서버에 없음)
