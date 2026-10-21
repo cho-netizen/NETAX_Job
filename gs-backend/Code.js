@@ -4615,7 +4615,8 @@ function buildContextSystemPrompt(basePrompt, body) {
   if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
     + '맞는 것만 load_business_manager로 읽어 그 판단 순서를 따른다 — 전부 읽지 말고 보통 한두 개, 같은 대화에서 이미 읽은 지침은 다시 읽지 않는다. 맞는 지침이 없으면 그냥 넘어간다. '
-    + '지침의 수치·조문은 개정될 수 있으니 세액·기한을 크게 가르는 것은 lookup_statute_article로 원문을 확인한다.';
+    + '지침의 수치·조문은 개정될 수 있으니 세액·기한을 크게 가르는 것은 lookup_statute_article로 원문을 확인한다. '
+    + 'load_business_manager 결과에 "현행화필요"가 있으면 그 지침을 근거로 답할 때 그 이유를 함께 밝힌다.';
   // [2026.10.21] 절세 아이템을 근거로 답하기 — 세무사님 원문: "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다. 하라.
   //  1. 인용할때 근거를 부기하도록 하라 2. 절세아이템 중 시간에 따라 변경되는 내용은 정기적으로 업데이트를 해야 한다"
   if (ctx.aiPanel) staticExtra += '\n\n[절세 아이템 — 근거로 답할 때] 절세 방법·세금 상식·자주 묻는 질문·주요 이슈·함정을 물으면 search_tax_items로 NETAX가 정리한 아이템을 찾고(토큰 0) 맞는 것만 read_tax_item으로 읽는다(보통 1~2개). '
@@ -14797,7 +14798,13 @@ function toolLoadBusinessManager(name) {
       if (/^_/.test(f.getName()) || !/\.(md|txt)$/i.test(f.getName())) continue; // [2026.10.20] 목록에 없는 것("_" 파일·json 등)은 불러오지 않는다
       if (base === target || f.getName() === target) {
         try { if (typeof knhCountUse_ === 'function') knhCountUse_('지침', base); } catch (e) { } // [2026.10.20] 읽힌 횟수(폐기 후보 판정)
-        return { name: base, content: f.getBlob().getDataAsString('UTF-8') };
+        const out = { name: base, content: f.getBlob().getDataAsString('UTF-8') };
+        // [2026.10.22] 현행화 필요(KnowHow.js 공용 판정 — 인용 조문 개정·본문 날짜 지남·개편안·1년)면 넥스가 인용할 때 함께 말하게
+        try {
+          const cur = typeof knhDocCurrencyNow_ === 'function' ? knhDocCurrencyNow_(out.content, f.getLastUpdated()) : null;
+          if (cur && cur.필요) { out.현행화필요 = cur.이유; out.안내 = '이 지침은 현행화 필요 표시가 있다 — 이 지침을 근거로 답하면 그 이유를 함께 말하고, 해당 세율·기한·조문은 조문 원문 조회로 확인한 뒤에만 단정하라.'; }
+        } catch (e) { }
+        return out;
       }
     }
     return { error: '"' + target + '"라는 업무관리자를 찾을 수 없습니다. list_business_managers로 정확한 이름을 다시 확인하세요.' };
