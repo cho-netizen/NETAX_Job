@@ -32,11 +32,35 @@
   #view-taxplan table.tp-tbl tr.tp-low td.tp-total{ text-decoration:underline; text-decoration-color:var(--gold); text-decoration-thickness:2px; }
   #view-taxplan .tp-notes{ margin:8px 0 0; padding-left:18px; font-size:12px; }
   #view-taxplan .tp-law{ margin-top:8px; font-size:12px; opacity:.85; }
+  /* [2026.10.21 절세 아이템] 세무사님 원문: "자주물어볼 것이 예견는 것을 정형화하거나 복잡한 것을 미리 정리해 두거나 관심갈만한 주요이슈를 미리 정리해 두는 용도이다."
+     아이템 한 건 = 드라이브 0 NETAX\업무관리자\절세\<세목 폴더>\<제목>.md (세무사님이 고칠 수 있게 파일로). 업무관리자 맨 위가 아니라 하위 폴더라 AI 지침 목록에는 섞이지 않는다. */
+  #view-taxplan .tp-modes{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
+  #view-taxplan .tp-mode{ border:1px solid var(--navy); border-radius:6px; padding:6px 14px; background:var(--panel); color:var(--navy); font:inherit; font-weight:700; cursor:pointer; }
+  #view-taxplan .tp-mode.on{ background:var(--navy); color:#fff; }
+  #view-taxplan .tpi-bar{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin-bottom:10px; }
+  #view-taxplan .tpi-bar input[type=search]{ flex:1 1 220px; min-width:0; border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:6px 9px; font:inherit; background:var(--panel); color:var(--ink); }
+  #view-taxplan .tpi-wrap{ display:grid; grid-template-columns:minmax(240px, 340px) minmax(0, 1fr); gap:12px; align-items:start; }
+  @media (max-width: 820px){ #view-taxplan .tpi-wrap{ grid-template-columns:minmax(0, 1fr); } }
+  #view-taxplan .tpi-list{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:8px; background:var(--panel); max-height:72vh; overflow:auto; }
+  #view-taxplan .tpi-grp{ padding:6px 10px; font-size:12px; font-weight:700; color:var(--navy); background:var(--bg); border-bottom:1px solid var(--line); position:sticky; top:0; }
+  #view-taxplan .tpi-it{ display:block; width:100%; text-align:left; border:none; border-bottom:1px solid var(--line); background:none; color:var(--ink); font:inherit; font-size:13px; padding:7px 10px; cursor:pointer; }
+  #view-taxplan .tpi-it:hover{ background:var(--bg); }
+  #view-taxplan .tpi-it.on{ background:var(--taxcalc-info-bg, #e7eef6); font-weight:700; }
+  #view-taxplan .tpi-it small{ display:block; font-weight:400; font-size:11px; opacity:.75; margin-top:2px; }
+  #view-taxplan .tpi-doc{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:8px; background:var(--panel); padding:12px 14px; min-height:200px; }
+  #view-taxplan .tpi-doc textarea{ width:100%; min-height:60vh; box-sizing:border-box; font-family:Consolas, monospace; font-size:12.5px; border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:8px; background:var(--panel); color:var(--ink); }
+  #view-taxplan .tpi-note{ font-size:12px; opacity:.8; }
 </style>
 
 <div class="view" id="view-taxplan">
   <div class="view-head"><h2>💡 절세플랜</h2></div>
   <div class="view-body">
+    <div class="tp-modes" id="tpModes">
+      <button type="button" class="tp-mode on" data-tp-mode="items">📚 절세 아이템</button>
+      <button type="button" class="tp-mode" data-tp-mode="calc">🧮 비교 계산</button>
+    </div>
+    <div id="tpItemsPane"></div>
+    <div id="tpCalcPane" style="display:none;">
     <div class="tp-casebar" id="tpCaseBar"></div>
     <div class="taxcalc-tabs" id="tpGroupTabs" style="padding:0; margin-bottom:10px;">
       <button type="button" class="taxcalc-tab active" data-tp-group="inh">상속</button>
@@ -46,6 +70,7 @@
     <div class="tp-kinds" id="tpKinds"></div>
     <div id="tpForm"></div>
     <div id="tpResult"></div>
+    </div>
   </div>
 </div>
 
@@ -283,6 +308,122 @@
     rows.push(mk('감정가로 신고', n_(o.apprValue), ex));
     return { rows: rows };
   };
+
+  // [2026.10.21 자주 묻는 유형 4가지] 아래 split·joint·gen·loan도 새 계산 없이 엔진 함수만 입력을 바꿔 부른다.
+  // ⑧ 같은 해 두 건 vs 해를 나눠 양도 — 같은 해: calculateTransferTaxMultiJS 한 번(합산 누진·§104⑤ 비교과세·기본공제 1회),
+  //   나눔: 둘째 양도일만 다음 해로 바꿔 각각 따로(해마다 누진·기본공제). 근거(지침 양도_예정신고_확정신고_합산 원문): 소득세법 §92②(과세표준),
+  //   §103①②(그룹별 연 250만원, 먼저 양도한 자산부터), §104⑤(둘 이상 양도 — 합계 × 기본세율과 자산별 세액 합계 중 큰 것), 양도시기 §98·시행령 §162①1·2호.
+  //   a, b: 거래 입력(엔진 거래 칸 그대로), o: { deferDate: 둘째를 미룬 양도일 — 비우면 다음 해 1월 2일 }
+  C.split = function(a, b, o){
+    o = o || {};
+    var chk = function(t, nm){
+      if (!t || !(n_(t.transferPrice) > 0)) return nm + ' 양도가액을 넣어 주세요.';
+      if (!t.acquisitionDate || !t.transferDate) return nm + ' 취득일과 양도일을 넣어 주세요.';
+      return '';
+    };
+    var e = chk(a, '첫째 자산') || chk(b, '둘째 자산'); if (e) return { error: e };
+    var y = String(b.transferDate).slice(0, 4);
+    if (String(a.transferDate).slice(0, 4) !== y) return { error: '두 자산의 양도일이 같은 해여야 "같은 해 두 건"과 비교할 수 있습니다.' };
+    var defer = String(o.deferDate || '').trim() || (Number(y) + 1) + '-01-02';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(defer) || defer.slice(0, 4) <= y) return { error: '둘째를 미룬 양도일은 다음 해 이후 날짜(예: ' + (Number(y) + 1) + '-01-02)로 넣어 주세요.' };
+    var fp = { filingStatus: 'ontime' };
+    var run = function(list){
+      var r = W.calculateTransferTaxMultiJS(list.map(copy_), fp);
+      if (!r || r.error) return { err: (r && r.error) || '양도세 계산 안 됨' };
+      return { tax: n_(r.산출세액_합계), rural: n_(r.농어촌특별세), local: n_(r.지방소득세), basic: n_(r.기본공제), total: n_(r.납부세액_합계_농특세포함) || n_(r.납부세액_합계), r: r };
+    };
+    var rows = [];
+    var both = run([a, b]);
+    rows.push(both.err ? { label: '같은 해(' + y + '년)에 두 건 함께', err: both.err }
+      : { label: '같은 해(' + y + '년)에 두 건 함께', y1: both.total, y2: null, basic: both.basic, tax: both.tax, rural: both.rural, local: both.local, total: both.total });
+    var rA = run([a]), rB = run([assign_(b, { transferDate: defer })]);
+    var lb = '둘째를 다음 해로(' + defer + ')';
+    if (rA.err || rB.err) rows.push({ label: lb, err: rA.err || rB.err });
+    else rows.push({ label: lb, y1: rA.total, y2: rB.total, basic: rA.basic + rB.basic, tax: rA.tax + rB.tax, rural: rA.rural + rB.rural, local: rA.local + rB.local, total: rA.total + rB.total });
+    return { rows: rows, year: Number(y), defer: defer };
+  };
+
+  // ⑬ 단독명의 vs 부부 공동명의(50:50) — 처음부터 공동 소유인 경우. 같은 자산을 단독으로 팔 때(calculateTransferTaxSingleJS 한 번) vs
+  //   가액을 반씩 나눠 두 사람이 각각 팔 때(지분별로 두 번 — 기본공제·누진세율 사람마다). 근거: 소득세법 §103①(연 250만원 — 거주자마다), §104①1호·§55①(누진세율).
+  //   나중에 배우자에게 지분을 증여하고 파는 경우는 이월과세(소득세법 §97의2)라 이 비교가 맞지 않는다(화면에 주의 줄).
+  C.joint = function(t){
+    if (!t || !(n_(t.transferPrice) > 0)) return { error: '양도가액을 넣어 주세요.' };
+    if (!t.acquisitionDate || !t.transferDate) return { error: '취득일과 양도일을 넣어 주세요.' };
+    if (t.isOneHouseOneFamily) return { error: '1세대1주택(비과세·고가주택) 사건은 비과세·12억 판정을 주택 전체로 하므로 가액을 반으로 나눈 이 비교가 맞지 않습니다 — 세액계산 양도세 탭에서 지분대로 계산하세요.' };
+    var S = W.calculateTransferTaxSingleJS;
+    var pick = function(r){
+      if (!r || r.error) return { err: (r && r.error) || '양도세 계산 안 됨' };
+      return { gain: n_(r.양도차익), ltd: n_(r.장기보유특별공제액), basic: n_(r.기본공제), base: n_(r.과세표준), tax: n_(r.산출세액), local: n_(r.지방소득세), total: n_(r.납부세액_합계), r: r };
+    };
+    var half = function(i){
+      var p = copy_(t);
+      PRICE_KEYS_.forEach(function(k){ if (n_(t[k]) > 0){ var h = Math.floor(n_(t[k]) / 2); p[k] = i === 0 ? h : n_(t[k]) - h; } });
+      return p;
+    };
+    var r0 = pick(S(copy_(t))), r1 = pick(S(half(0))), r2 = pick(S(half(1)));
+    var rows = [];
+    rows.push(r0.err ? { label: '단독명의(한 사람이 전부)', err: r0.err } : assign_(r0, { label: '단독명의(한 사람이 전부)' }));
+    if (r1.err || r2.err) rows.push({ label: '부부 공동명의 50:50(두 사람 합계)', err: r1.err || r2.err });
+    else {
+      var sum = { label: '부부 공동명의 50:50(두 사람 합계)', each: [r1, r2] };
+      ['gain', 'ltd', 'basic', 'base', 'tax', 'local', 'total'].forEach(function(k){ sum[k] = r1[k] + r2[k]; });
+      rows.push(sum);
+    }
+    return { rows: rows };
+  };
+
+  // ⑪ 손주에게 바로(세대생략) vs 자녀를 거쳐 두 번 — 조부모→손주(isGenerationSkip, 할증 §57①: 30%, 미성년이면서 20억 초과 40%) vs
+  //   조부모→자녀, 자녀→손주 두 번(각각 calculateGiftTaxJS, 할증 없음). 같은 재산(같은 금액)이 손주에게 간다고 보고, 자녀 몫 증여세는 자녀가 따로 낸다고 가정.
+  //   o: { giftDate, amount, minor: 손주가 미성년 }
+  C.gen = function(o){
+    o = o || {};
+    var amt = Math.round(n_(o.amount));
+    if (!(amt > 0) || !o.giftDate) return { error: '증여일과 증여할 금액을 넣어 주세요.' };
+    var G = W.calculateGiftTaxJS;
+    var gp = { giftAmount: amt, giftDate: o.giftDate, relation: '직계존속', filingStatus: 'ontime' };
+    var d = G(assign_(gp, { isMinor: !!o.minor, isGenerationSkip: true, generationSkipOver2Billion: amt > 2000000000 }));
+    var s1 = G(assign_(gp, { isMinor: false }));
+    var s2 = G(assign_(gp, { isMinor: !!o.minor }));
+    var rows = [];
+    if (!d || d.error) rows.push({ label: '조부모 → 손주 바로', err: (d && d.error) || '증여세 계산 안 됨' });
+    else rows.push({ label: '조부모 → 손주 바로', g1: n_(d.납부세액), g2: null, prem: n_(d.세대생략할증액), total: n_(d.납부세액), rate: n_(d.산출세액_할증전) > 0 ? n_(d.세대생략할증액) / n_(d.산출세액_할증전) : 0, r: d });
+    if (!s1 || s1.error || !s2 || s2.error) rows.push({ label: '조부모 → 자녀 → 손주(두 번)', err: (s1 && s1.error) || (s2 && s2.error) || '증여세 계산 안 됨' });
+    else rows.push({ label: '조부모 → 자녀 → 손주(두 번)', g1: n_(s1.납부세액), g2: n_(s2.납부세액), prem: 0, total: n_(s1.납부세액) + n_(s2.납부세액), r1: s1, r2: s2 });
+    return { rows: rows };
+  };
+
+  // ⑭ 부모님께 돈 빌리기(이자율별) vs 그냥 증여 — 이익은 엔진 calculateInterestFreeLoanGiftAmountJS(상증법 §41의4: 대출금액 × 적정이자율 − 실제 이자,
+  //   1천만원 미만이면 과세 안 함 — 시행령 §31의4②), 그 이익의 증여세는 calculateGiftTaxJS(합산배제 아님 → 증여재산공제 적용). 첫 1년만(§41의4② 해마다 다시).
+  //   o: { date, principal, rate: 실제 이자율(연 %), appr: 적정이자율(연 %, 비우면 엔진 기본 4.6), minor, usedDed: 10년 안 다른 증여로 이미 쓴 증여재산공제 }
+  C.loan = function(o){
+    o = o || {};
+    var P = Math.round(n_(o.principal));
+    if (!(P > 0) || !o.date) return { error: '빌리는 날과 금액을 넣어 주세요.' };
+    var L = W.calculateInterestFreeLoanGiftAmountJS, G = W.calculateGiftTaxJS;
+    if (typeof L !== 'function') return { error: '세액계산 엔진에 금전 무상대출 계산(§41의4)이 없습니다.' };
+    var appr = (o.appr != null && String(o.appr).trim() !== '') ? n_(o.appr) : 4.6;
+    var gift_ = function(amt){ return G({ giftAmount: amt, giftDate: o.date, relation: '직계존속', isMinor: !!o.minor, priorRelationDeductionUsedOther: Math.round(n_(o.usedDed)), filingStatus: 'ontime' }); };
+    var mk = function(label, ratePct){
+      var interest = Math.round(P * ratePct / 100);
+      var l = L({ loanPrincipal: P, appropriateInterestRatePercent: appr, actualInterestPaid: interest, loanMonths: 12 });
+      if (!l || l.error) return { label: label, err: (l && l.error) || '이익 계산 안 됨' };
+      var tax = 0;
+      if (l.과세대상여부){
+        var g = gift_(n_(l.증여재산가액));
+        if (!g || g.error) return { label: label, err: (g && g.error) || '증여세 계산 안 됨' };
+        tax = n_(g.납부세액);
+      }
+      return { label: label, interest: interest, apprAmt: n_(l.적정이자상당액), benefit: n_(l.이번거래이익), taxable: !!l.과세대상여부, gift: tax, total: interest + tax };
+    };
+    var rows = [mk('무이자로 빌림', 0)];
+    var rate = n_(o.rate);
+    if (rate > 0 && Math.abs(rate - appr) > 1e-9) rows.push(mk('이자 연 ' + rate + '%로 빌림', rate));
+    rows.push(mk('적정이자율 연 ' + appr + '%로 빌림', appr));
+    var g0 = gift_(P);
+    rows.push(!g0 || g0.error ? { label: '같은 금액 그냥 증여', err: (g0 && g0.error) || '증여세 계산 안 됨' }
+      : { label: '같은 금액 그냥 증여', interest: 0, apprAmt: null, benefit: P, taxable: true, gift: n_(g0.납부세액), total: n_(g0.납부세액), isGift: true });
+    return { rows: rows, appr: appr, principal: P };
+  };
 })();
 
 // ============================================================
@@ -293,8 +434,8 @@
   var C = window.nxTaxPlanCalc_;
   var KINDS_ = {
     inh: [{ key: 'spouse', label: '배우자 상속분 배분' }, { key: 'valuation', label: '평가액(기준시가·감정가)과 이후 양도' }],
-    tr: [{ key: 'comp', label: '토지보상 방식 비교·감면 고르기' }],
-    gift: [{ key: 'prior', label: '10년 내 기납부세액 추정' }, { key: 'burden', label: '부담부증여 vs 단순증여' }]
+    tr: [{ key: 'comp', label: '토지보상 방식 비교·감면 고르기' }, { key: 'split', label: '같은 해 두 건 vs 해를 나눠 양도' }, { key: 'joint', label: '단독명의 vs 부부 공동명의(50:50)' }],
+    gift: [{ key: 'prior', label: '10년 내 기납부세액 추정' }, { key: 'burden', label: '부담부증여 vs 단순증여' }, { key: 'gen', label: '손주에게 바로 vs 자녀를 거쳐 두 번' }, { key: 'loan', label: '부모님께 돈 빌리기 — 이자율별 vs 그냥 증여' }]
   };
   var group_ = 'inh', kind_ = 'spouse';
   var vals_ = {};      // 칸 값(유형을 바꿔도 남게)
@@ -320,9 +461,10 @@
   var RELATION_OPTS_ = [['직계존속', '부모·조부모가 줌'], ['배우자', '배우자가 줌'], ['직계비속', '자녀·손자녀가 줌'], ['기타친족', '그 밖의 친족(4촌 혈족·3촌 인척)이 줌'], ['', '친족 아님']];
   var ASSET_OPTS_ = [['other', '토지·건물(주택 아님)'], ['house', '주택']];
 
-  function sourceBar_(which, tabLabel){
+  // note(선택): 불러온 뒤 안내를 바꿀 때 — 불러온 값 중 칸 몇 개만 쓰는 유형(세대생략·금전대여)이 "다른 칸은 그대로 쓴다"고 잘못 말하지 않게
+  function sourceBar_(which, tabLabel, note){
     var b = base_[which];
-    if (b) return '<div class="tp-src"><span>세액계산 ' + esc_(tabLabel) + ' 탭에서 마지막으로 계산한 값을 바탕으로 합니다 — 그 탭의 다른 칸(공제·사전증여·감면 요건 등)은 그대로 쓰고 아래 칸만 바꿔 넣습니다.</span><button type="button" class="tp-btn ghost" data-tp-action="unload" data-tp-which="' + which + '">불러온 값 빼고 이 칸만으로</button></div>';
+    if (b) return '<div class="tp-src"><span>' + (note ? esc_(note) : '세액계산 ' + esc_(tabLabel) + ' 탭에서 마지막으로 계산한 값을 바탕으로 합니다 — 그 탭의 다른 칸(공제·사전증여·감면 요건 등)은 그대로 쓰고 아래 칸만 바꿔 넣습니다.') + '</span><button type="button" class="tp-btn ghost" data-tp-action="unload" data-tp-which="' + which + '">불러온 값 빼고 이 칸만으로</button></div>';
     var has = which === 'inh' ? !!window.tcLastInheritanceInput_ : which === 'tr' ? !!(window.tcLastTransferInputs_ && window.tcLastTransferInputs_.inputs && window.tcLastTransferInputs_.inputs.length) : !!(window.tcLastGiftInputs_ && window.tcLastGiftInputs_.length);
     return '<div class="tp-src"><span>' + (has ? '세액계산 ' + esc_(tabLabel) + ' 탭에서 계산한 값이 있습니다.' : '사건 없이 이 칸만으로 계산합니다(상담용). 사건 값으로 하려면 세액계산 ' + esc_(tabLabel) + ' 탭에서 [계산]을 한 번 누른 뒤 불러오세요.') + '</span>' +
       (has ? '<button type="button" class="tp-btn ghost" data-tp-action="load" data-tp-which="' + which + '">그 값 불러오기</button>' : '<button type="button" class="tp-btn ghost" data-tp-action="goto" data-tp-tab="' + (which === 'inh' ? 'inheritance' : which === 'tr' ? 'transfer' : 'gift') + '">세액계산 ' + esc_(tabLabel) + ' 탭 열기</button>') + '</div>';
@@ -404,6 +546,45 @@
         field_('bgAsset', '종류', { type: 'select', options: ASSET_OPTS_, dflt: 'other' }) +
         field_('bgExempt', '채무 인수분 양도세 비과세로 가정(1세대1주택 등)', { type: 'check' }) + '</div>' +
         '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+    } else if (kind_ === 'split' || kind_ === 'joint'){
+      var srcT = (base_.tr && base_.tr.inputs) || [];
+      h += sourceBar_('tr', '양도세');
+      // 한 자산의 칸 묶음 — pre: 칸 이름 앞머리, src: 불러온 거래(있으면 "세액계산에서 불러옴" 표시·종류 "그대로" 고르기)
+      var assetFields_ = function(pre, src, ph){
+        var ft = src ? '세액계산에서 불러옴' : '';
+        return field_(pre + 'acqDate', '취득일', { ph: ph[0], from: ft }) + field_(pre + 'acqPrice', '취득가액(원)', { type: 'num', from: ft }) +
+          field_(pre + 'exp', '필요경비(원)', { type: 'num', from: ft }) + field_(pre + 'date', '양도일', { ph: ph[1], from: ft }) +
+          field_(pre + 'price', '양도가액(원)', { type: 'num', from: ft }) +
+          field_(pre + 'asset', '종류', { type: 'select', options: src ? [['', '세액계산에서 불러온 종류 그대로']].concat(ASSET_OPTS_) : ASSET_OPTS_, dflt: src ? '' : 'other' });
+      };
+      if (kind_ === 'split'){
+        h += '<div class="tp-card"><h3>같은 해 두 건 vs 해를 나눠 양도 <small>두 자산을 같은 해에 팔 때와 둘째를 다음 해로 미룰 때 세금 합계를 봅니다</small></h3>' +
+          '<div class="tp-sub">첫째 자산</div><div class="tp-grid">' + assetFields_('slA_', srcT[0], ['2016-03-01', '2026-03-31']) + '</div>' +
+          '<div class="tp-sub">둘째 자산(다음 해로 미뤄 볼 자산)</div><div class="tp-grid">' + assetFields_('slB_', srcT[1], ['2018-05-01', '2026-08-31']) + '</div>' +
+          '<div class="tp-grid" style="margin-top:8px;">' + field_('slDefer', '둘째를 미룬 양도일', { ph: '비우면 다음 해 1월 2일', from: '잔금과 등기를 모두 이날 이후로 해야 다음 해 양도' }) + '</div>' +
+          '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+      } else {
+        h += '<div class="tp-card"><h3>단독명의 vs 부부 공동명의(50:50) <small>같은 자산을 한 사람이 팔 때와 처음부터 반씩 가진 두 사람이 각각 팔 때를 봅니다</small></h3>' +
+          '<div class="tp-grid">' + assetFields_('jt_', srcT[0], ['2015-01-01', '2026-06-30']) + '</div>' +
+          '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+      }
+    } else if (kind_ === 'gen'){
+      h += sourceBar_('gift', '증여세', '세액계산 증여세 탭에서 불러온 값 중 증여일·금액·미성년 여부만 칸에 채웠습니다 — 이 유형은 아래 칸만으로 계산합니다.');
+      h += '<div class="tp-card"><h3>손주에게 바로 vs 자녀를 거쳐 두 번 <small>조부모가 손주에게 바로 줄 때(세대생략 할증)와 자녀에게 줬다가 자녀가 손주에게 다시 줄 때 증여세 합계를 봅니다</small></h3><div class="tp-grid">' +
+        field_('ggDate', '증여일', { ph: '2026-09-01', from: fromTag_('gift') }) +
+        field_('ggAmount', '증여할 금액(원)', { type: 'num', from: fromTag_('gift') }) +
+        field_('ggMinor', '손주가 미성년', { type: 'check' }) + '</div>' +
+        '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+    } else if (kind_ === 'loan'){
+      h += sourceBar_('gift', '증여세', '세액계산 증여세 탭에서 불러온 값 중 증여일·미성년 여부만 칸에 채웠습니다 — 이 유형은 아래 칸만으로 계산합니다.');
+      h += '<div class="tp-card"><h3>부모님께 돈 빌리기 — 이자율별 vs 그냥 증여 <small>무이자·실제 이자율·적정이자율로 빌릴 때와 같은 금액을 그냥 증여받을 때를 봅니다(첫 1년)</small></h3><div class="tp-grid">' +
+        field_('lnDate', '빌리는 날', { ph: '2026-09-01', from: fromTag_('gift') }) +
+        field_('lnAmount', '빌리는 금액(원)', { type: 'num' }) +
+        field_('lnRate', '실제 이자율(연 %)', { ph: '2', from: '비우면 무이자·적정이자율 줄만' }) +
+        field_('lnAppr', '적정이자율(연 %)', { dflt: '4.6', from: '법인세법 시행규칙 §43② 이자율 — 현행 수치 [확인 필요]' }) +
+        field_('lnUsed', '10년 안 다른 증여로 이미 쓴 증여재산공제(원)', { type: 'num', from: '비우면 0 — 공제를 이미 다 썼으면 그 금액' }) +
+        field_('lnMinor', '빌리는 사람이 미성년', { type: 'check' }) + '</div>' +
+        '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
     }
     document.getElementById('tpForm').innerHTML = h;
   }
@@ -438,6 +619,14 @@
     return b;
   }
   function giftBase_(){ var g = base_.gift && base_.gift[0]; return g ? JSON.parse(JSON.stringify(g)) : {}; }
+  // 같은 해 나눔·공동명의용 거래 하나 — 불러온 거래(src)의 모든 칸 위에 이 화면 칸(pre 앞머리)만 덮어쓴다(trBase_와 같은 방식)
+  function trTx_(src, pre){
+    var b = src ? JSON.parse(JSON.stringify(src)) : { assetType: 'other' };
+    [['acqDate', 'acquisitionDate'], ['date', 'transferDate']].forEach(function(m){ var s = String(v_(pre + m[0])).trim(); if (s) b[m[1]] = s; });
+    [['acqPrice', 'acquisitionPrice'], ['exp', 'necessaryExpenses'], ['price', 'transferPrice']].forEach(function(m){ if (String(v_(pre + m[0])) !== '') b[m[1]] = num_(v_(pre + m[0])); });
+    var at = v_(pre + 'asset', src ? '' : 'other'); if (at) b.assetType = at;
+    return b;
+  }
 
   function run_(){
     var out = document.getElementById('tpResult'), h = '';
@@ -512,6 +701,58 @@
         });
         var bn = []; rb.rows.forEach(function(x){ (x.notes || []).forEach(function(s){ bn.push(x.label + ': ' + s); }); });
         h += (bn.length ? '<ul class="tp-notes">' + bn.map(function(s){ return '<li>' + esc_(s) + '</li>'; }).join('') + '</ul>' : '') + '<div class="tp-law">근거: 상증법 §47①③, 소득세법 §88①, 소득세법 시행령 §159 · ' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'split'){
+        var srcS = (base_.tr && base_.tr.inputs) || [];
+        var rs = C.split(trTx_(srcS[0], 'slA_'), trTx_(srcS[1], 'slB_'), { deferDate: String(v_('slDefer')).trim() });
+        if (rs.error) { out.innerHTML = '<div class="tp-err">' + esc_(rs.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">가정: 두 자산 모두 토지·건물 등 같은 묶음(소득세법 §94①1·2·4호)이고, 둘 다 기한 안 정상 신고하며, ' + rs.year + '년·' + (rs.year + 1) + '년에 다른 양도가 없다고 본 계산입니다. 미룬 해의 세율·공제는 지금 법 그대로로 봅니다. 양도일은 대금청산일과 등기접수일 중 빠른 날이라(소득세법 §98, 시행령 §162①1·2호) 잔금과 등기를 모두 ' + esc_(rs.defer) + ' 이후로 해야 다음 해 양도가 됩니다.</div>';
+        h += table_([['안', 240], [rs.year + '년 세금', 130], [(rs.year + 1) + '년 세금', 130], ['기본공제 합', 110], ['양도소득세', 120], ['농어촌특별세', 110], ['지방소득세', 110], ['합계', 130]], rs.rows, function(x){
+          if (x.err) return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', tdErr_(x.err, 7)];
+          return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', td_(x.y1), x.y2 == null ? td_('—', '') : td_(x.y2), td_(x.basic), td_(x.tax), td_(x.rural), td_(x.local), tdTotal_(x.total)];
+        });
+        h += '<ul class="tp-notes"><li>같은 해에 함께 팔면 두 자산 소득을 합친 과세표준에 누진세율을 매기고(자산별 세율 세액 합계와 비교해 큰 쪽 — 소득세법 §104⑤) 기본공제 250만원은 한 번만 뺍니다(§103①). 해를 나누면 해마다 따로 누진세율·기본공제를 씁니다.</li>' +
+          '<li>둘째 자산은 미룬 날까지 보유기간이 늘어 장기보유특별공제가 달라질 수 있어, 미룬 날로 다시 계산했습니다.</li>' +
+          '<li>같은 해에 두 건을 팔면 예정신고를 각각 했어도 확정신고를 해야 할 수 있습니다(소득세법 §110④ 단서, 시행령 §173⑤).</li>' +
+          '<li>합계 = 양도소득세 + 농어촌특별세 + 지방소득세(세액계산 양도세 탭 납부세액 합계와 같은 칸).</li></ul>' +
+          '<div class="tp-law">근거: 소득세법 §92②, §98, §102①, §103①②, §104⑤, 시행령 §162①, §173⑤ · ' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'joint'){
+        var rj = C.joint(trTx_(base_.tr && base_.tr.inputs && base_.tr.inputs[0], 'jt_'));
+        if (rj.error) { out.innerHTML = '<div class="tp-err">' + esc_(rj.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">가정: 처음(취득 때)부터 부부가 50:50으로 공동 소유한 경우의 비교입니다 — 취득가액·필요경비도 반씩이고, 두 사람 모두 그 해 다른 양도가 없으며 기한 안 신고한다고 봅니다. 주택 수에 따른 중과는 이 화면이 판정하지 않으니(불러온 값이 있으면 그대로) 세액계산 양도세 탭에서 확인하세요.</div>';
+        h += '<div class="tp-err" style="margin-bottom:8px;">주의: 지금 단독명의인 자산을 배우자에게 지분 증여한 뒤 파는 경우는 이 비교가 맞지 않습니다 — 증여받은 지분은 이월과세(소득세법 §97의2 — 증여일부터 10년, 2023.1.1. 전 증여는 5년 안 양도면 취득가액을 증여한 배우자의 취득가액으로)가 걸리니 세액계산 양도세 탭에서 계산하세요.</div>';
+        h += table_([['안', 240], ['양도차익', 130], ['장기보유특별공제', 130], ['기본공제', 100], ['과세표준', 130], ['양도소득세', 120], ['지방소득세', 110], ['합계', 130]], rj.rows, function(x){
+          if (x.err) return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', tdErr_(x.err, 7)];
+          return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', td_(x.gain), td_(x.ltd), td_(x.basic), td_(x.base), td_(x.tax), td_(x.local), tdTotal_(x.total)];
+        });
+        var jn = [];
+        rj.rows.forEach(function(x){ if (x.each) jn.push('공동명의 한 사람 몫: ' + x.each.map(function(e, i){ return (i + 1) + '번째 ' + won_(e.total) + '원(과세표준 ' + won_(e.base) + '원)'; }).join(' · ')); });
+        jn.push('공동명의면 기본공제 250만원을 사람마다 받고(소득세법 §103①), 소득이 둘로 나뉘어 낮은 누진세율 구간이 적용됩니다(§104①1호·§55①).');
+        h += '<ul class="tp-notes">' + jn.map(function(s){ return '<li>' + esc_(s) + '</li>'; }).join('') + '</ul><div class="tp-law">근거: 소득세법 §55①, §103①, §104①1호, §97의2 · ' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'gen'){
+        var rg = C.gen({ giftDate: String(v_('ggDate')).trim(), amount: num_(v_('ggAmount')), minor: v_('ggMinor') === true });
+        if (rg.error) { out.innerHTML = '<div class="tp-err">' + esc_(rg.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">가정: 같은 재산(같은 금액)이 결국 손주에게 가는 경우의 비교입니다 — 두 번 증여는 자녀가 받은 재산을 그대로 손주에게 넘기고, 자녀 몫 증여세는 자녀가 따로 낸다고 봅니다. 자녀는 성년, 자녀·손주 모두 10년 안 다른 직계존속 증여가 없고(증여재산공제를 그대로 씀) 기한 안 신고한다고 봅니다. 취득세 등 지방세는 넣지 않았습니다.</div>';
+        h += table_([['안', 240], ['첫 증여 증여세', 140], ['둘째 증여 증여세', 140], ['그중 세대생략 할증', 140], ['합계', 130]], rg.rows, function(x){
+          if (x.err) return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', tdErr_(x.err, 4)];
+          return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', td_(x.g1), x.g2 == null ? td_('—', '') : td_(x.g2), td_(x.prem), tdTotal_(x.total)];
+        });
+        var gn = [];
+        rg.rows.forEach(function(x){ if (x.rate) gn.push('이번 계산의 세대생략 할증률: 산출세액의 ' + Math.round(x.rate * 100) + '% — 원칙 30%, 손주가 미성년이면서 증여재산가액이 20억원을 넘으면 40%(상증법 §57①, 40%는 2016.1.1. 이후 증여분).'); });
+        gn.push('자녀를 거친 두 번 증여가 세금을 부당하게 줄이려는 것으로 인정되면 손주에게 바로 준 것으로 볼 수 있습니다(국세기본법 §14③ — 지침 증여_세대생략_할증). 자녀가 실제로 재산을 받아 처분할 수 있는 경우에만 비교 의미가 있습니다.');
+        gn.push('자녀가 먼저 사망해 손주가 받는 경우는 할증하지 않습니다(상증법 §57① 단서) — 이 표는 그 경우가 아닙니다.');
+        h += '<ul class="tp-notes">' + gn.map(function(s){ return '<li>' + esc_(s) + '</li>'; }).join('') + '</ul><div class="tp-law">근거: 상증법 §53, §56, §57①, §69, 국세기본법 §14③ · ' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'loan'){
+        var rl = C.loan({ date: String(v_('lnDate')).trim(), principal: num_(v_('lnAmount')), rate: String(v_('lnRate')).trim() === '' ? 0 : num_(v_('lnRate')), appr: String(v_('lnAppr', '4.6')).trim(), minor: v_('lnMinor') === true, usedDed: num_(v_('lnUsed')) });
+        if (rl.error) { out.innerHTML = '<div class="tp-err">' + esc_(rl.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">가정: 부모님(직계존속)께 ' + won_(rl.principal) + '원을 빌리는 경우의 첫 1년 계산이고, 적정이자율은 연 ' + esc_(rl.appr) + '%로 넣었습니다 [법인세법 시행규칙 §43② 현행 이자율 확인 필요]. 빌린 돈은 원금을 갚아야 하고 그냥 증여는 갚지 않으므로 세금만으로 고를 수 없습니다. 차용증·이자 지급·원금 상환 실적이 없으면 빌린 돈이 아니라 원금 증여로 볼지는 따로 판단할 일입니다(세무사님 판단 — 지침 증여_금전무상대출_부동산무상사용).</div>';
+        h += table_([['안', 220], ['1년 이자(실제 냄)', 130], ['적정이자 상당액', 130], ['이익(증여재산가액)', 140], ['과세', 70], ['증여세', 120], ['합계(이자+증여세)', 140]], rl.rows, function(x){
+          if (x.err) return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', tdErr_(x.err, 6)];
+          return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', td_(x.interest), x.apprAmt == null ? td_('—', '') : td_(x.apprAmt), td_(x.benefit), td_(x.isGift ? '증여' : (x.taxable ? '과세' : '안 함'), ''), td_(x.gift), tdTotal_(x.total)];
+        });
+        h += '<ul class="tp-notes"><li>이익(적정이자 상당액 − 실제 낸 이자)이 1천만원 미만이면 과세하지 않습니다(상증법 §41의4①, 시행령 §31의4②). 과세하면 그 이익을 일반 증여처럼 증여재산공제를 받아 계산합니다(§41의4는 합산배제 증여재산이 아님 — 지침 증여_금전무상대출_부동산무상사용).</li>' +
+          '<li>대출기간이 정해지지 않았으면 1년으로, 1년 이상이면 1년이 되는 날의 다음 날 새로 빌린 것으로 보아 해마다 다시 계산합니다(§41의4②) — 해마다의 이익은 같은 증여자 10년 합산(§47②)에 들어갑니다. 이 표는 첫 1년만입니다.</li>' +
+          '<li>부모님이 받는 이자는 부모님 이자소득으로 세금이 따로 있을 수 있습니다 — 이 표에는 넣지 않았습니다.</li></ul>' +
+          '<div class="tp-law">근거: 상증법 §41의4①②, 시행령 §31의4①②, 상증법 §47②, §53 · ' + LOW_NOTE_ + '</div></div>';
       }
     } catch (e) {
       h = '<div class="tp-err">계산 중 오류: ' + esc_(e && e.message ? e.message : e) + '</div>';
@@ -541,11 +782,20 @@
       vals_.cpAcqDate = a.acquisitionDate || ''; vals_.cpNotice = a.publicNoticeDate || ''; vals_.cpDate = a.transferDate || '';
       vals_.cpPrice = a.transferPrice || ''; vals_.cpAcqPrice = a.acquisitionPrice || ''; vals_.cpExp = a.necessaryExpenses || '';
       if (a.isEightYearFarmland) vals_.cpFarm = true;
+      // 같은 해 나눔(첫째·둘째 = 세액계산 거래 1·2번)·공동명의(거래 1번) 칸. 종류는 비워 두면 불러온 종류 그대로(ASSET_OPTS_ 둘 중 하나면 그 값으로 보여 줌)
+      var fillTx_ = function(pre, x){
+        if (!x) return;
+        vals_[pre + 'acqDate'] = x.acquisitionDate || ''; vals_[pre + 'acqPrice'] = x.acquisitionPrice || ''; vals_[pre + 'exp'] = x.necessaryExpenses || '';
+        vals_[pre + 'date'] = x.transferDate || ''; vals_[pre + 'price'] = x.transferPrice || '';
+        vals_[pre + 'asset'] = ASSET_OPTS_.some(function(o){ return o[0] === x.assetType; }) ? x.assetType : '';
+      };
+      fillTx_('slA_', t.inputs[0]); fillTx_('slB_', t.inputs[1]); fillTx_('jt_', t.inputs[0]);
     } else if (which === 'gift' && window.tcLastGiftInputs_ && window.tcLastGiftInputs_.length){
       var g = JSON.parse(JSON.stringify(window.tcLastGiftInputs_)); base_.gift = g; var x = g[0];
       vals_.pgDate = vals_.bgDate = x.giftDate || ''; vals_.pgAmount = vals_.bgValue = x.giftAmount || '';
       vals_.pgRel = vals_.bgRel = x.relation || ''; vals_.pgMinor = vals_.bgMinor = !!x.isMinor;
       if (x.debtAssumedAmount) vals_.bgDebt = x.debtAssumedAmount; vals_.bgProven = !!x.isDebtObjectivelyProven;
+      vals_.ggDate = vals_.lnDate = x.giftDate || ''; vals_.ggAmount = x.giftAmount || ''; vals_.ggMinor = vals_.lnMinor = !!x.isMinor; // 세대생략·금전대여 — 이 세 칸만
     }
     renderForm_(); document.getElementById('tpResult').innerHTML = '';
   }
@@ -588,6 +838,260 @@
     root.addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('#tpForm input[type=text]')) { e.preventDefault(); save(e); run_(); } });
   }
 
-  window.initTaxPlan = function(){ bind_(); render_(); };
+  window.initTaxPlan = function(){ bind_(); render_(); if (window.nxTaxPlanItems_) window.nxTaxPlanItems_.init(); };
+  window.nxTaxPlanGoCalc_ = function(key){
+    var g = null; Object.keys(KINDS_).forEach(function(k){ KINDS_[k].forEach(function(x){ if (x.key === key) g = k; }); });
+    if (!g) return false;
+    group_ = g; kind_ = key; renderKinds_(); renderForm_(); document.getElementById('tpResult').innerHTML = '';
+    return true;
+  };
+})();
+
+// ============================================================
+// [2026.10.21] 📚 절세 아이템 — 세무사님 원문: "자주물어볼 것이 예견는 것을 정형화하거나 복잡한 것을 미리 정리해 두거나 관심갈만한 주요이슈를 미리 정리해 두는 용도이다."
+//  · 아이템 한 건 = 드라이브 0 NETAX\업무관리자\절세\<세목 폴더(양도·상속·증여·공통 등)>\<제목>.md. 세무사님이 직접 고칠 수 있게 파일로 둔다(✏ 고치기 = 증빙관리 원본 편집과 같은 uploadFile 입구).
+//  · 업무관리자 맨 위가 아니라 하위 폴더라 AI 지침 목록(list_business_managers, 맨 위만)에 섞이지 않는다.
+//  · 파일 안 머리 줄 "> 비교 계산: <유형키>"가 있으면 [🧮 이 내용으로 비교 계산] 버튼을 붙인다(유형키 = 비교 계산의 spouse·valuation·comp·split·joint·prior·burden·gen·loan).
+//  · 서버 코드 변경 없음(listFolder·readFile·uploadFile 기존 입구). 목록은 메뉴를 열 때 한 번 읽고, 로그인 전에는 부르지 않는다.
+// ============================================================
+(function(){
+  var PATH_ = ['0 NETAX', '업무관리자', '절세'];
+  var esc_ = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var groups_ = null, loading_ = false, error_ = '', rootUrl_ = '';
+  var cache_ = {};          // fileId → 내용
+  var cur_ = null;          // 열린 아이템 { id, name, group }
+  var editing_ = false, query_ = '', group_ = '', fullLoading_ = false, loadGen_ = 0;
+  var mode_ = 'items';
+  var pane_ = function(){ return document.getElementById('tpItemsPane'); };
+  var title_ = function(name){ return String(name || '').replace(/\.md$/i, '').replace(/^\d+[\s._-]+/, ''); };
+  var tok_ = function(){ try { return sessionStorage.getItem('nxManageSessionToken'); } catch (e) { return null; } };
+  // 머리 줄(> 로 시작하는 맨 앞 인용) 중 "종류:" "한 줄 요약:" 같은 칸을 읽는다
+  var meta_ = function(src){
+    var m = {}, lines = String(src || '').split(/\r?\n/);
+    for (var i = 0; i < Math.min(lines.length, 14); i++){
+      var L = lines[i];
+      if (!/^\s*>/.test(L)) continue;
+      L.replace(/^\s*>\s*/, '').split(/\s+·\s+/).forEach(function(part){
+        var k = part.match(/^\s*([^:：]{1,12})\s*[:：]\s*(.+)$/);
+        if (k) m[k[1].trim()] = k[2].trim();
+      });
+    }
+    return m;
+  };
+
+  function load_(){
+    if (loading_) return;
+    if (!tok_()){ error_ = '로그인한 뒤 ↻ 새로 읽기를 눌러 주세요.'; groups_ = groups_ || []; render_(); return; }
+    loading_ = true; error_ = '';
+    callGas('listFolder', { path: PATH_ }).then(function(res){
+      if (!res || res.error) throw new Error((res && res.error) || '폴더를 읽지 못했습니다');
+      rootUrl_ = res.folderId ? 'https://drive.google.com/drive/folders/' + res.folderId : '';
+      var top = (res.files || []).filter(function(f){ return /\.md$/i.test(f.name) && !/^_/.test(f.name); });
+      return Promise.all((res.folders || []).filter(function(d){ return !/^_/.test(d.name); }).map(function(d){
+        return callGas('listFolder', { folderId: d.id }).then(function(r){
+          return { id: d.id, name: d.name, files: ((r && r.files) || []).filter(function(f){ return /\.md$/i.test(f.name) && !/^_/.test(f.name); }), error: r && r.error ? r.error : '' };
+        }).catch(function(e){ return { id: d.id, name: d.name, files: [], error: e.message }; });
+      })).then(function(gs){
+        if (top.length) gs.unshift({ id: '', name: '공통', files: top });
+        gs.forEach(function(g){ g.files.sort(function(a, b){ return a.name.localeCompare(b.name, 'ko', { numeric: true }); }); });
+        var order = ['양도', '증여', '상속', '공통'];
+        gs.sort(function(a, b){ var x = order.indexOf(a.name), y = order.indexOf(b.name); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.name.localeCompare(b.name, 'ko'); });
+        groups_ = gs;
+      });
+    }).catch(function(e){ error_ = e.message; groups_ = groups_ || []; })
+      .then(function(){ loading_ = false; render_(); fill_(); });
+  }
+
+  // [2026.10.21] 내용은 이 브라우저에 보관해 둔다(파일 ID + 드라이브 수정 시각이 같으면 다시 읽지 않음 — 보는 사람별 편의, 지워져도 다시 읽으면 됨)
+  var LS_ = 'nxTpItem:';
+  var lsGet_ = function(id, mod){ try { var v = JSON.parse(localStorage.getItem(LS_ + id) || 'null'); return v && v.m === mod ? v.c : null; } catch (e) { return null; } };
+  var lsSet_ = function(id, mod, c){ try { localStorage.setItem(LS_ + id, JSON.stringify({ m: mod, c: c })); } catch (e) {} };
+  var modOf_ = function(id){ var m = ''; (groups_ || []).forEach(function(g){ g.files.forEach(function(f){ if (f.id === id) m = f.modifiedDate || ''; }); }); return m; };
+  function read_(id){
+    if (Object.prototype.hasOwnProperty.call(cache_, id)) return Promise.resolve(cache_[id]);
+    return callGas('readFile', { fileId: id }).then(function(r){
+      if (!r || r.error) throw new Error((r && r.error) || '읽지 못했습니다');
+      cache_[id] = r.content || ''; lsSet_(id, modOf_(id), cache_[id]); return cache_[id];
+    });
+  }
+
+  // 목록을 받은 뒤 아직 안 읽은(또는 바뀐) 파일을 하나씩 차례로 읽는다 — 종류·핵심 첫 줄·내용 찾기에 쓴다(동시에 많이 부르지 않음)
+  var fillLeft_ = 0;
+  function fill_(){
+    if (fullLoading_ || !groups_) return;
+    var all = [];
+    groups_.forEach(function(g){ g.files.forEach(function(f){
+      if (Object.prototype.hasOwnProperty.call(cache_, f.id)) return;
+      var c = lsGet_(f.id, f.modifiedDate || '');
+      if (c != null) cache_[f.id] = c; else all.push(f.id);
+    }); });
+    if (!all.length){ renderList_(); renderBar_(); return; }
+    fullLoading_ = true; fillLeft_ = all.length; renderBar_();
+    var i = 0, gen = loadGen_;
+    var next = function(){
+      if (gen !== loadGen_) { fullLoading_ = false; return; } // ↻ 새로 읽기로 목록이 바뀌면 멈춘다
+      if (i >= all.length){ fullLoading_ = false; fillLeft_ = 0; renderList_(); renderBar_(); return; }
+      var id = all[i++];
+      // 목록을 통째로 다시 그리면 누르는 순간 버튼이 바뀌어 클릭이 빗나간다 — 찾기·거르기 중이 아니면 그 줄의 요약만 제자리에서 바꾼다
+      read_(id).catch(function(){ cache_[id] = ''; }).then(function(){
+        fillLeft_ = all.length - i;
+        if (query_ || kind_) { if (i % 4 === 0 || i === all.length) renderList_(); }
+        else fillOne_(id);
+        if (i % 4 === 0 || i === all.length) renderBar_();
+        next();
+      });
+    };
+    next();
+  }
+  function fillOne_(id){
+    var box = document.getElementById('tpiList'); if (!box) return;
+    var b = null, list = box.querySelectorAll('[data-tpi-open]');
+    for (var j = 0; j < list.length; j++) if (list[j].getAttribute('data-tpi-open') === id) { b = list[j]; break; }
+    if (!b || b.querySelector('small')) return;
+    var src = cache_[id], m = src != null ? meta_(src) : {}, gi = src != null ? gist_(src) : '';
+    if (!m['종류'] && !gi) return;
+    var s = document.createElement('small');
+    s.textContent = (m['종류'] ? '[' + m['종류'] + '] ' : '') + gi;
+    b.appendChild(s);
+  }
+  function renderBar_(){ var el = document.getElementById('tpiFill'); if (el) el.textContent = fullLoading_ ? '내용 읽는 중… 남은 ' + fillLeft_ + '건(찾기·종류 거르기는 읽은 것까지)' : ''; }
+
+  // 핵심 첫 줄 — "## 핵심" 아래 첫 "- " 줄(굵게·괄호 조문은 빼고 짧게)
+  var gist_ = function(src){
+    var m = String(src || '').match(/##\s*핵심[^\n]*\n+\s*-\s*([^\n]+)/);
+    if (!m) return '';
+    var t = m[1].replace(/\*\*/g, '').replace(/\([^)]*§[^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+    return t.length > 90 ? t.slice(0, 88) + '…' : t;
+  };
+  var KINDS_ = ['자주 묻는 질문', '복잡한 사안 정리', '주요 이슈', '함정·오해'];
+  var kind_ = '';
+
+  function matches_(f){
+    if (kind_){ var m = cache_[f.id] != null ? meta_(cache_[f.id]) : {}; if (String(m['종류'] || '').indexOf(kind_) === -1) return false; }
+    if (!query_) return true;
+    var q = query_.toLowerCase();
+    if (title_(f.name).toLowerCase().indexOf(q) !== -1) return true;
+    return String(cache_[f.id] || '').toLowerCase().indexOf(q) !== -1;
+  }
+
+  function renderList_(){
+    var box = document.getElementById('tpiList'); if (!box || !groups_) return;
+    var h = '', n = 0;
+    groups_.forEach(function(g){
+      if (group_ && g.name !== group_) return;
+      var fs = g.files.filter(matches_);
+      if (!fs.length && !g.error) return;
+      h += '<div class="tpi-grp">' + esc_(g.name) + ' <span class="tpi-note">' + fs.length + '건</span></div>';
+      if (g.error) h += '<div class="tpi-it tpi-note">이 폴더를 읽지 못했습니다: ' + esc_(g.error) + '</div>';
+      fs.forEach(function(f){
+        n++;
+        var src = cache_[f.id], m = src != null ? meta_(src) : {}, gi = src != null ? gist_(src) : '';
+        h += '<button type="button" class="tpi-it' + (cur_ && cur_.id === f.id ? ' on' : '') + '" data-tpi-open="' + esc_(f.id) + '" data-tpi-group="' + esc_(g.name) + '" data-tpi-name="' + esc_(f.name) + '">' + esc_(title_(f.name)) +
+          ((m['종류'] || gi) ? '<small>' + (m['종류'] ? '[' + esc_(m['종류']) + '] ' : '') + esc_(gi) + '</small>' : '') + '</button>';
+      });
+    });
+    if (!n) h += '<div class="tpi-it tpi-note">' + (query_ || kind_ ? '맞는 아이템이 없습니다.' + (fullLoading_ ? ' 아직 내용을 읽는 중입니다.' : '') : '아직 아이템이 없습니다.') + '</div>';
+    box.innerHTML = h;
+  }
+
+  function renderDoc_(){
+    var box = document.getElementById('tpiDoc'); if (!box) return;
+    if (!cur_){ box.innerHTML = '<div class="tpi-note">왼쪽 목록에서 아이템을 고르세요.</div>'; return; }
+    // 제목은 문서 첫 줄(# 제목)이 보여 주므로 이 줄엔 다시 쓰지 않는다(시각적 중복). 고치는 중일 때만 파일 이름을 보인다.
+    var head = '<div class="tpi-bar"><span class="tpi-note">' + esc_(cur_.group) + (editing_ ? ' · ' + esc_(title_(cur_.name)) : '') + '</span>' +
+      '<span style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">' +
+      (editing_ ? '<button type="button" class="tp-btn" data-tpi-act="save">💾 저장</button><button type="button" class="tp-btn ghost" data-tpi-act="cancel">취소</button>'
+        : '<span id="tpiCalcBtn"></span><button type="button" class="tp-btn ghost" data-tpi-act="win">↗ 새 창</button><button type="button" class="tp-btn ghost" data-tpi-act="edit">✏ 고치기</button>') +
+      '</span></div>';
+    if (!Object.prototype.hasOwnProperty.call(cache_, cur_.id)){
+      box.innerHTML = head + '<div class="tpi-note">읽는 중…</div>';
+      var id = cur_.id;
+      read_(id).then(function(){ if (cur_ && cur_.id === id) renderDoc_(); renderList_(); }).catch(function(e){ if (cur_ && cur_.id === id) box.innerHTML = head + '<div class="tp-err">읽지 못했습니다: ' + esc_(e.message) + '</div>'; });
+      return;
+    }
+    var src = cache_[cur_.id];
+    if (editing_){
+      box.innerHTML = head + '<textarea id="tpiEdit">' + esc_(src) + '</textarea><div class="tpi-note">드라이브 업무관리자\\절세\\' + esc_(cur_.group) + '\\' + esc_(cur_.name) + ' 파일을 그대로 고칩니다.</div>';
+      return;
+    }
+    box.innerHTML = head + '<div id="tpiMd"></div>';
+    var m = meta_(src), key = String(m['비교 계산'] || '').trim();
+    if (key && typeof window.nxTaxPlanGoCalc_ === 'function'){
+      document.getElementById('tpiCalcBtn').innerHTML = '<button type="button" class="tp-btn ghost" data-tpi-act="calc" data-tpi-key="' + esc_(key) + '">🧮 이 내용으로 비교 계산</button>';
+    }
+    var out = document.getElementById('tpiMd');
+    if (typeof nxMdRender === 'function') nxMdRender(out, src, { theme: 'memo', rich: true, outline: false, extraClass: 'nx-md-view' });
+    else out.textContent = src;
+  }
+
+  function render_(){
+    var p = pane_(); if (!p) return;
+    if (!groups_){ p.innerHTML = '<div class="tpi-note">드라이브 업무관리자\\절세 폴더를 읽는 중…</div>'; load_(); return; }
+    var names = groups_.map(function(g){ return g.name; });
+    p.innerHTML =
+      '<div class="tpi-bar">' +
+        '<input type="search" id="tpiQuery" placeholder="찾을 말(예: 부담부증여, 국외, 이월과세)" value="' + esc_(query_) + '">' +
+        '<button type="button" class="tp-btn ghost" data-tpi-act="reload">↻ 새로 읽기</button>' +
+        (rootUrl_ ? '<a class="tp-btn ghost" style="text-decoration:none;" href="' + esc_(rootUrl_) + '" target="_blank" rel="noopener noreferrer">📂 드라이브 폴더</a>' : '') +
+        '<span class="tpi-note" id="tpiFill"></span>' +
+      '</div>' +
+      '<div class="tp-kinds">' + [''].concat(names).map(function(nm){ return '<button type="button" class="tp-chip' + (group_ === nm ? ' on' : '') + '" data-tpi-g="' + esc_(nm) + '">' + esc_(nm || '전체') + ' ' + countOf_(nm) + '</button>'; }).join('') + '</div>' +
+      '<div class="tp-kinds">' + [''].concat(KINDS_).map(function(k){ return '<button type="button" class="tp-chip' + (kind_ === k ? ' on' : '') + '" data-tpi-k="' + esc_(k) + '">' + esc_(k || '모든 종류') + '</button>'; }).join('') +
+        '<span class="tpi-note" style="align-self:center;">결정은 세무사님 — 계산은 🧮 비교 계산과 세액계산에서</span></div>' +
+      (error_ ? '<div class="tp-err" style="margin-bottom:8px;">' + esc_(error_) + '</div>' : '') +
+      '<div class="tpi-wrap"><div class="tpi-list" id="tpiList"></div><div class="tpi-doc" id="tpiDoc"></div></div>';
+    renderList_(); renderDoc_(); renderBar_();
+  }
+  var countOf_ = function(nm){ var n = 0; (groups_ || []).forEach(function(g){ if (!nm || g.name === nm) n += g.files.length; }); return n; };
+
+  function setMode_(m){
+    mode_ = m;
+    var root = document.getElementById('view-taxplan'); if (!root) return;
+    root.querySelectorAll('[data-tp-mode]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-tp-mode') === m); });
+    document.getElementById('tpItemsPane').style.display = m === 'items' ? '' : 'none';
+    document.getElementById('tpCalcPane').style.display = m === 'calc' ? '' : 'none';
+    if (m === 'items') render_();
+  }
+
+  var bound_ = false;
+  function bind_(){
+    if (bound_) return; bound_ = true;
+    var root = document.getElementById('view-taxplan');
+    root.addEventListener('click', function(e){
+      var t = e.target.closest ? e.target.closest('[data-tp-mode],[data-tpi-open],[data-tpi-act],[data-tpi-g],[data-tpi-k]') : null;
+      if (!t || !root.contains(t)) return;
+      if (t.hasAttribute('data-tp-mode')){ setMode_(t.getAttribute('data-tp-mode')); return; }
+      if (t.hasAttribute('data-tpi-g')){ group_ = t.getAttribute('data-tpi-g'); render_(); return; }
+      if (t.hasAttribute('data-tpi-k')){ kind_ = t.getAttribute('data-tpi-k'); render_(); return; }
+      if (t.hasAttribute('data-tpi-open')){
+        if (editing_ && !confirm('고치던 내용을 버리고 다른 아이템을 열까요?')) return;
+        editing_ = false;
+        cur_ = { id: t.getAttribute('data-tpi-open'), name: t.getAttribute('data-tpi-name'), group: t.getAttribute('data-tpi-group') };
+        renderList_(); renderDoc_();
+        var d = document.getElementById('tpiDoc'); if (d && window.innerWidth <= 820) d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      var act = t.getAttribute('data-tpi-act');
+      if (act === 'reload'){ groups_ = null; cache_ = {}; loadGen_++; fullLoading_ = false; render_(); }
+      else if (act === 'win' && cur_){ var c = cur_; nxMdOpenWindow(title_(c.name), function(){ return read_(c.id); }, { theme: 'memo' }); }
+      else if (act === 'edit'){ editing_ = true; renderDoc_(); }
+      else if (act === 'cancel'){ editing_ = false; renderDoc_(); }
+      else if (act === 'calc'){ if (window.nxTaxPlanGoCalc_(t.getAttribute('data-tpi-key'))) setMode_('calc'); }
+      else if (act === 'save' && cur_){
+        var ta = document.getElementById('tpiEdit'); if (!ta) return;
+        var txt = ta.value, id = cur_.id;
+        t.disabled = true;
+        callGas('uploadFile', { fileId: id, base64Data: utf8ToBase64(txt) }).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '저장하지 못했습니다');
+          cache_[id] = txt; lsSet_(id, 'saved', txt); editing_ = false; // 다음 목록에서 드라이브 수정 시각이 달라 한 번 다시 읽는다 showToast('저장했습니다.', 'success'); renderDoc_(); renderList_();
+        }).catch(function(err){ t.disabled = false; showToast('저장하지 못했습니다: ' + err.message, 'warning'); });
+      }
+    });
+    root.addEventListener('input', function(e){
+      if (e.target && e.target.id === 'tpiQuery'){ query_ = e.target.value.trim(); renderList_(); }
+    });
+  }
+
+  window.nxTaxPlanItems_ = { init: function(){ bind_(); setMode_(mode_); }, meta_: meta_, title_: title_ };
 })();
 </script>
