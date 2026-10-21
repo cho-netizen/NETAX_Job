@@ -425,6 +425,7 @@ function commSeamList_() {
     { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
     { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
     { 길: '휴대폰 창구 녹음 → 상담 녹음(받아쓰기·요약 → 사건)', fn: function () { return typeof consult_finish_ === 'function' && typeof consult_chunk_ === 'function' ? '' : '상담 녹음 서버 길이 이 판에 없음'; } },
+    { 길: '카카오 봇 오류 기록 → 대시보드·주간 보고서', fn: function () { return Array.isArray(kakaoErrorsRecent_(7)) ? '' : '카카오오류 탭을 못 읽음'; } },
     { 길: '고객 카톡 글 → 넥스 사건처리 조회', fn: function () { return typeof kakaoCaseMessages_ === 'function' ? '' : '카톡 글 읽기가 이 판에 없음'; } }
   ];
 }
@@ -437,6 +438,15 @@ function commSeamCheck_() {
   });
   return { ok: out.every(function (x) { return x.ok; }), 길: out, 끊김: out.filter(function (x) { return !x.ok; }) };
 }
+// ⑦ [2026.10.22] 카카오 봇 오류 기록 — 세무사님 "진행하고 일괄배포": 카카오 봇(NETAX_Kakao, 별도 서버)이 실패하면 사건 시트 "카카오오류" 탭에
+//  한 줄씩(시각·종류·접속코드·내용) 남긴다. job은 그것을 읽어 대시보드·주간 개선 보고서에 띄운다(파일 저장 실패는 봇이 세무사님께 바로 문자도).
+function kakaoErrorsRecent_(days) {
+  const sh = SpreadsheetApp.openById(WORK_SHEET_ID).getSheetByName('카카오오류');
+  if (!sh || sh.getLastRow() < 2) return [];
+  const since = Date.now() - (days || 7) * 86400000, n = Math.min(200, sh.getLastRow() - 1);
+  return sh.getRange(sh.getLastRow() - n + 1, 1, n, 4).getValues().filter(function (r) { const t = r[0] instanceof Date ? r[0].getTime() : Date.parse(r[0]); return t && t >= since; })
+    .reverse().slice(0, 30).map(function (r) { return { at: Utilities.formatDate(r[0] instanceof Date ? r[0] : new Date(r[0]), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 종류: String(r[1] || ''), rid: String(r[2] || ''), 내용: String(r[3] || '').slice(0, 200) }; });
+}
 // ⑤ 대시보드·설정 카드용 한 번에 받기
 function commStatus_() {
   // [2026.10.20] 끝나지 않은 요청은 개수 제한 없이 전부(오래된 순), 확인완료는 최근 15건 — 대시보드 🛠 개선요구 카드·설정 📝 요청 상태가 같은 자료를 본다
@@ -444,7 +454,8 @@ function commStatus_() {
     return { success: true, changes: commRecentChanges_().slice(0, 12), requests: reqs, openRequests: ra.open, doneRequests: ra.done,
     oldestDays: ra.open.length ? ra.open[0].days : 0, urgent: ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length,
     toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_,
-    routine: commRoutineLog_(), uploads: (function () { try { return typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(7) : []; } catch (e) { return []; } })() }; // [2026.10.22] 고객이 올린 서류(최근 7일)
+    routine: commRoutineLog_(), uploads: (function () { try { return typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(7) : []; } catch (e) { return []; } })(), // [2026.10.22] 고객이 올린 서류(최근 7일)
+    kakaoErrors: (function () { try { return kakaoErrorsRecent_(7); } catch (e) { return []; } })() }; // [2026.10.22] 카카오 봇 오류(최근 7일)
 }
 // ⑧ [2026.10.21] 고객 카톡 글 — 세무사님 결정("진행하고 다음으로 넘어가자"): 고객이 카톡으로 쓴 글이 넥스·job에 전달되지 않던 문제.
 //  카카오 봇(NETAX_Kakao, 별도 서버)은 이미 모든 수신 메시지를 사건 시트 "카카오웹훅로그" 탭에 남기고(시각·카카오ID·글·원본), 카카오ID↔접속코드는
