@@ -645,6 +645,13 @@ function knhForReport_() {
   // [2026.10.21] 절세 아이템 현행화 필요(밤 판정) — 고치는 일은 세무사님·세션(드라이브 절세 폴더). 루틴은 목록을 보고 보고서에 올린다.
   var tc = knhReadJson_(KNH_TAX_CURRENCY_, null);
   if (tc) { data.절세현행화 = tc; if (tc.현행화필요) head.push('💡 절세 아이템 현행화 필요 ' + tc.현행화필요 + '건(전체 ' + tc.전체 + ', 시간에 따라 바뀌는 내용 있음 ' + tc.시간민감 + ') — 절세플랜 📚 ⚠ 거르기에서 보기'); }
+  // [2026.10.22] 표시 분류 오류 후보(확인조치사항 판단 대기인데 아이템·지침에 같은 쟁점 [확인 필요]가 남음) — 루틴은 고치지 않고 보고서에 올린다
+  var cl = knhReadJson_(KNH_CLS_FILE_, null);
+  if (cl) {
+    data.분류오류 = { at: cl.at, ran: cl.ran, reason: cl.reason || '', 후보: (cl.후보 || []).map(function (c) { return { 항목: c.항목, 파일: c.파일, 줄: c.줄들.map(function (x) { return x.줄; }), 찾은방법: c.찾은방법 }; }), 파일안적은항목: cl.파일안적은항목 || 0 };
+    if (!cl.ran) head.push('🔀 표시 분류 검사 안 됨 — ' + (cl.reason || '이유 모름'));
+    else if ((cl.후보 || []).length) head.push('🔀 표시 분류 오류 후보 ' + cl.후보.length + '곳(줄 ' + cl.후보줄 + ') — 확인조치사항 판단 대기인데 아이템·지침에 같은 쟁점 [확인 필요]가 남음, 🧭 시스템 관리 노하우에서 보기(고치지 않음)');
+  }
   var guide = 'knowhow(📚 지침·템플릿 정비 — 세무사님 "노하우의 최종 결정체… 수정할 것은 수정하고 폐기할 것은 폐기하고 새로 만들 것은 만들어야"): 매주 한다. '
     + '① 판정의 수정 필요 — 급함(3=틀린 경로·도구·조문(시스템 자기점검)·법령 개정 반영, 2=세무사님이 반복해서 고친 곳·내용 없음, 1=[확인 필요]만) 높은 것부터 → 지금원문[종류/파일]에서 출발한 수정본([확인 필요]는 현행 원문으로 확인된 것만 채움). '
     + '② 신규필요(현황의 빈칸, 맞는 지침 없는 반복 질문)와 재료.cases(완료 사건의 판단 발췌·크게 고친 보고서 — 이미 가려져 있지만 더 일반화)로 새 지침·템플릿 초안. '
@@ -654,7 +661,8 @@ function knhForReport_() {
     + '최근결정의 반려·유지 사유를 먼저 읽고 같은 제안을 되풀이하지 말 것(사유를 고친 새 제안은 가능). 기존 templates 흐름(공통추가제목·늘빈칸 통계로 gs-backend/templates 고침)은 그대로 두되, 같은 파일을 두 흐름에서 동시에 고치지 않는다. '
     + '지침 형식: 첫 줄 "# 제목 — 다루는 것 한 줄(80자 이내)", "> 상태: 초안(세무사님 검토 전) · 작성 날짜 · 근거 법령판", 1 언제 쓰는가 / 2 판단 순서 / 3 필요한 사실·서류→계산기 칸 / 4 계산기·조회 도구(코드에 있는 이름만) / 5 자주 틀리는 곳 / 6 고객에게 물을 것 / 7 근거 조문("법률명 §조번호") / 8 최신 확인 필요. '
     + '조문·세율·기한은 현행 원문으로 확인한 것만 쓰고 모르면 [확인 필요: 무엇]. 지방세는 범위 밖. 고객 이름·주소·금액·사건 고유 사실은 절대 넣지 말고 일반화(저장소 공개). 고객 자료를 무료 외부 AI로 보내지 않는다. 한 주에 제안은 10건 이내, 질 우선.';
-  return { head: head, data: data, guide: guide, count: (t['수정 필요'] || 0) + (t['폐기 후보'] || 0) + (t.신규필요 || 0) ? 1 : 0 };
+  guide += ' 분류오류(🔀): 같은 쟁점이 확인조치사항 판단 대기와 아이템·지침 [확인 필요]에 함께 있는 후보다(낱말 맞춤이라 헛잡힘이 있을 수 있음) — 고치지 말고 보고서에 그대로 올린다. 판정·표시 바꾸기는 세무사님·세션이 한다(작성기준 "표시는 한 쟁점에 하나뿐").';
+  return { head: head, data: data, guide: guide, count: (t['수정 필요'] || 0) + (t['폐기 후보'] || 0) + (t.신규필요 || 0) + ((cl && cl.후보 || []).length) ? 1 : 0 };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -672,8 +680,9 @@ function knhDispatch_(body) {
       var r = knhReadJson_(KNH_RESULT_, null);
       if (r) delete r.material; // 화면엔 재료(사건 발췌)를 싣지 않는다
       return { success: true, result: r, pending: knhProposals_().map(function (p) { return { id: p.id, 종류: p.종류, 작업: p.작업, 대상: p.대상, 이유: p.이유, at: p.at, 출처: p.출처 }; }),
-        decisions: knhDecisions_().items.slice(-20).reverse(), 개정: knhLawReview_(r) };
+        decisions: knhDecisions_().items.slice(-20).reverse(), 개정: knhLawReview_(r), 분류: knhReadJson_(KNH_CLS_FILE_, null) };
     }
+    if (a === 'knh_cls_run') return { success: true, result: knhClsNightly_({ budgetMs: 45000 }) };
     if (a === 'knh_law_confirm') return knhLawConfirm_(body);
     if (a === 'knh_proposal') {
       var p = knhProposals_().filter(function (x) { return x.id === body.id; })[0];
@@ -1086,6 +1095,11 @@ function knhIdxNightly_(opts) {
       sum.절세현행화필요 = need.length;
     }
   } catch (e) { sum.오류.push('절세 현행화 판정: ' + String(e && e.message || e).slice(0, 80)); }
+  // [2026.10.22] 표시 분류 오류 검사(확인조치사항 판단 대기 ↔ 아이템에 남은 [확인 필요]) — 색인 맞추기와 따로 30초. 고치지 않고 표시만.
+  try {
+    var cls = knhClsNightly_({ budgetMs: 30000 });
+    if (cls.ran) sum.분류오류후보 = cls.후보.length; else sum.오류.push('표시 분류 검사: ' + String(cls.reason || '').slice(0, 80));
+  } catch (e) { sum.오류.push('표시 분류 검사: ' + String(e && e.message || e).slice(0, 80)); }
   try { PropertiesService.getScriptProperties().setProperty('KNH_IDX_LAST', JSON.stringify(sum)); } catch (e) { }
   return sum;
 }
@@ -1111,4 +1125,162 @@ function knhTplStampText_(tplFile, text) {
 }
 function knhTplStampDesc_(copyFile, tplFile) {
   try { copyFile.setDescription('바탕 템플릿: ' + knhBase_(tplFile.getName()) + ' · 판 ' + knhTplVer_(tplFile)); } catch (e) { console.log('바탕 템플릿 판 기록 실패: ' + e.message); }
+}
+
+// =============================================================================================
+// [2026.10.22] 표시 분류 오류 검사 — 세무사님 원문(2026-10-22): "확인필요에서 확인하고 나서 판단대기로 분류하는 것 아닌가?" / "나는 분류시스템의 문제를 지적하는 것이다".
+// 규칙(업무관리자\절세\_작성기준.md, Claude작업원칙 L2_taxlaw 3절 "표시는 한 쟁점에 하나뿐"): [확인 필요] → 근거로 결론 나면 표시를 지운다 /
+//  근거끼리 부딪히거나 엔진과 다르면 확인조치사항에 올리고 같은 자리 표시를 "[판단 대기 — 확인조치사항 💡 절]"로 바꾼다. 같은 쟁점이 두 상태에 동시에 있으면 분류 오류.
+// 밤(knhIdxNightly_ 끝, 토큰 0)에 확인조치사항의 미결(- [ ]) 항목마다, 그 항목이 가리키는 아이템·지침에 같은 쟁점 낱말이 든 [확인 필요] 줄이 남았는지 본다.
+// 파일 내용은 고치지 않는다(표시만) — 결과는 총괄관리자\_지침정비\분류점검_최신.json → 🧭 시스템 관리 노하우 화면 한 구역·개선 후보 보고서 한 줄.
+// 헛잡힘 줄이기(10-22 "낱말만으로 세어 6건이라 했다가 실제 2건"):
+//  ① 낱말은 그 항목 글에서만 — 한 항목이 파일 여럿을 가리키면("양도 65 …, 증여 33 …") 그 파일 번호 뒤 글토막만 그 파일에 쓴다.
+//  ② 낱말마다 드묾 무게 = ln(전체 파일 수 ÷ 그 낱말이 나오는 파일 수). 일반 낱말 목록과 무게 1.5 미만(대략 파일 다섯 중 하나 넘게 나오는 말)은 버린다.
+//     해석·판례 번호(재산세제과-1422, 2013두23195)는 통째 한 낱말 — 기관 이름만 같은 다른 해석에 걸리지 않게.
+//  ③ [확인 필요] 줄 하나에 드문 낱말이 둘 이상·무게 합 4 이상(항목이 가리킨 파일·제목이 그 쟁점인 파일) / 셋 이상·7 이상(그 밖 파일)이어야 후보.
+//     숫자로 시작하는 말(2년·12억·3건)은 낱말로 안 친다. 아이템 제목으로 가리킨 것은 제목이 두 낱말 이상·8자 이상일 때만.
+//  ④ 항목이 파일을 안 적었으면 💡 절(절세 아이템 작업의 판단 대기) 항목만 아이템 전체에서 찾는다 — 다른 절은 엔진·서식 결정이라 아이템 표시와 짝이 아니다
+//     (작성기준: "확인조치사항 항목에는 그 아이템 파일 이름을 적는다". 파일을 안 적은 💡 항목 수도 따로 보인다).
+var KNH_CLS_FILE_ = '분류점검_최신.json';
+var KNH_CLS_SEMOK_ = ['양도', '증여', '상속', '공통'];
+var KNH_CLS_STOP_ = ('확인 필요 판단 대기 엔진 아이템 적용 경우 여부 결정 예규 해석 문언 지금 보임 보인다 보이므로 건 때 등 및 또는 기준 계산 원문 근거 세무사님 표시 그대로 나란히 적음 '
+  + '고침 고치지 고칠 후보 검토대상 확인됨 결론 맞아 맞는가 맞는지 있음 없음 없이 않음 되는 된다 한다 하는 했다 위해 대한 관련 따라 따른 이후 이전 같은 다른 '
+  + '세법 법령 조문 시행령 소득세법 상증법 조특법 국세기본법 세액 세금 금액 실무 처리 반영 제안 카드 포함 지금은 하나 모두 각각 엇갈리는 엇갈림 반대 취지 손대지 '
+  + '추가 자동 작업 나온 대기로 필요한 이상 이하 초과 미만 기간 해당 차이 약 예 그 이 저 것 수 있다 없다 '
+  + '서식 별지 신청서 화면 칸 칸을 둘지 고르는 고르 예에서 오류 사건에서 전까지 추후 감사 걸리 갱신 다름 의심 등에도 문구 json 아이템엔 엇갈리 남는다 확인할 확인 후 문언상 만이라 보완').split(' ');
+var KNH_CLS_CITE_RE_ = /[가-힣]{2,}(?:과|국|실|팀)?-\d{2,4}-?[가-힣]*-?\d{2,5}|\d{4}[가-힣]{1,2}\d{2,6}|[가-힣]{2,}\d{5}-\d{2,5}/g;
+var KNH_CLS_MIN_W_ = 1.5, KNH_CLS_NEAR_ = 4, KNH_CLS_FAR_ = 7;
+var KNH_CLS_SYN_ = { '장기보유특별공제': ['장특공'], '장특공': ['장기보유특별공제'], '기재부': ['기획재정부'], '기획재정부': ['기재부'], '양도소득세': ['양도세'], '양도세': ['양도소득세'] };
+var KNH_CLS_MARK_RE_ = /확인\s*필요/;
+
+// 낱말 — 꾸밈 글자 떼고, 끝 조사 하나 떼고, 두 글자 이상(숫자만·날짜 꼬리는 뺌)
+function knhClsWords_(s) {
+  var out = {}, stop = {};
+  KNH_CLS_STOP_.forEach(function (w) { stop[w] = 1; });
+  (String(s || '').match(KNH_CLS_CITE_RE_) || []).forEach(function (c) { out[c] = 1; });
+  String(s || '').replace(KNH_CLS_CITE_RE_, ' ').replace(/\*\*|`|\(\d{4}-\d{2}-\d{2}[^)]*\)/g, ' ').split(/[^0-9A-Za-z가-힣§①-⑳]+/).forEach(function (w) {
+    var b = w.replace(/(으로는|으로|에서|에게|까지|부터|이라|이면|인데|인지|인가|에는|에도|로는|이다|은|는|이|가|을|를|에|의|로|와|과|도|만|땐)$/, '');
+    if (b.length >= 2) w = b;
+    if (w.length < 2 || /^\d/.test(w) || stop[w] || KNH_CLS_SEMOK_.indexOf(w) !== -1) return;
+    out[w] = 1;
+  });
+  return Object.keys(out);
+}
+// 항목 글 → 가리키는 파일들(번호 "양도 15"·"양도 20·22", 아이템 제목 앞부분, 지침 파일 이름)과 그 파일에 쓸 글토막. 순수 함수
+function knhClsPointers_(text, files) {
+  var t = String(text || ''), hits = [];
+  var re = /(양도|증여|상속|공통)\s*(\d{1,3})((?:\s*[·,]\s*\d{1,3})*)(?![\d.]|\s*(?:호|억|만|천|년|월|일|%|조|개|건|명|회|배|원|장|번))/g, m;
+  while ((m = re.exec(t))) {
+    var nums = [m[2]].concat((m[3] || '').split(/[·,]/).map(function (x) { return x.trim(); }).filter(Boolean));
+    for (var i = 0; i < nums.length; i++) hits.push({ key: m[1] + ' ' + ('0' + (+nums[i])).slice(-2), at: m.index, how: '번호' });
+  }
+  (files || []).forEach(function (f) {
+    // 아이템 제목은 낱말 둘 이상·8자 이상일 때만 "이름을 적었다"로 본다("장기보유특별공제"처럼 한 낱말 제목은 쟁점 설명 속 낱말과 구별 안 됨)
+    var head = f.kind === '지침' ? knhBase_(f.name) : knhIdxTitle_(f.name).split(/\s+—\s+/)[0];
+    if (head.length < 8 || (f.kind !== '지침' && !/\s/.test(head))) return;
+    var at = t.indexOf(head);
+    if (at !== -1) hits.push({ key: f.key, at: at, how: f.kind === '지침' ? '지침 이름' : '아이템 제목' });
+  });
+  hits.sort(function (a, b) { return a.at - b.at; });
+  var seen = {}, out = [];
+  hits.forEach(function (h) {
+    var next = hits.filter(function (x) { return x.at > h.at; })[0];
+    var seg = t.slice(h.at, next ? next.at : t.length);
+    if (seen[h.key]) { seen[h.key].seg += ' ' + seg; return; }
+    seen[h.key] = { key: h.key, how: h.how, seg: seg };
+    out.push(seen[h.key]);
+  });
+  return out;
+}
+// 순수 함수(드라이브 모름) — input = { followText, files: [{ key:'양도 15', kind:'절세'|'지침', name, id, text }] }
+function knhClsCheck_(input) {
+  input = input || {};
+  var files = input.files || [], N = files.length, byKey = {};
+  files.forEach(function (f) { byKey[f.key] = f; f._lines = String(f.text || '').split(/\r?\n/); });
+  var open = followupParse_(input.followText || '').items.filter(function (x) { return !x.done; });
+  var wCache = {};
+  var variants = function (w) { return [w].concat(KNH_CLS_SYN_[w] || []); };
+  var has = function (s, w) { return variants(w).some(function (v) { return s.indexOf(v) !== -1; }); };
+  var weight = function (w) { // 드묾 무게 ln(N/df) — 어느 파일에도 없으면 0(쓸모없음)
+    if (wCache[w] == null) { var d = files.filter(function (f) { return has(String(f.text || ''), w); }).length; wCache[w] = d ? Math.log(N / d) : 0; }
+    return wCache[w];
+  };
+  var rare = function (ws) { return ws.filter(function (w) { return weight(w) >= KNH_CLS_MIN_W_; }); };
+  var score = function (s, terms) { var h = terms.filter(function (w) { return has(s, w); }); return { h: h, w: h.reduce(function (a, w) { return a + weight(w); }, 0) }; };
+  var r1 = function (x) { return Math.round(x * 10) / 10; };
+  var cands = [], noPtr = [];
+  open.forEach(function (it) {
+    var full = it.text + '\n' + (it.detail || '');
+    var bold = ((it.text.match(/\*\*([^*]+)\*\*/) || [])[1] || it.text.split(/\s+—\s+/)[0]).replace(/^\([^)]*\)\s*/, '').slice(0, 120);
+    var ptrs = knhClsPointers_(full, files).filter(function (p) { return byKey[p.key]; });
+    var targets = ptrs.map(function (p) { return { f: byKey[p.key], terms: rare(knhClsWords_(bold + ' ' + p.seg)), how: p.how === '번호' ? '항목에 적힌 번호' : '항목에 적힌 ' + p.how, need: KNH_CLS_NEAR_ }; });
+    if (!ptrs.length && /💡|절세/.test(it.sec)) {
+      noPtr.push(bold);
+      var terms = rare(knhClsWords_(full));
+      files.forEach(function (f) {
+        if (f.kind !== '절세') return;
+        var t = score(knhIdxTitle_(f.name), terms), near = t.h.length >= 2 && t.w >= KNH_CLS_NEAR_;
+        targets.push({ f: f, terms: terms, how: near ? '항목에 파일이 안 적힘 — 낱말로 찾음(파일 제목도 그 쟁점)' : '항목에 파일이 안 적힘 — 낱말로 찾음', need: near ? KNH_CLS_NEAR_ : KNH_CLS_FAR_, title: near ? t.h : null });
+      });
+    }
+    targets.forEach(function (tg) {
+      if (tg.terms.length < 2) return;
+      var rows = [];
+      tg.f._lines.forEach(function (L, i) {
+        if (!KNH_CLS_MARK_RE_.test(L)) return;
+        var sc = score(L, tg.terms);
+        if (sc.h.length < (tg.need === KNH_CLS_FAR_ ? 3 : 2) || sc.w < tg.need) return;
+        // 제목 덕분에 문턱을 낮춘 파일은 그 줄에 제목에 없는 드문 낱말이 하나는 있어야 한다(제목 낱말 "표1·표2"만 맞는 줄은 그 파일 어디에나 있음)
+        if (tg.title && !sc.h.some(function (w) { return tg.title.indexOf(w) === -1; })) return;
+        var s = L.trim();
+        rows.push({ 줄: i + 1, 글: s.length > 240 ? s.slice(0, 238) + '…' : s, 낱말: sc.h.slice(0, 8), 무게: r1(sc.w), 표시: /\[\s*확인\s*필요/.test(L) ? '[확인 필요]' : '글 속 "확인 필요"' });
+      });
+      if (rows.length) cands.push({ 항목: bold, 절: it.sec, 확인조치줄: it.line + 1, 파일: tg.f.name, 파일키: tg.f.key, 종류: tg.f.kind, fileId: tg.f.id, 찾은방법: tg.how, 문턱: tg.need,
+        쟁점낱말: tg.terms.slice().sort(function (a, b) { return weight(b) - weight(a); }).slice(0, 12), 줄들: rows.slice(0, 10) });
+    });
+  });
+  return { 미결: open.length, 파일: N, 후보: cands, 후보줄: cands.reduce(function (s, c) { return s + c.줄들.length; }, 0), 파일안적은항목: noPtr.length, 파일안적은항목목록: noPtr.slice(0, 30) };
+}
+
+// 드라이브 — 확인조치사항 + 절세 아이템 전부 + 확인조치사항에 이름이 적힌 지침만 읽는다(쓰기는 결과 파일 하나뿐)
+function knhClsNightly_(opts) {
+  var deadline = Date.now() + ((opts && opts.budgetMs) || 30000);
+  var res = { at: knhNow_(), ran: false, warn: [] };
+  try {
+    var ff = typeof followupFile_ === 'function' ? followupFile_() : null;
+    if (!ff) throw new Error('확인조치사항 파일을 찾지 못했습니다.');
+    var followText = followupReadText_(ff);
+    var root = knhIdxRoots_().filter(function (r) { return r.key === '절세'; })[0];
+    if (!root) throw new Error('절세 아이템 폴더(업무관리자\\절세)를 찾지 못했습니다.');
+    var files = [], unread = 0;
+    var readF = function (f) { try { return f.getBlob().getDataAsString('UTF-8').replace(/^﻿/, ''); } catch (e) { return null; } };
+    var addDir = function (d, semok) {
+      var it = d.getFiles();
+      while (it.hasNext()) {
+        var f = it.next(), n = f.getName();
+        if (!knhIdxIsItem_(n) || f.isTrashed()) continue;
+        var text = Date.now() > deadline ? null : readF(f);
+        if (text == null) { unread++; continue; }
+        var num = (n.match(/^(\d{1,3})[\s._-]/) || [])[1];
+        files.push({ key: num ? semok + ' ' + ('0' + (+num)).slice(-2) : semok + '/' + n, kind: '절세', name: n, id: f.getId(), text: text });
+      }
+    };
+    addDir(root.folder, '공통');
+    knhIdxSubs_(root.folder).forEach(function (d) { addDir(d, d.getName()); });
+    var bmF = knhFolder_('지침');
+    if (bmF) {
+      var it2 = bmF.getFiles();
+      while (it2.hasNext()) {
+        var g = it2.next(), gn = g.getName();
+        if (!/\.(md|txt)$/i.test(gn) || gn.charAt(0) === '_' || g.isTrashed() || followText.indexOf(knhBase_(gn)) === -1) continue;
+        var gt = readF(g);
+        if (gt != null) files.push({ key: '지침/' + gn, kind: '지침', name: gn, id: g.getId(), text: gt });
+      }
+    }
+    if (unread) res.warn.push('시간이 모자라거나 읽기 오류로 아이템 ' + unread + '개를 못 읽음 — 그 파일은 이번 검사에서 빠짐(다음 밤에 다시)');
+    var r = knhClsCheck_({ followText: followText, files: files });
+    res = Object.assign(res, r, { ran: true, 확인조치파일: ff.getName(), 확인조치fileId: ff.getId() });
+  } catch (e) { res.ran = false; res.reason = String(e && e.message || e); }
+  knhWriteJson_(KNH_CLS_FILE_, res);
+  return res;
 }
