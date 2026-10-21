@@ -3373,5 +3373,111 @@
    "감면세액": 2000000,
    "최종가산세액": 8000000
   }
+ },
+ {
+  "이름": "[2026.10.22 증여-17⑨] 명의신탁 증여의제 1억 — 서화 감정 300만(500만 한도)·신용평가 1,800만(법인 1 × 기관 2 = 2천만 한도) 모두 공제(상증령 §20의3③) → 과세표준 79,000,000",
+  "도구": "calculateNomineeTrustGiftTaxJS",
+  "입력": {
+   "nomineeTrustPropertyValue": 100000000,
+   "giftDate": "2026-01-01",
+   "unlistedStockAppraisalFeeAmount": 18000000,
+   "unlistedStockAppraisalFeeCount": 2,
+   "artAppraisalFeeAmount": 3000000
+  },
+  "정답": {
+   "과세표준": 79000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 증여-17⑪] 초과배당 10억 + 10년 내 합산 15억, 미성년 세대생략 — 20억 판정에 합산분 포함(상증령 §46의3①) → 할증 40% = 274,550,400",
+  "도구": "calculateExcessDividendGiftTaxJS",
+  "입력": {
+   "excessDividendBaseAmount": 1000000000,
+   "disproportionateShortfallRatio": 1,
+   "giftDate": "2026-01-01",
+   "isGenerationSkip": true,
+   "isMinor": true,
+   "priorGiftAmount": 1500000000,
+   "dividendIncomeTaxAmount": 0
+  },
+  "정답": {
+   "세대생략할증액": 274550400
+  }
+ },
+ {
+  "이름": "[2026.10.22 상속-10 A⑦] 계약자가 피상속인이어도 보험료 60%만 피상속인 부담 → 보험금 1억 × 60% = 60,000,000(상증령 §4①)",
+  "도구": "calculateDeemedInheritancePropertyJS",
+  "입력": {
+   "itemType": "insurance",
+   "amount": 100000000,
+   "wasPolicyholderDecedent": true,
+   "premiumPaidByDecedentRatio": 0.6
+  },
+  "정답": {
+   "간주상속재산포함액": 60000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 상속-10 A⑪] 물납 신청 한도(상증령 §73①) — 1호 5억 × 12억/20억 = 3억, 2호 5억 − (1.5억 − 채무 0.5억) − 상장 1억 = 3억 → 3억; ④ 비상장 한도 0",
+  "도구": "calculatePropertyInKindPaymentEligibilityJS",
+  "입력": {
+   "provision": "general",
+   "inheritanceTaxPayable": 500000000,
+   "financialAssetValue": 150000000,
+   "financialDebtAmount": 50000000,
+   "listedSecuritiesValue": 100000000,
+   "realEstateSecuritiesValue": 1200000000,
+   "totalInheritanceValue": 2000000000,
+   "unlistedStockValue": 400000000,
+   "inheritanceTaxableValue": 1800000000,
+   "heirResidenceHouseNetValue": 300000000
+  },
+  "정답": {
+   "물납신청가능세액_한도": 300000000,
+   "비상장주식_물납한도": 0
+  }
+ },
+ {
+  "이름": "[2026.10.22 상속-10 A⑧] §24 3호는 감정평가수수료를 빼기 전 증여재산가액 — 과세표준 4.5억 + 그때 뺀 수수료 500만 = 4.55억을 한도에서 뺌 → 공제적용한도 540,000,000",
+  "도구": "calculateInheritanceTaxJS",
+  "입력": {
+   "taxableEstateAmount": 1000000000,
+   "hasSpouse": true,
+   "spouseActualInheritance": 600000000,
+   "spouseLegalShareRatio": 0.6,
+   "childCount": 1,
+   "inheritanceDate": "2026-01-10",
+   "priorGiftHeirs": [
+    {
+     "name": "갑",
+     "priorGiftTaxableBase": 450000000,
+     "priorGiftAppraisalFee": 5000000,
+     "priorGiftTaxPaid": 0
+    }
+   ],
+   "filingStatus": "ontime"
+  },
+  "정답": {
+   "공제적용한도액": 540000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-11] 2018.6.1. 재건축 입주권(원조합원) 양도 — 인가 전 차익 4억 × 그때 표1 10년 이상 30% = 1.2억 → 산출 (7억 − 1.2억 − 250만) × 42% − 3,540만 = 207,150,000(양도일 연혁, 소득세법 §95② 2018.12.31. 이전 표)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isReconstructionRights": true,
+   "transferPrice": 900000000,
+   "acquisitionPrice": 200000000,
+   "acquisitionDate": "2005-03-01",
+   "managementDispositionDate": "2016-03-01",
+   "rightsValue": 600000000,
+   "originalAssetAcquisitionPrice": 200000000,
+   "settlementPaid": 0,
+   "transferDate": "2018-06-01"
+  },
+  "정답": {
+   "산출세액": 207150000
+  }
  }
 ]
