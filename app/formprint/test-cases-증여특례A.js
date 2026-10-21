@@ -75,5 +75,18 @@ module.exports = function (E, H) {
     relation: '직계존속', giftDate: '2026-03-15', 신고일: '2027-06-30' });
   L.push({ name: '증여10호의6_특정법인_한도적용', forms: [{ formKey: '증여10호의6', ctx: c6 }], ctx: c6 });
 
+  // ⑦ [2026.10.22 검토대상 증여-13] 10호의6 — 앞선 증여 2억이 합산되는 경우: ㊲은 엔진 한도(합산·관계별 공제 반영) 그대로여야 ㊱ = min(누진, ㊲) 검산이 맞음
+  var scIn7 = Object.assign({}, scIn, { priorGiftAmount: 200000000, relationDeductionLimit: 0 });
+  var c7 = base({ r: E.calculateSpecificCorporationGiftTaxJS(scIn7), filingStatus: 'ontime', fiscalYearEnd: '2026-12-31',
+    scInput: { benefitToCorpAmount: 1000000000, shareholderOwnershipRatio: 0.6, directGiftTaxEquivalent: 0, priorGiftAmount: 200000000, priorPaidTax: 0 },
+    relation: '직계존속', giftDate: '2026-03-15', 신고일: '2027-06-30' });
+  L.push({ name: '증여10호의6_특정법인_앞선증여합산', forms: [{ formKey: '증여10호의6', ctx: c7 }], ctx: c7 });
+
+  // ⑧ [2026.10.22 검토대상 증여-14] 10호의2 — 2020년 가업승계 55억(그때 법: 한도 100억·공제 5억·30억 초과분 20%)
+  //   손계산: ㉑ 55억 − ㉒ 5억 = ㉕ 50억 → ㉗ = 30억 × 10% + 20억 × 20% = 7억, ㉖ "10%·20%"
+  var srIn8 = { specialType: 'business_succession', giftAmount: 5500000000, doneeAge: 35, donorAge: 66, businessOwnershipYearsOfParent: 25, filingStatus: 'ontime', giftDate: '2020-06-01' };
+  var c8 = base({ r: E.calculateSpecialRateGiftTaxJS(srIn8), filingStatus: 'ontime', srRows: [], srInput: {}, giftDate: '2020-06-01', 신고일: '2020-09-30' });
+  L.push({ name: '증여10호의2_가업승계_2020년', forms: [{ formKey: '증여10호의2', ctx: c8 }, { formKey: '증여10호의2부표2', ctx: c8 }], ctx: c8 });
+
   return L;
 };

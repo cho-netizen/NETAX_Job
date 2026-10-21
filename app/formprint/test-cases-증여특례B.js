@@ -96,5 +96,15 @@ module.exports = function (E, H) {
     shareholders: [{ name: '김수증', relation: '본인(지배주주)', directRatio: 50, chain1Company: '', chain1Ratio: 0, chain2Company: '', chain2Ratio: 0, chain3Company: '', chain3Ratio: 0, chainQualified: true, indirectRaw: 0, indirect: 0 }] };
   L.push({ name: '증여10호의4_정산사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx2 }, { formKey: '증여10호의4부표3', ctx: jtCtx2 }], ctx: jtCtx2 });
 
+  // ───── [2026.10.22 검토대상 증여-15] 정산 신고 — 연도별 이익·법인세를 넣은 경우: ㉚ = 연도별 ⑳의 합(4천만 + 1.2억 + 1,500만 = 1.75억) ─────
+  //  연도별: 1년차 이익 10억·법인세 2억·소득 50억 → ⑳ 4천만 / 2년차 이익 15억·법인세 2억·소득 25억 → 1.2억 / 3년차 이익 5억·법인세 3천만·소득 10억 → 1,500만
+  //  손계산: ㉘ 30억 × 50% − 1.75억 = 13.25억 = ㉛
+  var yrs3 = [{ profit: 1000000000, corporateTaxAfterCredit: 200000000, corporateTaxableIncome: 5000000000 }, { profit: 1500000000, corporateTaxAfterCredit: 200000000, corporateTaxableIncome: 2500000000 }, { profit: 500000000, corporateTaxAfterCredit: 30000000, corporateTaxableIncome: 1000000000 }];
+  var jt3 = E.calculateBusinessOpportunityGiftTaxJS({ phase: 'settlement', shareholderOwnershipRatio: 50, yearlyCorporateTax: yrs3, initialPhaseCalculatedTax: 350000000, initialPhasePaidTax: 339500000, filingStatus: 'ontime', reportedInTime: true });
+  if (jt3.법인세상당액_법인전체 !== 175000000 || jt3.증여의제이익 !== 1325000000) throw new Error('일감떼어주기 연도별 정산 엔진 값이 손계산과 다름: ' + JSON.stringify(jt3));
+  var jtIn3 = Object.assign({}, jtIn2, { profit: 0, corporateTax: 0 });
+  var jtCtx3 = Object.assign({}, jtCtx2, { r: jt3, in: jtIn3 });
+  L.push({ name: '증여10호의4부표3_정산_연도별', forms: [{ formKey: '증여10호의4부표3', ctx: jtCtx3 }], ctx: jtCtx3 });
+
   return L;
 };

@@ -223,8 +223,10 @@
     o.note('② = 별지 제10호의2서식 부표2 ⑫(작성방법 6) — 엔진 과세특례적용대상_증여세과세가액');
     var lim = n(r.총한도액), prior = n(r.가산_과세특례증여재산), s8 = n(r.과세특례적용전_증여세과세가액_계);
     o.check('② = 부표2 ⑫(⑧ < ⑨이면 ⑧ − ⑦, 아니면 min(⑧, ⑪))', cur, s8 < lim ? s8 - prior : Math.min(s8, Math.max(0, lim - prior)));
-    if (n(sr.businessYears) > 0) o.check('총한도액 = 가업영위기간 표(10~20년 300억·20~30년 400억·30년 이상 600억, 법 §30의6①)', lim,
-      n(sr.businessYears) >= 30 ? 60000000000 : n(sr.businessYears) >= 20 ? 40000000000 : n(sr.businessYears) >= 10 ? 30000000000 : 0);
+    // [2026.10.22 검토대상 증여-14] 2023년 전 증여는 그때 한도(2008~2014 30억, 2015~2022 100억)
+    var gd8_ = String(sr.giftDate || ctx.giftDate || '').slice(0, 10), old8_ = gd8_ && gd8_ < '2023-01-01' ? (gd8_ < '2015-01-01' ? 3000000000 : 10000000000) : 0;
+    if (n(sr.businessYears) > 0) o.check('총한도액 = ' + (old8_ ? '그때 한도(' + gd8_ + ' 증여, ' + (old8_ / 1e8) + '억)' : '가업영위기간 표(10~20년 300억·20~30년 400억·30년 이상 600억, 법 §30의6①)'), lim,
+      old8_ ? old8_ : (n(sr.businessYears) >= 30 ? 60000000000 : n(sr.businessYears) >= 20 ? 40000000000 : n(sr.businessYears) >= 10 ? 30000000000 : 0));
     ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음 — 세액인쇄 화면에서 고른 날)');
     o.need('신청인서명', dn.name, '신청인(서명)');
     if (has(dn.taxOffice)) o.set('세무서', H.officeName(dn.taxOffice)); else o.miss('세무서', '수증자 관할 세무서 입력 없음');

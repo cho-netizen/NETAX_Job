@@ -41,6 +41,13 @@ module.exports = function (E, H) {
     businessHeirNonBusinessAssetValue: 5000000000, businessHeirTaxWithoutDeduction: 2000000000 });
   var cMid = ihCtx(pMid);
   L.push({ name: '상속1호부표1_중견기업배제', forms: X.plan('상속', cMid).filter(function (it) { return /^상속1호/.test(it.formKey); }), ctx: cMid });
+  // [2026.10.22 검토대상 상속-11] 부표1 — 2010년 상속(그때 법 §18②1호: 40%, 10·15·20년 60·80·100억, 하한 2억), 법인 가업 주식 100억(사업무관자산 없음), 영위 25년
+  //   손계산: ⑨ 100억 → ⑩ 100억(20년 이상 줄) → ⑪ = MAX(MIN(100억 × 40%, 100억), MIN(100억, 2억)) = 40억
+  var pOld = Object.assign({}, pBiz, { dateOfDeath: '2010-06-01', businessInheritanceIndividualNetAssetValue: 0, businessInheritanceStockValue: 10000000000, businessInheritanceTotalAssetValue: 10000000000,
+    businessInheritanceNonBizAsset55: 0, businessInheritanceNonBizAsset49: 0, businessInheritanceNonBizAsset61: 0, businessInheritanceExcessCash: 0, businessInheritanceNonBizStock: 0 });
+  var cOld = ihCtx(pOld);
+  if (cOld.r.가업상속공제 !== 4000000000) throw new Error('2010년 가업상속공제 엔진 값이 손계산(40억)과 다름: ' + cOld.r.가업상속공제);
+  L.push({ name: '상속1호부표1_2010년상속', forms: [{ formKey: '상속1호부표1', ctx: cOld }], ctx: cOld });
 
   // ② 상속2호 — 영농상속공제: 개인 영농 재산 15억(담보채무 2억 — 2026.2.27. 이후 상속이라 뺌) + 영농법인 주식 10억(총자산 20억, 사업무관 2억)
   //   손계산: ① = 15억 − 2억 = 13억, ⑦ = (20억 − 2억) ÷ 20억 = 90% → 가-2 = 10억 × 90% = 9억 → ⑧ = 22억, ⑨ 30억 → ⑩ = 22억

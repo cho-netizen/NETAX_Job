@@ -111,9 +111,14 @@
     if (st) { o.set('⑰', cur).set('⑱', prior); o.miss('⑲⑳ 가업승계주식등', '해당 없음 — 창업자금 신고'); }
     else { o.set('⑲', cur).set('⑳', prior); o.miss('⑰⑱ 창업자금', '해당 없음 — 가업승계주식등 신고'); }
     o.set('㉑', sum).set('㉒', n(r.증여재산공제)).set('㉓', n(r.재해손실공제)).set('㉔', n(r.감정평가수수료공제)).set('㉕', n(r.과세표준));
-    // ㉖ 세율 — 창업자금 10%, 가업승계 10%(과세표준 120억원 초과분 20%) — 작성방법 9
-    var base = n(r.과세표준), over = bs && base > 12000000000;
+    // ㉖ 세율 — 창업자금 10%, 가업승계 10%(과세표준 120억원 초과분 20%) — 작성방법 9(현행 판 문구)
+    // [2026.10.22 검토대상 증여-14] 20% 구간 시작점은 증여일 연혁(조특법 §30의6①: 2008~2014 단일 10%, 2015~2022 30억, 2023 60억, 2024~ 120억) — 엔진이 쓴 값(특례_10퍼센트구간끝)을 따른다.
+    var tier_ = has(r.특례_10퍼센트구간끝) ? (r.특례_10퍼센트구간끝 === null ? Infinity : n(r.특례_10퍼센트구간끝)) : (st ? Infinity : 12000000000);
+    if (st) tier_ = Infinity;
+    var dedLim_ = has(r.증여재산공제_한도) ? n(r.증여재산공제_한도) : (st ? 500000000 : 1000000000);
+    var base = n(r.과세표준), over = bs && base > tier_;
     o.set('㉖', over ? '10%·20%' : '10%');
+    if (bs && tier_ !== 12000000000) o.note('㉖ 세율은 증여일 법(' + (tier_ === Infinity ? '단일 10%' : (tier_ / 1e8) + '억 초과분 20%') + ')으로 적용 — 서식 작성방법 9 "120억원 초과분 20%"는 2024년 이후 증여 문구');
     var calc = n(r.산출세액), paid = n(r.납부세액공제), fx = n(r.외국납부세액공제);
     var pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세), usage = n(r.창업자금사용명세미제출가산세);
     o.set('㉗', calc).set('㉘', paid + fx).set('㉙', paid).set('㉚', fx).set('㉛', pen).set('㉜', late);
@@ -130,9 +135,9 @@
     signBlock(o, ctx);
     // 검산(서식 산식·작성방법)
     o.check('㉑ = ' + (st ? '⑰ + ⑱' : '⑲ + ⑳'), sum, cur + prior);
-    o.check('㉒ = min(' + (st ? '5억' : '10억') + ', ㉑) — 작성방법 7', n(r.증여재산공제), Math.min(st ? 500000000 : 1000000000, sum));
+    o.check('㉒ = min(' + (dedLim_ / 1e8) + '억, ㉑) — 작성방법 7(증여일 법)', n(r.증여재산공제), Math.min(dedLim_, sum));
     o.check('㉕ = ㉑ − ㉒ − ㉓ − ㉔', base, Math.max(0, sum - n(r.증여재산공제) - n(r.재해손실공제) - n(r.감정평가수수료공제)));
-    o.check('㉗ = ㉕ × ㉖', calc, st ? Math.round(base * 0.1) : Math.round(Math.min(base, 12000000000) * 0.1 + Math.max(0, base - 12000000000) * 0.2));
+    o.check('㉗ = ㉕ × ㉖', calc, st || tier_ === Infinity ? Math.round(base * 0.1) : Math.round(Math.min(base, tier_) * 0.1 + Math.max(0, base - tier_) * 0.2));
     o.check('㉝ = ㉗ − ㉘ + ㉛ + ㉜', due, Math.max(0, calc - paid - fx + pen + late));
     var baseRate = st ? (n(r.과세특례적용전_증여세과세가액_계) > n(r.총한도액) ? n(r.기본세율적용대상_증여재산가액) : 0) : n(r.기본세율적용대상_증여재산가액); // 창업자금은 ⑫ > ⑬일 때만(부표1 ⑰)
     if (baseRate > 0) o.note('⚠ ' + baseRate + '원은 기본세율 적용 대상 — 일반 증여세 신고서(별지 제10호서식)에 따로 적어 신고(부표' + (st ? '1 ⑰·⑱' : '2 ⑬') + ')');
@@ -219,7 +224,9 @@
     }
     o.check('⑥ = ① × ⑤', b6, Math.round(g1 * (ratio === null ? 1 : ratio)));
     o.check('⑧ = ⑥ + ⑦', s8, b6 + p7);
-    o.check('⑨ = 가업영위기간 표(300억·400억·600억)', lim, [30000000000, 40000000000, 60000000000].indexOf(lim) >= 0 ? lim : -1);
+    // [2026.10.22 검토대상 증여-14] 2023년 전 증여는 그때 한도(2008~2014 30억, 2015~2022 100억 — 조특법 §30의6① 옛 판·법률 제12853호·제19199호 부칙)
+    var gd9_ = String(ctx.giftDate || '').slice(0, 10), old9_ = gd9_ && gd9_ < '2023-01-01' ? (gd9_ < '2015-01-01' ? 3000000000 : 10000000000) : 0;
+    o.check('⑨ = 가업영위기간 표(300억·400억·600억' + (old9_ ? ', 이 증여일은 그때 한도 ' + (old9_ / 1e8) + '억' : '') + ')', lim, old9_ ? old9_ : ([30000000000, 40000000000, 60000000000].indexOf(lim) >= 0 ? lim : -1));
     o.check('⑫ = ⑧ < ⑨이면 ⑧ − ⑦, 아니면 min(⑧, ⑪)', cur, s8 < lim ? s8 - p7 : Math.min(s8, Math.max(0, lim - p7)));
     o.check('⑬ = ① − ⑫', n(r.기본세율적용대상_증여재산가액), Math.max(0, g1 - cur));
     return o.result();
@@ -424,7 +431,14 @@
     var calc = n(r.산출세액), raw = progressive(base);
     o.set('㊱', calc);
     var cap = null;
-    if (n(inp.benefitToCorpAmount) > 0 && n(inp.shareholderOwnershipRatio) > 0) {
+    // [2026.10.22 검토대상 증여-13] 엔진이 결과에 산출세액한도(직접 증여 시 증여세 상당액 — 합산·관계별 공제·1년 내 앞선 거래 법인세 상당액 반영)를 내면 그 값을 ㊲에 그대로.
+    //  예전엔 이번 이익 × 비율에 세율만 매긴 옛 식으로 다시 세어 ㊱ = min(누진, ㊲) 검산이 틀렸음. 엔진 값이 없을 때만 아래 옛 식.
+    if (has(r.산출세액한도) && r.산출세액한도 !== null) {
+      cap = Math.max(0, n(r.산출세액한도));
+      o.set('㊲', cap);
+      o.note('㊲ = 엔진 산출세액 한도(직접 증여 시 증여세 상당액 ' + n(r.직접증여시_증여세상당액) + ' − 법인세 상당액 지배주주 몫 ' + n(r.법인세상당액_지배주주몫) + ', 상증법 §45의5②)');
+      if (calc < raw) o.note('㊱ 산출세액은 ㊲ 한도(상증법 §45의5②)로 낮춘 값 — 세율 적용 세액 ' + raw + '원');
+    } else if (n(inp.benefitToCorpAmount) > 0 && n(inp.shareholderOwnershipRatio) > 0) {
       var ratio = Math.min(1, Math.max(0, n(inp.shareholderOwnershipRatio)));
       var direct = n(inp.directGiftTaxEquivalent) > 0 ? n(inp.directGiftTaxEquivalent) : progressive(Math.round(n(inp.benefitToCorpAmount) * ratio));
       cap = Math.max(0, direct - Math.round(n(r.법인세상당액_전체) * ratio));

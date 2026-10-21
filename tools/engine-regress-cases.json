@@ -3116,5 +3116,262 @@
    "대납분재계산.추가납부세액": 20800680,
    "대납분재계산.합계납부세액": 102280680
   }
+ },
+ {
+  "이름": "[2026.10.22 증여-1] 과소신고 — 기한 안 신고분 산출세액 2천만의 3%만 공제(상증령 §65의2): 3억 직계존속, 산출 4천만 − 60만 + 과소 가산 200만 = 41,400,000",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "giftAmount": 300000000,
+   "relation": "직계존속",
+   "giftDate": "2026-03-01",
+   "filingStatus": "underreported",
+   "underreportedTaxAmount": 20000000,
+   "reportedCalculatedTax": 20000000
+  },
+  "정답": {
+   "신고세액공제": 600000,
+   "납부세액": 41400000
+  }
+ },
+ {
+  "이름": "[2026.10.22 증여-6] 2015.6.30. 증여 무신고 — 옛 국기법 §47의2 산출세액(외국납부 공제 전) × 20% = 105,000,000 × 20% = 21,000,000",
+  "도구": "calculateGiftTaxJS",
+  "입력": {
+   "giftAmount": 600000000,
+   "relation": "직계존속",
+   "giftDate": "2015-06-30",
+   "filingStatus": "unreported",
+   "foreignTaxPaidAmount": 20000000
+  },
+  "정답": {
+   "무신고가산세": 21000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 상속-1] 과소신고 — 신고분 산출세액 5.38억의 3% = 16,140,000(상증령 §65의2)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "taxableEstateAmount": 3000000000,
+   "childCount": 2,
+   "hasSpouse": false,
+   "inheritanceDate": "2026-01-10",
+   "filingStatus": "underreported",
+   "underreportedTaxAmount": 50000000,
+   "reportedCalculatedTax": 538000000
+  },
+  "정답": {
+   "신고세액공제": 16140000
+  }
+ },
+ {
+  "이름": "[2026.10.22 상속-2] 기한후신고는 신고로 봐 일괄공제 5억 고정 아님(§21① 단서·법률 제16846호 부칙 제5조): 자녀 7·연로 4 → 기초 2억 + 인적 5.5억 = 7.5억",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "taxableEstateAmount": 3000000000,
+   "childCount": 7,
+   "elderlyHeirCount": 4,
+   "hasSpouse": false,
+   "inheritanceDate": "2025-01-10",
+   "filingStatus": "unreported",
+   "isLateFiled": true
+  },
+  "정답": {
+   "상속공제_합계": 755000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 증여-7] 공동 가업승계(조특법 §30의6②·조특령 §27의6②1호): 형제 같은 날 각 50억(2024) → 합 100억 − 10억 = 90억 × 10% = 9억 ÷ 2 = 4.5억",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "specialType": "business_succession",
+   "giftAmount": 5000000000,
+   "giftDate": "2024-05-01",
+   "businessOwnershipYearsOfParent": 25,
+   "doneeAge": 30,
+   "donorAge": 65,
+   "coSuccessorSameDayGiftAmount": 5000000000
+  },
+  "정답": {
+   "납부세액": 450000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 증여-2] 결손법인 고가증자 — 증자 전·후 1주 가액 모두 0 이하면 이익 없음(상증령 §29② 단서)",
+  "도구": "calculateCapitalIncreaseGiftTaxJS",
+  "입력": {
+   "caseType": "high_allocated",
+   "preValuePerShare": -20000,
+   "preShares": 100000,
+   "issuePricePerShare": 5000,
+   "increasedShares": 50000,
+   "allocatedShares": 50000,
+   "acquiredShares": 50000,
+   "relatedShareholderRatio": 1,
+   "giftDate": "2026-01-01"
+  },
+  "정답": {
+   "증여의제이익": 0
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-2] 공동명의 1세대1주택 14억(지분 1/2 = 7억) — 고가 판정은 전체 14억: 차익 4억 × 2/14 × (1 − 80%) − 250만 → 산출 535,714",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 700000000,
+   "acquisitionPrice": 300000000,
+   "acquisitionDate": "2016-03-02",
+   "transferDate": "2026-03-02",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 10,
+   "wholeHouseTransferPrice": 1400000000
+  },
+  "정답": {
+   "산출세액": 535714
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-3] 1세대1주택 보유 2년 6개월·거주 2년 — 보유 3년 미만은 장특공 없음(§95②): 20억/15억 → 산출 55,110,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 2000000000,
+   "acquisitionPrice": 1500000000,
+   "acquisitionDate": "2023-09-01",
+   "transferDate": "2026-03-10",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 2
+  },
+  "정답": {
+   "산출세액": 55110000
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-4] 상가 → 주택 전환 1세대1주택(§95⑤·⑥, 2025년 이후 양도): 비주택 12년 표1 24% + 주택 3년 12% + 거주 2년 8% = 44% → 산출 107,460,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 2000000000,
+   "acquisitionPrice": 500000000,
+   "acquisitionDate": "2011-03-01",
+   "transferDate": "2026-03-01",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 2,
+   "houseConversionDate": "2023-03-01"
+  },
+  "정답": {
+   "산출세액": 107460000
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-10] 전세권 양도 — 장특공 없음(§95②): 1억 → 3억, 2015 취득·2026 양도 → 산출 55,110,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other",
+   "rightOrOtherKind": "lease_right",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "acquisitionDate": "2015-03-01",
+   "transferDate": "2026-03-01"
+  },
+  "정답": {
+   "산출세액": 55110000
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-13] 상속받은 토지 수용 — 2년 요건은 피상속인 취득일(조특법 §77⑨): 현금 보상 감면 → 산출 182,758,500",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other",
+   "transferPrice": 1000000000,
+   "acquisitionPrice": 400000000,
+   "acquisitionDate": "2025-06-01",
+   "transferDate": "2026-08-01",
+   "publicNoticeDate": "2026-03-01",
+   "compensationType": "cash",
+   "isInheritedAsset": true,
+   "inheritedDecedentAcquisitionDate": "2000-01-01"
+  },
+  "정답": {
+   "산출세액": 182758500
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-6] 비사업용 토지 이익 1억 + 일반 토지 손실 1억 — 다른 세율 손실도 통산(시행령 §167의2①2호) → 순소득 0, 산출 0",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "other",
+     "transferPrice": 300000000,
+     "acquisitionPrice": 200000000,
+     "acquisitionDate": "2024-01-01",
+     "transferDate": "2026-03-10",
+     "isNonBusinessLand": true
+    },
+    {
+     "assetType": "other",
+     "transferPrice": 200000000,
+     "acquisitionPrice": 300000000,
+     "acquisitionDate": "2024-01-01",
+     "transferDate": "2026-03-10",
+     "isNonBusinessLand": false
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액_합계": 0
+  }
+ },
+ {
+  "이름": "[2026.10.22 양도-6] 일반 손실 1억은 같은 세율(일반 이익 1억)에서 먼저 — 비사업용 이익 1억은 그대로(시행령 §167의2①1호) → 산출 28,435,000",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "other",
+     "transferPrice": 200000000,
+     "acquisitionPrice": 300000000,
+     "acquisitionDate": "2024-01-01",
+     "transferDate": "2026-03-10",
+     "isNonBusinessLand": false
+    },
+    {
+     "assetType": "other",
+     "transferPrice": 300000000,
+     "acquisitionPrice": 200000000,
+     "acquisitionDate": "2024-01-01",
+     "transferDate": "2026-03-10",
+     "isNonBusinessLand": false
+    },
+    {
+     "assetType": "other",
+     "transferPrice": 300000000,
+     "acquisitionPrice": 200000000,
+     "acquisitionDate": "2024-01-01",
+     "transferDate": "2026-03-10",
+     "isNonBusinessLand": true
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액_합계": 28435000
+  }
+ },
+ {
+  "이름": "[2026.10.22 변경-5] 2011.4.15. 기한후신고(2.5개월) — 1개월 초과 6개월 이내 20% 감면은 2011.1.1.부터(법률 제10405호 부칙 제5조)",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 2.5,
+   "originalPenaltyAmount": 10000000,
+   "filingDate": "2011-04-15"
+  },
+  "정답": {
+   "감면세액": 2000000,
+   "최종가산세액": 8000000
+  }
  }
 ]

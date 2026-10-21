@@ -690,6 +690,7 @@
   var FILING_LABEL = { ontime: '기한 내 신고', underreported: '수정신고', unreported: '기한 후 신고' };
   M['증여10호'] = function (ctx) {
     var o = new Out(), r = ctx.r || {}, dn = ctx.donee || {}, dr = ctx.donor || {}, ta = ctx.taxAgent || {}, it = ctx.item || {};
+    if (ctx.대납분) o.note('대납분 신고서(두 번째 10호) — 증여자가 대신 낸 증여세 ' + n(ctx.대납분.대납세액) + '원을 같은 증여자에게서 받은 증여로 다시 계산(1차 과세가액 합산·1차 산출세액 납부세액공제). ⑩ 증여일자 = 대신 낸 날' + (has(ctx.대납분.증여일) ? '' : '(입력 없음 — 1차 증여일로 적음, 실제 낸 날로 고칠 것)'));
     var fs = has(ctx.신고구분) ? ctx.신고구분 : FILING_LABEL[dr.filingStatus || 'ontime'];
     if (fs) o.set('신고구분', fs); else o.miss('신고구분', '신고 상태 값 없음');
     if (!has(ctx.신고구분)) o.note('신고구분은 증여자 카드 신고 상태(ontime→기한 내, underreported→수정, unreported→기한 후)에서 옮김 — 기본값 4, 세무사님 확인(2026-10-19)');
@@ -886,7 +887,8 @@
     var p19 = nr ? 0 : n(ctx.childCount) * U_.c, p20 = nr ? 0 : n(ctx.minorYears) * U_.m, p21 = nr ? 0 : n(ctx.elderlyCount) * U_.e, p22 = nr ? 0 : n(ctx.disabledYears) * U_.d;
     o.set('⑱', fv.basic).set('⑲', p19).set('⑳', p20).set('㉑', p21).set('㉒', p22);
     if (has(r.인적공제)) o.check('⑲ + ⑳ + ㉑ + ㉒ = 엔진 인적공제', p19 + p20 + p21 + p22, n(r.인적공제));
-    if (dd_ && dd_ < '2012-01-01') o.note('⚠ 상속개시일 ' + dd_ + ' — 2012년 전 인적공제 금액은 계산기 표에 없음(2012~2015 금액으로 찍음), 확인');
+    // [2026.10.22 검토대상 상속-12] 엔진 표(REF_GI_.personal)는 2005년부터 있음(2005~2015 같은 금액) — 2005년 전 상속만 알림
+    if (dd_ && dd_ < '2005-01-01') o.note('⚠ 상속개시일 ' + dd_ + ' — 2005년 전 인적공제 금액은 계산기 표에 없음(2005~2015 금액으로 찍음), 확인');
     if (lump !== null) o.set('㉓', lump); else o.miss('㉓ 일괄공제', 'fv.lumpSum 없음(ihFormValues_)');
     o.note('⑱~㉒(기초·인적공제)와 ㉓ 일괄공제를 함께 적음 — 기본값 5, 세무사님 확인(2026-10-19)(㉛은 엔진 한도 적용 합계)');
     var biz = n(r.가업상속공제), farm = n(r.영농상속공제), sp = n(r.배우자공제), fin = n(r.금융재산상속공제), dis = n(r.재해손실공제), co = n(r.동거주택상속공제);
@@ -1468,7 +1470,9 @@
     if (ic && ic.single) o.check('㉔ = ㉑ × ㉒ × ㉓', n(cr.이자상당액_합계), interestRecalc(tax, ic.seg));
     o.check('㉕ = ㉑ + ㉔', n(cr.납부할세액), tax + n(cr.이자상당액_합계));
     if (cr.이자율방식 && cr.이자율방식 !== 'split') o.note('이자율 방식이 "기간별 율"이 아님(' + (cr.이자율방식_설명 || cr.이자율방식) + ') — 상증법 §72의2(부표7)는 이율이 바뀐 날마다 나눔');
-    o.miss('6. 재차 납부유예 신청', '계산기에 없음 — 신청하면 직접 적음');
+    // [2026.10.22 검토대상 상속-13] 회장 결론: 화면 "재차 납부유예 허가를 받음"(ckReDeferral) 체크 = 재차 납부유예 신청으로 보고 칸 6에 5.(㉕) 납부할 세액을 찍음(법 §72의2⑥)
+    if (cw.reDeferral) { o.set('6. 재차 납부유예', n(cr.납부할세액)); o.note('6. 재차 납부유예 신청 = 화면 "재차 납부유예" 체크 — ㉕ 납부할 세액 그대로(상증법 §72의2⑥). 신청하지 않으면 체크를 끄세요'); }
+    else o.miss('6. 재차 납부유예 신청', '해당 없음 — 화면 "재차 납부유예" 체크 꺼짐(신청하면 체크)');
     ihClawSign(o, ctx);
     return o.result();
   };
@@ -1514,6 +1518,13 @@
     } else if (tax === '증여') {
       var r = ctx.r;
       if (r) L.push('증여10호', '증여10부표1');
+      // [2026.10.22 검토대상 증여-16] 증여자가 대신 낸 증여세(대납분)는 같은 증여자의 새 증여 — 엔진이 다시 계산한 결과(대납분재계산.결과)로 두 번째 10호를 만든다
+      //  (대신 낸 날이 속하는 달의 말일부터 3개월 안에 따로 신고, 상증법 §68① — 엔진 안내). 1차 신고서는 그대로.
+      var dn2_ = r && r.대납분재계산;
+      if (dn2_ && dn2_.적용 && dn2_.결과 && !dn2_.결과.error) {
+        L.push({ formKey: '증여10호', ctx: Object.assign({}, ctx, { r: dn2_.결과, item: { amount: n(dn2_.증여재산가액) }, giftDate: dn2_.증여일 || ctx.giftDate, 대납분: dn2_,
+          donor: Object.assign({}, ctx.donor || {}, { filingStatus: 'ontime' }), 신고구분: '기한 내 신고', installment: 0, split: 0, mbDetail: null, marriageBirth: { marriage: 0, birth: 0 } }) });
+      }
       if (ctx.bd) L.push('증여10부표2');
       if (ctx.mbDetail && (n(ctx.mbDetail.thisTime) || (ctx.r && n(ctx.r.혼인출산증여재산공제)))) L.push('증여10부표3');
       if (ctx.clawback && ctx.clawback.result && ctx.clawback.formType === 'gf_marriage') L.push('증여10부표4');
@@ -1570,7 +1581,7 @@
   }
   function clawbackCtx() {
     var cr = (typeof lastClawbackResult_ !== 'undefined' ? lastClawbackResult_ : null);
-    return cr ? { formType: el('ckFormType'), result: cr, reason: el('ckMarriageReason') } : null;
+    return cr ? { formType: el('ckFormType'), result: cr, reason: el('ckMarriageReason'), reDeferral: checked('ckReDeferral') === true } : null; // [2026.10.22 상속-13] 재차 납부유예 체크
   }
   var ctxFromApp = {
     // i = 양도인 번호(lastTransferResults_ 중 계산 성공한 것의 순서). 주식등·파생상품 결과는 대표 양도인(i=0)에만 붙임(지금 인쇄와 같음)
