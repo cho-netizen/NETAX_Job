@@ -571,6 +571,7 @@ function buildInheritanceHeirInputs_(){
       isSubstituteHeir: (h.relation || '').indexOf('대습상속') !== -1,
       priorGiftAmount: h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0,
       priorGiftTaxableBase: h.hasPriorGift ? (numVal(h.priorGiftTaxableBase) || 0) : 0,
+      priorGiftAppraisalFee: h.hasPriorGift ? (numVal(h.priorGiftAppraisalFee) || 0) : 0, // [2026.10.22 상속-10 A⑧] §24 3호용
       priorGiftTaxPaid: h.hasPriorGift ? (numVal(h.priorGiftTaxPaid) || 0) : 0,
       priorGiftGenSkipPremium: h.hasPriorGift ? (numVal(h.priorGiftGenSkipPremium) || 0) : 0
     };
@@ -695,12 +696,18 @@ function recomputeHeirDerivedFields(){
   const substituteGroupKeys = Object.keys(substituteGroupMap);
   const childUnitCount = livingChildHeirs.length + substituteGroupKeys.length; // 1순위 "몫" 단위 개수(사람 수 아님)
   const childHeirs = livingChildHeirs.concat(substituteHeirs); // 기존 호출부 호환용(포기자는 이미 activeHeirs에서 제외됨)
-  const childCount = heirs.filter(function(h){ return h.relation === '자녀' && !h.hasRenounced; }).length;
+  // [2026.10.22 검토대상 상속-10 A⑥(가)] §20①1호 "자녀(태아를 포함한다) 1명에 대해서는 5천만원" — 상속인 요건이 없고, §2 4호 "상속인"에도
+  //  "제1019조제1항에 따라 상속을 포기한 사람"이 들어간다. 그래서 상속을 포기한 자녀도 자녀공제에 센다(예전엔 뺐음). 법정지분(activeHeirs)은 그대로 포기자 제외.
+  const childCount = heirs.filter(function(h){ return h.relation === '자녀'; }).length;
+  // [2026.10.22 검토대상 상속-10 A⑥(나)(다)] §20①2~4호는 "상속인 … 및 동거가족" — 동거가족 = 상속개시일 현재 피상속인이 사실상 부양하던
+  //  직계존비속(배우자의 직계존속 포함)·형제자매(상증령 §18①). '상속인 아닌 자(유증 등)' 줄은 동거가족 표시(isCohabitingFamily)가 있을 때만 센다.
+  function personalDedTarget_(h){ return h.relation !== '상속인 아닌 자(유증·사인증여 등)' || !!h.isCohabitingFamily; }
   // §20①2호·3호 — 미성년자공제·연로자공제는 "상속인(배우자는 제외한다) 및 동거가족"만 대상이다.
   // 4호(장애인공제)는 배우자 제외 문구가 없으므로 disabledCount는 배우자를 포함해 그대로 센다.
   let minorYears = 0, elderlyCount = 0;
   heirs.forEach(function(h){
     if (h.relation === '배우자') return;
+    if (!personalDedTarget_(h)) return; // [2026.10.22 상속-10 A⑥]
     const age = calcAgeAt_(parseBirthDateFromRegNo_(h.regNo), deathDate);
     if (age === null) return;
     if (age < 19) minorYears += (19 - age);
@@ -733,7 +740,7 @@ function recomputeHeirDerivedFields(){
   const reporter = heirs.find(function(h){ return h.isReporter; });
   // 장애인공제(§20①4호)는 1인당 기대여명(통계청 생명표)이 필요해 자동계산할 수 없다 — 명부의
   // "장애인" 체크는 대상자 수만 확인해주고, 실제 잔여연수 합계는 사용자가 직접 확인해 입력해야 한다.
-  const disabledCount = heirs.filter(function(h){ return h.isDisabled; }).length;
+  const disabledCount = heirs.filter(function(h){ return h.isDisabled && personalDedTarget_(h); }).length; // [2026.10.22 상속-10 A⑥] §20①4호 "상속인 및 동거가족"
   const disabledHint = document.getElementById('ihDisabledCountHint');
   if (disabledHint){
     disabledHint.textContent = disabledCount > 0 ?
@@ -5137,7 +5144,7 @@ function valuationAssetMethodFieldsHtml(m, a){
     '</select></div>' +
     '<div class="taxcalc-field"><label>금액</label><input type="number" data-field="diAmount" placeholder="원" value="' + (a.diAmount || '') + '"></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diPolicyholderDecedent"' + (a.diPolicyholderDecedent ? ' checked' : '') + '><label>[보험금만] 피상속인이 보험계약자였음</label></div>' +
-    '<div class="taxcalc-field"><label>피상속인 실질보험료부담비율</label><input type="number" step="0.01" min="0" max="1" data-field="diPremiumRatio" placeholder="0~1" value="' + (a.diPremiumRatio || '') + '"><span class="taxcalc-field-help">보험금만, 계약자가 다를 때</span></div>' +
+    '<div class="taxcalc-field"><label>피상속인 실질보험료부담비율</label><input type="number" step="0.01" min="0" max="1" data-field="diPremiumRatio" placeholder="0~1" value="' + (a.diPremiumRatio || '') + '"><span class="taxcalc-field-help">보험금만 — 피상속인이 낸 보험료 ÷ 사망 때까지 낸 보험료 합계(시행령 §4①). 계약자가 피상속인이어도 다른 사람이 일부 냈으면 적으세요(비우면 전부 낸 것으로 봄)</span></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diAlreadyGiftTaxed"' + (a.diAlreadyGiftTaxed ? ' checked' : '') + '><label>[피상속인이 신탁한 재산만] 이미 §33①로 증여재산가액 처리됨</label></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diExcludedPension"' + (a.diExcludedPension ? ' checked' : '') + '><label>[퇴직금등만] 국민연금법 등 열거된 유족연금·유족보상금류에 해당</label></div>';
   // [2026.09.30 신규, 재검토99] 상속세 부표8·증여세 서화골동품명세서(별지10-5·10-6호용) 인쇄에
@@ -5925,6 +5932,8 @@ function renderOverseasPropertyCardHtml_(idx){
         '<div class="taxcalc-field"><label>취득일</label><input type="date" data-field="acquisitionDate" value="' + (a.acquisitionDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>취득가액</label><input type="number" data-field="acquisitionPrice" placeholder="원" value="' + (a.acquisitionPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액 · 외화면 대금 지급한 날 기준환율 ' + fxHelperBtn_(idx, 'acquisitionPrice', 'acquisitionDate') + '</span></div>' +
         '<div class="taxcalc-field"><label>자본적지출액</label><input type="number" data-field="oaCapitalExpenditure" placeholder="원" value="' + (a.oaCapitalExpenditure || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        // [2026.10.22 검토대상 양도-11] §118의8이 준용하는 §97③
+        '<div class="taxcalc-field"><label>사업소득 필요경비로 넣은 감가상각비</label><input type="number" data-field="oaDepreciation" placeholder="원" value="' + (a.oaDepreciation || '') + '"><span class="taxcalc-field-help">없으면 비움 — 취득가액에서 뺍니다(§118의8 → §97③)</span></div>' +
         '<div class="taxcalc-field"><label>양도비</label><input type="number" data-field="oaTransferExpenses" placeholder="원" value="' + (a.oaTransferExpenses || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액 처리방법</label><select data-field="oaForeignTaxMethod">' +
           '<option value="credit"' + (a.oaForeignTaxMethod !== 'expense' ? ' selected' : '') + '>외국납부세액공제(세액공제, 산출세액 한도)</option>' +
@@ -8442,7 +8451,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ik" style="' + (giftInheritanceSharedActiveSubtab_ === 'ik' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>(상증세법§73 일반물납·§73의2 문화유산등물납) — 요건 충족 여부만 판정하며, 물납충당재산의 구체적 범위·수납가액 산정(시행령 사항)은 다루지 않습니다. 상속세 전용입니다(증여세는 현행법상 물납 대상이 아닙니다)</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(상증세법§73 일반물납·§73의2 문화유산등물납) — 요건 충족 여부와 일반물납의 물납 신청 한도(시행령 §73①·③·④)를 계산합니다. 물납충당재산의 구체적 범위·수납가액 산정은 다루지 않습니다. 상속세 전용입니다(증여세는 현행법상 물납 대상이 아닙니다)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>물납 종류</label><select id="ikProvision">' +
           '<option value="general">§73(일반물납)</option>' +
@@ -8452,6 +8461,13 @@ function renderGiftInheritanceSharedPane_(){
         '<div class="taxcalc-field"><label>금융재산가액</label><input type="number" id="ikFinancialAsset" placeholder="원"><span class="taxcalc-field-help">§13 가산 증여재산가액 제외, 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>부동산·유가증권 가액</label><input type="number" id="ikRealEstateSecurities" placeholder="원"><span class="taxcalc-field-help">물납충당가능재산으로 한정, 일반물납만</span></div>' +
         '<div class="taxcalc-field"><label>상속재산가액</label><input type="number" id="ikTotalValue" placeholder="원"><span class="taxcalc-field-help">§13 가산 증여재산 포함, 일반물납은 필수</span></div>' +
+        // [2026.10.22 검토대상 상속-10 A⑪] 물납 신청 한도(시행령 §73①·③·④) — 일반물납만, 없으면 비움
+        '<div class="taxcalc-field"><label>금융회사등 채무(증명되는 것)</label><input type="number" id="ikFinancialDebt" placeholder="원"><span class="taxcalc-field-help">한도 2호 — 금융재산에서 뺌, 일반물납만</span></div>' +
+        '<div class="taxcalc-field"><label>거래소 상장 유가증권 가액</label><input type="number" id="ikListedSecurities" placeholder="원"><span class="taxcalc-field-help">한도 2호 — 법령상 처분 제한분은 빼고, 일반물납만</span></div>' +
+        '<div class="taxcalc-field"><label>관리·처분 부적당 재산으로 바뀐 가액</label><input type="number" id="ikUnsuitableChanged" placeholder="원"><span class="taxcalc-field-help">상속개시일~신청 전, 정당한 사유 없이(시행령 §73③)</span></div>' +
+        '<div class="taxcalc-field"><label>비상장주식등 가액</label><input type="number" id="ikUnlistedStock" placeholder="원"><span class="taxcalc-field-help">비상장주식으로 물납할 때만(시행령 §73④)</span></div>' +
+        '<div class="taxcalc-field"><label>상속세 과세가액</label><input type="number" id="ikTaxableValue" placeholder="원"><span class="taxcalc-field-help">비상장주식 한도용(§73④)</span></div>' +
+        '<div class="taxcalc-field"><label>상속인 거주주택·부수토지(담보채무 뺀 가액)</label><input type="number" id="ikResidenceHouseNet" placeholder="원"><span class="taxcalc-field-help">비상장주식 한도용(§73④)</span></div>' +
         '<div class="taxcalc-field"><label>문화유산등 가액</label><input type="number" id="ikCulturalValue" placeholder="원"><span class="taxcalc-field-help">물납신청가능세액 한도 계산용, 문화유산등물납만</span></div>' +
         '<div class="taxcalc-field"><label>정당한사유없이 훼손·멸실된 가액(선택)</label><input type="number" id="ikExcludedDamagedValue" placeholder="원"><span class="taxcalc-field-help">상속개시일~물납신청 전, 있으면 한도에서 제외, 문화유산등물납만</span></div>' +
       '</div>' +
@@ -9375,6 +9391,7 @@ function renderPropertyInKindPaymentResult(r, input){
   html += taxCalcResultRow('적용 가능 여부', r.적용가능여부 ? '가능' : '불가능', { total: true });
   if (r.부동산유가증권비율 !== null && r.부동산유가증권비율 !== undefined) html += taxCalcResultRow('부동산·유가증권 비율', (r.부동산유가증권비율 * 100).toFixed(1) + '%');
   if (r.물납신청가능세액_한도 !== undefined) html += taxCalcResultRow('물납신청가능세액 한도', won(r.물납신청가능세액_한도));
+  if (r.비상장주식_물납한도 !== undefined) html += taxCalcResultRow('그중 비상장주식으로 낼 수 있는 한도(시행령 §73④)', won(r.비상장주식_물납한도)); // [2026.10.22 상속-10 A⑪]
   (r.미충족사유 || []).forEach(function(reason){ html += '<div class="taxcalc-result-note">- ' + reason + '</div>'; });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   if (r.적용가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-property-in-kind" style="margin-top:4px;">🖨 물납신청서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('propertyinkind');
@@ -11864,7 +11881,10 @@ function renderGiftPane(){
       '<div class="taxcalc-asset-head"><b>(§45의2) — 등기·등록·명의개서가 필요한 재산(주식등, 토지·건물 제외)의 실제소유자와 명의자가 다를 때. 증여재산공제 없이 재산가액 전액이 과세표준입니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>명의신탁재산의 가액</label><input type="number" id="ntPropertyValue" placeholder="원"><span class="taxcalc-field-help">명의개서일 또는 소유권취득일이 속한 해의 다음 해 말일의 다음 날 현재 평가액</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ntAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ntAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움 — 감정평가법인 등 수수료, 500만원 한도(상증령 §20의3③)</span></div>' +
+        // [2026.10.22 검토대상 증여-17⑨] 비상장주식 명의신탁 — 신용평가전문기관 평가수수료는 법인 수 × 기관 수마다 1천만원 한도(상증령 §20의3①2호·③)
+        '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="ntStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움 — 법인 수 × 신용평가기관 수마다 1천만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>그 한도 단위 수(법인 수 × 기관 수)</label><input type="number" id="ntStockAppraisalCount" placeholder="1" min="1"></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNoAvoidancePurpose"><label for="ntNoAvoidancePurpose">조세회피 목적 없음(§45의2①1호 — 적용배제)</label></div>' +
@@ -13324,6 +13344,8 @@ function renderHeirRegistry(){
       '</datalist></div>' +
       '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">나이' + (age !== null ? ' — 만 ' + age + '세(주민등록번호로 자동 계산)' : ' — 주민등록번호를 입력하면 자동 계산됩니다') + '</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isDisabled" id="hDisabled-' + idx + '"' + (h.isDisabled ? ' checked' : '') + '><label for="hDisabled-' + idx + '">장애인</label></div>' +
+      // [2026.10.22 검토대상 상속-10 A⑥(나)] 상속인이 아닌 사람의 미성년자·연로자·장애인공제(§20①2~4호 "동거가족", 상증령 §18①)
+      '<div class="taxcalc-field checkbox" data-show-if-heir-nonheir="1" style="' + (h.relation === '상속인 아닌 자(유증·사인증여 등)' ? '' : 'display:none;') + '"><input type="checkbox" data-hfield="isCohabitingFamily" id="hCohabFam-' + idx + '"' + (h.isCohabitingFamily ? ' checked' : '') + '><label for="hCohabFam-' + idx + '">피상속인이 사실상 부양하던 동거가족(직계존비속·형제자매, 상증령 §18①) — 체크하면 미성년자·연로자·장애인공제에 셉니다</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isReporter" id="hReporter-' + idx + '"' + (h.isReporter ? ' checked' : '') + '><label for="hReporter-' + idx + '">신고인</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasRenounced" id="hRenounced-' + idx + '"' + (h.hasRenounced ? ' checked' : '') + '><label for="hRenounced-' + idx + '">상속포기(민법§1043 — 처음부터 상속인 아니었던 것으로 봄)</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isCohabitHouse" id="hCohabit-' + idx + '"' + (h.isCohabitHouse ? ' checked' : '') + '><label for="hCohabit-' + idx + '">동거주택 상속(10년이상 동거·무주택 등)</label></div>' +
@@ -13348,6 +13370,8 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasPriorGift" id="hPriorGift-' + idx + '"' + (h.hasPriorGift ? ' checked' : '') + '><label for="hPriorGift-' + idx + '">10년 이내 이 상속인에게 사전증여 있음(§13 가산대상)</label></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>사전증여재산가액(증여 당시 원본가액)</label><input type="number" data-hfield="priorGiftAmount" placeholder="원" value="' + (h.priorGiftAmount || '') + '"></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>위 증여재산의 증여세 과세표준</label><input type="number" data-hfield="priorGiftTaxableBase" placeholder="원" value="' + (h.priorGiftTaxableBase || '') + '"></div>' +
+      // [2026.10.22 검토대상 상속-10 A⑧] §24 3호는 증여재산공제·재해손실공제만 뺀 금액 — 그때 과세표준에서 뺀 감정평가수수료를 적으면 한도 계산에서 되돌려 더함
+      '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>그때 과세표준에서 뺀 감정평가수수료</label><input type="number" data-hfield="priorGiftAppraisalFee" placeholder="원" value="' + (h.priorGiftAppraisalFee || '') + '"><span class="taxcalc-field-help">없으면 비움 — 공제 한도(§24 3호)는 이 금액을 더한 값으로 뺍니다</span></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>위 증여 당시 납부한 증여세산출세액</label><input type="number" data-hfield="priorGiftTaxPaid" placeholder="원" value="' + (h.priorGiftTaxPaid || '') + '"><span class="taxcalc-field-help">세대생략 할증액 포함 금액 그대로</span></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>그중 세대생략 할증액(§57)</label><input type="number" data-hfield="priorGiftGenSkipPremium" placeholder="원" value="' + (h.priorGiftGenSkipPremium || '') + '"><span class="taxcalc-field-help">할증분은 증여세액공제에서 뺌(대습상속인이면 공제), 없으면 비움</span></div>' +
       '</div>' +
@@ -13372,6 +13396,7 @@ function renderHeirRegistry(){
         });
       }
       if (key === 'relation'){
+        row.querySelectorAll('[data-show-if-heir-nonheir]').forEach(function(field){ field.style.display = el.value === '상속인 아닌 자(유증·사인증여 등)' ? 'flex' : 'none'; }); // [2026.10.22 상속-10 A⑥]
         row.querySelectorAll('[data-show-if-heir-relation]').forEach(function(field){
           field.style.display = (el.value === '손자녀(대습상속 — 부모가 먼저 사망·결격)' || el.value === '며느리/사위(대습상속 — 배우자였던 자녀가 먼저 사망·결격)') ? 'flex' : 'none';
         });
@@ -15260,6 +15285,7 @@ function handleTaxCalcClick_(e){
         transferPrice: numVal(a.transferPrice) || 0,
         acquisitionPrice: numVal(a.acquisitionPrice) || 0,
         capitalExpenditure: numVal(a.oaCapitalExpenditure) || 0,
+        depreciationDeductedAsBusinessExpense: numVal(a.oaDepreciation) || 0, // [2026.10.22 양도-11] §118의8 → §97③
         transferExpenses: numVal(a.oaTransferExpenses) || 0,
         foreignTaxCreditMethod: a.oaForeignTaxMethod || 'credit',
         foreignTaxPaidAmount: numVal(a.oaForeignTaxPaid) || 0
@@ -16065,6 +16091,7 @@ function handleTaxCalcClick_(e){
     const input = {
       nomineeTrustPropertyValue: numVal(document.getElementById('ntPropertyValue').value) || 0,
       appraisalFeeAmount: numVal(document.getElementById('ntAppraisalFee').value) || 0,
+      unlistedStockAppraisalFeeAmount: numVal((document.getElementById('ntStockAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeCount: numVal((document.getElementById('ntStockAppraisalCount') || {}).value) || 1, // [2026.10.22 증여-17⑨]
       isNoTaxAvoidancePurpose: document.getElementById('ntNoAvoidancePurpose').checked,
       isTrustPropertyRegistration: document.getElementById('ntTrustPropertyReg').checked,
       isNonResidentAgentRegistration: document.getElementById('ntNonResidentAgentReg').checked,
@@ -16487,7 +16514,14 @@ function handleTaxCalcClick_(e){
       realEstateSecuritiesValue: numVal(document.getElementById('ikRealEstateSecurities').value) || 0,
       totalInheritanceValue: numVal(document.getElementById('ikTotalValue').value) || 0,
       culturalHeritageValue: numVal(document.getElementById('ikCulturalValue').value) || 0,
-      excludedDamagedCulturalHeritageValue: numVal(document.getElementById('ikExcludedDamagedValue').value) || 0
+      excludedDamagedCulturalHeritageValue: numVal(document.getElementById('ikExcludedDamagedValue').value) || 0,
+      // [2026.10.22 상속-10 A⑪] 물납 신청 한도
+      financialDebtAmount: numVal((document.getElementById('ikFinancialDebt') || {}).value) || 0,
+      listedSecuritiesValue: numVal((document.getElementById('ikListedSecurities') || {}).value) || 0,
+      unsuitableChangedValue: numVal((document.getElementById('ikUnsuitableChanged') || {}).value) || 0,
+      unlistedStockValue: numVal((document.getElementById('ikUnlistedStock') || {}).value) || 0,
+      inheritanceTaxableValue: numVal((document.getElementById('ikTaxableValue') || {}).value) || 0,
+      heirResidenceHouseNetValue: numVal((document.getElementById('ikResidenceHouseNet') || {}).value) || 0
     };
     renderPropertyInKindPaymentResult(calculatePropertyInKindPaymentEligibilityJS(input), input);
   } else if (action === 'print-property-in-kind'){
@@ -16550,6 +16584,7 @@ function handleTaxCalcClick_(e){
       totalTaxAmount: numVal(document.getElementById('ipIhTotal').value) || 0,
       initialPaymentAmount: numVal(document.getElementById('ipIhInitial').value) || 0,
       installmentPeriodYears: numVal(document.getElementById('ipIhYears').value) || 0,
+      inheritanceDate: (document.getElementById('ihDeathDate') || {}).value || '', // [2026.10.22 상속-10 B⑥] 2022.1.1. 전 상속은 그 밖의 재산 5년 한도
       specialPortionAmount: numVal((document.getElementById('ipIhSpecialAmt') || {}).value) || 0, specialPeriodYears: numVal((document.getElementById('ipIhSpecialYears') || {}).value) || 0, // [2026.10.20] §71② 재산별 기간
       annualInterestRatePercent: document.getElementById('ipIhRate').value === '' ? undefined : numVal(document.getElementById('ipIhRate').value) // [2026.10.20] 비우면 엔진이 고시 이율로
     };

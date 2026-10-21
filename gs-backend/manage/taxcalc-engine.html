@@ -1455,8 +1455,8 @@
       const settleRatio = (settlementPaidS > 0 && t.assetType === 'house') ? settlementPaidS / (rightsValueS + settlementPaidS) : 0;
       const g3Settle = g3 * settleRatio, g3Rest = g3 - g3Settle;
       const holdingYearsSinceCompletion = fullYearsElapsed(completionDate, t.transferDate);
-      const ltRateOld = rcUseTable2 ? rcTable2Rate_(holdingYears, rcLiveTotal) : longTermRate(holdingYears);
-      const ltRateSettleS = rcUseTable2 ? rcTable2Rate_(holdingYearsSinceCompletion, rcLiveNew || 0) : longTermRate(holdingYearsSinceCompletion);
+      const ltRateOld = rcUseTable2 ? rcTable2Rate_(holdingYears, rcLiveTotal) : longTermRateAt_(holdingYears, t.transferDate); // [2026.10.22 검토대상 양도-11] 표1도 양도일 연혁(2018.12.31. 이전 양도는 옛 표1)
+      const ltRateSettleS = rcUseTable2 ? rcTable2Rate_(holdingYearsSinceCompletion, rcLiveNew || 0) : longTermRateAt_(holdingYearsSinceCompletion, t.transferDate);
       taxableGain = g12 + g3;
       longTermDeductionAmount = Math.floor(Math.max(0, g12 + g3Rest) * ltRateOld + 1e-6) + Math.floor(Math.max(0, g3Settle) * ltRateSettleS + 1e-6);
       incomeAmount = taxableGain - longTermDeductionAmount;
@@ -1514,7 +1514,7 @@
         // §95②본문 괄호 — "조합원으로부터 취득한 것"(승계조합원)은 이 장특공제 대상에서 아예 제외된다.
         taxableGain = gainBeforeApproval + gainAfterApproval;
         const isOriginalMember = t.isOriginalMember !== false;
-        const ltRateBefore = isOriginalMember ? longTermRate(holdingYearsBeforeApproval) : 0;
+        const ltRateBefore = isOriginalMember ? longTermRateAt_(holdingYearsBeforeApproval, t.transferDate) : 0; // [2026.10.22 양도-11] 양도일 연혁
         longTermDeductionAmount = Math.floor(Math.max(0, gainBeforeApproval) * ltRateBefore + 1e-6);
         incomeAmount = taxableGain - longTermDeductionAmount;
         reconstructionDetail = { 구분: '조합원입주권(준공전) 양도 — §166①1호', 관리처분계획등인가전양도차익: Math.round(gainBeforeApproval), 관리처분계획등인가후양도차익: Math.round(gainAfterApproval), 인가전_보유기간_년: holdingYearsBeforeApproval, 인가전_장특공제율: ltRateBefore };
@@ -1536,8 +1536,8 @@
         const settlementPortionGain = denom > 0 ? gainAfterApproval * settlementPaid / denom : 0;
         const existingPortionGain = (gainAfterApproval - settlementPortionGain) + gainBeforeApproval;
         taxableGain = settlementPortionGain + existingPortionGain;
-        const ltRateSettlement = rcUseTable2 ? rcTable2Rate_(holdingYearsSinceApproval, rcLiveNew || 0) : longTermRate(holdingYearsSinceApproval);
-        const ltRateExisting = rcUseTable2 ? rcTable2Rate_(holdingYears, rcLiveTotal) : longTermRate(holdingYears);
+        const ltRateSettlement = rcUseTable2 ? rcTable2Rate_(holdingYearsSinceApproval, rcLiveNew || 0) : longTermRateAt_(holdingYearsSinceApproval, t.transferDate); // [2026.10.22 양도-11] 양도일 연혁
+        const ltRateExisting = rcUseTable2 ? rcTable2Rate_(holdingYears, rcLiveTotal) : longTermRateAt_(holdingYears, t.transferDate);
         longTermDeductionAmount = Math.floor(Math.max(0, settlementPortionGain) * ltRateSettlement + 1e-6) + Math.floor(Math.max(0, existingPortionGain) * ltRateExisting + 1e-6);
         incomeAmount = taxableGain - longTermDeductionAmount;
         reconstructionDetail = {
@@ -1713,7 +1713,7 @@
         const startStd_ = mode9703_ === 'formula2026' ? (rStartStd_ || regStd) : regStd;      // C (비우면 등록일 = 임대 개시일, §97의3④)
         const rentalPeriodGain = Math.max(0, Math.min(taxableGain, taxableGain * (endStd_ - startStd_) / (trfStd - acqStd)));
         const beforeRentalGain = taxableGain - rentalPeriodGain;
-        const normalRate = longTermRate(holdingYears);
+        const normalRate = longTermRateAt_(holdingYears, t.transferDate); // [2026.10.22 양도-11] 양도일 연혁
         longTermDeductionAmount = Math.floor(Math.max(0, rentalPeriodGain) * ltRate + Math.max(0, beforeRentalGain) * normalRate + 1e-6);
         incomeAmount = taxableGain - longTermDeductionAmount;
         rentalPeriodSplit = { 임대기간중양도차익: Math.round(rentalPeriodGain), 임대전양도차익: Math.round(beforeRentalGain), 임대전적용공제율: normalRate,
@@ -3806,7 +3806,8 @@
     // 않은 것"으로 추정한다(그래서 원칙적으로 채무 공제를 못 받는다). 국가·지자체 채무 등
     // 객관적으로 인수 사실이 인정되는 채무만 예외적으로 공제 가능(isDebtObjectivelyProven).
     const isCloseRelationBurdenGift = (p.relation === '배우자' || p.relation === '직계존속' || p.relation === '직계비속');
-    const debtDeductionDenied = isCloseRelationBurdenGift && !p.isDebtObjectivelyProven;
+    // [2026.10.22 검토대상 외부-3 덧붙임] 인수채무가 없으면 배제 표시도 붙이지 않는다(세액 같음, 결과 읽을 때 혼동 방지)
+    const debtDeductionDenied = isCloseRelationBurdenGift && !p.isDebtObjectivelyProven && (Number(p.debtAssumedAmount) || 0) > 0;
     const debtAssumedAmount = debtDeductionDenied ? 0 : Math.min(Number(p.debtAssumedAmount) || 0, giftAmount);
     const nonTaxableAmount = Number(p.nonTaxableAmount) || 0;
     const publicInterestOrgAmount = Number(p.publicInterestOrgAmount) || 0;
@@ -4085,6 +4086,12 @@
     const priorGiftHeirs = Array.isArray(p.priorGiftHeirs) ? p.priorGiftHeirs : [];
     const priorGiftTaxableBaseTotal = priorGiftHeirs.reduce(function (s, h) { return s + (Number(h.priorGiftTaxableBase) || 0); }, 0)
       + (Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0);
+    // [2026.10.22 검토대상 상속-10 A⑧] §24 3호는 "증여재산가액(제53조, 제53조의2 또는 제54조에 따라 공제받은 금액이 있으면 그 증여재산가액에서
+    //  그 공제받은 금액을 뺀 가액)" — 증여세 과세표준(§55①)은 감정평가수수료까지 뺀 값이라, 그때 뺀 감정평가수수료(priorGiftAppraisalFee)를 되돌려 더한다.
+    //  넣지 않으면 예전과 같음(과세표준 그대로).
+    const s24GiftAmount_ = priorGiftTaxableBaseTotal
+      + priorGiftHeirs.reduce(function (s, h) { return s + (Number(h.priorGiftAppraisalFee) || 0); }, 0)
+      + (Number(p.nonHeirPriorGiftAppraisalFeeTotal) || 0);
 
     // §24단서 — "제3호(사전증여재산 과세표준상당액)는 상속세 과세가액이 5억원을 초과하는 경우에만
     // 적용한다" — 5억 이하면 1호·2호만 차감하고 3호(사전증여분)는 차감하지 않는다.
@@ -4102,7 +4109,7 @@
     const smallEstateMax_ = s24Row_ ? s24Row_.over : 500000000;
     const overallDeductionLimit = Math.max(0, estateTaxableAfterFuneral
       - (Number(p.nonHeirBequestAmount) || 0)
-      - (estateTaxableAfterFuneral > smallEstateMax_ ? priorGiftTaxableBaseTotal : 0)
+      - (estateTaxableAfterFuneral > smallEstateMax_ ? s24GiftAmount_ : 0)
       - (Number(p.disclaimedShareRedistributedAmount) || 0));
     const overallLimitApplied = limitedDeduction > overallDeductionLimit;
     if (overallLimitApplied) limitedDeduction = overallDeductionLimit;
@@ -4262,7 +4269,7 @@
       //  본표 ⑱·부표1 ㉙ = 장례비까지 뺀 과세가액(§13①), 부표3 ㉚ = §24 공제적용한도액, ㉛·본표 ⑲ = 한도 안 상속공제(장례비·감정평가수수료 없음)
       상속세과세가액_서식: estateTaxableAfterFuneral, 공제적용한도액: overallDeductionLimit, 상속공제_서식합계: limitedDeduction,
       공제적용한도_차감내역: { 상속인아닌자유증등: Number(p.nonHeirBequestAmount) || 0, 상속포기후다음순위상속분: Number(p.disclaimedShareRedistributedAmount) || 0,
-        가산증여재산과세표준: estateTaxableAfterFuneral > smallEstateMax_ ? priorGiftTaxableBaseTotal : 0 },
+        가산증여재산과세표준: estateTaxableAfterFuneral > smallEstateMax_ ? s24GiftAmount_ : 0 }, // [2026.10.22 상속-10 A⑧] §24 3호 금액(감정평가수수료 되돌림)
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir, 증여세액공제_상속인별과세가액_정밀: !!priorGiftCreditResult.precise,
@@ -4864,7 +4871,10 @@
     // "그 금액에서 대통령령으로 정하는 증여재산의 감정평가 수수료를 뺀 금액"이 과세표준이다(3호는 3천만원도 추가로 뺀다).
     // 시행령§46의2·§20의3③ — 일반 감정평가법인 등(1·3호) 수수료는 500만원, 비상장주식 신용평가전문기관
     // 평가수수료(2호)는 별도로 1천만원 한도가 적용된다(일반 증여세 함수들과 동일 한도 구조).
-    const appraisalFeeDeduction = Math.min(Number(appraisalFeeAmount) || 0, 5000000) + Math.min(Number(unlistedStockAppraisalFeeAmount) || 0, 10000000);
+    // [2026.10.22 검토대상 증여-17⑨] 상증령 §20의3③ — 2호 수수료 한도는 "평가대상 법인의 수(數) 및 평가를 의뢰한 신용평가전문기관의 수별로
+    //  각각 1천만원", 3호(서화·골동품 등 감정) 수수료도 500만원 — 일반 증여 계산과 같은 appraisalFeeDeduction_으로(ctx.p의 artAppraisalFeeAmount·
+    //  unlistedStockAppraisalFeeCount를 함께 본다). ctx가 없으면 예전과 같음.
+    const appraisalFeeDeduction = appraisalFeeDeduction_(Object.assign({}, ctx.p || {}, { appraisalFeeAmount: appraisalFeeAmount, unlistedStockAppraisalFeeAmount: unlistedStockAppraisalFeeAmount }));
     const taxBase = Math.max(0, Math.round(deemedGiftProfit) - appraisalFeeDeduction - (Number(flatDeduction) || 0));
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorTax = Math.max(0, Number(priorCalculatedTax) || 0);
@@ -5610,14 +5620,18 @@
     //  두 몫을 각자의 기간으로 나눠(각 몫 ÷ (기간 + 1), 시행령 §68①3호) 회차별로 더한다. installmentPeriodYears는 그 밖의 몫 기간.
     //  예전엔 전체를 한 기간으로 나눠, 가업 몫이 일부뿐인데 15년을 넣으면 그 밖의 몫도 15년으로 늘었다. 몫을 안 넣고 일반 한도를 넘기면 경고.
     //  (가업 몫의 '허가 후 10년이 되는 날부터 10년'(거치) 방식은 이 계산기가 다루지 않음)
-    const generalMax_ = taxType === 'inheritance' ? 10 : 5, specialMax_ = absoluteMaxYears;
+    // [2026.10.22 검토대상 상속-10 B⑥] 상속세 그 밖의 재산 10년(§71②1호나목)은 법률 제18591호(2021.12.21.) — 부칙 제2조 "이 법 시행 이후 상속이
+    //  개시되거나 증여를 받는 분부터 적용" — 2022.1.1. 전 상속은 종전 §71②2호 "제1호 외의 경우: 연부연납 허가일부터 5년". 상속개시일(inheritanceDate)이 있으면 그 연혁.
+    const inhStart_ = String(p.inheritanceDate || '').slice(0, 10);
+    const oldInh5_ = taxType === 'inheritance' && /^\d{4}-\d{2}-\d{2}$/.test(inhStart_) && inhStart_ < '2022-01-01';
+    const generalMax_ = taxType === 'inheritance' ? (oldInh5_ ? 5 : 10) : 5, specialMax_ = absoluteMaxYears;
     const specialPortion_ = Math.min(installmentTaxAmount, Math.max(0, Number(p.specialPortionAmount) || 0));
     let periodWarning_ = '';
     if (specialPortion_ > 0) {
       const sY_ = Number(p.specialPeriodYears) || 0;
       if (!(sY_ > 0)) return { error: (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫의 연부연납기간(년)이 필요합니다.' };
       if (sY_ > specialMax_) return { error: '특례 몫 연부연납기간(' + sY_ + '년)이 상한 ' + specialMax_ + '년(§71②' + (taxType === 'inheritance' ? '1호가목' : '2호가목') + ')을 넘습니다.' };
-      if (installmentPeriodYears > generalMax_ && installmentTaxAmount - specialPortion_ > 0) return { error: '그 밖의 재산 몫 연부연납기간(' + installmentPeriodYears + '년)이 상한 ' + generalMax_ + '년(§71②' + (taxType === 'inheritance' ? '1호나목' : '2호나목') + ')을 넘습니다.' };
+      if (installmentPeriodYears > generalMax_ && installmentTaxAmount - specialPortion_ > 0) return { error: '그 밖의 재산 몫 연부연납기간(' + installmentPeriodYears + '년)이 상한 ' + generalMax_ + '년(§71②' + (oldInh5_ ? '2호(2022.1.1. 전 상속 — 종전 규정)' : taxType === 'inheritance' ? '1호나목' : '2호나목') + ')을 넘습니다.' };
       const mk_ = function (amt, years) {
         const c = years + 1, b = Math.floor(amt / c);
         const rows = []; let rem = amt;
@@ -5637,7 +5651,7 @@
         안내: '§71②·시행령 §68① — ' + (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫 ' + specialPortion_ + '원은 ' + sY_ + '년, 그 밖의 몫 ' + (installmentTaxAmount - specialPortion_) + '원은 ' + installmentPeriodYears + '년으로 나눠 회차별로 더함'
       };
     }
-    if (installmentPeriodYears > generalMax_) periodWarning_ = '⚠ 연부연납기간 ' + installmentPeriodYears + '년 — 그 밖의 재산은 ' + generalMax_ + '년까지(§71②' + (taxType === 'inheritance' ? '1호나목' : '2호나목') + '). 전체가 ' + (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫일 때만 맞음 — 일부면 "특례 몫" 칸에 그 몫을 넣으세요.';
+    if (installmentPeriodYears > generalMax_) periodWarning_ = '⚠ 연부연납기간 ' + installmentPeriodYears + '년 — 그 밖의 재산은 ' + generalMax_ + '년까지(§71②' + (oldInh5_ ? '2호(2022.1.1. 전 상속 — 종전 규정)' : taxType === 'inheritance' ? '1호나목' : '2호나목') + '). 전체가 ' + (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫일 때만 맞음 — 일부면 "특례 몫" 칸에 그 몫을 넣으세요.';
     const count = installmentPeriodYears + 1;
     const basePrincipal = Math.floor(installmentTaxAmount / count);
     // [2026.10.19 상속세책자 사례] 나누고 남은 끝수는 첫 회(신고 때 내는 몫)에 붙인다(책: 155,006,000원 ÷ 6 → 신고 때 25,834,335원,
@@ -6628,7 +6642,7 @@
     let recognized = withinPeriod;
     const periodNote = withinPeriod
       ? '평가기간(' + fmt(periodStart) + '~' + fmt(periodEnd) + ') 이내입니다.'
-      : '평가기간(' + fmt(periodStart) + '~' + fmt(periodEnd) + ')을 벗어났습니다. 평가기준일 전 2년 이내' + (taxType === 'transfer' || String(p.valuationBaseDate) >= '2019-02-12' ? '이거나 평가기간 경과 후 신고기한까지의' : '의') + ' 매매등이라면, 가격변동의 특별한 사정이 없다는 전제로 평가심의위원회 심의를 신청해 인정받을 수 있습니다(시행령§49①단서' + (taxType !== 'transfer' && String(p.valuationBaseDate) < '2019-02-12' ? ' — 평가기간 경과 후 매매등은 2019.2.12. 이후 상속개시·증여분부터' : '') + ') — 이 계산기는 그 심의결과를 판정하지 않습니다.';
+      : '평가기간(' + fmt(periodStart) + '~' + fmt(periodEnd) + ')을 벗어났습니다. 평가기준일 전 2년 이내' + (taxType === 'transfer' ? '이거나 평가기간 경과 후 신고기한까지의' : String(p.valuationBaseDate) >= '2019-02-12' ? '이거나 평가기간 경과 후 법정결정기한(시행령 §78①: 상속세는 신고기한부터 9개월, 증여세는 6개월)까지의' : '의') /* [2026.10.22 검토대상 상속-10 B⑦] 상증령 §49① 단서 "평가기간이 경과한 후부터 제78조제1항에 따른 기한까지" — 예전 글은 "신고기한까지" */ + ' 매매등이라면, 가격변동의 특별한 사정이 없다는 전제로 평가심의위원회 심의를 신청해 인정받을 수 있습니다(시행령§49①단서' + (taxType !== 'transfer' && String(p.valuationBaseDate) < '2019-02-12' ? ' — 평가기간 경과 후 매매등은 2019.2.12. 이후 상속개시·증여분부터' : '') + ') — 이 계산기는 그 심의결과를 판정하지 않습니다.';
 
     if (evidenceType === 'sale') {
       if (p.isRelatedPartyTransaction) {
@@ -7505,7 +7519,9 @@
   //  isGenerationSkip을 넣지 않으면 0 — 예전 결과와 같다.
   function genSkipPremium_(taxBeforePremium, p, giftValue) {
     if (!p.isGenerationSkip || p.isSubstituteGiftDueToDeath) return { rate: 0, amount: 0 };
-    const over2Billion = !!p.generationSkipOver2Billion || (Number(giftValue) || 0) > 2000000000;
+    // [2026.10.22 검토대상 증여-17⑪] 상증령 §46의3① "법 제57조제1항을 적용할 때 증여재산가액은 법 제47조제2항에 따라 증여세 과세가액에
+    //  가산하는 증여재산을 포함한다" — 20억 초과 판정에 10년 내 같은 증여자 합산분(priorGiftAmount)을 더한다(예전엔 이번 금액만 봄).
+    const over2Billion = !!p.generationSkipOver2Billion || ((Number(giftValue) || 0) + (Number(p.priorGiftAmount) || 0)) > 2000000000;
     const rate = (over2Billion && p.isMinor) ? genSkipMinorRateAt_(p.giftDate || p.giftReceivedDate) : 0.3;
     const amount = Math.max(0, Math.round(taxBeforePremium * rate) - (Number(p.priorPaidGenerationSkipPremium) || 0));
     return { rate: rate, amount: amount };
@@ -8733,7 +8749,9 @@
     }
     const transferPrice = Number(p.transferPrice) || 0;
     if (transferPrice <= 0) return { error: '양도가액이 필요합니다.' };
-    const acquisitionPrice = Number(p.acquisitionPrice) || 0;
+    // [2026.10.22 검토대상 양도-11] §118의8이 §97③을 준용 — 보유기간 사업소득 필요경비에 넣은 감가상각비는 취득가액에서 뺀다.
+    const depOa_ = Math.max(0, Number(p.depreciationDeductedAsBusinessExpense) || 0);
+    const acquisitionPrice = Math.max(0, (Number(p.acquisitionPrice) || 0) - depOa_);
     const capitalExpenditure = Number(p.capitalExpenditure) || 0;
     const transferExpenses = Number(p.transferExpenses) || 0;
     const gain = transferPrice - acquisitionPrice - capitalExpenditure - transferExpenses;
@@ -8784,7 +8802,7 @@
       }
       const transferPrice = Number(t.transferPrice) || 0;
       if (transferPrice <= 0) return { error: (i + 1) + '번째 거래: 양도가액이 필요합니다.' };
-      const acquisitionPrice = Number(t.acquisitionPrice) || 0;
+      const acquisitionPrice = Math.max(0, (Number(t.acquisitionPrice) || 0) - Math.max(0, Number(t.depreciationDeductedAsBusinessExpense) || 0)); // [2026.10.22 양도-11] §118의8 → §97③
       const capitalExpenditure = Number(t.capitalExpenditure) || 0;
       const transferExpenses = Number(t.transferExpenses) || 0;
       const gain = transferPrice - acquisitionPrice - capitalExpenditure - transferExpenses;
@@ -9980,9 +9998,37 @@
       부동산유가증권비율: ratioDetail,
       미충족사유: reasons,
       안내: eligible
-        ? (provision === 'general' ? '§73①의 3가지 요건을 모두 충족합니다. 다만 물납을 신청한 재산의 관리·처분이 적당하지 않다고 인정되면 세무서장이 불허가할 수 있습니다(§73①단서). 물납충당재산의 수납가액은 원칙적으로 상속재산의 가액과 같습니다(시행령§75①본문). 예외로 (1)신주발행·감자가 있었던 주식은 calculatePropertyInKindStockReceiptValueJS(시행규칙§20의2)로 계산하고, (2)연부연납분납분·(3)유가증권 30%이상 하락분은 원래 상속세 과세가액 산정에 썼던 평가방법을 물납허가통지서 발송일 전일 기준으로 다시 적용한 값을 씁니다(§75①2·3호).' : '§73의2①의 2가지 요건을 모두 충족해 문화유산등에 대한 물납을 신청할 수 있습니다. 다만 문화체육관광부장관의 물납 필요성 인정(③) 및 국고손실위험 판단(④)을 거쳐야 최종 허가됩니다. 물납충당재산의 수납가액은 원칙적으로 상속재산의 가액과 같습니다(시행령§75의5제1호외의경우).')
+        ? (provision === 'general' ? '§73①의 3가지 요건을 모두 충족합니다. 다만 물납을 신청한 재산의 관리·처분이 적당하지 않다고 인정되면 세무서장이 불허가할 수 있습니다(§73①단서). 물납충당재산의 수납가액은 원칙적으로 상속재산의 가액과 같습니다(시행령§75①본문). 예외로 (1)신주발행·감자가 있었던 주식은 "물납 수납가액" 도구(시행규칙§20의2)로 계산하고, (2)연부연납분납분·(3)유가증권 30%이상 하락분은 원래 상속세 과세가액 산정에 썼던 평가방법을 물납허가통지서 발송일 전일 기준으로 다시 적용한 값을 씁니다(§75①2·3호).' : '§73의2①의 2가지 요건을 모두 충족해 문화유산등에 대한 물납을 신청할 수 있습니다. 다만 문화체육관광부장관의 물납 필요성 인정(③) 및 국고손실위험 판단(④)을 거쳐야 최종 허가됩니다. 물납충당재산의 수납가액은 원칙적으로 상속재산의 가액과 같습니다(시행령§75의5제1호외의경우).')
         : '요건을 충족하지 못해 ' + (provision === 'general' ? '§73' : '§73의2') + ' 물납을 신청할 수 없습니다.'
     };
+
+    // [2026.10.22 검토대상 상속-10 A⑪] 상증령 §73① "물납을 신청할 수 있는 납부세액은 다음 각 호의 금액 중 적은 금액을 초과할 수 없다" —
+    //  1호 부동산·유가증권(물납 충당 가능분) 가액에 대한 상속세 납부세액(= 납부세액 × 그 가액 ÷ 상속재산가액, §73의2⑤ 계산과 같은 비례),
+    //  2호 납부세액 − (금융재산가액 − 금융회사등 채무, 0 아래면 0) − 상장 유가증권(처분 제한분 제외) 가액.
+    //  ③ 상속개시일~신청 전 정당한 사유 없이 관리·처분 부적당 재산으로 바뀐 가액에 상당하는 세액은 뺀다.
+    //  ④(2018.2.13. 신설) 비상장주식등으로 물납할 수 있는 세액은 납부세액 − (과세가액 − 비상장주식등 − 상속인 거주주택·부수토지(담보채무 뺀 가액))을 넘지 못한다.
+    //  입력이 없으면 그 호는 계산하지 않는다(예전과 같이 요건 판정만).
+    if (provision === 'general' && eligible) {
+      const reSec_ = Number(p.realEstateSecuritiesValue) || 0, tot_ = Number(p.totalInheritanceValue) || 0;
+      const lim1_ = tot_ > 0 ? Math.round(inheritanceTaxPayable * reSec_ / tot_) : null;
+      const finNet_ = Math.max(0, financialAssetValue - (Number(p.financialDebtAmount) || 0));
+      const lim2_ = Math.max(0, inheritanceTaxPayable - finNet_ - (Number(p.listedSecuritiesValue) || 0));
+      const unsuit_ = Number(p.unsuitableChangedValue) || 0;
+      const unsuitTax_ = (unsuit_ > 0 && tot_ > 0) ? Math.round(inheritanceTaxPayable * unsuit_ / tot_) : 0;
+      let lim_ = Math.max(0, (lim1_ === null ? lim2_ : Math.min(lim1_, lim2_)) - unsuitTax_);
+      result.물납신청가능세액_한도 = lim_;
+      result.물납한도_내역 = { '1호_부동산유가증권분': lim1_, '2호_금융재산상장증권차감': lim2_, '③_부적당재산분': unsuitTax_ };
+      const w_ = function (x) { return Number(x).toLocaleString('ko-KR') + '원'; };
+      result.안내 += ' 물납을 신청할 수 있는 세액은 시행령 §73①의 1호(' + (lim1_ === null ? '계산 안 함' : w_(lim1_)) + ')·2호(' + w_(lim2_) + ') 중 적은 금액' +
+        (unsuitTax_ > 0 ? '에서 ③ 부적당 재산분 ' + w_(unsuitTax_) + '을 뺀 ' : '인 ') + w_(lim_) + '입니다(적합한 물건이 없으면 세무서장이 넘는 세액도 허가할 수 있음 — ②).' +
+        (Number(p.listedSecuritiesValue) > 0 ? '' : ' 상장 유가증권이 있으면 그 가액을 넣어야 2호가 맞습니다.');
+      const unl_ = Number(p.unlistedStockValue) || 0, txv_ = Number(p.inheritanceTaxableValue) || 0;
+      if (unl_ > 0 && txv_ > 0) {
+        const lim4_ = Math.max(0, inheritanceTaxPayable - Math.max(0, txv_ - unl_ - (Number(p.heirResidenceHouseNetValue) || 0)));
+        result.비상장주식_물납한도 = lim4_;
+        result.안내 += ' 그중 비상장주식등으로 물납할 수 있는 세액은 ' + w_(lim4_) + '을 넘지 못합니다(시행령 §73④).';
+      }
+    }
 
     if (provision === 'cultural_heritage' && eligible) {
       const culturalHeritageValue = Number(p.culturalHeritageValue) || 0;
@@ -10455,8 +10501,15 @@
     let includedAmount, note;
     if (itemType === 'insurance') {
       if (p.wasPolicyholderDecedent) {
-        includedAmount = amount;
-        note = '피상속인이 보험계약자인 보험계약에서 받는 사망보험금이므로 전액 상속재산으로 봅니다(§8①).';
+        // [2026.10.22 검토대상 상속-10 A⑦] 상증령 §4① "법 제8조제1항에 따라 상속재산으로 보는 보험금의 가액" = 지급받은 보험금 총합계액 ×
+        //  (피상속인이 부담한 보험료 ÷ 해당 보험계약에 따라 피상속인의 사망시까지 납부된 보험료 총합계액) — 계약자가 피상속인이어도 비율을 곱한다.
+        //  비율을 넣지 않으면(빈칸) 피상속인이 전부 낸 것으로 본다(예전과 같음).
+        const r0_ = p.premiumPaidByDecedentRatio;
+        const ratioP_ = (r0_ === undefined || r0_ === null || r0_ === '') ? 1 : Math.min(1, Math.max(0, Number(r0_) || 0));
+        includedAmount = Math.round(amount * ratioP_);
+        note = ratioP_ < 1
+          ? '피상속인이 보험계약자이고 피상속인이 보험료의 ' + Math.round(ratioP_ * 100) + '%를 부담했으므로 보험금 × 그 비율을 상속재산으로 봅니다(§8①, 시행령 §4①).'
+          : '피상속인이 보험계약자인 보험계약에서 받는 사망보험금으로, 피상속인이 보험료를 전부 부담했으므로 전액 상속재산으로 봅니다(§8①, 시행령 §4①).';
       } else {
         const ratio = Math.min(1, Math.max(0, Number(p.premiumPaidByDecedentRatio) || 0));
         includedAmount = Math.round(amount * ratio);
