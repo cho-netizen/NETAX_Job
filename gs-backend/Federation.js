@@ -341,6 +341,36 @@ function commStatus_() {
     toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_,
     routine: commRoutineLog_() };
 }
+// ⑧ [2026.10.21] 고객 카톡 글 — 세무사님 결정("진행하고 다음으로 넘어가자"): 고객이 카톡으로 쓴 글이 넥스·job에 전달되지 않던 문제.
+//  카카오 봇(NETAX_Kakao, 별도 서버)은 이미 모든 수신 메시지를 사건 시트 "카카오웹훅로그" 탭에 남기고(시각·카카오ID·글·원본), 카카오ID↔접속코드는
+//  고객창구 시트 "카카오사용자매핑" 탭에 있다. job이 그 둘을 읽어 이 사건(my_report_id) 고객의 글만 골라 보여 준다 — 카카오 봇은 고치지 않음(응답 시간 제한).
+//  참고로만: 계산 칸에 넣지 않는다(공통원칙 — 원시증빙 우선). 넥스는 서류 값과 다르면 그 사실만 세무사님께 말씀드린다.
+function kakaoCaseMessages_(c, max) {
+  const rid = String((c && c.my_report_id) || '').trim().toUpperCase();
+  if (!rid) return [];
+  let ids = {};
+  try {
+    const ms = SpreadsheetApp.openById(MY_SHEET_ID).getSheetByName('카카오사용자매핑');
+    if (!ms || ms.getLastRow() < 2) return [];
+    ms.getRange(2, 1, ms.getLastRow() - 1, 2).getValues().forEach(function (r) { if (String(r[1]).trim().toUpperCase() === rid && r[0]) ids[String(r[0])] = 1; });
+  } catch (e) { return []; }
+  if (!Object.keys(ids).length) return [];
+  const out = [];
+  try {
+    const ls = SpreadsheetApp.openById(WORK_SHEET_ID).getSheetByName('카카오웹훅로그');
+    if (!ls || ls.getLastRow() < 2) return [];
+    const n = Math.min(3000, ls.getLastRow() - 1), start = ls.getLastRow() - n + 1;
+    ls.getRange(start, 1, n, 4).getValues().forEach(function (r) {
+      const t = String(r[2] || '').trim();
+      if (!ids[String(r[1])] || !t || t.toUpperCase() === rid) return; // 접속코드 입력 줄은 뺌
+      if (/"media"\s*:\s*\{[^}]*"url"/.test(String(r[3] || ''))) return; // 사진·파일은 제출자료 폴더에 따로 저장됨
+      const at = r[0] instanceof Date ? Utilities.formatDate(r[0], 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : String(r[0]).slice(0, 16);
+      out.push({ at: at, text: t.slice(0, 500), link: /^https?:\/\//i.test(t) });
+    });
+  } catch (e) { return []; }
+  return out.slice(-(max || 30));
+}
+
 // ⑦ [2026.10.21] 주간 개발자 실행 기록 — 웹 Claude 루틴이 끝날 때 tools/routine-log.js로 깃허브 routine-log 가지 docs/routine-log.json에 남긴다.
 //  세무사님 결정(2026-10-21 "진행하고 다음항목으로 넘어가자"): 10-12 실행이 주간 한도로 멈췄는데 "성공"으로 남아 아무도 몰랐고, 10-19 실행이 넘긴 38건의 사유가 수정안 글에만 있었다.
 //  job은 읽기만 한다. 이번 주 월요일 10시(한국)가 지났는데 그 주 기록이 없으면 missing — 실행이 안 됐거나 기록 전에 멈춘 것.

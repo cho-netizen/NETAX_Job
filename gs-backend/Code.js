@@ -3749,6 +3749,7 @@ function job_lookup_(input) {
       남은질문: (sv.remaining || []).map(function (it) { const d = dec[it.id] && dec[it.id].d; return { qid: it.id, 결정: d || '', 글: it.text, 넣을칸: it.ask ? { target: it.ask.target, label: it.ask.label, input: it.ask.input } : null, 후보: it.ask ? it.ask.cands : [] }; }),
       AI판단값: judged.slice(0, 20),
       // [2026.10.21] 세무사님 원문: "아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라" — 세무사님이 직접 한 일(처리일지·마지막 계산)도 넥스가 보게
+      고객카톡: (function () { try { return typeof kakaoCaseMessages_ === 'function' ? kakaoCaseMessages_(c, 15) : []; } catch (e) { return []; } })(), // [2026.10.21] 참고로만 — 서류 값과 다르면 그 사실만 말씀드림
       최근처리일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).slice(-15).map(function (l) { return (l.date || '') + ' ' + String(l.text || '').slice(0, 200); }),
       마지막계산: (function () { try { const l = caseProcLastCalc_(c).last; return l ? { 날짜: l.계산일 || '', 구분: l.구분 || '', 최종세액: l.최종세액, 요약: String(l.요약 || '').slice(0, 1500) } : null; } catch (e) { return null; } })(),
       지난지휘: last ? { 때: last.at, 방식: last.mode, 비용원: last.won, 보고: last.report || '', 판단: (last.decisions || []).slice(0, 20), 의견: (last.opinions || []).slice(0, 20), 여쭌것: (last.asks || []).slice(0, 12) } : null,
@@ -30259,6 +30260,8 @@ function caseProcBasic_(c, body) {
   lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 기준일 ' + (c.기준일 || '—') + ' · 법정일 ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
   try { caseProcRouteLines_(c).forEach(function (l) { lines.push(l); }); } catch (e) {} // [2026.10.18 정밀분석 원인3] 서류로 정한 사건 경로
   try { caseProcGrasp_(c).lines.forEach(function (l) { lines.push(l); }); } catch (e) { lines.push('⚠ 사건파악 가설을 세우지 못함: ' + (e && e.message || e)); } // [2026.10.17 재설계] 작업관리는 가설의 한 출처일 뿐
+  // [2026.10.21] 고객 카톡 글(Federation.js kakaoCaseMessages_) — 참고로만, 계산 칸에 넣지 않음
+  try { const km = typeof kakaoCaseMessages_ === 'function' ? kakaoCaseMessages_(c, 5) : []; if (km.length) lines.push('💬 고객 카톡 글 최근 ' + km.length + '건(참고 — 서류로 확인해 칸에 넣음): ' + km.slice(-3).map(function (m) { return m.at.slice(5, 10) + ' "' + caseProcAiCut_(m.text, 60) + '"'; }).join(' · ')); } catch (e) {}
   if (!c.세목) items.push(caseProcItem_('basic:세목', 'missing', '세목이 비어 있습니다.', { mode: 'view', view: 'workmanage', label: '작업관리에서 세목 정하기' }));
   if (!c.업무유형) items.push(caseProcItem_('basic:업무유형', 'missing', '업무유형(신고·상담 등)이 비어 있습니다.', { mode: 'view', view: 'workmanage', label: '작업관리에서 업무유형 정하기' }));
   const ov = c.사건개요 || {};
