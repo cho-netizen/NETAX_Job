@@ -24,11 +24,14 @@
     "상증세법 §78③"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"report_not_filed\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"report_not_filed\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "②",
@@ -39,11 +42,14 @@
     "상증세법 §78④"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"stock_holding_exceeded_5pct\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"stock_holding_exceeded_5pct\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "③",
@@ -54,11 +60,14 @@
     "상증세법 §78⑤1호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"management_violation + violationSubType tax_confirmation\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「경영 요건 위반」 + 「위반 세부유형」 「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"management_violation + violationSubType tax_confirmation\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "④",
@@ -69,11 +78,14 @@
     "상증세법 §78⑤2호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"management_violation + bookkeeping\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「경영 요건 위반」 + 「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"management_violation + bookkeeping\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑤",
@@ -84,11 +96,14 @@
     "상증세법 §78⑤3호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"management_violation + audit\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「경영 요건 위반」 + 「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"management_violation + audit\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑥",
@@ -99,11 +114,14 @@
     "상증세법 §78⑥"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"director_excess\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"director_excess\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑦",
@@ -114,11 +132,14 @@
     "상증세법 §78⑦"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"stock_holding_exceeded_related\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"stock_holding_exceeded_related\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑧",
@@ -129,11 +150,14 @@
     "상증세법 §78⑧"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"advertising\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"advertising\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑨",
@@ -144,11 +168,14 @@
     "상증세법 §78⑨1호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"income_underused(1호)\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「소득 미사용」(1호)\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"income_underused(1호)\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑩",
@@ -159,11 +186,14 @@
     "상증세법 §78⑨2호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"income_underused(2호 saleProceedsAmount·saleCheckpointYear)\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「소득 미사용」(2호 「매각대금」·「확인시점」)\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"income_underused(2호 saleProceedsAmount·saleCheckpointYear)\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑪",
@@ -174,11 +204,14 @@
     "상증세법 §78⑨3호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"income_underused(3호)\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「소득 미사용」(3호)\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"income_underused(3호)\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑫",
@@ -189,11 +222,14 @@
     "상증세법 §78⑩1호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"dedicated_account_unused\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"dedicated_account_unused\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑬",
@@ -204,11 +240,14 @@
     "상증세법 §78⑩2호"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"dedicated_account_not_opened\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨 — 산식 표는 §78⑩ 원문과 같음"
+   "확인": "원문 대조됨 — 산식 표는 §78⑩ 원문과 같음",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"dedicated_account_not_opened\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑭",
@@ -219,11 +258,14 @@
     "상증세법 §78⑪"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"disclosure_violation\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"disclosure_violation\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   },
   {
    "칸": "⑮",
@@ -234,11 +276,14 @@
     "상증세법 §78⑭"
    ],
    "계산기칸": [
-    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"report_not_filed_5pct\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+    "계산 엔진 「가산세 유형」 \"「계산기 내부 값」\" → 결과 가산세액(한 번에 한 항목, 「공익법인등 관련 가산세」에 누적)"
    ],
    "조견표": [],
    "인쇄": "부표6 인쇄 없음 — 합계만 본표 인쇄 ㉛(공익법인 등 관련 가산세)",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "calculatePublicInterestOrgPenaltyJS(gs-backend/manage/taxcalc-engine.html) penaltyType \"report_not_filed_5pct\" → 결과 가산세액(한 번에 한 항목, giftPublicOrgPenalty에 누적)"
+   ]
   }
  ],
  "확인필요": [

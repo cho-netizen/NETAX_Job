@@ -75,11 +75,14 @@
    ],
    "조문개정": "§156의2③ 대통령령 제35947호 2025.12.30. / ④⑤ 2023.2.28.·2025.12.30. / §156의3②③ 2025.12.30. 공포",
    "계산기칸": [
-    "양도 자산(transferAssets[idx]) — isReconstructionRights·isCompletedNewHousing"
+    "양도 자산(양도 자산 목록[「번호」]) — 「재건축·재개발 조합원입주권·신축주택으로 양도함」·「준공된 신축주택을 양도」"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 1번 줄 \"주택구분\"(신축주택/조합원입주권 글자) — 서식의 3열(양도주택·입주권·분양권) 모양 아님",
-   "확인": "원문 대조됨(서식 1쪽). ⚠ 서식이 법령 개정보다 늦음 — 법령 우선: 2023.2.28. 개정으로 §156의2④⑤·§156의3③의 '완성 후 2년 이내 이사·양도'가 '3년 이내'로 바뀜(서식엔 기간 문구 없음) [2026.10.20 확정] 엔진·계산기는 이미 법령 기준 — 엔진 \"완성 후 3년\"(2023.2.28. 개정) 반영"
+   "확인": "원문 대조됨(서식 1쪽). ⚠ 서식이 법령 개정보다 늦음 — 법령 우선: 2023.2.28. 개정으로 §156의2④⑤·§156의3③의 '완성 후 2년 이내 이사·양도'가 '3년 이내'로 바뀜(서식엔 기간 문구 없음) [2026.10.20 확정] 엔진·계산기는 이미 법령 기준 — 엔진 \"완성 후 3년\"(2023.2.28. 개정) 반영",
+   "계산기칸_개발용": [
+    "양도 자산(transferAssets[idx]) — isReconstructionRights·isCompletedNewHousing"
+   ]
   },
   {
    "칸": "⑤",
@@ -92,13 +95,18 @@
    ],
    "조문개정": "§156의2⑫ 대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 isReconstructionRights",
-    "판정 provision 'ci'(calculateReconstructionRightsOneHouseExclusionJS: formerHouseAcquisitionDate·unionMembershipRightAcquisitionDate·formerHouseTransferDate·newHousingCompletionDate·meetsHoldingPeriodException)",
+    "입력 「재건축·재개발 조합원입주권·신축주택으로 양도함」",
+    "판정 「구분」 'ci'(계산 엔진: 「종전주택 취득일」·「조합원입주권 취득일」·「종전주택 양도일」·「신축주택 완성일(사용승인일)」·「종전주택 취득 후 1년 경과 요건의 예외사유」)",
     "'rp'(대체주택 §156의2⑤)·'iu'(상속 입주권 §156의2⑥⑦)"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_(조합원입주권 양도 자산) 또는 oneHouseSpecialCasePrintPageHtml_(ci·rp·iu)",
-   "확인": "원문 대조됨(서식 1쪽)"
+   "확인": "원문 대조됨(서식 1쪽)",
+   "계산기칸_개발용": [
+    "입력 isReconstructionRights",
+    "판정 provision 'ci'(calculateReconstructionRightsOneHouseExclusionJS: formerHouseAcquisitionDate·unionMembershipRightAcquisitionDate·formerHouseTransferDate·newHousingCompletionDate·meetsHoldingPeriodException)",
+    "'rp'(대체주택 §156의2⑤)·'iu'(상속 입주권 §156의2⑥⑦)"
+   ]
   },
   {
    "칸": "⑥",
@@ -111,12 +119,16 @@
    ],
    "조문개정": "§156의3⑨ 대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "판정 provision 'pr'(calculatePresaleRightOneHouseExclusionJS: formerHouseAcquisitionDate·presaleRightAcquisitionDate·formerHouseTransferDate, 2021.1.1. 전 취득 분양권 경과규정)",
-    "'ip'(상속 분양권 §156의3④⑤)"
+    "판정 「구분」 'pr'(계산 엔진: 「종전주택 취득일」·「분양권 취득일」·「종전주택 양도일」, 2021.1.1. 전 취득 분양권 경과규정)",
+    "'연부연납'(상속 분양권 §156의3④⑤)"
    ],
    "조견표": [],
    "인쇄": "oneHouseSpecialCasePrintPageHtml_(pr·ip) \"적용 특례\"·\"신축주택 완성(예정)일\" 줄",
-   "확인": "원문 대조됨(서식 1쪽)"
+   "확인": "원문 대조됨(서식 1쪽)",
+   "계산기칸_개발용": [
+    "판정 provision 'pr'(calculatePresaleRightOneHouseExclusionJS: formerHouseAcquisitionDate·presaleRightAcquisitionDate·formerHouseTransferDate, 2021.1.1. 전 취득 분양권 경과규정)",
+    "'ip'(상속 분양권 §156의3④⑤)"
+   ]
   },
   {
    "칸": "⑦",
@@ -126,11 +138,14 @@
    "근거조문": [],
    "조문개정": "—",
    "계산기칸": [
-    "입력 assetLocation(양도 자산)"
+    "입력 「소재지」(양도 자산)"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 2번 줄 \"소재지\"",
-   "확인": "원문 대조됨(서식 1쪽)"
+   "확인": "원문 대조됨(서식 1쪽)",
+   "계산기칸_개발용": [
+    "입력 assetLocation(양도 자산)"
+   ]
   },
   {
    "칸": "⑧",
@@ -171,12 +186,16 @@
    ],
    "조문개정": "대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 acquisitionDate(양도 자산 — 조합원입주권은 종전부동산 취득일)",
-    "판정 입력 formerHouseAcquisitionDate·unionMembershipRightAcquisitionDate·presaleRightAcquisitionDate → oneHouseSpecialCase.acquisitionDate(값 있을 때)"
+    "입력 「취득일」(양도 자산 — 조합원입주권은 종전부동산 취득일)",
+    "판정 입력 「종전주택 취득일」·「조합원입주권 취득일」·「분양권 취득일」 → 「취득일」(값 있을 때)"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 3번 줄 \"취득일(종전부동산)\" / oneHouseSpecialCasePrintPageHtml_ \"특례주택 취득일\"",
-   "확인": "원문 대조됨(서식 1쪽)"
+   "확인": "원문 대조됨(서식 1쪽)",
+   "계산기칸_개발용": [
+    "입력 acquisitionDate(양도 자산 — 조합원입주권은 종전부동산 취득일)",
+    "판정 입력 formerHouseAcquisitionDate·unionMembershipRightAcquisitionDate·presaleRightAcquisitionDate → oneHouseSpecialCase.acquisitionDate(값 있을 때)"
+   ]
   },
   {
    "칸": "⑪",
@@ -189,11 +208,14 @@
    ],
    "조문개정": "§156의2④ 대통령령 제35947호 2025.12.30. 공포(2023.2.28. 2년→3년)",
    "계산기칸": [
-    "입력 transferDate → formerHouseTransferDate"
+    "입력 「양도일」 → 「종전주택 양도일」"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 4번 줄 \"양도일\"",
-   "확인": "원문 대조됨(서식 1쪽). ⚠ 서식이 법령 개정보다 늦음 — 법령 우선: 2023.2.28. '완성 후 2년'→'3년' [2026.10.20 확정] 엔진·계산기는 이미 법령 기준 — 엔진 \"완성 후 3년\" 반영"
+   "확인": "원문 대조됨(서식 1쪽). ⚠ 서식이 법령 개정보다 늦음 — 법령 우선: 2023.2.28. '완성 후 2년'→'3년' [2026.10.20 확정] 엔진·계산기는 이미 법령 기준 — 엔진 \"완성 후 3년\" 반영",
+   "계산기칸_개발용": [
+    "입력 transferDate → formerHouseTransferDate"
+   ]
   },
   {
    "칸": "⑫",
@@ -206,11 +228,14 @@
    ],
    "조문개정": "대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 formerResidencePeriod(종전주택 거주기간 글자)"
+    "입력 「종전주택 거주기간」(종전주택 거주기간 글자)"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 5번 줄 \"종전주택 거주기간\"",
-   "확인": "원문 대조됨(서식 1쪽)"
+   "확인": "원문 대조됨(서식 1쪽)",
+   "계산기칸_개발용": [
+    "입력 formerResidencePeriod(종전주택 거주기간 글자)"
+   ]
   },
   {
    "칸": "⑬",
@@ -222,12 +247,16 @@
    ],
    "조문개정": "대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 businessApprovalDate",
-    "[2026.10.20] 판정 창 rp(대체주택) rpApprovalDate → oneHouseSpecialCase.businessApprovalDate → ⑬ 조합원입주권 열"
+    "입력 「사업시행인가일」",
+    "[2026.10.20] 판정 창 rp(대체주택) 「사업시행인가일」 → 「사업시행인가일」 → ⑬ 조합원입주권 열"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 6번 줄 \"사업시행인가일\"",
-   "확인": "원문 대조됨(서식 1·2쪽)"
+   "확인": "원문 대조됨(서식 1·2쪽)",
+   "계산기칸_개발용": [
+    "입력 businessApprovalDate",
+    "[2026.10.20] 판정 창 rp(대체주택) rpApprovalDate → oneHouseSpecialCase.businessApprovalDate → ⑬ 조합원입주권 열"
+   ]
   },
   {
    "칸": "⑭",
@@ -240,11 +269,14 @@
    ],
    "조문개정": "확인 안 함",
    "계산기칸": [
-    "입력 managementDispositionDate"
+    "입력 「관리처분계획인가일」"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 7번 줄 \"관리처분계획인가일\"",
-   "확인": "원문 대조됨(서식 1·2쪽)"
+   "확인": "원문 대조됨(서식 1·2쪽)",
+   "계산기칸_개발용": [
+    "입력 managementDispositionDate"
+   ]
   },
   {
    "칸": "⑮",
@@ -258,12 +290,16 @@
    ],
    "조문개정": "§156의2④ 대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 newHousingCompletionDate(양도 자산·판정 입력, pr은 prCompletionDate)",
-    "[2026.10.20] 판정 창 ci·rp의 ciCompletionDate·rpCompletionDate도 oneHouseSpecialCase.newHousingCompletionDate로 저장 → ⑮ 조합원입주권 열(pr은 분양권 열)"
+    "입력 「신축주택 완성일(사용승인일)」(양도 자산·판정 입력, pr은 「신축주택 완성(예정)일」)",
+    "[2026.10.20] 판정 창 ci·rp의 「신축주택 완성(예정)일」·「신축주택 완성(예정)일」도 「신축주택 완성일(사용승인일)」로 저장 → ⑮ 조합원입주권 열(pr은 분양권 열)"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 8번 줄 \"완성일(사용승인일)\" / oneHouseSpecialCasePrintPageHtml_ \"신축주택 완성(예정)일\"",
-   "확인": "원문 대조됨(서식 1·2쪽)"
+   "확인": "원문 대조됨(서식 1·2쪽)",
+   "계산기칸_개발용": [
+    "입력 newHousingCompletionDate(양도 자산·판정 입력, pr은 prCompletionDate)",
+    "[2026.10.20] 판정 창 ci·rp의 ciCompletionDate·rpCompletionDate도 oneHouseSpecialCase.newHousingCompletionDate로 저장 → ⑮ 조합원입주권 열(pr은 분양권 열)"
+   ]
   },
   {
    "칸": "⑯",
@@ -275,11 +311,14 @@
    ],
    "조문개정": "확인 안 함",
    "계산기칸": [
-    "입력 transferPrice"
+    "입력 「양도가액」"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 9번 줄 \"양도가액\"",
-   "확인": "원문 대조됨(서식 1·2쪽)"
+   "확인": "원문 대조됨(서식 1·2쪽)",
+   "계산기칸_개발용": [
+    "입력 transferPrice"
+   ]
   }
  ],
  "확인필요": [
