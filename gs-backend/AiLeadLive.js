@@ -543,6 +543,19 @@ function caseProcAiModelDry_(body) {
     if (r.error) return { ok: false, error: r.error };
     return { ok: true, text: caseProcAiText_(r.json), stop: r.json.stop_reason, usage: r.json.usage, won: r.won };
   }
+  // [2026.10.21 모델 맞추기 비교] 대화창 넥스 — 넥스 기본 지시문+마스터 프로필, 지난 대화(글만)를 고른 모델로 한 번(도구 없음, 시험 — 기록·쓰기 없음, 보내기 직전 가림)
+  if (body.kind === 'chat') {
+    const allowC = [LIGHT_MODEL, 'claude-haiku-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5'];
+    if (allowC.indexOf(body.model) === -1) return { ok: false, error: '비교 허용 모델이 아님: ' + body.model };
+    const msgs = (Array.isArray(body.messages) ? body.messages : []).filter(function (m) { return m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'; }).slice(-30);
+    if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return { ok: false, error: '마지막 글은 세무사님 글이어야 합니다' };
+    let master = ''; try { master = getMasterProfileText_() || ''; } catch (e) {}
+    const cfgC = MODEL_CONFIG[body.model] || {};
+    const effC = cfgC.thinkingMode === 'adaptive' ? (/^(low|medium|high)$/.test(String(body.effort || '')) ? body.effort : 'medium') : undefined;
+    const r = caseProcAiCall_(body.model, DEFAULT_SYSTEM_PROMPT + (master ? '\n\n' + master : ''), null, msgs, 8000, effC);
+    if (r.error) return { ok: false, error: r.error };
+    return { ok: true, text: caseProcAiText_(r.json), stop: r.json.stop_reason, usage: r.json.usage, won: r.won };
+  }
   if (body.kind === 'sub') { const m = body.model === CASEPROC_AI_HIGH_MODEL_ ? CASEPROC_AI_HIGH_MODEL_ : CASEPROC_AI_LIGHT_MODEL_; const r = caseProcAiSubJudge_(m, body.input || {}, m === CASEPROC_AI_LIGHT_MODEL_ ? 'low' : 'medium'); return { ok: true, text: r.text, won: r.won }; }
   const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, caseProcAiLiveSystem_(Number(body.cap) || 1000), caseProcAiLiveTools_(), caseProcAiCacheMark_(Array.isArray(body.messages) ? body.messages : []), 3000, 'medium');
   if (r.error) return { ok: false, error: r.error };
