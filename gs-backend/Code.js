@@ -29,7 +29,11 @@ function getMasterProfileText_() {
     const cache = CacheService.getScriptCache();
     const cached = cache.get(MASTER_PROFILE_CACHE_KEY_);
     if (cached !== null) return cached;
-    const text = DriveApp.getFileById(MASTER_PROFILE_FILE_ID).getBlob().getDataAsString('UTF-8');
+    const mf = DriveApp.getFileById(MASTER_PROFILE_FILE_ID);
+    let text = mf.getBlob().getDataAsString('UTF-8');
+    // [2026.10.21] 공통원칙(넥스·PC Claude·웹 Claude 루틴이 함께 읽는 세무사님 원칙) — 마스터 프로필과 같은 총괄관리자 폴더의 공통원칙.md를 앞에 붙인다.
+    //  세무사님 결정: 원칙을 한곳에 두고 셋이 함께 읽게(2026-10-21 "진행하고 다음을 넘어가자"). 없으면 마스터 프로필만.
+    try { const common = getCommonPrinciplesText_(mf); if (common) text = common + '\n\n' + text; } catch (e) { }
     cache.put(MASTER_PROFILE_CACHE_KEY_, text, 300);
     return text;
   } catch (err) {
@@ -37,6 +41,16 @@ function getMasterProfileText_() {
     // 조용히 빈 값으로 처리한다.
     return '';
   }
+}
+// 공통원칙.md — 마스터 프로필 파일(mf)이 있는 폴더(총괄관리자)에서 이름으로 찾는다. 개선 후보 보고서(웹 Claude 루틴)에도 실린다
+const COMMON_PRINCIPLES_FILE_ = '공통원칙.md';
+function getCommonPrinciplesText_(mf) {
+  try {
+    const f = mf || DriveApp.getFileById(MASTER_PROFILE_FILE_ID), ps = f.getParents();
+    if (!ps.hasNext()) return '';
+    const it = ps.next().getFilesByName(COMMON_PRINCIPLES_FILE_);
+    return it.hasNext() ? it.next().getBlob().getDataAsString('UTF-8') : '';
+  } catch (e) { return ''; }
 }
 
 const MODEL_CONFIG = {
@@ -37500,8 +37514,11 @@ function buildImprovementReport_() {
     period: '최근 7일',
     candidateCount: candidateCount,
     headline: headline,
+    // [2026.10.21] 공통원칙 — 세무사님 원칙을 넥스·PC Claude·웹 Claude 루틴이 함께 읽게(총괄관리자\공통원칙.md 원문 그대로). 루틴은 드라이브를 못 읽어 보고서에 싣는다
+    principles: (function () { try { return getCommonPrinciplesText_(); } catch (e) { return ''; } })(),
     // 웹 Claude Code 루틴이 읽는 처리 안내(루틴 지시문을 고치지 않고도 새 항목 처리법을 알려 주려고 보고서에 함께 싣는다)
     guide: [
+      'principles(공통원칙)는 세무사님이 정한 원칙 원문이다 — 무엇을 고치든 먼저 읽고 지킨다. 특히 세법 문장·세액 계산을 건드리면 조문 본문·단서·각 호·시행령까지 원문으로 확인하고, 세무사님 지침과 어긋나면 고치지 말고 PR "확인 필요"에 근거와 함께 적는다.',
       'requests(📝)는 세무사님이 직접 적은 개선요구사항(버전업·새 기능·불편사항) = 직접 지시다. 날짜 제한 없이 아직 안 끝난 것 전부가 오래된 순으로 실린다(days=며칠째) — 오래된 것부터. requestsAwaitingConfirm은 이미 반영돼 세무사님 확인만 남은 것이라 다시 고치지 않는다. 우선순위: 🩺 자가점검 실패 > 📝 > 🐞 > 💸 > 🐢. 구현해서 PR로 올린다. 큰 기능이면 바로 쓸 수 있는 첫 단계까지 구현하고 나머지 계획은 PR "남은 단계"에. 모호하면 가장 보수적으로 해석하고 "확인 필요"에 질문.',
       '중복 방지: git fetch --all 후 git branch -r 과 최근 14일 main 커밋을 보고, 같은 내용을 이미 반영했거나 이미 올린 브랜치가 있으면 그 후보는 건너뛰고 이유만 적는다.',
       'auditPending(📚 지침 자기점검 결과)은 코드 수정 대상이 아니다 — 드라이브 지침 파일을 세무사님이 고칠 일이다. 답변에 "설정 🧭 시스템 관리 점검 결과 확인"만 적는다.',
