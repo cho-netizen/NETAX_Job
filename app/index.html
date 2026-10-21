@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 21:49 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 21:58 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -173,7 +173,10 @@
             try{ data = JSON.parse(text); }catch(e){ data = null; }
             if (data && data.__pending){
               // 앞서 보낸 같은 요청이 서버에서 아직 실행 중 — 재시도 횟수를 쓰지 않고 다시 묻는다.
-              if (Date.now() - startedAt < PENDING_GIVE_UP_MS){
+              // [2026.10.22 가상사건 발견] 사건처리(case_proc)는 3단계(세액계산기 칸 채우기)가 서류 15개 이상·다필지면 4분을 넘겨, 서버는 끝냈는데 화면이 결과를 못 받고
+              //  "4분 넘게"로 끊겨 계산기 칸이 비었다(가상양도2·4·상속3·증여1·2). 구글 서버 한 번 실행 상한(6분)까지는 기다린다 — 그 밖의 호출은 그대로 4분
+              var giveUpMs = abortMs > 25000 ? 370000 : PENDING_GIVE_UP_MS;
+              if (Date.now() - startedAt < giveUpMs){
                 return new Promise(function(r){ setTimeout(r, PENDING_DELAY_MS); }).then(function(){ return attempt(n); });
               }
               throw new Error('서버가 4분 넘게 처리 중입니다. 화면을 새로고침해 결과가 반영됐는지 확인하세요.');
