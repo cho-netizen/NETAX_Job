@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 17:58 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 22:08 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -55476,7 +55476,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (r.report){ var rep = line(''); rep.style.whiteSpace = 'pre-wrap'; rep.textContent = '🤖 AI 보고\n' + r.report; }
     applied.forEach(function(d){ line('🤖 넣음: ' + d.칸 + ' = ' + d.value + ' — 근거: ' + d.why + ' (' + d.sure + ')'); });
     ops.forEach(function(o){ line('🤖 AI 의견(넣지 않음 — 질문에서 확인): ' + o.itemId + ' = ' + o.value + ' — ' + o.why + ' (' + o.sure + ')'); });
-    dec.filter(function(d){ return /^거절/.test(d.결과 || ''); }).forEach(function(d){ line('근거 대조에서 거절: ' + d.칸 + ' = ' + d.value + ' — ' + d.결과, 'nxai-cp-line nxai-muted'); });
+    // [2026.10.22] 거절된 판단은 서버가 그 질문의 🤖 AI 의견(근거 대조 못 통과)으로 붙여 위 줄에 이미 나온다 — 같은 내용을 두 번 보이지 않게, 의견이 없는 거절만
+    dec.filter(function(d){ return /^거절/.test(d.결과 || '') && !ops.some(function(o){ return o.itemId === d.itemId && o.rejected; }); }).forEach(function(d){ line('근거 대조에서 거절: ' + d.칸 + ' = ' + d.value + ' — ' + d.결과, 'nxai-cp-line nxai-muted'); });
     if (r.gaps && r.gaps.length) line('모자랐던 도구(기록함): ' + r.gaps.map(function(g){ return g.want; }).join(' / '), 'nxai-cp-line nxai-muted');
     if (newAsks.length) line('💬 넥스가 여쭐 것 ' + newAsks.length + '건을 질문 목록에 올렸습니다 — 채팅창에 말로 답해 주세요.');
     // 값을 넣었으면 칸 채우기를 다시(넣은 값으로 남은 칸·질문이 바뀜). AI 의견·계산을 막는 질문 표시는 nxAiCpAiMark_가 붙인다
