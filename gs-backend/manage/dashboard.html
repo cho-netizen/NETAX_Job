@@ -824,6 +824,10 @@
       var unanswered = (r.questions || []).filter(function(q){ return !q.answer; }).length;
       if (unanswered) html += '<div style="padding:6px 0;">❓ 개발자 질문 <b>' + unanswered + '건</b> <a href="#" data-dashgo="settings">답하러 가기</a></div>';
       // [2026.10.21] 주간 개발자 실행(웹 Claude 루틴) 기록 — 세무사님 결정: 실패·넘긴 일이 job에 남게(10-12 한도 초과 실패가 "성공"으로 남아 아무도 몰랐음)
+      // [2026.10.22] 고객이 고객창구(my.netax.kr)로 올린 서류 — 세무사님 "권장대로 하고…": 올라와도 아무도 모르던 것(사건 작업일지에도 한 줄씩 남음)
+      var ups = r.uploads || [];
+      if (ups.length) html += '<details style="padding:6px 0;"><summary style="cursor:pointer;"><b>📥 고객이 보낸 서류 ' + ups.length + '건</b>(최근 7일, 고객창구·카카오)</summary>'
+        + ups.slice(0, 15).map(function(u){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(u.at).slice(5)) + ' · ' + esc(u.경로 || '') + ' · ' + esc(u.사건 || u.rid || '') + ' — ' + esc((u.항목 ? u.항목 + ': ' : '') + (u.파일 || '')) + (u.caseId ? '' : ' (연결된 사건 없음)') + '</div>'; }).join('') + '</details>';
       var rt = r.routine || {}, rl = rt.last;
       if (rt.missing) html += '<div style="padding:6px 0; color:#a83232;"><b>⚠ 이번 주 개발자 실행 기록 없음</b> — 월요일 실행이 안 됐거나 기록 전에 멈췄습니다' + (rl ? ' (마지막 기록 ' + esc(String(rl.date).slice(5)) + ')' : '') + '</div>';
       if (rl){

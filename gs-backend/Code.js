@@ -3750,6 +3750,7 @@ function job_lookup_(input) {
       남은질문: (sv.remaining || []).map(function (it) { const d = dec[it.id] && dec[it.id].d; return { qid: it.id, 결정: d || '', 글: it.text, 넣을칸: it.ask ? { target: it.ask.target, label: it.ask.label, input: it.ask.input } : null, 후보: it.ask ? it.ask.cands : [] }; }),
       AI판단값: judged.slice(0, 20),
       // [2026.10.21] 세무사님 원문: "아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라" — 세무사님이 직접 한 일(처리일지·마지막 계산)도 넥스가 보게
+      고객제출: (function () { try { return c.my_report_id && typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(60, c.my_report_id) : []; } catch (e) { return []; } })(), // [2026.10.22] 고객창구·카카오로 받은 서류(최근 60일, 제출자료 폴더) — 새로 온 것이 있으면 다시 읽어 반영
       고객카톡: (function () { try { return typeof kakaoCaseMessages_ === 'function' ? kakaoCaseMessages_(c, 15) : []; } catch (e) { return []; } })(), // [2026.10.21] 참고로만 — 서류 값과 다르면 그 사실만 말씀드림
       최근처리일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).slice(-15).map(function (l) { return (l.date || '') + ' ' + String(l.text || '').slice(0, 200); }),
       마지막계산: (function () { try { const l = caseProcLastCalc_(c).last; return l ? { 날짜: l.계산일 || '', 구분: l.구분 || '', 최종세액: l.최종세액, 요약: String(l.요약 || '').slice(0, 1500) } : null; } catch (e) { return null; } })(),
@@ -16794,9 +16795,15 @@ function sendDailyDeadlineDigest() {
   } catch (err) {
     // 문자 발송 실패는 조용히 로그만 남김(트리거 실행이라 사용자에게 바로 안 보임)
     console.error('마감알림 SMS 발송 실패: ' + err.message);
+    smsFailLog_('마감 알림 문자(세무사님께)', err.message);
   }
 }
 
+// [2026.10.22] 문자 실패가 서버 로그(console)에만 남아 아무도 몰랐다(예약 들어온 문자가 안 와도 모름) — 세무사님 "권장대로 하고…".
+//  실패를 오류 기록에 남겨 job 🐞·주간 개선 보고서에 뜨게 한다(받는 번호는 적지 않음).
+function smsFailLog_(where, msg) {
+  try { ai_logBug({ entry: { kind: 'server', where: '문자 실패 · ' + where, message: String(msg || '').replace(/01[016789]-?\d{3,4}-?\d{4}/g, '[전화]').slice(0, 300) } }); } catch (e) {}
+}
 /** SOLAPI REST API v4 표준 서명 방식(HMAC-SHA256)으로 문자 1건을 보낸다. */
 function sendSolapiSms_(apiKey, apiSecret, from, to, text) {
   const date = new Date().toISOString();
@@ -17865,12 +17872,13 @@ function booking_sendSMS(to, message) {
   const apiKey = props.getProperty('SOLAPI_API_KEY');
   const apiSecret = props.getProperty('SOLAPI_API_SECRET');
   const senderPhone = props.getProperty('SOLAPI_SENDER_PHONE');
-  if (!apiKey || !apiSecret || !senderPhone || !to) return { success: false, message: '문자 발송 설정이 없거나 연락처가 없습니다.' };
+  if (!apiKey || !apiSecret || !senderPhone || !to) { if (!apiKey || !apiSecret || !senderPhone) smsFailLog_('문자 발송', '문자 서비스 설정(SOLAPI 열쇠·발신번호)이 없음'); return { success: false, message: '문자 발송 설정이 없거나 연락처가 없습니다.' }; }
   try {
     sendSolapiSms_(apiKey, apiSecret, senderPhone.replace(/-/g, ''), String(to).replace(/-/g, ''), message);
     return { success: true };
   } catch (err) {
     console.error('상담예약 SMS 발송 실패: ' + err.message);
+    smsFailLog_('문자 발송(예약 알림·고객 문자)', err.message);
     return { success: false, message: err.message };
   }
 }
@@ -19106,7 +19114,46 @@ function my_handleGetChecklistStatus(params, ctx) {
   return { success: true, checklist: checklist, submission_status: status };
 }
 
+// [2026.10.22] 세무사님 "권장대로 하고, 모두 완료한 다음에 일괄 배포하라" — 고객이 my.netax.kr로 서류를 올려도 세무사님·넥스가 몰랐다
+//  (폴더 저장 + SubmissionLog 한 줄뿐, SubmissionLog는 아무도 안 읽음). 올라오면 ① 그 사건 작업일지에 "[고객 제출]" 한 줄(넥스 사건처리 조회의
+//  최근 처리일지로 보임) ② 대시보드 "📥 고객이 보낸 서류"와 넥스 사건처리 조회(고객제출) — 제출 기록표를 읽음(카카오 봇이 받은 파일 포함).
+//  업로드 자체는 이 기록이 실패해도 성공으로 둔다.
 function my_handleUploadFile(params, ctx) {
+  const r = my_handleUploadFileCore_(params, ctx);
+  if (r && r.success) { try { custUploadNote_(params, ctx); } catch (e) { try { ai_logBug({ entry: { kind: 'server', where: '고객 제출 알림', message: String(e && e.message || e).slice(0, 200) } }); } catch (x) {} } }
+  return r;
+}
+function custUploadNote_(params, ctx) {
+  const rid = String(params.report_id || '').trim(), fileName = String(params.filename || '제출파일').trim(), item = String(params.checklist_item || '').trim();
+  let wc = null;
+  try {
+    const d = work_getSheet_().getDataRange().getValues(), ci = d[0].indexOf('my_report_id'), ii = d[0].indexOf('id');
+    for (let i = 1; i < d.length && ci >= 0; i++) if (String(d[i][ci]).trim().toUpperCase() === rid.toUpperCase()) { wc = job_findCase_(d[i][ii]); break; }
+  } catch (e) {}
+  const now = new Date(), text = '[고객 제출] ' + (item ? item + ' — ' : '') + fileName + ' (고객창구 업로드 → 제출자료 폴더)';
+  if (wc) work_updateCase({ id: wc.id, 작업일지: (Array.isArray(wc.작업일지) ? wc.작업일지 : []).concat([{ id: 'log_' + now.getTime(), date: Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd'), text: text.slice(0, 200), dueDate: '' }]) });
+}
+// 고객이 보낸 서류 목록 — 고객창구(my.netax.kr)와 카카오 봇(NETAX_Kakao)이 함께 쓰는 제출 기록표(SubmissionLog: 접속코드·파일·항목·시각)를 읽는다.
+//  rid(접속코드)를 주면 그 사건 것만. 사건 연결은 사건 목록의 my_report_id로.
+function custUploadsRecent_(days, rid) {
+  const since = Date.now() - (days || 7) * 86400000, want = String(rid || '').trim().toUpperCase();
+  const sh = SpreadsheetApp.openById(MY_SHEET_ID).getSheetByName(MY_SHEET_SUB_LOG);
+  if (!sh || sh.getLastRow() < 2) return [];
+  const n = Math.min(400, sh.getLastRow() - 1), rows = sh.getRange(sh.getLastRow() - n + 1, 1, n, 4).getValues();
+  const cases = {};
+  try { const d = work_getSheet_().getDataRange().getValues(), ci = d[0].indexOf('my_report_id'), ii = d[0].indexOf('id'), ni = d[0].indexOf('사건명'), gi = d[0].indexOf('고객명'); for (let i = 1; i < d.length && ci >= 0; i++) { const k = String(d[i][ci]).trim().toUpperCase(); if (k) cases[k] = { id: d[i][ii], 사건: String(d[i][ni] || d[i][gi] || '') }; } } catch (e) {}
+  const out = [];
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i], t = r[3] instanceof Date ? r[3].getTime() : Date.parse(r[3]), k = String(r[0] || '').trim().toUpperCase();
+    if (!t || t < since) continue;
+    if (want && k !== want) continue;
+    const c = cases[k] || null, kakao = String(r[2]) === '(카카오채널 제출)';
+    out.push({ at: Utilities.formatDate(new Date(t), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 경로: kakao ? '카카오' : '고객창구', caseId: c ? c.id : '', 사건: c ? c.사건 : '', 파일: String(r[1] || '').slice(0, 80), 항목: kakao ? '' : String(r[2] || '').slice(0, 40), rid: k });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+function my_handleUploadFileCore_(params, ctx) {
   const base64Data = params.base64_data || '';
   const fileName = String(params.filename || '제출파일').trim();
   const mimeType = params.mime_type || 'application/pdf';
