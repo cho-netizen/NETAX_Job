@@ -310,6 +310,9 @@ function commReportGap_(input) {
     var f = commGapsFile_(), arr = [];
     try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (x) { arr = []; }
     arr.push(e); f.setContent(JSON.stringify(arr.slice(-200)));
+    // [2026.10.22] 전에 고친 신고와 같은 것이면 넥스에게 고친 내용을 알려 다시 시도하게(다시 신고로 표시돼 개발자가 먼저 봄)
+    var before = null; try { before = commGapStatus_({ want: e.want, at: '9999' }, commGapsResolved_()).처리; } catch (x) { before = null; }
+    if (before) return { success: true, message: '개발자에게 "고쳤는데 다시 막힘"으로 전달했습니다. 전에 이렇게 고쳤다고 기록돼 있습니다 — ' + String(before.처리 || '').slice(0, 300) + ' 그 방법대로 한 번 다시 해 보고, 그래도 안 되면 사용자에게 "개발자에게 알렸다"고 짧게 말하라.' };
     return { success: true, message: '개발자(주간 정비 루틴)에게 전달했습니다. 사용자에게 "기능 부족을 개발자에게 알렸다"고만 짧게 말하라.' };
   });
 }
@@ -318,6 +321,38 @@ function commRecentGaps_(days) {
   try { arr = JSON.parse(commGapsFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (x) { arr = []; }
   var since = Date.now() - days * 86400000;
   return arr.filter(function (g) { return improve_parseAt_(g.at) >= since; });
+}
+// [2026.10.22] 세무사님 "진행하고 다음으로 넘어가자" — 기능 부족 신고에 "처리됨" 표시가 없어 고친 신고가 매주 다시 실렸다.
+//  처리 장부 = 저장소 docs/gaps-resolved.json([{want: 신고 앞부분, at: 고친 시각, 처리, 근거}]) — 고친 PR·커밋이 한 줄 더한다(웹 루틴·PC Claude 공통).
+//  신고 want가 장부 want로 시작하면: 신고 시각 ≤ 고친 시각 → 처리됨(보고서·알림에서 뺌), 신고 시각 > 고친 시각 → 다시 신고(고쳤는데 또 막힘, 먼저 볼 것).
+function commGapsResolved_() {
+  var cache = CacheService.getScriptCache(), hit = cache.get('gaps_resolved_json'), txt = hit;
+  if (hit === null) {
+    try { var r = UrlFetchApp.fetch('https://raw.githubusercontent.com/' + GH_REPO_ + '/main/docs/gaps-resolved.json?t=' + Date.now(), { muteHttpExceptions: true }); txt = r.getResponseCode() === 200 ? r.getContentText('UTF-8') : '[]'; } catch (e) { txt = '[]'; }
+    try { cache.put('gaps_resolved_json', txt, 1800); } catch (e) {}
+  }
+  try { var a = JSON.parse(txt || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function commGapNorm_(s) { return String(s || '').replace(/\s+/g, ''); }
+// 신고 하나의 상태 — { 상태: '미처리' | '처리됨' | '다시 신고', 처리: 장부 줄 }
+function commGapStatus_(g, resolved) {
+  var w = commGapNorm_(g && (g.want || g.userWanted)), at = String(g && g.at || ''), hit = null;
+  (resolved || []).forEach(function (r) { var k = commGapNorm_(r && r.want); if (k && w.indexOf(k) === 0 && (!hit || String(r.at) > String(hit.at))) hit = r; });
+  if (!hit) return { 상태: '미처리', 처리: null };
+  return { 상태: at && at > String(hit.at || '') ? '다시 신고' : '처리됨', 처리: hit };
+}
+// 처리됨은 빼고, 남은 것에 상태를 붙인다(다시 신고가 앞). 처리된 건수도 함께.
+function commGapsOpen_(gaps, resolved) {
+  var open = [], done = 0;
+  (gaps || []).forEach(function (g) {
+    var s = commGapStatus_(g, resolved);
+    if (s.상태 === '처리됨') { done++; return; }
+    var x = {}; Object.keys(g).forEach(function (k) { x[k] = g[k]; }); x.상태 = s.상태;
+    if (s.처리) x.전에고친것 = String(s.처리.처리 || '').slice(0, 200) + (s.처리.근거 ? ' — ' + s.처리.근거 : '');
+    open.push(x);
+  });
+  open.sort(function (a, b) { return (a.상태 === '다시 신고' ? 0 : 1) - (b.상태 === '다시 신고' ? 0 : 1); });
+  return { open: open, done: done };
 }
 // ④ 개발자 질문 큐 — 루틴이 저장소 docs/dev-questions.md에 "## Q-날짜-번호 제목" 블록으로 질문을 남기면 job이 보여 주고 답을 받는다
 var COMM_ANSWERS_PROP_ = 'NX_DEV_ANSWERS';

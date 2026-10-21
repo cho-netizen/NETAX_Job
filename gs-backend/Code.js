@@ -37679,13 +37679,16 @@ function buildImprovementReport_() {
     st.tracking.entries.forEach(function (x) { byAt[x.at] = x; });
     report.requests = report.requests.map(function (r) { if (r.id) return r; var x = byAt[r.at] || {}; return { id: x.id || '', status: x.status || '접수', urgent: !!x.urgent, at: r.at, text: r.text, reopenNote: x.reopenNote || '' }; });
     report.requests.filter(function (r) { return r.urgent; }).forEach(function (r) { headline.unshift('🚨 긴급 요청 ' + r.id + ' — ' + String(r.text).replace(/\s+/g, ' ').slice(0, 50)); });
-    report.gaps = commRecentGaps_(14);
-    if (report.gaps.length) headline.push('🧩 job AI가 할 수 없었던 요청 ' + report.gaps.length + '건(기능 부족 신고)');
+    var gapsRes = commGapsResolved_(), gapsSplit = commGapsOpen_(commRecentGaps_(14), gapsRes); // [2026.10.22] 처리됨은 빼고 다시 신고를 앞에
+    report.gaps = gapsSplit.open; report.gapsResolvedRecent = gapsSplit.done;
+    var gapsAgain = report.gaps.filter(function (g) { return g.상태 === '다시 신고'; }).length;
+    if (report.gaps.length) headline.push('🧩 job AI가 할 수 없었던 요청 ' + report.gaps.length + '건(기능 부족 신고' + (gapsAgain ? ', 고쳤는데 다시 신고 ' + gapsAgain + '건' : '') + ')');
+    if (gapsSplit.done) headline.push('✔ 기능 부족 신고 중 처리됨 ' + gapsSplit.done + '건(최근 14일, 보고서에서 뺌)');
     report.answers = commDevQuestions_().filter(function (q) { return q.answer; }).map(function (q) { return { id: q.id, title: q.title, answer: q.answer, at: q.answeredAt }; });
     if (report.answers.length) headline.push('💬 개발자 질문에 세무사님이 답함 ' + report.answers.length + '건');
     report.candidateCount += report.gaps.length + report.answers.length;
     report.guide.push('요청 번호: requests의 id(R…)를 그 요청을 고친 커밋·PR 제목에 "[요청#R…]"으로 넣는다 — 📥 반영 때 job이 그 요청을 "반영됨"으로 바꾸고 세무사님 확인을 받는다. status=재오픈이면 reopenNote(세무사님 지적)를 우선 고친다. urgent(🚨)는 최우선.');
-    report.guide.push('gaps(🧩 기능 부족 신고): job AI가 사용자 요청을 도구가 없어 못 한 기록. 반복되거나 쉬운 것부터 도구·⚡바로처리로 만든다(유료 AI 호출 추가 금지 원칙 그대로).');
+    report.guide.push('gaps(🧩 기능 부족 신고): job AI가 사용자 요청을 도구가 없어 못 한 기록. 반복되거나 쉬운 것부터 도구·⚡바로처리로 만든다(유료 AI 호출 추가 금지 원칙 그대로). 처리됨은 이미 빠져 있다. 상태=다시 신고는 고쳤는데 또 막힌 것(전에고친것 참고) — 최우선. 신고를 고치는 PR은 docs/gaps-resolved.json에 {want: 그 신고 want 앞 20~40자 그대로, at: "YYYY-MM-DD HH:mm"(고친 시각, KST), 처리: 무엇을 고쳤나 쉬운 말, 근거: 커밋·PR} 한 줄을 함께 더한다(aiLead.gaps의 AI 지휘 빠진 도구도 같은 장부). 실제로 막힘이 풀리는지 확인 못 했으면 더하지 않는다.');
     report.guide.push('개발자 질문: 판단이 필요하면 추측하지 말고 docs/dev-questions.md에 "## Q-YYYYMMDD-n 제목" 블록(쉬운 말, 고객 정보 없이)을 추가하는 PR을 올린다. answers에 세무사님 답이 오면 반영하고 그 블록을 지운다.');
     report.guide.push('🛠 AI 회의(시스템 안건, 2026-10-19 재편): 이 보고서의 반복 오류·유료 비용·막힌 기능·요청과 개정 감시의 기술 변화가 안건이다. 위원 = Gemini API(무료 등급, 고객 정보 없이 묻기), 회장 = 이 정비 루틴. 결론은 고침 작업(PR)으로, 결론 안 난 것과 돈 드는 결정만 docs/dev-questions.md로 세무사님께. 위원 답은 틀릴 수 있으니 공식 문서로 사실 확인 후 반영.');
   } catch (e) { report.federation = { error: String(e && e.message || e).slice(0, 200) }; }

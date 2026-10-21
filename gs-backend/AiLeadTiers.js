@@ -201,7 +201,7 @@ function caseProcAiWeeklyFrom_(runs, paid, gaps, promoted, opt) {
     const move = r === 'lead' && t.lead >= 3 && same >= 80 && !t.fixed ? '내리기 후보(총괄 → 저비용 또는 GAS 규칙)' : r === 'light' && t.judged >= 3 && fixRate >= 30 ? '올리기 후보(저비용 → 총괄)' : '';
     return { topic: t.topic, route: r, items: t.items, fixRate: fixRate, leadSame: same, move: move };
   }).sort(function (a, b) { return b.items - a.items; });
-  const gapCount = {}, gapSit = {}; (gaps || []).forEach(function (g) { const k = String(g.want || '').slice(0, 80); if (k) { gapCount[k] = (gapCount[k] || 0) + 1; if (g.situation && !gapSit[k]) gapSit[k] = String(g.situation).slice(0, 300); } });
+  const gapCount = {}, gapSit = {}; (opt && opt.gapOpen || gaps || []).forEach(function (g) { const k = String(g.want || '').slice(0, 80); if (k) { gapCount[k] = (gapCount[k] || 0) + 1; if (g.situation && !gapSit[k]) gapSit[k] = String(g.situation).slice(0, 300); } });
   // [2026.10.21] 막힌 상황 예시 한 줄 — 개발자(Claude)가 재현할 수 있게(넥스 ↔ Claude 소통: 신고에 맥락)
   const gapTop = Object.keys(gapCount).sort(function (a, b) { return gapCount[b] - gapCount[a]; }).slice(0, 15).map(function (k) { return { want: k, n: gapCount[k], situation: gapSit[k] || '' }; });
   const lines = [];
@@ -221,7 +221,10 @@ function caseProcAiWeekly_(opt) {
   opt = opt || {};
   let paid = []; try { paid = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { paid = []; }
   let dev = []; try { dev = String(PropertiesService.getScriptProperties().getProperty('AI_DEV_CASE_IDS') || '').split(/[,\s]+/).filter(Boolean); } catch (e) {}
-  return caseProcAiWeeklyFrom_(caseProcAiReadJson_(CASEPROC_AI_LOG_NAME_), paid, caseProcAiReadJson_(CASEPROC_AI_GAP_LOG_), caseProcAiReadJson_(CASEPROC_AI_PROMOTE_LOG_), { dev: dev, weeks: +opt.weeks || 12 });
+  // [2026.10.22] 처리 장부(docs/gaps-resolved.json)에서 처리됨인 빠진 도구는 "빠진 도구" 순위에서 뺀다(주간 건수 세기엔 그대로)
+  let gapAll = caseProcAiReadJson_(CASEPROC_AI_GAP_LOG_), gapOpen = gapAll;
+  try { if (typeof commGapsOpen_ === 'function') gapOpen = commGapsOpen_(gapAll, commGapsResolved_()).open; } catch (e) { gapOpen = gapAll; }
+  return caseProcAiWeeklyFrom_(caseProcAiReadJson_(CASEPROC_AI_LOG_NAME_), paid, gapAll, caseProcAiReadJson_(CASEPROC_AI_PROMOTE_LOG_), { dev: dev, weeks: +opt.weeks || 12, gapOpen: gapOpen });
 }
 
 // =========================================================
