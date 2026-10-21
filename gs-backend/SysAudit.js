@@ -706,7 +706,7 @@ function sysAuditPathData_() {
   if (typeof caseProcAiLiveTools_ === 'function') {
     var lt = caseProcAiLiveTools_().map(function (t) { return { name: t.name, description: String(t.description || '') }; });
     var ls = '';
-    try { ls = caseProcAiLiveSystem_(1000); } catch (e) { ls = ''; }
+    try { ls = typeof caseProcAiLiveModeText_ === 'function' ? caseProcAiLiveModeText_(1000) : caseProcAiLiveSystem_(1000); } catch (e) { ls = ''; } // [2026.10.21] 마스터 프로필은 job 경로에서 보므로 지휘 고유 부분만
     paths.push({ key: 'lead', label: 'AI 지휘(이 사건 처리하자)', tools: lt, prompt: ls });
   }
   return paths;

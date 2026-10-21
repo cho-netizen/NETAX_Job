@@ -149,7 +149,24 @@ function caseProcAiLiveTools_() {
   tools[tools.length - 1].cache_control = { type: 'ephemeral' };
   return tools;
 }
+// [2026.10.21 넥스 하나로] 세무사님 원문: "관리든 사건처리든 최상위 ai(이하 "넥스"라 부른다)는 나의 대리인의 자격으로 존재한다"
+//  "넥스 하나로 합치는 쪽으로 승인한다. 같은 채팅창내에서의 대화는 어떤 ai라도 모두 공유하는 것으로 알고 있었다"
+//  사건 지휘도 채팅창 넥스와 같은 신분 — 같은 기본 지시문(DEFAULT_SYSTEM_PROMPT)과 마스터 프로필(remember_fact로 기억한 지침)을 앞에 둔다.
+//  야간 경로 점검(SysAudit.js)은 마스터 프로필을 job 경로에서 이미 보므로 지휘 고유 부분(caseProcAiLiveModeText_)만 본다.
+function caseProcAiNexBase_() {
+  let master = '';
+  try { master = typeof getMasterProfileText_ === 'function' ? getMasterProfileText_() || '' : ''; } catch (e) { master = ''; }
+  return DEFAULT_SYSTEM_PROMPT + (master ? '\n\n' + master : '') + '\n\n'
+    + '[사건 지휘 모드 — 같은 넥스] 지금은 세무사님이 채팅창에서 "이 사건 처리하자"라고 맡긴 사건을 지휘한다. 위 마스터 프로필은 세무사님의 성향·지침을 알기 위한 것이다 — '
+    + '거기 나온 도구 중 아래 목록에 없는 것은 부르지 않고 같은 일을 하는 네 도구로 한다(도구 부족 신고는 report_tool_gap). 채팅창에서 세무사님이 하신 말씀은 첫 글의 [세무사님 말씀]에 있다 — 서류보다 앞서는 지시로 따르되, 세액이 크게 갈리는 칸(시가·특수관계 등)은 그 말씀을 근거로 넣지 말고 질문 메모로 확인한다.\n'
+    // [2026.10.21] 세무사님 원문: "내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"
+    + '[맡긴 범위] 세무사님은 사건을 전체로 맡기기도, 일부만 맡기기도, 직접 처리하기도 한다. (1) 말씀이 범위를 정하면(예: "취득가액만 봐줘", "사건분류만") 그 범위의 자리만 판단하고 나머지 자리는 손대지 않은 채 보고에 "맡기지 않으셔서 두었음"으로 적는다. '
+    + '(2) 세무사님이 직접 넣거나 결정한 값(사이드바 확인·세액계산 화면 입력·지난 처리 뒤 고친 값)은 바꾸지 않는다 — 서류와 어긋나 보이면 넣지 말고 질문 메모로 여쭌다. (3) 범위 말씀이 없으면 전체를 맡긴 것으로 본다.\n\n';
+}
 function caseProcAiLiveSystem_(cap) {
+  return caseProcAiNexBase_() + caseProcAiLiveModeText_(cap);
+}
+function caseProcAiLiveModeText_(cap) {
   return caseProcAiSystem_() + '\n\n' + [
     '[운영 — 지금 판]',
     '- 너는 입구(GAS)가 상수 한 바퀴를 끝낸 뒤 넘긴 AI 자리만 맡는다. 서류 읽기·나누기·사진 보정·화면 계산·서식 PDF·저장·검토서는 화면이 끝에 지금 순서대로 한다.',
@@ -339,6 +356,47 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
   return { ok: !!(r && r.ok !== false), 반영: r && r.ok !== false ? '넣음(🤖 AI 판단)' : '실패', 이유: (r && (r.message || r.error)) || '', 근거대조: chk.why };
 }
 
+// [2026.10.21 넥스 하나로] 첫 글 = GAS 입구 요약 + 세무사님 말씀(채팅창 명령 문장 전체) + 같은 채팅창의 최근 대화 + 지난 처리 요약.
+//  세무사님 원문: "같은 채팅창내에서의 대화는 어떤 ai라도 모두 공유하는 것으로 알고 있었다" — 예전엔 GAS 요약 한 장만 받아 "처리하자, 시가는 감정가로" 같은 덧붙인 말이 사라졌다.
+//  화면이 보낸 body.userText(명령 문장)·body.chat([{role,text}] 최근 대화, 글만). 길이는 잘라서(대화 6천 자·지난 처리 2천 자) — 비용은 첫 차례 한 번, 이후 차례는 캐시.
+function caseProcAiFirstText_(c, body) {
+  const L = [String(body.entry || '사건 ' + c.id + ' — 입구 요약 없음. calc_fill부터.')];
+  const said = String(body.userText || '').trim();
+  if (said) L.push('', '[세무사님 말씀 — 이 처리를 맡기며 채팅창에 쓰신 문장 그대로]', caseProcAiCut_(said, 1500));
+  const chat = (Array.isArray(body.chat) ? body.chat : []).map(function (m) { return (m && m.role === 'user' ? '세무사님: ' : '넥스: ') + String((m && m.text) || '').replace(/\s+/g, ' ').trim(); }).filter(function (s) { return s.length > 6; });
+  if (chat.length) {
+    let txt = chat.join('\n'); if (txt.length > 6000) txt = '…(앞 생략)\n' + txt.slice(-6000);
+    L.push('', '[같은 채팅창의 최근 대화 — 이 사건에 대한 세무사님 지시·답이 있으면 따른다]', txt);
+  }
+  let last = null;
+  try { const sv = caseProcLoad_(c.id) || {}; const runs = Array.isArray(sv.aiLead) ? sv.aiLead : []; last = runs[runs.length - 1] || null; } catch (e) { last = null; }
+  if (last) {
+    const dec = (last.decisions || []).map(function (d) { return (d.itemId || d.칸 || '') + '=' + caseProcAiCut_(d.value || '', 30) + '(' + caseProcAiCut_(d.결과 || '', 20) + ')'; }).slice(0, 15);
+    L.push('', '[지난 처리 요약 — ' + String(last.at || '').slice(0, 16).replace('T', ' ') + ', ' + (last.mode || '') + ']',
+      (last.report ? caseProcAiCut_(last.report, 1500) : '(보고 없음)') + (dec.length ? '\n지난 판단: ' + dec.join(' · ') : '') + '\n지난 판단이 지금 칸 값과 다르면 세무사님이 고친 것이다 — 고친 값을 따르고 다시 넣지 않는다.');
+  }
+  return L.join('\n');
+}
+
+// [2026.10.21 넥스 하나로] 넥스가 GAS 질문 목록에 없는 것을 여쭐 때(ask_user에 itemIds 없이 note만) — 예전엔 화면 어디에도 안 떴다.
+//  마지막 지휘 처리의 그런 질문을 처리개요 질문(메모형, 🤖 표시)으로 올린다. 답은 채팅창에 말로 — 같은 채팅 대화가 다음 처리 첫 글로 넥스에게 간다.
+function caseProcAiNexAskItems_(c, r) {
+  if (!r || !Array.isArray(r.items)) return 0;
+  let last = null;
+  try { const sv = caseProcLoad_(c.id) || {}; last = (Array.isArray(sv.aiLead) ? sv.aiLead : []).slice(-1)[0] || null; } catch (e) { last = null; }
+  if (!last) return 0;
+  let n = 0;
+  (last.asks || []).forEach(function (a) {
+    const note = String((a && a.note) || '').trim();
+    if (!note || (a.ids || []).length) return;
+    const id = 'nex:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, note, Utilities.Charset.UTF_8)).slice(0, 10);
+    if (r.items.some(function (it) { return it.id === id; })) return;
+    r.items.push(caseProcItem_(id, 'judge', '🤖 넥스가 여쭙니다: ' + caseProcAiCut_(note, 300), { mode: 'note' }, (a.urgent ? '계산을 막는 질문입니다. ' : '') + '채팅창에 말로 답해 주시면 다음 처리 때 넥스가 그 답을 반영합니다(' + String(last.at || '').slice(0, 10) + ' 사건 지휘에서 올림).'));
+    n++;
+  });
+  return n;
+}
+
 // ---------- step 'turn' — 지휘 AI 한 차례 ----------
 //  body: { caseId, messages: [이전 차례들 — 화면이 그대로 들고 옴], entry: 첫 차례 입구 요약, spent: 지금까지 쓴 원, round, items: 첫 차례에만 화면의 마지막 질문 }
 function caseProcAiTurn_(body) {
@@ -352,7 +410,7 @@ function caseProcAiTurn_(body) {
   let ctx = round === 0 ? { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 } : caseProcAiCtxLoad_(caseId);
   if (round === 0 && Array.isArray(body.items)) ctx.lastItems = caseProcAiSlimItems_(body.items);
   let messages = Array.isArray(body.messages) ? body.messages.slice() : [];
-  if (!messages.length) messages = [{ role: 'user', content: caseProcAiMask_(String(body.entry || '사건 ' + caseId + ' — 입구 요약 없음. calc_fill부터.')) }];
+  if (!messages.length) messages = [{ role: 'user', content: caseProcAiMask_(caseProcAiFirstText_(c, body)) }];
   const subBefore = ctx.subWon || 0;
   const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, caseProcAiLiveSystem_(cap), caseProcAiLiveTools_(), caseProcAiCacheMark_(messages), 3000, 'medium');
   if (r.error) return { ok: false, error: r.error };
@@ -380,7 +438,8 @@ function caseProcAiFinish_(body) {
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
   const run = { at: new Date().toISOString(), 세목: c.세목, 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
-    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200) };
+    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200),
+    report: caseProcAiMask_(String(body.report || '').slice(0, 3000)) }; // [2026.10.21 넥스 하나로] 보고도 사건에 — 다음 처리 첫 글·검토서·채팅 넥스 조회가 읽는다
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}
   // [GAS 고도화 ①] 총괄 AI 판단을 2번 기록 모양(kind 'cx')으로 — 비용은 이번 지휘 비용을 판단 수로 나눠 붙임. 세무사님 수정은 다음 처리 때 2번 0) 단계가 붙인다
   if (run.mode === 'ai' && (ctx.cxItems || []).length) caseProcAiLogCx_(c, CASEPROC_AI_DIRECTOR_MODEL_, run.won / CASEPROC_AI_KRW_, ctx.cxItems, 1);

@@ -4218,7 +4218,18 @@ async function runAiAutoFillInheritanceAI_(){
 // 자동계산 대상이 아니므로 안내만 한다. 증여세는 giftActiveSubtab_이 'general'이 아니면
 // giftAmount 등 입력칸 자체가 화면에 없으므로(다른 특례 하위탭 표시 중), 먼저 'general'로
 // 강제 전환한다(switch-gift-subtab 핸들러와 동일한 CSS 토글 — 다른 하위탭 입력값은 안 날아감).
+// [2026.10.21 넥스 하나로] 세무사님 결정("권장대로 하자") — [📄 자동계산] 버튼과 넥스의 "자동계산 해줘"는 "이 사건 처리하자"와 같은 길로 간다
+//  (같은 사건을 두 방식으로 처리하지 않게). 예전 동작(AI가 서류 글을 보고 칸 채우기)은 tcRunAutoCalcOld_로 남아,
+//  "처리하자" 흐름 안에서 입력값이 비었을 때 세무사님이 승인하는 예비 단계(aichat.html)에서만 쓴다.
 function tcRunAutoCalc_(){
+  if (typeof nxAiCaseProc_ === 'function' && tcCurrentCase && tcCurrentCase.id){
+    var side = document.getElementById('sideAI'); if (side) side.classList.add('expanded');
+    nxAiCaseProc_(String(tcCurrentCase.사건명 || tcCurrentCase.고객명 || '') + ' 사건 처리하자', tcCurrentCase.id);
+    return;
+  }
+  tcRunAutoCalcOld_();
+}
+function tcRunAutoCalcOld_(){
   const activeTabEl = document.querySelector('.taxcalc-tab.active');
   const which = activeTabEl ? activeTabEl.dataset.tab : '';
   if (which === 'transfer'){

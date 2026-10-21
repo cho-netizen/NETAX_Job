@@ -355,6 +355,7 @@ function caseProcAiVarSpots_(name, raw, caseId) {
   const out = [];
   if (!raw || raw.error) return out;
   (raw.items || []).forEach(function (it) {
+    if (/^nex:/.test(String(it.id || ''))) return; // [2026.10.21] 넥스가 세무사님께 여쭌 질문 — 세무사님 답을 기다리는 것이라 AI 자리가 아님
     const a = it.ask || {}, n = caseProcAiOpts_(a).length;
     const why = /^cxt:|모순/.test(it.id + it.text) ? '판독 갈림' : it.kind === 'missing' ? '빈 칸' : (it.kind === 'judge' || a.mode === 'options') ? '판단 갈림길' : n >= 2 ? '어긋남' : it.kind === 'check' ? '어긋남' : '빈 칸';
     // [2026.10.19 시험33 조사] 납세의무자 칸(수증자·양도인)의 후보가 '사건 납세자' 하나뿐이고 서류에서 그 이름을 못 찾은 경우 — 대조할 서류가 없어

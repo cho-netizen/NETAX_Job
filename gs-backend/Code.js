@@ -3722,6 +3722,31 @@ function job_lookup_(input) {
   }
   if (kind === 'reports') return job_trimList_(job_execAction_('list_all_reports', {}), 80);
   if (kind === 'bug_log') return ai_listBugs();
+  // [2026.10.21 넥스 하나로] 세무사님 원문: "넥스 하나로 합치는 쪽으로 승인한다" — 채팅 넥스가 사건처리(지휘 넥스가 한 일 포함)를 보고 이어서 답하게
+  if (kind === 'caseproc') {
+    if (!input.caseId) return { error: 'caseproc는 caseId(작업관리 사건ID)가 필요합니다.' };
+    const c = job_findCase_(input.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + input.caseId };
+    const sv = caseProcLoad_(c.id) || {}, dec = sv.decisions || {};
+    const last = (Array.isArray(sv.aiLead) ? sv.aiLead : []).slice(-1)[0] || null;
+    let judged = []; try { judged = typeof cxAiJudgedList_ === 'function' ? cxAiJudgedList_(c.id) : []; } catch (e) { judged = []; }
+    const out = {
+      사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || '') + ' · ' + (c.업무유형 || ''), 마지막저장: sv.savedAt || '',
+      남은질문: (sv.remaining || []).map(function (it) { const d = dec[it.id] && dec[it.id].d; return { qid: it.id, 결정: d || '', 글: it.text, 넣을칸: it.ask ? { target: it.ask.target, label: it.ask.label, input: it.ask.input } : null, 후보: it.ask ? it.ask.cands : [] }; }),
+      AI판단값: judged.slice(0, 20),
+      // [2026.10.21] 세무사님 원문: "아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라" — 세무사님이 직접 한 일(처리일지·마지막 계산)도 넥스가 보게
+      최근처리일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).slice(-15).map(function (l) { return (l.date || '') + ' ' + String(l.text || '').slice(0, 200); }),
+      마지막계산: (function () { try { const l = caseProcLastCalc_(c).last; return l ? { 날짜: l.계산일 || '', 구분: l.구분 || '', 최종세액: l.최종세액, 요약: String(l.요약 || '').slice(0, 1500) } : null; } catch (e) { return null; } })(),
+      지난지휘: last ? { 때: last.at, 방식: last.mode, 비용원: last.won, 보고: last.report || '', 판단: (last.decisions || []).slice(0, 20), 의견: (last.opinions || []).slice(0, 20), 여쭌것: (last.asks || []).slice(0, 12) } : null,
+      안내: '세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정)은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다. 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}로 제안하라(넣을칸이 있는 질문만). 넣을칸이 없는 질문(메모형)은 세무사님 답을 대화로만 받고, 다음 "이 사건 처리하자" 때 지휘 넥스가 이 대화를 읽어 반영한다.'
+    };
+    return JSON.parse(cxMask_(JSON.stringify(out)));
+  }
+  // AI 판단이 쌓인 모습(토큰 0) — 주제별 판단 수·세무사님이 고친 비율·규칙 후보·빠진 도구(주간 점검표와 같은 자료)
+  if (kind === 'ai_review') {
+    const w = caseProcAiWeekly_({});
+    return { 줄: (w.lines || []).slice(0, 40), 규칙후보: (w.ruleCands || []).slice(0, 20), 주제: w.topics || null, 빠진도구: (w.gaps || []).slice(0, 20), 멈춤경고: w.stall || null };
+  }
   return { error: '알 수 없는 kind: ' + kind };
 }
 
@@ -3741,7 +3766,9 @@ const JOB_PROPOSE_ACTIONS_ = {
   blog_google: { gas: 'post_to_google_blog', label: '구글 블로그에 발행(공개 글)', required: ['content'] },
   // 수금관리 — 현금영수증 대조(둘 다 수금 기록을 새로 만들 수 있어 사람이 확인 후 실행)
   receipts_scan: { gas: 'scan_cash_receipts', label: '사건폴더의 현금영수증을 읽어 수금내역에 반영', required: [] },
-  receipts_import: { gas: 'import_hometax_receipts', label: '홈택스 현금영수증 매출내역 엑셀 가져오기', required: [] }
+  receipts_import: { gas: 'import_hometax_receipts', label: '홈택스 현금영수증 매출내역 엑셀 가져오기', required: [] },
+  // [2026.10.21 넥스 하나로] 채팅으로 한 답을 사건처리 질문의 칸에(job_buildProposal_가 저장된 질문으로 칸을 확인하고 카드 설명을 만든다)
+  caseproc_answer: { gas: 'case_proc', label: '사건처리 질문에 답 넣기', required: ['caseId', 'qid', 'target', 'value'] }
 };
 const JOB_CASE_UPDATE_FORBIDDEN_ = ['폴더ID', '생성일', '수정일', '고객ID', 'my_report_id', '하위업무'];
 
@@ -3764,6 +3791,20 @@ function job_buildProposal_(input) {
     if (!c || !c.my_report_id) return { error: '이 사건은 고객창구에 연결되지 않아 체크리스트가 없습니다.' };
     payload = { report_id: c.my_report_id, item: params.item, submitted: params.submitted !== false };
   }
+  // [2026.10.21 넥스 하나로] 세무사님이 채팅으로 한 답을 사건처리 질문의 칸에 — 사이드바 [확인]·말 답과 같은 반영 경로(caseProcApply_), 답 기록엔 "넥스 대화"
+  //  카드 설명은 서버가 만든다(AI가 쓴 요약이 아님). 넣을 칸(target)은 job_lookup caseproc의 저장된 질문에 있는 것만
+  if (input.action === 'caseproc_answer') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    const sv = caseProcLoad_(c.id) || {};
+    const q = (sv.remaining || []).filter(function (it) { return it.id === params.qid; })[0];
+    if (!q) return { error: '그 질문(qid)이 저장된 사건처리 질문에 없습니다 — job_lookup caseproc로 다시 확인하라.' };
+    if (!q.ask || q.ask.target !== params.target) return { error: '그 질문의 넣을 칸이 다릅니다(넣을칸 ' + (q.ask ? q.ask.target : '없음') + ') — 넣을칸이 없는 질문은 대화로만 답을 받는다.' };
+    const label = q.ask.label || params.label || String(q.text || '').slice(0, 40);
+    const src = ('세무사님 답(넥스 대화)' + (params.src ? ': ' + String(params.src) : '')).slice(0, 80);
+    payload = { caseId: c.id, step: 'apply', target: q.ask.target, value: params.value, src: src, label: label, ans: { qid: q.id, how: '넥스 대화', nCands: (q.ask.cands || []).length, pick: (q.ask.cands || []).map(function (x) { return String(x.v).replace(/[\s,]/g, ''); }).indexOf(String(params.value).replace(/[\s,]/g, '')), file: '' } };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 「' + label + '」에 ' + String(params.value).slice(0, 120) + ' 넣기 (' + src + ')', gasAction: spec.gas, payload: payload, kind: input.action, caseId: c.id } };
+  }
   if (input.action === 'case_update') {
     const bad = Object.keys(params).filter(function (k) { return JOB_CASE_UPDATE_FORBIDDEN_.indexOf(k) !== -1; });
     if (bad.length) return { error: '이 항목은 AI가 바꿀 수 없습니다: ' + bad.join(', ') };
@@ -3775,12 +3816,14 @@ function job_buildProposal_(input) {
 const JOB_AI_TOOLS_ = [
   {
     name: 'job_lookup',
-    description: 'job 화면의 자료를 조회한다(읽기 전용, 바로 실행). kind: bookings=상담 예약 목록(승인·거절 제안에 필요한 rowIndex 등 포함), consult_logs=고객 상담·자문·수금 기록(search=고객명으로 좁히기), checklist=사건의 고객창구 증빙 체크리스트(caseId 필요), memos=일반메모 목록, case_log=전체 사건 처리일지, reports=보고서 모음 목록, bug_log=job 오류 자동기록(최근 100건). 사건·고객 목록 자체는 list_work_cases·list_clients를 써라.',
+    description: 'job 화면의 자료를 조회한다(읽기 전용, 바로 실행). kind: bookings=상담 예약 목록(승인·거절 제안에 필요한 rowIndex 등 포함), consult_logs=고객 상담·자문·수금 기록(search=고객명으로 좁히기), checklist=사건의 고객창구 증빙 체크리스트(caseId 필요), memos=일반메모 목록, case_log=전체 사건 처리일지, reports=보고서 모음 목록, bug_log=job 오류 자동기록(최근 100건), '
+      + 'caseproc=사건처리 상태(caseId 필요 — 남은 질문·넣을 칸·후보와 출처·AI 판단 값·지난 사건 지휘에서 넥스가 한 보고·판단·여쭌 것. "이 사건 처리하자" 뒤 세무사님이 질문·값·이유를 물으면 먼저 이것을 본다), '
+      + 'ai_review=AI 판단이 쌓인 모습(주제별 판단 수·세무사님이 고친 비율·GAS 규칙 후보·빠진 도구). 사건·고객 목록 자체는 list_work_cases·list_clients를 써라.',
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log'] },
-        caseId: { type: 'string', description: 'checklist일 때 작업관리 사건ID' },
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ai_review'] },
+        caseId: { type: 'string', description: 'checklist·caseproc일 때 작업관리 사건ID' },
         search: { type: 'string', description: 'consult_logs일 때 고객명 검색어(선택)' }
       },
       required: ['kind']
@@ -3793,7 +3836,8 @@ const JOB_AI_TOOLS_ = [
       + 'client_sms{고객ID,message}(고객ID는 list_clients로 확인) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
-      + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기).',
+      + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
+      + 'caseproc_answer{caseId,qid,target,value,src(선택: 세무사님이 말한 근거)}(세무사님이 대화로 사건처리 질문에 답하면 그 칸에 넣기 — qid·target은 job_lookup caseproc의 남은질문 그대로, 세무사님이 말한 값만. 네 추측 값은 넣지 마라).',
     input_schema: {
       type: 'object',
       properties: {
@@ -3806,7 +3850,7 @@ const JOB_AI_TOOLS_ = [
   },
   {
     name: 'job_open_screen',
-    description: '사용자 화면에서 job 메뉴를 연다(caseId를 주면 그 사건으로). 사용자가 "○○ 화면 열어줘/보여줘"라고 하거나, 결과를 해당 화면에서 확인하게 할 때 쓴다. "○○ 사건 양도세(증여세·상속세) 자동계산 해줘"면 view=taxcalc, then=autocalc, taxTab을 지정하라 — 계산은 화면의 계산엔진이 하고, 확인이 필요한 항목은 화면이 사용자에게 직접 묻는다(답변에서 세액을 지어내지 마라). 바로 실행된다(화면 이동이라 되돌리기 쉬움). AI 대화는 오른쪽 사이드바로 옮겨가 이어진다.',
+    description: '사용자 화면에서 job 메뉴를 연다(caseId를 주면 그 사건으로). 사용자가 "○○ 화면 열어줘/보여줘"라고 하거나, 결과를 해당 화면에서 확인하게 할 때 쓴다. "○○ 사건 양도세(증여세·상속세) 자동계산 해줘"면 view=taxcalc, then=autocalc, taxTab을 지정하라 — [2026.10.21] "이 사건 처리하자"와 같은 처리(증빙 읽기·칸 채우기·판단 자리만 사건 지휘 넥스·계산)가 돌고, 확인이 필요한 항목은 질문 목록으로 묻는다(답변에서 세액을 지어내지 마라). 처리 뒤 결과·질문은 job_lookup caseproc로 본다. 바로 실행된다(화면 이동이라 되돌리기 쉬움). AI 대화는 오른쪽 사이드바로 옮겨가 이어진다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -4520,6 +4564,10 @@ function buildContextSystemPrompt(basePrompt, body) {
 
   staticExtra += '\n\n[분야별 업무관리자 우선순위] load_business_manager로 불러온 분야별 지침이 다른 일반 지침과 충돌하면, 그 분야에 한해서는 분야별 지침을 우선하라.';
 
+  // [2026.10.21 넥스 하나로] 세무사님 원문: "넥스 하나로 합치는 쪽으로 승인한다" / "내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"
+  if (ctx.aiPanel) staticExtra += '\n\n[넥스는 하나 — 사건처리와 이어짐] "이 사건 처리하자"로 돌린 사건 지휘도 너(넥스)다. 대화 기록의 [⚡사건 처리] 요약에 그때 한 일(보고·넣은 값·의견·여쭌 것)이 있다. '
+    + '세무사님이 그 사건의 질문·값·이유를 물으면 job_lookup caseproc로 남은 질문·출처·지난 지휘 기록·처리일지를 보고 답하고, 세무사님이 말로 답을 주면 job_propose_action caseproc_answer로 그 칸에 넣기를 제안한다(세무사님이 말한 값만). '
+    + '세무사님은 사건을 전체로 맡기기도(처리하자), 일부만 맡기기도("○○만 봐줘" — 그 부분만 답하고 나머지는 건드리지 않음), 직접 처리하기도 한다(사이드바·세액계산 화면) — 세무사님이 직접 넣은 값은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다.';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
   if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
@@ -32280,6 +32328,7 @@ function caseProcOverview_(c) {
   try { caseProcCleanCands_(r); } catch (e) {}
   // [2026.10.18 교차검증 2번] 질문 중 "어느 값인가"를 묻는 것 — GAS 객관 규칙(같은 값·검산·법령 정의)으로 풀고, 남은 것은 AI에게 물을 쟁점 목록으로(CrossCheck.js)
   try { if (r && r.ok && typeof cxResolve_ === 'function') cxResolve_(c, r); } catch (e) { if (r && r.lines) r.lines.push('⚠ 교차검증 중 오류: ' + (e && e.message || e)); }
+  try { if (r && r.ok && typeof caseProcAiNexAskItems_ === 'function') caseProcAiNexAskItems_(c, r); } catch (e) {} // [2026.10.21 넥스 하나로] 넥스가 질문 목록 밖에서 여쭌 것(AiLeadLive.js)
   return r;
 }
 // [2026.10.16 후보 1번 점검] 이름·소재지 질문의 후보 중 그 칸 값이 될 수 없는 문장 조각을 뺀다 —
@@ -37011,7 +37060,12 @@ function caseProcSave_(caseId, body) {
     else dec[k] = { d: String(d.d).slice(0, 4), at: String(d.at || caseProcToday_()).slice(0, 10), text: String(d.text || '').slice(0, 200), note: String(d.note || '').slice(0, 200) };
   });
   const items = (Array.isArray(body.items) ? body.items : []).slice(0, 80).map(function (it) {
-    return { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
+    const o = { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
+    // [2026.10.21 넥스 하나로] 넣을 칸·후보(출처) — 채팅 넥스의 사건처리 조회·답 제안(job_lookup caseproc · job_propose_action caseproc_answer)이 쓴다
+    const a = it.ask;
+    if (a && a.target) o.ask = { target: String(a.target).slice(0, 120), label: String(a.label || '').slice(0, 80), input: String(a.input || '').slice(0, 20), mode: String(a.mode || '').slice(0, 20),
+      cands: (Array.isArray(a.cands) ? a.cands : []).slice(0, 6).map(function (q) { return { v: String(q && q.v != null ? q.v : '').slice(0, 120), label: String((q && q.label) || '').slice(0, 80), src: String((q && q.src) || '').slice(0, 80) }; }) };
+    return o;
   });
   const gone = function (it) { const d = dec[it.id] && dec[it.id].d; return d === '무시' || d === 'done'; };
   remain = items.filter(function (it) { return !gone(it); });
@@ -37095,6 +37149,13 @@ function caseProcDraft_(c) {
   L.push('## ' + (paras.length ? '4' : '3') + '. 추가로 확인할 사항', '');
   if (remain.length) remain.forEach(function (it) { const d = dec[it.id] && dec[it.id].d; L.push('- ' + (d === '보류' ? '(보류) ' : d === '예정' ? '(받을 예정) ' : '') + it.text + (dec[it.id] && dec[it.id].note ? ' — ' + dec[it.id].note : '')); });
   else L.push('- 없음');
+  // [2026.10.21 넥스 하나로] 넥스(사건 지휘)가 여쭌 것의 메모 — 예전엔 급한 질문 메모만 화면에 붙고 나머지는 사라졌다. 마지막 지휘 처리분만
+  const lastLead = (Array.isArray(saved.aiLead) ? saved.aiLead : []).slice(-1)[0];
+  const leadAsks = lastLead ? (lastLead.asks || []).filter(function (a) { return a && String(a.note || '').trim(); }) : [];
+  if (leadAsks.length) {
+    L.push('', '**🤖 넥스가 여쭌 것(' + String(lastLead.at || '').slice(0, 10) + ' 사건 지휘)**', '');
+    leadAsks.forEach(function (a) { L.push('- ' + (a.urgent ? '(계산을 막음) ' : '') + String(a.note).replace(/\s+/g, ' ').slice(0, 300)); });
+  }
   const md = L.join('\n') + '\n';
   const sub = work_getCaseSubfolders({ caseId: c.id });
   const folder = DriveApp.getFolderById(sub && sub.internalFolderId ? sub.internalFolderId : c.폴더ID);

@@ -1704,6 +1704,8 @@
       callGas(a.gasAction, a.payload || {}).then(function(res){
         var ok = !(res && (res.success === false || res.error));
         finish(ok ? ('✅ 실행했습니다' + (res && res.message ? ': ' + res.message : '')) : ('실행하지 못했습니다: ' + ((res && (res.message || res.error)) || '알 수 없는 오류')), ok);
+        // [2026.10.21 넥스 하나로] 채팅으로 넣은 답 — 같은 사건의 처리 화면이 열려 있으면 칸 채우기를 다시 돌려 질문 목록을 맞춘다
+        if (ok && a.kind === 'caseproc_answer' && typeof NXAI_CP_ACTIVE_ !== 'undefined'){ var cpSt = NXAI_CP_ACTIVE_.filter(function(s){ return s.caseId === a.caseId && !s.running && s.bubble && document.body.contains(s.bubble); }).pop(); if (cpSt) nxAiCaseProcLoop_(cpSt, 0).then(function(){ nxAiCaseProcFoot_(cpSt); }).catch(function(){}); }
         if (ok && /^(booking_)/.test(a.kind) && typeof initBooking === 'function' && document.getElementById('view-booking') && document.getElementById('view-booking').classList.contains('active')) initBooking();
         if (ok && a.kind === 'case_update' && typeof initWorkManage === 'function' && document.getElementById('view-workmanage') && document.getElementById('view-workmanage').classList.contains('active')) initWorkManage();
       }).catch(function(err){
@@ -2263,7 +2265,7 @@
           if (!tab) return { md: '**' + c.사건명 + '** — 어느 세목(양도·증여·상속)으로 자동계산할지 함께 말씀해 주세요.', note: '[⚡바로 처리] 자동계산 세목 미지정' };
           nxAiOpenJobView_('taxcalc', c.id, '', 'autocalc', tab);
           var tabName = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' }[tab];
-          return { md: '**' + c.사건명 + '** 사건의 ' + tabName + ' 자동계산을 시작했습니다. 세액계산 화면에서 증빙을 읽어 칸을 채우고, 확인이 필요한 항목은 화면이 직접 묻습니다.', note: '[⚡바로 처리] ' + c.사건명 + ' ' + tabName + ' 자동계산 시작' };
+          return { md: '**' + c.사건명 + '** 사건의 ' + tabName + ' 자동계산을 "이 사건 처리하자"와 같은 순서로 시작했습니다(증빙 읽기 → 계산기 칸 채우기 → 판단할 자리만 넥스 → 계산). 확인이 필요한 항목은 질문 목록으로 여쭙니다.', note: '[⚡바로 처리] ' + c.사건명 + ' ' + tabName + ' 자동계산 시작' };
         }, '자동계산');
       });
     }
@@ -2630,25 +2632,28 @@
   // 처리 중인 사건처리 — 화면 사건 따라가기(nxAiSyncToScreenCase_)를 멈추는 데 쓴다
   var NXAI_CP_ACTIVE_ = [];
   function nxAiCaseProcBusy_(){ return NXAI_CP_ACTIVE_.some(function(st){ return st.running || st.calcBusy || st.pdfRunning; }); }
-  function nxAiCaseProc_(text){
+  // knownCaseId: 세액계산 [📄 자동계산]처럼 사건이 이미 정해진 곳에서 부를 때(2026.10.21)
+  function nxAiCaseProc_(text, knownCaseId){
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok){ nxAiToast_('먼저 로그인해 주세요.'); return; }
     var input = nxAiEl_('nxAiInput');
     input.value = ''; input.style.height = 'auto';
     nxAiPhoneTab_('chat');
+    var chatBefore = nxAiCpChatSnapshot_(); // [2026.10.21 넥스 하나로] 이 명령 앞까지의 같은 채팅창 대화 — 사건 지휘 넥스 첫 글에 함께 보낸다
     var userMsg = { role: 'user', content: text };
     nxAiConv.messages.push(userMsg);
     nxAiAppendBubble_('user', text)._nxMsgRef = userMsg;
     var wasEmpty = nxAiConv.messages.length === 0; // 방금 열린(화면 사건에 자동연결된) 빈 대화면 처리할 사건으로 다시 연결
-    var gasOnly = /GASs*(순서|로만|로)|AIs*(없이|빼고)/i.test(text); // [2026.10.19 AI 지휘] "GAS 순서로 처리" — 예비 경로(AI 안 부름)
+    var gasOnly = /GAS\s*(순서|로만|로)|AI\s*(없이|빼고)/i.test(text); // [2026.10.19 AI 지휘] "GAS 순서로 처리" — 예비 경로(AI 안 부름)
+    var said = { userText: text, chat: chatBefore };
     var bubble = nxAiAppendBubble_('assistant', '⚡ 사건을 찾는 중…');
     var aiMsg = { role: 'assistant', content: '[⚡사건 처리] 시작' };
     bubble._nxMsgRef = aiMsg;
     nxAiConv.messages.push(aiMsg);
-    nxAiCaseProcResolve_(text).then(function(c){
+    (knownCaseId ? Promise.resolve({ id: knownCaseId }) : nxAiCaseProcResolve_(text)).then(function(c){
       if (c && c.choices){
         nxAiRenderLocal_(bubble, { md: '어느 사건을 처리할지 골라 주세요.', note: '[⚡사건 처리] 사건 후보 ' + c.choices.length + '건 — 선택 대기',
-          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id, { relink: wasEmpty, gasOnly: gasOnly }); return null; } }; }) }, text);
+          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id, { relink: wasEmpty, gasOnly: gasOnly, said: said }); return null; } }; }) }, text);
         return;
       }
       if (!c){
@@ -2656,8 +2661,20 @@
         nxAiScheduleSave_();
         return;
       }
-      nxAiCaseProcRun_(bubble, c.id, { relink: wasEmpty, gasOnly: gasOnly });
+      nxAiCaseProcRun_(bubble, c.id, { relink: wasEmpty, gasOnly: gasOnly, said: said });
     }).catch(function(err){ bubble.textContent = '사건을 찾지 못했습니다: ' + (err && err.message || err); });
+  }
+  // [2026.10.21 넥스 하나로] 세무사님 원문: "같은 채팅창내에서의 대화는 어떤 ai라도 모두 공유하는 것으로 알고 있었다"
+  //  지금 채팅창의 최근 대화(글만, 최근 16개) — 사건 지휘 넥스가 첫 글에서 받는다. 그림·파일 조각은 빼고 글자만(가리기는 서버가 보내기 직전에)
+  function nxAiCpChatSnapshot_(){
+    var out = [];
+    (nxAiConv.messages || []).slice(-16).forEach(function(m){
+      if (!m || (m.role !== 'user' && m.role !== 'assistant')) return;
+      var t = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.filter(function(b){ return b && b.type === 'text'; }).map(function(b){ return b.text; }).join('\n') : '');
+      t = String(t || '').trim();
+      if (t) out.push({ role: m.role, text: t.slice(0, 1200) });
+    });
+    return out;
   }
   // 세액계산 화면에 같은 사건이 열려 있으면 그 화면의 증여일·상속개시일도 날짜 대조·후보에 넣는다(값은 읽기만)
   function nxAiCaseProcScreenDate_(caseId){
@@ -2669,7 +2686,7 @@
     } catch (e) { return null; }
   }
   function nxAiCaseProcRun_(bubble, caseId, opts){
-    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink), gasOnly: !!(opts && opts.gasOnly) };
+    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink), gasOnly: !!(opts && opts.gasOnly), said: (opts && opts.said) || null };
     NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
     bubble.innerHTML = '<div class="nxai-local-badge">' + (st.gasOnly ? '⚡ 사건 처리 · GAS 순서로(AI 안 부름)' : '🤖 사건 처리 · GAS가 서류·칸을 먼저 채우고, 판단할 자리만 AI가 지휘(자리가 없으면 AI 0원)') + '</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-steps"></div><div class="nxai-cp-foot"></div><div class="nxai-cp-tools"></div>';
     var stepsEl = bubble.querySelector('.nxai-cp-steps');
@@ -2766,7 +2783,7 @@
   function nxAiCpAiMark_(st, it){
     var op = st.aiOpin && st.aiOpin[it.id], ug = st.aiUrgent && st.aiUrgent[it.id];
     if (op && !(it.ask && it.ask.aiJudge)) it.ask = Object.assign({}, it.ask || {}, { aiJudge: { by: 'ai', model: op.model || '', value: op.value, sure: op.sure, why: op.why } });
-    if (ug && !it._aiUg){ it._aiUg = 1; it.detail = '⏩ 계산을 막는 질문(AI가 먼저 여쭘)' + (ug.note ? ' — ' + ug.note : '') + (it.detail ? ' · ' + it.detail : ''); }
+    if (ug && !it._aiUg){ it._aiUg = 1; it.detail = (ug.urgent ? '⏩ 계산을 막는 질문(넥스가 먼저 여쭘)' : '🤖 넥스 메모') + (ug.note ? ' — ' + ug.note : '') + (it.detail ? ' · ' + it.detail : ''); }
     return it;
   }
   function nxAiCpSlim_(it){
@@ -2801,6 +2818,9 @@
       var tr = sp.tiers || {};
       line('🧭 길 나누기(세 겹) — GAS 확정 ' + (tr.GAS || 0) + ' · 저비용 확정 ' + (tr['저비용'] || 0) + ' · 올림 ' + (tr['올림'] || 0) + ' · 총괄 ' + (tr['총괄'] || 0) + ' · 질문 ' + (tr['질문'] || 0) + (sp.lightOff ? ' (저비용 자동 묻기 꺼짐 — 저비용 자리도 총괄로)' : '') + (sp.lightError ? ' · 저비용 오류: ' + sp.lightError : ''));
       (sp.lightDone || []).forEach(function(d){ line('🤖 저비용 확정: ' + d.자리 + ' = ' + d.answer + (d.applied ? ' (넣음)' : '') + ' — ' + d.why); });
+      // [2026.10.21 넥스 하나로] "처리하자"에 덧붙인 지시(예: "시가는 감정가로 봐")가 있으면 AI 자리가 없어도 넥스가 본다 — 예전엔 말씀이 그대로 사라졌다
+      var extraSaid = nxAiCpExtraSaid_(st);
+      if (!sp.need && extraSaid){ line('💬 덧붙이신 말씀이 있어 넥스가 봅니다: "' + extraSaid.slice(0, 60) + '"'); sp.need = true; }
       if (!sp.need){
         st.setStep('ai', '✅', sp.lightApplied || (sp.tiers && sp.tiers['저비용']) ? '총괄 AI가 판단할 자리 없음 — 저비용 AI만(' + ai.won + '원)' : 'AI가 판단할 자리 없음 — AI 없이 끝(0원)');
         line('질문 ' + sp.ask + '개는 서류에 없는 칸이라 세무사님께 바로 여쭙니다' + (sp.gas ? ' · GAS 몫(못 읽은 서류 등) ' + sp.gas + '개' : '') + '.');
@@ -2810,7 +2830,8 @@
       var prog = line('🔄 지휘 AI(Sonnet 5.5)가 도구를 고르는 중…');
       var turn = function(){
         st.setStep('ai', '🔄', ai.round + '바퀴 · 도구 ' + ai.calls + '번 · ' + ai.won + '원');
-        return callGas('case_proc_ai', { caseId: st.caseId, step: 'turn', round: ai.round, spent: ai.won, messages: ai.messages, entry: sp.entry, items: ai.round === 0 ? items : undefined }).then(function(r){
+        return callGas('case_proc_ai', { caseId: st.caseId, step: 'turn', round: ai.round, spent: ai.won, messages: ai.messages, entry: sp.entry, items: ai.round === 0 ? items : undefined,
+          userText: ai.round === 0 && st.said ? st.said.userText : undefined, chat: ai.round === 0 && st.said ? st.said.chat : undefined }).then(function(r){ // [2026.10.21 넥스 하나로] 첫 차례에 세무사님 말씀·채팅 대화
           if (!r || r.ok === false || r.error) return fallback('AI 오류(' + ((r && r.error) || '응답 없음') + ')');
           ai.won = Math.round((ai.won + (Number(r.won) || 0)) * 10) / 10; ai.stop = r.stop || ''; ai.last = r;
           if (r.assistant) ai.messages.push({ role: 'assistant', content: r.assistant });
@@ -2822,11 +2843,34 @@
           }
           ai.round++;
           prog.remove();
-          return nxAiCaseProcAiDone_(st, ai, r, line).then(function(){ return finish('ai'); });
+          // [2026.10.21 넥스 하나로] 기록(finish — 보고 포함)을 먼저 남기고 화면 반영 — 넥스가 새로 여쭌 것이 다음 칸 채우기에서 질문으로 뜨게
+          return finish('ai', { report: r.report || '' }).then(function(){ return nxAiCaseProcAiDone_(st, ai, r, line); });
         });
       };
       return turn();
     }).catch(function(err){ return fallback('AI 지휘 오류(' + (err && err.message || err) + ')'); });
+  }
+  // [2026.10.21 넥스 하나로] 사건 지휘 넥스가 한 일 — 채팅 기록 요약 끝에 붙인다(사건ID 포함: 채팅 넥스가 사건처리 조회 도구로 더 볼 수 있게)
+  function nxAiCpDigestText_(st){
+    var g = st.aiDigest;
+    if (!g) return '';
+    var L = ['', '[사건 지휘 넥스가 한 일 — 사건ID ' + st.caseId + ']'];
+    if (g.report) L.push('보고: ' + g.report.slice(0, 1500));
+    if (g.applied.length) L.push('넣은 값: ' + g.applied.slice(0, 12).join(' / '));
+    if (g.opinions.length) L.push('의견(넣지 않음): ' + g.opinions.slice(0, 12).join(' / '));
+    if (g.asks.length) L.push('여쭌 것: ' + g.asks.slice(0, 10).join(' / '));
+    return L.join('\n');
+  }
+  // [2026.10.21 넥스 하나로] 명령 문장에서 "이 사건 처리하자"·사건 이름 같은 부르는 말을 빼고 남는 지시(4글자 이상)만
+  function nxAiCpExtraSaid_(st){
+    var t = String((st.said && st.said.userText) || '');
+    var c = st.case || {};
+    [c.사건명, c.고객명, c.납세자].forEach(function(n){ String(n || '').split(/[\s_()]+/).forEach(function(w){ if (w.length >= 2) t = t.split(w).join(' '); }); });
+    t = t.replace(/GAS\s*(순서|로만|로)|AI\s*(없이|빼고)/gi, ' ')
+      .replace(/(이|그|저|위|해당)?\s*(사건|건)(을|를|은|는|도)?/g, ' ')
+      .replace(/처리\s*(하자|해\s*줘|해\s*주세요|해|합시다|부탁(해|합니다|드립니다)?|좀)?|진행\s*(하자|해\s*줘|해)?|부탁(해|합니다|드립니다)?|시작(하자|해)?|다시|한\s*번|좀|이제|지금/g, ' ')
+      .replace(/(님|씨)(의)?/g, ' ').replace(/[\s.,!?~·…"'“”]+/g, ' ').trim();
+    return t.replace(/\s/g, '').length >= 4 ? t : '';
   }
   // AI가 끝난 뒤 — 보고·넣은 값·AI 의견을 보이고, 값을 넣었으면 칸 채우기를 한 번 더 돌려 화면에 반영
   function nxAiCaseProcAiDone_(st, ai, r, line){
@@ -2834,8 +2878,13 @@
     st.aiOpin = {}; ops.forEach(function(o){ st.aiOpin[o.itemId] = Object.assign({ model: 'Sonnet 5.5' }, o, { sure: (o.sure || '불확실') + ' — 넣지 않음' }); });
     // 넣은 값도 그 질문에 🤖 AI 판단 상자로(맞으면 그대로, 다르면 세무사님이 고침 — 고친 것은 다음 처리 때 기록에 붙음)
     dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); }).forEach(function(d){ st.aiOpin[d.itemId] = { model: 'Sonnet 5.5', value: d.value, why: d.why, sure: '확실 — 넣음' }; });
-    st.aiUrgent = {}; asks.forEach(function(a){ (a.ids || []).forEach(function(id){ if (a.urgent) st.aiUrgent[id] = { note: a.note }; }); });
+    // [2026.10.21 넥스 하나로] 급하지 않은 질문의 메모도 그 질문에 붙인다(예전엔 급한 것만 붙고 나머지 메모는 사라짐)
+    st.aiUrgent = {}; asks.forEach(function(a){ (a.ids || []).forEach(function(id){ st.aiUrgent[id] = { note: a.note, urgent: !!a.urgent }; }); });
+    var newAsks = asks.filter(function(a){ return !(a.ids || []).length && String(a.note || '').trim(); });
     var applied = dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); });
+    // 채팅 기록 요약(nxAiCaseProcFoot_)에 넣을 넥스 보고 — 이어서 채팅으로 "왜 그 값?"을 물으면 같은 넥스가 이 내용을 보고 답한다
+    st.aiDigest = { report: String(r.report || ''), applied: applied.map(function(d){ return d.칸 + ' = ' + d.value + ' (근거: ' + d.why + ')'; }),
+      opinions: ops.map(function(o){ return o.itemId + ' = ' + o.value + ' (' + o.why + ', 넣지 않음)'; }), asks: asks.filter(function(a){ return String(a.note || '').trim(); }).map(function(a){ return (a.urgent ? '(계산을 막음) ' : '') + a.note; }) };
     var stopTxt = { cap: '비용 상한에 닿아 멈춤', rounds: '바퀴 상한에 닿아 멈춤', max_tokens: '답이 길어 잘림' }[ai.stop] || '';
     st.setStep('ai', applied.length || ops.length ? '🤖' : '✅', '판단 ' + dec.length + '개(넣음 ' + applied.length + ' · AI 의견 ' + ops.length + ') · ' + ai.round + '바퀴 · ' + ai.won + '원' + (stopTxt ? ' · ' + stopTxt : ''));
     if (r.report){ var rep = line(''); rep.style.whiteSpace = 'pre-wrap'; rep.textContent = '🤖 AI 보고\n' + r.report; }
@@ -2843,8 +2892,10 @@
     ops.forEach(function(o){ line('🤖 AI 의견(넣지 않음 — 질문에서 확인): ' + o.itemId + ' = ' + o.value + ' — ' + o.why + ' (' + o.sure + ')'); });
     dec.filter(function(d){ return /^거절/.test(d.결과 || ''); }).forEach(function(d){ line('근거 대조에서 거절: ' + d.칸 + ' = ' + d.value + ' — ' + d.결과, 'nxai-cp-line nxai-muted'); });
     if (r.gaps && r.gaps.length) line('모자랐던 도구(기록함): ' + r.gaps.map(function(g){ return g.want; }).join(' / '), 'nxai-cp-line nxai-muted');
+    if (newAsks.length) line('💬 넥스가 여쭐 것 ' + newAsks.length + '건을 질문 목록에 올렸습니다 — 채팅창에 말로 답해 주세요.');
     // 값을 넣었으면 칸 채우기를 다시(넣은 값으로 남은 칸·질문이 바뀜). AI 의견·계산을 막는 질문 표시는 nxAiCpAiMark_가 붙인다
-    if (applied.length || (ai.spots && ai.spots.lightApplied)) return nxAiCaseProcLoop_(st, 0);
+    //  [2026.10.21] 넥스가 새로 여쭌 것(질문 목록 밖)도 칸 채우기를 다시 돌려야 질문으로 뜬다(서버가 마지막 지휘 기록에서 올림 — finish를 먼저 부름)
+    if (applied.length || newAsks.length || (ai.spots && ai.spots.lightApplied)) return nxAiCaseProcLoop_(st, 0);
     st.items.forEach(function(it){ if (it.step === 'overview') nxAiCpAiMark_(st, it); });
     nxAiCaseProcItems_(st, 'overview');
     return Promise.resolve();
@@ -3086,7 +3137,10 @@
     st.saveTimer = setTimeout(function(){ nxAiCaseProcFinish_(st); }, 2000);
   }
   function nxAiCaseProcSave_(st, writeLog){
-    var items = st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; });
+    // [2026.10.21 넥스 하나로] 질문의 넣을 칸·후보(출처)도 저장 — 채팅 넥스가 사건처리 조회로 보고, 세무사님 말을 그 칸의 답으로 제안할 수 있게
+    var items = st.items.map(function(it){ var a = it.ask, cs = a ? ((Array.isArray(a.cands) && a.cands.length) ? a.cands : (Array.isArray(a.options) ? a.options : [])) : [];
+      return { id: it.id, step: it.step, kind: it.kind, text: it.text, ask: a && a.target ? { target: a.target, label: a.label || '', input: a.input || '', mode: a.mode || '',
+        cands: cs.slice(0, 6).map(function(q){ return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label || '', src: String(q.src || '').slice(0, 80) }; }) } : undefined }; });
     return callGas('case_proc', { caseId: st.caseId, step: 'save', items: items, decisions: st.decisions, writeLog: !!writeLog }).then(function(r){
       if (r && r.ok) Object.keys(st.decisions).forEach(function(k){ if (!st.decisions[k]) delete st.decisions[k]; });
       return r;
@@ -3119,7 +3173,8 @@
     var ref = st.bubble._nxMsgRef;
     if (ref){
       ref.content = '[⚡사건 처리] ' + ((st.case && (st.case.사건명 || st.case.고객명)) || '') + ' — 물어볼 것 ' + open + '건' + (held.length ? ', 보류 ' + held.length + '건' : '')
-        + (live.length ? '\n' + live.slice(0, 25).map(function(it){ var d = nxAiCaseProcDec_(st, it); return '- ' + (d ? '(' + d + ') ' : '') + (NXAI_CP_KIND_[it.kind] || '') + ' ' + it.text; }).join('\n') : '');
+        + (live.length ? '\n' + live.slice(0, 25).map(function(it){ var d = nxAiCaseProcDec_(st, it); return '- ' + (d ? '(' + d + ') ' : '') + (NXAI_CP_KIND_[it.kind] || '') + ' ' + it.text; }).join('\n') : '')
+        + nxAiCpDigestText_(st);
       nxAiScheduleSave_();
     }
   }
@@ -4867,7 +4922,7 @@
         st.calcBusy = false; st.setStep('calc', '⏸', '세액계산기에 아직 빈 칸이 있습니다(' + emptyL + ') — 위 질문에 답하면 다시 계산합니다.'); return;
       }
       nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'gift' ? '증여는 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).' : '서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다 — [취소]하면 AI 자동채우기).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
-        if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalc_ === 'function') tcRunAutoCalc_(); }
+        if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalcOld_ === 'function') tcRunAutoCalcOld_(); } // [2026.10.21] 버튼(tcRunAutoCalc_)은 이제 "처리하자"로 가므로 예비 단계는 예전 동작을 직접
         else st.setStep('calc', '🔄', '세액계산 화면에서 빈 칸을 채우고 [세액 계산하기]를 누르면 이어서 저장합니다.');
         watch();
       });
