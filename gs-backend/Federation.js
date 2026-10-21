@@ -306,7 +306,10 @@ function commReportGap_(input) {
   var clean = function (s, n) { s = String(s || '').replace(/\d{6}\s*-\s*\d{7}/g, '[주민번호]').replace(/01[016789]-?\d{3,4}-?\d{4}/g, '[전화]'); return s.slice(0, n); };
   var e = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), want: clean(input.userWanted, 300), blocker: clean(input.whyBlocked, 300), needTool: clean(input.neededTool, 200), area: clean(input.area, 40) };
   if (!e.want) return { error: 'userWanted가 필요합니다.' };
-  return withLock_(5000, function () {
+  // [2026.10.22] 세무사님 "코드는 지금 고쳐 두고 … 다음 진행하자" — 세액·신고 결과가 틀리는 신고는 "급함": 개선요구사항에 🚨 긴급으로도 올려
+  //  대시보드 맨 위·주간 보고서 맨 위·처리 상태(접수→반영됨→확인)를 기존 장치로 따라가게 한다(일반 신고처럼 한 주 줄 서지 않게).
+  if (input.urgent === true) e.urgent = true;
+  var res = withLock_(5000, function () {
     var f = commGapsFile_(), arr = [];
     try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (x) { arr = []; }
     arr.push(e); f.setContent(JSON.stringify(arr.slice(-200)));
@@ -315,6 +318,13 @@ function commReportGap_(input) {
     if (before) return { success: true, message: '개발자에게 "고쳤는데 다시 막힘"으로 전달했습니다. 전에 이렇게 고쳤다고 기록돼 있습니다 — ' + String(before.처리 || '').slice(0, 300) + ' 그 방법대로 한 번 다시 해 보고, 그래도 안 되면 사용자에게 "개발자에게 알렸다"고 짧게 말하라.' };
     return { success: true, message: '개발자(주간 정비 루틴)에게 전달했습니다. 사용자에게 "기능 부족을 개발자에게 알렸다"고만 짧게 말하라.' };
   });
+  if (e.urgent && res && res.success) { // 잠금 밖에서(개선요구사항 적기도 잠금을 씀)
+    try {
+      var add = improve_addRequest_({ text: '🚨 긴급 — 넥스 신고(세액·신고 결과 오류): ' + e.want + (e.blocker ? ' / 막힌 이유: ' + e.blocker : '') + (e.area ? ' / 분야: ' + e.area : '') });
+      res.message += add && add.success ? ' 세액·신고 결과 오류라 개선요구사항에 🚨 긴급으로도 올렸다 — 사용자에게 "긴급으로 올렸다"고 알리고, 고쳐지기 전까지 그 결과는 손으로 검산하라고 말하라.' : ' (긴급 등록은 실패 — 사용자에게 설정 🐞 카드에서 직접 적어 달라고 말하라.)';
+    } catch (x) { res.message += ' (긴급 등록 실패: ' + String(x && x.message || x).slice(0, 80) + ')'; }
+  }
+  return res;
 }
 function commRecentGaps_(days) {
   var arr = [];
@@ -382,6 +392,41 @@ function commDevAnswer_(body) {
   p.setProperty(COMM_ANSWERS_PROP_, JSON.stringify(a));
   try { buildImprovementReport_(); } catch (e) {}
   return { success: true };
+}
+// ⑥ [2026.10.22] 소통 이음매 점검 — 세무사님 "시스템 변경시 소통점검이 보안점검처럼 항상 이루지도록 하는 대책을 마련하라"
+//  배포 직후 점검(Code.js deploySmoke_)이 배포마다(PC·📥·↩) 자동으로 부른다. 토큰 0 — AI를 부르지 않고 "말이 오가는 길"이 살아 있는지만 본다.
+//  새 AI 경로·도구·소통 길을 만들면 여기 한 줄을 더한다(Claude작업원칙 L2_comm.md). 끊긴 길은 오류 기록 → 주간 개선 보고서·🐞 카드에 뜬다.
+var COMM_SEAM_TEST_SAID_ = '소통점검시험말씀', COMM_SEAM_TEST_CHAT_ = '소통점검시험대화';
+function commSeamList_() {
+  var toolNames = function (arr) { return (arr || []).map(function (t) { return t && t.name; }); };
+  var chatTools = function () { return toolNames(typeof DRIVE_TOOLS !== 'undefined' ? DRIVE_TOOLS : []).concat(toolNames(typeof JOB_AI_TOOLS_ !== 'undefined' ? JOB_AI_TOOLS_ : [])); };
+  var leadTools = function () { return typeof caseProcAiLiveTools_ === 'function' ? toolNames(caseProcAiLiveTools_()) : []; };
+  var lookupKinds = function () { var j = (typeof JOB_AI_TOOLS_ !== 'undefined' ? JOB_AI_TOOLS_ : []).filter(function (t) { return t.name === 'job_lookup'; })[0]; return (j && j.input_schema && j.input_schema.properties && j.input_schema.properties.kind && j.input_schema.properties.kind.enum) || []; };
+  var need = function (have, list, where) { var miss = list.filter(function (n) { return have.indexOf(n) === -1; }); return miss.length ? where + '에 없음: ' + miss.join(', ') : ''; };
+  return [
+    // 세무사님 ↔ 넥스
+    { 길: '세무사님 원칙 → 넥스(공통원칙·마스터 프로필)', fn: function () { var t = getMasterProfileText_(); return !t ? '마스터 프로필을 못 읽음' : (getCommonPrinciplesText_() && t.indexOf('공통원칙') === -1 ? '공통원칙이 넥스 지시문에 안 붙음' : ''); } },
+    { 길: '사건 지휘 넥스도 같은 원칙·최근 바뀐 기능', fn: function () { var m = getMasterProfileText_(), b = caseProcAiNexBase_(); return m && b.indexOf(m.slice(0, 200)) === -1 ? '사건 지휘 지시문에 마스터 프로필이 없음' : ''; } },
+    { 길: '채팅창 말씀·최근 대화 → 사건 지휘 넥스', fn: function () { var t = caseProcAiFirstText_({ id: 'seam' }, { entry: '시험', userText: COMM_SEAM_TEST_SAID_, chat: [{ role: 'user', text: COMM_SEAM_TEST_CHAT_ + ' 한 줄' }] }); return t.indexOf(COMM_SEAM_TEST_SAID_) === -1 ? '세무사님 말씀이 첫 글에 안 들어감' : t.indexOf(COMM_SEAM_TEST_CHAT_) === -1 ? '최근 대화가 첫 글에 안 들어감' : ''; } },
+    // 넥스 ↔ GAS(도구)
+    { 길: '대화창 넥스 조회 길(사건처리·AI 판단·AI 회의 결론)', fn: function () { return need(lookupKinds(), ['caseproc', 'ai_review', 'law_decisions'], '조회 종류'); } },
+    { 길: '사건 지휘 넥스 도구(질문·도구 부족 신고·AI 회의 결론)', fn: function () { return need(leadTools(), ['ask_user', 'report_tool_gap', 'law_decisions'], '사건 지휘 도구'); } },
+    // 넥스 ↔ 개발자(Claude)
+    { 길: '넥스 → 개발자 신고(대화창)', fn: function () { var m = need(chatTools(), ['report_capability_gap'], '대화창 도구'); if (m) return m; commGapsFile_(); return ''; } },
+    { 길: '신고 처리 장부(처리됨·다시 신고)', fn: function () { return Array.isArray(commGapsResolved_()) ? '' : '장부를 못 읽음'; } },
+    { 길: '개발자 → 넥스(최근 바뀐 기능)', fn: function () { return commRecentChangesPrompt_() ? '' : '최근 바뀐 기능 기록이 비어 있음'; } },
+    { 길: '세무사님 원칙 → 웹 Claude(보고서 공통원칙)', fn: function () { return getCommonPrinciplesText_() ? '' : '공통원칙.md를 못 읽음'; } },
+    { 길: '웹 Claude 실행 기록 → job', fn: function () { var r = commRoutineLog_(); return r && r.last ? '' : '실행 기록을 못 읽음'; } }
+  ];
+}
+function commSeamCheck_() {
+  var out = [];
+  commSeamList_().forEach(function (s) {
+    var msg = '';
+    try { msg = s.fn() || ''; } catch (e) { msg = '오류: ' + String(e && e.message || e).slice(0, 120); }
+    out.push({ 길: s.길, ok: !msg, msg: msg });
+  });
+  return { ok: out.every(function (x) { return x.ok; }), 길: out, 끊김: out.filter(function (x) { return !x.ok; }) };
 }
 // ⑤ 대시보드·설정 카드용 한 번에 받기
 function commStatus_() {
