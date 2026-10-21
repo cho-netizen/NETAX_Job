@@ -3,7 +3,7 @@
 //  세무사님 "혹시 시스템변경시 보안점검을 기본적으로 하지 않고 있나? 그리고 보안점검처럼 점검해야 할 항목이 꽤 많을 텐데?" → "1.2.번 만들고 일괄배포하라".
 //  ①은 서버가 배포마다 스스로 보는 것(Code.js changeCheckRecord_ — 로그인 없는 입구·바깥 AI·서버 용량, 직전 배포와 비교).
 //  이 도구는 깃허브(공개 저장소)에 올라가기 전에만 볼 수 있는 것을 본다 — 기준(origin/main)과 지금 작업 폴더의 차이(새로 더한 줄)만:
-//   🚫 막음: 비밀번호·열쇠(API 키, 깃허브 토큰, 개인 열쇠, PC 비밀값 파일의 값) / 주민등록번호
+//   🚫 막음: 비밀번호·열쇠(API 키, 깃허브 토큰, 개인 열쇠, PC 비밀값 파일의 값) / 주민등록번호 / AI 도구 입력 칸 이름이 영문이 아님(서버 코드 전체)
 //   ⚠ 알림: 전화번호 / 64자리 열쇠 모양 글자 / 화면이 로그인 확인 없이 타이머·불러오기에서 서버를 부름(10-14 장애)
 //          / 로그인 없이 열리는 입구 증가 / 바깥 AI로 보내는 곳 증가 / 서버 용량 10MB 근처
 //  돌리기: node tools/change-check.js [--base=origin/main]   — 🚫가 있으면 종료코드 1(올리지 말 것), ⚠만 있으면 0(내용을 보고 판단)
@@ -92,11 +92,52 @@ serverFiles.forEach((f) => {
     if (n > o) warn.push('바깥 AI로 보내는 곳이 늘어남: ' + f + ' · ' + HOSTS[h] + ' ' + o + '→' + n + ' — 고객 정보 가림·비용(토큰 0 원칙) 확인');
   });
 });
+// 🚫 AI 도구 입력 칸 이름(input_schema.properties의 키)이 영문·숫자·_.- 가 아님 — 2026-10-22 사건:
+//  절세 아이템 도구의 '세목'·'제목' 칸 하나 때문에 Claude가 도구 목록 전체를 거부해("Property keys should match pattern '^[a-zA-Z0-9_.-]{1,64}$'")
+//  사건 지휘(AI 지휘)와 사이드바 넥스가 매번 실패하고 GAS 순서로만 돌았다. 새로 더한 줄만이 아니라 서버 코드 전체를 본다(한 칸이면 전부 죽으므로).
+const KEY_OK = /^[a-zA-Z0-9_.-]{1,64}$/;
+const schemaKeysBad = (src) => { // properties: { 키: … } 의 맨 바깥 키들 — 글자열·주석은 건너뛴다
+  const bad = []; const re = /\bproperties\s*:\s*\{/g; let m;
+  while ((m = re.exec(src))) {
+    let i = m.index + m[0].length, depth = 1, expectKey = true;
+    while (i < src.length && depth > 0) {
+      const c = src[i];
+      if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i < 0) break; continue; }
+      if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i) + 2; if (i < 2) break; continue; }
+      if (c === '"' || c === "'" || c === '`') {
+        let j = i + 1; while (j < src.length && src[j] !== c) { if (src[j] === '\\') j++; j++; }
+        const s = src.slice(i + 1, j); i = j + 1;
+        if (depth === 1 && expectKey && /^\s*:/.test(src.slice(i, i + 20))) { if (!KEY_OK.test(s)) bad.push({ key: s, at: m.index }); expectKey = false; }
+        continue;
+      }
+      if (c === '{' || c === '[' || c === '(') { depth++; i++; continue; }
+      if (c === '}' || c === ']' || c === ')') { depth--; i++; continue; }
+      if (c === ',' && depth === 1) { expectKey = true; i++; continue; }
+      if (depth === 1 && expectKey && !/\s/.test(c)) {
+        const k = src.slice(i).match(/^([^\s:,{}()[\]'"`]+)\s*:/);
+        if (k) { if (!KEY_OK.test(k[1])) bad.push({ key: k[1], at: m.index }); i += k[0].length; expectKey = false; continue; }
+        expectKey = false;
+      }
+      i++;
+    }
+  }
+  // 나중에 붙이는 칸: x.properties.키 = … / x.properties['키'] = …
+  const re2 = /\.properties(?:\.([^\s=.;()[\]]+)|\[\s*['"]([^'"]+)['"]\s*\])\s*=[^=]/g;
+  while ((m = re2.exec(src))) { const k = m[1] || m[2]; if (!KEY_OK.test(k)) bad.push({ key: k, at: m.index }); }
+  return bad;
+};
+['gs-backend', 'gs-light', 'gs-extra'].forEach((dir) => {
+  const D = path.join(ROOT, dir); if (!fs.existsSync(D)) return;
+  fs.readdirSync(D).filter((f) => /\.js$/.test(f)).forEach((f) => {
+    const src = fs.readFileSync(path.join(D, f), 'utf8');
+    schemaKeysBad(src).forEach((b) => block.push('AI 도구 입력 칸 이름 「' + b.key + '」이 영문·숫자·_.- 가 아님(Claude가 도구 목록 전체를 거부함) — ' + dir + '/' + f + ':' + src.slice(0, b.at).split('\n').length));
+  });
+});
 if (bytes > 9800000) warn.push('서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB — 10MB 한도 근처(큰 자료는 화면 쪽으로)');
 
 const out = ['변경 점검(올리기 전) — 기준 ' + base + ', 새로 더한 줄 ' + rows.length + '개, 서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB'];
 if (block.length) out.push('🚫 막음 ' + block.length + '건 — 지우기 전엔 올리지 말 것\n- ' + Array.from(new Set(block)).join('\n- '));
 if (warn.length) out.push('⚠ 알림 ' + warn.length + '건 — 의도한 것인지 확인\n- ' + Array.from(new Set(warn)).join('\n- '));
-if (!block.length && !warn.length) out.push('✓ 비밀번호·고객 정보·로그인 전 서버 호출·입구·바깥 AI·용량 모두 이상 없음');
+if (!block.length && !warn.length) out.push('✓ 비밀번호·고객 정보·로그인 전 서버 호출·입구·바깥 AI·AI 도구 칸 이름·용량 모두 이상 없음');
 console.log(out.join('\n'));
 process.exit(block.length ? 1 : 0);

@@ -150,9 +150,9 @@ function caseProcAiLiveTools_() {
     input_schema: { type: 'object', properties: { name: { type: 'string', description: '목록에 나온 이름 그대로(예: 양도_일시적2주택)' } }, required: ['name'] } });
   // [2026.10.21] 절세 아이템 — 대화창·사이드바 넥스와 같은 이름·같은 실행 함수(KnowHow.js knhTaxItemsSearch_·knhTaxItemRead_, 토큰 0)
   tools.push({ name: 'search_tax_items', description: '절세 아이템 찾기(토큰 0) — NETAX가 정리한 절세·자주 묻는 질문·주요 이슈·함정 아이템 목록(제목·요약·근거 조문·검토 상태·기준일·현행화 필요)에서 찾을 말과 맞는 것. 판단 근거로 쓸 만한 정리가 있는지 볼 때.',
-    input_schema: { type: 'object', properties: { query: { type: 'string' }, 세목: { type: 'string', enum: ['양도', '증여', '상속', '공통'] } }, required: ['query'] } });
+    input_schema: { type: 'object', properties: { query: { type: 'string' }, semok: { type: 'string', enum: ['양도', '증여', '상속', '공통'], description: '좁힐 세목(선택)' } }, required: ['query'] } });
   tools.push({ name: 'read_tax_item', description: '절세 아이템 하나 읽기(토큰 0) — 본문·근거 조문·검토 상태·기준일·현행화 필요 이유·조심할 곳·"인용" 줄. 근거로 쓰면 인용규칙을 따르고, 세액을 가르는 조문은 law_lookup으로 원문 확인.',
-    input_schema: { type: 'object', properties: { id: { type: 'string' }, 제목: { type: 'string' } } } });
+    input_schema: { type: 'object', properties: { id: { type: 'string' }, title: { type: 'string', description: 'id를 모를 때 아이템 제목' } } } });
   tools.forEach(function (t) { if (t.name === 'value_set') t.input_schema.properties.attach = { type: 'array', items: { type: 'string' }, description: '이 판단의 근거로 쓴 첨부 자료 id(law_attach가 돌려준 id 또는 입구 요약의 첨부 목록 id)' }; });
   tools[tools.length - 1].cache_control = { type: 'ephemeral' };
   return tools;

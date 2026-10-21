@@ -27,11 +27,14 @@
     "시행령 §11⑤"
    ],
    "계산기칸": [
-    "inheritanceDisposalItems category(합계 단위)"
+    "「처분재산 내역」 「재산종류」(합계 단위)"
    ],
    "조견표": [],
    "인쇄": "인쇄 없음 — 지금 세액인쇄(ihPrintFormBodyHtml_·ihAttachPrintPagesHtml_)에 이 부표가 없음",
-   "확인": "원문 대조됨"
+   "확인": "원문 대조됨",
+   "계산기칸_개발용": [
+    "inheritanceDisposalItems category(합계 단위)"
+   ]
   },
   {
    "칸": "②",

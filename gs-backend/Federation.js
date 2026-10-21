@@ -416,7 +416,13 @@ function commSeamList_() {
     { 길: '신고 처리 장부(처리됨·다시 신고)', fn: function () { return Array.isArray(commGapsResolved_()) ? '' : '장부를 못 읽음'; } },
     { 길: '개발자 → 넥스(최근 바뀐 기능)', fn: function () { return commRecentChangesPrompt_() ? '' : '최근 바뀐 기능 기록이 비어 있음'; } },
     { 길: '세무사님 원칙 → 웹 Claude(보고서 공통원칙)', fn: function () { return getCommonPrinciplesText_() ? '' : '공통원칙.md를 못 읽음'; } },
-    { 길: '웹 Claude 실행 기록 → job', fn: function () { var r = commRoutineLog_(); return r && r.last ? '' : '실행 기록을 못 읽음'; } }
+    { 길: '웹 Claude 실행 기록 → job', fn: function () { var r = commRoutineLog_(); return r && r.last ? '' : '실행 기록을 못 읽음'; } },
+    // [2026.10.22] Claude 세션이 쓴 확인조치사항 판단 대기 ↔ 절세 아이템 [확인 필요] 표시 — 밤 분류 검사가 노하우 화면·개선 후보 보고서로 올린다(KnowHow.js knhClsNightly_)
+    { 길: '확인조치사항 판단 대기 ↔ 아이템 표시(분류 검사) → 노하우 화면·보고서', fn: function () { if (typeof knhClsNightly_ !== 'function') return '분류 검사가 이 판에 없음'; return followupFile_() ? '' : '확인조치사항 파일을 못 찾음'; } },
+    // 고객·바깥 프로그램 ↔ job(2026-10-22 "다른 프로그램 다른 어플과의 소통")
+    { 길: '고객 제출(my.netax.kr) → 사건 처리일지·대시보드', fn: function () { return typeof custUploadNote_ === 'function' && Array.isArray(custUploadsRecent_(7)) ? '' : '고객 제출 알림이 이 판에 없음'; } },
+    { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
+    { 길: '고객 카톡 글 → 넥스 사건처리 조회', fn: function () { return typeof kakaoCaseMessages_ === 'function' ? '' : '카톡 글 읽기가 이 판에 없음'; } }
   ];
 }
 function commSeamCheck_() {
@@ -435,7 +441,7 @@ function commStatus_() {
     return { success: true, changes: commRecentChanges_().slice(0, 12), requests: reqs, openRequests: ra.open, doneRequests: ra.done,
     oldestDays: ra.open.length ? ra.open[0].days : 0, urgent: ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length,
     toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_,
-    routine: commRoutineLog_() };
+    routine: commRoutineLog_(), uploads: (function () { try { return typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(7) : []; } catch (e) { return []; } })() }; // [2026.10.22] 고객이 올린 서류(최근 7일)
 }
 // ⑧ [2026.10.21] 고객 카톡 글 — 세무사님 결정("진행하고 다음으로 넘어가자"): 고객이 카톡으로 쓴 글이 넥스·job에 전달되지 않던 문제.
 //  카카오 봇(NETAX_Kakao, 별도 서버)은 이미 모든 수신 메시지를 사건 시트 "카카오웹훅로그" 탭에 남기고(시각·카카오ID·글·원본), 카카오ID↔접속코드는
