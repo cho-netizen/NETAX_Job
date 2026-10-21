@@ -16777,18 +16777,24 @@ function sendDailyDeadlineDigest() {
   const apiKey = props.getProperty('SOLAPI_API_KEY');
   const apiSecret = props.getProperty('SOLAPI_API_SECRET');
   const senderPhone = props.getProperty('SOLAPI_SENDER_PHONE');
-  const targetPhone = props.getProperty('NX_REMINDER_PHONE');
-  if (!apiKey || !apiSecret || !senderPhone || !targetPhone) return; // 설정 안 돼 있으면 조용히 스킵
+  const targetPhone = props.getProperty('NX_REMINDER_PHONE') || BOOKING_OWNER_PHONE; // [2026.10.22] 없으면 예약 알림 번호
+  if (!apiKey || !apiSecret || !senderPhone || !targetPhone) { smsFailLog_('아침 알림 문자', '문자 서비스 설정이 없어 아침 알림을 못 보냄'); return; }
 
+  // [2026.10.22] 마감은 사건 목록(법정일)에서 — 예전 출처(_NX_전체일지.json)는 9/12 이후 갱신이 없어 대시보드에서도 뺀 자료였다.
   const todayStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
-  const entries = readGlobalLogEntries_().filter(function (e) { return e.dueDate; });
-  const overdue = entries.filter(function (e) { return e.dueDate < todayStr; });
-  const today = entries.filter(function (e) { return e.dueDate === todayStr; });
-  if (!overdue.length && !today.length) return; // 알릴 게 없으면 문자 안 보냄
+  const in3 = Utilities.formatDate(new Date(Date.now() + 3 * 86400000), 'Asia/Seoul', 'yyyy-MM-dd');
+  let cases = [];
+  try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; cases = (o && o.cases) || []; } catch (e) { cases = []; }
+  const open = cases.filter(function (c) { return c.상태 !== '완료' && c.상태 !== '보류' && c.법정일; });
+  const overdue = open.filter(function (c) { return c.법정일 < todayStr; });
+  const soon = open.filter(function (c) { return c.법정일 >= todayStr && c.법정일 <= in3; }).sort(function (a, b) { return String(a.법정일).localeCompare(String(b.법정일)); });
+  const queued = notifyDigestTake_();
+  if (!overdue.length && !soon.length && !queued.length) return; // 알릴 게 없으면 문자 안 보냄
 
-  let msg = '[NX 마감알림 ' + todayStr + ']\n';
-  if (today.length) msg += '오늘 마감(' + today.length + '건):\n' + today.map(function (e) { return '· ' + e.pathKey + ' — ' + e.text; }).slice(0, 5).join('\n') + '\n';
-  if (overdue.length) msg += '기한 지남(' + overdue.length + '건):\n' + overdue.map(function (e) { return '· ' + e.pathKey + ' — ' + e.text; }).slice(0, 5).join('\n');
+  let msg = '[NX 아침알림 ' + todayStr.slice(5) + ']\n';
+  if (soon.length) msg += '3일 안 마감(' + soon.length + '건):\n' + soon.slice(0, 5).map(function (c) { return '· ' + String(c.법정일).slice(5) + ' ' + String(c.사건명 || c.고객명 || '').slice(0, 30); }).join('\n') + '\n';
+  if (overdue.length) msg += '기한 지남(' + overdue.length + '건):\n' + overdue.slice(0, 5).map(function (c) { return '· ' + String(c.법정일).slice(5) + ' ' + String(c.사건명 || c.고객명 || '').slice(0, 30); }).join('\n') + '\n';
+  if (queued.length) msg += '그 밖에(' + queued.length + '건):\n' + queued.slice(-8).map(function (t) { return '· ' + t.slice(0, 80); }).join('\n');
 
   try {
     sendSolapiSms_(apiKey, apiSecret, senderPhone, targetPhone, msg.slice(0, 1900));
@@ -16803,6 +16809,8 @@ function sendDailyDeadlineDigest() {
 //  실패를 오류 기록에 남겨 job 🐞·주간 개선 보고서에 뜨게 한다(받는 번호는 적지 않음).
 function smsFailLog_(where, msg) {
   try { ai_logBug({ entry: { kind: 'server', where: '문자 실패 · ' + where, message: String(msg || '').replace(/01[016789]-?\d{3,4}-?\d{4}/g, '[전화]').slice(0, 300) } }); } catch (e) {}
+  // 문자가 안 되니 아침 알림 묶음에 한 줄(그것도 실패하면 대시보드 🐞에만 남음)
+  try { withLock_(5000, function () { const p = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(p.getProperty(NOTIFY_DIGEST_PROP_) || '[]'); } catch (e) { q = []; } q.push(Utilities.formatDate(new Date(), 'Asia/Seoul', 'MM-dd HH:mm') + ' 문자 실패: ' + where); p.setProperty(NOTIFY_DIGEST_PROP_, JSON.stringify(q.slice(-30))); }); } catch (e) {}
 }
 /** SOLAPI REST API v4 표준 서명 방식(HMAC-SHA256)으로 문자 1건을 보낸다. */
 function sendSolapiSms_(apiKey, apiSecret, from, to, text) {
@@ -16835,6 +16843,38 @@ function sendSolapiSms_(apiKey, apiSecret, from, to, text) {
  * 이후 매일 오전 9시에 sendDailyDeadlineDigest()가 자동으로 실행됩니다.
  * (같은 이름의 트리거가 이미 있으면 중복 설치되지 않도록 먼저 지우고 새로 만듭니다.)
  */
+// [2026.10.22] 알림 한 통로 — 세무사님 "권장순서대로 하고 배포는 일괄배포하라"(기기 3종 검토 A-2).
+//  알림이 문자·대시보드로 흩어져 사무실 밖에선 놓쳤다. 급한 것(고객이 서류를 보냄·넥스 🚨 긴급)은 바로 세무사님 휴대폰 문자
+//  → 같은 계정의 워치에도 뜬다. 보통(문자 실패 등)은 아침 9시 마감 알림 문자에 한 줄씩 모아 보낸다(NX_DIGEST_QUEUE).
+//  예약 신청·카카오 고객 글은 원래부터 바로 문자(그대로). 받는 번호: NX_REMINDER_PHONE(없으면 예약 알림 번호).
+const NOTIFY_DIGEST_PROP_ = 'NX_DIGEST_QUEUE';
+function notifyOwner_(level, text) {
+  text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!text) return;
+  if (level === 'urgent') {
+    const to = PropertiesService.getScriptProperties().getProperty('NX_REMINDER_PHONE') || BOOKING_OWNER_PHONE;
+    const r = booking_sendSMS(to, '[NX] ' + text);
+    if (r && r.success) return;
+  }
+  try {
+    withLock_(5000, function () {
+      const p = PropertiesService.getScriptProperties();
+      let q = []; try { q = JSON.parse(p.getProperty(NOTIFY_DIGEST_PROP_) || '[]'); } catch (e) { q = []; }
+      q.push(Utilities.formatDate(new Date(), 'Asia/Seoul', 'MM-dd HH:mm') + ' ' + text);
+      p.setProperty(NOTIFY_DIGEST_PROP_, JSON.stringify(q.slice(-30)));
+    });
+  } catch (e) {}
+}
+function notifyDigestTake_() {
+  const p = PropertiesService.getScriptProperties();
+  let q = []; try { q = JSON.parse(p.getProperty(NOTIFY_DIGEST_PROP_) || '[]'); } catch (e) { q = []; }
+  p.deleteProperty(NOTIFY_DIGEST_PROP_);
+  return q;
+}
+// 아침 알림 트리거가 없으면 건다(예전엔 편집기에서 손으로 한 번 실행해야 했다) — 밤 작업이 매일 확인
+function ensureDailyReminderTrigger_() {
+  if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; })) installDailyReminderTrigger();
+}
 function installDailyReminderTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'sendDailyDeadlineDigest') ScriptApp.deleteTrigger(t);
@@ -17296,6 +17336,7 @@ function runNightlyChiefManager() {
   // 자기점검 한 줄·은퇴한 admin 안내)이 대시보드 "📋 사건 경과·마감 현황" 카드·"시스템 자기점검" 줄과 겹쳤다. 함수(generateDailyBriefing_)는 남겨 둠.
   // [2026.09 신규] 사건 폴더 안의 현금영수증 파일을 매일 밤 훑어 자문내역에 자동 기록.
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
+  try { ensureDailyReminderTrigger_(); } catch (err) { console.error('아침 알림 트리거 확인 실패: ' + err.message); } // [2026.10.22]
   // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
   try { runSelfCheck_(); } catch (err) { console.error('자가점검 실패: ' + err.message); }
   // [2026.10.13] 서류 정리 회귀시험(토큰 0) — 밤마다 8건씩, 7일에 표본 한 바퀴
@@ -17969,6 +18010,7 @@ function booking_createApplication(body) {
     ].join('\n');
 
     const event = cal.createEvent(`${name}`, start, end, { description: desc });
+    try { event.addPopupReminder(10); } catch (e) {} // [2026.10.22] 세무사님 "권장순서대로 하고…" — 휴대폰·워치에 상담 10분 전 알림(같은 구글 캘린더)
     event.setColor(BOOKING_COLOR_PENDING);
 
     const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
@@ -18068,6 +18110,7 @@ function booking_adminCreate(body) {
     ].join('\n');
 
     const event = cal.createEvent(`${name}`, start, end, { description: desc });
+    try { event.addPopupReminder(10); } catch (e) {} // [2026.10.22] 세무사님 "권장순서대로 하고…" — 휴대폰·워치에 상담 10분 전 알림(같은 구글 캘린더)
     event.setColor(BOOKING_COLOR_CONFIRMED);
 
     const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
@@ -19132,6 +19175,10 @@ function custUploadNote_(params, ctx) {
   } catch (e) {}
   const now = new Date(), text = '[고객 제출] ' + (item ? item + ' — ' : '') + fileName + ' (고객창구 업로드 → 제출자료 폴더)';
   if (wc) work_updateCase({ id: wc.id, 작업일지: (Array.isArray(wc.작업일지) ? wc.작업일지 : []).concat([{ id: 'log_' + now.getTime(), date: Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd'), text: text.slice(0, 200), dueDate: '' }]) });
+  // [2026.10.22] 알림 한 통로 — 고객이 서류를 보내면 바로 문자(휴대폰·워치). 여러 장을 연달아 올리면 사건당 10분에 한 번만.
+  const ck = 'cust_up_sms_' + (wc ? wc.id : rid);
+  const cache = CacheService.getScriptCache();
+  if (!cache.get(ck)) { cache.put(ck, '1', 600); notifyOwner_('urgent', '고객 서류 도착 — ' + (wc ? String(wc.사건명 || wc.고객명 || '') : '접속코드 ' + rid) + ': ' + (item ? item + ' ' : '') + fileName); }
 }
 // 고객이 보낸 서류 목록 — 고객창구(my.netax.kr)와 카카오 봇(NETAX_Kakao)이 함께 쓰는 제출 기록표(SubmissionLog: 접속코드·파일·항목·시각)를 읽는다.
 //  rid(접속코드)를 주면 그 사건 것만. 사건 연결은 사건 목록의 my_report_id로.
@@ -24760,7 +24807,8 @@ function work_createAllDayEvent_(cal, title, dateStr, tag) {
   try {
     const d = new Date(dateStr + 'T00:00:00');
     if (isNaN(d.getTime())) return;
-    cal.createAllDayEvent(title, d, { description: tag });
+    const ev = cal.createAllDayEvent(title, d, { description: tag });
+    try { ev.addPopupReminder(900); } catch (e) { } // [2026.10.22] 마감 전날 오전 9시 휴대폰·워치 알림(종일 일정은 0시 기준 15시간 전)
   } catch (e) { }
 }
 
