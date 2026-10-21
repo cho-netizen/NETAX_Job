@@ -585,6 +585,17 @@
     return years;
   }
 
+  // [2026.10.21 오류 고침] 경과 개월 수 — fullYearsElapsed와 같은 날짜 기준(끝 날의 '일'이 시작 날보다 작으면 한 달 덜 셈).
+  //  주식 이월과세의 세율 판정 보유기간(소득세법 §104②2호: 증여자 취득일부터)에서 "1년(12개월) 미만" 판정에 쓴다.
+  //  예전엔 상생임대 함수 안에만 있는 monthsBetween_를 불러 "monthsBetween_ is not defined"로 계산이 멈췄다.
+  function fullMonthsElapsed(startDateStr, endDateStr) {
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth());
+    if (end.getUTCDate() < start.getUTCDate()) months--;
+    return months;
+  }
+
   function longTermRate(years) {
     if (years < 3) return 0;
     return Math.min(0.30, years * 0.02);
@@ -3269,7 +3280,7 @@
   };
 
   // [2026.09 버그수정] "감정가액이 있으면 감정가액 우선"이라고 잘못 적혀 있었다 — 실제로는
-  // 반대다(부가가치세법 시행령§64①, 소득세법 시행령§166④이 이를 준용). 토지·건물 등 일괄
+  // 반대다(부가가치세법 시행령§64①, 소득세법 시행령§166⑥이 이를 준용). 토지·건물 등 일괄
   // 양도시 안분계산 — 토지·건물 모두 기준시가가 있으면 기준시가 비율이 우선이고, 그 중
   // 하나라도 기준시가가 없을 때에 한해 감정가액(있으면) 비율로 안분한다. 감정가액도 없으면
   // 장부가액(취득가액) 비율로 안분한 뒤, 기준시가가 있는 자산은 그 합계를 다시 기준시가로
@@ -3350,7 +3361,7 @@
       방식: method,
       총양도가액: totalTransferPrice,
       자산별_안분결과: results,
-      안내: '소득세법 시행령 §166④(부가가치세법 시행령§64① 준용)에 따라, 토지와 건물 등을 함께 양도(취득)했는데 각각의 가액 구분이 불분명한 경우 토지·건물 모두 기준시가가 있으면 기준시가 비율이 우선이고, 그 중 하나라도 기준시가가 없을 때에 한해 감정가액(있으면) 비율로 안분합니다(계약서·감정가액 등으로 실제 구분이 가능하면 안분계산 자체가 필요 없으니 우선 그 가액을 그대로 쓰세요 — 면적 비율 안분은 그 비율을 면적으로 대체한 실무상 방식). "취득/필요경비 함께 안분"은 양도시점 비율을 취득가액·필요경비에도 그대로 적용하는 근사 방식이고, "각각 안분"(원칙)은 취득가액에는 취득시점 기준시가 비율을, 양도가액·필요경비에는 양도시점 기준시가 비율을 따로 적용합니다 — 취득시점 기준시가를 확인할 수 있으면 "각각 안분"을 쓰세요.'
+      안내: '소득세법 시행령 §166⑥(부가가치세법 시행령§64① 준용)에 따라, 토지와 건물 등을 함께 양도(취득)했는데 각각의 가액 구분이 불분명한 경우 토지·건물 모두 기준시가가 있으면 기준시가 비율이 우선이고, 그 중 하나라도 기준시가가 없을 때에 한해 감정가액(있으면) 비율로 안분합니다(계약서·감정가액 등으로 실제 구분이 가능하면 안분계산 자체가 필요 없으니 우선 그 가액을 그대로 쓰세요 — 면적 비율 안분은 그 비율을 면적으로 대체한 실무상 방식). "취득/필요경비 함께 안분"은 양도시점 비율을 취득가액·필요경비에도 그대로 적용하는 근사 방식이고, "각각 안분"(원칙)은 취득가액에는 취득시점 기준시가 비율을, 양도가액·필요경비에는 양도시점 기준시가 비율을 따로 적용합니다 — 취득시점 기준시가를 확인할 수 있으면 "각각 안분"을 쓰세요.'
     };
   };
 
@@ -3381,7 +3392,7 @@
     return {
       총취득가액: totalAcquisitionPrice,
       자산별_안분결과: results,
-      안내: '소득세법 시행령§166④에 따라 취득시점 기준시가 비율(모두 있으면 우선, 하나라도 없으면 감정가액 비율)로 계약 전체 취득가액·취득비용을 물건별로 안분합니다.'
+      안내: '소득세법 시행령§166⑥에 따라 취득시점 기준시가 비율(모두 있으면 우선, 하나라도 없으면 감정가액 비율)로 계약 전체 취득가액·취득비용을 물건별로 안분합니다.'
     };
   };
 
@@ -5362,11 +5373,11 @@
   window.calculateInstallmentSplitPaymentLimitJS = function (p) {
     p = p || {};
     const totalTaxAmount = Number(p.totalTaxAmount);
-    // taxType: 'transfer'(양도소득세, 소득세법§77·시행령§116) 또는 'inheritance'/'gift'(상증세법§70②·
+    // taxType: 'transfer'(양도소득세, 소득세법§112·시행령§175 — 2026.10.21 조문 표기 고침) 또는 'inheritance'/'gift'(상증세법§70②·
     // 시행령§66②, 기본값) — 신고기한 지난 후 2개월 이내 분납 가능 여부·한도 금액 산식(1천만원/
     // 2천만원/50%) 자체는 두 법 모두 동일해서 하나의 함수로 계산하고, 조문 인용 문구만 다르게 낸다.
     const isTransfer = p.taxType === 'transfer';
-    const provisionLabel = isTransfer ? '소득세법§77·시행령§116' : '상증세법§70②·시행령§66②';
+    const provisionLabel = isTransfer ? '소득세법§112·시행령§175' : '상증세법§70②·시행령§66②';
     if (!totalTaxAmount || totalTaxAmount <= 0) return { error: '납부할 세액이 필요합니다.' };
     if (p.hasInstallmentPaymentApproval) {
       return { 분납가능여부: false, 안내: (isTransfer ? '' : '연부연납(§71)을 허가받은 경우에는 ') + '분납(' + provisionLabel + ')을 적용하지 않습니다(중복 불가).' };
@@ -7034,7 +7045,7 @@
     const cappedGiftTaxEquivalent = Math.min(giftTaxEquivalent, necessaryExpenseCap);
 
     // [2026.10.20 세액 고침] 이월과세 적용 시 세율 판정 보유기간은 증여자가 취득한 날부터(§104②2호) — 증여자 취득일이 있으면 보유월수를 다시 셈
-    const donorHoldMonths_ = (p.donorAcquisitionDate && p.transferDate) ? monthsBetween_(p.donorAcquisitionDate, p.transferDate) : null;
+    const donorHoldMonths_ = (p.donorAcquisitionDate && p.transferDate) ? fullMonthsElapsed(p.donorAcquisitionDate, p.transferDate) : null;
     const withCarryoverParams = Object.assign({}, p, donorHoldMonths_ != null ? { holdingMonths: donorHoldMonths_ } : {}, {
       acquisitionPrice: donorAcqPrice,
       transferExpenses: (Number(p.transferExpenses) || 0) + cappedGiftTaxEquivalent
