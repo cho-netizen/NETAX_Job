@@ -8802,7 +8802,7 @@
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래 목록(transactions)이 1건 이상 필요합니다.' };
 
     let totalGain = 0;
-    let totalForeignTaxPaid = 0;
+    let totalForeignTaxPaid = 0, overseasCvp_ = 0;
     const perTxn = [];
     for (let i = 0; i < transactions.length; i++) {
       const t = transactions[i] || {};
@@ -8819,7 +8819,12 @@
       const method = t.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
       const paid = method === 'credit' ? (Number(t.foreignTaxPaidAmount) || 0) : 0;
       totalForeignTaxPaid += paid;
-      perTxn.push({ idx: i, 양도차익: Math.round(gain), 외국납부세액_공제신청액: paid });
+      // [2026.10.22 판단 대기 2 — 회장 결론] §118의8이 준용하는 §114의2: 신축·증축(85㎡ 초과분) 건물을 5년 안에 양도하면서 취득가액을 실지거래가액이 아닌
+      //  §118의4①1호 단서(시가·평가 방법)로 정한 경우 그 건물분 가액의 5%(산출세액이 없어도 — §114의2②). 화면에서 체크한 거래만(해석이 끼므로 기본은 안 함).
+      const cvp_ = (t.isNewBuildingWithin5Years && Number(t.convertedBuildingAcquisitionValueForPenalty) > 0 && conversionPenaltyRuleAt_(t.transferDate) !== 'none')
+        ? Math.round(Number(t.convertedBuildingAcquisitionValueForPenalty) * 0.05) : 0;
+      overseasCvp_ += cvp_;
+      perTxn.push({ idx: i, 양도차익: Math.round(gain), 외국납부세액_공제신청액: paid, 환산가산세: cvp_ || undefined });
     }
 
     const basicDeduction = Math.min(2500000, Math.max(0, totalGain));
@@ -8860,10 +8865,11 @@
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
     const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), offshore60_(filingParams, (Array.isArray(transactions) ? transactions : []).map(function (x) { return x && x.transferDate; }).filter(Boolean).sort().pop()), lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount);
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
-    const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
+    const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + overseasCvp_);
 
     return {
-      거래건수: transactions.length,
+      거래건수: transactions.length, 환산가산세: overseasCvp_ || undefined,
+      환산가산세_안내: overseasCvp_ ? '국외 신축·증축 건물을 5년 안에 양도하면서 취득가액을 시가·평가액으로 정해 그 건물분의 5%를 더했습니다(소득세법 §118의8이 §114의2를 준용 — 체크한 거래만).' : undefined,
       거래별_내역: perTxn,
       합산양도차익: Math.round(totalGain), 기본공제: basicDeduction, 과세표준: taxBase,
       산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_안내: [ftcOldM_.note, lossAllocNote_].filter(Boolean).join(' ') || undefined,

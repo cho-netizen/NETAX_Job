@@ -3479,5 +3479,26 @@
   "정답": {
    "산출세액": 207150000
   }
+ },
+ {
+  "이름": "[2026.10.22 판단 대기 2] 국외 신축 건물 5년 내 양도, 취득가액 시가 3억 — §118의8 → §114의2 가산세 3억 × 5% = 15,000,000(체크한 거래만)",
+  "도구": "calculateOverseasAssetTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2026-03-01",
+     "transferPrice": 800000000,
+     "acquisitionPrice": 500000000,
+     "isNewBuildingWithin5Years": true,
+     "convertedBuildingAcquisitionValueForPenalty": 300000000
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "환산가산세": 15000000,
+   "납부세액_합계": 117421000
+  }
  }
 ]

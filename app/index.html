@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 22:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 22:11 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -22302,7 +22302,7 @@ function nxMdOpenWindow(title, src, opts){
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래 목록(transactions)이 1건 이상 필요합니다.' };
 
     let totalGain = 0;
-    let totalForeignTaxPaid = 0;
+    let totalForeignTaxPaid = 0, overseasCvp_ = 0;
     const perTxn = [];
     for (let i = 0; i < transactions.length; i++) {
       const t = transactions[i] || {};
@@ -22319,7 +22319,12 @@ function nxMdOpenWindow(title, src, opts){
       const method = t.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
       const paid = method === 'credit' ? (Number(t.foreignTaxPaidAmount) || 0) : 0;
       totalForeignTaxPaid += paid;
-      perTxn.push({ idx: i, 양도차익: Math.round(gain), 외국납부세액_공제신청액: paid });
+      // [2026.10.22 판단 대기 2 — 회장 결론] §118의8이 준용하는 §114의2: 신축·증축(85㎡ 초과분) 건물을 5년 안에 양도하면서 취득가액을 실지거래가액이 아닌
+      //  §118의4①1호 단서(시가·평가 방법)로 정한 경우 그 건물분 가액의 5%(산출세액이 없어도 — §114의2②). 화면에서 체크한 거래만(해석이 끼므로 기본은 안 함).
+      const cvp_ = (t.isNewBuildingWithin5Years && Number(t.convertedBuildingAcquisitionValueForPenalty) > 0 && conversionPenaltyRuleAt_(t.transferDate) !== 'none')
+        ? Math.round(Number(t.convertedBuildingAcquisitionValueForPenalty) * 0.05) : 0;
+      overseasCvp_ += cvp_;
+      perTxn.push({ idx: i, 양도차익: Math.round(gain), 외국납부세액_공제신청액: paid, 환산가산세: cvp_ || undefined });
     }
 
     const basicDeduction = Math.min(2500000, Math.max(0, totalGain));
@@ -22360,10 +22365,11 @@ function nxMdOpenWindow(title, src, opts){
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
     const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), offshore60_(filingParams, (Array.isArray(transactions) ? transactions : []).map(function (x) { return x && x.transferDate; }).filter(Boolean).sort().pop()), lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount);
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
-    const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
+    const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + overseasCvp_);
 
     return {
-      거래건수: transactions.length,
+      거래건수: transactions.length, 환산가산세: overseasCvp_ || undefined,
+      환산가산세_안내: overseasCvp_ ? '국외 신축·증축 건물을 5년 안에 양도하면서 취득가액을 시가·평가액으로 정해 그 건물분의 5%를 더했습니다(소득세법 §118의8이 §114의2를 준용 — 체크한 거래만).' : undefined,
       거래별_내역: perTxn,
       합산양도차익: Math.round(totalGain), 기본공제: basicDeduction, 과세표준: taxBase,
       산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_안내: [ftcOldM_.note, lossAllocNote_].filter(Boolean).join(' ') || undefined,
@@ -25693,7 +25699,14 @@ function recomputeHeirDerivedFields(){
   const childCount = heirs.filter(function(h){ return h.relation === '자녀'; }).length;
   // [2026.10.22 검토대상 상속-10 A⑥(나)(다)] §20①2~4호는 "상속인 … 및 동거가족" — 동거가족 = 상속개시일 현재 피상속인이 사실상 부양하던
   //  직계존비속(배우자의 직계존속 포함)·형제자매(상증령 §18①). '상속인 아닌 자(유증 등)' 줄은 동거가족 표시(isCohabitingFamily)가 있을 때만 센다.
-  function personalDedTarget_(h){ return h.relation !== '상속인 아닌 자(유증·사인증여 등)' || !!h.isCohabitingFamily; }
+  // [2026.10.22 판단 대기 3 — 회장 결론] 부모(직계존속)는 1순위(자녀·손자녀) 상속인 줄이 있으면 민법 §1000①(직계비속이 1순위, 직계존속은 2순위)상
+  //  상속인이 아니므로 §20①2~4호는 동거가족(피상속인이 사실상 부양, 상증령 §18①) 체크가 있을 때만 센다. 1순위 줄이 없으면 부모는 상속인이라 그대로 센다.
+  const hasFirstOrder_ = heirs.some(function(h){ return h.relation === '자녀' || (h.relation || '').indexOf('손자녀') !== -1; });
+  function personalDedTarget_(h){
+    if (h.relation === '상속인 아닌 자(유증·사인증여 등)') return !!h.isCohabitingFamily;
+    if (h.relation === '부모(직계존속)' && hasFirstOrder_) return !!h.isCohabitingFamily;
+    return true;
+  }
   // §20①2호·3호 — 미성년자공제·연로자공제는 "상속인(배우자는 제외한다) 및 동거가족"만 대상이다.
   // 4호(장애인공제)는 배우자 제외 문구가 없으므로 disabledCount는 배우자를 포함해 그대로 센다.
   let minorYears = 0, elderlyCount = 0;
@@ -30926,6 +30939,9 @@ function renderOverseasPropertyCardHtml_(idx){
         '<div class="taxcalc-field"><label>자본적지출액</label><input type="number" data-field="oaCapitalExpenditure" placeholder="원" value="' + (a.oaCapitalExpenditure || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         // [2026.10.22 검토대상 양도-11] §118의8이 준용하는 §97③
         '<div class="taxcalc-field"><label>사업소득 필요경비로 넣은 감가상각비</label><input type="number" data-field="oaDepreciation" placeholder="원" value="' + (a.oaDepreciation || '') + '"><span class="taxcalc-field-help">없으면 비움 — 취득가액에서 뺍니다(§118의8 → §97③)</span></div>' +
+        // [2026.10.22 판단 대기 2 — 회장 결론] §118의8이 준용하는 §114의2(신축·증축 건물 5년 내 양도, 취득가액을 시가·평가액으로 정한 경우 5%) — 체크할 때만
+        '<div class="taxcalc-field checkbox" style="flex-basis:100%; max-width:none;"><input type="checkbox" data-field="oaNewBuilding5yr" id="oaNb5-' + idx + '"' + (a.oaNewBuilding5yr ? ' checked' : '') + '><label for="oaNb5-' + idx + '">신축·증축(85㎡ 초과)한 건물을 5년 안에 양도하고, 취득가액을 실지거래가액이 아닌 시가·평가액으로 정함(소득세법 §118의8 → §114의2 가산세 5%)</label></div>' +
+        '<div class="taxcalc-field"><label>그 건물분 취득가액(시가·평가액)</label><input type="number" data-field="oaConvertedBuildingValue" placeholder="원" value="' + (a.oaConvertedBuildingValue || '') + '"><span class="taxcalc-field-help">위를 체크했을 때만 — 증축은 증축 부분만</span></div>' +
         '<div class="taxcalc-field"><label>양도비</label><input type="number" data-field="oaTransferExpenses" placeholder="원" value="' + (a.oaTransferExpenses || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액 처리방법</label><select data-field="oaForeignTaxMethod">' +
           '<option value="credit"' + (a.oaForeignTaxMethod !== 'expense' ? ' selected' : '') + '>외국납부세액공제(세액공제, 산출세액 한도)</option>' +
@@ -32871,6 +32887,7 @@ function renderOneOverseasResultHtml_(r, label){
   if (r.외국납부세액공제한도 !== undefined) html += taxCalcResultRow('외국납부세액공제 한도', won(r.외국납부세액공제한도));
   if (r.외국납부세액공제_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.외국납부세액공제_안내) + '</div>'; // [2026.10.20 J14]
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제', '-' + won(r.외국납부세액공제));
+  if (r.환산가산세) html += taxCalcResultRow('환산가액 가산세(§118의8 → §114의2)', won(r.환산가산세)) + (r.환산가산세_안내 ? '<div class="taxcalc-result-note">' + escapeHtml(r.환산가산세_안내) + '</div>' : ''); // [2026.10.22 판단 대기 2]
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
@@ -38337,7 +38354,7 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">나이' + (age !== null ? ' — 만 ' + age + '세(주민등록번호로 자동 계산)' : ' — 주민등록번호를 입력하면 자동 계산됩니다') + '</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isDisabled" id="hDisabled-' + idx + '"' + (h.isDisabled ? ' checked' : '') + '><label for="hDisabled-' + idx + '">장애인</label></div>' +
       // [2026.10.22 검토대상 상속-10 A⑥(나)] 상속인이 아닌 사람의 미성년자·연로자·장애인공제(§20①2~4호 "동거가족", 상증령 §18①)
-      '<div class="taxcalc-field checkbox" data-show-if-heir-nonheir="1" style="' + (h.relation === '상속인 아닌 자(유증·사인증여 등)' ? '' : 'display:none;') + '"><input type="checkbox" data-hfield="isCohabitingFamily" id="hCohabFam-' + idx + '"' + (h.isCohabitingFamily ? ' checked' : '') + '><label for="hCohabFam-' + idx + '">피상속인이 사실상 부양하던 동거가족(직계존비속·형제자매, 상증령 §18①) — 체크하면 미성년자·연로자·장애인공제에 셉니다</label></div>' +
+      '<div class="taxcalc-field checkbox" data-show-if-heir-nonheir="1" style="' + ((h.relation === '상속인 아닌 자(유증·사인증여 등)' || h.relation === '부모(직계존속)') ? '' : 'display:none;') + '"><input type="checkbox" data-hfield="isCohabitingFamily" id="hCohabFam-' + idx + '"' + (h.isCohabitingFamily ? ' checked' : '') + '><label for="hCohabFam-' + idx + '">피상속인이 사실상 부양하던 동거가족(직계존비속·형제자매, 상증령 §18①) — 체크하면 미성년자·연로자·장애인공제에 셉니다</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isReporter" id="hReporter-' + idx + '"' + (h.isReporter ? ' checked' : '') + '><label for="hReporter-' + idx + '">신고인</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasRenounced" id="hRenounced-' + idx + '"' + (h.hasRenounced ? ' checked' : '') + '><label for="hRenounced-' + idx + '">상속포기(민법§1043 — 처음부터 상속인 아니었던 것으로 봄)</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isCohabitHouse" id="hCohabit-' + idx + '"' + (h.isCohabitHouse ? ' checked' : '') + '><label for="hCohabit-' + idx + '">동거주택 상속(10년이상 동거·무주택 등)</label></div>' +
@@ -38388,7 +38405,7 @@ function renderHeirRegistry(){
         });
       }
       if (key === 'relation'){
-        row.querySelectorAll('[data-show-if-heir-nonheir]').forEach(function(field){ field.style.display = el.value === '상속인 아닌 자(유증·사인증여 등)' ? 'flex' : 'none'; }); // [2026.10.22 상속-10 A⑥]
+        row.querySelectorAll('[data-show-if-heir-nonheir]').forEach(function(field){ field.style.display = (el.value === '상속인 아닌 자(유증·사인증여 등)' || el.value === '부모(직계존속)') ? 'flex' : 'none'; }); // [2026.10.22 상속-10 A⑥]
         row.querySelectorAll('[data-show-if-heir-relation]').forEach(function(field){
           field.style.display = (el.value === '손자녀(대습상속 — 부모가 먼저 사망·결격)' || el.value === '며느리/사위(대습상속 — 배우자였던 자녀가 먼저 사망·결격)') ? 'flex' : 'none';
         });
@@ -40278,6 +40295,7 @@ function handleTaxCalcClick_(e){
         acquisitionPrice: numVal(a.acquisitionPrice) || 0,
         capitalExpenditure: numVal(a.oaCapitalExpenditure) || 0,
         depreciationDeductedAsBusinessExpense: numVal(a.oaDepreciation) || 0, // [2026.10.22 양도-11] §118의8 → §97③
+        isNewBuildingWithin5Years: !!a.oaNewBuilding5yr, convertedBuildingAcquisitionValueForPenalty: a.oaNewBuilding5yr ? (numVal(a.oaConvertedBuildingValue) || 0) : 0, // [2026.10.22 판단 대기 2] §114의2 준용
         transferExpenses: numVal(a.oaTransferExpenses) || 0,
         foreignTaxCreditMethod: a.oaForeignTaxMethod || 'credit',
         foreignTaxPaidAmount: numVal(a.oaForeignTaxPaid) || 0
