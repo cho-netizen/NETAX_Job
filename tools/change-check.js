@@ -83,9 +83,12 @@ const serverFiles = fs.readdirSync(GS).filter((f) => /\.(js|json)$/.test(f) && !
   .concat(fs.readdirSync(path.join(GS, 'manage')).filter((f) => /\.html$/.test(f) && !ignore.includes('manage/' + f)).map((f) => 'manage/' + f));
 const HOSTS = { 'api.anthropic.com': 'Claude(유료)', 'generativelanguage.googleapis.com': 'Gemini', 'api.openai.com': 'OpenAI(유료)' };
 let bytes = 0;
+// [2026.10.22] 바뀐 파일만 기준판을 꺼내 비교 — 파일마다 git show를 하면 20초가 넘어 올리기 전 훅(12초)에서 시간 초과로 검사가 빠졌다
+const changedGs = new Set(git(['diff', '--name-only', base, '--', 'gs-backend']).split('\n').map((s) => s.trim()).filter(Boolean));
 serverFiles.forEach((f) => {
   const cur = fs.readFileSync(path.join(GS, f), 'utf8');
   bytes += Buffer.byteLength(cur.replace(/\r\n/g, '\n'), 'utf8');
+  if (!changedGs.has('gs-backend/' + f)) return; // 기준판과 같으면 늘었을 리 없음
   let old = ''; try { old = git(['show', base + ':gs-backend/' + f]); } catch (e) { }
   Object.keys(HOSTS).forEach((h) => {
     const n = cur.split('https://' + h).length - 1, o = old.split('https://' + h).length - 1;
