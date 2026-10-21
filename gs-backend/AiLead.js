@@ -54,7 +54,8 @@ var CASEPROC_AI_TOOLS_ = [
   { name: 'public_lookup', description: '공적 조회 — 조건을 정해 다시 조회: kind=official(공시가격, priceKind land/house/apartment, year) · real(매매사례, base 평가기준일, before/after 개월, area ㎡) · building(건축물대장) · adjusted(조정대상지역 — loc + dates[{label,date,purpose}]로 날짜별 판정·근거 공고, 토큰 0). 결과 전부와 근거키(확보자료 PDF와 같은 근거).',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, kind: { type: 'string', enum: ['official', 'real', 'building', 'adjusted'] }, loc: { type: 'string' }, dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' }, purpose: { type: 'string', enum: ['일반', '거주요건'] } } } }, priceKind: { type: 'string' }, year: { type: 'number' }, base: { type: 'string' }, before: { type: 'number' }, after: { type: 'number' }, area: { type: 'number' } }, required: ['caseId', 'kind', 'loc'] } },
   { name: 'report_tool_gap', description: '도구 부족 기록 — "이런 도구가 있으면", "이 도구가 이런 값을 안 돌려준다"를 남긴다(고객 이름·주민번호·전화·주소 넣지 말 것). 처리는 그대로 이어간다.',
-    input_schema: { type: 'object', properties: { want: { type: 'string' }, kind: { type: 'string', enum: ['없음', '값을 안 돌려줌', '틀림', '느림', '막힘'] }, tool: { type: 'string' }, shape: { type: 'string' }, instead: { type: 'string' } }, required: ['want', 'kind'] } }
+    input_schema: { type: 'object', properties: { want: { type: 'string' }, kind: { type: 'string', enum: ['없음', '값을 안 돌려줌', '틀림', '느림', '막힘'] }, tool: { type: 'string' }, shape: { type: 'string' }, instead: { type: 'string' },
+      situation: { type: 'string', description: '[2026.10.21] 무엇을 판단하려다 막혔나 — 세목·판단 자리·막힌 순간을 일반화해서(고객 이름·사건명 없이). 개발자(Claude)가 이 글만 보고 같은 상황을 재현할 수 있게' } }, required: ['want', 'kind'] } }
 ];
 // [2026.10.19] 지침 초안(maps/작업지시AI_지침초안.md A절)을 그대로 — 블라인드 모의 3건으로 고친 판, 약 3,800자
 function caseProcAiSystem_() {

@@ -156,7 +156,9 @@ function caseProcAiLiveTools_() {
 function caseProcAiNexBase_() {
   let master = '';
   try { master = typeof getMasterProfileText_ === 'function' ? getMasterProfileText_() || '' : ''; } catch (e) { master = ''; }
-  return DEFAULT_SYSTEM_PROMPT + (master ? '\n\n' + master : '') + '\n\n'
+  // [2026.10.21] 최근 바뀐 job 기능(배포 기록 — 대화창 넥스와 같은 글, Federation.js ①) — 사건 지휘 넥스도 새 도구·바뀐 동작을 알게
+  let changes = ''; try { changes = typeof commRecentChangesPrompt_ === 'function' ? commRecentChangesPrompt_() : ''; } catch (e) { changes = ''; }
+  return DEFAULT_SYSTEM_PROMPT + (master ? '\n\n' + master : '') + changes + '\n\n'
     + '[사건 지휘 모드 — 같은 넥스] 지금은 세무사님이 채팅창에서 "이 사건 처리하자"라고 맡긴 사건을 지휘한다. 위 마스터 프로필은 세무사님의 성향·지침을 알기 위한 것이다 — '
     + '거기 나온 도구 중 아래 목록에 없는 것은 부르지 않고 같은 일을 하는 네 도구로 한다(도구 부족 신고는 report_tool_gap). 채팅창에서 세무사님이 하신 말씀은 첫 글의 [세무사님 말씀]에 있다 — 서류보다 앞서는 지시로 따르되, 세액이 크게 갈리는 칸(시가·특수관계 등)은 그 말씀을 근거로 넣지 말고 질문 메모로 확인한다.\n'
     // [2026.10.21] 세무사님 원문: "내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"
@@ -278,7 +280,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     return { text: JSON.stringify({ ok: true, 올린질문: ids.length, 언제: input.urgent ? '처리 끝에 맨 위(계산을 막음)' : '처리 끝에 모아서' }) };
   }
   if (name === 'report_tool_gap') {
-    ctx.gaps.push({ want: caseProcAiMask_(caseProcAiCut_(input.want, 200)), kind: input.kind || '', tool: input.tool || '', shape: caseProcAiCut_(input.shape || '', 120), instead: caseProcAiCut_(input.instead || '', 120) });
+    ctx.gaps.push({ want: caseProcAiMask_(caseProcAiCut_(input.want, 200)), kind: input.kind || '', tool: input.tool || '', shape: caseProcAiCut_(input.shape || '', 120), instead: caseProcAiCut_(input.instead || '', 120), situation: caseProcAiMask_(caseProcAiCut_(input.situation || '', 300)) }); // [2026.10.21] 막힌 상황(Claude가 재현할 수 있게)
     return { text: JSON.stringify({ ok: true, 기록: '도구 부족으로 남김' }) };
   }
   if (name === 'save_draft') return { text: JSON.stringify({ ok: true, 안내: '처리 끝에 화면이 저장·검토서 초안·현황표를 만든다' }) };

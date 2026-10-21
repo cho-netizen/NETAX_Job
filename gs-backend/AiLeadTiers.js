@@ -128,7 +128,7 @@ function caseProcAiLogGaps_(c, gaps) {
       const it = folder.getFilesByName(CASEPROC_AI_GAP_LOG_), f = it.hasNext() ? it.next() : folder.createFile(CASEPROC_AI_GAP_LOG_, '[]', 'application/json');
       let arr = []; try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { arr = []; }
       const at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
-      gaps.forEach(function (g) { arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: at, 세목: c.세목, 업무유형: c.업무유형 || '', caseKey: typeof cxHash_ === 'function' ? cxHash_(String(c.id)) : '', want: g.want, kind: g.kind || '', tool: g.tool || '', shape: g.shape || '', instead: g.instead || '', auto: !!g.auto })))); });
+      gaps.forEach(function (g) { arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: at, 세목: c.세목, 업무유형: c.업무유형 || '', caseKey: typeof cxHash_ === 'function' ? cxHash_(String(c.id)) : '', want: g.want, kind: g.kind || '', tool: g.tool || '', shape: g.shape || '', instead: g.instead || '', situation: g.situation || '', auto: !!g.auto })))); });
       f.setContent(JSON.stringify(arr.slice(-3000)));
     });
   } catch (e) {}
@@ -201,8 +201,9 @@ function caseProcAiWeeklyFrom_(runs, paid, gaps, promoted, opt) {
     const move = r === 'lead' && t.lead >= 3 && same >= 80 && !t.fixed ? '내리기 후보(총괄 → 저비용 또는 GAS 규칙)' : r === 'light' && t.judged >= 3 && fixRate >= 30 ? '올리기 후보(저비용 → 총괄)' : '';
     return { topic: t.topic, route: r, items: t.items, fixRate: fixRate, leadSame: same, move: move };
   }).sort(function (a, b) { return b.items - a.items; });
-  const gapCount = {}; (gaps || []).forEach(function (g) { const k = String(g.want || '').slice(0, 80); if (k) gapCount[k] = (gapCount[k] || 0) + 1; });
-  const gapTop = Object.keys(gapCount).sort(function (a, b) { return gapCount[b] - gapCount[a]; }).slice(0, 15).map(function (k) { return { want: k, n: gapCount[k] }; });
+  const gapCount = {}, gapSit = {}; (gaps || []).forEach(function (g) { const k = String(g.want || '').slice(0, 80); if (k) { gapCount[k] = (gapCount[k] || 0) + 1; if (g.situation && !gapSit[k]) gapSit[k] = String(g.situation).slice(0, 300); } });
+  // [2026.10.21] 막힌 상황 예시 한 줄 — 개발자(Claude)가 재현할 수 있게(넥스 ↔ Claude 소통: 신고에 맥락)
+  const gapTop = Object.keys(gapCount).sort(function (a, b) { return gapCount[b] - gapCount[a]; }).slice(0, 15).map(function (k) { return { want: k, n: gapCount[k], situation: gapSit[k] || '' }; });
   const lines = [];
   const lw = weeks[weeks.length - 1];
   if (!lw) lines.push('🤖 AI 지휘 기록이 아직 없습니다.');
