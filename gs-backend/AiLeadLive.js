@@ -533,6 +533,14 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
 
 // 시험 전용 모델 부르기 — kind 'lead'(지휘 AI: 서버가 지침·도구를 붙임, 화면이 준 messages만) / 'sub'(좁은 판단·상위 판단: 물음·재료만)
 function caseProcAiModelDry_(body) {
+  // [2026.10.21 모델 맞추기 비교] 세무사님 "8번 모델 맞추기도 비교해서 진행하라" — 저비용 쟁점 묶음(cxCallAi_와 같은 지시문)을 고른 모델로 한 번(시험 — 기록·사건 쓰기 없음, 보내기 직전 가림)
+  if (body.kind === 'cx') {
+    const allow = [LIGHT_MODEL, 'claude-haiku-5-5', 'claude-sonnet-5-5'];
+    if (allow.indexOf(body.model) === -1) return { ok: false, error: '비교 허용 모델이 아님: ' + body.model };
+    const r = caseProcAiCall_(body.model, CX_AI_SYSTEM_, null, [{ role: 'user', content: String(body.user || '').slice(0, 60000) }], 3000);
+    if (r.error) return { ok: false, error: r.error };
+    return { ok: true, text: caseProcAiText_(r.json), stop: r.json.stop_reason, usage: r.json.usage, won: r.won };
+  }
   if (body.kind === 'sub') { const m = body.model === CASEPROC_AI_HIGH_MODEL_ ? CASEPROC_AI_HIGH_MODEL_ : CASEPROC_AI_LIGHT_MODEL_; const r = caseProcAiSubJudge_(m, body.input || {}, m === CASEPROC_AI_LIGHT_MODEL_ ? 'low' : 'medium'); return { ok: true, text: r.text, won: r.won }; }
   const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, caseProcAiLiveSystem_(Number(body.cap) || 1000), caseProcAiLiveTools_(), caseProcAiCacheMark_(Array.isArray(body.messages) ? body.messages : []), 3000, 'medium');
   if (r.error) return { ok: false, error: r.error };
