@@ -4985,6 +4985,9 @@ function aiSaveBackupPrev_(folder, file) {
 function toolExportToGoogleDoc(pathArr, title, content) {
   if (!title || !String(title).trim()) return { error: '문서 제목이 없습니다.' };
   if (!content) return { error: '내용이 없습니다.' };
+  // [2026.10.21] 숨은 메모(<!-- 바탕 템플릿 … -->, <!-- 문단정보 … -->)는 구글 문서에 글자로 찍히지 않게 뺀다(reportwriter.html과 같은 방식)
+  content = String(content).replace(/<!--[\s\S]*?-->[ \t]*\r?\n?/g, '');
+  if (!content.trim()) return { error: '내용이 없습니다.' };
 
   let folder;
   try {
