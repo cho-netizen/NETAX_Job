@@ -3540,5 +3540,76 @@
    "세대생략가산액": 15000000,
    "산출세액": 65000000
   }
+ },
+ {
+  "이름": "[2026.10.22 가업 사후관리 추징] 2026 상속 가업상속공제 30억, 2028.7.15. 가업 미종사(02) — 30억 × 100%를 과세표준에 더해 재계산: 산출 27.875억 → 42.875억, 결정 상속세액 15억, 신고기한 2029.1.31.",
+  "도구": "calculateSuccessionDeductionClawbackJS",
+  "입력": {
+   "violationCode": "02",
+   "inheritanceDate": "2026-03-01",
+   "violationDate": "2028-07-15",
+   "original": {
+    "taxableEstateAmount": 10000000000,
+    "hasSpouse": false,
+    "childCount": 1,
+    "businessOwnershipYears": 15,
+    "businessInheritanceIndividualNetAssetValue": 3000000000,
+    "totalGrossEstateValue": 10000000000,
+    "dateOfDeath": "2026-03-01",
+    "inheritanceDate": "2026-03-01"
+   },
+   "assessmentDate": "2028-12-31"
+  },
+  "정답": {
+   "산입액": 3000000000,
+   "결정상속세액": 1500000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 가업 사후관리 추징] 2019 상속, 2022.3.10. 가업용 자산 50% 처분(01) — 종전 10년 표 3년째 100% × 처분비율 50% = 산입 15억(법률 제16846호 부칙 제11조)",
+  "도구": "calculateSuccessionDeductionClawbackJS",
+  "입력": {
+   "violationCode": "01",
+   "disposalRatio": 0.5,
+   "inheritanceDate": "2019-06-01",
+   "violationDate": "2022-03-10",
+   "original": {
+    "taxableEstateAmount": 10000000000,
+    "hasSpouse": false,
+    "childCount": 1,
+    "businessOwnershipYears": 15,
+    "businessInheritanceIndividualNetAssetValue": 3000000000,
+    "totalGrossEstateValue": 10000000000,
+    "dateOfDeath": "2019-06-01",
+    "inheritanceDate": "2019-06-01"
+   }
+  },
+  "정답": {
+   "추징율": 1,
+   "산입액": 1500000000
+  }
+ },
+ {
+  "이름": "[2026.10.22 가업 사후관리 추징] 2014 상속, 2022.8.10.(8년째) 미종사 — 종전 10년 표 8~9년 80% → 산입 24억",
+  "도구": "calculateSuccessionDeductionClawbackJS",
+  "입력": {
+   "violationCode": "02",
+   "inheritanceDate": "2014-06-01",
+   "violationDate": "2022-08-10",
+   "original": {
+    "taxableEstateAmount": 10000000000,
+    "hasSpouse": false,
+    "childCount": 1,
+    "businessOwnershipYears": 15,
+    "businessInheritanceIndividualNetAssetValue": 3000000000,
+    "totalGrossEstateValue": 10000000000,
+    "dateOfDeath": "2014-06-01",
+    "inheritanceDate": "2014-06-01"
+   }
+  },
+  "정답": {
+   "추징율": 0.8,
+   "산입액": 2400000000
+  }
  }
 ]

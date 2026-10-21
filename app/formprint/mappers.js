@@ -1414,18 +1414,30 @@
     if (!cr || cw.formType !== 'ih6') { o.miss('부표6 전체', '사후관리 추징이자 계산(서식 구분: 가업·영농상속공제 사후관리추징) 결과 없음'); return o.result(); }
     ihClawHead(o, ctx, '⑧');
     var biz = n(r.가업상속공제), farm = n(r.영농상속공제), kind = biz && !farm ? '가업' : farm && !biz ? '영농' : null;
+    var sd = cw.sd || null; // [2026.10.22] 가업·영농 사후관리 추징 도구 결과 — 있으면 그 값(공제 종류·위반 유형·산입액)이 먼저
+    if (sd) { kind = sd.공제종류 === '영농상속공제' ? '영농' : '가업'; if (kind === '가업') { biz = n(sd.공제받은금액); farm = 0; } else { farm = n(sd.공제받은금액); biz = 0; } }
     if (kind) o.set('⑦', kind === '가업' ? '가업상속공제' : '영농상속공제');
     else o.miss('⑦ 상속공제의 종류·㉗~㊱ 가업/영농 칸', biz && farm ? '가업·영농상속공제가 둘 다 있어 추징 대상이 어느 쪽인지 화면만으로 정할 수 없음' : '상속세 결과에 가업·영농상속공제가 없음(당초 신고 계산을 불러와야 함)');
     o.miss('⑨~⑱ 가업·영농상속 재산명세', '계산기에 재산명세 칸 없음(공제 계산은 합계만)');
-    o.miss('⑲ 사후관리 위반유형코드', '계산기에 없음');
+    if (sd) o.set('⑲', sd.위반유형코드); else o.miss('⑲ 사후관리 위반유형코드', '"가업·영농 사후관리 추징" 도구를 쓰면 채움');
     if (biz) o.set('⑳', biz);
     if (farm) o.set('㉓', farm);
     // [2026.10.20 서식 감사] ㉑ 추징율 = 작성방법 3 "시행령 §15⑮의 추징율(100%)", ㉒ = ⑳ × ㉑
-    if (biz) {
+    if (biz && sd) {
+      // [2026.10.22] ㉑ = 그 상속·위반일의 추징율(새 규정 100%, 종전 기간별추징율), ㉒ = 도구 산입액(01 처분이면 처분비율까지 곱한 값 — §18의2⑤ 괄호)
+      o.set('㉑', Math.round(n(sd.추징율) * 100)).set('㉒', n(sd.산입액));
+      if (sd.위반유형코드 === '01') o.note('㉒ = ⑳ × ㉑ × 가업용 자산 처분비율 ' + (n(sd.처분비율) * 100).toFixed(2) + '%(§18의2⑤ 괄호 "가업용 자산의 처분 비율을 추가로 곱한 금액") — 서식 칸 식(⑳ × ㉑)에 처분비율이 없어 알림');
+      else o.check('㉒ = ⑳ × ㉑', n(sd.산입액), Math.floor(biz * n(sd.추징율)));
+    } else if (biz) {
       o.set('㉑', 100).set('㉒', biz);
       o.note('㉑ 추징율 100%(서식 작성방법 3, 시행령 §15⑮) — 가업용 자산 처분(§18의2⑤1호)이면 처분비율을 곱한 금액인지, 2022.12.31. 이전 상속개시분(기간별 추징율 경과규정)인지 확인');
     }
-    if (farm) o.miss('㉔㉕㉖', '영농상속재산 중 처분재산가액·영농상속재산가액이 계산기에 없음');
+    if (farm && sd && sd.위반유형코드 === '07') {
+      // [2026.10.22] ㉖ = ㉓ × ㉔ ÷ ㉕(서식 식) — 도구 산입액
+      o.set('㉔', n(sd.처분재산가액)).set('㉕', n(sd.영농상속재산가액)).set('㉖', n(sd.산입액));
+      o.check('㉖ = ㉓ × ㉔ ÷ ㉕', n(sd.산입액), Math.floor(farm * Math.min(1, n(sd.처분재산가액) / n(sd.영농상속재산가액))));
+    } else if (farm && sd) { o.set('㉖', n(sd.산입액)); o.miss('㉔㉕', '처분(07)이 아닌 위반이라 공제액 전액(×추징율) 산입'); }
+    else if (farm) o.miss('㉔㉕㉖', '"가업·영농 사후관리 추징" 도구를 쓰면 채움');
     if (kind) {
       var K = kind === '가업' ? { tax: '㉗', days: '㉙', rate: '㉚', int: '㉛', pay: '㉟' } : { tax: '㉘', days: '㉜', rate: '㉝', int: '㉞', pay: '㊱' };
       var tax = n(cr.추징세액), ic = interestCells(cr, 'annual');
@@ -1581,7 +1593,9 @@
   }
   function clawbackCtx() {
     var cr = (typeof lastClawbackResult_ !== 'undefined' ? lastClawbackResult_ : null);
-    return cr ? { formType: el('ckFormType'), result: cr, reason: el('ckMarriageReason'), reDeferral: checked('ckReDeferral') === true } : null; // [2026.10.22 상속-13] 재차 납부유예 체크
+    // [2026.10.22] sd = 가업·영농 사후관리 추징 도구 결과(부표6 ⑦·⑲~㉖) — 그 도구의 이자상당액 결과가 지금 추징이자 결과일 때만
+    var sd = (typeof lastSuccessionClawbackResult_ !== 'undefined' && lastSuccessionClawbackResult_ && lastSuccessionClawbackResult_.이자상당액_계산 === cr) ? lastSuccessionClawbackResult_ : null;
+    return cr ? { formType: el('ckFormType'), result: cr, reason: el('ckMarriageReason'), reDeferral: checked('ckReDeferral') === true, sd: sd } : null; // [2026.10.22 상속-13] 재차 납부유예 체크
   }
   var ctxFromApp = {
     // i = 양도인 번호(lastTransferResults_ 중 계산 성공한 것의 순서). 주식등·파생상품 결과는 대표 양도인(i=0)에만 붙임(지금 인쇄와 같음)
