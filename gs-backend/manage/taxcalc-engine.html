@@ -1065,7 +1065,10 @@
     const hol = refHistoryOn_() ? nxHolidays_() : {};
     for (let i = 0; i < 15; i++) {
       const wd = new Date(d + 'T00:00:00Z').getUTCDay();
-      if (wd === 0 || wd === 6 || d.slice(5) === '05-01' || hol[d]) d = addDaysStr_(d, 1); else break;
+      // [2026.10.22] 국세기본법 §5①에 "토요일"이 들어간 것은 법률 제8139호(2007.1.1. 시행, 적용례 따로 없음) — 그 전 판(2004~2006)은 "공휴일"만
+      //  (일요일은 관공서 공휴일 규정 제2조제1호로 공휴일)이라 2006.12.31. 이전 기한 끝날이 토요일이면 미루지 않는다. 근로자의 날(5.1.)은 그 전에도 §5②로 납부기한만 미룸.
+      const satShift_ = d >= '2007-01-01';
+      if (wd === 0 || (wd === 6 && satShift_) || d.slice(5) === '05-01' || hol[d]) d = addDaysStr_(d, 1); else break;
     }
     return d;
   }
