@@ -115,6 +115,22 @@ function aiJudgeGet_() {
   var f = aiJudgeFile_(); if (!f) return { error: '드라이브 업무관리자/법령/' + AI_JUDGE_FILE_ + '이 없습니다.' };
   try { return { success: true, doc: JSON.parse(f.getBlob().getDataAsString('UTF-8')) }; } catch (e) { return { error: '판단 대기 파일을 읽지 못했습니다: ' + e.message }; }
 }
+// [2026.10.21] 넥스가 읽는 AI 회의 법령 안건 — 세무사님 "ai회의 결론을 넥스가 보도록 하라". 결정된 것은 결론·메모·근거, 아직이면 "판단 대기"(넥스가 단정하지 않게).
+//  q가 있으면 제목·설명·조문에 그 낱말이 든 쟁점만. 답(AI별 글)은 싣지 않는다(결정 전 AI 의견을 결론처럼 쓰지 않게).
+function aiJudgeForNex_(q, 세목) {
+  var r = aiJudgeGet_(); if (!r || !r.doc) return { 오류: (r && r.error) || '판단 대기 파일을 읽지 못함' };
+  var words = String(q || '').split(/[\s,·]+/).filter(function (w) { return w.length >= 2; });
+  var items = (r.doc.항목 || []).filter(function (x) {
+    if (세목 && x.세목 && String(x.세목).indexOf(세목) < 0) return false;
+    if (!words.length) return true;
+    var hay = [x.제목, x.설명, JSON.stringify(x.조문 || '')].join(' ');
+    return words.some(function (w) { return hay.indexOf(w) >= 0; });
+  }).slice(0, 15).map(function (x) {
+    var d = x.결정 || null, st = x.상태 || (d ? (d.선택 === '보류' ? '보류' : '결정') : '판단 대기');
+    return { id: x.id, 세목: x.세목 || '', 제목: x.제목 || '', 상태: st, 결정: d && st === '결정' ? { 선택: d.선택, 내용: d.내용 || '', 메모: d.메모 || '', 근거: d.근거 || [], 때: d.때 || '' } : null };
+  });
+  return { 안내: '상태가 "결정"인 것만 세무사님 결론 — 그대로 따른다. "판단 대기"·"보류"는 결론이 아니다: 같은 쟁점을 답할 때 "세무사님 판단 대기 중인 쟁점"이라고 밝히고 단정하지 않는다.', 전체: (r.doc.항목 || []).length, 항목: items };
+}
 // 쟁점 하나에 답(AI별)·근거 확인·결정·첨부를 덧붙인다. 엔진은 고치지 않는다(결정 목록을 조정·서식 세션이 보고 고침).
 function aiJudgeSave_(body) {
   var id = String(body && body.id || '');

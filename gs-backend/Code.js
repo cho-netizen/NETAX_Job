@@ -3762,6 +3762,8 @@ function job_lookup_(input) {
     const w = caseProcAiWeekly_({});
     return { 줄: (w.lines || []).slice(0, 40), 규칙후보: (w.ruleCands || []).slice(0, 20), 주제: w.topics || null, 빠진도구: (w.gaps || []).slice(0, 20), 멈춤경고: w.stall || null };
   }
+  // [2026.10.21] AI 회의 법령 안건(세무사님 결정·판단 대기) — 세무사님 "ai회의 결론을 넥스가 보도록 하라"(Federation.js aiJudgeForNex_)
+  if (kind === 'law_decisions') return typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.search || '', input.세목 || '') : { error: '이 판에 없음' };
   return { error: '알 수 없는 kind: ' + kind };
 }
 
@@ -3835,13 +3837,14 @@ const JOB_AI_TOOLS_ = [
     name: 'job_lookup',
     description: 'job 화면의 자료를 조회한다(읽기 전용, 바로 실행). kind: bookings=상담 예약 목록(승인·거절 제안에 필요한 rowIndex 등 포함), consult_logs=고객 상담·자문·수금 기록(search=고객명으로 좁히기), checklist=사건의 고객창구 증빙 체크리스트(caseId 필요), memos=일반메모 목록, case_log=전체 사건 처리일지, reports=보고서 모음 목록, bug_log=job 오류 자동기록(최근 100건), '
       + 'caseproc=사건처리 상태(caseId 필요 — 남은 질문·넣을 칸·후보와 출처·AI 판단 값·지난 사건 지휘에서 넥스가 한 보고·판단·여쭌 것. "이 사건 처리하자" 뒤 세무사님이 질문·값·이유를 물으면 먼저 이것을 본다), '
-      + 'ai_review=AI 판단이 쌓인 모습(주제별 판단 수·세무사님이 고친 비율·GAS 규칙 후보·빠진 도구). 사건·고객 목록 자체는 list_work_cases·list_clients를 써라.',
+      + 'ai_review=AI 판단이 쌓인 모습(주제별 판단 수·세무사님이 고친 비율·GAS 규칙 후보·빠진 도구), '
+      + 'law_decisions=AI 회의 법령 안건(search=쟁점 낱말) — 상태 "결정"은 세무사님 결론이라 그대로 따르고, "판단 대기"·"보류"면 그 쟁점을 단정하지 말고 판단 대기 중이라고 밝힌다. 세법 판단을 답하기 전에 같은 쟁점이 있는지 먼저 본다. 사건·고객 목록 자체는 list_work_cases·list_clients를 써라.',
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ai_review'] },
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ai_review', 'law_decisions'] },
         caseId: { type: 'string', description: 'checklist·caseproc일 때 작업관리 사건ID' },
-        search: { type: 'string', description: 'consult_logs일 때 고객명 검색어(선택)' }
+        search: { type: 'string', description: 'consult_logs일 때 고객명, law_decisions일 때 쟁점 낱말(선택)' }
       },
       required: ['kind']
     }
@@ -4606,7 +4609,8 @@ function buildContextSystemPrompt(basePrompt, body) {
   // [2026.10.21 넥스 하나로] 세무사님 원문: "넥스 하나로 합치는 쪽으로 승인한다" / "내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"
   if (ctx.aiPanel) staticExtra += '\n\n[넥스는 하나 — 사건처리와 이어짐] "이 사건 처리하자"로 돌린 사건 지휘도 너(넥스)다. 대화 기록의 [⚡사건 처리] 요약에 그때 한 일(보고·넣은 값·의견·여쭌 것)이 있다. '
     + '세무사님이 그 사건의 질문·값·이유를 물으면 job_lookup caseproc로 남은 질문·출처·지난 지휘 기록·처리일지를 보고 답하고, 세무사님이 말로 답을 주면 job_propose_action caseproc_answer로 그 칸에 넣기를 제안한다(세무사님이 말한 값만). '
-    + '세무사님은 사건을 전체로 맡기기도(처리하자), 일부만 맡기기도("○○만 봐줘" — 그 부분만 답하고 나머지는 건드리지 않음), 직접 처리하기도 한다(사이드바·세액계산 화면) — 세무사님이 직접 넣은 값은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다.';
+    + '세무사님은 사건을 전체로 맡기기도(처리하자), 일부만 맡기기도("○○만 봐줘" — 그 부분만 답하고 나머지는 건드리지 않음), 직접 처리하기도 한다(사이드바·세액계산 화면) — 세무사님이 직접 넣은 값은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다. '
+    + '세법 해석이 갈릴 수 있는 쟁점(중과·특례·평가 등)을 답하기 전에는 job_lookup law_decisions로 AI 회의 법령 안건을 먼저 본다 — 세무사님이 "결정"한 쟁점은 그 결론을 따르고, "판단 대기"·"보류"인 쟁점은 단정하지 말고 판단 대기 중이라고 밝힌다.';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
   if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '

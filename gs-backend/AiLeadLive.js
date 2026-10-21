@@ -138,6 +138,9 @@ function caseProcAiLiveTools_() {
     input_schema: { type: 'object', properties: { lawName: { type: 'string', description: '예: 소득세법 시행령' }, articleNo: { type: 'string', description: '예: 155, 97의2' } }, required: ['lawName', 'articleNo'] } });
   tools.push({ name: 'law_search', description: '예규·해석례·판례·심판례 찾기(토큰 0, 국가법령정보센터) — category: precedent(판례)·interpretation(법령해석례)·administrative_rule(행정규칙)·tax_tribunal(조세심판원). 목록의 id로 law_attach 한다.',
     input_schema: { type: 'object', properties: { category: { type: 'string' }, query: { type: 'string' } }, required: ['category', 'query'] } });
+  // [2026.10.21] AI 회의 법령 안건 — 세무사님 "ai회의 결론을 넥스가 보도록 하라"(Federation.js aiJudgeForNex_, 대화창 넥스의 job_lookup law_decisions와 같은 자료)
+  tools.push({ name: 'law_decisions', description: 'AI 회의 법령 안건 보기(토큰 0) — 세무사님이 결정한 쟁점(결론·메모·근거)과 아직 판단 대기인 쟁점. 특례·중과·평가처럼 해석이 갈리는 판단 전에 같은 쟁점이 있는지 먼저 본다. "결정"은 그대로 따르고, "판단 대기"·"보류"는 단정하지 말고 질문 메모에 "판단 대기 쟁점"이라고 적는다.',
+    input_schema: { type: 'object', properties: { query: { type: 'string', description: '쟁점 낱말(예: 투기지역, 일시적 2주택)' } } } });
   tools.push({ name: 'law_attach', description: '근거 자료를 사건에 첨부("AI 첨부(미확인)" — 세무사님이 법령 탭에서 확정하거나 뺀다). 관련법령 파일·검토서 근거에 들어간다. 조문은 kind="statute"+lawName+articleNo(+hang 항 번호), 예규·판례는 kind=그 category+id. use=어느 쟁점·계산 칸에 쓰는지, why=왜(한 줄). 돌려준 id를 value_set의 attach에 넣는다.',
     input_schema: { type: 'object', properties: { kind: { type: 'string' }, lawName: { type: 'string' }, articleNo: { type: 'string' }, hang: { type: 'number' }, id: { type: 'string' }, title: { type: 'string' }, use: { type: 'string' }, why: { type: 'string' } }, required: ['kind', 'use', 'why'] } });
   // [2026.10.20] 업무관리자 지침(업무별 판단 절차) — 세무사님 "이 업무관리자지침과 각종템플릿 작성이 추후 시스템의 성능을 좌우하게 된다". 사이드바 AI와 같은 이름·같은 실행 함수(Code.js toolListBusinessManagers·toolLoadBusinessManager)
@@ -186,6 +189,7 @@ function caseProcAiLiveModeText_(cap) {
     '- 업무관리자 지침: case_view 다음, 판단을 시작하기 전에 list_business_managers로 목록을 보고 이 사건 세목·업무유형·AI 자리 주제에 맞는 지침만 load_business_manager로 읽어 그 판단 순서·필요 서류·주의를 따른다(양도 사건이면 "양도_"로 시작하는 것과 특수관계인_판정 같은 공통 지침 중 해당하는 것, 보통 한두 개). 이미 읽은 지침은 다시 읽지 않는다. 지침에 나온 도구 이름이 네 도구에 없으면 같은 일을 하는 네 도구(law_lookup·public_lookup 등)로 하고, 지침의 수치·조문이 세액을 가르면 law_lookup으로 원문을 확인한다. 위 [일하는 순서]·[한도]와 어긋나면 위가 먼저다.',
     '- 절세 아이템(NETAX 정리, 세무사님 "인용할때 근거를 부기하도록 하라"): 특례·함정·자주 틀리는 쟁점이 보이면 search_tax_items로 맞는 정리가 있는지 보고 맞는 것만 read_tax_item으로 읽는다(필요할 때만, 보통 하나). 근거로 쓰면 보고·value_set 이유에 그 "인용" 줄(아이템 이름·근거 조문·기준일·검토 상태)을 붙이고, [확인 필요]·반대 취지·해석 엇갈림 표시는 그대로 옮겨 단정하지 않으며, "현행화 필요"면 그 이유를 적는다. 아이템은 일반 정리라 판단의 근거 조문은 law_lookup으로 원문을 확인해 law_attach한다.',
     '- 법령 근거: 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한 뒤(쓸 곳·이유 한 줄), value_set의 attach에 그 id를 넣는다. 입구 요약의 "첨부된 자료"(세무사님 직접 첨부)는 먼저 읽고 근거로 쓴다.',
+    '- AI 회의 결론(2026.10.21 세무사님 "ai회의 결론을 넥스가 보도록 하라"): 해석이 갈리는 판단 전에 law_decisions로 같은 쟁점을 본다. "결정"은 세무사님 결론으로 따르고(근거에 적음), "판단 대기"·"보류"면 값을 넣지 말고 질문 메모에 "AI 회의 판단 대기 쟁점(id)"이라고 적는다.',
     '- 모든 글(중간 메모·보고·질문 메모)은 한국어로 쓴다 — 화면에 그대로 보인다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.'
   ].join('\n');
@@ -304,6 +308,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   if (name === 'load_business_manager') return { text: JSON.stringify(toolLoadBusinessManager(input.name)).slice(0, 16000) }; // 지침 한 개 6~9KB — 사건 내용이 아니라 가리기 안 함
   if (name === 'search_tax_items') return { text: JSON.stringify(knhTaxItemsSearch_(input)).slice(0, 8000) }; // [2026.10.21] 절세 아이템(사건 내용 아님 — 가리기 안 함)
   if (name === 'read_tax_item') return { text: JSON.stringify(knhTaxItemRead_(input)).slice(0, 20000) };
+  if (name === 'law_decisions') { const c0 = akReadCase_(caseId); return { text: JSON.stringify(typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.query || '', c0 ? (CASEPROC_TAX_LABEL_[c0.세목] || '').replace(/소득세|세$/g, '') : '') : { 오류: '이 판에 없음' }).slice(0, 8000) }; }
   if (name === 'law_lookup' || name === 'law_search' || name === 'law_attach') return { text: caseProcAiMask_(JSON.stringify(caseProcAiLaw_(caseId, name, input, ctx))).slice(0, 6000) };
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
