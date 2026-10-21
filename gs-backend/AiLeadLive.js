@@ -114,7 +114,7 @@ function caseProcAiLiveTools_() {
   const tools = JSON.parse(JSON.stringify(CASEPROC_AI_TOOLS_)).filter(function (t) { return CASEPROC_AI_NO_TOOLS_.indexOf(t.name) === -1; });
   tools.forEach(function (t) {
     if (t.name === 'value_set') {
-      t.input_schema.properties.basis.description = 'doc: {kind:"doc", file, page(쪽, 알면), find 또는 quote} — file은 facts_find·doc_facts·issue_bundle이 준 출처 파일 이름';
+      t.input_schema.properties.basis.description = 'doc: {kind:"doc", file, page(쪽, 알면), find 또는 quote} — file은 facts_find·doc_facts·issue_bundle이 준 출처 파일 이름. 금액·날짜는 원문에 그 값이 있어야 하고, 예/아니오·보기 같은 판단 값은 서류에 글자로 안 나오므로 그 판단을 받치는 원문 문구를 quote로 준다(여러 서류를 묶은 판단이면 {kind:"infer", facts:[…]})';
       t.description = t.description + ' [운영] sure="확실"이고 근거 대조를 통과하면 그 질문의 답으로 실제로 넣는다(출처 칸에 "🤖 AI 판단: why"). sure="불확실"·infer는 넣지 않고 그 질문에 "🤖 AI 의견"으로 붙는다. 시가·특수관계·평가처럼 세액이 크게 갈리는 칸은 넣지 않는다(세무사님 답으로만 — ask_user). itemId는 calc_fill 질문목록의 id.';
     }
     if (t.name === 'ask_user') {
@@ -344,15 +344,31 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
     const same = ((it.ask && it.ask.cands) || []).filter(function (q) { return q.v != null && mk(String(q.v)) === String(input.value); });
     if (same.length === 1) { input = Object.assign({}, input, { value: String(same[0].v), basis: (input.basis && input.basis.kind === 'doc') ? input.basis : { kind: 'cand' } }); }
   }
+  // [2026.10.22] 거절 뒤 다시 내기 — 같은 값에 근거만 바꿔 한 칸에 한 번까지. 값을 바꾸어 다시 내는 것은 막는다(지어내기 방지 — 거절을 피하려 값을 맞추지 않게)
+  ctx.rejected = ctx.rejected || {};
+  const prevRej = ctx.rejected[input.itemId];
+  if (prevRej) {
+    if (caseProcAiNorm_(input.value) !== caseProcAiNorm_(prevRej.value)) return { ok: false, 반영: '거절', 이유: '이 질문은 앞서 「' + prevRej.value + '」로 거절됨 — 값을 바꾸어 다시 낼 수 없음(근거만 바꾸어 같은 값으로 한 번, 아니면 ask_user로)' };
+    if (prevRej.n >= 2) return { ok: false, 반영: '거절', 이유: '이 질문은 이미 두 번 거절됨 — 더 내지 말고 ask_user 질문 메모로' };
+  }
   const chk = caseProcAiCheckBasis_(c, input.value, input.basis, input.itemId, caseId);
   const bs = input.basis || {};
+  // 다시 낸 것이 통과하면(또는 다시 거절되면) 앞서 붙인 "근거 대조 못 통과" 의견은 지운다 — 질문에 의견이 둘 붙지 않게
+  if (prevRej) ctx.opinions = (ctx.opinions || []).filter(function (o) { return !(o.itemId === input.itemId && o.rejected); });
   if (bs.kind === 'infer') ctx.gaps.push({ want: '사실 목록·후보로 안 나오는 값을 추론함 — ' + caseProcAiCut_(it.text, 60), kind: '값을 안 돌려줌', tool: 'facts_find', auto: true });
   ctx.cxItems = ctx.cxItems || [];
   ctx.cxItems.push({ iid: input.itemId, topic: caseProcAiTopic_([input.itemId, it.text, (it.ask || {}).label, (it.ask || {}).target].join(' ')).topic, shape: '총괄|' + (bs.kind || '') + '|' + String((it.ask || {}).target || '').split(':')[0], target: (it.ask || {}).target || '', label: (it.ask || {}).label || caseProcAiCut_(it.text, 60),
     facts: '근거 ' + (bs.kind || '') + (bs.file ? ' · ' + bs.file : '') + (bs.page ? ' · ' + bs.page + '쪽' : '') + (bs.find ? ' · "' + bs.find + '"' : '') + (bs.quote ? ' · "' + String(bs.quote).slice(0, 120) + '"' : '') + (bs.id ? ' · 조회 ' + bs.id : '') + (Array.isArray(input.attach) && input.attach.length ? ' · 법령 근거 ' + input.attach.slice(0, 4).join(', ') : ''),
     cands: ((it.ask && it.ask.cands) || []).slice(0, 6).map(function (q) { return { v: q.v, src: String(q.src || '').slice(0, 100) }; }), answer: String(input.value), why: input.why || '', sure: input.sure || '', need: [] });
   const rec = { at: new Date().toISOString(), itemId: input.itemId, 칸: caseProcAiCut_(it.text, 80), value: caseProcAiMask_(String(input.value).slice(0, 80)), basis: (input.basis || {}).kind || '', why: why, sure: input.sure || '', 근거첨부: (Array.isArray(input.attach) ? input.attach : []).map(String).slice(0, 6) };
-  if (!chk.ok) { rec.결과 = '거절 — ' + chk.why; ctx.decisions.push(rec); return { ok: false, 반영: '거절', 이유: chk.why }; }
+  if (!chk.ok) {
+    rec.결과 = '거절 — ' + chk.why; ctx.decisions.push(rec);
+    ctx.rejected[input.itemId] = { value: String(input.value), n: (prevRej ? prevRej.n : 0) + 1 };
+    // [2026.10.22] 세무사님 "1.2고쳐라" ② — 거절된 판단도 그 질문 옆에 🤖 AI 의견으로(넣지 않음). 전엔 보고 글에만 남아 질문에 답할 때 AI가 어떻게 봤는지 안 보였다.
+    //  특수관계·시가처럼 세무사님 답으로만 정하는 칸은 위에서 이미 걸러졌다(여기 오지 않음)
+    ctx.opinions.push({ itemId: input.itemId, value: rec.value, why: (why ? why + ' — ' : '') + '근거 대조 못 통과: ' + caseProcAiCut_(String(chk.why).split(' — ')[0], 60), sure: '근거 대조 못 통과', rejected: true });
+    return { ok: false, 반영: '거절(질문에 AI 의견으로 붙임)', 이유: chk.why, 다시내기: chk.retry && !prevRej ? '같은 값으로 한 번 더 낼 수 있음(근거만 바꾸어)' : '' };
+  }
   if (userOnly || input.sure !== '확실' || chk.provisional || input.dryRun) {
     rec.결과 = userOnly ? '세무사님 답으로만 — AI 의견으로 붙임' : '불확실·추론 — AI 의견으로 붙임';
     ctx.opinions.push({ itemId: input.itemId, value: rec.value, why: why, sure: input.sure || '불확실' });

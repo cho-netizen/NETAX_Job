@@ -37938,6 +37938,7 @@ function buildImprovementReport_() {
     report.gaps = gapsSplit.open; report.gapsResolvedRecent = gapsSplit.done;
     var gapsAgain = report.gaps.filter(function (g) { return g.상태 === '다시 신고'; }).length;
     if (report.gaps.length) headline.push('🧩 job AI가 할 수 없었던 요청 ' + report.gaps.length + '건(기능 부족 신고' + (gapsAgain ? ', 고쳤는데 다시 신고 ' + gapsAgain + '건' : '') + ')');
+    try { report.kakaoErrors = typeof kakaoErrorsRecent_ === 'function' ? kakaoErrorsRecent_(7) : []; if (report.kakaoErrors.length) { headline.push('⚠ 카카오 상담봇 오류 ' + report.kakaoErrors.length + '건(최근 7일)'); report.candidateCount += report.kakaoErrors.length; report.guide.push('kakaoErrors: 카카오 상담봇(NETAX_Kakao 저장소, 별도 Apps Script — 이 저장소 밖)의 실패 기록. 원인이 봇 코드면 PC에서 고칠 일로 routine-log skipped에 pc:true로 넘긴다(여기서 못 고침). 카카오·구글 일시 오류면 이유만 적는다.'); } } catch (e) {} // [2026.10.22]
     if (gapsSplit.done) headline.push('✔ 기능 부족 신고 중 처리됨 ' + gapsSplit.done + '건(최근 14일, 보고서에서 뺌)');
     report.answers = commDevQuestions_().filter(function (q) { return q.answer; }).map(function (q) { return { id: q.id, title: q.title, answer: q.answer, at: q.answeredAt }; });
     if (report.answers.length) headline.push('💬 개발자 질문에 세무사님이 답함 ' + report.answers.length + '건');
