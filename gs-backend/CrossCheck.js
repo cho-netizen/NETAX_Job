@@ -240,7 +240,8 @@ function cxRefind_(c, facts, opt) {
   const key = function (x) { const d = CX_REFIND_DATE_.test(x.kind); return (d ? 'D|' : 'M|') + cxNormV_(x.value, d ? 'date' : 'money'); };
   const cand = (facts || []).filter(function (x) {
     if (!x || !x.src || x._copy || x.kind === '서류' || typeof x.value === 'object') return false;
-    if (CX_REFIND_DATE_.test(x.kind)) return /^d{4}-d{2}-d{2}$/.test(cxNormV_(x.value, 'date'));
+    // [2026.10.21] 역슬래시가 빠진 채(\d → d) 들어가 있어 날짜 사실은 늘 빠졌다 — 고침(아래 숫자 경계 검사 /\d/도 같은 결함)
+    if (CX_REFIND_DATE_.test(x.kind)) return /^\d{4}-\d{2}-\d{2}$/.test(cxNormV_(x.value, 'date'));
     return CX_REFIND_MONEY_.test(x.kind) && Number(cxNormV_(x.value, 'money')) >= 1000000;
   });
   const files = {}; cand.forEach(function (x) { const k = key(x); (files[k] = files[k] || {})[x.src.file] = 1; });
@@ -259,7 +260,7 @@ function cxRefind_(c, facts, opt) {
     const hits = [];
     texts.forEach(function (t) {
       if (t.name === x.src.file || hits.length >= 3) return;
-      for (let i = 0; i < vars.length; i++) { const at = t.flat.indexOf(vars[i]); if (at >= 0 && !/d/.test(t.flat.charAt(at + vars[i].length)) && !/d/.test(t.flat.charAt(at - 1))) { hits.push({ file: t.name, near: t.flat.slice(Math.max(0, at - 40), at + vars[i].length + 40) }); break; } }
+      for (let i = 0; i < vars.length; i++) { const at = t.flat.indexOf(vars[i]); if (at >= 0 && !/\d/.test(t.flat.charAt(at + vars[i].length)) && !/\d/.test(t.flat.charAt(at - 1))) { hits.push({ file: t.name, near: t.flat.slice(Math.max(0, at - 40), at + vars[i].length + 40) }); break; } }
     });
     if (hits.length) out.push({ kind: x.kind, value: n, file: x.src.file, also: hits });
   });

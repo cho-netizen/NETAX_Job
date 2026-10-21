@@ -34061,7 +34061,8 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (gc && !gc.부담부 && /일반/.test(String(ov.사건분류 || '')) && !((caseProcLoad_(c.id).filled || {}).사건분류)) caseProcRememberFill_(c.id, '사건분류', ov.사건분류, '증빙: 증여계약서(' + gc.file + ') — 현금 증여·부담부 문구 없음');
       caseProcPatch_(c.id, function (sv) { sv.cashGift = true; sv.cashDebt = !!(gc && gc.부담부); sv.cashContract = !!gc; });
       if (!(cash.txOnly && !gc)) lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ?'증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
-      if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
+      // [2026.10.21] /[^d]/(역슬래시 빠짐)라 금액 숫자가 다 지워져 질문 번호가 늘 같았다(금액이 바뀐 새 차이도 옛 결정에 묻힘) — /[^\d]/로 고침
+      if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^\d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
     } else if (!gifts.length) {
       // [2026.10.15] 증여 등기 전에 뗀 등기부(신고 준비 때 흔함) — 등기부에 증여 기재가 없어도, 증여계약서의 증여자(없으면 사건 고객) 명의로
       // 지금 등기된 부동산을 증여 대상 "후보"로 본다. 이름은 증여계약서가 있을 때만 확정, 등기부만으로는 후보(질문)로 남긴다.
