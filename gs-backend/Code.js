@@ -3895,7 +3895,7 @@ const JOB_AI_TOOLS_ = [
       type: 'object',
       properties: {
         query: { type: 'string', description: '찾을 말(예: 부담부증여, 국외 부동산, 다주택 중과). 낱말 몇 개' },
-        세목: { type: 'string', enum: ['양도', '증여', '상속', '공통'], description: '좁힐 세목(선택)' }
+        semok: { type: 'string', enum: ['양도', '증여', '상속', '공통'], description: '좁힐 세목(선택)' }
       },
       required: ['query']
     }
@@ -3905,7 +3905,7 @@ const JOB_AI_TOOLS_ = [
     description: '절세 아이템 하나 읽기(토큰 0) — 본문과 함께 근거 조문·검토 상태·기준일·현행화 필요 이유·조심할 곳([확인 필요]·반대 취지·해석 엇갈림 줄)·답 끝에 붙일 "인용" 줄을 준다. 이 아이템을 근거로 답하면 인용규칙을 반드시 따른다.',
     input_schema: {
       type: 'object',
-      properties: { id: { type: 'string', description: 'search_tax_items가 준 id' }, 제목: { type: 'string', description: 'id를 모를 때 제목' } }
+      properties: { id: { type: 'string', description: 'search_tax_items가 준 id' }, title: { type: 'string', description: 'id를 모를 때 제목' } }
     }
   }
 ];
