@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 21:22 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-21 21:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -14452,6 +14452,12 @@ function nxMdOpenWindow(title, src, opts){
     if (kind === 'transfer') return addDaysStr_(shiftTaxDeadline_((y + 1) + '-05-31'), 1);
     // [2026.10.20 세액 고침 — 감사 D] 상속세는 피상속인이나 상속인이 외국에 주소를 둔 경우 9개월(상증법 §67④) — 호출부가 monthsOverride로 줌
     const add = monthsOverride || (kind === 'gift' ? 3 : 6);
+    // [2026.10.22 검토대상 상속-10 B⑦] 2008.12.31. 이전 상속개시·증여분은 옛 §67①·§68① "…날부터 6월(3월)" — N개월 뒤 같은 날(없으면 그 달 말일),
+    //  법률 제9269호 부칙 제2조(화면 taxCalcDeadlineFromMonthEnd_와 같은 규칙)
+    if (d < '2009-01-01') {
+      const dd_ = Number(d.slice(8, 10)), last_ = new Date(Date.UTC(y, m - 1 + add + 1, 0)).getUTCDate();
+      return addDaysStr_(shiftTaxDeadline_(new Date(Date.UTC(y, m - 1 + add, Math.min(dd_, last_))).toISOString().slice(0, 10)), 1);
+    }
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
     return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
@@ -18670,7 +18676,7 @@ function nxMdOpenWindow(title, src, opts){
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       납부세액: r.finalTax,
-      안내: '증여재산공제(§53)는 적용되지 않습니다(§55①1호 — 명의신탁재산의 금액 전액이 과세표준, 감정평가수수료만 차감). isNoTaxAvoidancePurpose·isTrustPropertyRegistration·isNonResidentAgentRegistration을 확인해서 명시적으로 넣지 않으면 이 배제사유를 검토하지 않은 채(과세대상으로 전제하고) 계산한 것이니 반드시 확인하세요. 실제소유자와 명의자 사이의 증여세는 실제소유자가 납부의무를 진다(§4의2②).' + presumptionNote
+      안내: '증여재산공제(§53)는 적용되지 않습니다(§55①1호 — 명의신탁재산의 금액 전액이 과세표준, 감정평가수수료만 차감). 세 가지 적용배제 사유(조세회피 목적 없음 §45의2①1호, 자본시장법상 신탁재산 등기 3호, 비거주자 법정대리인·재산관리인 명의 등기 4호)를 확인해 체크하지 않으면 이 배제사유를 검토하지 않은 채(과세대상으로 전제하고) 계산한 것이니 반드시 확인하세요. 실제소유자와 명의자 사이의 증여세는 실제소유자가 납부의무를 진다(§4의2②).' + presumptionNote
     };
   };
 
@@ -25187,6 +25193,13 @@ function taxCalcDeadlineFromMonthEnd_(dateStr, monthsAfter){
   if (!dateStr) return null;
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d.getTime())) return null;
+  // [2026.10.22 검토대상 상속-10 B⑦] 2008.12.31. 이전 상속개시·증여분은 옛 §67①·§68① "상속개시일(증여받은 날)부터 6월(3월) 이내" —
+  //  "속하는 달의 말일부터"는 법률 제9269호(2009.1.1. 시행, 부칙 제2조 "이 법 시행 후 최초로 상속이 개시되거나 증여받는 분부터")부터.
+  //  초일 불산입이라 N개월 뒤 같은 날이 끝날(그날이 없는 달이면 그 달 말일 — 민법 §157·§160). 이 함수는 상속·증여 기한에만 쓰인다.
+  if (String(dateStr).slice(0, 10) < '2009-01-01'){
+    const last_ = new Date(d.getFullYear(), d.getMonth() + monthsAfter + 1, 0).getDate();
+    return taxCalcShiftDeadline_(new Date(d.getFullYear(), d.getMonth() + monthsAfter, Math.min(d.getDate(), last_)));
+  }
   return taxCalcShiftDeadline_(new Date(d.getFullYear(), d.getMonth() + 1 + monthsAfter, 0));
 }
 // [2026.10.19 조견표 1부-02·2부-17] 국세기본법 §5① — 기한 끝날이 토·일·공휴일(조견표 1부-02)·5월 1일이면 그다음 날이 기한.
