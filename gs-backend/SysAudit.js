@@ -760,13 +760,14 @@ function sysAuditFeatureList_() {
   //   전엔 Code.js 글자만 세서 KnowHow.js의 knh_index를 "화면은 부르는데 서버에 없음"으로 잘못 잡았다(10-21 @1196 헛경고).
   try {
     var code = raw('gs-backend/Code.js'), others = {};
-    if (sysAuditPrefixRoutes_(code).length) {
-      var list = UrlFetchApp.fetch('https://api.github.com/repos/' + GH_REPO_ + '/contents/gs-backend?ref=main', { muteHttpExceptions: true });
-      if (list.getResponseCode() !== 200) throw new Error('서버 파일 목록 응답 ' + list.getResponseCode());
-      JSON.parse(list.getContentText()).forEach(function (f) {
-        if (f.type === 'file' && /\.js$/.test(f.name) && f.name !== 'Code.js') others[f.name] = raw('gs-backend/' + f.name);
-      });
-    }
+    // [2026.10.22] 깃허브 API(파일 목록)는 로그인 없이 부르면 구글 서버 공용 주소라 곧 403(조회 한도) — 10-22 @1209 직후 점검에서 실제로 걸림.
+    //   그래서 넘겨받는 함수의 글은 지금 서버에서 돌고 있는 코드에서 직접 읽는다(네트워크 없음).
+    var G = (typeof globalThis !== 'undefined') ? globalThis : this;
+    sysAuditPrefixRoutes_(code).forEach(function (r) {
+      var fn = G[r.fn];
+      if (typeof fn === 'function') others[r.fn + '(실행 중 코드)'] = String(fn);
+      else snap.warn.push('넘겨받는 함수 ' + r.fn + '을(를) 서버에서 못 찾음 — ' + r.prefix + ' 입구는 세지 못함');
+    });
     snap.server = sysAuditServerActions_(code, others);
   } catch (e) { snap.warn.push('서버 동작 목록을 못 읽음: ' + e.message); }
   return snap;
