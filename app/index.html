@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 18:21 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 18:24 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -56213,7 +56213,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         return viewP.then(function(v){
           var already = v && v.ok && v.단계 && v.단계['증빙 읽기·정리'] && Array.isArray(v.새서류) && !v.새서류.length;
           if (already){ if (Array.isArray(v.파일) && v.파일.length) st.files = v.파일; st.setStep('evidence', '✅', '이미 읽음(' + v.단계['증빙 읽기·정리'] + ') — 새 서류가 없어 다시 읽지 않음'); return 'skip'; }
-          return st.doStep('evidence', { phase: 'read' }).then(function(r){ if (!r) return 0; return NXAI_SPLIT_.run(st).catch(function(){ return 0; }).then(function(){ return NXAI_SCAN_.run(st).catch(function(){ return 0; }); }); })
+          return st.doStep('evidence', { phase: 'read' }).then(function(r){ if (!r) return 0; return NXAI_SPLIT_.run(st, { pre: r.splitCands }).catch(function(){ return 0; }).then(function(){ return NXAI_SCAN_.run(st, { pre: r.scanCands }).catch(function(){ return 0; }); }); }) // [2026.10.23 속도 ㅅ10차] 후보를 읽기 응답에서 받아 서버를 두 번 덜 부름
             .then(function(){ return st.doStep('evidence'); });
         })
           .then(function(){ return nxAiCaseProcLoop_(st); })
@@ -56231,8 +56231,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var waitCalc = function(){ return (st.calcPromise || Promise.resolve()).then(function(){ st.calcPromise = null; }); };
       return st.run('calc').then(function(r0){ return st.doStep('calc', undefined, r0); }, function(){ return st.doStep('calc'); })
         .then(waitCalc)
-        .then(function(){ return st.doStep('output'); })
-        .then(function(){ st.finishing = false; return nxAiCaseProcFinish_(st); })
+        // [2026.10.23 속도 ㅅ10차] ⑤ 인쇄 준비와 ⑥ 저장을 한 호출로(서버 왕복 15번 중 1번 덜 — 가상상속6: 오가며 기다린 시간 167초). 묶음이 실패하면 예전처럼 따로
+        .then(function(){ return st.runMany([{ step: 'output' }, nxAiCaseProcSaveReq_(st, true)]).then(function(rs){ return st.doStep('output', undefined, rs[0]).then(function(){ return rs[1]; }); }, function(){ return st.doStep('output').then(function(){ return null; }); }); })
+        .then(function(preSave){ st.finishing = false; return nxAiCaseProcFinish_(st, preSave); })
         .then(function(){ st.finishedAll = true; if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); var pk = st.postFinishKeys || []; st.postFinishKeys = []; if (pk.length){ var ks = pk.filter(function(k, i){ return pk.indexOf(k) === i; }); st.say('마무리 중에 답하신 값이 있어 칸을 다시 맞추고 계산·검토서를 다시 만듭니다.', 'nxai-muted'); return nxAiCaseProcRefresh_(st, ks, true); } }, function(err){ st.finishing = false; throw err; }); // [2026.10.23 속도 ㅅ5차] 마무리 중에 온 답은 마무리 뒤 한 번 더 // 사건 화면 — 다음 할 일 다시 맞춤
     };
     st.resume = function(force){
@@ -56505,15 +56506,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }, function(){ throw err; });
     });
   }
-  function nxAiCaseProcFinish_(st){
+  function nxAiCaseProcFinish_(st, preSave){
     // [2026.10.23 속도 ㅅ5차 — 가상양도12] ⑥이 겹쳐 세 번 돌아 검토서·관련법령이 3벌씩 생긴 것 — 도는 중에 또 부르면 새로 시작하지 않고 끝난 뒤 한 번만 더(겹침 없음)
     if (st.finishBusy){ st.finishAgain = true; return st.finishBusy; }
-    st.finishBusy = nxAiCaseProcFinish0_(st).then(function(){ st.finishBusy = null; if (st.finishAgain){ st.finishAgain = false; return nxAiCaseProcFinish_(st); } }, function(err){ st.finishBusy = null; throw err; });
+    st.finishBusy = nxAiCaseProcFinish0_(st, preSave).then(function(){ st.finishBusy = null; if (st.finishAgain){ st.finishAgain = false; return nxAiCaseProcFinish_(st); } }, function(err){ st.finishBusy = null; throw err; });
     return st.finishBusy;
   }
-  function nxAiCaseProcFinish0_(st){
+  function nxAiCaseProcFinish0_(st, preSave){
     st.setStep('save', '🔄', '저장·초안 작성 중…');
-    return nxAiCaseProcSave_(st, true).then(function(r){
+    // [2026.10.23 속도 ㅅ10차] 마무리(finishAll)가 인쇄 준비와 저장을 한 호출로 묶어 왔으면 그 결과를 쓴다(서버 왕복 한 번 덜)
+    return (preSave ? Promise.resolve(nxAiCaseProcSaveDone_(st, preSave)) : nxAiCaseProcSave_(st, true)).then(function(r){
       if (!r || !r.ok) throw new Error((r && r.error) || '저장 실패');
       if (!st.case || !st.case.폴더ID) return r;
       // [2026.10.22 ⑥ 응답 유실 복구] 검토서 초안과 현황표를 한 호출로 묶지 않는다 — 묶으면 한 호출이 2~4분이 되어 응답을 잃기 쉬웠다(가상양도10 표 84). 초안은 따로(짧게), 현황표는 ⑦에서 따로
@@ -56847,13 +56849,24 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026.10.22 가상양도8 표 51] 처리가 아직 도는 중(st.running — ③ 칸 채우기 등)에 답하면 저장만 한다. 예전엔 멈춤 상태가 아니면 곧바로 마무리(검토서·현황표)를 써서, 계산도 하기 전에 "계산 결과 없음" 검토서가 생겼다
     st.saveTimer = setTimeout(function(){ if (st.waiting) nxAiCaseProcSave_(st, false).then(function(){ return st.resume(); }); else if (st.paused || st.running || st.finishing) nxAiCaseProcSave_(st, false).then(function(){ if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st); nxAiCaseProcFoot_(st); if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); }); else nxAiCaseProcFinish_(st); }, 2000); // [2026.10.22] 기다리는 중엔 저장만 하고 이어갈지 봄
   }
+  // [2026.10.23 속도 ㅅ10차] 저장 요청 재료 — 질문의 ask를 통째로(후보 12·선택지 20, 함수 제외) 보낸다. 9차 "저장된 질문 바로 보이기"는 서버가 ask를 그대로 저장하지만 화면이 후보 6개만 보내고 있었다(선택지 질문이 되살아나지 않음)
+  function nxAiCaseProcSaveReq_(st, writeLog){
+    var slimAsk = function(a){
+      if (!a || typeof a !== 'object' || !(a.target || a.mode)) return undefined;
+      var o = {};
+      Object.keys(a).forEach(function(k){ var v = a[k]; if (v == null || typeof v === 'function' || k === 'cands' || k === 'options') return; if (typeof v === 'object'){ try { var s = JSON.stringify(v); if (s.length <= 2000) o[k] = JSON.parse(s); } catch (e) {} } else o[k] = v; });
+      if (Array.isArray(a.cands)) o.cands = a.cands.slice(0, 12).map(function(q){ return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label || '', src: String(q.src || '').slice(0, 160) }; });
+      if (Array.isArray(a.options)) o.options = a.options.slice(0, 20).map(function(q){ return { label: q.label || '', value: q.value != null ? q.value : '', decide: q.decide, note: q.note }; });
+      return o;
+    };
+    var items = st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text, detail: it.detail, ask: slimAsk(it.ask) }; });
+    return { caseId: st.caseId, step: 'save', items: items, decisions: st.decisions, writeLog: !!writeLog };
+  }
+  function nxAiCaseProcSaveDone_(st, r){ if (r && r.ok) Object.keys(st.decisions).forEach(function(k){ if (!st.decisions[k]) delete st.decisions[k]; }); return r; }
   function nxAiCaseProcSave_(st, writeLog){
     // [2026.10.21 넥스 하나로] 질문의 넣을 칸·후보(출처)도 저장 — 채팅 넥스가 사건처리 조회로 보고, 세무사님 말을 그 칸의 답으로 제안할 수 있게
-    var items = st.items.map(function(it){ var a = it.ask, cs = a ? ((Array.isArray(a.cands) && a.cands.length) ? a.cands : (Array.isArray(a.options) ? a.options : [])) : [];
-      return { id: it.id, step: it.step, kind: it.kind, text: it.text, ask: a && a.target ? { target: a.target, label: a.label || '', input: a.input || '', mode: a.mode || '',
-        cands: cs.slice(0, 6).map(function(q){ return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label || '', src: String(q.src || '').slice(0, 80) }; }) } : undefined }; });
-    return callGas('case_proc', { caseId: st.caseId, step: 'save', items: items, decisions: st.decisions, writeLog: !!writeLog }).then(function(r){
-      if (r && r.ok) Object.keys(st.decisions).forEach(function(k){ if (!st.decisions[k]) delete st.decisions[k]; });
+    return callGas('case_proc', nxAiCaseProcSaveReq_(st, writeLog)).then(function(r){
+      nxAiCaseProcSaveDone_(st, r);
       return r;
     }).catch(function(err){ return { error: String(err && err.message || err) }; });
   }
@@ -57626,7 +57639,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // 사건의 판독 나쁜 사진을 보정해 저장 — 저장한 장 수를 돌려준다
     async function run(st, opts){
       if (typeof PDFLib === 'undefined' || typeof callGas !== 'function') return 0;
-      var r = await callGas('case_proc', { caseId: st.caseId, step: 'scanCands', focus: (opts && opts.focus) || [] }).catch(function(){ return null; }); // focus = 세액계산기가 원하는 칸의 근거 사진 먼저
+      var r = (opts && Array.isArray(opts.pre)) ? { cands: opts.pre } : await callGas('case_proc', { caseId: st.caseId, step: 'scanCands', focus: (opts && opts.focus) || [] }).catch(function(){ return null; }); // focus = 세액계산기가 원하는 칸의 근거 사진 먼저 · [ㅅ10차] pre = 읽기 응답에 실려 온 후보
       var cands = (r && r.cands) || [];
       if (!cands.length) return 0;
       var saved = [], skipped = [], pairs = [];
@@ -57658,9 +57671,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   //  서버가 쪽마다 종류를 정해 묶어 주면, 묶음마다 PDF로 같은 폴더에 저장한다(원본은 그대로 — 서버가 나눈 파일이 다 읽히면 나눈 쪽으로 읽음)
   var NXAI_SPLIT_ = (function(){
     async function pagesPdf(src, idxs){ var d = await PDFLib.PDFDocument.create(); var cp = await d.copyPages(src, idxs); cp.forEach(function(p){ d.addPage(p); }); return await d.save(); }
-    async function run(st){
+    async function run(st, opts){
       if (typeof PDFLib === 'undefined' || typeof callGas !== 'function') return 0;
-      var r = await callGas('case_proc', { caseId: st.caseId, step: 'splitCands' }).catch(function(){ return null; });
+      var r = (opts && Array.isArray(opts.pre)) ? { cands: opts.pre } : await callGas('case_proc', { caseId: st.caseId, step: 'splitCands' }).catch(function(){ return null; }); // [ㅅ10차] pre = 읽기 응답에 실려 온 후보
       var cands = (r && r.cands) || [];
       var done = [], notes = [];
       for (var i = 0; i < cands.length; i++){
@@ -58633,7 +58646,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
                   st.calcBusy = false;
                   // [2026.10.22 묶음 ㄱ4] 사건 화면에서 시작했으면 계산·서식이 끝난 뒤 사건 화면으로 돌아온다(진행 카드는 그대로 — casehandling chGasKeep_)
                   if (st.screen && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} }
-                  return nxAiCaseProcRefresh_(st, st.finishing ? ['calc'] : ['calc', 'output'], false).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); /* [2026.10.23 속도 ㅅ4차] 마무리 중이면 ⑤ 인쇄 준비는 finishAll이 바로 이어서 한 번 부르므로 여기선 뺌(서버 한 번 덜) */ if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); } onEnd(); });
+                  return (st.finishing ? Promise.resolve() : nxAiCaseProcRefresh_(st, ['calc', 'output'], false)).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); /* [2026.10.23 속도 ㅅ10차] 마무리 중이면 계산 다시 조회(서버 1번)도 뺀다 — 결과 줄은 아래 ln으로 이미 보임 */ /* [2026.10.23 속도 ㅅ4차] 마무리 중이면 ⑤ 인쇄 준비는 finishAll이 바로 이어서 한 번 부르므로 여기선 뺌(서버 한 번 덜) */ if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); } onEnd(); });
                 }).catch(function(){ st.calcBusy = false; onEnd(); });
               }, 5000);
               return;

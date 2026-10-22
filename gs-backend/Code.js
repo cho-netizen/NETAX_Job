@@ -32394,7 +32394,13 @@ function caseProcEvidence_(c, body) {
   const bundleNames = Object.keys(bundleGroups);
   if (bundleNames.length) lines.push('한 파일에 서류가 여럿 묶인 것 ' + bundleNames.length + '개 — 서류별로 나눠 따로 정리(원본 파일은 그대로): ' + bundleNames.slice(0, 6).map(function (n) { return n + '(' + bundleGroups[n].join('·') + ')'; }).join(', ') + (bundleNames.length > 6 ? ' 외 ' + (bundleNames.length - 6) + '개' : ''));
   // [2026.10.17 재설계] 읽기만(phase read) — 사이드바가 먼저 글자만 읽게 하고, 그 결과로 서류 나누기·원근보정을 한 뒤에 증빙 대조·증빙목록 표시를 한 번만 한다(예전: 대조·표시를 먼저 하고 보정 뒤 또 했다)
-  if (body && body.phase === 'read') return { ok: true, readOnly: true, lines: ['폴더 서류 ' + docs.length + '개 글자 읽기 끝 — 서류 나누기·사진 보정을 먼저 하고 대조합니다'] };
+  if (body && body.phase === 'read') {
+    // [2026.10.23 속도 ㅅ10차] 서류 나누기·사진 보정 후보를 이 실행에서 같이 돌려준다 — 예전엔 화면이 splitCands·scanCands를 따로 두 번 더 불러(후보가 없어도) 왕복 10~15초를 썼다(가상상속6 ② 83초의 몫)
+    const pre = {};
+    try { pre.splitCands = (caseProcSplitCands_(c) || {}).cands || []; } catch (e) {}
+    try { pre.scanCands = (caseProcScanCands_(c, { focus: [] }) || {}).cands || []; } catch (e) {}
+    return { ok: true, readOnly: true, splitCands: pre.splitCands, scanCands: pre.scanCands, lines: ['폴더 서류 ' + docs.length + '개 글자 읽기 끝 — 서류 나누기·사진 보정을 먼저 하고 대조합니다' + ((pre.splitCands || []).length || (pre.scanCands || []).length ? '' : '(나눌 서류·보정할 사진 없음)')] };
+  }
   // [2026.10.15 1단계] 이름이 아니라 내용으로 이미 낸 신고서(사진으로 찍힌 신고서·계산명세서 등)를 입력에서 뺀다 — 경정·수정·불복 사건은 그것이 작업 재료라 빼지 않음
   // [2026.10.18 정밀분석 원인1] 이 사건 세목의 결과물만 뺀다(caseProcIsOutP_) — 다른 세목의 이전 신고·결정, 신고 뒤 업무의 기신고서는 입력
   {
