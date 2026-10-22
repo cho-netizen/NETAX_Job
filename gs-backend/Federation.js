@@ -439,7 +439,7 @@ function commSeamList_() {
     { 길: '카카오 봇 오류 기록 → 대시보드·주간 보고서', fn: function () { return Array.isArray(kakaoErrorsRecent_(7)) ? '' : '카카오오류 탭을 못 읽음'; } },
     { 길: '고객 카톡 글 → 넥스 사건처리 조회', fn: function () { return typeof kakaoCaseMessages_ === 'function' ? '' : '카톡 글 읽기가 이 판에 없음'; } },
     // [2026.10.23 ㅅ12차 — 점검표 142] 넥스가 묻는 중에 세무사님이 채팅으로 답한 말을 GAS 규칙이 못 알아들으면 → 대화창 넥스가 열린 질문 목록(cpHint)과 함께 받아 caseproc_answer로 넣기를 제안
-    { 길: '채팅 답(GAS 규칙 못 알아들음) → 넥스에게 열린 질문 목록과 함께', fn: function () { try { var p = buildContextSystemPrompt('', { context: { cpHint: { caseId: 'seam', caseName: '시험', state: '시험', open: [{ q: 1, qid: 'x', label: '시험 질문', target: 'ov:시험' }] } } }); if (String(p).indexOf('[사건처리 질문에 대한 답으로 보임]') === -1) return '열린 질문 목록이 넥스 지시문에 안 붙음'; } catch (e) { return '지시문 만들기 실패: ' + (e && e.message || e); } return (typeof JOB_PROPOSE_ACTIONS_ !== 'undefined' && JOB_PROPOSE_ACTIONS_.caseproc_answer) ? '' : '답 넣기 제안(caseproc_answer)이 이 판에 없음'; } }
+    { 길: '채팅 답(GAS 규칙 못 알아들음) → 넥스에게 열린 질문 목록과 함께', fn: function () { try { var p = buildContextSystemPrompt('', { context: { cpHint: { caseId: 'seam', caseName: '시험', state: '시험', open: [{ q: 1, qid: 'x', label: '시험 질문', target: 'ov:시험' }] } } }); var ptxt = (p && typeof p === 'object') ? String(p.full || p.dynamic || '') : String(p || ''); /* buildContextSystemPrompt는 {static, dynamic, full} 묶음을 돌려준다 — @1259 점검이 글자로 보고 "안 붙음"으로 오판 */ if (ptxt.indexOf('[사건처리 질문에 대한 답으로 보임]') === -1) return '열린 질문 목록이 넥스 지시문에 안 붙음'; } catch (e) { return '지시문 만들기 실패: ' + (e && e.message || e); } return (typeof JOB_PROPOSE_ACTIONS_ !== 'undefined' && JOB_PROPOSE_ACTIONS_.caseproc_answer) ? '' : '답 넣기 제안(caseproc_answer)이 이 판에 없음'; } }
   ];
 }
 function commSeamCheck_() {
