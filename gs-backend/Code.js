@@ -38795,7 +38795,9 @@ function caseProcDraft_(c) {
   const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d !== '무시' && d !== 'done'; });
   L.push('## ' + (paras.length ? '4' : '3') + '. 추가로 확인할 사항', '');
   if (remain.length) remain.forEach(function (it) { const d = dec[it.id] && dec[it.id].d; L.push('- ' + (d === '보류' ? '(보류) ' : d === '예정' ? '(받을 예정) ' : '') + it.text + (dec[it.id] && dec[it.id].note ? ' — ' + dec[it.id].note : '')); });
-  else L.push('- 없음');
+  // [2026.10.23 ㅊ2] 자동 보류 메모 — 묻지 않고 검토서에만 두는 것(정황 없는 특수관계 등)
+  (saved.holdNotes || []).forEach(function (n) { L.push('- (자동 보류) ' + String(n.text || '')); });
+  if (!remain.length && !(saved.holdNotes || []).length) L.push('- 없음');
   // [2026.10.21 넥스 하나로] 넥스(사건 지휘)가 여쭌 것의 메모 — 예전엔 급한 질문 메모만 화면에 붙고 나머지는 사라졌다. 마지막 지휘 처리분만
   const lastLead = (Array.isArray(saved.aiLead) ? saved.aiLead : []).slice(-1)[0];
   const leadAsks = lastLead ? (lastLead.asks || []).filter(function (a) { return a && String(a.note || '').trim(); }) : [];
@@ -49422,7 +49424,10 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       let relEv = null;
       try { if (typeof cxRelEvidence_ === 'function' && typeof cxFacts_ === 'function' && bn.length >= 2 && sn.length >= 2 && bn !== sn) relEv = cxRelEvidence_(cxFacts_(c), { name: sn, birth: String(rf.parties.seller.regNo || '').replace(/\D/g, '').slice(0, 6) }, { name: bn, birth: String(rf.parties.buyer.regNo || '').replace(/\D/g, '').slice(0, 6) }); } catch (e) {}
       const relTxt = relEv ? cxRelEvidenceText_(cxFacts_(c), { name: sn, birth: String(rf.parties.seller.regNo || '').replace(/\D/g, '').slice(0, 6) }, { name: bn, birth: String(rf.parties.buyer.regNo || '').replace(/\D/g, '').slice(0, 6) }) : '';
-      if (bn.length >= 2 && sn.length >= 2 && bn !== sn && (bn.charAt(0) === sn.charAt(0) || (relEv && !relEv.none))) q('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 특수관계인지 확인해 주세요 — 특수관계인이면 소득세법 §101①(부당행위계산) 판정에 시가를 묻습니다. 범위는 시행령 §98① = 국세기본법 시행령 §1조의2 친족(4촌 혈족·3촌 인척·배우자)·경제적 연관(임원·사용인, 생계를 같이함)·경영지배(30% 이상 출자 법인 등)입니다(양도계약 카드 양수인 「관계」, 근거: ' + rf.parties.file + ' 서명란).' + relTxt,
+      // [2026.10.23 ㅊ2] 정황이 하나도 없으면 묻지 않는다(공통원칙 4 "정황 근거는 보여 드리되 성씨가 같은 것은 근거가 아니다") — 성씨만 같은 경우는 검토서 "추가로 확인할 사항"에 자동 보류 메모 한 줄(가상양도15 점검표 140)
+      const relHold = bn.length >= 2 && sn.length >= 2 && bn !== sn && !(relEv && !relEv.none);
+      try { caseProcPatch_(c.id, function (sv) { sv.holdNotes = (sv.holdNotes || []).filter(function (n) { return n.id !== 'tr:buyerrel'; }); if (relHold) sv.holdNotes.push({ id: 'tr:buyerrel', text: '양수인 ' + bn + '과(와) 양도인 ' + sn + '의 특수관계 — 서류에 정황(가족관계 서류·같은 세대·주소·통장 거래)이 없어 묻지 않음' + (bn.charAt(0) === sn.charAt(0) ? '(성씨 같음은 근거 아님)' : '') + '. 특수관계인이면 소득세법 §101① 부당행위계산(시가) 검토', at: new Date().toISOString() }); }); } catch (e) {}
+      if (bn.length >= 2 && sn.length >= 2 && bn !== sn && relEv && !relEv.none) q('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 특수관계인지 확인해 주세요 — 특수관계인이면 소득세법 §101①(부당행위계산) 판정에 시가를 묻습니다. 범위는 시행령 §98① = 국세기본법 시행령 §1조의2 친족(4촌 혈족·3촌 인척·배우자)·경제적 연관(임원·사용인, 생계를 같이함)·경영지배(30% 이상 출자 법인 등)입니다(양도계약 카드 양수인 「관계」, 근거: ' + rf.parties.file + ' 서명란).' + relTxt,
         { mode: 'options', target: 'calc:c0.buyer.relation', options: [{ label: '특수관계 없음', value: 'none' }, { label: '형제자매', value: 'sibling' }, { label: '직계존비속', value: 'lineal' }, { label: '배우자', value: 'spouse' }, { label: '기타 친족', value: 'relative' }], label: '양수인과의 관계' });
     }
   });

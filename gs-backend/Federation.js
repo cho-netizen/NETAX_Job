@@ -416,6 +416,8 @@ function commSeamList_() {
     // [2026.10.22 작업 기록부] 세무사님이 GAS 도구로 직접 하신 일 → 사건 기록부 → 넥스(채팅 조회·사건 지휘)가 읽음
     { 길: '세무사님 직접 작업 → 작업 기록부 → 넥스', fn: function () { if (typeof caseProcNexView_ !== 'function' || typeof caseProcLog_ !== 'function') return '작업 기록부가 이 판에 없음'; var v = caseProcNexView_({ id: 'seam', 증빙목록: [], 사건개요: {} }); return v && v.작업기록 ? '' : '현황에 작업기록 칸이 없음'; } },
     { 길: '넥스가 GAS 한 바퀴를 도구로 부름(사건처리 주인은 넥스)', fn: function () { var m = need(leadTools(), ['case_status', 'gas_run', 'gas_finish'], '사건 지휘 도구'); if (m) return m; if (typeof CASEPROC_AI_CLIENT_TOOLS_ === 'undefined' || CASEPROC_AI_CLIENT_TOOLS_.indexOf('gas_run') === -1) return '화면 실행 도구 표에 gas_run이 없음'; return caseProcAiLiveModeText_(1000).indexOf('gas_run') === -1 ? '넥스 지시문에 gas_run 순서가 없음' : ''; } },
+    // [2026.10.23 ㅊ1] 규칙 없는 서류·메모의 글 → 넥스(doc_view) — 빠지면 넥스가 세무사님께 메모 내용을 되묻는다(점검표 139)
+    { 길: '규칙 없는 서류·메모 글 → 사건 지휘 넥스(doc_view)', fn: function () { var m = need(leadTools(), ['doc_view'], '사건 지휘 도구'); if (m) return m; return typeof caseProcAiLiveModeText_ === 'function' && caseProcAiLiveModeText_(1000).indexOf('doc_view') === -1 ? '지시문이 doc_view를 안 알려 줌' : ''; } },
     // 넥스 ↔ 개발자(Claude)
     { 길: '넥스 → 개발자 신고(대화창)', fn: function () { var m = need(chatTools(), ['report_capability_gap'], '대화창 도구'); if (m) return m; commGapsFile_(); return ''; } },
     { 길: '신고 처리 장부(처리됨·다시 신고)', fn: function () { return Array.isArray(commGapsResolved_()) ? '' : '장부를 못 읽음'; } },
