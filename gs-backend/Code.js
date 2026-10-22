@@ -36875,6 +36875,20 @@ function caseProcInhFacts0_(c, parsed) {
     out.deemed.push({ v: v, kind: 'retirement', files: [x.f.name], byDec: byDecR, death: !!r.사망퇴직, info: '퇴직금(' + x.f.name + ') ' + (r.회사 || '') + ' 퇴직급여 ' + v.toLocaleString('ko-KR') + '원' + (r.근로자 ? ' · 근로자 ' + r.근로자 : ''),
       why: (byDecR ? '근로자 = 피상속인(' + (r.근로자 || r.근로자생년6) + ')' : '근로자 ' + (r.근로자 || '미상')) + (r.사망퇴직 ? ' · 사망퇴직' : '') + (r.구성 ? ' · ' + r.구성.map(function (p) { return p.항목 + ' ' + Number(p.금액).toLocaleString('ko-KR'); }).join(' + ') : '') });
   });
+  // [2026.10.23 ㅍ3] 안심상속 회보서 보험 줄("삼성생명 종신보험(계약자·피보험자 ○○○, 수익자 △△△) — 사망보험금 100,000,000원 지급 예정") — 지급 확인서가 없거나 종류를 못 정해도 간주상속재산(§8) 후보.
+  //  계약자 글에 피상속인 이름이 있으면 계약자 = 피상속인, 사유에 사망이면 사망 지급(가상상속8: 보험금 1억이 통째로 빠짐). 같은 금액의 지급 확인서가 있으면 그 건과 같은 것
+  by('inhquery').forEach(function (x) {
+    ((x.p.result || {}).행 || []).forEach(function (q) {
+      if (q.종류 !== '보험' || !q.금액 || q.채무) return;
+      const v = Number(q.금액), d0 = out.deemed.filter(function (z) { return z.v === v && (z.kind || 'insurance') === 'insurance'; })[0];
+      if (d0) { if (d0.files.indexOf(x.f.name) === -1) d0.files.push(x.f.name); return; }
+      const txt = String(q.내용 || ''), cm = /계\s*약\s*자[^가-힣]{0,8}(?:[가-힣]{2,4}\s*[·,/]\s*)*([가-힣]{2,4})?/.exec(txt);
+      const byDecQ = !!(dec && /계\s*약\s*자/.test(txt) && txt.replace(/\s+/g, '').indexOf(nm(dec)) !== -1 && new RegExp('계약자[^,)]{0,20}' + nm(dec).split('').join('\\s*')).test(txt.replace(/[·/]/g, '·')));
+      const deathQ = /사망/.test(String(q.사유 || '') + ' ' + txt);
+      out.deemed.push({ v: v, files: [x.f.name], byDec: byDecQ, death: deathQ, info: '보험(' + x.f.name + ' 안심상속 회보서 보험 줄) ' + (q.기관 || '') + (txt ? ' ' + txt.slice(0, 60) : '') + ' · ' + (q.사유 || '보험금') + ' ' + v.toLocaleString('ko-KR') + '원',
+        why: (byDecQ ? '계약자 = 피상속인(' + dec + ')' : '계약자 ' + (cm && cm[0] ? cm[0].slice(0, 30) : '미상') + ' — 회보서 글') + (q.사유 ? ' · ' + q.사유 : '') + ' — 지급 확인서로 계약자·납부자 확인' });
+    });
+  });
   // 분할협의서 별지의 보험 줄(같은 금액이면 위 지급 건과 같은 것)
   by('inhdivision').forEach(function (x) { ((x.p.result || {}).금융목록 || []).forEach(function (q) { if (!q.보험 || !q.잔액) return; const d0 = out.deemed.filter(function (z) { return z.v === q.잔액; })[0]; if (d0) { if (d0.files.indexOf(x.f.name) === -1) d0.files.push(x.f.name); return; } out.deemed.push({ v: q.잔액, files: [x.f.name], byDec: false, death: /사망|급부금/.test(String(q.종류 || '')), info: '분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + Number(q.잔액).toLocaleString('ko-KR') + '원', why: '분할협의서 별지 보험 줄(계약자 서류 없음)' }); }); });
   out.deemedValue = 0;
@@ -43533,6 +43547,9 @@ function docFuneralSlipTotals_(s) {
 function docRealPriceParse_(text) {
   var t = String(text || '');
   if (!/실\s*거\s*래\s*가\s*공\s*개|거래\s*금액\s*\(\s*만\s*원\s*\)/.test(t)) return null;
+  // [2026.10.23 ㅍ1] 서류 종류는 제목 줄이 본문·각주 낱말보다 우선 — 공동주택가격·개별주택가격·개별공시지가 확인서의 각주("※ … 실거래가 공개시스템 조회, 최근 6개월 실거래 없음")에 걸려
+  //  실거래가로 분류되면 공시가격을 못 잡고 "매매 사례 줄을 읽지 못함" 질문이 난다(가상상속8). 그 각주는 오히려 유사매매사례 없음 → 보충적 평가(§61) 근거
+  if (/^(공동주택가격|개별주택가격|개별공시지가|표준지공시지가|표준주택가격)(?:확인서|열람|확인원)?/.test(t.slice(0, 120).replace(/\s+/g, '')) || /(공동주택|개별주택)가격\s*확인서|개별공시지가\s*확인서/.test(t.slice(0, 120).replace(/[ \t]+/g, ''))) return null;
   var r = { 종류: '실거래가(매매사례)', 단지: '', 소재지: '', 연도: null, 사례: [], 경고: [] };
   // [2026.10.23 ㄷ1] 국토부 실거래가 공개시스템 "조회 결과" 표 — 칸(동·호·전용면적·계약일·거래금액·층·거래유형)이 줄마다 하나씩 나오는 글자층 PDF·화면 출력. 계약일(YYYY-MM-DD) 줄을 닻으로
   //  바로 앞 줄 면적, 그 앞 호·동, 뒤 줄 금액·층·거래유형을 한 사례로 읽는다(머리의 "거래금액(원/만원)"이 단위). 예전 규칙은 출력물의 "면적 일 해제 … 금액(만원) 층" 한 줄 꼴만 읽어
@@ -48151,7 +48168,7 @@ function ihDetect_(text) {
   if (/구\s*비\s*서\s*류|제\s*출\s*서\s*류\s*목\s*록|준\s*비\s*서\s*류|필\s*요\s*서\s*류/.test(t.slice(0, 120))) return '';
   if (/자\s*동\s*차\s*등\s*록\s*(?:증|원\s*부)/.test(t)) return 'carreg';
   // 예금 잔액증명서 안의 보험 상품 줄 때문에 보험금 지급내역으로 오인하던 것(고객B) — 잔액증명이면 잔고 규칙이 읽는다
-  if (!/잔\s*액\s*증\s*명|예\s*금\s*잔\s*액|잔\s*고\s*증\s*명/.test(t.slice(0, 300)) && /(보\s*험\s*증\s*권|보험금\s*지급|기\s*지\s*급|지급\s*내역서|보험\s*계약\s*사항)/.test(t) && /(계\s*약\s*자|피\s*보\s*험\s*자|수\s*익\s*자|보험\s*계약자)/.test(t)) return 'insurance';
+  if (!/잔\s*액\s*증\s*명|예\s*금\s*잔\s*액|잔\s*고\s*증\s*명/.test(t.slice(0, 300)) && /(보\s*험\s*증\s*권|보\s*험\s*금\s*지\s*급|기\s*지\s*급|지\s*급\s*내\s*역\s*서|보\s*험\s*계\s*약\s*사\s*항)/.test(t) && /(계\s*약\s*자|피\s*보\s*험\s*자|수\s*익\s*자|보험\s*계약자)/.test(t)) return 'insurance'; // [2026.10.23 ㅍ2] 제목 글자 띄움(가상상속8 "보 험 금 지 급 확 인 서")
   return '';
 }
 
@@ -48228,8 +48245,8 @@ function ihParseQuery_(text) {
       r.행.push({ 기관: og0, 종류: '예금', 상품: dm2[2], 점포: '', 계좌: dm2[3], 금액: ihNum_(dm2[4]), 상환일: '', 채무: false, 통합결과: true });
       if (ia0) r.행.push({ 기관: og0, 종류: '미수이자', 상품: dm2[2] + ' 미수이자', 점포: '', 계좌: dm2[3], 금액: ia0, 상환일: '', 채무: false, 통합결과: true });
     }
-    var ins0 = secOf(/\n\s*\d\s*\.\s*보\s*험/).replace(/\s+/g, ' '), im2, insRe2 = new RegExp(ORG0 + '[^\\d]{0,160}?(사망\\s*보험금|보험금|해약\\s*환급금|만기\\s*보험금)\\s*(\\d{1,3}(?:,\\d{3})+)\\s*원', 'g');
-    while ((im2 = insRe2.exec(ins0))) r.행.push({ 기관: im2[1].replace(/\s+/g, ''), 종류: '보험', 점포: '', 금액: ihNum_(im2[3]), 사유: im2[2].replace(/\s+/g, ''), 상환일: '', 채무: false, 통합결과: true });
+    var ins0 = secOf(/\n\s*\d\s*\.\s*보\s*험/).replace(/\s+/g, ' '), im2, insRe2 = new RegExp(ORG0 + '([^\\d]{0,160}?)(사망\\s*보험금|보험금|해약\\s*환급금|만기\\s*보험금)\\s*(\\d{1,3}(?:,\\d{3})+)\\s*원', 'g');
+    while ((im2 = insRe2.exec(ins0))) r.행.push({ 기관: im2[1].replace(/\s+/g, ''), 종류: '보험', 점포: '', 금액: ihNum_(im2[4]), 사유: im2[3].replace(/\s+/g, ''), 내용: im2[2].replace(/^[\s|·—-]+|[\s|·—-]+$/g, ''), 상환일: '', 채무: false, 통합결과: true }); // [2026.10.23 ㅍ3] 내용(계약자·피보험자·수익자 글)도 둔다
     var loan0 = secOf(/\n\s*\d\s*\.\s*대\s*출/).replace(/\s+/g, ' ');
     if (loan0) {
       var lo = new RegExp(ORG0).exec(loan0), lk = /([가-힣A-Za-z0-9]{2,16}대출)/.exec(loan0), amts0 = [], am2, amRe = /(\d{1,3}(?:,\d{3})+)\s*원?/g;
@@ -48343,11 +48360,12 @@ function ihParseDeath_(text) {
 // ---- ③ 보험증권·보험금 지급내역 ----
 function ihParseInsurance_(text) {
   var t = String(text || ''), r = { 경고: [] }, m;
-  r.종류 = /보증\s*보험|납세\s*보증/.test(t) ? '보증보험증권' : /기\s*지\s*급|지급\s*내역|보험금\s*지급/.test(t) ? '보험금 지급내역' : '보험증권';
+  r.종류 = /보증\s*보험|납세\s*보증/.test(t) ? '보증보험증권' : /기\s*지\s*급|지\s*급\s*내\s*역|보\s*험\s*금\s*지\s*급/.test(t) ? '보험금 지급내역' : '보험증권'; // [2026.10.23 ㅍ2] 제목 글자 띄움
   m = /(?:증권|증서|계약)\s*번호\s*[:：]?\s*(?:제\s*)?([\dA-Z][\dA-Z -]{6,30}?)\s*(?:호|\n|$)/.exec(t); if (m) r.증권번호 = m[1].trim();
   m = /(?:상\s*품\s*명?|품)\s*[:：]\s*([^\n]{2,40})/.exec(t); if (m) r.상품 = m[1].trim();
   m = /보증\s*내용\s*([^\n]{2,40})/.exec(t); if (m) r.보증내용 = m[1].trim();
   var who = function (lab) {
+    var j = new RegExp(lab + '\\s*/\\s*피\\s*보\\s*험\\s*자\\s*[:：]?\\s*\\n?\\s*([가-힣]{2,4})\\s*(?:\\(\\s*(\\d{6}))?').exec(t); if (j) return j[2] ? { 이름: j[1], 생년6: j[2] } : { 이름: j[1] }; // [2026.10.23 ㅍ2] 두 칸 묶음 서식
     var x = new RegExp(lab + '\\s*[:：]?\\s*\\n?\\s*(\\d{6})\\s*-?\\s*[\\d*]').exec(t); if (x) return { 생년6: x[1] };
     x = new RegExp(lab + '\\s*[:：]?\\s*\\n?\\s*([가-힣]{2,4})(?=\\s|\\n|\\(|$)').exec(t);
     return x && !/^(보험|외\s*\d|관계)/.test(x[1]) ? { 이름: x[1] } : null;
