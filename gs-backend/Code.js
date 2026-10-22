@@ -30282,7 +30282,7 @@ function caseProcUserView_(c) {
   if (!last) next.push({ do: 'calc', text: '세액계산 결과가 아직 저장되지 않았습니다' });
   if (last && !v.서식PDF) next.push({ do: 'gas', text: '서식 PDF가 사건 폴더에 저장되지 않았습니다' });
   if (!v.검토서) next.push({ do: 'gas', text: '종합검토서 초안이 없습니다' });
-  return { ok: true, 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [] };
+  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [] };
 }
 // 넥스가 보는 사건 현황 — 기록부·정한 값·처리개요·증빙·닫은 질문·서식·검토서·단계 시각(·새 서류 — withFiles일 때만, 폴더를 훑으므로)
 function caseProcNexView_(c, opt) {
