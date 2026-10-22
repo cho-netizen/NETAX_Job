@@ -14136,11 +14136,15 @@ function rwParseParagraphHeader_(text) {
   });
   return { head: h, body: text.slice(m.index + m[0].length).trim() };
 }
+var RW_PARA_MEMO_ = null;
 function rwListParagraphs_() {
-  // [2026.10.22 속도 S5] 문단 목록(드라이브 파일 수십 개 읽기)을 30분 기억 — 검토서 만들 때마다 전부 다시 읽어 수십 초가 걸렸다. 문단을 고치면 30분 안에 자동 갱신
-  try { var ch = CacheService.getScriptCache(), hit = ch.get('rw_para_list_v1'); if (hit) return JSON.parse(hit); } catch (e) {}
+  // [2026.10.22 속도 S5] 문단 목록(드라이브 파일 수십 개 읽기)을 기억 — 검토서 만들 때마다 전부 다시 읽어 수십 초가 걸렸다. 문단을 고치면 기억이 지나면 자동 갱신
+  // [2026.10.23 속도 ㅅ7차] S5가 실제로는 한 번도 기억하지 못했다 — 목록 JSON이 한 칸 한도(95,000자)를 넘어 put을 건너뛰었고, 그래서 ⑥ "문단 고르기"가 매번 45초(가상양도11 실측).
+  //  30,000자 조각(tcChunkPut_)으로 6시간 기억하고, 한 실행 안에서는 메모리로 한 번만
+  if (RW_PARA_MEMO_) return RW_PARA_MEMO_;
+  try { var ch = CacheService.getScriptCache(), hit = tcChunkGet_(ch, 'rw_para_list_v2'); if (hit && hit.ok) { RW_PARA_MEMO_ = hit; return hit; } } catch (e) {}
   var r = rwListParagraphsFresh_();
-  try { if (r && r.ok && r.items && r.items.length) { var js = JSON.stringify(r); if (js.length < 95000) CacheService.getScriptCache().put('rw_para_list_v1', js, 1800); } } catch (e) {}
+  try { if (r && r.ok && r.items && r.items.length) { RW_PARA_MEMO_ = r; tcChunkPut_(CacheService.getScriptCache(), 'rw_para_list_v2', r, 21600); } } catch (e) {}
   return r;
 }
 function rwListParagraphsFresh_() {
@@ -30316,6 +30320,7 @@ function caseProcTimed_(body) {
   try { r = caseProcTimedRun_(body, t0); } finally {
     try { caseProcPatchFlush_(); } catch (e) { console.log('결정 파일 모아 쓰기 실패: ' + (e && e.message || e)); }
     CP_SHEET_MEMO_ON_ = false; WORK_DATA_MEMO_ = null;
+    CP_FILES_MEMO_ON_ = false; CP_FILES_MEMO_ = {}; // [2026.10.23 속도 ㅅ7차]
     try { CX_AI_NOAI_ = false; } catch (e) {}
     try { const n = cpSecuredFlush_(String(body && body.caseId || '').trim()); if (n && r && typeof r === 'object' && !Array.isArray(r)) r._securedSaved = n; } catch (e) { console.log('확보자료 저장 실패: ' + (e && e.message || e)); }
   }
@@ -30360,6 +30365,9 @@ function caseProc0_(body) {
   const found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { error: '사건을 찾지 못했습니다.' };
   const c = work_readRow_(col, found.row);
+  // [2026.10.23 속도 ㅅ7차] 폴더 훑기 메모 — 파일을 만드는 단계에서는 끄고 비운다(만든 파일이 다음 훑기에 보이게)
+  CP_FILES_MEMO_ON_ = !/^(evidence|savePdf|draft|pdfApply|pdfUndo|pdfReflat|bundleSaved|bundleUndo|splitSaved|submitSave|renameApply|renameUndo|scanSaved)$/.test(String(body.step || ''));
+  if (!CP_FILES_MEMO_ON_) CP_FILES_MEMO_ = {};
   // [2026.10.18 정밀분석 원인3] 세목 칸이 "불복" 등인 경정청구·수정신고 — 폴더 서류의 당초 신고 세목으로 이 실행 동안만 처리(작업관리 칸은 그대로, 고객AJ)
   try { const rt = caseProcRouteTax_(c); if (rt) { c._세목작업관리 = c.세목; c.세목 = rt; } } catch (e) {}
   try {
@@ -30643,7 +30651,19 @@ function caseFileInFiledFolder_(fileId) {
   try { const ps = DriveApp.getFileById(String(fileId)).getParents(); while (ps.hasNext()) if (caseIsFiledReturnFolder_(ps.next().getName())) return true; } catch (e) {}
   return false;
 }
+// [2026.10.23 속도 ㅅ7차] 사건 폴더 훑기(드라이브 폴더·하위폴더 목록 + 사본·묶음 정리 = 2~5초)를 한 실행 안에서 한 번만 — 단계마다 서류 정리 지문·장부·새 서류 판정·참고 신고서 등이
+//  같은 폴더를 3~6번 훑었다(view 14.5초·① 31초의 몫). 파일을 만드는 단계(증빙 읽기의 압축 풀기·서식 PDF·검토서·사진→PDF·묶음 나누기 등)에서는 끄고 메모를 비운다(caseProc0_에서 단계별로 켜고 끔).
+//  돌려줄 때는 사본(파일마다 새 객체)으로 — 부른 곳이 정렬하거나 f.p 같은 것을 붙여도 메모가 더러워지지 않게
+var CP_FILES_MEMO_ON_ = false, CP_FILES_MEMO_ = {};
+function caseProcFilesCopy_(r) { const o = r.map(function (f) { return Object.assign({}, f); }); ['truncated', 'separate', 'refDirs'].forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; }); return o; }
 function caseProcFiles_(c, opt) {
+  const key = String(c && c.폴더ID || '').trim() + '|' + (!!(opt && opt.includeFiled)) + '|' + (!!(opt && opt.raw));
+  if (CP_FILES_MEMO_ON_ && CP_FILES_MEMO_[key]) return caseProcFilesCopy_(CP_FILES_MEMO_[key]);
+  const r = caseProcFiles0_(c, opt);
+  if (CP_FILES_MEMO_ON_ && r && r.length !== undefined) { CP_FILES_MEMO_[key] = r; return caseProcFilesCopy_(r); }
+  return r;
+}
+function caseProcFiles0_(c, opt) {
   const out = [];
   const folderId = String(c.폴더ID || '').trim();
   if (!folderId) return out;
