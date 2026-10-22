@@ -24013,8 +24013,21 @@ function work_readRow_(col, rowValues) {
   };
 }
 
+// [2026.10.23 속도 ㅅ6차] 작업관리 시트 통째 읽기 — 사건처리 한 실행 안에서 한 번만. ③ 한 번에 머리글 읽기·행 찾기·갱신으로 시트 전체(수백 행 × 긴 JSON 칸)를 5~8번 읽어
+//  (한 번에 2~4초) 칸 조립 26초의 큰 몫이었다. 사건처리 실행(caseProcTimed_)·양도 사실 정리 안에서만 켜고(CP_SHEET_MEMO_ON_), 갱신(work_updateCase)은 같은 행 배열을 제자리에서 고치므로 메모가 따라온다.
+//  사건을 새로 만들거나 행을 지우면 메모를 버린다. 다른 화면 호출(사건 목록·고객 등)은 예전처럼 매번 읽는다.
+var CP_SHEET_MEMO_ON_ = false, WORK_DATA_MEMO_ = null;
+function work_values_(sheet) {
+  if (!CP_SHEET_MEMO_ON_) return sheet.getDataRange().getValues();
+  const sid = sheet.getSheetId();
+  if (WORK_DATA_MEMO_ && WORK_DATA_MEMO_.sid === sid) return WORK_DATA_MEMO_.values;
+  const v = sheet.getDataRange().getValues();
+  WORK_DATA_MEMO_ = { sid: sid, values: v };
+  return v;
+}
+function work_valuesDirty_() { WORK_DATA_MEMO_ = null; }
 function work_findCaseRow_(sheet, col, caseId) {
-  const data = sheet.getDataRange().getValues();
+  const data = work_values_(sheet);
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][col.id]).trim() === String(caseId).trim()) {
       return { rowIndex: i + 1, row: data[i] };
@@ -24346,6 +24359,7 @@ function work_createCase0_(params) {
 
     sheet.appendRow(newRow);
     SpreadsheetApp.flush();
+    work_valuesDirty_(); // [2026.10.23 속도 ㅅ6차] 행이 늘었으니 시트 메모는 버린다
     // [2026.10.09 버그수정] 시트에 쓴 날짜시각은 다시 읽으면 시트 시간대 때문에 몇 시간 어긋나고 밀리초가 잘린 값으로 돌아온다.
     // 방금 만든 new Date()를 그대로 돌려주면, 화면이 그 값을 기대수정일로 보내는 다음 저장이 시트 값과 안 맞아 매번 "다른 화면이 먼저
     // 저장했습니다" 충돌로 막혔다(세액계산 💾 저장 직후 사건개요 동기화, 증빙 연속 체크 등 — 실사용 점검에서 발견, 실제 7시간 차이).
@@ -24385,7 +24399,7 @@ function work_createCaseFull_(params) {
 function work_updateCase(params) {
   return withLock_(8000, function () {
     const sheet = work_getSheet_();
-    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    const col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 사건처리 실행 안에선 시트 메모(아래 setValues는 found.row 배열을 제자리에서 고치므로 메모도 같이 바뀐다)
     const found = work_findCaseRow_(sheet, col, params.id);
     if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
 
@@ -26558,6 +26572,7 @@ function cpPrereadInCases_(file, rootId) {
   return false;
 }
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
+  try { if (CacheService.getScriptCache().get('cp_evid_busy')) return; } catch (e) {} // [2026.10.23 속도 ㅅ6차] 화면의 ② 서류 읽기가 도는 중이면 이번 틱은 쉰다(같은 파일 동시 글자인식 방지)
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(2000)) return; // 앞 틱이 아직 읽는 중 — 겹치지 않는다
   const started = Date.now(), DEADLINE = 270000, props = PropertiesService.getScriptProperties();
@@ -29239,7 +29254,7 @@ function tc_ruleTransferFacts_(body) {
   if (body.noCache) return tc_ruleTransferFactsRaw_(body);
   if (TC_RF_MEMO_[caseId]) return JSON.parse(TC_RF_MEMO_[caseId]);
   var sheet = work_getSheet_();
-  var col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  var col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 시트 메모
   var found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { error: '사건을 찾지 못했습니다.' };
   var cr = work_readRow_(col, found.row) || {};
@@ -29269,7 +29284,7 @@ function tc_ruleTransferFactsRaw_(body) {
   var cr = body._cr || null; // [2026.10.22 속도 S3] 겉 함수가 이미 읽은 사건 행·파일 목록을 받으면 다시 읽지 않는다
   if (!cr) {
     var sheet = work_getSheet_();
-    var col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    var col = work_colMap_(work_values_(sheet)[0]);
     var found = work_findCaseRow_(sheet, col, caseId);
     if (!found) return { error: '사건을 찾지 못했습니다.' };
     // [2026.10.15] 행 값은 work_readRow_로 — 🧪 정답지 점검(akSandbox_)은 found.row를 메모리 표시로 바꿔 두어 found.row[col.X]로 읽으면 "사건 폴더가 없습니다"가 났다(양도 사건 전부 서류 정리 실패)
@@ -30314,7 +30329,11 @@ function caseProcTimed_(body) {
   let r;
   try { CX_AI_NOAI_ = !!(body && body.noAi); } catch (e) {} // [2026.10.22 넥스가 주인] GAS 도구 안은 AI 없이 — 못 푼 쟁점은 넥스에게
   CP_SECURED_LOG_ = []; // [2026.10.19] 이번 실행의 조회 결과(확보자료) — 끝에서 cpSecuredFlush_가 사건 폴더/확보자료/에 남긴다
+  CP_SHEET_MEMO_ON_ = true; WORK_DATA_MEMO_ = null; // [2026.10.23 속도 ㅅ6차] 작업관리 시트는 이 실행에서 한 번만 읽는다
+  CASEPROC_PATCH_DEFER_ = true; CASEPROC_PATCH_Q_ = {}; // [2026.10.23 속도 ㅅ6차 — S6] 결정 파일 쓰기는 모아서 실행 끝에 한 번
   try { r = caseProcTimedRun_(body, t0); } finally {
+    try { caseProcPatchFlush_(); } catch (e) { console.log('결정 파일 모아 쓰기 실패: ' + (e && e.message || e)); }
+    CP_SHEET_MEMO_ON_ = false; WORK_DATA_MEMO_ = null;
     try { CX_AI_NOAI_ = false; } catch (e) {}
     try { const n = cpSecuredFlush_(String(body && body.caseId || '').trim()); if (n && r && typeof r === 'object' && !Array.isArray(r)) r._securedSaved = n; } catch (e) { console.log('확보자료 저장 실패: ' + (e && e.message || e)); }
   }
@@ -30355,7 +30374,7 @@ function caseProc0_(body) {
   // [2026.10.22 작업 기록부] 화면에서 직접 쓴 GAS 도구(서식 출력·검토서 고침 등)를 기록부에 한 줄
   if (body.step === 'log') { caseProcLog_(caseId, { by: caseProcWho_('', body.by), what: String(body.what || '').slice(0, 40), detail: String(body.detail || '').slice(0, 240) }); return { ok: true }; }
   const sheet = work_getSheet_();
-  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 시트 메모(한 실행에 한 번)
   const found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { error: '사건을 찾지 못했습니다.' };
   const c = work_readRow_(col, found.row);
@@ -30420,9 +30439,36 @@ function caseProcLoad_(caseId) {
   if (CASEPROC_SV_MEMO_[k]) return JSON.parse(CASEPROC_SV_MEMO_[k]); // 복사본 — 부른 곳이 고쳐도 메모가 오염되지 않게
   try { const f = caseProcFile_(caseId, false); const s = f ? (f.getBlob().getDataAsString('UTF-8') || '{}') : '{}'; const o = JSON.parse(s) || {}; CASEPROC_SV_MEMO_[k] = JSON.stringify(o); return o; } catch (e) { return {}; }
 }
-function caseProcStore_(caseId, saved) { const f = caseProcFile_(caseId, true); if (f) { const s = JSON.stringify(saved); f.setContent(s); CASEPROC_SV_MEMO_[String(caseId || '')] = s; } }
+function caseProcStore_(caseId, saved) { const f = caseProcFile_(caseId, true); if (f) { const s = JSON.stringify(saved); f.setContent(s); CASEPROC_SV_MEMO_[String(caseId || '')] = s; if (CASEPROC_PATCH_DEFER_) CASEPROC_PATCH_Q_[String(caseId || '')] = []; } } // 통째 쓰기엔 미룬 고침이 이미 들어 있으므로 줄을 비운다(두 번 적용 방지)
 // [2026.10.14] 결정 파일은 이 함수로만 고친다 — 잠금 안에서 최신 내용을 읽어 고치고 바로 쓴다(동시에 도는 단계끼리 덮어쓰기 방지)
+// [2026.10.23 속도 ㅅ6차 — S6 쓰기 묶기] 사건처리 실행(caseProcTimed_) 안에서는 결정 파일을 고칠 때마다 드라이브에 쓰지 않고(잠금+읽기+쓰기 = 1.5~3초씩, ③ 한 번에 3~5번·답 반영에 2~3번),
+//  메모 사본에 바로 적용해 두었다가(같은 실행의 다음 읽기는 메모를 보므로 결과가 같음) 실행 끝에 한 번만 — 잠금 안에서 파일을 새로 읽어 쌓아 둔 고침을 차례로 다시 적용해 쓴다
+//  (동시에 돌던 다른 실행이 쓴 것을 덮지 않음 — 예전 잠금 방식과 같은 결과). 실행 밖(트리거·다른 화면)에서는 예전대로 바로 쓴다.
+var CASEPROC_PATCH_DEFER_ = false, CASEPROC_PATCH_Q_ = {};
+function caseProcPatchFlush_() {
+  const q = CASEPROC_PATCH_Q_; CASEPROC_PATCH_Q_ = {}; CASEPROC_PATCH_DEFER_ = false;
+  Object.keys(q).forEach(function (k) {
+    const ms = q[k] || []; if (!ms.length) return;
+    const lock = LockService.getUserLock();
+    lock.waitLock(20000);
+    try {
+      const f = caseProcFile_(k, true); if (!f) return;
+      let saved = {};
+      try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
+      ms.forEach(function (m) { try { m(saved); } catch (e) { console.log('결정 파일 고침 다시 적용 실패: ' + (e && e.message || e)); } });
+      const s = JSON.stringify(saved); f.setContent(s); CASEPROC_SV_MEMO_[k] = s;
+    } finally { lock.releaseLock(); }
+  });
+}
 function caseProcPatch_(caseId, mutate) {
+  if (CASEPROC_PATCH_DEFER_) {
+    const k = String(caseId || '');
+    const saved = caseProcLoad_(caseId) || {};
+    const out = mutate(saved);
+    try { CASEPROC_SV_MEMO_[k] = JSON.stringify(saved); } catch (e) {}
+    (CASEPROC_PATCH_Q_[k] = CASEPROC_PATCH_Q_[k] || []).push(mutate);
+    return out === undefined ? saved : out;
+  }
   const lock = LockService.getUserLock();
   lock.waitLock(20000);
   try {
@@ -30936,13 +30982,23 @@ function caseProcLastCalc_(c) {
 
 // 1) 사건 기본 — 세목·업무유형·납세자·법정기한·증빙 폴더, 날짜 대조
 function caseProcBasic_(c, body) {
+  const r0 = caseProcBasic0_(c, body);
+  try { if (r0 && r0.lines && CP_BASIC_T_) r0.lines.push('⏱ ① 안쪽 ' + Math.round((Date.now() - CP_BASIC_T_.t0) / 1000) + '초 — ' + Object.keys(CP_BASIC_T_.m).map(function (k) { return k + ' ' + CP_BASIC_T_.m[k] + '초'; }).join(' · ')); } catch (e) {} // [2026.10.23 속도 ㅅ6차] ① 60초의 원인을 숫자로
+  return r0;
+}
+var CP_BASIC_T_ = null;
+function caseProcBasic0_(c, body) {
   const items = [], lines = [];
   const today = caseProcToday_();
+  CP_BASIC_T_ = { t0: Date.now(), m: {} }; let tb = Date.now(); const tbk = function (k) { CP_BASIC_T_.m[k] = Math.round((Date.now() - tb) / 100) / 10; tb = Date.now(); };
   lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 기준일 ' + (c.기준일 || '—') + ' · 법정일 ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
   try { caseProcRouteLines_(c).forEach(function (l) { lines.push(l); }); } catch (e) {} // [2026.10.18 정밀분석 원인3] 서류로 정한 사건 경로
+  tbk('사건 경로');
   try { caseProcGrasp_(c).lines.forEach(function (l) { lines.push(l); }); } catch (e) { lines.push('⚠ 사건파악 가설을 세우지 못함: ' + (e && e.message || e)); } // [2026.10.17 재설계] 작업관리는 가설의 한 출처일 뿐
+  tbk('가설 세우기');
   // [2026.10.21] 고객 카톡 글(Federation.js kakaoCaseMessages_) — 참고로만, 계산 칸에 넣지 않음
   try { const km = typeof kakaoCaseMessages_ === 'function' ? kakaoCaseMessages_(c, 5) : []; if (km.length) lines.push('💬 고객 카톡 글 최근 ' + km.length + '건(참고 — 서류로 확인해 칸에 넣음): ' + km.slice(-3).map(function (m) { return m.at.slice(5, 10) + ' "' + caseProcAiCut_(m.text, 60) + '"'; }).join(' · ')); } catch (e) {}
+  tbk('카톡 글');
   if (!c.세목) items.push(caseProcItem_('basic:세목', 'missing', '세목이 비어 있습니다.', { mode: 'view', view: 'workmanage', label: '작업관리에서 세목 정하기' }));
   if (!c.업무유형) items.push(caseProcItem_('basic:업무유형', 'missing', '업무유형(신고·상담 등)이 비어 있습니다.', { mode: 'view', view: 'workmanage', label: '작업관리에서 업무유형 정하기' }));
   const ov = c.사건개요 || {};
@@ -30960,6 +31016,7 @@ function caseProcBasic_(c, body) {
   else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today && (filedWhy = caseProcAlreadyFiled_(c))) lines.push('법정일(' + c.법정일 + ')이 지났지만 이미 신고한 사건으로 봄 — ' + filedWhy);
   else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다.', { mode: 'options', options: [{ label: '기한후신고로 진행', decide: 'done', note: '기한후신고로 진행' }, { label: '법정일이 틀림 — 기준일부터 확인', mode: 'base' }] }));
   if (!manual) caseProcDateCheck_(c, body || {}, items);
+  tbk('기한·날짜 대조');
   if (!String(c.폴더ID || '').trim()) items.push(caseProcItem_('basic:폴더', 'missing', '증빙 폴더가 없습니다 — 폴더가 있어야 서류를 읽고 처리할 수 있습니다.', { mode: 'folder' }));
   const saved = caseProcLoad_(c.id);
   return { ok: true, case: c, lines: lines, items: items, blocked: !String(c.폴더ID || '').trim(), decisions: saved.decisions || {}, lastRun: saved.savedAt || '' };
@@ -32308,6 +32365,7 @@ var CASEPROC_PARSED_MEMO_ = {};
 const CASEPROC_DOC_MAX_ = 300;
 function caseProcEvidence_(c, body) {
   const items = [], lines = [];
+  try { CacheService.getScriptCache().put('cp_evid_busy', '1', 180); } catch (e) {} // [2026.10.23 속도 ㅅ6차] ② 서류 읽기가 도는 3분 동안 미리 읽기 틱(cpPrereadTick)은 쉰다 — 같은 파일을 둘이 동시에 글자인식해 ①②가 2분으로 늘던 것(가상양도13 @1246 ① 2분)
   // [2026.10.15 1단계 ①] 압축 파일은 먼저 풀어 둔다(처음 한 번) — 풀린 파일도 아래 목록에 들어와 함께 읽는다
   try {
     const uz = caseProcUnzipAll_(c);
@@ -38479,7 +38537,7 @@ function caseProcApplyBase_(caseId, date, file, what) {
   date = String(date || '').trim();
   if (!caseProcIsDate_(date)) return { ok: false, error: '날짜 형식이 아닙니다.' };
   const sheet = work_getSheet_();
-  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 시트 메모
   const found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { ok: false, error: '사건을 찾지 못했습니다.' };
   const c = work_readRow_(col, found.row);
@@ -38529,7 +38587,7 @@ function caseProcSave_(caseId, body) {
     const held = remain.filter(isHeld), open = remain.filter(function (it) { return !isHeld(it); });
     const text = '[사건처리 ' + saved.savedAt + '] 남은 일 ' + open.length + '건' + (held.length ? ', 보류·받을 예정 ' + held.length + '건' : '') + (remain.length ? '\n' + open.concat(held).slice(0, 15).map(function (it) { return '- ' + (isHeld(it) ? '(' + dec[it.id].d + ') ' : '') + it.text.slice(0, 90); }).join('\n') : ' — 모두 처리됨');
     const sheet = work_getSheet_();
-    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    const col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 시트 메모
     const found = work_findCaseRow_(sheet, col, caseId);
     if (found) {
       let log = [];
