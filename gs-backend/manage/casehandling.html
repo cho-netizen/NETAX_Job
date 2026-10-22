@@ -20,6 +20,13 @@
   // ============================================================
   var chCases = [];
   var chSelectedId = null;
+  // [2026.10.23 ㅅ16차 — 점검표 195] 세무사님이 처리개요 칸에 적는 중인 값은 화면이 다시 그려져도(저장 충돌 새로고침·GAS 처리 뒤 사건 화면 복귀 등) 어떤 경우에도 보존한다 — 칸 id → 적은 값
+  var chTyped_ = {}, chTypedCase_ = null;
+  function chTypedRestore_(){
+    var ids = Object.keys(chTyped_), n = 0;
+    ids.forEach(function(id){ var el = document.getElementById(id); if (!el || !('value' in el)) return; if (String(el.value) !== String(chTyped_[id])){ el.value = chTyped_[id]; try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} n++; } });
+    if (n && typeof showToast === 'function') showToast('화면을 다시 그렸지만 적고 계시던 값 ' + n + '개는 그대로 두었습니다 — [저장]을 눌러 주세요.', 'warning');
+  }
   // [2026.09] 사건분류 옵션의 진짜 목록은 서버(work_get_cases 응답의 evidenceClassificationOptions,
   // Code.js의 WORK_EVIDENCE_TEMPLATES_에서 그대로 뽑아온 것)에서만 가져온다 — 여기서는 그
   // 목록 앞에 빈 선택지와 "일반OO" 기본값만 붙여서 그린다(CH_CLASSIFICATION_DEFAULT_LABEL_).
@@ -628,6 +635,8 @@
   });
 
   function renderChBody_(){
+    if (chTypedCase_ !== chSelectedId){ chTyped_ = {}; chTypedCase_ = chSelectedId; } // 다른 사건으로 옮기면 적던 값은 버린다
+    if (!chBodyEl._chTypedWired){ chBodyEl._chTypedWired = true; chBodyEl.addEventListener('input', function(e){ var el = e.target; if (el && el.id && /^(chOv_|chEdit)/.test(el.id) && 'value' in el) chTyped_[el.id] = el.value; }); }
     if (!chSelectedId){
       chBodyEl.innerHTML = '<div class="explorer-status">위에서 사건을 선택해주세요.</div>';
       return;
@@ -712,6 +721,7 @@
         if (groupHost) groupHost.innerHTML = chBuildTransferGroupAmountsHtml_(ovForTransfer._chAssetListWorking || [], ovForTransfer);
       });
     } else if (c.세목 === 'gift' || c.세목 === 'inheritance') chWireAssetListBlock_(c._chOverviewWorking || {}, chBuildLocationAssetCardHtml_);
+    chTypedRestore_(); // [2026.10.23 ㅅ16차 — 점검표 195] 다시 그린 뒤 적고 계시던 값을 되살린다(배선이 끝난 뒤라 물건 카드 값도 작업 사본에 반영됨)
 
     document.getElementById('chSaveTarget').addEventListener('click', function(){
       // [2026.09 버그수정] 사건개요서(사건개요) 자체를 통째로 덮어쓰는 저장인데도 동시편집
@@ -782,8 +792,10 @@
         payload.처리대상 = document.getElementById('chEditTarget').value.trim();
       }
       callGas('work_update_case', payload).then(function(res){
-        if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadChCases_(); return; }
+        // [2026.10.23 ㅅ16차 — 점검표 195] 충돌(그 사이 GAS 처리·세액계산 저장이 사건을 고침)이면 최신으로 다시 불러오되 적으신 값은 chTyped_로 되살려 [저장]만 다시 누르시면 되게 — 예전엔 입력이 통째로 날아가 0으로 보였다(가상증여8 세 번)
+        if (res.conflict){ showToast('그 사이 사건이 다른 곳(GAS 처리·세액계산)에서 바뀌어 최신 내용으로 다시 불러왔습니다 — 적으신 값은 그대로 두었으니 [저장]을 다시 눌러 주세요.', 'warning'); loadChCases_(); return; }
         if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
+        chTyped_ = {}; // 저장됐으니 적던 값 보관을 비운다
         showToast('저장했습니다.', 'success');
         if (res.warning) showToast(res.warning, 'warning');
         // [2026.10.09 버그수정] 저장 응답(수 초)이 오는 사이 다른 칸(작업일지·특이사항 등)에 이미 타이핑을 시작했으면,

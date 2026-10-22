@@ -2945,7 +2945,7 @@
     st.flushRefresh = function(force){ clearTimeout(st.prTimer); return run(force !== false).then(function(){ return st.prBusy || null; }); };
     // [2026.10.22 속도 — 답 모아 한 번만] 마지막 답 뒤 20초 동안 다른 답이 없을 때 한 번(답할 때마다 시계를 다시 잰다). 이미 도는 중이면 새로 시작하지 않고 그 결과를 쓰되,
     //  그 사이 답이 더 있었으면 끝난 뒤 한 번만 더(prAgain). ▶를 누르면 기다리지 않고 바로(flushRefresh). 예전 12초는 답 하나마다 거의 매번 맞추기를 띄워 줄을 세웠다(가상양도10 표 82: ▶ 뒤 5분 45초)
-    st.prTimer = setTimeout(run, 20000);
+    st.prTimer = setTimeout(run, 60000); // [2026.10.23 ㅅ16차 — 점검표 180·181·186] 20초 → 60초: 질문 5개를 차례로 답하면 답 사이가 20초를 넘겨 ③(40~80초)이 답마다 돌았다(상속8 19분·증여9 30분). ▶를 누르면 기다리지 않고 바로 맞춘다(flushRefresh)
   }
   // 사건 화면 — "GAS가 한 일" 한 줄(남은 질문을 계산기 항목별로). 답하실 때마다 다시 맞춘다
   function nxAiCpGasSayText_(st){
