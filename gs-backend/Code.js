@@ -3749,6 +3749,8 @@ function job_lookup_(input) {
       사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || '') + ' · ' + (c.업무유형 || ''), 마지막저장: sv.savedAt || '',
       남은질문: (sv.remaining || []).map(function (it) { const d = dec[it.id] && dec[it.id].d; return { qid: it.id, 결정: d || '', 글: it.text, 넣을칸: it.ask ? { target: it.ask.target, label: it.ask.label, input: it.ask.input } : null, 후보: it.ask ? it.ask.cands : [] }; }),
       AI판단값: judged.slice(0, 20),
+      // [2026.10.22 작업 기록부] 세무사님이 직접 하신 일·넥스가 한 일(누가·언제·무엇)과 정한 값·처리개요·증빙·닫은 질문·서식·검토서·단계 시각 — 넥스가 이어 받을 때 먼저 본다
+      현황: (function () { try { return caseProcNexView_(c); } catch (e) { return { 오류: String(e && e.message || e).slice(0, 80) }; } })(),
       // [2026.10.21] 세무사님 원문: "아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라" — 세무사님이 직접 한 일(처리일지·마지막 계산)도 넥스가 보게
       고객제출: (function () { try { return c.my_report_id && typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(60, c.my_report_id) : []; } catch (e) { return []; } })(), // [2026.10.22] 고객창구·카카오로 받은 서류(최근 60일, 제출자료 폴더) — 새로 온 것이 있으면 다시 읽어 반영
       고객카톡: (function () { try { return typeof kakaoCaseMessages_ === 'function' ? kakaoCaseMessages_(c, 15) : []; } catch (e) { return []; } })(), // [2026.10.21] 참고로만 — 서류 값과 다르면 그 사실만 말씀드림
@@ -24933,7 +24935,12 @@ function work_doPost(body) {
   switch (body.action) {
     case 'work_get_cases': return work_getCases(body);
     case 'work_create_case': return work_createCase(body);
-    case 'work_update_case': return work_updateCase(body);
+    case 'work_update_case': { // [2026.10.22 작업 기록부] 화면이 _log를 붙이면(처리개요·세액계산·증빙확보 등 세무사님이 직접 쓴 도구) 기록부에 한 줄 + 중요한 순간이면 알림
+      const lg = body._log; delete body._log;
+      const r = work_updateCase(body);
+      if (lg && body.id && r && r.success !== false) { caseProcLog_(body.id, { by: caseProcWho_('', lg.by), what: String(lg.what || '').slice(0, 40), detail: String(lg.detail || '').slice(0, 240) }); if (lg.alert) caseProcAlert_(body.id, String(lg.alertKind || 'screen').slice(0, 30), String(lg.alert)); }
+      return r;
+    }
     case 'work_delete_case': return work_deleteCase(body);
     case 'work_add_subtask': return work_addSubtask(body);
     case 'work_update_subtask': return work_updateSubtask(body);
@@ -30101,11 +30108,12 @@ function caseProcTimedRun_(body, t0) {
         const t = Date.now();
         let x;
         try { x = caseProc_(Object.assign({}, st || {}, { caseId: body.caseId })); } catch (e) { x = { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) }; }
+        caseProcStepLog_(String(body.caseId || '').trim(), Object.assign({}, st || {}, { by: body.by }), x); // [2026.10.22 작업 기록부]
         if (x && typeof x === 'object' && !Array.isArray(x)) x._ms = Date.now() - t;
         return x;
       })
     };
-  } else r = caseProc_(body);
+  } else { r = caseProc_(body); caseProcStepLog_(String(body.caseId || '').trim(), body, r); } // [2026.10.22 작업 기록부] 단계 실행(누가·언제)
   if (r && typeof r === 'object' && !Array.isArray(r)) r._ms = Date.now() - t0;
   return r;
 }
@@ -30123,6 +30131,8 @@ function caseProc0_(body) {
   const caseId = String(body && body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
   if (body.step === 'save') return caseProcSave_(caseId, body);
+  // [2026.10.22 작업 기록부] 화면에서 직접 쓴 GAS 도구(서식 출력·검토서 고침 등)를 기록부에 한 줄
+  if (body.step === 'log') { caseProcLog_(caseId, { by: caseProcWho_('', body.by), what: String(body.what || '').slice(0, 40), detail: String(body.detail || '').slice(0, 240) }); return { ok: true }; }
   const sheet = work_getSheet_();
   const col = work_colMap_(sheet.getDataRange().getValues()[0]);
   const found = work_findCaseRow_(sheet, col, caseId);
@@ -30137,10 +30147,13 @@ function caseProc0_(body) {
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
-    if (body.step === 'apply') return caseProcApply_(c, body);
+    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나
     if (body.step === 'draft') return caseProcDraft_(c);
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
     if (body.step === 'status') return caseProcStatus_(c, body);
+    if (body.step === 'facts') return caseProcFactsView_(c);
+    if (body.step === 'view') return caseProcUserView_(c); // [2026.10.22 세무사님↔GAS 소통] 사건 화면이 열릴 때 — 현황·다음 할 일·GAS 알림·작업 기록(0원)
+    if (body.step === 'alertSeen') { caseProcPatch_(c.id, function (sv) { (sv.alerts || []).forEach(function (a) { a.seen = true; }); }); return { ok: true }; } // [2026.10.22 1단계] 판단 재료 보기(읽기 전용, 0원) — 넥스만 보던 사람·자산·계약·돈 흐름·시간 순서를 세무사님 화면에도
     if (body.step === 'calcin') return caseProcCalcIn_(c);
     if (body.step === 'scanCands') return caseProcScanCands_(c, body); // [2026.10.17] 원근보정할 사진 후보
     // [2026.10.19 3번 세션] 사진 → 서류별 PDF(미리 보기 → 승인 → 적용·되돌리기)와 신고제출 묶음(계획 → 화면이 합침 → 저장)
@@ -30197,6 +30210,110 @@ function caseProcPatch_(caseId, mutate) {
   } finally { lock.releaseLock(); }
 }
 function caseProcToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+// =========================================================
+// [2026.10.22 사건 작업 기록부] 세무사님 원문: "AI는 내 비서로서 내가 일을 시키든 시키지않든 간에 항상 내옆에서 내가 하는 일을 지켜봐야 하겠지"
+//  / "직접 처리하다가 남은 작업을 AI에게 시킬 수 있으니 이것을 어떻게 할지나 고민하라" / "내가 GAS도구를 직접 사용한다고!"
+//  세무사님이 GAS 도구로 하신 일·넥스가 한 일을 사건별 파일(sv.workLog)에 한 줄씩(누가·언제·무엇) 남긴다(0원).
+//  넥스는 부를 때 이 기록부와 반영 현황표를 먼저 보고 남은 일만 이어 받는다(job_lookup caseproc · 넥스 도구 case_status — caseProcNexView_).
+// =========================================================
+function caseProcNow_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'); }
+// 누가 — 화면이 넘긴 by(넥스 지휘 중이면 '넥스'), 없으면 출처 글로(🤖 AI 판단은 넥스)
+function caseProcWho_(src, by) { const b = String(by || '').trim(); if (b === '넥스' || b === '세무사님' || b === '자동') return b; return /🤖|AI 판단|넥스/.test(String(src || '')) ? '넥스' : '세무사님'; }
+// 처리일지 머리 — 세무사님이 정한 값과 넥스가 넣은 값을 머리로 구분(예전엔 둘 다 [사건처리 확인])
+function caseProcLogHead_(src, by) { return caseProcWho_(src, by) === '넥스' ? '[넥스 판단] ' : '[사건처리 확인] '; }
+function caseProcLogTo_(sv, e) {
+  const one = { at: caseProcNow_(), by: String(e.by || '세무사님').slice(0, 6), what: String(e.what || '').slice(0, 40), detail: String(e.detail || '').slice(0, 240) };
+  if (e.key) one.key = String(e.key).slice(0, 120);
+  sv.workLog = (Array.isArray(sv.workLog) ? sv.workLog : []).concat([one]).slice(-300);
+}
+function caseProcLog_(caseId, e) { try { if (caseProcFile_(caseId, false)) caseProcPatch_(caseId, function (sv) { caseProcLogTo_(sv, e); }); } catch (err) { console.log('작업 기록부 쓰기 실패: ' + (err && err.message || err)); } }
+// 단계 실행 기록 — 사건파악·증빙·칸 채우기·계산·서식·검토서. 증빙은 읽은 서류 목록(이름·수정 시각)을 함께 둬 다음에 새 서류만 알아본다
+var CASEPROC_STEP_NAME_ = { basic: '사건파악', evidence: '증빙 읽기·정리', overview: '칸 채우기', calc: '세액계산 준비', output: '서식 대조', draft: '종합검토서 초안', savePdf: '서식 PDF 저장' };
+function caseProcStepLog_(caseId, body, r) {
+  const step = String((body && body.step) || '');
+  if (!CASEPROC_STEP_NAME_[step] || !r || r.error || (step === 'evidence' && (body.phase === 'read' || r.readOnly || r.more))) return;
+  try {
+    if (!caseProcFile_(caseId, false)) return;
+    caseProcPatch_(caseId, function (sv) {
+      const n = Array.isArray(r.items) ? r.items.length : null;
+      caseProcLogTo_(sv, { by: caseProcWho_('', body.by), what: '단계: ' + CASEPROC_STEP_NAME_[step], detail: n != null ? '질문·확인 ' + n + '건' : (r.name || '') });
+      sv.steps = sv.steps || {}; sv.steps[step] = { at: caseProcNow_(), by: caseProcWho_('', body.by) };
+      if (step === 'evidence' && Array.isArray(r.files)) sv.readFiles = { at: caseProcNow_(), list: r.files.slice(0, 300).map(function (f) { return { id: String(f.id || ''), name: String(f.name || '').slice(0, 120), m: String(f.modified || f.mod || '') }; }) };
+    });
+  } catch (e) { console.log('단계 기록 실패: ' + (e && e.message || e)); }
+}
+// 값 정함 기록 — 누가·무슨 칸·값·출처. 중요한 순간 ①: 세무사님이 넣으신 값이 서류에서 찾은 후보 어느 것과도 다를 때(넥스가 먼저 말을 걸 재료)
+function caseProcApplyLog_(c, body) {
+  try {
+    if (!caseProcFile_(c.id, false)) return '';
+    let alert = '';
+    const who = caseProcWho_(body.src, body.by), a = body.ans || {}, label = String(body.label || body.target || '').slice(0, 40), val = String(body.value == null ? '' : body.value).slice(0, 60);
+    caseProcPatch_(c.id, function (sv) {
+      caseProcLogTo_(sv, { by: who, what: '값 정함', key: body.target, detail: label + ' = ' + val + (body.src ? ' (' + String(body.src).slice(0, 60) + ')' : '') });
+      if (who === '세무사님' && Number(a.nCands) > 0 && Number(a.pick) < 0) { alert = '「' + label + '」에 넣으신 ' + val + '이(가) 서류에서 찾은 후보와 다릅니다. 서류 쪽 값도 한번 확인해 보시겠어요?'; caseProcAlertTo_(sv, 'value-vs-doc', alert); }
+    });
+    return alert;
+  } catch (e) { console.log('값 정함 기록 실패: ' + (e && e.message || e)); return ''; }
+}
+// 중요한 순간 — GAS가 규칙으로 알아챈 것(0원). 넥스가 먼저 말을 거는 재료(sv.alerts, 화면이 넥스 알림으로 띄우고 보면 seen)
+//  세무사님 원문(10-22): "중요한 순간이 어떤 경우가 있을지 모르겠는데, 만약 그런 경우라면 AI가 먼저 말을 걸어도 되겠지." — 경우는 실제 쓰며 함께 늘린다
+function caseProcAlertTo_(sv, kind, text) {
+  sv.alerts = (sv.alerts || []).filter(function (x) { return !(x.kind === kind && x.text === text); }).concat([{ at: caseProcNow_(), kind: kind, text: String(text).slice(0, 300), seen: false }]).slice(-30);
+}
+function caseProcAlert_(caseId, kind, text) { try { if (caseProcFile_(caseId, false)) caseProcPatch_(caseId, function (sv) { caseProcAlertTo_(sv, kind, text); }); } catch (e) {} }
+// [2026.10.22 1단계 — AI 없이 직접] 판단 재료 보기 — 넥스 도구(사람 명단·자산 목록·계약 목록·돈 흐름·시간 순서·법령 점검)와 같은 GAS 함수로(0원). 세무사님 "넥스가 부르는 도구는 세무사님도 직접"
+function caseProcFactsView_(c) {
+  if (typeof caseProcAiFactTool_ !== 'function') return { error: '판단 재료 도구가 이 판에 없음' };
+  const parts = [['people_roster', '사람 명단'], ['owner_assets', '자산 목록'], ['contract_list', '계약 목록'], ['money_links', '돈 흐름'], ['time_order', '시간 순서'], ['law_checks', '법령 점검']];
+  const out = {};
+  parts.forEach(function (p) { try { const r = caseProcAiFactTool_(c.id, p[0], {}); out[p[1]] = r && r.error ? { 오류: r.error } : r; } catch (e) { out[p[1]] = { 오류: String(e && e.message || e).slice(0, 100) }; } });
+  try { caseProcLog_(c.id, { by: '세무사님', what: '판단 재료 보기', detail: '' }); } catch (e) {}
+  return { ok: true, 재료: JSON.parse(cxMask_(JSON.stringify(out))) };
+}
+// [2026.10.22 세무사님↔GAS 소통] 세무사님 "기존에 AI와 GAS의 소통을 참고해서 사용자와 GAS의 소통에 부족한 부분을 포착하였다면, 그 부분을 포함해서 원점에서 사용자와 GAS의 소통에 만전을 기하라"
+//  넥스가 case_status로 보는 현황을 세무사님 화면에도 — 단계·새 서류·남은 질문·계산·서식·검토서로 "다음 할 일"을 GAS가 먼저 말씀드리고, 알림·작업 기록을 보인다
+function caseProcUserView_(c) {
+  const v = caseProcNexView_(c, { withFiles: true }), sv = caseProcLoad_(c.id) || {};
+  let last = null; try { last = caseProcLastCalc_(c).last; } catch (e) {}
+  const st = v.단계 || {}, next = [];
+  if (!st['증빙 읽기·정리']) next.push({ do: 'gas', text: '서류를 아직 GAS로 읽지 않았습니다 — 서류 읽기·칸 채우기부터' });
+  else if (Array.isArray(v.새서류) && v.새서류.length) next.push({ do: 'gas', text: '서류를 읽은 뒤 새로 들어온 서류 ' + v.새서류.length + '개(' + v.새서류.slice(0, 3).join(', ') + (v.새서류.length > 3 ? ' 외' : '') + ') — 다시 읽기' });
+  if (v.남은질문수) next.push({ do: 'gas', text: '답하실 질문 ' + v.남은질문수 + '개' + (v.보류질문수 ? ' (보류 ' + v.보류질문수 + '개 따로)' : '') });
+  if (!last) next.push({ do: 'calc', text: '세액계산 결과가 아직 저장되지 않았습니다' });
+  if (last && !v.서식PDF) next.push({ do: 'gas', text: '서식 PDF가 사건 폴더에 저장되지 않았습니다' });
+  if (!v.검토서) next.push({ do: 'gas', text: '종합검토서 초안이 없습니다' });
+  return { ok: true, 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [] };
+}
+// 넥스가 보는 사건 현황 — 기록부·정한 값·처리개요·증빙·닫은 질문·서식·검토서·단계 시각(·새 서류 — withFiles일 때만, 폴더를 훑으므로)
+function caseProcNexView_(c, opt) {
+  opt = opt || {};
+  const sv = caseProcLoad_(c.id) || {}, dec = sv.decisions || {};
+  const flat = function (o, pre) { const out = []; Object.keys(o || {}).forEach(function (k) { const v = o[k]; if (v && typeof v === 'object' && ('v' in v)) out.push({ 칸: (pre || '') + k, 값: String(v.v).slice(0, 80), 출처: String(v.src || '').slice(0, 80), 누가: caseProcWho_(v.src), 때: v.at || '' }); }); return out; };
+  const ev = Array.isArray(c.증빙목록) ? c.증빙목록 : [];
+  const out = {
+    작업기록: (sv.workLog || []).slice(-40).map(function (e) { return e.at + ' ' + e.by + ' — ' + e.what + (e.detail ? ': ' + e.detail : ''); }),
+    단계: (function () { const s = sv.steps || {}, o = {}; Object.keys(CASEPROC_STEP_NAME_).forEach(function (k) { if (s[k]) o[CASEPROC_STEP_NAME_[k]] = s[k].at + ' ' + s[k].by; }); return o; })(),
+    정한값: flat(sv.filled).concat(flat(sv.trAns, 'calc:')).slice(0, 60),
+    상속선택: sv.ihChoices ? Object.keys(sv.ihChoices).slice(0, 20) : [],
+    처리개요: (function () { const o = {}, ov = c.사건개요 || {}; Object.keys(ov).slice(0, 40).forEach(function (k) { const v = ov[k]; o[k] = typeof v === 'object' ? JSON.stringify(v).slice(0, 120) : String(v).slice(0, 120); }); return o; })(),
+    증빙: { 전체: ev.length, 확보: ev.filter(function (x) { return x && /secured|확보됨/.test(String(x.status || '')); }).length, 미확보: ev.filter(function (x) { return x && !/secured|확보됨/.test(String(x.status || '')); }).slice(0, 15).map(function (x) { return x.name || x.label || ''; }) },
+    닫은질문: (sv.closed || []).slice(-30).map(function (x) { return x.d + ' ' + x.text; }),
+    남은질문수: (sv.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return !d; }).length,
+    보류질문수: (sv.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d === '보류' || d === '예정'; }).length,
+    서식PDF: sv.printPdf ? (sv.printPdf.name + ' ' + (sv.printPdf.at || '')) : '',
+    검토서: sv.draftFileId ? { 파일: sv.draftFileId, 고친판: (sv.draftEdited || []).slice(-3) } : null,
+    읽은서류: sv.readFiles ? { 때: sv.readFiles.at, 수: (sv.readFiles.list || []).length } : null
+  };
+  out.알림 = (sv.alerts || []).filter(function (a) { return !a.seen; }).slice(-10).map(function (a) { return a.at + ' ' + a.text; });
+  if (opt.withFiles && sv.readFiles && Array.isArray(sv.readFiles.list)) {
+    try {
+      const known = {}; sv.readFiles.list.forEach(function (f) { known[f.id] = f.m; });
+      const now = caseProcFiles_(c) || [];
+      out.새서류 = now.filter(function (f) { return !(f.id in known) || (known[f.id] && f.modified && String(f.modified) !== known[f.id]); }).slice(0, 30).map(function (f) { return f.name; });
+    } catch (e) { out.새서류 = '(폴더를 보지 못함: ' + String(e && e.message || e).slice(0, 60) + ')'; }
+  }
+  return out;
+}
 // [2026.10.15] 사건 폴더 안 "양도코리아" 하위폴더 = 이미 낸 신고서·납부서·접수증·계산명세서(정답지) 보관 자리.
 //  도구(사건처리·세액계산 자동채우기·고객이름 조사·보고서 모음 등)는 이 폴더를 절대 읽지 않는다 — 신고 숫자를 베끼는 꿰맞추기 방지.
 //  🧪 정답지 점검기의 정답지 초안(answerKeyDraft_)만 { includeFiled: true }로 읽는다.
@@ -32207,7 +32324,7 @@ function caseProcEvidence_(c, body) {
     if (scanRan && /^image\//.test(String(f.mimeType || '')) && !scanOffered[f.id]) { pendScan.push(f.id); lines.push('📷 ‘' + f.name + '’ 판독 ⚠ ' + block.length + '곳 — 묻기 전에 사진 보정·다시 읽기부터'); return; }
     items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + block.length + '곳', { mode: 'docok', fileId: f.id, name: f.name }, block.join('\n')));
   });
-  return { ok: true, lines: lines, items: items, loop: pendScan.length ? { scan: pendScan, why: '판독 ⚠ 사진 ' + pendScan.length + '장' } : null, files: pool.slice(0, 400).map(function (f) { return { id: f.id, name: f.name }; }),
+  return { ok: true, lines: lines, items: items, loop: pendScan.length ? { scan: pendScan, why: '판독 ⚠ 사진 ' + pendScan.length + '장' } : null, files: pool.slice(0, 400).map(function (f) { return { id: f.id, name: f.name, modified: f.modified || '' }; }), // [2026.10.22] 수정 시각 — 작업 기록부가 읽은 서류 목록으로 남겨 다음에 새 서류만 알아봄
     srcDocs: docs.filter(function (f) { return f.p && f.p.t && !f.p.office; }).length, outDocs: outDocs.length, // 🧪 점검용: 원시서류(종류가 정리된 고객 서류) 수 · 발생문서 수
     docTypes: docs.map(function (f) { return { id: f.id, name: f.name, t: (f.p && f.p.t) || '', l: (f.p && f.p.l) || '', wn: (f.p && f.p.wn) || 0 }; }) };
 }
@@ -37359,7 +37476,7 @@ function caseProcOutput_(c) {
 // [확인] 반영 — 세무사님이 고른 값을 사건에 넣는다(작업일지에 무엇을·어디서 왔는지 남김). 기준일은 법정일 자동 재계산.
 function caseProcApply_(c, body) {
   const target = String(body.target || ''), value = body.value, src = String(body.src || '세무사님 확인').slice(0, 80);
-  const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리 확인] ' + txt, dueDate: '' }]); };
+  const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(src, body.by) + txt, dueDate: '' }]); };
   if (target === 'base') return caseProcApplyBase_(c.id, value, src, CASEPROC_BASE_LABEL_[c.세목] || '기준일');
   if (c.세목 === 'transfer') { const tr = trcApply_(c, body); if (tr) return tr; } // [2026.10.17] 양도 — 세액계산기 칸으로
   // [2026.10.15 1단계] 상속 채무 확정 — 체크한 채무 목록을 사건처리 결정(ihChoices.debts)에 저장, 세액계산 자동채우기가 채무 칸에 넣는다
@@ -37457,7 +37574,7 @@ function caseProcApplyBase_(caseId, date, file, what) {
   const c = work_readRow_(col, found.row);
   const newDue = work_calcDeadline_(c.세목, c.업무유형, date);
   const text = String(file || '').slice(0, 80) + '(으)로 ' + (what || '기준일') + ' ' + date + ' 반영 → 법정일 ' + (newDue || '(규칙 없음)') + (c.기준일 || c.법정일 ? ' (이전 기준일 ' + (c.기준일 || '없음') + ', 법정일 ' + (c.법정일 || '없음') + ')' : '');
-  const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리 확인] ' + text, dueDate: '' }]);
+  const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(file) + text, dueDate: '' }]);
   const p = { id: caseId, 기준일: date, 작업일지: log };
   if (c.기준일 === date && newDue && WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) === -1) p.법정일 = newDue;
   const up = work_updateCase(p);
@@ -37472,6 +37589,7 @@ function caseProcSave_(caseId, body) {
   let dec = {}, remain = [], saved = {};
   caseProcPatch_(caseId, function (sv) {
   saved = sv;
+  const prevDec = Object.assign({}, saved.decisions || {}); // [2026.10.22 작업 기록부] 바뀐 결정만 기록
   dec = body.reset ? {} : (saved.decisions || {});
   Object.keys(body.decisions || {}).forEach(function (k) {
     const d = body.decisions[k];
@@ -37488,6 +37606,10 @@ function caseProcSave_(caseId, body) {
   });
   const gone = function (it) { const d = dec[it.id] && dec[it.id].d; return d === '무시' || d === 'done'; };
   remain = items.filter(function (it) { return !gone(it); });
+  // [2026.10.22 작업 기록부] 보류·무시·받을 예정 결정(누가·이유) — 확인 완료(done)는 값 정함 줄로 이미 남음. 무시·완료로 닫은 질문도 넥스가 보게 따로 둔다
+  Object.keys(body.decisions || {}).forEach(function (k) { const nd = dec[k], od = prevDec[k]; if ((nd && nd.d) === (od && od.d) || (nd && nd.d === 'done')) return; caseProcLogTo_(saved, { by: caseProcWho_('', body.by), what: nd ? '결정 ' + nd.d : '결정 취소', detail: String((nd || od || {}).text || '').slice(0, 120) + (nd && nd.note ? ' — ' + nd.note : '') }); });
+  const closedNow = items.filter(gone).map(function (it) { return { id: it.id, d: dec[it.id].d === 'done' ? '확인' : dec[it.id].d, text: it.text.slice(0, 120) }; });
+  if (closedNow.length) saved.closed = (saved.closed || []).filter(function (x) { return !closedNow.some(function (y) { return y.id === x.id; }); }).concat(closedNow).slice(-60);
   Object.assign(saved, { caseId: caseId, decisions: dec, remaining: body.reset ? [] : remain, savedAt: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') });
   });
   let logged = false;
@@ -37583,14 +37705,15 @@ function caseProcDraft_(c) {
   const saved2 = caseProcLoad_(c.id);
   Object.assign(saved, { draftFileId: saved2.draftFileId, draftHash: saved2.draftHash });
   const hash = function (x) { return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(x || ''), Utilities.Charset.UTF_8)); };
-  let file = null, fresh = false;
+  let file = null, fresh = false, editedOld = null;
   if (saved.draftFileId) { try { file = DriveApp.getFileById(saved.draftFileId); if (file.isTrashed()) file = null; } catch (e) { file = null; } }
   if (file && saved.draftHash && hash(file.getBlob().getDataAsString('UTF-8')) !== saved.draftHash) {
+    editedOld = { id: file.getId(), name: file.getName(), at: caseProcNow_() }; // [2026.10.22 작업 기록부] 세무사님이 고친 판 — 새 초안으로 옮겨가도 위치를 잃지 않게
     file = folder.createFile(name.replace(/\.md$/, '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMdd_HHmm') + '.md'), md, 'text/markdown'); fresh = true; // 세무사님이 고친 초안은 그대로 둔다
   } else if (file) file.setContent(md);
   else { file = folder.createFile(name, md, 'text/markdown'); fresh = true; }
   const fid = file.getId(), fh = hash(md);
-  caseProcPatch_(c.id, function (sv) { sv.draftFileId = fid; sv.draftHash = fh; });
+  caseProcPatch_(c.id, function (sv) { sv.draftFileId = fid; sv.draftHash = fh; if (editedOld) { sv.draftEdited = (sv.draftEdited || []).concat([editedOld]).slice(-10); caseProcLogTo_(sv, { by: '자동', what: '검토서 새 초안', detail: '고치신 판(' + editedOld.name + ')은 그대로 두고 새 초안을 따로 만듦' }); } });
   return { ok: true, fileId: file.getId(), name: file.getName(), fresh: fresh, extra: remain.length };
   });
 }
@@ -48289,7 +48412,7 @@ function trcHouseUse_(c, loc) {
 // ── 답 반영(양도) — 계산기 칸 경로로 저장. 예전 질문 대상(ovAsset·expenses·trStdConv 등)도 같은 자리로 ──
 function trcApply_(c, body) {
   const target = String(body.target || ''), value = body.value, src = String(body.src || '세무사님 확인').slice(0, 80);
-  const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리 확인] ' + txt, dueDate: '' }]); };
+  const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(src, body.by) + txt, dueDate: '' }]); };
   const done = function (txt) { work_updateCase({ id: c.id, 작업일지: logLine(txt + ' (' + src + ')') }); return { ok: true, message: txt }; };
   let m;
   if ((m = /^calc:(.+)$/.exec(target))) {

@@ -2235,7 +2235,8 @@ async function saveToDrive(){
     flashSaveState(data && data.systemFile && data.backedUp ? '드라이브에 저장됨 — 직전 판은 같은 폴더 _이전판에 보관' : '드라이브에 저장됨');
     // [2026.09 신규] 방금 저장한 내용을 스냅샷으로 남겨둔다 — rwHasUnsavedDriveChanges_가
     // "그 뒤로 또 고쳤는지"를 판단하는 기준이 된다(창 닫기/화면 이동 경고용).
-    d.rwDriveSaved_ = content;
+    d.rwDriveSaved_ = content; // [2026.10.22 작업 기록부] 사건 문서를 고쳐 저장하면 사건 기록부에 한 줄 — 넥스가 고친 판에서 이어 받게(파일 id 함께)
+    try { if (rwIdxCase_ && data && sessionStorage.getItem('nxManageSessionToken')) callGas('case_proc', { caseId: rwIdxCase_.id, step: 'log', by: window.nxWorkBy_ || '세무사님', what: '문서 저장', detail: name + (data.fileId || data.id ? ' (파일 ' + (data.fileId || data.id) + ')' : '') }).catch(function(){}); } catch (e) {}
     // [2026.10.09 버그수정] 드라이브에 실제로 저장된 파일 이름(예: "자문보고서")을 기억해 둔다 — 발행본(.html)도 같은 이름이어야
     // 처리개요가 원본과 짝지어 "📤 발행됨"으로 보여준다. 예전엔 발행본이 화면 문서명("새 문서.html")으로 올라가 짝이 안 맞았다.
     if (isNew) d.driveBaseName_ = name.replace(/\.(md|html?|htm)$/i, '');

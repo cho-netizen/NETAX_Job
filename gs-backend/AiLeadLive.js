@@ -21,7 +21,7 @@
 //  AI 없이 0원, 다시 읽기 없음)을 부르면 화면이 그 도구를 실행해 결과(GAS가 못 푼 자리)를 넥스에게 돌려준다. 넥스가 판단·질문하고 끝내면
 //  화면이 계산·서식·저장·검토서를 한다. "판단할 자리 없으면 AI 안 부름" 관문(3-1)과 GAS 안의 저비용 AI 자동 판단은 쓰지 않는다(GAS가 못 푼 것은 넥스에게).
 // =========================================================
-var CASEPROC_AI_CLIENT_TOOLS_ = ['gas_run']; // 화면이 실행하는 GAS 도구 — 서버는 실행하지 않고 넥스의 부름을 화면에 넘긴다
+var CASEPROC_AI_CLIENT_TOOLS_ = ['gas_run', 'gas_finish']; // 화면이 실행하는 GAS 도구 — 서버는 실행하지 않고 넥스의 부름을 화면에 넘긴다
 var CASEPROC_AI_DIRECTOR_MODEL_ = 'claude-sonnet-5-5';
 var CASEPROC_AI_LIGHT_MODEL_ = 'claude-haiku-5-5';
 var CASEPROC_AI_HIGH_MODEL_ = 'claude-opus-5-5';
@@ -144,8 +144,14 @@ function caseProcAiLiveTools_() {
   tools.push({ name: 'ask_higher', description: '어려운 판단 올리기(상위 AI Opus 5.5) — 특례가 얽힌 사건분류(1세대1주택·일시적 2주택·상속주택·정비사업 감면), 시가·유사사례 다툼, 법령 해석이 갈리는 것. 재료를 정리해 넘긴다. 최고급(Fable 5.1)이 필요하면 부르지 말고 보고에 "최고급 검토 필요"로 적는다(세무사님이 쓰기 전에 정하심).',
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' } }, required: ['question', 'material'] } });
   // [2026.10.22 넥스가 주인] GAS 한 바퀴 — 화면이 실행(서버 6분 한도 안에 한 번에 못 끝나는 여러 단계라). 넥스의 첫 도구
-  tools.push({ name: 'gas_run', description: 'GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(다시 읽지 않음, 몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. 사건마다 처음에 한 번만 부른다(이미 불렀으면 다시 부르지 않는다).',
+  tools.push({ name: 'gas_run', description: 'GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. case_status에서 증빙 읽기·칸 채우기가 이미 되어 있고 새 서류가 없으면 부르지 않는다(세무사님이 이미 하셨거나 지난 처리에서 한 일 — 다시 읽지 않는다). 새 서류가 있거나 아직 안 했으면 한 번만 부른다.',
     input_schema: { type: 'object', properties: { why: { type: 'string', description: '한 줄 — 무엇을 보려고(보통 "처음 한 바퀴")' } } } });
+  // [2026.10.22 작업 기록부] 사건 현황 보기 — 세무사님이 직접 하신 일·지난 처리(누가·언제·무엇), 정한 값, 단계별 시각, 새 서류, 반영 현황표, 남은 질문. 늘 맨 먼저(0원)
+  tools.push({ name: 'case_status', description: '사건 현황 보기(토큰 0) — 작업 기록부(세무사님이 GAS 도구로 직접 하신 일과 지난 넥스 처리: 누가·언제·무엇), 정한 값과 출처(세무사님 값은 바꾸지 않는다), 단계별로 이미 한 것과 시각, 그 뒤 새로 들어온 서류, 반영 현황표(⑦ — 남은 일의 기준), 남은 질문 목록. 처리를 맡으면 맨 먼저 부르고, 여기서 남은 일만 고른다.',
+    input_schema: { type: 'object', properties: {} } });
+  // [2026.10.22] 마무리 — 세액계산·서식 대조·저장·종합검토서 초안(화면이 실행, 0원). 맡은 범위에 계산·검토서가 들어 있고 세무사님께 여쭐 것이 없을 때 부른다
+  tools.push({ name: 'gas_finish', description: '마무리(토큰 0, 화면이 실행) — 세액계산 → 서식 대조 → 저장 → 종합검토서 초안. 세무사님께 여쭐 것이 남아 있으면 부르지 말고 여쭙고 끝낸다(답이 오면 화면이 이어서 마무리한다). 일부만 맡으셨으면(예: 취득가액만) 부르지 않는다.',
+    input_schema: { type: 'object', properties: { why: { type: 'string' } } } });
   // [2026.10.19 법령] 세무사님 "ai가 위임을 받아 사건을 처리할때도 이 과정을 거쳐야 하는 거 아닌가?" — 쟁점마다 법령·예규·판례를 GAS 도구로 찾아(토큰 0) 근거로 쓰면 첨부
   tools.push({ name: 'law_lookup', description: '조문 원문 보기(토큰 0) — 사건 기준일에 시행된 판(법령 정비본, 산식 보정 포함). 쟁점 판단에 필요한 조문을 확인할 때. 근거로 쓰면 law_attach로 사건에 첨부한다. articleNo에 「부칙」을 주면 그 판까지의 부칙(적용례·경과조치 — 언제 양도분부터)을 본다.',
     input_schema: { type: 'object', properties: { lawName: { type: 'string', description: '예: 소득세법 시행령' }, articleNo: { type: 'string', description: '예: 155, 97의2' } }, required: ['lawName', 'articleNo'] } });
@@ -193,8 +199,9 @@ function caseProcAiLiveModeText_(cap) {
   return caseProcAiSystem_() + '\n\n' + [
     '[운영 — 지금 판 (2026.10.22 넥스가 주인)]',
     '- 이 사건 처리의 주인은 너(넥스)다. GAS는 네가 부르는 도구다 — 도구 안은 AI 없이 0원으로 돈다(세무사님 "가급적 ai없이 돌아가는 gas를 원하는 거지. 최상위 ai가 도구로 사용하는 것이 gas인 것이다").',
-    '- 첫 차례에 gas_run을 한 번 부른다(사건파악·서류 읽기·나누기·사진 보정·칸 채우기·교차검증). 결과에 나온 "너에게 돌아온 자리"만 판단한다 — GAS가 이미 정한 것은 다시 보지 않고, 서류를 다시 읽게 하지 않는다. 세무사님 말씀이 범위를 좁혔으면(예: "취득가액만") 그 범위만.',
-    '- 돌아온 자리가 없고 따로 맡기신 일도 없으면 도구를 더 부르지 말고 한두 줄로 보고하고 끝낸다(비용을 아낀다). 끝나면 화면이 세액계산·서식 PDF·저장·검토서를 한다.',
+    '- 맨 먼저 case_status로 사건 현황을 본다 — 세무사님이 GAS 도구로 직접 하신 일·지난 처리(누가·언제·무엇), 정한 값, 단계별로 이미 한 것, 새 서류, 반영 현황표(남은 일의 기준). 세무사님은 맡기기 전에 직접 일하시다가 남은 일만 맡기기도 하신다("직접 처리하다가 남은 작업을 AI에게 시킬 수 있으니").',
+    '- 남은 일만 한다: 증빙 읽기·칸 채우기가 아직 안 됐거나 새 서류가 있으면 gas_run을 한 번 부르고, 이미 됐으면 부르지 않는다(다시 읽지 않는다). GAS가 못 푼 자리만 판단한다. 세무사님 값(누가=세무사님)은 바꾸지 않고, 서류와 어긋나 보이면 말씀만 드린다. 말씀이 범위를 정하셨으면(예: "취득가액만") 그 범위만.',
+    '- 세무사님께 여쭐 것이 생기면 ask_user로 올리고(화면이 계산기 항목별로 묶어 여쭙는다 — 개수로 자르지 않는다) 끝낸다. 여쭐 것이 없고 맡은 범위에 계산·검토서가 들어 있으면 gas_finish(세액계산·서식·저장·검토서)를 부르고 결과를 짧게 보고한다. 판단할 것이 없으면 도구를 더 부르지 않는다(비용을 아낀다).',
     '- 이번 사건 비용 상한 ' + Number(cap).toLocaleString('ko-KR') + '원(너와 quick_judge·ask_higher 합계). 상한에 가까우면 하던 판단까지만 하고 보고한다.',
     '- 좁은 판단은 quick_judge(저가)로, 특례·시가·법령 해석은 ask_higher(상위)로. 최고급은 쓰지 않는다(필요하면 보고에 적음).',
     '- 서류는 GAS 도구로만 본다: issue_bundle(쟁점 묶음)·doc_facts(서류 정리 결과)·facts_find(사실 목록)·재료 도구. docs_read·doc_text(원문 직접 읽기)는 없다 — 위 지침의 doc_text 자리는 issue_bundle로.',
@@ -206,7 +213,10 @@ function caseProcAiLiveModeText_(cap) {
     '- 법령 근거: 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한 뒤(쓸 곳·이유 한 줄), value_set의 attach에 그 id를 넣는다. 입구 요약의 "첨부된 자료"(세무사님 직접 첨부)는 먼저 읽고 근거로 쓴다.',
     '- AI 회의 결론(2026.10.21 세무사님 "ai회의 결론을 넥스가 보도록 하라"): 해석이 갈리는 판단 전에 law_decisions로 같은 쟁점을 본다. "결정"은 세무사님 결론으로 따르고(근거에 적음), "판단 대기"·"보류"면 값을 넣지 말고 질문 메모에 "AI 회의 판단 대기 쟁점(id)"이라고 적는다.',
     '- 모든 글(중간 메모·보고·질문 메모)은 한국어로 쓴다 — 화면에 그대로 보인다.',
-    '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.'
+    '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.',
+    // [2026.10.22] 세무사님 "채팅창에서는 나와 AI의 소통이 주가 되어야" / "AI주도라고 해서 나하고 상의하지 않고 AI가 무조건 사건을 완결하는 것을 구현하려고 하는 것인가?"
+    '- 끝낼 때 쓰는 보고는 채팅창에서 세무사님께 직접 하는 말이다. 굵은 글씨·목록 기호·표 없이 서너 문장: 무엇을 했는지 한 문장, 그다음 계산을 막는 것부터 무엇을 여쭙는지(급한 것 두세 가지만 — 나머지는 화면 질문 목록에 이미 있다). GAS 진행(몇 바퀴·어느 도구)은 쓰지 않는다(화면이 요약해 보인다).',
+    '- 맡은 일은 끝까지 하되, 물을 것이 있으면 묻는다(세무사님 "AI가 무조건 사건을 완결하면 절대 안된다는 것이 아니라, 나한테 물을 것이 있으면 물어봐야한다는 뜻이다"). 여쭌 것에 답이 오면 화면이 이어서 마무리한다. 세무사님이 채팅으로 답하시면 같은 넥스(채팅)가 그 칸에 넣는다.',
   ].join('\n');
 }
 
@@ -310,6 +320,16 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   }
   if (name === 'save_draft') return { text: JSON.stringify({ ok: true, 안내: '처리 끝에 화면이 저장·검토서 초안·현황표를 만든다' }) };
   if (CASEPROC_AI_NO_TOOLS_.indexOf(name) !== -1) { ctx.gaps.push({ want: name + '를 부르려 함 — ' + caseProcAiCut_(JSON.stringify(input.find || input.file || input.phase || ''), 80), kind: '없음', tool: name, auto: true }); return { text: JSON.stringify({ 오류: '이 도구는 없습니다 — issue_bundle·doc_facts·facts_find로 보거나, 안 되면 report_tool_gap 후 질문으로' }) }; }
+  if (name === 'case_status') { // [2026.10.22] 넥스 현황 보기 — 남은 질문을 이 차례들의 질문으로 기억(칸 채우기를 다시 돌리지 않고 issue_bundle·value_set을 쓰게)
+    const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
+    const sv0 = caseProcLoad_(caseId) || {};
+    if (!ctx.lastItems && Array.isArray(sv0.remaining) && sv0.remaining.length) { ctx.lastItems = caseProcAiSlimItems_(sv0.remaining); ctx.gasItems = true; }
+    let view = {}; try { view = caseProcNexView_(c0, { withFiles: true }); } catch (e) { view = { 오류: String(e && e.message || e).slice(0, 80) }; }
+    let rows = []; try { const st = caseProcStatus_(c0, {}); rows = (st.rows || []).map(function (r) { return r[0] + ' · ' + r[1] + ': ' + r[2] + (r[3] ? ' (' + String(r[3]).slice(0, 80) + ')' : ''); }); } catch (e) { rows = ['반영 현황표를 만들지 못함: ' + String(e && e.message || e).slice(0, 60)]; }
+    const dec0 = sv0.decisions || {};
+    const q = (sv0.remaining || []).slice(0, 40).map(function (it) { const d = dec0[it.id] && dec0[it.id].d; return it.id + ' | ' + (d ? '(' + d + ') ' : '') + caseProcAiCut_(it.text, 70); });
+    return { text: caseProcAiMask_(JSON.stringify({ 반영현황표: rows, 현황: view, 남은질문: q, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다.' })).slice(0, 9000) };
+  }
   if (name === 'issue_bundle') {
     const it = (ctx.lastItems || []).filter(function (x) { return x.id === input.itemId; })[0];
     if (!it) return { text: JSON.stringify({ 오류: '그 질문이 마지막 칸 채우기에 없음 — calc_fill 먼저' }) };
@@ -416,7 +436,7 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
 // [2026.10.22 넥스가 주인] 첫 글 머리 — 사건 정보만(GAS는 아직 안 돌았다). 넥스가 gas_run부터 부른다
 function caseProcAiNexEntry_(c) {
   return ['사건 ' + c.id + ' — ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ' · 기준일 ' + (c.기준일 || '?') + (c.사건명 ? ' · ' + c.사건명 : ''),
-    '세무사님이 채팅창에서 이 사건 처리를 너에게 맡기셨다. 아직 GAS를 돌리지 않았다 — gas_run을 한 번 불러 GAS 한 바퀴(0원) 결과부터 받아라.',
+    '세무사님이 채팅창에서 이 사건을 너에게 맡기셨다. case_status로 세무사님이 어디까지 하셨는지부터 보고, 남은 일만 GAS 도구로 이어 간다.',
     caseProcAiAttachLine_(c),
     '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '.'].filter(Boolean).join('\n');
 }

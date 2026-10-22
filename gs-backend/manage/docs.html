@@ -826,7 +826,7 @@
   // 그대로 날아갔다(실사용 감사 지적). c 객체와 캐시를 그 자리에서 갱신하고, 증빙 목록
   // 3칸(자동/추가/요청)만 다시 그린다.
   function docsSaveEvidence_(c, newList){
-    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일 }).then(function(res){
+    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일, _log: window.nxEvidenceLog_(c.증빙목록, newList) }).then(function(res){
       if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); }); return res; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return res; }
       if (res.case) Object.assign(c, res.case); else c.증빙목록 = newList;

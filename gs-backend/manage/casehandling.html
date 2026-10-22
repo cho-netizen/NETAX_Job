@@ -622,6 +622,13 @@
       '<div style="margin-top:8px; text-align:right;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
       // [2026.10.18 탭연결 7번] 처리 중에도 기한(법정일·처리시한)과 작업관리 하위업무가 보이고, 끝낸 하위업무는 여기서 바로 체크한다
+      // [2026.10.22 1단계 — AI 없이 직접] 세무사님 "AI없이 내가 직접 작업하는 것에 불편함이 없도록" / "GAS로 대부분의 업무를 처리할 수 있도록" — AI 창에서만 되던 사건처리 GAS 도구를 여기서 바로(0원)
+      '<div class="card" id="chGasCard">' +
+      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>⚡ GAS 사건처리</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 서류 읽기·칸 채우기 → 질문 답하기 → 세액계산·서식·검토서</span></div>' +
+      '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button></div>' +
+      '<div id="chGasBody" style="margin-top:8px;"></div>' +
+      '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
       '<div class="card">' +
       '<div id="chMyPortalBody">불러오는 중…</div>' +
@@ -745,6 +752,9 @@
           payload.납세자 = overview[taxpayerField];
         }
         payload.사건개요 = overview;
+        // [2026.10.22 작업 기록부] 세무사님이 처리개요 화면에서 직접 고친 칸 — 사건 기록부에 한 줄(넥스가 이어 받을 때 봄)
+        var chChanged_ = Object.keys(overview).filter(function(k){ var o = (c.사건개요 || {})[k]; return JSON.stringify(o == null ? '' : o) !== JSON.stringify(overview[k] == null ? '' : overview[k]); });
+        if (chChanged_.length) payload._log = { by: '세무사님', what: '처리개요 고침', detail: chChanged_.slice(0, 8).map(function(k){ var v = overview[k]; return k + '=' + String(typeof v === 'object' ? JSON.stringify(v) : v).slice(0, 30); }).join(', ') + (chChanged_.length > 8 ? ' 외 ' + (chChanged_.length - 8) + '칸' : '') };
       } else {
         payload.처리대상 = document.getElementById('chEditTarget').value.trim();
       }
@@ -769,6 +779,7 @@
     document.getElementById('chLawOpenBtn').addEventListener('click', function(){
       if (typeof goToLawSearch_ === 'function') goToLawSearch_(c.id);
     });
+    chBindGasCard_(c); // [2026.10.22 1단계] ⚡ GAS 사건처리 칸
     document.getElementById('chTaxCalcOpenBtn').addEventListener('click', function(){
       if (typeof goToTaxCalc_ === 'function') goToTaxCalc_(c.id);
     });
@@ -1030,10 +1041,62 @@
   // 저장한 걸 여기서 낡은 값 기준으로 덮어써버릴 수 있었다. 같은 방식으로 잠금을 건다.
   // [2026.09 버그수정] chSaveLog_와 같은 이유 — 성공 시 loadChCases_()로 카드 전체를 다시
   // 그리면 그 사이 입력 중이던 다른 폼(사건개요서 등)이 날아갔다. 증빙목록 요약만 갱신한다.
+  // [2026.10.22 1단계 — AI 없이 직접] ⚡ GAS 사건처리 칸 — AI 창의 사건처리와 같은 부품(nxAiCaseProcRun_)을 넥스 없이(gasOnly) 이 화면에 띄운다.
+  //  서류 읽기·칸 채우기 뒤 멈추고(질문에 답하시도록) 단추로 세액계산·서식·검토서. 반영 현황표·판단 재료는 읽기만(0원). 하신 일은 사건 기록부에 남는다
+  function chBindGasCard_(c){
+    var body = document.getElementById('chGasBody'); if (!body) return;
+    var tokOk = function(){ try { return !!sessionStorage.getItem('nxManageSessionToken'); } catch (e) { return false; } };
+    var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(ch){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); };
+    // [2026.10.22 세무사님↔GAS 소통] 사건을 여시면 GAS가 먼저 현황·다음 할 일·알림·최근 작업 기록을 말씀드린다(넥스가 case_status로 보는 것과 같은 자료, 0원)
+    var nowEl = document.getElementById('chGasNow');
+    var loadNow = function(){
+      if (!nowEl || !tokOk()) return;
+      callGas('case_proc', { caseId: c.id, step: 'view' }).then(function(r){
+        if (!r || r.error || !r.ok){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다' + (r && r.error ? ': ' + esc(r.error) : '') + '</span>'; return; }
+        var h = '';
+        if ((r.알림 || []).length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:6px 8px; margin-bottom:6px;"><b>⚠ GAS 알림</b><br>' + r.알림.map(function(a){ return '· ' + esc(a); }).join('<br>') + ' <button type="button" class="ghost-btn" data-gas="seen" style="font-size:11.5px; margin-left:6px;">확인했어요</button></div>';
+        var nx = r.다음 || [];
+        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : '<div>✅ GAS가 보기에 남은 일이 없습니다' + (r.계산 && r.계산.세액 != null ? ' — 최종세액 ' + Number(r.계산.세액).toLocaleString('ko-KR') + '원(' + esc(r.계산.날짜) + ')' : '') + '</div>';
+        if ((r.기록 || []).length) h += '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">📓 최근 작업 기록(누가·언제·무엇) ' + r.기록.length + '줄</summary><div style="margin:4px 0 0 8px; font-size:12px;">' + r.기록.slice().reverse().map(function(l){ return esc(l); }).join('<br>') + '</div></details>';
+        nowEl.innerHTML = h;
+        Array.prototype.forEach.call(nowEl.querySelectorAll('button[data-gas]'), function(b){ b.addEventListener('click', function(){ var k = b.getAttribute('data-gas');
+          if (k === 'seen') callGas('case_proc', { caseId: c.id, step: 'alertSeen' }).then(loadNow).catch(function(){});
+          else if (k === 'calc'){ var tb = document.getElementById('chTaxCalcOpenBtn'); if (tb) tb.click(); }
+          else document.getElementById('chGasRunBtn').click();
+        }); });
+      }).catch(function(e){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다: ' + esc(e && e.message || e) + '</span>'; });
+    };
+    loadNow();
+    window.chGasReloadNow_ = loadNow; // GAS 처리가 끝나면 다시 불러 다음 할 일을 맞춘다
+    document.getElementById('chGasRunBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      if (typeof nxAiCaseProcRun_ !== 'function'){ showToast('사건처리 도구를 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', 'error'); return; }
+      body.innerHTML = ''; var box = document.createElement('div'); box.className = 'nxai-cp-screen'; body.appendChild(box);
+      nxAiCaseProcRun_(box, c.id, { gasOnly: true, screen: true });
+    });
+    document.getElementById('chGasStatusBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">반영 현황표 만드는 중…</div>';
+      callGas('case_proc', { caseId: c.id, step: 'status', by: '세무사님' }).then(function(r){
+        if (!r || r.error || !Array.isArray(r.rows)){ body.innerHTML = '<div class="log-empty">현황표를 만들지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
+        body.innerHTML = '<div style="overflow-x:auto;"><table class="ch-gas-table" style="border-collapse:collapse; font-size:12.5px; white-space:nowrap;"><tr><th style="text-align:left;padding:3px 8px;">구분</th><th style="text-align:left;padding:3px 8px;">항목</th><th style="text-align:left;padding:3px 8px;">상태</th><th style="text-align:left;padding:3px 8px;">값·출처</th></tr>' +
+          r.rows.map(function(x){ return '<tr>' + x.slice(0, 4).map(function(v, i){ return '<td style="padding:3px 8px; border-top:1px solid var(--line);' + (i === 3 ? ' max-width:420px; overflow-x:auto;' : '') + '" title="' + esc(v) + '">' + esc(v) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></div>';
+      }).catch(function(e){ body.innerHTML = '<div class="log-empty">현황표를 만들지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+    });
+    document.getElementById('chGasFactsBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">서류에서 모은 판단 재료를 정리하는 중…</div>';
+      callGas('case_proc', { caseId: c.id, step: 'facts' }).then(function(r){
+        if (!r || r.error || !r.재료){ body.innerHTML = '<div class="log-empty">판단 재료를 만들지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
+        var lines = function(v, depth){ if (v == null) return []; if (typeof v !== 'object') return [String(v)]; if (Array.isArray(v)) return v.slice(0, 40).map(function(x){ return '· ' + (typeof x === 'object' ? JSON.stringify(x).replace(/[{}"]/g, '').slice(0, 220) : String(x)); }); var o = []; Object.keys(v).forEach(function(k){ var s = v[k]; if (s && typeof s === 'object' && depth < 1){ o.push(k + ':'); lines(s, depth + 1).forEach(function(l){ o.push('   ' + l); }); } else o.push(k + ': ' + (typeof s === 'object' ? JSON.stringify(s).slice(0, 220) : String(s))); }); return o; };
+        body.innerHTML = Object.keys(r.재료).map(function(k){ return '<details style="margin:4px 0;"><summary style="cursor:pointer;"><b>' + esc(k) + '</b></summary><pre style="white-space:pre-wrap; font-size:12px; margin:4px 0 0 12px;">' + esc(lines(r.재료[k], 0).join('\n')) + '</pre></details>'; }).join('') + '<div style="font-size:11.5px; color:var(--sub); margin-top:4px;">서류에서 GAS가 모은 재료입니다(읽기 전용). 판단은 세무사님이 하시거나 🤖 넥스로 처리하실 수 있습니다.</div>';
+      }).catch(function(e){ body.innerHTML = '<div class="log-empty">판단 재료를 만들지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+    });
+  }
   function chSaveEvidence_(c, newList){
     // [2026.09 버그수정] chAddRequestedItem_ 등 호출부가 저장 완료 시점에 맞춰 자신의 화면
     // 일부(my포털 체크리스트 등)를 추가로 갱신할 수 있도록 프라미스를 그대로 반환한다.
-    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일 }).then(function(res){
+    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일, _log: window.nxEvidenceLog_(c.증빙목록, newList) }).then(function(res){
       if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadChCases_(); return res; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return res; }
       if (res.case) Object.assign(c, res.case); else c.증빙목록 = newList;
