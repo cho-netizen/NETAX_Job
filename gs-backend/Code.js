@@ -4482,7 +4482,7 @@ function doPost(e) {
       return jsonResponse(manageApp_dispatchHttpOnce_(body.__manage, body.__rid));
     }
     if (Array.isArray(body.__manageBatch)) {
-      return jsonResponse(manageApp_dispatchHttpBatch_(body.__manageBatch, body.__rid));
+      return jsonResponse(manageApp_dispatchHttpBatch_(body.__manageBatch, body.__rid, !!body.__poll));
     }
 
     // [2026.10.09] 웹 Claude Code 전용 출입증 — 개선 후보 보고서 "읽기"만 된다(API_SECRET과 별개, 새도 job·고객자료는 못 건드림).
@@ -17871,15 +17871,17 @@ function manageApp_ridGet_(cache, key) {
   }
   try { return { value: JSON.parse(text) }; } catch (err) { return null; }
 }
-function manageApp_dispatchHttpBatch_(items, rid) {
+// [2026.10.22 ⑥ 응답 유실 복구] poll = 화면이 같은 요청번호로 "끝났나"만 다시 묻는 것(gasbridge __poll). 그때는 15초가 아니라 3초만 기다리고 "처리 중"을 돌려준다 —
+//  긴 단계(검토서 2~4분)를 1초마다 다시 물으면 15초씩 기다리는 실행이 열 개 넘게 쌓여 구글이 "동시 실행 초과" 오류 쪽(응답에 CORS 머리글 없음 → 화면은 응답 유실)을 돌려줬다.
+function manageApp_dispatchHttpBatch_(items, rid, poll) {
   const list = (items || []).slice(0, 30);
   const cache = CacheService.getScriptCache();
   const useRid = rid && typeof rid === 'string' && rid.length <= 80;
   const batchKey = useRid ? 'mridb_' + rid : null;
   const PENDING = '__pending__';
   if (batchKey && cache.get(batchKey) === PENDING) {
-    // 같은 묶음이 아직 실행 중 — 최대 15초 기다린다. 그래도 안 끝났으면 다시 실행하지 않고 "처리 중"이라고만 답한다.
-    const until = Date.now() + MANAGE_RID_WAIT_MS_;
+    // 같은 묶음이 아직 실행 중 — 최대 15초(끝났나 묻기만 하는 poll은 3초) 기다린다. 그래도 안 끝났으면 다시 실행하지 않고 "처리 중"이라고만 답한다.
+    const until = Date.now() + (poll ? 3000 : MANAGE_RID_WAIT_MS_);
     while (cache.get(batchKey) === PENDING) {
       if (Date.now() >= until) return { __pending: true };
       Utilities.sleep(500);
@@ -29119,21 +29121,79 @@ function tcHoldingLine_(h) {
     + (h.acq.length && h.mine !== '남의 것' ? ' — 취득일 후보 ' + h.acq.map(function (q) { return q.v + '(' + q.src.split(' — ')[0] + ')'; }).join(', ') : '')
     + (h.notes.length ? ' ⚠ ' + h.notes.join(' · ') : '') + ' [' + h.files.join(', ') + ']';
 }
+// [2026.10.22 속도 S3] 양도 사실 정리 재사용 — ③ 칸 채우기가 답 하나마다 폴더 서류 전체를 다시 정리해 2분씩 걸렸다(가상양도8 115초·가상양도10 2분 10초).
+//  정리 결과를 사건별로 6시간 기억(CacheService, 30,000자 조각)해 두고, 정리에 들어가는 재료 — 폴더 파일 목록(ID·수정시각)·[이 값으로 기록]한 서류 칸(sv.docFix)·
+//  필요경비 답(sv.trAns.costs)·납세자·고객명·업무유형 — 의 지문이 같으면 다시 정리하지 않고 그대로 쓴다. 서류가 들어오거나 바뀌면(수정시각) 지문이 달라져 저절로 다시 정리.
+//  규칙 코드가 바뀌면(배포) 함수 본문 지문이 달라져 역시 다시 정리한다. 한 실행 안에서는 메모리(TC_RF_MEMO_)로 한 번만.
+//  🧪 정답지 점검(akSandbox_ — 행을 메모리로 바꿔 돌림)은 noCache로 부르지 않는 한 같은 지문이면 같은 결과이므로 그대로 두되, 결과에 _reused(정리 시각)를 실어 화면이 "재사용"이라고 보인다.
+var TC_RF_VER_ = '1';
+var TC_RF_MEMO_ = {};
+function tcChunkPut_(cache, key, value, ttl) {
+  var text; try { text = JSON.stringify(value); } catch (e) { return false; }
+  var CH = 30000, n = Math.ceil(text.length / CH) || 1;
+  if (n > 20) return false;
+  var parts = {};
+  for (var i = 0; i < n; i++) parts[key + '_c' + i] = text.slice(i * CH, (i + 1) * CH);
+  try { cache.putAll(parts, ttl); cache.put(key, '__chunks__' + n, ttl); return true; } catch (e) { return false; }
+}
+function tcChunkGet_(cache, key) {
+  var head = cache.get(key);
+  var m = /^__chunks__(\d+)$/.exec(String(head || ''));
+  if (!m) return null;
+  var n = Number(m[1]), keys = [];
+  for (var i = 0; i < n; i++) keys.push(key + '_c' + i);
+  var got = cache.getAll(keys), text = '';
+  for (var j = 0; j < n; j++) { if (got[keys[j]] == null) return null; text += got[keys[j]]; }
+  try { return JSON.parse(text); } catch (e) { return null; }
+}
 function tc_ruleTransferFacts_(body) {
-  var caseId = String(body.caseId || '').trim();
+  var caseId = String(body && body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
+  if (body.noCache) return tc_ruleTransferFactsRaw_(body);
+  if (TC_RF_MEMO_[caseId]) return JSON.parse(TC_RF_MEMO_[caseId]);
   var sheet = work_getSheet_();
   var col = work_colMap_(sheet.getDataRange().getValues()[0]);
   var found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { error: '사건을 찾지 못했습니다.' };
-  // [2026.10.15] 행 값은 work_readRow_로 — 🧪 정답지 점검(akSandbox_)은 found.row를 메모리 표시로 바꿔 두어 found.row[col.X]로 읽으면 "사건 폴더가 없습니다"가 났다(양도 사건 전부 서류 정리 실패)
   var cr = work_readRow_(col, found.row) || {};
+  var folderId = String(cr.폴더ID || '').trim();
+  if (!folderId) return { error: '사건 폴더가 없습니다.' };
+  var files = caseProcFiles_({ 폴더ID: folderId });
+  var sv = {}; try { sv = caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
+  var cache = null, key = 'rfx_' + caseId, sig = '';
+  try {
+    var fp = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, tc_ruleTransferFactsRaw_.toString(), Utilities.Charset.UTF_8));
+    var mat = [TC_RF_VER_, fp, files.map(function (f) { return f.id + '|' + (f.modified || '') + '|' + f.name; }).sort(), !!files.truncated, sv.docFix || null, sv.trAns && sv.trAns.costs ? sv.trAns.costs.v : null, cr.납세자 || '', cr.고객명 || '', cr.업무유형 || '', folderId];
+    sig = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(mat), Utilities.Charset.UTF_8));
+    cache = CacheService.getScriptCache();
+    var hit = tcChunkGet_(cache, key);
+    if (hit && hit.sig === sig && hit.rf && hit.rf.ok) { var rr = hit.rf; rr._reused = hit.at || ''; TC_RF_MEMO_[caseId] = JSON.stringify(rr); return JSON.parse(TC_RF_MEMO_[caseId]); }
+  } catch (e) { cache = null; }
+  var r = tc_ruleTransferFactsRaw_(Object.assign({}, body, { _cr: cr, _files: files }));
+  if (r && r.ok) {
+    try { TC_RF_MEMO_[caseId] = JSON.stringify(r); } catch (e) {}
+    if (cache && sig) try { tcChunkPut_(cache, key, { sig: sig, at: caseProcNow_(), rf: r }, 21600); } catch (e) {}
+  }
+  return r;
+}
+function tc_ruleTransferFactsRaw_(body) {
+  var caseId = String(body.caseId || '').trim();
+  if (!caseId) return { error: '사건이 필요합니다.' };
+  var cr = body._cr || null; // [2026.10.22 속도 S3] 겉 함수가 이미 읽은 사건 행·파일 목록을 받으면 다시 읽지 않는다
+  if (!cr) {
+    var sheet = work_getSheet_();
+    var col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    var found = work_findCaseRow_(sheet, col, caseId);
+    if (!found) return { error: '사건을 찾지 못했습니다.' };
+    // [2026.10.15] 행 값은 work_readRow_로 — 🧪 정답지 점검(akSandbox_)은 found.row를 메모리 표시로 바꿔 두어 found.row[col.X]로 읽으면 "사건 폴더가 없습니다"가 났다(양도 사건 전부 서류 정리 실패)
+    cr = work_readRow_(col, found.row) || {};
+  }
   var folderId = String(cr.폴더ID || '').trim();
   if (!folderId) return { error: '사건 폴더가 없습니다.' };
   var names = [cr.납세자, cr.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
   // [2026.10.15 1단계 ①] 파일 120개·서류 40개에서 말없이 자르던 것을 사건처리와 같은 범위(파일 400개·서류 300개)로.
   //  글자는 영구 기억(_글자인식기억)에서 오므로 다시 인식하지 않는다. 시간이 모자라 못 읽은 서류는 이름을 밝힌다.
-  var files = caseProcFiles_({ 폴더ID: folderId });
+  var files = body._files || caseProcFiles_({ 폴더ID: folderId });
   var trC = Object.assign({}, cr, { 세목: 'transfer' }); // 양도 사실 정리 — 이름 거름 기준 세목(작업관리 세목 칸이 "불복"인 양도 경정청구도)
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
@@ -30377,7 +30437,8 @@ function caseProcUserView_(c) {
   if (!v.검토서) next.push({ do: 'gas', text: '종합검토서 초안이 없습니다' });
   // [2026.10.22 묶음 ㄱ6] 다 끝났을 때 결과 요약 재료 — 서식 PDF·검토서 파일(화면이 "끝남 — 세액 ○원 · 서식 [열기] · 검토서 [열기]" 한 줄로 보인다, 가상양도7 표 39)
   const pdfInfo = sv.printPdf ? { 이름: sv.printPdf.name || '', 때: sv.printPdf.at || '', 파일: sv.printPdf.id || '', 서식수: sv.printPdf.forms || 0 } : null;
-  const draftInfo = sv.draftFileId ? { 파일: sv.draftFileId } : null;
+  const draftInfo = sv.draftFileId ? { 파일: sv.draftFileId, 때: sv.draftAt || '', ms: Number(sv.draftAtMs) || 0 } : null; // [2026.10.22 ⑥ 응답 유실 복구] 화면이 "이번 처리에서 쓴 초안인지"를 ms로 가린다
+  if (pdfInfo) pdfInfo.ms = Number(sv.printPdf.atMs) || 0;
   const heldN = v.보류질문수 || 0;
   return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0 };
 }
@@ -33398,6 +33459,7 @@ function caseProcOverview0_(c) {
   //  예전 길(처리개요 물건목록에 값을 채우고 국외자산·서류 없음·정리 실패 때 따로 묻던 caseProcTrAskBasics_ 등)은 걷어냈다.
   const rf0 = String(c.폴더ID || '').trim() ? tc_ruleTransferFacts_({ caseId: c.id }) : null;
   CASEPROC_LAST_RF_ = { caseId: c.id, rf: rf0 }; // 🧪 정답지 점검이 같은 실행 안에서 필요경비·거래 목록을 다시 읽지 않고 쓰게
+  if (rf0 && rf0.ok && rf0._reused) lines.push('⚡ 서류 정리 결과 재사용(' + rf0._reused + ' 정리분 — 서류 목록·기록한 값이 그대로라 다시 정리하지 않음)'); // [2026.10.22 속도 S3]
   if (rf0 && !rf0.ok) lines.push('서류 규칙 정리 실패: ' + (rf0.error || '응답 없음') + ' — 계산기 필요 칸을 질문으로 받습니다');
   if (!rf0) lines.push('증빙 폴더가 없어 서류를 읽지 못했습니다 — 계산기 필요 칸을 질문으로 받습니다');
   const rf = rf0 && rf0.ok ? rf0 : { ok: true, counts: { 계약서: 0, 신고필증: 0, 등기부: 0, 취득세: 0, 법무사: 0 }, evidence: [], transactions: [], expCands: [] };
@@ -37707,7 +37769,7 @@ function caseProcSavePdf_(c, body) {
   const file = folder.createFile(pdf);
   const saved = caseProcLoad_(c.id);
   const lastCalc = caseProcLastCalc_(c).last;
-  caseProcPatch_(c.id, function (sv) { sv.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' }; });
+  caseProcPatch_(c.id, function (sv) { sv.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), atMs: Date.now(), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' }; });
   return { ok: true, id: file.getId(), name: name, url: file.getUrl() };
 }
 // 반영 현황표 — "이 사건 정보가 도구에 완전히 반영됐나"를 한눈에: 칸별 채움·출처·미확정, 증빙 확보, 계산·서식·검토서, 남은 질문
@@ -38440,7 +38502,7 @@ function caseProcDraft_(c) {
   } else if (file) file.setContent(md);
   else { file = folder.createFile(name, md, 'text/markdown'); fresh = true; }
   const fid = file.getId(), fh = hash(md);
-  caseProcPatch_(c.id, function (sv) { sv.draftFileId = fid; sv.draftHash = fh; if (editedOld) { sv.draftEdited = (sv.draftEdited || []).concat([editedOld]).slice(-10); caseProcLogTo_(sv, { by: '자동', what: '검토서 새 초안', detail: '고치신 판(' + editedOld.name + ')은 그대로 두고 새 초안을 따로 만듦' }); } });
+  caseProcPatch_(c.id, function (sv) { sv.draftFileId = fid; sv.draftHash = fh; sv.draftAt = caseProcNow_(); sv.draftAtMs = Date.now(); if (editedOld) { sv.draftEdited = (sv.draftEdited || []).concat([editedOld]).slice(-10); caseProcLogTo_(sv, { by: '자동', what: '검토서 새 초안', detail: '고치신 판(' + editedOld.name + ')은 그대로 두고 새 초안을 따로 만듦' }); } });
   return { ok: true, fileId: file.getId(), name: file.getName(), fresh: fresh, extra: remain.length };
   });
 }

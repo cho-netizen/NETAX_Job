@@ -124,22 +124,36 @@
       if (!items.length) return;
       send(items);
     }
+    // [2026.10.22 ⑥ 응답 유실 복구] 긴 일(사건처리 — 검토서 초안 2~4분·서식 PDF)은 횟수가 아니라 시간으로 기다린다.
+    //  예전 흐름(가상양도10 점검표 84): 100초에 끊고 같은 요청번호로 다시 묻는데, 서버는 묶음이 아직 실행 중이면 15초씩 기다렸다가 "처리 중"을 돌려주고 화면은 1초마다
+    //  다시 물어 기다리는 실행이 열 개 넘게 쌓였다 → 구글이 동시 실행 초과 오류 화면(CORS 머리글 없음)을 주면 화면엔 "응답 유실"(fetch 실패) → 재시도 8번을 100초씩 쓰며
+    //  13분 넘게 "작성 중"에 머물 수 있었다. 이제 긴 일은 ① 끝났나만 묻는 가벼운 물음(__poll — 서버는 3초만 기다림)을 3초마다, ② 실패(응답 유실)도 횟수를 세지 않고
+    //  같은 요청번호로 계속 묻고, ③ 6분 30초(구글 한 실행 상한 6분 + 여유)가 지나면 포기한다 — 서버는 끝난 결과를 요청번호로 10분간 기억하므로 응답이 한 번 유실돼도
+    //  다음 물음에서 받는다. 짧은 일은 예전 그대로(횟수 8번·4분).
+    var LONG_GIVE_UP_MS = 390000, LONG_POLL_DELAY_MS = 3000;
     function send(items){
       var rid = newRid(), startedAt = Date.now();
       // [2026.10.18] 사건처리(case_proc)는 서류 읽기 한 번에 서버가 80초까지 일한다. 25초에 끊으면 같은 요청번호로 다시 묻는 동안
       //  기다리기만 하는 서버 실행이 여러 개 생겨 job 서버를 더 붐비게 했다 — 사건처리는 100초까지 기다린다.
-      var abortMs = items.some(function(it){ return it.fn === 'manageApp_call' && it.args && (it.args[0] === 'case_proc' || it.args[0] === 'case_proc_ai'); }) ? 100000 : 25000; // [2026.10.19] AI 지휘 한 차례도 모델+도구로 수십 초
-      var body = JSON.stringify({ __manageBatch: items.map(function(it){ return { fn: it.fn, args: it.args }; }), __rid: rid });
+      var isLong = items.some(function(it){ return it.fn === 'manageApp_call' && it.args && (it.args[0] === 'case_proc' || it.args[0] === 'case_proc_ai'); }); // [2026.10.19] AI 지휘 한 차례도 모델+도구로 수십 초
+      var abortMs = isLong ? 100000 : 25000;
+      var giveUpMs = isLong ? LONG_GIVE_UP_MS : PENDING_GIVE_UP_MS, pollDelay = isLong ? LONG_POLL_DELAY_MS : PENDING_DELAY_MS;
+      var reqs = items.map(function(it){ return { fn: it.fn, args: it.args }; });
+      var body = JSON.stringify({ __manageBatch: reqs, __rid: rid });
+      var pollBody = JSON.stringify({ __manageBatch: reqs, __rid: rid, __poll: true });
       var failAll = function(err){ items.forEach(function(it){ it.reject(err); }); };
-      var attempt = function(n){
+      var delay = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+      var attempt = function(n, polling){
         // 결과 받기 단계가 멈추면 15~30초 뒤에야 실패가 오므로, 25초에서 끊고 같은 요청번호로 다시 묻는다
         // (서버는 항목별로 기억해둔 결과를 쓰고, 묶음이 아직 실행 중이면 끝날 때까지 기다렸다가 준다).
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, abortMs) : null;
+        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, polling ? 30000 : abortMs) : null;
+        var canRetry = function(){ return isLong ? (Date.now() - startedAt < giveUpMs) : (n < RETRY_DELAYS.length); };
         var retry = function(){
-          return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+          if (isLong) return delay(pollDelay).then(function(){ return attempt(n, true); });
+          return delay(RETRY_DELAYS[n]).then(function(){ return attempt(n + 1, polling); });
         };
-        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctrl ? ctrl.signal : undefined })
+        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: polling ? pollBody : body, signal: ctrl ? ctrl.signal : undefined })
           .then(function(res){ return res.text(); })
           .then(function(text){ clearTimeout(timer); return text; }, function(err){ clearTimeout(timer); throw err; })
           .then(function(text){
@@ -149,15 +163,12 @@
               // 앞서 보낸 같은 요청이 서버에서 아직 실행 중 — 재시도 횟수를 쓰지 않고 다시 묻는다.
               // [2026.10.22 가상사건 발견] 사건처리(case_proc)는 3단계(세액계산기 칸 채우기)가 서류 15개 이상·다필지면 4분을 넘겨, 서버는 끝냈는데 화면이 결과를 못 받고
               //  "4분 넘게"로 끊겨 계산기 칸이 비었다(가상양도2·4·상속3·증여1·2). 구글 서버 한 번 실행 상한(6분)까지는 기다린다 — 그 밖의 호출은 그대로 4분
-              var giveUpMs = abortMs > 25000 ? 370000 : PENDING_GIVE_UP_MS;
-              if (Date.now() - startedAt < giveUpMs){
-                return new Promise(function(r){ setTimeout(r, PENDING_DELAY_MS); }).then(function(){ return attempt(n); });
-              }
-              throw new Error('서버가 4분 넘게 처리 중입니다. 화면을 새로고침해 결과가 반영됐는지 확인하세요.');
+              if (Date.now() - startedAt < giveUpMs) return delay(pollDelay).then(function(){ return attempt(n, true); });
+              throw new Error('서버가 ' + (isLong ? '6분' : '4분') + ' 넘게 처리 중입니다. 화면을 새로고침해 결과가 반영됐는지 확인하세요.');
             }
             if (!data || !Array.isArray(data.__results)){
               if (data && data.error) throw new Error(data.error);
-              if (n < RETRY_DELAYS.length) return retry();
+              if (canRetry()) return retry();
               throw new Error('서버 응답을 받지 못했습니다(구글 서버가 일시적으로 불안정합니다). 잠시 후 다시 시도하세요. 저장 작업이었다면 화면을 새로고침해 반영됐는지 먼저 확인하세요.');
             }
             items.forEach(function(it, i){
@@ -166,12 +177,12 @@
               else it.resolve(r ? r.__result : undefined);
             });
           }, function(err){
-            // 요청이 서버에 닿기 전에 끊겼거나 25초가 지남 — 같은 요청번호로 다시 보내도 안전하다.
-            if (n < RETRY_DELAYS.length) return retry();
+            // 요청이 서버에 닿기 전에 끊겼거나 25초(긴 일 100초)가 지남 — 같은 요청번호로 다시 보내도 안전하다(응답 유실도 여기로 온다).
+            if (canRetry()) return retry();
             throw err;
           });
       };
-      attempt(0).catch(failAll);
+      attempt(0, false).catch(failAll);
     }
 
     function runner(){
