@@ -105,7 +105,8 @@ function caseProcAiSpots_(body) {
     '네 자리 ' + lead.length + '개: ' + lead.map(function (s) { return '[' + s.자리 + ' · ' + (s.topic || '') + ' · ' + s.이유 + ' · ' + s.tier + (s.light ? ' — 저비용 답 "' + caseProcAiCut_(s.light.answer || '', 40) + '"(' + (s.light.sure || '') + ')' + (s.light.need && s.light.need.length ? ' 모자란 정보: ' + s.light.need.join(', ') : '') : '') + '] ' + caseProcAiCut_(s.설명 || '', 80); }).join(' / '),
     '저비용·GAS가 이미 정한 것 ' + (tiers.GAS + tiers.저비용) + '개(네가 다시 보지 않는다).',
     '서류에 없어 세무사님께 바로 묻는 빈 칸 ' + ask.length + '개(네가 찾지 않는다): ' + ask.slice(0, 12).map(function (s) { return s.자리; }).join(', '),
-    'GAS 몫(못 읽은 서류·재료 없음·상수) ' + gas.length + '개: ' + gas.slice(0, 8).map(function (s) { return s.자리 + '(' + s.이유 + ')'; }).join(', '),
+    // [2026.10.22] '이름으로 종류 앎'은 글자를 읽은 서류다(값 뽑는 서류 규칙만 없음 — 계산 쪽 규칙이 이미 읽어 썼을 수 있음). 넥스가 "못 읽었다"고 보고한 일(가상양도2 재결서)
+    'GAS 몫 ' + gas.length + '개(네가 판단하지 않는다 — "이름으로 종류 앎"은 글자는 읽었고 종류도 알지만 값 뽑는 서류 규칙이 없는 것이라 "못 읽었다"고 보고하지 않는다, "못 읽은 서류"만 글자가 없는 것): ' + gas.slice(0, 8).map(function (s) { return s.자리 + '(' + s.이유 + ')'; }).join(', '),
     caseProcAiAttachLine_(c),
     caseProcAiFactLine_(c, items),
     '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. ' + (body.noLight
@@ -324,6 +325,14 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   if (name === 'read_tax_item') return { text: JSON.stringify(knhTaxItemRead_(input)).slice(0, 20000) };
   if (name === 'law_decisions') { const c0 = akReadCase_(caseId); return { text: JSON.stringify(typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.query || '', c0 ? (CASEPROC_TAX_LABEL_[c0.세목] || '').replace(/소득세|세$/g, '') : '') : { 오류: '이 판에 없음' }).slice(0, 8000) }; }
   if (name === 'law_lookup' || name === 'law_search' || name === 'law_attach') return { text: caseProcAiMask_(JSON.stringify(caseProcAiLaw_(caseId, name, input, ctx))).slice(0, 6000) };
+  // [2026.10.22 넥스가 주인] gas_run이 끝난 뒤엔 칸 채우기·계산·서식을 서버에서 다시 돌리지 않는다(칸 채우기 한 번이 2~3분 — 가상상속1 넥스 차례가 6분 한도에 닿음).
+  //  세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?" — 질문은 GAS 한 바퀴 결과(ctx.lastItems), 넣은 값은 처리 끝에 화면이 칸 채우기 한 번·계산으로 반영
+  if (ctx.gasItems && (name === 'calc_fill' || name === 'tax_calc' || name === 'forms_check')) {
+    if (name !== 'calc_fill') return { text: JSON.stringify({ ok: true, 안내: '세액계산·서식 대조는 네가 끝낸 뒤 화면이 한다 — 부르지 않아도 된다' }) };
+    const li = ctx.lastItems || [];
+    return { text: caseProcAiMask_(JSON.stringify({ ok: true, 안내: 'GAS 한 바퀴(gas_run) 결과 그대로 — 칸 채우기를 다시 돌리지 않는다. 채운 값은 case_view·fact_map으로 보고, 네가 넣은 값은 처리 끝에 화면이 칸 채우기 한 번으로 반영한다.',
+      질문수: li.length, 질문목록: li.map(function (it) { return it.id + ' | ' + it.kind + ' | ' + caseProcAiCut_(it.text, 60) + (it.ask && it.ask.aiJudge ? ' | AI 의견 있음' : ''); }) })).slice(0, 8000) };
+  }
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
   const before = (CP_SECURED_LOG_ || []).length;
@@ -462,7 +471,7 @@ function caseProcAiTurn_(body) {
   // [2026.10.22 넥스가 주인] 끄는 스위치(AI_LEAD = 끄기)면 첫 차례에서 바로 — 화면은 GAS 한 바퀴만 돌고 계산·저장(AI 0원)
   if (round === 0) { try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, off: true, done: true, why: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)', won: 0 }; } catch (e) {} }
   let ctx = round === 0 ? { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 } : caseProcAiCtxLoad_(caseId);
-  if (Array.isArray(body.items)) ctx.lastItems = caseProcAiSlimItems_(body.items); // gas_run 뒤 차례에 화면이 그 칸 채우기 질문을 보낸다
+  if (Array.isArray(body.items)) { ctx.lastItems = caseProcAiSlimItems_(body.items); if (round > 0) ctx.gasItems = true; } // gas_run 뒤 차례에 화면이 그 칸 채우기 질문을 보낸다
   if (!body.entry) body.entry = caseProcAiNexEntry_(c);
   let messages = Array.isArray(body.messages) ? body.messages.slice() : [];
   if (!messages.length) messages = [{ role: 'user', content: caseProcAiMask_(caseProcAiFirstText_(c, body)) }];
