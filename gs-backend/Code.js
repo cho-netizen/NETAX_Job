@@ -5851,6 +5851,8 @@ function handleUploadFile(body) {
     const mimeType = body.mimeType || 'application/octet-stream';
     const bytes = Utilities.base64Decode(body.base64Data);
     const blob = Utilities.newBlob(bytes, mimeType, body.name);
+    // [2026.10.23 속도 ㅅ5차 — 가상양도12] replaceSameName: 같은 이름 파일이 그 폴더에 있으면 새로 만들지 않고 그 파일을 갱신(관련법령·검토서처럼 "사건에 하나"인 문서 — 겹쳐 돌면 (1)·(2)가 생기던 것)
+    if (body.replaceSameName) { try { const ex = folder.getFilesByName(String(body.name)); if (ex.hasNext()) { const f0 = ex.next(); f0.setContent(Utilities.newBlob(bytes).getDataAsString('UTF-8')); return { id: f0.getId(), name: f0.getName(), url: f0.getUrl(), updated: true }; } } catch (e) {} }
     const file = folder.createFile(blob);
     rh_maybeUpdateReportIndexForUpload_(body, file);
     if (/pdf|^image\//.test(String(mimeType))) cpPrereadQueue_(file.getId()); // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다
@@ -38625,6 +38627,9 @@ function caseProcDraft_(c) {
   const hash = function (x) { return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(x || ''), Utilities.Charset.UTF_8)); };
   let file = null, fresh = false, editedOld = null;
   if (saved.draftFileId) { try { file = DriveApp.getFileById(saved.draftFileId); if (file.isTrashed()) file = null; } catch (e) { file = null; } }
+  // [2026.10.23 속도 ㅅ5차 — 가상양도12] 기록(draftFileId)이 없어도 같은 이름 파일이 이미 있으면 새로 만들지 않고 그 파일에 쓴다(겹쳐 돌아 "(1)·(2)"가 생기던 것).
+  //  그 파일이 세무사님이 고친 것일 수 있으니(해시 기록 없음) 덮어쓰기 전 사본을 _이전판에 둔다
+  if (!file) { try { const ex = folder.getFilesByName(name); if (ex.hasNext()) { file = ex.next(); if (!saved.draftHash) { try { file.makeCopy(name.replace(/\.md$/, '') + '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMdd_HHmm') + '.md', my_getOrCreateSubfolder_(folder, '_이전판')); } catch (e) {} } } } catch (e) {} }
   if (file && saved.draftHash && hash(file.getBlob().getDataAsString('UTF-8')) !== saved.draftHash) {
     editedOld = { id: file.getId(), name: file.getName(), at: caseProcNow_() }; // [2026.10.22 작업 기록부] 세무사님이 고친 판 — 새 초안으로 옮겨가도 위치를 잃지 않게
     file = folder.createFile(name.replace(/\.md$/, '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMdd_HHmm') + '.md'), md, 'text/markdown'); fresh = true; // 세무사님이 고친 초안은 그대로 둔다

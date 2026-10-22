@@ -2772,7 +2772,10 @@
     st.timing = []; st.t0 = Date.now();
     st.run = function(key, extra){
       var t0 = Date.now();
-      return callGas('case_proc', Object.assign({ caseId: caseId, step: key, noAi: true, by: st.by || '세무사님' }, extra || {})).then(function(res){ st.timing.push({ k: key, ms: Date.now() - t0, sv: (res && res._ms) || 0 }); if (res && res.nexAlert && window.nxNexSay_) window.nxNexSay_(res.nexAlert); return res; }); // [2026.10.22 먼저 말 걸기] 넣으신 값이 서류 후보와 다를 때
+      var p = callGas('case_proc', Object.assign({ caseId: caseId, step: key, noAi: true, by: st.by || '세무사님' }, extra || {})).then(function(res){ st.timing.push({ k: key, ms: Date.now() - t0, sv: (res && res._ms) || 0 }); if (res && res.nexAlert && window.nxNexSay_) window.nxNexSay_(res.nexAlert); return res; }); // [2026.10.22 먼저 말 걸기] 넣으신 값이 서류 후보와 다를 때
+      // [2026.10.23 속도 ㅅ5차] 반영 중인 답(apply)을 세어 둔다 — ▶·마무리가 이것이 끝난 뒤에 ③·④로 가게(가상양도12: 답 반영 중 ▶ → 옛 칸으로 계산)
+      if (key === 'apply'){ st.applyPending = (st.applyPending || []).concat([p]); var drop = function(){ st.applyPending = (st.applyPending || []).filter(function(x){ return x !== p; }); }; p.then(drop, drop); }
+      return p;
     };
     st.runMany = function(list){
       var t0 = Date.now();
@@ -2866,7 +2869,7 @@
         .then(waitCalc)
         .then(function(){ return st.doStep('output'); })
         .then(function(){ st.finishing = false; return nxAiCaseProcFinish_(st); })
-        .then(function(){ st.finishedAll = true; if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); }, function(err){ st.finishing = false; throw err; }); // 사건 화면 — 다음 할 일 다시 맞춤
+        .then(function(){ st.finishedAll = true; if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); var pk = st.postFinishKeys || []; st.postFinishKeys = []; if (pk.length){ var ks = pk.filter(function(k, i){ return pk.indexOf(k) === i; }); st.say('마무리 중에 답하신 값이 있어 칸을 다시 맞추고 계산·검토서를 다시 만듭니다.', 'nxai-muted'); return nxAiCaseProcRefresh_(st, ks, true); } }, function(err){ st.finishing = false; throw err; }); // [2026.10.23 속도 ㅅ5차] 마무리 중에 온 답은 마무리 뒤 한 번 더 // 사건 화면 — 다음 할 일 다시 맞춤
     };
     st.resume = function(force){
       if (!st.waiting) return Promise.resolve();
@@ -2946,9 +2949,12 @@
     b.addEventListener('click', function(){
       if (b.disabled) return;
       b.disabled = true; st.running = true;
-      var pend = (st.prKeys || []).length || st.prBusy;
-      b.textContent = pend ? '⏳ 답하신 값을 칸에 맞추는 중… 끝나면 바로 세액계산·서식·검토서를 만듭니다' : '🔄 세액계산·서식·검토서 만드는 중…';
-      (st.flushRefresh ? st.flushRefresh(true) : Promise.resolve()).then(function(){ b.textContent = '🔄 세액계산·서식·검토서 만드는 중…'; st.paused = false; return st.finishAll(); })
+      // [2026.10.23 속도 ㅅ5차 — 가상양도12 세액 결함] ▶ 순서를 못 박는다: (a) 서버에 아직 반영 중인 답(apply)이 있으면 끝날 때까지 기다리고 → (b) 반영 대기 중인 답(마지막 답 뒤 20초가 안 지난 것 포함)이 있으면
+      //  ③ 칸 맞추기를 한 번 돌린 뒤 → (c) ③이 도는 중이면 끝날 때까지 기다렸다가 → ④ 계산. 예전엔 답 뒤 20초 안에 ▶를 누르면 ③ 없이 옛 칸으로 계산해 틀린 세액(1세대1주택 미적용 111,078,000원)이 저장·인쇄됐다
+      var pendApply = (st.applyPending || []).length, pend = pendApply || (st.prKeys || []).length || st.prBusy;
+      b.textContent = pend ? '⏳ ' + (pendApply ? '답 반영을 기다린 뒤 ' : '') + '답하신 값을 칸에 맞추는 중… 끝나면 바로 세액계산·서식·검토서를 만듭니다' : '🔄 세액계산·서식·검토서 만드는 중…';
+      var waitApplies = function(){ var ps = (st.applyPending || []).slice(); return ps.length ? Promise.all(ps.map(function(p){ return p.then(null, function(){}); })).then(function(){ return (st.applyPending || []).length ? waitApplies() : null; }) : Promise.resolve(); };
+      waitApplies().then(function(){ return st.flushRefresh ? st.flushRefresh(true) : Promise.resolve(); }).then(function(){ b.textContent = '🔄 세액계산·서식·검토서 만드는 중…'; st.paused = false; return st.finishAll(); })
         .then(function(){ b.remove(); }, function(err){ b.disabled = false; b.textContent = '▶ 세액계산·검토서까지 만들기(다시)'; st.setStep('save', '❌', String(err && err.message || err)); });
     });
     d.parentNode.insertBefore(b, d.nextSibling);
@@ -3135,6 +3141,12 @@
     });
   }
   function nxAiCaseProcFinish_(st){
+    // [2026.10.23 속도 ㅅ5차 — 가상양도12] ⑥이 겹쳐 세 번 돌아 검토서·관련법령이 3벌씩 생긴 것 — 도는 중에 또 부르면 새로 시작하지 않고 끝난 뒤 한 번만 더(겹침 없음)
+    if (st.finishBusy){ st.finishAgain = true; return st.finishBusy; }
+    st.finishBusy = nxAiCaseProcFinish0_(st).then(function(){ st.finishBusy = null; if (st.finishAgain){ st.finishAgain = false; return nxAiCaseProcFinish_(st); } }, function(err){ st.finishBusy = null; throw err; });
+    return st.finishBusy;
+  }
+  function nxAiCaseProcFinish0_(st){
     st.setStep('save', '🔄', '저장·초안 작성 중…');
     return nxAiCaseProcSave_(st, true).then(function(r){
       if (!r || !r.ok) throw new Error((r && r.error) || '저장 실패');
@@ -3288,7 +3300,8 @@
     if (st.waiting) return keys.filter(function(k){ return k !== 'calc' && k !== 'output'; }).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){ return st.resume(); });
     // [2026.10.22 시험가동] 단추를 기다리며 멈춘 상태(사건 화면 GAS·넥스가 마무리를 안 부름) — 칸만 다시 맞추고 저장. 계산·검토서는 단추를 누르실 때 한 번
     // [2026.10.22 속도 S2] 답 하나마다 ① 사건파악(약 37초)까지 다시 돌던 것 — 기준일·사건 칸을 바꾼 답(st.prNeedBasic)이 아니면 ③ 칸 채우기만 다시
-    if (st.paused) return keys.filter(function(k){ return k !== 'calc' && k !== 'output' && (k !== 'basic' || st.prNeedBasic); }).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){ st.prNeedBasic = false;
+    // [2026.10.23 속도 ㅅ5차 — 가상양도12] 답 뒤 다시 맞출 단계에 ③(overview)이 빠져 있어도(사건분류처럼 '계산·인쇄'만 적힌 답) 멈춤 중엔 ③을 꼭 돌린다 — 계산 입력(trCalc)은 ③이 써 두는 것이라, ③ 없이 계산하면 그 답이 빠진 옛 칸으로 계산된다
+    if (st.paused) return (function(ks){ if (keys.length && ks.indexOf('overview') === -1) ks.push('overview'); return ks; })(keys.filter(function(k){ return k !== 'calc' && k !== 'output' && (k !== 'basic' || st.prNeedBasic); })).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){ st.prNeedBasic = false;
       ['calc', 'output', 'save'].forEach(function(k){ st.setStep(k, '⏸', st.screen ? '단추를 누르시면 진행' : '넥스가 부르지 않음(맡기신 범위 밖이거나 할 일 없음)'); });
       if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st);
       nxAiCaseProcFoot_(st);
@@ -3843,6 +3856,9 @@
       if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
       var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
       show('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영했습니다 (' + r.src + ').\n\n영향 받는 단계를 다시 처리하고 세액을 다시 계산합니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.');
+      // [2026.10.23 속도 ㅅ5차] 말로 답한 것도 단추 대기 중이면 같은 "답 모아 맞추기" 길로(▶가 이 ③을 기다릴 수 있게) — 마무리 중이면 마무리 뒤 한 번 더
+      if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(r.value).slice(0, 80) }; if (/^(base|case:)/.test(String(r.target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, ['basic', 'overview', 'calc', 'output']); return; }
+      if (st.finishing){ st.postFinishKeys = (st.postFinishKeys || []).concat(['basic', 'overview', 'calc', 'output']); return; }
       return nxAiCaseProcRefresh_(st, ['basic', 'overview', 'calc', 'output'], true);
     }).catch(function(err){ show('Q' + it.q + ' 「' + r.label + '」을(를) 반영하지 못했습니다: ' + (err && err.message || err) + ' — [확인] 버튼으로 다시 해 주세요.'); });
     return true;
@@ -3885,6 +3901,7 @@
         // [2026.10.22 시험가동] 단추를 기다리는 동안(st.paused)엔 답한 질문을 바로 닫고 다음 질문에 답하시게 한다 — 칸 다시 맞추기(서버 약 90초)는
         //  답이 멈춘 뒤 한 번만(nxAiCpPausedRefresh_). 예전엔 답 하나마다 2분 넘게 기다려야 다음 질문을 누를 수 있었다
         if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(value).slice(0, 80) }; if (/^(base|case:)/.test(String(target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다 · [속도 S2] 기준일·사건 칸 답일 때만 ①도 다시
+        if (st.finishing){ st.postFinishKeys = (st.postFinishKeys || []).concat(refreshKeys || []); return; } // [2026.10.23 속도 ㅅ5차] 마무리(계산·서식·검토서) 중에 온 답 — 겹쳐 돌리지 않고 마무리 뒤 한 번 더 맞춘다
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
     };
