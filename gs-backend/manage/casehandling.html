@@ -593,10 +593,33 @@
     }).catch(function(){ chCaseSelectEl.innerHTML = '<option value="">불러오지 못했습니다</option>'; });
   }
 
+  // [2026.10.22 묶음 ㅁ4] 사건이 100개를 넘어(완료 포함) 콤보만으로 못 찾는다(가상양도7 표 8: 한글 타이핑 안 됨) — 글자 검색칸 + "진행 중만"(기본 켬). 고른 사건이 걸러지면 그 사건은 목록에 남긴다
+  var chCaseFilterText_ = '', chCaseOnlyOpen_ = true;
+  function chEnsureCaseFilterUi_(){
+    if (document.getElementById('chCaseFilterBox') || !chCaseSelectEl || !chCaseSelectEl.parentNode) return;
+    var box = document.createElement('div'); box.id = 'chCaseFilterBox'; box.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 6px;';
+    var inp = document.createElement('input'); inp.type = 'search'; inp.id = 'chCaseFilterText'; inp.placeholder = '🔍 사건 찾기(고객명·납세자·사건명)'; inp.style.cssText = 'flex:1; min-width:160px; box-sizing:border-box;';
+    inp.addEventListener('input', function(){ chCaseFilterText_ = inp.value.trim(); renderChCaseSelect_(); });
+    var lab = document.createElement('label'); lab.style.cssText = 'font-size:12.5px; display:flex; gap:4px; align-items:center; white-space:nowrap;';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = chCaseOnlyOpen_; cb.addEventListener('change', function(){ chCaseOnlyOpen_ = cb.checked; renderChCaseSelect_(); });
+    lab.appendChild(cb); lab.appendChild(document.createTextNode('진행 중만'));
+    box.appendChild(inp); box.appendChild(lab);
+    chCaseSelectEl.parentNode.insertBefore(box, chCaseSelectEl);
+  }
   function renderChCaseSelect_(){
-    var keepValue = chCaseSelectEl.value;
-    chCaseSelectEl.innerHTML = buildCaseOptionsHtml_(chCases);
+    chEnsureCaseFilterUi_();
+    var keepValue = chCaseSelectEl.value || chSelectedId;
+    var q = chCaseFilterText_.toLowerCase();
+    var list = chCases.filter(function(c){
+      if (c.id === keepValue) return true;
+      if (chCaseOnlyOpen_ && /^(완료)$/.test(String(c.상태 || ''))) return false;
+      if (!q) return true;
+      return [c.사건명, c.고객명, c.납세자].some(function(s){ return String(s || '').toLowerCase().indexOf(q) !== -1; });
+    });
+    chCaseSelectEl.innerHTML = buildCaseOptionsHtml_(list);
     if (keepValue) chCaseSelectEl.value = keepValue;
+    var n = chCases.length - list.length;
+    var inp = document.getElementById('chCaseFilterText'); if (inp) inp.title = n ? '목록에서 뺀 사건 ' + n + '개(완료·검색 불일치)' : '';
   }
 
   chCaseSelectEl.addEventListener('change', function(){
@@ -1202,7 +1225,10 @@
     var manual = typeof WORK_MANUAL_DEADLINE_TYPES_ !== 'undefined' && WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
     var label = c.상태 === '완료' ? '완료일' : (manual ? '처리시한' : '법정일');
     var dday = '';
-    if (c.법정일 && c.상태 !== '완료'){
+    // [2026.10.22 묶음 ㅁ2] 기준일(양도일·증여일·사망일)이 아직 없으면 서버가 "오늘+7일"을 임시로 넣어 둔다(목록·마감 집계에서 빠지지 않게) — 그걸 진짜 기한처럼 "(D-7)"로 굵게 보이면 급한 사건으로 오해한다(가상양도7 표 10). 임시값임을 밝히고 D-n은 기준일이 정해진 뒤에만
+    var provisional = !manual && c.상태 !== '완료' && c.법정일 && !c.기준일;
+    if (provisional) dday = ' <span style="color:var(--sub);">(임시 — 양도일·증여일·사망일이 정해지면 다시 계산됩니다)</span>';
+    if (c.법정일 && c.상태 !== '완료' && !provisional){
       var d = new Date(String(c.법정일).slice(0, 10) + 'T00:00:00'), t = new Date(); t.setHours(0, 0, 0, 0);
       if (!isNaN(d.getTime())){
         var n = Math.round((d - t) / 86400000);

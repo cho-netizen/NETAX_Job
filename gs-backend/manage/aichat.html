@@ -3324,6 +3324,7 @@
     st.items.forEach(function(it){ if (it.step !== key) return; var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; if (d0 === '보류' || d0 === '예정') held++; else open++; });
     var ico = row.querySelector('.nxai-cp-ico');
     if (ico.textContent !== '❌' && ico.textContent !== '⏭' && key !== 'save' && !(key === 'calc' && st.calcBusy)){
+      if (st.tickers) clearInterval(st.tickers[key]); // [2026.10.22 가상양도8 표 48] 단계가 끝나 아이콘을 ✅로 바꿀 때 흐른 시간 표시도 멈춘다(안 멈추면 "✅ 진행 중… (2분 35초)"가 계속 올라감)
       ico.textContent = open ? '⚠' : '✅';
       row.querySelector('.nxai-cp-sum').textContent = open ? '확인할 항목 ' + open + '건' + (held ? ' · 보류 ' + held : '') : (held ? '보류 ' + held + '건' : '완료');
     }
@@ -3333,7 +3334,7 @@
     var hd = null, n = 0, heads = [];
     Array.prototype.forEach.call(box.children, function(ch){
       if (ch.classList.contains('nxai-cp-card')){ if (hd) heads.push([hd, n]); hd = ch; n = 0; }
-      else if (ch.classList.contains('nxai-cp-item')) n++;
+      else if (ch.classList.contains('nxai-cp-item') && !ch.classList.contains('nxai-cp-done')) n++;
     });
     if (hd) heads.push([hd, n]);
     heads.forEach(function(h){ if (!h[1]) h[0].remove(); else h[0].textContent = h[0].textContent.replace(/ — \d+개$/, '') + ' — ' + h[1] + '개'; });
@@ -3372,7 +3373,8 @@
     var old = it._el;
     if (!old || !old.parentNode){ nxAiCaseProcItems_(st, key); return; }
     var d0 = nxAiCaseProcDec_(st, it);
-    if (d0 === '무시' || d0 === 'done'){ old.remove(); it._el = null; }
+    // [2026.10.22 가상양도8 표 50] 답한 줄을 지우면 아래가 밀려 손이 엉뚱한 단추를 누른다 — 지우지 않고 "✅ 답함" 한 줄로 바꿔 자리를 지킨다(다음 칸 다시 맞추기 때 정리됨)
+    if (d0 === '무시' || d0 === 'done'){ var stub = document.createElement('div'); stub.className = 'nxai-cp-item nxai-cp-done'; stub.style.cssText = 'opacity:.6;font-size:12.5px;'; var dn = st.decisions[it.id] || {}; stub.textContent = (d0 === 'done' ? '✅ 답함 — ' : '— 무시 — ') + String(it.text || '').slice(0, 50) + (dn.note ? ' (' + String(dn.note).slice(0, 60) + ')' : ''); old.parentNode.replaceChild(stub, old); it._el = null; }
     else old.parentNode.replaceChild(nxAiCpBuildItemEl_(st, it), old);
     nxAiCpFixHeaders_(box);
     nxAiCaseProcRenumber_(st);
@@ -3386,7 +3388,8 @@
   // 결정이 바뀌면 2초 뒤 저장 + 종합검토서 초안의 "추가로 확인할 사항"도 다시
   function nxAiCaseProcQueueSave_(st){
     clearTimeout(st.saveTimer);
-    st.saveTimer = setTimeout(function(){ if (st.waiting) nxAiCaseProcSave_(st, false).then(function(){ return st.resume(); }); else if (st.paused) nxAiCaseProcSave_(st, false).then(function(){ if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st); nxAiCaseProcFoot_(st); if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); }); else nxAiCaseProcFinish_(st); }, 2000); // [2026.10.22] 기다리는 중엔 저장만 하고 이어갈지 봄
+    // [2026.10.22 가상양도8 표 51] 처리가 아직 도는 중(st.running — ③ 칸 채우기 등)에 답하면 저장만 한다. 예전엔 멈춤 상태가 아니면 곧바로 마무리(검토서·현황표)를 써서, 계산도 하기 전에 "계산 결과 없음" 검토서가 생겼다
+    st.saveTimer = setTimeout(function(){ if (st.waiting) nxAiCaseProcSave_(st, false).then(function(){ return st.resume(); }); else if (st.paused || st.running || st.finishing) nxAiCaseProcSave_(st, false).then(function(){ if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st); nxAiCaseProcFoot_(st); if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); }); else nxAiCaseProcFinish_(st); }, 2000); // [2026.10.22] 기다리는 중엔 저장만 하고 이어갈지 봄
   }
   function nxAiCaseProcSave_(st, writeLog){
     // [2026.10.21 넥스 하나로] 질문의 넣을 칸·후보(출처)도 저장 — 채팅 넥스가 사건처리 조회로 보고, 세무사님 말을 그 칸의 답으로 제안할 수 있게

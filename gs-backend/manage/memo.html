@@ -194,7 +194,7 @@
       <option value="business">사업</option>
     </select>
     <select id="memoReqNewUptype" style="width:100%; box-sizing:border-box;"></select>
-    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoReqNewRequestDate" style="width:95px; box-sizing:border-box;"></label>
+    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoReqNewRequestDate" style="width:150px; box-sizing:border-box;"></label><!-- [2026.10.22 묶음 ㅁ3] 95px이면 "2026-10-2"로 잘림(가상양도7 표 6) -->
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoReqApplyCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoReqNewCaseConfirm" class="save-btn">등록하고 저장</button>
@@ -2109,8 +2109,11 @@
         memoReqTemplateSelectEl.innerHTML = '<option value="">의뢰서템플릿 폴더에 파일이 없습니다</option>';
         return;
       }
+      // [2026.10.22 묶음 ㅁ4] 자주 쓰는 신고 3개(양도·상속·증여)를 맨 위에 — 목록 27개 가나다순에 섞여 찾기 어려웠다(가상양도7 표 4)
+      var memoReqTplRank_ = function(n){ n = String(n || ''); return /양도\s*신고/.test(n) ? 0 : /상속\s*신고/.test(n) ? 1 : /증여\s*신고/.test(n) ? 2 : 9; };
+      var memoReqTplSorted_ = memoReqTemplates_.slice().sort(function(a, b){ return (memoReqTplRank_(a.name) - memoReqTplRank_(b.name)) || String(a.name).localeCompare(String(b.name), 'ko'); });
       memoReqTemplateSelectEl.innerHTML = '<option value="">템플릿을 선택하세요</option>' +
-        memoReqTemplates_.map(function(t){ return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('');
+        memoReqTplSorted_.map(function(t){ return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('');
     }).catch(function(err){
       memoReqTemplateSelectEl.innerHTML = '<option value="">불러오기 실패</option>';
       toast('템플릿 목록을 불러오지 못했습니다: ' + (err && err.message ? err.message : err));
@@ -2245,18 +2248,50 @@
       { test: /피상속인\s*성명/, key: 'ihDeceasedName' }
     ]
   };
+  // [2026.10.22 묶음 ㅁ1 — 세무사님 결정 6 "의뢰서 값을 가설(출처: 의뢰서)로 넣고 서류로 확인"] 의뢰서의 날짜·금액·소재지를 처리개요 칸으로 — 예전엔 이름만 넘기고
+  //  양도일·양도가액·소재지·취득일·취득가액은 세무사님이 처리개요에서 또 쳐야 했다(가상양도7 표 9). GAS 칸 채우기(③)가 이 값을 "가설(의뢰서)"로 서류와 대조한다
+  function memoReqKrDate_(s){
+    s = String(s || '');
+    var m = /((?:19|20)\d{2})\s*[년.\-\/]\s*(\d{1,2})\s*[월.\-\/]\s*(\d{1,2})\s*일?/.exec(s);
+    if (!m) return '';
+    var p2 = function(n){ return (n.length < 2 ? '0' : '') + n; };
+    return m[1] + '-' + p2(m[2]) + '-' + p2(m[3]);
+  }
+  function memoReqKrMoney_(s){
+    s = String(s || '').replace(/,/g, '').replace(/\s+/g, '');
+    var m = /(\d+(?:\.\d+)?)억(?:(\d+(?:\.\d+)?)(천만|천|백만|백|만)?)?/.exec(s);
+    if (m){ var v = Number(m[1]) * 1e8; if (m[2]){ var u = { '천만': 1e7, '천': 1e7, '백만': 1e6, '백': 1e6, '만': 1e4 }[m[3] || '']; if (!u) u = Number(m[2]) < 10 ? 1e7 : 1e4; v += Number(m[2]) * u; } return Math.round(v); }
+    m = /(\d+(?:\.\d+)?)(천만|백만|만)원?/.exec(s); if (m) return Math.round(Number(m[1]) * { '천만': 1e7, '백만': 1e6, '만': 1e4 }[m[2]]);
+    m = /\d{5,}/.exec(s); if (m) return Number(m[0]);
+    return 0;
+  }
+  var memoReqBaseDate_ = ''; // 의뢰서에서 읽은 기준일(양도일·증여일·상속개시일) — 사건 등록 때 기준일로 넘겨 법정일이 처음부터 진짜 값이 되게(묶음 ㅁ2)
   function memoReqExtractOverview_(semok, content){
     var rules = MEMO_REQ_OVERVIEW_MAP_[semok];
+    memoReqBaseDate_ = '';
     if (!rules) return null; // 불복 등 구조화 사건개요가 없는 세목
-    var overview = {};
+    var overview = {}, asset = {};
     (content || '').split('\n').forEach(function(line){
       var m = line.match(/^\s*-\s*([^:：]+)[:：]\s*(.+?)\s*$/);
       if (!m) return;
       var label = m[1].trim();
-      var value = m[2].trim().split(/[,，]/)[0].trim();
+      var raw = m[2].trim();
+      var value = raw.split(/[,，]/)[0].trim();
       if (!value) return;
       rules.forEach(function(rule){ if (rule.test.test(label) && !overview[rule.key]) overview[rule.key] = value; });
+      // 기준일(양도일·증여일·상속개시일·사망일) — 날짜 꼴이면
+      if (/^(양도일|증여일|상속개시일|사망일)/.test(label) && !memoReqBaseDate_) memoReqBaseDate_ = memoReqKrDate_(raw);
+      if (semok === 'transfer'){
+        if (/^소재지/.test(label) && !asset.assetLocation) asset.assetLocation = raw;
+        if (/^취득일/.test(label) && !asset.취득일) asset.취득일 = memoReqKrDate_(raw);
+        if (/^취득가액/.test(label) && !asset.취득가액){ var am = memoReqKrMoney_(raw); if (am) asset.취득가액 = String(am); }
+        if (/^양도가액/.test(label) && !asset.양도가액){ var tm = memoReqKrMoney_(raw); if (tm) asset.양도가액 = String(tm); }
+        if (/부동산\s*종류|자산\s*종류/.test(label) && !asset.주택판단){ if (/아파트|주택|빌라|연립|다세대|오피스텔\s*\(주거|단독/.test(raw)) asset.주택판단 = 'house'; }
+      }
+      if (semok === 'gift' && /^증여재산가액/.test(label) && !overview.giftAmount){ var gm = memoReqKrMoney_(raw); if (gm) overview.giftAmount = String(gm); }
     });
+    Object.keys(asset).forEach(function(k){ if (asset[k] === '') delete asset[k]; });
+    if (Object.keys(asset).length){ overview.물건목록 = [asset]; Object.assign(overview, asset); }
     var memoMatch = (content || '').match(/##\s*상담\s*메모\s*\n+([\s\S]*)$/);
     if (memoMatch){
       var noteText = memoMatch[1].replace(/^-\s*/, '').trim();
@@ -2265,6 +2300,23 @@
     return Object.keys(overview).length ? overview : null;
   }
 
+  // [2026.10.22 묶음 ㅁ3] 등록이 끝난 뒤 다음 할 일을 그 자리에서 — "처리개요로 가기"(GAS로 처리)·"증빙 넣기"(서류 올리기)
+  function memoReqShowRegisteredBar_(c){
+    try {
+      var old = document.getElementById('memoReqRegisteredBar'); if (old) old.remove();
+      var bar = document.createElement('div'); bar.id = 'memoReqRegisteredBar';
+      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; padding:8px 10px; border:1px solid #2a7a4f; border-radius:8px; background:#eef8f1; font-size:13px;';
+      var t = document.createElement('span'); t.textContent = '✅ 「' + String(c.사건명 || c.고객명 || '') + '」 사건을 등록했습니다 — 다음:'; bar.appendChild(t);
+      var b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'save-btn'; b1.textContent = '🧭 처리개요로 가기(⚡ GAS로 처리)';
+      b1.addEventListener('click', function(){ if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
+      var b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'ghost-btn'; b2.textContent = '📁 증빙 넣기(서류 올리기)';
+      b2.addEventListener('click', function(){ if (typeof nxAiOpenJobView_ === 'function') nxAiOpenJobView_('docs', c.id); else if (typeof goToView_ === 'function') goToView_('docs'); });
+      var b3 = document.createElement('button'); b3.type = 'button'; b3.className = 'ghost-btn'; b3.textContent = '닫기'; b3.addEventListener('click', function(){ bar.remove(); });
+      bar.appendChild(b1); bar.appendChild(b2); bar.appendChild(b3);
+      memoReqTextareaEl.insertAdjacentElement('beforebegin', bar);
+      bar.scrollIntoView({ block: 'nearest' });
+    } catch (e) {}
+  }
   document.getElementById('memoReqNewCaseConfirm').addEventListener('click', function(){
     var 고객명 = document.getElementById('memoReqNewCustomer').value.trim();
     if (!고객명){ toast('고객명을 입력해주세요.'); return; }
@@ -2280,22 +2332,28 @@
       업무유형: document.getElementById('memoReqNewUptype').value,
       의뢰일: document.getElementById('memoReqNewRequestDate').value
     };
+    if (memoReqBaseDate_) createPayload.기준일 = memoReqBaseDate_; // [2026.10.22 묶음 ㅁ2] 의뢰서의 양도일·증여일·상속개시일을 기준일로 — 법정일이 "오늘+7일" 임시값 대신 처음부터 진짜 기한(서류로 다시 확인됨)
     var btn = document.getElementById('memoReqNewCaseConfirm');
-    btn.disabled = true;
+    // [2026.10.22 묶음 ㅁ3] 단추를 누른 뒤 60초 동안 아무 표시가 없어 또 누르기 쉬웠다(가상양도7 표 6·7) — 단추 글로 단계를 보이고, 끝나면 "등록됨 — 처리개요로 가기/증빙 넣기" 띠를 띄운다
+    var btnText0 = btn.textContent; var stage = function(t){ btn.textContent = t; };
+    btn.disabled = true; stage('사건 등록 중…');
     callGas('work_create_case', createPayload).then(function(res){
       if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return; }
+      stage('의뢰서 저장 중…');
       return memoReqSaveToFolder_(res.case.폴더ID, res.case.고객명).then(function(saveRes){
         if (saveRes.error){ toast('사건은 등록됐지만 의뢰서 저장에 실패했습니다: ' + saveRes.error); return; }
+        if (overview) stage('사건개요 채우는 중…');
         var afterSave = overview ? callGas('work_update_case', { id: res.case.id, 사건개요: overview }) : Promise.resolve();
         return afterSave.then(function(){
           toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
           memoReqApplyStepEl.style.display = 'none';
+          memoReqShowRegisteredBar_(res.case);
           if (typeof loadWorkCases === 'function') loadWorkCases();
         });
       });
     }).catch(function(err){
       toast('등록 중 오류: ' + (err && err.message ? err.message : err));
-    }).finally(function(){ btn.disabled = false; });
+    }).finally(function(){ btn.disabled = false; stage(btnText0); });
   });
 
   document.getElementById('memoReqApplyConfirm').addEventListener('click', function(){

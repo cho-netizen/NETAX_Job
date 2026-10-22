@@ -34,7 +34,7 @@
   #appRoot{ display:none; height:100%; }
   #appRoot.shown{ display:flex; }
 
-  #sideMenu{ width:34px; flex-shrink:0; background:var(--navy); position:relative; transition:width .15s ease; z-index:50; cursor:pointer; overflow:hidden; }
+  #sideMenu{ width:38px; flex-shrink:0; background:var(--navy); position:relative; transition:width .15s ease; z-index:50; cursor:pointer; overflow:hidden; } /* [2026.10.22 묶음 ㅁ5 — 세무사님 결정 5 "아이콘 전부+이름 말풍선"] 34px에선 넓은 이모지가 잘렸다(가상양도7 표 2); 이름 말풍선은 항목 title로 이미 붙음(index.html) */
   #sideMenu.expanded{ width:min(var(--side-expanded-w, 190px), 80vw); cursor:default; }
   #sideMenuInner{ position:absolute; inset:0; overflow-y:auto; overflow-x:hidden; padding:14px 0; }
   /* [2026.09 재설계] 접힌 상태에서 별도의 "아이콘 전용 목록"을 새로 그리는 대신, 펼쳤을 때와

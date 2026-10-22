@@ -2874,6 +2874,14 @@ function rwRenderCaseReports_(caseId){
       });
       rwCaseFileOptions_ = options;
       refreshDocSelect();
+      // [2026.10.22 묶음 ㅁ7] 사건을 고르면 그 사건 문서(종합검토서 초안이 있으면 그것)를 바로 연다 — 예전엔 목록만 바꾸고 에디터엔 직전 문서(샘플 청구취지서)가 남았다(가상양도7 표 43·44)
+      try {
+        var curIsCase = typeof selectedId === 'string' && selectedId.indexOf('drive-') === 0 && options.some(function(o){ return 'drive-' + o.fileId === selectedId; });
+        if (!curIsCase && options.length){
+          var pick = options.filter(function(o){ return /종합검토서/.test(o.name); })[0] || options[0];
+          rwLoadFileById_(pick.fileId);
+        }
+      } catch (e) {}
     });
   }).catch(function(){ box.textContent = '불러오지 못했습니다.'; });
 }

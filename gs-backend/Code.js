@@ -48511,6 +48511,16 @@ function trcFromEvidence_(c, rf, txs, ans) {
     if (pcx.고시일 && !a.publicNoticeDate) { a.publicNoticeDate = pcx.고시일; src['a' + i + '.publicNoticeDate'] = '당초 신고 계산근거 사업인정 고시일(' + pcx.file + ') — 수정신고는 당초 신고 내용 그대로'; }
     if (pcx.감면 && /현\s*금/.test(pcx.감면.근거) && !a.compensationType) { a.compensationType = 'cash'; src['a' + i + '.compensationType'] = '당초 신고 계산근거 「' + pcx.감면.근거 + '」(' + pcx.file + ') — 현금보상 감면(조특법 §77①)'; }
   });
+  // [2026.10.22 묶음 ㅁ8] 소재지 글에 든 동·호·층을 계산기 칸으로 나눈다 — "호수마을 304동 1205호"가 소재지에 통째로 들어가고 동·호 칸은 비어 있었다(가상양도7 표 30).
+  //  일반 규칙: 집합건물 등기부 표제부(전유부분 "제N층 제N호")·계약서 소재지("N동 N호")는 어느 등기소·중개사 서식이든 같은 꼴
+  st.transferAssets.forEach(function (a, i) {
+    const loc = String(a.assetLocation || ''); if (!loc) return;
+    const p = 'a' + i;
+    let m = /(\d{1,4})\s*동\s*(?:제\s*)?(\d{1,5})\s*호/.exec(loc);
+    if (m) { if (!a.assetDong) { a.assetDong = m[1] + '동'; src[p + '.assetDong'] = '소재지 글(규칙 정리)'; } if (!a.assetHo) { a.assetHo = m[2] + '호'; src[p + '.assetHo'] = '소재지 글(규칙 정리)'; } }
+    else { m = /제?\s*(\d{1,5})\s*호(?!\s*선)/.exec(loc); if (m && !a.assetHo) { a.assetHo = m[1] + '호'; src[p + '.assetHo'] = '소재지 글(규칙 정리)'; } }
+    const f = /제\s*(\d{1,3})\s*층/.exec(loc); if (f && !a.assetFloor) { a.assetFloor = f[1]; src[p + '.assetFloor'] = '등기부 표제부 전유부분(규칙 정리)'; }
+  });
   return { state: st, src: src, cands: cands, facts: facts };
 }
 // 답을 계산기 입력에 덮는다(답이 증빙보다 우선)

@@ -14466,6 +14466,19 @@ function printMaybeRows_(group, readyRows){
     .map(function(rule){ let why = ''; try { why = rule.why() || ''; } catch (e) { why = ''; } return why ? { formNo: rule.formNo, title: rule.title, why: why } : null; })
     .filter(Boolean);
 }
+// [2026.10.22 묶음 ㅁ6] 신고구분 기본값을 사건에서 — 예전엔 늘 첫 항목 "확정신고"(가상양도7 표 42: 양도 9-30 예정신고 사건인데 확정신고). 양도세 신고 사건은 예정신고(소득세법 §105①1호: 양도일이 속한 달 말일부터 2개월)가 원칙, 법정일이 지났으면 기한 후 신고, 업무유형에 "수정"이 있으면 수정신고. 상속세는 법정일 전이면 기한 내 신고. 세무사님이 콤보에서 바꿀 수 있다
+function tcPrintKindDefault_(group){
+  try {
+    var c = (typeof tcCurrentCase !== 'undefined' && tcCurrentCase) ? tcCurrentCase : null;
+    var up = String((c && c.업무유형) || ''), due = String((c && c.법정일) || '').slice(0, 10), today = tcTodayStr_();
+    var late = !!(due && today > due);
+    if (group === '상속세') return /수정/.test(up) ? '수정신고' : (late ? '기한 후 신고' : '기한 내 신고');
+    if (/수정/.test(up)) return '수정신고';
+    if (/확정/.test(up)) return '확정신고';
+    if (late) return '기한 후 신고';
+    return c && /신고/.test(up) ? '예정신고' : '확정신고';
+  } catch (e) { return group === '상속세' ? '기한 내 신고' : '확정신고'; }
+}
 function renderPrintPane(){
   const groups = printRegistryGroups_();
   const availableGroups = PRINT_GROUP_ORDER_.filter(function(g){ return groups[g] && groups[g].length; });
@@ -14512,7 +14525,7 @@ function renderPrintPane(){
       // [2026.10.19 원본 모양 출력] 법정서식 원본 PDF(드라이브 법정서식원본(법제처)) 위에 위치판대로 값을 찍는다 — 모듈은 깃허브 페이지 app/formprint(서버 용량 밖)
       ((anyReady && TC_OFFICIAL_FORM_TAX_[printActiveGroup_]) ? '<div class="taxcalc-result-note" style="margin:10px 0 4px; padding:8px 10px; border:1px solid #2a7a4f; border-radius:6px;">' +
         '<b>📄 법정서식 원본 모양으로 출력</b> <span style="font-size:12px;">(' + escapeHtml(TC_OFFICIAL_FORM_LABEL_[printActiveGroup_]) + ' — 국세청 공식 서식 PDF 위에 계산 값을 찍습니다)</span><br>' +
-        (printActiveGroup_ === '증여세' ? '' : '<label style="font-size:12.5px;">신고구분 <select id="printOfficialKind">' + (printActiveGroup_ === '상속세' ? ['기한 내 신고', '수정신고', '기한 후 신고'] : ['확정신고', '예정신고', '수정신고', '기한 후 신고']).map(function(o){ return '<option>' + o + '</option>'; }).join('') + '</select></label> ' /* 서식 보기 글자와 같게 — 상속 9호는 기한 내·수정·기한 후, 양도 84호는 예정·확정·수정·기한 후 */) +
+        (printActiveGroup_ === '증여세' ? '' : '<label style="font-size:12.5px;">신고구분 <select id="printOfficialKind">' + (function(){ var def = tcPrintKindDefault_(printActiveGroup_); return (printActiveGroup_ === '상속세' ? ['기한 내 신고', '수정신고', '기한 후 신고'] : ['확정신고', '예정신고', '수정신고', '기한 후 신고']).map(function(o){ return '<option' + (o === def ? ' selected' : '') + '>' + o + '</option>'; }).join(''); })() + '</select></label> ' /* 서식 보기 글자와 같게 — 상속 9호는 기한 내·수정·기한 후, 양도 84호는 예정·확정·수정·기한 후 */) +
         '<label style="font-size:12.5px;">신고일 <input type="date" id="printOfficialDate" value="' + escapeHtml(tcTodayStr_()) + '"></label> ' +
         '<button type="button" class="save-btn" data-action="print-official-form">📄 원본 모양 출력</button>' +
         '<div id="printOfficialNote" style="margin-top:6px; font-size:12.5px;"></div></div>' : '') +
