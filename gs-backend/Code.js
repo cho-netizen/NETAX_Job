@@ -3771,6 +3771,37 @@ function job_lookup_(input) {
   return { error: '알 수 없는 kind: ' + kind };
 }
 
+// [2026.10.23 ㅅ13차 — 점검표 168] 넥스 제안(caseproc_answer)의 값을 그 칸이 받는 모양으로 — 필요경비·상속 채무는 items JSON, 나머지는 글자.
+//  예전엔 넥스가 객체({양도비용: 4480000, 취득비용: 8160000})로 주면 카드에 "[object Object]"가 보이고 반영은 0건이 됐다(가상양도17). 순수 함수 — 소통 이음매 점검이 그대로 부른다
+function cpAnswerValueNorm_(target, value, ask) {
+  const money = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d]/g, '')) || 0; };
+  const fmt = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+  let v = value;
+  if (typeof v === 'string') { const t = v.trim(); if (/^[\[{]/.test(t)) { try { v = JSON.parse(t); } catch (e) { v = value; } } }
+  if (target === 'expenses' || target === 'ihdebts') {
+    let items = null;
+    if (v && typeof v === 'object' && Array.isArray(v.items)) items = v.items;
+    else if (Array.isArray(v)) items = v;
+    else if (v && typeof v === 'object') {
+      items = [];
+      Object.keys(v).forEach(function (k) {
+        const x = v[k];
+        if (x && typeof x === 'object' && !Array.isArray(x)) { items.push({ kind: /취득/.test(k) ? '취득' : (x.kind || '양도'), label: String(x.label || k), amount: money(x.amount != null ? x.amount : x.v), file: String(x.file || ''), date: String(x.date || '') }); return; }
+        if (Array.isArray(x)) { x.forEach(function (y) { items.push({ kind: /취득/.test(k) ? '취득' : (y && y.kind) || '양도', label: String((y && y.label) || k), amount: money(y && (y.amount != null ? y.amount : y)), file: String((y && y.file) || ''), date: String((y && y.date) || '') }); }); return; }
+        const amt = money(x); if (amt) items.push({ kind: /취득/.test(k) ? '취득' : '양도', label: String(k), amount: amt, file: '', date: '' });
+      });
+    } else if (typeof v === 'string' && /(없음|없다|0\s*원)/.test(v) && !/\d{4,}/.test(v)) items = [];
+    else if (typeof v === 'string') { const amt = money(v); items = amt ? [{ kind: '양도', label: '세무사님 답', amount: amt, file: '', date: '' }] : []; }
+    items = (items || []).map(function (x) { return { kind: String(x.kind || '양도'), label: String(x.label || '').slice(0, 60), amount: money(x.amount), file: String(x.file || '').slice(0, 80), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0 || items.length === 0; });
+    // 후보(서류)와 금액이 같으면 후보의 이름·파일을 쓴다(출처가 남게)
+    const cands = (ask && Array.isArray(ask.cands)) ? ask.cands : [];
+    items = items.map(function (x) { const cnd = cands.filter(function (cc) { return money(cc.amount) === x.amount; })[0]; return cnd ? { kind: String(cnd.kind || x.kind), label: String(cnd.label || x.label).slice(0, 60), amount: x.amount, file: String(cnd.file || x.file || '').slice(0, 80), date: String(cnd.date || x.date || '') } : x; });
+    const shown = items.length ? items.map(function (x) { return x.label + ' ' + fmt(x.amount); }).join(' · ') + ' (합계 ' + fmt(items.reduce(function (s, x) { return s + x.amount; }, 0)) + ')' : (target === 'expenses' ? '필요경비 없음(0원)' : '채무 없음');
+    return { value: JSON.stringify({ items: items }), shown: shown };
+  }
+  if (v && typeof v === 'object') { const s = JSON.stringify(v); return { value: s, shown: s.slice(0, 160) }; }
+  return { value: String(v == null ? '' : v), shown: String(v == null ? '' : v) };
+}
 const JOB_PROPOSE_ACTIONS_ = {
   booking_approve: { gas: 'approve', label: '상담 예약 승인(고객에게 확정 문자가 갑니다)', required: ['rowIndex', 'eventId', 'phone', 'reservedDate', 'reservedTime'] },
   booking_reject: { gas: 'reject', label: '상담 예약 거절(고객에게 안내 문자가 갑니다)', required: ['rowIndex', 'phone'] },
@@ -3823,8 +3854,9 @@ function job_buildProposal_(input) {
     if (!q.ask || q.ask.target !== params.target) return { error: '그 질문의 넣을 칸이 다릅니다(넣을칸 ' + (q.ask ? q.ask.target : '없음') + ') — 넣을칸이 없는 질문은 대화로만 답을 받는다.' };
     const label = q.ask.label || params.label || String(q.text || '').slice(0, 40);
     const src = ('세무사님 답(넥스 대화)' + (params.src ? ': ' + String(params.src) : '')).slice(0, 80);
-    payload = { caseId: c.id, step: 'apply', target: q.ask.target, value: params.value, src: src, label: label, ans: { qid: q.id, how: '넥스 대화', nCands: (q.ask.cands || []).length, pick: (q.ask.cands || []).map(function (x) { return String(x.v).replace(/[\s,]/g, ''); }).indexOf(String(params.value).replace(/[\s,]/g, '')), file: '' } };
-    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 「' + label + '」에 ' + String(params.value).slice(0, 120) + ' 넣기 (' + src + ')', gasAction: spec.gas, payload: payload, kind: input.action, caseId: c.id } };
+    const nv = cpAnswerValueNorm_(q.ask.target, params.value, q.ask); // [2026.10.23 ㅅ13차 — 점검표 168] 넥스가 객체로 준 값(필요경비 {양도비용:…, 취득비용:…})을 그 칸이 받는 모양(items JSON)으로
+    payload = { caseId: c.id, step: 'apply', target: q.ask.target, value: nv.value, src: src, label: label, ans: { qid: q.id, how: '넥스 대화', nCands: (q.ask.cands || []).length, pick: (q.ask.cands || []).map(function (x) { return String(x.v).replace(/[\s,]/g, ''); }).indexOf(String(nv.value).replace(/[\s,]/g, '')), file: '' } };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 「' + label + '」에 ' + nv.shown.slice(0, 160) + ' 넣기 (' + src + ')', gasAction: spec.gas, payload: payload, kind: input.action, caseId: c.id } };
   }
   // [2026.10.21] 넥스가 쓴 고객 문자 — 넥스 초안 표시(상담 기록 담당자 칸), 사건이 있으면 사건 처리일지에도. 카드에서 세무사님이 글을 고쳐 보낼 수 있다(aichat.html)
   if (input.action === 'client_sms') payload = Object.assign({}, params, { via: 'ai' });

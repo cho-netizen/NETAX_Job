@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 21:01 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 21:06 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -55236,7 +55236,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
     var claimed = NXAI_COMPLETION_CLAIM_RE.test(replyText || '');
     var realSignal = !!editAction || saved.length > 0
-      || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed'); });
+      || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed' || a.type === 'confirm_action'); }); // [2026.10.23 ㅅ13차 — 점검표 168] 실행 제안 카드를 띄운 답엔 "저장 도구 기록 없음" 경고를 붙이지 않는다(제안 방식은 세무사님이 [실행]을 눌러야 반영되는 것이 맞음)
     if (claimed && !realSignal){
       var warn = document.createElement('div');
       warn.className = 'nxai-warn';
@@ -56497,15 +56497,31 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 6단계 — 결정·남은 일 저장(작업일지 한 줄) + 종합검토서 초안(보류 = 추가로 확인할 사항)
   // [2026.10.22 ⑥ 응답 유실 복구] 긴 단계(검토서 초안·서식 PDF 저장) — 다리(gasbridge)가 6분 30초까지 같은 요청번호로 결과를 다시 받아오지만, 그래도 실패하면
   //  서버 사건 현황(view — 0원)을 읽어 그 파일이 이번 시작 뒤에 만들어져 있으면(서버 시각 ms, 시계 차이 90초 여유) 끝난 것으로 잇는다. 예전엔 화면이 "작성 중…"에 영원히 남았다(가상양도10 표 84)
+  // [2026.10.23 ㅅ13차 — 점검표 166(136 재현)] 긴 호출(서식 PDF·검토서 초안)의 끝 신호를 응답에만 기대지 않는다 — 45초 뒤부터 20초마다 서버 현황(서식·검토서 파일 시각)을 보고
+  //  파일이 생겼으면 응답을 기다리지 않고 끝으로 본다. 가상양도17: 서식 PDF는 05:50에 생겼는데 ④ "PDF 저장 중…"이 10분 넘게 그대로였다(응답을 영영 못 받음)
   function nxAiCpLongRun_(st, step, extra, check, uiKey){
-    var t0 = Date.now();
-    return st.run(step, extra).then(null, function(err){
-      st.setStep(uiKey || 'save', '🔄', '응답이 끊겨 서버 상태를 다시 확인하는 중…');
-      return callGas('case_proc', { caseId: st.caseId, step: 'view', noAi: true }).then(function(v){
-        var r = v && v.ok ? check(v, t0 - 90000) : null;
-        if (r){ r.recovered = String(err && err.message || err).slice(0, 80); return r; }
-        throw err;
-      }, function(){ throw err; });
+    var t0 = Date.now(), done = false, timer = null;
+    return new Promise(function(resolve, reject){
+      var finish = function(fn, v){ if (done) return; done = true; clearTimeout(timer); fn(v); };
+      var peek = function(){
+        if (done) return;
+        var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+        if (!tok) return; // 로그인 토큰이 없으면 서버를 부르지 않는다(로그인 전 호출 금지 규칙)
+        callGas('case_proc', { caseId: st.caseId, step: 'view', noAi: true }).then(function(v){
+          if (done) return;
+          var r = v && v.ok ? check(v, t0 - 90000) : null;
+          if (r){ r.recovered = '서버 현황으로 끝 확인(응답 전)'; finish(resolve, r); } else timer = setTimeout(peek, 20000);
+        }, function(){ if (!done) timer = setTimeout(peek, 20000); });
+      };
+      timer = setTimeout(peek, 45000);
+      st.run(step, extra).then(function(r){ finish(resolve, r); }, function(err){
+        if (done) return;
+        st.setStep(uiKey || 'save', '🔄', '응답이 끊겨 서버 상태를 다시 확인하는 중…');
+        callGas('case_proc', { caseId: st.caseId, step: 'view', noAi: true }).then(function(v){
+          var r = v && v.ok ? check(v, t0 - 90000) : null;
+          if (r){ r.recovered = String(err && err.message || err).slice(0, 80); finish(resolve, r); } else finish(reject, err);
+        }, function(){ finish(reject, err); });
+      });
     });
   }
   function nxAiCaseProcFinish_(st, preSave){
@@ -56627,12 +56643,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         (item.subForms ? item.subForms.filter(function(sf){ return sf.section === 'required' && !sf.noOfficial; }).map(function(sf){ return sf.formNo; }) : [fn0]).forEach(function(f){ if (f && offNos.indexOf(f) === -1) offNos.push(f); });
       });
       if (!offNos.length || typeof tcLoadFormPrint_ !== 'function') return oldWay().catch(function(e){ return { ok: false, error: String(e && e.message || e) }; });
-      return tcLoadFormPrint_().then(function(FP){
+      // [2026.10.23 ㅅ13차] 원본 모양 만들기(모듈 불러오기·PDF 그리기)가 90초 안에 안 끝나면 옛 모양 길로 — 여기서 멈추면 ④가 영영 "저장 중"으로 남는다
+      var mkTimeout = new Promise(function(res){ setTimeout(function(){ res({ __timeout: true }); }, 90000); });
+      return Promise.race([tcLoadFormPrint_().then(function(FP){
         var extra = { 신고구분: (typeof tcPrintKindDefault_ === 'function') ? tcPrintKindDefault_(group) : undefined, 신고일: (typeof tcTodayStr_ === 'function') ? tcTodayStr_() : undefined };
         var list = []; offNos.forEach(function(f){ try { (FP.officialJobs(f, extra) || []).forEach(function(j){ list = list.concat(j.list || []); }); } catch (e) {} });
         if (!list.length) return null;
         return FP.renderWithMappers(list, null).then(function(r){ return new Promise(function(res, rej){ var fr = new FileReader(); fr.onload = function(){ res({ b64: String(fr.result).split(',')[1] || '', n: list.length }); }; fr.onerror = function(){ rej(new Error('PDF 읽기 실패')); }; fr.readAsDataURL(r.blob); }); });
-      }).then(function(pdf){
+      }), mkTimeout]).then(function(pdf){
+        if (pdf && pdf.__timeout){ try { st.setStep('calc', '🔄', '원본 모양 서식 만들기가 90초를 넘겨 옛 모양으로 저장합니다…'); } catch (e) {} return oldWay(); }
         if (!pdf) return oldWay();
         return nxAiCpLongRun_(st, 'savePdf', { pdfBase64: pdf.b64, title: group + ' 신고서식', forms: pdf.n, official: true }, checkFn(pdf.n), 'calc');
       }, function(){ return oldWay(); })
@@ -56969,6 +56988,22 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     m = /\d{4,}/.exec(s); if (m) return Number(m[0]);
     return 0;
   }
+  // [2026.10.23 ㅅ13차] 한 문장에 든 금액 전부 — "중개보수 4,480,000원 확인하고 취득세 8,160,000원(취득세납부확인서)을 더해" → [{label:'중개보수', amount:4480000, kind:'양도'}, {label:'취득세', amount:8160000, kind:'취득'}]
+  function nxAiCpExpAmounts_(text){
+    var s = String(text || ''), out = [], re = /(\d+(?:\.\d+)?억(?:\s*\d+(?:\.\d+)?\s*(?:천만|천|백만|백|만)?)?\s*원?|\d+(?:\.\d+)?\s*(?:천만|백만|만)\s*원?|\d{1,3}(?:,\d{3})+\s*원?|\d{4,}\s*원)/g, m;
+    while ((m = re.exec(s))){
+      var amt = nxAiKrMoney_(m[1]); if (!amt || amt < 1000) continue;
+      if (/(?:19|20)\d{2}\s*[.\-/년]/.test(m[1]) || /^\s*[.\-/]/.test(s.slice(m.index + m[1].length, m.index + m[1].length + 2))) continue; // 날짜(2024.3.5)·연도는 금액이 아님
+      var before = s.slice(0, m.index).replace(/[(（].*$/, '');
+      var ws = before.replace(/[은는이가을를의:]\s*$/, '').trim().split(/\s+/).filter(Boolean).slice(-2);
+      ws = ws.filter(function(w, wi){ return /^[가-힣A-Za-z]+$/.test(w) && !(wi < ws.length - 1 && /(하고|고|며|중|및|과|와|의|은|는|이|가|을|를|등)$/.test(w)); }); // "확인하고 취득세" → 취득세, "중 취득세" → 취득세
+      var label = ws.join(' ').replace(/^(그리고|또|및|필요경비|경비|비용)\s*/, '').trim();
+      if (!label || /^(필요경비|경비|비용|합계|총)$/.test(label)) label = '필요경비';
+      var kind = /취득|등록|등기|법무|채권|인지|소유권/.test(label) ? '취득' : '양도';
+      out.push({ label: label, amount: amt, kind: kind });
+    }
+    return out;
+  }
   // 날짜 → yyyy-mm-dd: "2024.3.5", "2024-03-05", "2024년 3월 5일", "24.3.5"
   function nxAiKrDate_(s){
     var m = /((?:19|20)\d{2}|\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})(?!\d)/.exec(String(s || ''));
@@ -57192,7 +57227,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (mode === 'debts'){
       if (decide) return Object.assign(out, { act: 'decide', decide: decide });
       var dsure = (a.cands || []).filter(function(c){ return c.sure && c.amount; }).map(function(c){ return { debtType: c.debtType, creditorName: c.creditorName, amount: c.amount, file: c.file, src: c.src }; });
-      if (/(없음|없다|없어|0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'ihdebts', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '상속 채무 없음' });
+      if (/(없음|없다|없어|(?:^|[^\d,])0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'ihdebts', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '상속 채무 없음' });
       if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'ihdebts', value: JSON.stringify({ items: dsure }), src: srcTxt, shown: '서류 후보 중 확실한 ' + dsure.length + '건 ' + dsure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' });
       return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 상속 채무 — "그대로 확정"(서류에서 확실한 ' + dsure.length + '건), "채무 없음"으로 말씀하시거나, 항목을 고르려면 [확인]을 눌러 주세요.' });
     }
@@ -57201,9 +57236,22 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (decide) return Object.assign(out, { act: 'decide', decide: decide });
       var sure = (a.cands || []).filter(function(c){ return nxAiCpExpOn_(c) && c.amount; }).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date }; });
       var unsureIn = (a.cands || []).filter(function(c){ return c.amount && !c.sure && nxAiCpExpOn_(c); }).length;
-      if (/(없음|없다|없어|0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '필요경비 없음(0원)' });
-      if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: sure }), src: srcTxt, shown: '서류 후보 ' + sure.length + '건 ' + sure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' + (unsureIn ? '(영수증의 법정 세금 중 판독 미확인 ' + unsureIn + '건 포함 — 원문 확인)' : '') });
-      return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 필요경비 — "그대로 확정"(서류에서 확실한 ' + sure.length + '건), "없음"으로 말씀하시거나, 항목을 고치려면 [확인]을 눌러 주세요.' });
+      // [2026.10.23 ㅅ13차 — 점검표 165] 금액을 함께 말씀하시면("중개보수 4,480,000원 확인하고 취득세 8,160,000원을 더해") 그 금액을 후보에 맞춰 고르고, 후보에 없는 금액은 직접 항목으로 더해 확정한다.
+      //  예전엔 "확인"만 읽고 체크 없이 확정 → 필요경비 0원(가상양도17 세액 136,862,000 ≠ 기대 132,079,024)
+      var said = nxAiCpExpAmounts_(body);
+      if (said.length){
+        var items = [], fromCand = 0, direct = 0, used = {};
+        said.forEach(function(x){
+          var c = (a.cands || []).filter(function(cc, ci){ return !used[ci] && Number(cc.amount) === x.amount; })[0];
+          if (c){ used[(a.cands || []).indexOf(c)] = true; fromCand++; items.push({ kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date }); }
+          else { direct++; items.push({ kind: x.kind, label: x.label + '(세무사님 말씀)', amount: String(x.amount), file: src && src.files.length === 1 ? src.files[0].name : '', date: '' }); }
+        });
+        var left = (a.cands || []).filter(function(cc, ci){ return !used[ci] && cc.amount && nxAiCpExpOn_(cc); }).length;
+        return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: items }), src: srcTxt, shown: '말씀하신 ' + items.length + '건 ' + items.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정(후보에서 ' + fromCand + '건' + (direct ? ' · 직접 ' + direct + '건' : '') + (left ? ' · 말씀 안 하신 후보 ' + left + '건은 뺌' : '') + ')' });
+      }
+      if (/(없음|없다|없어|(?:^|[^\d,])0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '필요경비 없음(0원)' }); // [ㅅ13차 — 점검표 167] "4,480,000원"의 끝 "0원"이 없음으로 읽히던 것
+      if (/(그대로|확정|맞음|체크한\s*대로|후보대로|확인)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: sure }), src: srcTxt, shown: '서류 후보 ' + sure.length + '건 ' + sure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' + (unsureIn ? '(영수증의 법정 세금 중 판독 미확인 ' + unsureIn + '건 포함 — 원문 확인)' : '') });
+      return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 필요경비 — "그대로 확정"(서류에서 확실한 ' + sure.length + '건), "없음", 또는 "중개보수 448만원·취득세 816만원"처럼 금액을 말씀하시거나, 항목을 고치려면 [확인]을 눌러 주세요.' });
     }
     if (mode === 'note' && /(확인|알았|봤)/.test(body)) return Object.assign(out, { act: 'decide', decide: 'done', note: '확인함(사이드바)' });
     if (decide) return Object.assign(out, { act: 'decide', decide: decide });
@@ -57221,7 +57269,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var t = String(text || '').replace(/\r/g, '');
     t = t.replace(/([^\d\s])\.\s+/g, '$1\u0001');                  // 마침표+띄어쓰기(날짜 2024.3.5의 점은 아님)
     t = t.replace(/(^|\s)((?:Q|q|질문)\s*\d{1,2}(?!\d))/g, '\u0001$2'); // Q번호 앞에서 끊음
-    var parts = t.split(/\u0001|\n|;|·|\s\/\s|,\s+|(?:\s+그리고\s+)/).map(function(s){ return s.trim(); }).filter(Boolean);
+    var parts0 = t.split(/\u0001|\n|;|·|\s\/\s|,\s+|(?:\s+그리고\s+)/).map(function(s){ return s.trim(); }).filter(Boolean);
+    // [2026.10.23 ㅅ13차] "…확인하고, 취득세 …을 더해"처럼 '~하고'로 이어지는 토막은 같은 답이다 — 다음 토막과 합친다(쉼표로 끊겨 뒤 토막이 Q번호를 잃던 것)
+    var parts = []; parts0.forEach(function(s){ var prev = parts[parts.length - 1]; if (prev && /(하고|하며|한\s*뒤|한\s*다음)$/.test(prev) && !/^(?:Q|q|질문)\s*\d/.test(s)) parts[parts.length - 1] = prev + ' ' + s; else parts.push(s); });
     var finish = parts.some(function(s){ return /^(마무리|끝내|진행해|계산해|이어서|계속)/.test(s) || /(마무리|끝내|계산)\s*(해|하자|해\s*줘|해\s*주세요|할게|하라)?\s*[.!~]*$/.test(s) && s.length <= 14; });
     var filler = /^(그리고|또|응|네|예|고마워|고맙다|마무리|마무리해|마무리하자|마무리해\s*줘|끝내|끝내줘|진행해|계산해|계속|이어서)[.!~\s]*$/;
     return { parts: parts.filter(function(s){ return !filler.test(s); }), finish: finish };
