@@ -31456,6 +31456,7 @@ function cpfFromResult_(result, base, docType) {
       if (v === null || v === undefined || v === '') return;
       if (Array.isArray(v)) {
         if (!v.length) return;
+        if (k === '공시참고') return; // [2026.10.23 ㅌ2] 실거래가 출력물 각주(사례 집 공동주택가격, 유사재산 비교용)는 서류의 값이 아님 — '매매사례가액' 사실로 둔갑해 "서류 값 어디에도 없음" 질문을 냈다(가상증여7·9)
         const objs = v.filter(function (x) { return x && typeof x === 'object' && !Array.isArray(x); });
         if (!objs.length) { // 낱개 값 목록(소재지목록 등) — 값마다 한 건
           if (v.length > CPF_LIMITS_.list) base.trunc.push(k + ' 값 ' + v.length + '개 중 ' + CPF_LIMITS_.list + '개만');
@@ -31474,6 +31475,8 @@ function cpfFromResult_(result, base, docType) {
           const xp = typeof x.쪽 === 'number' ? x.쪽 : pg;
           if (one) { // 한 줄 = 사실 한 건
             let val = cpfRowValue_(x); const kb = merge(keys, keyBits(x));
+            // [2026.10.23 ㅌ2] 매매사례 줄의 거래금액은 숫자 사실(매매사례가액)로도 — 줄 사실(객체)만 있으면 계산기 칸 값 대조가 숫자로 맞대지 못해 고른 매매사례 8억을 "서류에 없는 값"이라 되물었다(가상증여9)
+            if (one === '매매사례' && typeof x.금액 === 'number' && x.금액 > 0 && !x.해제) push({ kind: '매매사례가액', value: x.금액, raw: (x.계약일 ? x.계약일 + ' ' : '') + x.금액.toLocaleString('ko-KR') + '원' + (x.면적 ? ' ' + x.면적 + '㎡' : ''), where: pathName(path + '.' + k) + ' ' + (i + 1) + '번째 사례 금액', rec: r2, keys: merge(kb, x.계약일 ? { date: x.계약일, dateFrom: '계약일' } : {}), role: role, unsure: recUnsure, page: xp, subj: subj });
             if (!Object.keys(val).length) return;
             if (one === '통장 거래') val = cpfBankRow_(val);
             push({ kind: one, value: val, raw: Object.keys(val).map(function (q) { return q + ' ' + val[q]; }).join(' · ').slice(0, 300), where: pathName(path + '.' + k) + ' ' + (i + 1) + '번째 줄', rec: r2, keys: kb, role: role, unsure: recUnsure || x.확인필요 === true || x.입출확인필요 === true, check: cpfCheckOf_(x, ''), page: xp, subj: subj });
@@ -35706,7 +35709,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
         if (have.indexOf(d.금액) !== -1) return;
         add('giftDebtAssumed', d.금액, '증여계약서 인수채무 — ' + d.종류 + '(' + x.f.name + ')', false);
       });
-      byType('lease').concat(byType('rent')).forEach(function (y) { const lr = y.p.result || {}; if (!lr.보증금 || (mo.소재지 && lr.소재지 && !tcLocSame_(mo.소재지, lr.소재지))) return; if ((facts.giftDebtAssumed || []).some(function (q) { return Number(q.v) === Number(lr.보증금); })) return; add('giftDebtAssumed', lr.보증금, '임대보증금 — 임대차계약서(' + y.f.name + (lr.소재지 ? ', ' + lr.소재지 : '') + ') · 증여계약서 채무인수 문구', false); });
+      byType('lease').concat(byType('rent')).forEach(function (y) { const lr0 = y.p.result || {}; (Array.isArray(lr0.docs) ? lr0.docs.map(function (d) { return (d && d.r) || {}; }) : [lr0]).forEach(function (lr) { /* [2026.10.23 ㅌ3] 임대차계약서는 결과가 docs[].r(한 파일 여러 계약) 안에 있다 — 예전엔 겉 결과만 봐 보증금을 못 보고 교차 확인이 통째로 빠졌다 */ if (!lr.보증금 || (mo.소재지 && lr.소재지 && !tcLocSame_(mo.소재지, lr.소재지))) return; const hitD = (facts.giftDebtAssumed || []).filter(function (q) { return Number(q.v) === Number(lr.보증금); })[0]; if (hitD) { hitD.sure = true; hitD.src += ' · 임대차계약서(' + y.f.name + ') 보증금과 일치(교차 확인)'; return; } /* [2026.10.23 ㅌ3] 계약서 인수채무 = 임대차 보증금이면 확실 — 예전엔 둘이 맞아도 "확실하지 않아 자동으로 넣지 않았습니다"로 물었다(가상증여9) */ add('giftDebtAssumed', lr.보증금, '임대보증금 — 임대차계약서(' + y.f.name + (lr.소재지 ? ', ' + lr.소재지 : '') + ') · 증여계약서 채무인수 문구', false); }); });
       lines.push('부담부증여: 인수채무(' + ((facts.giftDebtAssumed || []).map(function (q) { return Number(q.v).toLocaleString('ko-KR') + '원 ' + q.src; }).join(' / ') || '금액 미확인') + ') — 채무 부분은 증여자에게 양도(소득세법 §88①)라 양도세 신고 대상일 수 있음(후보 — 세무사님 판단)');
     });
     // [2026.10.18 정밀분석 07_5 — 상증법 §47①·③, §66·시행령 §63①3] 증여재산 등기부에 살아 있는 근저당·전세권이 있으면 판단 자리로 —
@@ -41955,6 +41958,10 @@ function docGiftPropertyBlock_(t, r) {
   var tt = String(t || '');
   // [2026.10.23 ㄷ7] 부정 문구 확인은 줄을 넘어가도("채무 인수 ⏎ 없음") — 표 서식 계약서의 칸 이름과 값은 다른 줄에 온다(가상증여4)
   if (!r.부담부 && (/(채\s*무|대\s*출\s*금|근\s*저\s*당)[^.\n]{0,20}(승\s*계|인\s*수)(?![^.]{0,25}(아님|아니|없음|않))/.test(tt) || /수\s*증\s*자[^.\n]{0,40}(채\s*무|대\s*출\s*금|근\s*저\s*당)[^.\n]{0,20}부\s*담\s*(?:한\s*다|하\s*기\s*로)(?![^.]{0,25}(아님|아니|없음|않))/.test(tt))) { r.부담부 = true; p.부담부추가 = true; }
+  // [2026.10.23 ㅌ5] 표 서식 계약서("1. 부동산의 표시 — 소재지 / 건물 철근콘크리트구조 아파트 전용 59.9㎡ / 대지권 38,400분의 27.1")도 — 예전 규칙은 등기부 꼴(1동의 건물의 표시·구조및면적·대지권의 비율)만 알아 "목적물 표시 못 읽음"(가상증여9)
+  if (!p.소재지) { m = /소\s*재\s*지\s*[:：]?\s*((?:[가-힣]+(?:도|시)\s+)?[가-힣]+(?:시|군|구)\s+[^\n]{4,80}?\d+\s*호)/.exec(fl) || /소\s*재\s*지\s*[:：]?\s*((?:[가-힣]+(?:도|시)\s+)?[가-힣]+(?:시|군|구)\s+[^\n]{4,60}?)(?=\s+(?:건\s*물|대\s*지\s*권|전\s*용|증\s*여|채\s*무|2\s*\.))/.exec(fl); if (m) p.소재지 = m[1].trim(); }
+  if (!p.전유면적) { m = /전\s*용\s*(?:면\s*적)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:m2|㎡|m²)/.exec(fl); if (m) p.전유면적 = Number(m[1]); }
+  if (!p.대지권비율) { m = /대\s*지\s*권\s*(?:의?\s*비\s*율)?\s*[:：]?\s*(\d[\d,]*(?:\.\d+)?)\s*분\s*의\s*(\d[\d,]*(?:\.\d+)?)/.exec(fl); if (m) { p.대지권비율 = m[1].replace(/,/g, '') + '분의 ' + m[2].replace(/,/g, ''); p.대지권면적 = Number(m[2].replace(/,/g, '')); } }
   if (!Object.keys(p).length) return '';
   r.부동산표시 = p;
   return '\n\n**부동산의 표시(계약서 기재 그대로 — 등기부와 대조)**\n\n' + docMdTable_([['소재지(1동의 건물)', p.소재지], ['건물 번호', p.건물번호], ['고유번호', p.고유번호], ['전유면적', p.전유면적 ? p.전유면적 + '㎡' : ''], ['대지권 비율', p.대지권비율]])
@@ -50948,7 +50955,9 @@ function trcNeedScanFocus_(c, needs) {
       if (!p || p.office || p.out || p.calc) return;
       // [2026.10.23 ㄹ B19] 글자층이 있는 PDF(글자인식이 아니라 원문 글자를 읽은 것)는 "흐린 사진 보정"의 대상이 아니다 — 칸을 못 채운 까닭이 사진 판독이 아니라 서류 규칙이라 보정해도 달라지지 않는다.
       //  예전엔 경고가 있는 서류를 종류만 보고 보정 대상으로 올려 글자 PDF 증여계약서가 "흐린 사진 1장"이 됐다(가상증여4 — 결함 B19). 글자인식한 것(사진·스캔)만 보정 후보
-      const ocrRead = !(p.read && p.read.how && p.read.how !== '글자인식');
+      // [2026.10.23 ㅌ4] 글자층 PDF는 변환 때 표 글(ocrtbl1_) 기억이 함께 남는다 — 그 기억이 있으면 사진이 아니라 보정 대상이 아님(가상증여9: 글자층 증여계약서·등기부가 "흐린 사진 2장"으로 보고됨). p.read.how는 아직 안 적혀 효과가 없었다(ㄹ B19)
+      let textLayer = false; try { textLayer = /pdf/.test(String(f.mimeType || '')) && !!f.modified && typeof tcOcrStoreGet_ === 'function' && tcOcrStoreGet_('ocrtbl1_' + f.id + '_' + f.modified) !== null; } catch (e) { textLayer = false; }
+      const ocrRead = !textLayer && !(p.read && p.read.how && p.read.how !== '글자인식');
       if ((p.t && want[p.t] && (p.wn || 0) > 0 && ocrRead) || (!p.t && (p.nt || p.err))) out.push({ id: f.id, name: f.name, why: p.t ? (CASEPROC_SCAN_TYPE_NAME_[p.t] || p.t) + ' ⚠' + p.wn : '글자를 못 읽은 사진' });
     });
   } catch (e) {}
