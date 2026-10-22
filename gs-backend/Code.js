@@ -28672,6 +28672,15 @@ function tcMedBillParse_(text) {
     if (best) { r.총액 = best.a; r.공단 = best.b; r.환자부담 = best.c; }
     m = /수\s*납\s*(?:한\s*)?금\s*액[\s\S]{0,160}?합\s*계\s*[:：]?\s*(\d{1,3}(?:[.,]\d{3})+|0)(?![\d.,])/.exec(fl);
     if (m && r.환자부담) { r.수납 = num(m[1]); r.미납 = Math.max(0, r.환자부담 - r.수납); }
+    // [2026.10.23 ㄷ4] 이름표가 분명한 칸이 있으면 그것이 먼저 — "총 진료비(본인부담 합계) 14,860,000원"·"사망 전 납부액 0원"·"미납 잔액"·"납부일 / 납부자 2026-08-20".
+    //  예전엔 "총액 = 공단 + 본인" 세 금액 조합만 찾아 조합이 안 맞는 계산서(비급여가 따로 있는 서식)에서 금액을 못 읽었다(가상상속4 — 결함 B8). 사망 뒤 납부한 진료비는 개시일 현재 채무(§14①3호)
+    var lab = function (re) { var x = re.exec(fl); return x ? num(x[1]) : null; };
+    var tp = lab(/총\s*진\s*료\s*비\s*(?:\(\s*본\s*인\s*부\s*담\s*(?:합\s*계)?\s*\))?\s*[:：]?\s*(\d{1,3}(?:[.,]\d{3})+|0)\s*원/) ;
+    if (tp !== null && (!r.환자부담 || /본\s*인\s*부\s*담\s*(?:합\s*계)?\s*\)/.test(fl))) { r.환자부담 = tp; if (!r.총액 || r.총액 < tp) r.총액 = tp; r.이름표읽음 = true; }
+    var pre = lab(/사\s*망\s*전\s*납\s*부\s*액\s*[:：]?\s*(\d{1,3}(?:[.,]\d{3})+|0)\s*원/); if (pre !== null && r.환자부담) { r.사망전납부 = pre; r.수납 = pre; r.미납 = Math.max(0, r.환자부담 - pre); }
+    var un = lab(/미\s*납\s*(?:잔\s*액|금\s*액)\s*[:：]?\s*(\d{1,3}(?:[.,]\d{3})+|0)\s*원/); if (un !== null && pre === null && r.환자부담) { r.미납 = un; r.수납 = Math.max(0, r.환자부담 - un); }
+    m = /납\s*부\s*일\s*(?:\/\s*납\s*부\s*자)?\s*[:：]?\s*((?:19|20)\d{2})\s*-\s*(\d{1,2})\s*-\s*(\d{1,2})/.exec(fl); if (m && !r.수납일시) r.수납일시 = ymd(m[1], m[2], m[3]);
+    m = /납\s*부\s*(?:일\s*\/\s*)?납\s*부\s*자\s*[:：]?\s*(?:(?:19|20)\d{2}-\d{1,2}-\d{1,2}\s*\/\s*)?([가-힣]{2,4})/.exec(fl); if (m) r.납부자 = m[1];
     r.청구 = r.환자부담;
   } else if (kind === '진료내역서') {
     m = /[₩￦]\s*(\d{1,3}(?:[.,]\d{3})+)/.exec(fl); if (m) r.청구 = num(m[1]);
@@ -32521,7 +32530,7 @@ var CASEPROC_LAST_RF_ = null;
 //  stamp(수입인지)·estimate(견적서)는 양도 필요경비, finassoc(금융협회 조회 결과)는 상속 금융재산. poa(위임장)는 계산과 무관해 넣지 않음
 const CASEPROC_RELEVANT_TYPES_ = {
   gift: ['regdone', 'giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
-  inheritance: ['regdone', 'finassoc', 'registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest', 'remit', 'settlement', 'simplereceipt', 'ownchange', 'heiragree'], // [2026.10.18 3차 수정 N] ownchange: 협의분할 지분표 · heiragree: 상속인 약정서 // [2026.10.18 3차 M] remit·settlement·simplereceipt: 대출 사용처 표(송금증·합의서·간이영수증) — 쓰였는데 "무관한 종류"로 표시되던 것 // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
+  inheritance: ['regdone', 'finassoc', 'registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'retirepay', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest', 'remit', 'settlement', 'simplereceipt', 'ownchange', 'heiragree'], // [2026.10.18 3차 수정 N] ownchange: 협의분할 지분표 · heiragree: 상속인 약정서 // [2026.10.18 3차 M] remit·settlement·simplereceipt: 대출 사용처 표(송금증·합의서·간이영수증) — 쓰였는데 "무관한 종류"로 표시되던 것 // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
   transfer: ['regdone', 'stamp', 'estimate', 'workcontract', 'contract', 'appraisal', 'dealreport', 'brokerdesc','registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard', 'installment', 'simplereceipt'] // installment: 분양대금 납부확인서(정밀분석 14) · leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
@@ -35564,9 +35573,12 @@ function caseProcGiftInhFacts_(c, lines, items) {
   // [2026.10.18 정밀분석 원인1] 입력으로 남긴 이전 증여세 신고·결정(신고 뒤 업무·상담 — 고객AE) — 10년 합산액(상증법 §47②) 후보·기납부세액(§58) 근거.
   //  같은 증여자인지·10년 안인지는 세무사님 판단(후보로만, 확정 안 함)
   if (c.세목 === 'gift') byType('filedret').filter(function (x) { return x.p.result && x.p.result.세목 === 'gift'; }).forEach(function (x) {
-    const r = x.p.result, k = r.칸 || {}, v = k.과세가액 || k.증여재산가액;
+    const r = x.p.result, k = r.칸 || {}, rv = r.읽은값 || {}, chk = !!(k.과세가액 || k.증여재산가액), v = k.과세가액 || k.증여재산가액 || rv.과세가액 || rv.증여재산가액;
     if (!v) return;
-    add('giftPriorAmount', v, '이전 증여세 ' + (r.서류 || '신고서') + '(' + x.f.name + (r.기준일 ? ', 증여일 ' + r.기준일 : '') + ') ' + (k.과세가액 ? '과세가액' : '증여재산가액') + (Number.isFinite(k.자진납부할세액) ? ' · 납부세액 ' + k.자진납부할세액.toLocaleString('ko-KR') + '원(기납부세액 §58)' : Number.isFinite(k.산출세액) ? ' · 산출세액 ' + k.산출세액.toLocaleString('ko-KR') + '원' : '') + ' — 같은 증여자·10년 안이면 합산', false);
+    // [2026.10.23 ㄷ6] 계산식 검산이 안 된 신고서(산출세액 0원이라 식으로 확인할 칸이 없는 공제 안 신고 등)도 "증여재산가액" 칸 옆 값을 후보로 — 검산 안 됨을 밝힌다. 증여자·관계·증여일을 함께 보여
+    //  세무사님이 같은 증여자(직계존속은 배우자 포함 §47②)인지, 증여재산공제를 그때 얼마나 썼는지 판단한다. 예전엔 검산된 칸만 봐서 이 신고서가 입력인데도 "이전 신고서 기록이 없어"라고 물었다(가상증여4 — 결함 B17)
+    const ded = k.직계존속공제 || k.직계비속공제 || k.배우자공제 || k.기타친족공제 || rv.직계존속공제 || rv.배우자공제 || rv.기타친족공제 || 0;
+    add('giftPriorAmount', v, '이전 증여세 ' + (r.서류 || '신고서') + '(' + x.f.name + (r.기준일 ? ', 증여일 ' + r.기준일 : '') + (r.증여자 ? ', 증여자 ' + r.증여자 + (r.관계 ? '(' + r.관계 + ')' : '') : '') + ') ' + (k.과세가액 ? '과세가액' : '증여재산가액') + (chk ? '' : '(계산식 검산 안 됨 — 원문 확인)') + (ded ? ' · 그때 증여재산공제 ' + Number(ded).toLocaleString('ko-KR') + '원 사용(§53 10년 한도에서 뺌)' : '') + (Number.isFinite(k.자진납부할세액) ? ' · 납부세액 ' + k.자진납부할세액.toLocaleString('ko-KR') + '원(기납부세액 §58)' : Number.isFinite(k.산출세액) ? ' · 산출세액 ' + k.산출세액.toLocaleString('ko-KR') + '원' : '') + ' — 같은 증여자·10년 안이면 합산', false);
   });
   // [2026.10.20 2번 밤샘 9바퀴 — ③ 소통 "짧게, 한 번에 모아서"] 증여 서류가 하나도 없는 사건(증여 등기 줄·증여계약서·이체내역에서 증여자·금액을 하나도 못 찾았고
   //  처리개요 금액도 없음 — 대개 상담·자문)은 증여자·증여재산가액·관계를 칸마다 따로(주관식 3~4개) 묻지 않고, 현금 이체만 있는 사건처럼 「증여 내용 확인」 한 질문으로.
@@ -36535,13 +36547,25 @@ function caseProcInhFacts0_(c, parsed) {
     const death = /사망/.test(String(r.지급사유 || '') + ' ' + String(r.종류 || '') + ' ' + String(r.계약상태 || '')) || (base && r.지급일 && r.지급일 >= base && /사고\s*소멸/.test(String(r.계약상태 || '')));
     out.deemed.push({ v: v, files: [x.f.name], byDec: byDec, death: !!death, info: info, why: (byDec ? '계약자 = 피상속인(' + (hB6 ? '생년 ' + hB6 : hNm) + ')' : '계약자 ' + (hNm || (hB6 ? '생년 ' + hB6 : '미상'))) + (r.지급사유 ? ' · 지급사유 ' + r.지급사유 : '') + (r.지급일 ? ' · 지급일 ' + r.지급일 : '') });
   });
+  // [2026.10.23 ㄷ4] 사망퇴직금 지급 명세서 → 간주상속재산(상증법 §10 — 피상속인에게 지급될 퇴직금·퇴직수당·공로금·연금 등으로 사망으로 지급되는 것). 근로자가 피상속인(이름·생년)이고 사망퇴직이면 ✅,
+  //  아니면 묻는다(보험금과 같은 길 — ihChoices 'ret_금액'). 예전엔 이 서류가 종류 미정이라 퇴직금 82,500,000원이 통째로 빠졌다(가상상속4 — 결함 B6). 유족연금(§10 단서)은 서류 종류가 달라 여기 안 들어온다
+  by('retirepay').forEach(function (x) {
+    const r = x.p.result || {}; if (!r.퇴직급여) { out.notes.push('퇴직금 지급 명세서(' + x.f.name + ') — 금액을 읽지 못해 계산에 못 넣음(원문 확인)'); return; }
+    const v = Number(r.퇴직급여), dupR = out.deemed.filter(function (q) { return q.v === v && q.kind === 'retirement'; })[0];
+    if (dupR) { if (dupR.files.indexOf(x.f.name) === -1) dupR.files.push(x.f.name); return; }
+    const byDecR = !!((r.근로자생년6 && decB6i && r.근로자생년6 === decB6i) || (r.근로자 && dec && caseProcNameLike_(nm(r.근로자), dec)));
+    out.deemed.push({ v: v, kind: 'retirement', files: [x.f.name], byDec: byDecR, death: !!r.사망퇴직, info: '퇴직금(' + x.f.name + ') ' + (r.회사 || '') + ' 퇴직급여 ' + v.toLocaleString('ko-KR') + '원' + (r.근로자 ? ' · 근로자 ' + r.근로자 : ''),
+      why: (byDecR ? '근로자 = 피상속인(' + (r.근로자 || r.근로자생년6) + ')' : '근로자 ' + (r.근로자 || '미상')) + (r.사망퇴직 ? ' · 사망퇴직' : '') + (r.구성 ? ' · ' + r.구성.map(function (p) { return p.항목 + ' ' + Number(p.금액).toLocaleString('ko-KR'); }).join(' + ') : '') });
+  });
   // 분할협의서 별지의 보험 줄(같은 금액이면 위 지급 건과 같은 것)
   by('inhdivision').forEach(function (x) { ((x.p.result || {}).금융목록 || []).forEach(function (q) { if (!q.보험 || !q.잔액) return; const d0 = out.deemed.filter(function (z) { return z.v === q.잔액; })[0]; if (d0) { if (d0.files.indexOf(x.f.name) === -1) d0.files.push(x.f.name); return; } out.deemed.push({ v: q.잔액, files: [x.f.name], byDec: false, death: /사망|급부금/.test(String(q.종류 || '')), info: '분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + Number(q.잔액).toLocaleString('ko-KR') + '원', why: '분할협의서 별지 보험 줄(계약자 서류 없음)' }); }); });
   out.deemedValue = 0;
   out.deemed.forEach(function (d) {
-    const ch = choices['ins_' + d.v];
-    d.key = 'ins_' + d.v;
+    const kp = d.kind === 'retirement' ? 'ret_' : 'ins_'; // [2026.10.23 ㄷ4] 퇴직금은 'ret_' 열쇠
+    const ch = choices[kp + d.v];
+    d.key = kp + d.v;
     if (ch) { d.value = Number(ch.v) || 0; d.src = ch.src || '세무사님 답'; }
+    else if (d.kind === 'retirement' && d.byDec && d.death) { d.value = d.v; d.src = d.why + ' — 피상속인의 사망퇴직금(§10)'; }
     else if (d.byDec && d.death) { d.value = d.v; d.src = d.why + ' — 피상속인이 계약자인 사망보험금(§8①)'; }
     else d.value = null; // 묻는다(caseProcInhAssetItems_)
     if (d.value) out.deemedValue += d.value;
@@ -37093,7 +37117,8 @@ function caseProcInhFacts0_(c, parsed) {
     });
   });
   out.debts.forEach(function (d) { delete d.fromCert; });
-  by('inhquery').forEach(function (x) { const r = x.p.result || {}; if (r.채무합계) out.debts.push({ debtType: 'loan', creditorName: '안심상속 조회 채무 합계', amount: r.채무합계, file: x.f.name, src: '상속인 금융거래 조회', sure: false, note: '부채증명원과 겹칠 수 있음 — 겹치면 하나만' }); });
+  // [2026.10.23 ㄷ3] 안심상속 조회의 채무 합계가 이미 대출잔액증명서로 들어온 대출(같은 금액)이면 두 번 세지 않는다(세무사님 원칙: 같은 항목은 서류끼리 대조해 한 번만)
+  by('inhquery').forEach(function (x) { const r = x.p.result || {}; if (r.채무합계 && !out.debts.some(function (d) { return d.debtType === 'loan' && d.amount === r.채무합계; })) out.debts.push({ debtType: 'loan', creditorName: '안심상속 조회 채무 합계', amount: r.채무합계, file: x.f.name, src: '상속인 금융거래 조회', sure: false, note: '부채증명원과 겹칠 수 있음 — 겹치면 하나만' }); });
   // 임대차계약서 — 정리 결과가 한 건(lease)이거나, 계약서 묶음(result.docs 안에 lease)이거나
   const leaseList = [];
   parsed.forEach(function (x) {
@@ -37614,7 +37639,7 @@ function tc_ruleInheritanceFacts_(body) {
   const deemedV = f.deemedValue || 0;
   return { ok: true, deathDate: c.기준일 || '', deceased: f.deceased, heirs: f.heirs, assets: f.assets.map(function (a) { return { kind: a.kind, loc: a.loc, area: a.area, value: a.value, valueSrc: a.valueSrc, sure: a.sure, cands: a.cands }; }),
     financialValue: f.financialValue !== null && f.financialValue !== undefined ? f.financialValue + deemedV : f.financialValue, financialSrc: f.financialSrc + (deemedV ? ' + 간주상속재산 보험금 ' + deemedV.toLocaleString('ko-KR') + '원(§8·§22)' : ''),
-    deemed: (f.deemed || []).filter(function (d) { return d.value; }).map(function (d) { return { kind: 'insurance', value: d.value, src: d.src, files: d.files }; }),
+    deemed: (f.deemed || []).filter(function (d) { return d.value; }).map(function (d) { return { kind: d.kind || 'insurance', value: d.value, src: d.src, files: d.files }; }), // [2026.10.23 ㄷ4] 퇴직금(§10)은 kind 'retirement'
     grossEstate: f.grossEstate, funeral: f.funeral, niche: f.niche, notes: f.notes,
     priorGifts: f.priorGifts || [], disposal: f.disposal || [], // [2026.10.18 정밀분석 원인2] 세무사님이 답한 통장 사전증여(§13)·§15 부표4만
 
@@ -37654,8 +37679,11 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
     { mode: 'choose', target: 'ih:financial', input: 'money', label: '금융재산', cands: f.financial.map(function (q) { return { v: String(q.v), src: q.src }; }) }));
   // [2026.10.18 3차 수정 N] 사망보험금 — 간주상속재산(§8)·금융재산(§22). 계약자가 피상속인으로 확인되면 ✅, 모르면 넣을지 묻는다
   (f.deemed || []).forEach(function (d) {
-    if (d.value) lines.push('✅ 간주상속재산(보험금 §8) ' + won(d.value) + ' (' + d.src + ' — ' + d.files.join(' = ') + ') — 총상속재산·순금융재산(§22)에 더함');
-    else if (d.value === 0) lines.push('간주상속재산 아님: 보험금 ' + won(d.v) + '(' + d.files.join(' = ') + ') — ' + (d.src || '세무사님 답'));
+    const isRet = d.kind === 'retirement'; // [2026.10.23 ㄷ4] 퇴직금(§10)도 같은 줄 모양으로
+    if (d.value) lines.push('✅ 간주상속재산(' + (isRet ? '퇴직금 §10' : '보험금 §8') + ') ' + won(d.value) + ' (' + d.src + ' — ' + d.files.join(' = ') + ') — 총상속재산' + (isRet ? '' : '·순금융재산(§22)') + '에 더함');
+    else if (d.value === 0) lines.push('간주상속재산 아님: ' + (isRet ? '퇴직금 ' : '보험금 ') + won(d.v) + '(' + d.files.join(' = ') + ') — ' + (d.src || '세무사님 답'));
+    else if (isRet) items.push(caseProcItem_('ih:' + d.key, 'judge', '사망퇴직금 ' + won(d.v) + '(' + d.files.join(' = ') + ', ' + d.why + ') — 피상속인에게 지급될 퇴직금이 사망으로 지급된 것이면 간주상속재산(§10)입니다. 넣을까요?',
+      { mode: 'choose', target: 'ih:' + d.key, input: 'money', label: '간주상속재산(퇴직금)', cands: [{ v: String(d.v), src: '넣음 — 피상속인의 사망퇴직금(§10)' }, { v: '0', src: '넣지 않음 — 피상속인 몫이 아니거나 유족연금(§10 단서)' }] }));
     else items.push(caseProcItem_('ih:' + d.key, 'judge', '사망보험금 ' + won(d.v) + '(' + d.files.join(' = ') + ', ' + d.why + ') — 피상속인이 보험계약자이거나 보험료를 실제로 냈으면 상속재산으로 봅니다(간주상속재산 §8①·②, 금융재산공제 §22 대상). 넣을까요?',
       { mode: 'choose', target: 'ih:' + d.key, input: 'money', label: '간주상속재산(보험금)', cands: [{ v: String(d.v), src: '넣음 — 피상속인이 계약자·보험료 부담자' }, { v: '0', src: '넣지 않음 — 피상속인이 보험료를 내지 않음(수익자 고유재산)' }] }));
   });
@@ -40678,7 +40706,13 @@ function docParseFiledReturn_(text) {
   // [2026.10.18 정밀분석 3차] 신고일 — 서명란 날짜("신고인 2026년 04월 25일 고객L (서명 또는 인)"). 실제 낸 신고본인지 가르는 표지(고객L 양도세·지방소득세 신고서)
   var sgm = /신\s*고\s*인\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일[^\n(]{0,16}\n?\s*\(\s*서\s*명\s*(?:또\s*는|또는)?\s*인\s*\)/.exec(t);
   if (sgm) r.신고일 = sgm[1] + '-' + ('0' + sgm[2]).slice(-2) + '-' + ('0' + sgm[3]).slice(-2);
-  var dl = { transfer: '양\\s*도\\s*(?:일\\s*자|연\\s*월\\s*일)', gift: '증\\s*여\\s*(?:일\\s*자|연\\s*월\\s*일)', inheritance: '상\\s*속\\s*개\\s*시\\s*일' }[kind];
+  var dl = { transfer: '양\\s*도\\s*(?:일\\s*자|연\\s*월\\s*일|일(?![가-힣]))', gift: '증\\s*여\\s*(?:일\\s*자|연\\s*월\\s*일|일(?![가-힣]))', inheritance: '상\\s*속\\s*개\\s*시\\s*일' }[kind]; // [2026.10.23 ㄷ6] 서식 칸 이름 "증여일"·"양도일"(자 없이)도 — 이전 증여세 신고서의 증여일(10년 합산 판단 근거)이 비어 있었다(가상증여4)
+  // [2026.10.23 ㄷ6] 증여세 신고서의 증여자·수증자 칸(별지 제10호 서식 ①수증자·②증여자: 성명·관계) — 10년 합산(§47② 같은 증여자, 직계존속은 배우자 포함)·공제 소진 판단 근거
+  if (kind === 'gift') {
+    var gv = /②?\s*증\s*여\s*자[\s\S]{0,60}?성\s*명\s*[:：]?\s*\n?\s*([가-힣]{2,4})(?![가-힣])/.exec(t); if (gv) r.증여자 = gv[1];
+    var gr = /(?:수\s*증\s*자\s*와\s*의\s*관\s*계|증\s*여\s*자\s*와\s*의\s*관\s*계)\s*[:：]?\s*\n?\s*([가-힣()\s]{2,20}?)(?:\n|$)/.exec(t); if (gr) r.관계 = gr[1].replace(/\s+/g, '');
+    var gk = /증\s*여\s*재\s*산\s*종\s*류\s*[:：]?\s*\n?\s*([^\n]{2,40})/.exec(t); if (gk) r.재산종류 = gk[1].trim();
+  }
   var dm = new RegExp(dl + '[^\\d]{0,30}((?:19|20)\\d{2})\\s*[.\\-/년]\\s*(\\d{1,2})\\s*[.\\-/월]\\s*(\\d{1,2})').exec(t);
   if (dm) r.기준일 = dm[1] + '-' + ('0' + dm[2]).slice(-2) + '-' + ('0' + dm[3]).slice(-2);
   // 확정 못 한 칸 이름 옆 값 — 참고로만(공제 칸이 산출세액 이상이면 칸이 섞인 것이라 뺀다)
@@ -41475,7 +41509,8 @@ function docGiftPropertyBlock_(t, r) {
   m = /대\s*지\s*권\s*의?\s*비\s*율\s*[:：]?\s*([\d.]+)\s*분\s*의\s*([\d.]+)/.exec(fl); if (m) { p.대지권비율 = m[1] + '분의 ' + m[2]; p.대지권면적 = Number(m[2]); }
   //  "부담한다"는 수증자가 부담할 때만("근저당 채무는 증여자가 부담한다"는 부담부가 아니다)
   var tt = String(t || '');
-  if (!r.부담부 && (/(채\s*무|대\s*출\s*금|근\s*저\s*당)[^.\n]{0,20}(승\s*계|인\s*수)(?![^.\n]{0,25}(아님|아니|없음|않))/.test(tt) || /수\s*증\s*자[^.\n]{0,40}(채\s*무|대\s*출\s*금|근\s*저\s*당)[^.\n]{0,20}부\s*담\s*(?:한\s*다|하\s*기\s*로)(?![^.\n]{0,25}(아님|아니|없음|않))/.test(tt))) { r.부담부 = true; p.부담부추가 = true; }
+  // [2026.10.23 ㄷ7] 부정 문구 확인은 줄을 넘어가도("채무 인수 ⏎ 없음") — 표 서식 계약서의 칸 이름과 값은 다른 줄에 온다(가상증여4)
+  if (!r.부담부 && (/(채\s*무|대\s*출\s*금|근\s*저\s*당)[^.\n]{0,20}(승\s*계|인\s*수)(?![^.]{0,25}(아님|아니|없음|않))/.test(tt) || /수\s*증\s*자[^.\n]{0,40}(채\s*무|대\s*출\s*금|근\s*저\s*당)[^.\n]{0,20}부\s*담\s*(?:한\s*다|하\s*기\s*로)(?![^.]{0,25}(아님|아니|없음|않))/.test(tt))) { r.부담부 = true; p.부담부추가 = true; }
   if (!Object.keys(p).length) return '';
   r.부동산표시 = p;
   return '\n\n**부동산의 표시(계약서 기재 그대로 — 등기부와 대조)**\n\n' + docMdTable_([['소재지(1동의 건물)', p.소재지], ['건물 번호', p.건물번호], ['고유번호', p.고유번호], ['전유면적', p.전유면적 ? p.전유면적 + '㎡' : ''], ['대지권 비율', p.대지권비율]])
@@ -41580,6 +41615,15 @@ function docGiftContractParse_(text) {
     if (sigD.length) { r.계약일 = sigD[sigD.length - 1].v; r.계약일출처 = '서명란 앞 작성일'; }
     else if (uniqD.length === 1) { r.계약일 = uniqD[0]; r.계약일출처 = '본문의 유일한 날짜'; }
   }
+  // [2026.10.23 ㄷ7] ① "증여일 ⏎ 2026년 9월 10일 (소유권이전등기는 …)" 칸 — 표 서식 계약서의 증여일 칸은 계약일(증여시기)과 같다. ② 본문 끝 날짜 줄 바로 아래에 당사자 표
+  //  머리(구분·주소·주민등록번호·성명·서명)가 오고 그다음 증여자(갑)/수증자(을)이면 그 날짜가 작성일(매매계약서 ㄴ4와 같은 규칙). 예전엔 날짜가 여럿이라 "계약일 못 읽음"이 됐다(가상증여4)
+  if (!r.계약일) { var gd0 = /증\s*여\s*일\s*(?:자)?\s*[:：]?\s*\n?\s*(20\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(t); if (gd0) { r.계약일 = ymd(gd0[1], gd0[2], gd0[3]); r.계약일출처 = '증여일 칸'; if (!r.증여시기) r.증여시기 = r.계약일; } }
+  if (!r.계약일) {
+    var hdrG = /^[\s.,:：|()（）]*(?:(?:구\s*분|주\s*소|주\s*민\s*등\s*록\s*번\s*호|성\s*명|서\s*명|날\s*인|인\s*적\s*사\s*항|전\s*화|생\s*년\s*월\s*일|연\s*락\s*처|\(인\))[\s.,:：|()（）/]*){0,8}(?:증\s*여\s*[자인]|수\s*증\s*[자인]|갑\s*\)|을\s*\))/;
+    var dre2 = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g, dm2, sg2 = [];
+    while ((dm2 = dre2.exec(t))) { if (hdrG.test(t.slice(dm2.index + dm2[0].length, dm2.index + dm2[0].length + 120))) sg2.push(ymd(dm2[1], dm2[2], dm2[3])); }
+    if (sg2.length) { r.계약일 = sg2[sg2.length - 1]; r.계약일출처 = '본문 끝 날짜 줄(당사자 표 바로 위)'; }
+  }
   if (r.계약일 && r.검인일 === r.계약일) delete r.검인일;
   // [2026.10.17 증여일] 검인은 계약 뒤에 받는다(부동산등기특별조치법 §3) — 계약일 앞이거나 60일 넘게 뒤면 도장 날짜 판독이 틀린 것(고객D(고객D 납세자): 도장 "2025.04.27" ↔ 계약일 2026-04-25) — 후보로 쓰지 않고 참고만
   if (r.계약일 && r.검인일) { var gdd = (new Date(r.검인일) - new Date(r.계약일)) / 864e5; if (!(gdd >= 0 && gdd <= 60)) { r.비고 = (r.비고 ? r.비고 + ' / ' : '') + '검인 도장 날짜 ' + r.검인일 + '은(는) 계약일 ' + r.계약일 + '과 맞지 않아 판독 오류로 보고 증여일 후보에서 뺌'; r.검인일판독의심 = r.검인일; delete r.검인일; } }
@@ -41591,7 +41635,8 @@ function docGiftContractParse_(text) {
   else if (/현\s*금\s*으로\s*지급|직접\s*지급/.test(t)) r.방법 = '현금 지급';
   else if (/소유권\s*이전\s*등기/.test(t)) r.방법 = '소유권이전등기';
   // [2026.10.15] "채무인수형 부담부증여가 아님을 확인"처럼 부정하는 문구는 부담부가 아님(실사건: 승계 보증금을 뺀 차액만 현금 증여)
-  r.부담부 = /(채\s*무\s*(?:를|을)?\s*인\s*수|부\s*담\s*부\s*증\s*여|보증금[\s\S]{0,20}(승계|인수))(?![^.\n]{0,25}(아님|아니|없음|않))/.test(t.replace(/승계\s*임대\s*보증금을?\s*제외[^.\n]*/g, ''));
+  // [2026.10.23 ㄷ7] 부정 문구는 줄을 넘어가도 본다 — 표 서식의 "채무 인수 ⏎ 없음 (…)"처럼 칸 이름과 값이 다른 줄에 온다(가상증여4: "채무 인수: 없음"을 부담부로 읽어 인수채무 질문·부담부증여 쟁점이 생김 — 결함 B1·C). 마침표 전까지 25자 안이면 같은 칸
+  r.부담부 = /(채\s*무\s*(?:를|을)?\s*인\s*수|부\s*담\s*부\s*증\s*여|보증금[\s\S]{0,20}(승계|인수))(?![^.]{0,25}(아님|아니|없음|않))/.test(t.replace(/승계\s*임대\s*보증금을?\s*제외[^.\n]*/g, ''));
   // [2026.10.17 증여일] 부담부증여면 인수하는 채무를 종류별 항목으로(임대보증금·근저당 채무·대출금) — 금액이 계약서에 있을 때만, 없으면 종류만 남겨 서류(임대차계약서·부채증명)와 대조
   if (r.부담부) {
     var debts = [], dseen = {};
@@ -42596,7 +42641,41 @@ function docInhDivisionParse_(text) {
   }
   // [2026.10.17] "부동산의 표시: 경기도 의왕시 오전동 00번지 … 000동 0000호"(한 줄 표시, 고객C) — 별지 목록이 아니면 그 줄이 상속재산
   if (!r.부동산.length) { var pl = /부\s*동\s*산\s*(?:의\s*)?표\s*시\s*[:：]\s*([^\n]+)/.exec(t); if (pl && !/별\s*지/.test(pl[1]) && /[가-힣]+(?:시|군|구)\s/.test(pl[1])) { var pj = /\s(전|답|대|임야|과수원|잡종지|목장용지|공장용지|창고용지|주차장|도로|묘지)\s+([\d.,]+)\s*(?:m2|㎡)/.exec(pl[1]); r.부동산.push({ 소재지: (pj ? pl[1].slice(0, pj.index) : pl[1]).replace(/\s+/g, ' ').trim(), 지목: /\d\s*호/.test(pl[1]) ? '집합건물' : pj ? pj[1] : '', 면적: pj ? Number(pj[2].replace(/,/g, '')) : null }); } }
+  // [2026.10.23 ㄷ5] 머리글 "피상속인 ○○○(주민번호, YYYY년 M월 D일 사망)의 공동상속인 …" — 괄호 안 사망일. 공증·법무사 협의서 서식에 흔한 머리 문장
+  if (!r.개시일) { m = /\(\s*[^)]{0,40}?((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*사\s*망\s*\)/.exec(t); if (m) r.개시일 = docYmdKr_(m[1], m[2], m[3]); }
+  if (!r.피상속인) { m = /피\s*상\s*속\s*인\s*([가-힣]{2,4})\s*\(/.exec(t); if (m) r.피상속인 = m[1]; }
+  if (!r.상속인.length) { m = /공\s*동\s*상\s*속\s*인\s*((?:[가-힣]{2,4}\s*[,，]\s*){1,8}[가-힣]{2,4})\s*(?:은|는|이|가)/.exec(t.replace(/\s+/g, ' ')); if (m) m[1].split(/[,，]/).map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (n) { r.상속인.push({ 이름: n, 주민번호: '' }); }); }
   r.귀속 = docInhDivShares_(t, r);
+  // [2026.10.23 ㄷ5] 표 꼴 협의서("번호 / 재산 / 상속인 및 지분" 세 칸, 글자층 PDF는 칸이 줄마다) — 번호 줄부터 다음 번호 줄 전까지가 한 재산. 상속인 칸("김영훈 단독", "김도현 1/2, 김서연 1/2",
+  //  "수익자 김영훈", "김영훈 승계")에서 상속인·지분을, 그 앞 줄들에서 재산 표시를 읽는다. 종류는 재산 글(주소·동호 → 집합건물/건물/토지, 예금·보험금·퇴직금·대출). 예전엔 문장 꼴("…은 ○○의 소유로 한다")만 읽어
+  //  표 협의서는 귀속이 비고 "오피스텔이 협의서에 없음"처럼 틀린 질문이 났다(가상상속4 — 결함 B10). 분할 귀속은 배우자상속공제(§19 실제 상속분)·재산 대조의 근거
+  if (!r.귀속.length) {
+    var heirsN = r.상속인.map(function (h) { return h.이름; }).filter(Boolean), Lz = t.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    var hdrAt = Lz.findIndex(function (s) { return /^(?:번\s*호|재\s*산|상\s*속\s*인)/.test(s); });
+    var blocks = [], cur = null;
+    for (var li = Math.max(0, hdrAt); li < Lz.length; li++) {
+      var s0 = Lz[li];
+      if (/^\d{1,2}$/.test(s0) && (!cur || Number(s0) === cur.n + 1)) { if (cur) blocks.push(cur); cur = { n: Number(s0), lines: [] }; continue; }
+      if (!cur) continue;
+      if (/^(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일$|^상\s*속\s*인\s*\(|^위\s*협\s*의|^\(인감\)/.test(s0)) break;
+      cur.lines.push(s0);
+    }
+    if (cur) blocks.push(cur);
+    var heirRe = heirsN.length ? new RegExp('(' + heirsN.map(function (n) { return n.split('').join('\\s*'); }).join('|') + ')') : null;
+    blocks.forEach(function (b) {
+      if (!heirRe) return;
+      var hi = -1; for (var q = b.lines.length - 1; q >= 0; q--) if (heirRe.test(b.lines[q]) && /단독|지분|\d+\s*\/\s*\d+|분의|수익자|승계|상속|각/.test(b.lines[q]) || (heirRe.test(b.lines[q]) && q === b.lines.length - 1)) { hi = q; break; }
+      if (hi < 0) return;
+      var prop = b.lines.slice(0, hi).join(' ').replace(/\s+/g, ' ').trim(), own = b.lines.slice(hi).join(' ').replace(/\s+/g, ' ');
+      if (!prop) return;
+      var kind = /오\s*피\s*스\s*텔|\d\s*동\s*\d+\s*호|\d+\s*호\s*\(|아파트|제\s*\d+\s*호/.test(prop) ? '집합건물' : /건\s*물|주\s*택/.test(prop) && /(시|군|구)\s/.test(prop) ? '건물' : /^(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(prop) ? '토지' : /예\s*금|적\s*금|채\s*권/.test(prop) ? '예금' : /보\s*험\s*금/.test(prop) ? '보험금' : /퇴\s*직\s*금/.test(prop) ? '퇴직금' : /대\s*출|채\s*무|차\s*입/.test(prop) ? '채무' : '기타';
+      var rows = [], hm2, hre = new RegExp('(' + heirsN.map(function (n) { return n.split('').join('\\s*'); }).join('|') + ')\\s*(?:\\(\\s*[가-힣]{1,6}\\s*\\))?\\s*(단\\s*독|(\\d+)\\s*/\\s*(\\d+)|(\\d+)\\s*분\\s*의\\s*(\\d+)|승\\s*계|수\\s*익\\s*자)?', 'g');
+      while ((hm2 = hre.exec(own))) { var sh = hm2[2] ? (hm2[3] ? hm2[3] + '/' + hm2[4] : hm2[5] ? hm2[6] + '/' + hm2[5] : /단\s*독/.test(hm2[2]) ? '1/1' : hm2[2].replace(/\s+/g, '')) : (/수\s*익\s*자/.test(own) ? '1/1' : ''); rows.push({ 재산: prop, 종류: kind, 상속인: hm2[1].replace(/\s+/g, ''), 지분: sh || '1/1', 표: true }); }
+      if (!rows.length) return;
+      rows.forEach(function (x) { r.귀속.push(x); });
+      if (/^(집합건물|건물|토지)$/.test(kind) && !r.부동산.some(function (p) { return p.소재지 === prop; })) { var am2 = /((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^(]*?(?:\d+\s*호|\d+(?:-\d+)?))/.exec(prop), ar2 = /전\s*용\s*([\d.]+)\s*(?:㎡|m2)/.exec(prop); r.부동산.push({ 소재지: am2 ? am2[1].replace(/\s+/g, ' ').trim() : prop, 지목: kind, 면적: ar2 ? Number(ar2[1]) : null }); }
+    });
+  }
   var nm = /([가-힣]{2,4})\s*은\s*아래\s*모든\s*상속재산에\s*대하여\s*상속을\s*받지\s*않/.exec(t); if (nm) r.미취득.push(nm[1]);
   var wd = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*\n\s*공\s*동\s*상\s*속\s*인/.exec(t); if (wd) r.작성일 = docYmdKr_(wd[1], wd[2], wd[3]);
   if (!r.개시일) r.경고.push('상속개시일(사망일)을 읽지 못함');
@@ -43026,6 +43105,21 @@ function docRealPriceParse_(text) {
   var t = String(text || '');
   if (!/실\s*거\s*래\s*가\s*공\s*개|거래\s*금액\s*\(\s*만\s*원\s*\)/.test(t)) return null;
   var r = { 종류: '실거래가(매매사례)', 단지: '', 소재지: '', 연도: null, 사례: [], 경고: [] };
+  // [2026.10.23 ㄷ1] 국토부 실거래가 공개시스템 "조회 결과" 표 — 칸(동·호·전용면적·계약일·거래금액·층·거래유형)이 줄마다 하나씩 나오는 글자층 PDF·화면 출력. 계약일(YYYY-MM-DD) 줄을 닻으로
+  //  바로 앞 줄 면적, 그 앞 호·동, 뒤 줄 금액·층·거래유형을 한 사례로 읽는다(머리의 "거래금액(원/만원)"이 단위). 예전 규칙은 출력물의 "면적 일 해제 … 금액(만원) 층" 한 줄 꼴만 읽어
+  //  이 표는 0건이었다(가상상속4·증여4 — 결함 B2). 단지·소재지는 머리 "— 단지명(시 구 동)". 같은 공개시스템 자료라 연도·지역이 달라도 칸 순서는 같다
+  (function () {
+    var hm0 = /[—–\-]\s*([가-힣A-Za-z0-9]{2,20})\s*\(\s*([가-힣]+(?:시|군|구)(?:\s+[가-힣]+(?:시|군|구))?\s+[가-힣0-9]+(?:동|읍|면|리|가))\s*\)/.exec(t.slice(0, 500));
+    if (hm0) { r.단지 = hm0[1]; r.소재지 = hm0[2]; }
+    var man = /거\s*래\s*금\s*액\s*\(\s*만\s*원\s*\)/.test(t), L = t.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    for (var i = 1; i + 1 < L.length; i++) {
+      var dm = /^((?:19|20)\d{2})-(\d{2})-(\d{2})$/.exec(L[i]); if (!dm) continue;
+      var ar = /^(\d{1,3}(?:\.\d{1,4})?)$/.exec(L[i - 1]), am = /^(\d{1,3}(?:,\d{3})+)\s*원?$/.exec(L[i + 1]); if (!ar || !am) continue;
+      var ho = /^(\d{1,5})호$/.exec(L[i - 2] || ''), dong = /^(\d{1,4})동$/.exec(L[i - 3] || ''), fl0 = /^(-?\d{1,3})$/.exec(L[i + 2] || '');
+      r.사례.push({ 면적: Number(ar[1]), 계약일: dm[1] + '-' + dm[2] + '-' + dm[3], 일: Number(dm[3]), 해제: false, 등기일: '', 금액: Number(am[1].replace(/,/g, '')) * (man ? 10000 : 1), 동: dong ? dong[1] : '', 호: ho ? ho[1] : '', 층: fl0 ? Number(fl0[1]) : null, 직거래: /직\s*거\s*래/.test(L[i + 3] || ''), 월확인필요: false });
+    }
+    if (r.사례.length && !r.연도) r.연도 = Number(r.사례[0].계약일.slice(0, 4));
+  })();
   // [2026.10.17 묶음11] 시·구·동 3단 주소("안양시 동안구 호계동 000")도 — 예전 식은 2단만 받아 단지·소재지가 빈칸이라 증여 부동산과 소재지 대조를 못 했다(고객D)
   var m = /\[\s*아파트\s*\]\s*([^\s]+(?:\([^)]*\))?)\s*([가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?[가-힣0-9]+(?:동|읍|면|리|가)\s*\d+(?:-\d+)?)/.exec(t);
   if (m) { r.단지 = m[1]; r.소재지 = m[2]; }
@@ -43035,7 +43129,7 @@ function docRealPriceParse_(text) {
   //  계약월은 월 머리("07월")와 표 머리("발생일 등기일자 거래금액")의 순서로 정하되, 쪽이 바뀌며 같은 월 머리가 두 번 찍힌 것을 한 번으로 본다
   //  (고객C 84.9681: 07월이 두 번 읽혀 06월 이후 거래가 모두 한 달씩 늦게 붙었다 — 계약 2025-07-06인데 등기 2025-07-03처럼 등기가 계약보다 앞섬).
   //  정한 계약일은 등기일·해제일보다 늦을 수 없다는 것으로 검산하고, 맞지 않거나 순서로 못 정하면 계약일을 비우고 가능한 달(월후보)만 남긴다(지어내지 않음).
-  var rpNew = docRealPriceRows_(t, r);
+  var rpNew = r.사례.length ? null : docRealPriceRows_(t, r); // [2026.10.23 ㄷ1] 조회 결과 표로 이미 읽었으면 출력물 꼴 읽기는 건너뜀
   if (rpNew) return rpNew;
   var heads = t.split(/발생일\s*등기일자\s*거래금액/);
   var months = (t.match(/(?:^|\n)\s*(\d{2})\s*월/g) || []).map(function (x) { return Number(x.replace(/[^\d]/g, '')); });
@@ -43299,11 +43393,21 @@ function docNicheContractParse_(text) {
     if (r.금액후보.indexOf(v) === -1) r.금액후보.push(v);
   }
   r.금액후보 = r.금액후보.filter(function (v) { return r.관리비.indexOf(v) === -1; });
+  // [2026.10.23 ㄷ4] 숫자 금액 꼴("6,000,000원") 계약서·영수증 — "사용료·관리비 합계 ⏎ 6,000,000원 (사용료 4,800,000 + 15년 관리비 1,200,000)". 합계·사용료는 사용대금 후보, 관리비는 관리비 칸.
+  //  예전엔 "○○만원" 한글 단위 금액만 읽어 숫자 금액 서식에서 "사용대금을 읽지 못함"이 됐다(가상상속4 — 결함 B9). 봉안시설 사용료 한도 5백만원(상증령 §9②)은 부르는 쪽이 적용
+  if (!r.금액후보.length) {
+    var fl0 = t.replace(/\s+/g, ' '), nm0;
+    var tot0 = /(?:합\s*계|총\s*액|사\s*용\s*(?:대\s*금|료))\s*[:：]?\s*(\d{1,3}(?:,\d{3})+)\s*원/.exec(fl0); if (tot0) r.금액후보.push(Number(tot0[1].replace(/,/g, '')));
+    var use0 = /사\s*용\s*료\s*[:：]?\s*(\d{1,3}(?:,\d{3})+)/.exec(fl0); if (use0) { nm0 = Number(use0[1].replace(/,/g, '')); if (r.금액후보.indexOf(nm0) === -1) r.금액후보.push(nm0); r.사용료 = nm0; }
+    var mg0 = /관\s*리\s*비\s*[:：]?\s*(\d{1,3}(?:,\d{3})+)/.exec(fl0); if (mg0) { nm0 = Number(mg0[1].replace(/,/g, '')); if (r.관리비.indexOf(nm0) === -1) r.관리비.push(nm0); }
+  }
   r.부부단 = /부\s*부/.test(t);
   // 홈택스 사용내역·영수증의 납부 줄(날짜 + 금액) — 계약 사용대금과 같은 금액이면 납부 증빙
   r.납부 = [];
   var pr = /(20\d{2})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})[^\d]{0,60}?([\d]{1,3}(?:,\d{3})+)\s*원/g, py;
   while ((py = pr.exec(t))) r.납부.push({ 일자: docYmdKr_(py[1], py[2], py[3]), 금액: Number(py[4].replace(/,/g, '')) });
+  // [2026.10.23 ㄷ4] "납부 ⏎ 2026-08-16 계좌이체 영수"처럼 날짜 뒤 금액 없이 영수 문구만 있으면 계약 금액(합계)을 그날 낸 것 — 납부 증빙(영수증 겸 계약서)
+  if (!r.납부.length && r.금액후보.length) { var pe = /납\s*부\s*[:：]?\s*\n?\s*(20\d{2})[-.]\s*(\d{1,2})[-.]\s*(\d{1,2})[^\n]{0,30}(?:이\s*체|영\s*수|납\s*부|결\s*제|입\s*금)/.exec(t); if (pe) r.납부.push({ 일자: docYmdKr_(pe[1], pe[2], pe[3]), 금액: Math.max.apply(null, r.금액후보), 영수문구: true }); }
   var dr = /소\s*천\s*일\s*자\s*(20\d{2})[.\-]\s*(\d{1,2})[.\-]\s*(\d{1,2})/g;
   while ((x = dr.exec(t))) r.고인.push(docYmdKr_(x[1], x[2], x[3]));
   r.경고.push('봉안시설 비용은 증빙 금액 기준 5백만원 한도(상증령 §9②)' + (r.부부단 ? ' — 부부단이라 피상속인 몫(전부 또는 일부)과 관리비 포함 여부 판단 필요' : ''));
@@ -45469,12 +45573,27 @@ function docBldStdCalcParse_(text) {
 }
 function docOfficetelStdParse_(text) {
   var t = String(text || '');
-  if (!/기\s*준\s*시\s*가\s*\(\s*상\s*업\s*용\s*건\s*물\s*\/?\s*오\s*피\s*스\s*텔/.test(t)) return null;
+  // [2026.10.23 ㄷ4] 홈택스 조회 화면 제목이 "상업용 건물·오피스텔 기준시가"(가운뎃점)로도 나온다 — 어느 쪽이든 같은 국세청 고시(상증법 §61①3호 오피스텔·상업용 건물 기준시가)
+  if (!/기\s*준\s*시\s*가\s*\(\s*상\s*업\s*용\s*건\s*물\s*\/?\s*오\s*피\s*스\s*텔|상\s*업\s*용\s*건\s*물\s*[·ㆍ/,및]\s*오\s*피\s*스\s*텔\s*기\s*준\s*시\s*가|오\s*피\s*스\s*텔\s*기\s*준\s*시\s*가\s*조\s*회/.test(t)) return null;
   var r = { 종류: '기준시가(상업용 건물/오피스텔)', 가격: [], 경고: [] };
   var m = /상\s*세\s*주\s*소\s*\n+\s*([^\n]{6,80})\n+\s*([^\n]{2,40}호)/.exec(t.replace(/입\s*력\s*주\s*소\s*\n+\s*상\s*세\s*주\s*소/, '상세주소'));
   if (m) r.소재지 = (m[1] + ' ' + m[2]).replace(/\s+/g, ' ').trim();
   var re = /((?:19|20)\d{2})\.01\.01\s+(\d{1,3}(?:,\d{3})+)\s+(\d{1,4}(?:\.\d+)?)/g, x;
   while ((x = re.exec(t))) r.가격.push({ 연도: Number(x[1]), 기준일: x[1] + '-01-01', 단가: ppNum_(x[2]), 면적: Number(x[3]), 가격: Math.floor(ppNum_(x[2]) * Number(x[3])), jan: true });
+  // [2026.10.23 ㄷ4] 호 단위 조회 결과(건물명·호·소재지·전용면적·고시 기준일·㎡당 기준시가·기준시가 합계 — 칸이 줄마다 하나씩) — 합계 칸이 있으면 그것이 그 호의 기준시가(건물+부속토지, 홈택스 안내문).
+  //  예전엔 연도별 표("YYYY.01.01 단가 면적") 꼴만 읽어 호 단위 결과가 종류 미정이 됐고 오피스텔에 아파트 공동주택가격이 붙었다(가상상속4 — 결함 B4)
+  if (!r.가격.length) {
+    var fl = t.replace(/\s+/g, ' ');
+    var tm = /기\s*준\s*시\s*가\s*합\s*계\s*\(?\s*원?\s*\)?\s*[:：]?[^\d]{0,40}?(\d{1,3}(?:,\d{3}){2,})/.exec(fl) || /(\d{1,3}(?:,\d{3})+)\s+(\d{1,3}(?:,\d{3}){2,})(?![\d,])/.exec(fl);
+    var ym = /((?:19|20)\d{2})\s*[-.]\s*0?1\s*[-.]?\s*0?1(?![\d])/.exec(fl) || /고\s*시[^\d]{0,30}((?:19|20)\d{2})/.exec(fl);
+    var um = /(?:㎡|m2|m²)\s*당\s*기\s*준\s*시\s*가[^\d]{0,30}?(\d{1,3}(?:,\d{3})+)/.exec(fl), am = /전\s*용\s*면\s*적[^\d]{0,30}?(\d{1,4}(?:\.\d+)?)/.exec(fl);
+    var tot = tm ? ppNum_(tm[tm.length - 1]) : 0, unit = um ? ppNum_(um[1]) : (tm && tm.length > 2 ? ppNum_(tm[1]) : 0), area = am ? Number(am[1]) : 0;
+    if (tot && ym) { var row = { 연도: Number(ym[1]), 기준일: ym[1] + '-01-01', 가격: tot, jan: true, 호단위: true }; if (unit) row.단가 = unit; if (area) row.면적 = area; if (unit && area && Math.abs(Math.floor(unit * area) - tot) > tot * 0.02) row.확인필요 = true; r.가격.push(row); }
+    if (!r.소재지) {
+      var lm = /([가-힣A-Za-z0-9]{2,20})\s+(\d{1,5})\s+((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[가-힣]*\s+[가-힣]+(?:시|군|구)\s+[가-힣0-9]+(?:동|읍|면|리|가))\s*(?:\(\s*[가-힣]*\s*\))?\s*(?:호\s*)?(\d{1,5}(?:-\d{1,5})?)?/.exec(fl);
+      if (lm) r.소재지 = (lm[3] + (lm[4] ? ' ' + lm[4] : '') + ' ' + lm[1] + ' ' + lm[2] + '호').replace(/\s+/g, ' ').trim();
+    }
+  }
   if (!r.가격.length) return null;
   var md = '### ' + r.종류 + (r.소재지 ? ' · ' + r.소재지 : '') + '\n\n| 고시일 | ㎡당 | 면적 | 기준시가 |\n|---|---|---|---|\n' + r.가격.map(function (q) { return '| ' + q.기준일 + ' | ' + q.단가.toLocaleString('ko-KR') + ' | ' + q.면적 + ' | ' + q.가격.toLocaleString('ko-KR') + ' |'; }).join('\n');
   return { type: 'pubprice', label: r.종류, result: r, md: md };
@@ -45523,7 +45642,12 @@ function ppParse_(text) {
     while ((p = pr.exec(body))) prices.push({ 면적: ppNum_(p[1]), 가격: ppNum_(p[2]), at: p.index });
     var uniqD = []; dates.forEach(function (x) { if (!uniqD.some(function (u) { return u.d === x.d; })) uniqD.push(x); });
     var sorted = uniqD.slice().sort(function (a2, b2) { return a2.d < b2.d ? 1 : -1; });
-    if (sorted.length === prices.length) {
+    // [2026.10.23 ㄷ2] 기준일 바로 뒤(다음 날짜 전, 70자 안)에 가격이 붙어 있으면 그 짝을 그대로 쓴다 — 표가 오래된 연도부터든 최근부터든 상관없음(확인서는 연도 오름차순, 알리미 출력물은 내림차순).
+    //  예전엔 날짜를 내림차순으로 정렬해 글자 순서의 가격과 번호로만 짝지어, 2024→2026 순서의 시·군·구 확인서에서 2024년 값이 2026년 값이 됐다(가상상속4 980M→870M, 가상증여4 540M→505M — 결함 B3). 모든 날짜에 짝이 있고 겹치지 않을 때만
+    var adj = uniqD.map(function (x) { var nxAt = dates.filter(function (y) { return y.at > x.at; }).map(function (y) { return y.at; })[0] || Infinity; return prices.filter(function (pp) { return pp.at >= x.at && pp.at - x.end < 70 && pp.at < nxAt; })[0] || null; }); // 면적 칸이 없으면 가격 토큰이 날짜 끝 "01.01"과 겹쳐 시작하므로 날짜 시작 이후면 같은 줄
+    if (uniqD.length && adj.every(Boolean) && adj.filter(function (p0, i0, a0) { return a0.indexOf(p0) === i0; }).length === adj.length) {
+      uniqD.forEach(function (x, i) { var row0 = { 연도: x.y, 기준일: x.d, 가격: adj[i].가격 }; if (adj[i].면적 >= 10) row0.전용면적 = adj[i].면적; r.가격.push(row0); }); // 면적 칸 없이 "01.01 980,000,000"로 읽힌 1.01은 면적이 아님
+    } else if (sorted.length === prices.length) {
       // 같은 줄 검산: 날짜 바로 뒤(70자 안)에 오는 가격은 그 날짜의 가격이어야 한다
       var ok = true;
       dates.forEach(function (x) {
@@ -47568,6 +47692,8 @@ function ihDetect_(text) {
   if (/제\s*적\s*등\s*본|제적\s*초본/.test(t)) return 'death';
   // 금융거래확인서(예금·대출 함께)는 잔고증명 규칙(balance)이 읽으므로 여기서는 부채증명원·대출잔액증명만
   if (/부\s*채\s*증\s*명|대\s*출\s*잔\s*액\s*증\s*명|채\s*무\s*(?:잔액\s*)?확\s*인\s*서/.test(t)) return 'debtcert';
+  // [2026.10.23 ㄷ4] 사망퇴직금 지급 명세서·확인서(회사 발행) — 간주상속재산(상증법 §10: 피상속인에게 지급될 퇴직금·퇴직수당 등으로 사망으로 지급되는 것). 퇴직소득 원천징수영수증(whDetect 'retire')과 다름
+  if (/퇴\s*직\s*(?:금|급\s*여)[^\n]{0,24}(?:지\s*급\s*)?(?:명\s*세|확\s*인|내\s*역)\s*서?/.test(t.slice(0, 200)) && !/원\s*천\s*징\s*수\s*영\s*수\s*증|지\s*급\s*명\s*세\s*서\s*\(\s*소\s*득/.test(t.slice(0, 300))) return 'retirepay';
   // [2026.10.16] 구비서류 목록(체크리스트)은 서류 이름이 줄줄이 나와 엉뚱한 종류(자동차등록증)로 오인됐다 — 목록이면 종류 없음
   if (/구\s*비\s*서\s*류|제\s*출\s*서\s*류\s*목\s*록|준\s*비\s*서\s*류|필\s*요\s*서\s*류/.test(t.slice(0, 120))) return '';
   if (/자\s*동\s*차\s*등\s*록\s*(?:증|원\s*부)/.test(t)) return 'carreg';
@@ -47634,6 +47760,32 @@ function ihParseQuery_(text) {
     if (j < L.length && /^(?:19|20)\d{2}-\d{2}-\d{2}$|^0000-00-00$/.test(L[j]) && L[j] !== '0000-00-00') due = L[j];
     var kind = L[k].replace(/\s+/g, '');
     r.행.push({ 기관: org, 종류: kind, 점포: branch, 금액: amt, 상환일: due, 채무: /대출|카드금액|보증|할부|리스/.test(kind) });
+  }
+  // [2026.10.23 ㄷ3] 안심상속 원스톱서비스 통합 결과(예금·보험·대출이 한 장, 행안부 "사망자 재산조회 통합처리" 통보서) — "1. 예금 / 2. 보험 / 3. 대출(채무)" 절로 나눠
+  //  예금은 금융기관·상품·계좌번호·잔액·미수이자 한 줄 = 한 계좌(미수이자는 따로 한 행 — 상속재산 §7, 원천세 차감 전 금액), 보험은 기관 + "사망보험금 ○원", 대출은 기관·종류·원금잔액·미납이자.
+  //  기관 이름이 칸 폭 때문에 줄 끝에서 끊겨도("삼성생 ⏎ 명") 붙여 읽는다. 예전엔 은행연합회 개별 표 꼴만 읽어 통합 통보서는 "표를 읽지 못함"이 되고 예금 3건·보험·대출이 모두 칸에 못 갔다(가상상속4 — 결함 B5)
+  if (!r.행.length) {
+    var secOf = function (re) { var i0 = t.search(re); if (i0 < 0) return ''; var rest = t.slice(i0); var nx = rest.slice(10).search(/\n\s*\d\s*\.\s*[가-힣]/); return nx >= 0 ? rest.slice(0, nx + 10) : rest; };
+    var ORG0 = '([가-힣]{1,6}\\s?(?:은\\s?행|농\\s?협|수\\s?협|신\\s?협|저축은행|금\\s?고|증\\s?권|생\\s?명|화\\s?재|손해보험|보\\s?험|카\\s?드|캐피탈|우체국))';
+    var dep0 = secOf(/\n\s*\d\s*\.\s*예\s*금/).replace(/\s+/g, ' '), dm2;
+    var depRe = new RegExp(ORG0 + '\\s+([가-힣A-Za-z0-9+]{2,12}(?:예금|적금|신탁|펀드|통장|출자금|예탁금))\\s+([\\d*\\-]{6,30})\\s+(\\d{1,3}(?:,\\d{3})+|0)\\s+(\\d{1,3}(?:,\\d{3})+|0)', 'g');
+    while ((dm2 = depRe.exec(dep0))) {
+      var og0 = dm2[1].replace(/\s+/g, ''), ia0 = ihNum_(dm2[5]) || 0;
+      r.행.push({ 기관: og0, 종류: '예금', 상품: dm2[2], 점포: '', 계좌: dm2[3], 금액: ihNum_(dm2[4]), 상환일: '', 채무: false, 통합결과: true });
+      if (ia0) r.행.push({ 기관: og0, 종류: '미수이자', 상품: dm2[2] + ' 미수이자', 점포: '', 계좌: dm2[3], 금액: ia0, 상환일: '', 채무: false, 통합결과: true });
+    }
+    var ins0 = secOf(/\n\s*\d\s*\.\s*보\s*험/).replace(/\s+/g, ' '), im2, insRe2 = new RegExp(ORG0 + '[^\\d]{0,160}?(사망\\s*보험금|보험금|해약\\s*환급금|만기\\s*보험금)\\s*(\\d{1,3}(?:,\\d{3})+)\\s*원', 'g');
+    while ((im2 = insRe2.exec(ins0))) r.행.push({ 기관: im2[1].replace(/\s+/g, ''), 종류: '보험', 점포: '', 금액: ihNum_(im2[3]), 사유: im2[2].replace(/\s+/g, ''), 상환일: '', 채무: false, 통합결과: true });
+    var loan0 = secOf(/\n\s*\d\s*\.\s*대\s*출/).replace(/\s+/g, ' ');
+    if (loan0) {
+      var lo = new RegExp(ORG0).exec(loan0), lk = /([가-힣A-Za-z0-9]{2,16}대출)/.exec(loan0), amts0 = [], am2, amRe = /(\d{1,3}(?:,\d{3})+)\s*원?/g;
+      while ((am2 = amRe.exec(loan0))) { var v0 = ihNum_(am2[1]); if (v0 >= 10000) amts0.push({ v: v0, at: am2.index, tail: loan0.slice(am2.index, am2.index + 50) }); }
+      var prin = amts0.slice().sort(function (a, b) { return b.v - a.v; })[0], unp = amts0.filter(function (q) { return q !== prin && /이\s*자/.test(q.tail); })[0]; // 가장 큰 금액 = 원금잔액, 그 밖에 "이자" 설명이 붙은 금액 = 미납이자
+      if (prin) { var lrow = { 기관: lo ? lo[1].replace(/\s+/g, '') : '', 종류: lk ? lk[1] : '대출', 점포: '', 금액: prin.v, 상환일: '', 채무: true, 통합결과: true }; if (unp) lrow.미납이자 = unp.v; r.행.push(lrow); }
+    }
+    if (!r.대상이름) { var dn0 = /피\s*상\s*속\s*인\s*[:：]?\s*([가-힣]{2,5})\s*\(?\s*\d{6}/.exec(t); if (dn0) r.대상이름 = dn0[1]; }
+    if (!r.조사기준일) { var cb1 = /조\s*회\s*기\s*준\s*일\s*[:：]?\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t); if (cb1) r.조사기준일 = cb1[1]; }
+    if (r.행.length) r.통합결과 = true;
   }
   // 보험협회형 표: 상품명 줄 다음에 증권번호·계약관계(계약자/피보험자/수익자)·기간
   var insRe = /\n\s*([A-Z0-9]{8,20})\s*\n(?:[^\n]*\n){0,2}?\s*(계약자|피보험자|수익자)\s*\n\s*((?:19|20)\d{2}-\d{2}-\d{2})\s*\n\s*((?:19|20)\d{2}-\d{2}-\d{2})/g, im;
@@ -47765,6 +47917,14 @@ function ihParseInsurance_(text) {
   if (!r.보험가입금액) r.보험가입금액 = money(/보험\s*가입\s*금액\s*[:：]?\s*￦?\s*([\d,]{3,})/);
   if (!r.보험료) r.보험료 = money(/(?:^|[^주])보험료\s*[:：]\s*([\d,.]{3,})/);
   r.지급액 = money(/(?:실\s*지급\s*액|지급\s*계|기\s*지급\s*액)\s*[:：]?\s*\n?\s*([\d,.]{3,})/);
+  // [2026.10.23 ㄷ4] 보험금 지급 확인서 꼴 — "지급보험금 ⏎ 사망보험금 200,000,000원"(이름표 다음 줄에 사유 + 금액), "계약자 / 피보험자 ⏎ 윤명자 / 윤명자"(두 칸을 빗금으로 묶은 서식),
+  //  "납입보험료 총액 ⏎ 38,400,000원". 보험사마다 서식이 달라도 지급보험금·계약자·피보험자·수익자·납입보험료 낱말은 같다(가상상속4: 지급액·계약자가 비어 간주상속재산에 못 들어감 — 결함 B6)
+  if (!r.지급액) { m = /지\s*급\s*보\s*험\s*금\s*(?:액)?\s*[:：]?\s*\n?\s*(?:[가-힣]{2,8}\s*)?([\d,]{3,})\s*원/.exec(t); if (m) { r.지급액 = ihNum_(m[1]); var sy = /지\s*급\s*보\s*험\s*금\s*(?:액)?\s*[:：]?\s*\n?\s*([가-힣]{2,8})\s*[\d,]{3,}/.exec(t); if (sy && !r.지급사유) r.지급사유 = sy[1]; } }
+  if (!r.총납입액) { m = /납\s*입\s*(?:보\s*험\s*료\s*)?총\s*액\s*[:：]?\s*\n?\s*([\d,]{3,})\s*원/.exec(t); if (m) r.총납입액 = ihNum_(m[1]); }
+  if ((!r.계약자 || !r.피보험자) && (m = /계\s*약\s*자\s*\/\s*피\s*보\s*험\s*자\s*[:：]?\s*\n?\s*([가-힣]{2,4})\s*\/\s*([가-힣]{2,4})/.exec(t))) { if (!r.계약자) r.계약자 = { 이름: m[1] }; if (!r.피보험자) r.피보험자 = { 이름: m[2] }; }
+  if (!r.수익자) { m = /수\s*익\s*자\s*[:：]?\s*\n?\s*([가-힣]{2,4})\s*(?:\(|\n|$)/.exec(t); if (m) r.수익자 = { 이름: m[1] }; }
+  if (!r.지급일) { m = /지\s*급\s*일\s*[:：]?\s*\n?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2})/.exec(t); if (m) r.지급일 = ihDate_(m[1]); }
+  if (!r.지급사유 && /사\s*망\s*보\s*험\s*금/.test(t)) r.지급사유 = '사망보험금';
   // 같은 금액이 두 번 이상(기지급액·지급계·실지급액) 나오면 확정, 한 번이면 확인필요
   if (r.지급액) { var cnt = (t.replace(/\./g, ',').match(new RegExp(String(r.지급액).replace(/\B(?=(\d{3})+(?!\d))/g, ','), 'g')) || []).length; if (cnt < 2) r.지급액확인필요 = true; }
   if (r.종류 === '보증보험증권') {
@@ -47856,9 +48016,25 @@ function ihParseDebt_(text) {
     if (!tw.과목 && x.과목) tw.과목 = x.과목; if (x.상환기일 && !tw.상환기일) tw.상환기일 = x.상환기일;
     return false;
   });
+  // [2026.10.23 ㄷ4] 계좌번호 칸 없이 "대출원금 잔액 300,000,000원 / 미납이자 ⏎ 450,000원 / 대출종류 ⏎ 주택담보대출"로 적힌 증명서(한 건짜리 잔액 증명) — 이름표 뒤 금액 한 줄씩.
+  //  은행마다 서식이 달라도 "대출원금(잔액)·미납이자·대출종류" 이름표는 같다(가상상속4: 종류는 알아봤는데 행이 비어 채무 3억이 빠짐 — 결함 B7). 미납이자는 개시일 현재 채무(§14①3호)라 따로 적는다
+  if (!r.행.length) {
+    var pm0 = /대\s*출\s*(?:원\s*금\s*)?잔\s*액\s*[:：]?\s*\n?\s*([\d,]{4,})\s*원?/.exec(t) || /원\s*금\s*잔\s*액\s*[:：]?\s*\n?\s*([\d,]{4,})\s*원?/.exec(t);
+    if (pm0) {
+      var row0 = { 과목: ((/대\s*출\s*(?:종\s*류|과\s*목)\s*[:：]?\s*\n?\s*([가-힣A-Za-z0-9]{2,16}대출)/.exec(t) || [])[1] || '대출'), 잔액: ihNum_(pm0[1]) * mulAt(pm0.index), 대출일: '', 상환기일: ((/만\s*기\s*[:：]?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t) || [])[1] || '') };
+      var im0 = /미\s*납\s*이\s*자\s*[:：]?\s*\n?\s*([\d,]{3,})\s*원/.exec(t); if (im0) row0.미납이자 = ihNum_(im0[1]);
+      var dm0 = /(?:^|\n)\s*담\s*보\s*(?:물|물건)?\s*[:：]?\s*\n?\s*([^\n]{6,80})/.exec(t); if (dm0 && !/^대출/.test(dm0[1])) row0.담보 = dm0[1].trim(); // 줄 첫머리 "담보" 칸만("주택담보대출" 낱말 아님)
+      r.행.push(row0);
+      if (!r.기준일) { var bm0 = /기\s*준\s*일\s*[:：]?\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t); if (bm0) r.기준일 = bm0[1]; }
+      if (!r.채무자) { var cm0 = /채\s*무\s*자\s*[:：]?\s*\n?\s*([가-힣]{2,5})\s*(?:\(|\n|$)/.exec(t); if (cm0) r.채무자 = cm0[1]; }
+      if (!r.채무자생년6) { var cb0 = /채\s*무\s*자\s*[:：]?\s*\n?\s*[가-힣]{2,5}\s*\(?\s*(\d{6})\s*-/.exec(t); if (cb0) r.채무자생년6 = cb0[1]; }
+      if (!r.기관) { var km0 = /(?:주식회사\s*)?([가-힣]{2,10}(?:은행|농협|수협|신협|금고|저축은행|캐피탈|카드|보험))/.exec(t); if (km0) r.기관 = km0[1]; }
+    }
+  }
   var sum = r.행.reduce(function (s, x) { return s + (x.잔액 || 0); }, 0);
   if (r.행.length) {
     r.잔액합계 = sum;
+    var unpaid = r.행.reduce(function (s, x) { return s + (x.미납이자 || 0); }, 0); if (unpaid) r.미납이자합계 = unpaid; // [2026.10.23 ㄷ4]
     if (r.총잔액 != null) { if (r.총잔액 === sum) r.검산 = '계좌별 잔액 합 = 총 대출잔액 일치'; else { r.검산 = '불일치'; r.경고.push('계좌별 잔액 합(' + sum.toLocaleString('ko-KR') + ')과 총 대출잔액(' + r.총잔액.toLocaleString('ko-KR') + ')이 다름 — 원문 확인'); } }
   } else r.경고.push('대출 계좌 내역을 읽지 못함 — 원문 확인');
   if (thousand) r.경고.push('금액 단위가 천원인 서식 — 원 단위로 환산해 표시(행별 원문 대조 권장)');
@@ -47872,7 +48048,26 @@ function ihParse_(type, text) {
   if (type === 'insurance') return ihParseInsurance_(text);
   if (type === 'carreg') return ihParseCar_(text);
   if (type === 'debtcert') return ihParseDebt_(text);
+  if (type === 'retirepay') return ihParseRetirePay_(text);
   return null;
+}
+// [2026.10.23 ㄷ4] 퇴직금(사망퇴직) 지급 명세서 — 근로자(피상속인)·회사·퇴직급여 금액·사망퇴직 여부·지급일·수령인. 간주상속재산(§10) 후보로 넘긴다(계산기 간주상속재산 칸 itemType 'retirement').
+//  "퇴직급여 ⏎ 82,500,000원 (퇴직금 78,000,000 + 미지급 급여·연차수당 4,500,000)" — 이름표 다음 줄 첫 금액이 지급액. 회사마다 서식이 달라도 퇴직급여·근로자·지급일 이름표는 같다
+function ihParseRetirePay_(text) {
+  var t = String(text || ''), r = { 종류: '퇴직금 지급 명세서', 경고: [] }, m;
+  m = /(?:회\s*사|사\s*업\s*장|지\s*급\s*자)\s*[:：]?\s*\n?\s*([^\n]{2,40}?)(?:\s*사업자등록번호|\n|$)/.exec(t); if (m) r.회사 = m[1].replace(/\s+/g, ' ').trim();
+  m = /(?:근\s*로\s*자|퇴\s*직\s*자|성\s*명)\s*[:：]?\s*\n?\s*([가-힣]{2,4})\s*(?:\(\s*(\d{6})\s*-)?/.exec(t); if (m) { r.근로자 = m[1]; if (m[2]) r.근로자생년6 = m[2]; }
+  m = /퇴\s*직\s*(?:급\s*여|금)\s*(?:액|총\s*액|합\s*계)?\s*[:：]?\s*\n?\s*([\d,]{4,})\s*원/.exec(t); if (m) r.퇴직급여 = ihNum_(m[1]);
+  var parts = [], pre = /([가-힣·\s]{2,16})\s*([\d,]{4,})(?=\s*[+)]|\s*$)/g, pm0; var inner = /\(([^)]*\+[^)]*)\)/.exec(t.slice(t.search(/퇴\s*직\s*(?:급\s*여|금)/)));
+  if (inner) while ((pm0 = pre.exec(inner[1]))) parts.push({ 항목: pm0[1].trim(), 금액: ihNum_(pm0[2]) });
+  if (parts.length) { r.구성 = parts; var ps = parts.reduce(function (s, p) { return s + (p.금액 || 0); }, 0); r.검산 = r.퇴직급여 && ps === r.퇴직급여 ? '구성 합 = 퇴직급여' : '구성 합 ≠ 퇴직급여'; }
+  r.사망퇴직 = /사\s*망\s*퇴\s*직|퇴\s*직\s*\(\s*사\s*망\s*\)|사\s*망\s*으\s*로/.test(t);
+  m = /(?:퇴\s*직|사\s*망)\s*(?:\(\s*사\s*망\s*\)\s*)?[:：]?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t); if (m) r.퇴직일 = m[1];
+  m = /지\s*급\s*일\s*(?:\/\s*수\s*령\s*인)?\s*[:：]?\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})(?:\s*\/\s*([^\n]{2,30}))?/.exec(t); if (m) { r.지급일 = m[1]; if (m[2]) r.수령인 = m[2].trim(); }
+  if (/퇴\s*직\s*소\s*득\s*세\s*[:：]?\s*\n?\s*(?:해\s*당\s*없\s*음|비\s*과\s*세|0\s*원)/.test(t)) r.퇴직소득세없음 = true;
+  if (!r.퇴직급여) r.경고.push('퇴직급여 금액을 읽지 못함 — 원문 확인');
+  r.경고.push('간주상속재산(상증법 §10): 피상속인의 사망으로 지급되는 퇴직금·퇴직수당·공로금은 상속재산 — 유족연금 등 §10 단서(국민연금법·공무원연금법 등에 따른 유족급여)는 제외');
+  return r;
 }
 
 function ihToMarkdown_(type, r) {
@@ -47898,6 +48093,9 @@ function ihToMarkdown_(type, r) {
   } else if (type === 'insurance') {
     out.push('### ' + r.종류 + (r.상품 ? ' · ' + r.상품 : ''));
     out.push(kv([['증권번호', r.증권번호], ['보증내용', r.보증내용], ['계약자', per(r.계약자)], ['피보험자', per(r.피보험자)], ['수익자', per(r.수익자)], ['계약일', r.계약일], ['만기일', r.만기일], ['계약상태', r.계약상태], ['보험료', won(r.보험료)], ['총납입액', won(r.총납입액)], ['보험가입금액', won(r.보험가입금액)], ['지급사유', r.지급사유], ['지급일', r.지급일], ['지급액', r.지급액 ? won(r.지급액) + (r.지급액확인필요 ? ' ⚠확인필요' : '') : ''], ['보증 세목', r.세목], ['보증 세액', won(r.보증세액)]]));
+  } else if (type === 'retirepay') { // [2026.10.23 ㄷ4]
+    out.push('### ' + r.종류 + (r.회사 ? ' · ' + r.회사 : ''));
+    out.push(kv([['근로자(피상속인)', r.근로자], ['퇴직급여', won(r.퇴직급여)], ['구성', (r.구성 || []).map(function (p) { return p.항목 + ' ' + won(p.금액); }).join(' + ')], ['검산', r.검산], ['사망퇴직', r.사망퇴직 ? '예' : ''], ['퇴직(사망)일', r.퇴직일], ['지급일', r.지급일], ['수령인', r.수령인], ['퇴직소득세', r.퇴직소득세없음 ? '해당 없음(사망퇴직)' : '']]));
   } else if (type === 'carreg') {
     out.push('### ' + r.종류);
     out.push(kv([['등록번호', r.등록번호], ['차종', r.차종], ['차명', r.차명], ['모델연도', r.모델연도], ['차대번호', r.차대번호], ['최초등록일', r.최초등록일], ['용도', r.용도], ['출고가격(부가세 제외)', won(r.출고가격)], ['소유자 생년', r.소유자생년6], ['저당권', r.저당권]]));
