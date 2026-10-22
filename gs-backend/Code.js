@@ -24233,7 +24233,8 @@ function work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, up
   return base + n2;
 }
 
-function work_createCase(params) {
+function work_createCase(params) { return work_createCaseFull_(params); }
+function work_createCase0_(params) {
   return withLock_(8000, function () {
     const sheet = work_getSheet_();
     const col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -24312,7 +24313,7 @@ function work_createCase(params) {
         // 업무유형만으로 이미 고유한 이름(불복 세부유형) → 세목 이름만(마지막 안전망).
         // [2026.09.17] 의뢰서템플릿 파일명이 전부 "의뢰서_" 접두어를 쓰는 규칙으로 바뀌어
         // 후보 이름에도 똑같이 접두어를 붙여야 찾을 수 있다.
-        work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_].map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }));
+        if (!(params.의뢰서 && typeof params.의뢰서 === 'object')) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_].map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }));
       } catch (err) {
         console.log('의뢰서템플릿 적용 중 오류(사건 생성은 계속 진행): ' + err.message);
       }
@@ -24367,6 +24368,16 @@ function work_createCase(params) {
     }
     return result;
   });
+}
+// [2026.10.23 속도 ㅅ4차] 등록 46초 — 화면이 사건 만들기 → 의뢰서 저장 → 사건개요 채우기를 서버 세 번으로 나눠 불렀다(호출마다 바닥 3~5초 + 시트 다시 읽기).
+//  이제 한 호출(work_create_case에 의뢰서·사건개요를 같이)로 — 사건 행을 만든 뒤(잠금 밖에서) 의뢰서 파일과 사건개요를 이어서 쓴다. 의뢰서가 오면 템플릿 원문 사본(의뢰서_양도신고.md)은 만들지 않는다(점검표 72).
+function work_createCaseFull_(params) {
+  const r = work_createCase0_(params);
+  if (!r || r.success === false || !r.case) return r;
+  const req = params.의뢰서 && typeof params.의뢰서 === 'object' ? params.의뢰서 : null;
+  if (req && r.case.폴더ID) { try { const sv = handleSaveCaseFromTemplate(Object.assign({}, req, { folderId: r.case.폴더ID })); if (sv && sv.error) r.warning = (r.warning ? r.warning + ' ' : '') + '의뢰서 저장 실패: ' + sv.error; else r.의뢰서파일 = sv; } catch (e) { r.warning = (r.warning ? r.warning + ' ' : '') + '의뢰서 저장 실패: ' + (e && e.message || e); } }
+  if (params.사건개요 && typeof params.사건개요 === 'object') { try { const up = work_updateCase({ id: r.case.id, 사건개요: params.사건개요 }); if (up && up.success !== false && up.case) r.case = up.case; else if (up && up.message) r.warning = (r.warning ? r.warning + ' ' : '') + '사건개요 반영 실패: ' + up.message; } catch (e) { r.warning = (r.warning ? r.warning + ' ' : '') + '사건개요 반영 실패: ' + (e && e.message || e); } }
+  return r;
 }
 
 function work_updateCase(params) {
@@ -37866,18 +37877,23 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
 function caseProcSavePdf_(c, body) {
   const html = String(body.html || '');
   if (!html || html.length > 3000000) return { ok: false, error: '서식 내용이 없거나 너무 큽니다.' };
+  const tP = {}, tpk = function (k, t) { tP[k] = Math.round((Date.now() - t) / 100) / 10; }; let tp0 = Date.now(); // [2026.10.23 속도 ㅅ4차] ⑤ 서버 안쪽 시간 — 화면 🖨 줄에
   const sub = work_getCaseSubfolders({ caseId: c.id });
   if (!sub || !sub.internalFolderId) return { ok: false, error: '사건 폴더(보고서_내부)를 찾지 못했습니다.' };
   const folder = DriveApp.getFolderById(sub.internalFolderId);
   const name = String(c.사건명 || c.고객명 || '사건').replace(/[\\/:*?"<>|]/g, '_') + '_' + String(body.title || '신고서식').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) + '.pdf';
   const old = folder.getFilesByName(name);
   while (old.hasNext()) old.next().setTrashed(true);
+  tpk('폴더 찾기', tp0); tp0 = Date.now();
   const pdf = Utilities.newBlob(html, 'text/html', 'f.html').getAs('application/pdf').setName(name);
+  tpk('PDF 변환(' + Math.round(html.length / 1024) + 'KB)', tp0); tp0 = Date.now();
   const file = folder.createFile(pdf);
+  tpk('파일 저장', tp0); tp0 = Date.now();
   const saved = caseProcLoad_(c.id);
   const lastCalc = caseProcLastCalc_(c).last;
   caseProcPatch_(c.id, function (sv) { sv.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), atMs: Date.now(), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' }; });
-  return { ok: true, id: file.getId(), name: name, url: file.getUrl() };
+  tpk('기록', tp0);
+  return { ok: true, id: file.getId(), name: name, url: file.getUrl(), _t: tP };
 }
 // 반영 현황표 — "이 사건 정보가 도구에 완전히 반영됐나"를 한눈에: 칸별 채움·출처·미확정, 증빙 확보, 계산·서식·검토서, 남은 질문
 // 값 비교 — 금액은 쉼표·원 없이 숫자로("150,000,000"과 "150000000"은 같은 값)

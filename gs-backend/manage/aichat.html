@@ -3253,13 +3253,14 @@
       var ready = typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.id === st.caseId && document.querySelector('.taxcalc-tab[data-tab="' + tab + '"]');
       if (ready && tries === 1){ var tb = document.querySelector('.taxcalc-tab[data-tab="' + tab + '"]'); if (tb && !tb.classList.contains('active')) tb.click(); }
       // 저장 결과가 화면에 복원되기를 기다렸다가(최대 약 40초) 저장 시도 — 서식이 아직 준비 안 됐으면 다시 기다린다
-      if (!ready || tries < 4){ if (tries < 30) return setTimeout(tick, 1500); info.textContent = '서식 PDF를 만들지 못했습니다: 세액계산 화면이 준비되지 않음 — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.'; return; }
+      // [2026.10.23 속도 ㅅ4차] 복원을 기다리는 최소 횟수 4(6초) → 2(3초) — 서식이 아직 없으면 아래서 어차피 다시 기다린다
+      if (!ready || tries < 2){ if (tries < 30) return setTimeout(tick, 1500); info.textContent = '서식 PDF를 만들지 못했습니다: 세액계산 화면이 준비되지 않음 — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.'; return; }
       nxAiCaseProcSavePdf_(st, tab).then(function(pr){
         if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
         st.pdfRunning = false;
-        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' + nxAiCpTimeTxt_(pr._t) : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
         if (st.screen && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} } // [2026.10.22 묶음 ㄱ4] 사건 화면으로 돌아옴
-        if (pr && pr.ok) nxAiCaseProcStatus_(st);
+        if (pr && pr.ok && !st.finishing) nxAiCaseProcStatus_(st); // [2026.10.23 속도 ㅅ4차] 마무리(finishAll) 중이면 ⑦은 거기서 한 번만(현황표 장부가 1분 — 두 번 돌지 않게)
       });
     };
     setTimeout(tick, 1500);
@@ -3401,6 +3402,8 @@
     stub.textContent = (d0 === 'done' ? '✅ 답함 — ' : '— 무시 — ') + String(it.text || '').slice(0, 50) + (dn.note ? ' (' + nxAiCpValueText_(dn.note).slice(0, 80) + ')' : '');
     return stub;
   }
+  // [2026.10.23 속도 ㅅ4차] 서버가 돌려준 안쪽 시간표(_t: {이름: 초})를 " ⏱ 이름 N초 · …"로
+  function nxAiCpTimeTxt_(t){ return t && typeof t === 'object' && Object.keys(t).length ? ' ⏱ ' + Object.keys(t).map(function(k){ return k + ' ' + t[k] + '초'; }).join(' · ') : ''; }
   // [2026.10.22 가상양도10 표 77] 값을 사람 말로 — 서버 작업일지와 같은 변환(Code.js caseProcValueText_). "답 반영: {"items":[{"kind":"취득"…" 같은 날것 JSON이 화면 스텁에 보이던 것
   function nxAiCpValueText_(value){
     var v = value;
@@ -5226,11 +5229,11 @@
                 st.setStep('calc', '🔄', '저장 끝 — 세액인쇄 서식을 PDF로 사건 폴더에 저장 중…');
                 nxAiCaseProcSavePdf_(st, tab).then(function(pr){
                   var ln = document.createElement('div'); ln.className = 'nxai-cp-line';
-                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' + nxAiCpTimeTxt_(pr._t) : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
                   st.calcBusy = false;
                   // [2026.10.22 묶음 ㄱ4] 사건 화면에서 시작했으면 계산·서식이 끝난 뒤 사건 화면으로 돌아온다(진행 카드는 그대로 — casehandling chGasKeep_)
                   if (st.screen && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} }
-                  return nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); } onEnd(); });
+                  return nxAiCaseProcRefresh_(st, st.finishing ? ['calc'] : ['calc', 'output'], false).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); /* [2026.10.23 속도 ㅅ4차] 마무리 중이면 ⑤ 인쇄 준비는 finishAll이 바로 이어서 한 번 부르므로 여기선 뺌(서버 한 번 덜) */ if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); } onEnd(); });
                 }).catch(function(){ st.calcBusy = false; onEnd(); });
               }, 5000);
               return;
