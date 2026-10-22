@@ -2989,8 +2989,8 @@
     var tax = nxAiCpTax_(st), groups = {}, order = [];
     open.forEach(function(it){ var cd = nxAiCpCard_(it, tax), k = cd.card; if (!groups[k]){ groups[k] = []; order.push({ k: k, no: cd.no }); } groups[k].push(qn(it).replace(/[「」]/g, '')); });
     order.sort(function(a, b){ return a.no - b.no; });
-    st.waitEl.textContent = '🤖 넥스: 계산하기 전에 여쭐 것이 있습니다.\n' + order.map(function(g){ return '· ' + g.k + ' — ' + groups[g.k].join(', '); }).join('\n')
-      + '\n아래 질문에서 고르시거나, 채팅창에 말로 답해 주세요. 답을 주시면 이어서 세액계산·서식·검토서까지 하겠습니다.';
+    // [2026.10.23 ㅅ11차 — 점검표 134] 질문 목록은 넥스 말풍선과 아래 질문 카드에 이미 있으므로 여기선 한 줄만(항목 이름만)
+    st.waitEl.textContent = '🤖 넥스: 계산하기 전에 여쭐 것 ' + open.length + '개(' + order.map(function(g){ return g.k; }).join('·') + ') — 아래 질문에서 고르시거나 채팅창에 말로 답해 주세요. 답을 주시면 이어서 세액계산·서식·검토서까지 하겠습니다.';
   }
   // 넥스(또는 GAS로만일 때 시스템)가 계산 전에 먼저 여쭙고 멈춘다 — 여쭐 것이 없으면 false(그대로 끝까지)
   function nxAiCpAskFirst_(st){
@@ -3011,7 +3011,8 @@
   function nxAiCpAiMark_(st, it){
     var op = st.aiOpin && st.aiOpin[it.id], ug = st.aiUrgent && st.aiUrgent[it.id];
     if (op && !(it.ask && it.ask.aiJudge)) it.ask = Object.assign({}, it.ask || {}, { aiJudge: { by: 'ai', model: op.model || '', value: op.value, sure: op.sure, why: op.why } });
-    if (ug && !it._aiUg){ it._aiUg = 1; it.detail = (ug.urgent ? '⏩ 계산을 막는 질문(넥스가 먼저 여쭘)' : '🤖 넥스 메모') + (ug.note ? ' — ' + ug.note : '') + (it.detail ? ' · ' + it.detail : ''); }
+    // [2026.10.23 ㅅ11차 — 점검표 134] 같은 질문이 넥스 말풍선·"여쭐 것" 요약·질문 카드 덧말로 세 번 보이던 것 — 카드에는 넥스가 남긴 메모가 있을 때만 그 메모를 붙인다
+    if (ug && !it._aiUg){ it._aiUg = 1; if (ug.note) it.detail = '🤖 넥스 메모 — ' + ug.note + (it.detail ? ' · ' + it.detail : ''); }
     return it;
   }
   function nxAiCpSlim_(it){
@@ -5315,6 +5316,8 @@
         var run = function(sel){ var b = document.querySelector(sel); if (b) b.click(); };
         if (tab === 'inheritance') run('[data-action="apply-ih-estate-auto"]');
         if (ovsOnly){ transferAssets.forEach(function(a){ if (!a.transferDate && st.case.기준일) a.transferDate = st.case.기준일; }); var sub = document.querySelector('[data-action="switch-transfer-subtab"][data-subtab="overseas"]'); if (sub) sub.click(); }
+        // [2026.10.23 ㅅ11차 — 점검표 136] 결과 상자에 지난 결과가 이미 있으면(채팅 답의 ⚡ 바로 처리가 먼저 계산해 둔 경우) 새 계산 글이 같아 끝을 못 알아채 15분을 기다렸다 — 누르기 전에 상자를 "계산 중…"으로 비워 새 결과는 반드시 달라지게
+        if (box){ try { box.innerHTML = '<div class="nxai-muted">⏳ 계산 중…</div>'; before = box.innerText; } catch (e) {} }
         run(ovsOnly ? '[data-action="run-overseas-transfer"]' : '[data-action="run-' + tab + '"]');
         st.setStep('calc', '🔄', '입력값이 갖춰져 계산엔진으로 계산 중(토큰 0)…');
         return watch();
