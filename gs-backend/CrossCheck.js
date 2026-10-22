@@ -10,6 +10,7 @@
 //  재현기·🧪 점검기(akSandbox_)에서는 CX_AI_DRY_ = true — 실제로 부르지 않고 "AI에게 물을 질문 목록"과 글자 수만 남긴다.
 // =========================================================
 var CX_AI_DRY_ = false;   // true면 AI를 부르지 않는다(점검·재현기)
+var CX_AI_NOAI_ = false;  // [2026.10.22 넥스가 주인] 화면이 noAi로 부른 사건처리 단계 — GAS 안에서 AI를 부르지 않고 못 푼 쟁점은 넥스에게(caseProcTimed_가 켬)
 // [2026.10.18 재점검 4] 가리기 — 세무사님 조건(원문 21) "주민번호·전화번호·계좌번호는 가려서". 쟁점 묶음을 만들 때(cxIssueText_·cxCaseSummary_ 결과)와
 //  기록에 남길 때 반드시 거친다. 예전 함수는 날짜(2025-12-15)를 망가뜨리고 주민번호 13자리 중 9자리를 남기고 하이픈 없는 계좌를 못 가렸다(재점검 4).
 //  ① 주민번호: 앞 6자리가 날짜 꼴(YYMMDD)이고 뒤 7자리(성별 1~8로 시작) — 하이픈·공백 있든 없든 → 앞 6자리만 남김
@@ -418,7 +419,7 @@ function cxFolderChars_(c) {
 //  · 모델은 기존 모델 표에서 쟁점 종류별로(cxModelFor_: LIGHT_MODEL=하이쿠, 표기 대조만 속성 CX_GEMINI_MODEL의 제미니 2.5 계열). 불확실하면 비싼 모델로 올리지 않고 사용자에게
 //  · 🧪 점검기·재현기(CX_AI_DRY_)에서는 보내지 않고 보낼 묶음만 기록
 function cxAiOn_() {
-  if (CX_AI_DRY_) return false;
+  if (CX_AI_DRY_ || CX_AI_NOAI_) return false;
   try { return String(PropertiesService.getScriptProperties().getProperty('CX_AI_AUTO') || '') === '켜기'; } catch (e) { return false; }
 }
 const CX_AI_SYSTEM_ = '너는 세무사 사무실의 사건처리 도우미다. 아래는 GAS(규칙 프로그램)가 서류를 맞대어 보고도 하나로 정하지 못한 쟁점들이다. 쟁점마다 주어진 서류 원문·후보·출처만 근거로 판단하라.\n'
@@ -529,7 +530,7 @@ function cxResolve0_(c, r) {
   const cc = r.case || c, lines = r.lines = r.lines || [], items = r.items = r.items || [];
   const sv = caseProcLoad_(cc.id) || {}, store = sv.cxAi || { applied: {}, asked: {} };
   const aiOn = cxAiOn_(); // 스크립트 속성 CX_AI_AUTO = "켜기"일 때만(기본 꺼짐), 점검·재현기는 늘 꺼짐
-  const rec = { caseId: cc.id, issues: [], gas: [], ai: [], user: [], bundleChars: 0, folderChars: 0, calls: 0, usd: 0, dry: !aiOn, why: CX_AI_DRY_ ? '점검 중' : (aiOn ? '' : 'AI 자동 묻기 꺼짐 — 스크립트 속성 CX_AI_AUTO를 "켜기"로 하면 보냄') };
+  const rec = { caseId: cc.id, issues: [], gas: [], ai: [], user: [], bundleChars: 0, folderChars: 0, calls: 0, usd: 0, dry: !aiOn, why: CX_AI_DRY_ ? '점검 중' : CX_AI_NOAI_ ? '넥스가 판단(GAS 안에서는 AI 안 부름)' : (aiOn ? '' : 'AI 자동 묻기 꺼짐 — 스크립트 속성 CX_AI_AUTO를 "켜기"로 하면 보냄') };
   CX_LAST_ = rec;
   // 0) 이미 AI가 정한 칸 — 사용자가 다른 값으로 고쳤는지(그러면 기록에 "수정"을 붙이고 AI 판단 표시를 거둔다)
   const trAns = sv.trAns || {}, filled = sv.filled || {};

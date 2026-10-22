@@ -15,7 +15,13 @@
 //   · 규칙 승격은 처음 보는 사건 2건 이상 확인 뒤(이 파일은 판단 기록만 남김 — _사건처리AI판단기록.json)
 //  예비 경로: "GAS 순서로 처리" 말·단추, AI 오류·비용 상한·바퀴 한도면 화면이 그 자리에서 지금 GAS 순서로 이어간다.
 //  모델 표는 Code.js MODEL_CONFIG. 도구 강제 지정(tool_choice)은 최신 모델에서 400이라 쓰지 않는다.
+// [2026.10.22 넥스가 주인 — 위 1)~4) 순서를 바꿈] 세무사님 원문: "가급적 ai없이 돌아가는 gas를 원하는 거지. 최상위 ai가 도구로 사용하는 것이 gas인 것이다"
+//  / "이런 방향이 맞다고 이미 말했는데, 아직까지 이러고 있는 것이 말이 되나?" (공통원칙 1절 정리 10-22)
+//  이제 "이 사건 처리하자"는 넥스가 먼저 받는다(step 'turn' 0바퀴). 넥스가 gas_run(GAS 한 바퀴 — 사건파악·서류 읽기·나누기·보정·칸 채우기·교차검증,
+//  AI 없이 0원, 다시 읽기 없음)을 부르면 화면이 그 도구를 실행해 결과(GAS가 못 푼 자리)를 넥스에게 돌려준다. 넥스가 판단·질문하고 끝내면
+//  화면이 계산·서식·저장·검토서를 한다. "판단할 자리 없으면 AI 안 부름" 관문(3-1)과 GAS 안의 저비용 AI 자동 판단은 쓰지 않는다(GAS가 못 푼 것은 넥스에게).
 // =========================================================
+var CASEPROC_AI_CLIENT_TOOLS_ = ['gas_run']; // 화면이 실행하는 GAS 도구 — 서버는 실행하지 않고 넥스의 부름을 화면에 넘긴다
 var CASEPROC_AI_DIRECTOR_MODEL_ = 'claude-sonnet-5-5';
 var CASEPROC_AI_LIGHT_MODEL_ = 'claude-haiku-5-5';
 var CASEPROC_AI_HIGH_MODEL_ = 'claude-opus-5-5';
@@ -81,7 +87,8 @@ function caseProcAiSpots_(body) {
   // [세 겹 ②] 저비용 1차 — 확실하고 모자란 정보가 없으면 끝(값 칸이면 후보 안의 값만 넣음), 아니면 총괄로 올림
   const plan = { 저비용후보: light.length, 총괄직행: lead.length, 주제: {} };
   light.concat(lead).forEach(function (s) { plan.주제[s.topic] = (plan.주제[s.topic] || 0) + 1; });
-  const lp = caseProcAiLightPass_(c, light, items);
+  // [2026.10.22 넥스가 주인] gas_run이 부른 자리 세기(noLight)는 저비용 AI를 부르지 않는다 — GAS가 못 푼 것은 그대로 넥스에게
+  const lp = body.noLight ? { done: [], up: light.slice(), usd: 0, calls: 0, sent: 0, off: true } : caseProcAiLightPass_(c, light, items);
   let lightApplied = 0;
   lp.done.forEach(function (rec) { const r = CASEPROC_AI_DRY_ ? { applied: false, why: '시험 — 넣지 않음' } : caseProcAiLightApply_(c, rec, items); rec.applied = r.applied; rec.result = r.why; if (r.applied) lightApplied++; tiers.저비용++; });
   lp.up.forEach(function (s) { s.tier = lp.off ? '총괄' : '올림'; lead.push(s); });
@@ -94,14 +101,16 @@ function caseProcAiSpots_(body) {
   const by = {}; lead.forEach(function (s) { by[s.topic || s.이유] = (by[s.topic || s.이유] || 0) + 1; });
   const entry = [
     '사건 ' + caseId + ' — ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ' · 기준일 ' + (c.기준일 || '?'),
-    '입구(GAS)가 상수 한 바퀴를 돌았고(서류 읽기·칸 채우기·교차검증), 저비용 AI가 좁은 판단을 먼저 봤습니다. 아래 자리만 네가 판단한다.',
+    body.noLight ? 'GAS 한 바퀴가 끝났다(서류 읽기·칸 채우기·교차검증, AI 없이). 아래는 GAS가 못 풀어 너에게 돌아온 자리다 — 이것만 판단한다.' : '입구(GAS)가 상수 한 바퀴를 돌았고(서류 읽기·칸 채우기·교차검증), 저비용 AI가 좁은 판단을 먼저 봤습니다. 아래 자리만 네가 판단한다.',
     '네 자리 ' + lead.length + '개: ' + lead.map(function (s) { return '[' + s.자리 + ' · ' + (s.topic || '') + ' · ' + s.이유 + ' · ' + s.tier + (s.light ? ' — 저비용 답 "' + caseProcAiCut_(s.light.answer || '', 40) + '"(' + (s.light.sure || '') + ')' + (s.light.need && s.light.need.length ? ' 모자란 정보: ' + s.light.need.join(', ') : '') : '') + '] ' + caseProcAiCut_(s.설명 || '', 80); }).join(' / '),
     '저비용·GAS가 이미 정한 것 ' + (tiers.GAS + tiers.저비용) + '개(네가 다시 보지 않는다).',
     '서류에 없어 세무사님께 바로 묻는 빈 칸 ' + ask.length + '개(네가 찾지 않는다): ' + ask.slice(0, 12).map(function (s) { return s.자리; }).join(', '),
     'GAS 몫(못 읽은 서류·재료 없음·상수) ' + gas.length + '개: ' + gas.slice(0, 8).map(function (s) { return s.자리 + '(' + s.이유 + ')'; }).join(', '),
     caseProcAiAttachLine_(c),
     caseProcAiFactLine_(c, items),
-    '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. calc_fill부터 불러 지금 칸과 질문을 본 뒤 판단하라.'
+    '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. ' + (body.noLight
+      ? (lead.length ? '지금 칸과 질문은 이미 네 기억에 있다(issue_bundle·fact_map으로 본다). 위 자리만 판단하라.' : '네 자리가 없다 — 세무사님 말씀에 따로 맡기신 일이 없으면 도구를 더 부르지 말고 한두 줄로 보고하고 끝낸다.')
+      : 'calc_fill부터 불러 지금 칸과 질문을 본 뒤 판단하라.')
   ].join('\n');
   return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, plan: plan, inGap: inGap, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
     lightDone: lp.done.map(function (r) { return { 자리: r.자리, topic: r.topic, answer: caseProcAiMask_(r.answer), why: caseProcAiMask_(r.why), applied: !!r.applied }; }),
@@ -133,6 +142,9 @@ function caseProcAiLiveTools_() {
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, required: ['question', 'material'] } });
   tools.push({ name: 'ask_higher', description: '어려운 판단 올리기(상위 AI Opus 5.5) — 특례가 얽힌 사건분류(1세대1주택·일시적 2주택·상속주택·정비사업 감면), 시가·유사사례 다툼, 법령 해석이 갈리는 것. 재료를 정리해 넘긴다. 최고급(Fable 5.1)이 필요하면 부르지 말고 보고에 "최고급 검토 필요"로 적는다(세무사님이 쓰기 전에 정하심).',
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' } }, required: ['question', 'material'] } });
+  // [2026.10.22 넥스가 주인] GAS 한 바퀴 — 화면이 실행(서버 6분 한도 안에 한 번에 못 끝나는 여러 단계라). 넥스의 첫 도구
+  tools.push({ name: 'gas_run', description: 'GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(다시 읽지 않음, 몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. 사건마다 처음에 한 번만 부른다(이미 불렀으면 다시 부르지 않는다).',
+    input_schema: { type: 'object', properties: { why: { type: 'string', description: '한 줄 — 무엇을 보려고(보통 "처음 한 바퀴")' } } } });
   // [2026.10.19 법령] 세무사님 "ai가 위임을 받아 사건을 처리할때도 이 과정을 거쳐야 하는 거 아닌가?" — 쟁점마다 법령·예규·판례를 GAS 도구로 찾아(토큰 0) 근거로 쓰면 첨부
   tools.push({ name: 'law_lookup', description: '조문 원문 보기(토큰 0) — 사건 기준일에 시행된 판(법령 정비본, 산식 보정 포함). 쟁점 판단에 필요한 조문을 확인할 때. 근거로 쓰면 law_attach로 사건에 첨부한다. articleNo에 「부칙」을 주면 그 판까지의 부칙(적용례·경과조치 — 언제 양도분부터)을 본다.',
     input_schema: { type: 'object', properties: { lawName: { type: 'string', description: '예: 소득세법 시행령' }, articleNo: { type: 'string', description: '예: 155, 97의2' } }, required: ['lawName', 'articleNo'] } });
@@ -178,8 +190,10 @@ function caseProcAiLiveSystem_(cap) {
 }
 function caseProcAiLiveModeText_(cap) {
   return caseProcAiSystem_() + '\n\n' + [
-    '[운영 — 지금 판]',
-    '- 너는 입구(GAS)가 상수 한 바퀴를 끝낸 뒤 넘긴 AI 자리만 맡는다. 서류 읽기·나누기·사진 보정·화면 계산·서식 PDF·저장·검토서는 화면이 끝에 지금 순서대로 한다.',
+    '[운영 — 지금 판 (2026.10.22 넥스가 주인)]',
+    '- 이 사건 처리의 주인은 너(넥스)다. GAS는 네가 부르는 도구다 — 도구 안은 AI 없이 0원으로 돈다(세무사님 "가급적 ai없이 돌아가는 gas를 원하는 거지. 최상위 ai가 도구로 사용하는 것이 gas인 것이다").',
+    '- 첫 차례에 gas_run을 한 번 부른다(사건파악·서류 읽기·나누기·사진 보정·칸 채우기·교차검증). 결과에 나온 "너에게 돌아온 자리"만 판단한다 — GAS가 이미 정한 것은 다시 보지 않고, 서류를 다시 읽게 하지 않는다. 세무사님 말씀이 범위를 좁혔으면(예: "취득가액만") 그 범위만.',
+    '- 돌아온 자리가 없고 따로 맡기신 일도 없으면 도구를 더 부르지 말고 한두 줄로 보고하고 끝낸다(비용을 아낀다). 끝나면 화면이 세액계산·서식 PDF·저장·검토서를 한다.',
     '- 이번 사건 비용 상한 ' + Number(cap).toLocaleString('ko-KR') + '원(너와 quick_judge·ask_higher 합계). 상한에 가까우면 하던 판단까지만 하고 보고한다.',
     '- 좁은 판단은 quick_judge(저가)로, 특례·시가·법령 해석은 ask_higher(상위)로. 최고급은 쓰지 않는다(필요하면 보고에 적음).',
     '- 서류는 GAS 도구로만 본다: issue_bundle(쟁점 묶음)·doc_facts(서류 정리 결과)·facts_find(사실 목록)·재료 도구. docs_read·doc_text(원문 직접 읽기)는 없다 — 위 지침의 doc_text 자리는 issue_bundle로.',
@@ -390,6 +404,13 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
 // [2026.10.21 넥스 하나로] 첫 글 = GAS 입구 요약 + 세무사님 말씀(채팅창 명령 문장 전체) + 같은 채팅창의 최근 대화 + 지난 처리 요약.
 //  세무사님 원문: "같은 채팅창내에서의 대화는 어떤 ai라도 모두 공유하는 것으로 알고 있었다" — 예전엔 GAS 요약 한 장만 받아 "처리하자, 시가는 감정가로" 같은 덧붙인 말이 사라졌다.
 //  화면이 보낸 body.userText(명령 문장)·body.chat([{role,text}] 최근 대화, 글만). 길이는 잘라서(대화 6천 자·지난 처리 2천 자) — 비용은 첫 차례 한 번, 이후 차례는 캐시.
+// [2026.10.22 넥스가 주인] 첫 글 머리 — 사건 정보만(GAS는 아직 안 돌았다). 넥스가 gas_run부터 부른다
+function caseProcAiNexEntry_(c) {
+  return ['사건 ' + c.id + ' — ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ' · 기준일 ' + (c.기준일 || '?') + (c.사건명 ? ' · ' + c.사건명 : ''),
+    '세무사님이 채팅창에서 이 사건 처리를 너에게 맡기셨다. 아직 GAS를 돌리지 않았다 — gas_run을 한 번 불러 GAS 한 바퀴(0원) 결과부터 받아라.',
+    caseProcAiAttachLine_(c),
+    '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '.'].filter(Boolean).join('\n');
+}
 function caseProcAiFirstText_(c, body) {
   const L = [String(body.entry || '사건 ' + c.id + ' — 입구 요약 없음. calc_fill부터.')];
   const said = String(body.userText || '').trim();
@@ -438,8 +459,11 @@ function caseProcAiTurn_(body) {
   const cap = caseProcAiCap_(c), spent = Number(body.spent) || 0, round = Number(body.round) || 0;
   if (spent >= cap) return { ok: true, done: true, stop: 'cap', report: '비용 상한(' + cap.toLocaleString('ko-KR') + '원)에 닿아 여기서 멈춥니다. 남은 것은 지금 GAS 순서로 이어갑니다.', won: 0 };
   if (round >= CASEPROC_AI_MAX_ROUNDS_) return { ok: true, done: true, stop: 'rounds', report: '바퀴 상한(' + CASEPROC_AI_MAX_ROUNDS_ + ')에 닿아 여기서 멈춥니다.', won: 0 };
+  // [2026.10.22 넥스가 주인] 끄는 스위치(AI_LEAD = 끄기)면 첫 차례에서 바로 — 화면은 GAS 한 바퀴만 돌고 계산·저장(AI 0원)
+  if (round === 0) { try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, off: true, done: true, why: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)', won: 0 }; } catch (e) {} }
   let ctx = round === 0 ? { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 } : caseProcAiCtxLoad_(caseId);
-  if (round === 0 && Array.isArray(body.items)) ctx.lastItems = caseProcAiSlimItems_(body.items);
+  if (Array.isArray(body.items)) ctx.lastItems = caseProcAiSlimItems_(body.items); // gas_run 뒤 차례에 화면이 그 칸 채우기 질문을 보낸다
+  if (!body.entry) body.entry = caseProcAiNexEntry_(c);
   let messages = Array.isArray(body.messages) ? body.messages.slice() : [];
   if (!messages.length) messages = [{ role: 'user', content: caseProcAiMask_(caseProcAiFirstText_(c, body)) }];
   const subBefore = ctx.subWon || 0;
@@ -447,9 +471,10 @@ function caseProcAiTurn_(body) {
   if (r.error) return { ok: false, error: r.error };
   const json = r.json, content = json.content || [];
   const uses = content.filter(function (b) { return b.type === 'tool_use'; });
-  const results = [], calls = [];
+  const results = [], calls = [], pending = [];
   uses.forEach(function (u) {
     let out;
+    if (CASEPROC_AI_CLIENT_TOOLS_.indexOf(u.name) !== -1) { pending.push({ id: u.id, name: u.name, input: u.input || {} }); calls.push(u.name); return; } // 화면이 실행하고 결과를 다음 차례에 붙인다
     if (Date.now() - t0 > CASEPROC_AI_TURN_BUDGET_MS_) out = { text: JSON.stringify({ 오류: '이번 차례 시간이 모자라 실행하지 못함 — 다음 차례에 다시 부르면 됨', 다시해도됨: true }) };
     else { try { out = caseProcAiLiveExec_(caseId, u.name, u.input, ctx); } catch (e) { out = { text: JSON.stringify({ 오류: '도구 실행 오류: ' + (e && e.message || e) }) }; } }
     results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, 6000) });
@@ -458,7 +483,7 @@ function caseProcAiTurn_(body) {
   caseProcAiCtxSave_(caseId, ctx);
   const won = Math.round((r.won + (ctx.subWon || 0) - subBefore) * 10) / 10;
   const done = json.stop_reason !== 'tool_use' || !uses.length;
-  return { ok: true, done: done, stop: json.stop_reason, assistant: content, toolResults: results, calls: calls, won: won, report: done ? caseProcAiMask_(caseProcAiText_(json)) : '', note: caseProcAiCut_(caseProcAiText_(json), 200),
+  return { ok: true, done: done, stop: json.stop_reason, assistant: content, toolResults: results, pending: pending, calls: calls, won: won, report: done ? caseProcAiMask_(caseProcAiText_(json)) : '', note: caseProcAiCut_(caseProcAiText_(json), 200),
     decisions: ctx.decisions, asks: ctx.asks, opinions: ctx.opinions, gaps: ctx.gaps, attaches: ctx.attaches || [], loop: ctx.loop || null, model: CASEPROC_AI_DIRECTOR_MODEL_, _ms: Date.now() - t0 };
 }
 

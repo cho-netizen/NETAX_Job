@@ -30084,8 +30084,10 @@ const CASEPROC_BASE_LABEL_ = { transfer: '양도일', gift: '증여일', inherit
 function caseProcTimed_(body) {
   const t0 = Date.now();
   let r;
+  try { CX_AI_NOAI_ = !!(body && body.noAi); } catch (e) {} // [2026.10.22 넥스가 주인] GAS 도구 안은 AI 없이 — 못 푼 쟁점은 넥스에게
   CP_SECURED_LOG_ = []; // [2026.10.19] 이번 실행의 조회 결과(확보자료) — 끝에서 cpSecuredFlush_가 사건 폴더/확보자료/에 남긴다
   try { r = caseProcTimedRun_(body, t0); } finally {
+    try { CX_AI_NOAI_ = false; } catch (e) {}
     try { const n = cpSecuredFlush_(String(body && body.caseId || '').trim()); if (n && r && typeof r === 'object' && !Array.isArray(r)) r._securedSaved = n; } catch (e) { console.log('확보자료 저장 실패: ' + (e && e.message || e)); }
   }
   return r;

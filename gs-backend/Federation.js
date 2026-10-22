@@ -412,6 +412,8 @@ function commSeamList_() {
     // 넥스 ↔ GAS(도구)
     { 길: '대화창 넥스 조회 길(사건처리·AI 판단·AI 회의 결론)', fn: function () { return need(lookupKinds(), ['caseproc', 'ai_review', 'law_decisions'], '조회 종류'); } },
     { 길: '사건 지휘 넥스 도구(질문·도구 부족 신고·AI 회의 결론)', fn: function () { return need(leadTools(), ['ask_user', 'report_tool_gap', 'law_decisions'], '사건 지휘 도구'); } },
+    // [2026.10.22 넥스가 주인] 넥스 → GAS 한 바퀴(gas_run, 화면이 실행) → GAS가 못 푼 자리 → 넥스. 첫 글이 gas_run을 부르라고 하는지, 도구가 있는지
+    { 길: '넥스가 GAS 한 바퀴를 도구로 부름(사건처리 주인은 넥스)', fn: function () { var m = need(leadTools(), ['gas_run'], '사건 지휘 도구'); if (m) return m; if (typeof CASEPROC_AI_CLIENT_TOOLS_ === 'undefined' || CASEPROC_AI_CLIENT_TOOLS_.indexOf('gas_run') === -1) return '화면 실행 도구 표에 gas_run이 없음'; return caseProcAiLiveModeText_(1000).indexOf('gas_run') === -1 ? '넥스 지시문에 gas_run 순서가 없음' : ''; } },
     // 넥스 ↔ 개발자(Claude)
     { 길: '넥스 → 개발자 신고(대화창)', fn: function () { var m = need(chatTools(), ['report_capability_gap'], '대화창 도구'); if (m) return m; commGapsFile_(); return ''; } },
     { 길: '신고 처리 장부(처리됨·다시 신고)', fn: function () { return Array.isArray(commGapsResolved_()) ? '' : '장부를 못 읽음'; } },
