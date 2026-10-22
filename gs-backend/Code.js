@@ -4170,7 +4170,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_judge_save') return jsonResponse(aiJudgeSave_(body));
   if (body.action === 'ai_ask_slots') return jsonResponse(aiAskSlots_(body));
   if (body.action === 'ai_cross_check') return jsonResponse(aiCrossCheck_(body));
-  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} let rec = null; try { rec = deployRecordPc_(body, chk); } catch (e) {} return jsonResponse({ success: true, check: chk, recorded: rec }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
+  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); try { cpPrereadEnsureTrigger_(); } catch (e) {} let chk = null; try { chk = deploySmoke_().last; } catch (e) {} let rec = null; try { rec = deployRecordPc_(body, chk); } catch (e) {} return jsonResponse({ success: true, check: chk, recorded: rec }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_pr_list') return jsonResponse(gh_prList_(!!body.fresh)); // [2026.10.20] 승인 대기 수정안
   if (body.action === 'gh_pr_merge') return jsonResponse(gh_prMerge_(body));
   if (body.action === 'gh_pr_close') return jsonResponse(gh_prClose_(body));
@@ -5853,6 +5853,7 @@ function handleUploadFile(body) {
     const blob = Utilities.newBlob(bytes, mimeType, body.name);
     const file = folder.createFile(blob);
     rh_maybeUpdateReportIndexForUpload_(body, file);
+    if (/pdf|^image\//.test(String(mimeType))) cpPrereadQueue_(file.getId()); // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다
     return { id: file.getId(), name: file.getName(), url: file.getUrl() };
   } catch (err) {
     return { error: '파일 업로드 중 오류: ' + err.message };
@@ -17470,6 +17471,7 @@ function runNightlyChiefManager() {
   // [2026.10.13] 환경 감시(토큰 0)는 오래 걸릴 수 있어(법령 11개·주간 정찰) 이 묶음(6분 제한) 안에서 돌리지 않고 새벽 4시 따로 돈다 —
   // 여기서는 그 시간 트리거가 있는지만 확인해 없으면 만든다. 감시가 끝나면 개선 후보 보고서를 다시 만들어 결과를 싣는다.
   try { envEnsureTrigger_(); } catch (err) { console.error('환경 감시 트리거 확인 실패: ' + err.message); }
+  try { cpPrereadEnsureTrigger_(); } catch (err) { console.error('서류 미리 읽기 트리거 확인 실패: ' + err.message); } // [2026.10.23 속도 S4]
   // [2026.10.13] AI 회의 위원 API 점검은 새벽 5시 별도 트리거(Federation.js aiFederationNightly) — 있는지만 확인
   try { aiFedEnsureTrigger_(); } catch (err) { console.error('AI 회의 트리거 확인 실패: ' + err.message); }
   // [2026.10.20] 지침 무료 AI 점검(제미니, 바뀐 지침만)은 새벽 3시 별도 트리거(SysAudit.js runSysAuditAiNightly) — 있는지만 확인
@@ -26508,6 +26510,78 @@ function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 
   cpOcrBatch_({ cont: true, _trigger: true });
 }
 // =========================================================
+// [2026.10.23 속도 ㅅ3차 S4] 서류 미리 읽기 — 사건 폴더에 서류가 들어오면 ⚡를 누르기 전에 글자 읽기·서류 해석을 미리 해 둔다(토큰 0·AI 없음).
+//  ② "GAS 증빙 읽기"가 서류 8장 처음 읽기에 4분(가상양도11) — 글자인식은 드라이브 변환이라 파일당 30~40초, 그 시간이 세무사님이 누른 뒤에 흘렀다.
+//  1분마다 시간 트리거(cpPrereadTick)가 "지난 틱 이후 바뀐 PDF·사진"을 드라이브 검색 한 번으로 찾아(폴더를 훑지 않음), 고객사건 폴더 아래 것만
+//  서류별 해석(caseProcParsed_ — 글자 영구 기억 + 해석 기억 cpp37)에 넣는다. 이미 읽은 파일은 기억 확인만(0.1초)이라 건너뛰는 셈.
+//  job 화면 📥 증빙 넣기(handleUploadFile)는 올린 파일 ID를 줄(cp_preread_queue)에 넣어 두어 다음 틱이 먼저 읽는다. 한 틱은 4분 30초 안에 멈추고 남은 것은 다음 틱.
+//  트리거는 밤 점검·PC 배포 기록(gh_mark_deployed) 때 없으면 만든다(cpPrereadEnsureTrigger_). 겹침은 스크립트 잠금으로 막는다.
+// =========================================================
+var CP_PREREAD_SINCE_ = 'cp_preread_since', CP_PREREAD_QUEUE_ = 'cp_preread_queue', CP_PREREAD_SKIP_DIR_ = /^(보고서_내부|보고서_외부|_이전판|이전버전|양도\s*코리아|_원본사진|_글자인식기억|_사건처리점검)$/;
+function cpPrereadEnsureTrigger_() {
+  const has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; });
+  if (!has) ScriptApp.newTrigger('cpPrereadTick').timeBased().everyMinutes(1).create();
+  return { ok: true, created: !has };
+}
+function cpPrereadQueue_(fileId) { // 📥로 올린 서류 — 다음 틱이 먼저 읽게 줄에 넣는다
+  try {
+    const props = PropertiesService.getScriptProperties();
+    let q = []; try { q = JSON.parse(props.getProperty(CP_PREREAD_QUEUE_) || '[]'); } catch (e) { q = []; }
+    if (q.indexOf(fileId) === -1) q.push(fileId);
+    props.setProperty(CP_PREREAD_QUEUE_, JSON.stringify(q.slice(-100)));
+  } catch (e) {}
+}
+// 파일이 고객사건 루트(getDefaultFolder) 아래 있고, 시스템 폴더(보고서·이전판·정답지 등) 안이 아닌지 — 부모를 6단계까지 거슬러 본다
+function cpPrereadInCases_(file, rootId) {
+  try {
+    let ps = file.getParents(), depth = 0;
+    while (ps.hasNext() && depth < 6) {
+      const p = ps.next();
+      if (CP_PREREAD_SKIP_DIR_.test(String(p.getName() || '').trim())) return false;
+      if (p.getId() === rootId) return true;
+      ps = p.getParents(); depth++;
+    }
+  } catch (e) {}
+  return false;
+}
+function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(2000)) return; // 앞 틱이 아직 읽는 중 — 겹치지 않는다
+  const started = Date.now(), DEADLINE = 270000, props = PropertiesService.getScriptProperties();
+  let read = 0, seen = 0, names = [];
+  try {
+    const root = getDefaultFolder(); if (!root) return;
+    const rootId = root.getId();
+    const cache = CacheService.getScriptCache();
+    const since = Number(props.getProperty(CP_PREREAD_SINCE_) || 0) || (started - 10 * 60000);
+    props.setProperty(CP_PREREAD_SINCE_, String(started - 120000)); // 2분 겹치게(동기화가 늦게 끝난 파일도 다음 틱에 잡힘 — 이미 읽은 것은 기억 확인만)
+    const one = function (f) {
+      if (Date.now() - started > DEADLINE) return false;
+      const mt = String(f.getMimeType() || '');
+      if (!/pdf|^image\//.test(mt)) return true;
+      const name = String(f.getName() || '');
+      if (/^_/.test(name)) return true;
+      if (!cpPrereadInCases_(f, rootId)) return true;
+      seen++;
+      const key = 'cpp37_' + f.getId() + '_' + f.getLastUpdated().getTime();
+      if (cache.get(key)) return true; // 이미 해석까지 기억돼 있음
+      try { caseProcParsed_({ id: f.getId(), name: name, mimeType: mt, modified: f.getLastUpdated().getTime(), dir: '' }, cache, true); read++; names.push(name); } catch (e) {}
+      return true;
+    };
+    // ① 📥로 올린 줄 먼저
+    let q = []; try { q = JSON.parse(props.getProperty(CP_PREREAD_QUEUE_) || '[]'); } catch (e) { q = []; }
+    if (q.length) { props.deleteProperty(CP_PREREAD_QUEUE_); for (let i = 0; i < q.length; i++) { try { if (one(DriveApp.getFileById(q[i])) === false) { props.setProperty(CP_PREREAD_QUEUE_, JSON.stringify(q.slice(i))); break; } } catch (e) {} } }
+    // ② 지난 틱 이후 바뀐 PDF·사진 — 드라이브 검색 한 번(폴더를 훑지 않는다)
+    const iso = new Date(since).toISOString().replace(/\.\d+Z$/, 'Z'); // 드라이브 검색 날짜 형식(RFC 3339, 밀리초 없이)
+    const it = DriveApp.searchFiles("modifiedDate > '" + iso + "' and trashed = false and (mimeType = 'application/pdf' or mimeType contains 'image/')");
+    let n = 0;
+    while (it.hasNext() && n < 200) { n++; if (one(it.next()) === false) break; }
+    if (read) try { console.log('[미리 읽기] ' + read + '개 읽음(본 파일 ' + seen + ') ' + Math.round((Date.now() - started) / 1000) + '초: ' + names.slice(0, 8).join(', ')); } catch (e) {}
+  } catch (e) { try { console.log('[미리 읽기] 오류: ' + (e && e.message || e)); } catch (e2) {} }
+  finally { lock.releaseLock(); }
+  return { ok: true, read: read, seen: seen };
+}
+// =========================================================
 // [2026.10.18 3번 세션 — 읽기] 글자층 PDF 속 스캔 그림 쪽 글자인식 보충.
 //  드라이브는 글자가 든 PDF를 문서로 바꿀 때 글자층만 쓰고 그림 쪽은 글자인식을 하지 않는다 — 인터넷 발급 등기부 뒤에 신탁원부 스캔 20쪽을 붙인
 //  고객U 「등기부등본_인덕원센트럴푸르지오.pdf」(30쪽)가 1~9쪽만 읽히고 10~29쪽은 쪽 번호("10/30")만 남았다.
@@ -33320,9 +33394,14 @@ function caseProcMemoCross_(c, res) {
 function caseProcOverview_(c) {
   // [2026.10.17 재설계] 사건파악 가설을 서류로 확인·반박하고(작업관리 빈 칸 되먹임·다르면 질문), 그 뒤 세액계산기가 원하는 칸을 채운다
   const gl = [], gi = [], t0 = Date.now();
-  let gc = { changed: false };
+  // [2026.10.23 속도 ㅅ3차] ③ 안에서 어디에 시간이 가는지 — 화면 줄 "⏱ ③ 안쪽"으로(사건파악 확인·서류 정리·칸 조립·메모 후보·교차검증·쓰인 곳). 처음 ③이 2분 15초(가상양도11)인 원인을 숫자로 보기 위해
+  const tm = {}, tmk = function (k, t) { tm[k] = (tm[k] || 0) + Math.round((Date.now() - t) / 100) / 10; };
+  CP_OV_T_ = {};
+  let gc = { changed: false }, tt = Date.now();
   try { gc = caseProcGraspCheck_(c, gl, gi); } catch (e) { gl.push('⚠ 사건파악 확인 중 오류: ' + (e && e.message || e)); }
+  tmk('사건파악 확인', tt); tt = Date.now();
   const r = caseProcOverview0_(c);
+  tmk('서류 정리·칸 조립', tt); tt = Date.now();
   // [2026.10.22 가상사건 발견] 구글 서버 한 번 실행 상한은 6분 — 칸 채우기(위)가 4분 30초를 넘겼으면 덧붙이는 정리(메모 후보·교차검증)는 다음 바퀴로 넘겨
   //  핵심 결과(채운 칸·질문)가 반드시 화면에 돌아오게 한다(넘기면 그대로 끊겨 칸이 하나도 반영되지 않았다). 넘긴 사실은 화면 줄에 남긴다.
   if (r && r.ok) { r.lines = gl.concat(r.lines || []); r.items = gi.concat(r.items || []); if (gc.changed) r.loop = Object.assign({}, r.loop || {}, { again: '사건파악으로 작업관리 값을 고침 — 증빙 대조를 그 값으로 다시' }); }
@@ -33333,15 +33412,26 @@ function caseProcOverview_(c) {
     if (cc.세목 === 'gift' && !String(((cc.사건개요 || {}).giftPriorAmount) == null ? '' : (cc.사건개요 || {}).giftPriorAmount).trim()) r.lines.push('⏳ 확인 전 칸 1개 — 10년 내 같은 증여자 증여 합산(답하기 전 계산하면 0원 — 합산할 증여가 있으면 세율 구간·공제가 달라지는 큰 질문, 신고서 출력 전에 다시 알림)'); } catch (e) {} }
   const late = Date.now() - t0 > 270000;
   if (late && r && r.lines) r.lines.push('⏱ 칸 채우기에 ' + Math.round((Date.now() - t0) / 1000) + '초가 걸려 메모 후보·교차검증 정리는 이번 바퀴에서 건너뜀 — 「🔄 처음부터 다시 처리」 때 이어서 함(서류 글자는 기억에 있어 다음엔 빠름)');
+  tt = Date.now();
   if (!late) { try { caseProcMemoCands_(c, r); } catch (e) {} }
   if (!late) { try { caseProcMemoCross_(c, r); } catch (e) {} }
+  tmk('메모 후보', tt); tt = Date.now();
   try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
   try { caseProcCleanCands_(r); } catch (e) {}
+  tmk('쓰인 곳 장부', tt); tt = Date.now();
   // [2026.10.18 교차검증 2번] 질문 중 "어느 값인가"를 묻는 것 — GAS 객관 규칙(같은 값·검산·법령 정의)으로 풀고, 남은 것은 AI에게 물을 쟁점 목록으로(CrossCheck.js)
   try { if (!late && r && r.ok && typeof cxResolve_ === 'function') cxResolve_(c, r); } catch (e) { if (r && r.lines) r.lines.push('⚠ 교차검증 중 오류: ' + (e && e.message || e)); }
+  tmk('교차검증', tt); tt = Date.now();
   try { if (r && r.ok && typeof caseProcAiNexAskItems_ === 'function') caseProcAiNexAskItems_(c, r); } catch (e) {} // [2026.10.21 넥스 하나로] 넥스가 질문 목록 밖에서 여쭌 것(AiLeadLive.js)
+  try {
+    if (r && r.lines) {
+      const inner = Object.keys(CP_OV_T_ || {}).map(function (k) { return k + ' ' + CP_OV_T_[k] + '초'; });
+      r.lines.push('⏱ ③ 안쪽 ' + Math.round((Date.now() - t0) / 1000) + '초 — ' + Object.keys(tm).map(function (k) { return k + ' ' + tm[k] + '초'; }).join(' · ') + (inner.length ? ' (칸 조립 안: ' + inner.join(' · ') + ')' : ''));
+    }
+  } catch (e) {}
   return r;
 }
+var CP_OV_T_ = {}; // [2026.10.23 속도 ㅅ3차] caseProcOverview0_ 양도 길 안쪽 시간(서류 정리·교차검증·조립) — 겉 함수가 ⏱ 줄에 싣는다
 // [2026.10.16 후보 1번 점검] 이름·소재지 질문의 후보 중 그 칸 값이 될 수 없는 문장 조각을 뺀다 —
 //  메모·영문 서류에서 "의 6녀의 남편)", "및 관계:", "(주소):", "를 두거나 183일 이상의 거소…", "(SELLER/TRANSFEROR) | GIL SEO PARK (고객AM)"가 1번 후보가 되던 것.
 //  이름은 한글 2~5자(괄호 안 한글 이름이 있으면 그것), 소재지는 행정구역·도로명·번지나 영문 주소 형태만.
@@ -33457,13 +33547,18 @@ function caseProcOverview0_(c) {
   }
   // [2026.10.17 재설계] 양도는 한 길뿐 — 증빙(서류 규칙 정리) → 세액계산기 입력 → 계산기가 원하는 칸 질문 → 처리개요 요약(trcOverview_).
   //  예전 길(처리개요 물건목록에 값을 채우고 국외자산·서류 없음·정리 실패 때 따로 묻던 caseProcTrAskBasics_ 등)은 걷어냈다.
+  const tRf = Date.now();
   const rf0 = String(c.폴더ID || '').trim() ? tc_ruleTransferFacts_({ caseId: c.id }) : null;
+  try { CP_OV_T_['서류 정리' + (rf0 && rf0._reused ? '(재사용)' : '')] = Math.round((Date.now() - tRf) / 100) / 10; } catch (e) {}
   CASEPROC_LAST_RF_ = { caseId: c.id, rf: rf0 }; // 🧪 정답지 점검이 같은 실행 안에서 필요경비·거래 목록을 다시 읽지 않고 쓰게
   if (rf0 && rf0.ok && rf0._reused) lines.push('⚡ 서류 정리 결과 재사용(' + rf0._reused + ' 정리분 — 서류 목록·기록한 값이 그대로라 다시 정리하지 않음)'); // [2026.10.22 속도 S3]
   if (rf0 && !rf0.ok) lines.push('서류 규칙 정리 실패: ' + (rf0.error || '응답 없음') + ' — 계산기 필요 칸을 질문으로 받습니다');
   if (!rf0) lines.push('증빙 폴더가 없어 서류를 읽지 못했습니다 — 계산기 필요 칸을 질문으로 받습니다');
   const rf = rf0 && rf0.ok ? rf0 : { ok: true, counts: { 계약서: 0, 신고필증: 0, 등기부: 0, 취득세: 0, 법무사: 0 }, evidence: [], transactions: [], expCands: [] };
-  return trcOverview_(c, ov, rf, lines, items);
+  const tTr = Date.now();
+  const rTr = trcOverview_(c, ov, rf, lines, items);
+  try { CP_OV_T_['칸 조립(교차검증 포함)'] = Math.round((Date.now() - tTr) / 100) / 10; } catch (e) {}
+  return rTr;
 }
 // 서류 정리 결과에서 기준일 후보 — 증여: 등기부 소유권이전 원인 "증여"의 접수일(상증령 §24 — 등기·등록 대상 재산의 취득시기는
 // 소유권이전등기 접수일, 증여계약일(원인일) 아님), 상속: 사망진단서·기본증명서 등의 사망일. 판독이 불확실하면 warn.
@@ -35100,8 +35195,20 @@ var CASEPROC_PARSEALL_MEMO_ = null;
 function caseProcParseAll_(c) {
   // 한 실행 안에서 여러 단계가 같은 사건 서류를 여러 번 정리하던 것 — 2분 안에는 한 번만(서류가 수백 개인 사건)
   if (CASEPROC_PARSEALL_MEMO_ && CASEPROC_PARSEALL_MEMO_.id === c.id && Date.now() - CASEPROC_PARSEALL_MEMO_.at < 120000) return CASEPROC_PARSEALL_MEMO_.out.slice();
+  // [2026.10.23 속도 ㅅ3차] 실행이 달라도 서류 목록(ID·수정시각)이 같으면 6시간 기억(CacheService 조각)한 해석 결과를 그대로 쓴다 — 답 하나마다 ③이 서류 전체를 다시 해석하던 것.
+  //  서류별 해석(caseProcParsed_ cpp37)은 이미 기억되지만 묶음 전체(docParseText_)는 매번 다시 돌았다. 해석 규칙 판(cpp37)이 바뀌면 열쇠가 달라 저절로 다시.
+  let cache = null, key = 'cpall_' + c.id, sig = '';
+  try {
+    const fl = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name); }).map(function (f) { return f.id + '|' + (f.modified || ''); }).sort();
+    sig = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(['cpp37', String(c.세목 || ''), fl]), Utilities.Charset.UTF_8));
+    cache = CacheService.getScriptCache();
+    const hit = tcChunkGet_(cache, key);
+    if (hit && hit.sig === sig && Array.isArray(hit.out)) { CASEPROC_PARSEALL_MEMO_ = { id: c.id, at: Date.now(), out: hit.out }; return hit.out.slice(); }
+  } catch (e) { cache = null; }
+  const t0 = Date.now();
   const out = caseProcParseAll0_(c);
   CASEPROC_PARSEALL_MEMO_ = { id: c.id, at: Date.now(), out: out };
+  if (cache && sig && Date.now() - t0 < 140000) try { tcChunkPut_(cache, key, { sig: sig, out: out }, 21600); } catch (e) {} // 시간이 모자라 잘린 결과(150초 상한)는 기억하지 않는다
   return out.slice();
 }
 function caseProcParseAll0_(c) {
@@ -38441,7 +38548,10 @@ function caseProcDraft_(c) {
   L.push('## 2. 세액 계산 결과', '');
   if (last) L.push('- ' + (last.계산일 || '') + ' ' + (last.구분 || '') + ' 계산' + (Number.isFinite(last.최종세액) ? ' — 납부할 세액 **' + won(last.최종세액) + '**' : ''), '', '```', String(last.요약 || '').slice(0, 3000), '```', '');
   else L.push('⚠[확인필요] 아직 계산 결과가 저장되지 않았습니다.', '');
+  const tD = {}, tdk = function (k, t) { tD[k] = Math.round((Date.now() - t) / 100) / 10; }; // [2026.10.23 속도 ㅅ3차] ⑥ 안쪽 시간 — 화면 줄에 실어 어디가 3~4분인지 본다
+  let td0 = Date.now();
   const paras = caseProcParagraphs_(c);
+  tdk('문단 고르기', td0); td0 = Date.now();
   if (paras.length) {
     L.push('## 3. 검토 쟁점', '');
     // [2026.10.22 ㄴ6] 소재지·취득일·보유기간·거주기간·양도가액·취득가액·최종세액은 계산기 저장값에서 채운다(검토서는 계산기 값에서 — L2_caseproc "처리개요는 요약"). 저장값에 없는 것만 ⚠[확인필요].
@@ -38470,6 +38580,7 @@ function caseProcDraft_(c) {
   }
   // [2026.10.18 교차검증 2번] AI 판단 값은 서류 값·세무사님 확인 값과 섞지 않고 따로 모은다(세무사님 원칙 4 — 무엇을 AI가 정했는지 알 수 있게)
   let aiList = []; try { aiList = typeof cxAiJudgedList_ === 'function' ? cxAiJudgedList_(c.id) : []; } catch (e) { aiList = []; }
+  tdk('AI 판단 값', td0); td0 = Date.now();
   if (aiList.length) {
     L.push('## 🤖 AI 판단 값(' + aiList.length + '개) — 서류만으로 안 정해져 AI가 정한 값', '', '| 칸 | 값 | 모델 | 근거 | 세무사님 |', '|---|---|---|---|---|');
     aiList.forEach(function (a) { L.push('| ' + [a.칸, a.값, a.모델, String(a.근거).replace(/\|/g, '/').slice(0, 200), a.세무사님].join(' | ') + ' |'); });
@@ -38487,7 +38598,9 @@ function caseProcDraft_(c) {
     leadAsks.forEach(function (a) { L.push('- ' + (a.urgent ? '(계산을 막음) ' : '') + String(a.note).replace(/\s+/g, ' ').slice(0, 300)); });
   }
   const md = L.join('\n') + '\n';
+  tdk('글 조립', td0); td0 = Date.now();
   const sub = work_getCaseSubfolders({ caseId: c.id });
+  tdk('폴더 찾기', td0); td0 = Date.now();
   const folder = DriveApp.getFolderById(sub && sub.internalFolderId ? sub.internalFolderId : c.폴더ID);
   const name = String(c.사건명 || c.고객명 || '사건').replace(/[\\/:*?"<>|]/g, '_') + '_종합검토서_초안.md';
   return withLock_(15000, function () {
@@ -38503,7 +38616,8 @@ function caseProcDraft_(c) {
   else { file = folder.createFile(name, md, 'text/markdown'); fresh = true; }
   const fid = file.getId(), fh = hash(md);
   caseProcPatch_(c.id, function (sv) { sv.draftFileId = fid; sv.draftHash = fh; sv.draftAt = caseProcNow_(); sv.draftAtMs = Date.now(); if (editedOld) { sv.draftEdited = (sv.draftEdited || []).concat([editedOld]).slice(-10); caseProcLogTo_(sv, { by: '자동', what: '검토서 새 초안', detail: '고치신 판(' + editedOld.name + ')은 그대로 두고 새 초안을 따로 만듦' }); } });
-  return { ok: true, fileId: file.getId(), name: file.getName(), fresh: fresh, extra: remain.length };
+  tdk('파일 쓰기', td0);
+  return { ok: true, fileId: file.getId(), name: file.getName(), fresh: fresh, extra: remain.length, _t: tD };
   });
 }
 
@@ -48721,6 +48835,19 @@ function trcFromEvidence_(c, rf, txs, ans) {
   return { state: st, src: src, cands: cands, facts: facts };
 }
 // 답을 계산기 입력에 덮는다(답이 증빙보다 우선)
+// [2026.10.23 속도 ㅅ3차] 사건분류 잠정값(trcApplyAns_에서 씀) — 답 전엔 이 값으로 계산
+function trcProvClass_(S) {
+  const ovc = String(S.ovClass || '').trim();
+  if (ovc && (TRC_CLASS_FLAGS_[ovc] || ovc === '일반')) return { v: ovc, why: '처리개요 사건분류 칸의 값(의뢰서·세무사님 입력)' };
+  const a0 = (S.state.transferAssets || [])[0] || {}, c0 = (S.state.transferContracts || [])[0] || {};
+  if (a0.assetType !== 'house' || S.facts.overseas) return null;
+  const ry = S.facts.resYears && S.facts.resYears[0];
+  if (!ry || !ry.y) return null;
+  const price = Number(String(c0.totalPrice == null ? '' : c0.totalPrice).replace(/[^\d]/g, '')) || 0;
+  if (!price) return null;
+  const v = price > 1200000000 ? '1세대1주택 고가주택(과세)' : '1세대1주택 비과세';
+  return { v: v, why: '서류: 판 물건이 주택 · 초본 거주 ' + ry.y + '년 · 양도가액 ' + price.toLocaleString('ko-KR') + '원(12억 ' + (price > 1200000000 ? '초과' : '이하') + ') — 1세대·주택 수는 서류로 확인 못 함' };
+}
 function trcApplyAns_(S, ans) {
   const st = S.state;
   const setP = function (path, v) {
@@ -48770,6 +48897,17 @@ function trcApplyAns_(S, ans) {
     if (f && f.asset) st.transferAssets.forEach(function (a) { Object.assign(a, f.asset); });
     if (f && f.seller) Object.assign(st.transferSellers[0], f.seller);
     S.src['사건분류'] = ans.사건분류.src;
+  } else {
+    // [2026.10.23 속도 ㅅ3차 — 세무사님 결정 1 "잠정값으로 계산"] 사건분류 답이 아직 없으면 잠정값으로 먼저 계산한다(질문은 그대로 — "잠정 ○○으로 계산 중, 다르면 고르세요").
+    //  잠정값: ① 처리개요 사건분류 칸에 이미 있는 값(의뢰서·세무사님 입력 — 세무사님 값은 바꾸지 않고 그대로 씀) ② 없으면 서류로 보이는 것 — 판 물건이 주택이고 초본에 그 주소 거주 이력이 있으면
+    //  양도가액 12억 초과 → "1세대1주택 고가주택(과세)", 이하 → "1세대1주택 비과세". 1세대(세대 주택 수)는 서류로 다 알 수 없으므로 잠정일 뿐이고 답이 오면 그 값으로 다시 계산한다.
+    const pv = trcProvClass_(S);
+    if (pv) {
+      const f = TRC_CLASS_FLAGS_[pv.v];
+      if (f && f.asset) st.transferAssets.forEach(function (a) { Object.assign(a, f.asset); });
+      if (f && f.seller) Object.assign(st.transferSellers[0], f.seller);
+      S.src['사건분류'] = '잠정: ' + pv.why; S.facts.provClass = pv;
+    }
   }
   // [2026.10.17] 1세대1주택 — 계산기 「거주연수」(장기보유특별공제 표2). 답이 없으면 초본 이력에서 그 자산 주소에 산 기간(trcResYears_), 못 정하면 질문
   st.transferAssets.forEach(function (a, i) {
@@ -49115,8 +49253,9 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const co = trcClassOptions_(S, tpl, ans);
     if (co.cut.length) cf.push('서류로 해당 없어 뺀 선택지: ' + co.cut.join(', '));
     tpl = co.options;
-    q('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)를 정해 주세요 — 고른 것은 계산기 자산 카드의 해당 체크(1세대1주택·비사업용토지·미등기 등)와 양도인 카드 주택 수로 들어가 세율·공제가 달라집니다. 서류에서 읽은 관련 사실을 아래에 적었습니다(보유 주택 수·세대 구성은 서류만으로 다 알 수 없어 정하지 않았습니다).',
-      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k + (co.fit[k] ? ' — 서류: ' + co.fit[k] : ''), value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]) }, cf); // [2026.10.18 교차검증 2번] "AI에게 근거 듣기" 버튼(ai) 없앰 — AI를 부를지 사용자에게 고르게 하지 않는다(세무사님 지시), 판단은 교차검증 쟁점(cxResolve_)으로
+    const pvc = S.facts.provClass || null; // [2026.10.23 속도 ㅅ3차] 잠정값으로 계산 중이면 그렇게 밝히고, 계산을 막지 않는다(provisional)
+    q('ov:사건분류', 'judge', (pvc ? '잠정 「' + pvc.v + '」으로 계산 중(' + pvc.why + ') — 다르면 고르세요. ' : '') + '사건분류(비과세·중과·감면 등 어느 경우인지)를 정해 주세요 — 고른 것은 계산기 자산 카드의 해당 체크(1세대1주택·비사업용토지·미등기 등)와 양도인 카드 주택 수로 들어가 세율·공제가 달라집니다. 서류에서 읽은 관련 사실을 아래에 적었습니다(보유 주택 수·세대 구성은 서류만으로 다 알 수 없어 정하지 않았습니다).',
+      Object.assign({ mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k + (co.fit[k] ? ' — 서류: ' + co.fit[k] : ''), value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]) }, pvc ? { provisional: { v: pvc.v, why: pvc.why } } : {}), cf); // [2026.10.18 교차검증 2번] "AI에게 근거 듣기" 버튼(ai) 없앰 — AI를 부를지 사용자에게 고르게 하지 않는다(세무사님 지시), 판단은 교차검증 쟁점(cxResolve_)으로
   }
 }
 // 취득당시 기준시가 질문 — 증빙의 공시가격·개별공시지가·건물기준시가 출력물을 근거로(§164⑦: 공동주택가격 최초 공시 전 취득분)
@@ -49197,6 +49336,7 @@ function trcOverview_(c, ov, rf, lines, items) {
   const ans = trcAnsLoad_(c);
   const S = trcFromEvidence_(c, rf, txs, ans);
   S.ans = ans; S.baseDate = c.기준일 || '';
+  S.ovClass = String((ov && ov.사건분류) || '').trim(); // [2026.10.23 속도 ㅅ3차] 처리개요 사건분류 값 — 답 전 잠정값(trcProvClass_)
   S.facts.officetel = trcOfficetel_(c, rf, txs);
   // 오피스텔이 아닌 주택(대장·등기부 용도가 아파트·다세대·연립·단독·다가구)이면 과세대상 구분 = 주택
   const shG = S.facts.shareGroup; // [2026.10.18 정밀분석 5] 지분별 자산은 같은 물건 — 주택 여부·자산구분을 자산1에서 정해 나머지 지분에 같게
@@ -49225,7 +49365,9 @@ function trcOverview_(c, ov, rf, lines, items) {
   try { trcOverseas_(c, S, ans, rf, lines, items); } catch (e) { lines.push('⚠ 국외자산 서류 정리 오류: ' + (e && e.message || e)); } // 국외자산이면 계산기 국외자산 카드로
   // [2026.10.18 재점검 3·7] 교차검증을 계산기 입력이 만들어지는 자리에서 — 서류 규칙이 서류 순서로 고른 값을 사건 사실 전체 맞대기 판정으로 바꾸고,
   //  안 갈리면 후보 질문으로(CrossCheckBind.js cxInlineTransfer_). 매번 서류로 다시 정하므로 답(trAns)으로 굳지 않는다 — 세무사님 답만 아래에서 덮는다
+  const tCx = Date.now();
   try { if (typeof cxInlineTransfer_ === 'function') cxInlineTransfer_(c, S, lines); } catch (e) { lines.push('⚠ 교차검증(계산기 입력) 중 오류: ' + (e && e.message || e)); }
+  try { CP_OV_T_['교차검증(계산기 입력)'] = Math.round((Date.now() - tCx) / 100) / 10; } catch (e) {} // [2026.10.23 속도 ㅅ3차]
   trcApplyAns_(S, ans);
   // [2026.10.17 재설계] 이 사무소가 처리한 증여세 사건 — 증여로 받은 자산의 취득가액 후보(§163⑨ 증여세 신고·결정가액)
   if ((S.facts.gift || []).length && !S.facts.overseas) {
