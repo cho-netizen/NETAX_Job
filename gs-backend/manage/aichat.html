@@ -2918,7 +2918,9 @@
       return st.prBusy;
     };
     st.flushRefresh = function(force){ clearTimeout(st.prTimer); return run(force !== false).then(function(){ return st.prBusy || null; }); };
-    st.prTimer = setTimeout(run, 12000);
+    // [2026.10.22 속도 — 답 모아 한 번만] 마지막 답 뒤 20초 동안 다른 답이 없을 때 한 번(답할 때마다 시계를 다시 잰다). 이미 도는 중이면 새로 시작하지 않고 그 결과를 쓰되,
+    //  그 사이 답이 더 있었으면 끝난 뒤 한 번만 더(prAgain). ▶를 누르면 기다리지 않고 바로(flushRefresh). 예전 12초는 답 하나마다 거의 매번 맞추기를 띄워 줄을 세웠다(가상양도10 표 82: ▶ 뒤 5분 45초)
+    st.prTimer = setTimeout(run, 20000);
   }
   // 사건 화면 — "GAS가 한 일" 한 줄(남은 질문을 계산기 항목별로). 답하실 때마다 다시 맞춘다
   function nxAiCpGasSayText_(st){
@@ -3117,17 +3119,33 @@
     return Promise.resolve();
   }
   // 6단계 — 결정·남은 일 저장(작업일지 한 줄) + 종합검토서 초안(보류 = 추가로 확인할 사항)
+  // [2026.10.22 ⑥ 응답 유실 복구] 긴 단계(검토서 초안·서식 PDF 저장) — 다리(gasbridge)가 6분 30초까지 같은 요청번호로 결과를 다시 받아오지만, 그래도 실패하면
+  //  서버 사건 현황(view — 0원)을 읽어 그 파일이 이번 시작 뒤에 만들어져 있으면(서버 시각 ms, 시계 차이 90초 여유) 끝난 것으로 잇는다. 예전엔 화면이 "작성 중…"에 영원히 남았다(가상양도10 표 84)
+  function nxAiCpLongRun_(st, step, extra, check, uiKey){
+    var t0 = Date.now();
+    return st.run(step, extra).then(null, function(err){
+      st.setStep(uiKey || 'save', '🔄', '응답이 끊겨 서버 상태를 다시 확인하는 중…');
+      return callGas('case_proc', { caseId: st.caseId, step: 'view', noAi: true }).then(function(v){
+        var r = v && v.ok ? check(v, t0 - 90000) : null;
+        if (r){ r.recovered = String(err && err.message || err).slice(0, 80); return r; }
+        throw err;
+      }, function(){ throw err; });
+    });
+  }
   function nxAiCaseProcFinish_(st){
     st.setStep('save', '🔄', '저장·초안 작성 중…');
     return nxAiCaseProcSave_(st, true).then(function(r){
       if (!r || !r.ok) throw new Error((r && r.error) || '저장 실패');
       if (!st.case || !st.case.폴더ID) return r;
-      return st.runMany([{ step: 'draft' }, nxAiCaseProcStatusReq_(st)]).then(function(rs){ st.preStatus = rs[1]; return rs[0]; }, function(){ return st.run('draft'); }).then(function(d){
+      // [2026.10.22 ⑥ 응답 유실 복구] 검토서 초안과 현황표를 한 호출로 묶지 않는다 — 묶으면 한 호출이 2~4분이 되어 응답을 잃기 쉬웠다(가상양도10 표 84). 초안은 따로(짧게), 현황표는 ⑦에서 따로
+      st.preStatus = null;
+      st.setStep('save', '🔄', '저장 끝 — 종합검토서 초안 작성 중…');
+      return nxAiCpLongRun_(st, 'draft', null, function(v, since){ var dd = v.검토서; return dd && dd.파일 && Number(dd.ms) >= since ? { ok: true, fileId: dd.파일, name: '종합검토서 초안(' + (dd.때 || '') + ')', fresh: false, extra: v.보류 || 0 } : null; }).then(function(d){
         var linesEl = st.steps.save.querySelector('.nxai-cp-lines');
         linesEl.innerHTML = '';
         var line = document.createElement('div'); line.className = 'nxai-cp-line';
         if (d && d.ok){
-          line.textContent = '📝 종합검토서 초안: ' + d.name + (d.extra ? ' (추가로 확인할 사항 ' + d.extra + '건)' : '') + (d.fresh ? '' : ' — 고쳐 썼습니다');
+          line.textContent = '📝 종합검토서 초안: ' + d.name + (d.extra ? ' (추가로 확인할 사항 ' + d.extra + '건)' : '') + (d.fresh ? '' : ' — 고쳐 썼습니다') + (d.recovered ? ' — 응답이 한 번 끊겼지만 서버는 끝내 두어 그대로 이었습니다' : '');
           var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn'; b.textContent = '✍ 문서작성에서 열기';
           b.addEventListener('click', function(){ if (typeof goToReportWriter_ === 'function'){ goToReportWriter_(st.caseId, { fileId: d.fileId }); window.nxOpenSideAI_(); } });
           line.appendChild(document.createTextNode(' ')); line.appendChild(b);
@@ -3171,7 +3189,9 @@
   function nxAiCaseProcStatus_(st){
     st.setStep('status', '🔄', '정리 중…');
     var pre = st.preStatus; st.preStatus = null; // 검토서 초안과 함께 받아 둔 현황표가 있으면 그것을 쓴다
-    return (pre ? Promise.resolve(pre) : st.run('status', nxAiCaseProcStatusReq_(st))).then(function(r){
+    // [2026.10.22 ⑥ 응답 유실 복구] 현황표는 읽기만 하는 단계 — 응답이 끊기면 새 요청번호로 한 번 더(장부가 폴더를 훑어 1분 넘게 걸릴 때가 있음)
+    var ask = function(n){ return st.run('status', nxAiCaseProcStatusReq_(st)).then(null, function(err){ if (n < 1){ st.setStep('status', '🔄', '응답이 끊겨 다시 정리하는 중…'); return ask(n + 1); } throw err; }); };
+    return (pre ? Promise.resolve(pre) : ask(0)).then(function(r){
       if (!r || !r.ok) throw new Error((r && r.error) || '응답 없음');
       var box = st.steps.status.querySelector('.nxai-cp-lines');
       var rows = r.rows || [];
@@ -3207,7 +3227,10 @@
       if (!rows.length) return Promise.resolve({ ok: false, error: '준비된 필수 서식이 없음(계산 결과 확인)' });
       var html = printFormDocHtml_(group + ' 신고서식', rows.map(function(r){ return r.html; }).join(''))
         .replace(/<div class="pf-toolbar">[\s\S]*?<\/div>/, '').replace('background:#e9eaee', 'background:#fff');
-      return st.run('savePdf', { html: html, title: group + ' 신고서식', forms: rows.length });
+      // [2026.10.22 ⑥ 응답 유실 복구] 서식 PDF 저장도 긴 호출 — 응답이 끊기면 서버 현황(서식 파일 시각)으로 끝났는지 확인해 잇는다
+      var nForms = rows.length;
+      return nxAiCpLongRun_(st, 'savePdf', { html: html, title: group + ' 신고서식', forms: nForms }, function(v, since){ var p = v.서식; return p && p.파일 && Number(p.ms) >= since ? { ok: true, id: p.파일, name: p.이름 || (group + ' 신고서식'), forms: p.서식수 || nForms } : null; }, 'calc')
+        .catch(function(e){ return { ok: false, error: String(e && e.message || e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
   }
   // 저장된 계산 결과로 세액인쇄 필수 서식 PDF 만들기 — 서식은 세액계산 화면이 그 사건의 저장 결과를 불러와야 생기므로(tcRestoreToolResults_)
@@ -3349,22 +3372,48 @@
     st.items.forEach(function(it, i){
       if (it.step !== key) return;
       var d0 = nxAiCaseProcDec_(st, it);
-      if (d0 === '무시' || d0 === 'done') return; // 무시 = 완전 제외, done = 확인으로 끝난 항목
-      vis.push({ it: it, i: i, c: nxAiCpCard_(it, tax) });
+      // 무시 = 완전 제외, done = 확인으로 끝난 항목 — [2026.10.22 가상양도10 표 78] 다시 그릴 때도 "✅ 답함" 한 줄로 자리를 지킨다(예전엔 다시 맞추기 재렌더에서 답한 줄이 통째로 사라져 답 안 한 모습으로 보였다)
+      vis.push({ it: it, i: i, c: nxAiCpCard_(it, tax), done: d0 === '무시' || d0 === 'done' });
     });
     vis.sort(function(x, y){ return (x.c.no - y.c.no) || (x.i - y.i); });
-    vis.forEach(function(v){ cnt[v.c.card] = (cnt[v.c.card] || 0) + 1; });
+    vis.forEach(function(v){ if (!v.done) cnt[v.c.card] = (cnt[v.c.card] || 0) + 1; });
     vis.forEach(function(v){
-      if (v.c.card !== lastCard){
+      if (v.c.card !== lastCard && cnt[v.c.card]){
         lastCard = v.c.card;
         var hd = document.createElement('div'); hd.className = 'nxai-cp-card';
         hd.textContent = v.c.card + ' — ' + cnt[v.c.card] + '개';
         box.appendChild(hd);
       }
+      if (v.done){ v.it._el = null; box.appendChild(nxAiCpDoneStub_(st, v.it)); return; }
       box.appendChild(nxAiCpBuildItemEl_(st, v.it));
     });
     nxAiCaseProcRenumber_(st); // [2026.10.15 1단계 ③] 질문 번호(Q1…) — 입력창에 말로 답할 때 부르는 번호
     nxAiCpStepSum_(st, key);
+  }
+  // [2026.10.22 가상양도10 표 77·78] 답한·무시한 줄의 자리 지킴이("✅ 답함 — 질문 (답 반영: 값)") — 처음 그릴 때·다시 그릴 때·한 줄 바꿀 때 모두 같은 모양
+  function nxAiCpDoneStub_(st, it){
+    var d0 = nxAiCaseProcDec_(st, it), dn = st.decisions[it.id] || {};
+    var stub = document.createElement('div'); stub.className = 'nxai-cp-item nxai-cp-done'; stub.style.cssText = 'opacity:.6;font-size:12.5px;';
+    stub.textContent = (d0 === 'done' ? '✅ 답함 — ' : '— 무시 — ') + String(it.text || '').slice(0, 50) + (dn.note ? ' (' + nxAiCpValueText_(dn.note).slice(0, 80) + ')' : '');
+    return stub;
+  }
+  // [2026.10.22 가상양도10 표 77] 값을 사람 말로 — 서버 작업일지와 같은 변환(Code.js caseProcValueText_). "답 반영: {"items":[{"kind":"취득"…" 같은 날것 JSON이 화면 스텁에 보이던 것
+  function nxAiCpValueText_(value){
+    var v = value;
+    if (typeof v === 'string'){
+      var pre = '', s = v.trim();
+      var pm = /^(답 반영:\s*)([\[{][\s\S]*)$/.exec(s); if (pm){ pre = pm[1]; s = pm[2]; }
+      if (!/^[\[{]/.test(s)) return v;
+      try { v = JSON.parse(s); } catch (e) { return v; }
+      return pre + nxAiCpValueText_(v);
+    }
+    if (v == null) return '';
+    if (typeof v !== 'object') return String(v);
+    var won = function(n){ return (Number(String(n == null ? '' : n).replace(/[^\d.-]/g, '')) || 0).toLocaleString('ko-KR') + '원'; };
+    var rowText = function(x){ if (!x || typeof x !== 'object') return String(x); return [x.kind, x.label || x.creditorName || x.loc || x.jibun, x.amount != null ? won(x.amount) : (x.v != null ? String(x.v) : ''), x.file].filter(function(t){ return t != null && String(t).trim() !== ''; }).join(' '); };
+    var list = Array.isArray(v) ? v : (Array.isArray(v.items) ? v.items : (Array.isArray(v.rows) ? v.rows : (Array.isArray(v.parcels) ? v.parcels : null)));
+    if (list) return list.length ? list.map(rowText).join(' · ') : '없음(0건)';
+    return Object.keys(v).map(function(k){ var x = v[k]; return k + ' ' + (x && typeof x === 'object' ? nxAiCpValueText_(x) : String(x)); }).join(' · ');
   }
   // [2026.10.22 묶음 ㄱ3] 한 줄만 바꾼다 — 답한 줄은 빼고, 보류·다시 묻기는 그 줄만 다시 그림. 다른 줄(적던 값·펼친 질문)은 그대로(예전엔 단계 전체를 다시 그려 입력이 날아가고 번호가 밀림, 가상양도7 표 15·19)
   function nxAiCpUpdateItem_(st, it){
@@ -3375,7 +3424,7 @@
     if (!old || !old.parentNode){ nxAiCaseProcItems_(st, key); return; }
     var d0 = nxAiCaseProcDec_(st, it);
     // [2026.10.22 가상양도8 표 50] 답한 줄을 지우면 아래가 밀려 손이 엉뚱한 단추를 누른다 — 지우지 않고 "✅ 답함" 한 줄로 바꿔 자리를 지킨다(다음 칸 다시 맞추기 때 정리됨)
-    if (d0 === '무시' || d0 === 'done'){ var stub = document.createElement('div'); stub.className = 'nxai-cp-item nxai-cp-done'; stub.style.cssText = 'opacity:.6;font-size:12.5px;'; var dn = st.decisions[it.id] || {}; stub.textContent = (d0 === 'done' ? '✅ 답함 — ' : '— 무시 — ') + String(it.text || '').slice(0, 50) + (dn.note ? ' (' + String(dn.note).slice(0, 60) + ')' : ''); old.parentNode.replaceChild(stub, old); it._el = null; }
+    if (d0 === '무시' || d0 === 'done'){ old.parentNode.replaceChild(nxAiCpDoneStub_(st, it), old); it._el = null; }
     else old.parentNode.replaceChild(nxAiCpBuildItemEl_(st, it), old);
     nxAiCpFixHeaders_(box);
     nxAiCaseProcRenumber_(st);
@@ -3828,7 +3877,7 @@
         if (target === 'evMark' && r.my_report_id) callGas('admin_set_checklist_status', { report_id: r.my_report_id, item: ask.label, submitted: true }).catch(function(){});
         // [2026.10.22 시험가동] 단추를 기다리는 동안(st.paused)엔 답한 질문을 바로 닫고 다음 질문에 답하시게 한다 — 칸 다시 맞추기(서버 약 90초)는
         //  답이 멈춘 뒤 한 번만(nxAiCpPausedRefresh_). 예전엔 답 하나마다 2분 넘게 기다려야 다음 질문을 누를 수 있었다
-        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + String(value).slice(0, 40) }; if (/^(base|case:)/.test(String(target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다 · [속도 S2] 기준일·사건 칸 답일 때만 ①도 다시
+        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(value).slice(0, 80) }; if (/^(base|case:)/.test(String(target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다 · [속도 S2] 기준일·사건 칸 답일 때만 ①도 다시
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
     };
