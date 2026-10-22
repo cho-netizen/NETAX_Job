@@ -4277,7 +4277,7 @@ function tcGasFill_(){
 }
 function tcRunAutoCalc_(){
   if (typeof nxAiCaseProc_ === 'function' && tcCurrentCase && tcCurrentCase.id){
-    var side = document.getElementById('sideAI'); if (side) side.classList.add('expanded');
+    window.nxOpenSideAI_();
     nxAiCaseProc_(String(tcCurrentCase.사건명 || tcCurrentCase.고객명 || '') + ' 사건 처리하자', tcCurrentCase.id);
     return;
   }

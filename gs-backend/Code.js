@@ -49465,9 +49465,15 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
     q('oa:res5', 'judge', '국외자산 카드 「양도일까지 계속 5년 이상 국내 거주」 — 아니면 국외자산 양도세 납세의무가 없습니다(§118의2).' + (r5.text ? ' ' + r5.text : resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
       { mode: 'options', target: 'calc:a0.oaResident5yr', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] }, r5.detail || '');
   }
-  if (of.sale && !fxT) q('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).', { mode: 'input', target: 'calc:oa.fxT', input: 'text', label: '양도일 기준환율', cands: [] });
+  // [2026.10.22 시험가동 가상양도1] 기준환율은 공개 자료(한국은행 ECOS — 조견표 기준환율 조회와 같은 도구, 0원)라 GAS가 그 날짜 값을 찾아 후보로 띄운다.
+  //  예전엔 후보 없이 "알려 주세요"로만 물어 세무사님이 따로 찾아 넣어야 했다(1단계 — 정보가 갖춰지면 GAS로). 어느 날을 기준으로 할지(대금 받은 날·지급한 날)는 판단이라 고르시게 둔다
+  const fxCands = function (d) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d || ''))) return [];
+    try { const r0 = handleLookupExchangeRate({ currency: 'USD', date: d }); return r0 && r0.환율 ? [{ v: String(r0.환율), src: '한국은행 ECOS 기준환율 ' + r0.고시일 + (r0.고시일 !== d ? '(' + d + ' 고시 없어 직전 고시일)' : '') + ' — 시행령 §178의5①' }] : []; } catch (e) { return []; }
+  };
+  if (of.sale && !fxT) q('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).', { mode: 'input', target: 'calc:oa.fxT', input: 'text', label: '양도일 기준환율', cands: fxCands(of.sale.date) });
   const acqDate = (of.deed && (of.deed.recDate || of.deed.date)) || (of.appraisal && of.appraisal.date) || '';
-  if ((of.appraisal || of.buy) && !fxA) q('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.', { mode: 'input', target: 'calc:oa.fxA', input: 'text', label: '취득일 기준환율', cands: [] });
+  if ((of.appraisal || of.buy) && !fxA) q('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.', { mode: 'input', target: 'calc:oa.fxA', input: 'text', label: '취득일 기준환율', cands: fxCands(acqDate) });
   // [2026.10.17 묶음10 국외 원문] 증여증서 원문의 양수인·공유 형태(JOINT TENANTS = 공동 균등 소유)를 지분 판단 근거로 함께 보인다
   const dTen = of.deed && of.deed.grantees && of.deed.grantees.length > 1 ? ' 증여증서 원문: ' + of.deed.grantees.join(', ') + ' ' + of.deed.grantees.length + '명에게 증여' + (of.deed.tenancy ? '(' + of.deed.tenancy + (/JOINT/.test(of.deed.tenancy) ? ' — 공동 균등 소유, 1인당 ' + Math.round(100 / of.deed.grantees.length) + '%로 보는 것이 보통' : '') + ')' : '') + ' — ' + (of.deed.origFile || of.deed.file) + '.' : '';
   if (of.sale && /\band\b|,|&|·/.test(of.sale.sellers || '') && !share) q('oa:share', 'judge', '매도인이 여럿입니다(' + of.sale.sellers + ') — 납세자 지분(%)을 알려 주세요. 양도가액·취득가액·양도비·외국납부세액에 지분을 곱합니다.' + dTen,

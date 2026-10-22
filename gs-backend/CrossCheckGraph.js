@@ -210,7 +210,10 @@ function cxgValueFields_(cc) {
   const out = [], sv = caseProcLoad_(cc.id) || {}, ov = cc.사건개요 || {};
   const kindOf = function (k) { return CXG_FIELD_MAP_[k] || ''; };
   if (cc.세목 === 'transfer' && sv.trCalc && sv.trCalc.state) {
-    (sv.trCalc.state.transferAssets || []).forEach(function (a, i) { const ak = cxAk_(a.assetLocation); Object.keys(a).forEach(function (k) { const kd = kindOf(k); if (!kd || !CXG_KIND_GROUPS_[kd] || /^(취득가액|취득일)$/.test(kd)) return; const cur = cxgNumOrDate_(a[k]); if (cur) out.push({ path: 'a' + i + '.' + k, target: 'calc:a' + i + '.' + k, label: '자산' + (i + 1) + ' ' + kd + '(' + k + ')', group: kd, ak: ak, cur: cur, raw: a[k] }); }); });
+    // [2026.10.22 시험가동 가상양도1] 국외자산 카드의 금액 칸은 원화 환산값(외화 × 기준환율, 시행령 §178의5①)이라 서류(외화) 값과 맞대면 늘 "서류에 없는 값"이 된다 —
+    //  원화로 고른 양도가액 2,285,250,000원을 서류 $1,650,000과 다르다며 다시 묻고, 후보에 달러를 "1,650,000원"으로 띄웠다. 금액 칸은 맞대지 않고 날짜 칸만 맞댄다.
+    //  화면 이름에서 코드 이름(transferPrice 등)도 뺀다(모든 노출 글은 한국어)
+    (sv.trCalc.state.transferAssets || []).forEach(function (a, i) { const ak = cxAk_(a.assetLocation); Object.keys(a).forEach(function (k) { const kd = kindOf(k); if (!kd || !CXG_KIND_GROUPS_[kd] || /^(취득가액|취득일)$/.test(kd)) return; if (a.isOverseasAsset && !/일$/.test(kd)) return; const cur = cxgNumOrDate_(a[k]); if (cur) out.push({ path: 'a' + i + '.' + k, target: 'calc:a' + i + '.' + k, label: '자산' + (i + 1) + ' ' + kd, group: kd, ak: ak, cur: cur, raw: a[k] }); }); });
   } else if (cc.세목 === 'gift' || cc.세목 === 'inheritance') {
     Object.keys(ov).forEach(function (k) { const kd = kindOf(k); if (!kd || !CXG_KIND_GROUPS_[kd] || typeof ov[k] === 'object') return; const cur = cxgNumOrDate_(ov[k]); if (cur) out.push({ path: k, target: 'ov:' + k, label: k + '(' + kd + ')', group: kd, ak: '', cur: cur, raw: ov[k] }); });
   }
