@@ -4692,6 +4692,15 @@ function buildContextSystemPrompt(basePrompt, body) {
       + (ctx.linkedCase.id ? ' (작업관리 사건ID: ' + ctx.linkedCase.id + ')' : '')
       + ' — 사건 폴더는 위 [현재 화면 상태]의 위치다. 사용자가 특정하지 않으면 이 사건에 대한 질문으로 보고 그 폴더의 자료부터 확인하라.';
   }
+  // [2026.10.23 ㅅ12차 — 점검표 142] 사건처리 넥스가 묻는 중(또는 단추 대기 중)에 세무사님이 채팅으로 답했는데 GAS 규칙이 못 알아들은 말 — 열린 질문 목록과 함께 받아 "어느 질문에 어떤 답"으로 풀어 넣기를 제안한다
+  if (ctx.cpHint && Array.isArray(ctx.cpHint.open)) {
+    const h = ctx.cpHint;
+    dynamicExtra += '\n\n[사건처리 질문에 대한 답으로 보임] 사건 "' + String(h.caseName || '') + '"(사건ID ' + String(h.caseId || '') + ')의 사건처리가 ' + String(h.state || '답을 기다리는 중') + '이고, 세무사님이 방금 하신 말은 그 질문들에 대한 답일 가능성이 크다(GAS 규칙은 알아듣지 못함).'
+      + ' 아래 열린 질문 목록과 맞대어 "어느 질문(qid·target)에 어떤 값"인지 풀어, 넣을칸(target)이 있는 질문은 job_propose_action caseproc_answer{caseId, qid, target, value, src}로 하나씩 제안하라(세무사님이 말한 값만, 추측 금지). 선택지가 있는 질문은 그 선택지 글 그대로 value에.'
+      + ' 어느 질문의 답인지 알 수 없거나 값이 불분명하면 그 질문의 Q번호를 들어 되물어라. 넣을칸이 없는 질문(메모형)은 답을 대화로만 받는다. "마무리해"는 답을 넣은 뒤 세액계산·검토서를 만들라는 뜻이다(화면이 이어서 한다).'
+      + '\n열린 질문:' + h.open.map(function (q) { return '\n- Q' + q.q + ' ' + String(q.label || '') + ' (qid: ' + q.qid + ', target: ' + (q.target || '없음') + ', 종류: ' + (q.mode || '') + (q.input ? '/' + q.input : '') + (q.choices && q.choices.length ? ', 선택지·후보: ' + q.choices.join(' | ') : '') + ')'; }).join('')
+      + (Array.isArray(h.unparsed) && h.unparsed.length ? '\n못 알아들은 말: ' + h.unparsed.map(function (s) { return '"' + String(s).slice(0, 120) + '"'; }).join(' / ') : '');
+  }
 
   if (ctx.openFile && ctx.openFile.name) {
     dynamicExtra += '\n현재 편집기/뷰어에 열려 있는 파일: "' + ctx.openFile.name + '" (fileId: ' + ctx.openFile.id + ')';
