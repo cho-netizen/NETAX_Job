@@ -30373,7 +30373,7 @@ function caseProc0_(body) {
   try {
     if (body.step === 'basic') return caseProcBasic_(c, body);
     if (body.step === 'evidence') return caseProcEvidence_(c, body);
-    if (body.step === 'overview') return caseProcOverview_(c);
+    if (body.step === 'overview') return caseProcOverview_(c, body);
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
@@ -33440,14 +33440,16 @@ function caseProcMemoCross_(c, res) {
       { mode: 'choose', target: s[3], input: s[1], label: s[4], cands: [{ v: s[1] === 'money' ? digits(cur) : cur, src: '처리개요(지금 값)' }].concat(diff.map(function (f) { return { v: f.v, src: '상담 메모(' + f.file + '): "' + f.line + '"' }; })) }));
   });
 }
-function caseProcOverview_(c) {
+function caseProcOverview_(c, body) {
   // [2026.10.17 재설계] 사건파악 가설을 서류로 확인·반박하고(작업관리 빈 칸 되먹임·다르면 질문), 그 뒤 세액계산기가 원하는 칸을 채운다
+  // [2026.10.23 속도 ㅅ8차] light(답 뒤 다시 맞추기, 화면 st.lightOverview): 사건파악 확인(15초)·메모 후보(7초)·쓰인 곳 장부(7초)는 처음 ③에서 이미 했으므로 건너뛰고 칸 조립·질문·교차검증만 다시
+  const light = !!(body && body.light);
   const gl = [], gi = [], t0 = Date.now();
   // [2026.10.23 속도 ㅅ3차] ③ 안에서 어디에 시간이 가는지 — 화면 줄 "⏱ ③ 안쪽"으로(사건파악 확인·서류 정리·칸 조립·메모 후보·교차검증·쓰인 곳). 처음 ③이 2분 15초(가상양도11)인 원인을 숫자로 보기 위해
   const tm = {}, tmk = function (k, t) { tm[k] = (tm[k] || 0) + Math.round((Date.now() - t) / 100) / 10; };
   CP_OV_T_ = {};
   let gc = { changed: false }, tt = Date.now();
-  try { gc = caseProcGraspCheck_(c, gl, gi); } catch (e) { gl.push('⚠ 사건파악 확인 중 오류: ' + (e && e.message || e)); }
+  if (!light) { try { gc = caseProcGraspCheck_(c, gl, gi); } catch (e) { gl.push('⚠ 사건파악 확인 중 오류: ' + (e && e.message || e)); } }
   tmk('사건파악 확인', tt); tt = Date.now();
   const r = caseProcOverview0_(c);
   tmk('서류 정리·칸 조립', tt); tt = Date.now();
@@ -33462,10 +33464,10 @@ function caseProcOverview_(c) {
   const late = Date.now() - t0 > 270000;
   if (late && r && r.lines) r.lines.push('⏱ 칸 채우기에 ' + Math.round((Date.now() - t0) / 1000) + '초가 걸려 메모 후보·교차검증 정리는 이번 바퀴에서 건너뜀 — 「🔄 처음부터 다시 처리」 때 이어서 함(서류 글자는 기억에 있어 다음엔 빠름)');
   tt = Date.now();
-  if (!late) { try { caseProcMemoCands_(c, r); } catch (e) {} }
-  if (!late) { try { caseProcMemoCross_(c, r); } catch (e) {} }
+  if (!late && !light) { try { caseProcMemoCands_(c, r); } catch (e) {} }
+  if (!late && !light) { try { caseProcMemoCross_(c, r); } catch (e) {} }
   tmk('메모 후보', tt); tt = Date.now();
-  try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
+  if (!light) { try { caseProcNoteUsed_(c, r); } catch (e) {} } // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
   try { caseProcCleanCands_(r); } catch (e) {}
   tmk('쓰인 곳 장부', tt); tt = Date.now();
   // [2026.10.18 교차검증 2번] 질문 중 "어느 값인가"를 묻는 것 — GAS 객관 규칙(같은 값·검산·법령 정의)으로 풀고, 남은 것은 AI에게 물을 쟁점 목록으로(CrossCheck.js)
@@ -33475,7 +33477,7 @@ function caseProcOverview_(c) {
   try {
     if (r && r.lines) {
       const inner = Object.keys(CP_OV_T_ || {}).map(function (k) { return k + ' ' + CP_OV_T_[k] + '초'; });
-      r.lines.push('⏱ ③ 안쪽 ' + Math.round((Date.now() - t0) / 1000) + '초 — ' + Object.keys(tm).map(function (k) { return k + ' ' + tm[k] + '초'; }).join(' · ') + (inner.length ? ' (칸 조립 안: ' + inner.join(' · ') + ')' : ''));
+      r.lines.push('⏱ ③ 안쪽 ' + Math.round((Date.now() - t0) / 1000) + '초' + (light ? '(답 뒤 가벼운 다시 맞추기 — 사건파악 확인·메모 후보·장부 생략)' : '') + ' — ' + Object.keys(tm).map(function (k) { return k + ' ' + tm[k] + '초'; }).join(' · ') + (inner.length ? ' (칸 조립 안: ' + inner.join(' · ') + ')' : ''));
     }
   } catch (e) {}
   return r;
@@ -38036,6 +38038,7 @@ function caseProcSavePdf_(c, body) {
 function caseProcSameVal_(a, b) { const n = function (x) { return String(x == null ? '' : x).replace(/[\s,원]/g, ''); }; return n(a) === n(b); }
 function caseProcStatus_(c, body) {
   body = body || {};
+  const tS0 = Date.now(); // [2026.10.23 속도 ㅅ8차] ⑦ 안쪽 시간
   const saved = caseProcLoad_(c.id);
   const filled = saved.filled || {};
   // 화면이 보낸 지금 항목·결정이 있으면 그것을 쓴다(화면 하단 "물어볼 것·보류" 집계와 같은 기준) — 없으면 마지막 저장분
@@ -38124,7 +38127,9 @@ function caseProcStatus_(c, body) {
   const parked = remain.filter(function (it) { return dec[it.id] && /^(보류|예정)$/.test(dec[it.id].d); });
   rows.push(['남은 일', '물어볼 것 / 보류·받을 예정', remain.length - parked.length ? '⚠' : '✅', (remain.length - parked.length) + '건 / ' + parked.length + '건']);
   let ledger = null;
+  const tLg = Date.now(); // [2026.10.23 속도 ㅅ8차] ⑦ 안쪽 시간 — 장부(폴더 훑기+서류별 기억 읽기)가 1분 가까이 걸리던 것의 원인을 숫자로
   try { ledger = caseProcLedger_(c, saved); } catch (e) { ledger = { error: String(e && e.message || e) }; }
+  rows.push(['시간', '⏱ ⑦ 안쪽', '', '칸 모으기 ' + Math.round((tLg - tS0) / 100) / 10 + '초 · 폴더 파일 장부 ' + Math.round((Date.now() - tLg) / 100) / 10 + '초']);
   if (ledger && ledger.sum) {
     rows.push(['폴더 파일 점검', '폴더 파일 = 점검 줄', ledger.sum.silent ? '⚠' : '✅', ledger.sum.files + '개 = ' + ledger.sum.rows + '줄' + (ledger.sum.truncated ? ' (파일이 너무 많아 일부 못 봄)' : '')]);
     rows.push(['폴더 파일 점검', '읽었지만 처리 기록(칸·질문·증빙목록)에 이름이 안 나온 서류', ledger.sum.unused ? '⚠' : '✅', ledger.sum.unused + '개 — 아래 장부에서 「쓰인 곳」이 빈 줄']);
