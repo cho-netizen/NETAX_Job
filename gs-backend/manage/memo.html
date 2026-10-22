@@ -2336,21 +2336,18 @@
     var btn = document.getElementById('memoReqNewCaseConfirm');
     // [2026.10.22 묶음 ㅁ3] 단추를 누른 뒤 60초 동안 아무 표시가 없어 또 누르기 쉬웠다(가상양도7 표 6·7) — 단추 글로 단계를 보이고, 끝나면 "등록됨 — 처리개요로 가기/증빙 넣기" 띠를 띄운다
     var btnText0 = btn.textContent; var stage = function(t){ btn.textContent = t; };
-    btn.disabled = true; stage('사건 등록 중…');
+    btn.disabled = true; stage('사건 등록·의뢰서 저장 중…');
+    // [2026.10.23 속도 ㅅ4차] 서버 세 번(등록 → 의뢰서 저장 → 사건개요)을 한 번으로 — 의뢰서 글과 사건개요를 등록 호출에 같이 보낸다(등록 46초 중 왕복 2번·시트 다시 읽기 2번을 뺌)
+    var tpl0 = memoReqSelectedTemplate_;
+    if (tpl0){ createPayload.의뢰서 = { fileName: tpl0.name + '_' + 고객명 + (tpl0.ext || '.md'), templateFileId: tpl0.id }; if (tpl0.isText) createPayload.의뢰서.editedContent = memoReqTextareaEl.value; }
+    if (overview) createPayload.사건개요 = overview;
     callGas('work_create_case', createPayload).then(function(res){
       if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return; }
-      stage('의뢰서 저장 중…');
-      return memoReqSaveToFolder_(res.case.폴더ID, res.case.고객명).then(function(saveRes){
-        if (saveRes.error){ toast('사건은 등록됐지만 의뢰서 저장에 실패했습니다: ' + saveRes.error); return; }
-        if (overview) stage('사건개요 채우는 중…');
-        var afterSave = overview ? callGas('work_update_case', { id: res.case.id, 사건개요: overview }) : Promise.resolve();
-        return afterSave.then(function(){
-          toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
-          memoReqApplyStepEl.style.display = 'none';
-          memoReqShowRegisteredBar_(res.case);
-          if (typeof loadWorkCases === 'function') loadWorkCases();
-        });
-      });
+      if (res.warning) toast(res.warning);
+      toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
+      memoReqApplyStepEl.style.display = 'none';
+      memoReqShowRegisteredBar_(res.case);
+      if (typeof loadWorkCases === 'function') loadWorkCases();
     }).catch(function(err){
       toast('등록 중 오류: ' + (err && err.message ? err.message : err));
     }).finally(function(){ btn.disabled = false; stage(btnText0); });

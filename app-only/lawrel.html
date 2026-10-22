@@ -149,7 +149,7 @@
       var old = (o.ctx.files || []).filter(function(f){ return f.name === name + '.md'; })[0];
       say('저장 중…');
       var bodyUp = { name: name + '.md', base64Data: utf8ToBase64_(md) };
-      if (old) bodyUp.fileId = old.id; else bodyUp.folderId = o.ctx.sub.internalFolderId;
+      if (old) bodyUp.fileId = old.id; else { bodyUp.folderId = o.ctx.sub.internalFolderId; bodyUp.replaceSameName = true; } // [2026.10.23 속도 ㅅ5차] 목록 뒤에 같은 이름이 생겼어도 서버가 그 파일을 갱신(겹쳐 돌아 (1)·(2)가 생기던 것)
       return callGas('uploadFile', bodyUp).then(function(up){
         if (!up || up.error) throw new Error((up && up.error) || '저장 실패');
         return { ok: true, name: name + '.md', fileId: up.fileId || up.id || (old && old.id) || '', 조문수: o.got.length, 대신함: subst, 실패: fail, 예규: precs.length, md: md };
