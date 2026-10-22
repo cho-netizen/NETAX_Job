@@ -3275,6 +3275,7 @@
   }
   // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서_내부)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
   function nxAiCaseProcSavePdf_(st, tab){
+    var tMk0 = Date.now(); // [2026.10.23 ㅅ15차] 화면에서 원본 모양을 만드는 데 든 시간 — 서버 기록부 줄에 같이 남긴다(어디서 끊기는지 보이게)
     try {
       var group = (typeof TC_TAB_LABELS_ !== 'undefined') ? TC_TAB_LABELS_[tab] : '';
       if (!group || typeof PRINT_REGISTRY_ === 'undefined' || typeof printExtractPages_ !== 'function' || typeof printFormDocHtml_ !== 'function') return Promise.resolve({ ok: false, error: '세액인쇄 화면이 준비되지 않음' });
@@ -3287,7 +3288,7 @@
         if (!rows.length) return Promise.resolve({ ok: false, error: '준비된 필수 서식이 없음(계산 결과 확인)' });
         var html = printFormDocHtml_(group + ' 신고서식', rows.map(function(r){ return r.html; }).join(''))
           .replace(/<div class="pf-toolbar">[\s\S]*?<\/div>/, '').replace('background:#e9eaee', 'background:#fff');
-        return nxAiCpLongRun_(st, 'savePdf', { html: html, title: group + ' 신고서식', forms: rows.length }, checkFn(rows.length), 'calc');
+        return nxAiCpLongRun_(st, 'savePdf', { html: html, title: group + ' 신고서식', forms: rows.length, clientMs: Date.now() - tMk0 }, checkFn(rows.length), 'calc');
       };
       // [2026.10.23 A9] 원본 모양(국세청 공식 서식 PDF 위에 계산 값을 찍는 NxFormPrint 모듈)이 먼저 — 세액인쇄 화면의 📄 원본 모양·일괄출력과 같은 모듈·같은 계산 결과.
       //  상속세(별지 9호 본표·부표1~3)·증여세(별지 10호)의 필수 서식은 원본 모양만 있고 옛 모양 줄이 없어, 사건처리의 서식 저장이 "준비된 필수 서식이 없음"으로 실패했다(가상상속4·증여4 — 결함 A9).
@@ -3308,7 +3309,7 @@
       }), mkTimeout]).then(function(pdf){
         if (pdf && pdf.__timeout){ try { st.setStep('calc', '🔄', '원본 모양 서식 만들기가 90초를 넘겨 옛 모양으로 저장합니다…'); } catch (e) {} return oldWay(); }
         if (!pdf) return oldWay();
-        return nxAiCpLongRun_(st, 'savePdf', { pdfBase64: pdf.b64, title: group + ' 신고서식', forms: pdf.n, official: true }, checkFn(pdf.n), 'calc');
+        return nxAiCpLongRun_(st, 'savePdf', { pdfBase64: pdf.b64, title: group + ' 신고서식', forms: pdf.n, official: true, clientMs: Date.now() - tMk0 }, checkFn(pdf.n), 'calc');
       }, function(){ return oldWay(); })
         .catch(function(e){ return { ok: false, error: String(e && e.message || e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
@@ -5413,10 +5414,12 @@
                   var ln = document.createElement('div'); ln.className = 'nxai-cp-line';
                   ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' + nxAiCpTimeTxt_(pr._t) : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
                   st.calcBusy = false;
+                  // [2026.10.23 ㅅ15차 — 점검표 175(166)] 마무리(finishAll) 중엔 ④ 상태 줄을 아무도 다시 쓰지 않아 "서식 PDF 저장 중…"이 끝난 뒤에도 그대로 남았다(가상증여8: PDF·검토서·관련법령 다 생겼는데 화면은 ④ 5분 45초) — 여기서 끝 표시를 찍는다
+                  st.setStep('calc', pr && pr.ok ? '✅' : '⚠', pr && pr.ok ? '계산 저장 끝 · 서식 PDF 저장 끝' + (pr.recovered ? '(응답 대신 서버 현황으로 확인)' : '') + nxAiCpTimeTxt_(pr._t) : '계산 저장 끝 — 서식 PDF 실패: ' + ((pr && pr.error) || '').slice(0, 80));
                   // [2026.10.22 묶음 ㄱ4] 사건 화면에서 시작했으면 계산·서식이 끝난 뒤 사건 화면으로 돌아온다(진행 카드는 그대로 — casehandling chGasKeep_)
                   if (st.screen && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} }
                   return (st.finishing ? Promise.resolve() : nxAiCaseProcRefresh_(st, ['calc', 'output'], false)).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); /* [2026.10.23 속도 ㅅ10차] 마무리 중이면 계산 다시 조회(서버 1번)도 뺀다 — 결과 줄은 아래 ln으로 이미 보임 */ /* [2026.10.23 속도 ㅅ4차] 마무리 중이면 ⑤ 인쇄 준비는 finishAll이 바로 이어서 한 번 부르므로 여기선 뺌(서버 한 번 덜) */ if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); } onEnd(); });
-                }).catch(function(){ st.calcBusy = false; onEnd(); });
+                }).catch(function(e){ st.calcBusy = false; st.setStep('calc', '⚠', '계산 저장 끝 — 서식 PDF 저장 중 오류: ' + String(e && e.message || e).slice(0, 80)); onEnd(); });
               }, 5000);
               return;
             }
