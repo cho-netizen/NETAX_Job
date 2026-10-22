@@ -31272,7 +31272,9 @@ var CPF_DATE_RE_ = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d
 function cpfDate_(v) { const m = CPF_DATE_RE_.exec(String(v || '')); return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31 ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; }
 function cpfShare_(v) {
   const s = String(v || '').replace(/\s+/g, '');
-  let m = /(\d+(?:\.\d+)?)분의(\d+(?:\.\d+)?)/.exec(s); if (m) return { n: Number(m[2]), d: Number(m[1]) };
+  // [2026.10.23 ㅎ1] 천 단위 쉼표를 떼고("2,310분의 48.6"이 310분의 48.6으로 읽혀 등기부 "2310분의 48.6"과 어긋나 미결 — 가상양도18) 분자 앞에 숫자가 붙어 있으면(…2310분의…의 "310분의") 잡지 않는다
+  const s2 = s.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
+  let m = /(?<![\d.])(\d+(?:\.\d+)?)분의(\d+(?:\.\d+)?)/.exec(s2); if (m) return { n: Number(m[2]), d: Number(m[1]) };
   m = /^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(s); if (m) return { n: Number(m[1]), d: Number(m[2]) };
   return null;
 }
@@ -31897,8 +31899,9 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     add(ak, Number(m[1].replace(/,/g, '')), m[0], m.index, {});
   }
   // 지분 — "2분의1", [2026.10.19 1번 밤작업 ⑤] "지분 2/5"·"중 2/5"·"2/5 지분"(빗금은 지분 낱말이 곁에 있을 때만 — 날짜·쪽 번호와 헷갈림)
-  re = /(\d+(?:\.\d+)?)\s*분\s*의\s*(\d+(?:\.\d+)?)/g;
-  while ((m = re.exec(t))) add('지분', { n: Number(m[2]), d: Number(m[1]) }, m[0], m.index, {});
+  // [2026.10.23 ㅎ1] 분모의 천 단위 쉼표("2,310분의 48.6")를 떼고, 숫자 앞에 다른 숫자가 붙은 조각("…2310분의"의 "310분의")은 잡지 않는다 — 가상양도18 대지권비율이 등기부·계약서에서 다른 값으로 갈려 미결
+  re = /(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+)((?:\.\d+)?)\s*분\s*의\s*(\d+(?:\.\d+)?)/g;
+  while ((m = re.exec(t))) add('지분', { n: Number(m[3]), d: Number(m[1].replace(/,/g, '') + m[2]) }, m[0], m.index, {});
   re = /(?:지\s*분\s*[:：]?\s*|중\s+)(\d{1,6})\s*\/\s*(\d{1,6})(?![\d\/])|(?<![\d\/])(\d{1,6})\s*\/\s*(\d{1,6})\s*지\s*분/g;
   while ((m = re.exec(t))) { const n = Number(m[1] || m[3]), d = Number(m[2] || m[4]); if (n > 0 && d > 0 && n <= d) add('지분', { n: n, d: d }, m[0], m.index, {}); }
   if (dropped) base.trunc.push('공통 뽑기 ' + (LIMIT + dropped) + '건 중 ' + LIMIT + '건만');
