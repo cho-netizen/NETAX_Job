@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 17:43 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 17:59 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -33506,9 +33506,9 @@ function renderGiftDonorRegistry(){
         '<div class="taxcalc-field"><label>10년내 동일인 기증여합산액</label><input type="number" data-dfield="priorAmount"' + idOf('giftPriorAmount') + ' placeholder="' + (tcGiftPriorPending_() && !d.priorAmount ? '확인 전 — 비우면 0원' : '원') + '" value="' + (d.priorAmount || '') + '"><span class="taxcalc-field-help">' + (tcGiftPriorPending_() && !d.priorAmount ? '⏳ 확인 전(사건처리 질문에 아직 답하지 않음) — ' : '') + '없으면 비움 — 동일인에는 직계존속 증여시 그 배우자도 포함됩니다</span></div>' +
         // [2026.10.22 검토대상 증여-5] 상증법 §58① 공제액은 "가산하는 증여재산의 가액에 대하여 납부하였거나 납부할 증여세액"(같은 항 괄호: "증여 당시의 해당 증여재산에 대한 증여세산출세액")
         //  (신고세액공제·가산세 전). §58② 한도 = 이번 산출세액 × 앞선 증여재산의 과세표준 ÷ 합친 과세표준 — 그래서 앞선 과세표준 칸을 함께 받는다.
-        '<div class="taxcalc-field"><label>위 기증여분 증여 당시 산출세액</label><input type="number" data-dfield="priorPaidTax" placeholder="원" value="' + (d.priorPaidTax || '') + '"><span class="taxcalc-field-help">없으면 비움 — 그때 신고서의 산출세액(신고세액공제·가산세 빼기 전, 상증법 §58① 괄호)</span></div>' +
+        '<div class="taxcalc-field"><label>위 기증여분 증여 당시 산출세액</label><input type="number" data-dfield="priorPaidTax"' + idOf('giftPriorPaidTax') + ' placeholder="원" value="' + (d.priorPaidTax || '') + '"><span class="taxcalc-field-help">없으면 비움 — 그때 신고서의 산출세액(신고세액공제·가산세 빼기 전, 상증법 §58① 괄호)</span></div>' +
         '<div class="taxcalc-field"><label>위 기증여분 증여세 과세표준</label><input type="number" data-dfield="priorGiftTaxableBase" placeholder="원" value="' + (d.priorGiftTaxableBase || '') + '"><span class="taxcalc-field-help">없으면 비움 — 넣으면 공제 한도(§58②: 이번 산출세액 × 이 값 ÷ 이번 과세표준)를 확인</span></div>' +
-        '<div class="taxcalc-field"><label>기증여분 증여재산공제(§53) 사용액</label><input type="number" data-dfield="priorRelationDeductionUsed" placeholder="원" value="' + (d.priorRelationDeductionUsed || '') + '"><span class="taxcalc-field-help">없으면 비움 — 위 기증여분을 합산하면 공제 한도는 합산 전체에 다시 적용(국세청 사례: 이 값을 빼지 않음)</span></div>' +
+        '<div class="taxcalc-field"><label>기증여분 증여재산공제(§53) 사용액</label><input type="number" data-dfield="priorRelationDeductionUsed"' + idOf('giftPriorDeductionUsed') + ' placeholder="원" value="' + (d.priorRelationDeductionUsed || '') + '"><span class="taxcalc-field-help">없으면 비움 — 위 기증여분을 합산하면 공제 한도는 합산 전체에 다시 적용(국세청 사례: 이 값을 빼지 않음)</span></div>' +
         '<div class="taxcalc-field"><label>다른 증여자 증여로 쓴 증여재산공제(§53)</label><input type="number" data-dfield="priorRelationDeductionUsedOther" placeholder="원" value="' + (d.priorRelationDeductionUsedOther || '') + '"><span class="taxcalc-field-help">없으면 비움 — 합산 안 되는 다른 증여자(예: 부에게 받는데 조부에게 받은 것)로 10년 안에 쓴 같은 묶음 공제. 이번 한도에서 뺌</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="genSkipOver2B"' + (d.genSkipOver2B ? ' checked' : '') + '><label>세대생략증여재산가액 20억 초과(수증자 미성년 여부는 위 주민등록번호로 자동판정)</label></div>' +
         '<div class="taxcalc-field"><label>세대생략(조부모 등)분 증여재산가액</label><input type="number" data-dfield="genSkipAmount" placeholder="원" value="' + (d.genSkipAmount || '') + '"><span class="taxcalc-field-help">전액이면 비움</span></div>' +
@@ -42431,7 +42431,7 @@ var TC_OVERVIEW_INPUT_KEYS_ = {
   // 형식("직계존속" + 세대생략 여부는 별도 data-genskip)이 달라 단순 대입도 안 통한다 —
   // 전용 변환 함수 tcApplyGiftRelation_로 별도 처리한다(아래).
   // [2026.10.15 1:1] 주민번호·주소 — 사건처리가 가족관계증명서(13자리)·등본에서 읽어 처리개요에 둔 값을 그대로(유료 자동채우기로 다시 읽어 뒷자리 잘린 번호가 들어가던 문제)
-  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftDate', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftAppraisalFee'], // giftAppraisalFee: 사건처리가 감정평가 영수증으로 채운 수수료(2026.10.16)
+  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftPriorPaidTax', 'giftPriorDeductionUsed', 'giftDate', /* [2026.10.23 ㅂ2] 이전 신고서의 산출세액(§58)·공제 사용액(§53) */ 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftAppraisalFee'], // giftAppraisalFee: 사건처리가 감정평가 영수증으로 채운 수수료(2026.10.16)
   inheritance: ['ihDeceasedName', 'ihEstate', 'ihDeathDate']
 };
 // [2026.09 버그수정] 사건개요서(casehandling.html)에서 입력한 증여일·상속개시일은 사건개요

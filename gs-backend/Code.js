@@ -35334,7 +35334,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
           if (donee && !nameHas(to, donee)) return;
           let prev = null;
           for (let j = k - 1; j >= 0; j--) if (!h[j].말소) { prev = h[j]; break; }
-          gifts.push({ file: x.f.name, to: to.join(','), from: prev ? (prev.권리자 || []).map(function (q) { return q.이름; }).join(',') : '', loc: d.소재지 || '', kind: d.종류 || '', date: e.접수일, warn: !!e.확인필요 });
+          gifts.push({ file: x.f.name, to: to.join(','), from: prev ? (prev.권리자 || []).map(function (q) { return q.이름; }).join(',') : '', loc: d.소재지 || '', kind: d.종류 || '', area: (d.표제부 && (d.표제부.전유면적 || d.표제부.연면적)) || null, date: e.접수일, warn: !!e.확인필요 }); // [2026.10.23 ㅂ1] 면적 — 유사재산 요건(시행령 §49④ 전용면적 5% 이내)
         });
       });
     });
@@ -35343,6 +35343,12 @@ function caseProcGiftInhFacts_(c, lines, items) {
       add('giftDonorName', g.from, '등기부 직전 소유자(' + g.file + ')', !g.warn && !!g.from && gifts.length === 1 && g.from.indexOf(',') === -1);
     });
     if (gifts.length) lines.push('증여재산(등기부): ' + gifts.map(function (g) { return (g.kind ? g.kind + ' ' : '') + (g.loc || '소재지 미확인') + ' — ' + g.date + ' 증여 등기(' + g.from + ' → ' + g.to + ')'; }).join(' / '));
+    // [2026.10.23 ㅂ3] 처리개요 물건 카드(종류·소재지·동·호) — 등기부 증여 줄의 물건으로. 양도는 계산기 자산 목록에서 채우는데 증여는 비어 있었다(가상증여5). 세무사님이 이미 적은 물건은 건드리지 않는다
+    if (gifts.length && !(Array.isArray(ov.물건목록) && ov.물건목록.some(function (q) { return q && (q.assetLocation || q.assetKind); }))) {
+      ov.물건목록 = gifts.filter(function (g) { return g.loc; }).map(function (g) { const dh = /(\d{1,4})\s*동(?![가-힣])[\s\S]{0,12}?(\d{1,5})\s*호/.exec(g.loc) || []; return { assetKind: /토지/.test(g.kind || '') ? 'land' : 'building', assetLocation: g.loc, assetDong: dh[1] || '', assetHo: dh[2] || '' }; });
+      ov.물건수 = String(ov.물건목록.length); if (ov.물건목록[0]) { ov.assetKind = ov.물건목록[0].assetKind; ov.assetLocation = ov.물건목록[0].assetLocation; ov.assetDong = ov.물건목록[0].assetDong; ov.assetHo = ov.물건목록[0].assetHo; }
+      lines.push('✏ 처리개요 물건 ' + ov.물건목록.length + '건 채움(등기부 증여 줄): ' + ov.물건목록.map(function (q) { return (q.assetKind === 'land' ? '토지 ' : '건물 ') + q.assetLocation; }).join(' / '));
+    }
     const cash = caseProcCashGift_(c, parsed);
     let memos = []; try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) {}
     // [2026.10.15 1:1] 상담 메모에 "이전에 조금씩 자금지원" 같은 말이 있으면 10년 합산 대상일 수 있다 — 따로 묻는다(10년 합산 일반 질문을 [무시]했어도, 메모 근거가 새로 나왔으므로)
@@ -35588,7 +35594,8 @@ function caseProcGiftInhFacts_(c, lines, items) {
     // 평가기준일에 가장 가까운 사례를 후보로(기준시가 차이 5% 등 유사성은 세무사 확인이라 확정하지 않음). 감정가액이 있으면 그것이 우선.
     byType('realprice').forEach(function (x) {
       const r = x.p.result || {};
-      if (gifts.length && r.소재지 && !gifts.some(function (g) { return g.loc && tcLocSame_(g.loc, r.소재지); })) return;
+      // [2026.10.23 ㅂ1] 국토부 실거래가 출력물 소재지는 "시 구 동"(단지명 머리) — 물건 소재지가 그 글자를 품으면 같은 단지(상속 경로 36681과 같은 규칙). 예전엔 지번까지 같아야 해서 사례가 통째로 빠졌다(가상증여5: 후보가 공시가격뿐)
+      if (gifts.length && r.소재지 && !gifts.some(function (g) { return g.loc && (tcLocSame_(g.loc, r.소재지) || norm(g.loc).indexOf(norm(r.소재지).replace(/^[가-힣]+(?:도|특별시|광역시)/, '')) !== -1); })) return;
       const base = c.기준일 ? new Date(c.기준일) : null, area = (gifts.filter(function (g) { return g.area; })[0] || {}).area;
       if (aprs.length) return; // 감정가액이 있으면 매매사례는 후보로도 내지 않는다(후보가 둘이 되면 확정된 감정가까지 질문으로 바뀜)
       if (!base) {
@@ -35604,7 +35611,15 @@ function caseProcGiftInhFacts_(c, lines, items) {
       const cs = (r.사례 || []).filter(function (q) { const ds = rpCaseDates_(q); return q.금액 && !q.해제 && ds.length && ds.every(function (s) { const d = new Date(s); return d >= lo && d <= hi; }) && (!area || Math.abs(q.면적 - area) / area <= 0.05); });
       if (!cs.length) return;
       cs.sort(function (a, b) { return far(a) - far(b); });
-      add('giftAmount', cs[0].금액, '매매사례가액(' + x.f.name + ', ' + (cs[0].계약일 || rpCaseDates_(cs[0]).join(' 또는 ') + '(계약월 원문 확인)') + ' 계약 · 전용 ' + cs[0].면적 + '㎡' + (cs[0].동 ? ' · ' + cs[0].동 + '동' : '') + (cs[0].층 != null ? ' ' + cs[0].층 + '층' : '') + (cs[0].직거래 ? ' · 직거래 — 특수관계 거래인지 확인' : '') + ') — §60②·시행령§49, 기준시가 차이 5% 이내 등 유사성 확인', false);
+      // [2026.10.23 ㅂ1] 유사재산 요건(시행령 §49④ — 같은 단지·전용면적 5% 이내·공동주택가격 5% 이내)을 숫자로: 사례 집의 공동주택가격은 출력물 각주(r.공시참고), 증여 물건은 폴더 공시가격
+      let simTxt = '';
+      try {
+        const pub0 = (facts.giftAmount || []).filter(function (q) { return /^공시가격/.test(q.src); }).map(function (q) { return Number(String(q.v).replace(/[^\d]/g, '')); })[0];
+        const ref = (r.공시참고 || []).filter(function (q) { return String(q.동) === String(cs[0].동 || '') && String(q.호) === String(cs[0].호 || ''); })[0];
+        if (pub0 && ref && ref.가격) { const pct = Math.abs(ref.가격 - pub0) / pub0 * 100; simTxt = ' · 공동주택가격 차이 ' + pct.toFixed(1) + '%(사례 집 ' + ref.가격.toLocaleString('ko-KR') + '원 ↔ 증여 물건 ' + pub0.toLocaleString('ko-KR') + '원, 시행령 §49④ 5% 이내' + (pct <= 5 ? ' ✓)' : ' ⚠ 초과 — 유사재산 아님)'); }
+        else if (area) simTxt = ' · 전용면적 차이 ' + (Math.abs(cs[0].면적 - area) / area * 100).toFixed(1) + '%(§49④ 5% 이내 ✓, 공동주택가격 비교는 사례 집 공시가격 없음)';
+      } catch (e) {}
+      add('giftAmount', cs[0].금액, '매매사례가액(' + x.f.name + ', ' + (cs[0].계약일 || rpCaseDates_(cs[0]).join(' 또는 ') + '(계약월 원문 확인)') + ' 계약 · 전용 ' + cs[0].면적 + '㎡' + (cs[0].동 ? ' · ' + cs[0].동 + '동' : '') + (cs[0].층 != null ? ' ' + cs[0].층 + '층' : '') + (cs[0].직거래 ? ' · 직거래 — 특수관계 거래인지 확인' : '') + ')' + simTxt + ' — §60②·시행령§49, 기준시가 차이 5% 이내 등 유사성 확인', false);
     });
     // [2026.10.17 2차 실거래가] 감정평가서 거래사례 ↔ 실거래가 출력물 — 같은 거래를 찾아 한 번만 세고, 대조 결과를 줄로(고객BG·고객D)
     try {
@@ -35802,6 +35817,10 @@ function caseProcGiftInhFacts_(c, lines, items) {
     // [2026.10.23 ㄷ6] 계산식 검산이 안 된 신고서(산출세액 0원이라 식으로 확인할 칸이 없는 공제 안 신고 등)도 "증여재산가액" 칸 옆 값을 후보로 — 검산 안 됨을 밝힌다. 증여자·관계·증여일을 함께 보여
     //  세무사님이 같은 증여자(직계존속은 배우자 포함 §47②)인지, 증여재산공제를 그때 얼마나 썼는지 판단한다. 예전엔 검산된 칸만 봐서 이 신고서가 입력인데도 "이전 신고서 기록이 없어"라고 물었다(가상증여4 — 결함 B17)
     const ded = k.직계존속공제 || k.직계비속공제 || k.배우자공제 || k.기타친족공제 || rv.직계존속공제 || rv.배우자공제 || rv.기타친족공제 || 0;
+    // [2026.10.23 ㅂ2] 별지 10호 서식 칸 — 산출세액(§58① 기납부세액: 그때 신고서의 산출세액)·증여재산공제(§53 10년 내 공제받은 금액)를 칸 후보로(같은 증여자인지는 세무사님 판단이라 확정 안 함). 예전엔 합산액만 후보였고 그마저 "서류 없음" 주관식으로 물었다(가상증여5)
+    const whoTxt = x.f.name + (r.기준일 ? ', 증여일 ' + r.기준일 : '') + (r.증여자 ? ', 증여자 ' + r.증여자 : '');
+    const tax0 = k.산출세액 != null ? k.산출세액 : rv.산출세액; if (tax0 !== undefined && tax0 !== null) add('giftPriorPaidTax', tax0, '이전 증여세 신고서(' + whoTxt + ') 산출세액 칸' + (k.산출세액 != null ? '' : '(계산식 검산 안 됨 — 원문 확인)'), false);
+    if (ded) add('giftPriorDeductionUsed', ded, '이전 증여세 신고서(' + whoTxt + ') 증여재산공제 칸', false);
     add('giftPriorAmount', v, '이전 증여세 ' + (r.서류 || '신고서') + '(' + x.f.name + (r.기준일 ? ', 증여일 ' + r.기준일 : '') + (r.증여자 ? ', 증여자 ' + r.증여자 + (r.관계 ? '(' + r.관계 + ')' : '') : '') + ') ' + (k.과세가액 ? '과세가액' : '증여재산가액') + (chk ? '' : '(계산식 검산 안 됨 — 원문 확인)') + (ded ? ' · 그때 증여재산공제 ' + Number(ded).toLocaleString('ko-KR') + '원 사용(§53 10년 한도에서 뺌)' : '') + (Number.isFinite(k.자진납부할세액) ? ' · 납부세액 ' + k.자진납부할세액.toLocaleString('ko-KR') + '원(기납부세액 §58)' : Number.isFinite(k.산출세액) ? ' · 산출세액 ' + k.산출세액.toLocaleString('ko-KR') + '원' : '') + ' — 같은 증여자·10년 안이면 합산', false);
   });
   // [2026.10.20 2번 밤샘 9바퀴 — ③ 소통 "짧게, 한 번에 모아서"] 증여 서류가 하나도 없는 사건(증여 등기 줄·증여계약서·이체내역에서 증여자·금액을 하나도 못 찾았고
@@ -35842,7 +35861,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
   notes.forEach(function (n) { lines.push('참고: ' + n); });
   // 칸별 반영: 빈 칸 + 확실한 값 → 채움 / 빈 칸 + 후보만 → 질문 / 있는 값 ≠ 서류 → 질문 / 금액이 서류로 뒷받침 안 됨 → 추정(확정 질문)
   const spec = c.세목 === 'gift'
-    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'], ['giftAppraisalFee', '감정평가수수료', 'money'],
+    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'], ['giftPriorPaidTax', '기증여분 증여 당시 산출세액', 'money'], ['giftPriorDeductionUsed', '기증여분 증여재산공제 사용액', 'money'], ['giftAppraisalFee', '감정평가수수료', 'money'], // [2026.10.23 ㅂ2] 이전 신고서에서 읽은 §58·§53 칸
       ['giftDoneeRegNo', '수증자 주민등록번호', 'text'], ['giftDoneeAddress', '수증자 주소', 'text'], ['giftDonorRegNo', '증여자 주민등록번호', 'text'], ['giftDonorAddress', '증여자 주소', 'text']]
     : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number']]; // 과세가액(예상)은 계산 결과라 묻지 않음
   const fills = [], confirms = [];
@@ -35853,7 +35872,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
     const fs = facts[key] || [];
     const uniq = fs.filter(function (x, i) { return fs.findIndex(function (y) { return (money ? digits(y.v) === digits(x.v) : norm(y.v) === norm(x.v)); }) === i; });
     const sure = uniq.length === 1 && uniq[0].sure ? uniq[0] : null;
-    const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, label: sp[1], cands: uniq.map(function (x) { return { v: money ? digits(x.v) : x.v, src: x.src }; }) };
+    // [2026.10.23 ㅂ1] 증여재산가액 후보는 시가(감정가·매매사례, §60①②)를 앞에, 보충적 평가(공시가격 §61)는 뒤에 — 첫 후보에 ⭐(예전엔 읽은 순서라 공시가격이 먼저 보였다)
+    if (key === 'giftAmount' && uniq.length > 1) { const rank = function (q) { return /^감정/.test(q.src) ? 0 : /^매매사례/.test(q.src) ? 1 : /^공시가격|보충적 평가/.test(q.src) ? 3 : 2; }; uniq.sort(function (a, b) { return rank(a) - rank(b); }); }
+    const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, label: sp[1], cands: uniq.map(function (x, i) { return { v: money ? digits(x.v) : x.v, src: (key === 'giftAmount' && i === 0 && uniq.length > 1 ? '⭐ ' : '') + x.src }; }) };
     const same = function (a, b) { return money ? digits(a) === digits(b) : norm(a) === norm(b); };
     // [2026.10.15 1:1] 증여 내용 확인 전 — 이 칸들은 「증여 내용 확인」 한 질문으로 묻는다. 예전 실행이 이체내역으로 넣어 둔 추정값은 지운다(계산에 쓰이지 않게).
     if (dealPending && /^(giftDonorName|giftAmount|giftRelation)$/.test(key)) { // 수증자는 사건 납세자라 지우지 않음
@@ -35865,8 +35886,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
     if (!cur) {
       if (sure) { ov[key] = money ? digits(sure.v) : sure.v; fills.push({ key: key, label: sp[1], v: ov[key], src: sure.src }); return; }
       if (key === 'giftPriorAmount' && items.some(function (it) { return /^gift:memoprior:/.test(it.id); })) return; // 상담 메모 근거 질문이 같은 칸을 이미 묻는다
-      if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? — 있으면 그 금액을 이번 증여재산가액에 더해 세율을 적용하고 그때 낸 세액을 뺍니다(상증법 §47②·§58). ' + caseProcPriorGiftWhy_(c) + ' — 있으면 합산액을, 없으면 「없음」을 골라 주세요.', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
+      if (key === 'giftPriorAmount' && !uniq.length) { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? — 있으면 그 금액을 이번 증여재산가액에 더해 세율을 적용하고 그때 낸 세액을 뺍니다(상증법 §47②·§58). ' + caseProcPriorGiftWhy_(c) + ' — 있으면 합산액을, 없으면 「없음」을 골라 주세요.', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
       if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
+      if (/^(giftPriorPaidTax|giftPriorDeductionUsed)$/.test(key) && !uniq.length) return; // [2026.10.23 ㅂ2] 이전 신고서가 없으면 비워 둔다(합산 질문이 대신 묻는다)
       if (key === 'giftAppraisalFee' && !uniq.length) return; // 감정평가를 안 했으면 비워 둔다
       if (key === '상속인추가명단' && !uniq.length) return;
       items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', caseProcGiWhy_(key, sp[1], uniq), ask));
@@ -43470,6 +43492,8 @@ function docRealPriceParse_(text) {
   // 출력물이 "1342114.192"처럼 지번과 면적을 붙여 읽히면 뒤에 붙은 면적 정수부를 떼어 낸다
   if (r.소재지 && r.사례[0]) r.소재지 = r.소재지.replace(new RegExp(String(Math.floor(r.사례[0].면적)) + '$'), '');
   if (!r.사례.length) r.경고.push('매매 사례 줄을 읽지 못함 — 원문 확인');
+  // [2026.10.23 ㅂ1] 각주 "※ ○동 ○호 공동주택가격(연.월.일) …원" — 사례 집의 공동주택가격(유사재산 요건 §49④ 비교용)
+  r.공시참고 = []; (function () { var fl = t.replace(/\s+/g, ' '), pm, pre = /(\d{1,4})\s*동\s*(\d{1,5})\s*호\s*공동\s*주택\s*가격\s*(?:\([^)]{0,20}\))?\s*([\d,]{7,})\s*원/g; while ((pm = pre.exec(fl))) r.공시참고.push({ 동: pm[1], 호: pm[2], 가격: Number(pm[3].replace(/,/g, '')) }); })();
   if (r.사례.some(function (x) { return x.월확인필요; })) r.경고.push('일부 사례의 계약월을 출력물 배치로 정하지 못함 — 원문 확인');
   var won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
   var md = '### 실거래가(매매사례) · ' + (r.단지 || '') + ' ' + (r.소재지 || '') + '\n\n'
