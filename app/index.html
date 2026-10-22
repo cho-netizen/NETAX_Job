@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 17:20 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 17:40 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -29463,7 +29463,10 @@ function tcApplyInheritanceRule_(rf){
     const mine = valuationAssets.filter(function(a){ return a && a.taxType === 'inheritance'; });
     const touched = mine.some(function(a){ return numVal(a.directValue) || a.landPrice || a.housePrice || (a.method && a.method !== 'direct'); });
     if (!touched){
-      const rows = rf.assets.map(function(a){ return { taxType: 'inheritance', method: 'direct', assetKind: /토지/.test(String(a.kind || '')) ? 'land' : 'building', assetLocation: a.loc || '', directValue: a.value ? String(a.value) : '', valuationSrc: a.value ? (a.valueSrc || '사건처리') : '' }; });
+      // [2026.10.23 ㄷ10] 분할협의서 귀속(상속인·지분) → 재산별 "상속인별 배분"(heirAllocations) — 배우자 실제 상속액(§19①)·상속인별 과세가액이 여기서 자동 계산된다. 예전엔 비어 있어 배우자공제가 최소 5억만 됐다
+      const heirIdxOf_ = function(name){ const k = String(name || '').replace(/\s+/g, ''); let idx = -1; inheritanceHeirs.forEach(function(x, i){ if (idx < 0 && x && String(x.name || '').replace(/\s+/g, '') === k) idx = i; }); return idx; };
+      const allocOf_ = function(shares){ return (shares || []).map(function(q){ const i = heirIdxOf_(q.heir); const r = /^(전부|전체|단독|승계)$/.test(String(q.share || '').trim()) ? '1' : String(q.share || ''); return i < 0 || parseShareFraction_(r) === null ? null : { heirIdx: String(i), ratio: r }; }).filter(Boolean); };
+      const rows = rf.assets.map(function(a){ const al = allocOf_(a.shares); return Object.assign({ taxType: 'inheritance', method: 'direct', assetKind: /토지/.test(String(a.kind || '')) ? 'land' : 'building', assetLocation: a.loc || '', directValue: a.value ? String(a.value) : '', valuationSrc: a.value ? (a.valueSrc || '사건처리') : '' }, al.length ? { heirAllocations: al } : {}); });
       valuationAssets = valuationAssets.filter(function(a){ return !(a && a.taxType === 'inheritance'); }).concat(rows);
       if (typeof renderValuationAssetList === 'function') renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       filled.push('상속재산 목록(' + rows.length + '건' + (rows.some(function(r){ return !r.directValue; }) ? ', 평가액 미정 ' + rows.filter(function(r){ return !r.directValue; }).length + '건' : '') + ')');
@@ -29490,7 +29493,11 @@ function tcApplyInheritanceRule_(rf){
   // [2026.10.16] 감정평가수수료(§25①, 시행령 §20의3 — 500만원 한도) — 감정평가법인 영수증 합계
   if (rf.appraisalFee && rf.appraisalFee.value) setVal('ihAppraisalFee', rf.appraisalFee.value, '감정평가수수료');
   // [2026.10.15] 사건처리에서 확정한 상속 채무(부채증명원·임대보증금 등) — 채무 칸에 항목별로
-  if (rf.debts && rf.debts.length){ inheritanceDebtItems = rf.debts.map(function(d){ return { debtType: d.debtType === 'other' ? 'other' : 'loan', creditorName: d.creditorName || '', amount: d.amount }; }); filled.push('채무 ' + rf.debts.length + '건'); }
+  if (rf.debts && rf.debts.length){ inheritanceDebtItems = rf.debts.map(function(d){
+    // [2026.10.23 ㄷ10] 분할협의서의 채무 승계 상속인 → 부담 상속인(heirIdx) — 배우자가 승계한 채무는 배우자 실제 상속액에서 빠진다(부표3의2 ②)
+    const hs = Array.isArray(d.heirs) ? d.heirs : []; let hi = -1;
+    if (hs.length === 1) inheritanceHeirs.forEach(function(x, i){ if (hi < 0 && x && String(x.name || '').replace(/\s+/g, '') === String(hs[0].heir || '').replace(/\s+/g, '')) hi = i; });
+    return Object.assign({ debtType: d.debtType === 'other' ? 'other' : 'loan', creditorName: d.creditorName || '', amount: d.amount }, hi >= 0 ? { heirIdx: String(hi) } : {}); }); filled.push('채무 ' + rf.debts.length + '건'); }
   // [2026.10.16] 공과금(피상속인 명의 세금 중 개시일에 기한이 남은 것, §14①1호) — 납부서별로
   if (rf.dues && rf.dues.length){ inheritanceDuesItems = rf.dues.map(function(d){ return { duesType: d.duesType === 'local' ? 'local' : 'national', year: String(d.year || '').replace(/[^0-9]/g, '').slice(0, 4), amount: d.amount }; }); filled.push('공과금 ' + rf.dues.length + '건'); }
   if (typeof renderHeirRegistry === 'function') renderHeirRegistry();
@@ -29498,6 +29505,7 @@ function tcApplyInheritanceRule_(rf){
   if (typeof renderFuneralItemsList === 'function') renderFuneralItemsList();
   if (typeof renderDebtItemsList === 'function') renderDebtItemsList();
   if (typeof renderDuesItemsList === 'function') renderDuesItemsList();
+  if (typeof recomputeHeirDerivedFields === 'function') recomputeHeirDerivedFields(); // [2026.10.23 ㄷ10] 배분·부담자를 넣은 뒤 배우자 실제 상속액·법정지분 다시 계산
   return filled;
 }
 async function runAiAutoFillInheritanceAI_(){
