@@ -30563,7 +30563,10 @@ function caseProcUserView_(c) {
   const draftInfo = sv.draftFileId ? { 파일: sv.draftFileId, 때: sv.draftAt || '', ms: Number(sv.draftAtMs) || 0 } : null; // [2026.10.22 ⑥ 응답 유실 복구] 화면이 "이번 처리에서 쓴 초안인지"를 ms로 가린다
   if (pdfInfo) pdfInfo.ms = Number(sv.printPdf.atMs) || 0;
   const heldN = v.보류질문수 || 0;
-  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0 };
+  // [2026.10.23 속도 ㅅ9차] 저장된 질문·결정·사건 기본을 같이 돌려준다 — 화면을 새로 고친 뒤 "답하실 질문 N개"를 누르면 ①②③을 다시 돌리지 않고 이 질문을 바로 보인다(aichat st.gasRun 이어받기)
+  const slimCase = { id: c.id, 사건명: c.사건명, 고객명: c.고객명, 납세자: c.납세자, 세목: c.세목, 업무유형: c.업무유형, 기준일: c.기준일, 법정일: c.법정일, 폴더ID: c.폴더ID, 상태: c.상태, 사건개요: c.사건개요 || {}, 수정일: c.수정일, my_report_id: c.my_report_id };
+  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0,
+    질문: (Array.isArray(sv.remaining) ? sv.remaining : []).slice(0, 80), 결정: sv.decisions || {}, 사건: slimCase, 저장때: sv.savedAt || '', 칸채움때: (sv.steps && sv.steps.overview && sv.steps.overview.at) || '' };
 }
 // 넥스가 보는 사건 현황 — 기록부·정한 값·처리개요·증빙·닫은 질문·서식·검토서·단계 시각(·새 서류 — withFiles일 때만, 폴더를 훑으므로)
 function caseProcNexView_(c, opt) {
@@ -38672,8 +38675,16 @@ function caseProcSave_(caseId, body) {
     const o = { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
     // [2026.10.21 넥스 하나로] 넣을 칸·후보(출처) — 채팅 넥스의 사건처리 조회·답 제안(job_lookup caseproc · job_propose_action caseproc_answer)이 쓴다
     const a = it.ask;
-    if (a && a.target) o.ask = { target: String(a.target).slice(0, 120), label: String(a.label || '').slice(0, 80), input: String(a.input || '').slice(0, 20), mode: String(a.mode || '').slice(0, 20),
-      cands: (Array.isArray(a.cands) ? a.cands : []).slice(0, 6).map(function (q) { return { v: String(q && q.v != null ? q.v : '').slice(0, 120), label: String((q && q.label) || '').slice(0, 80), src: String((q && q.src) || '').slice(0, 80) }; }) };
+    // [2026.10.23 속도 ㅅ9차] 질문을 그대로 다시 보일 수 있게 ask를 거의 통째로(선택지·잠정값·서류 칸 기록 정보·근거 글까지) — 예전엔 target·후보 6개만 남겨 "저장된 질문 바로 보이기"가 불가능했다
+    if (a && typeof a === 'object' && (a.target || a.mode)) {
+      const sa = {};
+      Object.keys(a).forEach(function (k) { const v = a[k]; if (k === 'cands' || k === 'options' || k === 'aiJudge') return; if (v == null) return; if (typeof v === 'object') { try { const s = JSON.stringify(v); if (s.length <= 2000) sa[k] = JSON.parse(s); } catch (e) {} } else sa[k] = typeof v === 'string' ? v.slice(0, 600) : v; });
+      sa.cands = (Array.isArray(a.cands) ? a.cands : []).slice(0, 12).map(function (q) { return { v: String(q && q.v != null ? q.v : '').slice(0, 300), label: String((q && q.label) || '').slice(0, 160), src: String((q && q.src) || '').slice(0, 160) }; });
+      if (Array.isArray(a.options)) sa.options = a.options.slice(0, 20).map(function (q) { return { label: String((q && q.label) || '').slice(0, 200), value: q && q.value != null ? q.value : '', decide: q && q.decide, note: q && q.note ? String(q.note).slice(0, 120) : undefined }; });
+      if (a.aiJudge && typeof a.aiJudge === 'object') sa.aiJudge = { by: a.aiJudge.by, model: a.aiJudge.model, value: a.aiJudge.value, sure: a.aiJudge.sure, why: String(a.aiJudge.why || '').slice(0, 300) };
+      o.ask = sa;
+    }
+    if (it.detail) o.detail = String(it.detail).slice(0, 1500);
     return o;
   });
   const gone = function (it) { const d = dec[it.id] && dec[it.id].d; return d === '무시' || d === 'done'; };

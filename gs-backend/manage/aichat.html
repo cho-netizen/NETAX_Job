@@ -2839,13 +2839,31 @@
     //  다시 읽는 반복 바퀴는 없다(세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?", "단 한번의 처리로 끝나야 하잖아?"). 도구 안은 AI 없이(noAi).
     st.gasRun = function(){
       if (st.gasDone) return Promise.resolve(st.gasDone);
+      // [2026.10.23 속도 ㅅ9차] 사건 화면에서 "답하실 질문 N개 → ⚡"로 들어왔는데 서류가 읽혀 있고 새 서류가 없고 저장된 질문이 있으면 — ①②③을 다시 돌리지 않고 저장된 질문을 바로 보인다(가상증여5: 새로 고친 뒤 ①20초·③ 다시 돌던 것).
+      //  [⚡ GAS로 다시 처리](st.force)는 예전대로 처음부터. 답하면 가벼운 ③이 다시 돌아 질문이 갱신된다
+      var resumeP = (st.screen && !st.force) ? st.run('view').catch(function(){ return null; }) : Promise.resolve(null);
+      return resumeP.then(function(v){
+        var openQ = v && v.ok && Array.isArray(v.질문) ? v.질문.filter(function(it){ var d = v.결정 && v.결정[it.id] && v.결정[it.id].d; return d !== 'done' && d !== '무시'; }) : [];
+        var canResume = v && v.ok && v.사건 && v.단계 && v.단계['증빙 읽기·정리'] && v.칸채움때 && Array.isArray(v.새서류) && !v.새서류.length && openQ.length;
+        if (!canResume) return st.gasRun0_(v);
+        st.case = v.사건; st.decisions = v.결정 || {}; if (Array.isArray(v.파일) && v.파일.length) st.files = v.파일;
+        bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(st.case.사건명 || st.case.고객명 || '') + '</b>' + (v.저장때 ? ' <span class="nxai-muted">· 지난 처리 ' + nxAiEsc_(v.저장때) + '</span>' : '');
+        if (st.case && typeof nxAiLinkCase_ === 'function' && (!nxAiConv.caseId || (st.relink && nxAiConv.caseId !== st.case.id))) nxAiLinkCase_(st.case);
+        st.setStep('basic', '✅', '지난 처리 그대로(저장분) — 다시 돌리지 않음');
+        st.setStep('evidence', '✅', '이미 읽음(' + v.단계['증빙 읽기·정리'] + ') — 새 서류 없음');
+        nxAiCaseProcFill_(st, 'overview', { lines: ['⚡ 저장된 질문 ' + openQ.length + '개를 바로 보입니다(칸 채우기 ' + v.칸채움때 + ' 그대로 — 서류·칸은 다시 읽지 않음). 답하시면 칸을 다시 맞춥니다. 처음부터 다시 하려면 [⚡ GAS로 다시 처리].'], items: v.질문 });
+        st.gasDone = { ok: true, resumed: true }; // ③ 줄 표시(⚠ 확인할 항목 N건)는 nxAiCaseProcFill_ 안에서 셈
+        return st.gasDone;
+      });
+    };
+    st.gasRun0_ = function(v0){
       return st.doStep('basic').then(function(res){
         if (!res) throw new Error('사건 기본 정보를 불러오지 못했습니다.');
         if (res.blocked){ st.blocked = true; ['evidence', 'overview', 'calc', 'output'].forEach(function(k){ st.setStep(k, '⏭', '증빙 폴더가 없어 건너뜀'); }); return { blocked: true }; }
         st.loopNotes = [];
         // [2026.10.22 시험가동] 사건 화면 [⚡ GAS로 처리] — 이미 읽은 사건에 새 서류가 없으면 서류를 다시 읽지 않는다(세무사님 "단 한번의 처리로 끝나야 하잖아?").
         //  예전엔 질문에 답하러 들어올 때마다 서류 읽기·정리를 처음부터(약 3분) 다시 했다. [⚡ GAS로 다시 처리](st.force)는 일부러 다시 읽는다
-        var viewP = (st.screen && !st.force) ? st.run('view').catch(function(){ return null; }) : Promise.resolve(null);
+        var viewP = v0 ? Promise.resolve(v0) : ((st.screen && !st.force) ? st.run('view').catch(function(){ return null; }) : Promise.resolve(null)); // [2026.10.23 속도 ㅅ9차] 이어받기 판정에 쓴 view를 다시 부르지 않는다
         return viewP.then(function(v){
           var already = v && v.ok && v.단계 && v.단계['증빙 읽기·정리'] && Array.isArray(v.새서류) && !v.새서류.length;
           if (already){ if (Array.isArray(v.파일) && v.파일.length) st.files = v.파일; st.setStep('evidence', '✅', '이미 읽음(' + v.단계['증빙 읽기·정리'] + ') — 새 서류가 없어 다시 읽지 않음'); return 'skip'; }
