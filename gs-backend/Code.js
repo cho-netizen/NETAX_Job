@@ -29782,7 +29782,13 @@ function tc_ruleTransferFacts_(body) {
   // [2026.10.18 3차 수정 M] 취득 부대비용 규칙 합계(acquisitionExpenses — 계산기 '증빙 자동입력'·정답지 점검 대체 경로가 씀)를 비용 항목표의 확정(☑) 취득 항목 합과 같게.
   //  두 갈래가 따로 짝지어 숫자가 달랐다(고객Q: 항목표 ☑ 취득세·교육세·인지·증지·법무사 보수 2,682,000원 ↔ 규칙 합계 1,900,000원 = 영수증 없는 통장 중개보수 2건(☐)뿐).
   //  ☐ 항목(영수증 없음·기간 밖 등 판단이 필요한 것)은 세무사님이 체크해야 더한다(시행령 §163① 취득가액 = 매입가액 + 취득세 등 부대비용, 증빙 기준).
-  if (txs.length === 1) {
+  // [2026.10.22 묶음 ㄱ2] 세무사님이 필요경비를 확정했으면(사건처리 답 costs) 그 값이 규칙 합계보다 우선 — ③ 요약 줄이 "취득 3개 7,820,000"처럼 서류 판독값만 보이던 것(가상양도7 표 28·30)
+  var ansCostsV = null; try { var svAns = caseProcLoad_(caseId); ansCostsV = svAns && svAns.trAns && svAns.trAns.costs && svAns.trAns.costs.v ? svAns.trAns.costs.v : null; } catch (e) { ansCostsV = null; }
+  if (txs.length === 1 && ansCostsV) {
+    var ansAcq = (ansCostsV.acq || []).reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0), ansTr = (ansCostsV.tr || []).reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0);
+    txs[0].acquisitionExpenses = ansAcq;
+    evidence.push('비용 — 세무사님이 확정한 항목표대로: 취득 부대비용 ' + (ansCostsV.acq || []).length + '개 합 ' + ansAcq.toLocaleString('ko-KR') + '원 · 양도비·자본적지출 ' + (ansCostsV.tr || []).length + '개 합 ' + ansTr.toLocaleString('ko-KR') + '원');
+  } else if (txs.length === 1) {
     var acqSureC = expCands.filter(function (x) { return x.kind === '취득' && x.sure && Number(x.amount) > 0; });
     if (acqSureC.length) {
       var acqSureSum = acqSureC.reduce(function (t, x) { return t + Number(x.amount); }, 0), acqOld = txs[0].acquisitionExpenses || 0;
@@ -30271,13 +30277,25 @@ function caseProcApplyLog_(c, body) {
   try {
     if (!caseProcFile_(c.id, false)) return '';
     let alert = '';
-    const who = caseProcWho_(body.src, body.by), a = body.ans || {}, label = String(body.label || body.target || '').slice(0, 40), val = String(body.value == null ? '' : body.value).slice(0, 60);
+    const who = caseProcWho_(body.src, body.by), a = body.ans || {}, label = String(body.label || body.target || '').slice(0, 40), val = caseProcValueText_(body.value).slice(0, 160);
     caseProcPatch_(c.id, function (sv) {
       caseProcLogTo_(sv, { by: who, what: '값 정함', key: body.target, detail: label + ' = ' + val + (body.src ? ' (' + String(body.src).slice(0, 60) + ')' : '') });
       if (who === '세무사님' && Number(a.nCands) > 0 && Number(a.pick) < 0) { alert = '「' + label + '」에 넣으신 ' + val + '이(가) 서류에서 찾은 후보와 다릅니다. 서류 쪽 값도 한번 확인해 보시겠어요?'; caseProcAlertTo_(sv, 'value-vs-doc', alert); }
     });
     return alert;
   } catch (e) { console.log('값 정함 기록 실패: ' + (e && e.message || e)); return ''; }
+}
+// [2026.10.22 묶음 ㄱ9] 기록부에 적는 값 — 목록(필요경비·채무 등)은 코드 글자({"items":[…]})가 아니라 사람 말로(가상양도7 표 23)
+function caseProcValueText_(value) {
+  let v = value;
+  if (typeof v === 'string') { const s = v.trim(); if (/^[\[{]/.test(s)) { try { v = JSON.parse(s); } catch (e) { return s; } } else return s; }
+  if (v == null) return '';
+  if (typeof v !== 'object') return String(v);
+  const won = function (n) { return (Number(String(n == null ? '' : n).replace(/[^\d.-]/g, '')) || 0).toLocaleString('ko-KR') + '원'; };
+  const rowText = function (x) { if (!x || typeof x !== 'object') return String(x); return [x.kind, x.label || x.creditorName || x.loc || x.jibun, x.amount != null ? won(x.amount) : (x.v != null ? String(x.v) : ''), x.file].filter(function (t) { return t != null && String(t).trim() !== ''; }).join(' '); };
+  const list = Array.isArray(v) ? v : (Array.isArray(v.items) ? v.items : (Array.isArray(v.rows) ? v.rows : (Array.isArray(v.parcels) ? v.parcels : null)));
+  if (list) return list.length ? list.map(rowText).join(' · ') : '없음(0건)';
+  return Object.keys(v).map(function (k) { const x = v[k]; return k + ' ' + (x && typeof x === 'object' ? caseProcValueText_(x) : String(x)); }).join(' · ');
 }
 // 중요한 순간 — GAS가 규칙으로 알아챈 것(0원). 넥스가 먼저 말을 거는 재료(sv.alerts, 화면이 넥스 알림으로 띄우고 보면 seen)
 //  세무사님 원문(10-22): "중요한 순간이 어떤 경우가 있을지 모르겠는데, 만약 그런 경우라면 AI가 먼저 말을 걸어도 되겠지." — 경우는 실제 쓰며 함께 늘린다
@@ -30306,7 +30324,11 @@ function caseProcUserView_(c) {
   if (!last) next.push({ do: 'calc', text: '세액계산 결과가 아직 저장되지 않았습니다' });
   if (last && !v.서식PDF) next.push({ do: 'gas', text: '서식 PDF가 사건 폴더에 저장되지 않았습니다' });
   if (!v.검토서) next.push({ do: 'gas', text: '종합검토서 초안이 없습니다' });
-  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [] };
+  // [2026.10.22 묶음 ㄱ6] 다 끝났을 때 결과 요약 재료 — 서식 PDF·검토서 파일(화면이 "끝남 — 세액 ○원 · 서식 [열기] · 검토서 [열기]" 한 줄로 보인다, 가상양도7 표 39)
+  const pdfInfo = sv.printPdf ? { 이름: sv.printPdf.name || '', 때: sv.printPdf.at || '', 파일: sv.printPdf.id || '', 서식수: sv.printPdf.forms || 0 } : null;
+  const draftInfo = sv.draftFileId ? { 파일: sv.draftFileId } : null;
+  const heldN = v.보류질문수 || 0;
+  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0 };
 }
 // 넥스가 보는 사건 현황 — 기록부·정한 값·처리개요·증빙·닫은 질문·서식·검토서·단계 시각(·새 서류 — withFiles일 때만, 폴더를 훑으므로)
 function caseProcNexView_(c, opt) {
@@ -32103,11 +32125,19 @@ function caseProcEvidence_(c, body) {
   let docs = docsAll.slice(0, CASEPROC_DOC_MAX_); const docsOver = docsAll.slice(CASEPROC_DOC_MAX_); // [2026.10.15 일괄점검 ①] 40개에서 말없이 자르던 것을 늘리고, 그래도 넘으면 이름을 밝힌다
   const started = Date.now();
   let pending = 0;
+  // [2026.10.22 묶음 ㄱ8] 세무사님이 [이 값으로 기록]한 서류 칸(sv.docFix) — 그 ⚠은 다시 묻지 않고 기록한 값을 붙인다(기억 결과는 공유 객체라 복사해서 고침)
+  let docFixAll = {}; try { docFixAll = (caseProcLoad_(c.id) || {}).docFix || {}; } catch (e) { docFixAll = {}; }
+  const applyDocFix = function (f) {
+    const fx = f && f.p && docFixAll[String(f.id)]; if (!fx) return;
+    const keys = Object.keys(fx);
+    f.p = Object.assign({}, f.p, { w: (f.p.w || []).filter(function (w) { return !keys.some(function (k) { return String(w).indexOf(k) !== -1; }); }), fx: fx });
+  };
   docs.forEach(function (f) {
     // [2026.10.16] 보도자료·홍보물은 사건 서류가 아님 — 가격 자료 등으로 읽어 값·⚠ 질문을 만들지 않는다(장부에 '참고+이유'로 남김)
     if (/보도\s*(참고)?\s*자료|홍보\s*(자료|물)/.test(f.name)) { f.p = null; return; }
     const tp = Date.now();
     f.p = caseProcParsed_(f, cache, Date.now() - started < 80000);
+    applyDocFix(f);
     if (!f.p) pending++;
     if (typeof akTrace_ === 'function' && Date.now() - tp > 15000) akTrace_('서류 오래 걸림', f.name + ' ' + Math.round((Date.now() - tp) / 1000) + '초'); // [2026.10.16] 진단: 한 서류에 15초 넘게 걸리면 기록
   });
@@ -32117,13 +32147,13 @@ function caseProcEvidence_(c, body) {
   const joined = caseProcJoinPages_(docs, cache);
   if (joined.merged.length) {
     docs = joined.files;
-    docs.forEach(function (f) { if (/^m#/.test(String(f.id)) && !f.p) f.p = caseProcParsed_(f, cache, true); });
+    docs.forEach(function (f) { if (/^m#/.test(String(f.id)) && !f.p) { f.p = caseProcParsed_(f, cache, true); applyDocFix(f); } });
   }
   const joinedDocs = docs.filter(function (f) { return Array.isArray(f.joinParts); });
   if (joinedDocs.length) lines.push('한 서류가 쪽마다 다른 파일로 나뉜 것 ' + joinedDocs.length + '건 — 쪽 순서대로 이어 붙여 한 서류로 정리: ' + joinedDocs.map(function (f) { return f.joinParts.map(function (x) { return x.name; }).join('+') + ' → ' + f.name; }).join(', '));
   if (docs.some(function (f) { return caseProcBundleParts_(f, f.p); })) docs = caseProcExpandBundles_(docs, cache);
   const bundleGroups = {};
-  docs.forEach(function (f) { if (!f.bundleOf) return; if (!f.p) f.p = caseProcParsed_(f, cache, true); (bundleGroups[f.bundleOf] = bundleGroups[f.bundleOf] || []).push(f.bundleTitle || (f.p && f.p.l) || '서류'); });
+  docs.forEach(function (f) { if (!f.bundleOf) return; if (!f.p) { f.p = caseProcParsed_(f, cache, true); applyDocFix(f); } (bundleGroups[f.bundleOf] = bundleGroups[f.bundleOf] || []).push(f.bundleTitle || (f.p && f.p.l) || '서류'); });
   const dupDrop = caseProcDupDrop_(docs, cache), dupIds = Object.keys(dupDrop);
   if (dupIds.length) {
     lines.push('같은 서류 사본 ' + dupIds.length + '개는 한 번만 읽음: ' + docs.filter(function (f) { return dupDrop[f.id]; }).slice(0, 6).map(function (f) { return f.name + '(' + dupDrop[f.id].replace(/ — 「(.*)」로.*$/, ' → $1') + ')'; }).join(', ') + (dupIds.length > 6 ? ' 외' : ''));
@@ -38077,6 +38107,15 @@ function caseProcApply_(c, body) {
   const target = String(body.target || ''), value = body.value, src = String(body.src || '세무사님 확인').slice(0, 80);
   const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(src, body.by) + txt, dueDate: '' }]); };
   if (target === 'base') return caseProcApplyBase_(c.id, value, src, CASEPROC_BASE_LABEL_[c.세목] || '기준일');
+  // [2026.10.22 묶음 ㄱ8] 서류 자동 정리 ⚠ 확인 질문에서 [이 값으로 기록] — 세무사님이 쓴 값을 그 서류의 그 칸 값으로 기록(보류가 아니라 확인). 다음 읽기부터 그 ⚠은 다시 묻지 않는다(가상양도7 표 16·17)
+  if (target === 'docFix') {
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    if (!d || !d.fileId || !d.field || String(d.value == null ? '' : d.value).trim() === '') return { ok: false, error: '서류·칸·값이 필요합니다.' };
+    const fid = String(d.fileId).slice(0, 120), field = String(d.field).slice(0, 60), val = String(d.value).trim().slice(0, 120);
+    caseProcPatch_(c.id, function (sv) { sv.docFix = sv.docFix || {}; sv.docFix[fid] = sv.docFix[fid] || {}; sv.docFix[fid][field] = { v: val, read: String(d.read || '').slice(0, 120), file: String(d.file || '').slice(0, 120), src: src, at: caseProcToday_() }; });
+    work_updateCase({ id: c.id, 작업일지: logLine('‘' + String(d.file || '') + '’ ' + field + ' ← ' + val + ' (' + src + ')') });
+    return { ok: true, message: '‘' + String(d.file || '') + '’ ' + field + ' = ' + val + ' 기록(세무사님 입력)' };
+  }
   if (c.세목 === 'transfer') { const tr = trcApply_(c, body); if (tr) return tr; } // [2026.10.17] 양도 — 세액계산기 칸으로
   // [2026.10.15 1단계] 상속 채무 확정 — 체크한 채무 목록을 사건처리 결정(ihChoices.debts)에 저장, 세액계산 자동채우기가 채무 칸에 넣는다
   if (target === 'ihdebts') {
@@ -48823,7 +48862,9 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
         if (!same.length || same.some(function (y) { return Number(y.amount) === Number(x.amount) && (!x.kind || y.kind === x.kind); })) return;
         diffs.push(x.file + ': 확정 ' + (x.kind ? x.kind + ' ' : '') + won(x.amount) + ' ↔ 지금 서류 ' + same.map(function (y) { return y.kind + ' ' + won(y.amount); }).join(', '));
       });
-      if (diffs.length) q('tr:expenses:recheck:' + diffs.length + ':' + cands.map(function (y) { return y.amount; }).join('-'), 'check', '확정해 둔 비용이 지금 서류에서 읽은 값과 다릅니다(판독이 고쳐짐) — 다시 확정해 주세요: ' + diffs.join(' / '), { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, list(cands));
+      // [2026.10.22 묶음 ㄱ2] 세무사님이 확정한 비용은 서류 판독값과 달라도 되묻지 않는다(세무사님 값은 바꾸지 않는다 — 공통원칙 1). 다른 점만 한 줄로 밝힌다.
+      //  예전엔 "다시 확정해 주세요" 질문을 되살려 세무사님이 같은 값을 두 번 쳐야 했고(가상양도7 표 22·25), 되물을 때 칸은 서류값으로 돌아가 있었다
+      if (diffs.length) lines.push('ℹ 세무사님이 확정한 필요경비와 서류 판독값이 다른 곳 — 세무사님 값 그대로 둠: ' + diffs.join(' / ') + ' (바꾸시려면 필요경비 줄 [↩ 다시 묻기])');
     }
     if (!ans.taxfee && !cands.some(function (x) { return /이 사무소 수수료/.test(x.label); })) q('tr:taxfee', 'missing', '양도소득세 신고 세무비용(이 사무소 신고 수수료 등) 영수증이 폴더에 없습니다 — 금액을 넣어 주세요(없으면 "없음"). 양도계약 카드 양도비용으로 넣습니다(시행령 §163⑤1호). 답하기 전에는 잠정 0원(확인 전)으로 먼저 계산합니다 — 세액 영향이 작은 칸(상한 100만원 × 세율)이라 계산을 막지 않습니다.',
       { mode: 'options', target: 'trTaxFee', options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: '신고 세무비용', withInput: true, provisional: { v: '0', why: '잠정 0원 — 확인 전' } });
@@ -49120,6 +49161,7 @@ function trcApply_(c, body) {
     trcAnsSet_(c, '사건분류', v, src);
     const ov = JSON.parse(JSON.stringify(c.사건개요 || {})); ov.사건분류 = v; // 처리개요 요약·증빙목록 서식도 이 분류로
     work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
+    caseProcRememberFill_(c.id, '사건분류', v, src); // [2026.10.22 묶음 ㄱ5] 현황표가 세무사님이 고른 사건분류를 "△ 확정 전"으로 보이던 것(가상양도7 표 40) — 근거 기록을 남겨 ✅로
     return done('특례(사건분류) ← ' + v);
   }
   if (/^trStdConv/.test(target)) { // 예전 질문 — 취득당시 기준시가

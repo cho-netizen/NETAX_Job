@@ -2782,10 +2782,16 @@
         return res.results;
       });
     };
+    st.tickers = {};
     st.setStep = function(key, ico, sum){ var r = st.steps[key]; r.querySelector('.nxai-cp-ico').textContent = ico; r.querySelector('.nxai-cp-sum').textContent = sum || '';
       // 접힌 기록의 한 줄 요약 — 멈췄는지 아닌지는 늘 보이게(세무사님 10-18 "진행중인지 멈췄는지 도무지 알 수가 없다")
       var t0 = (NXAI_CP_STEPS_.filter(function(x){ return x.key === key; })[0] || {}).title || '';
-      var ls = bubble.querySelector('.nxai-cp-logsum'); if (ls) ls.textContent = (st.screen ? 'GAS가 하는 일 — ' : '넥스가 GAS로 하는 일 — ') + ico + ' ' + t0 + (sum ? ': ' + String(sum).slice(0, 60) : '') + ' (눌러서 자세히)'; };
+      var ls = bubble.querySelector('.nxai-cp-logsum');
+      var paint = function(extra){ if (ls) ls.textContent = (st.screen ? 'GAS가 하는 일 — ' : '넥스가 GAS로 하는 일 — ') + ico + ' ' + t0 + (sum ? ': ' + String(sum).slice(0, 60) : '') + (extra || '') + ' (눌러서 자세히)'; };
+      paint('');
+      // [2026.10.22 묶음 ㄱ7] 진행 중인 단계는 흐른 시간을 5초마다 보인다 — 2~3분 동안 "진행 중…"만 보여 멈춘 줄 알던 문제(가상양도7 표 19·27·33)
+      clearInterval(st.tickers[key]);
+      if (ico === '🔄'){ var tStart = Date.now(); st.tickers[key] = setInterval(function(){ if (!document.body.contains(r)){ clearInterval(st.tickers[key]); return; } var sec = Math.round((Date.now() - tStart) / 1000); var ex = ' (' + (sec >= 60 ? Math.floor(sec / 60) + '분 ' + (sec % 60) + '초' : sec + '초') + ')'; r.querySelector('.nxai-cp-sum').textContent = (sum || '') + ex; paint(ex); }, 5000); } };
     st.doStep = function(key, extra, pre){
       st.setStep(key, '🔄', '진행 중…');
       var loop = function(n){
@@ -2814,7 +2820,8 @@
         // [2026.10.16 1:1 고객W] 다시 계산할 이유가 새로 생기면(입력값 변경 등 — 질문 id가 달라짐) 한 처리 안에서도 다시 자동 계산한다.
         //  예전: 처리마다 한 번만 자동 계산해서, 질문에 답한 뒤 "▶ 지금 계산"을 따로 눌러야 했다
         var calcKey = key === 'calc' ? (res.items || []).map(function(x){ return x.id; }).join('|') : '';
-        if (key === 'calc' && res.needCalc && (!st.calcAuto || st.calcAutoKey !== calcKey)){ st.calcAuto = true; st.calcAutoKey = calcKey; setTimeout(function(){ nxAiCaseProcCalcRun_(st, false); }, 300); }
+        // [2026.10.22 묶음 ㄱ5] 계산 약속을 st.calcPromise에 두어 마무리(finishAll)가 계산 저장을 기다린 뒤 서식·검토서로 가게
+        if (key === 'calc' && res.needCalc && (!st.calcAuto || st.calcAutoKey !== calcKey)){ st.calcAuto = true; st.calcAutoKey = calcKey; st.calcPromise = new Promise(function(r){ setTimeout(r, 300); }).then(function(){ return nxAiCaseProcCalcRun_(st, false); }); }
         // 계산 결과는 저장돼 있는데 그 결과의 서식 PDF가 없으면 — 계산을 새로 돌리는 중이 아니면 지금 만든다(계산 중이면 계산 저장 뒤에 만듦)
         if (key === 'output' && res.needPdf && !st.pdfTried && !st.calcBusy){ st.pdfTried = true; setTimeout(function(){ nxAiCaseProcPdfRun_(st); }, 300); }
         return res;
@@ -2852,11 +2859,14 @@
       st.paused = false;
       if (st.blocked) return nxAiCaseProcFinish_(st);
       ['calc', 'output'].forEach(function(k){ st.setStep(k, '🔄', '진행 중…'); });
-      return st.runMany([{ step: 'calc' }, { step: 'output' }]).then(function(rs){
-        return st.doStep('calc', undefined, rs[0]).then(function(){ return new Promise(function(r){ setTimeout(r, 350); }); }).then(function(){ return st.doStep('output', undefined, rs[1]); });
-      }, function(){ return st.doStep('calc').then(function(){ return st.doStep('output'); }); }) // 한 번에 부르기가 안 되면 예전처럼 따로
-        .then(function(){ return nxAiCaseProcFinish_(st); })
-        .then(function(){ if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); }); // 사건 화면 — 다음 할 일 다시 맞춤
+      // [2026.10.22 묶음 ㄱ5] 순서를 "계산 → (계산 저장을 기다림) → 서식 → 검토서·현황표"로 — 예전엔 계산을 띄워 놓고 서식·검토서를 먼저 써서 검토서에 "계산 결과 없음", 현황표에 "계산 확정 전"이 남았다(가상양도7 표 36·40)
+      st.finishing = true; st.calcPromise = null; st.calcAuto = false; // calcAuto를 풀어야 이번 ▶에서 계산이 다시 뜬다(예전엔 앞서 막힌 자동계산이 calcAuto를 켜 두어 두 번째 ▶가 계산 없이 지나감 — 가상양도7 표 32·35의 원인으로 보임)
+      var waitCalc = function(){ return (st.calcPromise || Promise.resolve()).then(function(){ st.calcPromise = null; }); };
+      return st.run('calc').then(function(r0){ return st.doStep('calc', undefined, r0); }, function(){ return st.doStep('calc'); })
+        .then(waitCalc)
+        .then(function(){ return st.doStep('output'); })
+        .then(function(){ st.finishing = false; return nxAiCaseProcFinish_(st); })
+        .then(function(){ st.finishedAll = true; if (st.screen && typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); }, function(err){ st.finishing = false; throw err; }); // 사건 화면 — 다음 할 일 다시 맞춤
     };
     st.resume = function(force){
       if (!st.waiting) return Promise.resolve();
@@ -2884,7 +2894,10 @@
     var isInputQ = function(it){ var a = it.ask || {}; if (a.provisional) return false; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:|calc:)/.test(String(a.target || ''))); };
     var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] ? (d !== 'done' && d !== '무시') : (isInputQ(it) && !d); });
     var qName = function(it){ return blockers[it.id] || ('「' + String((it.ask && it.ask.label) || it.text || '').slice(0, 24) + '」'); };
-    return { open: open, qName: qName };
+    // [2026.10.22 묶음 ㄱ1 — 세무사님 결정 1 "잠정값으로 계산"] 계산을 막는 것은 값 자체가 없어 계산이 불가능한 칸(양도가액·취득가액·증여재산가액·상속재산 등 — 후보도 없는 빈 칸)뿐.
+    //  사건분류·필요경비·채무·증여 내용 같은 판단 질문과 후보가 있는 칸은 서류로 찾은 값(잠정값)으로 먼저 계산하고, 답하시면 다시 계산한다(지금 세무비용 칸과 같은 방식).
+    var hard = open.filter(function(it){ var a = it.ask || {}; var cs = (Array.isArray(a.cands) && a.cands.length) || (Array.isArray(a.options) && a.options.length); return it.kind === 'missing' && !cs && !blockers[it.id] && !a.provisional; });
+    return { open: open, hard: hard, qName: qName };
   }
   // 넥스가 마무리(계산·검토서)를 부르지 않고 끝냈을 때 — 일부만 맡기신 경우 등. 세무사님이 이어서 하실 단추만 둔다
   // [2026.10.22 시험가동] 단추 기다리는 동안 답이 들어오면 — 마지막 답 뒤 12초 동안 다른 답이 없을 때 칸 다시 맞추기를 한 번(이미 돌고 있으면 끝난 뒤 한 번 더).
@@ -2894,14 +2907,17 @@
     clearTimeout(st.prTimer);
     if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st);
     nxAiCaseProcFoot_(st);
-    var run = function(){
+    // [2026.10.22 묶음 ㄱ3] 세무사님이 다른 질문에 답을 적는 중(입력칸에 커서)이면 칸 다시 맞추기를 미룬다 — 다시 그리면서 적던 값이 날아가던 문제(가상양도7 표 14·15)
+    var answering = function(){ try { var ae = document.activeElement; return !!(ae && st.bubble.contains(ae) && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && ae.closest('.nxai-cp-ask')); } catch (e) { return false; } };
+    var run = function(force){
       if (st.prBusy){ st.prAgain = true; return st.prBusy; }
+      if (!force && answering()){ clearTimeout(st.prTimer); st.prTimer = setTimeout(run, 8000); return Promise.resolve(); }
       var k = st.prKeys; st.prKeys = [];
       if (!k.length) return Promise.resolve();
-      st.prBusy = nxAiCaseProcRefresh_(st, k, true).catch(function(){}).then(function(){ st.prBusy = null; if (st.prAgain){ st.prAgain = false; return run(); } });
+      st.prBusy = nxAiCaseProcRefresh_(st, k, true).catch(function(){}).then(function(){ st.prBusy = null; if (st.prAgain){ st.prAgain = false; return run(true); } });
       return st.prBusy;
     };
-    st.flushRefresh = function(){ clearTimeout(st.prTimer); return run().then(function(){ return st.prBusy || null; }); };
+    st.flushRefresh = function(force){ clearTimeout(st.prTimer); return run(force !== false).then(function(){ return st.prBusy || null; }); };
     st.prTimer = setTimeout(run, 12000);
   }
   // 사건 화면 — "GAS가 한 일" 한 줄(남은 질문을 계산기 항목별로). 답하실 때마다 다시 맞춘다
@@ -2922,7 +2938,15 @@
     }
     var d = st.say(msg || '계산·검토서는 이번에 하지 않았습니다. 이어서 하시려면 아래 단추를 누르세요.', 'nxai-muted');
     var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn'; b.textContent = '▶ 세액계산·검토서까지 만들기';
-    b.addEventListener('click', function(){ b.remove(); st.running = true; (st.flushRefresh ? st.flushRefresh() : Promise.resolve()).then(function(){ st.paused = false; return st.finishAll(); }).catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); }); });
+    // [2026.10.22 묶음 ㄱ1·ㄱ7] 단추를 누르면 없애지 않고 무엇을 하는지 보인다 — 예전엔 단추가 사라지고 ③ "진행 중…"만 3분 넘게 남아 막힌 줄 알았다(가상양도7 표 26)
+    b.addEventListener('click', function(){
+      if (b.disabled) return;
+      b.disabled = true; st.running = true;
+      var pend = (st.prKeys || []).length || st.prBusy;
+      b.textContent = pend ? '⏳ 답하신 값을 칸에 맞추는 중… 끝나면 바로 세액계산·서식·검토서를 만듭니다' : '🔄 세액계산·서식·검토서 만드는 중…';
+      (st.flushRefresh ? st.flushRefresh(true) : Promise.resolve()).then(function(){ b.textContent = '🔄 세액계산·서식·검토서 만드는 중…'; st.paused = false; return st.finishAll(); })
+        .then(function(){ b.remove(); }, function(err){ b.disabled = false; b.textContent = '▶ 세액계산·검토서까지 만들기(다시)'; st.setStep('save', '❌', String(err && err.message || err)); });
+    });
     d.parentNode.insertBefore(b, d.nextSibling);
     nxAiCaseProcSave_(st, false);
     nxAiCaseProcFoot_(st);
@@ -3195,7 +3219,7 @@
     var info = addLine('🖨 저장된 계산 결과로 서식 PDF를 만들려고 세액계산 화면을 엽니다…');
     st.pdfRunning = true;
     setTimeout(function(){ st.pdfRunning = false; }, 90000);
-    nxAiOpenJobView_('taxcalc', st.caseId);
+    if (st.screen) goToTaxCalc_(st.caseId); else nxAiOpenJobView_('taxcalc', st.caseId); // [2026.10.22 묶음 ㄱ4] 사건 화면에선 AI 창을 열지 않음
     var tries = 0;
     var tick = function(){
       tries++;
@@ -3207,6 +3231,7 @@
         if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
         st.pdfRunning = false;
         info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+        if (st.screen && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} } // [2026.10.22 묶음 ㄱ4] 사건 화면으로 돌아옴
         if (pr && pr.ok) nxAiCaseProcStatus_(st);
       });
     };
@@ -3243,6 +3268,7 @@
     return keys.reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){
       // 입력값이 바뀌었으면(기준일·처리개요) 계산 결과가 있어도 그 값으로 다시 계산
       if (recalc && !st.calcBusy && st.case && CASEPROC_CALC_TABS_[st.case.세목]) nxAiCaseProcCalcRun_(st, false);
+      if (st.finishing) return; // [2026.10.22 묶음 ㄱ5] 마무리(finishAll)가 진행 중이면 검토서·현황표는 거기서 한 번만(계산 뒤 다시 맞추기에서 두 번 쓰지 않게)
       return nxAiCaseProcFinish_(st);
     });
   }
@@ -3266,11 +3292,56 @@
     nxAiCaseProcItems_(st, key);
   }
   function nxAiCaseProcDec_(st, it){ var d = st.decisions[it.id]; return d && d.d; }
+  // [2026.10.22 묶음 ㄱ3] 질문 한 줄을 그리는 부품 — 한 줄만 바꿀 때(답·보류·다시 묻기)도 같은 부품을 써서, 다른 줄에 적던 값이 날아가지 않게
+  function nxAiCpBuildItemEl_(st, it){
+    var dec = nxAiCaseProcDec_(st, it);
+    var parked = dec === '보류' || dec === '예정';
+    var el = document.createElement('div');
+    el.className = 'nxai-cp-item' + (parked ? ' held' : '');
+    it._el = el;
+    el.innerHTML = '<div><span class="nxai-cp-q" title="입력창에 이 번호로 답할 수 있습니다 — 예) Q2 5억 매매계약서 / Q2 보류"></span> <span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> '
+      + (nxAiCpXdocs_(it) ? '<span class="nxai-cp-xdoc" title="서류마다 값이 달라(또는 AI가 정해) 맞는 값을 확인해야 합니다 — [확인]을 누르면 후보마다 출처 서류와 👁(열기)가 보입니다">서류끼리 다름</span> ' : '')
+      + nxAiEsc_(it.text) + '</div>'
+      + (it.detail ? '<div class="nxai-cp-detail">' + nxAiEsc_(it.detail) + '</div>' : '') + '<div class="nxai-cp-btns"></div><div class="nxai-cp-ask" hidden></div>';
+    var btns = el.querySelector('.nxai-cp-btns');
+    var add = function(label, fn, primary){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); btns.appendChild(b); return b; };
+    if (parked){
+      btns.appendChild(document.createTextNode(dec === '보류' ? '⏸ 보류 — 종합검토서 "추가로 확인할 사항"에 들어감' : '📥 받을 예정 — 남은 일·검토서에 표시'));
+      var note = st.decisions[it.id].note;
+      if (note) btns.appendChild(document.createTextNode(' (' + note + ')'));
+      add('↩ 다시 묻기', function(){ nxAiCaseProcDecide_(st, it, null); });
+    } else {
+      var ask = it.ask || {};
+      add(ask.mode === 'calc' ? '▶ 지금 계산' : '확인', function(){ nxAiCaseProcAsk_(st, it, el); }, true);
+      add('보류', function(){ nxAiCaseProcDecide_(st, it, '보류'); });
+      add('무시', function(){ nxAiCaseProcDecide_(st, it, '무시'); });
+    }
+    return el;
+  }
+  // 단계 줄의 아이콘·요약("확인할 항목 n건 · 보류 m") — 지금 보이는 줄로 센다
+  function nxAiCpStepSum_(st, key){
+    var row = st.steps[key], held = 0, open = 0;
+    st.items.forEach(function(it){ if (it.step !== key) return; var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; if (d0 === '보류' || d0 === '예정') held++; else open++; });
+    var ico = row.querySelector('.nxai-cp-ico');
+    if (ico.textContent !== '❌' && ico.textContent !== '⏭' && key !== 'save' && !(key === 'calc' && st.calcBusy)){
+      ico.textContent = open ? '⚠' : '✅';
+      row.querySelector('.nxai-cp-sum').textContent = open ? '확인할 항목 ' + open + '건' + (held ? ' · 보류 ' + held : '') : (held ? '보류 ' + held + '건' : '완료');
+    }
+  }
+  // 카드 머리줄("양도계약 — 2개")의 수를 지금 남은 줄로 다시 맞추고, 줄이 없는 머리는 지운다
+  function nxAiCpFixHeaders_(box){
+    var hd = null, n = 0, heads = [];
+    Array.prototype.forEach.call(box.children, function(ch){
+      if (ch.classList.contains('nxai-cp-card')){ if (hd) heads.push([hd, n]); hd = ch; n = 0; }
+      else if (ch.classList.contains('nxai-cp-item')) n++;
+    });
+    if (hd) heads.push([hd, n]);
+    heads.forEach(function(h){ if (!h[1]) h[0].remove(); else h[0].textContent = h[0].textContent.replace(/ — \d+개$/, '') + ' — ' + h[1] + '개'; });
+  }
   function nxAiCaseProcItems_(st, key){
     var row = st.steps[key];
     var box = row._items || row.querySelector('.nxai-cp-items');
     box.innerHTML = '';
-    var held = 0, open = 0;
     // [2026.10.18 사용자 소통 1번] 세액계산기 카드 순서로 — 카드마다 머리줄("양도계약 — 2개"), 같은 카드 안에서는 나온 순서
     var tax = nxAiCpTax_(st), vis = [], cnt = {}, lastCard = null;
     st.items.forEach(function(it, i){
@@ -3282,48 +3353,34 @@
     vis.sort(function(x, y){ return (x.c.no - y.c.no) || (x.i - y.i); });
     vis.forEach(function(v){ cnt[v.c.card] = (cnt[v.c.card] || 0) + 1; });
     vis.forEach(function(v){
-      var it = v.it;
-      var dec = nxAiCaseProcDec_(st, it);
       if (v.c.card !== lastCard){
         lastCard = v.c.card;
         var hd = document.createElement('div'); hd.className = 'nxai-cp-card';
         hd.textContent = v.c.card + ' — ' + cnt[v.c.card] + '개';
         box.appendChild(hd);
       }
-      var parked = dec === '보류' || dec === '예정';
-      if (parked) held++; else open++;
-      var el = document.createElement('div');
-      el.className = 'nxai-cp-item' + (parked ? ' held' : '');
-      it._el = el;
-      el.innerHTML = '<div><span class="nxai-cp-q" title="입력창에 이 번호로 답할 수 있습니다 — 예) Q2 5억 매매계약서 / Q2 보류"></span> <span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> '
-        + (nxAiCpXdocs_(it) ? '<span class="nxai-cp-xdoc" title="서류마다 값이 달라(또는 AI가 정해) 맞는 값을 확인해야 합니다 — [확인]을 누르면 후보마다 출처 서류와 👁(열기)가 보입니다">서류끼리 다름</span> ' : '')
-        + nxAiEsc_(it.text) + '</div>'
-        + (it.detail ? '<div class="nxai-cp-detail">' + nxAiEsc_(it.detail) + '</div>' : '') + '<div class="nxai-cp-btns"></div><div class="nxai-cp-ask" hidden></div>';
-      var btns = el.querySelector('.nxai-cp-btns');
-      var add = function(label, fn, primary){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); btns.appendChild(b); return b; };
-      if (parked){
-        btns.appendChild(document.createTextNode(dec === '보류' ? '⏸ 보류 — 종합검토서 "추가로 확인할 사항"에 들어감' : '📥 받을 예정 — 남은 일·검토서에 표시'));
-        var note = st.decisions[it.id].note;
-        if (note) btns.appendChild(document.createTextNode(' (' + note + ')'));
-        add('↩ 다시 묻기', function(){ nxAiCaseProcDecide_(st, it, null); });
-      } else {
-        var ask = it.ask || {};
-        add(ask.mode === 'calc' ? '▶ 지금 계산' : '확인', function(){ nxAiCaseProcAsk_(st, it, el); }, true);
-        add('보류', function(){ nxAiCaseProcDecide_(st, it, '보류'); });
-        add('무시', function(){ nxAiCaseProcDecide_(st, it, '무시'); });
-      }
-      box.appendChild(el);
+      box.appendChild(nxAiCpBuildItemEl_(st, v.it));
     });
     nxAiCaseProcRenumber_(st); // [2026.10.15 1단계 ③] 질문 번호(Q1…) — 입력창에 말로 답할 때 부르는 번호
-    var ico = row.querySelector('.nxai-cp-ico');
-    if (ico.textContent !== '❌' && ico.textContent !== '⏭' && key !== 'save' && !(key === 'calc' && st.calcBusy)){
-      ico.textContent = open ? '⚠' : '✅';
-      row.querySelector('.nxai-cp-sum').textContent = open ? '확인할 항목 ' + open + '건' + (held ? ' · 보류 ' + held : '') : (held ? '보류 ' + held + '건' : '완료');
-    }
+    nxAiCpStepSum_(st, key);
+  }
+  // [2026.10.22 묶음 ㄱ3] 한 줄만 바꾼다 — 답한 줄은 빼고, 보류·다시 묻기는 그 줄만 다시 그림. 다른 줄(적던 값·펼친 질문)은 그대로(예전엔 단계 전체를 다시 그려 입력이 날아가고 번호가 밀림, 가상양도7 표 15·19)
+  function nxAiCpUpdateItem_(st, it){
+    var key = it.step, row = st.steps[key];
+    if (!row) return;
+    var box = row._items || row.querySelector('.nxai-cp-items');
+    var old = it._el;
+    if (!old || !old.parentNode){ nxAiCaseProcItems_(st, key); return; }
+    var d0 = nxAiCaseProcDec_(st, it);
+    if (d0 === '무시' || d0 === 'done'){ old.remove(); it._el = null; }
+    else old.parentNode.replaceChild(nxAiCpBuildItemEl_(st, it), old);
+    nxAiCpFixHeaders_(box);
+    nxAiCaseProcRenumber_(st);
+    nxAiCpStepSum_(st, key);
   }
   function nxAiCaseProcDecide_(st, it, d, note){
     st.decisions[it.id] = d ? { d: d, at: nxAiTodayStr_(), text: it.text, note: note || '' } : null;
-    nxAiCaseProcItems_(st, it.step);
+    nxAiCpUpdateItem_(st, it);
     nxAiCaseProcQueueSave_(st);
   }
   // 결정이 바뀌면 2초 뒤 저장 + 종합검토서 초안의 "추가로 확인할 사항"도 다시
@@ -3346,6 +3403,8 @@
     var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
     var held = live.filter(function(it){ return /^(보류|예정)$/.test(nxAiCaseProcDec_(st, it) || ''); });
     var open = live.length - held.length;
+    // [2026.10.22 묶음 ㄱ1·ㄱ5] 사건 화면 "다음 할 일"이 같은 수를 읽게(한 곳의 같은 수) — 머리 "질문 1개" ↔ 본문 "여쭐 것 없음"이 어긋나던 것(가상양도7 표 20·34·39)
+    if (st.screen) window.nxCpLive_ = { caseId: st.caseId, open: open, held: held.length, running: !!st.running, at: Date.now() };
     foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(검토서에 반영)' : '') + (st.paused ? ' — [확인]으로 값을 고르면 반영하고 칸을 다시 맞춥니다. 다 답하신 뒤 [▶ 세액계산·검토서까지 만들기]를 누르세요.' : ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.')
       + (open && !st.screen ? '<br>💬 아래 입력창에 말로 답해도 됩니다: <b>"Q2 5억 2천만원 매매계약서"</b>, <b>"Q3 2024.3.5"</b>, <b>"Q4 보류"</b>, "남은 질문 보여줘"' : '') + '</div>';
     var again = document.createElement('button');
@@ -3411,9 +3470,12 @@
     var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
     return live.map(function(it, i){ return { it: it, i: i, n: nxAiCpCard_(it, tax).no }; }).sort(function(a, b){ return (order.indexOf(a.it.step) - order.indexOf(b.it.step)) || (a.n - b.n) || (a.i - b.i); }).map(function(x){ return x.it; });
   }
+  // [2026.10.22 묶음 ㄱ3] 질문 번호는 처음 매긴 것을 그대로 — 답한 질문이 빠져도 남은 질문의 번호가 밀리지 않는다(가상양도7 표 19 "세무비용 Q4→Q3"). 새 질문은 다음 번호를 받는다
   function nxAiCaseProcRenumber_(st){
-    nxAiCaseProcLive_(st).forEach(function(it, i){
-      it.q = i + 1;
+    st.qById = st.qById || {}; st.qMax = st.qMax || 0;
+    nxAiCaseProcLive_(st).forEach(function(it){
+      if (!st.qById[it.id]) st.qById[it.id] = ++st.qMax;
+      it.q = st.qById[it.id];
       var b = it._el && it._el.querySelector('.nxai-cp-q');
       if (b) b.textContent = 'Q' + it.q;
     });
@@ -3762,7 +3824,7 @@
         if (target === 'evMark' && r.my_report_id) callGas('admin_set_checklist_status', { report_id: r.my_report_id, item: ask.label, submitted: true }).catch(function(){});
         // [2026.10.22 시험가동] 단추를 기다리는 동안(st.paused)엔 답한 질문을 바로 닫고 다음 질문에 답하시게 한다 — 칸 다시 맞추기(서버 약 90초)는
         //  답이 멈춘 뒤 한 번만(nxAiCpPausedRefresh_). 예전엔 답 하나마다 2분 넘게 기다려야 다음 질문을 누를 수 있었다
-        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + String(value).slice(0, 40) }; nxAiCaseProcItems_(st, it.step); nxAiCpPausedRefresh_(st, refreshKeys); return; }
+        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + String(value).slice(0, 40) }; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
     };
@@ -3993,11 +4055,11 @@
       }
       p('원문(‘' + (ask.name || '') + '’)과 비교해 칸마다 골라 주세요.');
       var answers = {};
+      // [2026.10.22 묶음 ㄱ8] [이 값으로 기록]은 확인(값이 그 서류의 칸으로 기록됨 — 서버 docFix)이지 보류가 아니다. 예전엔 맞는 값을 쳐도 "⏸ 보류"로 분류되고 검토서엔 빠졌다(가상양도7 표 16·17·37)
       var finish = function(){
         if (Object.keys(answers).length < warns.length) return;
-        var fixes = warns.map(function(w, i){ return answers[i]; }).filter(function(a){ return a && a.fix; });
-        if (!fixes.length) nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — ⚠ ' + warns.length + '곳 모두 맞음');
-        else nxAiCaseProcDecide_(st, it, '보류', fixes.map(function(a){ return a.field + ' → ' + a.fix; }).join(' / '));
+        var fixes = warns.map(function(w, i){ return answers[i]; }).filter(function(a){ return a && a.fixed; });
+        nxAiCaseProcDecide_(st, it, 'done', fixes.length ? '원문 대조 — 세무사님 입력: ' + fixes.map(function(a){ return a.field + ' = ' + a.fixed; }).join(' / ') : '원문 대조 — ⚠ ' + warns.length + '곳 모두 맞음');
       };
       warns.forEach(function(w, i){
         var clean = w.replace(/⚠\s*/g, '').replace(/\s+/g, ' ').trim();
@@ -4009,7 +4071,15 @@
         var rr = rowEl();
         var ok = btn('맞음', function(){ answers[i] = { field: field }; rr.innerHTML = ''; rr.appendChild(document.createTextNode('✅ 맞음')); finish(); }, true, rr);
         var e = document.createElement('input'); e.type = 'text'; e.placeholder = (field.length > 20 ? field.slice(0, 20) + '…' : field) + '의 맞는 값'; if (read) e.value = read; e.style.cssText = 'flex:1;min-width:120px;'; rr.appendChild(e);
-        btn('이 값으로 기록', function(){ var v = String(e.value || '').trim(); if (!v){ nxAiToast_('맞는 값을 적어 주세요.'); return; } answers[i] = { field: field, fix: v === read ? '' : v }; rr.innerHTML = ''; rr.appendChild(document.createTextNode(v === read ? '✅ 맞음' : '✏ ' + v + ' (검토서 추가확인사항에 기록)')); finish(); }, false, rr);
+        btn('이 값으로 기록', function(){
+          var v = String(e.value || '').trim(); if (!v){ nxAiToast_('맞는 값을 적어 주세요.'); return; }
+          if (v === read){ answers[i] = { field: field }; rr.innerHTML = ''; rr.appendChild(document.createTextNode('✅ 맞음')); finish(); return; }
+          rr.innerHTML = ''; rr.appendChild(document.createTextNode('기록하는 중…'));
+          st.run('apply', { target: 'docFix', value: JSON.stringify({ fileId: ask.fileId, file: ask.name || '', field: field, value: v, read: read }), src: '세무사님 직접 입력', label: field }).then(function(r){
+            if (!r || !r.ok) throw new Error((r && (r.error || r.message)) || '기록 실패');
+            answers[i] = { field: field, fixed: v }; rr.innerHTML = ''; rr.appendChild(document.createTextNode('✏ ' + v + ' — 기록함(세무사님 입력, 이 서류의 이 칸은 다시 묻지 않음)')); finish();
+          }).catch(function(err){ rr.innerHTML = ''; rr.appendChild(document.createTextNode('기록하지 못했습니다: ' + (err && err.message || err))); rr.appendChild(e); });
+        }, false, rr);
       });
       return;
     }
@@ -5016,14 +5086,23 @@
     // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 고객Q)
     // [2026.10.15 일괄점검 ③] 위 셋만이 아니라 — 계산 입력 칸(처리개요 값·기준일)을 묻는 질문에 아직 답하지 않았으면 자동 계산하지 않는다(보류는 "진행"이라 막지 않음)
     // [2026.10.19 small0] 세액 영향이 작은 칸(ask.provisional — 신고 세무비용)은 잠정값으로 먼저 계산한다(질문은 남김, 답하면 다시 계산, 출력 전 알림)
-    var oi = nxAiCpOpenInputs_(st), open = oi.open, qName = oi.qName; // [2026.10.22] 넥스가 먼저 여쭐 질문과 같은 기준
-    if (open.length && !manual){ st.setStep('calc', '⏸', open.slice(0, 4).map(qName).join('·') + (open.length > 4 ? ' 외 ' + (open.length - 4) + '건' : '') + '을(를) 먼저 정해 주세요 — 정해지면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return; }
+    // [2026.10.22 묶음 ㄱ1·ㄱ5] 계산이 끝나는 때를 알 수 있게 약속(Promise)으로 — 마무리(검토서·현황표)가 계산 저장 뒤에 오게(예전엔 계산을 띄워 놓고 바로 검토서를 써서 "계산 결과 없음"이 적힘, 가상양도7 표 36)
+    return new Promise(function(resolveCalc){ nxAiCaseProcCalcRun0_(st, manual, function(){ try { resolveCalc(); } catch (e) {} }); });
+  }
+  function nxAiCaseProcCalcRun0_(st, manual, onEnd){
+    onEnd = onEnd || function(){};
+    if (st.calcBusy) return onEnd();
+    var oi = nxAiCpOpenInputs_(st), open = oi.open, hard = oi.hard, qName = oi.qName; // [2026.10.22] 넥스가 먼저 여쭐 질문과 같은 기준
+    // [2026.10.22 묶음 ㄱ1 — 세무사님 결정 1] 값이 없어 계산이 불가능한 칸만 막고, 나머지 질문은 잠정값으로 계산(답하면 다시 계산)
+    if (hard.length && !manual){ st.setStep('calc', '⏸', hard.slice(0, 4).map(qName).join('·') + (hard.length > 4 ? ' 외 ' + (hard.length - 4) + '건' : '') + '에 값이 없어 계산할 수 없습니다 — 위 질문에 값을 넣으면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return onEnd(); }
+    st.provisionalNote = open.length ? '잠정 계산 — 아직 답하지 않은 질문 ' + open.length + '개(' + open.slice(0, 3).map(qName).join('·') + (open.length > 3 ? ' 외' : '') + ')는 서류로 찾은 값으로 넣었습니다. 답하시면 다시 계산합니다.' : '';
     var tab = st.case && st.case.세목;
-    if (!{ transfer: 1, gift: 1, inheritance: 1 }[tab] || typeof goToTaxCalc_ !== 'function') return;
+    if (!{ transfer: 1, gift: 1, inheritance: 1 }[tab] || typeof goToTaxCalc_ !== 'function') return onEnd();
     st.calcBusy = true;
     st.setStep('calc', '🔄', '세액계산 화면에서 계산 중…');
-    var done = function(msg, ico){ st.calcBusy = false; st.setStep('calc', ico || '⚠', msg); };
-    nxAiOpenJobView_('taxcalc', st.caseId);
+    var done = function(msg, ico){ st.calcBusy = false; st.setStep('calc', ico || '⚠', msg); onEnd(); };
+    // [2026.10.22 묶음 ㄱ4] 사건 화면(AI 없이)에선 AI 창을 열지 않는다 — 예전엔 세액계산 화면을 열며 AI 사이드바까지 스스로 펼쳤다(가상양도7 표 29)
+    if (st.screen) goToTaxCalc_(st.caseId); else nxAiOpenJobView_('taxcalc', st.caseId);
     var tries = 0;
     var waitReady = function(){
       tries++;
@@ -5082,7 +5161,7 @@
           var bx = boxId ? document.getElementById(boxId) : null;
           var txt = bx ? bx.innerText : '';
           if (txt && txt !== before){
-            if (bx.querySelector('.taxcalc-error')){ before = txt; st.setStep('calc', '⚠', '계산이 오류로 끝났습니다 — 세액계산 화면에서 고친 뒤 [세액 계산하기]를 누르면 이어서 저장합니다.'); }
+            if (bx.querySelector('.taxcalc-error')){ before = txt; st.setStep('calc', '⚠', '계산이 오류로 끝났습니다 — 세액계산 화면에서 고친 뒤 [세액 계산하기]를 누르면 이어서 저장합니다.'); onEnd(); }
             else {
               st.setStep('calc', '🔄', '계산 끝 — 사건에 저장 중…');
               if (typeof tcSaveCurrentResult_ === 'function') tcSaveCurrentResult_();
@@ -5090,10 +5169,12 @@
                 st.setStep('calc', '🔄', '저장 끝 — 세액인쇄 서식을 PDF로 사건 폴더에 저장 중…');
                 nxAiCaseProcSavePdf_(st, tab).then(function(pr){
                   var ln = document.createElement('div'); ln.className = 'nxai-cp-line';
-                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
                   st.calcBusy = false;
-                  return nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); });
-                }).catch(function(){ st.calcBusy = false; });
+                  // [2026.10.22 묶음 ㄱ4] 사건 화면에서 시작했으면 계산·서식이 끝난 뒤 사건 화면으로 돌아온다(진행 카드는 그대로 — casehandling chGasKeep_)
+                  if (st.screen && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} }
+                  return nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); } onEnd(); });
+                }).catch(function(){ st.calcBusy = false; onEnd(); });
               }, 5000);
               return;
             }

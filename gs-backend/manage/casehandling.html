@@ -1056,22 +1056,40 @@
         var h = '';
         if ((r.알림 || []).length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:6px 8px; margin-bottom:6px;"><b>⚠ GAS 알림</b><br>' + r.알림.map(function(a){ return '· ' + esc(a); }).join('<br>') + ' <button type="button" class="ghost-btn" data-gas="seen" style="font-size:11.5px; margin-left:6px;">확인했어요</button></div>';
         var nx = r.다음 || [];
-        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : '<div>✅ GAS가 보기에 남은 일이 없습니다' + (r.계산 && r.계산.세액 != null ? ' — 최종세액 ' + Number(r.계산.세액).toLocaleString('ko-KR') + '원(' + esc(r.계산.날짜) + ')' : '') + '</div>';
+        // [2026.10.22 묶음 ㄱ1·ㄱ5] 진행 카드가 이 화면에 살아 있으면 남은 질문 수는 카드가 세는 수를 쓴다(한 곳의 같은 수) — 서버 저장분이 한 박자 늦어 "답하실 질문 1개"가 유령처럼 남던 것(가상양도7 표 34·39)
+        var live = window.nxCpLive_ && window.nxCpLive_.caseId === c.id ? window.nxCpLive_ : null;
+        if (live) nx = nx.filter(function(n){ return !/^답하실 질문/.test(n.text); }).concat(live.open ? [{ do: 'gas', text: '답하실 질문 ' + live.open + '개' + (live.held ? ' (보류 ' + live.held + '개 따로)' : '') }] : []);
+        var drive = function(id){ return 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view'; };
+        // [2026.10.22 묶음 ㄱ6] 다 끝났으면 결과 요약 한 줄 — 세액·서식 PDF·검토서를 여기서 바로 연다(예전엔 산출물을 보려면 드라이브·다른 화면으로 가야 했다, 가상양도7 표 39)
+        var doneLine = function(){
+          var parts = [];
+          if (r.계산 && r.계산.세액 != null) parts.push('세액 <b>' + Number(r.계산.세액).toLocaleString('ko-KR') + '원</b>(' + esc(r.계산.날짜) + ')');
+          if (r.서식 && r.서식.파일) parts.push('서식 PDF' + (r.서식.서식수 ? ' ' + r.서식.서식수 + '개' : '') + ' <a href="' + drive(r.서식.파일) + '" target="_blank" rel="noopener">[열기]</a>');
+          if (r.검토서 && r.검토서.파일) parts.push('종합검토서 초안 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a> <button type="button" class="ghost-btn" data-gas="writer" style="font-size:11.5px;">✍ 문서작성에서 열기</button>');
+          if (r.보류) parts.push('보류 ' + r.보류 + '건(검토서 "추가로 확인할 사항")');
+          return '<div>✅ GAS가 보기에 남은 일이 없습니다' + (parts.length ? ' — ' + parts.join(' · ') : '') + '</div>';
+        };
+        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
         if ((r.기록 || []).length) h += '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">📓 최근 작업 기록(누가·언제·무엇) ' + r.기록.length + '줄</summary><div style="margin:4px 0 0 8px; font-size:12px;">' + r.기록.slice().reverse().map(function(l){ return esc(l); }).join('<br>') + '</div></details>';
         nowEl.innerHTML = h;
         Array.prototype.forEach.call(nowEl.querySelectorAll('button[data-gas]'), function(b){ b.addEventListener('click', function(){ var k = b.getAttribute('data-gas');
           if (k === 'seen') callGas('case_proc', { caseId: c.id, step: 'alertSeen' }).then(loadNow).catch(function(){});
           else if (k === 'calc'){ var tb = document.getElementById('chTaxCalcOpenBtn'); if (tb) tb.click(); }
+          else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
+          else if (k === 'gas' && window.chGasKeep_ && window.chGasKeep_.caseId === c.id && window.chGasKeep_.box && document.body.contains(window.chGasKeep_.box)){ try { window.chGasKeep_.box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {} } // 진행 카드가 살아 있으면 다시 돌리지 않고 그 카드로 간다
           else document.getElementById('chGasRunBtn').click();
         }); });
       }).catch(function(e){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다: ' + esc(e && e.message || e) + '</span>'; });
     };
     loadNow();
     window.chGasReloadNow_ = loadNow; // GAS 처리가 끝나면 다시 불러 다음 할 일을 맞춘다
+    // [2026.10.22 묶음 ㄱ4] 진행 카드를 화면을 옮겼다 와도 그대로 — 세액계산 화면으로 갔다 돌아오면 사건 화면이 다시 그려져 ①~⑦ 카드가 사라지던 것(가상양도7 표 32·39)
+    if (window.chGasKeep_ && window.chGasKeep_.caseId === c.id && window.chGasKeep_.box){ body.innerHTML = ''; body.appendChild(window.chGasKeep_.box); }
     document.getElementById('chGasRunBtn').addEventListener('click', function(){
       if (!tokOk()) return;
       if (typeof nxAiCaseProcRun_ !== 'function'){ showToast('사건처리 도구를 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', 'error'); return; }
       body.innerHTML = ''; var box = document.createElement('div'); box.className = 'nxai-cp-screen'; body.appendChild(box);
+      window.chGasKeep_ = { caseId: c.id, box: box }; window.nxCpLive_ = null;
       nxAiCaseProcRun_(box, c.id, { gasOnly: true, screen: true });
     });
     document.getElementById('chGasStatusBtn').addEventListener('click', function(){
