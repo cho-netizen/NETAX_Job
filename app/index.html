@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 16:32 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 16:33 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57517,6 +57517,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // [2026.10.17 세무사님 지시 — "증빙관리의 스캔·PDF관리 기능은 세액계산을 잘 하기 위한 도구"] 판독이 나쁜 사진을 스캔 도구와 같은 원근보정
   //  (모서리 찾기 → 호모그래피로 펴기 → 흑백·대비)으로 고쳐 "<원본>_보정.pdf"로 같은 폴더에 저장한다. 원본은 그대로 두고, 서버가 더 잘 읽힌 쪽 하나만 읽는다.
   //  [세무사님 지시] 모서리는 가급적 서류의 모서리를 찾고, 못 찾은 변은 사진 전체 가장자리로(네 변 다 못 찾으면 사진 전체 — 흑백·대비만). 수학은 netax.kr/shared/scan-tool.js와 같다.
+  // [2026.10.23 코드정리] base64 ↔ 바이트 — 사진 보정(NXAI_SCAN_)·쪽 나누기(NXAI_SPLIT_)·PDF 도구(NXAI_PDFDOC_) 세 묶음에 글자까지 같은 두 함수가 각각 있던 것을 한 벌로
+  function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
   var NXAI_SCAN_ = (function(){
     function gray(d){ var g = new Float32Array(d.width * d.height); for (var i = 0, p = 0; i < d.data.length; i += 4, p++) g[p] = 0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]; return g; }
     function edge(getVal, len){ var skip = Math.floor(len * 0.03), maxD = 0, best = -1; for (var i = skip + 1; i < len * 0.5; i++){ var df = Math.abs(getVal(i) - getVal(i - 1)); if (df > maxD){ maxD = df; best = i; } } return { idx: best, s: maxD }; }
@@ -57557,8 +57560,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       for (var i = 0; i < pages.length; i++){ var r = await correctJpg(pages[i].bytes, pages[i].mime); found.push(r.found); var emb = await doc.embedJpg(r.jpg), pg = doc.addPage([emb.width, emb.height]); pg.drawImage(emb, { x: 0, y: 0, width: emb.width, height: emb.height }); }
       return { pdf: await doc.save(), found: found };
     }
-    function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
-    function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
     // PDF 쪽 → JPEG 바이트(문서작성 화면이 싣는 pdf.js로, 긴 변 약 2000px)
     async function pdfToJpgs(bytes){
       if (typeof pdfjsLib === 'undefined') return [];
@@ -57608,8 +57609,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // [2026.10.17 세무사님 지시 — "하나의 파일에 2개의 문서가 있을 때에는 가급적 문서별로 분리"] 이름에 서류가 둘 이상 적힌 PDF를 쪽별로 잘라
   //  서버가 쪽마다 종류를 정해 묶어 주면, 묶음마다 PDF로 같은 폴더에 저장한다(원본은 그대로 — 서버가 나눈 파일이 다 읽히면 나눈 쪽으로 읽음)
   var NXAI_SPLIT_ = (function(){
-    function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
-    function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
     async function pagesPdf(src, idxs){ var d = await PDFLib.PDFDocument.create(); var cp = await d.copyPages(src, idxs); cp.forEach(function(p){ d.addPage(p); }); return await d.save(); }
     async function run(st){
       if (typeof PDFLib === 'undefined' || typeof callGas !== 'function') return 0;
@@ -57804,8 +57803,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   //  서버는 단추를 눌렀을 때만 부른다(로그인 전 호출 없음).
   // ============================================================
   var NXAI_PDFDOC_ = (function(){
-    function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
-    function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
     function errText(e){ var m = String((e && e.message) || e || '알 수 없는 오류'); return /AUTH_REQUIRED/.test(m) ? '로그인이 만료됨 — 다시 로그인해 주세요' : m.slice(0, 200); }
     function el(tag, cls, text){ var d = document.createElement(tag); if (cls) d.className = cls; if (text != null) d.textContent = text; return d; }
     function btn(label, fn, cls){ var b = el('button', 'nxai-btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.addEventListener('click', fn); return b; }
