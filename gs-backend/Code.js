@@ -38856,7 +38856,9 @@ function caseProcDraft_(c) {
     aiList.forEach(function (a) { L.push('| ' + [a.칸, a.값, a.모델, String(a.근거).replace(/\|/g, '/').slice(0, 200), a.세무사님].join(' | ') + ' |'); });
     L.push('');
   }
-  const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d !== '무시' && d !== 'done'; });
+  // [2026.10.23 ㅅ14차] "계산 결과가 아직 없습니다" 항목은 계산 결과가 사건에 저장돼 있으면 뺀다 — 화면이 계산 전에 저장한 질문 목록이 검토서에 남던 것(가상양도17: 세액 136,862,000이 있는데도 남음)
+  let hasCalc = false; try { hasCalc = !!caseProcLastCalc_(c).last; } catch (e) {}
+  const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; if (hasCalc && it.id === 'calc:none') return false; return d !== '무시' && d !== 'done'; });
   L.push('## ' + (paras.length ? '4' : '3') + '. 추가로 확인할 사항', '');
   if (remain.length) remain.forEach(function (it) { const d = dec[it.id] && dec[it.id].d; L.push('- ' + (d === '보류' ? '(보류) ' : d === '예정' ? '(받을 예정) ' : '') + it.text + (dec[it.id] && dec[it.id].note ? ' — ' + dec[it.id].note : '')); });
   // [2026.10.23 ㅊ2] 자동 보류 메모 — 묻지 않고 검토서에만 두는 것(정황 없는 특수관계 등)

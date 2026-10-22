@@ -3124,7 +3124,8 @@
     // 넣은 값도 그 질문에 🤖 AI 판단 상자로(맞으면 그대로, 다르면 세무사님이 고침 — 고친 것은 다음 처리 때 기록에 붙음)
     dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); }).forEach(function(d){ st.aiOpin[d.itemId] = { model: 'Sonnet 5.5', value: d.value, why: d.why, sure: '확실 — 넣음' }; });
     // [2026.10.21 넥스 하나로] 급하지 않은 질문의 메모도 그 질문에 붙인다(예전엔 급한 것만 붙고 나머지 메모는 사라짐)
-    st.aiUrgent = {}; asks.forEach(function(a){ (a.ids || []).forEach(function(id){ st.aiUrgent[id] = { note: a.note, urgent: !!a.urgent }; }); });
+    // [2026.10.23 ㅅ14차 — 점검표 141] 한 메모가 여러 질문(ids)에 걸리면 첫 카드에만 전문을 붙이고 나머지 카드엔 "같은 메모" 한 줄만(세 카드에 긴 글이 똑같이 붙던 것)
+    st.aiUrgent = {}; asks.forEach(function(a){ var ids = a.ids || []; ids.forEach(function(id, ii){ var first = ids[0], fl = ''; if (ii > 0){ var fi = (st.items || []).filter(function(x){ return x.id === first; })[0]; fl = fi ? String((fi.ask && fi.ask.label) || fi.text || '').slice(0, 24) : ''; } st.aiUrgent[id] = { note: ii === 0 ? a.note : (a.note ? '「' + (fl || '앞') + '」 카드의 넥스 메모와 같음' : ''), urgent: !!a.urgent }; }); });
     var newAsks = asks.filter(function(a){ return !(a.ids || []).length && String(a.note || '').trim(); });
     var applied = dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); });
     // 채팅 기록 요약(nxAiCaseProcFoot_)에 넣을 넥스 보고 — 이어서 채팅으로 "왜 그 값?"을 물으면 같은 넥스가 이 내용을 보고 답한다
