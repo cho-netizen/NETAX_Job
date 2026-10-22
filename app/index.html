@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 19:21 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 19:32 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -55107,7 +55107,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var ok = !(res && (res.success === false || res.error));
         finish(ok ? ('✅ 실행했습니다' + (res && res.message ? ': ' + res.message : '') + (smsBox ? ' — 보낸 문자: "' + String(a.payload.message).slice(0, 300) + '"' : '')) : ('실행하지 못했습니다: ' + ((res && (res.message || res.error)) || '알 수 없는 오류')), ok); // 고친 문자 그대로 대화 기록에(넥스가 실제 보낸 글을 알게)
         // [2026.10.21 넥스 하나로] 채팅으로 넣은 답 — 같은 사건의 처리 화면이 열려 있으면 칸 채우기를 다시 돌려 질문 목록을 맞춘다
-        if (ok && a.kind === 'caseproc_answer' && typeof NXAI_CP_ACTIVE_ !== 'undefined'){ var cpSt = NXAI_CP_ACTIVE_.filter(function(s){ return s.caseId === a.caseId && !s.running && s.bubble && document.body.contains(s.bubble); }).pop(); if (cpSt) nxAiCaseProcLoop_(cpSt, 0).then(function(){ return cpSt.waiting ? cpSt.resume() : nxAiCaseProcFoot_(cpSt); }).catch(function(){}); } // [2026.10.22] 넥스가 기다리던 답이면 이어서 진행
+        if (ok && a.kind === 'caseproc_answer' && typeof NXAI_CP_ACTIVE_ !== 'undefined'){ var cpSt = NXAI_CP_ACTIVE_.filter(function(s){ return s.caseId === a.caseId && !s.running && s.bubble && document.body.contains(s.bubble); }).pop(); if (cpSt){ cpSt.lightOverview = true; nxAiCaseProcLoop_(cpSt, 0).then(function(){ cpSt.lightOverview = false; return cpSt.waiting ? cpSt.resume() : nxAiCaseProcFoot_(cpSt); }).catch(function(){ cpSt.lightOverview = false; }); } } // [2026.10.22] 넥스가 기다리던 답이면 이어서 진행 · [2026.10.23 ㅅ12차] 가벼운 ③
         if (ok && /^(booking_)/.test(a.kind) && typeof initBooking === 'function' && document.getElementById('view-booking') && document.getElementById('view-booking').classList.contains('active')) initBooking();
         if (ok && a.kind === 'case_update' && typeof initWorkManage === 'function' && document.getElementById('view-workmanage') && document.getElementById('view-workmanage').classList.contains('active')) initWorkManage();
       }).catch(function(err){
@@ -56324,6 +56324,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         .then(function(){ b.remove(); }, function(err){ b.disabled = false; b.textContent = '▶ 세액계산·검토서까지 만들기(다시)'; st.setStep('save', '❌', String(err && err.message || err)); });
     });
     d.parentNode.insertBefore(b, d.nextSibling);
+    st.finishBtn = b; // [2026.10.23 ㅅ12차] 채팅으로 "마무리해"라고 하면 이 단추를 대신 누른다
     nxAiCaseProcSave_(st, false);
     nxAiCaseProcFoot_(st);
   }
@@ -56686,7 +56687,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (recalc) st.calcAuto = false;
     st.loopNotes = [];
     // [2026.10.22] 넥스가 여쭙고 기다리는 중 — 답이 들어오면 칸만 다시 맞추고, 계산을 막는 질문이 다 풀렸으면 이어서 계산·검토서(st.resume)
-    if (st.waiting) return keys.filter(function(k){ return k !== 'calc' && k !== 'output'; }).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){ return st.resume(); });
+    // [2026.10.23 ㅅ12차 — 점검표 143] 넥스 경로도 답 뒤엔 ③만(기준일·사건 칸 답이 아니면 ① 건너뜀, ③은 가벼운 길) — 예전엔 답 하나마다 ①②③ 전체(약 4분)를 다시 돌았다
+    if (st.waiting) return (function(ks){ if (keys.length && ks.indexOf('overview') === -1) ks.push('overview'); return ks; })(keys.filter(function(k){ return k !== 'calc' && k !== 'output' && (k !== 'basic' || st.prNeedBasic); })).reduce(function(p, k){ return p.then(function(){ if (k !== 'overview') return st.doStep(k); var lo = st.lightOverview; st.lightOverview = true; return nxAiCaseProcLoop_(st, 0).then(function(r){ st.lightOverview = lo; return r; }, function(e){ st.lightOverview = lo; throw e; }); }); }, Promise.resolve()).then(function(){ st.prNeedBasic = false; return st.resume(); });
     // [2026.10.22 시험가동] 단추를 기다리며 멈춘 상태(사건 화면 GAS·넥스가 마무리를 안 부름) — 칸만 다시 맞추고 저장. 계산·검토서는 단추를 누르실 때 한 번
     // [2026.10.22 속도 S2] 답 하나마다 ① 사건파악(약 37초)까지 다시 돌던 것 — 기준일·사건 칸을 바꾼 답(st.prNeedBasic)이 아니면 ③ 칸 채우기만 다시
     // [2026.10.23 속도 ㅅ5차 — 가상양도12] 답 뒤 다시 맞출 단계에 ③(overview)이 빠져 있어도(사건분류처럼 '계산·인쇄'만 적힌 답) 멈춤 중엔 ③을 꼭 돌린다 — 계산 입력(trCalc)은 ③이 써 두는 것이라, ③ 없이 계산하면 그 답이 빠진 옛 칸으로 계산된다
@@ -57213,13 +57215,38 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var c = NXAI_CP_ACTIVE_.filter(function(st){ return st.bubble && document.body.contains(st.bubble) && st.case && (!id || st.caseId === id); });
     return c[c.length - 1] || null;
   }
+  // [2026.10.23 ㅅ12차 — 점검표 142] 채팅 답 한 문장에 여러 질문의 답이 섞여 있어도("사건분류는 일반, 필요경비 그대로, 세무비용 없음. 마무리해") 토막마다 GAS 규칙으로 풀어 모두 반영한다.
+  //  예전엔 첫 Q 하나만 보거나 통째로 "못 알아들음"이 되어 일반 AI 경로(무료 제미니 150초 대기)로 흘러가고, 그동안 보낸 다음 글은 소리 없이 버려졌다.
+  function nxAiCpSplitReply_(text){
+    var t = String(text || '').replace(/\r/g, '');
+    t = t.replace(/([^\d\s])\.\s+/g, '$1\u0001');                  // 마침표+띄어쓰기(날짜 2024.3.5의 점은 아님)
+    t = t.replace(/(^|\s)((?:Q|q|질문)\s*\d{1,2}(?!\d))/g, '\u0001$2'); // Q번호 앞에서 끊음
+    var parts = t.split(/\u0001|\n|;|·|\s\/\s|,\s+|(?:\s+그리고\s+)/).map(function(s){ return s.trim(); }).filter(Boolean);
+    var finish = parts.some(function(s){ return /^(마무리|끝내|진행해|계산해|이어서|계속)/.test(s) || /(마무리|끝내|계산)\s*(해|하자|해\s*줘|해\s*주세요|할게|하라)?\s*[.!~]*$/.test(s) && s.length <= 14; });
+    var filler = /^(그리고|또|응|네|예|고마워|고맙다|마무리|마무리해|마무리하자|마무리해\s*줘|끝내|끝내줘|진행해|계산해|계속|이어서)[.!~\s]*$/;
+    return { parts: parts.filter(function(s){ return !filler.test(s); }), finish: finish };
+  }
+  // 채팅 넥스에게 넘길 때 함께 보내는 "열린 질문 목록"(서버 문맥 cpHint) — 넥스가 "어느 질문에 어떤 답"인지 풀어 caseproc_answer로 넣게
+  function nxAiCpHint_(st, unparsed){
+    try {
+      nxAiCaseProcRenumber_(st);
+      var tax = nxAiCpTax_(st);
+      return { caseId: st.caseId, caseName: (st.case && (st.case.사건명 || st.case.고객명)) || '', state: st.waiting ? '넥스가 여쭙고 답을 기다리는 중' : (st.paused ? '단추를 기다리며 멈춘 중' : ''), unparsed: (unparsed || []).slice(0, 8),
+        open: nxAiCaseProcLive_(st).slice(0, 20).map(function(it){ var a = it.ask || {}; return { q: it.q, qid: it.id, label: a.label || nxAiCaseProcName_(it, tax) || String(it.text || '').slice(0, 60), target: a.target || (a.mode === 'base' ? 'base' : ''), mode: a.mode || '', input: a.input || '', choices: ((Array.isArray(a.cands) && a.cands.length) ? a.cands : (Array.isArray(a.options) ? a.options : [])).slice(0, 8).map(function(c){ return String(c.label != null ? c.label : (c.v != null ? c.v : (c.value != null ? c.value : ''))).slice(0, 60); }) }; }) };
+    } catch (e) { return { caseId: st.caseId, open: [] }; }
+  }
   function nxAiCaseProcReply_(st, text){
     var tax = st.case && st.case.세목;
     nxAiCaseProcRenumber_(st);
     var live = nxAiCaseProcLive_(st);
     var listQ = /(질문|물어\s*볼\s*것|확인\s*할\s*것).{0,8}(뭐|목록|남|보여|알려)/.test(text);
-    var r = listQ ? { matched: true, list: true } : nxAiCaseProcParseReply_(text, live, st.files, tax);
-    if (!r.matched) return false;
+    var sp = nxAiCpSplitReply_(text);
+    var parts = sp.parts.length ? sp.parts : [String(text).trim()];
+    var rs = listQ ? [{ matched: true, list: true }] : parts.map(function(s){ return Object.assign({ _clause: s }, nxAiCaseProcParseReply_(s, live, st.files, tax)); });
+    var hit = rs.filter(function(r){ return r.matched; });
+    var finishOnly = !listQ && sp.finish && !sp.parts.length && (st.waiting || st.paused); // "마무리해"만 — 남은 질문은 두고 마무리
+    // 어느 토막도 답으로 못 알아들음 — 넥스가 묻는 중·멈춘 중이면 넥스(AI)에게 열린 질문 목록과 함께 넘긴다(여기서 false를 돌려주면 nxAiSend_가 그렇게 한다)
+    if (!hit.length && !finishOnly) return false;
     var input = nxAiEl_('nxAiInput');
     input.value = ''; input.style.height = 'auto';
     nxAiPhoneTab_('chat');
@@ -57233,35 +57260,71 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var qline = function(x){ return 'Q' + x.q + ' ' + (NXAI_CP_KIND_[x.kind] || '') + ' ' + String(x.text || '').slice(0, 70) + (/^(보류|예정)$/.test(nxAiCaseProcDec_(st, x) || '') ? ' (보류 중)' : ''); };
     var show = function(md, note){ aiMsg.content = '[⚡사건 처리 답] ' + md; nxAiRenderLocal_(bubble, { md: md, note: note || '[⚡사건 처리] 사이드바 답 풀이(AI 미사용)' }, text); nxAiCountFree_('local'); nxAiScheduleSave_(); };
     var howTo = '\n\n말로 답하는 법: "Q번호 값 근거파일" — 예) "Q2 5억 2천만원 매매계약서", "Q3 2024.3.5", "Q4 보류", "Q5 무시". 질문 이름으로 "양도가액 5억"이라고 해도 됩니다.';
-    if (r.list){ show(live.length ? '남은 질문 ' + live.length + '건입니다.\n\n' + live.map(function(x){ return '- ' + qline(x); }).join('\n') + howTo : '남은 질문이 없습니다 ✅'); return true; }
-    if (r.ambiguous){ show('어느 질문에 대한 답인지 정하지 못했습니다 — 번호를 붙여 다시 말씀해 주세요.\n\n' + r.ambiguous.map(function(x){ return '- ' + qline(x); }).join('\n') + '\n\n예) "Q' + r.ambiguous[0].q + ' ' + text.replace(/^\s*/, '') + '"'); return true; }
-    if (!r.it){ show(r.msg || '알아듣지 못했습니다.' + howTo); return true; }
-    var it = r.it;
-    if (r.act === 'need' || r.act === 'button'){
-      show(r.msg + (r.act === 'button' ? '' : howTo));
-      if (it._el){ try { it._el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
-      return true;
-    }
-    if (r.act === 'decide'){
-      nxAiCaseProcDecide_(st, it, r.decide, r.note || '사이드바 답');
-      show('Q' + it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '⏸ 보류(처리는 계속, 종합검토서 "추가로 확인할 사항"에 들어감)' : r.decide === '무시' ? '무시(다시 묻지 않음)' : '✅ ' + (r.shown || '확인함')));
-      return true;
-    }
-    // [2026.10.18 사용자 소통 4번] 답 기록 재료(서버 cxAnswerRecord_) — 말로 답한 값이 후보 중 몇 번째인지·근거 파일
-    var rc = (it.ask && it.ask.cands) || [], rpick = -1;
-    rc.forEach(function(c, ci){ if (rpick < 0 && String(c.v).replace(/[\s,]/g, '') === String(r.value).replace(/[\s,]/g, '')) rpick = ci; });
-    if (!rc.length) ((it.ask && it.ask.options) || []).forEach(function(o, oi){ if (rpick < 0 && o && String(o.value) === String(r.value)) rpick = oi; });
-    var rfile = (/근거:\s*(.+?)(?:\(파일 \d+개\))?\s*$/.exec(String(r.src || '')) || [])[1] || '';
-    st.run('apply', Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {}, { ans: { qid: it.id, how: '말로 답', nCands: rc.length || ((it.ask && it.ask.options) || []).length, pick: rpick, file: rfile } })).then(function(res){
-      if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
-      var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
-      show('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영했습니다 (' + r.src + ').\n\n영향 받는 단계를 다시 처리하고 세액을 다시 계산합니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.');
-      // [2026.10.23 속도 ㅅ5차] 말로 답한 것도 단추 대기 중이면 같은 "답 모아 맞추기" 길로(▶가 이 ③을 기다릴 수 있게) — 마무리 중이면 마무리 뒤 한 번 더
-      if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(r.value).slice(0, 80) }; if (/^(base|case:)/.test(String(r.target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, ['basic', 'overview', 'calc', 'output']); return; }
-      if (st.finishing){ st.postFinishKeys = (st.postFinishKeys || []).concat(['basic', 'overview', 'calc', 'output']); return; }
-      return nxAiCaseProcRefresh_(st, ['basic', 'overview', 'calc', 'output'], true);
-    }).catch(function(err){ show('Q' + it.q + ' 「' + r.label + '」을(를) 반영하지 못했습니다: ' + (err && err.message || err) + ' — [확인] 버튼으로 다시 해 주세요.'); });
+    if (rs[0].list){ show(live.length ? '남은 질문 ' + live.length + '건입니다.\n\n' + live.map(function(x){ return '- ' + qline(x); }).join('\n') + howTo : '남은 질문이 없습니다 ✅'); return true; }
+    if (finishOnly){ show(st.waiting ? '남은 질문 ' + live.length + '건은 검토서 "추가로 확인할 사항"에 두고 세액계산·서식·검토서를 만듭니다.' : '답하신 값을 칸에 맞춘 뒤 세액계산·서식·검토서를 만듭니다.'); nxAiCpFinishWord_(st); return true; }
+    // 토막별 결과 — 반영할 것(apply)·결정(decide)·못 알아들은 것(need/button/ambiguous/미매칭)으로 나눈다
+    var lines = [], unparsed = [], applies = [], decided = [];
+    var seen = {};
+    rs.forEach(function(r){
+      var clause = r._clause;
+      if (!r.matched){ unparsed.push(clause); return; }
+      if (r.ambiguous){ unparsed.push(clause); lines.push('❓ "' + clause.slice(0, 60) + '" — 어느 질문인지 정하지 못함(' + r.ambiguous.map(function(x){ return 'Q' + x.q; }).join('·') + ')'); return; }
+      if (!r.it){ unparsed.push(clause); lines.push('❓ "' + clause.slice(0, 60) + '" — ' + (r.msg || '알아듣지 못함')); return; }
+      if (seen[r.it.id]){ lines.push('ℹ "' + clause.slice(0, 60) + '" — Q' + r.it.q + '은 앞 토막에서 이미 답함'); return; }
+      if (r.act === 'need' || r.act === 'button'){ unparsed.push(clause); lines.push('❓ Q' + r.it.q + ' "' + clause.slice(0, 60) + '" — ' + r.msg); if (r.it._el){ try { r.it._el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} } return; }
+      seen[r.it.id] = true;
+      if (r.act === 'decide'){ decided.push(r); return; }
+      applies.push(r);
+    });
+    decided.forEach(function(r){
+      nxAiCaseProcDecide_(st, r.it, r.decide, r.note || '사이드바 답');
+      lines.push('Q' + r.it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '⏸ 보류(처리는 계속, 종합검토서 "추가로 확인할 사항"에 들어감)' : r.decide === '무시' ? '무시(다시 묻지 않음)' : '✅ ' + (r.shown || '확인함')));
+    });
+    // 못 알아들은 토막은 넥스(AI)에게 — 열린 질문 목록과 함께(점검표 142 "GAS 규칙 못 알아들으면 넥스가"). 넥스가 바쁘면 이유를 보인다
+    var handOff = function(){
+      if (!unparsed.length) return;
+      var joined = unparsed.join(' / ');
+      if (nxAiAbort){ lines.push('⚠ 못 알아들은 말("' + joined.slice(0, 80) + '")은 넥스가 앞 말씀에 답하는 중이라 넘기지 못했습니다 — 끝난 뒤 다시 말씀해 주세요.'); return; }
+      lines.push('🤖 못 알아들은 말은 넥스에게 넘깁니다: "' + joined.slice(0, 120) + '"');
+      setTimeout(function(){ nxAiSendAI_(joined, { noGem: true, displayText: '(넥스에게) ' + joined, cpHint: nxAiCpHint_(st, unparsed) }); }, 0);
+    };
+    var refreshKeys = ['basic', 'overview', 'calc', 'output'];
+    var afterAll = function(){
+      handOff();
+      var n = applies.length + decided.length;
+      show((n ? '답 ' + n + '개를 반영했습니다.' : '반영한 답이 없습니다.') + (lines.length ? '\n\n' + lines.map(function(l){ return '- ' + l; }).join('\n') : '') + (applies.length ? '\n\n영향 받는 단계를 다시 맞춥니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.' : '') + (unparsed.length && !applies.length && !decided.length ? howTo : ''));
+      if (!applies.length) return (sp.finish ? nxAiCpFinishWord_(st) : null);
+      // [2026.10.23 ㅅ5차·ㅅ12차] 답은 모아서 한 번만 맞춘다 — 멈춘 중(단추 대기)·넥스가 묻는 중 둘 다 같은 길(점검표 143)
+      if (st.paused || st.waiting){ nxAiCpPausedRefresh_(st, refreshKeys); if (sp.finish) nxAiCpFinishWord_(st); return; }
+      if (st.finishing){ st.postFinishKeys = (st.postFinishKeys || []).concat(refreshKeys); return; }
+      return nxAiCaseProcRefresh_(st, refreshKeys, true);
+    };
+    // 반영은 차례대로(서버 apply 한 번씩) — 실패한 토막은 줄에 남기고 나머지는 계속
+    applies.reduce(function(p, r){
+      return p.then(function(){
+        var it = r.it;
+        // [2026.10.18 사용자 소통 4번] 답 기록 재료(서버 cxAnswerRecord_) — 말로 답한 값이 후보 중 몇 번째인지·근거 파일
+        var rc = (it.ask && it.ask.cands) || [], rpick = -1;
+        rc.forEach(function(c, ci){ if (rpick < 0 && String(c.v).replace(/[\s,]/g, '') === String(r.value).replace(/[\s,]/g, '')) rpick = ci; });
+        if (!rc.length) ((it.ask && it.ask.options) || []).forEach(function(o, oi){ if (rpick < 0 && o && String(o.value) === String(r.value)) rpick = oi; });
+        var rfile = (/근거:\s*(.+?)(?:\(파일 \d+개\))?\s*$/.exec(String(r.src || '')) || [])[1] || '';
+        return st.run('apply', Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {}, { ans: { qid: it.id, how: '말로 답', nCands: rc.length || ((it.ask && it.ask.options) || []).length, pick: rpick, file: rfile } })).then(function(res){
+          if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
+          var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
+          lines.push('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영 (' + r.src + ')');
+          if (st.paused || st.waiting){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(r.value).slice(0, 80) }; if (/^(base|case:)/.test(String(r.target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); }
+        }).catch(function(err){ applies = applies.filter(function(x){ return x !== r; }); lines.push('❌ Q' + it.q + ' 「' + r.label + '」 반영 실패: ' + (err && err.message || err) + ' — [확인] 버튼으로 다시 해 주세요.'); });
+      });
+    }, Promise.resolve()).then(afterAll).catch(function(err){ show('답을 반영하지 못했습니다: ' + (err && err.message || err)); });
     return true;
+  }
+  // "마무리해"가 함께 왔을 때 — 넥스가 묻는 중이면 남은 질문을 두고 마무리(resume(true)), 단추 대기 중이면 ▶ 단추를 대신 누른다
+  function nxAiCpFinishWord_(st){
+    var go = function(){
+      if (st.waiting) return st.resume(true);
+      if (st.paused && st.finishBtn && !st.finishBtn.disabled && document.body.contains(st.finishBtn)) st.finishBtn.click();
+    };
+    return (st.flushRefresh ? st.flushRefresh(true) : Promise.resolve()).then(go, go);
   }
   // [확인] — 항목 아래에 질문을 펼친다(후보 값·직접 입력·선택지). 고르면 사건에 반영하고 영향을 받는 단계를 다시 처리한다.
   function nxAiCaseProcAsk_(st, it, el){
@@ -57300,7 +57363,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (target === 'evMark' && r.my_report_id) callGas('admin_set_checklist_status', { report_id: r.my_report_id, item: ask.label, submitted: true }).catch(function(){});
         // [2026.10.22 시험가동] 단추를 기다리는 동안(st.paused)엔 답한 질문을 바로 닫고 다음 질문에 답하시게 한다 — 칸 다시 맞추기(서버 약 90초)는
         //  답이 멈춘 뒤 한 번만(nxAiCpPausedRefresh_). 예전엔 답 하나마다 2분 넘게 기다려야 다음 질문을 누를 수 있었다
-        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(value).slice(0, 80) }; if (/^(base|case:)/.test(String(target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다 · [속도 S2] 기준일·사건 칸 답일 때만 ①도 다시
+        if (st.paused || st.waiting){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(value).slice(0, 80) }; if (/^(base|case:)/.test(String(target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다 · [속도 S2] 기준일·사건 칸 답일 때만 ①도 다시 · [2026.10.23 ㅅ12차 — 점검표 143] 넥스가 묻는 중(waiting)에도 답을 모아 한 번만 맞춘다
         if (st.finishing){ st.postFinishKeys = (st.postFinishKeys || []).concat(refreshKeys || []); return; } // [2026.10.23 속도 ㅅ5차] 마무리(계산·서식·검토서) 중에 온 답 — 겹쳐 돌리지 않고 마무리 뒤 한 번 더 맞춘다
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
@@ -58685,7 +58748,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiSend_(){
     var input = nxAiEl_('nxAiInput');
     var text = input.value.trim();
-    if (!text || nxAiAbort) return;
+    if (!text) return;
+    if (nxAiAbort){ nxAiToast_('넥스가 앞 말씀에 아직 답하는 중입니다 — 끝난 뒤(또는 ⏹로 멈춘 뒤) 다시 보내 주세요. 보내려던 글은 입력창에 그대로 있습니다.'); return; } // [2026.10.23 ㅅ12차 — 점검표 142] 조용히 버리지 않고 이유를 보인다
     // [2026.10.10] "등기부/서류 정리·요약·표로" + 첨부 PDF → 무료 OCR+규칙으로 정리(토큰 0). 판단("위험한지 검토")은 그 결과를 보고 AI에게.
     if (NXAI_REGISTRY_CMD_RE_.test(text) && !/(검토|분석|판단|위험|전략|의견)/.test(text)){
       var regFiles = nxAiPendingFiles.filter(function(a){ return a.type !== 'folder' && (/pdf|image|spreadsheet|excel|csv/.test(a.mimeType || '') || /\.(pdf|png|jpe?g|xlsx|xls|csv)$/i.test(a.name || '')); });
@@ -58701,6 +58765,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var cpSt = nxAiCaseProcForReply_();
     if (cpSt && !/처리\s*(하자|합시다|해\s*줘|해\s*주세요)/.test(text)){ try { if (nxAiCaseProcReply_(cpSt, text)) return; } catch (e) { if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '사건처리 말로 답하기', message: String(e && e.message || e), detail: text }); } }
     var intent = nxAiDetectLocal_(text);
+    // [2026.10.23 ㅅ12차 — 점검표 142] 넥스가 묻는 중·단추 대기 중에 온 말을 GAS 규칙이 못 알아들으면 넥스(AI)에게 열린 질문 목록과 함께 넘긴다(무료 제미니는 거치지 않음 — 사건 답은 제미니 몫이 아니고, 150초 기다리는 동안 보내기가 잠겼다)
+    if (!intent && cpSt && (cpSt.waiting || cpSt.paused)) return nxAiSendAI_(text, { noGem: true, cpHint: nxAiCpHint_(cpSt, [text]) });
     if (!intent) return nxAiSendAI_();
     if (intent.kind === 'caseproc') return nxAiCaseProc_(text);
     input.value = ''; input.style.height = 'auto';
@@ -58735,7 +58801,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     opts = opts || {};
     var input = nxAiEl_('nxAiInput');
     var text = (forcedText || input.value).trim();
-    if (!text || nxAiAbort) return;
+    if (!text) return;
+    if (nxAiAbort){ nxAiToast_('넥스가 앞 말씀에 아직 답하는 중입니다 — 끝난 뒤(또는 ⏹로 멈춘 뒤) 다시 보내 주세요.'); return; } // [2026.10.23 ㅅ12차 — 점검표 142]
     if (nxAiApiSecret === null){ nxAiToast_('아직 준비 중입니다 — 잠시 후 다시 시도해주세요.'); return; }
 
     var files = nxAiPendingFiles.slice(), images = nxAiPendingImages.slice();
@@ -58811,7 +58878,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       return nxAiRunTurn_(requestMessages, {
         thinkingBubble: thinking,
         signal: nxAiAbort.signal,
-        context: nxAiBuildContext_({ openFile: openFileCtx, attachedItems: files }),
+        context: nxAiBuildContext_(Object.assign({ openFile: openFileCtx, attachedItems: files }, opts.cpHint ? { cpHint: opts.cpHint } : {})), // [2026.10.23 ㅅ12차] 사건처리 열린 질문 목록(넥스가 "어느 질문에 어떤 답"으로 풀게)
         settingsPayload: opts.settings || nxAiBuildSettingsPayload_(text),
         onDone: function(reply, actions, usage){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
