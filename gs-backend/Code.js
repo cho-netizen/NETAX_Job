@@ -32723,6 +32723,12 @@ function caseProcMemoCands_(c, res) {
         const hit = (it.ask.options || []).filter(function (o) { const k = String(o).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nr.indexOf(k) !== -1; });
         v = hit.length === 1 ? hit[0] : '';
       }
+      else if (/성명|이름|상속인|수증자|증여자|피상속인|양도인|양수인|매도인|매수인|임대인|임차인|채무자/.test(core)) {
+        // [2026.10.23 ㄹ B18] 사람 이름 칸은 이름 모양(성씨로 시작하는 2~4자, 보통명사 아님)일 때만 — 의뢰서 문장 조각("예금은 아들·딸 반반", "아내 돌아가신")을 이름 가설로 뽑던 것(가상상속4 — 결함 B18).
+        //  호칭(아들·딸·남편·아내)·같은 글자 반복(반반)·서술어 꼴(돌아가신·받음)은 이름이 아니다. 어느 의뢰서든 같은 규칙(이름은 이름 모양으로만)
+        const toks = (rest.replace(/[*`]/g, ' ').match(/[가-힣]{2,4}/g) || []).filter(function (w) { return !/^(.)\1$/.test(w) && !/(신|된|한|함|음|됨|임|씀|였|있|없)$/.test(w) && !/^(아들|아내|남편|부인|자녀|손자|손녀|며느리|사위|부친|모친|형제|자매|본인|의뢰인|피상속인|상속인|증여자|수증자|반반|절반|각각|전부|일부|모두|성명|이름|주소|관계)$/.test(w) && typeof cpfLikelyName_ === 'function' && cpfLikelyName_(w); });
+        v = toks[0] || '';
+      }
       else { const m = /^\s*[:：\t]?\s*([^\t]{2,40})/.exec(rest); if (m) v = m[1].replace(/\*+|`+/g, '').replace(/^\s*[:：]\s*/, '').trim(); } // 메모의 마크다운 굵게(**소재지:**) 기호는 값이 아님
       if (!v || have.indexOf(v) !== -1 || add.some(function (y) { return y.v === v; })) return;
       add.push({ v: v, src: (x.chat ? x.file : '상담 메모(' + x.file + ')') + ': "' + x.l.slice(0, 50) + '"' });
@@ -34608,12 +34614,29 @@ function caseProcIsOutputDoc_(name, text) {
   return /(상속세|증여세|양도소득세|양도세)/.test(n) && /(신고|명세서|계산서|공제)/.test(n);
 }
 // 한글 금액 문장 → 원("3억원" 300000000, "410백만원" 410000000, "1억 5천만원", "300,000,000")
+// [2026.10.23 ㄹ A6] 상담 메모·의뢰서의 입말 금액 — "6억 5천"은 6억 5천만원, "4억 2천쯤"은 4억 2천만원, "9억 8천" 9억 8천만원, "보증금 5천" 5천만원, "8천2백5십만" 8,250만원, "1,850만" 1,850만원, "2억 3천 5백만원" 2억 3,500만원.
+//  규칙: 숫자+단위(억·천·백·십·만)를 차례로 읽되, 천·백·십 뒤에 "만"이 안 붙으면 만 단위로 본다(사무실 입말: 억 아래 "N천"은 N천만원, 홀로 "N천"도 N천만원). 쉼표 숫자+만(1,850만)은 그 수×만.
+//  예전엔 "N억 M천"에서 M천을 버려 6억 5천이 6억이 됐고(세 가상사건 가설·헛알림 — 결함 A6), "5천"·"600만"·"1,850만"은 0이었다. 어느 사무실 메모든 같은 입말이다. 금액 뒤 "쯤·정도·가량"은 값에 영향 없음
 function caseProcKrAmount_(s) {
   s = String(s || '');
-  let m = /(\d+(?:\.\d+)?)\s*억(?:\s*(\d+)\s*천\s*만)?\s*원?/.exec(s); if (m) return Math.round(Number(m[1]) * 1e8 + (m[2] ? Number(m[2]) * 1e7 : 0));
-  m = /(\d+)\s*백\s*만\s*원?/.exec(s); if (m) return Number(m[1]) * 1e6;
-  m = /(\d+)\s*천\s*만\s*원?/.exec(s); if (m) return Number(m[1]) * 1e7;
-  m = /\d{1,3}(?:,\d{3}){2,}/.exec(s); if (m) return Number(m[0].replace(/,/g, ''));
+  const big = /\d{1,3}(?:,\d{3}){2,}/.exec(s); if (big && !/[억만]/.test(s.slice(big.index + big[0].length, big.index + big[0].length + 2))) return Number(big[0].replace(/,/g, ''));
+  const re = /(\d[\d,]*(?:\.\d+)?)\s*(억|천|백|십|만)(?![가-힣]*(?:년|월|일|평|㎡|명|건|개|회|세|층|호|동|번|주))/g; let m, tot = 0, sub = 0, hitUnit = false, lastWas = '', prevEnd = -1;
+  while ((m = re.exec(s))) {
+    // 한 금액은 이어진 숫자 묶음까지만 — 사이에 다른 말이 끼면("9억 8천인데 요즘 같은 단지 13억", "보증금 5천만 월세 90만") 첫 금액에서 멈춘다(원·정도·쯤·가량은 금액 꼬리)
+    if (prevEnd >= 0 && /[가-힣A-Za-z]/.test(s.slice(prevEnd, m.index).replace(/원|정도|쯤|가량|정|整/g, ''))) break;
+    prevEnd = re.lastIndex;
+    const n = Number(m[1].replace(/,/g, '')); if (!isFinite(n)) continue;
+    const u = m[2]; hitUnit = true;
+    if (u === '억') { tot += (sub + n) * 1e8; sub = 0; lastWas = '억'; continue; }
+    if (u === '만') { tot += (sub + n) * 1e4; sub = 0; lastWas = '만'; continue; }
+    sub += n * (u === '천' ? 1000 : u === '백' ? 100 : 10); lastWas = u;
+    // 다음 단위가 "만"이면 그 때 ×1만, 아니면(끝이거나 다음이 억·다른 숫자) 여기서 만 단위로 올린다
+    const rest = s.slice(re.lastIndex), nx = /^\s*(?:\d[\d,]*(?:\.\d+)?\s*)?(억|천|백|십|만)/.exec(rest);
+    if (!nx || nx[1] === '억') { tot += sub * 1e4; sub = 0; }
+  }
+  if (sub) tot += sub * 1e4;
+  if (hitUnit && tot) return Math.round(tot);
+  if (big) return Number(big[0].replace(/,/g, ''));
   return 0;
 }
 // [2026.10.15 1:1] PDF·사진이 아닌 파일(엑셀·문서·메모) — 상담 메모·의뢰 내용을 읽는다. 아래쪽 "세액계산"(과세표준·산출세액 등) 부분은 결과물이라 잘라낸다(입력으로 쓰지 않음).
@@ -50463,7 +50486,10 @@ function trcNeedScanFocus_(c, needs) {
       if (out.length >= 5 || done[f.id] || !/^image\/|pdf/.test(String(f.mimeType || '')) || /_보정(\(\d+\))?\.pdf$/i.test(f.name) || /^_/.test(f.name) || caseProcIsOutputDocFor_(c, f.name, f.dir)) return; // 사진·스캔 PDF(보정본은 빼고)
       const p = caseProcParsed_(f, cache, false);
       if (!p || p.office || p.out || p.calc) return;
-      if ((p.t && want[p.t] && (p.wn || 0) > 0) || (!p.t && (p.nt || p.err))) out.push({ id: f.id, name: f.name, why: p.t ? (CASEPROC_SCAN_TYPE_NAME_[p.t] || p.t) + ' ⚠' + p.wn : '글자를 못 읽은 사진' });
+      // [2026.10.23 ㄹ B19] 글자층이 있는 PDF(글자인식이 아니라 원문 글자를 읽은 것)는 "흐린 사진 보정"의 대상이 아니다 — 칸을 못 채운 까닭이 사진 판독이 아니라 서류 규칙이라 보정해도 달라지지 않는다.
+      //  예전엔 경고가 있는 서류를 종류만 보고 보정 대상으로 올려 글자 PDF 증여계약서가 "흐린 사진 1장"이 됐다(가상증여4 — 결함 B19). 글자인식한 것(사진·스캔)만 보정 후보
+      const ocrRead = !(p.read && p.read.how && p.read.how !== '글자인식');
+      if ((p.t && want[p.t] && (p.wn || 0) > 0 && ocrRead) || (!p.t && (p.nt || p.err))) out.push({ id: f.id, name: f.name, why: p.t ? (CASEPROC_SCAN_TYPE_NAME_[p.t] || p.t) + ' ⚠' + p.wn : '글자를 못 읽은 사진' });
     });
   } catch (e) {}
   return out;
