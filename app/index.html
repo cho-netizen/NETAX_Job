@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 04:34 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 04:59 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -56087,6 +56087,23 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return { open: open, qName: qName };
   }
   // 넥스가 마무리(계산·검토서)를 부르지 않고 끝냈을 때 — 일부만 맡기신 경우 등. 세무사님이 이어서 하실 단추만 둔다
+  // [2026.10.22 시험가동] 단추 기다리는 동안 답이 들어오면 — 마지막 답 뒤 12초 동안 다른 답이 없을 때 칸 다시 맞추기를 한 번(이미 돌고 있으면 끝난 뒤 한 번 더).
+  //  단추([세액계산·검토서까지 만들기])를 누르면 기다리지 않고 바로 맞춘 뒤 계산한다(st.flushRefresh)
+  function nxAiCpPausedRefresh_(st, keys){
+    st.prKeys = (st.prKeys || []).concat(keys || []).filter(function(k, i, a){ return a.indexOf(k) === i; });
+    clearTimeout(st.prTimer);
+    if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st);
+    nxAiCaseProcFoot_(st);
+    var run = function(){
+      if (st.prBusy){ st.prAgain = true; return st.prBusy; }
+      var k = st.prKeys; st.prKeys = [];
+      if (!k.length) return Promise.resolve();
+      st.prBusy = nxAiCaseProcRefresh_(st, k, true).catch(function(){}).then(function(){ st.prBusy = null; if (st.prAgain){ st.prAgain = false; return run(); } });
+      return st.prBusy;
+    };
+    st.flushRefresh = function(){ clearTimeout(st.prTimer); return run().then(function(){ return st.prBusy || null; }); };
+    st.prTimer = setTimeout(run, 12000);
+  }
   // 사건 화면 — "GAS가 한 일" 한 줄(남은 질문을 계산기 항목별로). 답하실 때마다 다시 맞춘다
   function nxAiCpGasSayText_(st){
     var tax0 = nxAiCpTax_(st), byCard = {}, nq = 0;
@@ -56105,7 +56122,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     var d = st.say(msg || '계산·검토서는 이번에 하지 않았습니다. 이어서 하시려면 아래 단추를 누르세요.', 'nxai-muted');
     var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn'; b.textContent = '▶ 세액계산·검토서까지 만들기';
-    b.addEventListener('click', function(){ b.remove(); st.paused = false; st.running = true; st.finishAll().catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); }); });
+    b.addEventListener('click', function(){ b.remove(); st.running = true; (st.flushRefresh ? st.flushRefresh() : Promise.resolve()).then(function(){ st.paused = false; return st.finishAll(); }).catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); }); });
     d.parentNode.insertBefore(b, d.nextSibling);
     nxAiCaseProcSave_(st, false);
     nxAiCaseProcFoot_(st);
@@ -56943,6 +56960,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (!r || !r.ok) throw new Error((r && (r.error || r.message)) || '반영 실패');
         nxAiToast_('반영했습니다 — ' + (r.message || ''));
         if (target === 'evMark' && r.my_report_id) callGas('admin_set_checklist_status', { report_id: r.my_report_id, item: ask.label, submitted: true }).catch(function(){});
+        // [2026.10.22 시험가동] 단추를 기다리는 동안(st.paused)엔 답한 질문을 바로 닫고 다음 질문에 답하시게 한다 — 칸 다시 맞추기(서버 약 90초)는
+        //  답이 멈춘 뒤 한 번만(nxAiCpPausedRefresh_). 예전엔 답 하나마다 2분 넘게 기다려야 다음 질문을 누를 수 있었다
+        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + String(value).slice(0, 40) }; nxAiCaseProcItems_(st, it.step); nxAiCpPausedRefresh_(st, refreshKeys); return; }
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
     };
