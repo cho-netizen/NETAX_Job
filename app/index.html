@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 17:14 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 17:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -56257,7 +56257,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (!force && answering()){ clearTimeout(st.prTimer); st.prTimer = setTimeout(run, 8000); return Promise.resolve(); }
       var k = st.prKeys; st.prKeys = [];
       if (!k.length) return Promise.resolve();
-      st.prBusy = nxAiCaseProcRefresh_(st, k, true).catch(function(){}).then(function(){ st.prBusy = null; if (st.prAgain){ st.prAgain = false; return run(true); } });
+      st.lightOverview = true; // [2026.10.23 속도 ㅅ8차] 답 뒤 다시 맞추기는 ③ 가벼운 길 — 사건파악 확인·메모 후보·장부는 처음 ③에서 이미 했으니 건너뛰고 칸 조립·질문만 다시(약 30초 덜)
+      st.prBusy = nxAiCaseProcRefresh_(st, k, true).catch(function(){}).then(function(){ st.lightOverview = false; st.prBusy = null; if (st.prAgain){ st.prAgain = false; return run(true); } });
       return st.prBusy;
     };
     st.flushRefresh = function(force){ clearTimeout(st.prTimer); return run(force !== false).then(function(){ return st.prBusy || null; }); };
@@ -56643,7 +56644,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   //  이제 서류는 한 번 읽은 결과로만 칸을 채우고, 못 채운 칸은 넥스(판단)·세무사님(질문)에게 간다. round는 옛 부르는 곳과 맞추려고 받기만 한다.
   function nxAiCaseProcLoop_(st, round){
     var note = function(t){ st.loopNotes = (st.loopNotes || []).concat([t]); var d = document.createElement('div'); d.className = 'nxai-cp-line'; d.textContent = t; st.steps.overview.querySelector('.nxai-cp-lines').appendChild(d); };
-    return st.doStep('overview').then(function(res){
+    return st.doStep('overview', st.lightOverview ? { light: true } : undefined).then(function(res){ // [2026.10.23 속도 ㅅ8차] 답 뒤 다시 맞추기는 가벼운 길(서버 caseProcOverview_ light)
       if (!res) return;
       var lp = res.loop || {}, miss = res.needs ? res.needs.missing.length : null;
       if (lp.again) note('ℹ ' + lp.again + ' — 서류를 다시 읽지 않고 이 결과로 진행합니다');
