@@ -37355,6 +37355,9 @@ function caseProcInhFacts0_(c, parsed) {
   by('debtcert').forEach(function (x) {
     const r = x.p.result || {};
     const rows = r.총잔액 ? [{ v: r.총잔액, what: '' }] : (r.행 || []).filter(function (q) { return q.잔액; }).map(function (q) { return { v: q.잔액, what: (q.과목 || '대출') + (q.상환기일 ? ' 기한 ' + q.상환기일 : ''), rowUnsure: !!q.행확인필요 }; });
+    // [2026.10.23 ㅈ2] 미납이자 — 상속개시일 현재 확정된 채무(§14①3호)라 원금과 별도 후보. 예전엔 원금만 후보였다(가상상속5·6)
+    (r.행 || []).forEach(function (q) { if (q.미납이자) rows.push({ v: q.미납이자, what: (q.과목 || '대출') + ' 미납이자(상속개시일 현재 확정, §14①3호)', rowUnsure: !!q.행확인필요 }); });
+    if (r.총잔액 && r.미납이자합계 && !(r.행 || []).some(function (q) { return q.미납이자; })) rows.push({ v: r.미납이자합계, what: '미납이자(상속개시일 현재 확정, §14①3호)' });
     const otherB = r.채무자생년6 && decB6 && r.채무자생년6 !== decB6, otherN = r.채무자 && dName && !caseProcNameLike_(nm(r.채무자), dName);
     const notDec = otherB || otherN;
     rows.forEach(function (row) {
@@ -37371,6 +37374,8 @@ function caseProcInhFacts0_(c, parsed) {
   out.debts.forEach(function (d) { delete d.fromCert; });
   // [2026.10.23 ㄷ3] 안심상속 조회의 채무 합계가 이미 대출잔액증명서로 들어온 대출(같은 금액)이면 두 번 세지 않는다(세무사님 원칙: 같은 항목은 서류끼리 대조해 한 번만)
   by('inhquery').forEach(function (x) { const r = x.p.result || {}; if (r.채무합계 && !out.debts.some(function (d) { return d.debtType === 'loan' && d.amount === r.채무합계; })) out.debts.push({ debtType: 'loan', creditorName: '안심상속 조회 채무 합계', amount: r.채무합계, file: x.f.name, src: '상속인 금융거래 조회', sure: false, note: '부채증명원과 겹칠 수 있음 — 겹치면 하나만' }); });
+  // [2026.10.23 ㅈ2] 안심상속 회보서 대출 표의 미납이자 — 증명서로 안 들어온 것만(같은 기관·같은 금액은 한 번)
+  by('inhquery').forEach(function (x) { ((x.p.result || {}).행 || []).forEach(function (q) { if (!q.채무 || !q.미납이자) return; if (out.debts.some(function (d) { return d.amount === q.미납이자 && nm(d.creditorName) === nm(q.기관 || ''); })) return; out.debts.push({ debtType: 'loan', creditorName: q.기관 || '', amount: q.미납이자, file: x.f.name, src: '안심상속 조회 ' + (q.종류 || '대출') + ' 미납이자(상속개시일 현재 확정, §14①3호)', sure: false, note: '회보서 기준 — 금융기관 증명서(미납이자 포함)로 확인' }); }); });
   // 임대차계약서 — 정리 결과가 한 건(lease)이거나, 계약서 묶음(result.docs 안에 lease)이거나
   const leaseList = [];
   parsed.forEach(function (x) {
@@ -37911,7 +37916,7 @@ function caseProcInhSpouse_(f) {
     } else if (d.종류 === '채무') {
       const stem = String(d.재산 || '').replace(/\s+/g, '');
       const cand = (f.debtsConfirmed || f.debts || []).filter(function (z) { const nmz = String(z.creditorName || '').replace(/\s*(?:은행|주식회사|㈜)|\s+/g, ''); return nmz && stem.indexOf(nmz) !== -1; });
-      const base = d.금액 || (cand.length === 1 ? Number(cand[0].amount) : null);
+      const base = d.금액 || (cand.length ? cand.reduce(function (t, z) { return t + (Number(z.amount) || 0); }, 0) : null); // [2026.10.23 ㅈ2] 같은 기관 원금+미납이자를 함께 승계
       if (!base) { out.incomplete.push(d.재산 + ' — 채무 금액 미확정'); return; }
       rows.forEach(function (q) { const r = frac(q.지분); if (r === null) { out.incomplete.push(d.재산 + ' 지분 못 읽음'); return; } const v = Math.round(base * r); sum -= v; out.parts.push('− 승계 채무 ' + (cand[0] ? cand[0].creditorName : d.재산.slice(0, 20)) + ' ' + won(v)); });
     }
@@ -37931,9 +37936,12 @@ function tc_ruleInheritanceFacts_(body) {
   const f = caseProcInhFacts_(c);
   // [2026.10.18 3차 수정 N] 사망보험금(간주상속재산 §8)은 금융재산(§22, 시행령 §19① — 보험금 포함)이라 순금융재산 칸에도 더한다(총상속재산 합계에는 이미 들어 있음)
   const deemedV = f.deemedValue || 0;
+  // [2026.10.23 ㅈ1] 순금융재산 = 금융재산(예금·보험금 등, 시행령 §19①) − 금융채무(시행령 §19④: §10①1호로 입증된 금융회사등 채무) — 상증법 §22①, 별지 5호 금융재산 상속공제 신고서 ③ = ① − ②(작성방법 3).
+  //  예전엔 금융재산 총액을 순금융재산 칸에 그대로 넘겨 금융채무가 있으면 공제가 크게(세액이 적게) 나왔다(가상상속6: 243,840,000 × 20% ↔ (243,840,000 − 30,095,000) × 20%). 채무 종류 'loan'은 전자신고 01 금융채무와 같은 뜻(임대보증금 등은 'other')
+  const finDebt = (f.debtsConfirmed || []).filter(function (d) { return d && d.debtType !== 'other'; }).reduce(function (t, d) { return t + (Number(d.amount) || 0); }, 0);
   return { ok: true, deathDate: c.기준일 || '', deceased: f.deceased, heirs: f.heirs, assets: f.assets.map(function (a) { return { kind: a.kind, loc: a.loc, area: a.area, value: a.value, valueSrc: a.valueSrc, sure: a.sure, cands: a.cands, shares: (a.shares || []).map(function (q) { return { heir: q.heir, share: q.share }; }) }; }), // [2026.10.23 ㄷ10] 분할협의서 귀속(상속인·지분) → 계산기 재산별 상속인 배분
     spouse: caseProcInhSpouse_(f), // [2026.10.23 ㄷ10] 배우자 실제 상속분·법정상속분(§19①)
-    financialValue: f.financialValue !== null && f.financialValue !== undefined ? f.financialValue + deemedV : f.financialValue, financialSrc: f.financialSrc + (deemedV ? ' + 간주상속재산 보험금 ' + deemedV.toLocaleString('ko-KR') + '원(§8·§22)' : ''),
+    financialValue: f.financialValue !== null && f.financialValue !== undefined ? f.financialValue + deemedV - finDebt : f.financialValue, financialSrc: f.financialSrc + (deemedV ? ' + 간주상속재산 보험금 ' + deemedV.toLocaleString('ko-KR') + '원(§8·§22)' : '') + (finDebt ? ' − 금융채무 ' + finDebt.toLocaleString('ko-KR') + '원(§22①·시행령 §19④, 세무사님 확정 채무 중 금융회사 채무) = 순금융재산' : ''),
     deemed: (f.deemed || []).filter(function (d) { return d.value; }).map(function (d) { return { kind: d.kind || 'insurance', value: d.value, src: d.src, files: d.files }; }), // [2026.10.23 ㄷ4] 퇴직금(§10)은 kind 'retirement'
     grossEstate: f.grossEstate, funeral: f.funeral, niche: f.niche, notes: f.notes,
     priorGifts: f.priorGifts || [], disposal: f.disposal || [], // [2026.10.18 정밀분석 원인2] 세무사님이 답한 통장 사전증여(§13)·§15 부표4만
@@ -38021,6 +38029,8 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
   f.notes.forEach(function (n) { lines.push(/^✅/.test(n) ? n : '참고: ' + n); }); // [2026.10.18] 확인이 끝난 판정(§15 기준 미달 등)은 ✅ 줄로
   // [2026.10.15 1단계 ②③] 상속 채무 — 서류에서 찾은 후보를 체크해 확정(필요경비와 같은 방식). 확정한 것만 세액계산 채무 칸으로.
   if (f.debtsConfirmed) lines.push('✅ 상속 채무(세무사님 확정): ' + f.debtsConfirmed.length + '건 ' + won(f.debtsConfirmed.reduce(function (s, d) { return s + Number(d.amount || 0); }, 0)));
+  // [2026.10.23 ㅈ1] 순금융재산(§22①) — 확정 채무 중 금융채무를 뺀 값이 계산기 순금융재산 칸으로 간다는 것을 처리개요에서 보이게
+  if (f.debtsConfirmed && f.financialValue !== null && !f.financialDiff) { const fd = f.debtsConfirmed.filter(function (d) { return d && d.debtType !== 'other'; }); const fdSum = fd.reduce(function (s, d) { return s + Number(d.amount || 0); }, 0); if (fdSum) lines.push('✅ 순금융재산 ' + won(Math.max(0, f.financialValue + (f.deemedValue || 0) - fdSum)) + ' = 금융재산 ' + won(f.financialValue + (f.deemedValue || 0)) + ' − 금융채무 ' + won(fdSum) + '(' + fd.map(function (d) { return d.creditorName + ' ' + won(d.amount); }).join(', ') + ') — §22①·시행령 §19④, 별지 5호 ③ = ① − ② → 계산기 순금융재산 칸'); }
   else if ((f.debts || []).length) {
     lines.push('상속 채무 후보 ' + f.debts.length + '건(서류): ' + f.debts.map(function (d) { return (d.creditorName || d.src) + ' ' + won(d.amount) + '(' + d.file + ')'; }).join(', '));
     items.push(caseProcItem_('ih:debts', 'missing', '상속 채무(상증법 §14)를 확정해 주세요 — 서류에서 ' + f.debts.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 채무는 직접 더하세요.',
@@ -46374,7 +46384,14 @@ function rcParse_(text) {
     m = /(?:총\s*(?:거래|결제|청구|영수)?\s*금액|합\s*계|청구\s*금액|결제\s*금액|판\s*매\s*금\s*액|승\s*인\s*금\s*액|이\s*용\s*금\s*액)[^\d]{0,30}(\d{1,3}(?:,\d{3})+)/.exec(flat); // [2026.10.18 원인9] 카드사 매출표의 "판매금액·승인금액·이용금액"도
     // [2026.10.17] 이름표와 금액 사이에 날짜·카드번호가 끼는 카드납부 영수증("카드결제금액 … 2025-12-20 … 50,000", 아래 "금액 50,000")은 "금액" 칸 바로 뒤 금액
     if (!m) m = /(?:^|[^가-힣])금\s*액\s*[:：]?\s*(\d{1,3}(?:,\d{3})+)(?![\d,])/.exec(flat) || /(\d{1,3}(?:,\d{3})+)\s*(?:원\s*)?위\s*금\s*액\s*을?\s*(?:정\s*히\s*)?영\s*수/.exec(flat); // "… 1건 50,000 위 금액을 영수합니다"
-    if (m) { r.합계 = rcNum_(m[1]); r.검산 = false; r.경고.push('공급가액+부가세=합계 검산을 못 함(면세·간이 또는 표 판독) — 금액 원문 확인'); }
+    if (m) {
+      r.합계 = rcNum_(m[1]);
+      // [2026.10.23 ㅈ3] 항목 줄 금액의 합 = 합계이면 검산된 것 — 면세 영수증(장례식장 정산서 등)은 공급가액·부가세 줄이 없어 그 검산이 애초에 없다. 예전엔 "검산 안 됨" 경고가 질문으로 떴다(가상상속5·6 장례식장영수증)
+      var itemAmts = (flat.match(/\d{1,3}(?:,\d{3})+/g) || []).map(rcNum_).filter(function (v) { return v >= 1000 && v !== r.합계; });
+      var itemSum = itemAmts.reduce(function (a, b) { return a + b; }, 0);
+      if (itemAmts.length >= 2 && itemSum === r.합계) { r.검산 = true; r.항목합검산 = itemAmts.length; r.참고 = (r.참고 || []).concat(['항목 ' + itemAmts.length + '개 합 = 합계 ✓(면세 영수증 — 공급가액·부가세 줄 없음)']); }
+      else { r.검산 = false; r.경고.push('공급가액+부가세=합계 검산을 못 함(면세·간이 또는 표 판독) — 금액 원문 확인'); }
+    }
     else {
       // [2026.10.17] "원" 글자가 숫자로 깨진 금액("금액: 35.00021 … 35.00091" — 고객A 환의 카드전표) — 천 단위 뒤 두 자리를 떼어 같은 금액이 두 번 이상 나올 때만
       var brk = {}, bm2, bre2 = /(\d{1,3}(?:[.,]\d{3})+)\d{2}(?![\d.,])/g;
