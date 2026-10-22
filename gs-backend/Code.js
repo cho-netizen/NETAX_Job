@@ -30309,7 +30309,9 @@ function caseProcNexView_(c, opt) {
     try {
       const known = {}; sv.readFiles.list.forEach(function (f) { known[f.id] = f.m; });
       const now = caseProcFiles_(c) || [];
-      out.새서류 = now.filter(function (f) { return !(f.id in known) || (known[f.id] && f.modified && String(f.modified) !== known[f.id]); }).slice(0, 30).map(function (f) { return f.name; });
+      // [2026.10.22 시험가동] 시스템이 만든 파일(보고서_내부의 종합검토서 초안·관련법령·신고서식 PDF)은 "새로 들어온 서류"가 아니다 — 세지 않는다(예전엔 검토서를 쓸 때마다 "다시 읽기"를 권함)
+      const own = function (f) { return f.id === sv.draftFileId || String(f.dir || '').indexOf(WORK_SUBFOLDER_INTERNAL_REPORT) !== -1 || /종합검토서|^관련법령_|_신고서식\.pdf$/.test(String(f.name || '')); };
+      out.새서류 = now.filter(function (f) { return !own(f) && (!(f.id in known) || (known[f.id] && f.modified && String(f.modified) !== known[f.id])); }).slice(0, 30).map(function (f) { return f.name; });
     } catch (e) { out.새서류 = '(폴더를 보지 못함: ' + String(e && e.message || e).slice(0, 60) + ')'; }
   }
   return out;
@@ -33996,6 +33998,9 @@ function caseProcMemoTexts_(c) {
     }
     // 고객 서류의 번역본(감정평가서·정산서 번역)은 증빙 그대로라 구획을 자르지 않는다
     const kept = /번\s*역/.test(n) ? { text: String(t), cut: false } : caseProcCalcCut_(String(t), /\.(xlsx?|xlsm|gsheet|ods)$/i.test(n));
+    // [2026.10.22 시험가동 가상증여3] 칸이 하나도 안 채워진 빈 의뢰서 양식(바탕 템플릿 표시가 있고 "- 항목: 값" 줄이 하나도 없음)은 상담 내용이 아니다 —
+    //  예전엔 빈 양식을 상담 메모로 읽어 질문마다 양식 글을 붙이고 같은 질문을 두 번 냈다
+    if (/바탕 템플릿/.test(kept.text) && !kept.text.split('\n').some(function (l) { return /^\s*-\s*[^:\[\]\n]{1,40}:\s*\S/.test(l); })) { out.skipped.push(n + '(빈 의뢰서 양식 — 채운 칸 없음)'); return; }
     out.read.push({ file: n, text: kept.text.trim(), cutCalc: kept.cut });
   });
   return out;
@@ -34437,7 +34442,10 @@ function caseProcGiftInhFacts_(c, lines, items) {
     let memos = []; try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) {}
     // [2026.10.15 1:1] 상담 메모에 "이전에 조금씩 자금지원" 같은 말이 있으면 10년 합산 대상일 수 있다 — 따로 묻는다(10년 합산 일반 질문을 [무시]했어도, 메모 근거가 새로 나왔으므로)
     if (!String(ov.giftPriorAmount || '').trim()) memos.forEach(function (m) {
-      const hit = m.text.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /(이전|예전|그동안|과거|조금씩|수차례|여러\s*번)/.test(x) && /(지원|증여|받|보태|도와)/.test(x); })[0];
+      // [2026.10.22 시험가동 가상증여3] 의뢰서 양식의 안내 줄(> …)·제출서류 체크 줄(- [ ] 이전 증여 신고서 사본…)·주석은 상담 내용이 아니다 — 빼고 본다
+      //  (예전엔 빈 양식의 체크 줄 "이전 증여 신고서 사본(합산 대상이 있으면)"을 '이전 지원'으로 읽어 10년 합산 질문을 냈다)
+      const body = m.text.split('\n').filter(function (l) { const t = l.trim(); return !/^-\s*\[[ xX]?\]/.test(t) && !/^>/.test(t) && !/<!--/.test(t); }).join('\n');
+      const hit = body.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /(이전|예전|그동안|과거|조금씩|수차례|여러\s*번)/.test(x) && /(지원|증여|받|보태|도와)/.test(x); })[0];
       if (hit) items.push(caseProcItem_('gift:memoprior:' + m.file, 'check', '상담 메모(' + m.file + ')에 "' + hit.slice(0, 60) + '" — 10년 안에 같은 증여자(배우자 포함)에게서 받은 돈이 있으면 합산합니다(§47②). 이 이전 지원이 증여인가요?',
         { mode: 'options', target: 'ov:giftPriorAmount', options: [{ label: '증여 아님·없음(0원)', value: '0' }], input: 'money', label: '10년 내 같은 증여자 증여 합산액', withInput: true }));
     });
