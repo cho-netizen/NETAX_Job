@@ -118,7 +118,7 @@ function cxFactsFromParsed_(c) {
       if (typeof o === 'object') {
         const k2 = Object.assign({}, keys);
         Object.keys(o).forEach(function (k) { const v = o[k]; if (v == null || typeof v === 'object') return; const kd = cxKindOf_(k); if (kd === '소재지') k2.asset = String(v); if (kd === '성명') k2.person = String(v).replace(/\s+/g, ''); if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) k2.date = k2.date || String(v); });
-        Object.keys(o).forEach(function (k) { walk(o[k], pathArr.concat([k]), rec, k2); });
+        Object.keys(o).forEach(function (k) { if (k === '공시참고') return; walk(o[k], pathArr.concat([k]), rec, k2); }); // [2026.10.23 ㅋ3] 실거래가 출력물 각주(사례 집 공동주택가격 — 유사재산 비교용)는 서류의 값이 아니라 교차검증 대상에서 뺌(가상증여7: 720,000,000을 고르자 "서류 값 558,000,000과 다름"으로 되물음)
         return;
       }
       const key = pathArr.filter(function (s) { return !/^\[/.test(s); }).slice(-1)[0] || '';

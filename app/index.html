@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 19:37 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 20:10 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -25651,7 +25651,7 @@ function recomputeSpouseRatio(){
   const otherHeirs = numVal(otherHeirsEl ? otherHeirsEl.value : 0);
   if (otherHeirs > 0){
     const ratio = 1.5 / (otherHeirs + 1.5);
-    ratioEl.value = ratio.toFixed(4);
+    ratioEl.value = String(ratio); // [2026.10.23 ㅋ1] 소수 4자리로 자르면 한도(상증법 §19① (A−B+C)×D)가 몇만 원 어긋난다 — 정확한 분수 값을 넣고 안내만 4자리(민법 §1009② 1.5/(n+1.5))
     if (hint) hint.textContent = '1.5 / (' + otherHeirs + ' + 1.5) ≈ ' + ratio.toFixed(4);
   } else {
     ratioEl.value = '1';

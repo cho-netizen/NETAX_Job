@@ -35883,6 +35883,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
       ['giftDoneeRegNo', '수증자 주민등록번호', 'text'], ['giftDoneeAddress', '수증자 주소', 'text'], ['giftDonorRegNo', '증여자 주민등록번호', 'text'], ['giftDonorAddress', '증여자 주소', 'text']]
     : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number']]; // 과세가액(예상)은 계산 결과라 묻지 않음
   const fills = [], confirms = [];
+  let bundledPrior = null; // [2026.10.23 ㅋ2] 이전 신고서 한 장의 세 칸(합산액·산출세액·공제 사용액)을 한 질문으로 묶었을 때 그 서류 이름
   const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
   spec.forEach(function (sp) {
     const key = sp[0], money = sp[2] === 'money' || sp[2] === 'number';
@@ -35906,10 +35907,26 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (key === 'giftPriorAmount' && items.some(function (it) { return /^gift:memoprior:/.test(it.id); })) return; // 상담 메모 근거 질문이 같은 칸을 이미 묻는다
       if (key === 'giftPriorAmount' && !uniq.length) { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? — 있으면 그 금액을 이번 증여재산가액에 더해 세율을 적용하고 그때 낸 세액을 뺍니다(상증법 §47②·§58). ' + caseProcPriorGiftWhy_(c) + ' — 있으면 합산액을, 없으면 「없음」을 골라 주세요.', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
       if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
-      if (/^(giftPriorPaidTax|giftPriorDeductionUsed)$/.test(key) && !uniq.length) return; // [2026.10.23 ㅂ2] 이전 신고서가 없으면 비워 둔다(합산 질문이 대신 묻는다)
+      if (/^(giftPriorPaidTax|giftPriorDeductionUsed)$/.test(key) && (!uniq.length || bundledPrior)) return; // [2026.10.23 ㅂ2] 이전 신고서가 없으면 비워 둔다(합산 질문이 대신 묻는다) · [ㅋ2] 합산 질문에 묶였으면 따로 묻지 않는다
       if (key === 'giftAppraisalFee' && !uniq.length) return; // 감정평가를 안 했으면 비워 둔다
       if (key === '상속인추가명단' && !uniq.length) return;
-      items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', caseProcGiWhy_(key, sp[1], uniq), ask));
+      // [2026.10.23 ㅋ2] 이전 증여세 신고서 한 장에서 합산액·산출세액·공제 사용액이 모두 나왔으면 한 질문으로(세무사님 10-22 "항목별로 그루핑해서 질문하는 것이 기본") — 답하면 세 칸을 한 번에 반영(답 반영 쪽 ask.bundle)
+      let qText = caseProcGiWhy_(key, sp[1], uniq);
+      if (key === 'giftPriorAmount' && uniq.length === 1) {
+        const fileOf = function (q) { const m = /\(([^,()]+\.(?:pdf|jpg|jpeg|png|hwp|docx?))[,)]/i.exec(String(q.src || '')); return m ? m[1] : ''; };
+        const f0 = fileOf(uniq[0]), same = function (k2) { const l = (facts[k2] || []).filter(function (q) { return f0 && fileOf(q) === f0; }); return l.length === 1 ? l[0] : null; };
+        const tx = same('giftPriorPaidTax'), dd = same('giftPriorDeductionUsed');
+        if (f0 && (tx || dd)) {
+          const wonS = function (v) { return Number(digits(v) || 0).toLocaleString('ko-KR') + '원'; };
+          const dateM = /증여일 (\d{4}-\d{2}-\d{2})/.exec(String(uniq[0].src || ''));
+          ask.bundle = { v: digits(uniq[0].v), file: f0, giftPriorPaidTax: tx ? digits(tx.v) : '', giftPriorDeductionUsed: dd ? digits(dd.v) : '' };
+          ask.cands[0].src = '이전 신고서 ' + f0 + (dateM ? '(증여일 ' + dateM[1] + ')' : '') + ': 합산 ' + wonS(uniq[0].v) + (tx ? ' · 그때 산출세액 ' + wonS(tx.v) : '') + (dd ? ' · 증여재산공제 사용 ' + wonS(dd.v) : '') + ' — 맞으면 세 칸을 한 번에 반영';
+          qText = '「10년 내 같은 증여자 증여 합산액」 — 폴더의 이전 증여세 신고서(' + f0 + ')에서 합산액' + (tx ? '·그때 산출세액(§58 기납부)' : '') + (dd ? '·증여재산공제 사용액(§53)' : '') + '을 읽었습니다. 같은 증여자의 10년 안 증여가 맞으면 고르세요(세 칸이 함께 들어갑니다). 아니면 「없음」 또는 직접 넣기.';
+          ask.options = [{ label: '없음(0원) — 같은 증여자 아님·10년 밖', value: '0' }]; ask.withInput = true;
+          bundledPrior = f0;
+        }
+      }
+      items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', qText, ask));
       return;
     }
     // 이미 있는 값이 서류와 같으면 "증빙으로 확인됨"으로 기억(금액은 확실한 서류일 때만 — 공시가격 같은 평가 후보와 같다고 확정하지 않음)
@@ -35995,7 +36012,8 @@ function caseProcGiftClass_(c, lines, items) {
     lines.push('사건분류: 열린 질문(' + openG.join(' / ') + ')이 있어 자동으로 정하지 않음');
     return c;
   }
-  const cls = /2촌\s*이상/.test(String(ov.giftRelation)) && /^직계존속/.test(String(ov.giftRelation)) ? '세대생략증여(할증)' : '일반';
+  const priorV = Number(String(ov.giftPriorAmount == null ? '' : ov.giftPriorAmount).replace(/[^\d]/g, '')) || 0; // [2026.10.23 ㅋ5] 합산액이 있으면 재차증여(10년내 합산) — 예전엔 합산액을 답해도 '일반'(가상증여7)
+  const cls = /2촌\s*이상/.test(String(ov.giftRelation)) && /^직계존속/.test(String(ov.giftRelation)) ? '세대생략증여(할증)' : priorV > 0 ? '재차증여(10년내 합산)' : '일반';
   ov.사건분류 = cls;
   const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
   if (!(up && up.success !== false)) return c;
@@ -38645,7 +38663,12 @@ function caseProcApply_(c, body) {
   if (m || m2) {
     const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
     let what;
-    if (m) { ov[m[1]] = String(value == null ? '' : value).trim(); what = '처리개요 ' + (body.label || m[1]); }
+    if (m) {
+      ov[m[1]] = String(value == null ? '' : value).trim(); what = '처리개요 ' + (body.label || m[1]);
+      // [2026.10.23 ㅋ2] 합산액 질문이 이전 신고서 한 장의 세 칸을 묶은 것이면(ask.bundle) 고른 값이 그 서류 값일 때 산출세액·공제 사용액도 함께, 0(없음)이면 둘도 비운다
+      if (m[1] === 'giftPriorAmount') { try { const sv0 = caseProcLoad_(c.id); const it0 = (sv0.remaining || []).filter(function (x) { return x && x.id === 'ov:giftPriorAmount'; })[0]; const b = it0 && it0.ask && it0.ask.bundle; const dv = String(value == null ? '' : value).replace(/[^\d]/g, '');
+        if (b) { if (dv === String(b.v)) { ov.giftPriorPaidTax = b.giftPriorPaidTax || ''; ov.giftPriorDeductionUsed = b.giftPriorDeductionUsed || ''; what += ' (+ 그때 산출세액 ' + (b.giftPriorPaidTax || '0') + '·공제 사용액 ' + (b.giftPriorDeductionUsed || '0') + ', 같은 신고서 ' + b.file + ')'; } else if (dv === '0' || dv === '') { ov.giftPriorPaidTax = ''; ov.giftPriorDeductionUsed = ''; } } } catch (e) {} }
+    }
     else {
       const i = Number(m2[1]);
       if ((!Array.isArray(ov.물건목록) || !ov.물건목록.length) && i === 0) { ov.물건목록 = [{}]; ov.물건수 = '1'; } // 서류에서 거래를 못 찾아 물건이 없을 때 — 직접 입력으로 첫 물건을 만든다
@@ -41073,7 +41096,8 @@ function docParseFiledReturn_(text) {
   // [2026.10.23 ㄷ6] 증여세 신고서의 증여자·수증자 칸(별지 제10호 서식 ①수증자·②증여자: 성명·관계) — 10년 합산(§47② 같은 증여자, 직계존속은 배우자 포함)·공제 소진 판단 근거
   if (kind === 'gift') {
     var gv = /②?\s*증\s*여\s*자[\s\S]{0,60}?성\s*명\s*[:：]?\s*\n?\s*([가-힣]{2,4})(?![가-힣])/.exec(t); if (gv) r.증여자 = gv[1];
-    var gr = /(?:수\s*증\s*자\s*와\s*의\s*관\s*계|증\s*여\s*자\s*와\s*의\s*관\s*계)\s*[:：]?\s*\n?\s*([가-힣()\s]{2,20}?)(?:\n|$)/.exec(t); if (gr) r.관계 = gr[1].replace(/\s+/g, '');
+    // [2026.10.23 ㅋ4] 별지 10호 서식: ①수증자 칸 "증여자와의 관계"는 수증자가 증여자에게 어떤 사람인지(자), ②증여자 칸 "수증자와의 관계"가 증여자가 수증자에게 어떤 사람인지(모·직계존속) — 10년 합산 후보의 "증여자 ○○○(관계)"에는 ② 칸을 쓴다(가상증여7: "박은정(자(직계비속))"로 붙음)
+    var gr = /수\s*증\s*자\s*와\s*의\s*관\s*계\s*[:：]?\s*\n?\s*([가-힣()\s]{2,20}?)(?:\n|$)/.exec(t) || /증\s*여\s*자\s*와\s*의\s*관\s*계\s*[:：]?\s*\n?\s*([가-힣()\s]{2,20}?)(?:\n|$)/.exec(t); if (gr) r.관계 = gr[1].replace(/\s+/g, '');
     var gk = /증\s*여\s*재\s*산\s*종\s*류\s*[:：]?\s*\n?\s*([^\n]{2,40})/.exec(t); if (gk) r.재산종류 = gk[1].trim();
   }
   var dm = new RegExp(dl + '[^\\d]{0,30}((?:19|20)\\d{2})\\s*[.\\-/년]\\s*(\\d{1,2})\\s*[.\\-/월]\\s*(\\d{1,2})').exec(t);
