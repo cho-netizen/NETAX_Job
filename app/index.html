@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 12:12 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 13:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -56589,7 +56589,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026.10.22] 넥스가 여쭙고 기다리는 중 — 답이 들어오면 칸만 다시 맞추고, 계산을 막는 질문이 다 풀렸으면 이어서 계산·검토서(st.resume)
     if (st.waiting) return keys.filter(function(k){ return k !== 'calc' && k !== 'output'; }).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){ return st.resume(); });
     // [2026.10.22 시험가동] 단추를 기다리며 멈춘 상태(사건 화면 GAS·넥스가 마무리를 안 부름) — 칸만 다시 맞추고 저장. 계산·검토서는 단추를 누르실 때 한 번
-    if (st.paused) return keys.filter(function(k){ return k !== 'calc' && k !== 'output'; }).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){
+    // [2026.10.22 속도 S2] 답 하나마다 ① 사건파악(약 37초)까지 다시 돌던 것 — 기준일·사건 칸을 바꾼 답(st.prNeedBasic)이 아니면 ③ 칸 채우기만 다시
+    if (st.paused) return keys.filter(function(k){ return k !== 'calc' && k !== 'output' && (k !== 'basic' || st.prNeedBasic); }).reduce(function(p, k){ return p.then(function(){ return k === 'overview' ? nxAiCaseProcLoop_(st, 0) : st.doStep(k); }); }, Promise.resolve()).then(function(){ st.prNeedBasic = false;
       ['calc', 'output', 'save'].forEach(function(k){ st.setStep(k, '⏸', st.screen ? '단추를 누르시면 진행' : '넥스가 부르지 않음(맡기신 범위 밖이거나 할 일 없음)'); });
       if (st.gasSayEl) st.gasSayEl.textContent = nxAiCpGasSayText_(st);
       nxAiCaseProcFoot_(st);
@@ -57157,7 +57158,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (target === 'evMark' && r.my_report_id) callGas('admin_set_checklist_status', { report_id: r.my_report_id, item: ask.label, submitted: true }).catch(function(){});
         // [2026.10.22 시험가동] 단추를 기다리는 동안(st.paused)엔 답한 질문을 바로 닫고 다음 질문에 답하시게 한다 — 칸 다시 맞추기(서버 약 90초)는
         //  답이 멈춘 뒤 한 번만(nxAiCpPausedRefresh_). 예전엔 답 하나마다 2분 넘게 기다려야 다음 질문을 누를 수 있었다
-        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + String(value).slice(0, 40) }; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다
+        if (st.paused){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + String(value).slice(0, 40) }; if (/^(base|case:)/.test(String(target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); nxAiCpPausedRefresh_(st, refreshKeys); return; } // [2026.10.22 묶음 ㄱ3] 답한 줄만 뺀다 · [속도 S2] 기준일·사건 칸 답일 때만 ①도 다시
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
     };

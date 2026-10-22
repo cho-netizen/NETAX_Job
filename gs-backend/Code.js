@@ -14134,6 +14134,13 @@ function rwParseParagraphHeader_(text) {
   return { head: h, body: text.slice(m.index + m[0].length).trim() };
 }
 function rwListParagraphs_() {
+  // [2026.10.22 속도 S5] 문단 목록(드라이브 파일 수십 개 읽기)을 30분 기억 — 검토서 만들 때마다 전부 다시 읽어 수십 초가 걸렸다. 문단을 고치면 30분 안에 자동 갱신
+  try { var ch = CacheService.getScriptCache(), hit = ch.get('rw_para_list_v1'); if (hit) return JSON.parse(hit); } catch (e) {}
+  var r = rwListParagraphsFresh_();
+  try { if (r && r.ok && r.items && r.items.length) { var js = JSON.stringify(r); if (js.length < 95000) CacheService.getScriptCache().put('rw_para_list_v1', js, 1800); } } catch (e) {}
+  return r;
+}
+function rwListParagraphsFresh_() {
   try {
     var root = getReportTemplateFolder_();
     if (!root) return { ok: false, error: '보고서템플릿 폴더를 찾지 못했습니다.' };
@@ -30221,10 +30228,15 @@ function caseProcFile_(caseId, create) {
   if (it.hasNext()) return it.next();
   return create ? folder.createFile(name, '{}', 'application/json') : null;
 }
+// [2026.10.22 속도 S1] 결정 파일(사건별 JSON)을 한 실행 안에서 한 번만 드라이브에서 읽는다 — 한 단계가 이 파일을 수십 번(부르는 곳 48개) 읽어 단계마다 10~30초가 드라이브 왕복이었다(가상양도8 실측).
+//  쓸 때(caseProcPatch_·caseProcStore_)는 메모를 새 내용으로 갱신한다. 구글 서버는 실행마다 메모리가 새로 시작하므로 다른 실행과 섞이지 않는다
+var CASEPROC_SV_MEMO_ = {};
 function caseProcLoad_(caseId) {
-  try { const f = caseProcFile_(caseId, false); return f ? (JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}) : {}; } catch (e) { return {}; }
+  const k = String(caseId || '');
+  if (CASEPROC_SV_MEMO_[k]) return JSON.parse(CASEPROC_SV_MEMO_[k]); // 복사본 — 부른 곳이 고쳐도 메모가 오염되지 않게
+  try { const f = caseProcFile_(caseId, false); const s = f ? (f.getBlob().getDataAsString('UTF-8') || '{}') : '{}'; const o = JSON.parse(s) || {}; CASEPROC_SV_MEMO_[k] = JSON.stringify(o); return o; } catch (e) { return {}; }
 }
-function caseProcStore_(caseId, saved) { const f = caseProcFile_(caseId, true); if (f) f.setContent(JSON.stringify(saved)); }
+function caseProcStore_(caseId, saved) { const f = caseProcFile_(caseId, true); if (f) { const s = JSON.stringify(saved); f.setContent(s); CASEPROC_SV_MEMO_[String(caseId || '')] = s; } }
 // [2026.10.14] 결정 파일은 이 함수로만 고친다 — 잠금 안에서 최신 내용을 읽어 고치고 바로 쓴다(동시에 도는 단계끼리 덮어쓰기 방지)
 function caseProcPatch_(caseId, mutate) {
   const lock = LockService.getUserLock();
@@ -30235,7 +30247,9 @@ function caseProcPatch_(caseId, mutate) {
     let saved = {};
     try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
     const out = mutate(saved);
-    f.setContent(JSON.stringify(saved));
+    const s = JSON.stringify(saved);
+    f.setContent(s);
+    CASEPROC_SV_MEMO_[String(caseId || '')] = s; // [2026.10.22 속도 S1] 읽기 메모 갱신
     return out === undefined ? saved : out;
   } finally { lock.releaseLock(); }
 }
