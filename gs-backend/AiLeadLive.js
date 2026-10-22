@@ -522,7 +522,7 @@ function caseProcAiFinish_(body) {
   const c = akReadCase_(caseId);
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
-  const run = { at: new Date().toISOString(), 세목: c.세목, 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
+  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, // [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17) 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
     spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200),
     report: caseProcAiMask_(String(body.report || '').slice(0, 3000)) }; // [2026.10.21 넥스 하나로] 보고도 사건에 — 다음 처리 첫 글·검토서·채팅 넥스 조회가 읽는다
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}

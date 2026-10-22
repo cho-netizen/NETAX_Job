@@ -38129,9 +38129,15 @@ function caseProcSavePdf_(c, body) {
   tpk('파일 저장', tp0); tp0 = Date.now();
   const saved = caseProcLoad_(c.id);
   const lastCalc = caseProcLastCalc_(c).last;
-  caseProcPatch_(c.id, function (sv) { sv.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), atMs: Date.now(), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' }; });
-  tpk('기록', tp0);
-  return { ok: true, id: file.getId(), name: name, url: file.getUrl(), _t: tP };
+  const fid = file.getId();
+  // [2026.10.23 ㅅ15차 — 점검표 166·175] 어디서 응답이 끊기는지 보이게: 단계별 시각(화면이 보낸 원본 모양 만들기 시간 포함)을 작업 기록부 한 줄로 같은 저장에 남긴다 — 응답을 못 받아도 기록부엔 남는다
+  caseProcPatch_(c.id, function (sv) {
+    sv.printPdf = { id: fid, name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), atMs: Date.now(), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' };
+    tpk('기록', tp0);
+    const stages = (body.clientMs ? '화면 원본 모양 만들기 ' + Math.round(Number(body.clientMs) / 100) / 10 + '초 → ' : '') + Object.keys(tP).map(function (k) { return k + ' ' + tP[k] + '초'; }).join(' → ') + ' → 응답 보냄 ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'HH:mm:ss');
+    caseProcLogTo_(sv, { by: body.by || 'GAS', what: '서식 PDF 저장', detail: name.slice(0, 60) + ' · ' + stages });
+  });
+  return { ok: true, id: fid, name: name, url: file.getUrl(), _t: tP };
 }
 // 반영 현황표 — "이 사건 정보가 도구에 완전히 반영됐나"를 한눈에: 칸별 채움·출처·미확정, 증빙 확보, 계산·서식·검토서, 남은 질문
 // 값 비교 — 금액은 쉼표·원 없이 숫자로("150,000,000"과 "150000000"은 같은 값)
@@ -38856,7 +38862,9 @@ function caseProcDraft_(c) {
     aiList.forEach(function (a) { L.push('| ' + [a.칸, a.값, a.모델, String(a.근거).replace(/\|/g, '/').slice(0, 200), a.세무사님].join(' | ') + ' |'); });
     L.push('');
   }
-  const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d !== '무시' && d !== 'done'; });
+  // [2026.10.23 ㅅ14차] "계산 결과가 아직 없습니다" 항목은 계산 결과가 사건에 저장돼 있으면 뺀다 — 화면이 계산 전에 저장한 질문 목록이 검토서에 남던 것(가상양도17: 세액 136,862,000이 있는데도 남음)
+  let hasCalc = false; try { hasCalc = !!caseProcLastCalc_(c).last; } catch (e) {}
+  const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; if (hasCalc && it.id === 'calc:none') return false; return d !== '무시' && d !== 'done'; });
   L.push('## ' + (paras.length ? '4' : '3') + '. 추가로 확인할 사항', '');
   if (remain.length) remain.forEach(function (it) { const d = dec[it.id] && dec[it.id].d; L.push('- ' + (d === '보류' ? '(보류) ' : d === '예정' ? '(받을 예정) ' : '') + it.text + (dec[it.id] && dec[it.id].note ? ' — ' + dec[it.id].note : '')); });
   // [2026.10.23 ㅊ2] 자동 보류 메모 — 묻지 않고 검토서에만 두는 것(정황 없는 특수관계 등)
