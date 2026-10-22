@@ -32458,10 +32458,16 @@ function docOverseasParse_(text) {
   const hn = (t.match(/[가-힣]/g) || []).length, ln = (t.match(/[A-Za-z]/g) || []).length;
   if (hn > 40 && hn > ln * 0.15) return null;
   let r = null;
-  if (/SETTLEMENT\s+STATEMENT|CLOSING\s+STATEMENT|BUYER\s*\/\s*BORROWER\s+STATEMENT|SELLER'?S\s+(?:FINAL\s+)?STATEMENT/i.test(head) && /DEBITS|CREDITS|ESCROW/i.test(t)) r = ovParseSettlement_(t);
+  // [2026.10.22 시험가동 가상양도1] 제목 글자 사이가 벌어진 PDF("SET TLEMENT", "REPL ACEMENT")도 제목으로 알아본다 — 일반 규칙: 제목 판정은 빈칸을 뺀 머리 글자로(굽은 따옴표 ’ 포함)
+  const hc = head.replace(/\s+/g, '').replace(/’/g, "'"), hc0 = hc.slice(0, 150);
+  // 매매계약서(Purchase Agreement) — 제목이 맨 앞에 있고 정산서 제목이 아닐 때만(정산서 본문의 "Purchase Agreement Accepted" 칸 이름에 걸리지 않게 제목 자리만 봄)
+  if (/PURCHASEAGREEMENT|PURCHASECONTRACT|SALESCONTRACT|AGREEMENTOFSALE|PURCHASEANDSALEAGREEMENT/i.test(hc0) && !/SETTLEMENTSTATEMENT|CLOSINGSTATEMENT/i.test(hc0) && /Purchase\s+Price|Sales?\s+Price/i.test(t)) r = ovParsePurchaseAgr_(t);
+  else if (/SETTLEMENTSTATEMENT|CLOSINGSTATEMENT|BUYER\/BORROWERSTATEMENT|SELLER'?S(?:FINAL)?STATEMENT/i.test(hc) && /DEBITS?|CREDITS?|ESCROW/i.test(t)) r = ovParseSettlement_(t);
   else if (/\b(?:GRANT|QUITCLAIM|WARRANTY|GIFT)\s+DEED\b/i.test(head) && /RECORD/i.test(head)) r = ovParseDeed_(t);
   else if (/Direct\s*Pay|EFTPS|Franchise\s+Tax\s+Board|ftb\.ca\.gov/i.test(t) && /Payment|Estimated\s+Tax|Withholding/i.test(t)) r = ovParseTaxPay_(t);
   else if (/Uniform\s+Residential\s+Appraisal|APPRAISAL\s+REPORT/i.test(t) && /market\s+value|appraised\s+value|opinion\s+of\s+value/i.test(t)) r = ovParseAppraisal_(t);
+  // [2026.10.22 시험가동 가상양도1] 영문 청구서·영수증(INVOICE/RECEIPT) — 공사·수리 대금은 자본적지출 후보(수선비인지는 판단). 다른 영문 서류 판정이 모두 안 걸렸을 때만(맨 끝)
+  else if (/INVOICE|RECEIPT|BILLINGSTATEMENT/i.test(hc0) && /\$\s*\d/.test(t)) r = ovParseInvoice_(t);
   if (!r) return null;
   return { type: 'overseas', label: r.종류, result: r, md: ovToMarkdown_(r) };
 }
@@ -32481,28 +32487,64 @@ const OV_SECTIONS_ = [
   [/^LENDER\s+CHARGES|^NEW\s+LOAN/i, 'lender', 'no', '대출(새 융자) 비용'],
   [/^ADDITIONAL\s+DISBURSEMENTS/i, 'other', 'judge', '그 밖의 지급']
 ];
+// [2026.10.22 시험가동 가상양도1] 정산서 금액 칸 머리("Debit (Seller)"·"Credit (Buyer)"·"Description"·"Amount")와 맺음·서명 줄은 항목 이름표가 아니다 —
+//  예전엔 줄 전체가 DEBITS/CREDITS일 때만 걸러 "Credit (Seller)"·"Certified true and correct — … Escrow Officer"가 이름표로 들어가 이름표 수 ≠ 금액 수(짝짓기 실패).
+//  일반 규칙: 칸 머리 낱말(차변·대변·설명·금액 + 매도인/매수인 괄호)만으로 된 줄, 확인·서명·쪽 번호 줄은 항목에서 뺀다
+function ovIsColHead_(l) {
+  if (!/\b(?:DEBITS?|CREDITS?|DESCRIPTION|AMOUNTS?|ITEMS?)\b/i.test(l)) return false;
+  return !String(l).replace(/\b(?:Seller'?s?|Buyer'?s?|Borrower'?s?|DEBITS?|CREDITS?|DESCRIPTION|AMOUNTS?|ITEMS?)\b|[()\/\s]/gi, '');
+}
+function ovIsSignLine_(l) { return /^(?:Certified|Approved|Signature|Signed\b|Seller'?s?\s+Signature|Buyer'?s?\s+Signature|Page\s+\d+\s+of\s+\d+|Print(?:ed)?\s+(?:Date|on))|\btrue\s+and\s+correct\b|\bEscrow\s+Officer\b|\bSettlement\s+Agent\b/i.test(String(l)); }
+// [2026.10.22 시험가동 가상양도1] 구획 머리(COMMISSION CHARGES 등)가 없는 정산서 — 이름표 낱말로 성격을 정한다(구획 머리 표와 같은 쓰임: sure 미리 체크·judge 판단·no 비용 아님).
+//  일반 규칙: 중개수수료·에스크로·권원보험·이전세·등록은 양도비(취득비) 후보, 대출 상환·안분·새 융자 비용은 비용 아님, 매수인 크레딧·수리 보전은 판단. 안분(재산세 일할)을 크레딧보다 먼저 본다
+function ovLblCls_(l) {
+  l = String(l || '');
+  if (/Payoff|Pay\s*off|Principal\s+Balance|Interest\s+(?:on|from|to)\b|Reconveyance/i.test(l)) return ['payoff', 'no'];
+  if (/Prorat|\bTax(?:es)?\b[^\n]{0,30}\d{1,2}\/\d{1,2}\/\d{2,4}|HOA\s+Dues/i.test(l)) return ['proration', 'no'];
+  if (/Commission|Broker(?:age)?\s+Fee/i.test(l)) return ['commission', 'sure'];
+  if (/Escrow\s+(?:Fee|Charge|Service)|Sub\s*-?\s*Escrow/i.test(l)) return ['escrow', 'sure'];
+  if ((/Title/i.test(l) && !(/Lender'?s?\s+Title/i.test(l) && !/Owner/i.test(l))) || /Transfer\s+Tax|Documentary|Recording|Notary/i.test(l)) return ['title', 'sure'];
+  if (/Origination|Lender'?s?\s+(?:Fee|Title)|Loan\s+(?:Fee|Discount)|Credit\s+Report|Appraisal\s+Fee/i.test(l)) return ['lender', 'no'];
+  if (/Credit\s+to\s+(?:Buyer|Borrower)|Seller'?s?\s+Credit|Repair\s+Credit|Concession/i.test(l)) return ['other', 'judge'];
+  return null;
+}
+// 미국식 날짜 글자(정규식 조각) — 칸 이름 뒤 같은 줄·다음 줄의 날짜를 짝짓는 데 씀
+const OV_DATE_SRC_ = '(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{1,2},?\\s+(?:19|20)\\d{2})';
 function ovParseSettlement_(t) {
-  const buy = /BUYER\s*\/\s*BORROWER|BUYER'?S\s+(?:FINAL\s+)?(?:SETTLEMENT\s+)?STATEMENT/i.test(t.slice(0, 2500)) && !/SELLER'?S\s+(?:FINAL\s+)?(?:SETTLEMENT\s+)?STATEMENT/i.test(t.slice(0, 2500));
+  // [2026.10.22 시험가동 가상양도1] 제목 글자가 벌어진 PDF("BUYER'S FINAL SET TLEMENT STATEMENT")도 매수 정산서로 — 빈칸을 뺀 머리로 본다
+  const hcs = t.slice(0, 2500).replace(/\s+/g, '').replace(/’/g, "'");
+  const buy = /BUYER\/BORROWER|BUYER'?S(?:FINAL)?(?:SETTLEMENT)?STATEMENT/i.test(hcs) && !/SELLER'?S(?:FINAL)?(?:SETTLEMENT)?STATEMENT/i.test(hcs);
   const r = { 종류: buy ? '미국 매수인 정산서(Buyer Statement)' : '미국 매도인 정산서(Seller Settlement Statement)', kind: buy ? 'buy' : 'sale', 통화: 'USD', 경고: [] };
   const lines = t.split(/\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
   const isSec = function (l) { for (let i = 0; i < OV_SECTIONS_.length; i++) if (OV_SECTIONS_[i][0].test(l)) return OV_SECTIONS_[i]; return null; };
-  const isPriceLbl = function (l) { return /^(?:Total\s+Consideration|TOTAL\s+CONSIDERATION|Sales?\s+Price|Contract\s+Sales?\s+Price)\b/i.test(l); };
+  // [2026.10.22 시험가동 가상양도1] 매매대금 칸 이름 — 매수 정산서는 "Purchase Price"로 적는다(매도 정산서 "Total Consideration"·"Sales Price"와 같은 뜻). 일반 규칙: 매매대금을 뜻하는 칸 이름 전부
+  const isPriceLbl = function (l) { return /^(?:Total\s+Consideration|Sales?\s+Price|Contract\s+(?:Sales?\s+)?Price|Purchase\s+Price|Consideration)\b/i.test(l); };
   let start = lines.findIndex(function (l) { return isSec(l) || isPriceLbl(l); });
-  if (start === -1) start = lines.length;
+  // 구획 머리·매매대금 칸이 없으면 첫 금액 줄(그 줄에 이름표가 없으면 바로 앞 이름표 줄)부터 항목으로 본다 — 예전엔 항목 0(머리만 읽음)
+  if (start === -1) { const fa = lines.findIndex(function (l) { return (l.match(OV_AMT_RE_) || []).length > 0; }); start = fa === -1 ? lines.length : (fa > 0 && !lines[fa].replace(OV_AMT_RE_, '').replace(/[\s$]/g, '') ? fa - 1 : fa); }
   // ── 머리(거래 정보): 부동산·매도인/매수인·에스크로 번호·작성일/종결일
   const hd = lines.slice(0, start).join('\n');
-  const esc = /\b(\d{5,}-[A-Z]{1,4})\b/.exec(hd); if (esc) r.에스크로번호 = esc[1];
+  // [2026.10.22 시험가동 가상양도1] "Escrow No. 26-04418-JL"처럼 칸 이름 뒤 번호를 먼저(앞자리 "26-"가 잘리던 것), 없으면 예전 모양
+  const esc = /Escrow\s*(?:No\.?|#|Number)\s*:?\s*([A-Z0-9]+(?:-[A-Z0-9]+)+|\d{5,})/i.exec(hd) || /\b(\d{5,}-[A-Z]{1,4})\b/.exec(hd); if (esc) r.에스크로번호 = esc[1];
   const lbls = [], lre = /(Closing\s+Date|Date)\s*:/gi; let lm; while ((lm = lre.exec(hd))) lbls.push(/closing/i.test(lm[1]) ? 'closing' : 'date');
   const dts = ovUsDates_(hd);
+  // [2026.10.22 시험가동 가상양도1] 종결일 칸 이름 — "Close of Escrow"·"Recording (Date)"·"Settlement Date"·"Disbursement Date"도(콜론 없이 다음 줄에 날짜가 오는 표 포함).
+  //  계약 승낙일("Purchase Agreement Accepted"·"Acceptance")은 종결일과 따로(대조용). 일반 규칙: 날짜는 바로 앞 칸 이름으로 정하고, 칸 이름을 못 찾을 때만 예전처럼 마지막 날짜
+  const clm = new RegExp('(?:Close\\s+of\\s+Escrow|Closing\\s+Date|Settlement\\s+Date|Disbursement\\s+Date|Recording\\s+Date|Date\\s+Recorded)(?:\\s*\\/\\s*Recording(?:\\s+Date)?)?\\s*:?\\s*\\n?\\s*' + OV_DATE_SRC_, 'i').exec(hd);
+  const acm = new RegExp('(?:Accepted|Acceptance(?:\\s+Date)?|Date\\s+of\\s+Acceptance)\\s*:?\\s*\\n?\\s*' + OV_DATE_SRC_, 'i').exec(hd) || new RegExp('Purchase\\s+Agreement\\s*:?\\s*' + OV_DATE_SRC_ + '\\s*\\n\\s*Accept', 'i').exec(hd);
+  if (acm) r.계약승낙일 = ovUsDate_(acm[1]);
   if (dts.length && lbls.length === dts.length) lbls.forEach(function (k, i) { if (k === 'closing') r.종결일 = dts[i]; else r.작성일 = dts[i]; });
+  else if (clm) r.종결일 = ovUsDate_(clm[1]);
   else if (dts.length) { r.종결일 = dts[dts.length - 1]; if (dts.length > 1) r.경고.push('머리의 날짜(' + dts.join(', ') + ') 중 어느 것이 종결일인지 칸 이름과 짝이 안 맞아 마지막 날짜를 종결일로 봄 — 원문 확인'); }
+  if (clm && !r.종결일) r.종결일 = ovUsDate_(clm[1]);
   const pl = lines.slice(0, start).findIndex(function (l) { return /^PROPERTY\s*:/i.test(l); });
   let loc = pl !== -1 ? lines[pl].replace(/^PROPERTY\s*:\s*/i, '') : '';
   if (loc && !/,\s*[A-Z]{2}\s+\d{5}/.test(loc)) { const cl = lines.slice(pl + 1, start).filter(function (l) { return /^[A-Za-z .]+,\s*[A-Z]{2}\s+\d{5}/.test(l); })[0]; if (cl) loc += ' ' + cl; }
   if (!loc) { const a2 = /\d+\s+[A-Za-z .]+,\s*[A-Za-z .]+,\s*[A-Z]{2}\s+\d{5}/.exec(hd); if (a2) loc = a2[0]; }
   r.부동산 = loc.trim();
   const who = function (re) { const i = lines.slice(0, start).findIndex(function (l) { return re.test(l); }); if (i === -1) return ''; const rest = lines[i].replace(re, '').replace(/^\s*:\s*/, '').trim(); if (rest && !/:\s*$/.test(rest)) return rest; const nx = lines[i + 1] || ''; return /:\s*$|^\d|^(?:Property|Seller|Buyer)/i.test(nx) ? '' : nx; };
-  r.매도인 = who(/^SELLER\s*:/i); r.매수인 = who(/^Buyer\s*\/\s*Borrower\s*:|^BUYER\s*:/i);
+  // [2026.10.22 시험가동 가상양도1] 콜론 없는 칸("Seller / Ji Won Moon", "Buyer   Kevin R. Patel")도 — 칸 이름 낱말 하나로 된 줄 또는 줄 첫머리 낱말(SELLER'S 제목 줄은 아님)
+  r.매도인 = who(/^SELLER(?:\(S\))?\s*(?::|(?=\s)|$)/i); r.매수인 = who(/^Buyer(?:\s*\/\s*Borrower)?(?:\(S\))?\s*(?::|(?=\s)|$)/i);
   // ── 항목: 이름표 줄과 금액 줄을 따로 모아 나온 순서대로 짝짓는다(OCR이 표의 왼쪽 칸 이름표를 먼저, 오른쪽 금액 칸을 나중에 내보냄)
   const labels = [], amts = [], paired = [];
   let sec = null, secLine = -9;
@@ -32511,24 +32553,28 @@ function ovParseSettlement_(t) {
     const s = isSec(l);
     if (s) { sec = s; secLine = i; if (s[1] === 'payoff') { const tp = /Total\s+Payoff\s*\$?\s*([\d,]+\.\d{2})/i.exec(l + ' ' + (lines[i + 1] || '')); if (tp) r.대출상환합계 = ovNum_(tp[1]); } continue; }
     if (/^\[\s*Total\s+Payoff/i.test(l)) { const tp = /([\d,]+\.\d{2})/.exec(l); if (tp) r.대출상환합계 = ovNum_(tp[1]); continue; }
-    if (/^(?:DEBITS|CREDITS|DEBITS\s+CREDITS|DESCRIPTION)$/i.test(l)) continue;
+    if (/^(?:DEBITS|CREDITS|DEBITS\s+CREDITS|DESCRIPTION)$/i.test(l) || ovIsColHead_(l)) continue;
     if (i === secLine + 1 && /^(?:COMPANY|INC\.?|LLC\.?|CORP\.?|CO\.)$/i.test(l)) continue; // 구획 머리가 두 줄로 끊긴 것("… CHICAGO TITLE / COMPANY")
     const noAmt = l.replace(OV_AMT_RE_, '').replace(/[\s$]/g, '');
     if (!noAmt) { (l.match(OV_AMT_RE_) || []).forEach(function (a) { amts.push(ovNum_(a)); }); continue; }
     if (/^(?:THIS\s+IS\s+A\s+FINAL|TOTALS?\s*(?:$|[\d$(\-]))/i.test(l)) { if (/^TOTALS?\b/i.test(l)) { const tt = l.match(OV_AMT_RE_); if (tt) r.합계 = ovNum_(tt[0]); } continue; }
+    if (ovIsSignLine_(l)) continue; // [2026.10.22 시험가동 가상양도1] 맺음·서명 줄(금액 없음)은 이름표가 아님
     // 날짜만 있는 줄 = 앞 이름표의 기간 끝("… from 04/01/2026 to" / "05/06/2026")
     if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l) && labels.length) { labels[labels.length - 1].label += ' ' + l; continue; }
     // 한 줄에 이름표 두 개가 붙은 것("HOA at … 06/01/2026 Seller Credit to Buyer")
     const parts = l.split(/\s+(?=(?:Seller|Buyer)'?s?\s+[Cc]redit\b)/);
     parts.forEach(function (p) {
       const tail = /^(.*?[A-Za-z)].*?)\s+(-?\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}|\(\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}\))$/.exec(p); // 이름표 뒤에 금액이 같은 줄로 붙은 것
-      const cls = /Withholding|FTB\s*593|FIRPTA|Form\s*593/i.test(p) ? 'withholding' : /Net\s+Proceeds|BALANCE\s+DUE|Cash\s+(?:to|from)\s+(?:Seller|Buyer|Borrower)/i.test(p) ? 'net' : isPriceLbl(p) ? 'price' : /Earnest\s+Money|Deposit/i.test(p) ? 'deposit' : sec ? sec[1] : 'other';
+      const kw = sec ? null : ovLblCls_(p); // [2026.10.22 시험가동 가상양도1] 구획 머리가 없으면 이름표 낱말로 성격을 정함
+      const cls = /Withholding|FTB\s*593|FIRPTA|Form\s*593/i.test(p) ? 'withholding' : /Net\s+Proceeds|BALANCE\s+DUE|Cash\s+(?:to|from)\s+(?:Seller|Buyer|Borrower)/i.test(p) ? 'net' : isPriceLbl(p) ? 'price' : /Earnest\s+Money|Deposit/i.test(p) ? 'deposit' : sec ? sec[1] : kw ? kw[0] : 'other';
       // 매수인에게 준 크레딧(Seller Credit to Buyer)은 대출·안분이 아니라 실질 매매대금 할인일 수 있어 판단으로
-      const it = { label: p.replace(/^Title\s*-\s*/i, '').trim(), cls: cls, use: cls === 'withholding' ? 'tax' : /Seller'?s?\s+Credit\s+to\s+Buyer/i.test(p) ? 'judge' : sec && cls === sec[1] ? sec[2] : (cls === 'other' ? 'judge' : 'no') };
+      const it = { label: p.replace(/^Title\s*-\s*/i, '').trim(), cls: cls, use: cls === 'withholding' ? 'tax' : /Seller'?s?\s+Credit\s+to\s+Buyer/i.test(p) ? 'judge' : sec && cls === sec[1] ? sec[2] : kw && cls === kw[0] ? kw[1] : (cls === 'other' ? 'judge' : 'no') };
       if (tail && !/\/(?:day|month|monthly)|\bper\b|@|for\s+[\d,]+\.\d{2}/i.test(tail[1].slice(-12))) { it.label = tail[1].replace(/^Title\s*-\s*/i, '').trim(); it.usd = ovNum_(tail[2]); paired.push(it); }
       else labels.push(it);
     });
   }
+  // [2026.10.22 시험가동 가상양도1] 순수령액(NET PROCEEDS·Cash to/from) 이름표 뒤에 남은 금액 없는 이름표(맺음말·주석 등)는 항목이 아니다 — 수가 안 맞을 때만 잘라 낸다
+  if (labels.length > amts.length) { let ni = -1; labels.forEach(function (x, i) { if (x.cls === 'net') ni = i; }); if (ni !== -1 && ni + 1 < labels.length && ni + 1 === amts.length) { r.경고.push('순수령액 뒤 금액 없는 이름표 ' + (labels.length - ni - 1) + '개(' + labels.slice(ni + 1).map(function (x) { return x.label.slice(0, 30); }).join(' / ') + ')는 항목에서 뺌'); labels.length = ni + 1; } }
   // 짝짓기 — 이름표 수와 금액 수가 같을 때만(다르면 어느 금액이 어느 항목인지 모름 → 항목은 비우고 경고)
   let items = null;
   if (labels.length && labels.length === amts.length) {
@@ -32545,11 +32591,11 @@ function ovParseSettlement_(t) {
   const firstAfter = function (re) { const i = lines.findIndex(function (l) { return re.test(l); }); if (i === -1) return 0; for (let j = i; j < Math.min(lines.length, i + 8); j++) { if (/^\[|Payoff|\/day|\/month|\bper\b|@/i.test(lines[j])) continue; const m = lines[j].replace(/for\s+[\d,]+\.\d{2}/ig, '').match(OV_AMT_RE_); if (m && (j > i ? !lines[j].replace(OV_AMT_RE_, '').replace(/[\s$]/g, '') : /\d\.\d{2}\s*$/.test(lines[j]))) return ovNum_(m[0]); } return 0; };
   if (items) {
     const p = items.filter(function (x) { return x.cls === 'price'; })[0], n = items.filter(function (x) { return x.cls === 'net'; }).slice(-1)[0];
-    r.매매대금 = p ? p.usd : firstAfter(/Total\s+Consideration|Sales?\s+Price/i);
+    r.매매대금 = p ? p.usd : firstAfter(/Total\s+Consideration|Sales?\s+Price|Purchase\s+Price|Contract\s+Price|Consideration/i);
     if (n) r.순수령액 = n.usd;
     r.항목 = items.filter(function (x) { return x.cls !== 'price' && x.cls !== 'net'; });
   } else {
-    r.매매대금 = firstAfter(/Total\s+Consideration|Sales?\s+Price/i);
+    r.매매대금 = firstAfter(/Total\s+Consideration|Sales?\s+Price|Purchase\s+Price|Contract\s+Price|Consideration/i); // [2026.10.22 시험가동 가상양도1] 매수 정산서 칸 이름(Purchase Price)도
     const ni = lines.map(function (l, i) { return /Net\s+Proceeds/i.test(l) ? i : -1; }).filter(function (i) { return i !== -1; }).pop();
     if (ni != null) { const am = lines.slice(ni).join(' ').match(OV_AMT_RE_); if (am) r.순수령액 = ovNum_(am[am.length - 1]); }
   }
@@ -32569,6 +32615,8 @@ function ovParseDeed_(t) {
   const r = { 종류: '미국 부동산 증서(' + ((/\b(GRANT|QUITCLAIM|WARRANTY|GIFT)\s+DEED/i.exec(t) || [])[1] || '').toUpperCase() + ' DEED)', kind: 'deed', 경고: [] };
   const rec = /(\d{1,2}:\d{2}\s*[ap]\.?m\.?)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t) || /Recorded[^\n]{0,120}?(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t);
   if (rec) r.등록일 = ovUsDate_(rec[2] || rec[1]);
+  // [2026.10.22 시험가동 가상양도1] 등록일이 "Recording Date / March 10, 2015"(칸 이름 다음 줄, 달 이름 날짜)로 적힌 증서도 — 일반 규칙: 등록 칸 이름 바로 뒤 날짜
+  if (!r.등록일) { const rd = new RegExp('(?:Recording\\s+Date|Date\\s+Recorded|Recorded\\s+(?:on|Date))\\s*:?\\s*\\n?\\s*' + OV_DATE_SRC_, 'i').exec(t); if (rd) r.등록일 = ovUsDate_(rd[1]); }
   const dn = /\b((?:19|20)\d{11})\b/.exec(t); if (dn) r.등록번호 = dn[1];
   const dd = /Dated\s*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t); if (dd) r.서명일 = ovUsDate_(dd[1]);
   const g = /acknowledged,?\s*([\s\S]{2,160}?)\s+hereby\s+GRANT\(?s?\)?\s+to\s+([\s\S]{2,300}?)\s+the\s+following/i.exec(t);
@@ -32579,6 +32627,9 @@ function ovParseDeed_(t) {
     if (!r.양수인.length) r.양수인 = [g[2].replace(/\s+/g, ' ').slice(0, 80)];
     const ten = /AS\s+(JOINT\s+TENANTS|TENANTS\s+IN\s+COMMON|COMMUNITY\s+PROPERTY)/i.exec(g[2]); if (ten) r.공유형태 = ten[1].toUpperCase().replace(/\s+/g, ' ');
   }
+  // [2026.10.22 시험가동 가상양도1] 양도인·양수인이 칸("Grantor / 이름", "Grantee / 이름")으로 적힌 증서 — 이름 뒤 괄호 설명·쉼표 뒤 주소는 이름이 아님
+  if (!r.양도인) { const gr = ovLabelVal_(t, 'Grantor\\(?s?\\)?'); if (gr) r.양도인 = gr.split(/\s*[(,]/)[0].trim(); }
+  if (!r.양수인 || !r.양수인.length) { const ge = ovLabelVal_(t, 'Grantee\\(?s?\\)?'); if (ge) r.양수인 = ge.split(/\s+and\s+|\s*&\s*|;/i).map(function (x) { return x.split(/\s*[(,]/)[0].trim(); }).filter(Boolean); }
   r.무상 = /BONA\s+FIDE\s+GIFT|RECEIVED\s+NOTHING\s+IN\s+RETURN/i.test(t) || /Documentary\s+Transfer\s+Tax\s+is\s+\$?\s*\[?\s*NONE/i.test(t);
   const ad = /COMMONLY\s+KNOWN\s+AS\s*:?\s*([^\n]{5,80})/i.exec(t); if (ad) r.부동산 = ad[1].replace(/["']/g, '').trim();
   if (!r.등록일 && !r.서명일) r.경고.push('등록일·서명일을 읽지 못함');
@@ -32588,13 +32639,18 @@ function ovParseTaxPay_(t) {
   const r = { 종류: '미국 세금 납부확인서', kind: 'tax', 경고: [] };
   r.기관 = /Direct\s*Pay|EFTPS|\bIRS\b/i.test(t) && !/Franchise\s+Tax|ftb\.ca\.gov/i.test(t) ? '미국 연방(IRS)' : '캘리포니아주(FTB)';
   r.구분 = /Withholding/i.test(t) ? '원천징수' : /Estimated\s+Tax/i.test(t) ? '예납(Estimated Tax)' : '';
-  const a1 = /Payment\s+Amount\s*:?\s*\$\s*([\d,]+\.\d{2})/i.exec(t), tri = /\$\s*([\d,]+\.\d{2})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{6,})/.exec(t);
+  // [2026.10.22 시험가동 가상양도1] 금액 칸 이름이 "Amount"·"Amount Paid"·"Total (Paid)"인 확인서(FTB Web Pay)도, 칸 이름 다음 줄 값도 읽는다.
+  //  일반 규칙: 납부 확인서의 금액·납부일·납부자는 칸 이름(줄 첫머리) 바로 뒤(같은 줄 또는 다음 줄)의 값
+  const a1 = /Payment\s+Amount\s*:?\s*\$\s*([\d,]+\.\d{2})/i.exec(t) || /(?:^|\n)[ \t]*(?:Amount\s+Paid|Total\s+(?:Amount\s+)?Paid|Payment\s+Total|Total\s+Amount|Amount|Total)[ \t]*:?\s*\$\s*([\d,]+\.\d{2})/i.exec(t), tri = /\$\s*([\d,]+\.\d{2})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{6,})/.exec(t);
   r.금액 = a1 ? ovNum_(a1[1]) : tri ? ovNum_(tri[1]) : 0;
-  const pd = /Payment\s+Date\s*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t);
+  const pd = /Payment\s+Date\s*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t)
+    || /(?:^|\n)[ \t]*(?:Date\s+(?:Paid|of\s+Payment)|Paid\s+(?:on|Date)|Transaction\s+Date|Date)[ \t]*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t);
   r.납부일 = pd ? ovUsDate_(pd[1]) : tri ? ovUsDate_(tri[2]) : '';
   const cf = /Confirmation\s+Number\s*:?\s*([\d][\d-]{5,})/i.exec(t); r.확인번호 = cf ? cf[1] : tri ? tri[3] : '';
   const ty = /Tax\s+(?:Year|Period\s+for\s+Payment)[^\d]{0,30}((?:19|20)\d{2})/i.exec(t); if (ty) r.과세연도 = ty[1];
-  const sg = /Signed\s+in\s+as\s*:?\s*([A-Z][A-Za-z .]{2,40})/.exec(t) || /(?<!Bank\s)(?<!RDP'?s\s)\bName\s*\n\s*([A-Z][A-Z .]{2,40})\n/.exec(t);
+  // [2026.10.22 시험가동 가상양도1] 납부자 칸 "Taxpayer"·"Taxpayer Name"(줄 첫머리)도 — 뒤의 괄호 설명("(Nonresident alien …)")은 이름이 아님
+  const sg = /Signed\s+in\s+as\s*:?\s*([A-Z][A-Za-z .]{2,40})/.exec(t) || /(?<!Bank\s)(?<!RDP'?s\s)\bName\s*\n\s*([A-Z][A-Z .]{2,40})\n/.exec(t)
+    || /(?:^|\n)[ \t]*(?:Taxpayer(?:'?s)?(?:\s+Name)?|Primary\s+Taxpayer|Name)[ \t]*:?\s*([A-Z][A-Za-z.'-]*(?:[ \t]+[A-Z][A-Za-z.'-]*){1,4})/.exec(t);
   if (sg) r.납부자 = sg[1].trim();
   const sp = /Spouse\s*\/?\s*RDP'?s\s+Name\s*\n?\s*([A-Z][A-Z .]{2,40})/.exec(t); if (sp) r.배우자 = sp[1].trim();
   if (!r.금액 && !r.납부자) return null;
@@ -32607,11 +32663,87 @@ function ovParseAppraisal_(t) {
   const v = /(?:market|defined)\s+value[\s\S]{0,300}?as\s+of[\s\S]{0,40}?(\d{1,2}\/\d{1,2}\/\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})[\s\S]{0,120}?\$\s*([\d,]{5,})/i.exec(t)
     || /appraised\s+value[^$]{0,120}\$\s*([\d,]{5,})/i.exec(t);
   if (v) { if (v[2]) { r.기준일 = ovUsDate_(v[1]); r.감정가 = ovNum_(v[2]); } else r.감정가 = ovNum_(v[1]); }
-  if (!r.기준일) { const ef = /(?:effective\s+date|date\s+of\s+(?:value|appraisal))[^\d\n]{0,40}(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t); if (ef) r.기준일 = ovUsDate_(ef[1]); }
+  // [2026.10.22 시험가동 가상양도1] 요약 쪽 감정서 — 최종 의견 칸("FINAL OPINION OF MARKET VALUE / $820,000")과 기준일 칸("Effective Date of Value / March 10, 2015", 달 이름 날짜)
+  //  일반 규칙: 최종 의견 가치 칸 바로 뒤 금액, 기준일 칸 바로 뒤 날짜(같은 줄·다음 줄). 비교 방식별 가치(Indicated Value by …)는 최종 의견이 아님
+  if (!r.감정가) { const fo = /(?:FINAL\s+)?(?:OPINION|RECONCILED|CONCLUSION)\s+OF\s+(?:MARKET(?:\s+VALUE)?|VALUE)[^$\d]{0,40}\$\s*([\d,]{5,})/i.exec(t); if (fo) r.감정가 = ovNum_(fo[1]); } // 칸 이름이 두 줄로 끊긴 것("… OF MARKET  $820,000 / VALUE")도
+  if (!r.기준일) { const ef = /(?:effective\s+date|date\s+of\s+(?:value|appraisal))[^\d\n]{0,40}(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t) || new RegExp('(?:effective\\s+date(?:\\s+of\\s+(?:value|appraisal))?|date\\s+of\\s+(?:value|appraisal))\\s*:?\\s*\\n?\\s*' + OV_DATE_SRC_, 'i').exec(t); if (ef) r.기준일 = ovUsDate_(ef[1]); }
   if (!r.감정가) return null;
   // 작성(서명)일 — 기준일보다 한참 뒤면 소급감정(retrospective). 평가기간 밖에 만든 감정이 시가로 인정되는지는 판단이라 밝힌다
   const sd = /Date\s+of\s+Signature[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t); if (sd) r.서명일 = ovUsDate_(sd[1]);
   if (/retrospective/i.test(t) || (r.서명일 && r.기준일 && r.서명일.slice(0, 4) - r.기준일.slice(0, 4) >= 1)) { r.소급감정 = true; r.경고.push('소급감정 — 기준일 ' + (r.기준일 || '?') + '의 가치를 ' + (r.서명일 || '나중') + '에 평가(' + (/desktop\s+appraisal/i.test(t) ? '현장 확인 없는 탁상감정, ' : '') + '평가기간 밖 감정을 시가로 쓸 수 있는지 판단 필요)'); }
+  return r;
+}
+// [2026.10.22 시험가동 가상양도1] 칸 이름 바로 뒤의 값(같은 줄, 없으면 다음 줄) — 영문 표 서류(계약서 요약·청구서)를 줄 단위로 읽는다. re는 칸 이름 정규식 글자(줄 첫머리에서만)
+function ovLabelVal_(t, re) {
+  const m = new RegExp('(?:^|\\n)[ \\t]*(?:' + re + ')[ \\t]*:?[ \\t]*(?:\\n\\s*)?([^\\n]{1,160})', 'i').exec(String(t || '').replace(/\r\n?/g, '\n'));
+  return m ? m[1].replace(/\s+/g, ' ').trim() : '';
+}
+// [2026.10.22 시험가동 가상양도1] 미국 부동산 매매계약서(Purchase Agreement·요약 쪽) — 매매대금·계약금·매수인·매도인·승낙일(계약 성립일)·종결 약정.
+//  정산서의 매매대금·계약 승낙일과 대조하는 데 쓴다(양도가액은 정산서가 근거, 계약서는 대조용). 일반 규칙: 칸 이름 뒤 값(같은 줄·다음 줄), 매매대금이 없으면 이 규칙 대상 아님
+function ovParsePurchaseAgr_(t) {
+  const r = { 종류: '미국 부동산 매매계약서(Purchase Agreement)', kind: 'pa', 통화: 'USD', 경고: [] };
+  const money = function (s) { const m = /\$?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{4,}(?:\.\d{2})?)/.exec(String(s || '')); return m ? ovNum_(m[1]) : 0; };
+  r.매매대금 = money(ovLabelVal_(t, '(?:Total\\s+)?Purchase\\s+Price|Sales?\\s+Price|Contract\\s+Price'));
+  if (!r.매매대금) return null;
+  r.계약금 = money(ovLabelVal_(t, 'Initial\\s+Deposit|Earnest\\s+Money(?:\\s+Deposit)?|Deposit')) || 0;
+  r.매수인 = ovLabelVal_(t, 'Offer\\s+From(?:\\s*\\(\\s*Buyer\\s*\\))?|Buyer(?!\'?s?\\s+(?:Agent|Broker|Signature))(?:\'?s)?(?:\\s+Name)?');
+  r.매도인 = ovLabelVal_(t, 'Seller(?!\'?s?\\s+(?:Agent|Broker|Acceptance|Signature))(?:\'?s)?(?:\\s+Name)?');
+  r.부동산 = ovLabelVal_(t, 'Property(?:\\s+Address)?|Subject\\s+Property');
+  r.작성일 = ovUsDate_(ovLabelVal_(t, 'Date\\s+Prepared|Offer\\s+Date|Date'));
+  r.승낙일 = ovUsDate_(ovLabelVal_(t, 'Seller\'?s?\\s+Acceptance|Date\\s+of\\s+Acceptance|Acceptance(?:\\s+Date)?|Accepted'));
+  r.종결약정 = ovLabelVal_(t, 'Close\\s+of\\s+Escrow|Closing(?:\\s+Date)?');
+  if (!r.승낙일) r.경고.push('승낙일(계약 성립일)을 읽지 못함 — 원문 확인');
+  return r;
+}
+// [2026.10.22 시험가동 가상양도1] 영문 청구서·영수증(Invoice/Receipt) — 발행처·청구 번호·발행일·지급일·청구 대상·공사 내용·허가 번호·품목과 합계(품목 합 = 합계 검산).
+//  공사·수리 대금은 자본적지출 후보이고, 자본적지출(가치 증가·내용연수 연장)인지 수선비인지는 판단이라 정하지 않는다. 일반 규칙: 칸 이름·합계 낱말로 읽고 파일 이름은 보지 않음
+function ovParseInvoice_(t) {
+  const r = { 종류: '영문 청구서·영수증(Invoice/Receipt)', kind: 'invoice', 통화: 'USD', 경고: [], 항목: [] };
+  const lines = String(t || '').split(/\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean), jt = lines.join('\n');
+  const vm = /([A-Z][A-Za-z0-9&.,' -]{1,60}?\b(?:Co\.|Company|Inc\.?|LLC|L\.L\.C\.|Corp\.?|Corporation|Ltd\.?))/.exec(lines.slice(0, 6).join('\n'));
+  r.발행처 = vm ? vm[1].trim() : ovLabelVal_(jt, 'From|Vendor|Contractor|Company');
+  const no = /(?:Invoice|Receipt)\s*(?:#|No\.?|Number)\s*:?\s*([A-Z0-9][A-Z0-9-]{2,})/i.exec(jt); if (no) r.번호 = no[1];
+  const dm = new RegExp('(?:Invoice\\s+Date|Date\\s+of\\s+Invoice|(?:^|\\n|—|–|\\|)\\s*Date)\\s*:?\\s*\\n?\\s*' + OV_DATE_SRC_, 'i').exec(jt); if (dm) r.발행일 = ovUsDate_(dm[1]);
+  const pm = new RegExp('\\bPAID\\b[^\\n]{0,60}?' + OV_DATE_SRC_, 'i').exec(jt) || new RegExp('(?:Payment\\s+Date|Date\\s+Paid)\\s*:?\\s*\\n?\\s*' + OV_DATE_SRC_, 'i').exec(jt); if (pm) r.지급일 = ovUsDate_(pm[1]);
+  r.청구대상 = ovLabelVal_(jt, 'Bill(?:ed)?\\s+To|Sold\\s+To|Customer|Client');
+  const wm = /(?:^|\n)(?:Work(?:\s+Performed)?|Description\s+of\s+Work|Scope(?:\s+of\s+Work)?|Project|Job\s+Description)\s*:?\s*\n?([^\n]{5,200}(?:\n(?!(?:Permit|Items?|Amount|Description|Qty|Quantity)\b)[^\n]{5,200}){0,2})/i.exec(jt);
+  if (wm) r.공사내용 = wm[1].replace(/\s+/g, ' ').trim();
+  const pl = lines.filter(function (l) { return /Permit\s*(?:No\.?|#|Number)?\s*:?\s*\d{2,}[\w-]*/i.test(l); })[0]; if (pl) r.허가 = pl.slice(0, 100);
+  // 품목 — 칸 머리(Item·Amount) 뒤부터 이름표 줄과 금액 줄을 나온 순서대로 짝짓는다(정산서와 같은 방식). 합계 낱말 줄은 합계 자리
+  let st = lines.findIndex(function (l) { return ovIsColHead_(l); });
+  if (st === -1) { const fa = lines.findIndex(function (l) { return (l.match(OV_AMT_RE_) || []).length > 0; }); st = fa <= 0 ? 0 : fa - 1; }
+  const labels = [], amts = [], paired = [];
+  const isTot = function (l) { return /^(?:(?:Grand\s+|Invoice\s+)?TOTAL|Amount\s+Due|Balance\s+Due|Sub\s*-?\s*total)\b/i.test(l); };
+  for (let i = st; i < lines.length; i++) {
+    const l = lines[i];
+    if (ovIsColHead_(l) || ovIsSignLine_(l)) continue;
+    const noAmt = l.replace(OV_AMT_RE_, '').replace(/[\s$]/g, '');
+    if (!noAmt) { (l.match(OV_AMT_RE_) || []).forEach(function (a) { amts.push(ovNum_(a)); }); continue; }
+    if (!/[A-Za-z]/.test(l)) continue;
+    const tail = /^(.*?[A-Za-z)].*?)\s+(-?\$?\s*\d{1,3}(?:,\d{3})*\.\d{2})$/.exec(l);
+    const it = { label: tail ? tail[1] : l, tot: isTot(l), sub: /^Sub\s*-?\s*total/i.test(l) };
+    if (tail) { it.usd = ovNum_(tail[2]); paired.push(it); } else labels.push(it);
+  }
+  let items = null;
+  if (labels.length === amts.length) items = labels.map(function (x, i) { return Object.assign({}, x, { usd: amts[i] }); }).concat(paired);
+  else if (!labels.length) items = paired;
+  if (items) {
+    const tot = items.filter(function (x) { return x.tot && !x.sub; }).slice(-1)[0];
+    r.항목 = items.filter(function (x) { return !x.tot; }).map(function (x) { return { label: x.label.slice(0, 80), usd: x.usd }; });
+    const sum = r.항목.reduce(function (s, x) { return s + Math.round(x.usd * 100); }, 0);
+    if (tot) { r.합계 = tot.usd; r.검산 = Math.abs(sum - Math.round(tot.usd * 100)) <= 1; if (!r.검산 && r.항목.length) r.경고.push('품목 합 $' + (sum / 100).toLocaleString('en-US') + ' ↔ 합계 $' + tot.usd.toLocaleString('en-US') + ' — 원문 확인'); }
+    else { r.합계 = sum / 100; r.경고.push('합계 줄이 없어 품목 합을 합계로 봄 — 원문 확인'); }
+  } else {
+    // 이름표·금액 수가 안 맞으면 — 가장 큰 금액이 나머지 합과 같을 때만 합계로(검산), 아니면 가장 큰 금액을 합계로 보되 ⚠
+    const all = amts.concat(paired.map(function (x) { return x.usd; })), mx = Math.max.apply(null, all.length ? all : [0]);
+    const rest = all.reduce(function (s, v) { return s + Math.round(v * 100); }, 0) - Math.round(mx * 100);
+    r.합계 = mx; r.검산 = Math.abs(rest - Math.round(mx * 100)) <= 1 && all.length > 1;
+    r.경고.push('이름표 ' + (labels.length + paired.length) + '개와 금액 ' + all.length + '개의 수가 달라 품목별로 짝짓지 못함' + (r.검산 ? ' — 가장 큰 금액이 나머지 합과 같아 합계로 봄' : ' — 가장 큰 금액을 합계로 봄(원문 확인)'));
+  }
+  if (!r.합계) return null;
+  r.지급 = /\bPAID\b/i.test(jt) || /RECEIPT/i.test(lines.slice(0, 3).join(' '));
+  const wk = (r.공사내용 || '') + ' ' + r.항목.map(function (x) { return x.label; }).join(' ');
+  r.성격 = /replace|replacement|install|new\s+\w+\s+roof|addition|remodel|renovat|extension|upgrade/i.test(wk) ? '교체·설치·증설 공사 — 자본적지출 후보(판단 필요)' : /repair|patch|clean|maint|service\s+call|paint/i.test(wk) ? '수리·유지 — 수선비(필요경비 아님)일 수 있음(판단 필요)' : '공사·용역 대금 — 자본적지출인지 판단 필요';
   return r;
 }
 function ovToMarkdown_(r) {
@@ -32628,6 +32760,13 @@ function ovToMarkdown_(r) {
   } else if (r.kind === 'tax') {
     kv('기관', r.기관); kv('구분', r.구분); kv('금액', r.금액 ? u(r.금액) : ''); kv('납부일', r.납부일); kv('확인번호', r.확인번호); kv('과세연도', r.과세연도); kv('납부자', r.납부자); kv('배우자', r.배우자);
   } else if (r.kind === 'appraisal') { kv('감정가', u(r.감정가)); kv('기준일', r.기준일); kv('작성(서명)일', r.서명일); }
+  // [2026.10.22 시험가동 가상양도1] 매매계약서·청구서
+  else if (r.kind === 'pa') { kv('부동산', r.부동산); kv('매도인', r.매도인); kv('매수인', r.매수인); kv('매매대금', u(r.매매대금)); kv('계약금', r.계약금 ? u(r.계약금) : ''); kv('작성일', r.작성일); kv('승낙일(계약 성립)', r.승낙일); kv('종결 약정', r.종결약정); }
+  else if (r.kind === 'invoice') {
+    kv('발행처', r.발행처); kv('번호', r.번호); kv('발행일', r.발행일); kv('지급일', r.지급일); kv('청구 대상', r.청구대상); kv('공사 내용', r.공사내용); kv('허가', r.허가);
+    kv('합계', u(r.합계) + (r.지급 ? ' (지급 완료 표시)' : '')); if (r.검산 !== undefined) kv('검산(품목 합 = 합계)', r.검산 ? '✓' : '⚠ 안 맞음'); kv('세무 쓰임', r.성격);
+    if (r.항목 && r.항목.length) { out.push('', '| 품목 | 금액 |', '|---|---|'); r.항목.forEach(function (x) { out.push('| ' + String(x.label).replace(/\|/g, '/') + ' | ' + u(x.usd) + ' |'); }); }
+  }
   (r.경고 || []).forEach(function (w) { out.push('⚠ ' + w); });
   out.push('', '_달러 금액·날짜만 서류에서 읽었습니다. 원화 환산(기준환율)·지분·양도비 범위는 판단이라 처리개요에서 묻습니다._');
   return out.join('\n');
@@ -32635,27 +32774,65 @@ function ovToMarkdown_(r) {
 function caseProcOverseasFacts_(c) {
   let memos = [];
   try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) { memos = []; } // 메모를 못 읽어도 영문 원문은 본다
+  // [2026.10.22 시험가동 가상양도1] 한글 번역본이 PDF·사진이면 메모 목록(부탁 문장이 있는 글만)에 안 들어와 번역본을 못 찾았다(「매도인정산서 번역본.pdf」).
+  //  일반 규칙: 한글 위주 글자이면서 ① 머리에 "번역"이 있거나 ② 원문 서류 종류 낱말(정산서·증여증서·감정평가·납부 확인)과 해외 표시(달러·$·미국·에스크로·IRS 등)가 함께 있으면 번역본으로 받는다.
+  //  메모 목록은 그대로 두고(다른 메모 후보 규칙에 섞이지 않게) 여기서만 쓴다. 글자는 이미 읽어 둔 것만(서류 정리가 먼저 읽음 — 여기서 새 글자인식을 하지 않음,
+  //  국외자산 사건인지 보는 데도 이 함수를 불러 국내 사건 서류 수백 건을 새로 읽지 않게)
+  try {
+    try { caseProcParseAll_(c); } catch (e) {} // 서류 정리(같은 실행 2분 안 한 번만 — 아래 원문 대조도 이것을 씀)로 글자를 먼저 읽어 둠
+    const seen = {}; memos.forEach(function (m) { seen[m.file] = 1; });
+    const prevNo = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = true;
+    try {
+      caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_|^~\$/.test(f.name) && !seen[f.name] && !caseProcIsOutputDocFor_(c, f.name, f.dir); }).forEach(function (f) {
+        let tx = ''; try { tx = tc_docText_(f) || ''; } catch (e) { tx = ''; }
+        if (tx && caseProcLooksTranslation_(tx)) { memos.push({ file: f.name, text: String(tx), pdfText: true }); seen[f.name] = 1; }
+      });
+    } finally { TC_NO_NEW_OCR_ = prevNo; }
+  } catch (e) {}
   const out = { sale: null, buy: null, appraisal: null, deed: null, taxes: [] };
   memos.forEach(function (m) {
-    const t = String(m.text), rows = t.split('\n').filter(function (l) { return /^\s*\|/.test(l); }).map(function (l) { return l.split('|').slice(1, -1).map(function (x) { return x.replace(/\*\*/g, '').trim(); }); });
-    const cell = function (re) { const r = rows.filter(function (r) { return re.test(r[0] || '') || re.test(r[2] || ''); })[0]; if (!r) return ''; return re.test(r[0] || '') ? (r[1] || '') : (r[3] || ''); };
+    const t = String(m.text);
+    let rows = t.split('\n').filter(function (l) { return /^\s*\|/.test(l); }).map(function (l) { return l.split('|').slice(1, -1).map(function (x) { return x.replace(/\*\*/g, '').trim(); }); });
+    // [2026.10.22 시험가동 가상양도1] 표(|)가 없는 글(번역본 PDF 글자 — "이름 줄 / 값 줄"이 번갈아 나옴)은 이웃한 두 줄을 [이름, 값]으로 본다.
+    //  번역자 확인 문구 줄은 빼고, 금액만 있는 줄은 이름이 될 수 없다. 같은 이름이 여러 줄이면 가장 짧은 이름 줄(칸 이름 그 자체)을 먼저 본다
+    const amtOnly = function (s) { return /^\s*\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?\s*(?:달러|USD|원)?\s*$/.test(String(s || '')); };
+    const flat = !rows.length;
+    if (flat) {
+      // 한 줄에 칸이 띄어쓰기 여럿·탭으로 나뉘어 있으면(「매매가액      1,650,000」) 그 줄의 첫 칸·끝 칸이 [이름, 값], 아니면 이웃한 두 줄
+      const ls = t.split('\n').filter(function (l) { return l.trim() && !/^\s*(?:번\s*역\s*자|번역\s*확인|Translat(?:or|ed\s+by))|원문과\s*(?:다름|상이)|틀림이\s*없/i.test(l); });
+      rows = [];
+      const dateOnly = function (s) { return /^\s*(?:19|20)\d{2}\s*[년.\-\/]\s*\d{1,2}\s*[월.\-\/]\s*\d{1,2}\s*일?\.?\s*$/.test(s) || (!!ovUsDate_(s) && !/[A-Za-z가-힣]{2,}/.test(String(s).replace(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*/i, ''))); };
+      let prev = null;
+      ls.forEach(function (l) {
+        const cs = l.trim().split(/\t|\s{2,}/).map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+        if (cs.length >= 2 && !amtOnly(cs[0]) && !dateOnly(cs[0])) { rows.push([cs[0], cs[cs.length - 1]]); prev = null; return; }
+        const s = cs.join(' ');
+        if (prev !== null && !amtOnly(prev) && !dateOnly(prev)) rows.push([prev, s]);
+        prev = s;
+      });
+    }
+    const cell = function (re) { let rs = rows.filter(function (r) { return re.test(r[0] || '') || re.test(r[2] || ''); }); if (flat) rs = rs.slice().sort(function (a, b) { return a[0].length - b[0].length; }); const r = rs[0]; if (!r) return ''; return re.test(r[0] || '') ? (r[1] || '') : (r[3] || ''); };
+    // 칸 이름에 날짜가 붙은 줄("… 잔금(에스크로 종료)일 2026년 7월 15일")과 다음 줄 날짜 둘 다 본다
+    const cellDate = function (re) { const v = caseProcKrDate_(cell(re)); if (v) return v; for (let i = 0; i < rows.length; i++) { const r = rows[i]; if (!re.test(r[0] || '')) continue; const d = caseProcKrDate_(String(r[0]).slice(String(r[0]).search(re))) || caseProcKrDate_(r[1]); if (d) return d; } return ''; };
     if (/매도인\s*(최종\s*)?정산서|SELLER'?S\s*(FINAL\s*)?SETTLEMENT/i.test(t)) {
-      const price = rows.filter(function (r) { return /총\s*매매\s*대금|Total\s*Consideration/i.test(r[0] || ''); }).map(function (r) { return caseProcUsd_(r[2] || r[1]); })[0] || 0;
+      const price = rows.filter(function (r) { return /총\s*매매\s*대금|Total\s*Consideration|매매\s*(?:가액|대금)|Sales?\s*Price/i.test(r[0] || ''); }).map(function (r) { return caseProcUsd_(r[2] || r[1]); }).filter(Boolean)[0] || 0;
       const exp = [];
       let grp = '';
       rows.forEach(function (r) {
         if (/^\[/.test(r[0] || '') || /^\*?\*?\[/.test(r[0] || '')) { grp = r[0]; return; }
-        const d = caseProcUsd_(r[1]); if (!d || !r[0] || /총\s*매매|순\s*수령|합계|TOTAL/i.test(r[0])) return;
+        if (flat && !amtOnly(r[1])) return; // 이웃 두 줄 짝은 값 줄이 금액일 때만 항목
+        const d = caseProcUsd_(r[1]); if (!d || !r[0] || /총\s*매매|매매\s*(?:가액|대금)|순\s*수령|합계|TOTAL|Consideration|Sales?\s*Price/i.test(r[0])) return;
         // 양도비로 볼 만한 것(중개·에스크로·권원보험·이전세·등록 수수료) = 미리 체크, 대출 상환·이자·안분·크레딧·보증보험 = 양도비 아님(체크 안 함)
-        const sure = /COMMISSION|중개|ESCROW|에스크로|TITLE|권원|소유권보험|이전세|Transfer\s*Tax|등록|Recording|서류처리|수수료|Wire/i.test(grp + ' ' + r[0]) && !/PAYOFF|상환|이자|안분|PRORATION|크레딧|Credit|보증보험|Home\s*Shield|할인|Discount/i.test(grp + ' ' + r[0]);
-        const no = /PAYOFF|원금|상환|이자|안분|PRORATION/i.test(grp + ' ' + r[0]);
+        // [2026.10.22 시험가동 가상양도1] 지방정부가 붙은 양도세("카운티 양도세" = Documentary Transfer Tax, 부동산 이전세)도 이전세, 재산세 "일할" 정산은 안분
+        const sure = /COMMISSION|중개|ESCROW|에스크로|TITLE|권원|소유권보험|이전세|Transfer\s*Tax|Documentary|(?:카운티|County|시|주)\s*(?:부동산\s*)?양도세|등록|Recording|서류처리|수수료|Wire/i.test(grp + ' ' + r[0]) && !/PAYOFF|상환|이자|안분|일\s*할|PRORATION|크레딧|Credit|보증보험|Home\s*Shield|할인|Discount/i.test(grp + ' ' + r[0]);
+        const no = /PAYOFF|원금|상환|이자|안분|일\s*할|PRORATION/i.test(grp + ' ' + r[0]);
         if (!no) exp.push({ label: r[0].slice(0, 60), usd: d, sure: sure });
       });
       const disc = rows.filter(function (r) { return /할인|Discount/i.test(r[0] || ''); }).map(function (r) { return caseProcUsd_(r[1]); })[0] || 0;
-      out.sale = { file: m.file, price: price, date: caseProcKrDate_(cell(/종결일|CLOSING\s*DATE/i)) || caseProcKrDate_(cell(/작성일|DATE/i)), loc: (cell(/부동산|PROPERTY/i) || '').replace(/<br>/g, ' '), sellers: cell(/매도인|SELLER/i), exp: exp, discount: disc };
+      out.sale = { file: m.file, price: price, date: cellDate(/종결일|CLOSING\s*DATE|Close\s*of\s*Escrow|잔금|에스크로\s*종료/i) || caseProcKrDate_(cell(/작성일|DATE/i)), loc: (cell(/부동산|PROPERTY/i) || '').replace(/<br>/g, ' '), sellers: cell(/매도인|SELLER/i), exp: exp, discount: disc };
     } else if (/매수인.{0,20}정산서|BUYER/i.test(t) && /정산서|STATEMENT/i.test(t)) {
-      const price = rows.filter(function (r) { return /총\s*매매\s*대금|Total\s*Consideration|매매\s*대금|Sales?\s*Price/i.test(r[0] || ''); }).map(function (r) { return caseProcUsd_(r[1] || r[2]); }).filter(Boolean)[0] || 0;
-      out.buy = { file: m.file, price: price, date: caseProcKrDate_(cell(/종결일|CLOSING\s*DATE|정산일/i)) || caseProcKrDate_(t.slice(0, 1500)) };
+      const price = rows.filter(function (r) { return /총\s*매매\s*대금|Total\s*Consideration|매매\s*(?:대금|가액)|Sales?\s*Price|Purchase\s*Price/i.test(r[0] || ''); }).map(function (r) { return caseProcUsd_(r[1] || r[2]); }).filter(Boolean)[0] || 0;
+      out.buy = { file: m.file, price: price, date: cellDate(/종결일|CLOSING\s*DATE|정산일|Close\s*of\s*Escrow|잔금|에스크로\s*종료/i) || caseProcKrDate_(t.slice(0, 1500)) };
     }
     if (/감정\s*평가/.test(t) && /정의된\s*가치|시장\s*가치|Market\s*Value|defined\s*value/i.test(t)) {
       const am = /(\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)\s*\**\s*기준[^\n]{0,80}?\(\s*\$\s*([\d,]+)\s*\)/.exec(t) || /기준[^\n]{0,80}?\$\s*([\d,]{5,})/.exec(t);
@@ -32663,9 +32840,12 @@ function caseProcOverseasFacts_(c) {
     }
     // 증여증서 — 제목이 증여증서인 문서만(권원조사보고서 등 본문에 GRANT DEED라는 말만 나오는 문서는 아님)
     if (/^[\s\S]{0,400}(증여\s*증서|GRANT\s*DEED)/i.test(t) && !/권원\s*조사|Preliminary\s*Report|PCOR|소유권\s*변경\s*예비/i.test(t.slice(0, 400))) {
-      const dm = /날짜\s*\(Dated\)\s*[:：]?\s*\**\s*([^\n*]+)/i.exec(t) || /Dated[^\n]{0,10}?((?:19|20)\d{2}[^\n]{0,20})/i.exec(t);
+      // [2026.10.22 시험가동 가상양도1] 번역본 PDF는 "작성일 2015년 3월 2일"·"등기일 / 2015년 3월 10일"(이름 줄·값 줄)로 적힌다 — 서명일(작성일)과 등기일을 따로 읽는다
+      const dm = /날짜\s*\(Dated\)\s*[:：]?\s*\**\s*([^\n*]+)/i.exec(t) || /Dated[^\n]{0,10}?((?:19|20)\d{2}[^\n]{0,20})/i.exec(t) || /(?:작성|서명)\s*일(?:자)?\s*[:：]?\s*\**\s*([^\n*]+)/.exec(t);
       const dd = dm ? caseProcKrDate_(dm[1]) : '';
+      const rd = cellDate(/등기\s*일|등록\s*일|Record(?:ed|ing)/i);
       if (!out.deed || (!out.deed.date && dd)) out.deed = { file: m.file, date: dd };
+      if (rd && !out.deed.recDate) out.deed.recDate = rd;
     }
     if (/IRS|Direct\s*Pay|Franchise\s*Tax|FTB|예납\s*세액/i.test(t) && /납부\s*금액|Payment\s*Amount/i.test(t)) {
       let amt = caseProcUsd_(cell(/납부\s*금액|Payment\s*Amount/i)), dt = caseProcKrDate_(cell(/납부일|Payment\s*Date/i));
@@ -32715,6 +32895,8 @@ function caseProcOverseasOrig_(c, out) {
       cur.buyer = cur.buyer || o.buyer; cur.escrow = o.escrow; cur.net = cur.net || o.net; cur.check = o.check; cur.origFile = best.f.name; cur.taxes = o.taxes;
       if (!cur.loc && o.loc) cur.loc = o.loc;
       if (!cur.sellers && o.sellers) cur.sellers = o.sellers;
+      // [2026.10.22 시험가동 가상양도1] 번역본 매도인이 한글 이름뿐이면 원문 영문 이름을 앞에 붙인다 — 증서 양수인·거소증 영문 이름과 같은 사람인지 맞춰 보는 데 영문이 필요(한글만 남기면 대조가 끊김)
+      else if (o.sellers && /[A-Za-z]/.test(o.sellers) && !/[A-Za-z]/.test(cur.sellers)) cur.sellers = o.sellers + '(' + cur.sellers + ')';
     }
     // 정산서에 적힌 원천징수(FTB 593·FIRPTA) — 외국납부세액 후보
     (o.taxes || []).forEach(function (x) { if (!out.taxes.some(function (y) { return same(y.usd, x.usd); })) out.taxes.push({ file: best.f.name, usd: x.usd, date: o.date, payer: o.sellers, who: '정산서 원천징수(' + x.label.slice(0, 40) + ')' }); });
@@ -32726,7 +32908,8 @@ function caseProcOverseasOrig_(c, out) {
     out.origFiles = out.origFiles.concat(names(deeds));
     if (!out.deed) out.deed = { file: d.f.name, date: r.서명일 || r.등록일 || '' };
     const dd = out.deed;
-    dd.recDate = r.등록일 || ''; dd.signDate = r.서명일 || dd.date; dd.grantor = r.양도인 || ''; dd.grantees = r.양수인 || []; dd.tenancy = r.공유형태 || ''; dd.gift = !!r.무상; dd.origFile = d.f.name;
+    // [2026.10.22 시험가동 가상양도1] 원문에서 등록일을 못 읽으면 번역본 등기일을 지우지 않고 둠
+    dd.recDate = r.등록일 || dd.recDate || ''; dd.signDate = r.서명일 || dd.date; dd.grantor = r.양도인 || ''; dd.grantees = r.양수인 || []; dd.tenancy = r.공유형태 || ''; dd.gift = !!r.무상; dd.origFile = d.f.name;
     out.checks.push('증여증서 원문(' + names(deeds).join(', ') + '): 등록일(Recorded) ' + (r.등록일 || '못 읽음') + ' · 서명일(Dated) ' + (r.서명일 || '못 읽음') + (dd.file !== d.f.name && dd.date ? '(번역본 날짜 ' + dd.date + ')' : '') + ' · ' + (r.양도인 || '?') + ' → ' + (r.양수인 || []).join(', ') + (r.공유형태 ? '(' + r.공유형태 + ')' : '') + (r.무상 ? ' · 무상(증여) 표시' : ''));
   }
   // 감정평가서
@@ -32759,6 +32942,23 @@ function caseProcOverseasOrig_(c, out) {
       else { out.taxes.push({ file: g.files[0], usd: g.usd, date: g.date, payer: g.payer + (g.spouse ? ' · 배우자 ' + g.spouse : ''), who: g.who, spouse: g.spouse, origFiles: g.files }); out.checks.push(g.who + ' ' + usd(g.usd) + ' — 번역본 없음, 영문 원문 ' + g.files.length + '벌(' + g.files.join(', ') + ')로 읽음' + (g.conf ? '(확인번호 ' + g.conf + ')' : '')); }
     });
   }
+  // [2026.10.22 시험가동 가상양도1] 매매계약서(Purchase Agreement) — 정산서 매매대금·계약 승낙일과 대조(양도가액 근거는 정산서, 계약서는 대조용)
+  of('pa').forEach(function (x) {
+    const r = x.p.result, s = out.sale; out.origFiles.push(x.f.name);
+    const bits = ['매매대금 ' + usd(r.매매대금) + (s && s.price ? (same(s.price, r.매매대금) ? '(매도 정산서와 일치)' : ' ↔ 매도 정산서 ' + usd(s.price) + ' — 다름, 계약 뒤 가격 조정(수리 크레딧 등)이 있었는지 확인') : '')];
+    if (r.승낙일) bits.push('승낙일(계약 성립) ' + r.승낙일);
+    if (r.계약금) bits.push('계약금 ' + usd(r.계약금));
+    if (r.종결약정) bits.push('종결 약정 "' + r.종결약정.slice(0, 40) + '"');
+    out.checks.push('매매계약서 원문(' + x.f.name + '): ' + bits.join(' · '));
+    if (s && r.승낙일 && !s.contractDate) s.contractDate = r.승낙일;
+  });
+  // [2026.10.22 시험가동 가상양도1] 영문 공사 청구서·영수증 — 자본적지출 후보로 모아 보여 준다(자본적지출인지 수선비인지, 어느 날 환율로 바꿀지는 판단).
+  //  국외자산 카드에 따로 칸이 없어 어디에 넣을지는 세무사님이 정함 — 금액은 지급일·발행일과 함께 밝힘
+  of('invoice').forEach(function (x) {
+    const r = x.p.result; out.capex = out.capex || []; out.origFiles.push(x.f.name);
+    out.capex.push({ file: x.f.name, usd: r.합계, date: r.지급일 || r.발행일 || '', vendor: r.발행처 || '', work: r.공사내용 || '', nature: r.성격 || '', check: r.검산 });
+    out.checks.push('공사 청구서·영수증 원문(' + x.f.name + '): ' + (r.발행처 || '발행처 못 읽음') + ' ' + usd(r.합계) + (r.지급일 ? ' · 지급일 ' + r.지급일 : r.발행일 ? ' · 발행일 ' + r.발행일 : '') + (r.검산 ? ' · 품목 합 = 합계 ✓' : r.검산 === false ? ' · ⚠ 품목 합 ≠ 합계' : '') + (r.공사내용 ? ' · 공사 내용 "' + r.공사내용.slice(0, 60) + '"' : '') + ' — ' + (r.성격 || '자본적지출인지 판단 필요'));
+  });
 }
 // 처리개요 단계 — 국외자산 질문(환율·지분·5년 거주) + 서류 달러 금액 × 답한 환율 = 원화 후보
 // [2026.10.15 1단계 ②] 상담 메모 대조 — 메모에 적힌 값과 이미 채워진 처리개요 칸을 맞춰 본다.
@@ -33933,6 +34133,17 @@ function caseProcUnzipAll_(c) {
     } catch (e) { fail.push(n + '(' + String(e && e.message || e).slice(0, 60) + ')'); }
   });
   return { done: done, fail: fail, same: same };
+}
+// [2026.10.22 시험가동 가상양도1] 외국 서류의 한글 번역본인지(글자 내용으로) — 한글 위주이면서 ① 머리에 "번역"이 있거나 ② 원문 서류 종류 낱말과 해외 표시가 함께 있을 때.
+//  일반 규칙: 파일 이름이 아니라 글자로 정한다. 국내 감정평가서·영수증(해외 표시 없음)은 번역본이 아니다
+function caseProcLooksTranslation_(t) {
+  t = String(t || '');
+  const hn = (t.match(/[가-힣]/g) || []).length, ln = (t.match(/[A-Za-z]/g) || []).length;
+  if (hn < 30 || hn < ln * 0.5) return false;
+  const head = t.slice(0, 300).replace(/\s+/g, '');
+  const abroad = /\$|달러|USD|미국|캘리포니아|에스크로|Escrow|IRS|FTB|Grant\s*Deed|카운티|County/i.test(t);
+  if (/번역(?:본|문)?/.test(head) && abroad) return true;
+  return abroad && /정산서|증여\s*증서|감정\s*평가|납부\s*확인|예납\s*세액|매매\s*계약서|SETTLEMENT|GRANT\s*DEED|APPRAISAL/i.test(t.slice(0, 600));
 }
 function caseProcLooksMemo_(t) {
   t = String(t || '');
@@ -43081,21 +43292,48 @@ function docImmigrationParse_(text) {
     type = 'entryexit';
     r = { 종류: '출입국사실증명', 성명: '', 생년월일: '', 조회시작: '', 조회끝: '', 기록: [], 국외체류: [], 첫기록: null, 지금: '', 판독: false, 경고: [], 참고: [] };
     var en = /성\s*명\s*\(\s*Full\s*name\s*\)\s*[:：]?\s*([A-Z][A-Z ]{2,40}[A-Z])/i.exec(t) || /성\s*명\s*\(\s*Full\s*name\s*\)\s*[:：]?\s*([가-힣]{2,5})(?![가-힣])/i.exec(t);
+    // [2026.10.22 시험가동 가상양도1] 한글만 있는 출입국사실증명(「성명 / 문지원」「생년월일 / 1968.05.14」 — 영문 괄호·빗금 없음)도 성명·생년월일을 읽는다
+    if (!en) en = /성\s*명\s*[:：]?\s*([가-힣]{2,5})(?![가-힣])/.exec(t);
     if (en) r.성명 = en[1].replace(/\s+/g, ' ').trim();
-    var bm = /\/\s*((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\./.exec(t); if (bm) r.생년월일 = ymd(bm[1], bm[2], bm[3]);
+    var bm = /\/\s*((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\./.exec(t) || /생\s*년\s*월\s*일\s*[:：]?\s*((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})/.exec(t); if (bm) r.생년월일 = ymd(bm[1], bm[2], bm[3]);
     var hi = t.search(/출\s*국\s*\(\s*Departure|입\s*국\s*\(\s*Entry/i), ei = t.search(/이\s*하\s*빈\s*칸|\(\s*The\s*End\s*\)/i), pi = t.search(/조\s*회\s*기\s*간|Reference\s*Period/i);
     // 조회 기간 — 표 끝(이하빈칸) 뒤 「조회 기간」 앞뒤의 날짜 두 개
-    var pz = ei >= 0 && pi > ei ? dates(t.slice(ei, pi + 40)) : pi >= 0 ? dates(t.slice(Math.max(0, pi - 60), pi + 80)) : [];
+    //  [2026.10.22 시험가동 가상양도1] 조회 기간이 표 앞(머리)에 있는 서식은 칸 이름 바로 뒤 날짜 두 개를 먼저 — 앞쪽 60자에 생년월일이 걸려 조회 시작으로 잘못 읽히지 않게
+    var pAfter = pi >= 0 ? dates(t.slice(pi, pi + 80)) : [];
+    var pz = ei >= 0 && pi > ei ? dates(t.slice(ei, pi + 40)) : pAfter.length >= 2 ? pAfter : pi >= 0 ? dates(t.slice(Math.max(0, pi - 60), pi + 80)) : [];
     if (pz.length >= 2) { var pv = pz.slice(0, 2).sort(); r.조회시작 = pv[0]; r.조회끝 = pv[1]; } else r.경고.push('조회 기간을 읽지 못함 — 원문 확인');
-    if (hi < 0) r.경고.push('출국·입국 표를 찾지 못함 — 원문 확인');
+    // [2026.10.22 시험가동 가상양도1] 한글만 있는 표(머리 「구분 / 출입국일자 / 출입국항 / 행선지」, 행 「출국 · 2018.08.20 · 인천공항 · 미국」) — 구분이 줄마다 적혀 있어
+    //  줄 전체(또는 줄 첫머리)가 출국·입국인 줄과 바로 뒤(같은 줄·다음 줄) 날짜를 짝짓는다. 표 끝 표시(이하빈칸)가 없으면 「위 사실을 증명」 또는 문서 끝까지
+    var kr = null;
+    if (hi < 0) {
+      var kl = t.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean), kEnd = false;
+      kr = [];
+      for (var q = 0; q < kl.length; q++) {
+        if (/이\s*하\s*빈\s*칸|위\s*(?:의\s*)?사\s*실\s*을\s*증\s*명|\(\s*The\s*End\s*\)/i.test(kl[q])) { kEnd = true; break; }
+        var km = /^(출\s*국|입\s*국)(?:\s+|$)(.*)$/.exec(kl[q]); if (!km) continue;
+        var kd = dates(km[2]); if (!kd.length && q + 1 < kl.length) kd = dates(/^((?:19|20)\d{2})\.\s*\d{1,2}\.\s*\d{1,2}/.test(kl[q + 1]) ? kl[q + 1] : '');
+        if (kd.length) kr.push({ 구분: /출/.test(km[1]) ? '출국' : '입국', 날짜: kd[0] });
+      }
+      if (!kr.length) kr = null; // 표 끝 표시가 없으면 문서 끝까지 읽은 것(kEnd = 끝 표시를 만났는지)
+    }
+    if (hi < 0 && !kr) r.경고.push('출국·입국 표를 찾지 못함 — 원문 확인');
     else {
-      var seg = t.slice(hi, ei > hi ? ei : pi > hi ? pi : t.length), tok = [], m2, re2 = /\(\s*Not\s*Available\s*\)|((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?/gi;
-      while ((m2 = re2.exec(seg))) tok.push(m2[1] ? ymd(m2[1], m2[2], m2[3]) : null);
-      var ok = tok.length > 0 && ei > hi;
+      var tok = [], ok;
+      if (kr) {
+        // 구분이 적힌 행 — 첫 행이 입국이면 그 앞 출국은 조회 시작 전(기록 없음). 출국·입국이 번갈아 나와야 기간을 계산한다
+        if (kr[0].구분 === '입국') tok.push(null);
+        ok = true;
+        kr.forEach(function (x) { if ((tok.length % 2 === 0) !== (x.구분 === '출국')) ok = false; tok.push(x.날짜); });
+      } else {
+        var seg = t.slice(hi, ei > hi ? ei : pi > hi ? pi : t.length), m2, re2 = /\(\s*Not\s*Available\s*\)|((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?/gi;
+        while ((m2 = re2.exec(seg))) tok.push(m2[1] ? ymd(m2[1], m2[2], m2[3]) : null);
+        ok = tok.length > 0 && ei > hi;
+      }
       for (var k = 1; k < tok.length; k++) if (tok[k] && tok[k - 1] && tok[k] < tok[k - 1]) ok = false;
       tok.forEach(function (v, i) { if (v === null && i !== 0 && i !== tok.length - 1) ok = false; });
       if (r.조회시작 && tok.some(function (v) { return v && (v < r.조회시작 || v > r.조회끝); })) ok = false;
-      r.기록 = tok.map(function (v, i) { return { 구분: i % 2 === 0 ? '출국' : '입국', 날짜: v }; });
+      r.기록 = kr ? (tok[0] === null ? [{ 구분: '출국', 날짜: null }] : []).concat(kr.map(function (x) { return { 구분: x.구분, 날짜: x.날짜 }; })) // 한글 표는 적힌 구분 그대로
+        : tok.map(function (v, i) { return { 구분: i % 2 === 0 ? '출국' : '입국', 날짜: v }; });
       r.판독 = ok;
       if (!tok.length) r.경고.push('출입국 기록 날짜를 읽지 못함 — 원문 확인');
       else if (!ok) r.경고.push('출입국 날짜가 시간 순서가 아니거나 표 끝을 찾지 못함(글자인식이 칸을 흩었을 수 있음) — 체류 기간을 계산하지 않음, 원문 확인');
