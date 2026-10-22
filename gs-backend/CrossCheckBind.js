@@ -206,7 +206,7 @@ function cxBindGI_(cc, facts) {
     return [{ path: 'base', key: 'base', label: '상속개시일(사망일)', input: 'date', cur: cc.기준일 || '', vals: vals }];
   }
   if (cc.세목 === 'gift') {
-    const donee = String(((cc.사건개요 || {}).giftDoneeName) || cc.납세자 || '').replace(/\s+/g, '');
+    const donee = String(((cc.사건개요 || {}).giftDoneeName) || cc.납세자 || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); // [2026.10.23 ㅌ6] "김도윤(수증자)"의 괄호를 떼야 등기부 권리자와 맞는다 — 안 맞으면 등기접수일(§24) 법령 값이 빠져 계약서 증여일과 어긋난다며 되물었다(가상증여9)
     sure.filter(function (f) { return f.kind === '증여일'; }).forEach(function (f) { vals.push({ v: String(f.value), src: (f.src.docType || '서류') + ' ' + f.src.file + ' 증여일', doc: f.src.docType || '서류' }); });
     // 등기부 증여 줄(권리자 = 수증자) 접수일 — 이번 증여 기간(다른 증여일 사실 ±2년) 안의 것만
     const near = vals.map(function (x) { return x.v; });

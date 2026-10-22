@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 23:07 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-22 23:18 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -58718,7 +58718,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (tab === 'transfer' && typeof tcLoadTransferCalcIn_ === 'function') tcLoadTransferCalcIn_(st.case).then(function(ok){ st.calcInLoaded = !!ok; startCalc0(); });
       // [2026.10.17] 상속 — 서류 규칙 정리(사건처리 답 포함, 토큰 0) 결과를 확인창 없이 계산기에 바로 넣는다(예전: "자동채우기를 할까요?" 확인을 눌러야 했다)
       else if (tab === 'inheritance' && typeof tcApplyInheritanceRule_ === 'function') giHash().then(function(){ return callGas('tc_rule_inheritance_facts', { caseId: st.caseId }); }).then(function(rf){ if (rf && rf.ok) { try { tcApplyInheritanceRule_(rf); st.calcInLoaded = true; } catch (e) {} } startCalc0(); }).catch(function(){ startCalc0(); });
-      else giHash().then(function(){ if (tab === 'gift') st.calcInLoaded = true; startCalc0(); }); // 증여 — 처리개요의 계산기 칸 값(아래)으로
+      // [2026.10.23 ㅌ8] 증여 — 계산 직전에 사건을 서버에서 새로 읽는다: 넥스(value_set)·사이드바가 처리개요에 정한 값(인수채무액 3억)이 화면이 들고 있던 옛 사건 사본에 없어 계산기 인수채무 칸이 0으로 남았다(가상증여9)
+      else giHash().then(function(){ return (tab === 'gift' && typeof st.run === 'function') ? st.run('view').then(function(v){ if (v && v.ok && v.사건) st.case = v.사건; }).catch(function(){}) : null; }).then(function(){ if (tab === 'gift') st.calcInLoaded = true; startCalc0(); }); // 증여 — 처리개요의 계산기 칸 값(아래)으로
     };
     // [2026.10.17] 증여·상속 — 이 계산이 쓴 입력의 해시를 받아 저장에 남긴다(답으로 값이 바뀌면 사건처리가 다시 계산)
     var giHash = function(){
