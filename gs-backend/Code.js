@@ -37930,7 +37930,10 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
 // 세액인쇄 서식 PDF 저장 — 화면(세액인쇄)이 만든 서식 HTML을 PDF로 바꿔 사건 폴더 보고서_내부에 저장(같은 이름이면 바꿔 씀)
 function caseProcSavePdf_(c, body) {
   const html = String(body.html || '');
-  if (!html || html.length > 3000000) return { ok: false, error: '서식 내용이 없거나 너무 큽니다.' };
+  // [2026.10.23 A9] 화면이 원본 모양 모듈로 만든 PDF(base64)를 그대로 받는 길 — 상속·증여 필수 서식(원본 모양만 있음)을 사건처리가 저장할 수 있게. html이 오면 예전처럼 html→PDF 변환
+  const pdfB64 = String(body.pdfBase64 || '');
+  if (!pdfB64 && (!html || html.length > 3000000)) return { ok: false, error: '서식 내용이 없거나 너무 큽니다.' };
+  if (pdfB64 && pdfB64.length > 12000000) return { ok: false, error: '서식 PDF가 너무 큽니다(8MB 초과).' };
   const tP = {}, tpk = function (k, t) { tP[k] = Math.round((Date.now() - t) / 100) / 10; }; let tp0 = Date.now(); // [2026.10.23 속도 ㅅ4차] ⑤ 서버 안쪽 시간 — 화면 🖨 줄에
   const sub = work_getCaseSubfolders({ caseId: c.id });
   if (!sub || !sub.internalFolderId) return { ok: false, error: '사건 폴더(보고서_내부)를 찾지 못했습니다.' };
@@ -37939,8 +37942,8 @@ function caseProcSavePdf_(c, body) {
   const old = folder.getFilesByName(name);
   while (old.hasNext()) old.next().setTrashed(true);
   tpk('폴더 찾기', tp0); tp0 = Date.now();
-  const pdf = Utilities.newBlob(html, 'text/html', 'f.html').getAs('application/pdf').setName(name);
-  tpk('PDF 변환(' + Math.round(html.length / 1024) + 'KB)', tp0); tp0 = Date.now();
+  const pdf = pdfB64 ? Utilities.newBlob(Utilities.base64Decode(pdfB64), 'application/pdf', name) : Utilities.newBlob(html, 'text/html', 'f.html').getAs('application/pdf').setName(name); // [2026.10.23 A9]
+  tpk(pdfB64 ? '원본 모양 PDF 받음(' + Math.round(pdfB64.length * 3 / 4 / 1024) + 'KB)' : 'PDF 변환(' + Math.round(html.length / 1024) + 'KB)', tp0); tp0 = Date.now();
   const file = folder.createFile(pdf);
   tpk('파일 저장', tp0); tp0 = Date.now();
   const saved = caseProcLoad_(c.id);

@@ -3238,14 +3238,35 @@
     try {
       var group = (typeof TC_TAB_LABELS_ !== 'undefined') ? TC_TAB_LABELS_[tab] : '';
       if (!group || typeof PRINT_REGISTRY_ === 'undefined' || typeof printExtractPages_ !== 'function' || typeof printFormDocHtml_ !== 'function') return Promise.resolve({ ok: false, error: '세액인쇄 화면이 준비되지 않음' });
-      var rows = [];
-      PRINT_REGISTRY_.filter(function(item){ return item.group === group; }).forEach(function(item){ printExtractPages_(item).forEach(function(r){ if (r.ready && r.section === 'required' && r.html) rows.push(r); }); });
-      if (!rows.length) return Promise.resolve({ ok: false, error: '준비된 필수 서식이 없음(계산 결과 확인)' });
-      var html = printFormDocHtml_(group + ' 신고서식', rows.map(function(r){ return r.html; }).join(''))
-        .replace(/<div class="pf-toolbar">[\s\S]*?<\/div>/, '').replace('background:#e9eaee', 'background:#fff');
       // [2026.10.22 ⑥ 응답 유실 복구] 서식 PDF 저장도 긴 호출 — 응답이 끊기면 서버 현황(서식 파일 시각)으로 끝났는지 확인해 잇는다
-      var nForms = rows.length;
-      return nxAiCpLongRun_(st, 'savePdf', { html: html, title: group + ' 신고서식', forms: nForms }, function(v, since){ var p = v.서식; return p && p.파일 && Number(p.ms) >= since ? { ok: true, id: p.파일, name: p.이름 || (group + ' 신고서식'), forms: p.서식수 || nForms } : null; }, 'calc')
+      var checkFn = function(nForms){ return function(v, since){ var p = v.서식; return p && p.파일 && Number(p.ms) >= since ? { ok: true, id: p.파일, name: p.이름 || (group + ' 신고서식'), forms: p.서식수 || nForms } : null; }; };
+      // 옛 모양(HTML 흉내) 길 — 원본 모양이 없는 서식·모듈을 못 불러온 때
+      var oldWay = function(){
+        var rows = [];
+        PRINT_REGISTRY_.filter(function(item){ return item.group === group; }).forEach(function(item){ printExtractPages_(item).forEach(function(r){ if (r.ready && r.section === 'required' && r.html) rows.push(r); }); });
+        if (!rows.length) return Promise.resolve({ ok: false, error: '준비된 필수 서식이 없음(계산 결과 확인)' });
+        var html = printFormDocHtml_(group + ' 신고서식', rows.map(function(r){ return r.html; }).join(''))
+          .replace(/<div class="pf-toolbar">[\s\S]*?<\/div>/, '').replace('background:#e9eaee', 'background:#fff');
+        return nxAiCpLongRun_(st, 'savePdf', { html: html, title: group + ' 신고서식', forms: rows.length }, checkFn(rows.length), 'calc');
+      };
+      // [2026.10.23 A9] 원본 모양(국세청 공식 서식 PDF 위에 계산 값을 찍는 NxFormPrint 모듈)이 먼저 — 세액인쇄 화면의 📄 원본 모양·일괄출력과 같은 모듈·같은 계산 결과.
+      //  상속세(별지 9호 본표·부표1~3)·증여세(별지 10호)의 필수 서식은 원본 모양만 있고 옛 모양 줄이 없어, 사건처리의 서식 저장이 "준비된 필수 서식이 없음"으로 실패했다(가상상속4·증여4 — 결함 A9).
+      //  양도도 원본 모양이면 본표·부표가 다 나온다(예전엔 옛 모양 1쪽). 만든 PDF는 서버에 그대로 저장(html→PDF 변환 없음). 찍을 결과가 없거나 모듈을 못 불러오면 옛 모양 길로
+      var offNos = [];
+      PRINT_REGISTRY_.filter(function(item){ return item.group === group && !item.noOfficial; }).forEach(function(item){
+        var fn0 = typeof item.formNo === 'function' ? item.formNo() : item.formNo;
+        (item.subForms ? item.subForms.filter(function(sf){ return sf.section === 'required' && !sf.noOfficial; }).map(function(sf){ return sf.formNo; }) : [fn0]).forEach(function(f){ if (f && offNos.indexOf(f) === -1) offNos.push(f); });
+      });
+      if (!offNos.length || typeof tcLoadFormPrint_ !== 'function') return oldWay().catch(function(e){ return { ok: false, error: String(e && e.message || e) }; });
+      return tcLoadFormPrint_().then(function(FP){
+        var extra = { 신고구분: (typeof tcPrintKindDefault_ === 'function') ? tcPrintKindDefault_(group) : undefined, 신고일: (typeof tcTodayStr_ === 'function') ? tcTodayStr_() : undefined };
+        var list = []; offNos.forEach(function(f){ try { (FP.officialJobs(f, extra) || []).forEach(function(j){ list = list.concat(j.list || []); }); } catch (e) {} });
+        if (!list.length) return null;
+        return FP.renderWithMappers(list, null).then(function(r){ return new Promise(function(res, rej){ var fr = new FileReader(); fr.onload = function(){ res({ b64: String(fr.result).split(',')[1] || '', n: list.length }); }; fr.onerror = function(){ rej(new Error('PDF 읽기 실패')); }; fr.readAsDataURL(r.blob); }); });
+      }).then(function(pdf){
+        if (!pdf) return oldWay();
+        return nxAiCpLongRun_(st, 'savePdf', { pdfBase64: pdf.b64, title: group + ' 신고서식', forms: pdf.n, official: true }, checkFn(pdf.n), 'calc');
+      }, function(){ return oldWay(); })
         .catch(function(e){ return { ok: false, error: String(e && e.message || e) }; });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
   }
