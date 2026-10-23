@@ -2844,7 +2844,8 @@
       // [2026.10.23 특단 반응 잣대 — 세무사님 "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"] 현황(view)과 ① 사건파악을 같이 띄운다 — 예전엔 현황(7~15초, 폴더 훑기)을 받은 뒤에야 ①을 시작해 그동안 화면이 "진행 중…"뿐이었다.
       //  현황이 먼저 오면(보통 2~4초) ① 줄에 "먼저 보이는 것"(읽은 서류·저장된 질문·세액)을 찍어 10초 안에 첫 중간 결과가 보이게. 이어받기(resume)가 되면 ①은 그대로 끝나게 두고 ②③은 안 돈다
       var resumeP = (st.screen && !st.force) ? st.run('view').catch(function(){ return null; }) : Promise.resolve(null);
-      var basicP = st.doStep('basic');
+      // [2026.10.23 특단 T2 — 서버 한 실행으로 ①②③(+④ 준비)] 읽기 세션이 만든 step 'all'을 한 번 부른다(예전 ①→②읽기→보정→②→③ 4~5번 왕복 → 1번). 서버가 아직 모르는 단계면 예전 길(gasRun0_)로
+      var basicP = st.gasRunAll_();
       resumeP.then(function(v){
         if (!v || !v.ok || st.firstShown) return; st.firstShown = true; st.secFirst = Math.round((Date.now() - st.t0) / 1000);
         var nq = Array.isArray(v.질문) ? v.질문.filter(function(it){ var d = v.결정 && v.결정[it.id] && v.결정[it.id].d; return d !== 'done' && d !== '무시'; }).length : 0;
@@ -2855,9 +2856,9 @@
       return resumeP.then(function(v){
         var openQ = v && v.ok && Array.isArray(v.질문) ? v.질문.filter(function(it){ var d = v.결정 && v.결정[it.id] && v.결정[it.id].d; return d !== 'done' && d !== '무시'; }) : [];
         var canResume = v && v.ok && v.사건 && v.단계 && v.단계['증빙 읽기·정리'] && v.칸채움때 && Array.isArray(v.새서류) && !v.새서류.length && openQ.length;
-        if (!canResume) return st.gasRun0_(v, basicP);
+        if (!canResume) return basicP.then(function(g){ if (g && g.fallback) return st.gasRun0_(v, null); st.gasDone = g; return g; });
         st.case = v.사건; st.decisions = v.결정 || {}; if (Array.isArray(v.파일) && v.파일.length) st.files = v.파일;
-        basicP.catch(function(){}); // 같이 띄운 ①은 끝나는 대로 ① 줄에 남는다(이어받기라 ②③은 안 돈다)
+        basicP.catch(function(){}); // 같이 띄운 한 번 호출(①②③)은 끝나는 대로 줄에 남는다(이어받기로 저장된 질문을 먼저 보이고, 새 결과가 오면 그것으로 다시 맞춤)
         bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(st.case.사건명 || st.case.고객명 || '') + '</b>' + (v.저장때 ? ' <span class="nxai-muted">· 지난 처리 ' + nxAiEsc_(v.저장때) + '</span>' : '');
         if (st.case && typeof nxAiLinkCase_ === 'function' && (!nxAiConv.caseId || (st.relink && nxAiConv.caseId !== st.case.id))) nxAiLinkCase_(st.case);
         st.setStep('basic', '✅', '지난 처리 그대로(저장분) — 다시 돌리지 않음');
@@ -2866,6 +2867,58 @@
         st.gasDone = { ok: true, resumed: true }; // ③ 줄 표시(⚠ 확인할 항목 N건)는 nxAiCaseProcFill_ 안에서 셈
         return st.gasDone;
       });
+    };
+    // [2026.10.23 특단 T2] 서버 step 'all' 한 번으로 ①②③(+④ 준비) — 결과 stages.basic/evidence/overview를 기존 단계 처리기(doStep의 pre)에 그대로 넘긴다.
+    //  ② 글자 읽기가 덜 끝나면(more) 사진 보정·묶음 나누기 뒤 같은 'all'을 다시, 시간이 모자라면(partial·next) 같은 입구를 다시 불러 이어 간다. 서버가 'all'을 모르면 { fallback: true }
+    st.gasRunAll_ = function(){
+      var rounds = 0;
+      var lineTo = function(key, txt, cls){ var d = document.createElement('div'); d.className = 'nxai-cp-line' + (cls ? ' ' + cls : ''); d.textContent = txt; st.steps[key].querySelector('.nxai-cp-lines').appendChild(d); };
+      var call = function(extra){
+        ['basic', 'evidence', 'overview'].forEach(function(k){ st.setStep(k, '🔄', rounds ? '이어서 한 번 호출(①②③) 중…' : '한 번 호출(①②③) 중 — 서버가 사건파악·서류·칸 채우기를 한 실행에서…'); });
+        return st.run('all', Object.assign({ budgetMs: 200000 }, nxAiCaseProcScreenDate_(st.caseId) || {}, extra || {}));
+      };
+      var handle = function(r, extra){
+        rounds++;
+        if (!r || (r.error && !r.stages)){
+          var msg = String((r && r.error) || '응답 없음');
+          if (/단계|step|알 수 없|모르는/.test(msg) || !r) return { fallback: true }; // 서버가 아직 'all'을 모름 → 예전 길
+          throw new Error(msg);
+        }
+        var sg = r.stages || {};
+        var chain = Promise.resolve();
+        if (sg.basic) chain = chain.then(function(){ return st.doStep('basic', undefined, sg.basic); });
+        return chain.then(function(bres){
+          if ((bres && bres.blocked) || r.blocked){ st.blocked = true; ['evidence', 'overview', 'calc', 'output'].forEach(function(k){ st.setStep(k, '⏭', '증빙 폴더가 없어 건너뜀'); }); return { blocked: true }; }
+          st.loopNotes = [];
+          // ② 글자 읽기가 덜 끝남 — 사진 보정·묶음 나누기(화면 몫) 뒤 같은 'all'을 다시
+          if (r.more){
+            var er = sg.evidence_read || {};
+            st.setStep('evidence', '🔄', (er.lines || [])[0] || '서류를 계속 읽는 중…');
+            if (rounds > 12) throw new Error('서류가 많아 열두 번을 이어도 다 읽지 못했습니다 — 잠시 뒤 다시 "처리하자"를 해 주세요.');
+            return NXAI_SPLIT_.run(st, { pre: er.splitCands || r.splitCands }).catch(function(){ return 0; })
+              .then(function(){ return NXAI_SCAN_.run(st, { pre: er.scanCands || r.scanCands }).catch(function(){ return 0; }); })
+              .then(function(){ return call({ skipEvidence: false }).then(function(r2){ return handle(r2, {}); }); });
+          }
+          // 서버가 나누기·보정 후보를 같이 보냈으면(선택) 화면이 나누기·보정을 하고, 실제로 바뀐 서류가 있을 때만 같은 'all'을 다시(보통은 0건이라 왕복 1번 그대로)
+          var cands = (r.splitCands && r.splitCands.length) || (r.scanCands && r.scanCands.length);
+          var p2 = !cands ? Promise.resolve(0) : NXAI_SPLIT_.run(st, { pre: r.splitCands || [] }).catch(function(){ return 0; }).then(function(n1){ return NXAI_SCAN_.run(st, { pre: r.scanCands || [] }).catch(function(){ return 0; }).then(function(n2){ return (Number(n1) || 0) + (Number(n2) || 0); }); });
+          return p2.then(function(changed){
+          if (changed > 0){ if (rounds > 12) throw new Error('서류 나누기·보정이 계속 반복됩니다 — 잠시 뒤 다시 "처리하자"를 해 주세요.'); lineTo('evidence', '서류 ' + changed + '건을 나누거나 보정해 한 번 더 읽습니다…', 'nxai-muted'); return call({ skipEvidence: false }).then(function(r2){ return handle(r2, {}); }); }
+          var p3 = Promise.resolve();
+          if (sg.evidence) p3 = p3.then(function(){ return st.doStep('evidence', undefined, sg.evidence); });
+          else if (extra && extra.skipEvidence) st.setStep('evidence', '✅', '이미 읽음 — 새 서류가 없어 다시 읽지 않음');
+          if (sg.overview) p3 = p3.then(function(){ return st.doStep('overview', undefined, sg.overview); });
+          return p3.then(function(){
+            (r.lines || []).filter(function(t){ return /^⏱/.test(String(t)); }).forEach(function(t){ lineTo('overview', t, 'nxai-muted'); });
+            // 시간이 모자라 끊김 — 같은 입구를 다시 불러 이어 간다(서버가 next로 알려 줌; ②가 끝났으면 skipEvidence도 같이 알려 줌)
+            if (r.partial && r.next === 'all'){ if (rounds > 12) throw new Error('서버 시간이 계속 모자랍니다 — 잠시 뒤 다시 "처리하자"를 해 주세요.'); var sk = !!r.skipEvidence; lineTo('overview', '⏱ 서버 시간이 모자라 이어서 한 번 더 부릅니다(' + (sk ? '③부터' : '② 정리부터') + ')…', 'nxai-muted'); return call({ skipEvidence: sk }).then(function(r2){ return handle(r2, { skipEvidence: sk }); }); }
+            if (sg.calc && sg.calc.lines && sg.calc.lines.length) st.setStep('calc', '⏸', String(sg.calc.lines[0]).slice(0, 80)); // ④ 준비 결과는 보여만(계산은 ▶·마무리에서)
+            return { ok: true, all: true };
+          });
+          });
+        });
+      };
+      return call({}).then(function(r){ return handle(r, {}); }, function(err){ var m = String(err && err.message || err); if (/단계|step|알 수 없|모르는/.test(m)) return { fallback: true }; throw err; });
     };
     st.gasRun0_ = function(v0, basicP){
       return (basicP || st.doStep('basic')).then(function(res){
@@ -3325,7 +3378,7 @@
   function nxAiCaseProcTimingHtml_(st){
     var list = st.timing || [];
     if (!list.length) return '';
-    var name = { basic: '사건파악', evidence: '증빙', overview: '처리개요', calc: '계산', output: '인쇄', save: '저장', draft: '검토서', status: '현황표', apply: '답 반영', cands: '후보', savePdf: '서식PDF', calcin: '계산 입력', scanCands: '사진보정', scanSaved: '사진보정', splitCands: '서류나누기', splitPages: '서류나누기', splitSaved: '서류나누기' };
+    var name = { all: '한 번 호출(①②③)', basic: '사건파악', evidence: '증빙', overview: '처리개요', calc: '계산', output: '인쇄', save: '저장', draft: '검토서', status: '현황표', apply: '답 반영', cands: '후보', savePdf: '서식PDF', calcin: '계산 입력', scanCands: '사진보정', scanSaved: '사진보정', splitCands: '서류나누기', splitPages: '서류나누기', splitSaved: '서류나누기' };
     var agg = {}, order = [], all = 0, sv = 0;
     list.forEach(function(x){
       var label = String(x.k).split('+').map(function(k){ return name[k] || k; }).join('+');
