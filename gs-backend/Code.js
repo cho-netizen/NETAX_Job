@@ -5896,7 +5896,7 @@ function handleUploadFile(body) {
     if (body.replaceSameName) { try { const ex = folder.getFilesByName(String(body.name)); if (ex.hasNext()) { const f0 = ex.next(); f0.setContent(Utilities.newBlob(bytes).getDataAsString('UTF-8')); return { id: f0.getId(), name: f0.getName(), url: f0.getUrl(), updated: true }; } } catch (e) {} }
     const file = folder.createFile(blob);
     rh_maybeUpdateReportIndexForUpload_(body, file);
-    if (/pdf|^image\//.test(String(mimeType))) cpPrereadQueue_(file.getId()); // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다
+    if (/pdf|^image\//.test(String(mimeType))) { cpPrereadQueue_(file.getId()); try { cpPrereadEnsureTrigger_(); } catch (e) {} } // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다 · [T1] 트리거가 없으면 이때 만든다(밤 점검·배포 기록만 기다리지 않음)
     return { id: file.getId(), name: file.getName(), url: file.getUrl() };
   } catch (err) {
     return { error: '파일 업로드 중 오류: ' + err.message };
@@ -26589,6 +26589,16 @@ function cpPrereadInCases_(file, rootId) {
   } catch (e) {}
   return false;
 }
+// [2026.10.23 속도 특단조치 T1] 미리 읽기 상태 — 트리거가 있는지(없으면 ensure=true일 때 만듦)·마지막 틱 기록·줄에 남은 파일 수. 사건처리 step 'preread'로 부른다(🐞 카드·개발자 확인용)
+function cpPrereadStatus_(body) {
+  const props = PropertiesService.getScriptProperties();
+  let has = false, created = false;
+  try { has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; }); } catch (e) {}
+  if (!has && body && body.ensure) { try { created = !!cpPrereadEnsureTrigger_().created; has = true; } catch (e) {} }
+  let last = null, q = []; try { last = JSON.parse(props.getProperty('cp_preread_last') || 'null'); } catch (e) {} try { q = JSON.parse(props.getProperty(CP_PREREAD_QUEUE_) || '[]'); } catch (e) {}
+  const since = Number(props.getProperty(CP_PREREAD_SINCE_) || 0);
+  return { ok: true, trigger: has, created: created, last: last, queue: q.length, since: since ? Utilities.formatDate(new Date(since), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : '', lines: ['서류 미리 읽기 트리거: ' + (has ? '있음(1분마다)' : '없음') + (created ? ' — 지금 만듦' : '') + (last ? ' · 마지막 틱 ' + last.at + ' ' + Math.round((last.ms || 0) / 1000) + '초, 읽은 서류 ' + last.read + '개(본 파일 ' + last.seen + ')' + (last.names && last.names.length ? ': ' + last.names.join(', ') : '') : ' · 마지막 틱 기록 없음(이 판 배포 뒤 첫 틱부터 남음)') + (q.length ? ' · 📥 줄에 ' + q.length + '개 대기' : '')] };
+}
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
   try { if (CacheService.getScriptCache().get('cp_evid_busy')) return; } catch (e) {} // [2026.10.23 속도 ㅅ6차] 화면의 ② 서류 읽기가 도는 중이면 이번 틱은 쉰다(같은 파일 동시 글자인식 방지)
   const lock = LockService.getScriptLock();
@@ -26624,7 +26634,11 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
     while (it.hasNext() && n < 200) { n++; if (one(it.next()) === false) break; }
     if (read) try { console.log('[미리 읽기] ' + read + '개 읽음(본 파일 ' + seen + ') ' + Math.round((Date.now() - started) / 1000) + '초: ' + names.slice(0, 8).join(', ')); } catch (e) {}
   } catch (e) { try { console.log('[미리 읽기] 오류: ' + (e && e.message || e)); } catch (e2) {} }
-  finally { lock.releaseLock(); }
+  finally {
+    // [2026.10.23 속도 특단조치 T1] 마지막 틱 기록 — 트리거가 실제로 도는지를 화면(사건처리 step 'preread')에서 확인할 수 있게. 콘솔 로그는 아무도 보지 않았다
+    try { props.setProperty('cp_preread_last', JSON.stringify({ at: caseProcNow_(), ms: Date.now() - started, read: read, seen: seen, names: names.slice(0, 8) })); } catch (e3) {}
+    lock.releaseLock();
+  }
   return { ok: true, read: read, seen: seen };
 }
 // =========================================================
@@ -30351,6 +30365,75 @@ const CASEPROC_BASE_LABEL_ = { transfer: '양도일', gift: '증여일', inherit
 //  기다림만 40~50초였다. ① 응답마다 서버에서 실제로 걸린 시간(_ms)을 실어 화면이 단계별 시간을 보여 주고(어디가 느린지 숫자로),
 //  ② 사이에 화면 처리가 없는 단계들은 한 번에 부른다(step 'multi', steps: [{step:'calc'}, {step:'output'}] — 차례대로 실행해 결과 배열).
 //  단계 자체(caseProc_)는 그대로 — 따로 부를 때와 결과가 같다.
+// =========================================================
+// [2026.10.23 속도 특단조치 T2] 한 번 호출로 ①②③(+질문 없으면 ④ 계산 준비) — 세무사님 원문(08:49) "진행하는 화면을 지켜보니, 속도가 개선되지 않았구나. … 특단의 조치를 강구하라"
+//  밤새 실측: 사건당 서버 왕복 11~21번·300~514초, 그 절반이 왕복 기다림(한 번 2~10초). 화면이 ① 사건파악 → ②(읽기·정리) → ③ 칸 채우기를 따로 부르던 4~5번을 서버 한 실행으로.
+//  · 단계마다 걸린 시간을 결과(_tm)와 작업 기록부(단계별 줄)에 남긴다. 6분 한도 안에서 — 서류가 많아 다음 단계를 시작하기엔 시간이 모자라면 거기서 멈추고 next를 돌려준다(화면이 같은 입구를 한 번 더 부르면 이어 감; 읽은 글·정리는 기억돼 빠르다).
+//  · ② 글자 읽기가 끝나지 않았으면(more) 그대로 more로 돌려준다(화면이 보정·나누기 뒤 다시 부름 — 기존 ② 규약 그대로).
+//  · 질문 판정은 화면 nxAiCpOpenInputs_와 같은 기준(계산 입력 칸의 미답 질문·꼭 정할 판단 4가지, 잠정값 질문 제외). 질문 0이면 ④ 계산 준비(caseProcCalc_)까지 — 세액 계산·저장 자체는 지금 구조대로 화면 엔진이 한다(서버 엔진으로 넘기는 것은 다음 단계).
+//  · 기존 단계 입구(basic·evidence·overview…)는 그대로([⚡ GAS로 다시 처리]·넥스 도구).
+// =========================================================
+var CASEPROC_ALL_BLOCKERS_ = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」', 'ih:debts': '「상속 채무 확정」' };
+function caseProcOpenInputs_(items, decisions) {
+  const dec = decisions || {};
+  const isInputQ = function (it) { const a = it.ask || {}; if (a.provisional) return false; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:|calc:)/.test(String(a.target || ''))); };
+  const open = (items || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; if (it.ask && it.ask.provisional) return false; return CASEPROC_ALL_BLOCKERS_[it.id] ? (d !== 'done' && d !== '무시') : (isInputQ(it) && !d); });
+  const hard = open.filter(function (it) { const a = it.ask || {}; const cs = (Array.isArray(a.cands) && a.cands.length) || (Array.isArray(a.options) && a.options.length); return it.kind === 'missing' && !cs && !CASEPROC_ALL_BLOCKERS_[it.id] && !a.provisional; });
+  const name = function (it) { return CASEPROC_ALL_BLOCKERS_[it.id] || ('「' + String((it.ask && it.ask.label) || it.text || '').slice(0, 24) + '」'); };
+  return { open: open, hard: hard, names: open.map(name) };
+}
+function caseProcAll_(c, body) {
+  const t0 = Date.now(), BUDGET = Math.min(Math.max(Number(body.budgetMs) || 200000, 60000), 300000); // 화면 다리(gasbridge)는 4분까지 기다린다 — 기본 200초 안에 다음 단계를 시작할 수 있을 때만 이어 간다
+  const tm = {}, out = { ok: true, step: 'all', stages: {}, lines: [], items: [] };
+  const pass = function (k) { const b = {}; Object.keys(body || {}).forEach(function (q) { if (!/^(step|phase|budgetMs|skipEvidence)$/.test(q)) b[q] = body[q]; }); b.step = k; return b; };
+  const stage = function (k, logAs, fn) {
+    const t = Date.now(); let r;
+    try { r = fn(); } catch (e) { r = { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) }; }
+    tm[k] = Math.round((Date.now() - t) / 100) / 10;
+    if (r && typeof r === 'object' && !Array.isArray(r)) { r._ms = Date.now() - t; (r.items || []).forEach(function (it) { if (it && !it.step) it.step = logAs; }); }
+    try { caseProcStepLog_(c.id, Object.assign({}, pass(logAs)), r); } catch (e) {}
+    out.stages[k] = r; return r || {};
+  };
+  const left = function () { return BUDGET - (Date.now() - t0); };
+  const fresh = function () { try { WORK_DATA_MEMO_ = null; const c2 = akReadCase_(c.id); if (c2) { if (c._세목작업관리) { c2._세목작업관리 = c2.세목; c2.세목 = c.세목; } return c2; } } catch (e) {} return c; };
+  const finish = function (why) {
+    const all = [].concat(out.stages.basic && out.stages.basic.items || [], out.stages.evidence && out.stages.evidence.items || [], out.stages.overview && out.stages.overview.items || [], out.stages.calc && out.stages.calc.items || []);
+    out.items = all.filter(function (it) { return it && !it.error; });
+    ['basic', 'evidence', 'overview', 'calc'].forEach(function (k) { const r = out.stages[k]; if (r && Array.isArray(r.lines) && r.lines.length) out.lines.push('— ' + (CASEPROC_STEP_NAME_[k] || k) + ' —'); if (r && Array.isArray(r.lines)) out.lines = out.lines.concat(r.lines); });
+    out._tm = tm; out._ms = Date.now() - t0;
+    out.lines.push('⏱ 한 번 호출(①②③' + (out.stages.calc ? '④' : '') + ') 서버 안쪽 ' + Math.round(out._ms / 1000) + '초 — ' + Object.keys(tm).map(function (k) { return (k === 'evidence_read' ? '서류 글자 읽기' : CASEPROC_STEP_NAME_[k] || k) + ' ' + tm[k] + '초'; }).join(' · ') + (why ? ' · ' + why : ''));
+    return out;
+  };
+  // ① 사건파악
+  const basic = stage('basic', 'basic', function () { return caseProcBasic_(c, pass('basic')); });
+  if (basic.error) { out.ok = false; out.error = basic.error; return finish('① 실패'); }
+  if (basic.blocked) { out.blocked = true; return finish('증빙 폴더가 없어 ②③ 건너뜀'); }
+  // ② 서류 읽기·정리 — 화면이 "이미 읽음(새 서류 없음)"으로 판정했으면 건너뛴다(skipEvidence)
+  let ev = null;
+  if (!body.skipEvidence) {
+    const ev1 = stage('evidence_read', 'evidence', function () { return caseProcEvidence_(c, Object.assign(pass('evidence'), { phase: 'read' })); });
+    if (ev1.more) { out.more = true; out.next = 'all'; out.progress = ev1.progress; return finish('② 글자 읽기 진행 중 — 같은 입구를 다시 부르면 이어 감'); }
+    if (ev1.splitCands && ev1.splitCands.length) out.splitCands = ev1.splitCands; if (ev1.scanCands && ev1.scanCands.length) out.scanCands = ev1.scanCands; // 화면이 나누기·보정을 하고 싶으면(선택) — 기존 ② 규약의 후보 그대로
+    if (left() < 60000) { out.partial = true; out.next = 'all'; return finish('시간 부족 — ② 정리부터 다음 호출에서'); }
+    ev = stage('evidence', 'evidence', function () { return caseProcEvidence_(fresh(), pass('evidence')); });
+    if (ev.more) { out.more = true; out.next = 'all'; out.progress = ev.progress; return finish('② 진행 중'); }
+    if (ev.error) { out.ok = false; out.error = ev.error; return finish('② 실패'); }
+  }
+  if (left() < 45000) { out.partial = true; out.next = 'all'; out.skipEvidence = true; return finish('시간 부족 — ③부터 다음 호출에서(②는 끝남)'); }
+  // ③ 칸 채우기(기준일이 ②에서 정해졌을 수 있어 사건을 새로 읽는다)
+  const c3 = fresh();
+  const ov = stage('overview', 'overview', function () { return caseProcOverview_(c3, pass('overview')); });
+  if (ov.error) { out.ok = false; out.error = ov.error; return finish('③ 실패'); }
+  // 질문 판정 — 화면과 같은 기준
+  const decisions = (caseProcLoad_(c.id) || {}).decisions || {};
+  const q = caseProcOpenInputs_([].concat(basic.items || [], ev && ev.items || [], ov.items || []), decisions);
+  out.open = q.names; out.hard = q.hard.map(function (it) { return it.id; }); out.calcReady = q.open.length === 0;
+  if (!out.calcReady) { out.lines.push('질문 ' + q.open.length + '개가 남아 세액계산은 답 뒤에: ' + q.names.slice(0, 6).join(' · ') + (q.names.length > 6 ? ' 외' : '')); return finish(); }
+  // ④ 계산 준비(질문 0) — 저장된 계산이 지금 입력과 맞는지(needCalc). 세액 계산·저장은 화면 엔진이(지금 구조)
+  if (left() > 20000) { const calc = stage('calc', 'calc', function () { return caseProcCalc_(fresh()); }); out.needCalc = !!calc.needCalc; out.hasCalc = !!calc.hasCalc; }
+  else { out.partial = true; out.next = 'calc'; }
+  return finish();
+}
 function caseProcTimed_(body) {
   const t0 = Date.now();
   let r;
@@ -30399,6 +30482,7 @@ function caseProc0_(body) {
   const caseId = String(body && body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
   if (body.step === 'save') return caseProcSave_(caseId, body);
+  if (body.step === 'preread') return cpPrereadStatus_(body); // [2026.10.23 속도 특단조치 T1] 미리 읽기 트리거 상태(시트 읽기 없이)
   // [2026.10.22 작업 기록부] 화면에서 직접 쓴 GAS 도구(서식 출력·검토서 고침 등)를 기록부에 한 줄
   if (body.step === 'log') { caseProcLog_(caseId, { by: caseProcWho_('', body.by), what: String(body.what || '').slice(0, 40), detail: String(body.detail || '').slice(0, 240) }); return { ok: true }; }
   const sheet = work_getSheet_();
@@ -30411,7 +30495,10 @@ function caseProc0_(body) {
   if (!CP_FILES_MEMO_ON_) CP_FILES_MEMO_ = {};
   // [2026.10.18 정밀분석 원인3] 세목 칸이 "불복" 등인 경정청구·수정신고 — 폴더 서류의 당초 신고 세목으로 이 실행 동안만 처리(작업관리 칸은 그대로, 고객AJ)
   try { const rt = caseProcRouteTax_(c); if (rt) { c._세목작업관리 = c.세목; c.세목 = rt; } } catch (e) {}
+  // [2026.10.23 속도 특단조치 T1] ⚡ 때마다 미리 읽기 트리거가 있는지 확인(없으면 만듦, 0.1초) — 밤 점검·배포 기록만 기다리면 새 프로젝트·지워진 트리거에서 미리 읽기가 영영 안 돈다
+  if (/^(basic|all)$/.test(String(body.step || ''))) { try { cpPrereadEnsureTrigger_(); } catch (e) {} }
   try {
+    if (body.step === 'all') return caseProcAll_(c, body); // [2026.10.23 속도 특단조치 T2] 한 번 호출로 ①②③(+질문 없으면 ④ 계산 준비)
     if (body.step === 'basic') return caseProcBasic_(c, body);
     if (body.step === 'evidence') return caseProcEvidence_(c, body);
     if (body.step === 'overview') return caseProcOverview_(c, body);
