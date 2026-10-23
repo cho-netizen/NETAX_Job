@@ -30401,6 +30401,8 @@ function caseProcAll_(c, body) {
     out.items = all.filter(function (it) { return it && !it.error; });
     ['basic', 'evidence', 'overview', 'calc'].forEach(function (k) { const r = out.stages[k]; if (r && Array.isArray(r.lines) && r.lines.length) out.lines.push('— ' + (CASEPROC_STEP_NAME_[k] || k) + ' —'); if (r && Array.isArray(r.lines)) out.lines = out.lines.concat(r.lines); });
     out._tm = tm; out._ms = Date.now() - t0;
+    // [2026.10.23 T2] 단계별 초를 결정 파일(timing)에도 남긴다 — 화면 줄에만 있던 ⏱이 사건 밖에서는 보이지 않아 "어디서 10초를 넘기는지"를 아무도 못 봤다(세무사님 08:5x "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"). ① 안쪽(CP_BASIC_T_)·③ 안쪽(CP_OV_T_) 세부도 함께
+    try { const rec = { at: caseProcNow_(), ms: out._ms, tm: tm, why: why || '' }; try { if (CP_BASIC_T_ && CP_BASIC_T_.m) rec.basic = CP_BASIC_T_.m; } catch (e1) {} try { if (typeof CP_OV_T_ !== 'undefined' && CP_OV_T_) rec.overview = CP_OV_T_; } catch (e2) {} caseProcPatch_(c.id, function (sv) { sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }); } catch (e) {}
     out.lines.push('⏱ 한 번 호출(①②③' + (out.stages.calc ? '④' : '') + ') 서버 안쪽 ' + Math.round(out._ms / 1000) + '초 — ' + Object.keys(tm).map(function (k) { return (k === 'evidence_read' ? '서류 글자 읽기' : CASEPROC_STEP_NAME_[k] || k) + ' ' + tm[k] + '초'; }).join(' · ') + (why ? ' · ' + why : ''));
     return out;
   };
