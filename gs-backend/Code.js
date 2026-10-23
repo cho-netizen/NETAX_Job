@@ -30423,7 +30423,7 @@ function caseProc0_(body) {
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
     if (body.step === 'status') return caseProcStatus_(c, body);
     if (body.step === 'facts') return caseProcFactsView_(c);
-    if (body.step === 'view') return caseProcUserView_(c); // [2026.10.22 세무사님↔GAS 소통] 사건 화면이 열릴 때 — 현황·다음 할 일·GAS 알림·작업 기록(0원)
+    if (body.step === 'view') return caseProcUserView_(c, body); // [2026.10.22 세무사님↔GAS 소통] 사건 화면이 열릴 때 — 현황·다음 할 일·GAS 알림·작업 기록(0원) · [특단 T5] light면 폴더를 훑지 않음
     if (body.step === 'alertSeen') { caseProcPatch_(c.id, function (sv) { (sv.alerts || []).forEach(function (a) { a.seen = true; }); }); return { ok: true }; } // [2026.10.22 1단계] 판단 재료 보기(읽기 전용, 0원) — 넥스만 보던 사람·자산·계약·돈 흐름·시간 순서를 세무사님 화면에도
     if (body.step === 'calcin') return caseProcCalcIn_(c);
     if (body.step === 'scanCands') return caseProcScanCands_(c, body); // [2026.10.17] 원근보정할 사진 후보
@@ -30589,8 +30589,10 @@ function caseProcFactsView_(c) {
 }
 // [2026.10.22 세무사님↔GAS 소통] 세무사님 "기존에 AI와 GAS의 소통을 참고해서 사용자와 GAS의 소통에 부족한 부분을 포착하였다면, 그 부분을 포함해서 원점에서 사용자와 GAS의 소통에 만전을 기하라"
 //  넥스가 case_status로 보는 현황을 세무사님 화면에도 — 단계·새 서류·남은 질문·계산·서식·검토서로 "다음 할 일"을 GAS가 먼저 말씀드리고, 알림·작업 기록을 보인다
-function caseProcUserView_(c) {
-  const v = caseProcNexView_(c, { withFiles: true }), sv = caseProcLoad_(c.id) || {};
+function caseProcUserView_(c, body) {
+  // [2026.10.23 특단 T5 — 처리개요 열기 가볍게] light면 사건 폴더를 훑지 않는다(새 서류 감지는 서류 미리 읽기 트리거·⚡ 때 ②가 한다). 폴더 훑기가 7~15초의 대부분이었다(가상상속8 처리개요 121초/5번)
+  const light = !!(body && body.light);
+  const v = caseProcNexView_(c, { withFiles: !light }), sv = caseProcLoad_(c.id) || {};
   let last = null; try { last = caseProcLastCalc_(c).last; } catch (e) {}
   const st = v.단계 || {}, next = [];
   if (!st['증빙 읽기·정리']) next.push({ do: 'gas', text: '서류를 아직 GAS로 읽지 않았습니다 — 서류 읽기·칸 채우기부터' });
@@ -38256,6 +38258,8 @@ function caseProcStatus_(c, body) {
   const tLg = Date.now(); // [2026.10.23 속도 ㅅ8차] ⑦ 안쪽 시간 — 장부(폴더 훑기+서류별 기억 읽기)가 1분 가까이 걸리던 것의 원인을 숫자로
   try { ledger = caseProcLedger_(c, saved); } catch (e) { ledger = { error: String(e && e.message || e) }; }
   rows.push(['시간', '⏱ ⑦ 안쪽', '', '칸 모으기 ' + Math.round((tLg - tS0) / 100) / 10 + '초 · 폴더 파일 장부 ' + Math.round((Date.now() - tLg) / 100) / 10 + '초']);
+  // [2026.10.23 특단 측정 잣대 통일] 화면이 잰 "⚡ 누른 때 → 세액 보인 때"·"▶ 누른 때 → 세액" 초 — 사건마다 같은 자로 잰다
+  if (body.uiTiming && (Number(body.uiTiming.press2tax) || Number(body.uiTiming.btn2tax))) rows.push(['시간', '⚡→세액 / ▶→세액', '', (Number(body.uiTiming.press2tax) || 0) + '초 / ' + (Number(body.uiTiming.btn2tax) || 0) + '초' + (body.uiTiming.calls ? ' · 서버 부르기 ' + body.uiTiming.calls + '번' : '')]);
   if (ledger && ledger.sum) {
     rows.push(['폴더 파일 점검', '폴더 파일 = 점검 줄', ledger.sum.silent ? '⚠' : '✅', ledger.sum.files + '개 = ' + ledger.sum.rows + '줄' + (ledger.sum.truncated ? ' (파일이 너무 많아 일부 못 봄)' : '')]);
     rows.push(['폴더 파일 점검', '읽었지만 처리 기록(칸·질문·증빙목록)에 이름이 안 나온 서류', ledger.sum.unused ? '⚠' : '✅', ledger.sum.unused + '개 — 아래 장부에서 「쓰인 곳」이 빈 줄']);

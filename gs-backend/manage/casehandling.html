@@ -1086,7 +1086,7 @@
     var nowEl = document.getElementById('chGasNow');
     var loadNow = function(){
       if (!nowEl || !tokOk()) return;
-      callGas('case_proc', { caseId: c.id, step: 'view' }).then(function(r){
+      callGas('case_proc', { caseId: c.id, step: 'view', light: true }).then(function(r){ // [2026.10.23 특단 T5] 처리개요 열기는 가벼운 현황(폴더 훑기 없음)
         if (!r || r.error || !r.ok){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다' + (r && r.error ? ': ' + esc(r.error) : '') + '</span>'; return; }
         var h = '';
         if ((r.알림 || []).length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:6px 8px; margin-bottom:6px;"><b>⚠ GAS 알림</b><br>' + r.알림.map(function(a){ return '· ' + esc(a); }).join('<br>') + ' <button type="button" class="ghost-btn" data-gas="seen" style="font-size:11.5px; margin-left:6px;">확인했어요</button></div>';
