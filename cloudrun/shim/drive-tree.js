@@ -1,0 +1,82 @@
+// [2026.10.23 T6 2단계] 구글 드라이브(v3, 서비스 계정 기본 자격증명)에서 사건 폴더를 **읽기만** 해서 재현기 가짜 드라이브(vfs.js)의 메모리 항목으로 채운다.
+//  - 폴더 목록은 재귀로(깊이 6, 400개 한도 — Code.js caseProcFiles0_와 같은 한도), 파일 내용은 글 파일(markdown·text·json·csv, 2MB 이하)만 미리 내려받는다.
+//    PDF·사진은 내용을 내려받지 않는다 — 글자는 요청의 ocrMemory(글자인식 기억)에서만 읽기 때문(기억에 없으면 "못 읽음").
+//  - GAS 코드는 동기(synchronous)로 DriveApp을 부르므로, 실행 전에 여기서 전부 받아 둔다(비동기 → 동기 변환은 불가).
+//  - 쓰기(createFile·setContent·휴지통 등)는 vfs가 메모리에만 한다 — 실제 드라이브는 바뀌지 않는다. 서비스 계정은 뷰어라 쓰려 해도 거절된다.
+'use strict';
+const { VFS, VFolder, VFile, mimeOf } = require('./vfs');
+
+const FOLDER = 'application/vnd.google-apps.folder';
+const TEXT_RE = /^(text\/|application\/json|application\/x-?markdown)/;
+const MAX_FILES = 400, MAX_DEPTH = 6, MAX_TEXT_BYTES = 2 * 1024 * 1024;
+
+let driveClient = null;
+async function drive() {
+  if (driveClient) return driveClient;
+  const { google } = require('googleapis');
+  const auth = new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/drive.readonly'] });
+  driveClient = google.drive({ version: 'v3', auth });
+  return driveClient;
+}
+
+async function listChildren(d, parentId) {
+  const out = []; let pageToken;
+  do {
+    const r = await d.files.list({ q: "'" + parentId + "' in parents and trashed = false", fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size)', pageSize: 200, pageToken, supportsAllDrives: true, includeItemsFromAllDrives: true });
+    (r.data.files || []).forEach((f) => out.push(f));
+    pageToken = r.data.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
+async function download(d, id) {
+  const r = await d.files.get({ id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+  return Buffer.from(r.data);
+}
+
+// 사건 폴더 하나를 읽어 { vfs, caseFolder, bm, store, chief, root, stats } — stats는 개수만(서류 이름·내용은 로그에 안 남긴다)
+async function buildCaseTree(folderId, opt) {
+  opt = opt || {};
+  const d = await drive();
+  const vfs = new VFS({ manifest: {}, nameToId: {}, storeIndex: {} });
+  const bm = vfs.mem('업무관리자');
+  const store = vfs.mem('_글자인식기억', bm); bm._folders.push(store); // 비어 있음 — 기억은 ocrMemory로만
+  const chief = vfs.mem('총괄관리자');
+  const root = vfs.mem('고객사건');
+  const stats = { folders: 0, files: 0, textDownloaded: 0, textBytes: 0, truncated: false, listMs: 0, downloadMs: 0 };
+  const t0 = Date.now();
+  let meta = null;
+  try { meta = (await d.files.get({ fileId: folderId, fields: 'id, name, mimeType', supportsAllDrives: true })).data; } catch (e) { throw new Error('사건 폴더를 읽지 못함(공유 안 됨?): ' + (e && e.message || e)); }
+  const caseFolder = new VFolder(vfs, { id: folderId, name: meta.name || folderId, parent: root });
+  vfs.byId[folderId] = caseFolder; root._folders.push(caseFolder);
+  const pendingText = [];
+  const walk = async (folder, depth) => {
+    if (depth > MAX_DEPTH || stats.files >= MAX_FILES) { stats.truncated = true; return; }
+    const kids = await listChildren(d, folder.id);
+    for (const k of kids) {
+      if (k.mimeType === FOLDER) {
+        const sub = new VFolder(vfs, { id: k.id, name: k.name, parent: folder });
+        vfs.byId[k.id] = sub; folder._folders.push(sub); stats.folders++;
+        await walk(sub, depth + 1);
+        continue;
+      }
+      if (stats.files >= MAX_FILES) { stats.truncated = true; break; }
+      const mod = Date.parse(k.modifiedTime) || Date.now();
+      const f = new VFile(vfs, { id: k.id, name: k.name, mimeType: k.mimeType || mimeOf(k.name), modified: mod, mem: '', parent: folder, driveSize: Number(k.size || 0) });
+      // 크기는 드라이브 값으로(메모리 내용이 비어 있어도)
+      f.getSize = function () { return this.driveSize || Buffer.byteLength(this.mem || ''); };
+      vfs.byId[k.id] = f; folder._files.push(f); stats.files++;
+      if (TEXT_RE.test(String(f.mimeType)) && (f.driveSize || 0) <= MAX_TEXT_BYTES) pendingText.push(f);
+    }
+  };
+  await walk(caseFolder, 0);
+  stats.listMs = Date.now() - t0;
+  const t1 = Date.now();
+  for (const f of pendingText) { // 하나씩(동시 대량 읽기 금지)
+    try { const buf = await download(d, f.id); f.mem = buf.toString('utf8'); stats.textDownloaded++; stats.textBytes += buf.length; } catch (e) { f.mem = ''; }
+  }
+  stats.downloadMs = Date.now() - t1;
+  return { vfs, caseFolder, bm, store, chief, root, stats };
+}
+
+module.exports = { buildCaseTree };

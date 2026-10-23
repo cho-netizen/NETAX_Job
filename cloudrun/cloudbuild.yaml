@@ -1,0 +1,11 @@
+# [2026.10.23 T6 2단계] Cloud Build — 저장소 루트에서:  gcloud builds submit --config cloudrun/cloudbuild.yaml --substitutions _CODE_VERSION=$(git rev-parse --short HEAD) .
+# 이미지: asia-northeast3-docker.pkg.dev/netax-job/netax-case-reader/netax-case-reader (Artifact Registry 저장소 netax-case-reader는 한 번 만들어 둔다)
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'cloudrun/Dockerfile', '--build-arg', 'CODE_VERSION=${_CODE_VERSION}', '-t', '${_IMAGE}:${_CODE_VERSION}', '-t', '${_IMAGE}:latest', '.']
+images: ['${_IMAGE}:${_CODE_VERSION}', '${_IMAGE}:latest']
+substitutions:
+  _IMAGE: asia-northeast3-docker.pkg.dev/netax-job/netax-case-reader/netax-case-reader
+  _CODE_VERSION: unknown
+options:
+  logging: CLOUD_LOGGING_ONLY

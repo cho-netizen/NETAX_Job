@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+// ============================================================
+// [2026.10.23 T6 2단계] 읽기 전용 시험 서비스 — Cloud Run(netax-case-reader, node 20)
+// ------------------------------------------------------------
+// 하는 일: POST /read 로 사건 하나(caseId·folderId·sheetRow·ocrMemory)를 받아, 조립 모듈 dist/reader.js(tools/build-reader.js가 gs-backend에서 추린
+//  사건처리 한 번 호출 caseProcAll_)를 그대로 돌려 ①사건파악·②증빙 정리·③칸 채우기 결과를 JSON으로 돌려준다. GET /health 는 살아 있는지만.
+// 지키는 것(설계서 2·6절):
+//  - 드라이브는 서비스 계정으로 **읽기만**(shim/drive-tree.js). 결정 파일·작업관리 시트·채팅 폴더 쓰기는 **메모리로 받아 응답 JSON(written)에 실어 돌려준다** — 아무것도 저장하지 않음.
+//  - 글자인식 기억은 요청의 ocrMemory에서만 읽는다(_글자인식기억 폴더는 공유 안 됨). 없으면 unreadFiles에 적는다. 구글 글자인식은 부르지 않는다.
+//  - 달력 동기화는 빈 함수. UrlFetchApp·ScriptApp·LockService·Drive(고급)은 불리면 오류(불린 목록이 보고 거리 — gasMissing).
+//  - 바깥 AI 호출 코드 없음. 로그는 사건 ID·단계별 초·파일 수만(서류 내용·이름·금액은 찍지 않는다).
+//  - 인증은 Cloud Run IAM(인증된 호출만) — 여기서는 따로 검사하지 않는다.
+// 원본 코드는 gs-backend 하나(두 벌 금지) — 이 파일은 흉내 층과 입구만. 코드 판은 dist/reader.js 머리글(원본 git SHA)에서 읽어 codeVersion으로 돌려준다.
+// ============================================================
+'use strict';
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { loadBackend, formatDate } = require('./shim/gas');
+const { VFolder, VFile } = require('./shim/vfs');
+const { buildCaseTree } = require('./shim/drive-tree');
+
+const ROOT = path.resolve(__dirname, '..');
+const DIST = path.join(ROOT, 'dist');
+const READER = path.join(DIST, 'reader.js');
+const PORT = Number(process.env.PORT || 8080);
+const MAX_BODY = 64 * 1024 * 1024; // 글자 기억을 함께 받으므로 넉넉히
+const ENGINE = 'cloudrun';
+const STARTED = Date.now();
+
+function codeVersion() {
+  try { const head = fs.readFileSync(READER, 'utf8').slice(0, 600); const m = /원본 ([0-9a-f]{7,40})/.exec(head); return (m && m[1]) || process.env.CODE_VERSION || '?'; } catch (e) { return process.env.CODE_VERSION || '?'; }
+}
+let HEADERS = null;
+function headers() {
+  if (HEADERS) return HEADERS;
+  const g0 = loadBackend({ vfs: { getFileById() { throw new Error('x'); }, getFolderById() { throw new Error('x'); }, allFiles: () => [], root: null }, backendDir: DIST, files: ['reader.js'], headers: [], rows: [] });
+  HEADERS = Array.from(g0.run('WORK_HEADERS'));
+  return HEADERS;
+}
+
+function missingProxy(name, report) {
+  return new Proxy(function () {}, {
+    get(t, k) { if (k === Symbol.toPrimitive || k === 'toString') return () => '[없음 ' + name + ']'; if (k === 'then') return undefined; return missingProxy(name + '.' + String(k), report); },
+    apply() { report(name); throw new Error('읽기 전용 시험 서비스에 없는 GAS 기능: ' + name); }
+  });
+}
+
+// 메모리 쓰기 기록 — 실제 드라이브는 바뀌지 않지만 "코드가 어디에 쓰려 했는지"를 응답에 실어 돌려준다
+function recordWrites(list) {
+  const wrap = (proto, name, label) => { const orig = proto[name]; proto[name] = function () { list.push(label + '.' + name); return orig.apply(this, arguments); }; return () => { proto[name] = orig; }; };
+  const undo = [];
+  ['createFile', 'createFolder'].forEach((n) => undo.push(wrap(VFolder.prototype, n, 'Folder')));
+  ['setContent', 'setTrashed', 'setName', 'moveTo', 'makeCopy'].forEach((n) => undo.push(wrap(VFile.prototype, n, 'File')));
+  return () => undo.forEach((u) => u());
+}
+
+async function readCase(body) {
+  const t0 = Date.now();
+  const caseId = String(body.caseId || '').trim(), folderId = String(body.folderId || '').trim();
+  if (!caseId || !folderId) return { ok: false, error: 'caseId·folderId가 필요합니다', engine: ENGINE, codeVersion: codeVersion() };
+  const ocrMemory = body.ocrMemory && typeof body.ocrMemory === 'object' ? body.ocrMemory : {};
+  const tree = await buildCaseTree(folderId, {});
+  const tDrive = Date.now() - t0;
+  // 사건 행 — GAS가 보낸 작업관리 1행(사건개요·증빙목록 포함). 폴더 ID는 이 요청의 것으로.
+  const row = Object.assign({ id: caseId, 사건개요: {}, 증빙목록: [], 작업일지: [], 세액계산결과: [], 하위업무: [], 법령예규판례: [] }, body.sheetRow || {}, { id: caseId, 폴더ID: folderId });
+  const writes = [];
+  const unwrap = recordWrites(writes);
+  let g, out, err = null, sv = {}, after = null, unread = [];
+  try {
+    g = loadBackend({
+      vfs: tree.vfs, backendDir: DIST, files: ['reader.js'], headers: headers(), rows: [row],
+      props: { BUSINESS_MANAGER_FOLDER_ID: tree.bm.getId(), OCR_STORE_FOLDER_ID: tree.store.getId(), CHIEF_MANAGER_FOLDER_ID: tree.chief.getId(), NX_DEFAULT_FOLDER_ID: tree.root.getId() }
+    });
+    const report = (n) => { g.missing[n] = (g.missing[n] || 0) + 1; };
+    // 바깥 호출·잠금은 불리면 오류(재현기 흉내 층은 LockService를 조용히 통과시키지만 여기서는 막는다 — 불리는지 자체가 측정 결과)
+    // 잠금은 결정 파일 쓰기(caseProcPatch_)·사건 행 저장 안에서 불린다 — 막으면 ③이 서지 않아(모의 확인), 통과시키되 횟수를 센다(lockCalls). 요청 하나가 사건 하나를 메모리에서만 다루므로 잠금은 뜻이 없다
+    const lockCalls = { getUserLock: 0, getScriptLock: 0, getDocumentLock: 0 };
+    const fakeLock = { waitLock() {}, tryLock() { return true; }, releaseLock() {}, hasLock() { return true; } };
+    g.ctx.LockService = { getUserLock() { lockCalls.getUserLock++; return fakeLock; }, getScriptLock() { lockCalls.getScriptLock++; return fakeLock; }, getDocumentLock() { lockCalls.getDocumentLock++; return fakeLock; } };
+    g.ctx.__lockCalls = lockCalls;
+    g.ctx.UrlFetchApp = missingProxy('UrlFetchApp', report);
+    g.ctx.ScriptApp = missingProxy('ScriptApp', report);
+    g.ctx.__cr = { ocrMemory, unread, calendarCalls: 0 };
+    g.run(`
+      // 글자인식 기억 — 요청에 담긴 것만. 쓰기는 하지 않는다
+      tcOcrStoreGet_ = function (k) { var v = __cr.ocrMemory[k]; return (v === undefined || v === null) ? null : String(v); };
+      tcOcrStorePut_ = function () {}; tcOcrStoreSet_ = function () {};
+      // 구글 글자인식은 부르지 않는다 — 기억에 없는 서류는 "못 읽음"으로
+      ocrFileText_ = function (id) { __cr.unread.push(String(id)); return ''; };
+      // 달력 동기화는 하지 않는다(사건 행 저장 때 불림)
+      work_syncCaseCalendar_ = function () { __cr.calendarCalls++; };
+      work_deleteCaseCalendarEvents_ = function () { __cr.calendarCalls++; };
+    `);
+    // 결정 파일을 GAS가 보낸 상태로 미리 둔다(같은 출발점에서 비교하기 위해)
+    if (body.decisions && typeof body.decisions === 'object' && Object.keys(body.decisions).length) {
+      try { g.ctx.caseProcPatch_(caseId, function (s) { Object.assign(s, body.decisions); }); } catch (e) {}
+      writes.length = 0; // 미리 두기는 쓰기 기록에서 뺀다
+    }
+    const opt = Object.assign({ step: 'all', budgetMs: 280000 }, body.options && typeof body.options === 'object' ? { skipEvidence: !!body.options.skipEvidence, budgetMs: Number(body.options.budgetMs) || 280000 } : {});
+    try { out = g.ctx.caseProcAll_(g.ctx.akReadCase_(caseId) || row, opt); } catch (e) { err = e; }
+    try { sv = g.ctx.caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
+    try { after = g.ctx.akReadCase_(caseId); } catch (e) { after = null; }
+  } finally { unwrap(); }
+  const tm = (out && out._tm) || {};
+  const total = Date.now() - t0;
+  // 못 읽은 서류 — 이름 대신 ID(로그·응답에 서류 이름을 남기지 않는다). GAS 쪽이 ID로 이름을 맞춘다
+  const unreadFiles = Array.from(new Set(unread));
+  const questions = out ? (out.items || []).filter((it) => it && !it.error).map((it) => ({ id: it.id, kind: it.kind, step: it.step, label: it.label || '', text: String(it.text || '').slice(0, 400), target: it.ask && it.ask.target || '' })) : [];
+  const res = {
+    ok: !!(out && out.ok !== false) && !err, engine: ENGINE, codeVersion: codeVersion(), caseId,
+    error: err ? String(err && err.message || err) : (out && out.error) || null,
+    stages: out ? { basic: out.stages && out.stages.basic || null, evidence: out.stages && out.stages.evidence || null, overview: out.stages && out.stages.overview || null } : null,
+    questions, open: out ? out.open || [] : [], hard: out ? out.hard || [] : [], calcReady: out ? !!out.calcReady : false, partial: out ? !!out.partial : null, more: out ? !!out.more : null, next: out ? out.next || null : null,
+    lines: out ? out.lines || [] : [],
+    timing: { drive: Math.round(tDrive / 100) / 10, basic: tm.basic || 0, ocr: tm.evidence_read || 0, evidence: tm.evidence || 0, overview: tm.overview || 0, calc: tm.calc || 0, inner: out ? Math.round((out._ms || 0) / 100) / 10 : 0, total: Math.round(total / 100) / 10 },
+    unreadFiles, memKeysGiven: Object.keys(ocrMemory).length,
+    files: { folders: tree.stats.folders, count: tree.stats.files, textDownloaded: tree.stats.textDownloaded, truncated: tree.stats.truncated, listMs: tree.stats.listMs, downloadMs: tree.stats.downloadMs },
+    evidenceCount: (after && after.증빙목록 || []).length,
+    filled: sv.filled || {},
+    // 쓰려 했던 것(메모리에만) — GAS 쪽이 대조하거나 저장하려면 이것을 쓴다
+    written: { decisionFile: sv, caseRow: after ? { 사건개요: after.사건개요 || {}, 증빙목록: after.증빙목록 || [], 기준일: after.기준일 || '', 법정일: after.법정일 || '' } : null, writes: Array.from(new Set(writes)), writeCount: writes.length, calendarCalls: g ? g.ctx.__cr.calendarCalls : 0 },
+    gasMissing: g ? g.missing : {}, lockCalls: g ? g.ctx.__lockCalls : null
+  };
+  // 로그: 사건 ID·초·파일 수만
+  console.log(JSON.stringify({ at: formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), caseId, ok: res.ok, timing: res.timing, files: res.files.count, unread: unreadFiles.length, questions: questions.length, writes: res.written.writeCount, missing: Object.keys(res.gasMissing) }));
+  return res;
+}
+
+function send(resp, code, obj) { const s = JSON.stringify(obj); resp.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(s) }); resp.end(s); }
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let n = 0;
+    req.on('data', (c) => { n += c.length; if (n > MAX_BODY) { reject(new Error('요청이 너무 큼')); req.destroy(); return; } chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+const server = http.createServer(async (req, resp) => {
+  try {
+    if (req.method === 'GET' && (req.url === '/health' || req.url === '/')) return send(resp, 200, { ok: true, engine: ENGINE, codeVersion: codeVersion(), readerLoaded: fs.existsSync(READER), uptimeSec: Math.round((Date.now() - STARTED) / 1000) });
+    if (req.method === 'POST' && req.url === '/read') {
+      const raw = await readBody(req);
+      let body; try { body = JSON.parse(raw || '{}'); } catch (e) { return send(resp, 400, { ok: false, error: 'JSON 아님' }); }
+      const r = await readCase(body);
+      return send(resp, r.ok || r.stages ? 200 : 400, r);
+    }
+    send(resp, 404, { ok: false, error: '없는 입구' });
+  } catch (e) {
+    console.log(JSON.stringify({ error: String(e && e.message || e).slice(0, 200) }));
+    send(resp, 500, { ok: false, error: String(e && e.message || e).slice(0, 300), engine: ENGINE });
+  }
+});
+if (require.main === module) server.listen(PORT, () => console.log(JSON.stringify({ listening: PORT, engine: ENGINE, codeVersion: codeVersion(), readerLoaded: fs.existsSync(READER) })));
+module.exports = { readCase, server };

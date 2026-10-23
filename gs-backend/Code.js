@@ -30382,6 +30382,86 @@ function caseProcOpenInputs_(items, decisions) {
   const name = function (it) { return CASEPROC_ALL_BLOCKERS_[it.id] || ('「' + String((it.ask && it.ask.label) || it.text || '').slice(0, 24) + '」'); };
   return { open: open, hard: hard, names: open.map(name) };
 }
+// [2026.10.23 T6 2단계] 시험 서비스 비교 — 세무사님 "2단계 GCP로 가라". 같은 사건을 (A) 이 GAS의 'all'로, (B) Cloud Run 읽기 전용 서비스(/read, 같은 코드를 조립한 것)로
+//  돌려 칸·질문·증빙 수를 대조하고 초를 잰다. 결과는 총괄관리자\_가상사건\_시험서비스_비교_YYYYMMDD.json에 한 줄 추가(이 파일만 씀 — A의 'all'은 평소처럼 사건에 저장한다).
+//  서비스 주소는 스크립트 속성 T6_READER_URL. 서비스는 _글자인식기억 폴더 권한이 없어 이 사건 서류의 글자 기억을 요청에 담아 보낸다. 인증은 ID 토큰(Cloud Run IAM이 검사).
+//  콜드 스타트: /health를 먼저 불러 깨운 시간(healthMs)과 /read 시간(runSec)을 따로 적는다 — runSecIncl = 둘의 합(콜드 포함), runSec = /read만(콜드 제외).
+var T6_READER_URL_PROP_ = 'T6_READER_URL';
+function caseProcAllCompare_(c, body) {
+  const url = String(PropertiesService.getScriptProperties().getProperty(T6_READER_URL_PROP_) || '').trim().replace(/\/+$/, '');
+  if (!url) return { ok: false, step: 'allCompare', error: '시험 서비스 주소 없음 — 스크립트 속성 ' + T6_READER_URL_PROP_ + '에 Cloud Run 주소를 넣어 주세요' };
+  const t00 = Date.now();
+  const round1 = function (ms) { return Math.round(ms / 100) / 10; };
+  const row0 = JSON.parse(JSON.stringify(c)); // A를 돌리기 전 사건 행(같은 출발점)
+  const sv0 = JSON.parse(JSON.stringify(caseProcLoad_(c.id) || {}));
+  // 이 사건 서류의 글자 기억(글 ocrtxt_/ocrtxt3_·표 ocrtbl1_) — 서비스가 읽을 수 있게 담는다
+  const files = caseProcFiles_(c, { includeFiled: true }) || [];
+  const ocrMemory = {}; let memBytes = 0;
+  files.forEach(function (f) {
+    if (!f || !f.id || !f.modified) return;
+    [tcOcrKey_(f), 'ocrtbl1_' + f.id + '_' + f.modified].forEach(function (k) { const t = tcOcrStoreGet_(k); if (t !== null && t !== undefined) { ocrMemory[k] = String(t); memBytes += ocrMemory[k].length; } });
+  });
+  // (A) GAS
+  const tA = Date.now(); let A;
+  try { A = caseProcAll_(c, Object.assign({}, body, { step: 'all' })); } catch (e) { A = { ok: false, error: String(e && e.message || e) }; }
+  const gasMs = Date.now() - tA;
+  const svA = caseProcLoad_(c.id) || {}, rowA = akReadCase_(c.id) || c;
+  // (B) Cloud Run — /health 먼저(콜드 스타트 포함), 그 다음 /read
+  let token = ''; try { token = ScriptApp.getIdentityToken(); } catch (e) { return { ok: false, step: 'allCompare', error: 'ID 토큰을 못 받음(권한 openid 승인 필요): ' + (e && e.message || e), gasSec: round1(gasMs) }; }
+  const hdr = { Authorization: 'Bearer ' + token };
+  const tH = Date.now(); let health = { ms: 0 };
+  try { const hr = UrlFetchApp.fetch(url + '/health', { headers: hdr, muteHttpExceptions: true }); health = { code: hr.getResponseCode(), ms: Date.now() - tH, body: String(hr.getContentText() || '').slice(0, 200) }; }
+  catch (e) { health = { error: String(e && e.message || e).slice(0, 200), ms: Date.now() - tH }; }
+  const payload = { caseId: c.id, folderId: c.폴더ID, sheetRow: row0, decisions: sv0, ocrMemory: ocrMemory, options: { skipEvidence: !!body.skipEvidence, budgetMs: 280000 } };
+  const tR = Date.now(); let B = null, httpCode = 0;
+  try {
+    const rr = UrlFetchApp.fetch(url + '/read', { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), headers: hdr, muteHttpExceptions: true });
+    httpCode = rr.getResponseCode();
+    try { B = JSON.parse(rr.getContentText()); } catch (e2) { B = { ok: false, error: '응답 해석 실패(' + httpCode + '): ' + String(rr.getContentText() || '').slice(0, 200) }; }
+  } catch (e) { B = { ok: false, error: String(e && e.message || e).slice(0, 300) }; }
+  const runMs = Date.now() - tR;
+  B = B || {};
+  // 대조 — ③ 칸(결정 파일 filled) · 질문(id) · 증빙 수
+  const fa = svA.filled || {}, fb = B.filled || (B.written && B.written.decisionFile && B.written.decisionFile.filled) || {};
+  const keys = Object.keys(fa).concat(Object.keys(fb)).filter(function (k, i, arr) { return arr.indexOf(k) === i; }).sort();
+  const mismatches = [];
+  keys.forEach(function (k) { const a = fa[k] ? String(fa[k].v) : '', b = fb[k] ? String(fb[k].v) : ''; if (a !== b) mismatches.push({ key: k, a: a, b: b, aSrc: fa[k] ? String(fa[k].src || '').slice(0, 80) : '', bSrc: fb[k] ? String(fb[k].src || '').slice(0, 80) : '' }); });
+  const qa = (A.items || []).map(function (it) { return it && it.id; }).filter(function (x) { return x && !/^file:/.test(x); }).sort();
+  const qb = (B.questions || []).map(function (q) { return q && q.id; }).filter(function (x) { return x && !/^file:/.test(x); }).sort();
+  const ea = (rowA.증빙목록 || []).length, eb = Number(B.evidenceCount || 0);
+  const nameOf = {}; files.forEach(function (f) { nameOf[f.id] = f.name; });
+  const rec = {
+    at: caseProcNow_(), caseId: c.id, 사건명: c.사건명 || '', 세목: c.세목 || '',
+    gasSec: round1(gasMs), gasTm: A._tm || null, gasOk: A.ok !== false, gasPartial: !!A.partial,
+    healthMs: health.ms, healthCode: health.code || null, healthError: health.error || null,
+    runSec: round1(runMs), runSecIncl: round1(runMs + (health.ms || 0)), runInner: B.timing || null, httpCode: httpCode, runOk: !!B.ok, runError: B.error || null, runPartial: B.partial || null,
+    engine: B.engine || '', codeVersion: B.codeVersion || '', gasVersion: String(PropertiesService.getScriptProperties().getProperty('GH_DEPLOYED_SHA') || '').slice(0, 12),
+    fieldsA: Object.keys(fa).length, fieldsB: Object.keys(fb).length, mismatches: mismatches,
+    questionsA: qa, questionsB: qb, questionsOnlyA: qa.filter(function (x) { return qb.indexOf(x) === -1; }), questionsOnlyB: qb.filter(function (x) { return qa.indexOf(x) === -1; }),
+    evidenceA: ea, evidenceB: eb, unreadFiles: (B.unreadFiles || []).map(function (id) { return nameOf[id] || id; }),
+    writes: (B.written && B.written.writes) || [], writeCount: (B.written && B.written.writeCount) || 0, gasMissing: B.gasMissing || {},
+    memKeys: Object.keys(ocrMemory).length, memBytes: memBytes, files: B.files || null, totalSec: round1(Date.now() - t00)
+  };
+  // 기록 — 총괄관리자\_가상사건\_시험서비스_비교_YYYYMMDD.json (배열에 한 줄 추가; 이 함수가 쓰는 파일은 이것뿐)
+  try {
+    const chief = getChiefManagerFolder_();
+    if (chief) {
+      const dir = getOrCreateSubfolder_(chief, '_가상사건');
+      const name = '_시험서비스_비교_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd') + '.json';
+      const it = dir.getFilesByName(name); let arr = [];
+      if (it.hasNext()) { const f = it.next(); try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8')); } catch (e) { arr = []; } if (!Array.isArray(arr)) arr = []; arr.push(rec); f.setContent(JSON.stringify(arr, null, 1)); }
+      else dir.createFile(name, JSON.stringify([rec], null, 1), 'application/json');
+      rec.saved = name;
+    } else rec.saved = '총괄관리자 폴더 없음(CHIEF_MANAGER_FOLDER_ID)';
+  } catch (e) { rec.saved = '기록 실패: ' + String(e && e.message || e).slice(0, 120); }
+  const lines = [
+    '🧪 시험 서비스 비교 — ' + (c.사건명 || c.id),
+    'GAS ①②③ ' + rec.gasSec + '초' + (A._tm ? '(' + Object.keys(A._tm).map(function (k) { return k + ' ' + A._tm[k]; }).join(' · ') + ')' : '') + ' ↔ Cloud Run /read ' + rec.runSec + '초(깨우기 포함 ' + rec.runSecIncl + '초' + (B.timing ? ', 서비스 안쪽 ' + B.timing.inner + '초 — 드라이브 읽기 ' + B.timing.drive + ' · 사건파악 ' + B.timing.basic + ' · 글자 ' + B.timing.ocr + ' · 증빙 ' + B.timing.evidence + ' · 칸 ' + B.timing.overview : '') + ')',
+    '칸 ' + rec.fieldsA + '↔' + rec.fieldsB + ' · 불일치 ' + mismatches.length + '건' + (mismatches.length ? ': ' + mismatches.map(function (m) { return m.key + '(' + (m.a || '—') + ' ↔ ' + (m.b || '—') + ')'; }).join(', ') : '') + ' · 질문 ' + qa.length + '↔' + qb.length + (rec.questionsOnlyA.length || rec.questionsOnlyB.length ? '(GAS만 ' + rec.questionsOnlyA.join(',') + ' / 서비스만 ' + rec.questionsOnlyB.join(',') + ')' : '') + ' · 증빙 ' + ea + '↔' + eb,
+    (B.error ? '서비스 오류: ' + B.error : '') + (rec.unreadFiles.length ? ' · 기억 없어 못 읽음 ' + rec.unreadFiles.length + '건' : '') + ' · 기록 ' + rec.saved
+  ].filter(Boolean);
+  return Object.assign({ ok: true, step: 'allCompare' }, rec, { lines: lines });
+}
 function caseProcAll_(c, body) {
   const t0 = Date.now(), BUDGET = Math.min(Math.max(Number(body.budgetMs) || 200000, 60000), 300000); // 화면 다리(gasbridge)는 4분까지 기다린다 — 기본 200초 안에 다음 단계를 시작할 수 있을 때만 이어 간다
   const tm = {}, out = { ok: true, step: 'all', stages: {}, lines: [], items: [] };
@@ -30500,6 +30580,7 @@ function caseProc0_(body) {
   // [2026.10.23 속도 특단조치 T1] ⚡ 때마다 미리 읽기 트리거가 있는지 확인(없으면 만듦, 0.1초) — 밤 점검·배포 기록만 기다리면 새 프로젝트·지워진 트리거에서 미리 읽기가 영영 안 돈다
   if (/^(basic|all)$/.test(String(body.step || ''))) { try { cpPrereadEnsureTrigger_(); } catch (e) {} }
   try {
+    if (body.step === 'allCompare') return caseProcAllCompare_(c, body); // [2026.10.23 T6 2단계] 같은 사건을 GAS 'all'과 Cloud Run 시험 서비스로 나란히 돌려 대조
     if (body.step === 'all') return caseProcAll_(c, body); // [2026.10.23 속도 특단조치 T2] 한 번 호출로 ①②③(+질문 없으면 ④ 계산 준비)
     if (body.step === 'basic') return caseProcBasic_(c, body);
     if (body.step === 'evidence') return caseProcEvidence_(c, body);

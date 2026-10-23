@@ -102,6 +102,7 @@ const stamp = new Date();
 const pad = (n) => String(n).padStart(2, '0');
 const at = stamp.getFullYear() + '-' + pad(stamp.getMonth() + 1) + '-' + pad(stamp.getDate()) + ' ' + pad(stamp.getHours()) + ':' + pad(stamp.getMinutes());
 let gitSha = ''; try { gitSha = require('child_process').execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim(); } catch (e) {}
+if (!gitSha && process.env.CODE_VERSION) gitSha = String(process.env.CODE_VERSION); // 도커 빌드(.git 없음)는 빌드 인자로
 const head = [
   '// 자동 생성 — 손으로 고치지 말 것. tools/build-reader.js가 gs-backend/*.js에서 사건처리 한 번 호출(caseProcAll_)에 닿는 선언만 추려 만든 읽기 전용 시험용 모듈.',
   '// 만든 때 ' + at + ' · 원본 ' + (gitSha || '?') + ' · 출발점 ' + SEEDS.join(', ') + ' · 덩어리 ' + picked.length + '/' + all.length,
