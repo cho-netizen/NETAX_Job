@@ -30409,6 +30409,8 @@ function caseProcAllCompare_(c, body) {
   // (B) Cloud Run — /health 먼저(콜드 스타트 포함), 그 다음 /read
   let token = ''; try { token = ScriptApp.getIdentityToken(); } catch (e) { return { ok: false, step: 'allCompare', error: 'ID 토큰을 못 받음(권한 openid 승인 필요): ' + (e && e.message || e), gasSec: round1(gasMs) }; }
   const hdr = { Authorization: 'Bearer ' + token };
+  // [2026.10.23 T6 2단계] 토큰의 받는 이(aud)를 응답에 적는다 — Cloud Run이 401/403이면 이 값을 custom audience로 허용한다(IAM 설정에 필요, 토큰 자체는 적지 않음)
+  let tokenAud = ''; try { tokenAud = String(JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(token.split('.')[1])).getDataAsString()).aud || ''); } catch (e) {}
   const tH = Date.now(); let health = { ms: 0 };
   try { const hr = UrlFetchApp.fetch(url + '/health', { headers: hdr, muteHttpExceptions: true }); health = { code: hr.getResponseCode(), ms: Date.now() - tH, body: String(hr.getContentText() || '').slice(0, 200) }; }
   catch (e) { health = { error: String(e && e.message || e).slice(0, 200), ms: Date.now() - tH }; }
@@ -30433,7 +30435,7 @@ function caseProcAllCompare_(c, body) {
   const rec = {
     at: caseProcNow_(), caseId: c.id, 사건명: c.사건명 || '', 세목: c.세목 || '',
     gasSec: round1(gasMs), gasTm: A._tm || null, gasOk: A.ok !== false, gasPartial: !!A.partial,
-    healthMs: health.ms, healthCode: health.code || null, healthError: health.error || null,
+    healthMs: health.ms, healthCode: health.code || null, healthError: health.error || null, tokenAud: tokenAud,
     runSec: round1(runMs), runSecIncl: round1(runMs + (health.ms || 0)), runInner: B.timing || null, httpCode: httpCode, runOk: !!B.ok, runError: B.error || null, runPartial: B.partial || null,
     engine: B.engine || '', codeVersion: B.codeVersion || '', gasVersion: String(PropertiesService.getScriptProperties().getProperty('GH_DEPLOYED_SHA') || '').slice(0, 12),
     fieldsA: Object.keys(fa).length, fieldsB: Object.keys(fb).length, mismatches: mismatches,
