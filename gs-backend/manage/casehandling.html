@@ -577,9 +577,22 @@
   }
 
   function loadChCases_(preselectId){
-    chCaseSelectEl.innerHTML = '<option value="">불러오는 중…</option>';
+    // [2026.10.23 특단 반응 잣대 — 세무사님 "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"] 이미 받아 둔 사건 목록에 그 사건이 있으면 1초 안에 먼저 그리고,
+    //  목록은 뒤에서 다시 받아 그 사건 내용이 바뀌었을 때만 다시 그린다(예전엔 사건 목록(2~5초)을 받은 뒤에야 처리개요가 보였다)
+    var wantId0 = preselectId || chSelectedId;
+    var cachedCase = wantId0 ? chCases.filter(function(c){ return c.id === wantId0; })[0] : null;
+    var cachedJson = cachedCase ? JSON.stringify(cachedCase) : null;
+    if (cachedCase){ chSelectedId = wantId0; renderChCaseSelect_(); chCaseSelectEl.value = wantId0; renderChBody_(); }
+    else chCaseSelectEl.innerHTML = '<option value="">불러오는 중…</option>';
     callGas('work_get_cases', {}).then(function(res){
       chCases = res.cases || [];
+      if (cachedCase){
+        if (res.evidenceClassificationOptions) chCaseClassificationOptions_ = res.evidenceClassificationOptions;
+        renderChCaseSelect_();
+        var nowCase = chCases.filter(function(c){ return c.id === wantId0; })[0];
+        if (nowCase && JSON.stringify(nowCase) !== cachedJson && chSelectedId === wantId0){ chCaseSelectEl.value = wantId0; renderChBody_(); } // 바뀐 때만(적던 값은 chTyped_가 지킴)
+        return;
+      }
       // [2026.09] 사건분류 목록의 진짜 출처는 이제 서버(Code.js의 WORK_EVIDENCE_TEMPLATES_)
       // 하나뿐이다 — 여기서는 받은 목록을 그대로 저장해두고 렌더링만 한다(chCaseClassificationOptions_
       // 참고, chRenderOverviewFieldInput_이 사건분류 필드를 그릴 때 이걸 쓴다).

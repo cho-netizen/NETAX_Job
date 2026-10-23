@@ -38259,7 +38259,7 @@ function caseProcStatus_(c, body) {
   try { ledger = caseProcLedger_(c, saved); } catch (e) { ledger = { error: String(e && e.message || e) }; }
   rows.push(['시간', '⏱ ⑦ 안쪽', '', '칸 모으기 ' + Math.round((tLg - tS0) / 100) / 10 + '초 · 폴더 파일 장부 ' + Math.round((Date.now() - tLg) / 100) / 10 + '초']);
   // [2026.10.23 특단 측정 잣대 통일] 화면이 잰 "⚡ 누른 때 → 세액 보인 때"·"▶ 누른 때 → 세액" 초 — 사건마다 같은 자로 잰다
-  if (body.uiTiming && (Number(body.uiTiming.press2tax) || Number(body.uiTiming.btn2tax))) rows.push(['시간', '⚡→세액 / ▶→세액', '', (Number(body.uiTiming.press2tax) || 0) + '초 / ' + (Number(body.uiTiming.btn2tax) || 0) + '초' + (body.uiTiming.calls ? ' · 서버 부르기 ' + body.uiTiming.calls + '번' : '')]);
+  if (body.uiTiming && (Number(body.uiTiming.press2tax) || Number(body.uiTiming.btn2tax))) rows.push(['시간', '⚡→첫 결과/세액 · ▶→첫 결과/세액', '', '⚡ ' + (Number(body.uiTiming.first) || 0) + '초/' + (Number(body.uiTiming.press2tax) || 0) + '초 · ▶ ' + (Number(body.uiTiming.btnFirst) || 0) + '초/' + (Number(body.uiTiming.btn2tax) || 0) + '초' + (body.uiTiming.calls ? ' · 서버 부르기 ' + body.uiTiming.calls + '번' : '')]);
   if (ledger && ledger.sum) {
     rows.push(['폴더 파일 점검', '폴더 파일 = 점검 줄', ledger.sum.silent ? '⚠' : '✅', ledger.sum.files + '개 = ' + ledger.sum.rows + '줄' + (ledger.sum.truncated ? ' (파일이 너무 많아 일부 못 봄)' : '')]);
     rows.push(['폴더 파일 점검', '읽었지만 처리 기록(칸·질문·증빙목록)에 이름이 안 나온 서류', ledger.sum.unused ? '⚠' : '✅', ledger.sum.unused + '개 — 아래 장부에서 「쓰인 곳」이 빈 줄']);

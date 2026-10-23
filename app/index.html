@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-23 00:01 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-23 00:07 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5927,9 +5927,22 @@ function nxMdOpenWindow(title, src, opts){
   }
 
   function loadChCases_(preselectId){
-    chCaseSelectEl.innerHTML = '<option value="">불러오는 중…</option>';
+    // [2026.10.23 특단 반응 잣대 — 세무사님 "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"] 이미 받아 둔 사건 목록에 그 사건이 있으면 1초 안에 먼저 그리고,
+    //  목록은 뒤에서 다시 받아 그 사건 내용이 바뀌었을 때만 다시 그린다(예전엔 사건 목록(2~5초)을 받은 뒤에야 처리개요가 보였다)
+    var wantId0 = preselectId || chSelectedId;
+    var cachedCase = wantId0 ? chCases.filter(function(c){ return c.id === wantId0; })[0] : null;
+    var cachedJson = cachedCase ? JSON.stringify(cachedCase) : null;
+    if (cachedCase){ chSelectedId = wantId0; renderChCaseSelect_(); chCaseSelectEl.value = wantId0; renderChBody_(); }
+    else chCaseSelectEl.innerHTML = '<option value="">불러오는 중…</option>';
     callGas('work_get_cases', {}).then(function(res){
       chCases = res.cases || [];
+      if (cachedCase){
+        if (res.evidenceClassificationOptions) chCaseClassificationOptions_ = res.evidenceClassificationOptions;
+        renderChCaseSelect_();
+        var nowCase = chCases.filter(function(c){ return c.id === wantId0; })[0];
+        if (nowCase && JSON.stringify(nowCase) !== cachedJson && chSelectedId === wantId0){ chCaseSelectEl.value = wantId0; renderChBody_(); } // 바뀐 때만(적던 값은 chTyped_가 지킴)
+        return;
+      }
       // [2026.09] 사건분류 목록의 진짜 출처는 이제 서버(Code.js의 WORK_EVIDENCE_TEMPLATES_)
       // 하나뿐이다 — 여기서는 받은 목록을 그대로 저장해두고 렌더링만 한다(chCaseClassificationOptions_
       // 참고, chRenderOverviewFieldInput_이 사건분류 필드를 그릴 때 이걸 쓴다).
@@ -43452,6 +43465,7 @@ function tcSaveCurrentResult_(){
   // 요청이 독립적으로 처리됨) 방금 계산한 결과 저장이 "다른 곳에서 먼저 저장했다"는 엉뚱한
   // 충돌로 실패할 수 있었다 — 계산결과를 먼저 저장하고 성공한 뒤에만 개요 동기화를 보낸다.
   tcSaveList_(newList, saveLog_).then(function(ok){
+    window.tcLastSaveDoneAt_ = Date.now(); // [2026.10.23 특단 반응 잣대] 사건처리 ④가 "저장 끝"을 고정 5초 대신 이 신호로 안다
     if (ok) {
       showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — 납부세액 ' + won(totalNum) : '') + '.', 'success');
       tcSyncOverviewAmounts_(tab);
@@ -56199,12 +56213,23 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (st.gasDone) return Promise.resolve(st.gasDone);
       // [2026.10.23 속도 ㅅ9차] 사건 화면에서 "답하실 질문 N개 → ⚡"로 들어왔는데 서류가 읽혀 있고 새 서류가 없고 저장된 질문이 있으면 — ①②③을 다시 돌리지 않고 저장된 질문을 바로 보인다(가상증여5: 새로 고친 뒤 ①20초·③ 다시 돌던 것).
       //  [⚡ GAS로 다시 처리](st.force)는 예전대로 처음부터. 답하면 가벼운 ③이 다시 돌아 질문이 갱신된다
+      // [2026.10.23 특단 반응 잣대 — 세무사님 "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"] 현황(view)과 ① 사건파악을 같이 띄운다 — 예전엔 현황(7~15초, 폴더 훑기)을 받은 뒤에야 ①을 시작해 그동안 화면이 "진행 중…"뿐이었다.
+      //  현황이 먼저 오면(보통 2~4초) ① 줄에 "먼저 보이는 것"(읽은 서류·저장된 질문·세액)을 찍어 10초 안에 첫 중간 결과가 보이게. 이어받기(resume)가 되면 ①은 그대로 끝나게 두고 ②③은 안 돈다
       var resumeP = (st.screen && !st.force) ? st.run('view').catch(function(){ return null; }) : Promise.resolve(null);
+      var basicP = st.doStep('basic');
+      resumeP.then(function(v){
+        if (!v || !v.ok || st.firstShown) return; st.firstShown = true; st.secFirst = Math.round((Date.now() - st.t0) / 1000);
+        var nq = Array.isArray(v.질문) ? v.질문.filter(function(it){ var d = v.결정 && v.결정[it.id] && v.결정[it.id].d; return d !== 'done' && d !== '무시'; }).length : 0;
+        var d = document.createElement('div'); d.className = 'nxai-cp-line nxai-muted';
+        d.textContent = '⚡ 먼저 보이는 것(' + st.secFirst + '초): 읽은 서류 ' + ((v.파일 || []).length) + '개 · 저장된 질문 ' + nq + '개' + (v.계산 && v.계산.세액 != null ? ' · 지난 세액 ' + Number(v.계산.세액).toLocaleString('ko-KR') + '원(' + (v.계산.날짜 || '') + ')' : ' · 저장된 세액 없음') + (v.칸채움때 ? ' · 칸 채움 ' + v.칸채움때 : '');
+        st.steps.basic.querySelector('.nxai-cp-lines').appendChild(d);
+      });
       return resumeP.then(function(v){
         var openQ = v && v.ok && Array.isArray(v.질문) ? v.질문.filter(function(it){ var d = v.결정 && v.결정[it.id] && v.결정[it.id].d; return d !== 'done' && d !== '무시'; }) : [];
         var canResume = v && v.ok && v.사건 && v.단계 && v.단계['증빙 읽기·정리'] && v.칸채움때 && Array.isArray(v.새서류) && !v.새서류.length && openQ.length;
-        if (!canResume) return st.gasRun0_(v);
+        if (!canResume) return st.gasRun0_(v, basicP);
         st.case = v.사건; st.decisions = v.결정 || {}; if (Array.isArray(v.파일) && v.파일.length) st.files = v.파일;
+        basicP.catch(function(){}); // 같이 띄운 ①은 끝나는 대로 ① 줄에 남는다(이어받기라 ②③은 안 돈다)
         bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(st.case.사건명 || st.case.고객명 || '') + '</b>' + (v.저장때 ? ' <span class="nxai-muted">· 지난 처리 ' + nxAiEsc_(v.저장때) + '</span>' : '');
         if (st.case && typeof nxAiLinkCase_ === 'function' && (!nxAiConv.caseId || (st.relink && nxAiConv.caseId !== st.case.id))) nxAiLinkCase_(st.case);
         st.setStep('basic', '✅', '지난 처리 그대로(저장분) — 다시 돌리지 않음');
@@ -56214,8 +56239,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         return st.gasDone;
       });
     };
-    st.gasRun0_ = function(v0){
-      return st.doStep('basic').then(function(res){
+    st.gasRun0_ = function(v0, basicP){
+      return (basicP || st.doStep('basic')).then(function(res){
         if (!res) throw new Error('사건 기본 정보를 불러오지 못했습니다.');
         if (res.blocked){ st.blocked = true; ['evidence', 'overview', 'calc', 'output'].forEach(function(k){ st.setStep(k, '⏭', '증빙 폴더가 없어 건너뜀'); }); return { blocked: true }; }
         st.loopNotes = [];
@@ -56241,7 +56266,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       // [2026.10.22 묶음 ㄱ5] 순서를 "계산 → (계산 저장을 기다림) → 서식 → 검토서·현황표"로 — 예전엔 계산을 띄워 놓고 서식·검토서를 먼저 써서 검토서에 "계산 결과 없음", 현황표에 "계산 확정 전"이 남았다(가상양도7 표 36·40)
       st.finishing = true; st.calcPromise = null; st.calcAuto = false; // calcAuto를 풀어야 이번 ▶에서 계산이 다시 뜬다(예전엔 앞서 막힌 자동계산이 calcAuto를 켜 두어 두 번째 ▶가 계산 없이 지나감 — 가상양도7 표 32·35의 원인으로 보임)
       var waitCalc = function(){ return (st.calcPromise || Promise.resolve()).then(function(){ st.calcPromise = null; }); };
-      return st.run('calc').then(function(r0){ return st.doStep('calc', undefined, r0); }, function(){ return st.doStep('calc'); })
+      // [2026.10.23 특단 반응 잣대] ▶는 "지금 계산"이다 — 서버 ④ 확인(저장된 계산이 있나·새 서류가 있나, 5~10초+폴더 훑기)을 부르지 않고 바로 계산기로 간다(답 뒤엔 어차피 다시 계산)
+      st.secBtnFirst = st.tBtn ? Math.round((Date.now() - st.tBtn) / 1000) : 0;
+      return st.doStep('calc', undefined, { ok: true, lines: ['▶ — 서버 확인 없이 바로 세액계산기로 갑니다(답을 반영한 칸으로 다시 계산)'], items: [], needCalc: true })
         .then(waitCalc)
         // [2026.10.23 속도 ㅅ10차] ⑤ 인쇄 준비와 ⑥ 저장을 한 호출로(서버 왕복 15번 중 1번 덜 — 가상상속6: 오가며 기다린 시간 167초). 묶음이 실패하면 예전처럼 따로
         // [2026.10.23 특단 T4 — 세액 뒤는 뒤에서] 세액이 나오면 여기서 마무리 약속은 끝(▶ 단추·넥스 resume이 더 기다리지 않음). ⑤ 서식 대조·⑥ 저장·검토서·관련법령·⑦ 현황표는 st.bg로 뒤에서 잇고 끝나면 "📄 준비됨" 한 줄
@@ -56658,7 +56685,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 7 반영 현황표 — 사건 기본·처리개요 칸별 채움/출처/추정, 증빙 확보, 계산·서식 PDF·검토서, 남은 질문을 한 표로
   // 화면 하단 집계와 같은 기준이 되게 — 지금 보이는 항목·결정을 그대로 보낸다
   function nxAiCaseProcStatusReq_(st){
-    return { step: 'status', items: st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; }), decisions: st.decisions, uiTiming: { press2tax: st.secPress2Tax || 0, btn2tax: st.secBtn2Tax || 0, calls: (st.timing || []).length } }; // [2026.10.23 특단 측정 잣대] "⚡→세액"·"▶→세액" 초를 현황표에
+    return { step: 'status', items: st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; }), decisions: st.decisions, uiTiming: { press2tax: st.secPress2Tax || 0, btn2tax: st.secBtn2Tax || 0, first: st.secFirst || 0, btnFirst: st.secBtnFirst || 0, calls: (st.timing || []).length } }; // [2026.10.23 특단 측정 잣대] "⚡→세액"·"▶→세액" 초를 현황표에
   }
   // [2026.10.23 특단 T4] 세액계산 결과 상자 글에서 세액 한 줄 — "납부할 세액 1,234,560원"처럼. 못 찾으면 빈 글
   function nxAiCpTaxFromBox_(txt){
@@ -58871,7 +58898,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
             else {
               st.setStep('calc', '🔄', '계산 끝 — 사건에 저장 중…');
               if (typeof tcSaveCurrentResult_ === 'function') tcSaveCurrentResult_();
-              setTimeout(function(){
+              var tSaveReq = Date.now(); var waitSaved = function(cb){ var t1 = Date.now(); (function poll(){ if ((window.tcLastSaveDoneAt_ || 0) >= tSaveReq || Date.now() - t1 > 8000) return cb(); setTimeout(poll, 250); })(); }; // [2026.10.23 특단 반응 잣대] 고정 5초 대기 대신 저장 끝 신호(taxcalc tcLastSaveDoneAt_)를 기다린다(보통 1~3초, 최대 8초)
+              waitSaved(function(){
                 // [2026.10.23 특단 T4 — 세액 뒤는 뒤에서] 세액이 저장되면 화면은 여기서 바로 끝(✅ 세액·"⚡→세액 n초"). 서식 PDF·⑤⑥⑦은 뒤에서 이어지고 끝나면 알린다 — 세무사님이 2~4분을 더 기다리지 않게
                 var taxTxt = nxAiCpTaxFromBox_(txt), secP = Math.round((Date.now() - st.t0) / 1000), secB = st.tBtn ? Math.round((Date.now() - st.tBtn) / 1000) : 0;
                 st.secPress2Tax = secP; st.secBtn2Tax = secB;
@@ -58891,7 +58919,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
                   return st.finishing ? pr : nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ return pr; });
                 }).catch(function(e){ st.setStep('calc', '⚠', '세액 ' + (taxTxt || '저장 끝') + ' — 서식 PDF 저장 중 오류: ' + String(e && e.message || e).slice(0, 80)); return null; });
                 onEnd();
-              }, 5000);
+              });
               return;
             }
           }

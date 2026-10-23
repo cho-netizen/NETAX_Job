@@ -18106,6 +18106,7 @@ function tcSaveCurrentResult_(){
   // 요청이 독립적으로 처리됨) 방금 계산한 결과 저장이 "다른 곳에서 먼저 저장했다"는 엉뚱한
   // 충돌로 실패할 수 있었다 — 계산결과를 먼저 저장하고 성공한 뒤에만 개요 동기화를 보낸다.
   tcSaveList_(newList, saveLog_).then(function(ok){
+    window.tcLastSaveDoneAt_ = Date.now(); // [2026.10.23 특단 반응 잣대] 사건처리 ④가 "저장 끝"을 고정 5초 대신 이 신호로 안다
     if (ok) {
       showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — 납부세액 ' + won(totalNum) : '') + '.', 'success');
       tcSyncOverviewAmounts_(tab);
