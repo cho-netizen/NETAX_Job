@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-23 00:22 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-23 00:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -33527,7 +33527,7 @@ function renderGiftDonorRegistry(){
           : '<div class="taxcalc-field"><label>증여자가 대신 낸 취득세·등기비용 등</label><input type="number" data-dfield="incidentalPaid" placeholder="원" value="' + (d.incidentalPaid || '') + '"><span class="taxcalc-field-help">없으면 비움 — 증여재산가액에 더해 계산(집행기준 47-36-6 ③)</span>' +
             '<button type="button" class="taxcalc-add-asset-inline" data-action="load-acq-tax-to-donor" data-idx="' + idx + '">취득세 탭 계산 결과 불러오기</button></div>') +
         '<div class="taxcalc-field"><label>인수채무액</label><input type="number" data-dfield="debtAssumed"' + idOf('giftDebtAssumed') + ' placeholder="원" value="' + (d.debtAssumed || '') + '"><span class="taxcalc-field-help">부담부증여, 없으면 0</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="debtObjProven"' + (d.debtObjProven ? ' checked' : '') + '><label>배우자·직계존비속간 증여일 때만 — 위 채무가 객관적으로 인수 사실이 인정됨(§47③ 단서)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="debtObjProven"' + idOf('giftDebtProven') + (d.debtObjProven ? ' checked' : '') + '><label>배우자·직계존비속간 증여일 때만 — 위 채무가 객관적으로 인수 사실이 인정됨(§47③ 단서)</label></div>' +
         '<div class="taxcalc-field"><label>10년내 동일인 기증여합산액</label><input type="number" data-dfield="priorAmount"' + idOf('giftPriorAmount') + ' placeholder="' + (tcGiftPriorPending_() && !d.priorAmount ? '확인 전 — 비우면 0원' : '원') + '" value="' + (d.priorAmount || '') + '"><span class="taxcalc-field-help">' + (tcGiftPriorPending_() && !d.priorAmount ? '⏳ 확인 전(사건처리 질문에 아직 답하지 않음) — ' : '') + '없으면 비움 — 동일인에는 직계존속 증여시 그 배우자도 포함됩니다</span></div>' +
         // [2026.10.22 검토대상 증여-5] 상증법 §58① 공제액은 "가산하는 증여재산의 가액에 대하여 납부하였거나 납부할 증여세액"(같은 항 괄호: "증여 당시의 해당 증여재산에 대한 증여세산출세액")
         //  (신고세액공제·가산세 전). §58② 한도 = 이번 산출세액 × 앞선 증여재산의 과세표준 ÷ 합친 과세표준 — 그래서 앞선 과세표준 칸을 함께 받는다.
@@ -42456,7 +42456,7 @@ var TC_OVERVIEW_INPUT_KEYS_ = {
   // 형식("직계존속" + 세대생략 여부는 별도 data-genskip)이 달라 단순 대입도 안 통한다 —
   // 전용 변환 함수 tcApplyGiftRelation_로 별도 처리한다(아래).
   // [2026.10.15 1:1] 주민번호·주소 — 사건처리가 가족관계증명서(13자리)·등본에서 읽어 처리개요에 둔 값을 그대로(유료 자동채우기로 다시 읽어 뒷자리 잘린 번호가 들어가던 문제)
-  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftPriorPaidTax', 'giftPriorDeductionUsed', 'giftDate', /* [2026.10.23 ㅂ2] 이전 신고서의 산출세액(§58)·공제 사용액(§53) */ 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftAppraisalFee'], // giftAppraisalFee: 사건처리가 감정평가 영수증으로 채운 수수료(2026.10.16)
+  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftDebtProven' /* [2026.10.23 ㅍ4] §47③ 단서 체크 */, 'giftPriorAmount', 'giftPriorPaidTax', 'giftPriorDeductionUsed', 'giftDate', /* [2026.10.23 ㅂ2] 이전 신고서의 산출세액(§58)·공제 사용액(§53) */ 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftAppraisalFee'], // giftAppraisalFee: 사건처리가 감정평가 영수증으로 채운 수수료(2026.10.16)
   inheritance: ['ihDeceasedName', 'ihEstate', 'ihDeathDate']
 };
 // [2026.09 버그수정] 사건개요서(casehandling.html)에서 입력한 증여일·상속개시일은 사건개요
@@ -42589,6 +42589,15 @@ function tcApplyOverviewToInputs_(caseObj){
   keys.forEach(function(key){
     var el = document.getElementById(key);
     if (!el || overview[key] == null || overview[key] === '') return;
+    if (el.type === 'checkbox') { // [2026.10.23 ㅍ4] 체크 칸(§47③ 단서 입증) — 처리개요 '있음'이면 켠다. 사용자가 직접 바꿔 둔 체크는 존중
+      var on = /^(있음|1|true|예)$/.test(String(overview[key]).trim());
+      if (tcLastOverviewValues_[key] != null && String(el.checked) !== tcLastOverviewValues_[key]) return;
+      tcLastOverviewValues_[key] = String(on);
+      if (el.checked === on) return;
+      el.checked = on;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
     // 사용자가 우리가 지난번에 채워준 값 그대로 두고 있으면 최신 사건개요 값으로 갱신한다
     // (같은 사건을 다시 열었는데 그 사이 사건개요서에서 정정한 경우를 반영하기 위함).
     // 사용자가 직접 다른 값으로 고쳐뒀으면 그 입력을 존중해 건드리지 않는다.

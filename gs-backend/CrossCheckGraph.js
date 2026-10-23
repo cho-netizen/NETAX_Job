@@ -207,7 +207,7 @@ const CXG_KIND_GROUPS_ = {
 function cxgNumOrDate_(v) { const s = String(v == null ? '' : v).trim(); const d = /^(\d{4})\D(\d{1,2})\D(\d{1,2})/.exec(s); if (d) return d[1] + '-' + ('0' + d[2]).slice(-2) + '-' + ('0' + d[3]).slice(-2); const n = s.replace(/[^\d]/g, ''); return n.length >= 4 ? String(Number(n)) : ''; }
 function cxgFactNum_(f) { const v = f.kind === '공시가격' && typeof f.value === 'object' ? (f.value.가격 || f.value.단가) : f.value; return typeof v === 'object' ? '' : cxgNumOrDate_(v); }
 // [2026.10.23 ㅌ7] 처리개요 칸의 한국어 이름 — 질문 카드에 코드 이름(giftAmount)이 그대로 보였다(가상증여9, 모든 노출 글은 한국어)
-const CXG_OV_KO_ = { giftAmount: '증여재산가액', giftDebtAssumed: '인수채무액(부담부증여)', giftPriorAmount: '10년 내 같은 증여자 증여 합산액', giftPriorPaidTax: '기증여분 증여 당시 산출세액', giftPriorDeductionUsed: '기증여분 증여재산공제 사용액', giftAppraisalFee: '감정평가수수료', giftDate: '증여일', 기준일: '기준일' };
+const CXG_OV_KO_ = { giftAmount: '증여재산가액', giftDebtAssumed: '인수채무액(부담부증여)', giftDebtProven: '인수채무 객관적 입증 서류(§47③ 단서)', giftPriorAmount: '10년 내 같은 증여자 증여 합산액', giftPriorPaidTax: '기증여분 증여 당시 산출세액', giftPriorDeductionUsed: '기증여분 증여재산공제 사용액', giftAppraisalFee: '감정평가수수료', giftDate: '증여일', 기준일: '기준일' };
 function cxgValueFields_(cc) {
   const out = [], sv = caseProcLoad_(cc.id) || {}, ov = cc.사건개요 || {};
   const kindOf = function (k) { return CXG_FIELD_MAP_[k] || ''; };

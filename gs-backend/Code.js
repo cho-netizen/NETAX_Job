@@ -35800,7 +35800,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
         if (have.indexOf(d.금액) !== -1) return;
         add('giftDebtAssumed', d.금액, '증여계약서 인수채무 — ' + d.종류 + '(' + x.f.name + ')', false);
       });
-      byType('lease').concat(byType('rent')).forEach(function (y) { const lr0 = y.p.result || {}; (Array.isArray(lr0.docs) ? lr0.docs.map(function (d) { return (d && d.r) || {}; }) : [lr0]).forEach(function (lr) { /* [2026.10.23 ㅌ3] 임대차계약서는 결과가 docs[].r(한 파일 여러 계약) 안에 있다 — 예전엔 겉 결과만 봐 보증금을 못 보고 교차 확인이 통째로 빠졌다 */ if (!lr.보증금 || (mo.소재지 && lr.소재지 && !tcLocSame_(mo.소재지, lr.소재지))) return; const hitD = (facts.giftDebtAssumed || []).filter(function (q) { return Number(q.v) === Number(lr.보증금); })[0]; if (hitD) { hitD.sure = true; hitD.src += ' · 임대차계약서(' + y.f.name + ') 보증금과 일치(교차 확인)'; return; } /* [2026.10.23 ㅌ3] 계약서 인수채무 = 임대차 보증금이면 확실 — 예전엔 둘이 맞아도 "확실하지 않아 자동으로 넣지 않았습니다"로 물었다(가상증여9) */ add('giftDebtAssumed', lr.보증금, '임대보증금 — 임대차계약서(' + y.f.name + (lr.소재지 ? ', ' + lr.소재지 : '') + ') · 증여계약서 채무인수 문구', false); }); });
+      byType('lease').concat(byType('rent')).forEach(function (y) { const lr0 = y.p.result || {}; (Array.isArray(lr0.docs) ? lr0.docs.map(function (d) { return (d && d.r) || {}; }) : [lr0]).forEach(function (lr) { /* [2026.10.23 ㅌ3] 임대차계약서는 결과가 docs[].r(한 파일 여러 계약) 안에 있다 — 예전엔 겉 결과만 봐 보증금을 못 보고 교차 확인이 통째로 빠졌다 */ if (!lr.보증금 || (mo.소재지 && lr.소재지 && !tcLocSame_(mo.소재지, lr.소재지))) return; const hitD = (facts.giftDebtAssumed || []).filter(function (q) { return Number(q.v) === Number(lr.보증금); })[0]; if (hitD) { hitD.sure = true; hitD.src += ' · 임대차계약서(' + y.f.name + ') 보증금과 일치(교차 확인' + (lr.확정일자 ? ', 확정일자 ' + lr.확정일자 : '') + ')'; return; } /* [2026.10.23 ㅌ3] 계약서 인수채무 = 임대차 보증금이면 확실 — 예전엔 둘이 맞아도 "확실하지 않아 자동으로 넣지 않았습니다"로 물었다(가상증여9) */ add('giftDebtAssumed', lr.보증금, '임대보증금 — 임대차계약서(' + y.f.name + (lr.소재지 ? ', ' + lr.소재지 : '') + ') · 증여계약서 채무인수 문구', false); }); });
       lines.push('부담부증여: 인수채무(' + ((facts.giftDebtAssumed || []).map(function (q) { return Number(q.v).toLocaleString('ko-KR') + '원 ' + q.src; }).join(' / ') || '금액 미확인') + ') — 채무 부분은 증여자에게 양도(소득세법 §88①)라 양도세 신고 대상일 수 있음(후보 — 세무사님 판단)');
     });
     // [2026.10.18 정밀분석 07_5 — 상증법 §47①·③, §66·시행령 §63①3] 증여재산 등기부에 살아 있는 근저당·전세권이 있으면 판단 자리로 —
@@ -35831,6 +35831,25 @@ function caseProcGiftInhFacts_(c, lines, items) {
           items.push(caseProcItem_('gift:lien:' + liens.map(function (q) { return q.금액; }).join('|'), 'check', '증여재산 등기부에 말소되지 않은 담보가 있습니다 — ' + desc + '. 수증자가 이 채무를 인수합니까? 인수하면 부담부증여(상증법 §47①: 인수채무를 증여재산가액에서 빼고, 그 부분은 증여자에게 양도소득세 — 소득세법 §88①)이고, 배우자·직계존비속 사이는 채무 인수를 객관적으로 입증해야 인정됩니다(§47③). 증여계약서에는 채무인수 문구가 없습니다. 인수하면 증여일 현재 부채증명원 잔액을 넣어 주세요(채권최고액은 실제 채무가 아님).',
             { mode: 'options', target: 'ov:giftDebtAssumed', options: [{ label: '인수 안 함(순수 증여) — 0원', value: '0' }], input: 'money', label: '수증자가 인수한 채무(증여일 현재 잔액)', withInput: true }));
       }
+      // [2026.10.23 ㅍ4] 배우자·직계존비속 간 부담부증여의 인수채무는 객관적으로 입증돼야 공제(상증법 §47③ 단서 → 상증령 §36② → §10① 각 호: 1호 국가·지자체·금융회사등 채무는 그 기관에 대한 채무임을 확인할 수 있는 서류,
+      //  2호 그 밖의 채무는 채무부담계약서·채권자확인서·담보설정 및 이자지급 증빙). 계산기 체크("객관적으로 인수 사실이 인정됨")가 꺼져 있어 임대보증금 2.5억 공제가 통째로 빠졌다(가상증여10: 납부 130,950,000 ↔ 67,900,000).
+      //  일반 규칙: 인수채무 금액이 임대차계약서(채무부담계약서, 확정일자 있으면 더 확실)·금융회사 부채증명(1호)·등기부 근저당(담보설정 증빙, 금융채무일 때)과 맞으면 입증 서류 있음으로 채우고 근거를 적는다 — 어느 기관·연도 서식이든 서류 종류로 판정.
+      //  그 밖(계약서 문구만)이면 아래 칸별 반영이 "객관적 입증 서류가 있습니까?"를 묻는다. 세법 문장은 바꾸지 않음.
+      (function () {
+        const debts = facts.giftDebtAssumed || [];
+        if (!debts.length) return;
+        const proofs = [];
+        debts.forEach(function (q) {
+          const s = String(q.src || ''); let m;
+          if ((m = /부채증명\(([^)]+)\)/.exec(s))) proofs.push('금융회사 부채증명(' + m[1] + ') — 상증령 §10①1호');
+          if ((m = /임대차계약서\(([^)]+)\) 보증금과 일치\(교차 확인(, 확정일자 [\d-]+)?\)/.exec(s))) proofs.push('임대차계약서(' + m[1] + (m[2] || '') + ') 보증금 일치 — §10①2호(채무부담계약서)');
+          else if ((m = /^임대보증금 — 임대차계약서\(([^)]+)\)/.exec(s))) proofs.push('임대차계약서(' + m[1] + ') — §10①2호(채무부담계약서)');
+        });
+        if (debts.some(function (q) { return /근저당|대출|은행|금융|부채증명/.test(String(q.src || '')); }))
+          liens.filter(function (q) { return /근저당/.test(String(q.목적 || '')); }).forEach(function (q) { proofs.push('등기부 ' + q.loc + ' 을구 ' + q.순위 + ' 근저당(채권최고액 ' + Number(q.금액 || 0).toLocaleString('ko-KR') + '원' + (q.권리자 ? ', ' + q.권리자 : '') + ') — §10①2호(담보설정 증빙)'); });
+        if (!proofs.length) return;
+        add('giftDebtProven', '있음', '객관적 입증 서류 — ' + proofs.join(' / ') + ' (상증법 §47③ 단서·상증령 §36②)', true);
+      })();
     } catch (e) { notes.push('증여재산 담보 대조 중 오류: ' + e.message); }
   } else {
     const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
@@ -36008,7 +36027,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
   notes.forEach(function (n) { lines.push('참고: ' + n); });
   // 칸별 반영: 빈 칸 + 확실한 값 → 채움 / 빈 칸 + 후보만 → 질문 / 있는 값 ≠ 서류 → 질문 / 금액이 서류로 뒷받침 안 됨 → 추정(확정 질문)
   const spec = c.세목 === 'gift'
-    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'], ['giftPriorPaidTax', '기증여분 증여 당시 산출세액', 'money'], ['giftPriorDeductionUsed', '기증여분 증여재산공제 사용액', 'money'], ['giftAppraisalFee', '감정평가수수료', 'money'], // [2026.10.23 ㅂ2] 이전 신고서에서 읽은 §58·§53 칸
+    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftDebtProven', '인수채무 객관적 입증 서류(§47③ 단서)', 'select'] /* [2026.10.23 ㅍ4] */, ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'], ['giftPriorPaidTax', '기증여분 증여 당시 산출세액', 'money'], ['giftPriorDeductionUsed', '기증여분 증여재산공제 사용액', 'money'], ['giftAppraisalFee', '감정평가수수료', 'money'], // [2026.10.23 ㅂ2] 이전 신고서에서 읽은 §58·§53 칸
       ['giftDoneeRegNo', '수증자 주민등록번호', 'text'], ['giftDoneeAddress', '수증자 주소', 'text'], ['giftDonorRegNo', '증여자 주민등록번호', 'text'], ['giftDonorAddress', '증여자 주소', 'text']]
     : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number']]; // 과세가액(예상)은 계산 결과라 묻지 않음
   const fills = [], confirms = [];
@@ -36022,7 +36041,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
     const sure = uniq.length === 1 && uniq[0].sure ? uniq[0] : null;
     // [2026.10.23 ㅂ1] 증여재산가액 후보는 시가(감정가·매매사례, §60①②)를 앞에, 보충적 평가(공시가격 §61)는 뒤에 — 첫 후보에 ⭐(예전엔 읽은 순서라 공시가격이 먼저 보였다)
     if (key === 'giftAmount' && uniq.length > 1) { const rank = function (q) { return /^감정/.test(q.src) ? 0 : /^매매사례/.test(q.src) ? 1 : /^공시가격|보충적 평가/.test(q.src) ? 3 : 2; }; uniq.sort(function (a, b) { return rank(a) - rank(b); }); }
-    const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, label: sp[1], cands: uniq.map(function (x, i) { return { v: money ? digits(x.v) : x.v, src: (key === 'giftAmount' && i === 0 && uniq.length > 1 ? '⭐ ' : '') + x.src }; }) };
+    const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : key === 'giftDebtProven' ? ['있음', '없음'] : null, label: sp[1], cands: uniq.map(function (x, i) { return { v: money ? digits(x.v) : x.v, src: (key === 'giftAmount' && i === 0 && uniq.length > 1 ? '⭐ ' : '') + x.src }; }) };
     const same = function (a, b) { return money ? digits(a) === digits(b) : norm(a) === norm(b); };
     // [2026.10.15 1:1] 증여 내용 확인 전 — 이 칸들은 「증여 내용 확인」 한 질문으로 묻는다. 예전 실행이 이체내역으로 넣어 둔 추정값은 지운다(계산에 쓰이지 않게).
     if (dealPending && /^(giftDonorName|giftAmount|giftRelation)$/.test(key)) { // 수증자는 사건 납세자라 지우지 않음
@@ -36036,6 +36055,13 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (key === 'giftPriorAmount' && items.some(function (it) { return /^gift:memoprior:/.test(it.id); })) return; // 상담 메모 근거 질문이 같은 칸을 이미 묻는다
       if (key === 'giftPriorAmount' && !uniq.length) { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? — 있으면 그 금액을 이번 증여재산가액에 더해 세율을 적용하고 그때 낸 세액을 뺍니다(상증법 §47②·§58). ' + caseProcPriorGiftWhy_(c) + ' — 있으면 합산액을, 없으면 「없음」을 골라 주세요.', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
       if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
+      if (key === 'giftDebtProven' && !uniq.length) { // [2026.10.23 ㅍ4] 인수채무가 있고 배우자·직계존비속 간일 때만 묻는다(§47③은 그 경우에만 추정) — 그 밖엔 비워 둔다
+        const debtNow = Number(digits(ov.giftDebtAssumed)) > 0 || (facts.giftDebtAssumed || []).length > 0;
+        const rel0 = String(ov.giftRelation || ((facts.giftRelation || [])[0] || {}).v || '');
+        if (!debtNow || !/^(배우자|직계)/.test(rel0)) return;
+        items.push(caseProcItem_('ov:' + key, 'missing', '「인수채무 객관적 입증 서류(§47③ 단서)」 — 배우자·직계존비속 간 부담부증여는 채무 인수가 객관적으로 입증되지 않으면 인수되지 않은 것으로 추정됩니다(상증법 §47③). 폴더에서 임대차계약서·금융회사 부채증명·등기부 근저당처럼 그 채무를 뒷받침하는 서류(상증령 §10① 각 호)를 찾지 못했습니다 — 객관적 입증 서류가 있습니까?', ask));
+        return;
+      }
       if (/^(giftPriorPaidTax|giftPriorDeductionUsed)$/.test(key) && (!uniq.length || bundledPrior)) return; // [2026.10.23 ㅂ2] 이전 신고서가 없으면 비워 둔다(합산 질문이 대신 묻는다) · [ㅋ2] 합산 질문에 묶였으면 따로 묻지 않는다
       if (key === 'giftAppraisalFee' && !uniq.length) return; // 감정평가를 안 했으면 비워 둔다
       if (key === '상속인추가명단' && !uniq.length) return;
@@ -49543,7 +49569,7 @@ function trcStore_(c, S) {
 // [2026.10.17] 증여·상속 — 처리개요 칸 이름이 곧 세액계산기 칸 이름(TC_OVERVIEW_INPUT_KEYS_)이라 값은 그대로 넘어간다. 계산이 쓴 입력을 해시로 남겨,
 //  사이드바 답으로 값이 바뀌면 저장된 계산을 다시 하게 한다(예전엔 증여·상속은 답이 바뀌어도 옛 계산이 "완료"로 남았다)
 const GI_CALC_KEYS_ = {
-  gift: ['giftDoneeName', 'giftDonorName', 'giftRelation', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftAppraisalFee', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftDoneeExtraNames', 'giftDonorExtraNames', '사건분류'],
+  gift: ['giftDoneeName', 'giftDonorName', 'giftRelation', 'giftAmount', 'giftDebtAssumed', 'giftDebtProven', 'giftPriorAmount', 'giftAppraisalFee', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftDoneeExtraNames', 'giftDonorExtraNames', '사건분류'],
   inheritance: ['ihDeceasedName', 'ihDeathDate', '상속인성명', '상속인추가명단', '상속인수', '상속인목록', '사건분류']
 };
 function giCalcHash_(c) {
