@@ -303,6 +303,22 @@ function envTechCheck_() {
     if (mr.code !== 200 || /SERVICE_KEY|SERVICE KEY|LIMITED|<returnAuthMsg>/i.test(mr.text) && !/<resultCode>0+<\/resultCode>/.test(mr.text)) out.push({ 수준: '경고', 항목: '실거래가 API 키(MOLIT_API_KEY) 응답 이상(' + mr.code + ') — 활용기간 만료·트래픽 초과 확인(공공데이터포털)' });
   } else out.push({ 수준: '주의', 항목: '실거래가 API 키(MOLIT_API_KEY) 없음' });
   ['BUILDING_HUB_API_KEY', 'JUSO_API_KEY', 'VWORLD_API_KEY', 'NTS_API_KEY'].forEach(function (k) { if (!props.getProperty(k)) out.push({ 수준: '주의', 항목: k + ' 없음 — 해당 조회 도구가 동작하지 않음' }); });
+  if (!props.getProperty('KAKAO_REST_API_KEY')) out.push({ 수준: '참고', 항목: '카카오 REST API 키(KAKAO_REST_API_KEY) 없음 — 도로명주소 안내시스템이 못 찾는 소재지의 2차 주소검색을 건너뜀(카카오 디벨로퍼스에서 무료 발급)' });
+  // [2026.10.28 🌐 바깥 조회] 브이월드 토지대장·토지이용계획 API가 실제로 답하는지 — 고정 지번(서울 중구 태평로1가 31, 서울시청)으로 1건씩. 오퍼레이션·응답 칸 이름을
+  //  공식 문서로 못 박지 못해(개발자 사례로 정함) 배포마다 여기서 실제 호출로 확인한다 — 틀리면 🐞 카드에 바로 보인다
+  if (props.getProperty('VWORLD_API_KEY') && typeof cpLandLedger_ === 'function') {
+    var geo0 = { pnu: '1114010300100310000', jibun: '서울특별시 중구 태평로1가 31(배포 점검용)', bdNm: '', dong: '', ho: '' };
+    var keep = CP_SECURED_LOG_; CP_SECURED_LOG_ = []; // 점검 조회는 확보자료로 남기지 않는다
+    try {
+      var lg = cpLandLedger_(geo0), lu = cpLandUse_(geo0);
+      if (lg.error) out.push({ 수준: '경고', 항목: '브이월드 토지대장(ladfrlList) 응답 이상 — ' + String(lg.error).slice(0, 160) });
+      else if (!lg.jimok || !lg.area) out.push({ 수준: '경고', 항목: '브이월드 토지대장 응답에서 지목·면적을 못 읽음(칸 이름 확인 필요): ' + Object.keys(lg.row || {}).slice(0, 10).join(',') });
+      if (lu.error) out.push({ 수준: '경고', 항목: '브이월드 토지이용계획(getLandUseAttr) 응답 이상 — ' + String(lu.error).slice(0, 160) });
+      else if (!(lu.names || []).length) out.push({ 수준: '경고', 항목: '브이월드 토지이용계획 응답에서 용도지역을 못 읽음(칸 이름 확인 필요)' });
+      else out.push({ 수준: '정상', 항목: '🌐 바깥 조회 점검 — 토지대장 ' + (lg.jimok || '?') + ' ' + (lg.area || '?') + '㎡ · 토지이용계획 ' + lu.names.slice(0, 3).join(', ') + (lu.urban ? ' → ' + lu.urban : '') });
+    } catch (e) { out.push({ 수준: '경고', 항목: '🌐 바깥 조회 점검 실패: ' + (e && e.message || e) }); }
+    CP_SECURED_LOG_ = keep;
+  }
   // [2026.10.22] 세무사님 "권장대로 하고, 모두 완료한 다음에 일괄 배포하라" — 바깥 프로그램 중 감시가 없던 셋(문자·환율·깃허브)
   // 문자(SOLAPI): 예약 알림·마감 알림·고객 문자가 이 열쇠로 나간다. 열쇠·발신번호 확인 + 잔액 조회(조회만, 문자 안 보냄)
   var sk = props.getProperty('SOLAPI_API_KEY'), ss = props.getProperty('SOLAPI_API_SECRET');

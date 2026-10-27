@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 16:03 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 16:27 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26555,8 +26555,9 @@ function assetLocationFieldsHtml_(a, idx){
   const hoListId = dongListId.replace('Dong', 'Ho');
   const hoOptions = Array.isArray(a.assetHoList) ? a.assetHoList : [];
   return '' +
-    '<div class="taxcalc-field" style="flex:0 1 340px;"><label>소재지</label><div class="taxcalc-field-inline"><input type="text" data-field="assetLocation" value="' + (a.assetLocation || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search" title="주소 검색">🔍</button></div>' +
+    '<div class="taxcalc-field" style="flex:0 1 340px;"><label>소재지</label><div class="taxcalc-field-inline"><input type="text" data-field="assetLocation" value="' + (a.assetLocation || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search" title="주소 검색">🔍</button><button type="button" class="taxcalc-ai-btn" data-action="lookup-land-info" title="토지정보 자동조회 — 토지대장(지목·면적)·토지이용계획(용도지역)·열람 링크(토지이음·씨리얼·카카오맵). 사건처리 ⚡가 돌리는 것과 같은 조회">🌐 토지정보</button></div>' +
       (a.assetZipNo ? '<span class="taxcalc-result-note" style="margin:2px 0 0;">우편번호 ' + a.assetZipNo + '</span>' : '') +
+      (a.landInfo ? '<span class="taxcalc-result-note" style="margin:2px 0 0; display:block;">🌐 ' + String(a.landInfo.text || '').replace(/</g, '&lt;') + (a.landInfo.links ? ' · <a href="' + a.landInfo.links.토지이음 + '" target="_blank" rel="noopener">토지이음</a> · <a href="' + a.landInfo.links.씨리얼 + '" target="_blank" rel="noopener">씨리얼</a> · <a href="' + a.landInfo.links.카카오맵 + '" target="_blank" rel="noopener">카카오맵</a>' : '') + '</span>' : '') + // [2026.10.28 🌐 바깥 조회]
     '</div>' +
     '<div class="taxcalc-field"><label>동</label><input type="text" data-field="assetDong" list="' + dongListId + '" value="' + (a.assetDong || '').replace(/"/g, '&quot;') + '" placeholder="예: 101동"><datalist id="' + dongListId + '">' +
       dongOptions.map(function(d){ return '<option value="' + d.replace(/"/g, '&quot;') + '">'; }).join('') +
@@ -40341,6 +40342,30 @@ function handleTaxCalcClick_(e){
       ieEl.value = net;
       if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ieEl);
     }
+  } else if (action === 'lookup-land-info'){
+    // [2026.10.28 🌐 바깥 조회] 토지대장(지목·면적)·토지이용계획(용도지역) — 사건처리 ⚡가 돌리는 것과 같은 서버 조회(세무사님이 직접 누르는 길). 빈 면적·지목만 채운다
+    const card = btn.closest('.taxcalc-asset');
+    const idx = numVal(card.dataset.idx);
+    const giftListEl = card.closest('#giftValuationList');
+    const ihListEl = card.closest('#inheritanceValuationList');
+    const assets = giftListEl ? giftValuationAssets_() : (ihListEl ? inheritanceValuationAssets_() : transferAssets);
+    const a = assets[idx];
+    const pnu = buildPnu_(a);
+    if (!pnu){ nxAlert_('먼저 "🔍 주소 검색"으로 소재지(지번)를 선택해야 토지정보를 자동조회할 수 있습니다.'); return; }
+    const rerender = function(){ if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_()); else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_()); else renderTransferPane(); };
+    a.landInfo = { text: '조회 중…' }; rerender();
+    callGas('lookupLandInfo', { pnu: pnu, jibun: a.assetLocation || '', caseId: (typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.id) || '' }).then(function(data){
+      if (data.error){ a.landInfo = null; rerender(); nxAlert_(data.error); return; }
+      const parts = [];
+      if (data.ledger) parts.push('토지대장: ' + (data.ledger.지목 || '지목?') + ' · ' + (data.ledger.면적 ? data.ledger.면적 + '㎡' : '면적?') + (data.ledger.소유구분 ? ' · ' + data.ledger.소유구분 : '')); else if (data.ledgerError) parts.push('토지대장 못 받음(' + data.ledgerError + ')');
+      if (data.landuse) parts.push('토지이용계획: ' + (data.landuse.지역지구 || []).slice(0, 8).join(', ') + (data.landuse.도시지역 ? ' → ' + data.landuse.도시지역 : '')); else if (data.landuseError) parts.push('토지이용계획 못 받음(' + data.landuseError + ')');
+      a.landInfo = { text: parts.join(' / '), links: data.links, ledger: data.ledger || null, landuse: data.landuse || null };
+      if (data.ledger){
+        if (!a.assetArea && data.ledger.면적 && (a.assetKind === 'land' || (!a.assetKind && !a.assetHo))) a.assetArea = data.ledger.면적;
+        if (!a.assetSubType && data.ledger.지목 && a.assetKind === 'land') a.assetSubType = data.ledger.지목;
+      }
+      rerender();
+    }).catch(function(err){ a.landInfo = null; rerender(); nxAlert_('토지정보 조회 실패: ' + (err && err.message || err)); });
   } else if (action === 'open-address-search'){
     // 이 버튼이 어느 자산 목록(양도세 거래카드/증여·상속 재산평가 자산행) 안에 있는지 DOM으로
     // 찾아서, 검색결과를 그 자산의 소재지·동·면적 관련 상태에 바로 채운다.
@@ -53533,6 +53558,7 @@ function rwAiApplyEdit_(id, content){
           <ul>
             <li>🏠 부동산 실거래가 — 국토교통부 공공데이터, 아파트·오피스텔·연립다세대·단독다가구·토지·상업업무용·분양권전매·공장창고 9개 유형 (예: "서울 종로구 아파트 2026년 1월 실거래가")</li>
             <li>🏢 건축물대장 — 표제부·총괄표제부·층별개요·전유공용면적·주택가격 등 10종 (예: "이 건물 건축물대장 표제부")</li>
+            <li>🌐 토지대장·토지이용계획 — 지목·면적·소유구분, 용도지역·지구·구역(토지이음 열람과 같은 원천) + 토지이음·씨리얼·카카오맵 열람 링크 (예: "이 필지 용도지역"). 사건처리 ⚡는 소재지가 있는 모든 부동산에 이 조회를 기본으로 돌리고, 결과를 반영 현황표 「🌐 바깥 조회」 줄과 확보자료 PDF로 남깁니다 [2026.10.28]</li>
             <li>🏷 사업자등록 상태조회·진위확인 — 계속/휴업/폐업, 과세유형, 대표자·개업일 일치 여부 (예: "사업자번호 123-45-67890 상태")</li>
             <li>🧮 건물 기준시가 — 국세청 2026.1.1. 시행 고시 기준, 구조·용도·위치·신축연도·면적으로 계산(공동주택·상업용건물·오피스텔은 별도 고시가액이라 제외)</li>
             <li>⚖️ 법령·예규·판례 검색과 양도·증여·상속세 계산 — 세액계산 화면과 같은 계산엔진을 씁니다</li>

@@ -169,7 +169,7 @@ const BASIC_TOOL_NAMES_ = new Set([
   'remember_fact',
   // 아래는 계산기만큼 무겁지 않아(설명이 짧음) 굳이 분야별 탐색 대상에 안 넣고 항상 켜둠.
   'lookup_statute_article', 'lookup_real_estate_price', 'lookup_building_register', 'search_address',
-  'lookup_official_price', 'lookup_business_status', 'verify_business_registration',
+  'lookup_official_price', 'lookup_land_info', 'search_address_kakao', 'lookup_business_status', 'verify_business_registration',
   'get_building_price_index_tables', 'lookup_adjusted_area',
   'list_business_managers', 'load_business_manager', 'audit_business_managers', 'propose_new_business_manager',
   'browse_tax_calculators',
@@ -449,6 +449,32 @@ const DRIVE_TOOLS = [
         stdrYear: { type: 'string', description: '기준연도(YYYY, 생략하면 올해).' }
       },
       required: ['priceKind', 'admCd', 'mtYn', 'lnbrMnnm']
+    }
+  },
+  // [2026.10.28 🌐 바깥 조회] 토지대장·토지이용계획 — 세액계산기 🔍 토지정보 자동조회·사건처리 기본 수집과 같은 조회(세무사님도 화면에서 직접 누를 수 있음)
+  {
+    name: 'lookup_land_info',
+    description: '브이월드(국토교통부 공간정보 오픈플랫폼) 국가중점 데이터로 필지의 토지대장(지목·면적·소유구분)과 토지이용계획(용도지역·지구·구역 — 토지이음 열람과 같은 원천)을 조회하고, 토지이음·씨리얼·카카오맵 열람 링크를 함께 돌려준다. pnu(19자리)가 없으면 search_address 결과의 admCd·mtYn·lnbrMnnm·lnbrSlno로 서버가 조립한다. 비사업용 토지(농지·임야의 도시지역 여부)·주택부수토지 배율·자경농지 감면 판단의 사실 근거로 쓴다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        pnu: { type: 'string', description: '지번 고유번호 19자리(있으면 이것만으로 됨).' },
+        admCd: { type: 'string', description: 'search_address 결과의 법정동코드(10자리).' },
+        mtYn: { type: 'string', description: 'search_address 결과의 산여부("0" 또는 "1").' },
+        lnbrMnnm: { type: 'string', description: 'search_address 결과의 지번 본번.' },
+        lnbrSlno: { type: 'string', description: 'search_address 결과의 지번 부번(없으면 생략).' },
+        jibun: { type: 'string', description: '지번 주소 글(확보자료 이름·링크용, 선택).' },
+        caseId: { type: 'string', description: '사건 ID(있으면 조회 결과를 그 사건 확보자료 폴더에 PDF로 남김, 선택).' }
+      }
+    }
+  },
+  {
+    name: 'search_address_kakao',
+    description: '카카오 로컬 주소검색 — 도로명주소 안내시스템(search_address)이 못 찾는 소재지(건물명만·옛 지번·약식 표기)를 한 번 더 찾는다. 결과 모양은 search_address와 같다(admCd·mtYn·lnbrMnnm·lnbrSlno·jibunAddr·roadAddr·bdNm·zipNo에 좌표 x·y 추가). KAKAO_REST_API_KEY가 없으면 안내만 돌아온다.',
+    input_schema: {
+      type: 'object',
+      properties: { keyword: { type: 'string', description: '검색어(지번·도로명·건물명)' } },
+      required: ['keyword']
     }
   },
   // [2026.10.20] 조정대상지역 이력표 조회(AdjArea.js adjAreaLookupTool_, 토큰 0) — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다"
@@ -4503,6 +4529,12 @@ function dispatchClientAction0_(body) {
   }
   if (body.action === 'lookupOfficialPrice') {
     return jsonResponse(handleLookupOfficialPrice(body));
+  }
+  if (body.action === 'lookupLandInfo') { // [2026.10.28 🌐] 토지대장·토지이용계획·열람 링크(세액계산기 🔍 토지정보 자동조회)
+    return jsonResponse(handleLookupLandInfo(body));
+  }
+  if (body.action === 'searchAddressKakao') { // [2026.10.28 🌐] 카카오 로컬 주소검색(도로명주소 안내시스템 보조)
+    return jsonResponse(handleSearchAddressKakao(body));
   }
   if (body.action === 'lookupExchangeRate') { // [2026.10.20 조견표 1부-13] 날짜별 기준환율·재정환율(한국은행 ECOS)
     return jsonResponse(handleLookupExchangeRate(body));
@@ -15659,6 +15691,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
           ? handleLookupOfficialPrice({ pnu: pnu, priceKind: input.priceKind, dong: input.dong || '', ho: input.ho || '', stdrYear: input.stdrYear || '' })
           : { error: 'admCd·mtYn·lnbrMnnm이 필요합니다(search_address 결과를 그대로 넘기세요).' };
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
+      }
+
+      if (block.name === 'lookup_land_info') { // [2026.10.28 🌐]
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleLookupLandInfo(block.input || {})) };
+      }
+      if (block.name === 'search_address_kakao') { // [2026.10.28 🌐]
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleSearchAddressKakao(block.input || {})) };
       }
 
       if (block.name === 'lookup_adjusted_area') {
@@ -26934,7 +26973,10 @@ function t6ApplyRead_(c, body) {
     if (cr.법정일 && String(cr.법정일) !== String(cur.법정일 || '')) { up.법정일 = cr.법정일; any = true; }
     if (any) { const r = work_updateCase(up); saved.caseRow = !!(r && r.success !== false); if (r && r.success === false) return { ok: false, error: '사건 행 저장 실패: ' + (r.message || ''), saved: saved }; }
   }
-  return { ok: true, step: 'applyRead', saved: saved, sec: Math.round((Date.now() - t0) / 100) / 10 };
+  // [2026.10.28 🌐 바깥 조회] 직결 서비스는 바깥 호출(UrlFetchApp)을 못 한다 — 결과를 저장한 뒤 GAS가 여기서 토지대장·토지이용계획·공시가격·건축물대장 묶음을 돌린다
+  let outside = null;
+  try { outside = cpOutsideAfterDirect_(c); } catch (e) { outside = { error: String(e && e.message || e) }; }
+  return { ok: true, step: 'applyRead', saved: saved, outside: outside, sec: Math.round((Date.now() - t0) / 100) / 10 };
 }
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
   try { if (CacheService.getScriptCache().get('cp_evid_busy')) return; } catch (e) {} // [2026.10.23 속도 ㅅ6차] 화면의 ② 서류 읽기가 도는 중이면 이번 틱은 쉰다(같은 파일 동시 글자인식 방지)
@@ -36621,15 +36663,21 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (pr) add('giftAmount', pr.가격, '공시가격 ' + (pr.연도 || '') + '년 ' + (r.종류 || '') + '(' + x.f.name + ') — 보충적 평가, 시가·감정가 있으면 그것이 우선', false);
       else if ((r.가격 || []).some(function (q) { return q.단가; })) notes.push('공시지가(원/㎡)만 있는 토지(' + x.f.name + ') — 면적을 곱해 평가해야 함');
     });
-    // [2026.10.17] 폴더에 공시가격 서류가 없으면 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 증여일 현재 공시된 가격(보충적 평가 §61, 후보로만: 시가·감정가가 우선)
-    if (c.기준일 && gifts.length === 1 && !byType('pubprice').length && gifts[0].loc) {
+    // [2026.10.28 🌐 바깥 조회] 모든 증여 물건에 기본으로(서류 유무와 상관없이) — 토지대장·토지이용계획·증여일 공시가격·건축물대장. 결과는 확보자료 PDF·반영 현황표
+    try { cpOutsideRun_(c, gifts.filter(function (g) { return g.loc; }).map(function (g, i) { return { p: 'gift:' + i, loc: g.loc, kind: /토지/.test(g.kind || '') ? 'land' : (g.kind ? 'building' : ''), area: Number(g.area) || 0, dates: c.기준일 ? [{ label: '증여일', date: c.기준일 }] : [] }; }), lines); } catch (e) { lines.push('⚠ 바깥 조회 중 오류: ' + (e && e.message || e)); }
+    // [2026.10.17] 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 증여일 현재 공시된 가격(보충적 평가 §61, 후보로만: 시가·감정가가 우선)
+    //  [2026.10.28] 폴더에 공시가격 서류가 있어도 조회해 서류 값과 대조한다(같으면 일치 표시, 다르면 둘 다 후보)
+    if (c.기준일 && gifts.length === 1 && gifts[0].loc) {
       try {
         const g0 = gifts[0], kind = /토지/.test(g0.kind) ? 'land' : (/집합/.test(g0.kind) || /\d\s*호(?![가-힣])/.test(g0.loc)) ? 'apartment' : '';
         let area = 0;
         if (kind === 'land') byType('registry').forEach(function (x) { ((x.p.result || {}).docs || []).forEach(function (d) { if (!area && d.소재지 === g0.loc && d.표제부 && d.표제부.면적) area = d.표제부.면적; }); });
         if (kind && (kind !== 'land' || area)) {
           const r = cpOfficialPrice_(cpGeo_(g0.loc), kind, cpOfficialYear_(c.기준일, kind));
-          if (r.v) add('giftAmount', Math.floor(r.v * (kind === 'land' ? area : 1)), r.src + (kind === 'land' ? ' × ' + area + '㎡' : '') + ' — 증여일 현재 공시가격, 보충적 평가(§61) — 시가·감정가액이 있으면 그것이 우선', false);
+          const vOut = r.v ? Math.floor(r.v * (kind === 'land' ? area : 1)) : 0;
+          const docSame = vOut && (facts.giftAmount || []).some(function (x) { return Number(String(x.v).replace(/[^\d]/g, '')) === vOut; });
+          if (docSame) notes.push(g0.loc + ' 공시가격: 서류 값과 바깥 조회(브이월드) 값이 같음 ✅ ' + vOut.toLocaleString('ko-KR') + '원');
+          else if (r.v) add('giftAmount', vOut, r.src + (kind === 'land' ? ' × ' + area + '㎡' : '') + ' — 증여일 현재 공시가격, 보충적 평가(§61) — 시가·감정가액이 있으면 그것이 우선', false);
           else notes.push(g0.loc + ' 공시가격 조회: ' + r.error);
         }
       } catch (e) {}
@@ -37776,6 +37824,11 @@ function caseProcInhFacts0_(c, parsed) {
     });
   } catch (e) { out.notes.push('분할협의서 귀속 대조 중 오류: ' + e.message); }
   const inWin = function (d, months) { if (!d || !base) return false; const a = new Date(d), b = new Date(base); return Math.abs(a - b) <= months * 30.5 * 86400000; };
+  // [2026.10.28 🌐 바깥 조회] 모든 상속 부동산에 기본으로(서류 유무와 상관없이) — 토지대장·토지이용계획·상속개시일 공시가격·건축물대장. 토지대장 면적으로 빈 면적을 채운다
+  try {
+    const orows = cpOutsideRun_(c, out.assets.filter(function (a) { return a.loc; }).map(function (a, i) { return { p: 'ih:' + i, loc: a.loc, kind: a.kind === '토지' ? 'land' : (a.kind ? 'building' : ''), area: Number(a.area) || 0, dates: base ? [{ label: '상속개시일', date: base }] : [] }; }), out.notes);
+    orows.forEach(function (r) { const m = /^ih:(\d+)$/.exec(r.p || ''); const a = m && out.assets.filter(function (x) { return x.loc; })[Number(m[1])]; if (!a) return; a.outside = r; if (a.kind === '토지' && !a.area && r.ledger && r.ledger.area) { a.area = r.ledger.area; a.areaSrc = '바깥 조회: ' + r.ledger.src; } });
+  } catch (e) { out.notes.push('⚠ 바깥 조회 중 오류: ' + (e && e.message || e)); }
   out.assets.forEach(function (a) {
     // 토지 — 개별공시지가(평가기준일 현재 공시된 것) × 면적
     by('pubprice').forEach(function (x) {
@@ -37796,13 +37849,19 @@ function caseProcInhFacts0_(c, parsed) {
       const lp = a.ledPrices.filter(function (p) { return p.기준일 && pub(p.기준일) <= base; }).sort(function (p1, p2) { return String(p2.기준일).localeCompare(String(p1.기준일)); })[0];
       if (lp) a.cands.push({ v: lp.가격, src: '공동주택가격 ' + lp.기준일 + ' 기준(' + pub(lp.기준일) + ' 공시) ' + Number(lp.가격).toLocaleString('ko-KR') + '원 — 집합건축물대장(' + (a.ledPriceFile || a.file) + '), 보충적 평가(§61①2)', kind: '기준시가', file: a.ledPriceFile || a.file });
     }
-    // [2026.10.17] 폴더에 공시가격 서류가 없으면 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 상속개시일 현재 공시된 가격(보충적 평가 §61)
-    if (base && a.loc && !a.cands.some(function (q) { return q.kind === '기준시가'; })) {
+    // [2026.10.17] 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 상속개시일 현재 공시된 가격(보충적 평가 §61)
+    //  [2026.10.28] 서류에 기준시가가 있어도 조회해 대조한다(같으면 그 후보에 일치 표시, 다르면 바깥 조회 값을 따로 후보로)
+    if (base && a.loc) {
       try {
         const kind = a.kind === '토지' ? 'land' : (a.kind === '집합건물' || /\d\s*호(?![가-힣])/.test(a.loc)) ? 'apartment' : '';
         if (kind && (kind !== 'land' || a.area)) {
           const r = cpOfficialPrice_(cpGeo_(a.loc), kind, cpOfficialYear_(base, kind));
-          if (r.v) a.cands.push({ v: Math.floor(r.v * (kind === 'land' ? Number(a.area) : 1)), src: r.src + (kind === 'land' ? ' × ' + a.area + '㎡' : '') + ' — 상속개시일 현재 공시가격, 보충적 평가(§61)', kind: '기준시가', file: '' });
+          if (r.v) {
+            const vOut = Math.floor(r.v * (kind === 'land' ? Number(a.area) : 1));
+            const same = a.cands.filter(function (q) { return q.kind === '기준시가' && Number(q.v) === vOut; })[0];
+            if (same) same.src += ' ✅ 바깥 조회(브이월드)와 일치';
+            else a.cands.push({ v: vOut, src: r.src + (kind === 'land' ? ' × ' + a.area + '㎡' : '') + ' — 상속개시일 현재 공시가격, 보충적 평가(§61)' + (a.cands.some(function (q) { return q.kind === '기준시가'; }) ? ' ⚠ 서류의 기준시가와 다름 — 대조 필요' : ''), kind: '기준시가', file: '' });
+          }
           else out.notes.push(a.loc + ' 공시가격 조회: ' + r.error);
         }
       } catch (e) {}
@@ -39273,6 +39332,15 @@ function caseProcStatus_(c, body) {
     if (!n.later && !n.ok) inputsOk = false;
     rows.push(['계산기 필요 칸', n.l, mk, n.later ? n.later : (n.ok ? String(n.src || '').replace(/^증빙:\s*/, '') : '비어 있음 — ' + (n.why || ''))]);
   });
+  // [2026.10.28 🌐 바깥 조회] 부동산마다 무엇을 조회했고 무엇을 못 받았는지 — 세무사님이 "자료수집을 하는지" 여기서 바로 본다
+  if (saved.outside && Array.isArray(saved.outside.rows) && saved.outside.rows.length) {
+    saved.outside.rows.forEach(function (r) {
+      const oks = (r.items || []).filter(function (it) { return it.ok && it.k !== 'geo'; }), bads = (r.items || []).filter(function (it) { return !it.ok; });
+      const mk = !oks.length ? '⚠ 못 받음' : bads.length ? '△ 일부' : '✅';
+      rows.push(['🌐 바깥 조회', r.loc || '', mk, (r.jibun && r.jibun !== r.loc ? '지번 ' + r.jibun + ' · ' : '') + oks.map(function (it) { return it.label + ': ' + it.v; }).join(' · ') + (bads.length ? (oks.length ? ' · ' : '') + '못 받음 — ' + bads.map(function (it) { return it.label + '(' + String(it.err || '').slice(0, 80) + ')'; }).join(', ') : '') + ' — ' + saved.outside.at]);
+    });
+    if ((saved.outside.skipped || []).length) rows.push(['🌐 바깥 조회', '다음 실행에서', '△', saved.outside.skipped.join(', ')]);
+  } else rows.push(['🌐 바깥 조회', '토지대장·토지이용계획·공시가격·건축물대장', '⬜', (saved.outside && saved.outside.note) || '아직 조회 안 함 — ⚡ 사건처리를 돌리면 소재지가 있는 모든 부동산을 조회합니다']);
   const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested' && !cashNa(e); });
   const got = ev.filter(function (e) { return e.status === '확보됨'; }).length;
   rows.push(['증빙', '필요증빙 확보', ev.length && got === ev.length ? '✅' : (ev.length ? '△ 일부' : '⬜'), got + '/' + ev.length]);
@@ -50910,6 +50978,10 @@ function trcOverview_(c, ov, rf, lines, items) {
     //  + 건물기준시가(국세청 계산서가 있을 때만 — 없으면 토지분만 넣고 [확인 필요]). 나눌지는 세무사님이 고른다(trcQuestions_ 'tr:mixed'). 12억 이하면 주택 면적이 더 큰 겸용주택은 전부 주택(§154③) — 나누지 않고 그대로
     try { S.facts.mixedHouse = trcMixedHouse_(c, a00, S); } catch (e) { S.facts.mixedHouse = null; lines.push('⚠ 겸용주택 판단 중 오류: ' + (e && e.message || e)); }
   }
+  // [2026.10.28 🌐 바깥 조회] 모든 양도 자산에 기본으로 — 토지대장(지목·면적)·토지이용계획(용도지역)·공시가격(취득일·양도일)·건축물대장. 빈 칸만 채우고 서류와 다르면 묻는다
+  const tOut = Date.now();
+  try { trcOutside_(c, S, lines, items); } catch (e) { lines.push('⚠ 바깥 조회(토지대장·토지이용계획·공시가격) 중 오류: ' + (e && e.message || e)); }
+  try { CP_OV_T_['바깥 조회'] = Math.round((Date.now() - tOut) / 100) / 10; } catch (e) {}
   const ryr = trcResYears_(c, S); S.facts.resYears = ryr.y; S.facts.resRows = ryr.rows; // 1세대1주택 거주연수(초본)
   try { trcOverseas_(c, S, ans, rf, lines, items); } catch (e) { lines.push('⚠ 국외자산 서류 정리 오류: ' + (e && e.message || e)); } // 국외자산이면 계산기 국외자산 카드로
   // [2026.10.18 재점검 3·7] 교차검증을 계산기 입력이 만들어지는 자리에서 — 서류 규칙이 서류 순서로 고른 값을 사건 사실 전체 맞대기 판정으로 바꾸고,
@@ -51470,7 +51542,7 @@ function cpSecuredFlush_(caseId) {
     const r = uniq[name];
     const sig = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify([r.kind, r.target, r.cond, r.rows]), Utilities.Charset.UTF_8)).slice(0, 22);
     return { name: name, r: r, sig: sig, ck: 'cpsec_' + String(caseId).slice(0, 40) + '_' + sig };
-  }).filter(function (x) { return !cache.get(x.ck); }).slice(0, 6);
+  }).filter(function (x) { return !cache.get(x.ck); }).slice(0, 14); // [2026.10.28 🌐] 부동산마다 토지대장·토지이용계획이 더 생겨 6 → 14
   todo.forEach(function (x) {
     const name = x.name, r = x.r, sig = x.sig, ck = x.ck;
     try {
@@ -51527,6 +51599,21 @@ function cpGeo_(loc) {
       else out = { pnu: j.admCd + (j.mtYn === '1' ? '2' : '1') + ('0000' + j.lnbrMnnm).slice(-4) + ('0000' + (j.lnbrSlno || '0')).slice(-4), admCd: j.admCd, jibun: j.jibunAddr, bdNm: j.bdNm || '', dong: dm ? dm[1] : '', ho: dm ? dm[2] : (hm ? hm[1] : '') };
     }
   } catch (e) { out = { error: '주소 검색 실패: ' + (e && e.message || e) }; }
+  // [2026.10.28 🌐 바깥 조회] 도로명주소 안내시스템이 못 찾으면(건물명만·옛 지번·약식 표기) 카카오 로컬 주소검색으로 한 번 더 — KAKAO_REST_API_KEY가 있을 때만
+  if (out && out.error && PropertiesService.getScriptProperties().getProperty('KAKAO_REST_API_KEY')) {
+    try {
+      const s2 = String(loc || '').replace(/\s+/g, ' ').trim();
+      const dm2 = /(?:제\s*)?([0-9A-Za-z가-힣]+)\s*동\s*(?:제\s*)?(\d{1,5})\s*호/.exec(s2), hm2 = dm2 ? null : /(?:제\s*)?(\d{1,5})\s*호/.exec(s2);
+      const jm2 = /^(.*?(?:동|리|가|로|길)\s*\d{1,5}(?:-\d{1,5})?)/.exec(s2.replace(/외\s*\d+\s*필지.*$/, ''));
+      const kw2 = (jm2 ? jm2[1] : s2).replace(/\s*제?\d+층.*$/, '').replace(/(?:제\s*)?[0-9A-Za-z가-힣]*\s*동\s*(?:제\s*)?\d{1,5}\s*호.*$/, '').trim();
+      const k2 = handleSearchAddressKakao({ keyword: kw2 });
+      const js2 = (k2 && k2.juso) || [];
+      const j2 = js2.filter(function (x) { return tcLocSame_(x.jibunAddr || '', s2) || tcLocSame_(x.jibunAddr || '', kw2); })[0] || (js2.length === 1 ? js2[0] : null);
+      if (j2 && j2.admCd && j2.lnbrMnnm) out = { pnu: j2.admCd + (j2.mtYn === '1' ? '2' : '1') + ('0000' + j2.lnbrMnnm).slice(-4) + ('0000' + (j2.lnbrSlno || '0')).slice(-4), admCd: j2.admCd, jibun: j2.jibunAddr, bdNm: j2.bdNm || '', dong: dm2 ? dm2[1] : '', ho: dm2 ? dm2[2] : (hm2 ? hm2[1] : ''), x: j2.x, y: j2.y, src: '카카오 로컬 주소검색(도로명주소 안내시스템이 못 찾음: ' + out.error + ')' };
+      else if (k2 && k2.error) out.error += ' / 카카오 주소검색: ' + k2.error;
+      else out.error += ' / 카카오 주소검색에서도 못 찾음(' + kw2 + ')';
+    } catch (e2) { out.error += ' / 카카오 주소검색 실패: ' + (e2 && e2.message || e2); }
+  }
   try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
   return out;
 }
@@ -53255,3 +53342,319 @@ function tcBankStmtCost_(o) {
   return out;
 }
 
+
+// =========================================================
+// [2026.10.28 🌐 바깥 조회 — 사건마다 기본으로] 세무사님 원문: "기존에 자료수집이 그렇게 잘 되고 있다고? 왜 나는 전혀 못 느끼고 있지? 왜 전혀 자료수집을
+//  하지 않느냐고? 대체 언제 자료수집을 하는가? 왜 자료수집을 하지 않고 자료가 없다는 둥 확인되지 않는다는 둥 그딴 말을 하는 것인가?" / "당장 고쳐라"
+//  2026-10-28 00:56 실측: 고객사건 폴더 91개(실사건 46·가상 45)의 확보자료 폴더에 자동 조회 결과는 1건뿐. 원인 ① 조회가 "서류가 없을 때의 대타"로만
+//  짜여 있었다(양도 환산 때·증여 공시가격 서류 없을 때·상속 기준시가 후보 없을 때·건축물대장은 용도·면적 못 정했을 때) ② 직결(Cloud Run)에서는
+//  바깥 호출이 막혀 조회가 통째로 빠졌다 ③ 결과·실패가 처리개요 한 줄에만 섞여 세무사님 눈에 보이지 않았다.
+//  이제: 소재지가 정해진 모든 부동산에 대해 세목·서류 유무와 상관없이 한 묶음(주소검색 → 토지대장 → 토지이용계획 → 공시가격 → 건축물대장)을 돌리고,
+//  서류 값과 나란히 놓아 교차검증(같으면 ✅ 근거 둘, 다르면 후보로 묻기)하며, 결과·실패를 반영 현황표 「🌐 바깥 조회」 줄·처리개요·확보자료 PDF로 남긴다.
+//  직결 뒤에도 GAS가 같은 묶음을 한 번 돈다(t6ApplyRead_). 세무사님이 정한 값·서류로 확정된 값은 덮지 않는다(빈 칸만 채움, 다르면 묻기).
+//  출처: 브이월드 국가중점 데이터 API(토지임야정보 ladfrlList·토지이용계획속성 getLandUseAttr — 공시가격 조회와 같은 VWORLD_API_KEY, 같은 ned/data 경로),
+//       카카오 로컬 REST API(KAKAO_REST_API_KEY가 있을 때 도로명주소 안내시스템이 못 찾는 소재지의 2차 주소검색 — 하루 10만 건 무료),
+//       열람 링크 — 토지이음(eum.go.kr, 열람 전용·오픈API 없음)·씨리얼(seereal.lh.or.kr, 오픈API 없음)·카카오맵. (조사: 2026-10-28 00:30~00:50)
+//  ⚠ 브이월드 토지 API의 오퍼레이션·응답 칸 이름은 공식 문서 페이지를 못 열어 개발자 사례로 정했다 — 응답을 칸 이름에 기대지 않고 통째로 받아
+//    이름 규칙(지목·면적·용도지역)으로 고르고, 원문 전체를 확보자료 PDF에 남긴다. 배포 직후 점검(EnvWatch envTechCheck_)이 고정 지번으로 실제 호출해
+//    응답이 오는지 🐞 카드에 보인다.
+// =========================================================
+var OUTSIDE_MAX_PROPS_ = 8;      // 한 실행에서 돌리는 부동산 수(그 이상은 다음 실행에서 — 6분 한도)
+var OUTSIDE_BUDGET_MS_ = 100000; // 한 실행에서 바깥 조회에 쓰는 시간 상한
+var OUTSIDE_LAND_OPS_ = { ledger: 'ladfrlList', landuse: 'getLandUseAttr' };
+// 브이월드 국가중점 데이터 API 공통 호출 — { rows:[{칸:값}], raw, error }. 응답(JSON)을 칸 이름에 기대지 않고 "값이 모두 글자·숫자인 객체"를 행으로 모은다
+function vworldNed_(op, params) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('VWORLD_API_KEY');
+  if (!apiKey) return { error: '브이월드 인증키(VWORLD_API_KEY)가 아직 등록되지 않았습니다 — 공시가격 조회와 같은 키입니다.' };
+  let url = 'https://api.vworld.kr/ned/data/' + op + '?key=' + encodeURIComponent(apiKey) + '&domain=script.google.com&format=json&numOfRows=100&pageNo=1';
+  Object.keys(params || {}).forEach(function (k) { if (params[k] !== undefined && params[k] !== '') url += '&' + k + '=' + encodeURIComponent(String(params[k])); });
+  let text = '';
+  try {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    text = res.getContentText('UTF-8') || '';
+    if (res.getResponseCode() !== 200) return { error: '브이월드 ' + op + ' 응답 ' + res.getResponseCode() + ': ' + text.slice(0, 160), raw: text.slice(0, 2000) };
+  } catch (e) { return { error: '브이월드 ' + op + ' 호출 실패: ' + (e && e.message || e) }; }
+  const rows = [];
+  const walk = function (v, depth) {
+    if (!v || typeof v !== 'object' || depth > 8) return;
+    if (Array.isArray(v)) { v.forEach(function (x) { walk(x, depth + 1); }); return; }
+    const ks = Object.keys(v);
+    const leaf = ks.length >= 3 && ks.every(function (k) { return v[k] === null || typeof v[k] !== 'object'; });
+    if (leaf) { const r = {}; ks.forEach(function (k) { r[k] = v[k] === null ? '' : String(v[k]).trim(); }); rows.push(r); return; }
+    ks.forEach(function (k) { walk(v[k], depth + 1); });
+  };
+  let j = null;
+  try { j = JSON.parse(text); } catch (e) {
+    // XML로 온 경우 — 글자만 있는 요소들의 부모를 행으로
+    try {
+      const doc = XmlService.parse(text), root = doc.getRootElement();
+      const wx = function (el, depth) {
+        const ch = el.getChildren(); if (!ch.length || depth > 8) return;
+        if (ch.length >= 3 && ch.every(function (x) { return !x.getChildren().length; })) { const r = {}; ch.forEach(function (x) { r[x.getName()] = (x.getText() || '').trim(); }); rows.push(r); return; }
+        ch.forEach(function (x) { wx(x, depth + 1); });
+      };
+      wx(root, 0);
+      const ec = root.getChildText('resultCode') || root.getChildText('code');
+      if (ec && !/^0+$/.test(ec)) return { error: '브이월드 ' + op + ' 오류(' + ec + '): ' + (root.getChildText('resultMsg') || root.getChildText('message') || ''), raw: text.slice(0, 2000) };
+    } catch (e2) { return { error: '브이월드 ' + op + ' 응답을 읽지 못함: ' + text.slice(0, 160), raw: text.slice(0, 2000) }; }
+  }
+  if (j) {
+    if (j.error) return { error: '브이월드 ' + op + ' 오류(' + (j.error.code || '') + '): ' + (j.error.text || j.error.message || JSON.stringify(j.error)).slice(0, 200), raw: text.slice(0, 2000) };
+    walk(j, 0);
+    const rc = j.resultCode || (j.response && j.response.status);
+    if (rc && !/^(0+|OK)$/i.test(String(rc)) && !rows.length) return { error: '브이월드 ' + op + ' 결과 없음(' + rc + ')', raw: text.slice(0, 2000) };
+  }
+  return { rows: rows, raw: text.slice(0, 6000) };
+}
+// 행에서 칸 고르기 — 이름 규칙(정규식)으로. 응답 칸 이름이 사례마다 달라(lndcgrCodeNm/lndcgrNm 등) 하나로 못 박지 않는다
+function outsidePick_(row, re) { const k = Object.keys(row || {}).filter(function (x) { return re.test(x); })[0]; return k ? String(row[k]) : ''; }
+// 토지대장(토지임야정보) — { jimok, area, owner, date, row, src } 또는 { error }. 6시간 기억 + 확보자료 PDF
+function cpLandLedger_(geo) {
+  if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
+  const key = 'cpldg_' + geo.pnu, cache = CacheService.getScriptCache(), hit = cache.get(key);
+  let out = null;
+  if (hit) { try { out = JSON.parse(hit); } catch (e) { out = null; } }
+  if (!out) {
+    const r = vworldNed_(OUTSIDE_LAND_OPS_.ledger, { pnu: geo.pnu });
+    if (r.error) out = { error: r.error };
+    else {
+      const rows = (r.rows || []).filter(function (x) { const p = outsidePick_(x, /^pnu$/i); return !p || p === geo.pnu; });
+      const row = rows[0];
+      if (!row) out = { error: '토지대장(토지임야정보)에 이 지번(' + geo.jibun + ')이 없음' + (r.rows && r.rows.length ? ' — 다른 지번 ' + r.rows.length + '건만 옴' : '') };
+      else {
+        const area = Number(String(outsidePick_(row, /lndpclAr|lndpcl_ar|^area$|면적/i)).replace(/[^\d.]/g, '')) || 0;
+        out = { jimok: outsidePick_(row, /lndcgrCodeNm|lndcgrNm|lndcgr_code_nm|지목명|^지목$/i) || '', area: area, owner: outsidePick_(row, /posesnSeCodeNm|ownshipSe|posesn_se_code_nm|소유구분/i) || '',
+          date: outsidePick_(row, /lastUpdtDt|ladFrtlSc|last_updt_dt|기준일/i) || '', row: row,
+          src: '토지대장(브이월드 국가중점 토지임야정보, ' + geo.jibun + (geo.src ? ', 주소: ' + geo.src : '') + ')' };
+        if (!out.jimok && !out.area) out = { error: '토지대장 응답에서 지목·면적 칸을 못 찾음(칸 이름: ' + Object.keys(row).slice(0, 12).join(',') + ')', row: row };
+      }
+    }
+    try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
+  }
+  if (out && !out.error && geo && geo.pnu) cpSecuredNote_({
+    name: cpSecuredFileName_('토지대장_' + cpSecuredShortLoc_(geo)), kind: '토지대장(토지임야정보)', target: String(geo.jibun || ''),
+    cond: '지번 고유번호(PNU) ' + geo.pnu, basis: out.src, key: ['NX확보', '토지대장', geo.pnu].join('|'),
+    site: '브이월드(국토교통부 공간정보 오픈플랫폼) 국가중점 토지임야정보 API — 토지이음·씨리얼 화면의 토지 정보와 같은 원천(지적공부)',
+    head: ['항목', '값'], rows: [['지목', out.jimok || ''], ['면적(㎡)', out.area ? String(out.area) : ''], ['소유구분', out.owner || ''], ['자료 기준', out.date || '']].concat(Object.keys(out.row || {}).map(function (k) { return ['(원문) ' + k, String(out.row[k])]; }))
+  });
+  return out;
+}
+// 토지이용계획(용도지역·지구·구역) — { zones:[{name, law, how}], urban:'도시지역'|'도시지역 밖'|'', names:[], src } 또는 { error }. 6시간 기억 + 확보자료 PDF
+function cpLandUse_(geo) {
+  if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
+  const key = 'cpluse_' + geo.pnu, cache = CacheService.getScriptCache(), hit = cache.get(key);
+  let out = null;
+  if (hit) { try { out = JSON.parse(hit); } catch (e) { out = null; } }
+  if (!out) {
+    const r = vworldNed_(OUTSIDE_LAND_OPS_.landuse, { pnu: geo.pnu });
+    if (r.error) out = { error: r.error };
+    else {
+      const rows = (r.rows || []).filter(function (x) { const p = outsidePick_(x, /^pnu$/i); return !p || p === geo.pnu; });
+      const zones = rows.map(function (x) {
+        return { name: outsidePick_(x, /prposAreaDstrcCodeNm|prposAreaDstrcNm|ucodeNm|uqNm|용도지역지구명|용도지역/i) || '',
+          law: outsidePick_(x, /lawNm|lawCdNm|관계법령|법령/i) || '', how: outsidePick_(x, /cnflcAtNm|cnflcAt|regstrSeCodeNm|registGbNm|저촉|등록구분/i) || '' };
+      }).filter(function (z) { return z.name; });
+      if (!zones.length) out = { error: rows.length ? '토지이용계획 응답에서 용도지역 칸을 못 찾음(칸 이름: ' + Object.keys(rows[0]).slice(0, 12).join(',') + ')' : '토지이용계획에 이 지번(' + geo.jibun + ')의 지역·지구가 없음' };
+      else {
+        const names = zones.map(function (z) { return z.name; });
+        // 국토의 계획 및 이용에 관한 법률 §36① — 도시지역은 주거·상업·공업·녹지지역으로, 그 밖은 관리·농림·자연환경보전지역으로 구분(조문 번호는 구현 때 원문 미대조 — [확인 필요])
+        const urban = names.some(function (n) { return /도시지역|주거지역|상업지역|공업지역|녹지지역/.test(n); }) ? '도시지역' : names.some(function (n) { return /관리지역|농림지역|자연환경보전지역/.test(n); }) ? '도시지역 밖' : '';
+        out = { zones: zones, names: names, urban: urban, src: '토지이용계획(브이월드 국가중점 토지이용계획속성, ' + geo.jibun + ') — 토지이음 열람과 같은 원천' };
+      }
+    }
+    try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
+  }
+  if (out && !out.error && geo && geo.pnu) cpSecuredNote_({
+    name: cpSecuredFileName_('토지이용계획_' + cpSecuredShortLoc_(geo)), kind: '토지이용계획(용도지역·지구·구역)', target: String(geo.jibun || ''),
+    cond: '지번 고유번호(PNU) ' + geo.pnu + ' · 토지이음 열람: ' + cpLinks_(geo).토지이음, basis: out.src, key: ['NX확보', '토지이용계획', geo.pnu].join('|'),
+    site: '브이월드(국토교통부 공간정보 오픈플랫폼) 국가중점 토지이용계획속성 API — 토지이음(eum.go.kr) 토지이용계획 열람과 같은 원천',
+    head: ['지역·지구·구역', '관계 법령', '저촉·포함'], rows: out.zones.map(function (z) { return [z.name, z.law, z.how]; }).concat([['판정', out.urban || '(도시지역 여부를 이름으로 못 가름)', '']])
+  });
+  return out;
+}
+// 열람 링크 — 사람이 눌러 확인도면·종합정보를 보는 용(자동 수집 아님). 씨리얼은 필지 바로 열기 주소가 공개돼 있지 않아 지도 첫 화면으로([확인 필요])
+function cpLinks_(geo, loc) {
+  const q = String((geo && geo.jibun) || loc || '');
+  return {
+    토지이음: geo && geo.pnu ? 'https://www.eum.go.kr/web/ar/lu/luLandDet.jsp?selGbn=umd&isNoScr=script&mode=search&pnu=' + geo.pnu : 'https://www.eum.go.kr/web/ar/lu/luLandDet.jsp',
+    씨리얼: 'https://seereal.lh.or.kr/SeerealMAP/seerealCommon/mainPage.do',
+    카카오맵: 'https://map.kakao.com/?q=' + encodeURIComponent(q)
+  };
+}
+// 카카오 로컬 주소검색 — 도로명주소 안내시스템(juso.go.kr)과 같은 모양(juso 배열)으로 돌려준다. KAKAO_REST_API_KEY가 없으면 { error }
+function handleSearchAddressKakao(body) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('KAKAO_REST_API_KEY');
+  if (!apiKey) return { error: '카카오 REST API 키(KAKAO_REST_API_KEY)가 아직 등록되지 않았습니다 — 카카오 디벨로퍼스(developers.kakao.com)에서 앱을 만들고 "REST API 키"를 이 Apps Script 프로젝트 설정 > 스크립트 속성에 넣으면 바로 됩니다(하루 10만 건 무료).' };
+  const kw = String((body && body.keyword) || '').trim();
+  if (!kw) return { error: '검색어가 비어 있습니다.' };
+  try {
+    const res = UrlFetchApp.fetch('https://dapi.kakao.com/v2/local/search/address.json?size=10&query=' + encodeURIComponent(kw), { headers: { Authorization: 'KakaoAK ' + apiKey }, muteHttpExceptions: true });
+    const code = res.getResponseCode(), text = res.getContentText('UTF-8') || '';
+    if (code !== 200) return { error: '카카오 주소검색 응답 ' + code + ': ' + text.slice(0, 160) };
+    const j = JSON.parse(text);
+    const juso = (j.documents || []).map(function (d) {
+      const a = d.address || {}, r = d.road_address || {};
+      return { jibunAddr: a.address_name || d.address_name || '', roadAddr: r.address_name || '', admCd: a.b_code || '', hCode: a.h_code || '', mtYn: a.mountain_yn === 'Y' ? '1' : '0',
+        lnbrMnnm: a.main_address_no || '', lnbrSlno: a.sub_address_no || '', bdNm: r.building_name || '', zipNo: r.zone_no || '', x: d.x || a.x || '', y: d.y || a.y || '', addrType: d.address_type || '', src: '카카오 로컬 주소검색' };
+    }).filter(function (x) { return x.admCd && x.lnbrMnnm; });
+    return { juso: juso, total: (j.meta && j.meta.total_count) || juso.length, src: '카카오 로컬 주소검색(dapi.kakao.com)' };
+  } catch (e) { return { error: '카카오 주소검색 실패: ' + (e && e.message || e) }; }
+}
+// 토지 정보 한 번에(화면 🔍 토지정보 자동조회·넥스 도구 lookup_land_info) — body: { pnu } 또는 { admCd, mtYn, lnbrMnnm, lnbrSlno }, 선택 { jibun }
+function handleLookupLandInfo(body) {
+  body = body || {};
+  const pnu = String(body.pnu || '').trim() || assemblePnu_(body.admCd, body.mtYn, body.lnbrMnnm, body.lnbrSlno);
+  if (!/^\d{19}$/.test(pnu)) return { error: '지번 고유번호(PNU 19자리)가 필요합니다 — 먼저 주소 검색으로 소재지를 고르세요.' };
+  const geo = { pnu: pnu, jibun: String(body.jibun || body.loc || '') || pnu, bdNm: '', dong: String(body.dong || ''), ho: String(body.ho || '') };
+  const ledger = cpLandLedger_(geo), landuse = cpLandUse_(geo);
+  const out = { pnu: pnu, links: cpLinks_(geo, body.jibun || body.loc) };
+  if (ledger.error) out.ledgerError = ledger.error; else out.ledger = { 지목: ledger.jimok, 면적: ledger.area, 소유구분: ledger.owner, 기준: ledger.date, src: ledger.src };
+  if (landuse.error) out.landuseError = landuse.error; else out.landuse = { 지역지구: landuse.names, 상세: landuse.zones, 도시지역: landuse.urban, src: landuse.src };
+  if (body.caseId) { try { cpSecuredFlush_(String(body.caseId)); } catch (e) {} } // 화면에서 사건을 열고 눌렀으면 확보자료 PDF도 남긴다
+  return out;
+}
+// 부동산 하나의 바깥 조회 묶음 — p: { p(칸 머리), loc, kind:'land'|'building'|'', area, jimok, dong, ho, dates:[{label, date}], docSrc }
+//  돌려주는 것: { loc, pnu, jibun, geoSrc, ok, items:[{k, label, v, src, ok, err}], ledger, landuse, prices:{kind_year: {v, year, src}}, building, links }
+function cpOutsideOne_(p) {
+  const row = { p: p.p || '', loc: p.loc, kind: p.kind || '', items: [], prices: {}, links: cpLinks_(null, p.loc), ok: false };
+  const loc = String(p.loc || '').trim();
+  if (!loc) { row.items.push({ k: 'geo', label: '주소', ok: false, err: '소재지가 비어 있음' }); return row; }
+  const geo = cpGeo_(loc);
+  if (!geo || geo.error) { row.items.push({ k: 'geo', label: '주소검색', ok: false, err: (geo && geo.error) || '주소 검색 실패' }); return row; }
+  row.pnu = geo.pnu; row.jibun = geo.jibun; row.geoSrc = geo.src || '도로명주소 안내시스템'; row.links = cpLinks_(geo, loc);
+  row.items.push({ k: 'geo', label: '주소검색', ok: true, v: geo.jibun + (geo.bdNm ? ' (' + geo.bdNm + ')' : '') + (geo.dong ? ' ' + geo.dong + '동' : '') + (geo.ho ? ' ' + geo.ho + '호' : ''), src: row.geoSrc });
+  const ledger = cpLandLedger_(geo);
+  if (ledger.error) row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: false, err: ledger.error });
+  else { row.ledger = { jimok: ledger.jimok, area: ledger.area, owner: ledger.owner, src: ledger.src }; row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: true, v: (ledger.jimok || '지목?') + ' · ' + (ledger.area ? ledger.area + '㎡' : '면적?') + (ledger.owner ? ' · ' + ledger.owner : ''), src: ledger.src }); }
+  const lu = cpLandUse_(geo);
+  if (lu.error) row.items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: false, err: lu.error });
+  else { row.landuse = { names: lu.names, urban: lu.urban, zones: lu.zones, src: lu.src }; row.items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: true, v: lu.names.slice(0, 6).join(', ') + (lu.names.length > 6 ? ' 외 ' + (lu.names.length - 6) : '') + (lu.urban ? ' → ' + lu.urban : ''), src: lu.src }); }
+  // 공시가격 — 토지면 개별공시지가(원/㎡), 호가 있으면 공동주택가격, 그 밖의 건물은 개별주택가격(주택이 아니면 조회 결과 없음이 정상) + 부속토지 개별공시지가
+  const jimok = (row.ledger && row.ledger.jimok) || p.jimok || '';
+  const unit = !!geo.ho;
+  const kinds = p.kind === 'land' ? ['land'] : unit ? ['apartment', 'land'] : p.kind === 'building' ? ['house', 'land'] : (/대|공장|학교|주차|주유|창고|잡종/.test(jimok) ? ['house', 'land'] : ['land']);
+  const dates = (p.dates || []).filter(function (d) { return d && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')); });
+  const seen = {};
+  kinds.forEach(function (kind) {
+    dates.forEach(function (d) {
+      const year = cpOfficialYear_(d.date, kind); if (!year) return;
+      const first = kind === 'land' ? 1990 : kind === 'house' ? 2005 : 2006;
+      if (year < first) { const kk = kind + '_' + year; if (!seen[kk]) { seen[kk] = 1; row.items.push({ k: 'price', label: (kind === 'land' ? '개별공시지가' : kind === 'house' ? '개별주택가격' : '공동주택가격') + ' ' + year + '년(' + d.label + ')', ok: false, err: '최초 공시(' + first + '년) 전 — 별도 평가' }); } return; }
+      const kk = kind + '_' + year; if (seen[kk]) return; seen[kk] = 1;
+      const r = cpOfficialPrice_(geo, kind, year);
+      const label = (kind === 'land' ? '개별공시지가' : kind === 'house' ? '개별주택가격' : '공동주택가격') + ' ' + year + '년(' + d.label + ')';
+      if (r && r.v) { row.prices[kk] = { kind: kind, year: r.year || year, v: r.v, src: r.src, label: d.label }; row.items.push({ k: 'price', key: kk, label: label, ok: true, v: Number(r.v).toLocaleString('ko-KR') + (kind === 'land' ? '원/㎡' : '원'), src: r.src }); }
+      else row.items.push({ k: 'price', key: kk, label: label, ok: false, err: (r && r.error) || '조회 결과 없음' });
+    });
+  });
+  // 건축물대장 — 토지가 아니면(주용도·구조·사용승인일·전유면적)
+  if (p.kind !== 'land' && (p.kind === 'building' || unit || /대|공장|창고|잡종/.test(jimok))) {
+    const bd = cpBuilding_(loc);
+    if (bd && !bd.error) { row.building = { purpose: bd.purpose, structure: bd.structure, approval: bd.approval, area: bd.area, src: bd.src }; row.items.push({ k: 'building', label: '건축물대장', ok: true, v: [bd.purpose, bd.structure, bd.approval ? '승인 ' + bd.approval : '', bd.area ? '전유 ' + bd.area + '㎡' : ''].filter(Boolean).join(' · '), src: bd.src }); }
+    else row.items.push({ k: 'building', label: '건축물대장', ok: false, err: (bd && bd.error) || '조회 실패' });
+  }
+  row.ok = row.items.some(function (it) { return it.ok && it.k !== 'geo'; });
+  return row;
+}
+// 사건의 부동산 여러 개 — 결과를 결정 파일 sv.outside에 저장(반영 현황표·넥스가 읽음), 처리개요 lines에 한 줄 요약
+// 직결(Cloud Run) 서비스 안인가 — 거기서는 UrlFetchApp이 가짜(불리면 오류)라 바깥 조회를 돌리지 않고 "저장 뒤 GAS가 돌림"으로 남긴다(cpOutsideAfterDirect_)
+function cpOutsideCan_() { try { return typeof UrlFetchApp !== 'undefined' && !/가짜/.test(String(UrlFetchApp)); } catch (e) { return false; } }
+function cpOutsideRun_(c, props, lines) {
+  const t0 = Date.now(), rows = [], skipped = [];
+  if (!cpOutsideCan_()) {
+    try { caseProcPatch_(c.id, function (sv) { if (!sv.outside || !(sv.outside.rows || []).length) sv.outside = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), rows: [], pending: true, note: '직결 서비스 안에서는 바깥 조회를 못 함 — 결과 저장 뒤 GAS가 같은 묶음을 돌림' }; }); } catch (e) {}
+    if (lines) lines.push('🌐 바깥 조회: 직결 서비스에서는 못 돌림 — 결과 저장 뒤 GAS가 토지대장·토지이용계획·공시가격·건축물대장을 조회합니다');
+    return rows;
+  }
+  const uniq = {}; const list = (props || []).filter(function (p) { const k = String(p.loc || '').replace(/\s+/g, ''); if (!k || uniq[k]) return false; uniq[k] = 1; return true; });
+  list.forEach(function (p, i) {
+    if (i >= OUTSIDE_MAX_PROPS_ || Date.now() - t0 > OUTSIDE_BUDGET_MS_) { skipped.push(p.loc); return; }
+    try { rows.push(cpOutsideOne_(p)); } catch (e) { rows.push({ p: p.p || '', loc: p.loc, items: [{ k: 'run', label: '바깥 조회', ok: false, err: String(e && e.message || e) }], ok: false, links: cpLinks_(null, p.loc) }); }
+  });
+  const at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  try { caseProcPatch_(c.id, function (sv) { sv.outside = { at: at, rows: rows, skipped: skipped, sec: Math.round((Date.now() - t0) / 100) / 10 }; }); } catch (e) {}
+  if (lines && rows.length) {
+    lines.push('🌐 바깥 조회(토지대장·토지이용계획·공시가격·건축물대장 — 세액계산기와 같은 조회, 결과는 확보자료 PDF·반영 현황표): ' + rows.map(function (r) {
+      const okN = r.items.filter(function (it) { return it.ok; }).length, bad = r.items.filter(function (it) { return !it.ok; });
+      return r.loc + ' — ' + okN + '건 받음' + (bad.length ? ', 못 받음 ' + bad.map(function (it) { return it.label + '(' + String(it.err || '').slice(0, 60) + ')'; }).join('·') : '');
+    }).join(' / ') + (skipped.length ? ' / 다음 실행에서: ' + skipped.join(', ') : ''));
+  }
+  return rows;
+}
+// 처리개요 물건목록(양도·증여) → 조회 묶음 입력. 상속은 상속재산 목록에서 따로 만든다
+function cpOutsidePropsFromOv_(c) {
+  const ov = c.사건개요 || {}, list = Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록 : (ov.assetLocation ? [ov] : []);
+  return list.map(function (q, i) {
+    if (!q || !q.assetLocation) return null;
+    const dates = [];
+    if (q.취득일) dates.push({ label: '취득일', date: q.취득일 });
+    if (q.양도일) dates.push({ label: '양도일', date: q.양도일 });
+    if (c.기준일) dates.push({ label: CASEPROC_BASE_LABEL_[c.세목] || '기준일', date: c.기준일 });
+    const loc = String(q.assetLocation) + (q.assetDong && !/동\s*\d/.test(String(q.assetLocation)) ? ' ' + String(q.assetDong).replace(/동$/, '') + '동' : '') + (q.assetHo && !/\d\s*호/.test(String(q.assetLocation)) ? ' ' + String(q.assetHo).replace(/호$/, '') + '호' : '');
+    return { p: 'ovAsset:' + i, loc: loc, kind: q.assetKind === 'land' ? 'land' : q.assetKind === 'building' ? 'building' : '', area: Number(q.면적) || 0, jimok: q.assetKind === 'land' ? (q.assetSubType || '') : '', dates: dates };
+  }).filter(Boolean);
+}
+// 직결(Cloud Run) 결과를 저장한 뒤 — 서비스는 바깥 호출을 못 하므로 GAS가 여기서 같은 묶음을 돌리고, 물건목록의 빈 칸(면적·지목)만 채운다
+function cpOutsideAfterDirect_(c) {
+  const cur = akReadCase_(c.id) || c;
+  const props = cpOutsidePropsFromOv_(cur);
+  if (!props.length) { try { caseProcPatch_(c.id, function (sv) { sv.outside = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), rows: [], note: '처리개요에 소재지가 아직 없어 바깥 조회를 못 돌림' }; }); } catch (e) {} return { rows: [] }; }
+  CP_SECURED_LOG_ = [];
+  const lines = [];
+  const rows = cpOutsideRun_(cur, props, lines);
+  let filled = 0;
+  try {
+    const ov = JSON.parse(JSON.stringify(cur.사건개요 || {})), before = JSON.stringify(ov);
+    rows.forEach(function (r) {
+      const m = /^ovAsset:(\d+)$/.exec(r.p || ''); if (!m || !Array.isArray(ov.물건목록) || !ov.물건목록[Number(m[1])]) return;
+      const q = ov.물건목록[Number(m[1])], i = Number(m[1]);
+      if (r.ledger && q.assetKind === 'land') {
+        if (!q.면적 && r.ledger.area) { q.면적 = String(r.ledger.area); caseProcRememberFill_(c.id, 'ovAsset:' + i + ':면적', q.면적, '바깥 조회: ' + r.ledger.src); filled++; }
+        if (!q.assetSubType && r.ledger.jimok) { q.assetSubType = r.ledger.jimok; caseProcRememberFill_(c.id, 'ovAsset:' + i + ':assetSubType', q.assetSubType, '바깥 조회: ' + r.ledger.src); filled++; }
+      }
+      if (r.building && q.assetKind !== 'land' && !q.면적 && r.building.area) { q.면적 = String(r.building.area); caseProcRememberFill_(c.id, 'ovAsset:' + i + ':면적', q.면적, '바깥 조회: ' + r.building.src); filled++; }
+    });
+    if (ov.물건목록 && ov.물건목록[0]) ['면적', 'assetSubType'].forEach(function (k) { if (!ov[k] && ov.물건목록[0][k]) ov[k] = ov.물건목록[0][k]; });
+    if (JSON.stringify(ov) !== before) work_updateCase({ id: c.id, 사건개요: ov });
+  } catch (e) { lines.push('⚠ 바깥 조회 값을 처리개요에 넣지 못함: ' + (e && e.message || e)); }
+  let saved = 0; try { saved = cpSecuredFlush_(c.id); } catch (e) {}
+  try { caseProcPatch_(c.id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '🌐 바깥 조회(직결 뒤)', detail: rows.length + '곳 · 빈 칸 ' + filled + '개 채움 · 확보자료 PDF ' + saved + '개' + (lines.length ? ' · ' + lines.join(' ') : '') }); }); } catch (e) {}
+  return { rows: rows, filled: filled, saved: saved, lines: lines };
+}
+// 양도 — 계산기 입력(S.state.transferAssets)에서 바깥 조회 묶음을 돌리고, 빈 칸(면적·지목)만 채우며 서류 값과 다르면 묻는다. 용도지역은 사실(S.facts.landUse)로
+function trcOutside_(c, S, lines, items) {
+  const st = S.state, props = [];
+  st.transferAssets.forEach(function (a, i) {
+    if (!a.assetLocation) return;
+    const ct = st.transferContracts.filter(function (x) { return x.id === a.transferContractId; })[0] || {};
+    const dates = [];
+    if (a.acquisitionDate) dates.push({ label: '취득일', date: a.acquisitionDate });
+    if (ct.date) dates.push({ label: '양도일', date: ct.date }); else if (c.기준일) dates.push({ label: '양도일', date: c.기준일 });
+    props.push({ p: 'a' + i, loc: a.assetLocation, kind: a.assetKind === 'land' ? 'land' : a.assetKind === 'building' ? 'building' : '', area: Number(a.assetArea) || 0, jimok: a.assetKind === 'land' ? (a.assetSubType || '') : '', dates: dates });
+  });
+  if (!props.length) return;
+  const rows = cpOutsideRun_(c, props, lines);
+  S.facts.outside = rows; S.facts.landUse = S.facts.landUse || {};
+  rows.forEach(function (r) {
+    const m = /^a(\d+)$/.exec(r.p || ''); if (!m) return;
+    const i = Number(m[1]), a = st.transferAssets[i]; if (!a) return;
+    const userSet = function (f) { return S.ans && S.ans['a' + i + '.' + f]; }; // 세무사님이 정한 칸은 건드리지 않는다
+    if (r.ledger) {
+      if (a.assetKind === 'land' || (!a.assetKind && !r.building)) {
+        if (!a.assetArea && r.ledger.area && !userSet('assetArea')) { a.assetArea = r.ledger.area; S.src['a' + i + '.assetArea'] = '바깥 조회: ' + r.ledger.src; }
+        else if (a.assetArea && r.ledger.area && !userSet('assetArea') && Math.abs(Number(a.assetArea) - r.ledger.area) > Math.max(0.5, r.ledger.area * 0.005)) {
+          items.push(caseProcItem_('tr:outside:area:' + i, 'check', '자산 ' + (i + 1) + ' 「면적」 — 서류 ' + a.assetArea + '㎡(' + String(S.src['a' + i + '.assetArea'] || '') + ') ↔ 토지대장 ' + r.ledger.area + '㎡(' + r.ledger.src + '). 어느 값을 쓸까요?',
+            { mode: 'choose', target: 'calc:a' + i + '.assetArea', input: 'number', label: '면적(㎡)', cands: [{ v: String(a.assetArea), src: String(S.src['a' + i + '.assetArea'] || '서류') }, { v: String(r.ledger.area), src: r.ledger.src }] }));
+        } else if (a.assetArea && r.ledger.area) S.src['a' + i + '.assetArea'] = String(S.src['a' + i + '.assetArea'] || '') + ' ✅ 토지대장(바깥 조회) 일치';
+        if (!a.assetSubType && r.ledger.jimok && !userSet('assetSubType')) { a.assetSubType = r.ledger.jimok; S.src['a' + i + '.assetSubType'] = '바깥 조회: ' + r.ledger.src; }
+        if (!a.assetKind && r.ledger.jimok && !r.building && !userSet('assetKind')) { a.assetKind = 'land'; S.src['a' + i + '.assetKind'] = '바깥 조회: 토지대장 지목 ' + r.ledger.jimok + ', 건축물대장 없음'; }
+      }
+      if (/^(전|답|과수원|임야|목장용지)$/.test(r.ledger.jimok || '') && r.landuse) {
+        S.facts.landUse[i] = r.landuse;
+        items.push(caseProcItem_('tr:outside:landuse:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 지목 ' + r.ledger.jimok + ', 토지이용계획 「' + r.landuse.names.slice(0, 5).join(', ') + '」' + (r.landuse.urban ? ' → ' + r.landuse.urban : '') +
+          '. 비사업용 토지(농지·임야·목장용지의 도시지역 여부)·자경농지 감면·주택부수토지 배율 판단에 쓰이는 사실입니다 — 계산기 해당 칸(도시지역 소재 등)을 맞춰 주세요. 근거: ' + r.landuse.src, null,
+          '지역·지구·구역 전체: ' + r.landuse.names.join(', ') + '\n\n열람: [토지이음](' + r.links.토지이음 + ') · [씨리얼](' + r.links.씨리얼 + ') · [카카오맵](' + r.links.카카오맵 + ')'));
+      } else if (r.landuse) S.facts.landUse[i] = r.landuse;
+    }
+  });
+}
