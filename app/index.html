@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 09:41 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 09:54 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6011,7 +6011,7 @@ function nxMdOpenWindow(title, src, opts){
     }
     // [2026.10.27 T6 3단계 — 세무사님 "처리개요를 열 때 토큰을 미리 받아 두는 수정을 이어서 하고"] 사건을 고르는 순간 시험 서비스 토큰(50분 기억)을 뒤에서 미리 받아 둔다 —
     //  화면을 새로 연 직후 첫 ⚡가 토큰 발급(GAS 1번 ≈ 7초)을 기다리지 않게. 로그인 전이면 아이챗 쪽 함수가 스스로 안 부른다. 결과는 기다리지 않고 실패해도 조용히(⚡ 때 다시 받음).
-    try { if (c.폴더ID && typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_(c.id).catch(function(){}); } catch (e) {}
+    try { if (c.폴더ID && typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_(c.id, { forCase: true }).catch(function(){}); } catch (e) {} // forCase: 다른 사건 토큰이 기억돼 있어도 이 사건으로 한 번 부른다(그때 서버가 이 사건 폴더를 공유)
     chBodyEl.innerHTML =
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
@@ -56598,18 +56598,25 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
   // [2026.10.27 T6 3단계] 시험 서비스 토큰·주소 — GAS 'readerToken'으로 한 번 받아 50분 기억(직결 꺼짐이면 5분 기억). 설정 🧪 화면도 같이 쓴다(window.nxAiCpReaderToken_)
   var NXAI_RT_ = null;
-  function nxAiCpReaderToken_(caseId){
-    var now = Date.now();
+  var NXAI_RT_P_ = null; // 지금 받으러 간 요청 { caseId, p } — 같은 사건이면 두 번 안 부르고 그 약속을 같이 기다린다
+  // opts.forCase=true(처리개요에서 사건을 열 때): 기억된 토큰이 다른 사건 것이면 이 사건으로 서버를 한 번 부른다 — [2026.10.27 T6 4단계] 서버가 그때 그 사건 폴더를 시험 서비스에 공유하므로(사건처리 때만 공유), 토큰이 기억돼 있다고 건너뛰면 공유가 안 걸린다(가상양도20 확인에서 발견)
+  function nxAiCpReaderToken_(caseId, opts){
+    opts = opts || {};
+    var now = Date.now(), cid = caseId || '';
+    if (NXAI_RT_P_ && NXAI_RT_P_.caseId === cid) return NXAI_RT_P_.p; // 같은 사건으로 받으러 가는 중이면 그 결과를 기다린다(⚡를 바로 눌러도 공유·행이 갖춰진 뒤 간다)
     // 토큰·주소는 50분 기억하되, 사건 행·결정은 그 사건(rowFor)일 때만 돌려준다(다른 사건의 행을 쓰지 않게) — 기억된 토큰이 다른 사건 것이면 행 없이 돌려주고 화면이 가벼운 현황으로 받는다
-    if (NXAI_RT_ && NXAI_RT_.until > now) return Promise.resolve(Object.assign({}, NXAI_RT_, { fresh: false }, NXAI_RT_.rowFor === (caseId || '') ? {} : { row: null, decisions: null })); // 기억에서 꺼낸 것은 fresh=false(측정 줄 "토큰 새로 받음" 표시용)
+    if (NXAI_RT_ && NXAI_RT_.until > now && !(opts.forCase && NXAI_RT_.direct && NXAI_RT_.rowFor !== cid)) return Promise.resolve(Object.assign({}, NXAI_RT_, { fresh: false }, NXAI_RT_.rowFor === cid ? {} : { row: null, decisions: null })); // 기억에서 꺼낸 것은 fresh=false(측정 줄 "토큰 새로 받음" 표시용)
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok) return Promise.resolve({ direct: false, why: '로그인 전' });
-    return callGas('case_proc', { caseId: caseId || '', step: 'readerToken', noAi: true }).then(function(r){
+    var p = callGas('case_proc', { caseId: cid, step: 'readerToken', noAi: true }).then(function(r){
       if (!r || r.error || r.ok === false || r.direct === false || !r.token || !r.url){ NXAI_RT_ = { direct: false, why: (r && (r.error || r.why)) || '직결 꺼짐', until: now + 5 * 60000 }; return NXAI_RT_; }
       var ttl = Math.min(50 * 60000, Math.max(60000, (Number(r.ttlSec) || 3000) * 1000 - 60000)); // 서버가 ttlSec을 주면 그보다 1분 짧게
-      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: caseId || '', row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + ttl, fresh: true };
+      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: cid, row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + ttl, fresh: true, share: r.share || null };
       return NXAI_RT_;
-    }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; });
+    }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; })
+      .then(function(x){ if (NXAI_RT_P_ && NXAI_RT_P_.p === p) NXAI_RT_P_ = null; return x; });
+    NXAI_RT_P_ = { caseId: cid, p: p };
+    return p;
   }
   window.nxAiCpReaderToken_ = nxAiCpReaderToken_;
   window.nxAiCpReaderTokenReset_ = function(){ NXAI_RT_ = null; }; // 설정 🐞 "⚡ 직결 켜기/끄기"가 바꾼 뒤 토큰 기억을 비운다

@@ -661,7 +661,7 @@
     }
     // [2026.10.27 T6 3단계 — 세무사님 "처리개요를 열 때 토큰을 미리 받아 두는 수정을 이어서 하고"] 사건을 고르는 순간 시험 서비스 토큰(50분 기억)을 뒤에서 미리 받아 둔다 —
     //  화면을 새로 연 직후 첫 ⚡가 토큰 발급(GAS 1번 ≈ 7초)을 기다리지 않게. 로그인 전이면 아이챗 쪽 함수가 스스로 안 부른다. 결과는 기다리지 않고 실패해도 조용히(⚡ 때 다시 받음).
-    try { if (c.폴더ID && typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_(c.id).catch(function(){}); } catch (e) {}
+    try { if (c.폴더ID && typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_(c.id, { forCase: true }).catch(function(){}); } catch (e) {} // forCase: 다른 사건 토큰이 기억돼 있어도 이 사건으로 한 번 부른다(그때 서버가 이 사건 폴더를 공유)
     chBodyEl.innerHTML =
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
