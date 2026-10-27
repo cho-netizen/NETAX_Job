@@ -2906,7 +2906,7 @@
                   lineTo('overview', '⚡→첫 결과 ' + st.secFirst + '초(직결' + tmTxt + ') · 직결 왕복 ' + Math.round((Date.now() - tDirect) / 100) / 10 + '초', 'nxai-muted');
                   // 저장은 GAS가 뒤에서 — 끝날 때까지 답 묶음·▶ 계산은 기다린다(서버 쪽 결정 파일·사건 행이 맞춰진 뒤에 이어 가게)
                   var sl = document.createElement('div'); sl.className = 'nxai-cp-line nxai-muted'; sl.textContent = '💾 읽은 결과를 사건에 저장하는 중(뒤에서)…'; st.steps.overview.querySelector('.nxai-cp-lines').appendChild(sl);
-                  st.applyReadP = st.run('applyRead', { written: r.written || {} }).then(function(a){ sl.textContent = (a && a.ok) ? '💾 저장 ' + (a.sec != null ? a.sec + '초' : '끝') + (a.saved === false ? '(이미 같은 내용)' : '') : '💾 저장 실패: ' + ((a && a.error) || '응답 없음') + ' — 답·계산 전에 ⚡ GAS로 다시 처리를 권함'; if (!(a && a.ok)) sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return a; }, function(e){ sl.textContent = '💾 저장 실패: ' + String(e && e.message || e).slice(0, 80); sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return null; });
+                  st.applyReadP = st.run('applyRead', { written: r.written || {}, timing: r.timing || null, firstSec: st.secFirst }).then(function(a){ sl.textContent = (a && a.ok) ? '💾 저장 ' + (a.sec != null ? a.sec + '초' : '끝') + (a.saved === false ? '(이미 같은 내용)' : '') : '💾 저장 실패: ' + ((a && a.error) || '응답 없음') + ' — 답·계산 전에 ⚡ GAS로 다시 처리를 권함'; if (!(a && a.ok)) sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return a; }, function(e){ sl.textContent = '💾 저장 실패: ' + String(e && e.message || e).slice(0, 80); sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return null; });
                   return { ok: true, direct: true };
                 });
               });
@@ -3080,12 +3080,14 @@
   var NXAI_RT_ = null;
   function nxAiCpReaderToken_(caseId){
     var now = Date.now();
-    if (NXAI_RT_ && NXAI_RT_.until > now) return Promise.resolve(NXAI_RT_);
+    // 토큰·주소는 50분 기억하되, 사건 행·결정은 그 사건(rowFor)일 때만 돌려준다(다른 사건의 행을 쓰지 않게) — 기억된 토큰이 다른 사건 것이면 행 없이 돌려주고 화면이 가벼운 현황으로 받는다
+    if (NXAI_RT_ && NXAI_RT_.until > now) return Promise.resolve(NXAI_RT_.rowFor === (caseId || '') ? NXAI_RT_ : Object.assign({}, NXAI_RT_, { row: null, decisions: null }));
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok) return Promise.resolve({ direct: false, why: '로그인 전' });
     return callGas('case_proc', { caseId: caseId || '', step: 'readerToken', noAi: true }).then(function(r){
       if (!r || r.error || r.ok === false || r.direct === false || !r.token || !r.url){ NXAI_RT_ = { direct: false, why: (r && (r.error || r.why)) || '직결 꺼짐', until: now + 5 * 60000 }; return NXAI_RT_; }
-      NXAI_RT_ = { direct: true, token: r.token, url: r.url, row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + 50 * 60000 };
+      var ttl = Math.min(50 * 60000, Math.max(60000, (Number(r.ttlSec) || 3000) * 1000 - 60000)); // 서버가 ttlSec을 주면 그보다 1분 짧게
+      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: caseId || '', row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + ttl };
       return NXAI_RT_;
     }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; });
   }
