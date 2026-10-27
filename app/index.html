@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 13:37 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 13:57 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6024,7 +6024,7 @@ function nxMdOpenWindow(title, src, opts){
       '<div class="card" id="chGasCard">' +
       '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>⚡ GAS 사건처리</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 서류 읽기·칸 채우기 → 질문 답하기 → 세액계산·서식·검토서</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button></div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="서류 읽기·칸 채우기에 쓸 폴더·파일만 고릅니다(예: 신고제출 폴더만) — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다">📂 읽을 범위</button></div>' +
       '<div id="chGasBody" style="margin-top:8px;"></div>' +
       '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
@@ -6542,6 +6542,30 @@ function nxMdOpenWindow(title, src, opts){
           }).catch(function(e){ showToast('되돌리는 중 오류: ' + (e && e.message || e), 'error'); b.disabled = false; });
         }); });
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">정한 값을 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+    });
+    // [2026.10.27 F] 읽을 범위 — 세무사님 "신고제출 폴더에 있는 파일만 읽어서 다시 처리하라". 넥스 카드(caseproc_scope)·지휘 넥스(set_read_scope)와 같은 서버 입구(case_proc readScope)
+    document.getElementById('chGasScopeBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">사건 폴더의 폴더·파일을 세는 중…</div>';
+      callGas('case_proc', { caseId: c.id, step: 'scopeView' }).then(function(r){
+        if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">폴더 목록을 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
+        var cur = r.범위 || null, curDirs = cur ? (cur.dirs || []) : [], curFiles = cur ? (cur.files || []) : [];
+        var h = '<div style="font-size:12.5px;">';
+        h += '<div><b>지금 읽을 범위</b>: ' + (cur ? esc((curDirs.join(', ') || '(폴더 없음)') + (curFiles.length ? ' · 파일 ' + curFiles.length + '개' : '') + ' — ' + (cur.by || '') + ' ' + (cur.at || '')) : '사건 폴더 전체(기본)') + '</div>';
+        h += '<div style="margin-top:6px;"><b>폴더 고르기</b>(고른 폴더 아래 서류만 읽습니다)</div>' + (r.폴더 || []).map(function(d){ return '<label style="display:block; margin:2px 0 0 8px;"><input type="checkbox" data-scope-dir="' + esc(d.dir) + '"' + (curDirs.indexOf(d.dir) !== -1 ? ' checked' : '') + '> ' + esc(d.label) + ' <span style="color:var(--sub);">(' + d.n + '개)</span></label>'; }).join('');
+        h += '<details style="margin-top:6px;"><summary style="cursor:pointer;">파일 하나씩 고르기(' + (r.파일 || []).length + '개)</summary>' + (r.파일 || []).map(function(f){ return '<label style="display:block; margin:2px 0 0 8px; white-space:nowrap; overflow-x:auto;"><input type="checkbox" data-scope-file="' + esc(f.name) + '"' + (curFiles.indexOf(f.name) !== -1 ? ' checked' : '') + '> ' + esc(f.name) + ' <span style="color:var(--sub);">' + esc(f.dir || '') + '</span></label>'; }).join('') + '</details>';
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="save-btn" id="chScopeSave">이 범위로 읽기</button><button type="button" class="ghost-btn" id="chScopeClear">전체로 되돌리기</button></div>';
+        h += '<div style="color:var(--sub); font-size:11.5px; margin-top:4px;">정한 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 범위의 서류만 읽어 칸을 채우고 질문을 만듭니다(기록부에 남음). "_신고제출"(제출용 사본)은 원래 규칙대로 빠집니다.</div></div>';
+        body.innerHTML = h;
+        var done = function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '정하지 못했습니다.', 'error'); return; } showToast(res.message || '정했습니다.', 'success'); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); document.getElementById('chGasScopeBtn').click(); };
+        document.getElementById('chScopeSave').addEventListener('click', function(){
+          var dirs = Array.prototype.map.call(body.querySelectorAll('input[data-scope-dir]:checked'), function(x){ return x.getAttribute('data-scope-dir'); });
+          var files = Array.prototype.map.call(body.querySelectorAll('input[data-scope-file]:checked'), function(x){ return x.getAttribute('data-scope-file'); });
+          if (!dirs.length && !files.length){ showToast('폴더나 파일을 하나 이상 고르세요(전체로 하려면 "전체로 되돌리기").', 'warning'); return; }
+          callGas('case_proc', { caseId: c.id, step: 'readScope', dirs: dirs, files: files, by: '세무사님' }).then(done).catch(function(e){ showToast('정하는 중 오류: ' + (e && e.message || e), 'error'); });
+        });
+        document.getElementById('chScopeClear').addEventListener('click', function(){ callGas('case_proc', { caseId: c.id, step: 'readScope', clear: true, by: '세무사님' }).then(done).catch(function(e){ showToast('되돌리는 중 오류: ' + (e && e.message || e), 'error'); }); });
+      }).catch(function(e){ body.innerHTML = '<div class="log-empty">폴더 목록을 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     document.getElementById('chGasFactsBtn').addEventListener('click', function(){
       if (!tokOk()) return;
@@ -58199,7 +58223,27 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       });
       return;
     }
-    if (mode === 'note'){ var r7 = rowEl(); btn('확인했음', function(){ nxAiCaseProcDecide_(st, it, 'done', '확인함'); }, true, r7); return; }
+    // [2026.10.27 E] 넥스 질문(넣을 칸 없음) — 답 칸 + [이 답으로 기록]: 답은 결정 메모로 기록되고(기록부 한 줄) 채팅 넥스에게 넘어가 caseproc_fix·calc_scenario로 처리된다.
+    //  세무사님 원문: "질문를 하면 확인단추가 있는데, 확인해서 답을 알려주려고 해도 알려줄 방법도 없이 확인했음 이라는 단추만 있으면 도무지 어떻게 하라는 것인가?"
+    if (mode === 'note'){
+      p(ask.nex ? '답을 적어 주세요 — 기록되고 넥스가 받아 반영합니다(칸이 정해진 값이면 넥스가 그 칸에 넣기를 제안합니다).' : '답이나 메모를 적어 주세요(기록됩니다).');
+      var inN = inputEl('text'); inN.el.placeholder = '답(예: 신고 세무비용 60만원, 주택 맞음, 보류)';
+      var r7 = rowEl();
+      btn('이 답으로 기록', function(){
+        var v = inN.val(); if (!v){ nxAiToast_('답을 적어 주세요.'); return; }
+        pane.innerHTML = ''; p('기록하는 중…');
+        st.run('decide', { qids: [it.id], d: 'done', note: '세무사님 답: ' + v.slice(0, 160), text: String(it.text || '').slice(0, 200), by: '세무사님' }).then(function(r){
+          if (!r || r.ok === false) throw new Error((r && (r.error || r.message)) || '기록 실패');
+          st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '세무사님 답: ' + v.slice(0, 80) }; nxAiCpUpdateItem_(st, it);
+          nxAiToast_('답을 기록했습니다 — 넥스에게 넘깁니다.');
+          // 넥스(채팅)에게 질문 글과 답을 함께 넘긴다 — 열린 질문 목록(cpHint)도 같이 가서 어느 칸인지 풀어 caseproc_fix 카드를 낸다
+          var said = '넥스 질문 "' + String(it.text || '').replace(/^🤖 넥스가 여쭙니다:\s*/, '').slice(0, 200) + '"에 대한 답: ' + v;
+          setTimeout(function(){ nxAiSendAI_(said, { noGem: true, displayText: '(넥스에게) ' + said, cpHint: nxAiCpHint_(st, [said]) }); }, 0);
+        }).catch(function(err){ pane.innerHTML = ''; p('기록하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
+      }, true, r7);
+      btn('답 없이 확인만', function(){ nxAiCaseProcDecide_(st, it, 'done', '확인함(답 없음)'); }, false, r7);
+      return;
+    }
     if (mode === 'calc'){ pane.hidden = true; nxAiCaseProcCalcRun_(st, true); return; }
     if (mode === 'folder'){ var r8 = rowEl(); btn('📁 증빙 폴더 만들기', function(){ apply('folder', '1', '세무사님 확인', ['basic']).then(function(){ nxAiCaseProcRun_(st.bubble, st.caseId); }); }, true, r8); return; }
     if (mode === 'view'){ nxAiOpenJobView_(ask.view, st.caseId); pane.hidden = true; return; }

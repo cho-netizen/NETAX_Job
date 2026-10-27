@@ -4604,7 +4604,27 @@
       });
       return;
     }
-    if (mode === 'note'){ var r7 = rowEl(); btn('확인했음', function(){ nxAiCaseProcDecide_(st, it, 'done', '확인함'); }, true, r7); return; }
+    // [2026.10.27 E] 넥스 질문(넣을 칸 없음) — 답 칸 + [이 답으로 기록]: 답은 결정 메모로 기록되고(기록부 한 줄) 채팅 넥스에게 넘어가 caseproc_fix·calc_scenario로 처리된다.
+    //  세무사님 원문: "질문를 하면 확인단추가 있는데, 확인해서 답을 알려주려고 해도 알려줄 방법도 없이 확인했음 이라는 단추만 있으면 도무지 어떻게 하라는 것인가?"
+    if (mode === 'note'){
+      p(ask.nex ? '답을 적어 주세요 — 기록되고 넥스가 받아 반영합니다(칸이 정해진 값이면 넥스가 그 칸에 넣기를 제안합니다).' : '답이나 메모를 적어 주세요(기록됩니다).');
+      var inN = inputEl('text'); inN.el.placeholder = '답(예: 신고 세무비용 60만원, 주택 맞음, 보류)';
+      var r7 = rowEl();
+      btn('이 답으로 기록', function(){
+        var v = inN.val(); if (!v){ nxAiToast_('답을 적어 주세요.'); return; }
+        pane.innerHTML = ''; p('기록하는 중…');
+        st.run('decide', { qids: [it.id], d: 'done', note: '세무사님 답: ' + v.slice(0, 160), text: String(it.text || '').slice(0, 200), by: '세무사님' }).then(function(r){
+          if (!r || r.ok === false) throw new Error((r && (r.error || r.message)) || '기록 실패');
+          st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '세무사님 답: ' + v.slice(0, 80) }; nxAiCpUpdateItem_(st, it);
+          nxAiToast_('답을 기록했습니다 — 넥스에게 넘깁니다.');
+          // 넥스(채팅)에게 질문 글과 답을 함께 넘긴다 — 열린 질문 목록(cpHint)도 같이 가서 어느 칸인지 풀어 caseproc_fix 카드를 낸다
+          var said = '넥스 질문 "' + String(it.text || '').replace(/^🤖 넥스가 여쭙니다:\s*/, '').slice(0, 200) + '"에 대한 답: ' + v;
+          setTimeout(function(){ nxAiSendAI_(said, { noGem: true, displayText: '(넥스에게) ' + said, cpHint: nxAiCpHint_(st, [said]) }); }, 0);
+        }).catch(function(err){ pane.innerHTML = ''; p('기록하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
+      }, true, r7);
+      btn('답 없이 확인만', function(){ nxAiCaseProcDecide_(st, it, 'done', '확인함(답 없음)'); }, false, r7);
+      return;
+    }
     if (mode === 'calc'){ pane.hidden = true; nxAiCaseProcCalcRun_(st, true); return; }
     if (mode === 'folder'){ var r8 = rowEl(); btn('📁 증빙 폴더 만들기', function(){ apply('folder', '1', '세무사님 확인', ['basic']).then(function(){ nxAiCaseProcRun_(st.bubble, st.caseId); }); }, true, r8); return; }
     if (mode === 'view'){ nxAiOpenJobView_(ask.view, st.caseId); pane.hidden = true; return; }

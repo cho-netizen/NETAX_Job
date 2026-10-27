@@ -3760,7 +3760,8 @@ function job_lookup_(input) {
       // [2026.10.27 A·경우별] 정한 값·고침 기록·계산 저장본(기본·안) — 넥스가 "지금 칸에 무엇이 들어 있나"를 보고 caseproc_fix·calc_scenario를 쓰고, 검토서 숫자는 저장본 id로 인용한다
       고침기록: (sv.valueHist || []).slice(-15).map(function (h) { return h.at + ' ' + h.by + ' ' + (h.label || h.target) + ': ' + caseProcValueText_(h.prev ? h.prev.v : '').slice(0, 40) + ' → ' + caseProcValueText_(h.next ? h.next.v : '').slice(0, 40) + (h.undone ? ' (되돌림)' : ''); }),
       계산저장본: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-20).map(function (e) { return { id: e.id, 세목: e.세목, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? (e.안.바꾼칸 || []).map(function (d) { return d.칸 + ' ' + d.전 + '→' + d.후; }).slice(0, 6) : undefined }; }),
-      안내: '세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정·정한값의 누가=세무사님)은 네가 바꾸지 말고, 서류와 어긋나 보이면 그 사실(지금 값·서류 값)만 말씀드린다. 남은 질문에 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}(넣을칸이 있는 질문). 이미 확정돼 남은 질문에 없는 칸(과세대상 구분·필요경비·사건분류 등)은 caseproc_fix{caseId, target, value, why}(세무사님 값이면 카드 [실행]이 세무사님 확인). 서류로 네가 푼 질문·답한 질문은 caseproc_decide로 닫아라. 경우(안)별 세액은 calc_scenario로 계산기를 돌려 저장한 뒤 그 저장본 숫자만 말한다(암산 금지). 세액 숫자는 계산저장본·마지막계산에서만 말한다.'
+      읽을범위: sv.readScope || null, // [2026.10.27 F]
+      안내: '같은 칸·같은 물음을 다시 묻지 마라 — 정한값·고침기록·마지막계산·최근처리일지에 세무사님이 정하신 값이 있으면 그 값을 쓰고 끝낸다(10-27 "이미 모두 알려줬는데"). 세무사님이 "○○ 폴더만 읽어라" 하시면 caseproc_scope. 세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정·정한값의 누가=세무사님)은 네가 바꾸지 말고, 서류와 어긋나 보이면 그 사실(지금 값·서류 값)만 말씀드린다. 남은 질문에 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}(넣을칸이 있는 질문). 이미 확정돼 남은 질문에 없는 칸(과세대상 구분·필요경비·사건분류 등)은 caseproc_fix{caseId, target, value, why}(세무사님 값이면 카드 [실행]이 세무사님 확인). 서류로 네가 푼 질문·답한 질문은 caseproc_decide로 닫아라. 경우(안)별 세액은 calc_scenario로 계산기를 돌려 저장한 뒤 그 저장본 숫자만 말한다(암산 금지). 세액 숫자는 계산저장본·마지막계산에서만 말한다.'
     };
     return JSON.parse(cxMask_(JSON.stringify(out)));
   }
@@ -3859,7 +3860,8 @@ const JOB_PROPOSE_ACTIONS_ = {
   caseproc_fix: { gas: 'case_proc', label: '세액계산 입력 칸 값 고치기', required: ['caseId', 'target', 'value'] },
   caseproc_undo: { gas: 'case_proc', label: '칸 값 고침 되돌리기', required: ['caseId'] },
   caseproc_decide: { gas: 'case_proc', label: '사건처리 질문 닫기(확인·보류·무시)', required: ['caseId', 'qids'] },
-  calc_scenario: { gas: 'case_proc', label: '경우(안) 세액계산 저장', required: ['caseId'] }
+  calc_scenario: { gas: 'case_proc', label: '경우(안) 세액계산 저장', required: ['caseId'] },
+  caseproc_scope: { gas: 'case_proc', label: '서류 읽을 범위 정하기(폴더·파일만 읽기)', required: ['caseId'] } // [2026.10.27 F]
 };
 const JOB_CASE_UPDATE_FORBIDDEN_ = ['폴더ID', '생성일', '수정일', '고객ID', 'my_report_id', '하위업무'];
 
@@ -3942,6 +3944,14 @@ function job_buildProposal_(input) {
     const payload3 = { caseId: c.id, step: 'decide', qids: hit.map(function (it) { return it.id; }), d: d, note: String(params.note || '').slice(0, 200), by: '넥스' };
     return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 질문 ' + hit.length + '건을 ' + dLabel + '으로 닫기' + (params.note ? ' · 근거: ' + String(params.note).slice(0, 160) : '') + '\n' + hit.slice(0, 8).map(function (it) { return '· ' + String(it.text || '').slice(0, 70); }).join('\n') + (hit.length > 8 ? '\n· 외 ' + (hit.length - 8) + '건' : ''), gasAction: spec.gas, payload: payload3, kind: input.action, caseId: c.id } };
   }
+  // [2026.10.27 F] 읽을 범위 — 세무사님 "신고제출 폴더에 있는 파일만 읽어서 다시 처리하라"
+  if (input.action === 'caseproc_scope') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    const dirs = Array.isArray(params.dirs) ? params.dirs : (params.dirs ? [params.dirs] : []), files = Array.isArray(params.files) ? params.files : (params.files ? [params.files] : []);
+    if (!params.clear && !dirs.length && !files.length) return { error: 'dirs(폴더 이름) 또는 files(파일 이름) 목록, 아니면 clear:true.' };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + (params.clear ? '읽을 범위를 풀어 사건 폴더 전체를 읽기' : '서류 읽기·칸 채우기를 폴더 ' + dirs.join(', ') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로만 — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다') + ' ([실행] 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 범위로 읽습니다)', gasAction: spec.gas, payload: { caseId: c.id, step: 'readScope', dirs: dirs, files: files, clear: !!params.clear, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
+  }
   // [2026.10.27 경우별 저장] 경우(안) 계산 — 세목·입력·이름을 받아 서버 엔진으로 계산해 따로 저장(기본 저장본·세무사님 값은 그대로)
   if (input.action === 'calc_scenario') {
     const c = job_findCase_(params.caseId);
@@ -3992,7 +4002,8 @@ const JOB_AI_TOOLS_ = [
       + 'caseproc_fix{caseId,target,value,label,why}(이미 확정돼 남은질문에 없는 세액계산 입력 칸을 고치기 — target은 calc:a0.assetType·calc:c0.totalPrice·calc:a0.acquisitionPrice·expenses(필요경비 {items:[{kind:취득|양도,label,amount}]})·trTaxFee·ov:사건분류·base(기준일) 등. 세무사님이 정하신 값이면 카드에 그 사실이 적히고 [실행]이 세무사님 확인이 된다 — 네가 스스로 바꾸지 말고 먼저 지금 값과 서류 값을 말씀드려라) / '
       + 'caseproc_undo{caseId,target(선택)}(마지막 칸 고침을 전 값으로 되돌리기) / '
       + 'caseproc_decide{caseId,qids[],decision(done=확인·해소 | 보류 | 무시 | 예정),note(근거 한 줄)}(서류로 네가 푼 질문·세무사님이 답한 질문을 닫아 다음 처리 때 다시 묻지 않게 — 서류 ⚠ 확인 질문을 읽고 풀었으면 꼭 닫아라) / '
-      + 'calc_scenario{caseId,tax(transfer|gift|inheritance — 생략하면 사건 세목),name,changes:[{path,value}],input(선택: 엔진 입력 전체),why}(경우(안)별 세액계산 — 세액계산기를 서버에서 돌려 이름 붙여 따로 저장. 양도 path: a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·a0.acquisitionDate·costs·taxfee·사건분류·seller.multiHouseCount, 증여·상속 path: giftAmount·relation·taxableEstateAmount·hasSpouse 같은 엔진 입력 이름. 세액 숫자는 반드시 이 저장본에서만 — 암산한 세액을 답에 쓰지 마라. 같은 사건에서 양도세 안·증여세 안·상속세 안을 각각 저장해 견줄 수 있다).',
+      + 'calc_scenario{caseId,tax(transfer|gift|inheritance — 생략하면 사건 세목),name,changes:[{path,value}],input(선택: 엔진 입력 전체),why}(경우(안)별 세액계산 — 세액계산기를 서버에서 돌려 이름 붙여 따로 저장. 양도 path: a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·a0.acquisitionDate·costs·taxfee·사건분류·seller.multiHouseCount, 증여·상속 path: giftAmount·relation·taxableEstateAmount·hasSpouse 같은 엔진 입력 이름. 세액 숫자는 반드시 이 저장본에서만 — 암산한 세액을 답에 쓰지 마라. 같은 사건에서 양도세 안·증여세 안·상속세 안을 각각 저장해 견줄 수 있다) / '
+      + 'caseproc_scope{caseId,dirs[](사건 폴더 안 폴더 이름, 예: ["신고제출"]),files[](파일 이름),clear(true면 전체로),why}(세무사님이 "○○ 폴더(파일)만 읽어라"고 하시면 — 그 뒤 서류 읽기·칸 채우기·⚠ 질문이 그 범위만 쓴다. 정한 뒤 "이 사건 처리하자"를 다시).',
     input_schema: {
       type: 'object',
       properties: {
@@ -30911,6 +30922,8 @@ function caseProc0_(body) {
     if (body.step === 'valueUndo') return caseProcValueUndo_(c, body);
     if (body.step === 'decide') return caseProcDecide_(c, body);
     if (body.step === 'scenario') return caseProcScenario_(c, body);
+    if (body.step === 'readScope') return caseProcReadScope_(c, body); // [2026.10.27 F] "○○ 폴더만 읽어라"
+    if (body.step === 'scopeView') return caseProcScopeView_(c);
     if (body.step === 'fixView') { const sv0 = caseProcLoad_(c.id) || {}; let v0 = {}; try { v0 = caseProcNexView_(c); } catch (e) { v0 = {}; } return { ok: true, 정한값: v0.정한값 || [], 고침기록: (sv0.valueHist || []).slice(-30), 남은질문: (sv0.remaining || []).filter(function (it) { const d = sv0.decisions && sv0.decisions[it.id] && sv0.decisions[it.id].d; return d !== 'done' && d !== '무시'; }).slice(0, 40).map(function (it) { return { qid: it.id, 글: String(it.text || '').slice(0, 120), 넣을칸: it.ask ? it.ask.target || '' : '' }; }), 안: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.안; }).map(function (e) { return { id: e.id, 세목: e.세목, 이름: e.안.이름, 최종세액: e.최종세액, 때: e.안.때, 누가: e.안.누가 }; }) }; } // 화면 "칸 값 고치기" 재료
     if (body.step === 'draft') return caseProcDraft_(c);
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
@@ -31195,7 +31208,9 @@ function caseProcDecide_(c, body) {
     s.decisions = s.decisions || {};
     const rem = Array.isArray(s.remaining) ? s.remaining : [];
     qids.forEach(function (qid) {
-      const it = rem.filter(function (x) { return x && x.id === qid; })[0];
+      let it = rem.filter(function (x) { return x && x.id === qid; })[0];
+      // [2026.10.27 E] 넥스 질문(nex:…)은 화면이 저장하기 전엔 remaining에 없을 수 있다 — 화면이 질문 글(text)을 함께 보내면 그대로 결정으로 남긴다
+      if (!it && /^nex:/.test(qid) && body.text) it = { id: qid, text: String(body.text).slice(0, 200) };
       if (!it) { out.notFound.push(qid); return; }
       s.decisions[qid] = { d: d, at: caseProcToday_(), text: String(it.text || '').slice(0, 200), note: ((by === '넥스' ? '🤖 넥스: ' : '') + note).slice(0, 200) };
       if (d === 'done' || d === '무시') s.closed = (s.closed || []).filter(function (x) { return x.id !== qid; }).concat([{ id: qid, d: d === 'done' ? '확인' : d, text: String(it.text || '').slice(0, 120) }]).slice(-60);
@@ -31504,6 +31519,19 @@ function caseProcFiles0_(c, opt) {
     res.separate = drop.map(function (d) { return { dir: d, why: split.sep[d], names: out.filter(function (f) { return under(f, d); }).map(function (f) { return f.name; }), decided: !!dec['evidence:별건:' + d] }; });
   }
   res.refDirs = refDirs;
+  // [2026.10.27 F 읽을 범위] 세무사님 "신고제출 폴더에 있는 파일만 읽어서 다시 처리하라"가 GAS 바퀴에 반영되는 길이 없어 다른 거래 서류(사진 법무사 정산서)의 후보가 섞였다.
+  //  사건별 읽을 범위(sv.readScope — 폴더·파일)를 정해 두면 서류 읽기·칸 채우기·⚠ 질문·usedText가 모두 이 목록만 쓴다(여기가 모든 단계의 서류 입구). 화면·넥스가 같은 step readScope로 정한다
+  if (!includeFiled && !(opt && opt.noScope)) {
+    const scope = (caseProcLoad_(c.id) || {}).readScope;
+    if (scope && ((scope.dirs || []).length || (scope.files || []).length)) {
+      const inDir = function (f) { return (scope.dirs || []).some(function (d) { d = String(d).replace(/^\/+|\/+$/g, ''); return d === '' ? !f.dir : (f.dir === d || String(f.dir || '').indexOf(d + '/') === 0); }); };
+      const inFiles = function (f) { return (scope.files || []).some(function (x) { return x === f.id || x === f.name; }); };
+      const dropped = res.filter(function (f) { return !inDir(f) && !inFiles(f); }).length;
+      const kept = res.filter(function (f) { return inDir(f) || inFiles(f); });
+      kept.truncated = res.truncated; kept.separate = res.separate; kept.refDirs = res.refDirs; kept.scope = { dirs: scope.dirs || [], files: scope.files || [], dropped: dropped, by: scope.by || '', at: scope.at || '' };
+      res = kept;
+    }
+  }
   // [2026.10.17] 원근보정본(_보정.pdf)과 원본 사진이 함께 있으면 더 잘 읽힌 쪽 하나만(같은 서류를 두 번 세지 않게) — raw면 그대로
   if (!(opt && opt.raw)) {
     const dropS = caseProcScanPairs_(res, null, c.id);
@@ -31512,10 +31540,40 @@ function caseProcFiles0_(c, opt) {
     let ex = caseProcExpandBundles_(caseProcJoinPages_(kept, null).files, null); // 쪽마다 나뉜 파일은 이어 붙이고, 묶음 파일은 서류별로
     // 같은 서류 사본(사진↔PDF·본문 숫자가 같은 것)은 하나만
     const dropD = caseProcDupDrop_(ex, null); if (Object.keys(dropD).length) ex = ex.filter(function (f) { return !dropD[f.id]; });
-    ex.truncated = res.truncated; ex.separate = res.separate; ex.refDirs = res.refDirs;
+    ex.truncated = res.truncated; ex.separate = res.separate; ex.refDirs = res.refDirs; if (res.scope) ex.scope = res.scope;
     return ex;
   }
   return res;
+}
+// [2026.10.27 F] 읽을 범위 정하기·보기 — 넥스(채팅 카드 caseproc_scope·지휘 set_read_scope)와 화면(처리개요 GAS 칸 📂)이 같은 입구. 폴더 이름(사건 폴더 기준 상대 경로)·파일 이름 목록. clear면 전체로
+function caseProcReadScope_(c, body) {
+  const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
+  if (body.clear) {
+    caseProcPatch_(c.id, function (s) { delete s.readScope; caseProcLogTo_(s, { by: by, what: '읽을 범위 해제', detail: '사건 폴더 전체를 읽음' }); });
+    CP_FILES_MEMO_ = {};
+    return { ok: true, message: '읽을 범위를 풀었습니다 — 사건 폴더 전체를 읽습니다.' };
+  }
+  const dirs = (Array.isArray(body.dirs) ? body.dirs : String(body.dirs || '').split(/[,\n]+/)).map(function (d) { return String(d || '').trim().replace(/^\/+|\/+$/g, ''); }).filter(Boolean).slice(0, 20);
+  const files = (Array.isArray(body.files) ? body.files : String(body.files || '').split(/[,\n]+/)).map(function (x) { return String(x || '').trim(); }).filter(Boolean).slice(0, 100);
+  if (!dirs.length && !files.length) return { ok: false, error: '읽을 폴더(dirs) 또는 파일(files) 목록이 필요합니다. 전체로 되돌리려면 clear.' };
+  // 실제 폴더 이름과 맞춰 본다(오타·밑줄 차이) — "_신고제출"은 제출용 사본 폴더라 원래 빼는 규칙 그대로(들어 있으면 그 사실만 알림)
+  let all = []; try { all = caseProcFiles_(c, { raw: true, noScope: true }) || []; } catch (e) { all = []; }
+  const allDirs = {}; all.forEach(function (f) { const parts = String(f.dir || '').split('/').filter(String); for (let i = 1; i <= parts.length; i++) allDirs[parts.slice(0, i).join('/')] = 1; });
+  const miss = dirs.filter(function (d) { return !allDirs[d] && !Object.keys(allDirs).some(function (k) { return k.split('/').pop() === d; }); });
+  const fixed = dirs.map(function (d) { if (allDirs[d]) return d; const hit = Object.keys(allDirs).filter(function (k) { return k.split('/').pop() === d; }); return hit.length === 1 ? hit[0] : d; });
+  const inDir = function (f) { return fixed.some(function (d) { return f.dir === d || String(f.dir || '').indexOf(d + '/') === 0; }); };
+  const nIn = all.filter(function (f) { return inDir(f) || files.indexOf(f.name) !== -1 || files.indexOf(f.id) !== -1; }).length;
+  if (!nIn) return { ok: false, error: '그 범위에 든 서류가 하나도 없어 정하지 않았습니다 — 폴더 이름을 확인해 주세요(사건 폴더 안 폴더: ' + Object.keys(allDirs).sort().join(', ').slice(0, 200) + ').' + (miss.length ? ' 없는 이름: ' + miss.join(', ') : '') };
+  const scope = { dirs: fixed, files: files, at: caseProcNow_(), by: by, note: String(body.note || '').slice(0, 120) };
+  caseProcPatch_(c.id, function (s) { s.readScope = scope; delete s.readFiles; caseProcLogTo_(s, { by: by, what: '읽을 범위 지정', detail: '폴더 ' + (fixed.join(', ') || '없음') + (files.length ? ' · 파일 ' + files.length + '개' : '') + ' — 범위 안 ' + nIn + '개 / 전체 ' + all.length + '개' + (scope.note ? ' · ' + scope.note : '') }); });
+  CP_FILES_MEMO_ = {};
+  return { ok: true, scope: scope, inScope: nIn, total: all.length, missingDirs: miss, message: '읽을 범위를 폴더 ' + (fixed.join(', ') || '(없음)') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로 정했습니다 — 범위 안 서류 ' + nIn + '개(전체 ' + all.length + '개). 다음 서류 읽기·칸 채우기부터 이 범위만 씁니다.' + (miss.length ? ' ⚠ 사건 폴더에 없는 폴더 이름: ' + miss.join(', ') : '') };
+}
+function caseProcScopeView_(c) {
+  let all = []; try { all = caseProcFiles_(c, { raw: true, noScope: true }) || []; } catch (e) { all = []; }
+  const dirs = {}; all.forEach(function (f) { const d = String(f.dir || ''); dirs[d] = (dirs[d] || 0) + 1; });
+  const sv = caseProcLoad_(c.id) || {};
+  return { ok: true, 폴더: Object.keys(dirs).sort().map(function (d) { return { dir: d, label: d || '(사건 폴더 바로 아래)', n: dirs[d] }; }), 파일: all.slice(0, 300).map(function (f) { return { id: f.id, name: f.name, dir: f.dir || '' }; }), 범위: sv.readScope || null };
 }
 // [2026.10.17 세무사님 원칙 — 내용 항목별로] 묶음 파일 하나 → 서류별 구간 파일(가상) 목록. 구간 id "원본ID#s시작-끝"(글자는 tc_docText_가 원본에서 잘라 줌),
 //  이름 "원본이름 (묶음 2-9).pdf" — 서류 종류는 이름에 넣지 않는다(이름 낱말로 정하는 규칙들이 원본과 똑같이 보게). 나눈 적 없으면 null

@@ -37,7 +37,8 @@ var CASEPROC_AI_TOOLS_ = [
   { name: 'form_needs', description: '필요 서식·빈 칸 — 이 사건 세목의 법정서식(본표·부표)마다 칸 수와 값 있음/빈 칸/화면 입력(확인 불가)/계산기에 없음, 서식을 막는 빈 칸 목록(계산기칸·질문id = calc_fill 질문 target과 같은 꼴, 20개까지). 토큰 0.',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
   { name: 'ask_user', description: '세무사님께 질문 올리기 — 서류로는 알 수 없는 것만. 후보+출처가 있으면 객관식, 없으면 주관식. 답은 다음 차례에 대화로 온다.',
-    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } }, note: { type: 'string' } }, required: ['caseId'] } },
+    // [2026.10.27 E] 질문마다 넣을 칸·선택지·입력 종류를 붙이면 화면 [확인]에 답 칸이 생겨 답이 바로 그 칸으로 들어간다(예전엔 "확인했음" 단추만)
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } }, note: { type: 'string' }, target: { type: 'string', description: '(새 질문) 답이 들어갈 칸 — calc:a0.assetType·expenses·trTaxFee·ov:사건분류·base 등. 있으면 화면 답이 바로 그 칸에 들어간다' }, label: { type: 'string', description: '(새 질문) 칸 이름(짧게)' }, input: { type: 'string', enum: ['text', 'money', 'date', 'number', 'select'], description: '(새 질문) 답 입력 종류' }, cands: { type: 'array', items: { type: 'object', properties: { v: {}, label: { type: 'string' }, src: { type: 'string' } } }, description: '(새 질문) 고를 후보(값·이름·출처) — 있으면 객관식' } }, required: ['caseId'] } },
   { name: 'save_draft', description: '저장·초안 — 작업일지 한 줄, 종합검토서 초안, 반영 현황표.',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
   // ---- [2026.10.19 빠진 도구 — 도구대조 문서 2절] 재료는 1번 cpFacts_(facts-fix)·2번 CrossCheck*.js(crosscheck) — 속 함수는 고치지 않고 감싸기만 ----

@@ -152,6 +152,9 @@ function caseProcAiLiveTools_() {
   // [2026.10.27 경우별 저장] 세액계산기는 네가 쓰는 도구 — 세목·입력을 바꿔 몇 번이든 돌려 이름 붙여 저장(기본 저장본·세무사님 값은 그대로)
   tools.push({ name: 'calc_scenario', description: '경우(안) 세액계산 저장(토큰 0) — 세액계산기를 서버에서 돌려 결과를 이름 붙여 따로 저장한다(기본 저장본·세무사님 값은 바뀌지 않음). tax: transfer·gift·inheritance(생략하면 사건 세목). changes: 양도는 계산기 칸 경로(a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·costs·taxfee·사건분류·seller.multiHouseCount), 증여·상속은 엔진 입력 이름(giftAmount·relation·taxableEstateAmount·hasSpouse…). input: 사건 자료에 없는 전제로 다른 세목을 견줄 때 엔진 입력 전체. 비과세 적용 전/후·필요경비 일부 제외·양도세 vs 증여세 비교처럼 경우마다 한 번씩 부른다. 세액 숫자는 이 결과(저장본 id)에서만 보고하고 암산하지 않는다.',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, tax: { type: 'string', enum: ['transfer', 'gift', 'inheritance'] }, name: { type: 'string' }, changes: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {} }, required: ['path'] } }, input: { type: 'object' }, why: { type: 'string' } }, required: ['caseId', 'name'] } });
+  // [2026.10.27 F] 읽을 범위 — 세무사님 "신고제출 폴더에 있는 파일만 읽어서 다시 처리하라"
+  tools.push({ name: 'set_read_scope', description: '서류 읽을 범위 정하기(토큰 0) — 세무사님이 채팅에서 "○○ 폴더(파일)만 읽어라"고 하시면 그 폴더(사건 폴더 안 이름, 예: 신고제출)·파일 이름을 정한다. 그 뒤 gas_run(서류 읽기·칸 채우기·⚠ 질문)은 그 범위 밖 파일을 읽지도 후보로 쓰지도 않는다. clear:true면 전체로. 정한 뒤 gas_run을 한 번 다시 부른다.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, dirs: { type: 'array', items: { type: 'string' } }, files: { type: 'array', items: { type: 'string' } }, clear: { type: 'boolean' }, why: { type: 'string' } }, required: ['caseId'] } });
   tools.push({ name: 'gas_run', description: 'GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. case_status에서 증빙 읽기·칸 채우기가 이미 되어 있고 새 서류가 없으면 부르지 않는다(세무사님이 이미 하셨거나 지난 처리에서 한 일 — 다시 읽지 않는다). 새 서류가 있거나 아직 안 했으면 한 번만 부른다.',
     input_schema: { type: 'object', properties: { why: { type: 'string', description: '한 줄 — 무엇을 보려고(보통 "처음 한 바퀴")' } } } });
   // [2026.10.22 작업 기록부] 사건 현황 보기 — 세무사님이 직접 하신 일·지난 처리(누가·언제·무엇), 정한 값, 단계별 시각, 새 서류, 반영 현황표, 남은 질문. 늘 맨 먼저(0원)
@@ -222,6 +225,10 @@ function caseProcAiLiveModeText_(cap) {
     '- AI 회의 결론(2026.10.21 세무사님 "ai회의 결론을 넥스가 보도록 하라"): 해석이 갈리는 판단 전에 law_decisions로 같은 쟁점을 본다. "결정"은 세무사님 결론으로 따르고(근거에 적음), "판단 대기"·"보류"면 값을 넣지 말고 질문 메모에 "AI 회의 판단 대기 쟁점(id)"이라고 적는다.',
     // [2026.10.27 10-27 양도 실사건] 세무사님 원문: "ai에게 종합적으로 지시하면 계산기를 사용하지 않고 ai가 암산으로 세액계산을 하게 되고 그 세액계산의 근거도 남기지 않게 되므로 세금계산신고 절차를 밟도록 주문한 것이었다" / "ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다"
     '- 세액은 계산 도구로만(암산 금지): 세액 숫자는 tax_calc·calc_scenario·저장된 계산 저장본에서만 보고하고 어느 저장본인지 적는다. 비과세 사건도 계산기로 끝까지 계산한 뒤 비과세를 적용한다. 경우를 바꿔 견줄 때(비과세 적용 전/후, 경비 일부 제외, 양도세 vs 증여세 vs 상속세)는 calc_scenario로 경우마다 저장한다 — 기본 저장본·세무사님 값은 그대로.',
+    // [2026.10.27 E·F·G] 세무사님 원문: "신고제출폴더속에 파일들을 모두 아름답게 정리해 놓았는데, 어디서 이상한 것들을 읽어가지고 떠들길래" / "확인했음 이라는 단추만 있으면 도무지 어떻게 하라는 것인가?" / [72] "이미 모두 알려줬는데…"
+    '- 세무사님이 "○○ 폴더(파일)만 읽어서 다시 처리하라" 하시면 먼저 set_read_scope로 그 범위를 정하고 gas_run을 다시 부른다 — 범위 밖 서류(다른 거래 영수증·사진 정산서)는 읽지도 후보로 들이대지도 않는다. 세무사님 말씀 속 폴더 이름을 그대로 쓴다.',
+    '- 묻기 전에 먼저 본다: case_status의 정한값·고침기록·작업기록·채팅 말씀에 세무사님이 이미 정하신 값(누가=세무사님)이 있으면 같은 칸·같은 물음을 다시 묻지 않고 그 값을 쓴다(ask_user도 그런 질문은 올리지 않고 "이미정해진것"으로 돌려준다). 세무사님이 채팅에 적어 주신 숫자는 그대로 value_set(basis user)·value_set(target)으로 넣는다.',
+    '- 세무사님께 여쭐 때(ask_user)는 답이 들어갈 칸(target)·후보(cands)·입력 종류(input)를 함께 올린다 — 그래야 화면에 답 칸이 생겨 세무사님이 고르거나 적으면 바로 칸에 들어간다. 칸이 없는 질문만 글로(note만).',
     '- 서류로 네가 푼 질문(서류 ⚠ 확인 등)은 close_question으로 닫는다 — 말로만 "해소"라 하면 다음 처리 때 같은 질문이 다시 뜬다. 이미 확정돼 질문 목록에 없는 칸이 잘못 들어 있으면 value_set(target)으로 고치고, 세무사님이 정하신 값이면 바꾸지 말고 ask_user로 지금 값·서류 값을 여쭌다.',
     '- 모든 글(중간 메모·보고·질문 메모)은 한국어로 쓴다 — 화면에 그대로 보인다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.',
@@ -321,9 +328,24 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     return { text: r.text, won: r.won };
   }
   if (name === 'ask_user') {
-    const ids = (input.itemIds || []).map(String).slice(0, 12);
-    ctx.asks.push({ ids: ids, note: caseProcAiMask_(caseProcAiCut_(input.note || '', 300)), urgent: !!input.urgent });
-    return { text: JSON.stringify({ ok: true, 올린질문: ids.length, 언제: input.urgent ? '처리 끝에 맨 위(계산을 막음)' : '처리 끝에 모아서' }) };
+    let ids = (input.itemIds || []).map(String).slice(0, 12);
+    // [2026.10.27 G] 이미 세무사님이 정하신 칸은 다시 묻지 않는다(10-27 [71]~[72] "이미 모두 알려줬는데…") — 질문의 칸·새 질문의 target에 세무사님 값이 있으면 그 값을 돌려주고 질문을 올리지 않는다
+    const c0 = akReadCase_(caseId), sv0 = c0 ? (caseProcLoad_(caseId) || {}) : {};
+    const already = [];
+    const settled = function (target) { if (!c0 || !target) return null; let pv = null; try { pv = caseProcPrevValue_(c0, sv0, String(target)); } catch (e) { pv = null; } return pv && pv.who === '세무사님' ? pv : null; };
+    ids = ids.filter(function (id) { const it = (ctx.lastItems || []).filter(function (x) { return x.id === id; })[0]; const pv = it && it.ask ? settled(it.ask.target) : null; const dd = sv0.decisions && sv0.decisions[id] && sv0.decisions[id].d; if (pv) { already.push({ 질문: id, 칸: it.ask.target, 세무사님값: caseProcAiMask_(caseProcValueText_(pv.v).slice(0, 80)), 출처: pv.src }); return false; } if (dd === 'done' || dd === '무시') { already.push({ 질문: id, 결정: dd }); return false; } return true; });
+    const pvNew = settled(input.target);
+    if (pvNew) already.push({ 질문: '(새 질문)', 칸: input.target, 세무사님값: caseProcAiMask_(caseProcValueText_(pvNew.v).slice(0, 80)), 출처: pvNew.src });
+    const note = caseProcAiMask_(caseProcAiCut_(input.note || '', 300));
+    const newQ = !(input.itemIds || []).length && note && !pvNew; // 질문 목록의 질문이 모두 "이미 정해진 것"으로 걸러졌으면 메모를 새 질문으로 올리지 않는다(같은 물음을 글로 또 묻는 것)
+    if (ids.length || newQ) ctx.asks.push({ ids: ids, note: note, urgent: !!input.urgent, target: newQ ? String(input.target || '') : '', label: newQ ? caseProcAiCut_(input.label || '', 40) : '', input: newQ ? String(input.input || '') : '', cands: newQ && Array.isArray(input.cands) ? input.cands.slice(0, 8).map(function (q) { return { v: q && q.v != null ? q.v : '', label: caseProcAiCut_((q && q.label) || '', 60), src: caseProcAiMask_(caseProcAiCut_((q && q.src) || '', 80)) }; }) : [] });
+    return { text: JSON.stringify({ ok: true, 올린질문: ids.length + (newQ ? 1 : 0), 언제: input.urgent ? '처리 끝에 맨 위(계산을 막음)' : '처리 끝에 모아서', 이미정해진것: already.length ? already : undefined, 안내: already.length ? '세무사님이 이미 정하신 칸은 묻지 않았다 — 그 값을 그대로 쓰고 보고에 적어라' : undefined }) };
+  }
+  if (name === 'set_read_scope') { // [2026.10.27 F]
+    const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
+    let r; try { r = caseProcReadScope_(c0, { dirs: input.dirs, files: input.files, clear: !!input.clear, note: caseProcAiCut_(input.why || '', 120), by: '넥스' }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+    ctx.decisions.push({ at: new Date().toISOString(), itemId: 'readScope', 칸: '읽을 범위', value: input.clear ? '전체' : (Array.isArray(input.dirs) ? input.dirs.join(',') : '') , basis: 'user', why: caseProcAiMask_(caseProcAiCut_(input.why || '', 120)), sure: '', 결과: r && r.ok ? caseProcAiCut_(r.message || '', 120) : '실패 — ' + caseProcAiCut_((r && r.error) || '', 100) });
+    return { text: caseProcAiMask_(JSON.stringify(r)).slice(0, 2000) };
   }
   if (name === 'report_tool_gap') {
     ctx.gaps.push({ want: caseProcAiMask_(caseProcAiCut_(input.want, 200)), kind: input.kind || '', tool: input.tool || '', shape: caseProcAiCut_(input.shape || '', 120), instead: caseProcAiCut_(input.instead || '', 120), situation: caseProcAiMask_(caseProcAiCut_(input.situation || '', 300)) }); // [2026.10.21] 막힌 상황(Claude가 재현할 수 있게)
@@ -508,7 +530,10 @@ function caseProcAiNexAskItems_(c, r) {
     if (!note || (a.ids || []).length) return;
     const id = 'nex:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, note, Utilities.Charset.UTF_8)).slice(0, 10);
     if (r.items.some(function (it) { return it.id === id; })) return;
-    r.items.push(caseProcItem_(id, 'judge', '🤖 넥스가 여쭙니다: ' + caseProcAiCut_(note, 300), { mode: 'note' }, (a.urgent ? '계산을 막는 질문입니다. ' : '') + '채팅창에 말로 답해 주시면 다음 처리 때 넥스가 그 답을 반영합니다(' + String(last.at || '').slice(0, 10) + ' 사건 지휘에서 올림).'));
+    // [2026.10.27 E] 넣을 칸(target)·후보가 있으면 [확인]에 답 칸이 생긴다(mode input/choose — 그 칸에 바로 들어감). 없으면 note — 화면이 답 글을 받아 넥스에게 넘긴다("확인했음" 단추만 두지 않음)
+    const cands = Array.isArray(a.cands) ? a.cands.filter(function (q) { return q && q.v !== '' && q.v != null; }) : [];
+    const ask = a.target ? { mode: cands.length ? 'choose' : 'input', target: String(a.target), label: a.label || CASEPROC_FIX_LABELS_[a.target] || a.target, input: a.input === 'select' ? 'text' : (a.input || 'text'), cands: cands, nex: true } : { mode: 'note', nex: true, label: a.label || '넥스 질문' };
+    r.items.push(caseProcItem_(id, 'judge', '🤖 넥스가 여쭙니다: ' + caseProcAiCut_(note, 300), ask, (a.urgent ? '계산을 막는 질문입니다. ' : '') + (a.target ? '[확인]에서 값을 고르거나 적으면 「' + ask.label + '」 칸에 바로 들어갑니다.' : '[확인]에서 답을 적으면 넥스가 받아 반영합니다.') + ' 채팅창에 말로 답하셔도 됩니다(' + String(last.at || '').slice(0, 10) + ' 사건 지휘에서 올림).'));
     n++;
   });
   return n;
