@@ -31588,8 +31588,8 @@ function caseProcFiles0_(c, opt) {
     if (scope && ((scope.dirs || []).length || (scope.files || []).length)) {
       const inDir = function (f) { return (scope.dirs || []).some(function (d) { d = String(d).replace(/^\/+|\/+$/g, ''); return d === '' ? !f.dir : (f.dir === d || String(f.dir || '').indexOf(d + '/') === 0); }); };
       const inFiles = function (f) { return (scope.files || []).some(function (x) { return x === f.id || x === f.name; }); };
-      // [확인 필요 — 세무사님 결정 전 임시] 사건 폴더 바로 아래 의뢰서_*.md(작업지시서)·관련법령_*.md(법령 탭이 만든 참고)는 증빙이 아니라 지시·참고 글이라 범위와 무관하게 사건파악용으로 남긴다(규칙 정리에서 메모로만 쓰이고 증빙·경비 후보는 안 됨)
-      const alwaysMemo = function (f) { return !f.dir && /^(의뢰서|관련법령)_.*\.md$/i.test(String(f.name || '')); };
+      // [2026.10.28 세무사님 결정 원문] "의뢰서·관련법령 파일은 읽을 범위와 상관없이 사건파악용으로 늘 읽되 증빙 후보로는 쓰지 마라" — 범위와 무관하게 목록에 남기고(사건파악용), 서류 정리(caseProcParsed_)는 종류를 붙이지 않아 증빙·경비 후보가 되지 않는다
+      const alwaysMemo = caseProcIsIntakeMemo_;
       const dropped = res.filter(function (f) { return !inDir(f) && !inFiles(f) && !alwaysMemo(f); }).length;
       const kept = res.filter(function (f) { return inDir(f) || inFiles(f) || alwaysMemo(f); });
       kept.truncated = res.truncated; kept.separate = res.separate; kept.refDirs = res.refDirs; kept.scope = { dirs: scope.dirs || [], files: scope.files || [], dropped: dropped, by: scope.by || '', at: scope.at || '' };
@@ -31978,10 +31978,16 @@ function caseProcEvTypes_(label) {
 // [2026.10.16] 판독 실패가 아니라 늘 붙는 안내문 — "⚠ 확인필요" 판독 질문으로 세지 않는다(정답지 사건 25건에서 40건 가까이: 법무사 정산서 항목명 안내, 납세보증보험, 통장 사본 안내, 열람용 출력물, 유족 지출표·§8·§14 안내 등)
 // [2026.10.17 묶음11] 견적서 안내("실제 지출 증빙이 아님")도 — 법무사 견적 항목을 이름과 함께 읽게 되면서 이 안내가 홀로 남아 ⚠ 판독 질문이 될 수 있었다
 var CASEPROC_ADVISORY_RE_ = /표\s*칸이\s*섞여\s*붙이지\s*않음|견적서는\s*실제\s*지출\s*증빙이\s*아님|납세보증보험|통장\s*사본은\s*거래\s*줄과|열람용\s*출력물|유족이\s*정리한\s*지출표|채무\s*공제\s*\(§\s*14\)|간주상속재산\(상증법\s*§8\)\s*판단|§66⑭\s*적용\s*시기|사업소득에는\s*농업|조회결과의\s*금액은\s*접수일/; // [2026.10.18 정밀분석 14] 안심상속 조회서마다 붙는 기준일 안내(고객A 확인 질문 13건)
+// 사건 폴더 바로 아래 의뢰서_*.md(작업지시서)·관련법령_*.md(법령 탭이 만든 참고) — 증빙이 아니라 지시·참고 글(2026-10-28 세무사님 결정)
+//  의뢰서_*.md는 사건 폴더 바로 아래, 관련법령_*.md는 법령 탭이 보고서_내부에 두므로 폴더를 가리지 않음(가상양도23: 보고서_내부/관련법령_….md)
+function caseProcIsIntakeMemo_(f) { if (!f) return false; const n = String(f.name || ''); return (/^관련법령_.*\.md$/i.test(n)) || (!String(f.dir || '') && /^의뢰서_.*\.md$/i.test(n)); }
 function caseProcParsed_(f, cache, canParse) {
   const key = 'cpp37_' + f.id + '_' + f.modified; // cpp37: 재채점 3차(통장 판정·대장·장례·상속인·양도 칸·묶음 쪼개기) — cpp36: 정밀분석 원인7~14 — 등기부 판독·송금확인증·재무제표·가족관계·초본 행번호·참고자료 내용 판정(ref)·분양대금 회차·공사계약(2026-10-18) // cpp35: 정밀분석 원인1~6 수정 — 이미 낸 신고서 칸(ot)·출입국 증명·엑셀 통장·대장 소유자·지분 이전 기재(2026-10-18) // cpp34: 묶음 구간 빈틈·장례 진료비 2차 합침(2026-10-17) // cpp33: 2차 합침 — 묶음 구간·쪽 잇기·실거래가 줄·통장 사진·새 서류·불복 서류(2026-10-17) // cpp32: 통장 거래내역 거래별 파서 합침(2026-10-17) // cpp31: 장례 명세서·묶음 쪼개기 합침(2026-10-17) // cpp30: 분할협의서 머리 문장 변형·귀속 지분 검산(2026-10-17) 합침(2026-10-17) // cpp29: 세목별 이미 낸 신고서 칸 정리(filedret)·임대·계약서 가지 합침(2026-10-17) // cpp28: 증여계약서 계약일·검인일 증여일 후보 + 가지 합침(2026-10-17) // cpp27: 우리 메모 PDF(memo)·준비서류 안내·건물기준시가(상속/증여)·법무사 항목 이름(2026-10-17 묶음11) // cpp26: 건물기준시가 계산서 구조(2026-10-16) // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 고객X) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   // [2026.10.17] 한 실행 안 메모 — 파일 목록(caseProcFiles_)이 묶음 나누기·쪽 잇기·사본 거르기로 서류마다 정리 결과를 여러 번 찾으므로 기억(CacheService)을 매번 부르지 않게
   if (CASEPROC_PARSED_MEMO_[key]) return CASEPROC_PARSED_MEMO_[key];
+  // [2026.10.28 세무사님 결정] "의뢰서·관련법령 파일은 읽을 범위와 상관없이 사건파악용으로 늘 읽되 증빙 후보로는 쓰지 마라" — 사건 폴더 바로 아래 의뢰서_*.md·관련법령_*.md는
+  //  서류 정리에서 종류를 붙이지 않는다(메모로만: 가설 출처 caseProcHypTexts_는 이 결과와 무관하게 글을 읽는다). 가상양도23 의뢰서 .md가 "중개보수 영수증" 종류로 읽혀 ⚠·후보가 될 수 있었다
+  if (caseProcIsIntakeMemo_(f)) { const sm = { t: '', l: '', w: [], memo: true, calc: true, intake: true }; CASEPROC_PARSED_MEMO_[key] = sm; return sm; }
   const hit = cache.get(key);
   if (hit) { try { return (CASEPROC_PARSED_MEMO_[key] = JSON.parse(hit)); } catch (e) {} }
   if (!canParse) return null;
@@ -33367,7 +33373,7 @@ function caseProcEvidence_(c, body) {
   const memoRefs = docs.concat(outDocs).filter(function (f) { return f.p && f.p.memo; }); // [2026.10.17 묶음11] 우리 메모를 PDF로 뽑은 것
   if (outReal.length) lines.push('신고서·명세서 등 발생문서 ' + outReal.length + '건 — 증빙 점검·입력값 출처에서 뺌(참고·정답지 전용): ' + outReal.slice(0, 4).map(function (f) { return f.name; }).join(', '));
   if (calcRefs.length) lines.push('참고자료(이전에 해 본 홈택스 간편계산 결과 — 신고서 아님, 입력 출처로 안 씀) ' + calcRefs.length + '건: ' + calcRefs.map(function (f) { return f.name; }).join(', '));
-  if (memoRefs.length) lines.push('참고자료(우리 사무소가 쓴 메모·계산을 PDF로 뽑은 것 — 고객 증빙 아님, 입력 출처로 안 씀) ' + memoRefs.length + '건: ' + memoRefs.map(function (f) { return f.name; }).join(', '));
+  if (memoRefs.length) lines.push('참고자료(우리 사무소가 쓴 메모·계산·의뢰서·관련법령 — 고객 증빙 아님, 사건파악에만 쓰고 입력 출처로 안 씀) ' + memoRefs.length + '건: ' + memoRefs.map(function (f) { return f.name; }).join(', '));
   // [2026.10.17 묶음12] 경정·수정·불복 사건 — 당초 신고서·결정 통지는 작업 재료(칸별로 정리, 계산식으로 확인된 칸만 도구 계산과 대조)
   if (caseProcIsAmend_(c)) { const frDocs = docs.filter(function (f) { return f.p && f.p.t === 'filedret'; }); if (frDocs.length) lines.push('당초 신고서·결정 통지 ' + frDocs.length + '건 — 작업 재료로 칸별 정리(계산식으로 확인된 칸만 [결과]에서 도구 계산과 대조): ' + frDocs.map(function (f) { return f.name + '(' + f.p.l + ')'; }).join(', ')); }
   // [2026.10.18 정밀분석 원인1] 입력으로 남긴 이미 낸 신고·결정 서류를 밝힌다(빼지 않았으니 "폴더에 신고서가 없다"고 묻지 않음)
