@@ -129,11 +129,24 @@ async function readCase(body) {
       work_syncCaseCalendar_ = function () { __cr.calendarCalls++; };
       work_deleteCaseCalendarEvents_ = function () { __cr.calendarCalls++; };
     `);
-    // 결정 파일을 GAS가 보낸 상태로 미리 둔다(같은 출발점에서 비교하기 위해)
-    if (body.decisions && typeof body.decisions === 'object' && Object.keys(body.decisions).length) {
-      try { g.ctx.caseProcPatch_(caseId, function (s) { Object.assign(s, body.decisions); }); } catch (e) {}
+    // 결정 파일(기록부)을 GAS가 보낸 상태로 미리 둔다 — [2026.10.27 H] 예전엔 body.decisions(화면이 보낸 qid→결정 지도)를 기록부 맨 위에 붙여(s.decisions가 아님) 결정이 전혀 안 먹었고,
+    //  읽을 범위·답 저장소·고침 기록은 아예 오지 않아 답한 질문을 다시 묻고 범위 밖 서류를 읽었다(가상양도23). 이제 body.record(기록부 바탕: decisions·readScope·trAns·valueHist·closed·docFix·filled…)를 제자리에,
+    //  body.decisions는 qid→결정 지도로 s.decisions에 합친다. 옛 화면이 기록부 통째(remaining·decisions 키가 든 것)를 decisions로 보내면 그것도 바탕으로 본다
+    const RECORD_KEYS = ['decisions', 'readScope', 'trAns', 'valueHist', 'closed', 'docFix', 'filled', 'giftDeal', 'ihChoices', 'cxAi', 'readFiles', 'scanOffered', 'holdNotes'];
+    const isMap = (o) => o && typeof o === 'object' && !Array.isArray(o);
+    const looksLikeRecord = (o) => isMap(o) && (('remaining' in o) || ('decisions' in o) || ('trAns' in o) || ('readScope' in o));
+    let record = isMap(body.record) ? body.record : (looksLikeRecord(body.decisions) ? body.decisions : null);
+    const decMap = isMap(body.decisions) && !looksLikeRecord(body.decisions) ? body.decisions : null;
+    if (record || decMap) {
+      try {
+        g.ctx.caseProcPatch_(caseId, function (s) {
+          if (record) RECORD_KEYS.forEach((k) => { if (record[k] !== undefined && record[k] !== null) s[k] = record[k]; });
+          if (decMap) s.decisions = Object.assign({}, s.decisions || {}, decMap);
+        });
+      } catch (e) {}
       writes.length = 0; // 미리 두기는 쓰기 기록에서 뺀다
     }
+    const seeded = { record: !!record, decisions: decMap ? Object.keys(decMap).length : (record && record.decisions ? Object.keys(record.decisions).length : 0), readScope: !!(record && record.readScope) };
     const opt = Object.assign({ step: 'all', budgetMs: 280000 }, body.options && typeof body.options === 'object' ? { skipEvidence: !!body.options.skipEvidence, budgetMs: Number(body.options.budgetMs) || 280000 } : {});
     try { out = g.ctx.caseProcAll_(g.ctx.akReadCase_(caseId) || row, opt); } catch (e) { err = e; }
     try { sv = g.ctx.caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
@@ -152,6 +165,8 @@ async function readCase(body) {
     lines: out ? out.lines || [] : [],
     timing: { drive: Math.round(tDrive / 100) / 10, basic: tm.basic || 0, ocr: tm.evidence_read || 0, evidence: tm.evidence || 0, overview: tm.overview || 0, calc: tm.calc || 0, inner: out ? Math.round((out._ms || 0) / 100) / 10 : 0, total: Math.round(total / 100) / 10 },
     unreadFiles, memKeysGiven: Object.keys(ocrMemory).length, memSource,
+    seeded, // [2026.10.27 H] 요청에 실려 온 기록부 바탕(결정 수·읽을 범위)이 제자리에 들어갔는지 — 화면·재현기가 확인
+    readScope: sv.readScope || null, // 기록부 바탕의 읽을 범위가 제자리에 있었는지(있으면 서류 목록 입구 caseProcFiles0_가 그 범위만 썼다)
     files: { folders: tree.stats.folders, count: tree.stats.files, textDownloaded: tree.stats.textDownloaded, textErrors: tree.stats.textErrors || 0, lastTextError: tree.stats.lastTextError || '', truncated: tree.stats.truncated, listMs: tree.stats.listMs, downloadMs: tree.stats.downloadMs },
     evidenceCount: (after && after.증빙목록 || []).length,
     filled: sv.filled || {},

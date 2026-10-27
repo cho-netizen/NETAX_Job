@@ -2887,19 +2887,27 @@
         //  결정은 화면이 가진 것(st.decisions — 처음 ⚡면 비어 있음). 저장(applyRead)은 서버의 기존 결정을 지키므로 답한 것이 사라지진 않는다.
         var screenRow = null;
         try { if (typeof chCases !== 'undefined' && Array.isArray(chCases)) screenRow = chCases.filter(function(x){ return x && x.id === st.caseId && x.폴더ID; })[0] || null; } catch (e) { screenRow = null; }
-        var rowP = screenRow ? Promise.resolve({ row: screenRow, dec: (st.decisions && Object.keys(st.decisions).length) ? st.decisions : (tk.rowFor === st.caseId && tk.decisions) || {}, from: '화면' })
-          : (tk.row && tk.row.폴더ID) ? Promise.resolve({ row: tk.row, dec: tk.decisions || {}, from: '토큰' })
-          : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: v.사건, dec: v.결정 || {}, from: 'GAS 현황' } : null; }).catch(function(){ return null; });
+        // [2026.10.27 H] 기록부 바탕(record: 결정·읽을 범위·답 저장소·고침 기록…)을 함께 보낸다 — 서비스는 기록부를 못 보므로, 안 보내면 답한 질문을 다시 묻고 범위 밖 서류를 읽는다(가상양도23).
+        //  바탕은 토큰 응답(이 사건 것일 때)·GAS 현황(view)의 바탕에서. 결정(dec)은 화면이 가진 결정 지도(qid→결정)를 그 위에 덧씀
+        var tkRec = (tk.rowFor === st.caseId && tk.record) ? tk.record : null;
+        var scrDec = (st.decisions && Object.keys(st.decisions).length) ? st.decisions : null;
+        var rowP = screenRow && tkRec ? Promise.resolve({ row: screenRow, rec: tkRec, dec: scrDec || tkRec.decisions || {}, from: '화면' })
+          : (tk.row && tk.row.폴더ID && tkRec) ? Promise.resolve({ row: tk.row, rec: tkRec, dec: scrDec || tkRec.decisions || {}, from: '토큰' })
+          : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: screenRow || v.사건, rec: v.바탕 || { decisions: v.결정 || {} }, dec: scrDec || v.결정 || {}, from: 'GAS 현황' } : null; }).catch(function(){ return null; });
         return rowP.then(function(rd){
           if (!rd || !rd.row || !rd.row.폴더ID) return give('사건 행·폴더를 못 받음');
+          if (rd.rec && rd.rec.readScope) lineTo('evidence', '📂 읽을 범위: 폴더 ' + ((rd.rec.readScope.dirs || []).join(', ') || '(없음)') + ((rd.rec.readScope.files || []).length ? ' · 파일 ' + rd.rec.readScope.files.length + '개' : '') + ' — 이 범위만 읽습니다', 'nxai-muted');
           ['basic', 'evidence', 'overview'].forEach(function(k){ st.setStep(k, '🔄', '시험 서비스(직결)로 서류를 읽는 중…'); });
           var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
           var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 12000) : null;
-          return fetch(url + '/read', { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk.token }, body: JSON.stringify({ caseId: st.caseId, folderId: rd.row.폴더ID, sheetRow: rd.row, decisions: rd.dec }), signal: ctrl ? ctrl.signal : undefined })
+          return fetch(url + '/read', { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk.token }, body: JSON.stringify({ caseId: st.caseId, folderId: rd.row.폴더ID, sheetRow: rd.row, decisions: rd.dec, record: rd.rec || null }), signal: ctrl ? ctrl.signal : undefined })
             .then(function(res){ if (tmr) clearTimeout(tmr); if (res.status === 401 || res.status === 403){ NXAI_RT_ = null; throw new Error('인증 거절(' + res.status + ')'); } return res.json().catch(function(){ return null; }); },
                   function(e){ if (tmr) clearTimeout(tmr); throw new Error(e && e.name === 'AbortError' ? '12초 초과' : '통신 오류(' + String(e && e.message || e).slice(0, 60) + ')'); })
             .then(function(r){
               if (!r || !r.ok || !r.stages) return give('응답 오류' + (r && r.error ? '(' + String(r.error).slice(0, 60) + ')' : ''));
+              // [2026.10.27 H] 기록부 바탕을 보냈는데 서비스가 제자리에 못 넣었으면(옛 판 서비스) 직결 결과는 답한 질문을 다시 묻는다 — GAS 길로
+              if (rd.rec && Object.keys(rd.rec).length && !(r.seeded && r.seeded.record)) return give('시험 서비스가 기록부(결정·읽을 범위)를 못 받음 — 옛 판');
+              if (rd.rec && rd.rec.readScope && !r.readScope) return give('시험 서비스가 읽을 범위를 안 지킴');
               if (r.blocked) return give('증빙 폴더 없음·권한 없음');
               if (r.partial || r.more) return give('서류를 다 못 읽음(이어 읽기는 GAS가)');
               if (Array.isArray(r.unreadFiles) && r.unreadFiles.length) return give('글자 기억이 없는 서류 ' + r.unreadFiles.length + '개(글자인식은 GAS가)');
@@ -3099,7 +3107,7 @@
     var p = callGas('case_proc', { caseId: cid, step: 'readerToken', noAi: true }).then(function(r){
       if (!r || r.error || r.ok === false || r.direct === false || !r.token || !r.url){ NXAI_RT_ = { direct: false, why: (r && (r.error || r.why)) || '직결 꺼짐', until: now + 5 * 60000 }; return NXAI_RT_; }
       var ttl = Math.min(50 * 60000, Math.max(60000, (Number(r.ttlSec) || 3000) * 1000 - 60000)); // 서버가 ttlSec을 주면 그보다 1분 짧게
-      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: cid, row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + ttl, fresh: true, share: r.share || null };
+      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: cid, row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, record: r.record || null, until: now + ttl, fresh: true, share: r.share || null }; // [2026.10.27 H] record = 기록부 바탕(직결 요청에 실음)
       return NXAI_RT_;
     }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; })
       .then(function(x){ if (NXAI_RT_P_ && NXAI_RT_P_.p === p) NXAI_RT_P_ = null; return x; });

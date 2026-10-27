@@ -17675,6 +17675,7 @@ function renderTcCaseBar_(){
     '<div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
     '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 저장</button>' +
+    '<input type="text" id="tcScenarioName" placeholder="안 이름(비우면 자동)" style="width:150px;" title="경우(안) 이름 — 예: 비과세 적용 전, 필요경비 제외, 증여세로 할 때. 비우면 안N(바꾼 칸 요약)"' + (tcSelectedId ? '' : ' disabled') + '>' +
     '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>📑 경우(안)로 저장</button>' +
     '<button type="button" id="tcGasFillBtn" class="ghost-btn" title="사건처리(GAS)로 서류에서 읽어 둔 값을 계산기 칸에 다시 채웁니다 — AI 없이 0원"' + (tcSelectedId ? '' : ' disabled') + '>⚡ GAS로 칸 채우기</button>' +
     '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn" title="넥스(AI)가 사건을 맡아 서류 읽기부터 계산까지 합니다 — 비용이 듭니다"' + (tcSelectedId ? '' : ' disabled') + '>🤖 넥스로 자동계산</button>' +
@@ -17757,7 +17758,7 @@ function renderTcSavedList_(list){
       '<div class="log-text" style="flex:1;"><b>' + escapeHtml(entry.세목 || '') + ' · ' + escapeHtml(entry.구분 || '') + '</b>' +
       (Number.isFinite(entry.최종세액) ? ' <b style="color:var(--accent, #2a7a4f);">' + won(entry.최종세액) + '</b>' : '') +
       (entry.기준일스냅샷 ? ' <span style="color:var(--sub); font-size:11px;">(기준일: ' + escapeHtml(entry.기준일스냅샷) + ')</span>' : '') +
-      (isScen ? ' <span style="color:#8a5a00; font-weight:700; font-size:11px;" title="' + escapeHtml((entry.안.바꾼칸 || []).map(function(d){ return d.칸 + ' ' + d.전 + ' → ' + d.후; }).join(' / ') || '바꾼 칸 기록 없음') + '">📑 안: ' + escapeHtml(entry.안.이름 || '') + (entry.안.누가 ? ' (' + escapeHtml(entry.안.누가) + ')' : '') + '</span>' : (isLatest ? ' <span style="color:#2a7a4f; font-weight:700; font-size:11px;">최신</span>' : ' <span style="color:var(--sub); font-size:11px;">이전 계산</span>')) + '</div>' +
+      (isScen ? ' <span style="color:#8a5a00; font-weight:700; font-size:11px;" title="' + escapeHtml((entry.안.바꾼칸 || []).map(function(d){ return (d.이름 || d.칸) + ' ' + d.전 + ' → ' + d.후; }).join(' / ') || '바꾼 칸 기록 없음') + '">📑 안: ' + escapeHtml(entry.안.이름 || '') + (entry.안.누가 ? ' (' + escapeHtml(entry.안.누가) + ')' : '') + '</span>' : (isLatest ? ' <span style="color:#2a7a4f; font-weight:700; font-size:11px;">최신</span>' : ' <span style="color:var(--sub); font-size:11px;">이전 계산</span>')) + '</div>' +
       '<span class="log-del" title="삭제">✕</span>' +
       '</div>' +
       '<div class="tc-saved-preview" style="display:none; color:var(--sub); font-size:12.5px; margin:6px 0 0 22px; white-space:pre-wrap;">' + escapeHtml(preview) + '</div>';
@@ -18061,19 +18062,38 @@ function tcRestoreToolResults_(caseObj){
 // 자체의 최종 세액은 항상 이 4개 메인 박스(taxCalcTransferResult 등)에 표시되므로 이것만
 // 캡처한다 — 부속 계산기 결과까지 다 모으면 요약이 아니라 화면 전체 덤프가 된다.
 // [2026.10.27 경우별 저장] 경우(안) 저장 — 바탕(같은 세목 기본 저장본의 저장값)과 지금 입력을 맞대어 바뀐 칸을 자동으로 적는다(세무사님 원문 "각각 저장하기로 저장되어야 하고 … 인용하여 검토서에 반영")
+// [2026.10.27 K] 바꾼 칸은 한국어 이름·사람 말 값(서버 caseProcDiffHuman_과 같은 규칙) — 내부 보조 칸(provisional·id)은 빼고, 항목 목록은 합계(건수), 예/아니오는 켬/끔
+var TC_SCEN_KO_ = { assetType: '과세대상 구분', assetKind: '자산 종류', assetLocation: '소재지', assetArea: '면적', acquisitionDate: '취득일', acquisitionPrice: '취득가액', transferPrice: '양도가액', transferDate: '양도일', isOneHouseOneFamily: '1세대1주택 비과세 전제', isNonBusinessLand: '비사업용 토지', isUnregisteredTransfer: '미등기양도', isOverseasAsset: '국외자산', standardPriceAcquisition: '취득 기준시가', standardPriceTransfer: '양도 기준시가', acquisitionStandardPriceForExpense: '취득당시 기준시가', transferStandardPriceForConversion: '양도당시 기준시가', donorRelation: '증여자 관계', giftReceivedDate: '증여받은 날', holdingYears: '보유기간(년)', residenceYears: '거주기간(년)', totalPrice: '양도가액', date: '양도일', name: '성명', regNo: '주민등록번호', address: '주소', relation: '관계', multiHouseCount: '보유 주택 수', isTransferorResident: '거주자 여부', transferExpenseItems: '양도비용', totalExpenseItems: '양도비용', acquisitionExpenseItems: '취득비용', buyerRelation: '양수인 관계', relatedPartyActualPrice: '실제 거래가액(특수관계)' };
+function tcScenarioHuman_(group, i, k, prev, next){
+  if (/provisional|^_|^id$|Id$/.test(k)) return null;
+  var head = group === 'seller' ? '양도인 ' : (i ? (group === 'c' ? '계약' : '자산') + (i + 1) + ' ' : '');
+  var label = head + (TC_SCEN_KO_[k] || k);
+  var won = function(n){ return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  var txt = function(v){
+    if (v === undefined || v === null || v === '') return '(없음)';
+    if (typeof v === 'boolean') return v ? '켬' : '끔';
+    if (Array.isArray(v)){ if (!v.length) return '없음(0건)'; if (v.every(function(x){ return x && typeof x === 'object' && ('amount' in x); })) return won(v.reduce(function(s, x){ return s + (Number(x.amount) || 0); }, 0)) + '(' + v.length + '건)'; return JSON.stringify(v).slice(0, 60); }
+    if (typeof v === 'object') return JSON.stringify(v).slice(0, 60);
+    if (k === 'assetType') return { house: '주택', other: '그 외', presale_right: '분양권' }[String(v)] || String(v);
+    if (/Price|Amount|Value/.test(k) && /^\d+$/.test(String(v))) return won(v);
+    return String(v).slice(0, 60);
+  };
+  var p = txt(prev), q = txt(next);
+  return p === q ? null : { 칸: group + i + '.' + k, 이름: label, 전: p, 후: q };
+}
 function tcScenarioDiff_(baseState, nowState){
   var out = [];
   if (!baseState || !nowState) return out;
-  var txt = function(v){ if (v == null) return ''; if (typeof v === 'object') return JSON.stringify(v); return String(v); };
-  var cmpList = function(name, a, b, keys){
+  var cmpList = function(name, a, b){
     a = Array.isArray(a) ? a : []; b = Array.isArray(b) ? b : [];
     var n = Math.max(a.length, b.length);
     for (var i = 0; i < n; i++){
       var x = a[i] || {}, y = b[i] || {};
-      var ks = {}; Object.keys(x).concat(Object.keys(y)).forEach(function(k){ if (!/^_|^id$|Id$/.test(k)) ks[k] = 1; });
-      Object.keys(ks).forEach(function(k){ var p = txt(x[k]), q = txt(y[k]); if (p !== q && out.length < 40) out.push({ 칸: name + i + '.' + k, 전: p.slice(0, 80), 후: q.slice(0, 80) }); });
+      var ks = {}; Object.keys(x).concat(Object.keys(y)).forEach(function(k){ ks[k] = 1; });
+      Object.keys(ks).forEach(function(k){ var h = tcScenarioHuman_(name, i, k, x[k], y[k]); if (h && out.length < 40) out.push(h); });
     }
   };
+  var txt = function(v){ if (v == null) return ''; if (typeof v === 'object') return JSON.stringify(v); return String(v); };
   cmpList('a', baseState.transferAssets, nowState.transferAssets);
   cmpList('c', baseState.transferContracts, nowState.transferContracts);
   cmpList('seller', baseState.transferSellers, nowState.transferSellers);
@@ -18139,14 +18159,15 @@ function tcSaveCurrentResult_(opts){
     var scenAll = tcCurrentCase.세액계산결과 || [];
     var baseE = scenAll.filter(function(e){ return e && e.세목 === entry.세목 && !e.안; }).slice(-1)[0];
     var nScen = scenAll.filter(function(e){ return e && e.안; }).length + 1;
-    var nm = window.prompt('이 경우(안)의 이름을 적어 주세요(예: 비과세 적용 전, 필요경비 제외, 증여세로 할 때)', '안' + nScen);
-    if (nm === null) return;
-    nm = String(nm).trim().slice(0, 60) || ('안' + nScen);
+    // [2026.10.27 J] 이름은 화면 안 입력칸(저장 줄 옆 "안 이름")에서 — window.prompt()는 앱 안 브라우저·설치형 앱에서 막혀 "prompt() is not supported"로 저장이 아예 안 됐다(가상양도23 운영 확인). 비우면 "안N(바꾼 칸 요약)"
     var diff = baseE && baseE.저장값 && entry.저장값 ? tcScenarioDiff_(baseE.저장값, entry.저장값) : [];
+    var nmEl = document.getElementById('tcScenarioName');
+    var nm = String((nmEl && nmEl.value) || (opts.name || '')).trim().slice(0, 60) || ('안' + nScen + (diff.length ? '(' + diff.map(function(d){ return d.이름 || d.칸; }).join('·').slice(0, 30) + ')' : ''));
+    if (nmEl) nmEl.value = '';
     entry.구분 = (entry.구분 || '') + ' · 경우(안)';
     var now_ = new Date(), p2_ = function(n){ return (n < 10 ? '0' : '') + n; };
     entry.안 = { 이름: nm, 바꾼칸: diff, 누가: window.nxWorkBy_ || '세무사님', 때: tcTodayStr_() + ' ' + p2_(now_.getHours()) + ':' + p2_(now_.getMinutes()), 바탕: baseE ? '기본 저장본 ' + baseE.id + '(' + (baseE.계산일 || '') + ')' : '(같은 세목 기본 저장본 없음 — 바꾼 칸 대조 못 함)', 바탕저장본id: baseE ? baseE.id : '' };
-    entry.요약 = '[경우(안)] ' + nm + '\n바탕: ' + entry.안.바탕 + '\n바꾼 칸: ' + (diff.length ? diff.map(function(d){ return d.칸 + ' ' + d.전 + ' → ' + d.후; }).join(' / ') : '(기본 저장본과 같거나 대조 못 함)') + '\n\n' + (entry.요약 || '');
+    entry.요약 = '[경우(안)] ' + nm + '\n바탕: ' + entry.안.바탕 + '\n바꾼 칸: ' + (diff.length ? diff.map(function(d){ return (d.이름 || d.칸) + ' ' + d.전 + ' → ' + d.후; }).join(' / ') : '(기본 저장본과 같거나 대조 못 함)') + '\n\n' + (entry.요약 || '');
     delete entry.도구키; // 서식 복원(tcRestoreToolResults_)이 안 저장본을 "최신 본계산"으로 집어 가지 않게
   }
   var newList = (tcCurrentCase.세액계산결과 || []).concat([entry]);
