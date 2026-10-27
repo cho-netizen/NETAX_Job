@@ -4,7 +4,7 @@
 설계: C:\GitHub\netax-inventory\maps\T6_시험서비스_설계서_20261023.md(2단계) · T6_3단계_화면직결_설계서_20261027.md(3단계).
 
 ## 지금 상태(재배포한 사람이 아래 "문:" 줄을 고칩니다 — tools/change-check.js가 이 줄로 ⚠ 판정)
-문: 인증 없이 받기(allow-unauthenticated) — 서비스 안에서 구글 ID 토큰 검증(발급자·받는 이·이메일 허용 목록), 2026-10-27 3단계
+문: 인증 없이 받기(호출자 IAM 검사 끄기, --no-invoker-iam-check) — 서비스 안에서 구글 ID 토큰 검증(발급자·받는 이·이메일 허용 목록), 2026-10-27 3단계. allUsers 권한(allow-unauthenticated)은 조직 정책(도메인 제한 공유)이 거부해 쓰지 못함
 서비스 계정: case-reader@netax-job.iam.gserviceaccount.com(뷰어) — 가상사건 폴더 40개만
 리전: asia-northeast3 · 메모리 1Gi · CPU 1 · 동시 1 · 시간 300초 · 최소 0대 · 최대 1대
 
@@ -22,4 +22,5 @@
 ## 빌드·배포(저장소 루트에서)
 gcloud builds submit --config cloudrun/cloudbuild.yaml --substitutions _CODE_VERSION=<git short sha> .
 gcloud run deploy netax-case-reader --image asia-northeast3-docker.pkg.dev/netax-job/netax-case-reader/netax-case-reader:<sha> --region asia-northeast3 --allow-unauthenticated --service-account case-reader@netax-job.iam.gserviceaccount.com --memory 1Gi --cpu 1 --concurrency 1 --timeout 300 --min-instances 0 --max-instances 1 --port 8080 --set-env-vars T6_ALLOWED_EMAILS=cho@netax.kr
-되돌리기(IAM 문): gcloud run services update netax-case-reader --region asia-northeast3 --no-allow-unauthenticated
+되돌리기(IAM 문 다시 켜기): gcloud beta run services update netax-case-reader --region asia-northeast3 --invoker-iam-check --project netax-job
+(배포 때 --allow-unauthenticated는 넣지 말 것 — 조직 정책에 걸려 실패한다. 문 설정은 서비스에 붙어 있어 새 이미지를 배포해도 유지된다)
