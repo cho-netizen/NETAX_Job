@@ -616,6 +616,9 @@
     (function(){
       var btn = document.getElementById('stBtnT6Compare'); if (!btn) return;
       var t6Busy = false;
+      // [2026.10.27 T6 3단계 — 점검 결함(10-27, 1건 고르려다 4건 돌아감)] 고른 사건은 자료(t6Sel)로 들고, 그릴 때마다 체크 상태를 자료대로 다시 맞춘다(L2_screen_ui: 다시 그린 뒤 checked 잔류). 처음 열 때만 최근 3건을 기본으로
+      var t6Sel = null;
+      var t6Sync = function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = !!(t6Sel && t6Sel[x.getAttribute('data-id')]); }); };
       btn.addEventListener('click', function(){
         if (t6Busy) { nxAlert_('비교가 진행 중입니다 — 끝날 때까지 기다려 주세요.'); return; }
         bugList.textContent = '🧪 가상사건 목록을 불러오는 중…';
@@ -623,23 +626,30 @@
           var list = ((res && res.cases) || []).filter(function(c){ return /^가상/.test(String(c.사건명 || c.고객명 || '')); });
           list.sort(function(a, b){ return String(b.생성일 || '').localeCompare(String(a.생성일 || '')); });
           if (!list.length) { bugList.textContent = '가상사건이 없습니다(사건명이 "가상"으로 시작하는 사건만 대상).'; return; }
-          var rows = list.map(function(c, i){ return '<label style="display:block; padding:2px 0;"><input type="checkbox" class="t6pick" data-id="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(c.사건명 || '') + '"' + (i < 3 ? ' checked' : '') + '> ' + escapeHtml(c.사건명 || c.id) + ' <span style="color:var(--muted); font-size:12px;">' + escapeHtml(c.세목 || '') + ' · ' + escapeHtml(c.상태 || '') + '</span></label>'; }).join('');
-          bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 시험 서비스 비교 — 가상사건 ' + list.length + '건 중 고르세요</b> <span style="color:var(--muted); font-size:12px;">(한 건에 1~3분 — GAS 한 번 + 시험 서비스 한 번)</span></div>' +
+          if (!t6Sel){ t6Sel = {}; list.slice(0, 3).forEach(function(c){ t6Sel[c.id] = true; }); }
+          var rows = list.map(function(c){ return '<label style="display:block; padding:2px 0;"><input type="checkbox" class="t6pick" data-id="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(c.사건명 || '') + '"> ' + escapeHtml(c.사건명 || c.id) + ' <span style="color:var(--muted); font-size:12px;">' + escapeHtml(c.세목 || '') + ' · ' + escapeHtml(c.상태 || '') + '</span></label>'; }).join('');
+          bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 시험 서비스 비교 — 가상사건 ' + list.length + '건 중 고르세요</b> <span style="color:var(--muted); font-size:12px;">(한 건에 1~3분 — GAS 한 번 + 시험 서비스 한 번)</span> <span id="t6Route" style="font-size:12px; color:var(--muted);">· 지금 ⚡ 길: 확인 중…</span></div>' +
             '<div style="max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">' + rows + '</div>' +
             '<div style="display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" id="t6Start">▶ 고른 사건 비교 시작</button><button type="button" class="ghost-btn" id="t6All">모두 고르기</button><button type="button" class="ghost-btn" id="t6None">모두 풀기</button></div>' +
             '<div id="t6Out" style="margin-top:8px;"></div>';
-          document.getElementById('t6All').addEventListener('click', function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = true; }); });
-          document.getElementById('t6None').addEventListener('click', function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = false; }); });
+          t6Sync();
+          bugList.querySelectorAll('.t6pick').forEach(function(x){ x.addEventListener('change', function(){ t6Sel[x.getAttribute('data-id')] = x.checked; }); });
+          // [T6 3단계] 지금 ⚡가 어느 길인지(직결/GAS) — 토큰 입구(readerToken)로 한 번 확인(50분 기억)
+          var routeEl = document.getElementById('t6Route');
+          if (typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_('').then(function(tk){ if (routeEl) routeEl.textContent = '· 지금 ⚡ 길: ' + (tk && tk.direct ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS(' + ((tk && tk.why) || '직결 꺼짐') + ')'); }); else if (routeEl) routeEl.textContent = '· 지금 ⚡ 길: GAS';
+          document.getElementById('t6All').addEventListener('click', function(){ list.forEach(function(c){ t6Sel[c.id] = true; }); t6Sync(); });
+          document.getElementById('t6None').addEventListener('click', function(){ t6Sel = {}; t6Sync(); });
           document.getElementById('t6Start').addEventListener('click', function(){
-            var picked = Array.from(bugList.querySelectorAll('.t6pick')).filter(function(x){ return x.checked; }).map(function(x){ return { id: x.getAttribute('data-id'), name: x.getAttribute('data-name') }; });
+            t6Sync();
+            var picked = list.filter(function(c){ return !!t6Sel[c.id]; }).map(function(c){ return { id: c.id, name: c.사건명 || '' }; });
             if (!picked.length) { nxAlert_('비교할 가상사건을 하나 이상 골라 주세요.'); return; }
             var out = document.getElementById('t6Out'), results = [];
-            var th = '<tr><th style="text-align:left;">사건</th><th>GAS 초</th><th>Cloud Run 초<br><span style="font-weight:normal; font-size:11px;">(/read · 깨우기 포함)</span></th><th>서비스 안쪽 초</th><th>칸 불일치</th><th>질문</th><th>증빙</th><th style="text-align:left;">비고</th></tr>';
+            var th = '<tr><th style="text-align:left;">사건</th><th>길</th><th>GAS 초</th><th>Cloud Run 초<br><span style="font-weight:normal; font-size:11px;">(/read · 깨우기 포함)</span></th><th>서비스 안쪽 초</th><th>칸 불일치</th><th>질문</th><th>증빙</th><th style="text-align:left;">비고</th></tr>';
             var draw = function(doneCount){
               var trs = results.map(function(r){
-                if (r.error) return '<tr><td>' + escapeHtml(r.name) + '</td><td colspan="7" style="color:#b00;">' + escapeHtml(r.error) + '</td></tr>';
+                if (r.error) return '<tr><td>' + escapeHtml(r.name) + '</td><td colspan="8" style="color:#b00;">' + escapeHtml(r.error) + '</td></tr>';
                 var mm = (r.mismatches || []).length;
-                return '<tr><td>' + escapeHtml(r.name) + '</td><td style="text-align:right;">' + r.gasSec + '</td><td style="text-align:right;">' + r.runSec + ' · ' + r.runSecIncl + '</td><td style="text-align:right;">' + (r.runInner ? r.runInner.inner : '—') + '</td><td style="text-align:center;' + (mm ? ' color:#b00; font-weight:bold;' : '') + '">' + mm + '</td><td style="text-align:center;">' + (r.questionsA || []).length + '↔' + (r.questionsB || []).length + '</td><td style="text-align:center;">' + r.evidenceA + '↔' + r.evidenceB + '</td><td style="font-size:12px;">' + escapeHtml([(r.runError ? '서비스 오류: ' + r.runError : ''), (mm ? (r.mismatches || []).map(function(m){ return m.key + '(' + (m.a || '—') + '↔' + (m.b || '—') + ')'; }).join(', ') : ''), ((r.questionsOnlyA || []).length || (r.questionsOnlyB || []).length ? '질문 GAS만 ' + (r.questionsOnlyA || []).join(',') + ' / 서비스만 ' + (r.questionsOnlyB || []).join(',') : ''), (r.unreadFiles && r.unreadFiles.length ? '못 읽음 ' + r.unreadFiles.length : ''), (r.codeVersion ? '판 ' + r.codeVersion : '')].filter(Boolean).join(' · ')) + '</td></tr>';
+                return '<tr><td>' + escapeHtml(r.name) + '</td><td style="text-align:center;">' + escapeHtml(r.route || (r.direct ? '직결' : 'GAS 비교')) + '</td><td style="text-align:right;">' + r.gasSec + '</td><td style="text-align:right;">' + r.runSec + ' · ' + r.runSecIncl + '</td><td style="text-align:right;">' + (r.runInner ? r.runInner.inner : '—') + '</td><td style="text-align:center;' + (mm ? ' color:#b00; font-weight:bold;' : '') + '">' + mm + '</td><td style="text-align:center;">' + (r.questionsA || []).length + '↔' + (r.questionsB || []).length + '</td><td style="text-align:center;">' + r.evidenceA + '↔' + r.evidenceB + '</td><td style="font-size:12px;">' + escapeHtml([(r.runError ? '서비스 오류: ' + r.runError : ''), (mm ? (r.mismatches || []).map(function(m){ return m.key + '(' + (m.a || '—') + '↔' + (m.b || '—') + ')'; }).join(', ') : ''), ((r.questionsOnlyA || []).length || (r.questionsOnlyB || []).length ? '질문 GAS만 ' + (r.questionsOnlyA || []).join(',') + ' / 서비스만 ' + (r.questionsOnlyB || []).join(',') : ''), (r.unreadFiles && r.unreadFiles.length ? '못 읽음 ' + r.unreadFiles.length : ''), (r.codeVersion ? '판 ' + r.codeVersion : '')].filter(Boolean).join(' · ')) + '</td></tr>';
               }).join('');
               out.innerHTML = '<div style="margin-bottom:4px;">' + (doneCount < picked.length ? '⏳ ' + doneCount + '/' + picked.length + ' 비교 중… (' + escapeHtml(picked[doneCount].name) + ')' : '✅ ' + picked.length + '건 비교 끝 — 기록: 총괄관리자\\_가상사건\\_시험서비스_비교_오늘날짜.json') + '</div>' +
                 '<div style="overflow:auto;"><table style="border-collapse:collapse; font-size:12.5px; white-space:nowrap;">' + th + trs + '</table></div>';
