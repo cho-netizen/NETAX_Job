@@ -4157,7 +4157,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
-  if (body.action === 't6_direct_set') return jsonResponse(t6DirectSet_(body)); // [2026.10.27 T6 3단계] ⚡ 직결(화면→Cloud Run) 켜기/끄기 — 스크립트 속성 T6_READER_DIRECT, 설정 🐞 단추(로그인한 화면만)
+  if (body.action === 't6_direct_set') return jsonResponse(t6DirectSet_(body));
+  if (body.action === 't6_share_cleanup') return jsonResponse(t6ShareCleanup_()); // [2026.10.27 T6 4단계] 완료·없는 사건의 시험 서비스 폴더 공유 거두기 — 설정 🐞 "🧪 공유 정리"(세무사님도 누름)
+  if (body.action === 't6_share_status') return jsonResponse((function () { const reg = t6ShareRegistry_(null) || { folders: {} }; const ids = Object.keys(reg.folders); return { ok: true, count: ids.length, check: t6ShareCheck_(), list: ids.map(function (f) { return { 사건명: reg.folders[f].사건명 || '', at: reg.folders[f].at || '', by: reg.folders[f].by || '' }; }) }; })()); // [2026.10.27 T6 3단계] ⚡ 직결(화면→Cloud Run) 켜기/끄기 — 스크립트 속성 T6_READER_DIRECT, 설정 🐞 단추(로그인한 화면만)
   if (body.action === 't6_ocrmem_build') return jsonResponse(t6OcrMemBuildAll_(body)); // [2026.10.27 T6 3단계] 가상사건 폴더마다 _글자기억.json(글자 기억 사본) 만들기 — 설정 🐞 단추, 세무사님도 누름(토큰 0)
   if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body));
   if (body.action === 'ai_lead_weekly') return jsonResponse(caseProcAiWeekly_(body)); // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0) — 규칙 후보·길 나누기·빠진 도구·매주 숫자 // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
@@ -24467,6 +24469,8 @@ function work_updateCase(params) {
     ['고객명', '사건명', '담당자', '상태', '납세자', '개요', '처리방향', '처리대상', 'my_report_id'].forEach(function (key) {
       if (params[key] !== undefined) row[col[key]] = String(params[key]).trim();
     });
+    // [2026.10.27 T6 4단계] 상태가 '완료'로 바뀌는 순간 시험 서비스 로봇 계정의 폴더 공유를 거둔다(사건처리 때만 공유 — 세무사님 10-27). 실패해도 사건 저장은 막지 않는다
+    if (!wasCompleted && String(row[col.상태] || '') === '완료' && typeof t6UnshareCaseFolder_ === 'function') { try { t6UnshareCaseFolder_({ id: params.id, 폴더ID: row[col.폴더ID], 사건명: row[col.사건명] }, '사건 완료'); } catch (e) { console.log('T6 공유 거두기 실패: ' + (e && e.message || e)); } }
     // 작업일지는 하위업무처럼 배열 통째로 다시 저장한다(화면에서 항목을 더하거나 지운 뒤
     // 전체 배열을 그대로 보내는 방식 — work_saveTree_와 같은 방식이라 별도 액션을 안 만들었다).
     if (params.작업일지 !== undefined) {
@@ -26663,6 +26667,76 @@ function t6OcrMemBuildAll_(body) {
 //  readerToken: 로그인한 job 화면에만 소유자 ID 토큰(1시간)을 내려 준다(CacheService 50분 기억). 서비스 주소·직결 켜짐(스크립트 속성 T6_READER_DIRECT)도 함께.
 //  applyRead: Cloud Run /read 응답의 written{decisionFile, caseRow}를 결정 파일·사건 행에 저장하고 단계 기록(①②③)을 남긴다 — 쓰기는 GAS만 한다. 같은 내용이면 건너뜀.
 // =========================================================
+// =========================================================
+// [2026.10.27 T6 4단계 — 사건처리 때만 폴더 공유] 세무사님 원문 "그럼 사건처리할때만 공유가 되도록 하는 것이 맞다" / "사용할 때만 켜는 것으로 하고 실사용할수 있도록 하자"
+//  - 걸기: 처리개요에서 사건을 열어 토큰을 받을 때(t6ReaderToken_, caseId 있음) 그 사건 폴더 하나만 시험 서비스 로봇 계정에 "보기 전용"으로. 완료 사건·폴더 없는 사건은 안 건다.
+//    (계획서는 "⚡ 처음 누를 때"였으나, 직결 ⚡는 토큰이 기억돼 있으면 GAS를 아예 안 부르므로 GAS가 끼어드는 자리는 토큰 받을 때뿐 — 처리개요에서 사건을 여는 순간이 곧 사건처리 시작)
+//  - 거두기: work_updateCase에서 상태가 '완료'로 바뀌는 순간 그 폴더의 로봇 계정 공유를 거둔다. 다시 '진행'이 되면 다음에 열 때 다시 건다.
+//  - 기록: 걸고 거둘 때마다 사건 기록부 한 줄(처리개요에서 보임) + 총괄관리자\_가상사건\_시험서비스_공유현황.json(폴더ID → 사건명·시각).
+//  - 점검: 배포 직후 소통 이음매 "시험 서비스 폴더 공유 = 완료 안 된 사건만" — 현황 파일에 있는데 사건이 완료·없음이면 ⚠(t6ShareCheck_).
+//  로봇 계정은 뷰어뿐(쓰기 없음). 업무관리자 글자인식 기억 폴더는 공유하지 않는다.
+// =========================================================
+var T6_SA_EMAIL_ = 'case-reader@netax-job.iam.gserviceaccount.com';
+var T6_SHARE_FILE_ = '_시험서비스_공유현황.json';
+function t6ShareRegistryFile_() { // 총괄관리자\_가상사건\_시험서비스_공유현황.json (없으면 만들고, 처음엔 10-23 공유기록의 폴더 목록을 옮겨 담는다)
+  const chief = getChiefManagerFolder_(); if (!chief) return null;
+  const dir = getOrCreateSubfolder_(chief, '_가상사건');
+  const it = dir.getFilesByName(T6_SHARE_FILE_);
+  if (it.hasNext()) return it.next();
+  const seed = { made: caseProcNow_(), serviceAccount: T6_SA_EMAIL_, folders: {} };
+  try { // 10-23·10-27에 PC에서 API로 공유한 가상사건 폴더(공유기록 JSON) → 현황에 옮겨 담기
+    const old = dir.getFilesByName('_시험서비스_공유기록_20261023.json');
+    if (old.hasNext()) { const j = JSON.parse(old.next().getBlob().getDataAsString('UTF-8')); (j.folders || []).forEach(function (p) { if (p && p[1]) seed.folders[p[1]] = { 사건명: p[0], at: j.appliedAt || j.made || '', by: 'PC 공유기록' }; }); }
+  } catch (e) {}
+  return dir.createFile(T6_SHARE_FILE_, JSON.stringify(seed, null, 1), 'application/json');
+}
+function t6ShareRegistry_(mut) { // mut(reg) → true면 저장
+  const f = t6ShareRegistryFile_(); if (!f) return null;
+  let reg = null; try { reg = JSON.parse(f.getBlob().getDataAsString('UTF-8')); } catch (e) { reg = null; }
+  if (!reg || typeof reg !== 'object') reg = { made: caseProcNow_(), serviceAccount: T6_SA_EMAIL_, folders: {} };
+  if (!reg.folders || typeof reg.folders !== 'object') reg.folders = {};
+  if (mut && mut(reg)) { reg.updated = caseProcNow_(); f.setContent(JSON.stringify(reg, null, 1)); }
+  return reg;
+}
+function t6FolderHasViewer_(folder) { try { return folder.getViewers().some(function (u) { return String(u.getEmail() || '').toLowerCase() === T6_SA_EMAIL_; }) || folder.getEditors().some(function (u) { return String(u.getEmail() || '').toLowerCase() === T6_SA_EMAIL_; }); } catch (e) { return false; } }
+function t6ShareCaseFolder_(c, why) { // 사건 폴더 하나를 로봇 계정에 보기 전용으로(이미 돼 있으면 건너뜀). 완료 사건·폴더 없음은 안 건다 → { shared, skipped, why }
+  const fid = String(c && c.폴더ID || '').trim(); if (!fid) return { shared: false, skipped: '폴더 없음' };
+  if (String(c.상태 || '') === '완료') return { shared: false, skipped: '완료 사건' };
+  const cache = CacheService.getScriptCache(), ck = 't6_shared_' + fid;
+  try { if (cache.get(ck)) return { shared: false, skipped: '이미 공유(기억)' }; } catch (e) {}
+  const folder = DriveApp.getFolderById(fid);
+  if (t6FolderHasViewer_(folder)) { try { cache.put(ck, '1', 21600); } catch (e) {} t6ShareRegistry_(function (reg) { if (reg.folders[fid]) return false; reg.folders[fid] = { 사건명: c.사건명 || '', caseId: c.id || '', at: caseProcNow_(), by: '이미 공유돼 있던 것' }; return true; }); return { shared: false, skipped: '이미 공유' }; }
+  folder.addViewer(T6_SA_EMAIL_);
+  try { cache.put(ck, '1', 21600); } catch (e) {}
+  t6ShareRegistry_(function (reg) { reg.folders[fid] = { 사건명: c.사건명 || '', caseId: c.id || '', at: caseProcNow_(), by: why || '' }; return true; });
+  if (c.id) caseProcLog_(c.id, { by: 'GAS', what: '시험 서비스에 폴더 보기 공유', detail: '사건처리(서류 읽기·칸 채우기)를 빠른 서버가 하도록 이 사건 폴더만 보기 전용 공유 — ' + (why || '') + '. 완료로 바꾸면 거둠' });
+  return { shared: true };
+}
+function t6UnshareCaseFolder_(c, why) { // 완료 때 — 로봇 계정 공유 거두기 → { unshared, skipped }
+  const fid = String(c && c.폴더ID || '').trim(); if (!fid) return { unshared: false, skipped: '폴더 없음' };
+  try { CacheService.getScriptCache().remove('t6_shared_' + fid); } catch (e) {}
+  let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { return { unshared: false, skipped: '폴더를 못 열음: ' + String(e && e.message || e).slice(0, 80) }; }
+  const had = t6FolderHasViewer_(folder);
+  if (had) { try { folder.removeViewer(T6_SA_EMAIL_); } catch (e) { try { folder.removeEditor(T6_SA_EMAIL_); } catch (e2) {} } }
+  t6ShareRegistry_(function (reg) { if (!reg.folders[fid]) return false; delete reg.folders[fid]; return true; });
+  if (had && c.id) caseProcLog_(c.id, { by: 'GAS', what: '시험 서비스 폴더 공유 거둠', detail: (why || '사건 완료') + ' — 빠른 서버 로봇 계정이 더는 이 폴더를 못 봄' });
+  return { unshared: had, skipped: had ? '' : '공유돼 있지 않았음' };
+}
+function t6ShareCheck_() { // 소통 이음매: 현황 파일의 폴더가 모두 "완료 안 된 사건"의 폴더인지(드라이브 호출 없이 사건 목록만 대조) → ''이면 정상
+  const reg = t6ShareRegistry_(null); if (!reg) return '총괄관리자 폴더 없음';
+  const ids = Object.keys(reg.folders || {}); if (!ids.length) return '';
+  const byFolder = {}; (work_getCases({}).cases || []).forEach(function (c) { if (c && c.폴더ID) byFolder[String(c.폴더ID)] = c; });
+  const bad = ids.filter(function (fid) { const c = byFolder[fid]; return !c || String(c.상태 || '') === '완료'; }).map(function (fid) { const c = byFolder[fid]; return (reg.folders[fid] && reg.folders[fid].사건명) || fid.slice(0, 8) + (c ? '(완료)' : '(사건 없음)'); });
+  return bad.length ? '공유가 남은 완료·없는 사건 ' + bad.length + '건: ' + bad.slice(0, 5).join(', ') + (bad.length > 5 ? ' …' : '') + ' — 설정 🐞 "🧪 공유 정리"로 거두거나 그 사건을 다시 진행으로' : '';
+}
+function t6ShareCleanup_() { // 설정 🐞 단추 "🧪 공유 정리": 완료·없는 사건의 공유를 거둔다(세무사님도 누름)
+  const reg = t6ShareRegistry_(null); if (!reg) return { ok: false, error: '총괄관리자 폴더 없음' };
+  const byFolder = {}; (work_getCases({}).cases || []).forEach(function (c) { if (c && c.폴더ID) byFolder[String(c.폴더ID)] = c; });
+  const done = [];
+  Object.keys(reg.folders || {}).forEach(function (fid) { const c = byFolder[fid]; if (c && String(c.상태 || '') !== '완료') return; const r = t6UnshareCaseFolder_(c || { 폴더ID: fid, 사건명: reg.folders[fid].사건명 }, c ? '사건 완료(정리 단추)' : '사건 없음(정리 단추)'); done.push({ 사건명: (reg.folders[fid] || {}).사건명 || fid, unshared: r.unshared, skipped: r.skipped || '' }); });
+  const left = Object.keys((t6ShareRegistry_(null) || { folders: {} }).folders).length;
+  return { ok: true, done: done, left: left, lines: ['공유를 거둔 폴더 ' + done.filter(function (d) { return d.unshared; }).length + '개 · 남은 공유(진행 중 사건) ' + left + '개'].concat(done.map(function (d) { return '  · ' + d.사건명 + ': ' + (d.unshared ? '거둠' : d.skipped); })) };
+}
 // [2026.10.27 T6 3단계] 직결 스위치 — 설정 🐞 "⚡ 직결 켜기/끄기" 단추(세무사님도 누름). on이 없으면 지금 상태만 돌려준다. 화면 쪽 토큰 기억(50분)은 화면이 비운다
 function t6DirectSet_(body) {
   const props = PropertiesService.getScriptProperties();
@@ -26687,6 +26761,8 @@ function t6ReaderToken_(body) {
   // [2026.10.27 속도 세션 부탁] caseId가 오면 사건 행(폴더ID 포함)·결정 파일 내용도 함께 — 화면이 view light 한 번을 빼 1~3초 줄인다(/read 요청의 sheetRow·decisions로 그대로)
   const cid = String(body && body.caseId || '').trim();
   if (cid) { try { const row = akReadCase_(cid); if (row) { out.row = row; try { const rt = caseProcRouteTax_(row); if (rt) { out.row._세목작업관리 = out.row.세목; out.row.세목 = rt; } } catch (e1) {} } } catch (e) {} try { out.decisions = caseProcLoad_(cid) || {}; } catch (e) {} }
+  // [2026.10.27 T6 4단계] 직결이 켜져 있고 사건을 열었으면 그 사건 폴더만 로봇 계정에 보기 전용 공유(완료 사건·폴더 없음은 안 함, 이미 됐으면 건너뜀)
+  if (direct && cid && out.row) { try { out.share = t6ShareCaseFolder_(out.row, '처리개요에서 사건 열기'); } catch (e) { out.share = { shared: false, error: String(e && e.message || e).slice(0, 120) }; } }
   return out;
 }
 function t6ApplyRead_(c, body) {

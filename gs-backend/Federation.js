@@ -412,6 +412,8 @@ function commSeamList_() {
     // [2026.10.23 T6 2단계] GAS → Cloud Run 읽기 전용 시험 서비스(/health) — 주소(T6_READER_URL)가 있을 때만 본다(2단계 배포 전엔 길이 없는 것이 정상)
     // [2026.10.27 T6 3단계] 화면이 직접 부르는 길 — /health는 토큰 없이 ok(깨우기용), /read는 서비스 안에서 ID 토큰 검증. 직결이 켜져 있으면(T6_READER_DIRECT) 끊김이 곧 ⚡ 지연이라 더 중요
     { 길: '화면 → Cloud Run 시험 서비스(/health' + (/^(1|true|on|켬)$/i.test(String(PropertiesService.getScriptProperties().getProperty('T6_READER_DIRECT') || '')) ? ', 직결 켬' : ', 직결 꺼짐') + ')', fn: function () { var url = String(PropertiesService.getScriptProperties().getProperty('T6_READER_URL') || (typeof T6_READER_URL_DEFAULT_==='string' ? T6_READER_URL_DEFAULT_ : '')).trim().replace(/\/+$/, ''); if (!url) return ''; try { var r = UrlFetchApp.fetch(url + '/health', { headers: { Authorization: 'Bearer ' + ScriptApp.getIdentityToken() }, muteHttpExceptions: true }); var code = r.getResponseCode(); if (code !== 200) return '/health 응답 ' + code; var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {} return j.ok ? '' : '/health 응답이 ok가 아님'; } catch (e) { return '시험 서비스를 못 부름: ' + String(e && e.message || e).slice(0, 100); } } },
+    // [2026.10.27 T6 4단계] 사건처리 때만 폴더 공유 — 현황 파일의 폴더가 모두 "완료 안 된 사건"인지(드라이브 호출 없이 사건 목록 대조)
+    { 길: '시험 서비스 폴더 공유 = 완료 안 된 사건만', fn: function () { return typeof t6ShareCheck_ === 'function' ? t6ShareCheck_() : '공유 점검 함수 없음'; } },
     // 넥스 ↔ GAS(도구)
     { 길: '대화창 넥스 조회 길(사건처리·AI 판단·AI 회의 결론)', fn: function () { return need(lookupKinds(), ['caseproc', 'ai_review', 'law_decisions'], '조회 종류'); } },
     { 길: '사건 지휘 넥스 도구(질문·도구 부족 신고·AI 회의 결론)', fn: function () { return need(leadTools(), ['ask_user', 'report_tool_gap', 'law_decisions'], '사건 지휘 도구'); } },

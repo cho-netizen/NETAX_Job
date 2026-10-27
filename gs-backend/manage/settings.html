@@ -100,6 +100,7 @@
         <button type="button" class="ghost-btn" id="stBtnT6Compare" title="[2026.10.23 T6 2단계] 가상사건을 골라 같은 사건을 GAS와 Cloud Run 읽기 전용 시험 서비스(같은 코드)로 나란히 돌려 초·칸·질문을 대조합니다. 세액 계산·저장은 하지 않고 결과만 총괄관리자\_가상사건에 기록합니다(가상사건 폴더만 권한)">🧪 시험 서비스 비교</button>
         <button type="button" class="ghost-btn" id="stBtnT6OcrMem" title="[2026.10.27 T6 3단계] 가상사건 폴더마다 글자 기억 사본(_글자기억.json)을 둡니다 — 화면이 시험 서비스를 직접 부를 때 그 사건 폴더만 읽어 글자를 쓰게(업무관리자 기억 폴더는 공유하지 않음). 4분 30초 단위로 이어서 돕니다">🧪 _글자기억.json 만들기(가상사건)</button>
         <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">⚡ 직결 켜기/끄기</button>
+        <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">🧪 폴더 공유 현황·정리</button>
         <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
@@ -632,6 +633,29 @@
           });
         };
         step(0).catch(function(err){ busy = false; bugList.textContent = '글자 기억 사본을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
+    })();
+    // [2026.10.27 T6 4단계] 🧪 폴더 공유 현황·정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
+    (function(){
+      var b = document.getElementById('stBtnT6Share'); if (!b) return;
+      b.addEventListener('click', function(){
+        bugList.textContent = '🧪 폴더 공유 현황을 불러오는 중…';
+        callGas('t6_share_status', {}).then(function(r){
+          if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
+          var rows = (r.list || []).map(function(x){ return '<div style="font-size:12px;">· ' + escapeHtml(x.사건명 || '') + ' <span style="color:var(--muted);">' + escapeHtml(x.at || '') + (x.by ? ' · ' + escapeHtml(x.by) : '') + '</span></div>'; }).join('');
+          bugList.innerHTML = '<div><b>🧪 빠른 서버 로봇 계정이 볼 수 있는 사건 폴더 ' + r.count + '개</b> <span style="font-size:12px; color:var(--muted);">(처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)</span></div>' +
+            '<div style="margin:4px 0; ' + (r.check ? 'color:#b00;' : 'color:var(--muted);') + ' font-size:12px;">' + escapeHtml(r.check || '점검 정상 — 모두 완료 안 된 사건') + '</div>' +
+            '<div style="max-height:200px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">' + (rows || '<div style="font-size:12px;">없음</div>') + '</div>' +
+            '<button type="button" class="ghost-btn" id="t6ShareClean"' + (r.check ? '' : ' disabled') + '>완료·없는 사건의 공유 거두기</button>';
+          var cb = document.getElementById('t6ShareClean');
+          if (cb) cb.addEventListener('click', function(){
+            bugList.textContent = '공유를 거두는 중…';
+            callGas('t6_share_cleanup', {}).then(function(c){
+              if (!c || c.ok === false) throw new Error((c && c.error) || '응답 없음');
+              bugList.innerHTML = (c.lines || []).map(function(l){ return '<div style="font-size:12px;">' + escapeHtml(l) + '</div>'; }).join('');
+            }).catch(function(err){ bugList.textContent = '공유를 거두지 못했습니다: ' + (err && err.message ? err.message : err); });
+          });
+        }).catch(function(err){ bugList.textContent = '공유 현황을 불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
       });
     })();
     // [2026.10.27 T6 3단계] ⚡ 직결 켜기/끄기 — 서버 t6_direct_set(스크립트 속성 T6_READER_DIRECT). 지금 상태를 보여 주고 확인 뒤 바꾼다. 화면의 토큰 기억(50분)은 아이챗 쪽에서 다음 ⚡ 때 다시 받도록 비운다
