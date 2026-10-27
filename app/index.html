@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 14:40 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 15:06 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -56530,13 +56530,25 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         try { if (typeof chCases !== 'undefined' && Array.isArray(chCases)) screenRow = chCases.filter(function(x){ return x && x.id === st.caseId && x.폴더ID; })[0] || null; } catch (e) { screenRow = null; }
         // [2026.10.27 H] 기록부 바탕(record: 결정·읽을 범위·답 저장소·고침 기록…)을 함께 보낸다 — 서비스는 기록부를 못 보므로, 안 보내면 답한 질문을 다시 묻고 범위 밖 서류를 읽는다(가상양도23).
         //  바탕은 토큰 응답(이 사건 것일 때)·GAS 현황(view)의 바탕에서. 결정(dec)은 화면이 가진 결정 지도(qid→결정)를 그 위에 덧씀
-        var tkRec = (tk.rowFor === st.caseId && tk.record) ? tk.record : null;
+        // [2026.10.28 H① 고침] 바탕은 토큰 기억(50분 전 값일 수 있음)이 아니라 ⚡마다 새로 받는다(step 'record' — 시트 없이 결정 파일 한 번). 가상양도24 00:01: 토큰 23:47 바탕에 23:53 답·23:49 범위가 없어 직결이 답한 질문을 다시 만들었다
         var scrDec = (st.decisions && Object.keys(st.decisions).length) ? st.decisions : null;
-        var rowP = screenRow && tkRec ? Promise.resolve({ row: screenRow, rec: tkRec, dec: scrDec || tkRec.decisions || {}, from: '화면' })
-          : (tk.row && tk.row.폴더ID && tkRec) ? Promise.resolve({ row: tk.row, rec: tkRec, dec: scrDec || tkRec.decisions || {}, from: '토큰' })
-          : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: screenRow || v.사건, rec: v.바탕 || { decisions: v.결정 || {} }, dec: scrDec || v.결정 || {}, from: 'GAS 현황' } : null; }).catch(function(){ return null; });
+        var recP = st.run('record').then(function(r){ return (r && r.ok && r.record) ? r.record : null; }).catch(function(){ return null; });
+        var rowP0 = screenRow ? Promise.resolve({ row: screenRow, from: '화면' })
+          : (tk.row && tk.row.폴더ID) ? Promise.resolve({ row: tk.row, from: '토큰' })
+          : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: v.사건, rec0: v.바탕 || null, from: 'GAS 현황' } : null; }).catch(function(){ return null; });
+        var rowP = Promise.all([rowP0, recP]).then(function(pair){
+          var rd = pair[0], rec = pair[1] || (rd && rd.rec0) || null;
+          if (!rd) return null;
+          if (!rec) return { row: rd.row, rec: null, dec: scrDec || {}, from: rd.from, recMiss: true };
+          // 결정 지도 = 기록부 결정(새로 받은 것) 위에 화면이 지금 가진 결정(아직 저장 안 된 답)을 덧씀
+          var dec = Object.assign({}, rec.decisions || {}, scrDec || {});
+          return { row: rd.row, rec: Object.assign({}, rec, { decisions: dec }), dec: dec, from: rd.from };
+        });
         return rowP.then(function(rd){
           if (!rd || !rd.row || !rd.row.폴더ID) return give('사건 행·폴더를 못 받음');
+          if (rd.recMiss) return give('기록부 바탕을 못 받음(답한 질문을 다시 물을 수 있어 GAS로)');
+          // [H③] 직결 결과를 그릴 때 기록부 결정으로 답한 질문은 ✅ 답함으로 — 화면 결정에 기록부 결정을 합쳐 둔다
+          st.decisions = Object.assign({}, rd.dec || {}, st.decisions || {});
           if (rd.rec && rd.rec.readScope) lineTo('evidence', '📂 읽을 범위: 폴더 ' + ((rd.rec.readScope.dirs || []).join(', ') || '(없음)') + ((rd.rec.readScope.files || []).length ? ' · 파일 ' + rd.rec.readScope.files.length + '개' : '') + ' — 이 범위만 읽습니다', 'nxai-muted');
           ['basic', 'evidence', 'overview'].forEach(function(k){ st.setStep(k, '🔄', '시험 서비스(직결)로 서류를 읽는 중…'); });
           var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;

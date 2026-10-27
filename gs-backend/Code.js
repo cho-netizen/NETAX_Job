@@ -30906,6 +30906,8 @@ function caseProc0_(body) {
   if (body.step === 'save') return caseProcSave_(caseId, body);
   if (body.step === 'preread') return cpPrereadStatus_(body); // [2026.10.23 속도 특단조치 T1] 미리 읽기 트리거 상태(시트 읽기 없이)
   if (body.step === 'readerToken') return t6ReaderToken_(body); // [2026.10.27 T6 3단계] 화면 직결용 ID 토큰·서비스 주소(로그인한 화면만 이 입구에 닿는다)
+  // [2026.10.28 H①] 기록부 바탕만 가볍게(시트 안 읽음, 결정 파일 한 번) — ⚡마다 새로 받아 직결 요청에 싣는다. 토큰 기억(50분)의 바탕은 옛 값이라 쓰지 않는다(가상양도24 00:01: 토큰 23:47 바탕에 23:53 답·23:49 범위가 없어 답한 질문을 다시 물음)
+  if (body.step === 'record') { const sv0 = caseProcLoad_(caseId) || {}; return { ok: true, record: t6RecordForReader_(sv0), decisions: sv0.decisions || {}, at: caseProcNow_() }; }
   // [2026.10.22 작업 기록부] 화면에서 직접 쓴 GAS 도구(서식 출력·검토서 고침 등)를 기록부에 한 줄
   if (body.step === 'log') { caseProcLog_(caseId, { by: caseProcWho_('', body.by), what: String(body.what || '').slice(0, 40), detail: String(body.detail || '').slice(0, 240) }); return { ok: true }; }
   const sheet = work_getSheet_();
