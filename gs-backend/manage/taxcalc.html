@@ -851,7 +851,8 @@ function recomputeGenSkipRatio(){
     return;
   }
   const ratio = Math.min(1, amount / total);
-  ratioEl.value = ratio.toFixed(4);
+  // [2026.10.27 ㅎ3] 비율을 소수 4자리로 잘라 칸에 넣으면 할증세액(산출세액 × 비율 × 30%)이 그만큼 어긋난다(상증법 §27은 비율에 반올림 규정 없음; 배우자 법정지분 0.4286 사건과 같은 종류). 칸엔 정확한 값, 안내 글만 4자리
+  ratioEl.value = String(ratio);
   if (hint) hint.textContent = won(amount) + ' ÷ ' + won(total) + (grossIn_ > 0 && tcHeirPriorGiftSum_ > 0 ? '(총상속재산 ' + won(grossIn_) + ' + 상속인 사전증여 ' + won(tcHeirPriorGiftSum_) + ')' : (grossIn_ > 0 ? '' : '(상속세과세가액 — 총상속재산가액을 넣으면 그 값 + 상속인 사전증여로 나눔)')) + ' ≈ ' + ratio.toFixed(4);
   if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl);
 }

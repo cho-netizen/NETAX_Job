@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 05:46 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 05:56 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26210,7 +26210,8 @@ function recomputeGenSkipRatio(){
     return;
   }
   const ratio = Math.min(1, amount / total);
-  ratioEl.value = ratio.toFixed(4);
+  // [2026.10.27 ㅎ3] 비율을 소수 4자리로 잘라 칸에 넣으면 할증세액(산출세액 × 비율 × 30%)이 그만큼 어긋난다(상증법 §27은 비율에 반올림 규정 없음; 배우자 법정지분 0.4286 사건과 같은 종류). 칸엔 정확한 값, 안내 글만 4자리
+  ratioEl.value = String(ratio);
   if (hint) hint.textContent = won(amount) + ' ÷ ' + won(total) + (grossIn_ > 0 && tcHeirPriorGiftSum_ > 0 ? '(총상속재산 ' + won(grossIn_) + ' + 상속인 사전증여 ' + won(tcHeirPriorGiftSum_) + ')' : (grossIn_ > 0 ? '' : '(상속세과세가액 — 총상속재산가액을 넣으면 그 값 + 상속인 사전증여로 나눔)')) + ' ≈ ' + ratio.toFixed(4);
   if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl);
 }

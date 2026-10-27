@@ -47641,7 +47641,11 @@ function ctParseContract_(text) {
   else if ((!r.매도인 || !r.매수인) && !/분양|공급/.test(String(r.종류 || ''))) { try { var pp1 = tcContractParties_(t)[0], rep1 = function (nm) { return !!nm && t.split(nm).length - 1 >= 2; }; if (pp1) { if (!r.매도인 && pp1.seller && rep1(pp1.seller.name)) r.매도인 = pp1.seller.name; if (!r.매수인 && pp1.buyer && rep1(pp1.buyer.name) && pp1.buyer.name !== r.매도인) r.매수인 = pp1.buyer.name; } } catch (e) {} }
   //  서명란 맺음 문구가 없는 서식 — 글 끝 400자(서명란) 안의 이름표 뒤 낱말만(본문 조항의 "매수인 명의로" 같은 낱말을 이름으로 잡지 않게)
   if (hdrHit && (!r.매도인 || !r.매수인)) {
-    var tail0 = Math.max(0, t.length - 400), sigName = function (re) { var g = new RegExp(re.source, 'g'), x, last = ''; g.lastIndex = tail0; while ((x = g.exec(t))) { var w = /^[\s:：]*(?:(?:주\s*소|성\s*명)[^\n]{0,40}?성\s*명\s*[:：|]?\s*|성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 60)); if (w && !notName.test(w[1])) last = w[1]; } return last; };
+    // [2026.10.27 ㅎ2] 서명란 표가 "이름표 / 주소 / 주민등록번호 / 성명 / (인)" 순서(표준 서식의 당사자 표)면 이름표 바로 뒤 낱말은 주소 첫 낱말("경기도")이다 — 가상양도15·17·18·9·10의 매도인·매수인이 모두 "경기도"로 읽혔다.
+    //  일반 규칙: 이름표 뒤 낱말이 시·도 이름으로 시작하면 그 뒤 200자 안의 주민등록번호(앞 6자리-뒤 7자리, 가린 *도) 다음 2~4글자를 이름으로, 주민번호가 없으면 "(인)"·"(서명)" 바로 앞 낱말을 이름으로 본다. 어느 기관 서식이든 주소·주민번호·성명 칸 순서로 판정(이름 버릇 아님)
+    //  [ㅎ2] 서명란 시작은 당사자 표 머리("구분 / 주소 / 주민등록번호 / 성명")가 있으면 거기서부터 — 글 끝 400자만 보면 중개사 칸이 길거나 빈 줄이 많은 글(가상양도9·16)에서 매수인 줄이 밖에 남는다. 머리가 없으면 예전처럼 끝 400자
+    var sigHdrAt = (function () { var g = /(?:구\s*분\s*\n?\s*)?주\s*소\s*\n?\s*(?:\(?\s*법\s*인\s*소\s*재\s*지\s*\)?\s*)?주\s*민\s*등\s*록\s*번\s*호\s*(?:\(?\s*법\s*인\s*등\s*록\s*번\s*호\s*\)?\s*)?\n?\s*성\s*명/g, m, last = -1; while ((m = g.exec(t))) last = m.index; return last; })();
+    var tail0 = sigHdrAt >= 0 ? sigHdrAt : Math.max(0, t.length - 400), sigName = function (re) { var g = new RegExp(re.source, 'g'), x, last = ''; g.lastIndex = tail0; while ((x = g.exec(t))) { var seg = t.slice(x.index + x[0].length, x.index + x[0].length + 200); var w = /^[\s:：]*(?:(?:주\s*소|성\s*명)[^\n]{0,40}?성\s*명\s*[:：|]?\s*|성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(seg.slice(0, 60)); if (/^[\s:：]*(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(seg)) { var rn = /\d{6}\s*[-–―]?\s*[\d*]{7}\s*\n?\s*([가-힣]{2,4})(?=\s|\(|$)/.exec(seg) || /([가-힣]{2,4})\s*\(\s*(?:인|서명|날인)\s*\)/.exec(seg); w = rn && !notName.test(rn[1]) ? [rn[0], rn[1]] : null; } if (w && !notName.test(w[1])) last = w[1]; } return last; };
     if (!r.매도인) r.매도인 = sigName(/매\s*도\s*인\s*/);
     if (!r.매수인) r.매수인 = sigName(/매\s*수\s*인\s*/);
   }
