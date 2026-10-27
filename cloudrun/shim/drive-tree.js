@@ -31,7 +31,8 @@ async function listChildren(d, parentId) {
 }
 
 async function download(d, id) {
-  const r = await d.files.get({ id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+  // [2026.10.27 16:4x] 드라이브 API 매개변수 이름은 fileId — 'id'로 넘기면 "Missing required parameters: fileId"로 조용히 실패해 글 파일·_글자기억.json이 빈 채로 돌아 memSource가 'none'이 됨(가상양도21 직결 복귀 원인)
+  const r = await d.files.get({ fileId: id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
   return Buffer.from(r.data);
 }
 
@@ -76,7 +77,8 @@ async function buildCaseTree(folderId, opt) {
   stats.listMs = Date.now() - t0;
   const t1 = Date.now();
   for (const f of pendingText) { // 하나씩(동시 대량 읽기 금지)
-    try { const buf = await download(d, f.id); f.mem = buf.toString('utf8'); stats.textDownloaded++; stats.textBytes += buf.length; } catch (e) { f.mem = ''; }
+    try { const buf = await download(d, f.id); f.mem = buf.toString('utf8'); stats.textDownloaded++; stats.textBytes += buf.length; }
+    catch (e) { f.mem = ''; stats.textErrors = (stats.textErrors || 0) + 1; stats.lastTextError = String(e && e.message || e).slice(0, 120); } // 조용히 삼키지 않고 개수·마지막 오류를 남긴다(L2_job_server: catch가 빈 결과로 삼키면 거짓 성과)
   }
   stats.downloadMs = Date.now() - t1;
   return { vfs, caseFolder, bm, store, chief, root, stats };

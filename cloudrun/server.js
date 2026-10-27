@@ -152,7 +152,7 @@ async function readCase(body) {
     lines: out ? out.lines || [] : [],
     timing: { drive: Math.round(tDrive / 100) / 10, basic: tm.basic || 0, ocr: tm.evidence_read || 0, evidence: tm.evidence || 0, overview: tm.overview || 0, calc: tm.calc || 0, inner: out ? Math.round((out._ms || 0) / 100) / 10 : 0, total: Math.round(total / 100) / 10 },
     unreadFiles, memKeysGiven: Object.keys(ocrMemory).length, memSource,
-    files: { folders: tree.stats.folders, count: tree.stats.files, textDownloaded: tree.stats.textDownloaded, truncated: tree.stats.truncated, listMs: tree.stats.listMs, downloadMs: tree.stats.downloadMs },
+    files: { folders: tree.stats.folders, count: tree.stats.files, textDownloaded: tree.stats.textDownloaded, textErrors: tree.stats.textErrors || 0, lastTextError: tree.stats.lastTextError || '', truncated: tree.stats.truncated, listMs: tree.stats.listMs, downloadMs: tree.stats.downloadMs },
     evidenceCount: (after && after.증빙목록 || []).length,
     filled: sv.filled || {},
     // 쓰려 했던 것(메모리에만) — GAS 쪽이 대조하거나 저장하려면 이것을 쓴다
@@ -160,7 +160,7 @@ async function readCase(body) {
     gasMissing: g ? g.missing : {}, lockCalls: g ? g.ctx.__lockCalls : null
   };
   // 로그: 사건 ID·초·파일 수만
-  console.log(JSON.stringify({ at: formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), caller: body.__caller || '', caseId, ok: res.ok, memSource, timing: res.timing, files: res.files.count, unread: unreadFiles.length, questions: questions.length, writes: res.written.writeCount, missing: Object.keys(res.gasMissing) }));
+  console.log(JSON.stringify({ at: formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), caller: body.__caller || '', caseId, ok: res.ok, memSource, timing: res.timing, files: res.files.count, textDl: res.files.textDownloaded, textErr: res.files.textErrors, lastTextError: res.files.lastTextError, unread: unreadFiles.length, questions: questions.length, writes: res.written.writeCount, missing: Object.keys(res.gasMissing) }));
   return res;
 }
 
