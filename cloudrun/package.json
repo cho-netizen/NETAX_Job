@@ -1,10 +1,17 @@
 {
   "name": "netax-case-reader",
   "version": "0.1.0",
-  "description": "NETAX job 읽기 전용 시험 서비스 — 사건처리 한 번 호출(①②③)을 node에서 돌려 GAS와 대조(T6 2단계)",
+  "description": "NETAX job 읽기 전용 시험 서비스 — 사건처리 한 번 호출(①②③)을 node에서 돌림(T6 2단계 GAS 대조 → 3단계 화면 직결, 앱 안 ID 토큰 검증)",
   "private": true,
   "main": "server.js",
-  "engines": { "node": ">=20" },
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "googleapis": "^144.0.0" }
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0",
+    "google-auth-library": "^9.15.0"
+  }
 }

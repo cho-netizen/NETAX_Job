@@ -9,7 +9,10 @@
 //  - 글자인식 기억은 요청의 ocrMemory에서만 읽는다(_글자인식기억 폴더는 공유 안 됨). 없으면 unreadFiles에 적는다. 구글 글자인식은 부르지 않는다.
 //  - 달력 동기화는 빈 함수. UrlFetchApp·ScriptApp·LockService·Drive(고급)은 불리면 오류(불린 목록이 보고 거리 — gasMissing).
 //  - 바깥 AI 호출 코드 없음. 로그는 사건 ID·단계별 초·파일 수만(서류 내용·이름·금액은 찍지 않는다).
-//  - 인증은 Cloud Run IAM(인증된 호출만) — 여기서는 따로 검사하지 않는다.
+//  - [2026.10.27 T6 3단계 — 화면 직결] 문은 "인증 없이 받기"(브라우저 사전 요청 OPTIONS가 IAM 문을 못 넘기 때문, 설계서 3-1 권장안)이고, 대신 **서비스 안에서** 구글 ID 토큰을 검증한다:
+//    발급자 accounts.google.com · 받는 이(audience) = Apps Script 클라이언트(T6_AUDIENCE) · 만료 · 이메일 허용 목록(T6_ALLOWED_EMAILS, 기본 cho@netax.kr). 틀리면 401. /health만 토큰 없이 ok(깨우기용, 내용 없음).
+//    CORS는 https://job.netax.kr·http://localhost만. 로그에 호출자 이메일을 더한다(사건 ID·초·파일 수와 함께; 서류 내용·이름·금액은 여전히 안 찍음).
+//  - 글자 기억: 요청 ocrMemory가 있으면 그것, 없으면 사건 폴더의 _글자기억.json(GAS 미리 읽기가 둔 사본, 열쇠 → 글)을 드라이브에서 읽어 쓴다.
 // 원본 코드는 gs-backend 하나(두 벌 금지) — 이 파일은 흉내 층과 입구만. 코드 판은 dist/reader.js 머리글(원본 git SHA)에서 읽어 codeVersion으로 돌려준다.
 // ============================================================
 'use strict';
@@ -18,7 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadBackend, formatDate } = require('./shim/gas');
 const { VFolder, VFile } = require('./shim/vfs');
-const { buildCaseTree } = require('./shim/drive-tree');
+const { buildCaseTree, OCRMEM_FILE } = require('./shim/drive-tree');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
@@ -27,6 +30,32 @@ const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY = 64 * 1024 * 1024; // 글자 기억을 함께 받으므로 넉넉히
 const ENGINE = 'cloudrun';
 const STARTED = Date.now();
+// ---------- 문(CORS·토큰) ----------
+const ALLOWED_ORIGINS = ['https://job.netax.kr', 'http://localhost'];
+const AUDIENCE = process.env.T6_AUDIENCE || '638504746086-826uq73k9hj7ikingvmuub8o240ddfjt.apps.googleusercontent.com'; // Apps Script 프로젝트의 클라이언트(ID 토큰의 받는 이)
+const ALLOWED_EMAILS = String(process.env.T6_ALLOWED_EMAILS || 'cho@netax.kr').split(/[,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+function originOk(o) { if (!o) return false; return ALLOWED_ORIGINS.some((a) => o === a || o.indexOf(a + ':') === 0); } // localhost:포트도
+function corsHeaders(req) {
+  const o = String(req.headers.origin || '');
+  const h = { 'Vary': 'Origin' };
+  if (originOk(o)) { h['Access-Control-Allow-Origin'] = o; h['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'; h['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'; h['Access-Control-Max-Age'] = '600'; }
+  return h;
+}
+let verifier = null;
+async function verifyCaller(req) { // → { ok, email } | { ok:false, error }
+  const m = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization || ''));
+  if (!m) return { ok: false, error: '토큰 없음' };
+  try {
+    if (!verifier) { const { OAuth2Client } = require('google-auth-library'); verifier = new OAuth2Client(); }
+    const ticket = await verifier.verifyIdToken({ idToken: m[1], audience: AUDIENCE }); // 서명·만료·받는 이를 본다
+    const p = ticket.getPayload() || {};
+    if (!/^(https:\/\/)?accounts\.google\.com$/.test(String(p.iss || ''))) return { ok: false, error: '발급자 아님' };
+    const email = String(p.email || '').toLowerCase();
+    if (!email || p.email_verified === false) return { ok: false, error: '이메일 없음' };
+    if (ALLOWED_EMAILS.indexOf(email) === -1) return { ok: false, error: '허용 목록에 없는 계정' };
+    return { ok: true, email };
+  } catch (e) { return { ok: false, error: '토큰 검증 실패: ' + String(e && e.message || e).slice(0, 120) }; }
+}
 
 function codeVersion() {
   try { const head = fs.readFileSync(READER, 'utf8').slice(0, 600); const m = /원본 ([0-9a-f]{7,40})/.exec(head); return (m && m[1]) || process.env.CODE_VERSION || '?'; } catch (e) { return process.env.CODE_VERSION || '?'; }
@@ -59,9 +88,17 @@ async function readCase(body) {
   const t0 = Date.now();
   const caseId = String(body.caseId || '').trim(), folderId = String(body.folderId || '').trim();
   if (!caseId || !folderId) return { ok: false, error: 'caseId·folderId가 필요합니다', engine: ENGINE, codeVersion: codeVersion() };
-  const ocrMemory = body.ocrMemory && typeof body.ocrMemory === 'object' ? body.ocrMemory : {};
+  let ocrMemory = body.ocrMemory && typeof body.ocrMemory === 'object' && Object.keys(body.ocrMemory).length ? body.ocrMemory : null;
   const tree = await buildCaseTree(folderId, {});
   const tDrive = Date.now() - t0;
+  // [2026.10.27 T6 3단계] 요청에 기억이 없으면 사건 폴더의 _글자기억.json(열쇠 → 글)
+  let memSource = ocrMemory ? 'request' : 'none';
+  if (!ocrMemory) {
+    ocrMemory = {};
+    const mf = tree.stats.ocrMemFile;
+    if (mf && mf.mem) { try { const j = JSON.parse(mf.mem); if (j && j.mem && typeof j.mem === 'object') { ocrMemory = j.mem; memSource = 'folder'; } } catch (e) { memSource = 'folder-broken'; } }
+    else if (tree.stats.ocrMemTooBig) memSource = 'folder-too-big';
+  }
   // 사건 행 — GAS가 보낸 작업관리 1행(사건개요·증빙목록 포함). 폴더 ID는 이 요청의 것으로.
   const row = Object.assign({ id: caseId, 사건개요: {}, 증빙목록: [], 작업일지: [], 세액계산결과: [], 하위업무: [], 법령예규판례: [] }, body.sheetRow || {}, { id: caseId, 폴더ID: folderId });
   const writes = [];
@@ -114,7 +151,7 @@ async function readCase(body) {
     questions, open: out ? out.open || [] : [], hard: out ? out.hard || [] : [], calcReady: out ? !!out.calcReady : false, partial: out ? !!out.partial : null, more: out ? !!out.more : null, next: out ? out.next || null : null,
     lines: out ? out.lines || [] : [],
     timing: { drive: Math.round(tDrive / 100) / 10, basic: tm.basic || 0, ocr: tm.evidence_read || 0, evidence: tm.evidence || 0, overview: tm.overview || 0, calc: tm.calc || 0, inner: out ? Math.round((out._ms || 0) / 100) / 10 : 0, total: Math.round(total / 100) / 10 },
-    unreadFiles, memKeysGiven: Object.keys(ocrMemory).length,
+    unreadFiles, memKeysGiven: Object.keys(ocrMemory).length, memSource,
     files: { folders: tree.stats.folders, count: tree.stats.files, textDownloaded: tree.stats.textDownloaded, truncated: tree.stats.truncated, listMs: tree.stats.listMs, downloadMs: tree.stats.downloadMs },
     evidenceCount: (after && after.증빙목록 || []).length,
     filled: sv.filled || {},
@@ -123,7 +160,7 @@ async function readCase(body) {
     gasMissing: g ? g.missing : {}, lockCalls: g ? g.ctx.__lockCalls : null
   };
   // 로그: 사건 ID·초·파일 수만
-  console.log(JSON.stringify({ at: formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), caseId, ok: res.ok, timing: res.timing, files: res.files.count, unread: unreadFiles.length, questions: questions.length, writes: res.written.writeCount, missing: Object.keys(res.gasMissing) }));
+  console.log(JSON.stringify({ at: formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), caller: body.__caller || '', caseId, ok: res.ok, memSource, timing: res.timing, files: res.files.count, unread: unreadFiles.length, questions: questions.length, writes: res.written.writeCount, missing: Object.keys(res.gasMissing) }));
   return res;
 }
 
@@ -138,19 +175,25 @@ function readBody(req) {
 }
 
 const server = http.createServer(async (req, resp) => {
+  const cors = corsHeaders(req);
+  const sendC = (code, obj) => { const s = JSON.stringify(obj); resp.writeHead(code, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(s) }, cors)); resp.end(s); };
   try {
-    if (req.method === 'GET' && (req.url === '/health' || req.url === '/')) return send(resp, 200, { ok: true, engine: ENGINE, codeVersion: codeVersion(), readerLoaded: fs.existsSync(READER), uptimeSec: Math.round((Date.now() - STARTED) / 1000) });
+    if (req.method === 'OPTIONS') { resp.writeHead(originOk(String(req.headers.origin || '')) ? 204 : 403, cors); return resp.end(); } // 브라우저 사전 요청 — 허용 출처만
+    if (req.method === 'GET' && (req.url === '/health' || req.url === '/')) return sendC(200, { ok: true, engine: ENGINE, codeVersion: codeVersion(), readerLoaded: fs.existsSync(READER), uptimeSec: Math.round((Date.now() - STARTED) / 1000) });
     if (req.method === 'POST' && req.url === '/read') {
+      const who = await verifyCaller(req);
+      if (!who.ok) { console.log(JSON.stringify({ at: formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), deny: who.error })); return sendC(401, { ok: false, error: '인증 실패: ' + who.error, engine: ENGINE }); }
       const raw = await readBody(req);
-      let body; try { body = JSON.parse(raw || '{}'); } catch (e) { return send(resp, 400, { ok: false, error: 'JSON 아님' }); }
+      let body; try { body = JSON.parse(raw || '{}'); } catch (e) { return sendC(400, { ok: false, error: 'JSON 아님' }); }
+      body.__caller = who.email;
       const r = await readCase(body);
-      return send(resp, r.ok || r.stages ? 200 : 400, r);
+      return sendC(r.ok || r.stages ? 200 : 400, r);
     }
-    send(resp, 404, { ok: false, error: '없는 입구' });
+    sendC(404, { ok: false, error: '없는 입구' });
   } catch (e) {
     console.log(JSON.stringify({ error: String(e && e.message || e).slice(0, 200) }));
-    send(resp, 500, { ok: false, error: String(e && e.message || e).slice(0, 300), engine: ENGINE });
+    sendC(500, { ok: false, error: String(e && e.message || e).slice(0, 300), engine: ENGINE });
   }
 });
 if (require.main === module) server.listen(PORT, () => console.log(JSON.stringify({ listening: PORT, engine: ENGINE, codeVersion: codeVersion(), readerLoaded: fs.existsSync(READER) })));
-module.exports = { readCase, server };
+module.exports = { readCase, server, verifyCaller, corsHeaders, ALLOWED_ORIGINS, ALLOWED_EMAILS, AUDIENCE };

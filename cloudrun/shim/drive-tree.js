@@ -9,6 +9,7 @@ const { VFS, VFolder, VFile, mimeOf } = require('./vfs');
 const FOLDER = 'application/vnd.google-apps.folder';
 const TEXT_RE = /^(text\/|application\/json|application\/x-?markdown)/;
 const MAX_FILES = 400, MAX_DEPTH = 6, MAX_TEXT_BYTES = 2 * 1024 * 1024;
+const OCRMEM_FILE = "_글자기억.json"; // Code.js T6_OCRMEM_FILE_와 같은 이름
 
 let driveClient = null;
 async function drive() {
@@ -66,7 +67,9 @@ async function buildCaseTree(folderId, opt) {
       // 크기는 드라이브 값으로(메모리 내용이 비어 있어도)
       f.getSize = function () { return this.driveSize || Buffer.byteLength(this.mem || ''); };
       vfs.byId[k.id] = f; folder._files.push(f); stats.files++;
-      if (TEXT_RE.test(String(f.mimeType)) && (f.driveSize || 0) <= MAX_TEXT_BYTES) pendingText.push(f);
+      // [2026.10.27 T6 3단계] 사건 폴더 안 글자 기억 사본(_글자기억.json, GAS 미리 읽기가 둠)은 크기와 무관하게(20MB까지) 받아 둔다 — 서비스가 글자를 읽는 유일한 길
+      if (k.name === OCRMEM_FILE) { if ((f.driveSize || 0) <= 20 * 1024 * 1024) { pendingText.push(f); stats.ocrMemFile = f; } else stats.ocrMemTooBig = true; }
+      else if (TEXT_RE.test(String(f.mimeType)) && (f.driveSize || 0) <= MAX_TEXT_BYTES) pendingText.push(f);
     }
   };
   await walk(caseFolder, 0);
@@ -79,4 +82,4 @@ async function buildCaseTree(folderId, opt) {
   return { vfs, caseFolder, bm, store, chief, root, stats };
 }
 
-module.exports = { buildCaseTree };
+module.exports = { buildCaseTree, OCRMEM_FILE };

@@ -143,6 +143,17 @@ const schemaKeysBad = (src) => { // properties: { 키: … } 의 맨 바깥 키�
     schemaKeysBad(src).forEach((b) => block.push('AI 도구 입력 칸 이름 「' + b.key + '」이 영문·숫자·_.- 가 아님(Claude가 도구 목록 전체를 거부함) — ' + dir + '/' + f + ':' + src.slice(0, b.at).split('\n').length));
   });
 });
+// ⚠ [2026.10.27 T6 3단계] Cloud Run 시험 서비스의 문 — 표시 파일 cloudrun/README.md의 "문:" 줄로 판정(gcloud 없이도 되게; 재배포한 사람이 그 줄을 고친다).
+//  "인증 없이 받기"면 ⚠(서비스 안 토큰 검증이 있어야 함 — server.js에 verifyIdToken이 없으면 🚫). IAM 문이면 조용히 통과.
+try {
+  const rd = fs.readFileSync(path.join(ROOT, "cloudrun", "README.md"), "utf8");
+  const door = (rd.match(/^문:s*(.+)$/m) || [])[1] || "";
+  const srv = fs.readFileSync(path.join(ROOT, "cloudrun", "server.js"), "utf8");
+  if (/인증 없이|allow-unauthenticated/.test(door)) {
+    if (!/verifyIdToken/.test(srv) || !/ALLOWED_EMAILS/.test(srv)) block.push("Cloud Run 문이 \"인증 없이 받기\"인데 server.js에 토큰 검증(verifyIdToken·이메일 허용 목록)이 없음 — 문을 닫거나 검증을 넣기 전엔 올리지 말 것");
+    else warn.push("Cloud Run 시험 서비스 문이 \"인증 없이 받기\"(화면 직결용) — 서비스 안 ID 토큰 검증(발급자·받는 이·이메일 허용 목록)으로 막음, 서비스 계정 권한은 가상사건 폴더만. 되돌리기: gcloud run services update netax-case-reader --no-allow-unauthenticated");
+  }
+} catch (e) { }
 if (bytes > 9800000) warn.push('서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB — 10MB 한도 근처(큰 자료는 화면 쪽으로)');
 
 const out = ['변경 점검(올리기 전) — 기준 ' + base + ', 새로 더한 줄 ' + rows.length + '개, 서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB'];

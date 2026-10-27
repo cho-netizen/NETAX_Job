@@ -4157,6 +4157,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
+  if (body.action === 't6_ocrmem_build') return jsonResponse(t6OcrMemBuildAll_(body)); // [2026.10.27 T6 3단계] 가상사건 폴더마다 _글자기억.json(글자 기억 사본) 만들기 — 설정 🐞 단추, 세무사님도 누름(토큰 0)
   if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body));
   if (body.action === 'ai_lead_weekly') return jsonResponse(caseProcAiWeekly_(body)); // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0) — 규칙 후보·길 나누기·빠진 도구·매주 숫자 // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
   if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
@@ -26599,12 +26600,124 @@ function cpPrereadStatus_(body) {
   const since = Number(props.getProperty(CP_PREREAD_SINCE_) || 0);
   return { ok: true, trigger: has, created: created, last: last, queue: q.length, since: since ? Utilities.formatDate(new Date(since), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : '', lines: ['서류 미리 읽기 트리거: ' + (has ? '있음(1분마다)' : '없음') + (created ? ' — 지금 만듦' : '') + (last ? ' · 마지막 틱 ' + last.at + ' ' + Math.round((last.ms || 0) / 1000) + '초, 읽은 서류 ' + last.read + '개(본 파일 ' + last.seen + ')' + (last.names && last.names.length ? ': ' + last.names.join(', ') : '') : ' · 마지막 틱 기록 없음(이 판 배포 뒤 첫 틱부터 남음)') + (q.length ? ' · 📥 줄에 ' + q.length + '개 대기' : '')] };
 }
+// =========================================================
+// [2026.10.27 T6 3단계 — 화면 직결] 사건 폴더 안 글자 기억 사본 "_글자기억.json"
+//  세무사님 "3단계(화면 직결) 설계서를 써라" → "권장안대로 해라"(설계서 3-2). 화면이 Cloud Run 읽기 전용 서비스를 직접 부르면 GAS를 거치지 않아
+//  서비스가 글자 기억을 스스로 읽어야 하는데, 업무관리자\_글자인식기억 폴더는 실사건 기억까지 섞여 있어 공유하지 않는다(10-23 결정).
+//  그래서 미리 읽기(T1)가 글자 기억을 만들 때 그 사건 폴더 안에 사본 한 장을 둔다 — 서비스 계정은 가상사건 폴더만 읽으므로 "가상사건만" 원칙이 유지된다.
+//  모양: { made, folderId, n, files: { 파일ID: 수정시각 }, mem: { 기억열쇠(ocrtxt_/ocrtxt3_/ocrtbl1_ + ID + _ + 수정시각): 글 } } — 열쇠가 기억 이름과 같아 서비스가 그대로 쓴다.
+//  기억의 원본은 지금처럼 업무관리자 폴더(지우지 않음). 같은 내용이면 다시 쓰지 않는다. 이름 앞 "_" = 시스템 전용 파일 규칙.
+// =========================================================
+var T6_OCRMEM_FILE_ = '_글자기억.json';
+function t6CaseFolderOf_(file, rootId) { // 파일이 든 사건 폴더(고객사건 루트 바로 아래 폴더) — 6단계까지
+  try {
+    let cur = file, ps = file.getParents(), depth = 0;
+    while (ps.hasNext() && depth < 6) { const p = ps.next(); if (p.getId() === rootId) return cur && cur !== file ? cur : null; cur = p; ps = p.getParents(); depth++; }
+  } catch (e) {}
+  return null;
+}
+function t6OcrMemBuild_(folder) { // 폴더 안 서류(PDF·사진·오피스·한글·압축)의 기억을 모은다 — 기억에 있는 것만(새 글자인식은 하지 않음)
+  const files = caseProcFiles_({ id: '', 폴더ID: folder.getId() }, { includeFiled: true }) || [];
+  const mem = {}, ids = {}; let n = 0;
+  files.forEach(function (f) {
+    if (!f || !f.id || !f.modified || f.name === T6_OCRMEM_FILE_) return;
+    const mt = String(f.mimeType || ''), nm = String(f.name || '');
+    if (!(/pdf|^image\/|officedocument|msword|spreadsheetml|ms-excel/.test(mt) || /\.(hwpx|hwp|pptx|zip)$/i.test(nm))) return;
+    let any = false;
+    [tcOcrKey_(f), 'ocrtbl1_' + f.id + '_' + f.modified].forEach(function (k) { const t = tcOcrStoreGet_(k); if (t !== null && t !== undefined) { mem[k] = String(t); any = true; } });
+    if (any) { ids[f.id] = f.modified; n++; }
+  });
+  return { n: n, files: ids, mem: mem, total: files.length };
+}
+function t6OcrMemWrite_(folder) { // 사건 폴더에 _글자기억.json 쓰기(같은 내용이면 건너뜀) → { written, n, bytes }
+  const b = t6OcrMemBuild_(folder);
+  if (!b.n) return { written: false, n: 0, why: '기억 있는 서류 없음' };
+  const body = { made: caseProcNow_(), folderId: folder.getId(), n: b.n, files: b.files, mem: b.mem };
+  const s = JSON.stringify(body);
+  const it = folder.getFilesByName(T6_OCRMEM_FILE_);
+  if (it.hasNext()) {
+    const f = it.next(); let old = null; try { old = JSON.parse(f.getBlob().getDataAsString('UTF-8')); } catch (e) { old = null; }
+    if (old && JSON.stringify(old.mem || {}) === JSON.stringify(b.mem)) return { written: false, n: b.n, bytes: s.length, why: '같은 내용' };
+    f.setContent(s);
+  } else folder.createFile(T6_OCRMEM_FILE_, s, 'application/json');
+  return { written: true, n: b.n, bytes: s.length };
+}
+// 가상사건 전부(사건명이 "가상"으로 시작) — 설정 🐞 단추 "🧪 _글자기억.json 만들기(가상사건)"가 부른다(action t6_ocrmem_build, 세무사님도 누름). 4분 30초 안에서 끊고 남은 수를 돌려준다
+function t6OcrMemBuildAll_(body) {
+  const started = Date.now(), DEADLINE = 270000;
+  const all = (work_getCases({}).cases || []).filter(function (c) { return /^가상/.test(String(c.사건명 || '')) && String(c.폴더ID || '').trim(); });
+  const skip = Number(body && body.skip) || 0, done = [];
+  let i = skip;
+  for (; i < all.length; i++) {
+    if (Date.now() - started > DEADLINE) break;
+    const c = all[i]; let r;
+    try { r = t6OcrMemWrite_(DriveApp.getFolderById(c.폴더ID)); } catch (e) { r = { written: false, why: String(e && e.message || e).slice(0, 80) }; }
+    done.push({ 사건명: c.사건명, written: !!r.written, n: r.n || 0, bytes: r.bytes || 0, why: r.why || '' });
+  }
+  return { ok: true, total: all.length, from: skip, did: done.length, next: i < all.length ? i : null, done: done, sec: Math.round((Date.now() - started) / 100) / 10,
+    lines: ['가상사건 ' + all.length + '건 중 ' + (skip + 1) + '~' + i + '번째: 새로 씀 ' + done.filter(function (d) { return d.written; }).length + ' · 같은 내용 ' + done.filter(function (d) { return /같은/.test(d.why); }).length + ' · 기억 없음 ' + done.filter(function (d) { return /없음/.test(d.why); }).length + (i < all.length ? ' — 남은 ' + (all.length - i) + '건은 다시 누르면 이어서' : '')] };
+}
+// =========================================================
+// [2026.10.27 T6 3단계] 화면 직결용 입구 둘(사건처리 step) — 설계서 2절 ①④
+//  readerToken: 로그인한 job 화면에만 소유자 ID 토큰(1시간)을 내려 준다(CacheService 50분 기억). 서비스 주소·직결 켜짐(스크립트 속성 T6_READER_DIRECT)도 함께.
+//  applyRead: Cloud Run /read 응답의 written{decisionFile, caseRow}를 결정 파일·사건 행에 저장하고 단계 기록(①②③)을 남긴다 — 쓰기는 GAS만 한다. 같은 내용이면 건너뜀.
+// =========================================================
+function t6ReaderToken_(body) {
+  const props = PropertiesService.getScriptProperties();
+  const url = String(props.getProperty(T6_READER_URL_PROP_) || (typeof T6_READER_URL_DEFAULT_ === 'string' ? T6_READER_URL_DEFAULT_ : '') || '').trim().replace(/\/+$/, '');
+  const direct = /^(1|true|on|켬)$/i.test(String(props.getProperty('T6_READER_DIRECT') || '').trim());
+  if (!url) return { ok: false, error: '시험 서비스 주소 없음(스크립트 속성 ' + T6_READER_URL_PROP_ + ')', direct: false };
+  const cache = CacheService.getScriptCache(), key = 't6_idtoken_v1';
+  let tok = null; try { tok = cache.get(key); } catch (e) {}
+  let fresh = false;
+  if (!tok) {
+    try { tok = ScriptApp.getIdentityToken(); } catch (e) { return { ok: false, error: 'ID 토큰을 못 받음(권한 openid 승인 필요): ' + String(e && e.message || e).slice(0, 120), url: url, direct: direct }; }
+    try { cache.put(key, tok, 3000); } catch (e) {} // 50분(토큰 수명 60분)
+    fresh = true;
+  }
+  return { ok: true, token: tok, url: url, direct: direct, fresh: fresh, ttlSec: 3000 };
+}
+function t6ApplyRead_(c, body) {
+  const t0 = Date.now();
+  const w = (body && body.written) || {};
+  const df = w.decisionFile && typeof w.decisionFile === 'object' ? w.decisionFile : null;
+  const cr = w.caseRow && typeof w.caseRow === 'object' ? w.caseRow : null;
+  if (!df && !cr) return { ok: false, error: '저장할 내용(written.decisionFile·caseRow)이 없습니다' };
+  const saved = { decisionFile: false, caseRow: false };
+  const who = caseProcWho_('', body.by);
+  // 결정 파일 — 서비스가 메모리에서 만든 결정 파일을 통째로 합친다(decisions·workLog는 지금 것과 합쳐 잃지 않음)
+  if (df) {
+    caseProcPatch_(c.id, function (sv) {
+      const before = JSON.stringify(sv);
+      const keepDec = Object.assign({}, sv.decisions || {}), keepLog = Array.isArray(sv.workLog) ? sv.workLog : [];
+      Object.keys(df).forEach(function (k) { if (k === 'workLog' || k === 'decisions') return; sv[k] = df[k]; });
+      sv.decisions = Object.assign({}, df.decisions || {}, keepDec);
+      sv.workLog = keepLog;
+      const changed = JSON.stringify(sv) !== before;
+      ['basic', 'evidence', 'overview'].forEach(function (st) { if (df.steps && df.steps[st]) { sv.steps = sv.steps || {}; sv.steps[st] = { at: caseProcNow_(), by: who, via: '화면 직결' }; } });
+      if (body.timing && typeof body.timing === 'object') { const rec = { at: caseProcNow_(), ms: Math.round(Number(body.timing.total || 0) * 1000), tm: { basic: body.timing.basic, evidence_read: body.timing.ocr, evidence: body.timing.evidence, overview: body.timing.overview }, why: '화면 직결(Cloud Run)', drive: body.timing.drive, firstSec: body.firstSec }; sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }
+      caseProcLogTo_(sv, { by: who, what: '단계: 사건파악·증빙 정리·칸 채우기(화면 직결)', detail: '서비스 결과 저장' + (changed ? '' : ' — 같은 내용') });
+      saved.decisionFile = changed;
+    });
+  }
+  // 사건 행 — 사건개요·증빙목록·기준일·법정일(같으면 건너뜀)
+  if (cr) {
+    const cur = akReadCase_(c.id) || c, up = { id: c.id };
+    let any = false;
+    if (cr.사건개요 && typeof cr.사건개요 === 'object' && JSON.stringify(cr.사건개요) !== JSON.stringify(cur.사건개요 || {})) { up.사건개요 = cr.사건개요; any = true; }
+    if (Array.isArray(cr.증빙목록) && JSON.stringify(cr.증빙목록) !== JSON.stringify(cur.증빙목록 || [])) { up.증빙목록 = cr.증빙목록; any = true; }
+    if (cr.기준일 && String(cr.기준일) !== String(cur.기준일 || '')) { up.기준일 = cr.기준일; any = true; }
+    if (cr.법정일 && String(cr.법정일) !== String(cur.법정일 || '')) { up.법정일 = cr.법정일; any = true; }
+    if (any) { const r = work_updateCase(up); saved.caseRow = !!(r && r.success !== false); if (r && r.success === false) return { ok: false, error: '사건 행 저장 실패: ' + (r.message || ''), saved: saved }; }
+  }
+  return { ok: true, step: 'applyRead', saved: saved, sec: Math.round((Date.now() - t0) / 100) / 10 };
+}
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
   try { if (CacheService.getScriptCache().get('cp_evid_busy')) return; } catch (e) {} // [2026.10.23 속도 ㅅ6차] 화면의 ② 서류 읽기가 도는 중이면 이번 틱은 쉰다(같은 파일 동시 글자인식 방지)
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(2000)) return; // 앞 틱이 아직 읽는 중 — 겹치지 않는다
   const started = Date.now(), DEADLINE = 270000, props = PropertiesService.getScriptProperties();
-  let read = 0, seen = 0, names = [];
+  let read = 0, seen = 0, names = [], memFolders = {}, memWrote = 0;
   try {
     const root = getDefaultFolder(); if (!root) return;
     const rootId = root.getId();
@@ -26622,6 +26735,7 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
       const key = 'cpp37_' + f.getId() + '_' + f.getLastUpdated().getTime();
       if (cache.get(key)) return true; // 이미 해석까지 기억돼 있음
       try { caseProcParsed_({ id: f.getId(), name: name, mimeType: mt, modified: f.getLastUpdated().getTime(), dir: '' }, cache, true); read++; names.push(name); } catch (e) {}
+      try { const cf = t6CaseFolderOf_(f, rootId); if (cf) memFolders[cf.getId()] = cf; } catch (e) {} // [2026.10.27 T6 3단계] 이 틱에 읽은 서류의 사건 폴더 — 끝에 _글자기억.json 갱신
       return true;
     };
     // ① 📥로 올린 줄 먼저
@@ -26632,11 +26746,13 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
     const it = DriveApp.searchFiles("modifiedDate > '" + iso + "' and trashed = false and (mimeType = 'application/pdf' or mimeType contains 'image/')");
     let n = 0;
     while (it.hasNext() && n < 200) { n++; if (one(it.next()) === false) break; }
-    if (read) try { console.log('[미리 읽기] ' + read + '개 읽음(본 파일 ' + seen + ') ' + Math.round((Date.now() - started) / 1000) + '초: ' + names.slice(0, 8).join(', ')); } catch (e) {}
+    // [2026.10.27 T6 3단계] 읽은 서류의 사건 폴더에 _글자기억.json(글자 기억 사본) — 화면 직결 Cloud Run이 그 사건 폴더만 읽어 글자를 쓰게(업무관리자 기억 폴더는 공유하지 않음). 남은 시간 안에서만
+    Object.keys(memFolders).forEach(function (fid) { if (Date.now() - started > DEADLINE) return; try { if (t6OcrMemWrite_(memFolders[fid]).written) memWrote++; } catch (e) {} });
+    if (read) try { console.log('[미리 읽기] ' + read + '개 읽음(본 파일 ' + seen + ', 글자기억 파일 ' + memWrote + ') ' + Math.round((Date.now() - started) / 1000) + '초: ' + names.slice(0, 8).join(', ')); } catch (e) {}
   } catch (e) { try { console.log('[미리 읽기] 오류: ' + (e && e.message || e)); } catch (e2) {} }
   finally {
     // [2026.10.23 속도 특단조치 T1] 마지막 틱 기록 — 트리거가 실제로 도는지를 화면(사건처리 step 'preread')에서 확인할 수 있게. 콘솔 로그는 아무도 보지 않았다
-    try { props.setProperty('cp_preread_last', JSON.stringify({ at: caseProcNow_(), ms: Date.now() - started, read: read, seen: seen, names: names.slice(0, 8) })); } catch (e3) {}
+    try { props.setProperty('cp_preread_last', JSON.stringify({ at: caseProcNow_(), ms: Date.now() - started, read: read, seen: seen, memWrote: memWrote, names: names.slice(0, 8) })); } catch (e3) {}
     lock.releaseLock();
   }
   return { ok: true, read: read, seen: seen };
@@ -30568,6 +30684,7 @@ function caseProc0_(body) {
   if (!caseId) return { error: '사건이 필요합니다.' };
   if (body.step === 'save') return caseProcSave_(caseId, body);
   if (body.step === 'preread') return cpPrereadStatus_(body); // [2026.10.23 속도 특단조치 T1] 미리 읽기 트리거 상태(시트 읽기 없이)
+  if (body.step === 'readerToken') return t6ReaderToken_(body); // [2026.10.27 T6 3단계] 화면 직결용 ID 토큰·서비스 주소(로그인한 화면만 이 입구에 닿는다)
   // [2026.10.22 작업 기록부] 화면에서 직접 쓴 GAS 도구(서식 출력·검토서 고침 등)를 기록부에 한 줄
   if (body.step === 'log') { caseProcLog_(caseId, { by: caseProcWho_('', body.by), what: String(body.what || '').slice(0, 40), detail: String(body.detail || '').slice(0, 240) }); return { ok: true }; }
   const sheet = work_getSheet_();
@@ -30584,6 +30701,7 @@ function caseProc0_(body) {
   if (/^(basic|all)$/.test(String(body.step || ''))) { try { cpPrereadEnsureTrigger_(); } catch (e) {} }
   try {
     if (body.step === 'allCompare') return caseProcAllCompare_(c, body); // [2026.10.23 T6 2단계] 같은 사건을 GAS 'all'과 Cloud Run 시험 서비스로 나란히 돌려 대조
+    if (body.step === 'applyRead') return t6ApplyRead_(c, body); // [2026.10.27 T6 3단계] 화면 직결 — Cloud Run 결과(written)를 결정 파일·사건 행에 저장(쓰기는 GAS만)
     if (body.step === 'all') return caseProcAll_(c, body); // [2026.10.23 속도 특단조치 T2] 한 번 호출로 ①②③(+질문 없으면 ④ 계산 준비)
     if (body.step === 'basic') return caseProcBasic_(c, body);
     if (body.step === 'evidence') return caseProcEvidence_(c, body);
@@ -30893,7 +31011,7 @@ function caseProcFiles0_(c, opt) {
   const walk = function (folder, depth, rel) {
     if (depth > 6 || out.length >= MAX) { out.truncated = true; return; }
     const it = folder.getFiles();
-    while (it.hasNext()) { if (out.length >= MAX) { out.truncated = true; break; } const f = it.next(); out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel }); }
+    while (it.hasNext()) { if (out.length >= MAX) { out.truncated = true; break; } const f = it.next(); if (f.getName() === T6_OCRMEM_FILE_) continue; /* [2026.10.27 T6 3단계] 사건 폴더 안 글자 기억 사본(시스템 파일)은 서류가 아님 */ out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel }); }
     const subs = folder.getFolders(), list = [];
     while (subs.hasNext()) list.push(subs.next());
     // [2026.10.17 불복 경로] 불복·조사 사건은 파일이 수백 개라 400개 한도에 걸린다 — 고지서·불복 서면·진술·입금표 폴더부터 읽는다(고객S: 납세고지서·진행상황 폴더가 한도 뒤로 밀려 고지서를 하나도 못 읽음)
