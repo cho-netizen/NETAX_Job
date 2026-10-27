@@ -30387,8 +30387,9 @@ function caseProcOpenInputs_(items, decisions) {
 //  서비스 주소는 스크립트 속성 T6_READER_URL. 서비스는 _글자인식기억 폴더 권한이 없어 이 사건 서류의 글자 기억을 요청에 담아 보낸다. 인증은 ID 토큰(Cloud Run IAM이 검사).
 //  콜드 스타트: /health를 먼저 불러 깨운 시간(healthMs)과 /read 시간(runSec)을 따로 적는다 — runSecIncl = 둘의 합(콜드 포함), runSec = /read만(콜드 제외).
 var T6_READER_URL_PROP_ = 'T6_READER_URL';
+var T6_READER_URL_DEFAULT_ = 'https://netax-case-reader-721297467805.asia-northeast3.run.app'; // [2026.10.27 T6 2단계] 시험 서비스 주소 기본값(스크립트 속성이 비면 이것) — 토큰 없이는 403이라 비밀 아님. 서비스를 끄면 이 줄을 비운다
 function caseProcAllCompare_(c, body) {
-  const url = String(PropertiesService.getScriptProperties().getProperty(T6_READER_URL_PROP_) || '').trim().replace(/\/+$/, '');
+  const url = String(PropertiesService.getScriptProperties().getProperty(T6_READER_URL_PROP_) || T6_READER_URL_DEFAULT_ || '').trim().replace(/\/+$/, '');
   if (!url) return { ok: false, step: 'allCompare', error: '시험 서비스 주소 없음 — 스크립트 속성 ' + T6_READER_URL_PROP_ + '에 Cloud Run 주소를 넣어 주세요' };
   const t00 = Date.now();
   const round1 = function (ms) { return Math.round(ms / 100) / 10; };
