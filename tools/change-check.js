@@ -147,7 +147,7 @@ const schemaKeysBad = (src) => { // properties: { 키: … } 의 맨 바깥 키�
 //  "인증 없이 받기"면 ⚠(서비스 안 토큰 검증이 있어야 함 — server.js에 verifyIdToken이 없으면 🚫). IAM 문이면 조용히 통과.
 try {
   const rd = fs.readFileSync(path.join(ROOT, "cloudrun", "README.md"), "utf8");
-  const door = (rd.match(/^문:s*(.+)$/m) || [])[1] || "";
+  const door = (rd.match(/^문:\s*(.+)$/m) || [])[1] || "";
   const srv = fs.readFileSync(path.join(ROOT, "cloudrun", "server.js"), "utf8");
   if (/인증 없이|allow-unauthenticated/.test(door)) {
     if (!/verifyIdToken/.test(srv) || !/ALLOWED_EMAILS/.test(srv)) block.push("Cloud Run 문이 \"인증 없이 받기\"인데 server.js에 토큰 검증(verifyIdToken·이메일 허용 목록)이 없음 — 문을 닫거나 검증을 넣기 전엔 올리지 말 것");
