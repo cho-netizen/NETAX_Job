@@ -103,7 +103,7 @@ async function readCase(body) {
   const row = Object.assign({ id: caseId, 사건개요: {}, 증빙목록: [], 작업일지: [], 세액계산결과: [], 하위업무: [], 법령예규판례: [] }, body.sheetRow || {}, { id: caseId, 폴더ID: folderId });
   const writes = [];
   const unwrap = recordWrites(writes);
-  let g, out, err = null, sv = {}, after = null, unread = [];
+  let g, out, err = null, sv = {}, after = null, unread = [], seeded = null; // [2026.10.27 H 보정] seeded는 try 밖(응답)에서도 쓰므로 여기서 선언 — try 안 const였을 때 "seeded is not defined"로 직결이 실패해 GAS 길로 복귀(가상양도24 운영 확인)
   try {
     g = loadBackend({
       vfs: tree.vfs, backendDir: DIST, files: ['reader.js'], headers: headers(), rows: [row],
@@ -146,7 +146,7 @@ async function readCase(body) {
       } catch (e) {}
       writes.length = 0; // 미리 두기는 쓰기 기록에서 뺀다
     }
-    const seeded = { record: !!record, decisions: decMap ? Object.keys(decMap).length : (record && record.decisions ? Object.keys(record.decisions).length : 0), readScope: !!(record && record.readScope) };
+    seeded = { record: !!record, decisions: decMap ? Object.keys(decMap).length : (record && record.decisions ? Object.keys(record.decisions).length : 0), readScope: !!(record && record.readScope) };
     const opt = Object.assign({ step: 'all', budgetMs: 280000 }, body.options && typeof body.options === 'object' ? { skipEvidence: !!body.options.skipEvidence, budgetMs: Number(body.options.budgetMs) || 280000 } : {});
     try { out = g.ctx.caseProcAll_(g.ctx.akReadCase_(caseId) || row, opt); } catch (e) { err = e; }
     try { sv = g.ctx.caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
