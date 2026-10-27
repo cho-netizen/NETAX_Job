@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 06:34 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 07:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -52020,12 +52020,19 @@ function rwAiApplyEdit_(id, content){
         callGas('t6_direct_set', {}).then(function(r){
           if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
           var now = !!r.direct;
-          if (!confirm('지금 ⚡ 길: ' + (now ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS 한 번 호출') + '\n' + (now ? '끄시겠습니까? (⚡가 GAS 길로 돌아갑니다)' : '켜시겠습니까? (⚡가 시험 서비스를 먼저 부르고, 안 되면 GAS 길로 돌아갑니다)'))) { bugList.textContent = '⚡ 직결: ' + (now ? '켬' : '끔') + ' (그대로 둠)'; return; }
-          return callGas('t6_direct_set', { on: !now }).then(function(r2){
-            if (!r2 || r2.ok === false) throw new Error((r2 && r2.error) || '응답 없음');
-            if (typeof window.nxAiCpReaderToken_ === 'function') { try { window.nxAiCpReaderTokenReset_ && window.nxAiCpReaderTokenReset_(); } catch (e) {} }
-            bugList.textContent = '⚡ 직결: ' + (r2.direct ? '켬' : '끔') + ' (' + r2.at + ') — 다음 ⚡부터 적용됩니다(처리개요 화면을 새로 열면 바로).';
-          });
+          // 확인창(confirm) 대신 그 자리에 켜기/끄기 단추 — 안내문 옆에 바로 누를 단추(L2_screen_ui)
+          bugList.innerHTML = '<div>지금 ⚡ 길: <b>' + (now ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS 한 번 호출(직결 꺼짐)') + '</b></div>' +
+            '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"><button type="button" class="ghost-btn" id="t6DirectOn"' + (now ? ' disabled' : '') + '>⚡ 직결 켜기(시험 서비스를 먼저 부르고, 안 되면 GAS 길로)</button><button type="button" class="ghost-btn" id="t6DirectOff"' + (now ? '' : ' disabled') + '>직결 끄기(GAS 길로)</button></div>';
+          var set = function(on){
+            bugList.textContent = '⚡ 직결을 ' + (on ? '켜는' : '끄는') + ' 중…';
+            callGas('t6_direct_set', { on: on }).then(function(r2){
+              if (!r2 || r2.ok === false) throw new Error((r2 && r2.error) || '응답 없음');
+              try { window.nxAiCpReaderTokenReset_ && window.nxAiCpReaderTokenReset_(); } catch (e) {}
+              bugList.textContent = '⚡ 직결: ' + (r2.direct ? '켬' : '끔') + ' (' + r2.at + ') — 다음 ⚡부터 적용됩니다(처리개요 화면을 새로 열면 바로).';
+            }).catch(function(err){ bugList.textContent = '직결 상태를 바꾸지 못했습니다: ' + (err && err.message ? err.message : err); });
+          };
+          document.getElementById('t6DirectOn').addEventListener('click', function(){ set(true); });
+          document.getElementById('t6DirectOff').addEventListener('click', function(){ set(false); });
         }).catch(function(err){ bugList.textContent = '직결 상태를 바꾸지 못했습니다: ' + (err && err.message ? err.message : err); });
       });
     })();
