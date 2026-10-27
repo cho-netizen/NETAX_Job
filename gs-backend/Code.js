@@ -26645,7 +26645,7 @@ function t6OcrMemWrite_(folder) { // 사건 폴더에 _글자기억.json 쓰기(
 }
 // 가상사건 전부(사건명이 "가상"으로 시작) — 설정 🐞 단추 "🧪 _글자기억.json 만들기(가상사건)"가 부른다(action t6_ocrmem_build, 세무사님도 누름). 4분 30초 안에서 끊고 남은 수를 돌려준다
 function t6OcrMemBuildAll_(body) {
-  const started = Date.now(), DEADLINE = 270000;
+  const started = Date.now(), DEADLINE = 200000; // 3분 20초 — 화면 callGas가 4분에 끊으므로 그 전에 next를 돌려준다(10-27 15:4x 4분 30초로 두어 화면이 먼저 끊김)
   const all = (work_getCases({}).cases || []).filter(function (c) { return /^가상/.test(String(c.사건명 || '')) && String(c.폴더ID || '').trim(); });
   const skip = Number(body && body.skip) || 0, done = [];
   let i = skip;
