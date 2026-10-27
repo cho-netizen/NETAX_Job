@@ -127,6 +127,8 @@ function caseProcAiLiveTools_() {
       t.input_schema.properties.basis.description = 'doc: {kind:"doc", file, page(쪽, 알면), find 또는 quote} — file은 facts_find·doc_facts·issue_bundle이 준 출처 파일 이름. 금액·날짜는 원문에 그 값이 있어야 하고, 예/아니오·보기 같은 판단 값은 서류에 글자로 안 나오므로 그 판단을 받치는 원문 문구를 quote로 준다(여러 서류를 묶은 판단이면 {kind:"infer", facts:[…]})';
       t.description = t.description + ' [운영] sure="확실"이고 근거 대조를 통과하면 그 질문의 답으로 실제로 넣는다(출처 칸에 "🤖 AI 판단: why"). sure="불확실"·infer는 넣지 않고 그 질문에 "🤖 AI 의견"으로 붙는다. 시가·특수관계·평가처럼 세액이 크게 갈리는 칸은 넣지 않는다(세무사님 답으로만 — ask_user). itemId는 calc_fill 질문목록의 id.';
     }
+    // [2026.10.27 10-27 A] 질문 목록에 없는 확정 칸도 target으로 고칠 수 있게(세무사님 값은 바꾸지 않고 여쭘)
+    if (t.name === 'value_set') { t.input_schema.properties.target = { type: 'string', description: '(선택) 질문 목록(itemId)에 없는, 이미 확정된 칸을 고칠 때 그 칸 이름 — calc:a0.assetType·calc:c0.totalPrice·expenses·trTaxFee·ov:사건분류·base. itemId 대신 쓴다. 세무사님이 정하신 값이면 바뀌지 않고 그 사실이 돌아온다(그때는 ask_user로 여쭌다).' }; t.input_schema.required = ['caseId', 'value', 'basis']; t.description += ' itemId가 질문 목록에 없는 확정 칸은 target으로(세무사님 값은 안 바뀜 — 결과의 needConfirm을 보고 ask_user).'; }
     if (t.name === 'ask_user') {
       t.description = '세무사님께 여쭐 질문 고르기 — 서류로 알 수 없는 것만. urgent=true는 계산을 막는 질문(처리 끝에 맨 위·바로), 나머지는 끝에 모아 보여 준다. 이미 있는 질문(itemIds)에 note(무엇을 받으면 정해지는지·네 의견)를 붙인다.';
       t.input_schema.properties.urgent = { type: 'boolean' };
@@ -144,6 +146,12 @@ function caseProcAiLiveTools_() {
   tools.push({ name: 'ask_higher', description: '어려운 판단 올리기(상위 AI Opus 5.5) — 특례가 얽힌 사건분류(1세대1주택·일시적 2주택·상속주택·정비사업 감면), 시가·유사사례 다툼, 법령 해석이 갈리는 것. 재료를 정리해 넘긴다. 최고급(Fable 5.1)이 필요하면 부르지 말고 보고에 "최고급 검토 필요"로 적는다(세무사님이 쓰기 전에 정하심).',
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' } }, required: ['question', 'material'] } });
   // [2026.10.22 넥스가 주인] GAS 한 바퀴 — 화면이 실행(서버 6분 한도 안에 한 번에 못 끝나는 여러 단계라). 넥스의 첫 도구
+  // [2026.10.27 10-27 C] 질문 닫기 — 서류로 푼 질문(서류 ⚠ 확인 등)·세무사님이 답한 질문을 결정으로 닫는다(예전엔 말로만 "해소"라 하고 질문은 네 바퀴 내내 그대로 다시 떴다)
+  tools.push({ name: 'close_question', description: '질문 닫기(토큰 0) — 서류를 읽어 네가 푼 질문(서류 ⚠ 확인·판독 확인 등)이나 세무사님이 채팅으로 답하신 질문을 결정으로 닫아 다음 처리 때 다시 묻지 않게 한다. decision: done(확인·해소)·보류(검토서 "추가로 확인할 사항"에 남김)·무시. note에 근거 한 줄(어느 서류 어느 값으로 풀었나). 세무사님께 여쭐 것은 닫지 말고 ask_user.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } }, decision: { type: 'string', enum: ['done', '보류', '무시'] }, note: { type: 'string' } }, required: ['caseId', 'itemIds', 'note'] } });
+  // [2026.10.27 경우별 저장] 세액계산기는 네가 쓰는 도구 — 세목·입력을 바꿔 몇 번이든 돌려 이름 붙여 저장(기본 저장본·세무사님 값은 그대로)
+  tools.push({ name: 'calc_scenario', description: '경우(안) 세액계산 저장(토큰 0) — 세액계산기를 서버에서 돌려 결과를 이름 붙여 따로 저장한다(기본 저장본·세무사님 값은 바뀌지 않음). tax: transfer·gift·inheritance(생략하면 사건 세목). changes: 양도는 계산기 칸 경로(a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·costs·taxfee·사건분류·seller.multiHouseCount), 증여·상속은 엔진 입력 이름(giftAmount·relation·taxableEstateAmount·hasSpouse…). input: 사건 자료에 없는 전제로 다른 세목을 견줄 때 엔진 입력 전체. 비과세 적용 전/후·필요경비 일부 제외·양도세 vs 증여세 비교처럼 경우마다 한 번씩 부른다. 세액 숫자는 이 결과(저장본 id)에서만 보고하고 암산하지 않는다.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, tax: { type: 'string', enum: ['transfer', 'gift', 'inheritance'] }, name: { type: 'string' }, changes: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {} }, required: ['path'] } }, input: { type: 'object' }, why: { type: 'string' } }, required: ['caseId', 'name'] } });
   tools.push({ name: 'gas_run', description: 'GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. case_status에서 증빙 읽기·칸 채우기가 이미 되어 있고 새 서류가 없으면 부르지 않는다(세무사님이 이미 하셨거나 지난 처리에서 한 일 — 다시 읽지 않는다). 새 서류가 있거나 아직 안 했으면 한 번만 부른다.',
     input_schema: { type: 'object', properties: { why: { type: 'string', description: '한 줄 — 무엇을 보려고(보통 "처음 한 바퀴")' } } } });
   // [2026.10.22 작업 기록부] 사건 현황 보기 — 세무사님이 직접 하신 일·지난 처리(누가·언제·무엇), 정한 값, 단계별 시각, 새 서류, 반영 현황표, 남은 질문. 늘 맨 먼저(0원)
@@ -212,6 +220,9 @@ function caseProcAiLiveModeText_(cap) {
     '- 절세 아이템(NETAX 정리, 세무사님 "인용할때 근거를 부기하도록 하라"): 특례·함정·자주 틀리는 쟁점이 보이면 search_tax_items로 맞는 정리가 있는지 보고 맞는 것만 read_tax_item으로 읽는다(필요할 때만, 보통 하나). 근거로 쓰면 보고·value_set 이유에 그 "인용" 줄(아이템 이름·근거 조문·기준일·검토 상태)을 붙이고, [확인 필요]·반대 취지·해석 엇갈림 표시는 그대로 옮겨 단정하지 않으며, "현행화 필요"면 그 이유를 적는다. 아이템은 일반 정리라 판단의 근거 조문은 law_lookup으로 원문을 확인해 law_attach한다.',
     '- 법령 근거: 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한 뒤(쓸 곳·이유 한 줄), value_set의 attach에 그 id를 넣는다. 입구 요약의 "첨부된 자료"(세무사님 직접 첨부)는 먼저 읽고 근거로 쓴다.',
     '- AI 회의 결론(2026.10.21 세무사님 "ai회의 결론을 넥스가 보도록 하라"): 해석이 갈리는 판단 전에 law_decisions로 같은 쟁점을 본다. "결정"은 세무사님 결론으로 따르고(근거에 적음), "판단 대기"·"보류"면 값을 넣지 말고 질문 메모에 "AI 회의 판단 대기 쟁점(id)"이라고 적는다.',
+    // [2026.10.27 10-27 양도 실사건] 세무사님 원문: "ai에게 종합적으로 지시하면 계산기를 사용하지 않고 ai가 암산으로 세액계산을 하게 되고 그 세액계산의 근거도 남기지 않게 되므로 세금계산신고 절차를 밟도록 주문한 것이었다" / "ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다"
+    '- 세액은 계산 도구로만(암산 금지): 세액 숫자는 tax_calc·calc_scenario·저장된 계산 저장본에서만 보고하고 어느 저장본인지 적는다. 비과세 사건도 계산기로 끝까지 계산한 뒤 비과세를 적용한다. 경우를 바꿔 견줄 때(비과세 적용 전/후, 경비 일부 제외, 양도세 vs 증여세 vs 상속세)는 calc_scenario로 경우마다 저장한다 — 기본 저장본·세무사님 값은 그대로.',
+    '- 서류로 네가 푼 질문(서류 ⚠ 확인 등)은 close_question으로 닫는다 — 말로만 "해소"라 하면 다음 처리 때 같은 질문이 다시 뜬다. 이미 확정돼 질문 목록에 없는 칸이 잘못 들어 있으면 value_set(target)으로 고치고, 세무사님이 정하신 값이면 바꾸지 말고 ask_user로 지금 값·서류 값을 여쭌다.',
     '- 모든 글(중간 메모·보고·질문 메모)은 한국어로 쓴다 — 화면에 그대로 보인다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.',
     // [2026.10.22] 세무사님 "채팅창에서는 나와 AI의 소통이 주가 되어야" / "AI주도라고 해서 나하고 상의하지 않고 AI가 무조건 사건을 완결하는 것을 구현하려고 하는 것인가?"
@@ -336,7 +347,32 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     const aj = (it.ask && it.ask.aiJudge) || null;
     return { text: caseProcAiMask_(JSON.stringify({ ok: true, 질문: it.text, 자세히: it.detail || '', 후보: ((it.ask && it.ask.cands) || []).slice(0, 8), 쟁점묶음: aj && aj.q ? String(aj.q).slice(0, 2500) : '(묶음 없음 — doc_facts·facts_find로 재료를 찾고, 없으면 report_tool_gap)', 저비용답: aj ? { 값: aj.value, 확실: aj.sure, 근거: aj.why, 모자란정보: aj.need || [] } : null })).slice(0, 4000) };
   }
-  if (name === 'value_set') return { text: JSON.stringify(caseProcAiValueSetLive_(caseId, input, ctx)) };
+  if (name === 'value_set') {
+    // [2026.10.27 10-27 A] 질문 목록에 없는 확정 칸 — target으로 "칸 값 고치기"(서버 valueFix). 세무사님 값이면 바뀌지 않고 needConfirm이 돌아온다 → ask_user로 여쭌다
+    const inItems = (ctx.lastItems || []).some(function (x) { return x.id === input.itemId; });
+    if (!inItems && input.target) {
+      if (input.sure !== '확실') return { text: JSON.stringify({ ok: false, 반영: '넣지 않음', 이유: '확정 칸 고치기는 sure="확실"일 때만 — 불확실하면 ask_user로 여쭌다' }) };
+      const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
+      let r; try { r = caseProcValueFix_(c0, { target: String(input.target), value: input.value, by: '넥스', why: caseProcAiCut_(input.why || '', 80) }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+      ctx.decisions.push({ at: new Date().toISOString(), itemId: String(input.target), 칸: String(input.target), value: caseProcAiMask_(String(input.value).slice(0, 80)), basis: (input.basis || {}).kind || '', why: caseProcAiMask_(caseProcAiCut_(input.why || '', 120)), sure: input.sure || '', 결과: r && r.ok ? '확정 칸 고침 — ' + caseProcAiCut_(r.message || '', 100) : (r && r.needConfirm ? '세무사님 값 — 바꾸지 않음(여쭘)' : '실패 — ' + caseProcAiCut_((r && r.error) || '', 80)) });
+      if (r && r.needConfirm) return { text: JSON.stringify({ ok: false, 반영: '바꾸지 않음(세무사님 값)', 지금값: r.prev, 이유: r.message, 할일: 'ask_user로 지금 값과 서류 값을 함께 여쭙고 끝낸다. 세무사님이 채팅으로 바꾸자고 하시면 채팅 넥스가 caseproc_fix 카드로 바꾼다.' }) };
+      return { text: JSON.stringify(r) };
+    }
+    return { text: JSON.stringify(caseProcAiValueSetLive_(caseId, input, ctx)) };
+  }
+  if (name === 'close_question') {
+    const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
+    let r; try { r = caseProcDecide_(c0, { qids: (input.itemIds || []).map(String), d: input.decision || 'done', note: caseProcAiCut_(input.note || '', 200), by: '넥스' }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+    if (r && r.closed && r.closed.length && ctx.lastItems) ctx.lastItems.forEach(function (it) { if (r.closed.indexOf(it.id) !== -1) it.closed = r.d; });
+    ctx.decisions.push({ at: new Date().toISOString(), itemId: (input.itemIds || []).join(','), 칸: '질문 닫기', value: input.decision || 'done', basis: '', why: caseProcAiMask_(caseProcAiCut_(input.note || '', 120)), sure: '', 결과: r && r.ok ? '질문 ' + (r.closed || []).length + '건 닫음' : '실패 — ' + caseProcAiCut_((r && r.error) || '', 80) });
+    return { text: JSON.stringify(r) };
+  }
+  if (name === 'calc_scenario') {
+    const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
+    let r; try { r = caseProcScenario_(c0, { tax: input.tax, name: caseProcAiCut_(input.name || '', 60), changes: Array.isArray(input.changes) ? input.changes.slice(0, 20) : [], input: input.input && typeof input.input === 'object' ? input.input : undefined, why: caseProcAiCut_(input.why || '', 200), by: '넥스' }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+    ctx.decisions.push({ at: new Date().toISOString(), itemId: r && r.id ? String(r.id) : 'scenario', 칸: '경우(안) 계산', value: r && r.ok ? String(r.안) + ' ' + Number(r.최종세액 || 0).toLocaleString('ko-KR') + '원' : '', basis: 'calc', why: caseProcAiMask_(caseProcAiCut_(input.why || '', 120)), sure: '', 결과: r && r.ok ? '저장 ' + String(r.id) : '실패 — ' + caseProcAiCut_((r && r.error) || '', 100) });
+    return { text: caseProcAiMask_(JSON.stringify(r)).slice(0, 4000) };
+  }
   if (name === 'fact_map') { ctx.loop = ctx.loop || { maps: 0, finds: 0, hits: 0, gaps0: null, gapsN: null }; const fm = caseProcAiFactMap_(akReadCase_(caseId), ctx.lastItems || []); ctx.loop.maps++; if (ctx.loop.gaps0 == null) ctx.loop.gaps0 = fm.빈칸.length; ctx.loop.gapsN = fm.빈칸.length; return { text: caseProcAiMask_(JSON.stringify(fm)).slice(0, 5000) }; }
   if (name === 'doc_find') { ctx.loop = ctx.loop || { maps: 0, finds: 0, hits: 0, gaps0: null, gapsN: null }; const df = caseProcAiDocFind_(akReadCase_(caseId), input); ctx.loop.finds++; if (df.찾음) ctx.loop.hits++; return { text: caseProcAiMask_(JSON.stringify(df)).slice(0, 4000) }; }
   if (name === 'list_business_managers') return { text: JSON.stringify(toolListBusinessManagers()).slice(0, 12000) }; // 지침 하나 약 90자 — 지금 30여 개 3천 자, 대량 작성 중이라 넉넉히

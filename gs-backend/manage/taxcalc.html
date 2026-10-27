@@ -17675,6 +17675,7 @@ function renderTcCaseBar_(){
     '<div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
     '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 저장</button>' +
+    '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>📑 경우(안)로 저장</button>' +
     '<button type="button" id="tcGasFillBtn" class="ghost-btn" title="사건처리(GAS)로 서류에서 읽어 둔 값을 계산기 칸에 다시 채웁니다 — AI 없이 0원"' + (tcSelectedId ? '' : ' disabled') + '>⚡ GAS로 칸 채우기</button>' +
     '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn" title="넥스(AI)가 사건을 맡아 서류 읽기부터 계산까지 합니다 — 비용이 듭니다"' + (tcSelectedId ? '' : ' disabled') + '>🤖 넥스로 자동계산</button>' +
     '<button type="button" id="tcBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>' +
@@ -17682,6 +17683,7 @@ function renderTcCaseBar_(){
     (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
 
   document.getElementById('tcSaveBtn').addEventListener('click', tcSaveCurrentResult_);
+  document.getElementById('tcSaveScenarioBtn').addEventListener('click', function(){ tcSaveCurrentResult_({ scenario: true }); }); // [2026.10.27 경우별 저장] 넥스 calc_scenario와 같은 저장 모양(`안`)
   document.getElementById('tcAutoCalcBtn').addEventListener('click', tcRunAutoCalc_);
   document.getElementById('tcGasFillBtn').addEventListener('click', tcGasFill_); // [2026.10.22 1단계] AI 없이 0원
   document.getElementById('tcCaseSelect').addEventListener('change', function(){
@@ -17734,8 +17736,10 @@ function renderTcSavedList_(list){
   // 결과인지 구분이 안 됐다 — 같은 세목(양도/증여 등) 중 가장 최근 것에 "최신" 표시를 단다.
   var seenSemok_ = {};
   list.slice().reverse().forEach(function(entry){
-    var isLatest = !seenSemok_[entry.세목];
-    seenSemok_[entry.세목] = true;
+    // [2026.10.27 경우별 저장] 경우(안) 저장본은 "최신" 후보가 아니다(기본 저장본·서식·검토서 기본 숫자를 바꾸지 않음) — "안: 이름"으로 표시
+    var isScen = !!entry.안;
+    var isLatest = !isScen && !seenSemok_[entry.세목];
+    if (!isScen) seenSemok_[entry.세목] = true;
     // [2026.09.23 버그수정] 세무사님 지적 — 저장 목록엔 "언제 계산했다"는 날짜만 보이고 세액이
     // 안 보여 아무 정보가 안 된다고 지적받음. entry.최종세액은 저장할 때 이미 숫자로 뽑아
     // 저장해두고 있었는데(tcSaveCurrentResult_) 정작 목록에서 한 번도 안 읽고 있었다 — 항상
@@ -17753,7 +17757,7 @@ function renderTcSavedList_(list){
       '<div class="log-text" style="flex:1;"><b>' + escapeHtml(entry.세목 || '') + ' · ' + escapeHtml(entry.구분 || '') + '</b>' +
       (Number.isFinite(entry.최종세액) ? ' <b style="color:var(--accent, #2a7a4f);">' + won(entry.최종세액) + '</b>' : '') +
       (entry.기준일스냅샷 ? ' <span style="color:var(--sub); font-size:11px;">(기준일: ' + escapeHtml(entry.기준일스냅샷) + ')</span>' : '') +
-      (isLatest ? ' <span style="color:#2a7a4f; font-weight:700; font-size:11px;">최신</span>' : ' <span style="color:var(--sub); font-size:11px;">이전 계산</span>') + '</div>' +
+      (isScen ? ' <span style="color:#8a5a00; font-weight:700; font-size:11px;" title="' + escapeHtml((entry.안.바꾼칸 || []).map(function(d){ return d.칸 + ' ' + d.전 + ' → ' + d.후; }).join(' / ') || '바꾼 칸 기록 없음') + '">📑 안: ' + escapeHtml(entry.안.이름 || '') + (entry.안.누가 ? ' (' + escapeHtml(entry.안.누가) + ')' : '') + '</span>' : (isLatest ? ' <span style="color:#2a7a4f; font-weight:700; font-size:11px;">최신</span>' : ' <span style="color:var(--sub); font-size:11px;">이전 계산</span>')) + '</div>' +
       '<span class="log-del" title="삭제">✕</span>' +
       '</div>' +
       '<div class="tc-saved-preview" style="display:none; color:var(--sub); font-size:12.5px; margin:6px 0 0 22px; white-space:pre-wrap;">' + escapeHtml(preview) + '</div>';
@@ -18056,7 +18060,28 @@ function tcRestoreToolResults_(caseObj){
 // 탭 안에는 우회양도부인 등 부속 계산기가 여러 개 더 있지만(각각 별도 id), 신고서
 // 자체의 최종 세액은 항상 이 4개 메인 박스(taxCalcTransferResult 등)에 표시되므로 이것만
 // 캡처한다 — 부속 계산기 결과까지 다 모으면 요약이 아니라 화면 전체 덤프가 된다.
-function tcSaveCurrentResult_(){
+// [2026.10.27 경우별 저장] 경우(안) 저장 — 바탕(같은 세목 기본 저장본의 저장값)과 지금 입력을 맞대어 바뀐 칸을 자동으로 적는다(세무사님 원문 "각각 저장하기로 저장되어야 하고 … 인용하여 검토서에 반영")
+function tcScenarioDiff_(baseState, nowState){
+  var out = [];
+  if (!baseState || !nowState) return out;
+  var txt = function(v){ if (v == null) return ''; if (typeof v === 'object') return JSON.stringify(v); return String(v); };
+  var cmpList = function(name, a, b, keys){
+    a = Array.isArray(a) ? a : []; b = Array.isArray(b) ? b : [];
+    var n = Math.max(a.length, b.length);
+    for (var i = 0; i < n; i++){
+      var x = a[i] || {}, y = b[i] || {};
+      var ks = {}; Object.keys(x).concat(Object.keys(y)).forEach(function(k){ if (!/^_|^id$|Id$/.test(k)) ks[k] = 1; });
+      Object.keys(ks).forEach(function(k){ var p = txt(x[k]), q = txt(y[k]); if (p !== q && out.length < 40) out.push({ 칸: name + i + '.' + k, 전: p.slice(0, 80), 후: q.slice(0, 80) }); });
+    }
+  };
+  cmpList('a', baseState.transferAssets, nowState.transferAssets);
+  cmpList('c', baseState.transferContracts, nowState.transferContracts);
+  cmpList('seller', baseState.transferSellers, nowState.transferSellers);
+  ['ihCore', 'ihHeirs', 'gfCore'].forEach(function(k){ if (baseState[k] !== undefined || nowState[k] !== undefined){ var p = txt(baseState[k]), q = txt(nowState[k]); if (p !== q && out.length < 40) out.push({ 칸: k, 전: p.slice(0, 80), 후: q.slice(0, 80) }); } });
+  return out;
+}
+function tcSaveCurrentResult_(opts){
+  opts = (opts && typeof opts === 'object' && !opts.target) ? opts : {}; // 버튼 click 이벤트가 그대로 들어오면 무시
   if (!tcSelectedId || !tcCurrentCase){ showToast('먼저 사건을 선택해주세요.', 'warning'); return; }
   var activeTabEl = document.querySelector('.taxcalc-tab.active');
   var tab = activeTabEl ? activeTabEl.dataset.tab : 'transfer';
@@ -18108,6 +18133,21 @@ function tcSaveCurrentResult_(){
   if (toolKey_ && TC_TOOL_STATE_[toolKey_]){
     var toolState_ = TC_TOOL_STATE_[toolKey_].get();
     if (toolState_) { entry.도구키 = toolKey_; entry.저장값 = toolState_; }
+  }
+  // [2026.10.27 경우별 저장] 경우(안)로 저장 — 이름을 받아 `안`을 붙인다. 기본 저장본(최신)·서식 복원(도구키)은 건드리지 않게 도구키를 떼고, 바뀐 칸은 같은 세목 기본 저장본과 대조해 적는다
+  if (opts.scenario){
+    var scenAll = tcCurrentCase.세액계산결과 || [];
+    var baseE = scenAll.filter(function(e){ return e && e.세목 === entry.세목 && !e.안; }).slice(-1)[0];
+    var nScen = scenAll.filter(function(e){ return e && e.안; }).length + 1;
+    var nm = window.prompt('이 경우(안)의 이름을 적어 주세요(예: 비과세 적용 전, 필요경비 제외, 증여세로 할 때)', '안' + nScen);
+    if (nm === null) return;
+    nm = String(nm).trim().slice(0, 60) || ('안' + nScen);
+    var diff = baseE && baseE.저장값 && entry.저장값 ? tcScenarioDiff_(baseE.저장값, entry.저장값) : [];
+    entry.구분 = (entry.구분 || '') + ' · 경우(안)';
+    var now_ = new Date(), p2_ = function(n){ return (n < 10 ? '0' : '') + n; };
+    entry.안 = { 이름: nm, 바꾼칸: diff, 누가: window.nxWorkBy_ || '세무사님', 때: tcTodayStr_() + ' ' + p2_(now_.getHours()) + ':' + p2_(now_.getMinutes()), 바탕: baseE ? '기본 저장본 ' + baseE.id + '(' + (baseE.계산일 || '') + ')' : '(같은 세목 기본 저장본 없음 — 바꾼 칸 대조 못 함)', 바탕저장본id: baseE ? baseE.id : '' };
+    entry.요약 = '[경우(안)] ' + nm + '\n바탕: ' + entry.안.바탕 + '\n바꾼 칸: ' + (diff.length ? diff.map(function(d){ return d.칸 + ' ' + d.전 + ' → ' + d.후; }).join(' / ') : '(기본 저장본과 같거나 대조 못 함)') + '\n\n' + (entry.요약 || '');
+    delete entry.도구키; // 서식 복원(tcRestoreToolResults_)이 안 저장본을 "최신 본계산"으로 집어 가지 않게
   }
   var newList = (tcCurrentCase.세액계산결과 || []).concat([entry]);
   var saveLog_ = tcSaveLog_(entry); // [2026.10.22 작업 기록부]

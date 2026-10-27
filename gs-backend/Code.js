@@ -3757,7 +3757,10 @@ function job_lookup_(input) {
       최근처리일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).slice(-15).map(function (l) { return (l.date || '') + ' ' + String(l.text || '').slice(0, 200); }),
       마지막계산: (function () { try { const l = caseProcLastCalc_(c).last; return l ? { 날짜: l.계산일 || '', 구분: l.구분 || '', 최종세액: l.최종세액, 요약: String(l.요약 || '').slice(0, 1500) } : null; } catch (e) { return null; } })(),
       지난지휘: last ? { 때: last.at, 방식: last.mode, 비용원: last.won, 보고: last.report || '', 판단: (last.decisions || []).slice(0, 20), 의견: (last.opinions || []).slice(0, 20), 여쭌것: (last.asks || []).slice(0, 12) } : null,
-      안내: '세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정)은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다. 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}로 제안하라(넣을칸이 있는 질문만). 넣을칸이 없는 질문(메모형)은 세무사님 답을 대화로만 받고, 다음 "이 사건 처리하자" 때 지휘 넥스가 이 대화를 읽어 반영한다.'
+      // [2026.10.27 A·경우별] 정한 값·고침 기록·계산 저장본(기본·안) — 넥스가 "지금 칸에 무엇이 들어 있나"를 보고 caseproc_fix·calc_scenario를 쓰고, 검토서 숫자는 저장본 id로 인용한다
+      고침기록: (sv.valueHist || []).slice(-15).map(function (h) { return h.at + ' ' + h.by + ' ' + (h.label || h.target) + ': ' + caseProcValueText_(h.prev ? h.prev.v : '').slice(0, 40) + ' → ' + caseProcValueText_(h.next ? h.next.v : '').slice(0, 40) + (h.undone ? ' (되돌림)' : ''); }),
+      계산저장본: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-20).map(function (e) { return { id: e.id, 세목: e.세목, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? (e.안.바꾼칸 || []).map(function (d) { return d.칸 + ' ' + d.전 + '→' + d.후; }).slice(0, 6) : undefined }; }),
+      안내: '세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정·정한값의 누가=세무사님)은 네가 바꾸지 말고, 서류와 어긋나 보이면 그 사실(지금 값·서류 값)만 말씀드린다. 남은 질문에 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}(넣을칸이 있는 질문). 이미 확정돼 남은 질문에 없는 칸(과세대상 구분·필요경비·사건분류 등)은 caseproc_fix{caseId, target, value, why}(세무사님 값이면 카드 [실행]이 세무사님 확인). 서류로 네가 푼 질문·답한 질문은 caseproc_decide로 닫아라. 경우(안)별 세액은 calc_scenario로 계산기를 돌려 저장한 뒤 그 저장본 숫자만 말한다(암산 금지). 세액 숫자는 계산저장본·마지막계산에서만 말한다.'
     };
     return JSON.parse(cxMask_(JSON.stringify(out)));
   }
@@ -3790,8 +3793,14 @@ function cpAnswerValueNorm_(target, value, ask) {
         if (Array.isArray(x)) { x.forEach(function (y) { items.push({ kind: /취득/.test(k) ? '취득' : (y && y.kind) || '양도', label: String((y && y.label) || k), amount: money(y && (y.amount != null ? y.amount : y)), file: String((y && y.file) || ''), date: String((y && y.date) || '') }); }); return; }
         const amt = money(x); if (amt) items.push({ kind: /취득/.test(k) ? '취득' : '양도', label: String(k), amount: amt, file: '', date: '' });
       });
-    } else if (typeof v === 'string' && /(없음|없다|0\s*원)/.test(v) && !/\d{4,}/.test(v)) items = [];
-    else if (typeof v === 'string') { const amt = money(v); items = amt ? [{ kind: '양도', label: '세무사님 답', amount: amt, file: '', date: '' }] : []; }
+    } else if (typeof v === 'string' && /(없음|없다|(?:^|[^\d,])0\s*원)/.test(v) && !/\d{4,}|\d{1,3}(?:,\d{3})+/.test(v)) items = []; // [2026.10.27 B-1] "3,583,600원"의 끝 "600원"이 "0원"으로 읽혀 0건이 되던 것
+    else if (typeof v === 'string') {
+      // [2026.10.27 10-27 B-1] "취득세교육세 3,583,600원, 등기제비용 426,110원, 법무사수수료 385,000원"처럼 말로 한 경비는 항목(이름·금액)으로 풀어 넣는다.
+      //  예전엔 글자 전체의 숫자를 이어 붙여 금액 하나로 보거나 0건({"items":[]})으로 저장돼 세액이 0원으로 떨어졐다(2026-10-27 13:36 답기록)
+      items = cpExpAmountsFromText_(v);
+      if (!items.length) { const amt = money(v); items = amt && !/\d{1,3}(?:,\d{3}){1,}.*\d{1,3}(?:,\d{3}){1,}/.test(v) ? [{ kind: '양도', label: '세무사님 답', amount: amt, file: '', date: '' }] : []; }
+      if (!items.length && v.trim() && !/(없음|없다|(?:^|[^\d,])0\s*원)/.test(v)) return { value: '', shown: '', error: '필요경비 글에서 항목(이름·금액)을 풀지 못했습니다 — "취득세 3,583,600원, 법무사수수료 385,000원"처럼 항목마다 이름과 금액을 적어 다시 주세요(빈 값으로 저장하지 않음). 경비가 없으면 "없음"이라고 적어 주세요.' };
+    }
     items = (items || []).map(function (x) { return { kind: String(x.kind || '양도'), label: String(x.label || '').slice(0, 60), amount: money(x.amount), file: String(x.file || '').slice(0, 80), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0 || items.length === 0; });
     // 후보(서류)와 금액이 같으면 후보의 이름·파일을 쓴다(출처가 남게)
     const cands = (ask && Array.isArray(ask.cands)) ? ask.cands : [];
@@ -3801,6 +3810,31 @@ function cpAnswerValueNorm_(target, value, ask) {
   }
   if (v && typeof v === 'object') { const s = JSON.stringify(v); return { value: s, shown: s.slice(0, 160) }; }
   return { value: String(v == null ? '' : v), shown: String(v == null ? '' : v) };
+}
+// [2026.10.27 10-27 B-1] 말로 한 경비 글 → 항목 목록(화면 aichat nxAiCpExpAmounts_와 같은 규칙을 서버에도) — "중개보수 448만원·취득세 8,160,000원" → [{label, amount, kind}]
+function cpExpAmountsFromText_(text) {
+  const s = String(text || ''), out = [];
+  const krMoney = function (t) {
+    t = String(t || '').replace(/,/g, '').replace(/\s+/g, '');
+    let m = /(\d+(?:\.\d+)?)억(?:(\d+(?:\.\d+)?)(천만|천|백만|백|만)?)?/.exec(t);
+    if (m) { let v = Number(m[1]) * 1e8; if (m[2]) { let u = { 천만: 1e7, 천: 1e7, 백만: 1e6, 백: 1e6, 만: 1e4 }[m[3] || '']; if (!u) u = Number(m[2]) < 10 ? 1e7 : 1e4; v += Number(m[2]) * u; } return Math.round(v); }
+    m = /(\d+(?:\.\d+)?)(천만|백만|만)원?/.exec(t); if (m) return Math.round(Number(m[1]) * { 천만: 1e7, 백만: 1e6, 만: 1e4 }[m[2]]);
+    m = /(\d+(?:\.\d+)?)천원/.exec(t); if (m) return Math.round(Number(m[1]) * 1e3);
+    m = /\d{4,}/.exec(t); return m ? Number(m[0]) : 0;
+  };
+  const re = /(\d+(?:\.\d+)?억(?:\s*\d+(?:\.\d+)?\s*(?:천만|천|백만|백|만)?)?\s*원?|\d+(?:\.\d+)?\s*(?:천만|백만|만)\s*원?|\d{1,3}(?:,\d{3})+\s*원?|\d{4,}\s*원)/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const amt = krMoney(m[1]); if (!amt || amt < 1000) continue;
+    if (/(?:19|20)\d{2}\s*[.\-/년]/.test(m[1]) || /^\s*[.\-/]/.test(s.slice(m.index + m[1].length, m.index + m[1].length + 2))) continue; // 날짜·연도는 금액이 아님
+    const before = s.slice(0, m.index).replace(/[(（][^)）]*$/, '');
+    let ws = before.replace(/[은는이가을를의:]\s*$/, '').trim().split(/[\s,·/+]+/).filter(Boolean).slice(-2);
+    ws = ws.filter(function (w, wi) { return /^[가-힣A-Za-z·]+$/.test(w) && !(wi < ws.length - 1 && /(하고|고|며|중|및|과|와|의|은|는|이|가|을|를|등)$/.test(w)); });
+    let label = ws.join(' ').replace(/^(그리고|또|및|필요경비|경비|비용)\s*/, '').trim();
+    if (!label || /^(필요경비|경비|비용|합계|총)$/.test(label)) label = '필요경비';
+    out.push({ label: label.slice(0, 60), amount: amt, kind: /취득|등록|등기|법무|채권|인지|소유권/.test(label) ? '취득' : '양도', file: '', date: '' });
+  }
+  return out;
 }
 const JOB_PROPOSE_ACTIONS_ = {
   booking_approve: { gas: 'approve', label: '상담 예약 승인(고객에게 확정 문자가 갑니다)', required: ['rowIndex', 'eventId', 'phone', 'reservedDate', 'reservedTime'] },
@@ -3820,7 +3854,12 @@ const JOB_PROPOSE_ACTIONS_ = {
   receipts_scan: { gas: 'scan_cash_receipts', label: '사건폴더의 현금영수증을 읽어 수금내역에 반영', required: [] },
   receipts_import: { gas: 'import_hometax_receipts', label: '홈택스 현금영수증 매출내역 엑셀 가져오기', required: [] },
   // [2026.10.21 넥스 하나로] 채팅으로 한 답을 사건처리 질문의 칸에(job_buildProposal_가 저장된 질문으로 칸을 확인하고 카드 설명을 만든다)
-  caseproc_answer: { gas: 'case_proc', label: '사건처리 질문에 답 넣기', required: ['caseId', 'qid', 'target', 'value'] }
+  caseproc_answer: { gas: 'case_proc', label: '사건처리 질문에 답 넣기', required: ['caseId', 'qid', 'target', 'value'] },
+  // [2026.10.27 10-27 A·C·경우별] 확정 칸 고치기(세무사님 값은 카드 [실행]이 곧 세무사님 확인)·되돌리기·질문 닫기·경우(안) 계산 저장 — 서버 case_proc 같은 입구를 화면(사건처리 GAS 칸·세액계산)도 쓴다
+  caseproc_fix: { gas: 'case_proc', label: '세액계산 입력 칸 값 고치기', required: ['caseId', 'target', 'value'] },
+  caseproc_undo: { gas: 'case_proc', label: '칸 값 고침 되돌리기', required: ['caseId'] },
+  caseproc_decide: { gas: 'case_proc', label: '사건처리 질문 닫기(확인·보류·무시)', required: ['caseId', 'qids'] },
+  calc_scenario: { gas: 'case_proc', label: '경우(안) 세액계산 저장', required: ['caseId'] }
 };
 const JOB_CASE_UPDATE_FORBIDDEN_ = ['폴더ID', '생성일', '수정일', '고객ID', 'my_report_id', '하위업무'];
 
@@ -3850,13 +3889,69 @@ function job_buildProposal_(input) {
     if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
     const sv = caseProcLoad_(c.id) || {};
     const q = (sv.remaining || []).filter(function (it) { return it.id === params.qid; })[0];
-    if (!q) return { error: '그 질문(qid)이 저장된 사건처리 질문에 없습니다 — job_lookup caseproc로 다시 확인하라.' };
-    if (!q.ask || q.ask.target !== params.target) return { error: '그 질문의 넣을 칸이 다릅니다(넣을칸 ' + (q.ask ? q.ask.target : '없음') + ') — 넣을칸이 없는 질문은 대화로만 답을 받는다.' };
+    // [2026.10.27 10-27 A] 남은 질문에 없는 qid·넣을 칸이 없는 질문(메모형)이어도 target이 계산기 칸이면 "칸 값 고치기"(caseproc_fix)로 돌린다 — 예전엔 거절만 해서 확정 칸을 못 고쳤다(15:04 오류기록)
+    if ((!q || !q.ask || q.ask.target !== params.target) && params.target && /^(calc:|expenses$|trTaxFee$|ov:|ovAsset:|base$)/.test(String(params.target))) {
+      return job_buildProposal_({ action: 'caseproc_fix', params: { caseId: params.caseId, target: params.target, value: params.value, label: params.label, src: params.src, why: params.src }, summary: input.summary });
+    }
+    if (!q) return { error: '그 질문(qid)이 저장된 사건처리 질문에 없습니다 — job_lookup caseproc로 다시 확인하라. 이미 확정된 칸을 고치려면 caseproc_fix{caseId, target, value}.' };
+    if (!q.ask || q.ask.target !== params.target) return { error: '그 질문의 넣을 칸이 다릅니다(넣을칸 ' + (q.ask ? q.ask.target : '없음') + ') — 넣을칸이 없는 질문(메모형)은 대화로 답을 받고, 그 답이 계산기 칸 값이면 caseproc_fix{caseId, target, value}로 넣는다.' };
     const label = q.ask.label || params.label || String(q.text || '').slice(0, 40);
     const src = ('세무사님 답(넥스 대화)' + (params.src ? ': ' + String(params.src) : '')).slice(0, 80);
     const nv = cpAnswerValueNorm_(q.ask.target, params.value, q.ask); // [2026.10.23 ㅅ13차 — 점검표 168] 넥스가 객체로 준 값(필요경비 {양도비용:…, 취득비용:…})을 그 칸이 받는 모양(items JSON)으로
+    if (nv.error) return { error: nv.error }; // [2026.10.27 B-1] 경비 글을 항목으로 못 풀면 빈 값으로 제안하지 않는다
     payload = { caseId: c.id, step: 'apply', target: q.ask.target, value: nv.value, src: src, label: label, ans: { qid: q.id, how: '넥스 대화', nCands: (q.ask.cands || []).length, pick: (q.ask.cands || []).map(function (x) { return String(x.v).replace(/[\s,]/g, ''); }).indexOf(String(nv.value).replace(/[\s,]/g, '')), file: '' } };
     return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 「' + label + '」에 ' + nv.shown.slice(0, 160) + ' 넣기 (' + src + ')', gasAction: spec.gas, payload: payload, kind: input.action, caseId: c.id } };
+  }
+  // [2026.10.27 10-27 A] 확정 칸 고치기 — 카드 글에 지금 값·누가 정했나를 밝힌다. 세무사님이 정한 값이면 [실행]이 세무사님 확인(confirmed)이 된다(공통원칙: 넥스는 세무사님 값을 스스로 바꾸지 않음)
+  if (input.action === 'caseproc_fix') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    const target = String(params.target || '').trim();
+    const sv = caseProcLoad_(c.id) || {};
+    const prev = caseProcPrevValue_(c, sv, target);
+    const label = String(params.label || CASEPROC_FIX_LABELS_[target] || target).slice(0, 40);
+    const norm = /^(expenses|calc:costs)$/.test(target) ? cpAnswerValueNorm_('expenses', params.value, null) : { value: typeof params.value === 'object' ? JSON.stringify(params.value) : String(params.value), shown: caseProcValueText_(params.value).slice(0, 160) };
+    if (norm.error) return { error: norm.error };
+    const tgt = target === 'calc:costs' ? 'expenses' : target;
+    const prevTxt = prev ? caseProcValueText_(prev.v).slice(0, 100) : '(비어 있음)';
+    const owner = prev ? (prev.who === '세무사님' ? '세무사님이 정하신 값' : prev.who === '넥스' ? '넥스가 넣은 값' : '서류(GAS)에서 읽은 값') : '빈 칸';
+    const why = String(params.why || params.src || '').slice(0, 80);
+    const payload2 = { caseId: c.id, step: 'valueFix', target: tgt, value: norm.value, label: label, by: '넥스', why: why, confirmed: true };
+    const summary = (c.사건명 || c.고객명 || '') + ' — 「' + label + '」 ' + prevTxt + ' → ' + norm.shown + ' (지금 값: ' + owner + (prev && prev.src ? ' · ' + prev.src.slice(0, 40) : '') + ')' + (why ? ' · 이유: ' + why : '')
+      + (prev && prev.who === '세무사님' ? ' — 세무사님이 정하신 값입니다. [실행]을 누르시면 세무사님 확인으로 바뀌고, 기록부에 전 값·후 값이 남습니다.' : ' — [실행]을 누르면 바뀌고 기록부에 전 값·후 값이 남습니다(↩ 되돌리기 가능).');
+    return { action: { type: 'confirm_action', label: spec.label, summary: summary.slice(0, 600), gasAction: spec.gas, payload: payload2, kind: input.action, caseId: c.id } };
+  }
+  if (input.action === 'caseproc_undo') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    const hist = ((caseProcLoad_(c.id) || {}).valueHist || []).filter(function (h) { return !h.undone && (!params.target || h.target === params.target); });
+    if (!hist.length) return { error: '되돌릴 고침 기록이 없습니다' + (params.target ? '(' + params.target + ')' : '') + '.' };
+    const h = hist[hist.length - 1];
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 「' + (h.label || h.target) + '」 ' + caseProcValueText_(h.next ? h.next.v : '').slice(0, 80) + ' → ' + (h.prev ? caseProcValueText_(h.prev.v).slice(0, 80) : '(비어 있음)') + ' 되돌리기 (고친 때 ' + h.at + ' ' + h.by + ')', gasAction: spec.gas, payload: { caseId: c.id, step: 'valueUndo', target: h.target, by: '넥스' }, kind: input.action, caseId: c.id } };
+  }
+  // [2026.10.27 10-27 C] 질문 닫기 — 넥스가 서류로 푼 질문·세무사님이 말로 답한 질문을 한 카드로 여러 개 닫는다(다음 바퀴에 다시 묻지 않게)
+  if (input.action === 'caseproc_decide') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    const qids = (Array.isArray(params.qids) ? params.qids : String(params.qids || '').split(/[,\s]+/)).map(String).filter(Boolean).slice(0, 40);
+    const rem = (caseProcLoad_(c.id) || {}).remaining || [];
+    const hit = rem.filter(function (it) { return qids.indexOf(it.id) !== -1; });
+    if (!hit.length) return { error: '그 질문(qids)이 저장된 질문 목록에 없습니다 — job_lookup caseproc의 qid 그대로.' };
+    const d = String(params.decision || params.d || 'done');
+    const dLabel = { done: '확인(해소)', 보류: '보류(검토서 "추가로 확인할 사항")', 무시: '무시(다시 묻지 않음)', 예정: '받을 예정' }[d] || d;
+    const payload3 = { caseId: c.id, step: 'decide', qids: hit.map(function (it) { return it.id; }), d: d, note: String(params.note || '').slice(0, 200), by: '넥스' };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — 질문 ' + hit.length + '건을 ' + dLabel + '으로 닫기' + (params.note ? ' · 근거: ' + String(params.note).slice(0, 160) : '') + '\n' + hit.slice(0, 8).map(function (it) { return '· ' + String(it.text || '').slice(0, 70); }).join('\n') + (hit.length > 8 ? '\n· 외 ' + (hit.length - 8) + '건' : ''), gasAction: spec.gas, payload: payload3, kind: input.action, caseId: c.id } };
+  }
+  // [2026.10.27 경우별 저장] 경우(안) 계산 — 세목·입력·이름을 받아 서버 엔진으로 계산해 따로 저장(기본 저장본·세무사님 값은 그대로)
+  if (input.action === 'calc_scenario') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    const tax = String(params.tax || c.세목 || '');
+    if (!CASEPROC_TAX_LABEL_[tax]) return { error: 'tax는 transfer·gift·inheritance 중 하나.' };
+    const changes = Array.isArray(params.changes) ? params.changes : [];
+    if (!changes.length && !(params.input && typeof params.input === 'object')) return { error: 'changes[{path, value}] 또는 input(엔진 입력)이 필요합니다.' };
+    const payload4 = { caseId: c.id, step: 'scenario', tax: tax, name: String(params.name || '').slice(0, 60), changes: changes.slice(0, 20), input: params.input && typeof params.input === 'object' ? params.input : undefined, baseId: params.baseId || '', why: String(params.why || '').slice(0, 200), by: '넥스' };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + CASEPROC_TAX_LABEL_[tax] + ' 경우(안)' + (params.name ? ' 「' + String(params.name).slice(0, 40) + '」' : '') + ' 계산해 따로 저장' + (changes.length ? ': ' + changes.slice(0, 6).map(function (ch) { return String(ch.path) + ' → ' + caseProcValueText_(ch.value).slice(0, 40); }).join(', ') : ' (입력 전체를 줌)') + (params.why ? ' · 이유: ' + String(params.why).slice(0, 120) : '') + ' — 기본 저장본·세무사님 값은 바뀌지 않습니다.', gasAction: spec.gas, payload: payload4, kind: input.action, caseId: c.id } };
   }
   // [2026.10.21] 넥스가 쓴 고객 문자 — 넥스 초안 표시(상담 기록 담당자 칸), 사건이 있으면 사건 처리일지에도. 카드에서 세무사님이 글을 고쳐 보낼 수 있다(aichat.html)
   if (input.action === 'client_sms') payload = Object.assign({}, params, { via: 'ai' });
@@ -3893,7 +3988,11 @@ const JOB_AI_TOOLS_ = [
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
       + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
-      + 'caseproc_answer{caseId,qid,target,value,src(선택: 세무사님이 말한 근거)}(세무사님이 대화로 사건처리 질문에 답하면 그 칸에 넣기 — qid·target은 job_lookup caseproc의 남은질문 그대로, 세무사님이 말한 값만. 네 추측 값은 넣지 마라).',
+      + 'caseproc_answer{caseId,qid,target,value,src(선택: 세무사님이 말한 근거)}(세무사님이 대화로 사건처리 질문에 답하면 그 칸에 넣기 — qid·target은 job_lookup caseproc의 남은질문 그대로, 세무사님이 말한 값만. 네 추측 값은 넣지 마라) / '
+      + 'caseproc_fix{caseId,target,value,label,why}(이미 확정돼 남은질문에 없는 세액계산 입력 칸을 고치기 — target은 calc:a0.assetType·calc:c0.totalPrice·calc:a0.acquisitionPrice·expenses(필요경비 {items:[{kind:취득|양도,label,amount}]})·trTaxFee·ov:사건분류·base(기준일) 등. 세무사님이 정하신 값이면 카드에 그 사실이 적히고 [실행]이 세무사님 확인이 된다 — 네가 스스로 바꾸지 말고 먼저 지금 값과 서류 값을 말씀드려라) / '
+      + 'caseproc_undo{caseId,target(선택)}(마지막 칸 고침을 전 값으로 되돌리기) / '
+      + 'caseproc_decide{caseId,qids[],decision(done=확인·해소 | 보류 | 무시 | 예정),note(근거 한 줄)}(서류로 네가 푼 질문·세무사님이 답한 질문을 닫아 다음 처리 때 다시 묻지 않게 — 서류 ⚠ 확인 질문을 읽고 풀었으면 꼭 닫아라) / '
+      + 'calc_scenario{caseId,tax(transfer|gift|inheritance — 생략하면 사건 세목),name,changes:[{path,value}],input(선택: 엔진 입력 전체),why}(경우(안)별 세액계산 — 세액계산기를 서버에서 돌려 이름 붙여 따로 저장. 양도 path: a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·a0.acquisitionDate·costs·taxfee·사건분류·seller.multiHouseCount, 증여·상속 path: giftAmount·relation·taxableEstateAmount·hasSpouse 같은 엔진 입력 이름. 세액 숫자는 반드시 이 저장본에서만 — 암산한 세액을 답에 쓰지 마라. 같은 사건에서 양도세 안·증여세 안·상속세 안을 각각 저장해 견줄 수 있다).',
     input_schema: {
       type: 'object',
       properties: {
@@ -4659,7 +4758,10 @@ function buildContextSystemPrompt(basePrompt, body) {
   if (ctx.aiPanel) staticExtra += '\n\n[넥스는 하나 — 사건처리와 이어짐] "이 사건 처리하자"로 돌린 사건 지휘도 너(넥스)다. 대화 기록의 [⚡사건 처리] 요약에 그때 한 일(보고·넣은 값·의견·여쭌 것)이 있다. '
     + '세무사님이 그 사건의 질문·값·이유를 물으면 job_lookup caseproc로 남은 질문·출처·지난 지휘 기록·처리일지를 보고 답하고, 세무사님이 말로 답을 주면 job_propose_action caseproc_answer로 그 칸에 넣기를 제안한다(세무사님이 말한 값만). '
     + '세무사님은 사건을 전체로 맡기기도(처리하자), 일부만 맡기기도("○○만 봐줘" — 그 부분만 답하고 나머지는 건드리지 않음), 직접 처리하기도 한다(사이드바·세액계산 화면) — 세무사님이 직접 넣은 값은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다. '
-    + '세법 해석이 갈릴 수 있는 쟁점(중과·특례·평가 등)을 답하기 전에는 job_lookup law_decisions로 AI 회의 법령 안건을 먼저 본다 — 세무사님이 "결정"한 쟁점은 그 결론을 따르고, "판단 대기"·"보류"인 쟁점은 단정하지 말고 판단 대기 중이라고 밝힌다.';
+    + '세법 해석이 갈릴 수 있는 쟁점(중과·특례·평가 등)을 답하기 전에는 job_lookup law_decisions로 AI 회의 법령 안건을 먼저 본다 — 세무사님이 "결정"한 쟁점은 그 결론을 따르고, "판단 대기"·"보류"인 쟁점은 단정하지 말고 판단 대기 중이라고 밝힌다.'
+    // [2026.10.27] 세무사님 원문: "ai에게 종합적으로 지시하면 계산기를 사용하지 않고 ai가 암산으로 세액계산을 하게 되고 그 세액계산의 근거도 남기지 않게 되므로 세금계산신고 절차를 밟도록 주문한 것이었다"
+    + '\n\n[세액은 계산 도구로만 — 암산 금지] 세액(양도세·증여세·상속세·지방소득세·가산세)을 말할 때는 네가 머릿속으로 계산한 숫자를 쓰지 않는다. 사건의 세액은 세액계산기를 돌려 저장한 계산 저장본(job_lookup caseproc의 마지막계산·계산저장본, job_propose_action calc_scenario로 만든 경우(안) 저장본)에서만 인용하고 어느 저장본인지 밝힌다. '
+    + '비과세 사건도 계산기로 세액을 끝까지 계산한 뒤 비과세를 적용한다(추징·불복 때 정확한 세액을 알아야 함). 경우를 바꿔 견주는 계산(비과세 적용 전/후, 필요경비 일부 제외, 양도세 vs 증여세 vs 상속세)은 calc_scenario로 각각 저장하고 그 숫자만 말한다. 사건 없는 단순 계산 질문은 calculate_* 도구 결과를 그대로 쓴다(네 암산 금지는 같다).';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
   if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
@@ -15458,6 +15560,12 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         // [2026.10.20 보안→갱신] 같은 이름 글 파일은 직전 판을 "_이전판"에 두고 갱신, 덮어쓰면 안 되는 파일만 새 이름, 화면에 열린 문서는 거절(apply_document_edit로)
         const resultObj = toolSaveFileToFolder(targetPath, input.name, input.content,
           { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '' });
+        // [2026.10.27 10-27 D-2] 지금 편집기·보기 칸에 열린 문서를 이 도구로 저장하려 하면 거절만 하지 않고(16:47 오류기록) 그 글을 수정안(edit_document)으로 돌린다 —
+        //  저장 길을 하나로: 열린 문서면 화면이 [이 수정안으로 저장]·[편집창에 적용하기] 버튼을 띄우고 세무사님이 저장한다
+        if (resultObj && resultObj.error && /열려 있는 문서/.test(String(resultObj.error)) && typeof input.content === 'string' && input.content.trim()) {
+          clientActions.push({ type: 'edit_document', content: input.content });
+          return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'prepared', note: '이 문서는 지금 화면에 열려 있어 바로 덮어쓰지 않고 수정안으로 띄웠다 — 사용자가 [이 수정안으로 저장](미리보기 칸) 또는 [편집창에 적용하기](작성관리)를 눌러야 저장된다. "저장했다"고 말하지 말고 그 버튼을 안내하라.' }) };
+        }
         if (resultObj && !resultObj.error) {
           clientActions.push({ type: 'explorer_changed', path: targetPath });
           // [2026.08] "저장했다고 답했는데 실제로 안 바뀌어 있다"는 문제 대응 — AI의 말(환각 가능)이
@@ -30798,6 +30906,12 @@ function caseProc0_(body) {
     if (body.step === 'output') return caseProcOutput_(c);
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
     if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나
+    // [2026.10.27 10-27 A·C·경우별] 어느 칸이든 값 고치기·되돌리기, 질문 닫기, 경우(안) 계산 저장 — 넥스(채팅 카드·지휘 도구)와 화면(사건처리 GAS 칸·세액계산)이 같은 입구
+    if (body.step === 'valueFix') return caseProcValueFix_(c, body);
+    if (body.step === 'valueUndo') return caseProcValueUndo_(c, body);
+    if (body.step === 'decide') return caseProcDecide_(c, body);
+    if (body.step === 'scenario') return caseProcScenario_(c, body);
+    if (body.step === 'fixView') { const sv0 = caseProcLoad_(c.id) || {}; let v0 = {}; try { v0 = caseProcNexView_(c); } catch (e) { v0 = {}; } return { ok: true, 정한값: v0.정한값 || [], 고침기록: (sv0.valueHist || []).slice(-30), 남은질문: (sv0.remaining || []).filter(function (it) { const d = sv0.decisions && sv0.decisions[it.id] && sv0.decisions[it.id].d; return d !== 'done' && d !== '무시'; }).slice(0, 40).map(function (it) { return { qid: it.id, 글: String(it.text || '').slice(0, 120), 넣을칸: it.ask ? it.ask.target || '' : '' }; }), 안: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.안; }).map(function (e) { return { id: e.id, 세목: e.세목, 이름: e.안.이름, 최종세액: e.최종세액, 때: e.안.때, 누가: e.안.누가 }; }) }; } // 화면 "칸 값 고치기" 재료
     if (body.step === 'draft') return caseProcDraft_(c);
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
     if (body.step === 'status') return caseProcStatus_(c, body);
@@ -30951,6 +31065,261 @@ function caseProcValueText_(value) {
   if (list) return list.length ? list.map(rowText).join(' · ') : '없음(0건)';
   return Object.keys(v).map(function (k) { const x = v[k]; return k + ' ' + (x && typeof x === 'object' ? caseProcValueText_(x) : String(x)); }).join(' · ');
 }
+// =========================================================
+// [2026.10.27 2026-10-27 양도 실사건 결함 A·C·경우별 저장] 세무사님 원문: "즉, 종합하면 ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다는 것이다."
+//  · 칸 값 고치기(valueFix) — 이미 확정돼 남은 질문에서 빠진 칸(과세대상 구분·필요경비·사건분류 등)도 어느 칸이든 값을 넣고(같은 반영 경로 caseProcApply_),
+//    전 값·전 출처를 기록부에 남기고, 그 칸이 걸린 남은 질문은 닫는다. 넥스가 세무사님이 정하신 값을 고치려 하면 바꾸지 않고 needConfirm으로 돌려준다
+//    (채팅 넥스는 [실행] 카드 = 세무사님 확인(confirmed), 지휘 넥스는 ask_user로 여쭘). 되돌리기(valueUndo)는 마지막 고침의 전 값으로.
+//    2026-10-27 15:04 오류기록 "넣을 칸이 다릅니다(넣을칸 undefined)" — caseproc_answer가 남은 질문의 qid·target 짝만 받아 확정 칸을 못 고쳐 세액 0원이 그대로 남았다.
+//  · 질문 닫기(decide) — 넥스가 서류로 푼 질문(서류 ⚠ 확인 7건이 네 바퀴 그대로 다시 물어짐)·세무사님이 답한 질문을 결정으로 닫아 다음 바퀴에 다시 묻지 않게.
+//  · 경우(안)별 계산 저장(scenario) — 세무사님 원문: "모든 경우를 세액계산기를 돌려서 각각 저장하기로 저장되어야 하고 저장된 세액계산 내용을 인용하여 검토서에 반영할 수 있어야 한다".
+//    기본 저장본(세무사님 값·확정 입력)은 덮지 않고, 바꾼 칸만 적용한 입력으로 서버 엔진(정답지 점검기와 같은 조립)을 돌려 세액계산결과 배열에 `안` 항목으로 따로 저장한다.
+//  모두 세무사님도 화면(사건처리 GAS 칸·세액계산 화면)에서 같은 입구로 누른다(공통원칙 "넥스가 부르는 도구는 세무사님도 직접").
+// =========================================================
+var CASEPROC_FIX_LABELS_ = { 'calc:a0.assetType': '과세대상 구분', expenses: '필요경비', trTaxFee: '신고 세무비용', 'ov:사건분류': '사건분류', base: '기준일', 'calc:c0.totalPrice': '양도가액', 'calc:a0.acquisitionPrice': '취득가액', 'calc:a0.acquisitionDate': '취득일', 'calc:a0.assetLocation': '소재지', 'calc:seller.name': '양도인 성명', 'calc:c0.buyer.relation': '양수인 관계' };
+// 값의 주인 — 출처 글로(세무사님이 사이드바·채팅·화면에서 정한 값은 모두 "세무사님"이 들어 있다 / 🤖·넥스는 넥스 / 그 밖은 서류·GAS)
+function caseProcValueOwner_(src) { const s = String(src || ''); if (/세무사님/.test(s)) return '세무사님'; if (/🤖|AI 판단|넥스/.test(s)) return '넥스'; return s ? 'GAS' : ''; }
+// 지금 그 칸에 든 값과 출처 — 답 저장소(trAns)·근거 기록(filled)·처리개요·사건 행·사건처리가 만든 계산기 입력(trCalc) 순서로
+function caseProcPrevValue_(c, sv, target) {
+  sv = sv || {};
+  const tr = sv.trAns || {}, fl = sv.filled || {}, ov = c.사건개요 || {};
+  const wrap = function (x) { return x && x.v !== undefined && x.v !== null && x.v !== '' ? { v: x.v, src: String(x.src || ''), at: String(x.at || ''), who: caseProcValueOwner_(x.src) } : null; };
+  const fromFill = function (key, v) { if (v === undefined || v === null || v === '') return null; const f = fl[key] || {}; return { v: typeof v === 'object' ? JSON.stringify(v) : v, src: String(f.src || ''), at: String(f.at || ''), who: caseProcValueOwner_(f.src) || 'GAS' }; };
+  let m;
+  if ((m = /^calc:(.+)$/.exec(target))) {
+    const hit = wrap(tr[m[1]]); if (hit) return hit;
+    const st = sv.trCalc && sv.trCalc.state; if (!st) return null;
+    const p = m[1]; let v, mm;
+    if ((mm = /^seller\.(\w+)$/.exec(p))) v = ((st.transferSellers || [])[0] || {})[mm[1]];
+    else if ((mm = /^c(\d+)\.buyer\.(\w+)$/.exec(p))) { const ct = (st.transferContracts || [])[Number(mm[1])]; v = ct && ct.buyers && ct.buyers[0] ? ct.buyers[0][mm[2]] : undefined; }
+    else if ((mm = /^c(\d+)\.(\w+)$/.exec(p))) { const ct = (st.transferContracts || [])[Number(mm[1])]; v = ct ? ct[mm[2]] : undefined; }
+    else if ((mm = /^a(\d+)\.(\w+)$/.exec(p))) { const a = (st.transferAssets || [])[Number(mm[1])]; v = a ? a[mm[2]] : undefined; }
+    if (v === undefined || v === null || v === '') return null;
+    const s0 = String((sv.trCalc.src || {})[p] || '증빙(계산기 입력)');
+    return { v: v, src: s0, at: String(sv.trCalc.at || '').slice(0, 10), who: caseProcValueOwner_(s0) || 'GAS' };
+  }
+  if (target === 'expenses') return wrap(tr.costs);
+  if (target === 'trTaxFee') return wrap(tr.taxfee);
+  if (target === 'ov:사건분류') return wrap(tr['사건분류']) || fromFill('사건분류', ov.사건분류);
+  if (target === 'base') return c.기준일 ? { v: c.기준일, src: String((fl.기준일 || {}).src || ''), at: String((fl.기준일 || {}).at || ''), who: caseProcValueOwner_((fl.기준일 || {}).src) || 'GAS' } : null;
+  if ((m = /^ovAsset:(\d+):(.+)$/.exec(target))) { const a = (ov.물건목록 || [])[Number(m[1])]; return fromFill('ovAsset:' + m[1] + ':' + m[2], a ? a[m[2]] : undefined); }
+  if ((m = /^ov:(.+)$/.exec(target))) return fromFill(m[1], ov[m[1]]);
+  if ((m = /^case:(.+)$/.exec(target))) return c[m[1]] ? { v: c[m[1]], src: '사건 정보', at: '', who: '세무사님' } : null;
+  return null;
+}
+// 필요경비 저장 모양({acq, tr}) → 반영 입력 모양({items:[{kind…}]})
+function caseProcCostsToItems_(v) {
+  if (!v || typeof v !== 'object') return { items: [] };
+  if (Array.isArray(v.items)) return { items: v.items };
+  const mk = function (kind) { return function (x) { return { kind: kind, label: String(x.label || '').replace(/\s*\([^)]*\)\s*$/, ''), amount: Number(x.amount) || 0, file: String(x.file || ''), date: String(x.date || x.payDate || '') }; }; };
+  return { items: (v.acq || []).map(mk('취득')).concat((v.tr || []).map(mk('양도'))) };
+}
+function caseProcValueFix_(c, body) {
+  const target = String(body.target || '').trim();
+  if (!target) return { ok: false, error: '고칠 칸(target)이 필요합니다.' };
+  if (body.value === undefined || body.value === null || String(body.value).trim() === '') return { ok: false, error: '넣을 값이 필요합니다.' };
+  const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
+  const sv = caseProcLoad_(c.id) || {};
+  const prev = caseProcPrevValue_(c, sv, target);
+  const label = String(body.label || CASEPROC_FIX_LABELS_[target] || target).slice(0, 40);
+  const prevTxt = prev ? caseProcValueText_(prev.v).slice(0, 120) : '(비어 있음)';
+  // 공통원칙: 세무사님이 직접 넣거나 정한 값은 넥스가 바꾸지 않는다 — 어긋나 보이면 말씀만. 세무사님 확인(confirmed)이 있을 때만 바꾼다
+  if (by === '넥스' && prev && prev.who === '세무사님' && !body.confirmed) {
+    return { ok: false, needConfirm: true, prev: { v: prev.v, src: prev.src, at: prev.at, shown: prevTxt }, label: label,
+      message: '「' + label + '」은 세무사님이 정하신 값(' + prevTxt + (prev.src ? ' · ' + prev.src.slice(0, 50) : '') + ')입니다 — 넥스는 바꾸지 않습니다. 세무사님께 지금 값과 서류 쪽 값을 말씀드리고, 바꾸자고 하시면 그때 바꿉니다.' };
+  }
+  const why = String(body.why || '').slice(0, 80);
+  const src = (by === '넥스' ? '🤖 넥스 값 고침' : '세무사님 값 고침') + (why ? ': ' + why : '');
+  // 필요경비·채무처럼 목록 칸은 글("취득세 3,583,600원, 법무사수수료 385,000원")을 항목으로 풀어 넣는다 — 못 풀면 0건으로 저장하지 않고 거절
+  let value = body.value;
+  if (target === 'expenses' || target === 'ihdebts') { const nv = cpAnswerValueNorm_(target, value, null); if (nv.error) return { ok: false, error: nv.error }; value = nv.value; }
+  const r = caseProcApply_(c, Object.assign({}, body, { target: target, value: value, src: src.slice(0, 80), by: by, label: label }));
+  if (!r || r.ok === false) return r || { ok: false, error: '반영 실패' };
+  const nextTxt = caseProcValueText_(value).slice(0, 120);
+  let closedN = 0;
+  caseProcPatch_(c.id, function (s) {
+    s.valueHist = (Array.isArray(s.valueHist) ? s.valueHist : []).concat([{ at: caseProcNow_(), by: by, target: target, label: label, prev: prev ? { v: prev.v, src: prev.src } : null, next: { v: value, src: src.slice(0, 80) }, why: why }]).slice(-100);
+    caseProcLogTo_(s, { by: by, what: '값 고침', key: target, detail: label + ' ' + prevTxt.slice(0, 60) + ' → ' + nextTxt.slice(0, 60) + (prev && prev.src ? ' (전: ' + prev.src.slice(0, 36) + ')' : '') + (why ? ' · ' + why.slice(0, 50) : '') });
+    // 그 칸이 걸린 남은 질문은 닫는다(다음 바퀴에 다시 묻지 않게)
+    s.decisions = s.decisions || {};
+    (s.remaining || []).forEach(function (it) {
+      if (!it || !it.ask || it.ask.target !== target) return;
+      const d = s.decisions[it.id] && s.decisions[it.id].d; if (d === 'done' || d === '무시') return;
+      s.decisions[it.id] = { d: 'done', at: caseProcToday_(), text: String(it.text || '').slice(0, 200), note: '값 고침으로 닫힘: ' + nextTxt.slice(0, 80) };
+      s.closed = (s.closed || []).filter(function (x) { return x.id !== it.id; }).concat([{ id: it.id, d: '확인', text: String(it.text || '').slice(0, 120) }]).slice(-60);
+      closedN++;
+    });
+  });
+  return { ok: true, message: label + ' ' + prevTxt.slice(0, 60) + ' → ' + nextTxt.slice(0, 60) + (closedN ? ' · 걸린 질문 ' + closedN + '건 닫음' : '') + ' — 세액계산을 다시 하면 이 값으로 계산됩니다.', prev: prev ? { v: prev.v, src: prev.src, who: prev.who } : null, by: by, closedQuestions: closedN, recalc: true };
+}
+function caseProcValueUndo_(c, body) {
+  const target = String(body.target || '').trim();
+  const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
+  const sv = caseProcLoad_(c.id) || {}, hist = Array.isArray(sv.valueHist) ? sv.valueHist : [];
+  let idx = -1; for (let i = hist.length - 1; i >= 0; i--) { if ((!target || hist[i].target === target) && !hist[i].undone) { idx = i; break; } }
+  if (idx < 0) return { ok: false, error: '되돌릴 고침 기록이 없습니다' + (target ? ': ' + target : '') + '.' };
+  const h = hist[idx];
+  const label = String(h.label || CASEPROC_FIX_LABELS_[h.target] || h.target).slice(0, 40);
+  let r;
+  if (h.prev && h.prev.v !== undefined && h.prev.v !== null && h.prev.v !== '') {
+    const pv = h.target === 'expenses' ? JSON.stringify(caseProcCostsToItems_(h.prev.v)) : (typeof h.prev.v === 'object' ? JSON.stringify(h.prev.v) : h.prev.v);
+    r = caseProcApply_(c, { target: h.target, value: pv, src: String(h.prev.src || '값 되돌림').slice(0, 80), by: by, label: label });
+  } else {
+    // 전 값이 없던 칸 — 답 저장소에서 지운다(양도 계산기 칸만 가능)
+    let m;
+    if (c.세목 === 'transfer' && (m = /^calc:(.+)$/.exec(h.target))) { trcAnsSet_(c, m[1], null, ''); r = { ok: true }; }
+    else if (c.세목 === 'transfer' && h.target === 'expenses') { trcAnsSet_(c, 'costs', null, ''); r = { ok: true }; }
+    else if (c.세목 === 'transfer' && h.target === 'trTaxFee') { trcAnsSet_(c, 'taxfee', null, ''); r = { ok: true }; }
+    else if (c.세목 === 'transfer' && h.target === 'ov:사건분류') { trcAnsSet_(c, '사건분류', null, ''); r = { ok: true }; }
+    else return { ok: false, error: '「' + label + '」은 전에 비어 있던 칸이라 자동으로 비울 수 없습니다 — 맞는 값을 직접 넣어 주세요.' };
+  }
+  if (!r || r.ok === false) return r || { ok: false, error: '되돌리기 실패' };
+  const prevTxt = h.prev ? caseProcValueText_(h.prev.v).slice(0, 60) : '(비어 있음)', curTxt = caseProcValueText_(h.next ? h.next.v : '').slice(0, 60);
+  caseProcPatch_(c.id, function (s) {
+    if (Array.isArray(s.valueHist) && s.valueHist[idx] && s.valueHist[idx].at === h.at) s.valueHist[idx].undone = caseProcNow_();
+    caseProcLogTo_(s, { by: by, what: '값 되돌림', key: h.target, detail: label + ' ' + curTxt + ' → ' + prevTxt + ' (고친 때 ' + String(h.at || '') + ' ' + String(h.by || '') + ')' });
+  });
+  return { ok: true, message: label + ' ' + curTxt + ' → ' + prevTxt + ' 되돌림 — 세액계산을 다시 하세요.', recalc: true };
+}
+// 질문 닫기 — 넥스가 서류로 풀었거나 세무사님이 답한 질문을 결정으로(done=확인·보류·무시·예정). 화면 결정(caseProcSave_)과 같은 저장소(sv.decisions)
+function caseProcDecide_(c, body) {
+  const qids = (Array.isArray(body.qids) ? body.qids : (body.qid ? [body.qid] : [])).map(String).filter(Boolean).slice(0, 40);
+  if (!qids.length) return { ok: false, error: '닫을 질문(qids)이 필요합니다.' };
+  const map = { done: 'done', 확인: 'done', 완료: 'done', 해소: 'done', 보류: '보류', 무시: '무시', 예정: '예정' };
+  const d = map[String(body.d || body.decision || 'done').trim()];
+  if (!d) return { ok: false, error: '결정은 확인(done)·보류·무시·예정 중 하나입니다.' };
+  const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
+  const note = String(body.note || '').slice(0, 200);
+  const out = { ok: true, closed: [], notFound: [], d: d };
+  caseProcPatch_(c.id, function (s) {
+    s.decisions = s.decisions || {};
+    const rem = Array.isArray(s.remaining) ? s.remaining : [];
+    qids.forEach(function (qid) {
+      const it = rem.filter(function (x) { return x && x.id === qid; })[0];
+      if (!it) { out.notFound.push(qid); return; }
+      s.decisions[qid] = { d: d, at: caseProcToday_(), text: String(it.text || '').slice(0, 200), note: ((by === '넥스' ? '🤖 넥스: ' : '') + note).slice(0, 200) };
+      if (d === 'done' || d === '무시') s.closed = (s.closed || []).filter(function (x) { return x.id !== qid; }).concat([{ id: qid, d: d === 'done' ? '확인' : d, text: String(it.text || '').slice(0, 120) }]).slice(-60);
+      caseProcLogTo_(s, { by: by, what: '결정 ' + (d === 'done' ? '확인' : d), key: qid, detail: String(it.text || '').slice(0, 90) + (note ? ' — ' + note.slice(0, 90) : '') });
+      out.closed.push(qid);
+    });
+  });
+  if (out.notFound.length && !out.closed.length) { out.ok = false; out.error = '그 질문이 저장된 질문 목록에 없습니다: ' + out.notFound.join(', ') + ' — 사건처리 조회(job_lookup caseproc)의 qid 그대로 보내 주세요.'; }
+  out.message = (out.closed.length ? '질문 ' + out.closed.length + '건을 ' + (d === 'done' ? '확인으로 닫음' : d + '로 표시') : '') + (out.notFound.length ? ' · 못 찾은 질문 ' + out.notFound.length + '건' : '');
+  return out;
+}
+// 경우(안) 계산 — 바꿀 칸을 계산기 입력(저장값)에 적용
+function caseProcScenarioSet_(st, p, value) {
+  const num = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0; };
+  const bool = function (v) { return /^(true|1|예|있음|해당|적용|yes|y)$/i.test(String(v).trim()); };
+  const cast = function (k, v) { if (/Price|Value|StandardPrice|Count|Years|Ratio|Amount|Sqm|Area/.test(k)) return num(v); if (/^(is|has)[A-Z]/.test(k)) return bool(v); return String(v == null ? '' : v).trim(); };
+  let m;
+  if (p === 'costs') {
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { return { ok: false, error: '필요경비는 {items:[{kind,label,amount}]} 모양으로' }; }
+    const items = (d && Array.isArray(d.items) ? d.items : Array.isArray(d) ? d : []).map(function (x) { return { kind: String(x.kind || '양도'), label: String(x.label || ''), amount: num(x.amount), file: String(x.file || ''), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0; });
+    const a0 = st.transferAssets[0], c0 = st.transferContracts[0]; if (!a0 || !c0) return { ok: false, error: '자산·계약이 없음' };
+    const prev = { acq: a0.acquisitionExpenseItems || [], tr: c0.totalExpenseItems || [] };
+    a0.acquisitionExpenseItems = items.filter(function (x) { return x.kind === '취득'; }).map(trcCost_); c0.totalExpenseItems = items.filter(function (x) { return x.kind !== '취득'; }).map(trcCost_);
+    return { ok: true, prev: prev, next: { acq: a0.acquisitionExpenseItems, tr: c0.totalExpenseItems } };
+  }
+  if (p === 'taxfee') { const c0 = st.transferContracts[0]; if (!c0) return { ok: false, error: '계약이 없음' }; const prev = (c0.totalExpenseItems || []).filter(function (x) { return /신고 세무비용/.test(String(x.label || '')); }).map(function (x) { return x.amount; }); c0.totalExpenseItems = (c0.totalExpenseItems || []).filter(function (x) { return !/신고 세무비용/.test(String(x.label || '')); }); const amt = num(value); if (amt) c0.totalExpenseItems.push({ label: '양도소득세 신고 세무비용(경우 계산)', amount: amt, payDate: '' }); return { ok: true, prev: prev.length ? prev[0] : 0, next: amt }; }
+  if (p === '사건분류') { const f = TRC_CLASS_FLAGS_[String(value).trim()]; if (!f && String(value).trim() !== '일반' && String(value).trim() !== '해당없음') return { ok: false, error: '사건분류 값은 ' + Object.keys(TRC_CLASS_FLAGS_).join('·') + '·일반 중 하나' }; const prev = { isOneHouseOneFamily: !!(st.transferAssets[0] || {}).isOneHouseOneFamily, multiHouseCount: (st.transferSellers[0] || {}).multiHouseCount || 0 }; st.transferAssets.forEach(function (a) { a.isOneHouseOneFamily = false; a.isNonBusinessLand = false; a.isUnregisteredTransfer = false; }); if (st.transferSellers[0]) st.transferSellers[0].multiHouseCount = 0; if (f && f.asset) st.transferAssets.forEach(function (a) { Object.assign(a, f.asset); }); if (f && f.seller) Object.assign(st.transferSellers[0] || {}, f.seller); return { ok: true, prev: prev, next: String(value).trim() }; }
+  if ((m = /^seller\.(\w+)$/.exec(p))) { const s0 = st.transferSellers[0] = st.transferSellers[0] || {}; const prev = s0[m[1]]; s0[m[1]] = cast(m[1], value); return { ok: true, prev: prev, next: s0[m[1]] }; }
+  if ((m = /^c(\d+)\.buyer\.(\w+)$/.exec(p))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return { ok: false, error: '계약 ' + m[1] + ' 없음' }; ct.buyers = ct.buyers && ct.buyers.length ? ct.buyers : [{}]; const prev = ct.buyers[0][m[2]]; ct.buyers[0][m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: ct.buyers[0][m[2]] }; }
+  if ((m = /^c(\d+)\.(\w+)$/.exec(p))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return { ok: false, error: '계약 ' + m[1] + ' 없음' }; const prev = ct[m[2]]; ct[m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: ct[m[2]] }; }
+  if ((m = /^a(\d+)\.(\w+)$/.exec(p))) { const a = st.transferAssets[Number(m[1])]; if (!a) return { ok: false, error: '자산 ' + m[1] + ' 없음' }; const prev = a[m[2]]; a[m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: a[m[2]] }; }
+  return { ok: false, error: '모르는 칸 경로 ' + p + ' (예: a0.assetType, a0.isOneHouseOneFamily, c0.totalPrice, a0.acquisitionPrice, costs, taxfee, 사건분류, seller.multiHouseCount)' };
+}
+// 경우(안) 계산·저장 — 세목을 가리지 않는 일반 도구(세무사님 10-27 "양도소득세가 싼지 증여세가 싼지 상속세가 싼지 3가지를 비교할 수도 있다").
+//  tax(transfer·gift·inheritance, 기본은 사건 세목)마다 서버 엔진(화면과 같은 엔진)으로 계산해 세액계산결과 배열에 `안` 항목으로 저장한다 — 사건은 맥락일 뿐, 저장 배열은 세목을 섞어 담을 수 있다(항목마다 세목 글자).
+//  바탕: ① 같은 세목 기본 저장본의 저장값(양도) / 앞선 안의 엔진 입력 ② 사건처리가 만든 계산기 입력(양도 trCalc·증여 처리개요) ③ 호출자가 준 엔진 입력(input — 증여·상속 비교 안처럼 사건 자료에 없는 전제)
+//  changes: 양도는 계산기 경로(a0.assetType·c0.totalPrice·costs·taxfee·사건분류…), 증여·상속은 엔진 입력 이름(giftAmount·relation·taxableEstateAmount·hasSpouse…)을 그대로 바꾼다
+function caseProcScenario_(c, body) {
+  const tax = String(body.tax || c.세목 || '').trim();
+  const label = CASEPROC_TAX_LABEL_[tax];
+  if (!label) return { ok: false, error: '세목은 transfer(양도)·gift(증여)·inheritance(상속) 중 하나입니다.' };
+  const changes = Array.isArray(body.changes) ? body.changes : [];
+  const given = body.input && typeof body.input === 'object' ? JSON.parse(JSON.stringify(body.input)) : null;
+  if (!changes.length && !given) return { ok: false, error: '바꿀 칸(changes[{path, value}]) 또는 엔진 입력(input)이 필요합니다.' };
+  const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
+  const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
+  const sameTax = all.filter(function (e) { return e && e.세목 === label; });
+  const baseEntry = body.baseId ? sameTax.filter(function (e) { return String(e.id) === String(body.baseId); })[0] : sameTax.filter(function (e) { return !e.안; }).slice(-1)[0];
+  const lastScen = sameTax.filter(function (e) { return e.안 && e.저장값 && e.저장값.scenario; }).slice(-1)[0];
+  const sv = caseProcLoad_(c.id) || {};
+  const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  const num = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0; };
+  const diff = [], problems = [];
+  let inputs, res, baseFrom = '', slimIn, lines = [];
+  if (tax === 'transfer') {
+    let st = null;
+    if (given && Array.isArray(given.transferAssets)) { st = given; baseFrom = '호출자가 준 계산기 입력'; }
+    else if (baseEntry && baseEntry.저장값 && Array.isArray(baseEntry.저장값.transferAssets) && baseEntry.저장값.transferAssets.length) { st = JSON.parse(JSON.stringify(baseEntry.저장값)); baseFrom = '기본 저장본 ' + String(baseEntry.id || '') + '(' + String(baseEntry.계산일 || '') + ')'; }
+    else if (sv.trCalc && sv.trCalc.state && (sv.trCalc.state.transferAssets || []).length) { st = JSON.parse(JSON.stringify(sv.trCalc.state)); baseFrom = '사건처리 계산기 입력(' + String(sv.trCalc.at || '').slice(0, 10) + ')'; }
+    else return { ok: false, error: '바탕이 될 양도 계산 저장본·계산기 입력이 없습니다 — 먼저 기본 계산을 한 번 저장하거나 input(계산기 입력)을 주세요.' };
+    st.transferAssets = st.transferAssets || []; st.transferContracts = st.transferContracts || []; st.transferSellers = st.transferSellers && st.transferSellers.length ? st.transferSellers : [{}];
+    changes.forEach(function (ch) {
+      const p = String((ch && ch.path) || '').trim().replace(/^calc:/, '').replace(/^expenses$/, 'costs').replace(/^trTaxFee$/, 'taxfee').replace(/^ov:사건분류$/, '사건분류');
+      if (!p) { problems.push('빈 칸 이름'); return; }
+      const r = caseProcScenarioSet_(st, p, ch.value);
+      if (!r.ok) { problems.push(p + ': ' + r.error); return; }
+      const pt = caseProcValueText_(r.prev).slice(0, 80), nt = caseProcValueText_(r.next).slice(0, 80);
+      diff.push({ 칸: p, 전: pt, 후: nt + (pt === nt ? ' (그대로)' : '') });
+    });
+    if (problems.length) return { ok: false, error: '바꿀 수 없는 칸: ' + problems.join(' / ') };
+    inputs = trcEngineInputs_(st, c.기준일);
+    res = runUiEngineCalcTool_('calculate_transfer_tax_multi', { transactions: inputs }) || { error: '세액계산 엔진을 부르지 못함' };
+    if (!res || res.error) return { ok: false, error: '계산 실패: ' + ((res && res.error) || '엔진 없음') };
+    slimIn = { transactions: inputs };
+    lines = ['거래 ' + res.거래건수 + '건 · 비과세 ' + res.비과세건수 + '건', '합산과세표준 ' + won(res.합산과세표준), '산출세액 합계 ' + won(res.산출세액_합계), '지방소득세 ' + won(res.지방소득세), '납부세액 합계 ' + won(res.납부세액_합계)];
+    res = { 최종: Number(res.납부세액_합계), 요약값: { 거래건수: res.거래건수, 비과세건수: res.비과세건수, 합산과세표준: res.합산과세표준, 산출세액_합계: res.산출세액_합계, 지방소득세: res.지방소득세, 납부세액_합계: res.납부세액_합계, 자산별_내역: (res.자산별_내역 || []).slice(0, 6) } };
+  } else {
+    // 증여·상속 — 엔진 입력(평평한 값)이 바탕. 사건 자료에서 만들 수 있는 것은 증여 처리개요(정답지 점검기와 같은 조립)뿐, 상속은 저장본·호출자 입력으로
+    let base = null;
+    if (given) { base = given; baseFrom = '호출자가 준 엔진 입력'; }
+    else if (lastScen) { base = JSON.parse(JSON.stringify(lastScen.저장값.inputs || {})); baseFrom = '앞선 안 ' + String(lastScen.id) + '(' + String(lastScen.안.이름 || '') + ')의 엔진 입력'; }
+    else if (tax === 'gift') {
+      const ov = c.사건개요 || {}, rel = String(ov.giftRelation || '');
+      if (!num(ov.giftAmount)) return { ok: false, error: '바탕이 될 증여 입력이 없습니다(처리개요 증여재산가액 없음) — input{giftAmount, relation, giftDate…}를 주세요.' };
+      base = { giftAmount: num(ov.giftAmount), relation: /^배우자/.test(rel) ? '배우자' : /^직계존속/.test(rel) ? '직계존속' : /^직계비속/.test(rel) ? '직계비속' : /기타친족/.test(rel) ? '기타친족' : '기타', isGenerationSkip: /2촌 이상/.test(rel), giftDate: c.기준일 || undefined };
+      if (num(ov.giftDebtAssumed)) { base.debtAssumedAmount = num(ov.giftDebtAssumed); base.isDebtObjectivelyProven = true; }
+      if (num(ov.giftPriorAmount)) base.priorGiftAmount = num(ov.giftPriorAmount);
+      if (num(ov.giftAppraisalFee)) base.appraisalFeeAmount = num(ov.giftAppraisalFee);
+      baseFrom = '사건 처리개요(증여재산가액·관계·인수채무·10년 합산)';
+    } else return { ok: false, error: '상속 경우 계산은 바탕 입력이 필요합니다 — 앞선 안이 없으면 input{taxableEstateAmount, hasSpouse, childCount, …}(calculate_inheritance_tax 입력)를 주세요.' };
+    changes.forEach(function (ch) {
+      const k = String((ch && ch.path) || '').trim(); if (!k) { problems.push('빈 칸 이름'); return; }
+      const prev = base[k]; let v = ch.value;
+      if (typeof prev === 'number' || /Amount|Count|Value|Price|Years|Total|Fee|Within/.test(k)) v = num(v); else if (typeof prev === 'boolean' || /^(is|has)[A-Z]/.test(k)) v = /^(true|1|예|있음|해당|적용|yes|y)$/i.test(String(v).trim()); else v = String(v == null ? '' : v).trim();
+      base[k] = v; diff.push({ 칸: k, 전: caseProcValueText_(prev === undefined ? '' : prev).slice(0, 80), 후: caseProcValueText_(v).slice(0, 80) });
+    });
+    if (problems.length) return { ok: false, error: '바꿀 수 없는 칸: ' + problems.join(' / ') };
+    const r0 = runUiEngineCalcTool_(tax === 'gift' ? 'calculate_gift_tax' : 'calculate_inheritance_tax', base) || { error: '세액계산 엔진을 부르지 못함' };
+    if (!r0 || r0.error) return { ok: false, error: '계산 실패: ' + ((r0 && r0.error) || '엔진 없음') + (r0 && r0.필수입력항목 ? ' · 필수: ' + r0.필수입력항목.join(', ').slice(0, 300) : '') };
+    slimIn = base;
+    const pay = Number(r0.납부세액 != null ? r0.납부세액 : r0.총납부세액);
+    lines = ['과세표준 ' + won(r0.과세표준), '산출세액 ' + won(r0.산출세액_할증후 != null ? r0.산출세액_할증후 : r0.산출세액), '신고세액공제 ' + won(r0.신고세액공제), '납부세액 ' + won(pay)];
+    res = { 최종: pay, 요약값: { 과세표준: r0.과세표준, 산출세액: r0.산출세액_할증후 != null ? r0.산출세액_할증후 : r0.산출세액, 신고세액공제: r0.신고세액공제, 납부세액: pay, 상속공제_합계: r0.상속공제_합계, 증여재산공제: r0.증여재산공제 } };
+  }
+  const n = all.filter(function (e) { return e && e.안; }).length + 1;
+  let name = String(body.name || '').trim().slice(0, 60) || (label + ' 안' + n + (diff.length ? '(' + diff.map(function (d) { return d.칸; }).join('·').slice(0, 30) + ')' : ''));
+  if (all.some(function (e) { return e && e.안 && e.안.이름 === name; })) name += '(' + n + ')';
+  const total = res.최종;
+  const summary = ['[경우(안)] ' + name + ' — ' + label, '바탕: ' + baseFrom, diff.length ? '바꾼 칸: ' + diff.map(function (d) { return d.칸 + ' ' + d.전 + ' → ' + d.후; }).join(' / ') : '바꾼 칸 없음(입력 그대로)'].concat(lines, [body.why ? '이유: ' + String(body.why).slice(0, 200) : '']).filter(Boolean).join('\n');
+  const entry = { id: 'tc_' + Date.now(), 세목: label, 구분: '경우(안) 서버 계산', 요약: summary, 최종세액: Number.isFinite(total) ? total : undefined, 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
+    안: { 이름: name, 세목: tax, 바꾼칸: diff, 누가: by, 때: caseProcNow_(), 바탕: baseFrom, 바탕저장본id: baseEntry ? String(baseEntry.id || '') : '', 이유: String(body.why || '').slice(0, 200) },
+    // 저장값은 작게(시트 한 칸 한도) — 엔진에 넣은 입력과 결과 요약만. 다음 안은 이 inputs를 바탕으로 이어 바꿀 수 있다
+    저장값: { scenario: true, tax: tax, inputs: slimIn, result: res.요약값 } };
+  const up = work_updateCase({ id: c.id, 세액계산결과: all.concat([entry]), 기대수정일: c.수정일 });
+  if (!up || up.success === false) return { ok: false, error: '저장 실패: ' + ((up && up.message) || '사건 행을 못 고침') };
+  try { caseProcLog_(c.id, { by: by, what: '경우(안) 계산 저장', key: entry.id, detail: name + ' — ' + label + ' 납부세액 ' + won(total) + (diff.length ? ' · 바꾼 칸 ' + diff.map(function (d) { return d.칸; }).join('·') : '') + ' · 바탕 ' + baseFrom }); } catch (e) {}
+  return { ok: true, id: entry.id, 안: name, 세목: label, 최종세액: total, 바꾼칸: diff, 바탕: baseFrom, 요약: lines, message: '경우(안) 「' + name + '」 저장 — ' + label + ' 납부세액 ' + won(total) + ' (바탕: ' + baseFrom + (diff.length ? ', 바꾼 칸 ' + diff.length + '개' : '') + '). 기본 저장본은 그대로이고, 검토서는 이 저장본 id로 인용합니다.' };
+}
+// 저장본 인용(검토서·넥스) — 저장본 id → 세목·이름·숫자·바꾼 칸·입력 요약. 숫자는 저장본에서만 나온다(암산 금지)
+function caseProcCalcCite_(c, id) {
+  const e = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (x) { return x && String(x.id) === String(id); })[0];
+  if (!e) return null;
+  return { id: e.id, 세목: e.세목, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? e.안.바꾼칸 : [], 누가: e.안 ? e.안.누가 : '', 때: e.안 ? e.안.때 : '', 결과요약: e.저장값 && e.저장값.scenario ? e.저장값.result : null, 요약글: String(e.요약 || '').slice(0, 1500) };
+}
 // 중요한 순간 — GAS가 규칙으로 알아챈 것(0원). 넥스가 먼저 말을 거는 재료(sv.alerts, 화면이 넥스 알림으로 띄우고 보면 seen)
 //  세무사님 원문(10-22): "중요한 순간이 어떤 경우가 있을지 모르겠는데, 만약 그런 경우라면 AI가 먼저 말을 걸어도 되겠지." — 경우는 실제 쓰며 함께 늘린다
 function caseProcAlertTo_(sv, kind, text) {
@@ -30994,7 +31363,8 @@ function caseProcUserView_(c, body) {
 function caseProcNexView_(c, opt) {
   opt = opt || {};
   const sv = caseProcLoad_(c.id) || {}, dec = sv.decisions || {};
-  const flat = function (o, pre) { const out = []; Object.keys(o || {}).forEach(function (k) { const v = o[k]; if (v && typeof v === 'object' && ('v' in v)) out.push({ 칸: (pre || '') + k, 값: String(v.v).slice(0, 80), 출처: String(v.src || '').slice(0, 80), 누가: caseProcWho_(v.src), 때: v.at || '' }); }); return out; };
+  // [2026.10.27] 목록 값(필요경비 {acq, tr})은 사람 말로(예전엔 "[object Object]"), 누가는 값 주인 판정(세무사님·넥스·GAS)으로
+  const flat = function (o, pre) { const out = []; Object.keys(o || {}).forEach(function (k) { const v = o[k]; if (v && typeof v === 'object' && ('v' in v)) out.push({ 칸: (pre || '') + k, 값: caseProcValueText_(v.v).slice(0, 80), 출처: String(v.src || '').slice(0, 80), 누가: (typeof caseProcValueOwner_ === 'function' ? caseProcValueOwner_(v.src) : '') || caseProcWho_(v.src), 때: v.at || '' }); }); return out; };
   const ev = Array.isArray(c.증빙목록) ? c.증빙목록 : [];
   const out = {
     작업기록: (sv.workLog || []).slice(-40).map(function (e) { return e.at + ' ' + e.by + ' — ' + e.what + (e.detail ? ': ' + e.detail : ''); }),
@@ -31403,8 +31773,10 @@ function caseProcIsDate_(d) { return /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''))
 function caseProcDue_(c, d) { try { return caseProcIsDate_(d) ? work_calcDeadline_(c.세목, c.업무유형, d) : ''; } catch (e) { return ''; } }
 function caseProcLastCalc_(c) {
   const label = CASEPROC_TAX_LABEL_[c.세목];
-  const res = label ? (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.세목 === label; }) : [];
-  return { list: res, last: res[res.length - 1] };
+  const all = label ? (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.세목 === label; }) : [];
+  // [2026.10.27 경우별 저장] `안`이 붙은 항목은 경우(안) 저장본 — 서식·현황표·검토서의 기본 숫자(last)가 되지 않는다(따로 scenarios로)
+  const res = all.filter(function (e) { return !e.안; });
+  return { list: res, last: res[res.length - 1], scenarios: all.filter(function (e) { return e.안; }) };
 }
 
 // 1) 사건 기본 — 세목·업무유형·납세자·법정기한·증빙 폴더, 날짜 대조
@@ -39059,7 +39431,12 @@ function caseProcApply_(c, body) {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
     if (!d || !d.fileId || !d.field || String(d.value == null ? '' : d.value).trim() === '') return { ok: false, error: '서류·칸·값이 필요합니다.' };
     const fid = String(d.fileId).slice(0, 120), field = String(d.field).slice(0, 60), val = String(d.value).trim().slice(0, 120);
-    caseProcPatch_(c.id, function (sv) { sv.docFix = sv.docFix || {}; sv.docFix[fid] = sv.docFix[fid] || {}; sv.docFix[fid][field] = { v: val, read: String(d.read || '').slice(0, 120), file: String(d.file || '').slice(0, 120), src: src, at: caseProcToday_() }; });
+    caseProcPatch_(c.id, function (sv) {
+      sv.docFix = sv.docFix || {}; sv.docFix[fid] = sv.docFix[fid] || {}; sv.docFix[fid][field] = { v: val, read: String(d.read || '').slice(0, 120), file: String(d.file || '').slice(0, 120), src: src, at: caseProcToday_() };
+      // [2026.10.27 10-27 C] 그 서류의 ⚠ 확인 질문(docok)은 값이 기록된 순간 닫는다 — 예전엔 기록만 남고 질문은 다음 바퀴에 그대로 다시 떴다
+      sv.decisions = sv.decisions || {};
+      (sv.remaining || []).forEach(function (it) { if (!it || !it.ask || it.ask.mode !== 'docok' || it.ask.fileId !== fid) return; const dd = sv.decisions[it.id] && sv.decisions[it.id].d; if (dd === 'done' || dd === '무시') return; sv.decisions[it.id] = { d: 'done', at: caseProcToday_(), text: String(it.text || '').slice(0, 200), note: '서류 값 기록(' + field + ' = ' + val.slice(0, 40) + ')으로 닫힘' }; sv.closed = (sv.closed || []).filter(function (x) { return x.id !== it.id; }).concat([{ id: it.id, d: '확인', text: String(it.text || '').slice(0, 120) }]).slice(-60); });
+    });
     work_updateCase({ id: c.id, 작업일지: logLine('‘' + String(d.file || '') + '’ ' + field + ' ← ' + val + ' (' + src + ')') });
     return { ok: true, message: '‘' + String(d.file || '') + '’ ' + field + ' = ' + val + ' 기록(세무사님 입력)' };
   }
@@ -39251,8 +39628,16 @@ function caseProcDraft_(c) {
     '| ' + (CASEPROC_BASE_LABEL_[c.세목] || '기준일') + ' | ' + (c.기준일 || '⚠[확인필요]') + ' |', '| 법정신고기한 | ' + (c.법정일 || '⚠[확인필요]') + ' |',
     '| 사건분류 | ' + (ov.사건분류 || '⚠[확인필요]') + ' |', '');
   L.push('## 2. 세액 계산 결과', '');
-  if (last) L.push('- ' + (last.계산일 || '') + ' ' + (last.구분 || '') + ' 계산' + (Number.isFinite(last.최종세액) ? ' — 납부할 세액 **' + won(last.최종세액) + '**' : ''), '', '```', String(last.요약 || '').slice(0, 3000), '```', '');
+  if (last) L.push('- ' + (last.계산일 || '') + ' ' + (last.구분 || '') + ' 계산' + (Number.isFinite(last.최종세액) ? ' — 납부할 세액 **' + won(last.최종세액) + '**' : '') + ' (기본 저장본 ' + String(last.id || '') + ')', '', '```', String(last.요약 || '').slice(0, 3000), '```', '');
   else L.push('⚠[확인필요] 아직 계산 결과가 저장되지 않았습니다.', '');
+  // [2026.10.27 경우별 저장] 세무사님 원문 "저장된 세액계산 내용을 인용하여 검토서에 반영할 수 있어야 한다" — 경우(안) 저장본은 세목을 가리지 않고(양도세 안·증여세 안·상속세 안) 저장본 숫자만 표로. 넥스가 암산한 숫자는 들어올 길이 없다
+  const scen = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.안; });
+  if (scen.length) {
+    L.push('### 경우(안)별 세액 비교 — 저장된 계산 저장본에서만 인용', '', '| 안 | 세목 | 바꾼 칸(전 → 후) | 납부세액 | 누가·때 | 저장본 |', '|---|---|---|---|---|---|');
+    if (last) L.push('| 기본 | ' + (last.세목 || '') + ' | (사건 확정 입력) | ' + (Number.isFinite(last.최종세액) ? won(last.최종세액) : '⚠[확인필요]') + ' | ' + (last.계산일 || '') + ' | ' + String(last.id || '') + ' |');
+    scen.forEach(function (e) { L.push('| ' + String(e.안.이름 || '').replace(/\|/g, '/') + ' | ' + (e.세목 || '') + ' | ' + ((e.안.바꾼칸 || []).length ? (e.안.바꾼칸 || []).map(function (d) { return String(d.칸 + ' ' + d.전 + ' → ' + d.후).replace(/\|/g, '/'); }).join('<br>') : '(입력 그대로)') + ' | ' + (Number.isFinite(e.최종세액) ? won(e.최종세액) : '⚠[확인필요]') + ' | ' + (e.안.누가 || '') + ' ' + (e.안.때 || '') + ' | ' + String(e.id || '') + ' |'); });
+    L.push('');
+  }
   const tD = {}, tdk = function (k, t) { tD[k] = Math.round((Date.now() - t) / 100) / 10; }; // [2026.10.23 속도 ㅅ3차] ⑥ 안쪽 시간 — 화면 줄에 실어 어디가 3~4분인지 본다
   let td0 = Date.now();
   const paras = caseProcParagraphs_(c);
@@ -50432,6 +50817,9 @@ function trcApply_(c, body) {
   if (target === 'expenses') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
     const list = (d && Array.isArray(d.items) ? d.items : []).map(function (x) { return { kind: String(x.kind || ''), label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount || '').replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0; });
+    // [2026.10.27 10-27 B-1] 글에 금액이 있는데 항목이 0건이면 "필요경비 없음"으로 확정하지 않는다(13:36 답기록 {"items":[]} — 세액 0원의 원인)
+    if (!list.length && typeof value === 'string' && !/^[\[{]/.test(value.trim()) && /\d{4,}|\d{1,3}(?:,\d{3})+|\d+\s*(만|억)/.test(value) && !/(없음|없다)/.test(value)) return { ok: false, error: '필요경비 글에서 항목(이름·금액)을 풀지 못해 0건으로 저장하지 않았습니다 — "취득세 3,583,600원, 법무사수수료 385,000원"처럼 항목마다 이름과 금액을 적어 주세요.' };
+    if (!list.length && d && Array.isArray(d.items) && d.items.length) return { ok: false, error: '필요경비 항목의 금액이 모두 0이라 저장하지 않았습니다 — 항목마다 amount(원)를 넣어 주세요.' };
     const acq = list.filter(function (x) { return x.kind === '취득'; }), tr = list.filter(function (x) { return x.kind !== '취득'; });
     const sum = function (a) { return a.reduce(function (s, x) { return s + x.amount; }, 0); };
     trcAnsSet_(c, 'costs', { acq: acq, tr: tr }, src);
