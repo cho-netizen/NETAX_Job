@@ -30411,7 +30411,7 @@ function caseProcAllCompare_(c, body) {
   let token = ''; try { token = ScriptApp.getIdentityToken(); } catch (e) { return { ok: false, step: 'allCompare', error: 'ID 토큰을 못 받음(권한 openid 승인 필요): ' + (e && e.message || e), gasSec: round1(gasMs) }; }
   const hdr = { Authorization: 'Bearer ' + token };
   // [2026.10.23 T6 2단계] 토큰의 받는 이(aud)를 응답에 적는다 — Cloud Run이 401/403이면 이 값을 custom audience로 허용한다(IAM 설정에 필요, 토큰 자체는 적지 않음)
-  let tokenAud = ''; try { tokenAud = String(JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(token.split('.')[1])).getDataAsString()).aud || ''); } catch (e) {}
+  let tokenAud = ''; try { var seg_ = String(token.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/'); while (seg_.length % 4) seg_ += '='; tokenAud = String(JSON.parse(Utilities.newBlob(Utilities.base64Decode(seg_)).getDataAsString('UTF-8')).aud || ''); } catch (e) { tokenAud = '해독 실패: ' + String(e && e.message || e).slice(0, 80); }
   const tH = Date.now(); let health = { ms: 0 };
   try { const hr = UrlFetchApp.fetch(url + '/health', { headers: hdr, muteHttpExceptions: true }); health = { code: hr.getResponseCode(), ms: Date.now() - tH, body: String(hr.getContentText() || '').slice(0, 200) }; }
   catch (e) { health = { error: String(e && e.message || e).slice(0, 200), ms: Date.now() - tH }; }
