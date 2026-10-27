@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 04:13 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 05:43 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -51993,6 +51993,9 @@ function rwAiApplyEdit_(id, content){
     (function(){
       var btn = document.getElementById('stBtnT6Compare'); if (!btn) return;
       var t6Busy = false;
+      // [2026.10.27 T6 3단계 — 점검 결함(10-27, 1건 고르려다 4건 돌아감)] 고른 사건은 자료(t6Sel)로 들고, 그릴 때마다 체크 상태를 자료대로 다시 맞춘다(L2_screen_ui: 다시 그린 뒤 checked 잔류). 처음 열 때만 최근 3건을 기본으로
+      var t6Sel = null;
+      var t6Sync = function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = !!(t6Sel && t6Sel[x.getAttribute('data-id')]); }); };
       btn.addEventListener('click', function(){
         if (t6Busy) { nxAlert_('비교가 진행 중입니다 — 끝날 때까지 기다려 주세요.'); return; }
         bugList.textContent = '🧪 가상사건 목록을 불러오는 중…';
@@ -52000,23 +52003,30 @@ function rwAiApplyEdit_(id, content){
           var list = ((res && res.cases) || []).filter(function(c){ return /^가상/.test(String(c.사건명 || c.고객명 || '')); });
           list.sort(function(a, b){ return String(b.생성일 || '').localeCompare(String(a.생성일 || '')); });
           if (!list.length) { bugList.textContent = '가상사건이 없습니다(사건명이 "가상"으로 시작하는 사건만 대상).'; return; }
-          var rows = list.map(function(c, i){ return '<label style="display:block; padding:2px 0;"><input type="checkbox" class="t6pick" data-id="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(c.사건명 || '') + '"' + (i < 3 ? ' checked' : '') + '> ' + escapeHtml(c.사건명 || c.id) + ' <span style="color:var(--muted); font-size:12px;">' + escapeHtml(c.세목 || '') + ' · ' + escapeHtml(c.상태 || '') + '</span></label>'; }).join('');
-          bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 시험 서비스 비교 — 가상사건 ' + list.length + '건 중 고르세요</b> <span style="color:var(--muted); font-size:12px;">(한 건에 1~3분 — GAS 한 번 + 시험 서비스 한 번)</span></div>' +
+          if (!t6Sel){ t6Sel = {}; list.slice(0, 3).forEach(function(c){ t6Sel[c.id] = true; }); }
+          var rows = list.map(function(c){ return '<label style="display:block; padding:2px 0;"><input type="checkbox" class="t6pick" data-id="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(c.사건명 || '') + '"> ' + escapeHtml(c.사건명 || c.id) + ' <span style="color:var(--muted); font-size:12px;">' + escapeHtml(c.세목 || '') + ' · ' + escapeHtml(c.상태 || '') + '</span></label>'; }).join('');
+          bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 시험 서비스 비교 — 가상사건 ' + list.length + '건 중 고르세요</b> <span style="color:var(--muted); font-size:12px;">(한 건에 1~3분 — GAS 한 번 + 시험 서비스 한 번)</span> <span id="t6Route" style="font-size:12px; color:var(--muted);">· 지금 ⚡ 길: 확인 중…</span></div>' +
             '<div style="max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">' + rows + '</div>' +
             '<div style="display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" id="t6Start">▶ 고른 사건 비교 시작</button><button type="button" class="ghost-btn" id="t6All">모두 고르기</button><button type="button" class="ghost-btn" id="t6None">모두 풀기</button></div>' +
             '<div id="t6Out" style="margin-top:8px;"></div>';
-          document.getElementById('t6All').addEventListener('click', function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = true; }); });
-          document.getElementById('t6None').addEventListener('click', function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = false; }); });
+          t6Sync();
+          bugList.querySelectorAll('.t6pick').forEach(function(x){ x.addEventListener('change', function(){ t6Sel[x.getAttribute('data-id')] = x.checked; }); });
+          // [T6 3단계] 지금 ⚡가 어느 길인지(직결/GAS) — 토큰 입구(readerToken)로 한 번 확인(50분 기억)
+          var routeEl = document.getElementById('t6Route');
+          if (typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_('').then(function(tk){ if (routeEl) routeEl.textContent = '· 지금 ⚡ 길: ' + (tk && tk.direct ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS(' + ((tk && tk.why) || '직결 꺼짐') + ')'); }); else if (routeEl) routeEl.textContent = '· 지금 ⚡ 길: GAS';
+          document.getElementById('t6All').addEventListener('click', function(){ list.forEach(function(c){ t6Sel[c.id] = true; }); t6Sync(); });
+          document.getElementById('t6None').addEventListener('click', function(){ t6Sel = {}; t6Sync(); });
           document.getElementById('t6Start').addEventListener('click', function(){
-            var picked = Array.from(bugList.querySelectorAll('.t6pick')).filter(function(x){ return x.checked; }).map(function(x){ return { id: x.getAttribute('data-id'), name: x.getAttribute('data-name') }; });
+            t6Sync();
+            var picked = list.filter(function(c){ return !!t6Sel[c.id]; }).map(function(c){ return { id: c.id, name: c.사건명 || '' }; });
             if (!picked.length) { nxAlert_('비교할 가상사건을 하나 이상 골라 주세요.'); return; }
             var out = document.getElementById('t6Out'), results = [];
-            var th = '<tr><th style="text-align:left;">사건</th><th>GAS 초</th><th>Cloud Run 초<br><span style="font-weight:normal; font-size:11px;">(/read · 깨우기 포함)</span></th><th>서비스 안쪽 초</th><th>칸 불일치</th><th>질문</th><th>증빙</th><th style="text-align:left;">비고</th></tr>';
+            var th = '<tr><th style="text-align:left;">사건</th><th>길</th><th>GAS 초</th><th>Cloud Run 초<br><span style="font-weight:normal; font-size:11px;">(/read · 깨우기 포함)</span></th><th>서비스 안쪽 초</th><th>칸 불일치</th><th>질문</th><th>증빙</th><th style="text-align:left;">비고</th></tr>';
             var draw = function(doneCount){
               var trs = results.map(function(r){
-                if (r.error) return '<tr><td>' + escapeHtml(r.name) + '</td><td colspan="7" style="color:#b00;">' + escapeHtml(r.error) + '</td></tr>';
+                if (r.error) return '<tr><td>' + escapeHtml(r.name) + '</td><td colspan="8" style="color:#b00;">' + escapeHtml(r.error) + '</td></tr>';
                 var mm = (r.mismatches || []).length;
-                return '<tr><td>' + escapeHtml(r.name) + '</td><td style="text-align:right;">' + r.gasSec + '</td><td style="text-align:right;">' + r.runSec + ' · ' + r.runSecIncl + '</td><td style="text-align:right;">' + (r.runInner ? r.runInner.inner : '—') + '</td><td style="text-align:center;' + (mm ? ' color:#b00; font-weight:bold;' : '') + '">' + mm + '</td><td style="text-align:center;">' + (r.questionsA || []).length + '↔' + (r.questionsB || []).length + '</td><td style="text-align:center;">' + r.evidenceA + '↔' + r.evidenceB + '</td><td style="font-size:12px;">' + escapeHtml([(r.runError ? '서비스 오류: ' + r.runError : ''), (mm ? (r.mismatches || []).map(function(m){ return m.key + '(' + (m.a || '—') + '↔' + (m.b || '—') + ')'; }).join(', ') : ''), ((r.questionsOnlyA || []).length || (r.questionsOnlyB || []).length ? '질문 GAS만 ' + (r.questionsOnlyA || []).join(',') + ' / 서비스만 ' + (r.questionsOnlyB || []).join(',') : ''), (r.unreadFiles && r.unreadFiles.length ? '못 읽음 ' + r.unreadFiles.length : ''), (r.codeVersion ? '판 ' + r.codeVersion : '')].filter(Boolean).join(' · ')) + '</td></tr>';
+                return '<tr><td>' + escapeHtml(r.name) + '</td><td style="text-align:center;">' + escapeHtml(r.route || (r.direct ? '직결' : 'GAS 비교')) + '</td><td style="text-align:right;">' + r.gasSec + '</td><td style="text-align:right;">' + r.runSec + ' · ' + r.runSecIncl + '</td><td style="text-align:right;">' + (r.runInner ? r.runInner.inner : '—') + '</td><td style="text-align:center;' + (mm ? ' color:#b00; font-weight:bold;' : '') + '">' + mm + '</td><td style="text-align:center;">' + (r.questionsA || []).length + '↔' + (r.questionsB || []).length + '</td><td style="text-align:center;">' + r.evidenceA + '↔' + r.evidenceB + '</td><td style="font-size:12px;">' + escapeHtml([(r.runError ? '서비스 오류: ' + r.runError : ''), (mm ? (r.mismatches || []).map(function(m){ return m.key + '(' + (m.a || '—') + '↔' + (m.b || '—') + ')'; }).join(', ') : ''), ((r.questionsOnlyA || []).length || (r.questionsOnlyB || []).length ? '질문 GAS만 ' + (r.questionsOnlyA || []).join(',') + ' / 서비스만 ' + (r.questionsOnlyB || []).join(',') : ''), (r.unreadFiles && r.unreadFiles.length ? '못 읽음 ' + r.unreadFiles.length : ''), (r.codeVersion ? '판 ' + r.codeVersion : '')].filter(Boolean).join(' · ')) + '</td></tr>';
               }).join('');
               out.innerHTML = '<div style="margin-bottom:4px;">' + (doneCount < picked.length ? '⏳ ' + doneCount + '/' + picked.length + ' 비교 중… (' + escapeHtml(picked[doneCount].name) + ')' : '✅ ' + picked.length + '건 비교 끝 — 기록: 총괄관리자\\_가상사건\\_시험서비스_비교_오늘날짜.json') + '</div>' +
                 '<div style="overflow:auto;"><table style="border-collapse:collapse; font-size:12.5px; white-space:nowrap;">' + th + trs + '</table></div>';
@@ -56274,7 +56284,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       //  현황이 먼저 오면(보통 2~4초) ① 줄에 "먼저 보이는 것"(읽은 서류·저장된 질문·세액)을 찍어 10초 안에 첫 중간 결과가 보이게. 이어받기(resume)가 되면 ①은 그대로 끝나게 두고 ②③은 안 돈다
       var resumeP = (st.screen && !st.force) ? st.run('view').catch(function(){ return null; }) : Promise.resolve(null);
       // [2026.10.23 특단 T2 — 서버 한 실행으로 ①②③(+④ 준비)] 읽기 세션이 만든 step 'all'을 한 번 부른다(예전 ①→②읽기→보정→②→③ 4~5번 왕복 → 1번). 서버가 아직 모르는 단계면 예전 길(gasRun0_)로
-      var basicP = st.gasRunAll_();
+      // [2026.10.27 T6 3단계 — 화면 직결] 그 앞에 시험 서비스(Cloud Run) 직결을 먼저 시도한다(st.gasRunFast_) — 안 되면 그 자리에서 'all' 길로
+      var basicP = st.gasRunFast_();
       resumeP.then(function(v){
         if (!v || !v.ok || st.firstShown) return; st.firstShown = true; st.secFirst = Math.round((Date.now() - st.t0) / 1000);
         var nq = Array.isArray(v.질문) ? v.질문.filter(function(it){ var d = v.결정 && v.결정[it.id] && v.결정[it.id].d; return d !== 'done' && d !== '무시'; }).length : 0;
@@ -56295,6 +56306,62 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         nxAiCaseProcFill_(st, 'overview', { lines: ['⚡ 저장된 질문 ' + openQ.length + '개를 바로 보입니다(칸 채우기 ' + v.칸채움때 + ' 그대로 — 서류·칸은 다시 읽지 않음). 답하시면 칸을 다시 맞춥니다. 처음부터 다시 하려면 [⚡ GAS로 다시 처리].'], items: v.질문 });
         st.gasDone = { ok: true, resumed: true }; // ③ 줄 표시(⚠ 확인할 항목 N건)는 nxAiCaseProcFill_ 안에서 셈
         return st.gasDone;
+      });
+    };
+    // [2026.10.27 T6 3단계 — 화면 직결] 세무사님 원문 "3단계(화면 직결) 설계서를 써라" → "권장안대로 해라". 화면이 시험 서비스(Cloud Run)를 직접 불러 ①②③ 결과를 바로 그리고(목표 ⚡→첫 결과 10초 안),
+    //  저장만 GAS가 뒤에서(applyRead). 토큰은 GAS 'readerToken'으로 한 번 받아 50분 기억. 실패(통신·401/403·blocked·partial·글자 기억 없는 서류·12초 초과·직결 꺼짐)면 그 자리에서 'all' 길로 복귀하고 "GAS로 처리(이유)" 한 줄
+    st.gasRunDirect_ = function(){
+      var give = function(why){ return { fallback: true, why: why }; };
+      var lineTo = function(key, txt, cls){ var d = document.createElement('div'); d.className = 'nxai-cp-line' + (cls ? ' ' + cls : ''); d.textContent = txt; st.steps[key].querySelector('.nxai-cp-lines').appendChild(d); };
+      var tDirect = Date.now();
+      return nxAiCpReaderToken_(st.caseId).then(function(tk){
+        if (!tk || tk.direct === false) return give('직결 꺼짐');
+        if (!tk.token || !tk.url) return give('토큰·주소 없음');
+        var url = String(tk.url).replace(/\/+$/, '');
+        try { fetch(url + '/health', { method: 'GET', mode: 'cors' }).catch(function(){}); } catch (e) {} // 깨우기 — 토큰 없이, 결과는 기다리지 않음
+        // 사건 행(시트 한 줄)·결정 파일은 토큰 응답에 실려 오면 그것을, 아니면 가벼운 현황(view light, 1~3초)에서
+        var rowP = (tk.row && tk.row.폴더ID) ? Promise.resolve({ row: tk.row, dec: tk.decisions || {} }) : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: v.사건, dec: v.결정 || {} } : null; }).catch(function(){ return null; });
+        return rowP.then(function(rd){
+          if (!rd || !rd.row || !rd.row.폴더ID) return give('사건 행·폴더를 못 받음');
+          ['basic', 'evidence', 'overview'].forEach(function(k){ st.setStep(k, '🔄', '시험 서비스(직결)로 서류를 읽는 중…'); });
+          var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+          var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 12000) : null;
+          return fetch(url + '/read', { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk.token }, body: JSON.stringify({ caseId: st.caseId, folderId: rd.row.폴더ID, sheetRow: rd.row, decisions: rd.dec }), signal: ctrl ? ctrl.signal : undefined })
+            .then(function(res){ if (tmr) clearTimeout(tmr); if (res.status === 401 || res.status === 403){ NXAI_RT_ = null; throw new Error('인증 거절(' + res.status + ')'); } return res.json().catch(function(){ return null; }); },
+                  function(e){ if (tmr) clearTimeout(tmr); throw new Error(e && e.name === 'AbortError' ? '12초 초과' : '통신 오류(' + String(e && e.message || e).slice(0, 60) + ')'); })
+            .then(function(r){
+              if (!r || !r.ok || !r.stages) return give('응답 오류' + (r && r.error ? '(' + String(r.error).slice(0, 60) + ')' : ''));
+              if (r.blocked) return give('증빙 폴더 없음·권한 없음');
+              if (r.partial || r.more) return give('서류를 다 못 읽음(이어 읽기는 GAS가)');
+              if (Array.isArray(r.unreadFiles) && r.unreadFiles.length) return give('글자 기억이 없는 서류 ' + r.unreadFiles.length + '개(글자인식은 GAS가)');
+              var sg = r.stages;
+              if (!sg.basic || !sg.overview) return give('단계 결과가 비어 있음');
+              return st.doStep('basic', undefined, sg.basic).then(function(b){
+                if (b && b.blocked) return give('증빙 폴더 없음');
+                st.loopNotes = [];
+                return (sg.evidence ? st.doStep('evidence', undefined, sg.evidence) : Promise.resolve()).then(function(){ return st.doStep('overview', undefined, sg.overview); }).then(function(){
+                  st.route = '직결'; st.firstShown = true; st.secFirst = Math.round((Date.now() - st.t0) / 1000);
+                  var tmTxt = r.timing ? ' — 시험 서비스 ' + (r.timing.total != null ? r.timing.total : '?') + '초(드라이브 ' + (r.timing.drive || 0) + '·①' + (r.timing.basic || 0) + '·③' + (r.timing.overview || 0) + ')' : '';
+                  lineTo('overview', '⚡→첫 결과 ' + st.secFirst + '초(직결' + tmTxt + ') · 직결 왕복 ' + Math.round((Date.now() - tDirect) / 100) / 10 + '초', 'nxai-muted');
+                  // 저장은 GAS가 뒤에서 — 끝날 때까지 답 묶음·▶ 계산은 기다린다(서버 쪽 결정 파일·사건 행이 맞춰진 뒤에 이어 가게)
+                  var sl = document.createElement('div'); sl.className = 'nxai-cp-line nxai-muted'; sl.textContent = '💾 읽은 결과를 사건에 저장하는 중(뒤에서)…'; st.steps.overview.querySelector('.nxai-cp-lines').appendChild(sl);
+                  st.applyReadP = st.run('applyRead', { written: r.written || {} }).then(function(a){ sl.textContent = (a && a.ok) ? '💾 저장 ' + (a.sec != null ? a.sec + '초' : '끝') + (a.saved === false ? '(이미 같은 내용)' : '') : '💾 저장 실패: ' + ((a && a.error) || '응답 없음') + ' — 답·계산 전에 ⚡ GAS로 다시 처리를 권함'; if (!(a && a.ok)) sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return a; }, function(e){ sl.textContent = '💾 저장 실패: ' + String(e && e.message || e).slice(0, 80); sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return null; });
+                  return { ok: true, direct: true };
+                });
+              });
+            });
+        });
+      }).catch(function(e){ return give(String(e && e.message || e).slice(0, 80)); });
+    };
+    // 직결을 먼저, 안 되면 그 자리에서 'all' 길(이유 한 줄)
+    st.gasRunFast_ = function(){
+      return st.gasRunDirect_().then(function(g){
+        if (g && g.fallback){
+          st.route = 'GAS';
+          var d = document.createElement('div'); d.className = 'nxai-cp-line nxai-muted'; d.textContent = '⚡ GAS로 처리(' + (g.why || '직결 안 됨') + ')'; st.steps.basic.querySelector('.nxai-cp-lines').appendChild(d);
+          return st.gasRunAll_();
+        }
+        return g;
       });
     };
     // [2026.10.23 특단 T2] 서버 step 'all' 한 번으로 ①②③(+④ 준비) — 결과 stages.basic/evidence/overview를 기존 단계 처리기(doStep의 pre)에 그대로 넘긴다.
@@ -56378,7 +56445,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var waitCalc = function(){ return (st.calcPromise || Promise.resolve()).then(function(){ st.calcPromise = null; }); };
       // [2026.10.23 특단 반응 잣대] ▶는 "지금 계산"이다 — 서버 ④ 확인(저장된 계산이 있나·새 서류가 있나, 5~10초+폴더 훑기)을 부르지 않고 바로 계산기로 간다(답 뒤엔 어차피 다시 계산)
       st.secBtnFirst = st.tBtn ? Math.round((Date.now() - st.tBtn) / 1000) : 0;
-      return st.doStep('calc', undefined, { ok: true, lines: ['▶ — 서버 확인 없이 바로 세액계산기로 갑니다(답을 반영한 칸으로 다시 계산)'], items: [], needCalc: true })
+      return Promise.resolve(st.applyReadP || null).then(null, function(){ return null; }) // [T6 3단계] 직결 읽기의 저장(applyRead)이 아직이면 끝난 뒤에 계산
+        .then(function(){ return st.doStep('calc', undefined, { ok: true, lines: ['▶ — 서버 확인 없이 바로 세액계산기로 갑니다(답을 반영한 칸으로 다시 계산)'], items: [], needCalc: true }); })
         .then(waitCalc)
         // [2026.10.23 속도 ㅅ10차] ⑤ 인쇄 준비와 ⑥ 저장을 한 호출로(서버 왕복 15번 중 1번 덜 — 가상상속6: 오가며 기다린 시간 167초). 묶음이 실패하면 예전처럼 따로
         // [2026.10.23 특단 T4 — 세액 뒤는 뒤에서] 세액이 나오면 여기서 마무리 약속은 끝(▶ 단추·넥스 resume이 더 기다리지 않음). ⑤ 서식 대조·⑥ 저장·검토서·관련법령·⑦ 현황표는 st.bg로 뒤에서 잇고 끝나면 "📄 준비됨" 한 줄
@@ -56447,7 +56515,22 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (!open.length) return nxAiCpFlushAnswers_(st).then(function(){ return st.waiting ? st.resume() : null; });
     return Promise.resolve();
   }
+  // [2026.10.27 T6 3단계] 시험 서비스 토큰·주소 — GAS 'readerToken'으로 한 번 받아 50분 기억(직결 꺼짐이면 5분 기억). 설정 🧪 화면도 같이 쓴다(window.nxAiCpReaderToken_)
+  var NXAI_RT_ = null;
+  function nxAiCpReaderToken_(caseId){
+    var now = Date.now();
+    if (NXAI_RT_ && NXAI_RT_.until > now) return Promise.resolve(NXAI_RT_);
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return Promise.resolve({ direct: false, why: '로그인 전' });
+    return callGas('case_proc', { caseId: caseId || '', step: 'readerToken', noAi: true }).then(function(r){
+      if (!r || r.error || r.ok === false || r.direct === false || !r.token || !r.url){ NXAI_RT_ = { direct: false, why: (r && (r.error || r.why)) || '직결 꺼짐', until: now + 5 * 60000 }; return NXAI_RT_; }
+      NXAI_RT_ = { direct: true, token: r.token, url: r.url, row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + 50 * 60000 };
+      return NXAI_RT_;
+    }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; });
+  }
+  window.nxAiCpReaderToken_ = nxAiCpReaderToken_;
   function nxAiCpFlushAnswers_(st){
+    if (st.applyReadP) return st.applyReadP.then(function(){ return nxAiCpFlushAnswers_(st); }, function(){ return nxAiCpFlushAnswers_(st); }); // [T6 3단계] 직결 읽기의 저장이 끝난 뒤에 답을 보낸다
     if (st.ansBusy){ st.ansAgain = true; return st.ansBusy; }
     var q = (st.ansQ || []).slice(); st.ansQ = [];
     var keys = (st.prKeys || []).slice(); st.prKeys = [];
@@ -56795,7 +56878,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 7 반영 현황표 — 사건 기본·처리개요 칸별 채움/출처/추정, 증빙 확보, 계산·서식 PDF·검토서, 남은 질문을 한 표로
   // 화면 하단 집계와 같은 기준이 되게 — 지금 보이는 항목·결정을 그대로 보낸다
   function nxAiCaseProcStatusReq_(st){
-    return { step: 'status', items: st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; }), decisions: st.decisions, uiTiming: { press2tax: st.secPress2Tax || 0, btn2tax: st.secBtn2Tax || 0, first: st.secFirst || 0, btnFirst: st.secBtnFirst || 0, calls: (st.timing || []).length } }; // [2026.10.23 특단 측정 잣대] "⚡→세액"·"▶→세액" 초를 현황표에
+    return { step: 'status', items: st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; }), decisions: st.decisions, uiTiming: { press2tax: st.secPress2Tax || 0, btn2tax: st.secBtn2Tax || 0, first: st.secFirst || 0, btnFirst: st.secBtnFirst || 0, calls: (st.timing || []).length, route: st.route || 'GAS' } }; // [T6 3단계] route '직결'/'GAS' // [2026.10.23 특단 측정 잣대] "⚡→세액"·"▶→세액" 초를 현황표에
   }
   // [2026.10.23 특단 T4] 세액계산 결과 상자 글에서 세액 한 줄 — "납부할 세액 1,234,560원"처럼. 못 찾으면 빈 글
   function nxAiCpTaxFromBox_(txt){
@@ -59013,7 +59096,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
                 // [2026.10.23 특단 T4 — 세액 뒤는 뒤에서] 세액이 저장되면 화면은 여기서 바로 끝(✅ 세액·"⚡→세액 n초"). 서식 PDF·⑤⑥⑦은 뒤에서 이어지고 끝나면 알린다 — 세무사님이 2~4분을 더 기다리지 않게
                 var taxTxt = nxAiCpTaxFromBox_(txt), secP = Math.round((Date.now() - st.t0) / 1000), secB = st.tBtn ? Math.round((Date.now() - st.tBtn) / 1000) : 0;
                 st.secPress2Tax = secP; st.secBtn2Tax = secB;
-                var tm = '⚡→세액 ' + secP + '초' + (secB ? ' · ▶→세액 ' + secB + '초' : '');
+                var tm = (st.secFirst ? '⚡→첫 결과 ' + st.secFirst + '초' + (st.route === '직결' ? '(직결)' : '') + ' · ' : '') + '⚡→세액 ' + secP + '초' + (secB ? ' · ▶→세액 ' + secB + '초' : '');
                 st.setStep('calc', '✅', '세액 ' + (taxTxt || '계산·저장 끝') + ' — ' + tm + ' · 서식 PDF는 뒤에서 만드는 중');
                 st.say('✅ 세액 ' + (taxTxt || '계산·저장 끝') + ' (' + tm + ') — 서식 PDF·종합검토서·현황표는 뒤에서 만들어 준비되면 알려 드립니다.');
                 if (st.provisionalNote){ var pn = document.createElement('div'); pn.className = 'nxai-cp-line nxai-warn'; pn.textContent = '⚠ ' + st.provisionalNote; st.steps.calc.querySelector('.nxai-cp-lines').appendChild(pn); }
