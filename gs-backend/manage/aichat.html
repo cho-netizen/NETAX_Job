@@ -2748,6 +2748,75 @@
       return el && el.value ? { screenDate: el.value } : null;
     } catch (e) { return null; }
   }
+  // =========================================================
+  // [2026.10.28 읽을 대상 ②] 읽을 파일 체크 목록 — 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" / "하위폴더속에 있는 파일은 폴더를 선택하면 모두 읽게 될 터이니 하위폴더들 속에 파일관리를 잘 해 놓아야 하겠구나" → "그렇게 만들자."
+  //  처리개요 📂 읽을 목록 단추와 ⚡ 첫 실행(목록이 없을 때 저절로 열림)이 같은 그리기 함수를 쓴다. 서버 step readList(목록·기본 체크·왜·다른 벌·새 파일) → [이 목록으로 읽기] = step readScope { mode:'list', ids }.
+  //  폴더 체크 = 그 폴더와 하위 폴더 파일 전부 켬·끔(빠른 길), 파일 체크 = 예외. 기본 체크는 서버 판정(이미지·산출물·보관 폴더 꺼짐, 이유 표시). 사건파악 전용(의뢰서·관련법령)은 체크 대상이 아니라 "늘 읽음"으로만 보인다.
+  //  돌려주는 Promise: { saved:true } (저장함) / { saved:false } (체크 없이 이번만 기본 규칙으로) / 닫음이면 그대로 기다림
+  // =========================================================
+  window.nxCpReadListUi_ = function(host, caseId, opts){
+    opts = opts || {};
+    var E = nxAiEsc_;
+    host.innerHTML = '<div class="nxai-muted" style="font-size:12px;">📂 사건 폴더의 파일을 세는 중…</div>';
+    return new Promise(function(resolve){
+      callGas('case_proc', { caseId: caseId, step: 'readList' }).then(function(r){
+        if (!r || r.error || !r.ok){ host.innerHTML = '<div class="nxai-muted">읽을 파일 목록을 만들지 못했습니다: ' + E((r && r.error) || '응답 없음') + '</div>'; resolve({ saved: false, error: true }); return; }
+        var rows = r.rows || [], folders = r.folders || [], cnt = r.counts || {};
+        var kindLab = { doc: '', memo: '사건파악 전용', image: '이미지', system: '시스템', output: '산출물', skipdir: '읽지 않는 폴더' };
+        var h = '<div class="nxcp-rl" style="font-size:12.5px; line-height:1.5;">';
+        h += '<div><b>📂 읽을 파일 체크 목록</b> — ' + (r.mode === 'list' ? '체크한 목록(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ')' : r.mode === 'dirs' ? '폴더 범위로 정한 상태(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ') — 저장하면 파일 목록으로 바뀜' : '<span style="color:#a05a00;">체크 안 한 목록 — 기본 체크(규칙)대로 보임</span>') + '</div>';
+        h += '<div class="nxai-muted" style="font-size:11.5px;">전체 ' + (cnt.전체 || 0) + '개 · 켠 ' + (cnt.켠 || 0) + '개' + (cnt.이미지 ? ' · 이미지 ' + cnt.이미지 + '개 기본 꺼짐(PDF로 바꾼 뒤 읽음)' : '') + (cnt.산출물폴더 ? ' · 읽지 않는 폴더 안 ' + cnt.산출물폴더 + '개' : '') + (cnt.사건파악전용 ? ' · 사건파악 전용 ' + cnt.사건파악전용 + '개(늘 읽음, 증빙 아님)' : '') + (cnt.다른벌 ? ' · 같은 서류 다른 벌 가능 ' + cnt.다른벌 + '개' : '') + (r.truncated ? ' · ⚠ 파일이 너무 많아 일부만' : '') + '</div>';
+        if (r.newFiles && r.newFiles.length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:4px 8px; margin:4px 0;">🆕 목록을 만든 뒤 들어온 새 파일 ' + r.newFiles.length + '개 — 체크 안 됨(읽지 않음): ' + E(r.newFiles.slice(0, 5).map(function(f){ return f.name; }).join(', ')) + (r.newFiles.length > 5 ? ' 외' : '') + '</div>';
+        var byDir = {}; rows.forEach(function(x){ (byDir[x.dir || ''] = byDir[x.dir || ''] || []).push(x); });
+        var dirKeys = Object.keys(byDir).sort(function(a, b){ if (!a) return 1; if (!b) return -1; return a < b ? -1 : 1; }); // 폴더 밖 파일은 맨 아래 따로
+        var fileLine = function(x){
+          var why = x.always ? '늘 읽음(사건파악 전용 — 증빙·경비 후보로는 안 씀)' : (x.why || (x.on ? '' : ''));
+          var tag = x.always ? '<span style="color:#1565c0;">📎 ' + E(kindLab.memo) + '</span>' : (x.kind && kindLab[x.kind] ? '<span style="color:var(--sub);">' + E(kindLab[x.kind]) + '</span>' : '');
+          return '<label style="display:flex; gap:6px; align-items:flex-start; margin:2px 0 0 22px;" title="' + E(why) + '">'
+            + (x.always ? '<span style="width:13px; display:inline-block; text-align:center;">📎</span>' : '<input type="checkbox" data-rl-file="' + E(x.id) + '" data-rl-dir="' + E(x.dir || '') + '"' + (x.on ? ' checked' : '') + ' style="margin-top:3px;">')
+            + '<span style="min-width:0; flex:1;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:inline-block; max-width:100%; vertical-align:bottom;">' + E(x.name) + '</span>'
+            + '<span class="nxai-muted" style="font-size:11px; display:block;">' + [tag, x.종류 ? E(x.종류) : '', x.isNew ? '<span style="color:#a05a00;">🆕 새 파일 — 체크 안 됨</span>' : '', x.dup ? '<span style="color:#7a4a00;">⧉ ' + E(x.dup.왜) + '</span>' : '', x.outside ? '<span style="color:#7a4a00;">폴더 밖 파일</span>' : '', (!x.on && !x.always && why) ? '<span>— ' + E(why) + '</span>' : ''].filter(Boolean).join(' · ') + '</span></span>'
+            + '<a href="https://drive.google.com/file/d/' + encodeURIComponent(x.id) + '/view" target="_blank" rel="noopener" style="white-space:nowrap; font-size:11.5px;">📄 원문</a></label>';
+        };
+        dirKeys.forEach(function(d){
+          var list = byDir[d], fo = folders.filter(function(f){ return f.dir === d; })[0] || {}, nOn = list.filter(function(x){ return x.on; }).length, nChk = list.filter(function(x){ return !x.always; }).length;
+          var skip = fo.kind === 'skip' || fo.kind === 'ref';
+          h += '<details style="margin-top:6px;"' + ((!skip && d) || !d ? ' open' : '') + '><summary style="cursor:pointer;"><label style="display:inline-flex; gap:6px; align-items:center;" onclick="event.stopPropagation()">'
+            + (d ? '<input type="checkbox" data-rl-folder="' + E(d) + '"' + (nChk && nOn === nChk ? ' checked' : '') + (nOn && nOn < nChk ? ' data-rl-mixed="1"' : '') + '>' : '')
+            + '<b>' + (d ? '📁 ' + E(d) : '📄 폴더 밖 파일(사건 폴더 바로 아래)') + '</b></label> <span class="nxai-muted">(' + nOn + '/' + list.length + '개 켬' + (skip ? ' · ' + E(fo.why || '읽지 않는 폴더') : fo.why ? ' · ' + E(fo.why) : '') + ')</span></summary>'
+            + list.map(fileLine).join('') + '</details>';
+        });
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><button type="button" class="nxai-btn" style="background:var(--accent, #1565c0); color:#fff; border-color:transparent;" data-rl-save>✅ 이 목록으로 읽기</button>'
+          + (opts.gate ? '<button type="button" class="nxai-btn" data-rl-skip title="목록을 저장하지 않고, 기본 규칙(이미지·산출물 제외)대로 이번만 읽습니다">체크 없이 이번만 기본대로</button>' : '<button type="button" class="nxai-btn" data-rl-clear title="저장한 목록을 지우고 기본 규칙으로 돌아갑니다">목록 지우기(기본 규칙으로)</button>')
+          + '<span class="nxai-muted" style="font-size:11.5px;">폴더 체크 = 그 아래 전부 · 파일 체크 = 예외. 저장하면 서류 읽기·칸 채우기·직결·넥스가 이 목록만 읽습니다(기록부에 누가·언제).</span></div>';
+        h += '</div>';
+        host.innerHTML = h;
+        // 폴더 체크 → 그 폴더와 하위 폴더 파일 전부
+        Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-folder]'), function(cb){
+          if (cb.getAttribute('data-rl-mixed')) cb.indeterminate = true;
+          cb.addEventListener('change', function(){
+            var d = cb.getAttribute('data-rl-folder');
+            Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-file]'), function(f){ var fd = f.getAttribute('data-rl-dir') || ''; if (fd === d || fd.indexOf(d + '/') === 0) f.checked = cb.checked; });
+            cb.indeterminate = false;
+          });
+        });
+        host.querySelector('[data-rl-save]').addEventListener('click', function(){
+          var ids = Array.prototype.map.call(host.querySelectorAll('input[data-rl-file]:checked'), function(x){ return x.getAttribute('data-rl-file'); });
+          if (!ids.length){ nxAiToast_('읽을 파일을 하나 이상 체크해 주세요.'); return; }
+          var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
+          callGas('case_proc', { caseId: caseId, step: 'readScope', mode: 'list', ids: ids, by: '세무사님' }).then(function(res){
+            if (!res || res.error || res.ok === false){ nxAiToast_((res && (res.error || res.message)) || '저장하지 못했습니다.'); btn.disabled = false; btn.textContent = '✅ 이 목록으로 읽기'; return; }
+            nxAiToast_(res.message || '읽을 목록을 정했습니다.');
+            host.innerHTML = '<div style="font-size:12.5px;">✅ 읽을 파일 목록 저장 — 켠 ' + (res.nOn || ids.length) + '개 / 전체 ' + (res.total || '') + '개 (세무사님, 지금)</div>';
+            if (typeof window.chGasReloadNow_ === 'function') { try { window.chGasReloadNow_(); } catch (e) {} }
+            resolve({ saved: true, n: res.nOn || ids.length });
+          }).catch(function(e){ nxAiToast_('저장 중 오류: ' + (e && e.message || e)); btn.disabled = false; btn.textContent = '✅ 이 목록으로 읽기'; });
+        });
+        var sk = host.querySelector('[data-rl-skip]'); if (sk) sk.addEventListener('click', function(){ host.innerHTML = '<div class="nxai-muted" style="font-size:12px;">체크 없이 기본 규칙(이미지·산출물 제외)대로 이번만 읽습니다 — 목록은 저장되지 않았습니다.</div>'; resolve({ saved: false }); });
+        var cl = host.querySelector('[data-rl-clear]'); if (cl) cl.addEventListener('click', function(){ callGas('case_proc', { caseId: caseId, step: 'readScope', clear: true, by: '세무사님' }).then(function(res){ nxAiToast_((res && res.message) || '목록을 지웠습니다.'); window.nxCpReadListUi_(host, caseId, opts).then(resolve); }).catch(function(e){ nxAiToast_('지우는 중 오류: ' + (e && e.message || e)); }); });
+      }).catch(function(e){ host.innerHTML = '<div class="nxai-muted">읽을 파일 목록을 만들지 못했습니다: ' + E(e && e.message || e) + '</div>'; resolve({ saved: false, error: true }); });
+    });
+  };
   function nxAiCaseProcRun_(bubble, caseId, opts){
     var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink), gasOnly: !!(opts && opts.gasOnly), screen: !!(opts && opts.screen), force: !!(opts && opts.force), said: (opts && opts.said) || null }; // screen: 사건 화면의 ⚡ GAS 사건처리 칸(AI 창 밖)
     NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
@@ -2841,6 +2910,16 @@
     //  다시 읽는 반복 바퀴는 없다(세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?", "단 한번의 처리로 끝나야 하잖아?"). 도구 안은 AI 없이(noAi).
     st.gasRun = function(){
       if (st.gasDone) return Promise.resolve(st.gasDone);
+      // [2026.10.28 읽을 대상 ②] ⚡를 처음 누를 때 기록부에 읽을 파일 목록이 없으면 체크 목록이 저절로 열린다(단추 뒤에 숨기지 않음) — [이 목록으로 읽기] 뒤에 읽기 시작. 넥스가 부른 gas_run(st.screen 아님)은 관문 없이(넥스는 목록이 없으면 세무사님께 먼저 청하도록 지시문에)
+      if (st.screen && !st.listGate){
+        st.listGate = true;
+        return st.run('record').then(function(r){
+          var sc = r && r.record && r.record.readScope; if (sc) return null;
+          st.setStep('basic', '📂', '읽을 파일 목록을 먼저 체크해 주세요');
+          var host = document.createElement('div'); host.className = 'nxai-cp-line'; host.style.marginLeft = '0'; st.steps.basic.querySelector('.nxai-cp-lines').appendChild(host);
+          return window.nxCpReadListUi_(host, caseId, { gate: true }).then(function(res){ st.setStep('basic', '⏳', res && res.saved ? '읽을 목록 ' + res.n + '개로 읽습니다' : '체크 없이 기본 규칙대로 읽습니다'); return res; });
+        }).catch(function(e){ st.setStep('basic', '⏳', '읽을 목록을 확인하지 못해 기본 규칙대로 읽습니다(' + ((e && e.message) || e) + ')'); return null; }).then(function(){ return st.gasRun(); });
+      }
       // [2026.10.23 속도 ㅅ9차] 사건 화면에서 "답하실 질문 N개 → ⚡"로 들어왔는데 서류가 읽혀 있고 새 서류가 없고 저장된 질문이 있으면 — ①②③을 다시 돌리지 않고 저장된 질문을 바로 보인다(가상증여5: 새로 고친 뒤 ①20초·③ 다시 돌던 것).
       //  [⚡ GAS로 다시 처리](st.force)는 예전대로 처음부터. 답하면 가벼운 ③이 다시 돌아 질문이 갱신된다
       // [2026.10.23 특단 반응 잣대 — 세무사님 "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"] 현황(view)과 ① 사건파악을 같이 띄운다 — 예전엔 현황(7~15초, 폴더 훑기)을 받은 뒤에야 ①을 시작해 그동안 화면이 "진행 중…"뿐이었다.

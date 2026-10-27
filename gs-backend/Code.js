@@ -3761,7 +3761,7 @@ function job_lookup_(input) {
       고침기록: (sv.valueHist || []).slice(-15).map(function (h) { return h.at + ' ' + h.by + ' ' + (h.label || h.target) + ': ' + caseProcValueText_(h.prev ? h.prev.v : '').slice(0, 40) + ' → ' + caseProcValueText_(h.next ? h.next.v : '').slice(0, 40) + (h.undone ? ' (되돌림)' : ''); }),
       계산저장본: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-20).map(function (e) { return { id: e.id, 세목: e.세목, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? (e.안.바꾼칸 || []).map(function (d) { return d.칸 + ' ' + d.전 + '→' + d.후; }).slice(0, 6) : undefined }; }),
       읽을범위: sv.readScope || null, // [2026.10.27 F]
-      안내: '같은 칸·같은 물음을 다시 묻지 마라 — 정한값·고침기록·마지막계산·최근처리일지에 세무사님이 정하신 값이 있으면 그 값을 쓰고 끝낸다(10-27 "이미 모두 알려줬는데"). 세무사님이 "○○ 폴더만 읽어라" 하시면 caseproc_scope. 세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정·정한값의 누가=세무사님)은 네가 바꾸지 말고, 서류와 어긋나 보이면 그 사실(지금 값·서류 값)만 말씀드린다. 남은 질문에 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}(넣을칸이 있는 질문). 이미 확정돼 남은 질문에 없는 칸(과세대상 구분·필요경비·사건분류 등)은 caseproc_fix{caseId, target, value, why}(세무사님 값이면 카드 [실행]이 세무사님 확인). 서류로 네가 푼 질문·답한 질문은 caseproc_decide로 닫아라. 경우(안)별 세액은 calc_scenario로 계산기를 돌려 저장한 뒤 그 저장본 숫자만 말한다(암산 금지). 세액 숫자는 계산저장본·마지막계산에서만 말한다.'
+      안내: '같은 칸·같은 물음을 다시 묻지 마라 — 정한값·고침기록·마지막계산·최근처리일지에 세무사님이 정하신 값이 있으면 그 값을 쓰고 끝낸다(10-27 "이미 모두 알려줬는데"). 세무사님이 "○○ 폴더만 읽어라"·"○○ 파일은 빼라" 하시면 caseproc_scope(on/off에 파일·폴더 이름). 읽을범위가 null이면 읽을 파일 목록을 아직 체크하지 않은 사건 — 서류를 읽기 전에 세무사님께 📂 읽을 목록 확인을 먼저 청한다. 세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정·정한값의 누가=세무사님)은 네가 바꾸지 말고, 서류와 어긋나 보이면 그 사실(지금 값·서류 값)만 말씀드린다. 남은 질문에 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}(넣을칸이 있는 질문). 이미 확정돼 남은 질문에 없는 칸(과세대상 구분·필요경비·사건분류 등)은 caseproc_fix{caseId, target, value, why}(세무사님 값이면 카드 [실행]이 세무사님 확인). 서류로 네가 푼 질문·답한 질문은 caseproc_decide로 닫아라. 경우(안)별 세액은 calc_scenario로 계산기를 돌려 저장한 뒤 그 저장본 숫자만 말한다(암산 금지). 세액 숫자는 계산저장본·마지막계산에서만 말한다.'
     };
     return JSON.parse(cxMask_(JSON.stringify(out)));
   }
@@ -3949,8 +3949,10 @@ function job_buildProposal_(input) {
     const c = job_findCase_(params.caseId);
     if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
     const dirs = Array.isArray(params.dirs) ? params.dirs : (params.dirs ? [params.dirs] : []), files = Array.isArray(params.files) ? params.files : (params.files ? [params.files] : []);
-    if (!params.clear && !dirs.length && !files.length) return { error: 'dirs(폴더 이름) 또는 files(파일 이름) 목록, 아니면 clear:true.' };
-    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + (params.clear ? '읽을 범위를 풀어 사건 폴더 전체를 읽기' : '서류 읽기·칸 채우기를 폴더 ' + dirs.join(', ') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로만 — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다') + ' ([실행] 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 범위로 읽습니다)', gasAction: spec.gas, payload: { caseId: c.id, step: 'readScope', dirs: dirs, files: files, clear: !!params.clear, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
+    const on = Array.isArray(params.on) ? params.on : (params.on ? [params.on] : []), off = Array.isArray(params.off) ? params.off : (params.off ? [params.off] : []); // [2026.10.28 읽을 대상 ④] 파일 단위 켜기·끄기(체크 목록)
+    if (!params.clear && !dirs.length && !files.length && !on.length && !off.length) return { error: 'on/off(켤·끌 파일 이름·폴더 이름), dirs(폴더 이름), files(파일 이름) 중 하나, 아니면 clear:true.' };
+    const listMode = on.length || off.length;
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + (params.clear ? '읽을 범위를 풀어 사건 폴더 전체를 읽기' : listMode ? '읽을 파일 목록에서 ' + (on.length ? '켬: ' + on.join(', ') : '') + (on.length && off.length ? ' / ' : '') + (off.length ? '끔: ' + off.join(', ') : '') + ' — 목록에 켜진 파일만 읽습니다' : '서류 읽기·칸 채우기를 폴더 ' + dirs.join(', ') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로만 — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다') + ' ([실행] 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 목록으로 읽습니다)', gasAction: spec.gas, payload: listMode ? { caseId: c.id, step: 'readScope', on: on, off: off, note: String(params.why || '').slice(0, 120), by: '넥스' } : { caseId: c.id, step: 'readScope', dirs: dirs, files: files, clear: !!params.clear, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
   }
   // [2026.10.27 경우별 저장] 경우(안) 계산 — 세목·입력·이름을 받아 서버 엔진으로 계산해 따로 저장(기본 저장본·세무사님 값은 그대로)
   if (input.action === 'calc_scenario') {
@@ -4003,7 +4005,7 @@ const JOB_AI_TOOLS_ = [
       + 'caseproc_undo{caseId,target(선택)}(마지막 칸 고침을 전 값으로 되돌리기) / '
       + 'caseproc_decide{caseId,qids[],decision(done=확인·해소 | 보류 | 무시 | 예정),note(근거 한 줄)}(서류로 네가 푼 질문·세무사님이 답한 질문을 닫아 다음 처리 때 다시 묻지 않게 — 서류 ⚠ 확인 질문을 읽고 풀었으면 꼭 닫아라) / '
       + 'calc_scenario{caseId,tax(transfer|gift|inheritance — 생략하면 사건 세목),name,changes:[{path,value}],input(선택: 엔진 입력 전체),why}(경우(안)별 세액계산 — 세액계산기를 서버에서 돌려 이름 붙여 따로 저장. 양도 path: a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·a0.acquisitionDate·costs·taxfee·사건분류·seller.multiHouseCount, 증여·상속 path: giftAmount·relation·taxableEstateAmount·hasSpouse 같은 엔진 입력 이름. 세액 숫자는 반드시 이 저장본에서만 — 암산한 세액을 답에 쓰지 마라. 같은 사건에서 양도세 안·증여세 안·상속세 안을 각각 저장해 견줄 수 있다) / '
-      + 'caseproc_scope{caseId,dirs[](사건 폴더 안 폴더 이름, 예: ["신고제출"]),files[](파일 이름),clear(true면 전체로),why}(세무사님이 "○○ 폴더(파일)만 읽어라"고 하시면 — 그 뒤 서류 읽기·칸 채우기·⚠ 질문이 그 범위만 쓴다. 정한 뒤 "이 사건 처리하자"를 다시).',
+      + 'caseproc_scope{caseId,on[](읽을 목록에 켤 파일 이름·폴더 이름 — 폴더면 그 아래 전부),off[](끌 파일·폴더),dirs[](그 폴더만),files[](그 파일만),clear(true면 전체로),why}(세무사님이 "○○ 폴더(파일)만 읽어라"·"○○는 빼라"고 하시면 — 그 뒤 서류 읽기·칸 채우기·⚠ 질문·직결이 그 목록만 쓴다. 읽을 목록이 아직 없으면(읽을범위 null) 세무사님께 📂 읽을 목록 확인을 먼저 청한다. 정한 뒤 "이 사건 처리하자"를 다시).',
     input_schema: {
       type: 'object',
       properties: {
@@ -26687,7 +26689,7 @@ function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 
 //  job 화면 📥 증빙 넣기(handleUploadFile)는 올린 파일 ID를 줄(cp_preread_queue)에 넣어 두어 다음 틱이 먼저 읽는다. 한 틱은 4분 30초 안에 멈추고 남은 것은 다음 틱.
 //  트리거는 밤 점검·PC 배포 기록(gh_mark_deployed) 때 없으면 만든다(cpPrereadEnsureTrigger_). 겹침은 스크립트 잠금으로 막는다.
 // =========================================================
-var CP_PREREAD_SINCE_ = 'cp_preread_since', CP_PREREAD_QUEUE_ = 'cp_preread_queue', CP_PREREAD_SKIP_DIR_ = /^(보고서_내부|보고서_외부|_이전판|이전버전|양도\s*코리아|_원본사진|_글자인식기억|_사건처리점검)$/;
+var CP_PREREAD_SINCE_ = 'cp_preread_since', CP_PREREAD_QUEUE_ = 'cp_preread_queue'; // [2026.10.28] 건너뛸 폴더 규칙은 caseProcFolderRule_ 하나로(CASEPROC_SKIP_DIR_RE_)
 function cpPrereadEnsureTrigger_() {
   const has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; });
   if (!has) ScriptApp.newTrigger('cpPrereadTick').timeBased().everyMinutes(1).create();
@@ -26707,7 +26709,7 @@ function cpPrereadInCases_(file, rootId) {
     let ps = file.getParents(), depth = 0;
     while (ps.hasNext() && depth < 6) {
       const p = ps.next();
-      if (CP_PREREAD_SKIP_DIR_.test(String(p.getName() || '').trim())) return false;
+      { const fr = caseProcFolderRule_(p.getName(), null, {}); if (fr.kind === 'skip' || fr.kind === 'ref') return false; } // [2026.10.28 읽을 대상 ①] ⚡ 서류 목록과 같은 폴더 판정(예전 CP_PREREAD_SKIP_DIR_ 별도 규칙을 합침)
       if (p.getId() === rootId) return true;
       ps = p.getParents(); depth++;
     }
@@ -26741,10 +26743,11 @@ function t6CaseFolderOf_(file, rootId) { // 파일이 든 사건 폴더(고객�
   return null;
 }
 function t6OcrMemBuild_(folder) { // 폴더 안 서류(PDF·사진·오피스·한글·압축)의 기억을 모은다 — 기억에 있는 것만(새 글자인식은 하지 않음)
-  const files = caseProcFiles_({ id: '', 폴더ID: folder.getId() }, { includeFiled: true }) || [];
+  const files = caseProcFiles_({ id: '', 폴더ID: folder.getId() }, { includeFiled: true, everything: true }) || []; // [2026.10.28 읽을 대상 ①] ⚡와 같은 판정 — 이미지·산출물·보관 폴더 파일의 기억은 싸 보내지 않는다(직결이 읽지 않는 것)
   const mem = {}, ids = {}; let n = 0;
   files.forEach(function (f) {
     if (!f || !f.id || !f.modified || f.name === T6_OCRMEM_FILE_) return;
+    if (!f.on && f.kind !== 'memo') return;
     const mt = String(f.mimeType || ''), nm = String(f.name || '');
     if (!(/pdf|^image\/|officedocument|msword|spreadsheetml|ms-excel/.test(mt) || /\.(hwpx|hwp|pptx|zip)$/i.test(nm))) return;
     let any = false;
@@ -30939,6 +30942,7 @@ function caseProc0_(body) {
     if (body.step === 'decide') return caseProcDecide_(c, body);
     if (body.step === 'scenario') return caseProcScenario_(c, body);
     if (body.step === 'readScope') return caseProcReadScope_(c, body); // [2026.10.27 F] "○○ 폴더만 읽어라"
+    if (body.step === 'readList') return caseProcReadList_(c, body); // [2026.10.28 읽을 대상 ②] 읽을 파일 체크 목록(기본 체크·왜·다른 벌·새 파일)
     if (body.step === 'scopeView') return caseProcScopeView_(c);
     if (body.step === 'fixView') { const sv0 = caseProcLoad_(c.id) || {}; let v0 = {}; try { v0 = caseProcNexView_(c); } catch (e) { v0 = {}; } return { ok: true, 정한값: v0.정한값 || [], 고침기록: (sv0.valueHist || []).slice(-30), 남은질문: (sv0.remaining || []).filter(function (it) { const d = sv0.decisions && sv0.decisions[it.id] && sv0.decisions[it.id].d; return d !== 'done' && d !== '무시'; }).slice(0, 40).map(function (it) { return { qid: it.id, 글: String(it.text || '').slice(0, 120), 넣을칸: it.ask ? it.ask.target || '' : '' }; }), 안: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.안; }).map(function (e) { return { id: e.id, 세목: e.세목, 이름: e.안.이름, 최종세액: e.최종세액, 때: e.안.때, 누가: e.안.누가 }; }) }; } // 화면 "칸 값 고치기" 재료
     if (body.step === 'draft') return caseProcDraft_(c);
@@ -31420,6 +31424,9 @@ function caseProcUserView_(c, body) {
   const v = caseProcNexView_(c, { withFiles: !light }), sv = caseProcLoad_(c.id) || {};
   let last = null; try { last = caseProcLastCalc_(c).last; } catch (e) {}
   const st = v.단계 || {}, next = [];
+  const scope0 = sv.readScope || null; let newF = []; if (!light) { try { newF = caseProcNewFiles_(c, sv); } catch (e) { newF = []; } } // [2026.10.28 읽을 대상 ②③]
+  if (!scope0) next.push({ do: 'scope', text: '읽을 파일 목록을 아직 체크하지 않았습니다 — 체크 전에는 기본 규칙(이미지·산출물 제외)대로만 읽습니다' }); // [2026.10.28 읽을 대상 ②]
+  if (newF.length) next.push({ do: 'scope', text: '새 파일 ' + newF.length + '개 — 체크 안 됨(' + newF.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (newF.length > 3 ? ' 외' : '') + ') — 읽을 목록에서 체크하면 다음 읽기부터 읽습니다' }); // [2026.10.28 읽을 대상 ③] 소리 없이 읽지도 빠지지도 않게
   if (!st['증빙 읽기·정리']) next.push({ do: 'gas', text: '서류를 아직 GAS로 읽지 않았습니다 — 서류 읽기·칸 채우기부터' });
   else if (Array.isArray(v.새서류) && v.새서류.length) next.push({ do: 'gas', text: '서류를 읽은 뒤 새로 들어온 서류 ' + v.새서류.length + '개(' + v.새서류.slice(0, 3).join(', ') + (v.새서류.length > 3 ? ' 외' : '') + ') — 다시 읽기' });
   if (v.남은질문수) next.push({ do: 'gas', text: '답하실 질문 ' + v.남은질문수 + '개' + (v.보류질문수 ? ' (보류 ' + v.보류질문수 + '개 따로)' : '') });
@@ -31434,6 +31441,7 @@ function caseProcUserView_(c, body) {
   // [2026.10.23 속도 ㅅ9차] 저장된 질문·결정·사건 기본을 같이 돌려준다 — 화면을 새로 고친 뒤 "답하실 질문 N개"를 누르면 ①②③을 다시 돌리지 않고 이 질문을 바로 보인다(aichat st.gasRun 이어받기)
   const slimCase = { id: c.id, 사건명: c.사건명, 고객명: c.고객명, 납세자: c.납세자, 세목: c.세목, 업무유형: c.업무유형, 기준일: c.기준일, 법정일: c.법정일, 폴더ID: c.폴더ID, 상태: c.상태, 사건개요: c.사건개요 || {}, 수정일: c.수정일, my_report_id: c.my_report_id };
   return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0,
+    읽을목록: { 방식: scope0 ? (scope0.mode === 'list' ? 'list' : 'dirs') : 'none', 켠수: scope0 && Array.isArray(scope0.files) ? scope0.files.length : null, 누가: scope0 ? (scope0.by || '') : '', 때: scope0 ? (scope0.at || '') : '', 새파일: newF }, // [2026.10.28 읽을 대상 ②] 화면이 ⚡ 처음 누를 때 목록이 없으면 체크 목록을 먼저 띄운다
     질문: (Array.isArray(sv.remaining) ? sv.remaining : []).slice(0, 80), 결정: sv.decisions || {}, 바탕: t6RecordForReader_(sv), 사건: slimCase, 저장때: sv.savedAt || '', 칸채움때: (sv.steps && sv.steps.overview && sv.steps.overview.at) || '' }; // [2026.10.27 H] 바탕 = 직결 요청에 실을 기록부(결정·읽을 범위·답 저장소·고침 기록…)
 }
 // 넥스가 보는 사건 현황 — 기록부·정한 값·처리개요·증빙·닫은 질문·서식·검토서·단계 시각(·새 서류 — withFiles일 때만, 폴더를 훑으므로)
@@ -31458,6 +31466,7 @@ function caseProcNexView_(c, opt) {
     읽은서류: sv.readFiles ? { 때: sv.readFiles.at, 수: (sv.readFiles.list || []).length } : null
   };
   out.알림 = (sv.alerts || []).filter(function (a) { return !a.seen; }).slice(-10).map(function (a) { return a.at + ' ' + a.text; });
+  if (opt.withFiles) { try { out.새파일미체크 = caseProcNewFiles_(c, sv).map(function (f) { return f.name; }); } catch (e) { out.새파일미체크 = []; } } // [2026.10.28 읽을 대상 ③] 목록을 만든 뒤 들어온 파일 — 읽지 않고 알림만
   if (opt.withFiles && sv.readFiles && Array.isArray(sv.readFiles.list)) {
     try {
       const known = {}; sv.readFiles.list.forEach(function (f) { known[f.id] = f.m; });
@@ -31529,41 +31538,72 @@ function caseFileInFiledFolder_(fileId) {
 var CP_FILES_MEMO_ON_ = false, CP_FILES_MEMO_ = {};
 function caseProcFilesCopy_(r) { const o = r.map(function (f) { return Object.assign({}, f); }); ['truncated', 'separate', 'refDirs'].forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; }); return o; }
 function caseProcFiles_(c, opt) {
-  const key = String(c && c.폴더ID || '').trim() + '|' + (!!(opt && opt.includeFiled)) + '|' + (!!(opt && opt.raw));
+  const key = String(c && c.폴더ID || '').trim() + '|' + (!!(opt && opt.includeFiled)) + '|' + (!!(opt && opt.raw)) + '|' + (!!(opt && opt.everything)) + '|' + (!!(opt && opt.noScope));
   if (CP_FILES_MEMO_ON_ && CP_FILES_MEMO_[key]) return caseProcFilesCopy_(CP_FILES_MEMO_[key]);
   const r = caseProcFiles0_(c, opt);
   if (CP_FILES_MEMO_ON_ && r && r.length !== undefined) { CP_FILES_MEMO_[key] = r; return caseProcFilesCopy_(r); }
   return r;
+}
+// =========================================================
+// [2026.10.28 읽을 대상 ①] 폴더·파일 판정 함수 하나 — 세무사님 원문 "속도와 정확도 모든 면에서 읽을 대상 파일을 정확하게 지정하는 하는 것이 관건" / "읽을 파일을 체크하여 지정하는 방법은 어떨까?" → "그렇게 만들자."
+//  ⚡ 서류 목록(caseProcFiles0_)·미리 읽기(cpPrereadInCases_)·글자 기억 일괄(t6OcrMemBuild_)·직결(cloudrun/shim/drive-tree.js — 같은 규칙을 거기에도 적음)이 이 판정을 쓴다.
+//  폴더: 보고서_내부·보고서_외부·_이전판·_원본사진·_글자인식기억·_사건처리점검·도구 폴더는 제외 / _신고제출(제출용 사본)·양도코리아(이미 낸 신고서)는 경정·수정·불복 입력일 때만 / 참고 폴더(판례·예규…)는 제외.
+//  파일: 이미지는 전부 기본 꺼짐(10-27 결정 — PDF로 바꾼 뒤 읽음), 시스템·임시·산출물(검토서·서식 PDF) 꺼짐, 의뢰서·관련법령은 사건파악 전용(체크 대상 아님).
+//  체크 목록(겹2)의 기본 체크가 곧 이 판정 결과다 — 목록이 없는 사건도 이 판정 결과만 읽는다(전체가 아님).
+// =========================================================
+var CASEPROC_SKIP_DIR_RE_ = /^(보고서_내부|보고서_외부|_이전판|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/;
+var CASEPROC_IMAGE_RE_ = /\.(jpe?g|png|gif|bmp|heic|heif|webp|tiff?)$/i;
+function caseProcFolderRule_(name, c, opt) {
+  const n = String(name || '').trim(), inc = !!(opt && opt.includeFiled);
+  if (CASEPROC_SKIP_DIR_RE_.test(n)) return { kind: 'skip', why: '산출물·보관 폴더(읽지 않음)' };
+  if (caseIsFiledReturnFolder_(n)) return inc || (c && caseProcPriorIsInput_(c)) ? { kind: 'filed', why: '이미 낸 신고서 보관 — 경정·수정·불복 사건의 입력' } : { kind: 'skip', why: '이미 낸 신고서 보관(양도코리아) — 꿰맞추기 방지로 읽지 않음' };
+  if (tcIsSubmitDir_(n)) return inc ? { kind: 'submit', why: '제출용 사본' } : { kind: 'skip', why: '제출용 사본(_신고제출) — 같은 서류를 두 번 세지 않게 읽지 않음' };
+  if (caseProcRefDirName_(n)) return { kind: 'ref', why: '참고자료 폴더(판례·예규·질의회신) — 사건 증빙이 아님' };
+  if (tcIsOrigPhotoDir_(n)) return { kind: 'orig', why: '변환 전 원본 사진 폴더 — PDF 짝이 있는 사진은 읽지 않음' };
+  return { kind: 'input', why: '' };
+}
+// 파일 하나의 기본 체크 — { on, why, kind: 'doc'|'memo'|'image'|'system'|'output' }
+function caseProcFileRule_(f, c, dirKind) {
+  const n = String((f && f.name) || ''), mt = String((f && f.mimeType) || '');
+  if (typeof caseProcIsIntakeMemo_ === 'function' && caseProcIsIntakeMemo_(f)) return { on: false, kind: 'memo', why: '사건파악 전용(의뢰서·관련법령) — 늘 읽되 증빙 후보로는 안 씀' };
+  if (n === T6_OCRMEM_FILE_ || /^_|^~\$/.test(n) || /\.(json|lnk|ini|db)$/i.test(n)) return { on: false, kind: 'system', why: '시스템·임시 파일' };
+  if (dirKind && dirKind !== 'input' && dirKind !== 'filed' && dirKind !== 'submit' && dirKind !== 'orig') return { on: false, kind: 'skipdir', why: (dirKind === 'ref' ? '참고자료 폴더' : '산출물·보관 폴더') + ' — 읽지 않음' };
+  if (/^image\//.test(mt) || CASEPROC_IMAGE_RE_.test(n)) return { on: false, kind: 'image', why: '이미지 — 📂 사건 폴더 정리로 PDF로 바꾼 뒤 읽음(사진은 어디 있든 읽지 않음, 10-27 결정)' };
+  if (/종합검토서|_검토서_|_신고서식\.pdf$|^계산기\.json|^관련법령_/.test(n)) return { on: false, kind: 'output', why: '도구가 만든 산출물(검토서·신고서식) — 입력이 아님' };
+  if (/\.html?$/i.test(n)) return { on: false, kind: 'system', why: '화면용 사본' };
+  return { on: true, kind: 'doc', why: dirKind === 'filed' ? '이미 낸 신고서(경정·수정·불복 입력)' : dirKind === 'orig' ? '변환 전 원본 사진 폴더의 파일' : '' };
 }
 function caseProcFiles0_(c, opt) {
   const out = [];
   const folderId = String(c.폴더ID || '').trim();
   if (!folderId) return out;
   const includeFiled = !!(opt && opt.includeFiled);
+  const everything = !!(opt && opt.everything); // [2026.10.28 읽을 대상 ②] 체크 목록 초안용 — 제외 폴더까지 전부 걸어 폴더 판정(dirKind)을 붙여 돌려준다(필터 없음)
   // [2026.10.15 일괄점검 ①] 150개·4단계에서 말없이 잘리던 것을 400개·6단계로(실사건: 상속 폴더 파일 273개) — 그래도 넘으면 truncated로 알린다
   const MAX = 400;
   const refDirs = [];
-  const walk = function (folder, depth, rel) {
+  const walk = function (folder, depth, rel, dirKind) {
+    dirKind = dirKind || 'input';
     if (depth > 6 || out.length >= MAX) { out.truncated = true; return; }
     const it = folder.getFiles();
-    while (it.hasNext()) { if (out.length >= MAX) { out.truncated = true; break; } const f = it.next(); if (f.getName() === T6_OCRMEM_FILE_) continue; /* [2026.10.27 T6 3단계] 사건 폴더 안 글자 기억 사본(시스템 파일)은 서류가 아님 */ out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel }); }
+    while (it.hasNext()) { if (out.length >= MAX) { out.truncated = true; break; } const f = it.next(); if (f.getName() === T6_OCRMEM_FILE_ && !everything) continue; /* [2026.10.27 T6 3단계] 사건 폴더 안 글자 기억 사본(시스템 파일)은 서류가 아님 */ const row = { id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel }; if (everything) { row.dirKind = dirKind; try { row.size = f.getSize(); } catch (e) { row.size = 0; } } out.push(row); }
     const subs = folder.getFolders(), list = [];
     while (subs.hasNext()) list.push(subs.next());
     // [2026.10.17 불복 경로] 불복·조사 사건은 파일이 수백 개라 400개 한도에 걸린다 — 고지서·불복 서면·진술·입금표 폴더부터 읽는다(고객S: 납세고지서·진행상황 폴더가 한도 뒤로 밀려 고지서를 하나도 못 읽음)
     if (appealW) list.sort(function (a, b) { return caseProcDocRank_(c, a.getName()) - caseProcDocRank_(c, b.getName()); });
     list.forEach(function (sf) {
       const sn = sf.getName(), sr = rel ? rel + '/' + sn : sn;
-      if (!includeFiled && caseIsFiledReturnFolder_(sn)) return;
-      // [2026.10.19 3번 세션] "_신고제출"은 문서별 PDF를 복사해 묶은 제출용 사본 — 같은 서류를 두 번 세지 않게 뺀다(경정·수정·불복 등 includeFiled면 읽음).
-      //  "_원본사진"은 폴더째 빼지 않는다 — 그 안 사진 중 PDF가 실제로 있는 것만 아래에서 뺀다(tcPdfConvDropIn_)
-      if (!includeFiled && tcIsSubmitDir_(sn)) return;
-      if (tcIsOrigPhotoDir_(sn)) origDirs.push(sf);
-      if (!includeFiled && caseProcRefDirName_(sn)) { refDirs.push(sr); return; } // [2026.10.17] 판례·불복사례 폴더 — 사건 증빙이 아니라 400개 한도만 잡아먹었다(고객S 불복사례 약 70건)
-      walk(sf, depth + 1, sr);
+      // [2026.10.28 읽을 대상 ①] 폴더 판정은 한 함수(caseProcFolderRule_)로 — 네 길이 같은 규칙. 예전 이 자리의 양도코리아·_신고제출·참고 폴더 분기를 그 함수로 모았다
+      const fr = caseProcFolderRule_(sn, c, { includeFiled: includeFiled });
+      if (fr.kind === 'orig') origDirs.push(sf);
+      if (fr.kind === 'ref') { refDirs.push(sr); if (!everything) return; }
+      if (fr.kind === 'skip') { if (!everything) return; }
+      walk(sf, depth + 1, sr, fr.kind === 'skip' || fr.kind === 'ref' ? fr.kind : (dirKind === 'input' ? fr.kind : dirKind));
     });
   };
   const appealW = caseProcIsAppeal_(c), origDirs = [];
-  walk(DriveApp.getFolderById(folderId), 0, '');
+  walk(DriveApp.getFolderById(folderId), 0, '', 'input');
+  if (everything) { out.forEach(function (f) { const r = caseProcFileRule_(f, c, f.dirKind); f.on = r.on; f.kind = r.kind; f.why = r.why; }); return out; } // 체크 목록 초안 — 판정만 붙여 전부
   // [2026.10.19 3번 세션] PDF로 바꾼 원본 사진(_변환기록.json에 짝이 있고 PDF가 살아 있음)만 뺀다 — 짝이 없거나 PDF가 휴지통이면 사진을 그대로 읽음
   if (origDirs.length) { const dropO = {}; origDirs.forEach(function (sf) { Object.assign(dropO, tcPdfConvDropIn_(sf)); }); for (let i = out.length - 1; i >= 0; i--) if (dropO[out[i].id]) out.splice(i, 1); }
   // [2026.10.17 별건 하위폴더] 사건 폴더 안의 다른 사건(고객AO 상속 폴더의 "양도/" — 같은 의뢰인의 양도 문의)은 섞지 않는다.
@@ -31585,15 +31625,26 @@ function caseProcFiles0_(c, opt) {
   //  사건별 읽을 범위(sv.readScope — 폴더·파일)를 정해 두면 서류 읽기·칸 채우기·⚠ 질문·usedText가 모두 이 목록만 쓴다(여기가 모든 단계의 서류 입구). 화면·넥스가 같은 step readScope로 정한다
   if (!includeFiled && !(opt && opt.noScope)) {
     const scope = (caseProcLoad_(c.id) || {}).readScope;
-    if (scope && ((scope.dirs || []).length || (scope.files || []).length)) {
+    // [2026.10.28 세무사님 결정 원문] "의뢰서·관련법령 파일은 읽을 범위와 상관없이 사건파악용으로 늘 읽되 증빙 후보로는 쓰지 마라" — 범위와 무관하게 목록에 남기고(사건파악용), 서류 정리(caseProcParsed_)는 종류를 붙이지 않아 증빙·경비 후보가 되지 않는다
+    const alwaysMemo = caseProcIsIntakeMemo_;
+    if (scope && scope.mode === 'list') {
+      // [2026.10.28 읽을 대상 ②③] 체크 목록이 곧 읽을 대상 — 켠 파일(id)만. 목록을 만든 뒤 들어온 새 파일(seen에 없음)은 읽지 않고 "새 파일 n개 — 체크 안 됨"으로 알린다(caseProcNewFiles_)
+      const onIds = {}; (scope.files || []).forEach(function (x) { onIds[String(x)] = 1; });
+      const dropped = res.filter(function (f) { return !onIds[f.id] && !alwaysMemo(f); }).length;
+      const kept = res.filter(function (f) { return onIds[f.id] || alwaysMemo(f); });
+      kept.truncated = res.truncated; kept.separate = res.separate; kept.refDirs = res.refDirs; kept.scope = { mode: 'list', files: scope.files || [], dropped: dropped, by: scope.by || '', at: scope.at || '' };
+      res = kept;
+    } else if (scope && ((scope.dirs || []).length || (scope.files || []).length)) {
       const inDir = function (f) { return (scope.dirs || []).some(function (d) { d = String(d).replace(/^\/+|\/+$/g, ''); return d === '' ? !f.dir : (f.dir === d || String(f.dir || '').indexOf(d + '/') === 0); }); };
       const inFiles = function (f) { return (scope.files || []).some(function (x) { return x === f.id || x === f.name; }); };
-      // [2026.10.28 세무사님 결정 원문] "의뢰서·관련법령 파일은 읽을 범위와 상관없이 사건파악용으로 늘 읽되 증빙 후보로는 쓰지 마라" — 범위와 무관하게 목록에 남기고(사건파악용), 서류 정리(caseProcParsed_)는 종류를 붙이지 않아 증빙·경비 후보가 되지 않는다
-      const alwaysMemo = caseProcIsIntakeMemo_;
       const dropped = res.filter(function (f) { return !inDir(f) && !inFiles(f) && !alwaysMemo(f); }).length;
       const kept = res.filter(function (f) { return inDir(f) || inFiles(f) || alwaysMemo(f); });
       kept.truncated = res.truncated; kept.separate = res.separate; kept.refDirs = res.refDirs; kept.scope = { dirs: scope.dirs || [], files: scope.files || [], dropped: dropped, by: scope.by || '', at: scope.at || '' };
       res = kept;
+    } else {
+      // [2026.10.28 읽을 대상 ①] 목록이 없는 사건(옛 사건) — 기본 판정 결과가 곧 목록("체크 안 한 목록"): 이미지·산출물·시스템 파일은 읽지 않는다(전체가 아님). 의뢰서·관련법령은 사건파악용으로 남김
+      const dropped = res.filter(function (f) { if (alwaysMemo(f)) return false; const r = caseProcFileRule_(f, c, 'input'); return !r.on; }).length;
+      if (dropped) { const kept = res.filter(function (f) { return alwaysMemo(f) || caseProcFileRule_(f, c, 'input').on; }); kept.truncated = res.truncated; kept.separate = res.separate; kept.refDirs = res.refDirs; kept.scope = { mode: 'rule', dropped: dropped, by: '', at: '' }; res = kept; }
     }
   }
   // [2026.10.17] 원근보정본(_보정.pdf)과 원본 사진이 함께 있으면 더 잘 읽힌 쪽 하나만(같은 서류를 두 번 세지 않게) — raw면 그대로
@@ -31612,6 +31663,8 @@ function caseProcFiles0_(c, opt) {
 // [2026.10.27 F] 읽을 범위 정하기·보기 — 넥스(채팅 카드 caseproc_scope·지휘 set_read_scope)와 화면(처리개요 GAS 칸 📂)이 같은 입구. 폴더 이름(사건 폴더 기준 상대 경로)·파일 이름 목록. clear면 전체로
 function caseProcReadScope_(c, body) {
   const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
+  // [2026.10.28 읽을 대상 ②④] 체크 목록 저장 — ids(켠 파일 id 전부: 화면 [이 목록으로 읽기]) 또는 on/off(지금 목록에서 파일·폴더 켜기·끄기: 넥스 set_read_scope·caseproc_scope, 파일 이름·폴더 이름도 됨) → readScope { mode:'list', files, seen }
+  if (body.mode === 'list' || Array.isArray(body.ids) || Array.isArray(body.on) || Array.isArray(body.off)) return caseProcReadListSave_(c, body, by);
   if (body.clear) {
     caseProcPatch_(c.id, function (s) { delete s.readScope; caseProcLogTo_(s, { by: by, what: '읽을 범위 해제', detail: '사건 폴더 전체를 읽음' }); });
     CP_FILES_MEMO_ = {};
@@ -31633,11 +31686,88 @@ function caseProcReadScope_(c, body) {
   CP_FILES_MEMO_ = {};
   return { ok: true, scope: scope, inScope: nIn, total: all.length, missingDirs: miss, message: '읽을 범위를 폴더 ' + (fixed.join(', ') || '(없음)') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로 정했습니다 — 범위 안 서류 ' + nIn + '개(전체 ' + all.length + '개). 다음 서류 읽기·칸 채우기부터 이 범위만 씁니다.' + (miss.length ? ' ⚠ 사건 폴더에 없는 폴더 이름: ' + miss.join(', ') : '') };
 }
+function caseProcReadListSave_(c, body, by) {
+  let all; try { all = caseProcFiles_(c, { raw: true, noScope: true, everything: true }) || []; } catch (e) { return { ok: false, error: '사건 폴더를 보지 못함: ' + String(e && e.message || e).slice(0, 100) }; }
+  const sv = caseProcLoad_(c.id) || {}, cur = sv.readScope || null;
+  const byId = {}; all.forEach(function (f) { byId[f.id] = f; });
+  const memo = function (f) { return f && f.kind === 'memo'; };
+  // 시작점: ids가 오면 그것, 아니면 지금 목록(없으면 기본 체크)
+  let set = {};
+  if (Array.isArray(body.ids)) body.ids.forEach(function (x) { x = String(x || '').trim(); if (byId[x] && !memo(byId[x])) set[x] = 1; });
+  else if (cur && cur.mode === 'list') (cur.files || []).forEach(function (x) { if (byId[x] && !memo(byId[x])) set[x] = 1; });
+  else all.forEach(function (f) { if (f.on && !memo(f)) set[f.id] = 1; });
+  // on/off — 파일 id·파일 이름·폴더 이름(그 폴더와 하위 폴더 전부 — 세무사님 10-28 "폴더를 선택하면 모두 읽게 될 터이니")
+  const resolve = function (x) {
+    x = String(x || '').trim().replace(/^\/+|\/+$/g, ''); if (!x) return [];
+    if (byId[x]) return [x];
+    const byName = all.filter(function (f) { return f.name === x; }).map(function (f) { return f.id; }); if (byName.length) return byName;
+    const inDir = all.filter(function (f) { const d = String(f.dir || ''); return d === x || d.indexOf(x + '/') === 0 || d.split('/').pop() === x || d.split('/').indexOf(x) !== -1; }).map(function (f) { return f.id; }); if (inDir.length) return inDir;
+    const loose = all.filter(function (f) { return String(f.name || '').indexOf(x) !== -1; }).map(function (f) { return f.id; }); return loose;
+  };
+  const changed = { on: [], off: [], miss: [] };
+  (Array.isArray(body.on) ? body.on : []).forEach(function (x) { const ids = resolve(x); if (!ids.length) { changed.miss.push(String(x)); return; } ids.forEach(function (id) { if (!memo(byId[id]) && !set[id]) { set[id] = 1; changed.on.push(byId[id].name); } }); });
+  (Array.isArray(body.off) ? body.off : []).forEach(function (x) { const ids = resolve(x); if (!ids.length) { changed.miss.push(String(x)); return; } ids.forEach(function (id) { if (set[id]) { delete set[id]; changed.off.push(byId[id].name); } }); });
+  const files = Object.keys(set);
+  if (!files.length) return { ok: false, error: '읽을 파일이 하나도 켜져 있지 않아 저장하지 않았습니다 — 파일을 하나 이상 체크해 주세요.' + (changed.miss.length ? ' 못 찾은 이름: ' + changed.miss.join(', ') : '') };
+  const seen = all.filter(function (f) { return !memo(f); }).map(function (f) { return f.id; });
+  const scope = { mode: 'list', files: files, seen: seen, at: caseProcNow_(), by: by, note: String(body.note || '').slice(0, 120) };
+  const nImg = files.filter(function (id) { return byId[id].kind === 'image'; }).length;
+  const detail = '켠 파일 ' + files.length + '개 / 전체 ' + seen.length + '개' + (changed.on.length ? ' · 켬: ' + changed.on.slice(0, 5).join(', ') + (changed.on.length > 5 ? ' 외 ' + (changed.on.length - 5) + '개' : '') : '') + (changed.off.length ? ' · 끔: ' + changed.off.slice(0, 5).join(', ') + (changed.off.length > 5 ? ' 외 ' + (changed.off.length - 5) + '개' : '') : '') + (nImg ? ' · 이미지 ' + nImg + '개를 켬(기본은 꺼짐)' : '') + (scope.note ? ' · ' + scope.note : '');
+  caseProcPatch_(c.id, function (s) { s.readScope = scope; delete s.readFiles; caseProcLogTo_(s, { by: by, what: '읽을 목록 지정', detail: detail }); });
+  CP_FILES_MEMO_ = {};
+  return { ok: true, scope: { mode: 'list', n: files.length, total: seen.length, by: by, at: scope.at }, nOn: files.length, total: seen.length, changed: changed, message: '읽을 파일 목록을 정했습니다 — ' + detail + '. 다음 서류 읽기·칸 채우기·직결·넥스가 이 목록만 읽습니다.' + (changed.miss.length ? ' ⚠ 못 찾은 이름: ' + changed.miss.join(', ') : '') };
+}
 function caseProcScopeView_(c) {
   let all = []; try { all = caseProcFiles_(c, { raw: true, noScope: true }) || []; } catch (e) { all = []; }
   const dirs = {}; all.forEach(function (f) { const d = String(f.dir || ''); dirs[d] = (dirs[d] || 0) + 1; });
   const sv = caseProcLoad_(c.id) || {};
   return { ok: true, 폴더: Object.keys(dirs).sort().map(function (d) { return { dir: d, label: d || '(사건 폴더 바로 아래)', n: dirs[d] }; }), 파일: all.slice(0, 300).map(function (f) { return { id: f.id, name: f.name, dir: f.dir || '' }; }), 범위: sv.readScope || null };
+}
+// [2026.10.28 읽을 대상 ②③] 읽을 파일 체크 목록 — 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" / "그렇게 되면 하위폴더속에 있는 파일은 폴더를 선택하면 모두 읽게 될 터이니 하위폴더들 속에 파일관리를 잘 해 놓아야 하겠구나" → "그렇게 만들자."
+//  목록 한 줄 = 파일 하나: 기본 체크(caseProcFileRule_ 판정)·왜·서류 종류(이미 읽은 기억이 있을 때만)·같은 서류 다른 벌 표시·폴더 밖 파일 표시·새 파일(목록 만든 뒤 들어온 것).
+//  저장은 readScope { mode:'list', files:[켠 파일 id], seen:[그때 본 모든 id], by, at } — 그 뒤 ⚡·직결·넥스는 켠 파일만 읽고(caseProcFiles0_), seen에 없는 새 파일은 읽지 않고 "새 파일 n개 — 체크 안 됨"으로 알린다.
+//  화면(처리개요 📂 읽을 목록·⚡ 처음 누를 때)과 넥스(set_read_scope·caseproc_scope ids/on/off)가 같은 입구(step readList·readScope)를 쓴다.
+function caseProcReadListStem_(name) { return String(name || '').toLowerCase().replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\s*\((?:묶음|복사본|\d+)[^)]*\)\s*$/g, '').replace(/[\s_\-]+(?:복사본|copy|\d{1,2})$/g, '').replace(/[\s_\-]+/g, ''); }
+function caseProcReadList_(c, body) {
+  const sv = caseProcLoad_(c.id) || {}, scope = sv.readScope || null;
+  let all; try { all = caseProcFiles_(c, { raw: true, noScope: true, everything: true }) || []; } catch (e) { return { ok: false, error: '사건 폴더를 보지 못함: ' + String(e && e.message || e).slice(0, 100) }; }
+  const cache = CacheService.getScriptCache();
+  const mode = scope ? (scope.mode === 'list' ? 'list' : 'dirs') : 'none';
+  const onIds = {}, seen = {};
+  if (mode === 'list') { (scope.files || []).forEach(function (x) { onIds[String(x)] = 1; }); (scope.seen || []).forEach(function (x) { seen[String(x)] = 1; }); }
+  const inDir = function (f) { return (scope && scope.dirs || []).some(function (d) { d = String(d).replace(/^\/+|\/+$/g, ''); return d === '' ? !f.dir : (f.dir === d || String(f.dir || '').indexOf(d + '/') === 0); }); };
+  const inFiles = function (f) { return (scope && scope.files || []).some(function (x) { return x === f.id || x === f.name; }); };
+  // 같은 서류 다른 벌 — 이름 줄기가 같거나(사진→PDF·복사본·(1)), 크기가 같은 같은 종류 파일. 자동으로 접지 않고 표시만(세무사님이 체크로 한 벌만 남기신다)
+  const byStem = {}, bySize = {};
+  all.forEach(function (f) { const st = caseProcReadListStem_(f.name); (byStem[st] = byStem[st] || []).push(f.id); if (f.size > 2000) { const k = String(f.size) + '|' + String(f.mimeType || ''); (bySize[k] = bySize[k] || []).push(f.id); } });
+  const rows = all.map(function (f) {
+    const memo = f.kind === 'memo';
+    let on = f.on, how = '기본';
+    if (mode === 'list') { on = !!onIds[f.id]; how = seen[f.id] ? '목록' : '새파일'; }
+    else if (mode === 'dirs') { on = inDir(f) || inFiles(f); how = '범위'; }
+    if (memo) on = false;
+    let 종류 = ''; try { const p = caseProcParsed_(f, cache, false); if (p && !p.memo && (p.l || p.t)) 종류 = String(p.l || p.t); if (p && p.nt) 종류 = (종류 ? 종류 + ' · ' : '') + '글자 못 읽음'; } catch (e) {}
+    const st = caseProcReadListStem_(f.name), sk = String(f.size) + '|' + String(f.mimeType || '');
+    const dupS = (byStem[st] || []).filter(function (x) { return x !== f.id; }), dupZ = f.size > 2000 ? (bySize[sk] || []).filter(function (x) { return x !== f.id; }) : [];
+    return { id: f.id, name: f.name, dir: f.dir || '', dirKind: f.dirKind || 'input', mime: String(f.mimeType || ''), size: f.size || 0, modified: f.modified || 0,
+      on: !!on, 기본: !!f.on, kind: f.kind, why: f.why || '', how: how, always: memo, outside: !f.dir && !memo,
+      dup: dupS.length ? { 왜: '이름이 같은 다른 벌', ids: dupS.slice(0, 6) } : (dupZ.length ? { 왜: '크기가 같은 다른 벌', ids: dupZ.slice(0, 6) } : null),
+      종류: 종류, isNew: mode === 'list' && !seen[f.id] && !memo };
+  });
+  const folders = {};
+  rows.forEach(function (r) { const parts = r.dir ? r.dir.split('/') : []; for (let i = 0; i <= parts.length; i++) { const d = parts.slice(0, i).join('/'); if (i === 0 && !r.dir) {} else if (i === 0) continue; const fo = folders[d] = folders[d] || { dir: d, label: d || '(사건 폴더 바로 아래 — 폴더 밖 파일)', kind: 'input', why: '', n: 0, nOn: 0 }; fo.n++; if (r.on) fo.nOn++; if (d === r.dir) { fo.kind = r.dirKind; } } });
+  Object.keys(folders).forEach(function (d) { if (!d) return; const fr = caseProcFolderRule_(d.split('/').pop(), c, {}); const parentSkip = d.split('/').slice(0, -1).some(function (_, i, arr) { return caseProcFolderRule_(arr[i], c, {}).kind === 'skip' || caseProcFolderRule_(arr[i], c, {}).kind === 'ref'; }); folders[d].kind = parentSkip ? 'skip' : fr.kind; folders[d].why = parentSkip ? '위 폴더가 읽지 않는 폴더' : fr.why; });
+  const newFiles = rows.filter(function (r) { return r.isNew; });
+  const counts = { 전체: rows.length, 켠: rows.filter(function (r) { return r.on; }).length, 이미지: rows.filter(function (r) { return r.kind === 'image'; }).length, 산출물폴더: rows.filter(function (r) { return r.kind === 'skipdir'; }).length, 사건파악전용: rows.filter(function (r) { return r.always; }).length, 폴더밖: rows.filter(function (r) { return r.outside; }).length, 다른벌: rows.filter(function (r) { return r.dup; }).length, 새파일: newFiles.length };
+  return { ok: true, mode: mode, rows: rows, folders: Object.keys(folders).sort().map(function (d) { return folders[d]; }), counts: counts, newFiles: newFiles.map(function (r) { return { id: r.id, name: r.name, dir: r.dir }; }), scope: scope ? { mode: scope.mode || 'dirs', by: scope.by || '', at: scope.at || '', n: (scope.files || []).length, dirs: scope.dirs || [] } : null, truncated: !!all.truncated,
+    안내: mode === 'none' ? '아직 체크한 목록이 없습니다 — 기본 체크(규칙)대로 보이며, [이 목록으로 읽기]를 누르면 그 뒤 서류 읽기·칸 채우기·직결·넥스가 그 목록만 읽습니다.' : (newFiles.length ? '목록을 만든 뒤 들어온 새 파일 ' + newFiles.length + '개는 체크되지 않아 읽지 않습니다 — 체크해 [이 목록으로 읽기]를 다시 누르면 읽습니다.' : '') };
+}
+// 목록 기준으로 "새 파일"(목록을 만든 뒤 들어온 파일, 사건파악 전용·시스템 산출물 제외) — 처리개요 "다음 할 일"·넥스 현황에 올린다. 목록이 없으면 빈 배열
+function caseProcNewFiles_(c, sv) {
+  const scope = sv && sv.readScope; if (!scope || scope.mode !== 'list') return [];
+  const seen = {}; (scope.seen || []).forEach(function (x) { seen[String(x)] = 1; });
+  let all = []; try { all = caseProcFiles_(c, { raw: true, noScope: true, everything: true }) || []; } catch (e) { return []; }
+  return all.filter(function (f) { return !seen[f.id] && f.kind !== 'memo' && f.kind !== 'system' && f.kind !== 'output' && f.kind !== 'skipdir' && f.id !== sv.draftFileId; }).slice(0, 30).map(function (f) { return { id: f.id, name: f.name, dir: f.dir || '' }; });
 }
 // [2026.10.17 세무사님 원칙 — 내용 항목별로] 묶음 파일 하나 → 서류별 구간 파일(가상) 목록. 구간 id "원본ID#s시작-끝"(글자는 tc_docText_가 원본에서 잘라 줌),
 //  이름 "원본이름 (묶음 2-9).pdf" — 서류 종류는 이름에 넣지 않는다(이름 낱말로 정하는 규칙들이 원본과 똑같이 보게). 나눈 적 없으면 null

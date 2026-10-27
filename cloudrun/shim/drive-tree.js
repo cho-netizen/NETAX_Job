@@ -10,6 +10,7 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const TEXT_RE = /^(text\/|application\/json|application\/x-?markdown)/;
 const MAX_FILES = 400, MAX_DEPTH = 6, MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const OCRMEM_FILE = "_글자기억.json"; // Code.js T6_OCRMEM_FILE_와 같은 이름
+const SKIP_DIR_RE = /^(보고서_내부|보고서_외부|_이전판|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/; // [2026.10.28] Code.js CASEPROC_SKIP_DIR_RE_와 같게 유지(tools/check-skipdir-sync — 아래 module.exports로 내보내 시험이 대조)
 
 let driveClient = null;
 async function drive() {
@@ -57,6 +58,8 @@ async function buildCaseTree(folderId, opt) {
     const kids = await listChildren(d, folder.id);
     for (const k of kids) {
       if (k.mimeType === FOLDER) {
+        // [2026.10.28 읽을 대상 ①] 산출물·보관 폴더는 걷지도 않는다 — gs-backend/Code.js CASEPROC_SKIP_DIR_RE_(caseProcFolderRule_ 'skip')와 같은 이름 목록(거기를 고치면 여기도). 양도코리아·_신고제출·참고 폴더는 사건 종류에 따라 다르므로 reader 안의 Code.js 판정에 맡긴다
+        if (SKIP_DIR_RE.test(String(k.name || '').trim())) { stats.skippedFolders = (stats.skippedFolders || 0) + 1; continue; }
         const sub = new VFolder(vfs, { id: k.id, name: k.name, parent: folder });
         vfs.byId[k.id] = sub; folder._folders.push(sub); stats.folders++;
         await walk(sub, depth + 1);
@@ -84,4 +87,4 @@ async function buildCaseTree(folderId, opt) {
   return { vfs, caseFolder, bm, store, chief, root, stats };
 }
 
-module.exports = { buildCaseTree, OCRMEM_FILE };
+module.exports = { buildCaseTree, OCRMEM_FILE, SKIP_DIR_RE };

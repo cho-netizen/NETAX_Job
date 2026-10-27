@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 15:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 16:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6024,7 +6024,7 @@ function nxMdOpenWindow(title, src, opts){
       '<div class="card" id="chGasCard">' +
       '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>⚡ GAS 사건처리</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 서류 읽기·칸 채우기 → 질문 답하기 → 세액계산·서식·검토서</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="서류 읽기·칸 채우기에 쓸 폴더·파일만 고릅니다(예: 신고제출 폴더만) — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다">📂 읽을 범위</button></div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
       '<div id="chGasBody" style="margin-top:8px;"></div>' +
       '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
@@ -6470,12 +6470,13 @@ function nxMdOpenWindow(title, src, opts){
           if (r.보류) parts.push('보류 ' + r.보류 + '건(검토서 "추가로 확인할 사항")');
           return '<div>✅ GAS가 보기에 남은 일이 없습니다' + (parts.length ? ' — ' + parts.join(' · ') : '') + '</div>';
         };
-        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
+        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : n.do === 'scope' ? '📂 읽을 목록' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
         if ((r.기록 || []).length) h += '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">📓 최근 작업 기록(누가·언제·무엇) ' + r.기록.length + '줄</summary><div style="margin:4px 0 0 8px; font-size:12px;">' + r.기록.slice().reverse().map(function(l){ return esc(l); }).join('<br>') + '</div></details>';
         nowEl.innerHTML = h;
         Array.prototype.forEach.call(nowEl.querySelectorAll('button[data-gas]'), function(b){ b.addEventListener('click', function(){ var k = b.getAttribute('data-gas');
           if (k === 'seen') callGas('case_proc', { caseId: c.id, step: 'alertSeen' }).then(loadNow).catch(function(){});
           else if (k === 'calc'){ var tb = document.getElementById('chTaxCalcOpenBtn'); if (tb) tb.click(); }
+          else if (k === 'scope'){ var sb = document.getElementById('chGasScopeBtn'); if (sb) sb.click(); } // [2026.10.28] 읽을 파일 목록 체크
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
           else if (k === 'gas' && window.chGasKeep_ && window.chGasKeep_.caseId === c.id && window.chGasKeep_.box && document.body.contains(window.chGasKeep_.box)){ try { window.chGasKeep_.box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {} } // 진행 카드가 살아 있으면 다시 돌리지 않고 그 카드로 간다
           else document.getElementById('chGasRunBtn').click();
@@ -6545,28 +6546,11 @@ function nxMdOpenWindow(title, src, opts){
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">정한 값을 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     // [2026.10.27 F] 읽을 범위 — 세무사님 "신고제출 폴더에 있는 파일만 읽어서 다시 처리하라". 넥스 카드(caseproc_scope)·지휘 넥스(set_read_scope)와 같은 서버 입구(case_proc readScope)
+    // [2026.10.28 읽을 대상 ②] 📂 읽을 목록 — 세무사님 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" → 공용 체크 목록(aichat nxCpReadListUi_ — ⚡ 첫 실행 관문과 같은 그림). 서버 step readList/readScope(list). 넥스 카드 caseproc_scope·지휘 set_read_scope(on/off)와 같은 입구
     document.getElementById('chGasScopeBtn').addEventListener('click', function(){
       if (!tokOk()) return;
-      body.innerHTML = '<div class="log-empty">사건 폴더의 폴더·파일을 세는 중…</div>';
-      callGas('case_proc', { caseId: c.id, step: 'scopeView' }).then(function(r){
-        if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">폴더 목록을 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
-        var cur = r.범위 || null, curDirs = cur ? (cur.dirs || []) : [], curFiles = cur ? (cur.files || []) : [];
-        var h = '<div style="font-size:12.5px;">';
-        h += '<div><b>지금 읽을 범위</b>: ' + (cur ? esc((curDirs.join(', ') || '(폴더 없음)') + (curFiles.length ? ' · 파일 ' + curFiles.length + '개' : '') + ' — ' + (cur.by || '') + ' ' + (cur.at || '')) : '사건 폴더 전체(기본)') + '</div>';
-        h += '<div style="margin-top:6px;"><b>폴더 고르기</b>(고른 폴더 아래 서류만 읽습니다)</div>' + (r.폴더 || []).map(function(d){ return '<label style="display:block; margin:2px 0 0 8px;"><input type="checkbox" data-scope-dir="' + esc(d.dir) + '"' + (curDirs.indexOf(d.dir) !== -1 ? ' checked' : '') + '> ' + esc(d.label) + ' <span style="color:var(--sub);">(' + d.n + '개)</span></label>'; }).join('');
-        h += '<details style="margin-top:6px;"><summary style="cursor:pointer;">파일 하나씩 고르기(' + (r.파일 || []).length + '개)</summary>' + (r.파일 || []).map(function(f){ return '<label style="display:block; margin:2px 0 0 8px; white-space:nowrap; overflow-x:auto;"><input type="checkbox" data-scope-file="' + esc(f.name) + '"' + (curFiles.indexOf(f.name) !== -1 ? ' checked' : '') + '> ' + esc(f.name) + ' <span style="color:var(--sub);">' + esc(f.dir || '') + '</span></label>'; }).join('') + '</details>';
-        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="save-btn" id="chScopeSave">이 범위로 읽기</button><button type="button" class="ghost-btn" id="chScopeClear">전체로 되돌리기</button></div>';
-        h += '<div style="color:var(--sub); font-size:11.5px; margin-top:4px;">정한 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 범위의 서류만 읽어 칸을 채우고 질문을 만듭니다(기록부에 남음). "_신고제출"(제출용 사본)은 원래 규칙대로 빠집니다.</div></div>';
-        body.innerHTML = h;
-        var done = function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '정하지 못했습니다.', 'error'); return; } showToast(res.message || '정했습니다.', 'success'); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); document.getElementById('chGasScopeBtn').click(); };
-        document.getElementById('chScopeSave').addEventListener('click', function(){
-          var dirs = Array.prototype.map.call(body.querySelectorAll('input[data-scope-dir]:checked'), function(x){ return x.getAttribute('data-scope-dir'); });
-          var files = Array.prototype.map.call(body.querySelectorAll('input[data-scope-file]:checked'), function(x){ return x.getAttribute('data-scope-file'); });
-          if (!dirs.length && !files.length){ showToast('폴더나 파일을 하나 이상 고르세요(전체로 하려면 "전체로 되돌리기").', 'warning'); return; }
-          callGas('case_proc', { caseId: c.id, step: 'readScope', dirs: dirs, files: files, by: '세무사님' }).then(done).catch(function(e){ showToast('정하는 중 오류: ' + (e && e.message || e), 'error'); });
-        });
-        document.getElementById('chScopeClear').addEventListener('click', function(){ callGas('case_proc', { caseId: c.id, step: 'readScope', clear: true, by: '세무사님' }).then(done).catch(function(e){ showToast('되돌리는 중 오류: ' + (e && e.message || e), 'error'); }); });
-      }).catch(function(e){ body.innerHTML = '<div class="log-empty">폴더 목록을 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+      if (typeof window.nxCpReadListUi_ !== 'function'){ body.innerHTML = '<div class="log-empty">체크 목록 화면이 이 판에 없습니다(AI 탭 코드 미포함)</div>'; return; }
+      window.nxCpReadListUi_(body, c.id, {}).then(function(res){ if (res && res.saved) document.getElementById('chGasScopeBtn').click(); });
     });
     document.getElementById('chGasFactsBtn').addEventListener('click', function(){
       if (!tokOk()) return;
@@ -56389,6 +56373,75 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       return el && el.value ? { screenDate: el.value } : null;
     } catch (e) { return null; }
   }
+  // =========================================================
+  // [2026.10.28 읽을 대상 ②] 읽을 파일 체크 목록 — 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" / "하위폴더속에 있는 파일은 폴더를 선택하면 모두 읽게 될 터이니 하위폴더들 속에 파일관리를 잘 해 놓아야 하겠구나" → "그렇게 만들자."
+  //  처리개요 📂 읽을 목록 단추와 ⚡ 첫 실행(목록이 없을 때 저절로 열림)이 같은 그리기 함수를 쓴다. 서버 step readList(목록·기본 체크·왜·다른 벌·새 파일) → [이 목록으로 읽기] = step readScope { mode:'list', ids }.
+  //  폴더 체크 = 그 폴더와 하위 폴더 파일 전부 켬·끔(빠른 길), 파일 체크 = 예외. 기본 체크는 서버 판정(이미지·산출물·보관 폴더 꺼짐, 이유 표시). 사건파악 전용(의뢰서·관련법령)은 체크 대상이 아니라 "늘 읽음"으로만 보인다.
+  //  돌려주는 Promise: { saved:true } (저장함) / { saved:false } (체크 없이 이번만 기본 규칙으로) / 닫음이면 그대로 기다림
+  // =========================================================
+  window.nxCpReadListUi_ = function(host, caseId, opts){
+    opts = opts || {};
+    var E = nxAiEsc_;
+    host.innerHTML = '<div class="nxai-muted" style="font-size:12px;">📂 사건 폴더의 파일을 세는 중…</div>';
+    return new Promise(function(resolve){
+      callGas('case_proc', { caseId: caseId, step: 'readList' }).then(function(r){
+        if (!r || r.error || !r.ok){ host.innerHTML = '<div class="nxai-muted">읽을 파일 목록을 만들지 못했습니다: ' + E((r && r.error) || '응답 없음') + '</div>'; resolve({ saved: false, error: true }); return; }
+        var rows = r.rows || [], folders = r.folders || [], cnt = r.counts || {};
+        var kindLab = { doc: '', memo: '사건파악 전용', image: '이미지', system: '시스템', output: '산출물', skipdir: '읽지 않는 폴더' };
+        var h = '<div class="nxcp-rl" style="font-size:12.5px; line-height:1.5;">';
+        h += '<div><b>📂 읽을 파일 체크 목록</b> — ' + (r.mode === 'list' ? '체크한 목록(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ')' : r.mode === 'dirs' ? '폴더 범위로 정한 상태(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ') — 저장하면 파일 목록으로 바뀜' : '<span style="color:#a05a00;">체크 안 한 목록 — 기본 체크(규칙)대로 보임</span>') + '</div>';
+        h += '<div class="nxai-muted" style="font-size:11.5px;">전체 ' + (cnt.전체 || 0) + '개 · 켠 ' + (cnt.켠 || 0) + '개' + (cnt.이미지 ? ' · 이미지 ' + cnt.이미지 + '개 기본 꺼짐(PDF로 바꾼 뒤 읽음)' : '') + (cnt.산출물폴더 ? ' · 읽지 않는 폴더 안 ' + cnt.산출물폴더 + '개' : '') + (cnt.사건파악전용 ? ' · 사건파악 전용 ' + cnt.사건파악전용 + '개(늘 읽음, 증빙 아님)' : '') + (cnt.다른벌 ? ' · 같은 서류 다른 벌 가능 ' + cnt.다른벌 + '개' : '') + (r.truncated ? ' · ⚠ 파일이 너무 많아 일부만' : '') + '</div>';
+        if (r.newFiles && r.newFiles.length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:4px 8px; margin:4px 0;">🆕 목록을 만든 뒤 들어온 새 파일 ' + r.newFiles.length + '개 — 체크 안 됨(읽지 않음): ' + E(r.newFiles.slice(0, 5).map(function(f){ return f.name; }).join(', ')) + (r.newFiles.length > 5 ? ' 외' : '') + '</div>';
+        var byDir = {}; rows.forEach(function(x){ (byDir[x.dir || ''] = byDir[x.dir || ''] || []).push(x); });
+        var dirKeys = Object.keys(byDir).sort(function(a, b){ if (!a) return 1; if (!b) return -1; return a < b ? -1 : 1; }); // 폴더 밖 파일은 맨 아래 따로
+        var fileLine = function(x){
+          var why = x.always ? '늘 읽음(사건파악 전용 — 증빙·경비 후보로는 안 씀)' : (x.why || (x.on ? '' : ''));
+          var tag = x.always ? '<span style="color:#1565c0;">📎 ' + E(kindLab.memo) + '</span>' : (x.kind && kindLab[x.kind] ? '<span style="color:var(--sub);">' + E(kindLab[x.kind]) + '</span>' : '');
+          return '<label style="display:flex; gap:6px; align-items:flex-start; margin:2px 0 0 22px;" title="' + E(why) + '">'
+            + (x.always ? '<span style="width:13px; display:inline-block; text-align:center;">📎</span>' : '<input type="checkbox" data-rl-file="' + E(x.id) + '" data-rl-dir="' + E(x.dir || '') + '"' + (x.on ? ' checked' : '') + ' style="margin-top:3px;">')
+            + '<span style="min-width:0; flex:1;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:inline-block; max-width:100%; vertical-align:bottom;">' + E(x.name) + '</span>'
+            + '<span class="nxai-muted" style="font-size:11px; display:block;">' + [tag, x.종류 ? E(x.종류) : '', x.isNew ? '<span style="color:#a05a00;">🆕 새 파일 — 체크 안 됨</span>' : '', x.dup ? '<span style="color:#7a4a00;">⧉ ' + E(x.dup.왜) + '</span>' : '', x.outside ? '<span style="color:#7a4a00;">폴더 밖 파일</span>' : '', (!x.on && !x.always && why) ? '<span>— ' + E(why) + '</span>' : ''].filter(Boolean).join(' · ') + '</span></span>'
+            + '<a href="https://drive.google.com/file/d/' + encodeURIComponent(x.id) + '/view" target="_blank" rel="noopener" style="white-space:nowrap; font-size:11.5px;">📄 원문</a></label>';
+        };
+        dirKeys.forEach(function(d){
+          var list = byDir[d], fo = folders.filter(function(f){ return f.dir === d; })[0] || {}, nOn = list.filter(function(x){ return x.on; }).length, nChk = list.filter(function(x){ return !x.always; }).length;
+          var skip = fo.kind === 'skip' || fo.kind === 'ref';
+          h += '<details style="margin-top:6px;"' + ((!skip && d) || !d ? ' open' : '') + '><summary style="cursor:pointer;"><label style="display:inline-flex; gap:6px; align-items:center;" onclick="event.stopPropagation()">'
+            + (d ? '<input type="checkbox" data-rl-folder="' + E(d) + '"' + (nChk && nOn === nChk ? ' checked' : '') + (nOn && nOn < nChk ? ' data-rl-mixed="1"' : '') + '>' : '')
+            + '<b>' + (d ? '📁 ' + E(d) : '📄 폴더 밖 파일(사건 폴더 바로 아래)') + '</b></label> <span class="nxai-muted">(' + nOn + '/' + list.length + '개 켬' + (skip ? ' · ' + E(fo.why || '읽지 않는 폴더') : fo.why ? ' · ' + E(fo.why) : '') + ')</span></summary>'
+            + list.map(fileLine).join('') + '</details>';
+        });
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><button type="button" class="nxai-btn" style="background:var(--accent, #1565c0); color:#fff; border-color:transparent;" data-rl-save>✅ 이 목록으로 읽기</button>'
+          + (opts.gate ? '<button type="button" class="nxai-btn" data-rl-skip title="목록을 저장하지 않고, 기본 규칙(이미지·산출물 제외)대로 이번만 읽습니다">체크 없이 이번만 기본대로</button>' : '<button type="button" class="nxai-btn" data-rl-clear title="저장한 목록을 지우고 기본 규칙으로 돌아갑니다">목록 지우기(기본 규칙으로)</button>')
+          + '<span class="nxai-muted" style="font-size:11.5px;">폴더 체크 = 그 아래 전부 · 파일 체크 = 예외. 저장하면 서류 읽기·칸 채우기·직결·넥스가 이 목록만 읽습니다(기록부에 누가·언제).</span></div>';
+        h += '</div>';
+        host.innerHTML = h;
+        // 폴더 체크 → 그 폴더와 하위 폴더 파일 전부
+        Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-folder]'), function(cb){
+          if (cb.getAttribute('data-rl-mixed')) cb.indeterminate = true;
+          cb.addEventListener('change', function(){
+            var d = cb.getAttribute('data-rl-folder');
+            Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-file]'), function(f){ var fd = f.getAttribute('data-rl-dir') || ''; if (fd === d || fd.indexOf(d + '/') === 0) f.checked = cb.checked; });
+            cb.indeterminate = false;
+          });
+        });
+        host.querySelector('[data-rl-save]').addEventListener('click', function(){
+          var ids = Array.prototype.map.call(host.querySelectorAll('input[data-rl-file]:checked'), function(x){ return x.getAttribute('data-rl-file'); });
+          if (!ids.length){ nxAiToast_('읽을 파일을 하나 이상 체크해 주세요.'); return; }
+          var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
+          callGas('case_proc', { caseId: caseId, step: 'readScope', mode: 'list', ids: ids, by: '세무사님' }).then(function(res){
+            if (!res || res.error || res.ok === false){ nxAiToast_((res && (res.error || res.message)) || '저장하지 못했습니다.'); btn.disabled = false; btn.textContent = '✅ 이 목록으로 읽기'; return; }
+            nxAiToast_(res.message || '읽을 목록을 정했습니다.');
+            host.innerHTML = '<div style="font-size:12.5px;">✅ 읽을 파일 목록 저장 — 켠 ' + (res.nOn || ids.length) + '개 / 전체 ' + (res.total || '') + '개 (세무사님, 지금)</div>';
+            if (typeof window.chGasReloadNow_ === 'function') { try { window.chGasReloadNow_(); } catch (e) {} }
+            resolve({ saved: true, n: res.nOn || ids.length });
+          }).catch(function(e){ nxAiToast_('저장 중 오류: ' + (e && e.message || e)); btn.disabled = false; btn.textContent = '✅ 이 목록으로 읽기'; });
+        });
+        var sk = host.querySelector('[data-rl-skip]'); if (sk) sk.addEventListener('click', function(){ host.innerHTML = '<div class="nxai-muted" style="font-size:12px;">체크 없이 기본 규칙(이미지·산출물 제외)대로 이번만 읽습니다 — 목록은 저장되지 않았습니다.</div>'; resolve({ saved: false }); });
+        var cl = host.querySelector('[data-rl-clear]'); if (cl) cl.addEventListener('click', function(){ callGas('case_proc', { caseId: caseId, step: 'readScope', clear: true, by: '세무사님' }).then(function(res){ nxAiToast_((res && res.message) || '목록을 지웠습니다.'); window.nxCpReadListUi_(host, caseId, opts).then(resolve); }).catch(function(e){ nxAiToast_('지우는 중 오류: ' + (e && e.message || e)); }); });
+      }).catch(function(e){ host.innerHTML = '<div class="nxai-muted">읽을 파일 목록을 만들지 못했습니다: ' + E(e && e.message || e) + '</div>'; resolve({ saved: false, error: true }); });
+    });
+  };
   function nxAiCaseProcRun_(bubble, caseId, opts){
     var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink), gasOnly: !!(opts && opts.gasOnly), screen: !!(opts && opts.screen), force: !!(opts && opts.force), said: (opts && opts.said) || null }; // screen: 사건 화면의 ⚡ GAS 사건처리 칸(AI 창 밖)
     NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
@@ -56482,6 +56535,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     //  다시 읽는 반복 바퀴는 없다(세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?", "단 한번의 처리로 끝나야 하잖아?"). 도구 안은 AI 없이(noAi).
     st.gasRun = function(){
       if (st.gasDone) return Promise.resolve(st.gasDone);
+      // [2026.10.28 읽을 대상 ②] ⚡를 처음 누를 때 기록부에 읽을 파일 목록이 없으면 체크 목록이 저절로 열린다(단추 뒤에 숨기지 않음) — [이 목록으로 읽기] 뒤에 읽기 시작. 넥스가 부른 gas_run(st.screen 아님)은 관문 없이(넥스는 목록이 없으면 세무사님께 먼저 청하도록 지시문에)
+      if (st.screen && !st.listGate){
+        st.listGate = true;
+        return st.run('record').then(function(r){
+          var sc = r && r.record && r.record.readScope; if (sc) return null;
+          st.setStep('basic', '📂', '읽을 파일 목록을 먼저 체크해 주세요');
+          var host = document.createElement('div'); host.className = 'nxai-cp-line'; host.style.marginLeft = '0'; st.steps.basic.querySelector('.nxai-cp-lines').appendChild(host);
+          return window.nxCpReadListUi_(host, caseId, { gate: true }).then(function(res){ st.setStep('basic', '⏳', res && res.saved ? '읽을 목록 ' + res.n + '개로 읽습니다' : '체크 없이 기본 규칙대로 읽습니다'); return res; });
+        }).catch(function(e){ st.setStep('basic', '⏳', '읽을 목록을 확인하지 못해 기본 규칙대로 읽습니다(' + ((e && e.message) || e) + ')'); return null; }).then(function(){ return st.gasRun(); });
+      }
       // [2026.10.23 속도 ㅅ9차] 사건 화면에서 "답하실 질문 N개 → ⚡"로 들어왔는데 서류가 읽혀 있고 새 서류가 없고 저장된 질문이 있으면 — ①②③을 다시 돌리지 않고 저장된 질문을 바로 보인다(가상증여5: 새로 고친 뒤 ①20초·③ 다시 돌던 것).
       //  [⚡ GAS로 다시 처리](st.force)는 예전대로 처음부터. 답하면 가벼운 ③이 다시 돌아 질문이 갱신된다
       // [2026.10.23 특단 반응 잣대 — 세무사님 "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"] 현황(view)과 ① 사건파악을 같이 띄운다 — 예전엔 현황(7~15초, 폴더 훑기)을 받은 뒤에야 ①을 시작해 그동안 화면이 "진행 중…"뿐이었다.
