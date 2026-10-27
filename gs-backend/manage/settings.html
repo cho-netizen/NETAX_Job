@@ -98,6 +98,8 @@
         <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">🔑 깃허브 열쇠</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
         <button type="button" class="ghost-btn" id="stBtnT6Compare" title="[2026.10.23 T6 2단계] 가상사건을 골라 같은 사건을 GAS와 Cloud Run 읽기 전용 시험 서비스(같은 코드)로 나란히 돌려 초·칸·질문을 대조합니다. 세액 계산·저장은 하지 않고 결과만 총괄관리자\_가상사건에 기록합니다(가상사건 폴더만 권한)">🧪 시험 서비스 비교</button>
+        <button type="button" class="ghost-btn" id="stBtnT6OcrMem" title="[2026.10.27 T6 3단계] 가상사건 폴더마다 글자 기억 사본(_글자기억.json)을 둡니다 — 화면이 시험 서비스를 직접 부를 때 그 사건 폴더만 읽어 글자를 쓰게(업무관리자 기억 폴더는 공유하지 않음). 4분 30초 단위로 이어서 돕니다">🧪 _글자기억.json 만들기(가상사건)</button>
+        <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">⚡ 직결 켜기/끄기</button>
         <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
@@ -611,6 +613,44 @@
     document.getElementById('stBtnOcrCount').addEventListener('click', function(){ ocrbRun_(true); });
     document.getElementById('stBtnOcrBatch').addEventListener('click', function(){ ocrbRun_(false); });
     (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (confirm('글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
+    // [2026.10.27 T6 3단계] 🧪 _글자기억.json 만들기(가상사건) — 서버 t6_ocrmem_build를 4분 30초 단위로 이어 부른다(next가 null이면 끝). 세무사님도 직접 누른다
+    (function(){
+      var b = document.getElementById('stBtnT6OcrMem'); if (!b) return;
+      var busy = false;
+      b.addEventListener('click', function(){
+        if (busy) { nxAlert_('글자 기억 사본 만들기가 진행 중입니다.'); return; }
+        busy = true; var lines = [];
+        var step = function(skip){
+          bugList.textContent = '🧪 글자 기억 사본 만드는 중… (' + (skip + 1) + '번째부터)';
+          return callGas('t6_ocrmem_build', { skip: skip }).then(function(r){
+            if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
+            lines = lines.concat(r.lines || []);
+            (r.done || []).forEach(function(d){ if (d.why) lines.push('  · ' + d.사건명 + ': ' + d.why); });
+            bugList.innerHTML = '<div><b>🧪 _글자기억.json 만들기</b> — 가상사건 ' + r.total + '건</div>' + lines.map(function(l){ return '<div style="font-size:12px;">' + escapeHtml(l) + '</div>'; }).join('');
+            if (r.next != null) return step(r.next);
+            busy = false;
+          });
+        };
+        step(0).catch(function(err){ busy = false; bugList.textContent = '글자 기억 사본을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
+    })();
+    // [2026.10.27 T6 3단계] ⚡ 직결 켜기/끄기 — 서버 t6_direct_set(스크립트 속성 T6_READER_DIRECT). 지금 상태를 보여 주고 확인 뒤 바꾼다. 화면의 토큰 기억(50분)은 아이챗 쪽에서 다음 ⚡ 때 다시 받도록 비운다
+    (function(){
+      var b = document.getElementById('stBtnT6Direct'); if (!b) return;
+      b.addEventListener('click', function(){
+        bugList.textContent = '⚡ 직결 상태를 확인하는 중…';
+        callGas('t6_direct_set', {}).then(function(r){
+          if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
+          var now = !!r.direct;
+          if (!confirm('지금 ⚡ 길: ' + (now ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS 한 번 호출') + '\n' + (now ? '끄시겠습니까? (⚡가 GAS 길로 돌아갑니다)' : '켜시겠습니까? (⚡가 시험 서비스를 먼저 부르고, 안 되면 GAS 길로 돌아갑니다)'))) { bugList.textContent = '⚡ 직결: ' + (now ? '켬' : '끔') + ' (그대로 둠)'; return; }
+          return callGas('t6_direct_set', { on: !now }).then(function(r2){
+            if (!r2 || r2.ok === false) throw new Error((r2 && r2.error) || '응답 없음');
+            if (typeof window.nxAiCpReaderToken_ === 'function') { try { window.nxAiCpReaderTokenReset_ && window.nxAiCpReaderTokenReset_(); } catch (e) {} }
+            bugList.textContent = '⚡ 직결: ' + (r2.direct ? '켬' : '끔') + ' (' + r2.at + ') — 다음 ⚡부터 적용됩니다(처리개요 화면을 새로 열면 바로).';
+          });
+        }).catch(function(err){ bugList.textContent = '직결 상태를 바꾸지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
+    })();
     // [2026.10.23 T6 2단계] 🧪 시험 서비스 비교 — 가상사건 목록에서 고른 N건에 case_proc 'allCompare'를 차례로 돌려 표(사건·GAS 초·Cloud Run 초·칸 불일치 수)로 보인다.
     //  세무사님도 직접 누른다(GAS 도구는 넥스와 세무사님이 같이 쓰는 도구). 서버 쪽: Code.js caseProcAllCompare_. 결과 기록: 총괄관리자\_가상사건\_시험서비스_비교_YYYYMMDD.json
     (function(){

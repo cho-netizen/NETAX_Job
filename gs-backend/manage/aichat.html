@@ -3092,6 +3092,7 @@
     }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; });
   }
   window.nxAiCpReaderToken_ = nxAiCpReaderToken_;
+  window.nxAiCpReaderTokenReset_ = function(){ NXAI_RT_ = null; }; // 설정 🐞 "⚡ 직결 켜기/끄기"가 바꾼 뒤 토큰 기억을 비운다
   function nxAiCpFlushAnswers_(st){
     if (st.applyReadP) return st.applyReadP.then(function(){ return nxAiCpFlushAnswers_(st); }, function(){ return nxAiCpFlushAnswers_(st); }); // [T6 3단계] 직결 읽기의 저장이 끝난 뒤에 답을 보낸다
     if (st.ansBusy){ st.ansAgain = true; return st.ansBusy; }

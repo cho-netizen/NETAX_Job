@@ -4157,6 +4157,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
+  if (body.action === 't6_direct_set') return jsonResponse(t6DirectSet_(body)); // [2026.10.27 T6 3단계] ⚡ 직결(화면→Cloud Run) 켜기/끄기 — 스크립트 속성 T6_READER_DIRECT, 설정 🐞 단추(로그인한 화면만)
   if (body.action === 't6_ocrmem_build') return jsonResponse(t6OcrMemBuildAll_(body)); // [2026.10.27 T6 3단계] 가상사건 폴더마다 _글자기억.json(글자 기억 사본) 만들기 — 설정 🐞 단추, 세무사님도 누름(토큰 0)
   if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body));
   if (body.action === 'ai_lead_weekly') return jsonResponse(caseProcAiWeekly_(body)); // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0) — 규칙 후보·길 나누기·빠진 도구·매주 숫자 // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
@@ -26662,6 +26663,13 @@ function t6OcrMemBuildAll_(body) {
 //  readerToken: 로그인한 job 화면에만 소유자 ID 토큰(1시간)을 내려 준다(CacheService 50분 기억). 서비스 주소·직결 켜짐(스크립트 속성 T6_READER_DIRECT)도 함께.
 //  applyRead: Cloud Run /read 응답의 written{decisionFile, caseRow}를 결정 파일·사건 행에 저장하고 단계 기록(①②③)을 남긴다 — 쓰기는 GAS만 한다. 같은 내용이면 건너뜀.
 // =========================================================
+// [2026.10.27 T6 3단계] 직결 스위치 — 설정 🐞 "⚡ 직결 켜기/끄기" 단추(세무사님도 누름). on이 없으면 지금 상태만 돌려준다. 화면 쪽 토큰 기억(50분)은 화면이 비운다
+function t6DirectSet_(body) {
+  const props = PropertiesService.getScriptProperties();
+  if (body && typeof body.on !== 'undefined') props.setProperty('T6_READER_DIRECT', body.on ? '1' : '0');
+  const on = /^(1|true|on|켬)$/i.test(String(props.getProperty('T6_READER_DIRECT') || '').trim());
+  return { ok: true, direct: on, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') };
+}
 function t6ReaderToken_(body) {
   const props = PropertiesService.getScriptProperties();
   const url = String(props.getProperty(T6_READER_URL_PROP_) || (typeof T6_READER_URL_DEFAULT_ === 'string' ? T6_READER_URL_DEFAULT_ : '') || '').trim().replace(/\/+$/, '');
