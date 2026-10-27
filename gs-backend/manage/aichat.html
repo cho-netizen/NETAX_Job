@@ -2765,7 +2765,7 @@
         var kindLab = { doc: '', memo: '사건파악 전용', image: '이미지', system: '시스템', output: '산출물', skipdir: '읽지 않는 폴더' };
         var h = '<div class="nxcp-rl" style="font-size:12.5px; line-height:1.5;">';
         h += '<div><b>📂 읽을 파일 체크 목록</b> — ' + (r.mode === 'list' ? '체크한 목록(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ')' : r.mode === 'dirs' ? '폴더 범위로 정한 상태(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ') — 저장하면 파일 목록으로 바뀜' : '<span style="color:#a05a00;">체크 안 한 목록 — 기본 체크(규칙)대로 보임</span>') + '</div>';
-        h += '<div class="nxai-muted" style="font-size:11.5px;">전체 ' + (cnt.전체 || 0) + '개 · 켠 ' + (cnt.켠 || 0) + '개' + (cnt.이미지 ? ' · 이미지 ' + cnt.이미지 + '개 기본 꺼짐(PDF로 바꾼 뒤 읽음)' : '') + (cnt.산출물폴더 ? ' · 읽지 않는 폴더 안 ' + cnt.산출물폴더 + '개' : '') + (cnt.사건파악전용 ? ' · 사건파악 전용 ' + cnt.사건파악전용 + '개(늘 읽음, 증빙 아님)' : '') + (cnt.다른벌 ? ' · 같은 서류 다른 벌 가능 ' + cnt.다른벌 + '개' : '') + (r.truncated ? ' · ⚠ 파일이 너무 많아 일부만' : '') + '</div>';
+        h += '<div class="nxai-muted" style="font-size:11.5px;">전체 ' + (cnt.전체 || 0) + '개 · 켠 <b data-rl-count>' + (cnt.켠 || 0) + '</b>개' + (cnt.이미지 ? ' · 이미지 ' + cnt.이미지 + '개 기본 꺼짐(PDF로 바꾼 뒤 읽음)' : '') + (cnt.산출물폴더 ? ' · 읽지 않는 폴더 안 ' + cnt.산출물폴더 + '개' : '') + (cnt.사건파악전용 ? ' · 사건파악 전용 ' + cnt.사건파악전용 + '개(늘 읽음, 증빙 아님)' : '') + (cnt.다른벌 ? ' · 같은 서류 다른 벌 가능 ' + cnt.다른벌 + '개' : '') + (r.truncated ? ' · ⚠ 파일이 너무 많아 일부만' : '') + '</div>';
         if (r.newFiles && r.newFiles.length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:4px 8px; margin:4px 0;">🆕 목록을 만든 뒤 들어온 새 파일 ' + r.newFiles.length + '개 — 체크 안 됨(읽지 않음): ' + E(r.newFiles.slice(0, 5).map(function(f){ return f.name; }).join(', ')) + (r.newFiles.length > 5 ? ' 외' : '') + '</div>';
         var byDir = {}; rows.forEach(function(x){ (byDir[x.dir || ''] = byDir[x.dir || ''] || []).push(x); });
         var dirKeys = Object.keys(byDir).sort(function(a, b){ if (!a) return 1; if (!b) return -1; return a < b ? -1 : 1; }); // 폴더 밖 파일은 맨 아래 따로
@@ -2783,7 +2783,7 @@
           var skip = fo.kind === 'skip' || fo.kind === 'ref';
           h += '<details style="margin-top:6px;"' + ((!skip && d) || !d ? ' open' : '') + '><summary style="cursor:pointer;"><label style="display:inline-flex; gap:6px; align-items:center;" onclick="event.stopPropagation()">'
             + (d ? '<input type="checkbox" data-rl-folder="' + E(d) + '"' + (nChk && nOn === nChk ? ' checked' : '') + (nOn && nOn < nChk ? ' data-rl-mixed="1"' : '') + '>' : '')
-            + '<b>' + (d ? '📁 ' + E(d) : '📄 폴더 밖 파일(사건 폴더 바로 아래)') + '</b></label> <span class="nxai-muted">(' + nOn + '/' + list.length + '개 켬' + (skip ? ' · ' + E(fo.why || '읽지 않는 폴더') : fo.why ? ' · ' + E(fo.why) : '') + ')</span></summary>'
+            + '<b>' + (d ? '📁 ' + E(d) : '📄 폴더 밖 파일(사건 폴더 바로 아래)') + '</b></label> <span class="nxai-muted">(<span data-rl-fcount="' + E(d) + '">' + nOn + '/' + list.length + '개 켬' + (nOn && nOn < nChk ? ' · ◪ 일부' : '') + '</span>' + (skip ? ' · ' + E(fo.why || '읽지 않는 폴더') : fo.why ? ' · ' + E(fo.why) : '') + ')</span></summary>'
             + list.map(fileLine).join('') + '</details>';
         });
         h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><button type="button" class="nxai-btn" style="background:var(--accent, #1565c0); color:#fff; border-color:transparent;" data-rl-save>✅ 이 목록으로 읽기</button>'
@@ -2791,6 +2791,20 @@
           + '<span class="nxai-muted" style="font-size:11.5px;">폴더 체크 = 그 아래 전부 · 파일 체크 = 예외. 저장하면 서류 읽기·칸 채우기·직결·넥스가 이 목록만 읽습니다(기록부에 누가·언제).</span></div>';
         h += '</div>';
         host.innerHTML = h;
+        // 체크가 바뀔 때마다 — 머리글 "켠 N개"·폴더별 "n/m개 켬"·폴더 체크 모양(전부 켬 = 체크, 일부 = 가운데 줄 + '◪ 일부', 전부 끔 = 빈 칸)을 지금 체크대로 다시 맞춘다(저장 전에도)
+        var rlRefresh = function(){
+          var files = Array.prototype.slice.call(host.querySelectorAll('input[data-rl-file]'));
+          var onAll = files.filter(function(f){ return f.checked; }).length;
+          var hc = host.querySelector('[data-rl-count]'); if (hc) hc.textContent = String(onAll);
+          Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-folder]'), function(cb){
+            var d = cb.getAttribute('data-rl-folder');
+            var mine = files.filter(function(f){ var fd = f.getAttribute('data-rl-dir') || ''; return fd === d || fd.indexOf(d + '/') === 0; });
+            var nOn = mine.filter(function(f){ return f.checked; }).length, nAll = mine.length;
+            cb.checked = nAll > 0 && nOn === nAll; cb.indeterminate = nOn > 0 && nOn < nAll;
+            Array.prototype.forEach.call(host.querySelectorAll('[data-rl-fcount]'), function(fc){ if (fc.getAttribute('data-rl-fcount') === d) fc.textContent = nOn + '/' + (byDir[d] || []).length + '개 켬' + (cb.indeterminate ? ' · ◪ 일부' : ''); });
+          });
+          Array.prototype.forEach.call(host.querySelectorAll('[data-rl-fcount]'), function(fc){ if (fc.getAttribute('data-rl-fcount') === ''){ var of = files.filter(function(f){ return !(f.getAttribute('data-rl-dir') || ''); }); fc.textContent = of.filter(function(f){ return f.checked; }).length + '/' + (byDir[''] || []).length + '개 켬'; } });
+        };
         // 폴더 체크 → 그 폴더와 하위 폴더 파일 전부
         Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-folder]'), function(cb){
           if (cb.getAttribute('data-rl-mixed')) cb.indeterminate = true;
@@ -2798,8 +2812,11 @@
             var d = cb.getAttribute('data-rl-folder');
             Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-file]'), function(f){ var fd = f.getAttribute('data-rl-dir') || ''; if (fd === d || fd.indexOf(d + '/') === 0) f.checked = cb.checked; });
             cb.indeterminate = false;
+            rlRefresh();
           });
         });
+        Array.prototype.forEach.call(host.querySelectorAll('input[data-rl-file]'), function(f){ f.addEventListener('change', rlRefresh); });
+        rlRefresh();
         host.querySelector('[data-rl-save]').addEventListener('click', function(){
           var ids = Array.prototype.map.call(host.querySelectorAll('input[data-rl-file]:checked'), function(x){ return x.getAttribute('data-rl-file'); });
           if (!ids.length){ nxAiToast_('읽을 파일을 하나 이상 체크해 주세요.'); return; }
@@ -2916,7 +2933,8 @@
         return st.run('record').then(function(r){
           var sc = r && r.record && r.record.readScope; if (sc) return null;
           st.setStep('basic', '📂', '읽을 파일 목록을 먼저 체크해 주세요');
-          var host = document.createElement('div'); host.className = 'nxai-cp-line'; host.style.marginLeft = '0'; st.steps.basic.querySelector('.nxai-cp-lines').appendChild(host);
+          // [2026.10.28 세무사님 "사람이나 ai가 gas에게 지정하는 것이라면 당연히 밖으로 나와야 한다"] 체크 목록은 접힘 기록(GAS가 하는 일) 안이 아니라 세무사님 답 질문이 뜨는 대화 자리(.nxai-cp-talk)에 — 요약 줄을 눌러도 접히지 않는다
+          var host = document.createElement('div'); host.className = 'nxai-cp-say nxai-cp-readlist'; host.style.whiteSpace = 'normal'; var talk0 = bubble.querySelector('.nxai-cp-talk'); if (talk0) talk0.insertBefore(host, st.steps.overview._items); else st.steps.basic.querySelector('.nxai-cp-lines').appendChild(host);
           return window.nxCpReadListUi_(host, caseId, { gate: true }).then(function(res){ st.setStep('basic', '⏳', res && res.saved ? '읽을 목록 ' + res.n + '개로 읽습니다' : '체크 없이 기본 규칙대로 읽습니다'); return res; });
         }).catch(function(e){ st.setStep('basic', '⏳', '읽을 목록을 확인하지 못해 기본 규칙대로 읽습니다(' + ((e && e.message) || e) + ')'); return null; }).then(function(){ return st.gasRun(); });
       }
