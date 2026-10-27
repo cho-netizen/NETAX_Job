@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 08:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-27 08:23 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6009,6 +6009,9 @@ function nxMdOpenWindow(title, src, opts){
       chBodyEl.innerHTML = '<div class="explorer-status">사건을 찾을 수 없습니다.</div>';
       return;
     }
+    // [2026.10.27 T6 3단계 — 세무사님 "처리개요를 열 때 토큰을 미리 받아 두는 수정을 이어서 하고"] 사건을 고르는 순간 시험 서비스 토큰(50분 기억)을 뒤에서 미리 받아 둔다 —
+    //  화면을 새로 연 직후 첫 ⚡가 토큰 발급(GAS 1번 ≈ 7초)을 기다리지 않게. 로그인 전이면 아이챗 쪽 함수가 스스로 안 부른다. 결과는 기다리지 않고 실패해도 조용히(⚡ 때 다시 받음).
+    try { if (c.폴더ID && typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_(c.id).catch(function(){}); } catch (e) {}
     chBodyEl.innerHTML =
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
