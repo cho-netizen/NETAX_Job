@@ -2880,8 +2880,14 @@
         if (!tk.token || !tk.url) return give('토큰·주소 없음');
         var url = String(tk.url).replace(/\/+$/, '');
         try { fetch(url + '/health', { method: 'GET', mode: 'cors' }).catch(function(){}); } catch (e) {} // 깨우기 — 토큰 없이, 결과는 기다리지 않음
-        // 사건 행(시트 한 줄)·결정 파일은 토큰 응답에 실려 오면 그것을, 아니면 가벼운 현황(view light, 1~3초)에서
-        var rowP = (tk.row && tk.row.폴더ID) ? Promise.resolve({ row: tk.row, dec: tk.decisions || {} }) : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: v.사건, dec: v.결정 || {} } : null; }).catch(function(){ return null; });
+        // 사건 행(시트 한 줄)·결정 파일 — [2026.10.27 16:5x 세무사님 "고치자"] 측정에서 GAS 호출 한 번(가벼운 현황)이 8~9초라 10초를 못 맞춤.
+        //  순서: ① 처리개요 화면이 이미 가진 사건 목록(chCases, 공유 캐시 1분)에서 이 사건 행 → GAS 호출 0 ② 토큰 응답에 실린 행(그 사건일 때) ③ 가벼운 현황(view light).
+        //  결정은 화면이 가진 것(st.decisions — 처음 ⚡면 비어 있음). 저장(applyRead)은 서버의 기존 결정을 지키므로 답한 것이 사라지진 않는다.
+        var screenRow = null;
+        try { if (typeof chCases !== 'undefined' && Array.isArray(chCases)) screenRow = chCases.filter(function(x){ return x && x.id === st.caseId && x.폴더ID; })[0] || null; } catch (e) { screenRow = null; }
+        var rowP = screenRow ? Promise.resolve({ row: screenRow, dec: (st.decisions && Object.keys(st.decisions).length) ? st.decisions : (tk.rowFor === st.caseId && tk.decisions) || {}, from: '화면' })
+          : (tk.row && tk.row.폴더ID) ? Promise.resolve({ row: tk.row, dec: tk.decisions || {}, from: '토큰' })
+          : st.run('view', { light: true }).then(function(v){ return (v && v.ok && v.사건) ? { row: v.사건, dec: v.결정 || {}, from: 'GAS 현황' } : null; }).catch(function(){ return null; });
         return rowP.then(function(rd){
           if (!rd || !rd.row || !rd.row.폴더ID) return give('사건 행·폴더를 못 받음');
           ['basic', 'evidence', 'overview'].forEach(function(k){ st.setStep(k, '🔄', '시험 서비스(직결)로 서류를 읽는 중…'); });
@@ -2903,7 +2909,7 @@
                 return (sg.evidence ? st.doStep('evidence', undefined, sg.evidence) : Promise.resolve()).then(function(){ return st.doStep('overview', undefined, sg.overview); }).then(function(){
                   st.route = '직결'; st.firstShown = true; st.secFirst = Math.round((Date.now() - st.t0) / 1000);
                   var tmTxt = r.timing ? ' — 시험 서비스 ' + (r.timing.total != null ? r.timing.total : '?') + '초(드라이브 ' + (r.timing.drive || 0) + '·①' + (r.timing.basic || 0) + '·③' + (r.timing.overview || 0) + ')' : '';
-                  lineTo('overview', '⚡→첫 결과 ' + st.secFirst + '초(직결' + tmTxt + ') · 직결 왕복 ' + Math.round((Date.now() - tDirect) / 100) / 10 + '초', 'nxai-muted');
+                  lineTo('overview', '⚡→첫 결과 ' + st.secFirst + '초(직결' + tmTxt + ') · 직결 왕복 ' + Math.round((Date.now() - tDirect) / 100) / 10 + '초 · 사건 행: ' + (rd.from || '?') + (tk.fresh ? ' · 토큰 새로 받음' : ''), 'nxai-muted');
                   // 저장은 GAS가 뒤에서 — 끝날 때까지 답 묶음·▶ 계산은 기다린다(서버 쪽 결정 파일·사건 행이 맞춰진 뒤에 이어 가게)
                   var sl = document.createElement('div'); sl.className = 'nxai-cp-line nxai-muted'; sl.textContent = '💾 읽은 결과를 사건에 저장하는 중(뒤에서)…'; st.steps.overview.querySelector('.nxai-cp-lines').appendChild(sl);
                   st.applyReadP = st.run('applyRead', { written: r.written || {}, timing: r.timing || null, firstSec: st.secFirst }).then(function(a){ sl.textContent = (a && a.ok) ? '💾 저장 ' + (a.sec != null ? a.sec + '초' : '끝') + (a.saved === false ? '(이미 같은 내용)' : '') : '💾 저장 실패: ' + ((a && a.error) || '응답 없음') + ' — 답·계산 전에 ⚡ GAS로 다시 처리를 권함'; if (!(a && a.ok)) sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return a; }, function(e){ sl.textContent = '💾 저장 실패: ' + String(e && e.message || e).slice(0, 80); sl.className = 'nxai-cp-line nxai-warn'; st.applyReadP = null; return null; });
@@ -3081,13 +3087,13 @@
   function nxAiCpReaderToken_(caseId){
     var now = Date.now();
     // 토큰·주소는 50분 기억하되, 사건 행·결정은 그 사건(rowFor)일 때만 돌려준다(다른 사건의 행을 쓰지 않게) — 기억된 토큰이 다른 사건 것이면 행 없이 돌려주고 화면이 가벼운 현황으로 받는다
-    if (NXAI_RT_ && NXAI_RT_.until > now) return Promise.resolve(NXAI_RT_.rowFor === (caseId || '') ? NXAI_RT_ : Object.assign({}, NXAI_RT_, { row: null, decisions: null }));
+    if (NXAI_RT_ && NXAI_RT_.until > now) return Promise.resolve(Object.assign({}, NXAI_RT_, { fresh: false }, NXAI_RT_.rowFor === (caseId || '') ? {} : { row: null, decisions: null })); // 기억에서 꺼낸 것은 fresh=false(측정 줄 "토큰 새로 받음" 표시용)
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok) return Promise.resolve({ direct: false, why: '로그인 전' });
     return callGas('case_proc', { caseId: caseId || '', step: 'readerToken', noAi: true }).then(function(r){
       if (!r || r.error || r.ok === false || r.direct === false || !r.token || !r.url){ NXAI_RT_ = { direct: false, why: (r && (r.error || r.why)) || '직결 꺼짐', until: now + 5 * 60000 }; return NXAI_RT_; }
       var ttl = Math.min(50 * 60000, Math.max(60000, (Number(r.ttlSec) || 3000) * 1000 - 60000)); // 서버가 ttlSec을 주면 그보다 1분 짧게
-      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: caseId || '', row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + ttl };
+      NXAI_RT_ = { direct: true, token: r.token, url: r.url, rowFor: caseId || '', row: r.row || r.사건 || null, decisions: r.decisions || r.결정 || null, until: now + ttl, fresh: true };
       return NXAI_RT_;
     }).catch(function(e){ return { direct: false, why: '토큰 요청 실패(' + String(e && e.message || e).slice(0, 40) + ')' }; });
   }
