@@ -127,7 +127,7 @@
     var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
     var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
-    var STATUS_COLOR = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+    var STATUS_COLOR = { '접수': 'var(--sub)', '고침': '#6f42c1', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
     function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); return r; }); }
     function showMeeting(onlyNeed){
       if (typeof jwRenderInto_ !== 'function'){ box().textContent = '회의 기록 표는 앱(job.netax.kr/app)에서 보입니다.'; return; }
@@ -148,11 +148,18 @@
         // [2026.10.20] 끝나지 않은 요청 전부(오래된 순·며칠째)를 앞에, 끝난 것(최근 15건)은 접어 둔다 — 대시보드 🛠 개선요구 카드와 같은 자료
         var open = r.openRequests || [], done = r.doneRequests || [];
         if (!open.length && !done.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
-        var one = function(x){
-          var btns = x.status === '반영됨' ? ' <button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '">↩ 다시 고쳐 주세요</button>' : '';
-          return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '')) + '</span><br>' + h(x.text) + (x.reopenNote ? '<br><span style="color:#a83232;">↩ ' + h(x.reopenNote) + '</span>' : '') + btns);
+        // [2026.10.28] 처리 내역(누가·언제·무엇·커밋·운영 판)을 펼쳐 보이고, 상태가 무엇이든 👍 확인 / ↩ 다시 요구(✍ 건의 창) — 대시보드 개선요구 카드와 같은 규칙
+        var hist = function(x){
+          var hs = x.history || [];
+          if (!hs.length) return '<br><span style="color:var(--sub); font-size:12px;">처리 내역 없음' + (x.commit ? ' · 커밋 ' + h(x.commit) : '') + '</span>';
+          return '<details style="margin-top:2px;"><summary style="cursor:pointer; color:var(--sub); font-size:12px;">처리 내역 ' + hs.length + '건 — 마지막: ' + h(String(hs[hs.length - 1].at).slice(5, 16) + ' ' + hs[hs.length - 1].who + ' · ' + String(hs[hs.length - 1].what).slice(0, 60)) + '</summary><div style="font-size:12px; padding-left:8px; border-left:2px solid var(--line);">'
+            + hs.map(function(e){ return '<div>' + h(String(e.at).slice(0, 16)) + ' <b>' + h(e.who) + '</b> — ' + h(e.what) + (e.commit ? ' <span style="color:var(--sub);">커밋 ' + h(e.commit) + '</span>' : '') + (e.ver ? ' <span style="color:var(--sub);">운영 @' + h(e.ver) + '</span>' : '') + '</div>'; }).join('') + '</div></details>';
         };
-        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '남은 요청 ' + open.length + '건') + '</b> · 흐름: 접수 → (개발자 수정안·승인·📥 반영) → 반영됨 → 세무사님 확인</div>'
+        var one = function(x){
+          var btns = x.status !== '확인완료' ? '<div style="margin-top:3px;"><button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨 — 끝</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '" data-fedtitle="' + h(String(x.text).slice(0, 120)) + '">↩ 부족함 — 다시 요구 적기</button></div>' : '';
+          return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + (x.ver ? ' · 운영 @' + x.ver : '')) + '</span><br>' + h(x.text) + (x.reopenNote ? '<br><span style="color:#a83232;">↩ 세무사님 다시 요구: ' + h(x.reopenNote) + '</span>' : '') + hist(x) + btns);
+        };
+        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '남은 요청 ' + open.length + '건') + '</b> · 흐름: 접수 → 고침(PC Claude·개발자 수정안) → 배포 → 반영됨 → 세무사님 👍 확인 또는 ↩ 다시 요구</div>'
           + (open.length ? open.map(one).join('') : row('남은 요청이 없습니다.'))
           + (done.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(one).join('') + '</details>' : '');
       }).catch(err);
@@ -192,7 +199,7 @@
       if (d.fed === 'q') return showQ();
       if (d.fed === 'reg') return showReg();
       if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
-      if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
+      if (d.fedno) return (typeof nxSuggestOpen_ === 'function' ? nxSuggestOpen_({ reopenId: d.fedno, title: d.fedtitle || '' }).then(function(r){ if (r && r.success) showReq(); }) : nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); })).catch(err); // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)
       if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
       if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showReg(); }); }).catch(err);
       if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showReg); }).catch(err);
@@ -223,23 +230,15 @@
         <h4>사건관리</h4>
         <div class="settings-tool-item">
           <button type="button" id="stBtnFixCompletionAfterReceipt" class="ghost-btn">💰 완료일-영수증일 보정</button>
-          <div class="settings-tool-desc">사건이 "완료"로 처리됐는데 완료일보다 나중 날짜의 현금영수증이 그 고객 앞으로 찍혀있으면(완료 처리를 너무 일찍 한 경우), 완료일을 그 영수증 날짜로 고쳐줍니다. 고객이 사건을 하나만 가진 경우에만 자동으로 고치고, 여러 개면 "확인 필요"로만 알려줍니다.</div>
+          <div class="settings-tool-desc">사건이 "완료"로 처리됐는데 완료일보다 나중 날짜의 현금영수증이 그 고객 앞으로 찍혀있으면(완료 처리를 너무 일찍 한 경우), 완료일을 그 영수증 날짜로 고쳐줍니다. 고객이 사건을 하나만 가진 경우에만 자동으로 고치고, 여러 개면 "확인 필요"로만 알려줍니다. 목록을 불러오기 전에, 사건ID가 비어 있던 옛 현금영수증 기록을 사건에 먼저 연결해 저장합니다(영수증-사건 연결 보완 — 완료일은 아직 안 바꿈).</div>
         </div>
         <div class="settings-tool-item">
           <button type="button" id="stBtnResyncCalendars" class="ghost-btn">📅 캘린더 재동기화</button>
           <div class="settings-tool-desc">사건의 법정기한·완료일과 구글 캘린더 일정이 어긋나 보일 때, 지금 저장된 값 기준으로 캘린더 표시만 다시 맞춥니다. 데이터 자체는 안 바꾸는 가장 안전한 도구입니다.</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnReceiptOnlyCleanup" class="ghost-btn">🧾 서류 없는 사건 정리(상담으로)</button>
-          <div class="settings-tool-desc">사건 폴더를 열어봤는데 현금영수증 파일 하나뿐이거나 아무 파일도 없으면(=서류 작업 없이 상담만 하고 끝난 경우), 영수증은 상담용 공용 폴더로 옮기고 사건 종류를 "상담"으로 바꿉니다. 원래 폴더는 완전삭제가 아니라 휴지통으로만 보냅니다.</div>
-        </div>
-        <div class="settings-tool-item">
           <button type="button" id="stBtnStdSubfolders" class="ghost-btn">📂 _신고제출·확보자료 폴더 점검</button>
           <div class="settings-tool-desc">[2026.10.19] 이제 새 사건 폴더에는 「확보자료」(모든 사건)와 「_신고제출」(신고 사건)이 자동으로 생깁니다. 그 전에 만든 사건 폴더 중 이 폴더가 없는 사건을 먼저 보여주고, 고른 사건에만 빈 폴더를 만듭니다(다른 파일·폴더는 건드리지 않음).</div>
-        </div>
-        <div class="settings-tool-item">
-          <button type="button" id="stBtnBackfillPartyClients" class="ghost-btn">👥 관계자 고객등록 일괄 반영</button>
-          <div class="settings-tool-desc">사건에 "양도인 OOO", "공동상속인 OOO"처럼 이름만 적혀있고 아직 고객명단에 정식 등록 안 된 사람들을 찾아 한꺼번에 고객으로 등록·연결합니다.</div>
         </div>
       </div>
       <div class="settings-tools-group">
@@ -257,18 +256,7 @@
           <div class="settings-tool-desc">이름 칸에 "3733"처럼 실명이 아니라 숫자만 적힌, 옛날 오류로 생긴 이상한 고객 기록을 찾아 정리합니다.</div>
         </div>
       </div>
-      <div class="settings-tools-group">
-        <h4>증빙관리</h4>
-        <div class="settings-tool-item">
-          <button type="button" id="stBtnDocsFolderNameAudit" class="ghost-btn">🏷 사건명 점검</button>
-          <div class="settings-tool-desc">사건 이름이 정해진 규칙("고객명(납세자)_세목_업무유형")과 다르게 붙어있는 경우를 찾아 규칙대로 고쳐줍니다(실제 드라이브 폴더 이름도 같이 바뀝니다).</div>
-        </div>
-        <div class="settings-tool-item">
-          <button type="button" id="stBtnDocsUnlinkedFolderAudit" class="ghost-btn">🔗 미연결 폴더 찾기</button>
-          <div class="settings-tool-desc">구글 드라이브에는 폴더가 있는데 시스템(사건 목록)에는 연결이 안 된 경우를 찾아, 어느 사건 것인지 연결할 수 있게 도와줍니다.</div>
-        </div>
-      </div>
-      <div class="taxcalc-result-note" style="margin-top:6px;">공통: 전부 누르자마자 바뀌는 게 아니라, 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
+      <div class="taxcalc-result-note" style="margin-top:6px;">공통: 📅 캘린더 재동기화만 누르는 즉시 돌아가고(자료는 안 바꿈), 나머지는 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
     </div>
   </div>
 </div>
@@ -395,7 +383,10 @@
   function initSettings(){ settingsRenderPwForm_(); settingsRenderTaxAgentForm_(); settingsWireMaintenanceTools_(); }
 
   // [2026.09.19 신규] 사건관리·고객관리·수금관리·증빙관리 각 화면 툴바에 흩어져 있던 1회성
-  // 정비도구를 여기 한 군데로 모았다. 실제 로직(모달·함수)은 각 도구가 다루는 데이터와
+  // 정비도구를 여기 한 군데로 모았다.
+  // [2026.10.28 정비도구 재점검] 실제 자료(고객·사건 시트, 드라이브 고객사건 폴더)로 세어 "해당 0건"으로 끝난 4개(🧾 서류 없는
+  // 사건 정리·👥 관계자 고객등록 일괄·🏷 사건명 점검·🔗 미연결 폴더 찾기)를 화면·핸들러까지 지웠다(세무사님 "정리 진행"). 남은 6개 중
+  // 📂 폴더 점검(48건)·🔢 숫자 이름(3명)은 한 번 처리하면 끝나는 것이라 처리 뒤 같은 방식으로 뺄 후보. 서버 함수는 모두 남겨 두었다. 실제 로직(모달·함수)은 각 도구가 다루는 데이터와
   // 가까운 원래 파일(workmanage.html/clientmanage.html/collections.html/docs.html)에 그대로
   // 남아있다 — 이 앱은 모든 화면의 HTML+스크립트를 한 페이지에 같이 그려두는 구조라 그
   // 함수들을 여기서도 이름으로 그대로 호출할 수 있다(고객관리의 👤 빠른보기가 사건관리에서
@@ -411,16 +402,11 @@
     // 사건관리
     wire('stBtnFixCompletionAfterReceipt', function(){ openFixCompletionAfterReceiptModal_(); });
     wire('stBtnResyncCalendars', runResyncCalendars_);
-    wire('stBtnReceiptOnlyCleanup', function(){ openReceiptOnlyCleanupModal_(); });
-    wire('stBtnBackfillPartyClients', runBackfillPartyClients_);
     wire('stBtnStdSubfolders', function(){ settingsOpenStdSubfoldersModal_(); });
     // 고객관리
     wire('stBtnClientDupAudit', function(){ openClientDupAuditModal_(); });
     wire('stBtnClientScanCaseFiles', runClientScanCaseFiles_);
     wire('stBtnClientDeleteNumericNames', function(){ openClientDeleteNumericNamesModal_(); });
-    // 증빙관리
-    wire('stBtnDocsFolderNameAudit', function(){ docsOpenFolderNameAuditModal_(); });
-    wire('stBtnDocsUnlinkedFolderAudit', function(){ docsOpenUnlinkedFolderAuditModal_(); });
   }
   // [2026.10.19] 📂 _신고제출·확보자료 폴더 점검 — 미리 보기(없는 사건 목록) → 고른 것만 [만들기]. 이미 있는 사건 폴더에 일괄로 만들지 않기 위한 도구.
   function settingsOpenStdSubfoldersModal_(){

@@ -4353,6 +4353,7 @@ function dispatchClientAction0_(body) {
   if (/^knh_/.test(String(body.action)) && typeof knhDispatch_ === 'function') return jsonResponse(knhDispatch_(body));
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
+  if (body.action === 'comm_request_done') return jsonResponse(commRequestDone_(body)); // [2026.10.28] PC Claude가 요청을 고쳤다고 처리 내역 남기기(tools/request-done.js)
   if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
   if (body.action === 'ai_registry') return jsonResponse({ success: true, registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_ });
   if (body.action === 'ai_set_key') return jsonResponse(aiSetKey_(body));
@@ -17609,10 +17610,28 @@ function improve_addRequest_(body) {
   const urgent = !!(body && body.urgent === true);
   const chiefFolder = getChiefManagerFolder_();
   if (!chiefFolder) return { success: false, error: '총괄관리자 폴더가 설정되어 있지 않습니다' };
+  // [2026.10.28] 화면 캡처 첨부 — 세무사님 "개선건의에 화면캡쳐한 것을 올릴 수 있도록". 총괄관리자/_개선건의첨부/에 저장하고 링크를 글 끝에 붙인다(최대 3장, 각 5MB).
+  const stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd_HHmmss');
+  const links = [];
+  try {
+    const imgs = Array.isArray(body && body.images) ? body.images.slice(0, 3) : [];
+    if (imgs.length) {
+      const it = chiefFolder.getFoldersByName('_개선건의첨부');
+      const att = it.hasNext() ? it.next() : chiefFolder.createFolder('_개선건의첨부');
+      imgs.forEach(function (im, i) {
+        const m = String(im && im.dataUrl || '').match(/^data:(image\/[a-z]+);base64,(.+)$/i);
+        if (!m || m[2].length > 7000000) return;
+        const ext = m[1].split('/')[1] === 'jpeg' ? 'jpg' : m[1].split('/')[1];
+        const f = att.createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], '건의_' + stamp + '_' + (i + 1) + '.' + ext));
+        links.push(f.getUrl());
+      });
+    }
+  } catch (e) { links.push('(첨부 저장 실패: ' + String(e && e.message || e).slice(0, 80) + ')'); }
   return withLock_(10000, function () {
     const cur = readFileIfExists_(chiefFolder, '개선요구사항.md') || '';
     const head = (urgent ? '🚨 긴급 — ' : '') + (where ? '(' + where + ') ' : '');
-    const line = '\n- [' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') + '] ' + head + text.replace(/\r?\n/g, '\n  ') + '\n';
+    const tail = links.length ? '\n  📷 첨부: ' + links.join(' , ') : '';
+    const line = '\n- [' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') + '] ' + head + text.replace(/\r?\n/g, '\n  ') + tail + '\n';
     writeFileOverwrite_(chiefFolder, '개선요구사항.md', cur + line, 'text/markdown');
     processImprovementRequests();
     try { buildImprovementReport_(); } catch (e) {}
@@ -40698,7 +40717,7 @@ function buildImprovementReport_() {
   // [2026.10.20] 예전엔 최근 8일 요청만 담아 그 안에 못 고친 요청이 루틴에서 빠졌다 — 이제 끝나지 않은 요청(접수·재오픈) 전부, 오래된 순·며칠째(days).
   //   반영됨(세무사님 확인 전)은 다시 고칠 대상이 아니라 requestsAwaitingConfirm으로 따로 싣는다(Federation.js commRequestsAll_).
   let requests = [], requestsAwaitingConfirm = [];
-  try { const ra = commRequestsAll_().open; requests = ra.filter(function (r) { return r.status !== '반영됨'; }); requestsAwaitingConfirm = ra.filter(function (r) { return r.status === '반영됨'; }); } catch (e) {}
+  try { const ra = commRequestsAll_().open; requests = ra.filter(function (r) { return r.status !== '반영됨' && r.status !== '고침'; }); requestsAwaitingConfirm = ra.filter(function (r) { return r.status === '반영됨' || r.status === '고침'; }); } catch (e) {} // [2026.10.28] 고침(배포 대기)도 다시 고칠 거리가 아님
   // [2026.10.20] "지침 바뀜(AUDIT_PENDING)" 대신 실제 지침 점검 결과(SysAudit.js SYS_AUDIT_LAST) — 세무사님 확인용(코드 수정 대상 아님)
   let auditLine = '';
   try {
@@ -41336,6 +41355,7 @@ function deploySmokeAfter_(since) {
 // 반영 기록 — 최근 20건(스크립트 속성 한 칸 9KB 안). kind: apply/merge/rollback/pc
 function deployHistGet_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(DEPLOY_HIST_PROP_) || '[]') || []; } catch (e) { return []; } }
 function deployRecord_(x) {
+  try { commAfterDeploy_(x.ver, x.sha); } catch (e) {} // [2026.10.28] 📥·PC 배포 둘 다 — "고침(배포 대기)" 요청을 반영됨으로, 운영 판 번호 붙임(Federation.js)
   const h = deployHistGet_().filter(function (e) { return !(x.ver && e.ver === x.ver); });
   h.unshift({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ver: x.ver || null, sha: String(x.sha || '').slice(0, 7), kind: x.kind || '',
     msg: String(x.msg || '').split('\n')[0].slice(0, 90), checkOk: x.check ? !!x.check.ok : null });

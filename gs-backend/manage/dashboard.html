@@ -795,15 +795,26 @@
 
   // [2026.10.20] 🛠 개선요구 — 끝나지 않은 요청 전부(오래된 순)·며칠째. 반영됨은 👍 잘 됨 / ↩ 다시 고쳐 주세요(설정 📝 요청 상태와 같은 서버 함수).
   var dashImprove_ = { open: false, doneOpen: false };
-  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '고침': '#6f42c1', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+  // [2026.10.28] 처리 내역(누가·언제·무엇을·커밋·운영 판)을 요청마다 펼쳐 보이고, 상태가 무엇이든 👍 확인 / ↩ 다시 요구를 할 수 있게 —
+  //  세무사님 "처리가 되었으면서 거기에 남아있는것도 이해가 되지 않고, 각각 어떻게 처리되었는지 확인할 수도 없다" / "개선한 사항이 정상이면 확인만 하면 되지만 부족해 보이면 다시 요구사항을 적을 수 있도록"
+  function dashImproveHistHtml_(x){
+    var h = x.history || [];
+    if (!h.length) return '<div style="font-size:12px; color:var(--sub); margin-top:3px;">처리 내역 없음' + (x.commit ? ' · 커밋 ' + esc(x.commit) : '') + '</div>';
+    return '<details style="margin-top:3px;"><summary style="cursor:pointer; font-size:12px; color:var(--sub);">처리 내역 ' + h.length + '건 — 마지막: ' + esc(String(h[h.length - 1].at).slice(5, 16) + ' ' + h[h.length - 1].who + ' · ' + String(h[h.length - 1].what).slice(0, 60)) + '</summary>'
+      + '<div style="font-size:12px; line-height:1.45; padding:3px 0 0 8px; border-left:2px solid var(--line); margin-top:3px;">'
+      + h.map(function(e){ return '<div>' + esc(String(e.at).slice(0, 16)) + ' <b>' + esc(e.who) + '</b> — ' + esc(e.what) + (e.commit ? ' <span style="color:var(--sub);">커밋 ' + esc(e.commit) + '</span>' : '') + (e.ver ? ' <span style="color:var(--sub);">운영 @' + esc(e.ver) + '</span>' : '') + '</div>'; }).join('')
+      + '</div></details>';
+  }
   function dashImproveRowHtml_(x){
-    var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
-    var btns = x.status === '반영됨' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" data-impok="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">👍 잘 됨</button><button type="button" class="ghost-btn" data-impno="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">↩ 다시 고쳐 주세요</button></div>' : '';
+    var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '고침' ? '고침 — 배포 대기' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
+    var btns = x.status !== '확인완료' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" data-impok="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">👍 잘 됨 — 끝</button><button type="button" class="ghost-btn" data-impno="' + esc(x.id) + '" data-imptitle="' + esc(String(x.text).slice(0, 120)) + '" style="font-size:11.5px; padding:2px 8px;">↩ 부족함 — 다시 요구 적기</button></div>' : '';
     return '<div style="padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:4px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">'
       + '<span style="color:' + (DASH_IMPROVE_COLOR_[x.status] || 'var(--sub)') + '; font-weight:700;">[' + esc(label) + ']</span> '
-      + (x.urgent ? '🚨 ' : '') + '<span style="font-size:11.5px; color:var(--sub);">' + esc(String(x.at).slice(0, 10)) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + '</span>'
+      + (x.urgent ? '🚨 ' : '') + '<span style="font-size:11.5px; color:var(--sub);">' + esc(x.id + ' · ' + String(x.at).slice(0, 10)) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + (x.ver ? ' · 운영 @' + esc(x.ver) : '') + '</span>'
       + '<div style="white-space:pre-wrap;">' + esc(x.text) + '</div>'
-      + (x.reopenNote ? '<div style="font-size:12px; color:#a83232;">↩ 세무사님 지적: ' + esc(x.reopenNote) + '</div>' : '')
+      + (x.reopenNote ? '<div style="font-size:12px; color:#a83232;">↩ 세무사님 다시 요구: ' + esc(x.reopenNote) + '</div>' : '')
+      + dashImproveHistHtml_(x)
       + btns + '</div>';
   }
   function dashImproveRender_(r){
@@ -840,6 +851,8 @@
       }).catch(function(err){ toast('오류: ' + (err && err.message ? err.message : err)); b.disabled = false; });
     };
     if (b.hasAttribute('data-impok')) return send(true);
+    // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)에서 — 저장되면 서버가 재오픈으로 바꾸고 여기 목록을 다시 그린다
+    if (typeof nxSuggestOpen_ === 'function') return nxSuggestOpen_({ reopenId: b.getAttribute('data-impno'), title: b.getAttribute('data-imptitle') || '' }).then(function(r){ if (r && r.success) loadDashImprove_(); });
     var ask = typeof nxPrompt_ === 'function' ? nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '') : Promise.resolve(window.prompt('무엇이 아직 안 되는지 적어 주세요.', ''));
     ask.then(function(note){ if (note === null) return; send(false, note); });
   });

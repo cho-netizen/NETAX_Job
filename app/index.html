@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 04:38 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 05:04 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3322,15 +3322,26 @@ function nxMdOpenWindow(title, src, opts){
 
   // [2026.10.20] 🛠 개선요구 — 끝나지 않은 요청 전부(오래된 순)·며칠째. 반영됨은 👍 잘 됨 / ↩ 다시 고쳐 주세요(설정 📝 요청 상태와 같은 서버 함수).
   var dashImprove_ = { open: false, doneOpen: false };
-  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '고침': '#6f42c1', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+  // [2026.10.28] 처리 내역(누가·언제·무엇을·커밋·운영 판)을 요청마다 펼쳐 보이고, 상태가 무엇이든 👍 확인 / ↩ 다시 요구를 할 수 있게 —
+  //  세무사님 "처리가 되었으면서 거기에 남아있는것도 이해가 되지 않고, 각각 어떻게 처리되었는지 확인할 수도 없다" / "개선한 사항이 정상이면 확인만 하면 되지만 부족해 보이면 다시 요구사항을 적을 수 있도록"
+  function dashImproveHistHtml_(x){
+    var h = x.history || [];
+    if (!h.length) return '<div style="font-size:12px; color:var(--sub); margin-top:3px;">처리 내역 없음' + (x.commit ? ' · 커밋 ' + esc(x.commit) : '') + '</div>';
+    return '<details style="margin-top:3px;"><summary style="cursor:pointer; font-size:12px; color:var(--sub);">처리 내역 ' + h.length + '건 — 마지막: ' + esc(String(h[h.length - 1].at).slice(5, 16) + ' ' + h[h.length - 1].who + ' · ' + String(h[h.length - 1].what).slice(0, 60)) + '</summary>'
+      + '<div style="font-size:12px; line-height:1.45; padding:3px 0 0 8px; border-left:2px solid var(--line); margin-top:3px;">'
+      + h.map(function(e){ return '<div>' + esc(String(e.at).slice(0, 16)) + ' <b>' + esc(e.who) + '</b> — ' + esc(e.what) + (e.commit ? ' <span style="color:var(--sub);">커밋 ' + esc(e.commit) + '</span>' : '') + (e.ver ? ' <span style="color:var(--sub);">운영 @' + esc(e.ver) + '</span>' : '') + '</div>'; }).join('')
+      + '</div></details>';
+  }
   function dashImproveRowHtml_(x){
-    var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
-    var btns = x.status === '반영됨' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" data-impok="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">👍 잘 됨</button><button type="button" class="ghost-btn" data-impno="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">↩ 다시 고쳐 주세요</button></div>' : '';
+    var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '고침' ? '고침 — 배포 대기' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
+    var btns = x.status !== '확인완료' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" data-impok="' + esc(x.id) + '" style="font-size:11.5px; padding:2px 8px;">👍 잘 됨 — 끝</button><button type="button" class="ghost-btn" data-impno="' + esc(x.id) + '" data-imptitle="' + esc(String(x.text).slice(0, 120)) + '" style="font-size:11.5px; padding:2px 8px;">↩ 부족함 — 다시 요구 적기</button></div>' : '';
     return '<div style="padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; margin-bottom:4px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">'
       + '<span style="color:' + (DASH_IMPROVE_COLOR_[x.status] || 'var(--sub)') + '; font-weight:700;">[' + esc(label) + ']</span> '
-      + (x.urgent ? '🚨 ' : '') + '<span style="font-size:11.5px; color:var(--sub);">' + esc(String(x.at).slice(0, 10)) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + '</span>'
+      + (x.urgent ? '🚨 ' : '') + '<span style="font-size:11.5px; color:var(--sub);">' + esc(x.id + ' · ' + String(x.at).slice(0, 10)) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + (x.ver ? ' · 운영 @' + esc(x.ver) : '') + '</span>'
       + '<div style="white-space:pre-wrap;">' + esc(x.text) + '</div>'
-      + (x.reopenNote ? '<div style="font-size:12px; color:#a83232;">↩ 세무사님 지적: ' + esc(x.reopenNote) + '</div>' : '')
+      + (x.reopenNote ? '<div style="font-size:12px; color:#a83232;">↩ 세무사님 다시 요구: ' + esc(x.reopenNote) + '</div>' : '')
+      + dashImproveHistHtml_(x)
       + btns + '</div>';
   }
   function dashImproveRender_(r){
@@ -3367,6 +3378,8 @@ function nxMdOpenWindow(title, src, opts){
       }).catch(function(err){ toast('오류: ' + (err && err.message ? err.message : err)); b.disabled = false; });
     };
     if (b.hasAttribute('data-impok')) return send(true);
+    // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)에서 — 저장되면 서버가 재오픈으로 바꾸고 여기 목록을 다시 그린다
+    if (typeof nxSuggestOpen_ === 'function') return nxSuggestOpen_({ reopenId: b.getAttribute('data-impno'), title: b.getAttribute('data-imptitle') || '' }).then(function(r){ if (r && r.success) loadDashImprove_(); });
     var ask = typeof nxPrompt_ === 'function' ? nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '') : Promise.resolve(window.prompt('무엇이 아직 안 되는지 적어 주세요.', ''));
     ask.then(function(note){ if (note === null) return; send(false, note); });
   });
@@ -4429,41 +4442,6 @@ function nxMdOpenWindow(title, src, opts){
     });
   }
 
-  function runBackfillPartyClients_(btn){
-    btn.disabled = true;
-    var originalText = btn.textContent;
-    btn.textContent = '확인 중…';
-    callGas('work_backfill_party_client_ids', {}).then(function(res){
-      btn.textContent = originalText;
-      if (res.error || res.success === false){ btn.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
-      if (!res.count){
-        btn.disabled = false;
-        showToast('새로 등록/연결할 관계자가 없습니다.', 'success');
-        return;
-      }
-      nxConfirm_('관계자 이름 ' + res.count + '건을 고객관리에 등록/연결합니다(이미 있는 고객이면 그 고객과 연결). 계속할까요?').then(function(ok){
-        if (!ok){ btn.disabled = false; return; }
-        btn.textContent = '반영 중…';
-        callGas('work_backfill_party_client_ids', { apply: true }).then(function(applyRes){
-          btn.disabled = false;
-          btn.textContent = originalText;
-          if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '반영 실패', 'error'); return; }
-          showToast('사건 ' + applyRes.casesUpdated + '건에서 관계자 ' + applyRes.applied + '건을 연결했습니다(신규 고객 등록 ' + applyRes.clientsRegistered + '명).', 'success');
-          loadWorkCases();
-          if (typeof loadClients === 'function') loadClients();
-        }).catch(function(){
-          btn.disabled = false;
-          btn.textContent = originalText;
-          showToast('반영 중 오류가 발생했습니다.', 'error');
-        });
-      });
-    }).catch(function(){
-      btn.disabled = false;
-      btn.textContent = originalText;
-      showToast('확인 중 오류가 발생했습니다.', 'error');
-    });
-  }
-
   // [2026.09.17 신규] "완료일이 현금영수증발행일보다 늦은 경우 모두 발행일로 변경" — 한 고객이
   // 사건을 하나만 가진 경우만 자동 적용 대상(그 고객의 최신 현금영수증 발행일 = 그 사건 것이
   // 확실함)이고, 사건을 여러 개 가진 고객은 어느 영수증이 어느 사건 것인지 특정 못 해 "확인
@@ -4552,82 +4530,10 @@ function nxMdOpenWindow(title, src, opts){
   // 상태였고, 신고파일 작성일 반영은 2026.09.18에 딱 한 번 받은 실제 고객 14명의 이름+날짜가
   // 코드에 그대로 박혀 있던 것이었다(개인정보를 코드에 남겨둘 이유가 없어 완전히 제거).
 
-  // [2026.09.18 신규] "현재 사건을 전수조사해서 현금영수증만 있는 폴더는 상담사건 폴더로
-  // 옮기고 그 사건 폴더는 삭제하자" — 사건 폴더 안에 현금영수증 파일만 있고 다른 파일이 전혀
-  // 없는 사건을 찾아, 그 파일을 "고객명_현금영수증"으로 개명해 상담사건 공용 폴더로 옮기고
-  // 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리한다. 상담사건 폴더에 이미 같은
-  // 이름의 파일이 있으면(같은 고객이 상담을 여러 번 한 경우) 자동 적용하지 않고 "확인 필요"로만
-  // 보여준다.
-  function openReceiptOnlyCleanupModal_(){
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.display = 'flex';
-    overlay.innerHTML =
-      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>🧾 서류 없는 사건 정리(상담으로)</span><span class="modal-close" id="rocClose">✕</span></div>' +
-        '<div class="modal-body" style="overflow-y:auto;">' +
-          '<div id="rocBody">확인 중… (사건이 많으면 시간이 걸릴 수 있습니다)</div>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    function close(){ overlay.remove(); }
-    overlay.querySelector('#rocClose').onclick = close;
-    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
-
-    function renderResult(res){
-      var body = overlay.querySelector('#rocBody');
-      var html = '';
-      var ready = res.ready || [], needsReview = res.needsReview || [];
-      if (ready.length){
-        var rows = ready.map(function(r){
-          var files = r.fileMoves.length
-            ? r.fileMoves.map(function(fm){ return escapeHtml(fm.oldName) + ' → ' + escapeHtml(fm.newName); }).join('<br>')
-            : '<span style="color:var(--sub);">(관련파일 0건 — 빈 폴더)</span>';
-          return '<tr><td style="padding:4px 8px;">' + escapeHtml(r.고객명) + '</td>' +
-            '<td style="padding:4px 8px;">' + escapeHtml(r.사건명) + '</td>' +
-            '<td style="padding:4px 8px;">' + escapeHtml(r.업무유형현재) + '</td>' +
-            '<td style="padding:4px 8px; font-size:12px;">' + files + '</td></tr>';
-        }).join('');
-        html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">현금영수증 파일만 있거나 관련파일이 아예 없는(빈 폴더) 사건 ' + ready.length + '건입니다. "일괄 적용"을 누르면 현금영수증 파일은 상담사건 폴더로 옮기고, 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리합니다.</div>' +
-          '<div style="overflow-x:auto; max-height:280px; overflow-y:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">현재 사건명</th><th style="padding:4px 8px;">현재 업무유형</th><th style="padding:4px 8px;">파일 이동</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-          '<button type="button" id="rocApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + ready.length + '건 일괄 적용(되돌리기 어려움 — 폴더는 휴지통으로 이동)</button>';
-      } else {
-        html += '<div class="log-empty">현금영수증 파일만 있거나 빈 폴더인 사건이 없습니다.</div>';
-      }
-      if (needsReview.length){
-        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + needsReview.length + '건은 상담사건 폴더에 이미 같은 이름의 파일이 있어(같은 고객이 상담을 여러 번 한 경우 등) 자동으로 적용하지 못합니다 — 직접 확인해주세요.</div>' +
-          needsReview.map(function(r){
-            var files = r.fileMoves.map(function(fm){ return '<li>' + escapeHtml(fm.oldName) + ' → ' + escapeHtml(fm.newName) + '</li>'; }).join('');
-            return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
-              '<b>' + escapeHtml(r.고객명) + '</b> · ' + escapeHtml(r.사건명) +
-              '<ul style="margin:6px 0 0 18px;">' + files + '</ul></div>';
-          }).join('');
-      }
-      body.innerHTML = html;
-      var applyBtn = body.querySelector('#rocApplyBtn');
-      if (applyBtn) applyBtn.addEventListener('click', function(){
-        nxConfirm_(ready.length + '건을 상담사건으로 정리합니다(사건 폴더는 휴지통으로 이동). 계속할까요?').then(function(ok){
-          if (!ok) return;
-          body.innerHTML = '적용 중… (시간이 걸릴 수 있습니다)';
-          callGas('work_apply_receipt_only_case_cleanup', { apply: true }).then(function(res2){
-            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
-            body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 정리했습니다' + (res2.failed ? ' (' + res2.failed + '건 실패)' : '') + '.</div><div style="white-space:pre-wrap; font-size:12px; color:var(--sub); margin-top:8px;">' + escapeHtml((res2.log || []).join('\n')) + '</div>';
-            showToast(res2.applied + '건을 상담사건으로 정리했습니다.', 'success');
-            loadWorkCases();
-          }).catch(function(err){
-            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-          });
-        });
-      });
-    }
-
-    callGas('work_apply_receipt_only_case_cleanup', {}).then(function(res){
-      if (res.success === false){ overlay.querySelector('#rocBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
-      renderResult(res);
-    }).catch(function(err){
-      overlay.querySelector('#rocBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-    });
-  }
+  // [2026.10.28 정비도구 재점검] 설정 🛠 정비도구를 실제 자료(고객·사건 시트, 드라이브 고객사건 폴더)로
+  // 세어 본 결과 "해당 0건"으로 끝난 두 도구를 화면·핸들러까지 지웠다(세무사님 "정리 진행").
+  //  - 🧾 서류 없는 사건 정리(상담으로): 사건 폴더 148개 중 영수증만/빈 폴더 0개(서버 work_applyReceiptOnlyCaseCleanup은 남김).
+  //  - 👥 관계자 고객등록 일괄 반영: 이름만 있고 고객ID 없는 칸 0개 — 저장 때 work_linkPartyClientIds_가 자동 연결하므로 다시 생기지 않음(서버 함수는 남김).
 
   function loadWorkCases(){
     workCaseList.innerHTML = '<div class="log-empty">불러오는 중…</div>';
@@ -11050,210 +10956,11 @@ function nxMdOpenWindow(title, src, opts){
     docsInitCaseSelect_();
   }
 
-  // [2026.09] "폴더명 작성규칙(고객명_세목_업무유형, work_generateUniqueCaseName_ 참고)을
-  // 제대로 안 지키고 있는 것 같다"는 지적 — 고객명 정정·세목 변경 등이 있어도 사건명(=폴더명)은
-  // 자동으로 안 바뀌는 기존 정책 때문에 시간이 지날수록 실제 규칙과 어긋나는 폴더가 쌓일 수
-  // 있다. 실제 Drive 폴더와 시트를 동시에 바꾸는 위험한 작업이라, 먼저 무엇이 바뀔지 전부
-  // 보여주고(dryRun) 확인 후에만 실제로 적용한다 — 자동으로 조용히 바꾸지 않는다.
-  function docsOpenFolderNameAuditModal_(){
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.display = 'flex';
-    overlay.innerHTML =
-      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>🏷 사건명 규칙 전수조사</span><span class="modal-close" id="docsFnaClose">✕</span></div>' +
-        '<div class="modal-body" style="overflow-y:auto;">' +
-          '<div id="docsFnaBody">확인 중…</div>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    function close(){ overlay.remove(); }
-    overlay.querySelector('#docsFnaClose').onclick = close;
-    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
-
-    function renderList(items){
-      var body = overlay.querySelector('#docsFnaBody');
-      if (!items.length){ body.innerHTML = '<div class="log-empty">규칙과 어긋나는 사건명(폴더명)이 없습니다. 전부 규칙대로입니다.</div>'; return; }
-      var rows = items.map(function(it){
-        return '<tr>' +
-          '<td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
-          '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재사건명 || '(빈 값)') + '</td>' +
-          '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.제안사건명) + '</td>' +
-          '<td style="padding:4px 8px;">' + (it.폴더ID ? '있음' : '없음(사건명만 수정)') + '</td>' +
-        '</tr>';
-      }).join('');
-      body.innerHTML =
-        '<div class="taxcalc-result-note" style="margin-bottom:8px;">아래 ' + items.length + '건은 지금 규칙대로 다시 만들면 이름이 달라집니다. "일괄 적용"을 누르면 시트의 사건명과 실제 Drive 폴더명을 함께 바꿉니다(폴더가 있는 경우만). 확보한 자료·하위 폴더 구조는 그대로 유지됩니다(이름만 바뀜).</div>' +
-        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">현재 사건명(폴더명)</th><th style="padding:4px 8px;">규칙대로면</th><th style="padding:4px 8px;">Drive 폴더</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-        '<button type="button" id="docsFnaApplyBtn" class="btn danger" style="margin-top:10px;">⚠ 위 ' + items.length + '건 일괄 적용(되돌리기 어려움)</button>';
-      body.querySelector('#docsFnaApplyBtn').addEventListener('click', function(){
-        nxConfirm_(items.length + '건의 사건명과 Drive 폴더명을 실제로 바꿉니다. 계속할까요?').then(function(ok){
-        if (!ok) return;
-        body.innerHTML = '적용 중…';
-        callGas('work_audit_case_folder_names', { apply: true }).then(function(res){
-          if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '적용 실패') + '</div>'; return; }
-          // [2026.09.23 버그수정] 이제 work_updateCase를 거치므로(낙관적 잠금 포함) 일부 건이
-          // 다른 화면에서 동시 저장돼 충돌로 실패할 수 있다 — 조용히 무시하지 않고 몇 건이
-          // 실패했는지, 왜 실패했는지 보여준다.
-          var failedList = res.failed || [];
-          body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.' +
-            (failedList.length ? ' (' + failedList.length + '건 실패 — ' + failedList.map(function(f){ return escapeHtml(f.고객명 || '') + ': ' + escapeHtml(f.사유 || ''); }).join(', ') + ')' : '') + '</div>';
-          showToast(res.applied + '건의 폴더명을 규칙대로 수정했습니다.' + (failedList.length ? ' (' + failedList.length + '건 실패, 다시 시도해주세요)' : ''), failedList.length ? 'warning' : 'success');
-          // [2026.09.16 버그수정] 여기서 docsGetAllCases_(true)만 부르면 내부 캐시만 새로
-          // 받아올 뿐 이미 그려진 <select id="docsCaseSelect">의 <option> 텍스트는 그대로
-          // 남아있어서(docsInitCaseSelect_가 페이지당 딱 한 번만 그림), 사건명을 고쳐도
-          // 드롭다운엔 옛 이름이 계속 보였다 — docsRefreshCaseSelect_로 드롭다운 자체를 다시 그린다.
-          docsRefreshCaseSelect_();
-          if (typeof loadWorkCases === 'function') loadWorkCases();
-        }).catch(function(err){
-          body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-        });
-        });
-      });
-    }
-
-    callGas('work_audit_case_folder_names', {}).then(function(res){
-      if (res.success === false){ overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
-      renderList(res.items || []);
-    }).catch(function(err){
-      overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-    });
-  }
-
-  // [2026.09.16 신규] "고객E(고객E 피상속인)_상속_상담은 폴더가 있는데 연결이 안 돼 없는 것처럼 나온다"는
-  // 지적으로 추가 — 위 "사건명 점검"은 이름이 어긋난 것만 잡고, 폴더ID 자체가 비어있는 사건은
-  // "폴더 없음"으로만 보여줄 뿐 실제로 있을 수도 있는 폴더를 찾아주지 않는다. 고객명으로 느슨하게
-  // 후보를 찾아 보여주고, 사람이 맞는 것 하나를 골라 "연결"만 누르면 된다(이름/폴더는 안 바뀜).
-  function docsOpenUnlinkedFolderAuditModal_(){
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.style.display = 'flex';
-    overlay.innerHTML =
-      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>🔗 미연결 폴더 찾기</span><span class="modal-close" id="docsUfaClose">✕</span></div>' +
-        '<div class="modal-body" style="overflow-y:auto;">' +
-          '<div id="docsUfaBody">확인 중…</div>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    function close(){ overlay.remove(); }
-    overlay.querySelector('#docsUfaClose').onclick = close;
-    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
-
-    function renderList(items){
-      var body = overlay.querySelector('#docsUfaBody');
-      if (!items.length){ body.innerHTML = '<div class="log-empty">폴더가 연결되지 않은 사건이 없습니다.</div>'; return; }
-      var rows = items.map(function(it){
-        var candHtml = '';
-        if (it.candidates.length){
-          candHtml += it.candidates.map(function(c){
-            return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">' +
-              '<span>' + escapeHtml(c.name) + '</span><span style="color:var(--sub); font-size:12px;">(' + c.createdDate + ' 생성)</span>' +
-              '<button type="button" class="ghost-btn docsUfaLinkBtn" data-case-id="' + it.id + '" data-folder-id="' + c.id + '" style="margin-left:auto;">🔗 이 폴더로 연결</button>' +
-              '</div>';
-          }).join('');
-        } else {
-          candHtml += '<div style="color:var(--sub); margin-bottom:4px;">자동으로는 일치하는 폴더 후보를 못 찾았습니다(하위 폴더 안에 있거나 이름이 달라서일 수 있습니다).</div>';
-        }
-        // [2026.09.16 신규] "그럼 이 사건은 폴더와 영원히 연결 못 하는가?" — 자동 후보검색은
-        // 최상위 폴더+고객명 부분일치만 보므로 한계가 있다. Drive에서 실제 폴더를 찾아 링크나
-        // ID를 직접 붙여넣어도 연결할 수 있게 항상 이 수동 입력줄을 같이 보여준다.
-        candHtml +=
-          '<div style="display:flex; align-items:center; gap:6px; margin-top:6px;">' +
-            '<input type="text" class="docsUfaManualInput" placeholder="또는 Drive 폴더 링크·ID 붙여넣기" style="flex:1; min-width:160px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">' +
-            '<button type="button" class="ghost-btn docsUfaLinkBtn" data-case-id="' + it.id + '" data-manual="1">🔗 이 링크로 연결</button>' +
-          '</div>';
-        return '<tr>' +
-          '<td style="padding:6px 8px; vertical-align:top;">' + escapeHtml(it.고객명) + '</td>' +
-          '<td style="padding:6px 8px; vertical-align:top;">' + escapeHtml(it.사건명) + '</td>' +
-          '<td style="padding:6px 8px; vertical-align:top;">' + candHtml + '</td>' +
-          '</tr>';
-      }).join('');
-      body.innerHTML =
-        '<div class="taxcalc-result-note" style="margin-bottom:8px;">폴더ID가 비어있는 사건 ' + items.length + '건입니다. 고객명이 폴더명에 들어간 것만 자동 후보로 보여줍니다 — 못 찾으면 Drive에서 직접 찾아 링크를 붙여넣어도 됩니다. "연결"을 누르면 사건명·폴더명은 그대로 두고 연결(폴더ID)만 채웁니다.</div>' +
-        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:6px 8px;">고객명</th><th style="padding:6px 8px;">사건명</th><th style="padding:6px 8px;">후보 폴더</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
-      body.querySelectorAll('.docsUfaLinkBtn').forEach(function(btn){
-        btn.addEventListener('click', function(){
-          var caseId = btn.dataset.caseId, folderId;
-          var rowWrap = btn.parentElement;
-          // [2026.09.16 버그수정] "이미 다른 사건에 연결됨" 같은 실패 사유를 토스트로만 보여줬더니
-          // 몇 초 만에 사라져서 세무사님이 캡처할 수도 없었다 — 화면에 계속 남는 문구로 바꾼다.
-          var oldErr = rowWrap.parentElement.querySelector('.docsUfaErr');
-          if (oldErr) oldErr.remove();
-          if (btn.dataset.manual){
-            var input = rowWrap.querySelector('.docsUfaManualInput');
-            folderId = input ? input.value.trim() : '';
-            if (!folderId){ showToast('폴더 링크나 ID를 입력해주세요.', 'warning'); return; }
-          } else {
-            folderId = btn.dataset.folderId;
-          }
-          btn.disabled = true;
-          callGas('work_link_case_folder', { caseId: caseId, folderId: folderId }).then(function(res){
-            if (res.success === false){
-              var errDiv = document.createElement('div');
-              errDiv.className = 'docsUfaErr';
-              errDiv.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
-              errDiv.textContent = '⚠ ' + (res.message || '연결 실패');
-              // [2026.09.16 신규] "고객F(고객F)/고객E 피상속인(고객E)는 잘못 부여된 사건명이니까
-              // 수정된 사건명으로 연결해주고 잘못된 사건명은 삭제해달라" — 충돌 사유가 "다른
-              // 사건이 이미 이 폴더를 차지함"일 때는, 그 옛 사건이 정정 전 이름(또는 고객명·
-              // 납세자가 뒤바뀐) 채로 남아있는 경우가 많다. 재입력 없이 그 자리에서 바로
-              // "옮기고 옛 것 삭제"까지 할 수 있게 버튼을 같이 보여준다.
-              if (res.conflictCaseId){
-                var moveBtn = document.createElement('button');
-                moveBtn.type = 'button';
-                moveBtn.className = 'ghost-btn';
-                moveBtn.style.cssText = 'margin-left:8px; font-size:12px;';
-                moveBtn.textContent = '🔁 "' + (res.conflictCaseName || '옛 사건') + '"에서 옮기고 그 사건 삭제';
-                moveBtn.addEventListener('click', function(){
-                  nxConfirm_('"' + res.conflictCaseName + '" 사건에서 이 폴더를 떼어 지금 사건에 연결하고, "' + res.conflictCaseName + '" 사건 자체는 삭제합니다.\n(하위업무·메모 등 그 사건에 기록된 내용도 함께 사라집니다 — 되돌릴 수 없습니다.) 계속할까요?').then(function(ok){
-                    if (!ok) return;
-                    moveBtn.disabled = true;
-                    callGas('work_reassign_case_folder', { fromCaseId: res.conflictCaseId, toCaseId: caseId }).then(function(res2){
-                      if (res2.success === false){ errDiv.textContent = '⚠ ' + (res2.message || '이관 실패'); moveBtn.disabled = false; return; }
-                      showToast('폴더를 옮기고 옛 사건을 삭제했습니다.', 'success');
-                      docsRefreshCaseSelect_();
-                      if (typeof loadWorkCases === 'function') loadWorkCases();
-                      load();
-                    }).catch(function(err3){
-                      errDiv.textContent = '⚠ 이관 중 오류: ' + (err3 && err3.message ? err3.message : err3);
-                      moveBtn.disabled = false;
-                    });
-                  });
-                });
-                errDiv.appendChild(moveBtn);
-              }
-              rowWrap.insertAdjacentElement('afterend', errDiv);
-              btn.disabled = false;
-              return;
-            }
-            showToast('연결했습니다.', 'success');
-            docsRefreshCaseSelect_();
-            if (typeof loadWorkCases === 'function') loadWorkCases();
-            load(); // 방금 연결한 사건을 목록에서 빼고 다시 그림
-          }).catch(function(err){
-            var errDiv2 = document.createElement('div');
-            errDiv2.className = 'docsUfaErr';
-            errDiv2.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
-            errDiv2.textContent = '⚠ 연결 중 오류: ' + (err && err.message ? err.message : err);
-            rowWrap.insertAdjacentElement('afterend', errDiv2);
-            btn.disabled = false;
-          });
-        });
-      });
-    }
-
-    function load(){
-      overlay.querySelector('#docsUfaBody').innerHTML = '확인 중…';
-      callGas('work_audit_unlinked_case_folders', {}).then(function(res){
-        if (res.success === false){ overlay.querySelector('#docsUfaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
-        renderList(res.items || []);
-      }).catch(function(err){
-        overlay.querySelector('#docsUfaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-      });
-    }
-    load();
-  }
+  // [2026.10.28 정비도구 재점검] 설정 🛠 정비도구의 🏷 사건명 점검·🔗 미연결 폴더 찾기를 화면·핸들러까지 지웠다(세무사님 "정리 진행").
+  //  - 사건명 점검: 규칙("고객명(납세자)_세목_업무유형") 어긋남 0건 — 10-14~15 납세자·사건명 일괄 정리로 끝났고, 이후엔 work_updateCase가
+  //    고객명·납세자·세목·업무유형이 바뀔 때 사건명·폴더명·캘린더를 자동 동기화한다. 서버 work_auditCaseFolderNames는 남김.
+  //  - 미연결 폴더 찾기: 폴더ID 없는 사건 7건(모두 상담 완료, 폴더가 애초 없음)에 후보 폴더 0개. 폴더→사건 방향은 미등록 사건 점검·흡수가 맡는다.
+  //    서버 work_auditUnlinkedCaseFolders_·work_link_case_folder·work_reassign_case_folder는 남김.
 
   // [2026.09] 법령조회·세액계산에는 상단에 "사건연결" 드롭다운이 있어서 사건을 바로 골라
   // 들어갈 수 있는데, 증빙확보(왼쪽 메뉴로 바로 들어오면)는 그게 없어서 폴더를 일일이
@@ -51648,7 +51355,7 @@ function rwAiApplyEdit_(id, content){
     var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
     var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
-    var STATUS_COLOR = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+    var STATUS_COLOR = { '접수': 'var(--sub)', '고침': '#6f42c1', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
     function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); return r; }); }
     function showMeeting(onlyNeed){
       if (typeof jwRenderInto_ !== 'function'){ box().textContent = '회의 기록 표는 앱(job.netax.kr/app)에서 보입니다.'; return; }
@@ -51669,11 +51376,18 @@ function rwAiApplyEdit_(id, content){
         // [2026.10.20] 끝나지 않은 요청 전부(오래된 순·며칠째)를 앞에, 끝난 것(최근 15건)은 접어 둔다 — 대시보드 🛠 개선요구 카드와 같은 자료
         var open = r.openRequests || [], done = r.doneRequests || [];
         if (!open.length && !done.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
-        var one = function(x){
-          var btns = x.status === '반영됨' ? ' <button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '">↩ 다시 고쳐 주세요</button>' : '';
-          return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '')) + '</span><br>' + h(x.text) + (x.reopenNote ? '<br><span style="color:#a83232;">↩ ' + h(x.reopenNote) + '</span>' : '') + btns);
+        // [2026.10.28] 처리 내역(누가·언제·무엇·커밋·운영 판)을 펼쳐 보이고, 상태가 무엇이든 👍 확인 / ↩ 다시 요구(✍ 건의 창) — 대시보드 개선요구 카드와 같은 규칙
+        var hist = function(x){
+          var hs = x.history || [];
+          if (!hs.length) return '<br><span style="color:var(--sub); font-size:12px;">처리 내역 없음' + (x.commit ? ' · 커밋 ' + h(x.commit) : '') + '</span>';
+          return '<details style="margin-top:2px;"><summary style="cursor:pointer; color:var(--sub); font-size:12px;">처리 내역 ' + hs.length + '건 — 마지막: ' + h(String(hs[hs.length - 1].at).slice(5, 16) + ' ' + hs[hs.length - 1].who + ' · ' + String(hs[hs.length - 1].what).slice(0, 60)) + '</summary><div style="font-size:12px; padding-left:8px; border-left:2px solid var(--line);">'
+            + hs.map(function(e){ return '<div>' + h(String(e.at).slice(0, 16)) + ' <b>' + h(e.who) + '</b> — ' + h(e.what) + (e.commit ? ' <span style="color:var(--sub);">커밋 ' + h(e.commit) + '</span>' : '') + (e.ver ? ' <span style="color:var(--sub);">운영 @' + h(e.ver) + '</span>' : '') + '</div>'; }).join('') + '</div></details>';
         };
-        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '남은 요청 ' + open.length + '건') + '</b> · 흐름: 접수 → (개발자 수정안·승인·📥 반영) → 반영됨 → 세무사님 확인</div>'
+        var one = function(x){
+          var btns = x.status !== '확인완료' ? '<div style="margin-top:3px;"><button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨 — 끝</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '" data-fedtitle="' + h(String(x.text).slice(0, 120)) + '">↩ 부족함 — 다시 요구 적기</button></div>' : '';
+          return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + (x.ver ? ' · 운영 @' + x.ver : '')) + '</span><br>' + h(x.text) + (x.reopenNote ? '<br><span style="color:#a83232;">↩ 세무사님 다시 요구: ' + h(x.reopenNote) + '</span>' : '') + hist(x) + btns);
+        };
+        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '남은 요청 ' + open.length + '건') + '</b> · 흐름: 접수 → 고침(PC Claude·개발자 수정안) → 배포 → 반영됨 → 세무사님 👍 확인 또는 ↩ 다시 요구</div>'
           + (open.length ? open.map(one).join('') : row('남은 요청이 없습니다.'))
           + (done.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(one).join('') + '</details>' : '');
       }).catch(err);
@@ -51713,7 +51427,7 @@ function rwAiApplyEdit_(id, content){
       if (d.fed === 'q') return showQ();
       if (d.fed === 'reg') return showReg();
       if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
-      if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
+      if (d.fedno) return (typeof nxSuggestOpen_ === 'function' ? nxSuggestOpen_({ reopenId: d.fedno, title: d.fedtitle || '' }).then(function(r){ if (r && r.success) showReq(); }) : nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); })).catch(err); // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)
       if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
       if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showReg(); }); }).catch(err);
       if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showReg); }).catch(err);
@@ -51744,23 +51458,15 @@ function rwAiApplyEdit_(id, content){
         <h4>사건관리</h4>
         <div class="settings-tool-item">
           <button type="button" id="stBtnFixCompletionAfterReceipt" class="ghost-btn">💰 완료일-영수증일 보정</button>
-          <div class="settings-tool-desc">사건이 "완료"로 처리됐는데 완료일보다 나중 날짜의 현금영수증이 그 고객 앞으로 찍혀있으면(완료 처리를 너무 일찍 한 경우), 완료일을 그 영수증 날짜로 고쳐줍니다. 고객이 사건을 하나만 가진 경우에만 자동으로 고치고, 여러 개면 "확인 필요"로만 알려줍니다.</div>
+          <div class="settings-tool-desc">사건이 "완료"로 처리됐는데 완료일보다 나중 날짜의 현금영수증이 그 고객 앞으로 찍혀있으면(완료 처리를 너무 일찍 한 경우), 완료일을 그 영수증 날짜로 고쳐줍니다. 고객이 사건을 하나만 가진 경우에만 자동으로 고치고, 여러 개면 "확인 필요"로만 알려줍니다. 목록을 불러오기 전에, 사건ID가 비어 있던 옛 현금영수증 기록을 사건에 먼저 연결해 저장합니다(영수증-사건 연결 보완 — 완료일은 아직 안 바꿈).</div>
         </div>
         <div class="settings-tool-item">
           <button type="button" id="stBtnResyncCalendars" class="ghost-btn">📅 캘린더 재동기화</button>
           <div class="settings-tool-desc">사건의 법정기한·완료일과 구글 캘린더 일정이 어긋나 보일 때, 지금 저장된 값 기준으로 캘린더 표시만 다시 맞춥니다. 데이터 자체는 안 바꾸는 가장 안전한 도구입니다.</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnReceiptOnlyCleanup" class="ghost-btn">🧾 서류 없는 사건 정리(상담으로)</button>
-          <div class="settings-tool-desc">사건 폴더를 열어봤는데 현금영수증 파일 하나뿐이거나 아무 파일도 없으면(=서류 작업 없이 상담만 하고 끝난 경우), 영수증은 상담용 공용 폴더로 옮기고 사건 종류를 "상담"으로 바꿉니다. 원래 폴더는 완전삭제가 아니라 휴지통으로만 보냅니다.</div>
-        </div>
-        <div class="settings-tool-item">
           <button type="button" id="stBtnStdSubfolders" class="ghost-btn">📂 _신고제출·확보자료 폴더 점검</button>
           <div class="settings-tool-desc">[2026.10.19] 이제 새 사건 폴더에는 「확보자료」(모든 사건)와 「_신고제출」(신고 사건)이 자동으로 생깁니다. 그 전에 만든 사건 폴더 중 이 폴더가 없는 사건을 먼저 보여주고, 고른 사건에만 빈 폴더를 만듭니다(다른 파일·폴더는 건드리지 않음).</div>
-        </div>
-        <div class="settings-tool-item">
-          <button type="button" id="stBtnBackfillPartyClients" class="ghost-btn">👥 관계자 고객등록 일괄 반영</button>
-          <div class="settings-tool-desc">사건에 "양도인 OOO", "공동상속인 OOO"처럼 이름만 적혀있고 아직 고객명단에 정식 등록 안 된 사람들을 찾아 한꺼번에 고객으로 등록·연결합니다.</div>
         </div>
       </div>
       <div class="settings-tools-group">
@@ -51778,18 +51484,7 @@ function rwAiApplyEdit_(id, content){
           <div class="settings-tool-desc">이름 칸에 "3733"처럼 실명이 아니라 숫자만 적힌, 옛날 오류로 생긴 이상한 고객 기록을 찾아 정리합니다.</div>
         </div>
       </div>
-      <div class="settings-tools-group">
-        <h4>증빙관리</h4>
-        <div class="settings-tool-item">
-          <button type="button" id="stBtnDocsFolderNameAudit" class="ghost-btn">🏷 사건명 점검</button>
-          <div class="settings-tool-desc">사건 이름이 정해진 규칙("고객명(납세자)_세목_업무유형")과 다르게 붙어있는 경우를 찾아 규칙대로 고쳐줍니다(실제 드라이브 폴더 이름도 같이 바뀝니다).</div>
-        </div>
-        <div class="settings-tool-item">
-          <button type="button" id="stBtnDocsUnlinkedFolderAudit" class="ghost-btn">🔗 미연결 폴더 찾기</button>
-          <div class="settings-tool-desc">구글 드라이브에는 폴더가 있는데 시스템(사건 목록)에는 연결이 안 된 경우를 찾아, 어느 사건 것인지 연결할 수 있게 도와줍니다.</div>
-        </div>
-      </div>
-      <div class="taxcalc-result-note" style="margin-top:6px;">공통: 전부 누르자마자 바뀌는 게 아니라, 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
+      <div class="taxcalc-result-note" style="margin-top:6px;">공통: 📅 캘린더 재동기화만 누르는 즉시 돌아가고(자료는 안 바꿈), 나머지는 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
     </div>
   </div>
 </div>
@@ -51916,7 +51611,10 @@ function rwAiApplyEdit_(id, content){
   function initSettings(){ settingsRenderPwForm_(); settingsRenderTaxAgentForm_(); settingsWireMaintenanceTools_(); }
 
   // [2026.09.19 신규] 사건관리·고객관리·수금관리·증빙관리 각 화면 툴바에 흩어져 있던 1회성
-  // 정비도구를 여기 한 군데로 모았다. 실제 로직(모달·함수)은 각 도구가 다루는 데이터와
+  // 정비도구를 여기 한 군데로 모았다.
+  // [2026.10.28 정비도구 재점검] 실제 자료(고객·사건 시트, 드라이브 고객사건 폴더)로 세어 "해당 0건"으로 끝난 4개(🧾 서류 없는
+  // 사건 정리·👥 관계자 고객등록 일괄·🏷 사건명 점검·🔗 미연결 폴더 찾기)를 화면·핸들러까지 지웠다(세무사님 "정리 진행"). 남은 6개 중
+  // 📂 폴더 점검(48건)·🔢 숫자 이름(3명)은 한 번 처리하면 끝나는 것이라 처리 뒤 같은 방식으로 뺄 후보. 서버 함수는 모두 남겨 두었다. 실제 로직(모달·함수)은 각 도구가 다루는 데이터와
   // 가까운 원래 파일(workmanage.html/clientmanage.html/collections.html/docs.html)에 그대로
   // 남아있다 — 이 앱은 모든 화면의 HTML+스크립트를 한 페이지에 같이 그려두는 구조라 그
   // 함수들을 여기서도 이름으로 그대로 호출할 수 있다(고객관리의 👤 빠른보기가 사건관리에서
@@ -51932,16 +51630,11 @@ function rwAiApplyEdit_(id, content){
     // 사건관리
     wire('stBtnFixCompletionAfterReceipt', function(){ openFixCompletionAfterReceiptModal_(); });
     wire('stBtnResyncCalendars', runResyncCalendars_);
-    wire('stBtnReceiptOnlyCleanup', function(){ openReceiptOnlyCleanupModal_(); });
-    wire('stBtnBackfillPartyClients', runBackfillPartyClients_);
     wire('stBtnStdSubfolders', function(){ settingsOpenStdSubfoldersModal_(); });
     // 고객관리
     wire('stBtnClientDupAudit', function(){ openClientDupAuditModal_(); });
     wire('stBtnClientScanCaseFiles', runClientScanCaseFiles_);
     wire('stBtnClientDeleteNumericNames', function(){ openClientDeleteNumericNamesModal_(); });
-    // 증빙관리
-    wire('stBtnDocsFolderNameAudit', function(){ docsOpenFolderNameAuditModal_(); });
-    wire('stBtnDocsUnlinkedFolderAudit', function(){ docsOpenUnlinkedFolderAuditModal_(); });
   }
   // [2026.10.19] 📂 _신고제출·확보자료 폴더 점검 — 미리 보기(없는 사건 목록) → 고른 것만 [만들기]. 이미 있는 사건 폴더에 일괄로 만들지 않기 위한 도구.
   function settingsOpenStdSubfoldersModal_(){
@@ -53603,7 +53296,7 @@ function rwAiApplyEdit_(id, content){
         <li><b>🤝 AI 회의·개발자 소통(2026.10.19 재편)</b>: 설정 → <b>🤝 AI 회의 · 개발자 소통</b> 카드. 위원 AI(Gemini API, 무료 등급)가 안건마다 답하고 회장(Claude)이 결론을 내며, 결론이 안 난 것과 돈 드는 결정만 세무사님께 올라옵니다. ① <b>⚖️ 회의 기록(법령)</b> — 판단 대기 안건마다 위원 답·근거(법제처 실재 ✔/⚠)·회장 결론·결정(법령정보 탭 "🤝 판단 대기"와 같은 표). ② <b>🙋 세무사님 결정 필요</b> — 회장이 결론을 못 낸 안건만. ③ <b>🛠 시스템 안건</b> — 개선 후보 보고서(반복 오류·비용·막힌 기능·요청)를 주간 정비 루틴이 회장으로 처리(고침 작업으로). ④ <b>📝 요청 상태</b> — ✍로 적은 개선요구사항이 반영되면 👍 잘 됨 / ↩ 다시 고쳐 주세요. 요청 글에 "긴급"이 있으면 대시보드에 🚨. ⑤ <b>❓ 개발자 질문</b>. ⑥ <b>👥 위원 상태</b> — Gemini API 키·오늘 사용량, OpenRouter 칸(키를 넣으면 위원이 늘어남). 고객 자료는 위원에게 보내지 않습니다(자동 차단). 세액계산 <b>🔍 2중 검증</b>·대시보드 <b>🤝 새 기능</b>·AI의 "기능 부족 신고"는 그대로입니다. (무료 AI 3곳 다수결·AI 자문단·웹 AI 붙여넣기는 2026-10-19 삭제)</li>
         <li><b>🩹 자가치유 장치(2026.10.14, 모두 AI 비용 0)</b>: ① <b>계산 자가점검</b> — 매일 밤 양도·증여·상속 51개 사례(법조문으로 손계산한 정답, 근거 조문 포함)를 계산엔진에 돌려 하나라도 어긋나면 개선 후보에 🩺로 올립니다. ② <b>서류 정리 회귀시험</b> — 서류 종류별 표본 35건을 밤마다 8건씩, 일주일에 한 바퀴 다시 정리해 예전과 다르게 읽으면 🧾로 올립니다(고객 금액은 저장하지 않고 "숫자 묶음의 지문"만 비교). ③ <b>고친 값 = 학습 신호</b> — 세액계산 자동채우기(규칙·AI)가 넣은 값을 세무사님이 고치면 "어느 화면·어느 칸을 고쳤는지"만 기록하고, 같은 칸이 반복되면 ✏️로 올립니다. ④ <b>배포 직후 자동 점검</b> — 📥 수정 반영 직후 사건·고객·예약 목록, 계산엔진, 서류 정리 견본을 바로 돌려 보고, 이상하면 🐞 카드와 개선 후보에 🚨로 알립니다. ⑤ <b>↩ 되돌리기</b> — 반영 뒤 job이 이상하면 🐞 카드의 <b>↩ 되돌리기</b>로 바로 앞 버전으로 돌아갑니다(주소 그대로, 되돌린 뒤 자동 점검). 다시 최신으로는 📥 수정 반영. ⑥ <b>화면 배선 점검</b> — job을 열면 하루 한 번, 메뉴마다 화면과 버튼 기능이 제대로 연결돼 있는지 확인해 빠진 것을 오류 기록에 남깁니다. 올라온 후보는 매주 웹 Claude Code가 고쳐 수정안으로 올립니다.</li>
         <li><b>📚 지침·템플릿 정비 순환(2026.10.20)</b>: 업무관리자 지침과 보고서·의뢰서·문단 템플릿을 계속 만들고 고치고 정리하는 장치입니다. ① 매일 밤 job이(AI 비용 0) 모든 지침·템플릿을 <b>현행 / 수정 필요 / 폐기 후보</b>로 판정합니다 — 틀린 경로·도구·조문(시스템 자기점검과 같은 규칙), 인용한 조문의 법령 개정, [확인 필요] 남은 곳, 세무사님이 반복해서 고친 곳, 새 사건에 쓰이지 않는 의뢰서, 오래 안 쓰인 파일. 업무(세목×업무유형)별로 지침·템플릿이 있는지도 셉니다. 최근 완료 사건의 검토서·보고서(이름·금액 가림)도 재료로 모읍니다. ② 매주 월요일 웹 Claude Code가 이걸 보고 새 지침·템플릿 초안, 수정본, 폐기 제안을 수정안(PR)으로 올리고, ✅ 승인·📥 반영 때 드라이브 각 폴더 「_제안함」에 들어갑니다 — <b>이때는 아직 쓰이지 않습니다</b>. ③ 설정 → 🧭 시스템 관리 → <b>📚 지침·템플릿 제안 대기</b>에서 초안을 보고 지금 파일과 차이를 확인한 뒤 <b>✅ 채택</b>(지금 판은 「_이전판」에) / <b>✏ 작성관리에서 고쳐서 채택</b> / <b>✖ 반려</b>(사유를 다음 루틴이 읽음), 폐기 제안은 <b>✅ 폐기</b>(지우지 않고 「_폐기」 폴더로) / <b>✖ 유지</b>. 대시보드 <b>📚 지침·템플릿 제안</b> 줄에 대기 수가 나옵니다. 같은 화면의 <b>📊 업무별 보유 현황</b>에서 빨간 빈칸이 다음 작성 대상입니다.</li>
-        <li><b>✍ 개선 건의 — 어느 화면에서든</b>: 일하다 불편한 점이 보이면 <b>화면 오른쪽 아래 ✍ 단추</b>(또는 <b>Alt+Q</b>)를 누르세요. 하던 창을 닫지 않고 작은 창이 겹쳐 뜨고, 적은 글은 <b>지금 탭·보고 있던 사건·세액계산 세목</b>과 함께 저장됩니다(나중에 봐도 어디서 겪은 일인지 남게). 세액·신고서 결과가 틀리게 나왔으면 🚨 긴급을 체크하세요(문자로도 알림). 저장하면 개선 후보에 올라가고, 다음 웹 Claude Code 실행 때 구현해서 수정안으로 올립니다(AI 비용 0). 🐞 카드의 ✍ 개선요구사항 적기 버튼도 같은 창을 띄웁니다.</li>
+        <li><b>✍ 개선 건의 — 어느 화면에서든</b>: 일하다 불편한 점이 보이면 <b>화면 오른쪽 아래 ✍ 단추</b>(또는 <b>Alt+Q</b>)를 누르세요. 하던 창을 닫지 않고 작은 창이 겹쳐 뜨고, 적은 글은 <b>지금 탭·보고 있던 사건·세액계산 세목</b>과 함께 저장됩니다(나중에 봐도 어디서 겪은 일인지 남게). 화면 캡처는 그 창에서 <b>Ctrl+V</b>로 붙이거나 📎로 고릅니다(3장까지, 총괄관리자 _개선건의첨부 폴더에 저장되어 글에 링크가 붙음). 급하면 <b>🚨 긴급</b>만 체크하세요(사유 불필요) — 개선 후보 보고서 맨 위로 올라가고, 저장 직후 처리 실행 화면(웹 Claude Code)을 바로 열어 주니 "실행"을 한 번 누르면 그 자리에서 고치기 시작합니다. 보통 건의는 <b>매주 월요일 아침</b> 루틴이 구현해서 수정안으로 올립니다(AI 비용 0). 수정안은 🐞 카드 🗳 승인 대기 수정안에서 ✅ 승인·반영해야 job에 들어갑니다. 요청마다 <b>처리 내역</b>(누가·언제·무엇을·커밋·운영 판)이 대시보드 개선요구 카드와 설정 📝 요청 상태에 남고, 정상이면 <b>👍 잘 됨</b>, 부족하면 <b>↩ 부족함 — 다시 요구 적기</b>로 그 자리에서 다시 적습니다. 🐞 카드의 ✍ 개선요구사항 적기 버튼도 같은 창을 띄웁니다.</li>
         <li><b>🧾 지침 점검</b>: 매일 새벽 지침 파일을 규칙으로 점검하고(0원 — 없는 주소·도구·조문·경로·지침, 첫 줄, 중복 문장, [확인 필요]), 지침이 바뀐 날만 무료 AI(제미니)가 지침끼리·장기계획과 어긋나는지 봅니다. 결과는 설정 🧭 시스템 관리 "점검 결과"(줄을 누르면 그 줄로). 이 버튼은 유료 AI(Sonnet) 전체 점검이고, 세법 판단이 필요한 항목만 보내려면 🧭의 "🧾 판단 필요 N건만 유료 점검"을 누릅니다.</li>
         <li><b>🧩 빠진 기능 감시</b>: 배포(📥·PC)할 때마다 job AI·work AI·AI 지휘에서 켜진 도구와 화면 버튼이 부르는 서버 동작을 기록해, 직전 배포보다 줄어든 것이 있으면 대시보드와 배포 직후 점검에 "⚠ 이번 반영으로 빠진 기능"을 띄웁니다. 매일 새벽 규칙 점검은 지시문·지침이 쓰라는 도구가 그 화면에 실제로 있는지도 봅니다.</li>
         <li><b>🔗 바로가기</b>: Claude 콘솔(AI 사용요금·키 확인), Google AI Studio.</li>
@@ -61943,23 +61636,36 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return parts.join(' · ');
   }
   // 작은 창을 지금 화면 위에 겹쳐 띄운다 — 탭 이동 없음. Promise<{success,error}|null>(닫기=null).
-  function nxSuggestOpen_(){
+  // opts.reopenId: [2026.10.28] 처리된 요청이 부족할 때 같은 창에서 "다시 요구"를 적는다(세무사님 "부족해 보이면 다시 요구사항을 적을 수 있도록") → comm_request_confirm(ok=false) → 재오픈
+  function nxSuggestOpen_(opts){
+    opts = opts || {};
+    var reopenId = opts.reopenId || '';
     return new Promise(function(resolve){
       var old = document.getElementById('nxSuggestOverlay');
       if (old) old.remove();
-      var where = nxSuggestContext_();
+      var where = reopenId ? '' : nxSuggestContext_();
       var overlay = document.createElement('div');
       overlay.id = 'nxSuggestOverlay';
       overlay.className = 'modal-overlay';
       overlay.style.zIndex = '9998';
       overlay.innerHTML =
         '<div class="modal-panel" style="width:min(520px, 94vw);">' +
-          '<div class="modal-head"><span>✍ 개선 건의</span></div>' +
+          '<div class="modal-head"><span>' + (reopenId ? '↩ 다시 요구 — ' + escapeHtml(reopenId) : '✍ 개선 건의') + '</span></div>' +
           '<div class="modal-body">' +
-            '<div style="font-size:12.5px; color:var(--sub); margin-bottom:6px;">지금 자리: ' + escapeHtml(where || '(알 수 없음)') + ' — 글과 함께 남습니다</div>' +
-            '<textarea id="nxSuggestText" rows="5" placeholder="고쳤으면 하는 점, 새로 원하는 기능, 방금 겪은 불편을 그대로 적어 주세요" style="width:100%; box-sizing:border-box; font-size:14px; line-height:1.5; resize:vertical;"></textarea>' +
-            '<label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="nxSuggestUrgent"> 🚨 세액·신고서 결과가 틀리게 나옴(긴급)</label>' +
-            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 또는 AI 탭 🛠)가 수정안으로 올립니다. Ctrl+Enter로도 저장.</div>' +
+            (reopenId
+              ? '<div style="font-size:12.5px; color:var(--sub); margin-bottom:6px;">' + escapeHtml(String(opts.title || '').slice(0, 120)) + '</div>'
+              : '<div style="font-size:12.5px; color:var(--sub); margin-bottom:6px;">지금 자리: ' + escapeHtml(where || '(알 수 없음)') + ' — 글과 함께 남습니다</div>') +
+            '<textarea id="nxSuggestText" rows="5" placeholder="' + (reopenId ? '무엇이 아직 부족한지, 어떻게 되어야 하는지 적어 주세요 — 이 요청이 다시 열려 개발자가 먼저 고칩니다' : '고쳤으면 하는 점, 새로 원하는 기능, 방금 겪은 불편을 그대로 적어 주세요') + '" style="width:100%; box-sizing:border-box; font-size:14px; line-height:1.5; resize:vertical;"></textarea>' +
+            // [2026.10.28] 화면 캡처 첨부(Ctrl+V 붙여넣기·📎 고르기, 최대 3장) / 긴급은 사유 없이 체크만(세무사님 "입력자가 긴급여부를 판단하는 것이라면 긴급사유는 필요없다")
+            (reopenId ? '' :
+              '<div id="nxSuggestImgs" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"></div>' +
+              '<div style="display:flex; align-items:center; gap:10px; margin-top:8px; font-size:13px; flex-wrap:wrap;">' +
+                '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="nxSuggestUrgent"> 🚨 긴급</label>' +
+                '<button type="button" class="ghost-btn" id="nxSuggestPick" style="font-size:12px; padding:2px 8px;">📎 화면 캡처 붙이기</button>' +
+                '<span style="font-size:11.5px; color:var(--sub);">캡처한 그림은 이 창에서 Ctrl+V로도 붙습니다</span>' +
+                '<input type="file" id="nxSuggestFile" accept="image/*" multiple hidden>' +
+              '</div>') +
+            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">' + (reopenId ? '저장하면 이 요청이 "재오픈"으로 바뀌고 다음 개발자 실행 때 먼저 고칩니다.' : '저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 또는 AI 탭 🛠)가 수정안으로 올립니다. 🚨 긴급이면 저장 직후 처리 실행 화면을 바로 엽니다.') + ' Ctrl+Enter로도 저장.</div>' +
             '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">' +
               '<button type="button" class="save-btn" data-nx-val="ok">저장</button>' +
               '<button type="button" class="ghost-btn" data-nx-val="cancel">닫기</button>' +
@@ -61969,14 +61675,45 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       document.body.appendChild(overlay);
       var ta = overlay.querySelector('#nxSuggestText');
       var okBtn = overlay.querySelector('[data-nx-val="ok"]');
+      var images = []; // {name, dataUrl}
+      var imgBox = overlay.querySelector('#nxSuggestImgs');
+      var drawImgs = function(){
+        if (!imgBox) return;
+        imgBox.innerHTML = images.map(function(im, i){ return '<span style="position:relative; display:inline-block;"><img src="' + im.dataUrl + '" alt="" style="height:64px; border:1px solid var(--line); border-radius:4px;"><button type="button" data-nx-img="' + i + '" title="빼기" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:none; background:#a83232; color:#fff; font-size:11px; cursor:pointer; line-height:18px; padding:0;">×</button></span>'; }).join('');
+      };
+      var addFile = function(file){
+        if (!file || !/^image\//.test(file.type)) return;
+        if (images.length >= 3){ toast('캡처는 3장까지 붙일 수 있습니다'); return; }
+        if (file.size > 5 * 1024 * 1024){ toast('5MB가 넘는 그림은 붙일 수 없습니다'); return; }
+        var rd = new FileReader();
+        rd.onload = function(){ images.push({ name: file.name || '캡처.png', dataUrl: String(rd.result) }); drawImgs(); };
+        rd.readAsDataURL(file);
+      };
+      if (imgBox){
+        imgBox.addEventListener('click', function(e){ var b = e.target.closest('[data-nx-img]'); if (!b) return; images.splice(Number(b.getAttribute('data-nx-img')), 1); drawImgs(); });
+        var fileEl = overlay.querySelector('#nxSuggestFile');
+        overlay.querySelector('#nxSuggestPick').addEventListener('click', function(){ fileEl.click(); });
+        fileEl.addEventListener('change', function(){ Array.prototype.forEach.call(fileEl.files || [], addFile); fileEl.value = ''; });
+        overlay.addEventListener('paste', function(e){
+          var items = (e.clipboardData && e.clipboardData.items) || [], got = false;
+          for (var i = 0; i < items.length; i++){ if (items[i].kind === 'file' && /^image\//.test(items[i].type)){ addFile(items[i].getAsFile()); got = true; } }
+          if (got) e.preventDefault();
+        });
+      }
       var close = function(val){ document.removeEventListener('keydown', onKey, true); overlay.remove(); resolve(val); };
       var save = function(){
         var text = String(ta.value || '').trim();
         if (!text){ ta.focus(); return; }
-        var urgent = !!overlay.querySelector('#nxSuggestUrgent').checked;
+        var urgentEl = overlay.querySelector('#nxSuggestUrgent'), urgent = !!(urgentEl && urgentEl.checked);
         okBtn.disabled = true; okBtn.textContent = '저장 중…';
-        callGas('improve_request_add', { text: text, where: where, urgent: urgent }).then(function(r){
-          if (r && r.success){ toast('✅ 건의를 적었습니다 — 개선 후보에 올라갔습니다'); close(r); }
+        var req = reopenId ? callGas('comm_request_confirm', { id: reopenId, ok: false, note: text }) : callGas('improve_request_add', { text: text, where: where, urgent: urgent, images: images });
+        req.then(function(r){
+          if (r && r.success){
+            toast(reopenId ? '↩ 다시 요구를 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다' : '✅ 건의를 적었습니다 — 개선 후보에 올라갔습니다' + (images.length ? ' (캡처 ' + images.length + '장 첨부)' : ''));
+            close(r);
+            // 🚨 긴급 — 세무사님 "긴급을 체크하면 언제 처리하는가?": 기다리지 않도록 저장 직후 처리 실행 화면(웹 Claude Code 루틴)을 바로 연다. 열린 화면에서 "실행"을 한 번 누르면 그 자리에서 고치기 시작.
+            if (!reopenId && urgent) nxConfirm_('🚨 긴급으로 올렸습니다.\n지금 바로 처리 실행 화면(웹 Claude Code)을 열까요?\n열린 화면에서 "실행"을 한 번 누르면 바로 고치기 시작합니다.', '긴급 처리').then(function(ok){ if (ok) window.open('https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3', '_blank'); });
+          }
           else { okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장하지 못했습니다: ' + ((r && r.error) || '')); }
         }).catch(function(err){ okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장 중 오류: ' + (err && err.message ? err.message : err)); });
       };

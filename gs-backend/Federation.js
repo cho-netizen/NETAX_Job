@@ -271,18 +271,54 @@ function commReqDays_(x) { var t = improve_parseAt_(x.firstAt || x.at); return t
 function commRequestsAll_() {
   var st = commRequestsLoad_();
   if (st.folder && commReconcile_(st)) { try { commRequestsSave_(st); } catch (e) {} }
-  var pick = function (x) { return { id: x.id, at: x.firstAt || x.at, text: String(x.text || '').slice(0, 400), status: x.status, statusAt: x.statusAt || '', urgent: !!x.urgent, commit: x.commit || '', days: commReqDays_(x), reopenNote: x.reopenNote || '', restored: !!x.restored }; };
+  var pick = function (x) { return { id: x.id, at: x.firstAt || x.at, text: String(x.text || '').slice(0, 400), status: x.status, statusAt: x.statusAt || '', urgent: !!x.urgent, commit: x.commit || '', ver: x.ver || '', days: commReqDays_(x), reopenNote: x.reopenNote || '', restored: !!x.restored, history: (x.history || []).slice(-12) }; };
   var open = st.tracking.entries.filter(function (x) { return x.status !== '확인완료'; }).map(pick)
     .sort(function (a, b) { return improve_parseAt_(a.at) - improve_parseAt_(b.at); });
   var done = st.tracking.entries.filter(function (x) { return x.status === '확인완료'; }).slice(-15).reverse().map(pick);
   return { open: open, done: done };
 }
 function commRequestsSave_(st) { writeFileOverwrite_(st.folder, IMPROVEMENT_TRACKING_FILE, JSON.stringify(st.tracking), 'application/json'); }
+// [2026.10.28] 처리 내역 — 세무사님 "처리가 되었으면서 거기에 남아있는것도 이해가 되지 않고, 각각 어떻게 처리되었는지 확인할 수도 없다".
+//  요청마다 history[{at, who, what, commit, ver}]를 쌓아 화면(대시보드 개선요구 카드·설정 📝 요청 상태)에서 펼쳐 본다. 어느 길로 고쳐졌든 한 줄은 남는다:
+//  ① 주간 루틴 수정안·커밋 제목 [요청#R…] → 📥·PC 배포 때 commSetRequestStatus_  ② PC Claude가 대화에서 고침 → tools/request-done.js(comm_request_done)
+//  ③ 배포(deployRecord_) 때 commAfterDeploy_가 "고침(배포 대기)"을 "반영됨"으로 바꾸고 운영 판 번호를 붙임  ④ 세무사님 👍 확인 / ↩ 다시 요구(commRequestConfirm_)
+function commHistPush_(x, who, what, commit, ver) {
+  x.history = (x.history || []).concat([{ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), who: String(who || '').slice(0, 40), what: String(what || '').slice(0, 600), commit: String(commit || '').slice(0, 12), ver: ver ? String(ver) : '' }]).slice(-30);
+}
 function commSetRequestStatus_(idMap, status) {
   var st = commRequestsLoad_();
   if (!st.folder) return;
   var now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), hit = false;
-  st.tracking.entries.forEach(function (x) { if (idMap[x.id] && x.status !== '확인완료') { x.status = status; x.statusAt = now; x.commit = idMap[x.id]; hit = true; } });
+  st.tracking.entries.forEach(function (x) { if (idMap[x.id] && x.status !== '확인완료') { x.status = status; x.statusAt = now; x.commit = idMap[x.id]; commHistPush_(x, '개발자 수정안', '커밋 제목에 [요청#' + x.id + '] — 📥 반영됨', idMap[x.id], ''); hit = true; } });
+  if (hit) commRequestsSave_(st);
+}
+// PC Claude(대화 세션)가 요청을 고쳤을 때 — tools/request-done.js. deployed=true면 이미 운영에 있는 것(소급 기록), 아니면 "고침(배포 대기)" → 다음 배포 때 반영됨
+function commRequestDone_(body) {
+  var id = String(body && body.id || '').trim(), what = String(body && body.what || '').trim();
+  if (!id || !what) return { error: '요청 번호(id)와 고친 내용(what)이 필요합니다.' };
+  return withLock_(10000, function () {
+    var st = commRequestsLoad_(), x = st.tracking.entries.filter(function (e) { return e.id === id; })[0];
+    if (!x) return { error: '요청 ' + id + '을(를) 찾지 못했습니다.' };
+    var deployed = !!(body && body.deployed), ver = String(body && body.ver || '');
+    x.status = deployed ? '반영됨' : '고침';
+    x.statusAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+    if (body && body.commit) x.commit = String(body.commit).slice(0, 12);
+    if (ver) x.ver = ver;
+    commHistPush_(x, String(body && body.who || 'PC Claude'), what + (deployed ? '' : ' (배포 대기)'), body && body.commit, ver);
+    commRequestsSave_(st);
+    try { buildImprovementReport_(); } catch (e) {}
+    return { success: true, status: x.status };
+  });
+}
+// 배포(📥·PC) 기록 때 — "고침(배포 대기)"은 "반영됨"으로, 운영 판 번호 없는 반영됨엔 판 번호를
+function commAfterDeploy_(ver, sha) {
+  var st = commRequestsLoad_();
+  if (!st.folder) return;
+  var hit = false, now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  st.tracking.entries.forEach(function (x) {
+    if (x.status === '고침') { x.status = '반영됨'; x.statusAt = now; x.ver = ver ? String(ver) : x.ver || ''; commHistPush_(x, '배포', '운영 반영 — 확인해 주세요', String(sha || '').slice(0, 7), ver); hit = true; }
+    else if (x.status === '반영됨' && !x.ver && ver) { x.ver = String(ver); hit = true; }
+  });
   if (hit) commRequestsSave_(st);
 }
 function commRequestConfirm_(body) {
@@ -290,9 +326,11 @@ function commRequestConfirm_(body) {
   return withLock_(10000, function () {
     var st = commRequestsLoad_(), x = st.tracking.entries.filter(function (e) { return e.id === id; })[0];
     if (!x) return { error: '요청을 찾지 못했습니다.' };
+    if (!ok && !note) return { error: '무엇이 부족한지 적어 주세요.' };
     x.status = ok ? '확인완료' : '재오픈';
     x.statusAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
     if (!ok) { x.reopenNote = note.slice(0, 1000); x.firstAt = x.firstAt || x.at; x.at = x.statusAt; } // 재오픈은 날짜를 새로 — 다음 보고서에 다시 실린다
+    commHistPush_(x, '세무사님', ok ? '👍 확인 — 끝' : '↩ 다시 요구: ' + note, '', '');
     commRequestsSave_(st);
     try { buildImprovementReport_(); } catch (e) {}
     return { success: true, status: x.status };
@@ -435,6 +473,8 @@ function commSeamList_() {
       var it = commLedgerItems_('- [2026-10-28 09:00] 🚨 긴급 — (세액계산 · 사건: 시험 · 세목: 양도소득세) 글\n  둘째 줄\n')[0];
       if (!it || it.text.indexOf('긴급') !== 0 && !/긴급/.test(it.text)) return '자리·긴급 머리가 붙은 원장 줄을 못 읽음';
       return /둘째 줄/.test(it.text) ? '' : '여러 줄 건의가 잘림'; } },
+    // [2026.10.28] 요청 처리 내역 — PC Claude 고침(comm_request_done) → 배포 때 반영됨(commAfterDeploy_) → 세무사님 👍/↩. 어느 길이 빠지면 요청이 "접수"에 영원히 남는다
+    { 길: '요청 처리 내역(PC 고침 → 배포 때 반영됨 → 👍 확인·↩ 다시 요구)', fn: function () { return typeof commRequestDone_ === 'function' && typeof commAfterDeploy_ === 'function' && typeof commRequestConfirm_ === 'function' ? '' : '처리 내역 함수가 이 판에 없음'; } },
     // [2026.10.22] Claude 세션이 쓴 확인조치사항 판단 대기 ↔ 절세 아이템 [확인 필요] 표시 — 밤 분류 검사가 노하우 화면·개선 후보 보고서로 올린다(KnowHow.js knhClsNightly_)
     { 길: '확인조치사항 판단 대기 ↔ 아이템 표시(분류 검사) → 노하우 화면·보고서', fn: function () { if (typeof knhClsNightly_ !== 'function') return '분류 검사가 이 판에 없음'; return followupFile_() ? '' : '확인조치사항 파일을 못 찾음'; } },
     // 고객·바깥 프로그램 ↔ job(2026-10-22 "다른 프로그램 다른 어플과의 소통")
