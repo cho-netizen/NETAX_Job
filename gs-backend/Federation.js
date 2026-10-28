@@ -508,6 +508,9 @@ function commSeamList_() {
       try { var src = String(t6ApplyRead_.toString()); if (src.indexOf('cpOutsideAfterDirect_') === -1) return '직결 뒤 바깥 조회가 끊김'; } catch (e) { return '직결 저장 함수를 못 봄'; }
       try { var st = String(caseProcStatus_.toString()); if (st.indexOf('🌐 바깥 조회') === -1) return '반영 현황표에 바깥 조회 줄이 없음'; } catch (e) { return '현황표 함수를 못 봄'; }
       try { var tr = String(trcOverview_.toString()); if (tr.indexOf('trcOutside_') === -1) return '양도 ⚡에서 바깥 조회가 끊김'; } catch (e) { return '양도 처리 함수를 못 봄'; }
+      // [2026.10.28 점검 보완] 지역 구분·조정대상지역 이력표·건물 기준시가 입력·층별 용도·허가구역이 묶음 안에 붙어 있는지
+      try { var one = String(cpOutsideOne_.toString()); var need = ['cpRegion_', 'caseProcAdjAreaAt_', 'stdStructure', 'floors', 'permit', 'cpEumLand_']; var miss2 = need.filter(function (k) { return one.indexOf(k) === -1; }); if (miss2.length) return '묶음에서 빠짐: ' + miss2.join(','); } catch (e) { return '묶음 함수를 못 봄'; }
+      try { var mx = String(trcMixedHouse_.toString()); if (mx.indexOf('S.facts.outside') === -1) return '겸용주택 판단이 바깥 조회 층별 용도를 안 씀'; } catch (e) { return '겸용주택 함수를 못 봄'; }
       return '';
     } },
     { 길: '넥스 제안 카드(답 넣기) → GAS 칸 반영(값 모양 맞추기)', fn: function () { if (typeof cpAnswerValueNorm_ !== 'function') return '값 모양 맞추기가 이 판에 없음'; try { var r = cpAnswerValueNorm_('expenses', { 양도비용: 4480000, 취득비용: 8160000 }, { cands: [{ kind: '양도', label: '중개보수', amount: 4480000, file: '중개보수영수증.pdf' }] }); var d = JSON.parse(r.value); if (!d || !Array.isArray(d.items) || d.items.length !== 2 || d.items[0].label !== '중개보수' || d.items[1].kind !== '취득') return '객체 값이 items 2건으로 안 바뀜: ' + r.value.slice(0, 120); if (/\[object/.test(r.shown)) return '카드 글에 [object Object]'; } catch (e) { return '값 모양 맞추기 실패: ' + (e && e.message || e); } return ''; } }
