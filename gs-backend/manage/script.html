@@ -1044,6 +1044,96 @@
       setTimeout(function(){ el.classList.remove('help-flash'); }, 1600);
     });
   }
+  // ============================================================
+  // [2026.10.28] ✍ 개선 건의 — 어느 화면에서든 수시로. 세무사님 원문: "하던 창을 닫고 작성해야 하는데, 작업중에 그렇게 할 수는
+  // 없지 않은가? 나중에 기재하려고 하다 보면 잊어버리거나 실상을 제대로 적을 수가 없게 된다. 화면 어디서라도 수시로 기재할 수 있도록 하자"
+  // 예전엔 설정 🐞 카드 "✍ 개선요구사항 적기"에서만 적을 수 있었다(settings.html). 이제 오른쪽 아래 ✍ 단추·Alt+Q·설정 버튼이 모두
+  // 같은 창(nxSuggestOpen_)을 띄운다. 저장은 그대로 서버 improve_request_add(총괄관리자 개선요구사항.md → 개선 후보 → 요청 번호 R…).
+  // "실상"이 남도록 지금 탭·사건명·세액계산 세목을 자동으로 같이 보낸다(화면 입력 값은 고객 정보라 보내지 않음).
+  // ============================================================
+  function nxSuggestContext_(){
+    var parts = [];
+    try {
+      var activeItem = document.querySelector('.menu-item[data-view].active');
+      var viewName = activeItem ? activeItem.getAttribute('data-view') : '';
+      var viewLabel = window._currentViewLabel || (activeItem ? activeItem.textContent.trim() : '');
+      if (viewLabel) parts.push(viewLabel);
+      // 사건 — 처리개요에서 고른 사건(chCases/chSelectedId) → AI 사이드바에 연결된 사건 → 증빙확보에서 보고 있는 폴더
+      var caseName = '';
+      if (typeof chSelectedId !== 'undefined' && chSelectedId && typeof chCases !== 'undefined' && Array.isArray(chCases)){
+        var row = chCases.filter(function(c){ return c && c.id === chSelectedId; })[0];
+        if (row) caseName = String(row.사건명 || row.고객명 || '');
+      }
+      if (!caseName && typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseName) caseName = String(nxAiConv.caseName);
+      if (!caseName && viewName === 'docs' && typeof docsPath !== 'undefined' && Array.isArray(docsPath) && docsPath.length) caseName = String(docsPath[docsPath.length - 1] || '');
+      if (caseName) parts.push('사건: ' + caseName.slice(0, 60));
+      if (viewName === 'taxcalc'){
+        var tab = document.querySelector('.taxcalc-tab.active');
+        var tabLabel = tab ? (tab.textContent || '').trim() : '';
+        if (tabLabel) parts.push('세목: ' + tabLabel.slice(0, 30));
+      }
+    } catch (e) {}
+    return parts.join(' · ');
+  }
+  // 작은 창을 지금 화면 위에 겹쳐 띄운다 — 탭 이동 없음. Promise<{success,error}|null>(닫기=null).
+  function nxSuggestOpen_(){
+    return new Promise(function(resolve){
+      var old = document.getElementById('nxSuggestOverlay');
+      if (old) old.remove();
+      var where = nxSuggestContext_();
+      var overlay = document.createElement('div');
+      overlay.id = 'nxSuggestOverlay';
+      overlay.className = 'modal-overlay';
+      overlay.style.zIndex = '9998';
+      overlay.innerHTML =
+        '<div class="modal-panel" style="width:min(520px, 94vw);">' +
+          '<div class="modal-head"><span>✍ 개선 건의</span></div>' +
+          '<div class="modal-body">' +
+            '<div style="font-size:12.5px; color:var(--sub); margin-bottom:6px;">지금 자리: ' + escapeHtml(where || '(알 수 없음)') + ' — 글과 함께 남습니다</div>' +
+            '<textarea id="nxSuggestText" rows="5" placeholder="고쳤으면 하는 점, 새로 원하는 기능, 방금 겪은 불편을 그대로 적어 주세요" style="width:100%; box-sizing:border-box; font-size:14px; line-height:1.5; resize:vertical;"></textarea>' +
+            '<label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="nxSuggestUrgent"> 🚨 세액·신고서 결과가 틀리게 나옴(긴급)</label>' +
+            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 또는 AI 탭 🛠)가 수정안으로 올립니다. Ctrl+Enter로도 저장.</div>' +
+            '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">' +
+              '<button type="button" class="save-btn" data-nx-val="ok">저장</button>' +
+              '<button type="button" class="ghost-btn" data-nx-val="cancel">닫기</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      var ta = overlay.querySelector('#nxSuggestText');
+      var okBtn = overlay.querySelector('[data-nx-val="ok"]');
+      var close = function(val){ document.removeEventListener('keydown', onKey, true); overlay.remove(); resolve(val); };
+      var save = function(){
+        var text = String(ta.value || '').trim();
+        if (!text){ ta.focus(); return; }
+        var urgent = !!overlay.querySelector('#nxSuggestUrgent').checked;
+        okBtn.disabled = true; okBtn.textContent = '저장 중…';
+        callGas('improve_request_add', { text: text, where: where, urgent: urgent }).then(function(r){
+          if (r && r.success){ toast('✅ 건의를 적었습니다 — 개선 후보에 올라갔습니다'); close(r); }
+          else { okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장하지 못했습니다: ' + ((r && r.error) || '')); }
+        }).catch(function(err){ okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장 중 오류: ' + (err && err.message ? err.message : err)); });
+      };
+      overlay.querySelector('[data-nx-val="cancel"]').addEventListener('click', function(){ close(null); });
+      okBtn.addEventListener('click', save);
+      var onKey = function(e){
+        if (e.key === 'Escape'){ e.stopPropagation(); close(null); }
+        else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); save(); }
+      };
+      document.addEventListener('keydown', onKey, true);
+      ta.focus();
+    });
+  }
+  window.nxSuggestOpen_ = nxSuggestOpen_;
+  var nxSuggestBtn_ = document.getElementById('nxSuggestBtn');
+  if (nxSuggestBtn_) nxSuggestBtn_.addEventListener('click', function(){ nxSuggestOpen_(); });
+  document.addEventListener('keydown', function(e){
+    if (!e.altKey || e.ctrlKey || e.metaKey || (e.key || '').toLowerCase() !== 'q') return;
+    if (!sessionStorage.getItem('nxManageSessionToken')) return; // 로그인 전엔 띄우지 않음
+    e.preventDefault();
+    if (document.getElementById('nxSuggestOverlay')) return;
+    nxSuggestOpen_();
+  });
+
   var globalHelpBtn_ = document.getElementById('globalHelpBtn');
   if (globalHelpBtn_) {
     globalHelpBtn_.addEventListener('click', function(){
