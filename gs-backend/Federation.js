@@ -491,7 +491,12 @@ function commSeamList_() {
       if (typeof CP_PREREAD_SKIP_DIR_ !== 'undefined') return '미리 읽기가 별도 폴더 규칙을 아직 씀';
       const st = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'set_read_scope'; })[0];
       if (!st || !st.input_schema.properties.on || !st.input_schema.properties.off) return '지휘 넥스 set_read_scope에 파일 단위(on/off)가 없음';
-      return caseProcAiLiveModeText_(1000).indexOf('읽을 목록') === -1 ? '지시문에 "읽을 목록이 없으면 세무사님께 먼저"가 없음' : ''; } },
+      // [2026.10.28 뒤] 세무사님 결정으로 "목록이 없으면 세무사님께 먼저" 문구는 지움(넥스가 읽고 판단해 직접 정함) — 새 지시문 기대: 체크 목록은 GAS 몫 + 읽기 → 판단 → set_read_scope 순서, 도구 설명 "GAS가 읽을 파일"
+      const txt = caseProcAiLiveModeText_(1000);
+      if (txt.indexOf('체크 목록은 GAS') === -1) return '지시문에 "체크 목록은 GAS(…)가 읽을 파일을 콕 집어 주는 것"이 없음';
+      if (txt.indexOf('case_files로 폴더 파일 목록 보기') === -1 || txt.indexOf('set_read_scope로 GAS에게 체크 목록 지정') === -1) return '지시문에 "case_files 목록 보기 → file_read → 판단 → set_read_scope → gas_run" 순서가 없음';
+      if (!/GAS가 읽을 파일/.test(String(st.description || ''))) return 'set_read_scope 설명에 "GAS가 읽을 파일"이 없음(넥스 읽기 범위와 구분)';
+      return ''; } },
     { 길: '말로 한 필요경비 → 항목(이름·금액) — 빈 값으로 저장하지 않음', fn: function () { if (typeof cpExpAmountsFromText_ !== 'function') return '경비 글 풀기 함수가 이 판에 없음'; try { const r = cpAnswerValueNorm_('expenses', '취득세교육세 3,583,600원, 등기제비용 426,110원, 법무사수수료 385,000원', { cands: [] }); const d = JSON.parse(r.value || '{}'); if (!d.items || d.items.length !== 3 || d.items[0].amount !== 3583600 || d.items[2].amount !== 385000) return '경비 3건이 항목으로 안 풀림: ' + String(r.value).slice(0, 160); const r2 = cpAnswerValueNorm_('expenses', '경비는 대략 몇백만원쯤 됩니다', { cands: [] }); if (!r2.error) return '못 푼 경비 글이 빈 값(0건)으로 통과함'; const r3 = cpAnswerValueNorm_('expenses', '필요경비 없음', { cands: [] }); if (r3.error || JSON.parse(r3.value).items.length !== 0) return '"없음"이 0건으로 안 들어감'; } catch (e) { return '경비 글 풀기 실패: ' + (e && e.message || e); } return ''; } },
     // [2026.10.23 ㅅ13차 — 점검표 168] 넥스 제안 카드 → GAS 답 넣기: 넥스가 객체로 준 필요경비 값이 그 칸 모양(items)으로 바뀌어 0건이 되지 않는지
     // [2026.10.28 🌐 바깥 조회] 세무사님 "왜 전혀 자료수집을 하지 않느냐" — 소재지가 있는 모든 부동산에 토지대장·토지이용계획·공시가격·건축물대장 묶음이
