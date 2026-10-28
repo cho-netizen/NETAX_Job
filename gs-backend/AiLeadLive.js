@@ -52,6 +52,18 @@ function caseProcAiSpotLevel_(s) {
   return 2;
 }
 
+// [2026.10.28 속도 A②] GAS 한 바퀴 결과 묶음 — 칸(정한 값)·남은 질문·서류 정리 결과(파일별 종류·값)·사람/계약/자산 명단을 한 번에 실어 doc_facts·doc_view·people_roster·contract_list·owner_assets 왕복을 없앤다(상한 14,000자)
+function caseProcAiGasBundle_(c, items) {
+  const out = {};
+  try { const v = caseProcNexView_(c, {}); out.정한값 = (v.정한값 || []).slice(0, 50); out.단계 = v.단계; } catch (e) { out.정한값오류 = String(e && e.message || e).slice(0, 60); }
+  out.남은질문 = (Array.isArray(items) ? items : []).slice(0, 40).map(function (it) { return { id: it.id, 글: caseProcAiCut_(it.text || '', 90), 칸: it.target || '', 후보: Array.isArray(it.cands) ? it.cands.slice(0, 4).map(function (q) { return caseProcAiCut_(String(q.label || q.v || q.value || q.amount || ''), 40); }) : undefined }; });
+  try { out.서류정리 = caseProcParseAll_(c).slice(0, 40).map(function (x) { return { 파일: x.f.name, 종류: x.p.label || x.p.type, 값: typeof caseProcAiTrimObj_ === 'function' ? caseProcAiTrimObj_(x.p.result || {}, 0) : x.p.result }; }); } catch (e) { out.서류정리오류 = String(e && e.message || e).slice(0, 60); }
+  ['people_roster', 'contract_list', 'owner_assets'].forEach(function (nm) { try { const r = caseProcAiFactTool_(c.id, nm, {}); out[{ people_roster: '사람명단', contract_list: '계약목록', owner_assets: '자산목록' }[nm]] = r && r.error ? { 오류: r.error } : r; } catch (e) { out[nm] = { 오류: String(e && e.message || e).slice(0, 60) }; } });
+  let s = JSON.stringify(out);
+  if (s.length > 14000) { delete out.서류정리; out.서류정리 = '(길어서 뺌 — 필요한 파일만 doc_facts(file))'; s = JSON.stringify(out); }
+  if (s.length > 14000) { ['사람명단', '계약목록', '자산목록'].forEach(function (k) { delete out[k]; }); out.명단 = '(길어서 뺌 — 필요하면 people_roster 등)'; s = JSON.stringify(out); }
+  return '\n\n[GAS 한 바퀴 결과 묶음 — 아래는 이미 실린 것이니 doc_facts·doc_view·people_roster·contract_list·owner_assets로 다시 부르지 마라(없는 것만)]\n' + s.slice(0, 14000);
+}
 // ---------- step 'spots' — 입구(GAS) 상수 한 바퀴 결과에서 AI 자리를 센다 ----------
 //  body: { caseId, ov: { items, needs }, ev: { docTypes } } — 화면이 가진 마지막 칸 채우기·증빙 결과(이미 결정한 질문은 빼고 보냄)
 function caseProcAiSpots_(body) {
@@ -115,7 +127,7 @@ function caseProcAiSpots_(body) {
   ].join('\n');
   return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, plan: plan, inGap: inGap, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
     lightDone: lp.done.map(function (r) { return { 자리: r.자리, topic: r.topic, answer: caseProcAiMask_(r.answer), why: caseProcAiMask_(r.why), applied: !!r.applied }; }),
-    spots: lead.map(function (s) { return { 자리: s.자리, 이유: s.이유, 주제: s.topic || '', 겹: s.tier, 수준: caseProcAiSpotLevel_(s), 설명: caseProcAiCut_(s.설명 || '', 120) }; }), entry: caseProcAiMask_(entry) };
+    spots: lead.map(function (s) { return { 자리: s.자리, 이유: s.이유, 주제: s.topic || '', 겹: s.tier, 수준: caseProcAiSpotLevel_(s), 설명: caseProcAiCut_(s.설명 || '', 120) }; }), entry: caseProcAiMask_(entry + caseProcAiGasBundle_(c, items)) };
 }
 
 // ---------- 지휘 AI에게 주는 도구 — AiLead.js 도구 + 좁은 판단 둘. 운영에서 바뀌는 설명만 고친다 ----------
@@ -237,6 +249,8 @@ function caseProcAiLiveModeText_(cap) {
     '- 체크 목록은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이다. 너는 세무사님 대리인이므로 사건 폴더의 어떤 파일이든 폭넓게 읽는다(case_files로 목록, file_read로 글 — 체크가 꺼진 파일·산출물·보관 폴더도) — 쟁점이 생기면 폴더의 관련예규·검토 메모·지침부터 직접 읽는다. 세무사님이 폴더에 정리해 두신 자료를 지적받은 뒤에야 보는 일은 없어야 한다.',
     // [2026.10.28] 세무사님 원문: "ai가 사용자의 대리인이라고 대체 몇 번을 말하고 있나? ai가 체크를 하려면 뭘 알아야 체크를 할 수 있지 않은가? 뭘 알려면 읽어야 하는 것이고!"
     '- GAS가 읽을 파일은 사건마다 체크 목록이 정한다(case_status 현황의 읽을범위). 체크는 네가 읽어서 안 뒤에 한다 — 순서: case_files로 폴더 파일 목록 보기 → 무엇인지 모르는 파일은 file_read로 읽기 → 이 사건에 필요한 서류인지 판단 → set_read_scope로 GAS에게 체크 목록 지정 → gas_run. 읽고 아는 데서 끝내지 말고 반드시 "GAS에게 콕 집어 주기"(set_read_scope)까지 한 뒤 gas_run — 세무사님이 범위를 말씀하셨는데 set_read_scope 없이 gas_run을 부르면 GAS가 거절한다(가상양도26: 읽고 알고도 지정을 건너뛰어 증여 서류 3개가 GAS에 들어감). 말씀이 없어도 목록에 뺄 폴더(다른 세목 서류·증빙 아닌 폴더)가 보이면 지정한다. 목록이 없으면(null) 네가 이 순서로 직접 폴더를 읽고 판단해 목록을 정하고, 정한 목록(켠 것·뺀 것과 이유)을 세무사님께 보고한다 — 읽지 않고 체크하거나, 읽지도 않고 세무사님께 체크를 미루지 않는다. 세무사님이 "○○는 빼라"·"○○도 읽어라" 하시면 set_read_scope on/off(파일·폴더 이름 그대로). 현황의 새파일미체크에 파일이 있으면 읽지 않았다는 사실을 보고에 적고 체크 여부를 여쭌다.',
+    // [2026.10.28 속도 A③] 세무사님 "속도문제를 재검토" → 넥스 왕복 8 → 3~4
+    '- 왕복을 아낀다: case_status 첫 응답에 파일 목록·의뢰서·메모 본문·미리 읽기 요약이 실려 온다 — 그것을 case_files·file_read로 다시 부르지 않는다(목록에 없는 다른 파일의 글만 file_read). gas_run 결과에도 정한 값·남은 질문·서류 정리 결과·사람/계약/자산 명단이 묶여 온다 — doc_facts·doc_view·people_roster·contract_list·owner_assets로 다시 부르지 않는다. 한 차례에 여러 도구를 한꺼번에 불러도 된다(차례마다 10~30초가 든다).',
     '- 묻기 전에 먼저 본다: case_status의 정한값·고침기록·작업기록·채팅 말씀에 세무사님이 이미 정하신 값(누가=세무사님)이 있으면 같은 칸·같은 물음을 다시 묻지 않고 그 값을 쓴다(ask_user도 그런 질문은 올리지 않고 "이미정해진것"으로 돌려준다). 세무사님이 채팅에 적어 주신 숫자는 그대로 value_set(basis user)·value_set(target)으로 넣는다.',
     '- 세무사님께 여쭐 때(ask_user)는 답이 들어갈 칸(target)·후보(cands)·입력 종류(input)를 함께 올린다 — 그래야 화면에 답 칸이 생겨 세무사님이 고르거나 적으면 바로 칸에 들어간다. 칸이 없는 질문만 글로(note만).',
     '- 서류로 네가 푼 질문(서류 ⚠ 확인 등)은 close_question으로 닫는다 — 말로만 "해소"라 하면 다음 처리 때 같은 질문이 다시 뜬다. 이미 확정돼 질문 목록에 없는 칸이 잘못 들어 있으면 value_set(target)으로 고치고, 세무사님이 정하신 값이면 바꾸지 말고 ask_user로 지금 값·서류 값을 여쭌다.',
@@ -374,7 +388,25 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     let rows = []; try { const st = caseProcStatus_(c0, {}); rows = (st.rows || []).map(function (r) { return r[0] + ' · ' + r[1] + ': ' + r[2] + (r[3] ? ' (' + String(r[3]).slice(0, 80) + ')' : ''); }); } catch (e) { rows = ['반영 현황표를 만들지 못함: ' + String(e && e.message || e).slice(0, 60)]; }
     const dec0 = sv0.decisions || {};
     const q = (sv0.remaining || []).slice(0, 40).map(function (it) { const d = dec0[it.id] && dec0[it.id].d; return it.id + ' | ' + (d ? '(' + d + ') ' : '') + caseProcAiCut_(it.text, 70); });
-    return { text: caseProcAiMask_(JSON.stringify({ 반영현황표: rows, 현황: view, 남은질문: q, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다.' })).slice(0, 9000) };
+    // [2026.10.28 속도 A①] 세무사님 "속도문제를 재검토" → "넥스 왕복부터": 첫 응답에 파일 목록(case_files 내용)·의뢰서·사건 폴더 바로 아래 md 메모 본문·미리 읽기 요약(nexRead)을 함께 실어 case_files·file_read 왕복을 없앤다(가상양도26·27 실측 8왕복 중 3~4왕복이 이것). 크기 상한 — 본문은 파일당 3,000자·합계 8,000자, 전체 20,000자 넘으면 본문을 빼고 목록만
+    let pack = null;
+    try {
+      const fl = caseProcNexFileList_(c0, { max: 120 });
+      const list = (fl.파일 || []).map(function (f) { return { 파일: f.파일, 폴더: f.폴더, 종류: f.종류, 표시: f.표시 || '' }; });
+      const bodies = []; let used = 0;
+      (fl.파일 || []).filter(function (f) { return /사건파악용/.test(f.종류) || (/^\(사건 폴더 바로 아래\)/.test(f.폴더) && /\.(md|txt)$/i.test(f.파일)); }).slice(0, 6).forEach(function (f) {
+        if (used >= 8000) return;
+        let t = null; try { t = caseProcNexFileText_(c0, { file: (/^\(/.test(f.폴더) ? '' : f.폴더 + '/') + f.파일, len: 3000 }); } catch (e) { t = null; }
+        if (t && t.ok) { bodies.push({ 파일: f.파일, 글: t.글, 더있음: !!t.더있음 }); used += String(t.글 || '').length; }
+      });
+      const pre = Object.keys(sv0.nexRead || {}).map(function (k) { const r = sv0.nexRead[k]; return { 파일: r.name, 때: r.at, 요약: r.sum || (r.unread ? '읽지 못함' : '') }; }).slice(0, 40);
+      pack = { 파일목록: list, 더있음: !!fl.더있음, 의뢰서_메모_본문: bodies, 미리읽기요약: pre };
+      ctx.packed = true;
+    } catch (e) { pack = { 오류: '파일 목록·본문을 싣지 못함: ' + String(e && e.message || e).slice(0, 80) }; }
+    const base = { 반영현황표: rows, 현황: view, 남은질문: q, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_본문·미리읽기요약은 이미 실린 것 — case_files·file_read로 다시 부르지 마라(목록에 없는 다른 파일의 글만 file_read).' };
+    let txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack || {})));
+    if (txt.length > 20000 && pack && pack.의뢰서_메모_본문) { pack.의뢰서_메모_본문 = '(길어서 뺌 — 필요한 것만 file_read)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
+    return { text: txt.slice(0, 22000) };
   }
   if (name === 'issue_bundle') {
     const it = (ctx.lastItems || []).filter(function (x) { return x.id === input.itemId; })[0];
@@ -587,7 +619,8 @@ function caseProcAiTurn_(body) {
     if (CASEPROC_AI_CLIENT_TOOLS_.indexOf(u.name) !== -1) { pending.push({ id: u.id, name: u.name, input: u.input || {} }); calls.push(u.name); return; } // 화면이 실행하고 결과를 다음 차례에 붙인다
     if (Date.now() - t0 > CASEPROC_AI_TURN_BUDGET_MS_) out = { text: JSON.stringify({ 오류: '이번 차례 시간이 모자라 실행하지 못함 — 다음 차례에 다시 부르면 됨', 다시해도됨: true }) };
     else { try { out = caseProcAiLiveExec_(caseId, u.name, u.input, ctx); } catch (e) { out = { text: JSON.stringify({ 오류: '도구 실행 오류: ' + (e && e.message || e) }) }; } }
-    results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, 6000) });
+    const capLen = u.name === 'case_status' ? 22000 : (u.name === 'file_read' || u.name === 'case_files') ? 14000 : 6000; // [2026.10.28 속도 A①] 첫 응답 묶음은 6,000자에 잘리면 뜻이 없다
+    results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, capLen) });
     calls.push(u.name);
   });
   caseProcAiCtxSave_(caseId, ctx);
@@ -603,7 +636,7 @@ function caseProcAiFinish_(body) {
   const c = akReadCase_(caseId);
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
-  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, // [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17) 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
+  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, /* [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17). [2026.10.28 속도 A] 이 주석이 // 라서 뒤의 업무유형·mode·won·rounds·stop이 기록에서 빠져 있었다 — 블록 주석으로 */ 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, sec: Number(body.sec) || 0, calls: Number(body.calls) || 0, packed: !!ctx.packed, stop: String(body.stop || ''), // [2026.10.28 속도 A] 왕복·초·도구 호출 수 — 다음 재기에 씀
     spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200),
     report: caseProcAiMask_(String(body.report || '').slice(0, 3000)) }; // [2026.10.21 넥스 하나로] 보고도 사건에 — 다음 처리 첫 글·검토서·채팅 넥스 조회가 읽는다
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}

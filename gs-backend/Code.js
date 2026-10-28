@@ -3604,6 +3604,7 @@ function ai_convSave(body) {
       fileId = folder.createFile(id + '.json', text, 'application/json').getId();
     }
     const meta = { id: id, sourceFileId: conv.sourceFileId, sourceSyncedAt: conv.sourceSyncedAt, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId };
+    if (conv.caseId && typeof caseProcHypTextsForget_ === 'function') caseProcHypTextsForget_(conv.caseId); // [2026.10.28 속도 B] 대화가 바뀌면 가설 출처 글 기억을 지운다
     if (entry) Object.assign(entry, meta); else idx.list.push(meta);
     ai_convWriteIndex_(folder, idx, idx.list);
     return { success: true, id: id, updatedAt: now };
@@ -26958,6 +26959,7 @@ var T6_RECORD_KEYS_ = ['decisions', 'readScope', 'trAns', 'valueHist', 'closed',
 function t6RecordForReader_(sv) { const out = {}; T6_RECORD_KEYS_.forEach(function (k) { if (sv && sv[k] !== undefined && sv[k] !== null) out[k] = sv[k]; }); return out; }
 function t6ApplyRead_(c, body) {
   const t0 = Date.now();
+  try { caseProcPatch_(c.id, function (sv) { sv.readRoute = { at: caseProcNow_(), 길: '직결(Cloud Run)' }; }); } catch (e) {} // [2026.10.28 속도 C] 어느 길로 읽었는지(직결이 돌아 저장하러 온 것)
   const w = (body && body.written) || {};
   const df = w.decisionFile && typeof w.decisionFile === 'object' ? w.decisionFile : null;
   const cr = w.caseRow && typeof w.caseRow === 'object' ? w.caseRow : null;
@@ -27047,6 +27049,7 @@ function cpWatchCase_(c, opt) {
       caseProcLogTo_(sv, { by: 'GAS', what: '서류 변동', detail: changes.map(function (x) { return x.kind + ' ' + (x.dir ? x.dir + '/' : '') + x.name; }).join(', ').slice(0, 240) });
     }
   });
+  if (changes.length) caseProcHypTextsForget_(c.id); // [2026.10.28 속도 B] 메모·의뢰서가 바뀌었을 수 있다
   return { ok: true, first: first, n: files.length, changes: changes, 새: changes.filter(function (x) { return x.kind === '새'; }).length, 바뀜: changes.filter(function (x) { return x.kind === '바뀜'; }).length, 없어짐: changes.filter(function (x) { return x.kind === '없어짐'; }).length };
 }
 function cpWatchPending_(sv) { return (Array.isArray(sv && sv.fileChanges) ? sv.fileChanges : []).filter(function (x) { return !x.nexSeen && (x.kind === '새' || x.kind === '바뀜'); }); }
@@ -31060,7 +31063,7 @@ function caseProcAll_(c, body) {
     ['basic', 'evidence', 'overview', 'calc'].forEach(function (k) { const r = out.stages[k]; if (r && Array.isArray(r.lines) && r.lines.length) out.lines.push('— ' + (CASEPROC_STEP_NAME_[k] || k) + ' —'); if (r && Array.isArray(r.lines)) out.lines = out.lines.concat(r.lines); });
     out._tm = tm; out._ms = Date.now() - t0;
     // [2026.10.23 T2] 단계별 초를 결정 파일(timing)에도 남긴다 — 화면 줄에만 있던 ⏱이 사건 밖에서는 보이지 않아 "어디서 10초를 넘기는지"를 아무도 못 봤다(세무사님 08:5x "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"). ① 안쪽(CP_BASIC_T_)·③ 안쪽(CP_OV_T_) 세부도 함께
-    try { const rec = { at: caseProcNow_(), ms: out._ms, tm: tm, why: why || '' }; try { if (CP_BASIC_T_ && CP_BASIC_T_.m) rec.basic = CP_BASIC_T_.m; } catch (e1) {} try { if (typeof CP_OV_T_ !== 'undefined' && CP_OV_T_) rec.overview = CP_OV_T_; } catch (e2) {} caseProcPatch_(c.id, function (sv) { sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }); } catch (e) {}
+    try { const rec = { at: caseProcNow_(), ms: out._ms, tm: tm, why: why || '', 길: 'GAS' }; try { caseProcPatch_(c.id, function (sv) { sv.readRoute = { at: caseProcNow_(), 길: 'GAS(서버 ①②③)' }; }); } catch (e0) {} /* [2026.10.28 속도 C] */ try { if (CP_BASIC_T_ && CP_BASIC_T_.m) rec.basic = CP_BASIC_T_.m; } catch (e1) {} try { if (typeof CP_OV_T_ !== 'undefined' && CP_OV_T_) rec.overview = CP_OV_T_; } catch (e2) {} caseProcPatch_(c.id, function (sv) { sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }); } catch (e) {}
     out.lines.push('⏱ 한 번 호출(①②③' + (out.stages.calc ? '④' : '') + ') 서버 안쪽 ' + Math.round(out._ms / 1000) + '초 — ' + Object.keys(tm).map(function (k) { return (k === 'evidence_read' ? '서류 글자 읽기' : CASEPROC_STEP_NAME_[k] || k) + ' ' + tm[k] + '초'; }).join(' · ') + (why ? ' · ' + why : ''));
     return out;
   };
@@ -52190,22 +52193,30 @@ function caseProcChatTexts_(c) {
 }
 // 가설 출처 글(상담 메모·의뢰서 + 대화기록) — 질문 후보·메모 대조가 같이 쓴다
 var CASEPROC_HYPTEXT_MEMO_ = null;
+// [2026.10.28 속도 B] 가설 출처 글(상담 메모·의뢰서·대화기록)은 드라이브 호출이 많다 — 서버 기억(30분)에 두고, 사건 폴더 변동(cpWatchCase_)·대화 저장(ai_convSave) 때 지운다. 안쪽 시간은 CP_BASIC_T_ '가설·메모 글'·'가설·대화 글'로 잰다
 function caseProcHypTexts_(c) {
   if (CASEPROC_HYPTEXT_MEMO_ && CASEPROC_HYPTEXT_MEMO_.id === c.id && Date.now() - CASEPROC_HYPTEXT_MEMO_.at < 120000) return CASEPROC_HYPTEXT_MEMO_.out;
-  let out = [];
+  const key = 'cphyp_' + String(c.id || '');
+  try { const hit = CacheService.getScriptCache().get(key); if (hit) { const out0 = JSON.parse(hit); if (Array.isArray(out0)) { if (CP_BASIC_T_) CP_BASIC_T_.m['가설·글 기억'] = 1; CASEPROC_HYPTEXT_MEMO_ = { id: c.id, at: Date.now(), out: out0 }; return out0; } } } catch (e) {}
+  let out = []; let tb = Date.now();
   try { out = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) {}
+  if (CP_BASIC_T_) { CP_BASIC_T_.m['가설·메모 글'] = Math.round((Date.now() - tb) / 100) / 10; tb = Date.now(); }
   try { out = out.concat(caseProcChatTexts_(c)); } catch (e) {}
+  if (CP_BASIC_T_) CP_BASIC_T_.m['가설·대화 글'] = Math.round((Date.now() - tb) / 100) / 10;
   CASEPROC_HYPTEXT_MEMO_ = { id: c.id, at: Date.now(), out: out };
+  try { const s = JSON.stringify(out); if (s.length < 95000) CacheService.getScriptCache().put(key, s, 1800); } catch (e) {}
   return out;
 }
+function caseProcHypTextsForget_(caseId) { try { CacheService.getScriptCache().remove('cphyp_' + String(caseId || '')); } catch (e) {} if (CASEPROC_HYPTEXT_MEMO_ && CASEPROC_HYPTEXT_MEMO_.id === caseId) CASEPROC_HYPTEXT_MEMO_ = null; }
 // 1단계 — 사건파악 가설. 값을 바꾸지 않는다(서류를 읽기 전이라). 출처별로 누가 무엇을 말했는지와, 가설끼리 다른 곳을 밝힌다.
 function caseProcGrasp_(c) {
   const claims = [], lines = [];
   const add = function (f, v, src) { v = String(v == null ? '' : v).trim(); if (v) claims.push({ f: f, v: v, src: src }); };
   add('세목', c.세목, '작업관리'); add('업무유형', c.업무유형, '작업관리'); add('납세자', caseProcNm_(c.납세자), '작업관리'); add('기준일', c.기준일, '작업관리');
   caseProcNameClaims_(c.사건명, '사건명').forEach(function (x) { claims.push(x); });
-  let folderName = '';
+  let folderName = ''; let tg = Date.now(); const tgk = function (k) { if (CP_BASIC_T_) CP_BASIC_T_.m[k] = Math.round((Date.now() - tg) / 100) / 10; tg = Date.now(); }; // [2026.10.28 속도 B] 가설 안쪽 시간
   try { if (String(c.폴더ID || '').trim()) folderName = DriveApp.getFolderById(c.폴더ID).getName(); } catch (e) {}
+  tgk('가설·폴더 이름');
   if (folderName && folderName !== c.사건명) caseProcNameClaims_(folderName, '폴더 이름(' + folderName + ')').forEach(function (x) { claims.push(x); });
   const ov = c.사건개요 || {};
   const who = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName' }[c.세목];
@@ -52213,6 +52224,7 @@ function caseProcGrasp_(c) {
   if (ov.giftDonorName) add('상대방', caseProcNm_(ov.giftDonorName), '처리개요 증여자');
   if (ov.giftRelation) add('관계', ov.giftRelation, '처리개요');
   const texts = String(c.폴더ID || '').trim() ? caseProcHypTexts_(c) : [];
+  tgk('가설·출처 글 합계');
   const relRe = new RegExp('(?:^|[\\s,(·])(' + CASEPROC_REL_WORDS_ + ')\\s*[:：]?\\s+([가-힣]{2,4})(?=$|[\\s,.)·님씨])|([가-힣]{2,4})\\s*\\(\\s*(' + CASEPROC_REL_WORDS_ + ')\\s*\\)', 'g');
   const STOP = /증여|상속|양도|소유|명의|사망|부동산|아파트|주택|토지|매매|계약|세금|신고|재산|금액|지분|에게|으로|부터|까지|한테|에서|께서|중에|이고|이며|들이|들은|이랑|하고|님이|님은|명이|분이|모두|함께|각각|소유자|^(중|및|외|등)/;
   texts.forEach(function (m) {
@@ -52234,7 +52246,9 @@ function caseProcGrasp_(c) {
   const split = ['세목', '업무유형', '납세자'].filter(function (f) { return (hyp[f] || []).length > 1; });
   if (split.length) lines.push('⚠ 가설끼리 다른 곳: ' + split.map(function (f) { return f + ' ' + show(f); }).join(' · ') + ' — 증빙을 읽은 뒤 서류로 가립니다');
   if (texts.length) lines.push('가설 출처 글: ' + texts.map(function (m) { return m.file; }).join(', '));
+  tgk('가설·낱말 뽑기');
   try { caseProcPatch_(c.id, function (sv) { sv.grasp = { at: new Date().toISOString(), hyp: hyp }; }); } catch (e) {}
+  tgk('가설·기록부 쓰기');
   return { lines: lines, hyp: hyp };
 }
 // 서류에서 읽은 당사자·원인(등기부 소유권 이력, 계약서 서명란, 증여계약서, 사망 서류·분할협의서)

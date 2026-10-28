@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 02:55 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 03:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57044,7 +57044,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     st.by = '넥스'; window.nxWorkBy_ = '넥스'; // 이 동안 GAS 도구가 남기는 기록부 줄은 "넥스"
     var ai = { won: 0, round: 0, messages: [], stop: '', calls: 0, spots: null, items: null, sendItems: false };
     var finish = function(mode, extra){
-      return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [], tiers: (ai.spots && ai.spots.tiers) || null, inGap: (ai.spots && ai.spots.inGap) || null }, extra || {})).catch(function(){ return null; });
+      return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, sec: st.t0 ? Math.round((Date.now() - st.t0) / 1000) : 0, calls: ai.calls, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [], tiers: (ai.spots && ai.spots.tiers) || null, inGap: (ai.spots && ai.spots.inGap) || null }, extra || {})).catch(function(){ return null; });
     };
     var fallback = function(why){
       st.setStep('ai', '⚠', why + ' — GAS 한 바퀴만 돌고 계산·저장합니다');
