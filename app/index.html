@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 05:25 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 10:42 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4442,6 +4442,41 @@ function nxMdOpenWindow(title, src, opts){
     });
   }
 
+  function runBackfillPartyClients_(btn){
+    btn.disabled = true;
+    var originalText = btn.textContent;
+    btn.textContent = '확인 중…';
+    callGas('work_backfill_party_client_ids', {}).then(function(res){
+      btn.textContent = originalText;
+      if (res.error || res.success === false){ btn.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
+      if (!res.count){
+        btn.disabled = false;
+        showToast('새로 등록/연결할 관계자가 없습니다.', 'success');
+        return;
+      }
+      nxConfirm_('관계자 이름 ' + res.count + '건을 고객관리에 등록/연결합니다(이미 있는 고객이면 그 고객과 연결). 계속할까요?').then(function(ok){
+        if (!ok){ btn.disabled = false; return; }
+        btn.textContent = '반영 중…';
+        callGas('work_backfill_party_client_ids', { apply: true }).then(function(applyRes){
+          btn.disabled = false;
+          btn.textContent = originalText;
+          if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '반영 실패', 'error'); return; }
+          showToast('사건 ' + applyRes.casesUpdated + '건에서 관계자 ' + applyRes.applied + '건을 연결했습니다(신규 고객 등록 ' + applyRes.clientsRegistered + '명).', 'success');
+          loadWorkCases();
+          if (typeof loadClients === 'function') loadClients();
+        }).catch(function(){
+          btn.disabled = false;
+          btn.textContent = originalText;
+          showToast('반영 중 오류가 발생했습니다.', 'error');
+        });
+      });
+    }).catch(function(){
+      btn.disabled = false;
+      btn.textContent = originalText;
+      showToast('확인 중 오류가 발생했습니다.', 'error');
+    });
+  }
+
   // [2026.09.17 신규] "완료일이 현금영수증발행일보다 늦은 경우 모두 발행일로 변경" — 한 고객이
   // 사건을 하나만 가진 경우만 자동 적용 대상(그 고객의 최신 현금영수증 발행일 = 그 사건 것이
   // 확실함)이고, 사건을 여러 개 가진 고객은 어느 영수증이 어느 사건 것인지 특정 못 해 "확인
@@ -4530,10 +4565,82 @@ function nxMdOpenWindow(title, src, opts){
   // 상태였고, 신고파일 작성일 반영은 2026.09.18에 딱 한 번 받은 실제 고객 14명의 이름+날짜가
   // 코드에 그대로 박혀 있던 것이었다(개인정보를 코드에 남겨둘 이유가 없어 완전히 제거).
 
-  // [2026.10.28 정비도구 재점검] 설정 🛠 정비도구를 실제 자료(고객·사건 시트, 드라이브 고객사건 폴더)로
-  // 세어 본 결과 "해당 0건"으로 끝난 두 도구를 화면·핸들러까지 지웠다(세무사님 "정리 진행").
-  //  - 🧾 서류 없는 사건 정리(상담으로): 사건 폴더 148개 중 영수증만/빈 폴더 0개(서버 work_applyReceiptOnlyCaseCleanup은 남김).
-  //  - 👥 관계자 고객등록 일괄 반영: 이름만 있고 고객ID 없는 칸 0개 — 저장 때 work_linkPartyClientIds_가 자동 연결하므로 다시 생기지 않음(서버 함수는 남김).
+  // [2026.09.18 신규] "현재 사건을 전수조사해서 현금영수증만 있는 폴더는 상담사건 폴더로
+  // 옮기고 그 사건 폴더는 삭제하자" — 사건 폴더 안에 현금영수증 파일만 있고 다른 파일이 전혀
+  // 없는 사건을 찾아, 그 파일을 "고객명_현금영수증"으로 개명해 상담사건 공용 폴더로 옮기고
+  // 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리한다. 상담사건 폴더에 이미 같은
+  // 이름의 파일이 있으면(같은 고객이 상담을 여러 번 한 경우) 자동 적용하지 않고 "확인 필요"로만
+  // 보여준다.
+  function openReceiptOnlyCleanupModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🧾 서류 없는 사건 정리(상담으로)</span><span class="modal-close" id="rocClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="rocBody">확인 중… (사건이 많으면 시간이 걸릴 수 있습니다)</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#rocClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderResult(res){
+      var body = overlay.querySelector('#rocBody');
+      var html = '';
+      var ready = res.ready || [], needsReview = res.needsReview || [];
+      if (ready.length){
+        var rows = ready.map(function(r){
+          var files = r.fileMoves.length
+            ? r.fileMoves.map(function(fm){ return escapeHtml(fm.oldName) + ' → ' + escapeHtml(fm.newName); }).join('<br>')
+            : '<span style="color:var(--sub);">(관련파일 0건 — 빈 폴더)</span>';
+          return '<tr><td style="padding:4px 8px;">' + escapeHtml(r.고객명) + '</td>' +
+            '<td style="padding:4px 8px;">' + escapeHtml(r.사건명) + '</td>' +
+            '<td style="padding:4px 8px;">' + escapeHtml(r.업무유형현재) + '</td>' +
+            '<td style="padding:4px 8px; font-size:12px;">' + files + '</td></tr>';
+        }).join('');
+        html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">현금영수증 파일만 있거나 관련파일이 아예 없는(빈 폴더) 사건 ' + ready.length + '건입니다. "일괄 적용"을 누르면 현금영수증 파일은 상담사건 폴더로 옮기고, 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리합니다.</div>' +
+          '<div style="overflow-x:auto; max-height:280px; overflow-y:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">현재 사건명</th><th style="padding:4px 8px;">현재 업무유형</th><th style="padding:4px 8px;">파일 이동</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<button type="button" id="rocApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + ready.length + '건 일괄 적용(되돌리기 어려움 — 폴더는 휴지통으로 이동)</button>';
+      } else {
+        html += '<div class="log-empty">현금영수증 파일만 있거나 빈 폴더인 사건이 없습니다.</div>';
+      }
+      if (needsReview.length){
+        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + needsReview.length + '건은 상담사건 폴더에 이미 같은 이름의 파일이 있어(같은 고객이 상담을 여러 번 한 경우 등) 자동으로 적용하지 못합니다 — 직접 확인해주세요.</div>' +
+          needsReview.map(function(r){
+            var files = r.fileMoves.map(function(fm){ return '<li>' + escapeHtml(fm.oldName) + ' → ' + escapeHtml(fm.newName) + '</li>'; }).join('');
+            return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
+              '<b>' + escapeHtml(r.고객명) + '</b> · ' + escapeHtml(r.사건명) +
+              '<ul style="margin:6px 0 0 18px;">' + files + '</ul></div>';
+          }).join('');
+      }
+      body.innerHTML = html;
+      var applyBtn = body.querySelector('#rocApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', function(){
+        nxConfirm_(ready.length + '건을 상담사건으로 정리합니다(사건 폴더는 휴지통으로 이동). 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중… (시간이 걸릴 수 있습니다)';
+          callGas('work_apply_receipt_only_case_cleanup', { apply: true }).then(function(res2){
+            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 정리했습니다' + (res2.failed ? ' (' + res2.failed + '건 실패)' : '') + '.</div><div style="white-space:pre-wrap; font-size:12px; color:var(--sub); margin-top:8px;">' + escapeHtml((res2.log || []).join('\n')) + '</div>';
+            showToast(res2.applied + '건을 상담사건으로 정리했습니다.', 'success');
+            loadWorkCases();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
+        });
+      });
+    }
+
+    callGas('work_apply_receipt_only_case_cleanup', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#rocBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderResult(res);
+    }).catch(function(err){
+      overlay.querySelector('#rocBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
+  }
 
   function loadWorkCases(){
     workCaseList.innerHTML = '<div class="log-empty">불러오는 중…</div>';
@@ -5930,7 +6037,7 @@ function nxMdOpenWindow(title, src, opts){
       '<div class="card" id="chGasCard">' +
       '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>⚡ GAS 사건처리</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 서류 읽기·칸 채우기 → 질문 답하기 → 세액계산·서식·검토서</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chLedgerBtn" class="ghost-btn" title="사건의 모든 사실을 한 장부에 — 칸마다 값·주인(세무사님/넥스/서류)·상태(확정/추정/물어볼 것/증빙 받을 것/보류). 여기서 바로 값을 넣고, 물어볼 것에 답하고, 장부로 세액을 계산합니다 — 넥스가 쓰는 것과 같은 장부">📒 사건 장부</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
       '<div id="chGasBody" style="margin-top:8px;"></div>' +
       '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
@@ -6413,6 +6520,71 @@ function nxMdOpenWindow(title, src, opts){
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">현황표를 만들지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     // [2026.10.27 10-27 A] 칸 값 고치기 — 넥스 카드(caseproc_fix)·지휘 넥스(value_set target)와 같은 서버 입구(case_proc valueFix·valueUndo). 세무사님 원문 "ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다" — 그 반대도: 넥스가 쓰는 도구는 여기서 세무사님도 누른다
+    // [2026.10.28] 📒 사건 장부 — 사실의 유일한 저장소(서버 CaseLedger.js, case_proc step ledger*). 넥스(채팅·지휘)와 세무사님이 같은 장부에 적는다.
+    //  세무사님 원문: "확보할 수 있는 정보를 최대한 확보하고, 확보된 정보를 최대한 활용해서 사건처리를 하자는 것이고, 부족한 정보는 물어보거나 확보할 증빙으로 분류하자는 거 아닌가? 확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고"
+    document.getElementById('chLedgerBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">사건 장부를 읽는 중…</div>';
+      var reload = function(){ document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
+      var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + (e && e.message || e), 'error'); return null; }); };
+      var STATE_KO = { 물어볼것: '❓ 물어볼 것', 증빙받을것: '📎 증빙 받을 것', 추정: '≈ 추정', 확정: '✅ 확정', 보류: '⏸ 보류', 무시: '— 무시' };
+      var KIND_KO = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: '규칙', 추정: '추정', 계산: '계산' };
+      var PATHS = [['seller.name', '양도인 성명'], ['seller.regNo', '양도인 주민등록번호'], ['seller.address', '양도인 주소'], ['seller.multiHouseCount', '보유 주택 수'], ['c0.date', '양도일'], ['c0.totalPrice', '양도가액'], ['c0.transferCause', '양도 원인(sale 매매 · expropriation 수용 · exchange 교환)'], ['c0.buyer.name', '양수인 성명'], ['c0.buyer.regNo', '양수인 주민등록번호'], ['c0.buyer.relation', '양수인 관계(none 없음 · sibling 형제자매 · lineal 직계 · spouse 배우자 · relative 친족)'], ['a0.assetLocation', '소재지'], ['a0.assetKind', '자산 종류(land 토지 · building 건물 · land_building 토지+건물)'], ['a0.assetType', '과세대상 구분(house 주택 · other 그 외 · presale_right 분양권)'], ['a0.acquisitionDate', '취득일'], ['a0.acquisitionPrice', '취득가액'], ['costs', '필요경비(예: 취득세 3,583,600원, 중개수수료 2,090,000원 — 서버가 항목으로 풂)'], ['taxfee', '신고 세무비용'], ['사건분류', '사건분류'], ['기준일', '기준일(양도일)']];
+      callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+        if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
+        var rows = r.줄 || [], sum = r.요약 || {};
+        var h = '<div style="font-size:12.5px;">';
+        h += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>📒 사건 장부</b><span style="color:var(--sub);">' + esc(sum.전체 || 0) + '줄 · 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + esc(sum.증빙받을것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + (sum.at ? ' · 마지막 ' + esc(sum.at) : '') + '</span>'
+          + '<button type="button" id="chLgCalc" class="ghost-btn" title="장부의 확정·추정 줄로 세액계산기를 돌려 사건에 저장합니다. 물어볼 것이 남아도 막지 않고, 빈 칸과 추정은 결과에 적습니다">🧮 장부로 세액계산</button>'
+          + (!(sum.전체) ? '<button type="button" id="chLgImport" class="ghost-btn" title="옛 사건처리 결정 파일(정한 값·남은 질문)을 장부로 한 번 옮깁니다">📥 옛 기록 옮겨오기</button>' : '') + '</div>';
+        var cell = function(t, w, extra){ return '<td style="padding:3px 8px; border-top:1px solid var(--line); max-width:' + w + 'px; overflow-x:auto; white-space:nowrap;' + (extra || '') + '" title="' + esc(t) + '">' + esc(t) + '</td>'; };
+        var order = ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'];
+        order.forEach(function(st){
+          var list = rows.filter(function(x){ return x.state === st; });
+          if (!list.length) return;
+          h += '<div style="margin-top:8px;"><b>' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          list.forEach(function(x){
+            var basis = (st === '물어볼것' || st === '증빙받을것') ? (x.ask || '') : [x.file, x.quote ? '"' + x.quote + '"' : '', x.why].filter(Boolean).join(' · ');
+            var act = '';
+            if (st === '물어볼것' || st === '증빙받을것' || st === '추정'){
+              (x.cands || []).forEach(function(cd, i){ act += '<button type="button" class="ghost-btn" data-lg-pick="' + esc(x.path) + '" data-lg-v="' + esc(typeof cd.v === 'object' ? JSON.stringify(cd.v) : String(cd.v)) + '" title="' + esc(cd.src || '') + '" style="padding:1px 6px; font-size:11.5px;">' + esc(cd.값 || String(cd.v)) + '</button> '; });
+              act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">넣기</button> ';
+              act += '<button type="button" class="ghost-btn" data-lg-dec="보류" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="진행하되 검토서 추가 확인 사항에">보류</button> <button type="button" class="ghost-btn" data-lg-dec="무시" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">무시</button>';
+              if (st === '추정') act += ' <button type="button" class="ghost-btn" data-lg-dec="확인" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="이 값을 확정으로">확인</button>';
+            } else {
+              act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="새 값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">고치기</button>';
+              if (x.histN > 0) act += ' <button type="button" class="ghost-btn" data-lg-undo="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="마지막 고침을 되돌립니다">↩</button>';
+            }
+            h += '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td></tr>';
+          });
+          h += '</table></div></div>';
+        });
+        var opts = PATHS.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select id="chLgPath" style="max-width:360px;">' + opts + '</select><input id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
+        h += '<div style="color:var(--sub); font-size:11.5px; margin-top:4px;">세무사님이 넣은 값은 넥스·서류가 바꾸지 못합니다. 모든 고침은 기록(누가·언제·전 값 → 후 값)으로 남고 ↩로 되돌릴 수 있습니다.</div>';
+        if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.구분 || '') + ' — 납부세액 ' + esc(Number(s.최종세액 || 0).toLocaleString('ko-KR')) + '원</div>'; }).join('') + '</div>';
+        if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
+        h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
+        body.innerHTML = h;
+        var setVal = function(path, v, est){ if (!v){ showToast('값을 적어 주세요.', 'warning'); return; } call({ step: 'ledgerSet', path: path, value: v, kind: est ? '추정' : '세무사님', estimate: !!est }).then(function(res){ if (res) reload(); }); };
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-pick]'), function(b){ b.addEventListener('click', function(){ setVal(b.getAttribute('data-lg-pick'), b.getAttribute('data-lg-v'), false); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-set]'), function(b){ b.addEventListener('click', function(){ var p = b.getAttribute('data-lg-set'), inp = body.querySelector('input[data-lg-in="' + p.replace(/"/g, '\\"') + '"]'); setVal(p, inp ? inp.value.trim() : '', false); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('input[data-lg-in]'), function(inp){ inp.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); setVal(inp.getAttribute('data-lg-in'), inp.value.trim(), false); } }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-dec]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerDecide', path: b.getAttribute('data-lg-path'), decision: b.getAttribute('data-lg-dec') }).then(function(res){ if (res) reload(); }); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-undo]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerUndo', path: b.getAttribute('data-lg-undo') }).then(function(res){ if (res) reload(); }); }); });
+        document.getElementById('chLgAdd').addEventListener('click', function(){ var p = (document.getElementById('chLgPathFree').value || '').trim() || document.getElementById('chLgPath').value; setVal(p, document.getElementById('chLgVal').value.trim(), document.getElementById('chLgEst').checked); });
+        document.getElementById('chLgCalc').addEventListener('click', function(){
+          var out = document.getElementById('chLgOut'); out.innerHTML = '<div class="log-empty">장부로 세액계산 중…</div>'; document.getElementById('chLgCalc').disabled = true;
+          call({ step: 'ledgerCalc' }).then(function(res){
+            document.getElementById('chLgCalc').disabled = false;
+            if (!res){ out.innerHTML = ''; return; }
+            out.innerHTML = '<div><b>🧮 계산 결과</b>' + (res.요약 || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">· ' + esc(l) + '</div>'; }).join('') + ((res.gaps || []).length ? '<div style="margin:4px 0 0 8px; color:#b23;">비어 있는 칸 ' + res.gaps.length + '개 — 위 표에서 넣거나 추정치로 넣으세요</div>' : '') + '</div>';
+            if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
+          });
+        });
+        var imp = document.getElementById('chLgImport'); if (imp) imp.addEventListener('click', function(){ imp.disabled = true; call({ step: 'ledgerImport' }).then(function(res){ if (res) reload(); else imp.disabled = false; }); });
+      }).catch(function(e){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+    });
     document.getElementById('chGasFixBtn').addEventListener('click', function(){
       if (!tokOk()) return;
       body.innerHTML = '<div class="log-empty">정한 값·고침 기록을 읽는 중…</div>';
@@ -10956,11 +11128,210 @@ function nxMdOpenWindow(title, src, opts){
     docsInitCaseSelect_();
   }
 
-  // [2026.10.28 정비도구 재점검] 설정 🛠 정비도구의 🏷 사건명 점검·🔗 미연결 폴더 찾기를 화면·핸들러까지 지웠다(세무사님 "정리 진행").
-  //  - 사건명 점검: 규칙("고객명(납세자)_세목_업무유형") 어긋남 0건 — 10-14~15 납세자·사건명 일괄 정리로 끝났고, 이후엔 work_updateCase가
-  //    고객명·납세자·세목·업무유형이 바뀔 때 사건명·폴더명·캘린더를 자동 동기화한다. 서버 work_auditCaseFolderNames는 남김.
-  //  - 미연결 폴더 찾기: 폴더ID 없는 사건 7건(모두 상담 완료, 폴더가 애초 없음)에 후보 폴더 0개. 폴더→사건 방향은 미등록 사건 점검·흡수가 맡는다.
-  //    서버 work_auditUnlinkedCaseFolders_·work_link_case_folder·work_reassign_case_folder는 남김.
+  // [2026.09] "폴더명 작성규칙(고객명_세목_업무유형, work_generateUniqueCaseName_ 참고)을
+  // 제대로 안 지키고 있는 것 같다"는 지적 — 고객명 정정·세목 변경 등이 있어도 사건명(=폴더명)은
+  // 자동으로 안 바뀌는 기존 정책 때문에 시간이 지날수록 실제 규칙과 어긋나는 폴더가 쌓일 수
+  // 있다. 실제 Drive 폴더와 시트를 동시에 바꾸는 위험한 작업이라, 먼저 무엇이 바뀔지 전부
+  // 보여주고(dryRun) 확인 후에만 실제로 적용한다 — 자동으로 조용히 바꾸지 않는다.
+  function docsOpenFolderNameAuditModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🏷 사건명 규칙 전수조사</span><span class="modal-close" id="docsFnaClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="docsFnaBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#docsFnaClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderList(items){
+      var body = overlay.querySelector('#docsFnaBody');
+      if (!items.length){ body.innerHTML = '<div class="log-empty">규칙과 어긋나는 사건명(폴더명)이 없습니다. 전부 규칙대로입니다.</div>'; return; }
+      var rows = items.map(function(it){
+        return '<tr>' +
+          '<td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
+          '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재사건명 || '(빈 값)') + '</td>' +
+          '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.제안사건명) + '</td>' +
+          '<td style="padding:4px 8px;">' + (it.폴더ID ? '있음' : '없음(사건명만 수정)') + '</td>' +
+        '</tr>';
+      }).join('');
+      body.innerHTML =
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">아래 ' + items.length + '건은 지금 규칙대로 다시 만들면 이름이 달라집니다. "일괄 적용"을 누르면 시트의 사건명과 실제 Drive 폴더명을 함께 바꿉니다(폴더가 있는 경우만). 확보한 자료·하위 폴더 구조는 그대로 유지됩니다(이름만 바뀜).</div>' +
+        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">현재 사건명(폴더명)</th><th style="padding:4px 8px;">규칙대로면</th><th style="padding:4px 8px;">Drive 폴더</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<button type="button" id="docsFnaApplyBtn" class="btn danger" style="margin-top:10px;">⚠ 위 ' + items.length + '건 일괄 적용(되돌리기 어려움)</button>';
+      body.querySelector('#docsFnaApplyBtn').addEventListener('click', function(){
+        nxConfirm_(items.length + '건의 사건명과 Drive 폴더명을 실제로 바꿉니다. 계속할까요?').then(function(ok){
+        if (!ok) return;
+        body.innerHTML = '적용 중…';
+        callGas('work_audit_case_folder_names', { apply: true }).then(function(res){
+          if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '적용 실패') + '</div>'; return; }
+          // [2026.09.23 버그수정] 이제 work_updateCase를 거치므로(낙관적 잠금 포함) 일부 건이
+          // 다른 화면에서 동시 저장돼 충돌로 실패할 수 있다 — 조용히 무시하지 않고 몇 건이
+          // 실패했는지, 왜 실패했는지 보여준다.
+          var failedList = res.failed || [];
+          body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.' +
+            (failedList.length ? ' (' + failedList.length + '건 실패 — ' + failedList.map(function(f){ return escapeHtml(f.고객명 || '') + ': ' + escapeHtml(f.사유 || ''); }).join(', ') + ')' : '') + '</div>';
+          showToast(res.applied + '건의 폴더명을 규칙대로 수정했습니다.' + (failedList.length ? ' (' + failedList.length + '건 실패, 다시 시도해주세요)' : ''), failedList.length ? 'warning' : 'success');
+          // [2026.09.16 버그수정] 여기서 docsGetAllCases_(true)만 부르면 내부 캐시만 새로
+          // 받아올 뿐 이미 그려진 <select id="docsCaseSelect">의 <option> 텍스트는 그대로
+          // 남아있어서(docsInitCaseSelect_가 페이지당 딱 한 번만 그림), 사건명을 고쳐도
+          // 드롭다운엔 옛 이름이 계속 보였다 — docsRefreshCaseSelect_로 드롭다운 자체를 다시 그린다.
+          docsRefreshCaseSelect_();
+          if (typeof loadWorkCases === 'function') loadWorkCases();
+        }).catch(function(err){
+          body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+        });
+        });
+      });
+    }
+
+    callGas('work_audit_case_folder_names', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderList(res.items || []);
+    }).catch(function(err){
+      overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
+  }
+
+  // [2026.09.16 신규] "고객E(고객E 피상속인)_상속_상담은 폴더가 있는데 연결이 안 돼 없는 것처럼 나온다"는
+  // 지적으로 추가 — 위 "사건명 점검"은 이름이 어긋난 것만 잡고, 폴더ID 자체가 비어있는 사건은
+  // "폴더 없음"으로만 보여줄 뿐 실제로 있을 수도 있는 폴더를 찾아주지 않는다. 고객명으로 느슨하게
+  // 후보를 찾아 보여주고, 사람이 맞는 것 하나를 골라 "연결"만 누르면 된다(이름/폴더는 안 바뀜).
+  function docsOpenUnlinkedFolderAuditModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🔗 미연결 폴더 찾기</span><span class="modal-close" id="docsUfaClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="docsUfaBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#docsUfaClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderList(items){
+      var body = overlay.querySelector('#docsUfaBody');
+      if (!items.length){ body.innerHTML = '<div class="log-empty">폴더가 연결되지 않은 사건이 없습니다.</div>'; return; }
+      var rows = items.map(function(it){
+        var candHtml = '';
+        if (it.candidates.length){
+          candHtml += it.candidates.map(function(c){
+            return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">' +
+              '<span>' + escapeHtml(c.name) + '</span><span style="color:var(--sub); font-size:12px;">(' + c.createdDate + ' 생성)</span>' +
+              '<button type="button" class="ghost-btn docsUfaLinkBtn" data-case-id="' + it.id + '" data-folder-id="' + c.id + '" style="margin-left:auto;">🔗 이 폴더로 연결</button>' +
+              '</div>';
+          }).join('');
+        } else {
+          candHtml += '<div style="color:var(--sub); margin-bottom:4px;">자동으로는 일치하는 폴더 후보를 못 찾았습니다(하위 폴더 안에 있거나 이름이 달라서일 수 있습니다).</div>';
+        }
+        // [2026.09.16 신규] "그럼 이 사건은 폴더와 영원히 연결 못 하는가?" — 자동 후보검색은
+        // 최상위 폴더+고객명 부분일치만 보므로 한계가 있다. Drive에서 실제 폴더를 찾아 링크나
+        // ID를 직접 붙여넣어도 연결할 수 있게 항상 이 수동 입력줄을 같이 보여준다.
+        candHtml +=
+          '<div style="display:flex; align-items:center; gap:6px; margin-top:6px;">' +
+            '<input type="text" class="docsUfaManualInput" placeholder="또는 Drive 폴더 링크·ID 붙여넣기" style="flex:1; min-width:160px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">' +
+            '<button type="button" class="ghost-btn docsUfaLinkBtn" data-case-id="' + it.id + '" data-manual="1">🔗 이 링크로 연결</button>' +
+          '</div>';
+        return '<tr>' +
+          '<td style="padding:6px 8px; vertical-align:top;">' + escapeHtml(it.고객명) + '</td>' +
+          '<td style="padding:6px 8px; vertical-align:top;">' + escapeHtml(it.사건명) + '</td>' +
+          '<td style="padding:6px 8px; vertical-align:top;">' + candHtml + '</td>' +
+          '</tr>';
+      }).join('');
+      body.innerHTML =
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">폴더ID가 비어있는 사건 ' + items.length + '건입니다. 고객명이 폴더명에 들어간 것만 자동 후보로 보여줍니다 — 못 찾으면 Drive에서 직접 찾아 링크를 붙여넣어도 됩니다. "연결"을 누르면 사건명·폴더명은 그대로 두고 연결(폴더ID)만 채웁니다.</div>' +
+        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:6px 8px;">고객명</th><th style="padding:6px 8px;">사건명</th><th style="padding:6px 8px;">후보 폴더</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      body.querySelectorAll('.docsUfaLinkBtn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var caseId = btn.dataset.caseId, folderId;
+          var rowWrap = btn.parentElement;
+          // [2026.09.16 버그수정] "이미 다른 사건에 연결됨" 같은 실패 사유를 토스트로만 보여줬더니
+          // 몇 초 만에 사라져서 세무사님이 캡처할 수도 없었다 — 화면에 계속 남는 문구로 바꾼다.
+          var oldErr = rowWrap.parentElement.querySelector('.docsUfaErr');
+          if (oldErr) oldErr.remove();
+          if (btn.dataset.manual){
+            var input = rowWrap.querySelector('.docsUfaManualInput');
+            folderId = input ? input.value.trim() : '';
+            if (!folderId){ showToast('폴더 링크나 ID를 입력해주세요.', 'warning'); return; }
+          } else {
+            folderId = btn.dataset.folderId;
+          }
+          btn.disabled = true;
+          callGas('work_link_case_folder', { caseId: caseId, folderId: folderId }).then(function(res){
+            if (res.success === false){
+              var errDiv = document.createElement('div');
+              errDiv.className = 'docsUfaErr';
+              errDiv.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
+              errDiv.textContent = '⚠ ' + (res.message || '연결 실패');
+              // [2026.09.16 신규] "고객F(고객F)/고객E 피상속인(고객E)는 잘못 부여된 사건명이니까
+              // 수정된 사건명으로 연결해주고 잘못된 사건명은 삭제해달라" — 충돌 사유가 "다른
+              // 사건이 이미 이 폴더를 차지함"일 때는, 그 옛 사건이 정정 전 이름(또는 고객명·
+              // 납세자가 뒤바뀐) 채로 남아있는 경우가 많다. 재입력 없이 그 자리에서 바로
+              // "옮기고 옛 것 삭제"까지 할 수 있게 버튼을 같이 보여준다.
+              if (res.conflictCaseId){
+                var moveBtn = document.createElement('button');
+                moveBtn.type = 'button';
+                moveBtn.className = 'ghost-btn';
+                moveBtn.style.cssText = 'margin-left:8px; font-size:12px;';
+                moveBtn.textContent = '🔁 "' + (res.conflictCaseName || '옛 사건') + '"에서 옮기고 그 사건 삭제';
+                moveBtn.addEventListener('click', function(){
+                  nxConfirm_('"' + res.conflictCaseName + '" 사건에서 이 폴더를 떼어 지금 사건에 연결하고, "' + res.conflictCaseName + '" 사건 자체는 삭제합니다.\n(하위업무·메모 등 그 사건에 기록된 내용도 함께 사라집니다 — 되돌릴 수 없습니다.) 계속할까요?').then(function(ok){
+                    if (!ok) return;
+                    moveBtn.disabled = true;
+                    callGas('work_reassign_case_folder', { fromCaseId: res.conflictCaseId, toCaseId: caseId }).then(function(res2){
+                      if (res2.success === false){ errDiv.textContent = '⚠ ' + (res2.message || '이관 실패'); moveBtn.disabled = false; return; }
+                      showToast('폴더를 옮기고 옛 사건을 삭제했습니다.', 'success');
+                      docsRefreshCaseSelect_();
+                      if (typeof loadWorkCases === 'function') loadWorkCases();
+                      load();
+                    }).catch(function(err3){
+                      errDiv.textContent = '⚠ 이관 중 오류: ' + (err3 && err3.message ? err3.message : err3);
+                      moveBtn.disabled = false;
+                    });
+                  });
+                });
+                errDiv.appendChild(moveBtn);
+              }
+              rowWrap.insertAdjacentElement('afterend', errDiv);
+              btn.disabled = false;
+              return;
+            }
+            showToast('연결했습니다.', 'success');
+            docsRefreshCaseSelect_();
+            if (typeof loadWorkCases === 'function') loadWorkCases();
+            load(); // 방금 연결한 사건을 목록에서 빼고 다시 그림
+          }).catch(function(err){
+            var errDiv2 = document.createElement('div');
+            errDiv2.className = 'docsUfaErr';
+            errDiv2.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
+            errDiv2.textContent = '⚠ 연결 중 오류: ' + (err && err.message ? err.message : err);
+            rowWrap.insertAdjacentElement('afterend', errDiv2);
+            btn.disabled = false;
+          });
+        });
+      });
+    }
+
+    function load(){
+      overlay.querySelector('#docsUfaBody').innerHTML = '확인 중…';
+      callGas('work_audit_unlinked_case_folders', {}).then(function(res){
+        if (res.success === false){ overlay.querySelector('#docsUfaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+        renderList(res.items || []);
+      }).catch(function(err){
+        overlay.querySelector('#docsUfaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+      });
+    }
+    load();
+  }
 
   // [2026.09] 법령조회·세액계산에는 상단에 "사건연결" 드롭다운이 있어서 사건을 바로 골라
   // 들어갈 수 있는데, 증빙확보(왼쪽 메뉴로 바로 들어오면)는 그게 없어서 폴더를 일일이
@@ -55180,6 +55551,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
 
     // [2026.10.08] job 기능 — 실행 제안(job_propose_action): 사람이 [실행]을 눌러야 화면이 서버 기능을 부른다.
+    // [2026.10.28] 사건 장부에 바로 적은 것(case_ledger) — 카드 없이 실행됐으니 "적음" 표시와 ↩ 되돌리기만. 같은 사건의 처리개요 화면이 열려 있으면 다시 그린다
+    actions.filter(function(a){ return a && a.type === 'ledger_changed'; }).forEach(function(a){
+      var badge = document.createElement('div');
+      badge.className = 'nxai-saved';
+      badge.textContent = '📒 장부에 적음: ' + (a.message || '');
+      if (a.undoable && a.path && a.caseId){
+        var ub = document.createElement('button'); ub.type = 'button'; ub.className = 'nxai-btn'; ub.textContent = '↩ 되돌리기'; ub.style.marginLeft = '8px';
+        ub.addEventListener('click', function(){ if (!sessionStorage.getItem('nxManageSessionToken')){ nxAiToast_('로그인 뒤에 되돌릴 수 있습니다.'); return; } ub.disabled = true; callGas('case_proc', { caseId: a.caseId, step: 'ledgerUndo', path: a.path, by: '세무사님' }).then(function(res){ var ok = res && res.ok; badge.textContent = ok ? ('↩ 되돌림: ' + (res.message || '')) : ('되돌리지 못함: ' + ((res && (res.error || res.message)) || '')); if (!ok) ub.disabled = false; }).catch(function(e){ badge.textContent = '되돌리지 못함: ' + (e && e.message || e); ub.disabled = false; }); });
+        badge.appendChild(ub);
+      }
+      bubbleEl.appendChild(badge);
+      try { var lb = document.getElementById('chLedgerBtn'); if (lb && document.getElementById('chLgOut')) lb.click(); } catch (e) {} // 장부 표가 열려 있을 때만 다시 그림
+    });
     actions.filter(function(a){ return a && a.type === 'confirm_action'; }).forEach(function(a){
       bubbleEl.appendChild(nxAiConfirmCard_(a, bubbleEl));
     });
@@ -55240,7 +55624,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
     var claimed = NXAI_COMPLETION_CLAIM_RE.test(replyText || '');
     var realSignal = !!editAction || saved.length > 0
-      || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed' || a.type === 'confirm_action'); }); // [2026.10.23 ㅅ13차 — 점검표 168] 실행 제안 카드를 띄운 답엔 "저장 도구 기록 없음" 경고를 붙이지 않는다(제안 방식은 세무사님이 [실행]을 눌러야 반영되는 것이 맞음)
+      || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed' || a.type === 'confirm_action' || a.type === 'ledger_changed'); }); // [2026.10.23 ㅅ13차 — 점검표 168] 실행 제안 카드를 띄운 답엔 "저장 도구 기록 없음" 경고를 붙이지 않는다(제안 방식은 세무사님이 [실행]을 눌러야 반영되는 것이 맞음)
     if (claimed && !realSignal){
       var warn = document.createElement('div');
       warn.className = 'nxai-warn';

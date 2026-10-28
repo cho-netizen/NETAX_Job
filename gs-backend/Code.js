@@ -3805,6 +3805,15 @@ function job_lookup_(input) {
     if (!cf) return { error: '사건을 찾을 수 없습니다: ' + input.caseId };
     return kind === 'case_files' ? caseProcNexFileList_(cf, { dir: input.dir, find: input.search, max: input.max }) : caseProcNexFileText_(cf, { file: input.file || input.search, page: input.page, start: input.start, find: input.find, len: input.len });
   }
+  // [2026.10.28] 사건 장부 — 사실 하나 = 줄 하나(값·출처·확신·상태·이력). 질문 목록은 상태가 물어볼것·증빙받을것인 줄
+  if (kind === 'ledger') {
+    if (!input.caseId) return { error: 'ledger는 caseId(작업관리 사건ID)가 필요합니다.' };
+    const c = job_findCase_(input.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + input.caseId };
+    const v = ledgerView_(c);
+    v.안내 = '장부가 사실의 유일한 저장소다. 세무사님이 말로 값을 주면 case_ledger{do:set, kind:세무사님}으로 바로 적는다(카드 없음). 네가 서류로 정한 값은 kind:넥스에 file·quote(원문 한 줄)·why를 붙여 적고, 확신이 없으면 do:ask로 후보와 함께 물어볼 것으로 세운다. 세무사님이 정한 값(kind 세무사님)은 바꾸지 말고 서류 값이 다르면 그 사실만 말씀드린다. 세액은 do:calc로 계산기를 돌린 저장본 숫자만 말한다(암산 금지).';
+    return JSON.parse(cxMask_(JSON.stringify(v)));
+  }
   if (kind === 'law_decisions') return typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.search || '', input.세목 || '') : { error: '이 판에 없음' };
   return { error: '알 수 없는 kind: ' + kind };
 }
@@ -4022,7 +4031,7 @@ const JOB_AI_TOOLS_ = [
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ai_review', 'law_decisions', 'case_files', 'file_read'] },
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read'] },
         caseId: { type: 'string', description: 'checklist·caseproc·case_files·file_read일 때 작업관리 사건ID' },
         search: { type: 'string', description: 'consult_logs일 때 고객명, law_decisions일 때 쟁점 낱말, case_files일 때 파일 이름 낱말(선택)' },
         dir: { type: 'string', description: 'case_files일 때 폴더 이름으로 좁히기(선택)' },
@@ -4073,6 +4082,35 @@ const JOB_AI_TOOLS_ = [
         taxTab: { type: 'string', enum: ['transfer', 'gift', 'inheritance'], description: 'then=autocalc일 때 세목: transfer=양도소득세, gift=증여세, inheritance=상속세' }
       },
       required: ['view']
+    }
+  },
+  // [2026.10.28] 사건 장부(CaseLedger.js) — 넥스가 사실을 적는 유일한 길. 세무사님이 말로 준 값은 카드 없이 바로(세무사님 대리인), 넥스가 서류로 정한 값은 근거와 함께, 모르면 물어볼 것으로.
+  {
+    name: 'case_ledger',
+    description: '사건 장부에 사실을 적거나 상태를 바꾼다(바로 실행, 토큰 0). 장부 = 사건의 모든 사실(세액계산기 칸 하나 = 줄 하나: 값·출처·확신·상태·이력). 먼저 job_lookup kind=ledger로 장부를 본다. '
+      + 'do=set: 값을 적는다 — path(칸 경로: seller.name·seller.regNo·seller.address·seller.multiHouseCount / c0.date·c0.totalPrice·c0.transferCause·c0.buyer.name·c0.buyer.regNo·c0.buyer.relation / a0.assetLocation·a0.assetKind·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract(c0) / costs({acq:[{label,amount,file,date}],tr:[…]})·taxfee·사건분류·기준일 / doc:<파일 이름>.role(서류 역할)), value, kind(세무사님=세무사님이 말로 준 값 그대로 / 넥스=네가 서류로 정한 값 / 추정=추정치), file·page·quote(원문 한 줄)·why(근거). '
+      + '고르기 칸은 코드값: assetType house|other|presale_right, buyer.relation none|sibling|lineal|spouse|relative, assetKind land|building|land_building|stock|other, transferCause sale|expropriation|exchange|gift_burden|other. 세무사님이 정한 값은 바꾸지 못한다(거절되면 지금 값과 서류 값만 말씀드린다). '
+      + 'do=ask: 확신이 없을 때 값 대신 물어볼 것으로 세운다 — path, question(무엇이 왜 애매한지), cands:[{v,src}](후보와 출처), needDoc(true면 증빙 받을 것). '
+      + 'do=decide: path, decision(확인|보류|무시), note. do=undo: path(마지막 고침 되돌리기, 네 값만). do=calc: 장부(확정+추정)로 세액계산기를 돌려 사건에 저장하고 납부세액·빈 칸·추가 확인 사항을 돌려준다 — 세액 숫자는 여기서 받은 것만 말한다. do=import: 옛 저장소(사건처리 결정 파일)를 장부로 한 번 옮긴다(장부가 비어 있을 때).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        caseId: { type: 'string', description: '작업관리 사건ID' },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'import'] },
+        path: { type: 'string', description: '칸 경로(set·ask·decide·undo)' },
+        value: { description: 'set일 때 값(글·숫자·불·객체)' },
+        kind: { type: 'string', enum: ['세무사님', '넥스', '추정'], description: 'set일 때 값의 주인 — 세무사님이 말한 값은 꼭 세무사님' },
+        file: { type: 'string', description: '근거 파일 이름(선택)' },
+        page: { type: 'string', description: '근거 쪽(선택)' },
+        quote: { type: 'string', description: '근거 원문 한 줄(선택)' },
+        why: { type: 'string', description: '이유·근거 한 줄' },
+        question: { type: 'string', description: 'ask일 때 무엇이 왜 애매한지' },
+        cands: { type: 'array', items: { type: 'object', properties: { v: {}, src: { type: 'string' } } }, description: 'ask일 때 후보 [{v, src}]' },
+        needDoc: { type: 'boolean', description: 'ask일 때 true면 증빙 받을 것' },
+        decision: { type: 'string', enum: ['확인', '보류', '무시'], description: 'decide일 때' },
+        note: { type: 'string', description: 'decide일 때 한 줄' }
+      },
+      required: ['caseId', 'do']
     }
   },
   // [2026.10.21] 절세 아이템(업무관리자\절세, 절세플랜 📚) — 세무사님 "넥스가 절세 아이템을 근거로 답하게 하기를 진행하되, 안전장치를 마련해야 한다".
@@ -4834,6 +4872,8 @@ function buildContextSystemPrompt(basePrompt, body) {
     + '세무사님은 사건을 전체로 맡기기도(처리하자), 일부만 맡기기도("○○만 봐줘" — 그 부분만 답하고 나머지는 건드리지 않음), 직접 처리하기도 한다(사이드바·세액계산 화면) — 세무사님이 직접 넣은 값은 바꾸자고 하지 말고, 서류와 어긋나 보이면 그 사실만 말씀드린다. '
     + '세법 해석이 갈릴 수 있는 쟁점(중과·특례·평가 등)을 답하기 전에는 job_lookup law_decisions로 AI 회의 법령 안건을 먼저 본다 — 세무사님이 "결정"한 쟁점은 그 결론을 따르고, "판단 대기"·"보류"인 쟁점은 단정하지 말고 판단 대기 중이라고 밝힌다.'
     // [2026.10.27] 세무사님 원문: "ai에게 종합적으로 지시하면 계산기를 사용하지 않고 ai가 암산으로 세액계산을 하게 되고 그 세액계산의 근거도 남기지 않게 되므로 세금계산신고 절차를 밟도록 주문한 것이었다"
+    // [2026.10.28] 사건 장부 — 세무사님 원문 "내가 이미 모두 답변했는데 왜 자꾸 귀찮게 하냐고?" — 세무사님 말씀을 칸에 넣는 데 카드를 거치지 않는다(넥스는 대리인)
+    + '\n\n[사건 장부 — 사실의 유일한 저장소] 사건의 값·질문·추정은 장부 한 곳에 있다(job_lookup kind=ledger). 세무사님이 채팅에 값을 주시면("주택이고 2주택이고 특수관계 아니다") 되묻지 말고 토막마다 case_ledger do=set kind=세무사님으로 바로 적는다 — 제안 카드(job_propose_action caseproc_*)를 띄우지 않는다. 적은 뒤 "○○ ← 값"으로 한 줄씩 보고하고 남은 물어볼 것이 있으면 항목별로 묶어 여쭌다. 네가 서류를 읽어 정한 값은 kind=넥스에 file·quote·why를 붙여 적고, 확신이 없으면 do=ask로 후보와 함께 물어볼 것으로. 세무사님이 정한 값은 바꾸지 못한다(거절되면 지금 값과 서류 값만 말씀드린다). 계산은 do=calc — 돌아온 납부세액만 말한다. 옛 사건(장부가 비어 있고 사건처리 결정 파일만 있는 것)은 do=import로 한 번 옮긴 뒤 시작한다.'
     + '\n\n[세액은 계산 도구로만 — 암산 금지] 세액(양도세·증여세·상속세·지방소득세·가산세)을 말할 때는 네가 머릿속으로 계산한 숫자를 쓰지 않는다. 사건의 세액은 세액계산기를 돌려 저장한 계산 저장본(job_lookup caseproc의 마지막계산·계산저장본, job_propose_action calc_scenario로 만든 경우(안) 저장본)에서만 인용하고 어느 저장본인지 밝힌다. '
     + '비과세 사건도 계산기로 세액을 끝까지 계산한 뒤 비과세를 적용한다(추징·불복 때 정확한 세액을 알아야 함). 경우를 바꿔 견주는 계산(비과세 적용 전/후, 필요경비 일부 제외, 양도세 vs 증여세 vs 상속세)은 calc_scenario로 각각 저장하고 그 숫자만 말한다. 사건 없는 단순 계산 질문은 calculate_* 도구 결과를 그대로 쓴다(네 암산 금지는 같다).';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
@@ -15598,6 +15638,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         try { r = block.name === 'search_tax_items' ? knhTaxItemsSearch_(block.input || {}) : knhTaxItemRead_(block.input || {}); }
         catch (err) { r = { 오류: '절세 아이템 조회 중 오류: ' + err.message }; }
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(r).slice(0, 30000) };
+      }
+      // [2026.10.28] 사건 장부 — 바로 실행(세무사님 대리인). 화면에는 "장부에 적음" 표시와 되돌리기만
+      if (block.name === 'case_ledger') {
+        let r;
+        try { r = ledgerToolRun_(block.input || {}, '넥스'); } catch (err) { r = { ok: false, error: '장부 처리 중 오류: ' + err.message }; }
+        if (r && r.ok) clientActions.push({ type: 'ledger_changed', caseId: String((block.input || {}).caseId || ''), do: String((block.input || {}).do || ''), path: String((block.input || {}).path || ''), message: r.message || '', undoable: /^(set|decide)$/.test(String((block.input || {}).do || '')) });
+        return { type: 'tool_result', tool_use_id: block.id, is_error: !!(r && r.error && !r.ok), content: JSON.stringify(cxMask_ ? JSON.parse(cxMask_(JSON.stringify(r))) : r).slice(0, 20000) };
       }
       if (block.name === 'job_propose_action') {
         const r = job_buildProposal_(block.input || {});
@@ -30236,14 +30283,18 @@ function tc_ruleTransferFactsRaw_(body) {
   contracts.forEach(function (x) { if (x.roleConflict) evidence.push('⚠ ' + x.file + ' — 본문 판독(납세자 위치)과 파일 이름의 역할이 달라 파일 이름(' + (x.fRole === 'seller' ? '매도·양도' : '매수·취득') + ')을 따름 — 원문 확인'); });
   // [2026.10.15] 같은 부동산의 계약서가 둘 이상이고 납세자 이름이 모두에 있으면 — 먼저 맺은 계약이 취득(납세자 = 매수인), 마지막이 양도(매도인).
   // 서명란 글자인식 순서가 섞여 두 계약서 모두 같은 역할로 읽히는 일을 바로잡는다(역할이 이미 취득→양도 순서로 맞으면 그대로).
+  // [2026.10.28] 일반 규칙 두 가지를 코드에 명시 — ① 납세자가 당사자(매도인 또는 매수인)인 계약서만 묶는다(전소유자끼리의 계약서는 납세자 거래가 아니다 — 같은 소재지라도 순서 규칙의 재료가 아님)
+  //  ② 파일 이름이 역할을 말하는 계약서(취득·양도·매도·매수·분양)는 순서 규칙으로 뒤집지 않는다 — 파일 이름은 사람이 붙인 명시적 분류(10-16 "파일 이름을 따른다"와 같은 원칙). 그래도 두 계약이 같은 역할이면 정하지 않고 장부 물어볼 것으로 간다(ledgerFromGas_ 모순 검사)
   contracts.forEach(function (c0) {
     if (c0._grouped) return;
-    var g = contracts.filter(function (x) { return x.r.소재지 && c0.r.소재지 && tcLocSame_(x.r.소재지, c0.r.소재지) && x.r.계약일; });
+    var mine = function (x) { return tcNameIn_(x.r.매도인, names) || tcNameIn_(x.r.매수인, names); };
+    var g = contracts.filter(function (x) { return x.r.소재지 && c0.r.소재지 && tcLocSame_(x.r.소재지, c0.r.소재지) && x.r.계약일 && mine(x); });
     if (g.length < 2) return;
     g.forEach(function (x) { x._grouped = true; });
     g.sort(function (a, b) { return a.r.계약일 < b.r.계약일 ? -1 : a.r.계약일 > b.r.계약일 ? 1 : 0; });
     if (g[0].r.계약일 === g[g.length - 1].r.계약일 || !g.every(function (x) { return x.role; })) return;
     if (g[0].role === 'buyer' && g[g.length - 1].role === 'seller') return;
+    if (g.some(function (x) { return x.fRole; })) { evidence.push('같은 부동산 계약서 ' + g.length + '건 — 파일 이름이 역할을 말하므로 계약일 순서로 바꾸지 않음: ' + g.map(function (x) { return x.file + '(' + (x.role === 'seller' ? '양도' : x.role === 'buyer' ? '취득' : '?') + ')'; }).join(', ')); return; }
     evidence.push('같은 부동산 계약서 ' + g.length + '건 — 계약일 순서로 역할 정함: 취득 ' + g[0].file + '(' + g[0].r.계약일 + '), 양도 ' + g[g.length - 1].file + '(' + g[g.length - 1].r.계약일 + ')');
     g.forEach(function (x, i) { x.role = i === 0 ? 'buyer' : i === g.length - 1 ? 'seller' : x.role; });
   });
@@ -31247,7 +31298,7 @@ function caseProc0_(body) {
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
-    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나
+    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; try { const lg = ledgerMirrorApply_(c, body); if (lg && lg.ok) ra.ledger = lg.message; } catch (e) {} } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나 · [2026.10.28] 같은 값을 장부에도(답한 이가 주인)
     // [2026.10.27 10-27 A·C·경우별] 어느 칸이든 값 고치기·되돌리기, 질문 닫기, 경우(안) 계산 저장 — 넥스(채팅 카드·지휘 도구)와 화면(사건처리 GAS 칸·세액계산)이 같은 입구
     if (body.step === 'valueFix') return caseProcValueFix_(c, body);
     if (body.step === 'valueUndo') return caseProcValueUndo_(c, body);
@@ -31255,6 +31306,7 @@ function caseProc0_(body) {
     if (body.step === 'scenario') return caseProcScenario_(c, body);
     if (body.step === 'readScope') return caseProcReadScope_(c, body); // [2026.10.27 F] "○○ 폴더만 읽어라"
     if (body.step === 'readList') return caseProcReadList_(c, body);
+    if (/^ledger/.test(String(body.step || ''))) { const lr = ledgerApi_(c, body); if (lr) return lr; } // [2026.10.28] 사건 장부(CaseLedger.js) — 화면·넥스·사이드바가 같은 입구
     if (body.step === 'nexPreread') return cpNexPrereadSwitch_(c, body, body.by || '세무사님');
     if (body.step === 'readRoute') { const why = String(body.why || '').slice(0, 120); caseProcPatch_(c.id, function (sv) { sv.readRoute = { at: caseProcNow_(), 길: 'GAS(서버 ①②③)', 직결실패: why }; }); cpReadRouteLog_(c.id, '화면 직결 실패: ' + why); return { ok: true }; } // [2026.10.28 속도 ⓓ] 직결(Cloud Run)이 왜 안 됐는지 // [2026.10.28 감시] 사건별 넥스 미리 읽기 끔/켬
     if (body.step === 'watch') { const w = cpWatchCase_(c, {}); return Object.assign(w, { summary: cpWatchSummary_(caseProcLoad_(c.id) || {}) }); } // 지금 대조(개발·점검용) // [2026.10.28 읽을 대상 ②] 읽을 파일 체크 목록(기본 체크·왜·다른 벌·새 파일)
@@ -31529,6 +31581,7 @@ function caseProcValueFix_(c, body) {
   if (target === 'expenses' || target === 'ihdebts') { const nv = cpAnswerValueNorm_(target, value, null); if (nv.error) return { ok: false, error: nv.error }; value = nv.value; }
   const r = caseProcApply_(c, Object.assign({}, body, { target: target, value: value, src: src.slice(0, 80), by: by, label: label }));
   if (!r || r.ok === false) return r || { ok: false, error: '반영 실패' };
+  try { ledgerMirrorApply_(c, { target: target, value: value, by: by, why: why, label: label }); } catch (e) {} // [2026.10.28] 장부에도
   const nextTxt = caseProcValueText_(value).slice(0, 120);
   let closedN = 0;
   caseProcPatch_(c.id, function (s) {
@@ -31599,6 +31652,7 @@ function caseProcDecide_(c, body) {
       out.closed.push(qid);
     });
   });
+  try { ledgerMirrorDecide_(c, out.closed, d, (caseProcLoad_(c.id) || {}).remaining, by); } catch (e) {} // [2026.10.28] 장부 상태도 같이
   if (out.notFound.length && !out.closed.length) { out.ok = false; out.error = '그 질문이 저장된 질문 목록에 없습니다: ' + out.notFound.join(', ') + ' — 사건처리 조회(job_lookup caseproc)의 qid 그대로 보내 주세요.'; }
   out.message = (out.closed.length ? '질문 ' + out.closed.length + '건을 ' + (d === 'done' ? '확인으로 닫음' : d + '로 표시') : '') + (out.notFound.length ? ' · 못 찾은 질문 ' + out.notFound.length + '건' : '');
   return out;
@@ -39618,7 +39672,7 @@ function caseProcStatus_(c, body) {
   // 화면이 보낸 지금 항목·결정이 있으면 그것을 쓴다(화면 하단 "물어볼 것·보류" 집계와 같은 기준) — 없으면 마지막 저장분
   const dec = Object.assign({}, saved.decisions || {});
   Object.keys(body.decisions || {}).forEach(function (k) { if (body.decisions[k] && body.decisions[k].d) dec[k] = body.decisions[k]; else delete dec[k]; });
-  if (Array.isArray(body.items)) saved.remaining = body.items;
+  if (Array.isArray(body.items)) { saved.remaining = body.items; try { ledgerFromQuestions_(c, body.items, dec); } catch (e) {} } // [2026.10.28] 넣을 칸이 있는 질문은 장부 "물어볼 것"으로도
   const ov = c.사건개요 || {};
   const rows = [];
   const has = function (v) { return String(v == null ? '' : v).trim() !== ''; };
@@ -40363,7 +40417,10 @@ function caseProcDraft_(c) {
   if (remain.length) remain.forEach(function (it) { const d = dec[it.id] && dec[it.id].d; L.push('- ' + (d === '보류' ? '(보류) ' : d === '예정' ? '(받을 예정) ' : '') + it.text + (dec[it.id] && dec[it.id].note ? ' — ' + dec[it.id].note : '')); });
   // [2026.10.23 ㅊ2] 자동 보류 메모 — 묻지 않고 검토서에만 두는 것(정황 없는 특수관계 등)
   (saved.holdNotes || []).forEach(function (n) { L.push('- (자동 보류) ' + String(n.text || '')); });
-  if (!remain.length && !(saved.holdNotes || []).length) L.push('- 없음');
+  // [2026.10.28] 사건 장부의 추정·증빙 받을 것·보류 줄 — 추정으로 계산을 진행한 칸은 여기 적힌다(세무사님 "추정치나 가정치를 넣어서 진행할 수도 있고")
+  let lgNotes = []; try { lgNotes = typeof ledgerReviewNotes_ === 'function' ? ledgerReviewNotes_(c.id) : []; } catch (e) { lgNotes = []; }
+  lgNotes.forEach(function (r) { L.push('- (' + r.state + ') ' + r.label + (r.state === '추정' ? ' = ' + r.값 + (r.why ? ' — ' + r.why : '') : r.ask ? ' — ' + r.ask : '') ); });
+  if (!remain.length && !(saved.holdNotes || []).length && !lgNotes.length) L.push('- 없음');
   // [2026.10.21 넥스 하나로] 넥스(사건 지휘)가 여쭌 것의 메모 — 예전엔 급한 질문 메모만 화면에 붙고 나머지는 사라졌다. 마지막 지휘 처리분만
   const lastLead = (Array.isArray(saved.aiLead) ? saved.aiLead : []).slice(-1)[0];
   const leadAsks = lastLead ? (lastLead.asks || []).filter(function (a) { return a && String(a.note || '').trim(); }) : [];
@@ -50924,6 +50981,7 @@ function trcHash_(st) {
 function trcStore_(c, S) {
   const h = trcHash_(S.state);
   caseProcPatch_(c.id, function (s) { s.trCalc = { state: S.state, src: S.src, hash: h, at: new Date().toISOString() }; });
+  try { ledgerFromGas_(c, S); } catch (e) { console.error('장부 반영 실패: ' + (e && e.message || e)); } // [2026.10.28] 사건 장부 — 서류/규칙 값은 장부에, 후보 갈림·서류 모순은 물어볼 것으로
   return h;
 }
 // [2026.10.17] 증여·상속 — 처리개요 칸 이름이 곧 세액계산기 칸 이름(TC_OVERVIEW_INPUT_KEYS_)이라 값은 그대로 넘어간다. 계산이 쓴 입력을 해시로 남겨,
@@ -50945,6 +51003,9 @@ function caseProcCalcIn_(c) {
   if (c.세목 === 'inheritance') return { ok: true, giHash: giCalcHash_(c) };
   if (c.세목 !== 'transfer') return { ok: true, none: true };
   const sv = caseProcLoad_(c.id) || {};
+  // [2026.10.28] 사건 장부가 있으면 장부 값이 계산기 입력을 덮는다(세무사님·넥스가 장부에 적은 값이 곧 계산기 칸 값)
+  let ov = null; try { ov = ledgerOverlayState_(c.id, sv.trCalc ? sv.trCalc.state : null); } catch (e) { ov = null; }
+  if (ov && ov.n) return { ok: true, state: ov.state, src: (sv.trCalc && sv.trCalc.src) || {}, hash: sv.trCalc ? sv.trCalc.hash : '', at: sv.trCalc ? sv.trCalc.at : '', ledger: ov.n, gaps: ov.gaps };
   return sv.trCalc ? { ok: true, state: sv.trCalc.state, src: sv.trCalc.src, hash: sv.trCalc.hash, at: sv.trCalc.at } : { ok: true, none: true };
 }
 // 처리개요(요약) — 계산기 입력을 옛 칸 이름으로 한 방향으로 적는다(처리개요 화면·증빙목록 서식·반영 현황표용). 계산기는 이것을 읽지 않는다.

@@ -1830,6 +1830,19 @@
     });
 
     // [2026.10.08] job 기능 — 실행 제안(job_propose_action): 사람이 [실행]을 눌러야 화면이 서버 기능을 부른다.
+    // [2026.10.28] 사건 장부에 바로 적은 것(case_ledger) — 카드 없이 실행됐으니 "적음" 표시와 ↩ 되돌리기만. 같은 사건의 처리개요 화면이 열려 있으면 다시 그린다
+    actions.filter(function(a){ return a && a.type === 'ledger_changed'; }).forEach(function(a){
+      var badge = document.createElement('div');
+      badge.className = 'nxai-saved';
+      badge.textContent = '📒 장부에 적음: ' + (a.message || '');
+      if (a.undoable && a.path && a.caseId){
+        var ub = document.createElement('button'); ub.type = 'button'; ub.className = 'nxai-btn'; ub.textContent = '↩ 되돌리기'; ub.style.marginLeft = '8px';
+        ub.addEventListener('click', function(){ if (!sessionStorage.getItem('nxManageSessionToken')){ nxAiToast_('로그인 뒤에 되돌릴 수 있습니다.'); return; } ub.disabled = true; callGas('case_proc', { caseId: a.caseId, step: 'ledgerUndo', path: a.path, by: '세무사님' }).then(function(res){ var ok = res && res.ok; badge.textContent = ok ? ('↩ 되돌림: ' + (res.message || '')) : ('되돌리지 못함: ' + ((res && (res.error || res.message)) || '')); if (!ok) ub.disabled = false; }).catch(function(e){ badge.textContent = '되돌리지 못함: ' + (e && e.message || e); ub.disabled = false; }); });
+        badge.appendChild(ub);
+      }
+      bubbleEl.appendChild(badge);
+      try { var lb = document.getElementById('chLedgerBtn'); if (lb && document.getElementById('chLgOut')) lb.click(); } catch (e) {} // 장부 표가 열려 있을 때만 다시 그림
+    });
     actions.filter(function(a){ return a && a.type === 'confirm_action'; }).forEach(function(a){
       bubbleEl.appendChild(nxAiConfirmCard_(a, bubbleEl));
     });
@@ -1890,7 +1903,7 @@
 
     var claimed = NXAI_COMPLETION_CLAIM_RE.test(replyText || '');
     var realSignal = !!editAction || saved.length > 0
-      || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed' || a.type === 'confirm_action'); }); // [2026.10.23 ㅅ13차 — 점검표 168] 실행 제안 카드를 띄운 답엔 "저장 도구 기록 없음" 경고를 붙이지 않는다(제안 방식은 세무사님이 [실행]을 눌러야 반영되는 것이 맞음)
+      || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed' || a.type === 'confirm_action' || a.type === 'ledger_changed'); }); // [2026.10.23 ㅅ13차 — 점검표 168] 실행 제안 카드를 띄운 답엔 "저장 도구 기록 없음" 경고를 붙이지 않는다(제안 방식은 세무사님이 [실행]을 눌러야 반영되는 것이 맞음)
     if (claimed && !realSignal){
       var warn = document.createElement('div');
       warn.className = 'nxai-warn';

@@ -674,7 +674,7 @@
       '<div class="card" id="chGasCard">' +
       '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>⚡ GAS 사건처리</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 서류 읽기·칸 채우기 → 질문 답하기 → 세액계산·서식·검토서</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chLedgerBtn" class="ghost-btn" title="사건의 모든 사실을 한 장부에 — 칸마다 값·주인(세무사님/넥스/서류)·상태(확정/추정/물어볼 것/증빙 받을 것/보류). 여기서 바로 값을 넣고, 물어볼 것에 답하고, 장부로 세액을 계산합니다 — 넥스가 쓰는 것과 같은 장부">📒 사건 장부</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
       '<div id="chGasBody" style="margin-top:8px;"></div>' +
       '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
@@ -1157,6 +1157,71 @@
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">현황표를 만들지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     // [2026.10.27 10-27 A] 칸 값 고치기 — 넥스 카드(caseproc_fix)·지휘 넥스(value_set target)와 같은 서버 입구(case_proc valueFix·valueUndo). 세무사님 원문 "ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다" — 그 반대도: 넥스가 쓰는 도구는 여기서 세무사님도 누른다
+    // [2026.10.28] 📒 사건 장부 — 사실의 유일한 저장소(서버 CaseLedger.js, case_proc step ledger*). 넥스(채팅·지휘)와 세무사님이 같은 장부에 적는다.
+    //  세무사님 원문: "확보할 수 있는 정보를 최대한 확보하고, 확보된 정보를 최대한 활용해서 사건처리를 하자는 것이고, 부족한 정보는 물어보거나 확보할 증빙으로 분류하자는 거 아닌가? 확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고"
+    document.getElementById('chLedgerBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">사건 장부를 읽는 중…</div>';
+      var reload = function(){ document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
+      var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + (e && e.message || e), 'error'); return null; }); };
+      var STATE_KO = { 물어볼것: '❓ 물어볼 것', 증빙받을것: '📎 증빙 받을 것', 추정: '≈ 추정', 확정: '✅ 확정', 보류: '⏸ 보류', 무시: '— 무시' };
+      var KIND_KO = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: '규칙', 추정: '추정', 계산: '계산' };
+      var PATHS = [['seller.name', '양도인 성명'], ['seller.regNo', '양도인 주민등록번호'], ['seller.address', '양도인 주소'], ['seller.multiHouseCount', '보유 주택 수'], ['c0.date', '양도일'], ['c0.totalPrice', '양도가액'], ['c0.transferCause', '양도 원인(sale 매매 · expropriation 수용 · exchange 교환)'], ['c0.buyer.name', '양수인 성명'], ['c0.buyer.regNo', '양수인 주민등록번호'], ['c0.buyer.relation', '양수인 관계(none 없음 · sibling 형제자매 · lineal 직계 · spouse 배우자 · relative 친족)'], ['a0.assetLocation', '소재지'], ['a0.assetKind', '자산 종류(land 토지 · building 건물 · land_building 토지+건물)'], ['a0.assetType', '과세대상 구분(house 주택 · other 그 외 · presale_right 분양권)'], ['a0.acquisitionDate', '취득일'], ['a0.acquisitionPrice', '취득가액'], ['costs', '필요경비(예: 취득세 3,583,600원, 중개수수료 2,090,000원 — 서버가 항목으로 풂)'], ['taxfee', '신고 세무비용'], ['사건분류', '사건분류'], ['기준일', '기준일(양도일)']];
+      callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+        if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
+        var rows = r.줄 || [], sum = r.요약 || {};
+        var h = '<div style="font-size:12.5px;">';
+        h += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>📒 사건 장부</b><span style="color:var(--sub);">' + esc(sum.전체 || 0) + '줄 · 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + esc(sum.증빙받을것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + (sum.at ? ' · 마지막 ' + esc(sum.at) : '') + '</span>'
+          + '<button type="button" id="chLgCalc" class="ghost-btn" title="장부의 확정·추정 줄로 세액계산기를 돌려 사건에 저장합니다. 물어볼 것이 남아도 막지 않고, 빈 칸과 추정은 결과에 적습니다">🧮 장부로 세액계산</button>'
+          + (!(sum.전체) ? '<button type="button" id="chLgImport" class="ghost-btn" title="옛 사건처리 결정 파일(정한 값·남은 질문)을 장부로 한 번 옮깁니다">📥 옛 기록 옮겨오기</button>' : '') + '</div>';
+        var cell = function(t, w, extra){ return '<td style="padding:3px 8px; border-top:1px solid var(--line); max-width:' + w + 'px; overflow-x:auto; white-space:nowrap;' + (extra || '') + '" title="' + esc(t) + '">' + esc(t) + '</td>'; };
+        var order = ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'];
+        order.forEach(function(st){
+          var list = rows.filter(function(x){ return x.state === st; });
+          if (!list.length) return;
+          h += '<div style="margin-top:8px;"><b>' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          list.forEach(function(x){
+            var basis = (st === '물어볼것' || st === '증빙받을것') ? (x.ask || '') : [x.file, x.quote ? '"' + x.quote + '"' : '', x.why].filter(Boolean).join(' · ');
+            var act = '';
+            if (st === '물어볼것' || st === '증빙받을것' || st === '추정'){
+              (x.cands || []).forEach(function(cd, i){ act += '<button type="button" class="ghost-btn" data-lg-pick="' + esc(x.path) + '" data-lg-v="' + esc(typeof cd.v === 'object' ? JSON.stringify(cd.v) : String(cd.v)) + '" title="' + esc(cd.src || '') + '" style="padding:1px 6px; font-size:11.5px;">' + esc(cd.값 || String(cd.v)) + '</button> '; });
+              act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">넣기</button> ';
+              act += '<button type="button" class="ghost-btn" data-lg-dec="보류" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="진행하되 검토서 추가 확인 사항에">보류</button> <button type="button" class="ghost-btn" data-lg-dec="무시" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">무시</button>';
+              if (st === '추정') act += ' <button type="button" class="ghost-btn" data-lg-dec="확인" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="이 값을 확정으로">확인</button>';
+            } else {
+              act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="새 값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">고치기</button>';
+              if (x.histN > 0) act += ' <button type="button" class="ghost-btn" data-lg-undo="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="마지막 고침을 되돌립니다">↩</button>';
+            }
+            h += '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td></tr>';
+          });
+          h += '</table></div></div>';
+        });
+        var opts = PATHS.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select id="chLgPath" style="max-width:360px;">' + opts + '</select><input id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
+        h += '<div style="color:var(--sub); font-size:11.5px; margin-top:4px;">세무사님이 넣은 값은 넥스·서류가 바꾸지 못합니다. 모든 고침은 기록(누가·언제·전 값 → 후 값)으로 남고 ↩로 되돌릴 수 있습니다.</div>';
+        if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.구분 || '') + ' — 납부세액 ' + esc(Number(s.최종세액 || 0).toLocaleString('ko-KR')) + '원</div>'; }).join('') + '</div>';
+        if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
+        h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
+        body.innerHTML = h;
+        var setVal = function(path, v, est){ if (!v){ showToast('값을 적어 주세요.', 'warning'); return; } call({ step: 'ledgerSet', path: path, value: v, kind: est ? '추정' : '세무사님', estimate: !!est }).then(function(res){ if (res) reload(); }); };
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-pick]'), function(b){ b.addEventListener('click', function(){ setVal(b.getAttribute('data-lg-pick'), b.getAttribute('data-lg-v'), false); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-set]'), function(b){ b.addEventListener('click', function(){ var p = b.getAttribute('data-lg-set'), inp = body.querySelector('input[data-lg-in="' + p.replace(/"/g, '\\"') + '"]'); setVal(p, inp ? inp.value.trim() : '', false); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('input[data-lg-in]'), function(inp){ inp.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); setVal(inp.getAttribute('data-lg-in'), inp.value.trim(), false); } }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-dec]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerDecide', path: b.getAttribute('data-lg-path'), decision: b.getAttribute('data-lg-dec') }).then(function(res){ if (res) reload(); }); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-undo]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerUndo', path: b.getAttribute('data-lg-undo') }).then(function(res){ if (res) reload(); }); }); });
+        document.getElementById('chLgAdd').addEventListener('click', function(){ var p = (document.getElementById('chLgPathFree').value || '').trim() || document.getElementById('chLgPath').value; setVal(p, document.getElementById('chLgVal').value.trim(), document.getElementById('chLgEst').checked); });
+        document.getElementById('chLgCalc').addEventListener('click', function(){
+          var out = document.getElementById('chLgOut'); out.innerHTML = '<div class="log-empty">장부로 세액계산 중…</div>'; document.getElementById('chLgCalc').disabled = true;
+          call({ step: 'ledgerCalc' }).then(function(res){
+            document.getElementById('chLgCalc').disabled = false;
+            if (!res){ out.innerHTML = ''; return; }
+            out.innerHTML = '<div><b>🧮 계산 결과</b>' + (res.요약 || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">· ' + esc(l) + '</div>'; }).join('') + ((res.gaps || []).length ? '<div style="margin:4px 0 0 8px; color:#b23;">비어 있는 칸 ' + res.gaps.length + '개 — 위 표에서 넣거나 추정치로 넣으세요</div>' : '') + '</div>';
+            if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
+          });
+        });
+        var imp = document.getElementById('chLgImport'); if (imp) imp.addEventListener('click', function(){ imp.disabled = true; call({ step: 'ledgerImport' }).then(function(res){ if (res) reload(); else imp.disabled = false; }); });
+      }).catch(function(e){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+    });
     document.getElementById('chGasFixBtn').addEventListener('click', function(){
       if (!tokOk()) return;
       body.innerHTML = '<div class="log-empty">정한 값·고침 기록을 읽는 중…</div>';
