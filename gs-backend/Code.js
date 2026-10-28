@@ -33916,6 +33916,9 @@ function caseProcEvidence_(c, body) {
   const unkind = docs.filter(function (f) { return f.p && !f.p.t && !f.p.nt && !f.p.office && !f.p.vat; });
   const vatDocs0 = docs.filter(function (f) { return f.p && !f.p.t && f.p.vat; }); // [2026.10.16 1:1 고객W]
   if (vatDocs0.length) lines.push('부가가치세 신고 자료 ' + vatDocs0.length + '개(매입세액 공제·환급 여부 — 분양 취득가액의 부가세 판단 근거): ' + vatDocs0.map(function (f) { return f.name; }).join(', '));
+  // [2026.10.28] 서류 → 역할 → 칸: 모든 서류의 역할을 장부에 적는다. 종류를 못 정한 서류는 "이 서류가 무엇인지"가 물어볼 것으로 서고(넥스가 읽어 정하거나 세무사님이 고름),
+  //  그것이 풀리기 전엔 칸 질문(미확보)을 내지 않는다(배애란: 못 정한 서류 1개를 조용히 버리고 칸 질문 8개를 낸 것이 원인)
+  try { ledgerDocRoles_(c, docs, unkind.concat(noText)); } catch (e) { console.error('장부 서류 역할 반영 실패: ' + (e && e.message || e)); }
   if (unkind.length) lines.push('종류를 정하지 못한 서류 ' + unkind.length + '개(글자는 읽음 — 서류 규칙이 없어 칸에 자동으로 넣지 않음, 필요하면 [확인]에서 근거 파일로 고르세요): ' + unkind.slice(0, 10).map(function (f) { return f.name; }).join(', ') + (unkind.length > 10 ? ' 외 ' + (unkind.length - 10) + '개' : ''));
   // [2026.10.15 1:1] 그 밖의 파일도 전부 — 읽은 것·못 읽은 것을 이름으로(말없이 건너뛰지 않음)
   try {

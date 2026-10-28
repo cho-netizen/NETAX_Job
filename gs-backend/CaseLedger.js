@@ -123,7 +123,7 @@ function ledgerNorm_(path, value) {
     const acq = items ? items.filter(function (x) { return x && x.kind === '취득'; }) : d.acq, tr = items ? items.filter(function (x) { return x && x.kind !== '취득'; }) : d.tr;
     return { v: { acq: fix(acq), tr: fix(tr) } };
   }
-  if ((/^doc:/.test(p))) { const r = LEDGER_DOC_ROLES_.filter(function (x) { return s.indexOf(x) !== -1 || x.indexOf(s) !== -1; })[0]; return r ? { v: r } : { error: '서류 역할은 ' + LEDGER_DOC_ROLES_.join('·') + ' 중 하나 — 받은 값: ' + s.slice(0, 30) }; }
+  if ((/^doc:/.test(p))) { if (!s) return { error: '서류 역할이 비어 있습니다' }; const r = LEDGER_DOC_ROLES_.filter(function (x) { return s.indexOf(x) !== -1 || x.indexOf(s) !== -1; })[0]; return { v: r || s.slice(0, 40) }; } // 정해진 역할 이름이면 그것으로, 아니면 GAS·넥스가 읽은 종류 이름 그대로
   if ((/^a\d+\.contract$/.test(p))) { const m = /c?(\d+)/.exec(s); return m ? { v: 'c' + Number(m[1]) } : { error: '걸린 계약은 c0·c1… 모양 — 받은 값: ' + s.slice(0, 20) }; }
   return { v: typeof value === 'object' ? value : s };
 }
@@ -487,16 +487,45 @@ function ledgerFromGas_(c, S) {
   ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '서류 읽기 반영', detail: '값 ' + r.set + '줄 · 물어볼 것 ' + r.asked + '줄' + (r.refused ? ' · 주인 있는 칸 ' + r.refused + '줄은 그대로' : '') + (r.errors.length ? ' · 못 넣음 ' + r.errors.length : '') }); });
   return r;
 }
+// 서류 → 역할 → 칸. GAS 증빙 읽기가 본 모든 서류의 역할을 장부 줄(doc:<파일>.role)로 — 종류를 정한 서류는 규칙 값, 못 정한 서류(글자는 읽음·글자를 못 읽음)는 "이 서류가 무엇인지" 물어볼 것.
+//  종류를 못 정한 서류를 조용히 버리지 않는다(10-15 "파일을 말없이 건너뛰지 않는다"). 넥스가 맡은 사건이면 넥스가 그 파일을 먼저 읽어 역할을 정하고 사실을 적는다.
+function ledgerDocRoles_(c, docs, unknown) {
+  const ops = [], seen = {};
+  const unk = {}; (unknown || []).forEach(function (f) { if (f && f.name) unk[f.name] = true; });
+  (docs || []).forEach(function (f) {
+    if (!f || !f.name || seen[f.name]) return; seen[f.name] = true;
+    const path = 'doc:' + String(f.name).slice(0, 80) + '.role';
+    if (unk[f.name]) {
+      const noText = !!(f.p && !f.p.t && f.p.nt);
+      ops.push({ ask: true, path: path, label: '서류 역할 — ' + String(f.name).slice(0, 30), question: noText ? '글자를 읽지 못한 서류입니다(그림만·흐린 사진) — 무엇인지 정해 주시거나 선명한 PDF로 다시 넣어 주세요' : '서류 종류를 규칙으로 정하지 못했습니다(글자는 읽음) — 넥스가 읽어 역할을 정하거나 골라 주세요. 역할이 정해지기 전엔 칸 질문을 내지 않습니다', cands: LEDGER_DOC_ROLES_.map(function (r) { return { v: r, src: '역할 고르기' }; }), by: 'GAS', needDoc: noText });
+      return;
+    }
+    const label = f.p && (f.p.l || f.p.t) ? String(f.p.l || f.p.t) : '';
+    if (!label) return;
+    ops.push({ path: path, value: label, kind: '규칙', by: 'GAS', file: String(f.name).slice(0, 80), quote: '서류 규칙 판별', sure: '확실' });
+  });
+  if (!ops.length) return { ok: true, set: 0, asked: 0 };
+  const r = ledgerBatch_(c.id, ops);
+  ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '서류 역할', detail: '정함 ' + r.set + '개 · 못 정함(물어볼 것) ' + r.asked + '개' }); });
+  return r;
+}
+function ledgerDocsPending_(L) { return Object.keys(L.rows).filter(function (p) { return /^doc:/.test(p) && /^(물어볼것|증빙받을것)$/.test(L.rows[p].state); }); }
 // 화면이 저장한 질문 목록(remaining) → 장부 물어볼 것(넣을 칸이 장부 칸인 것만, 이미 값이 정해진 칸은 질문 아님)
+//  역할을 못 정한 서류가 있으면 "서류에서 정하지 못했습니다"류(missing) 칸 질문은 세우지 않는다 — 그 서류를 읽어 역할을 정하면 칸이 채워질 수 있기 때문(서류 → 역할 → 칸)
 function ledgerFromQuestions_(c, items, decisions) {
   const ops = [];
+  const L = ledgerLoad_(c.id), pending = ledgerDocsPending_(L);
+  let held = 0;
   (items || []).forEach(function (it) {
     if (!it || !it.ask || !it.ask.target) return;
     const d = decisions && decisions[it.id] && decisions[it.id].d; if (d === 'done' || d === '무시') return;
     const path = ledgerTargetPath_(it.ask.target); if (!path) return;
+    if (pending.length && (it.kind === 'missing' || /서류에서 정하지 못했습니다|서류가 폴더에 없어/.test(String(it.text || '')))) { held++; return; }
     ops.push({ ask: true, path: path, label: it.ask.label, question: String(it.text || '').slice(0, 300), cands: (it.ask.cands || []).map(function (x) { return { v: x.v, src: x.src }; }), by: 'GAS' });
   });
-  return ops.length ? ledgerBatch_(c.id, ops) : { ok: true, asked: 0 };
+  const r = ops.length ? ledgerBatch_(c.id, ops) : { ok: true, asked: 0 };
+  if (held) { r.held = held; ledgerMutate_(c.id, function (L2) { ledgerLogTo_(L2, { by: 'GAS', what: '칸 질문 보류', detail: '역할 못 정한 서류 ' + pending.length + '개가 있어 "서류에서 못 정함" 질문 ' + held + '개는 세우지 않음 — 서류 역할부터' }); }); }
+  return r;
 }
 // 사이드바 답·칸 값 고치기(옛 apply·valueFix) → 장부 같은 값(값 주인 = 답한 이)
 function ledgerMirrorApply_(c, body) {
