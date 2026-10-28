@@ -123,7 +123,7 @@ function ledgerNorm_(path, value) {
     const acq = items ? items.filter(function (x) { return x && x.kind === '취득'; }) : d.acq, tr = items ? items.filter(function (x) { return x && x.kind !== '취득'; }) : d.tr;
     return { v: { acq: fix(acq), tr: fix(tr) } };
   }
-  if ((/^doc:/.test(p))) { if (!s) return { error: '서류 역할이 비어 있습니다' }; const r = LEDGER_DOC_ROLES_.filter(function (x) { return s.indexOf(x) !== -1 || x.indexOf(s) !== -1; })[0]; return { v: r || s.slice(0, 40) }; } // 정해진 역할 이름이면 그것으로, 아니면 GAS·넥스가 읽은 종류 이름 그대로
+  if ((/^doc:/.test(p))) { if (!s) return { error: '서류 역할이 비어 있습니다' }; return { v: s.slice(0, 40) }; } // GAS·넥스가 읽은 종류 이름 그대로 — 역할 목록에 부분 일치로 붙이지 않는다(10-28 "매매계약서"가 "분양권 매매계약서"로 바뀐 결함)
   if ((/^a\d+\.contract$/.test(p))) { const m = /c?(\d+)/.exec(s); return m ? { v: 'c' + Number(m[1]) } : { error: '걸린 계약은 c0·c1… 모양 — 받은 값: ' + s.slice(0, 20) }; }
   return { v: typeof value === 'object' ? value : s };
 }

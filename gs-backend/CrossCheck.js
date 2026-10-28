@@ -486,7 +486,21 @@ function cxFacts_(cc) {
   let all = [];
   try { const fx = typeof cpFacts_ === 'function' ? cpFacts_(cc) : cxFactsFromParsed_(cc); all = Array.isArray(fx) ? fx : (fx && Array.isArray(fx.facts) ? fx.facts : []); } catch (e) { try { all = cxFactsFromParsed_(cc); } catch (e2) { all = []; } }
   const amend = /경정|수정|불복/.test(String(cc.업무유형 || '') + String(cc._세목작업관리 || ''));
-  const f = all.filter(function (x) { if (!x || !x.read || !x.read.use) return true; return amend && /신고서|결과물/.test(String(x.read.use)) && !/보고서|계산표|참고/.test(String(x.read.use)); });
+  let f = all.filter(function (x) { if (!x || !x.read || !x.read.use) return true; return amend && /신고서|결과물/.test(String(x.read.use)) && !/보고서|계산표|참고/.test(String(x.read.use)); });
+  // [2026.10.28 일반 규칙] 납세자가 당사자가 아닌 계약서(tcContractNotParty_ — 서류 규칙 정리와 같은 판정)의 사실은 납세자 칸의 교차검증 재료가 아니다.
+  //  예전엔 서류 규칙 정리는 전소유자 분양계약서를 "참고"로 뺐는데 교차검증은 그 금액·날짜를 후보로 넣어 "서류끼리 다름" 질문이 났다(가상양도H 10-28)
+  try {
+    if (cc.세목 === 'transfer' && typeof tcContractNotParty_ === 'function') {
+      const names = [cc.납세자, cc.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
+      const docIds = {}; f.forEach(function (x) { if (x && x.kind === '서류' && x.src && x.src.fileId && /계약/.test(String(x.src.docType || x.value || ''))) docIds[String(x.src.fileId)] = x.src.file; });
+      const skip = {};
+      Object.keys(docIds).forEach(function (id) {
+        let tx = ''; try { const df = DriveApp.getFileById(id.split('#')[0]); tx = tc_docText_({ id: id, name: df.getName(), mimeType: df.getMimeType(), modified: df.getLastUpdated().getTime() }) || ''; } catch (e) { tx = ''; }
+        if (tx && tcContractNotParty_(tx, names).notParty) skip[id] = 1;
+      });
+      if (Object.keys(skip).length) f = f.filter(function (x) { return !(x && x.src && skip[String(x.src.fileId)] && x.kind !== '서류'); });
+    }
+  } catch (e) {}
   cxMarkCopies_(f);
   CX_FACTS_MEMO_ = { id: cc.id, at: Date.now(), f: f };
   return f;

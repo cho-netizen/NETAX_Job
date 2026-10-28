@@ -30018,7 +30018,20 @@ function tc_ruleTransferFacts_(body) {
   }
   return r;
 }
+// [2026.10.28 일반 규칙] 계약 당사자(매도인·매수인·수분양자·양도인·양수인·공급받는자 칸)에 사람 이름이 읽히는데 그 누구도 납세자가 아니면 납세자의 거래가 아니다 —
+//  파일 이름(분양·취득…)과 상관없이 양도·취득 계약과 교차검증 후보에 넣지 않고 "다른 사람의 거래(참고)"로 둔다(전소유자 분양계약서가 납세자 취득으로 잡혀 허상 계약·취득가액 다툼이 생겼다).
+//  당사자 이름을 하나도 못 읽었으면(글자인식 실패) notParty=false — 납세자 계약을 잘못 빼지 않게. 어느 중개사·시행사 서식이든 당사자 칸 이름은 같다(공인중개사법 시행규칙 서식·분양계약 표준)
+function tcContractNotParty_(text, names) {
+  const t = String(text || ''), parties = [], pre = /(매\s*도\s*인|매\s*수\s*인|수\s*분\s*양\s*자|양\s*도\s*인|양\s*수\s*인|공\s*급\s*받\s*는\s*자)\s*(?:\([^)\n]{0,10}\))?\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/g;
+  let pm;
+  while ((pm = pre.exec(t))) { if (!/^(주소|성명|서명|날인|인감|주민|등록|번호|부담|에게|으로|과|와|은|는|이|가|쌍방|사이|간에)$/.test(pm[2]) && parties.indexOf(pm[2]) === -1) parties.push(pm[2]); }
+  const nm = (names || []).filter(function (x) { return String(x || '').length >= 2; });
+  const inText = nm.some(function (x) { return t.replace(/\s+/g, '').indexOf(String(x).replace(/\s+/g, '')) !== -1; });
+  return { parties: parties, notParty: !inText && parties.length > 0 && !parties.some(function (pn) { return tcNameIn_(pn, nm); }) };
+}
+var TC_NOT_PARTY_NOTES_ = null; // [2026.10.28] 서류 돌기 중 "다른 사람의 거래(참고)" 기록 — evidence 목록이 만들어지기 전이라 여기 모았다가 옮긴다
 function tc_ruleTransferFactsRaw_(body) {
+  TC_NOT_PARTY_NOTES_ = null;
   var caseId = String(body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
   var cr = body._cr || null; // [2026.10.22 속도 S3] 겉 함수가 이미 읽은 사건 행·파일 목록을 받으면 다시 읽지 않는다
@@ -30191,7 +30204,12 @@ function tc_ruleTransferFactsRaw_(body) {
     if (p.type === 'installment' && p.result) installs.push({ file: f.name, r: p.result }); // [2026.10.18 정밀분석 14] 분양대금 납부확인서(대금 회차표)
     if (p.result && p.result.docs) p.result.docs.forEach(function (d) {
       // [2026.10.16] 본문 판별과 파일 이름(매도계약서·취득계약서)이 다르면 파일 이름을 따른다 — 글자인식 순서가 꼬여 본문 판별이 틀리는 일이 있다(고객X 사건: "매도계약서"를 매수로 판정해 양도 거래가 없었다)
-      if (d.type === 'contract') { var tRole = tcRoleInText_(text, names), fRole = tcRoleInFileName_(f.name); contracts.push({ file: f.name, r: d.r, text: text, role: (fRole && tRole && fRole !== tRole) ? fRole : (tRole || fRole), fRole: fRole, roleConflict: !!(fRole && tRole && fRole !== tRole) }); }
+      if (d.type === 'contract') {
+        var tRole = tcRoleInText_(text, names), fRole = tcRoleInFileName_(f.name);
+        var np = tcContractNotParty_(text, names); // [2026.10.28 일반 규칙] 납세자가 당사자가 아닌 계약서 — 교차검증(cxFacts_)과 같은 판정
+        if (np.notParty) { (TC_NOT_PARTY_NOTES_ = TC_NOT_PARTY_NOTES_ || []).push('다른 사람의 거래(참고): ' + f.name + ' — 계약 당사자 ' + np.parties.join('·') + ' 중 납세자 없음, 양도·취득 계약에 넣지 않음'); return; }
+        contracts.push({ file: f.name, r: d.r, text: text, role: (fRole && tRole && fRole !== tRole) ? fRole : (tRole || fRole), fRole: fRole, roleConflict: !!(fRole && tRole && fRole !== tRole) });
+      }
       if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
       // [2026.10.16] 중개대상물 확인·설명서의 중개보수 — 취득·양도 중개보수 후보(고객J 사건: "취득 중개보수 내역서"가 안 쓰였다)
       // [2026.10.22 ㄴ3] 중개보수 영수증은 합계(공급가+부가세 = 실제 지급액, 시행령 §163⑤1호 양도비는 지급한 중개보수 전액)·거래일·"매도인 측"·거래금액(산출식)을 넘긴다 —
@@ -30241,7 +30259,7 @@ function tc_ruleTransferFactsRaw_(body) {
   }
   var ok = function (c) { return /^일치/.test(String(c.r.검산 || '')) && c.r.매매대금; };
   // 계약서 정리 결과의 매도인·매수인 칸은 서명란을 못 읽어 비는 일이 많아, 본문에서 납세자 이름 바로 앞 이름표(매도인/매수인)로 역할을 정한다
-  var evidence = [];
+  var evidence = (TC_NOT_PARTY_NOTES_ || []).slice(); TC_NOT_PARTY_NOTES_ = null; // [2026.10.28] 서류를 돌며 모은 "다른 사람의 거래(참고)" 기록을 앞에
   // [2026.10.16] 같은 계약서의 사본(소재지·매매대금·계약일이 같음 — 사진·PDF 두 벌) — 역할을 하나로(파일 이름에 역할이 적힌 쪽을 따름), 두 번째부터는 사본으로 표시
   contracts.forEach(function (c0, i) {
     if (c0._dupOf) return;
@@ -32550,7 +32568,7 @@ var CASEPROC_ADVISORY_RE_ = /표\s*칸이\s*섞여\s*붙이지\s*않음|견적�
 //  의뢰서_*.md는 사건 폴더 바로 아래, 관련법령_*.md는 법령 탭이 보고서_내부에 두므로 폴더를 가리지 않음(가상양도23: 보고서_내부/관련법령_….md)
 function caseProcIsIntakeMemo_(f) { if (!f) return false; const n = String(f.name || ''); return (/^관련법령_.*\.md$/i.test(n)) || (!String(f.dir || '') && /^의뢰서_.*\.md$/i.test(n)); }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp38_' + f.id + '_' + f.modified; // cpp38: [2026.10.28] 읽은 글자 수(n)·첫 줄(head)을 기억에 더함 — 옛 기억엔 없어 한 번 다시 정리(글자 자체는 글자 기억에 있어 다시 인식하지 않음) — cpp37: 재채점 3차(통장 판정·대장·장례·상속인·양도 칸·묶음 쪼개기) — cpp36: 정밀분석 원인7~14 — 등기부 판독·송금확인증·재무제표·가족관계·초본 행번호·참고자료 내용 판정(ref)·분양대금 회차·공사계약(2026-10-18) // cpp35: 정밀분석 원인1~6 수정 — 이미 낸 신고서 칸(ot)·출입국 증명·엑셀 통장·대장 소유자·지분 이전 기재(2026-10-18) // cpp34: 묶음 구간 빈틈·장례 진료비 2차 합침(2026-10-17) // cpp33: 2차 합침 — 묶음 구간·쪽 잇기·실거래가 줄·통장 사진·새 서류·불복 서류(2026-10-17) // cpp32: 통장 거래내역 거래별 파서 합침(2026-10-17) // cpp31: 장례 명세서·묶음 쪼개기 합침(2026-10-17) // cpp30: 분할협의서 머리 문장 변형·귀속 지분 검산(2026-10-17) 합침(2026-10-17) // cpp29: 세목별 이미 낸 신고서 칸 정리(filedret)·임대·계약서 가지 합침(2026-10-17) // cpp28: 증여계약서 계약일·검인일 증여일 후보 + 가지 합침(2026-10-17) // cpp27: 우리 메모 PDF(memo)·준비서류 안내·건물기준시가(상속/증여)·법무사 항목 이름(2026-10-17 묶음11) // cpp26: 건물기준시가 계산서 구조(2026-10-16) // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 고객X) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp39_' + f.id + '_' + f.modified; // cpp39: [2026.10.28] 기본증명서 본인 성명·주민번호 — cpp38: [2026.10.28] 읽은 글자 수(n)·첫 줄(head)을 기억에 더함 — 옛 기억엔 없어 한 번 다시 정리(글자 자체는 글자 기억에 있어 다시 인식하지 않음) — cpp37: 재채점 3차(통장 판정·대장·장례·상속인·양도 칸·묶음 쪼개기) — cpp36: 정밀분석 원인7~14 — 등기부 판독·송금확인증·재무제표·가족관계·초본 행번호·참고자료 내용 판정(ref)·분양대금 회차·공사계약(2026-10-18) // cpp35: 정밀분석 원인1~6 수정 — 이미 낸 신고서 칸(ot)·출입국 증명·엑셀 통장·대장 소유자·지분 이전 기재(2026-10-18) // cpp34: 묶음 구간 빈틈·장례 진료비 2차 합침(2026-10-17) // cpp33: 2차 합침 — 묶음 구간·쪽 잇기·실거래가 줄·통장 사진·새 서류·불복 서류(2026-10-17) // cpp32: 통장 거래내역 거래별 파서 합침(2026-10-17) // cpp31: 장례 명세서·묶음 쪼개기 합침(2026-10-17) // cpp30: 분할협의서 머리 문장 변형·귀속 지분 검산(2026-10-17) 합침(2026-10-17) // cpp29: 세목별 이미 낸 신고서 칸 정리(filedret)·임대·계약서 가지 합침(2026-10-17) // cpp28: 증여계약서 계약일·검인일 증여일 후보 + 가지 합침(2026-10-17) // cpp27: 우리 메모 PDF(memo)·준비서류 안내·건물기준시가(상속/증여)·법무사 항목 이름(2026-10-17 묶음11) // cpp26: 건물기준시가 계산서 구조(2026-10-16) // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 고객X) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   // [2026.10.17] 한 실행 안 메모 — 파일 목록(caseProcFiles_)이 묶음 나누기·쪽 잇기·사본 거르기로 서류마다 정리 결과를 여러 번 찾으므로 기억(CacheService)을 매번 부르지 않게
   if (CASEPROC_PARSED_MEMO_[key]) return CASEPROC_PARSED_MEMO_[key];
   // [2026.10.28 세무사님 결정] "의뢰서·관련법령 파일은 읽을 범위와 상관없이 사건파악용으로 늘 읽되 증빙 후보로는 쓰지 마라" — 사건 폴더 바로 아래 의뢰서_*.md·관련법령_*.md는
@@ -37240,7 +37258,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
     // [2026.10.16] 사망 서류에서 성명 칸을 못 읽었어도 글에 사건 납세자 이름이 있으면 그 서류가 근거(고객B: 시체검안서에 고객B 피상속인이 있는데 메모의 다른 이름이 1번 후보였다)
     if (!deaths.length && String(c.납세자 || '').trim()) {
       const nn = norm(c.납세자);
-      byType('death').some(function (x) { let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {} if (nn.length < 2 || tx.replace(/\s+/g, '').indexOf(nn) === -1) return false; add('ihDeceasedName', nn, ((x.p.result || {}).종류 || '사망 서류') + '(' + x.f.name + ')에 사건 납세자 이름', true); return true; });
+      // [2026.10.28] 기본증명서·사망 서류의 "신고인" 칸(가족관계등록법 서식 — 사망 신고를 한 사람, 대개 상속인)에만 나온 이름은 피상속인 근거가 아니다 —
+      //  예전엔 이름이 글 어디든 있으면 피상속인으로 확정해, 신고인(상속인)이 피상속인으로 들어갔다(가상상속 묶음 10-28: 피상속인 최영수 → 신고인 최유진). 신고인 칸 밖에 나올 때만
+      byType('death').some(function (x) { let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {} const flat = tx.replace(/\s+/g, ''); if (nn.length < 2 || flat.indexOf(nn) === -1) return false; let at = -1, outside = false; while ((at = flat.indexOf(nn, at + 1)) !== -1) { if (!/신고인\]?[^\[]{0,12}$/.test(flat.slice(Math.max(0, at - 16), at))) { outside = true; break; } } if (!outside) return false; add('ihDeceasedName', nn, ((x.p.result || {}).종류 || '사망 서류') + '(' + x.f.name + ')에 사건 납세자 이름', true); return true; });
     }
     // [2026.10.14] 피상속인 — 사망진단서 성명을 못 읽어도 "본인 사망"이 적힌 가족관계증명서·분할협의서의 피상속인으로 확정(납세자를 의뢰인 이름으로 잘못 짐작하지 않게)
     // [2026.10.18 정밀분석 07_3] 별건 상속(다른 사람의 옛 상속) 협의서·그 피상속인의 가족관계증명서는 후보에서 뺀다 — 고객E(고객E 피상속인): 2013년 고객E 부친 협의서가 피상속인 후보가 됐다
@@ -49880,6 +49900,13 @@ function ihParseDeath_(text) {
     var sido = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[가-힣]*\s+\S/;
     var al = head.split('\n').map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(function (x) { return sido.test(x) && /(로|길|동|리|읍|면|가)\s*\d/.test(x); })[0];
     if (al) r.주소 = al.replace(/\(\s*전화[\s\S]*$/, '').replace(/[,.\s]+$/, '').replace(/(\d)\.\s/g, '$1, ').trim();
+  }
+  // [2026.10.28] 기본증명서(상세) — 가족관계등록 서식의 "구분 성명 출생연월일 주민등록번호 성별 본" 표 첫 줄 "본인 ○○○(漢字) 사망"이 피상속인 성명·주민번호다.
+  //  예전엔 이 칸을 읽지 않아 성명이 늘 비었고, 피상속인을 "글 어디든 사건 납세자 이름" 우회로로 정하다 신고인(상속인) 이름에 걸렸다. 어느 관서·연도의 기본증명서든 같은 칸(대법원 전자가족관계등록 서식)
+  if (!r.성명 && /기\s*본\s*증\s*명\s*서/.test(t.slice(0, 300))) {
+    var bm = /본\s*인\s+([가-힣]{2,4})\s*(?:\([^)\n]{0,12}\))?\s*(?:사\s*망)?\s*\n?[^\n]{0,30}?\n?\s*(?:(?:19|20)\d{2}\s*년[^\n]{0,20}\n\s*)?(\d{6})\s*-\s*(\d{7})/.exec(t);
+    if (bm) { r.성명 = bm[1]; if (!r.주민번호) r.주민번호 = bm[2] + '-' + bm[3]; }
+    else { var bm2 = /본\s*인\s+([가-힣]{2,4})\s*(?:\([^)\n]{0,12}\))?\s*사\s*망/.exec(t); if (bm2) r.성명 = bm2[1]; }
   }
   // 한 파일에 가족관계증명서가 함께 들어 있으면 그 부분도 정리
   // [2026.10.18 정밀분석 원인10 ②] 사망 서류 묶음(기본증명서·피상속인 가족관계증명서 + 상속인별 가족관계증명서 — 고객A 01 기본증명.pdf 약 30종)에서
