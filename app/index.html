@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 17:41 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 23:11 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6548,7 +6548,7 @@ function nxMdOpenWindow(title, src, opts){
         var th = function(cols){ return '<tr>' + cols.map(function(c0){ return '<th style="text-align:left;padding:2px 8px; white-space:nowrap;">' + esc(c0) + '</th>'; }).join('') + '</tr>'; };
         var tbl = function(head, body0){ return '<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;">' + th(head) + body0 + '</table></div>'; };
         h += '<div style="margin-top:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">'
-          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리거나 오른쪽 단추를 누르세요') + '</span>'
+          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리거나 오른쪽 단추를 누르세요') + ' · 칸과 서류 사실은 한 장부(사건 폴더에 파일이 들어오거나 바뀌면 그때 바로 다시 모음)</span>'
           + '<button type="button" id="chLgKbBuild" class="ghost-btn" title="칸 값은 건드리지 않고, 사건 폴더 서류를 다시 훑어 파일 장부·서류 사실·서류끼리 맞대기를 지금 서류로 다시 만듭니다(계산기 칸으로 간 길은 다음 처리개요 때 갱신)">🔄 서류 사실 다시 모으기</button></div>'
           + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">'
           + '<button type="button" class="ghost-btn" data-lg-tab="files">① 모은 것 — 파일 ' + esc((kb && kb.files || []).length) + '개 · 사실 ' + esc(ks.사실 || 0) + '건' + dl('사실') + '</button>'
@@ -6591,11 +6591,13 @@ function nxMdOpenWindow(title, src, opts){
             + (links.length ? tbl(['칸', '지금 값', '넣은 주체 — 근거 파일', '서류와', '그 칸 종류의 서류 값(서류 수: 출처)', '지금 값이 나온 서류(모든 사실에서)', '판정 · 이유', '맞댄 방법'], lb) : '<div class="log-empty">아직 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리면 채워집니다</div>') + '</div>';
         }
         h += '<div data-lg-sec="rows">';
+        var kbFact = {}; ((kb && kb.facts) || []).forEach(function(f){ if (f.id) kbFact[f.id] = f; });
+        h += '<div id="chLgFxBox" style="margin-top:6px;"></div>';
         var order = ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'];
         order.forEach(function(st){
           var list = rows.filter(function(x){ return x.state === st; });
           if (!list.length) return;
-          h += '<div style="margin-top:8px;"><b>' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          h += '<div style="margin-top:8px;"><b>' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
           list.forEach(function(x){
             var basis = (st === '물어볼것' || st === '증빙받을것') ? (x.ask || '') : [x.file, x.quote ? '"' + x.quote + '"' : '', x.why].filter(Boolean).join(' · ');
             var act = '';
@@ -6608,7 +6610,12 @@ function nxMdOpenWindow(title, src, opts){
               act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="새 값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">고치기</button>';
               if (x.histN > 0) act += ' <button type="button" class="ghost-btn" data-lg-undo="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="마지막 고침을 되돌립니다">↩</button>';
             }
-            h += '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td></tr>';
+            // [2026.10.29 장부 하나로] 칸 ↔ 서류 사실 — 이 칸 값과 같은 값을 말한 사실(fx)과 같은 뜻인데 값이 다른 사실(fk). 누르면 그 사실들
+            var fxN = (x.fx || []).length, fkN = (x.fk || []).length, fxFiles = {};
+            (x.fx || []).forEach(function(id){ var f = kbFact[id]; if (f) fxFiles[f.f] = 1; });
+            var fxTxt = fxN ? '서류 ' + Object.keys(fxFiles).length + '개 · 사실 ' + fxN + '건' : (x.v === '' || x.v == null || /^(doc:|q:)/.test(x.path) || typeof x.v === 'object' || typeof x.v === 'boolean' ? '' : '없음'); // 서류 역할 줄은 서류 자체가 근거라 잇지 않음
+            var fxCell = '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;' + (fkN && !fxN ? ' color:#b23; font-weight:600;' : (!fxN && fxTxt ? ' color:var(--sub);' : '')) + '">' + esc(fxTxt) + (fkN ? ' <span' + (fxN ? '' : '') + '>· 다른 값 ' + esc(fkN) + '건</span>' : '') + ((fxN || fkN) ? ' <button type="button" class="ghost-btn" data-lg-fx="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">보기</button>' : '') + '</td>';
+            h += '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + fxCell + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td></tr>';
           });
           h += '</table></div></div>';
         });
@@ -6630,6 +6637,13 @@ function nxMdOpenWindow(title, src, opts){
           var n = b.getAttribute('data-lg-file'), list = ((kb && kb.facts) || []).filter(function(f){ return f.f === n; });
           var box = document.getElementById('chLgFileFacts');
           box.innerHTML = '<b>' + esc(n) + '</b> <span style="color:var(--sub);">에서 모은 사실 ' + esc(list.length) + '건</span>' + tbl(['사실 종류', '값', '서류 종류', '서류 안 위치', '대상'], list.map(function(f){ return '<tr>' + cell(String(f.k).replace(/^기타:/, ''), 140, /^기타:/.test(f.k) ? ' color:var(--sub);' : '') + cell(f.v + (f.u ? ' (판독 불확실)' : '') + (f.cp ? ' (사본)' : ''), 260) + cell(f.t, 140) + cell(String(f.w || '').replace(/^docs\[\d+\]\.?/, '').replace(/\[(\d+)\]/g, function(_, n){ return ' ' + (Number(n) + 1) + '번째'; }).replace(/\./g, ' · ') || '파일 전체', 220, ' color:var(--sub);') + cell(String(f.s || '').replace(/^자산:/, '부동산 ').replace(/^사람:/, '사람 '), 200) + '</tr>'; }).join(''));
+          box.scrollIntoView({ block: 'nearest' });
+        }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-fx]'), function(b){ b.addEventListener('click', function(){
+          var p = b.getAttribute('data-lg-fx'), x = rows.filter(function(y){ return y.path === p; })[0] || {}, box = document.getElementById('chLgFxBox');
+          var line = function(id, how){ var f = kbFact[id]; if (!f) return ''; return '<tr>' + cell(how, 120, how === '같은 값' ? '' : ' color:#b23;') + cell(String(f.k).replace(/^기타:/, ''), 140) + cell(f.v + (f.u ? ' (판독 불확실)' : ''), 220) + cell(f.f, 260) + cell(f.t, 140) + cell((f.to || []).filter(function(q){ return q !== p; }).length ? '다른 칸에도: ' + (f.to || []).filter(function(q){ return q !== p; }).length + '칸' : '', 120, ' color:var(--sub);') + '</tr>'; };
+          box.innerHTML = '<b>' + esc(x.label || p) + '</b> <span style="color:var(--sub);">지금 값 ' + esc(x.값 || '') + ' — 장부가 모은 서류 사실과 이은 것(값은 정하지 않음)</span>'
+            + tbl(['이은 방법', '사실 종류', '값', '파일', '서류 종류', ''], (x.fx || []).map(function(id){ return line(id, '같은 값'); }).join('') + (x.fk || []).map(function(id){ return line(id, '같은 뜻·다른 값'); }).join(''));
           box.scrollIntoView({ block: 'nearest' });
         }); });
         var kbBtn = document.getElementById('chLgKbBuild');

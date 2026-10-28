@@ -56,7 +56,10 @@ function ledgerFile_(caseId, create) {
   if (it.hasNext()) return it.next();
   return create ? folder.createFile(name, '{}', 'application/json') : null;
 }
-function ledgerEmpty_(caseId) { return { caseId: String(caseId || ''), rows: {}, log: [], at: '' }; }
+// [2026.10.29 장부 하나로] 세무사님 "칸장부와 바탕장부가 분리되어 있으면 정보의 질이 떨어질 수 있고 중복관리의 문제만 생기는 것이 아닌가?" / "처음부터 그랬어야지"
+//  서류 사실·서류끼리 맞대기·폴더 파일 장부(kb)를 칸(rows)과 같은 파일 하나에 두고 같은 잠금 안에서 함께 쓴다. 칸마다 그 값을 말한 서류 사실 번호(fx)를 쓸 때마다 다시 잇는다
+//  kbFrom: 예전 짝 파일(<사건ID>.바탕.json)을 옮겨 왔는지 — '없음'이면 옮길 것이 없다(새 장부·🧪 점검기 모래상자)
+function ledgerEmpty_(caseId) { return { caseId: String(caseId || ''), rows: {}, log: [], at: '', kbFrom: '없음' }; }
 // 한 실행 안의 읽기 메모 — 사건 처리 저장 파일을 불러올 때마다(질문·결정을 장부에서 붙임) 드라이브를 다시 읽지 않게. 쓰기(ledgerMutate_)는 잠금 안에서 늘 새로 읽고, 쓴 뒤 메모를 바꾼다
 var LEDGER_MEMO_ = {};
 function ledgerLoad_(caseId, fresh) {
@@ -75,7 +78,9 @@ function ledgerLoad_(caseId, fresh) {
 function ledgerMutate_(caseId, mutate) {
   return withLock_(15000, function () {
     const L = ledgerLoad_(caseId, true);
+    ledgerKbAdopt_(caseId, L);
     const out = mutate(L);
+    ledgerKbRelink_(L);
     L.at = caseProcNow_();
     const f = ledgerFile_(caseId, true);
     const s = JSON.stringify(L);
@@ -101,7 +106,8 @@ function ledgerLabel_(path) {
   if ((m = /^i\.(\w+)$/.exec(p)) && IKO[m[1]]) return IKO[m[1]];
   try { const l = caseProcFieldLabel_('calc:' + p); if (l && l !== 'calc:' + p) return l; } catch (e) {}
   const last = p.split('.').pop();
-  return CASEPROC_FIELD_KO_[last] || p;
+  const MORE = { transferCause: '양도 원인', assetFloor: '층', assetKind: '자산 종류', assetType: '과세대상 구분' }; // [2026.10.29] 화면에 코드 이름이 보이던 칸
+  return CASEPROC_FIELD_KO_[last] || MORE[last] || p;
 }
 // ── 고르기 칸 코드값 — 글을 코드로. 못 바꾸면 error ──
 function ledgerEnumOf_(path) {
@@ -307,7 +313,7 @@ function ledgerUndo_(caseId, input) {
 }
 function ledgerRowOut_(path, r) {
   r = r || {};
-  return { path: path, label: r.label || ledgerLabel_(path), v: r.v === undefined ? '' : r.v, 값: ledgerValueText_(path, r.v), state: r.state || '', kind: r.src ? r.src.kind : '', who: r.src ? r.src.who : '', file: r.src ? r.src.file : '', quote: r.src ? r.src.quote : '', why: r.src ? r.src.why : '', sure: r.sure || '', ask: r.ask || '', cands: (r.cands || []).map(function (x) { return { v: x.v, 값: ledgerValueText_(path, x.v), src: x.src }; }), at: r.at || '', note: r.note || '', histN: (r.hist || []).length };
+  return { path: path, label: r.label && !/^[a-zA-Z]/.test(String(r.label)) ? r.label : ledgerLabel_(path), v: r.v === undefined ? '' : r.v, 값: ledgerValueText_(path, r.v), state: r.state || '', kind: r.src ? r.src.kind : '', who: r.src ? r.src.who : '', file: r.src ? r.src.file : '', quote: r.src ? r.src.quote : '', why: r.src ? r.src.why : '', sure: r.sure || '', ask: r.ask || '', cands: (r.cands || []).map(function (x) { return { v: x.v, 값: ledgerValueText_(path, x.v), src: x.src }; }), at: r.at || '', note: r.note || '', histN: (r.hist || []).length, fx: r.fx || [], fk: r.fk || [] };
 }
 // ── 읽기 ──
 function ledgerRows_(caseId, filter) {
@@ -993,8 +999,12 @@ var LEDGER_KB_KIND_OF_ = [[/^i\.debtAmount$/, /대출 잔액|채무|부채|대�
 //  대출잔액증명서에서 "대출 잔액 142,000,000"을 읽어 두었으면, 채무 칸 후보에 「142,000,000 — 대출 잔액(대출잔액증명서.pdf)」을 붙인다(📒 ④·사이드바 질문에서 한 번에 고름)
 function ledgerKbOffer_(caseId, kbFacts) {
   if (!caseId || !Array.isArray(kbFacts) || !kbFacts.length) return 0;
+  return ledgerMutate_(caseId, function (L) { return ledgerKbOfferInner_(L, kbFacts); }) || 0;
+}
+function ledgerKbOfferInner_(L, kbFacts) {
   let added = 0; const notes = [];
-  ledgerMutate_(caseId, function (L) {
+  if (!Array.isArray(kbFacts) || !kbFacts.length) return 0;
+  (function () {
     Object.keys(L.rows || {}).forEach(function (p) {
       const r = L.rows[p];
       if (!r || !/^(추정|물어볼것|증빙받을것)$/.test(String(r.state || '')) || (r.src && /^(세무사님|넥스)$/.test(r.src.kind))) return;
@@ -1023,40 +1033,75 @@ function ledgerKbOffer_(caseId, kbFacts) {
       got.forEach(function (cd) { const m = /—\s*(.+?)(?:\s·\s|$)/.exec(cd.src); const dp = m ? 'doc:' + m[1].trim().slice(0, 80) + '.use' : ''; const dr = dp && L.rows[dp]; if (dr && /^(물어볼것|증빙받을것)$/.test(dr.state) && dr.src && dr.src.who === 'GAS' && !dr.qd) { delete L.rows[dp]; notes.push('「' + m[1].trim() + '」 서류 질문 → ' + (r.label || ledgerLabel_(p)) + ' 질문으로 합침'); } });
     });
     if (notes.length) ledgerLogTo_(L, { by: 'GAS', what: '서류 사실을 후보로 붙임', detail: notes.slice(0, 6).join(' · ') + ' — 값은 정하지 않음(고르기는 세무사님·넥스)' });
-  });
+  })();
   return added;
 }
-// 바탕은 짝 파일(<사건ID>.바탕.json)에 둔다 — 칸 장부(rows)는 넥스·화면이 자주 고쳐 파일을 통째로 다시 쓰므로, 수천 건 사실을 같은 파일에 두면 고칠 때마다 느려진다.
-//  🧪 점검기 모래상자(akSandbox_)와 직결 서비스(cloudrun/server.js)도 ledgerKbLoad_·ledgerKbStore_를 같은 이름으로 쓴다(바꿔 끼움)
-var LEDGER_KB_MEMO_ = {};
-function ledgerKbFile_(caseId, create) {
-  const folder = ledgerFolder_();
-  const name = String(caseId).replace(/[^\w-]/g, '_') + '.바탕.json';
-  const it = folder.getFilesByName(name);
-  if (it.hasNext()) return it.next();
-  return create ? folder.createFile(name, '{}', 'application/json') : null;
+// [2026.10.29 장부 하나로] 바탕(kb)은 칸 장부 파일 안 L.kb — 따로 두던 짝 파일(<사건ID>.바탕.json)은 처음 쓸 때 한 번 옮겨 오고 더는 쓰지 않는다.
+//  ledgerKbLoad_·ledgerKbStore_는 이름만 남긴 입구(직결 서비스·t6MergeLedger_가 부름) — 둘 다 칸 장부(ledgerLoad_·ledgerMutate_)를 거친다. 🧪 모래상자는 칸 장부만 바꿔 끼우면 바탕도 같이 메모리로 간다
+function ledgerKbOldFile_(caseId) {
+  try { const it = ledgerFolder_().getFilesByName(String(caseId).replace(/[^\w-]/g, '_') + '.바탕.json'); return it.hasNext() ? it.next() : null; } catch (e) { return null; }
+}
+function ledgerKbAdopt_(caseId, L) {
+  if (!L || L.kb || L.kbFrom) return;
+  const f = ledgerKbOldFile_(caseId);
+  if (f) { try { const kb = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; if (kb.facts || kb.files) { L.kb = kb; L.kbFrom = '짝 파일에서 옮김 ' + caseProcNow_(); ledgerLogTo_(L, { by: 'GAS', what: '장부 하나로 합침', detail: '따로 두던 바탕(서류 사실 ' + (kb.facts || []).length + '건·파일 ' + (kb.files || []).length + '개)을 칸 장부 안으로 옮김' }); return; } } catch (e) {} }
+  L.kbFrom = '없음';
 }
 function ledgerKbLoad_(caseId) {
-  const k = String(caseId || '');
-  if (LEDGER_KB_MEMO_[k]) return JSON.parse(LEDGER_KB_MEMO_[k]);
-  try { const f = ledgerKbFile_(caseId, false); if (!f) return {}; const s = f.getBlob().getDataAsString('UTF-8') || '{}'; LEDGER_KB_MEMO_[k] = s; return JSON.parse(s) || {}; } catch (e) { return {}; }
+  const L = ledgerLoad_(caseId) || {};
+  if (L.kb) return L.kb;
+  if (L.kbFrom) return {};
+  // 아직 옮기지 않은 장부 — 읽기만(옮기기는 다음 쓰기 때 잠금 안에서)
+  try { const f = ledgerKbOldFile_(caseId); return f ? (JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}) : {}; } catch (e) { return {}; }
 }
-function ledgerKbStore_(caseId, kb) {
-  const s = JSON.stringify(kb || {});
-  const f = ledgerKbFile_(caseId, true); f.setContent(s);
-  LEDGER_KB_MEMO_[String(caseId || '')] = s;
-  return true;
+function ledgerKbStore_(caseId, kb) { ledgerMutate_(caseId, function (L) { L.kb = kb || {}; }); return true; }
+// 사실 번호 — 같은 서류·같은 자리·같은 종류·같은 값이면 다시 모아도 같은 번호(칸이 가리키는 번호가 다시 모을 때마다 바뀌지 않게)
+function ledgerKbFactId_(x) {
+  const s = [x.f, x.w, x.k, x.v].join('|');
+  let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return 's' + h.toString(36);
 }
 function ledgerKbFacts_(facts) {
-  const out = [];
+  const out = [], seen = {};
   (facts || []).forEach(function (f) {
     if (!f || !f.src || out.length >= LEDGER_KB_FACT_MAX_) return;
     let v = f.kind === '공시가격' && f.value && typeof f.value === 'object' ? (f.value.가격 || f.value.단가 || '') + (f.value.연도 ? '(' + f.value.연도 + ')' : '') : (f.raw != null && f.raw !== '' ? f.raw : f.value);
     if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = ''; } }
     let sj = ''; try { if (typeof cxgSubject_ === 'function') sj = cxgSubject_(f) || ''; } catch (e) { sj = ''; }
-    out.push({ k: String(f.kind || ''), v: String(v == null ? '' : v).slice(0, 120), f: String(f.src.file || ''), t: String(f.src.docType || ''), w: String(f.src.where || '').slice(0, 80), s: sj, u: f.read && f.read.conf === '불확실' ? 1 : 0, cp: f._copy ? 1 : 0 });
+    const x = { k: String(f.kind || ''), v: String(v == null ? '' : v).slice(0, 120), f: String(f.src.file || ''), t: String(f.src.docType || ''), w: String(f.src.where || '').slice(0, 80), s: sj, u: f.read && f.read.conf === '불확실' ? 1 : 0, cp: f._copy ? 1 : 0 };
+    let id = ledgerKbFactId_(x); while (seen[id]) id += 'x'; seen[id] = 1; x.id = id;
+    const n = x.k === '서류' ? '' : ledgerKbNorm_(x.k, x.v); if (n) x.n = n;
+    out.push(x);
   });
   return out;
+}
+// 칸 ↔ 사실 잇기 — 장부에 무엇이 쓰이든(칸 값·사실) 쓸 때마다 다시 잇는다(둘이 어긋날 수 없게).
+//  fx = 이 칸의 지금 값과 같은 값을 말한 사실 번호(서류 사본 제외) · fk = 같은 뜻의 사실인데 값이 다른 것(LEDGER_KB_KIND_OF_ — 칸의 서식상 뜻과 사실 종류 이름으로만)
+//  값을 정하지는 않는다 — 어느 서류가 이 칸을 받쳐 주는지·어긋나는지 장부 안에서 바로 보이게 할 뿐
+function ledgerKbRelink_(L) {
+  const kb = L && L.kb, facts = kb && Array.isArray(kb.facts) ? kb.facts : null;
+  if (!facts || !L.rows) return;
+  const idx = {};
+  facts.forEach(function (f) {
+    if (!f.id) { f.id = ledgerKbFactId_(f); }
+    if (f.n === undefined) { const n = f.k === '서류' ? '' : ledgerKbNorm_(f.k, f.v); if (n) f.n = n; }
+    if (!f.n || f.cp || f.n.length < 2) return;
+    (idx[f.n] = idx[f.n] || []).push(f);
+    const ho = /(\d+)\s*호/.exec(String(f.v || '')); if (ho) (idx['호:' + ho[1]] = idx['호:' + ho[1]] || []).push(f);
+  });
+  const used = {};
+  Object.keys(L.rows).forEach(function (p) {
+    const r = L.rows[p]; if (!r) return;
+    delete r.fx; delete r.fk;
+    if (/^(q:|doc:)/.test(p) || r.v === '' || r.v == null || typeof r.v === 'object' || typeof r.v === 'boolean') return;
+    const n = ledgerKbNorm_('', r.v), hm = /^(?:\d+\s*동\s*)?(\d+)\s*호$/.exec(String(r.v).trim());
+    const hit = (n && n.length >= 2 && idx[n]) || (hm ? idx['호:' + hm[1]] : null) || [];
+    if (hit.length) { r.fx = hit.slice(0, 12).map(function (f) { return f.id; }); r.fx.forEach(function (id) { (used[id] = used[id] || []).push(p); }); }
+    const m = LEDGER_KB_KIND_OF_.filter(function (x) { return x[0].test(p); })[0];
+    if (m) { const other = facts.filter(function (f) { return m[1].test(String(f.k || '')) && !f.cp && f.n && /^\d+$/.test(f.n) && f.n !== n; }); if (other.length) r.fk = other.slice(0, 8).map(function (f) { return f.id; }); }
+  });
+  // 사실 쪽에도 "이 사실이 쓰인 칸"(to) — 같은 잇기에서 나온 것이라 칸 쪽 fx와 늘 맞는다
+  facts.forEach(function (f) { if (used[f.id]) f.to = used[f.id].slice(0, 6); else delete f.to; });
 }
 // 값 맞대기용 고르기 — 날짜(yyyy-mm-dd)·금액·면적(쉼표·원·㎡ 뗌)·주민번호(앞 6자리, 가림 무관)·동호(○동○호)·이름표("매도인 ")를 뗀 글
 var LEDGER_KB_ROLE_RE_ = /^(소유자|매도인|매수인|양도인|양수인|고객명|성명|대표자|상호|임대인|임차인|증여자|수증자|피상속인|상속인|본인)\s*[:：]?\s*/;
@@ -1164,9 +1209,7 @@ function ledgerKbSave_(cc, facts, rec) {
   const links = ((rec && rec.links) || []).slice(0, 600);
   try { ledgerKbSeen_(facts, links); } catch (e) {}
   const kbNew = { at: caseProcNow_(), facts: ledgerKbFacts_(facts), groups: ledgerKbGroups_(facts), links: links, factsAll: (facts || []).length };
-  const put = ledgerKbPut_(cc.id, kbNew, '서류 사실 다시 모음');
-  try { put.offered = ledgerKbOffer_(cc.id, kbNew.facts); } catch (e) {}
-  return put;
+  return ledgerKbPut_(cc.id, kbNew, (rec && rec.what) || '서류 사실 다시 모음', true, rec && rec.why);
 }
 // ③ 칸으로 간 길 — 화면을 열 때마다 "지금" 장부 칸으로 맞춘다(서류 사실은 처리개요 교차검증 때 모으지만, 상속·증여 칸은 그 뒤에 장부에 들어가므로 저장해 둔 길만 보면 빠진다)
 //  저장해 둔 교차검증 맞대기 줄 + 장부 칸 전부(세목 무관) + 증여·상속 처리개요 칸 — 칸마다 값을 넣은 주체와 그 값이 나온 서류(모은 사실 전부에서)
@@ -1183,9 +1226,9 @@ function ledgerKbLiveLinks_(caseId, kb, c) {
       if (cur === '' || cur == null) return;
       const own = { kind: r.src && r.src.kind || '', file: r.src && r.src.file || '', state: r.state };
       const ex = links.filter(function (l) { return l.path === p; })[0];
-      if (ex) { ex.owner = own; return; }
+      if (ex) { ex.owner = own; ex.fx = r.fx || []; ex.fk = r.fk || []; return; }
       let txt = ''; try { txt = ledgerValueText_(p, r.v); } catch (e) { txt = ''; }
-      if (links.length < 800) links.push({ by: '장부 칸', path: p, label: String(r.label || p), cur: String(cur).slice(0, 120), curTxt: txt && txt !== String(cur) ? txt : '', res: '', d: '', rule: '', why: '', vals: [], owner: own });
+      if (links.length < 800) links.push({ by: '장부 칸', path: p, label: String(r.label || p), cur: String(cur).slice(0, 120), curTxt: txt && txt !== String(cur) ? txt : '', res: '', d: '', rule: '', why: '', vals: [], owner: own, fx: r.fx || [], fk: r.fk || [] });
     });
   } catch (e) {}
   // 증여·상속 처리개요 칸(상속인·재산·채무·장례비 등 — 아직 장부 줄이 아닌 칸)도 같은 표에 — 처리개요 근거 기록(filled)의 출처를 주인으로
@@ -1252,40 +1295,42 @@ function ledgerKbLiveLinks_(caseId, kb, c) {
   });
   return links;
 }
-// 새 바탕을 짝 파일에 쓰고(파일 장부는 지금 것 유지), 칸 장부 기록에 "무엇이 바뀌었나" 한 줄
-function ledgerKbPut_(caseId, kbNew, what) {
-  const w = withLock_(15000, function () {
-    const old = ledgerKbLoad_(caseId) || {};
+// 새 바탕을 칸 장부 안(L.kb)에 쓰고(파일 장부는 지금 것 유지), 같은 쓰기에서 기록 한 줄·후보 붙이기·칸↔사실 잇기까지(잠금 한 번, 파일 한 번)
+function ledgerKbPut_(caseId, kbNew, what, offer, why) {
+  let sum = null, offered = 0;
+  const w = ledgerMutate_(caseId, function (L) {
+    const old = L.kb || {};
     if (!(kbNew.files || []).length) { kbNew.files = old.files || []; kbNew.filesAt = old.filesAt || ''; }
+    (kbNew.facts || []).forEach(function (f) { if (!f.id) f.id = ledgerKbFactId_(f); }); // 직결 서비스 옛 판이 보낸 사실에도 번호
     kbNew.sum = ledgerKbSum_(kbNew);
     kbNew.prev = old.sum || null;
     kbNew.prevAt = old.at || '';
-    ledgerKbStore_(caseId, kbNew);
+    L.kb = kbNew; sum = kbNew.sum;
+    ledgerLogTo_(L, { by: 'GAS', what: what || '서류 사실 다시 모음', detail: (why ? String(why).slice(0, 90) + ' → ' : '') + '사실 ' + sum.사실 + '건(서류 ' + sum.서류종류 + '종) · 맞댄 묶음 ' + sum.묶음 + ' · 칸 ' + sum.칸 + ' — 직전과 달라진 것: ' + ledgerKbDiff_(kbNew.prev, sum) });
+    if (offer !== false) { try { offered = ledgerKbOfferInner_(L, kbNew.facts); } catch (e) {} }
     return { ok: true };
   });
-  if (!w || !w.ok) return { ok: false, error: (w && w.error) || '바탕을 쓰지 못함' };
-  ledgerMutate_(caseId, function (L) {
-    ledgerLogTo_(L, { by: 'GAS', what: what || '서류 사실 다시 모음', detail: '사실 ' + kbNew.sum.사실 + '건(서류 ' + kbNew.sum.서류종류 + '종) · 맞댄 묶음 ' + kbNew.sum.묶음 + ' · 칸 ' + kbNew.sum.칸 + ' — 직전과 달라진 것: ' + ledgerKbDiff_(kbNew.prev, kbNew.sum) });
-  });
-  return { ok: true, sum: kbNew.sum };
+  if (!w || !w.ok) return { ok: false, error: (w && w.error) || '장부에 쓰지 못함' };
+  return { ok: true, sum: sum, offered: offered };
 }
 // 상태 표(⑦)가 파일 장부(caseProcLedger_)를 만들 때 부른다 — 파일마다 읽음/일부/못읽음/제외·종류·이유·쓰인 곳
 function ledgerKbFilesSave_(caseId, rows) {
   if (!caseId || !Array.isArray(rows)) return null;
   const files = rows.slice(0, 600).map(function (r) { return { n: String(r.n || ''), dir: String(r.dir || ''), st: String(r.st || ''), kind: String(r.kind || '').slice(0, 80), why: String(r.why || '').slice(0, 160), use: String(r.use || '').slice(0, 160) }; });
   const sig = function (list) { return JSON.stringify(list.map(function (f) { return f.n + '|' + f.st + '|' + f.use; })); };
-  let changed = false;
-  const w = withLock_(15000, function () {
-    const kb = ledgerKbLoad_(caseId) || {};
-    changed = sig(kb.files || []) !== sig(files);
+  // 바뀐 것이 없으면 쓰지 않는다(상태 표를 열 때마다 장부 파일을 다시 쓰지 않게)
+  const kb0 = ledgerKbLoad_(caseId) || {};
+  if (sig(kb0.files || []) === sig(files) && kb0.filesAt) return { ok: true, changed: false };
+  const w = ledgerMutate_(caseId, function (L) {
+    const kb = L.kb = L.kb || {};
+    const changed = sig(kb.files || []) !== sig(files);
     kb.files = files; kb.filesAt = caseProcNow_();
     if (kb.facts) kb.sum = ledgerKbSum_(kb);
-    ledgerKbStore_(caseId, kb);
-    return { ok: true };
+    if (changed) ledgerLogTo_(L, { by: 'GAS', what: '폴더 파일 다시 봄', detail: '파일 ' + files.length + '개 — ' + ['읽음', '일부', '못읽음', '제외'].map(function (s) { const n = files.filter(function (f) { return f.st === s; }).length; return n ? s + ' ' + n : ''; }).filter(Boolean).join(' · ') });
+    return { ok: true, changed: changed };
   });
   if (!w || !w.ok) return { ok: false, error: (w && w.error) || '파일 장부를 쓰지 못함' };
-  if (changed) ledgerMutate_(caseId, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '폴더 파일 다시 봄', detail: '파일 ' + files.length + '개 — ' + ['읽음', '일부', '못읽음', '제외'].map(function (s) { const n = files.filter(function (f) { return f.st === s; }).length; return n ? s + ' ' + n : ''; }).filter(Boolean).join(' · ') }); });
-  return { ok: true, changed: changed };
+  return w;
 }
 // 교차검증이 칸 하나를 서류 값과 맞댈 때마다 부른다(CrossCheckBind·CrossCheckGraph) — 그 칸이 서류와 어떻게 이어졌는지 한 줄
 //  o: {by, path, label, cur, vals:[{v, n(서류 종류 수), src}], d, rule, why, filled, asking, norm(값 → 비교용)}
@@ -1309,13 +1354,16 @@ function ledgerKbLink_(rec, o) {
     vals: vals.slice(0, 6).map(function (x) { return { v: String(x.v).slice(0, 80), n: x.n || 0, src: String(x.src || '').slice(0, 200) }; }) });
 }
 // 📒 화면 「🔄 서류 사실 다시 모으기」 — 칸 값은 건드리지 않고 폴더 파일 장부·서류 사실·서류끼리 맞대기만 지금 서류로 다시(칸으로 간 길은 다음 처리개요 때 갱신)
-function ledgerKbBuild_(c) {
+//  [2026.10.29] 사건 폴더 감시(cpWatchCase_)가 새 파일·바뀐 파일·없어진 파일을 알아채면 그 자리에서도 부른다(opt.what = 무엇 때문에 — 장부 기록에 남음)
+function ledgerKbBuild_(c, opt) {
+  opt = opt || {};
   const t0 = Date.now(), out = { ok: true };
   try { const fl = typeof caseProcLedger_ === 'function' ? caseProcLedger_(c) : null; if (fl && Array.isArray(fl.rows)) out.files = ledgerKbFilesSave_(c.id, fl.rows); } catch (e) { out.filesError = String(e && e.message || e); }
   let facts = [];
+  try { if (typeof CX_FACTS_MEMO_ !== 'undefined' && opt.fresh) CX_FACTS_MEMO_ = null; } catch (e) {} // 폴더가 바뀌었으면 2분 메모를 쓰지 않는다
   try { facts = typeof cxFacts_ === 'function' ? cxFacts_(c) : []; } catch (e) { out.factsError = String(e && e.message || e); }
   const old = ledgerKbLoad_(c.id) || {};
-  const r = ledgerKbSave_(c, facts, { links: old.links || [] });
+  const r = ledgerKbSave_(c, facts, { links: old.links || [], what: opt.what, why: opt.why });
   out.sum = r && r.sum; out.초 = Math.round((Date.now() - t0) / 100) / 10;
   out.message = '서류 사실 ' + ((r && r.sum && r.sum.사실) || 0) + '건을 다시 모았습니다(' + out.초 + '초)';
   return out;

@@ -27206,7 +27206,19 @@ function cpWatchCase_(c, opt) {
     }
   });
   if (changes.length) caseProcHypTextsForget_(c.id); // [2026.10.28 속도 B] 메모·의뢰서가 바뀌었을 수 있다
-  return { ok: true, first: first, n: files.length, changes: changes, 새: changes.filter(function (x) { return x.kind === '새'; }).length, 바뀜: changes.filter(function (x) { return x.kind === '바뀜'; }).length, 없어짐: changes.filter(function (x) { return x.kind === '없어짐'; }).length };
+  // [2026.10.29] 세무사님 "사건폴더내 파일이 변경된 사실을 인지했을때 바로 업데이트하는 것으로 당장 수정하라" — 변동을 알아챈 그 자리에서 사건 장부(파일 장부·서류 사실·맞대기·칸↔사실 잇기·후보)를
+  //  다시 모은다(GAS만, 0원 — 새 글자인식은 하지 않고 기억에 있는 글자로. 아직 못 읽은 새 파일은 파일 장부에 "못읽음"으로 서고, 서류 미리 읽기가 읽은 뒤 그 틱에서 다시 모음).
+  //  처음 대조(first)는 지문만 남긴다. 시간 한도 안에 못 하면 미뤄 두고 다음 틱 첫머리에(cpLedgerStaleRun_)
+  let ledger = null;
+  if (changes.length && opt.ledger !== false) {
+    if (opt.deadlineAt && Date.now() > opt.deadlineAt) { cpLedgerStaleAdd_(c.id); ledger = { deferred: true }; }
+    else {
+      const what = '폴더 변동 — ' + changes.slice(0, 3).map(function (x) { return x.kind + ' ' + x.name; }).join(', ') + (changes.length > 3 ? ' 외 ' + (changes.length - 3) + '개' : '');
+      try { ledger = ledgerKbBuild_(c, { what: '폴더 변동으로 다시 모음', why: what, fresh: true }); } catch (e) { ledger = { ok: false, error: String(e && e.message || e).slice(0, 120) }; cpLedgerStaleAdd_(c.id); }
+      try { if (ledger && ledger.ok) caseProcPatch_(c.id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '사건 장부 바로 갱신', detail: (what + ' → 서류 사실 ' + ((ledger.sum && ledger.sum.사실) || 0) + '건 · 맞댄 묶음 ' + ((ledger.sum && ledger.sum.묶음) || 0) + ' (' + ledger.초 + '초)').slice(0, 240) }); }); } catch (e) {}
+    }
+  }
+  return { ok: true, first: first, n: files.length, changes: changes, ledger: ledger, 새: changes.filter(function (x) { return x.kind === '새'; }).length, 바뀜: changes.filter(function (x) { return x.kind === '바뀜'; }).length, 없어짐: changes.filter(function (x) { return x.kind === '없어짐'; }).length };
 }
 function cpWatchPending_(sv) { return (Array.isArray(sv && sv.fileChanges) ? sv.fileChanges : []).filter(function (x) { return !x.nexSeen && (x.kind === '새' || x.kind === '바뀜'); }); }
 function cpWatchSummary_(sv) { // 화면·넥스 현황용
@@ -27302,6 +27314,21 @@ function cpNexPrereadWake_(c, opt) {
   }
   return { ok: !err, error: err || undefined, files: pend.length, read: readList.length, impact: !!(done && done.impact), line: (done && done.line) || '', won: Math.round(won * 10) / 10, rounds: rounds, calls: calls, chat: chat, _ms: Date.now() - t0 };
 }
+// [2026.10.29] 폴더 변동 뒤 시간 한도로 못 다시 모은 사건 장부 — 다음 틱 첫머리에 모은다
+var CP_LEDGER_STALE_ = 'cp_ledger_stale';
+function cpLedgerStaleAdd_(caseId) { try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_LEDGER_STALE_) || '[]'); } catch (e) { q = []; } if (q.indexOf(caseId) === -1) q.push(caseId); props.setProperty(CP_LEDGER_STALE_, JSON.stringify(q.slice(-100))); } catch (e) {} }
+function cpLedgerStaleRun_(started, DEADLINE) {
+  const props = PropertiesService.getScriptProperties(), done = [];
+  let q = []; try { q = JSON.parse(props.getProperty(CP_LEDGER_STALE_) || '[]'); } catch (e) { q = []; }
+  if (!q.length) return done;
+  const left = q.filter(function (id) {
+    if (Date.now() - started > DEADLINE - 90000) return true;
+    const c = akReadCase_(id); if (!c) return false;
+    try { const r = ledgerKbBuild_(c, { what: '폴더 변동(미뤄 둔 것)', fresh: true }); done.push(String(c.사건명 || id) + ': 서류 사실 ' + ((r && r.sum && r.sum.사실) || 0) + '건'); return !(r && r.ok); } catch (e) { return true; }
+  });
+  if (left.length) props.setProperty(CP_LEDGER_STALE_, JSON.stringify(left)); else props.deleteProperty(CP_LEDGER_STALE_);
+  return done;
+}
 function cpWatchDefer_(caseId) { try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.indexOf(caseId) === -1) q.push(caseId); props.setProperty(CP_WATCH_PENDING_, JSON.stringify(q.slice(-100))); } catch (e) {} }
 // 틱 끝에서 — 이번 틱에 파일이 바뀐 사건 폴더들을 대조하고, 변동이 있으면 넥스를 깨운다(밤이면 미룸). 아침 첫 틱은 미뤄 둔 사건부터
 function cpWatchTick_(touched, started, DEADLINE) {
@@ -27313,14 +27340,16 @@ function cpWatchTick_(touched, started, DEADLINE) {
     if (r && r.deferred) out.deferred++; else if (r && !r.skipped) out.woke++;
     out.lines.push(String(c.사건명 || c.id) + ': ' + (r.skipped || r.error || ('읽음 ' + r.read + '/' + r.files + (r.impact ? ' · 보고' : '') + ' · ' + r.won + '원')));
   };
+  try { cpLedgerStaleRun_(started, DEADLINE).forEach(function (s) { out.lines.push('장부 갱신 ' + s); }); } catch (e) {} // [2026.10.29] 미뤄 둔 사건 장부 갱신부터(밤에도 — GAS만, 0원)
   if (!cpWatchNight_()) { let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.length) { props.deleteProperty(CP_WATCH_PENDING_); q.forEach(function (id) { if (touched[id]) return; const c = akReadCase_(id); if (c) wake(c); }); } }
   Object.keys(touched).forEach(function (fid) {
     if (Date.now() - started > DEADLINE) return;
     const c = cpWatchCaseOf_(fid); if (!c) return;
     out.cases++;
-    let w = null; try { w = cpWatchCase_(c, {}); } catch (e) { w = null; }
+    let w = null; try { w = cpWatchCase_(c, { deadlineAt: started + DEADLINE - 60000 }); } catch (e) { w = null; } // 장부 갱신은 남은 시간이 1분 넘을 때만(모자라면 다음 틱)
     if (!w || !w.ok) return;
     out.changes += (w.changes || []).length;
+    if (w.ledger) { out.ledger = (out.ledger || 0) + 1; out.lines.push(String(c.사건명 || c.id) + ': 장부 ' + (w.ledger.deferred ? '갱신 미룸(시간)' : w.ledger.ok ? '바로 갱신 — 서류 사실 ' + ((w.ledger.sum && w.ledger.sum.사실) || 0) + '건' : '갱신 못 함')); }
     if (cpWatchPending_(caseProcLoad_(c.id) || {}).length) wake(c);
   });
   return out;
