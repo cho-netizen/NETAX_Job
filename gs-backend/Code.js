@@ -27064,7 +27064,26 @@ function t6ReaderToken_(body) {
 // [2026.10.27 H] 직결(Cloud Run 시험 서비스)이 기록부를 못 봐 결정·읽을 범위·세무사님 값이 전달되지 않았다(가상양도23 10-27 23:2x: 답한 질문 4개를 다시 묻고, 범위 "제출자료"를 정했는데 11개를 읽음).
 //  화면이 /read 요청에 실어 보낼 "기록부 바탕" — 서비스가 제자리(s.decisions·s.readScope·s.trAns…)에 넣고 돈다. remaining·usedText 같이 서비스가 다시 만드는 것은 빼고, 세무사님·넥스가 정한 것만
 var T6_RECORD_KEYS_ = ['decisions', 'readScope', 'trAns', 'valueHist', 'closed', 'docFix', 'filled', 'giftDeal', 'ihChoices', 'cxAi', 'readFiles', 'scanOffered', 'holdNotes'];
-function t6RecordForReader_(sv) { const out = {}; T6_RECORD_KEYS_.forEach(function (k) { if (sv && sv[k] !== undefined && sv[k] !== null) out[k] = sv[k]; }); return out; }
+function t6RecordForReader_(sv) {
+  const out = {}; T6_RECORD_KEYS_.forEach(function (k) { if (sv && sv[k] !== undefined && sv[k] !== null) out[k] = sv[k]; });
+  // [2026.10.28 시정 2단계] 사건 장부도 함께 — 서비스가 세무사님·넥스 값과 질문 결정을 장부에서 본다(질문·결정은 이제 장부에만 있다)
+  try { if (sv && sv.caseId) { const L = ledgerLoad_(sv.caseId); out.ledger = { rows: L.rows, log: (L.log || []).slice(-60) }; } } catch (e) {}
+  return out;
+}
+// [2026.10.28 시정 2단계] 직결 서비스가 돌려준 장부를 진짜 장부에 합친다 — 같은 쓰기 규칙(ledgerBatch_)이라 세무사님·넥스 값은 서비스 값이 덮지 못한다.
+//  서비스가 GAS(서류·규칙)로 적은 값은 그대로, 물음은 물음으로. 질문 목록(qs)·결정(qd)은 결정 파일 합치기(remaining·decisions → 장부)로 따로 온다
+function t6MergeLedger_(caseId, Lin) {
+  if (!Lin || !Lin.rows || typeof Lin.rows !== 'object') return { ok: true, merged: 0 };
+  const ops = [];
+  Object.keys(Lin.rows).forEach(function (p) {
+    const r = Lin.rows[p] || {}, k = r.src && r.src.kind;
+    if (/^q:/.test(p)) return;
+    if ((r.state === '확정' || r.state === '추정') && /^(서류|규칙|계산|추정)$/.test(k) && r.v !== '' && r.v !== undefined && r.v !== null) ops.push({ path: p, value: r.v, kind: k, by: 'GAS', file: r.src.file, page: r.src.page, quote: r.src.quote, why: r.src.why, sure: r.sure, label: r.label, estimate: r.state === '추정' });
+    else if (/^(물어볼것|증빙받을것)$/.test(r.state) && !r.qs && (!r.src || /^(질문|서류|규칙)$/.test(r.src.kind))) ops.push({ ask: true, path: p, label: r.label, question: r.ask, cands: r.cands || [], by: 'GAS', needDoc: r.state === '증빙받을것' });
+  });
+  const res = ops.length ? ledgerBatch_(caseId, ops) : { ok: true, set: 0, asked: 0 };
+  res.merged = ops.length; return res;
+}
 function t6ApplyRead_(c, body) {
   const t0 = Date.now();
   try { caseProcPatch_(c.id, function (sv) { sv.readRoute = { at: caseProcNow_(), 길: '직결(Cloud Run)' }; }); cpReadRouteLog_(c.id, '직결 applyRead'); } catch (e) {} // [2026.10.28 속도 C] 어느 길로 읽었는지(직결이 돌아 저장하러 온 것)
@@ -27074,6 +27093,8 @@ function t6ApplyRead_(c, body) {
   if (!df && !cr) return { ok: false, error: '저장할 내용(written.decisionFile·caseRow)이 없습니다' };
   const saved = { decisionFile: false, caseRow: false };
   const who = caseProcWho_('', body.by);
+  // 장부 값 먼저(질문이 그 칸 값을 보고 서도록) — 그다음 결정 파일(질문·결정은 결정 파일 저장 입구가 장부로 보낸다)
+  if (w.ledger) { try { saved.ledger = t6MergeLedger_(c.id, w.ledger); } catch (e) { saved.ledger = { ok: false, error: String(e && e.message || e) }; } }
   // 결정 파일 — 서비스가 메모리에서 만든 결정 파일을 통째로 합친다(decisions·workLog는 지금 것과 합쳐 잃지 않음)
   if (df) {
     caseProcPatch_(c.id, function (sv) {
@@ -31376,12 +31397,55 @@ function caseProcFile_(caseId, create) {
 // [2026.10.22 속도 S1] 결정 파일(사건별 JSON)을 한 실행 안에서 한 번만 드라이브에서 읽는다 — 한 단계가 이 파일을 수십 번(부르는 곳 48개) 읽어 단계마다 10~30초가 드라이브 왕복이었다(가상양도8 실측).
 //  쓸 때(caseProcPatch_·caseProcStore_)는 메모를 새 내용으로 갱신한다. 구글 서버는 실행마다 메모리가 새로 시작하므로 다른 실행과 섞이지 않는다
 var CASEPROC_SV_MEMO_ = {};
+// [2026.10.28 시정 2단계 — 질문 목록 단일화] 이 파일은 질문 목록(remaining)·질문 결정(decisions)을 더는 갖지 않는다 — 둘 다 사건 장부(CaseLedger.js) 줄이다.
+//  불러오기는 장부에서 붙여 돌려주고(부르는 곳 그대로), 쓰기는 그 둘을 떼어 장부로 보낸다. 옛 파일에 남아 있던 둘은 처음 불러올 때 한 번 장부로 옮긴다.
+function caseProcQHydrate_(caseId, o) {
+  if ('remaining' in o || 'decisions' in o) return o; // 장부로 못 옮긴 옛 파일(장부 쓰기 실패) — 잃지 않게 그대로
+  try { const q = ledgerQRead_(caseId); o.remaining = q.remaining; o.decisions = q.decisions; } catch (e) { console.error('장부 질문 읽기 실패: ' + (e && e.message || e)); o.remaining = []; o.decisions = {}; }
+  return o;
+}
+function caseProcQSplit_(saved) { const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions }; delete s.remaining; delete s.decisions; return { file: s, rem: q.rem, dec: q.dec }; }
+function caseProcQMigrate_(caseId, o, f) {
+  if (!('remaining' in o) && !('decisions' in o)) return o;
+  const sp = caseProcQSplit_(o);
+  try { ledgerQWrite_(caseId, Array.isArray(sp.rem) ? sp.rem : undefined, sp.dec && typeof sp.dec === 'object' ? sp.dec : undefined); if (f) f.setContent(JSON.stringify(sp.file)); return sp.file; }
+  catch (e) { console.error('옛 질문·결정 장부 옮기기 실패: ' + (e && e.message || e)); return o; }
+}
+// 질문·결정이 바뀌었으면 장부로(같으면 쓰지 않음) — 장부 잠금은 결정 파일 잠금과 다른 잠금(스크립트 잠금)이라 서로 막지 않는다
+function caseProcQFlushToLedger_(caseId, sp) {
+  if (sp.rem === undefined && sp.dec === undefined) return;
+  let cur = null; try { const q = ledgerQRead_(caseId); cur = JSON.stringify({ r: q.remaining, d: q.decisions }); } catch (e) { cur = null; }
+  if (cur !== null && cur === JSON.stringify({ r: sp.rem, d: sp.dec })) return; // 장부와 같으면 쓰지 않음
+  ledgerQWrite_(caseId, Array.isArray(sp.rem) ? sp.rem : undefined, sp.dec && typeof sp.dec === 'object' ? sp.dec : undefined);
+}
+// 질문 하나를 다시 보일 수 있는 모양으로(선택지·후보·근거 글) — 저장(caseProcSave_)과 장부 질문 줄이 같은 모양을 쓴다
+function caseProcQSan_(it) {
+  it = it || {};
+  const o = { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
+  const a = it.ask;
+  if (a && typeof a === 'object' && (a.target || a.mode)) {
+    const sa = {};
+    Object.keys(a).forEach(function (k) { const v = a[k]; if (k === 'cands' || k === 'options' || k === 'aiJudge') return; if (v == null) return; if (typeof v === 'object') { try { const s = JSON.stringify(v); if (s.length <= 2000) sa[k] = JSON.parse(s); } catch (e) {} } else sa[k] = typeof v === 'string' ? v.slice(0, 600) : v; });
+    sa.cands = (Array.isArray(a.cands) ? a.cands : []).slice(0, 12).map(function (q) { return { v: String(q && q.v != null ? q.v : '').slice(0, 300), label: String((q && q.label) || '').slice(0, 160), src: String((q && q.src) || '').slice(0, 160) }; });
+    if (Array.isArray(a.options)) sa.options = a.options.slice(0, 20).map(function (q) { return { label: String((q && q.label) || '').slice(0, 200), value: q && q.value != null ? q.value : '', decide: q && q.decide, note: q && q.note ? String(q.note).slice(0, 120) : undefined }; });
+    if (a.aiJudge && typeof a.aiJudge === 'object') sa.aiJudge = { by: a.aiJudge.by, model: a.aiJudge.model, value: a.aiJudge.value, sure: a.aiJudge.sure, why: String(a.aiJudge.why || '').slice(0, 300) };
+    o.ask = sa;
+  }
+  if (it.detail) o.detail = String(it.detail).slice(0, 1500);
+  return o;
+}
 function caseProcLoad_(caseId) {
   const k = String(caseId || '');
-  if (CASEPROC_SV_MEMO_[k]) return JSON.parse(CASEPROC_SV_MEMO_[k]); // 복사본 — 부른 곳이 고쳐도 메모가 오염되지 않게
-  try { const f = caseProcFile_(caseId, false); const s = f ? (f.getBlob().getDataAsString('UTF-8') || '{}') : '{}'; const o = JSON.parse(s) || {}; CASEPROC_SV_MEMO_[k] = JSON.stringify(o); return o; } catch (e) { return {}; }
+  if (CASEPROC_SV_MEMO_[k]) return caseProcQHydrate_(caseId, JSON.parse(CASEPROC_SV_MEMO_[k])); // 복사본 — 부른 곳이 고쳐도 메모가 오염되지 않게
+  try { const f = caseProcFile_(caseId, false); const s = f ? (f.getBlob().getDataAsString('UTF-8') || '{}') : '{}'; let o = JSON.parse(s) || {}; o = caseProcQMigrate_(caseId, o, f); CASEPROC_SV_MEMO_[k] = JSON.stringify(o); return caseProcQHydrate_(caseId, o); } catch (e) { return caseProcQHydrate_(caseId, {}); }
 }
-function caseProcStore_(caseId, saved) { const f = caseProcFile_(caseId, true); if (f) { const s = JSON.stringify(saved); f.setContent(s); CASEPROC_SV_MEMO_[String(caseId || '')] = s; if (CASEPROC_PATCH_DEFER_) CASEPROC_PATCH_Q_[String(caseId || '')] = []; } } // 통째 쓰기엔 미룬 고침이 이미 들어 있으므로 줄을 비운다(두 번 적용 방지)
+function caseProcStore_(caseId, saved) {
+  const f = caseProcFile_(caseId, true); if (!f) return;
+  const sp = caseProcQSplit_(saved || {});
+  const s = JSON.stringify(sp.file); f.setContent(s); CASEPROC_SV_MEMO_[String(caseId || '')] = s;
+  if (CASEPROC_PATCH_DEFER_) CASEPROC_PATCH_Q_[String(caseId || '')] = []; // 통째 쓰기엔 미룬 고침이 이미 들어 있으므로 줄을 비운다(두 번 적용 방지)
+  caseProcQFlushToLedger_(caseId, sp);
+}
 // [2026.10.14] 결정 파일은 이 함수로만 고친다 — 잠금 안에서 최신 내용을 읽어 고치고 바로 쓴다(동시에 도는 단계끼리 덮어쓰기 방지)
 // [2026.10.23 속도 ㅅ6차 — S6 쓰기 묶기] 사건처리 실행(caseProcTimed_) 안에서는 결정 파일을 고칠 때마다 드라이브에 쓰지 않고(잠금+읽기+쓰기 = 1.5~3초씩, ③ 한 번에 3~5번·답 반영에 2~3번),
 //  메모 사본에 바로 적용해 두었다가(같은 실행의 다음 읽기는 메모를 보므로 결과가 같음) 실행 끝에 한 번만 — 잠금 안에서 파일을 새로 읽어 쌓아 둔 고침을 차례로 다시 적용해 쓴다
@@ -31397,8 +31461,9 @@ function caseProcPatchFlush_() {
       const f = caseProcFile_(k, true); if (!f) return;
       let saved = {};
       try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
+      saved = caseProcQHydrate_(k, caseProcQMigrate_(k, saved, null)); // 고침이 질문·결정을 볼 수 있게 붙여 두되, 그 둘은 미룰 때 이미 장부에 썼다
       ms.forEach(function (m) { try { m(saved); } catch (e) { console.log('결정 파일 고침 다시 적용 실패: ' + (e && e.message || e)); } });
-      const s = JSON.stringify(saved); f.setContent(s); CASEPROC_SV_MEMO_[k] = s;
+      const s = JSON.stringify(caseProcQSplit_(saved).file); f.setContent(s); CASEPROC_SV_MEMO_[k] = s;
     } finally { lock.releaseLock(); }
   });
 }
@@ -31407,8 +31472,10 @@ function caseProcPatch_(caseId, mutate) {
     const k = String(caseId || '');
     const saved = caseProcLoad_(caseId) || {};
     const out = mutate(saved);
-    try { CASEPROC_SV_MEMO_[k] = JSON.stringify(saved); } catch (e) {}
+    const sp = caseProcQSplit_(saved);
+    try { CASEPROC_SV_MEMO_[k] = JSON.stringify(sp.file); } catch (e) {}
     (CASEPROC_PATCH_Q_[k] = CASEPROC_PATCH_Q_[k] || []).push(mutate);
+    caseProcQFlushToLedger_(caseId, sp); // 질문·결정은 미루지 않고 바로 장부로(같은 실행의 다음 읽기가 장부에서 붙여 보므로)
     return out === undefined ? saved : out;
   }
   const lock = LockService.getUserLock();
@@ -31418,10 +31485,13 @@ function caseProcPatch_(caseId, mutate) {
     if (!f) return null;
     let saved = {};
     try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
+    saved = caseProcQHydrate_(caseId, caseProcQMigrate_(caseId, saved, null)); // 질문·결정은 장부에서 붙여 고친다
     const out = mutate(saved);
-    const s = JSON.stringify(saved);
+    const sp = caseProcQSplit_(saved);
+    const s = JSON.stringify(sp.file);
     f.setContent(s);
     CASEPROC_SV_MEMO_[String(caseId || '')] = s; // [2026.10.22 속도 S1] 읽기 메모 갱신
+    caseProcQFlushToLedger_(caseId, sp); // 바뀐 질문·결정은 장부로
     return out === undefined ? saved : out;
   } finally { lock.releaseLock(); }
 }
@@ -31670,7 +31740,6 @@ function caseProcDecide_(c, body) {
       out.closed.push(qid);
     });
   });
-  try { ledgerMirrorDecide_(c, out.closed, d, (caseProcLoad_(c.id) || {}).remaining, by); } catch (e) {} // [2026.10.28] 장부 상태도 같이
   if (out.notFound.length && !out.closed.length) { out.ok = false; out.error = '그 질문이 저장된 질문 목록에 없습니다: ' + out.notFound.join(', ') + ' — 사건처리 조회(job_lookup caseproc)의 qid 그대로 보내 주세요.'; }
   out.message = (out.closed.length ? '질문 ' + out.closed.length + '건을 ' + (d === 'done' ? '확인으로 닫음' : d + '로 표시') : '') + (out.notFound.length ? ' · 못 찾은 질문 ' + out.notFound.length + '건' : '');
   return out;
@@ -35002,6 +35071,11 @@ function caseProcOverview_(c, body) {
   try { if (!late && r && r.ok && typeof cxResolve_ === 'function') cxResolve_(c, r); } catch (e) { if (r && r.lines) r.lines.push('⚠ 교차검증 중 오류: ' + (e && e.message || e)); }
   tmk('교차검증', tt); tt = Date.now();
   try { if (r && r.ok && typeof caseProcAiNexAskItems_ === 'function') caseProcAiNexAskItems_(c, r); } catch (e) {} // [2026.10.21 넥스 하나로] 넥스가 질문 목록 밖에서 여쭌 것(AiLeadLive.js)
+  // [2026.10.28] 증여·상속도 사건 장부에 — 계산기 칸(처리개요 칸·상속 사실)과 질문을 장부 줄로(양도는 trcStore_에서)
+  // [2026.10.28 시정 2단계] GAS가 낸 질문은 화면이 저장해 주기를 기다리지 않고 이 자리에서 장부 질문 줄로(세목 가리지 않음 — 넥스 지휘·점검처럼 화면 없이 도는 길에서도 질문이 남는다).
+  //  가벼운 다시 맞추기·시간 넘김이면 사건파악·메모 질문을 다시 만들지 않았으므로 "이번 목록에 없다"고 떼지 않는다(partial)
+  try { if (r && r.ok && /^(gift|inheritance)$/.test(c.세목) && typeof ledgerFromGiftInh_ === 'function') { const cNow = (typeof cxReadCase_ === 'function' ? cxReadCase_(c.id) : null) || r.case || c; ledgerFromGiftInh_(cNow, r.items || []); } } catch (e) { console.error('장부(증여·상속) 반영 실패: ' + (e && e.message || e)); }
+  try { if (r && r.ok) ledgerQWrite_(c.id, (r.items || []).filter(function (it) { return it && it.id && !it.error; }).slice(0, 80).map(caseProcQSan_), undefined, { partial: light || late }); } catch (e) { console.error('장부 질문 쓰기 실패: ' + (e && e.message || e)); if (r && r.lines) r.lines.push('⚠ 질문을 사건 장부에 적지 못함: ' + (e && e.message || e)); }
   try {
     if (r && r.lines) {
       const inner = Object.keys(CP_OV_T_ || {}).map(function (k) { return k + ' ' + CP_OV_T_[k] + '초'; });
@@ -39697,7 +39771,7 @@ function caseProcStatus_(c, body) {
   // 화면이 보낸 지금 항목·결정이 있으면 그것을 쓴다(화면 하단 "물어볼 것·보류" 집계와 같은 기준) — 없으면 마지막 저장분
   const dec = Object.assign({}, saved.decisions || {});
   Object.keys(body.decisions || {}).forEach(function (k) { if (body.decisions[k] && body.decisions[k].d) dec[k] = body.decisions[k]; else delete dec[k]; });
-  if (Array.isArray(body.items)) { saved.remaining = body.items; try { ledgerFromQuestions_(c, body.items, dec); } catch (e) {} } // [2026.10.28] 넣을 칸이 있는 질문은 장부 "물어볼 것"으로도
+  // [2026.10.28 시정 2단계] 질문은 장부 하나 — 화면이 보낸 목록(body.items)으로 바꿔 보지 않는다(화면 목록과 장부가 어긋나면 장부가 맞다)
   const ov = c.사건개요 || {};
   const rows = [];
   const has = function (v) { return String(v == null ? '' : v).trim() !== ''; };
@@ -39791,6 +39865,7 @@ function caseProcStatus_(c, body) {
   let ledger = null;
   const tLg = Date.now(); // [2026.10.23 속도 ㅅ8차] ⑦ 안쪽 시간 — 장부(폴더 훑기+서류별 기억 읽기)가 1분 가까이 걸리던 것의 원인을 숫자로
   try { ledger = caseProcLedger_(c, saved); } catch (e) { ledger = { error: String(e && e.message || e) }; }
+  try { if (ledger && Array.isArray(ledger.rows)) ledgerDocUse_(c, ledger.rows); } catch (e) { rows.push(['폴더 파일 점검', '서류 → 칸 이음', '⚠', '장부에 적지 못함: ' + (e && e.message || e)]); } // [2026.10.28] 내용을 못 쓴 서류는 장부 물음으로
   rows.push(['시간', '⏱ ⑦ 안쪽', '', '칸 모으기 ' + Math.round((tLg - tS0) / 100) / 10 + '초 · 폴더 파일 장부 ' + Math.round((Date.now() - tLg) / 100) / 10 + '초']);
   // [2026.10.23 특단 측정 잣대 통일] 화면이 잰 "⚡ 누른 때 → 세액 보인 때"·"▶ 누른 때 → 세액" 초 — 사건마다 같은 자로 잰다
   if (body.uiTiming && (Number(body.uiTiming.press2tax) || Number(body.uiTiming.btn2tax))) rows.push(['시간', '⚡→첫 결과/세액 · ▶→첫 결과/세액', '', '⚡ ' + (Number(body.uiTiming.first) || 0) + '초/' + (Number(body.uiTiming.press2tax) || 0) + '초 · ▶ ' + (Number(body.uiTiming.btnFirst) || 0) + '초/' + (Number(body.uiTiming.btn2tax) || 0) + '초' + (body.uiTiming.calls ? ' · 서버 부르기 ' + body.uiTiming.calls + '번' : '') + (body.uiTiming.route ? ' (' + (String(body.uiTiming.route) === '직결' ? '직결' : 'GAS') + ')' : '')]); // [2026.10.27 T6 3단계] 어느 길로 ⚡를 돌렸나(화면 직결/GAS)
@@ -40184,7 +40259,8 @@ function caseProcApply_(c, body) {
   const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(src, body.by) + txt, dueDate: '' }]); };
   if (target === 'base') return caseProcApplyBase_(c.id, value, src, CASEPROC_BASE_LABEL_[c.세목] || '기준일');
   // [2026.10.28] 서류 역할(장부 doc 줄) — 사이드바 [확인]·말 답이 세무사님 값으로 장부에 바로. 역할이 정해지면 다음 처리에서 칸 질문이 선다
-  if (/^doc:/.test(target)) { const lr = ledgerSet_(c.id, { path: target, value: value, kind: caseProcWho_(src, body.by) === '넥스' ? '넥스' : '세무사님', by: body.by || '세무사님', why: src }); return lr && lr.ok ? { ok: true, message: lr.message } : { ok: false, error: (lr && (lr.error || lr.message)) || '장부에 적지 못함' }; }
+  // [2026.10.28 시정 2단계] 장부에만 선 물음(서류 역할·서류 모순·넥스가 세운 물음 — 질문 목록에선 target "ledger:<칸>")의 답은 장부 그 칸에 바로
+  if (/^(doc:|ledger:)/.test(target)) { const lr = ledgerSet_(c.id, { path: target.replace(/^ledger:/, ''), value: value, kind: caseProcWho_(src, body.by) === '넥스' ? '넥스' : '세무사님', by: body.by || '세무사님', why: src }); return lr && lr.ok ? { ok: true, message: lr.message } : { ok: false, error: (lr && (lr.error || lr.message)) || '장부에 적지 못함' }; }
   // [2026.10.22 묶음 ㄱ8] 서류 자동 정리 ⚠ 확인 질문에서 [이 값으로 기록] — 세무사님이 쓴 값을 그 서류의 그 칸 값으로 기록(보류가 아니라 확인). 다음 읽기부터 그 ⚠은 다시 묻지 않는다(가상양도7 표 16·17)
   if (target === 'docFix') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
@@ -40322,22 +40398,9 @@ function caseProcSave_(caseId, body) {
     if (!d || !d.d) delete dec[k];
     else dec[k] = { d: String(d.d).slice(0, 4), at: String(d.at || caseProcToday_()).slice(0, 10), text: String(d.text || '').slice(0, 200), note: String(d.note || '').slice(0, 200) };
   });
-  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 80).map(function (it) {
-    const o = { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
-    // [2026.10.21 넥스 하나로] 넣을 칸·후보(출처) — 채팅 넥스의 사건처리 조회·답 제안(job_lookup caseproc · job_propose_action caseproc_answer)이 쓴다
-    const a = it.ask;
-    // [2026.10.23 속도 ㅅ9차] 질문을 그대로 다시 보일 수 있게 ask를 거의 통째로(선택지·잠정값·서류 칸 기록 정보·근거 글까지) — 예전엔 target·후보 6개만 남겨 "저장된 질문 바로 보이기"가 불가능했다
-    if (a && typeof a === 'object' && (a.target || a.mode)) {
-      const sa = {};
-      Object.keys(a).forEach(function (k) { const v = a[k]; if (k === 'cands' || k === 'options' || k === 'aiJudge') return; if (v == null) return; if (typeof v === 'object') { try { const s = JSON.stringify(v); if (s.length <= 2000) sa[k] = JSON.parse(s); } catch (e) {} } else sa[k] = typeof v === 'string' ? v.slice(0, 600) : v; });
-      sa.cands = (Array.isArray(a.cands) ? a.cands : []).slice(0, 12).map(function (q) { return { v: String(q && q.v != null ? q.v : '').slice(0, 300), label: String((q && q.label) || '').slice(0, 160), src: String((q && q.src) || '').slice(0, 160) }; });
-      if (Array.isArray(a.options)) sa.options = a.options.slice(0, 20).map(function (q) { return { label: String((q && q.label) || '').slice(0, 200), value: q && q.value != null ? q.value : '', decide: q && q.decide, note: q && q.note ? String(q.note).slice(0, 120) : undefined }; });
-      if (a.aiJudge && typeof a.aiJudge === 'object') sa.aiJudge = { by: a.aiJudge.by, model: a.aiJudge.model, value: a.aiJudge.value, sure: a.aiJudge.sure, why: String(a.aiJudge.why || '').slice(0, 300) };
-      o.ask = sa;
-    }
-    if (it.detail) o.detail = String(it.detail).slice(0, 1500);
-    return o;
-  });
+  // [2026.10.21 넥스 하나로] 넣을 칸·후보(출처) — 채팅 넥스의 사건처리 조회·답 제안이 쓴다. [2026.10.28 시정 2단계] 질문 모양은 장부 질문 줄과 같은 caseProcQSan_
+  //  화면이 질문 목록을 보내지 않으면(결정만 저장) 장부의 질문은 그대로 — 예전엔 빈 목록으로 덮였다
+  const items = Array.isArray(body.items) ? body.items.slice(0, 80).map(caseProcQSan_) : (saved.remaining || []);
   const gone = function (it) { const d = dec[it.id] && dec[it.id].d; return d === '무시' || d === 'done'; };
   remain = items.filter(function (it) { return !gone(it); });
   // [2026.10.22 작업 기록부] 보류·무시·받을 예정 결정(누가·이유) — 확인 완료(done)는 값 정함 줄로 이미 남음. 무시·완료로 닫은 질문도 넥스가 보게 따로 둔다
@@ -40445,7 +40508,8 @@ function caseProcDraft_(c) {
   // [2026.10.23 ㅊ2] 자동 보류 메모 — 묻지 않고 검토서에만 두는 것(정황 없는 특수관계 등)
   (saved.holdNotes || []).forEach(function (n) { L.push('- (자동 보류) ' + String(n.text || '')); });
   // [2026.10.28] 사건 장부의 추정·증빙 받을 것·보류 줄 — 추정으로 계산을 진행한 칸은 여기 적힌다(세무사님 "추정치나 가정치를 넣어서 진행할 수도 있고")
-  let lgNotes = []; try { lgNotes = typeof ledgerReviewNotes_ === 'function' ? ledgerReviewNotes_(c.id) : []; } catch (e) { lgNotes = []; }
+  //  [2026.10.28 시정 2단계] 보류·증빙 받을 것은 위 질문 목록(장부 질문 줄)으로 이미 들어가므로 여기선 추정 줄만 — 같은 물음이 두 번 적히지 않게
+  let lgNotes = []; try { lgNotes = typeof ledgerReviewNotes_ === 'function' ? ledgerReviewNotes_(c.id).filter(function (r) { return r.state === '추정'; }) : []; } catch (e) { lgNotes = []; }
   lgNotes.forEach(function (r) { L.push('- (' + r.state + ') ' + r.label + (r.state === '추정' ? ' = ' + r.값 + (r.why ? ' — ' + r.why : '') : r.ask ? ' — ' + r.ask : '') ); });
   if (!remain.length && !(saved.holdNotes || []).length && !lgNotes.length) L.push('- 없음');
   // [2026.10.21 넥스 하나로] 넥스(사건 지휘)가 여쭌 것의 메모 — 예전엔 급한 질문 메모만 화면에 붙고 나머지는 사라졌다. 마지막 지휘 처리분만
@@ -51466,17 +51530,6 @@ function trcOverview_(c, ov, rf, lines, items) {
   const provL = needs.filter(function (n) { return !n.ok && n.prov; });
   if (S.state.transferContracts[0]) { if (provL.length) S.state.transferContracts[0].provisional = provL.map(function (n) { return { key: n.p, label: n.l, v: 0, why: n.prov }; }); else delete S.state.transferContracts[0].provisional; }
   const h = trcStore_(c, S);
-  try { ledgerFromQuestions_(c, items, (caseProcLoad_(c.id) || {}).decisions); } catch (e) { console.error('장부 질문 반영 실패: ' + (e && e.message || e)); } // [2026.10.28] GAS가 낸 질문(넣을 칸 있는 것)은 그 자리에서 장부 "물어볼 것"으로
-  // [2026.10.28 서류 → 역할 → 칸] 역할을 못 정한(못 읽은) 서류가 있으면 화면 질문도 같은 규칙 — "서류에서 못 정함" 칸 질문은 내지 않고 서류마다 "이 서류가 무엇인지" 하나로(사이드바 [확인]이 장부 doc 줄에 적는다)
-  try {
-    const pend = ledgerDocsPending_(ledgerLoad_(c.id));
-    if (pend.length) {
-      const L0 = ledgerLoad_(c.id);
-      for (let k = items.length - 1; k >= 0; k--) { const it = items[k]; if (it && (it.kind === 'missing' || /서류에서 정하지 못했습니다|서류가 폴더에 없어/.test(String(it.text || '')))) items.splice(k, 1); }
-      pend.forEach(function (p) { const r = L0.rows[p]; items.unshift(caseProcItem_('doc:' + p, 'judge', (r.label || p) + ' — ' + String(r.ask || '이 서류가 무엇인지 정해 주세요'), { mode: 'options', target: p, options: LEDGER_DOC_ROLES_.map(function (x) { return { label: x, value: x }; }), label: r.label || '서류 역할' })); });
-      lines.push('⚠ 역할을 못 정한 서류 ' + pend.length + '개 — 그 서류가 무엇인지 정해지기 전엔 "서류에서 못 정함" 칸 질문을 내지 않습니다(서류 → 역할 → 칸). 넥스가 읽어 정하거나 아래에서 골라 주세요.');
-    }
-  } catch (e) { console.error('서류 역할 관문 실패: ' + (e && e.message || e)); }
   const ns = trcNeedsSummary_(needs);
   if (ns.pending.length) lines.push('⏳ 확인 전 칸 ' + ns.pending.length + '개 — ' + ns.pending.join(', ') + ' · 잠정값으로 먼저 계산합니다(답하면 다시 계산, 신고서 출력 전에 다시 알림)');
   lines.push('🎯 세액계산기가 지금 원하는 칸 ' + ns.total + '개 — 증빙·답으로 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움') + (ns.later.length ? ' · 지금은 필요 없음: ' + ns.later.join(' / ') : ''));

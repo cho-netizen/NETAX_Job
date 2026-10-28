@@ -262,9 +262,20 @@ function akSandbox_(caseId, fn, override) {
       if (p.기준일 && !p.법정일) { try { mem.c.법정일 = work_calcDeadline_(mem.c.세목, mem.c.업무유형, p.기준일) || mem.c.법정일; } catch (e) {} }
       return { success: true, case: copy(mem.c) };
     };
-    caseProcLoad_ = function (id) { return String(id) === String(caseId) ? copy(mem.saved) : real.caseProcLoad_(id); };
-    caseProcPatch_ = function (id, mutate) { if (String(id) !== String(caseId)) return null; const s = copy(mem.saved); const o = mutate(s); mem.saved = s; return o === undefined ? s : o; };
-    caseProcStore_ = function (id, s) { if (String(id) === String(caseId)) mem.saved = copy(s); };
+    // [2026.10.28 시정 2단계] 사건 장부도 메모리로 — 예전엔 장부를 그대로 둬서 블라인드 점검이 실사건 장부에 GAS 값·질문을 적고, 반대로 장부에 남은 세무사님 값을 보았다.
+    //  질문·결정은 장부 줄이므로 저장 상태를 불러올 때 장부(메모리)에서 붙이고, 쓸 때 떼어 장부(메모리)로 보낸다 — 운영 저장 입구(caseProcLoad_·caseProcPatch_)와 같은 길
+    mem.L = typeof ledgerEmpty_ === 'function' ? ledgerEmpty_(caseId) : { caseId: String(caseId), rows: {}, log: [], at: '' };
+    if (typeof ledgerLoad_ === 'function') { real.ledgerLoad_ = ledgerLoad_; real.ledgerMutate_ = ledgerMutate_; }
+    if (real.ledgerLoad_) {
+      ledgerLoad_ = function (id, fresh) { return String(id) === String(caseId) ? copy(mem.L) : real.ledgerLoad_(id, fresh); };
+      ledgerMutate_ = function (id, mutate) { if (String(id) !== String(caseId)) return { ok: false, error: '점검 중에는 다른 사건 장부를 고치지 않습니다.' }; const L = copy(mem.L); const out = mutate(L); mem.L = L; return out; };
+    }
+    const qOn = typeof caseProcQHydrate_ === 'function' && typeof caseProcQSplit_ === 'function';
+    const hyd = function (s) { return qOn ? caseProcQHydrate_(caseId, s) : s; };
+    const put = function (s) { if (!qOn) { mem.saved = copy(s); return; } const sp = caseProcQSplit_(s); mem.saved = copy(sp.file); caseProcQFlushToLedger_(caseId, sp); };
+    caseProcLoad_ = function (id) { return String(id) === String(caseId) ? hyd(copy(mem.saved)) : real.caseProcLoad_(id); };
+    caseProcPatch_ = function (id, mutate) { if (String(id) !== String(caseId)) return null; const s = hyd(copy(mem.saved)); const o = mutate(s); put(s); return o === undefined ? s : o; };
+    caseProcStore_ = function (id, s) { if (String(id) === String(caseId)) put(s); };
     if (AK_BLIND_NO_CHAT_) caseProcChatTexts_ = function () { return []; };
     // [2026.10.18 교차검증 2번] 점검 중에는 AI를 부르지 않는다 — "AI에게 물을 쟁점 목록"과 글자 수만 남김(CrossCheck.js)
     if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = true;
@@ -273,6 +284,7 @@ function akSandbox_(caseId, fn, override) {
     if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = false;
     akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
     caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_; caseProcChatTexts_ = real.caseProcChatTexts_;
+    if (real.ledgerLoad_) { ledgerLoad_ = real.ledgerLoad_; ledgerMutate_ = real.ledgerMutate_; }
   }
 }
 // 한 사건 점검 — 사이드바와 같은 서버 단계를 그대로(확인창·대화 전환 없이) 돌린 뒤 대조. 증빙 단계가 서류를 다 못 읽으면 more

@@ -103,7 +103,7 @@ async function readCase(body) {
   const row = Object.assign({ id: caseId, 사건개요: {}, 증빙목록: [], 작업일지: [], 세액계산결과: [], 하위업무: [], 법령예규판례: [] }, body.sheetRow || {}, { id: caseId, 폴더ID: folderId });
   const writes = [];
   const unwrap = recordWrites(writes);
-  let g, out, err = null, sv = {}, after = null, unread = [], seeded = null; // [2026.10.27 H 보정] seeded는 try 밖(응답)에서도 쓰므로 여기서 선언 — try 안 const였을 때 "seeded is not defined"로 직결이 실패해 GAS 길로 복귀(가상양도24 운영 확인)
+  let g, out, err = null, sv = {}, after = null, unread = [], seeded = null, ledgerOut = null; // [2026.10.27 H 보정] seeded는 try 밖(응답)에서도 쓰므로 여기서 선언 — try 안 const였을 때 "seeded is not defined"로 직결이 실패해 GAS 길로 복귀(가상양도24 운영 확인)
   try {
     g = loadBackend({
       vfs: tree.vfs, backendDir: DIST, files: ['reader.js'], headers: headers(), rows: [row],
@@ -144,12 +144,16 @@ async function readCase(body) {
           if (decMap) s.decisions = Object.assign({}, s.decisions || {}, decMap);
         });
       } catch (e) {}
+      // [2026.10.28 시정 2단계] 사건 장부 바탕도 미리 둔다 — 세무사님·넥스가 정한 값·결정을 서비스가 알고 돈다(장부 없이 돌면 답한 칸을 다시 묻는다)
+      if (record && record.ledger && typeof record.ledger === 'object' && record.ledger.rows) { try { g.ctx.ledgerMutate_(caseId, function (L) { L.rows = record.ledger.rows; L.log = Array.isArray(record.ledger.log) ? record.ledger.log : []; }); } catch (e) {} }
       writes.length = 0; // 미리 두기는 쓰기 기록에서 뺀다
     }
     seeded = { record: !!record, decisions: decMap ? Object.keys(decMap).length : (record && record.decisions ? Object.keys(record.decisions).length : 0), readScope: !!(record && record.readScope) };
     const opt = Object.assign({ step: 'all', budgetMs: 280000 }, body.options && typeof body.options === 'object' ? { skipEvidence: !!body.options.skipEvidence, budgetMs: Number(body.options.budgetMs) || 280000 } : {});
     try { out = g.ctx.caseProcAll_(g.ctx.akReadCase_(caseId) || row, opt); } catch (e) { err = e; }
     try { sv = g.ctx.caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
+    // [2026.10.28 시정 2단계] 사건 장부 — 서비스가 서류를 읽어 장부에 쓴 줄(값·서류 역할·물음)을 GAS가 진짜 장부에 합치도록 돌려준다(예전엔 메모리에서 사라짐)
+    try { ledgerOut = g.ctx.ledgerLoad_(caseId, true); } catch (e) { ledgerOut = null; }
     try { after = g.ctx.akReadCase_(caseId); } catch (e) { after = null; }
   } finally { unwrap(); }
   const tm = (out && out._tm) || {};
@@ -171,7 +175,7 @@ async function readCase(body) {
     evidenceCount: (after && after.증빙목록 || []).length,
     filled: sv.filled || {},
     // 쓰려 했던 것(메모리에만) — GAS 쪽이 대조하거나 저장하려면 이것을 쓴다
-    written: { decisionFile: sv, caseRow: after ? { 사건개요: after.사건개요 || {}, 증빙목록: after.증빙목록 || [], 기준일: after.기준일 || '', 법정일: after.법정일 || '' } : null, writes: Array.from(new Set(writes)), writeCount: writes.length, calendarCalls: g ? g.ctx.__cr.calendarCalls : 0 },
+    written: { decisionFile: sv, ledger: ledgerOut, caseRow: after ? { 사건개요: after.사건개요 || {}, 증빙목록: after.증빙목록 || [], 기준일: after.기준일 || '', 법정일: after.법정일 || '' } : null, writes: Array.from(new Set(writes)), writeCount: writes.length, calendarCalls: g ? g.ctx.__cr.calendarCalls : 0 },
     gasMissing: g ? g.missing : {}, lockCalls: g ? g.ctx.__lockCalls : null
   };
   // 로그: 사건 ID·초·파일 수만
