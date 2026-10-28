@@ -96,6 +96,9 @@ function ledgerLabel_(path) {
   if (/^q:/.test(p)) return '질문';
   if (/^(costs|taxfee|사건분류|기준일)$/.test(p)) return CASEPROC_FIELD_KO_[p] || p;
   if ((m = /^a(\d+)\.contract$/.exec(p))) return '자산' + (Number(m[1]) + 1) + ' 걸린 계약';
+  // [2026.10.29] 상속 칸(i.*) 이름 — 화면·기록에 코드 이름이 보이던 것
+  const IKO = { financialAmount: '금융재산', realEstateAmount: '부동산 등 재산 평가액', debtAmount: '채무', duesAmount: '공과금', funeralAmount: '장례비', nicheAmount: '봉안시설·자연장지 비용', heirCount: '상속인 수', isSpouse: '배우자 있음', childCount: '자녀 수', deceasedName: '피상속인 성명', priorGiftHeirAmount: '상속인에게 한 사전증여(10년)', priorGiftOtherAmount: '상속인 외에게 한 사전증여(5년)', appraisalFeeAmount: '감정평가수수료' };
+  if ((m = /^i\.(\w+)$/.exec(p)) && IKO[m[1]]) return IKO[m[1]];
   try { const l = caseProcFieldLabel_('calc:' + p); if (l && l !== 'calc:' + p) return l; } catch (e) {}
   const last = p.split('.').pop();
   return CASEPROC_FIELD_KO_[last] || p;
@@ -374,8 +377,11 @@ function ledgerFromGiftInh_(c, items) {
   const sv = caseProcLoad_(c.id) || {}, filled = sv.filled || {}, ov = c.사건개요 || {}, ops = [];
   const kindOf = function (s) { s = String(s || ''); return /세무사님/.test(s) ? '세무사님' : /🤖|넥스|AI 판단/.test(s) ? '넥스' : /규칙|검산|교차|계산/.test(s) ? '규칙' : '서류'; };
   // est: 서류가 없어서 정한 값(채무 0원·공과금 0원·금융재산 0원처럼 "없음으로 봄")은 확정이 아니라 추정 — 계산은 진행하고 검토서 "추가로 확인할 사항"에 남는다(10-28 원문 "추정치나 가정치를 넣어서 진행할 수도")
+  let L00 = null;
   const put = function (path, v, s, sure, est) {
     if (v === undefined || v === null || String(v).trim() === '') return;
+    // [2026.10.29] 장부가 "서류가 있는데 없다고 본 추정"을 물음으로 바꾼 칸(kbAsk)은 같은 추정으로 다시 덮지 않는다(답이 오면 그 값이 주인)
+    if (est) { L00 = L00 || ledgerLoad_(c.id); const pr = L00.rows[path]; if (pr && pr.kbAsk && pr.state === '물어볼것') return; }
     const kd = kindOf(s);
     ops.push({ path: path, value: v, kind: kd, by: kd === '세무사님' || kd === '넥스' ? kd : 'GAS', quote: String(s || '').slice(0, 160), why: est ? String(est).slice(0, 160) : kd === '세무사님' ? String(s || '').slice(0, 160) : '', sure: sure || '확실', estimate: !!est && kd !== '세무사님' && kd !== '넥스' });
   };
@@ -411,7 +417,9 @@ function ledgerFromGiftInh_(c, items) {
       if (f.deceased && f.deceased.name) put('i.deceasedName', f.deceased.name, String(f.deceased.src || '사망 서류'));
     }
   }
-  return ledgerBatch_(c.id, ops); // 질문은 처리개요 끝(caseProcOverview_)에서 세목 가리지 않고 한 번에 장부로
+  const res = ledgerBatch_(c.id, ops); // 질문은 처리개요 끝(caseProcOverview_)에서 세목 가리지 않고 한 번에 장부로
+  try { const kb = ledgerKbLoad_(c.id); if (kb && kb.facts) res.offered = ledgerKbOffer_(c.id, kb.facts); } catch (e) {} // [2026.10.29] 방금 쓴 칸이 추정·물음이면 장부가 모은 서류 사실을 후보로
+  return res;
 }
 function ledgerGiftInput_(c, L) {
   const row = function (p) { const r = L.rows[p]; return r && (r.state === '확정' || r.state === '추정') ? r.v : ''; };
@@ -590,6 +598,7 @@ function ledgerFromGas_(c, S) {
   Object.keys(L0.rows).forEach(function (p) { const r0 = L0.rows[p]; if (!have[p] && r0 && r0.state === '확정' && r0.src && /^(서류|규칙)$/.test(r0.src.kind) && /^(seller\.|c\d+\.|a\d+\.)/.test(p)) ops.push({ drop: true, path: p, by: 'GAS' }); });
   const r = ledgerBatch_(c.id, ops);
   ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '서류 읽기 반영', detail: '값 ' + r.set + '줄 · 물어볼 것 ' + r.asked + '줄' + (r.refused ? ' · 주인 있는 칸 ' + r.refused + '줄은 그대로' : '') + (r.errors.length ? ' · 못 넣음 ' + r.errors.length : '') }); });
+  try { const kb = ledgerKbLoad_(c.id); if (kb && kb.facts) r.offered = ledgerKbOffer_(c.id, kb.facts); } catch (e) {} // [2026.10.29] 추정·물음 칸에 장부가 모은 서류 사실을 후보로
   return r;
 }
 // 서류 → 역할 → 칸. GAS 증빙 읽기가 본 모든 서류의 역할을 장부 줄(doc:<파일>.role)로 — 종류를 정한 서류는 규칙 값, 못 정한 서류(글자는 읽음·글자를 못 읽음)는 "이 서류가 무엇인지" 물어볼 것.
@@ -777,8 +786,12 @@ function ledgerAnsWrite_(caseId, ans) { return ledgerMapWrite_(caseId, 'tr', ans
 function ledgerDocUse_(c, fileRows) {
   if (!c || !Array.isArray(fileRows)) return null;
   const L0 = ledgerLoad_(c.id), ops = [], want = {};
+  // [2026.10.29] 그 서류의 사실이 이미 어떤 칸의 후보로 붙었으면(장부 바탕 ledgerKbOffer_) "무슨 서류인지 — 칸에 못 넣음" 질문을 따로 세우지 않는다 — 같은 서류로 두 번 묻지 않게
+  const offered = {};
+  Object.keys(L0.rows || {}).forEach(function (p) { ((L0.rows[p] || {}).cands || []).forEach(function (cd) { const m = /^서류 사실:\s*[^—]*—\s*(.+?)(?:\s·\s|$)/.exec(String(cd.src || '')); if (m) offered[m[1].trim()] = p; }); });
   fileRows.forEach(function (r) {
     if (!r || !r.n || r.st !== '읽음' || r.use !== '증빙목록 확보') return;
+    if (offered[r.n]) return;
     const path = 'doc:' + String(r.n).slice(0, 80) + '.use'; want[path] = true;
     ops.push({ ask: true, path: path, label: '서류 내용 — ' + String(r.n).slice(0, 30), by: 'GAS', cands: [],
       question: '「' + String(r.kind || '서류') + '」(' + r.n + ')는 무슨 서류인지는 알아봤지만 그 안의 금액·날짜를 계산기 어느 칸에도 넣지 못했습니다. 이 서류의 값이 들어갈 칸(📒 사건 장부)에 넣어 주시거나, 넣을 것이 없으면 「무시」를 눌러 주세요.' });
@@ -972,6 +985,47 @@ function ledgerApi_(c, body) {
 // 판단은 여기서 하지 않는다(모으고 남기기만). 계산기 칸 값의 주인은 위 rows 그대로다.
 // ============================================================
 var LEDGER_KB_FACT_MAX_ = 4000;
+// 계산기 칸 ↔ 같은 뜻의 서류 사실 종류(칸의 서식상 뜻과 사실 종류 이름으로만 — 사건 맞춤 아님). ③ 보기와 후보 붙이기(ledgerKbOffer_)가 같이 쓴다
+var LEDGER_KB_KIND_OF_ = [[/^i\.debtAmount$/, /대출 잔액|채무|부채|대출 원금/], [/^i\.financialAmount$/, /^(예금 잔액|금융재산|잔고|예금)$/], [/^i\.funeralAmount$/, /장례/], [/^i\.nicheAmount$/, /봉안|자연장/], [/^i\.realEstateAmount$/, /공시가격|감정가액|매매사례/],
+  [/(^|\.)totalPrice$/, /매매대금|거래 금액|등기 거래가액|양도가액/], [/acquisitionPrice$/, /매매대금|거래 금액|등기 거래가액|취득가액/], [/^g\.giftAmount$/, /공시가격|감정가액|매매사례|예금 잔액|이체 금액|금액/]];
+// 장부가 모은 서류 사실을 "정해지지 않은 칸"(추정·물어볼 것·증빙 받을 것)에 고를 수 있는 후보로 붙인다 — 값은 정하지 않는다(고르는 것은 세무사님·넥스).
+//  세무사님 원문(10-29): "장부내 정보를 … 유용한 정보로 확보하여 gas의 적재적소에 뿌려서 원하는 정보를 확보하고 사건을 처리해 나가는지" — 예: 채무 칸 0원(추정)인데
+//  대출잔액증명서에서 "대출 잔액 142,000,000"을 읽어 두었으면, 채무 칸 후보에 「142,000,000 — 대출 잔액(대출잔액증명서.pdf)」을 붙인다(📒 ④·사이드바 질문에서 한 번에 고름)
+function ledgerKbOffer_(caseId, kbFacts) {
+  if (!caseId || !Array.isArray(kbFacts) || !kbFacts.length) return 0;
+  let added = 0; const notes = [];
+  ledgerMutate_(caseId, function (L) {
+    Object.keys(L.rows || {}).forEach(function (p) {
+      const r = L.rows[p];
+      if (!r || !/^(추정|물어볼것|증빙받을것)$/.test(String(r.state || '')) || (r.src && /^(세무사님|넥스)$/.test(r.src.kind))) return;
+      const m = LEDGER_KB_KIND_OF_.filter(function (x) { return x[0].test(p); })[0]; if (!m) return;
+      const have = {}; (r.cands || []).forEach(function (c) { have[ledgerKbNorm_('', c.v)] = 1; });
+      const curN = ledgerKbNorm_('', r.v), got = [];
+      kbFacts.forEach(function (f) {
+        if (!m[1].test(String(f.k || '')) || f.cp || /^기타:/.test(String(f.k || ''))) return;
+        const n = ledgerKbNorm_(f.k, f.v); if (!n || !/^\d+$/.test(n) || have[n] || n === curN) return;
+        have[n] = 1; added++;
+        const cand = { v: n, 값: Number(n).toLocaleString('ko-KR') + '원', src: '서류 사실: ' + f.k + ' — ' + f.f + (f.t ? ' · ' + f.t : '') }; // 파일 이름에 괄호가 있을 수 있어 서류 종류는 " · "로 뗀다
+        got.push(cand);
+        r.cands = (r.cands || []).concat([cand]).slice(0, 8);
+        notes.push(ledgerLabel_(p) + ' ← ' + Number(n).toLocaleString('ko-KR') + '원(' + f.f + ')');
+      });
+      // 추정의 전제가 "서류가 없어서"인데 장부에 같은 종류 서류 사실이 있으면 — 추정으로 넘기지 않고 묻는다(10-28 원문 "부족한 정보는 물어보거나 … 추정치나 가정치")
+      //  서류가 있는데 "없다"고 보는 것은 추정이 아니라 틀린 전제다. 지금 추정 값도 후보에 남긴다(그 서류가 이 칸과 무관하면 그대로 고름)
+      if (got.length && r.state === '추정' && /없어\s*0원으로\s*봄|없으므로|없어서/.test(String((r.src && (r.src.why + ' ' + r.src.quote)) || ''))) {
+        const lb = r.label || ledgerLabel_(p);
+        ledgerAskInner_(L, p, { label: lb, by: 'GAS', question: '「' + lb + '」을(를) ' + ledgerValueText_(p, r.v) + '(서류가 없다고 보고 추정)으로 두었는데, 장부가 모은 서류에 같은 종류 사실이 있습니다: ' + got.map(function (x) { return x.값 + '(' + x.src.replace(/^서류 사실:\s*/, '') + ')'; }).join(', ') + '. 맞는 값을 골라 주세요 — 그 서류가 이 칸과 무관하면 지금 값을 고르세요',
+          cands: got.concat([{ v: String(r.v), src: '지금 추정 값 그대로(그 서류는 이 칸과 무관)' }]) });
+        L.rows[p].kbAsk = true;
+        notes.push(lb + ' 추정 → 물어볼 것(서류가 있는데 "없다"는 전제)');
+      }
+      // 그 서류에 대해 따로 서 있던 "무슨 서류인지 — 칸에 못 넣음" 질문은 이 칸 질문 하나로 합친다(같은 서류로 두 번 묻지 않게)
+      got.forEach(function (cd) { const m = /—\s*(.+?)(?:\s·\s|$)/.exec(cd.src); const dp = m ? 'doc:' + m[1].trim().slice(0, 80) + '.use' : ''; const dr = dp && L.rows[dp]; if (dr && /^(물어볼것|증빙받을것)$/.test(dr.state) && dr.src && dr.src.who === 'GAS' && !dr.qd) { delete L.rows[dp]; notes.push('「' + m[1].trim() + '」 서류 질문 → ' + (r.label || ledgerLabel_(p)) + ' 질문으로 합침'); } });
+    });
+    if (notes.length) ledgerLogTo_(L, { by: 'GAS', what: '서류 사실을 후보로 붙임', detail: notes.slice(0, 6).join(' · ') + ' — 값은 정하지 않음(고르기는 세무사님·넥스)' });
+  });
+  return added;
+}
 // 바탕은 짝 파일(<사건ID>.바탕.json)에 둔다 — 칸 장부(rows)는 넥스·화면이 자주 고쳐 파일을 통째로 다시 쓰므로, 수천 건 사실을 같은 파일에 두면 고칠 때마다 느려진다.
 //  🧪 점검기 모래상자(akSandbox_)와 직결 서비스(cloudrun/server.js)도 ledgerKbLoad_·ledgerKbStore_를 같은 이름으로 쓴다(바꿔 끼움)
 var LEDGER_KB_MEMO_ = {};
@@ -1110,7 +1164,9 @@ function ledgerKbSave_(cc, facts, rec) {
   const links = ((rec && rec.links) || []).slice(0, 600);
   try { ledgerKbSeen_(facts, links); } catch (e) {}
   const kbNew = { at: caseProcNow_(), facts: ledgerKbFacts_(facts), groups: ledgerKbGroups_(facts), links: links, factsAll: (facts || []).length };
-  return ledgerKbPut_(cc.id, kbNew, '서류 사실 다시 모음');
+  const put = ledgerKbPut_(cc.id, kbNew, '서류 사실 다시 모음');
+  try { put.offered = ledgerKbOffer_(cc.id, kbNew.facts); } catch (e) {}
+  return put;
 }
 // ③ 칸으로 간 길 — 화면을 열 때마다 "지금" 장부 칸으로 맞춘다(서류 사실은 처리개요 교차검증 때 모으지만, 상속·증여 칸은 그 뒤에 장부에 들어가므로 저장해 둔 길만 보면 빠진다)
 //  저장해 둔 교차검증 맞대기 줄 + 장부 칸 전부(세목 무관) + 증여·상속 처리개요 칸 — 칸마다 값을 넣은 주체와 그 값이 나온 서류(모은 사실 전부에서)
@@ -1156,8 +1212,7 @@ function ledgerKbLiveLinks_(caseId, kb, c) {
   // 칸과 같은 종류의 서류 사실을 옆에 붙인다(보기용) — 예: 채무 칸 0원(추정)인데 대출잔액증명서에 "대출 잔액 142,000,000"이 있으면 둘이 한 줄에 보이고 "다름 — 확인"
   //  종류 짝은 계산기 칸의 뜻(서식 칸)과 서류 사실 종류 이름으로만 정한다(사건 맞춤 아님)
   try {
-    const KIND_OF = [[/^i\.debtAmount$/, /대출 잔액|채무|부채|대출 원금/], [/^i\.financialAmount$/, /^(예금 잔액|금융재산|잔고|예금)$/], [/^i\.funeralAmount$/, /장례/], [/^i\.nicheAmount$/, /봉안|자연장/], [/^i\.realEstateAmount$/, /공시가격|감정가액|매매사례/],
-      [/(^|\.)totalPrice$/, /매매대금|거래 금액|등기 거래가액|양도가액/], [/acquisitionPrice$/, /매매대금|거래 금액|등기 거래가액|취득가액/], [/^g\.giftAmount$/, /공시가격|감정가액|매매사례|예금 잔액|이체 금액|금액/]];
+    const KIND_OF = LEDGER_KB_KIND_OF_;
     const facts0 = (kb && kb.facts) || [];
     links.forEach(function (l) {
       if (l.vals && l.vals.length) return; // 교차검증 엔진이 이미 서류 값을 붙인 줄
