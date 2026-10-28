@@ -497,7 +497,11 @@ function ledgerDocRoles_(c, docs, unknown) {
     const path = 'doc:' + String(f.name).slice(0, 80) + '.role';
     if (unk[f.name]) {
       const noText = !!(f.p && !f.p.t && f.p.nt);
-      ops.push({ ask: true, path: path, label: '서류 역할 — ' + String(f.name).slice(0, 30), question: noText ? '글자를 읽지 못한 서류입니다(그림만·흐린 사진) — 무엇인지 정해 주시거나 선명한 PDF로 다시 넣어 주세요' : '서류 종류를 규칙으로 정하지 못했습니다(글자는 읽음) — 넥스가 읽어 역할을 정하거나 골라 주세요. 역할이 정해지기 전엔 칸 질문을 내지 않습니다', cands: LEDGER_DOC_ROLES_.map(function (r) { return { v: r, src: '역할 고르기' }; }), by: 'GAS', needDoc: noText });
+      const n = f.p && typeof f.p.n === 'number' ? f.p.n : -1, head = (f.p && f.p.head) || '';
+      // 읽은 것이 무엇인지 그대로 보인다 — "글자는 읽음"이 아니라 "N자 읽음, 시작 글: …". 글자가 아주 적으면(암호 잠김·빈 쪽·그림) 증빙 받을 것으로
+      const tiny = noText || (n >= 0 && n < 40);
+      const readTxt = noText ? '글자를 하나도 읽지 못함(그림만·흐린 사진·암호 잠김)' : (n >= 0 ? '읽은 글자 ' + n + '자' + (head ? ' · 시작: "' + head.slice(0, 80) + '"' : '') : '읽은 글자 수 기록 없음(지난 읽기)');
+      ops.push({ ask: true, path: path, label: '서류 역할 — ' + String(f.name).slice(0, 30), question: (tiny ? '서류를 제대로 읽지 못했습니다 — ' + readTxt + '. 암호가 걸린 PDF면 암호를 풀어 다시 넣어 주시거나, 무엇인지 정해 주세요' : '서류 종류를 규칙으로 정하지 못했습니다 — ' + readTxt + '. 넥스가 읽어 역할을 정하거나 골라 주세요') + '. 역할이 정해지기 전엔 칸 질문을 내지 않습니다', cands: LEDGER_DOC_ROLES_.map(function (r) { return { v: r, src: '역할 고르기' }; }), by: 'GAS', needDoc: tiny });
       return;
     }
     const label = f.p && (f.p.l || f.p.t) ? String(f.p.l || f.p.t) : '';

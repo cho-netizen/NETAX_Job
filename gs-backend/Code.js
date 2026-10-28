@@ -32564,6 +32564,8 @@ function caseProcParsed_(f, cache, canParse) {
     const text = tc_docText_(f);
     if (TC_NO_NEW_OCR_ && !text) return null; // 새 글자인식을 멈춘 동안의 빈 글자를 "글자 없음"으로 기억하지 않는다
     if (!text || !String(text).trim()) s.nt = true; // 글자를 하나도 못 읽음(그림만·흐린 사진)
+    // [2026.10.28] 읽은 글자 수·첫 줄을 남긴다 — 장부의 서류 역할 줄에 "무엇을 얼마나 읽었나"가 보이게(배애란: 암호 잠긴 PDF를 "글자는 읽음"으로 보고한 사건 — 읽은 것이 무엇인지 아무도 볼 수 없었다)
+    s.n = text ? String(text).length : 0; s.head = text ? String(text).replace(/\s+/g, ' ').trim().slice(0, 120) : '';
     if (text) {
       if (docIsChecklist_(text)) s.checklist = true; // [2026.10.17 묶음11] 준비서류 안내 목록 — 장부에 '제외(안내)'로
       { const rk = docIsReferenceText_(text); if (rk) s.ref = rk; } // [2026.10.18 정밀분석 12] 질의회신·법령 원문(내용) — 장부에 '제외(참고자료)'로
@@ -40161,6 +40163,8 @@ function caseProcApply_(c, body) {
   const target = String(body.target || ''), value = body.value, src = String(body.src || '세무사님 확인').slice(0, 80);
   const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(src, body.by) + txt, dueDate: '' }]); };
   if (target === 'base') return caseProcApplyBase_(c.id, value, src, CASEPROC_BASE_LABEL_[c.세목] || '기준일');
+  // [2026.10.28] 서류 역할(장부 doc 줄) — 사이드바 [확인]·말 답이 세무사님 값으로 장부에 바로. 역할이 정해지면 다음 처리에서 칸 질문이 선다
+  if (/^doc:/.test(target)) { const lr = ledgerSet_(c.id, { path: target, value: value, kind: caseProcWho_(src, body.by) === '넥스' ? '넥스' : '세무사님', by: body.by || '세무사님', why: src }); return lr && lr.ok ? { ok: true, message: lr.message } : { ok: false, error: (lr && (lr.error || lr.message)) || '장부에 적지 못함' }; }
   // [2026.10.22 묶음 ㄱ8] 서류 자동 정리 ⚠ 확인 질문에서 [이 값으로 기록] — 세무사님이 쓴 값을 그 서류의 그 칸 값으로 기록(보류가 아니라 확인). 다음 읽기부터 그 ⚠은 다시 묻지 않는다(가상양도7 표 16·17)
   if (target === 'docFix') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
@@ -51436,6 +51440,16 @@ function trcOverview_(c, ov, rf, lines, items) {
   if (S.state.transferContracts[0]) { if (provL.length) S.state.transferContracts[0].provisional = provL.map(function (n) { return { key: n.p, label: n.l, v: 0, why: n.prov }; }); else delete S.state.transferContracts[0].provisional; }
   const h = trcStore_(c, S);
   try { ledgerFromQuestions_(c, items, (caseProcLoad_(c.id) || {}).decisions); } catch (e) { console.error('장부 질문 반영 실패: ' + (e && e.message || e)); } // [2026.10.28] GAS가 낸 질문(넣을 칸 있는 것)은 그 자리에서 장부 "물어볼 것"으로
+  // [2026.10.28 서류 → 역할 → 칸] 역할을 못 정한(못 읽은) 서류가 있으면 화면 질문도 같은 규칙 — "서류에서 못 정함" 칸 질문은 내지 않고 서류마다 "이 서류가 무엇인지" 하나로(사이드바 [확인]이 장부 doc 줄에 적는다)
+  try {
+    const pend = ledgerDocsPending_(ledgerLoad_(c.id));
+    if (pend.length) {
+      const L0 = ledgerLoad_(c.id);
+      for (let k = items.length - 1; k >= 0; k--) { const it = items[k]; if (it && (it.kind === 'missing' || /서류에서 정하지 못했습니다|서류가 폴더에 없어/.test(String(it.text || '')))) items.splice(k, 1); }
+      pend.forEach(function (p) { const r = L0.rows[p]; items.unshift(caseProcItem_('doc:' + p, 'judge', (r.label || p) + ' — ' + String(r.ask || '이 서류가 무엇인지 정해 주세요'), { mode: 'options', target: p, options: LEDGER_DOC_ROLES_.map(function (x) { return { label: x, value: x }; }), label: r.label || '서류 역할' })); });
+      lines.push('⚠ 역할을 못 정한 서류 ' + pend.length + '개 — 그 서류가 무엇인지 정해지기 전엔 "서류에서 못 정함" 칸 질문을 내지 않습니다(서류 → 역할 → 칸). 넥스가 읽어 정하거나 아래에서 골라 주세요.');
+    }
+  } catch (e) { console.error('서류 역할 관문 실패: ' + (e && e.message || e)); }
   const ns = trcNeedsSummary_(needs);
   if (ns.pending.length) lines.push('⏳ 확인 전 칸 ' + ns.pending.length + '개 — ' + ns.pending.join(', ') + ' · 잠정값으로 먼저 계산합니다(답하면 다시 계산, 신고서 출력 전에 다시 알림)');
   lines.push('🎯 세액계산기가 지금 원하는 칸 ' + ns.total + '개 — 증빙·답으로 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움') + (ns.later.length ? ' · 지금은 필요 없음: ' + ns.later.join(' / ') : ''));
