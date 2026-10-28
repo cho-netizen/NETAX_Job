@@ -39366,7 +39366,10 @@ function caseProcInhFacts0_(c, parsed) {
   try {
     const fss = by('finstmt').map(function (x) { return { f: x.f, r: x.p.result || {} }; }).filter(function (x) { return (x.r.줄 || []).length; });
     const gapD = function (x) { return base && x.r.기준일 ? Math.abs(new Date(x.r.기준일) - new Date(base)) : 9e15; }; // 상속개시일에 가장 가까운 결산일의 표(앞뒤 상관없이 — 고객A 개시일 2025-12-18 ↔ 2025-12-31 표)
-    const fsPick = fss.slice().sort(function (a, b) { return gapD(a) - gapD(b); })[0];
+    // [2026.10.29 땜질 심사] 개시일 앞뒤 상관없이 가장 가까운 표 → 개시일 이전(같은 날 포함) 표 중 가장 가까운 것 먼저, 없을 때만 뒤 표(알림)
+    const fsPre = fss.filter(function (x) { return base && x.r.기준일 && x.r.기준일 <= base; });
+    const fsPick = (fsPre.length ? fsPre : fss).slice().sort(function (a, b) { return gapD(a) - gapD(b); })[0];
+    if (fsPick && !fsPre.length && fsPick.r.기준일 && base) out.notes.push('재무상태표 ' + fsPick.f.name + '(' + fsPick.r.기준일 + ')는 상속개시일 뒤 결산 — 개시일 이전 표가 없어 이 표로 채무 후보를 띄움(개시일 현재 잔액 확인)');
     if (fsPick) {
       const sh1 = shareFor(''), mul = function (v) { return sh1 && sh1.v < 1 ? Math.round(v * sh1.v) : v; };
       const shTxt = sh1 && sh1.v < 1 ? ' × 피상속인 지분 ' + sh1.txt + '(' + sh1.file + ' — 공동사업 지분이 다르면 분배명세서 지분으로)' : '';
@@ -45534,7 +45537,11 @@ function docNicheContractParse_(text) {
   while ((x = mr.exec(t))) {
     var v = Number(x[1]) * 10000;
     var near = t.slice(Math.max(0, x.index - 30), x.index);
-    if (v < 1000000 && (/20\d{2}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}/.test(near) || /\(\s*카\s*드\s*\)/.test(t.slice(x.index, x.index + 12)))) { if (r.관리비.indexOf(v) === -1) r.관리비.push(v); continue; }
+    // [2026.10.29 땜질 심사] "100만원 미만 + 날짜·(카드) 옆"이면 관리비로 정해 사용대금 후보에서 빼던 것 → 관리비 이름표가 없으면 정하지 않고 후보에 남긴다(관리비로 보인다는 표시만)
+    if (v < 1000000 && (/20\d{2}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}/.test(near) || /\(\s*카\s*드\s*\)/.test(t.slice(x.index, x.index + 12)))) {
+      if (/관\s*리\s*비/.test(t.slice(Math.max(0, x.index - 40), x.index + 20))) { if (r.관리비.indexOf(v) === -1) r.관리비.push(v); continue; }
+      (r.관리비짐작 = r.관리비짐작 || []).push(v);
+    }
     if (r.금액후보.indexOf(v) === -1) r.금액후보.push(v);
   }
   r.금액후보 = r.금액후보.filter(function (v) { return r.관리비.indexOf(v) === -1; });
@@ -50177,7 +50184,8 @@ function ihParseDebt_(text) {
     var re = /([가-힣]{2,20}대출)[\s\S]{0,120}?((?:19|20)\d{2}-\d{2}-\d{2})?[\s\S]{0,80}?\n\s*([\d,]{3,})\s*\n\s*([\d,]{3,})(?:\s+((?:19|20)\d{2}-\d{2}-\d{2}))?/g, x2;
     while ((x2 = re.exec(t))) { var mu = mulAt(x2.index); r.행.push({ 과목: x2[1], 대출일: x2[2] || '', 한도: ihNum_(x2[3]) * mu, 잔액: ihNum_(x2[4]) * mu, 상환기일: x2[5] || '', 행확인필요: true }); }
     // [2026.10.17] 팩스 묶음은 같은 대출이 여러 쪽에 다시 나온다 — 같은 잔액 행은 한 번만(고객A: 450,000,000원이 세 번 읽혀 행 합계가 18억)
-    var nRow = r.행.length; r.행 = r.행.filter(function (x, i, a) { return !a.slice(0, i).some(function (y) { return y.잔액 === x.잔액; }); });
+    // [2026.10.29 땜질 심사] 잔액만 같으면 한 번만 세던 것 → 대출 과목까지 같을 때만(과목이 다른 두 대출이 같은 잔액이면 둘 다 남김)
+    var nRow = r.행.length; r.행 = r.행.filter(function (x, i, a) { return !a.slice(0, i).some(function (y) { return y.잔액 === x.잔액 && String(y.과목 || '').replace(/\s+/g, '') === String(x.과목 || '').replace(/\s+/g, ''); }); });
     if (r.행.length < nRow) r.경고.push('같은 잔액의 대출 행이 여러 쪽에 나옴 — 한 번만 셈(같은 대출이 서식마다 다른 금액으로 적혔으면 원문 확인)');
   }
   // [2026.10.18 정밀분석 원인8] 같은 대출이 두 줄 후보가 되던 것(고객A 하나은행 460,000,000·450,000,000):
@@ -53295,7 +53303,9 @@ function tcCostLedger_(o) {
     const sane = tcCostSane_(its);
     const ok = !!T && its.length >= 2 && (sumAll === T || sumNoLoss === T) && !sane.length;
     if ((sumAll === T || sumNoLoss === T) && sane.length) lines.push('△ 법무사 정산서 ' + l.file + ' — 합계는 맞지만 이름표가 밀린 것으로 보임(' + sane.join(', ') + ') — 항목 이름을 믿지 않음');
-    law.push({ l: l, its: its, ok: ok, T: T, side: sideOf(l.r.일자, l.file) || (/소유권|매매|이전|증여|상속/.test(l.r.등기종류 || '') ? '취득' : ''), kind: l.r.등기종류 || '', swapped: swapped });
+    // [2026.10.29 땜질 심사] 양도·취득 쪽 — 서류 내용(등기 종류: 소유권 이전은 사는 쪽 비용)이 먼저, 그다음 파일 이름, 날짜 창(양도일 120일·취득일 200일)은 짐작이라 표시를 붙인다
+    const kindSide = /소유권|매매|이전|증여|상속/.test(l.r.등기종류 || '') ? '취득' : '', sdx = kindSide ? '' : sideOf(l.r.일자, l.file);
+    law.push({ l: l, its: its, ok: ok, T: T, side: kindSide || sdx, sideGuess: !kindSide && !!sdx && !/양도|매도|취득|매수/.test(l.file), kind: l.r.등기종류 || '', swapped: swapped });
   });
   // 같은 정산서의 사본(날짜가 같음 — 사진·PDF)이 둘 다 검산이 안 되면, 두 판독을 합쳐(한쪽이 못 읽은 이름표는 다른 쪽에서, 서로 다른 금액은 합계가 맞는 쪽으로) 다시 검산
   const byDate = {};
@@ -53320,10 +53330,10 @@ function tcCostLedger_(o) {
   // 같은 정산서(사진·PDF) — 검산이 맞는 쪽 항목을 믿고, 맞지 않는 사본은 그 항목과 같은 금액만 보탠다
   law.sort(function (a, b) { return (b.ok ? 1 : 0) - (a.ok ? 1 : 0); });
   law.forEach(function (d) {
-    const side = d.side || '취득', src = d.l.file;
+    const side = d.side || '취득', src = d.l.file, sideNote = d.sideGuess || !d.side ? ' — 양도·취득 어느 쪽 비용인지 서류로 못 가림(' + (d.side ? '날짜로 ' + d.side + ' 쪽 짐작' : '취득 쪽에 둠') + ', 확인)' : '';
     // [2026.10.17 2열 서식] 상식 검산으로 이름표를 다시 짝지은 정산서는 판독만으로 믿지 않는다(다른 서류로 확인될 때 확실)
     if (d.ok && d.swapped) lines.push('△ 법무사 정산서 ' + src + ' — 보수·공과금 두 열이 섞여 이름표를 상식 검산(교육세 비율·법정 인지세액 등)으로 다시 짝지음(' + d.swapped.join(', ') + ') — 다른 서류와 맞는 항목만 확실');
-    if (d.ok) { d.its.forEach(function (x) { add(side, x, src + (x.note ? ' — ' + x.note : ''), d.kind, !d.swapped); }); lines.push('법무사 정산서 ' + src + ' — 항목 ' + d.its.length + '개로 나눔(항목 합 ' + won(d.its.filter(function (x) { return x.key !== 'bondLoss' || d.its.reduce(function (s, y) { return s + y.amount; }, 0) === d.T; }).reduce(function (s, x) { return s + x.amount; }, 0)) + ' = 정산서 합계 ' + won(d.T) + '): ' + d.its.map(function (x) { return x.name + ' ' + won(x.amount); }).join(', ')); }
+    if (d.ok) { d.its.forEach(function (x) { add(side, x, src + (x.note ? ' — ' + x.note : '') + sideNote, d.kind, !d.swapped); }); lines.push('법무사 정산서 ' + src + ' — 항목 ' + d.its.length + '개로 나눔(항목 합 ' + won(d.its.filter(function (x) { return x.key !== 'bondLoss' || d.its.reduce(function (s, y) { return s + y.amount; }, 0) === d.T; }).reduce(function (s, x) { return s + x.amount; }, 0)) + ' = 정산서 합계 ' + won(d.T) + '): ' + d.its.map(function (x) { return x.name + ' ' + won(x.amount); }).join(', ')); }
     else {
       const twin = law.filter(function (e) { return e !== d && e.ok && (e.T === d.T || d.its.filter(function (x) { return e.its.some(function (y) { return y.key === x.key && y.amount === x.amount; }); }).length >= 3); })[0];
       if (twin) { twin.its.forEach(function (y) { if (has(textOf(src), y.amount)) add(side, y, src, d.kind, false); }); lines.push('법무사 정산서 ' + src + ' — 글자 칸이 섞여 항목 검산이 안 됨, 같은 정산서 ' + twin.l.file + '의 항목으로 셈(금액이 같은 것만 함께 근거로)'); }
