@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 00:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 01:48 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6471,10 +6471,13 @@ function nxMdOpenWindow(title, src, opts){
           return '<div>✅ GAS가 보기에 남은 일이 없습니다' + (parts.length ? ' — ' + parts.join(' · ') : '') + '</div>';
         };
         h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : n.do === 'scope' ? '📂 읽을 목록' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
+        // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태와 사건별 넥스 미리 읽기 스위치(진행 중 사건만 깨움, 22~07시는 아침에)
+        if (r.서류변동){ var w = r.서류변동; h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(다음 틱·처리개요 새로 고침 때)') + (w.넥스읽음수 ? ' · 넥스가 읽은 파일 ' + w.넥스읽음수 + '개' : '') + (w.넥스마지막 ? ' · 넥스 미리 읽기 마지막 ' + esc(w.넥스마지막) : '') + ' <button type="button" class="ghost-btn" data-gas="nexpre" data-off="' + (w.넥스미리읽기끔 ? '1' : '0') + '" style="font-size:11.5px;" title="새 서류가 들어오면 넥스(AI)가 미리 읽고 영향이 있어 보일 때만 한 줄 보고합니다(계산기 칸은 바꾸지 않음). 끄면 GAS 감시만 합니다">' + (w.넥스미리읽기끔 ? '🤖 넥스 미리 읽기 켜기' : '🤖 넥스 미리 읽기 끄기') + '</button></div>'; }
         if ((r.기록 || []).length) h += '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">📓 최근 작업 기록(누가·언제·무엇) ' + r.기록.length + '줄</summary><div style="margin:4px 0 0 8px; font-size:12px;">' + r.기록.slice().reverse().map(function(l){ return esc(l); }).join('<br>') + '</div></details>';
         nowEl.innerHTML = h;
         Array.prototype.forEach.call(nowEl.querySelectorAll('button[data-gas]'), function(b){ b.addEventListener('click', function(){ var k = b.getAttribute('data-gas');
           if (k === 'seen') callGas('case_proc', { caseId: c.id, step: 'alertSeen' }).then(loadNow).catch(function(){});
+          else if (k === 'nexpre'){ var off = b.getAttribute('data-off') !== '1'; b.disabled = true; callGas('case_proc', { caseId: c.id, step: 'nexPreread', off: off, by: '세무사님' }).then(function(res){ if (typeof window.nxAiToast_ === 'function') window.nxAiToast_((res && res.message) || (off ? '넥스 미리 읽기를 껐습니다.' : '넥스 미리 읽기를 켰습니다.')); loadNow(); }).catch(function(e){ b.disabled = false; alert('바꾸지 못했습니다: ' + (e && e.message || e)); }); } // [2026.10.28 감시] 사건별 스위치
           else if (k === 'calc'){ var tb = document.getElementById('chTaxCalcOpenBtn'); if (tb) tb.click(); }
           else if (k === 'scope'){ var sb = document.getElementById('chGasScopeBtn'); if (sb) sb.click(); } // [2026.10.28] 읽을 파일 목록 체크
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
@@ -56417,6 +56420,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var h = '<div class="nxcp-rl" style="font-size:12.5px; line-height:1.5;">';
         h += '<div><b>📂 읽을 파일 체크 목록</b> — ' + (r.mode === 'list' ? '체크한 목록(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ')' : r.mode === 'dirs' ? '폴더 범위로 정한 상태(' + E(r.scope.by || '') + ' ' + E(r.scope.at || '') + ') — 저장하면 파일 목록으로 바뀜' : '<span style="color:#a05a00;">체크 안 한 목록 — 기본 체크(규칙)대로 보임</span>') + '</div>';
         h += '<div class="nxai-muted" style="font-size:11.5px;">전체 ' + (cnt.전체 || 0) + '개 · 켠 <b data-rl-count>' + (cnt.켠 || 0) + '</b>개' + (cnt.이미지 ? ' · 이미지 ' + cnt.이미지 + '개 기본 꺼짐(PDF로 바꾼 뒤 읽음)' : '') + (cnt.산출물폴더 ? ' · 읽지 않는 폴더 안 ' + cnt.산출물폴더 + '개' : '') + (cnt.사건파악전용 ? ' · 사건파악 전용 ' + cnt.사건파악전용 + '개(늘 읽음, 증빙 아님)' : '') + (cnt.다른벌 ? ' · 같은 서류 다른 벌 가능 ' + cnt.다른벌 + '개' : '') + (r.truncated ? ' · ⚠ 파일이 너무 많아 일부만' : '') + '</div>';
+        if (r.변동 && r.변동.미확인) h += '<div style="background:#eef5ff; color:#1a4a80; border-radius:6px; padding:4px 8px; margin:4px 0;">👁 새로 들어온 서류 ' + r.변동.미확인 + '개(넥스 미확인): ' + E(r.변동.목록.slice(0, 5).join(', ')) + (r.변동.미확인 > 5 ? ' 외' : '') + (r.변동.넥스미리읽기끔 ? ' — 이 사건은 넥스 미리 읽기 끔' : ' — 넥스가 곧 미리 읽습니다(낮에만)') + '</div>'; // [2026.10.28 감시]
         if (r.newFiles && r.newFiles.length) h += '<div style="background:#fff4e0; color:#7a4a00; border-radius:6px; padding:4px 8px; margin:4px 0;">🆕 목록을 만든 뒤 들어온 새 파일 ' + r.newFiles.length + '개 — 체크 안 됨(읽지 않음): ' + E(r.newFiles.slice(0, 5).map(function(f){ return f.name; }).join(', ')) + (r.newFiles.length > 5 ? ' 외' : '') + '</div>';
         var byDir = {}; rows.forEach(function(x){ (byDir[x.dir || ''] = byDir[x.dir || ''] || []).push(x); });
         var dirKeys = Object.keys(byDir).sort(function(a, b){ if (!a) return 1; if (!b) return -1; return a < b ? -1 : 1; }); // 폴더 밖 파일은 맨 아래 따로

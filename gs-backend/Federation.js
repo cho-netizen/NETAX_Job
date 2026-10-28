@@ -464,6 +464,16 @@ function commSeamList_() {
       return caseProcAiLiveModeText_(1000).indexOf('set_read_scope') === -1 ? '지시문에 읽을 범위 도구가 없음' : ''; } },
     // [2026.10.28 읽을 대상 ①~④] 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" → "그렇게 만들자." — 판정 함수 하나·체크 목록·목록만 읽기·넥스 파일 단위
     // [2026.10.28] 세무사님 원문: "ai는 포괄적으로 파일에 접근할 수 있어야 하지만 gas는 구체적으로 필요한 것만 콕 집어서 알려주어야 한다" — 넥스 읽기(어떤 파일이든)와 GAS 체크 목록은 다른 길
+    // [2026.10.28] 세무사님 원문: "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록 해야 한다"
+    { 길: '서류 변동 → 넥스 미리 읽기 → 채팅 보고(미리 읽기 틱 모든 파일 감시 → 기록부 파일 지문·서류 변동 → 진행 중 사건 넥스 깨움(밤엔 미룸) → 읽음 기록·알림·채팅 한 줄)', fn: function () {
+      if (typeof cpWatchCase_ !== 'function' || typeof cpWatchTick_ !== 'function' || typeof cpNexPrereadWake_ !== 'function' || typeof cpNexChatNote_ !== 'function' || typeof cpNexPrereadSwitch_ !== 'function') return '감시·미리 읽기 서버 함수가 이 판에 없음';
+      let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; }); } catch (e) { trig = true; }
+      if (!trig) return '미리 읽기 틱 트리거가 없음(cpPrereadEnsureTrigger_)';
+      const txt = typeof caseProcAiLiveModeText_ === 'function' ? caseProcAiLiveModeText_(1000) : '';
+      if (txt.indexOf('✓ 전에 읽음') === -1) return '지휘 지시문에 미리 읽기 표시(🆕/✏/✓) 설명이 없음';
+      if (typeof cpWatchNight_ !== 'function' || cpWatchNight_(new Date(2026, 0, 1, 23, 0)) !== true || cpWatchNight_(new Date(2026, 0, 1, 9, 0)) !== false) return '밤 시간 판정(22~07시)이 다름';
+      return '';
+    } },
     { 길: '넥스 폭넓은 파일 읽기(지휘 case_files/file_read · 대화창 job_lookup case_files/file_read — 체크 목록과 무관, 어떤 파일이든, 토큰 0)', fn: function () {
       if (typeof caseProcNexFileList_ !== 'function' || typeof caseProcNexFileText_ !== 'function') return '넥스 파일 목록·글 읽기 서버 함수가 이 판에 없음';
       const names = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).map(function (t) { return t.name; });

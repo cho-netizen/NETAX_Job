@@ -6063,7 +6063,7 @@ function handleUploadFile(body) {
     if (body.replaceSameName) { try { const ex = folder.getFilesByName(String(body.name)); if (ex.hasNext()) { const f0 = ex.next(); f0.setContent(Utilities.newBlob(bytes).getDataAsString('UTF-8')); return { id: f0.getId(), name: f0.getName(), url: f0.getUrl(), updated: true }; } } catch (e) {} }
     const file = folder.createFile(blob);
     rh_maybeUpdateReportIndexForUpload_(body, file);
-    if (/pdf|^image\//.test(String(mimeType))) { cpPrereadQueue_(file.getId()); try { cpPrereadEnsureTrigger_(); } catch (e) {} } // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다 · [T1] 트리거가 없으면 이때 만든다(밤 점검·배포 기록만 기다리지 않음)
+    { cpPrereadQueue_(file.getId()); try { cpPrereadEnsureTrigger_(); } catch (e) {} } // [2026.10.28 감시] 모든 파일(PDF·사진은 미리 읽기, 나머지는 서류 변동 감시) // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다 · [T1] 트리거가 없으면 이때 만든다(밤 점검·배포 기록만 기다리지 않음)
     return { id: file.getId(), name: file.getName(), url: file.getUrl() };
   } catch (err) {
     return { error: '파일 업로드 중 오류: ' + err.message };
@@ -26994,12 +26994,174 @@ function t6ApplyRead_(c, body) {
   try { outside = cpOutsideAfterDirect_(c); } catch (e) { outside = { error: String(e && e.message || e) }; }
   return { ok: true, step: 'applyRead', saved: saved, outside: outside, sec: Math.round((Date.now() - t0) / 100) / 10 };
 }
+// =========================================================
+// [2026.10.28 사건 폴더 감시 · 넥스 미리 읽기] 세무사님 원문: "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록 해야 한다" / 결정 "모두 권장안대로 하라"
+//  (계획서 maps/사건폴더_감시_미리읽기_계획서_20261028.md 6절: 진행 중 사건 전부 · 영향 있을 때만 말 걸기 · 22~07시는 넥스 안 깨움(아침 첫 틱에 몰아서) · 읽어도 계산기 칸은 안 바꾸고 "반영할까요?"로 보고)
+//  세 겹: ① GAS 감시(0원) — 미리 읽기 틱이 모든 파일(md·xlsx·한글·json 포함)을 보고, 사건 기록부에 파일 지문(이름·폴더·크기·수정 시각)을 두어 틱마다 대조 → "서류 변동"(새/바뀜/없어짐·언제)
+//        ② 넥스 case_files 목록에 🆕 새/✏ 바뀜/✓ 전에 읽음 표시, 넥스가 file_read로 읽은 파일·시각은 기록부 nexRead에
+//        ③ 변동 틱 직후 그 사건의 넥스를 깨워(서버 함수 — AI 열쇠는 서버에만) 🆕/✏만 읽고 기록부에 "읽음(넥스·시각·파일·한 줄 요약)", 영향 있어 보이면 채팅 기록·알림에 한 줄 보고(칸은 바꾸지 않음). 사건별 "넥스 미리 읽기 끔" 스위치, 비용(토큰) 기록
+//  "gas속에 ai를 가두지 마라" — 감시 대상은 GAS 체크 목록·폴더 판정과 무관하게 사건 폴더의 모든 파일(시스템 파일만 뺌). 넥스가 무엇을 읽을지는 넥스가 정한다.
+// =========================================================
+var CP_WATCH_PENDING_ = 'cp_watch_pending'; // 밤에 변동이 생긴 사건 — 아침 첫 틱에 넥스를 깨울 목록
+function cpWatchNight_(d) { const h = Number(Utilities.formatDate(d || new Date(), 'Asia/Seoul', 'H')); return h >= 22 || h < 7; }
+function cpWatchCaseOf_(folderId) { // 사건 폴더 ID → 사건 행
+  const fid = String(folderId || '').trim(); if (!fid) return null;
+  let cases = []; try { cases = (work_getCases({}) || {}).cases || []; } catch (e) { cases = []; }
+  return cases.filter(function (c) { return String(c.폴더ID || '').trim() === fid; })[0] || null;
+}
+function cpWatchFiles_(c) { // 감시 대상 — 사건 폴더의 모든 파일(시스템 파일 _글자기억.json·"_"로 시작하는 파일만 뺌). GAS 체크 목록·폴더 판정은 여기에 안 걸린다
+  return (caseProcNexAllFiles_(c) || []).filter(function (f) { return f && f.id && f.kind !== 'system' && !/^_/.test(String(f.name || '')); });
+}
+// ① 파일 지문 대조 — 기록부 fileFp { 파일ID: {n 이름, d 폴더, s 크기, m 수정시각} }. 처음이면 지문만 찍고 변동으로 치지 않는다(사건 등록 때 이미 있던 서류는 "새 서류"가 아님)
+function cpWatchCase_(c, opt) {
+  opt = opt || {};
+  let files; try { files = cpWatchFiles_(c); } catch (e) { return { ok: false, error: '사건 폴더를 보지 못함: ' + String(e && e.message || e).slice(0, 100) }; }
+  const sv0 = caseProcLoad_(c.id) || {}, fp0 = sv0.fileFp || null, first = !fp0;
+  const now = caseProcNow_(), fp1 = {}, changes = [];
+  files.forEach(function (f) {
+    fp1[f.id] = { n: f.name, d: f.dir || '', s: Number(f.size) || 0, m: Number(f.modified) || 0 };
+    if (first) return;
+    const o = fp0[f.id];
+    if (!o) changes.push({ at: now, kind: '새', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: false });
+    else if (o.m !== (Number(f.modified) || 0) || o.s !== (Number(f.size) || 0)) changes.push({ at: now, kind: '바뀜', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: false });
+    else if (o.n !== f.name || o.d !== (f.dir || '')) changes.push({ at: now, kind: '옮김', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: true, from: (o.d ? o.d + '/' : '') + o.n });
+  });
+  if (!first) Object.keys(fp0).forEach(function (id) { if (!fp1[id]) changes.push({ at: now, kind: '없어짐', id: id, name: fp0[id].n, dir: fp0[id].d || '', m: 0, nexSeen: true }); });
+  caseProcPatch_(c.id, function (sv) {
+    sv.fileFp = fp1; sv.watch = { at: now, n: files.length, first: first };
+    if (changes.length) {
+      const prev = Array.isArray(sv.fileChanges) ? sv.fileChanges : [];
+      // 같은 파일의 아직 넥스가 못 본 변동이 있으면 그 줄을 새 변동으로 바꾼다(겹쳐 쌓지 않음)
+      const keep = prev.filter(function (x) { return !changes.some(function (y) { return y.id === x.id && !x.nexSeen; }); });
+      sv.fileChanges = keep.concat(changes).slice(-120);
+      caseProcLogTo_(sv, { by: 'GAS', what: '서류 변동', detail: changes.map(function (x) { return x.kind + ' ' + (x.dir ? x.dir + '/' : '') + x.name; }).join(', ').slice(0, 240) });
+    }
+  });
+  return { ok: true, first: first, n: files.length, changes: changes, 새: changes.filter(function (x) { return x.kind === '새'; }).length, 바뀜: changes.filter(function (x) { return x.kind === '바뀜'; }).length, 없어짐: changes.filter(function (x) { return x.kind === '없어짐'; }).length };
+}
+function cpWatchPending_(sv) { return (Array.isArray(sv && sv.fileChanges) ? sv.fileChanges : []).filter(function (x) { return !x.nexSeen && (x.kind === '새' || x.kind === '바뀜'); }); }
+function cpWatchSummary_(sv) { // 화면·넥스 현황용
+  const pend = cpWatchPending_(sv), np = (sv && sv.nexPreread) || {};
+  return { 미확인: pend.length, 목록: pend.slice(0, 8).map(function (x) { return (x.kind === '바뀜' ? '✏ ' : '🆕 ') + (x.dir ? x.dir + '/' : '') + x.name; }), 마지막감시: sv && sv.watch ? sv.watch.at : '', 넥스미리읽기끔: !!np.off, 넥스마지막: np.lastAt || '', 넥스읽음수: Object.keys((sv && sv.nexRead) || {}).filter(function (k) { return !sv.nexRead[k].unread; }).length };
+}
+// ② 넥스가 읽은 파일 표시 — file_read(지휘·대화창 둘 다)가 성공할 때 기록. 수정 시각을 같이 두어 그 뒤 바뀌면 ✏로 다시 보인다
+function cpNexReadMark_(c, f, sum) {
+  try { caseProcPatch_(c.id, function (sv) { sv.nexRead = sv.nexRead || {}; const o = sv.nexRead[f.id] || {}; sv.nexRead[f.id] = { at: caseProcNow_(), m: Number(f.modified) || 0, name: f.name, sum: String(sum || o.sum || '').slice(0, 160) }; const ch = Array.isArray(sv.fileChanges) ? sv.fileChanges : []; ch.forEach(function (x) { if (x.id === f.id) x.nexSeen = true; }); }); } catch (e) {}
+}
+function cpNexFileMark_(sv, f) { // 목록 한 줄의 표시 — 🆕 새 / ✏ 바뀜 / ✓ 전에 읽음(시각) / ''
+  const r = sv && sv.nexRead && sv.nexRead[f.id];
+  if (r && r.unread && r.m === (Number(f.modified) || 0)) return '⚠ 읽지 못함(' + r.at + (r.sum ? ' — ' + r.sum : '') + ')';
+  if (r && r.m === (Number(f.modified) || 0)) return '✓ 전에 읽음(' + r.at + ')';
+  const ch = (Array.isArray(sv && sv.fileChanges) ? sv.fileChanges : []).filter(function (x) { return x.id === f.id && (x.kind === '새' || x.kind === '바뀜'); }).slice(-1)[0]; // 넥스가 깨어났어도 읽지 않은 파일은 🆕/✏로 남는다(✓는 읽었을 때만)
+  if (r) return '✏ 읽은 뒤 바뀜(읽음 ' + r.at + ')';
+  if (ch) return ch.kind === '바뀜' ? '✏ 바뀜(' + ch.at + ')' : '🆕 새 파일(' + ch.at + ')';
+  return '';
+}
+// 사건별 스위치 — 처리개요 GAS 칸 "🤖 넥스 미리 읽기 끔/켬"
+function cpNexPrereadSwitch_(c, body, by) {
+  const off = !!(body && body.off);
+  caseProcPatch_(c.id, function (sv) { sv.nexPreread = sv.nexPreread || {}; sv.nexPreread.off = off; caseProcLogTo_(sv, { by: by || '세무사님', what: '넥스 미리 읽기 ' + (off ? '끔' : '켬'), detail: '' }); });
+  return { ok: true, off: off, message: off ? '이 사건은 새 서류가 들어와도 넥스를 깨우지 않습니다(GAS 감시는 계속).' : '새 서류가 들어오면 넥스가 미리 읽습니다.' };
+}
+// 채팅 기록에 한 줄 — 이 사건에 연결된 최근 AI 대화에 넥스 글로 붙인다(없으면 "넥스 미리 읽기 — 사건명" 대화를 새로). 세무사님이 AI 탭을 여시면 보인다
+function cpNexChatNote_(c, text) {
+  try {
+    const folder = ai_convFolder_(), idx = ai_convReadIndex_(folder);
+    const mine = idx.list.filter(function (e) { return e && e.caseId === c.id && e.fileId; }).sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
+    let conv = null;
+    if (mine) { try { conv = JSON.parse(DriveApp.getFileById(mine.fileId).getBlob().getDataAsString('UTF-8')) || null; } catch (e) { conv = null; } }
+    if (!conv || !Array.isArray(conv.messages)) conv = { title: '넥스 미리 읽기 — ' + String(c.사건명 || c.고객명 || '').slice(0, 30), caseId: c.id, caseName: c.사건명 || '', caseFolderId: c.폴더ID || '', messages: [] };
+    conv.messages.push({ role: 'assistant', content: '🤖 넥스 미리 읽기(' + caseProcNow_() + ') — ' + String(text).slice(0, 1200), preread: true });
+    const r = ai_convSave({ conversation: conv });
+    return { ok: !!(r && r.success), id: r && r.id };
+  } catch (e) { return { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
+}
+// ③ 넥스 깨우기 — 변동(🆕/✏)이 있고 진행 중 사건이고 스위치가 켜져 있을 때. 밤(22~07시)이면 미루었다가 아침 첫 틱에. 도구는 case_files·file_read·preread_done 셋뿐(칸은 못 바꿈)
+function cpNexPrereadWake_(c, opt) {
+  opt = opt || {};
+  const t0 = Date.now();
+  const sv = caseProcLoad_(c.id) || {}, pend = cpWatchPending_(sv);
+  if (!pend.length) return { ok: true, skipped: '넥스가 못 본 변동 없음' };
+  if (sv.nexPreread && sv.nexPreread.off) return { ok: true, skipped: '이 사건은 넥스 미리 읽기 끔' };
+  if (!opt.force && String(c.상태 || '') !== '진행') return { ok: true, skipped: '진행 중 사건이 아님(' + (c.상태 || '상태 없음') + ') — GAS 감시만' };
+  try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, skipped: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)' }; } catch (e) {}
+  if (!opt.force && cpWatchNight_()) { cpWatchDefer_(c.id); return { ok: true, deferred: true, skipped: '밤(22~07시) — 아침 첫 틱에 깨움' }; }
+  const ctx = { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 };
+  const tools = caseProcAiLiveTools_().filter(function (t) { return t.name === 'case_files' || t.name === 'file_read'; });
+  tools.push({ name: 'preread_done', description: '미리 읽기 끝 — 읽은 파일마다 한 줄 요약, 사건에 영향이 있어 보이는지(impact), 영향이 있으면 세무사님께 드릴 한 줄(line — 예 "새 매매계약서가 들어와 읽었습니다. 양도가액이 5억 2천으로 보여 지금 값(5억)과 다릅니다. 반영할까요?"). 계산기 칸은 바꾸지 않는다.', input_schema: { type: 'object', properties: { read: { type: 'array', items: { type: 'object', properties: { file: { type: 'string' }, summary: { type: 'string' } }, required: ['file'] } }, impact: { type: 'boolean' }, line: { type: 'string' } }, required: ['read', 'impact'] } });
+  const many = pend.length > 12;
+  const system = caseProcAiNexBase_() + '\n\n[넥스 미리 읽기 — 사건 폴더에 서류가 들어오거나 바뀌어 GAS가 너를 깨웠다(세무사님이 부르신 것이 아님)]\n'
+    + '- 할 일: 아래 🆕 새/✏ 바뀐 파일만 file_read로 읽고(전에 읽은 ✓ 파일은 다시 읽지 않는다), 무엇인지 한 줄씩 요약해 preread_done으로 끝낸다. 읽지 못한 파일(글자 없음)은 요약에 "읽지 못함"이라 적는다.\n'
+    + '- 사건에 영향이 있어 보이면(새 계약서·새 예규·세무사님 메모·값이 달라 보이는 서류 등) impact=true와 line(세무사님께 한 줄, 쉬운 말, 값이 다르면 "반영할까요?"). 그냥 사본·관계없는 파일이면 impact=false(세무사님께 말을 걸지 않는다 — 10-28 결정 "영향이 있어 보일 때만").\n'
+    + '- 계산기 칸·정한 값은 절대 바꾸지 않는다(도구도 없다) — 세무사님이 "반영해라" 하시면 그때.\n'
+    + (many ? '- 파일이 많다(' + pend.length + '개). 전부 읽지 말고 중요해 보이는 것(계약서·등기·예규·메모)부터 읽고, 나머지는 이름만 요약에 적어라.\n' : '')
+    + '- 모든 글은 한국어, 개인정보(주민번호 뒷자리·계좌)는 적지 않는다.';
+  const first = '사건: ' + String(c.사건명 || c.고객명 || '') + ' (' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ')\n변동(' + pend.length + '개):\n' + pend.slice(0, 40).map(function (x) { return (x.kind === '바뀜' ? '✏ 바뀜 ' : '🆕 새 ') + (x.dir ? x.dir + '/' : '') + x.name + ' (' + x.at + ')'; }).join('\n') + (pend.length > 40 ? '\n… 외 ' + (pend.length - 40) + '개' : '');
+  let messages = [{ role: 'user', content: caseProcAiMask_(first) }], won = 0, rounds = 0, done = null, calls = [], err = '';
+  for (; rounds < 8; rounds++) {
+    if (Date.now() - t0 > 200000) { err = '시간이 모자라 멈춤'; break; }
+    const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, system, tools, caseProcAiCacheMark_(messages), 2500, 'low');
+    if (r.error) { err = r.error; break; }
+    won += r.won || 0;
+    const content = r.json.content || [], uses = content.filter(function (b) { return b.type === 'tool_use'; });
+    if (!uses.length) { done = done || { read: [], impact: false, line: '', note: caseProcAiText_(r.json) }; break; }
+    const results = [];
+    uses.forEach(function (u) {
+      calls.push(u.name);
+      if (u.name === 'preread_done') { done = u.input || {}; results.push({ type: 'tool_result', tool_use_id: u.id, content: '{"ok":true}' }); return; }
+      let out; try { out = caseProcAiLiveExec_(c.id, u.name, u.input || {}, ctx); } catch (e) { out = { text: JSON.stringify({ 오류: String(e && e.message || e) }) }; }
+      results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, 9000) });
+    });
+    messages = messages.concat([{ role: 'assistant', content: content }, { role: 'user', content: results }]);
+    if (done) break;
+  }
+  const now = caseProcNow_();
+  const readList = done && Array.isArray(done.read) ? done.read : [];
+  caseProcPatch_(c.id, function (sv2) {
+    sv2.nexRead = sv2.nexRead || {};
+    readList.forEach(function (rd) { let f = null; try { f = caseProcNexFindFile_(c, rd.file); } catch (e) { f = null; } if (f && !f.여러개) { const o = sv2.nexRead[f.id] || { at: now, m: Number(f.modified) || 0, name: f.name, unread: true }; o.sum = String(rd.summary || '').slice(0, 160); sv2.nexRead[f.id] = o; } }); // file_read가 성공한 파일은 cpNexReadMark_가 이미 적어 둠 — 요약만 붙인다. 글자를 못 읽어 기록이 없던 파일은 unread(⚠ 읽지 못함)로 — ✓로 보이지 않게
+    (sv2.fileChanges || []).forEach(function (x) { if (!x.nexSeen && pend.some(function (p) { return p.id === x.id; })) x.nexSeen = true; }); // 깨운 변동은 본 것으로(읽지 못한 것도 요약에 "읽지 못함"으로 남음)
+    sv2.nexPreread = sv2.nexPreread || {}; sv2.nexPreread.lastAt = now;
+    sv2.nexPreread.wakes = (sv2.nexPreread.wakes || []).concat([{ at: now, files: pend.length, read: readList.length, won: Math.round(won * 10) / 10, impact: !!(done && done.impact), line: String((done && done.line) || '').slice(0, 300), calls: calls.slice(0, 20), err: err }]).slice(-20);
+    caseProcLogTo_(sv2, { by: '넥스', what: '미리 읽기', detail: (readList.length ? '읽음 ' + readList.map(function (rd) { return rd.file + (rd.summary ? '(' + String(rd.summary).slice(0, 40) + ')' : ''); }).join(', ') : '읽은 파일 없음') + ' · ' + Math.round(won) + '원' + (err ? ' · ' + err : '') });
+    if (done && done.impact && done.line) caseProcAlertTo_(sv2, '넥스 미리 읽기', String(done.line));
+  });
+  let chat = null;
+  if (done && done.impact && done.line) {
+    chat = cpNexChatNote_(c, String(done.line));
+    try { work_updateCase({ id: c.id, 작업일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[넥스 미리 읽기] ' + String(done.line).slice(0, 200), dueDate: '' }]) }); } catch (e) {}
+  }
+  return { ok: !err, error: err || undefined, files: pend.length, read: readList.length, impact: !!(done && done.impact), line: (done && done.line) || '', won: Math.round(won * 10) / 10, rounds: rounds, calls: calls, chat: chat, _ms: Date.now() - t0 };
+}
+function cpWatchDefer_(caseId) { try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.indexOf(caseId) === -1) q.push(caseId); props.setProperty(CP_WATCH_PENDING_, JSON.stringify(q.slice(-100))); } catch (e) {} }
+// 틱 끝에서 — 이번 틱에 파일이 바뀐 사건 폴더들을 대조하고, 변동이 있으면 넥스를 깨운다(밤이면 미룸). 아침 첫 틱은 미뤄 둔 사건부터
+function cpWatchTick_(touched, started, DEADLINE) {
+  const out = { cases: 0, changes: 0, woke: 0, deferred: 0, lines: [] };
+  const props = PropertiesService.getScriptProperties();
+  const wake = function (c) {
+    if (Date.now() - started > DEADLINE) return;
+    let r = null; try { r = cpNexPrereadWake_(c, {}); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+    if (r && r.deferred) out.deferred++; else if (r && !r.skipped) out.woke++;
+    out.lines.push(String(c.사건명 || c.id) + ': ' + (r.skipped || r.error || ('읽음 ' + r.read + '/' + r.files + (r.impact ? ' · 보고' : '') + ' · ' + r.won + '원')));
+  };
+  if (!cpWatchNight_()) { let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.length) { props.deleteProperty(CP_WATCH_PENDING_); q.forEach(function (id) { if (touched[id]) return; const c = akReadCase_(id); if (c) wake(c); }); } }
+  Object.keys(touched).forEach(function (fid) {
+    if (Date.now() - started > DEADLINE) return;
+    const c = cpWatchCaseOf_(fid); if (!c) return;
+    out.cases++;
+    let w = null; try { w = cpWatchCase_(c, {}); } catch (e) { w = null; }
+    if (!w || !w.ok) return;
+    out.changes += (w.changes || []).length;
+    if (cpWatchPending_(caseProcLoad_(c.id) || {}).length) wake(c);
+  });
+  return out;
+}
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
   try { if (CacheService.getScriptCache().get('cp_evid_busy')) return; } catch (e) {} // [2026.10.23 속도 ㅅ6차] 화면의 ② 서류 읽기가 도는 중이면 이번 틱은 쉰다(같은 파일 동시 글자인식 방지)
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(2000)) return; // 앞 틱이 아직 읽는 중 — 겹치지 않는다
   const started = Date.now(), DEADLINE = 270000, props = PropertiesService.getScriptProperties();
-  let read = 0, seen = 0, names = [], memFolders = {}, memWrote = 0;
+  let read = 0, seen = 0, names = [], memFolders = {}, memWrote = 0, touched = {}, watch = null; // [2026.10.28 감시] touched = 이번 틱에 파일이 바뀐 사건 폴더
   try {
     const root = getDefaultFolder(); if (!root) return;
     const rootId = root.getId();
@@ -27009,9 +27171,11 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
     const one = function (f) {
       if (Date.now() - started > DEADLINE) return false;
       const mt = String(f.getMimeType() || '');
-      if (!/pdf|^image\//.test(mt)) return true;
       const name = String(f.getName() || '');
-      if (/^_/.test(name)) return true;
+      if (/^_/.test(name) || mt === 'application/vnd.google-apps.folder') return true;
+      // [2026.10.28 감시] 모든 파일(md·xlsx·한글·json…)을 사건 폴더 감시 대상으로 — 어느 사건 폴더인지만 적어 두고(끝에 지문 대조), 글자 해석은 지금처럼 PDF·사진만
+      try { const cf0 = t6CaseFolderOf_(f, rootId); if (cf0) touched[cf0.getId()] = true; } catch (e) {}
+      if (!/pdf|^image\//.test(mt)) return true;
       if (!cpPrereadInCases_(f, rootId)) return true;
       seen++;
       const key = 'cpp37_' + f.getId() + '_' + f.getLastUpdated().getTime();
@@ -27025,16 +27189,19 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
     if (q.length) { props.deleteProperty(CP_PREREAD_QUEUE_); for (let i = 0; i < q.length; i++) { try { if (one(DriveApp.getFileById(q[i])) === false) { props.setProperty(CP_PREREAD_QUEUE_, JSON.stringify(q.slice(i))); break; } } catch (e) {} } }
     // ② 지난 틱 이후 바뀐 PDF·사진 — 드라이브 검색 한 번(폴더를 훑지 않는다)
     const iso = new Date(since).toISOString().replace(/\.\d+Z$/, 'Z'); // 드라이브 검색 날짜 형식(RFC 3339, 밀리초 없이)
-    const it = DriveApp.searchFiles("modifiedDate > '" + iso + "' and trashed = false and (mimeType = 'application/pdf' or mimeType contains 'image/')");
+    const it = DriveApp.searchFiles("modifiedDate > '" + iso + "' and trashed = false and mimeType != 'application/vnd.google-apps.folder'"); // [2026.10.28 감시] 모든 파일
     let n = 0;
     while (it.hasNext() && n < 200) { n++; if (one(it.next()) === false) break; }
     // [2026.10.27 T6 3단계] 읽은 서류의 사건 폴더에 _글자기억.json(글자 기억 사본) — 화면 직결 Cloud Run이 그 사건 폴더만 읽어 글자를 쓰게(업무관리자 기억 폴더는 공유하지 않음). 남은 시간 안에서만
     Object.keys(memFolders).forEach(function (fid) { if (Date.now() - started > DEADLINE) return; try { if (t6OcrMemWrite_(memFolders[fid]).written) memWrote++; } catch (e) {} });
+    // [2026.10.28 감시] 바뀐 사건 폴더의 지문 대조 → 서류 변동 기록 → 넥스 깨우기(진행 중·스위치 켬·낮)
+    try { watch = cpWatchTick_(touched, started, DEADLINE); } catch (e) { watch = { error: String(e && e.message || e).slice(0, 120) }; }
+    if (watch && (watch.changes || watch.woke)) try { console.log('[감시] 사건 ' + watch.cases + ' · 변동 ' + watch.changes + ' · 넥스 깨움 ' + watch.woke + ' · 미룸 ' + watch.deferred + ': ' + watch.lines.join(' / ')); } catch (e) {}
     if (read) try { console.log('[미리 읽기] ' + read + '개 읽음(본 파일 ' + seen + ', 글자기억 파일 ' + memWrote + ') ' + Math.round((Date.now() - started) / 1000) + '초: ' + names.slice(0, 8).join(', ')); } catch (e) {}
   } catch (e) { try { console.log('[미리 읽기] 오류: ' + (e && e.message || e)); } catch (e2) {} }
   finally {
     // [2026.10.23 속도 특단조치 T1] 마지막 틱 기록 — 트리거가 실제로 도는지를 화면(사건처리 step 'preread')에서 확인할 수 있게. 콘솔 로그는 아무도 보지 않았다
-    try { props.setProperty('cp_preread_last', JSON.stringify({ at: caseProcNow_(), ms: Date.now() - started, read: read, seen: seen, memWrote: memWrote, names: names.slice(0, 8) })); } catch (e3) {}
+    try { props.setProperty('cp_preread_last', JSON.stringify({ at: caseProcNow_(), ms: Date.now() - started, read: read, seen: seen, memWrote: memWrote, names: names.slice(0, 8), watch: watch ? { cases: watch.cases, changes: watch.changes, woke: watch.woke, deferred: watch.deferred, lines: (watch.lines || []).slice(0, 5), error: watch.error } : null })); } catch (e3) {}
     lock.releaseLock();
   }
   return { ok: true, read: read, seen: seen };
@@ -31000,7 +31167,9 @@ function caseProc0_(body) {
     if (body.step === 'decide') return caseProcDecide_(c, body);
     if (body.step === 'scenario') return caseProcScenario_(c, body);
     if (body.step === 'readScope') return caseProcReadScope_(c, body); // [2026.10.27 F] "○○ 폴더만 읽어라"
-    if (body.step === 'readList') return caseProcReadList_(c, body); // [2026.10.28 읽을 대상 ②] 읽을 파일 체크 목록(기본 체크·왜·다른 벌·새 파일)
+    if (body.step === 'readList') return caseProcReadList_(c, body);
+    if (body.step === 'nexPreread') return cpNexPrereadSwitch_(c, body, body.by || '세무사님'); // [2026.10.28 감시] 사건별 넥스 미리 읽기 끔/켬
+    if (body.step === 'watch') { const w = cpWatchCase_(c, {}); return Object.assign(w, { summary: cpWatchSummary_(caseProcLoad_(c.id) || {}) }); } // 지금 대조(개발·점검용) // [2026.10.28 읽을 대상 ②] 읽을 파일 체크 목록(기본 체크·왜·다른 벌·새 파일)
     if (body.step === 'scopeView') return caseProcScopeView_(c);
     if (body.step === 'fixView') { const sv0 = caseProcLoad_(c.id) || {}; let v0 = {}; try { v0 = caseProcNexView_(c); } catch (e) { v0 = {}; } return { ok: true, 정한값: v0.정한값 || [], 고침기록: (sv0.valueHist || []).slice(-30), 남은질문: (sv0.remaining || []).filter(function (it) { const d = sv0.decisions && sv0.decisions[it.id] && sv0.decisions[it.id].d; return d !== 'done' && d !== '무시'; }).slice(0, 40).map(function (it) { return { qid: it.id, 글: String(it.text || '').slice(0, 120), 넣을칸: it.ask ? it.ask.target || '' : '' }; }), 안: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.안; }).map(function (e) { return { id: e.id, 세목: e.세목, 이름: e.안.이름, 최종세액: e.최종세액, 때: e.안.때, 누가: e.안.누가 }; }) }; } // 화면 "칸 값 고치기" 재료
     if (body.step === 'draft') return caseProcDraft_(c);
@@ -31482,6 +31651,9 @@ function caseProcUserView_(c, body) {
   const v = caseProcNexView_(c, { withFiles: !light }), sv = caseProcLoad_(c.id) || {};
   let last = null; try { last = caseProcLastCalc_(c).last; } catch (e) {}
   const st = v.단계 || {}, next = [];
+  if (!light) { try { cpWatchCase_(c, {}); } catch (e) {} } // [2026.10.28 감시] 처리개요를 폴더까지 훑어 열 때 지문 대조도(없어진 파일은 여기서 잡힘)
+  const sv1 = light ? sv : (caseProcLoad_(c.id) || sv), watchS = cpWatchSummary_(sv1);
+  if (watchS.미확인) next.push({ do: 'scope', text: '새로 들어온 서류 ' + watchS.미확인 + '개(넥스 미확인): ' + watchS.목록.slice(0, 3).join(', ') + (watchS.미확인 > 3 ? ' 외' : '') + (watchS.넥스미리읽기끔 ? ' — 넥스 미리 읽기 끔' : '') });
   const scope0 = sv.readScope || null; let newF = []; if (!light) { try { newF = caseProcNewFiles_(c, sv); } catch (e) { newF = []; } } // [2026.10.28 읽을 대상 ②③]
   if (!scope0) next.push({ do: 'scope', text: '읽을 파일 목록을 아직 체크하지 않았습니다 — 체크 전에는 기본 규칙(이미지·산출물 제외)대로만 읽습니다' }); // [2026.10.28 읽을 대상 ②]
   if (newF.length) next.push({ do: 'scope', text: '새 파일 ' + newF.length + '개 — 체크 안 됨(' + newF.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (newF.length > 3 ? ' 외' : '') + ') — 읽을 목록에서 체크하면 다음 읽기부터 읽습니다' }); // [2026.10.28 읽을 대상 ③] 소리 없이 읽지도 빠지지도 않게
@@ -31499,6 +31671,7 @@ function caseProcUserView_(c, body) {
   // [2026.10.23 속도 ㅅ9차] 저장된 질문·결정·사건 기본을 같이 돌려준다 — 화면을 새로 고친 뒤 "답하실 질문 N개"를 누르면 ①②③을 다시 돌리지 않고 이 질문을 바로 보인다(aichat st.gasRun 이어받기)
   const slimCase = { id: c.id, 사건명: c.사건명, 고객명: c.고객명, 납세자: c.납세자, 세목: c.세목, 업무유형: c.업무유형, 기준일: c.기준일, 법정일: c.법정일, 폴더ID: c.폴더ID, 상태: c.상태, 사건개요: c.사건개요 || {}, 수정일: c.수정일, my_report_id: c.my_report_id };
   return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0,
+    서류변동: watchS, // [2026.10.28 감시]
     읽을목록: { 방식: scope0 ? (scope0.mode === 'list' ? 'list' : 'dirs') : 'none', 켠수: scope0 && Array.isArray(scope0.files) ? scope0.files.length : null, 누가: scope0 ? (scope0.by || '') : '', 때: scope0 ? (scope0.at || '') : '', 새파일: newF }, // [2026.10.28 읽을 대상 ②] 화면이 ⚡ 처음 누를 때 목록이 없으면 체크 목록을 먼저 띄운다
     질문: (Array.isArray(sv.remaining) ? sv.remaining : []).slice(0, 80), 결정: sv.decisions || {}, 바탕: t6RecordForReader_(sv), 사건: slimCase, 저장때: sv.savedAt || '', 칸채움때: (sv.steps && sv.steps.overview && sv.steps.overview.at) || '' }; // [2026.10.27 H] 바탕 = 직결 요청에 실을 기록부(결정·읽을 범위·답 저장소·고침 기록…)
 }
@@ -31524,6 +31697,7 @@ function caseProcNexView_(c, opt) {
     읽은서류: sv.readFiles ? { 때: sv.readFiles.at, 수: (sv.readFiles.list || []).length } : null
   };
   out.알림 = (sv.alerts || []).filter(function (a) { return !a.seen; }).slice(-10).map(function (a) { return a.at + ' ' + a.text; });
+  try { out.서류변동 = cpWatchSummary_(sv); } catch (e) {} // [2026.10.28 감시] 넥스가 못 본 새/바뀐 파일·미리 읽기 상태
   if (opt.withFiles) { try { out.새파일미체크 = caseProcNewFiles_(c, sv).map(function (f) { return f.name; }); } catch (e) { out.새파일미체크 = []; } } // [2026.10.28 읽을 대상 ③] 목록을 만든 뒤 들어온 파일 — 읽지 않고 알림만
   if (opt.withFiles && sv.readFiles && Array.isArray(sv.readFiles.list)) {
     try {
@@ -31819,7 +31993,8 @@ function caseProcReadList_(c, body) {
   Object.keys(folders).forEach(function (d) { if (!d) return; const fr = caseProcFolderRule_(d.split('/').pop(), c, {}); const parentSkip = d.split('/').slice(0, -1).some(function (_, i, arr) { return caseProcFolderRule_(arr[i], c, {}).kind === 'skip' || caseProcFolderRule_(arr[i], c, {}).kind === 'ref'; }); folders[d].kind = parentSkip ? 'skip' : fr.kind; folders[d].why = parentSkip ? '위 폴더가 읽지 않는 폴더' : fr.why; });
   const newFiles = rows.filter(function (r) { return r.isNew; });
   const counts = { 전체: rows.length, 켠: rows.filter(function (r) { return r.on; }).length, 이미지: rows.filter(function (r) { return r.kind === 'image'; }).length, 산출물폴더: rows.filter(function (r) { return r.kind === 'skipdir'; }).length, 사건파악전용: rows.filter(function (r) { return r.always; }).length, 폴더밖: rows.filter(function (r) { return r.outside; }).length, 다른벌: rows.filter(function (r) { return r.dup; }).length, 새파일: newFiles.length };
-  return { ok: true, mode: mode, rows: rows, folders: Object.keys(folders).sort().map(function (d) { return folders[d]; }), counts: counts, newFiles: newFiles.map(function (r) { return { id: r.id, name: r.name, dir: r.dir }; }), scope: scope ? { mode: scope.mode || 'dirs', by: scope.by || '', at: scope.at || '', n: (scope.files || []).length, dirs: scope.dirs || [] } : null, truncated: !!all.truncated,
+  let 변동 = null; try { 변동 = cpWatchSummary_(sv); } catch (e) {} // [2026.10.28 감시]
+  return { ok: true, 변동: 변동, mode: mode, rows: rows, folders: Object.keys(folders).sort().map(function (d) { return folders[d]; }), counts: counts, newFiles: newFiles.map(function (r) { return { id: r.id, name: r.name, dir: r.dir }; }), scope: scope ? { mode: scope.mode || 'dirs', by: scope.by || '', at: scope.at || '', n: (scope.files || []).length, dirs: scope.dirs || [] } : null, truncated: !!all.truncated,
     안내: mode === 'none' ? '아직 체크한 목록이 없습니다 — 기본 체크(규칙)대로 보이며, [이 목록으로 읽기]를 누르면 그 뒤 서류 읽기·칸 채우기·직결·넥스가 그 목록만 읽습니다.' : (newFiles.length ? '목록을 만든 뒤 들어온 새 파일 ' + newFiles.length + '개는 체크되지 않아 읽지 않습니다 — 체크해 [이 목록으로 읽기]를 다시 누르면 읽습니다.' : '') };
 }
 // 목록 기준으로 "새 파일"(목록을 만든 뒤 들어온 파일, 사건파악 전용·시스템 산출물 제외) — 처리개요 "다음 할 일"·넥스 현황에 올린다. 목록이 없으면 빈 배열
@@ -31854,7 +32029,7 @@ function caseProcNexFileList_(c, body) {
     return true;
   }).map(function (f) {
     const gasOn = sc ? (sc.mode === 'list' ? !!onIds[f.id] : sc.mode === 'dirs' ? '폴더 범위' : !!f.on) : !!f.on;
-    return { 파일: f.name, 폴더: f.dir || '(사건 폴더 바로 아래)', 크기: f.size || 0, 수정: f.modified ? Utilities.formatDate(new Date(f.modified), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '', 종류: caseProcNexFileKind_(f), GAS체크: gasOn === '폴더 범위' ? gasOn : (gasOn ? '켬' : '끔') + (f.kind === 'memo' ? '(늘 읽음)' : '') };
+    return { 파일: f.name, 폴더: f.dir || '(사건 폴더 바로 아래)', 표시: cpNexFileMark_(sv, f), 크기: f.size || 0, 수정: f.modified ? Utilities.formatDate(new Date(f.modified), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '', 종류: caseProcNexFileKind_(f), GAS체크: gasOn === '폴더 범위' ? gasOn : (gasOn ? '켬' : '끔') + (f.kind === 'memo' ? '(늘 읽음)' : '') };
   });
   const MAX = Math.min(Number(body.max) || 150, 300);
   return { ok: true, 사건폴더: c.고객명 ? String(c.고객명) : '', 파일수: rows.length, 전체: all.length, 파일: rows.slice(0, MAX), 더있음: rows.length > MAX,
@@ -31877,6 +32052,7 @@ function caseProcNexFileText_(c, body) {
   if (f.여러개) return { ok: false, error: '이름이 여럿에 맞음 — 폴더/파일 이름으로 하나를 골라라', 후보: f.여러개 };
   let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) { return { ok: false, error: '글을 읽지 못함: ' + String(e && e.message || e).slice(0, 120), 파일: f.name }; }
   if (!t) return { ok: false, error: '이 파일에서 글자를 읽지 못함(글자 기억에 없고 드라이브 글자층도 없음 — 사진·스캔이면 ⚡ 글자인식 뒤에)', 파일: f.name, 폴더: f.dir || '' };
+  cpNexReadMark_(c, f, ''); // [2026.10.28 감시 ②] 넥스가 읽은 파일·시각 — 다음 목록에 ✓
   // 쪽: 글자 기억에 쪽 나눔(\f)이 있으면 쪽 번호로, 없으면 시작 위치(start)로
   const pages = t.indexOf('\f') !== -1 ? t.split('\f') : null;
   let piece = t, pageInfo = null;

@@ -1121,10 +1121,13 @@
           return '<div>✅ GAS가 보기에 남은 일이 없습니다' + (parts.length ? ' — ' + parts.join(' · ') : '') + '</div>';
         };
         h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : n.do === 'scope' ? '📂 읽을 목록' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
+        // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태와 사건별 넥스 미리 읽기 스위치(진행 중 사건만 깨움, 22~07시는 아침에)
+        if (r.서류변동){ var w = r.서류변동; h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(다음 틱·처리개요 새로 고침 때)') + (w.넥스읽음수 ? ' · 넥스가 읽은 파일 ' + w.넥스읽음수 + '개' : '') + (w.넥스마지막 ? ' · 넥스 미리 읽기 마지막 ' + esc(w.넥스마지막) : '') + ' <button type="button" class="ghost-btn" data-gas="nexpre" data-off="' + (w.넥스미리읽기끔 ? '1' : '0') + '" style="font-size:11.5px;" title="새 서류가 들어오면 넥스(AI)가 미리 읽고 영향이 있어 보일 때만 한 줄 보고합니다(계산기 칸은 바꾸지 않음). 끄면 GAS 감시만 합니다">' + (w.넥스미리읽기끔 ? '🤖 넥스 미리 읽기 켜기' : '🤖 넥스 미리 읽기 끄기') + '</button></div>'; }
         if ((r.기록 || []).length) h += '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">📓 최근 작업 기록(누가·언제·무엇) ' + r.기록.length + '줄</summary><div style="margin:4px 0 0 8px; font-size:12px;">' + r.기록.slice().reverse().map(function(l){ return esc(l); }).join('<br>') + '</div></details>';
         nowEl.innerHTML = h;
         Array.prototype.forEach.call(nowEl.querySelectorAll('button[data-gas]'), function(b){ b.addEventListener('click', function(){ var k = b.getAttribute('data-gas');
           if (k === 'seen') callGas('case_proc', { caseId: c.id, step: 'alertSeen' }).then(loadNow).catch(function(){});
+          else if (k === 'nexpre'){ var off = b.getAttribute('data-off') !== '1'; b.disabled = true; callGas('case_proc', { caseId: c.id, step: 'nexPreread', off: off, by: '세무사님' }).then(function(res){ if (typeof window.nxAiToast_ === 'function') window.nxAiToast_((res && res.message) || (off ? '넥스 미리 읽기를 껐습니다.' : '넥스 미리 읽기를 켰습니다.')); loadNow(); }).catch(function(e){ b.disabled = false; alert('바꾸지 못했습니다: ' + (e && e.message || e)); }); } // [2026.10.28 감시] 사건별 스위치
           else if (k === 'calc'){ var tb = document.getElementById('chTaxCalcOpenBtn'); if (tb) tb.click(); }
           else if (k === 'scope'){ var sb = document.getElementById('chGasScopeBtn'); if (sb) sb.click(); } // [2026.10.28] 읽을 파일 목록 체크
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
