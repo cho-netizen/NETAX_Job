@@ -270,6 +270,13 @@ function akSandbox_(caseId, fn, override) {
       ledgerLoad_ = function (id, fresh) { return String(id) === String(caseId) ? copy(mem.L) : real.ledgerLoad_(id, fresh); };
       ledgerMutate_ = function (id, mutate) { if (String(id) !== String(caseId)) return { ok: false, error: '점검 중에는 다른 사건 장부를 고치지 않습니다.' }; const L = copy(mem.L); const out = mutate(L); mem.L = L; return out; };
     }
+    // [2026.10.29] 장부의 바탕(서류 사실·맞대기 짝 파일)도 메모리로 — 점검이 실사건 바탕 파일에 쓰지 않게
+    mem.KB = {};
+    if (typeof ledgerKbLoad_ === 'function') { real.ledgerKbLoad_ = ledgerKbLoad_; real.ledgerKbStore_ = ledgerKbStore_; }
+    if (real.ledgerKbLoad_) {
+      ledgerKbLoad_ = function (id) { return String(id) === String(caseId) ? copy(mem.KB) : real.ledgerKbLoad_(id); };
+      ledgerKbStore_ = function (id, kb) { if (String(id) !== String(caseId)) return false; mem.KB = copy(kb || {}); return true; };
+    }
     const qOn = typeof caseProcQHydrate_ === 'function' && typeof caseProcQSplit_ === 'function';
     const hyd = function (s) { return qOn ? caseProcQHydrate_(caseId, s) : s; };
     const put = function (s) { if (!qOn) { mem.saved = copy(s); return; } const sp = caseProcQSplit_(s); mem.saved = copy(sp.file); caseProcQFlushToLedger_(caseId, sp); };
@@ -285,6 +292,7 @@ function akSandbox_(caseId, fn, override) {
     akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
     caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_; caseProcChatTexts_ = real.caseProcChatTexts_;
     if (real.ledgerLoad_) { ledgerLoad_ = real.ledgerLoad_; ledgerMutate_ = real.ledgerMutate_; }
+    if (real.ledgerKbLoad_) { ledgerKbLoad_ = real.ledgerKbLoad_; ledgerKbStore_ = real.ledgerKbStore_; }
   }
 }
 // 한 사건 점검 — 사이드바와 같은 서버 단계를 그대로(확인창·대화 전환 없이) 돌린 뒤 대조. 증빙 단계가 서류를 다 못 읽으면 more

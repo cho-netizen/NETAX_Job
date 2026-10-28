@@ -40,6 +40,8 @@ function cxBindCheckGI_(cc, r, facts, rec, applyOne) {
   });
   if (B.changed.length) r.lines.push('🔁 교차검증으로 채운 기준일에 물린 판단을 다시 봅니다: ' + CX_DEPS_.base.join('·'));
   if (B.withVals) r.lines.push('🧮 사실 맞대기(' + fields.map(function (f) { return f.label; }).join('·') + '): 일치 ' + B.agree + ' · 빈 칸 채움 ' + B.filled.length + ' · 어긋남 ' + B.mismatch.length + ' · 서류끼리 갈림 ' + B.open.length + (B.mismatch.concat(B.open).length ? ' — ' + B.mismatch.concat(B.open).join(' / ') : ''));
+  // [2026.10.29] 칸마다 서류와 어떻게 이어졌는지 사건 장부 바탕(kb.links)에 — 세무사님이 📒에서 확인
+  try { if (typeof ledgerKbLink_ === 'function') fields.forEach(function (fd) { const j = cxJudgeField_(fd.vals); ledgerKbLink_(rec, { by: '칸 맞대기', path: 'base', label: fd.label, cur: fd.cur, vals: j.vals.map(function (e) { return { v: e.v, n: e.ndoc, src: e.srcs.slice(0, 3).join(' / ') }; }), d: j.d, rule: j.rule, why: j.why, filled: B.filled.some(function (s) { return s.indexOf(fd.label + ' ←') === 0; }), norm: function (x) { return cxNormV_(x, 'date'); } }); }); } catch (e) {}
 }
 // [재점검 9] 취득 원인 → 취득시기 정의(소득세법 §98·시행령 §162①). 표에 없는 원인은 판정하지 않는다
 const CX_ACQ_RULE_ = [
@@ -274,6 +276,18 @@ function cxBindCheck_(cc, r, facts, rec, applyOne) {
   if (B.changed.length) r.lines.push('🔁 교차검증으로 채운 칸에 물린 판단을 다시 봅니다: ' + B.changed.map(function (k) { return (CX_DEPS_[k] || []).join('·'); }).join(' / '));
   r.lines.push('🧮 사실 맞대기: 계산기 칸 ' + B.fields + '개 중 서류 값이 있는 칸 ' + B.withVals + '개 — 일치 ' + B.agree + ' · 빈 칸 채움 ' + B.filled.length + ' · 어긋남(판정 값 있음) ' + B.mismatch.length + ' · 서류끼리 갈림 ' + B.open.length
     + (B.mismatch.length ? ' — ' + B.mismatch.slice(0, 3).join(' / ') : ''));
+  // [2026.10.29] 칸마다 서류와 어떻게 이어졌는지 사건 장부 바탕(kb.links)에 — 서류 값이 없는 칸도 "서류에 없음"으로 남긴다(세무사님이 📒에서 확인)
+  try {
+    if (typeof ledgerKbLink_ === 'function') {
+      const many2 = tc.state.transferAssets.length > 1;
+      fields.forEach(function (fd) {
+        const j = cxJudgeField_(fd.vals || []);
+        const label = (many2 ? fd.path.replace(/^a(\d+)\..*$/, function (_, k) { return '자산' + (Number(k) + 1) + ' '; }).replace(/^c(\d+)\..*$/, function (_, k) { return '계약' + (Number(k) + 1) + ' '; }) : '') + fd.label;
+        ledgerKbLink_(rec, { by: '칸 맞대기', path: fd.path, label: label, cur: fd.cur, vals: j.vals.map(function (e) { return { v: e.v, n: e.ndoc, src: e.srcs.slice(0, 3).join(' / ') + (e.law ? ' — 법령 정의' : e.checked ? ' — 검산 일치' : '') }; }), d: j.d, rule: j.rule, why: j.why,
+          filled: B.filled.some(function (s) { return s.indexOf(label + ' ←') === 0; }), norm: function (x) { return cxNormV_(x, fd.input); } });
+      });
+    }
+  } catch (e) {}
 }
 
 // =========================================================

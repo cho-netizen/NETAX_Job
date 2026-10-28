@@ -1177,6 +1177,57 @@
           + '<button type="button" id="chLgCalc" class="ghost-btn" title="장부의 확정·추정 줄로 세액계산기를 돌려 사건에 저장합니다. 물어볼 것이 남아도 막지 않고, 빈 칸과 추정은 결과에 적습니다">🧮 장부로 세액계산</button>'
           + (!(sum.전체) ? '<button type="button" id="chLgImport" class="ghost-btn" title="옛 사건처리 결정 파일(정한 값·남은 질문)을 장부로 한 번 옮깁니다">📥 옛 기록 옮겨오기</button>' : '') + '</div>';
         var cell = function(t, w, extra){ return '<td style="padding:3px 8px; border-top:1px solid var(--line); max-width:' + w + 'px; overflow-x:auto; white-space:nowrap;' + (extra || '') + '" title="' + esc(t) + '">' + esc(t) + '</td>'; };
+        // [2026.10.29] 사건 장부의 바탕 — ① 폴더 파일에서 모은 사실 ② 서류끼리 맞대기 ③ 계산기 칸으로 간 길 ④ 칸 장부(값·질문). 세무사님 원문(10-29):
+        //  "사건장부를 대체 얼마나 잘 만들고 얼마나 잘 업데이트하고 장부내 정보를 얼마나 입체적으로 비교검토매치시켜서 유용한 정보로 확보하여 gas의 적재적소에 뿌려서 원하는 정보를 확보하고 사건을 처리해 나가는지 내가 확인할 수가 없다"
+        var kb = r.바탕 || null, ks = (kb && kb.sum) || {}, kp = (kb && kb.prev) || null;
+        var dl = function(k){ if (!kp) return ''; var a = kp[k] || 0, b = ks[k] || 0; return a === b ? '' : ' <span style="color:var(--sub);">(전 ' + esc(a) + ')</span>'; };
+        var nSt = function(prefix, re){ var n = 0; Object.keys(ks).forEach(function(k){ if (k.indexOf(prefix) === 0 && re.test(k.slice(prefix.length))) n += ks[k] || 0; }); return n; };
+        var th = function(cols){ return '<tr>' + cols.map(function(c0){ return '<th style="text-align:left;padding:2px 8px; white-space:nowrap;">' + esc(c0) + '</th>'; }).join('') + '</tr>'; };
+        var tbl = function(head, body0){ return '<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;">' + th(head) + body0 + '</table></div>'; };
+        h += '<div style="margin-top:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">'
+          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리거나 오른쪽 단추를 누르세요') + '</span>'
+          + '<button type="button" id="chLgKbBuild" class="ghost-btn" title="칸 값은 건드리지 않고, 사건 폴더 서류를 다시 훑어 파일 장부·서류 사실·서류끼리 맞대기를 지금 서류로 다시 만듭니다(계산기 칸으로 간 길은 다음 처리개요 때 갱신)">🔄 서류 사실 다시 모으기</button></div>'
+          + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">'
+          + '<button type="button" class="ghost-btn" data-lg-tab="files">① 모은 것 — 파일 ' + esc((kb && kb.files || []).length) + '개 · 사실 ' + esc(ks.사실 || 0) + '건' + dl('사실') + '</button>'
+          + '<button type="button" class="ghost-btn" data-lg-tab="groups">② 맞대기 — 서류끼리 갈림 ' + esc(nSt('맞대기:', /^미결$/)) + ' · 서류마다 다름 ' + esc(nSt('맞대기:', /^서로 다름/)) + ' · 판정 ' + esc(nSt('맞대기:', /^판정됨$/)) + ' · 일치 ' + esc(nSt('맞대기:', /^일치$/)) + ' · 서류 1종 ' + esc(nSt('맞대기:', /^단독$/)) + '</button>'
+          + '<button type="button" class="ghost-btn" data-lg-tab="links">③ 칸으로 간 길 — 다름 ' + esc(nSt('칸:', /^서류와 다름|^서류 값과 다름/)) + ' · 서류에 없는 값 ' + esc(nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/)) + ' · 서류와 같음 ' + esc(nSt('칸:', /^서류와 일치|^서류 1/)) + ' · 세무사님 값 ' + esc(nSt('칸:', /^세무사님/)) + '</button>'
+          + '<button type="button" class="ghost-btn" data-lg-tab="rows">④ 칸 장부 — 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + '</button>'
+          + '</div></div>';
+        // ① 모은 것 — 파일마다 읽음 상태·종류·모은 사실 수, 누르면 그 파일의 사실
+        if (kb){
+          var ST_ORDER = { '못읽음': 0, '일부': 1, '읽음': 2, '제외': 3 };
+          var files = (kb.files || []).slice().sort(function(a, b){ return ((ST_ORDER[a.st] == null ? 9 : ST_ORDER[a.st]) - (ST_ORDER[b.st] == null ? 9 : ST_ORDER[b.st])) || String(a.n).localeCompare(String(b.n)); });
+          var fb = files.map(function(f, i){
+            var stc = f.st === '못읽음' ? ' color:#b23; font-weight:600;' : f.st === '일부' ? ' color:#a60;' : '';
+            return '<tr>' + cell(f.n, 260) + cell(f.st || '', 60, stc) + cell(f.kind || '', 200) + cell(String(f.facts || 0), 50) + cell([f.why, f.use].filter(Boolean).join(' · '), 380)
+              + '<td style="padding:3px 8px; border-top:1px solid var(--line);">' + (f.facts ? '<button type="button" class="ghost-btn" data-lg-file="' + esc(f.n) + '" style="padding:1px 6px; font-size:11.5px;">사실 보기</button>' : '') + '</td></tr>';
+          }).join('');
+          h += '<div data-lg-sec="files" style="display:none; margin-top:8px;"><b>① 폴더 파일에서 모은 것</b> <span style="color:var(--sub);">파일 ' + esc(files.length) + '개(' + ['읽음', '일부', '못읽음', '제외'].map(function(s){ var n = files.filter(function(f){ return f.st === s; }).length; return n ? s + ' ' + n : ''; }).filter(Boolean).join(' · ') + ') · 서류 사실 ' + esc(ks.사실 || 0) + '건(서류 ' + esc(ks.서류종류 || 0) + '종)' + (kb.factsAll > (ks.사실 || 0) ? ' — 모은 사실 ' + esc(kb.factsAll) + '건 중 앞 ' + esc(ks.사실) + '건만 보관' : '') + (kb.filesAt ? ' · 파일 장부 ' + esc(kb.filesAt) : '') + '</span>'
+            + tbl(['파일', '읽음', '서류 종류', '사실', '이유 · 쓰인 곳', ''], fb) + '<div id="chLgFileFacts" style="margin-top:6px;"></div></div>';
+          // ② 맞대기 — 서류끼리 갈린 것부터
+          var G_ORDER = { '미결': 0, '서로 다름(살펴볼 것)': 1, '판정됨': 2, '시점 다름 가능': 3, '거래마다 다른 값': 4, '같은 서류 안 여러 값': 5, '일치': 6, '단독': 7 };
+          var groups = (kb.groups || []).slice().sort(function(a, b){ return ((G_ORDER[a.st] == null ? 9 : G_ORDER[a.st]) - (G_ORDER[b.st] == null ? 9 : G_ORDER[b.st])) || String(a.s).localeCompare(String(b.s)); });
+          var G_KO = { '미결': '❓ 서류끼리 갈림', '서로 다름(살펴볼 것)': '👀 서류마다 다름', '판정됨': '⚖ 판정됨', '시점 다름 가능': '🕒 시점 다름 가능', '거래마다 다른 값': '🔀 거래마다 다른 값', '같은 서류 안 여러 값': '같은 서류 안 여러 값', '일치': '✅ 서류 2종 이상 일치', '단독': '서류 1종뿐' };
+          var gb = groups.map(function(g){
+            var vals = (g.cl || []).map(function(c0){ return c0.v + ' ← ' + Object.keys(c0.docs || {}).map(function(dt){ return dt + '(' + (c0.docs[dt] || []).join(', ') + ')'; }).join(' / '); }).join('  ‖  ');
+            var col = g.st === '미결' ? ' color:#b23; font-weight:600;' : '';
+            return '<tr>' + cell(String(g.s || '').replace(/^자산:/, '부동산 ').replace(/^사람:/, '사람 ').replace(/^자산\+사람:/, '지분 ').replace(/^자산\+해:/, '공시가격 '), 220) + cell(g.k, 110) + cell(G_KO[g.st] || g.st, 140, col) + cell(vals, 520) + cell([g.d ? (g.how === '판정 맞대기' ? '정한 값 ' : '값 ') + g.d : '', g.rule, g.why].filter(Boolean).join(' · '), 360) + cell(g.how || '', 150, ' color:var(--sub);') + '</tr>';
+          }).join('');
+          h += '<div data-lg-sec="groups" style="display:none; margin-top:8px;"><b>② 서류끼리 맞대기</b> <span style="color:var(--sub);">같은 부동산·같은 사람의 같은 사실을 서류마다 나란히 놓은 것 ' + esc(groups.length) + '묶음 — 먼저 읽은 파일·최신 파일이 이기지 않고, 서류 2종 이상 일치·서류 안 검산·법령 정의로만 정합니다. 못 정하면 "서류끼리 갈림"으로 남겨 묻습니다</span>'
+            + (groups.length ? tbl(['대상', '사실', '맞댄 결과', '서류마다 값', '정한 값 · 이유', '맞댄 방법'], gb) : '<div class="log-empty">아직 맞댄 묶음이 없습니다</div>') + '</div>';
+          // ③ 칸으로 간 길 — 계산기·처리개요 칸마다 서류 값과 이어진 모습(다름·빈 칸 먼저)
+          var L_ORDER = function(res){ return /^서류와 다름|^서류 값과 다름/.test(res) ? 0 : /^빈 칸\(/.test(res) ? 1 : /^서류에 없는 값/.test(res) ? 2 : /^서류 1종과 같음\(다른/.test(res) ? 3 : /^추정/.test(res) ? 4 : /^서류에 이 칸/.test(res) ? 5 : /^빈 칸을/.test(res) ? 6 : /^서류 1/.test(res) ? 7 : 8; };
+          var OWN_KO = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: '규칙', 추정: '추정', 계산: '계산', 질문: '' };
+          var links = (kb.links || []).slice().sort(function(a, b){ return L_ORDER(a.res) - L_ORDER(b.res) || String(a.label).localeCompare(String(b.label)); });
+          var lb = links.map(function(l){
+            var col = /^서류와 다름|^서류 값과 다름|^빈 칸\(/.test(l.res) ? ' color:#b23; font-weight:600;' : /^서류에 없는 값|^추정\(서류에 없음/.test(l.res) ? ' color:#a60;' : /^서류에 이 칸/.test(l.res) ? ' color:var(--sub);' : '';
+            var own = l.owner ? (OWN_KO[l.owner.kind] != null ? OWN_KO[l.owner.kind] : l.owner.kind) + (l.owner.state === '추정' ? '·추정' : '') + (l.owner.file ? ' — ' + l.owner.file : '') : '';
+            return '<tr>' + cell(l.label, 200) + cell(l.cur === '' ? '(빈 칸)' : (l.curTxt || l.cur), 160) + cell(own, 200) + cell(l.res, 210, col) + cell((l.vals || []).map(function(v){ return v.v + '(' + (v.n || 0) + '종: ' + v.src + ')'; }).join('  ‖  '), 460) + cell(l.cur === '' ? '' : ((l.seen || []).length ? (l.seen || []).length + '개: ' + l.seen.join(', ') : '어느 서류에도 없음'), 320, (l.cur !== '' && !(l.seen || []).length) ? ' color:#a60;' : '') + cell([l.d ? '판정 ' + l.d : '', l.rule, l.why].filter(Boolean).join(' · '), 300) + cell(l.by, 160, ' color:var(--sub);') + '</tr>';
+          }).join('');
+          h += '<div data-lg-sec="links" style="display:none; margin-top:8px;"><b>③ 계산기 칸으로 간 길</b> <span style="color:var(--sub);">칸마다 지금 값이 서류 값과 어떻게 이어졌는지 ' + esc(links.length) + '줄 — "서류와 다름"·"빈 칸(갈림)"은 질문으로 섰고, "서류에 이 칸 값 없음"은 세무사님 답·추정·계산으로 채워질 칸입니다(처리개요를 돌릴 때마다 갱신)</span>'
+            + (links.length ? tbl(['칸', '지금 값', '넣은 주체 — 근거 파일', '서류와', '그 칸 종류의 서류 값(서류 수: 출처)', '지금 값이 나온 서류(모든 사실에서)', '판정 · 이유', '맞댄 방법'], lb) : '<div class="log-empty">아직 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리면 채워집니다</div>') + '</div>';
+        }
+        h += '<div data-lg-sec="rows">';
         var order = ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'];
         order.forEach(function(st){
           var list = rows.filter(function(x){ return x.state === st; });
@@ -1201,10 +1252,25 @@
         var opts = PATHS.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
         h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select id="chLgPath" style="max-width:360px;">' + opts + '</select><input id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
         h += '<div style="color:var(--sub); font-size:11.5px; margin-top:4px;">세무사님이 넣은 값은 넥스·서류가 바꾸지 못합니다. 모든 고침은 기록(누가·언제·전 값 → 후 값)으로 남고 ↩로 되돌릴 수 있습니다.</div>';
+        h += '</div>'; // ④ 칸 장부 끝
         if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.구분 || '') + ' — 납부세액 ' + esc(Number(s.최종세액 || 0).toLocaleString('ko-KR')) + '원</div>'; }).join('') + '</div>';
         if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
         h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
         body.innerHTML = h;
+        // [2026.10.29] 바탕 단추 — ①②③④ 칸 바꿔 보기(누른 칸만 펼침), 파일별 사실 보기, 서류 사실 다시 모으기
+        var showSec = function(name){ Array.prototype.forEach.call(body.querySelectorAll('[data-lg-sec]'), function(d){ d.style.display = d.getAttribute('data-lg-sec') === name ? '' : 'none'; }); Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-tab]'), function(b){ b.style.fontWeight = b.getAttribute('data-lg-tab') === name ? '700' : ''; }); try { sessionStorage.setItem('chLgTab', name); } catch (e) {} };
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-tab]'), function(b){ b.addEventListener('click', function(){ showSec(b.getAttribute('data-lg-tab')); }); });
+        var tab0 = 'rows'; try { tab0 = sessionStorage.getItem('chLgTab') || 'rows'; } catch (e) {}
+        if (!body.querySelector('[data-lg-sec="' + tab0 + '"]')) tab0 = 'rows';
+        showSec(tab0);
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-file]'), function(b){ b.addEventListener('click', function(){
+          var n = b.getAttribute('data-lg-file'), list = ((kb && kb.facts) || []).filter(function(f){ return f.f === n; });
+          var box = document.getElementById('chLgFileFacts');
+          box.innerHTML = '<b>' + esc(n) + '</b> <span style="color:var(--sub);">에서 모은 사실 ' + esc(list.length) + '건</span>' + tbl(['사실 종류', '값', '서류 종류', '서류 안 위치', '대상'], list.map(function(f){ return '<tr>' + cell(String(f.k).replace(/^기타:/, ''), 140, /^기타:/.test(f.k) ? ' color:var(--sub);' : '') + cell(f.v + (f.u ? ' (판독 불확실)' : '') + (f.cp ? ' (사본)' : ''), 260) + cell(f.t, 140) + cell(String(f.w || '').replace(/^docs\[\d+\]\.?/, '').replace(/\[(\d+)\]/g, function(_, n){ return ' ' + (Number(n) + 1) + '번째'; }).replace(/\./g, ' · ') || '파일 전체', 220, ' color:var(--sub);') + cell(String(f.s || '').replace(/^자산:/, '부동산 ').replace(/^사람:/, '사람 '), 200) + '</tr>'; }).join(''));
+          box.scrollIntoView({ block: 'nearest' });
+        }); });
+        var kbBtn = document.getElementById('chLgKbBuild');
+        if (kbBtn) kbBtn.addEventListener('click', function(){ kbBtn.disabled = true; kbBtn.textContent = '모으는 중…(1~2분)'; call({ step: 'ledgerKbBuild' }).then(function(res){ kbBtn.disabled = false; kbBtn.textContent = '🔄 서류 사실 다시 모으기'; if (res) reload(); }); });
         var setVal = function(path, v, est){ if (!v){ showToast('값을 적어 주세요.', 'warning'); return; } call({ step: 'ledgerSet', path: path, value: v, kind: est ? '추정' : '세무사님', estimate: !!est }).then(function(res){ if (res) reload(); }); };
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-pick]'), function(b){ b.addEventListener('click', function(){ setVal(b.getAttribute('data-lg-pick'), b.getAttribute('data-lg-v'), false); }); });
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-set]'), function(b){ b.addEventListener('click', function(){ var p = b.getAttribute('data-lg-set'), inp = body.querySelector('input[data-lg-in="' + p.replace(/"/g, '\\"') + '"]'); setVal(p, inp ? inp.value.trim() : '', false); }); });

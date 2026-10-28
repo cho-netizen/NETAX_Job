@@ -189,6 +189,16 @@ function cxGraphCheck_(cc, r, facts, rec, applyOne) {
     r.items.push(caseProcItem_(iid, 'check', '🧮 교차검증 — 「' + fd.label + '」 지금 값 ' + fd.cur + '이(가) 서류와 다릅니다. ' + (decided != null && g.status === '판정됨' ? '판정: ' + decided + '(' + g.rule + ')' : g.why || '') + ' — 물린 판단: ' + (CXG_DEPS_[fd.kind] || []).join('·'),
       { mode: 'choose', target: fd.target, input: 'text', label: fd.label, cands: cands }));
   });
+  // [2026.10.29] 대상(자산·사람)으로 묶은 칸이 서류 묶음과 어떻게 이어졌는지 사건 장부 바탕(kb.links)에 — 세무사님이 📒에서 확인
+  try {
+    if (typeof ledgerKbLink_ === 'function') cxgCalcFields_(cc).forEach(function (fd) {
+      const g = by[fd.subject + '#' + fd.kind];
+      const vals = g ? g.classes.map(function (c) { return { v: c.v, n: c.ndoc, src: Object.keys(c.docs).map(function (d) { return d + ' ' + c.docs[d].slice(0, 2).join(', '); }).join(' / ') }; }) : [];
+      const cur = cxgNorm_(fd.kind, fd.cur);
+      ledgerKbLink_(rec, { by: '대상 맞대기(' + fd.subject + ')', path: fd.path, label: fd.label, cur: fd.cur, vals: vals, d: g ? g.d : '', rule: g ? g.rule || g.status : '', why: g ? g.why || '' : '',
+        filled: S.changed.indexOf(fd.kind) !== -1 && !cur, norm: function (x) { const n = cxgNorm_(fd.kind, x); return cur && g && g.classes.some(function (c) { return c.n === n && cxgSame_(fd.kind, n, cur); }) ? cur : n; } });
+    });
+  } catch (e) {}
   if (S.changed.length) r.lines.push('🔁 교차검증으로 채운 칸에 물린 판단을 다시 봅니다: ' + S.changed.map(function (k) { return k + '(' + (CXG_DEPS_[k] || []).join('·') + ')'; }).join(' / '));
   r.lines.push('🧮 사실 묶음 맞대기: 묶음 ' + S.groups + '개(값이 여러 서류에 나온 것 ' + S.multi + ') — 일치 ' + S.일치 + ' · 서류 1종뿐 ' + S.단독 + ' · 판정됨 ' + S.판정됨 + ' · 시점 다름 가능 ' + S['시점 다름 가능'] + ' · 미결 ' + S.미결 + '(AI 판독 ' + S.ai판독 + ' · AI 맥락 ' + S.ai맥락 + ')'
     + ' / 계산기 칸 ' + S.calcFields + '개 — 일치 ' + S.calcAgree + ' · 채움 ' + S.calcFilled + ' · 어긋남 ' + S.calcMismatch.length + (S.open.length ? ' — 미결 예: ' + S.open.slice(0, 3).join(' / ') : ''));
@@ -232,6 +242,7 @@ function cxgValueCheck_(cc, r, facts, rec) {
     const hits = (facts || []).filter(function (f) { return f && f.src && f.kind !== '서류' && !f._copy && re.test(f.kind) && !(f.read && f.read.conf === '불확실') && !(/^(평가|공시가격)$/.test(fd.group) && localTax(f)) && (!fd.ak || !(f.keys && f.keys.asset) || cxAkSame_(f.keys.asset, fd.ak)); });
     const vals = {}; hits.forEach(function (f) { const n = cxgFactNum_(f); if (!n) return; const e = vals[n] = vals[n] || { v: n, docs: {} }; e.docs[f.src.docType || '서류'] = (e.docs[f.src.docType || '서류'] || []).concat(f.src.file); });
     const list = Object.keys(vals).map(function (k) { return vals[k]; });
+    try { if (typeof ledgerKbLink_ === 'function') ledgerKbLink_(rec, { by: '종류 맞대기(' + fd.group + ')', path: fd.path, label: fd.label, cur: fd.cur, vals: list.map(function (e) { return { v: e.v, n: Object.keys(e.docs).length, src: Object.keys(e.docs).map(function (d) { return d + ' ' + e.docs[d].slice(0, 2).join(', '); }).join(' / ') }; }), norm: function (x) { return String(x == null ? '' : x); } }); } catch (e) {} // [2026.10.29] 사건 장부 바탕(kb.links)
     if (!list.length) { V.noEvidence++; return; }
     if (vals[fd.cur]) { V.agree++; return; }
     V.mismatch.push(fd.label + ' 지금 ' + fd.raw + ' ↔ 서류 ' + list.slice(0, 4).map(function (e) { return e.v; }).join(', '));

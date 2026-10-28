@@ -27094,6 +27094,10 @@ function t6MergeLedger_(caseId, Lin) {
     else if (/^(물어볼것|증빙받을것)$/.test(r.state) && !r.qs && (!r.src || /^(질문|서류|규칙)$/.test(r.src.kind))) ops.push({ ask: true, path: p, label: r.label, question: r.ask, cands: r.cands || [], by: 'GAS', needDoc: r.state === '증빙받을것' });
   });
   const res = ops.length ? ledgerBatch_(caseId, ops) : { ok: true, set: 0, asked: 0 };
+  // [2026.10.29] 직결 서비스가 모은 서류 사실·맞대기·칸으로 간 길(사건 장부 바탕 kb)도 받는다 — 바탕은 매 처리마다 새로 모은 것이라 통째로(파일 장부는 지금 것 유지)
+  if (Lin.kb && typeof Lin.kb === 'object' && Array.isArray(Lin.kb.facts) && Lin.kb.at) {
+    try { const kb = Object.assign({}, Lin.kb); delete kb.prev; delete kb.prevAt; const pr = ledgerKbPut_(caseId, kb, '서류 사실 다시 모음(직결)'); res.kb = pr && pr.ok ? true : (pr && pr.error) || false; } catch (e) { res.kb = String(e && e.message || e); }
+  }
   res.merged = ops.length; return res;
 }
 function t6ApplyRead_(c, body) {
@@ -39930,6 +39934,7 @@ function caseProcStatus_(c, body) {
   let ledger = null;
   const tLg = Date.now(); // [2026.10.23 속도 ㅅ8차] ⑦ 안쪽 시간 — 장부(폴더 훑기+서류별 기억 읽기)가 1분 가까이 걸리던 것의 원인을 숫자로
   try { ledger = caseProcLedger_(c, saved); } catch (e) { ledger = { error: String(e && e.message || e) }; }
+  try { if (ledger && Array.isArray(ledger.rows)) ledgerKbFilesSave_(c.id, ledger.rows); } catch (e) {} // [2026.10.29] 파일마다 읽음·못읽음을 사건 장부 바탕에(화면 📒에서 세무사님이 봄)
   try { if (ledger && Array.isArray(ledger.rows)) ledgerDocUse_(c, ledger.rows); } catch (e) { rows.push(['폴더 파일 점검', '서류 → 칸 이음', '⚠', '장부에 적지 못함: ' + (e && e.message || e)]); } // [2026.10.28] 내용을 못 쓴 서류는 장부 물음으로
   rows.push(['시간', '⏱ ⑦ 안쪽', '', '칸 모으기 ' + Math.round((tLg - tS0) / 100) / 10 + '초 · 폴더 파일 장부 ' + Math.round((Date.now() - tLg) / 100) / 10 + '초']);
   // [2026.10.23 특단 측정 잣대 통일] 화면이 잰 "⚡ 누른 때 → 세액 보인 때"·"▶ 누른 때 → 세액" 초 — 사건마다 같은 자로 잰다

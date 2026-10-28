@@ -910,7 +910,7 @@ function ledgerView_(c) {
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-5).map(function (e) { return { id: e.id, 구분: e.구분, 최종세액: e.최종세액, 계산일: e.계산일 }; });
-  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_ };
+  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c) };
 }
 // 넥스 도구(채팅 넥스 case_ledger · 지휘 넥스 case_ledger) — 바로 실행. 세무사님 말씀을 옮긴 값은 kind 세무사님(값 주인)·by 넥스(적은 이)
 function ledgerToolRun_(input, by) {
@@ -950,6 +950,328 @@ function ledgerApi_(c, body) {
     case 'ledgerUndo': return ledgerUndo_(c.id, Object.assign({}, body, { by: body.by || who }));
     case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who });
     case 'ledgerImport': return ledgerImportLegacy_(c);
+    case 'ledgerKbBuild': return ledgerKbBuild_(c);
     default: return null;
   }
+}
+
+// ============================================================
+// [2026.10.29] 사건 장부의 바탕 — 서류에서 모은 사실 · 서류끼리 맞대기 · 계산기 칸으로 간 길 · 파일별 읽음
+// ------------------------------------------------------------
+// 세무사님 원문(10-29): "사건장부를 왜 만든거냐? 최대한 많은 데이타를 확보하여 데이타들을 입체적으로 분석하여 유용한 정보를 확보하여
+//   시스템에 활용하려고 만든거 아닌가? 혹시 gas가 필요로 하는 데이타만 모아둔 것인가?"
+//   / "사건장부를 대체 얼마나 잘 만들고 얼마나 잘 업데이트하고 장부내 정보를 얼마나 입체적으로 비교검토매치시켜서 유용한 정보로 확보하여
+//   gas의 적재적소에 뿌려서 원하는 정보를 확보하고 사건을 처리해 나가는지 내가 확인할 수가 없다"
+// 위 줄(rows)은 계산기 칸 장부일 뿐이었다. 서류 사실 모으기(cxFacts_ — 모든 서류 정리 결과의 모든 칸)와 서류끼리 맞대기(cxGraph_·cxBind_)는
+//   10-18부터 교차검증 안에서 돌았지만 결과를 한 줄 요약만 남기고 버려, 장부에도 화면에도 없었다. 이제 처리개요가 돌 때마다 그 결과를 장부(L.kb)에 남긴다:
+//   kb.files  파일마다 읽음/일부/못읽음/제외·종류·이유·쓰인 곳(caseProcLedger_ — 10-15 "파일마다 장부")
+//   kb.facts  서류에서 읽은 사실 한 건씩(종류·값·파일·서류 종류·칸 위치·대상(자산/사람))
+//   kb.groups 같은 대상·같은 종류 사실을 서류끼리 맞댄 결과(일치·서류 1종·판정됨·시점 다름 가능·미결 — 판정 규칙과 이유)
+//   kb.links  계산기·처리개요 칸마다 서류 값과 맞댄 결과(서류와 일치·빈 칸을 서류로 채움·서류와 다름(질문)·서류에 없음)
+//   kb.sum / kb.prev  모은 양·맞댄 결과 숫자와 직전 숫자(무엇이 바뀌었는지 — 장부 기록에도 한 줄)
+// 판단은 여기서 하지 않는다(모으고 남기기만). 계산기 칸 값의 주인은 위 rows 그대로다.
+// ============================================================
+var LEDGER_KB_FACT_MAX_ = 4000;
+// 바탕은 짝 파일(<사건ID>.바탕.json)에 둔다 — 칸 장부(rows)는 넥스·화면이 자주 고쳐 파일을 통째로 다시 쓰므로, 수천 건 사실을 같은 파일에 두면 고칠 때마다 느려진다.
+//  🧪 점검기 모래상자(akSandbox_)와 직결 서비스(cloudrun/server.js)도 ledgerKbLoad_·ledgerKbStore_를 같은 이름으로 쓴다(바꿔 끼움)
+var LEDGER_KB_MEMO_ = {};
+function ledgerKbFile_(caseId, create) {
+  const folder = ledgerFolder_();
+  const name = String(caseId).replace(/[^\w-]/g, '_') + '.바탕.json';
+  const it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return create ? folder.createFile(name, '{}', 'application/json') : null;
+}
+function ledgerKbLoad_(caseId) {
+  const k = String(caseId || '');
+  if (LEDGER_KB_MEMO_[k]) return JSON.parse(LEDGER_KB_MEMO_[k]);
+  try { const f = ledgerKbFile_(caseId, false); if (!f) return {}; const s = f.getBlob().getDataAsString('UTF-8') || '{}'; LEDGER_KB_MEMO_[k] = s; return JSON.parse(s) || {}; } catch (e) { return {}; }
+}
+function ledgerKbStore_(caseId, kb) {
+  const s = JSON.stringify(kb || {});
+  const f = ledgerKbFile_(caseId, true); f.setContent(s);
+  LEDGER_KB_MEMO_[String(caseId || '')] = s;
+  return true;
+}
+function ledgerKbFacts_(facts) {
+  const out = [];
+  (facts || []).forEach(function (f) {
+    if (!f || !f.src || out.length >= LEDGER_KB_FACT_MAX_) return;
+    let v = f.kind === '공시가격' && f.value && typeof f.value === 'object' ? (f.value.가격 || f.value.단가 || '') + (f.value.연도 ? '(' + f.value.연도 + ')' : '') : (f.raw != null && f.raw !== '' ? f.raw : f.value);
+    if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = ''; } }
+    let sj = ''; try { if (typeof cxgSubject_ === 'function') sj = cxgSubject_(f) || ''; } catch (e) { sj = ''; }
+    out.push({ k: String(f.kind || ''), v: String(v == null ? '' : v).slice(0, 120), f: String(f.src.file || ''), t: String(f.src.docType || ''), w: String(f.src.where || '').slice(0, 80), s: sj, u: f.read && f.read.conf === '불확실' ? 1 : 0, cp: f._copy ? 1 : 0 });
+  });
+  return out;
+}
+// 값 맞대기용 고르기 — 날짜(yyyy-mm-dd)·금액·면적(쉼표·원·㎡ 뗌)·주민번호(앞 6자리, 가림 무관)·동호(○동○호)·이름표("매도인 ")를 뗀 글
+var LEDGER_KB_ROLE_RE_ = /^(소유자|매도인|매수인|양도인|양수인|고객명|성명|대표자|상호|임대인|임차인|증여자|수증자|피상속인|상속인|본인)\s*[:：]?\s*/;
+function ledgerKbNorm_(kind, v) {
+  if (v == null || typeof v === 'object') return '';
+  let s = String(v).replace(/\s+/g, ' ').trim(); if (!s) return '';
+  s = s.replace(LEDGER_KB_ROLE_RE_, '');
+  const d = /^(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})/.exec(s); if (d) return d[1] + '-' + ('0' + d[2]).slice(-2) + '-' + ('0' + d[3]).slice(-2);
+  if (kind === '주민번호' || /\d{6}\s*-\s*[\d*]/.test(s)) { const m = /(\d{6})\s*-\s*[\d*]/.exec(s.replace(/\s+/g, '')) || /(\d{6})/.exec(s); if (m) return m[1] + '-'; }
+  if (kind === '동호') { const dh = /(\d+)\s*동[\s\S]*?(\d+)\s*호/.exec(s) || /()(\d+)\s*호/.exec(s); if (dh) return (dh[1] ? dh[1] + '동' : '') + dh[2] + '호'; }
+  const u = s.replace(/\s*(원|㎡|m2|m²|평|원정)$/i, '');
+  if (/^-?[\d,]*\.?\d+$/.test(u)) return String(Number(u.replace(/[^\d.-]/g, '')));
+  return s.replace(/[\s,()]/g, '');
+}
+// 칸 값마다 "이 값이 나온 서류" — 판정 엔진은 칸마다 정해진 종류의 서류만 세므로(예: 양도가액은 계약서만), 모든 사실에서 같은 값을 말한 파일을 따로 보여 준다(보기용)
+function ledgerKbSeen_(facts, links) {
+  const idx = {};
+  (facts || []).forEach(function (f) {
+    if (!f || !f.src || f.kind === '서류' || f._copy) return;
+    const raw = f.raw != null && f.raw !== '' ? f.raw : f.value;
+    const n = ledgerKbNorm_(f.kind, raw); if (!n || n.length < 2) return;
+    const put = function (key) { const e = idx[key] = idx[key] || {}; e[f.src.file] = (e[f.src.file] || '') || (f.src.docType || ''); };
+    put(n);
+    const ho = /(\d+)\s*호/.exec(String(raw || '')); if (ho) put('호:' + ho[1]); // 호실은 "101동 제12층 제1203호"·"1203호"처럼 적는 법이 달라 호수로도 찾는다
+  });
+  (links || []).forEach(function (l) {
+    if (l.cur === '' || l.cur == null) return;
+    const n = ledgerKbNorm_('', l.cur), hm = /^(?:\d+\s*동\s*)?(\d+)\s*호$/.exec(String(l.cur).trim()), e = idx[n] || (hm ? idx['호:' + hm[1]] : null);
+    l.seen = e ? Object.keys(e).slice(0, 8).map(function (fn) { return fn + (e[fn] ? '(' + e[fn] + ')' : ''); }) : [];
+  });
+  return links;
+}
+function ledgerKbGroups_(facts) {
+  let gs = [];
+  try { gs = typeof cxGraph_ === 'function' ? cxGraph_(facts) : []; } catch (e) { gs = []; }
+  const out = gs.map(function (g) {
+    return { s: g.subject, k: g.kind, st: g.status || '', d: g.d == null ? '' : String(g.d), rule: g.rule || '', why: g.why || '', route: g.route || '', how: '판정 맞대기',
+      cl: (g.classes || []).map(function (c) { const docs = {}; Object.keys(c.docs || {}).forEach(function (dt) { docs[dt] = (c.docs[dt] || []).slice(0, 4); }); return { v: String(c.v == null ? '' : c.v).slice(0, 120), n: c.ndoc || Object.keys(docs).length, docs: docs, ck: c.check || 0 }; }) };
+  });
+  // 넓은 맞대기(보기용 — 판정·질문·칸 채움에는 쓰지 않는다): 판정 엔진(cxGraph_)은 대상 열쇠를 정할 수 있는 종류(지번·면적·주민번호 등)만 맞대서
+  //  매매대금·계약일·잔금일·성명 같은 사실은 서류끼리 나란히 놓이지 않았다(가상양도 한 건: 사실 184건 중 맞댄 묶음 5개). 세무사님이 "입체적으로 비교검토매치"를
+  //  확인하실 수 있게, 같은 부동산(사실이 붙은 기록의 소재지)·같은 종류의 사실을 서류마다 나란히 놓는다. 소재지가 안 붙은 사실은 "사건 전체"로 묶는다.
+  //  서로 다른 거래(등기부의 옛 매매 등)도 같은 묶음에 들어올 수 있어 "서로 다름"은 판정이 아니라 살펴볼 거리로만 표시한다.
+  try {
+    const covered = {}; out.forEach(function (g) { covered[g.k] = 1; });
+    // 맞댈 뜻이 없는 줄(서류 글 한 줄·항목 묶음·순위·접수번호)은 ① 모은 것에만 두고 맞대기에서 뺀다
+    const SKIP = /^(글자 줄|항목|등기 순위|순위번호|접수번호|법무사 비용 항목|성명)$/;
+    // 같은 뜻의 사실은 이름이 달라도 한 묶음으로(계약서 "매매대금" = 등기부 "거래가액" = 신고서·명세서 "취득가액·양도가액" — 같은 거래 금액을 서류마다 다르게 부름)
+    const FAMILY = { 매매대금: '거래 금액', '등기 거래가액': '거래 금액', 거래가액: '거래 금액', 거래금액: '거래 금액', 취득가액: '거래 금액', 양도가액: '거래 금액', 잔금일: '잔금일', 계약일: '계약일' };
+    // 값이 여럿인 것이 정상인 종류(한 부동산에 취득·양도 거래가 따로 있음·영수증마다 합계가 다름) — 값마다 몇 서류가 말하는지만 보이고 "다름"으로 치지 않는다
+    const MULTI_OK = /^(거래 금액|계약금|중도금|잔금|계약일|잔금일|접수일|원인일|취득일|양도일|등기 원인|등기 목적|합계|금액|공시가격|날짜)$/;
+    const ROLE = /^(소유자|매도인|매수인|양도인|양수인|고객명|성명|대표자|상호|임대인|임차인|증여자|수증자|피상속인|상속인|본인)\s*[:：]?\s*/;
+    const norm = ledgerKbNorm_;
+    // 사람: 사실에 붙은 사람 열쇠(이름만), 없으면 값 머리의 이름("강민준 780412-…"·"매도인 강민준")
+    const personOf = function (f, raw) { const k = f.keys && f.keys.person; if (k) return String(k).split('|')[0].replace(/\s+/g, ''); const m = /^(?:[가-힣]{2,5}\s*[:：]?\s*)?([가-힣]{2,4})\s*\(?\s*\d{6}/.exec(String(raw || '').replace(ROLE, '')); return m ? m[1] : ''; };
+    const G = {};
+    (facts || []).forEach(function (f) {
+      if (!f || !f.src || f.kind === '서류' || f._copy || /^기타:/.test(String(f.kind || '')) || SKIP.test(String(f.kind || ''))) return;
+      if (covered[f.kind] && typeof cxgSubject_ === 'function' && cxgSubject_(f)) return; // 판정 맞대기가 이미 다룬 사실
+      const raw = f.kind === '공시가격' && f.value && typeof f.value === 'object' ? (f.value.가격 || f.value.단가 || '') : (f.raw != null && f.raw !== '' ? f.raw : f.value);
+      const n = norm(f.kind, raw); if (!n) return;
+      const pn = /^(주민번호|생년월일|주소|관계|등록기준지)$/.test(f.kind) ? personOf(f, raw) : '';
+      const a = String((f.keys && f.keys.asset) || '').split('|')[0];
+      const sj = pn ? '사람:' + pn : a ? '자산:' + a : '사건 전체';
+      const fam = FAMILY[f.kind] || f.kind;
+      const key = sj + '#' + fam;
+      const g = G[key] = G[key] || { s: sj, k: fam, classes: {}, kinds: {} };
+      g.kinds[f.kind] = 1;
+      const c = g.classes[n] = g.classes[n] || { v: String(raw).replace(/\s+/g, ' ').trim().slice(0, 120), docs: {}, files: {} };
+      const dt = f.src.docType || '서류';
+      c.files[f.src.file] = 1;
+      c.docs[dt] = c.docs[dt] || []; if (c.docs[dt].indexOf(f.src.file) === -1 && c.docs[dt].length < 4) c.docs[dt].push(f.src.file);
+    });
+    Object.keys(G).forEach(function (k) {
+      const g = G[k], cl = Object.keys(g.classes).map(function (n) { const c = g.classes[n]; return { v: c.v, n: Object.keys(c.docs).length, nf: Object.keys(c.files).length, docs: c.docs, ck: 0 }; });
+      const files = {}; Object.keys(g.classes).forEach(function (n) { Object.keys(g.classes[n].files).forEach(function (fn) { files[fn] = 1; }); });
+      let st, why = '';
+      if (cl.length === 1) st = cl[0].nf >= 2 ? '일치' : '단독';
+      else if (Object.keys(files).length === 1) st = '같은 서류 안 여러 값';
+      else if (MULTI_OK.test(g.k) || g.s === '사건 전체') { st = '거래마다 다른 값'; why = (g.s === '사건 전체' ? '누구·어느 물건의 값인지 열쇠가 안 붙은 사실 — 값이 여럿인 것이 정상일 수 있음' : '한 부동산에 거래(취득·양도 등)가 여럿이면 값이 여럿인 것이 정상') + ' — 값마다 몇 서류가 같은 값을 말하는지 봅니다' + (cl.some(function (c) { return c.nf < 2; }) ? ' · 서류 1개만 말하는 값: ' + cl.filter(function (c) { return c.nf < 2; }).map(function (c) { return c.v; }).slice(0, 4).join(', ') : ''); }
+      else { st = '서로 다름(살펴볼 것)'; why = '같은 ' + (/^사람:/.test(g.s) ? '사람' : '부동산') + '에 대해 서로 다른 서류가 다른 값을 말함 — 시점이 다른지(이사·지목 변경 등) 살펴볼 것. 계산에 쓰는 칸이면 ③ 칸으로 간 길에서 판정·질문을 봅니다'; }
+      const kindsTxt = Object.keys(g.kinds || {}).length > 1 ? ' (서류마다 이름: ' + Object.keys(g.kinds).join('·') + ')' : '';
+      out.push({ s: g.s, k: g.k + kindsTxt, st: st, d: cl.length === 1 ? cl[0].v : '', rule: '', why: why, route: '', how: '넓은 맞대기(보기용)', cl: cl.sort(function (x, y) { return y.nf - x.nf; }).slice(0, 12) });
+    });
+  } catch (e) {}
+  return out;
+}
+function ledgerKbSum_(kb) {
+  const s = { 사실: (kb.facts || []).length, 파일: (kb.files || []).length, 서류종류: 0, 묶음: (kb.groups || []).length, 칸: (kb.links || []).length };
+  const dts = {}; (kb.facts || []).forEach(function (f) { if (f.t) dts[f.t] = 1; }); s.서류종류 = Object.keys(dts).length;
+  (kb.groups || []).forEach(function (g) { s['맞대기:' + g.st] = (s['맞대기:' + g.st] || 0) + 1; });
+  (kb.links || []).forEach(function (l) { s['칸:' + l.res] = (s['칸:' + l.res] || 0) + 1; });
+  (kb.files || []).forEach(function (f) { s['파일:' + (f.st || '?')] = (s['파일:' + (f.st || '?')] || 0) + 1; });
+  return s;
+}
+function ledgerKbDiff_(a, b) {
+  if (!a) return '처음 모음';
+  const keys = {}; Object.keys(a).concat(Object.keys(b || {})).forEach(function (k) { keys[k] = 1; });
+  const ch = Object.keys(keys).filter(function (k) { return (a[k] || 0) !== ((b || {})[k] || 0); }).map(function (k) { return k + ' ' + (a[k] || 0) + '→' + ((b || {})[k] || 0); });
+  return ch.length ? ch.slice(0, 12).join(' · ') : '바뀐 것 없음';
+}
+// 처리개요 끝 교차검증(cxResolve0_)이 부른다 — facts: 그 실행의 사건 사실 전부, rec.links: 칸 맞대기 기록
+function ledgerKbSave_(cc, facts, rec) {
+  if (!cc || !cc.id) return null;
+  const links = ((rec && rec.links) || []).slice(0, 600);
+  try { ledgerKbSeen_(facts, links); } catch (e) {}
+  const kbNew = { at: caseProcNow_(), facts: ledgerKbFacts_(facts), groups: ledgerKbGroups_(facts), links: links, factsAll: (facts || []).length };
+  return ledgerKbPut_(cc.id, kbNew, '서류 사실 다시 모음');
+}
+// ③ 칸으로 간 길 — 화면을 열 때마다 "지금" 장부 칸으로 맞춘다(서류 사실은 처리개요 교차검증 때 모으지만, 상속·증여 칸은 그 뒤에 장부에 들어가므로 저장해 둔 길만 보면 빠진다)
+//  저장해 둔 교차검증 맞대기 줄 + 장부 칸 전부(세목 무관) + 증여·상속 처리개요 칸 — 칸마다 값을 넣은 주체와 그 값이 나온 서류(모은 사실 전부에서)
+function ledgerKbLiveLinks_(caseId, kb, c) {
+  const links = JSON.parse(JSON.stringify((kb && kb.links) || []));
+  const cc = c || { id: caseId };
+  try {
+    const L0 = ledgerLoad_(caseId) || {}, rows = L0.rows || {};
+    Object.keys(rows).forEach(function (p) {
+      const r = rows[p] || {};
+      if (/^(q:|doc:|tr:|ih:)/.test(p) || !/^(확정|추정)$/.test(String(r.state || ''))) return;
+      let cur = r.v;
+      if (cur && typeof cur === 'object') { try { cur = (Array.isArray(cur.acq) || Array.isArray(cur.tr)) ? [].concat(cur.acq || [], cur.tr || []).map(function (x) { return (x.label || '') + ' ' + (x.amount || ''); }).join(', ') : JSON.stringify(cur); } catch (e) { cur = ''; } }
+      if (cur === '' || cur == null) return;
+      const own = { kind: r.src && r.src.kind || '', file: r.src && r.src.file || '', state: r.state };
+      const ex = links.filter(function (l) { return l.path === p; })[0];
+      if (ex) { ex.owner = own; return; }
+      let txt = ''; try { txt = ledgerValueText_(p, r.v); } catch (e) { txt = ''; }
+      if (links.length < 800) links.push({ by: '장부 칸', path: p, label: String(r.label || p), cur: String(cur).slice(0, 120), curTxt: txt && txt !== String(cur) ? txt : '', res: '', d: '', rule: '', why: '', vals: [], owner: own });
+    });
+  } catch (e) {}
+  // 증여·상속 처리개요 칸(상속인·재산·채무·장례비 등 — 아직 장부 줄이 아닌 칸)도 같은 표에 — 처리개요 근거 기록(filled)의 출처를 주인으로
+  try {
+    if (cc.세목 === 'gift' || cc.세목 === 'inheritance') {
+      const ov = cc.사건개요 || {}, sv0 = (typeof caseProcLoad_ === 'function' ? caseProcLoad_(cc.id) : {}) || {}, filled = sv0.filled || {};
+      const KO = Object.assign({ ihDeceasedName: '피상속인 성명', ihDeathDate: '상속개시일' }, typeof CXG_OV_KO_ !== 'undefined' ? CXG_OV_KO_ : {});
+      Object.keys(ov).forEach(function (k) {
+        if (links.length >= 800 || links.some(function (l) { return l.path === k || l.path === 'g.' + k; })) return;
+        const label = KO[k] || (/^[가-힣]/.test(k) ? k : ''); if (!label) return;
+        if (/^(ihDeceasedName|상속인수)$/.test(k) && links.some(function (l) { return /^i\.(deceasedName|heirCount)$/.test(l.path); })) return; // 장부 칸과 같은 사실(피상속인 성명·상속인 수)은 한 번만
+        let v = ov[k];
+        if (Array.isArray(v)) v = v.map(function (x) { return x && typeof x === 'object' ? [x.name || x.이름 || '', x.relation || x.관계 || '', x.amount || x.금액 || ''].filter(Boolean).join(' ') : String(x); }).join(', ');
+        else if (v && typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = ''; } }
+        if (v === '' || v == null || v === false) return;
+        const fsrc = filled[k] && filled[k].src ? String(filled[k].src) : '';
+        const kind = /세무사님/.test(fsrc) ? '세무사님' : /넥스/.test(fsrc) ? '넥스' : /추정/.test(fsrc) ? '추정' : fsrc ? '서류' : '';
+        links.push({ by: '처리개요 칸', path: k, label: label, cur: String(v).slice(0, 120), res: '', d: '', rule: '', why: fsrc.slice(0, 160), vals: [], owner: { kind: kind, file: '', state: kind === '추정' ? '추정' : '확정' } });
+      });
+    }
+  } catch (e) {}
+  // 모은 사실(짧은 모양)로 "그 값이 나온 서류"를 다시 찾는다 — 이미 찾아 둔 줄(seen)은 그대로
+  try { const pf = ((kb && kb.facts) || []).map(function (f) { return { kind: f.k, raw: f.v, src: { file: f.f, docType: f.t } }; }); ledgerKbSeen_(pf, links.filter(function (l) { return !l.seen; })); } catch (e) {}
+  // 칸과 같은 종류의 서류 사실을 옆에 붙인다(보기용) — 예: 채무 칸 0원(추정)인데 대출잔액증명서에 "대출 잔액 142,000,000"이 있으면 둘이 한 줄에 보이고 "다름 — 확인"
+  //  종류 짝은 계산기 칸의 뜻(서식 칸)과 서류 사실 종류 이름으로만 정한다(사건 맞춤 아님)
+  try {
+    const KIND_OF = [[/^i\.debtAmount$/, /대출 잔액|채무|부채|대출 원금/], [/^i\.financialAmount$/, /^(예금 잔액|금융재산|잔고|예금)$/], [/^i\.funeralAmount$/, /장례/], [/^i\.nicheAmount$/, /봉안|자연장/], [/^i\.realEstateAmount$/, /공시가격|감정가액|매매사례/],
+      [/(^|\.)totalPrice$/, /매매대금|거래 금액|등기 거래가액|양도가액/], [/acquisitionPrice$/, /매매대금|거래 금액|등기 거래가액|취득가액/], [/^g\.giftAmount$/, /공시가격|감정가액|매매사례|예금 잔액|이체 금액|금액/]];
+    const facts0 = (kb && kb.facts) || [];
+    links.forEach(function (l) {
+      if (l.vals && l.vals.length) return; // 교차검증 엔진이 이미 서류 값을 붙인 줄
+      const m = KIND_OF.filter(function (x) { return x[0].test(String(l.path || '')); })[0]; if (!m) return;
+      const hits = facts0.filter(function (f) { return m[1].test(String(f.k || '')) && !f.cp && !/^기타:/.test(String(f.k || '')) && !/^\d{4}-\d{2}-\d{2}$/.test(ledgerKbNorm_(f.k, f.v)); }); // 서류 고유 칸(기타:)·날짜는 금액 칸과 맞대지 않음
+      if (!hits.length) return;
+      const by = {}; hits.forEach(function (f) { const n = ledgerKbNorm_(f.k, f.v); if (!n) return; const e = by[n] = by[n] || { v: f.v, files: {}, kinds: {} }; e.files[f.f] = f.t || ''; e.kinds[f.k] = 1; });
+      l.vals = Object.keys(by).slice(0, 6).map(function (n) { const e = by[n]; return { v: e.v, n: Object.keys(e.files).length, src: Object.keys(e.kinds).join('·') + ' — ' + Object.keys(e.files).join(', ') }; });
+      const cn = ledgerKbNorm_('', l.cur);
+      if (l.vals.length && !by[cn] && !/^(세무사님|넥스)$/.test((l.owner || {}).kind)) l.res = '서류 값과 다름 — 확인(서류: ' + l.vals.map(function (v) { return v.v; }).slice(0, 3).join(', ') + ')';
+    });
+  } catch (e) {}
+  // 칸 이름은 한국어로(화면에 코드 이름을 보이지 않는다) — 장부 이름표 → 처리개요 이름표 → 계산기 칸 이름표 순
+  const koOf = function (p) {
+    const s = String(p || ''), bare = s.replace(/^g\./, '');
+    let l = '';
+    try { l = ledgerLabel_(s); } catch (e) { l = ''; }
+    if (!l || l === s || /^[a-z]/.test(l) || /^g\./.test(l)) l = (typeof CXG_OV_KO_ !== 'undefined' && CXG_OV_KO_[bare]) || (typeof CASEPROC_FIELD_KO_ !== 'undefined' && CASEPROC_FIELD_KO_[bare]) || '';
+    if (!l) {
+      const PK = { giftDoneeName: '수증자 성명', giftDonorName: '증여자 성명', giftDoneeRegNo: '수증자 주민등록번호', giftDonorRegNo: '증여자 주민등록번호', giftRelation: '증여자와의 관계', giftDoneeAddress: '수증자 주소', giftDonorAddress: '증여자 주소',
+        'i.financialAmount': '금융재산', 'i.realEstateAmount': '부동산 등 재산 평가액', 'i.debtAmount': '채무', 'i.duesAmount': '공과금', 'i.funeralAmount': '장례비', 'i.nicheAmount': '봉안시설·자연장지 비용', 'i.heirCount': '상속인 수', 'i.isSpouse': '배우자 있음', 'i.childCount': '자녀 수', 'i.deceasedName': '피상속인 성명', 'i.priorGiftHeirAmount': '상속인에게 한 사전증여(10년)', 'i.priorGiftOtherAmount': '상속인 외에게 한 사전증여(5년)', 'i.appraisalFeeAmount': '감정평가수수료',
+        transferCause: '양도 원인', assetFloor: '층', assetKind: '자산 종류', assetType: '과세대상 구분' };
+      const tail = s.replace(/^[ac]\d+\./, '');
+      l = PK[s] || PK[bare] || PK[tail] || '';
+      if (l && /^a(\d+)\./.test(s)) l = '자산' + (Number(/^a(\d+)\./.exec(s)[1]) + 1) + ' ' + l;
+      if (l && /^c(\d+)\./.test(s)) l = '계약' + (Number(/^c(\d+)\./.exec(s)[1]) + 1) + ' ' + l;
+    }
+    return l || s;
+  };
+  links.forEach(function (l) { if (/^[a-z]/.test(String(l.label || '')) || /^g\./.test(String(l.label || ''))) { const k1 = koOf(l.path || l.label); l.label = k1 !== (l.path || l.label) ? k1 : koOf(l.label); } });
+  links.forEach(function (l) {
+    if (l.res) return;
+    const o = l.owner || {}, n = (l.seen || []).length;
+    let en = ''; try { en = ledgerEnumOf_(l.path || ''); } catch (e) { en = ''; }
+    if (en && !/^(세무사님|넥스)$/.test(o.kind) && o.state !== '추정' && !n) { l.res = '고른 구분값(서류를 보고 고름)'; return; }
+    l.res = /^(세무사님|넥스)$/.test(o.kind) ? (n ? '세무사님·넥스 값(서류에도 있음)' : '세무사님·넥스 값') : o.state === '추정' ? (n ? '추정(서류에 같은 값 있음)' : '추정(서류에 없음)') : o.kind === '계산' ? '계산한 값' : n >= 2 ? '서류와 일치(서류 2개 이상)' : n === 1 ? '서류 1개와 같음' : o.kind === '규칙' ? '규칙으로 만든 값(서류 사실을 세거나 고른 것)' : '서류에 없는 값';
+  });
+  return links;
+}
+// 새 바탕을 짝 파일에 쓰고(파일 장부는 지금 것 유지), 칸 장부 기록에 "무엇이 바뀌었나" 한 줄
+function ledgerKbPut_(caseId, kbNew, what) {
+  const w = withLock_(15000, function () {
+    const old = ledgerKbLoad_(caseId) || {};
+    if (!(kbNew.files || []).length) { kbNew.files = old.files || []; kbNew.filesAt = old.filesAt || ''; }
+    kbNew.sum = ledgerKbSum_(kbNew);
+    kbNew.prev = old.sum || null;
+    kbNew.prevAt = old.at || '';
+    ledgerKbStore_(caseId, kbNew);
+    return { ok: true };
+  });
+  if (!w || !w.ok) return { ok: false, error: (w && w.error) || '바탕을 쓰지 못함' };
+  ledgerMutate_(caseId, function (L) {
+    ledgerLogTo_(L, { by: 'GAS', what: what || '서류 사실 다시 모음', detail: '사실 ' + kbNew.sum.사실 + '건(서류 ' + kbNew.sum.서류종류 + '종) · 맞댄 묶음 ' + kbNew.sum.묶음 + ' · 칸 ' + kbNew.sum.칸 + ' — 직전과 달라진 것: ' + ledgerKbDiff_(kbNew.prev, kbNew.sum) });
+  });
+  return { ok: true, sum: kbNew.sum };
+}
+// 상태 표(⑦)가 파일 장부(caseProcLedger_)를 만들 때 부른다 — 파일마다 읽음/일부/못읽음/제외·종류·이유·쓰인 곳
+function ledgerKbFilesSave_(caseId, rows) {
+  if (!caseId || !Array.isArray(rows)) return null;
+  const files = rows.slice(0, 600).map(function (r) { return { n: String(r.n || ''), dir: String(r.dir || ''), st: String(r.st || ''), kind: String(r.kind || '').slice(0, 80), why: String(r.why || '').slice(0, 160), use: String(r.use || '').slice(0, 160) }; });
+  const sig = function (list) { return JSON.stringify(list.map(function (f) { return f.n + '|' + f.st + '|' + f.use; })); };
+  let changed = false;
+  const w = withLock_(15000, function () {
+    const kb = ledgerKbLoad_(caseId) || {};
+    changed = sig(kb.files || []) !== sig(files);
+    kb.files = files; kb.filesAt = caseProcNow_();
+    if (kb.facts) kb.sum = ledgerKbSum_(kb);
+    ledgerKbStore_(caseId, kb);
+    return { ok: true };
+  });
+  if (!w || !w.ok) return { ok: false, error: (w && w.error) || '파일 장부를 쓰지 못함' };
+  if (changed) ledgerMutate_(caseId, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '폴더 파일 다시 봄', detail: '파일 ' + files.length + '개 — ' + ['읽음', '일부', '못읽음', '제외'].map(function (s) { const n = files.filter(function (f) { return f.st === s; }).length; return n ? s + ' ' + n : ''; }).filter(Boolean).join(' · ') }); });
+  return { ok: true, changed: changed };
+}
+// 교차검증이 칸 하나를 서류 값과 맞댈 때마다 부른다(CrossCheckBind·CrossCheckGraph) — 그 칸이 서류와 어떻게 이어졌는지 한 줄
+//  o: {by, path, label, cur, vals:[{v, n(서류 종류 수), src}], d, rule, why, filled, asking, norm(값 → 비교용)}
+//  res: 서류와 일치(서류 2종 이상) · 서류 1종과 같음 · 빈 칸을 서류로 채움 · 빈 칸(서류끼리 갈림 — 질문) · 빈 칸(서류 1종뿐 — 질문에 맡김) · 서류와 다름(질문) · 서류에 이 칸 값 없음
+function ledgerKbLink_(rec, o) {
+  if (!rec || !o) return;
+  const norm = o.norm || function (x) { return String(x == null ? '' : x).replace(/[\s,원]/g, ''); };
+  const cur = o.cur === '' || o.cur == null ? '' : norm(o.cur);
+  const vals = (o.vals || []).filter(function (x) { return x && x.v !== '' && x.v != null; });
+  const same = cur ? vals.filter(function (x) { return norm(x.v) === cur; })[0] : null;
+  let res;
+  if (!vals.length) res = '서류에 이 칸 값 없음';
+  else if (o.filled) res = '빈 칸을 서류로 채움';
+  else if (same) res = (same.n || 0) >= 2 ? '서류와 일치(서류 2종 이상)' : (vals.length > 1 ? '서류 1종과 같음(다른 서류 값도 있음)' : '서류 1종과 같음');
+  else if (!cur) res = vals.length > 1 ? '빈 칸(서류끼리 갈림 — 질문)' : '빈 칸(서류 1종뿐 — 질문에 맡김)';
+  else res = '서류와 다름(질문)';
+  rec.links = rec.links || [];
+  if (rec.links.length >= 600) return;
+  rec.links.push({ by: String(o.by || ''), path: String(o.path || ''), label: String(o.label || o.path || ''), cur: o.cur == null ? '' : String(o.cur).slice(0, 80), res: res,
+    d: o.d == null ? '' : String(o.d).slice(0, 80), rule: String(o.rule || ''), why: String(o.why || '').slice(0, 200),
+    vals: vals.slice(0, 6).map(function (x) { return { v: String(x.v).slice(0, 80), n: x.n || 0, src: String(x.src || '').slice(0, 200) }; }) });
+}
+// 📒 화면 「🔄 서류 사실 다시 모으기」 — 칸 값은 건드리지 않고 폴더 파일 장부·서류 사실·서류끼리 맞대기만 지금 서류로 다시(칸으로 간 길은 다음 처리개요 때 갱신)
+function ledgerKbBuild_(c) {
+  const t0 = Date.now(), out = { ok: true };
+  try { const fl = typeof caseProcLedger_ === 'function' ? caseProcLedger_(c) : null; if (fl && Array.isArray(fl.rows)) out.files = ledgerKbFilesSave_(c.id, fl.rows); } catch (e) { out.filesError = String(e && e.message || e); }
+  let facts = [];
+  try { facts = typeof cxFacts_ === 'function' ? cxFacts_(c) : []; } catch (e) { out.factsError = String(e && e.message || e); }
+  const old = ledgerKbLoad_(c.id) || {};
+  const r = ledgerKbSave_(c, facts, { links: old.links || [] });
+  out.sum = r && r.sum; out.초 = Math.round((Date.now() - t0) / 100) / 10;
+  out.message = '서류 사실 ' + ((r && r.sum && r.sum.사실) || 0) + '건을 다시 모았습니다(' + out.초 + '초)';
+  return out;
+}
+// 화면에 줄 모양 — 파일마다 그 파일에서 모은 사실 수를 붙인다
+function ledgerKbView_(caseId, c) {
+  const kb = ledgerKbLoad_(caseId); if (!kb || (!kb.facts && !kb.files)) return null;
+  try { kb.links = ledgerKbLiveLinks_(caseId, kb, c); const s0 = kb.sum || ledgerKbSum_(kb); Object.keys(s0).forEach(function (k) { if (/^칸:/.test(k)) delete s0[k]; }); s0.칸 = kb.links.length; kb.links.forEach(function (l) { s0['칸:' + l.res] = (s0['칸:' + l.res] || 0) + 1; }); kb.sum = s0; } catch (e) {}
+  const byFile = {}; (kb.facts || []).forEach(function (f) { byFile[f.f] = (byFile[f.f] || 0) + 1; });
+  const files = (kb.files || []).map(function (f) { return Object.assign({}, f, { facts: byFile[f.n] || 0 }); });
+  // 파일 장부에 없는 이름(묶음 안 구간·엑셀 통장 등)도 사실이 있으면 보이게
+  Object.keys(byFile).forEach(function (n) { if (!files.some(function (f) { return f.n === n; })) files.push({ n: n, dir: '', st: '읽음', kind: '', why: '', use: '', facts: byFile[n] }); });
+  return { at: kb.at || '', filesAt: kb.filesAt || '', sum: kb.sum || ledgerKbSum_(kb), prev: kb.prev || null, prevAt: kb.prevAt || '', files: files, facts: kb.facts || [], groups: kb.groups || [], links: kb.links || [], factsAll: kb.factsAll || 0 };
 }

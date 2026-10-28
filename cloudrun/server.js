@@ -154,6 +154,8 @@ async function readCase(body) {
     try { sv = g.ctx.caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
     // [2026.10.28 시정 2단계] 사건 장부 — 서비스가 서류를 읽어 장부에 쓴 줄(값·서류 역할·물음)을 GAS가 진짜 장부에 합치도록 돌려준다(예전엔 메모리에서 사라짐)
     try { ledgerOut = g.ctx.ledgerLoad_(caseId, true); } catch (e) { ledgerOut = null; }
+    // [2026.10.29] 사건 장부의 바탕(서류 사실·맞대기·칸으로 간 길) — 짝 파일이라 따로 실어 보낸다(GAS t6MergeLedger_가 받음)
+    try { if (ledgerOut && typeof g.ctx.ledgerKbLoad_ === 'function') { const kb = g.ctx.ledgerKbLoad_(caseId); if (kb && kb.at && Array.isArray(kb.facts)) ledgerOut.kb = kb; } } catch (e) {}
     try { after = g.ctx.akReadCase_(caseId); } catch (e) { after = null; }
   } finally { unwrap(); }
   const tm = (out && out._tm) || {};

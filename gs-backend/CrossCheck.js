@@ -798,6 +798,8 @@ function cxResolve0_(c, r) {
     if (nAi) lines.push('🤖 이 사건 AI 판단 값 ' + nAi + '개: ' + Object.keys(store.applied).filter(function (k) { return store.applied[k].by === 'ai' && !store.applied[k].user; }).map(function (k) { const a = store.applied[k]; return a.label + ' ' + a.v + '(' + a.model + ')'; }).join(', ') + ' — 검토서에 따로 모음');
   }
   if (nGas || (aiOn && nAi)) r.loop = Object.assign({}, r.loop || {}, { again: r.loop && r.loop.again ? r.loop.again : '교차검증·AI 판단으로 계산기 칸을 채움 — 그 값으로 물린 판단(보유기간·공제·세율 등)을 다시' });
+  // [2026.10.29] 사건 장부의 바탕 — 이번에 모은 사실·서류끼리 맞댄 결과·칸으로 간 길을 장부에 남긴다(예전엔 위 한 줄 요약만 남기고 버림, 세무사님이 확인할 길이 없었음)
+  try { if (typeof ledgerKbSave_ === 'function') ledgerKbSave_(cc, facts, rec); } catch (e) { lines.push('⚠ 사건 장부에 서류 사실을 남기지 못함: ' + (e && e.message || e)); }
   return r;
 }
 // 쟁점의 입력 모양 서명 — 같은 모양이 여러 사건에서 반복되는지 보려고(보고서 cxAiReport_가 묶는 열쇠)
