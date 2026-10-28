@@ -379,7 +379,8 @@ function ledgerFromGiftInh_(c, items) {
     const kd = kindOf(s);
     ops.push({ path: path, value: v, kind: kd, by: kd === '세무사님' || kd === '넥스' ? kd : 'GAS', quote: String(s || '').slice(0, 160), why: est ? String(est).slice(0, 160) : kd === '세무사님' ? String(s || '').slice(0, 160) : '', sure: sure || '확실', estimate: !!est && kd !== '세무사님' && kd !== '넥스' });
   };
-  if (c.기준일) put('기준일', c.기준일, (filled.기준일 && filled.기준일.src) || '사건 기준일(규칙)');
+  // [2026.10.29] 기준일은 근거 기록(장부 기준일 줄)이 주인 — 사건 줄 값은 장부에 기준일 줄이 아예 없을 때만 처음 채운다(예전엔 매번 베껴 세무사님이 정한 기준일도 규칙으로 덮였다)
+  if (c.기준일 && !(ledgerLoad_(c.id).rows['기준일'] || {}).v) put('기준일', c.기준일, '사건 기준일(작업관리 사건 줄)');
   if (c.세목 === 'gift') {
     // [2026.10.28 증여 값 단일화] 증여 칸은 근거 기록(filled)이 곧 장부 g.<칸> 줄이라 여기서 베끼지 않는다(예전엔 처리개요 값을 근거 기록 출처로 다시 적었다)
   } else {
@@ -583,7 +584,7 @@ function ledgerFromGas_(c, S) {
     asks.push({ ask: true, path: 'doc:양도계약서.role', question: why + '. ' + (st.transferContracts || []).map(function (ct, i) { return '계약 ' + (i + 1) + ': 양도일 ' + (ct.date || '?') + ' · ' + String(src['c' + i + '.transferCause'] || ''); }).join(' / '), cands: (st.transferContracts || []).map(function (ct, i) { return { v: '양도계약서', src: '계약 ' + (i + 1) + ' ' + String(src['c' + i + '.transferCause'] || '') }; }), by: 'GAS' });
   }
   asks.forEach(function (a) { ops.push(a); });
-  if (c && c.기준일) ops.push({ path: '기준일', value: c.기준일, kind: '규칙', by: 'GAS', quote: '사건 기준일(양도일)' });
+  if (c && c.기준일 && !(ledgerLoad_(c.id).rows['기준일'] || {}).v) ops.push({ path: '기준일', value: c.기준일, kind: '규칙', by: 'GAS', quote: '사건 기준일(작업관리 사건 줄)' }); // [2026.10.29] 장부에 기준일 줄이 없을 때만 처음 채움
   // GAS가 지난 읽기에서 적었는데 이번 읽기에는 없는 값은 GAS 자기 줄이므로 지운다(서류를 다시 읽으면 GAS 주장은 통째로 새로 선다 — 사람·넥스 줄은 그대로)
   const L0 = ledgerLoad_(c.id), have = {}; ops.forEach(function (o) { have[o.path] = true; });
   Object.keys(L0.rows).forEach(function (p) { const r0 = L0.rows[p]; if (!have[p] && r0 && r0.state === '확정' && r0.src && /^(서류|규칙)$/.test(r0.src.kind) && /^(seller\.|c\d+\.|a\d+\.)/.test(p)) ops.push({ drop: true, path: p, by: 'GAS' }); });
@@ -678,11 +679,14 @@ function ledgerMapWrite_(caseId, kind, ans) {
 // 세무사님 원칙(10-16) "처리개요는 요약, 증빙·사이드바 답은 계산기 칸으로 직접". 증여 계산 칸(LEDGER_GIFT_KEYS_)의 값과 출처는 장부 g.<칸> 줄 하나다.
 //  근거 기록(filled)의 증여 칸은 장부에서 뽑은 모양, 처리개요 증여 칸은 장부를 보여 주는 요약(ledgerGiftOvSync_)이다.
 //  처리개요·세액계산 화면에서 세무사님이 직접 고친 증여 칸은 사건 고치기 입구에서 세무사님 값으로 장부에 적는다(ledgerGiftFromOvEdit_, 세무사님 결정 10-28 "직접 고침 유지").
+// [2026.10.29] 사건분류·기준일도 같은 길(세 세목 모두) — 근거 기록의 그 칸은 장부 줄에서, 화면 고침은 장부로, 장부 고침은 처리개요·사건 줄(기준일은 법정일까지)로
+var LEDGER_FILLED_KEYS_ = LEDGER_GIFT_KEYS_.concat(['사건분류', '기준일']);
+function ledgerFilledPath_(k) { return LEDGER_GIFT_KEYS_.indexOf(k) !== -1 ? 'g.' + k : k; }
 function ledgerGiftKind_(s) { s = String(s || ''); return /세무사님/.test(s) ? '세무사님' : /🤖|넥스|AI 판단/.test(s) ? '넥스' : /규칙|검산|교차|계산/.test(s) ? '규칙' : '서류'; }
 function ledgerGiftFilledRead_(caseId) {
   const L = ledgerLoad_(caseId), out = {};
-  LEDGER_GIFT_KEYS_.forEach(function (k) {
-    const r = L.rows['g.' + k]; if (!r || !(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return;
+  LEDGER_FILLED_KEYS_.forEach(function (k) {
+    const r = L.rows[ledgerFilledPath_(k)]; if (!r || !(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return;
     const s = r.src || {};
     out[k] = { v: String(r.v), src: String(s.quote || s.why || (s.kind === '세무사님' ? '세무사님 확인(장부)' : s.kind === '넥스' ? '🤖 넥스 판단(장부)' : '증빙(장부)')).slice(0, 120), at: String(r.at || '').slice(0, 10) };
   });
@@ -691,40 +695,48 @@ function ledgerGiftFilledRead_(caseId) {
 function ledgerGiftFilledWrite_(caseId, filled) {
   filled = filled && typeof filled === 'object' ? filled : {};
   const cur = ledgerGiftFilledRead_(caseId), ops = [];
-  LEDGER_GIFT_KEYS_.forEach(function (k) {
-    const f = filled[k];
-    if (!f) { if (cur[k] && /^(세무사님|넥스)$/.test(ledgerGiftKind_(cur[k].src)) === false) ops.push({ drop: true, path: 'g.' + k, by: 'GAS' }); return; }
+  LEDGER_FILLED_KEYS_.forEach(function (k) {
+    const f = filled[k], p = ledgerFilledPath_(k);
+    if (!f) { if (cur[k] && /^(세무사님|넥스)$/.test(ledgerGiftKind_(cur[k].src)) === false) ops.push({ drop: true, path: p, by: 'GAS' }); return; }
     if (cur[k] && String(cur[k].v) === String(f.v) && cur[k].src === String(f.src || '').slice(0, 120)) return;
     if (String(f.v == null ? '' : f.v).trim() === '') return;
-    const kd = ledgerGiftKind_(f.src);
-    ops.push({ path: 'g.' + k, value: f.v, kind: kd, by: kd === '세무사님' || kd === '넥스' ? kd : 'GAS', quote: String(f.src || '').slice(0, 160), why: kd === '세무사님' ? String(f.src || '').slice(0, 160) : '' });
+    const kd = ledgerGiftKind_(f.src), est = /^추정|(없어|없으므로).{0,20}(으로|로)\s*봄/.test(String(f.src || '')) && kd !== '세무사님' && kd !== '넥스'; // 서류가 없어서 정한 값은 추정 상태로
+    ops.push({ estimate: est, path: p, value: f.v, kind: kd, by: kd === '세무사님' || kd === '넥스' ? kd : 'GAS', quote: String(f.src || '').slice(0, 160), why: kd === '세무사님' ? String(f.src || '').slice(0, 160) : '' });
   });
   return ops.length ? ledgerBatch_(caseId, ops) : { ok: true, set: 0 };
 }
 // 화면(처리개요·세액계산)에서 세무사님이 고친 증여 칸 → 장부 세무사님 값. 비운 칸은 물어볼 것으로(값을 지어내지 않음)
-function ledgerGiftFromOvEdit_(caseId, prevOv, nextOv, where, who) {
+//  keys: 이 사건에서 장부가 주인인 처리개요 칸(증여 사건은 증여 칸 + 사건분류, 그 밖은 사건분류) + 기준일(사건 줄에서 바뀌었을 때). 경로는 ledgerFilledPath_
+function ledgerGiftFromOvEdit_(caseId, prevOv, nextOv, where, who, keys) {
   prevOv = prevOv || {}; nextOv = nextOv || {}; who = who === '넥스' ? '넥스' : '세무사님';
   const ops = [], s = (who === '넥스' ? '🤖 넥스 고침(' : '세무사님 고침(') + (where || '화면') + ')';
-  LEDGER_GIFT_KEYS_.forEach(function (k) {
+  (keys || LEDGER_GIFT_KEYS_).forEach(function (k) {
     if (!(k in nextOv)) return;
+    const p = ledgerFilledPath_(k);
     const a = String(prevOv[k] == null ? '' : prevOv[k]).trim(), b = String(nextOv[k] == null ? '' : nextOv[k]).trim();
     const money = /(Amount|Assumed|PaidTax|DeductionUsed|Fee)$/.test(k), same = money ? a.replace(/[^\d]/g, '') === b.replace(/[^\d]/g, '') : a === b;
     if (same) return; // 쉼표·원 표기만 다른 금액은 고친 것이 아니다(화면은 숫자만 보낸다)
-    if (b === '') ops.push({ ask: true, path: 'g.' + k, label: ledgerLabel_('g.' + k), question: who + '이(가) ' + (where || '화면') + '에서 이 칸을 비웠습니다 — 값을 정해 주세요', cands: a ? [{ v: a, src: '비우기 전 값' }] : [], by: who });
-    else ops.push({ path: 'g.' + k, value: b, kind: who, by: who, quote: s, why: s });
+    if (b === '') ops.push({ ask: true, path: p, label: ledgerLabel_(p), question: who + '이(가) ' + (where || '화면') + '에서 이 칸을 비웠습니다 — 값을 정해 주세요', cands: a ? [{ v: a, src: '비우기 전 값' }] : [], by: who });
+    else ops.push({ path: p, value: b, kind: who, by: who, quote: s, why: s });
   });
   return ops.length ? ledgerBatch_(caseId, ops) : null;
 }
-// 장부 증여 칸 → 처리개요 요약(장부에서 세무사님·넥스가 고친 값이 처리개요·옛 계산 화면에도 보이게)
+// 장부 → 처리개요 요약·사건 줄(장부에서 세무사님·넥스가 고친 값이 처리개요·옛 계산 화면·법정일에도 보이게). 증여 칸(증여 사건)·사건분류(모든 세목)·기준일(법정일 다시 계산)
 function ledgerGiftOvSync_(caseId) {
   const c = typeof job_findCase_ === 'function' ? job_findCase_(String(caseId)) : null;
-  if (!c || c.세목 !== 'gift') return null;
+  if (!c) return null;
   const L = ledgerLoad_(caseId), ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
-  let ch = 0;
-  LEDGER_GIFT_KEYS_.forEach(function (k) { const r = L.rows['g.' + k]; if (!r || !(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return; if (String(ov[k] == null ? '' : ov[k]) !== String(r.v)) { ov[k] = String(r.v); ch++; } });
-  if (!ch) return { ok: true, changed: 0 };
-  const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
-  return { ok: !!(up && up.success !== false), changed: ch, message: up && up.message };
+  // 세무사님·넥스가 정한 장부 값만 다시 쓴다 — GAS 서류 값은 GAS가 처리개요에 함께 적었고, 장부에 남은 옛 규칙 값이 세무사님이 시트에서 고친 새 값을 덮으면 안 되기 때문
+  const val = function (p) { const r = L.rows[p]; return r && (r.state === '확정' || r.state === '추정') && r.v !== '' && r.v !== undefined && r.v !== null && r.src && /^(세무사님|넥스)$/.test(r.src.kind) ? r : null; };
+  let ch = 0, out = { ok: true, changed: 0 };
+  (c.세목 === 'gift' ? LEDGER_GIFT_KEYS_ : []).concat(['사건분류']).forEach(function (k) { const r = val(ledgerFilledPath_(k)); if (!r) return; if (String(ov[k] == null ? '' : ov[k]) !== String(r.v)) { ov[k] = String(r.v); ch++; } });
+  if (ch) { const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 }); out = { ok: !!(up && up.success !== false), changed: ch, message: up && up.message }; }
+  const b = val('기준일');
+  if (b && String(b.v) !== String(c.기준일 || '') && typeof caseProcApplyBase_ === 'function') { // 기준일은 사건 줄 칸 — 법정일도 다시 계산(기준일 반영과 같은 길)
+    const who = b.src && b.src.kind === '넥스' ? '🤖 넥스(장부)' : b.src && b.src.kind === '세무사님' ? '세무사님(장부)' : '장부';
+    const rb = caseProcApplyBase_(c.id, String(b.v), who, '기준일'); out.기준일 = rb && rb.ok ? '반영' : (rb && rb.error) || '실패';
+  }
+  return out;
 }
 // ── 값 고치기 이력 = 장부 줄 이력 [2026.10.28 시정 2단계 — 값 이력] ──
 // 예전: 세무사님·넥스가 칸 값을 고친 기록(valueHist)을 저장 파일에 따로 두고 되돌리기도 따로 했다 — 장부 줄마다 있는 이력·되돌리기(ledgerUndo_)와 두 길이었다.
@@ -874,19 +886,8 @@ function ledgerQRead_(caseId) {
   items.sort(function (a, b) { return (a._n || 0) - (b._n || 0); });
   return { remaining: items.map(function (it) { const x = Object.assign({}, it); delete x._n; return x; }), decisions: dec };
 }
-// 사이드바 답·칸 값 고치기(옛 apply·valueFix) → 장부 같은 값(값 주인 = 답한 이)
-//  [2026.10.28 답 저장소 단일화] 양도 칸 답은 답 넣기(trcAnsSet_)가 곧 장부에 쓰므로 여기서 베끼지 않는다. 증여·상속 답(처리개요 칸·상속 세부 답)은
-//  아직 처리개요·근거 기록에 따로 있어 이 베껴 쓰기가 남아 있다 — 그 저장소를 장부로 합칠 때 함께 걷어낸다(남은 땜빵, 숨기지 않음)
-function ledgerMirrorApply_(c, body) {
-  const path = ledgerTargetPath_(body && body.target); if (!path) return null;
-  if (c && c.세목 === 'transfer' && LEDGER_ANS_RE_.test(path)) return { ok: true, same: true, message: '답 저장소가 곧 장부 — 따로 적지 않음' };
-  if (/^i\.q(div)?\./.test(path)) return { ok: true, same: true, message: '상속 세부 답이 곧 장부 — 따로 적지 않음' };
-  if (/^g\./.test(path) && LEDGER_GIFT_KEYS_.indexOf(path.slice(2)) !== -1) return { ok: true, same: true, message: '증여 칸 근거 기록이 곧 장부 — 따로 적지 않음' };
-  const who = caseProcWho_(body.src, body.by) === '넥스' ? '넥스' : '세무사님';
-  let v = body.value; if (path === 'costs' && typeof v === 'string') { try { v = JSON.parse(v); } catch (e) {} }
-  const r = ledgerSet_(c.id, { path: path, value: v, kind: who, by: who, why: String(body.why || body.src || '').slice(0, 160), label: body.label });
-  return r;
-}
+// [2026.10.29] 사이드바 답을 장부로 베껴 쓰던 ledgerMirrorApply_는 걷어냈다 — 양도 답(답 저장소)·상속 세부 답·증여 칸·사건분류·기준일(근거 기록)이
+//  모두 장부 줄 그 자체가 되어, 답 넣기(caseProcApply_)가 쓰는 저장소가 곧 장부다.
 // 장부 값을 계산기 입력 위에 덮는다(장부가 이긴다) — 세액계산 화면이 받는 입력
 function ledgerOverlayState_(caseId, state) {
   const L = ledgerLoad_(caseId);
@@ -928,14 +929,14 @@ function ledgerToolRun_(input, by) {
   else if (d === 'import') r = ledgerImportLegacy_(c);
   else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·import 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
-  if (r && r.ok && c.세목 === 'gift' && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
+  if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
 }
 // case_proc 입구(step: ledger·ledgerSet·ledgerAsk·ledgerDecide·ledgerUndo·ledgerCalc·ledgerImport) — 화면·넥스·사이드바가 같은 길
 function ledgerApi_(c, body) {
   body = body || {};
   const who = body.by === '넥스' ? '넥스' : '세무사님';
-  if (c.세목 === 'gift' && /^ledger(Set|Decide|Undo)$/.test(String(body.step))) { // 증여 값은 장부가 주인 — 장부 화면(📒)에서 고치면 처리개요 요약도 다시 쓴다
+  if (/^ledger(Set|Decide|Undo)$/.test(String(body.step))) { // 증여 값은 장부가 주인 — 장부 화면(📒)에서 고치면 처리개요 요약도 다시 쓴다
     const fn = { ledgerSet: ledgerSet_, ledgerDecide: ledgerDecide_, ledgerUndo: ledgerUndo_ }[body.step];
     const r0 = fn(c.id, Object.assign({}, body, body.step === 'ledgerSet' ? { kind: body.kind || who, by: body.by || who } : { by: body.by || who }));
     if (r0 && r0.ok) { try { r0.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} }

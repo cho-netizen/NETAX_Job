@@ -25301,9 +25301,18 @@ function work_doPost(body) {
     case 'work_update_case': { // [2026.10.22 작업 기록부] 화면이 _log를 붙이면(처리개요·세액계산·증빙확보 등 세무사님이 직접 쓴 도구) 기록부에 한 줄 + 중요한 순간이면 알림
       const lg = body._log; delete body._log;
       // [2026.10.28 증여 값 단일화 — 세무사님 결정 "직접 고침 유지"] 처리개요·세액계산 화면에서 고친 증여 계산 칸은 장부에 그 사람 값으로(장부가 증여 값의 주인, 처리개요는 요약)
-      let ovBefore = null; try { if (body.id && body.사건개요 && typeof job_findCase_ === 'function') { const c0 = job_findCase_(String(body.id)); if (c0 && c0.세목 === 'gift') ovBefore = JSON.parse(JSON.stringify(c0.사건개요 || {})); } } catch (e) { ovBefore = null; }
+      //  [2026.10.29] 사건분류(모든 세목)·기준일(사건 줄)도 같은 길 — 화면에서 고친 칸만 그 사람 값으로 장부에
+      let edit = null; try {
+        if (body.id && (body.사건개요 || body.기준일 !== undefined) && typeof job_findCase_ === 'function') {
+          const c0 = job_findCase_(String(body.id));
+          if (c0) {
+            const keys = (c0.세목 === 'gift' && body.사건개요 ? LEDGER_GIFT_KEYS_ : []).concat(body.사건개요 && '사건분류' in body.사건개요 ? ['사건분류'] : []).concat(body.기준일 !== undefined ? ['기준일'] : []);
+            if (keys.length) edit = { keys: keys, prev: Object.assign({}, c0.사건개요 || {}, { 기준일: c0.기준일 || '' }), next: Object.assign({}, body.사건개요 || {}, body.기준일 !== undefined ? { 기준일: body.기준일 } : {}) };
+          }
+        }
+      } catch (e) { edit = null; }
       const r = work_updateCase(body);
-      if (ovBefore && r && r.success !== false) { try { ledgerGiftFromOvEdit_(body.id, ovBefore, body.사건개요, lg ? String(lg.what || '처리개요 화면') : '세액계산 화면', lg ? caseProcWho_('', lg.by) : '세무사님'); } catch (e) { console.error('증여 칸 고침 장부 쓰기 실패: ' + (e && e.message || e)); } }
+      if (edit && r && r.success !== false) { try { ledgerGiftFromOvEdit_(body.id, edit.prev, edit.next, lg ? String(lg.what || '처리개요 화면') : '세액계산 화면', lg ? caseProcWho_('', lg.by) : '세무사님', edit.keys); } catch (e) { console.error('처리개요 칸 고침 장부 쓰기 실패: ' + (e && e.message || e)); } }
       if (lg && body.id && r && r.success !== false) { caseProcLog_(body.id, { by: caseProcWho_('', lg.by), what: String(lg.what || '').slice(0, 40), detail: String(lg.detail || '').slice(0, 240) }); if (lg.alert) caseProcAlert_(body.id, String(lg.alertKind || 'screen').slice(0, 30), String(lg.alert)); }
       return r;
     }
@@ -30727,7 +30736,7 @@ function tc_ruleTransferFactsRaw_(body) {
       if (e.dealPrice && tx0.acquisitionPrice && e.dealPrice === tx0.acquisitionPrice) return '취득';
       if (days(e.date, tx0.transferDate) <= 90) return '양도';
       if (tx0.acquisitionDate && days(e.date, tx0.acquisitionDate) <= 90) return '취득';
-      return e.date ? '취득' : (tx0.transferDate && !tx0.acquisitionDate ? '양도' : '취득'); // 날짜로도 못 가르면 예전 기본값(취득) — 항목표에서 세무사님이 고름
+      return ''; // [2026.10.29 땜질 심사] 날짜·금액으로도 못 가르면 짐작(예전 기본값 '취득')하지 않는다 — 체크 안 된 후보로 두고 항목표에서 세무사님이 고름
     };
     expDocs.forEach(function (e) {
       if (/견\s*적/.test(e.file)) return;
@@ -30742,9 +30751,11 @@ function tc_ruleTransferFactsRaw_(body) {
       if (e.amount && !expCands.some(function (x) { return x.amount === e.amount && (x.date === e.date || !x.date || !e.date); })) {
         var pp = (e.stmt ? '' : e.file + ' ') + e.memo + ' ' + e.head, other = e.payer && !tcNameIn_(e.payer, names); // 통장 줄은 파일 이름 말고 받는 이로 용도 판단
         // [2026.10.16 1:1 고객W] 영수증 상호가 공인중개사무소("○○공인", "○○공인중개사", "○○부동산")면 중개보수 — "평촌역대청공인" 현금영수증이 공사·수선비로 분류됐다
-        var kind = /중개\s*(보수|수수료|비용|료)|복비|부동산\s*수수료/.test(pp) || /공인\s*중개|공인$|부동산$/.test(String(e.memo || ((/(?:가\s*맹\s*점\s*명|상\s*호)\s*[:：]?\s*([가-힣()\s]{2,24}?)(?=\s*(?:대\s*표|사\s*업|\n|$))/.exec(e.head || '') || [])[1]) || '').replace(/\s+/g, '')) ? brokerSide(e) : /세무|신고\s*대행/.test(pp) ? '양도' : /인지|채권|취득세|법무/.test(pp) ? '취득' : '자본적지출';
-        expCands.push({ kind: kind, label: (kind === '자본적지출' ? '공사·수선비(자본적지출인지 판단)' : kind === '양도' ? '양도비용' : '취득 부대비용') + ' — ' + String(e.memo || '').slice(0, 30), amount: e.amount, date: e.date, file: e.file, sure: kind !== '자본적지출' && !other && !e.noReceipt,
-          note: (other ? '지급인 ' + e.payer + ' — 납세자 본인이 낸 돈인지 확인' : (kind === '자본적지출' ? '자본적지출(가치 증가·내용연수 연장)이면 넣고, 수선·유지(수익적지출)면 뺌 — 시행령 §163③' : '')) + (e.bankNote ? (other || kind === '자본적지출' ? ' · ' : '') + e.bankNote : '') });
+        var isBroker = /중개\s*(보수|수수료|비용|료)|복비|부동산\s*수수료/.test(pp) || /공인\s*중개|공인$|부동산$/.test(String(e.memo || ((/(?:가\s*맹\s*점\s*명|상\s*호)\s*[:：]?\s*([가-힣()\s]{2,24}?)(?=\s*(?:대\s*표|사\s*업|\n|$))/.exec(e.head || '') || [])[1]) || '').replace(/\s+/g, ''));
+        var brokerUnsure = isBroker && !brokerSide(e);
+        var kind = isBroker ? (brokerSide(e) || '취득') : /세무|신고\s*대행/.test(pp) ? '양도' : /인지|채권|취득세|법무/.test(pp) ? '취득' : '자본적지출';
+        expCands.push({ kind: kind, label: (brokerUnsure ? '중개보수(양도·취득 어느 쪽인지 고르세요)' : kind === '자본적지출' ? '공사·수선비(자본적지출인지 판단)' : kind === '양도' ? '양도비용' : '취득 부대비용') + ' — ' + String(e.memo || '').slice(0, 30), amount: e.amount, date: e.date, file: e.file, sure: kind !== '자본적지출' && !other && !e.noReceipt && !brokerUnsure,
+          note: (brokerUnsure ? '날짜·거래금액으로 양도·취득 어느 쪽 중개보수인지 못 가림 — 짐작하지 않고 체크 안 된 채로 둠' + (other || e.bankNote ? ' · ' : '') : '') + (other ? '지급인 ' + e.payer + ' — 납세자 본인이 낸 돈인지 확인' : (kind === '자본적지출' ? '자본적지출(가치 증가·내용연수 연장)이면 넣고, 수선·유지(수익적지출)면 뺌 — 시행령 §163③' : '')) + (e.bankNote ? (other || kind === '자본적지출' ? ' · ' : '') + e.bankNote : '') });
       }
       var purpose = (e.stmt ? '' : e.file + ' ') + e.memo + ' ' + e.head;
       var k = e.date + '|' + e.amount;
@@ -30752,6 +30763,7 @@ function tc_ruleTransferFactsRaw_(body) {
       var label = e.file + ' ' + e.amount.toLocaleString('ko-KR') + '원(' + e.date + (e.payer && !tcNameIn_(e.payer, names) ? ', 지급인 ' + e.payer + ' — 납세자 본인 아님, 확인' : '') + ')';
       if (/중개\s*(보수|수수료|비용|료)|복비|부동산\s*수수료/.test(purpose)) {
         var bs = brokerSide(e);
+        if (!bs) { evidence.push('중개보수 ' + label + ' — 양도·취득 어느 쪽인지 날짜·금액으로 못 가려 계산에 넣지 않음(비용 항목표에서 고르세요)'); return; }
         if (bs === '양도') { seenE[k] = 1; trSum += e.amount; trParts.push('양도 중개보수 ' + label); }
         else if (bs === '취득' && tx0.acquisitionDate) { seenE[k] = 1; acqAdd += e.amount; capParts.push('취득 중개보수 ' + label); }
         return;
@@ -31340,7 +31352,7 @@ function caseProc0_(body) {
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
-    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; try { const lg = ledgerMirrorApply_(c, body); if (lg && lg.ok) ra.ledger = lg.message; } catch (e) {} } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나 · [2026.10.28] 같은 값을 장부에도(답한 이가 주인)
+    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나 · [2026.10.29] 답 넣기가 쓰는 저장소가 곧 장부(베껴 쓰기 걷어냄)
     // [2026.10.27 10-27 A·C·경우별] 어느 칸이든 값 고치기·되돌리기, 질문 닫기, 경우(안) 계산 저장 — 넥스(채팅 카드·지휘 도구)와 화면(사건처리 GAS 칸·세액계산)이 같은 입구
     if (body.step === 'valueFix') return caseProcValueFix_(c, body);
     if (body.step === 'valueUndo') return caseProcValueUndo_(c, body);
@@ -31406,7 +31418,7 @@ var CASEPROC_SV_MEMO_ = {};
 //  [2026.10.28 3차] 상속 세부 답(ihChoices — 장례비·채무 확정·분할 귀속·보험금 넣을지 등)도 같은 길(장부 i.q.<열쇠>·i.qdiv.<열쇠>, 질문 줄과 같은 칸).
 //  [2026.10.28 5차] 값 고치기 이력(valueHist)은 장부 줄 이력에서 세무사님·넥스 고침을 뽑은 모양(ledgerFixHist_), 되돌리기는 장부 되돌리기 하나.
 var CASEPROC_LEDGER_KEYS_ = ['remaining', 'decisions', 'trAns', 'ihChoices', 'valueHist'];
-function caseProcQHasLegacy_(o) { return CASEPROC_LEDGER_KEYS_.some(function (k) { return k in o; }) || !!(o.filled && Object.keys(o.filled).some(function (k) { return LEDGER_GIFT_KEYS_.indexOf(k) !== -1; })); }
+function caseProcQHasLegacy_(o) { return CASEPROC_LEDGER_KEYS_.some(function (k) { return k in o; }) || !!(o.filled && Object.keys(o.filled).some(function (k) { return LEDGER_FILLED_KEYS_.indexOf(k) !== -1; })); }
 function caseProcQHydrate_(caseId, o) {
   if (caseProcQHasLegacy_(o)) return o; // 장부로 못 옮긴 옛 파일(장부 쓰기 실패) — 잃지 않게 그대로
   try { const q = ledgerQRead_(caseId); o.remaining = q.remaining; o.decisions = q.decisions; } catch (e) { console.error('장부 질문 읽기 실패: ' + (e && e.message || e)); o.remaining = []; o.decisions = {}; }
@@ -31417,7 +31429,7 @@ function caseProcQHydrate_(caseId, o) {
   try { o.filled = Object.assign({}, caseProcGiftFilledSplit_(o.filled || {}).rest, ledgerGiftFilledRead_(caseId)); } catch (e) { console.error('장부 증여 근거 읽기 실패: ' + (e && e.message || e)); }
   return o;
 }
-function caseProcGiftFilledSplit_(filled) { const gift = {}, rest = {}; Object.keys(filled || {}).forEach(function (k) { (LEDGER_GIFT_KEYS_.indexOf(k) !== -1 ? gift : rest)[k] = filled[k]; }); return { gift: gift, rest: rest }; }
+function caseProcGiftFilledSplit_(filled) { const gift = {}, rest = {}; Object.keys(filled || {}).forEach(function (k) { (LEDGER_FILLED_KEYS_.indexOf(k) !== -1 ? gift : rest)[k] = filled[k]; }); return { gift: gift, rest: rest }; }
 function caseProcQSplit_(saved) {
   const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions, ans: s.trAns, ih: s.ihChoices, vh: s.valueHist };
   CASEPROC_LEDGER_KEYS_.forEach(function (k) { delete s[k]; });
@@ -31697,7 +31709,6 @@ function caseProcValueFix_(c, body) {
   if (target === 'expenses' || target === 'ihdebts') { const nv = cpAnswerValueNorm_(target, value, null); if (nv.error) return { ok: false, error: nv.error }; value = nv.value; }
   const r = caseProcApply_(c, Object.assign({}, body, { target: target, value: value, src: src.slice(0, 80), by: by, label: label }));
   if (!r || r.ok === false) return r || { ok: false, error: '반영 실패' };
-  try { ledgerMirrorApply_(c, { target: target, value: value, by: by, why: why, label: label }); } catch (e) {} // [2026.10.28] 장부에도
   const nextTxt = caseProcValueText_(value).slice(0, 120);
   let closedN = 0;
   caseProcPatch_(c.id, function (s) {
@@ -31728,7 +31739,7 @@ function caseProcValueUndo_(c, body) {
   if (!last || last.at !== h.at || last.kind !== h.by) return { ok: false, error: '「' + label + '」은 이 고침 뒤에 다른 변화(질문·결정·다른 고침)가 있어 자동으로 되돌리지 않습니다 — 📒 사건 장부에서 그 칸의 이력을 보고 맞는 값을 넣어 주세요.' };
   const r = ledgerUndo_(c.id, { path: h.path, by: by });
   if (!r || r.ok === false) return r || { ok: false, error: '되돌리기 실패' };
-  if (c.세목 === 'gift') { try { ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 처리개요 요약도 되돌린 값으로
+  try { ledgerGiftOvSync_(c.id); } catch (e) {} // 처리개요 요약(증여 칸·사건분류)·기준일도 되돌린 값으로
   const prevTxt = h.prev ? caseProcValueText_(h.prev.v).slice(0, 60) : '(비어 있음)', curTxt = caseProcValueText_(h.next ? h.next.v : '').slice(0, 60);
   caseProcPatch_(c.id, function (s) {
     caseProcLogTo_(s, { by: by, what: '값 되돌림', key: h.target, detail: label + ' ' + curTxt + ' → ' + prevTxt + ' (고친 때 ' + String(h.at || '') + ' ' + String(h.by || '') + ')' });
@@ -34862,7 +34873,7 @@ function caseProcOverseasFacts_(c) {
         const d = rowUsd(r); if (!d || !r[0] || /총\s*매매|매매\s*(?:가액|대금)|순\s*수령|합계|TOTAL|Consideration|Sales?\s*Price/i.test(r[0])) return;
         // 양도비로 볼 만한 것(중개·에스크로·권원보험·이전세·등록 수수료) = 미리 체크, 대출 상환·이자·안분·크레딧·보증보험 = 양도비 아님(체크 안 함)
         // [2026.10.22 시험가동 가상양도1] 지방정부가 붙은 양도세("카운티 양도세" = Documentary Transfer Tax, 부동산 이전세)도 이전세, 재산세 "일할" 정산은 안분
-        const sure = /COMMISSION|중개|ESCROW|에스크로|TITLE|권원|소유권보험|이전세|Transfer\s*Tax|Documentary|(?:카운티|County|시|주)\s*(?:부동산\s*)?양도세|등록|Recording|서류처리|수수료|Wire/i.test(grp + ' ' + r[0]) && !/PAYOFF|상환|이자|안분|일\s*할|PRORATION|크레딧|Credit|보증보험|Home\s*Shield|할인|Discount/i.test(grp + ' ' + r[0]);
+        const sure = /COMMISSION|중개|ESCROW|에스크로|TITLE|권원|소유권보험|이전세|Transfer\s*Tax|Documentary|(?:카운티|County|시|주)\s*(?:부동산\s*)?양도세|등록|Recording|서류처리|수수료|Wire/i.test(grp + ' ' + r[0]) && !/PAYOFF|상환|이자|안분|일\s*할|PRORATION|크레딧|Credit|보증보험|Home\s*Warranty|할인|Discount/i.test(grp + ' ' + r[0]); // [2026.10.29 땜질 심사] 한 상품 이름(Home Shield) 대신 그 종류 이름(주택 보증 상품 Home Warranty)
         const no = /PAYOFF|원금|상환|이자|안분|일\s*할|PRORATION/i.test(grp + ' ' + r[0]);
         if (!no) exp.push({ label: r[0].slice(0, 60), usd: d, sure: sure });
       });
@@ -35117,7 +35128,7 @@ function caseProcLooksAddr_(v) {
   const s = String(v == null ? '' : v).trim();
   if (s.length < 5 || s.length > 120) return false;
   if (/[가-힣]/.test(s)) return /(시|도|군|구|읍|면|동|리|로|길|가)\s*\d/.test(s) || /(특별시|광역시|특별자치|도\s)[\s\S]*(구|군|시)/.test(s);
-  return /\d{2,}/.test(s) && /[A-Za-z]{2,}/.test(s) && /(ST|AVE|RD|BLVD|DR|LN|WAY|CA|NY|TX|COYOTES|STREET|ROAD|\d{5})/i.test(s);
+  return /\d{2,}/.test(s) && /[A-Za-z]{2,}/.test(s) && /(ST|AVE|RD|BLVD|DR|LN|WAY|CA|NY|TX|STREET|ROAD|\d{5})/i.test(s); // [2026.10.29 땜질 심사] 한 사건 거리 이름(COYOTES) 뺌 — 거리 종류·주·우편번호로 판정
 }
 function caseProcCleanCands_(r) {
   (r && r.items || []).forEach(function (it) {
@@ -35197,8 +35208,9 @@ function caseProcOverview0_(c) {
           ov.사건분류 = '일반';
           const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
           if (up && up.success !== false) {
-            caseProcRememberFill_(c.id, '사건분류', '일반', '증빙: 특례 서류 없음(가업·영농·동거·사전증여 신고·유언 서류 없음)' + (out.length ? ', ' + out.join(', ') : ''));
-            lines.push('✏ 사건분류 "일반" — 특례를 뒷받침하는 서류가 폴더에 없음(가업·영농·동거주택·사전증여 신고/계약·유언).' + ruled + ' 다르면 처리개요에서 고치세요.');
+            // [2026.10.29 땜질 심사] "서류가 없다"는 것으로 정한 값은 확정이 아니라 추정 — 계산은 진행하고 검토서 "추가로 확인할 사항"에 남는다(세무사님 원문 "추정치나 가정치를 넣어서 진행할 수도")
+            caseProcRememberFill_(c.id, '사건분류', '일반', '추정: 특례 서류가 폴더에 없어 일반으로 봄(가업·영농·동거·사전증여 신고·유언 서류 없음)' + (out.length ? ', ' + out.join(', ') : ''));
+            lines.push('✏ 사건분류 "일반"(추정) — 특례를 뒷받침하는 서류가 폴더에 없음(가업·영농·동거주택·사전증여 신고/계약·유언).' + ruled + ' 다르면 처리개요에서 고치세요.');
             c.사건개요 = ov; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; // 같은 실행의 다음 저장이 낡은 수정일로 거절되지 않게
             ruled = null;
           }
@@ -35901,7 +35913,7 @@ function caseProcAppealSummary_(c, lines, items) {
   //  그 계약의 증빙 묶음(사진은 장수만 — 금액 집계에 넣지 않음). 자재 목록이 번호로 안 이어지면 현장 이름으로.
   //  계약은 통장 한 줄과 바로 대조하지 않는다(대금은 여러 번 나눠 지급·자재비 상계) — 서면 표의 계약 줄·세금계산서와 짝짓고, 통장은 지급 한 건 단위로 대조한다.
   const numKey = function (f) { const n = String((f && f.name) || ''); if (/\d{1,2}\s*[~∼]\s*\d{1,2}|\(\s*묶음/.test(n)) return ''; /* "계약서 01~12"·묶음 구간은 여러 계약 — 번호로 묶지 않고 현장 이름으로 */ const m = /계\s*약\s*서?\s*[-_ ]\s*(\d{1,2})(?!\d)/.exec(n) || /^([A-Za-z]?\d{1,2})(?=[\s_\-.]|[가-힣])/.exec(n); return m ? String(m[1]).replace(/^0(\d)$/, '$1').toUpperCase() : ''; };
-  const siteKey = function (s) { return String(s || '').replace(/\s+|및|현장|케이블|설치|공사|\(.*?\)/g, '').slice(0, 4); };
+  const siteKey = function (s) { return String(s || '').replace(/\s+|및|현장|설치|공사|\(.*?\)/g, '').slice(0, 4); }; // [2026.10.29 땜질 심사] 한 사건 품목 낱말(케이블) 뺌
   const ctrs = [];
   of('workcontract').forEach(function (x) {
     const r = x.p.result, k = numKey(x.f);
@@ -39302,18 +39314,21 @@ function caseProcInhFacts0_(c, parsed) {
           if (solo.length) u.solo = solo.reduce(function (t, q) { return t + q.금액; }, 0);
           u.soloWho = solo.map(function (q) { return q.누가; }).join('·');
         });
-        // [2026.10.18 3차 재채점] ①실행일 전 지출·②합의서 단독 부담 몫은 빼지 않고 합에 넣고 ⚠ 확인만 단다 — 고객A 세무사님 검토서는 둘 다 실사용분으로 넣었다
-        //  (실행일 전 지출을 이 대출로 갚았을 수 있고, 단독 부담 조항이 있어도 실제 대출금으로 냈으면 사용처). 빼면 과소 공제(약 3,800만원). 금액 확정 못 한 영수증만 뺀다.
+        // [2026.10.29 땜질 심사 — 정답지 재채점 걷어냄] 예전엔 ①실행일 전 지출·②합의서 단독 부담 몫을 한 금액에 섞었다(고객A 검토서 금액에 맞춘 "3차 재채점").
+        //  넣을지는 사실 판단(이 대출로 갚았는지·대출금으로 냈는지)이라 혼자 정하지 않는다 — 확실한 사용분과 "확인할 몫"을 별개 채무 후보 두 줄로 내고, 세무사님이 채무 확정에서 고른다.
         const inUse = function (u) { return !u.unsure; };
-        const tot = uses.reduce(function (t, u) { return t + (inUse(u) ? u.v : 0); }, 0), totAll = uses.reduce(function (t, u) { return t + u.v; }, 0);
+        const askPart = function (u) { return (u.pre ? u.v : 0) + (!u.pre && u.solo ? u.solo : 0); }; // 확인할 몫 — 실행일 전 지출은 그 건 전부, 단독 부담은 그 몫만
+        const totAll = uses.reduce(function (t, u) { return t + u.v; }, 0), totAsk = uses.reduce(function (t, u) { return t + (inUse(u) ? askPart(u) : 0); }, 0);
+        const tot = uses.reduce(function (t, u) { return t + (inUse(u) ? u.v : 0); }, 0) - totAsk;
         const amt = Math.min(sh0 && sh0.v < 1 ? Math.round(tot * sh0.v) : tot, L.amount || Infinity);
-        const tbl = uses.map(function (u) { return (u.d || '날짜 ?') + ' ' + (u.who || '받는 분 ?') + ' ' + (u.v ? wonD(u.v) : '금액 확정 못 함' + (u.cand && u.cand.length ? '(읽힌 숫자 ' + u.cand.map(function (v) { return v.toLocaleString('ko-KR'); }).join('·') + ')' : '')) + '(' + u.kind + (u.files.length > 1 ? ', 같은 ' + u.kind + ' ' + u.files.length + '부' : '') + (u.inv.length ? ' · 세금계산서 ' + u.inv.join(', ') : '') + (u.stl ? ' · 합의서 ' + u.stl.f + ': ' + (u.stl.r.지급 || []).map(function (q) { return (q.누가 === '공동' ? '공동' : q.누가 + ' 단독') + ' ' + wonD(q.금액); }).join(' + ') : '') + ')' + (u.unsure ? ' [금액 확정 전 — 뺌]' : u.pre ? ' [⚠ 대출 실행일 전 — 넣음, 이 대출로 갚은 지출인지 확인]' : u.solo ? ' [⚠ 합의서상 ' + u.soloWho + ' 단독 부담 ' + wonD(u.solo) + ' — 넣음, 대출금으로 냈는지 확인]' : ''); }).join(' / ');
+        const tbl = uses.map(function (u) { return (u.d || '날짜 ?') + ' ' + (u.who || '받는 분 ?') + ' ' + (u.v ? wonD(u.v) : '금액 확정 못 함' + (u.cand && u.cand.length ? '(읽힌 숫자 ' + u.cand.map(function (v) { return v.toLocaleString('ko-KR'); }).join('·') + ')' : '')) + '(' + u.kind + (u.files.length > 1 ? ', 같은 ' + u.kind + ' ' + u.files.length + '부' : '') + (u.inv.length ? ' · 세금계산서 ' + u.inv.join(', ') : '') + (u.stl ? ' · 합의서 ' + u.stl.f + ': ' + (u.stl.r.지급 || []).map(function (q) { return (q.누가 === '공동' ? '공동' : q.누가 + ' 단독') + ' ' + wonD(q.금액); }).join(' + ') : '') + ')' + (u.unsure ? ' [금액 확정 전 — 뺌]' : u.pre ? ' [⚠ 대출 실행일 전 — 확인할 몫으로 따로, 이 대출로 갚은 지출인지 확인]' : u.solo ? ' [⚠ 합의서상 ' + u.soloWho + ' 단독 부담 ' + wonD(u.solo) + ' — 확인할 몫으로 따로, 대출금으로 냈는지 확인]' : ''); }).join(' / ');
         const preSum = uses.filter(function (u) { return u.pre && !u.unsure; }).reduce(function (t, u) { return t + u.v; }, 0);
-        const why = [exec ? (preSum ? '⚠ 대출 실행일 ' + exec.d + '(' + exec.file + ' "대출실행" 입금 ' + wonD(exec.v) + ') 전 지출 ' + wonD(preSum) + ' 포함 — 이 대출로 갚은 것인지 확인' : '') : '대출 실행일을 서류에서 못 찾음 — 실행일 전 지출이 섞였는지 확인',
-          uses.some(function (u) { return u.solo && !u.unsure; }) ? '⚠ 합의서 단독 부담 몫 ' + wonD(uses.reduce(function (t, u) { return t + (!u.unsure && u.solo ? u.solo : 0); }, 0)) + ' 포함 — 대출금으로 냈는지 확인' : '',
+        const why = [exec ? (preSum ? '⚠ 대출 실행일 ' + exec.d + '(' + exec.file + ' "대출실행" 입금 ' + wonD(exec.v) + ') 전 지출 ' + wonD(preSum) + '은 확인할 몫으로 따로 — 이 대출로 갚은 것인지 확인' : '') : '대출 실행일을 서류에서 못 찾음 — 실행일 전 지출이 섞였는지 확인',
+          uses.some(function (u) { return u.solo && !u.unsure; }) ? '⚠ 합의서 단독 부담 몫 ' + wonD(uses.reduce(function (t, u) { return t + (!u.unsure && !u.pre && u.solo ? u.solo : 0); }, 0)) + '은 확인할 몫으로 따로 — 대출금으로 냈는지 확인' : '',
           uses.some(function (u) { return u.unsure && !u.pre; }) ? '금액 확정 못 한 영수증은 뺌' : ''].filter(String).join(' · ');
         if (tot > 0) out.debts.push({ debtType: 'loan', creditorName: (L.creditorName || '대출') + ' 대출 실사용분', amount: amt, file: uses.filter(inUse)[0] ? uses.filter(inUse)[0].files[0] : uses[0].files[0], src: '대출 사용처 표 ' + uses.filter(inUse).length + '건 합 ' + wonD(tot) + (sh0 && sh0.v < 1 ? ' × 피상속인 지분 ' + sh0.txt + '(' + sh0.file + ')' : '') + (why ? ' — ' + why : ''), sure: false,
           note: '대출 명의가 피상속인이 아니어도 피상속인 재산을 담보로 피상속인을 위해 쓴 몫만 채무로 볼 여지(§14①, 시행령 §10② — 실사용분 입증) · 대출 잔액 ' + wonD(L.amount) + ' 안에서 · ' + why + ' · 사용처: ' + tbl });
+        if (totAsk > 0) { const amtAsk = Math.max(0, Math.min(sh0 && sh0.v < 1 ? Math.round(totAsk * sh0.v) : totAsk, (L.amount || Infinity) - amt)); if (amtAsk > 0) out.debts.push({ debtType: 'loan', creditorName: (L.creditorName || '대출') + ' 대출 — 확인할 몫(실행일 전 지출·합의서 단독 부담)', amount: amtAsk, file: uses[0].files[0], src: '대출 사용처 표 중 넣을지 사실 확인이 필요한 몫 ' + wonD(totAsk) + (sh0 && sh0.v < 1 ? ' × 지분 ' + sh0.txt : ''), sure: false, note: '이 대출로 갚은 지출·대출금으로 낸 합의금이면 채무(§14①), 아니면 빼세요 — 서류만으로 정하지 않았습니다 · ' + why }); }
         out.notes.push('대출 사용처 표(' + (L.creditorName || '대출') + ' ' + wonD(L.amount) + '): ' + tbl + ' → 쓸 수 있는 합 ' + wonD(tot) + (tot !== totAll ? '(표 전체 ' + wonD(totAll) + ')' : '') + (sh0 && sh0.v < 1 ? ' × 지분 ' + sh0.txt + ' = ' + wonD(Math.round(tot * sh0.v)) : '') + (why ? ' — ' + why : ''));
       }
     }
@@ -45995,7 +46010,7 @@ function docMaterialListParse_(text) {
   if (/거래명세/.test(km[1]) && (/예\s*금\s*주|예\s*탁\s*금/.test(t.slice(0, 600)) || !/품\s*(?:목|명)|수\s*량|규\s*격/.test(t))) return null;
   var kind = /거래명세/.test(km[1]) ? '거래명세서(인수증)' : '자재 공급 목록';
   var r = { 종류: kind, 현장: '', 발행일: '', 거래처: '', 품목: [], 합계: null, 검산: '', 경고: [] }, m;
-  m = /(?:^|\n)\s*\d{1,2}\s*[.)]\s*([^\n]{2,40}(?:현장|공사|케이블)[^\n]{0,20})/.exec(t) || /(?:현\s*장\s*명?|공\s*사\s*명)\s*[:：]\s*([^\n]{2,40})/.exec(t); if (m) r.현장 = m[1].replace(/\s+/g, ' ').trim();
+  m = /(?:^|\n)\s*\d{1,2}\s*[.)]\s*([^\n]{2,40}(?:현장|공사)[^\n]{0,20})/.exec(t) /* [2026.10.29 땜질 심사] 한 사건 품목 낱말(케이블) 뺌 */ || /(?:현\s*장\s*명?|공\s*사\s*명)\s*[:：]\s*([^\n]{2,40})/.exec(t); if (m) r.현장 = m[1].replace(/\s+/g, ' ').trim();
   m = /(20\d{2})\s*[.년\-]\s*(\d{1,2})\s*[.월\-]\s*(\d{1,2})/.exec(t); if (m) r.발행일 = docYmd_(m[1], m[2], m[3]);
   m = /거\s*래\s*처\s*명?\s*[:：]?\s*([^\n]{2,30})/.exec(t) || /([^\n]{2,30}?)\s*귀\s*하/.exec(t); if (m) r.거래처 = m[1].replace(/\s*귀\s*하.*$/, '').replace(/\s+/g, ' ').trim();
   var it = docItemRows_(t.slice(km.index >= 0 ? 0 : 0));
@@ -47433,11 +47448,11 @@ function jmMembers_(t) {
       var pr = dsk.slice(i * 2, i * 2 + 2).sort();
       e.전입일 = pr[0]; e.신고일 = pr[1]; e._ds = pr; e.날짜보정 = '다음 행 글자에서 옮김(표 칸 순서)';
       if (!e.변동사유 && q.변동사유) e.변동사유 = q.변동사유;
-      if (e.관계 && e.이름) delete e.확인필요;
+      e.확인필요 = true; // [2026.10.29 땜질 심사] 옮긴 날짜는 원문 칸에서 읽은 것이 아니므로 확인 표시를 지우지 않는다(예전엔 지워 확정처럼 보였다)
     });
     var rest = dsk.slice(give * 2).sort();
-    q.전입일 = rest[0]; q.신고일 = rest[1] || rest[0]; q._ds = rest;
-    if (rest.length <= 2 && q.관계 && q.이름) delete q.확인필요;
+    q.전입일 = rest[0]; q.신고일 = rest[1] || rest[0]; q._ds = rest; q.날짜보정 = q.날짜보정 || '앞 행으로 날짜 일부를 옮김(표 칸 순서)';
+    q.확인필요 = true;
   }
   out.forEach(function (p) { delete p._ds; });
   return out;
@@ -48915,7 +48930,8 @@ function ctParseContract_(text) {
   if (!r.잔금일 && pay.length) { r.잔금일 = pay.map(function (d) { return d.d; }).sort().pop(); r.잔금일확인필요 = true; }
   // 지급일이 하나뿐인데 중도금 칸 하나에만 금액이 있고 잔금이 비었으면 — 그 금액이 잔금(중도금 칸 이름표를 OCR이 끌어 붙인 것)
   var payDays = pay.map(function (d) { return d.d; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
-  if (!r.잔금 && (r.중도금 || []).length === 1 && payDays.length <= 1) { r.잔금 = r.중도금[0]; r.중도금 = []; }
+  // [2026.10.29 땜질 심사] 옮기되 표시 없이 바꾸지 않는다 — 원문과 달리 읽은 것이므로 구분 확인 표시와 경고를 남긴다(구분확인필요 = 계약금·중도금·잔금 나눔을 원문으로 확인)
+  if (!r.잔금 && (r.중도금 || []).length === 1 && payDays.length <= 1) { r.잔금 = r.중도금[0]; r.중도금 = []; r.구분확인필요 = true; r.경고.push('지급일이 하나뿐인데 중도금 칸에만 금액이 있어 그 금액(' + Number(r.잔금).toLocaleString('ko-KR') + '원)을 잔금으로 봄 — 원문 확인'); }
   var jd = /중\s*도\s*금/.exec(t);
   if (jd) { var md = ds.filter(function (d) { return d.at > jd.index && d.at - jd.index < 120 && d.d !== r.잔금일; }); if (md.length) r.중도금일 = md[0].d; }
   var gm2 = /교부\s*일자\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /계약\s*(?:체결)?\s*일\s*[:：]?\s*((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(t);
