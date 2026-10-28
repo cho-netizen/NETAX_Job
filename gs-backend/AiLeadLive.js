@@ -27,6 +27,9 @@ var CASEPROC_AI_LIGHT_MODEL_ = 'claude-haiku-5-5';
 var CASEPROC_AI_HIGH_MODEL_ = 'claude-opus-5-5';
 var CASEPROC_AI_KRW_ = 1400;
 var CASEPROC_AI_MAX_ROUNDS_ = 14;
+// [2026.10.28 속도 ④바퀴] 세무사님 "이어서 돌려라" — 가상양도32 실측 왕복 8·294초·458원: 지시문으로는 모델이 안 따른다(다른 도구로 우회, ask_user 뒤 또 한 왕복). 왕복 수를 코드로 못 박는다
+var CASEPROC_AI_EXPLORE_TOOLS_ = ['case_files', 'file_read', 'case_view', 'doc_view', 'facts_find', 'doc_facts', 'doc_find', 'fact_map', 'case_status']; // "탐색" 도구(읽고 둘러보기) — 그 밖은 "일" 도구
+var CASEPROC_AI_EXPLORE_MAX_ = 1; // GAS 한 바퀴 전 탐색 차례 상한 — 넘으면 돌리지 않고 "지금 아는 것으로 set_read_scope"로 되돌림(0원)
 var CASEPROC_AI_TURN_BUDGET_MS_ = 150000; // 한 차례(서버 한 번)에 도구를 새로 시작할 수 있는 시간 — 화면 다리(gasbridge)는 같은 요청을 4분까지 기다린다
 // 세액이 크게 갈리는 칸 — AI가 근거를 대도 넣지 않고 세무사님 답으로만(질문 id·질문 글 기준)
 var CASEPROC_AI_USER_ONLY_RE_ = /relfmv|시가|특수관계|가족관계|관계인지|평가액|감정가|buyerrel|donorRelation|giftRelation|giftPrior|사전증여|10년 내|합산액/; // 10년 합산(사전증여)은 2번 잠정 0과 같이 세무사님 확인 칸
@@ -261,6 +264,7 @@ function caseProcAiLiveModeText_(cap) {
     '- 모든 글(중간 메모·보고·질문 메모)은 한국어로 쓴다 — 화면에 그대로 보인다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.',
     // [2026.10.22] 세무사님 "채팅창에서는 나와 AI의 소통이 주가 되어야" / "AI주도라고 해서 나하고 상의하지 않고 AI가 무조건 사건을 완결하는 것을 구현하려고 하는 것인가?"
+    '- 읽을 파일을 정하면(set_read_scope) GAS 한 바퀴가 같은 차례에 자동으로 돌아 결과 묶음이 온다 — gas_run을 따로 부르지 않는다. 한 바퀴 전 탐색(case_files·file_read 등)은 한 차례뿐 — 넘기면 돌지 않는다. 질문을 올리면(ask_user) 그 차례에서 끝난다 — 끝 말을 같은 응답에 쓴다.',
     '- 질문을 올릴 때(ask_user)는 같은 응답에 세무사님께 드리는 끝 말(아래 보고 모양)을 글로 함께 쓴다 — 그러면 거기서 끝나고 다음 차례를 기다리지 않는다(왕복 하나·20초를 아낌). 질문만 올리고 끝 말을 따로 쓰지 않는다.',
     '- 끝낼 때 쓰는 보고는 채팅창에서 세무사님께 직접 하는 말이다. 굵은 글씨·목록 기호·표 없이 서너 문장: 무엇을 했는지 한 문장, 그다음 계산을 막는 것부터 무엇을 여쭙는지(급한 것 두세 가지만 — 나머지는 화면 질문 목록에 이미 있다). GAS 진행(몇 바퀴·어느 도구)은 쓰지 않는다(화면이 요약해 보인다).',
     '- 맡은 일은 끝까지 하되, 물을 것이 있으면 묻는다(세무사님 "AI가 무조건 사건을 완결하면 절대 안된다는 것이 아니라, 나한테 물을 것이 있으면 물어봐야한다는 뜻이다"). 여쭌 것에 답이 오면 화면이 이어서 마무리한다. 세무사님이 채팅으로 답하시면 같은 넥스(채팅)가 그 칸에 넣는다.',
@@ -637,24 +641,47 @@ function caseProcAiTurn_(body) {
   const json = r.json, content = json.content || [];
   const uses = content.filter(function (b) { return b.type === 'tool_use'; });
   const results = [], calls = [], pending = [];
+  // [ⓑ 탐색 상한] GAS 한 바퀴 전(묶음 없음)에 탐색 도구를 부른 차례 수 — 상한을 넘긴 차례의 탐색 호출은 돌리지 않는다(0원)
+  const exploring = !ctx.bundled && uses.some(function (u) { return CASEPROC_AI_EXPLORE_TOOLS_.indexOf(u.name) !== -1; });
+  if (exploring) ctx.exploreTurns = (ctx.exploreTurns || 0) + 1;
+  const exploreOver = exploring && ctx.exploreTurns > CASEPROC_AI_EXPLORE_MAX_;
+  let scopeNow = false;
   uses.forEach(function (u) {
     let out;
+    if (exploreOver && CASEPROC_AI_EXPLORE_TOOLS_.indexOf(u.name) !== -1) { calls.push(u.name + '(상한)'); results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify({ 오류: '탐색 상한(' + CASEPROC_AI_EXPLORE_MAX_ + '차례)을 넘겨 돌리지 않음 — 지금 아는 것으로 set_read_scope(GAS가 읽을 파일)를 정하라. 정하면 GAS 한 바퀴가 같은 차례에 자동으로 돌아 결과 묶음이 온다.', 다시해도됨: false }) }); return; }
+    // [ⓐ] GAS 한 바퀴가 이미 돌았으면 gas_run은 즉시 답(묶음은 위에)
+    if (u.name === 'gas_run' && ctx.bundled) { calls.push(u.name + '(이미)'); results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify({ 결과: 'GAS 한 바퀴는 이미 돌았다 — 결과 묶음(정한 값·질문표·서류 정리·명단)은 위 gas_run 결과에 있다. 다시 돌리지 않는다.' }) }); return; }
     // [2026.10.28 결함 L] 세무사님이 읽을 범위를 말씀하셨는데 이번 처리에서 set_read_scope를 안 부른 채 gas_run → GAS를 돌리지 않고 되돌린다(0원). 화면·GAS가 말씀을 대신 해석하지 않는다 — 넥스가 읽고 판단해 콕 집어 줘야 함
     if (u.name === 'gas_run' && ctx.scopeSaid && !ctx.scopeSet) { calls.push(u.name + '(거절)'); ctx.gaps = ctx.gaps || []; results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify({ 오류: 'gas_run을 돌리지 않음 — 세무사님이 읽을 범위를 말씀하셨는데 아직 set_read_scope로 GAS에게 읽을 파일을 콕 집어 주지 않았다. 먼저 set_read_scope(ids 또는 on/off — 폴더·파일 이름 그대로)로 범위를 정한 뒤 gas_run을 다시 불러라.', 세무사님말: ctx.scopeSaid, 다시해도됨: true }) }); return; }
     if (CASEPROC_AI_CLIENT_TOOLS_.indexOf(u.name) !== -1) { pending.push({ id: u.id, name: u.name, input: u.input || {} }); calls.push(u.name); return; } // 화면이 실행하고 결과를 다음 차례에 붙인다
     if (Date.now() - t0 > CASEPROC_AI_TURN_BUDGET_MS_) out = { text: JSON.stringify({ 오류: '이번 차례 시간이 모자라 실행하지 못함 — 다음 차례에 다시 부르면 됨', 다시해도됨: true }) };
     else { try { out = caseProcAiLiveExec_(caseId, u.name, u.input, ctx); } catch (e) { out = { text: JSON.stringify({ 오류: '도구 실행 오류: ' + (e && e.message || e) }) }; } }
+    if (u.name === 'set_read_scope') scopeNow = true;
     const capLen = u.name === 'case_status' ? 7000 : (u.name === 'file_read' || u.name === 'case_files') ? 14000 : 6000; // [2026.10.28 속도 ⓑ] 첫 응답 6,000자 안 // [2026.10.28 속도 A①] 첫 응답 묶음은 6,000자에 잘리면 뜻이 없다
     results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, capLen) });
     calls.push(u.name);
   });
+  // [ⓐ 범위+한 바퀴 같은 차례] 이 차례에 set_read_scope가 돌았고 gas_run을 따로 부르지 않았으면(아직 한 바퀴 전) 서버가 gas_run을 이어 붙인다 — 넥스 응답에 가짜 도구 호출 블록을 더해 화면이 같은 차례에 GAS 한 바퀴(직결 포함)를 돌리고 결과 묶음을 붙여 돌려준다. 모델 왕복 하나가 확실히 준다
+  let autoGas = false;
+  if (scopeNow && !ctx.bundled && !pending.some(function (p) { return p.name === 'gas_run'; })) {
+    const aid = 'toolu_auto_gas_' + Date.now().toString(36);
+    content.push({ type: 'tool_use', id: aid, name: 'gas_run', input: { auto: true, why: '읽을 파일을 정했으니 GAS 한 바퀴를 같은 차례에 이어서' } });
+    pending.push({ id: aid, name: 'gas_run', input: { auto: true } }); calls.push('gas_run(자동)'); autoGas = true;
+  }
   caseProcAiCtxSave_(caseId, ctx);
   const won = Math.round((r.won + (ctx.subWon || 0) - subBefore) * 10) / 10;
   // [2026.10.28 속도 ③바퀴 ③] 질문 올리기(ask_user)·질문 닫기 같은 "대답을 기다릴 필요 없는" 도구만 부르면서 끝 말(글)을 함께 썼으면 그 자리에서 끝낸다 — 가상양도30: 질문 올리기 23초 + 끝 답 17초가 두 왕복
   const softTools = ['ask_user', 'close_question', 'report_tool_gap'];
   const txtNow = caseProcAiText_(json);
-  const done = json.stop_reason !== 'tool_use' || !uses.length || (uses.every(function (u) { return softTools.indexOf(u.name) !== -1; }) && txtNow.replace(/\s+/g, '').length >= 20 && !pending.length);
-  return { ok: true, done: done, stop: json.stop_reason, assistant: content, toolResults: results, pending: pending, calls: calls, won: won, report: done ? caseProcAiMask_(caseProcAiText_(json)) : '', note: caseProcAiCut_(caseProcAiText_(json), 200),
+  // [ⓒ] 질문 올리기(ask_user)가 왔으면 그 차례에서 끝 — 모델에게 "답만" 왕복을 다시 주지 않는다(가상양도32 ⑧ 16초). 끝 말이 비었으면 올린 질문으로 서버가 끝 말을 만든다(모델 호출 없음)
+  const asked = uses.some(function (u) { return u.name === 'ask_user'; }) && !pending.length;
+  const done = json.stop_reason !== 'tool_use' || !uses.length || asked || (uses.every(function (u) { return softTools.indexOf(u.name) !== -1; }) && txtNow.replace(/\s+/g, '').length >= 20 && !pending.length);
+  let report = done ? caseProcAiMask_(txtNow) : '';
+  if (done && asked && report.replace(/\s+/g, '').length < 20) {
+    const qs = (ctx.asks || []).slice(-12).map(function (a) { return a.label || caseProcAiCut_(a.note || '', 60) || (a.ids || []).join(','); }).filter(Boolean);
+    report = caseProcAiMask_('서류를 읽어 칸을 채웠고, 세무사님께 여쭐 것 ' + qs.length + '개를 올렸습니다' + (qs.length ? ': ' + qs.join(' / ') : '') + '. 답해 주시면 이어서 계산으로 갑니다.');
+  }
+  return { ok: true, done: done, stop: json.stop_reason, assistant: content, toolResults: results, pending: pending, calls: calls, won: won, report: report, autoGas: autoGas, exploreOver: exploreOver, endedByAsk: !!(done && asked), note: caseProcAiCut_(txtNow, 200),
     decisions: ctx.decisions, asks: ctx.asks, opinions: ctx.opinions, gaps: ctx.gaps, attaches: ctx.attaches || [], loop: ctx.loop || null, model: CASEPROC_AI_DIRECTOR_MODEL_, _ms: Date.now() - t0 };
 }
 
@@ -664,9 +691,12 @@ function caseProcAiFinish_(body) {
   const c = akReadCase_(caseId);
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
-  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, /* [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17). [2026.10.28 속도 A] 이 주석이 // 라서 뒤의 업무유형·mode·won·rounds·stop이 기록에서 빠져 있었다 — 블록 주석으로 */ 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, sec: Number(body.sec) || 0, calls: Number(body.calls) || 0, packed: !!ctx.packed, roundLog: Array.isArray(body.roundLog) ? body.roundLog.slice(0, 20).map(function (x) { return { n: Number(x.n) || 0, sec: Number(x.sec) || 0, tools: Array.isArray(x.tools) ? x.tools.slice(0, 8) : [], inChars: Number(x.inChars) || 0, won: Number(x.won) || 0 }; }) : [], prePacked: !!ctx.prePacked, ui: body.ui && typeof body.ui === 'object' ? { toFirst: Number(body.ui.toFirst) || 0, gaps: Number(body.ui.gaps) || 0, draw: Number(body.ui.draw) || 0 } : null, stop: String(body.stop || ''), // [2026.10.28 ③바퀴] 현황 미리 실음·화면 쪽 시간(전송→첫 호출·답→다음 호출 사이 합·그리기) // [2026.10.28 속도 ⓐ] 왕복마다 초·도구·입력 글자 수 // [2026.10.28 속도 A] 왕복·초·도구 호출 수 — 다음 재기에 씀
+  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, /* [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17). [2026.10.28 속도 A] 이 주석이 // 라서 뒤의 업무유형·mode·won·rounds·stop이 기록에서 빠져 있었다 — 블록 주석으로 */ 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, sec: Number(body.sec) || 0, calls: Number(body.calls) || 0, packed: !!ctx.packed, roundLog: Array.isArray(body.roundLog) ? body.roundLog.slice(0, 20).map(function (x) { return { n: Number(x.n) || 0, sec: Number(x.sec) || 0, tools: Array.isArray(x.tools) ? x.tools.slice(0, 8) : [], inChars: Number(x.inChars) || 0, won: Number(x.won) || 0, auto: x.auto ? String(x.auto).slice(0, 30) : undefined }; }) : [], prePacked: !!ctx.prePacked, ui: body.ui && typeof body.ui === 'object' ? { toFirst: Number(body.ui.toFirst) || 0, gaps: Number(body.ui.gaps) || 0, draw: Number(body.ui.draw) || 0 } : null, stop: String(body.stop || ''), 탐색초: 0, 일초: 0, // [2026.10.28 ③바퀴] 현황 미리 실음·화면 쪽 시간(전송→첫 호출·답→다음 호출 사이 합·그리기) // [2026.10.28 속도 ⓐ] 왕복마다 초·도구·입력 글자 수 // [2026.10.28 속도 A] 왕복·초·도구 호출 수 — 다음 재기에 씀
     spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200),
     report: caseProcAiMask_(String(body.report || '').slice(0, 3000)) }; // [2026.10.21 넥스 하나로] 보고도 사건에 — 다음 처리 첫 글·검토서·채팅 넥스 조회가 읽는다
+  // [2026.10.28 속도 ④바퀴 ⓓ] 왕복마다 종류 — 탐색(case_files·file_read·case_view·doc_view·사실 지도 류) / 일(set_read_scope·gas_run·값 넣기·질문·조회 류) / 답만 — 와 합계 초
+  run.roundLog.forEach(function (x) { const t = x.tools || []; x.kind = !t.length ? '답만' : t.every(function (n) { return CASEPROC_AI_EXPLORE_TOOLS_.indexOf(String(n).replace(/\(.*$/, '')) !== -1; }) ? '탐색' : '일'; if (x.kind === '탐색') run.탐색초 += x.sec; else run.일초 += x.sec; });
+  run.탐색초 = Math.round(run.탐색초 * 10) / 10; run.일초 = Math.round(run.일초 * 10) / 10;
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}
   // [GAS 고도화 ①] 총괄 AI 판단을 2번 기록 모양(kind 'cx')으로 — 비용은 이번 지휘 비용을 판단 수로 나눠 붙임. 세무사님 수정은 다음 처리 때 2번 0) 단계가 붙인다
   if (run.mode === 'ai' && (ctx.cxItems || []).length) caseProcAiLogCx_(c, CASEPROC_AI_DIRECTOR_MODEL_, run.won / CASEPROC_AI_KRW_, ctx.cxItems, 1);

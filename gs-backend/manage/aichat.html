@@ -3377,7 +3377,7 @@
     quick_judge: '좁은 판단(저가 AI)', ask_higher: '어려운 판단(상위 AI)', law_lookup: '조문 보기', law_search: '예규·판례 찾기', law_attach: '근거 첨부', law_decisions: 'AI 회의 결론', list_business_managers: '지침 목록', load_business_manager: '지침 읽기',
     search_tax_items: '절세 아이템 찾기', read_tax_item: '절세 아이템 읽기', case_view: '사건 보기', calc_fill: '칸·질문 보기', doc_facts: '서류 정리 결과', facts_find: '사실 찾기', report_tool_gap: '도구 부족 신고', people_roster: '사람 명단',
     money_links: '돈 흐름', time_order: '시간 순서', contract_list: '계약 목록', owner_assets: '자산 목록', law_checks: '법령 점검', public_lookup: '공공 조회', form_needs: '서식 칸', forms_check: '서식 대조', tax_calc: '세액계산', save_draft: '초안' };
-  function nxAiCpToolsKo_(calls){ var n = {}; (calls || []).forEach(function(c){ var k = NXAI_CP_TOOL_KO_[c] || c; n[k] = (n[k] || 0) + 1; }); return Object.keys(n).map(function(k){ return k + (n[k] > 1 ? ' ×' + n[k] : ''); }).join(' · '); }
+  function nxAiCpToolsKo_(calls){ var n = {}; (calls || []).forEach(function(c){ var c0 = String(c).replace(/\(.*$/, ''); var k = (NXAI_CP_TOOL_KO_[c0] || c0) + String(c).slice(c0.length); n[k] = (n[k] || 0) + 1; }); return Object.keys(n).map(function(k){ return k + (n[k] > 1 ? ' ×' + n[k] : ''); }).join(' · '); }
   // [2026.10.22 넥스가 주인 — 기록부 먼저·남은 일만] 세무사님 원문: "직접 처리하다가 남은 작업을 AI에게 시킬 수 있으니 이것을 어떻게 할지나 고민하라" / "나한테 물을 것이 있으면 물어봐야한다는 뜻이다"
   //  넥스가 사건을 받으면 case_status(서버, 0원)로 세무사님이 직접 하신 일·지난 처리·반영 현황표를 먼저 보고, 남은 일만 GAS 도구로 부른다:
   //   gas_run(증빙 읽기·칸 채우기 — 안 됐거나 새 서류가 있을 때만) · gas_finish(계산·서식·저장·검토서 — 여쭐 것이 없고 맡은 범위에 들 때).
@@ -3441,8 +3441,8 @@
         ai.won = Math.round((ai.won + (Number(r.won) || 0)) * 10) / 10; ai.stop = r.stop || ''; ai.last = r;
         // [2026.10.28 속도 ⓐ] 왕복 기록 — 어느 왕복이 100초인지 보이게(기록부 aiLead.roundLog + 접힘 기록 한 줄)
         ai.lastAnswerAt = Date.now();
-        var rSec = Math.round((Date.now() - tRound) / 10) / 100; ai.roundLog.push({ n: ai.round + 1, sec: rSec, tools: (r.calls || []).slice(0, 8), inChars: inChars, won: Number(r.won) || 0 });
-        line('🕒 ' + (ai.round + 1) + '번째 왕복 · ' + Math.round(rSec) + '초 · ' + ((r.calls || []).length ? nxAiCpToolsKo_(r.calls) : '답만') + ' · 보낸 글 ' + Math.round(inChars / 1000) + '천 자 · ' + (Number(r.won) || 0) + '원');
+        var rSec = Math.round((Date.now() - tRound) / 10) / 100; ai.roundLog.push({ n: ai.round + 1, sec: rSec, tools: (r.calls || []).slice(0, 8), inChars: inChars, won: Number(r.won) || 0, auto: r.autoGas ? '범위+한 바퀴 같은 차례' : (r.endedByAsk ? '질문 올리고 끝' : (r.exploreOver ? '탐색 상한' : '')) }); // [2026.10.28 ④바퀴]
+        line('🕒 ' + (ai.round + 1) + '번째 왕복 · ' + Math.round(rSec) + '초 · ' + ((r.calls || []).length ? nxAiCpToolsKo_(r.calls) : '답만') + ' · 보낸 글 ' + Math.round(inChars / 1000) + '천 자 · ' + (Number(r.won) || 0) + '원' + (r.autoGas ? ' · 범위+한 바퀴 같은 차례' : '') + (r.endedByAsk ? ' · 질문 올리고 끝' : '') + (r.exploreOver ? ' · 탐색 상한' : ''));
         if (r.assistant) ai.messages.push({ role: 'assistant', content: r.assistant });
         var srv = (r.calls || []).filter(function(c){ return c !== 'gas_run' && c !== 'gas_finish'; });
         if (srv.length) cur.setText(nxAiCpToolsKo_(srv) + ' · 지금까지 ' + ai.won + '원'); else cur.remove(); // 서버 도구를 안 쓴 차례면 "판단 중" 줄은 지움
