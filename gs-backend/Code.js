@@ -31399,20 +31399,28 @@ function caseProcFile_(caseId, create) {
 var CASEPROC_SV_MEMO_ = {};
 // [2026.10.28 시정 2단계 — 질문 목록 단일화] 이 파일은 질문 목록(remaining)·질문 결정(decisions)을 더는 갖지 않는다 — 둘 다 사건 장부(CaseLedger.js) 줄이다.
 //  불러오기는 장부에서 붙여 돌려주고(부르는 곳 그대로), 쓰기는 그 둘을 떼어 장부로 보낸다. 옛 파일에 남아 있던 둘은 처음 불러올 때 한 번 장부로 옮긴다.
+//  [2026.10.28 2차 — 답 저장소 단일화] 양도 답 저장소(trAns)도 같은 길 — 장부에서 세무사님·넥스가 정한 양도 칸 줄을 뽑아 붙이고, 바뀐 답만 장부로(CaseLedger.js ledgerAnsRead_·ledgerAnsWrite_).
+var CASEPROC_LEDGER_KEYS_ = ['remaining', 'decisions', 'trAns'];
+function caseProcQHasLegacy_(o) { return CASEPROC_LEDGER_KEYS_.some(function (k) { return k in o; }); }
 function caseProcQHydrate_(caseId, o) {
-  if ('remaining' in o || 'decisions' in o) return o; // 장부로 못 옮긴 옛 파일(장부 쓰기 실패) — 잃지 않게 그대로
+  if (caseProcQHasLegacy_(o)) return o; // 장부로 못 옮긴 옛 파일(장부 쓰기 실패) — 잃지 않게 그대로
   try { const q = ledgerQRead_(caseId); o.remaining = q.remaining; o.decisions = q.decisions; } catch (e) { console.error('장부 질문 읽기 실패: ' + (e && e.message || e)); o.remaining = []; o.decisions = {}; }
+  try { o.trAns = ledgerAnsRead_(caseId); } catch (e) { console.error('장부 답 읽기 실패: ' + (e && e.message || e)); o.trAns = {}; }
   return o;
 }
-function caseProcQSplit_(saved) { const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions }; delete s.remaining; delete s.decisions; return { file: s, rem: q.rem, dec: q.dec }; }
+function caseProcQSplit_(saved) { const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions, ans: s.trAns }; CASEPROC_LEDGER_KEYS_.forEach(function (k) { delete s[k]; }); return { file: s, rem: q.rem, dec: q.dec, ans: q.ans }; }
 function caseProcQMigrate_(caseId, o, f) {
-  if (!('remaining' in o) && !('decisions' in o)) return o;
+  if (!caseProcQHasLegacy_(o)) return o;
   const sp = caseProcQSplit_(o);
-  try { ledgerQWrite_(caseId, Array.isArray(sp.rem) ? sp.rem : undefined, sp.dec && typeof sp.dec === 'object' ? sp.dec : undefined); if (f) f.setContent(JSON.stringify(sp.file)); return sp.file; }
-  catch (e) { console.error('옛 질문·결정 장부 옮기기 실패: ' + (e && e.message || e)); return o; }
+  try {
+    if (sp.ans && typeof sp.ans === 'object') ledgerAnsWrite_(caseId, Object.assign({}, ledgerAnsRead_(caseId), sp.ans)); // 옛 답 — 장부에 이미 있는 세무사님 답은 그대로 두고 더한다
+    if (sp.rem !== undefined || sp.dec !== undefined) ledgerQWrite_(caseId, Array.isArray(sp.rem) ? sp.rem : undefined, sp.dec && typeof sp.dec === 'object' ? sp.dec : undefined);
+    if (f) f.setContent(JSON.stringify(sp.file)); return sp.file;
+  } catch (e) { console.error('옛 질문·결정·답 장부 옮기기 실패: ' + (e && e.message || e)); return o; }
 }
-// 질문·결정이 바뀌었으면 장부로(같으면 쓰지 않음) — 장부 잠금은 결정 파일 잠금과 다른 잠금(스크립트 잠금)이라 서로 막지 않는다
+// 질문·결정·답이 바뀌었으면 장부로(같으면 쓰지 않음) — 장부 잠금은 결정 파일 잠금과 다른 잠금(스크립트 잠금)이라 서로 막지 않는다
 function caseProcQFlushToLedger_(caseId, sp) {
+  if (sp.ans !== undefined && sp.ans !== null && typeof sp.ans === 'object') ledgerAnsWrite_(caseId, sp.ans); // 같으면 쓰지 않는다(ledgerAnsWrite_가 비교)
   if (sp.rem === undefined && sp.dec === undefined) return;
   let cur = null; try { const q = ledgerQRead_(caseId); cur = JSON.stringify({ r: q.remaining, d: q.decisions }); } catch (e) { cur = null; }
   if (cur !== null && cur === JSON.stringify({ r: sp.rem, d: sp.dec })) return; // 장부와 같으면 쓰지 않음
@@ -50699,11 +50707,12 @@ function trcCost_(x) { return { label: String(x.label || '') + (x.file ? ' (' + 
 
 // ── 답 저장소(사건처리 기록 파일) — 예전 처리개요에 남은 세무사님 답은 한 번 옮겨 온다 ──
 function trcAnsLoad_(c) {
+  // [2026.10.28 답 저장소 단일화] 답은 장부에서 붙어 오므로 늘 있는 모양 — 옛 처리개요 답 옮기기는 "옮겼음" 표시(trAnsFromOv)로 한 번만
   const sv = caseProcLoad_(c.id) || {};
-  if (sv.trAns) return sv.trAns;
+  if (sv.trAnsFromOv || Object.keys(sv.trAns || {}).length) return sv.trAns || {};
   const ans = trcMigrate_(c, sv);
-  caseProcPatch_(c.id, function (s) { if (!s.trAns) s.trAns = ans; });
-  return ans;
+  caseProcPatch_(c.id, function (s) { s.trAnsFromOv = true; s.trAns = Object.assign({}, ans, s.trAns || {}); });
+  return Object.assign({}, ans, sv.trAns || {});
 }
 function trcMigrate_(c, sv) {
   const ov = c.사건개요 || {}, ans = {}, filled = (sv && sv.filled) || {}, today = caseProcToday_();
@@ -50727,8 +50736,9 @@ function trcMigrate_(c, sv) {
   return ans;
 }
 function trcAnsSet_(c, path, value, src) {
+  trcAnsLoad_(c); // 옛 처리개요 답을 먼저 옮겨 둔다(한 번만)
   caseProcPatch_(c.id, function (s) {
-    if (!s.trAns) s.trAns = trcMigrate_(c, s);
+    s.trAns = s.trAns || {};
     if (value === null) delete s.trAns[path]; else s.trAns[path] = { v: value, src: src || '세무사님 확인', at: caseProcToday_() };
   });
 }
@@ -51673,9 +51683,13 @@ function trcApply_(c, body) {
   }
   if (target === 'expenses') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    // [2026.10.28 답 저장소 단일화] 비용 모양은 항목 목록({items:[{kind,…}]})과 취득·양도 목록({acq:[…], tr:[…]}) 둘 다 받는다 — 장부와 같은 해석(ledgerNorm_).
+    //  예전엔 취득·양도 목록 모양을 받으면 금액이 있어도 "0건"으로 저장했고, 장부 베껴 쓰기는 같은 답을 제대로 읽어 두 저장소가 서로 다른 비용을 갖고 있었다
+    if (d && !Array.isArray(d.items) && (Array.isArray(d.acq) || Array.isArray(d.tr))) d = { items: (d.acq || []).map(function (x) { return Object.assign({}, x, { kind: '취득' }); }).concat((d.tr || []).map(function (x) { return Object.assign({}, x, { kind: x.kind && x.kind !== '취득' ? x.kind : '양도' }); })) };
     const list = (d && Array.isArray(d.items) ? d.items : []).map(function (x) { return { kind: String(x.kind || ''), label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount || '').replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0; });
     // [2026.10.27 10-27 B-1] 글에 금액이 있는데 항목이 0건이면 "필요경비 없음"으로 확정하지 않는다(13:36 답기록 {"items":[]} — 세액 0원의 원인)
     if (!list.length && typeof value === 'string' && !/^[\[{]/.test(value.trim()) && /\d{4,}|\d{1,3}(?:,\d{3})+|\d+\s*(만|억)/.test(value) && !/(없음|없다)/.test(value)) return { ok: false, error: '필요경비 글에서 항목(이름·금액)을 풀지 못해 0건으로 저장하지 않았습니다 — "취득세 3,583,600원, 법무사수수료 385,000원"처럼 항목마다 이름과 금액을 적어 주세요.' };
+    if (!list.length && d && typeof d === 'object' && !Array.isArray(d.items)) return { ok: false, error: '필요경비 답의 모양을 알아보지 못해 저장하지 않았습니다 — 항목 목록 {"items":[{"kind":"취득"|"양도","label","amount"}]} 또는 {"acq":[…],"tr":[…]}로 보내 주세요(없으면 {"items":[]}).' };
     if (!list.length && d && Array.isArray(d.items) && d.items.length) return { ok: false, error: '필요경비 항목의 금액이 모두 0이라 저장하지 않았습니다 — 항목마다 amount(원)를 넣어 주세요.' };
     const acq = list.filter(function (x) { return x.kind === '취득'; }), tr = list.filter(function (x) { return x.kind !== '취득'; });
     const sum = function (a) { return a.reduce(function (s, x) { return s + x.amount; }, 0); };

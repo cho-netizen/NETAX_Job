@@ -126,14 +126,14 @@ function ledgerNorm_(path, value) {
   if (p === 'costs') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
     if (!d || typeof d !== 'object') return { error: '필요경비는 {acq:[{label,amount,file,date}], tr:[…]} 모양이어야 합니다(acq=취득비용, tr=양도비용)' };
-    const fix = function (l) { return (Array.isArray(l) ? l : []).map(function (x) { return { label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount == null ? '' : x.amount).replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '').slice(0, 10) }; }).filter(function (x) { return x.amount > 0; }); };
+    const fix = function (l) { return (Array.isArray(l) ? l : []).map(function (x) { return { kind: x.kind ? String(x.kind).slice(0, 10) : undefined, label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount == null ? '' : x.amount).replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '').slice(0, 10) }; }).filter(function (x) { return x.amount > 0; }); };
     const items = Array.isArray(d.items) ? d.items : null;
     const acq = items ? items.filter(function (x) { return x && x.kind === '취득'; }) : d.acq, tr = items ? items.filter(function (x) { return x && x.kind !== '취득'; }) : d.tr;
     return { v: { acq: fix(acq), tr: fix(tr) } };
   }
   if ((/^doc:/.test(p))) { if (!s) return { error: '서류 역할이 비어 있습니다' }; return { v: s.slice(0, 40) }; } // GAS·넥스가 읽은 종류 이름 그대로 — 역할 목록에 부분 일치로 붙이지 않는다(10-28 "매매계약서"가 "분양권 매매계약서"로 바뀐 결함)
   if ((/^a\d+\.contract$/.test(p))) { const m = /c?(\d+)/.exec(s); return m ? { v: 'c' + Number(m[1]) } : { error: '걸린 계약은 c0·c1… 모양 — 받은 값: ' + s.slice(0, 20) }; }
-  return { v: typeof value === 'object' ? value : s };
+  return { v: (value !== null && typeof value === 'object') || typeof value === 'number' || typeof value === 'boolean' ? value : s }; // 숫자·참거짓은 모양 그대로(답 저장소에서 온 금액이 글자로 바뀌지 않게)
 }
 function ledgerEnumGuess_(en, s) {
   if (en === 'assetType') {
@@ -168,7 +168,8 @@ function ledgerValueText_(path, v) {
   if (en && LEDGER_ENUMS_[en].ko[v]) return LEDGER_ENUMS_[en].ko[v];
   if (typeof v === 'boolean') return v ? '예' : '아니오';
   if (path === 'costs' && typeof v === 'object') { const s = function (l) { return (l || []).reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0); }; return '취득비용 ' + s(v.acq).toLocaleString('ko-KR') + '원(' + (v.acq || []).length + '건) · 양도비용 ' + s(v.tr).toLocaleString('ko-KR') + '원(' + (v.tr || []).length + '건)'; }
-  if (typeof v === 'number' || (/(Price|Amount|Value|StandardPrice)$|^taxfee$/.test(path) && /^\d+$/.test(String(v)))) return Number(v).toLocaleString('ko-KR') + '원';
+  if (/(Price|Amount|Value|StandardPrice|Assumed|Fee|PaidTax|DeductionUsed|Fmv)$|^taxfee$|^relFmv$/.test(path) && /^\d+$/.test(String(v))) return Number(v).toLocaleString('ko-KR') + '원'; // 금액 칸만 "원"(면적·층·사람 수에 원이 붙던 것)
+  if (typeof v === 'number') return String(v);
   if (typeof v === 'object') return JSON.stringify(v).slice(0, 120);
   return String(v).slice(0, 120);
 }
@@ -633,6 +634,37 @@ function ledgerQBack_(r) {
   for (let i = h.length - 1; i >= 0; i--) { if (h[i] && h[i].kind === '질문') { const pv = h[i].prev; return pv && (pv.state === '확정' || pv.state === '추정') && r.v !== '' && r.v !== undefined && r.v !== null ? pv : null; } }
   return null;
 }
+// ── 답 = 장부 줄 [2026.10.28 시정 2단계 — 답 저장소 단일화] ──
+// 예전: 양도 답은 사건 처리 저장 파일의 답 저장소(trAns: 칸 경로 → {v, src, at})에 적고 장부에는 베껴 적었다(ledgerMirrorApply_). 장부(📒·넥스 도구)에서
+//  세무사님이 넣은 값은 답 저장소에 없어 GAS 계산에 안 들어갔다. 이제 답 저장소는 장부에서 뽑은 모양일 뿐 — 세무사님·넥스가 정한 양도 칸 줄이 곧 답이다.
+var LEDGER_ANS_RE_ = /^(seller\.|c\d+\.|a\d+\.|costs$|taxfee$|사건분류$|split$|relFmv$|compSplit$)/;
+function ledgerAnsSrcText_(r) {
+  const s = r.src || {}, q = String(s.quote || s.why || '').trim();
+  if (q && (s.kind !== '넥스' || /🤖|넥스|AI 판단/.test(q)) && (s.kind !== '세무사님' || !/^(🤖|넥스|AI 판단)/.test(q))) return q;
+  return s.kind === '넥스' ? '🤖 넥스 판단(장부)' : '세무사님 답(장부)';
+}
+function ledgerAnsRead_(caseId) {
+  const L = ledgerLoad_(caseId), out = {};
+  Object.keys(L.rows).forEach(function (p) {
+    const r = L.rows[p]; if (!LEDGER_ANS_RE_.test(p) || !r.src || !/^(세무사님|넥스)$/.test(r.src.kind)) return;
+    if (!(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return;
+    out[p] = { v: r.v, src: ledgerAnsSrcText_(r), at: String(r.at || '').slice(0, 10) };
+  });
+  return out;
+}
+// 답 저장소 모양(ans)과 장부를 맞춘다 — 바뀐 답만 장부에 적고, 지운 답은 장부 줄에서 뗀다(그 칸은 서류를 다시 읽을 때 GAS가 채운다)
+function ledgerAnsWrite_(caseId, ans) {
+  ans = ans && typeof ans === 'object' ? ans : {};
+  const cur = ledgerAnsRead_(caseId), ops = [];
+  Object.keys(ans).forEach(function (p) {
+    const a = ans[p]; if (!a || !LEDGER_ANS_RE_.test(p)) return;
+    if (cur[p] && JSON.stringify(cur[p].v) === JSON.stringify(a.v)) return;
+    const src = String(a.src || '세무사님 답'), who = /^(🤖|넥스|AI 판단)/.test(src) || /🤖 넥스/.test(src) ? '넥스' : '세무사님';
+    ops.push({ path: p, value: a.v, kind: who, by: who, quote: src.slice(0, 160), why: src.slice(0, 160) });
+  });
+  Object.keys(cur).forEach(function (p) { if (!ans[p]) ops.push({ drop: true, path: p, by: '세무사님' }); });
+  return ops.length ? ledgerBatch_(caseId, ops) : { ok: true, set: 0, dropped: 0 };
+}
 // 서류 → 칸 이음 점검 [2026.10.28] — 파일 장부(caseProcLedger_)에서 "읽음·종류 앎"인데 내용이 어느 칸에도 쓰이지 않고 증빙목록 표시만 된 서류는 장부 물음(doc:<파일>.use).
 //  관련 서류가 폴더에 있는데 칸에 들어간 것이 없으면 그 칸 값을 확정할 근거가 없다(10-28 원문 "확보된 정보를 최대한 활용 … 부족한 정보는 물어보거나 확보할 증빙으로").
 //  그 서류가 나중에 칸에 쓰이면(처리에 씀) GAS가 세운 이 물음은 내려간다. 세무사님이 무시하면 그대로 무시.
@@ -749,8 +781,11 @@ function ledgerQRead_(caseId) {
   return { remaining: items.map(function (it) { const x = Object.assign({}, it); delete x._n; return x; }), decisions: dec };
 }
 // 사이드바 답·칸 값 고치기(옛 apply·valueFix) → 장부 같은 값(값 주인 = 답한 이)
+//  [2026.10.28 답 저장소 단일화] 양도 칸 답은 답 넣기(trcAnsSet_)가 곧 장부에 쓰므로 여기서 베끼지 않는다. 증여·상속 답(처리개요 칸·상속 세부 답)은
+//  아직 처리개요·근거 기록에 따로 있어 이 베껴 쓰기가 남아 있다 — 그 저장소를 장부로 합칠 때 함께 걷어낸다(남은 땜빵, 숨기지 않음)
 function ledgerMirrorApply_(c, body) {
   const path = ledgerTargetPath_(body && body.target); if (!path) return null;
+  if (c && c.세목 === 'transfer' && LEDGER_ANS_RE_.test(path)) return { ok: true, same: true, message: '답 저장소가 곧 장부 — 따로 적지 않음' };
   const who = caseProcWho_(body.src, body.by) === '넥스' ? '넥스' : '세무사님';
   let v = body.value; if (path === 'costs' && typeof v === 'string') { try { v = JSON.parse(v); } catch (e) {} }
   const r = ledgerSet_(c.id, { path: path, value: v, kind: who, by: who, why: String(body.why || body.src || '').slice(0, 160), label: body.label });
