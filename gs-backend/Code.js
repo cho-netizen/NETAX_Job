@@ -18671,16 +18671,20 @@ function booking_checkCalendarSync() {
       try { event = cal.getEventById(eventId); } catch (e) { seen.push((i + 1) + '행 ' + data[i][1] + ': 일정 찾기 오류 ' + (e.message || e)); continue; }
       if (!event) { seen.push((i + 1) + '행 ' + data[i][1] + ': 일정 없음(' + String(eventId).slice(0, 12) + '…)'); continue; }
 
+      // [2026.10.28] 세무사님 "내가 캘린더에서 색상을 변경한 상태을 기존색상으로 인식하여 변경트리거가 작동하지 않는 것은 아닌가?" — 맞았다.
+      // 신청 때 토마토(11)를 칠해 두므로 색이 비어 있다("기본색")는 것은 세무사님이 캘린더 기본 색과 같은 색을 고른 것이다
+      // (구글 캘린더는 캘린더 색과 같은 색을 고르면 일정 색 지정을 지운다 — 10-28 16:33 동기화기록 "색 (기본색) → 그대로(대기)").
+      // 그래서 토마토가 아니면(색 없음 포함) 승인으로 본다. 직권등록 예약은 처음부터 '확정'이라 이 분기를 타지 않는다.
       const currentColor = event.getColor();
-      if (currentColor && currentColor !== BOOKING_COLOR_PENDING) {
+      if (currentColor !== BOOKING_COLOR_PENDING) {
         const rowIndex = i + 1;
         const phone = data[i][2];
         const reservedDate = data[i][6];
         const reservedTime = data[i][7];
         booking_finalizeApproval(rowIndex, eventId, phone, reservedDate, reservedTime);
-        seen.push(rowIndex + '행 ' + data[i][1] + ': 색 ' + currentColor + ' → 확정 처리');
+        seen.push(rowIndex + '행 ' + data[i][1] + ': 색 ' + (currentColor === '' ? '(기본색)' : currentColor) + ' → 확정 처리');
       } else {
-        seen.push((i + 1) + '행 ' + data[i][1] + ': 색 ' + (currentColor === '' ? '(기본색)' : currentColor) + ' → 그대로(대기)');
+        seen.push((i + 1) + '행 ' + data[i][1] + ': 색 ' + currentColor + '(신청 대기색) → 그대로(대기)');
       }
     }
   } catch (e) {
