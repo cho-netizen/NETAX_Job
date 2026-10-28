@@ -31404,23 +31404,25 @@ var CASEPROC_SV_MEMO_ = {};
 //  불러오기는 장부에서 붙여 돌려주고(부르는 곳 그대로), 쓰기는 그 둘을 떼어 장부로 보낸다. 옛 파일에 남아 있던 둘은 처음 불러올 때 한 번 장부로 옮긴다.
 //  [2026.10.28 2차 — 답 저장소 단일화] 양도 답 저장소(trAns)도 같은 길 — 장부에서 세무사님·넥스가 정한 양도 칸 줄을 뽑아 붙이고, 바뀐 답만 장부로(CaseLedger.js ledgerAnsRead_·ledgerAnsWrite_).
 //  [2026.10.28 3차] 상속 세부 답(ihChoices — 장례비·채무 확정·분할 귀속·보험금 넣을지 등)도 같은 길(장부 i.q.<열쇠>·i.qdiv.<열쇠>, 질문 줄과 같은 칸).
-var CASEPROC_LEDGER_KEYS_ = ['remaining', 'decisions', 'trAns', 'ihChoices'];
+//  [2026.10.28 5차] 값 고치기 이력(valueHist)은 장부 줄 이력에서 세무사님·넥스 고침을 뽑은 모양(ledgerFixHist_), 되돌리기는 장부 되돌리기 하나.
+var CASEPROC_LEDGER_KEYS_ = ['remaining', 'decisions', 'trAns', 'ihChoices', 'valueHist'];
 function caseProcQHasLegacy_(o) { return CASEPROC_LEDGER_KEYS_.some(function (k) { return k in o; }) || !!(o.filled && Object.keys(o.filled).some(function (k) { return LEDGER_GIFT_KEYS_.indexOf(k) !== -1; })); }
 function caseProcQHydrate_(caseId, o) {
   if (caseProcQHasLegacy_(o)) return o; // 장부로 못 옮긴 옛 파일(장부 쓰기 실패) — 잃지 않게 그대로
   try { const q = ledgerQRead_(caseId); o.remaining = q.remaining; o.decisions = q.decisions; } catch (e) { console.error('장부 질문 읽기 실패: ' + (e && e.message || e)); o.remaining = []; o.decisions = {}; }
   try { o.trAns = ledgerAnsRead_(caseId); } catch (e) { console.error('장부 답 읽기 실패: ' + (e && e.message || e)); o.trAns = {}; }
   try { o.ihChoices = ledgerMapRead_(caseId, 'ih'); } catch (e) { console.error('장부 상속 답 읽기 실패: ' + (e && e.message || e)); o.ihChoices = {}; }
+  try { o.valueHist = ledgerFixHist_(caseId); } catch (e) { console.error('장부 값 이력 읽기 실패: ' + (e && e.message || e)); o.valueHist = []; }
   // [2026.10.28 4차 — 증여] 근거 기록(filled)의 증여 계산 칸은 장부 g.<칸> 줄에서 붙인다(나머지 칸 — 기준일·양도·상속 — 은 파일 그대로)
   try { o.filled = Object.assign({}, caseProcGiftFilledSplit_(o.filled || {}).rest, ledgerGiftFilledRead_(caseId)); } catch (e) { console.error('장부 증여 근거 읽기 실패: ' + (e && e.message || e)); }
   return o;
 }
 function caseProcGiftFilledSplit_(filled) { const gift = {}, rest = {}; Object.keys(filled || {}).forEach(function (k) { (LEDGER_GIFT_KEYS_.indexOf(k) !== -1 ? gift : rest)[k] = filled[k]; }); return { gift: gift, rest: rest }; }
 function caseProcQSplit_(saved) {
-  const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions, ans: s.trAns, ih: s.ihChoices };
+  const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions, ans: s.trAns, ih: s.ihChoices, vh: s.valueHist };
   CASEPROC_LEDGER_KEYS_.forEach(function (k) { delete s[k]; });
   let gf; if (s.filled && typeof s.filled === 'object') { const fs = caseProcGiftFilledSplit_(s.filled); s.filled = fs.rest; gf = fs.gift; }
-  return { file: s, rem: q.rem, dec: q.dec, ans: q.ans, ih: q.ih, gf: gf };
+  return { file: s, rem: q.rem, dec: q.dec, ans: q.ans, ih: q.ih, gf: gf, vh: q.vh }; // 값 이력(vh)은 장부 이력에서 뽑은 모양이라 쓸 때 버린다(옛 파일만 옮김)
 }
 function caseProcQMigrate_(caseId, o, f) {
   if (!caseProcQHasLegacy_(o)) return o;
@@ -31429,6 +31431,7 @@ function caseProcQMigrate_(caseId, o, f) {
     if (sp.ans && typeof sp.ans === 'object') ledgerAnsWrite_(caseId, Object.assign({}, ledgerAnsRead_(caseId), sp.ans)); // 옛 답 — 장부에 이미 있는 세무사님 답은 그대로 두고 더한다
     if (sp.ih && typeof sp.ih === 'object') ledgerMapWrite_(caseId, 'ih', Object.assign({}, ledgerMapRead_(caseId, 'ih'), sp.ih));
     if (sp.gf && Object.keys(sp.gf).length) ledgerGiftFilledWrite_(caseId, Object.assign({}, ledgerGiftFilledRead_(caseId), sp.gf)); // 옛 근거 기록의 증여 칸
+    if (Array.isArray(sp.vh) && sp.vh.length) ledgerFixHistMigrate_(caseId, sp.vh); // 옛 값 고치기 기록 — 장부에 보관(보이기만)
     if (sp.rem !== undefined || sp.dec !== undefined) ledgerQWrite_(caseId, Array.isArray(sp.rem) ? sp.rem : undefined, sp.dec && typeof sp.dec === 'object' ? sp.dec : undefined);
     if (f) f.setContent(JSON.stringify(sp.file)); return sp.file;
   } catch (e) { console.error('옛 질문·결정·답 장부 옮기기 실패: ' + (e && e.message || e)); return o; }
@@ -31698,7 +31701,7 @@ function caseProcValueFix_(c, body) {
   const nextTxt = caseProcValueText_(value).slice(0, 120);
   let closedN = 0;
   caseProcPatch_(c.id, function (s) {
-    s.valueHist = (Array.isArray(s.valueHist) ? s.valueHist : []).concat([{ at: caseProcNow_(), by: by, target: target, label: label, prev: prev ? { v: prev.v, src: prev.src } : null, next: { v: value, src: src.slice(0, 80) }, why: why }]).slice(-100);
+    // [2026.10.28 값 이력 단일화] 고침 기록은 장부 줄 이력이 남긴다(값을 넣은 이·전 값·이유) — 따로 적지 않는다
     caseProcLogTo_(s, { by: by, what: '값 고침', key: target, detail: label + ' ' + prevTxt.slice(0, 60) + ' → ' + nextTxt.slice(0, 60) + (prev && prev.src ? ' (전: ' + prev.src.slice(0, 36) + ')' : '') + (why ? ' · ' + why.slice(0, 50) : '') });
     // 그 칸이 걸린 남은 질문은 닫는다(다음 바퀴에 다시 묻지 않게)
     s.decisions = s.decisions || {};
@@ -31715,28 +31718,19 @@ function caseProcValueFix_(c, body) {
 function caseProcValueUndo_(c, body) {
   const target = String(body.target || '').trim();
   const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
-  const sv = caseProcLoad_(c.id) || {}, hist = Array.isArray(sv.valueHist) ? sv.valueHist : [];
-  let idx = -1; for (let i = hist.length - 1; i >= 0; i--) { if ((!target || hist[i].target === target) && !hist[i].undone) { idx = i; break; } }
+  // [2026.10.28 값 이력 단일화] 되돌리기는 장부 되돌리기 하나 — 고침 기록(장부 줄 이력)에서 되돌리지 않은 마지막 고침을 찾아 그 줄을 전 값·전 주인으로
+  const sv = caseProcLoad_(c.id) || {}, hist = (Array.isArray(sv.valueHist) ? sv.valueHist : []).filter(function (h) { return h && h.path && !h.old; });
+  let idx = -1; for (let i = hist.length - 1; i >= 0; i--) { if ((!target || hist[i].target === target || hist[i].path === target) && !hist[i].undone) { idx = i; break; } }
   if (idx < 0) return { ok: false, error: '되돌릴 고침 기록이 없습니다' + (target ? ': ' + target : '') + '.' };
   const h = hist[idx];
   const label = String(h.label || CASEPROC_FIX_LABELS_[h.target] || h.target).slice(0, 40);
-  let r;
-  if (h.prev && h.prev.v !== undefined && h.prev.v !== null && h.prev.v !== '') {
-    const pv = h.target === 'expenses' ? JSON.stringify(caseProcCostsToItems_(h.prev.v)) : (typeof h.prev.v === 'object' ? JSON.stringify(h.prev.v) : h.prev.v);
-    r = caseProcApply_(c, { target: h.target, value: pv, src: String(h.prev.src || '값 되돌림').slice(0, 80), by: by, label: label });
-  } else {
-    // 전 값이 없던 칸 — 답 저장소에서 지운다(양도 계산기 칸만 가능)
-    let m;
-    if (c.세목 === 'transfer' && (m = /^calc:(.+)$/.exec(h.target))) { trcAnsSet_(c, m[1], null, ''); r = { ok: true }; }
-    else if (c.세목 === 'transfer' && h.target === 'expenses') { trcAnsSet_(c, 'costs', null, ''); r = { ok: true }; }
-    else if (c.세목 === 'transfer' && h.target === 'trTaxFee') { trcAnsSet_(c, 'taxfee', null, ''); r = { ok: true }; }
-    else if (c.세목 === 'transfer' && h.target === 'ov:사건분류') { trcAnsSet_(c, '사건분류', null, ''); r = { ok: true }; }
-    else return { ok: false, error: '「' + label + '」은 전에 비어 있던 칸이라 자동으로 비울 수 없습니다 — 맞는 값을 직접 넣어 주세요.' };
-  }
+  const row = ledgerLoad_(c.id).rows[h.path] || {}, last = Array.isArray(row.hist) && row.hist.length ? row.hist[row.hist.length - 1] : null;
+  if (!last || last.at !== h.at || last.kind !== h.by) return { ok: false, error: '「' + label + '」은 이 고침 뒤에 다른 변화(질문·결정·다른 고침)가 있어 자동으로 되돌리지 않습니다 — 📒 사건 장부에서 그 칸의 이력을 보고 맞는 값을 넣어 주세요.' };
+  const r = ledgerUndo_(c.id, { path: h.path, by: by });
   if (!r || r.ok === false) return r || { ok: false, error: '되돌리기 실패' };
+  if (c.세목 === 'gift') { try { ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 처리개요 요약도 되돌린 값으로
   const prevTxt = h.prev ? caseProcValueText_(h.prev.v).slice(0, 60) : '(비어 있음)', curTxt = caseProcValueText_(h.next ? h.next.v : '').slice(0, 60);
   caseProcPatch_(c.id, function (s) {
-    if (Array.isArray(s.valueHist) && s.valueHist[idx] && s.valueHist[idx].at === h.at) s.valueHist[idx].undone = caseProcNow_();
     caseProcLogTo_(s, { by: by, what: '값 되돌림', key: h.target, detail: label + ' ' + curTxt + ' → ' + prevTxt + ' (고친 때 ' + String(h.at || '') + ' ' + String(h.by || '') + ')' });
   });
   return { ok: true, message: label + ' ' + curTxt + ' → ' + prevTxt + ' 되돌림 — 세액계산을 다시 하세요.', recalc: true };

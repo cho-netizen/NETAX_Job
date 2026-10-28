@@ -726,6 +726,37 @@ function ledgerGiftOvSync_(caseId) {
   const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
   return { ok: !!(up && up.success !== false), changed: ch, message: up && up.message };
 }
+// ── 값 고치기 이력 = 장부 줄 이력 [2026.10.28 시정 2단계 — 값 이력] ──
+// 예전: 세무사님·넥스가 칸 값을 고친 기록(valueHist)을 저장 파일에 따로 두고 되돌리기도 따로 했다 — 장부 줄마다 있는 이력·되돌리기(ledgerUndo_)와 두 길이었다.
+//  이제 값 이력은 장부 줄 이력에서 세무사님·넥스 고침만 뽑은 모양이고, 되돌리기는 장부 되돌리기 하나다. 옛 기록은 처음 옮길 때 장부(fixHistOld)에 보관해 함께 보인다.
+function ledgerPathToTarget_(p) {
+  let m;
+  if (p === 'costs') return 'expenses';
+  if (p === 'taxfee') return 'trTaxFee';
+  if (p === '사건분류' || p === '기준일') return 'ov:' + p;
+  if ((m = /^g\.(.+)$/.exec(p))) return 'ov:' + m[1];
+  if ((m = /^i\.qdiv\.(.+)$/.exec(p))) return 'ihdiv:' + m[1];
+  if (p === 'i.q.debts') return 'ihdebts';
+  if ((m = /^i\.q\.(.+)$/.exec(p))) return 'ih:' + m[1];
+  if (/^(seller\.|c\d+\.|a\d+\.)/.test(p)) return 'calc:' + p;
+  return 'ledger:' + p;
+}
+function ledgerFixHist_(caseId) {
+  const L = ledgerLoad_(caseId), out = [];
+  Object.keys(L.rows).forEach(function (p) {
+    const r = L.rows[p], h = Array.isArray(r.hist) ? r.hist : [];
+    h.forEach(function (e, i) {
+      if (!e || !/^(세무사님|넥스)$/.test(e.kind) || !e.next || e.next.v === undefined) return;
+      const undoneAt = h.slice(i + 1).filter(function (x) { return x && x.kind === '되돌림'; })[0];
+      out.push({ at: e.at, by: e.kind, target: ledgerPathToTarget_(p), path: p, label: r.label || ledgerLabel_(p), prev: e.prev && e.prev.v !== undefined ? { v: e.prev.v, src: e.prev.kind || '' } : null, next: { v: e.next.v, src: String(e.why || e.kind) }, why: String(e.why || '').slice(0, 80), undone: undoneAt ? undoneAt.at : undefined });
+    });
+  });
+  return (Array.isArray(L.fixHistOld) ? L.fixHistOld.map(function (x) { return Object.assign({ old: true }, x); }) : []).concat(out.sort(function (a, b) { return String(a.at) < String(b.at) ? -1 : String(a.at) > String(b.at) ? 1 : 0; })).slice(-100);
+}
+function ledgerFixHistMigrate_(caseId, old) {
+  if (!Array.isArray(old) || !old.length) return;
+  ledgerMutate_(caseId, function (L) { const have = Array.isArray(L.fixHistOld) ? L.fixHistOld : []; if (have.length) return; L.fixHistOld = old.slice(-100).map(function (x) { return Object.assign({}, x, { undone: x.undone || '옛 기록(장부로 옮기기 전) — 되돌리기는 장부 이력으로' }); }); });
+}
 function ledgerAnsRead_(caseId) { return ledgerMapRead_(caseId, 'tr'); }
 function ledgerAnsWrite_(caseId, ans) { return ledgerMapWrite_(caseId, 'tr', ans); }
 // 서류 → 칸 이음 점검 [2026.10.28] — 파일 장부(caseProcLedger_)에서 "읽음·종류 앎"인데 내용이 어느 칸에도 쓰이지 않고 증빙목록 표시만 된 서류는 장부 물음(doc:<파일>.use).
