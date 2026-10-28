@@ -53892,6 +53892,20 @@ function cpEumLand_(geo) {
   });
   return out;
 }
+// [2026.10.28 가상양도28 결함 1] 허가구역 "용도 한정" 글이 이 자산에 맞는가 — true/false, 못 가리면 null(대상자 한정·종류 미상)
+//  토지이음 표기 예: "아파트 용도 한정", "단독 다가구 아파트 연립 다세대", "지목이 도로인 토지", "대상자 : 외국인 등 용도: …"
+function cpPermitApplies_(scope, ctx) {
+  const s = String(scope || '').replace(/\s+/g, ' ').trim();
+  if (!s) return true; // 한정 없음 — 모든 토지
+  if (/외국인|대상자/.test(s)) return null; // 사람(대상자) 한정은 서류·세무사님 판단
+  const pu = String(ctx && ctx.purpose || ''), jimok = String(ctx && ctx.jimok || '');
+  if (/지목이\s*(도로|대|전|답|임야|잡종지)/.test(s)) { const m = /지목이\s*([가-힣]+)/.exec(s); return jimok ? jimok === m[1] : null; }
+  const want = { 아파트: /아파트/.test(s), 연립: /연립/.test(s), 다세대: /다세대/.test(s), 단독: /단독/.test(s), 다가구: /다가구/.test(s) };
+  if (!Object.keys(want).some(function (k) { return want[k]; })) return null; // 모르는 한정 표현
+  if (!pu) return (ctx && ctx.kind === 'land') ? false : null; // 건물 종류를 모르면 못 가림(토지만이면 주택 한정에 해당 없음)
+  const is = { 아파트: /아파트/.test(pu) || (!!(ctx && ctx.unit) && /공동주택/.test(pu)), 연립: /연립/.test(pu), 다세대: /다세대/.test(pu), 단독: /단독주택/.test(pu), 다가구: /다가구/.test(pu) };
+  return Object.keys(want).some(function (k) { return want[k] && is[k]; });
+}
 // 열람 링크 — 사람이 눌러 확인도면·종합정보를 보는 용(자동 수집 아님). 씨리얼은 필지 바로 열기 주소가 공개돼 있지 않아 지도 첫 화면으로([확인 필요])
 //  [2026.10.28 조사 결과] 편입일(도시관리계획 결정 고시)과 관리처분계획인가일은 지번으로 받는 API가 없다 — 토지이음 고시정보·서울 정비사업 정보몽땅·열린데이터광장 분기 자료를 사람이 보는 링크로
 function cpLinks_(geo, loc) {
@@ -53965,6 +53979,22 @@ function cpOutsideOne_(p) {
   const ledger = cpLandLedger_(geo);
   if (ledger.error) row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: false, err: ledger.error });
   else { row.ledger = { jimok: ledger.jimok, area: ledger.area, owner: ledger.owner, src: ledger.src }; row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: true, v: (ledger.jimok || '지목?') + ' · ' + (ledger.area ? ledger.area + '㎡' : '면적?') + (ledger.owner ? ' · ' + ledger.owner : ''), src: ledger.src }); }
+  const jimok = (row.ledger && row.ledger.jimok) || p.jimok || '';
+  const unit = !!geo.ho;
+  // 건축물대장 — 토지가 아니면(주용도·구조·사용승인일·전유면적)
+  if (p.kind !== 'land' && (p.kind === 'building' || unit || /대|공장|창고|잡종/.test(jimok))) {
+    const bd = cpBuilding_(loc);
+    if (bd && !bd.error) {
+      row.building = { purpose: bd.purpose, structure: bd.structure, approval: bd.approval, area: bd.area, totArea: bd.totArea || 0, platArea: bd.platArea || 0, floorsUp: bd.floorsUp || 0, floorsDown: bd.floorsDown || 0, roof: bd.roof || '', floors: bd.floors || null, src: bd.src,
+        // [2026.10.28 점검 보완 2] 건물 기준시가 계산 입력(계산기 자산 카드 구조·용도번호·신축연도와 같은 값) — 못 맞추면 비워 두고 계산기에서 고른다
+        stdStructure: cpBldStructName_(bd.structure), stdUseNo: cpBldUseNo_(bd.purpose), builtYear: Number(String(bd.approval || '').slice(0, 4)) || 0 };
+      row.items.push({ k: 'building', label: '건축물대장', ok: true, v: [bd.purpose, bd.structure, bd.approval ? '승인 ' + bd.approval : '', bd.area ? '전유 ' + bd.area + '㎡' : '', bd.totArea ? '연면적 ' + bd.totArea + '㎡' : '', (bd.floorsUp || bd.floorsDown) ? '지상 ' + bd.floorsUp + '/지하 ' + bd.floorsDown + '층' : ''].filter(Boolean).join(' · '), src: bd.src });
+      if (bd.floors) row.items.push({ k: 'floors', label: '층별 용도(겸용 판단)', ok: true, v: '주택 ' + bd.floors.house + '㎡ · 그 외 ' + bd.floors.other + '㎡ (' + bd.floors.n + '층 줄, ' + (bd.floors.sumOk ? '연면적과 일치' : '연면적과 불일치') + ')', src: bd.src + ' 층별개요' });
+      if (row.building.stdStructure || row.building.stdUseNo) row.items.push({ k: 'bldstd', label: '건물 기준시가 입력', ok: true, v: (row.building.stdStructure || '구조 미확정') + ' · 용도번호 ' + (row.building.stdUseNo || '미확정') + ' · 신축 ' + (row.building.builtYear || '?') + ' — 계산기가 취득·양도 연도 고시 기준액으로 계산', src: '국세청 건물기준시가 계산방법(구조·용도·위치지수·잔가율) — 대장 값에서' });
+      else if (bd.structure || bd.purpose) row.items.push({ k: 'bldstd', label: '건물 기준시가 입력', ok: false, err: '대장 구조 「' + bd.structure + '」·용도 「' + bd.purpose + '」를 고시 구조표·용도번호에 맞추지 못함 — 계산기에서 직접 고르기' });
+    }
+    else row.items.push({ k: 'building', label: '건축물대장', ok: false, err: (bd && bd.error) || '조회 실패' });
+  }
   const lu = cpLandUse_(geo);
   if (lu.error) row.items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: false, err: lu.error });
   else {
@@ -53991,14 +54021,23 @@ function cpOutsideOne_(p) {
     if (eum.permit.length) {
       row.permit = eum.permit;
       const dates = (p.dates || []).filter(function (d) { return d && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')); });
-      row.permitAt = dates.map(function (d) { const hit = eum.permit.filter(function (q) { return q.from && q.to && d.date >= q.from && d.date <= q.to; }); return { label: d.label, date: d.date, inForce: hit.length > 0, scope: hit.map(function (q) { return q.scope; }).filter(Boolean).join(' / ') }; });
-      row.items.push({ k: 'permit', label: '토지거래허가구역', ok: true, v: eum.permit.map(function (q) { return (q.from ? q.from + '~' + q.to : '기간 미상') + (q.scope ? '(' + q.scope + ')' : ''); }).join(' / ') + (row.permitAt.length ? ' → ' + row.permitAt.map(function (x) { return x.label + ' ' + x.date + ': ' + (x.inForce ? '지정 중' + (x.scope ? '(' + x.scope + ')' : '') : '아님'); }).join(', ') : ''), src: eum.src });
+      // [2026.10.28 가상양도28 결함 1] 지정기간 안이어도 "용도 한정"(아파트 용도 한정 / 단독 다가구 아파트 연립 다세대 / 지목이 도로인 토지 / 대상자 외국인 등)이 이 자산에 맞아야 허가구역이다
+      const pCtx = { purpose: row.building ? String(row.building.purpose || '') : '', jimok: (row.ledger && row.ledger.jimok) || p.jimok || '', unit: !!geo.ho, kind: p.kind };
+      row.permitAt = dates.map(function (d) {
+        const hit = eum.permit.filter(function (q) { return q.from && q.to && d.date >= q.from && d.date <= q.to; });
+        const ap = hit.map(function (q) { return cpPermitApplies_(q.scope, pCtx); });
+        const applies = !hit.length ? false : ap.some(function (x) { return x === true; }) ? true : ap.some(function (x) { return x === null; }) ? null : false;
+        return { label: d.label, date: d.date, inForce: hit.length > 0, applies: applies, effective: hit.length > 0 && applies === true, scope: hit.map(function (q) { return q.scope; }).filter(Boolean).join(' / ') };
+      });
+      row.items.push({ k: 'permit', label: '토지거래허가구역', ok: true, v: eum.permit.map(function (q) { return (q.from ? q.from + '~' + q.to : '기간 미상') + (q.scope ? '(' + q.scope + ')' : ''); }).join(' / ') + (row.permitAt.length ? ' → ' + row.permitAt.map(function (x) { return x.label + ' ' + x.date + ': ' + (!x.inForce ? '아님' : x.applies === true ? '지정 중' + (x.scope ? '(' + x.scope + ')' : '') : x.applies === false ? '기간 안이지만 이 자산은 대상 아님(' + x.scope + ' ↔ ' + (pCtx.purpose || pCtx.jimok || '종류 미상') + ')' : '기간 안 — 대상인지 확인 필요(' + x.scope + ')'); }).join(', ') : ''), src: eum.src });
     } else if ((lu.permit || []).length) row.items.push({ k: 'permit', label: '토지거래허가구역', ok: true, v: lu.permit.join(', ') + ' — 지정기간은 토지이음 열람에서 못 읽음', src: lu.src });
   }
   // 공시가격 — 토지면 개별공시지가(원/㎡), 호가 있으면 공동주택가격, 그 밖의 건물은 개별주택가격(주택이 아니면 조회 결과 없음이 정상) + 부속토지 개별공시지가
-  const jimok = (row.ledger && row.ledger.jimok) || p.jimok || '';
-  const unit = !!geo.ho;
-  const kinds = p.kind === 'land' ? ['land'] : unit ? ['apartment', 'land'] : p.kind === 'building' ? ['house', 'land'] : (/대|공장|학교|주차|주유|창고|잡종/.test(jimok) ? ['house', 'land'] : ['land']);
+  // [2026.10.28 가상양도28 결함 2] 건축물대장 주용도가 주택이 아니면(근린생활시설·업무시설 등) 개별주택가격을 조회하지 않는다 — 호가 있으면 공동주택가격, 대장이 없으면 전처럼 시도
+  const bPurpose = row.building ? String(row.building.purpose || '') : '';
+  const bHouse = /주택|아파트|다세대|연립|다가구/.test(bPurpose);
+  const kinds = p.kind === 'land' ? ['land'] : unit ? ['apartment', 'land'] : (row.building && !bHouse) ? ['land'] : p.kind === 'building' ? ['house', 'land'] : (/대|공장|학교|주차|주유|창고|잡종/.test(jimok) ? ['house', 'land'] : ['land']);
+  if (row.building && !bHouse && !unit && p.kind !== 'land') row.items.push({ k: 'price', label: '개별주택가격', ok: true, v: '조회 안 함 — 대장 주용도 「' + bPurpose + '」(주택 아님)', src: row.building.src });
   const dates = (p.dates || []).filter(function (d) { return d && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')); });
   const seen = {};
   kinds.forEach(function (kind) {
@@ -54013,20 +54052,6 @@ function cpOutsideOne_(p) {
       else row.items.push({ k: 'price', key: kk, label: label, ok: false, err: (r && r.error) || '조회 결과 없음' });
     });
   });
-  // 건축물대장 — 토지가 아니면(주용도·구조·사용승인일·전유면적)
-  if (p.kind !== 'land' && (p.kind === 'building' || unit || /대|공장|창고|잡종/.test(jimok))) {
-    const bd = cpBuilding_(loc);
-    if (bd && !bd.error) {
-      row.building = { purpose: bd.purpose, structure: bd.structure, approval: bd.approval, area: bd.area, totArea: bd.totArea || 0, platArea: bd.platArea || 0, floorsUp: bd.floorsUp || 0, floorsDown: bd.floorsDown || 0, roof: bd.roof || '', floors: bd.floors || null, src: bd.src,
-        // [2026.10.28 점검 보완 2] 건물 기준시가 계산 입력(계산기 자산 카드 구조·용도번호·신축연도와 같은 값) — 못 맞추면 비워 두고 계산기에서 고른다
-        stdStructure: cpBldStructName_(bd.structure), stdUseNo: cpBldUseNo_(bd.purpose), builtYear: Number(String(bd.approval || '').slice(0, 4)) || 0 };
-      row.items.push({ k: 'building', label: '건축물대장', ok: true, v: [bd.purpose, bd.structure, bd.approval ? '승인 ' + bd.approval : '', bd.area ? '전유 ' + bd.area + '㎡' : '', bd.totArea ? '연면적 ' + bd.totArea + '㎡' : '', (bd.floorsUp || bd.floorsDown) ? '지상 ' + bd.floorsUp + '/지하 ' + bd.floorsDown + '층' : ''].filter(Boolean).join(' · '), src: bd.src });
-      if (bd.floors) row.items.push({ k: 'floors', label: '층별 용도(겸용 판단)', ok: true, v: '주택 ' + bd.floors.house + '㎡ · 그 외 ' + bd.floors.other + '㎡ (' + bd.floors.n + '층 줄, ' + (bd.floors.sumOk ? '연면적과 일치' : '연면적과 불일치') + ')', src: bd.src + ' 층별개요' });
-      if (row.building.stdStructure || row.building.stdUseNo) row.items.push({ k: 'bldstd', label: '건물 기준시가 입력', ok: true, v: (row.building.stdStructure || '구조 미확정') + ' · 용도번호 ' + (row.building.stdUseNo || '미확정') + ' · 신축 ' + (row.building.builtYear || '?') + ' — 계산기가 취득·양도 연도 고시 기준액으로 계산', src: '국세청 건물기준시가 계산방법(구조·용도·위치지수·잔가율) — 대장 값에서' });
-      else if (bd.structure || bd.purpose) row.items.push({ k: 'bldstd', label: '건물 기준시가 입력', ok: false, err: '대장 구조 「' + bd.structure + '」·용도 「' + bd.purpose + '」를 고시 구조표·용도번호에 맞추지 못함 — 계산기에서 직접 고르기' });
-    }
-    else row.items.push({ k: 'building', label: '건축물대장', ok: false, err: (bd && bd.error) || '조회 실패' });
-  }
   row.ok = row.items.some(function (it) { return it.ok && it.k !== 'geo'; });
   return row;
 }
@@ -54144,11 +54169,26 @@ function trcOutside_(c, S, lines, items) {
       } else if (r.landuse) S.facts.landUse[i] = r.landuse;
     }
     // 토지거래허가구역 — 토지이음 열람의 지정기간으로 양도일(없으면 기준일)에 지정 중인지 가려 계산기 칸(빈 칸일 때만). 기간을 못 읽으면 묻는다
-    if (a.isLandTransactionPermitArea === undefined && !userSet('isLandTransactionPermitArea')) {
+    // [2026.10.28 가상양도28] 계산기에서 이 칸은 양도계약 카드(contract.isLandTransactionPermitArea)에 있고 자산 칸은 거기서 복사된다 — 계약 카드에 넣는다. 용도 한정이 이 자산에 맞을 때만 켜고, 못 가리면 묻는다
+    const ctP = st.transferContracts.filter(function (x) { return x.id === a.transferContractId; })[0], ci = ctP ? st.transferContracts.indexOf(ctP) : -1;
+    if (ctP && ctP.isLandTransactionPermitArea === undefined && a.isLandTransactionPermitArea === undefined && !userSet('isLandTransactionPermitArea') && !(S.ans && S.ans['c' + ci + '.isLandTransactionPermitArea'])) {
       const at = (r.permitAt || []).filter(function (x) { return x.label === '양도일'; })[0] || (r.permitAt || [])[0];
-      if (at) { if (at.inForce) { a.isLandTransactionPermitArea = true; S.src['a' + i + '.isLandTransactionPermitArea'] = '바깥 조회: 토지이음 열람 토지거래허가구역 ' + at.label + ' ' + at.date + ' 지정 중' + (at.scope ? '(' + at.scope + ')' : '') + ' — 용도 한정·계약일은 허가증으로 확인'; } else S.src['a' + i + '.isLandTransactionPermitArea'] = '바깥 조회: 토지이음 열람 — ' + at.label + ' ' + at.date + '에는 허가구역 아님'; }
-      else if (r.landuse && (r.landuse.permit || []).length) items.push(caseProcItem_('tr:outside:permit:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 토지이용계획에 「' + r.landuse.permit.join(',') + '」이 있으나 지정기간을 못 읽음. 계약·허가 시점이 지정기간 안인지 허가증·조견표 1부-05로 확인해 계산기 「토지거래허가구역」 칸을 정해 주세요.', { mode: 'choose', target: 'calc:a' + i + '.isLandTransactionPermitArea', input: 'select', label: '토지거래허가구역', cands: [{ v: 'true', src: '지정 중' }, { v: 'false', src: '아님' }] }));
+      const cp = 'c' + ci + '.isLandTransactionPermitArea';
+      if (at) {
+        if (at.effective) { ctP.isLandTransactionPermitArea = true; a.isLandTransactionPermitArea = true; S.src[cp] = S.src['a' + i + '.isLandTransactionPermitArea'] = '바깥 조회: 토지이음 열람 토지거래허가구역 ' + at.label + ' ' + at.date + ' 지정 중' + (at.scope ? '(' + at.scope + ')' : '') + ' — 계약일·허가 신청은 허가증으로 확인'; }
+        else if (at.inForce && at.applies === null) items.push(caseProcItem_('tr:outside:permit:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 양도일 ' + at.date + '에 토지거래허가구역 지정기간 안이지만 한정 조건 「' + at.scope + '」이 이 자산(' + ((r.building && r.building.purpose) || (r.ledger && r.ledger.jimok) || '종류 미상') + ')에 해당하는지 못 가렸습니다. 허가증·계약서로 확인해 양도계약 카드 「토지거래허가구역」 칸을 정해 주세요.', { mode: 'choose', target: 'calc:c' + ci + '.isLandTransactionPermitArea', input: 'select', label: '토지거래허가구역', cands: [{ v: 'true', src: '해당(허가 받음)' }, { v: 'false', src: '해당 없음' }] }));
+        else S.src[cp] = '바깥 조회: 토지이음 열람 — ' + at.label + ' ' + at.date + (at.inForce ? ' 지정기간 안이지만 한정 조건(' + at.scope + ')에 이 자산은 해당 없음' : '에는 허가구역 아님');
+      }
+      else if (r.landuse && (r.landuse.permit || []).length) items.push(caseProcItem_('tr:outside:permit:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 토지이용계획에 「' + r.landuse.permit.join(',') + '」이 있으나 지정기간을 못 읽음. 계약·허가 시점이 지정기간 안인지 허가증·조견표 1부-05로 확인해 양도계약 카드 「토지거래허가구역」 칸을 정해 주세요.', { mode: 'choose', target: 'calc:c' + ci + '.isLandTransactionPermitArea', input: 'select', label: '토지거래허가구역', cands: [{ v: 'true', src: '지정 중' }, { v: 'false', src: '아님' }] }));
     }
+    // [2026.10.28 가상양도28 결함 3] 서류(계약서)는 주택이라는데 건축물대장 주용도·층별 용도에 주택이 없으면 과세대상 구분을 묻는다(비과세·중과 판단에 직결). 반대로 대장이 주택인데 서류가 주택 아님이면도 묻는다
+    if (r.building && r.building.purpose && !userSet('assetType')) {
+      const ledgerHouse = /주택|아파트|다세대|연립|다가구/.test(r.building.purpose) || (r.building.floors && r.building.floors.house > 0);
+      if (a.assetType === 'house' && !ledgerHouse) items.push(caseProcItem_('tr:outside:purpose:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 서류는 주택(' + String(S.src['a' + i + '.assetType'] || '계약서·등기부') + ')인데 건축물대장 주용도는 「' + r.building.purpose + '」' + (r.building.floors ? '(층별 주택 ' + r.building.floors.house + '㎡·그 외 ' + r.building.floors.other + '㎡)' : '') + '입니다. 과세대상 구분(주택/그 외)을 확인해 주세요 — 대장과 다르게 사실상 주거용이면 그 근거(사진·전입)가 필요합니다.', { mode: 'choose', target: 'calc:a' + i + '.assetType', input: 'select', label: '과세대상 구분', cands: [{ v: 'house', src: '주택(서류·사실상 주거용)' }, { v: 'other', src: '주택 아님(대장대로)' }] }));
+      else if (a.assetType && a.assetType !== 'house' && ledgerHouse && !(r.building.floors && r.building.floors.other > 0)) items.push(caseProcItem_('tr:outside:purpose:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 서류는 주택이 아닌데(' + a.assetType + ') 건축물대장 주용도는 「' + r.building.purpose + '」(주택)입니다. 과세대상 구분을 확인해 주세요.', { mode: 'choose', target: 'calc:a' + i + '.assetType', input: 'select', label: '과세대상 구분', cands: [{ v: 'house', src: '주택(대장대로)' }, { v: a.assetType, src: '서류대로' }] }));
+    }
+    // 토지대장 소유구분이 법인·국공유 등인데 양도인은 개인 — 지번이 다르거나 대장이 늦게 바뀐 것일 수 있어 알린다(자동 반영 없음)
+    if (r.ledger && /법인|국유|공유|종중|단체/.test(String(r.ledger.owner || '')) && (st.transferSellers[0] || {}).name) items.push(caseProcItem_('tr:outside:owner:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 토지대장 소유구분이 「' + r.ledger.owner + '」인데 양도인은 개인(' + st.transferSellers[0].name + ')입니다. 소재지 지번이 맞는지, 등기부 소유자가 누구인지 확인해 주세요(토지대장 소유구분은 늦게 바뀌기도 함).'));
     // [2026.10.28 조사 결과] 도시지역(주거·상업·공업) 편입일 — 지번으로 주는 API가 없다(브이월드 용도지역 레이어는 고시년도 칸이 비어 있고, 토지이음 고시목록은 지번 칸이 없음). 자경농지 감면(조특령 §66④1호·⑦)에 편입일이 필요한 농지는 고시문을 찾는 길을 붙여 묻는다
     if (r.ledger && /^(전|답|과수원)$/.test(r.ledger.jimok || '') && r.landuse && (r.landuse.jsg || []).length && r.region && r.region.cityArea && !a.zoneIncorporated && !userSet('zoneIncorporated')) {
       items.push(caseProcItem_('tr:outside:incorp:' + i, 'judge', '자산 ' + (i + 1) + ' ' + r.loc + ' — 주거·상업·공업지역(' + r.landuse.jsg.join(',') + ') 안 농지. 자경농지 감면이면 「주거지역등에 편입된 날」이 필요합니다(조특법 §69① 단서, 조특령 §66④1호 3년·⑦ 산식 "편입된 날의 기준시가"). 편입일은 지번으로 받는 자료가 없어 도시관리계획 결정 고시문으로 확인해야 합니다 — 확인되면 계산기 「주거지역등에 편입」 칸과 편입일 기준시가(그 연도 개별공시지가 × 면적)를 넣어 주세요.', null,
