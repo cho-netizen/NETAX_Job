@@ -30212,7 +30212,17 @@ function tc_ruleTransferFactsRaw_(body) {
       var flS = String(text).replace(/\s+/g, ' '), hdr = /거래\s*일시[\s\S]{0,40}?적\s*요[\s\S]{0,20}?(입금액|출금액)[\s\S]{0,10}?(입금액|출금액)/.exec(flS);
       if (hdr) {
         var outFirst = hdr[1] === '출금액';
-        var estNames = (stmtEstNames || (stmtEstNames = files.filter(function (x) { return /견\s*적/.test(x.name); }).map(function (x) { return ((/\(([가-힣]{2,4})\)/.exec(x.name) || [])[1]) || ''; }).filter(Boolean)));
+        // [2026.10.29 땜질 심사] 견적서 업체 이름을 파일 이름 괄호("견적서(홍길동)")에서 따던 것을 걷어냄 — 견적서 내용의 상호·대표자에서(docEstimateParse_)
+        var estNames = (stmtEstNames || (stmtEstNames = (function () {
+          var nm = [];
+          files.forEach(function (x) {
+            if (!/pdf|^image\//.test(String(x.mimeType || '')) || /^_/.test(x.name)) return;
+            var er = null; try { var et = tc_docText_(x); er = et ? docEstimateParse_(et) : null; } catch (e) { er = null; }
+            if (!er) return;
+            [er.result.상호, er.result.대표자].forEach(function (v) { v = String(v || '').replace(/\(\s*주\s*\)|주식회사|\s+/g, ''); if (v.length >= 2 && nm.indexOf(v) === -1) nm.push(v); });
+          });
+          return nm;
+        })()));
         var rowRe = /((?:19|20)\d{2}-\d{2}-\d{2})(?:\s+\d{2}:\d{2}(?::\d{2})?)?\s+(\S+)\s+(.{1,30}?)\s+(\d[\d,]*)\s+(\d[\d,]*)\s+(-?\d[\d,]*)/g, rm, nRow = 0;
         while ((rm = rowRe.exec(flS)) && nRow < 400) {
           nRow++;
@@ -30352,14 +30362,25 @@ function tc_ruleTransferFactsRaw_(body) {
   // [2026.10.17] 조합원 공급계약서(분양가·권리가·분담금)는 매매가 아니다 — 분양가를 취득가액으로 쓰지 않도록 양도·취득 계약에서 빼고 항목 줄로만 알린다
   var sells = contracts.filter(function (c) { return !c.r.조합원분양 && (c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names))); });
   var buys = contracts.filter(function (c) { return !c.r.조합원분양 && (c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names))); });
-  var newHome = buys.filter(function (b) { return /신규|대체\s*주택|새\s*집|신축\s*분양/.test(b.file); });
+  // [2026.10.29 땜질 심사] 신규 주택은 파일 이름("신규주택")이 아니라 내용으로 — 납세자가 매수인인 계약서 중 판 물건(양도 계약서 소재지)과 다른 부동산.
+  //  소재지를 못 읽어 내용으로 못 가를 때만 파일 이름을 보조로 쓰고 "파일 이름으로 짐작"이라고 밝힌다
+  var sellLocs = sells.map(function (c) { return c.r.소재지; }).filter(Boolean);
+  var newHomeByName = [];
+  var newHome = buys.filter(function (b) {
+    if (sellLocs.length && b.r.소재지) return !sellLocs.some(function (l) { return tcLocSame_(l, b.r.소재지); });
+    if (/신규|대체\s*주택|새\s*집|신축\s*분양/.test(b.file)) { newHomeByName.push(b.file); return true; }
+    return false;
+  });
+  if (newHomeByName.length) evidence.push('신규 주택 계약서로 파일 이름으로 짐작(소재지를 서류에서 못 읽음 — 확인 필요): ' + newHomeByName.join(', '));
   var isNewHome = function (b) { return newHome.indexOf(b) !== -1 || newHome.some(function (n) { return n.r.매매대금 && n.r.매매대금 === b.r.매매대금 && n.r.잔금일 === b.r.잔금일; }); };
   // 신규 주택 취득 비용(그 집 소재지의 취득세, 잔금일 앞뒤 60일의 법무사·취득세 서류) — 판 집의 필요경비가 아님
   var newHomeCost = function (file, loc, date) {
     if (!newHome.length) return false;
     var n = newHome[0].r;
     if (loc && n.소재지 && tcLocSame_(loc, n.소재지)) return true;
-    return !!(date && n.잔금일 && Math.abs(new Date(String(date).slice(0, 10)) - new Date(n.잔금일)) < 60 * 86400000);
+    // [2026.10.29 땜질 심사] "잔금일 앞뒤 60일" 날짜 창으로 빼던 것을 걷어냄 — 소재지가 없는 비용 서류는 빼지 않고 어느 집 비용인지 확인으로 알린다(후보 선택은 세무사님)
+    if (!loc && date && n.잔금일 && Math.abs(new Date(String(date).slice(0, 10)) - new Date(n.잔금일)) < 60 * 86400000) evidence.push('비용 서류 ' + file + ' — 소재지가 안 적혀 있고 신규 주택 잔금일(' + n.잔금일 + ') 무렵이라 판 집 비용인지 신규 주택 비용인지 확인 필요');
+    return false;
   };
 
   // [2026.10.15 1단계 ②] 양도도 취득도 아닌 계약서 — 말없이 버리지 않고 "참고 계약서"로 밝힌다(매매사례·다른 사람 거래 등)
@@ -34177,16 +34198,8 @@ function caseProcEvidence_(c, body) {
       const sf = docs.filter(function (f) { if (!f.p || f.p.t !== 'contract' || f.p.office) return false; let t = ''; try { t = tc_docText_(f) || ''; } catch (err) {} const s = caseProcSupplyOf_(t); return !!(s && (!s.buyer || tcNameIn_(s.buyer, nm))); })[0];
       if (sf) { e.status = '확보됨'; e._auto = sf.name + '(분양계약서)'; marks.push(e); }
     });
-    // [2026.10.16] 여러 서류를 한 파일로 묶어 이름에 나열한 경우("관양동 000 매매계약서, 취득세 등록세.pdf") — 서류 종류는 첫 서류(계약서)로만 정리돼
-    //  취득세 영수증 칸이 "비슷한 파일 있음"으로 남았다(고객Z). 역할이 갈리지 않는 칸(취득세·등기부 등)은 묶음 파일 이름에 그 서류 이름이 있으면 확보로.
-    req.forEach(function (e) {
-      if (e.status === '확보됨') return;
-      const types = caseProcEvTypes_(e.label);
-      const docRe = types && types.length === 1 ? ({ acqtax: /취득세/, registry: /등기부|등기사항/, family: /가족\s*관계/, resident: /초본/, bldledger: /건축물\s*대장/, landledger: /토지\s*대장|임야\s*대장/ })[types[0]] : null;
-      if (!docRe) return;
-      const bf = files.filter(function (f) { const n = String(f.name || ''); return !/^_/.test(n) && /[,·+&]|및/.test(n) && docRe.test(n) && !caseProcIsOutputDoc_(n); })[0];
-      if (bf) { e.status = '확보됨'; e._auto = bf.name + '(묶음 파일 이름)'; marks.push(e); }
-    });
+    // [2026.10.29 땜질 심사] 묶음 파일 이름에 서류 이름이 나열됐다고 내용 확인 없이 "확보됨"으로 매기던 것을 걷어냄(고객Z 파일 이름 버릇) —
+    //  그런 칸은 "비슷한 파일 있음"으로 남고, 묶음 나누기(splitCands — 한 파일에 든 여러 서류 나누기)로 내용을 확인해 확보한다(서류 내용이 먼저, 이름은 보조)
     // 내용으로 정리하지 않는 파일(엑셀·CSV 거래내역, 검토 문서)로 채우는 칸 — 파일 이름으로(상속: 피상속인 금융거래내역·사전증여 검토 자료)
     req.forEach(function (e) {
       if (e.status === '확보됨' || c.세목 !== 'inheritance' || !/사전\s*증여|금융\s*거래\s*내역/.test(e.label)) return;
@@ -35935,7 +35948,9 @@ function caseProcAppealSummary_(c, lines, items) {
     // 현장 사진 — 이름이 "NN-k_…"이거나 사진·검수 폴더의 그림 파일(글자가 거의 없어 종류가 안 정해짐). 번호로 계약에 붙인다
     try {
       caseProcFiles_(c).forEach(function (f) {
-        if (!/pdf|^image\//.test(String(f.mimeType || '')) || !(/^\d{1,2}\s*-\s*\d{1,2}[_\s]\d{8,}/.test(f.name) || /사\s*진|검\s*수/.test(String(f.dir || '') + ' ' + f.name))) return;
+        // [2026.10.29 땜질 심사] 한 사건 사진 이름 꼴("01-1_171…")을 걷어냄 — 그림 파일(image/*)은 이름과 상관없이, PDF는 사진·검수라고 적힌 것만 사진으로
+        const mt0 = String(f.mimeType || '');
+        if (!(/^image\//.test(mt0) || (/pdf/.test(mt0) && /사\s*진|검\s*수/.test(String(f.dir || '') + ' ' + f.name)))) return;
         if (all.some(function (y) { return y.f.id === f.id; })) return; // 종류가 정해진 서류(계약서·목록)는 사진이 아님
         const k = numKey(f), g = k && ctrs.filter(function (cc) { return cc.no === k; })[0]; if (g) g.photos++;
       });
@@ -39121,11 +39136,11 @@ function caseProcInhFacts0_(c, parsed) {
     // 등기부상 피상속인 소유 주택의 임대차면(소재지 같음) 임대인으로 본다 — 계약서 서명란 이름이 안 읽혀도
     //  분양 당시 지번("오전동 00번지 일원")과 등기 지번("오전동 000")이 달라도 단지 이름·동·호수가 같으면 같은 집
     const unitOf = function (s) { const n = String(s || '').replace(/\s+/g, '').replace(/제(?=\d)/g, ''); const d = /(\d+)동/.exec(n.replace(/제/g, '')), h = /(\d+)호/.exec(n.replace(/제/g, '')); return { d: d ? d[1] : '', h: h ? h[1] : '', n: n }; };
-    const sameUnit = function (a, b) { const ua = unitOf(a), ub = unitOf(b); if (!ua.h || ua.h !== ub.h || ua.d !== ub.d) return false; const ks = ua.n.match(/[가-힣]{3,}/g) || []; return ks.some(function (k) { return !/(경기도|특별시|광역시|아파트|오전동)$/.test(k) && k.length >= 3 && ub.n.indexOf(k.slice(-4)) !== -1; }); };
+    const sameUnit = function (a, b) { const ua = unitOf(a), ub = unitOf(b); if (!ua.h || ua.h !== ub.h || ua.d !== ub.d) return false; const ks = ua.n.match(/[가-힣]{3,}/g) || []; return ks.some(function (k) { return !/(경기도|특별시|광역시|아파트|[가-힣]{1,4}동)$/.test(k) && k.length >= 3 /* [2026.10.29 땜질 심사] 한 사건 동네 이름(오전동) 대신 "○○동" 모양 전체 */ && ub.n.indexOf(k.slice(-4)) !== -1; }); };
     if (!landlord && x.p.result.소재지) landlord = out.assets.some(function (a) { return a.loc && (tcLocSame_(a.loc, x.p.result.소재지) || sameUnit(a.loc, x.p.result.소재지)); });
-    // 세무사님이 "임대보증금" 폴더에 모아 둔 계약서 — 피상속인이 임대인인 계약(서명란·소재지가 안 읽혀도)
-    if (!landlord) { try { const ps0 = DriveApp.getFileById(x.f.id).getParents(); while (ps0.hasNext()) if (/임대\s*보증금|보증금/.test(ps0.next().getName())) landlord = true; } catch (e) {} }
-    if (!landlord) return;
+    // [2026.10.29 땜질 심사] "보증금" 폴더 이름으로 임대인을 정하던 것을 걷어냄(서류 내용이 먼저, 폴더 이름은 판단 근거가 아님).
+    //  서명란·소재지로 피상속인이 임대인인지 못 가린 계약서는 채무 후보로 넣지 않고 알림으로 남긴다 — 그 파일은 "내용을 칸에 못 쓴 서류"로 세무사님께 묻는다(ledgerDocUse_)
+    if (!landlord) { out.notes.push('임대차계약서 ' + x.f.name + ' — 서명란·소재지로 피상속인이 임대인인지 못 가려 임대보증금 채무 후보에 넣지 않음(맞으면 채무 확정에서 직접 넣어 주세요)'); return; }
     landLeases.push({ f: x.f, r: x.p.result, n: x.n, files: [x.f.name] });
   });
   // [2026.10.17 세무사님 원칙 — 내용 항목별로·서류끼리 대조해 한 번만] 임대보증금 — 예전엔 계약서 파일마다 채무 하나라 같은 호실의 사본(jpg/pdf)·재계약·
@@ -39137,8 +39152,7 @@ function caseProcInhFacts0_(c, parsed) {
   //  ④ 공유 부동산이면 등기부의 피상속인 지분만큼(고객A 1/2 — 신고 595,000,000×50%)
   const unitOfL = function (s) { const n = String(s || '').replace(/\s+/g, '').replace(/제(?=\d)/g, ''); const d = /(\d+)동/.exec(n), h = /(\d+)호/.exec(n); return d && h ? d[1] + '동' + h[1] + '호' : ''; };
   const unitKeyL = function (L) {
-    // 파일 이름 앞 호실 "B01-알파"·"101-압구정김밥"(호실 3자리·지하 B+숫자, 뒤에 이름) — "2023-06 계약서" 같은 연도·"05 채무-…" 같은 순번은 아님
-    const fm = /^(B\d{1,3}|\d{3})\s*[-_]\s*[가-힣A-Za-z]/i.exec(L.f.name); if (fm) return '#' + fm[1].toUpperCase();
+    // [2026.10.29 땜질 심사] 파일 이름 앞 호실("101-○○")을 열쇠로 쓰던 것을 걷어냄 — 호실은 서류 내용(소재지·임대부분)에서만
     const u = unitOfL(L.r.소재지); if (u) return u;
     const hm = /(\d{2,4})\s*호/.exec(String(L.r.임대부분 || '')); if (hm) return '#' + hm[1];
     return '';
@@ -39158,6 +39172,7 @@ function caseProcInhFacts0_(c, parsed) {
     })[0];
     if (hit) {
       hit.files.push(L.f.name);
+      if (!unitKeyL(hit.L0) || !unitKeyL(L)) out.notes.push('임대차계약서 ' + hit.files[0] + ' · ' + L.f.name + ' — 보증금·날짜가 같아 같은 계약으로 보고 한 번만 셈(호실을 서류에서 못 읽음 — 다른 호실이면 채무 확정에서 더해 주세요)');
       // 대표: 낱장 파일 > 묶음 / 기간을 더 많이 읽은 쪽
       const score = function (x) { return (x.n === 1 ? 4 : 0) + (x.r.시작일 ? 1 : 0) + (x.r.종료일 ? 1 : 0) + (x.r.계약일 ? 1 : 0) + (unitKeyL(x) ? 1 : 0); };
       if (score(L) > score(hit.L0)) { hit.L0 = L; hit.r = L.r; }
@@ -40009,7 +40024,7 @@ function caseProcLedger_(c, saved) {
       //  일반 규칙: 불복·조사 사건에서 글자가 하나도 없는 그림 파일(사진 — image/*)은 다시 받을 서류가 아니라 정황 증빙 사진으로 보인다. 글자 없는 PDF(스캔)는 흐린 서류 스캔일 수 있어
       //  예전처럼 "선명하게 다시 넣어 주세요"로 둔다 — 단 사진을 PDF로 바꾼 것(사무실 기본)일 수 있는 것, 곧 사진·검수·현장 폴더 안이거나 이름이 카메라·메신저가 자동으로 붙인 모양
       //  (IMG_·DSC·KakaoTalk_·Screenshot·숫자와 밑줄·붙임표뿐인 이름)이면 사진으로(이름 보조 — "짐작" 표시). 서류를 찍은 사진일 수 있어 그 뜻도 밝힌다
-      const autoNm = /^(?:IMG|DSC|DCIM|PXL|KakaoTalk|Screenshot|스크린샷|Photo|사진)[_\s-]?|^[\d_\s-]{8,}(?:\.\w+)?$|^\d{1,2}\s*-\s*\d{1,2}[_\s]\d{8,}/i.test(n.replace(/\.(?:pdf|jpe?g|png|heic)$/i, ''));
+      const autoNm = /^(?:IMG|DSC|DCIM|PXL|KakaoTalk|Screenshot|스크린샷|Photo|사진)[_\s-]?|^[\d_\s-]{8,}(?:\.\w+)?$/i.test(n.replace(/\.(?:pdf|jpe?g|png|heic)$/i, ''));
       if (p.nt && appealL && (/^image\//.test(mt) || /사\s*진|검\s*수|현\s*장/.test(String(f.dir || '')) || autoNm)) { r.st = '읽음'; r.kind = '현장 사진(정황 증빙 — 글자 없는 사진' + (/^image\//.test(mt) ? '' : ', 사진을 바꾼 PDF로 짐작(폴더·파일 이름)') + ')'; r.use = '불복 항목표 — 파일 앞 번호가 있으면 그 쟁점 계약 묶음에 사진 장수로(금액 없음). 서류를 찍은 사진이면 선명하게 다시 넣어 주세요'; return r; }
       if (p.nt) { r.st = '못읽음'; r.why = '글자 없음(그림만·흐린 사진) — 선명한 PDF로 다시 넣어 주세요'; return r; }
       if (!p.t && memo.read.some(function (x) { return x.file === n && x.photo; })) { r.st = '읽음'; r.kind = '메모(고객이 적어 보낸 설명 사진)'; }
