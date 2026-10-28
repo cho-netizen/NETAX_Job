@@ -463,6 +463,17 @@ function commSeamList_() {
       if (!au || !au.input_schema.properties.target || !au.input_schema.properties.cands) return 'ask_user에 넣을 칸(target)·후보(cands)가 없음 — 화면이 "확인했음" 단추만 띄운다';
       return caseProcAiLiveModeText_(1000).indexOf('set_read_scope') === -1 ? '지시문에 읽을 범위 도구가 없음' : ''; } },
     // [2026.10.28 읽을 대상 ①~④] 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" → "그렇게 만들자." — 판정 함수 하나·체크 목록·목록만 읽기·넥스 파일 단위
+    // [2026.10.28] 세무사님 원문: "ai는 포괄적으로 파일에 접근할 수 있어야 하지만 gas는 구체적으로 필요한 것만 콕 집어서 알려주어야 한다" — 넥스 읽기(어떤 파일이든)와 GAS 체크 목록은 다른 길
+    { 길: '넥스 폭넓은 파일 읽기(지휘 case_files/file_read · 대화창 job_lookup case_files/file_read — 체크 목록과 무관, 어떤 파일이든, 토큰 0)', fn: function () {
+      if (typeof caseProcNexFileList_ !== 'function' || typeof caseProcNexFileText_ !== 'function') return '넥스 파일 목록·글 읽기 서버 함수가 이 판에 없음';
+      const names = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).map(function (t) { return t.name; });
+      if (names.indexOf('case_files') === -1 || names.indexOf('file_read') === -1) return '지휘 넥스에 case_files/file_read 도구가 없음';
+      const lk = (typeof JOB_AI_TOOLS_ !== 'undefined' ? JOB_AI_TOOLS_ : []).filter(function (t) { return t.name === 'job_lookup'; })[0];
+      if (lk) { const en = ((lk.input_schema || {}).properties || {}).kind; if (!en || !en.enum || en.enum.indexOf('case_files') === -1 || en.enum.indexOf('file_read') === -1) return '대화창 넥스 job_lookup에 case_files/file_read가 없음'; }
+      const txt = typeof caseProcAiLiveModeText_ === 'function' ? caseProcAiLiveModeText_(1000) : '';
+      if (txt.indexOf('어떤 파일이든') === -1 || txt.indexOf('GAS가 읽을 파일은') === -1) return '지휘 지시문에 넥스 폭넓은 읽기·GAS 체크 목록 구분이 없음';
+      return '';
+    } },
     { 길: '읽을 파일 체크 목록(화면 📂·⚡ 첫 실행 → step readList/readScope list) · 폴더·파일 판정 하나(⚡·미리 읽기·글자 기억·직결) · 넥스 set_read_scope on/off', fn: function () {
       if (typeof caseProcFolderRule_ !== 'function' || typeof caseProcFileRule_ !== 'function') return '폴더·파일 판정 함수가 이 판에 없음';
       if (typeof caseProcReadList_ !== 'function' || typeof caseProcReadListSave_ !== 'function' || typeof caseProcNewFiles_ !== 'function') return '체크 목록 서버 함수가 이 판에 없음';

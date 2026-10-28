@@ -2927,7 +2927,7 @@
     //  다시 읽는 반복 바퀴는 없다(세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?", "단 한번의 처리로 끝나야 하잖아?"). 도구 안은 AI 없이(noAi).
     st.gasRun = function(){
       if (st.gasDone) return Promise.resolve(st.gasDone);
-      // [2026.10.28 읽을 대상 ②] ⚡를 처음 누를 때 기록부에 읽을 파일 목록이 없으면 체크 목록이 저절로 열린다(단추 뒤에 숨기지 않음) — [이 목록으로 읽기] 뒤에 읽기 시작. 넥스가 부른 gas_run(st.screen 아님)은 관문 없이(넥스는 목록이 없으면 세무사님께 먼저 청하도록 지시문에)
+      // [2026.10.28 읽을 대상 ②] ⚡를 처음 누를 때 기록부에 읽을 파일 목록이 없으면 체크 목록이 저절로 열린다(단추 뒤에 숨기지 않음) — [이 목록으로 읽기] 뒤에 읽기 시작. 넥스가 부른 gas_run(st.screen 아님)은 관문 없이(넥스는 목록이 없으면 case_files/file_read로 폴더를 직접 읽고 판단해 set_read_scope로 정한다 — 10-28 세무사님 "ai가 체크를 하려면 뭘 알아야")
       if (st.screen && !st.listGate){
         st.listGate = true;
         return st.run('record').then(function(r){
