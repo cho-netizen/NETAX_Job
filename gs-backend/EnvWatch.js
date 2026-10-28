@@ -316,6 +316,13 @@ function envTechCheck_() {
       if (lu.error) out.push({ 수준: '경고', 항목: '브이월드 토지이용계획(getLandUseAttr) 응답 이상 — ' + String(lu.error).slice(0, 160) });
       else if (!(lu.names || []).length) out.push({ 수준: '경고', 항목: '브이월드 토지이용계획 응답에서 용도지역을 못 읽음(칸 이름 확인 필요)' });
       else out.push({ 수준: '정상', 항목: '🌐 바깥 조회 점검 — 토지대장 ' + (lg.jimok || '?') + ' ' + (lg.area || '?') + '㎡ · 토지이용계획 ' + lu.names.slice(0, 3).join(', ') + (lu.urban ? ' → ' + lu.urban : '') });
+      // [2026.10.28 조사 결과] 토지이음 열람 화면 읽기 — 화면 구조가 바뀌면 여기서 먼저 보인다(허가구역 지번: 강남구 대치동 901-44)
+      if (typeof cpEumLand_ === 'function') {
+        var em = cpEumLand_({ pnu: '1168010600109010044', jibun: '서울특별시 강남구 대치동 901-44(배포 점검용)' });
+        if (em.error) out.push({ 수준: '경고', 항목: '토지이음 열람 읽기 실패 — ' + String(em.error).slice(0, 160) });
+        else if (!(em.zones1 || []).length) out.push({ 수준: '경고', 항목: '토지이음 열람에서 지역·지구를 못 읽음(화면 구조 바뀜?)' });
+        else out.push({ 수준: '정상', 항목: '토지이음 열람 점검 — ' + em.zones1.slice(0, 3).join(', ') + ' · 허가구역 ' + (em.permit || []).length + '건' + ((em.permit || [])[0] && em.permit[0].from ? '(' + em.permit[0].from + '~' + em.permit[0].to + ')' : '') });
+      }
     } catch (e) { out.push({ 수준: '경고', 항목: '🌐 바깥 조회 점검 실패: ' + (e && e.message || e) }); }
     CP_SECURED_LOG_ = keep;
   }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 01:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 02:42 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -40361,7 +40361,8 @@ function handleTaxCalcClick_(e){
       if (data.error){ a.landInfo = null; rerender(); nxAlert_(data.error); return; }
       const parts = [];
       if (data.ledger) parts.push('토지대장: ' + (data.ledger.지목 || '지목?') + ' · ' + (data.ledger.면적 ? data.ledger.면적 + '㎡' : '면적?') + (data.ledger.소유구분 ? ' · ' + data.ledger.소유구분 : '')); else if (data.ledgerError) parts.push('토지대장 못 받음(' + data.ledgerError + ')');
-      if (data.landuse) parts.push('토지이용계획: ' + (data.landuse.지역지구 || []).slice(0, 8).join(', ') + (data.landuse.도시지역 ? ' → ' + data.landuse.도시지역 : '')); else if (data.landuseError) parts.push('토지이용계획 못 받음(' + data.landuseError + ')');
+      if (data.landuse) parts.push('토지이용계획: ' + (data.landuse.지역지구 || []).slice(0, 8).join(', ') + (data.landuse.도시지역 ? ' → ' + data.landuse.도시지역 : '') + ((data.landuse.토지거래허가구역 || []).length ? ' · ⚠ 토지거래허가구역' : '')); else if (data.landuseError) parts.push('토지이용계획 못 받음(' + data.landuseError + ')');
+      if (data.region && data.region.text) parts.push('지역 구분: ' + data.region.text); // [2026.10.28 점검 보완 4] 수도권·읍면·시지역
       a.landInfo = { text: parts.join(' / '), links: data.links, ledger: data.ledger || null, landuse: data.landuse || null };
       if (data.ledger){
         if (!a.assetArea && data.ledger.면적 && (a.assetKind === 'land' || (!a.assetKind && !a.assetHo))) a.assetArea = data.ledger.면적;
