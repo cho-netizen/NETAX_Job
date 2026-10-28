@@ -484,6 +484,17 @@ function commSeamList_() {
       return caseProcAiLiveModeText_(1000).indexOf('읽을 목록') === -1 ? '지시문에 "읽을 목록이 없으면 세무사님께 먼저"가 없음' : ''; } },
     { 길: '말로 한 필요경비 → 항목(이름·금액) — 빈 값으로 저장하지 않음', fn: function () { if (typeof cpExpAmountsFromText_ !== 'function') return '경비 글 풀기 함수가 이 판에 없음'; try { const r = cpAnswerValueNorm_('expenses', '취득세교육세 3,583,600원, 등기제비용 426,110원, 법무사수수료 385,000원', { cands: [] }); const d = JSON.parse(r.value || '{}'); if (!d.items || d.items.length !== 3 || d.items[0].amount !== 3583600 || d.items[2].amount !== 385000) return '경비 3건이 항목으로 안 풀림: ' + String(r.value).slice(0, 160); const r2 = cpAnswerValueNorm_('expenses', '경비는 대략 몇백만원쯤 됩니다', { cands: [] }); if (!r2.error) return '못 푼 경비 글이 빈 값(0건)으로 통과함'; const r3 = cpAnswerValueNorm_('expenses', '필요경비 없음', { cands: [] }); if (r3.error || JSON.parse(r3.value).items.length !== 0) return '"없음"이 0건으로 안 들어감'; } catch (e) { return '경비 글 풀기 실패: ' + (e && e.message || e); } return ''; } },
     // [2026.10.23 ㅅ13차 — 점검표 168] 넥스 제안 카드 → GAS 답 넣기: 넥스가 객체로 준 필요경비 값이 그 칸 모양(items)으로 바뀌어 0건이 되지 않는지
+    // [2026.10.28 🌐 바깥 조회] 세무사님 "왜 전혀 자료수집을 하지 않느냐" — 소재지가 있는 모든 부동산에 토지대장·토지이용계획·공시가격·건축물대장 묶음이
+    //  ⚡(양도·증여·상속)·직결 뒤·세액계산기 버튼·넥스 도구 네 길에서 같은 함수로 돌고, 결과가 반영 현황표 「🌐 바깥 조회」 줄·확보자료 PDF로 돌아오는지
+    { 길: '🌐 바깥 조회(토지대장·토지이용계획·공시가격·건축물대장) → ⚡ 양도·증여·상속 기본 단계 · 직결 뒤(t6ApplyRead_) · 계산기 🔍 토지정보 · 넥스 lookup_land_info → 현황표·확보자료', fn: function () {
+      var fns = { cpOutsideRun_: typeof cpOutsideRun_, cpOutsideOne_: typeof cpOutsideOne_, trcOutside_: typeof trcOutside_, cpOutsideAfterDirect_: typeof cpOutsideAfterDirect_, cpLandLedger_: typeof cpLandLedger_, cpLandUse_: typeof cpLandUse_, handleLookupLandInfo: typeof handleLookupLandInfo, handleSearchAddressKakao: typeof handleSearchAddressKakao };
+      var miss = Object.keys(fns).filter(function (n) { return fns[n] !== 'function'; });
+      if (miss.length) return '없는 함수: ' + miss.join(', ');
+      try { var src = String(t6ApplyRead_.toString()); if (src.indexOf('cpOutsideAfterDirect_') === -1) return '직결 뒤 바깥 조회가 끊김'; } catch (e) { return '직결 저장 함수를 못 봄'; }
+      try { var st = String(caseProcStatus_.toString()); if (st.indexOf('🌐 바깥 조회') === -1) return '반영 현황표에 바깥 조회 줄이 없음'; } catch (e) { return '현황표 함수를 못 봄'; }
+      try { var tr = String(trcOverview_.toString()); if (tr.indexOf('trcOutside_') === -1) return '양도 ⚡에서 바깥 조회가 끊김'; } catch (e) { return '양도 처리 함수를 못 봄'; }
+      return '';
+    } },
     { 길: '넥스 제안 카드(답 넣기) → GAS 칸 반영(값 모양 맞추기)', fn: function () { if (typeof cpAnswerValueNorm_ !== 'function') return '값 모양 맞추기가 이 판에 없음'; try { var r = cpAnswerValueNorm_('expenses', { 양도비용: 4480000, 취득비용: 8160000 }, { cands: [{ kind: '양도', label: '중개보수', amount: 4480000, file: '중개보수영수증.pdf' }] }); var d = JSON.parse(r.value); if (!d || !Array.isArray(d.items) || d.items.length !== 2 || d.items[0].label !== '중개보수' || d.items[1].kind !== '취득') return '객체 값이 items 2건으로 안 바뀜: ' + r.value.slice(0, 120); if (/\[object/.test(r.shown)) return '카드 글에 [object Object]'; } catch (e) { return '값 모양 맞추기 실패: ' + (e && e.message || e); } return ''; } }
   ];
 }
