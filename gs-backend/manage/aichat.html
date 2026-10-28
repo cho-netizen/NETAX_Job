@@ -3388,7 +3388,7 @@
     var line = function(txt, cls){ var d = document.createElement('div'); d.className = cls || 'nxai-cp-line'; d.textContent = txt; linesEl.appendChild(d); return d; };
     linesEl.innerHTML = '';
     st.by = '넥스'; window.nxWorkBy_ = '넥스'; // 이 동안 GAS 도구가 남기는 기록부 줄은 "넥스"
-    var ai = { won: 0, round: 0, messages: [], stop: '', calls: 0, spots: null, items: null, sendItems: false, roundLog: [] }; // [2026.10.28 속도 ⓐ] roundLog = 왕복마다 초·도구·입력 글자 수
+    var ai = { won: 0, round: 0, messages: [], stop: '', calls: 0, spots: null, items: null, sendItems: false, roundLog: [], tFirst: 0, gapSum: 0, lastAnswerAt: 0 }; // [2026.10.28 ③바퀴 ⑤] 화면 쪽 시간 — 전송→첫 AI 호출, AI 답→다음 호출 사이(도구 실행·그리기) 합 // [2026.10.28 속도 ⓐ] roundLog = 왕복마다 초·도구·입력 글자 수
     var finish = function(mode, extra){
       return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, sec: st.t0 ? Math.round((Date.now() - st.t0) / 1000) : 0, calls: ai.calls, roundLog: ai.roundLog, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [], tiers: (ai.spots && ai.spots.tiers) || null, inGap: (ai.spots && ai.spots.inGap) || null }, extra || {})).catch(function(){ return null; });
     };
@@ -3433,12 +3433,14 @@
       st.setStep('ai', '🔄', ai.round + '바퀴 · 도구 ' + ai.calls + '번 · ' + ai.won + '원');
       var send = ai.sendItems; ai.sendItems = false;
       var tRound = Date.now(), inChars = 0; try { inChars = JSON.stringify(ai.messages).length; } catch (e) { inChars = 0; }
+      if (!ai.tFirst) ai.tFirst = tRound; if (ai.lastAnswerAt) ai.gapSum += tRound - ai.lastAnswerAt; // [2026.10.28 ③바퀴 ⑤]
       return callGas('case_proc_ai', { caseId: st.caseId, step: 'turn', round: ai.round, spent: ai.won, messages: ai.messages, items: send ? ai.items : undefined,
         userText: ai.round === 0 && st.said ? st.said.userText : undefined, chat: ai.round === 0 && st.said ? st.said.chat : undefined }).then(function(r){ // [2026.10.21 넥스 하나로] 첫 차례에 세무사님 말씀·채팅
         if (!r || r.ok === false || r.error) return fallback('넥스 오류(' + ((r && r.error) || '응답 없음') + ')');
         if (r.off){ cur.setText('AI 지휘 꺼짐 — GAS만'); st.setStep('ai', '⏭', r.why || 'AI 지휘 꺼짐'); st.fallback = true; return st.gasRun().then(function(){ return finish('off'); }); }
         ai.won = Math.round((ai.won + (Number(r.won) || 0)) * 10) / 10; ai.stop = r.stop || ''; ai.last = r;
         // [2026.10.28 속도 ⓐ] 왕복 기록 — 어느 왕복이 100초인지 보이게(기록부 aiLead.roundLog + 접힘 기록 한 줄)
+        ai.lastAnswerAt = Date.now();
         var rSec = Math.round((Date.now() - tRound) / 10) / 100; ai.roundLog.push({ n: ai.round + 1, sec: rSec, tools: (r.calls || []).slice(0, 8), inChars: inChars, won: Number(r.won) || 0 });
         line('🕒 ' + (ai.round + 1) + '번째 왕복 · ' + Math.round(rSec) + '초 · ' + ((r.calls || []).length ? nxAiCpToolsKo_(r.calls) : '답만') + ' · 보낸 글 ' + Math.round(inChars / 1000) + '천 자 · ' + (Number(r.won) || 0) + '원');
         if (r.assistant) ai.messages.push({ role: 'assistant', content: r.assistant });
@@ -3456,7 +3458,13 @@
         // 넥스가 GAS 한 바퀴를 부르지 않았으면(이미 된 일) 사건만 불러 화면 질문·결정을 맞춘다(사건파악 — 가벼움, 서류는 다시 읽지 않음)
         var g0 = st.case ? Promise.resolve() : st.doStep('basic');
         // [2026.10.21 넥스 하나로] 기록(finish — 보고 포함)을 먼저 남기고 화면 반영 — 넥스가 새로 여쭌 것이 다음 칸 채우기에서 질문으로 뜨게
-        return g0.then(function(){ return finish('ai', { report: r.report || '' }); }).then(function(){ return nxAiCaseProcAiDone_(st, ai, r, line); });
+        var tDone0 = Date.now();
+        var uiT = { toFirst: st.t0 && ai.tFirst ? Math.round((ai.tFirst - st.t0) / 100) / 10 : 0, gaps: Math.round(ai.gapSum / 100) / 10 };
+        return g0.then(function(){ return finish('ai', { report: r.report || '', ui: uiT }); }).then(function(){ return nxAiCaseProcAiDone_(st, ai, r, line); }).then(function(x){
+          // [2026.10.28 ③바퀴 ⑤] 화면 쪽 시간 한 줄 — 다음 재기에서 「화면 왕복·그리기 60초」가 어디서 나는지 보게
+          try { line('🕒 화면: 전송→첫 AI 호출 ' + uiT.toFirst + '초 · AI 답→다음 호출 사이 합 ' + uiT.gaps + '초(도구 실행·그리기) · 끝 답→기록·그리기 ' + Math.round((Date.now() - tDone0) / 100) / 10 + '초 · 전체 ' + (st.t0 ? Math.round((Date.now() - st.t0) / 1000) : '?') + '초'); } catch (e) {}
+          return x;
+        });
       });
     };
     return turn().catch(function(err){ return fallback('넥스 오류(' + (err && err.message || err) + ')'); });

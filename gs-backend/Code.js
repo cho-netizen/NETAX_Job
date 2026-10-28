@@ -27015,6 +27015,15 @@ function t6ApplyRead_(c, body) {
 //  "gas속에 ai를 가두지 마라" — 감시 대상은 GAS 체크 목록·폴더 판정과 무관하게 사건 폴더의 모든 파일(시스템 파일만 뺌). 넥스가 무엇을 읽을지는 넥스가 정한다.
 // =========================================================
 var CP_WATCH_PENDING_ = 'cp_watch_pending'; // 밤에 변동이 생긴 사건 — 아침 첫 틱에 넥스를 깨울 목록
+// [2026.10.28 속도 ③바퀴 ④] GAS ①②③이 돈 뒤 읽은 길 기록 — 10분 안에 직결(Cloud Run)이 읽었다고 적혀 있으면 그 기록을 지키고 'GAS도 돌음'만 덧붙인다(가상양도30: timing은 직결인데 readRoute가 GAS로 덮여 둘이 안 맞았음)
+function cpReadRouteGas_(caseId) {
+  caseProcPatch_(caseId, function (sv) {
+    const prev = sv.readRoute || {}; let recentDirect = false;
+    try { recentDirect = /직결/.test(String(prev.길 || '')) && (Date.now() - Date.parse(String(prev.at || '').replace(' ', 'T') + ':00+09:00')) < 10 * 60000; } catch (e) { recentDirect = false; }
+    if (recentDirect) { sv.readRoute = Object.assign({}, prev, { GAS도돌음: caseProcNow_() }); return; }
+    sv.readRoute = Object.assign({}, prev.직결실패 ? { 직결실패: prev.직결실패 } : {}, { at: caseProcNow_(), 길: 'GAS(서버 ①②③)' });
+  });
+}
 function cpWatchNight_(d) { const h = Number(Utilities.formatDate(d || new Date(), 'Asia/Seoul', 'H')); return h >= 22 || h < 7; }
 function cpWatchCaseOf_(folderId) { // 사건 폴더 ID → 사건 행
   const fid = String(folderId || '').trim(); if (!fid) return null;
@@ -31065,7 +31074,7 @@ function caseProcAll_(c, body) {
     ['basic', 'evidence', 'overview', 'calc'].forEach(function (k) { const r = out.stages[k]; if (r && Array.isArray(r.lines) && r.lines.length) out.lines.push('— ' + (CASEPROC_STEP_NAME_[k] || k) + ' —'); if (r && Array.isArray(r.lines)) out.lines = out.lines.concat(r.lines); });
     out._tm = tm; out._ms = Date.now() - t0;
     // [2026.10.23 T2] 단계별 초를 결정 파일(timing)에도 남긴다 — 화면 줄에만 있던 ⏱이 사건 밖에서는 보이지 않아 "어디서 10초를 넘기는지"를 아무도 못 봤다(세무사님 08:5x "요즘 사용자들이 클릭하고 반응기다려주는 시간이 몇초인 줄 아는가?"). ① 안쪽(CP_BASIC_T_)·③ 안쪽(CP_OV_T_) 세부도 함께
-    try { const rec = { at: caseProcNow_(), ms: out._ms, tm: tm, why: why || '', 길: 'GAS' }; try { caseProcPatch_(c.id, function (sv) { const prev = sv.readRoute || {}; sv.readRoute = Object.assign({}, prev.직결실패 ? { 직결실패: prev.직결실패 } : {}, { at: caseProcNow_(), 길: 'GAS(서버 ①②③)' }); }); } catch (e0) {} /* [2026.10.28 속도 C] */ try { if (CP_BASIC_T_ && CP_BASIC_T_.m) rec.basic = CP_BASIC_T_.m; } catch (e1) {} try { if (typeof CP_OV_T_ !== 'undefined' && CP_OV_T_) rec.overview = CP_OV_T_; } catch (e2) {} caseProcPatch_(c.id, function (sv) { sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }); } catch (e) {}
+    try { const rec = { at: caseProcNow_(), ms: out._ms, tm: tm, why: why || '', 길: 'GAS' }; try { cpReadRouteGas_(c.id); } catch (e0) {} /* [2026.10.28 속도 C] */ try { if (CP_BASIC_T_ && CP_BASIC_T_.m) rec.basic = CP_BASIC_T_.m; } catch (e1) {} try { if (typeof CP_OV_T_ !== 'undefined' && CP_OV_T_) rec.overview = CP_OV_T_; } catch (e2) {} caseProcPatch_(c.id, function (sv) { sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }); } catch (e) {}
     out.lines.push('⏱ 한 번 호출(①②③' + (out.stages.calc ? '④' : '') + ') 서버 안쪽 ' + Math.round(out._ms / 1000) + '초 — ' + Object.keys(tm).map(function (k) { return (k === 'evidence_read' ? '서류 글자 읽기' : CASEPROC_STEP_NAME_[k] || k) + ' ' + tm[k] + '초'; }).join(' · ') + (why ? ' · ' + why : ''));
     return out;
   };
