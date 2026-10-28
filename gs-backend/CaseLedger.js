@@ -174,11 +174,12 @@ function ledgerSet_(caseId, input) {
 }
 // 여러 줄을 한 번에(잠금·드라이브 쓰기 1회) — GAS 서류 읽기 결과·질문 목록 옮기기에
 function ledgerBatch_(caseId, ops) {
-  const preps = (ops || []).map(function (op) { return op && op.ask ? { ask: op } : ledgerSetPrep_(op); });
+  const preps = (ops || []).map(function (op) { return op && op.ask ? { ask: op } : op && op.drop ? { drop: op } : ledgerSetPrep_(op); });
   return ledgerMutate_(caseId, function (L) {
-    const out = { ok: true, set: 0, asked: 0, refused: 0, errors: [] };
+    const out = { ok: true, set: 0, asked: 0, refused: 0, dropped: 0, errors: [] };
     preps.forEach(function (p) {
       if (p.error) { out.errors.push(p.error); return; }
+      if (p.drop) { const d = p.drop, r0 = L.rows[d.path]; if (!r0) return; delete L.rows[d.path]; out.dropped++; ledgerLogTo_(L, { by: d.by || 'GAS', what: '값 지움', path: d.path, detail: (r0.label || d.path) + ' ' + ledgerValueText_(d.path, r0.v) + ' — 서류를 다시 읽어 더는 나오지 않는 값' }); return; }
       if (p.ask) { const a = p.ask, prev = L.rows[a.path]; if (prev && (prev.state === '확정' || prev.state === '추정') && (LEDGER_RANK_[prev.src && prev.src.kind] || 0) > 1) return; ledgerAskInner_(L, a.path, { label: a.label, question: a.question, cands: a.cands, by: a.by || 'GAS', needDoc: !!a.needDoc, keep: true }); out.asked++; return; }
       const r = ledgerSetInner_(L, p);
       if (r.ok && r.asked) out.asked++; else if (r.ok) out.set++; else if (r.refused) out.refused++; else out.errors.push(r.error);
@@ -439,8 +440,10 @@ function ledgerFromGas_(c, S) {
   const fileOf = function (s) { return (String(s || '').match(/[\w가-힣().\-_ ]+\.(pdf|jpg|jpeg|png|xlsx?|hwp|docx?)/i) || [''])[0].slice(0, 80); };
   const push = function (path, v) {
     if (v === '' || v === undefined || v === null || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length)) return;
-    if (/^(seller\.|c\d+\.|a\d+\.)/.test(path) && /(^|\.)(id|transferContractId|acquisitionExpenseItems|totalExpenseItems|externalMembers|buyers|_\w+)$/.test(path)) return;
+    if (/^(seller\.|c\d+\.|a\d+\.)/.test(path) && /(^|\.)(id|transferContractId|acquisitionExpenseItems|totalExpenseItems|externalMembers|buyers|provisional|_\w+)$/.test(path)) return;
     const s = String(src[path] || '');
+    if (!s) return; // 출처 없는 값은 계산기 입력의 기본값(양도가액 0·양도 원인 '매매' 등)이지 서류에서 읽은 사실이 아니다 — 장부에 적지 않는다(10-28 배애란: 양도가액 0원이 서류 값으로 섰던 것)
+    if (v === 0 || v === '0') return;
     if (/^(세무사님|🤖|AI 판단|넥스)/.test(s)) return; // 답 저장소에서 온 값은 그 주인이 이미 장부에 적었다
     if (cands[path] && cands[path].length) return; // 후보가 갈리는 칸은 아래에서 물어볼 것으로
     ops.push({ path: path, value: v, kind: kindOf(s), by: 'GAS', file: fileOf(s), quote: s.slice(0, 160), sure: /⚠|확인 필요|원문 확인|검산 안 됨|추정/.test(s) ? '애매' : '확실' });
@@ -477,6 +480,9 @@ function ledgerFromGas_(c, S) {
   }
   asks.forEach(function (a) { ops.push(a); });
   if (c && c.기준일) ops.push({ path: '기준일', value: c.기준일, kind: '규칙', by: 'GAS', quote: '사건 기준일(양도일)' });
+  // GAS가 지난 읽기에서 적었는데 이번 읽기에는 없는 값은 GAS 자기 줄이므로 지운다(서류를 다시 읽으면 GAS 주장은 통째로 새로 선다 — 사람·넥스 줄은 그대로)
+  const L0 = ledgerLoad_(c.id), have = {}; ops.forEach(function (o) { have[o.path] = true; });
+  Object.keys(L0.rows).forEach(function (p) { const r0 = L0.rows[p]; if (!have[p] && r0 && r0.state === '확정' && r0.src && /^(서류|규칙)$/.test(r0.src.kind) && /^(seller\.|c\d+\.|a\d+\.)/.test(p)) ops.push({ drop: true, path: p, by: 'GAS' }); });
   const r = ledgerBatch_(c.id, ops);
   ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '서류 읽기 반영', detail: '값 ' + r.set + '줄 · 물어볼 것 ' + r.asked + '줄' + (r.refused ? ' · 주인 있는 칸 ' + r.refused + '줄은 그대로' : '') + (r.errors.length ? ' · 못 넣음 ' + r.errors.length : '') }); });
   return r;

@@ -51432,6 +51432,7 @@ function trcOverview_(c, ov, rf, lines, items) {
   const provL = needs.filter(function (n) { return !n.ok && n.prov; });
   if (S.state.transferContracts[0]) { if (provL.length) S.state.transferContracts[0].provisional = provL.map(function (n) { return { key: n.p, label: n.l, v: 0, why: n.prov }; }); else delete S.state.transferContracts[0].provisional; }
   const h = trcStore_(c, S);
+  try { ledgerFromQuestions_(c, items, (caseProcLoad_(c.id) || {}).decisions); } catch (e) { console.error('장부 질문 반영 실패: ' + (e && e.message || e)); } // [2026.10.28] GAS가 낸 질문(넣을 칸 있는 것)은 그 자리에서 장부 "물어볼 것"으로
   const ns = trcNeedsSummary_(needs);
   if (ns.pending.length) lines.push('⏳ 확인 전 칸 ' + ns.pending.length + '개 — ' + ns.pending.join(', ') + ' · 잠정값으로 먼저 계산합니다(답하면 다시 계산, 신고서 출력 전에 다시 알림)');
   lines.push('🎯 세액계산기가 지금 원하는 칸 ' + ns.total + '개 — 증빙·답으로 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움') + (ns.later.length ? ' · 지금은 필요 없음: ' + ns.later.join(' / ') : ''));
