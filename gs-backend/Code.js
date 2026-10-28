@@ -18650,30 +18650,51 @@ function booking_cancelConfirmed(body) {
 // 캘린더 수동 색상 변경 감지 (시간기반 트리거) — booking 모듈
 // =========================================================
 function booking_checkCalendarSync() {
-  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
-  const sheet = ss.getSheetByName('Applications');
-  if (!sheet) return;
+  // [2026.10.28] 세무사님 "아직도 승인대기상태이다 어찌된것인가?" — 트리거가 돌았는지·일정 색을 무엇으로 읽었는지 아무 데도 남지 않아
+  // 원인을 볼 수 없었다. 실행마다 예약 시트의 '동기화기록' 탭에 한 줄(시각 · 본 줄 · 색 · 한 일 · 오류)을 남긴다(최근 300줄만 둠).
+  const seen = [];
+  let err = '';
+  try {
+    const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+    const sheet = ss.getSheetByName('Applications');
+    if (!sheet) { booking_syncLog_(ss, seen, 'Applications 탭 없음'); return; }
 
-  const data = sheet.getDataRange().getValues();
-  const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
+    const data = sheet.getDataRange().getValues();
+    const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
 
-  for (let i = 1; i < data.length; i++) {
-    const status = data[i][9];
-    const eventId = data[i][11];
-    if (status !== '신청' || !eventId) continue;
+    for (let i = 1; i < data.length; i++) {
+      const status = data[i][9];
+      const eventId = data[i][11];
+      if (status !== '신청' || !eventId) continue;
 
-    const event = cal.getEventById(eventId);
-    if (!event) continue;
+      let event = null;
+      try { event = cal.getEventById(eventId); } catch (e) { seen.push((i + 1) + '행 ' + data[i][1] + ': 일정 찾기 오류 ' + (e.message || e)); continue; }
+      if (!event) { seen.push((i + 1) + '행 ' + data[i][1] + ': 일정 없음(' + String(eventId).slice(0, 12) + '…)'); continue; }
 
-    const currentColor = event.getColor();
-    if (currentColor && currentColor !== BOOKING_COLOR_PENDING) {
-      const rowIndex = i + 1;
-      const phone = data[i][2];
-      const reservedDate = data[i][6];
-      const reservedTime = data[i][7];
-      booking_finalizeApproval(rowIndex, eventId, phone, reservedDate, reservedTime);
+      const currentColor = event.getColor();
+      if (currentColor && currentColor !== BOOKING_COLOR_PENDING) {
+        const rowIndex = i + 1;
+        const phone = data[i][2];
+        const reservedDate = data[i][6];
+        const reservedTime = data[i][7];
+        booking_finalizeApproval(rowIndex, eventId, phone, reservedDate, reservedTime);
+        seen.push(rowIndex + '행 ' + data[i][1] + ': 색 ' + currentColor + ' → 확정 처리');
+      } else {
+        seen.push((i + 1) + '행 ' + data[i][1] + ': 색 ' + (currentColor === '' ? '(기본색)' : currentColor) + ' → 그대로(대기)');
+      }
     }
+  } catch (e) {
+    err = e.message || String(e);
   }
+  try { booking_syncLog_(SpreadsheetApp.openById(BOOKING_SHEET_ID), seen, err); } catch (e) {}
+}
+function booking_syncLog_(ss, seen, err) {
+  const name = '동기화기록';
+  let sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.appendRow(['실행 시각', '본 신청 건', '내용', '오류']); }
+  sh.appendRow([Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), seen.length, seen.join(' / ') || '(신청 상태 건 없음)', err || '']);
+  const n = sh.getLastRow();
+  if (n > 301) sh.deleteRows(2, n - 301);
 }
 
 /**
