@@ -381,7 +381,7 @@ function ledgerFromGiftInh_(c, items) {
   };
   if (c.기준일) put('기준일', c.기준일, (filled.기준일 && filled.기준일.src) || '사건 기준일(규칙)');
   if (c.세목 === 'gift') {
-    LEDGER_GIFT_KEYS_.forEach(function (k) { const s = filled[k] && filled[k].src; if (s) put('g.' + k, ov[k], s); });
+    // [2026.10.28 증여 값 단일화] 증여 칸은 근거 기록(filled)이 곧 장부 g.<칸> 줄이라 여기서 베끼지 않는다(예전엔 처리개요 값을 근거 기록 출처로 다시 적었다)
   } else {
     let f = null; try { f = caseProcInhFacts_(c); } catch (e) { f = null; }
     if (f) {
@@ -643,28 +643,91 @@ function ledgerAnsSrcText_(r) {
   if (q && (s.kind !== '넥스' || /🤖|넥스|AI 판단/.test(q)) && (s.kind !== '세무사님' || !/^(🤖|넥스|AI 판단)/.test(q))) return q;
   return s.kind === '넥스' ? '🤖 넥스 판단(장부)' : '세무사님 답(장부)';
 }
-function ledgerAnsRead_(caseId) {
-  const L = ledgerLoad_(caseId), out = {};
+// 답 묶음 ↔ 장부 줄 — 묶음 열쇠와 장부 칸 경로를 잇는 규칙(map)만 다르고 길은 하나.
+//  양도 답(trAns): 열쇠 = 칸 경로 그대로. 상속 세부 답(ihChoices): 장례비 등 → i.q.<열쇠>, 분할 귀속 div:… → i.qdiv.<열쇠>(질문 줄과 같은 칸이라 답하면 그 질문이 닫힌다)
+var LEDGER_ANS_MAPS_ = {
+  tr: { toPath: function (k) { return LEDGER_ANS_RE_.test(k) ? k : ''; }, toKey: function (p) { return LEDGER_ANS_RE_.test(p) ? p : ''; } },
+  ih: { toPath: function (k) { return /^div:/.test(k) ? 'i.qdiv.' + k : 'i.q.' + k; }, toKey: function (p) { let m = /^i\.qdiv\.(div:.+)$/.exec(p); if (m) return m[1]; m = /^i\.q\.(.+)$/.exec(p); return m ? m[1] : ''; } }
+};
+function ledgerMapRead_(caseId, kind) {
+  const L = ledgerLoad_(caseId), out = {}, mp = LEDGER_ANS_MAPS_[kind];
   Object.keys(L.rows).forEach(function (p) {
-    const r = L.rows[p]; if (!LEDGER_ANS_RE_.test(p) || !r.src || !/^(세무사님|넥스)$/.test(r.src.kind)) return;
+    const k = mp.toKey(p), r = L.rows[p]; if (!k || !r.src || !/^(세무사님|넥스)$/.test(r.src.kind)) return;
     if (!(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return;
-    out[p] = { v: r.v, src: ledgerAnsSrcText_(r), at: String(r.at || '').slice(0, 10) };
+    const a = { src: ledgerAnsSrcText_(r), at: String(r.at || '').slice(0, 10) };
+    if (kind === 'ih' && k === 'debts' && r.v && typeof r.v === 'object' && Array.isArray(r.v.items)) a.items = r.v.items; else a.v = r.v; // 상속 채무 확정은 {items:[…]} 모양 그대로
+    out[k] = a;
   });
   return out;
 }
-// 답 저장소 모양(ans)과 장부를 맞춘다 — 바뀐 답만 장부에 적고, 지운 답은 장부 줄에서 뗀다(그 칸은 서류를 다시 읽을 때 GAS가 채운다)
-function ledgerAnsWrite_(caseId, ans) {
+// 답 묶음과 장부를 맞춘다 — 바뀐 답만 장부에 적고, 지운 답은 장부 줄에서 뗀다(그 칸은 서류를 다시 읽을 때 GAS가 채운다)
+function ledgerMapWrite_(caseId, kind, ans) {
   ans = ans && typeof ans === 'object' ? ans : {};
-  const cur = ledgerAnsRead_(caseId), ops = [];
-  Object.keys(ans).forEach(function (p) {
-    const a = ans[p]; if (!a || !LEDGER_ANS_RE_.test(p)) return;
-    if (cur[p] && JSON.stringify(cur[p].v) === JSON.stringify(a.v)) return;
+  const mp = LEDGER_ANS_MAPS_[kind], cur = ledgerMapRead_(caseId, kind), ops = [];
+  const valOf = function (a) { return a && Array.isArray(a.items) && a.v === undefined ? { items: a.items } : a ? a.v : undefined; };
+  Object.keys(ans).forEach(function (k) {
+    const a = ans[k], p = mp.toPath(k); if (!a || !p) return;
+    if (cur[k] && JSON.stringify(valOf(cur[k])) === JSON.stringify(valOf(a))) return;
     const src = String(a.src || '세무사님 답'), who = /^(🤖|넥스|AI 판단)/.test(src) || /🤖 넥스/.test(src) ? '넥스' : '세무사님';
-    ops.push({ path: p, value: a.v, kind: who, by: who, quote: src.slice(0, 160), why: src.slice(0, 160) });
+    ops.push({ path: p, value: valOf(a), kind: who, by: who, quote: src.slice(0, 160), why: src.slice(0, 160) });
   });
-  Object.keys(cur).forEach(function (p) { if (!ans[p]) ops.push({ drop: true, path: p, by: '세무사님' }); });
+  Object.keys(cur).forEach(function (k) { if (!ans[k]) ops.push({ drop: true, path: mp.toPath(k), by: '세무사님' }); });
   return ops.length ? ledgerBatch_(caseId, ops) : { ok: true, set: 0, dropped: 0 };
 }
+// ── 증여 값 = 장부 줄 [2026.10.28 시정 2단계 — 증여] ──
+// 세무사님 원칙(10-16) "처리개요는 요약, 증빙·사이드바 답은 계산기 칸으로 직접". 증여 계산 칸(LEDGER_GIFT_KEYS_)의 값과 출처는 장부 g.<칸> 줄 하나다.
+//  근거 기록(filled)의 증여 칸은 장부에서 뽑은 모양, 처리개요 증여 칸은 장부를 보여 주는 요약(ledgerGiftOvSync_)이다.
+//  처리개요·세액계산 화면에서 세무사님이 직접 고친 증여 칸은 사건 고치기 입구에서 세무사님 값으로 장부에 적는다(ledgerGiftFromOvEdit_, 세무사님 결정 10-28 "직접 고침 유지").
+function ledgerGiftKind_(s) { s = String(s || ''); return /세무사님/.test(s) ? '세무사님' : /🤖|넥스|AI 판단/.test(s) ? '넥스' : /규칙|검산|교차|계산/.test(s) ? '규칙' : '서류'; }
+function ledgerGiftFilledRead_(caseId) {
+  const L = ledgerLoad_(caseId), out = {};
+  LEDGER_GIFT_KEYS_.forEach(function (k) {
+    const r = L.rows['g.' + k]; if (!r || !(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return;
+    const s = r.src || {};
+    out[k] = { v: String(r.v), src: String(s.quote || s.why || (s.kind === '세무사님' ? '세무사님 확인(장부)' : s.kind === '넥스' ? '🤖 넥스 판단(장부)' : '증빙(장부)')).slice(0, 120), at: String(r.at || '').slice(0, 10) };
+  });
+  return out;
+}
+function ledgerGiftFilledWrite_(caseId, filled) {
+  filled = filled && typeof filled === 'object' ? filled : {};
+  const cur = ledgerGiftFilledRead_(caseId), ops = [];
+  LEDGER_GIFT_KEYS_.forEach(function (k) {
+    const f = filled[k];
+    if (!f) { if (cur[k] && /^(세무사님|넥스)$/.test(ledgerGiftKind_(cur[k].src)) === false) ops.push({ drop: true, path: 'g.' + k, by: 'GAS' }); return; }
+    if (cur[k] && String(cur[k].v) === String(f.v) && cur[k].src === String(f.src || '').slice(0, 120)) return;
+    if (String(f.v == null ? '' : f.v).trim() === '') return;
+    const kd = ledgerGiftKind_(f.src);
+    ops.push({ path: 'g.' + k, value: f.v, kind: kd, by: kd === '세무사님' || kd === '넥스' ? kd : 'GAS', quote: String(f.src || '').slice(0, 160), why: kd === '세무사님' ? String(f.src || '').slice(0, 160) : '' });
+  });
+  return ops.length ? ledgerBatch_(caseId, ops) : { ok: true, set: 0 };
+}
+// 화면(처리개요·세액계산)에서 세무사님이 고친 증여 칸 → 장부 세무사님 값. 비운 칸은 물어볼 것으로(값을 지어내지 않음)
+function ledgerGiftFromOvEdit_(caseId, prevOv, nextOv, where, who) {
+  prevOv = prevOv || {}; nextOv = nextOv || {}; who = who === '넥스' ? '넥스' : '세무사님';
+  const ops = [], s = (who === '넥스' ? '🤖 넥스 고침(' : '세무사님 고침(') + (where || '화면') + ')';
+  LEDGER_GIFT_KEYS_.forEach(function (k) {
+    if (!(k in nextOv)) return;
+    const a = String(prevOv[k] == null ? '' : prevOv[k]).trim(), b = String(nextOv[k] == null ? '' : nextOv[k]).trim();
+    const money = /(Amount|Assumed|PaidTax|DeductionUsed|Fee)$/.test(k), same = money ? a.replace(/[^\d]/g, '') === b.replace(/[^\d]/g, '') : a === b;
+    if (same) return; // 쉼표·원 표기만 다른 금액은 고친 것이 아니다(화면은 숫자만 보낸다)
+    if (b === '') ops.push({ ask: true, path: 'g.' + k, label: ledgerLabel_('g.' + k), question: who + '이(가) ' + (where || '화면') + '에서 이 칸을 비웠습니다 — 값을 정해 주세요', cands: a ? [{ v: a, src: '비우기 전 값' }] : [], by: who });
+    else ops.push({ path: 'g.' + k, value: b, kind: who, by: who, quote: s, why: s });
+  });
+  return ops.length ? ledgerBatch_(caseId, ops) : null;
+}
+// 장부 증여 칸 → 처리개요 요약(장부에서 세무사님·넥스가 고친 값이 처리개요·옛 계산 화면에도 보이게)
+function ledgerGiftOvSync_(caseId) {
+  const c = typeof job_findCase_ === 'function' ? job_findCase_(String(caseId)) : null;
+  if (!c || c.세목 !== 'gift') return null;
+  const L = ledgerLoad_(caseId), ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+  let ch = 0;
+  LEDGER_GIFT_KEYS_.forEach(function (k) { const r = L.rows['g.' + k]; if (!r || !(r.state === '확정' || r.state === '추정') || r.v === '' || r.v === undefined || r.v === null) return; if (String(ov[k] == null ? '' : ov[k]) !== String(r.v)) { ov[k] = String(r.v); ch++; } });
+  if (!ch) return { ok: true, changed: 0 };
+  const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
+  return { ok: !!(up && up.success !== false), changed: ch, message: up && up.message };
+}
+function ledgerAnsRead_(caseId) { return ledgerMapRead_(caseId, 'tr'); }
+function ledgerAnsWrite_(caseId, ans) { return ledgerMapWrite_(caseId, 'tr', ans); }
 // 서류 → 칸 이음 점검 [2026.10.28] — 파일 장부(caseProcLedger_)에서 "읽음·종류 앎"인데 내용이 어느 칸에도 쓰이지 않고 증빙목록 표시만 된 서류는 장부 물음(doc:<파일>.use).
 //  관련 서류가 폴더에 있는데 칸에 들어간 것이 없으면 그 칸 값을 확정할 근거가 없다(10-28 원문 "확보된 정보를 최대한 활용 … 부족한 정보는 물어보거나 확보할 증빙으로").
 //  그 서류가 나중에 칸에 쓰이면(처리에 씀) GAS가 세운 이 물음은 내려간다. 세무사님이 무시하면 그대로 무시.
@@ -786,6 +849,8 @@ function ledgerQRead_(caseId) {
 function ledgerMirrorApply_(c, body) {
   const path = ledgerTargetPath_(body && body.target); if (!path) return null;
   if (c && c.세목 === 'transfer' && LEDGER_ANS_RE_.test(path)) return { ok: true, same: true, message: '답 저장소가 곧 장부 — 따로 적지 않음' };
+  if (/^i\.q(div)?\./.test(path)) return { ok: true, same: true, message: '상속 세부 답이 곧 장부 — 따로 적지 않음' };
+  if (/^g\./.test(path) && LEDGER_GIFT_KEYS_.indexOf(path.slice(2)) !== -1) return { ok: true, same: true, message: '증여 칸 근거 기록이 곧 장부 — 따로 적지 않음' };
   const who = caseProcWho_(body.src, body.by) === '넥스' ? '넥스' : '세무사님';
   let v = body.value; if (path === 'costs' && typeof v === 'string') { try { v = JSON.parse(v); } catch (e) {} }
   const r = ledgerSet_(c.id, { path: path, value: v, kind: who, by: who, why: String(body.why || body.src || '').slice(0, 160), label: body.label });
@@ -832,12 +897,19 @@ function ledgerToolRun_(input, by) {
   else if (d === 'import') r = ledgerImportLegacy_(c);
   else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·import 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
+  if (r && r.ok && c.세목 === 'gift' && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
 }
 // case_proc 입구(step: ledger·ledgerSet·ledgerAsk·ledgerDecide·ledgerUndo·ledgerCalc·ledgerImport) — 화면·넥스·사이드바가 같은 길
 function ledgerApi_(c, body) {
   body = body || {};
   const who = body.by === '넥스' ? '넥스' : '세무사님';
+  if (c.세목 === 'gift' && /^ledger(Set|Decide|Undo)$/.test(String(body.step))) { // 증여 값은 장부가 주인 — 장부 화면(📒)에서 고치면 처리개요 요약도 다시 쓴다
+    const fn = { ledgerSet: ledgerSet_, ledgerDecide: ledgerDecide_, ledgerUndo: ledgerUndo_ }[body.step];
+    const r0 = fn(c.id, Object.assign({}, body, body.step === 'ledgerSet' ? { kind: body.kind || who, by: body.by || who } : { by: body.by || who }));
+    if (r0 && r0.ok) { try { r0.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} }
+    return r0;
+  }
   switch (body.step) {
     case 'ledger': return ledgerView_(c);
     case 'ledgerSet': return ledgerSet_(c.id, Object.assign({}, body, { kind: body.kind || who, by: body.by || who }));

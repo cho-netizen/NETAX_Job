@@ -25300,7 +25300,10 @@ function work_doPost(body) {
     case 'work_create_case': return work_createCase(body);
     case 'work_update_case': { // [2026.10.22 작업 기록부] 화면이 _log를 붙이면(처리개요·세액계산·증빙확보 등 세무사님이 직접 쓴 도구) 기록부에 한 줄 + 중요한 순간이면 알림
       const lg = body._log; delete body._log;
+      // [2026.10.28 증여 값 단일화 — 세무사님 결정 "직접 고침 유지"] 처리개요·세액계산 화면에서 고친 증여 계산 칸은 장부에 그 사람 값으로(장부가 증여 값의 주인, 처리개요는 요약)
+      let ovBefore = null; try { if (body.id && body.사건개요 && typeof job_findCase_ === 'function') { const c0 = job_findCase_(String(body.id)); if (c0 && c0.세목 === 'gift') ovBefore = JSON.parse(JSON.stringify(c0.사건개요 || {})); } } catch (e) { ovBefore = null; }
       const r = work_updateCase(body);
+      if (ovBefore && r && r.success !== false) { try { ledgerGiftFromOvEdit_(body.id, ovBefore, body.사건개요, lg ? String(lg.what || '처리개요 화면') : '세액계산 화면', lg ? caseProcWho_('', lg.by) : '세무사님'); } catch (e) { console.error('증여 칸 고침 장부 쓰기 실패: ' + (e && e.message || e)); } }
       if (lg && body.id && r && r.success !== false) { caseProcLog_(body.id, { by: caseProcWho_('', lg.by), what: String(lg.what || '').slice(0, 40), detail: String(lg.detail || '').slice(0, 240) }); if (lg.alert) caseProcAlert_(body.id, String(lg.alertKind || 'screen').slice(0, 30), String(lg.alert)); }
       return r;
     }
@@ -31400,20 +31403,32 @@ var CASEPROC_SV_MEMO_ = {};
 // [2026.10.28 시정 2단계 — 질문 목록 단일화] 이 파일은 질문 목록(remaining)·질문 결정(decisions)을 더는 갖지 않는다 — 둘 다 사건 장부(CaseLedger.js) 줄이다.
 //  불러오기는 장부에서 붙여 돌려주고(부르는 곳 그대로), 쓰기는 그 둘을 떼어 장부로 보낸다. 옛 파일에 남아 있던 둘은 처음 불러올 때 한 번 장부로 옮긴다.
 //  [2026.10.28 2차 — 답 저장소 단일화] 양도 답 저장소(trAns)도 같은 길 — 장부에서 세무사님·넥스가 정한 양도 칸 줄을 뽑아 붙이고, 바뀐 답만 장부로(CaseLedger.js ledgerAnsRead_·ledgerAnsWrite_).
-var CASEPROC_LEDGER_KEYS_ = ['remaining', 'decisions', 'trAns'];
-function caseProcQHasLegacy_(o) { return CASEPROC_LEDGER_KEYS_.some(function (k) { return k in o; }); }
+//  [2026.10.28 3차] 상속 세부 답(ihChoices — 장례비·채무 확정·분할 귀속·보험금 넣을지 등)도 같은 길(장부 i.q.<열쇠>·i.qdiv.<열쇠>, 질문 줄과 같은 칸).
+var CASEPROC_LEDGER_KEYS_ = ['remaining', 'decisions', 'trAns', 'ihChoices'];
+function caseProcQHasLegacy_(o) { return CASEPROC_LEDGER_KEYS_.some(function (k) { return k in o; }) || !!(o.filled && Object.keys(o.filled).some(function (k) { return LEDGER_GIFT_KEYS_.indexOf(k) !== -1; })); }
 function caseProcQHydrate_(caseId, o) {
   if (caseProcQHasLegacy_(o)) return o; // 장부로 못 옮긴 옛 파일(장부 쓰기 실패) — 잃지 않게 그대로
   try { const q = ledgerQRead_(caseId); o.remaining = q.remaining; o.decisions = q.decisions; } catch (e) { console.error('장부 질문 읽기 실패: ' + (e && e.message || e)); o.remaining = []; o.decisions = {}; }
   try { o.trAns = ledgerAnsRead_(caseId); } catch (e) { console.error('장부 답 읽기 실패: ' + (e && e.message || e)); o.trAns = {}; }
+  try { o.ihChoices = ledgerMapRead_(caseId, 'ih'); } catch (e) { console.error('장부 상속 답 읽기 실패: ' + (e && e.message || e)); o.ihChoices = {}; }
+  // [2026.10.28 4차 — 증여] 근거 기록(filled)의 증여 계산 칸은 장부 g.<칸> 줄에서 붙인다(나머지 칸 — 기준일·양도·상속 — 은 파일 그대로)
+  try { o.filled = Object.assign({}, caseProcGiftFilledSplit_(o.filled || {}).rest, ledgerGiftFilledRead_(caseId)); } catch (e) { console.error('장부 증여 근거 읽기 실패: ' + (e && e.message || e)); }
   return o;
 }
-function caseProcQSplit_(saved) { const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions, ans: s.trAns }; CASEPROC_LEDGER_KEYS_.forEach(function (k) { delete s[k]; }); return { file: s, rem: q.rem, dec: q.dec, ans: q.ans }; }
+function caseProcGiftFilledSplit_(filled) { const gift = {}, rest = {}; Object.keys(filled || {}).forEach(function (k) { (LEDGER_GIFT_KEYS_.indexOf(k) !== -1 ? gift : rest)[k] = filled[k]; }); return { gift: gift, rest: rest }; }
+function caseProcQSplit_(saved) {
+  const s = Object.assign({}, saved), q = { rem: s.remaining, dec: s.decisions, ans: s.trAns, ih: s.ihChoices };
+  CASEPROC_LEDGER_KEYS_.forEach(function (k) { delete s[k]; });
+  let gf; if (s.filled && typeof s.filled === 'object') { const fs = caseProcGiftFilledSplit_(s.filled); s.filled = fs.rest; gf = fs.gift; }
+  return { file: s, rem: q.rem, dec: q.dec, ans: q.ans, ih: q.ih, gf: gf };
+}
 function caseProcQMigrate_(caseId, o, f) {
   if (!caseProcQHasLegacy_(o)) return o;
   const sp = caseProcQSplit_(o);
   try {
     if (sp.ans && typeof sp.ans === 'object') ledgerAnsWrite_(caseId, Object.assign({}, ledgerAnsRead_(caseId), sp.ans)); // 옛 답 — 장부에 이미 있는 세무사님 답은 그대로 두고 더한다
+    if (sp.ih && typeof sp.ih === 'object') ledgerMapWrite_(caseId, 'ih', Object.assign({}, ledgerMapRead_(caseId, 'ih'), sp.ih));
+    if (sp.gf && Object.keys(sp.gf).length) ledgerGiftFilledWrite_(caseId, Object.assign({}, ledgerGiftFilledRead_(caseId), sp.gf)); // 옛 근거 기록의 증여 칸
     if (sp.rem !== undefined || sp.dec !== undefined) ledgerQWrite_(caseId, Array.isArray(sp.rem) ? sp.rem : undefined, sp.dec && typeof sp.dec === 'object' ? sp.dec : undefined);
     if (f) f.setContent(JSON.stringify(sp.file)); return sp.file;
   } catch (e) { console.error('옛 질문·결정·답 장부 옮기기 실패: ' + (e && e.message || e)); return o; }
@@ -31421,6 +31436,8 @@ function caseProcQMigrate_(caseId, o, f) {
 // 질문·결정·답이 바뀌었으면 장부로(같으면 쓰지 않음) — 장부 잠금은 결정 파일 잠금과 다른 잠금(스크립트 잠금)이라 서로 막지 않는다
 function caseProcQFlushToLedger_(caseId, sp) {
   if (sp.ans !== undefined && sp.ans !== null && typeof sp.ans === 'object') ledgerAnsWrite_(caseId, sp.ans); // 같으면 쓰지 않는다(ledgerAnsWrite_가 비교)
+  if (sp.ih !== undefined && sp.ih !== null && typeof sp.ih === 'object') ledgerMapWrite_(caseId, 'ih', sp.ih);
+  if (sp.gf !== undefined) ledgerGiftFilledWrite_(caseId, sp.gf); // 증여 근거 — 바뀐 칸만(같으면 쓰지 않음)
   if (sp.rem === undefined && sp.dec === undefined) return;
   let cur = null; try { const q = ledgerQRead_(caseId); cur = JSON.stringify({ r: q.remaining, d: q.decisions }); } catch (e) { cur = null; }
   if (cur !== null && cur === JSON.stringify({ r: sp.rem, d: sp.dec })) return; // 장부와 같으면 쓰지 않음
@@ -40367,6 +40384,8 @@ function caseProcApply_(c, body) {
     }
     const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(what + ' ← ' + value + ' (' + src + ')'), 기대수정일: c.수정일 });
     if (up && up.success !== false && m) caseProcRememberFill_(c.id, m[1], ov[m[1]], src);
+    // [2026.10.28 증여 값 단일화] 합산액 묶음 답이 함께 채운 산출세액·공제 사용액도 근거를 남긴다 — 예전엔 처리개요에만 들어가 장부(계산기 칸)에 빠졌다
+    if (up && up.success !== false && m && m[1] === 'giftPriorAmount') ['giftPriorPaidTax', 'giftPriorDeductionUsed'].forEach(function (k2) { if (String(ov[k2] == null ? '' : ov[k2]).trim() !== '') caseProcRememberFill_(c.id, k2, ov[k2], src + ' — 합산액과 같은 신고서'); });
     if (up && up.success !== false && m2) caseProcRememberFill_(c.id, 'ovAsset:' + m2[1] + ':' + m2[2], ov.물건목록[Number(m2[1])][m2[2]], src); // [2026.10.15 1단계 ②] 물건 칸도 근거를 남긴다
     return up && up.success !== false ? { ok: true, message: what + ' ' + value + ' 반영' } : { ok: false, error: (up && up.message) || '저장 실패' };
   }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 10:42 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 14:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5545,7 +5545,9 @@ function nxMdOpenWindow(title, src, opts){
       // 현재 목록(라벨을 나중에 바꾸거나 뺀 경우)에 없으면 어떤 option도 selected가 안 돼
       // 화면엔 "선택 안 함"처럼 보이다가, 그 상태로 저장을 누르면 원래 값이 빈 값으로 조용히
       // 사라졌다. 목록에 없는 기존 값은 지우지 말고 그대로 옵션에 끼워 넣어 보존한다.
-      if (field.dynamicClassification && value && opts.indexOf(value) === -1) opts = opts.concat([value]);
+      // [2026.10.28] 관계 등 고정 선택지 칸도 같은 원칙 — 저장된 값이 선택지에 없으면(GAS·사이드바가 적은 글이 선택지와 조금 다를 때) 끼워 넣어 보존한다.
+      //  예전엔 사건분류만 보존해, 관계 칸은 "선택 안 함"으로 보이다 저장하면 말없이 지워졌다(증여 값이 장부로 이어지면 손대지 않은 칸이 "비움"으로 잡힘)
+      if (value && opts.indexOf(value) === -1) opts = opts.concat([value]);
       return '<select ' + common + '>' + opts.map(function(opt){
         return '<option value="' + escapeHtml(opt) + '"' + (opt === (value || '') ? ' selected' : '') + '>' + (opt || '(선택 안 함)') + '</option>';
       }).join('') + '</select>';
