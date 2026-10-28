@@ -794,14 +794,11 @@
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     // [2026.10.09 토큰0] ✍ 개선요구사항 — 총괄관리자 폴더 개선요구사항.md에 덧붙이고 개선 후보 보고서에 바로 올린다(0원)
+    // [2026.10.28] 어느 화면에서든 같은 창(script.html nxSuggestOpen_ — 오른쪽 아래 ✍·Alt+Q)을 띄운다. 입구만 둘, 동작은 하나.
     document.getElementById('stBtnImproveReq').addEventListener('click', function(){
-      nxPrompt_('고쳤으면 하는 점이나 새로 원하는 기능을 적어 주세요.\n다음 웹 Claude Code 실행(매주 월요일 아침 또는 AI 탭 🛠) 때 구현해서 수정안으로 올립니다.', '').then(function(text){
-        text = String(text || '').trim();
-        if (!text) return;
-        bugList.textContent = '✍ 저장 중…';
-        callGas('improve_request_add', { text: text }).then(function(r){
-          bugList.textContent = (r && r.success) ? '✅ 개선요구사항을 적었습니다 — 개선 후보에 올라갔습니다. 바로 처리하려면 AI 탭 🛠 → 지금 실행.' : '저장하지 못했습니다: ' + ((r && r.error) || '');
-        }).catch(function(err){ bugList.textContent = '저장 중 오류: ' + (err && err.message ? err.message : err); });
+      if (typeof nxSuggestOpen_ !== 'function') return;
+      nxSuggestOpen_().then(function(r){
+        if (r && r.success) bugList.textContent = '✅ 개선요구사항을 적었습니다 — 개선 후보에 올라갔습니다. 바로 처리하려면 AI 탭 🛠 → 지금 실행.';
       });
     });
     // [2026.10.09 토큰0] 🧾 지침 점검 — 밤에는 "지침 바뀜"만 표시하고, 유료 AI 점검은 이 버튼으로만

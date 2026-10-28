@@ -429,6 +429,12 @@ function commSeamList_() {
     { 길: '개발자 → 넥스(최근 바뀐 기능)', fn: function () { return commRecentChangesPrompt_() ? '' : '최근 바뀐 기능 기록이 비어 있음'; } },
     { 길: '세무사님 원칙 → 웹 Claude(보고서 공통원칙)', fn: function () { return getCommonPrinciplesText_() ? '' : '공통원칙.md를 못 읽음'; } },
     { 길: '웹 Claude 실행 기록 → job', fn: function () { var r = commRoutineLog_(); return r && r.last ? '' : '실행 기록을 못 읽음'; } },
+    // [2026.10.28] 세무사님 "화면 어디서라도 수시로 기재할 수 있도록 하자" — 어느 화면에서든 ✍ 건의(자리·긴급 포함) → 개선요구사항 원장 → 요청 번호(R…) → 웹 Claude. 자리·🚨 머리가 붙어도 원장 읽기가 그대로 되는지
+    { 길: '세무사님 건의(어느 화면에서든 ✍·Alt+Q, 자리·🚨 포함) → 개선요구사항 원장 → 요청 번호', fn: function () {
+      if (typeof improve_addRequest_ !== 'function') return '건의 저장 함수가 이 판에 없음';
+      var it = commLedgerItems_('- [2026-10-28 09:00] 🚨 긴급 — (세액계산 · 사건: 시험 · 세목: 양도소득세) 글\n  둘째 줄\n')[0];
+      if (!it || it.text.indexOf('긴급') !== 0 && !/긴급/.test(it.text)) return '자리·긴급 머리가 붙은 원장 줄을 못 읽음';
+      return /둘째 줄/.test(it.text) ? '' : '여러 줄 건의가 잘림'; } },
     // [2026.10.22] Claude 세션이 쓴 확인조치사항 판단 대기 ↔ 절세 아이템 [확인 필요] 표시 — 밤 분류 검사가 노하우 화면·개선 후보 보고서로 올린다(KnowHow.js knhClsNightly_)
     { 길: '확인조치사항 판단 대기 ↔ 아이템 표시(분류 검사) → 노하우 화면·보고서', fn: function () { if (typeof knhClsNightly_ !== 'function') return '분류 검사가 이 판에 없음'; return followupFile_() ? '' : '확인조치사항 파일을 못 찾음'; } },
     // 고객·바깥 프로그램 ↔ job(2026-10-22 "다른 프로그램 다른 어플과의 소통")

@@ -17598,15 +17598,20 @@ function processImprovementRequests() {
   writeFileOverwrite_(chiefFolder, IMPROVEMENT_TRACKING_FILE, JSON.stringify(tracking), 'application/json');
   return { success: true, added: newRequestText.length };
 }
-// 설정 🐞 카드의 ✍ 개선요구사항 적기 — 개선요구사항.md 끝에 덧붙이고 곧바로 기록(0원)
+// ✍ 개선 건의(어느 화면에서든 — 오른쪽 아래 ✍·Alt+Q·설정 🐞 카드, script.html nxSuggestOpen_) — 개선요구사항.md 끝에 덧붙이고 곧바로 기록(0원)
+// [2026.10.28] where(지금 탭 · 사건 · 세목)와 urgent를 받아 "- [시각] 🚨 긴급 — (자리) 글" 모양으로 남긴다 — 세무사님 "나중에 기재하면 실상을 제대로 적을 수가 없다".
+//  🚨 긴급 글자는 Federation.js commRequestsAll_의 긴급 판정(/긴급|급함|…/)이 그대로 읽는다.
 function improve_addRequest_(body) {
   const text = String((body && body.text) || '').trim();
   if (!text) return { success: false, error: '내용이 비어 있습니다' };
+  const where = String((body && body.where) || '').replace(/[\r\n\]]+/g, ' ').trim().slice(0, 160);
+  const urgent = !!(body && body.urgent === true);
   const chiefFolder = getChiefManagerFolder_();
   if (!chiefFolder) return { success: false, error: '총괄관리자 폴더가 설정되어 있지 않습니다' };
   return withLock_(10000, function () {
     const cur = readFileIfExists_(chiefFolder, '개선요구사항.md') || '';
-    const line = '\n- [' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') + '] ' + text.replace(/\r?\n/g, '\n  ') + '\n';
+    const head = (urgent ? '🚨 긴급 — ' : '') + (where ? '(' + where + ') ' : '');
+    const line = '\n- [' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') + '] ' + head + text.replace(/\r?\n/g, '\n  ') + '\n';
     writeFileOverwrite_(chiefFolder, '개선요구사항.md', cur + line, 'text/markdown');
     processImprovementRequests();
     try { buildImprovementReport_(); } catch (e) {}
