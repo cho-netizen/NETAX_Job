@@ -441,6 +441,8 @@ function commSeamList_() {
     { 길: '고객 제출(my.netax.kr) → 사건 처리일지·대시보드', fn: function () { return typeof custUploadNote_ === 'function' && Array.isArray(custUploadsRecent_(7)) ? '' : '고객 제출 알림이 이 판에 없음'; } },
     { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
     { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
+    // [2026.10.28] 세무사님 "캘린더에서 일정색상을 변경하면 예약관리에서 따로 승인을 하지 않아도 승인되도록" — 10분 트리거가 손 설치뿐이라 빠져 있어도 아무도 몰랐음. 없으면 걸고, 못 걸면 ⚠
+    { 길: '상담신청 → 캘린더(색 바꾸면 자동 승인, 10분 트리거)', fn: function () { if (typeof booking_ensureCalendarSyncTrigger_ !== 'function') return '자동 승인 트리거 장치가 이 판에 없음'; try { return booking_ensureCalendarSyncTrigger_() === 'installed' ? '트리거가 없어 이번에 걺(이전엔 빠져 있었음)' : ''; } catch (e) { return '트리거를 걸지 못함: ' + (e.message || e); } } },
     { 길: '휴대폰 창구 녹음 → 상담 녹음(받아쓰기·요약 → 사건)', fn: function () { return typeof consult_finish_ === 'function' && typeof consult_chunk_ === 'function' ? '' : '상담 녹음 서버 길이 이 판에 없음'; } },
     // 기기 3종 2차(2026-10-22) — 세무사님 ↔ 시스템(휴대폰·태블릿·워치)
     { 길: '오늘 할 일(대시보드·휴대폰 창구·현황판)', fn: function () { var t = todoList_(); return t && Array.isArray(t.마감) ? '' : '오늘 할 일을 못 만듦'; } },

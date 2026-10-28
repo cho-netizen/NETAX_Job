@@ -4234,6 +4234,7 @@ function dispatchClientAction0_(body) {
     // [2026.08] NX-Work 홈 대시보드의 "대기 중인 상담신청" 위젯용 — booking_getBookings()는
     // 이미 doGet에서도 쓰는 함수라 자체적으로 jsonResponse까지 반환하므로 그대로 리턴한다
     // (다른 doPost 액션들처럼 다시 jsonResponse()로 한 번 더 감싸면 이중 래핑이 된다).
+    try { booking_ensureCalendarSyncTrigger_(); } catch (e) {} // [2026.10.28] 캘린더 색 → 자동 승인 트리거가 없으면 건다(목록 읽기는 트리거 실패와 무관하게 계속)
     return booking_getBookings();
   }
 
@@ -18670,6 +18671,17 @@ function booking_installCalendarSyncTrigger() {
     .timeBased()
     .everyMinutes(10)
     .create();
+}
+// [2026.10.28] 세무사님 "캘린더에서 일정색상을 변경하면 … 승인되도록 하였는데, 예약관리에 계속 승인대기상태이다" —
+// 위 설치 함수는 편집기에서 손으로 한 번 돌려야만 트리거가 생기고(2026.08 NETAX_Card에서 옮겨 올 때 이 프로젝트에는
+// 다시 설치하지 않았을 수 있음), 아침 알림 트리거(ensureDailyReminderTrigger_)와 달리 없으면 다시 거는 장치가 없었다.
+// 예약 목록을 읽을 때(예약관리 화면·대시보드)와 배포 직후 점검(Federation.js 소통 이음매)에서 없으면 스스로 건다.
+// 돌려주는 값: true = 이미 있음, 'installed' = 이번에 걸었음.
+function booking_ensureCalendarSyncTrigger_() {
+  const has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'booking_checkCalendarSync'; });
+  if (has) return true;
+  ScriptApp.newTrigger('booking_checkCalendarSync').timeBased().everyMinutes(10).create();
+  return 'installed';
 }
 
 // =========================================================
