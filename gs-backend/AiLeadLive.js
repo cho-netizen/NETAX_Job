@@ -56,13 +56,14 @@ function caseProcAiSpotLevel_(s) {
 function caseProcAiGasBundle_(c, items) {
   const out = {};
   try { const v = caseProcNexView_(c, {}); out.정한값 = (v.정한값 || []).slice(0, 50); out.단계 = v.단계; } catch (e) { out.정한값오류 = String(e && e.message || e).slice(0, 60); }
-  out.남은질문 = (Array.isArray(items) ? items : []).slice(0, 40).map(function (it) { return { id: it.id, 글: caseProcAiCut_(it.text || '', 90), 칸: it.target || '', 후보: Array.isArray(it.cands) ? it.cands.slice(0, 4).map(function (q) { return caseProcAiCut_(String(q.label || q.v || q.value || q.amount || ''), 40); }) : undefined }; });
+  // [2026.10.28 속도 ⓒ] calc_fill(칸 채우기)이 돌려주는 것과 같은 질문 표 — 넥스가 doc_view·calc_fill·case_view를 또 부르지 않게(가상양도28: 묶음이 있는데도 doc_view를 또 부름)
+  try { out.질문표 = caseProcAiSlimItems_(Array.isArray(items) ? items : []).slice(0, 40); } catch (e) { out.질문표 = (Array.isArray(items) ? items : []).slice(0, 40).map(function (it) { return { id: it.id, 글: caseProcAiCut_(it.text || '', 90), 칸: it.target || '' }; }); }
   try { out.서류정리 = caseProcParseAll_(c).slice(0, 40).map(function (x) { return { 파일: x.f.name, 종류: x.p.label || x.p.type, 값: typeof caseProcAiTrimObj_ === 'function' ? caseProcAiTrimObj_(x.p.result || {}, 0) : x.p.result }; }); } catch (e) { out.서류정리오류 = String(e && e.message || e).slice(0, 60); }
   ['people_roster', 'contract_list', 'owner_assets'].forEach(function (nm) { try { const r = caseProcAiFactTool_(c.id, nm, {}); out[{ people_roster: '사람명단', contract_list: '계약목록', owner_assets: '자산목록' }[nm]] = r && r.error ? { 오류: r.error } : r; } catch (e) { out[nm] = { 오류: String(e && e.message || e).slice(0, 60) }; } });
   let s = JSON.stringify(out);
   if (s.length > 14000) { delete out.서류정리; out.서류정리 = '(길어서 뺌 — 필요한 파일만 doc_facts(file))'; s = JSON.stringify(out); }
   if (s.length > 14000) { ['사람명단', '계약목록', '자산목록'].forEach(function (k) { delete out[k]; }); out.명단 = '(길어서 뺌 — 필요하면 people_roster 등)'; s = JSON.stringify(out); }
-  return '\n\n[GAS 한 바퀴 결과 묶음 — 아래는 이미 실린 것이니 doc_facts·doc_view·people_roster·contract_list·owner_assets로 다시 부르지 마라(없는 것만)]\n' + s.slice(0, 14000);
+  return '\n\n[GAS 한 바퀴 결과 묶음 — 아래 정한값·질문표(칸·후보·입력 종류)·서류정리·명단은 이미 실린 것이니 calc_fill·case_view·doc_view·doc_facts·people_roster·contract_list·owner_assets로 다시 보지 마라. 질문이 여럿이면 ask_user 한 번(questions 배열)에 모아 올려라]\n' + s.slice(0, 14000);
 }
 // ---------- step 'spots' — 입구(GAS) 상수 한 바퀴 결과에서 AI 자리를 센다 ----------
 //  body: { caseId, ov: { items, needs }, ev: { docTypes } } — 화면이 가진 마지막 칸 채우기·증빙 결과(이미 결정한 질문은 빼고 보냄)
@@ -144,6 +145,8 @@ function caseProcAiLiveTools_() {
     if (t.name === 'ask_user') {
       t.description = '세무사님께 여쭐 질문 고르기 — 서류로 알 수 없는 것만. urgent=true는 계산을 막는 질문(처리 끝에 맨 위·바로), 나머지는 끝에 모아 보여 준다. 이미 있는 질문(itemIds)에 note(무엇을 받으면 정해지는지·네 의견)를 붙인다.';
       t.input_schema.properties.urgent = { type: 'boolean' };
+      t.input_schema.properties.questions = { type: 'array', description: '[2026.10.28] 질문 여럿을 한 번에 — 각 항목은 이 도구의 입력과 같은 모양({itemIds, note, target, label, input, cands, urgent})', items: { type: 'object' } };
+      t.description += ' 질문이 여럿이면 questions 배열로 한 번에 올린다(차례를 아낌).';
     }
     if (t.name === 'save_draft') t.description = '저장·초안 — 운영에서는 처리 끝에 화면이 저장·종합검토서 초안·현황표를 만든다. 부르지 않아도 된다(부르면 현황표만 본다).';
   });
@@ -250,7 +253,8 @@ function caseProcAiLiveModeText_(cap) {
     // [2026.10.28] 세무사님 원문: "ai가 사용자의 대리인이라고 대체 몇 번을 말하고 있나? ai가 체크를 하려면 뭘 알아야 체크를 할 수 있지 않은가? 뭘 알려면 읽어야 하는 것이고!"
     '- GAS가 읽을 파일은 사건마다 체크 목록이 정한다(case_status 현황의 읽을범위). 체크는 네가 읽어서 안 뒤에 한다 — 순서: case_files로 폴더 파일 목록 보기 → 무엇인지 모르는 파일은 file_read로 읽기 → 이 사건에 필요한 서류인지 판단 → set_read_scope로 GAS에게 체크 목록 지정 → gas_run. 읽고 아는 데서 끝내지 말고 반드시 "GAS에게 콕 집어 주기"(set_read_scope)까지 한 뒤 gas_run — 세무사님이 범위를 말씀하셨는데 set_read_scope 없이 gas_run을 부르면 GAS가 거절한다(가상양도26: 읽고 알고도 지정을 건너뛰어 증여 서류 3개가 GAS에 들어감). 말씀이 없어도 목록에 뺄 폴더(다른 세목 서류·증빙 아닌 폴더)가 보이면 지정한다. 목록이 없으면(null) 네가 이 순서로 직접 폴더를 읽고 판단해 목록을 정하고, 정한 목록(켠 것·뺀 것과 이유)을 세무사님께 보고한다 — 읽지 않고 체크하거나, 읽지도 않고 세무사님께 체크를 미루지 않는다. 세무사님이 "○○는 빼라"·"○○도 읽어라" 하시면 set_read_scope on/off(파일·폴더 이름 그대로). 현황의 새파일미체크에 파일이 있으면 읽지 않았다는 사실을 보고에 적고 체크 여부를 여쭌다.',
     // [2026.10.28 속도 A③] 세무사님 "속도문제를 재검토" → 넥스 왕복 8 → 3~4
-    '- 왕복을 아낀다: case_status 첫 응답에 파일 목록·의뢰서·메모 본문·미리 읽기 요약이 실려 온다 — 그것을 case_files·file_read로 다시 부르지 않는다(목록에 없는 다른 파일의 글만 file_read). gas_run 결과에도 정한 값·남은 질문·서류 정리 결과·사람/계약/자산 명단이 묶여 온다 — doc_facts·doc_view·people_roster·contract_list·owner_assets로 다시 부르지 않는다. 한 차례에 여러 도구를 한꺼번에 불러도 된다(차례마다 10~30초가 든다).',
+    '- 왕복을 아낀다: case_status 첫 응답에 파일 목록·의뢰서/메모 앞부분·미리 읽기 요약이 실려 온다 — 그것을 case_files로 다시 부르지 않는다(본문이 더 필요한 파일만 file_read, 여러 개면 같은 차례에 한꺼번에). gas_run 결과에는 정한 값·질문표(칸·후보·입력 종류)·서류 정리 결과·사람/계약/자산 명단이 묶여 온다 — calc_fill·case_view·doc_view·doc_facts·people_roster·contract_list·owner_assets로 다시 보지 않는다. 세무사님께 올릴 질문이 여럿이면 ask_user 한 번에(questions 배열). 한 차례에 여러 도구를 한꺼번에 불러도 된다(차례마다 10~60초가 든다).',
+    '- set_read_scope의 on/off/ids에는 case_files 목록(첫 응답 파일목록)에 있는 이름만 쓴다 — 없는 이름은 결과의 없는파일로 돌아오니, 그 파일을 켰다/껐다고 보고에 적지 않는다(가상양도28: 폴더에 없는 파일을 "끔"이라 적음).',
     '- 묻기 전에 먼저 본다: case_status의 정한값·고침기록·작업기록·채팅 말씀에 세무사님이 이미 정하신 값(누가=세무사님)이 있으면 같은 칸·같은 물음을 다시 묻지 않고 그 값을 쓴다(ask_user도 그런 질문은 올리지 않고 "이미정해진것"으로 돌려준다). 세무사님이 채팅에 적어 주신 숫자는 그대로 value_set(basis user)·value_set(target)으로 넣는다.',
     '- 세무사님께 여쭐 때(ask_user)는 답이 들어갈 칸(target)·후보(cands)·입력 종류(input)를 함께 올린다 — 그래야 화면에 답 칸이 생겨 세무사님이 고르거나 적으면 바로 칸에 들어간다. 칸이 없는 질문만 글로(note만).',
     '- 서류로 네가 푼 질문(서류 ⚠ 확인 등)은 close_question으로 닫는다 — 말로만 "해소"라 하면 다음 처리 때 같은 질문이 다시 뜬다. 이미 확정돼 질문 목록에 없는 칸이 잘못 들어 있으면 value_set(target)으로 고치고, 세무사님이 정하신 값이면 바꾸지 말고 ask_user로 지금 값·서류 값을 여쭌다.',
@@ -351,6 +355,10 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     ctx.subWon = (ctx.subWon || 0) + r.won;
     return { text: r.text, won: r.won };
   }
+  if (name === 'ask_user' && Array.isArray(input.questions) && input.questions.length) { // [2026.10.28 속도 ⓒ] 질문 여럿을 한 번에(왕복 1)
+    const outs = input.questions.slice(0, 12).map(function (q) { let o; try { o = JSON.parse(caseProcAiLiveExec_(caseId, 'ask_user', Object.assign({}, q || {}, { questions: undefined }), ctx).text); } catch (e) { o = { 오류: String(e && e.message || e).slice(0, 80) }; } return o; });
+    return { text: JSON.stringify({ ok: true, 묶음: outs.length, 올린질문: outs.reduce(function (s, o) { return s + (Number(o.올린질문) || 0); }, 0), 각각: outs }) };
+  }
   if (name === 'ask_user') {
     let ids = (input.itemIds || []).map(String).slice(0, 12);
     // [2026.10.27 G] 이미 세무사님이 정하신 칸은 다시 묻지 않는다(10-27 [71]~[72] "이미 모두 알려줬는데…") — 질문의 칸·새 질문의 target에 세무사님 값이 있으면 그 값을 돌려주고 질문을 올리지 않는다
@@ -371,8 +379,9 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     ctx.scopeSet = true; // [2026.10.28 결함 L] 이번 처리에서 범위를 정했다 — gas_run 허용
     const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
     let r; try { r = caseProcReadScope_(c0, { dirs: input.dirs, files: input.files, ids: Array.isArray(input.ids) ? input.ids : undefined, on: Array.isArray(input.on) ? input.on : undefined, off: Array.isArray(input.off) ? input.off : undefined, clear: !!input.clear, note: caseProcAiCut_(input.why || '', 120), by: '넥스' }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; } // [2026.10.28 읽을 대상 ④] on/off 파일 단위
-    ctx.decisions.push({ at: new Date().toISOString(), itemId: 'readScope', 칸: '읽을 목록', value: input.clear ? '전체' : [(Array.isArray(input.on) && input.on.length ? '켬 ' + input.on.join(',') : ''), (Array.isArray(input.off) && input.off.length ? '끔 ' + input.off.join(',') : ''), (Array.isArray(input.dirs) ? input.dirs.join(',') : '')].filter(Boolean).join(' / ') , basis: 'user', why: caseProcAiMask_(caseProcAiCut_(input.why || '', 120)), sure: '', 결과: r && r.ok ? caseProcAiCut_(r.message || '', 120) : '실패 — ' + caseProcAiCut_((r && r.error) || '', 100) });
-    return { text: caseProcAiMask_(JSON.stringify(r)).slice(0, 2000) };
+    if (r && r.ok && r.changed && Array.isArray(r.changed.miss) && r.changed.miss.length) { r.없는파일 = r.changed.miss.slice(); r.안내 = '⚠ 목록에 없는 이름 ' + r.changed.miss.length + '개는 켜지도 꺼지지도 않았다(' + r.changed.miss.join(', ') + ') — 보고에 적지 마라. 이름은 case_files 목록 그대로.'; } // [2026.10.28 ⓔ]
+    ctx.decisions.push({ at: new Date().toISOString(), itemId: 'readScope', 칸: '읽을 목록', value: input.clear ? '전체' : [(Array.isArray(input.on) && input.on.length ? '켬 ' + input.on.join(',') : ''), (Array.isArray(input.off) && input.off.length ? '끔 ' + input.off.join(',') : ''), (Array.isArray(input.dirs) ? input.dirs.join(',') : '')].filter(Boolean).join(' / ') , basis: 'user', why: caseProcAiMask_(caseProcAiCut_(input.why || '', 120)), sure: '', 결과: r && r.ok ? caseProcAiCut_(r.message || '', 120) + (r.없는파일 ? ' · 없는 파일 ' + r.없는파일.join(',') : '') : '실패 — ' + caseProcAiCut_((r && r.error) || '', 100) });
+    return { text: caseProcAiMask_(JSON.stringify(r)).slice(0, 2500) };
   }
   if (name === 'report_tool_gap') {
     ctx.gaps.push({ want: caseProcAiMask_(caseProcAiCut_(input.want, 200)), kind: input.kind || '', tool: input.tool || '', shape: caseProcAiCut_(input.shape || '', 120), instead: caseProcAiCut_(input.instead || '', 120), situation: caseProcAiMask_(caseProcAiCut_(input.situation || '', 300)) }); // [2026.10.21] 막힌 상황(Claude가 재현할 수 있게)
@@ -392,21 +401,24 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     let pack = null;
     try {
       const fl = caseProcNexFileList_(c0, { max: 120 });
-      const list = (fl.파일 || []).map(function (f) { return { 파일: f.파일, 폴더: f.폴더, 종류: f.종류, 표시: f.표시 || '' }; });
+      // [2026.10.28 속도 ⓑ — 가상양도28 실측: 첫 응답이 약 100초] 본문 대신 앞 300자(한두 줄 요약 구실), 목록은 이름·폴더·종류(표시는 있을 때만), 전체 6,000자 안 — 본문이 더 필요하면 file_read(같은 차례에 여러 개)
+      const list = (fl.파일 || []).map(function (f) { const o = { 파일: f.파일, 폴더: f.폴더 === '(사건 폴더 바로 아래)' ? '' : f.폴더, 종류: f.종류 }; if (f.표시) o.표시 = f.표시; return o; });
       const bodies = []; let used = 0;
       (fl.파일 || []).filter(function (f) { return /사건파악용/.test(f.종류) || (/^\(사건 폴더 바로 아래\)/.test(f.폴더) && /\.(md|txt)$/i.test(f.파일)); }).slice(0, 6).forEach(function (f) {
-        if (used >= 8000) return;
-        let t = null; try { t = caseProcNexFileText_(c0, { file: (/^\(/.test(f.폴더) ? '' : f.폴더 + '/') + f.파일, len: 3000 }); } catch (e) { t = null; }
-        if (t && t.ok) { bodies.push({ 파일: f.파일, 글: t.글, 더있음: !!t.더있음 }); used += String(t.글 || '').length; }
+        if (used >= 1500) return;
+        let t = null; try { t = caseProcNexFileText_(c0, { file: (/^\(/.test(f.폴더) ? '' : f.폴더 + '/') + f.파일, len: 500 }); } catch (e) { t = null; }
+        if (t && t.ok) { const head = String(t.글 || '').replace(/\s+/g, ' ').trim().slice(0, 300); bodies.push({ 파일: f.파일, 앞부분: head, 글자수: t.글자수 || 0 }); used += head.length; }
       });
-      const pre = Object.keys(sv0.nexRead || {}).map(function (k) { const r = sv0.nexRead[k]; return { 파일: r.name, 때: r.at, 요약: r.sum || (r.unread ? '읽지 못함' : '') }; }).slice(0, 40);
-      pack = { 파일목록: list, 더있음: !!fl.더있음, 의뢰서_메모_본문: bodies, 미리읽기요약: pre };
+      const pre = Object.keys(sv0.nexRead || {}).map(function (k) { const r = sv0.nexRead[k]; return { 파일: r.name, 때: r.at, 요약: r.sum || (r.unread ? '읽지 못함' : '') }; }).slice(0, 30);
+      pack = { 파일목록: list, 더있음: !!fl.더있음, 의뢰서_메모_앞부분: bodies, 미리읽기요약: pre };
       ctx.packed = true;
     } catch (e) { pack = { 오류: '파일 목록·본문을 싣지 못함: ' + String(e && e.message || e).slice(0, 80) }; }
-    const base = { 반영현황표: rows, 현황: view, 남은질문: q, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_본문·미리읽기요약은 이미 실린 것 — case_files·file_read로 다시 부르지 마라(목록에 없는 다른 파일의 글만 file_read).' };
+    const base = { 반영현황표: rows, 현황: view, 남은질문: q, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_앞부분·미리읽기요약은 이미 실린 것 — case_files로 다시 부르지 마라. 본문이 더 필요한 파일만 file_read(여러 개면 같은 차례에 한꺼번에).' };
     let txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack || {})));
-    if (txt.length > 20000 && pack && pack.의뢰서_메모_본문) { pack.의뢰서_메모_본문 = '(길어서 뺌 — 필요한 것만 file_read)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
-    return { text: txt.slice(0, 22000) };
+    if (txt.length > 6000 && pack && pack.의뢰서_메모_앞부분) { pack.의뢰서_메모_앞부분 = '(길어서 뺌 — file_read)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
+    if (txt.length > 6000 && pack && pack.미리읽기요약) { pack.미리읽기요약 = '(길어서 뺌 — case_status 현황의 서류변동 참고)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
+    if (txt.length > 6000 && pack && Array.isArray(pack.파일목록)) { pack.파일목록 = pack.파일목록.slice(0, 40).map(function (f) { return f.파일; }); pack.목록줄임 = '파일이 많아 이름만 40개 — 전체는 case_files'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
+    return { text: txt.slice(0, 7000) };
   }
   if (name === 'issue_bundle') {
     const it = (ctx.lastItems || []).filter(function (x) { return x.id === input.itemId; })[0];
@@ -619,7 +631,7 @@ function caseProcAiTurn_(body) {
     if (CASEPROC_AI_CLIENT_TOOLS_.indexOf(u.name) !== -1) { pending.push({ id: u.id, name: u.name, input: u.input || {} }); calls.push(u.name); return; } // 화면이 실행하고 결과를 다음 차례에 붙인다
     if (Date.now() - t0 > CASEPROC_AI_TURN_BUDGET_MS_) out = { text: JSON.stringify({ 오류: '이번 차례 시간이 모자라 실행하지 못함 — 다음 차례에 다시 부르면 됨', 다시해도됨: true }) };
     else { try { out = caseProcAiLiveExec_(caseId, u.name, u.input, ctx); } catch (e) { out = { text: JSON.stringify({ 오류: '도구 실행 오류: ' + (e && e.message || e) }) }; } }
-    const capLen = u.name === 'case_status' ? 22000 : (u.name === 'file_read' || u.name === 'case_files') ? 14000 : 6000; // [2026.10.28 속도 A①] 첫 응답 묶음은 6,000자에 잘리면 뜻이 없다
+    const capLen = u.name === 'case_status' ? 7000 : (u.name === 'file_read' || u.name === 'case_files') ? 14000 : 6000; // [2026.10.28 속도 ⓑ] 첫 응답 6,000자 안 // [2026.10.28 속도 A①] 첫 응답 묶음은 6,000자에 잘리면 뜻이 없다
     results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, capLen) });
     calls.push(u.name);
   });
@@ -636,7 +648,7 @@ function caseProcAiFinish_(body) {
   const c = akReadCase_(caseId);
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
-  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, /* [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17). [2026.10.28 속도 A] 이 주석이 // 라서 뒤의 업무유형·mode·won·rounds·stop이 기록에서 빠져 있었다 — 블록 주석으로 */ 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, sec: Number(body.sec) || 0, calls: Number(body.calls) || 0, packed: !!ctx.packed, stop: String(body.stop || ''), // [2026.10.28 속도 A] 왕복·초·도구 호출 수 — 다음 재기에 씀
+  const run = { at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), 세목: c.세목, /* [2026.10.23 ㅅ14차] 예전 toISOString()은 세계시 — 새벽 지휘가 전날 날짜로 검토서 머리말에 붙었다("2026-10-22 사건 지휘", 가상양도17). [2026.10.28 속도 A] 이 주석이 // 라서 뒤의 업무유형·mode·won·rounds·stop이 기록에서 빠져 있었다 — 블록 주석으로 */ 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, sec: Number(body.sec) || 0, calls: Number(body.calls) || 0, packed: !!ctx.packed, roundLog: Array.isArray(body.roundLog) ? body.roundLog.slice(0, 20).map(function (x) { return { n: Number(x.n) || 0, sec: Number(x.sec) || 0, tools: Array.isArray(x.tools) ? x.tools.slice(0, 8) : [], inChars: Number(x.inChars) || 0, won: Number(x.won) || 0 }; }) : [], stop: String(body.stop || ''), // [2026.10.28 속도 ⓐ] 왕복마다 초·도구·입력 글자 수 // [2026.10.28 속도 A] 왕복·초·도구 호출 수 — 다음 재기에 씀
     spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200),
     report: caseProcAiMask_(String(body.report || '').slice(0, 3000)) }; // [2026.10.21 넥스 하나로] 보고도 사건에 — 다음 처리 첫 글·검토서·채팅 넥스 조회가 읽는다
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}
