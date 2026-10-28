@@ -30608,7 +30608,10 @@ function tc_ruleTransferFactsRaw_(body) {
     lawyers.forEach(function (l) {
       if (!(l.r.검산 && l.r.합계 && /소유권/.test(l.r.등기종류 || '') && !/근저당|전세권/.test(l.r.등기종류 || ''))) return;
       var near = function (days) { return l.r.일자 && txs[0].acquisitionDate && Math.abs(new Date(l.r.일자) - new Date(txs[0].acquisitionDate)) < days * 86400000; };
-      var locOk = l.r.소재지 ? tcLocSame_(l.r.소재지, txs[0].assetLocation) && (!l.r.일자 || !txs[0].acquisitionDate || near(120)) : near(30);
+      // [2026.10.29 땜질 심사] 소재지가 안 읽힌 정산서를 "취득일 30일 안"이라는 날짜 창으로 취득 부대비용에 더하던 것을 걷어냄 —
+      //  소재지가 없으면 어느 물건 것인지 서류로 못 가리므로 계산 값에 넣지 않고, 비용 항목표 후보로만 두고 확인을 알린다
+      if (!l.r.소재지) { if (near(30)) evidence.push('법무사 소유권이전 정산서 ' + l.file + ' ' + l.r.합계.toLocaleString('ko-KR') + '원 — 소재지가 안 읽혀 판 물건의 취득 비용인지 서류로 못 가림(정산일 ' + l.r.일자 + ', 취득일 근처) · 맞으면 필요경비 확정에서 넣어 주세요'); return; }
+      var locOk = tcLocSame_(l.r.소재지, txs[0].assetLocation) && (!l.r.일자 || !txs[0].acquisitionDate || near(120));
       var k = (l.r.일자 || '') + '|' + l.r.합계;
       if (!locOk || lawSeen[k]) return;
       var ln = lawNet(l, acqUsed);
@@ -34114,7 +34117,7 @@ function caseProcEvidence_(c, body) {
   // [2026.10.15 1단계 ②] 계약서는 파일 이름이 아니라 본문으로 역할을 정한다(세무사님: "계약서를 읽어보면 알 수 있는데 읽어보지도 않나")
   //  납세자가 매도인 = 양도 계약서, 매수인 = 취득 계약서, 납세자가 당사자가 아님 = 참고 계약서(매매사례 등 — 양도·취득 칸 후보에서 뺌).
   //  같은 계약서를 양도 칸과 취득 칸 양쪽에 후보로 띄우던 것(고객Y). 글자는 글자인식 기억에서 오므로 다시 인식하지 않는다.
-  const roleBody = {};
+  const roleBody = {}, locBody = {};
   const pNames = [c.납세자, c.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x, i, a) { return x.length >= 2 && a.indexOf(x) === i; });
   if (typeof akTrace_ === 'function') akTrace_('증빙: 메모·장부 끝(계약서 역할 전)'); // [2026.10.16] 진단
   if (c.세목 === 'transfer' && pNames.length) docs.forEach(function (f) {
@@ -34124,26 +34127,33 @@ function caseProcEvidence_(c, body) {
     const rl = tcRoleInText_(tx, pNames);
     if (rl) roleBody[f.name] = rl;
     else if (!pNames.some(function (nm) { return tx.replace(/\s+/g, '').indexOf(nm) !== -1; })) roleBody[f.name] = 'ref';
+    try { const cr0 = ctParseContract_(tx); if (cr0 && cr0.소재지) locBody[f.name] = cr0.소재지; } catch (e) {}
   });
+  // [2026.10.29 땜질 심사] 신규 주택 계약서 — 파일 이름("신규주택")이 아니라 내용으로: 납세자가 매수인인데 판 물건(매도 계약서 소재지)과 다른 부동산.
+  //  양도 사실 정리의 newHome과 같은 기준. 역할·소재지를 본문에서 못 읽으면 이름을 보조로만 쓴다
+  const sellLocB = Object.keys(roleBody).filter(function (n) { return roleBody[n] === 'seller' && locBody[n]; }).map(function (n) { return locBody[n]; });
+  const otherProp = function (n) { return roleBody[n] === 'buyer' && !!locBody[n] && sellLocB.length > 0 && !sellLocB.some(function (l) { return tcLocSame_(l, locBody[n]); }); };
+  const newHomeDoc = function (n) { if (roleBody[n] && locBody[n] && sellLocB.length) return otherProp(n); return /신규\s*주택|대체\s*주택|새\s*집/.test(n); };
   const roleNames = Object.keys(roleBody);
   if (roleNames.length) lines.push('계약서 역할(본문으로 판별): ' + roleNames.map(function (n) { return n + ' = ' + ({ seller: '양도(납세자가 매도인)', buyer: '취득(납세자가 매수인)', ref: '참고(납세자가 당사자 아님 — 양도·취득 증빙에 안 씀)' })[roleBody[n]]; }).join(', '));
   const roleOk = function (label, name) {
     const L = String(label || ''), n = String(name || ''), rb = roleBody[n];
     const acqOnly = /취득/.test(L) && !/양도/.test(L) && !/취득세/.test(L), sellOnly = /양도/.test(L) && !/취득/.test(L);
     if (rb === 'ref' && (acqOnly || sellOnly)) return false;
+    if (acqOnly && /계약서/.test(L) && otherProp(n)) return false; // 판 물건과 다른 부동산을 산 계약서 — 판 집의 취득 계약서가 아님
     if (rb && acqOnly) return rb === 'buyer';
     if (rb && sellOnly) return rb === 'seller';
     // [2026.10.16] 계약서인데 본문으로 역할(매도인/매수인)을 못 정했고 파일 이름에도 역할이 없으면 양도·취득 계약서 칸을 채우지 않는다 —
     //  고객AF: 신규주택 계약서 사진(KakaoTalk_…_01.jpg) 한 장이 '양도 매매계약서'와 '취득 당시 매매계약서'를 둘 다 확보로 표시했다
     if (!rb && (acqOnly || sellOnly) && /계약서/.test(L) && !/양도|매도|취득|매수/.test(n)) return false;
     // 신규·대체 주택 계약서는 판 집의 양도·취득 계약서가 아님(일시적 2주택 판정 참고) — 양도 사실 정리의 newHome과 같은 기준
-    if ((acqOnly || sellOnly) && /계약서/.test(L) && /신규\s*주택|대체\s*주택|새\s*집/.test(n)) return false;
+    if ((acqOnly || sellOnly) && /계약서/.test(L) && newHomeDoc(n)) return false;
     if (/취득/.test(L) && !/양도/.test(L)) return !(/양도|매도/.test(n) && !/취득|매수/.test(n)); if (/양도/.test(L) && !/취득/.test(L)) return !(/취득|매수/.test(n) && !/양도|매도/.test(n)); return true;
   };
   const roleNamed = function (label, name) {
     const L = String(label || ''), n = String(name || '');
     // [2026.10.16] 파일 이름에 역할이 분명하면(양도·매도 / 취득·매수) 본문 판독보다 이름 — 양도 사실 정리와 같은 기준(고객Q: "1 양도 계약서.pdf"가 있는데 본문 판독이 매수인이라 "미확보"로 물었다)
-    if (/계약서/.test(L) && /신규\s*주택|대체\s*주택|새\s*집/.test(n)) return false; // 신규·대체 주택 계약서는 판 집의 계약서가 아님
+    if (/계약서/.test(L) && newHomeDoc(n)) return false; // 신규·대체 주택 계약서는 판 집의 계약서가 아님(내용 먼저 — newHomeDoc)
     const nameRole = /양도|매도/.test(n) && !/취득|매수/.test(n) ? 'seller' : /취득|매수/.test(n) && !/양도|매도/.test(n) ? 'buyer' : '';
     const rb = nameRole || roleBody[n];
     if (rb) return (/취득/.test(L) && !/양도/.test(L) && rb === 'buyer') || (/양도/.test(L) && !/취득/.test(L) && rb === 'seller');
@@ -38925,15 +38935,18 @@ function caseProcInhFacts0_(c, parsed) {
     const cardSeen = [];
     ['cardreceipt', 'cashreceipt'].forEach(function (t) { by(t).forEach(function (x) {
       const r = x.p.result || {}; if (!r.합계 || r.취소 || !r.거래일) return;
-      const d = String(r.거래일).slice(0, 10); if (d < base || d > endD) return;
+      const d = String(r.거래일).slice(0, 10); if (d < base) return;
       const hay = (x.f.name + ' ' + (r.상호 || '') + ' ' + String(x.f.dir || '')).replace(/\s+/g, '');
+      // [2026.10.29 땜질 심사] "개시일 + 7일" 창은 장례 낱말이 없는 결제를 찾을 때만(그 결제는 어느 비용인지 묻는다 — 'ask'). 상호에 장례·봉안 낱말이 있는 결제는
+      //  장례일이 길어져도(법령은 "장례일까지", 7일은 짐작) 빠지지 않게 날짜 창으로 자르지 않는다
+      if (d > endD && !/수목장|자연장|봉안|납골|추모관|안치단|장례|상조|운구|화장|추모공원|장지|빈소|영구차|분골|유골|수의|상복|영정|근조|장례식/.test(hay)) return;
       if (/진료|병원|의원|약국|약제|요양|감정평가|법무|등기|세무/.test(hay)) return;
       const cp = cardSeen.filter(function (q) { return q.v === r.합계 && ((r.승인번호 && q.ap === r.승인번호) || (String(r.거래일).length > 10 && q.at === String(r.거래일))); })[0];
       if (cp) { if (cp.it.srcs.indexOf(x.f.name) === -1) cp.it.srcs.push(x.f.name); return; }
       const same = fItems.filter(function (it) { return it.v === r.합계; })[0];
       if (same) { if (same.srcs.indexOf(x.f.name) === -1) same.srcs.push(x.f.name); same.conf = true; return; }
       const cat = /수목장|자연장|봉안|납골|추모관|안치단/.test(hay) ? '봉안' : /장례|상조|운구|화장|추모공원|장지|빈소|영구차|응급차|분골|유골|수의|상복|영정|조화|근조|꽃|장례식/.test(hay) ? '' : '모름';
-      const it = { name: String(r.상호 || x.f.name.replace(/\.[A-Za-z]{2,5}$/, '')).slice(0, 30) + ' ' + d, v: r.합계, srcs: [x.f.name], from: '카드·현금 전표', cat: cat, card: true };
+      const it = { name: String(r.상호 || x.f.name.replace(/\.[A-Za-z]{2,5}$/, '')).slice(0, 30) + ' ' + d, v: r.합계, srcs: [x.f.name], from: '카드·현금 전표', cat: d > endD ? '모름' : cat, card: true, late: d > endD }; // 개시일 + 7일 뒤 결제는 장례 낱말이 있어도 장례일까지인지 몰라 묻는다(정해지기 전엔 합에 안 넣음)
       fItems.push(it); cardSeen.push({ v: r.합계, ap: r.승인번호 || '', at: String(r.거래일), it: it });
     }); });
   }
@@ -38975,7 +38988,7 @@ function caseProcInhFacts0_(c, parsed) {
     const r0 = it.row;
     if (/검\s*안|진\s*단\s*서/.test(it.name)) it.ok = 'debt'; // [2026.10.18 원인9] 검안서·사망진단서 발급비 — 장례비 말고 채무 후보로(아래 채무 단계)
     else if (r0 && r0.아님 || notFuneral(it.name)) it.ok = 'no';
-    else if (r0 && r0.봉안 || it.cat === '봉안' || isNiche(it.name + ' ' + (it.srcs || []).join(' '))) it.ok = 'niche'; // 붙은 증빙 파일 이름의 수목장·자연장도(고객AO 로뎀파크수목장)
+    else if (r0 && r0.봉안 || it.cat === '봉안' || (!it.late && isNiche(it.name + ' ' + (it.srcs || []).join(' ')))) it.ok = 'niche'; // 붙은 증빙 파일 이름의 수목장·자연장도(고객AO 로뎀파크수목장)
     else if (unlinked.indexOf(it) !== -1) it.ok = 'sub';
     else if (!r0 && /^(모름|상조)$/.test(it.cat || '')) {
       // 묶음 안 결제인데 장례식장·화원·화장장 어느 것인지 서류에 안 나옴(상조회사 카드전표 등) — 일반 장례비인지 봉안·자연장지 상품인지 세무사님 판단(정해지기 전엔 어느 합에도 넣지 않음)
@@ -50178,8 +50191,15 @@ function ihParseDebt_(text) {
   var wonRows = r.행.filter(function (x) { return x.원단위; });
   if (wonRows.length) r.행 = r.행.filter(function (x) {
     if (x.원단위) return true;
-    var tw = wonRows.filter(function (w) { return Math.abs(w.잔액 - x.잔액) <= w.잔액 * 0.03; })[0];
-    if (!tw) return true;
+    // [2026.10.29 땜질 심사] "잔액 3% 안이면 같은 대출" 문턱을 걷어냄 — 같은 대출로 보는 근거는 서류 내용: 천원 단위 반올림 차이 안(1,000원 미만)이거나 대출 과목 이름이 같을 때.
+    //  그 밖에 금액만 가까운 줄은 합치지 않고 두 줄 모두 후보로 두되, 확인 표시와 알림을 남긴다(같은 대출이면 채무 확정에서 하나를 빼 주세요)
+    var nm0 = function (s) { return String(s || '').replace(/\s+/g, ''); };
+    var tw = wonRows.filter(function (w) { return Math.abs(w.잔액 - x.잔액) < 1000 || (nm0(w.과목) && nm0(w.과목) === nm0(x.과목)); })[0];
+    if (!tw) {
+      var near0 = wonRows.filter(function (w) { return Math.abs(w.잔액 - x.잔액) <= w.잔액 * 0.05; })[0];
+      if (near0) { x.행확인필요 = true; r.경고.push('금융거래확인서 ' + (x.과목 || '대출') + ' ' + Number(x.잔액).toLocaleString('ko-KR') + '원과 부채증명원 ' + Number(near0.잔액).toLocaleString('ko-KR') + '원이 금액은 가깝지만 같은 대출인지 서류로 못 가림 — 두 줄 모두 후보(같은 대출이면 하나를 빼 주세요)'); }
+      return true;
+    }
     if (tw.잔액 !== x.잔액) r.경고.push('같은 대출(' + (x.과목 || '대출') + ')이 금융거래확인서에는 ' + Number(x.잔액).toLocaleString('ko-KR') + '원, 부채증명원에는 ' + Number(tw.잔액).toLocaleString('ko-KR') + '원 — 원 단위 부채증명원 값으로(차이 ' + Math.abs(tw.잔액 - x.잔액).toLocaleString('ko-KR') + '원 원문 확인)');
     if (!tw.과목 && x.과목) tw.과목 = x.과목; if (x.상환기일 && !tw.상환기일) tw.상환기일 = x.상환기일;
     return false;
