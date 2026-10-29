@@ -71,13 +71,18 @@
       <h3>📅 일정
         <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 캘린더 열기</a>
       </h3>
-      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--sub);">
-        전<input type="number" id="dashCalRangeBefore" min="0" value="0" style="width:50px; text-align:right;">일 ~ 후<input type="number" id="dashCalRangeAfter" min="0" value="7" style="width:50px; text-align:right;">일
+      <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
+      <div class="dash-range">
+        <span class="dash-step">오늘 전 <button type="button" data-step-for="dashCalRangeBefore" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashCalRangeBefore" min="0" max="365" value="0"><button type="button" data-step-for="dashCalRangeBefore" data-step="1" title="하루 늘리기">+</button> 일</span>
+        <span class="dash-step">~ 후 <button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashCalRangeAfter" min="0" max="365" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button> 일</span>
       </div>
       <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card dash-cover">
       <h3>⏰ 마감임박 작업</h3>
+      <div class="dash-range">
+        <span class="dash-step">오늘부터 후 <button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashDeadlineAfter" min="0" max="365" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
+      </div>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card dash-cover">
@@ -93,6 +98,9 @@
       <h3>💰 최근 수금내역
         <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">🧾 지금 확인</button>
       </h3>
+      <div class="dash-range">
+        <span class="dash-step">오늘부터 전 <button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashPayBefore" min="0" max="3650" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button> 일 수금</span>
+      </div>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09 신규] 실사용 감사 지적 — 종전 챗봇(work.netax.kr)에서 "이번주 일정",
@@ -105,6 +113,9 @@
         <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
         <button type="button" id="dashEmailsReadAll" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; margin-right:6px;">☑ 전체 읽음</button>
       </h3>
+      <div class="dash-range">
+        <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
+      </div>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09 신규] "매일 밤 자동으로 뭘 하는지 내가 어떻게 아느냐"는 지적에 따라 추가 —
@@ -202,13 +213,59 @@
   // 사건이 8건보다 많아지면 진짜 이번 주 마감인 사건이 이 카드에서 밀려날 수 있었고, 반대로
   // 8건이 채 안 되면 몇 달 뒤 마감인 사건까지 "마감임박"으로 표시됐다. 이미 지난 기한(overdue,
   // workmanage.html과 같은 기준)은 항상 포함하고 강조 표시한다.
-  var DASH_DEADLINE_HORIZON_DAYS_ = 14;
+  // [2026.10.29] 세무사님 "날짜를 키우거나 줄이는 버튼이 너무 작아서 제어를 할 수가 없다" + "마감임박작업과 최근수금내역과
+  // 안읽은메일에도 일정처럼 범위를 설정할 수 있으면 좋겠다. 마감임박작업은 후 며칠이 될 것이고 최근수금내역은 전 며칠이 될 것이고,
+  // 않읽은메일은 건수를 지정해야 겠지" — 범위 칸 네 종류(일정 전·후, 마감임박 후, 수금 전, 메일 건수)를 큰 − / + 단추로 바꾸고,
+  // 정한 값은 이 브라우저에 기억해 다음에 열어도 그대로 둔다. 단추를 여러 번 연달아 눌러도 서버는 멈춘 뒤 한 번만 부른다.
+  var DASH_STEP_LOADERS_ = {
+    dashCalRangeBefore: function(){ loadDashCalendar_(); },
+    dashCalRangeAfter: function(){ loadDashCalendar_(); },
+    dashDeadlineAfter: function(){ loadDashDeadlines(); },
+    dashPayBefore: function(){ loadDashPayments(); },
+    dashEmailCount: function(){ loadDashEmails_(); }
+  };
+  var dashStepTimers_ = {};
+  function dashStepVal_(id){
+    var el = document.getElementById(id);
+    if (!el) return 0;
+    var min = parseInt(el.min, 10) || 0, max = parseInt(el.max, 10) || 9999;
+    var v = parseInt(el.value, 10);
+    if (isNaN(v)) v = parseInt(el.defaultValue, 10) || min;
+    v = Math.min(max, Math.max(min, v));
+    if (String(el.value) !== String(v)) el.value = v;
+    return v;
+  }
+  function dashStepChanged_(id){
+    dashStepVal_(id);
+    try { localStorage.setItem('nxDashRange_' + id, document.getElementById(id).value); } catch (e) {}
+    var tKey = id.indexOf('dashCalRange') === 0 ? 'cal' : id; // 일정 전·후는 같은 카드 — 함께 바꿔도 한 번만 부름
+    clearTimeout(dashStepTimers_[tKey]);
+    dashStepTimers_[tKey] = setTimeout(function(){ if (dashboardLoaded && DASH_STEP_LOADERS_[id]) DASH_STEP_LOADERS_[id](); }, 450);
+  }
+  Object.keys(DASH_STEP_LOADERS_).forEach(function(id){
+    var el = document.getElementById(id);
+    if (!el) return;
+    try { var saved = localStorage.getItem('nxDashRange_' + id); if (saved !== null && saved !== '') el.value = saved; } catch (e) {}
+    dashStepVal_(id);
+    el.addEventListener('change', function(){ dashStepChanged_(id); });
+  });
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest && ev.target.closest('[data-step-for]');
+    if (!b) return;
+    var id = b.getAttribute('data-step-for');
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.value = dashStepVal_(id) + (parseInt(b.getAttribute('data-step'), 10) || 0);
+    dashStepChanged_(id);
+  });
+
   var dashDeadlineCases_ = {}; // id → 사건(✓ 완료 단추가 완료 전 점검·저장에 씀)
   function loadDashDeadlines(){
     callGas('work_get_cases', {}).then(function(res){
       var todayStr = new Date().toISOString().slice(0, 10);
       var horizon = new Date();
-      horizon.setDate(horizon.getDate() + DASH_DEADLINE_HORIZON_DAYS_);
+      var horizonDays = dashStepVal_('dashDeadlineAfter');
+      horizon.setDate(horizon.getDate() + horizonDays);
       var horizonStr = horizon.toISOString().slice(0, 10);
       var cases = (res.cases || []).filter(function(c){
         return c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr;
@@ -217,7 +274,7 @@
       dashDeadlineCases_ = {};
       cases.forEach(function(c){ dashDeadlineCases_[c.id] = c; });
       var box = document.getElementById('dashDeadlines');
-      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + DASH_DEADLINE_HORIZON_DAYS_ + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
+      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + horizonDays + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
       // [2026.09 버그수정] "보류" 사건도 법정일이 임박하면 "진행" 사건과 똑같이 강조되어
       // 섞여 있었다 — 마감 자체를 놓치면 안 되니 목록에서 빼지는 않되(보류라고 미뤄둔 사이
       // 진짜 기한을 넘길 수 있으므로), 한눈에 "지금 당장 볼 건 아니다"를 알 수 있게 흐리게
@@ -357,9 +414,14 @@
 
   function loadDashPayments(){
     callGas('client_get_consult_logs', {}).then(function(res){
-      var logs = (res.logs || []).slice(0, 8);
+      // [2026.10.29] 예전엔 날짜와 상관없이 최근 8건 — 이제 "오늘부터 전 며칠" 안의 수금만(서버가 최신순으로 줌)
+      var payDays = dashStepVal_('dashPayBefore');
+      var since = new Date(); since.setDate(since.getDate() - payDays);
+      var pad2 = function(n){ return (n < 10 ? '0' : '') + n; };
+      var sinceStr = since.getFullYear() + '-' + pad2(since.getMonth() + 1) + '-' + pad2(since.getDate());
+      var logs = (res.logs || []).filter(function(l){ return String(l.날짜 || '').slice(0, 10) >= sinceStr; });
       var box = document.getElementById('dashPayments');
-      if (!logs.length){ box.innerHTML = '<div class="empty-row">수금 내역이 없습니다.</div>'; return; }
+      if (!logs.length){ box.innerHTML = '<div class="empty-row">최근 ' + payDays + '일 동안 수금 내역이 없습니다.</div>'; return; }
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
       var thNowrap2 = ' style="' + ellipsis + '"';
@@ -445,8 +507,7 @@
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashCalendar').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
-  document.getElementById('dashCalRangeBefore').addEventListener('change', loadDashCalendar_);
-  document.getElementById('dashCalRangeAfter').addEventListener('change', loadDashCalendar_);
+  // (전/후 칸 바뀜 → 다시 불러오기는 위 dashStepChanged_가 맡는다)
 
   // [2026.09 신규] Gmail 안읽은 메일 — 종전 챗봇의 "메일 왔어?" 기능을 대시보드 카드로 옮김.
   // 처음 실제로 호출될 때 Gmail 접근권한 재승인 화면이 뜰 수 있다(코드 주석 참고).
@@ -459,7 +520,7 @@
     return s.split('@')[0];
   }
   function loadDashEmails_(){
-    callGas('search_emails', { query: 'in:inbox is:unread', maxResults: 8 }).then(function(res){
+    callGas('search_emails', { query: 'in:inbox is:unread', maxResults: dashStepVal_('dashEmailCount') }).then(function(res){
       var box = document.getElementById('dashEmails');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.메일 || [];
