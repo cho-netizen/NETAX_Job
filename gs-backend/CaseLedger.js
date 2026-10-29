@@ -960,6 +960,78 @@ function ledgerFlowBrief_(c) {
   const calc = rows.filter(function (r) { return !/^(q:|doc:|chk:)/.test(r.path) && /^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null; }).map(function (r) { return { label: r.label, 값: r.값, state: r.state, kind: r.kind, 이음: (r.fx || []).length }; });
   return { ok: true, 사건: (c.사건명 || c.고객명 || ''), 흐름: fl, 물음: open, 칸: calc.slice(0, 80) };
 }
+// [2026.10.29 넥스 1] 넥스용 장부 요약 — 세무사님 "ai가 처리할때는 사건장부 속의 정보를 적재적소에 제대로 활용하지 못하고 있다는 것인가?" → "그래라"
+//  예전엔 넥스가 장부를 보려면 장부 전체(ledger_read — 6,000자에서 잘려 뒤쪽 흐름이 늘 빠짐)를 따로 불러야 했고, 사건 현황(case_status·caseproc)에는 흐름이 없었다.
+//  이제 넥스의 첫 현황에 이 한 묶음이 붙는다. 순서 = 먼저 볼 것부터: 띠 → 마지막 한 바퀴 → 남은 물음(가설과 다름 포함) → 사건개요(정함·가설) → 확보할 증빙(받을 것)
+//  → 칸 값(이은 서류·값이 다른 서류). max 자를 넘으면 뒤 묶음부터 줄이고 줄인 사실을 적는다. 서류 사실 전부는 싣지 않는다(case_ledger do:facts로 찾는다)
+function ledgerNexBrief_(c, max) {
+  max = Number(max) || 6000;
+  const L = ledgerLoad_(c.id), rows = ledgerRows_(c.id), fl = ledgerFlowView_(c, L, rows);
+  const fById = {}; (((L.kb && L.kb.facts) || [])).forEach(function (f) { fById[f.id] = f; });
+  const cut = function (s, n) { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n) + '…' : s; };
+  const last = fl.마지막 ? { 때: fl.마지막.at || '', 까닭: cut(fl.마지막.why, 60), 바뀐것: (fl.마지막.diff || []).slice(0, 8).map(function (d) { return cut(d, 120); }) } : null;
+  const open = rows.filter(function (r) { return /^(물어볼것|증빙받을것|보류)$/.test(r.state); }).map(function (r) {
+    const o = { 칸: r.label, 상태: r.state, 물음: cut(r.ask || r.why, 140) };
+    if (r.값) o.지금값 = cut(r.값, 50);
+    if (/^chk:가설\./.test(r.path)) o.가설과다름 = true;
+    if (r.cands && r.cands.length) o.후보 = r.cands.slice(0, 3).map(function (x) { return cut(x.값, 30) + (x.src ? '(' + cut(typeof x.src === 'object' ? (x.src.file || x.src.kind || '') : x.src, 30) + ')' : ''); });
+    return o;
+  });
+  const ovOne = function (r) { const o = { 칸: r.label, 값: cut(r.값, 60), 주인: r.kind || '' }; if (r.hypNote) o.가설과다름 = cut(r.hypNote, 100); return o; };
+  const ov = fl.사건개요 || [];
+  const calc = rows.filter(function (r) { return !/^(q:|doc:|chk:)/.test(r.path) && /^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null; }).map(function (r) {
+    const o = { 칸: r.label, 값: cut(r.값, 50), 주인: r.kind || '', 상태: r.state };
+    const fx = (r.fx || []).map(function (id) { return fById[id]; }).filter(Boolean), fk = (r.fk || []).map(function (id) { return fById[id]; }).filter(Boolean);
+    if (fx.length) o.같은값서류 = fx.map(function (f) { return f.f; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).slice(0, 3);
+    if (fk.length) o.다른값서류 = fk.slice(0, 3).map(function (f) { return cut(f.v, 30) + '(' + cut(f.f, 30) + ')'; });
+    return o;
+  });
+  const out = {
+    띠: fl.띠, 마지막한바퀴: last, 남은물음: open,
+    사건개요_정함: ov.filter(function (r) { return /^(확정|추정)$/.test(r.state); }).map(ovOne),
+    사건개요_가설: ov.filter(function (r) { return r.state === '가설'; }).map(ovOne),
+    확보할증빙_받을것: (fl.증빙 || []).filter(function (r) { return r.state === '증빙받을것'; }).map(function (r) { return cut((r.서류 && r.서류.label) || r.label, 60) + (r.why ? ' — ' + cut(r.why, 50) : ''); }),
+    칸값: calc,
+    안내: '사건 장부 요약(토큰 0). 가설과다름·다른값서류는 세무사님께 여쭐 거리다(세무사님 값은 바꾸지 않는다). 서류 사실은 case_ledger do:facts(find_kind·find_file·find_value·find_to)로 찾고, 장부 전체는 ledger_read(사건 지휘)·job_lookup kind=ledger(대화창).'
+  };
+  let txt = JSON.stringify(out);
+  ['칸값', '확보할증빙_받을것', '사건개요_정함', '사건개요_가설', '남은물음'].forEach(function (k) {
+    const n0 = (out[k] || []).length;
+    while (txt.length > max && out[k] && out[k].length) { out[k] = out[k].slice(0, Math.floor(out[k].length / 2)); txt = JSON.stringify(out); }
+    if (out[k] && out[k].length < n0) { out[k + '_줄임'] = n0 + '개 중 ' + out[k].length + '개만 — 나머지는 장부 전체에서'; txt = JSON.stringify(out); }
+  });
+  return out;
+}
+// [2026.10.29 넥스 2] 서류 사실 찾기(토큰 0) — 장부가 모아 둔 서류 사실(L.kb.facts)을 종류·파일·값·쓰인 칸으로 좁혀 번호와 함께. 다시 읽지 않고 장부에서만 찾는다
+function ledgerKbFind_(c, q) {
+  q = q || {};
+  const L = ledgerLoad_(c.id), kb = L.kb || {}, facts = kb.facts || [];
+  const lim = Math.max(1, Math.min(Number(q.limit) || 20, 60));
+  const has = function (s, w) { return String(s || '').indexOf(String(w)) !== -1; };
+  const vn = q.find_value ? ledgerKbNorm_('', q.find_value) : '';
+  const lab = function (p) { const r = (L.rows || {})[p]; return r && r.label && !/^[a-zA-Z]/.test(String(r.label)) ? r.label : ledgerLabel_(p); };
+  const hit = facts.filter(function (f) {
+    if (q.find_kind && !has(f.k, q.find_kind)) return false;
+    if (q.find_file && !has(f.f, q.find_file) && !has(f.t, q.find_file)) return false;
+    if (q.find_value && !has(f.v, q.find_value) && !(vn && f.n === vn)) return false;
+    if (q.find_to && !(f.to || []).some(function (p) { return has(p, q.find_to) || has(lab(p), q.find_to); })) return false;
+    return true;
+  });
+  const kinds = {}; hit.forEach(function (f) { kinds[f.k] = (kinds[f.k] || 0) + 1; });
+  return { ok: true, 모은때: kb.at || '', 전체사실: facts.length, 찾음: hit.length,
+    사실: hit.slice(0, lim).map(function (f) { return { 번호: f.id, 종류: f.k, 값: f.v, 파일: f.f, 서류종류: f.t || undefined, 자리: f.w || undefined, 대상: f.s || undefined, 쓰인칸: f.to && f.to.length ? f.to.map(lab) : undefined, 판독: f.u ? '불확실' : undefined, 사본: f.cp ? '사본' : undefined }; }),
+    종류별: q.find_kind ? undefined : Object.keys(kinds).sort(function (a, b) { return kinds[b] - kinds[a]; }).slice(0, 30).reduce(function (o, k) { o[k] = kinds[k]; return o; }, {}),
+    안내: facts.length ? undefined : '장부에 모은 서류 사실이 아직 없습니다 — 서류 읽기(⚡ GAS로 처리·gas_run)가 한 번 돌아야 모입니다.' };
+}
+// [2026.10.29 넥스 4] 중요한 순간 — 한 바퀴 전후로 새로 생긴 "가설과 서류가 다름"·새 쟁점·새로 받을 서류. 세무사님 "중요한 순간이면 AI가 먼저 말을 걸어도 되겠지"(10-22)
+//  무엇이 중요한 순간인지는 정해 두지 않고 쓰면서 늘린다(공통원칙 1) — 지금은 이 세 가지
+function ledgerMomentKeys_(L) {
+  const m = {};
+  Object.keys((L && L.rows) || {}).forEach(function (p) { const r = L.rows[p]; if (/^chk:가설\./.test(p) && /^(보류|물어볼것)$/.test(r.state)) m['다름:' + p] = '가설과 서류가 다름 — ' + String(r.ask || r.label || p).slice(0, 160); });
+  (((L && L.hyp && L.hyp.claims) || [])).forEach(function (x) { if (x.f === '쟁점') m['쟁점:' + x.v] = '새 쟁점(가설) — ' + String(x.v).slice(0, 60) + ((x.srcs || []).length ? ' [' + String(x.srcs[0]).slice(0, 40) + ']' : ''); });
+  Object.keys((L && L.ev) || {}).forEach(function (p) { const r = L.ev[p]; if (r.state === '증빙받을것') m['증빙:' + p] = '새로 받을 서류 — ' + String((r.v && r.v.label) || r.label || p).slice(0, 80); });
+  return m;
+}
 // [2026.10.29 계획서 5단계] 사건 흐름 — 가설 → 사건개요 → 처리방향 → 확보할 증빙 → 서류 사실 → 칸 → 질문, 그리고 마지막 한 바퀴
 function ledgerFlowView_(c, L, rows) {
   const ovRows = ledgerFlowRows_(L, 'ov').map(function (r) { const raw = (L.ov || {})[r.path] || {}; return Object.assign(r, { hypNote: raw.hypNote || '' }); });
@@ -994,7 +1066,9 @@ function ledgerToolRun_(input, by) {
   else if (d === 'calc') r = ledgerCalcRun_(c, { by: who });
   else if (d === 'import') r = ledgerImportLegacy_(c);
   else if (d === 'hyp') r = ledgerHypAdd_(c, input, who); // [2026.10.29 계획서 3단계 — 세무사님 결정 권장안 1] 규칙이 못 뽑은 의뢰서 글은 넥스가 읽어 가설을 보탬
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·import·hyp 중 하나' };
+  else if (d === 'facts') r = ledgerKbFind_(c, input); // [2026.10.29 넥스 2] 서류 사실 찾기(읽기만)
+  else if (d === 'brief') r = Object.assign({ ok: true }, ledgerNexBrief_(c, Number(input.limit) > 1000 ? Number(input.limit) : 6000)); // [2026.10.29 넥스 1] 장부 요약(읽기만)
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·import·hyp·facts·brief 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1723,6 +1797,7 @@ function caseFlowEvidence_(c, L, lines) {
 function caseFlowRound_(c, why, lines) {
   if (!c || !c.id) return null;
   const L0 = ledgerLoad_(c.id, true), before = (L0.flow && L0.flow.snap) || ledgerFlowSnap_(L0); // 지난 바퀴 끝과 견준다(그 사이 서류 읽기·칸 채우기·답으로 바뀐 것까지)
+  const mom0 = (L0.flow && L0.flow.mom) || ledgerMomentKeys_(L0); // [2026.10.29 넥스 4] 지난 바퀴 끝의 "중요한 순간" 열쇠
   const settled0 = [c.세목, c.업무유형, ((L0.rows || {})['사건분류'] || {}).v, c.기준일].join('|');
   ledgerMutate_(c.id, function (L) { ledgerFlowAdoptInner_(L, c); ledgerOvFromHypInner_(L); ledgerHypVsCalcInner_(L); });
   let ev = { add: 0, del: 0 };
@@ -1732,12 +1807,18 @@ function caseFlowRound_(c, why, lines) {
   let c2 = c; try { c2 = (typeof akReadCase_ === 'function' ? akReadCase_(c.id) : null) || c; } catch (e) { c2 = c; }
   const settledChanged = settled0 !== [c2.세목, c2.업무유형, ((L1.rows || {})['사건분류'] || {}).v, c2.기준일].join('|');
   const rec = { at: caseProcNow_(), why: String(why || '').slice(0, 80), diff: diff, ev: ev };
+  let moment = [];
   ledgerMutate_(c.id, function (L) {
-    L.flow = { at: rec.at, why: rec.why, diff: diff, snap: ledgerFlowSnap_(L), rounds: ((L.flow && L.flow.rounds) || []).concat([rec]).slice(-20) };
+    const mom1 = ledgerMomentKeys_(L);
+    moment = Object.keys(mom1).filter(function (k) { return !(k in mom0) && (L0.flow || !/^증빙:/.test(k)); }).map(function (k) { return mom1[k]; }); // 사건 첫 바퀴의 틀 증빙 목록은 "새로 받을 서류" 순간이 아니다
+    L.flow = { at: rec.at, why: rec.why, diff: diff, snap: ledgerFlowSnap_(L), mom: mom1, rounds: ((L.flow && L.flow.rounds) || []).concat([rec]).slice(-20) };
     if (diff.length) ledgerLogTo_(L, { by: 'GAS', what: '한 바퀴', detail: (rec.why ? rec.why + ' → ' : '') + diff.join(' · ') });
+    if (moment.length) ledgerLogTo_(L, { by: 'GAS', what: '중요한 순간', detail: moment.slice(0, 6).join(' · ') + ' → 넥스에게 알림' });
   });
-  if (lines) lines.push('🔁 한 바퀴' + (rec.why ? '(' + rec.why + ')' : '') + ': ' + (diff.length ? diff.join(' · ') : '바뀐 것 없음'));
-  return { changed: diff.length > 0, diff: diff, settledChanged: settledChanged };
+  // [2026.10.29 넥스 4] 중요한 순간이면 넥스를 깨울 줄에 넣는다(깨우기는 1분 틱이 — 이 바퀴를 돌린 화면 단추를 붙잡지 않게. 밤이면 아침에)
+  if (moment.length && typeof cpNexMomentAdd_ === 'function') { try { cpNexMomentAdd_(c.id, moment); } catch (e) {} }
+  if (lines) lines.push('🔁 한 바퀴' + (rec.why ? '(' + rec.why + ')' : '') + ': ' + (diff.length ? diff.join(' · ') : '바뀐 것 없음') + (moment.length ? ' · 🤖 중요한 순간 ' + moment.length + '건 → 넥스에게 알림' : ''));
+  return { changed: diff.length > 0, diff: diff, settledChanged: settledChanged, moment: moment };
 }
 // 층 묶음을 화면·넥스용 줄로
 function ledgerFlowRows_(L, layer) { const m = (L && L[layer]) || {}; return Object.keys(m).map(function (p) { return ledgerRowOut_(p, m[p]); }); }
