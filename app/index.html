@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 07:22 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 07:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -2972,7 +2972,9 @@ function nxMdOpenWindow(title, src, opts){
         prevPayDate = l.날짜;
         // [2026.10.18 탭연결 4번] 줄을 누르면 사건이 연결된 수금은 그 사건 처리개요(💰 수금 카드)로, 아니면 수금관리로 간다
         html += '<tr data-pay-case="' + esc(l.사건ID || '') + '" style="cursor:pointer;" title="' + (l.사건ID ? '눌러서 이 사건 처리개요로' : '눌러서 수금관리로') + '"><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
-          (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + '">' + esc(l.수취증빙) + '</td></tr>';
+          (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + (l.사건ID ? '' : ' · 사건 미연결(수금관리에서 사건을 연결할 수 있습니다)') + '">' + esc(l.수취증빙) +
+          // [2026.10.29] 세무사님 "사건미연결이라는 메시지가 필요해 보인다" — 사건 없는 상담 영수증도 기록되게 하면서, 사건이 안 붙은 수금은 이 카드에서도 보이게
+          (l.사건ID ? '' : ' <span style="color:var(--sub); font-size:11px;">· 사건 미연결</span>') + '</td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -2990,6 +2992,8 @@ function nxMdOpenWindow(title, src, opts){
         var msg = (res.errors && res.errors.length)
           ? (res.added + '건 새로 기록, 오류 ' + res.errors.length + '건: ' + res.errors[0])
           : (res.added ? res.added + '건 새로 기록했습니다.' : '새로 인식된 현금영수증이 없습니다.');
+        // [2026.10.29] 상담 사건 없이 "1 상담사건" 폴더에 저장한 영수증은 고객에만 연결해 기록한다(사건 미연결) — 그 사실을 바로 알린다
+        if (res.noCase) msg += ' 그중 ' + res.noCase + '건(' + (res.noCaseNames || []).join(', ') + ')은 사건 미연결로 기록했습니다 — 수금관리에서 "사건 미연결"을 눌러 사건을 연결할 수 있습니다.';
         toast(msg);
         if (res.added) loadDashPayments();
       }).catch(function(e){

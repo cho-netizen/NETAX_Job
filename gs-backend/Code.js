@@ -21290,13 +21290,39 @@ function findCaseForFile_(fileId) {
 }
 
 
+// [2026.10.29] 세무사님 "사건연결이 되지 않은 고객의 영수증도 수금관리에 뜨게 하고 싶다. 그러면서 사건미연결이라는 메시지가 필요해 보인다" —
+// 사건 등록 없이 즉석 상담을 끝내고 "1 상담사건" 폴더에 "<고객명>_현금영수증"으로 저장한 영수증은, 같은 고객명의 상담 사건이 없으면
+// findCaseForFile_가 null을 돌려 조용히 건너뛰었다. 상담사건 폴더(하위폴더 포함) 안에 있고 파일명에서 고객명을 읽을 수 있으면
+// 사건 없이(사건ID 빈칸) 고객명으로 기록한다 — 고객 연결은 client_addConsultLog의 기존 방식(이름으로 고객관리에서 찾고 없으면 등록) 그대로.
+// 수금관리는 사건ID가 빈 기록에 회색 "사건 미연결"(눌러서 사건 연결)을 보여 준다. findCaseForFile_는 사건ID 뒤늦게 채우기(25700번대)도
+// 쓰므로 건드리지 않고, 이 함수는 영수증 확인에서만 그 뒤 대안으로 부른다.
+function findConsultNoCaseInfo_(fileId, fileName, consultFolderId) {
+  if (!consultFolderId) return null;
+  const m = String(fileName || '').match(/^(.+?)_현금영수증/);
+  const name = m ? m[1].trim() : '';
+  if (!name) return null;
+  try {
+    let parents = DriveApp.getFileById(fileId).getParents();
+    let depth = 0;
+    while (depth < 6 && parents.hasNext()) {
+      const parent = parents.next();
+      if (parent.getId() === consultFolderId) return { 고객명: name, 고객ID: '', caseId: '', noCase: true };
+      parents = parent.getParents();
+      depth++;
+    }
+  } catch (err) { /* 폴더 조회 실패 시 그냥 못 찾은 것으로 처리 */ }
+  return null;
+}
+
 // 실제 스캔 본체 — 대시보드의 "지금 확인" 버튼(handleScanCashReceipts)과 야간 자동작업
 // (runNightlyChiefManager) 양쪽에서 그대로 호출한다.
 // [2026.10.09] AI(Sonnet) 대신 구글 드라이브 무료 OCR + 규칙 판독(parseReceiptText_)으로 바꿨다 — 비용 0원.
 // 실제 영수증 64장 시험: 56장 검산 일치로 확정, Sonnet이 읽었던 18장과 전부 같음(Haiku가 틀린 32,354,500원도 맞춤),
 // 확정 못한 5장은 금액을 비우고 "금액 확인 필요"로 기록(틀린 숫자를 넣지 않음). 세무사님 원칙: 시스템 루틴은 토큰 0.
 function runCashReceiptScan_() {
-  const result = { scanned: 0, added: 0, skipped: 0, needCheck: 0, errors: [] };
+  const result = { scanned: 0, added: 0, skipped: 0, needCheck: 0, noCase: 0, noCaseNames: [], errors: [] };
+  let consultFolderId = '';
+  try { const cf = getConsultSharedFolder_(); if (cf) consultFolderId = cf.getId(); } catch (err) { /* 못 찾으면 사건 없는 상담 영수증만 못 잡는다 */ }
 
   let files;
   try {
@@ -21319,10 +21345,10 @@ function runCashReceiptScan_() {
   const groups = {};
   files.forEach(function (f) {
     if (f.appProperties && f.appProperties.netax_receipt_logged === 'true') { result.skipped++; return; }
-    const caseInfo = findCaseForFile_(f.id);
-    if (!caseInfo) { result.skipped++; return; } // 사건 폴더 밖의 파일이면 건너뜀
+    const caseInfo = findCaseForFile_(f.id) || findConsultNoCaseInfo_(f.id, f.name, consultFolderId);
+    if (!caseInfo) { result.skipped++; return; } // 사건 폴더·상담사건 폴더 밖의 파일이면 건너뜀
     const baseName = f.name.replace(/\.[^.]+$/, '');
-    const key = caseInfo.caseId + '::' + baseName;
+    const key = (caseInfo.caseId || ('사건없음:' + caseInfo.고객명)) + '::' + baseName;
     if (!groups[key]) groups[key] = [];
     groups[key].push({ file: f, caseInfo: caseInfo });
   });
@@ -21352,6 +21378,7 @@ function runCashReceiptScan_() {
         수취증빙: '현금영수증'
       });
       result.added++;
+      if (primary.caseInfo.noCase) { result.noCase++; if (result.noCaseNames.indexOf(primary.caseInfo.고객명) === -1) result.noCaseNames.push(primary.caseInfo.고객명); }
       succeeded = true;
     } catch (err) {
       result.errors.push(primary.file.name + ': ' + err.message);
