@@ -182,10 +182,18 @@ function ledgerValueText_(path, v) {
   if (path === 'costs' && typeof v === 'object') { const s = function (l) { return (l || []).reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0); }; return '취득비용 ' + s(v.acq).toLocaleString('ko-KR') + '원(' + (v.acq || []).length + '건) · 양도비용 ' + s(v.tr).toLocaleString('ko-KR') + '원(' + (v.tr || []).length + '건)'; }
   if (/(Price|Amount|Value|StandardPrice|Assumed|Fee|PaidTax|DeductionUsed|Fmv)$|^taxfee$|^relFmv$/.test(path) && /^\d+$/.test(String(v))) return Number(v).toLocaleString('ko-KR') + '원'; // 금액 칸만 "원"(면적·층·사람 수에 원이 붙던 것)
   if (typeof v === 'number') return String(v);
-  if (typeof v === 'object') return JSON.stringify(v).slice(0, 120);
+  // [2026.10.29] 목록·묶음 값(물건목록·가설 거래 여러 건 등)은 사람이 읽는 글로 — 화면에 기계 형식({"assetType":…})이 보이던 것.
+  //  묶음 안에서는 한글·숫자가 든 값만(코드값 house·building 같은 것은 뺌) 앞에서 넷까지
+  if (Array.isArray(v)) return v.map(function (x) { return x && typeof x === 'object' ? ledgerObjText_(x) : String(x); }).filter(Boolean).join(' / ').slice(0, 160) || '(비어 있음)';
+  if (typeof v === 'object') return ledgerObjText_(v).slice(0, 160) || '(비어 있음)';
   return String(v).slice(0, 120);
 }
 
+function ledgerObjText_(o) {
+  const out = [];
+  Object.keys(o || {}).forEach(function (k) { const x = o[k]; if (out.length >= 4 || x === '' || x == null || typeof x === 'object' || typeof x === 'boolean') return; const s = String(x).trim(); if (/[가-힣0-9]/.test(s)) out.push(/^\d{4,}$/.test(s) && /(Price|Amount|가액|금액)/i.test(k) ? Number(s).toLocaleString('ko-KR') + '원' : s); });
+  return out.join(' · ');
+}
 // ── 쓰기 — 장부에 값을 적는 유일한 길 ──
 // input: { path, value, kind(세무사님|넥스|서류|규칙|추정|계산), by(기록 주체 — 생략하면 kind), file, page, quote(원문 한 줄), why, sure(확실|애매|모름), cands:[{v,src}], label, estimate(true면 추정) }
 function ledgerSet_(caseId, input) {
@@ -942,6 +950,16 @@ function ledgerView_(c) {
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-5).map(function (e) { return { id: e.id, 구분: e.구분, 최종세액: e.최종세액, 계산일: e.계산일 }; });
   return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
 }
+// [2026.10.29] 세무사님 "ai없이 수동으로 사건을 처리할때 사용자가 사건장부를 수시로 참조해야 하는 것이 아닌가?" → "권장대로 하자"(처리개요 맨 위 + 사건 화면 어디서나)
+//  사건을 다루는 화면마다 맨 위 띠와 옆 패널이 부르는 가벼운 묶음 — 흐름(띠·마지막 한 바퀴·가설·사건개요·처리방향·확보할 증빙) + 남은 물음. 서류 사실 전부(kb)는 싣지 않는다
+function ledgerFlowBrief_(c) {
+  const L = ledgerLoad_(c.id), rows = ledgerRows_(c.id);
+  const fl = ledgerFlowView_(c, L, rows);
+  if (fl.마지막) fl.마지막 = { at: fl.마지막.at, why: fl.마지막.why, diff: fl.마지막.diff || [], rounds: (fl.마지막.rounds || []).slice(-5).map(function (x) { return { at: x.at, why: x.why, diff: x.diff || [] }; }) };
+  const open = rows.filter(function (r) { return /^(물어볼것|증빙받을것|보류)$/.test(r.state); }).map(function (r) { return { label: r.label, state: r.state, ask: String(r.ask || '').slice(0, 200), 값: r.값 }; });
+  const calc = rows.filter(function (r) { return !/^(q:|doc:|chk:)/.test(r.path) && /^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null; }).map(function (r) { return { label: r.label, 값: r.값, state: r.state, kind: r.kind, 이음: (r.fx || []).length }; });
+  return { ok: true, 사건: (c.사건명 || c.고객명 || ''), 흐름: fl, 물음: open, 칸: calc.slice(0, 80) };
+}
 // [2026.10.29 계획서 5단계] 사건 흐름 — 가설 → 사건개요 → 처리방향 → 확보할 증빙 → 서류 사실 → 칸 → 질문, 그리고 마지막 한 바퀴
 function ledgerFlowView_(c, L, rows) {
   const ovRows = ledgerFlowRows_(L, 'ov').map(function (r) { const raw = (L.ov || {})[r.path] || {}; return Object.assign(r, { hypNote: raw.hypNote || '' }); });
@@ -1001,6 +1019,7 @@ function ledgerApi_(c, body) {
     case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who });
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
+    case 'ledgerFlow': return ledgerFlowBrief_(c); // [2026.10.29] 사건 화면마다 맨 위 장부 띠·옆 패널(가벼운 묶음 — 서류 사실 전부는 싣지 않음)
     default: return null;
   }
 }
