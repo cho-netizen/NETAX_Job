@@ -992,10 +992,12 @@ function ledgerNexBrief_(c, max) {
     사건개요_가설: ov.filter(function (r) { return r.state === '가설'; }).map(ovOne),
     확보할증빙_받을것: (fl.증빙 || []).filter(function (r) { return r.state === '증빙받을것'; }).map(function (r) { return cut((r.서류 && r.서류.label) || r.label, 60) + (r.why ? ' — ' + cut(r.why, 50) : ''); }),
     칸값: calc,
+    거래사슬: ((fl.사슬 && fl.사슬.rows) || []).map(function (r) { return { 물건: cut(r.물건, 60), 납세자위치: r.납세자위치, 고리: (r.고리 || []).map(function (s) { return s.at + ' ' + (s.kind === '등기' ? '등기 ' + s.what + ' ' + s.to : s.what + ' ' + s.to) + (s.밖 ? ' [사슬 밖]' : ''); }).slice(0, 8) }; }),
+    사슬밖계약서: ((fl.사슬 && fl.사슬.off) || []).map(function (o) { return o.file + ' — ' + cut(o.why, 120); }),
     안내: '사건 장부 요약(토큰 0). 가설과다름·다른값서류는 세무사님께 여쭐 거리다(세무사님 값은 바꾸지 않는다). 서류 사실은 case_ledger do:facts(find_kind·find_file·find_value·find_to)로 찾고, 장부 전체는 ledger_read(사건 지휘)·job_lookup kind=ledger(대화창).'
   };
   let txt = JSON.stringify(out);
-  ['칸값', '확보할증빙_받을것', '사건개요_정함', '사건개요_가설', '남은물음'].forEach(function (k) {
+  ['칸값', '거래사슬', '확보할증빙_받을것', '사건개요_정함', '사건개요_가설', '남은물음'].forEach(function (k) {
     const n0 = (out[k] || []).length;
     while (txt.length > max && out[k] && out[k].length) { out[k] = out[k].slice(0, Math.floor(out[k].length / 2)); txt = JSON.stringify(out); }
     if (out[k] && out[k].length < n0) { out[k + '_줄임'] = n0 + '개 중 ' + out[k].length + '개만 — 나머지는 장부 전체에서'; txt = JSON.stringify(out); }
@@ -1023,12 +1025,25 @@ function ledgerKbFind_(c, q) {
     종류별: q.find_kind ? undefined : Object.keys(kinds).sort(function (a, b) { return kinds[b] - kinds[a]; }).slice(0, 30).reduce(function (o, k) { o[k] = kinds[k]; return o; }, {}),
     안내: facts.length ? undefined : '장부에 모은 서류 사실이 아직 없습니다 — 서류 읽기(⚡ GAS로 처리·gas_run)가 한 번 돌아야 모입니다.' };
 }
-// [2026.10.29 넥스 4] 중요한 순간 — 한 바퀴 전후로 새로 생긴 "가설과 서류가 다름"·새 쟁점·새로 받을 서류. 세무사님 "중요한 순간이면 AI가 먼저 말을 걸어도 되겠지"(10-22)
+// [2026.10.29 거래 사슬] 양도 사실 정리(tcDealChain_)가 만든 물건별 사슬(계약서·등기 고리, 납세자 위치)과 사슬 밖 계약서를 장부에 — 바뀔 때만 적는다
+function ledgerChainPut_(caseId, rf) {
+  if (!caseId || !rf || !Array.isArray(rf.chain)) return false;
+  const nx = { rows: rf.chain.slice(0, 20), off: (rf.chainOff || []).slice(0, 30) };
+  return ledgerMutate_(caseId, function (L) {
+    const old = L.chain ? JSON.stringify({ rows: L.chain.rows, off: L.chain.off }) : '';
+    if (old === JSON.stringify(nx)) return false;
+    L.chain = Object.assign({ at: caseProcNow_() }, nx);
+    ledgerLogTo_(L, { by: 'GAS', what: '거래 사슬', detail: nx.rows.map(function (r) { return String(r.물건 || '').slice(0, 30) + ' — ' + (r.납세자위치 || ''); }).join(' / ').slice(0, 200) + (nx.off.length ? ' · 사슬 밖 계약서 ' + nx.off.length + '건' : '') });
+    return true;
+  });
+}
+// [2026.10.29 넥스 4] 중요한 순간 —한 바퀴 전후로 새로 생긴 "가설과 서류가 다름"·새 쟁점·새로 받을 서류. 세무사님 "중요한 순간이면 AI가 먼저 말을 걸어도 되겠지"(10-22)
 //  무엇이 중요한 순간인지는 정해 두지 않고 쓰면서 늘린다(공통원칙 1) — 지금은 이 세 가지
 function ledgerMomentKeys_(L) {
   const m = {};
   Object.keys((L && L.rows) || {}).forEach(function (p) { const r = L.rows[p]; if (/^chk:가설\./.test(p) && /^(보류|물어볼것)$/.test(r.state)) m['다름:' + p] = '가설과 서류가 다름 — ' + String(r.ask || r.label || p).slice(0, 160); });
   (((L && L.hyp && L.hyp.claims) || [])).forEach(function (x) { if (x.f === '쟁점') m['쟁점:' + x.v] = '새 쟁점(가설) — ' + String(x.v).slice(0, 60) + ((x.srcs || []).length ? ' [' + String(x.srcs[0]).slice(0, 40) + ']' : ''); });
+  (((L && L.chain && L.chain.off) || [])).forEach(function (o) { m['사슬밖:' + o.file] = '사건 거래 사슬과 이어지지 않는 계약서 — ' + o.file + ': ' + String(o.why || '').slice(0, 120); }); // [2026.10.29 거래 사슬]
   Object.keys((L && L.ev) || {}).forEach(function (p) { const r = L.ev[p]; if (r.state === '증빙받을것') m['증빙:' + p] = '새로 받을 서류 — ' + String((r.v && r.v.label) || r.label || p).slice(0, 80); });
   return m;
 }
@@ -1046,7 +1061,8 @@ function ledgerFlowView_(c, L, rows) {
     가설: ((L.hyp && L.hyp.claims) || []).map(function (x) { return x.f === '세목' && typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[x.v] ? Object.assign({}, x, { v: CASEPROC_TAX_LABEL_[x.v] }) : x; }), 가설때: (L.hyp && L.hyp.at) || '',
     사건개요: ovRows, 처리방향: ledgerFlowRows_(L, 'dir'), 증빙: ev,
     띠: { 가설: ((L.hyp && L.hyp.claims) || []).length, 개요확정: n(ovRows, /^(확정|추정)$/), 개요가설: n(ovRows, /^가설$/), 개요다름: ovRows.filter(function (r) { return r.hypNote; }).length,
-      증빙확보: n(ev, /^확정$/), 증빙미확보: n(ev, /^증빙받을것$/), 서류사실: kbs.사실 || 0, 칸값: calcRows.length, 칸이음: calcRows.filter(function (r) { return (r.fx || []).length; }).length, 질문: q },
+      증빙확보: n(ev, /^확정$/), 증빙미확보: n(ev, /^증빙받을것$/), 서류사실: kbs.사실 || 0, 칸값: calcRows.length, 칸이음: calcRows.filter(function (r) { return (r.fx || []).length; }).length, 질문: q, 사슬물건: ((L.chain && L.chain.rows) || []).length, 사슬밖: ((L.chain && L.chain.off) || []).length },
+    사슬: L.chain || null, // [2026.10.29 거래 사슬] 물건별 계약서·등기 고리와 납세자 위치, 사슬 밖 계약서
     마지막: L.flow || null, 옮김: L.flowFrom || ''
   };
 }
@@ -1667,7 +1683,7 @@ function ledgerHypMap_(caseId) {
 // ============================================================
 var LEDGER_HYP_OV_ = { 세목: 'ov.세목', 업무유형: 'ov.업무유형', 납세자: 'ov.납세자', 상대방: 'ov.상대방', 관계: 'ov.관계', 물건: 'ov.물건', 거래: 'ov.거래', 쟁점: 'ov.쟁점', 요청: 'ov.요청사항' };
 function ledgerFlowSnap_(L) {
-  const s = { ov: {}, ev: {}, hyp: ((L.hyp && L.hyp.claims) || []).length, facts: ((L.kb && L.kb.facts) || []).length, q: 0 };
+  const s = { ov: {}, ev: {}, hyp: ((L.hyp && L.hyp.claims) || []).length, facts: ((L.kb && L.kb.facts) || []).length, q: 0, off: ((L.chain && L.chain.off) || []).length };
   s.ovL = {}; Object.keys(L.ov || {}).forEach(function (p) { const r = L.ov[p]; s.ov[p] = r.state + ':' + JSON.stringify(r.v).slice(0, 60); s.ovL[p] = r.label && !/^[a-zA-Z]/.test(r.label) ? r.label : ledgerLabel_(p); });
   Object.keys(L.ev || {}).forEach(function (p) { s.ev[p] = L.ev[p].state; });
   s.calc = {}; // 계산기 칸 값(정함·추정) — 서류가 들어와 칸이 채워지거나 바뀐 것도 바퀴 기록에
@@ -1686,6 +1702,7 @@ function ledgerFlowDiff_(a, b) {
   if (a.facts !== b.facts) out.push('서류 사실 ' + a.facts + '→' + b.facts);
   if (a.calc && b.calc) { const add = Object.keys(b.calc).filter(function (k) { return !(k in a.calc); }), chg = Object.keys(b.calc).filter(function (k) { return (k in a.calc) && a.calc[k] !== b.calc[k]; }), gone = Object.keys(a.calc).filter(function (k) { return !(k in b.calc); }); if (add.length || chg.length || gone.length) out.push('칸 ' + [add.length ? '채움 ' + add.slice(0, 4).map(ledgerLabel_).join('·') + (add.length > 4 ? ' 외 ' + (add.length - 4) : '') : '', chg.length ? '바뀜 ' + chg.slice(0, 4).map(ledgerLabel_).join('·') : '', gone.length ? '비움 ' + gone.slice(0, 3).map(ledgerLabel_).join('·') : ''].filter(Boolean).join(' · ')); }
   if (a.q !== b.q) out.push('질문 ' + a.q + '→' + b.q);
+  if ((a.off || 0) !== (b.off || 0)) out.push('사슬 밖 계약서 ' + (a.off || 0) + '→' + (b.off || 0));
   return out;
 }
 function ledgerNormCmp_(v) { return String(v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v)).replace(/[\s()·,]/g, ''); }

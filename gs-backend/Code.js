@@ -27126,12 +27126,13 @@ function t6MergeLedger_(caseId, Lin) {
   }
   // [2026.10.29 계획서 1·2단계] 사건 흐름 층 — 서비스가 세운 가설·사건개요 가설·한 바퀴 기록. 확보할 증빙은 사건 줄(증빙목록)을 쓰는 문으로 따로 온다
   //  GAS가 만든 줄만 받는다 — 세무사님·넥스가 정한 사건개요 줄은 서비스 값이 덮지 못한다
-  if (Lin.hyp || Lin.ov || Lin.flow) {
+  if (Lin.hyp || Lin.ov || Lin.flow || Lin.chain) {
     try {
       ledgerMutate_(caseId, function (L) {
         if (Lin.hyp && Array.isArray(Lin.hyp.claims)) { const nex = ((L.hyp && L.hyp.claims) || []).filter(function (x) { return x.by === '넥스'; }); L.hyp = { at: Lin.hyp.at || caseProcNow_(), claims: Lin.hyp.claims.filter(function (x) { return x.by !== '넥스'; }).concat(nex) }; }
         L.ov = L.ov || {};
         Object.keys(Lin.ov || {}).forEach(function (p) { const r = Lin.ov[p], cur = L.ov[p]; if (!r || !r.src || /^(세무사님|넥스)$/.test(r.src.kind)) return; if (cur && cur.src && (LEDGER_RANK_[cur.src.kind] || 0) > 1) { if (r.hypNote !== undefined) cur.hypNote = r.hypNote; return; } L.ov[p] = r; });
+        if (Lin.chain && Lin.chain.at && Array.isArray(Lin.chain.rows)) L.chain = Lin.chain; // [2026.10.29 거래 사슬] 서비스가 만든 물건별 사슬·사슬 밖 계약서
         if (Lin.flow && Lin.flow.at) { L.flow = Lin.flow; if ((Lin.flow.diff || []).length) ledgerLogTo_(L, { by: 'GAS', what: '한 바퀴(직결)', detail: (Lin.flow.why ? Lin.flow.why + ' → ' : '') + Lin.flow.diff.join(' · ') }); }
       });
       res.flow = true;
@@ -30248,8 +30249,92 @@ function tcContractNotParty_(text, names) {
   return { parties: parties, notParty: !inText && parties.length > 0 && !parties.some(function (pn) { return tcNameIn_(pn, nm); }) };
 }
 var TC_NOT_PARTY_NOTES_ = null; // [2026.10.28] 서류 돌기 중 "다른 사람의 거래(참고)" 기록 — evidence 목록이 만들어지기 전이라 여기 모았다가 옮긴다
+var TC_NOT_PARTY_DOCS_ = null; // [2026.10.29 거래 사슬] 납세자가 당사자가 아닌 계약서도 사슬(앞 고리·관계 불명)을 가리려고 모아 둔다
+// [2026.10.29 거래 사슬] 세무사님(10-29): "계약서상 양도자와 취득자를 정확히 읽은 다음에 당해 양도자의 위치가 계약서 내용과 어떤 관계인지에 대한 검토를 하지 못한다는 것이다.
+//   즉 전혀 관계없는 엉뚱한 계약서(거래당사자나 거래물건 등)가 들어와도 분별을 못한다는 것이다. 이것은 반드시 수정되어야 한다" → 계획서 "계획대로 진행"
+//  물건마다 계약서(당사자·계약일)와 등기부 갑구 소유권 이력(권리자·등기원인일·접수일)을 시간 순으로 이어 "누가 누구에게"의 사슬을 만들고, 납세자의 위치(취득 고리·양도 고리)를 정한다.
+//  잇는 기준은 공식 양식의 기재뿐 — 계약서 매수인 = 등기 권리자이고 계약일 = 등기원인일(매매 등기의 원인일은 계약일), 또는 같은 물건 계약서끼리 앞 계약의 매수인 = 뒤 계약의 매도인(분양권 전매).
+//  사슬에 붙지 않는 계약서(off)는 칸에 쓰지 않고 묻는다:
+//   ① 납세자 물건(등기부 명의·납세자가 당사자인 계약서의 물건)이 아닌 물건의 계약서 ② 납세자 물건인데 당사자가 사슬 어디에도 없는 남의 계약서
+//   ③ 납세자가 당사자인데 그 물건 등기부와 어긋남 — 등기부에 납세자 명의가 한 번도 없거나, 상대방 이름도 계약일(=등기원인일)도 등기 기재와 다름
+//  등기부가 없는 물건은 어긋남을 판정하지 않는다(사슬 미확인으로 알리기만). 세무사님이 [확인]에서 "이 사건 서류 — 씀"을 고르면 다시 칸에 쓴다(dec)
+function tcDealChain_(contracts, others, regs, names, dec) {
+  var nmIn = function (s) { return !!s && tcNameIn_(String(s).replace(/\s+/g, ''), names); };
+  var props = []; // { loc, file, hist(등기 순서), mine: 납세자가 명의인 적 있음 }
+  (regs || []).forEach(function (g) { ((g.r && g.r.docs) || []).forEach(function (d) {
+    if (!d.소재지) return;
+    var h = regHistSorted_(d.소유권이력 || []).filter(function (x) { return !x.말소 && !x.확인필요; });
+    props.push({ loc: d.소재지, file: g.file, hist: h, mine: h.some(function (x) { return nmIn((x.권리자 || []).map(function (q) { return q.이름; }).join(',')); }) });
+  }); });
+  var propOf = function (loc) { return loc ? props.filter(function (p) { return tcLocSame_(p.loc, loc); })[0] || null : null; };
+  // 납세자 쪽 이름은 계약서 역할(본문으로 정함 — tcRoleInText_)로 둔다. 당사자 칸 이름 읽기가 주소 글자를 이름으로 잡는 일이 있어(가상양도: 매도인 "남시" ← "성남시") 그 이름으로 납세자 쪽을 가리면 사슬이 끊긴다
+  //  상대방 이름은 본문 당사자 이름표(매도인·매수인·수분양자·양도인·양수인 — tcContractNotParty_와 같은 읽기) 중 납세자가 아닌 이름으로 채운다
+  var docs = (contracts || []).map(function (c) {
+    var me = names[0] || '', ps = []; try { ps = tcContractNotParty_(c.text || '', names).parties || []; } catch (e) { ps = []; }
+    ps = ps.filter(function (p) { return !/^(쌍방|상호|다음|아래|본인|당사자|합의|계약|부동산|매매|대리|중개|공급|분양|명의)/.test(p); }); // 서식 머리말 낱말("매수인 쌍방은")은 이름이 아님
+    var fld = c.role === 'seller' ? c.r.매수인 : c.r.매도인, other = (fld && ps.indexOf(fld) !== -1 && !nmIn(fld)) ? fld : (ps.filter(function (p) { return !nmIn(p); })[0] || (fld && !nmIn(fld) ? fld : ''));
+    return { file: c.file, loc: c.r.소재지 || '', s: c.role === 'seller' ? me : other, b: c.role === 'buyer' ? me : other, date: c.r.계약일 || '', pay: c.r.잔금일 || '', kind: c.r.종류 || '매매계약서', party: true, role: c.role || '', parties: ps };
+  })
+    .concat((others || []).map(function (o) { var r = o.r || {}; return { file: o.file, loc: r.소재지 || '', s: r.매도인 || '', b: r.매수인 || '', date: r.계약일 || '', pay: r.잔금일 || '', kind: r.종류 || '계약서', party: false, role: '', parties: o.parties || [] }; }));
+  // 납세자 물건 — 등기부 명의가 있었던 물건 + 납세자가 당사자인 계약서의 물건
+  var mineLocs = props.filter(function (p) { return p.mine; }).map(function (p) { return p.loc; });
+  docs.forEach(function (d) { if (d.party && d.loc && !mineLocs.some(function (l) { return tcLocSame_(l, d.loc); })) mineLocs.push(d.loc); });
+  var isMineLoc = function (loc) { return !!loc && mineLocs.some(function (l) { return tcLocSame_(l, loc); }); };
+  var rows = [], off = [], lines = [];
+  var regLink = function (d, p) { // 계약서 매수인이 등기 권리자이고 등기원인일 = 계약일인 기재
+    if (!p) return null;
+    for (var i = 0; i < p.hist.length; i++) { var x = p.hist[i], hn = (x.권리자 || []).map(function (q) { return q.이름; }).join(','); if (d.b && hn.replace(/\s+/g, '').indexOf(String(d.b).replace(/\s+/g, '')) !== -1 && (!d.date || !x.원인일 || x.원인일 === d.date)) return x; }
+    return null;
+  };
+  mineLocs.forEach(function (loc) {
+    var p = propOf(loc), mine = docs.filter(function (d) { return d.loc && tcLocSame_(d.loc, loc); });
+    var steps = [];
+    (p ? p.hist : []).forEach(function (x) { var hn = (x.권리자 || []).map(function (q) { return q.이름; }).join('·'); steps.push({ at: x.원인일 || x.접수일 || '', kind: '등기', what: (x.목적 || '') + (x.원인 ? '(' + x.원인 + ')' : ''), to: hn, file: p.file, 순위: x.순위 || '', 납세자: nmIn(hn) ? '명의' : '' }); });
+    // 사람 묶음 — 등기 권리자 + 등기와 이어진 계약서 당사자에서 출발해, 같은 물건 계약서끼리 당사자를 이어 넓힌다(분양권 전매: 수분양자 → 매수인)
+    var people = {}; (p ? p.hist : []).forEach(function (x) { (x.권리자 || []).forEach(function (q) { if (q.이름) people[String(q.이름).replace(/\s+/g, '')] = 1; }); });
+    names.forEach(function (n) { people[n] = 1; });
+    var inP = function (nm) { nm = String(nm || '').replace(/\s+/g, ''); return !!nm && Object.keys(people).some(function (k) { return k.indexOf(nm) !== -1 || nm.indexOf(k) !== -1; }); };
+    for (var round = 0; round < 4; round++) mine.forEach(function (d) { var ps = [d.s, d.b].concat(d.parties || []).filter(Boolean); if (ps.some(inP)) ps.forEach(function (nm) { people[String(nm).replace(/\s+/g, '')] = 1; }); });
+    mine.forEach(function (d) {
+      var link = regLink(d, p), who = (d.s || d.b) ? (d.s || '?') + ' → ' + (d.b || '?') : '당사자 ' + ((d.parties || []).join('·') || '?');
+      var st = { at: d.date || d.pay || '', kind: '계약', what: d.kind, to: who, file: d.file, 납세자: d.party ? (nmIn(d.s) ? '양도' : nmIn(d.b) ? '취득' : '당사자') : '', 등기: link ? '순위 ' + (link.순위 || '?') + '과 이어짐' : '' };
+      var why = '';
+      if (!d.party && ![d.s, d.b].concat(d.parties || []).filter(Boolean).some(inP)) why = '납세자 물건의 계약서인데 당사자(' + ([d.s, d.b].concat(d.parties || []).filter(Boolean).join('·') || '?') + ')가 이 물건의 등기 권리자·다른 계약서 당사자 어디에도 없음';
+      if (d.party && p && p.hist.length) {
+        if (!p.mine) why = '등기부(' + p.file + ')에 납세자 명의가 한 번도 없음 — 다른 물건이거나 아직 등기 전 서류';
+        else if (nmIn(d.s)) { // 납세자가 판 계약 — 등기부의 다음 권리자·원인일과 맞대기
+          var k = -1; p.hist.forEach(function (x, i) { if (nmIn((x.권리자 || []).map(function (q) { return q.이름; }).join(','))) k = i; });
+          var nx = k >= 0 ? p.hist[k + 1] : null;
+          if (nx) { var nn = (nx.권리자 || []).map(function (q) { return q.이름; }).join(','), sameB = d.b && nn.replace(/\s+/g, '').indexOf(String(d.b).replace(/\s+/g, '')) !== -1, sameD = d.date && nx.원인일 === d.date; if (!sameB && !sameD && d.b && d.date && nx.원인일) why = '등기부는 납세자 다음 권리자 ' + nn + '(원인일 ' + nx.원인일 + ')인데 이 계약서는 매수인 ' + d.b + '·계약일 ' + d.date + ' — 등기 기재와 상대방·날짜가 모두 다름'; }
+        } else if (nmIn(d.b) && !link) { // 납세자가 산 계약 — 납세자 명의 기재의 원인일·앞 권리자와 맞대기
+          var mx = p.hist.filter(function (x) { return nmIn((x.권리자 || []).map(function (q) { return q.이름; }).join(',')); });
+          var pre = mx.length ? p.hist[p.hist.indexOf(mx[0]) - 1] : null, pn = pre ? (pre.권리자 || []).map(function (q) { return q.이름; }).join(',') : '';
+          var dOk = mx.some(function (x) { return !d.date || !x.원인일 || x.원인일 === d.date; }), sOk = !d.s || !pn || pn.replace(/\s+/g, '').indexOf(String(d.s).replace(/\s+/g, '')) !== -1 || docs.some(function (o) { return o !== d && o.b && String(o.b).replace(/\s+/g, '') === String(d.s).replace(/\s+/g, ''); });
+          if (!dOk && !sOk) why = '등기부의 납세자 취득 기재(원인일 ' + mx.map(function (x) { return x.원인일 || x.접수일; }).join('·') + ', 앞 권리자 ' + (pn || '?') + ')와 이 계약서(매도인 ' + (d.s || '?') + '·계약일 ' + (d.date || '?') + ')가 상대방·날짜 모두 다름';
+        }
+      }
+      var key = 'evidence:사슬밖:' + d.file, kept = dec && dec[key] && /이\s*사건\s*서류/.test(String(dec[key].note || ''));
+      if (why && !kept) { st.밖 = why; off.push({ file: d.file, loc: loc, why: why, party: d.party }); }
+      if (why && kept) st.밖 = '(세무사님 확인 — 이 사건 서류로 씀) ' + why;
+      steps.push(st);
+    });
+    steps.sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
+    var pos = [];
+    steps.forEach(function (s) { if (s.밖 && !/^\(세무사님 확인/.test(s.밖)) return; if (s.납세자 === '취득' || (s.kind === '등기' && s.납세자 && !pos.length)) pos.push('취득 ' + s.at); if (s.납세자 === '양도') pos.push('양도 ' + s.at); });
+    rows.push({ 물건: loc, 등기부: p ? p.file : '', 고리: steps.slice(0, 20), 납세자위치: pos.filter(function (x, i, a) { return a.indexOf(x) === i; }).join(' · ') || (p ? '등기부에 납세자 명의 있음' : '등기부 없음 — 사슬 미확인') });
+  });
+  // ① 납세자 물건이 아닌 물건의 계약서
+  docs.forEach(function (d) {
+    if (!d.loc || isMineLoc(d.loc) || off.some(function (o) { return o.file === d.file; })) return;
+    var key = 'evidence:사슬밖:' + d.file; if (dec && dec[key] && /이\s*사건\s*서류/.test(String(dec[key].note || ''))) return;
+    off.push({ file: d.file, loc: d.loc, why: '계약 물건(' + d.loc + ')이 납세자 물건(등기부 명의·납세자 계약서)이 아님' + (d.party ? '' : ', 납세자도 당사자가 아님'), party: d.party });
+  });
+  rows.forEach(function (r) { lines.push('🔗 거래 사슬 — ' + r.물건 + ': ' + r.고리.map(function (s) { return s.at + ' ' + (s.kind === '등기' ? '등기 ' + s.what + ' ' + s.to : s.what + ' ' + s.to + (s.등기 ? '(' + s.등기 + ')' : '')) + (s.밖 ? ' [사슬 밖]' : ''); }).join(' → ') + ' · 납세자 위치: ' + r.납세자위치); });
+  off.forEach(function (o) { lines.push('사슬 밖 계약서(확인 질문으로 묻습니다): ' + o.file + ' — ' + o.why + (o.party ? ' → 양도·취득 칸에 쓰지 않음' : ' → 참고로도 쓰지 않음')); }); // 앞에 ⚠를 붙이면 알림 질문이 하나 더 생긴다(같은 말 두 번) — 질문은 trcQuestions_의 사슬 밖 질문 하나
+  return { rows: rows, off: off, lines: lines };
+}
 function tc_ruleTransferFactsRaw_(body) {
-  TC_NOT_PARTY_NOTES_ = null;
+  TC_NOT_PARTY_NOTES_ = null; TC_NOT_PARTY_DOCS_ = null;
   var caseId = String(body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
   var cr = body._cr || null; // [2026.10.22 속도 S3] 겉 함수가 이미 읽은 사건 행·파일 목록을 받으면 다시 읽지 않는다
@@ -30435,7 +30520,7 @@ function tc_ruleTransferFactsRaw_(body) {
       if (d.type === 'contract') {
         var tRole = tcRoleInText_(text, names), fRole = tcRoleInFileName_(f.name);
         var np = tcContractNotParty_(text, names); // [2026.10.28 일반 규칙] 납세자가 당사자가 아닌 계약서 — 교차검증(cxFacts_)과 같은 판정
-        if (np.notParty) { (TC_NOT_PARTY_NOTES_ = TC_NOT_PARTY_NOTES_ || []).push('다른 사람의 거래(참고): ' + f.name + ' — 계약 당사자 ' + np.parties.join('·') + ' 중 납세자 없음, 양도·취득 계약에 넣지 않음'); return; }
+        if (np.notParty) { (TC_NOT_PARTY_NOTES_ = TC_NOT_PARTY_NOTES_ || []).push('다른 사람의 거래(참고): ' + f.name + ' — 계약 당사자 ' + np.parties.join('·') + ' 중 납세자 없음, 양도·취득 계약에 넣지 않음'); (TC_NOT_PARTY_DOCS_ = TC_NOT_PARTY_DOCS_ || []).push({ file: f.name, r: d.r || {}, parties: np.parties }); return; }
         contracts.push({ file: f.name, r: d.r, text: text, role: (fRole && tRole && fRole !== tRole) ? fRole : (tRole || fRole), fRole: fRole, roleConflict: !!(fRole && tRole && fRole !== tRole) });
       }
       if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
@@ -30547,6 +30632,12 @@ function tc_ruleTransferFactsRaw_(body) {
   // [2026.10.17] 조합원 공급계약서(분양가·권리가·분담금)는 매매가 아니다 — 분양가를 취득가액으로 쓰지 않도록 양도·취득 계약에서 빼고 항목 줄로만 알린다
   var sells = contracts.filter(function (c) { return !c.r.조합원분양 && (c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names))); });
   var buys = contracts.filter(function (c) { return !c.r.조합원분양 && (c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names))); });
+  // [2026.10.29 거래 사슬] 물건마다 계약서·등기부를 이어 납세자 위치를 정하고, 사슬 밖 계약서(다른 물건·등기와 어긋난 당사자·날짜)는 양도·취득 칸에 쓰지 않고 묻는다(tcDealChain_)
+  var chain = { rows: [], off: [], lines: [] };
+  try { chain = tcDealChain_(contracts.filter(function (c) { return !c.r.조합원분양; }), TC_NOT_PARTY_DOCS_ || [], regs, names, (caseProcLoad_(caseId) || {}).decisions || {}); } catch (e) { evidence.push('⚠ 거래 사슬 만들기 중 오류: ' + String(e && e.message || e).slice(0, 100)); }
+  TC_NOT_PARTY_DOCS_ = null;
+  chain.lines.forEach(function (l) { evidence.push(l); });
+  if (chain.off.length) { var offF = chain.off.filter(function (o) { return o.party; }).map(function (o) { return o.file; }); sells = sells.filter(function (c) { return offF.indexOf(c.file) === -1; }); buys = buys.filter(function (c) { return offF.indexOf(c.file) === -1; }); }
   // [2026.10.29 땜질 심사] 신규 주택은 파일 이름("신규주택")이 아니라 내용으로 — 납세자가 매수인인 계약서 중 판 물건(양도 계약서 소재지)과 다른 부동산.
   //  소재지를 못 읽어 내용으로 못 가를 때만 파일 이름을 보조로 쓰고 "파일 이름으로 짐작"이라고 밝힌다
   var sellLocs = sells.map(function (c) { return c.r.소재지; }).filter(Boolean);
@@ -30569,7 +30660,7 @@ function tc_ruleTransferFactsRaw_(body) {
   };
 
   // [2026.10.15 1단계 ②] 양도도 취득도 아닌 계약서 — 말없이 버리지 않고 "참고 계약서"로 밝힌다(매매사례·다른 사람 거래 등)
-  contracts.filter(function (c) { return sells.indexOf(c) === -1 && buys.indexOf(c) === -1 && !c.r.조합원분양; }).forEach(function (c) { evidence.push('참고 계약서: ' + c.file + ' — 본문에서 납세자가 매도인·매수인으로 확인되지 않음(매매사례 등), 양도·취득 계산에 안 씀' + (c.r.소재지 ? ' (' + c.r.소재지 + ')' : '')); });
+  contracts.filter(function (c) { return sells.indexOf(c) === -1 && buys.indexOf(c) === -1 && !c.r.조합원분양 && !chain.off.some(function (o) { return o.file === c.file; }); }).forEach(function (c) { evidence.push('참고 계약서: ' + c.file + ' — 본문에서 납세자가 매도인·매수인으로 확인되지 않음(매매사례 등), 양도·취득 계산에 안 씀' + (c.r.소재지 ? ' (' + c.r.소재지 + ')' : '')); });
   var txs = [];
   // 등기부 소유권 이력에서 그 부동산의 납세자 명의 취득·양도 접수일 찾기(§98 빠른 날 비교용)
   var regDate = function (loc, mine) {
@@ -30629,6 +30720,20 @@ function tc_ruleTransferFactsRaw_(body) {
       if (last >= 0) out = { file: g.file, hist: h.slice(0, last + 1) };
     }); });
     return out;
+  };
+  // [2026.10.29 §162①8호] 그 물건이 완성된 무렵의 날짜 — 건축물대장 사용승인일(4호 준용 기준), 등기부 소유권보존 접수일(완성 무렵 참고). 분양권·입주권·공급계약으로 산 물건의 취득일 판정 재료
+  var builtOf = function (loc) {
+    var o = { approval: '', approvalFile: '', preserve: '', preserveFile: '' }, lot = caseProcLotOf_(loc || '');
+    (ledgers || []).forEach(function (L) {
+      var r = L.r || {}; if (L.type === 'landledger' || !r.사용승인일) return;
+      var lc = r.소재지 || [r.대지위치, r.지번].filter(Boolean).join(' ');
+      if (lc && (tcLocSame_(lc, loc) || (lot && caseProcLotOf_(lc) === lot))) { o.approval = r.사용승인일; o.approvalFile = L.file; }
+    });
+    regs.forEach(function (g) { ((g.r && g.r.docs) || []).forEach(function (d) {
+      if (!tcLocSame_(d.소재지, loc)) return;
+      regHistSorted_(d.소유권이력 || []).forEach(function (x) { if (!o.preserve && !x.말소 && x.접수일 && /보존/.test(String(x.목적 || '') + String(x.원인 || ''))) { o.preserve = x.접수일; o.preserveFile = g.file; } });
+    }); });
+    return o;
   };
   sells.forEach(function (s) {
     var tx = { assetLocation: s.r.소재지 || null, transferPrice: ok(s) ? s.r.매매대금 : null, transferPriceCand: !ok(s) && s.r.매매대금 ? { v: s.r.매매대금, file: s.file, why: tcCtCheckWhy_(s.r) } : null, transferDate: (s.r.잔금일 && !s.r.잔금일확인필요) ? s.r.잔금일 : null,
@@ -30721,6 +30826,24 @@ function tc_ruleTransferFactsRaw_(body) {
       var ra = regDate(b.r.소재지, 'acq');
       if (ra && tx.acquisitionDate && ra < tx.acquisitionDate) { evidence.push('취득시기: 등기접수일 ' + ra + '이 잔금일보다 빨라 그날로(§98)'); tx.acquisitionDate = ra; }
       if (!tx.acquisitionDate && ra) { tx.acquisitionDate = ra; evidence.push('취득일은 등기부 접수일(' + ra + ') — 잔금일 확인 권장'); }
+      // [2026.10.29 §162①8호] 세무사님 "분양권사건의 취득일을 … 취득일을 계약일로 읽는다" → "계획대로 진행". 분양권·입주권·분양(공급) 계약으로 산 물건은
+      //  계약서 잔금일이 "권리"의 대금 청산일이다 — 소득세법 시행령 §162①8호 "완성 또는 확정되지 아니한 자산을 … 취득한 경우로서 해당 자산의 대금을 청산한 날까지
+      //  그 목적물이 완성 또는 확정되지 아니한 경우에는 그 목적물이 완성 또는 확정된 날. 이 경우 건설 중인 건물의 완성된 날에 관하여는 제4호를 준용한다."
+      //  잔금일이 완성 무렵(사용승인일·보존등기)보다 앞서거나 완성일 서류가 없으면 취득일을 확정하지 않고 날짜마다 근거를 붙여 묻는다. 어느 날로 볼지는
+      //  세무사님 판단(총괄관리자\사건처리_검토대상_20261028.md 1번 [확인 필요]) — 사용승인일이 서류에 있으면 1번 후보, 없으면 건축물대장 확인을 알린다
+      if (/분양권|입주권|분양\(공급\)/.test(String(b.r.종류 || '')) && tx.acquisitionDate) {
+        var bt8 = builtOf(b.r.소재지 || sLoc), pay8 = (b.r.잔금일 && !b.r.잔금일확인필요) ? b.r.잔금일 : '', done8 = bt8.approval || bt8.preserve;
+        if (pay8 && (!done8 || pay8 < done8)) {
+          var jd8 = tx.acquisitionDate, ra8 = regDate(b.r.소재지 || sLoc, 'acq');
+          tx.acquisitionDate = null; tx._acqDatePending = bt8.approval || '';
+          var add8 = function (v, src) { if (v && !acqDateCands.some(function (y) { return y.v === v; })) acqDateCands.push({ v: v, src: src }); };
+          if (bt8.approval) add8(bt8.approval, '건축물대장 사용승인일 — 목적물이 완성된 날(시행령 §162①8호 후단·4호 준용) — ' + bt8.approvalFile);
+          if (bt8.preserve) add8(bt8.preserve, '등기부 소유권보존 접수일 — 완성 무렵(사용승인일은 건축물대장으로 확인) — ' + bt8.preserveFile);
+          if (ra8 && ra8 !== jd8) add8(ra8, '납세자 소유권이전 등기 접수일 — 등기부');
+          add8(pay8, b.r.종류 + ' 잔금일(권리 대금 청산일 — 이 날 목적물이 미완성이면 취득일이 아님, §162①8호) — ' + b.file);
+          evidence.push('취득일 확정 안 함(취득일 질문에 날짜마다 근거를 붙여 묻습니다) — ' + b.file + '은(는) ' + b.r.종류 + '(완성되지 않은 자산의 취득): 대금 청산일 ' + pay8 + (done8 ? '이 완성 무렵(' + (bt8.approval ? '사용승인일 ' + bt8.approval : '보존등기 ' + bt8.preserve) + ')보다 앞섬' : ' — 완성일 서류 없음') + '. 시행령 §162①8호: 대금 청산일까지 목적물이 완성되지 않았으면 완성된 날(건설 중 건물은 4호 준용 — 사용승인일 등). ' + (bt8.approval ? '' : '건축물대장(사용승인일)으로 확인하세요. ') + '어느 날로 할지 확인 질문 [확인 필요]');
+        }
+      }
       // [2026.10.18 정밀분석 11 계약서] 잔금일 손글씨 정정 가능성 — 글자인식은 인쇄 글자만 읽어 "2015년 2월 27일"에 손글씨로 고친 "23"(정정 날인)을 놓친다(고객J 납세자).
       //  같은 취득의 법무사 정산서 일자·취득세 납부일(보통 잔금·등기 신청 날)이 계약서 잔금일보다 며칠(20일 안) 앞서면 잔금일을 바로 쓰지 않고
       //  두 날짜를 출처와 함께 후보로 묻는다(취득시기 = 잔금청산일과 등기접수일 중 빠른 날, 소득세법 §98·시행령 §162①). 계산은 계약서 날짜로 이어가되 확인필요
@@ -31303,7 +31426,7 @@ function tc_ruleTransferFactsRaw_(body) {
     } catch (e) {}
   });
   try { tcWorkLink_(expCands, costTexts, evidence); } catch (e) {} // [2026.10.17 내용 항목별] 공사 견적·내역서를 공사 내용 항목으로 나눠 지급 증빙에 붙임
-  return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands, holdings: holdings,
+  return { ok: true, chain: chain.rows, chainOff: chain.off, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands, holdings: holdings,
     vatDocs: vatDocs, // [2026.10.16 1:1 고객W] 주택 여부 질문의 근거
     priorCalc: priorCalc, // [2026.10.18 정밀분석 3차 고객Z] 당초 신고 계산근거(양도일·취득일·고시일·감면·비과세 지번)
     officeFees: officeFees, filingCase: filingCase, // [2026.10.18 정밀분석 국외자산] 국내 거래가 0건인 국외자산 사건도 사무소 신고 수수료를 국외자산 카드 양도비 후보로(trcOverseas_)
@@ -51423,6 +51546,11 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   const has = function (v) { return v != null && String(v).trim() !== '' && String(v) !== '0'; };
   const asked = function (target) { return items.some(function (x) { return x.ask && x.ask.target === target; }); };
   const q = function (id, kind, text, ask, detail) { items.push(caseProcItem_(id, kind, text, ask, detail)); };
+  // 0) [2026.10.29 거래 사슬] 사건 거래 사슬과 이어지지 않는 계약서 — 칸에 쓰지 않았으니 어떤 서류인지 먼저 정한다(답하면 다음 한 바퀴에 반영)
+  ((rf && rf.chainOff) || []).forEach(function (o) {
+    q('evidence:사슬밖:' + o.file, 'check', '계약서 「' + o.file + '」가 이 사건 거래 사슬과 이어지지 않습니다 — ' + o.why + '. ' + (o.party ? '양도·취득 칸에 쓰지 않았습니다.' : '참고로도 쓰지 않았습니다.') + ' 어떤 서류인지 정해 주세요.',
+      { mode: 'options', label: '사슬 밖 계약서', options: [{ label: '이 사건 서류 아님 — 뺌', decide: 'done', note: '뺌' }, { label: '이 사건 서류 — 씀', decide: 'done', note: '이 사건 서류' }] });
+  });
   // 1) 양도인 카드
   const s0 = st.transferSellers[0];
   if (!has(s0.name)) q('trc:seller.name', 'missing', '양도인 카드 「성명」 — 신고서 양도인란·전자신고 파일에 들어가는 필수 칸입니다. 매도 계약서 서명란·등기부 소유자 기재에서 납세자 이름을 확인하지 못했습니다(계약서가 없거나 서명란을 읽지 못함) — 성명을 넣어 주세요.', { mode: 'input', target: 'calc:seller.name', input: 'text', label: '양도인 성명', cands: c.납세자 ? [{ v: c.납세자, src: '사건 납세자' }] : [] });
@@ -51560,6 +51688,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (!has(a.acquisitionDate) && !asked('calc:' + p + '.acquisitionDate')) {
       if (dCands.length) q(i === 0 ? 'tr:giftAcqDate' : 'tr:giftAcqDate:' + i, 'judge', (shG ? lab + '— ' : '') + (giftC ? '증여로 받은 부동산' + (shG ? ' 지분' : '') + '입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : dCands.some(function (x) { return x.nomatch; }) ? '취득일 — 판 물건과 소재지로 짝지은 취득 계약서·등기부 기재를 찾지 못해(매도 계약서가 없는 수용·계약서 미제출 등) 납세자가 산 계약서의 잔금일을 후보로 보여드립니다. 판 물건과 같은 부동산의 계약서면 고르세요 — 취득일은 잔금일·등기접수일 중 빠른 날(§98)이고, 보유기간(장기보유특별공제·세율)이 이 날부터 셉니다.'
         : dCands.some(function (x) { return /손글씨로 고쳤을 수 있음/.test(x.src); }) ? '취득일 — 취득 계약서의 잔금일(인쇄 글자)보다 법무사 정산서·취득세 납부 날짜가 며칠 앞서 자동으로 정하지 않았습니다(잔금일을 손글씨로 고친 정정은 글자인식이 읽지 못하고, 잔금을 앞당겼을 수도 있음). 계약서 원문의 잔금일·정정 날인을 보고 실제 잔금일을 고르세요 — 취득일은 잔금일·등기접수일 중 빠른 날(§98)이고 보유기간이 이 날부터 셉니다.' // [2026.10.18 정밀분석 11]
+        : dCands.some(function (x) { return /§162①8호/.test(x.src); }) ? '취득일 — 분양권·입주권 등 완성되지 않은 자산으로 산 물건입니다. 계약서 잔금일은 권리의 대금 청산일이라, 그때 목적물이 완성되지 않았으면 취득일은 완성된 날입니다(소득세법 시행령 §162①8호, 건설 중 건물은 4호 준용 — 사용승인일 등). 날짜마다 근거를 보고 골라 주세요. 사용승인일이 후보에 없으면 건축물대장으로 확인하세요 [확인 필요].'
         : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).'), { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: dCands });
       else if (holdOf(a).some(function (h) { return h.acq.length; })) { const hh = holdOf(a).filter(function (h) { return h.acq.length; }); q('trc:' + p + '.acquisitionDate', 'judge', '취득정보 ' + lab + '「취득일」 — 계약서로는 정하지 못해 보유 자산 목록(등기부·토지·건축물대장)에서 이 물건(' + a.assetLocation + ')의 날짜를 후보로 보여드립니다. 취득일은 잔금일·등기접수일 중 빠른 날(§98, 시행령 §162①), 신축 건물은 사용승인일(§162①4)입니다 — 대장 변동일은 등기 접수일과 며칠 다를 수 있어 등기부·계약서로 확인하세요.', { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [].concat.apply([], hh.map(function (h) { return h.acq.map(function (x) { return { v: x.v, src: h.kind + ' ' + x.src }; }); })) }); }
       else q('trc:' + p + '.acquisitionDate', 'missing', '취득정보 ' + lab + '「취득일」을 서류에서 정하지 못했습니다 — 보유기간(장기보유특별공제율·단기 세율·1세대1주택 2년 요건)을 세는 시작일이라 계산 전 필수입니다. 취득 계약서 잔금일·등기부 소유권 이전 접수일을 찾지 못했으니 그 서류를 넣거나 잔금일·등기접수일 중 빠른 날(§98)을 직접 넣어 주세요(상속은 상속개시일, 증여는 증여 등기 접수일).', { mode: 'input', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [] });
@@ -51803,6 +51932,7 @@ function trcOverview_(c, ov, rf, lines, items) {
   S.needs = needs;
   if (S.facts.costsEarly && !ans.costs) lines.push('비용(취득비용·양도비용)은 취득가액을 정하기 전이지만 지금 묻습니다 — ' + S.facts.costsEarly + '(실지거래가액 갈래의 필요경비, §97①2호·시행령 §163)');
   trcQuestions_(c, rf, txs, S, ans, lines, items);
+  try { if (typeof ledgerChainPut_ === 'function') ledgerChainPut_(c.id, rf); } catch (e) { lines.push('⚠ 거래 사슬을 장부에 적지 못함: ' + String(e && e.message || e).slice(0, 80)); } // [2026.10.29 거래 사슬] 장부 화면·넥스 요약이 같이 본다
   // [small0] 잠정값 칸 — 계산기 양도계약 카드에 '확인 전' 표시(값은 0이라 비용 목록에 줄을 넣지 않음 — 신고서 필요경비 명세에 0원 줄이 생기지 않게)
   // 세무비용은 질문(tr:taxfee)을 실제로 물을 때만 잠정 — 사무소 영수증이 있어 묻지 않으면(비용 확정에서 들어감) 잠정이 아니다(개발용 고객Q·고객J)
   if (!items.some(function (it) { return it.id === 'tr:taxfee'; })) needs.forEach(function (n) { if (n.p === 'taxfee') n.prov = ''; });

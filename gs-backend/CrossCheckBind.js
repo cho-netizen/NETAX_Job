@@ -179,6 +179,16 @@ function cxBind_(c, st, facts) {
       hit.forEach(function (f) { acqVals.push({ v: String(f.value), src: (f.src.docType || '서류') + ' ' + f.src.file + ' ' + f.kind, doc: f.src.docType || '서류', kind: f.kind, law: true, lawWhy: acqRule[2] }); });
       if (!hit.length) noFill = acqRule[2] + ' — 그 날짜가 서류에 없어 판정 안 함(등기 접수일은 정의가 아님)';
     }
+    // [2026.10.29 §162①8호] 분양권·입주권·분양(공급) 계약으로 산 물건 — 그 계약의 잔금일은 "권리"의 대금 청산일이다. 잔금일이 완성 무렵(사용승인일, 없으면 등기부 보존 접수일)보다
+    //  앞서거나 완성일 서류가 없으면 대금 청산일까지 목적물이 미완성이라 취득시기는 완성된 날(시행령 §162①8호, 4호 준용) — 잔금일·접수일로 판정하지 않고 묻는다(양도 사실 정리와 같은 규칙)
+    if (!noFill) {
+      const unfin = cons.filter(function (x) { return x.side === 'buy' && x.balDate && /분양권|입주권|분양\s*\(?\s*공급/.test(String(x.doc || '')); });
+      if (unfin.length) {
+        const appr = facts.filter(function (f) { return f && f.src && f.kind === '사용승인일' && cxSure_(f) && f.keys && f.keys.asset && cxAkSame_(f.keys.asset, ak); }).map(function (f) { return String(f.value); })[0] || '';
+        const done8 = appr || (regs.filter(function (r) { return /보존/.test(r.cause || '') && r.date; }).map(function (r) { return r.date; }).sort()[0] || '');
+        if (!done8 || unfin.some(function (x) { return x.balDate < done8; })) acqVals.forEach(function (x) { x.law = false; }), noFill ='완성되지 않은 자산(분양권·입주권 등)의 취득 — 대금 청산일까지 목적물이 미완성이면 취득시기는 완성된 날(소득세법 시행령 §162①8호, 4호 준용) — 판정 안 하고 묻기';
+      }
+    }
     // 지분마다 나눈 자산(같은 물건에 계약 여럿)은 취득일이 지분마다 다르다 — 그 자산 값이 납세자 소유권 줄 날짜 중 하나인지만 본다(재점검 11)
     const shareSplit = cts.length > 1 && assets.filter(function (q) { return cxAkSame_(cxAk_(q.assetLocation), ak); }).length > 1;
     if (shareSplit) fields.push({ path: 'a' + i + '.acquisitionDate', key: 'acquisitionDate', label: '취득일(지분)', input: 'date', cur: adate, vals: mine.map(function (r) { return { v: r.date, src: '등기부 ' + r.file + ' 소유권 이전 접수(' + (r.cause || '원인?') + ')', doc: '등기부', kind: '접수일' }; }), anyOf: true, noFill: '지분마다 취득일이 다름 — 판정 안 하고 그 값이 소유권 줄 날짜 중 하나인지만 봄' });
