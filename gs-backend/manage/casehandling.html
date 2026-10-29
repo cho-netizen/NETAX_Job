@@ -1197,6 +1197,7 @@
           + '<button type="button" class="ghost-btn" data-lg-tab="links">③ 칸으로 간 길 — 다름 ' + esc(nSt('칸:', /^서류와 다름|^서류 값과 다름/)) + ' · 서류에 없는 값 ' + esc(nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/)) + ' · 서류와 같음 ' + esc(nSt('칸:', /^서류와 일치|^서류 1/)) + ' · 세무사님 값 ' + esc(nSt('칸:', /^세무사님/)) + '</button>'
           + '<button type="button" class="ghost-btn" data-lg-tab="rows">④ 칸 장부 — 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + '</button>'
           + (fl ? '<button type="button" class="ghost-btn" data-lg-tab="tools">⑤ 도구 — 공부 조회 ' + esc(fb0.공부 || 0) + '필지 · 추정 ' + esc(fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교</button>' : '')
+          + '<button type="button" class="ghost-btn" data-lg-tab="adv">⑥ 자문 — 쟁점 ' + esc(((r.자문 || {}).쟁점 || []).length) + ' · 대안 ' + esc(((r.자문 || {}).대안 || []).length) + ' · 권고 ' + esc(((r.자문 || {}).권고 || []).length) + ' · 보고서 ' + esc(((r.자문 || {}).보고서 || []).length) + '</button>'
           + '</div></div>';
         // ⓪ 사건 흐름 — 마지막 한 바퀴 · 가설 · 사건개요 · 처리방향 · 확보할 증빙
         if (fl){
@@ -1321,6 +1322,25 @@
           th5 += '<div id="chLgToolOut" style="margin-top:8px;"></div></div>';
           h += th5;
         }
+        // [2026.10.30 2단계] ⑥ 자문 — 세무사님 원문(10-29) "도구는 충분한데 왜 도구를 활용하여 고급 자문을 할 수 없냐고?" / "신고사건은 극히 일부분이다"
+        //  쟁점·대안·근거·위험·권고·보고서 — 넥스 case_ledger do=advice와 같은 서버 함수(case_proc step ledgerAdvice). 숫자는 계산 저장본으로만 잇는다. 세무사님이 적은 항목은 넥스가 못 바꿈
+        (function(){
+          var A = r.자문 || {}, KINDS = ['쟁점', '대안', '근거', '위험', '권고', '보고서'];
+          var th6 = '<div data-lg-sec="adv" style="display:none; margin-top:8px;">';
+          th6 += '<div style="color:var(--sub);">사건의 자문 뼈대 — 무엇이 쟁점이고, 어떤 대안을 어느 계산 저장본으로 견주었고, 근거·위험은 무엇이며, 무엇을 권했고, 어느 보고서로 냈는지. 넥스가 적은 것과 세무사님이 적으신 것이 한 곳에 있습니다(세무사님 항목은 넥스가 바꾸지 못합니다).</div>';
+          KINDS.forEach(function(k){
+            var list = A[k] || [];
+            th6 += '<div style="margin-top:8px;"><b>' + esc(k) + '</b> <span style="color:var(--sub);">' + esc(list.length) + '개</span>'
+              + (list.length ? tbl(['제목', '내용', '저장본·근거·파일', '상태·누가', ''], list.map(function(x){
+                  var sv = (x.저장본 || []).map(function(s){ return (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
+                  var extra = sv.concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).join(' · ');
+                  return '<tr>' + cell(x.제목, 260) + cell(x.내용 || '', 360, ' color:var(--sub);') + cell(extra, 300) + cell([x.상태, x.누가].filter(Boolean).join(' · '), 120) + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn" data-adv-del="' + esc(x.id) + '" data-adv-kind="' + esc(k) + '" style="padding:1px 6px; font-size:11.5px;" title="이 항목을 지웁니다(기록은 남음)">지우기</button></td></tr>';
+                }).join('')) : '<div class="log-empty">아직 없음</div>') + '</div>';
+          });
+          th6 += '<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>적기</b><select id="chAdvKind">' + KINDS.map(function(k){ return '<option>' + esc(k) + '</option>'; }).join('') + '</select><input id="chAdvTitle" type="text" placeholder="한 줄 제목" style="width:260px;"><input id="chAdvText" type="text" placeholder="설명(선택)" style="width:300px;"><input id="chAdvCalc" type="text" placeholder="계산 저장본 id(쉼표, 선택)" style="width:180px;"><button type="button" id="chAdvAdd" class="ghost-btn">적기</button></div>';
+          th6 += '<div id="chAdvOut" style="margin-top:6px;"></div></div>';
+          h += th6;
+        })();
         if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.구분 || '') + ' — 납부세액 ' + esc(Number(s.최종세액 || 0).toLocaleString('ko-KR')) + '원</div>'; }).join('') + '</div>';
         if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
         h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
@@ -1363,6 +1383,15 @@
           });
         });
         var imp = document.getElementById('chLgImport'); if (imp) imp.addEventListener('click', function(){ imp.disabled = true; call({ step: 'ledgerImport' }).then(function(res){ if (res) reload(); else imp.disabled = false; }); });
+        // [2026.10.30 2단계] ⑥ 자문 단추 — 넥스 case_ledger do=advice와 같은 서버 입구(case_proc step ledgerAdvice)
+        var advAdd = document.getElementById('chAdvAdd');
+        if (advAdd) advAdd.addEventListener('click', function(){
+          var t = (document.getElementById('chAdvTitle').value || '').trim(); if (!t){ showToast('제목을 적어 주세요.', 'warning'); return; }
+          var cs = (document.getElementById('chAdvCalc').value || '').split(/[,\s]+/).filter(Boolean);
+          advAdd.disabled = true;
+          call({ step: 'ledgerAdvice', item: document.getElementById('chAdvKind').value, title: t, text: (document.getElementById('chAdvText').value || '').trim(), calc: cs.length ? cs : undefined }).then(function(res){ advAdd.disabled = false; if (res && res.ok) reload(); else if (res) document.getElementById('chAdvOut').textContent = res.error || '적지 못했습니다'; });
+        });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-adv-del]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerAdvice', item: b.getAttribute('data-adv-kind'), id: b.getAttribute('data-adv-del'), remove: true }).then(function(res){ if (res && res.ok) reload(); else { b.disabled = false; if (res) showToast(res.error || '지우지 못했습니다', 'warning'); } }); }); });
         // [2026.10.29 계획서 3판] ⑤ 도구 단추 — 넥스 case_ledger do=lookup·estimate·calc·compare와 같은 서버 입구(case_proc step ledgerLookup·ledgerEstimate·ledgerCalc·ledgerCompare)
         var tOut = document.getElementById('chLgToolOut');
         var showTool = function(title, res, lines){ if (!tOut) return; tOut.innerHTML = '<div><b>' + esc(title) + '</b>' + (lines || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">· ' + esc(l) + '</div>'; }).join('') + '</div>'; };

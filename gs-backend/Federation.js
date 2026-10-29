@@ -445,8 +445,8 @@ function commSeamList_() {
   return [
     // 세무사님 ↔ 넥스
     { 길: '세무사님 원칙 → 넥스(공통원칙·마스터 프로필)', fn: function () { var t = getMasterProfileText_(); return !t ? '마스터 프로필을 못 읽음' : (getCommonPrinciplesText_() && t.indexOf('공통원칙') === -1 ? '공통원칙이 넥스 지시문에 안 붙음' : ''); } },
-    { 길: '사건 지휘 넥스도 같은 원칙·최근 바뀐 기능', fn: function () { var m = getMasterProfileText_(), b = caseProcAiNexBase_(); return m && b.indexOf(m.slice(0, 200)) === -1 ? '사건 지휘 지시문에 마스터 프로필이 없음' : ''; } },
-    { 길: '채팅창 말씀·최근 대화 → 사건 지휘 넥스', fn: function () { var t = caseProcAiFirstText_({ id: 'seam' }, { entry: '시험', userText: COMM_SEAM_TEST_SAID_, chat: [{ role: 'user', text: COMM_SEAM_TEST_CHAT_ + ' 한 줄' }] }); return t.indexOf(COMM_SEAM_TEST_SAID_) === -1 ? '세무사님 말씀이 첫 글에 안 들어감' : t.indexOf(COMM_SEAM_TEST_CHAT_) === -1 ? '최근 대화가 첫 글에 안 들어감' : ''; } },
+    { 길: 'GAS가 깨운 넥스(미리 읽기·중요한 순간)도 같은 원칙·최근 바뀐 기능', fn: function () { var m = getMasterProfileText_(), b = caseProcAiNexBase_(); return m && b.indexOf(m.slice(0, 200)) === -1 ? 'GAS가 깨운 넥스 지시문에 마스터 프로필이 없음' : ''; } },
+    { 길: '채팅창 말씀·최근 대화 → 사건을 맡은 넥스(같은 대화창 넥스)', fn: function () { var src = String(callClaude); if (src.indexOf('nxCaseChatGuide_') === -1 && String(buildContextSystemPrompt).indexOf('nxCaseChatGuide_') === -1) return '사건이 연결된 대화에 일하는 방식이 안 붙음'; return src.indexOf('nxCaseChatTools_(') === -1 ? '사건이 연결된 대화에 사건 도구가 안 붙음' : ''; } },
     // [2026.10.23 T6 2단계] GAS → Cloud Run 읽기 전용 시험 서비스(/health) — 주소(T6_READER_URL)가 있을 때만 본다(2단계 배포 전엔 길이 없는 것이 정상)
     // [2026.10.27 T6 3단계] 화면이 직접 부르는 길 — /health는 토큰 없이 ok(깨우기용), /read는 서비스 안에서 ID 토큰 검증. 직결이 켜져 있으면(T6_READER_DIRECT) 끊김이 곧 ⚡ 지연이라 더 중요
     { 길: '화면 → Cloud Run 시험 서비스(/health' + (/^(1|true|on|켬)$/i.test(String(PropertiesService.getScriptProperties().getProperty('T6_READER_DIRECT') || '')) ? ', 직결 켬' : ', 직결 꺼짐') + ')', fn: function () { var url = String(PropertiesService.getScriptProperties().getProperty('T6_READER_URL') || (typeof T6_READER_URL_DEFAULT_==='string' ? T6_READER_URL_DEFAULT_ : '')).trim().replace(/\/+$/, ''); if (!url) return ''; try { var r = UrlFetchApp.fetch(url + '/health', { headers: { Authorization: 'Bearer ' + ScriptApp.getIdentityToken() }, muteHttpExceptions: true }); var code = r.getResponseCode(); if (code !== 200) return '/health 응답 ' + code; var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {} return j.ok ? '' : '/health 응답이 ok가 아님'; } catch (e) { return '시험 서비스를 못 부름: ' + String(e && e.message || e).slice(0, 100); } } },
@@ -454,13 +454,13 @@ function commSeamList_() {
     { 길: '시험 서비스 폴더 공유 = 완료 안 된 사건만', fn: function () { return typeof t6ShareCheck_ === 'function' ? t6ShareCheck_() : '공유 점검 함수 없음'; } },
     // 넥스 ↔ GAS(도구)
     { 길: '대화창 넥스 조회 길(사건처리·AI 판단·AI 회의 결론)', fn: function () { return need(lookupKinds(), ['caseproc', 'ai_review', 'law_decisions'], '조회 종류'); } },
-    { 길: '사건 지휘 넥스 도구(질문·도구 부족 신고·AI 회의 결론)', fn: function () { return need(leadTools(), ['ask_user', 'report_tool_gap', 'law_decisions'], '사건 지휘 도구'); } },
+    { 길: '사건을 맡은 넥스 — 질문(장부 do=ask)·도구 부족 신고(한 길: 개발자 기록 + 사건처리 빠진 도구 기록)·AI 회의 결론', fn: function () { var m = need(chatTools(), ['case_ledger', 'report_capability_gap'], '대화창 도구') || need(leadTools(), ['law_decisions'], '사건 도구'); if (m) return m; return String(callClaude).indexOf('caseProcAiLogGaps_') === -1 ? '사건 연결 대화의 도구 부족 신고가 사건처리 빠진 도구 기록에 안 감' : ''; } },
     // [2026.10.22 넥스가 주인] 넥스 → GAS 한 바퀴(gas_run, 화면이 실행) → GAS가 못 푼 자리 → 넥스. 첫 글이 gas_run을 부르라고 하는지, 도구가 있는지
     // [2026.10.22 작업 기록부] 세무사님이 GAS 도구로 직접 하신 일 → 사건 기록부 → 넥스(채팅 조회·사건 지휘)가 읽음
     { 길: '세무사님 직접 작업 → 작업 기록부 → 넥스', fn: function () { if (typeof caseProcNexView_ !== 'function' || typeof caseProcLog_ !== 'function') return '작업 기록부가 이 판에 없음'; var v = caseProcNexView_({ id: 'seam', 증빙목록: [], 사건개요: {} }); return v && v.작업기록 ? '' : '현황에 작업기록 칸이 없음'; } },
-    { 길: '넥스가 GAS 한 바퀴를 도구로 부름(사건처리 주인은 넥스)', fn: function () { var m = need(leadTools(), ['case_status', 'gas_run', 'gas_finish'], '사건 지휘 도구'); if (m) return m; if (typeof CASEPROC_AI_CLIENT_TOOLS_ === 'undefined' || CASEPROC_AI_CLIENT_TOOLS_.indexOf('gas_run') === -1) return '화면 실행 도구 표에 gas_run이 없음'; return caseProcAiLiveModeText_(1000).indexOf('gas_run') === -1 ? '넥스 지시문에 gas_run 순서가 없음' : ''; } },
+    { 길: '넥스가 GAS 한 바퀴를 도구로 부름(사건처리 주인은 넥스)', fn: function () { var m = need(leadTools(), ['case_status', 'gas_run', 'gas_finish'], '사건 지휘 도구'); if (m) return m; if (typeof CASEPROC_AI_CLIENT_TOOLS_ === 'undefined' || CASEPROC_AI_CLIENT_TOOLS_.indexOf('gas_run') === -1) return '화면 실행 도구 표에 gas_run이 없음'; return nxCaseChatGuide_('점검').indexOf('gas_run') === -1 ? '넥스 지시문에 gas_run 순서가 없음' : ''; } },
     // [2026.10.23 ㅊ1] 규칙 없는 서류·메모의 글 → 넥스(doc_view) — 빠지면 넥스가 세무사님께 메모 내용을 되묻는다(점검표 139)
-    { 길: '규칙 없는 서류·메모 글 → 사건 지휘 넥스(doc_view)', fn: function () { var m = need(leadTools(), ['doc_view'], '사건 지휘 도구'); if (m) return m; return typeof caseProcAiLiveModeText_ === 'function' && caseProcAiLiveModeText_(1000).indexOf('doc_view') === -1 ? '지시문이 doc_view를 안 알려 줌' : ''; } },
+    { 길: '서류 읽기 한 길 — 원문은 file_read, GAS 정리값은 doc_facts(doc_view·doc_text는 대화창 넥스에 주지 않음)', fn: function () { var m = need(leadTools(), ['file_read', 'doc_facts'], '사건 도구'); if (m) return m; if (typeof NX_CASE_CHAT_SKIP_ === 'undefined' || NX_CASE_CHAT_SKIP_.indexOf('doc_view') === -1) return 'doc_view가 대화창 넥스에 다시 붙음(같은 글을 다르게 보여 줌)'; return nxCaseChatGuide_('점검').indexOf('file_read') === -1 ? '지시문이 file_read를 안 알려 줌' : ''; } },
     // [2026.10.28] 사건 장부(CaseLedger.js) — 세무사님 말씀·넥스 판단·서류 값이 한 장부에, 채팅 넥스(case_ledger·조회 ledger)·지휘 넥스(ledger_read·case_ledger)·화면(case_proc ledger*)이 같은 입구
     { 길: '사건 장부 — 채팅 넥스·지휘 넥스·화면이 같은 장부에 적음', fn: function () { var m = need(chatTools(), ['case_ledger'], '대화창 도구') || need(lookupKinds(), ['ledger'], '조회 종류') || need(leadTools(), ['ledger_read', 'case_ledger'], '사건 지휘 도구'); if (m) return m; if (typeof ledgerApi_ !== 'function' || typeof ledgerSet_ !== 'function') return '장부 함수가 이 판에 없음'; var n = ledgerNorm_('a0.assetType', '주택(주거용 오피스텔)'); return n && n.v === 'house' ? '' : '고르기 칸 글→코드 변환이 안 됨'; } },
     // [2026.10.28 시정 2단계] 질문·결정은 장부 줄 — 저장 입구(caseProcLoad_·caseProcPatch_)가 장부에서 붙이고 떼며, 직결 서비스는 장부를 받아 돌고 돌려준다(t6RecordForReader_ → t6MergeLedger_)
@@ -484,7 +484,10 @@ function commSeamList_() {
       var have = DRIVE_TOOLS.map(function (t) { return t.name; }).concat(JOB_AI_TOOLS_.map(function (t) { return t.name; }));
       var all = caseProcAiLiveTools_().map(function (t) { return t.name; });
       var got = have.concat(nxCaseChatTools_(have).map(function (t) { return t.name; }));
-      var miss = all.filter(function (n) { return got.indexOf(n) === -1 && ['ask_user', 'save_draft', 'report_tool_gap'].indexOf(n) === -1; });
+      var miss = all.filter(function (n) { return got.indexOf(n) === -1 && NX_CASE_CHAT_SKIP_.indexOf(n) === -1; }); // [2026.10.30] 일부러 뺀 것(같은 일을 하는 대화창 도구가 있거나 한 길로 합친 것)은 빼고 본다
+      if (got.indexOf('report_parts') === -1) return '보고서 재료 도구(report_parts)가 대화창 넥스에 없음 — 문서작성 탭 기능을 넥스가 못 씀';
+      if (typeof nxCaseCalcToolSave_ !== 'function' || src.indexOf('nxCaseCalcToolSave_(') === -1) return '사건 연결 대화의 계산 도구 결과가 경우(안) 저장본으로 안 남음';
+      if (typeof ledgerAdvPut_ !== 'function' || String(ledgerToolRun_).indexOf("'advice'") === -1) return '자문 장부(쟁점·대안·근거·위험·권고·보고서)가 이 판에 없음';
       if (miss.length) return '사건 도구 중 대화창 넥스에 없는 것 ' + miss.length + '개: ' + miss.join(', ');
       if (String(nxCaseChatGuide_('x')).indexOf('잠정치') === -1) return '사건을 맡은 넥스 지시문에 잠정치 방식이 없음';
       return '';
@@ -499,7 +502,8 @@ function commSeamList_() {
       if (['ledgerLookup', 'ledgerEstimate', 'ledgerCompare'].some(function (s) { return String(ledgerApi_).indexOf("'" + s + "'") === -1; })) return '세무사님 화면 입구(case_proc step ledgerLookup·Estimate·Compare)가 없음';
       if (String(cpOutsideRun_).indexOf('ledgerPubPut_') === -1) return 'GAS 한 바퀴 바깥 조회 결과가 장부 공부 사실에 안 남음';
       if (String(caseFlowRound_).indexOf('ledgerLookup_') === -1) return 'GAS 규칙(새 필지 → 공부 조회)이 한 바퀴에 없음';
-      var turn = String(caseProcAiTurn_);
+      var turn = ''; // [2026.10.30] 옛 사건 지휘(caseProcAiTurn_)는 지웠다 — 넥스를 묶던 장치가 되살아났는지는 대화창 넥스 사건 도구 실행(nxCaseChatToolRun_)에서 본다
+      if (typeof caseProcAi_ === 'function' || typeof caseProcAiTurn_ === 'function') return '옛 사건 지휘 길이 되살아남(넥스가 둘)';
       if (turn.indexOf("cut.push('doc_view'") !== -1) return '넥스 도구를 한 바퀴 결과 뒤에 빼는 장치가 다시 들어옴';
       if (/content\.push\(\{\s*type:\s*'tool_use'[^}]*name:\s*'gas_run'/.test(turn)) return '범위를 정하면 gas_run을 강제로 붙이는 장치가 다시 들어옴';
       if (typeof ledgerEvWhere_ !== 'function' || ledgerEvWhere_('토지대장') !== '도구' || ledgerEvWhere_('주민등록초본') !== '고객') return '받을 증빙의 받는 곳(도구·세무사님·고객)을 못 가름';
@@ -555,7 +559,7 @@ function commSeamList_() {
       const m = need(leadTools(), ['set_read_scope', 'ask_user'], '사건 지휘 도구'); if (m) return m;
       const au = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'ask_user'; })[0];
       if (!au || !au.input_schema.properties.target || !au.input_schema.properties.cands) return 'ask_user에 넣을 칸(target)·후보(cands)가 없음 — 화면이 "확인했음" 단추만 띄운다';
-      return caseProcAiLiveModeText_(1000).indexOf('set_read_scope') === -1 ? '지시문에 읽을 범위 도구가 없음' : ''; } },
+      return nxCaseChatGuide_('점검').indexOf('set_read_scope') === -1 ? '지시문에 읽을 범위 도구가 없음' : ''; } },
     // [2026.10.28 읽을 대상 ①~④] 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" → "그렇게 만들자." — 판정 함수 하나·체크 목록·목록만 읽기·넥스 파일 단위
     // [2026.10.28] 세무사님 원문: "ai는 포괄적으로 파일에 접근할 수 있어야 하지만 gas는 구체적으로 필요한 것만 콕 집어서 알려주어야 한다" — 넥스 읽기(어떤 파일이든)와 GAS 체크 목록은 다른 길
     // [2026.10.28] 세무사님 원문: "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록 해야 한다"
@@ -563,7 +567,7 @@ function commSeamList_() {
       if (typeof cpWatchCase_ !== 'function' || typeof cpWatchTick_ !== 'function' || typeof cpNexPrereadWake_ !== 'function' || typeof cpNexChatNote_ !== 'function' || typeof cpNexPrereadSwitch_ !== 'function') return '감시·미리 읽기 서버 함수가 이 판에 없음'; if (typeof cpLedgerStaleRun_ !== 'function' || typeof ledgerKbBuild_ !== 'function') return '서류 변동 → 사건 장부 바로 갱신 함수가 이 판에 없음';
       let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; }); } catch (e) { trig = true; }
       if (!trig) return '미리 읽기 틱 트리거가 없음(cpPrereadEnsureTrigger_)';
-      const txt = typeof caseProcAiLiveModeText_ === 'function' ? caseProcAiLiveModeText_(1000) : '';
+      const txt = typeof nxCaseChatGuide_ === 'function' ? nxCaseChatGuide_('점검') : '';
       if (txt.indexOf('✓ 전에 읽음') === -1) return '지휘 지시문에 미리 읽기 표시(🆕/✏/✓) 설명이 없음';
       if (typeof cpWatchNight_ !== 'function' || cpWatchNight_(new Date(2026, 0, 1, 23, 0)) !== true || cpWatchNight_(new Date(2026, 0, 1, 9, 0)) !== false) return '밤 시간 판정(22~07시)이 다름';
       return '';
@@ -574,7 +578,7 @@ function commSeamList_() {
       if (names.indexOf('case_files') === -1 || names.indexOf('file_read') === -1) return '지휘 넥스에 case_files/file_read 도구가 없음';
       const lk = (typeof JOB_AI_TOOLS_ !== 'undefined' ? JOB_AI_TOOLS_ : []).filter(function (t) { return t.name === 'job_lookup'; })[0];
       if (lk) { const en = ((lk.input_schema || {}).properties || {}).kind; if (!en || !en.enum || en.enum.indexOf('case_files') === -1 || en.enum.indexOf('file_read') === -1) return '대화창 넥스 job_lookup에 case_files/file_read가 없음'; }
-      const txt = typeof caseProcAiLiveModeText_ === 'function' ? caseProcAiLiveModeText_(1000) : '';
+      const txt = typeof nxCaseChatGuide_ === 'function' ? nxCaseChatGuide_('점검') : '';
       if (txt.indexOf('어떤 파일이든') === -1 || txt.indexOf('GAS가 읽을 파일은') === -1) return '지휘 지시문에 넥스 폭넓은 읽기·GAS 체크 목록 구분이 없음';
       return '';
     } },
@@ -586,7 +590,7 @@ function commSeamList_() {
       const st = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'set_read_scope'; })[0];
       if (!st || !st.input_schema.properties.on || !st.input_schema.properties.off) return '지휘 넥스 set_read_scope에 파일 단위(on/off)가 없음';
       // [2026.10.28 뒤] 세무사님 결정으로 "목록이 없으면 세무사님께 먼저" 문구는 지움(넥스가 읽고 판단해 직접 정함) — 새 지시문 기대: 체크 목록은 GAS 몫 + 읽기 → 판단 → set_read_scope 순서, 도구 설명 "GAS가 읽을 파일"
-      const txt = caseProcAiLiveModeText_(1000);
+      const txt = nxCaseChatGuide_('점검');
       if (txt.indexOf('체크 목록은 GAS') === -1) return '지시문에 "체크 목록은 GAS(…)가 읽을 파일을 콕 집어 주는 것"이 없음';
       if (txt.indexOf('case_files로 폴더 파일 목록 보기') === -1 || txt.indexOf('set_read_scope로 GAS에게 체크 목록 지정') === -1) return '지시문에 "case_files 목록 보기 → file_read → 판단 → set_read_scope → gas_run" 순서가 없음';
       if (!/GAS가 읽을 파일/.test(String(st.description || ''))) return 'set_read_scope 설명에 "GAS가 읽을 파일"이 없음(넥스 읽기 범위와 구분)';

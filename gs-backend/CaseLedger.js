@@ -991,7 +991,7 @@ function ledgerView_(c) {
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-5).map(function (e) { return { id: e.id, 구분: e.구분, 최종세액: e.최종세액, 계산일: e.계산일 }; });
-  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
+  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
 }
 // [2026.10.29] 세무사님 "ai없이 수동으로 사건을 처리할때 사용자가 사건장부를 수시로 참조해야 하는 것이 아닌가?" → "권장대로 하자"(처리개요 맨 위 + 사건 화면 어디서나)
 //  사건을 다루는 화면마다 맨 위 띠와 옆 패널이 부르는 가벼운 묶음 — 흐름(띠·마지막 한 바퀴·가설·사건개요·처리방향·확보할 증빙) + 남은 물음. 서류 사실 전부(kb)는 싣지 않는다
@@ -1038,6 +1038,7 @@ function ledgerNexBrief_(c, max) {
     공부사실: (fl.공부 || []).map(function (p) { return { 소재지: cut(p.소재지, 60), 받음: (p.받음 || []).map(function (it) { return cut(it.label, 20) + ': ' + cut(it.v, 70); }).slice(0, 8), 못받음: (p.못받음 || []).map(function (it) { return cut(it.label, 20) + ': ' + cut(it.err, 50); }).slice(0, 4) }; }),
     조회안한필지: (fl.조회대상 || []).filter(function (t) { return !t.조회함; }).map(function (t) { return cut(t.소재지, 60) + ' (' + cut(t.어디서, 40) + ')'; }),
     칸값: calc,
+    자문: ledgerAdvBrief_(c, L), // [2026.10.30 2단계] 쟁점·대안·근거·위험·권고·보고서(저장본 이름·세액 붙임)
     거래사슬: ((fl.사슬 && fl.사슬.rows) || []).map(function (r) { return { 물건: cut(r.물건, 60), 납세자위치: r.납세자위치, 고리: (r.고리 || []).map(function (s) { return s.at + ' ' + (s.kind === '등기' ? '등기 ' + s.what + ' ' + s.to : s.what + ' ' + s.to) + (s.밖 ? ' [사슬 밖]' : ''); }).slice(0, 8) }; }),
     사슬밖계약서: ((fl.사슬 && fl.사슬.off) || []).map(function (o) { return o.file + ' — ' + cut(o.why, 120); }),
     안내: '사건 장부 요약(토큰 0). 가설과다름·다른값서류는 세무사님께 여쭐 거리다(세무사님 값은 바꾸지 않는다). 서류 사실은 case_ledger do:facts(find_kind·find_file·find_value·find_to)로 찾고, 장부 전체는 ledger_read(사건 지휘)·job_lookup kind=ledger(대화창). 조회안한필지가 있으면 case_ledger do=lookup, 의뢰서 등 가설에 거래가 있는데 칸이 비면 do=estimate 뒤 do=calc(시험 계산), 다른 세목과 견주려면 do=compare. 받을 것의 [도구]는 조회로, [세무사님]·[고객]은 세무사님께 항목별로 여쭐 거리다(고객에게 직접 보내지 않는다).'
@@ -1136,7 +1137,10 @@ function ledgerToolRun_(input, by) {
   else if (d === 'hyp') r = ledgerHypAdd_(c, input, who); // [2026.10.29 계획서 3단계 — 세무사님 결정 권장안 1] 규칙이 못 뽑은 의뢰서 글은 넥스가 읽어 가설을 보탬
   else if (d === 'facts') r = ledgerKbFind_(c, input); // [2026.10.29 넥스 2] 서류 사실 찾기(읽기만)
   else if (d === 'brief') r = Object.assign({ ok: true }, ledgerNexBrief_(c, Number(input.limit) > 1000 ? Number(input.limit) : 6000)); // [2026.10.29 넥스 1] 장부 요약(읽기만)
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·lookup·estimate·compare·import·hyp·facts·brief 중 하나' };
+  else if (d === 'advice') r = ledgerAdvPut_(c, input, who); // [2026.10.30 2단계] 자문 장부 — 쟁점·대안·근거·위험·권고·보고서 적기·고치기·지우기
+  else if (d === 'advice_view') r = { ok: true, 자문: ledgerAdvBrief_(c) }; // 자문 장부 보기(읽기만)
+  else if (d === 'cite') { const ce = typeof caseProcCalcCite_ === 'function' ? caseProcCalcCite_(c, input.id) : null; r = ce ? Object.assign({ ok: true }, ce) : { ok: false, error: '그 계산 저장본이 이 사건에 없음: ' + (input.id || '') }; } // [2026.10.30] 저장본 하나 인용(입력·결과 — 보고서 숫자의 원천)
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1162,6 +1166,8 @@ function ledgerApi_(c, body) {
     case 'ledgerLookup': return ledgerLookup_(c, body, body.by || who); // [2026.10.29 계획서 3판] 📒 ⑤ 도구 — 넥스 case_ledger와 같은 함수
     case 'ledgerEstimate': return ledgerEstimate_(c, body, body.by || who);
     case 'ledgerCompare': return ledgerCompare_(c, body, body.by || who);
+    case 'ledgerAdvice': return ledgerAdvPut_(c, body, body.by || who); // [2026.10.30 2단계] 📒 ⑥ 자문 — 넥스 case_ledger do=advice와 같은 함수
+    case 'ledgerAdviceView': return { ok: true, 자문: ledgerAdvBrief_(c) };
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
     case 'ledgerFlow': return ledgerFlowBrief_(c); // [2026.10.29] 사건 화면마다 맨 위 장부 띠·옆 패널(가벼운 묶음 — 서류 사실 전부는 싣지 않음)
@@ -2135,4 +2141,59 @@ function ledgerEvToolHas_(L, label) {
 function ledgerPubRows_(L) {
   const pub = (L && L.pub) || {};
   return Object.keys(pub).map(function (p) { const r = pub[p], v = r.v || {}; return { path: p, 소재지: v.loc, 어디서: v.from || '', 때: r.at || '', 누가: (r.src && r.src.who) || '', 지역: v.region || '', 받음: (v.items || []).filter(function (it) { return it.ok && it.k !== 'geo'; }), 못받음: (v.items || []).filter(function (it) { return !it.ok; }), 링크: v.links || null }; });
+}
+
+// ============================================================
+// [2026.10.30 2단계] 자문 장부 — 쟁점·대안·근거·위험·권고·보고서 (전체 설계도 3층 "더할 것")
+// 세무사님 원문(10-29): "도구는 충분한데 왜 도구를 활용하여 고급 자문을 할 수 없냐고?" / "신고사건은 극히 일부분이다" / (10-30) "기존 보고서 모음을 참고하라"
+//  자문의 뼈대(무엇이 쟁점이고, 어떤 대안을 어떤 계산 저장본으로 견주었고, 근거·위험은 무엇이며, 무엇을 권했고, 어느 보고서로 냈는지)를 사실과 같은 장부 한 곳(L.adv)에 둔다.
+//  넥스(case_ledger do=advice)·세무사님 화면(📒 ⑥ 자문)이 같은 함수로 읽고 쓴다. 세무사님이 적은 항목은 넥스가 바꾸지 못한다(칸 장부와 같은 주인 순서).
+//  숫자는 여기 적지 않고 계산 저장본 id(calc)로만 잇는다 — 보고서는 저장본에서 인용(암산 금지).
+// ============================================================
+var LEDGER_ADV_KINDS_ = { 쟁점: 'issues', 대안: 'alts', 근거: 'basis', 위험: 'risks', 권고: 'recs', 보고서: 'reports' };
+function ledgerAdvList_(L) {
+  const A = (L && L.adv) || {}, out = {};
+  Object.keys(LEDGER_ADV_KINDS_).forEach(function (k) { out[k] = (A[LEDGER_ADV_KINDS_[k]] || []).filter(function (x) { return x && !x.removed; }); });
+  return out;
+}
+function ledgerAdvPut_(c, input, who) {
+  input = input || {};
+  const kind = String(input.item || (LEDGER_ADV_KINDS_[input.kind] ? input.kind : '') || '').trim(), key = LEDGER_ADV_KINDS_[kind];
+  if (!key) return { ok: false, error: 'item은 ' + Object.keys(LEDGER_ADV_KINDS_).join('·') + ' 중 하나' };
+  const title = String(input.title || '').trim().slice(0, 120);
+  if (!title && !input.id) return { ok: false, error: 'title(한 줄 제목)이 필요합니다' };
+  const by = String(who || '넥스').slice(0, 6), rank = function (w) { return w === '세무사님' ? 3 : w === '넥스' ? 2 : 1; };
+  const arr = function (x) { return (Array.isArray(x) ? x : (x == null || x === '' ? [] : [x])).map(function (s) { return String(s).slice(0, 200); }).slice(0, 20); };
+  return ledgerMutate_(c.id, function (L) {
+    L.adv = L.adv || {}; const list = L.adv[key] = L.adv[key] || [];
+    let it = list.filter(function (x) { return x && ((input.id && x.id === String(input.id)) || (!input.id && title && x.title === title)); })[0];
+    if (it && rank(it.by) > rank(by)) return { ok: false, error: '세무사님이 적으신 항목은 바꾸지 않습니다 — 다르면 말씀으로 여쭌다', 지금: { id: it.id, title: it.title, text: it.text } };
+    if (input.remove) {
+      if (!it) return { ok: false, error: '지울 항목을 찾지 못함' };
+      it.removed = true; it.hist = (it.hist || []).concat([{ at: caseProcNow_(), by: by, what: '지움', why: String(input.why || '').slice(0, 120) }]).slice(-10);
+      ledgerLogTo_(L, { by: by, what: '자문 ' + kind + ' 지움', path: 'adv:' + it.id, detail: it.title });
+      return { ok: true, 지움: it.id };
+    }
+    const now = caseProcNow_(), isNew = !it;
+    if (!it) { it = { id: kind.slice(0, 1) + (list.length + 1) + '_' + Date.now().toString(36).slice(-4), at: now }; list.push(it); }
+    if (title) it.title = title;
+    if (input.text != null) it.text = String(input.text).slice(0, 2000);
+    if (input.calc != null) it.calc = arr(input.calc);          // 계산 저장본 id(tc_…) — 대안·권고·보고서가 인용한 숫자의 원천
+    if (input.refs != null) it.refs = arr(input.refs);          // 근거: 조문·판례·예규·절세 아이템·지침 이름(실재 확인한 것만)
+    if (input.links != null) it.links = arr(input.links);       // 이어진 항목 id(대안 → 쟁점, 위험 → 대안, 권고 → 대안 등)
+    if (input.status != null) it.status = String(input.status).slice(0, 10); // 잠정·확정·보류
+    if (input.file != null) it.file = String(input.file).slice(0, 160);     // 보고서 파일 이름·id
+    it.by = by; it.when = now;
+    it.hist = (it.hist || []).concat([{ at: now, by: by, what: isNew ? '적음' : '고침', why: String(input.why || '').slice(0, 120) }]).slice(-10);
+    ledgerLogTo_(L, { by: by, what: '자문 ' + kind + (isNew ? ' 적음' : ' 고침'), path: 'adv:' + it.id, detail: it.title + (it.calc && it.calc.length ? ' · 저장본 ' + it.calc.join(',') : '') });
+    return { ok: true, id: it.id, kind: kind, title: it.title, 새로: isNew };
+  });
+}
+// 넥스·화면이 보는 자문 장부 요약 — 항목마다 제목·상태·누가·잇는 저장본(그 저장본의 이름·세액은 사건 계산 결과에서 바로 붙임)
+function ledgerAdvBrief_(c, L) {
+  const lists = ledgerAdvList_(L || ledgerLoad_(c.id)), calcs = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
+  const cite = function (id) { const e = calcs.filter(function (x) { return x && String(x.id) === String(id); })[0]; return e ? { id: e.id, 이름: e.안 ? e.안.이름 : '기본 저장본', 세목: e.세목, 최종세액: e.최종세액 } : { id: id, 없음: '사건에 이 저장본이 없음' }; };
+  const out = {};
+  Object.keys(lists).forEach(function (k) { out[k] = lists[k].map(function (x) { const o = { id: x.id, 제목: x.title, 상태: x.status || '', 누가: x.by || '' }; if (x.text) o.내용 = String(x.text).slice(0, 300); if (x.calc && x.calc.length) o.저장본 = x.calc.map(cite); if (x.refs && x.refs.length) o.근거 = x.refs; if (x.links && x.links.length) o.이음 = x.links; if (x.file) o.파일 = x.file; return o; }); });
+  return out;
 }
