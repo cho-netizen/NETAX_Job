@@ -42,7 +42,7 @@ var LEDGER_ENUMS_ = {
   'buyer.relation': { codes: ['none', 'sibling', 'lineal', 'spouse', 'relative'], ko: { none: '특수관계 없음', sibling: '형제자매', lineal: '직계존비속', spouse: '배우자', relative: '기타 친족' } },
   transferCause: { codes: ['sale', 'expropriation', 'exchange', 'gift_burden', 'other'], ko: { sale: '매매', expropriation: '수용', exchange: '교환', gift_burden: '부담부증여', other: '기타' } }
 };
-var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '등기부', '전소유자 분양계약서', '분양권 매매계약서', '영수증', '간편계산서', '신고서', '등초본', '가족관계', '기타'];
+var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '등기부', '전소유자 분양계약서', '분양권 매매계약서', '영수증', '간편계산서', '신고서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
 
 function ledgerFolder_() {
   const root = getChiefManagerFolder_();
@@ -209,13 +209,16 @@ function ledgerBatch_(caseId, ops) {
     preps.forEach(function (p) {
       if (p.error) { out.errors.push(p.error); return; }
       if (p.drop) { const d = p.drop, r0 = L.rows[d.path]; if (!r0) return; delete L.rows[d.path]; out.dropped++; ledgerLogTo_(L, { by: d.by || 'GAS', what: '값 지움', path: d.path, detail: (r0.label || d.path) + ' ' + ledgerValueText_(d.path, r0.v) + ' — 서류를 다시 읽어 더는 나오지 않는 값' }); return; }
-      if (p.ask) { const a = p.ask, prev = L.rows[a.path]; if (prev && (prev.state === '확정' || prev.state === '추정') && (LEDGER_RANK_[prev.src && prev.src.kind] || 0) > 1) return; ledgerAskInner_(L, a.path, { label: a.label, question: a.question, cands: a.cands, by: a.by || 'GAS', needDoc: !!a.needDoc, keep: true }); out.asked++; return; }
+      // [2026.10.29] GAS 물음은 사람·넥스가 넣은 추정 칸을 물음으로 되돌리지 않는다(ledgerQWrite_와 같음)
+      if (p.ask) { const a = p.ask, prev = L.rows[a.path]; if (prev && (prev.state === '확정' || prev.state === '추정') && ((LEDGER_RANK_[prev.src && prev.src.kind] || 0) > 1 || ((a.by || 'GAS') === 'GAS' && ledgerKeptEstimate_(prev)))) return; ledgerAskInner_(L, a.path, { label: a.label, question: a.question, cands: a.cands, by: a.by || 'GAS', needDoc: !!a.needDoc, keep: true }); out.asked++; return; }
       const r = ledgerSetInner_(L, p);
       if (r.ok && r.asked) out.asked++; else if (r.ok) out.set++; else if (r.refused) out.refused++; else out.errors.push(r.error);
     });
     return out;
   });
 }
+// [2026.10.29] 세무사님·넥스가 넣은 추정(의뢰서 값 추정으로·가정값) — GAS의 "서류에 없음" 물음이 되돌리지 않는 칸
+function ledgerKeptEstimate_(r) { return !!(r && r.state === '추정' && r.v !== '' && r.v != null && r.src && /^(세무사님|넥스)$/.test(String(r.src.who || ''))); }
 function ledgerSetPrep_(input) {
   input = input || {};
   const path = String(input.path || '').trim();
@@ -669,6 +672,11 @@ function ledgerDocRoles_(c, docs, unknown) {
     if (unk[f.name]) {
       const noText = !!(f.p && !f.p.t && f.p.nt);
       const n = f.p && typeof f.p.n === 'number' ? f.p.n : -1, head = (f.p && f.p.head) || '';
+      // [2026.10.29 운영 확인에서 드러남] job이 공부 조회로 스스로 만든 확보자료 PDF(cpSecuredFlush_ — 머리 "○○ / 대상 / 조회 조건 / 조회 사이트")는 세무사님께 무슨 서류인지 묻지 않는다 — 공부 사실은 장부 공부 사실(L.pub)에 이미 있다
+      if (/대상[\s\S]{0,240}조회 조건/.test(head) && /(토지이용계획|토지대장|임야대장|건축물대장|공시|공동주택가격|개별주택가격|매매사례|실거래|조정대상|기준시가)/.test(head.slice(0, 60))) {
+        ops.push({ path: path, value: '공부 자료(조회)', kind: '규칙', sure: '확실', by: 'GAS', file: String(f.name).slice(0, 80), quote: head.slice(0, 120), why: 'job 공부 조회가 만든 확보자료 — 사람이 낸 서류가 아님' });
+        return;
+      }
       // 읽은 것이 무엇인지 그대로 보인다 — "글자는 읽음"이 아니라 "N자 읽음, 시작 글: …". 글자가 아주 적으면(암호 잠김·빈 쪽·그림) 증빙 받을 것으로
       const tiny = noText || (n >= 0 && n < 40);
       const readTxt = noText ? '글자를 하나도 읽지 못함(그림만·흐린 사진·암호 잠김)' : (n >= 0 ? '읽은 글자 ' + n + '자' + (head ? ' · 시작: "' + head.slice(0, 80) + '"' : '') : '읽은 글자 수 기록 없음(지난 읽기)');
@@ -882,7 +890,10 @@ function ledgerQWrite_(caseId, rem, dec, o) {
       // 2) 이번 목록의 질문 — 그 칸 줄(없으면 질문 줄)에 붙인다. 칸 값이 세무사님·넥스로 이미 정해졌으면 물음을 세우지 않는다(답하면 닫힘)
       Object.keys(want).forEach(function (id) {
         const it = want[id].it, path = rowOf(id) || ledgerQPath_(it), prev = L.rows[path];
-        const hi = prev && (prev.state === '확정' || prev.state === '추정') && (LEDGER_RANK_[prev.src && prev.src.kind] || 0) > 1;
+        // [2026.10.29 운영 확인에서 드러남] 추정(의뢰서 등·가정값)이 들어 있는 칸은 GAS의 "서류에 없음" 물음이 물어볼 것으로 되돌리지 않는다 — 세무사님 10-28 "확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고".
+        //  예전엔 공부 조회가 확보자료 PDF를 넣어 폴더 감시가 한 바퀴를 다시 돌리면 추정 칸이 물음으로 되돌아가 시험 계산이 "칸이 비었다"로 멈췄다. 서류 값이 오면 서류가 추정을 바꾸고(ledgerSetInner_), 받을 서류는 확보할 증빙에 그대로 남는다
+        //  GAS가 스스로 넣은 추정(서류 없어 0원 등)은 예전처럼 물음으로 다시 선다 — 사람·넥스가 넣은 추정만 지킨다
+        const hi = prev && (prev.state === '확정' || prev.state === '추정') && ((LEDGER_RANK_[prev.src && prev.src.kind] || 0) > 1 || ledgerKeptEstimate_(prev));
         const decided = (prev && prev.qd && prev.qd[id] && prev.qd[id].d) || (dec && dec[id] && dec[id].d);
         if (!hi && !decided && !/^ledger:/.test(id)) { // ledger:<칸> 질문은 장부 물음을 그대로 보인 것 — 다시 세우지 않는다
           const a = it.ask || {};
