@@ -31474,6 +31474,42 @@ const CASEPROC_BASE_LABEL_ = { transfer: '양도일', gift: '증여일', inherit
 //  · 기존 단계 입구(basic·evidence·overview…)는 그대로([⚡ GAS로 다시 처리]·넥스 도구).
 // =========================================================
 var CASEPROC_ALL_BLOCKERS_ = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」', 'ih:debts': '「상속 채무 확정」' };
+// [2026.10.30 자문 사건 계획서(세무사님 "계획서대로 만들어라")] 자문은 아직 하지 않은 거래나 여러 안을 견주는 일이라 서류가 없는 것이 정상이다.
+//  GAS 순서는 업무유형을 보지 않아 의뢰서만 있는 자문 사건에서도 신고용 판단 질문이 계산을 막았다 — 판정은 이 한 곳에서(자리마다 따로 판단하지 않음).
+//  대상: 양도·증여·상속·사업 세목의 자문·상담. 신고 사건·불복 세목(이의신청·경정청구·해명자료·세무조사·자금출처소명 등)은 그대로.
+function caseProcIsAdvisory_(c) {
+  if (!c) return false;
+  const tax = String(c._세목작업관리 || c.세목 || '');
+  return /^(transfer|gift|inheritance|business)$/.test(tax) && /^(자문|상담)$/.test(String(c.업무유형 || '').trim());
+}
+// 자문 사건의 GAS 질문을 "확인할 사항"으로 — 질문은 지우지 않고(사이드바·장부 "물어볼 것"에 그대로) 계산만 막지 않게 표시(ask.provisional — 화면·서버 계산 관문이 이미 이 표시를 본다).
+//  값 자체가 없는 칸(양도가액 등 — 후보도 없는 빈칸)은 계산할 수 없으므로 막는 것 그대로, 말투만 자문에 맞게. 핵심 서류 안내는 질문이 아니라 받을 서류 줄로.
+function caseProcAdvisoryItems_(c, r) {
+  if (!r || !Array.isArray(r.items) || !caseProcIsAdvisory_(c)) return r;
+  const pre = '[자문 — 확인할 사항, 계산은 잠정으로 진행] ';
+  const docLines = [];
+  r.items = r.items.filter(function (it) {
+    if (!it || !it.id) return true;
+    if (/^grasp:양도핵심서류/.test(it.id)) { docLines.push('📎 받을 서류(자문 — 실제 거래가 있으면 받아 확인): ' + String(it.text || '').replace(/^📂\s*사건파악\s*—\s*/, '').slice(0, 300)); return false; }
+    return true;
+  });
+  r.items.forEach(function (it) {
+    if (!it || !it.id) return;
+    const a = it.ask || (it.ask = {});
+    if (CASEPROC_ALL_BLOCKERS_[it.id]) {
+      if (!a.provisional) a.provisional = { why: it.id === 'ov:사건분류' ? '자문 사건 — 사건분류를 고르기 전에는 고른 특례 없이(서류로 이미 정해진 체크만) 시험 계산합니다. 고르시면 다시 계산합니다.' : '자문 사건 — 답하기 전에는 서류로 찾은 값(없으면 0원)으로 시험 계산합니다. 답하시면 다시 계산합니다.' };
+      if (String(it.text || '').indexOf(pre) !== 0) it.text = pre + String(it.text || '');
+      it.advisory = true;
+      return;
+    }
+    if (it.kind === 'missing' && (it.step === 'overview' || !it.step) && /서류|찾지 못|읽지 못|없습니다/.test(String(it.text || '')) && String(it.text || '').indexOf('[자문') !== 0) {
+      it.text = '[자문 — 아직 하지 않은 거래면 서류가 없는 것이 정상입니다. 의뢰 말씀이나 가정한 값을 넣으면 그 값으로 시험 계산하고, 서류는 받을 서류로 둡니다] ' + String(it.text || '');
+      it.advisory = true;
+    }
+  });
+  if (docLines.length && Array.isArray(r.lines)) r.lines = r.lines.concat(docLines);
+  return r;
+}
 function caseProcOpenInputs_(items, decisions) {
   const dec = decisions || {};
   const isInputQ = function (it) { const a = it.ask || {}; if (a.provisional) return false; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:|calc:)/.test(String(a.target || ''))); };
@@ -32974,6 +33010,9 @@ function caseProcBasic0_(c, body) {
   // [2026.10.22 꿰맞추기 점검 묶음1] 일반 규칙: 이미 신고한 사건인지는 서류 내용(이 사건 세목·업무의 홈택스 신고 접수증) 먼저, "양도코리아" 폴더 이름은 보조.
   //  묻지 않을 때는 그 근거를 사건 기본 줄에 드러낸다(이름으로만 정했으면 "폴더 이름으로 짐작")
   else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today && (filedWhy = caseProcAlreadyFiled_(c))) lines.push('법정일(' + c.법정일 + ')이 지났지만 이미 신고한 사건으로 봄 — ' + filedWhy);
+  // [2026.10.30 자문 계획서 ④] 처리시한 유형(자문·상담·해명자료·세무조사·자금출처소명)은 법정 기한이 아니라 사무소가 정한 날 — "기한후신고"를 묻지 않고 처리시한을 고칠지·그대로 갈지만
+  else if (manual && c.법정일 && c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', work_deadlineLabel_(c.업무유형) + ' ' + c.법정일 + '이(가) 지났습니다 — 새 처리시한을 넣으시거나, 그대로 진행하시면 "그대로 진행"을 누르세요.',
+    { mode: 'options', target: 'case:법정일', input: 'date', withInput: true, label: '처리시한', options: [{ label: '그대로 진행(처리시한만 지남)', decide: 'done', note: '처리시한 지남 — 그대로 진행' }] }));
   else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다.', { mode: 'options', options: [{ label: '기한후신고로 진행', decide: 'done', note: '기한후신고로 진행' }, { label: '법정일이 틀림 — 기준일부터 확인', mode: 'base' }] }));
   if (!manual) caseProcDateCheck_(c, body || {}, items);
   tbk('기한·날짜 대조');
@@ -35454,6 +35493,7 @@ function caseProcOverview_(c, body) {
   try { if (!late && r && r.ok && typeof cxResolve_ === 'function') cxResolve_(c, r); } catch (e) { if (r && r.lines) r.lines.push('⚠ 교차검증 중 오류: ' + (e && e.message || e)); }
   tmk('교차검증', tt); tt = Date.now();
   try { if (r && r.ok && typeof caseProcAiNexAskItems_ === 'function') caseProcAiNexAskItems_(c, r); } catch (e) {} // [2026.10.21 넥스 하나로] 넥스가 질문 목록 밖에서 여쭌 것(AiLeadLive.js)
+  try { if (r && r.ok) caseProcAdvisoryItems_(c, r); } catch (e) { if (r && r.lines) r.lines.push('⚠ 자문 사건 질문 정리 중 오류: ' + (e && e.message || e)); } // [2026.10.30 자문 계획서] 장부에 적기 전에 — 사이드바·장부·넥스가 같은 표시를 받는다
   // [2026.10.28] 증여·상속도 사건 장부에 — 계산기 칸(처리개요 칸·상속 사실)과 질문을 장부 줄로(양도는 trcStore_에서)
   // [2026.10.28 시정 2단계] GAS가 낸 질문은 화면이 저장해 주기를 기다리지 않고 이 자리에서 장부 질문 줄로(세목 가리지 않음 — 넥스 지휘·점검처럼 화면 없이 도는 길에서도 질문이 남는다).
   //  가벼운 다시 맞추기·시간 넘김이면 사건파악·메모 질문을 다시 만들지 않았으므로 "이번 목록에 없다"고 떼지 않는다(partial)
@@ -40606,7 +40646,12 @@ function caseProcOutput_(c) {
   const items = [], lines = [];
   const label = CASEPROC_TAX_LABEL_[c.세목];
   const last = caseProcLastCalc_(c).last;
-  if (label) {
+  // [2026.10.30 자문 계획서 ⑤] 자문 사건은 신고서 서식 안내 대신 경우(안)별 계산 저장본 — 보고서가 인용하는 것
+  if (label && caseProcIsAdvisory_(c)) {
+    const cases = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && (e.안 || e.저장값); });
+    lines.push(cases.length ? '계산 저장본 ' + cases.length + '건(경우별) — 자문 보고서·검토서에 인용할 수 있습니다: ' + cases.slice(-6).map(function (e) { return ((e.안 && e.안.이름) || '기본') + (Number.isFinite(e.최종세액) ? ' ' + Number(e.최종세액).toLocaleString('ko-KR') + '원' : ''); }).join(' · ') + (cases.length > 6 ? ' 외' : '') + ' (신고서 서식은 신고 사건에서 씁니다)'
+      : '계산 저장본이 아직 없습니다 — 시험 계산을 돌리면 경우별로 남아 보고서에 인용할 수 있습니다(신고서 서식은 신고 사건에서 씁니다).');
+  } else if (label) {
     if (last && last.저장값) lines.push({ text: '세액인쇄: 계산 결과로 신고서 서식이 준비돼 있습니다.', ask: { mode: 'view', view: 'print' }, btn: '🖨 세액인쇄 열기' });
     else lines.push('세액인쇄: 계산 결과가 저장되면 서식이 켜집니다.');
   }
@@ -40773,7 +40818,11 @@ function caseProcApplyBase_(caseId, date, file, what) {
   if (!found) return { ok: false, error: '사건을 찾지 못했습니다.' };
   const c = work_readRow_(col, found.row);
   const newDue = work_calcDeadline_(c.세목, c.업무유형, date);
-  const text = String(file || '').slice(0, 80) + '(으)로 ' + (what || '기준일') + ' ' + date + ' 반영 → 법정일 ' + (newDue || '(규칙 없음)') + (c.기준일 || c.법정일 ? ' (이전 기준일 ' + (c.기준일 || '없음') + ', 법정일 ' + (c.법정일 || '없음') + ')' : '');
+  // [2026.10.30 자문 계획서 ⑦] 처리시한 유형은 기준일로 법정일을 다시 계산하지 않으므로(아래 p.법정일) 일지에 신고기한 날짜를 적지 않는다
+  const manualDue = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
+  const text = manualDue
+    ? String(file || '').slice(0, 80) + '(으)로 ' + (what || '기준일') + ' ' + date + ' 반영' + (c.기준일 ? ' (이전 기준일 ' + c.기준일 + ')' : '') + ' — 처리시한(' + (c.법정일 || '없음') + ')은 그대로'
+    : String(file || '').slice(0, 80) + '(으)로 ' + (what || '기준일') + ' ' + date + ' 반영 → 법정일 ' + (newDue || '(규칙 없음)') + (c.기준일 || c.법정일 ? ' (이전 기준일 ' + (c.기준일 || '없음') + ', 법정일 ' + (c.법정일 || '없음') + ')' : '');
   const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: caseProcLogHead_(file) + text, dueDate: '' }]);
   const p = { id: caseId, 기준일: date, 작업일지: log };
   if (c.기준일 === date && newDue && WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) === -1) p.법정일 = newDue;
@@ -40842,12 +40891,15 @@ function caseProcDraft_(c) {
   const last = caseProcLastCalc_(c).last;
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
   const L = [];
-  L.push('# ' + (c.사건명 || c.고객명 || '') + ' 종합검토서(초안)', '', '> 사건처리 도구가 ' + caseProcToday_() + ' 만든 초안입니다 — 세무사 검토 전 문서입니다. ⚠[확인필요] 표시는 자료로 확정되지 않은 값입니다.', '');
+  // [2026.10.30 자문 계획서 ⑥] 자문 사건은 "자문 검토서(초안)" — 사건분류 칸 대신 검토한 경우(안) 수, 계산은 잠정 시험 계산임을 밝힘(파일 이름은 그대로: 도구가 만든 파일로 거르는 이름 규칙이 있음)
+  const adv = caseProcIsAdvisory_(c);
+  const scenN = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.안; }).length;
+  L.push('# ' + (c.사건명 || c.고객명 || '') + (adv ? ' 자문 검토서(초안)' : ' 종합검토서(초안)'), '', '> 사건처리 도구가 ' + caseProcToday_() + ' 만든 초안입니다 — 세무사 검토 전 문서입니다. ⚠[확인필요] 표시는 자료로 확정되지 않은 값입니다.' + (adv ? ' 자문 사건이라 계산은 의뢰 말씀·가정 값으로 돌린 잠정 시험 계산입니다(신고용 확정 계산 아님).' : ''), '');
   L.push('## 1. 사건 개요', '', '| 항목 | 내용 |', '|---|---|',
     '| 세목·업무 | ' + label + ' · ' + (c.업무유형 || '') + ' |', '| 납세자 | ' + (c.납세자 || '⚠[확인필요]') + ' |',
     '| ' + (CASEPROC_BASE_LABEL_[c.세목] || '기준일') + ' | ' + (c.기준일 || '⚠[확인필요]') + ' |', '| ' + (WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1 ? work_deadlineLabel_(c.업무유형) : '법정신고기한') + ' | ' + (c.법정일 || '⚠[확인필요]') + ' |',
-    '| 사건분류 | ' + (ov.사건분류 || '⚠[확인필요]') + ' |', '');
-  L.push('## 2. 세액 계산 결과', '');
+    adv ? '| 검토한 경우(안) | ' + (scenN ? scenN + '건 — 아래 2절 표' : '아직 없음(시험 계산을 경우별로 저장하면 여기에)') + (ov.사건분류 ? ' · 기본 계산의 사건분류: ' + ov.사건분류 : '') + ' |' : '| 사건분류 | ' + (ov.사건분류 || '⚠[확인필요]') + ' |', '');
+  L.push(adv ? '## 2. 시험 계산(잠정) — 경우별' : '## 2. 세액 계산 결과', '');
   if (last) L.push('- ' + (last.계산일 || '') + ' ' + (last.구분 || '') + ' 계산' + (Number.isFinite(last.최종세액) ? ' — 납부할 세액 **' + won(last.최종세액) + '**' : '') + ' (기본 저장본 ' + String(last.id || '') + ')', '', '```', String(last.요약 || '').slice(0, 3000), '```', '');
   else L.push('⚠[확인필요] 아직 계산 결과가 저장되지 않았습니다.', '');
   // [2026.10.27 경우별 저장] 세무사님 원문 "저장된 세액계산 내용을 인용하여 검토서에 반영할 수 있어야 한다" — 경우(안) 저장본은 세목을 가리지 않고(양도세 안·증여세 안·상속세 안) 저장본 숫자만 표로. 넥스가 암산한 숫자는 들어올 길이 없다
