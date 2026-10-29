@@ -62,6 +62,10 @@
   // [2026.09] "기준일"이라는 추상 용어 대신 세목마다 실제로 부르는 이름을 그대로 쓴다.
   var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', objection: '처분일' };
 
+  // [2026.10.30 버그수정] 오늘 날짜는 이 컴퓨터(서울) 날짜로 — toISOString은 세계표준시라 0시~9시에 어제 날짜가 됐다
+  // (10-30 새벽 등록한 사건의 의뢰일이 모두 10-29로 들어감, 기한 지남 ⏰ 표시도 같은 시간에 하루 늦었음).
+  function workTodayStr_(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
   function workDeadlineFieldLabel_(upType){
     return WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1 ? '처리시한' : '법정일';
   }
@@ -397,7 +401,7 @@
       workCaseList.innerHTML = '<div class="log-empty">' + (q ? '검색 결과가 없습니다.' : '등록된 사건이 없습니다.') + '</div>';
       return;
     }
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = workTodayStr_();
     filtered.slice().sort(function(a, b){ return (a.법정일 || '9999').localeCompare(b.법정일 || '9999'); }).forEach(function(c){
       var prog = workProgress(c);
       var overdue = c.법정일 && c.법정일 < todayStr && c.상태 !== '완료';
@@ -517,7 +521,7 @@
     if (prefill.의뢰일) document.getElementById('wcNewRequestDate').value = prefill.의뢰일;
 
     document.getElementById('wcNewRequestDateToday').addEventListener('click', function(){
-      document.getElementById('wcNewRequestDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('wcNewRequestDate').value = workTodayStr_();
     });
 
     document.getElementById('wcNewCancel').addEventListener('click', function(){
@@ -723,7 +727,7 @@
     refillEditUptype(true);
 
     document.getElementById('wcEditRequestDateToday').addEventListener('click', function(){
-      document.getElementById('wcEditRequestDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('wcEditRequestDate').value = workTodayStr_();
     });
 
     // [2026.09] "사건명이 고객명만큼 크고 편집 가능한 칸으로 화면에 노출돼 있는 게 왜냐"는
@@ -880,7 +884,7 @@
       overlay.id = 'nxDialogOverlay';
       overlay.className = 'modal-overlay';
       overlay.style.zIndex = '9999';
-      var todayStr = new Date().toISOString().slice(0, 10);
+      var todayStr = workTodayStr_();
       overlay.innerHTML =
         '<div class="modal-panel" style="width:min(360px, 92vw);">' +
           '<div class="modal-head"><span>완료 처리</span></div>' +
@@ -939,7 +943,7 @@
       row.style.marginLeft = (depth * 20) + 'px';
       row.style.borderLeft = depth ? '2px solid var(--line)' : 'none';
       row.style.padding = '4px 0 4px 8px';
-      var overdue = node.dueDate && node.dueDate < new Date().toISOString().slice(0, 10) && node.status !== '완료';
+      var overdue = node.dueDate && node.dueDate < workTodayStr_() && node.status !== '완료';
       row.innerHTML =
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">' +
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +

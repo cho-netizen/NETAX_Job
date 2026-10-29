@@ -23446,6 +23446,9 @@ const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 // [2026.09.18 신규] "상담을 자문과 상담으로 세분" — 자문도 정해진 법정기한이 없는 유형이라
 // 같은 자리에 둔다(workmanage.html의 WORK_MANUAL_DEADLINE_TYPES_와 반드시 같은 값 유지).
 const WORK_MANUAL_DEADLINE_TYPES_ = ['자문', '상담', '해명자료', '세무조사', '자금출처소명'];
+// [2026.10.30] 위 유형은 사건의 법정일 칸에 법정 기한이 아니라 사무소가 정한 처리시한이 든다 — 넥스·GAS 글에 "법정일"로 보이면
+// 넥스가 법정 기한으로 읽는다(10-30 가상불복 시험: "사건 화면의 법정일 2026-11-05는 근거를 확인하지 못했습니다"). 화면 workDeadlineFieldLabel_과 같은 구분.
+function work_deadlineLabel_(upType) { return WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1 ? '처리시한(사무소가 정한 날 — 법정 기한 아님)' : '법정일'; }
 // [2026.09 버그수정] 캘린더 정리(work_deleteEventsByTag_)가 "오늘부터 +2년"까지만 검색해서
 // 지웠는데, 경정청구(5년)처럼 법정일이 그보다 먼 사건은 그 일정을 편집할 때마다(담당자만
 // 바꿔도 work_syncCaseCalendar_가 매번 통째로 지웠다 다시 만듦) 예전 일정을 못 찾아 못 지우고
@@ -24686,7 +24689,9 @@ function work_createCase0_(params) {
       }
     }
 
-    sheet.appendRow(newRow);
+    // [2026.10.30 버그수정] Date를 그대로 appendRow하면 이 시트가 7시간 이른 시각으로 받아들여 생성일·수정일이 7시간 일렀다(10-30 실측: 01:52 등록 →
+    // 2026-10-29T09:52Z). 행을 다시 쓸 때와 같은 변환(work_rowForWrite_)을 거쳐 쓴다.
+    sheet.appendRow(work_rowForWrite_(col, newRow, sheet));
     SpreadsheetApp.flush();
     work_valuesDirty_(); // [2026.10.23 속도 ㅅ6차] 행이 늘었으니 시트 메모는 버린다
     // [2026.10.09 버그수정] 시트에 쓴 날짜시각은 다시 읽으면 시트 시간대 때문에 몇 시간 어긋나고 밀리초가 잘린 값으로 돌아온다.
@@ -32945,7 +32950,7 @@ function caseProcBasic0_(c, body) {
   const items = [], lines = [];
   const today = caseProcToday_();
   CP_BASIC_T_ = { t0: Date.now(), m: {} }; let tb = Date.now(); const tbk = function (k) { CP_BASIC_T_.m[k] = Math.round((Date.now() - tb) / 100) / 10; tb = Date.now(); };
-  lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 기준일 ' + (c.기준일 || '—') + ' · 법정일 ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
+  lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 기준일 ' + (c.기준일 || '—') + ' · ' + work_deadlineLabel_(c.업무유형) + ' ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
   try { caseProcRouteLines_(c).forEach(function (l) { lines.push(l); }); } catch (e) {} // [2026.10.18 정밀분석 원인3] 서류로 정한 사건 경로
   tbk('사건 경로');
   try { caseProcGrasp_(c).lines.forEach(function (l) { lines.push(l); }); } catch (e) { lines.push('⚠ 사건파악 가설을 세우지 못함: ' + (e && e.message || e)); } // [2026.10.17 재설계] 작업관리는 가설의 한 출처일 뿐
@@ -32963,7 +32968,7 @@ function caseProcBasic0_(c, body) {
   const manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
   let filedWhy = ''; // [2026.10.22 꿰맞추기 점검 묶음1] 이미 신고한 사건으로 본 근거(caseProcAlreadyFiled_)
   // [2026.10.15] 법정일은 기준일에서 계산된다 — 기준일이 아직 없으면 기준일 질문 하나로 충분(같은 일을 두 번 묻지 않음)
-  if (!c.법정일 && (manual || c.기준일)) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다.', manual ? { mode: 'input', target: 'case:법정일', input: 'date' } : { mode: 'base' }));
+  if (!c.법정일 && (manual || c.기준일)) items.push(caseProcItem_('basic:법정일', 'missing', (manual ? work_deadlineLabel_(c.업무유형) : '법정일(처리기한)') + '이 비어 있습니다.', manual ? { mode: 'input', target: 'case:법정일', input: 'date' } : { mode: 'base' }));
   // [2026.10.16] 사건 폴더에 "양도코리아"(이미 낸 신고서 보관) 폴더가 있으면 신고를 마친 사건 — 기한 경과를 묻지 않는다(정답지 점검 25건 모두에서 불필요 질문)
   // [2026.10.22 꿰맞추기 점검 묶음1] 일반 규칙: 이미 신고한 사건인지는 서류 내용(이 사건 세목·업무의 홈택스 신고 접수증) 먼저, "양도코리아" 폴더 이름은 보조.
   //  묻지 않을 때는 그 근거를 사건 기본 줄에 드러낸다(이름으로만 정했으면 "폴더 이름으로 짐작")
@@ -40195,7 +40200,7 @@ function caseProcStatus_(c, body) {
   rows.push(['사건 기본', CASEPROC_BASE_LABEL_[c.세목] || '기준일', baseMark, (c.기준일 || '') + srcOf('기준일', c.기준일)]);
   const due = c.기준일 ? caseProcDue_(c, c.기준일) : '';
   const manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
-  rows.push(['사건 기본', '법정일', !has(c.법정일) ? '⬜' : (!manual && due && due !== c.법정일 ? '⚠ 확인 필요' : (manual ? '✅' : (baseMark === '✅' ? '✅' : '⚠ 기준일 미확정'))),
+  rows.push(['사건 기본', work_deadlineLabel_(c.업무유형), !has(c.법정일) ? '⬜' : (!manual && due && due !== c.법정일 ? '⚠ 확인 필요' : (manual ? '✅' : (baseMark === '✅' ? '✅' : '⚠ 기준일 미확정'))),
     (c.법정일 || '') + (!manual && due && due !== c.법정일 ? ' — 기준일로 계산하면 ' + due : '')]);
   const keys = { transfer: [['trTransferorName', '양도인 성명'], ['사건분류', '사건분류']], gift: [['giftDoneeName', '수증자'], ['giftDonorName', '증여자'], ['giftRelation', '관계'], ['giftAmount', '증여재산가액'], ['giftDebtAssumed', '인수채무'], ['giftPriorAmount', '10년 합산'], ['사건분류', '사건분류']], inheritance: [['ihDeceasedName', '피상속인'], ['상속인성명', '대표 상속인'], ['상속인수', '상속인 수'], ['ihEstate', '상속세과세가액'], ['사건분류', '사건분류']] }[c.세목] || [];
   let inputsOk = baseMark === '✅' || !CASEPROC_TAX_LABEL_[c.세목], heldInput = '';
@@ -40839,7 +40844,7 @@ function caseProcDraft_(c) {
   L.push('# ' + (c.사건명 || c.고객명 || '') + ' 종합검토서(초안)', '', '> 사건처리 도구가 ' + caseProcToday_() + ' 만든 초안입니다 — 세무사 검토 전 문서입니다. ⚠[확인필요] 표시는 자료로 확정되지 않은 값입니다.', '');
   L.push('## 1. 사건 개요', '', '| 항목 | 내용 |', '|---|---|',
     '| 세목·업무 | ' + label + ' · ' + (c.업무유형 || '') + ' |', '| 납세자 | ' + (c.납세자 || '⚠[확인필요]') + ' |',
-    '| ' + (CASEPROC_BASE_LABEL_[c.세목] || '기준일') + ' | ' + (c.기준일 || '⚠[확인필요]') + ' |', '| 법정신고기한 | ' + (c.법정일 || '⚠[확인필요]') + ' |',
+    '| ' + (CASEPROC_BASE_LABEL_[c.세목] || '기준일') + ' | ' + (c.기준일 || '⚠[확인필요]') + ' |', '| ' + (WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1 ? work_deadlineLabel_(c.업무유형) : '법정신고기한') + ' | ' + (c.법정일 || '⚠[확인필요]') + ' |',
     '| 사건분류 | ' + (ov.사건분류 || '⚠[확인필요]') + ' |', '');
   L.push('## 2. 세액 계산 결과', '');
   if (last) L.push('- ' + (last.계산일 || '') + ' ' + (last.구분 || '') + ' 계산' + (Number.isFinite(last.최종세액) ? ' — 납부할 세액 **' + won(last.최종세액) + '**' : '') + ' (기본 저장본 ' + String(last.id || '') + ')', '', '```', String(last.요약 || '').slice(0, 3000), '```', '');

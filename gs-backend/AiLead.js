@@ -93,7 +93,7 @@ function caseProcAiSumLines_(lines, max) { return (lines || []).slice(0, max || 
 function caseProcAiSumCase_(c) {
   if (!c) return null;
   const ov = c.사건개요 || {};
-  return { 사건: c.사건명, 세목: c.세목, 업무유형: c.업무유형, 납세자: c.납세자, 기준일: c.기준일 || '', 법정일: c.법정일 || '', 처리개요칸수: Object.keys(ov).filter(function (k) { return ov[k] !== '' && ov[k] != null; }).length };
+  return { 사건: c.사건명, 세목: c.세목, 업무유형: c.업무유형, 납세자: c.납세자, 기준일: c.기준일 || '', [typeof work_deadlineLabel_ === 'function' ? work_deadlineLabel_(c.업무유형) : '법정일']: c.법정일 || '', 처리개요칸수: Object.keys(ov).filter(function (k) { return ov[k] !== '' && ov[k] != null; }).length };
 }
 // 단계 결과 → AI가 받을 짧은 글(1,500자 안팎). 줄·질문 수를 줄여 가며 맞춘다.
 // [지침 모의로 고침] 채운 칸의 값 — 판단(고가주택 여부 등)에 쓰는 값이 요약에 안 보였다. 처리개요 값 + 양도면 계산기 자산별 양도·취득 값
