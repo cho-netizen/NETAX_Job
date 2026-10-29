@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 07:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 11:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6684,6 +6684,7 @@ function nxMdOpenWindow(title, src, opts){
           + '<button type="button" class="ghost-btn" data-lg-tab="groups">② 맞대기 — 서류끼리 갈림 ' + esc(nSt('맞대기:', /^미결$/)) + ' · 서류마다 다름 ' + esc(nSt('맞대기:', /^서로 다름/)) + ' · 판정 ' + esc(nSt('맞대기:', /^판정됨$/)) + ' · 일치 ' + esc(nSt('맞대기:', /^일치$/)) + ' · 서류 1종 ' + esc(nSt('맞대기:', /^단독$/)) + '</button>'
           + '<button type="button" class="ghost-btn" data-lg-tab="links">③ 칸으로 간 길 — 다름 ' + esc(nSt('칸:', /^서류와 다름|^서류 값과 다름/)) + ' · 서류에 없는 값 ' + esc(nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/)) + ' · 서류와 같음 ' + esc(nSt('칸:', /^서류와 일치|^서류 1/)) + ' · 세무사님 값 ' + esc(nSt('칸:', /^세무사님/)) + '</button>'
           + '<button type="button" class="ghost-btn" data-lg-tab="rows">④ 칸 장부 — 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + '</button>'
+          + (fl ? '<button type="button" class="ghost-btn" data-lg-tab="tools">⑤ 도구 — 공부 조회 ' + esc(fb0.공부 || 0) + '필지 · 추정 ' + esc(fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교</button>' : '')
           + '</div></div>';
         // ⓪ 사건 흐름 — 마지막 한 바퀴 · 가설 · 사건개요 · 처리방향 · 확보할 증빙
         if (fl){
@@ -6709,8 +6710,10 @@ function nxMdOpenWindow(title, src, opts){
               : '<div style="color:var(--sub); margin-top:2px;">아직 없음(양도 사건에서 서류 읽기·칸 채우기를 한 번 돌면 생깁니다)</div>')
             + (chOff.length ? '<div style="margin-top:4px; color:#b23;">사슬 밖 계약서 ' + esc(chOff.length) + '건 — ' + chOff.map(function(o){ return esc(o.file) + ': ' + esc(o.why); }).join(' / ') + '</div>' : '') + '</div>';
           var evs = (fl.증빙 || []).slice().sort(function(a, b){ var o = { '증빙받을것': 0, '보류': 1, '확정': 2, '무시': 3 }; return (o[a.state] == null ? 9 : o[a.state]) - (o[b.state] == null ? 9 : o[b.state]); });
-          fh += '<div style="margin-top:8px;"><b>확보할 증빙</b> <span style="color:var(--sub);">받을 것 ' + esc(fb0.증빙미확보 || 0) + ' · 확보 ' + esc(fb0.증빙확보 || 0) + ' — 사건개요(세목·사건분류·물건 수)·빈 칸·가설 쟁점이 요구하는 서류. 한 바퀴마다 다시 짜고, 근거가 사라진 GAS 항목은 뺍니다(확보한 것·세무사님이 넣은 것은 그대로)</span>'
-            + (evs.length ? tbl(['서류', '상태', '왜', '만든 이', '요청일 · 확보일'], evs.map(function(x){ var d = x.서류 || {}; var col = x.state === '증빙받을것' ? ' color:#a60;' : ''; return '<tr>' + cell(d.label || x.label, 300) + cell(x.state === '확정' ? '확보' : (ST_KO[x.state] || x.state), 70, col) + cell(d.note || x.why || '', 380, ' color:var(--sub);') + cell(OWNK[x.owner] != null ? OWNK[x.owner] : x.owner, 80) + cell([d.요청일, d.확보일].filter(Boolean).join(' · '), 160, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">확보할 증빙이 아직 없습니다</div>') + '</div>';
+          // [2026.10.29 계획서 3판 4단계] 받는 곳 — 도구(있는 조회로 가져옴)·세무사님(등기부 열람·홈택스 등)·고객. 보이기만 합니다(고객에게 보내지 않음 — 세무사님 10-29 "고객에게 직접 요청하는 것은 아니다")
+          var WHERE_KO = { 도구: '🔎 도구로 조회', 세무사님: '세무사님', 고객: '고객' };
+          fh += '<div style="margin-top:8px;"><b>확보할 증빙</b> <span style="color:var(--sub);">받을 것 ' + esc(fb0.증빙미확보 || 0) + ' · 확보 ' + esc(fb0.증빙확보 || 0) + ' — 사건개요(세목·사건분류·물건 수)·빈 칸·가설 쟁점이 요구하는 서류. 한 바퀴마다 다시 짜고, 근거가 사라진 GAS 항목은 뺍니다(확보한 것·세무사님이 넣은 것은 그대로). 받는 곳이 「도구로 조회」인 것은 ⑤ 도구에서 바로 가져옵니다</span>'
+            + (evs.length ? tbl(['서류', '상태', '받는 곳', '왜', '만든 이', '요청일 · 확보일'], evs.map(function(x){ var d = x.서류 || {}; var col = x.state === '증빙받을것' ? ' color:#a60;' : ''; return '<tr>' + cell(d.label || x.label, 300) + cell(x.state === '확정' ? '확보' : (ST_KO[x.state] || x.state), 70, col) + cell((WHERE_KO[x.받는곳] || x.받는곳 || '') + (x.도구확보 ? ' — 조회로 받음(' + x.도구확보 + ')' : ''), 220, x.받는곳 === '도구' ? (x.도구확보 ? ' color:#2a7;' : ' color:#2563eb;') : '') + cell(d.note || x.why || '', 380, ' color:var(--sub);') + cell(OWNK[x.owner] != null ? OWNK[x.owner] : x.owner, 80) + cell([d.요청일, d.확보일].filter(Boolean).join(' · '), 160, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">확보할 증빙이 아직 없습니다</div>') + '</div>';
           fh += '</div>';
           h += fh;
         }
@@ -6781,6 +6784,31 @@ function nxMdOpenWindow(title, src, opts){
         h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select id="chLgPath" style="max-width:360px;">' + opts + '</select><input id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
         h += '<div style="color:var(--sub); font-size:11.5px; margin-top:4px;">세무사님이 넣은 값은 넥스·서류가 바꾸지 못합니다. 모든 고침은 기록(누가·언제·전 값 → 후 값)으로 남고 ↩로 되돌릴 수 있습니다.</div>';
         h += '</div>'; // ④ 칸 장부 끝
+        // [2026.10.29 계획서 3판] ⑤ 도구 — 세무사님 원문(10-29) "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐이라고!" /
+        //  "확인된 필지에 대해서 도구를 이용하여 확보할 수 있는 바깥정보는 당연히 확보해야" / "세액계산 한번만 하면 모든 사건처리가 끝나는 종점이 아니라고"
+        //  넥스(대화창·사건 처리)의 case_ledger do=lookup·estimate·calc·compare와 같은 서버 함수 — 넥스가 쓰는 도구를 세무사님도 여기서 직접 누른다
+        if (fl){
+          var tg = fl.조회대상 || [], pubs = fl.공부 || [];
+          var LK_WHAT = ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'];
+          var th5 = '<div data-lg-sec="tools" style="display:none; margin-top:8px;">';
+          th5 += '<div><b>🔎 공부 조회</b> <span style="color:var(--sub);">지금 있는 조회 도구로 필지마다 공부 사실을 가져와 장부에 남깁니다(확보자료 PDF도). 서류 없이 의뢰서에 소재지만 있어도 됩니다. 새 필지가 생기면 GAS가 한 바퀴 때 스스로도 조회합니다</span></div>';
+          th5 += tbl(['조회할 필지', '어디서 나온 소재지', '조회', ''], tg.length ? tg.map(function(t){ return '<tr>' + cell(t.소재지, 300) + cell(t.어디서, 300, ' color:var(--sub);') + cell(t.조회함 ? '✓ 함' : '아직', 60, t.조회함 ? '' : ' color:#a60;') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn" data-lk-loc="' + esc(t.소재지) + '" style="padding:1px 6px; font-size:11.5px;">🔎 조회</button></td></tr>'; }).join('') : '<tr><td colspan="4" style="padding:3px 8px; color:var(--sub);">장부 소재지·처리개요 물건·의뢰서 가설에 필지가 없습니다 — 아래에 소재지를 적어 조회하세요</td></tr>');
+          th5 += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px;"><input id="chLkLoc" type="text" placeholder="소재지(비우면 위 필지 전부)" style="width:280px;">'
+            + LK_WHAT.map(function(w){ return '<label style="font-size:11.5px; white-space:nowrap;"><input type="checkbox" data-lk-what="' + esc(w) + '"> ' + esc(w) + '</label>'; }).join('')
+            + '<button type="button" id="chLkGo" class="ghost-btn" title="고른 항목만 조회합니다 — 아무것도 고르지 않으면 매매사례를 뺀 전부">🔎 조회</button></div>';
+          th5 += '<div style="margin-top:8px;"><b>공부 사실</b> <span style="color:var(--sub);">' + esc(pubs.length) + '필지 — 조회한 결과 그대로(값은 계산 칸을 덮지 않고, 토지 면적·지목만 빈 칸이면 채웁니다)</span>'
+            + (pubs.length ? pubs.map(function(p){ return '<div style="margin-top:4px;"><span style="font-weight:600;">' + esc(p.소재지) + '</span> <span style="color:var(--sub);">— ' + esc([p.지역, p.어디서, p.때, p.누가 ? p.누가 + ' 조회' : ''].filter(Boolean).join(' · ')) + '</span>'
+                + tbl(['항목', '값', '출처'], (p.받음 || []).map(function(it){ return '<tr>' + cell(it.label, 200) + cell(it.v, 460) + cell(it.src, 280, ' color:var(--sub);') + '</tr>'; }).join('') + (p.못받음 || []).map(function(it){ return '<tr>' + cell(it.label, 200, ' color:#b23;') + cell('못 받음 — ' + (it.err || ''), 460, ' color:#b23;') + cell('', 280) + '</tr>'; }).join('')) + '</div>'; }).join('') : '<div class="log-empty">아직 조회한 필지가 없습니다</div>') + '</div>';
+          th5 += '<div style="margin-top:12px;"><b>📝 의뢰서 값을 추정으로</b> <span style="color:var(--sub);">의뢰서·메모가 말한 거래(취득·양도 날짜·금액)와 물건(소재지)을 비어 있는 계산 칸에 「추정」으로 넣습니다. 정해진 칸은 건드리지 않고, 서류가 들어오면 서류 값이 이기며 다르면 여쭙니다</span> <button type="button" id="chLgEstimate" class="ghost-btn">📝 추정으로 넣기</button></div>';
+          var opts5 = PATHS.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
+          th5 += '<div style="margin-top:12px;"><b>🧮 시험 계산</b> <span style="color:var(--sub);">지금 장부(정함+추정)로 언제든 계산합니다. 경우 이름과 가정을 붙이면 경우(안)으로 따로 저장하고, 가정은 이번 계산에만 쓰여 장부 값은 그대로입니다</span>'
+            + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><input id="chLgCaseName" type="text" placeholder="경우 이름(비우면 시험 계산)" style="width:220px;"><select id="chLgOverPath" style="max-width:300px;"><option value="">가정 없음</option>' + opts5 + '</select><input id="chLgOverVal" type="text" placeholder="가정 값" style="width:160px;"><button type="button" id="chLgTry" class="ghost-btn">🧮 계산</button></div></div>';
+          th5 += '<div style="margin-top:12px;"><b>⚖ 세목 비교</b> <span style="color:var(--sub);">같은 사실로 양도·증여·상속을 각각 계산해 나란히 — 증여는 관계를 고르면(증여재산가액을 비우면 장부 양도가액을 시가로 가정), 상속은 과세가액을 적으면 계산합니다. 결과는 경우(안)로 저장돼 검토서가 인용합니다</span>'
+            + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><label style="font-size:12px;">증여 관계 <select id="chCmpRel"><option value="">비교 안 함</option><option>직계비속</option><option>직계존속</option><option>배우자</option><option>기타친족</option><option>기타</option></select></label><input id="chCmpGiftAmt" type="text" placeholder="증여재산가액(비우면 장부 양도가액)" style="width:220px;">'
+            + '<label style="font-size:12px;">상속 과세가액 <input id="chCmpInhAmt" type="text" placeholder="비우면 비교 안 함" style="width:150px;"></label><label style="font-size:12px;"><input type="checkbox" id="chCmpSpouse"> 배우자 있음</label><label style="font-size:12px;">자녀 수 <input id="chCmpKids" type="number" min="0" value="1" style="width:50px;"></label><button type="button" id="chCmpGo" class="ghost-btn">⚖ 비교</button></div></div>';
+          th5 += '<div id="chLgToolOut" style="margin-top:8px;"></div></div>';
+          h += th5;
+        }
         if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.구분 || '') + ' — 납부세액 ' + esc(Number(s.최종세액 || 0).toLocaleString('ko-KR')) + '원</div>'; }).join('') + '</div>';
         if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
         h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
@@ -6823,6 +6851,50 @@ function nxMdOpenWindow(title, src, opts){
           });
         });
         var imp = document.getElementById('chLgImport'); if (imp) imp.addEventListener('click', function(){ imp.disabled = true; call({ step: 'ledgerImport' }).then(function(res){ if (res) reload(); else imp.disabled = false; }); });
+        // [2026.10.29 계획서 3판] ⑤ 도구 단추 — 넥스 case_ledger do=lookup·estimate·calc·compare와 같은 서버 입구(case_proc step ledgerLookup·ledgerEstimate·ledgerCalc·ledgerCompare)
+        var tOut = document.getElementById('chLgToolOut');
+        var showTool = function(title, res, lines){ if (!tOut) return; tOut.innerHTML = '<div><b>' + esc(title) + '</b>' + (lines || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">· ' + esc(l) + '</div>'; }).join('') + '</div>'; };
+        var busy = function(btn, on, txt){ if (!btn) return; btn.disabled = on; if (txt) btn.textContent = txt; };
+        var runLookup = function(btn, loc){
+          var what = Array.prototype.filter.call(body.querySelectorAll('input[data-lk-what]'), function(x){ return x.checked; }).map(function(x){ return x.getAttribute('data-lk-what'); });
+          var t0 = btn.textContent; busy(btn, true, '조회 중…(필지당 10~30초)'); if (tOut) tOut.innerHTML = '<div class="log-empty">공부 조회 중…</div>';
+          call({ step: 'ledgerLookup', loc: loc || '', what: what }).then(function(res){
+            busy(btn, false, t0);
+            if (!res) { if (tOut) tOut.innerHTML = ''; return; }
+            showTool('🔎 공부 조회 결과', res, (res.대상 || []).map(function(d){ return d.소재지 + ' — 받음 ' + (d.받음 || []).length + '건' + ((d.못받음 || []).length ? ', 못 받음: ' + d.못받음.join(' / ') : ''); }).concat(res.칸채움 ? ['빈 계산 칸 ' + res.칸채움 + '개를 토지대장 값으로 채움'] : []));
+            setTimeout(reload, 1200);
+          });
+        };
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lk-loc]'), function(b){ b.addEventListener('click', function(){ runLookup(b, b.getAttribute('data-lk-loc')); }); });
+        var lkGo = document.getElementById('chLkGo'); if (lkGo) lkGo.addEventListener('click', function(){ runLookup(lkGo, (document.getElementById('chLkLoc').value || '').trim()); });
+        var estB = document.getElementById('chLgEstimate'); if (estB) estB.addEventListener('click', function(){
+          busy(estB, true); call({ step: 'ledgerEstimate' }).then(function(res){ busy(estB, false); if (!res) return; showTool('📝 추정으로 넣기', res, [res.message].concat((res.skipped || []).length ? ['이미 정해져 둔 칸: ' + res.skipped.join(', ')] : [])); setTimeout(reload, 1200); });
+        });
+        var tryB = document.getElementById('chLgTry'); if (tryB) tryB.addEventListener('click', function(){
+          var nm = (document.getElementById('chLgCaseName').value || '').trim(), op = document.getElementById('chLgOverPath').value, ov = (document.getElementById('chLgOverVal').value || '').trim();
+          if (op && !ov){ showToast('가정 값을 적어 주세요.', 'warning'); return; }
+          busy(tryB, true, '계산 중…'); if (tOut) tOut.innerHTML = '<div class="log-empty">시험 계산 중…</div>';
+          call({ step: 'ledgerCalc', name: nm, over: op ? [{ path: op, value: ov }] : [] }).then(function(res){
+            busy(tryB, false, '🧮 계산');
+            if (!res){ if (tOut) tOut.innerHTML = ''; return; }
+            showTool('🧮 ' + (res.이름 ? '경우(안) 「' + res.이름 + '」' : '시험 계산') + ' — 저장본 ' + (res.id || ''), res, (res.요약 || []).concat((res.gaps || []).length ? ['비어 있는 칸 ' + res.gaps.length + '개 — ④ 칸 장부에서 넣거나 추정으로'] : []));
+            if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
+          });
+        });
+        var cmpB = document.getElementById('chCmpGo'); if (cmpB) cmpB.addEventListener('click', function(){
+          var rel = document.getElementById('chCmpRel').value, gAmt = (document.getElementById('chCmpGiftAmt').value || '').replace(/[^\d]/g, ''), iAmt = (document.getElementById('chCmpInhAmt').value || '').replace(/[^\d]/g, '');
+          var p = { step: 'ledgerCompare' };
+          if (rel) { p.gift = { relation: rel }; if (gAmt) p.gift.giftAmount = Number(gAmt); }
+          if (iAmt) p.inheritance = { taxableEstateAmount: Number(iAmt), hasSpouse: !!document.getElementById('chCmpSpouse').checked, childCount: Number(document.getElementById('chCmpKids').value) || 0 };
+          busy(cmpB, true, '비교 중…'); if (tOut) tOut.innerHTML = '<div class="log-empty">세목 비교 중…</div>';
+          callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, p)).then(function(res){
+            busy(cmpB, false, '⚖ 비교');
+            if (!res || res.error && !(res.비교 || []).length){ showToast((res && res.error) || '비교하지 못했습니다.', 'error'); if (tOut) tOut.innerHTML = ''; return; }
+            showToast(res.message || '비교했습니다.', 'success');
+            if (tOut) tOut.innerHTML = '<div><b>⚖ 세목 비교</b>' + tbl(['세목', '납부세액', '전제', '저장본'], (res.비교 || []).map(function(x){ return '<tr>' + cell(x.세목, 90) + cell(Number(x.납부세액 || 0).toLocaleString('ko-KR') + '원', 140, ' font-weight:600;') + cell(x.전제 || '', 380, ' color:var(--sub);') + cell(x.저장본 || '', 160, ' color:var(--sub);') + '</tr>'; }).join('')) + ((res.못함 || []).length ? '<div style="margin:4px 0 0 8px; color:#b23;">못 한 것: ' + res.못함.map(esc).join(' / ') + '</div>' : '') + '</div>';
+            if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
+          }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + (e && e.message || e), 'error'); });
+        });
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     document.getElementById('chGasFixBtn').addEventListener('click', function(){
@@ -62279,6 +62351,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       + ' → 서류 사실 ' + (d.서류사실 || 0) + ' → 칸 ' + (d.칸값 || 0) + '(서류와 이음 ' + (d.칸이음 || 0) + ')'
       + ' → ' + red(d.질문, '질문 ' + (d.질문 || 0))
       + (d.사슬물건 ? ' · 거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '') : '') // [2026.10.29 거래 사슬]
+      + ' · 공부 조회 ' + (d.공부 || 0) + '필지' + (d.추정 ? ' · 추정 ' + d.추정 + '칸' : '') // [2026.10.29 계획서 3판]
       + (last ? ' <span style="color:var(--sub);">· 마지막 한 바퀴 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
       + ' <button type="button" class="ghost-btn nx-lg-open" style="padding:1px 8px; font-size:12px;">📒 장부 펼치기</button>'
       + ' <button type="button" class="ghost-btn nx-lg-re" title="장부를 다시 읽기" style="padding:1px 6px; font-size:12px;">↻</button>';
@@ -62309,7 +62382,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var chn = f.사슬 || null;
       if (chn && (chn.rows || []).length) h += '<div style="margin-top:10px;"><b>거래 사슬</b> <span style="color:var(--sub);">누가 누구에게 — 사슬 밖 계약서는 칸에 쓰지 않고 질문으로</span>' + chn.rows.map(function(rw){ return '<div style="margin-top:3px;">' + e(rw.물건) + ' <span style="color:var(--sub);">— 납세자 위치: ' + e(rw.납세자위치 || '') + '</span>' + tbl(['날짜', '내용', '누구', '이음'], (rw.고리 || []).map(function(st){ return '<tr>' + cell(st.at || '', 90) + cell((st.kind === '등기' ? '등기 ' : '') + (st.what || ''), 180) + cell(st.to || '', 200) + cell(st.밖 ? '⚠ 사슬 밖 — ' + st.밖 : (st.등기 || ''), 260, st.밖 ? ' color:#b23;' : '') + '</tr>'; }).join('')) + '</div>'; }).join('') + ((chn.off || []).length ? '<div style="color:#b23; margin-top:3px;">사슬 밖 계약서 ' + chn.off.length + '건 — ' + chn.off.map(function(o){ return e(o.file) + ': ' + e(o.why); }).join(' / ') + '</div>' : '') + '</div>';
       var ev = (f.증빙 || []).slice().sort(function(a, b){ return (a.state === '증빙받을것' ? 0 : 1) - (b.state === '증빙받을것' ? 0 : 1); });
-      h += '<div style="margin-top:10px;"><b>확보할 증빙</b>' + (ev.length ? tbl(['서류', '상태', '왜'], ev.map(function(x){ var dd = x.서류 || {}; return '<tr>' + cell(dd.label || x.label, 260) + cell(x.state === '확정' ? '확보' : (ST[x.state] || x.state), 60, x.state === '증빙받을것' ? ' color:#a60;' : '') + cell(dd.note || '', 280, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      // [2026.10.29 계획서 3판] 받는 곳(도구·세무사님·고객 — 보이기만) · 공부 사실(조회한 필지) — 조회·추정·시험 계산 단추는 처리개요 📒 ⑤ 도구에
+      h += '<div style="margin-top:10px;"><b>확보할 증빙</b>' + (ev.length ? tbl(['서류', '상태', '받는 곳', '왜'], ev.map(function(x){ var dd = x.서류 || {}; return '<tr>' + cell(dd.label || x.label, 240) + cell(x.state === '확정' ? '확보' : (ST[x.state] || x.state), 60, x.state === '증빙받을것' ? ' color:#a60;' : '') + cell((x.받는곳 === '도구' ? '🔎 도구로 조회' : (x.받는곳 || '')) + (x.도구확보 ? ' — 받음' : ''), 120, x.받는곳 === '도구' ? ' color:#2563eb;' : '') + cell(dd.note || '', 260, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      var pb = f.공부 || [], tgt = (f.조회대상 || []).filter(function(t){ return !t.조회함; });
+      h += '<div style="margin-top:10px;"><b>공부 사실 ' + pb.length + '필지</b> <span style="color:var(--sub);">조회·추정·시험 계산·세목 비교 단추는 처리개요 📒 사건 장부 ⑤ 도구에</span>' + (pb.length ? pb.map(function(p){ return '<div style="margin-top:3px;">' + e(p.소재지) + tbl(['항목', '값'], (p.받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160) + cell(it.v, 360) + '</tr>'; }).join('') + (p.못받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160, ' color:#b23;') + cell('못 받음 — ' + (it.err || ''), 360, ' color:#b23;') + '</tr>'; }).join('')) + '</div>'; }).join('') : '<div class="log-empty">없음</div>') + (tgt.length ? '<div style="color:#a60; margin-top:3px;">아직 조회 안 한 필지: ' + tgt.map(function(t){ return e(t.소재지); }).join(', ') + '</div>' : '') + '</div>';
       var cc = r.칸 || [];
       h += '<div style="margin-top:10px;"><b>계산 칸 ' + cc.length + '</b>' + (cc.length ? tbl(['칸', '값', '주인', '서류 사실'], cc.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(x.값 + (x.state === '추정' ? ' (추정)' : ''), 220, x.state === '추정' ? ' color:#a60;' : '') + cell(x.kind, 70) + cell(x.이음 ? x.이음 + '건과 이음' : '없음', 90, x.이음 ? '' : ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var hy = f.가설 || [];

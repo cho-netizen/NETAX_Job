@@ -4101,7 +4101,16 @@ const JOB_AI_TOOLS_ = [
       type: 'object',
       properties: {
         caseId: { type: 'string', description: '작업관리 사건ID' },
-        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'import', 'hyp', 'facts', 'brief'] },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
+        loc: { type: 'string', description: 'lookup일 때 소재지(지번·도로명 주소). 비우면 장부·처리개요·의뢰서 가설의 모든 필지' },
+        what: { type: 'array', items: { type: 'string', enum: ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'] }, description: 'lookup일 때 고를 조회(비우면 매매사례 뺀 전부)' },
+        dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' } } }, description: 'lookup일 때 공시가격·조정대상지역 기준일들(비우면 장부 취득일·양도일·기준일, 없으면 의뢰서 가설 날짜)' },
+        onlyNew: { type: 'boolean', description: 'lookup일 때 아직 조회 안 한 필지만' },
+        values: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {}, why: { type: 'string' } } }, description: 'estimate일 때 넣을 가정값(비우면 의뢰서 등 가설에서)' },
+        name: { type: 'string', description: 'calc·compare일 때 경우 이름(예: 1세대1주택 비과세 적용 전)' },
+        over: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {} } }, description: 'calc일 때 이번 계산에만 쓰는 가정(장부 칸 경로 — 증여·상속은 엔진 입력 이름)' },
+        gift: { type: 'object', description: 'compare일 때 증여 비교 입력(calculate_gift_tax 입력 — relation 배우자|직계존속|직계비속|기타친족|기타 필수, giftAmount·giftDate·priorGiftAmount 등)' },
+        inheritance: { type: 'object', description: 'compare일 때 상속 비교 입력(calculate_inheritance_tax 입력 — taxableEstateAmount·hasSpouse·childCount 등)' },
         field: { type: 'string', enum: ['상대방', '관계', '물건', '거래', '쟁점', '요청'], description: 'hyp일 때 가설 항목' },
         find_kind: { type: 'string', description: 'facts일 때 사실 종류 낱말(예 매매대금·잔금일·대출 잔액)' },
         find_file: { type: 'string', description: 'facts일 때 파일 이름·서류 종류 낱말' },
@@ -4885,6 +4894,8 @@ function buildContextSystemPrompt(basePrompt, body) {
     // [2026.10.27] 세무사님 원문: "ai에게 종합적으로 지시하면 계산기를 사용하지 않고 ai가 암산으로 세액계산을 하게 되고 그 세액계산의 근거도 남기지 않게 되므로 세금계산신고 절차를 밟도록 주문한 것이었다"
     // [2026.10.28] 사건 장부 — 세무사님 원문 "내가 이미 모두 답변했는데 왜 자꾸 귀찮게 하냐고?" — 세무사님 말씀을 칸에 넣는 데 카드를 거치지 않는다(넥스는 대리인)
     + '\n\n[사건 장부 — 사실의 유일한 저장소] 사건의 값·질문·추정은 장부 한 곳에 있다(job_lookup kind=ledger). 세무사님이 채팅에 값을 주시면("주택이고 2주택이고 특수관계 아니다") 되묻지 말고 토막마다 case_ledger do=set kind=세무사님으로 바로 적는다 — 제안 카드(job_propose_action caseproc_*)를 띄우지 않는다. 적은 뒤 "○○ ← 값"으로 한 줄씩 보고하고 남은 물어볼 것이 있으면 항목별로 묶어 여쭌다. 네가 서류를 읽어 정한 값은 kind=넥스에 file·quote·why를 붙여 적고, 확신이 없으면 do=ask로 후보와 함께 물어볼 것으로. 세무사님이 정한 값은 바꾸지 못한다(거절되면 지금 값과 서류 값만 말씀드린다). 계산은 do=calc — 돌아온 납부세액만 말한다. 옛 사건(장부가 비어 있고 사건처리 결정 파일만 있는 것)은 do=import로 한 번 옮긴 뒤 시작한다.'
+    // [2026.10.29 계획서 3판 5단계] 넥스는 하나 — 대화창도 사건 처리 입구와 같은 도구·같은 일하는 방식. 세무사님 원문: "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐이라고!" / "세액계산 한번만 하면 모든 사건처리가 끝나는 종점이 아니라고" / "확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고"
+    + '\n\n[사건을 맡으면 — GAS 도구 하나하나로, 정해진 순서 없이] 세무사님이 GAS 도구를 손에 쥐고 일하시듯 한다: 있는 자료(의뢰서·메모·서류)를 정리하고(장부 요약 job_lookup kind=ledger, 규칙이 못 뽑은 가설은 case_ledger do=hyp) → 거론된 필지는 case_ledger do=lookup으로 공부 조회(토지대장·토지이용계획·건축물대장·공시가격·조정대상지역·매매사례 — 서류 없이 소재지만 있어도) → 서류가 아직 없으면 의뢰서 등의 거래·물건을 do=estimate로 추정 칸에 → do=calc로 언제든 시험 계산(경우는 name·over, 다른 세목과 견주기는 do=compare) → 모자란 서류는 받는 곳([도구]는 직접 조회, [세무사님]·[고객]은 세무사님께)으로 나눠 항목별로 여쭌다(고객에게 직접 보내지 않는다) → 새 사실이 나오면 장부를 고치고 필요한 도구를 다시. 폴더 서류를 한꺼번에 읽혀 칸을 채우는 일은 처리개요의 ⚡ GAS로 처리·🤖 넥스로 처리가 한다.'
     + '\n\n[세액은 계산 도구로만 — 암산 금지] 세액(양도세·증여세·상속세·지방소득세·가산세)을 말할 때는 네가 머릿속으로 계산한 숫자를 쓰지 않는다. 사건의 세액은 세액계산기를 돌려 저장한 계산 저장본(job_lookup caseproc의 마지막계산·계산저장본, job_propose_action calc_scenario로 만든 경우(안) 저장본)에서만 인용하고 어느 저장본인지 밝힌다. '
     + '비과세 사건도 계산기로 세액을 끝까지 계산한 뒤 비과세를 적용한다(추징·불복 때 정확한 세액을 알아야 함). 경우를 바꿔 견주는 계산(비과세 적용 전/후, 필요경비 일부 제외, 양도세 vs 증여세 vs 상속세)은 calc_scenario로 각각 저장하고 그 숫자만 말한다. 사건 없는 단순 계산 질문은 calculate_* 도구 결과를 그대로 쓴다(네 암산 금지는 같다).';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
@@ -15637,7 +15648,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       }
 
       if (block.name === 'lookup_land_info') { // [2026.10.28 🌐]
-        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleLookupLandInfo(block.input || {})) };
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleLookupLandInfo(Object.assign({}, block.input || {}, { by: '넥스' }))) }; // caseId를 주면 장부 공부 사실에도(넥스가 조회)
       }
       if (block.name === 'search_address_kakao') { // [2026.10.28 🌐]
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleSearchAddressKakao(block.input || {})) };
@@ -54580,6 +54591,19 @@ function handleLookupLandInfo(body) {
     try { out.adj = body.dates.slice(0, 6).map(function (d) { const r = caseProcAdjAreaAt_(String(body.jibun || body.loc), String(d.date || d)); return { label: d.label || '', date: d.date || d, 판정: r.판정, 이유: r.이유 }; }); } catch (e) { out.adjError = String(e && e.message || e); }
   }
   if (body.caseId) { try { cpSecuredFlush_(String(body.caseId)); } catch (e) {} } // 화면에서 사건을 열고 눌렀으면 확보자료 PDF도 남긴다
+  // [2026.10.29 계획서 3판 2단계] 사건을 열고 누른 조회는 사건 장부 공부 사실에도(세무사님이 세액계산기에서 직접 조회한 것을 넥스·장부가 안다 — 다시 조회하지 않게)
+  if (body.caseId && typeof ledgerPubPut_ === 'function') {
+    try {
+      const items = [];
+      if (out.ledger) items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: true, v: (out.ledger.지목 || '지목?') + ' · ' + (out.ledger.면적 ? out.ledger.면적 + '㎡' : '면적?'), src: out.ledger.src }); else if (out.ledgerError) items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: false, err: out.ledgerError });
+      if (out.landuse) items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: true, v: (out.landuse.지역지구 || []).slice(0, 6).join(', ') + (out.landuse.도시지역 ? ' → ' + out.landuse.도시지역 : ''), src: out.landuse.src }); else if (out.landuseError) items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: false, err: out.landuseError });
+      if (out.adj) items.push({ k: 'adj', label: '조정대상지역', ok: true, v: out.adj.map(function (x) { return (x.label ? x.label + ' ' : '') + x.date + ': ' + x.판정; }).join(' / '), src: '국토교통부 조정대상지역 지정·해제 공고 이력표' });
+      ledgerPubPut_(String(body.caseId), [{ loc: String(body.jibun || body.loc || pnu), pnu: pnu, jibun: String(body.jibun || ''), region: out.region || null, items: items, only: true,
+        ledger: out.ledger ? { jimok: out.ledger.지목, area: out.ledger.면적, owner: out.ledger.소유구분, src: out.ledger.src } : null,
+        landuse: out.landuse ? { names: out.landuse.지역지구 || [], urban: out.landuse.도시지역, jsg: out.landuse.주거상업공업 || [], green: out.landuse.녹지개발제한 || [], permit: out.landuse.토지거래허가구역 || [], src: out.landuse.src } : null,
+        adj: out.adj || null, links: out.links || null, from: '세액계산기 토지정보 자동조회' }], String(body.by || '세무사님'), '세액계산기에서 조회');
+    } catch (e) {}
+  }
   return out;
 }
 // 부동산 하나의 바깥 조회 묶음 — p: { p(칸 머리), loc, kind:'land'|'building'|'', area, jimok, dong, ho, dates:[{label, date}], docSrc }
@@ -54591,24 +54615,27 @@ function cpOutsideOne_(p) {
   const geo = cpGeo_(loc);
   if (!geo || geo.error) { row.items.push({ k: 'geo', label: '주소검색', ok: false, err: (geo && geo.error) || '주소 검색 실패' }); return row; }
   row.pnu = geo.pnu; row.jibun = geo.jibun; row.geoSrc = geo.src || '도로명주소 안내시스템'; row.links = cpLinks_(geo, loc);
+  // [2026.10.29 계획서 3판 2단계] 고른 조회만(p.only: ledger·landuse·eum·building·price·adj) — 세무사님 "gas는 … 하나하나가 별도의 도구일 뿐". 비우면 예전처럼 전부
+  const want = function (k) { return !Array.isArray(p.only) || !p.only.length || p.only.indexOf(k) !== -1; };
   row.items.push({ k: 'geo', label: '주소검색', ok: true, v: geo.jibun + (geo.bdNm ? ' (' + geo.bdNm + ')' : '') + (geo.dong ? ' ' + geo.dong + '동' : '') + (geo.ho ? ' ' + geo.ho + '호' : ''), src: row.geoSrc });
   // [2026.10.28 점검 보완 4] 지역 구분(수도권·읍면·시지역) — 주소 글자에서
   try { row.region = cpRegion_(geo.jibun); row.items.push({ k: 'region', label: '지역 구분', ok: true, v: row.region.text, src: '주소(' + geo.jibun + ')에서 — 수도권정비계획법·소득세법 §104의3①1호 나목 구분' }); } catch (e) {}
   // [2026.10.28 점검 보완 1] 조정대상지역 — 이미 있는 지정·해제 공고 이력표(AdjArea.js)를 취득일·양도일·기준일마다. 토지만인 자산은 주택법 §63의2 대상이 아니라 건너뜀
-  if (p.kind !== 'land' && typeof caseProcAdjAreaAt_ === 'function') {
+  if (p.kind !== 'land' && want('adj') && typeof caseProcAdjAreaAt_ === 'function') {
     row.adj = [];
     (p.dates || []).filter(function (d) { return d && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')); }).forEach(function (d) {
       try { const r = caseProcAdjAreaAt_(geo.jibun, d.date); row.adj.push({ label: d.label, date: d.date, 판정: r.판정, 이유: r.이유, 근거: (r.근거 || []).slice(0, 3) }); } catch (e) { row.adj.push({ label: d.label, date: d.date, 판정: '확인 필요', 이유: '이력표 조회 오류: ' + (e && e.message || e) }); }
     });
     if (row.adj.length) row.items.push({ k: 'adj', label: '조정대상지역', ok: row.adj.every(function (x) { return x.판정 !== '확인 필요'; }), v: row.adj.map(function (x) { return x.label + ' ' + x.date + ': ' + x.판정 + (x.이유 ? '(' + String(x.이유).slice(0, 60) + ')' : ''); }).join(' / '), err: row.adj.some(function (x) { return x.판정 === '확인 필요'; }) ? '이력표로 못 가른 날짜가 있음 — ' + row.adj.filter(function (x) { return x.판정 === '확인 필요'; }).map(function (x) { return x.label + ': ' + x.이유; }).join('; ') : '', src: '국토교통부 조정대상지역 지정·해제 공고 이력표(AdjArea.js, 2026-07-01까지)' });
   }
-  const ledger = cpLandLedger_(geo);
-  if (ledger.error) row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: false, err: ledger.error });
-  else { row.ledger = { jimok: ledger.jimok, area: ledger.area, owner: ledger.owner, src: ledger.src }; row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: true, v: (ledger.jimok || '지목?') + ' · ' + (ledger.area ? ledger.area + '㎡' : '면적?') + (ledger.owner ? ' · ' + ledger.owner : ''), src: ledger.src }); }
+  const ledger = (want('ledger') || want('building') || want('price')) ? cpLandLedger_(geo) : { skip: true }; // 지목은 건축물대장·공시가격 종류를 가르는 데도 쓴다
+  if (ledger.skip) { /* 고르지 않음 */ }
+  else if (ledger.error) { if (want('ledger')) row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: false, err: ledger.error }); }
+  else { row.ledger = { jimok: ledger.jimok, area: ledger.area, owner: ledger.owner, src: ledger.src }; if (want('ledger')) row.items.push({ k: 'ledger', label: '토지대장(지목·면적)', ok: true, v: (ledger.jimok || '지목?') + ' · ' + (ledger.area ? ledger.area + '㎡' : '면적?') + (ledger.owner ? ' · ' + ledger.owner : ''), src: ledger.src }); }
   const jimok = (row.ledger && row.ledger.jimok) || p.jimok || '';
   const unit = !!geo.ho;
   // 건축물대장 — 토지가 아니면(주용도·구조·사용승인일·전유면적)
-  if (p.kind !== 'land' && (p.kind === 'building' || unit || /대|공장|창고|잡종/.test(jimok))) {
+  if (want('building') && p.kind !== 'land' && (p.kind === 'building' || unit || /대|공장|창고|잡종/.test(jimok))) {
     const bd = cpBuilding_(loc);
     if (bd && !bd.error) {
       row.building = { purpose: bd.purpose, structure: bd.structure, approval: bd.approval, area: bd.area, totArea: bd.totArea || 0, platArea: bd.platArea || 0, floorsUp: bd.floorsUp || 0, floorsDown: bd.floorsDown || 0, roof: bd.roof || '', floors: bd.floors || null, src: bd.src,
@@ -54621,15 +54648,17 @@ function cpOutsideOne_(p) {
     }
     else row.items.push({ k: 'building', label: '건축물대장', ok: false, err: (bd && bd.error) || '조회 실패' });
   }
-  const lu = cpLandUse_(geo);
-  if (lu.error) row.items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: false, err: lu.error });
+  const lu = (want('landuse') || want('eum')) ? cpLandUse_(geo) : { skip: true, error: '(조회 안 함)' };
+  if (lu.skip) { /* 고르지 않음 */ }
+  else if (lu.error) { if (want('landuse')) row.items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: false, err: lu.error }); }
   else {
     row.landuse = { names: lu.names, urban: lu.urban, zones: lu.zones, jsg: lu.jsg || [], green: lu.green || [], permit: lu.permit || [], src: lu.src };
     row.items.push({ k: 'landuse', label: '토지이용계획(용도지역)', ok: true, v: lu.names.slice(0, 6).join(', ') + (lu.names.length > 6 ? ' 외 ' + (lu.names.length - 6) : '') + (lu.urban ? ' → ' + lu.urban : '') + ((lu.jsg || []).length ? ' · 주거·상업·공업지역(' + lu.jsg.join(',') + ')' : '') + ((lu.green || []).length ? ' · 녹지·개발제한(' + lu.green.join(',') + ')' : ''), src: lu.src });
   }
   // [2026.10.28 조사 결과] 토지이음 열람 — 같은 원천을 맞대어 보고(브이월드가 못 받으면 이것으로), 허가구역은 지정기간·용도 한정까지
-  const eum = cpEumLand_(geo);
-  if (eum.error) row.items.push({ k: 'eum', label: '토지이음 열람', ok: false, err: eum.error });
+  const eum = (want('eum') || want('landuse')) ? cpEumLand_(geo) : { skip: true };
+  if (eum.skip) { /* 고르지 않음 */ }
+  else if (eum.error) row.items.push({ k: 'eum', label: '토지이음 열람', ok: false, err: eum.error });
   else {
     row.eum = { loc: eum.loc, jimok: eum.jimok, area: eum.area, zones1: eum.zones1, zones2: eum.zones2, zones3: eum.zones3, src: eum.src };
     const all = eum.zones1.concat(eum.zones2, eum.zones3);
@@ -54663,10 +54692,10 @@ function cpOutsideOne_(p) {
   const bPurpose = row.building ? String(row.building.purpose || '') : '';
   const bHouse = /주택|아파트|다세대|연립|다가구/.test(bPurpose);
   const kinds = p.kind === 'land' ? ['land'] : unit ? ['apartment', 'land'] : (row.building && !bHouse) ? ['land'] : p.kind === 'building' ? ['house', 'land'] : (/대|공장|학교|주차|주유|창고|잡종/.test(jimok) ? ['house', 'land'] : ['land']);
-  if (row.building && !bHouse && !unit && p.kind !== 'land') row.items.push({ k: 'price', label: '개별주택가격', ok: true, v: '조회 안 함 — 대장 주용도 「' + bPurpose + '」(주택 아님)', src: row.building.src });
+  if (want('price') && row.building && !bHouse && !unit && p.kind !== 'land') row.items.push({ k: 'price', label: '개별주택가격', ok: true, v: '조회 안 함 — 대장 주용도 「' + bPurpose + '」(주택 아님)', src: row.building.src });
   const dates = (p.dates || []).filter(function (d) { return d && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date || '')); });
   const seen = {};
-  kinds.forEach(function (kind) {
+  (want('price') ? kinds : []).forEach(function (kind) {
     dates.forEach(function (d) {
       const year = cpOfficialYear_(d.date, kind); if (!year) return;
       const first = kind === 'land' ? 1990 : kind === 'house' ? 2005 : 2006;
@@ -54698,6 +54727,8 @@ function cpOutsideRun_(c, props, lines) {
   });
   const at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
   try { caseProcPatch_(c.id, function (sv) { sv.outside = { at: at, rows: rows, skipped: skipped, sec: Math.round((Date.now() - t0) / 100) / 10 }; }); } catch (e) {}
+  // [2026.10.29 계획서 3판 2단계] 조회 결과는 사건 장부 공부 사실(L.pub)에도 — 세무사님 "도구가 얻은 것은 모두 사건 장부에"(예전엔 결정 파일 sv.outside에만 남아 장부·넥스 요약에 없었다)
+  try { if (typeof ledgerPubPut_ === 'function' && rows.length) ledgerPubPut_(c.id, rows.map(function (r) { return Object.assign({}, r, { from: r.from || '사건처리 한 바퀴(서류·처리개요 소재지)' }); }), 'GAS', '사건처리 한 바퀴 바깥 조회'); } catch (e) { if (lines) lines.push('⚠ 조회 결과를 사건 장부에 남기지 못함: ' + String(e && e.message || e).slice(0, 80)); }
   if (lines && rows.length) {
     lines.push('🌐 바깥 조회(토지대장·토지이용계획·공시가격·건축물대장 — 세액계산기와 같은 조회, 결과는 확보자료 PDF·반영 현황표): ' + rows.map(function (r) {
       const okN = r.items.filter(function (it) { return it.ok; }).length, bad = r.items.filter(function (it) { return !it.ok; });
