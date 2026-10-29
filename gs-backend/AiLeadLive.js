@@ -595,6 +595,9 @@ function nxCaseCalcToolSave_(caseId, name, input, resultText) {
     최종세액: Number.isFinite(pay) ? pay : undefined, 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
     안: { 이름: nm, 세목: name, 바꾼칸: [], 누가: '넥스', 때: caseProcNow_(), 바탕: '대화창 계산 도구 입력', 이유: why },
     저장값: { tool: name, inputs: inText, result: outText } };
+  // 같은 도구·같은 입력의 저장본이 이미 있으면 새로 쌓지 않고 그것을 돌려준다(되풀이 계산으로 저장본이 불어나 칸 한도에 닿는 것 막기)
+  const dup = all.filter(function (e) { return e && e.저장값 && e.저장값.tool === name && e.저장값.inputs === inText; })[0];
+  if (dup) return { 저장본id: dup.id, 안: dup.안 ? dup.안.이름 : '', 최종세액: dup.최종세액, 안내: '같은 입력의 계산이 이미 저장돼 있어 새로 저장하지 않음 — 이 저장본을 인용한다' };
   if (JSON.stringify(all.concat([entry])).length > 45000) return { 저장: '못 함 — 이 사건의 계산 저장본이 사건 칸 한도(5만 자)에 가까움. 세무사님께 오래된 경우(안) 정리를 여쭙고, 이 결과는 보고서에 "저장 안 된 계산"으로 밝힌다' };
   const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
   if (!up || up.success === false) return { 저장: '실패 — ' + ((up && up.message) || '사건 행을 못 고침') };

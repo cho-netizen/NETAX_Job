@@ -15247,9 +15247,24 @@ const OLD_TOOL_RESULT_TRIM_THRESHOLD = 800;
 
 function trimOldToolResults_(messages) {
   const lastIndex = messages.length - 1;
+  // [2026.10.30] "이번 턴"은 세무사님이 마지막으로 하신 말씀(글이 든 user 메시지)부터 끝까지다 — 그 뒤 도구 왕복의 결과는 줄이지 않는다.
+  //  예전엔 맨 끝 메시지 하나만 남기고 다 줄여, 한 차례에 도구를 여러 단계 쓰는 사건 일에서 넥스가 바로 앞 단계의 계산·읽기 결과를 못 보고
+  //  "다시 부르라"는 안내대로 같은 계산·읽기를 되풀이했다(10-30 운영 시험: 같은 증여·양도 계산 4가지를 5바퀴 반복해 저장본 21개)
+  let turnStart = lastIndex;
+  for (let i = lastIndex; i >= 0; i--) {
+    const mm = messages[i];
+    if (!mm || mm.role !== 'user') continue;
+    const isToolResultOnly = Array.isArray(mm.content) && mm.content.length && mm.content.every(function (b) { return b && b.type === 'tool_result'; });
+    if (!isToolResultOnly) { turnStart = i; break; }
+  }
+  // 이번 턴 안에서도 아주 긴 차례가 글을 한없이 키우지 않게 — 최근 6단계(도구 결과 메시지 6개)는 그대로, 그보다 앞선 단계는 8천 자 넘는 결과만 줄인다(계산 결과·짧은 조회는 그대로 남음)
+  let recentCut = turnStart, seen = 0; // 6단계가 안 되면 이번 턴 전부가 "최근"
+  for (let i = lastIndex; i > turnStart; i--) { const mm = messages[i]; if (mm && mm.role === 'user' && Array.isArray(mm.content)) { seen++; if (seen === 6) { recentCut = i; break; } } }
+  const limitFor = function (idx) { return idx < turnStart ? OLD_TOOL_RESULT_TRIM_THRESHOLD : (idx < recentCut ? 8000 : Infinity); };
   return messages.map(function (m, idx) {
-    if (idx === lastIndex) return m; // 이번 턴의 새 질문은 절대 건드리지 않음
+    if (limitFor(idx) === Infinity) return m; // 이번 턴의 최근 단계(마지막 말씀 포함)는 절대 건드리지 않음
     if (m.role !== 'user' || !Array.isArray(m.content)) return m;
+    const LIM = limitFor(idx);
 
     let changed = false;
     const newContent = m.content.map(function (block) {
@@ -15270,7 +15285,7 @@ function trimOldToolResults_(messages) {
 
       const text = (typeof block.content === 'string') ? block.content
         : (Array.isArray(block.content) ? block.content.map(function (c) { return c.text || ''; }).join('') : '');
-      if (text.length <= OLD_TOOL_RESULT_TRIM_THRESHOLD) return block;
+      if (text.length <= LIM) return block;
       changed = true;
       return Object.assign({}, block, {
         content: '[이전 턴에서 도구 실행 결과 — 대화가 길어져 원문(' + text.length + '자)은 생략됨. ' +
