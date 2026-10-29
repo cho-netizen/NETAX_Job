@@ -31502,7 +31502,8 @@ function caseProcAdvisoryItems_(c, r) {
       it.advisory = true;
       return;
     }
-    if (it.kind === 'missing' && (it.step === 'overview' || !it.step) && /서류|찾지 못|읽지 못|없습니다/.test(String(it.text || '')) && String(it.text || '').indexOf('[자문') !== 0) {
+    // 값이 빈 칸 질문 전부(사건 기본 칸 basic:* 제외) — 문장마다 "찾지 못했습니다/확정하지 못했습니다/필요합니다"로 달라 낱말로 고르면 빠진다(10-30 운영 확인: 증여일 질문이 빠짐)
+    if (it.kind === 'missing' && (it.step === 'overview' || !it.step) && !/^basic:/.test(it.id) && String(it.text || '').indexOf('[자문') !== 0) {
       it.text = '[자문 — 아직 하지 않은 거래면 서류가 없는 것이 정상입니다. 의뢰 말씀이나 가정한 값을 넣으면 그 값으로 시험 계산하고, 서류는 받을 서류로 둡니다] ' + String(it.text || '');
       it.advisory = true;
     }
