@@ -214,7 +214,7 @@
   }
   // 실재 확인된 근거 → 첨부 자료(사건 첨부와 같은 모양: 법령 탭 📎 첨부·AI 지휘 첨부)
   function maiAttachList_(){
-    var out = [], seen = {}, today = new Date().toISOString().slice(0, 10), use = mai_.title;
+    var out = [], seen = {}, today = nxLocalDateStr_(), use = mai_.title;
     Object.keys(mai_.ans).forEach(function(id){
       var a = mai_.ans[id], p = a && a.p, ck = mai_.checks[id] || {}; if (!p) return;
       var why = maiSlot_(id).name + ' 답(결론 ' + (p.결론 || p.결론글.slice(0, 20)) + ')의 근거 — 법제처 실재 확인';

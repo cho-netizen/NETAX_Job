@@ -1601,7 +1601,7 @@
     memoOvApplyCases_ = [];
     document.getElementById('memoOvNewCustomer').value = '';
     document.getElementById('memoOvNewTaxpayer').value = '';
-    document.getElementById('memoOvNewRequestDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('memoOvNewRequestDate').value = nxLocalDateStr_();
     var uptypeSel = document.getElementById('memoOvNewUptype');
     var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '자문', '상담'];
     uptypeSel.innerHTML = uptypeOptions.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
@@ -2194,7 +2194,7 @@
     if (!memoReqSelectedTemplate_){ toast('템플릿을 먼저 선택하세요.'); return; }
     document.getElementById('memoReqNewCustomer').value = '';
     document.getElementById('memoReqNewTaxpayer').value = '';
-    document.getElementById('memoReqNewRequestDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('memoReqNewRequestDate').value = nxLocalDateStr_();
     var semokSel = document.getElementById('memoReqNewSemok');
     var uptypeSel = document.getElementById('memoReqNewUptype');
     function refreshUptypeOptions(){

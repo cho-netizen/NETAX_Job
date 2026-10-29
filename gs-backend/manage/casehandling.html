@@ -962,7 +962,7 @@
     logToggleBtn.addEventListener('click', function(){
       if (newLogFormWrap.style.display === 'none'){
         newLogFormWrap.style.display = 'flex';
-        var todayStr = new Date().toISOString().slice(0, 10);
+        var todayStr = nxLocalDateStr_();
         newLogFormWrap.innerHTML =
           '<input type="date" id="chNewLogDate" value="' + todayStr + '" style="width:95px;">' +
           '<input type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
@@ -1712,7 +1712,7 @@
   function chAddRequestedItem_(c, label, note){
     // [2026.09 버그수정] 호출부(my포털 카드의 "추가" 버튼)가 저장 완료 후 체크리스트 화면을
     // 다시 그릴 수 있도록 프라미스를 반환한다.
-    var saved = chAddEvidence_(c, { source: 'requested', label: label, note: note || '', status: '미확보', 요청일: new Date().toISOString().slice(0, 10) });
+    var saved = chAddEvidence_(c, { source: 'requested', label: label, note: note || '', status: '미확보', 요청일: nxLocalDateStr_() });
     if (c.my_report_id){
       saved = saved.then(function(res){
         return callGas('admin_add_checklist_item', { report_id: c.my_report_id, item: label }).catch(function(){}).then(function(){ return res; });

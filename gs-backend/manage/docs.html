@@ -888,7 +888,7 @@
           var nowGot = entry.status !== '확보됨';
           var newList = (c.증빙목록 || []).map(function(e){
             if (e.id !== entry.id) return e;
-            return Object.assign({}, e, { status: nowGot ? '확보됨' : '미확보', 확보일: nowGot ? new Date().toISOString().slice(0, 10) : e.확보일 });
+            return Object.assign({}, e, { status: nowGot ? '확보됨' : '미확보', 확보일: nowGot ? nxLocalDateStr_() : e.확보일 });
           });
           docsSaveEvidence_(c, newList);
           // [2026.09 버그수정] 요청자료를 회계사가 여기서 확보완료/미확보로 바꾸면, 고객이
@@ -959,7 +959,7 @@
           source: 'auto',
           label: '실거래가: ' + (item.aptNm || '') + ' ' + (item.dong || '') + ' ' + (item.jibun || ''),
           note: (item.area || '') + '㎡ · ' + (item.floor || '') + '층 · ' + (item.dealDate || '') + ' · ' + Number(item.dealAmount || 0).toLocaleString() + '원',
-          status: '확보됨', 확보일: new Date().toISOString().slice(0, 10)
+          status: '확보됨', 확보일: nxLocalDateStr_()
         });
       });
     });
@@ -980,7 +980,7 @@
           source: 'auto',
           label: kindLabel + ': ' + Number(data.price).toLocaleString() + '원',
           note: (picked.roadAddr || picked.jibunAddr || '') + (dong ? ' ' + dong + '동' : '') + (ho ? ' ' + ho + '호' : '') + ' (기준연도 ' + data.stdrYear + ')',
-          status: '확보됨', 확보일: new Date().toISOString().slice(0, 10)
+          status: '확보됨', 확보일: nxLocalDateStr_()
         });
       }).catch(function(err){ showToast('조회 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
     });
@@ -1062,7 +1062,7 @@
       var note = document.getElementById('docsEvManualNote').value.trim();
       // [2026.09 버그수정] 저장이 이제 패널 전체를 다시 그리지 않으므로(위 docsSaveEvidence_
       // 참고), 예전엔 그 재구성이 자동으로 비워주던 이 입력칸들을 성공 시 직접 비운다.
-      docsAddEvidence_(c, { source: 'manual', label: label, note: note, status: '확보됨', 확보일: new Date().toISOString().slice(0, 10) }).then(function(res){
+      docsAddEvidence_(c, { source: 'manual', label: label, note: note, status: '확보됨', 확보일: nxLocalDateStr_() }).then(function(res){
         if (res && res.success !== false && !res.conflict){
           document.getElementById('docsEvManualLabel').value = '';
           document.getElementById('docsEvManualNote').value = '';
@@ -1073,7 +1073,7 @@
       var label = document.getElementById('docsEvReqLabel').value.trim();
       if (!label){ showToast('요청할 자료명을 입력해주세요.', 'warning'); return; }
       var note = document.getElementById('docsEvReqNote').value.trim();
-      docsAddEvidence_(c, { source: 'requested', label: label, note: note, status: '미확보', 요청일: new Date().toISOString().slice(0, 10) }).then(function(res){
+      docsAddEvidence_(c, { source: 'requested', label: label, note: note, status: '미확보', 요청일: nxLocalDateStr_() }).then(function(res){
         if (res && res.success !== false && !res.conflict){
           document.getElementById('docsEvReqLabel').value = '';
           document.getElementById('docsEvReqNote').value = '';
@@ -2992,7 +2992,7 @@
       list.innerHTML = '<div class="log-empty">아직 기록이 없습니다. 위에서 첫 항목을 추가해보세요.</div>';
       return;
     }
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = nxLocalDateStr_();
     var sorted = docsLogEntries_.slice().sort(function(a, b){ return (b.date||'').localeCompare(a.date||''); });
     sorted.forEach(function(entry){
       var row = document.createElement('div');
@@ -3045,7 +3045,7 @@
     docsLogPath_ = docsPath.slice();
     document.getElementById('docsLogFolderLabel').textContent = docsPath.join(' / ');
     document.getElementById('docsLogOverlay').style.display = 'flex';
-    document.getElementById('docsLogDateInput').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('docsLogDateInput').value = nxLocalDateStr_();
     document.getElementById('docsLogTextInput').value = '';
     document.getElementById('docsLogDueInput').value = '';
     document.getElementById('docsLogList').innerHTML = '<div class="log-empty">불러오는 중…</div>';
@@ -3074,7 +3074,7 @@
     if (!text) return;
     docsLogEntries_.push({
       id: 'e' + Date.now() + Math.random().toString(36).slice(2, 6),
-      date: document.getElementById('docsLogDateInput').value || new Date().toISOString().slice(0, 10),
+      date: document.getElementById('docsLogDateInput').value || nxLocalDateStr_(),
       text: text,
       dueDate: document.getElementById('docsLogDueInput').value || ''
     });

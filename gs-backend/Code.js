@@ -23828,7 +23828,8 @@ function absorbLegacyCaseFolders_() {
       resultList.push(folderName + (세목 ? ' (' + WORK_SEMOK_LABELS_[세목] + ')' : ' (세목 미확인 — 직접 지정 필요)'));
     }
     if (rowsToAppend.length) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, WORK_HEADERS.length).setValues(rowsToAppend);
+      // [2026.10.30 버그수정] Date를 그대로 쓰면 생성일·수정일이 7시간 이르게 저장된다(새 사건 등록과 같은 원인) — 같은 변환을 거친다
+      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, WORK_HEADERS.length).setValues(rowsToAppend.map(function (r) { return work_rowForWrite_(col, r, sheet); }));
     }
     const msg = '흡수 완료: ' + rowsToAppend.length + '건 등록\n' + resultList.join('\n');
     Logger.log(msg);

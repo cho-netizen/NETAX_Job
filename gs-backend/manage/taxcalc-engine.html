@@ -5643,7 +5643,8 @@
     // 향후 회차의 이자율은 아직 정해지지 않았으므로, referenceDate(기준일, 보통 연부연납 허가일·신고일 —
     // 없으면 오늘) 시점에 적용되는 최신 고시 이자율(REFUND_INTEREST_RATE_HISTORY, calculateClawbackInterestJS와
     // 동일 테이블)을 전체 회차에 공통 적용하는 것으로 자동계산한다(직접 입력하면 그 값이 우선).
-    const referenceDate = p.referenceDate || new Date().toISOString().slice(0, 10);
+    // [2026.10.30] 오늘은 서울 날짜로(toISOString은 세계표준시라 0시~9시에 어제 날짜 — 화면·서버 모두 서울 시간대)
+    const referenceDate = p.referenceDate || (function () { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); })();
     // [2026.10.20 세액 고침] 비운 칸('')·null을 0%로 읽어 가산금이 0원이 되던 것 — 값이 실제로 있을 때만 그 율, 없으면 기준일 고시 이율(원본 인쇄 작업자 상속부속B 발견)
     const rateIn_ = p.annualInterestRatePercent;
     const annualInterestRatePercent = (rateIn_ !== '' && rateIn_ !== null && rateIn_ !== undefined && Number.isFinite(Number(rateIn_)) && Number(rateIn_) >= 0)

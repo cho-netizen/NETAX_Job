@@ -378,6 +378,13 @@
       }).join('');
   }
 
+  // [2026.10.30 버그수정] 이 컴퓨터(서울) 날짜 YYYY-MM-DD — toISOString().slice(0, 10)은 세계표준시라 0시~9시에 어제 날짜가 됐다.
+  // 인자 없으면 오늘, Date·시각 값을 주면 그 시각의 서울 날짜.
+  function nxLocalDateStr_(v){
+    var d = (v === undefined || v === null || v === '') ? new Date() : (v instanceof Date ? v : new Date(v));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
   // explorer.js의 짧은 날짜 표시(YYYY-MM-DD → YY-MM-DD) — 표시 전용, 저장값은 그대로 유지.
   function fmtDateShort_(dateStr){
     if (!dateStr) return '';
@@ -1305,7 +1312,7 @@
         // 로그인 전에는 하지 않는다(로그인 창 위에서 서버를 부르지 않게) — 로그인 뒤 다음 기회에 다시 본다
         var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
         if (!tok) { setTimeout(check_, 60000); return; }
-        var today = new Date().toISOString().slice(0, 10);
+        var today = nxLocalDateStr_();
         try { if (localStorage.getItem('nxWiringCheckDay') === today) return; } catch (e) {}
         var missing = [];
         document.querySelectorAll('.menu-item[data-view]').forEach(function(m){

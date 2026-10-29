@@ -151,7 +151,7 @@
     callGas('work_get_cases', {}).then(function(res){
       var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
       if (!c) return;
-      var log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: new Date().toISOString().slice(0, 10), text: text, dueDate: '' }]);
+      var log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: nxLocalDateStr_(), text: text, dueDate: '' }]);
       return callGas('work_update_case', { id: c.id, 작업일지: log, 기대수정일: c.수정일 });
     }).catch(function(){});
   }
@@ -274,7 +274,7 @@
   function fmtIssuedDate_(v){
     if (!v) return '';
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtDateShort_(v.slice(0, 10));
-    try { var d = new Date(v); if (!isNaN(d.getTime())) return fmtDateShort_(d.toISOString().slice(0, 10)); } catch(e){}
+    try { var d = new Date(v); if (!isNaN(d.getTime())) return fmtDateShort_(nxLocalDateStr_(d)); } catch(e){}
     return String(v);
   }
 

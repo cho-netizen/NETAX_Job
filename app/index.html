@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 22:30 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 23:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6454,7 +6454,7 @@ function nxMdOpenWindow(title, src, opts){
     logToggleBtn.addEventListener('click', function(){
       if (newLogFormWrap.style.display === 'none'){
         newLogFormWrap.style.display = 'flex';
-        var todayStr = new Date().toISOString().slice(0, 10);
+        var todayStr = nxLocalDateStr_();
         newLogFormWrap.innerHTML =
           '<input type="date" id="chNewLogDate" value="' + todayStr + '" style="width:95px;">' +
           '<input type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
@@ -7204,7 +7204,7 @@ function nxMdOpenWindow(title, src, opts){
   function chAddRequestedItem_(c, label, note){
     // [2026.09 버그수정] 호출부(my포털 카드의 "추가" 버튼)가 저장 완료 후 체크리스트 화면을
     // 다시 그릴 수 있도록 프라미스를 반환한다.
-    var saved = chAddEvidence_(c, { source: 'requested', label: label, note: note || '', status: '미확보', 요청일: new Date().toISOString().slice(0, 10) });
+    var saved = chAddEvidence_(c, { source: 'requested', label: label, note: note || '', status: '미확보', 요청일: nxLocalDateStr_() });
     if (c.my_report_id){
       saved = saved.then(function(res){
         return callGas('admin_add_checklist_item', { report_id: c.my_report_id, item: label }).catch(function(){}).then(function(){ return res; });
@@ -7947,7 +7947,7 @@ function nxMdOpenWindow(title, src, opts){
         .then(function(detail){ return { 요약: lsDetailSummary_(ri.category, detail), 결과: lsInferOutcome_(ri.category, detail) }; })
         .catch(function(){ return { 요약: (ri.sub || '') + '\n(원문 없음 — 검색결과 기본정보만 첨부됨)', 결과: '' }; });
     })).then(function(picked_results){
-      var today = new Date().toISOString().slice(0, 10);
+      var today = nxLocalDateStr_();
       var newEntries = picked.map(function(ri, i){
         var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 번호: ri.sub || '', 첨부일: today, 첨부: '직접', 쓸곳: String(use || '').trim() };
         if (picked_results[i].결과) entry.결과 = picked_results[i].결과;
@@ -7991,7 +7991,7 @@ function nxMdOpenWindow(title, src, opts){
         '<span class="log-del" title="첨부 해제">✕</span>';
       var okBtn = row.querySelector('.ls-ai-ok');
       if (okBtn) okBtn.addEventListener('click', function(){
-        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: new Date().toISOString().slice(0, 10) }) : e; });
+        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: nxLocalDateStr_() }) : e; });
         lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
       });
       row.querySelector('.log-del').addEventListener('click', function(){
@@ -9192,7 +9192,7 @@ function nxMdOpenWindow(title, src, opts){
       var md = typeof lsiRelArtMd_ === 'function' ? lsiRelArtMd_(a2, hang ? [hang] : []).join('\n') : lsiCiteBuild_(a2, { h: h, o: -1 }, meta, { style: 'plain', src: false, rev: false }).plain;
       var id = law + '|' + art + '|' + (hang || '');
       var entry = { category: 'statute', id: id, 제목: ref + (a2.title ? '(' + a2.title + ')' : ''), 요약: md.replace(/\s+/g, ' ').slice(0, 300), 법령명: law, 조: art, 항: hang || '',
-        판: r.시행일자 ? lsiDbYmd_(r.시행일자) : '', 기준일판: !!base, 원문: md.slice(0, 6000), 쓸곳: String(use || '').trim(), 첨부: '직접', 첨부일: new Date().toISOString().slice(0, 10) };
+        판: r.시행일자 ? lsiDbYmd_(r.시행일자) : '', 기준일판: !!base, 원문: md.slice(0, 6000), 쓸곳: String(use || '').trim(), 첨부: '직접', 첨부일: nxLocalDateStr_() };
       var list = (target.법령예규판례 || []).filter(function(e){ return !(e.category === 'statute' && e.id === id); }).concat([entry]);
       lsSaveAttachments_(list, target).then(function(ok){ if (ok) showToast(ref + ' 첨부했습니다' + (base ? ' (' + entry.판 + ' 시행판)' : ' — 사건 기준일이 없어 현행판'), 'success'); });
     });
@@ -9437,7 +9437,7 @@ function nxMdOpenWindow(title, src, opts){
   }
   // 실재 확인된 근거 → 첨부 자료(사건 첨부와 같은 모양: 법령 탭 📎 첨부·AI 지휘 첨부)
   function maiAttachList_(){
-    var out = [], seen = {}, today = new Date().toISOString().slice(0, 10), use = mai_.title;
+    var out = [], seen = {}, today = nxLocalDateStr_(), use = mai_.title;
     Object.keys(mai_.ans).forEach(function(id){
       var a = mai_.ans[id], p = a && a.p, ck = mai_.checks[id] || {}; if (!p) return;
       var why = maiSlot_(id).name + ' 답(결론 ' + (p.결론 || p.결론글.slice(0, 20)) + ')의 근거 — 법제처 실재 확인';
@@ -11948,7 +11948,7 @@ function nxMdOpenWindow(title, src, opts){
           var nowGot = entry.status !== '확보됨';
           var newList = (c.증빙목록 || []).map(function(e){
             if (e.id !== entry.id) return e;
-            return Object.assign({}, e, { status: nowGot ? '확보됨' : '미확보', 확보일: nowGot ? new Date().toISOString().slice(0, 10) : e.확보일 });
+            return Object.assign({}, e, { status: nowGot ? '확보됨' : '미확보', 확보일: nowGot ? nxLocalDateStr_() : e.확보일 });
           });
           docsSaveEvidence_(c, newList);
           // [2026.09 버그수정] 요청자료를 회계사가 여기서 확보완료/미확보로 바꾸면, 고객이
@@ -12019,7 +12019,7 @@ function nxMdOpenWindow(title, src, opts){
           source: 'auto',
           label: '실거래가: ' + (item.aptNm || '') + ' ' + (item.dong || '') + ' ' + (item.jibun || ''),
           note: (item.area || '') + '㎡ · ' + (item.floor || '') + '층 · ' + (item.dealDate || '') + ' · ' + Number(item.dealAmount || 0).toLocaleString() + '원',
-          status: '확보됨', 확보일: new Date().toISOString().slice(0, 10)
+          status: '확보됨', 확보일: nxLocalDateStr_()
         });
       });
     });
@@ -12040,7 +12040,7 @@ function nxMdOpenWindow(title, src, opts){
           source: 'auto',
           label: kindLabel + ': ' + Number(data.price).toLocaleString() + '원',
           note: (picked.roadAddr || picked.jibunAddr || '') + (dong ? ' ' + dong + '동' : '') + (ho ? ' ' + ho + '호' : '') + ' (기준연도 ' + data.stdrYear + ')',
-          status: '확보됨', 확보일: new Date().toISOString().slice(0, 10)
+          status: '확보됨', 확보일: nxLocalDateStr_()
         });
       }).catch(function(err){ showToast('조회 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
     });
@@ -12122,7 +12122,7 @@ function nxMdOpenWindow(title, src, opts){
       var note = document.getElementById('docsEvManualNote').value.trim();
       // [2026.09 버그수정] 저장이 이제 패널 전체를 다시 그리지 않으므로(위 docsSaveEvidence_
       // 참고), 예전엔 그 재구성이 자동으로 비워주던 이 입력칸들을 성공 시 직접 비운다.
-      docsAddEvidence_(c, { source: 'manual', label: label, note: note, status: '확보됨', 확보일: new Date().toISOString().slice(0, 10) }).then(function(res){
+      docsAddEvidence_(c, { source: 'manual', label: label, note: note, status: '확보됨', 확보일: nxLocalDateStr_() }).then(function(res){
         if (res && res.success !== false && !res.conflict){
           document.getElementById('docsEvManualLabel').value = '';
           document.getElementById('docsEvManualNote').value = '';
@@ -12133,7 +12133,7 @@ function nxMdOpenWindow(title, src, opts){
       var label = document.getElementById('docsEvReqLabel').value.trim();
       if (!label){ showToast('요청할 자료명을 입력해주세요.', 'warning'); return; }
       var note = document.getElementById('docsEvReqNote').value.trim();
-      docsAddEvidence_(c, { source: 'requested', label: label, note: note, status: '미확보', 요청일: new Date().toISOString().slice(0, 10) }).then(function(res){
+      docsAddEvidence_(c, { source: 'requested', label: label, note: note, status: '미확보', 요청일: nxLocalDateStr_() }).then(function(res){
         if (res && res.success !== false && !res.conflict){
           document.getElementById('docsEvReqLabel').value = '';
           document.getElementById('docsEvReqNote').value = '';
@@ -14052,7 +14052,7 @@ function nxMdOpenWindow(title, src, opts){
       list.innerHTML = '<div class="log-empty">아직 기록이 없습니다. 위에서 첫 항목을 추가해보세요.</div>';
       return;
     }
-    var todayStr = new Date().toISOString().slice(0, 10);
+    var todayStr = nxLocalDateStr_();
     var sorted = docsLogEntries_.slice().sort(function(a, b){ return (b.date||'').localeCompare(a.date||''); });
     sorted.forEach(function(entry){
       var row = document.createElement('div');
@@ -14105,7 +14105,7 @@ function nxMdOpenWindow(title, src, opts){
     docsLogPath_ = docsPath.slice();
     document.getElementById('docsLogFolderLabel').textContent = docsPath.join(' / ');
     document.getElementById('docsLogOverlay').style.display = 'flex';
-    document.getElementById('docsLogDateInput').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('docsLogDateInput').value = nxLocalDateStr_();
     document.getElementById('docsLogTextInput').value = '';
     document.getElementById('docsLogDueInput').value = '';
     document.getElementById('docsLogList').innerHTML = '<div class="log-empty">불러오는 중…</div>';
@@ -14134,7 +14134,7 @@ function nxMdOpenWindow(title, src, opts){
     if (!text) return;
     docsLogEntries_.push({
       id: 'e' + Date.now() + Math.random().toString(36).slice(2, 6),
-      date: document.getElementById('docsLogDateInput').value || new Date().toISOString().slice(0, 10),
+      date: document.getElementById('docsLogDateInput').value || nxLocalDateStr_(),
       text: text,
       dueDate: document.getElementById('docsLogDueInput').value || ''
     });
@@ -19853,7 +19853,8 @@ function nxMdOpenWindow(title, src, opts){
     // 향후 회차의 이자율은 아직 정해지지 않았으므로, referenceDate(기준일, 보통 연부연납 허가일·신고일 —
     // 없으면 오늘) 시점에 적용되는 최신 고시 이자율(REFUND_INTEREST_RATE_HISTORY, calculateClawbackInterestJS와
     // 동일 테이블)을 전체 회차에 공통 적용하는 것으로 자동계산한다(직접 입력하면 그 값이 우선).
-    const referenceDate = p.referenceDate || new Date().toISOString().slice(0, 10);
+    // [2026.10.30] 오늘은 서울 날짜로(toISOString은 세계표준시라 0시~9시에 어제 날짜 — 화면·서버 모두 서울 시간대)
+    const referenceDate = p.referenceDate || (function () { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); })();
     // [2026.10.20 세액 고침] 비운 칸('')·null을 0%로 읽어 가산금이 0원이 되던 것 — 값이 실제로 있을 때만 그 율, 없으면 기준일 고시 이율(원본 인쇄 작업자 상속부속B 발견)
     const rateIn_ = p.annualInterestRatePercent;
     const annualInterestRatePercent = (rateIn_ !== '' && rateIn_ !== null && rateIn_ !== undefined && Number.isFinite(Number(rateIn_)) && Number(rateIn_) >= 0)
@@ -46377,7 +46378,7 @@ function rwParaPeriod_(from, to){
   return Math.floor(months / 12) + '년 ' + (months % 12) + '개월';
 }
 function rwParaVars_(c){
-  var v = { 작성일: new Date().toISOString().slice(0, 10) };
+  var v = { 작성일: nxLocalDateStr_() };
   if (!c) return v;
   var ov = (c.사건개요 && typeof c.사건개요 === 'object') ? c.사건개요 : {};
   v.고객명 = c.고객명 || ''; v.사건명 = c.사건명 || ''; v.기준일 = c.기준일 || '';
@@ -46482,7 +46483,7 @@ document.getElementById('btnRwPara') && document.getElementById('btnRwPara').add
 async function createNewDoc(kind){
   const c = rwGetSelectedCase_();
   const semokLabel = c ? ((typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '') : '';
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = nxLocalDateStr_();
   const taxAmt = rwLatestTaxAmount_(c);
   const taxAmtStr = taxAmt != null ? Number(taxAmt).toLocaleString('ko-KR') + '원' : '원';
   const taxAmtLine = taxAmt != null ? '(세액계산 화면 최근 저장 기준) 최종세액 ' + taxAmtStr + '\n\n' : '';
@@ -48686,7 +48687,7 @@ function rwAiApplyEdit_(id, content){
     callGas('work_get_cases', {}).then(function(res){
       var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
       if (!c) return;
-      var log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: new Date().toISOString().slice(0, 10), text: text, dueDate: '' }]);
+      var log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: nxLocalDateStr_(), text: text, dueDate: '' }]);
       return callGas('work_update_case', { id: c.id, 작업일지: log, 기대수정일: c.수정일 });
     }).catch(function(){});
   }
@@ -48809,7 +48810,7 @@ function rwAiApplyEdit_(id, content){
   function fmtIssuedDate_(v){
     if (!v) return '';
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtDateShort_(v.slice(0, 10));
-    try { var d = new Date(v); if (!isNaN(d.getTime())) return fmtDateShort_(d.toISOString().slice(0, 10)); } catch(e){}
+    try { var d = new Date(v); if (!isNaN(d.getTime())) return fmtDateShort_(nxLocalDateStr_(d)); } catch(e){}
     return String(v);
   }
 
@@ -50444,7 +50445,7 @@ function rwAiApplyEdit_(id, content){
     memoOvApplyCases_ = [];
     document.getElementById('memoOvNewCustomer').value = '';
     document.getElementById('memoOvNewTaxpayer').value = '';
-    document.getElementById('memoOvNewRequestDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('memoOvNewRequestDate').value = nxLocalDateStr_();
     var uptypeSel = document.getElementById('memoOvNewUptype');
     var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '자문', '상담'];
     uptypeSel.innerHTML = uptypeOptions.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
@@ -51037,7 +51038,7 @@ function rwAiApplyEdit_(id, content){
     if (!memoReqSelectedTemplate_){ toast('템플릿을 먼저 선택하세요.'); return; }
     document.getElementById('memoReqNewCustomer').value = '';
     document.getElementById('memoReqNewTaxpayer').value = '';
-    document.getElementById('memoReqNewRequestDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('memoReqNewRequestDate').value = nxLocalDateStr_();
     var semokSel = document.getElementById('memoReqNewSemok');
     var uptypeSel = document.getElementById('memoReqNewUptype');
     function refreshUptypeOptions(){
@@ -61662,6 +61663,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }).join('');
   }
 
+  // [2026.10.30 버그수정] 이 컴퓨터(서울) 날짜 YYYY-MM-DD — toISOString().slice(0, 10)은 세계표준시라 0시~9시에 어제 날짜가 됐다.
+  // 인자 없으면 오늘, Date·시각 값을 주면 그 시각의 서울 날짜.
+  function nxLocalDateStr_(v){
+    var d = (v === undefined || v === null || v === '') ? new Date() : (v instanceof Date ? v : new Date(v));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
   // explorer.js의 짧은 날짜 표시(YYYY-MM-DD → YY-MM-DD) — 표시 전용, 저장값은 그대로 유지.
   function fmtDateShort_(dateStr){
     if (!dateStr) return '';
@@ -62589,7 +62597,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         // 로그인 전에는 하지 않는다(로그인 창 위에서 서버를 부르지 않게) — 로그인 뒤 다음 기회에 다시 본다
         var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
         if (!tok) { setTimeout(check_, 60000); return; }
-        var today = new Date().toISOString().slice(0, 10);
+        var today = nxLocalDateStr_();
         try { if (localStorage.getItem('nxWiringCheckDay') === today) return; } catch (e) {}
         var missing = [];
         document.querySelectorAll('.menu-item[data-view]').forEach(function(m){

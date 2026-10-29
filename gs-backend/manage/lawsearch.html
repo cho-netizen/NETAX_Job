@@ -395,7 +395,7 @@
         .then(function(detail){ return { 요약: lsDetailSummary_(ri.category, detail), 결과: lsInferOutcome_(ri.category, detail) }; })
         .catch(function(){ return { 요약: (ri.sub || '') + '\n(원문 없음 — 검색결과 기본정보만 첨부됨)', 결과: '' }; });
     })).then(function(picked_results){
-      var today = new Date().toISOString().slice(0, 10);
+      var today = nxLocalDateStr_();
       var newEntries = picked.map(function(ri, i){
         var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 번호: ri.sub || '', 첨부일: today, 첨부: '직접', 쓸곳: String(use || '').trim() };
         if (picked_results[i].결과) entry.결과 = picked_results[i].결과;
@@ -439,7 +439,7 @@
         '<span class="log-del" title="첨부 해제">✕</span>';
       var okBtn = row.querySelector('.ls-ai-ok');
       if (okBtn) okBtn.addEventListener('click', function(){
-        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: new Date().toISOString().slice(0, 10) }) : e; });
+        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: nxLocalDateStr_() }) : e; });
         lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
       });
       row.querySelector('.log-del').addEventListener('click', function(){

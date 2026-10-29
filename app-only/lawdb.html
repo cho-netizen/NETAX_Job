@@ -334,7 +334,7 @@
       var md = typeof lsiRelArtMd_ === 'function' ? lsiRelArtMd_(a2, hang ? [hang] : []).join('\n') : lsiCiteBuild_(a2, { h: h, o: -1 }, meta, { style: 'plain', src: false, rev: false }).plain;
       var id = law + '|' + art + '|' + (hang || '');
       var entry = { category: 'statute', id: id, 제목: ref + (a2.title ? '(' + a2.title + ')' : ''), 요약: md.replace(/\s+/g, ' ').slice(0, 300), 법령명: law, 조: art, 항: hang || '',
-        판: r.시행일자 ? lsiDbYmd_(r.시행일자) : '', 기준일판: !!base, 원문: md.slice(0, 6000), 쓸곳: String(use || '').trim(), 첨부: '직접', 첨부일: new Date().toISOString().slice(0, 10) };
+        판: r.시행일자 ? lsiDbYmd_(r.시행일자) : '', 기준일판: !!base, 원문: md.slice(0, 6000), 쓸곳: String(use || '').trim(), 첨부: '직접', 첨부일: nxLocalDateStr_() };
       var list = (target.법령예규판례 || []).filter(function(e){ return !(e.category === 'statute' && e.id === id); }).concat([entry]);
       lsSaveAttachments_(list, target).then(function(ok){ if (ok) showToast(ref + ' 첨부했습니다' + (base ? ' (' + entry.판 + ' 시행판)' : ' — 사건 기준일이 없어 현행판'), 'success'); });
     });

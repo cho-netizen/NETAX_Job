@@ -982,7 +982,7 @@ function rwParaPeriod_(from, to){
   return Math.floor(months / 12) + '년 ' + (months % 12) + '개월';
 }
 function rwParaVars_(c){
-  var v = { 작성일: new Date().toISOString().slice(0, 10) };
+  var v = { 작성일: nxLocalDateStr_() };
   if (!c) return v;
   var ov = (c.사건개요 && typeof c.사건개요 === 'object') ? c.사건개요 : {};
   v.고객명 = c.고객명 || ''; v.사건명 = c.사건명 || ''; v.기준일 = c.기준일 || '';
@@ -1087,7 +1087,7 @@ document.getElementById('btnRwPara') && document.getElementById('btnRwPara').add
 async function createNewDoc(kind){
   const c = rwGetSelectedCase_();
   const semokLabel = c ? ((typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '') : '';
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = nxLocalDateStr_();
   const taxAmt = rwLatestTaxAmount_(c);
   const taxAmtStr = taxAmt != null ? Number(taxAmt).toLocaleString('ko-KR') + '원' : '원';
   const taxAmtLine = taxAmt != null ? '(세액계산 화면 최근 저장 기준) 최종세액 ' + taxAmtStr + '\n\n' : '';
