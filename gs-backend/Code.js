@@ -3922,6 +3922,7 @@ function job_buildProposal_(input) {
   const missing = spec.required.filter(function (k) { return params[k] === undefined || params[k] === null || params[k] === ''; });
   if (missing.length) return { error: '필요한 값이 빠졌습니다: ' + missing.join(', ') + ' — job_lookup으로 먼저 확인하라.' };
   let payload = params;
+  if (input.action === 'case_update') payload = Object.assign({}, params, { _by: '넥스' }); // [2026.10.29 쓰는 문 하나] 세무사님이 [실행]을 누른 넥스 제안 — 장부에 넥스 값으로
   if (input.action === 'checklist_mark') {
     const c = job_findCase_(params.caseId);
     if (!c || !c.my_report_id) return { error: '이 사건은 고객창구에 연결되지 않아 체크리스트가 없습니다.' };
@@ -4091,12 +4092,14 @@ const JOB_AI_TOOLS_ = [
       + 'do=set: 값을 적는다 — path(칸 경로: seller.name·seller.regNo·seller.address·seller.multiHouseCount / c0.date·c0.totalPrice·c0.transferCause·c0.buyer.name·c0.buyer.regNo·c0.buyer.relation / a0.assetLocation·a0.assetKind·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract(c0) / costs({acq:[{label,amount,file,date}],tr:[…]})·taxfee·사건분류·기준일 / doc:<파일 이름>.role(서류 역할)), value, kind(세무사님=세무사님이 말로 준 값 그대로 / 넥스=네가 서류로 정한 값 / 추정=추정치), file·page·quote(원문 한 줄)·why(근거). '
       + '고르기 칸은 코드값: assetType house|other|presale_right, buyer.relation none|sibling|lineal|spouse|relative, assetKind land|building|land_building|stock|other, transferCause sale|expropriation|exchange|gift_burden|other. 세무사님이 정한 값은 바꾸지 못한다(거절되면 지금 값과 서류 값만 말씀드린다). '
       + 'do=ask: 확신이 없을 때 값 대신 물어볼 것으로 세운다 — path, question(무엇이 왜 애매한지), cands:[{v,src}](후보와 출처), needDoc(true면 증빙 받을 것). '
-      + 'do=decide: path, decision(확인|보류|무시), note. do=undo: path(마지막 고침 되돌리기, 네 값만). do=calc: 장부(확정+추정)로 세액계산기를 돌려 사건에 저장하고 납부세액·빈 칸·추가 확인 사항을 돌려준다 — 세액 숫자는 여기서 받은 것만 말한다. do=import: 옛 저장소(사건처리 결정 파일)를 장부로 한 번 옮긴다(장부가 비어 있을 때).',
+      + 'do=decide: path, decision(확인|보류|무시), note. do=undo: path(마지막 고침 되돌리기, 네 값만). do=calc: 장부(확정+추정)로 세액계산기를 돌려 사건에 저장하고 납부세액·빈 칸·추가 확인 사항을 돌려준다 — 세액 숫자는 여기서 받은 것만 말한다. do=import: 옛 저장소(사건처리 결정 파일)를 장부로 한 번 옮긴다(장부가 비어 있을 때). '
+      + 'do=hyp: 의뢰서·상담 메모·대화를 읽고 GAS 규칙이 못 뽑은 사건개요 가설을 보탠다 — field(상대방|관계|물건|거래|쟁점|요청), value(쟁점은 사건분류 이름 그대로), file(근거 글 파일). 가설은 서류 확인 전이라 계산 칸에 들어가지 않고, 사건개요 가설·확보할 증빙·질문의 출발점이 된다(장부에 「넥스 판단」으로 표시). 서류·금액·날짜 값은 hyp가 아니라 set으로.',
     input_schema: {
       type: 'object',
       properties: {
         caseId: { type: 'string', description: '작업관리 사건ID' },
-        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'import'] },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'import', 'hyp'] },
+        field: { type: 'string', enum: ['상대방', '관계', '물건', '거래', '쟁점', '요청'], description: 'hyp일 때 가설 항목' },
         path: { type: 'string', description: '칸 경로(set·ask·decide·undo)' },
         value: { description: 'set일 때 값(글·숫자·불·객체)' },
         kind: { type: 'string', enum: ['세무사님', '넥스', '추정'], description: 'set일 때 값의 주인 — 세무사님이 말한 값은 꼭 세무사님' },
@@ -24719,7 +24722,19 @@ function work_createCaseFull_(params) {
   return r;
 }
 
+// [2026.10.29 계획서 1단계 — 쓰는 문 하나] 작업관리 사건 줄에 쓰는 입구는 이것 하나다. 저장한 사건개요·증빙목록·처리방향·세목·업무유형·납세자를
+//  사건 장부 층(ledgerFromCaseWrite_)에도 같은 값으로 적는다 — 시트 칸은 장부의 거울. 누가 썼는지(WORK_WRITE_BY_)는 바깥 입구 두 곳만 정한다:
+//  세무사님 화면 저장(work_update_case 액션) = 세무사님, 넥스 카드(case_update — 세무사님이 [실행]을 누른 넥스 제안) = 넥스, 그 밖(GAS 안의 호출 40여 곳) = GAS,
+//  장부가 시트를 비춰 쓸 때 = 장부(되돌려 적지 않음). 장부 쓰기가 실패해도 시트 저장은 그대로(실패는 로그로 드러냄)
+var WORK_WRITE_BY_ = 'GAS';
 function work_updateCase(params) {
+  const r = work_updateCase0_(params);
+  if (r && r.success !== false && r.case && typeof ledgerFromCaseWrite_ === 'function') {
+    try { const lr = ledgerFromCaseWrite_(r.case, params, WORK_WRITE_BY_); if (lr && lr.refused) r.ledgerNote = '장부: 세무사님·넥스가 정한 값 ' + lr.refused + '칸은 바꾸지 않음'; } catch (e) { console.error('사건 장부 층 쓰기 실패(시트 저장은 됨): ' + (e && e.message || e)); }
+  }
+  return r;
+}
+function work_updateCase0_(params) {
   return withLock_(8000, function () {
     const sheet = work_getSheet_();
     const col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 사건처리 실행 안에선 시트 메모(아래 setValues는 found.row 배열을 제자리에서 고치므로 메모도 같이 바뀐다)
@@ -25311,8 +25326,11 @@ function work_doPost(body) {
           }
         }
       } catch (e) { edit = null; }
-      const r = work_updateCase(body);
+      const by0 = body._by === '넥스' ? '넥스' : lg ? caseProcWho_('', lg.by) : '세무사님'; delete body._by; // [2026.10.29 쓰는 문 하나] 이 입구는 사람이 누른 저장(넥스 카드는 _by 넥스)
+      const wb = WORK_WRITE_BY_; WORK_WRITE_BY_ = by0 === '넥스' ? '넥스' : '세무사님';
+      let r; try { r = work_updateCase(body); } finally { WORK_WRITE_BY_ = wb; }
       if (edit && r && r.success !== false) { try { ledgerGiftFromOvEdit_(body.id, edit.prev, edit.next, lg ? String(lg.what || '처리개요 화면') : '세액계산 화면', lg ? caseProcWho_('', lg.by) : '세무사님', edit.keys); } catch (e) { console.error('처리개요 칸 고침 장부 쓰기 실패: ' + (e && e.message || e)); } }
+      if (body.id && r && r.success !== false && ['사건개요', '처리방향', '증빙목록', '세목', '업무유형', '납세자', '기준일'].some(function (k) { return body[k] !== undefined; })) cpFlowQueueAdd_(body.id, (by0 === '넥스' ? '넥스' : '세무사님') + ' 화면 저장(' + ['사건개요', '처리방향', '증빙목록', '세목', '업무유형', '납세자', '기준일'].filter(function (k) { return body[k] !== undefined; }).join('·') + ')'); // [2026.10.29 계획서 2단계] 사람이 바꾼 것도 한 바퀴로
       if (lg && body.id && r && r.success !== false) { caseProcLog_(body.id, { by: caseProcWho_('', lg.by), what: String(lg.what || '').slice(0, 40), detail: String(lg.detail || '').slice(0, 240) }); if (lg.alert) caseProcAlert_(body.id, String(lg.alertKind || 'screen').slice(0, 30), String(lg.alert)); }
       return r;
     }
@@ -27079,7 +27097,7 @@ var T6_RECORD_KEYS_ = ['decisions', 'readScope', 'trAns', 'valueHist', 'closed',
 function t6RecordForReader_(sv) {
   const out = {}; T6_RECORD_KEYS_.forEach(function (k) { if (sv && sv[k] !== undefined && sv[k] !== null) out[k] = sv[k]; });
   // [2026.10.28 시정 2단계] 사건 장부도 함께 — 서비스가 세무사님·넥스 값과 질문 결정을 장부에서 본다(질문·결정은 이제 장부에만 있다)
-  try { if (sv && sv.caseId) { const L = ledgerLoad_(sv.caseId); out.ledger = { rows: L.rows, log: (L.log || []).slice(-60) }; } } catch (e) {}
+  try { if (sv && sv.caseId) { const L = ledgerLoad_(sv.caseId); out.ledger = { rows: L.rows, log: (L.log || []).slice(-60), ov: L.ov || {}, ev: L.ev || {}, dir: L.dir || {}, hyp: L.hyp || null, flowFrom: L.flowFrom || '', flow: L.flow || null }; /* [2026.10.29] 사건 흐름 층도 — 서비스가 값 주인을 알고 한 바퀴를 돈다 */ } } catch (e) {}
   return out;
 }
 // [2026.10.28 시정 2단계] 직결 서비스가 돌려준 장부를 진짜 장부에 합친다 — 같은 쓰기 규칙(ledgerBatch_)이라 세무사님·넥스 값은 서비스 값이 덮지 못한다.
@@ -27097,6 +27115,19 @@ function t6MergeLedger_(caseId, Lin) {
   // [2026.10.29] 직결 서비스가 모은 서류 사실·맞대기·칸으로 간 길(사건 장부 바탕 kb)도 받는다 — 바탕은 매 처리마다 새로 모은 것이라 통째로(파일 장부는 지금 것 유지)
   if (Lin.kb && typeof Lin.kb === 'object' && Array.isArray(Lin.kb.facts) && Lin.kb.at) {
     try { const kb = Object.assign({}, Lin.kb); delete kb.prev; delete kb.prevAt; const pr = ledgerKbPut_(caseId, kb, '서류 사실 다시 모음(직결)'); res.kb = pr && pr.ok ? true : (pr && pr.error) || false; } catch (e) { res.kb = String(e && e.message || e); }
+  }
+  // [2026.10.29 계획서 1·2단계] 사건 흐름 층 — 서비스가 세운 가설·사건개요 가설·한 바퀴 기록. 확보할 증빙은 사건 줄(증빙목록)을 쓰는 문으로 따로 온다
+  //  GAS가 만든 줄만 받는다 — 세무사님·넥스가 정한 사건개요 줄은 서비스 값이 덮지 못한다
+  if (Lin.hyp || Lin.ov || Lin.flow) {
+    try {
+      ledgerMutate_(caseId, function (L) {
+        if (Lin.hyp && Array.isArray(Lin.hyp.claims)) { const nex = ((L.hyp && L.hyp.claims) || []).filter(function (x) { return x.by === '넥스'; }); L.hyp = { at: Lin.hyp.at || caseProcNow_(), claims: Lin.hyp.claims.filter(function (x) { return x.by !== '넥스'; }).concat(nex) }; }
+        L.ov = L.ov || {};
+        Object.keys(Lin.ov || {}).forEach(function (p) { const r = Lin.ov[p], cur = L.ov[p]; if (!r || !r.src || /^(세무사님|넥스)$/.test(r.src.kind)) return; if (cur && cur.src && (LEDGER_RANK_[cur.src.kind] || 0) > 1) { if (r.hypNote !== undefined) cur.hypNote = r.hypNote; return; } L.ov[p] = r; });
+        if (Lin.flow && Lin.flow.at) { L.flow = Lin.flow; if ((Lin.flow.diff || []).length) ledgerLogTo_(L, { by: 'GAS', what: '한 바퀴(직결)', detail: (Lin.flow.why ? Lin.flow.why + ' → ' : '') + Lin.flow.diff.join(' · ') }); }
+      });
+      res.flow = true;
+    } catch (e) { res.flow = String(e && e.message || e); }
   }
   res.merged = ops.length; return res;
 }
@@ -27215,6 +27246,7 @@ function cpWatchCase_(c, opt) {
     else {
       const what = '폴더 변동 — ' + changes.slice(0, 3).map(function (x) { return x.kind + ' ' + x.name; }).join(', ') + (changes.length > 3 ? ' 외 ' + (changes.length - 3) + '개' : '');
       try { ledger = ledgerKbBuild_(c, { what: '폴더 변동으로 다시 모음', why: what, fresh: true }); } catch (e) { ledger = { ok: false, error: String(e && e.message || e).slice(0, 120) }; cpLedgerStaleAdd_(c.id); }
+      cpFlowQueueAdd_(c.id, what.slice(0, 60)); // [2026.10.29 계획서 2단계] 서류 사실만이 아니라 한 바퀴(사건개요·확보할 증빙·칸·질문)도 — 틱이 이어서 돈다
       try { if (ledger && ledger.ok) caseProcPatch_(c.id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '사건 장부 바로 갱신', detail: (what + ' → 서류 사실 ' + ((ledger.sum && ledger.sum.사실) || 0) + '건 · 맞댄 묶음 ' + ((ledger.sum && ledger.sum.묶음) || 0) + ' (' + ledger.초 + '초)').slice(0, 240) }); }); } catch (e) {}
     }
   }
@@ -27329,6 +27361,36 @@ function cpLedgerStaleRun_(started, DEADLINE) {
   if (left.length) props.setProperty(CP_LEDGER_STALE_, JSON.stringify(left)); else props.deleteProperty(CP_LEDGER_STALE_);
   return done;
 }
+// [2026.10.29 계획서 2단계] 한 바퀴 줄 — 폴더 파일 변동·세무사님 화면 저장·장부 답이 생기면 그 사건을 줄에 넣고, 서류 미리 읽기 틱(1분마다)이 "이 사건 처리하자"와 같은 바퀴
+//  (caseProcAll_ + 한 바퀴 caseFlowRound_ — GAS만, AI 없음, 0원)를 돌린다. 이미 그 뒤에 돈 바퀴가 있으면(장부 L.flow.at이 더 나중) 건너뛴다. 틱은 시간 한도가 있어
+//  남은 시간이 2분 반 넘을 때만 한 사건씩. 밤에도 돈다(넥스를 깨우지 않으므로)
+var CP_FLOW_QUEUE_ = 'cp_flow_queue', CP_FLOW_RUNNING_ = 'cp_flow_running';
+function cpFlowQueueAdd_(caseId, why) {
+  if (!caseId || (typeof AK_IN_SANDBOX_ !== 'undefined' && AK_IN_SANDBOX_)) return;
+  try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_FLOW_QUEUE_) || '[]'); } catch (e) { q = []; } q = q.filter(function (x) { return x && x.id !== caseId; }); q.push({ id: String(caseId), why: String(why || '').slice(0, 60), at: caseProcNow_() }); props.setProperty(CP_FLOW_QUEUE_, JSON.stringify(q.slice(-50))); } catch (e) {}
+}
+function cpFlowQueueRun_(started, DEADLINE) {
+  const props = PropertiesService.getScriptProperties(), done = [];
+  for (let guard = 0; guard < 3; guard++) {
+    if (Date.now() - started > DEADLINE - 150000) break;
+    let q = []; try { q = JSON.parse(props.getProperty(CP_FLOW_QUEUE_) || '[]'); } catch (e) { q = []; }
+    if (!q.length) break;
+    let run = {}; try { run = JSON.parse(props.getProperty(CP_FLOW_RUNNING_) || '{}') || {}; } catch (e) { run = {}; }
+    const busy = run.id && Date.now() - Number(run.t || 0) < 300000;
+    const item = q.filter(function (x) { return !(busy && x.id === run.id); })[0]; if (!item) break;
+    props.setProperty(CP_FLOW_QUEUE_, JSON.stringify(q.filter(function (x) { return x !== item && x.id !== item.id; }))); // 돌리기 전에 줄에서 뺀다(겹친 틱이 같은 사건을 또 돌리지 않게)
+    let L = {}; try { L = ledgerLoad_(item.id, true) || {}; } catch (e) { L = {}; }
+    if (L.flow && L.flow.at && String(L.flow.at) > String(item.at)) { done.push(item.id + ': 이미 돈 바퀴가 있음'); continue; }
+    props.setProperty(CP_FLOW_RUNNING_, JSON.stringify({ id: item.id, t: Date.now() }));
+    let r = null;
+    try { r = caseProcTimed_({ caseId: item.id, step: 'all', budgetMs: Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000)), noAi: true, by: 'GAS', flowWhy: item.why }); }
+    catch (e) { r = { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
+    finally { props.deleteProperty(CP_FLOW_RUNNING_); }
+    if (r && (r.more || r.partial)) cpFlowQueueAdd_(item.id, item.why + '(이어서)'); // 서류 읽기가 길어 다 못 돌았으면 다음 틱에 이어서
+    done.push(item.id + ': ' + (r && r.error ? '실패 ' + r.error : r && r.flow ? (r.flow.diff.length ? r.flow.diff.join(' · ') : '바뀐 것 없음') : '바퀴 미완(' + ((r && (r.more || r.partial)) ? '다음 틱' : '') + ')'));
+  }
+  return done;
+}
 function cpWatchDefer_(caseId) { try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.indexOf(caseId) === -1) q.push(caseId); props.setProperty(CP_WATCH_PENDING_, JSON.stringify(q.slice(-100))); } catch (e) {} }
 // 틱 끝에서 — 이번 틱에 파일이 바뀐 사건 폴더들을 대조하고, 변동이 있으면 넥스를 깨운다(밤이면 미룸). 아침 첫 틱은 미뤄 둔 사건부터
 function cpWatchTick_(touched, started, DEADLINE) {
@@ -27352,6 +27414,7 @@ function cpWatchTick_(touched, started, DEADLINE) {
     if (w.ledger) { out.ledger = (out.ledger || 0) + 1; out.lines.push(String(c.사건명 || c.id) + ': 장부 ' + (w.ledger.deferred ? '갱신 미룸(시간)' : w.ledger.ok ? '바로 갱신 — 서류 사실 ' + ((w.ledger.sum && w.ledger.sum.사실) || 0) + '건' : '갱신 못 함')); }
     if (cpWatchPending_(caseProcLoad_(c.id) || {}).length) wake(c);
   });
+  try { cpFlowQueueRun_(started, DEADLINE).forEach(function (s) { out.lines.push('한 바퀴 ' + s); out.flow = (out.flow || 0) + 1; }); } catch (e) { out.lines.push('한 바퀴 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 계획서 2단계]
   return out;
 }
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
@@ -31321,8 +31384,19 @@ function caseProcAll_(c, body) {
   if (left() < 45000) { out.partial = true; out.next = 'all'; out.skipEvidence = true; return finish('시간 부족 — ③부터 다음 호출에서(②는 끝남)'); }
   // ③ 칸 채우기(기준일이 ②에서 정해졌을 수 있어 사건을 새로 읽는다)
   const c3 = fresh();
-  const ov = stage('overview', 'overview', function () { return caseProcOverview_(c3, pass('overview')); });
+  let ov = stage('overview', 'overview', function () { return caseProcOverview_(c3, pass('overview')); });
   if (ov.error) { out.ok = false; out.error = ov.error; return finish('③ 실패'); }
+  // [2026.10.29 계획서 2단계 — 한 바퀴] ③ 뒤에 가설 → 사건개요 층, 확보할 증빙 다시, 바뀐 것 기록. 사건개요의 정해진 칸(세목·업무유형·사건분류·기준일)이 바뀌었으면 ③을 한 번 더
+  //  세무사님 원문(10-29) "증빙을 확보해 나가면서 사건장부에 정보를 모으는 과정이 일방통행이 아니라 수시로 피드백이 되면서 이루어져야"
+  if (typeof caseFlowRound_ === 'function') {
+    const t = Date.now(); let fr = null;
+    try { fr = caseFlowRound_(fresh(), body.flowWhy || (body.by ? body.by + ' — 이 사건 처리' : '이 사건 처리'), ov.lines = ov.lines || []); } catch (e) { (ov.lines = ov.lines || []).push('⚠ 한 바퀴를 돌지 못함: ' + String(e && e.message || e).slice(0, 120)); }
+    tm.flow = Math.round((Date.now() - t) / 100) / 10; out.flow = fr;
+    if (fr && fr.settledChanged && left() > 60000) {
+      const ov2 = stage('overview', 'overview', function () { return caseProcOverview_(fresh(), pass('overview')); });
+      if (!ov2.error) { (ov2.lines = ov2.lines || []).unshift('🔁 사건개요의 정해진 칸이 바뀌어 ③을 한 번 더 돌았습니다'); ov = ov2; }
+    }
+  }
   // 질문 판정 — 화면과 같은 기준
   const decisions = (caseProcLoad_(c.id) || {}).decisions || {};
   const q = caseProcOpenInputs_([].concat(basic.items || [], ev && ev.items || [], ov.items || []), decisions);
@@ -31409,11 +31483,11 @@ function caseProc0_(body) {
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
-    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; } return ra; } // [2026.10.22 작업 기록부] 누가·무엇을 정했나 · [2026.10.29] 답 넣기가 쓰는 저장소가 곧 장부(베껴 쓰기 걷어냄)
+    if (body.step === 'apply') { const ra = caseProcApply_(c, body); if (ra && ra.ok) { const al = caseProcApplyLog_(c, body); if (al) ra.nexAlert = al; cpFlowQueueAdd_(c.id, caseProcWho_('', body.by) + ' 답 — ' + String(body.label || body.target || body.qid || '').slice(0, 30)); } return ra; } // [2026.10.29 계획서 2단계] 답도 한 바퀴로(화면이 바로 ⚡를 돌리면 그 바퀴가 먼저 — 줄은 건너뜀) // [2026.10.22 작업 기록부] 누가·무엇을 정했나 · [2026.10.29] 답 넣기가 쓰는 저장소가 곧 장부(베껴 쓰기 걷어냄)
     // [2026.10.27 10-27 A·C·경우별] 어느 칸이든 값 고치기·되돌리기, 질문 닫기, 경우(안) 계산 저장 — 넥스(채팅 카드·지휘 도구)와 화면(사건처리 GAS 칸·세액계산)이 같은 입구
     if (body.step === 'valueFix') return caseProcValueFix_(c, body);
     if (body.step === 'valueUndo') return caseProcValueUndo_(c, body);
-    if (body.step === 'decide') return caseProcDecide_(c, body);
+    if (body.step === 'decide') { const rd = caseProcDecide_(c, body); if (rd && rd.ok !== false) cpFlowQueueAdd_(c.id, caseProcWho_('', body.by) + ' 결정'); return rd; } // [2026.10.29 계획서 2단계]
     if (body.step === 'scenario') return caseProcScenario_(c, body);
     if (body.step === 'readScope') return caseProcReadScope_(c, body); // [2026.10.27 F] "○○ 폴더만 읽어라"
     if (body.step === 'readList') return caseProcReadList_(c, body);
@@ -52581,7 +52655,7 @@ function caseProcGrasp_(c) {
   const texts = String(c.폴더ID || '').trim() ? caseProcHypTexts_(c) : [];
   tgk('가설·출처 글 합계');
   const relRe = new RegExp('(?:^|[\\s,(·])(' + CASEPROC_REL_WORDS_ + ')\\s*[:：]?\\s+([가-힣]{2,4})(?=$|[\\s,.)·님씨])|([가-힣]{2,4})\\s*\\(\\s*(' + CASEPROC_REL_WORDS_ + ')\\s*\\)', 'g');
-  const STOP = /증여|상속|양도|소유|명의|사망|부동산|아파트|주택|토지|매매|계약|세금|신고|재산|금액|지분|에게|으로|부터|까지|한테|에서|께서|중에|이고|이며|들이|들은|이랑|하고|님이|님은|명이|분이|모두|함께|각각|소유자|^(중|및|외|등)/;
+  const STOP = /없음|없다|없고|생존|증여|상속|양도|소유|명의|사망|부동산|아파트|주택|토지|매매|계약|세금|신고|재산|금액|지분|에게|으로|부터|까지|한테|에서|께서|중에|이고|이며|들이|들은|이랑|하고|님이|님은|명이|분이|모두|함께|각각|소유자|^(중|및|외|등)/;
   texts.forEach(function (m) {
     const t = String(m.text || '');
     // 업무유형은 "그 일을 해 달라"는 말일 때만 — 검토서·의뢰서 본문의 "불복까지 가도", "경정처분" 같은 설명 낱말은 아님(고객AM 의뢰서)
@@ -52591,6 +52665,7 @@ function caseProcGrasp_(c) {
     while ((r = relRe.exec(t)) && n < 6) { const rel = r[1] || r[4], nm = r[2] || r[3]; if (nm && !STOP.test(nm)) { add('관계', rel + ' ' + nm, m.file); n++; } }
     const sm = /양\s*도\s*(?:소\s*득\s*)?세/.test(t) ? 'transfer' : /증\s*여\s*세/.test(t) ? 'gift' : /상\s*속\s*세/.test(t) ? 'inheritance' : '';
     if (sm) add('세목', sm, m.file);
+    try { caseProcGraspMore_(t, c, add, m.file); } catch (e) {} // [2026.10.29 계획서 3단계] 물건·거래·쟁점·요청 사항까지
   });
   const hyp = {};
   claims.forEach(function (x) { const h = hyp[x.f] = hyp[x.f] || []; const e = h.filter(function (y) { return y.v === x.v; })[0]; if (e) { if (e.srcs.indexOf(x.src) === -1) e.srcs.push(x.src); } else h.push({ v: x.v, srcs: [x.src] }); });
@@ -52598,13 +52673,58 @@ function caseProcGrasp_(c) {
   const show = function (f) { return (hyp[f] || []).map(function (e) { return lab(f, e.v) + '[' + e.srcs.join('·') + ']'; }).join(' / '); };
   lines.push('🧭 사건파악(가설 — 증빙을 읽으며 확인): ' + ['세목', '업무유형', '납세자', '기준일'].filter(function (f) { return hyp[f]; }).map(function (f) { return f + ' ' + show(f); }).join(' · '));
   if (hyp.상대방 || hyp.관계) lines.push('🧭 가설(메모·대화·처리개요): ' + ['상대방', '관계'].filter(function (f) { return hyp[f]; }).map(function (f) { return f + ' ' + show(f); }).join(' · ') + ' — 가족관계증명서·계약서·등기부로 확인 전');
+  if (hyp.물건 || hyp.거래 || hyp.쟁점 || hyp.요청) lines.push('🧭 가설(의뢰서 등 — 서류 확인 전, 계산에 넣지 않음): ' + ['물건', '거래', '쟁점', '요청'].filter(function (f) { return hyp[f]; }).map(function (f) { return f + ' ' + show(f); }).join(' · ').slice(0, 600)); // [2026.10.29 계획서 3단계]
   const split = ['세목', '업무유형', '납세자'].filter(function (f) { return (hyp[f] || []).length > 1; });
   if (split.length) lines.push('⚠ 가설끼리 다른 곳: ' + split.map(function (f) { return f + ' ' + show(f); }).join(' · ') + ' — 증빙을 읽은 뒤 서류로 가립니다');
   if (texts.length) lines.push('가설 출처 글: ' + texts.map(function (m) { return m.file; }).join(', '));
   tgk('가설·낱말 뽑기');
-  try { caseProcPatch_(c.id, function (sv) { sv.grasp = { at: new Date().toISOString(), hyp: hyp }; }); } catch (e) {}
+  try { if (typeof ledgerHypPut_ === 'function') ledgerHypPut_(c.id, hyp, c); } catch (e) { lines.push('⚠ 가설을 사건 장부에 남기지 못함: ' + String(e && e.message || e).slice(0, 80)); } // [2026.10.29 계획서 1단계] 가설은 사건 장부 가설 층(L.hyp) — 사건처리 기록 파일(sv.grasp)에 따로 두지 않는다
   tgk('가설·기록부 쓰기');
   return { lines: lines, hyp: hyp };
+}
+// [2026.10.29 계획서 3단계 — 의뢰서를 첫 입력으로] 의뢰서·상담 메모·대화에서 물건(소재지)·거래(원인과 날짜·금액)·쟁점(사건분류 후보)·요청 사항을 뽑아 가설로.
+//  세무사님 원문(10-29) "사건접수후 의뢰서 등의 정보로 부터 사건개요를 파악하여 처리방향과 확보대상 증빙을 확보해 나가게 되고"
+//  일반 규칙: 쟁점 낱말은 필요증빙 틀(WORK_EVIDENCE_TEMPLATES_)의 사건분류 이름이 가리키는 세법 용어(1세대1주택·일시적2주택·비사업용 토지·자경·수용·이월과세·부담부증여·
+//   재차증여·세대생략·동거주택·가업상속 등)로만 잡는다 — 사무소 파일 이름 버릇이 아니라 법령·서식 용어라 다른 사건·다른 의뢰서에도 같다. "아님·해당 없음"이 바로 뒤에 붙으면 뺀다.
+//  뽑은 값은 가설일 뿐 — 칸 값으로 넣지 않고(공통원칙 4 "증빙 후보로는 쓰지 마라"), 사건개요 가설 → 확보할 증빙 → 질문의 출발점으로만 쓴다(한 바퀴 caseFlowRound_)
+var CASEPROC_ISSUE_WORDS_ = {
+  transfer: [['1세대1주택 비과세', /1\s*세대\s*1\s*주택|1\s*주택\s*비과세|1\s*가구\s*1\s*주택/], ['1세대1주택 고가주택(과세)', /고가\s*주택|12\s*억\s*(원\s*)?초과/], ['일시적2주택 비과세', /일시적\s*(1\s*세대\s*)?2\s*주택/],
+    ['2주택 중과', /(^|[^\d])2\s*주택.{0,8}중과/], ['3주택이상 중과', /3\s*주택|다주택.{0,8}중과/], ['비사업용 토지(중과)', /비사업용\s*토지/], ['농지 등 감면(8년자경 등)', /자경|8\s*년\s*이상?\s*경작|농지.{0,8}감면/],
+    ['수용 등 공익사업 비과세·감면', /수용|공익\s*사업|토지\s*보상/], ['이월과세(배우자·직계존비속 증여 후 양도)', /이월\s*과세|증여\s*(받은|로\s*받|받아).{0,24}(양도|매도|팔)/],
+    ['특수관계자간 거래(부당행위계산부인·저가양도 증여의제)', /특수\s*관계|저가\s*양도|부당\s*행위/], ['재건축·재개발(조합원입주권→신축주택 전환)', /재건축|재개발|조합원\s*입주권|관리\s*처분/],
+    ['미등기양도', /미등기/], ['경매·공매', /경매|공매|낙찰/], ['부담부증여(전액)', /부담부\s*증여/], ['교환', /교환\s*(계약|하|으로|거래)/]],
+  gift: [['부담부증여(부분, 순수증여분만)', /부담부\s*증여|채무\s*인수|보증금.{0,6}승계/], ['재차증여(10년내 합산)', /재차\s*증여|10\s*년.{0,10}(이내|안|내).{0,12}증여|증여.{0,10}합산/], ['세대생략증여(할증)', /세대\s*생략|손자|손녀|조부|조모|할아버지|할머니/],
+    ['명의신탁 증여의제', /명의\s*신탁/], ['저가양수·고가양도 증여의제', /저가\s*양수|고가\s*양도/], ['특정법인과의 거래 증여의제', /특정\s*법인/], ['창업자금·가업승계 특례증여', /창업\s*자금|가업\s*승계/]],
+  inheritance: [['배우자상속공제 해당', /배우자\s*상속|배우자.{0,10}(공제|상속분)/], ['가업상속공제 해당', /가업\s*상속/], ['영농상속공제 해당', /영농\s*상속/], ['동거주택상속공제 해당', /동거\s*주택/],
+    ['사전증여재산 합산(10년내 상속인·5년내 비상속인)', /사전\s*증여|생전\s*(에\s*)?증여|미리\s*증여/], ['상속포기·한정승인', /상속\s*포기|한정\s*승인/], ['유증·사인증여', /유증|유언|사인\s*증여/]]
+};
+function caseProcGraspMore_(t, c, add, file) {
+  const txt = String(t || ''), sm = c.세목, NEG = /^.{0,6}(아님|아니|해당\s*(사항\s*)?없|비해당|아닌)/;
+  // 쟁점 — 이 세목의 사건분류 이름에 있는 것만(틀에 없는 이름은 만들지 않음)
+  const keys = (typeof WORK_EVIDENCE_TEMPLATES_ !== 'undefined' && WORK_EVIDENCE_TEMPLATES_[sm] && WORK_EVIDENCE_TEMPLATES_[sm].사건분류) ? Object.keys(WORK_EVIDENCE_TEMPLATES_[sm].사건분류) : [];
+  (CASEPROC_ISSUE_WORDS_[sm] || []).forEach(function (w) {
+    if (keys.indexOf(w[0]) === -1) return;
+    const re = new RegExp(w[1].source, 'g'); let m, hit = false;
+    while ((m = re.exec(txt))) { if (!NEG.test(txt.slice(m.index + m[0].length, m.index + m[0].length + 12))) { hit = true; break; } if (m[0].length === 0) re.lastIndex++; }
+    if (hit) add('쟁점', w[0], file);
+  });
+  // 물건 — 행정구역(시·도/시·군·구)과 도로명·동·지번이 함께 있는 글(최대 4건)
+  const addrRe = /([가-힣]{2,}(?:특별시|광역시|특별자치시|특별자치도|도|시)\s+[가-힣]{1,}(?:시|군|구)(?:\s+[가-힣]{1,}구)?\s+[가-힣0-9]{1,}(?:읍|면|동|가|로|길)[^\n,;]{0,30}?\d+(?:-\d+)?(?:\s*번지)?(?:[^\n,;]{0,20}?\d+\s*동\s*\d+\s*호|[^\n,;]{0,20}?\d+\s*호)?)/g;
+  let am, na = 0; while ((am = addrRe.exec(txt)) && na < 4) { add('물건', am[1].replace(/\s+/g, ' ').trim().slice(0, 80), file); na++; }
+  // 거래 — 원인 낱말 + 날짜, 원인 낱말 + 금액(원·만원·억)
+  // 날짜는 원인 낱말 바로 곁(사이 6자 이내)만 — "양도가액 …, 취득 2015년"처럼 멀리 있는 날짜를 다른 원인에 붙이지 않는다. "원인 날짜"·"날짜 원인" 두 차례 모두
+  const ROLE = '양도|매도|매각|잔금|취득|매수|증여|상속\\s*개시|사망', DATE = '((?:19|20)\\d{2})\\s*[.\\-/년]\\s*(\\d{1,2})\\s*[.\\-/월]\\s*(\\d{1,2})\\s*[.일]?';
+  const seenD = {}; let nd = 0;
+  [[new RegExp('(' + ROLE + ')\\s*(?:일자|일|시기)?\\s*[:：은는(]?\\s{0,2}' + DATE, 'g'), 1, 2], [new RegExp(DATE + '\\s*(?:에|자로|자)?\\s*(' + ROLE + ')', 'g'), 4, 1]].forEach(function (d) {
+    let dm; while ((dm = d[0].exec(txt)) && nd < 6) { const ymd = dm[d[2]] + '-' + ('0' + dm[d[2] + 1]).slice(-2) + '-' + ('0' + dm[d[2] + 2]).slice(-2); if (seenD[ymd]) continue; seenD[ymd] = 1; add('거래', dm[d[1]].replace(/\s+/g, '') + ' ' + ymd, file); nd++; }
+  });
+  const aRe = /(양도|매도|매매|취득|매수|증여|상속\s*재산|채무|대출|보상)\s*(?:가액|금액|대금|가|액|금)?\s*[:：은는이가]?\s*(?:약\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))/g;
+  let mm, nm = 0; while ((mm = aRe.exec(txt)) && nm < 6) { add('거래', mm[1].replace(/\s+/g, '') + ' ' + mm[2].replace(/\s+/g, ''), file); nm++; }
+  const aRe2 = /((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*(?:을|를|의)?\s*(증여|양도|매도|상속)/g; // 금액이 앞에 오는 말("현금 1억원 증여")
+  while ((mm = aRe2.exec(txt)) && nm < 6) { add('거래', mm[2] + ' ' + mm[1].replace(/\s+/g, ''), file); nm++; }
+  // 요청 사항 — "요청·의뢰 내용·요청사항·문의:" 줄
+  const rq = /^\s*[-*#]*\s*(?:요청\s*사항|의뢰\s*내용|요청|문의\s*(?:사항|내용)?|상담\s*내용)\s*[:：]\s*([^\n]{4,120})/m.exec(txt);
+  if (rq) add('요청', rq[1].trim(), file);
 }
 // 서류에서 읽은 당사자·원인(등기부 소유권 이력, 계약서 서명란, 증여계약서, 사망 서류·분할협의서)
 function caseProcEvidenceParties_(c) {
@@ -52633,7 +52753,7 @@ function caseProcEvidenceParties_(c) {
 function caseProcGraspCheck_(c, lines, items) {
   if (!String(c.폴더ID || '').trim()) return { changed: false };
   let ev; try { ev = caseProcEvidenceParties_(c); } catch (e) { return { changed: false }; }
-  const hyp = ((caseProcLoad_(c.id) || {}).grasp || {}).hyp || {};
+  const hyp = typeof ledgerHypMap_ === 'function' ? ledgerHypMap_(c.id) : (((caseProcLoad_(c.id) || {}).grasp || {}).hyp || {}); // [2026.10.29] 가설은 장부에서
   const me = caseProcNm_(c.납세자);
   const files = function (l) { return l.map(function (x) { return x.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 3).join(', '); };
   const names = function (l) { return l.map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; }); };

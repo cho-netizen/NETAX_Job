@@ -232,6 +232,7 @@ const AK_FIELD_KIND_ = { 기준일: 'date', 법정일: 'date', 상속인수: 'nu
 // [2026.10.18 세무사님 지시] 블라인드 점검 스위치 — true면 지난 대화기록(job AI 대화·work 시절 사건 폴더 _대화기록.json)의 세무사님 말을 단서로 읽지 않는다.
 //  99개 사건 중 32건이 대화기록 속 사건 설명을 단서로 써서, 원시서류만으로 낸 점수가 아니었다. 실제 처리(사이드바)에는 영향 없음 — 점검 때만.
 var AK_BLIND_NO_CHAT_ = true;
+var AK_IN_SANDBOX_ = false;
 function akSandbox_(caseId, fn, override) {
   const real = { work_updateCase: work_updateCase, work_findCaseRow_: work_findCaseRow_, work_readRow_: work_readRow_, caseProcLoad_: caseProcLoad_, caseProcPatch_: caseProcPatch_, caseProcStore_: caseProcStore_, akReadCase_: akReadCase_, caseProcChatTexts_: caseProcChatTexts_ };
   const mem = { c: real.akReadCase_(caseId), saved: real.caseProcLoad_(caseId) };
@@ -260,6 +261,7 @@ function akSandbox_(caseId, fn, override) {
       if (String(p && p.id) !== String(caseId)) return { success: false, message: '점검 중에는 다른 사건을 고치지 않습니다.' };
       Object.keys(p).forEach(function (k) { if (k !== 'id' && k !== '기대수정일') mem.c[k] = copy(p[k]); });
       if (p.기준일 && !p.법정일) { try { mem.c.법정일 = work_calcDeadline_(mem.c.세목, mem.c.업무유형, p.기준일) || mem.c.법정일; } catch (e) {} }
+      try { if (typeof ledgerFromCaseWrite_ === 'function') ledgerFromCaseWrite_(copy(mem.c), p, 'GAS'); } catch (e) {} // [2026.10.29 쓰는 문 하나] 운영 입구와 같게 장부 층에도(점검 중 쓰기는 모두 GAS)
       return { success: true, case: copy(mem.c) };
     };
     // [2026.10.28 시정 2단계] 사건 장부도 메모리로 — 예전엔 장부를 그대로 둬서 블라인드 점검이 실사건 장부에 GAS 값·질문을 적고, 반대로 장부에 남은 세무사님 값을 보았다.
@@ -281,8 +283,10 @@ function akSandbox_(caseId, fn, override) {
     if (AK_BLIND_NO_CHAT_) caseProcChatTexts_ = function () { return []; };
     // [2026.10.18 교차검증 2번] 점검 중에는 AI를 부르지 않는다 — "AI에게 물을 쟁점 목록"과 글자 수만 남김(CrossCheck.js)
     if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = true;
+    AK_IN_SANDBOX_ = true; // [2026.10.29] 점검 중에는 한 바퀴 줄(cpFlowQueueAdd_)에 실사건을 넣지 않는다(점검 뒤 틱이 실사건 장부를 고치지 않게)
     return fn();
   } finally {
+    AK_IN_SANDBOX_ = false;
     if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = false;
     akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
     caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_; caseProcChatTexts_ = real.caseProcChatTexts_;
@@ -330,6 +334,8 @@ function akRunCase0_(caseId, key) {
   akTrace_('증빙2 끝');
   if (!ev2.more) { ev = Object.assign({}, ev2, { lines: (ev.lines || []).concat(ev2.lines && ev2.lines.length ? ['— 기준일 확정 뒤 다시 대조 —'].concat(ev2.lines) : []) }); c = akReadCase_(caseId); }
   const basic = caseProcBasic_(c, {});
+  // [2026.10.29 계획서 2단계] 운영 "이 사건 처리하자"(caseProcAll_)와 같은 한 바퀴 — 가설 → 사건개요 층, 확보할 증빙 다시, 바뀐 것 기록
+  try { if (typeof caseFlowRound_ === 'function') { out.flow = caseFlowRound_(akReadCase_(caseId), '점검', ovr.lines = ovr.lines || []); c = akReadCase_(caseId); } } catch (e) { (ovr.lines = ovr.lines || []).push('⚠ 한 바퀴를 돌지 못함: ' + String(e && e.message || e).slice(0, 120)); }
   const calc = caseProcCalc_(c);
   akTrace_('계산 끝');
   const decisions = (caseProcLoad_(caseId).decisions) || {};

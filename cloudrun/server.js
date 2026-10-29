@@ -145,7 +145,7 @@ async function readCase(body) {
         });
       } catch (e) {}
       // [2026.10.28 시정 2단계] 사건 장부 바탕도 미리 둔다 — 세무사님·넥스가 정한 값·결정을 서비스가 알고 돈다(장부 없이 돌면 답한 칸을 다시 묻는다)
-      if (record && record.ledger && typeof record.ledger === 'object' && record.ledger.rows) { try { g.ctx.ledgerMutate_(caseId, function (L) { L.rows = record.ledger.rows; L.log = Array.isArray(record.ledger.log) ? record.ledger.log : []; if (record.ledger.kb && typeof record.ledger.kb === 'object') L.kb = record.ledger.kb; L.kbFrom = '없음'; }); } catch (e) {} }
+      if (record && record.ledger && typeof record.ledger === 'object' && record.ledger.rows) { try { g.ctx.ledgerMutate_(caseId, function (L) { L.rows = record.ledger.rows; L.log = Array.isArray(record.ledger.log) ? record.ledger.log : []; if (record.ledger.kb && typeof record.ledger.kb === 'object') L.kb = record.ledger.kb; L.kbFrom = '없음'; ['ov', 'ev', 'dir'].forEach(function (k) { if (record.ledger[k] && typeof record.ledger[k] === 'object') L[k] = record.ledger[k]; }); if (record.ledger.hyp) L.hyp = record.ledger.hyp; if (record.ledger.flowFrom) L.flowFrom = record.ledger.flowFrom; if (record.ledger.flow) L.flow = record.ledger.flow; }); } catch (e) {} }
       writes.length = 0; // 미리 두기는 쓰기 기록에서 뺀다
     }
     seeded = { record: !!record, decisions: decMap ? Object.keys(decMap).length : (record && record.decisions ? Object.keys(record.decisions).length : 0), readScope: !!(record && record.readScope) };

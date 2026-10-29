@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-28 23:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 03:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6547,15 +6547,41 @@ function nxMdOpenWindow(title, src, opts){
         var nSt = function(prefix, re){ var n = 0; Object.keys(ks).forEach(function(k){ if (k.indexOf(prefix) === 0 && re.test(k.slice(prefix.length))) n += ks[k] || 0; }); return n; };
         var th = function(cols){ return '<tr>' + cols.map(function(c0){ return '<th style="text-align:left;padding:2px 8px; white-space:nowrap;">' + esc(c0) + '</th>'; }).join('') + '</tr>'; };
         var tbl = function(head, body0){ return '<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;">' + th(head) + body0 + '</table></div>'; };
+        // [2026.10.29 계획서 5단계] 사건 흐름 — 세무사님 원문(10-29) "사건접수후 의뢰서 등의 정보로 부터 사건개요를 파악하여 처리방향과 확보대상 증빙을 확보해 나가게 되고,
+        //  증빙을 확보해 나가면서 사건장부에 정보를 모으는 과정이 일방통행이 아니라 수시로 피드백이 되면서" — 무엇이 어디서 와서 무엇을 바꿨는지 한 줄로
+        var fl = r.흐름 || null, fb0 = (fl && fl.띠) || {};
         h += '<div style="margin-top:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">'
           + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리거나 오른쪽 단추를 누르세요') + ' · 칸과 서류 사실은 한 장부(사건 폴더에 파일이 들어오거나 바뀌면 그때 바로 다시 모음)</span>'
           + '<button type="button" id="chLgKbBuild" class="ghost-btn" title="칸 값은 건드리지 않고, 사건 폴더 서류를 다시 훑어 파일 장부·서류 사실·서류끼리 맞대기를 지금 서류로 다시 만듭니다(계산기 칸으로 간 길은 다음 처리개요 때 갱신)">🔄 서류 사실 다시 모으기</button></div>'
           + '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">'
+          + (fl ? '<button type="button" class="ghost-btn" data-lg-tab="flow">⓪ 사건 흐름 — 가설 ' + esc(fb0.가설 || 0) + ' → 사건개요(정함 ' + esc(fb0.개요확정 || 0) + ' · 가설 ' + esc(fb0.개요가설 || 0) + (fb0.개요다름 ? ' · 가설과 다름 ' + esc(fb0.개요다름) : '') + ') → 확보할 증빙(확보 ' + esc(fb0.증빙확보 || 0) + ' / 받을 것 ' + esc(fb0.증빙미확보 || 0) + ') → 서류 사실 ' + esc(fb0.서류사실 || 0) + ' → 칸 ' + esc(fb0.칸값 || 0) + '(서류와 이음 ' + esc(fb0.칸이음 || 0) + ') → 질문 ' + esc(fb0.질문 || 0) + '</button>' : '')
           + '<button type="button" class="ghost-btn" data-lg-tab="files">① 모은 것 — 파일 ' + esc((kb && kb.files || []).length) + '개 · 사실 ' + esc(ks.사실 || 0) + '건' + dl('사실') + '</button>'
           + '<button type="button" class="ghost-btn" data-lg-tab="groups">② 맞대기 — 서류끼리 갈림 ' + esc(nSt('맞대기:', /^미결$/)) + ' · 서류마다 다름 ' + esc(nSt('맞대기:', /^서로 다름/)) + ' · 판정 ' + esc(nSt('맞대기:', /^판정됨$/)) + ' · 일치 ' + esc(nSt('맞대기:', /^일치$/)) + ' · 서류 1종 ' + esc(nSt('맞대기:', /^단독$/)) + '</button>'
           + '<button type="button" class="ghost-btn" data-lg-tab="links">③ 칸으로 간 길 — 다름 ' + esc(nSt('칸:', /^서류와 다름|^서류 값과 다름/)) + ' · 서류에 없는 값 ' + esc(nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/)) + ' · 서류와 같음 ' + esc(nSt('칸:', /^서류와 일치|^서류 1/)) + ' · 세무사님 값 ' + esc(nSt('칸:', /^세무사님/)) + '</button>'
           + '<button type="button" class="ghost-btn" data-lg-tab="rows">④ 칸 장부 — 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + '</button>'
           + '</div></div>';
+        // ⓪ 사건 흐름 — 마지막 한 바퀴 · 가설 · 사건개요 · 처리방향 · 확보할 증빙
+        if (fl){
+          var lastR = fl.마지막 || null, ST_KO = { '가설': '가설(서류 확인 전)', '확정': '정함', '추정': '추정', '물어볼것': '물어볼 것', '증빙받을것': '받을 것', '보류': '보류', '무시': '무시' };
+          var OWNK = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: 'GAS', 추정: '추정', 계산: '계산', 가설: '의뢰서 등', 질문: '' };
+          var fh = '<div data-lg-sec="flow" style="display:none; margin-top:8px;">';
+          fh += '<div><b>마지막 한 바퀴</b> <span style="color:var(--sub);">' + (lastR ? esc(lastR.at) + (lastR.why ? ' · ' + esc(lastR.why) : '') + ' → ' + esc((lastR.diff || []).length ? lastR.diff.join(' · ') : '바뀐 것 없음') : '아직 돈 적이 없습니다 — 「이 사건 처리하자」를 누르거나, 사건 폴더에 서류가 들어오거나, 화면에서 사건개요·처리방향을 저장하면 돕니다') + '</span></div>';
+          if (lastR && (lastR.rounds || []).length > 1) fh += '<div style="color:var(--sub); font-size:11.5px; margin-top:2px;">그 전: ' + lastR.rounds.slice(0, -1).reverse().slice(0, 4).map(function(x){ return esc(x.at) + ' ' + esc(x.why || '') + ' → ' + esc((x.diff || []).join(' · ') || '바뀐 것 없음'); }).join(' / ') + '</div>';
+          var hy = fl.가설 || [];
+          fh += '<div style="margin-top:8px;"><b>가설</b> <span style="color:var(--sub);">의뢰서·상담 메모·대화가 말한 것 ' + esc(hy.length) + '건' + (fl.가설때 ? ' · ' + esc(fl.가설때) : '') + ' — 서류가 아니라서 계산 칸에 넣지 않고, 사건개요·확보할 증빙·질문의 출발점으로만 씁니다</span>'
+            + (hy.length ? tbl(['항목', '값', '말한 곳', '뽑은 이'], hy.map(function(x){ return '<tr>' + cell(x.f, 70) + cell(x.v, 320) + cell((x.srcs || []).join(', '), 260) + cell(x.by === '넥스' ? '넥스 판단' : 'GAS 규칙', 90, x.by === '넥스' ? ' color:#7a3db8;' : ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">의뢰서·메모에서 뽑은 가설이 없습니다</div>') + '</div>';
+          var ovs = (fl.사건개요 || []).slice().sort(function(a, b){ return (a.state === '가설' ? 1 : 0) - (b.state === '가설' ? 1 : 0); });
+          fh += '<div style="margin-top:8px;"><b>사건개요</b> <span style="color:var(--sub);">정함은 세무사님·넥스·서류 값, 가설은 서류 확인 전 — 서류가 가설과 다르면 서류가 이기고 빨갛게 표시합니다</span>'
+            + (ovs.length ? tbl(['칸', '값', '상태', '주인', '근거', '가설과'], ovs.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 300, g ? ' color:#a60;' : '') + cell(ST_KO[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(OWNK[x.kind] != null ? OWNK[x.kind] : x.kind, 80) + cell([x.file, x.quote, x.why].filter(Boolean).join(' · '), 300, ' color:var(--sub);') + cell(x.hypNote || '', 300, x.hypNote ? ' color:#b23; font-weight:600;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">사건개요가 아직 없습니다</div>') + '</div>';
+          var dirs = fl.처리방향 || [];
+          fh += '<div style="margin-top:8px;"><b>처리방향</b> <span style="color:var(--sub);">세무사님 글은 GAS가 고치지 않습니다 — GAS가 정한 갈래(사건분류)는 위 사건개요에 따로 보입니다</span>'
+            + (dirs.length ? tbl(['칸', '글', '주인', '때'], dirs.map(function(x){ return '<tr>' + cell(x.label || x.path, 90) + cell(x.값 || '', 520) + cell(OWNK[x.kind] != null ? OWNK[x.kind] : x.kind, 80) + cell(x.at || '', 130, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">처리방향이 아직 없습니다(처리개요 화면 위쪽 "처리방향"에 쓰시면 장부에 들어옵니다)</div>') + '</div>';
+          var evs = (fl.증빙 || []).slice().sort(function(a, b){ var o = { '증빙받을것': 0, '보류': 1, '확정': 2, '무시': 3 }; return (o[a.state] == null ? 9 : o[a.state]) - (o[b.state] == null ? 9 : o[b.state]); });
+          fh += '<div style="margin-top:8px;"><b>확보할 증빙</b> <span style="color:var(--sub);">받을 것 ' + esc(fb0.증빙미확보 || 0) + ' · 확보 ' + esc(fb0.증빙확보 || 0) + ' — 사건개요(세목·사건분류·물건 수)·빈 칸·가설 쟁점이 요구하는 서류. 한 바퀴마다 다시 짜고, 근거가 사라진 GAS 항목은 뺍니다(확보한 것·세무사님이 넣은 것은 그대로)</span>'
+            + (evs.length ? tbl(['서류', '상태', '왜', '만든 이', '요청일 · 확보일'], evs.map(function(x){ var d = x.서류 || {}; var col = x.state === '증빙받을것' ? ' color:#a60;' : ''; return '<tr>' + cell(d.label || x.label, 300) + cell(x.state === '확정' ? '확보' : (ST_KO[x.state] || x.state), 70, col) + cell(d.note || x.why || '', 380, ' color:var(--sub);') + cell(OWNK[x.owner] != null ? OWNK[x.owner] : x.owner, 80) + cell([d.요청일, d.확보일].filter(Boolean).join(' · '), 160, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">확보할 증빙이 아직 없습니다</div>') + '</div>';
+          fh += '</div>';
+          h += fh;
+        }
         // ① 모은 것 — 파일마다 읽음 상태·종류·모은 사실 수, 누르면 그 파일의 사실
         if (kb){
           var ST_ORDER = { '못읽음': 0, '일부': 1, '읽음': 2, '제외': 3 };
@@ -6630,7 +6656,7 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.10.29] 바탕 단추 — ①②③④ 칸 바꿔 보기(누른 칸만 펼침), 파일별 사실 보기, 서류 사실 다시 모으기
         var showSec = function(name){ Array.prototype.forEach.call(body.querySelectorAll('[data-lg-sec]'), function(d){ d.style.display = d.getAttribute('data-lg-sec') === name ? '' : 'none'; }); Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-tab]'), function(b){ b.style.fontWeight = b.getAttribute('data-lg-tab') === name ? '700' : ''; }); try { sessionStorage.setItem('chLgTab', name); } catch (e) {} };
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-tab]'), function(b){ b.addEventListener('click', function(){ showSec(b.getAttribute('data-lg-tab')); }); });
-        var tab0 = 'rows'; try { tab0 = sessionStorage.getItem('chLgTab') || 'rows'; } catch (e) {}
+        var tab0 = 'flow'; try { tab0 = sessionStorage.getItem('chLgTab') || 'flow'; } catch (e) {} // [2026.10.29] 처음엔 ⓪ 사건 흐름부터
         if (!body.querySelector('[data-lg-sec="' + tab0 + '"]')) tab0 = 'rows';
         showSec(tab0);
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-file]'), function(b){ b.addEventListener('click', function(){
