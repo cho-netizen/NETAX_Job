@@ -15480,160 +15480,16 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
     return { error: errMsg };
   }
 
+  // [2026.10.29 넥스 도구 결과 보장 — 세무사님 "땜질하지 말고 근본적으로 수정하라"] 예전엔 결과를 만들 도구를 손으로 적은 이름 명단(147개)으로 골랐다.
+  //  10-28에 넣은 사건 장부(case_ledger)·토지 정보(lookup_land_info)·카카오 주소(search_address_kakao)가 명단에서 빠져, 넥스가 부르면 결과 없이
+  //  다음 요청이 나가 AI 서버가 "tool_use … without tool_result"로 거절했다(10-29 강문영 사건 "이 사건 검토하자"). 이제 명단 없이 넥스가 부른 도구는 전부
+  //  아래로 가고, 처리 코드가 없는 이름은 실패 결과가 돌아간다. (웹 검색 등 AI 서버가 직접 돌리는 도구는 server_tool_use라 여기 해당 없음)
   const toolUseBlocks = (result.content || []).filter(function (b) {
-      return b.type === 'tool_use' && (
-        b.name === 'list_drive_folder' ||
-        b.name === 'browse_tax_calculators' ||
-        b.name === 'read_drive_file' ||
-        b.name === 'report_capability_gap' ||
-        b.name === 'save_file_to_folder' ||
-        b.name === 'export_to_google_doc' ||
-        b.name === 'send_email' ||
-        b.name === 'lookup_statute_article' ||
-        b.name === 'search_tax_precedent' ||
-        b.name === 'get_tax_precedent_detail' ||
-        b.name === 'register_report_to_rpt' ||
-        b.name === 'lookup_real_estate_price' ||
-        b.name === 'lookup_building_register' ||
-        b.name === 'search_address' ||
-        b.name === 'lookup_official_price' ||
-        b.name === 'lookup_adjusted_area' ||
-        b.name === 'lookup_business_status' ||
-        b.name === 'verify_business_registration' ||
-        b.name === 'get_building_price_index_tables' ||
-        b.name === 'calculate_building_standard_price' ||
-        b.name === 'calculate_building_standard_price_multi' ||
-        b.name === 'calculate_transfer_tax' ||
-        b.name === 'calculate_transfer_tax_multi' ||
-        b.name === 'calculate_transfer_tax_with_carryover' ||
-        b.name === 'calculate_gift_tax' ||
-        b.name === 'calculate_inheritance_tax' ||
-        b.name === 'allocate_inheritance_tax_by_heir' ||
-        b.name === 'calculate_special_rate_gift_tax' ||
-        b.name === 'calculate_special_rate_gift_tax_clawback' ||
-        b.name === 'calculate_share_swap_gain_recognition' ||
-        b.name === 'calculate_holding_company_contribution_deferral' ||
-        b.name === 'calculate_project_reit_contribution_deferral' ||
-        b.name === 'calculate_farmland_gift_tax_reduction' ||
-        b.name === 'calculate_filing_penalty_reduction' ||
-        b.name === 'check_correction_claim_eligibility' ||
-        b.name === 'calculate_tax_exclusion_period' ||
-        b.name === 'calculate_acquisition_tax' ||
-        b.name === 'calculate_registration_license_tax' ||
-        b.name === 'calculate_property_tax' ||
-        b.name === 'calculate_related_party_transaction_gift_tax' ||
-        b.name === 'calculate_business_opportunity_gift_tax' ||
-        b.name === 'calculate_nominee_trust_gift_tax' ||
-        b.name === 'calculate_property_acquisition_funds_gift_tax' ||
-        b.name === 'calculate_debt_forgiveness_gift_tax' ||
-        b.name === 'calculate_free_property_use_gift_tax' ||
-        b.name === 'calculate_spouse_property_transfer_gift_tax' ||
-        b.name === 'calculate_insurance_proceeds_gift_tax' ||
-        b.name === 'calculate_trust_income_gift_tax' ||
-        b.name === 'calculate_donor_direct_transfer_deemed' ||
-        b.name === 'calculate_new_house_acquisition_reduction' ||
-        b.name === 'calculate_unsold_house_acquisition_reduction' ||
-        b.name === 'calculate_unsold_house_one_house_exclusion' ||
-        b.name === 'calculate_deemed_inheritance_property' ||
-        b.name === 'calculate_specific_corporation_gift_tax' ||
-        b.name === 'calculate_nontaxable_gift_property' ||
-        b.name === 'calculate_nontaxable_inheritance_property' ||
-        b.name === 'calculate_excess_dividend_gift_tax' ||
-        b.name === 'calculate_stock_listing_gift_tax' ||
-        b.name === 'calculate_rural_house_one_house_exclusion' ||
-        b.name === 'calculate_convertible_bond_gift_tax' ||
-        b.name === 'calculate_in_kind_contribution_gift_tax' ||
-        b.name === 'calculate_overseas_asset_transfer_tax' ||
-        b.name === 'calculate_overseas_asset_transfer_tax_multi' ||
-        b.name === 'calculate_capital_reduction_gift_tax' ||
-        b.name === 'calculate_disabled_person_trust_exclusion' ||
-        b.name === 'calculate_charity_donation_tax_exclusion' ||
-        b.name === 'calculate_public_interest_org_penalty' ||
-        b.name === 'calculate_national_forest_land_reduction' ||
-        b.name === 'calculate_public_rental_housing_land_reduction' ||
-        b.name === 'calculate_industrial_complex_relocation_lot_rate' ||
-        b.name === 'calculate_museum_relocation_installment' ||
-        b.name === 'calculate_farmland_repurchase_refund' ||
-        b.name === 'calculate_long_term_rental_house_reduction' ||
-        b.name === 'calculate_capital_increase_gift_tax' ||
-        b.name === 'calculate_restructuring_property_reduction' ||
-        b.name === 'calculate_population_decline_area_house_exclusion' ||
-        b.name === 'calculate_business_transfer_carryover' ||
-        b.name === 'calculate_burdened_gift_transfer' ||
-        b.name === 'calculate_business_succession_deferral_amount' ||
-        b.name === 'calculate_property_in_kind_stock_receipt_value' ||
-        b.name === 'calculate_business_succession_deferral_clawback' ||
-        b.name === 'calculate_property_in_kind_payment_eligibility' ||
-        b.name === 'calculate_cultural_heritage_tax_deferral' ||
-        b.name === 'calculate_merger_benefit_gift_tax' ||
-        b.name === 'calculate_property_use_service_gift_tax' ||
-        b.name === 'calculate_org_change_gift_tax' ||
-        b.name === 'calculate_property_value_increase_gift_tax' ||
-        b.name === 'calculate_installment_split_payment_limit' ||
-        b.name === 'calculate_installment_payment_schedule' ||
-        b.name === 'calculate_clawback_interest' ||
-        b.name === 'check_fair_market_value_recognition' ||
-        b.name === 'calculate_transfer_related_party_price_adjustment' ||
-        b.name === 'calculate_low_price_transfer_gift_amount' ||
-        b.name === 'calculate_gift_special_provision_overlap' ||
-        b.name === 'calculate_interest_free_loan_gift_amount' ||
-        b.name === 'calculate_stock_transfer_tax' ||
-        b.name === 'calculate_stock_transfer_tax_with_carryover' ||
-        b.name === 'calculate_unlisted_stock_value' ||
-        b.name === 'calculate_land_value' ||
-        b.name === 'calculate_house_value' ||
-        b.name === 'calculate_listed_stock_value' ||
-        b.name === 'calculate_rental_conversion_value' ||
-        b.name === 'calculate_mortgaged_or_leased_property_value' ||
-        b.name === 'calculate_goodwill_value' ||
-        b.name === 'calculate_ground_right_value' ||
-        b.name === 'calculate_patent_right_value' ||
-        b.name === 'calculate_mining_right_value' ||
-        b.name === 'calculate_member_right_value' ||
-        b.name === 'calculate_dividend_difference' ||
-        b.name === 'calculate_adjusted_share_count' ||
-        b.name === 'calculate_other_tangible_property_value' ||
-        b.name === 'calculate_trust_benefit_value' ||
-        b.name === 'calculate_pre_ipo_stock_value' ||
-        b.name === 'calculate_virtual_asset_value' ||
-        b.name === 'calculate_periodic_payment_right_value' ||
-        b.name === 'explain_conditional_right_valuation_factors' ||
-        b.name === 'calculate_proportional_allocation' ||
-        b.name === 'manage_task_plan' ||
-        b.name === 'lookup_calendar_events' ||
-        b.name === 'search_emails' ||
-        b.name === 'lookup_google_tasks' ||
-        b.name === 'add_google_task' ||
-        b.name === 'add_log_entry' ||
-        b.name === 'list_work_cases' ||
-        b.name === 'create_work_case' ||
-        b.name === 'update_work_case_status' ||
-        b.name === 'add_work_subtask' ||
-        b.name === 'update_work_subtask_status' ||
-        b.name === 'delete_work_case' ||
-        b.name === 'list_clients' ||
-        b.name === 'create_client' ||
-        b.name === 'update_client' ||
-        b.name === 'add_consult_log' ||
-        b.name === 'list_consult_logs' ||
-        b.name === 'remember_fact' ||
-        b.name === 'list_business_managers' ||
-        b.name === 'load_business_manager' ||
-        b.name === 'audit_business_managers' ||
-        b.name === 'propose_new_business_manager' ||
-        b.name === 'apply_document_edit' ||
-        b.name === 'apply_diagram_edit' ||
-        b.name === 'navigate_to_folder' ||
-        b.name === 'job_lookup' ||
-        b.name === 'search_tax_items' ||
-        b.name === 'read_tax_item' ||
-        b.name === 'job_propose_action' ||
-        b.name === 'job_open_screen'
-      );
+      return b && b.type === 'tool_use';
     });
 
     if (toolUseBlocks.length > 0) {
-    const toolResults = toolUseBlocks.map(function (block) {
+    const runToolBlock_ = function (block) {
       // [2026.10.08] 세액계산 도구는 세액계산 화면과 같은 엔진으로 계산한다(getUiCalcEngine_ 위 설명 참고).
       // 화면 엔진에 해당 함수가 없거나 예외 목록에 있는 도구만 아래 기존 분기로 내려간다.
       // [2026.10.08] job 기능 도구(JOB_AI_TOOLS_ 설명 참고)
@@ -16486,6 +16342,11 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'ok', navigated: true }) };
       }
 
+      // [2026.10.29 넥스 도구 결과 보장] 여기부터는 read_drive_file 처리다. 예전엔 위 분기에 없는 이름이 전부 여기로 와 파일 읽기로 처리됐다.
+      //  이름을 모르는 도구는 실패 결과로 돌려주고 오류 기록에 남긴다(ai_logToolErrors_가 is_error를 기록) — 도구를 새로 넣고 처리 코드를 빠뜨리면 바로 보인다.
+      if (block.name !== 'read_drive_file') {
+        return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '도구 "' + block.name + '"는 서버에 처리 코드가 없다(개발 누락) — 이 도구 없이 진행하거나 세무사님께 말씀드려라.' };
+      }
       // [2026.10.15] 사건 폴더의 "양도코리아"(이미 낸 신고서·정답지 보관) 폴더 파일은 AI도 읽지 않는다(caseIsFiledReturnFolder_)
       if ((isJobPanel_ && caseFileInFiledFolder_(block.input && block.input.fileId)) || caseIsAnswerKeyFileId_(block.input && block.input.fileId)) {
         return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '이 파일은 이미 낸 신고서 보관 폴더("양도코리아")에 있거나 점검용 정답지라 읽지 않습니다 — 처리는 원시서류로만 합니다.' };
@@ -16528,6 +16389,17 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       }
 
       return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
+    };
+    // [2026.10.29 넥스 도구 결과 보장] 넥스가 부른 도구 하나마다 결과가 꼭 하나 돌아가야 AI 서버가 다음 요청을 받는다.
+    //  처리 중 예외가 나도, 처리 코드가 결과를 못 만들어도 그 자리에 "실패" 결과를 넣어 대화가 끊기지 않게 한다.
+    const toolResults = toolUseBlocks.map(function (block) {
+      try {
+        const r = runToolBlock_(block);
+        if (r && r.type === 'tool_result' && r.tool_use_id === block.id) return r;
+        return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '도구 "' + block.name + '" 처리 코드가 결과를 만들지 못했다 — 이 도구 없이 진행하거나 세무사님께 말씀드려라.' };
+      } catch (err) {
+        return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '도구 "' + block.name + '" 실행 중 오류: ' + String(err && err.message || err) };
+      }
     });
 
     // 도구 호출이 있었다 — 아직 끝난 게 아니다. 이번 라운드의 원본 응답(assistant)과 도구
