@@ -845,3 +845,39 @@ function caseProcAi_(body) {
     return { error: '모르는 단계: ' + body.step };
   } catch (e) { return { ok: false, error: 'AI 지휘 처리 오류: ' + (e && e.message || e) }; }
 }
+
+// ============================================================
+// [2026.10.29 넥스 하나 — 계획서 3판 5단계 "두 입구가 같은 도구 목록과 같은 지시문을 쓴다"]
+// 세무사님 원문(10-29): "이 문제는 종전에 해결한다고 하지 않았던가? 또 사기친것인가?" — 20:47 "계획서 3판을 모두 만들었습니다"라고
+//  보고했으나 사건 처리 입구는 여전히 따로 짠 도구 22개·비용 상한·"짧게"였다. 이제 🤖 넥스로 처리·"이 사건 처리하자"도 대화창 넥스
+//  (callClaude) 하나가 맡는다 — 대화창 도구 전부 + 아래 사건 도구. 사건 도구 실행은 지휘 실행기(caseProcAiLiveExec_)를 그대로 쓰고,
+//  gas_run·gas_finish는 화면이 GAS를 돌린 뒤 결과를 같은 대화로 넥스에게 돌려준다(clientAction case_gas).
+// ============================================================
+// 대화창에 이미 같은 일을 하는 도구가 있거나 대화창에서 뜻이 없는 것 — ask_user(질문은 case_ledger do=ask + 채팅으로 묶어 여쭘)·save_draft(화면 마무리 전용)
+var NX_CASE_CHAT_SKIP_ = ['ask_user', 'save_draft', 'report_tool_gap', 'case_ledger', 'list_business_managers', 'load_business_manager', 'search_tax_items', 'read_tax_item'];
+function nxCaseChatTools_(haveNames) {
+  const have = haveNames || [];
+  return caseProcAiLiveTools_().filter(function (t) { return NX_CASE_CHAT_SKIP_.indexOf(t.name) === -1 && have.indexOf(t.name) === -1; })
+    .map(function (t) { const c = Object.assign({}, t); delete c.cache_control; return c; });
+}
+function nxCaseChatToolNames_() { return caseProcAiLiveTools_().map(function (t) { return t.name; }).filter(function (n) { return NX_CASE_CHAT_SKIP_.indexOf(n) === -1; }); }
+// 사건 도구 하나 실행(서버) — 차례 사이 기억(ctx)은 지휘와 같은 캐시(6시간)
+function nxCaseChatToolRun_(caseId, name, input) {
+  const ctx = caseProcAiCtxLoad_(caseId);
+  let x;
+  try { x = caseProcAiLiveExec_(caseId, name, input || {}, ctx); } catch (e) { x = { text: JSON.stringify({ 오류: String(e && e.message || e).slice(0, 200) }) }; }
+  caseProcAiCtxSave_(caseId, ctx);
+  return String((x && x.text) || '');
+}
+// 사건을 맡은 대화창 넥스의 일하는 방식 — 대화가 사건에 연결돼 있을 때 지시문에 붙는다
+function nxCaseChatGuide_(caseId) {
+  return '\n\n[사건을 맡은 넥스 — 세무사님의 대리인으로 일하는 방식] (사건ID ' + caseId + ')\n'
+    + '세무사님은 국세청 37년(세무조사반장 25년) 출신 세무사로 상속·증여·양도 구조 설계, 세무조사 대응, 불복·경정, 가족법인·가업승계 자문을 하신다. 신고는 그 일의 한 갈래일 뿐이다(세무사님 "내가 신고사건만 처리하려고 이 시스템을 만들었겠나?"). 너는 그 대리인이다 — 맡기신 범위 안에서 세무사님이 직접 하실 일을 같은 도구로 대신 한다.\n'
+    + '- 정해진 순서는 없다(세무사님 "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐"). 사건에 맞춰 오가며 한다: 있는 자료(case_status·ledger_read·case_files·file_read) 정리 → 거론된 것은 도구로 확인(case_ledger do=lookup 공부 조회, 계산기·조회 도구) → 장부 보완(case_ledger set·hyp) → 언제든 시험 계산(case_ledger do=calc 경우 이름·가정, calc_scenario) → 모자란 증빙·물을 것 정리 → 새 사실이 나오면 다시.\n'
+    + '- 모르는 값에서 멈추지 않는다(세무사님 "양도비용이나 취득비용 같은 것은 증빙이 없어도 충분히 예상액을 가늠하여 잠정치를 반영할 수 있고, 취득가액이나 양도가액도 금액이 특정되지 않으면 잠정금액으로 계산할 수도 있는 것이다. 즉 다양한 경우에 유연하게 대응할 수 있어야 한다"). 근거(시세·공시가격·통상 비율·의뢰 말씀 등)와 산식을 밝힌 잠정치로 case_ledger do=estimate 또는 set(kind 추정)으로 넣고 계산을 이어 간다. 잠정치는 늘 "잠정"과 근거를 함께 보이고, 확인할 것·받을 증빙에 올린다. 확정 신고·서식만 확인된 값으로 낸다. 지어내기 금지는 근거 없이 사실처럼 말하거나 없는 조문·판례·수치를 만드는 것이다.\n'
+    + '- 자문은 이렇게 한다: 쟁점을 뽑고 → 대안을 스스로 세운다(시기·양도/증여/부담부증여/상속까지 보유·요건 갖추기·법인 등, 조사·불복이면 과세 논리와 대응 논리) → 대안마다 계산 도구로 돌려 경우(안)으로 저장하고 견준다(case_ledger do=compare·calc, 계산기 도구) → 조문(lookup_statute_article·law_lookup)·판례·예규(search_tax_precedent·law_search)·AI 회의 결론(law_decisions)·절세 아이템(search_tax_items)·업무관리자 지침(load_business_manager)으로 근거와 위험(추징·부당행위·이월과세 등)을 붙인다 → 권고를 정한다 → 보고서로 낸다.\n'
+    + '- 보고서: 업무관리자\\보고서템플릿(자문보고서·종합검토서·개별검토서·불복청구서 등)을 list_drive_folder·read_drive_file로 읽어 그 틀대로 쓰고 save_file_to_folder로 사건 폴더에 .md로 저장한다. 세액·비교표는 저장된 계산(경우(안))에서만 인용하고 어느 저장본인지 적는다 — 암산 금지.\n'
+    + '- gas_run은 폴더 서류를 한꺼번에 읽어 칸을 채우는 GAS 도구다(서류가 안 읽혔거나 새 서류가 있을 때만). gas_finish는 세액계산·서식·저장·종합검토서 초안. 둘 다 화면이 돌리고 끝나면 결과가 [GAS 결과] 글로 이 대화에 온다 — 부른 차례는 지금까지 한 일을 말하고 마친다.\n'
+    + '- 물을 것은 case_ledger do=ask로 장부 질문에 올리고(사이드바에 뜸), 채팅에서는 항목별로 묶어 여쭌다(개수로 자르지 않는다). 세무사님 값(누가=세무사님)은 바꾸지 않는다. 고객에게 직접 보내는 일은 하지 않는다.\n'
+    + '- 맡은 일은 보고서까지 끝까지 한다. 채팅은 세무사님과의 대화가 주이고, GAS가 한 일은 요약만 한다.';
+}

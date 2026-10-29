@@ -4965,6 +4965,7 @@ function buildContextSystemPrompt(basePrompt, body) {
     dynamicExtra += '\n[이 대화에 연결된 사건] "' + ctx.linkedCase.name + '"'
       + (ctx.linkedCase.id ? ' (작업관리 사건ID: ' + ctx.linkedCase.id + ')' : '')
       + ' — 사건 폴더는 위 [현재 화면 상태]의 위치다. 사용자가 특정하지 않으면 이 사건에 대한 질문으로 보고 그 폴더의 자료부터 확인하라.';
+    if (ctx.linkedCase.id && ctx.aiPanel && typeof nxCaseChatGuide_ === 'function') dynamicExtra += nxCaseChatGuide_(ctx.linkedCase.id); // [2026.10.29 넥스 하나] 사건을 맡은 넥스의 일하는 방식
   }
   // [2026.10.23 ㅅ12차 — 점검표 142] 사건처리 넥스가 묻는 중(또는 단추 대기 중)에 세무사님이 채팅으로 답했는데 GAS 규칙이 못 알아들은 말 — 열린 질문 목록과 함께 받아 "어느 질문에 어떤 답"으로 풀어 넣기를 제안한다
   if (ctx.cpHint && Array.isArray(ctx.cpHint.open)) {
@@ -15415,6 +15416,12 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
   // 문서수정·관계도수정·폴더이동 도구 — 열려 있는 화면 상태(body.context)에 맞춰서만 추가된다.
   getClientActionTools_(body.context).forEach(function (t) { tools.push(t); });
+  // [2026.10.29 넥스 하나 — 계획서 3판 5단계] 대화가 사건에 연결돼 있으면 사건 도구(gas_run·case_status·value_set·calc_scenario·law_* 등)도 같은 넥스가 쥔다.
+  //  🤖 넥스로 처리·"이 사건 처리하자"도 이 대화창 넥스가 맡는다(AiLeadLive.js nxCaseChatTools_ 설명)
+  const nxCaseId_ = String((body.context && body.context.linkedCase && body.context.linkedCase.id) || '').trim();
+  if (nxCaseId_ && isJobPanel_ && typeof nxCaseChatTools_ === 'function') {
+    try { nxCaseChatTools_(tools.map(function (t) { return t.name; })).forEach(function (t) { tools.push(t); }); } catch (e) { console.log('사건 도구 붙이기 실패: ' + e.message); }
+  }
 
   // [2026.08] 클라이언트가 도구 왕복 라운드 상한에 도달했을 때 보내는 플래그 — 도구 자체를
   // 아예 안 줘서, 모델이 지금까지 대화 내용만으로 텍스트로 마무리하게 강제한다.
@@ -15501,6 +15508,15 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
     if (toolUseBlocks.length > 0) {
     const runToolBlock_ = function (block) {
+      // [2026.10.29 넥스 하나] 사건 도구 — gas_run·gas_finish는 화면이 GAS를 돌리고 결과를 이 대화로 돌려준다, 나머지는 지휘 실행기 그대로
+      if (nxCaseId_ && typeof nxCaseChatToolNames_ === 'function' && nxCaseChatToolNames_().indexOf(block.name) !== -1 && !(typeof DRIVE_TOOLS !== 'undefined' && DRIVE_TOOLS.some(function (t) { return t.name === block.name; }))) {
+        if (block.name === 'gas_run' || block.name === 'gas_finish') {
+          clientActions.push({ type: 'case_gas', caseId: nxCaseId_, finish: block.name === 'gas_finish' });
+          return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ ok: true, 안내: (block.name === 'gas_run' ? 'GAS 한 바퀴(서류 읽기·칸 채우기)' : 'GAS 마무리(세액계산·서식·저장·종합검토서 초안)') + '를 화면이 지금 돌린다(AI 없이 0원). 끝나면 결과 요약이 [GAS 결과] 글로 이 대화에 온다 — 이번 차례는 다른 도구를 더 부르지 말고 지금까지 한 일을 세무사님께 짧게 말하고 마친다.' }) };
+        }
+        let t; try { t = nxCaseChatToolRun_(nxCaseId_, block.name, block.input || {}); } catch (err) { t = JSON.stringify({ 오류: '사건 도구 실행 중 오류: ' + err.message }); }
+        return { type: 'tool_result', tool_use_id: block.id, content: t.length > 30000 ? t.slice(0, 30000) + '…(길어 잘림)' : (t || '{}') };
+      }
       // [2026.10.08] 세액계산 도구는 세액계산 화면과 같은 엔진으로 계산한다(getUiCalcEngine_ 위 설명 참고).
       // 화면 엔진에 해당 함수가 없거나 예외 목록에 있는 도구만 아래 기존 분기로 내려간다.
       // [2026.10.08] job 기능 도구(JOB_AI_TOOLS_ 설명 참고)

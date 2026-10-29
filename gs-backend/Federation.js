@@ -474,6 +474,21 @@ function commSeamList_() {
     // [2026.10.29 거래 사슬] 세무사님 "전혀 관계없는 엉뚱한 계약서(거래당사자나 거래물건 등)가 들어와도 분별을 못한다는 것이다. 이것은 반드시 수정되어야 한다"
     { 길: '거래 사슬(계약서·등기부 고리, 사슬 밖 계약서 질문) → 장부·화면·넥스 요약', fn: function () { if (typeof tcDealChain_ !== 'function' || typeof ledgerChainPut_ !== 'function') return '거래 사슬 함수가 이 판에 없음'; if (String(ledgerNexBrief_).indexOf('거래사슬') === -1) return '넥스 장부 요약에 거래 사슬이 없음'; if (String(trcQuestions_).indexOf('사슬밖') === -1) return '사슬 밖 계약서 질문이 없음'; var loc = '경기도 군포시 금정동 689 가상힐타운 제201동 제18층 제1807호'; var regs = [{ file: '등기부.pdf', r: { docs: [{ 소재지: loc, 소유권이력: [{ 순위: '1', 목적: '소유권보존', 접수일: '2022-06-30', 권리자: [{ 이름: '가상건설' }] }, { 순위: '2', 목적: '소유권이전', 접수일: '2022-07-05', 원인: '매매', 원인일: '2019-02-11', 권리자: [{ 이름: '정우진' }] }, { 순위: '3', 목적: '소유권이전', 접수일: '2027-02-22', 원인: '매매', 원인일: '2026-11-05', 권리자: [{ 이름: '한지우' }] }] }] } }]; var cs = [{ file: '분양권매매.pdf', role: 'buyer', r: { 소재지: loc, 매도인: '고현옥', 매수인: '정우진', 계약일: '2019-02-11', 종류: '분양권 매매계약서' } }, { file: '양도.pdf', role: 'seller', r: { 소재지: loc, 매도인: '정우진', 매수인: '한지우', 계약일: '2026-11-05' } }]; var others = [{ file: '공급계약.pdf', r: { 소재지: loc, 종류: '분양(공급)계약서' }, parties: ['고현옥'] }, { file: '엉뚱.pdf', r: { 소재지: '서울특별시 강남구 대치동 316 은마아파트 1동 101호', 매도인: '김철수', 매수인: '이영희', 계약일: '2020-01-01' }, parties: ['김철수', '이영희'] }]; var ch = tcDealChain_(cs, others, regs, ['정우진'], {}); var offF = ch.off.map(function (o) { return o.file; }); if (offF.indexOf('엉뚱.pdf') === -1) return '다른 물건·남의 계약서를 사슬 밖으로 못 가림'; if (offF.length !== 1) return '사슬에 이어진 계약서(분양권 전매·전 소유자 공급계약·양도)를 사슬 밖으로 잘못 봄: ' + offF.join(','); return ch.rows.length === 1 && /취득/.test(ch.rows[0].납세자위치) && /양도/.test(ch.rows[0].납세자위치) ? '' : '납세자 위치(취득·양도 고리)를 못 정함'; } },
     // [2026.10.29 계획서 3판] 세무사님 "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐이라고!" — 같은 도구를 세무사님 화면·넥스 두 입구가 쥐고, 결과는 장부에. 다시 벨트로 묶이면 여기서 빨갛게
+    // [2026.10.29 넥스 하나 — 계획서 3판 5단계·7단계 "두 입구와 화면이 같은 도구 목록을 쥐고 있는지"] 사건에 연결된 대화창 넥스가 사건 도구 전부를 쥐고 실행하는지
+    { 길: '넥스 하나 — 🤖 넥스로 처리·"이 사건 처리하자"를 대화창 넥스가 맡음(대화창 도구 + 사건 도구 전부, 같은 지시문)', fn: function () {
+      if (typeof nxCaseChatTools_ !== 'function' || typeof nxCaseChatToolRun_ !== 'function' || typeof nxCaseChatGuide_ !== 'function') return '사건 도구 잇기 함수가 이 판에 없음';
+      if (typeof callClaude !== 'function') return '대화창 AI 함수가 이 판에 없음';
+      var src = String(callClaude);
+      if (src.indexOf('nxCaseChatTools_(') === -1) return '대화창 넥스 도구 목록에 사건 도구를 붙이지 않음';
+      if (src.indexOf('nxCaseChatToolRun_(') === -1 || src.indexOf("type: 'case_gas'") === -1) return '대화창 넥스가 사건 도구를 실행하지 못함(실행기·GAS 넘기기 없음)';
+      var have = DRIVE_TOOLS.map(function (t) { return t.name; }).concat(JOB_AI_TOOLS_.map(function (t) { return t.name; }));
+      var all = caseProcAiLiveTools_().map(function (t) { return t.name; });
+      var got = have.concat(nxCaseChatTools_(have).map(function (t) { return t.name; }));
+      var miss = all.filter(function (n) { return got.indexOf(n) === -1 && ['ask_user', 'save_draft', 'report_tool_gap'].indexOf(n) === -1; });
+      if (miss.length) return '사건 도구 중 대화창 넥스에 없는 것 ' + miss.length + '개: ' + miss.join(', ');
+      if (String(nxCaseChatGuide_('x')).indexOf('잠정치') === -1) return '사건을 맡은 넥스 지시문에 잠정치 방식이 없음';
+      return '';
+    } },
     { 길: '도구 하나하나(공부 조회·추정·시험 계산·세목 비교) → 세무사님 화면 📒 ⑤·넥스 두 입구(대화창·사건 처리) → 장부 공부 사실', fn: function () {
       if (typeof ledgerLookup_ !== 'function' || typeof ledgerEstimate_ !== 'function' || typeof ledgerCompare_ !== 'function' || typeof ledgerPubPut_ !== 'function') return '공부 조회·추정·세목 비교 함수가 이 판에 없음';
       var lt = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'case_ledger'; })[0];
