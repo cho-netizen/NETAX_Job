@@ -546,7 +546,7 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
 var NX_CASE_CHAT_SKIP_ = ['ask_user', 'save_draft', 'report_tool_gap', 'case_ledger', 'list_business_managers', 'load_business_manager', 'search_tax_items', 'read_tax_item', 'doc_view', 'doc_text'];
 // [2026.10.30 1단계 보고서 한 길] ✍문서작성 탭의 서버 기능 다섯 가지를 넥스도 쓰게 — 공통원칙 "세무사님만 할 수 있는 화면 동작이 있으면 넥스 대행이 덜 된 것"
 //  (쟁점 문단 라이브러리·적용 조문 원문 부록·사건 서류 값·보고서 틀·슬라이드 자문보고서). 화면과 같은 서버 함수를 부른다(토큰 0)
-var NX_CASE_REPORT_TOOL_ = { name: 'report_parts', description: '보고서 재료(토큰 0, ✍문서작성 탭과 같은 기능): do=template(label: 보고서 틀 이름 — 자문보고서·종합검토서·개별검토서·불복청구서·요약보고서·진행보고서·참고보고서·신고보고서·번역서) 틀 본문 / do=paragraphs 쟁점 문단 라이브러리 목록(세무사님이 다듬은 표준 문단 — 맞는 문단을 가져다 빈칸만 채운다) / do=statutes(laws:[{lawName, articleNo}]) 적용 조문 원문 부록 / do=docfacts 사건 서류 정리 값(문단 빈칸용) / do=slides 슬라이드 자문보고서 틀을 사건 폴더에 만듦. 보고서 본문은 save_file_to_folder로 사건 폴더(보고서_외부·보고서_내부)에 .md로 저장하면 자문 장부 보고서 칸에 저절로 적힌다. 쓰기 전에 job_lookup kind=reports(search)로 사무소 기존 보고서 1~2개를 본보기로 읽는다.',
+var NX_CASE_REPORT_TOOL_ = { name: 'report_parts', description: '보고서 재료(토큰 0, ✍문서작성 탭과 같은 기능): do=template(label: 보고서 틀 이름 — 자문보고서·종합검토서·개별검토서·불복청구서·요약보고서·진행보고서·참고보고서·신고보고서·번역서) 틀 본문 / do=paragraphs 쟁점 문단 라이브러리 목록(세무사님이 다듬은 표준 문단 — 맞는 문단을 가져다 빈칸만 채운다) / do=statutes(laws:[{lawName, articleNo}]) 적용 조문 원문 부록 / do=docfacts 사건 서류 정리 값(문단 빈칸용) / do=slides 슬라이드 자문보고서 틀을 사건 폴더에 만듦. 보고서 본문은 save_file_to_folder로 사건 폴더에 .md로 저장하면(path는 사건 폴더 기준 — 고객용 path ["보고서_외부"], 내부 검토 ["보고서_내부"]; 어디에 저장됐는지는 결과의 folderPath 그대로 말한다) 자문 장부 보고서 칸에 저절로 적힌다. 쓰기 전에 job_lookup kind=reports(search)로 사무소 기존 보고서 1~2개를 본보기로 읽는다.',
   input_schema: { type: 'object', properties: { do: { type: 'string', enum: ['template', 'paragraphs', 'statutes', 'docfacts', 'slides'] }, label: { type: 'string' }, laws: { type: 'array', items: { type: 'object', properties: { lawName: { type: 'string' }, articleNo: { type: 'string' } } } } }, required: ['do'] } };
 function nxCaseReportParts_(caseId, input) {
   const d = String((input && input.do) || '');
@@ -571,6 +571,26 @@ function nxCaseChatToolRun_(caseId, name, input) {
   try { x = caseProcAiLiveExec_(caseId, name, input || {}, ctx); } catch (e) { x = { text: JSON.stringify({ 오류: String(e && e.message || e).slice(0, 200) }) }; }
   caseProcAiCtxSave_(caseId, ctx);
   return String((x && x.text) || '');
+}
+// [2026.10.30 운영 시험(가상조사대응)] 사건이 연결된 대화에서 문서 저장(save_file_to_folder·export_to_google_doc)의 path는 사건 폴더 기준으로 푼다.
+//  예전엔 드라이브 맨 위부터 찾아 ["보고서_내부"]가 실패했고, 넥스가 path 없이 다시 저장하자 보고서가 드라이브 맨 위에 떨어졌는데 넥스는 "사건 폴더 아래"라고 보고했다.
+//  맨 위부터 준 경로(…/사건폴더/보고서_내부)도 사건 폴더 이름 뒤만 쓴다. 없는 하위 폴더면 저장하지 않고 오류로 알린다(엉뚱한 곳에 떨어지지 않게).
+//  돌려줌: {folder, label} / {error} / null(사건 폴더를 못 찾음 — 예전 방식대로)
+function nxCaseSaveFolder_(caseId, pathIn) {
+  let root = null;
+  try { const cr = job_findCase_(caseId); if (cr && String(cr.폴더ID || '').trim()) root = DriveApp.getFolderById(String(cr.폴더ID).trim()); } catch (e) { root = null; }
+  if (!root) return null;
+  const caseName = root.getName();
+  let rel = (Array.isArray(pathIn) ? pathIn : []).map(function (p) { return String(p || '').trim(); }).filter(Boolean);
+  const at = rel.indexOf(caseName);
+  if (at >= 0) rel = rel.slice(at + 1);
+  let f = root;
+  for (let i = 0; i < rel.length; i++) {
+    const it = f.getFoldersByName(rel[i]);
+    if (!it.hasNext()) return { error: '사건 폴더 「' + caseName + '」 안에 「' + rel.slice(0, i + 1).join(' / ') + '」 폴더가 없어 저장하지 않았다. 사건 대화에서 path는 사건 폴더 기준이다(예: ["보고서_내부"], ["보고서_외부"]) — 사건 폴더 바로 아래면 path를 비워라.' };
+    f = it.next();
+  }
+  return { folder: f, label: [caseName].concat(rel) };
 }
 // [2026.10.30 1단계 계산 한 길] 사건이 연결된 대화에서 넥스가 calculate_* 계산 도구(부담부증여·저가양수·자금출처·가업승계·평가 등 100여 개)를 쓰면
 //  그 결과를 사건의 세액계산결과(경우(안) 저장본 — calc_scenario·장부 시험 계산과 같은 저장소)에 남긴다. 예전엔 채팅 답으로만 흘러가 보고서가 인용할 수 없었다.
@@ -612,7 +632,7 @@ function nxCaseChatGuide_(caseId) {
     + '- 모르는 값에서 멈추지 않는다(세무사님 "양도비용이나 취득비용 같은 것은 증빙이 없어도 충분히 예상액을 가늠하여 잠정치를 반영할 수 있고, 취득가액이나 양도가액도 금액이 특정되지 않으면 잠정금액으로 계산할 수도 있는 것이다. 즉 다양한 경우에 유연하게 대응할 수 있어야 한다"). 근거(시세·공시가격·통상 비율·의뢰 말씀 등)와 산식을 밝힌 잠정치로 case_ledger do=estimate 또는 set(kind 추정)으로 넣고 계산을 이어 간다. 잠정치는 늘 "잠정"과 근거를 함께 보이고, 확인할 것·받을 증빙에 올린다. 확정 신고·서식만 확인된 값으로 낸다. 지어내기 금지는 근거 없이 사실처럼 말하거나 없는 조문·판례·수치를 만드는 것이다.\n'
     + '- 자문은 이렇게 한다: 쟁점을 뽑고 → 대안을 스스로 세운다(시기·양도/증여/부담부증여/상속까지 보유·요건 갖추기·법인 등, 조사·불복이면 과세 논리와 대응 논리) → 대안마다 계산 도구로 돌려 경우(안)으로 저장하고 견준다(case_ledger do=compare·calc, 계산기 도구) → 조문(lookup_statute_article·law_lookup)·판례·예규(search_tax_precedent·law_search)·AI 회의 결론(law_decisions)·절세 아이템(search_tax_items)·업무관리자 지침(load_business_manager)으로 근거와 위험(추징·부당행위·이월과세 등)을 붙인다 → 권고를 정한다 → 보고서로 낸다.\n'
     + '- 자문의 뼈대는 자문 장부에 적는다(case_ledger do=advice) — 보고서를 저장하기 전에 쟁점(item 쟁점)·대안마다 하나씩(item 대안, calc에 그 대안의 저장본)·위험(item 위험)·근거(item 근거)를 먼저 적고 권고(item 권고)로 묶는다(장부가 비면 세무사님 화면 📒 ⑥ 자문이 비고 다음 대화가 이어받지 못한다): 쟁점·대안·근거·위험·권고·보고서를 한 줄 제목과 설명으로, 대안·권고에는 견준 계산 저장본 id(calc)를, 근거에는 실재 확인한 조문·판례·지침 이름(refs)을, 서로 이어진 항목은 links로. 숫자는 장부에 적지 않고 저장본으로만 잇는다. 세무사님이 적으신 항목은 바꾸지 않는다. 세무사님이 화면(📒 장부 ⑥ 자문)에서 같은 장부를 보신다.\n'
-    + '- 보고서(세무사님 "기존 보고서 모음을 참고하라"): ① job_lookup kind=reports(search에 세목·종류 낱말)로 사무소 기존 보고서 중 같은 세목·같은 종류 1~2개를 골라 read_drive_file로 읽고 구성·어조·깊이를 본보기로 삼는다(고객 이름·숫자는 옮기지 않는다) ② report_parts do=template로 틀(자문보고서·종합검토서·개별검토서·불복청구서 등)을, do=paragraphs로 세무사님이 다듬은 쟁점 문단을, do=statutes로 적용 조문 원문 부록을 가져온다 ③ 세액·비교표는 저장본에서만 인용하고(case_ledger do=cite로 입력·결과 확인) 어느 저장본인지 적는다 — 암산 금지 ④ 잠정치는 "잠정"과 근거, 확인할 것·받을 서류를 보고서에 그대로 밝힌다 ⑤ save_file_to_folder로 사건 폴더(고객용은 보고서_외부, 내부 검토는 보고서_내부)에 .md로 저장 — 자문 장부 보고서 칸에 저절로 적히니, 인용한 저장본은 do=advice item=보고서 id calc로 잇는다.\n'
+    + '- 보고서(세무사님 "기존 보고서 모음을 참고하라"): ① job_lookup kind=reports(search에 세목·종류 낱말)로 사무소 기존 보고서 중 같은 세목·같은 종류 1~2개를 골라 read_drive_file로 읽고 구성·어조·깊이를 본보기로 삼는다(고객 이름·숫자는 옮기지 않는다) ② report_parts do=template로 틀(자문보고서·종합검토서·개별검토서·불복청구서 등)을, do=paragraphs로 세무사님이 다듬은 쟁점 문단을, do=statutes로 적용 조문 원문 부록을 가져온다 ③ 세액·비교표는 저장본에서만 인용하고(case_ledger do=cite로 입력·결과 확인) 어느 저장본인지 적는다 — 암산 금지 ④ 잠정치는 "잠정"과 근거, 확인할 것·받을 서류를 보고서에 그대로 밝힌다 ⑤ save_file_to_folder로 사건 폴더에 .md로 저장(path는 사건 폴더 기준 — 고객용 ["보고서_외부"], 내부 검토 ["보고서_내부"]; 저장 위치는 결과의 folderPath 그대로 보고) — 자문 장부 보고서 칸에 저절로 적히니, 인용한 저장본은 do=advice item=보고서 id calc로 잇는다.\n'
     // [2026.10.30 1단계] 옛 사건 지휘 지시문을 지우며 옮겨 온 규칙(원문은 각 줄의 날짜 결정)
     + '- [맡긴 범위] 세무사님은 사건을 전체로·일부만 맡기시거나 직접 처리하신다("내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"). 말씀이 범위를 정하면(예: "취득가액만 봐줘") 그 범위만 하고 나머지는 "맡기지 않으셔서 두었음"으로 적는다. 범위 말씀이 없으면 전체를 맡긴 것으로 본다. 세무사님이 직접 넣거나 정한 값은 바꾸지 않는다 — 어긋나 보이면 여쭌다.\n'
     + '- [파일 읽기] 너는 대리인이라 사건 폴더의 어떤 파일이든 폭넓게 읽는다(case_files로 폴더 파일 목록 보기, file_read로 글 — 체크가 꺼진 파일·산출물·보관 폴더·예규·메모도). 목록 표시 🆕 새 / ✏ 바뀜 / ✓ 전에 읽음(시각) — ✓는 다시 읽지 않는다. GAS가 읽을 파일은 사건마다 체크 목록이 정한다: 체크 목록은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이고 너의 읽기를 막지 않는다. 순서: case_files로 폴더 파일 목록 보기 → 모르는 파일은 file_read → 이 사건에 필요한지 판단 → set_read_scope로 GAS에게 체크 목록 지정 → (한꺼번에 읽힐 것이 있으면) gas_run.\n'

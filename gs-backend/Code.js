@@ -5272,10 +5272,13 @@ function toolSaveFileToFolder(pathArr, name, content, opts) {
   if (content === undefined || content === null) return { error: '저장할 내용이 없습니다.' };
 
   let folder;
-  try {
-    folder = resolveFolderByPath(Array.isArray(pathArr) ? pathArr : []);
-  } catch (err) {
-    return { error: err.message };
+  if (opts && opts.folder) folder = opts.folder;
+  else {
+    try {
+      folder = resolveFolderByPath(Array.isArray(pathArr) ? pathArr : []);
+    } catch (err) {
+      return { error: err.message };
+    }
   }
 
   return withLock_(8000, function () {
@@ -5312,7 +5315,7 @@ function toolSaveFileToFolder(pathArr, name, content, opts) {
         file = folder.createFile(Utilities.newBlob(String(content), mimeType, fileName));
         updated = false;
       }
-      const out = { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: updated, folderPath: pathArr || [] };
+      const out = { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: updated, folderPath: (opts && opts.folderLabel) || pathArr || [] };
       if (renamedFrom) out.note = '같은 이름 파일 「' + renamedFrom + '」이 AI가 덮어쓸 수 없는 파일(글 파일이 아니거나 시스템 파일)이라 「' + file.getName() + '」로 따로 저장했다 — 사용자에게 그렇게 알려라.';
       else if (updated && opts && opts.aiTool) out.note = '기존 파일 「' + file.getName() + '」을 갱신했다' + (backedUp ? ' — 직전 판은 같은 폴더 "_이전판" 안에 한 개 보관했다' : '') + '. 새 파일을 만든 게 아니다.';
       return out;
@@ -5353,7 +5356,7 @@ function aiSaveBackupPrev_(folder, file) {
  * 기본 내장돼 있어서 바로 쓸 수 있다. **굵게**만 실제 볼드 서식으로 바꾸고,
  * #/##/###는 제목 스타일로, -/* 로 시작하는 줄은 글머리표 목록으로 바꾼다.
  */
-function toolExportToGoogleDoc(pathArr, title, content) {
+function toolExportToGoogleDoc(pathArr, title, content, opts) {
   if (!title || !String(title).trim()) return { error: '문서 제목이 없습니다.' };
   if (!content) return { error: '내용이 없습니다.' };
   // [2026.10.21] 숨은 메모(<!-- 바탕 템플릿 … -->, <!-- 문단정보 … -->)는 구글 문서에 글자로 찍히지 않게 뺀다(reportwriter.html과 같은 방식)
@@ -5361,10 +5364,13 @@ function toolExportToGoogleDoc(pathArr, title, content) {
   if (!content.trim()) return { error: '내용이 없습니다.' };
 
   let folder;
-  try {
-    folder = resolveFolderByPath(Array.isArray(pathArr) ? pathArr : []);
-  } catch (err) {
-    return { error: err.message };
+  if (opts && opts.folder) folder = opts.folder;
+  else {
+    try {
+      folder = resolveFolderByPath(Array.isArray(pathArr) ? pathArr : []);
+    } catch (err) {
+      return { error: err.message };
+    }
   }
 
   function appendInlineBold(para, text) {
@@ -15610,9 +15616,16 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         // path를 모델이 생략했으면, 지금 사용자가 화면에서 보고 있는 폴더(요청에 실려온 currentPath)로 대신한다.
         const targetPath = (Array.isArray(input.path) && input.path.length) ? input.path
           : ((body.context && Array.isArray(body.context.currentPath)) ? body.context.currentPath : []);
+        // [2026.10.30 운영 시험(가상조사대응)] 사건이 연결된 대화에서 넥스가 path를 사건 폴더 기준(["보고서_내부"])으로 주면 드라이브 맨 위에서 찾다 실패했고,
+        //  path 없이 다시 저장하자 보고서가 드라이브 맨 위에 떨어졌다 — 사건 대화의 저장은 사건 폴더 기준으로 푼다(없는 하위 폴더면 저장하지 않고 알린다).
+        const saveOpts = { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '' };
+        if (nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
+          const cf = nxCaseSaveFolder_(nxCaseId_, input.path);
+          if (cf && cf.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: cf.error }) };
+          if (cf && cf.folder) { saveOpts.folder = cf.folder; saveOpts.folderLabel = cf.label; }
+        }
         // [2026.10.20 보안→갱신] 같은 이름 글 파일은 직전 판을 "_이전판"에 두고 갱신, 덮어쓰면 안 되는 파일만 새 이름, 화면에 열린 문서는 거절(apply_document_edit로)
-        const resultObj = toolSaveFileToFolder(targetPath, input.name, input.content,
-          { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '' });
+        const resultObj = toolSaveFileToFolder(targetPath, input.name, input.content, saveOpts);
         // [2026.10.27 10-27 D-2] 지금 편집기·보기 칸에 열린 문서를 이 도구로 저장하려 하면 거절만 하지 않고(16:47 오류기록) 그 글을 수정안(edit_document)으로 돌린다 —
         //  저장 길을 하나로: 열린 문서면 화면이 [이 수정안으로 저장]·[편집창에 적용하기] 버튼을 띄우고 세무사님이 저장한다
         if (resultObj && resultObj.error && /열려 있는 문서/.test(String(resultObj.error)) && typeof input.content === 'string' && input.content.trim()) {
@@ -15633,7 +15646,14 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const input = block.input || {};
         const targetPath = (Array.isArray(input.path) && input.path.length) ? input.path
           : ((body.context && Array.isArray(body.context.currentPath)) ? body.context.currentPath : []);
-        const resultObj = toolExportToGoogleDoc(targetPath, input.title, input.content);
+        // [2026.10.30] 사건 대화에서는 save_file_to_folder와 같이 사건 폴더 기준으로 푼다(nxCaseSaveFolder_)
+        let expOpts = null;
+        if (nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
+          const cf = nxCaseSaveFolder_(nxCaseId_, input.path);
+          if (cf && cf.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: cf.error }) };
+          if (cf && cf.folder) expOpts = { folder: cf.folder };
+        }
+        const resultObj = toolExportToGoogleDoc(targetPath, input.title, input.content, expOpts);
         if (resultObj && !resultObj.error) {
           clientActions.push({ type: 'explorer_changed', path: targetPath });
           clientActions.push({ type: 'file_saved', name: resultObj.name, url: resultObj.url, updated: resultObj.updated });
