@@ -15560,7 +15560,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       if (block.name === 'case_ledger') {
         let r;
         try { r = ledgerToolRun_(block.input || {}, '넥스'); } catch (err) { r = { ok: false, error: '장부 처리 중 오류: ' + err.message }; }
-        if (r && r.ok && !/^(facts|brief)$/.test(String((block.input || {}).do || ''))) clientActions.push({ type: 'ledger_changed', caseId: String((block.input || {}).caseId || ''), do: String((block.input || {}).do || ''), path: String((block.input || {}).path || ''), message: r.message || '', undoable: /^(set|decide)$/.test(String((block.input || {}).do || '')) });
+        if (r && r.ok && !/^(facts|brief|advice_view|cite)$/.test(String((block.input || {}).do || ''))) clientActions.push({ type: 'ledger_changed', caseId: String((block.input || {}).caseId || ''), do: String((block.input || {}).do || ''), path: String((block.input || {}).path || ''), message: r.message || '', undoable: /^(set|decide)$/.test(String((block.input || {}).do || '')) });
         return { type: 'tool_result', tool_use_id: block.id, is_error: !!(r && r.error && !r.ok), content: JSON.stringify(cxMask_ ? JSON.parse(cxMask_(JSON.stringify(r))) : r).slice(0, 20000) };
       }
       if (block.name === 'job_propose_action') {
@@ -24771,6 +24771,16 @@ function work_updateCase0_(params) {
       if (typeof taxCalcResults === 'string') { try { taxCalcResults = JSON.parse(taxCalcResults); } catch (e) { taxCalcResults = null; } }
       if (Array.isArray(taxCalcResults)) row[col.세액계산결과] = JSON.stringify(taxCalcResults);
     }
+    // [2026.10.30 계산 저장 한 길] 계산 저장본 하나 덧붙이기 — 잠금 안에서 지금 칸 목록을 읽어 붙인다. 예전엔 부르는 곳마다 목록 전체를 미리 읽어
+    //  "목록+새 것"을 통째로 다시 써서, 한 차례에 계산을 잇달아 저장하면 앞 저장본이 사라졌다(10-30 운영 시험: 넥스가 A안 재계산 저장 뒤 C1·C2를 저장 → A안 재계산본이 없어짐)
+    if (params.세액계산결과추가 && typeof params.세액계산결과추가 === 'object') {
+      let cur = []; try { cur = JSON.parse(String(row[col.세액계산결과] || '[]')); } catch (e) { cur = []; }
+      if (!Array.isArray(cur)) cur = [];
+      const next = cur.concat([params.세액계산결과추가]);
+      const txt = JSON.stringify(next);
+      if (txt.length > 49000) return { success: false, message: '이 사건의 계산 저장본이 칸 한도(5만 자)에 닿았습니다 — 오래된 경우(안)을 정리한 뒤 다시 저장하세요.' };
+      row[col.세액계산결과] = txt;
+    }
     // [2026.09 버그수정] 예전엔 params.사건개요가 이번 호출에 실제로 실려왔을 때만 필요증빙
     // 템플릿을 재계산했다 — 그래서 작업관리에서 세목/업무유형만 바꾸고(예: "상담"→"신고")
     // 사건개요서는 다시 저장 안 하면(흔한 흐름: 수임 확정되면 업무유형만 바꿈), 새 업무유형에
@@ -32179,7 +32189,7 @@ function caseProcScenario_(c, body) {
     안: { 이름: name, 세목: tax, 바꾼칸: diff, 누가: by, 때: caseProcNow_(), 바탕: baseFrom, 바탕저장본id: baseEntry ? String(baseEntry.id || '') : '', 이유: String(body.why || '').slice(0, 200) },
     // 저장값은 작게(시트 한 칸 한도) — 엔진에 넣은 입력과 결과 요약만. 다음 안은 이 inputs를 바탕으로 이어 바꿀 수 있다
     저장값: { scenario: true, tax: tax, inputs: slimIn, result: res.요약값 } };
-  const up = work_updateCase({ id: c.id, 세액계산결과: all.concat([entry]), 기대수정일: c.수정일 });
+  const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
   if (!up || up.success === false) return { ok: false, error: '저장 실패: ' + ((up && up.message) || '사건 행을 못 고침') };
   try { caseProcLog_(c.id, { by: by, what: '경우(안) 계산 저장', key: entry.id, detail: name + ' — ' + label + ' 납부세액 ' + won(total) + (diff.length ? ' · 바꾼 칸 ' + diff.map(function (d) { return (d.이름 || d.칸) + ' ' + d.전 + '→' + d.후; }).join(', ').slice(0, 140) : '') + ' · 바탕 ' + baseFrom }); } catch (e) {}
   return { ok: true, id: entry.id, 안: name, 세목: label, 최종세액: total, 바꾼칸: diff, 바탕: baseFrom, 요약: lines, message: '경우(안) 「' + name + '」 저장 — ' + label + ' 납부세액 ' + won(total) + ' (바탕: ' + baseFrom + (diff.length ? ', 바꾼 칸 ' + diff.length + '개' : '') + '). 기본 저장본은 그대로이고, 검토서는 이 저장본 id로 인용합니다.' };

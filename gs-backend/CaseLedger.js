@@ -518,7 +518,7 @@ function ledgerCalcRun_(c, body) {
   const entry = { id: 'tc_' + Date.now(), 세목: '양도소득세', 구분: isCase ? '경우(안) 장부 계산' : '장부 계산(서버)', 요약: [(isCase ? '[경우(안)] ' + name : '[장부 계산] ' + (c.사건명 || c.고객명 || '')), '장부 줄 ' + cs.used.length + '개(확정·추정)'].concat(lines, [body.why ? '이유: ' + String(body.why).slice(0, 200) : '']).filter(Boolean).join('\n'), 최종세액: Number(res.납부세액_합계), 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
     저장값: Object.assign({ ledger: true, inputs: { transactions: inputs }, result: { 거래건수: res.거래건수, 비과세건수: res.비과세건수, 합산과세표준: res.합산과세표준, 산출세액_합계: res.산출세액_합계, 지방소득세: res.지방소득세, 납부세액_합계: res.납부세액_합계 } }, cs.state) };
   if (isCase) entry.안 = { 이름: name, 세목: 'transfer', 바꾼칸: (cs.assumed || []).map(function (a) { return { 칸: a.칸, 이름: a.이름, 전: a.전, 후: a.후 }; }), 누가: by, 때: caseProcNow_(), 바탕: '사건 장부(정함+추정)', 바탕저장본id: '', 이유: String(body.why || '').slice(0, 200), 추정: est.filter(function (r) { return r.state === '추정'; }).map(function (r) { return r.label + ' ' + r.값; }).slice(0, 20) };
-  const up = work_updateCase({ id: c.id, 세액계산결과: all.concat([entry]), 기대수정일: c.수정일 });
+  const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
   if (!up || up.success === false) return { ok: false, error: '저장 실패: ' + ((up && up.message) || '사건 행을 못 고침') };
   ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: by, what: isCase ? '경우 계산 저장' : '세액계산 저장', path: entry.id, detail: (isCase ? name + ' — ' : '') + '납부세액 ' + won(res.납부세액_합계) + ((cs.assumed || []).length ? ' · 가정 ' + cs.assumed.length + '칸' : '') + (est.length ? ' · 추정·보류 ' + est.length + '건' : '') + (cs.gaps.length ? ' · 빈 칸 ' + cs.gaps.length : '') }); });
   return { ok: true, id: entry.id, 이름: isCase ? name : '', 최종세액: Number(res.납부세액_합계), 요약: lines, gaps: cs.gaps, 가정: cs.assumed || [], 추가확인: est.map(function (r) { return r.label + ' — ' + r.state + (r.ask ? ': ' + r.ask : ''); }), message: (isCase ? '경우(안) 「' + name + '」 ' : '') + '세액계산 저장(' + entry.id + ') — 납부세액 ' + won(res.납부세액_합계) + (cs.gaps.length ? ' · 빈 칸 ' + cs.gaps.length + '개' : '') + (est.filter(function (r) { return r.state === '추정'; }).length ? ' · 추정 ' + est.filter(function (r) { return r.state === '추정'; }).length + '칸으로 계산' : '') };
@@ -549,7 +549,7 @@ function ledgerCalcGiftInh_(c, body) {
   const isCase = !!nm || assumed.length > 0, name = nm || (label + ' 장부 경우 ' + (all.filter(function (e) { return e && e.안; }).length + 1));
   const entry = { id: 'tc_' + Date.now(), 세목: label, 구분: isCase ? '경우(안) 장부 계산' : '장부 계산(서버)', 요약: [isCase ? '[경우(안)] ' + name : '[장부 계산] ' + (c.사건명 || c.고객명 || '')].concat(lines).join('\n'), 최종세액: Number(r.납부세액), 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''), 저장값: { ledger: true, tax: c.세목, inputs: b.input, result: { 과세표준: r.과세표준, 산출세액: 산출, 신고세액공제: r.신고세액공제, 납부세액: r.납부세액 } } };
   if (isCase) entry.안 = { 이름: name, 세목: c.세목, 바꾼칸: assumed, 누가: by, 때: caseProcNow_(), 바탕: '사건 장부(정함+추정)', 바탕저장본id: '', 이유: String((body && body.why) || '').slice(0, 200) };
-  const up = work_updateCase({ id: c.id, 세액계산결과: all.concat([entry]), 기대수정일: c.수정일 });
+  const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
   if (!up || up.success === false) return { ok: false, error: '저장 실패: ' + ((up && up.message) || '사건 행을 못 고침') };
   ledgerMutate_(c.id, function (L2) { ledgerLogTo_(L2, { by: by, what: '세액계산 저장', path: entry.id, detail: label + ' 납부세액 ' + won(r.납부세액) + ((b.gaps || []).length ? ' · 남은 것 ' + b.gaps.length : '') }); });
   return { ok: true, id: entry.id, 최종세액: Number(r.납부세액), 요약: lines, gaps: b.gaps || [], input: b.input, message: label + ' 계산 저장(' + entry.id + ') — 납부세액 ' + won(r.납부세액) };
@@ -2172,7 +2172,7 @@ function ledgerAdvPut_(c, input, who) {
       if (!it) return { ok: false, error: '지울 항목을 찾지 못함' };
       it.removed = true; it.hist = (it.hist || []).concat([{ at: caseProcNow_(), by: by, what: '지움', why: String(input.why || '').slice(0, 120) }]).slice(-10);
       ledgerLogTo_(L, { by: by, what: '자문 ' + kind + ' 지움', path: 'adv:' + it.id, detail: it.title });
-      return { ok: true, 지움: it.id };
+      return { ok: true, 지움: it.id, message: '자문 ' + kind + ' 지움 — ' + it.title };
     }
     const now = caseProcNow_(), isNew = !it;
     if (!it) { it = { id: kind.slice(0, 1) + (list.length + 1) + '_' + Date.now().toString(36).slice(-4), at: now }; list.push(it); }
@@ -2186,7 +2186,7 @@ function ledgerAdvPut_(c, input, who) {
     it.by = by; it.when = now;
     it.hist = (it.hist || []).concat([{ at: now, by: by, what: isNew ? '적음' : '고침', why: String(input.why || '').slice(0, 120) }]).slice(-10);
     ledgerLogTo_(L, { by: by, what: '자문 ' + kind + (isNew ? ' 적음' : ' 고침'), path: 'adv:' + it.id, detail: it.title + (it.calc && it.calc.length ? ' · 저장본 ' + it.calc.join(',') : '') });
-    return { ok: true, id: it.id, kind: kind, title: it.title, 새로: isNew };
+    return { ok: true, id: it.id, kind: kind, title: it.title, 새로: isNew, message: '자문 ' + kind + ' ' + (isNew ? '적음' : '고침') + ' — ' + it.title + (it.calc && it.calc.length ? ' (저장본 ' + it.calc.length + '개)' : '') };
   });
 }
 // 넥스·화면이 보는 자문 장부 요약 — 항목마다 제목·상태·누가·잇는 저장본(그 저장본의 이름·세액은 사건 계산 결과에서 바로 붙임)

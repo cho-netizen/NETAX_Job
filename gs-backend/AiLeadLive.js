@@ -596,7 +596,7 @@ function nxCaseCalcToolSave_(caseId, name, input, resultText) {
     안: { 이름: nm, 세목: name, 바꾼칸: [], 누가: '넥스', 때: caseProcNow_(), 바탕: '대화창 계산 도구 입력', 이유: why },
     저장값: { tool: name, inputs: inText, result: outText } };
   if (JSON.stringify(all.concat([entry])).length > 45000) return { 저장: '못 함 — 이 사건의 계산 저장본이 사건 칸 한도(5만 자)에 가까움. 세무사님께 오래된 경우(안) 정리를 여쭙고, 이 결과는 보고서에 "저장 안 된 계산"으로 밝힌다' };
-  const up = work_updateCase({ id: c.id, 세액계산결과: all.concat([entry]), 기대수정일: c.수정일 });
+  const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
   if (!up || up.success === false) return { 저장: '실패 — ' + ((up && up.message) || '사건 행을 못 고침') };
   try { caseProcLog_(c.id, { by: '넥스', what: '경우(안) 계산 저장(대화창 계산 도구)', key: entry.id, detail: nm + ' — ' + name + (Number.isFinite(pay) ? ' 세액 ' + pay : '') }); } catch (e) {}
   return { 저장본id: entry.id, 안: nm, 최종세액: Number.isFinite(pay) ? pay : '(결과에 납부세액 칸 없음 — 결과 원문은 저장본에)' };
@@ -616,5 +616,9 @@ function nxCaseChatGuide_(caseId) {
     + '- [값·질문·근거] 서류로 정한 값은 value_set(근거 서류·쪽·문장)이나 case_ledger do=set(kind 넥스, file·quote·why)으로 넣고, 서류로 풀린 질문은 close_question으로 닫는다(말로만 "해소"라 하면 다음에 또 뜬다). 좁은 판단은 quick_judge(저가), 특례·시가·법령 해석이 갈리면 ask_higher(상위). 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한다. 해석이 갈리는 판단 전엔 law_decisions로 AI 회의 결론을 본다("결정"은 따르고 "판단 대기"면 단정하지 않는다). 판단 전에 list_business_managers·load_business_manager로 이 사건에 맞는 업무관리자 지침을 읽는다.\n'
     + '- gas_run은 폴더 서류를 한꺼번에 읽어 칸을 채우는 GAS 도구다(서류가 안 읽혔거나 새 서류가 있을 때만). gas_finish는 세액계산·서식·저장·종합검토서 초안. 둘 다 화면이 돌리고 끝나면 결과가 [GAS 결과] 글로 이 대화에 온다 — 부른 차례는 지금까지 한 일을 말하고 마친다.\n'
     + '- 물을 것은 case_ledger do=ask로 장부 질문에 올리고(사이드바에 뜸), 채팅에서는 항목별로 묶어 여쭌다(개수로 자르지 않는다). 세무사님 값(누가=세무사님)은 바꾸지 않는다. 고객에게 직접 보내는 일은 하지 않는다.\n'
-    + '- 맡은 일은 보고서까지 끝까지 한다. 채팅은 세무사님과의 대화가 주이고, GAS가 한 일은 요약만 한다.';
+    + '- 맡은 일은 보고서까지 끝까지 한다. 채팅은 세무사님과의 대화가 주이고, GAS가 한 일은 요약만 한다.\n'
+    // [2026.10.30 운영 시험(가상상속자문)에서 드러난 버릇] 6~7단계마다 "다음 요청에서 이어가겠다"며 멈춤·"잠정치로 진행해도 될까요?" 허락 구함·의뢰 메모에 있는 가족·사전증여를 다시 물음·증여세 계산기를 "이번엔 못 부른다"며 미룸
+    + '- 한 번 맡기시면 이번 차례 안에서 보고서 저장까지 이어 간다(단계 한도는 넉넉하다). "다음 요청에서 이어가겠다"며 멈추지 않는다. "잠정치로 진행해도 될까요?"라고 허락을 구하지 않는다 — 잠정치로 진행하는 것이 세무사님 원칙이다. 물을 것은 보고서의 "추가로 확인할 사항"과 끝 말에 항목별로 묶어 여쭙고, 답이 오면 그 값으로 다시 계산해 보고서를 고친다.\n'
+    + '- 의뢰 메모·상담 기록·세무사님 말씀에 이미 있는 사실(가족 구성·나이·재산·대출·사전증여 등)은 다시 묻지 않는다 — "의뢰 말씀 기준(잠정)"으로 쓰고, 서류로 확인할 것은 받을 증빙으로만 올린다. 묻는 것은 말씀에도 서류에도 없는 것과, 결론을 가르는데 말씀이 애매한 것뿐이다.\n'
+    + '- 필요한 계산 도구(calculate_*)가 지금 목록에 없으면 browse_tax_calculators(category: transfer·gift·inheritance 등)로 그 분야를 연 뒤 같은 차례에 바로 쓴다 — "이번엔 못 부른다"며 미루지 않는다. 증여·양도·상속을 견주는 자문이면 처음에 필요한 분야를 모두 연다.';
 }
