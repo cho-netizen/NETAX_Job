@@ -990,7 +990,7 @@ function ledgerView_(c) {
   const rows = ledgerRows_(c.id), L = ledgerLoad_(c.id);
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
-  const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-5).map(function (e) { return { id: e.id, 구분: e.구분, 최종세액: e.최종세액, 계산일: e.계산일 }; });
+  const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
   return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
 }
 // [2026.10.29] 세무사님 "ai없이 수동으로 사건을 처리할때 사용자가 사건장부를 수시로 참조해야 하는 것이 아닌가?" → "권장대로 하자"(처리개요 맨 위 + 사건 화면 어디서나)

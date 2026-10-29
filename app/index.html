@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 15:46 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 16:41 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6829,7 +6829,7 @@ function nxMdOpenWindow(title, src, opts){
           th6 += '<div id="chAdvOut" style="margin-top:6px;"></div></div>';
           h += th6;
         })();
-        if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.구분 || '') + ' — 납부세액 ' + esc(Number(s.최종세액 || 0).toLocaleString('ko-KR')) + '원</div>'; }).join('') + '</div>';
+        if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.이름 || s.구분 || '') + ' <span style="color:var(--sub);">(' + esc(s.구분 || '') + ' · ' + esc(s.id || '') + ')</span> — ' + (s.최종세액 != null ? '납부세액 ' + esc(Number(s.최종세액).toLocaleString('ko-KR')) + '원' : '세액 칸 없음(평가 등)') + '</div>'; }).join('') + '</div>';
         if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
         h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
         body.innerHTML = h;
