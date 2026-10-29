@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 07:03 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-29 07:09 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -2730,6 +2730,7 @@ function nxMdOpenWindow(title, src, opts){
   // 8건이 채 안 되면 몇 달 뒤 마감인 사건까지 "마감임박"으로 표시됐다. 이미 지난 기한(overdue,
   // workmanage.html과 같은 기준)은 항상 포함하고 강조 표시한다.
   var DASH_DEADLINE_HORIZON_DAYS_ = 14;
+  var dashDeadlineCases_ = {}; // id → 사건(✓ 완료 단추가 완료 전 점검·저장에 씀)
   function loadDashDeadlines(){
     callGas('work_get_cases', {}).then(function(res){
       var todayStr = new Date().toISOString().slice(0, 10);
@@ -2740,6 +2741,8 @@ function nxMdOpenWindow(title, src, opts){
         return c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr;
       });
       cases.sort(function(a,b){ return String(a.법정일).localeCompare(String(b.법정일)); });
+      dashDeadlineCases_ = {};
+      cases.forEach(function(c){ dashDeadlineCases_[c.id] = c; });
       var box = document.getElementById('dashDeadlines');
       if (!cases.length){ box.innerHTML = '<div class="empty-row">' + DASH_DEADLINE_HORIZON_DAYS_ + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
       // [2026.09 버그수정] "보류" 사건도 법정일이 임박하면 "진행" 사건과 똑같이 강조되어
@@ -2759,9 +2762,9 @@ function nxMdOpenWindow(title, src, opts){
       // [2026.09.16 버그수정] 세무사님 지적 — 사건명이 이미 "고객명(납세자)_세목_업무유형"
       // 규칙대로 고객명을 포함하고 있으니, 고객명을 별도 열로 또 보여줄 필요가 없다. 열을
       // 없애고 그만큼 확보된 폭은 사건명 열에 몰아준다.
-      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:480px;"><colgroup>'
-        + '<col style="width:104px"><col style="width:370px"><col style="width:90px"><col style="width:64px">'
-        + '</colgroup><tr><th' + thNowrap + '>법정일</th><th' + thNowrap + '>사건명</th><th' + thNowrap + '>업무유형</th><th' + thNowrap + '>상태</th></tr>';
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:540px;"><colgroup>'
+        + '<col style="width:104px"><col style="width:370px"><col style="width:90px"><col style="width:64px"><col style="width:62px">'
+        + '</colgroup><tr><th' + thNowrap + '>법정일</th><th' + thNowrap + '>사건명</th><th' + thNowrap + '>업무유형</th><th' + thNowrap + '>상태</th><th' + thNowrap + '></th></tr>';
       // [2026.09.16 버그수정] 세무사님 지적 — 캘린더·메일 카드는 윗행과 날짜가 같으면 날짜를
       // 비워서 보여주는데(같은 날짜가 반복되면 안 보여줘도 헷갈리지 않음), 마감임박 작업·
       // 최근 수금내역엔 이 처리가 없어서 같은 날짜가 행마다 계속 반복 표시되고 있었다 —
@@ -2773,7 +2776,9 @@ function nxMdOpenWindow(title, src, opts){
         var dateCell = (c.법정일 === prevDeadlineDate) ? '' : ((overdue ? '⏰ ' : '') + esc(c.법정일));
         prevDeadlineDate = c.법정일;
         html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#a83232; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
-          '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td></tr>';
+          '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td>' +
+          // [2026.10.29] 세무사님 "대시보드에서 진행을 즉시 완료로 변경할 수 있거나…" — 줄 누르기(처리개요로 이동)와 따로, 이 단추는 그 자리에서 완료 처리
+          '<td style="' + nowrap + '"><button type="button" class="ghost-btn" data-dash-done="' + esc(c.id) + '" title="작업관리로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)" style="font-size:11px; padding:1px 6px;">✓ 완료</button></td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -2784,6 +2789,17 @@ function nxMdOpenWindow(title, src, opts){
   // 사건의 대시보드)으로 이동한다 — 예전엔 그냥 표만 보여주고 끝이라 다시 작업관리에서
   // 이름으로 찾아야 했다.
   document.getElementById('dashDeadlines').addEventListener('click', function(e){
+    var doneBtn = e.target.closest('button[data-dash-done]');
+    if (doneBtn){
+      var dc = dashDeadlineCases_[doneBtn.getAttribute('data-dash-done')];
+      if (!dc || typeof nxCompleteCaseQuick_ !== 'function') return;
+      doneBtn.disabled = true; doneBtn.textContent = '확인 중…';
+      nxCompleteCaseQuick_(dc).then(function(updated){
+        if (updated){ loadDashDeadlines(); return; }
+        doneBtn.disabled = false; doneBtn.textContent = '✓ 완료';
+      });
+      return;
+    }
     var tr = e.target.closest('tr[data-case-id]');
     if (!tr) return;
     var caseId = tr.getAttribute('data-case-id');
@@ -5065,67 +5081,7 @@ function nxMdOpenWindow(title, src, opts){
     // 유지됐지만, 이제 work_updateCase가 고객명/납세자/세목/업무유형이 실려올 때마다 사건명을
     // 자동으로 다시 계산해 같이 저장하므로("즉시 연동" 요청), 이 폼에서 그 네 칸 중 하나라도
     // 바꿔 저장하면 사건명(과 연결된 Drive 폴더명)도 그 즉시 새 값으로 맞춰진다.
-    // [2026.09] 완료 처리 직전에 "요청자료가 다 안 모였는데도/보고서를 발행하지 않았는데도
-    // 완료로 넘어가는" 실수를 막기 위한 가벼운 사전 점검. 저장을 막지는 않고(예외적으로 증빙·
-    // 보고서 없이도 완료해야 하는 사건이 있을 수 있으므로) 확인 메시지만 띄운다.
-    function checkCompletionReadiness_(c){
-      var warnings = [];
-      var unresolved = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested' && e.status !== '확보됨'; });
-      if (unresolved.length) warnings.push('요청자료 중 ' + unresolved.length + '건이 아직 미확보 상태입니다.');
-      // [2026.10.18 탭연결 8번] 하위업무 미완료와 수금(입금) 기록도 같이 본다 — 일은 끝났는데 보수를 받았는지 시스템이 알려주지 않았다.
-      // (청구액·미수 관리는 새 기능이라 만들지 않았다 — 여기서는 "이 사건에 연결된 입금 기록이 하나라도 있나"만 본다)
-      var subPending = 0;
-      (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.status !== '완료') subPending++; walk(n.children); }); })(c.하위업무);
-      if (subPending) warnings.push('작업관리 하위업무 중 ' + subPending + '건이 아직 완료 전입니다.');
-      var payCheck = callGas('client_get_consult_logs', {}).then(function(res){
-        var paid = ((res && res.logs) || []).filter(function(l){ return l.사건ID === c.id && Number(l.금액) > 0; });
-        if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 처리개요 💰 수금 카드나 수금관리에서 이 사건으로 기록하세요.');
-      }).catch(function(){});
-      if (!c.폴더ID) return payCheck.then(function(){ return warnings; });
-      return payCheck.then(function(){ return callGas('get_case_subfolders', { caseId: c.id }); }).then(function(sub){
-        if (sub.error || !sub.reportFolderId) return warnings;
-        return callGas('listFolder', { folderId: sub.reportFolderId }).then(function(res){
-          var hasHtml = !res.error && (res.files || []).some(function(f){ return /\.html?$/i.test(f.name); });
-          if (!hasHtml) warnings.push('고객에게 발행된 보고서(.html)가 아직 없습니다.');
-          return warnings;
-        });
-      }).catch(function(){ return warnings; });
-    }
-
-    // [2026.09.16 신규] "시스템 개통 전에 이미 완료된 사건을 지금 완료 처리하니 완료일이
-    // 오늘(9/22, 9/23)로 찍혀버린다"는 지적 — work_updateCase가 완료 전환 시 항상 오늘 날짜로
-    // 법정일을 덮어써서, 실제 완료일을 입력할 방법 자체가 없었다. 완료로 바꿀 때마다 실제
-    // 완료일(기본값 오늘)을 확인받아, 지난 사건을 지금 기록할 때는 그 날짜를 직접 넣을 수
-    // 있게 한다.
-    function wcPromptCompletionDate_(){
-      return new Promise(function(resolve){
-        var old = document.getElementById('nxDialogOverlay');
-        if (old) old.remove();
-        var overlay = document.createElement('div');
-        overlay.id = 'nxDialogOverlay';
-        overlay.className = 'modal-overlay';
-        overlay.style.zIndex = '9999';
-        var todayStr = new Date().toISOString().slice(0, 10);
-        overlay.innerHTML =
-          '<div class="modal-panel" style="width:min(360px, 92vw);">' +
-            '<div class="modal-head"><span>완료 처리</span></div>' +
-            '<div class="modal-body">' +
-              '<div style="font-size:13.5px; line-height:1.5; margin-bottom:8px;">실제로 완료된 날짜를 입력해주세요(시스템 개통 전에 이미 끝난 사건을 지금 기록하는 경우, 오늘이 아닌 실제 날짜를 넣으면 됩니다).</div>' +
-              '<input type="date" id="wcCompletionDateInput" value="' + todayStr + '" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">' +
-              '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">' +
-                '<button type="button" class="save-btn" data-val="ok">확인</button>' +
-                '<button type="button" class="ghost-btn" data-val="cancel">취소</button>' +
-              '</div>' +
-            '</div>' +
-          '</div>';
-        document.body.appendChild(overlay);
-        var input = overlay.querySelector('#wcCompletionDateInput');
-        function finish(val){ overlay.remove(); resolve(val); }
-        overlay.querySelector('[data-val="ok"]').addEventListener('click', function(){ finish(input.value || todayStr); });
-        overlay.querySelector('[data-val="cancel"]').addEventListener('click', function(){ finish(null); });
-        overlay.addEventListener('click', function(e){ if (e.target === overlay) finish(null); });
-      });
-    }
+    // [2026.10.29] 완료 전 점검(checkCompletionReadiness_)·완료일 입력(wcPromptCompletionDate_)은 대시보드·처리개요의 완료 버튼도 같이 쓰도록 이 파일 맨 밖(공용)으로 옮겼다 — 내용은 그대로.
     function saveCaseNow_(silent, completionDateOverride){
       var customerName = document.getElementById('wcEditCustomerName').value.trim();
       if (!customerName){ showToast('고객명은 비워둘 수 없습니다.', 'warning'); return; }
@@ -5229,6 +5185,97 @@ function nxMdOpenWindow(title, src, opts){
         }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
       });
     });
+  }
+
+
+  // [2026.09] 완료 처리 직전에 "요청자료가 다 안 모였는데도/보고서를 발행하지 않았는데도
+  // 완료로 넘어가는" 실수를 막기 위한 가벼운 사전 점검. 저장을 막지는 않고(예외적으로 증빙·
+  // 보고서 없이도 완료해야 하는 사건이 있을 수 있으므로) 확인 메시지만 띄운다.
+  function checkCompletionReadiness_(c){
+    var warnings = [];
+    var unresolved = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested' && e.status !== '확보됨'; });
+    if (unresolved.length) warnings.push('요청자료 중 ' + unresolved.length + '건이 아직 미확보 상태입니다.');
+    // [2026.10.18 탭연결 8번] 하위업무 미완료와 수금(입금) 기록도 같이 본다 — 일은 끝났는데 보수를 받았는지 시스템이 알려주지 않았다.
+    // (청구액·미수 관리는 새 기능이라 만들지 않았다 — 여기서는 "이 사건에 연결된 입금 기록이 하나라도 있나"만 본다)
+    var subPending = 0;
+    (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.status !== '완료') subPending++; walk(n.children); }); })(c.하위업무);
+    if (subPending) warnings.push('작업관리 하위업무 중 ' + subPending + '건이 아직 완료 전입니다.');
+    var payCheck = callGas('client_get_consult_logs', {}).then(function(res){
+      var paid = ((res && res.logs) || []).filter(function(l){ return l.사건ID === c.id && Number(l.금액) > 0; });
+      if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 처리개요 💰 수금 카드나 수금관리에서 이 사건으로 기록하세요.');
+    }).catch(function(){});
+    if (!c.폴더ID) return payCheck.then(function(){ return warnings; });
+    return payCheck.then(function(){ return callGas('get_case_subfolders', { caseId: c.id }); }).then(function(sub){
+      if (sub.error || !sub.reportFolderId) return warnings;
+      return callGas('listFolder', { folderId: sub.reportFolderId }).then(function(res){
+        var hasHtml = !res.error && (res.files || []).some(function(f){ return /\.html?$/i.test(f.name); });
+        if (!hasHtml) warnings.push('고객에게 발행된 보고서(.html)가 아직 없습니다.');
+        return warnings;
+      });
+    }).catch(function(){ return warnings; });
+  }
+
+  // [2026.09.16 신규] "시스템 개통 전에 이미 완료된 사건을 지금 완료 처리하니 완료일이
+  // 오늘(9/22, 9/23)로 찍혀버린다"는 지적 — work_updateCase가 완료 전환 시 항상 오늘 날짜로
+  // 법정일을 덮어써서, 실제 완료일을 입력할 방법 자체가 없었다. 완료로 바꿀 때마다 실제
+  // 완료일(기본값 오늘)을 확인받아, 지난 사건을 지금 기록할 때는 그 날짜를 직접 넣을 수
+  // 있게 한다.
+  function wcPromptCompletionDate_(){
+    return new Promise(function(resolve){
+      var old = document.getElementById('nxDialogOverlay');
+      if (old) old.remove();
+      var overlay = document.createElement('div');
+      overlay.id = 'nxDialogOverlay';
+      overlay.className = 'modal-overlay';
+      overlay.style.zIndex = '9999';
+      var todayStr = new Date().toISOString().slice(0, 10);
+      overlay.innerHTML =
+        '<div class="modal-panel" style="width:min(360px, 92vw);">' +
+          '<div class="modal-head"><span>완료 처리</span></div>' +
+          '<div class="modal-body">' +
+            '<div style="font-size:13.5px; line-height:1.5; margin-bottom:8px;">실제로 완료된 날짜를 입력해주세요(시스템 개통 전에 이미 끝난 사건을 지금 기록하는 경우, 오늘이 아닌 실제 날짜를 넣으면 됩니다).</div>' +
+            '<input type="date" id="wcCompletionDateInput" value="' + todayStr + '" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">' +
+            '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">' +
+              '<button type="button" class="save-btn" data-val="ok">확인</button>' +
+              '<button type="button" class="ghost-btn" data-val="cancel">취소</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      var input = overlay.querySelector('#wcCompletionDateInput');
+      function finish(val){ overlay.remove(); resolve(val); }
+      overlay.querySelector('[data-val="ok"]').addEventListener('click', function(){ finish(input.value || todayStr); });
+      overlay.querySelector('[data-val="cancel"]').addEventListener('click', function(){ finish(null); });
+      overlay.addEventListener('click', function(e){ if (e.target === overlay) finish(null); });
+    });
+  }
+  // [2026.10.29] 세무사님 "대시보드에서 진행을 즉시 완료로 변경할 수 있거나 처리개요에서 완료로 처리할 수 있으면 좋겠다" —
+  // 예전엔 대시보드 마감임박 줄을 누르면 처리개요로만 가고, 처리개요에도 완료 단추가 없어 작업관리로 다시 가야 했다.
+  // 작업관리 상태 칸을 '완료'로 바꿀 때와 같은 순서(완료 전 점검 → 실제 완료일 입력 → 저장)를 그대로 밟는다.
+  // 상태·완료일·기대수정일만 보내므로 다른 칸은 서버가 그대로 둔다(work_updateCase는 온 칸만 고침).
+  // 돌려주는 값: 저장된 사건(성공) / null(취소·실패 — 알림은 여기서 띄움)
+  function nxCompleteCaseQuick_(c){
+    if (!c || !c.id) return Promise.resolve(null);
+    if (c.상태 === '완료'){ showToast('이미 완료된 사건입니다.', 'warning'); return Promise.resolve(null); }
+    return checkCompletionReadiness_(c).then(function(warnings){
+      if (!warnings.length) return true;
+      return nxConfirm_('완료 처리하기 전에 확인해주세요:\n\n- ' + warnings.join('\n- ') + '\n\n그래도 완료로 처리할까요?');
+    }).then(function(ok){
+      if (!ok) return null;
+      return wcPromptCompletionDate_();
+    }).then(function(dateVal){
+      if (!dateVal) return null;
+      return callGas('work_update_case', { id: c.id, 상태: '완료', 완료일: dateVal, 기대수정일: c.수정일 }).then(function(res){
+        if (res && res.conflict){ showToast(res.message || '그 사이 다른 곳에서 이 사건이 고쳐졌습니다. 새로 불러온 뒤 다시 눌러 주세요.', 'warning'); return null; }
+        if (!res || res.error || res.success === false){ showToast((res && (res.error || res.message)) || '완료 처리에 실패했습니다.', 'error'); return null; }
+        if (res.warning) showToast(res.warning, 'warning');
+        showToast('완료로 처리했습니다(' + dateVal + ').', 'success');
+        var updated = res.case || Object.assign({}, c, { 상태: '완료', 법정일: dateVal });
+        // 작업관리 목록이 이미 열려 있었다면 그 자료도 맞춘다(다음에 작업관리로 가도 옛 상태로 안 보이게)
+        if (typeof workCases !== 'undefined'){ workCases.forEach(function(x){ if (x.id === c.id) Object.assign(x, updated); }); }
+        return updated;
+      });
+    }).catch(function(e){ showToast('완료 처리 중 오류가 났습니다: ' + ((e && e.message) || e), 'error'); return null; });
   }
 
 
@@ -6843,6 +6890,8 @@ function nxMdOpenWindow(title, src, opts){
   // [2026.10.18 탭연결 7번] 기한·하위업무 카드 — 예전엔 처리탭 어디에도 기한이 안 보이고, 세액계산·보고서를 끝내도 작업관리의
   // "자료수집 → 세액계산 → …" 하위업무는 작업관리로 가서 하나씩 체크해야 했다. 상태(진행·보류·완료)·하위업무 추가·삭제는
   // 그대로 작업관리에서 하고("작업관리=현황, 처리=작업"), 여기서는 보기 + 완료 체크만 한다(작업관리와 같은 work_update_subtask).
+  // [2026.10.29] 세무사님 "…처리개요에서 완료로 처리할 수 있으면 좋겠다" — 사건 자체를 완료로 바꾸는 단추(✓ 사건 완료)만 여기 더한다.
+  // 작업관리 상태 칸과 같은 순서(완료 전 점검 → 완료일 입력 → 저장, workmanage.html nxCompleteCaseQuick_). 진행·보류로 되돌리기는 그대로 작업관리에서.
   function chRenderProgress_(c){
     var box = document.getElementById('chProgressCard');
     if (!box) return;
@@ -6867,7 +6916,10 @@ function nxMdOpenWindow(title, src, opts){
     box.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;">' +
         '<div style="font-weight:700;">📅 기한·하위업무</div>' +
-        '<button type="button" class="ghost-btn" data-ch-prog="work" style="padding:2px 8px; font-size:12px;">📌 작업관리에서 고치기</button>' +
+        '<span style="display:flex; gap:6px; flex-wrap:wrap;">' +
+          (c.상태 !== '완료' ? '<button type="button" class="ghost-btn" data-ch-prog="done" title="작업관리로 가지 않고 이 사건을 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)" style="padding:2px 8px; font-size:12px;">✓ 사건 완료</button>' : '') +
+          '<button type="button" class="ghost-btn" data-ch-prog="work" style="padding:2px 8px; font-size:12px;">📌 작업관리에서 고치기</button>' +
+        '</span>' +
       '</div>' +
       '<div style="font-size:13px; margin-top:6px;">' + escapeHtml(label) + ': ' + (c.법정일 ? escapeHtml(String(c.법정일).slice(0, 10)) + dday : '<span style="color:var(--sub);">아직 없음</span>') +
         ' · 상태: ' + escapeHtml(c.상태 || '') + (rows.length ? ' · 하위업무 ' + done + '/' + rows.length + ' 완료' : '') + '</div>' +
@@ -6882,6 +6934,19 @@ function nxMdOpenWindow(title, src, opts){
           }).join('') + '</div>'
         : '<div style="font-size:12.5px; color:var(--sub); margin-top:4px;">하위업무가 없습니다(작업관리에서 추가).</div>');
     box.querySelector('[data-ch-prog="work"]').addEventListener('click', function(){ if (typeof goToWorkManage_ === 'function') goToWorkManage_(c.id); });
+    var doneBtn = box.querySelector('[data-ch-prog="done"]');
+    if (doneBtn) doneBtn.addEventListener('click', function(){
+      if (typeof nxCompleteCaseQuick_ !== 'function') return;
+      doneBtn.disabled = true; doneBtn.textContent = '확인 중…';
+      nxCompleteCaseQuick_(c).then(function(updated){
+        if (!updated){ doneBtn.disabled = false; doneBtn.textContent = '✓ 사건 완료'; return; }
+        // 이 화면의 다른 저장이 기대수정일 충돌로 막히지 않게 상태·기한·수정일을 같이 맞추고 카드를 다시 그린다
+        ['상태', '법정일', '완료전법정일', '수정일'].forEach(function(k){ if (updated[k] !== undefined) c[k] = updated[k]; });
+        chRenderProgress_(c);
+        // 대시보드 마감임박 표도 다음에 열 때 이 사건이 빠지도록 다시 읽힌다(이미 그려져 있으면 지금 갱신)
+        if (typeof loadDashDeadlines === 'function') try { loadDashDeadlines(); } catch (e) {}
+      });
+    });
     box.querySelectorAll('input[data-ch-sub]').forEach(function(cb){
       cb.addEventListener('change', function(){
         cb.disabled = true;
@@ -53492,7 +53557,7 @@ function rwAiApplyEdit_(id, content){
         <li><b>할일을 완료로 표시하려면</b>: 그 항목 앞의 네모(체크박스)를 누릅니다.</li>
         <li><b>할일 제목·마감일을 고치려면</b>: 제목 글자를 누르면 그 자리에서 입력칸으로 바뀝니다 → 고친 뒤 저장을 누릅니다.</li>
         <li><b>할일을 지우려면</b>: 그 항목 오른쪽의 ✕를 누릅니다.</li>
-        <li><b>마감이 임박한 사건을 바로 처리하려면</b>: "⏰ 마감임박 작업" 표에서 그 줄을 누릅니다 → 그 사건의 처리개요 화면으로 이동합니다(빨간 글씨는 이미 기한이 지난 사건입니다).</li>
+        <li><b>마감이 임박한 사건을 바로 처리하려면</b>: "⏰ 마감임박 작업" 표에서 그 줄을 누릅니다 → 그 사건의 처리개요 화면으로 이동합니다(빨간 글씨는 이미 기한이 지난 사건입니다). 이미 끝난 사건은 줄 끝 <b>✓ 완료</b> 단추로 그 자리에서 완료 처리합니다(처리개요의 📅 기한·하위업무 카드에도 <b>✓ 사건 완료</b> 단추가 있습니다).</li>
         <li><b>안 읽은 메일을 읽음 처리하려면</b>: "📧 안읽은 메일" 목록에서 그 메일 앞 체크박스를 누릅니다.</li>
         <li><b>어젯밤 자동점검이 잘 됐는지 확인하려면</b>: "🌙 야간 자동점검 상태" 카드를 봅니다 — ✅면 정상, ⚠면 그날 밤 자동작업이 실패한 것이니 Apps Script 실행기록을 확인해야 합니다.</li>
       </ul>

@@ -203,6 +203,7 @@
   // 8건이 채 안 되면 몇 달 뒤 마감인 사건까지 "마감임박"으로 표시됐다. 이미 지난 기한(overdue,
   // workmanage.html과 같은 기준)은 항상 포함하고 강조 표시한다.
   var DASH_DEADLINE_HORIZON_DAYS_ = 14;
+  var dashDeadlineCases_ = {}; // id → 사건(✓ 완료 단추가 완료 전 점검·저장에 씀)
   function loadDashDeadlines(){
     callGas('work_get_cases', {}).then(function(res){
       var todayStr = new Date().toISOString().slice(0, 10);
@@ -213,6 +214,8 @@
         return c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr;
       });
       cases.sort(function(a,b){ return String(a.법정일).localeCompare(String(b.법정일)); });
+      dashDeadlineCases_ = {};
+      cases.forEach(function(c){ dashDeadlineCases_[c.id] = c; });
       var box = document.getElementById('dashDeadlines');
       if (!cases.length){ box.innerHTML = '<div class="empty-row">' + DASH_DEADLINE_HORIZON_DAYS_ + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
       // [2026.09 버그수정] "보류" 사건도 법정일이 임박하면 "진행" 사건과 똑같이 강조되어
@@ -232,9 +235,9 @@
       // [2026.09.16 버그수정] 세무사님 지적 — 사건명이 이미 "고객명(납세자)_세목_업무유형"
       // 규칙대로 고객명을 포함하고 있으니, 고객명을 별도 열로 또 보여줄 필요가 없다. 열을
       // 없애고 그만큼 확보된 폭은 사건명 열에 몰아준다.
-      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:480px;"><colgroup>'
-        + '<col style="width:104px"><col style="width:370px"><col style="width:90px"><col style="width:64px">'
-        + '</colgroup><tr><th' + thNowrap + '>법정일</th><th' + thNowrap + '>사건명</th><th' + thNowrap + '>업무유형</th><th' + thNowrap + '>상태</th></tr>';
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:540px;"><colgroup>'
+        + '<col style="width:104px"><col style="width:370px"><col style="width:90px"><col style="width:64px"><col style="width:62px">'
+        + '</colgroup><tr><th' + thNowrap + '>법정일</th><th' + thNowrap + '>사건명</th><th' + thNowrap + '>업무유형</th><th' + thNowrap + '>상태</th><th' + thNowrap + '></th></tr>';
       // [2026.09.16 버그수정] 세무사님 지적 — 캘린더·메일 카드는 윗행과 날짜가 같으면 날짜를
       // 비워서 보여주는데(같은 날짜가 반복되면 안 보여줘도 헷갈리지 않음), 마감임박 작업·
       // 최근 수금내역엔 이 처리가 없어서 같은 날짜가 행마다 계속 반복 표시되고 있었다 —
@@ -246,7 +249,9 @@
         var dateCell = (c.법정일 === prevDeadlineDate) ? '' : ((overdue ? '⏰ ' : '') + esc(c.법정일));
         prevDeadlineDate = c.법정일;
         html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#a83232; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
-          '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td></tr>';
+          '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td>' +
+          // [2026.10.29] 세무사님 "대시보드에서 진행을 즉시 완료로 변경할 수 있거나…" — 줄 누르기(처리개요로 이동)와 따로, 이 단추는 그 자리에서 완료 처리
+          '<td style="' + nowrap + '"><button type="button" class="ghost-btn" data-dash-done="' + esc(c.id) + '" title="작업관리로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)" style="font-size:11px; padding:1px 6px;">✓ 완료</button></td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -257,6 +262,17 @@
   // 사건의 대시보드)으로 이동한다 — 예전엔 그냥 표만 보여주고 끝이라 다시 작업관리에서
   // 이름으로 찾아야 했다.
   document.getElementById('dashDeadlines').addEventListener('click', function(e){
+    var doneBtn = e.target.closest('button[data-dash-done]');
+    if (doneBtn){
+      var dc = dashDeadlineCases_[doneBtn.getAttribute('data-dash-done')];
+      if (!dc || typeof nxCompleteCaseQuick_ !== 'function') return;
+      doneBtn.disabled = true; doneBtn.textContent = '확인 중…';
+      nxCompleteCaseQuick_(dc).then(function(updated){
+        if (updated){ loadDashDeadlines(); return; }
+        doneBtn.disabled = false; doneBtn.textContent = '✓ 완료';
+      });
+      return;
+    }
     var tr = e.target.closest('tr[data-case-id]');
     if (!tr) return;
     var caseId = tr.getAttribute('data-case-id');

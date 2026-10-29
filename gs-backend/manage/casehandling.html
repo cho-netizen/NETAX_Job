@@ -1480,6 +1480,8 @@
   // [2026.10.18 탭연결 7번] 기한·하위업무 카드 — 예전엔 처리탭 어디에도 기한이 안 보이고, 세액계산·보고서를 끝내도 작업관리의
   // "자료수집 → 세액계산 → …" 하위업무는 작업관리로 가서 하나씩 체크해야 했다. 상태(진행·보류·완료)·하위업무 추가·삭제는
   // 그대로 작업관리에서 하고("작업관리=현황, 처리=작업"), 여기서는 보기 + 완료 체크만 한다(작업관리와 같은 work_update_subtask).
+  // [2026.10.29] 세무사님 "…처리개요에서 완료로 처리할 수 있으면 좋겠다" — 사건 자체를 완료로 바꾸는 단추(✓ 사건 완료)만 여기 더한다.
+  // 작업관리 상태 칸과 같은 순서(완료 전 점검 → 완료일 입력 → 저장, workmanage.html nxCompleteCaseQuick_). 진행·보류로 되돌리기는 그대로 작업관리에서.
   function chRenderProgress_(c){
     var box = document.getElementById('chProgressCard');
     if (!box) return;
@@ -1504,7 +1506,10 @@
     box.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;">' +
         '<div style="font-weight:700;">📅 기한·하위업무</div>' +
-        '<button type="button" class="ghost-btn" data-ch-prog="work" style="padding:2px 8px; font-size:12px;">📌 작업관리에서 고치기</button>' +
+        '<span style="display:flex; gap:6px; flex-wrap:wrap;">' +
+          (c.상태 !== '완료' ? '<button type="button" class="ghost-btn" data-ch-prog="done" title="작업관리로 가지 않고 이 사건을 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)" style="padding:2px 8px; font-size:12px;">✓ 사건 완료</button>' : '') +
+          '<button type="button" class="ghost-btn" data-ch-prog="work" style="padding:2px 8px; font-size:12px;">📌 작업관리에서 고치기</button>' +
+        '</span>' +
       '</div>' +
       '<div style="font-size:13px; margin-top:6px;">' + escapeHtml(label) + ': ' + (c.법정일 ? escapeHtml(String(c.법정일).slice(0, 10)) + dday : '<span style="color:var(--sub);">아직 없음</span>') +
         ' · 상태: ' + escapeHtml(c.상태 || '') + (rows.length ? ' · 하위업무 ' + done + '/' + rows.length + ' 완료' : '') + '</div>' +
@@ -1519,6 +1524,19 @@
           }).join('') + '</div>'
         : '<div style="font-size:12.5px; color:var(--sub); margin-top:4px;">하위업무가 없습니다(작업관리에서 추가).</div>');
     box.querySelector('[data-ch-prog="work"]').addEventListener('click', function(){ if (typeof goToWorkManage_ === 'function') goToWorkManage_(c.id); });
+    var doneBtn = box.querySelector('[data-ch-prog="done"]');
+    if (doneBtn) doneBtn.addEventListener('click', function(){
+      if (typeof nxCompleteCaseQuick_ !== 'function') return;
+      doneBtn.disabled = true; doneBtn.textContent = '확인 중…';
+      nxCompleteCaseQuick_(c).then(function(updated){
+        if (!updated){ doneBtn.disabled = false; doneBtn.textContent = '✓ 사건 완료'; return; }
+        // 이 화면의 다른 저장이 기대수정일 충돌로 막히지 않게 상태·기한·수정일을 같이 맞추고 카드를 다시 그린다
+        ['상태', '법정일', '완료전법정일', '수정일'].forEach(function(k){ if (updated[k] !== undefined) c[k] = updated[k]; });
+        chRenderProgress_(c);
+        // 대시보드 마감임박 표도 다음에 열 때 이 사건이 빠지도록 다시 읽힌다(이미 그려져 있으면 지금 갱신)
+        if (typeof loadDashDeadlines === 'function') try { loadDashDeadlines(); } catch (e) {}
+      });
+    });
     box.querySelectorAll('input[data-ch-sub]').forEach(function(cb){
       cb.addEventListener('change', function(){
         cb.disabled = true;
