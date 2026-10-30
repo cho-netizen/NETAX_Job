@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 01:12 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 01:56 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4486,7 +4486,8 @@ function nxMdOpenWindow(title, src, opts){
   // 처리시한) 자동계산 대신 사용자가 직접 입력한다.
   var WORK_MANUAL_DEADLINE_TYPES_ = ['자문', '상담', '해명자료', '세무조사', '자금출처소명'];
   // [2026.09] "기준일"이라는 추상 용어 대신 세목마다 실제로 부르는 이름을 그대로 쓴다.
-  var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', objection: '처분일' };
+  // [2026.10.30] 불복: '처분일' → '기한 기산일' — 불복 사건개요서에 처분(고지)일 칸이 따로 생겼고, 기준일은 법정일 계산의 기산일(통지 받은 날·법정신고기한 등)이라
+  var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', objection: '기한 기산일' };
 
   // [2026.10.30 버그수정] 오늘 날짜는 이 컴퓨터(서울) 날짜로 — toISOString은 세계표준시라 0시~9시에 어제 날짜가 됐다
   // (10-30 새벽 등록한 사건의 의뢰일이 모두 10-29로 들어감, 기한 지남 ⏰ 표시도 같은 시간에 하루 늦었음).
@@ -5580,7 +5581,8 @@ function nxMdOpenWindow(title, src, opts){
   // [2026.09.23 버그수정] '사업' 세목이 이 매핑에서 빠져 있어(사업 사건개요는 2026.09.19에
   // 나중에 추가됨) 작업관리 납세자가 아무리 입력돼도 "납세자(대표) 성명"(bizTaxpayerName)에
   // 전혀 반영되지 않았다 — Code.js의 WORK_TAXPAYER_FIELD_BY_SEMOK_도 같이 고칠 것.
-  var TAXPAYER_NAME_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName' };
+  // [2026.10.30] 불복 사건개요서 — 청구인(납세자) 성명(objTaxpayerName)도 작업관리 납세자와 서로 맞춘다(Code.js WORK_TAXPAYER_FIELD_BY_SEMOK_도 같이)
+  var TAXPAYER_NAME_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName', objection: 'objTaxpayerName' };
   var CH_CASE_OVERVIEW_FIELDS_ = {
     // [2026.09 버그수정] 실사용 감사 지적 — '양도가액'/'취득일'/'취득가액' 세 필드는 물건목록
     // 재설계 이전(대표 1건만 다루던 시절)의 유물이었다. 물건목록 카드에도 취득일·취득가액이
@@ -5637,8 +5639,34 @@ function nxMdOpenWindow(title, src, opts){
       { key: '고객추가명단', label: '공동의뢰인(쉼표로 구분)', type: 'text', beforeAsset: true },
       { key: 'bizEmployeeNames', label: '임직원(여러 명이면 쉼표로 구분)', type: 'text' },
       { key: '특이사항', label: '특이사항', type: 'textarea' }
+    ],
+    // [2026.10.30 신규] 세무사님 "현재 구조 <불복_이의신청> 대로 두고 사건개요서만 만들어라" — 불복 사건은 예전엔 「처리대상」 한 줄 칸뿐이었다.
+    //  칸 이름은 GAS 불복 항목표(Code.js caseProcAppealSummary_)가 불복 서면·고지서에서 읽는 값(처분청·처분일·신청일·귀속·고지세액·쟁점 세액)과 같은 이름으로 —
+    //  다음에 서류에서 읽은 값을 칸에 바로 채울 수 있게. 기한 기산일(= 사건 기준일, 법정일 자동 계산)은 아래 chBuildObjectionBlockHtml_ 블록(이름표가 업무유형 따라 바뀜).
+    //  beforeAsset 칸 → 기산일 블록 → 나머지 칸 순서로 그려진다(설계안 netax-inventory/maps/불복_사건개요서_설계안_20261030.md 2절 순서).
+    objection: [
+      { key: 'objTaxpayerName', label: '청구인(납세자) 성명', type: 'text', beforeAsset: true },
+      { key: 'objTaxpayerExtraNames', label: '공동청구인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
+      { key: '고객추가명단', label: '공동의뢰인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
+      { key: 'objTaxItem', label: '다투는 세목', type: 'select', options: ['', '양도소득세', '증여세', '상속세', '종합소득세', '부가가치세', '법인세', '그 밖의 세목'], beforeAsset: true },
+      { key: '귀속', label: '귀속(과세기간, 예: 2024년 귀속)', type: 'text', beforeAsset: true },
+      { key: '처분청', label: '처분청(예: ○○세무서장)', type: 'text', beforeAsset: true },
+      { key: '처분일', label: '처분(고지)일', type: 'date', beforeAsset: true },
+      { key: '고지세액', label: '고지세액', type: 'money' },
+      { key: '쟁점세액', label: '쟁점 세액', type: 'money' },
+      { key: '신청일', label: '신청·청구일', type: 'date' },
+      { key: '쟁점요지', label: '쟁점 요지', type: 'textarea' },
+      { key: '특이사항', label: '특이사항', type: 'textarea' }
     ]
   };
+  // [2026.10.30] 불복 기한 기산일 칸 이름표 — 업무유형마다 법정일 자동 계산(Code.js work_calcDeadline_: 이의·심사·심판·행정소송 +90일, 과세적부 +30일, 경정청구 +5년)의
+  //  기산일이 무슨 날인지 보이게 한다. 계산 규칙은 그대로, 이름표만. 해명자료·세무조사·자금출처소명은 자동 계산이 없다(처리시한 직접 입력).
+  //  근거: 국세기본법 §61①·§68①(통지를 받은 날부터 90일), §45의2①(법정신고기한부터 5년). 행정소송(§56③)·과세적부(§81의15②)는 [확인 필요 — 조문 원문 대조 전].
+  var CH_OBJECTION_BASE_LABELS_ = { 이의신청: '처분 통지 받은 날', 심사청구: '처분 통지 받은 날', 심판청구: '처분 통지 받은 날', 행정소송: '결정 통지 받은 날', 과세적부: '과세예고 통지 받은 날', 경정청구: '법정신고기한' };
+  function chObjectionBaseLabel_(upType){
+    var l = CH_OBJECTION_BASE_LABELS_[upType];
+    return l ? '기한 기산일 — ' + l : '기준일(처리시한은 작업관리에서 직접)';
+  }
 
   // [2026.09] "양도·상속·증여가액란은 자동으로 콤마 형식이 되어야" — 금액 필드(type:'money')는
   // 실제로는 type="text"+inputmode="numeric"으로 그리고, 입력할 때마다 chOnMoneyInput_이
@@ -6029,6 +6057,14 @@ function nxMdOpenWindow(title, src, opts){
       '</div>';
   }
 
+  // [2026.10.30] 불복 기한 기산일 칸 — 양도·증여·상속의 양도일·증여일·상속개시일 칸과 같은 자리(id chOvTransferDate, 저장 때 사건 기준일로 감)
+  function chBuildObjectionBlockHtml_(c){
+    return '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">' + escapeHtml(chObjectionBaseLabel_(c.업무유형)) + '</label>' +
+      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(c.기준일 || '') + '">' +
+      '</div>';
+  }
+
   // 세목별 템플릿이 있으면(현재 양도소득세만) 사건개요 구조화 양식을, 없으면 예전과 동일한
   // 자유텍스트 "처리대상" 칸을 그려준다 — chSaveTarget 클릭 핸들러가 같은 조건으로 어느 쪽
   // 값을 모아 저장할지 판단한다(CH_CASE_OVERVIEW_FIELDS_[c.세목] 존재 여부).
@@ -6040,6 +6076,9 @@ function nxMdOpenWindow(title, src, opts){
         '<input type="text" id="chEditTarget" placeholder="예: OO아파트 매각건의 양도소득세 신고" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box;">';
     }
     var overview = c._chOverviewWorking = Object.assign({}, c.사건개요 || {});
+    // [2026.10.30] 불복 사건개요서가 생기면서 예전 「처리대상」 한 줄 칸이 화면에서 빠진다 — 이미 적어 둔 처리대상 글이 있고 쟁점 요지가 비어 있으면
+    //  쟁점 요지 칸에 처음 한 번 옮겨 보여 준다(저장을 누르실 때 쟁점 요지로 저장됨). 원래 처리대상 값은 지우지 않는다.
+    if (c.세목 === 'objection' && !String(overview.쟁점요지 || '').trim() && String(c.처리대상 || '').trim()) overview.쟁점요지 = String(c.처리대상).trim();
     // [2026.09 버그수정] "물건이 먼저 나오는 게 아니다" — 지금까지는 항상 물건목록(자산 카드)이
     // 맨 위에 오고 그 아래 성명 등 신원 필드가 나왔다. 실제 업무 흐름(누가 → 무엇을)에 맞게
     // "누구의 사건인지"부터 알아야 하는 핵심 신원 필드(beforeAsset: true로 표시)는 물건목록보다
@@ -6055,12 +6094,13 @@ function nxMdOpenWindow(title, src, opts){
     var semokLabel = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '';
     var assetBlock = c.세목 === 'transfer' ? chBuildTransferAssetBlockHtml_(overview, c.기준일) :
       c.세목 === 'gift' ? chBuildGiftBlockHtml_(overview, c.기준일) :
-      c.세목 === 'inheritance' ? chBuildInheritanceBlockHtml_(overview, c.기준일) : '';
+      c.세목 === 'inheritance' ? chBuildInheritanceBlockHtml_(overview, c.기준일) :
+      c.세목 === 'objection' ? chBuildObjectionBlockHtml_(c) : '';
     // [2026.09 버그수정] 실사용 지적 — "+ 물건 추가" 버튼 바로 아래에 사건분류·특이사항
     // 입력란이 구분선 없이 바로 붙어 있어서, 마치 그 버튼(물건 추가)에 딸린 입력란인 것처럼
     // 보였다. 실제로는 물건 목록과 전혀 무관한, 사건 전체에 대한 별도 항목이라 구분선을 넣어
     // 시각적으로 갈라놓는다.
-    var afterDivider = (assetBlock && afterRows)
+    var afterDivider = (assetBlock && afterRows && c.세목 !== 'objection') // [2026.10.30] 불복은 기산일 칸 하나뿐이라 구분선 없이 이어서
       ? '<div style="grid-column:1/-1; border-top:1px solid var(--line); margin:4px 0;"></div>' : '';
     return '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 사건개요서 — ' + escapeHtml(semokLabel) + '</div>' +
       '<div id="chOverviewFieldsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 12px; max-width:760px;">' + beforeRows + assetBlock + afterDivider + afterRows + '</div>';
@@ -6285,6 +6325,10 @@ function nxMdOpenWindow(title, src, opts){
           if (locAssetList[0]) Object.assign(overview, locAssetList[0]);
           var transferDateEl2 = document.getElementById('chOvTransferDate');
           if (transferDateEl2) payload.기준일 = transferDateEl2.value;
+        } else if (c.세목 === 'objection'){
+          // [2026.10.30] 불복 기한 기산일 = 사건 기준일 — 서버(work_updateCase)가 업무유형별로 법정일(청구기한)을 다시 계산한다
+          var objBaseEl = document.getElementById('chOvTransferDate');
+          if (objBaseEl) payload.기준일 = objBaseEl.value;
         }
         // [2026.09] 작업관리의 "납세자"와 사건개요서의 납세의무자 이름 필드(TAXPAYER_NAME_FIELD_BY_SEMOK_)
         // 가 반드시 같은 값이어야 한다는 요청 — 여기서 그 필드를 채우면 작업관리의 납세자도
