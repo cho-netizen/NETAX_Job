@@ -394,6 +394,8 @@ function ledgerCalcState_(caseId, over) {
   });
   // 계약마다 양도자산이 하나는 있어야 엔진이 돈다 — 자산 줄이 전혀 없으면 계약 수만큼 빈 자산
   st.transferContracts.forEach(function (c, i) { if (!st.transferAssets.some(function (a) { return a.transferContractId === c.id; })) as(st.transferAssets.length).transferContractId = c.id; });
+  // [2026.10.30 E] 과세대상 구분이 비었어도 자산 종류 칸이 주택 모양(아파트·단독·다세대·다가구·연립·빌라)이면 주택으로 — 오피스텔은 쓰임새로 갈리므로 비워 둔다
+  st.transferAssets.forEach(function (a) { if (!a.assetType && /아파트|단독\s*주택|다세대|다가구|연립|빌라|^주택/.test(String(a.assetKind || ''))) a.assetType = 'house'; });
   // 자산 과세대상 구분이 비어 있으면 엔진 기본(other)이 조용히 쓰인다 — 비어 있는 자산을 알려 준다
   const gaps = [];
   st.transferAssets.forEach(function (a, i) { ['assetType', 'acquisitionDate', 'acquisitionPrice'].forEach(function (k) { if (a[k] === '' || a[k] === undefined) gaps.push('a' + i + '.' + k); }); });
@@ -404,6 +406,9 @@ function ledgerCalcState_(caseId, over) {
 function ledgerApplyClass_(st, cls) {
   const a0 = st.transferAssets[0] || (st.transferAssets.push({ id: 'trc_a1_1', transferContractId: 'trc_c1' }), st.transferAssets[0]);
   if (/1세대\s*1주택|비과세/.test(cls)) a0.isOneHouseOneFamily = true;
+  // [2026.10.30 E] 사건분류가 주택·입주권·분양권을 말하면 과세대상 구분 칸도 그렇게 — 예전엔 1세대1주택 체크만 하고 구분 칸이 비어 엔진 기본(그 밖 자산)으로
+  //  보유 1년 이상 2년 미만 주택을 40%로 계산했다(소득세법 §104①2·3호: 주택·조합원입주권 1년 미만 70%·2년 미만 60%, 그 밖 자산 50%·40%). 장부에 구분 줄이 있으면 그 줄이 이긴다
+  if (!a0.assetType) { if (/분양권/.test(cls)) a0.assetType = 'presale_right'; else if (/주택|입주권/.test(cls)) a0.assetType = 'house'; }
   if (/비사업용/.test(cls)) a0.isNonBusinessLand = true;
   if (/미등기/.test(cls)) a0.isUnregisteredTransfer = true;
   const m = /(\d)\s*주택/.exec(cls); if (m && !st.transferSellers[0].multiHouseCount) st.transferSellers[0].multiHouseCount = m[1];
@@ -511,6 +516,9 @@ function ledgerCalcRun_(c, body) {
   if ((cs.assumed || []).length) lines.push('이번 계산의 가정(장부 값은 그대로) ' + cs.assumed.length + '칸: ' + cs.assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
   if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (r) { return r.label + '(' + r.state + (r.state === '추정' ? ' ' + r.값 : '') + ')'; }).join(', ').slice(0, 300));
   if (cs.gaps.length) lines.push('비어 있는 칸: ' + cs.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
+  // [2026.10.30 E] 과세대상 구분이 비면 엔진은 "그 밖 자산"으로 계산한다 — 주택·분양권이면 단기세율·중과가 달라지므로 결과 맨 앞에 알린다(말없이 기본값 쓰지 않음)
+  const noType = cs.gaps.filter(function (g) { return /\.assetType$/.test(g); });
+  if (noType.length) lines.unshift('⚠ 과세대상 구분이 비어 「주택·분양권 아닌 그 밖 자산」으로 계산함(' + noType.join(', ') + ') — 주택이면 a0.assetType=house(분양권 presale_right)로 넣고 다시 계산해야 단기세율(1년 미만 70%·2년 미만 60%)이 맞음');
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
   const nm = String(body.name || '').trim().slice(0, 60);
   const isCase = !!nm || (cs.assumed || []).length > 0;
@@ -683,8 +691,22 @@ function ledgerDocRoles_(c, docs, unknown) {
       ops.push({ ask: true, path: path, label: '서류 역할 — ' + String(f.name).slice(0, 30), question: (tiny ? '서류를 제대로 읽지 못했습니다 — ' + readTxt + '. 암호가 걸린 PDF면 암호를 풀어 다시 넣어 주시거나, 무엇인지 정해 주세요' : '서류 종류를 규칙으로 정하지 못했습니다 — ' + readTxt + '. 넥스가 읽어 역할을 정하거나 골라 주세요') + '. 역할이 정해지기 전엔 칸 질문을 내지 않습니다', cands: LEDGER_DOC_ROLES_.map(function (r) { return { v: r, src: '역할 고르기' }; }), by: 'GAS', needDoc: tiny });
       return;
     }
-    const label = f.p && (f.p.l || f.p.t) ? String(f.p.l || f.p.t) : '';
+    let label = f.p && (f.p.l || f.p.t) ? String(f.p.l || f.p.t) : '';
     if (!label) return;
+    // [2026.10.30 D] 매매계약서는 이 사건 납세자가 매도인인지 매수인인지(계약서에 적힌 당사자 — 서식 기재 방식)로 양도계약서·취득계약서를 가른다.
+    //  예전엔 "매매계약서"로만 붙어 받을 증빙 계산이 양도 계약서를 취득 쪽 "폴더에 있음"으로 셌다. 판정은 양도 사실 정리와 같은 함수(tcRoleInText_ — 서명란 당사자 → 본문, 파일 이름)
+    if (/매매\s*계약/.test(label) || (f.p && f.p.t === 'contract')) {
+      try {
+        const names = [c && c.납세자, c && c.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
+        const text = names.length && typeof tc_docText_ === 'function' ? tc_docText_(f) : '';
+        const np = text && typeof tcContractNotParty_ === 'function' ? tcContractNotParty_(text, names) : null;
+        if (text && !(np && np.notParty)) {
+          const tR = typeof tcRoleInText_ === 'function' ? tcRoleInText_(text, names) : '', fR = typeof tcRoleInFileName_ === 'function' ? tcRoleInFileName_(f.name) : '';
+          const role = (fR && tR && fR !== tR) ? fR : (tR || fR);
+          if (role === 'seller') label = '양도계약서'; else if (role === 'buyer') label = '취득계약서';
+        }
+      } catch (e) { }
+    }
     ops.push({ path: path, value: label, kind: '규칙', by: 'GAS', file: String(f.name).slice(0, 80), quote: '서류 규칙 판별', sure: '확실' });
   });
   if (!ops.length) return { ok: true, set: 0, asked: 0 };
@@ -1840,10 +1862,12 @@ function caseFlowEvidence_(c, L, lines) {
   const list = Array.isArray(c.증빙목록) ? c.증빙목록.map(function (x) { return Object.assign({}, x); }) : [];
   // 같은 서류가 이미 목록에 있는가 — 한 바퀴가 지난번에 더한 그 항목 자신(같은 자리 열쇠)은 빼고 본다(자기를 보고 "이미 있음"이라 빼 버리면 바퀴마다 뺐다 더했다 함)
   const has = function (label, selfKey) { return list.some(function (e) { return e && e.label === label && e.slotKey !== selfKey; }); };
-  const fileKinds = ((L.kb && L.kb.files) || []).map(function (f) { return String(f.kind || '') + ' ' + String(f.n || ''); }).join('\n');
   // [2026.10.30] 취득 쪽 칸(취득가액·취득일)은 역할이 "양도계약서"로 정해진 계약서를 "폴더에 있음"으로 세지 않는다 — 양도 계약서엔 취득 값이 없다(예전엔 종류 이름만 봐 취득 계약서가 받을 목록에서 빠졌다)
   const sellDoc = {}; Object.keys(L.rows || {}).forEach(function (p) { const m = /^doc:(.+)\.role$/.exec(p); if (m && (L.rows[p] || {}).v === '양도계약서') sellDoc[m[1]] = true; });
   const fileKindsAcq = ((L.kb && L.kb.files) || []).filter(function (f) { return !sellDoc[String(f.n || '').slice(0, 80)]; }).map(function (f) { return String(f.kind || '') + ' ' + String(f.n || ''); }).join('\n');
+  // [2026.10.30 D] 거꾸로 양도 쪽 칸은 역할이 "취득계약서"인 계약서를 "폴더에 있음"으로 세지 않는다
+  const buyDoc = {}; Object.keys(L.rows || {}).forEach(function (p) { const m = /^doc:(.+)\.role$/.exec(p); if (m && (L.rows[p] || {}).v === '취득계약서') buyDoc[m[1]] = true; });
+  const fileKindsSell = ((L.kb && L.kb.files) || []).filter(function (f) { return !buyDoc[String(f.n || '').slice(0, 80)]; }).map(function (f) { return String(f.kind || '') + ' ' + String(f.n || ''); }).join('\n');
   const want = {}; // slotKey → {label, note}
   // 빈 칸 → 그 칸 값이 적히는 서식 종류(TRC_NEED_DOC_TYPES_ — 서식·기관 기재 방식). 폴더에 그 종류 서류가 이미 있으면 받을 것이 아니라 읽기 문제라 더하지 않는다
   // 서류를 아직 다 읽지 못했으면(못읽음·파일 장부 없음) 빈 칸 → 받을 서류는 더하지 않는다 — 폴더에 있는데 안 읽힌 서류를 또 받으라고 하지 않게
@@ -1857,20 +1881,37 @@ function caseFlowEvidence_(c, L, lines) {
       (tpl.사건분류[cls] || []).forEach(function (label) { const k = 'flow:쟁점:' + cls + ':' + label; if (!has(label, k)) want[k] = { label: label, note: '사건처리 한 바퀴: 의뢰서 등이 말한 쟁점 「' + cls + '」를 확인할 서류(가설 — 사건분류가 정해지면 다시 봄)' }; });
     });
   }
+  // [2026.10.30 D] 받을 증빙은 장부 칸 상태에서 바로 짠다 — 판단은 장부 한 곳("묻기는 하나"). 예전엔 장부 칸(취득일 "증빙받을것")과 받을 증빙 계산(사건처리 빈 칸 목록 + 폴더 파일 이름)이
+  //  따로 판단해 서로 다른 답을 냈다(가상원인확인: 장부는 증빙받을것, 받을 증빙 0건). 장부에 줄이 없는 칸만 예전처럼 사건처리 빈 칸 목록으로 본다.
+  // [2026.10.30 B] 칸이 찼어도 그 값의 근거가 서류가 아니면(넥스가 말씀·상담 메모로 적은 값·추정) 계산엔 쓰되 받을 증빙은 남긴다 — "말씀 기준(잠정)". 서류로 확인되면 그때 빠진다.
+  const readOk = !kbFiles.some(function (f) { return f.st === '못읽음'; });
+  const slotNames = function (p) {
+    const types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[String(p).split('.').pop()]) || [];
+    return types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(Boolean);
+  };
+  const cands = [];
+  if (readOk) Object.keys(L.rows || {}).forEach(function (p) {
+    if (/^(q:|doc:|chk:)/.test(p) || !/^(seller\.|c\d+\.|a\d+\.|g\d+\.|h\d+\.)/.test(p)) return;
+    const r = L.rows[p] || {}, src = r.src || {}, lab = String(r.label || ledgerLabel_(p) || p);
+    if (r.state === '증빙받을것') cands.push({ p: p, l: lab, ledger: true, note: '사건처리 한 바퀴: 장부 「' + lab + '」 칸이 증빙 받을 것' + (r.ask ? ' — ' + String(r.ask).slice(0, 80) : '') });
+    else if (/^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null && !src.file && (r.state === '추정' || /^(넥스|추정)$/.test(String(src.kind || ''))))
+      cands.push({ p: p, l: lab, spoken: true, note: '사건처리 한 바퀴: 장부 「' + lab + '」 값은 말씀 기준(잠정) — ' + (src.kind === '넥스' ? '넥스가 말씀·상담 메모로 적음' : '추정') + ', 서류로 아직 확인 안 됨' });
+  });
   let needs = [];
   if (readDone) try { needs = c.세목 === 'transfer' ? (((caseProcLoad_(c.id) || {}).needs || {}).list || []) : (typeof giNeeds_ === 'function' ? giNeeds_(c) : []); } catch (e) { needs = []; }
-  needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov; }).forEach(function (n) {
-    const types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[String(n.p).split('.').pop()]) || [];
-    const names = types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(Boolean);
+  needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov && !(L.rows || {})[n.p]; }).forEach(function (n) { cands.push({ p: n.p, l: n.l, note: '사건처리 한 바퀴: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' }); });
+  cands.forEach(function (n) {
+    const names = slotNames(n.p);
     if (!names.length) return;
-    const fk = /^a\d+\.acquisition/.test(String(n.p)) ? fileKindsAcq : fileKinds;
-    if (names.some(function (nm) { return fk.indexOf(nm.replace(/\s/g, '').slice(0, 4)) !== -1 || fk.indexOf(nm) !== -1; })) return;
+    // 폴더에 그 종류 서류가 있는가 — 장부가 "증빙받을것"으로 본 칸은 장부 판단을 따른다(파일 이름으로 다시 판단하지 않음)
+    const fk = /^a\d+\.acquisition/.test(String(n.p)) ? fileKindsAcq : fileKindsSell;
+    if (!n.ledger && names.some(function (nm) { return fk.indexOf(nm.replace(/\s/g, '').slice(0, 4)) !== -1 || fk.indexOf(nm) !== -1; })) return;
     // 이미 받을 목록에 같은 종류가 있는가 — 세무사님이 넣은 항목·쟁점 서류만 본다. 이 규칙이 바퀴마다 다시 짜는 칸 항목(flow:칸:)끼리는 서로를 세지 않는다
     //  [2026.10.30] 예전엔 형제 칸 항목(같은 매매계약서를 원하는 취득가액·취득일)이 서로를 "이미 있음"으로 봐 다음 바퀴에 모두 지워지고 그다음 바퀴에 다시 올라왔다(받을 증빙 5→0→5, 중요한 순간 알림도 헛울림)
     const sameKind = function (label) { return names.some(function (nm) { return String(label || '').indexOf(nm.slice(0, 4)) !== -1; }); };
     if (list.some(function (e) { return e && e.status !== '확보됨' && !/^flow:칸:/.test(String(e.slotKey || '')) && !(/^flow:쟁점:/.test(String(e.slotKey || '')) && !want[e.slotKey]) && sameKind(e.label); })) return;
     if (Object.keys(want).some(function (k) { return /^flow:쟁점:/.test(k) && sameKind(want[k].label); })) return;
-    want['flow:칸:' + n.p] = { label: names.join(' 또는 ') + ' — ' + String(n.l).replace(/\(.*$/, '').trim() + ' 근거', note: '사건처리 한 바퀴: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' };
+    want['flow:칸:' + n.p] = { label: names.join(' 또는 ') + ' — ' + String(n.l).replace(/\(.*$/, '').trim() + ' 근거' + (n.spoken ? ' (지금 값은 말씀 기준·잠정)' : ''), note: n.note };
   });
   let add = 0, del = 0;
   const today = caseProcToday_();
@@ -1879,7 +1920,7 @@ function caseFlowEvidence_(c, L, lines) {
     list.push({ id: 'ev_' + Date.now() + '_f' + i, source: 'requested', label: want[k].label, slotKey: k, fromClassification: null, note: want[k].note, status: '미확보', 요청일: today }); add++;
   });
   // [2026.10.30] 서류를 다 못 읽은 동안엔 빈 칸 → 받을 서류를 새로 짜지 않을 뿐, 지난번에 짠 칸 항목(flow:칸:)은 지우지 않는다(예전엔 "근거가 사라진 항목"으로 지워 받을 증빙이 사라졌다)
-  const kept = list.filter(function (e) { const sk = String((e && e.slotKey) || ''); const gone = e && /^flow:/.test(sk) && e.status !== '확보됨' && !want[sk] && (readDone || !/^flow:칸:/.test(sk)); if (gone) del++; return !gone; });
+  const kept = list.filter(function (e) { const sk = String((e && e.slotKey) || ''); const gone = e && /^flow:/.test(sk) && e.status !== '확보됨' && !want[sk] && (readOk || !/^flow:칸:/.test(sk)); if (gone) del++; return !gone; });
   if (!add && !del) return { add: 0, del: 0 };
   const up = work_updateCase({ id: c.id, 증빙목록: kept, 기대수정일: c.수정일 });
   if (up && up.success !== false) { c.증빙목록 = kept; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; if (lines) lines.push('✏ 확보할 증빙 다시 짬(한 바퀴): ' + (add ? '+' + add + ' ' : '') + (del ? '−' + del + '(근거가 사라진 항목)' : '')); return { add: add, del: del }; }
