@@ -27,6 +27,7 @@
 의뢰서/의뢰서_증여신고.md	A1DkCfZvbOrVt+I6KHX4Yg==
 의뢰서/의뢰서_상속상담.md	CJez4myn5UBRsUGpevgY5g==
 의뢰서/의뢰서_상속신고.md	QCmLDVUbYuI4L4a/6+6jzw==
+의뢰서/의뢰서_복합자문.md	RuAb8Yly2YrUKuVq+Azzxg==
 문단/_사용법.md	qc5vyaZtyh7mTI3I6EFeyQ==
 문단/양도_1세대1주택_비과세.md	vq9xWziT7+7lsjMSWnB9pA==
 문단/양도_고가주택_안분.md	0TuyaAUqrTxXuJXQ6DQdlg==

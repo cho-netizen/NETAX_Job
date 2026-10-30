@@ -4116,21 +4116,26 @@ const JOB_AI_TOOLS_ = [
       + 'do=hyp: 의뢰서·상담 메모·대화를 읽고 GAS 규칙이 못 뽑은 사건개요 가설을 보탠다 — field(상대방|관계|물건|거래|쟁점|요청), value(쟁점은 사건분류 이름 그대로), file(근거 글 파일). 가설은 서류 확인 전이라 계산 칸에 들어가지 않고, 사건개요 가설·확보할 증빙·질문의 출발점이 된다(장부에 「넥스 판단」으로 표시). 서류·금액·날짜 값은 hyp가 아니라 set으로. '
       + 'do=facts: 장부가 모아 둔 서류 사실 찾기(읽기만) — find_kind(사실 종류)·find_file(파일)·find_value(값)·find_to(쓰인 칸)로 좁혀 번호·값·파일·자리·쓰인 칸을 받는다(조건 없으면 종류별 개수). do=brief: 장부 요약(읽기만 — 띠·마지막 한 바퀴·남은 물음·가설과 다름·사건개요·받을 증빙·칸 값과 이은/다른 서류·자문). '
       // [2026.10.30 2단계] 자문 장부
-      + 'do=advice: 자문 장부에 적기·고치기·지우기 — item(쟁점|대안|근거|위험|권고|보고서), title(한 줄), text(설명), calc(계산 저장본 id 배열 — 숫자는 여기 적지 않고 저장본으로 잇는다), refs(근거 조문·판례·예규·절세 아이템·지침 이름 — 실재 확인한 것만), links(이어진 항목 id — 대안→쟁점, 위험→대안, 권고→대안), status(잠정|확정|보류), id(고칠 항목), remove(true면 지움). 세무사님이 적으신 항목은 바꾸지 못한다. do=advice_view: 자문 장부 보기. do=cite: 계산 저장본 하나(id)의 입력·결과 — 보고서 숫자의 원천. do=check_refs: 근거 확인(토큰 0) — 자문 장부의 보고서 파일과 근거 칸의 조문·판례·심판례가 실제로 있는지 원문(법령 정비본·국가법령정보센터)과 대조해 ✅·❌·❓와 판례 결론(인용·기각)을 돌려준다. text를 주면 그 글(저장 전 초안)만 확인. 보고서를 save_file_to_folder로 저장하면 자동으로 돈다.',
+      + '[2026.10.30 복합 자문] do=taxes: 함께 보는 세목 정하기 — taxes(양도·증여·상속 배열, 주 세목은 빼고 적음 — 그 세목 장부 칸·의뢰 메모 추정·받을 증빙·장부 계산이 함께 선다; 세무사님이 정하신 목록은 못 바꿈). do=calc에 tax(transfer·gift·inheritance)를 주면 그 세목 장부로 계산. do=advice item 문의: 의뢰인이 물은 것 한 줄씩 — title(원문 그대로, 합치거나 줄이지 않음)·text(긴 원문)·no(번호)·tax(세목 배열)·status(답 안 함|답함|보류)·answer(답 요지)·links(이어진 쟁점·권고 id). 쟁점에도 tax. '
+      + 'do=advice: 자문 장부에 적기·고치기·지우기 — item(문의|쟁점|대안|근거|위험|권고|보고서), title(한 줄), text(설명), calc(계산 저장본 id 배열 — 숫자는 여기 적지 않고 저장본으로 잇는다), refs(근거 조문·판례·예규·절세 아이템·지침 이름 — 실재 확인한 것만), links(이어진 항목 id — 대안→쟁점, 위험→대안, 권고→대안), status(잠정|확정|보류), id(고칠 항목), remove(true면 지움). 세무사님이 적으신 항목은 바꾸지 못한다. do=advice_view: 자문 장부 보기. do=cite: 계산 저장본 하나(id)의 입력·결과 — 보고서 숫자의 원천. do=check_refs: 근거 확인(토큰 0) — 자문 장부의 보고서 파일과 근거 칸의 조문·판례·심판례가 실제로 있는지 원문(법령 정비본·국가법령정보센터)과 대조해 ✅·❌·❓와 판례 결론(인용·기각)을 돌려준다. text를 주면 그 글(저장 전 초안)만 확인. 보고서를 save_file_to_folder로 저장하면 자동으로 돈다.',
     input_schema: {
       type: 'object',
       properties: {
         caseId: { type: 'string', description: '작업관리 사건ID' },
-        item: { type: 'string', enum: ['쟁점', '대안', '근거', '위험', '권고', '보고서'], description: 'advice일 때 항목 종류' },
+        item: { type: 'string', enum: ['문의', '쟁점', '대안', '근거', '위험', '권고', '보고서'], description: 'advice일 때 항목 종류(문의 = 의뢰인이 물은 것)' },
+        taxes: { type: 'array', items: { type: 'string', enum: ['양도', '증여', '상속'] }, description: 'taxes일 때 함께 보는 세목(주 세목 말고). 빈 배열이면 없앰' },
+        tax: { description: 'calc일 때 계산할 세목(transfer|gift|inheritance), advice(문의·쟁점)일 때 세목 배열(양도·증여·상속)' },
+        no: { type: 'string', description: 'advice 문의일 때 번호(의뢰 메모 순서)' },
+        answer: { type: 'string', description: 'advice 문의일 때 답 요지(풀이는 보고서 쟁점별 검토에)' },
         title: { type: 'string', description: 'advice일 때 한 줄 제목' },
         text: { type: 'string', description: 'advice일 때 설명(2,000자까지)' },
         calc: { type: 'array', items: { type: 'string' }, description: 'advice일 때 잇는 계산 저장본 id(tc_…)' },
         refs: { type: 'array', items: { type: 'string' }, description: 'advice일 때 근거(조문·판례·예규·절세 아이템·지침 이름)' },
         links: { type: 'array', items: { type: 'string' }, description: 'advice일 때 이어진 자문 항목 id' },
-        status: { type: 'string', description: 'advice일 때 잠정·확정·보류' },
+        status: { type: 'string', description: 'advice일 때 잠정·확정·보류(문의는 답 안 함·답함·보류)' },
         id: { type: 'string', description: 'advice일 때 고칠·지울 항목 id, cite일 때 계산 저장본 id' },
         remove: { type: 'boolean', description: 'advice일 때 true면 그 항목을 지움' },
-        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'taxes', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
         loc: { type: 'string', description: 'lookup일 때 소재지(지번·도로명 주소). 비우면 장부·처리개요·의뢰서 가설의 모든 필지' },
         what: { type: 'array', items: { type: 'string', enum: ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'] }, description: 'lookup일 때 고를 조회(비우면 매매사례 뺀 전부)' },
         dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' } } }, description: 'lookup일 때 공시가격·조정대상지역 기준일들(비우면 장부 취득일·양도일·기준일, 없으면 의뢰서 가설 날짜)' },
@@ -14372,6 +14377,11 @@ function handleSaveCaseFromTemplate(body) {
  * "세무조사"·"자금출처소명"·"경정청구"·"해명자료"처럼 세목이 아니라 업무유형에 따라
  * 갈리는 템플릿이 생겨서, 업무유형 이름을 세목 이름보다 먼저(더 구체적인 것 우선) 확인한다.
  */
+// [2026.10.30 복합 자문] 개요 글에 나온 세목 수(양도·증여·상속 낱말) — 복합 자문 의뢰서를 고를 때만 쓴다
+function work_intakeTaxCount_(text) {
+  const s = String(text || '');
+  return [/양도|매도|매각/, /증여/, /상속|사망|유산/].filter(function (re) { return re.test(s); }).length;
+}
 // [2026.10.30] 새 사건 "개요"(상담 메모)를 의뢰서 "## 상담 메모" 자리에 함께 적는다 — 의뢰서는 GAS 장부와
 // 넥스가 모두 늘 읽는 사건파악용 문서라, 개요가 시트 칸에만 있으면 둘 다 못 봤다(할 일 장부 5-1, 세무사님 "권하는 대로 고쳐라").
 function work_mergeConsultMemo_(content, memo) {
@@ -16564,6 +16574,14 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
               const empty = ['쟁점', '대안', '근거', '위험', '권고'].filter(function (k) { return !(now[k] || []).length; });
               if (ar && ar.ok) r.content = String(r.content) + '\n[자문 장부] 보고서 칸 ' + (same ? '고침' : '적음') + '(id ' + ar.id + (same && same.calc && same.calc.length ? ', 이어 둔 저장본 ' + same.calc.length + '개 그대로' : '') + ') — 인용한 계산 저장본은 case_ledger do=advice item=보고서 id=' + ar.id + ' calc=[…]로 잇는다';
               r.content = String(r.content) + '\n[자문 장부 실제 상태 — 이 숫자가 사실이다] ' + cnt + (empty.length ? ' · 빈 칸: ' + empty.join('·') + ' — 보고서보다 장부가 먼저다. 지금 case_ledger do=advice로 빈 칸을 적고, 보고서에 장부 상태를 적었다면 이 숫자와 맞게 고쳐라(못 적었다고 쓰려면 도구가 돌려준 오류 문구를 그대로)' : ' · 빈 칸 없음');
+              // [2026.10.30 복합 자문 — 세무사님 "권하는 안대로"] 문의 답 현황은 넥스에게만 돌려준다 — GAS는 넥스 글에 아무것도 붙이지 않는다(10-30 근거 확인표 사건: 넥스가 주인, GAS는 도구)
+              try {
+                if (typeof ledgerInqStatus_ === 'function') {
+                  const iq = ledgerInqStatus_(ledgerLoad_(cr.id));
+                  if (iq.수) r.content = String(r.content) + '\n[문의 답 현황 — 이 숫자가 사실이다] 문의 ' + iq.수 + ' · 답함 ' + iq.답함 + ' · 보류 ' + iq.보류
+                    + (iq.답안함.length ? ' · 답 안 함 ' + iq.답안함.length + ': ' + iq.답안함.join(' / ').slice(0, 600) + ' — 보고서 "문의사항별 답변"에 답을 쓰고 case_ledger do=advice item=문의 id status=답함(answer 답 요지)으로 적어라. 답을 못 내면 status=보류로 적고 "추가로 확인할 사항"에 올린 뒤 같은 이름으로 다시 저장하라' : ' · 모두 답함·보류');
+                }
+              } catch (e) { r.content = String(r.content) + '\n[문의 답 현황 — 읽기 실패: ' + e.message + ']'; }
             }
           } catch (e) {}
         }
@@ -25127,7 +25145,9 @@ function work_createCase0_(params) {
         // 업무유형만으로 이미 고유한 이름(불복 세부유형) → 세목 이름만(마지막 안전망).
         // [2026.09.17] 의뢰서템플릿 파일명이 전부 "의뢰서_" 접두어를 쓰는 규칙으로 바뀌어
         // 후보 이름에도 똑같이 접두어를 붙여야 찾을 수 있다.
-        if (!(params.의뢰서 && typeof params.의뢰서 === 'object')) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_].map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }), newRow[col.개요]);
+        // [2026.10.30 복합 자문] 개요(상담 메모)에 양도·증여·상속 중 둘 이상이 나오는 자문·상담 사건이면 복합 자문 의뢰서(의뢰서_복합자문)를 먼저 찾는다
+        const multi_ = /자문|상담/.test(upType) && work_intakeTaxCount_(newRow[col.개요]) >= 2;
+        if (!(params.의뢰서 && typeof params.의뢰서 === 'object')) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), (multi_ ? ['복합자문'] : []).concat([semokLabel_ + upType, upType, semokLabel_]).map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }), newRow[col.개요]);
       } catch (err) {
         console.log('의뢰서템플릿 적용 중 오류(사건 생성은 계속 진행): ' + err.message);
       }

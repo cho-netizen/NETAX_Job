@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 15:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 16:15 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -7171,11 +7171,36 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.10.30 2단계] ⑥ 자문 — 세무사님 원문(10-29) "도구는 충분한데 왜 도구를 활용하여 고급 자문을 할 수 없냐고?" / "신고사건은 극히 일부분이다"
         //  쟁점·대안·근거·위험·권고·보고서 — 넥스 case_ledger do=advice와 같은 서버 함수(case_proc step ledgerAdvice). 숫자는 계산 저장본으로만 잇는다. 세무사님이 적은 항목은 넥스가 못 바꿈
         (function(){
-          var A = r.자문 || {}, KINDS = ['쟁점', '대안', '근거', '위험', '권고', '보고서'];
+          var A = r.자문 || {}, KINDS = ['문의', '쟁점', '대안', '근거', '위험', '권고', '보고서']; // [2026.10.30 복합 자문] 의뢰인 문의를 하나씩 쫓는 칸 — 맨 앞
           var th6 = '<div data-lg-sec="adv" style="display:none; margin-top:8px;">';
           th6 += '<div style="color:var(--sub);">사건의 자문 뼈대 — 무엇이 쟁점이고, 어떤 대안을 어느 계산 저장본으로 견주었고, 근거·위험은 무엇이며, 무엇을 권했고, 어느 보고서로 냈는지. 넥스가 적은 것과 세무사님이 적으신 것이 한 곳에 있습니다(세무사님 항목은 넥스가 바꾸지 못합니다).</div>';
+          // [2026.10.30 복합 자문 — 세무사님 "권하는 안대로"] 주 세목 + 함께 보는 세목(넥스 case_ledger do=taxes와 같은 서버 입구 step ledgerTaxes). 세무사님이 정하신 목록은 넥스가 못 바꿈
+          (function(){
+            var T = A.세목 || {}, codes = T.코드 || [], main = codes[0] || '', LB = { transfer: '양도', gift: '증여', inheritance: '상속' };
+            th6 += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><b>세목</b><span>주 세목 ' + esc(T.주 || LB[main] || main || '—') + '</span><span style="color:var(--sub);">함께 보는 세목</span>'
+              + ['transfer', 'gift', 'inheritance'].filter(function(t){ return t !== main; }).map(function(t){ return '<label style="white-space:nowrap;"><input type="checkbox" data-adv-tax="' + t + '"' + (codes.indexOf(t) > 0 ? ' checked' : '') + '> ' + LB[t] + '</label>'; }).join('')
+              + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 메모 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
+              + (T.누가 ? '<span style="color:var(--sub);">(' + esc(T.누가) + (T.때 ? ' · ' + esc(T.때) : '') + ')</span>' : '') + '</div>';
+            var Q = A.문의현황 || {};
+            if (Q.수) th6 += '<div style="margin-top:4px;"><b>문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
+          })();
           KINDS.forEach(function(k){
             var list = A[k] || [];
+            if (k === '문의'){ // 문의는 번호·세목·답을 보이고, 세목별로 묶는다
+              var byTax = {}; list.forEach(function(x){ var g = (x.세목 || []).join('·') || '세목 안 정함'; (byTax[g] = byTax[g] || []).push(x); });
+              th6 += '<div style="margin-top:8px;"><b>문의</b> <span style="color:var(--sub);">' + esc(list.length) + '개 — 의뢰인이 물으신 것을 하나씩. 보고서 "문의사항별 답변"이 같은 번호로 답합니다.</span>';
+              if (!list.length) th6 += '<div class="log-empty">아직 없음</div>';
+              Object.keys(byTax).forEach(function(g){
+                th6 += '<div style="margin-top:4px; color:var(--sub);">' + esc(g) + ' ' + esc(byTax[g].length) + '개</div>' + tbl(['번호', '세목', '물으신 것', '답', '상태·누가', ''], byTax[g].map(function(x){
+                  var st = x.상태 || '답 안 함';
+                  return '<tr>' + cell(x.번호 || '', 40) + cell((x.세목 || []).join('·'), 80) + cell(x.제목, 280) + cell(x.답 || x.내용 || '', 320, ' color:var(--sub);') + cell([st, x.누가].filter(Boolean).join(' · '), 120, st === '답 안 함' ? ' color:#b23;' : '')
+                    + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + ['답함', '보류', '답 안 함'].filter(function(v){ return v !== st; }).map(function(v){ return '<button type="button" class="ghost-btn" data-adv-st="' + esc(v) + '" data-adv-id="' + esc(x.id) + '" style="padding:1px 6px; font-size:11.5px;" title="이 문의를 「' + esc(v) + '」로 바꿉니다">' + esc(v) + '</button> '; }).join('')
+                    + '<button type="button" class="ghost-btn" data-adv-del="' + esc(x.id) + '" data-adv-kind="문의" style="padding:1px 6px; font-size:11.5px;" title="이 문의를 지웁니다(기록은 남음)">지우기</button></td></tr>';
+                }).join(''));
+              });
+              th6 += '</div>';
+              return;
+            }
             th6 += '<div style="margin-top:8px;"><b>' + esc(k) + '</b> <span style="color:var(--sub);">' + esc(list.length) + '개</span>'
               + (list.length ? tbl(['제목', '내용', '저장본·근거·파일', '상태·누가', ''], list.map(function(x){
                   var sv = (x.저장본 || []).map(function(s){ return (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
@@ -7197,7 +7222,7 @@ function nxMdOpenWindow(title, src, opts){
             });
             th6 += '<div id="chAdvCiteOut" style="margin-top:4px;"></div></div>';
           })();
-          th6 += '<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>적기</b><select id="chAdvKind">' + KINDS.map(function(k){ return '<option>' + esc(k) + '</option>'; }).join('') + '</select><input id="chAdvTitle" type="text" placeholder="한 줄 제목" style="width:260px;"><input id="chAdvText" type="text" placeholder="설명(선택)" style="width:300px;"><input id="chAdvCalc" type="text" placeholder="계산 저장본 id(쉼표, 선택)" style="width:180px;"><button type="button" id="chAdvAdd" class="ghost-btn">적기</button></div>';
+          th6 += '<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>적기</b><select id="chAdvKind">' + KINDS.map(function(k){ return '<option>' + esc(k) + '</option>'; }).join('') + '</select><input id="chAdvTitle" type="text" placeholder="한 줄 제목" style="width:260px;"><input id="chAdvText" type="text" placeholder="설명(선택)" style="width:300px;"><input id="chAdvCalc" type="text" placeholder="계산 저장본 id(쉼표, 선택)" style="width:180px;"><select id="chAdvTax" title="문의·쟁점의 세목(선택)"><option value="">세목(선택)</option><option>양도</option><option>증여</option><option>상속</option></select><input id="chAdvAns" type="text" placeholder="답 요지(문의만, 선택 — 적으면 답함)" style="width:240px;"><button type="button" id="chAdvAdd" class="ghost-btn">적기</button></div>';
           th6 += '<div id="chAdvOut" style="margin-top:6px;"></div></div>';
           h += th6;
         })();
@@ -7249,13 +7274,18 @@ function nxMdOpenWindow(title, src, opts){
           var t = (document.getElementById('chAdvTitle').value || '').trim(); if (!t){ showToast('제목을 적어 주세요.', 'warning'); return; }
           var cs = (document.getElementById('chAdvCalc').value || '').split(/[,\s]+/).filter(Boolean);
           advAdd.disabled = true;
-          call({ step: 'ledgerAdvice', item: document.getElementById('chAdvKind').value, title: t, text: (document.getElementById('chAdvText').value || '').trim(), calc: cs.length ? cs : undefined }).then(function(res){ advAdd.disabled = false; if (res && res.ok) reload(); else if (res) document.getElementById('chAdvOut').textContent = res.error || '적지 못했습니다'; });
+          var kd = document.getElementById('chAdvKind').value, tx = document.getElementById('chAdvTax').value, an = (document.getElementById('chAdvAns').value || '').trim();
+          call({ step: 'ledgerAdvice', item: kd, title: t, text: (document.getElementById('chAdvText').value || '').trim(), calc: cs.length ? cs : undefined, tax: tx ? [tx] : undefined, answer: kd === '문의' && an ? an : undefined, status: kd === '문의' && an ? '답함' : undefined }).then(function(res){ advAdd.disabled = false; if (res && res.ok) reload(); else if (res) document.getElementById('chAdvOut').textContent = res.error || '적지 못했습니다'; });
         });
         var advCite = document.getElementById('chAdvCite');
         if (advCite) advCite.addEventListener('click', function(){
           var t0 = advCite.textContent; advCite.disabled = true; advCite.textContent = '대조 중…(판례 많으면 1분쯤)';
           call({ step: 'ledgerCite' }).then(function(res){ advCite.disabled = false; advCite.textContent = t0; if (!res) return; var o = document.getElementById('chAdvCiteOut'); if (o) o.textContent = res.message || ''; if (res.ok && (res.결과 || []).length) setTimeout(reload, 600); });
         });
+        // [2026.10.30 복합 자문] 문의 상태 바꾸기·함께 보는 세목 저장 — 넥스 case_ledger do=advice(status)·do=taxes와 같은 서버 입구
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-adv-st]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerAdvice', item: '문의', id: b.getAttribute('data-adv-id'), status: b.getAttribute('data-adv-st') }).then(function(res){ if (res && res.ok) reload(); else { b.disabled = false; if (res) showToast(res.error || '바꾸지 못했습니다', 'warning'); } }); }); });
+        var taxSave = document.getElementById('chAdvTaxSave');
+        if (taxSave) taxSave.addEventListener('click', function(){ var t = Array.prototype.filter.call(body.querySelectorAll('input[data-adv-tax]'), function(x){ return x.checked; }).map(function(x){ return x.getAttribute('data-adv-tax'); }); taxSave.disabled = true; call({ step: 'ledgerTaxes', taxes: t }).then(function(res){ taxSave.disabled = false; if (res && res.ok){ showToast(res.message || '저장했습니다', 'success'); reload(); } else if (res) showToast(res.error || '저장하지 못했습니다', 'warning'); }); });
         Array.prototype.forEach.call(body.querySelectorAll('button[data-adv-del]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerAdvice', item: b.getAttribute('data-adv-kind'), id: b.getAttribute('data-adv-del'), remove: true }).then(function(res){ if (res && res.ok) reload(); else { b.disabled = false; if (res) showToast(res.error || '지우지 못했습니다', 'warning'); } }); }); });
         // [2026.10.29 계획서 3판] ⑤ 도구 단추 — 넥스 case_ledger do=lookup·estimate·calc·compare와 같은 서버 입구(case_proc step ledgerLookup·ledgerEstimate·ledgerCalc·ledgerCompare)
         var tOut = document.getElementById('chLgToolOut');

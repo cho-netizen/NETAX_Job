@@ -509,6 +509,17 @@ function commSeamList_() {
       if (String(nxCaseChatGuide_('x')).indexOf('예상 반박과 대응') === -1) return '넥스 지시문에 근거 확인·예상 반박 규칙이 없음';
       return '';
     } },
+    // [2026.10.30 복합 자문 — 세무사님 "권하는 안대로"] 새 사건 개요 → 의뢰서·넥스 요약 / 문의 장부·함께 보는 세목 → 세무사님 📒 ⑥·넥스 두 입구 / 보고서 저장 → 넥스에게만 문의 답 현황
+    { 길: '새 복합 자문 사건 → 복합 자문 의뢰서 · 새 사건 개요 → 넥스 장부 요약 · 문의 칸·함께 보는 세목(세무사님 📒 ⑥ = 넥스 do=advice·do=taxes) → 세목별 장부 계산 → 보고서 저장 때 넥스에게 문의 답 현황', fn: function () {
+      if (typeof work_intakeTaxCount_ !== 'function' || String(typeof work_createCase0_ === 'function' ? work_createCase0_ : '').indexOf("['복합자문']") === -1) return '새 복합 자문 사건에 복합 자문 의뢰서(의뢰서_복합자문)가 골라지지 않음';
+      if (String(ledgerNexBrief_).indexOf('의뢰개요') === -1) return '넥스 장부 요약에 새 사건 개요가 없음';
+      if (typeof ledgerTaxesSet_ !== 'function' || typeof ledgerInqStatus_ !== 'function' || !LEDGER_ADV_KINDS_['문의']) return '함께 보는 세목·문의 칸이 이 판에 없음';
+      if (String(ledgerToolRun_).indexOf("'taxes'") === -1 || String(ledgerApi_).indexOf("'ledgerTaxes'") === -1) return '넥스(do=taxes)·화면(ledgerTaxes) 입구 중 빠진 것이 있음';
+      if (String(ledgerCompare_).indexOf("tax: 'transfer'") === -1) return '세목 비교의 양도 계산이 사건 세목대로 돎(세목 비교 이름 결함)';
+      if (String(callClaude).indexOf('ledgerInqStatus_(') === -1) return '넥스 보고서 저장 때 문의 답 현황을 넥스에게 돌려주지 않음';
+      if (String(nxCaseChatGuide_('x')).indexOf('문의사항별 답변') === -1) return '넥스 지시문에 복합 자문(문의 쪼개기·함께 보는 세목·문의별 답변) 규칙이 없음';
+      return '';
+    } },
     { 길: '도구 하나하나(공부 조회·추정·시험 계산·세목 비교) → 세무사님 화면 📒 ⑤·넥스 두 입구(대화창·사건 처리) → 장부 공부 사실', fn: function () {
       if (typeof ledgerLookup_ !== 'function' || typeof ledgerEstimate_ !== 'function' || typeof ledgerCompare_ !== 'function' || typeof ledgerPubPut_ !== 'function') return '공부 조회·추정·세목 비교 함수가 이 판에 없음';
       var lt = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'case_ledger'; })[0];
