@@ -25056,7 +25056,9 @@ function work_updateCase0_(params) {
     if (params.법정일 !== undefined) {
       row[col.법정일] = String(params.법정일).trim();
     } else if (WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) === -1 && recalc) {
-      row[col.법정일] = work_calcDeadline_(row[col.세목], upType, row[col.기준일]);
+      // [2026.10.30 버그수정] 시트가 기준일을 날짜로 바꿔 둔 칸은 날짜 객체로 읽혀 계산이 빈 값('')이 됐다 — 읽기(work_readRow_)처럼 글자로 바꿔 계산.
+      //  이번 저장에 기준일이 안 실린 경우(사건개요서가 있는 세목을 작업관리에서 업무유형만 바꿈: 불복 이의신청→경정청구, 양도 상담→신고 등)에 법정일이 지워졌다(가상불복 운영 확인에서 발견)
+      row[col.법정일] = work_calcDeadline_(row[col.세목], upType, work_dateStr_(row[col.기준일]));
     }
     // [2026.08] 완료 처리하는 순간(진행/보류→완료로 바뀔 때만, 이미 완료인 걸 다시 저장할
     // 때는 건드리지 않음) 법정일/처리시한이 아직 남은 미래 날짜라도 실제 완료일(오늘)로
