@@ -499,10 +499,12 @@ function commSeamList_() {
       return '';
     } },
     // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다"] 보고서 저장 → GAS 근거 대조 → 보고서 끝 표·넥스에게 [근거 확인]·장부 보고서 칸 → 📒 ⑥ 🔎
-    { 길: '넥스 보고서 저장 → 근거 대조(조문·판례·심판례, GAS) → 보고서 끝 근거 확인표·넥스 고침·장부 ⑥ 자문 · 세무사님 🔎 근거 확인', fn: function () {
-      if (typeof citeCheck_ !== 'function' || typeof citeTableMd_ !== 'function' || typeof citeLedgerMark_ !== 'function' || typeof ledgerCiteRun_ !== 'function') return '근거 대조 도구(CiteCheck.js)가 이 판에 없음';
+    // [2026.10.30 고침] GAS는 넥스 글을 바꾸지 않는다 — 대조 결과는 넥스에게 돌려주고 장부에만(세무사님 "일방통행식 일만")
+    { 길: '넥스 보고서 저장(넥스 글 그대로) → 근거 대조(조문·판례·심판례, GAS) → 넥스에게 결과·넥스가 고침·장부 ⑥ 자문 · 세무사님 🔎 근거 확인', fn: function () {
+      if (typeof citeCheck_ !== 'function' || typeof citeNexNote_ !== 'function' || typeof citeLedgerMark_ !== 'function' || typeof ledgerCiteRun_ !== 'function') return '근거 대조 도구(CiteCheck.js)가 이 판에 없음';
       var src2 = String(callClaude);
       if (src2.indexOf('citeCheck_(cc') === -1 || src2.indexOf('citeLedgerMark_(cr') === -1) return '넥스 보고서 저장 때 근거 대조가 돌지 않음(callClaude 고리 빠짐)';
+      if (src2.indexOf('runToolBlock_(block)') === -1) return 'GAS가 넥스가 저장하는 글을 고쳐 저장함(일방통행 어김)';
       if (String(ledgerToolRun_).indexOf("'check_refs'") === -1 || String(ledgerApi_).indexOf("'ledgerCite'") === -1) return '넥스(do=check_refs)·화면(ledgerCite) 입구 중 빠진 것이 있음';
       if (String(nxCaseChatGuide_('x')).indexOf('예상 반박과 대응') === -1) return '넥스 지시문에 근거 확인·예상 반박 규칙이 없음';
       return '';
