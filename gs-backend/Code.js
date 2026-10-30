@@ -32926,6 +32926,16 @@ function caseProcFolderRule_(name, c, opt) {
   if (tcIsOrigPhotoDir_(n)) return { kind: 'orig', why: '변환 전 원본 사진 폴더 — PDF 짝이 있는 사진은 읽지 않음' };
   return { kind: 'input', why: '' };
 }
+// [2026.10.30 파일 장부 판정 하나로] 하위폴더 경로("보고서_내부/초안")의 폴더 판정 — caseProcFiles0_ walk가 아래로 넘기는 dirKind와 같은 규칙
+//  (빼는 폴더·참고 폴더는 그 아래 전부 그 종류, 그 밖엔 처음 만난 입력 아닌 종류). 파일 장부(caseProcLedger_)가 따로 판정하지 않고 이 판정을 쓴다
+function caseProcDirKind_(c, dir) {
+  let k = 'input';
+  String(dir || '').split('/').filter(Boolean).forEach(function (sn) {
+    const fr = caseProcFolderRule_(sn, c, {});
+    k = (fr.kind === 'skip' || fr.kind === 'ref') ? fr.kind : (k === 'input' ? fr.kind : k);
+  });
+  return k;
+}
 // 파일 하나의 기본 체크 — { on, why, kind: 'doc'|'memo'|'image'|'system'|'output' }
 function caseProcFileRule_(f, c, dirKind) {
   const n = String((f && f.name) || ''), mt = String((f && f.mimeType) || '');
@@ -40865,6 +40875,10 @@ function caseProcLedger_(c, saved) {
     if (f._parts) { r.st = '제외'; r.why = '한 파일에 서류 ' + f._parts.length + '개가 묶여 서류별로 나눠 읽음(아래 「묶음 n-' + f._parts.length + '」 줄): ' + f._parts.map(function (x) { return x.bundleTitle; }).join('·'); return r; }
     if (f.dir.split('/').some(caseIsFiledReturnFolder_)) { r.st = '제외'; r.why = '정답지 보관(양도코리아) — 처리에 쓰지 않음'; return r; }
     const dw = dirWhy(f.dir); if (dw) { r.st = '제외'; r.why = dw; return r; }
+    // [2026.10.30 파일 장부 판정 하나로] 읽을 대상 판정(caseProcFolderRule_·caseProcFileRule_ — 10-28)이 빼는 폴더(보고서_내부·외부·_이전판 등)는 장부에서도 "제외".
+    //  예전엔 장부가 따로 판정해, 서류 읽기가 뺀 파일(넥스 보고서·경과지.json)을 "못읽음"으로 세고 → 받을 증빙 계산(caseFlowEvidence_)이 "서류를 다 못 읽음"에 묶여 멈추고 있던 항목까지 지웠다
+    const dk = caseProcDirKind_(c, f.dir);
+    if (dk === 'skip' || dk === 'ref') { const fr0 = caseProcFileRule_(f, c, dk); r.st = '제외'; r.why = fr0.why; return r; }
     if (/^~\$/.test(n)) { r.st = '제외'; r.why = '엑셀을 열어 둘 때 생기는 임시 파일'; return r; }
     if (/^_/.test(n)) { r.st = '제외'; r.why = caseIsAnswerKeyFile_(n) ? '점검용 정답지' : '도구가 만든 파일(_로 시작)'; return r; }
     if (/pdf|^image\//.test(mt)) {
@@ -40908,7 +40922,13 @@ function caseProcLedger_(c, saved) {
     } else {
       const m = memoOf(n);
       if (m) { r.st = m[0]; r.kind = m[1]; r.why = m[2]; }
-      else { r.st = '못읽음'; r.why = '이 형식(' + (mt.split('/').pop() || '알 수 없음') + ')을 읽는 규칙 없음'; }
+      else {
+        // [2026.10.30 파일 장부 판정 하나로] 서류 읽기(caseProcFiles_)가 목록에서 뺀 파일 — 같은 판정의 이유로 "제외"(시스템·산출물), 읽을 범위(체크 목록) 밖이면 그렇다고. 둘 다 아니면 예전대로 못읽음
+        const fr1 = caseProcFileRule_(f, c, dk), sc1 = saved.readScope;
+        if (!fr1.on && fr1.kind !== 'memo') { r.st = '제외'; r.why = fr1.why; }
+        else if (sc1 && (sc1.mode === 'list' || (sc1.dirs || []).length || (sc1.files || []).length)) { r.st = '제외'; r.why = '읽을 범위(체크 목록) 밖 — 읽지 않음'; }
+        else { r.st = '못읽음'; r.why = '이 형식(' + (mt.split('/').pop() || '알 수 없음') + ')을 읽는 규칙 없음'; }
+      }
       if (r.st !== '읽음') return r;
     }
     if (nameIn(usedHay, n)) r.use = '처리에 씀';
