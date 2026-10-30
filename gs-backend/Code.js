@@ -4108,7 +4108,7 @@ const JOB_AI_TOOLS_ = [
       + 'do=hyp: 의뢰서·상담 메모·대화를 읽고 GAS 규칙이 못 뽑은 사건개요 가설을 보탠다 — field(상대방|관계|물건|거래|쟁점|요청), value(쟁점은 사건분류 이름 그대로), file(근거 글 파일). 가설은 서류 확인 전이라 계산 칸에 들어가지 않고, 사건개요 가설·확보할 증빙·질문의 출발점이 된다(장부에 「넥스 판단」으로 표시). 서류·금액·날짜 값은 hyp가 아니라 set으로. '
       + 'do=facts: 장부가 모아 둔 서류 사실 찾기(읽기만) — find_kind(사실 종류)·find_file(파일)·find_value(값)·find_to(쓰인 칸)로 좁혀 번호·값·파일·자리·쓰인 칸을 받는다(조건 없으면 종류별 개수). do=brief: 장부 요약(읽기만 — 띠·마지막 한 바퀴·남은 물음·가설과 다름·사건개요·받을 증빙·칸 값과 이은/다른 서류·자문). '
       // [2026.10.30 2단계] 자문 장부
-      + 'do=advice: 자문 장부에 적기·고치기·지우기 — item(쟁점|대안|근거|위험|권고|보고서), title(한 줄), text(설명), calc(계산 저장본 id 배열 — 숫자는 여기 적지 않고 저장본으로 잇는다), refs(근거 조문·판례·예규·절세 아이템·지침 이름 — 실재 확인한 것만), links(이어진 항목 id — 대안→쟁점, 위험→대안, 권고→대안), status(잠정|확정|보류), id(고칠 항목), remove(true면 지움). 세무사님이 적으신 항목은 바꾸지 못한다. do=advice_view: 자문 장부 보기. do=cite: 계산 저장본 하나(id)의 입력·결과 — 보고서 숫자의 원천.',
+      + 'do=advice: 자문 장부에 적기·고치기·지우기 — item(쟁점|대안|근거|위험|권고|보고서), title(한 줄), text(설명), calc(계산 저장본 id 배열 — 숫자는 여기 적지 않고 저장본으로 잇는다), refs(근거 조문·판례·예규·절세 아이템·지침 이름 — 실재 확인한 것만), links(이어진 항목 id — 대안→쟁점, 위험→대안, 권고→대안), status(잠정|확정|보류), id(고칠 항목), remove(true면 지움). 세무사님이 적으신 항목은 바꾸지 못한다. do=advice_view: 자문 장부 보기. do=cite: 계산 저장본 하나(id)의 입력·결과 — 보고서 숫자의 원천. do=check_refs: 근거 확인(토큰 0) — 자문 장부의 보고서 파일과 근거 칸의 조문·판례·심판례가 실제로 있는지 원문(법령 정비본·국가법령정보센터)과 대조해 ✅·❌·❓와 판례 결론(인용·기각)을 돌려준다. text를 주면 그 글(저장 전 초안)만 확인. 보고서를 save_file_to_folder로 저장하면 자동으로 돈다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -4122,7 +4122,7 @@ const JOB_AI_TOOLS_ = [
         status: { type: 'string', description: 'advice일 때 잠정·확정·보류' },
         id: { type: 'string', description: 'advice일 때 고칠·지울 항목 id, cite일 때 계산 저장본 id' },
         remove: { type: 'boolean', description: 'advice일 때 true면 그 항목을 지움' },
-        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
         loc: { type: 'string', description: 'lookup일 때 소재지(지번·도로명 주소). 비우면 장부·처리개요·의뢰서 가설의 모든 필지' },
         what: { type: 'array', items: { type: 'string', enum: ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'] }, description: 'lookup일 때 고를 조회(비우면 매매사례 뺀 전부)' },
         dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' } } }, description: 'lookup일 때 공시가격·조정대상지역 기준일들(비우면 장부 취득일·양도일·기준일, 없으면 의뢰서 가설 날짜)' },
@@ -16488,7 +16488,18 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
     //  처리 중 예외가 나도, 처리 코드가 결과를 못 만들어도 그 자리에 "실패" 결과를 넣어 대화가 끊기지 않게 한다.
     const toolResults = toolUseBlocks.map(function (block) {
       try {
-        const r = runToolBlock_(block);
+        // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다" → 계획서 "권하는 안대로"]
+        //  사건이 연결된 대화에서 넥스가 글 파일을 저장하면, 저장 전에 그 글의 조문·판례·심판례를 원문과 대조해(GAS, 0원) 끝에 "근거 확인표"를 붙여 저장한다.
+        //  넥스가 쓴 대화 기록(block.input)은 그대로 두고 저장하는 글만 바꾼다. 다시 저장하면 옛 표는 떼고 새로 대조한다.
+        let citeRes = null, runBlock = block;
+        if (nxCaseId_ && block.name === 'save_file_to_folder' && typeof citeCheck_ === 'function' && block.input && typeof block.input.content === 'string' && /\.(md|txt)$/i.test(String(block.input.name || ''))) {
+          try {
+            const cc = job_findCase_(nxCaseId_);
+            if (cc) { const body0 = citeStripTable_(block.input.content); citeRes = citeCheck_(cc, body0); if (citeRes.items.length) runBlock = Object.assign({}, block, { input: Object.assign({}, block.input, { content: body0 + citeTableMd_(citeRes) }) }); }
+          } catch (e) { citeRes = { error: String(e && e.message || e) }; }
+        }
+        const r = runToolBlock_(runBlock);
+        if (citeRes && r && !r.is_error && typeof r.content === 'string') r.content += citeRes.error ? '\n[근거 확인 실패 — 표 없이 저장됨] ' + citeRes.error : citeNexNote_(citeRes);
         // [2026.10.30 1단계 계산 한 길] 사건이 연결된 대화의 계산 도구 결과는 그 사건의 경우(안) 저장본으로 남기고, 저장본id를 결과 끝에 붙여 넥스가 인용하게 한다
         if (nxCaseId_ && r && !r.is_error && /^calculate_/.test(String(block.name)) && typeof r.content === 'string' && typeof nxCaseCalcToolSave_ === 'function') {
           try { const sv = nxCaseCalcToolSave_(nxCaseId_, block.name, block.input || {}, r.content); if (sv) r.content += '\n[사건 저장] ' + JSON.stringify(sv); } catch (e) { r.content += '\n[사건 저장 실패] ' + e.message; }
@@ -16499,7 +16510,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         }
         // [2026.10.30 2단계 보고서 한 길] 사건이 연결된 대화에서 넥스가 문서를 저장하면 자문 장부 보고서 칸에 적는다(어느 파일인지·언제) — 인용한 저장본은 넥스가 do=advice로 잇는다
         if (nxCaseId_ && r && !r.is_error && block.name === 'save_file_to_folder' && typeof ledgerAdvPut_ === 'function') {
-          try { const cr = job_findCase_(nxCaseId_), bi = block.input || {}; let so = {}; try { so = JSON.parse(String(r.content || '{}')); } catch (e) { so = {}; }
+          try { const cr = job_findCase_(nxCaseId_), bi = block.input || {}; let so = {}; try { so = JSON.parse(String(r.content || '{}').split('\n')[0]); } catch (e) { so = {}; }
             if (cr && !so.error) {
               // [2026.10.30 A1 — 세무사님 "A1·B1부터 해라"] 운영 실측(가상비용실측)에서 ① 보고서를 고쳐 저장할 때마다 같은 파일의 보고서 칸이 새로 생기고(보1·보2) 새 칸엔 계산 저장본이 안 이어졌다
               //  ② 넥스가 장부보다 보고서를 먼저 저장해 보고서에 "자문 장부에 적지 못했다"가 남았고, 위험·근거는 적지 않은 채 "장부 저장 오류"라고 말했다(오류 기록 없음).
@@ -16509,6 +16520,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
               const same = (before.보고서 || []).filter(function (x) { return x && x.file && x.file === fileKey; })[0];
               const ar = same ? ledgerAdvPut_(cr, { item: '보고서', id: same.id, file: fileKey, why: '넥스가 다시 저장(save_file_to_folder)' }, '넥스')
                 : ledgerAdvPut_(cr, { item: '보고서', title: String(bi.name || '문서').slice(0, 120), file: fileKey, status: '초안', why: '넥스가 저장(save_file_to_folder)' }, '넥스');
+              if (ar && ar.ok && citeRes && !citeRes.error && typeof citeLedgerMark_ === 'function') citeLedgerMark_(cr, ar.id, citeRes); // [2026.10.30] 근거 확인 결과를 보고서 칸에(📒 ⑥ 자문)
               let now = {}; try { now = ledgerAdvList_(ledgerLoad_(cr.id)); } catch (e) { now = before; }
               const cnt = ['쟁점', '대안', '근거', '위험', '권고'].map(function (k) { return k + ' ' + ((now[k] || []).length); }).join(' · ');
               const empty = ['쟁점', '대안', '근거', '위험', '권고'].filter(function (k) { return !(now[k] || []).length; });

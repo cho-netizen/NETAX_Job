@@ -991,7 +991,7 @@ function ledgerView_(c) {
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
-  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
+  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L, true), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
 }
 // [2026.10.29] 세무사님 "ai없이 수동으로 사건을 처리할때 사용자가 사건장부를 수시로 참조해야 하는 것이 아닌가?" → "권장대로 하자"(처리개요 맨 위 + 사건 화면 어디서나)
 //  사건을 다루는 화면마다 맨 위 띠와 옆 패널이 부르는 가벼운 묶음 — 흐름(띠·마지막 한 바퀴·가설·사건개요·처리방향·확보할 증빙) + 남은 물음. 서류 사실 전부(kb)는 싣지 않는다
@@ -1142,7 +1142,8 @@ function ledgerToolRun_(input, by) {
   else if (d === 'advice') r = ledgerAdvPut_(c, input, who); // [2026.10.30 2단계] 자문 장부 — 쟁점·대안·근거·위험·권고·보고서 적기·고치기·지우기
   else if (d === 'advice_view') r = { ok: true, 자문: ledgerAdvBrief_(c) }; // 자문 장부 보기(읽기만)
   else if (d === 'cite') { const ce = typeof caseProcCalcCite_ === 'function' ? caseProcCalcCite_(c, input.id) : null; r = ce ? Object.assign({ ok: true }, ce) : { ok: false, error: '그 계산 저장본이 이 사건에 없음: ' + (input.id || '') }; } // [2026.10.30] 저장본 하나 인용(입력·결과 — 보고서 숫자의 원천)
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite 중 하나' };
+  else if (d === 'check_refs') r = ledgerCiteRun_(c, input, who); // [2026.10.30 근거 확인 — 세무사님 "권하는 안대로"] 보고서·근거 칸의 조문·판례·심판례를 원문과 대조(📒 ⑥ 🔎와 같은 함수)
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1170,6 +1171,7 @@ function ledgerApi_(c, body) {
     case 'ledgerCompare': return ledgerCompare_(c, body, body.by || who);
     case 'ledgerAdvice': return ledgerAdvPut_(c, body, body.by || who); // [2026.10.30 2단계] 📒 ⑥ 자문 — 넥스 case_ledger do=advice와 같은 함수
     case 'ledgerAdviceView': return { ok: true, 자문: ledgerAdvBrief_(c) };
+    case 'ledgerCite': return ledgerCiteRun_(c, body, body.by || who); // [2026.10.30] 📒 ⑥ 🔎 근거 확인 — 넥스 case_ledger do=check_refs와 같은 함수
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
     case 'ledgerFlow': return ledgerFlowBrief_(c); // [2026.10.29] 사건 화면마다 맨 위 장부 띠·옆 패널(가벼운 묶음 — 서류 사실 전부는 싣지 않음)
@@ -2192,10 +2194,12 @@ function ledgerAdvPut_(c, input, who) {
   });
 }
 // 넥스·화면이 보는 자문 장부 요약 — 항목마다 제목·상태·누가·잇는 저장본(그 저장본의 이름·세액은 사건 계산 결과에서 바로 붙임)
-function ledgerAdvBrief_(c, L) {
+function ledgerAdvBrief_(c, L, full) {
   const lists = ledgerAdvList_(L || ledgerLoad_(c.id)), calcs = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
   const cite = function (id) { const e = calcs.filter(function (x) { return x && String(x.id) === String(id); })[0]; return e ? { id: e.id, 이름: e.안 ? e.안.이름 : '기본 저장본', 세목: e.세목, 최종세액: e.최종세액 } : { id: id, 없음: '사건에 이 저장본이 없음' }; };
   const out = {};
-  Object.keys(lists).forEach(function (k) { out[k] = lists[k].map(function (x) { const o = { id: x.id, 제목: x.title, 상태: x.status || '', 누가: x.by || '' }; if (x.text) o.내용 = String(x.text).slice(0, 300); if (x.calc && x.calc.length) o.저장본 = x.calc.map(cite); if (x.refs && x.refs.length) o.근거 = x.refs; if (x.links && x.links.length) o.이음 = x.links; if (x.file) o.파일 = x.file; return o; }); });
+  Object.keys(lists).forEach(function (k) { out[k] = lists[k].map(function (x) { const o = { id: x.id, 제목: x.title, 상태: x.status || '', 누가: x.by || '' }; if (x.text) o.내용 = String(x.text).slice(0, 300); if (x.calc && x.calc.length) o.저장본 = x.calc.map(cite); if (x.refs && x.refs.length) o.근거 = x.refs; if (x.links && x.links.length) o.이음 = x.links; if (x.file) o.파일 = x.file; if (x.cite) o.근거확인 = { 때: x.cite.at, 수: x.cite.수, 없음: x.cite.bad || [], 목록: citeBriefList_(x.cite.items, full) }; return o; }); });
+  // [2026.10.30] 근거 칸 전체 대조 결과(🔎 근거 확인) — 화면·넥스가 같은 것을 본다
+  try { const bc = ((L || ledgerLoad_(c.id)).adv || {}).basisCite; if (bc) out.근거칸확인 = { 때: bc.at, 수: bc.수, 목록: citeBriefList_(bc.items, full) }; } catch (e) { }
   return out;
 }

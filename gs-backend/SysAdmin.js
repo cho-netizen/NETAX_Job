@@ -39,13 +39,15 @@ var SYSADMIN_CLAUDE_RULE_USES_ = {
   'L2_drive_files.md': 'Claude가 드라이브 파일을 옮기거나 지우거나 이름 바꿀 때 읽음 — 드라이브(J:) 경로에 옮기기·지우기 명령을 실행하려는 순간 붙습니다.',
   'L2_screen_ui.md': 'Claude가 화면 코드를 고칠 때 읽음 — job 등 화면 파일(.html)을 고치려는 순간 붙습니다.',
   'L2_job_server.md': 'Claude가 서버 코드·AI 연결을 고칠 때 읽음 — 서버 코드(.js)를 고치려는 순간 붙습니다.',
-  'L2_caseproc.md': 'Claude가 사건처리 자동화·점검 측정 작업 때 읽음 — 사건처리·교차검증·정답지 점검 코드를 고치거나 재현기를 돌리려는 순간 붙습니다.'
+  'L2_caseproc.md': 'Claude가 사건처리 자동화·점검 측정 작업 때 읽음 — 사건처리·교차검증·정답지 점검 코드를 고치거나 재현기를 돌리려는 순간 붙습니다.',
+  // [2026.10.30] 세무사님 "해야할일을 잊어버리지 않도록 하는 조치부터 하고 나서, 진행하라" — 큰 줄기 남은 일 장부
+  'TODO.md': 'Claude가 대화를 시작할 때마다, 대화가 길어져 요약된 직후마다 읽음 — 큰 줄기에서 남은 일(넥스 전체 설계도 기준). 끝나거나 새로 생기면 Claude가 그 자리에서 고칩니다.'
 };
 var SYSADMIN_CLAUDE_RULE_TITLES_ = {
   'README.md': '안내', 'L1_core.md': '1층 — 매번 읽는 핵심 원칙',
   'L2_taxlaw.md': '2층 — 세법·세액계산', 'L2_deploy.md': '2층 — 배포·커밋·푸시', 'L2_sessions.md': '2층 — 세션·작업자 띄우기',
   'L2_drive_files.md': '2층 — 드라이브 파일 옮기기·지우기', 'L2_screen_ui.md': '2층 — 화면 코드', 'L2_job_server.md': '2층 — 서버 코드·AI 연결',
-  'L2_caseproc.md': '2층 — 사건처리 자동화·점검 측정'
+  'L2_caseproc.md': '2층 — 사건처리 자동화·점검 측정', 'TODO.md': '할 일 장부 — 큰 줄기 남은 일'
 };
 function sysAdminClaudeRuleUse_(name) {
   return SYSADMIN_CLAUDE_RULE_USES_[name] || 'Claude가 아직 자동으로 읽지 않는 파일입니다 — 언제 읽게 할지 Claude에게 말씀해 주세요(1층·2층 연결은 세무사님 컴퓨터의 훅이 정합니다).';

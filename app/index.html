@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 04:23 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 05:56 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6877,10 +6877,24 @@ function nxMdOpenWindow(title, src, opts){
             th6 += '<div style="margin-top:8px;"><b>' + esc(k) + '</b> <span style="color:var(--sub);">' + esc(list.length) + '개</span>'
               + (list.length ? tbl(['제목', '내용', '저장본·근거·파일', '상태·누가', ''], list.map(function(x){
                   var sv = (x.저장본 || []).map(function(s){ return (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
-                  var extra = sv.concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).join(' · ');
+                  var extra = sv.concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).concat(x.근거확인 ? ['근거 확인 ✅' + x.근거확인.수.ok + ' ❌' + x.근거확인.수.bad + (x.근거확인.수.warn ? ' ⚠' + x.근거확인.수.warn : '') + ' ❓' + x.근거확인.수.unk + ' (' + x.근거확인.때 + ')'] : []).join(' · ');
                   return '<tr>' + cell(x.제목, 260) + cell(x.내용 || '', 360, ' color:var(--sub);') + cell(extra, 300) + cell([x.상태, x.누가].filter(Boolean).join(' · '), 120) + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn" data-adv-del="' + esc(x.id) + '" data-adv-kind="' + esc(k) + '" style="padding:1px 6px; font-size:11.5px;" title="이 항목을 지웁니다(기록은 남음)">지우기</button></td></tr>';
                 }).join('')) : '<div class="log-empty">아직 없음</div>') + '</div>';
           });
+          // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다"] 보고서·근거 칸의 조문·판례·심판례를 원문과 대조한 표(GAS, 0원) — 넥스 보고서 저장 때 자동, 🔎로 다시
+          (function(){
+            var lines = [];
+            (A.보고서 || []).forEach(function(x){ if (x.근거확인) lines.push({ 이름: '보고서 ' + x.제목, c: x.근거확인 }); });
+            if (A.근거칸확인) lines.push({ 이름: '근거 칸', c: A.근거칸확인 });
+            th6 += '<div style="margin-top:10px;"><b>근거 확인</b> <span style="color:var(--sub);">조문은 법령 정비본(사건 기준일 판), 판례·심판례는 국가법령정보센터 번호 찾기로 대조 — ✅ 실재 · ❌ 없음(근거로 쓰면 안 됨) · ⚠ 주의 · ❓ 자동 확인 못 함(국세청 예규 등). 판례·심판례 결론이 주장 방향과 맞는지 함께 보십시오.</span> <button type="button" id="chAdvCite" class="ghost-btn" title="장부의 보고서 파일과 근거 칸을 지금 다시 대조합니다(0원, 판례 많으면 1분쯤)">🔎 근거 확인</button>';
+            if (!lines.length) th6 += '<div class="log-empty">아직 확인한 적 없음 — 넥스가 보고서를 저장하면 자동으로 확인합니다.</div>';
+            lines.forEach(function(l){
+              var it = (l.c.목록 || []).slice().sort(function(a, b){ var o = { '❌': 0, '⚠': 1, '❓': 2, '✅': 3 }; return (o[a.표시] || 0) - (o[b.표시] || 0); });
+              th6 += '<div style="margin-top:6px;">' + esc(l.이름) + ' <span style="color:var(--sub);">— ✅' + esc(l.c.수.ok) + ' ❌' + esc(l.c.수.bad) + (l.c.수.warn ? ' ⚠' + esc(l.c.수.warn) : '') + ' ❓' + esc(l.c.수.unk) + ' · ' + esc(l.c.때) + '</span>'
+                + (it.length ? tbl(['표시', '종류', '근거', '확인 결과', '결론'], it.map(function(x){ return '<tr>' + cell(x.표시, 40, x.표시 === '❌' ? ' color:#b23;' : '') + cell(x.종류, 60) + cell(x.근거, 200) + cell(x.결과, 380, ' color:var(--sub);') + cell(x.결론 || '', 120) + '</tr>'; }).join('')) : '') + '</div>';
+            });
+            th6 += '<div id="chAdvCiteOut" style="margin-top:4px;"></div></div>';
+          })();
           th6 += '<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>적기</b><select id="chAdvKind">' + KINDS.map(function(k){ return '<option>' + esc(k) + '</option>'; }).join('') + '</select><input id="chAdvTitle" type="text" placeholder="한 줄 제목" style="width:260px;"><input id="chAdvText" type="text" placeholder="설명(선택)" style="width:300px;"><input id="chAdvCalc" type="text" placeholder="계산 저장본 id(쉼표, 선택)" style="width:180px;"><button type="button" id="chAdvAdd" class="ghost-btn">적기</button></div>';
           th6 += '<div id="chAdvOut" style="margin-top:6px;"></div></div>';
           h += th6;
@@ -6934,6 +6948,11 @@ function nxMdOpenWindow(title, src, opts){
           var cs = (document.getElementById('chAdvCalc').value || '').split(/[,\s]+/).filter(Boolean);
           advAdd.disabled = true;
           call({ step: 'ledgerAdvice', item: document.getElementById('chAdvKind').value, title: t, text: (document.getElementById('chAdvText').value || '').trim(), calc: cs.length ? cs : undefined }).then(function(res){ advAdd.disabled = false; if (res && res.ok) reload(); else if (res) document.getElementById('chAdvOut').textContent = res.error || '적지 못했습니다'; });
+        });
+        var advCite = document.getElementById('chAdvCite');
+        if (advCite) advCite.addEventListener('click', function(){
+          var t0 = advCite.textContent; advCite.disabled = true; advCite.textContent = '대조 중…(판례 많으면 1분쯤)';
+          call({ step: 'ledgerCite' }).then(function(res){ advCite.disabled = false; advCite.textContent = t0; if (!res) return; var o = document.getElementById('chAdvCiteOut'); if (o) o.textContent = res.message || ''; if (res.ok && (res.결과 || []).length) setTimeout(reload, 600); });
         });
         Array.prototype.forEach.call(body.querySelectorAll('button[data-adv-del]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerAdvice', item: b.getAttribute('data-adv-kind'), id: b.getAttribute('data-adv-del'), remove: true }).then(function(res){ if (res && res.ok) reload(); else { b.disabled = false; if (res) showToast(res.error || '지우지 못했습니다', 'warning'); } }); }); });
         // [2026.10.29 계획서 3판] ⑤ 도구 단추 — 넥스 case_ledger do=lookup·estimate·calc·compare와 같은 서버 입구(case_proc step ledgerLookup·ledgerEstimate·ledgerCalc·ledgerCompare)

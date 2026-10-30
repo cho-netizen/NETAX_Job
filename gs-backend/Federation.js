@@ -494,6 +494,15 @@ function commSeamList_() {
       if (String(nxCaseChatGuide_('x')).indexOf('잠정치') === -1) return '사건을 맡은 넥스 지시문에 잠정치 방식이 없음';
       return '';
     } },
+    // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다"] 보고서 저장 → GAS 근거 대조 → 보고서 끝 표·넥스에게 [근거 확인]·장부 보고서 칸 → 📒 ⑥ 🔎
+    { 길: '넥스 보고서 저장 → 근거 대조(조문·판례·심판례, GAS) → 보고서 끝 근거 확인표·넥스 고침·장부 ⑥ 자문 · 세무사님 🔎 근거 확인', fn: function () {
+      if (typeof citeCheck_ !== 'function' || typeof citeTableMd_ !== 'function' || typeof citeLedgerMark_ !== 'function' || typeof ledgerCiteRun_ !== 'function') return '근거 대조 도구(CiteCheck.js)가 이 판에 없음';
+      var src2 = String(callClaude);
+      if (src2.indexOf('citeCheck_(cc') === -1 || src2.indexOf('citeLedgerMark_(cr') === -1) return '넥스 보고서 저장 때 근거 대조가 돌지 않음(callClaude 고리 빠짐)';
+      if (String(ledgerToolRun_).indexOf("'check_refs'") === -1 || String(ledgerApi_).indexOf("'ledgerCite'") === -1) return '넥스(do=check_refs)·화면(ledgerCite) 입구 중 빠진 것이 있음';
+      if (String(nxCaseChatGuide_('x')).indexOf('예상 반박과 대응') === -1) return '넥스 지시문에 근거 확인·예상 반박 규칙이 없음';
+      return '';
+    } },
     { 길: '도구 하나하나(공부 조회·추정·시험 계산·세목 비교) → 세무사님 화면 📒 ⑤·넥스 두 입구(대화창·사건 처리) → 장부 공부 사실', fn: function () {
       if (typeof ledgerLookup_ !== 'function' || typeof ledgerEstimate_ !== 'function' || typeof ledgerCompare_ !== 'function' || typeof ledgerPubPut_ !== 'function') return '공부 조회·추정·세목 비교 함수가 이 판에 없음';
       var lt = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'case_ledger'; })[0];
