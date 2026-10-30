@@ -35072,6 +35072,9 @@ function caseProcEvidence_(c, body) {
     const marks = [];
     req.forEach(function (e) {
       if (e.status === '확보됨') return;
+      // [2026.10.30 D] 장부가 칸 상태로 짠 항목(flow:칸:)은 장부가 판단한다 — 그 칸이 서류 값으로 차면 받을 증빙 계산이 지운다.
+      //  여기서 파일 종류만 보고 확보로 매기면 양도 계약서가 취득가액 증빙으로 "확보됨"이 됐다(가상장부오형 운영 확인)
+      if (/^flow:칸:/.test(String(e.slotKey || ''))) return;
       const types = caseProcEvTypes_(e.label);
       if (!types) return;
       const lm = /\(([^)]*)\)\s*$/.exec(e.label);
