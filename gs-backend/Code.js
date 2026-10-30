@@ -14372,7 +14372,23 @@ function handleSaveCaseFromTemplate(body) {
  * "세무조사"·"자금출처소명"·"경정청구"·"해명자료"처럼 세목이 아니라 업무유형에 따라
  * 갈리는 템플릿이 생겨서, 업무유형 이름을 세목 이름보다 먼저(더 구체적인 것 우선) 확인한다.
  */
-function work_seedCaseTemplateIfAny_(caseFolder, candidateNames) {
+// [2026.10.30] 새 사건 "개요"(상담 메모)를 의뢰서 "## 상담 메모" 자리에 함께 적는다 — 의뢰서는 GAS 장부와
+// 넥스가 모두 늘 읽는 사건파악용 문서라, 개요가 시트 칸에만 있으면 둘 다 못 봤다(할 일 장부 5-1, 세무사님 "권하는 대로 고쳐라").
+function work_mergeConsultMemo_(content, memo) {
+  memo = String(memo || '').trim();
+  if (!memo) return content;
+  const body = memo.split(/\r?\n/).map(function (l) { return l.trim() ? '- ' + l.trim().replace(/^[-•]\s*/, '') : ''; }).filter(function (l) { return l; }).join('\n');
+  const m = /^##\s*상담\s*메모[^\n]*\n/m.exec(content);
+  if (!m) return content.replace(/\s*$/, '') + '\n\n## 상담 메모\n\n' + body + '\n';
+  const start = m.index + m[0].length;
+  const rest = content.slice(start);
+  const next = rest.search(/^##\s/m);
+  const sec = next >= 0 ? rest.slice(0, next) : rest;
+  const kept = sec.split('\n').filter(function (l) { return l.trim() && l.trim() !== '-'; }).join('\n');
+  return content.slice(0, start) + '\n' + body + (kept ? '\n' + kept : '') + '\n' + (next >= 0 ? '\n' + rest.slice(next) : '');
+}
+
+function work_seedCaseTemplateIfAny_(caseFolder, candidateNames, consultMemo) {
   const names = (candidateNames || []).filter(function (n) { return n; });
   if (!caseFolder || !names.length) return;
   try {
@@ -14399,12 +14415,15 @@ function work_seedCaseTemplateIfAny_(caseFolder, candidateNames) {
       if (TEXT_TEMPLATE_EXT_REGEX_.test(rawName)) {
         let content = f.getBlob().getDataAsString('UTF-8');
         if (typeof knhTplStampText_ === 'function') content = knhTplStampText_(f, content);
+        content = work_mergeConsultMemo_(content, consultMemo);
         const mimeType = /\.md$/i.test(rawName) ? 'text/markdown' : 'text/plain';
         caseFolder.createFile(Utilities.newBlob(content, mimeType, rawName));
       } else {
         const copied = f.makeCopy(rawName, caseFolder);
         if (typeof knhTplStampDesc_ === 'function') knhTplStampDesc_(copied, f);
       }
+    } else if (String(consultMemo || '').trim()) {
+      caseFolder.createFile(Utilities.newBlob(work_mergeConsultMemo_('# 의뢰서\n', consultMemo), 'text/markdown', names[0] + '.md'));
     }
   } catch (err) {
     console.log('의뢰서템플릿 자동 적용 실패(사건 생성은 계속 진행): ' + err.message);
@@ -25106,7 +25125,7 @@ function work_createCase0_(params) {
         // 업무유형만으로 이미 고유한 이름(불복 세부유형) → 세목 이름만(마지막 안전망).
         // [2026.09.17] 의뢰서템플릿 파일명이 전부 "의뢰서_" 접두어를 쓰는 규칙으로 바뀌어
         // 후보 이름에도 똑같이 접두어를 붙여야 찾을 수 있다.
-        if (!(params.의뢰서 && typeof params.의뢰서 === 'object')) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_].map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }));
+        if (!(params.의뢰서 && typeof params.의뢰서 === 'object')) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_].map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }), newRow[col.개요]);
       } catch (err) {
         console.log('의뢰서템플릿 적용 중 오류(사건 생성은 계속 진행): ' + err.message);
       }

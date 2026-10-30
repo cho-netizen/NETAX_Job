@@ -2727,6 +2727,13 @@
   }
   var CASEPROC_CALC_TABS_ = { transfer: 1, gift: 1, inheritance: 1 };
   var NXAI_CP_RE_ = /처리\s*(하자|합시다|해\s*줘|해\s*주세요|해$|진행|시작)/;
+  // 글 속 "○○ 사건 처리하자"의 ○○(이 사건·그 사건 같은 가리킴말은 이름이 아님)
+  function nxAiExplicitCaseName_(text){
+    var m = /([가-힣A-Za-z0-9·()_\-]{2,40})\s*사건\s*(?:을|를|은|도|으로|로)?\s*(?:좀\s*)?(?:처리|진행|시작|맡)/.exec(String(text || ''));
+    if (!m) return '';
+    var nm = m[1];
+    return nm.length >= 2 && !/^(이번|해당|다음|지금|새|양도|증여|상속|신고|자문|경정|불복|세무조사)$/.test(nm) ? nm : '';
+  }
   function nxAiCaseProcResolve_(text){
     // 문장에 사건 이름이 있으면 그 사건, 없으면 대화에 연결된 사건 → 지금 화면의 사건
     var rest = String(text || '').replace(/[.!?~]/g, ' ').split(/\s+/).filter(function(w){
@@ -2736,6 +2743,23 @@
       var id = nxAiConv.caseId || nxAiScreenCaseId_();
       return id ? { id: id } : null;
     };
+    // [2026.10.30 C — 할 일 장부 5-3, 세무사님 "권하는 대로 고쳐라"] "○○ 사건 처리하자"처럼 사건 이름을 적으셨으면 말없이 연결된 사건으로 가지 않는다 —
+    //  그 이름의 사건이 하나면 그 사건(연결된 사건과 다르면 "○○ 사건으로 바꿈"을 보임), 없거나 여럿이면 고르시게 묻는다. 이름 없이 "이 사건 처리하자"는 예전대로 연결된 사건.
+    //  예전엔 긴 상담 메모를 붙이면 글 전체로 사건 이름을 찾다 못 찾으면 앞 사건 대화로 넥스가 일을 시작했다(가상주식평가 운영 시험)
+    var nm = nxAiExplicitCaseName_(text);
+    if (nm){
+      return callGas('work_get_cases', { _nocache: Date.now() }).then(function(res){
+        var all = (res && res.cases) || [], k = nxAiNorm_(nm);
+        var hits = all.filter(function(c){ return [c.사건명, c.고객명, c.납세자].some(function(n){ n = nxAiNorm_(n); return n.length >= 2 && (n.indexOf(k) !== -1 || k.indexOf(n) !== -1); }); });
+        var exact = hits.filter(function(c){ return [c.사건명, c.고객명, c.납세자].some(function(n){ return nxAiNorm_(n) === k; }); });
+        if (exact.length) hits = exact;
+        if (hits.length > 1){ var open = hits.filter(function(c){ return c.상태 !== '완료'; }); if (open.length) hits = open; }
+        if (hits.length === 1) return Object.assign({ named: nm }, hits[0]);
+        if (hits.length > 1) return { choices: hits.slice(0, 8), named: nm };
+        var cur = fallback();
+        return { choices: cur ? all.filter(function(c){ return c.id === cur.id; }) : [], named: nm, none: true };
+      });
+    }
     if (rest.length < 2) return Promise.resolve(fallback());
     return nxAiFindCases_(text).then(function(found){
       if (found.list.length === 1) return found.list[0];
@@ -2758,16 +2782,20 @@
         var full = (list || []).filter(function(k){ return k.id === c.id; })[0] || c;
         var send = function(){ nxAiSendAI_(text, { noGem: true }); };
         if (nxAiConv.caseId === full.id) return send();
-        if (!nxAiConv.messages.length){ nxAiLinkCase_(full); return send(); }
+        // [2026.10.30 C] 이름을 적어 연결된 사건과 다른 사건으로 갈 때는 바꿨다는 것을 보인다(말없이 바꾸지 않음)
+        var sw = c.named && nxAiConv.caseId ? function(){ nxAiRenderLocal_(nxAiAppendBubble_('assistant', ''), { md: '「' + (full.사건명 || full.고객명) + '」 사건으로 바꿈 — 말씀에 적으신 「' + c.named + '」 사건으로 맡습니다.', note: '[🤖 사건 맡기] 연결 사건 바꿈' }, text); } : function(){};
+        if (!nxAiConv.messages.length){ nxAiLinkCase_(full); sw(); return send(); }
         // 다른 사건 대화를 하던 중이면 그 대화는 저장해 두고 이 사건의 새 대화로
-        return nxAiFlushSave_().then(function(){ nxAiConv = nxAiBlankConv_(); nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiLinkCase_(full); send(); });
+        return nxAiFlushSave_().then(function(){ nxAiConv = nxAiBlankConv_(); nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiLinkCase_(full); sw(); send(); });
       });
     };
     nxAiPhoneTab_('chat');
     (knownCaseId ? Promise.resolve({ id: knownCaseId }) : nxAiCaseProcResolve_(text)).then(function(c){
       if (c && c.choices){
         var bubble = nxAiAppendBubble_('assistant', '');
-        nxAiRenderLocal_(bubble, { md: '어느 사건을 맡을지 골라 주세요.', note: '[🤖 사건 맡기] 사건 후보 ' + c.choices.length + '건 — 선택 대기',
+        var ask = c.none ? '말씀에 적으신 「' + c.named + '」 사건을 찾지 못했습니다 — 새 사건이면 작업관리에서 먼저 만들어 주시고, 지금 연결된 사건으로 맡길지 골라 주세요(위쪽 🔗 사건 연결로 다른 사건도 고를 수 있습니다).'
+          : (c.named ? '「' + c.named + '」 이름에 맞는 사건이 ' + c.choices.length + '건입니다 — 어느 사건을 맡을지 골라 주세요.' : '어느 사건을 맡을지 골라 주세요.');
+        nxAiRenderLocal_(bubble, { md: ask, note: '[🤖 사건 맡기] 사건 후보 ' + c.choices.length + '건 — 선택 대기',
           choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ go(k); return null; } }; }) }, text);
         return;
       }
