@@ -113,17 +113,7 @@ function citeSummary_(res) {
   return '✅' + s.ok + ' ❌' + s.bad + (s.warn ? ' ⚠' + s.warn : '') + ' ❓' + s.unk;
 }
 
-// 보고서 끝에 붙이는 표 — 넥스가 쓴 것과 눈으로 구분되게 머리에 "GAS 자동 대조"
-function citeTableMd_(res) {
-  if (!res || !res.items || !res.items.length) return '';
-  const esc = function (s) { return String(s == null ? '' : s).replace(/\|/g, '/').replace(/\n/g, ' '); };
-  return '\n\n---\n' + CITE_TABLE_MARK_ + ' — 넥스가 쓴 것 아님, ' + res.at + ')\n'
-    + '조문은 법령 정비본(기준 ' + res.기준일.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3') + ' 시행판), 판례·심판례는 국가법령정보센터 번호 찾기로 대조했습니다. '
-    + '✅ 실재 / ❌ 없음(근거로 쓰지 말 것) / ⚠ 주의 / ❓ 자동 확인 못 함. 판례·심판례의 "결론"이 이 보고서 주장 방향과 맞는지 함께 보십시오.\n\n'
-    + '| 표시 | 종류 | 근거 | 확인 결과 | 결론 |\n|---|---|---|---|---|\n'
-    + res.items.map(function (x) { return '| ' + x.표시 + ' | ' + esc(x.종류) + ' | ' + esc(x.근거) + ' | ' + esc(x.결과) + ' | ' + esc(x.결론 || '') + ' |'; }).join('\n')
-    + '\n\n합계 ' + citeSummary_(res) + '\n';
-}
+// [2026.10.30] 넥스 글 끝에 표를 붙이던 citeTableMd_는 뺐다(GAS는 넥스 글을 바꾸지 않음). 예전에 붙어 저장된 표는 대조할 때 떼고 본다.
 function citeStripTable_(text) {
   const s = String(text || ''), i = s.indexOf(CITE_TABLE_MARK_);
   if (i < 0) return s;
@@ -142,8 +132,8 @@ function citeNexNote_(res) {
   if (!res.items.length) return '\n[근거 확인 — GAS 자동] 이 글에서 조문·판례·심판례 번호를 찾지 못함(인용 없음).';
   const bad = res.items.filter(function (x) { return x.표시 === '❌'; }), warn = res.items.filter(function (x) { return x.표시 === '⚠'; });
   const cases = res.items.filter(function (x) { return x.결론; });
-  return '\n[근거 확인 — GAS 자동, 보고서 끝에 표로 붙여 저장함] ' + citeSummary_(res)
-    + (bad.length ? '\n❌ 없는 근거 ' + bad.length + '개: ' + bad.map(function (x) { return x.근거 + '(' + x.결과 + ')'; }).join(' / ').slice(0, 900) + ' — law_lookup·law_search로 다시 찾아 맞는 근거로 고치거나 빼고, 같은 이름으로 다시 저장하라. 다시 저장해도 ❌가 남으면 표에 ❌로 남는다 — 그때는 세무사님께 채팅으로 그 근거를 그대로 알려라.' : '')
+  return '\n[근거 확인 — GAS 자동 대조, 글은 넥스가 쓴 그대로 저장됨·결과는 장부 보고서 칸에] ' + citeSummary_(res)
+    + (bad.length ? '\n❌ 없는 근거 ' + bad.length + '개: ' + bad.map(function (x) { return x.근거 + '(' + x.결과 + ')'; }).join(' / ').slice(0, 900) + ' — law_lookup·law_search로 다시 찾아 맞는 근거로 고치거나 빼고, 같은 이름으로 다시 저장하라. 다시 저장해도 ❌가 남으면 장부에 ❌로 남는다 — 그때는 세무사님께 채팅으로 그 근거를 그대로 알려라.' : '')
     + (warn.length ? '\n⚠ ' + warn.map(function (x) { return x.근거 + '(' + x.결과 + ')'; }).join(' / ').slice(0, 400) : '')
     + (cases.length ? '\n판례·심판례 결론: ' + cases.map(function (x) { return x.근거 + ' ' + x.결론; }).join(' / ').slice(0, 600) + ' — 각 결론이 보고서 주장 방향과 맞는지 보고, 반대 결론을 유리한 근거처럼 쓴 곳은 고쳐라.' : '');
 }

@@ -16525,17 +16525,19 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
     const toolResults = toolUseBlocks.map(function (block) {
       try {
         // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다" → 계획서 "권하는 안대로"]
-        //  사건이 연결된 대화에서 넥스가 글 파일을 저장하면, 저장 전에 그 글의 조문·판례·심판례를 원문과 대조해(GAS, 0원) 끝에 "근거 확인표"를 붙여 저장한다.
-        //  넥스가 쓴 대화 기록(block.input)은 그대로 두고 저장하는 글만 바꾼다. 다시 저장하면 옛 표는 떼고 새로 대조한다.
-        let citeRes = null, runBlock = block;
+        //  (처음엔 넥스가 저장하는 글 끝에 GAS가 "근거 확인표"를 붙여 저장했다 — 아래 고침으로 뺌)
+        // [2026.10.30 고침 — 세무사님 "도구가 자동으로 하는 일은 정해진 일만 해야 하고 일방통행식 일만 하는 것이고 그 것을 넥스가 도구를 활용하는 형식이 되어야지"]
+        //  GAS가 넥스 글 끝에 표를 붙여 저장하던 것을 뺐다(세무서 제출용 검토조서에까지 인쇄됨). 넥스 글은 넥스가 쓴 그대로 저장하고,
+        //  GAS는 대조만 해 결과를 넥스에게 돌려주고 장부 보고서 칸에 적는다(아래 citeLedgerMark_). 고칠지는 넥스가 정한다.
+        let citeRes = null;
         if (nxCaseId_ && block.name === 'save_file_to_folder' && typeof citeCheck_ === 'function' && block.input && typeof block.input.content === 'string' && /\.(md|txt)$/i.test(String(block.input.name || ''))) {
           try {
             const cc = job_findCase_(nxCaseId_);
-            if (cc) { const body0 = citeStripTable_(block.input.content); citeRes = citeCheck_(cc, body0); if (citeRes.items.length) runBlock = Object.assign({}, block, { input: Object.assign({}, block.input, { content: body0 + citeTableMd_(citeRes) }) }); }
+            if (cc) citeRes = citeCheck_(cc, citeStripTable_(block.input.content));
           } catch (e) { citeRes = { error: String(e && e.message || e) }; }
         }
-        const r = runToolBlock_(runBlock);
-        if (citeRes && r && !r.is_error && typeof r.content === 'string') r.content += citeRes.error ? '\n[근거 확인 실패 — 표 없이 저장됨] ' + citeRes.error : citeNexNote_(citeRes);
+        const r = runToolBlock_(block);
+        if (citeRes && r && !r.is_error && typeof r.content === 'string') r.content += citeRes.error ? '\n[근거 확인 실패] ' + citeRes.error : citeNexNote_(citeRes);
         // [2026.10.30 1단계 계산 한 길] 사건이 연결된 대화의 계산 도구 결과는 그 사건의 경우(안) 저장본으로 남기고, 저장본id를 결과 끝에 붙여 넥스가 인용하게 한다
         if (nxCaseId_ && r && !r.is_error && /^calculate_/.test(String(block.name)) && typeof r.content === 'string' && typeof nxCaseCalcToolSave_ === 'function') {
           try { const sv = nxCaseCalcToolSave_(nxCaseId_, block.name, block.input || {}, r.content); if (sv) r.content += '\n[사건 저장] ' + JSON.stringify(sv); } catch (e) { r.content += '\n[사건 저장 실패] ' + e.message; }
