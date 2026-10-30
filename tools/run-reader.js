@@ -123,11 +123,11 @@ g.run(`
 // ---------- 실행 ----------
 let out, err = null;
 const t1 = Date.now();
-try { out = g.ctx.caseProcAll_(row, { step: 'all', budgetMs: 300000 }); } catch (e) { err = e; }
+try { out = g.ctx.caseProcTool_(row, { step: 'read', budgetMs: 300000 }); } catch (e) { err = e; } // [2026.10.31] 묶음(all) → 📖 서류 읽기
 let tRun = Date.now() - t1;
 // --twice: 같은 과정에서 한 번 더(운영은 사건 등록 때 처리개요·증빙목록이 먼저 생기므로, 두 번째 호출이 운영 첫 호출의 입력 상태에 더 가깝다)
 let first = null;
-if (args.indexOf('--twice') >= 0 && out) { first = { ms: out._ms, tm: out._tm, open: out.open, itemIds: (out.items || []).map((it) => it.id) }; const t2 = Date.now(); try { out = g.ctx.caseProcAll_(g.ctx.akReadCase_(row.id) || row, { step: 'all', budgetMs: 300000 }); } catch (e) { err = e; } tRun = Date.now() - t2; }
+if (args.indexOf('--twice') >= 0 && out) { first = { ms: out._ms, tm: out._tm, open: out.open, itemIds: (out.items || []).map((it) => it.id) }; const t2 = Date.now(); try { out = g.ctx.caseProcTool_(g.ctx.akReadCase_(row.id) || row, { step: 'read', budgetMs: 300000 }); } catch (e) { err = e; } tRun = Date.now() - t2; }
 let after = null; try { after = g.ctx.akReadCase_(row.id); } catch (e) {}
 const ov = (after && after.사건개요) || {};
 const sv = (function () { try { return g.ctx.caseProcLoad_(row.id) || {}; } catch (e) { return {}; } })();

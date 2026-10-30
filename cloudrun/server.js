@@ -3,7 +3,7 @@
 // [2026.10.23 T6 2단계] 읽기 전용 시험 서비스 — Cloud Run(netax-case-reader, node 20)
 // ------------------------------------------------------------
 // 하는 일: POST /read 로 사건 하나(caseId·folderId·sheetRow·ocrMemory)를 받아, 조립 모듈 dist/reader.js(tools/build-reader.js가 gs-backend에서 추린
-//  사건처리 한 번 호출 caseProcAll_)를 그대로 돌려 ①사건파악·②증빙 정리·③칸 채우기 결과를 JSON으로 돌려준다. GET /health 는 살아 있는지만.
+//  📖 서류 읽기 도구 caseProcTool_ step 'read' — [2026.10.31 묶음 해체] 예전 한 번 호출 caseProcAll_)를 그대로 돌려 사건파악·증빙 정리·장부 적기 결과를 JSON으로 돌려준다. GET /health 는 살아 있는지만.
 // 지키는 것(설계서 2·6절):
 //  - 드라이브는 서비스 계정으로 **읽기만**(shim/drive-tree.js). 결정 파일·작업관리 시트·채팅 폴더 쓰기는 **메모리로 받아 응답 JSON(written)에 실어 돌려준다** — 아무것도 저장하지 않음.
 //  - 글자인식 기억은 요청의 ocrMemory에서만 읽는다(_글자인식기억 폴더는 공유 안 됨). 없으면 unreadFiles에 적는다. 구글 글자인식은 부르지 않는다.
@@ -149,8 +149,8 @@ async function readCase(body) {
       writes.length = 0; // 미리 두기는 쓰기 기록에서 뺀다
     }
     seeded = { record: !!record, decisions: decMap ? Object.keys(decMap).length : (record && record.decisions ? Object.keys(record.decisions).length : 0), readScope: !!(record && record.readScope) };
-    const opt = Object.assign({ step: 'all', budgetMs: 280000 }, body.options && typeof body.options === 'object' ? { skipEvidence: !!body.options.skipEvidence, budgetMs: Number(body.options.budgetMs) || 280000 } : {});
-    try { out = g.ctx.caseProcAll_(g.ctx.akReadCase_(caseId) || row, opt); } catch (e) { err = e; }
+    const opt = Object.assign({ step: 'read', budgetMs: 280000 }, body.options && typeof body.options === 'object' ? { skipEvidence: !!body.options.skipEvidence, budgetMs: Number(body.options.budgetMs) || 280000 } : {});
+    try { out = g.ctx.caseProcTool_(g.ctx.akReadCase_(caseId) || row, opt); } catch (e) { err = e; }
     try { sv = g.ctx.caseProcLoad_(caseId) || {}; } catch (e) { sv = {}; }
     // [2026.10.28 시정 2단계] 사건 장부 — 서비스가 서류를 읽어 장부에 쓴 줄(값·서류 역할·물음)을 GAS가 진짜 장부에 합치도록 돌려준다(예전엔 메모리에서 사라짐)
     try { ledgerOut = g.ctx.ledgerLoad_(caseId, true); } catch (e) { ledgerOut = null; }

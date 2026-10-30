@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // ============================================================
-// [2026.10.23 T6 1단계] 읽기 전용 시험 서비스용 조립기 — 사건처리 한 번 호출(caseProcAll_)이 닿는 함수만 추려 node 모듈 하나로 만든다.
+// [2026.10.23 T6 1단계] 읽기 전용 시험 서비스용 조립기 — 📖 서류 읽기 도구(caseProcTool_, 예전 caseProcAll_)이 닿는 함수만 추려 node 모듈 하나로 만든다.
 // ------------------------------------------------------------
 // 원본은 gs-backend/*.js 하나(두 벌 금지). 이 조립기는 손으로 고친 사본을 만들지 않고, 매번 원본에서 다시 추린다.
 //  1) 각 .js를 "0열에서 시작하는 선언(function·const·let·var·class)" 단위로 덩어리로 나눈다(이 저장소 코드는 본문이 모두 들여써 있다).
 //     0열의 실행 문(Object.assign(X, …) 등)은 바로 앞 덩어리에 붙인다(그 선언의 덧붙임).
-//  2) caseProcAll_·caseProcLoad_·caseProcPatch_·WORK_HEADERS에서 출발해, 덩어리 글에 나오는 이름 중 다른 덩어리가 선언한 이름을 따라가며 닿는 덩어리를 모두 모은다.
+//  2) caseProcTool_·caseProcLoad_·caseProcPatch_·WORK_HEADERS에서 출발해, 덩어리 글에 나오는 이름 중 다른 덩어리가 선언한 이름을 따라가며 닿는 덩어리를 모두 모은다.
 //  3) dist/reader.js = 머리글 + 모은 덩어리(원본 파일 순서 그대로). GAS 흉내 층(DriveApp 등)은 여기 넣지 않는다 — 돌리는 쪽(tools/run-reader.js)이
 //     재현기 C:\GitHub\netax-replay\lib(gas.js·vfs.js)을 그대로 쓴다(설계서 4절 "재현기 shim을 출발점으로, 새로 짓지 않음").
 //  4) 보고: 파일별 덩어리 수, 추린 함수 수, 못 찾은 이름(어느 파일에도 선언이 없는 것 — GAS 전역·JS 내장은 빼고) 목록 → dist/reader-report.json
-// 사용: node tools/build-reader.js [--out dist/reader.js] [--seeds caseProcAll_,…]
+// 사용: node tools/build-reader.js [--out dist/reader.js] [--seeds caseProcTool_,…]
 // ============================================================
 'use strict';
 const fs = require('fs');
@@ -20,7 +20,7 @@ const SRC_DIR = path.join(ROOT, 'gs-backend');
 const args = process.argv.slice(2);
 const argOf = (k, d) => { const i = args.indexOf(k); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const OUT = path.resolve(ROOT, argOf('--out', 'dist/reader.js'));
-const SEEDS = argOf('--seeds', 'caseProcAll_,caseProcLoad_,caseProcPatch_,caseProcOpenInputs_,WORK_HEADERS,akReadCase_').split(',').map((s) => s.trim()).filter(Boolean);
+const SEEDS = argOf('--seeds', 'caseProcTool_,caseProcLoad_,caseProcPatch_,caseProcOpenInputs_,WORK_HEADERS,akReadCase_').split(',').map((s) => s.trim()).filter(Boolean);
 // 설계서 4절의 네 파일을 먼저 보되, 닿는 선언이 다른 서버 파일(CrossCheckBind 등)에 있으면 그 파일도 쓴다(어느 파일에서 왔는지 보고에 적음)
 const FILES = fs.readdirSync(SRC_DIR).filter((f) => /\.js$/.test(f)).sort((a, b) => (a === 'Code.js' ? -1 : b === 'Code.js' ? 1 : a.localeCompare(b)));
 
@@ -104,7 +104,7 @@ const at = stamp.getFullYear() + '-' + pad(stamp.getMonth() + 1) + '-' + pad(sta
 let gitSha = ''; try { gitSha = require('child_process').execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString().trim(); } catch (e) {}
 if (!gitSha && process.env.CODE_VERSION) gitSha = String(process.env.CODE_VERSION); // 도커 빌드(.git 없음)는 빌드 인자로
 const head = [
-  '// 자동 생성 — 손으로 고치지 말 것. tools/build-reader.js가 gs-backend/*.js에서 사건처리 한 번 호출(caseProcAll_)에 닿는 선언만 추려 만든 읽기 전용 시험용 모듈.',
+  '// 자동 생성 — 손으로 고치지 말 것. tools/build-reader.js가 gs-backend/*.js에서 📖 서류 읽기 도구(caseProcTool_, 예전 caseProcAll_)에 닿는 선언만 추려 만든 읽기 전용 시험용 모듈.',
   '// 만든 때 ' + at + ' · 원본 ' + (gitSha || '?') + ' · 출발점 ' + SEEDS.join(', ') + ' · 덩어리 ' + picked.length + '/' + all.length,
   '// GAS 전역(DriveApp 등)은 여기 없다 — 돌리는 쪽이 재현기 흉내 층(netax-replay/lib)으로 넣는다.',
   ''

@@ -21,7 +21,7 @@
 //  AI 없이 0원, 다시 읽기 없음)을 부르면 화면이 그 도구를 실행해 결과(GAS가 못 푼 자리)를 넥스에게 돌려준다. 넥스가 판단·질문하고 끝내면
 //  화면이 계산·서식·저장·검토서를 한다. "판단할 자리 없으면 AI 안 부름" 관문(3-1)과 GAS 안의 저비용 AI 자동 판단은 쓰지 않는다(GAS가 못 푼 것은 넥스에게).
 // =========================================================
-var CASEPROC_AI_CLIENT_TOOLS_ = ['gas_run', 'gas_finish']; // 화면이 실행하는 GAS 도구 — 서버는 실행하지 않고 넥스의 부름을 화면에 넘긴다
+var CASEPROC_AI_CLIENT_TOOLS_ = []; // [2026.10.31 묶음 해체] 화면이 대신 돌리던 묶음 도구(gas_run 한 바퀴·gas_finish 마무리)는 없앴다 — 넥스 도구는 모두 서버가 바로 실행(화면 단추와 같은 입구)
 var CASEPROC_AI_DIRECTOR_MODEL_ = 'claude-sonnet-5-5';
 var CASEPROC_AI_LIGHT_MODEL_ = 'claude-haiku-5-5';
 var CASEPROC_AI_HIGH_MODEL_ = 'claude-opus-5-5';
@@ -38,7 +38,7 @@ var CASEPROC_AI_RELATION_RE_ = /^(tr:buyerrel|trc:a\d+\.donorRelation|ov:giftRel
 var CASEPROC_AI_LOG_NAME_ = '_사건처리AI판단기록.json';
 // [2026.10.20 밤샘] 시험 모드(body.dry) — 실제 AI는 부르되 사건에 쓰지 않음(값 넣기·첨부 저장·작업일지·판단 기록 없음, 비용 기록은 [시험])
 var CASEPROC_AI_DRY_ = false;
-var CASEPROC_AI_NO_TOOLS_ = ['docs_read', 'doc_text']; // [GAS 고도화 ④] 지휘 AI에게 주지 않는 도구 — docs_read(폴더 통째 GAS 판독 돌리기 = gas_run이 함)·doc_text(GAS 판독 원문 몇 줄 = file_read가 더 넓게 함). 넥스 읽기를 막는 것이 아니다(10-28 세무사님 "gas속에 ai를 가두지 마라") — 넥스는 case_files/file_read/doc_view로 어떤 파일이든 읽는다
+var CASEPROC_AI_NO_TOOLS_ = ['docs_read', 'doc_text']; // [GAS 고도화 ④] 지휘 AI에게 주지 않는 도구 — docs_read(폴더 통째 GAS 판독 돌리기 = case_read가 함)·doc_text(GAS 판독 원문 몇 줄 = file_read가 더 넓게 함). 넥스 읽기를 막는 것이 아니다(10-28 세무사님 "gas속에 ai를 가두지 마라") — 넥스는 case_files/file_read/doc_view로 어떤 파일이든 읽는다
 
 // 사건당 비용 상한(원) — 업무유형으로
 
@@ -89,7 +89,7 @@ function caseProcAiLiveTools_() {
   tools.push({ name: 'case_files', description: '사건 폴더 파일 목록(토큰 0, 읽기만) — 하위 폴더·산출물·보관·이미 낸 신고서·예규·검토 메모·지침까지 전부(폴더·크기·수정일·종류). GAS체크(켬/끔)는 GAS가 읽는 파일 표시일 뿐 참고로만 — 너는 어떤 파일이든 file_read로 읽는다. dir(폴더 이름)·find(파일 이름 낱말)로 좁힐 수 있다.', input_schema: { type: 'object', properties: { dir: { type: 'string', description: '폴더 이름으로 좁히기(선택)' }, find: { type: 'string', description: '파일 이름 낱말로 좁히기(선택)' } } } });
   tools.push({ name: 'file_read', description: '사건 폴더 파일 한 개의 글 읽기(토큰 0) — 체크 목록과 무관하게 어떤 파일이든(글자 기억 _글자인식기억에 있으면 그것, 없으면 드라이브 글자층·PDF 글자). 쟁점이 생기면 세무사님이 폴더에 두신 관련예규·검토 메모·지침부터 이것으로 직접 읽어라. file=파일 이름(또는 폴더/파일 이름), page=쪽("3"·"2-4", 쪽 나눔이 있을 때), start=시작 글자 위치, find=낱말 앞뒤 보기, len=길이(기본 4000). 더있음이면 start를 옮겨 이어 읽는다. 개인정보는 가려서 온다.', input_schema: { type: 'object', properties: { file: { type: 'string' }, page: { type: 'string' }, start: { type: 'number' }, find: { type: 'string' }, len: { type: 'number' } }, required: ['file'] } });
   // [2026.10.28] 사건 장부(CaseLedger.js) — 사실의 유일한 저장소. 서류를 읽어 정한 값은 근거와 함께 적고, 확신 없으면 물어볼 것으로. 세무사님 말씀은 kind 세무사님으로 바로.
-  tools.push({ name: 'ledger_read', description: '사건 장부 요약 보기(토큰 0) — 띠·마지막 한 바퀴·남은 물음(가설과 다름 포함)·사건개요(정함·가설)·확보할 증빙(받을 것)·칸 값(주인 세무사님/넥스/서류/규칙/추정·상태·같은 값 서류·다른 값 서류). case_status 첫 응답에 이미 실려 오니, 값을 적거나 답을 받은 뒤 다시 볼 때 부른다. 서류 사실은 case_ledger do:facts.', input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } });
+  tools.push({ name: 'ledger_read', description: '사건 장부 요약 보기(토큰 0) — 띠·마지막 장부 적기·남은 물음(가설과 다름 포함)·사건개요(정함·가설)·확보할 증빙(받을 것)·칸 값(주인 세무사님/넥스/서류/규칙/추정·상태·같은 값 서류·다른 값 서류). case_status 첫 응답에 이미 실려 오니, 값을 적거나 답을 받은 뒤 다시 볼 때 부른다. 서류 사실은 case_ledger do:facts.', input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } });
   tools.push({ name: 'case_ledger', description: '사건 장부에 적기(토큰 0, 바로 실행). do=set{path,value,kind(세무사님|넥스|추정),file,page,quote,why} — 칸 경로는 세액계산기 칸(seller.name·c0.date·c0.totalPrice·c0.buyer.name·c0.buyer.relation·a0.assetLocation·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract·costs·taxfee·사건분류·기준일·doc:<파일>.role). 고르기 칸은 코드값(assetType house|other|presale_right · buyer.relation none|sibling|lineal|spouse|relative · assetKind land|building|land_building|stock|other · transferCause sale|expropriation|exchange|gift_burden|other). 세무사님이 정한 값은 바뀌지 않는다(거절되면 지금 값·서류 값만 보고). do=ask{path,question,cands:[{v,src}],needDoc} — 확신 없을 때 값 대신 물어볼 것. do=decide{path,decision(확인|보류|무시),note}. do=undo{path}. do=calc — 장부(확정+추정)로 세액계산기를 돌려 저장, 납부세액·빈 칸·추가 확인 사항을 받는다(세액은 이 숫자만). do=import — 옛 저장소를 장부로 한 번 옮김. do=hyp{field(상대방|관계|물건|거래|쟁점|요청),value,file} — 의뢰서·메모를 읽고 GAS 규칙이 못 뽑은 사건개요 가설을 보탬(「넥스 판단」 표시, 계산 칸엔 안 들어감). do=facts{find_kind,find_file,find_value,find_to,limit} — 장부가 모아 둔 서류 사실 찾기(읽기만, 번호·값·파일·자리·쓰인 칸). do=brief — 장부 요약(읽기만). '
       // [2026.10.29 계획서 3판] 대화창 넥스 case_ledger와 같은 도구 — 세무사님 화면 📒 ⑤와 같은 함수(넥스의 두 입구가 같은 도구를 쥔다)
       + 'do=lookup{loc,what,dates,onlyNew} — 공부 조회: 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 서류 없이 의뢰 메모만 있어도 된다. 결과는 장부 공부 사실·확보자료 PDF. '
@@ -98,16 +98,15 @@ function caseProcAiLiveTools_() {
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief'] },
       loc: { type: 'string' }, what: { type: 'array', items: { type: 'string', enum: ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'] } }, dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' } } } }, onlyNew: { type: 'boolean' },
       values: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {}, why: { type: 'string' } } } }, name: { type: 'string' }, over: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {} } } }, gift: { type: 'object' }, inheritance: { type: 'object' }, find_kind: { type: 'string' }, find_file: { type: 'string' }, find_value: { type: 'string' }, find_to: { type: 'string' }, limit: { type: 'number' }, field: { type: 'string' }, path: { type: 'string' }, value: {}, kind: { type: 'string', enum: ['세무사님', '넥스', '추정'] }, file: { type: 'string' }, page: { type: 'string' }, quote: { type: 'string' }, why: { type: 'string' }, question: { type: 'string' }, cands: { type: 'array', items: { type: 'object', properties: { v: {}, src: { type: 'string' } } } }, needDoc: { type: 'boolean' }, decision: { type: 'string', enum: ['확인', '보류', '무시'] }, note: { type: 'string' } }, required: ['caseId', 'do'] } });
-  tools.push({ name: 'set_read_scope', description: 'GAS가 읽을 파일 목록 바꾸기(토큰 0) — 사건마다 "읽을 파일 체크 목록"이 있고 GAS(서류 읽기·칸 채우기·직결, gas_run)는 그 목록의 켜진 파일만 읽는다. 이것은 GAS에게 콕 집어 주는 것이지 네 읽기 범위가 아니다(너는 case_files/file_read로 어떤 파일이든 읽는다). 세무사님이 "○○ 폴더(파일)만 읽어라"·"○○는 빼라" 하시면 on(켤 파일 이름·폴더 이름 — 폴더면 그 아래 하위 폴더까지 전부)·off(끌 파일·폴더)로 목록을 바꾼다(파일 단위). dirs·files는 옛 방식(그 폴더·파일만). clear:true면 전체로. 바꾼 뒤 gas_run을 한 번 다시 부른다. 목록이 아직 없는 사건(case_status 현황의 읽을범위가 null)은 네가 먼저 case_files로 목록을 보고 모르는 파일은 file_read로 읽어 판단한 뒤 ids(켤 파일 전부) 또는 on/off로 정하고, 정한 목록과 이유를 세무사님께 보고한다 — 읽지 않고 체크하지 않는다(세무사님 원문 "ai가 체크를 하려면 뭘 알아야 체크를 할 수 있지 않은가? 뭘 알려면 읽어야 하는 것이고!").',
+  tools.push({ name: 'set_read_scope', description: 'GAS가 읽을 파일 목록 바꾸기(토큰 0) — 사건마다 "읽을 파일 체크 목록"이 있고 GAS(서류 읽기·칸 채우기·직결, case_read)는 그 목록의 켜진 파일만 읽는다. 이것은 GAS에게 콕 집어 주는 것이지 네 읽기 범위가 아니다(너는 case_files/file_read로 어떤 파일이든 읽는다). 세무사님이 "○○ 폴더(파일)만 읽어라"·"○○는 빼라" 하시면 on(켤 파일 이름·폴더 이름 — 폴더면 그 아래 하위 폴더까지 전부)·off(끌 파일·폴더)로 목록을 바꾼다(파일 단위). dirs·files는 옛 방식(그 폴더·파일만). clear:true면 전체로. 바꾼 뒤 case_read을 한 번 다시 부른다. 목록이 아직 없는 사건(case_status 현황의 읽을범위가 null)은 네가 먼저 case_files로 목록을 보고 모르는 파일은 file_read로 읽어 판단한 뒤 ids(켤 파일 전부) 또는 on/off로 정하고, 정한 목록과 이유를 세무사님께 보고한다 — 읽지 않고 체크하지 않는다(세무사님 원문 "ai가 체크를 하려면 뭘 알아야 체크를 할 수 있지 않은가? 뭘 알려면 읽어야 하는 것이고!").',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, ids: { type: 'array', items: { type: 'string' }, description: '켤 파일 이름(또는 폴더/파일) 전부 — 목록을 처음 정할 때(그 밖은 끔)' }, on: { type: 'array', items: { type: 'string' } }, off: { type: 'array', items: { type: 'string' } }, dirs: { type: 'array', items: { type: 'string' } }, files: { type: 'array', items: { type: 'string' } }, clear: { type: 'boolean' }, why: { type: 'string' } }, required: ['caseId'] } });
-  tools.push({ name: 'gas_run', description: '[부르기 전에: case_files로 목록을 보고 모르는 파일은 file_read로 읽은 뒤, GAS가 읽을 파일을 set_read_scope로 콕 집어 준 다음 부른다 — 세무사님이 범위를 말씀하셨으면("○○ 폴더는 빼고"·"○○만") 반드시(안 하면 gas_run이 거절된다), 말씀이 없어도 목록에 뺄 폴더(증빙 아닌 폴더·다른 세목 서류 폴더)가 있으면 지정] GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. case_status에서 증빙 읽기·칸 채우기가 이미 되어 있고 새 서류가 없으면 부르지 않는다(세무사님이 이미 하셨거나 지난 처리에서 한 일 — 다시 읽지 않는다). 새 서류가 있거나 아직 안 했으면 한 번만 부른다.',
-    input_schema: { type: 'object', properties: { why: { type: 'string', description: '한 줄 — 무엇을 보려고(보통 "처음 한 바퀴")' } } } });
+  // [2026.10.31 묶음 해체] 세무사님 원문(10-31) "개별 gas의 도구들을 넥스가 활용하는 것" — 예전 gas_run(한 바퀴: 읽기·칸 채우기·교차검증을 한 번에, 화면이 실행)을
+  //  📖 서류 읽기 하나로(서버가 바로 실행, 화면 "📖 서류 읽기" 단추와 같은 입구 step 'read'). 칸 채우기는 calc_fill, 계산은 tax_calc·case_ledger do=calc, 서식은 forms_check로 따로
+  tools.push({ name: 'case_read', description: '📖 서류 읽기(토큰 0, 서버 실행 — 세무사님 화면 📖 단추와 같은 도구): 사건파악 → GAS 읽을 목록의 서류 글자 읽기·정리 → 읽은 사실을 장부에 적기(가설·사건개요·받을 증빙·새 필지). 칸 채우기·계산은 하지 않는다(그건 calc_fill·tax_calc). 서류가 많으면 more/partial이 오고 같은 도구를 다시 부르면 이어 읽는다. [부르기 전에: case_files로 목록을 보고 모르는 파일은 file_read로 읽은 뒤, GAS가 읽을 파일을 set_read_scope로 콕 집어 준 다음 부른다 — 세무사님이 범위를 말씀하셨으면("○○ 폴더는 빼고"·"○○만") 반드시(안 하면 gas_run이 거절된다), 말씀이 없어도 목록에 뺄 폴더(증빙 아닌 폴더·다른 세목 서류 폴더)가 있으면 지정] GAS 한 바퀴(토큰 0, AI 없음) — 사건파악 → 증빙 폴더의 모든 서류 읽기·한 파일에 든 여러 서류 나누기·흐린 사진 보정 → 세액계산기 칸 채우기·서류끼리 교차검증을 한 번에 한다(몇 분 걸림). 돌려주는 것: 채운 칸·남은 질문 수, GAS가 못 풀어 너에게 돌아온 자리, 서류에 없어 세무사님께 바로 여쭐 빈 칸. case_status에서 증빙 읽기·칸 채우기가 이미 되어 있고 새 서류가 없으면 부르지 않는다(세무사님이 이미 하셨거나 지난 처리에서 한 일 — 다시 읽지 않는다). 새 서류가 있거나 아직 안 했으면 한 번만 부른다.',
+    input_schema: { type: 'object', properties: { why: { type: 'string', description: '한 줄 — 무엇을 보려고(보통 "처음 읽기")' } } } });
   // [2026.10.22 작업 기록부] 사건 현황 보기 — 세무사님이 직접 하신 일·지난 처리(누가·언제·무엇), 정한 값, 단계별 시각, 새 서류, 반영 현황표, 남은 질문. 늘 맨 먼저(0원)
   tools.push({ name: 'case_status', description: '사건 현황 보기(토큰 0) — 작업 기록부(세무사님이 GAS 도구로 직접 하신 일과 지난 넥스 처리: 누가·언제·무엇), 정한 값과 출처(세무사님 값은 바꾸지 않는다), 단계별로 이미 한 것과 시각, 그 뒤 새로 들어온 서류, 반영 현황표(⑦ — 남은 일의 기준), 남은 질문 목록. 처리를 맡으면 맨 먼저 부르고, 여기서 남은 일만 고른다.',
     input_schema: { type: 'object', properties: {} } });
-  // [2026.10.22] 마무리 — 세액계산·서식 대조·저장·종합검토서 초안(화면이 실행, 0원). 맡은 범위에 계산·검토서가 들어 있고 세무사님께 여쭐 것이 없을 때 부른다
-  tools.push({ name: 'gas_finish', description: '마무리(토큰 0, 화면이 실행) — 세액계산 → 서식 대조 → 저장 → 종합검토서 초안. 세무사님께 여쭐 것이 남아 있으면 부르지 말고 여쭙고 끝낸다(답이 오면 화면이 이어서 마무리한다). 일부만 맡으셨으면(예: 취득가액만) 부르지 않는다.',
-    input_schema: { type: 'object', properties: { why: { type: 'string' } } } });
   // [2026.10.19 법령] 세무사님 "ai가 위임을 받아 사건을 처리할때도 이 과정을 거쳐야 하는 거 아닌가?" — 쟁점마다 법령·예규·판례를 GAS 도구로 찾아(토큰 0) 근거로 쓰면 첨부
   tools.push({ name: 'law_lookup', description: '조문 원문 보기(토큰 0) — 사건 기준일에 시행된 판(법령 정비본, 산식 보정 포함). 쟁점 판단에 필요한 조문을 확인할 때. 근거로 쓰면 law_attach로 사건에 첨부한다. articleNo에 「부칙」을 주면 그 판까지의 부칙(적용례·경과조치 — 언제 양도분부터)을 본다.',
     input_schema: { type: 'object', properties: { lawName: { type: 'string', description: '예: 소득세법 시행령' }, articleNo: { type: 'string', description: '예: 155, 97의2' } }, required: ['lawName', 'articleNo'] } });
@@ -265,7 +264,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   if (name === 'ledger_read') { const cf = akReadCase_(caseId); if (!cf) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) }; let r; try { r = Object.assign({ ok: true }, ledgerNexBrief_(cf, 5800)); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; } return { text: cxMask_(JSON.stringify(r)) }; } // [2026.10.28] 사건 장부 — [2026.10.29 넥스 1] 장부 전체(수만 자)는 6,000자에서 잘려 흐름·질문이 늘 빠졌다 → 요약 묶음(서류 사실은 case_ledger do:facts)
   if (name === 'case_ledger') { let r; try { r = ledgerToolRun_(Object.assign({}, input || {}, { caseId: (input && input.caseId) || caseId }), '넥스'); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; } return { text: cxMask_(JSON.stringify(r)) }; }
   if (name === 'set_read_scope') { // [2026.10.27 F]
-    ctx.scopeSet = true; // [2026.10.28 결함 L] 이번 처리에서 범위를 정했다 — gas_run 허용
+    ctx.scopeSet = true; // [2026.10.28 결함 L] 이번 처리에서 범위를 정했다 — case_read 허용
     const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
     let r; try { r = caseProcReadScope_(c0, { dirs: input.dirs, files: input.files, ids: Array.isArray(input.ids) ? input.ids : undefined, on: Array.isArray(input.on) ? input.on : undefined, off: Array.isArray(input.off) ? input.off : undefined, clear: !!input.clear, note: caseProcAiCut_(input.why || '', 120), by: '넥스' }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; } // [2026.10.28 읽을 대상 ④] on/off 파일 단위
     if (r && r.ok && r.changed && Array.isArray(r.changed.miss) && r.changed.miss.length) { r.없는파일 = r.changed.miss.slice(); r.안내 = '⚠ 목록에 없는 이름 ' + r.changed.miss.length + '개는 켜지도 꺼지지도 않았다(' + r.changed.miss.join(', ') + ') — 보고에 적지 마라. 이름은 case_files 목록 그대로.'; } // [2026.10.28 ⓔ]
@@ -281,7 +280,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   if (name === 'case_status') { // [2026.10.22] 넥스 현황 보기 — 남은 질문을 이 차례들의 질문으로 기억(칸 채우기를 다시 돌리지 않고 issue_bundle·value_set을 쓰게)
     const c0 = akReadCase_(caseId); if (!c0) return { text: JSON.stringify({ 오류: '사건을 찾지 못함' }) };
     const sv0 = caseProcLoad_(caseId) || {};
-    if (!ctx.lastItems && Array.isArray(sv0.remaining) && sv0.remaining.length) { ctx.lastItems = caseProcAiSlimItems_(sv0.remaining); ctx.gasItems = true; }
+    if (!ctx.lastItems && Array.isArray(sv0.remaining) && sv0.remaining.length) { ctx.lastItems = caseProcAiSlimItems_(sv0.remaining); }
     let view = {}; try { view = caseProcNexView_(c0, { withFiles: true }); } catch (e) { view = { 오류: String(e && e.message || e).slice(0, 80) }; }
     let rows = []; try { const st = caseProcStatus_(c0, {}); rows = (st.rows || []).map(function (r) { return r[0] + ' · ' + r[1] + ': ' + r[2] + (r[3] ? ' (' + String(r[3]).slice(0, 80) + ')' : ''); }); } catch (e) { rows = ['반영 현황표를 만들지 못함: ' + String(e && e.message || e).slice(0, 60)]; }
     const dec0 = sv0.decisions || {};
@@ -303,7 +302,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
       ctx.packed = true;
     } catch (e) { pack = { 오류: '파일 목록·본문을 싣지 못함: ' + String(e && e.message || e).slice(0, 80) }; }
     let costLine = ''; try { costLine = aiCostCaseSummary_(caseId).line || ''; } catch (e) { costLine = ''; } // [2026.10.30 비용 기록] 넥스가 "이 사건에 지금까지 ○원"을 말할 수 있게(시트 읽기만, 0원)
-    const base = { 반영현황표: rows, 현황: view, 남은질문: q, AI비용: costLine, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_앞부분·미리읽기요약은 이미 실린 것 — case_files로 다시 부르지 마라. 본문이 더 필요한 파일만 file_read(여러 개면 같은 차례에 한꺼번에).' };
+    const base = { 반영현황표: rows, 현황: view, 남은질문: q, AI비용: costLine, 안내: '단계에 이미 시각이 있고 새서류가 없으면 case_read를 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_앞부분·미리읽기요약은 이미 실린 것 — case_files로 다시 부르지 마라. 본문이 더 필요한 파일만 file_read(여러 개면 같은 차례에 한꺼번에).' };
     let txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack || {})));
     if (txt.length > 6000 && pack && pack.의뢰서_메모_앞부분) { pack.의뢰서_메모_앞부분 = '(길어서 뺌 — file_read)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
     if (txt.length > 6000 && pack && pack.미리읽기요약) { pack.미리읽기요약 = '(길어서 뺌 — case_status 현황의 서류변동 참고)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
@@ -352,14 +351,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   if (name === 'read_tax_item') return { text: JSON.stringify(knhTaxItemRead_(input)).slice(0, 20000) };
   if (name === 'law_decisions') { const c0 = akReadCase_(caseId); return { text: JSON.stringify(typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.query || '', c0 ? (CASEPROC_TAX_LABEL_[c0.세목] || '').replace(/소득세|세$/g, '') : '') : { 오류: '이 판에 없음' }).slice(0, 8000) }; }
   if (name === 'law_lookup' || name === 'law_search' || name === 'law_attach') return { text: caseProcAiMask_(JSON.stringify(caseProcAiLaw_(caseId, name, input, ctx))).slice(0, 6000) };
-  // [2026.10.22 넥스가 주인] gas_run이 끝난 뒤엔 칸 채우기·계산·서식을 서버에서 다시 돌리지 않는다(칸 채우기 한 번이 2~3분 — 가상상속1 넥스 차례가 6분 한도에 닿음).
-  //  세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?" — 질문은 GAS 한 바퀴 결과(ctx.lastItems), 넣은 값은 처리 끝에 화면이 칸 채우기 한 번·계산으로 반영
-  if (ctx.gasItems && (name === 'calc_fill' || name === 'tax_calc' || name === 'forms_check')) {
-    if (name !== 'calc_fill') return { text: JSON.stringify({ ok: true, 안내: '세액계산·서식 대조는 네가 끝낸 뒤 화면이 한다 — 부르지 않아도 된다' }) };
-    const li = ctx.lastItems || [];
-    return { text: caseProcAiMask_(JSON.stringify({ ok: true, 안내: 'GAS 한 바퀴(gas_run) 결과 그대로 — 칸 채우기를 다시 돌리지 않는다. 채운 값은 case_view·fact_map으로 보고, 네가 넣은 값은 처리 끝에 화면이 칸 채우기 한 번으로 반영한다.',
-      질문수: li.length, 질문목록: li.map(function (it) { return it.id + ' | ' + it.kind + ' | ' + caseProcAiCut_(it.text, 60) + (it.ask && it.ask.aiJudge ? ' | AI 의견 있음' : ''); }) })).slice(0, 8000) };
-  }
+  // [2026.10.31 묶음 해체] 예전엔 gas_run 뒤 칸 채우기·계산·서식 도구를 막았다 — 이제 낱개 도구라 넥스가 필요할 때 부른다(막힘 걷음)
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
   const before = (CP_SECURED_LOG_ || []).length;
@@ -440,7 +432,7 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
 // [2026.10.21 넥스 하나로] 첫 글 = GAS 입구 요약 + 세무사님 말씀(채팅창 명령 문장 전체) + 같은 채팅창의 최근 대화 + 지난 처리 요약.
 //  세무사님 원문: "같은 채팅창내에서의 대화는 어떤 ai라도 모두 공유하는 것으로 알고 있었다" — 예전엔 GAS 요약 한 장만 받아 "처리하자, 시가는 감정가로" 같은 덧붙인 말이 사라졌다.
 //  화면이 보낸 body.userText(명령 문장)·body.chat([{role,text}] 최근 대화, 글만). 길이는 잘라서(대화 6천 자·지난 처리 2천 자) — 비용은 첫 차례 한 번, 이후 차례는 캐시.
-// [2026.10.22 넥스가 주인] 첫 글 머리 — 사건 정보만(GAS는 아직 안 돌았다). 넥스가 gas_run부터 부른다
+// [2026.10.22 넥스가 주인] 첫 글 머리 — 사건 정보만(GAS는 아직 안 돌았다). 넥스가 낱개 도구(case_status·case_read 등)를 골라 부른다
 
 // [2026.10.21 넥스 하나로] 넥스가 GAS 질문 목록에 없는 것을 여쭐 때(ask_user에 itemIds 없이 note만) — 예전엔 화면 어디에도 안 떴다.
 //  마지막 지휘 처리의 그런 질문을 처리개요 질문(메모형, 🤖 표시)으로 올린다. 답은 채팅창에 말로 — 같은 채팅 대화가 다음 처리 첫 글로 넥스에게 간다.
@@ -542,7 +534,7 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
 // 세무사님 원문(10-29): "이 문제는 종전에 해결한다고 하지 않았던가? 또 사기친것인가?" — 20:47 "계획서 3판을 모두 만들었습니다"라고
 //  보고했으나 사건 처리 입구는 여전히 따로 짠 도구 22개·비용 상한·"짧게"였다. 이제 🤖 넥스로 처리·"이 사건 처리하자"도 대화창 넥스
 //  (callClaude) 하나가 맡는다 — 대화창 도구 전부 + 아래 사건 도구. 사건 도구 실행은 지휘 실행기(caseProcAiLiveExec_)를 그대로 쓰고,
-//  gas_run·gas_finish는 화면이 GAS를 돌린 뒤 결과를 같은 대화로 넥스에게 돌려준다(clientAction case_gas).
+//  [2026.10.31] 넥스 사건 도구는 모두 서버가 바로 실행한다(예전 gas_run·gas_finish를 화면이 돌리던 clientAction case_gas는 없앰).
 // ============================================================
 // 대화창에 이미 같은 일을 하는 도구가 있거나 대화창에서 뜻이 없는 것 — ask_user(질문은 case_ledger do=ask + 채팅으로 묶어 여쭘)·save_draft(화면 마무리 전용)
 // [2026.10.30 1단계 길 정리] 서류 읽기는 file_read(원문) + doc_facts(GAS 정리값) 한 길 — doc_view는 같은 글자 기억을 앞 3천 자만 주고 서류 종류를 GAS 규칙으로 다시 정해
@@ -550,7 +542,7 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
 var NX_CASE_CHAT_SKIP_ = ['ask_user', 'save_draft', 'report_tool_gap', 'case_ledger', 'list_business_managers', 'load_business_manager', 'search_tax_items', 'read_tax_item', 'doc_view', 'doc_text'];
 // [2026.10.30 1단계 보고서 한 길] ✍문서작성 탭의 서버 기능 다섯 가지를 넥스도 쓰게 — 공통원칙 "세무사님만 할 수 있는 화면 동작이 있으면 넥스 대행이 덜 된 것"
 //  (쟁점 문단 라이브러리·적용 조문 원문 부록·사건 서류 값·보고서 틀·슬라이드 자문보고서). 화면과 같은 서버 함수를 부른다(토큰 0)
-var NX_CASE_REPORT_TOOL_ = { name: 'report_parts', description: '보고서 재료(토큰 0, ✍문서작성 탭과 같은 기능): do=template(label: 보고서 틀 이름 — 자문보고서·종합검토서·개별검토서·불복청구서·요약보고서·진행보고서·검토조서·신고보고서·번역서) 틀 본문 / do=paragraphs 쟁점 문단 라이브러리 목록(세무사님이 다듬은 표준 문단 — 맞는 문단을 가져다 빈칸만 채운다) / do=statutes(laws:[{lawName, articleNo}]) 적용 조문 원문 부록 / do=docfacts 사건 서류 정리 값(문단 빈칸용) / do=slides 슬라이드 자문보고서 틀을 사건 폴더에 만듦. 보고서 본문은 save_file_to_folder로 사건 폴더에 .md로 저장하면(path는 사건 폴더 기준 — 고객용 path ["보고서_외부"], 내부 검토 ["보고서_내부"]; 어디에 저장됐는지는 결과의 folderPath 그대로 말한다) 자문 장부 보고서 칸에 저절로 적힌다. 쓰기 전에 job_lookup kind=reports(search)로 사무소 기존 보고서 1~2개를 본보기로 읽는다.',
+var NX_CASE_REPORT_TOOL_ = { name: 'report_parts', description: '보고서 재료(토큰 0, ✍문서작성 탭과 같은 기능): do=template(label: 보고서 틀 이름 — 자문보고서·종합검토서·개별검토서·불복청구서·요약보고서·진행보고서·검토조서·신고보고서·번역서) 틀 본문 / do=paragraphs 쟁점 문단 라이브러리 목록(세무사님이 다듬은 표준 문단 — 맞는 문단을 가져다 빈칸만 채운다) / do=statutes(laws:[{lawName, articleNo}]) 적용 조문 원문 부록 / do=docfacts 사건 서류 정리 값(문단 빈칸용) / do=slides 슬라이드 자문보고서 틀을 사건 폴더에 만듦 / do=reviewnotes 장부의 추정·받을 증빙·보류 줄과 보류·받을 예정 질문(종합검토서 "확인 필요 사항"에 옮길 것 — 세무사님 작성관리 새 종합검토서와 같은 입구). 보고서 본문은 save_file_to_folder로 사건 폴더에 .md로 저장하면(path는 사건 폴더 기준 — 고객용 path ["보고서_외부"], 내부 검토 ["보고서_내부"]; 어디에 저장됐는지는 결과의 folderPath 그대로 말한다) 자문 장부 보고서 칸에 저절로 적힌다. 쓰기 전에 job_lookup kind=reports(search)로 사무소 기존 보고서 1~2개를 본보기로 읽는다.',
   input_schema: { type: 'object', properties: { do: { type: 'string', enum: ['template', 'paragraphs', 'statutes', 'docfacts', 'slides'] }, label: { type: 'string' }, laws: { type: 'array', items: { type: 'object', properties: { lawName: { type: 'string' }, articleNo: { type: 'string' } } } } }, required: ['do'] } };
 function nxCaseReportParts_(caseId, input) {
   const d = String((input && input.do) || '');
@@ -558,8 +550,9 @@ function nxCaseReportParts_(caseId, input) {
   if (d === 'paragraphs') { const r = rwListParagraphs_(); return r && Array.isArray(r.items) ? Object.assign({}, r, { items: r.items.slice(0, 80) }) : r; }
   if (d === 'statutes') return rwStatuteAppendix_({ laws: input.laws || [] });
   if (d === 'docfacts') return rwCaseDocFacts_({ caseId: caseId });
+  if (d === 'reviewnotes') { const c = akReadCase_(caseId); return c ? caseProcReviewNotes_(c) : { ok: false, error: '사건을 찾지 못함' }; } // [2026.10.31 초안 없앰]
   if (d === 'slides') { const c = job_findCase_(caseId); if (!c || !c.폴더ID) return { ok: false, error: '사건 폴더가 없음' }; return handleCreateAdvisorySlideReport({ folderId: c.폴더ID, 고객명: c.고객명 || '', 사건명: c.사건명 || '', 법정일: c.법정일 || '' }); }
-  return { ok: false, error: 'do는 template·paragraphs·statutes·docfacts·slides 중 하나' };
+  return { ok: false, error: 'do는 template·paragraphs·statutes·docfacts·reviewnotes·slides 중 하나' };
 }
 function nxCaseChatTools_(haveNames) {
   const have = haveNames || [];
@@ -645,9 +638,10 @@ function nxCaseChatGuide_(caseId) {
     + '- [검토조서 — 세무서에 신고와 함께 내는 문서] 세무사님이 신고에 첨부할·세무서에 낼 보고서를 말씀하시면 그것은 검토조서다(종합검토서·개별검토서·자문보고서 모양으로 쓰지 않는다). ① report_parts do=template label="검토조서"로 틀을 받아 틀 첫머리 작성 안내(세무사님 원문 결정)를 그대로 따른다 — 사무소 기존 보고서는 본보기로 삼지 않는다(세무서 제출 본보기가 아니다) ② 틀의 "양도/증여/상속 시작~끝" 중 사건 세목 하나, "정리용/쟁점용 시작~끝" 중 하나만 남기고 그 표시 줄은 지운다: 쟁점 없이 신고 내용 정리면 정리용, 쟁점(비과세·감면·공제 요건 등)을 근거와 함께 설명하면 쟁점용 ③ 큰 제목 "검토조서", 아래 부제 "- ○○○ ○○세 신고 관련 참고사항 -", 수신 없음, 공문 개조식(~함·~임), 번호는 적지 않고 목록 단계(- / 두 칸 들여 - / 네 칸 들여 -)로 ④ 틀은 가장 복잡한 경우를 다 넣은 풀버전이다 — 이 사건에 해당하는 줄만 채우고 나머지는 아래 단계 줄까지 줄째 지운다("(…이면)·(있으면)" 줄은 해당하면 괄호 머리를 지우고 채움, 해당 없으면 지움, 양도는 "자산" 묶음을 자산마다 하나씩·"합산"은 늘 남김). 틀에 적힌 조문도 이 사건에 맞는지 원문으로 확인. 금액은 계산기 저장본에서만 인용하고 금액마다 산출근거·세부 내역, 공과금·채무 등 여러 건은 건마다 한 줄, 해당 없으면 "없음" ⑤ 반대 해석례는 절대 언급하지 않는다(구별 단락도 없음). 목차·위험도·대안 비교·종전 자문 경위·고객 사정·문의처·잠정치를 넣지 않는다. 사실관계·금액은 사건 폴더 서류에서 확인한 것만 쓴다 — 상담 메모·말씀은 서류가 아니므로 서류로 확인되지 않은 칸은 짐작으로 채우지 말고 [확인 필요]로 둔다. 잠정치·[확인 필요]가 하나라도 남으면 저장하지 말고 받을 서류·확인할 것을 항목별로 묶어 세무사님께 여쭌다 ⑥ 서명은 작성일과 "이음세무컨설팅 세무사 조종호" 한 줄 ⑦ 저장: save_file_to_folder path ["보고서_외부"], 이름 "검토조서.md"(정리용) 또는 "검토조서_쟁점이름.md"(쟁점용, 고객명 넣지 않음). 같은 이름이 이미 있으면 덮어쓰지 않고 다른 쟁점 이름으로 — 세무사님이 그 검토조서를 고치라고 하셨을 때만 overwrite:true ⑧ PDF는 세무사님이 ✍ 문서작성 내려받기 "인쇄용 PDF(A4 여백·쪽마다 머리글)"로 만드신다고 알린다(보기용 PDF는 여백 없음).\n'
     // [2026.10.30 1단계] 옛 사건 지휘 지시문을 지우며 옮겨 온 규칙(원문은 각 줄의 날짜 결정)
     + '- [맡긴 범위] 세무사님은 사건을 전체로·일부만 맡기시거나 직접 처리하신다("내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"). 말씀이 범위를 정하면(예: "취득가액만 봐줘") 그 범위만 하고 나머지는 "맡기지 않으셔서 두었음"으로 적는다. 범위 말씀이 없으면 전체를 맡긴 것으로 본다. 세무사님이 직접 넣거나 정한 값은 바꾸지 않는다 — 어긋나 보이면 여쭌다.\n'
-    + '- [파일 읽기] 너는 대리인이라 사건 폴더의 어떤 파일이든 폭넓게 읽는다(case_files로 폴더 파일 목록 보기, file_read로 글 — 체크가 꺼진 파일·산출물·보관 폴더·예규·메모도). 목록 표시 🆕 새 / ✏ 바뀜 / ✓ 전에 읽음(시각) — ✓는 다시 읽지 않는다. GAS가 읽을 파일은 사건마다 체크 목록이 정한다: 체크 목록은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이고 너의 읽기를 막지 않는다. 순서: case_files로 폴더 파일 목록 보기 → 모르는 파일은 file_read → 이 사건에 필요한지 판단 → set_read_scope로 GAS에게 체크 목록 지정 → (한꺼번에 읽힐 것이 있으면) gas_run.\n'
+    + '- [파일 읽기] 너는 대리인이라 사건 폴더의 어떤 파일이든 폭넓게 읽는다(case_files로 폴더 파일 목록 보기, file_read로 글 — 체크가 꺼진 파일·산출물·보관 폴더·예규·메모도). 목록 표시 🆕 새 / ✏ 바뀜 / ✓ 전에 읽음(시각) — ✓는 다시 읽지 않는다. GAS가 읽을 파일은 사건마다 체크 목록이 정한다: 체크 목록은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이고 너의 읽기를 막지 않는다. 순서: case_files로 폴더 파일 목록 보기 → 모르는 파일은 file_read → 이 사건에 필요한지 판단 → set_read_scope로 GAS에게 체크 목록 지정 → (한꺼번에 읽힐 것이 있으면) case_read.\n'
     + '- [값·질문·근거] 서류로 정한 값은 value_set(근거 서류·쪽·문장)이나 case_ledger do=set(kind 넥스, file·quote·why)으로 넣고, 서류로 풀린 질문은 close_question으로 닫는다(말로만 "해소"라 하면 다음에 또 뜬다). 좁은 판단은 quick_judge(저가), 특례·시가·법령 해석이 갈리면 ask_higher(상위). 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한다. 해석이 갈리는 판단 전엔 law_decisions로 AI 회의 결론을 본다("결정"은 따르고 "판단 대기"면 단정하지 않는다). 판단 전에 list_business_managers·load_business_manager로 이 사건에 맞는 업무관리자 지침을 읽는다.\n'
-    + '- gas_run은 폴더 서류를 한꺼번에 읽어 칸을 채우는 GAS 도구다(서류가 안 읽혔거나 새 서류가 있을 때만). gas_finish는 세액계산·서식·저장·종합검토서 초안. 둘 다 화면이 돌리고 끝나면 결과가 [GAS 결과] 글로 이 대화에 온다 — 부른 차례는 지금까지 한 일을 말하고 마친다.\n'
+    // [2026.10.31 묶음 해체] 세무사님 원문(10-29) "의뢰메모만 있다고 하면, 일단 있는 자료를 조리있게 정리를 해야 할 것이고, 거기에 거론된 것들을 다양한 증빙을 확보하여 확인하고 상세하게 사건장부를 보완해 나가고, 그런 과정에서 새로운 내용이 나오면 사건장부를 수정해 나가고"
+    + '- [도구는 낱개] GAS 도구는 하나씩 따로 쓴다 — 정해진 순서·묶음은 없다. 늘 쓰는 흐름: 있는 자료 정리(case_status·ledger_read·case_files·file_read) → 서류로 확인(case_read 📖 서류 읽기 — 서류가 안 읽혔거나 새 서류가 있을 때만, 읽은 사실은 장부에 적힘) → 장부 보완(case_ledger do=set·value_set·close_question) → 칸 채우기(calc_fill — 장부 값을 계산기 칸으로, 질문 판정) → 시험 계산(case_ledger do=calc·calc_scenario, 잠정치도) → 모자란 것은 받을 서류·질문으로 요청·여쭘 → 새 사실이 나오면 앞으로 돌아간다. 서식 대조는 forms_check. 종합검토서·자문보고서는 report_parts 틀로 쓰고 장부의 보류·추정·받을 증빙 줄(report_parts do=reviewnotes)을 "확인 필요 사항"에 옮긴다 — 검토서 초안을 만드는 도구는 없다.\n'
     + '- 물을 것은 case_ledger do=ask로 장부 질문에 올리고(사이드바에 뜸), 채팅에서는 항목별로 묶어 여쭌다(개수로 자르지 않는다). 세무사님 값(누가=세무사님)은 바꾸지 않는다. 고객에게 직접 보내는 일은 하지 않는다.\n'
     + '- 맡은 일은 보고서까지 끝까지 한다. 채팅은 세무사님과의 대화가 주이고, GAS가 한 일은 요약만 한다.\n'
     // [2026.10.30 A1] 운영 실측: 넥스가 위험·근거를 적지 않고 "장부 저장 오류로 적지 못했다"고 보고(그 시각 도구 오류 기록 없음), 보고서엔 장부보다 먼저 써서 "적지 못했다"가 남음
