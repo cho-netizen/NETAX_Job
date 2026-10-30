@@ -1841,6 +1841,9 @@ function caseFlowEvidence_(c, L, lines) {
   // 같은 서류가 이미 목록에 있는가 — 한 바퀴가 지난번에 더한 그 항목 자신(같은 자리 열쇠)은 빼고 본다(자기를 보고 "이미 있음"이라 빼 버리면 바퀴마다 뺐다 더했다 함)
   const has = function (label, selfKey) { return list.some(function (e) { return e && e.label === label && e.slotKey !== selfKey; }); };
   const fileKinds = ((L.kb && L.kb.files) || []).map(function (f) { return String(f.kind || '') + ' ' + String(f.n || ''); }).join('\n');
+  // [2026.10.30] 취득 쪽 칸(취득가액·취득일)은 역할이 "양도계약서"로 정해진 계약서를 "폴더에 있음"으로 세지 않는다 — 양도 계약서엔 취득 값이 없다(예전엔 종류 이름만 봐 취득 계약서가 받을 목록에서 빠졌다)
+  const sellDoc = {}; Object.keys(L.rows || {}).forEach(function (p) { const m = /^doc:(.+)\.role$/.exec(p); if (m && (L.rows[p] || {}).v === '양도계약서') sellDoc[m[1]] = true; });
+  const fileKindsAcq = ((L.kb && L.kb.files) || []).filter(function (f) { return !sellDoc[String(f.n || '').slice(0, 80)]; }).map(function (f) { return String(f.kind || '') + ' ' + String(f.n || ''); }).join('\n');
   const want = {}; // slotKey → {label, note}
   // 빈 칸 → 그 칸 값이 적히는 서식 종류(TRC_NEED_DOC_TYPES_ — 서식·기관 기재 방식). 폴더에 그 종류 서류가 이미 있으면 받을 것이 아니라 읽기 문제라 더하지 않는다
   // 서류를 아직 다 읽지 못했으면(못읽음·파일 장부 없음) 빈 칸 → 받을 서류는 더하지 않는다 — 폴더에 있는데 안 읽힌 서류를 또 받으라고 하지 않게
@@ -1860,7 +1863,8 @@ function caseFlowEvidence_(c, L, lines) {
     const types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[String(n.p).split('.').pop()]) || [];
     const names = types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(Boolean);
     if (!names.length) return;
-    if (names.some(function (nm) { return fileKinds.indexOf(nm.replace(/\s/g, '').slice(0, 4)) !== -1 || fileKinds.indexOf(nm) !== -1; })) return;
+    const fk = /^a\d+\.acquisition/.test(String(n.p)) ? fileKindsAcq : fileKinds;
+    if (names.some(function (nm) { return fk.indexOf(nm.replace(/\s/g, '').slice(0, 4)) !== -1 || fk.indexOf(nm) !== -1; })) return;
     // 이미 받을 목록에 같은 종류가 있는가 — 세무사님이 넣은 항목·쟁점 서류만 본다. 이 규칙이 바퀴마다 다시 짜는 칸 항목(flow:칸:)끼리는 서로를 세지 않는다
     //  [2026.10.30] 예전엔 형제 칸 항목(같은 매매계약서를 원하는 취득가액·취득일)이 서로를 "이미 있음"으로 봐 다음 바퀴에 모두 지워지고 그다음 바퀴에 다시 올라왔다(받을 증빙 5→0→5, 중요한 순간 알림도 헛울림)
     const sameKind = function (label) { return names.some(function (nm) { return String(label || '').indexOf(nm.slice(0, 4)) !== -1; }); };
