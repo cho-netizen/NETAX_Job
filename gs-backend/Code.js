@@ -23377,7 +23377,8 @@ const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '�
 // (2026.09.19) 새로 생기면서 이 매핑에 business를 추가하는 걸 놓쳤다 — 그래서 사업 사건은
 // 작업관리 납세자를 아무리 입력해도 처리개요의 "납세자(대표) 성명"(bizTaxpayerName)에
 // 전혀 반영되지 않았다. casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_도 같이 고칠 것.
-const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName' };
+// [2026.10.30] 불복 사건개요서(casehandling.html CH_CASE_OVERVIEW_FIELDS_.objection) — 청구인(납세자) 성명도 작업관리 납세자와 맞춘다
+const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName', objection: 'objTaxpayerName' };
 // [2026.09.19 신규] "특정 사건에서는 의뢰인·납세자일 뿐이지, 모든 사람은 최대한 고객으로
 // 확보해야 한다" — 사건개요 안에 실제 살아있는 관계자(양도인/증여인·수증인/상속인/사업
 // 납세자·임직원) 성명이 채워지면 그 이름으로 고객관리에 자동 등록(이미 있으면 그 고객과
@@ -23411,6 +23412,11 @@ const WORK_PARTY_NAME_TO_ID_FIELDS_ = {
     { nameField: 'bizTaxpayerName', idField: 'bizTaxpayerId' },
     { namesField: 'bizTaxpayerExtraNames', idsField: 'bizTaxpayerExtraIds' },
     { namesField: 'bizEmployeeNames', idsField: 'bizEmployeeIds' }
+  ],
+  // [2026.10.30] 불복 사건개요서 — 청구인(대표 1명) + 공동청구인(쉼표구분)
+  objection: [
+    { nameField: 'objTaxpayerName', idField: 'objTaxpayerId' },
+    { namesField: 'objTaxpayerExtraNames', idsField: 'objTaxpayerExtraIds' }
   ]
 };
 // 세목과 무관하게 항상 확인하는 공용 필드 — 공동의뢰인(대표 의뢰인은 이미 고객ID로 관리되고
