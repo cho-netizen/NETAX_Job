@@ -1916,7 +1916,14 @@ function caseFlowEvidence_(c, L, lines) {
   let add = 0, del = 0;
   const today = caseProcToday_();
   Object.keys(want).forEach(function (k, i) {
-    if (list.some(function (e) { return e && e.slotKey === k; }) || has(want[k].label, k)) return;
+    // [2026.10.30 B] 같은 자리 항목이 이미 있으면 이름·설명만 지금 판단대로(예: 값이 말씀으로 찼으면 "말씀 기준·잠정"을 붙임). 장부가 짠 칸 항목이 "확보됨"으로 잘못 매겨져 있으면 되살림
+    const same = list.filter(function (e) { return e && e.slotKey === k; })[0];
+    if (same) {
+      const back = /^flow:칸:/.test(k) && same.status === '확보됨';
+      if (same.label !== want[k].label || back) { same.label = want[k].label; same.note = want[k].note; if (back) { same.status = '미확보'; delete same.확보일; } add++; }
+      return;
+    }
+    if (has(want[k].label, k)) return;
     list.push({ id: 'ev_' + Date.now() + '_f' + i, source: 'requested', label: want[k].label, slotKey: k, fromClassification: null, note: want[k].note, status: '미확보', 요청일: today }); add++;
   });
   // [2026.10.30] 서류를 다 못 읽은 동안엔 빈 칸 → 받을 서류를 새로 짜지 않을 뿐, 지난번에 짠 칸 항목(flow:칸:)은 지우지 않는다(예전엔 "근거가 사라진 항목"으로 지워 받을 증빙이 사라졌다)
