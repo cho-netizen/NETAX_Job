@@ -16493,6 +16493,10 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         if (nxCaseId_ && r && !r.is_error && /^calculate_/.test(String(block.name)) && typeof r.content === 'string' && typeof nxCaseCalcToolSave_ === 'function') {
           try { const sv = nxCaseCalcToolSave_(nxCaseId_, block.name, block.input || {}, r.content); if (sv) r.content += '\n[사건 저장] ' + JSON.stringify(sv); } catch (e) { r.content += '\n[사건 저장 실패] ' + e.message; }
         }
+        // [2026.10.30 비용 — "권하는 안대로"] 넥스가 저장한 그 판은 넥스 미리 읽기가 다시 읽지 않게 표시(cpNexWroteMark_)
+        if (nxCaseId_ && r && !r.is_error && /^(save_file_to_folder|export_to_google_doc)$/.test(block.name) && typeof cpNexWroteMark_ === 'function') {
+          try { let so2 = {}; try { so2 = JSON.parse(String(r.content || '{}').split('\n')[0]); } catch (e) { so2 = {}; } if (so2 && !so2.error && (so2.id || so2.fileId)) cpNexWroteMark_(nxCaseId_, so2.id || so2.fileId); } catch (e) {}
+        }
         // [2026.10.30 2단계 보고서 한 길] 사건이 연결된 대화에서 넥스가 문서를 저장하면 자문 장부 보고서 칸에 적는다(어느 파일인지·언제) — 인용한 저장본은 넥스가 do=advice로 잇는다
         if (nxCaseId_ && r && !r.is_error && block.name === 'save_file_to_folder' && typeof ledgerAdvPut_ === 'function') {
           try { const cr = job_findCase_(nxCaseId_), bi = block.input || {}; let so = {}; try { so = JSON.parse(String(r.content || '{}')); } catch (e) { so = {}; }
@@ -27359,8 +27363,9 @@ function cpWatchCase_(c, opt) {
     fp1[f.id] = { n: f.name, d: f.dir || '', s: Number(f.size) || 0, m: Number(f.modified) || 0 };
     if (first) return;
     const o = fp0[f.id];
-    if (!o) changes.push({ at: now, kind: '새', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: false });
-    else if (o.m !== (Number(f.modified) || 0) || o.s !== (Number(f.size) || 0)) changes.push({ at: now, kind: '바뀜', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: false });
+    const own = cpNexWroteSame_(sv0, f); // [2026.10.30 비용] 넥스가 저장한 그 판이면 넥스는 이미 안다 — 미리 읽기 대상에서 뺀다(장부 다시 모으기는 그대로)
+    if (!o) changes.push({ at: now, kind: '새', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: own, by: own ? '넥스' : undefined });
+    else if (o.m !== (Number(f.modified) || 0) || o.s !== (Number(f.size) || 0)) changes.push({ at: now, kind: '바뀜', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: own, by: own ? '넥스' : undefined });
     else if (o.n !== f.name || o.d !== (f.dir || '')) changes.push({ at: now, kind: '옮김', id: f.id, name: f.name, dir: f.dir || '', m: Number(f.modified) || 0, nexSeen: true, from: (o.d ? o.d + '/' : '') + o.n });
   });
   if (!first) Object.keys(fp0).forEach(function (id) { if (!fp1[id]) changes.push({ at: now, kind: '없어짐', id: id, name: fp0[id].n, dir: fp0[id].d || '', m: 0, nexSeen: true }); });
@@ -27399,6 +27404,20 @@ function cpWatchSummary_(sv) { // 화면·넥스 현황용
 function cpNexReadMark_(c, f, sum) {
   try { caseProcPatch_(c.id, function (sv) { sv.nexRead = sv.nexRead || {}; const o = sv.nexRead[f.id] || {}; sv.nexRead[f.id] = { at: caseProcNow_(), m: Number(f.modified) || 0, name: f.name, sum: String(sum || o.sum || '').slice(0, 160) }; const ch = Array.isArray(sv.fileChanges) ? sv.fileChanges : []; ch.forEach(function (x) { if (x.id === f.id) x.nexSeen = true; }); }); } catch (e) {}
 }
+// [2026.10.30 비용 — 세무사님 "권하는 안대로"] 넥스가 직접 저장한 파일은 넥스 미리 읽기에서 뺀다 — 실측: 넥스가 보고서를 고쳐 저장할 때마다
+//  미리 읽기가 그 파일을 다시 읽어 약 70원이 붙었다(넥스가 이미 아는 내용). 저장한 그 판(수정 시각)만 빼고, 그 뒤 세무사님이 고치면 다시 🆕/✏로 보인다.
+function cpNexWroteMark_(caseId, fileId) {
+  try {
+    const id = String(fileId || '').trim(); if (!caseId || !id) return;
+    const f = DriveApp.getFileById(id), m = f.getLastUpdated().getTime(), name = f.getName();
+    caseProcPatch_(caseId, function (sv) {
+      sv.nexWrote = sv.nexWrote || {}; sv.nexWrote[id] = { at: caseProcNow_(), m: m, name: name };
+      sv.nexRead = sv.nexRead || {}; sv.nexRead[id] = { at: caseProcNow_(), m: m, name: name, sum: '넥스가 저장한 파일(미리 읽기 안 함)' };
+      (Array.isArray(sv.fileChanges) ? sv.fileChanges : []).forEach(function (x) { if (x.id === id && Math.abs((Number(x.m) || 0) - m) < 5000) x.nexSeen = true; });
+    });
+  } catch (e) { console.log('넥스 저장 파일 표시 실패: ' + (e && e.message || e)); }
+}
+function cpNexWroteSame_(sv, f) { const w = sv && sv.nexWrote && sv.nexWrote[f.id]; return !!(w && Math.abs((Number(f.modified) || 0) - (Number(w.m) || 0)) < 5000); }
 function cpNexFileMark_(sv, f) { // 목록 한 줄의 표시 — 🆕 새 / ✏ 바뀜 / ✓ 전에 읽음(시각) / ''
   const r = sv && sv.nexRead && sv.nexRead[f.id];
   if (r && r.unread && r.m === (Number(f.modified) || 0)) return '⚠ 읽지 못함(' + r.at + (r.sum ? ' — ' + r.sum : '') + ')';

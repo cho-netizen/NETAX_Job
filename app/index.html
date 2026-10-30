@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 01:12 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 03:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -56083,6 +56083,25 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     bubble.appendChild(d);
   }
+  // [2026.10.30 비용 — 세무사님 "권하는 안대로"] 사건당 AI 비용이 5,000원을 넘으면 채팅에 알리기만 하고 일은 계속(멈추지 않음).
+  //  실측: 보통 사건 500~1,800원, 가장 비쌌던 가상 불복 약 5,500원. 사건마다 한 번만 알린다(이 기기 기억 — 지워져도 다시 한 번 알릴 뿐). 금액은 이 상수에서 바꾼다
+  var NXAI_CASE_COST_ALERT_WON = 5000;
+  function nxAiCaseCostAlert_(bubble, caseId){
+    if (!bubble || !caseId) return;
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
+    var key = 'nx_cost_alert_' + caseId;
+    try { if (localStorage.getItem(key)) return; } catch (e) {}
+    callGas('case_proc', { caseId: caseId, step: 'aiCost' }).then(function(r){
+      if (!r || !r.ok || !(r.won >= NXAI_CASE_COST_ALERT_WON)) return;
+      try { localStorage.setItem(key, String(Math.round(r.won))); } catch (e) {}
+      var d = document.createElement('div');
+      d.className = 'nxai-usage-foot';
+      d.style.color = '#a15c00';
+      d.textContent = '💰 이 사건 AI 비용이 누적 ' + Math.round(r.won).toLocaleString('ko-KR') + '원으로 ' + NXAI_CASE_COST_ALERT_WON.toLocaleString('ko-KR') + '원을 넘었습니다 — 일은 계속합니다(사건 장부 줄 "🤖 비용 자세히"에서 내역).';
+      bubble.appendChild(d);
+    }).catch(function(){});
+  }
   function nxAiFreeKey_(){ var t = new Date(); return 'nx_ai_free_' + t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2); }
   function nxAiCountFree_(kind){
     try{
@@ -60117,6 +60136,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         onDone: function(reply, actions, usage){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
           nxAiUsageFooter_(thinking, usage);
+          if (usage && usage.usd && convAtSend && convAtSend.caseId) nxAiCaseCostAlert_(thinking, convAtSend.caseId); // [2026.10.30 비용] 사건당 5,000원 넘으면 알림만
           // 유료로 간 질문을 기록 — 반복되는 단순 요청을 찾아 ⚡바로 처리로 옮기는 근거(⚙ AI 설정에서 확인)
           if (usage && usage.usd) callGas('ai_log_paid', { entry: { kind: opts.settings ? 'strategy' : 'chat', model: usage.model, usd: usage.usd, q: opts.displayText || text } }).catch(function(){});
           if (gemFail) thinking.insertAdjacentHTML('afterbegin', '<div class="nxai-local-badge" style="color:#a15c00;background:#fff3e0">🔮 제미니 실패(' + nxAiEsc_(gemFail) + ') → 유료 AI 답변</div>');
