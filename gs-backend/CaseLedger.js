@@ -93,7 +93,7 @@ function ledgerLogTo_(L, e) {
   L.log = (L.log || []).concat([{ at: caseProcNow_(), by: String(e.by || '').slice(0, 6), what: String(e.what || '').slice(0, 30), path: String(e.path || '').slice(0, 80), detail: String(e.detail || '').slice(0, 240) }]).slice(-400);
 }
 
-var LEDGER_GKO_ = { giftDoneeName: '수증자 성명', giftDonorName: '증여자 성명', giftRelation: '증여자와의 관계', giftAmount: '증여재산가액', giftDebtAssumed: '인수채무액', giftDebtProven: '입증된 채무', giftPriorAmount: '10년 내 기증여액', giftPriorPaidTax: '기납부세액', giftPriorDeductionUsed: '이미 쓴 증여공제', giftAppraisalFee: '감정평가수수료', giftDoneeRegNo: '수증자 주민등록번호', giftDonorRegNo: '증여자 주민등록번호', giftDoneeAddress: '수증자 주소', giftDonorAddress: '증여자 주소', trTransferorName: '양도인 성명', ihDeceasedName: '피상속인 성명', ihDeathDate: '상속개시일', 물건목록: '물건 목록' };
+var LEDGER_GKO_ = { isMarriageGift: '혼인증여(혼인일 전후 2년)', isBirthGift: '출산증여(출생·입양일부터 2년)', giftPriorMarriageDeductionUsed: '이미 쓴 혼인·출산공제', giftDoneeName: '수증자 성명', giftDonorName: '증여자 성명', giftRelation: '증여자와의 관계', giftAmount: '증여재산가액', giftDebtAssumed: '인수채무액', giftDebtProven: '입증된 채무', giftPriorAmount: '10년 내 기증여액', giftPriorPaidTax: '기납부세액', giftPriorDeductionUsed: '이미 쓴 증여공제', giftAppraisalFee: '감정평가수수료', giftDoneeRegNo: '수증자 주민등록번호', giftDonorRegNo: '증여자 주민등록번호', giftDoneeAddress: '수증자 주소', giftDonorAddress: '증여자 주소', trTransferorName: '양도인 성명', ihDeceasedName: '피상속인 성명', ihDeathDate: '상속개시일', 물건목록: '물건 목록' };
 // ── 칸 이름(한글) — 기존 이름표를 그대로 쓴다(서식 기준 이름) ──
 function ledgerLabel_(path) {
   const p = String(path || '');
@@ -417,7 +417,7 @@ function ledgerApplyClass_(st, cls) {
 // ── 증여·상속 — 계산기 칸을 장부 줄로(처리개요 단계 끝에서 부름) ──
 // 증여: 처리개요 칸 = 계산기 칸(GI_CALC_KEYS_ + 기납부세액·이미 쓴 공제) → g.<칸>. 값 주인은 그 칸 근거 기록(filled.src)으로 가른다.
 // 상속: 상속 사실(caseProcInhFacts_ — 서류 + 세무사님 세부 답 ihChoices)을 계산기 입력 단위로 → i.<칸>. 세무사님이 장부에서 이 칸을 직접 고치면 그 값이 이긴다(규칙 ①).
-var LEDGER_GIFT_KEYS_ = ['giftDoneeName', 'giftDonorName', 'giftRelation', 'giftAmount', 'giftDebtAssumed', 'giftDebtProven', 'giftPriorAmount', 'giftPriorPaidTax', 'giftPriorDeductionUsed', 'giftAppraisalFee'];
+var LEDGER_GIFT_KEYS_ = ['giftDoneeName', 'giftDonorName', 'giftRelation', 'giftAmount', 'giftDebtAssumed', 'giftDebtProven', 'giftPriorAmount', 'giftPriorPaidTax', 'giftPriorDeductionUsed', 'giftAppraisalFee', 'isMarriageGift', 'isBirthGift', 'giftPriorMarriageDeductionUsed']; // [2026.10.31 I] 혼인·출산공제 칸(_기능부족신고 10-30 — 장부 계산이 혼인·출산공제를 못 넣던 것)
 function ledgerFromGiftInh_(c, items) {
   if (!c || !/^(gift|inheritance)$/.test(c.세목)) return null;
   const sv = caseProcLoad_(c.id) || {}, filled = sv.filled || {}, ov = c.사건개요 || {}, ops = [];
@@ -479,6 +479,10 @@ function ledgerGiftInput_(c, L) {
   if (dg(row('g.giftPriorPaidTax'))) input.priorPaidTax = dg(row('g.giftPriorPaidTax'));
   if (dg(row('g.giftPriorDeductionUsed'))) input.priorRelationDeductionUsed = dg(row('g.giftPriorDeductionUsed'));
   if (dg(row('g.giftAppraisalFee'))) input.appraisalFeeAmount = dg(row('g.giftAppraisalFee'));
+  const yes = function (x) { return x === true || /^(true|1|예|해당|맞)/.test(String(x == null ? '' : x).trim()); };
+  if (yes(row('g.isMarriageGift'))) input.isMarriageGift = true;
+  if (yes(row('g.isBirthGift'))) input.isBirthGift = true;
+  if (dg(row('g.giftPriorMarriageDeductionUsed'))) input.priorMarriageOrBirthDeductionUsed = dg(row('g.giftPriorMarriageDeductionUsed'));
   const open = ledgerQuestions_(c.id).filter(function (q) { return /^g\.giftPrior/.test(q.path); });
   return { input: input, gaps: open.length ? open.map(function (q) { return q.path; }) : [] };
 }
@@ -1013,7 +1017,38 @@ function ledgerView_(c) {
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
-  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L, true), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows) };
+  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L, true), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows), 도구카드: ledgerToolCard_(L) };
+}
+// [2026.10.31 J — 할 일 장부 4번 "도구 카드·성적표" / 세무사님 "한번에 몽땅 완전자동모드로 끝내라"]
+//  넥스가 이 사건에서 부른 도구를 장부에 남긴다 — 도구 이름·성공/실패·실패 까닭·도구 부족 신고. 사건마다 "어느 도구를 썼고 어디서 막혔나"가 남아
+//  다음 고칠 거리(빠진 도구·자주 실패하는 도구)를 찾는 바탕이 된다(토큰 0, 고객 값은 적지 않음 — 실패 까닭 앞부분만).
+function ledgerToolLogPut_(caseId, items) {
+  if (!caseId || !Array.isArray(items) || !items.length) return 0;
+  return ledgerMutate_(caseId, function (L) {
+    const log = Array.isArray(L.toolLog) ? L.toolLog : [], at = caseProcNow_();
+    items.forEach(function (x) {
+      if (!x || !x.tool) return;
+      log.push({ at: at, tool: String(x.tool).slice(0, 60), ok: !!x.ok, why: x.ok ? '' : String(x.why || '').replace(/\s+/g, ' ').slice(0, 140), gap: x.gap ? String(x.gap).replace(/\s+/g, ' ').slice(0, 160) : '' });
+    });
+    L.toolLog = log.slice(-400);
+    return items.length;
+  });
+}
+// 성적표 — 도구마다 부른 수·성공·실패·실패 까닭(셋까지)·마지막으로 부른 때, 그리고 도구 부족 신고. 많이 부른 도구부터
+function ledgerToolCard_(L) {
+  const log = (L && Array.isArray(L.toolLog)) ? L.toolLog : [], by = {};
+  log.forEach(function (x) {
+    const t = by[x.tool] || (by[x.tool] = { 도구: x.tool, 부름: 0, 성공: 0, 실패: 0, 실패까닭: [], 마지막: '' });
+    t.부름++; t.마지막 = x.at || t.마지막;
+    if (x.ok) t.성공++; else { t.실패++; if (x.why && t.실패까닭.indexOf(x.why) === -1 && t.실패까닭.length < 3) t.실패까닭.push(x.why); }
+  });
+  const tools = Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.부름 - a.부름; });
+  const fail = tools.reduce(function (s, t) { return s + t.실패; }, 0);
+  const gaps = log.filter(function (x) { return x.gap; }).map(function (x) { return { 때: x.at, 모자람: x.gap }; }).slice(-20);
+  return {
+    부름: log.length, 도구수: tools.length, 실패: fail, 도구: tools.slice(0, 40), 모자람: gaps,
+    줄: log.length ? '🧰 넥스 도구 ' + tools.length + '가지 ' + log.length + '번 부름 · 실패 ' + fail + '번' + (gaps.length ? ' · 도구 부족 신고 ' + gaps.length + '건' : '') : ''
+  };
 }
 // [2026.10.29] 세무사님 "ai없이 수동으로 사건을 처리할때 사용자가 사건장부를 수시로 참조해야 하는 것이 아닌가?" → "권장대로 하자"(처리개요 맨 위 + 사건 화면 어디서나)
 //  사건을 다루는 화면마다 맨 위 띠와 옆 패널이 부르는 가벼운 묶음 — 흐름(띠·마지막 한 바퀴·가설·사건개요·처리방향·확보할 증빙) + 남은 물음. 서류 사실 전부(kb)는 싣지 않는다
@@ -1025,7 +1060,7 @@ function ledgerFlowBrief_(c) {
   const calc = rows.filter(function (r) { return !/^(q:|doc:|chk:)/.test(r.path) && /^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null; }).map(function (r) { return { label: r.label, 값: r.값, state: r.state, kind: r.kind, 이음: (r.fx || []).length }; });
   // [2026.10.30 비용 기록] 이 사건 AI 비용 누적 — 장부 띠에 함께(같은 2분 주기, 서버를 따로 부르지 않음). 시트 읽기만, 0원
   let cost = null; try { if (typeof aiCostCaseSummary_ === 'function') { const s = aiCostCaseSummary_(c.id); cost = { n: s.n, won: s.won, parts: s.parts, byKind: s.byKind, line: s.line }; } } catch (e) { cost = { error: String(e && e.message || e).slice(0, 80) }; }
-  return { ok: true, 사건: (c.사건명 || c.고객명 || ''), 흐름: fl, 물음: open, 칸: calc.slice(0, 80), AI비용: cost };
+  return { ok: true, 사건: (c.사건명 || c.고객명 || ''), 흐름: fl, 물음: open, 칸: calc.slice(0, 80), AI비용: cost, 도구카드: (function () { const k = ledgerToolCard_(L); return { 줄: k.줄, 부름: k.부름, 실패: k.실패, 모자람: k.모자람.length }; })() };
 }
 // [2026.10.29 넥스 1] 넥스용 장부 요약 — 세무사님 "ai가 처리할때는 사건장부 속의 정보를 적재적소에 제대로 활용하지 못하고 있다는 것인가?" → "그래라"
 //  예전엔 넥스가 장부를 보려면 장부 전체(ledger_read — 6,000자에서 잘려 뒤쪽 흐름이 늘 빠짐)를 따로 불러야 했고, 사건 현황(case_status·caseproc)에는 흐름이 없었다.
@@ -1062,6 +1097,7 @@ function ledgerNexBrief_(c, max) {
     공부사실: (fl.공부 || []).map(function (p) { return { 소재지: cut(p.소재지, 60), 받음: (p.받음 || []).map(function (it) { return cut(it.label, 20) + ': ' + cut(it.v, 70); }).slice(0, 8), 못받음: (p.못받음 || []).map(function (it) { return cut(it.label, 20) + ': ' + cut(it.err, 50); }).slice(0, 4) }; }),
     조회안한필지: (fl.조회대상 || []).filter(function (t) { return !t.조회함; }).map(function (t) { return cut(t.소재지, 60) + ' (' + cut(t.어디서, 40) + ')'; }),
     칸값: calc,
+    도구카드: (function () { const k = ledgerToolCard_(L); return k.부름 ? { 줄: k.줄, 자주실패: k.도구.filter(function (t) { return t.실패; }).slice(0, 5).map(function (t) { return t.도구 + " 실패 " + t.실패 + "/" + t.부름 + (t.실패까닭[0] ? " — " + cut(t.실패까닭[0], 80) : ""); }), 부족신고: k.모자람.slice(-5).map(function (g) { return cut(g.모자람, 100); }) } : null; })(), // [2026.10.31 J] 이 사건에서 넥스가 쓴 도구·막힌 곳 — 같은 도구가 또 실패하면 다른 길로
     자문: ledgerAdvBrief_(c, L), // [2026.10.30 2단계] 쟁점·대안·근거·위험·권고·보고서(저장본 이름·세액 붙임)
     거래사슬: ((fl.사슬 && fl.사슬.rows) || []).map(function (r) { return { 물건: cut(r.물건, 60), 납세자위치: r.납세자위치, 고리: (r.고리 || []).map(function (s) { return s.at + ' ' + (s.kind === '등기' ? '등기 ' + s.what + ' ' + s.to : s.what + ' ' + s.to) + (s.밖 ? ' [사슬 밖]' : ''); }).slice(0, 8) }; }),
     사슬밖계약서: ((fl.사슬 && fl.사슬.off) || []).map(function (o) { return o.file + ' — ' + cut(o.why, 120); }),

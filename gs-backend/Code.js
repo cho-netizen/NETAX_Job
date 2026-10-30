@@ -16573,6 +16573,17 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '도구 "' + block.name + '" 실행 중 오류: ' + String(err && err.message || err) };
       }
     });
+    // [2026.10.31 J — 할 일 장부 4번 도구 카드] 사건이 연결된 대화면 넥스가 부른 도구마다 성공/실패·실패 까닭·도구 부족 신고를 그 사건 장부에 남긴다(한 묶음에 한 번 쓰기, 0원)
+    if (nxCaseId_ && typeof ledgerToolLogPut_ === 'function') {
+      try {
+        ledgerToolLogPut_(nxCaseId_, toolUseBlocks.map(function (b, i) {
+          const r = toolResults[i] || {}, s = typeof r.content === 'string' ? r.content : '';
+          const bad = !!r.is_error || /^\s*\{\s*"(error|오류)"/.test(s);
+          const gi = b.input || {};
+          return { tool: b.name, ok: !bad, why: bad ? s.replace(/^\s*\{\s*"(error|오류)"\s*:\s*"?/, '').slice(0, 140) : '', gap: /^(report_capability_gap|report_tool_gap)$/.test(b.name) ? [gi.userWanted || gi.want, gi.neededTool || gi.whyBlocked].filter(Boolean).join(' — ').slice(0, 160) : '' };
+        }));
+      } catch (e) { console.error('도구 카드 기록 실패: ' + (e && e.message || e)); }
+    }
 
     // 도구 호출이 있었다 — 아직 끝난 게 아니다. 이번 라운드의 원본 응답(assistant)과 도구
     // 실행결과(tool_result)를 클라이언트에 돌려주면, 클라이언트가 대화에 이어붙여서 즉시
@@ -52628,7 +52639,8 @@ function trcHouseUse_(c, loc) {
           const ls = [cr.소재지].concat(cr.소재지목록 || []).filter(Boolean).map(function (l) { return String(l).replace(/^[+\s]+/, ''); });
           if (!ls.some(function (l) { return tcLocSame_(l, loc) || caseProcSamePlace_(l, '', loc, ''); })) return false;
           let u = cr.건물용도 && USE.exec(String(cr.건물용도));
-          if (!u) { let tx0 = ''; try { tx0 = String(tc_docText_(x.f) || '').slice(0, 1500); } catch (e) {} u = new RegExp('용\\s*도\\s*[:：]?\\s*' + USE.source).exec(tx0); }
+          if (!u) { let tx0 = ''; try { tx0 = String(tc_docText_(x.f) || '').slice(0, 1500); } catch (e) {} u = new RegExp('용\\s*도\\s*[:：]?\\s*' + USE.source).exec(tx0); // [2026.10.31 G] 표준 매매계약서 「건물 구조·용도 | 철근콘크리트조 아파트」처럼 용도와 쓰임 사이에 구조 글이 끼는 모양 — 같은 줄 30자 안까지(소재지 줄의 단지 이름 "○○아파트"는 용도 낱말이 없어 안 걸림)
+            if (!u) u = new RegExp('용\\s*도[^\\n]{0,30}?' + USE.source).exec(tx0); }
           if (u) ctHit = '매매계약서(' + x.f.name + ') 부동산의 표시 건물 용도: ' + u[u.length - 1].replace(/\s+/g, '');
           return !!ctHit;
         });
