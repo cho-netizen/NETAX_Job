@@ -1329,6 +1329,14 @@ async function createNewDoc(kind){
       if (tres && tres.found && tres.content) mdContent = tres.content;
     } catch (err) { /* 조용히 기본 골격 사용 */ }
   }
+  // [2026.10.31 초안 없앰 — 세무사님 승인 ② "넣어 드림"] 사건이 고른 상태로 새 종합검토서를 열면 장부의 보류·추정·받을 서류 줄을 "확인 필요 사항" 표에 미리 넣는다(양식 자리만 — 모양은 그대로)
+  if (kind === 'review' && c && c.id){
+    try {
+      const rn = await callGas('case_proc', { caseId: c.id, step: 'reviewNotes' });
+      const rows = (rn && rn.ok && Array.isArray(rn.rows)) ? rn.rows : [];
+      if (rows.length) mdContent = rwFillReviewNotes_(mdContent, rows);
+    } catch (err) { /* 못 받으면 양식 그대로 */ }
+  }
   if (kind === 'reference') mdContent = rwShapeReviewMemo_(mdContent, { semok: semokLabel, issue: rwIssue_, date: todayStr, client: c ? (c.고객명 || '') : '' });
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
@@ -1363,6 +1371,21 @@ function addFilingDoc(){ createNewDoc('filing'); }
 function addReferenceDoc(){ createNewDoc('reference'); }
 // [2026.10.30] 검토조서 틀 다듬기 — 틀(드라이브 검토조서.md 또는 위 내장 틀)의 "양도/증여/상속 시작~끝"·"정리용/쟁점용 시작~끝" 묶음 중
 //  사건 세목·갈래에 맞는 것만 남기고, 작성일·납세자·쟁점 이름을 채운다. 세목을 모르면(사건 없이 만들 때) 세목 묶음은 셋 다 남긴다.
+// [2026.10.31] 양식의 "## 확인 필요 사항" 표 — 비어 있는 ✍️ 예시 줄을 장부 줄로 바꾼다(표 머리·다른 절은 그대로). 표를 못 찾으면 양식 그대로
+function rwFillReviewNotes_(md, rows){
+  const lines = String(md || '').split('\n');
+  const h = lines.findIndex(function(l){ return /^##\s+확인 필요 사항/.test(l); });
+  if (h < 0) return md;
+  let sep = -1;
+  for (let i = h + 1; i < Math.min(lines.length, h + 8); i++){ if (/^\|\s*-+/.test(lines[i])){ sep = i; break; } if (/^##\s/.test(lines[i])) break; }
+  if (sep < 0) return md;
+  let end = sep + 1;
+  while (end < lines.length && /^\|/.test(lines[end])) end++;
+  const cell = function(s){ return String(s == null ? '' : s).replace(/\|/g, '/').replace(/\n/g, ' '); };
+  const body = rows.map(function(r, i){ return '| ' + (i + 1) + ' | ' + cell(r.확인할것) + ' (' + cell(r.상태) + ', 사건 장부) | ' + cell(r.어디서) + ' | | |'; });
+  const keep = lines.slice(sep + 1, end).filter(function(l){ return !/✍️\[AI 작성/.test(l); });
+  return lines.slice(0, sep + 1).concat(body, keep, lines.slice(end)).join('\n');
+}
 function rwShapeReviewMemo_(md, o){
   let out = String(md || '');
   const semok = String((o && o.semok) || '');

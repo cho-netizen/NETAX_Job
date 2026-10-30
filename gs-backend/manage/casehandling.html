@@ -713,9 +713,9 @@
       // [2026.10.18 탭연결 7번] 처리 중에도 기한(법정일·처리시한)과 작업관리 하위업무가 보이고, 끝낸 하위업무는 여기서 바로 체크한다
       // [2026.10.22 1단계 — AI 없이 직접] 세무사님 "AI없이 내가 직접 작업하는 것에 불편함이 없도록" / "GAS로 대부분의 업무를 처리할 수 있도록" — AI 창에서만 되던 사건처리 GAS 도구를 여기서 바로(0원)
       '<div class="card" id="chGasCard">' +
-      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>⚡ GAS 사건처리</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 서류 읽기·칸 채우기 → 질문 답하기 → 세액계산·서식·검토서</span></div>' +
+      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>GAS 도구</b><span style="font-size:12px; color:var(--sub);">AI 없이 0원 — 필요한 도구를 그때그때 하나씩(정해진 순서 없음, 하신 일은 사건 기록부에)</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn">⚡ GAS로 처리(서류 읽기·칸 채우기부터)</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chLedgerBtn" class="ghost-btn" title="사건의 모든 사실을 한 장부에 — 칸마다 값·주인(세무사님/넥스/서류)·상태(확정/추정/물어볼 것/증빙 받을 것/보류). 여기서 바로 값을 넣고, 물어볼 것에 답하고, 장부로 세액을 계산합니다 — 넥스가 쓰는 것과 같은 장부">📒 사건 장부</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"><button type="button" id="chGasRunBtn" class="ghost-btn" title="읽을 목록의 서류를 읽어 장부에 적습니다">📖 서류 읽기</button><button type="button" id="chGasFillBtn" class="ghost-btn" title="장부 값을 세액계산기 칸으로 옮기고 답하실 질문을 셉니다">칸 채우기</button><button type="button" id="chGasStatusBtn" class="ghost-btn">📊 반영 현황표</button><button type="button" id="chGasFactsBtn" class="ghost-btn">🔎 판단 재료 보기</button><button type="button" id="chGasFixBtn" class="ghost-btn" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌립니다 — 넥스가 쓰는 것과 같은 도구">✏ 칸 값 고치기</button><button type="button" id="chLedgerBtn" class="ghost-btn" title="사건의 모든 사실을 한 장부에 — 칸마다 값·주인(세무사님/넥스/서류)·상태(확정/추정/물어볼 것/증빙 받을 것/보류). 여기서 바로 값을 넣고, 물어볼 것에 답하고, 장부로 세액을 계산합니다 — 넥스가 쓰는 것과 같은 장부">📒 사건 장부</button><button type="button" id="chGasScopeBtn" class="ghost-btn" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다">📂 읽을 목록</button></div>' +
       '<div id="chGasBody" style="margin-top:8px;"></div>' +
       '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
@@ -875,7 +875,7 @@
     document.getElementById('chLawOpenBtn').addEventListener('click', function(){
       if (typeof goToLawSearch_ === 'function') goToLawSearch_(c.id);
     });
-    chBindGasCard_(c); // [2026.10.22 1단계] ⚡ GAS 사건처리 칸
+    chBindGasCard_(c); // [2026.10.22 1단계] GAS 도구 칸
     document.getElementById('chTaxCalcOpenBtn').addEventListener('click', function(){
       if (typeof goToTaxCalc_ === 'function') goToTaxCalc_(c.id);
     });
@@ -1137,8 +1137,8 @@
   // 저장한 걸 여기서 낡은 값 기준으로 덮어써버릴 수 있었다. 같은 방식으로 잠금을 건다.
   // [2026.09 버그수정] chSaveLog_와 같은 이유 — 성공 시 loadChCases_()로 카드 전체를 다시
   // 그리면 그 사이 입력 중이던 다른 폼(사건개요서 등)이 날아갔다. 증빙목록 요약만 갱신한다.
-  // [2026.10.22 1단계 — AI 없이 직접] ⚡ GAS 사건처리 칸 — AI 창의 사건처리와 같은 부품(nxAiCaseProcRun_)을 넥스 없이(gasOnly) 이 화면에 띄운다.
-  //  서류 읽기·칸 채우기 뒤 멈추고(질문에 답하시도록) 단추로 세액계산·서식·검토서. 반영 현황표·판단 재료는 읽기만(0원). 하신 일은 사건 기록부에 남는다
+  // [2026.10.22 1단계 — AI 없이 직접] GAS 도구 칸 — AI 창의 사건처리와 같은 부품(nxAiCaseProcRun_)을 넥스 없이(gasOnly) 이 화면에 띄운다.
+  //  [2026.10.31] 누른 도구 하나만 돌고 멈춘다(질문에 답하시도록) — 이어서 쓸 도구는 카드의 단추 줄에서. 반영 현황표·판단 재료는 읽기만(0원). 하신 일은 사건 기록부에 남는다
   function chBindGasCard_(c){
     var body = document.getElementById('chGasBody'); if (!body) return;
     var tokOk = function(){ try { return !!sessionStorage.getItem('nxManageSessionToken'); } catch (e) { return false; } };
@@ -1161,11 +1161,11 @@
           var parts = [];
           if (r.계산 && r.계산.세액 != null) parts.push('세액 <b>' + Number(r.계산.세액).toLocaleString('ko-KR') + '원</b>(' + esc(r.계산.날짜) + ')');
           if (r.서식 && r.서식.파일) parts.push('서식 PDF' + (r.서식.서식수 ? ' ' + r.서식.서식수 + '개' : '') + ' <a href="' + drive(r.서식.파일) + '" target="_blank" rel="noopener">[열기]</a>');
-          if (r.검토서 && r.검토서.파일) parts.push('종합검토서 초안 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a> <button type="button" class="ghost-btn" data-gas="writer" style="font-size:11.5px;">✍ 문서작성에서 열기</button>');
-          if (r.보류) parts.push('보류 ' + r.보류 + '건(검토서 "추가로 확인할 사항")');
+          if (r.검토서 && r.검토서.파일) parts.push('종합검토서 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a> <button type="button" class="ghost-btn" data-gas="writer" style="font-size:11.5px;">✍ 작성관리에서 열기</button>');
+          if (r.보류) parts.push('보류 ' + r.보류 + '건(장부에 남음 → 종합검토서 "확인 필요 사항")');
           return '<div>✅ GAS가 보기에 남은 일이 없습니다' + (parts.length ? ' — ' + parts.join(' · ') : '') + '</div>';
         };
-        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : n.do === 'scope' ? '📂 읽을 목록' : '⚡ GAS로 처리'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
+        h += nx.length ? '<div><b>다음 할 일</b>' + nx.map(function(n){ var lab = n.do === 'calc' ? '🧮 세액계산 열기' : n.do === 'scope' ? '📂 읽을 목록' : n.do === 'report' ? '✍ 종합검토서 쓰기' : n.do === 'fill' ? '칸 채우기' : n.do === 'output' ? '🖨 서식 대조로' : '📖 서류 읽기'; return '<div style="margin:3px 0 0 8px;">· ' + esc(n.text) + ' <button type="button" class="ghost-btn" data-gas="' + esc(n.do) + '" style="font-size:11.5px;">' + lab + '</button></div>'; }).join('') + '</div>' : doneLine();
         // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태와 사건별 넥스 미리 읽기 스위치(진행 중 사건만 깨움, 22~07시는 아침에)
         if (r.서류변동){ var w = r.서류변동; h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(다음 틱·처리개요 새로 고침 때)') + (w.넥스읽음수 ? ' · 넥스가 읽은 파일 ' + w.넥스읽음수 + '개' : '') + (w.넥스마지막 ? ' · 넥스 미리 읽기 마지막 ' + esc(w.넥스마지막) : '') + ' <button type="button" class="ghost-btn" data-gas="nexpre" data-off="' + (w.넥스미리읽기끔 ? '1' : '0') + '" style="font-size:11.5px;" title="새 서류가 들어오면 넥스(AI)가 미리 읽고 영향이 있어 보일 때만 한 줄 보고합니다(계산기 칸은 바꾸지 않음). 끄면 GAS 감시만 합니다">' + (w.넥스미리읽기끔 ? '🤖 넥스 미리 읽기 켜기' : '🤖 넥스 미리 읽기 끄기') + '</button></div>'; }
         if ((r.기록 || []).length) h += '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">📓 최근 작업 기록(누가·언제·무엇) ' + r.기록.length + '줄</summary><div style="margin:4px 0 0 8px; font-size:12px;">' + r.기록.slice().reverse().map(function(l){ return esc(l); }).join('<br>') + '</div></details>';
@@ -1176,7 +1176,9 @@
           else if (k === 'calc'){ var tb = document.getElementById('chTaxCalcOpenBtn'); if (tb) tb.click(); }
           else if (k === 'scope'){ var sb = document.getElementById('chGasScopeBtn'); if (sb) sb.click(); } // [2026.10.28] 읽을 파일 목록 체크
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
-          else if (k === 'gas' && window.chGasKeep_ && window.chGasKeep_.caseId === c.id && window.chGasKeep_.box && document.body.contains(window.chGasKeep_.box)){ try { window.chGasKeep_.box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {} } // 진행 카드가 살아 있으면 다시 돌리지 않고 그 카드로 간다
+          else if (k === 'report'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, {}); } // [2026.10.31 초안 없앰] 작성관리에서 양식으로 — 장부 보류·추정 줄이 "확인 필요 사항"에 미리 들어감
+          else if ((k === 'fill' || k === 'output') && window.chGasKeep_ && window.chGasKeep_.caseId === c.id && window.chGasKeep_.box && document.body.contains(window.chGasKeep_.box)){ try { window.chGasKeep_.box.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {} } // 도구 카드가 살아 있으면 그 카드(질문·도구 단추)로 간다
+          else if (k === 'fill' || k === 'output') document.getElementById('chGasFillBtn').click();
           else document.getElementById('chGasRunBtn').click();
         }); });
       }).catch(function(e){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다: ' + esc(e && e.message || e) + '</span>'; });
@@ -1185,13 +1187,16 @@
     window.chGasReloadNow_ = loadNow; // GAS 처리가 끝나면 다시 불러 다음 할 일을 맞춘다
     // [2026.10.22 묶음 ㄱ4] 진행 카드를 화면을 옮겼다 와도 그대로 — 세액계산 화면으로 갔다 돌아오면 사건 화면이 다시 그려져 ①~⑦ 카드가 사라지던 것(가상양도7 표 32·39)
     if (window.chGasKeep_ && window.chGasKeep_.caseId === c.id && window.chGasKeep_.box){ body.innerHTML = ''; body.appendChild(window.chGasKeep_.box); }
-    document.getElementById('chGasRunBtn').addEventListener('click', function(){
+    // [2026.10.31 묶음 해체] 📖 서류 읽기·칸 채우기는 따로 — 같은 서버 입구를 넥스도 case_read·calc_fill로 부른다
+    var runTool = function(tool){
       if (!tokOk()) return;
       if (typeof nxAiCaseProcRun_ !== 'function'){ showToast('사건처리 도구를 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', 'error'); return; }
       body.innerHTML = ''; var box = document.createElement('div'); box.className = 'nxai-cp-screen'; body.appendChild(box);
       window.chGasKeep_ = { caseId: c.id, box: box }; window.nxCpLive_ = null;
-      nxAiCaseProcRun_(box, c.id, { gasOnly: true, screen: true });
-    });
+      nxAiCaseProcRun_(box, c.id, { gasOnly: true, screen: true, tool: tool });
+    };
+    document.getElementById('chGasRunBtn').addEventListener('click', function(){ runTool('read'); });
+    document.getElementById('chGasFillBtn').addEventListener('click', function(){ runTool('fill'); });
     document.getElementById('chGasStatusBtn').addEventListener('click', function(){
       if (!tokOk()) return;
       body.innerHTML = '<div class="log-empty">반영 현황표 만드는 중…</div>';
@@ -1242,12 +1247,12 @@
           + (fl ? '<button type="button" class="ghost-btn" data-lg-tab="tools">⑤ 도구 — 공부 조회 ' + esc(fb0.공부 || 0) + '필지 · 추정 ' + esc(fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교</button>' : '')
           + '<button type="button" class="ghost-btn" data-lg-tab="adv">⑥ 자문 — 쟁점 ' + esc(((r.자문 || {}).쟁점 || []).length) + ' · 대안 ' + esc(((r.자문 || {}).대안 || []).length) + ' · 권고 ' + esc(((r.자문 || {}).권고 || []).length) + ' · 보고서 ' + esc(((r.자문 || {}).보고서 || []).length) + '</button>'
           + '</div></div>';
-        // ⓪ 사건 흐름 — 마지막 한 바퀴 · 가설 · 사건개요 · 처리방향 · 확보할 증빙
+        // ⓪ 사건 흐름 — 마지막 장부 적기 · 가설 · 사건개요 · 처리방향 · 확보할 증빙
         if (fl){
           var lastR = fl.마지막 || null, ST_KO = { '가설': '가설(서류 확인 전)', '확정': '정함', '추정': '추정', '물어볼것': '물어볼 것', '증빙받을것': '받을 것', '보류': '보류', '무시': '무시' };
           var OWNK = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: 'GAS', 추정: '추정', 계산: '계산', 가설: '의뢰서 등', 질문: '' };
           var fh = '<div data-lg-sec="flow" style="display:none; margin-top:8px;">';
-          fh += '<div><b>마지막 한 바퀴</b> <span style="color:var(--sub);">' + (lastR ? esc(lastR.at) + (lastR.why ? ' · ' + esc(lastR.why) : '') + ' → ' + esc((lastR.diff || []).length ? lastR.diff.join(' · ') : '바뀐 것 없음') : '아직 돈 적이 없습니다 — 「이 사건 처리하자」를 누르거나, 사건 폴더에 서류가 들어오거나, 화면에서 사건개요·처리방향을 저장하면 돕니다') + '</span></div>';
+          fh += '<div><b>마지막 장부 적기</b> <span style="color:var(--sub);">' + (lastR ? esc(lastR.at) + (lastR.why ? ' · ' + esc(lastR.why) : '') + ' → ' + esc((lastR.diff || []).length ? lastR.diff.join(' · ') : '바뀐 것 없음') : '아직 적은 적이 없습니다 — 📖 서류 읽기·칸 채우기를 누르거나, 사건 폴더에 서류가 들어오거나, 화면에서 사건개요·처리방향을 저장하면 적습니다') + '</span></div>';
           if (lastR && (lastR.rounds || []).length > 1) fh += '<div style="color:var(--sub); font-size:11.5px; margin-top:2px;">그 전: ' + lastR.rounds.slice(0, -1).reverse().slice(0, 4).map(function(x){ return esc(x.at) + ' ' + esc(x.why || '') + ' → ' + esc((x.diff || []).join(' · ') || '바뀐 것 없음'); }).join(' / ') + '</div>';
           var hy = fl.가설 || [];
           fh += '<div style="margin-top:8px;"><b>가설</b> <span style="color:var(--sub);">의뢰서·상담 메모·대화가 말한 것 ' + esc(hy.length) + '건' + (fl.가설때 ? ' · ' + esc(fl.가설때) : '') + ' — 서류가 아니라서 계산 칸에 넣지 않고, 사건개요·확보할 증빙·질문의 출발점으로만 씁니다</span>'
@@ -1268,7 +1273,7 @@
           var evs = (fl.증빙 || []).slice().sort(function(a, b){ var o = { '증빙받을것': 0, '보류': 1, '확정': 2, '무시': 3 }; return (o[a.state] == null ? 9 : o[a.state]) - (o[b.state] == null ? 9 : o[b.state]); });
           // [2026.10.29 계획서 3판 4단계] 받는 곳 — 도구(있는 조회로 가져옴)·세무사님(등기부 열람·홈택스 등)·고객. 보이기만 합니다(고객에게 보내지 않음 — 세무사님 10-29 "고객에게 직접 요청하는 것은 아니다")
           var WHERE_KO = { 도구: '🔎 도구로 조회', 세무사님: '세무사님', 고객: '고객' };
-          fh += '<div style="margin-top:8px;"><b>확보할 증빙</b> <span style="color:var(--sub);">받을 것 ' + esc(fb0.증빙미확보 || 0) + ' · 확보 ' + esc(fb0.증빙확보 || 0) + ' — 사건개요(세목·사건분류·물건 수)·빈 칸·가설 쟁점이 요구하는 서류. 한 바퀴마다 다시 짜고, 근거가 사라진 GAS 항목은 뺍니다(확보한 것·세무사님이 넣은 것은 그대로). 받는 곳이 「도구로 조회」인 것은 ⑤ 도구에서 바로 가져옵니다</span>'
+          fh += '<div style="margin-top:8px;"><b>확보할 증빙</b> <span style="color:var(--sub);">받을 것 ' + esc(fb0.증빙미확보 || 0) + ' · 확보 ' + esc(fb0.증빙확보 || 0) + ' — 사건개요(세목·사건분류·물건 수)·빈 칸·가설 쟁점이 요구하는 서류. 장부를 적을 때마다 다시 짜고, 근거가 사라진 GAS 항목은 뺍니다(확보한 것·세무사님이 넣은 것은 그대로). 받는 곳이 「도구로 조회」인 것은 ⑤ 도구에서 바로 가져옵니다</span>'
             + (evs.length ? tbl(['서류', '상태', '받는 곳', '왜', '만든 이', '요청일 · 확보일'], evs.map(function(x){ var d = x.서류 || {}; var col = x.state === '증빙받을것' ? ' color:#a60;' : ''; return '<tr>' + cell(d.label || x.label, 300) + cell(x.state === '확정' ? '확보' : (ST_KO[x.state] || x.state), 70, col) + cell((WHERE_KO[x.받는곳] || x.받는곳 || '') + (x.도구확보 ? ' — 조회로 받음(' + x.도구확보 + ')' : ''), 220, x.받는곳 === '도구' ? (x.도구확보 ? ' color:#2a7;' : ' color:#2563eb;') : '') + cell(d.note || x.why || '', 380, ' color:var(--sub);') + cell(OWNK[x.owner] != null ? OWNK[x.owner] : x.owner, 80) + cell([d.요청일, d.확보일].filter(Boolean).join(' · '), 160, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">확보할 증빙이 아직 없습니다</div>') + '</div>';
           fh += '</div>';
           h += fh;
@@ -1321,7 +1326,7 @@
             if (st === '물어볼것' || st === '증빙받을것' || st === '추정'){
               (x.cands || []).forEach(function(cd, i){ act += '<button type="button" class="ghost-btn" data-lg-pick="' + esc(x.path) + '" data-lg-v="' + esc(typeof cd.v === 'object' ? JSON.stringify(cd.v) : String(cd.v)) + '" title="' + esc(cd.src || '') + '" style="padding:1px 6px; font-size:11.5px;">' + esc(cd.값 || String(cd.v)) + '</button> '; });
               act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">넣기</button> ';
-              act += '<button type="button" class="ghost-btn" data-lg-dec="보류" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="진행하되 검토서 추가 확인 사항에">보류</button> <button type="button" class="ghost-btn" data-lg-dec="무시" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">무시</button>';
+              act += '<button type="button" class="ghost-btn" data-lg-dec="보류" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="진행하되 종합검토서 확인 필요 사항에">보류</button> <button type="button" class="ghost-btn" data-lg-dec="무시" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">무시</button>';
               if (st === '추정') act += ' <button type="button" class="ghost-btn" data-lg-dec="확인" data-lg-path="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;" title="이 값을 확정으로">확인</button>';
             } else {
               act += '<input type="text" data-lg-in="' + esc(x.path) + '" placeholder="새 값" style="width:120px; font-size:11.5px;"> <button type="button" class="ghost-btn" data-lg-set="' + esc(x.path) + '" style="padding:1px 6px; font-size:11.5px;">고치기</button>';

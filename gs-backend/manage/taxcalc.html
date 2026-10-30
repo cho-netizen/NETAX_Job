@@ -4277,10 +4277,10 @@ async function runAiAutoFillInheritanceAI_(){
 //  (같은 사건을 두 방식으로 처리하지 않게). 예전 동작(AI가 서류 글을 보고 칸 채우기)은 tcRunAutoCalcOld_로 남아,
 //  "처리하자" 흐름 안에서 입력값이 비었을 때 세무사님이 승인하는 예비 단계(aichat.html)에서만 쓴다.
 // [2026.10.22 1단계 — AI 없이 직접] 세무사님 "AI없이 내가 직접 작업하는 것에 불편함이 없도록" / "GAS로 대부분의 업무를 처리할 수 있도록"
-//  사건처리(GAS — 처리개요 화면 ⚡ GAS 사건처리)가 서류에서 읽어 채운 처리개요·계산기 입력을 계산기 칸에 다시 채운다(0원). 사건을 고를 때 하는 것과 같은 길
+//  사건처리(GAS — 처리개요 화면 GAS 도구 📖 서류 읽기·칸 채우기)가 서류에서 읽어 채운 처리개요·계산기 입력을 계산기 칸에 다시 채운다(0원). 사건을 고를 때 하는 것과 같은 길
 function tcGasFill_(){
   if (!tcCurrentCase || !tcCurrentCase.id){ nxAlert_('먼저 사건을 고르세요.'); return; }
-  if (!window.confirm('⚡ GAS로 칸 채우기(AI 없이 0원)\n\n사건처리(GAS)가 서류에서 읽어 둔 값으로 계산기 칸을 다시 채웁니다.\n직접 고치신 칸이 덮일 수 있습니다. 진행할까요?\n\n(아직 서류를 안 읽었으면 처리개요 화면의 [⚡ GAS 사건처리]부터 하세요.)')) return;
+  if (!window.confirm('칸 채우기(GAS 도구, AI 없이 0원)\n\n사건처리(GAS)가 서류에서 읽어 둔 값으로 계산기 칸을 다시 채웁니다.\n직접 고치신 칸이 덮일 수 있습니다. 진행할까요?\n\n(아직 서류를 안 읽었으면 처리개요 화면의 [📖 서류 읽기]부터 하세요.)')) return;
   var c = tcCurrentCase;
   tcApplyOverviewToInputs_(c); tcApplyOverviewToTransfer_(c); tcApplyOverviewToSellers_(c); tcApplyOverviewToValuationAssets_(c); tcApplyOverviewToHeirs_(c); tcApplyOverviewToGiftParties_(c); tcApplyCaseBaseDate_(c); tcApplyGiftRelation_(c); tcSyncContractParties_(c);
   tcLoadTransferCalcIn_(c).then(function(ok){ showToast('⚡ 사건처리(GAS) 값으로 칸을 채웠습니다(0원)' + (ok ? ' — 양도 계산기 입력 포함' : ''), 'success'); tcWorkLog_('계산기 칸 채우기(GAS)', (c.세목 || '') + ' 사건처리 값 불러옴'); });

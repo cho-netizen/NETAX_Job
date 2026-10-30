@@ -24,7 +24,7 @@ var CASEPROC_AI_TOOLS_ = [
   // [2026.10.23 ㅊ1] 세무사님 10-19 원문 "변수담당은 ai이고 상수담당은 gas" — 규칙(상수)이 없는 서류(의뢰인 메모·손글씨·비정형 PDF)의 글은 GAS가 이미 읽어 두었는데(② "종류를 정하지 못한 서류 — 글자는 읽음")
   //  넥스에게 그 글을 보는 도구가 없어 "메모 내용을 알려 주시면"이라고 세무사님께 되물었다(가상양도15 주택보유현황.pdf — 점검표 139). 원문 낱말 찾기(doc_text)는 주지 않지만, 규칙 없는 서류의 글 전체(앞부분)는 넥스 몫.
   { name: 'doc_view', description: '서류 글 보기 — 종류를 정하지 못한 서류(의뢰인 메모·손글씨·비정형 PDF)나 사건파악 메모의 글을 GAS가 읽어 둔 그대로(앞 3,000자, 개인정보 가림, start로 이어 읽기). 체크 목록에 없는 파일도 된다(GAS 체크 목록은 네 읽기 범위가 아님 — 쪽·찾기까지는 file_read). 규칙이 없는 서류의 글을 읽고 판단하는 것은 네(넥스) 몫이다 — 세무사님께 "그 메모 내용을 알려 달라"고 되묻지 말고 이 도구로 읽는다. 그 글로 정한 값은 value_set basis {kind:"doc", file, find:메모의 그 문장}으로 넣어 "🤖 AI 판단"과 근거 파일이 남게 한다. 규칙이 있는 서류(등기부·계약서·통장 등)는 doc_facts·facts_find로.',
-    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, file: { type: 'string', description: '파일 이름 또는 ID(gas_run 결과의 "종류를 정하지 못한 서류" 이름)' }, start: { type: 'number', description: '이어 읽을 시작 글자 위치(기본 0)' } }, required: ['caseId', 'file'] } },
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, file: { type: 'string', description: '파일 이름 또는 ID(case_read 결과의 "종류를 정하지 못한 서류" 이름)' }, start: { type: 'number', description: '이어 읽을 시작 글자 위치(기본 0)' } }, required: ['caseId', 'file'] } },
   { name: 'doc_facts', description: '서류 정리 결과 — 서류마다 GAS 규칙이 뽑은 값(등기 소유권 이력·가족관계 목록·계약 당사자·대금·통장 거래·공시가격 등)을 표로. 종류(type)·파일·낱말로 좁혀서 부른다.',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, type: { type: 'string', description: 'registry·family·contract·bank·officialprice·realprice·appraisal·lease 등(비우면 종류별 개수만)' }, file: { type: 'string' }, find: { type: 'string' }, max: { type: 'number' } }, required: ['caseId'] } },
   { name: 'value_set', description: '값 정하기 — 계산기 칸 하나에 값을 넣는다. 근거(basis)가 필수: {kind:"doc", file, find} 서류 원문, {kind:"lookup", id} 공적 조회 결과, {kind:"user"} 세무사님 답, {kind:"cand"} 합계처럼 GAS가 계산해 낸 후보 중 하나를 고를 때(값이 서류에 그대로 없음 — 고른 이유를 why에), {kind:"infer", facts:[…]} 여러 사실로 추론한 값(잠정 — 확인 질문 필수). 근거에 그 값이 없으면 거절된다. AI가 정한 값은 🤖 AI 판단으로 표시된다.',
@@ -436,7 +436,8 @@ function caseProcAiExec_(caseId, name, input) {
   try {
     if (name === 'case_view') r = step('basic');
     else if (name === 'docs_read') r = step('evidence', input.phase === 'read' ? { phase: 'read' } : {});
-    else if (name === 'calc_fill') { r = step('overview'); if (r && r.items) CASEPROC_AI_LAST_ITEMS_[caseId] = r.items; }
+    else if (name === 'case_read') r = step('read', { budgetMs: 100000, by: '넥스' }); // 채팅 한 요청(약 4분) 안에 다른 도구와 함께 돌도록 100초씩 — 다 못 읽으면 more/partial, 다시 부르면 이어 감 // [2026.10.31 묶음 해체] 📖 서류 읽기 — 화면 단추와 같은 입구
+    else if (name === 'calc_fill') { r = step('fill', { budgetMs: 100000, by: '넥스' }); if (r && r.items) CASEPROC_AI_LAST_ITEMS_[caseId] = r.items; } // 칸 채우기 — 화면 단추와 같은 입구(장부 적기·질문 판정까지)
     else if (name === 'tax_calc') r = step('calc');
     else if (name === 'forms_check') r = step('output');
     else if (name === 'form_needs') r = typeof formNeeds_ === 'function' ? formNeeds_(caseId, input) : { error: '서식 도구가 이 판에 없음' }; // [2026.10.19 B-5]
@@ -457,7 +458,7 @@ function caseProcAiExec_(caseId, name, input) {
       const t = f ? String(tc_docText_(f) || '') : '';
       const st = Math.max(0, Number(input.start) || 0), LEN = 3000;
       let kind = ''; try { const p = t && typeof docParseText_ === 'function' ? docParseText_(t) : null; kind = p ? (p.label || p.type || '') : ''; } catch (e) { kind = ''; }
-      r = !f ? { error: '서류를 찾지 못함' } : !t ? { error: '글자를 읽어 둔 것이 없음(gas_run으로 먼저 읽기)' }
+      r = !f ? { error: '서류를 찾지 못함' } : !t ? { error: '글자를 읽어 둔 것이 없음(case_read로 먼저 읽기)' }
         : { ok: true, 파일: f.name, 종류: kind || '종류 못 정함(규칙 없음 — 글을 읽고 판단하는 것은 넥스 몫)', 글자수: t.length, 시작: st, 글: caseProcAiMask_(t.slice(st, st + LEN)), 더있음: t.length > st + LEN,
             안내: kind ? '규칙이 있는 서류 — 정리된 값은 doc_facts(file)로' : '이 글로 정한 값은 value_set basis {kind:"doc", file:"' + f.name + '", find:그 문장}으로(🤖 AI 판단·근거 파일 표시)' };
     } else if (name === 'doc_facts') {

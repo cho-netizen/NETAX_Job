@@ -1154,7 +1154,7 @@ function ledgerKbFind_(c, q) {
   return { ok: true, 모은때: kb.at || '', 전체사실: facts.length, 찾음: hit.length,
     사실: hit.slice(0, lim).map(function (f) { return { 번호: f.id, 종류: f.k, 값: f.v, 파일: f.f, 서류종류: f.t || undefined, 자리: f.w || undefined, 대상: f.s || undefined, 쓰인칸: f.to && f.to.length ? f.to.map(lab) : undefined, 판독: f.u ? '불확실' : undefined, 사본: f.cp ? '사본' : undefined }; }),
     종류별: q.find_kind ? undefined : Object.keys(kinds).sort(function (a, b) { return kinds[b] - kinds[a]; }).slice(0, 30).reduce(function (o, k) { o[k] = kinds[k]; return o; }, {}),
-    안내: facts.length ? undefined : '장부에 모은 서류 사실이 아직 없습니다 — 서류 읽기(⚡ GAS로 처리·gas_run)가 한 번 돌아야 모입니다.' };
+    안내: facts.length ? undefined : '장부에 모은 서류 사실이 아직 없습니다 — 📖 서류 읽기(화면 단추·넥스 case_read)를 한 번 돌려야 모입니다.' };
 }
 // [2026.10.29 거래 사슬] 양도 사실 정리(tcDealChain_)가 만든 물건별 사슬(계약서·등기 고리, 납세자 위치)과 사슬 밖 계약서를 장부에 — 바뀔 때만 적는다
 function ledgerChainPut_(caseId, rf) {
@@ -1940,7 +1940,7 @@ function caseFlowEvidence_(c, L, lines) {
   const tpl = typeof WORK_EVIDENCE_TEMPLATES_ !== 'undefined' ? WORK_EVIDENCE_TEMPLATES_[c.세목] : null;
   if (!clsSettled && issue && issue.state === '가설' && tpl && tpl.사건분류) {
     [].concat(issue.v).forEach(function (cls) {
-      (tpl.사건분류[cls] || []).forEach(function (label) { const k = 'flow:쟁점:' + cls + ':' + label; if (!has(label, k)) want[k] = { label: label, note: '사건처리 한 바퀴: 의뢰서 등이 말한 쟁점 「' + cls + '」를 확인할 서류(가설 — 사건분류가 정해지면 다시 봄)' }; });
+      (tpl.사건분류[cls] || []).forEach(function (label) { const k = 'flow:쟁점:' + cls + ':' + label; if (!has(label, k)) want[k] = { label: label, note: '장부 확인: 의뢰서 등이 말한 쟁점 「' + cls + '」를 확인할 서류(가설 — 사건분류가 정해지면 다시 봄)' }; });
     });
   }
   // [2026.10.30 D] 받을 증빙은 장부 칸 상태에서 바로 짠다 — 판단은 장부 한 곳("묻기는 하나"). 예전엔 장부 칸(취득일 "증빙받을것")과 받을 증빙 계산(사건처리 빈 칸 목록 + 폴더 파일 이름)이
@@ -1955,9 +1955,9 @@ function caseFlowEvidence_(c, L, lines) {
   if (readOk) Object.keys(L.rows || {}).forEach(function (p) {
     if (/^(q:|doc:|chk:)/.test(p) || !/^(seller\.|c\d+\.|a\d+\.|g\d+\.|h\d+\.)/.test(p)) return;
     const r = L.rows[p] || {}, src = r.src || {}, lab = String(r.label || ledgerLabel_(p) || p);
-    if (r.state === '증빙받을것') cands.push({ p: p, l: lab, ledger: true, note: '사건처리 한 바퀴: 장부 「' + lab + '」 칸이 증빙 받을 것' + (r.ask ? ' — ' + String(r.ask).slice(0, 80) : '') });
+    if (r.state === '증빙받을것') cands.push({ p: p, l: lab, ledger: true, note: '장부 확인: 장부 「' + lab + '」 칸이 증빙 받을 것' + (r.ask ? ' — ' + String(r.ask).slice(0, 80) : '') });
     else if (/^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null && !src.file && (r.state === '추정' || /^(넥스|추정)$/.test(String(src.kind || ''))))
-      cands.push({ p: p, l: lab, spoken: true, note: '사건처리 한 바퀴: 장부 「' + lab + '」 값은 말씀 기준(잠정) — ' + (src.kind === '넥스' ? '넥스가 말씀·상담 메모로 적음' : '추정') + ', 서류로 아직 확인 안 됨' });
+      cands.push({ p: p, l: lab, spoken: true, note: '장부 확인: 장부 「' + lab + '」 값은 말씀 기준(잠정) — ' + (src.kind === '넥스' ? '넥스가 말씀·상담 메모로 적음' : '추정') + ', 서류로 아직 확인 안 됨' });
   });
   // [2026.10.30 복합 자문 — 세무사님 "권하는 안대로"] 함께 보는 세목(주 세목 말고)마다 그 세목에서 늘 필요한 서류(필요증빙 틀 공통) — 주 세목 공통 서류는 사건개요를 처음 저장할 때 이미 들어간다.
   //  함께 보는 세목을 빼면 다음 바퀴에 이 항목도 빠진다(flow: 항목은 바퀴마다 다시 짬). 같은 이름 서류는 한 번만
@@ -1967,7 +1967,7 @@ function caseFlowEvidence_(c, L, lines) {
   });
   let needs = [];
   if (readDone) try { needs = c.세목 === 'transfer' ? (((caseProcLoad_(c.id) || {}).needs || {}).list || []) : (typeof giNeeds_ === 'function' ? giNeeds_(c) : []); } catch (e) { needs = []; }
-  needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov && !(L.rows || {})[n.p]; }).forEach(function (n) { cands.push({ p: n.p, l: n.l, note: '사건처리 한 바퀴: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' }); });
+  needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov && !(L.rows || {})[n.p]; }).forEach(function (n) { cands.push({ p: n.p, l: n.l, note: '장부 확인: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' }); });
   cands.forEach(function (n) {
     const names = slotNames(n.p);
     if (!names.length) return;
@@ -1999,7 +1999,7 @@ function caseFlowEvidence_(c, L, lines) {
   const kept = list.filter(function (e) { const sk = String((e && e.slotKey) || ''); const gone = e && /^flow:/.test(sk) && e.status !== '확보됨' && !want[sk] && (readOk || !/^flow:칸:/.test(sk)); if (gone) del++; return !gone; });
   if (!add && !del) return { add: 0, del: 0 };
   const up = work_updateCase({ id: c.id, 증빙목록: kept, 기대수정일: c.수정일 });
-  if (up && up.success !== false) { c.증빙목록 = kept; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; if (lines) lines.push('✏ 확보할 증빙 다시 짬(한 바퀴): ' + (add ? '+' + add + ' ' : '') + (del ? '−' + del + '(근거가 사라진 항목)' : '')); return { add: add, del: del }; }
+  if (up && up.success !== false) { c.증빙목록 = kept; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; if (lines) lines.push('✏ 확보할 증빙 다시 짬(장부 적기): ' + (add ? '+' + add + ' ' : '') + (del ? '−' + del + '(근거가 사라진 항목)' : '')); return { add: add, del: del }; }
   return { add: 0, del: 0, error: (up && up.message) || '증빙목록을 쓰지 못함' };
 }
 // 한 바퀴의 ⓐⓑⓒ — caseProcAll_ 끝에서 부른다(c: 새로 읽은 사건 줄). 돌려주는 것: { changed, diff:[…], settledChanged }
@@ -2015,7 +2015,7 @@ function caseFlowRound_(c, why, lines) {
   //  세무사님 원문 "확인된 필지에 대해서 도구를 이용하여 확보할 수 있는 바깥정보는 당연히 확보해야". 서류가 없어도(의뢰 메모만) 돈다. 한 바퀴에 2필지까지, GAS 서버에서만(직결 서비스는 바깥 호출 못 함)
   try {
     if (typeof cpOutsideCan_ === 'function' && cpOutsideCan_() && !(typeof AK_IN_SANDBOX_ !== 'undefined' && AK_IN_SANDBOX_)) {
-      const lk = ledgerLookup_(c, { onlyNew: true, max: 2, why: '한 바퀴 — 새 필지' }, 'GAS');
+      const lk = ledgerLookup_(c, { onlyNew: true, max: 2, why: '장부 적기 — 새 필지' }, 'GAS');
       if (lk && lk.ok && lk.n && lines) lines.push('🔎 새 필지 공부 조회(GAS 규칙): ' + lk.message);
     }
   } catch (e) { if (lines) lines.push('⚠ 새 필지 공부 조회를 하지 못함: ' + String(e && e.message || e).slice(0, 100)); }
@@ -2029,12 +2029,12 @@ function caseFlowRound_(c, why, lines) {
     const mom1 = ledgerMomentKeys_(L);
     moment = Object.keys(mom1).filter(function (k) { return !(k in mom0) && (L0.flow || !/^증빙:/.test(k)); }).map(function (k) { return mom1[k]; }); // 사건 첫 바퀴의 틀 증빙 목록은 "새로 받을 서류" 순간이 아니다
     L.flow = { at: rec.at, why: rec.why, diff: diff, snap: ledgerFlowSnap_(L), mom: mom1, rounds: ((L.flow && L.flow.rounds) || []).concat([rec]).slice(-20) };
-    if (diff.length) ledgerLogTo_(L, { by: 'GAS', what: '한 바퀴', detail: (rec.why ? rec.why + ' → ' : '') + diff.join(' · ') });
+    if (diff.length) ledgerLogTo_(L, { by: 'GAS', what: '장부 적기', detail: (rec.why ? rec.why + ' → ' : '') + diff.join(' · ') });
     if (moment.length) ledgerLogTo_(L, { by: 'GAS', what: '중요한 순간', detail: moment.slice(0, 6).join(' · ') + ' → 넥스에게 알림' });
   });
   // [2026.10.29 넥스 4] 중요한 순간이면 넥스를 깨울 줄에 넣는다(깨우기는 1분 틱이 — 이 바퀴를 돌린 화면 단추를 붙잡지 않게. 밤이면 아침에)
   if (moment.length && typeof cpNexMomentAdd_ === 'function') { try { cpNexMomentAdd_(c.id, moment); } catch (e) {} }
-  if (lines) lines.push('🔁 한 바퀴' + (rec.why ? '(' + rec.why + ')' : '') + ': ' + (diff.length ? diff.join(' · ') : '바뀐 것 없음') + (moment.length ? ' · 🤖 중요한 순간 ' + moment.length + '건 → 넥스에게 알림' : ''));
+  if (lines) lines.push('📒 장부 적기' + (rec.why ? '(' + rec.why + ')' : '') + ': ' + (diff.length ? diff.join(' · ') : '바뀐 것 없음') + (moment.length ? ' · 🤖 중요한 순간 ' + moment.length + '건 → 넥스에게 알림' : ''));
   return { changed: diff.length > 0, diff: diff, settledChanged: settledChanged, moment: moment };
 }
 // 층 묶음을 화면·넥스용 줄로

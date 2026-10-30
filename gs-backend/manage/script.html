@@ -1085,7 +1085,7 @@
       + ' → ' + red(d.질문, '질문 ' + (d.질문 || 0))
       + (d.사슬물건 ? ' · 거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '') : '') // [2026.10.29 거래 사슬]
       + ' · 공부 조회 ' + (d.공부 || 0) + '필지' + (d.추정 ? ' · 추정 ' + d.추정 + '칸' : '') // [2026.10.29 계획서 3판]
-      + (last ? ' <span style="color:var(--sub);">· 마지막 한 바퀴 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
+      + (last ? ' <span style="color:var(--sub);">· 마지막 장부 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
       + nxAiCostStripHtml_(r.AI비용)
       + (r.도구카드 && r.도구카드.부름 ? ' <span style="color:var(--sub);">· ' + nxLgEsc_(r.도구카드.줄) + '</span>' : '') // [2026.10.31 J] 자세히는 📒 장부 펼치기 아래 🧰
       + ' <button type="button" class="ghost-btn nx-lg-open" style="padding:1px 8px; font-size:12px;">📒 장부 펼치기</button>'
@@ -1142,9 +1142,9 @@
     else {
       var f = r.흐름 || {}, last = f.마지막;
       var ST = { '가설': '가설(서류 확인 전)', '확정': '정함', '추정': '추정', '물어볼것': '물어볼 것', '증빙받을것': '받을 것', '보류': '보류', '무시': '무시' };
-      h += '<div style="margin-top:8px;"><b>마지막 한 바퀴</b> <span style="color:var(--sub);">' + (last ? e(last.at) + (last.why ? ' · ' + e(last.why) : '') + ' → ' + e((last.diff || []).join(' · ') || '바뀐 것 없음') : '아직 없음') + '</span></div>';
+      h += '<div style="margin-top:8px;"><b>마지막 장부 적기</b> <span style="color:var(--sub);">' + (last ? e(last.at) + (last.why ? ' · ' + e(last.why) : '') + ' → ' + e((last.diff || []).join(' · ') || '바뀐 것 없음') : '아직 없음') + '</span></div>';
       var q = r.물음 || [];
-      h += '<div style="margin-top:10px;"><b>남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 처리개요 GAS 사건처리 질문(또는 📒 장부)에서</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b>남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 처리개요 GAS 도구 칸 질문(또는 📒 장부)에서</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var ov = f.사건개요 || [];
       h += '<div style="margin-top:10px;"><b>사건개요</b>' + (ov.length ? tbl(['칸', '값', '상태', '가설과'], ov.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label, 150) + cell(x.값, 260, g ? ' color:#a60;' : '') + cell(ST[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(x.hypNote || '', 220, x.hypNote ? ' color:#b23;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       // [2026.10.29 거래 사슬] 물건마다 계약서·등기 고리 — 사슬 밖 계약서는 빨갛게

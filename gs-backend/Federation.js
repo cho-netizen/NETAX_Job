@@ -465,10 +465,12 @@ function commSeamList_() {
     // 넥스 ↔ GAS(도구)
     { 길: '대화창 넥스 조회 길(사건처리·AI 판단·AI 회의 결론)', fn: function () { return need(lookupKinds(), ['caseproc', 'ai_review', 'law_decisions'], '조회 종류'); } },
     { 길: '사건을 맡은 넥스 — 질문(장부 do=ask)·도구 부족 신고(한 길: 개발자 기록 + 사건처리 빠진 도구 기록)·AI 회의 결론', fn: function () { var m = need(chatTools(), ['case_ledger', 'report_capability_gap'], '대화창 도구') || need(leadTools(), ['law_decisions'], '사건 도구'); if (m) return m; return String(callClaude).indexOf('caseProcAiLogGaps_') === -1 ? '사건 연결 대화의 도구 부족 신고가 사건처리 빠진 도구 기록에 안 감' : ''; } },
-    // [2026.10.22 넥스가 주인] 넥스 → GAS 한 바퀴(gas_run, 화면이 실행) → GAS가 못 푼 자리 → 넥스. 첫 글이 gas_run을 부르라고 하는지, 도구가 있는지
+    // [2026.10.31 묶음 해체] 세무사님 원문(10-31) "개별 gas의 도구들을 넥스가 활용하는 것" / "검토서 초안은 당연히 없어져야 한다." — 넥스가 낱개 도구(case_read·calc_fill)를 서버에서 직접 부르고,
+    //  화면 단추와 같은 입구(case_proc step read·fill)를 쓰는지. 묶음(gas_run·gas_finish·step all)·초안 만드는 곳(draft)이 되살아나면 빨갛게
     // [2026.10.22 작업 기록부] 세무사님이 GAS 도구로 직접 하신 일 → 사건 기록부 → 넥스(채팅 조회·사건 지휘)가 읽음
     { 길: '세무사님 직접 작업 → 작업 기록부 → 넥스', fn: function () { if (typeof caseProcNexView_ !== 'function' || typeof caseProcLog_ !== 'function') return '작업 기록부가 이 판에 없음'; var v = caseProcNexView_({ id: 'seam', 증빙목록: [], 사건개요: {} }); return v && v.작업기록 ? '' : '현황에 작업기록 칸이 없음'; } },
-    { 길: '넥스가 GAS 한 바퀴를 도구로 부름(사건처리 주인은 넥스)', fn: function () { var m = need(leadTools(), ['case_status', 'gas_run', 'gas_finish'], '사건 지휘 도구'); if (m) return m; if (typeof CASEPROC_AI_CLIENT_TOOLS_ === 'undefined' || CASEPROC_AI_CLIENT_TOOLS_.indexOf('gas_run') === -1) return '화면 실행 도구 표에 gas_run이 없음'; return nxCaseChatGuide_('점검').indexOf('gas_run') === -1 ? '넥스 지시문에 gas_run 순서가 없음' : ''; } },
+    { 길: '넥스가 낱개 GAS 도구를 부름(📖 서류 읽기 case_read·칸 채우기 calc_fill — 화면 단추와 같은 입구)', fn: function () { var m = need(leadTools(), ['case_status', 'case_read', 'calc_fill'], '사건 지휘 도구'); if (m) return m; var lt = leadTools(); if (lt.indexOf('gas_run') !== -1 || lt.indexOf('gas_finish') !== -1) return '묶음 도구(gas_run·gas_finish)가 되살아남'; if (typeof CASEPROC_AI_CLIENT_TOOLS_ !== 'undefined' && CASEPROC_AI_CLIENT_TOOLS_.length) return '화면이 대신 돌리는 넥스 도구가 다시 생김'; if (typeof caseProcTool_ !== 'function') return '낱개 도구 입구(caseProcTool_)가 이 판에 없음'; if (String(caseProcAiExec_).indexOf("step('read'") === -1 || String(caseProcAiExec_).indexOf("step('fill'") === -1) return '넥스 도구가 화면과 같은 입구(read·fill)를 안 부름'; return nxCaseChatGuide_('점검').indexOf('[도구는 낱개]') === -1 ? '넥스 지시문에 "도구는 낱개" 줄이 없음' : ''; } },
+    { 길: '묶음·검토서 초안 없음 — 「GAS로 처리」 한 바퀴(step all)·마무리 초안(step draft)이 서버에 없음', fn: function () { if (typeof caseProcAll_ === 'function') return '옛 묶음 입구(caseProcAll_)가 되살아남'; if (typeof caseProcDraft_ === 'function') return '종합검토서 초안을 만드는 곳(caseProcDraft_)이 되살아남'; if (typeof caseProcReviewNotes_ !== 'function') return '보류·추정 줄 → 종합검토서 "확인 필요 사항" 입구(reviewNotes)가 없음'; if (typeof cpFlowQueueRun_ === 'function' && String(cpFlowQueueRun_).indexOf("step: 'all'") !== -1) return '1분 시계가 묶음(all)을 돌림'; return ''; } },
     // [2026.10.23 ㅊ1] 규칙 없는 서류·메모의 글 → 넥스(doc_view) — 빠지면 넥스가 세무사님께 메모 내용을 되묻는다(점검표 139)
     { 길: '서류 읽기 한 길 — 원문은 file_read, GAS 정리값은 doc_facts(doc_view·doc_text는 대화창 넥스에 주지 않음)', fn: function () { var m = need(leadTools(), ['file_read', 'doc_facts'], '사건 도구'); if (m) return m; if (typeof NX_CASE_CHAT_SKIP_ === 'undefined' || NX_CASE_CHAT_SKIP_.indexOf('doc_view') === -1) return 'doc_view가 대화창 넥스에 다시 붙음(같은 글을 다르게 보여 줌)'; return nxCaseChatGuide_('점검').indexOf('file_read') === -1 ? '지시문이 file_read를 안 알려 줌' : ''; } },
     // [2026.10.28] 사건 장부(CaseLedger.js) — 세무사님 말씀·넥스 판단·서류 값이 한 장부에, 채팅 넥스(case_ledger·조회 ledger)·지휘 넥스(ledger_read·case_ledger)·화면(case_proc ledger*)이 같은 입구
@@ -490,7 +492,7 @@ function commSeamList_() {
       if (typeof callClaude !== 'function') return '대화창 AI 함수가 이 판에 없음';
       var src = String(callClaude);
       if (src.indexOf('nxCaseChatTools_(') === -1) return '대화창 넥스 도구 목록에 사건 도구를 붙이지 않음';
-      if (src.indexOf('nxCaseChatToolRun_(') === -1 || src.indexOf("type: 'case_gas'") === -1) return '대화창 넥스가 사건 도구를 실행하지 못함(실행기·GAS 넘기기 없음)';
+      if (src.indexOf('nxCaseChatToolRun_(') === -1) return '대화창 넥스가 사건 도구를 실행하지 못함(실행기 없음)'; if (src.indexOf("type: 'case_gas'") !== -1) return '화면이 묶음을 대신 돌리던 길(case_gas)이 되살아남'; // [2026.10.31]
       var have = DRIVE_TOOLS.map(function (t) { return t.name; }).concat(JOB_AI_TOOLS_.map(function (t) { return t.name; }));
       var all = caseProcAiLiveTools_().map(function (t) { return t.name; });
       var got = have.concat(nxCaseChatTools_(have).map(function (t) { return t.name; }));
@@ -533,7 +535,7 @@ function commSeamList_() {
       if (miss(ct).length) return '대화창 case_ledger에 ' + miss(ct).join('·') + ' 없음';
       if (['ledgerLookup', 'ledgerEstimate', 'ledgerCompare'].some(function (s) { return String(ledgerApi_).indexOf("'" + s + "'") === -1; })) return '세무사님 화면 입구(case_proc step ledgerLookup·Estimate·Compare)가 없음';
       if (String(cpOutsideRun_).indexOf('ledgerPubPut_') === -1) return 'GAS 한 바퀴 바깥 조회 결과가 장부 공부 사실에 안 남음';
-      if (String(caseFlowRound_).indexOf('ledgerLookup_') === -1) return 'GAS 규칙(새 필지 → 공부 조회)이 한 바퀴에 없음';
+      if (String(caseFlowRound_).indexOf('ledgerLookup_') === -1) return 'GAS 규칙(새 필지 → 공부 조회)이 장부 적기에 없음';
       var turn = ''; // [2026.10.30] 옛 사건 지휘(caseProcAiTurn_)는 지웠다 — 넥스를 묶던 장치가 되살아났는지는 대화창 넥스 사건 도구 실행(nxCaseChatToolRun_)에서 본다
       if (typeof caseProcAi_ === 'function' || typeof caseProcAiTurn_ === 'function') return '옛 사건 지휘 길이 되살아남(넥스가 둘)';
       if (turn.indexOf("cut.push('doc_view'") !== -1) return '넥스 도구를 한 바퀴 결과 뒤에 빼는 장치가 다시 들어옴';
