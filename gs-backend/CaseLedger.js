@@ -1870,7 +1870,8 @@ function caseFlowEvidence_(c, L, lines) {
     if (list.some(function (e) { return e && e.slotKey === k; }) || has(want[k].label, k)) return;
     list.push({ id: 'ev_' + Date.now() + '_f' + i, source: 'requested', label: want[k].label, slotKey: k, fromClassification: null, note: want[k].note, status: '미확보', 요청일: today }); add++;
   });
-  const kept = list.filter(function (e) { const gone = e && /^flow:/.test(String(e.slotKey || '')) && e.status !== '확보됨' && !want[e.slotKey]; if (gone) del++; return !gone; });
+  // [2026.10.30] 서류를 다 못 읽은 동안엔 빈 칸 → 받을 서류를 새로 짜지 않을 뿐, 지난번에 짠 칸 항목(flow:칸:)은 지우지 않는다(예전엔 "근거가 사라진 항목"으로 지워 받을 증빙이 사라졌다)
+  const kept = list.filter(function (e) { const sk = String((e && e.slotKey) || ''); const gone = e && /^flow:/.test(sk) && e.status !== '확보됨' && !want[sk] && (readDone || !/^flow:칸:/.test(sk)); if (gone) del++; return !gone; });
   if (!add && !del) return { add: 0, del: 0 };
   const up = work_updateCase({ id: c.id, 증빙목록: kept, 기대수정일: c.수정일 });
   if (up && up.success !== false) { c.증빙목록 = kept; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; if (lines) lines.push('✏ 확보할 증빙 다시 짬(한 바퀴): ' + (add ? '+' + add + ' ' : '') + (del ? '−' + del + '(근거가 사라진 항목)' : '')); return { add: add, del: del }; }
