@@ -149,6 +149,7 @@
         + chip((t.지남 || []).length, '기한 지남', 'dashDeadlines', true)
         + chip((t.마감 || []).length, '3일 안 마감', 'dashDeadlines')
         + chip((t.오늘예약 || []).length, '오늘 예약', 'dashBookings')
+        + chip(t.예약결과 || 0, '예약 결과 적기', 'dashBookings', true)
         + chip(asksN, '넥스가 묻는 질문', 'dashTodayAsks')
         + chip((t.고객서류 || []).length, '고객이 보낸 서류', 'dashFedStatus')
         + chip(t.긴급요청, '🚨 긴급 요청', 'dashFedStatus', true)
@@ -342,6 +343,7 @@
 
   // [2026.10.18 탭연결 4번] "대기중인 상담신청"·"최근 수금내역" 표도 누르면 해당 화면으로 넘어간다(예전엔 표만 보여주고 끝)
   document.getElementById('dashBookings').addEventListener('click', function(e){
+    if (e.target.closest('[data-bk-need]')){ e.preventDefault(); if (typeof bookingShowMode_ === 'function') bookingShowMode_('todo'); return; }
     var tr = e.target.closest('tr[data-bk-row]');
     if (!tr || typeof bookingFocusRow_ !== 'function') return;
     bookingFocusRow_(Number(tr.getAttribute('data-bk-row')));
@@ -402,15 +404,20 @@
   function loadDashBookings(){
     callGas('list_bookings', {}).then(function(res){
       // [2026.10.18 탭연결 4번] 줄을 누르면 예약관리의 그 신청으로 간다(승인·사건 시작은 거기서) — 시트 줄번호는 예약관리와 같은 규칙(순서+2)
-      var list = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; }).filter(function(b){ return b.status === '신청'; });
+      var all = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; });
+      var list = all.filter(function(b){ return b.status === '신청'; });
       var box = document.getElementById('dashBookings');
-      if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>'; return; }
+      // [2026.10.30 예약 결과 관리] 날짜 지난 확정 예약 중 결과를 안 적은 것·연결 후보가 있는 것 — 누르면 예약관리 '처리할 것'으로
+      var today0 = (typeof workTodayStr_ === 'function') ? workTodayStr_() : new Date().toISOString().slice(0, 10);
+      var needN = all.filter(function(b){ return b.status === '확정' && !b.caseId && ((!b.result && b.reservedDate && b.reservedDate < today0) || (b.linkCandidates && b.linkCandidates.length)); }).length;
+      var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#a83232; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약관리에서 보기</a></div>' : '';
+      if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>' + needHtml; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th></tr>';
       list.forEach(function(b){
         html += '<tr data-bk-row="' + b._rowIndex + '" style="cursor:pointer;" title="눌러서 예약관리에서 승인·사건 시작"><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
           '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table>' + needHtml;
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashBookings').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }

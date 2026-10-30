@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 05:56 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 06:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -2686,6 +2686,7 @@ function nxMdOpenWindow(title, src, opts){
         + chip((t.지남 || []).length, '기한 지남', 'dashDeadlines', true)
         + chip((t.마감 || []).length, '3일 안 마감', 'dashDeadlines')
         + chip((t.오늘예약 || []).length, '오늘 예약', 'dashBookings')
+        + chip(t.예약결과 || 0, '예약 결과 적기', 'dashBookings', true)
         + chip(asksN, '넥스가 묻는 질문', 'dashTodayAsks')
         + chip((t.고객서류 || []).length, '고객이 보낸 서류', 'dashFedStatus')
         + chip(t.긴급요청, '🚨 긴급 요청', 'dashFedStatus', true)
@@ -2879,6 +2880,7 @@ function nxMdOpenWindow(title, src, opts){
 
   // [2026.10.18 탭연결 4번] "대기중인 상담신청"·"최근 수금내역" 표도 누르면 해당 화면으로 넘어간다(예전엔 표만 보여주고 끝)
   document.getElementById('dashBookings').addEventListener('click', function(e){
+    if (e.target.closest('[data-bk-need]')){ e.preventDefault(); if (typeof bookingShowMode_ === 'function') bookingShowMode_('todo'); return; }
     var tr = e.target.closest('tr[data-bk-row]');
     if (!tr || typeof bookingFocusRow_ !== 'function') return;
     bookingFocusRow_(Number(tr.getAttribute('data-bk-row')));
@@ -2939,15 +2941,20 @@ function nxMdOpenWindow(title, src, opts){
   function loadDashBookings(){
     callGas('list_bookings', {}).then(function(res){
       // [2026.10.18 탭연결 4번] 줄을 누르면 예약관리의 그 신청으로 간다(승인·사건 시작은 거기서) — 시트 줄번호는 예약관리와 같은 규칙(순서+2)
-      var list = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; }).filter(function(b){ return b.status === '신청'; });
+      var all = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; });
+      var list = all.filter(function(b){ return b.status === '신청'; });
       var box = document.getElementById('dashBookings');
-      if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>'; return; }
+      // [2026.10.30 예약 결과 관리] 날짜 지난 확정 예약 중 결과를 안 적은 것·연결 후보가 있는 것 — 누르면 예약관리 '처리할 것'으로
+      var today0 = (typeof workTodayStr_ === 'function') ? workTodayStr_() : new Date().toISOString().slice(0, 10);
+      var needN = all.filter(function(b){ return b.status === '확정' && !b.caseId && ((!b.result && b.reservedDate && b.reservedDate < today0) || (b.linkCandidates && b.linkCandidates.length)); }).length;
+      var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#a83232; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약관리에서 보기</a></div>' : '';
+      if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>' + needHtml; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th></tr>';
       list.forEach(function(b){
         html += '<tr data-bk-row="' + b._rowIndex + '" style="cursor:pointer;" title="눌러서 예약관리에서 승인·사건 시작"><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
           '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table>' + needHtml;
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashBookings').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
@@ -4135,7 +4142,17 @@ function nxMdOpenWindow(title, src, opts){
          차지해서 화면을 위아래로 불필요하게 길게 만들었다 — "상담신청 목록" 제목 줄에
          같이 붙여서 카드 하나로 합친다(행 수 절감). -->
     <div class="card">
-      <h3>상담신청 목록<button type="button" id="bkAdminToggle" class="ghost-btn" style="float:right; font-size:12px; padding:4px 10px;">+ 직권등록</button></h3>
+      <!-- [2026.10.30 예약 결과 관리] 세무사님 "이 목록이 언제까지 누적되는지? … 예약확정후 취소하거나 노쇼가 있을 수 있고, 방문상담하여 사건접수로
+           이어질 수도 있는데, 그런 사항이 관리가 되지 않는다" → 목록을 처리할 것·지난 기록·전체로 나누고(기록은 지우지 않음), 확정 뒤 결과 적기·기존 사건에 연결·연결 확인. -->
+      <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">상담신청 목록
+        <span id="bkModeBar" style="display:flex; flex-wrap:wrap; gap:6px; font-weight:normal;">
+          <button type="button" class="ghost-btn" data-bk-mode="todo" style="font-size:12px; padding:4px 10px;" title="새 신청·다가오는 확정 예약·결과를 적을 예약·사건에 이을 후보가 있는 예약">처리할 것</button>
+          <button type="button" class="ghost-btn" data-bk-mode="past" style="font-size:12px; padding:4px 10px;" title="거절·취소·사건접수·상담완료·노쇼로 끝난 예약(지우지 않고 보관)">지난 기록</button>
+          <button type="button" class="ghost-btn" data-bk-mode="all" style="font-size:12px; padding:4px 10px;">전체</button>
+        </span>
+        <button type="button" id="bkLinkReview" class="ghost-btn" style="font-size:12px; padding:4px 10px;" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약관리의 사건 시작을 거치지 않고 만든 사건)">🔗 연결 확인</button>
+        <button type="button" id="bkAdminToggle" class="ghost-btn" style="margin-left:auto; font-size:12px; padding:4px 10px;">+ 직권등록</button>
+      </h3>
       <div id="bkAdminForm" style="display:none; flex-direction:column; gap:8px; max-width:420px; margin:12px 0;">
         <label style="font-size:12px; color:var(--sub);">이름 *<br><input type="text" id="bkNewName" size="10" placeholder="예: 홍길동"></label>
         <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" size="14" placeholder="010-1234-5678"></label>
@@ -4154,112 +4171,333 @@ function nxMdOpenWindow(title, src, opts){
 </div>
 <script>
   var bookingLoaded = false;
+  // [2026.10.30 예약 결과 관리] 보기 — 처리할 것(기본)·지난 기록·전체. 고른 보기는 이 브라우저에 기억(없어도 동작)
+  var bookingMode_ = 'todo';
+  try { bookingMode_ = localStorage.getItem('nxBookingMode') || 'todo'; } catch (e) {}
+  if (['todo', 'past', 'all'].indexOf(bookingMode_) === -1) bookingMode_ = 'todo';
   function initBooking(force){
     if (bookingLoaded && !force) return;
     bookingLoaded = true;
     loadBookingList();
   }
 
-  // [2026.09 버그수정] 실제 확정 상태값은 '승인'이 아니라 '확정'이다(예전에 이름이 바뀌면서
-  // 이 정렬 기준만 안 맞춰져 있었음) — '확정'이 '거절'보다 아래로 밀려 죽은 신청(거절)이
-  // 살아있는 확정 예약보다 위에 뜨는 문제가 있었다.
-  var BOOKING_STATUS_ORDER = { '신청':0, '확정':1, '거절':2, '취소':3 };
+  // [2026.09 버그수정] 실제 확정 상태값은 '승인'이 아니라 '확정'이다.
+  // [2026.10.30] 정렬은 아래 처지(kind) 순서로 — 새 신청 → 결과 적을 것 → 이을 후보 있음 → 다가오는 확정 → 끝난 것
+  var BOOKING_KIND_ORDER_ = { apply: 0, needResult: 1, needLink: 2, upcoming: 3, done: 4 };
+  var BOOKING_RESULT_LABEL_ = { '상담완료': '💬 상담완료', '사건접수': '📁 사건접수', '노쇼': '⛔ 노쇼', '고객취소': '⚪ 고객취소', '사무소취소': '⚪ 사무소취소' };
+  function bookingTodayStr_(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  // 한 줄의 처지 — apply 새 신청 / needResult 날짜가 지났는데 결과 없음 / needLink 이을 후보 있음 / upcoming 다가오는 확정 / done 끝남
+  function bookingKind_(b, today){
+    if (b.status === '신청') return 'apply';
+    if (b.status === '확정' && !b.caseId){
+      var cands = (b.linkCandidates || []).length;
+      if (!b.result) return (b.reservedDate && b.reservedDate < today) ? 'needResult' : (cands ? 'needLink' : 'upcoming');
+      return cands ? 'needLink' : 'done'; // 상담완료·노쇼 — 이을 후보가 있을 때만 처리할 것에
+    }
+    return 'done'; // 거절·취소·사건접수
+  }
+  function bookingIsTodo_(kind){ return kind !== 'done'; }
+  function bookingBadge_(b){
+    if (b.status === '신청') return '🔴 신청';
+    if (b.status === '거절') return '🚫 거절';
+    if (b.caseId) return '📁 사건접수';
+    if (b.result && BOOKING_RESULT_LABEL_[b.result]) return BOOKING_RESULT_LABEL_[b.result];
+    if (b.status === '취소') return '⚪ 취소';
+    if (b.status === '확정') return b._kind === 'needResult' ? '🟠 결과 적기' : '🟢 확정';
+    return esc(b.status);
+  }
+  function bookingFind_(rowIndex){ return (window._bookingAll || []).filter(function(x){ return x._rowIndex === rowIndex; })[0]; }
+
+  // 다른 화면(대시보드 "예약 결과 적기")에서 보기를 정해 들어올 때
+  function bookingShowMode_(mode){
+    bookingMode_ = mode;
+    try { localStorage.setItem('nxBookingMode', mode); } catch (e) {}
+    var wasLoaded = bookingLoaded;
+    if (typeof goToView_ === 'function') goToView_('booking');
+    if (wasLoaded || !bookingLoaded) initBooking(true);
+  }
+  document.getElementById('bkModeBar').addEventListener('click', function(e){
+    var btn = e.target.closest('[data-bk-mode]'); if (!btn) return;
+    bookingMode_ = btn.getAttribute('data-bk-mode');
+    try { localStorage.setItem('nxBookingMode', bookingMode_); } catch (e2) {}
+    bookingRender_();
+  });
 
   function loadBookingList(){
     var box = document.getElementById('bookingList');
     box.innerHTML = '<div class="spinner">불러오는 중…</div>';
     callGas('list_bookings', {}).then(function(res){
-      var list = (res.bookings || []).map(function(b, idx){
+      window._bookingAll = (res.bookings || []).map(function(b, idx){
         b._rowIndex = idx + 2; // 시트 1행=헤더, 배열 0번째 = 2행
         return b;
       });
-      // [2026.09 버그수정] 같은 상태 그룹 안에서 날짜 내림차순(가장 먼 미래가 위)으로 정렬돼
-      // 있어서, 당장 처리해야 할 임박한 신청·확정 건이 그 그룹 맨 아래로 밀려 놓치기 쉬웠다 —
-      // 오름차순(임박한 것이 먼저)으로 바꾼다.
-      list.sort(function(a,b){
-        var oa = BOOKING_STATUS_ORDER[a.status]!==undefined ? BOOKING_STATUS_ORDER[a.status] : 9;
-        var ob = BOOKING_STATUS_ORDER[b.status]!==undefined ? BOOKING_STATUS_ORDER[b.status] : 9;
-        if (oa !== ob) return oa - ob;
-        return String(a.reservedDate+a.reservedTime).localeCompare(String(b.reservedDate+b.reservedTime));
-      });
-      if (!list.length){ box.innerHTML = '<div class="empty-row">신청 내역이 없습니다.</div>'; return; }
-      // [2026.09 버그수정] 폭 지정이 하나도 없어서(상황만 max-width) 브라우저가 남는 공간을
-      // 이름·연락처처럼 원래 짧은 열에도 나눠줘 이름 칸이 쓸데없이 넓어지고, 정작 긴 텍스트가
-      // 들어가는 상황 칸은 좁게 눌려 있었다 — 데이터 길이에 맞춰 각 열 폭을 지정한다.
-      // [2026.09.16 버그수정] <td>에만 줄바꿈 금지를 걸고 <th>(제목행)에는 안 걸어서
-      // "관련분야" 제목만 글자 단위로 쌓여 보였다 — 제목칸에도 똑같이 적용. "처리"/"사건"은
-      // 각각 "예약처리"/"사건처리"로 이름을 더 명확히 바꾼다.
-      var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
-      // [2026.09.16] 세무사님 지시 — "유형은 개인/법인처럼 앞글자만 보이면 된다"는 실사용
-      // 판단에 따라 유형 칸을 150→80px로 줄이고, 그만큼 확보된 폭은 정작 중요한 "상황"
-      // 칸(380→450px)에 몰아준다.
-      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:930px;"><colgroup>'
-        + '<col style="width:140px"><col style="width:70px"><col style="width:95px"><col style="width:80px"><col style="width:70px">'
-        + '<col style="width:450px"><col style="width:70px"><col style="width:150px"><col style="width:120px">'
-        + '</colgroup><tr><th ' + th(140) + '>희망일시</th><th ' + th(70) + '>이름</th><th ' + th(110) + '>연락처</th><th ' + th(80) + '>유형</th><th ' + th(70) + '>관련분야</th>' +
-        '<th ' + th(450) + '>상황</th><th ' + th(70) + '>상태</th><th ' + th(150) + '>예약처리</th><th ' + th(120) + '>사건처리</th></tr>';
-      list.forEach(function(b, idx){
-        // [2026.09 버그수정] 거절·취소가 둘 다 같은 회색 원이라 텍스트를 안 읽으면 구분이
-        // 안 됐다(실사용 감사 지적) — 거절(세무사 쪽 판단으로 안 받음)은 신청과 같은 계열의
-        // 경고색으로, 취소(고객 요청 등)는 중립 회색으로 구분한다.
-        // [2026.09.16 버그수정] "확정" 배지·"예약취소"/"사건시작" 버튼 글자까지 세로로
-        // 쌓여 보였다 — 표 칸(td)의 white-space는 그 안의 <button>/배지 자체의 줄바꿈까지는
-        // 막지 못한다(버튼은 독립된 서식 맥락이라 부모 td 속성을 안 물려받음). 배지·버튼
-        // 글자 자체에 직접 줄바꿈 금지를 건다.
-        var nowrapSpan = 'style="white-space:nowrap;"';
-        var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '🚫 거절' : (b.status === '취소' ? '⚪ 취소' : esc(b.status))));
-        badge = '<span ' + nowrapSpan + '>' + badge + '</span>';
-        var actions = '-';
-        if (b.status === '신청'){
-          actions = '<button type="button" class="save-btn" style="white-space:nowrap;" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
-            '<button type="button" class="btn danger" style="white-space:nowrap;" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
-        } else if (b.status === '확정' && !b.caseId){
-          // [2026.09] 확정된 예약을 사건 시작 전에 취소할 방법이 아예 없었다 — 캘린더에서
-          // 수동으로 지우는 것 말고는 처리 수단이 없었던 것을 버튼으로 보완.
-          actions = '<button type="button" class="btn danger" style="white-space:nowrap;" onclick="bookingCancelConfirmed(' + b._rowIndex + ')">예약 취소</button>';
-        }
-        var caseCell = '-';
-        if (b.caseId){
-          caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingGoToCase(\'' + esc(b.caseId) + '\')">🔗 사건 연결됨</button>';
-        } else if (b.status === '확정'){
-          caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingStartCase(' + b._rowIndex + ')">사건 시작</button>';
-        }
-        // [2026.09 버그수정] 상황 칸에 title 툴팁으로 전체 텍스트를 다 박아두는 것도 "관리화면에
-        // 다 적어두는" 것과 다를 게 없다는 지적 — 목록에는 요약만 한 줄로 보여주고, 클릭하면
-        // 그때 전체 내용을 보여주는 방식(목록=요약, 상세=클릭 시)으로 바꾼다.
-        // [2026.09.16 버그수정] 이름/연락처/유형/관련분야 칸에 줄바꿈 방지가 전혀 없어서,
-        // 폰트가 예상보다 넓게 렌더되는 기기(Pretendard 미적용 — 위 index.html 수정 참고)에서
-        // 조금만 폭이 부족해도 한글이 한 글자씩 세로로 쌓여 보였다. 폰트를 고쳐도 만약을
-        // 대비해 모든 짧은값 칸에 말줄임을 걸어둔다 — 넘치면 줄바꿈이 아니라 "..."로 줄고,
-        // 유형·관련분야는 길어질 수 있어 클릭하면 전체를 볼 수 있게 한다.
-        // [2026.09.16 버그수정(2차)] max-width:0 실수를 걷어낸 뒤에도 상황 칸이 여러 줄로
-        // 풀어져 보이고 상태·처리·사건 칸 안 배지·버튼 글자가 세로로 쌓이는 문제가 여전히
-        // 보고됐다 — table-layout:fixed + colgroup만으로는 이 환경에서 셀 폭이 확실히
-        // 고정되지 않는 것으로 보여, 아예 각 <td>에 실제 폭(px)을 직접 못박는다(표
-        // 레이아웃 알고리즘의 불확실성에 기대지 않는, colgroup과 별개인 이중 안전장치).
-        var td = function(px, extra){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' + (extra || '') + '"'; };
-        html += '<tr data-bk-row="' + b._rowIndex + '">' +
-          '<td ' + td(140) + '>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td>' +
-          '<td ' + td(70) + '>' + esc(b.name) + '</td>' +
-          '<td ' + td(110) + '>' + esc(b.phone) + '</td>' +
-          '<td ' + td(80, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'type\')">' + esc(b.type) + '</td>' +
-          '<td ' + td(70, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'field\')">' + esc(b.field || '-') + '</td>' +
-          '<td ' + td(450, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'situation\')">' + esc(b.situation) + '</td>' +
-          '<td ' + td(70) + '>' + badge + '</td>' +
-          '<td style="white-space:nowrap;">' + actions + '</td>' +
-          '<td style="white-space:nowrap;">' + caseCell + '</td>' +
-          '</tr>';
-      });
-      html += '</table></div>';
-      box.innerHTML = html;
-      window._bookingCache = list;
-      // [2026.10.18 탭연결 4번] 대시보드 '대기중인 상담신청'에서 눌러 왔으면 그 줄로 스크롤하고 잠깐 강조한다(bookingFocusRow_)
-      if (window._bookingFocusRow){
-        var focusTr = box.querySelector('tr[data-bk-row="' + window._bookingFocusRow + '"]');
-        window._bookingFocusRow = null;
-        if (focusTr){ focusTr.scrollIntoView({ block: 'center' }); focusTr.style.background = 'var(--gold-light)'; setTimeout(function(){ focusTr.style.background = ''; }, 2500); }
-      }
+      bookingRender_();
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
+
+  function bookingRender_(){
+    var box = document.getElementById('bookingList');
+    var today = bookingTodayStr_();
+    var all = window._bookingAll || [];
+    all.forEach(function(b){ b._kind = bookingKind_(b, today); });
+    var todoN = all.filter(function(b){ return bookingIsTodo_(b._kind); }).length;
+    var mode = bookingMode_;
+    // 대시보드에서 누른 줄이 지금 보기에 없으면 전체로 보여 준다(못 찾는 일 없게)
+    if (window._bookingFocusRow){
+      var fb = bookingFind_(window._bookingFocusRow);
+      if (fb && mode !== 'all' && (mode === 'todo') !== bookingIsTodo_(fb._kind)) mode = 'all';
+    }
+    var list = all.filter(function(b){ return mode === 'all' || (mode === 'todo' ? bookingIsTodo_(b._kind) : !bookingIsTodo_(b._kind)); });
+    var when = function(b){ return String(b.reservedDate || '') + String(b.reservedTime || ''); };
+    list.sort(function(a, b){
+      if (mode === 'past') return when(b).localeCompare(when(a)); // 지난 기록은 최근 것부터
+      var oa = BOOKING_KIND_ORDER_[a._kind], ob = BOOKING_KIND_ORDER_[b._kind];
+      if (oa !== ob) return oa - ob;
+      // [2026.09 버그수정] 임박한 것이 먼저(오름차순). 끝난 것만 최근 것부터
+      return a._kind === 'done' ? when(b).localeCompare(when(a)) : when(a).localeCompare(when(b));
+    });
+    document.querySelectorAll('#bkModeBar [data-bk-mode]').forEach(function(btn){
+      var m = btn.getAttribute('data-bk-mode');
+      btn.textContent = m === 'todo' ? '처리할 것 ' + todoN : (m === 'past' ? '지난 기록 ' + (all.length - todoN) : '전체 ' + all.length);
+      btn.style.fontWeight = m === mode ? '700' : '';
+      btn.style.borderColor = m === mode ? 'var(--navy, #0d1b3d)' : '';
+    });
+    if (!list.length){
+      box.innerHTML = '<div class="empty-row">' + (mode === 'todo' ? '처리할 예약이 없습니다. 지난 기록은 위 "지난 기록"에서 볼 수 있습니다.' : '신청 내역이 없습니다.') + '</div>';
+      window._bookingCache = list;
+      return;
+    }
+    // [2026.09 버그수정] 데이터 길이에 맞춰 각 열 폭을 지정한다. 제목칸에도 줄바꿈 금지.
+    var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
+    // [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로
+    var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:1050px;"><colgroup>'
+      + '<col style="width:140px"><col style="width:70px"><col style="width:95px"><col style="width:80px"><col style="width:70px">'
+      + '<col style="width:400px"><col style="width:100px"><col style="width:120px"><col style="width:250px">'
+      + '</colgroup><tr><th ' + th(140) + '>희망일시</th><th ' + th(70) + '>이름</th><th ' + th(110) + '>연락처</th><th ' + th(80) + '>유형</th><th ' + th(70) + '>관련분야</th>' +
+      '<th ' + th(400) + '>상황</th><th ' + th(100) + '>상태</th><th ' + th(120) + '>예약처리</th><th ' + th(250) + '>사건처리</th></tr>';
+    list.forEach(function(b, idx){
+      // [2026.09.16 버그수정] 배지·버튼 글자 자체에 직접 줄바꿈 금지를 건다.
+      var hasMemo = !!(b.resultMemo || b.resultDate);
+      var badge = '<span style="white-space:nowrap;' + (hasMemo ? ' cursor:pointer; text-decoration:underline dotted;' : '') + '"' + (hasMemo ? ' onclick="bookingShowResultMemo_(' + b._rowIndex + ')" title="눌러서 결과 기록 보기"' : '') + '>' + bookingBadge_(b) + '</span>';
+      var actions = '-';
+      if (b.status === '신청'){
+        actions = '<button type="button" class="save-btn" style="white-space:nowrap;" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
+          '<button type="button" class="btn danger" style="white-space:nowrap;" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
+      } else if (b.status === '확정' && !b.caseId){
+        // [2026.10.30] 예전 "예약 취소" 단추는 결과 적기의 "사무소취소"로 흡수(취소 문자는 거기서 고름)
+        actions = '<button type="button" class="' + (b._kind === 'needResult' ? 'save-btn' : 'btn') + '" style="white-space:nowrap;" onclick="bookingOpenResult_(' + b._rowIndex + ')">결과 적기</button>';
+      }
+      var caseCell = '-';
+      if (b.caseId){
+        caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingGoToCase(\'' + esc(b.caseId) + '\')">🔗 사건 연결됨</button>';
+      } else if (b.status === '확정'){
+        var nC = (b.linkCandidates || []).length;
+        caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingStartCase(' + b._rowIndex + ')">사건 시작</button> ' +
+          '<button type="button" class="' + (nC ? 'save-btn' : 'ghost-btn') + '" style="white-space:nowrap;" onclick="bookingOpenLink_(' + b._rowIndex + ')"' + (nC ? ' title="같은 고객으로 만든 사건이 있습니다 — 눌러서 확인"' : '') + '>기존 사건에 연결' + (nC ? ' (후보 ' + nC + ')' : '') + '</button>';
+      }
+      // [2026.09.16 버그수정(2차)] 각 <td>에 실제 폭(px)을 직접 못박는다(colgroup과 별개인 이중 안전장치).
+      var td = function(px, extra){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' + (extra || '') + '"'; };
+      html += '<tr data-bk-row="' + b._rowIndex + '">' +
+        '<td ' + td(140) + '>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td>' +
+        '<td ' + td(70) + '>' + esc(b.name) + '</td>' +
+        '<td ' + td(110) + '>' + esc(b.phone) + '</td>' +
+        '<td ' + td(80, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'type\')">' + esc(b.type) + '</td>' +
+        '<td ' + td(70, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'field\')">' + esc(b.field || '-') + '</td>' +
+        '<td ' + td(400, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'situation\')">' + esc(b.situation) + '</td>' +
+        '<td ' + td(100) + '>' + badge + '</td>' +
+        '<td style="white-space:nowrap;">' + actions + '</td>' +
+        '<td style="white-space:nowrap;">' + caseCell + '</td>' +
+        '</tr>';
+    });
+    html += '</table></div>';
+    box.innerHTML = html;
+    window._bookingCache = list;
+    // [2026.10.18 탭연결 4번] 대시보드 '대기중인 상담신청'에서 눌러 왔으면 그 줄로 스크롤하고 잠깐 강조한다(bookingFocusRow_)
+    if (window._bookingFocusRow){
+      var focusTr = box.querySelector('tr[data-bk-row="' + window._bookingFocusRow + '"]');
+      window._bookingFocusRow = null;
+      if (focusTr){ focusTr.scrollIntoView({ block: 'center' }); focusTr.style.background = 'var(--gold-light)'; setTimeout(function(){ focusTr.style.background = ''; }, 2500); }
+    }
+  }
+
+  function bookingShowResultMemo_(rowIndex){
+    var b = bookingFind_(rowIndex); if (!b) return;
+    nxAlert_((b.result ? '결과: ' + b.result + (b.resultDate ? ' (' + b.resultDate + ')' : '') + '\n\n' : '') + (b.resultMemo || '(메모 없음)'), b.name + '님 예약 기록');
+  }
+
+  // ---- 공용 창(이 화면 전용 — 공용 nxDialog_는 글자만 받아 단추·입력칸을 못 넣는다) ----
+  function bookingOpenModal_(title, bodyHtml, width){
+    bookingCloseModal_();
+    var overlay = document.createElement('div');
+    overlay.id = 'bkModal';
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '9990';
+    overlay.innerHTML = '<div class="modal-panel" style="width:min(' + (width || 520) + 'px, 94vw);">' +
+      '<div class="modal-head"><span>' + esc(title) + '</span><button type="button" class="ghost-btn" data-bk-close="1" style="padding:2px 10px;">닫기</button></div>' +
+      '<div class="modal-body" id="bkModalBody">' + bodyHtml + '</div></div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e){ if (e.target === overlay || e.target.closest('[data-bk-close]')) bookingCloseModal_(); });
+    return overlay;
+  }
+  function bookingCloseModal_(){ var o = document.getElementById('bkModal'); if (o) o.remove(); }
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bkModal') && !document.getElementById('nxDialogOverlay')) bookingCloseModal_(); });
+  function bookingAfterChange_(){ initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; } }
+
+  // ---- 결과 적기 ----
+  var BOOKING_RESULT_OPTS_ = [
+    { v: '상담완료', t: '💬 상담완료', d: '방문·전화 상담을 했고 아직 사건으로 받지 않음 — 나중에 사건 시작·기존 사건 연결 가능', sms: null },
+    { v: '노쇼', t: '⛔ 노쇼', d: '연락 없이 오지 않음', sms: false, msg: '예약하신 상담 시간에 뵙지 못했습니다. 다시 예약을 원하시면 연락 부탁드립니다.' },
+    { v: '고객취소', t: '⚪ 고객취소', d: '고객이 취소를 요청함 — 캘린더 일정을 지웁니다', sms: false, msg: '요청하신 상담 예약 취소가 처리되었습니다. 다시 상담이 필요하시면 연락 부탁드립니다.' },
+    { v: '사무소취소', t: '⚪ 사무소취소', d: '사무소 사정으로 취소 — 캘린더 일정을 지웁니다', sms: true, msg: '예약이 취소되었습니다. 문의사항은 연락 부탁드립니다.' },
+    { v: '일정변경', t: '📆 일정변경', d: '날짜·시간을 옮깁니다 — 캘린더 일정도 같이 옮깁니다', sms: true, msg: '상담 예약이 (새 날짜 시간)(으)로 변경되었습니다.' }
+  ];
+  function bookingOpenResult_(rowIndex){
+    var b = bookingFind_(rowIndex); if (!b) return;
+    var opts = BOOKING_RESULT_OPTS_.slice();
+    if (b.result === '상담완료' || b.result === '노쇼') opts.push({ v: '지우기', t: '↩ 결과 지우기', d: '잘못 적은 결과를 지웁니다(지운 일은 메모에 남음)', sms: null });
+    var h = '<div style="font-size:13px; color:var(--sub); margin-bottom:6px;">' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + ' · ' + esc(b.name) + (b.phone ? ' · ' + esc(b.phone) : '') +
+      (b.result ? '<br>지금 결과: <b>' + esc(b.result) + '</b>' + (b.resultDate ? ' (' + esc(b.resultDate) + ')' : '') : '') + '</div>';
+    opts.forEach(function(o){
+      h += '<label style="display:flex; gap:8px; align-items:flex-start; padding:6px 4px; border-bottom:1px solid var(--line); cursor:pointer; font-size:13.5px;">' +
+        '<input type="radio" name="bkResPick" value="' + esc(o.v) + '" style="margin-top:3px;"><span><b>' + esc(o.t) + '</b><br><span style="color:var(--sub); font-size:12.5px;">' + esc(o.d) + '</span></span></label>';
+    });
+    h += '<div id="bkResWhen" style="display:none; gap:8px; margin-top:8px;"><label style="font-size:12px; color:var(--sub);">새 날짜<br><input type="date" id="bkResDate"></label><label style="font-size:12px; color:var(--sub);">새 시간<br><input type="time" id="bkResTime"></label></div>' +
+      '<div id="bkResSmsRow" style="display:none; margin-top:8px; font-size:13px;"><label style="cursor:pointer;"><input type="checkbox" id="bkResSms"> 고객에게 문자 보내기</label><div id="bkResSmsText" style="color:var(--sub); font-size:12.5px; margin-top:2px;"></div></div>' +
+      '<label style="font-size:12px; color:var(--sub); margin-top:8px;">메모(선택)<br><textarea id="bkResMemo" rows="2" style="width:100%; box-sizing:border-box; font-family:inherit;" placeholder="예: 다음 주 서류 가지고 다시 오기로"></textarea></label>' +
+      (b.resultMemo ? '<div style="font-size:12px; color:var(--sub); white-space:pre-wrap; margin-top:4px;">지난 기록\n' + esc(b.resultMemo) + '</div>' : '') +
+      '<div style="display:flex; gap:8px; margin-top:12px;"><button type="button" class="save-btn" id="bkResSave">저장</button><button type="button" class="ghost-btn" data-bk-close="1">닫기</button></div>';
+    var ov = bookingOpenModal_('예약 결과 적기', h, 460);
+    var pick = function(){ var r = ov.querySelector('input[name="bkResPick"]:checked'); return r ? opts.filter(function(o){ return o.v === r.value; })[0] : null; };
+    ov.addEventListener('change', function(e){
+      if (e.target.name !== 'bkResPick') return;
+      var o = pick();
+      document.getElementById('bkResWhen').style.display = o && o.v === '일정변경' ? 'flex' : 'none';
+      var smsRow = document.getElementById('bkResSmsRow');
+      if (!o || o.sms === null){ smsRow.style.display = 'none'; document.getElementById('bkResSms').checked = false; return; }
+      smsRow.style.display = 'block';
+      var chk = document.getElementById('bkResSms');
+      if (!b.phone){ chk.checked = false; chk.disabled = true; document.getElementById('bkResSmsText').textContent = '전화번호가 없어 문자를 보낼 수 없습니다.'; return; }
+      chk.disabled = false; chk.checked = !!o.sms;
+      document.getElementById('bkResSmsText').textContent = '보낼 글: ' + o.msg;
+    });
+    document.getElementById('bkResSave').addEventListener('click', function(){
+      var o = pick(); if (!o){ toast('결과를 골라 주세요.'); return; }
+      var payload = { rowIndex: rowIndex, expectName: b.name, result: o.v, memo: document.getElementById('bkResMemo').value.trim(), sms: document.getElementById('bkResSms').checked };
+      if (o.v === '일정변경'){
+        payload.newDate = document.getElementById('bkResDate').value; payload.newTime = document.getElementById('bkResTime').value;
+        if (!payload.newDate || !payload.newTime){ toast('새 날짜와 시간을 넣어 주세요.'); return; }
+      }
+      var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
+      callGas('booking_set_result', payload).then(function(res){
+        btn.disabled = false; btn.textContent = '저장';
+        if (!res || res.success === false){ toast((res && res.message) || '저장 실패'); return; }
+        toast(res.message || '저장했습니다.');
+        bookingCloseModal_(); bookingAfterChange_();
+      }).catch(function(e){ btn.disabled = false; btn.textContent = '저장'; toast('오류: ' + e.message); });
+    });
+  }
+
+  // ---- 예약 ↔ 사건 짝 한 줄(기존 사건 연결·연결 확인·사건 등록 뒤 묻기 세 곳이 같은 모양) ----
+  window._bkPairs = {};
+  function bookingPairHtml_(key, p, mainHtml, allowDismiss){
+    window._bkPairs[key] = p;
+    var why = p.근거 ? '<span style="font-size:11.5px; padding:1px 6px; border-radius:8px; border:1px solid ' + (p.강함 ? '#2a7a4f; color:#2a7a4f' : '#b06a00; color:#b06a00') + ';">' + esc(p.근거) + (p.강함 ? '' : ' — 동명이인일 수 있음') + '</span>' : '';
+    return '<div data-bk-pair-row="' + esc(key) + '" style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px 2px; border-bottom:1px solid var(--line); font-size:13px;">' +
+      '<span style="flex:1 1 220px;">' + mainHtml + ' ' + why + '</span>' +
+      '<button type="button" class="save-btn" data-bk-pair-link="' + esc(key) + '" style="white-space:nowrap;">연결</button>' +
+      (allowDismiss ? '<button type="button" class="ghost-btn" data-bk-pair-dismiss="' + esc(key) + '" style="white-space:nowrap;" title="이 사건은 이 예약의 후보에서 뺍니다(다시 묻지 않음)">같은 건 아님</button>' : '') + '</div>';
+  }
+  // 짝 단추 처리 — 연결: 예약을 그 사건에 잇는다(결과 = 사건접수) / 같은 건 아님: 후보에서 뺀다
+  function bookingWirePairs_(ov, onLinked){
+    ov.addEventListener('click', function(e){
+      var lk = e.target.closest('[data-bk-pair-link]'), ds = e.target.closest('[data-bk-pair-dismiss]');
+      if (!lk && !ds) return;
+      var key = (lk || ds).getAttribute(lk ? 'data-bk-pair-link' : 'data-bk-pair-dismiss');
+      var p = window._bkPairs[key]; if (!p) return;
+      var row = ov.querySelector('[data-bk-pair-row="' + key + '"]');
+      var btns = row ? row.querySelectorAll('button') : [];
+      btns.forEach(function(x){ x.disabled = true; });
+      var act = lk ? callGas('link_booking_case', { rowIndex: p.rowIndex, caseId: p.caseId, expectName: p.bookingName })
+                   : callGas('booking_dismiss_candidate', { rowIndex: p.rowIndex, caseId: p.caseId, expectName: p.bookingName });
+      act.then(function(res){
+        if (!res || res.success === false){ btns.forEach(function(x){ x.disabled = false; }); toast((res && res.message) || '처리 실패'); return; }
+        if (lk){
+          toast(p.bookingName + '님 예약을 「' + (p.사건명 || '사건') + '」에 이었습니다.');
+          // 같은 예약의 다른 후보 줄은 더 볼 필요가 없다
+          Object.keys(window._bkPairs).forEach(function(k){ var q = window._bkPairs[k]; if (q && q.rowIndex === p.rowIndex){ var r2 = ov.querySelector('[data-bk-pair-row="' + k + '"]'); if (r2 && r2 !== row) r2.remove(); } });
+          if (row) row.innerHTML = '<span style="color:#2a7a4f;">✅ 이었습니다 — ' + esc(p.bookingName) + '님 예약 ↔ 「' + esc(p.사건명 || '') + '」</span>';
+          if (onLinked) onLinked(p);
+        } else {
+          if (row) row.remove();
+          toast('후보에서 뺐습니다.');
+        }
+        bookingAfterChange_();
+      }).catch(function(err){ btns.forEach(function(x){ x.disabled = false; }); toast('오류: ' + err.message); });
+    });
+  }
+
+  // ---- 기존 사건에 연결(예약 한 줄 → 사건 고르기) ----
+  function bookingOpenLink_(rowIndex){
+    var b = bookingFind_(rowIndex); if (!b) return;
+    window._bkPairs = {};
+    var ov = bookingOpenModal_('기존 사건에 연결 — ' + b.name + '님 ' + b.reservedDate, '<div class="spinner">같은 고객의 사건을 찾는 중…</div>', 560);
+    bookingWirePairs_(ov, function(){ setTimeout(bookingCloseModal_, 900); });
+    callGas('booking_case_candidates', { rowIndex: rowIndex, expectName: b.name }).then(function(res){
+      var body = document.getElementById('bkModalBody'); if (!body) return;
+      if (!res || res.success === false){ body.innerHTML = '<div class="empty-row">' + esc((res && res.message) || '불러오지 못했습니다') + '</div>'; return; }
+      var caseLine = function(c){ return '「' + esc(c.사건명 || '') + '」 <span style="color:var(--sub); font-size:12px;">' + esc(c.고객명 || '') + ' · 만든 날 ' + esc(c.생성일 || '-') + (c.상태 ? ' · ' + esc(c.상태) : '') + '</span>'; };
+      var h = '<div style="font-size:12.5px; color:var(--sub);">이으면 이 예약의 결과가 "사건접수"가 되고, 예약 캘린더 일정은 지워집니다(사건 일정은 사건 쪽에서 관리).</div>';
+      h += '<div style="font-weight:700; margin-top:8px;">같은 건일 수 있는 사건</div>';
+      if ((res.candidates || []).length){
+        res.candidates.forEach(function(c, i){ h += bookingPairHtml_('c' + i, { rowIndex: rowIndex, caseId: c.caseId, 사건명: c.사건명, bookingName: b.name, 근거: c.근거, 강함: c.강함 }, caseLine(c), true); });
+      } else h += '<div class="empty-row" style="padding:6px 0;">전화번호나 이름이 같은 사건이 없습니다.</div>';
+      h += '<div style="font-weight:700; margin-top:10px;">다른 사건에서 고르기 <input type="text" id="bkLinkFilter" placeholder="고객명·사건명으로 좁히기" style="margin-left:6px; font-weight:normal; width:180px;"></div><div id="bkLinkRecent">';
+      (res.recent || []).forEach(function(c, i){ h += '<div data-bk-recent="' + esc((c.고객명 || '') + ' ' + (c.사건명 || '')) + '">' + bookingPairHtml_('r' + i, { rowIndex: rowIndex, caseId: c.caseId, 사건명: c.사건명, bookingName: b.name }, caseLine(c), false) + '</div>'; });
+      h += '</div>';
+      body.innerHTML = h;
+      document.getElementById('bkLinkFilter').addEventListener('input', function(){
+        var q = this.value.trim();
+        document.querySelectorAll('#bkLinkRecent [data-bk-recent]').forEach(function(el){ el.style.display = !q || el.getAttribute('data-bk-recent').indexOf(q) !== -1 ? '' : 'none'; });
+      });
+    }).catch(function(e){ var body = document.getElementById('bkModalBody'); if (body) body.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
+  }
+
+  // ---- 연결 확인(전체) — 사건에 안 이은 확정 예약 ↔ 같은 고객의 사건 짝. 지금까지 쌓인 것 한 번 정리에도 쓴다 ----
+  document.getElementById('bkLinkReview').addEventListener('click', function(){
+    window._bkPairs = {};
+    var ov = bookingOpenModal_('연결 확인 — 사건에 안 이은 확정 예약', '<div class="spinner">예약과 사건을 맞대 보는 중…</div>', 600);
+    bookingWirePairs_(ov);
+    callGas('booking_link_review', {}).then(function(res){
+      var body = document.getElementById('bkModalBody'); if (!body) return;
+      if (!res || res.success === false){ body.innerHTML = '<div class="empty-row">' + esc((res && res.message) || '불러오지 못했습니다') + '</div>'; return; }
+      var h = '<div style="font-size:12.5px; color:var(--sub);">예약일이 지났거나 상담완료로 적은 확정 예약 중, 같은 전화번호·같은 이름으로 만든 사건이 있는 것입니다(예약일 30일 전 ~ 180일 뒤에 만든 사건). 같은 건이면 "연결", 아니면 "같은 건 아님"을 눌러 주세요. 저절로 바꾸는 것은 없습니다.</div>';
+      if (res.결과적기필요) h += '<div style="font-size:13px; color:#a83232; margin-top:6px;">🟠 날짜가 지났는데 결과를 안 적은 예약 ' + res.결과적기필요 + '건 — 목록 "처리할 것"에서 결과 적기</div>';
+      if (!(res.items || []).length) h += '<div class="empty-row" style="padding:10px 0;">이을 후보가 있는 예약이 없습니다.</div>';
+      (res.items || []).forEach(function(it, i){
+        h += '<div style="margin-top:10px; font-weight:700; font-size:13.5px;">' + esc(it.reservedDate) + ' ' + esc(it.reservedTime) + ' · ' + esc(it.name) + (it.phone ? ' · ' + esc(it.phone) : '') + (it.result ? ' · ' + esc(it.result) : '') + '</div>';
+        (it.candidates || []).forEach(function(c, j){
+          h += bookingPairHtml_('v' + i + '_' + j, { rowIndex: it.rowIndex, caseId: c.caseId, 사건명: c.사건명, bookingName: it.name, 근거: c.근거, 강함: c.강함 },
+            '「' + esc(c.사건명 || '') + '」 <span style="color:var(--sub); font-size:12px;">만든 날 ' + esc(c.생성일 || '-') + '</span>', true);
+        });
+      });
+      body.innerHTML = h;
+    }).catch(function(e){ var body = document.getElementById('bkModalBody'); if (body) body.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
+  });
+
+  // ---- 사건 등록 뒤 묻기 — 작업관리·고객관리·사건메모·의뢰메모 어디서 사건을 만들었든, 서버가 돌려준 예약 후보를 보여 드린다 ----
+  //  (예약관리 "사건 시작"으로 만든 사건은 서버가 이미 이었으므로 후보가 오지 않는다)
+  function bookingAskLinkAfterCreate_(res){
+    var cands = res && res.bookingCandidates;
+    if (!cands || !cands.length || !res.case) return;
+    window._bkPairs = {};
+    var h = '<div style="font-size:13px;">「' + esc(res.case.사건명 || '') + '」 사건을 등록했습니다. 아래 확정 예약과 같은 건이면 이어 두세요 — 이으면 예약 결과가 "사건접수"로 남습니다.</div>';
+    cands.forEach(function(c, i){
+      h += bookingPairHtml_('a' + i, { rowIndex: c.rowIndex, caseId: res.case.id, 사건명: res.case.사건명, bookingName: c.name, 근거: c.근거, 강함: c.강함 },
+        esc(c.reservedDate) + ' ' + esc(c.reservedTime) + ' · <b>' + esc(c.name) + '</b>' + (c.phone ? ' · ' + esc(c.phone) : '') + (c.result ? ' · ' + esc(c.result) : ''), true);
+    });
+    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약관리 "연결 확인"에서 다시 볼 수 있음)</button></div>';
+    var ov = bookingOpenModal_('이 사건과 같은 건일 수 있는 예약', h, 560);
+    bookingWirePairs_(ov, function(){ setTimeout(bookingCloseModal_, 1200); });
   }
 
   // [2026.09 신규] 목록은 요약만, 전체 상황 내용은 클릭했을 때만 보여준다.
@@ -4305,21 +4543,7 @@ function nxMdOpenWindow(title, src, opts){
     });
   }
 
-  // [2026.09] 확정된 예약을 취소한다(사건으로 아직 안 연결된 경우만 — 연결된 예약은
-  // 서버가 막고 안내 메시지를 돌려준다).
-  function bookingCancelConfirmed(rowIndex){
-    var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
-    if (!b) return;
-    nxConfirm_(b.name + '님의 확정된 예약을 취소할까요?\n\n캘린더 일정이 지워지고, 고객에게 취소 안내 문자가 바로 발송됩니다.').then(function(ok){
-      if (!ok) return;
-      callGas('cancel_confirmed_booking', { rowIndex: rowIndex })
-        .then(function(res){
-          if (res.success === false){ toast(res.message || '취소 실패'); return; }
-          toast('취소되었습니다.'); initBooking(true);
-        })
-        .catch(function(e){ toast('오류: ' + e.message); });
-    });
-  }
+  // [2026.10.30] 확정 예약 취소(옛 "예약 취소" 단추)는 결과 적기의 "고객취소·사무소취소"로 흡수했다 — 서버 입구(cancel_confirmed_booking)는 넥스 제안용으로 남김
 
   // ============================================================
   // 5단계 — 직권등록(고객 신청 없이 운영자가 바로 예약 확정) + 이 예약으로 사건 시작.
@@ -4994,6 +5218,8 @@ function nxMdOpenWindow(title, src, opts){
       if (prefill.고객유형) payload.고객유형 = prefill.고객유형;
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
+      // [2026.10.30 예약 결과 관리] 예약에서 시작했으면 서버가 사건을 만들면서 바로 잇는다(예전엔 저장 뒤 화면이 따로 불러, 그 사이 창을 닫으면 끊겼다)
+      if (prefill.bookingRowIndex) payload.bookingRowIndex = prefill.bookingRowIndex;
       callGas('work_create_case', payload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveDone(false); return; }
         saveDone(true);
@@ -5006,7 +5232,10 @@ function nxMdOpenWindow(title, src, opts){
         workSelectedCaseId = res.case.id;
         loadWorkCases();
         if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
-        if (prefill.bookingRowIndex){
+        if (prefill.bookingRowIndex && res.bookingLinked){
+          if (typeof loadBookingList === 'function') loadBookingList();
+        } else if (prefill.bookingRowIndex){
+          // (서버가 잇지 못했거나 옛 서버일 때만 아래 예전 길로 다시 잇는다)
           // [2026.09 버그수정] 예약↔사건 연결(link_booking_case)이 실패해도 그냥 조용히 넘어가서,
           // 사건·폴더·my.netax.kr 접속코드는 이미 다 만들어졌는데 예약목록엔 "사건 시작" 버튼이
           // 그대로 남아 다시 누르면 똑같은 사건이 중복으로 또 만들어질 위험이 있었다. 한 번
@@ -5022,6 +5251,9 @@ function nxMdOpenWindow(title, src, opts){
             });
           };
           linkBookingCase_(1);
+        } else if (typeof bookingAskLinkAfterCreate_ === 'function'){
+          // [2026.10.30] 예약관리를 거치지 않고 만든 사건 — 같은 전화·이름의 확정 예약이 있으면 이을지 여쭌다(서버가 후보를 돌려줄 때만 창이 뜬다)
+          bookingAskLinkAfterCreate_(res);
         }
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveDone(false); });
     });
@@ -50569,6 +50801,7 @@ function rwAiApplyEdit_(id, content){
     btn.disabled = true;
     callGas('work_create_case', createPayload).then(function(res){
       if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return null; }
+      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
       var overviewPayload = { id: res.case.id, 사건개요: memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data) };
       if (data._baseDate) overviewPayload.기준일 = data._baseDate;
       return callGas('work_update_case', overviewPayload).then(function(res2){
@@ -51259,6 +51492,7 @@ function rwAiApplyEdit_(id, content){
     callGas('work_create_case', createPayload).then(function(res){
       if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return; }
       if (res.warning) toast(res.warning);
+      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
       toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
       memoReqApplyStepEl.style.display = 'none';
       memoReqShowRegisteredBar_(res.case);

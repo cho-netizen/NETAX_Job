@@ -32,7 +32,12 @@ function booking_getBookings() {
       approvedDate: data[i][10],
       eventId: data[i][11] || '',
       caseId: data[i][12] || '',
-      field: data[i][13] || ''
+      field: data[i][13] || '',
+      // [2026.10.30 예약 결과 관리] 확정 뒤 결과(상담완료·사건접수·노쇼·고객취소·사무소취소)·결과일·메모·밤 점검이 적은 연결 후보
+      result: data[i][14] || '',
+      resultDate: data[i][15] ? (typeof data[i][15] === 'object' ? Utilities.formatDate(new Date(data[i][15]), 'Asia/Seoul', 'yyyy-MM-dd') : String(data[i][15]).slice(0, 10)) : '',
+      resultMemo: data[i][16] || '',
+      linkCandidates: (function (t) { if (!t) return []; try { const a = JSON.parse(String(t)); return Array.isArray(a) ? a : []; } catch (e) { return []; } })(data[i][18])
     });
   }
 
@@ -219,7 +224,8 @@ const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업
 // (2026.09.19) 새로 생기면서 이 매핑에 business를 추가하는 걸 놓쳤다 — 그래서 사업 사건은
 // 작업관리 납세자를 아무리 입력해도 처리개요의 "납세자(대표) 성명"(bizTaxpayerName)에
 // 전혀 반영되지 않았다. casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_도 같이 고칠 것.
-const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName' };
+// [2026.10.30] 불복 사건개요서(casehandling.html CH_CASE_OVERVIEW_FIELDS_.objection) — 청구인(납세자) 성명도 작업관리 납세자와 맞춘다
+const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName', objection: 'objTaxpayerName' };
 
 const WORK_EVIDENCE_TEMPLATES_ = {
   transfer: {

@@ -3746,6 +3746,9 @@ function job_lookup_(input) {
     });
     return { 예약: job_trimList_(list.slice().reverse(), 60), 안내: '최근 것부터. 승인·거절은 job_propose_action으로 제안하라(rowIndex·eventId·phone·reservedDate·reservedTime 그대로 사용).' };
   }
+  // [2026.10.30 예약 결과 관리] 연결 확인·후보 — 읽기만(시트에 적지 않음)
+  if (kind === 'booking_link_review') return booking_linkReview({ write: false });
+  if (kind === 'booking_case_candidates') { if (!input.rowIndex) return { error: 'booking_case_candidates는 rowIndex(예약 줄 번호)가 필요합니다 — bookings로 먼저 확인하라.' }; return booking_caseCandidates({ rowIndex: input.rowIndex }); }
   if (kind === 'consult_logs') {
     const r = job_execAction_('client_get_consult_logs', { search: input.search || '' });
     return job_trimList_(r.logs || r.data || r, 80);
@@ -3897,6 +3900,9 @@ const JOB_PROPOSE_ACTIONS_ = {
   booking_reject: { gas: 'reject', label: '상담 예약 거절(고객에게 안내 문자가 갑니다)', required: ['rowIndex', 'phone'] },
   booking_link_case: { gas: 'link_booking_case', label: '예약을 사건에 연결', required: ['rowIndex', 'caseId'] },
   booking_cancel: { gas: 'cancel_confirmed_booking', label: '확정된 예약 취소', required: ['rowIndex'] },
+  // [2026.10.30 예약 결과 관리] 예약관리의 "결과 적기" 단추와 같은 서버 입구 — result: 상담완료·노쇼·고객취소·사무소취소·일정변경(newDate·newTime)·지우기, sms: true일 때만 고객 문자
+  booking_result: { gas: 'booking_set_result', label: '예약 결과 적기(상담완료·노쇼·취소·일정변경 — 문자는 sms:true일 때만)', required: ['rowIndex', 'expectName', 'result'] },
+  booking_dismiss_candidate: { gas: 'booking_dismiss_candidate', label: '예약의 연결 후보에서 이 사건 빼기(같은 건 아님)', required: ['rowIndex', 'caseId'] },
   client_sms: { gas: 'client_send_sms', label: '고객에게 문자 발송', required: ['고객ID', 'message'] },
   portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
   checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
@@ -4036,7 +4042,7 @@ function job_buildProposal_(input) {
 const JOB_AI_TOOLS_ = [
   {
     name: 'job_lookup',
-    description: 'job 화면의 자료를 조회한다(읽기 전용, 바로 실행). kind: bookings=상담 예약 목록(승인·거절 제안에 필요한 rowIndex 등 포함), consult_logs=고객 상담·자문·수금 기록(search=고객명으로 좁히기), checklist=사건의 고객창구 증빙 체크리스트(caseId 필요), memos=일반메모 목록, case_log=전체 사건 처리일지, reports=사무소 기존 보고서 모음(📚 — 자문보고서·종합검토서·검토서 등; search 낱말로 사건명·파일 이름 좁히기, 본문은 read_drive_file(fileId) — 보고서를 쓸 때 같은 세목·종류 1~2개를 본보기로), bug_log=job 오류 자동기록(최근 100건), '
+    description: 'job 화면의 자료를 조회한다(읽기 전용, 바로 실행). kind: bookings=상담 예약 목록(승인·거절 제안에 필요한 rowIndex 등 포함), booking_link_review=사건에 안 이은 확정 예약과 같은 건일 수 있는 사건 짝(근거: 전화번호 같음·이름 같음 — 이름만 같으면 동명이인일 수 있어 세무사님께 여쭌다), booking_case_candidates=예약 한 줄(rowIndex)의 후보 사건과 최근 사건 — 잇기는 booking_link_case, 같은 건 아님은 booking_dismiss_candidate, 결과(상담완료·노쇼·취소·일정변경)는 booking_result로 제안, consult_logs=고객 상담·자문·수금 기록(search=고객명으로 좁히기), checklist=사건의 고객창구 증빙 체크리스트(caseId 필요), memos=일반메모 목록, case_log=전체 사건 처리일지, reports=사무소 기존 보고서 모음(📚 — 자문보고서·종합검토서·검토서 등; search 낱말로 사건명·파일 이름 좁히기, 본문은 read_drive_file(fileId) — 보고서를 쓸 때 같은 세목·종류 1~2개를 본보기로), bug_log=job 오류 자동기록(최근 100건), '
       + 'caseproc=사건처리 상태(caseId 필요 — 남은 질문·넣을 칸·후보와 출처·AI 판단 값·지난 사건 지휘에서 넥스가 한 보고·판단·여쭌 것. "이 사건 처리하자" 뒤 세무사님이 질문·값·이유를 물으면 먼저 이것을 본다), '
       + 'ai_review=AI 판단이 쌓인 모습(주제별 판단 수·세무사님이 고친 비율·GAS 규칙 후보·빠진 도구), '
       + 'law_decisions=AI 회의 법령 안건(search=쟁점 낱말) — 상태 "결정"은 세무사님 결론이라 그대로 따르고, "판단 대기"·"보류"면 그 쟁점을 단정하지 말고 판단 대기 중이라고 밝힌다. 세법 판단을 답하기 전에 같은 쟁점이 있는지 먼저 본다. 사건·고객 목록 자체는 list_work_cases·list_clients를 써라. '
@@ -4044,7 +4050,8 @@ const JOB_AI_TOOLS_ = [
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read'] },
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read', 'booking_link_review', 'booking_case_candidates'] },
+        rowIndex: { type: 'number', description: 'booking_case_candidates일 때 예약 줄 번호(bookings의 rowIndex)' },
         caseId: { type: 'string', description: 'checklist·caseproc·case_files·file_read일 때 작업관리 사건ID' },
         search: { type: 'string', description: 'consult_logs일 때 고객명, law_decisions일 때 쟁점 낱말, case_files일 때 파일 이름 낱말(선택)' },
         dir: { type: 'string', description: 'case_files일 때 폴더 이름으로 좁히기(선택)' },
@@ -4255,7 +4262,7 @@ function getClientActionTools_(ctx) {
 // 기억하지 않는다(저장했는데 옛날 값이 보이는 짜증을 만들지 않기 위해).
 const DISPATCH_SHORT_CACHE_ = { getNightlyStatus: 1800, getGlobalLog: 120, search_emails: 90, get_calendar_events: 90 };
 // 이 작업들이 성공하면 위 기억을 지운다(예약 승인·취소 → 캘린더가 바뀜, 메일 읽음 표시 → 안읽은 메일 목록이 바뀜)
-const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'], env_watch_run: ['getNightlyStatus'] };
+const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], booking_set_result: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'], env_watch_run: ['getNightlyStatus'] };
 function dispatchClientAction_(body) {
   const ttl = DISPATCH_SHORT_CACHE_[body && body.action];
   const bust = DISPATCH_SHORT_CACHE_BUST_[body && body.action];
@@ -4309,6 +4316,11 @@ function dispatchClientAction0_(body) {
   if (body.action === 'cancel_confirmed_booking') {
     return jsonResponse(booking_cancelConfirmed(body));
   }
+  // [2026.10.30 예약 결과 관리] 결과 적기 · 기존 사건 후보 · 후보 아님 · 연결 확인(세무사님 화면과 넥스가 같은 입구)
+  if (body.action === 'booking_set_result') return jsonResponse(booking_setResult(body));
+  if (body.action === 'booking_case_candidates') return jsonResponse(booking_caseCandidates(body));
+  if (body.action === 'booking_dismiss_candidate') return jsonResponse(booking_dismissCandidate(body));
+  if (body.action === 'booking_link_review') return jsonResponse(booking_linkReview({ write: true }));
   if (body.action === 'list_bookings') {
     // [2026.08] NX-Work 홈 대시보드의 "대기 중인 상담신청" 위젯용 — booking_getBookings()는
     // 이미 doGet에서도 쓰는 함수라 자체적으로 jsonResponse까지 반환하므로 그대로 리턴한다
@@ -17367,6 +17379,8 @@ function todoList_() {
       out.오늘예약.push({ 시각: b.reservedTime, 이름: String(b.name || ''), caseId: b.caseId || '', 사건: c ? String(c.사건명 || '') : '' });
     });
     out.오늘예약.sort(function (a, b) { return String(a.시각).localeCompare(String(b.시각)); });
+    // [2026.10.30 예약 결과 관리] 날짜가 지났는데 결과를 안 적은 확정 예약 + 밤 점검이 찾은 연결 후보가 있는 예약(사건에 안 이은 것)
+    out.예약결과 = ((o && o.bookings) || []).filter(function (b) { return b.status === '확정' && !b.caseId && ((!b.result && b.reservedDate && b.reservedDate < today) || (b.linkCandidates && b.linkCandidates.length)); }).length;
   } catch (e) {}
   // 넥스가 묻는 질문(사건처리 남은 질문 중 아직 답 없는 것) — 최근 14일 안에 고친 진행 사건만(사건마다 드라이브 파일을 읽으므로 많이 안 봄)
   try {
@@ -17888,6 +17902,7 @@ function runNightlyChiefManager() {
   // 자기점검 한 줄·은퇴한 admin 안내)이 대시보드 "📋 사건 경과·마감 현황" 카드·"시스템 자기점검" 줄과 겹쳤다. 함수(generateDailyBriefing_)는 남겨 둠.
   // [2026.09 신규] 사건 폴더 안의 현금영수증 파일을 매일 밤 훑어 자문내역에 자동 기록.
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
+  try { booking_nightlyLinkReview_(); } catch (err) { console.error('예약 연결 후보 점검 실패: ' + err.message); } // [2026.10.30] 사건에 안 이은 확정 예약 ↔ 같은 고객 새 사건 짝(토큰 0)
   try { ensureDailyReminderTrigger_(); } catch (err) { console.error('아침 알림 트리거 확인 실패: ' + err.message); } // [2026.10.22]
   // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
   try { runSelfCheck_(); } catch (err) { console.error('자가점검 실패: ' + err.message); }
@@ -18626,7 +18641,12 @@ function booking_getBookings() {
       approvedDate: data[i][10],
       eventId: data[i][11] || '',
       caseId: data[i][12] || '',
-      field: data[i][13] || ''
+      field: data[i][13] || '',
+      // [2026.10.30 예약 결과 관리] 확정 뒤 결과(상담완료·사건접수·노쇼·고객취소·사무소취소)·결과일·메모·밤 점검이 적은 연결 후보
+      result: data[i][14] || '',
+      resultDate: data[i][15] ? (typeof data[i][15] === 'object' ? Utilities.formatDate(new Date(data[i][15]), 'Asia/Seoul', 'yyyy-MM-dd') : String(data[i][15]).slice(0, 10)) : '',
+      resultMemo: data[i][16] || '',
+      linkCandidates: (function (t) { if (!t) return []; try { const a = JSON.parse(String(t)); return Array.isArray(a) ? a : []; } catch (e) { return []; } })(data[i][18])
     });
   }
 
@@ -18705,12 +18725,18 @@ function booking_linkCase(body) {
   return withLock_(8000, function () {
     const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
     const sheet = ss.getSheetByName('Applications');
+    // [2026.10.30] 화면이 본 이름(expectName)을 같이 보내면 그 줄이 맞는지 확인한다(그 사이 줄이 밀렸을 때 다른 사람 예약에 잇지 않게)
+    if (body.expectName && String(sheet.getRange(rowIndex, 2).getValue() || '').trim() !== String(body.expectName).trim()) {
+      return { success: false, message: '예약 목록이 그 사이 바뀌었습니다. 예약관리를 새로고침한 뒤 다시 해 주세요.' };
+    }
     const existing = String(sheet.getRange(rowIndex, 13).getValue() || '').trim();
     if (existing && existing !== caseId) {
       return { success: false, message: '이 예약은 이미 다른 사건에 연결되어 있습니다.' };
     }
     if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
     sheet.getRange(rowIndex, 13).setValue(caseId);
+    // [2026.10.30 예약 결과 관리] 사건에 이으면 결과 = 사건접수(어느 길로 이었든 — 예약관리 사건 시작·기존 사건 연결·사건 만들 때 묻기·넥스 제안)
+    try { booking_ensureExtraHeaders_(sheet); sheet.getRange(rowIndex, 15, 1, 2).setValues([['사건접수', new Date()]]); sheet.getRange(rowIndex, 19).setValue(''); } catch (e) { console.error('예약 결과(사건접수) 적기 실패: ' + e.message); }
     // [2026.09 버그수정] 예약이 사건으로 전환되면 사건 쪽(work_syncCaseCalendar_)이 법정기한
     // 일정을 새로 만들어주므로, 원래 예약 상담시간 일정은 지워서 캘린더에 중복으로 안 쌓이게 한다.
     booking_deleteEventByRow_(sheet, rowIndex);
@@ -18728,9 +18754,267 @@ function booking_clearCaseLink_(caseId) {
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][12] || '') === String(caseId)) {
       sheet.getRange(i + 1, 13).setValue('');
+      // [2026.10.30] 사건이 지워져 연결이 풀리면 결과 "사건접수"도 같이 비운다(결과 적기 필요로 다시 보이게)
+      if (String(data[i][14] || '') === '사건접수') sheet.getRange(i + 1, 15, 1, 2).setValues([['', '']]);
     }
   }
 }
+
+// =========================================================
+// [2026.10.30] 예약 결과 관리 — 세무사님 "예약확정후 취소하거나 노쇼가 있을 수 있고, 방문상담하여 사건접수로 이어질 수도 있는데,
+//  그런 사항이 관리가 되지 않는다" / "사건시작을 누르지 않고도 사건이 시작되는 경우가 있는데, 그에 대한 대책도 함께 검토하라" → "계획대로 진행".
+//  ① 확정 뒤 결과 칸(상담완료·사건접수·노쇼·고객취소·사무소취소·일정변경) ② 어느 길로 사건을 만들든 서버 한 관문(work_createCaseFull_)에서
+//  같은 전화·같은 이름의 확정 예약을 후보로 돌려주고, 잇는 것은 세무사님이 정한다(자동으로 잇지 않음) ③ 예약관리에서 기존 사건에 잇기
+//  ④ 매일 밤 연결 후보를 시트에 적어 대시보드·예약관리가 0원으로 보인다. 예약 줄은 지우지 않는다(화면이 줄 번호로 예약을 찾기 때문).
+//  시트 칸(1부터): 15 결과 · 16 결과일 · 17 결과메모 · 18 연결제외사건ID(쉼표) · 19 연결후보(JSON, 밤 점검이 씀)
+// =========================================================
+const BOOKING_EXTRA_HEADERS_ = ['결과', '결과일', '결과메모', '연결제외사건ID', '연결후보'];
+const BOOKING_RESULTS_ = ['상담완료', '사건접수', '노쇼', '고객취소', '사무소취소', '일정변경'];
+const BOOKING_MATCH_BEFORE_DAYS_ = 30;   // 예약일 30일 전에 만든 사건부터
+const BOOKING_MATCH_AFTER_DAYS_ = 180;   // 예약일 180일 뒤에 만든 사건까지 후보로 본다
+function booking_ensureExtraHeaders_(sheet) {
+  const cur = sheet.getRange(1, 15, 1, BOOKING_EXTRA_HEADERS_.length).getValues()[0];
+  BOOKING_EXTRA_HEADERS_.forEach(function (h, k) { if (cur[k] === '') sheet.getRange(1, 15 + k).setValue(h); });
+}
+function booking_isDate_(v) { return v instanceof Date || Object.prototype.toString.call(v) === '[object Date]'; }
+function booking_phoneDigits_(s) { return String(s || '').replace(/[^0-9]/g, ''); }
+function booking_dayStr_(v) {
+  if (!v) return '';
+  if (booking_isDate_(v)) return Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s); return isNaN(d.getTime()) ? '' : Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd');
+}
+function booking_timeStr_(v) {
+  if (!v) return '';
+  if (booking_isDate_(v)) return Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm');
+  return String(v).trim().slice(0, 5);
+}
+function booking_dayDiff_(a, b) { // a - b (일), 둘 다 yyyy-MM-dd
+  const ta = new Date(a + 'T00:00:00+09:00').getTime(), tb = new Date(b + 'T00:00:00+09:00').getTime();
+  return (isFinite(ta) && isFinite(tb)) ? Math.round((ta - tb) / 86400000) : NaN;
+}
+function booking_appendMemo_(old, line) {
+  const stamp = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  return (String(old || '').trim() ? String(old).trim() + '\n' : '') + stamp + ' ' + line;
+}
+// 줄 번호로 예약을 찾되, 화면이 본 이름(expectName)과 다르면 막는다(그 사이 줄이 밀렸을 때 다른 사람 예약을 바꾸지 않게)
+function booking_readRowChecked_(sheet, rowIndex, expectName) {
+  if (!rowIndex || rowIndex < 2 || rowIndex > sheet.getLastRow()) return { error: '예약 줄을 찾지 못했습니다. 예약관리를 새로고침해 주세요.' };
+  const row = sheet.getRange(rowIndex, 1, 1, 19).getValues()[0];
+  if (expectName !== undefined && expectName !== null && String(expectName).trim() && String(row[1] || '').trim() !== String(expectName).trim()) {
+    return { error: '예약 목록이 그 사이 바뀌었습니다(이 줄은 ' + row[1] + '님 예약). 예약관리를 새로고침한 뒤 다시 해 주세요.' };
+  }
+  return { row: row };
+}
+
+// 결과 적기 — 확정된 예약(사건에 아직 안 이은 것)에 결과를 남긴다. 문자는 sms가 true일 때만(화면이 결과마다 기본값을 정해 보여 준다).
+//  body: { rowIndex, expectName, result: 상담완료|노쇼|고객취소|사무소취소|일정변경|지우기, memo, sms, newDate, newTime }
+function booking_setResult(body) {
+  const rowIndex = Number(body.rowIndex);
+  const result = String(body.result || '').trim();
+  const memo = String(body.memo || '').trim();
+  const wantSms = body.sms === true || body.sms === 'true';
+  if (['상담완료', '노쇼', '고객취소', '사무소취소', '일정변경', '지우기'].indexOf(result) === -1) return { success: false, message: '결과가 올바르지 않습니다: ' + result };
+  return withLock_(8000, function () {
+    const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+    const sheet = ss.getSheetByName('Applications');
+    if (!sheet) return { success: false, message: '예약 시트가 없습니다.' };
+    booking_ensureExtraHeaders_(sheet);
+    const rr = booking_readRowChecked_(sheet, rowIndex, body.expectName);
+    if (rr.error) return { success: false, message: rr.error };
+    const row = rr.row;
+    if (row[9] !== '확정') return { success: false, message: '확정된 예약에만 결과를 적을 수 있습니다(지금 상태: ' + row[9] + ').' };
+    if (row[12]) return { success: false, message: '이미 사건에 이은 예약입니다(결과 = 사건접수). 바꾸려면 작업관리에서 그 사건을 먼저 정리해 주세요.' };
+    const phone = String(row[2] || '').trim();
+    const name = String(row[1] || '').trim();
+    let smsSent = false;
+    const sendSms = function (msg) { if (wantSms && phone) { try { booking_sendSMS(phone, msg); smsSent = true; } catch (e) { console.error('예약 결과 문자 실패: ' + e.message); } } };
+    let memoText = String(row[16] || '');
+
+    if (result === '지우기') {
+      const prev = String(row[14] || '');
+      if (prev !== '상담완료' && prev !== '노쇼') return { success: false, message: '지울 수 있는 결과는 상담완료·노쇼뿐입니다.' };
+      memoText = booking_appendMemo_(memoText, '결과 지움(' + prev + ')' + (memo ? ' — ' + memo : ''));
+      sheet.getRange(rowIndex, 15, 1, 3).setValues([['', '', memoText]]);
+      return { success: true, message: '결과를 지웠습니다.' };
+    }
+    if (result === '상담완료' || result === '노쇼') {
+      memoText = booking_appendMemo_(memoText, result + (memo ? ' — ' + memo : ''));
+      sheet.getRange(rowIndex, 15, 1, 3).setValues([[result, new Date(), memoText]]);
+      if (result === '노쇼') sendSms('예약하신 상담 시간에 뵙지 못했습니다. 다시 예약을 원하시면 연락 부탁드립니다.');
+      return { success: true, message: result + '(으)로 적었습니다.' + (smsSent ? ' 고객에게 문자를 보냈습니다.' : ''), smsSent: smsSent };
+    }
+    if (result === '고객취소' || result === '사무소취소') {
+      memoText = booking_appendMemo_(memoText, result + (memo ? ' — ' + memo : ''));
+      sheet.getRange(rowIndex, 10).setValue('취소');
+      sheet.getRange(rowIndex, 15, 1, 3).setValues([[result, new Date(), memoText]]);
+      booking_deleteEventByRow_(sheet, rowIndex);
+      sendSms(result === '고객취소' ? '요청하신 상담 예약 취소가 처리되었습니다. 다시 상담이 필요하시면 연락 부탁드립니다.' : '예약이 취소되었습니다. 문의사항은 연락 부탁드립니다.');
+      return { success: true, message: result + '(으)로 적고 캘린더 일정을 지웠습니다.' + (smsSent ? ' 고객에게 문자를 보냈습니다.' : ''), smsSent: smsSent };
+    }
+    // 일정변경 — 캘린더 일정을 새 시각으로 옮기고 예약일·시간을 바꾼다. 결과는 비운 채(다시 다가오는 확정 예약) 메모에 옛 → 새를 남긴다.
+    const newDate = String(body.newDate || '').trim(), newTime = String(body.newTime || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !/^\d{2}:\d{2}$/.test(newTime)) return { success: false, message: '바꿀 날짜와 시간을 넣어 주세요.' };
+    const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
+    const start = new Date(newDate + 'T' + newTime + ':00+09:00');
+    const end = new Date(start.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
+    const ownId = String(row[11] || '');
+    const busy = cal.getEvents(start, end).some(function (ev) { return ev.getId() !== ownId && ev.getTransparency() !== CalendarApp.EventTransparency.TRANSPARENT; });
+    if (busy) return { success: false, message: '그 시간에 이미 다른 일정이 있습니다.' };
+    let ev = null;
+    if (ownId) { try { ev = cal.getEventById(ownId); } catch (e) { ev = null; } }
+    if (ev) {
+      ev.setTime(start, end);
+    } else {
+      ev = cal.createEvent(name, start, end, { description: '연락처: ' + (phone || '-') + '\n출처: 예약관리 일정변경' });
+      try { ev.addPopupReminder(10); } catch (e) {}
+      try { ev.setColor(BOOKING_COLOR_CONFIRMED); } catch (e) {}
+      sheet.getRange(rowIndex, 12).setValue(ev.getId());
+    }
+    const oldWhen = booking_dayStr_(row[6]) + ' ' + booking_timeStr_(row[7]);
+    memoText = booking_appendMemo_(memoText, '일정변경 ' + oldWhen + ' → ' + newDate + ' ' + newTime + (memo ? ' — ' + memo : ''));
+    sheet.getRange(rowIndex, 7, 1, 2).setValues([[newDate, newTime]]); // 신청 때와 같은 방식(시트가 날짜·시각으로 받음 — 글자 서식으로 두면 목록 읽기의 시각 변환이 깨진다)
+    sheet.getRange(rowIndex, 15, 1, 3).setValues([['', '', memoText]]);
+    sendSms('상담 예약이 ' + newDate + ' ' + newTime + '(으)로 변경되었습니다.');
+    return { success: true, message: newDate + ' ' + newTime + '(으)로 옮겼습니다.' + (smsSent ? ' 고객에게 문자를 보냈습니다.' : ''), smsSent: smsSent };
+  });
+}
+
+// 후보 찾기에 쓰는 자료 한 번에 읽기 — 사건 목록·고객 전화번호·예약 시트
+function booking_loadMatchData_() {
+  const ws = work_getSheet_();
+  const wdata = ws.getDataRange().getValues();
+  const wcol = work_colMap_(wdata[0]);
+  const cases = [];
+  for (let i = 1; i < wdata.length; i++) {
+    const r = wdata[i];
+    if (!r[wcol.id]) continue;
+    cases.push({
+      id: String(r[wcol.id]), 고객ID: String(r[wcol.고객ID] || ''), 고객명: String(r[wcol.고객명] || '').trim(),
+      납세자: wcol.납세자 !== undefined ? String(r[wcol.납세자] || '').trim() : '', 사건명: String(r[wcol.사건명] || ''),
+      상태: String(r[wcol.상태] || ''), 생성일: booking_dayStr_(r[wcol.생성일]) || booking_dayStr_(r[wcol.의뢰일])
+    });
+  }
+  const phones = {};
+  try {
+    const cs = client_getSheets_().clients;
+    const cdata = cs.getDataRange().getValues();
+    const ccol = client_colMap_(cdata[0], CLIENT_HEADERS);
+    for (let i = 1; i < cdata.length; i++) {
+      const id = String(cdata[i][ccol.id] || ''); if (!id) continue;
+      phones[id] = client_splitPhoneNumbers_(cdata[i][ccol.전화번호]).concat(ccol.추가연락처 !== undefined ? client_splitPhoneNumbers_(cdata[i][ccol.추가연락처]) : []);
+    }
+  } catch (e) { console.error('예약 후보: 고객 전화번호 읽기 실패 ' + e.message); }
+  const bs = SpreadsheetApp.openById(BOOKING_SHEET_ID).getSheetByName('Applications');
+  const bdata = bs ? bs.getDataRange().getValues() : [];
+  const linked = {};
+  for (let i = 1; i < bdata.length; i++) if (bdata[i][12]) linked[String(bdata[i][12])] = true;
+  return { cases: cases, phones: phones, bsheet: bs, bdata: bdata, linked: linked };
+}
+// 예약 한 줄과 사건 하나가 같은 건인지의 근거 — '전화번호 같음'(강함) / '이름 같음'(약함, 동명이인일 수 있음) / ''(아님)
+function booking_matchWhy_(brow, c, phones) {
+  const bp = booking_phoneDigits_(brow[2]);
+  if (bp.length >= 9 && (phones[c.고객ID] || []).indexOf(bp) !== -1) return '전화번호 같음';
+  const bn = String(brow[1] || '').replace(/\s+/g, '');
+  if (bn && (bn === c.고객명.replace(/\s+/g, '') || (c.납세자 && bn === c.납세자.replace(/\s+/g, '')))) return '이름 같음';
+  return '';
+}
+function booking_isOpenForLink_(brow) {
+  // 확정이고 사건에 안 이었고, 결과가 없거나 상담완료(상담 뒤 나중에 수임하는 경우)인 예약
+  return brow[9] === '확정' && !brow[12] && (!brow[14] || brow[14] === '상담완료' || brow[14] === '노쇼');
+}
+// 예약 한 줄 → 같은 건일 수 있는 사건들
+function booking_candidatesForRow_(md, i) {
+  const brow = md.bdata[i];
+  const rday = booking_dayStr_(brow[6]);
+  const excl = String(brow[17] || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  const out = [];
+  md.cases.forEach(function (c) {
+    if (md.linked[c.id] || excl.indexOf(c.id) !== -1) return;
+    const why = booking_matchWhy_(brow, c, md.phones); if (!why) return;
+    const dd = rday && c.생성일 ? booking_dayDiff_(c.생성일, rday) : NaN;
+    if (isFinite(dd) && (dd < -BOOKING_MATCH_BEFORE_DAYS_ || dd > BOOKING_MATCH_AFTER_DAYS_)) return;
+    out.push({ caseId: c.id, 사건명: c.사건명, 고객명: c.고객명, 생성일: c.생성일, 상태: c.상태, 근거: why, 강함: why === '전화번호 같음' });
+  });
+  out.sort(function (a, b) { return (b.강함 - a.강함) || String(a.생성일).localeCompare(String(b.생성일)); });
+  return out;
+}
+// 사건 하나 → 같은 건일 수 있는 확정 예약들(사건 만들기 관문에서 씀)
+function booking_candidatesForCase_(caseObj, md) {
+  md = md || booking_loadMatchData_();
+  const c = { id: String(caseObj.id), 고객ID: String(caseObj.고객ID || ''), 고객명: String(caseObj.고객명 || '').trim(), 납세자: String(caseObj.납세자 || '').trim() };
+  const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  const out = [];
+  for (let i = 1; i < md.bdata.length; i++) {
+    const brow = md.bdata[i];
+    if (!booking_isOpenForLink_(brow)) continue;
+    const excl = String(brow[17] || '').split(',').map(function (s) { return s.trim(); });
+    if (excl.indexOf(c.id) !== -1) continue;
+    const why = booking_matchWhy_(brow, c, md.phones); if (!why) continue;
+    const rday = booking_dayStr_(brow[6]);
+    const dd = rday ? booking_dayDiff_(today, rday) : NaN;
+    if (isFinite(dd) && (dd < -BOOKING_MATCH_BEFORE_DAYS_ || dd > BOOKING_MATCH_AFTER_DAYS_)) continue;
+    out.push({ rowIndex: i + 1, name: String(brow[1] || ''), phone: String(brow[2] || ''), reservedDate: rday, reservedTime: booking_timeStr_(brow[7]), result: String(brow[14] || ''), 근거: why, 강함: why === '전화번호 같음' });
+  }
+  out.sort(function (a, b) { return (b.강함 - a.강함) || String(b.reservedDate).localeCompare(String(a.reservedDate)); });
+  return out;
+}
+// 화면·넥스: 예약 한 줄의 후보 사건 + 최근 사건(직접 고르기용)
+function booking_caseCandidates(body) {
+  const md = booking_loadMatchData_();
+  const rowIndex = Number(body.rowIndex);
+  if (!rowIndex || rowIndex < 2 || rowIndex > md.bdata.length) return { success: false, message: '예약 줄을 찾지 못했습니다.' };
+  const brow = md.bdata[rowIndex - 1];
+  if (body.expectName && String(brow[1] || '').trim() !== String(body.expectName).trim()) return { success: false, message: '예약 목록이 그 사이 바뀌었습니다. 새로고침해 주세요.' };
+  const cands = booking_candidatesForRow_(md, rowIndex - 1);
+  const candIds = cands.map(function (x) { return x.caseId; });
+  const recent = md.cases.filter(function (c) { return !md.linked[c.id] && candIds.indexOf(c.id) === -1; })
+    .sort(function (a, b) { return String(b.생성일).localeCompare(String(a.생성일)); }).slice(0, 40)
+    .map(function (c) { return { caseId: c.id, 사건명: c.사건명, 고객명: c.고객명, 생성일: c.생성일, 상태: c.상태 }; });
+  return { success: true, candidates: cands, recent: recent };
+}
+// "같은 건 아님" — 그 사건을 이 예약의 후보에서 뺀다(다시 묻지 않게)
+function booking_dismissCandidate(body) {
+  const rowIndex = Number(body.rowIndex), caseId = String(body.caseId || '').trim();
+  if (!rowIndex || !caseId) return { success: false, message: 'rowIndex와 caseId가 필요합니다.' };
+  return withLock_(8000, function () {
+    const sheet = SpreadsheetApp.openById(BOOKING_SHEET_ID).getSheetByName('Applications');
+    booking_ensureExtraHeaders_(sheet);
+    const rr = booking_readRowChecked_(sheet, rowIndex, body.expectName);
+    if (rr.error) return { success: false, message: rr.error };
+    const excl = String(rr.row[17] || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (excl.indexOf(caseId) === -1) excl.push(caseId);
+    let cands = []; try { cands = JSON.parse(String(rr.row[18] || '[]')) || []; } catch (e) { cands = []; }
+    cands = cands.filter(function (x) { return x && x.caseId !== caseId; });
+    sheet.getRange(rowIndex, 18, 1, 2).setValues([[excl.join(','), cands.length ? JSON.stringify(cands) : '']]);
+    return { success: true, message: '이 사건은 이 예약의 후보에서 뺐습니다.' };
+  });
+}
+// 연결 확인 — 사건에 안 이은 확정 예약(예약일이 지났거나 결과가 상담완료)과 후보 사건 짝 전체. write=true면 시트 19칸에 적는다(밤 점검).
+function booking_linkReview(body) {
+  const md = booking_loadMatchData_();
+  const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  const items = [];
+  const writes = [];
+  for (let i = 1; i < md.bdata.length; i++) {
+    const brow = md.bdata[i];
+    const rday = booking_dayStr_(brow[6]);
+    const open = booking_isOpenForLink_(brow) && (brow[14] === '상담완료' || (rday && rday < today));
+    const cands = open ? booking_candidatesForRow_(md, i) : [];
+    if (cands.length) items.push({ rowIndex: i + 1, name: String(brow[1] || ''), phone: String(brow[2] || ''), reservedDate: rday, reservedTime: booking_timeStr_(brow[7]), result: String(brow[14] || ''), candidates: cands });
+    const txt = cands.length ? JSON.stringify(cands.slice(0, 5).map(function (x) { return { caseId: x.caseId, 사건명: x.사건명, 근거: x.근거 }; })) : '';
+    if (String(brow[18] || '') !== txt) writes.push({ row: i + 1, txt: txt });
+  }
+  if (body && body.write && md.bsheet) {
+    booking_ensureExtraHeaders_(md.bsheet);
+    writes.forEach(function (w) { md.bsheet.getRange(w.row, 19).setValue(w.txt); });
+  }
+  const pastDue = md.bdata.filter(function (r, k) { return k > 0 && r[9] === '확정' && !r[12] && !r[14] && booking_dayStr_(r[6]) && booking_dayStr_(r[6]) < today; }).length;
+  return { success: true, items: items, 결과적기필요: pastDue, 적은줄: body && body.write ? writes.length : 0 };
+}
+// 매일 밤(runNightlyChiefManager) — 연결 후보를 시트에 적어 둔다(조회 서버가 예약 목록과 함께 그대로 돌려줌, AI 0원)
+function booking_nightlyLinkReview_() { return booking_linkReview({ write: true }); }
 
 // ===== 신청 승인 (공통 처리 로직) =====
 function booking_finalizeApproval(rowIndex, eventId, phone, reservedDate, reservedTime) {
@@ -18813,6 +19097,7 @@ function booking_cancelConfirmed(body) {
   if (row[12]) return { success: false, message: '이미 사건으로 연결된 예약입니다 — 취소하려면 작업관리에서 그 사건을 정리해주세요.' };
 
   sheet.getRange(rowIndex, 10).setValue('취소');
+  try { booking_ensureExtraHeaders_(sheet); sheet.getRange(rowIndex, 15, 1, 2).setValues([['사무소취소', new Date()]]); } catch (e) { console.error('예약 결과(사무소취소) 적기 실패: ' + e.message); } // [2026.10.30]
   booking_deleteEventByRow_(sheet, rowIndex);
 
   const phone = row[2];
@@ -24880,6 +25165,22 @@ function work_createCase0_(params) {
 function work_createCaseFull_(params) {
   const r = work_createCase0_(params);
   if (!r || r.success === false || !r.case) return r;
+  // [2026.10.30 예약 결과 관리] 사건을 만드는 길(예약관리 사건 시작·작업관리 새 사건·고객관리·사건메모·의뢰메모·넥스)이 모두 이 관문을 지난다.
+  //  예약에서 시작했으면(bookingRowIndex) 여기서 바로 잇고(예전엔 화면이 저장 뒤 따로 불러, 그 사이 창을 닫으면 끊겼다),
+  //  아니면 같은 전화·같은 이름의 확정 예약을 후보로 돌려준다 — 잇는 것은 세무사님이 정한다(자동으로 잇지 않음). 실패해도 사건 등록은 그대로.
+  try {
+    if (params.bookingRowIndex) {
+      const lk = booking_linkCase({ rowIndex: Number(params.bookingRowIndex), caseId: r.case.id });
+      r.bookingLinked = !!(lk && lk.success !== false);
+      if (!r.bookingLinked) r.bookingLinkError = (lk && lk.message) || '예약 연결 실패';
+    } else {
+      const cands = booking_candidatesForCase_(r.case);
+      if (cands.length) {
+        r.bookingCandidates = cands.slice(0, 5);
+        r.bookingCandidatesNote = '이 사건과 같은 건일 수 있는 확정 예약이 있습니다(근거 표시). 이름만 같으면 동명이인일 수 있으니 세무사님께 여쭙고, 맞다고 하시면 booking_link_case(rowIndex·caseId)로 제안하라.';
+      }
+    }
+  } catch (e) { console.error('사건 만들기 — 예약 연결·후보 찾기 실패: ' + e.message); r.bookingCheckError = e.message; }
   const req = params.의뢰서 && typeof params.의뢰서 === 'object' ? params.의뢰서 : null;
   if (req && r.case.폴더ID) { try { const sv = handleSaveCaseFromTemplate(Object.assign({}, req, { folderId: r.case.폴더ID })); if (sv && sv.error) r.warning = (r.warning ? r.warning + ' ' : '') + '의뢰서 저장 실패: ' + sv.error; else r.의뢰서파일 = sv; } catch (e) { r.warning = (r.warning ? r.warning + ' ' : '') + '의뢰서 저장 실패: ' + (e && e.message || e); } }
   if (params.사건개요 && typeof params.사건개요 === 'object') { try { const up = work_updateCase({ id: r.case.id, 사건개요: params.사건개요 }); if (up && up.success !== false && up.case) r.case = up.case; else if (up && up.message) r.warning = (r.warning ? r.warning + ' ' : '') + '사건개요 반영 실패: ' + up.message; } catch (e) { r.warning = (r.warning ? r.warning + ' ' : '') + '사건개요 반영 실패: ' + (e && e.message || e); } }

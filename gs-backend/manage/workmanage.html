@@ -568,6 +568,8 @@
       if (prefill.고객유형) payload.고객유형 = prefill.고객유형;
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
+      // [2026.10.30 예약 결과 관리] 예약에서 시작했으면 서버가 사건을 만들면서 바로 잇는다(예전엔 저장 뒤 화면이 따로 불러, 그 사이 창을 닫으면 끊겼다)
+      if (prefill.bookingRowIndex) payload.bookingRowIndex = prefill.bookingRowIndex;
       callGas('work_create_case', payload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveDone(false); return; }
         saveDone(true);
@@ -580,7 +582,10 @@
         workSelectedCaseId = res.case.id;
         loadWorkCases();
         if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
-        if (prefill.bookingRowIndex){
+        if (prefill.bookingRowIndex && res.bookingLinked){
+          if (typeof loadBookingList === 'function') loadBookingList();
+        } else if (prefill.bookingRowIndex){
+          // (서버가 잇지 못했거나 옛 서버일 때만 아래 예전 길로 다시 잇는다)
           // [2026.09 버그수정] 예약↔사건 연결(link_booking_case)이 실패해도 그냥 조용히 넘어가서,
           // 사건·폴더·my.netax.kr 접속코드는 이미 다 만들어졌는데 예약목록엔 "사건 시작" 버튼이
           // 그대로 남아 다시 누르면 똑같은 사건이 중복으로 또 만들어질 위험이 있었다. 한 번
@@ -596,6 +601,9 @@
             });
           };
           linkBookingCase_(1);
+        } else if (typeof bookingAskLinkAfterCreate_ === 'function'){
+          // [2026.10.30] 예약관리를 거치지 않고 만든 사건 — 같은 전화·이름의 확정 예약이 있으면 이을지 여쭌다(서버가 후보를 돌려줄 때만 창이 뜬다)
+          bookingAskLinkAfterCreate_(res);
         }
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveDone(false); });
     });
