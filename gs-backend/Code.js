@@ -303,7 +303,8 @@ const DRIVE_TOOLS = [
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더에 저장된다.' },
         name: { type: 'string', description: '파일 이름(확장자 포함, 예: "검토보고서.md")' },
-        content: { type: 'string', description: '파일에 저장할 내용 전체(마크다운 또는 일반 텍스트). 일부만 주지 말고 완성된 전체 내용을 줘야 한다.' }
+        content: { type: 'string', description: '파일에 저장할 내용 전체(마크다운 또는 일반 텍스트). 일부만 주지 말고 완성된 전체 내용을 줘야 한다.' },
+        overwrite: { type: 'boolean', description: '세무서 제출용 검토조서(검토조서.md·검토조서_쟁점.md)를 같은 이름으로 갱신할 때만 true — 세무사님이 그 검토조서를 고치라고 하셨을 때만. 그 밖의 파일에는 쓰지 않는다.' }
       },
       required: ['name', 'content']
     }
@@ -5307,6 +5308,10 @@ function toolSaveFileToFolder(pathArr, name, content, opts) {
         const ex = existingIter.next();
         if (opts.openFileId && ex.getId() === opts.openFileId) {
           return { error: '「' + fileName + '」은 지금 화면 미리보기·편집기에 열려 있는 문서라 save_file_to_folder로 덮어쓰지 않았다 — apply_document_edit로 수정안을 내라(사용자가 확인하고 저장한다).' };
+        }
+        // [2026.10.30] 세무서 제출용 검토조서는 이미 제출했을 수 있다 — 같은 이름이 있으면 세무사님이 고치라고 하신 경우(overwrite:true)에만 갱신한다
+        if (/^검토조서(_[^\/]*)?\.(md|txt)$/i.test(fileName) && !opts.overwriteReviewMemo) {
+          return { error: '「' + fileName + '」이 이미 있다(세무서 제출용 검토조서는 이미 냈을 수 있어 덮어쓰지 않았다). 새 검토조서면 다른 쟁점 이름(검토조서_쟁점이름.md)으로 저장하고, 세무사님이 이 검토조서를 고치라고 하셨으면 overwrite:true로 다시 저장하라.' };
         }
         if (aiSaveCanOverwrite_(ex, pathArr)) {
           backedUp = aiSaveBackupPrev_(folder, ex);
@@ -15637,7 +15642,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
           : ((body.context && Array.isArray(body.context.currentPath)) ? body.context.currentPath : []);
         // [2026.10.30 운영 시험(가상조사대응)] 사건이 연결된 대화에서 넥스가 path를 사건 폴더 기준(["보고서_내부"])으로 주면 드라이브 맨 위에서 찾다 실패했고,
         //  path 없이 다시 저장하자 보고서가 드라이브 맨 위에 떨어졌다 — 사건 대화의 저장은 사건 폴더 기준으로 푼다(없는 하위 폴더면 저장하지 않고 알린다).
-        const saveOpts = { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '' };
+        const saveOpts = { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '', overwriteReviewMemo: input.overwrite === true };
         if (nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
           const cf = nxCaseSaveFolder_(nxCaseId_, input.path);
           if (cf && cf.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: cf.error }) };

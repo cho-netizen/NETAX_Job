@@ -299,7 +299,7 @@
       <button id="addReviewSpecificOpt">개별검토서 만들기</button>
       <button id="addAdvisoryOpt">자문보고서 만들기</button>
       <button id="addFilingOpt">신고보고서 만들기</button>
-      <button id="addReferenceOpt">참고보고서 만들기</button>
+      <button id="addReferenceOpt" title="세무서에 신고와 함께 내는 참고 문서(공문 개조식)">검토조서 만들기</button>
       <button id="addProgressOpt">진행보고서 만들기</button>
       <button id="addAppealOpt">불복청구서 만들기</button>
       <button id="addTranslationOpt">번역서 만들기</button>
@@ -322,7 +322,8 @@
     <div id="downloadPopup" class="popupMenu">
       <button id="dlDoc">DOC로 다운로드</button>
       <button id="dlHtml">HTML로 다운로드</button>
-      <button id="dlPdf" title="화면에 보이는 그대로 PDF 파일로 바로 저장(인쇄 대화상자 없이)">PDF로 다운로드</button>
+      <button id="dlPdf" title="화면에 보이는 그대로 PDF 파일로 바로 저장(인쇄 대화상자 없이) — 여백 없이, 링크로 화면에서 볼 때용">보기용 PDF(여백 없음)</button>
+      <button id="dlPrintPdf" title="세무서 제출·인쇄용 — A4 여백(위 30·좌우 25·아래 25mm)을 두고, 글줄이 잘리지 않게 쪽을 나눠 PDF로 바로 저장">인쇄용 PDF(A4 여백)</button>
       <button id="dlPrint">Print / PDF</button>
     </div>
   </div>
@@ -590,7 +591,7 @@ async function hydrateDocsFromIdb_(){
 
 // 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함.
 const RW_DOC_TYPE_SHORT_LABELS_ = {
-  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '참고', progress: '진행', appeal_petition: '불복청구', summary: '요약', translation: '번역서'
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', summary: '요약', translation: '번역서'
 };
 // [2026.09.16 신규] 저장 파일명에 붙이는 전체 라벨 — rwGuessDocTypeFromFilename_이 파일명만
 // 보고 문서유형을 되짚어 추정할 때 기대하는 단어(예: filing은 "신고"+"보고서" 둘 다 있어야
@@ -599,7 +600,7 @@ const RW_DOC_TYPE_SHORT_LABELS_ = {
 // 보통 1개), <개별검토서_세부명칭>은 특정 쟁점 하나에 국한된 검토(세부명칭이 이름의 필수
 // 구성요소 — saveToDrive에서 review_specific은 항상 세부명칭을 물어봄).
 const RW_DOC_TYPE_FILENAME_LABELS_ = {
-  review: '종합검토서', review_specific: '개별검토서', advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문보고서', filing: '신고보고서', reference: '검토조서',
   progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서'
 };
 
@@ -1193,26 +1194,32 @@ async function createNewDoc(kind){
         + '## 신고 세액 및 산출근거\n\n\n'
         + '## 향후 유의사항\n\n'
     },
-    // [2026.09] 외부보고서 3/5 — 참고보고서(신고 사건, 세무서 제출용). 고객이 아니라 과세관청이
-    // 읽는 문서 — 신고서 처리 시 재문의 없이 넘어가도록, 개요와 특정항목을 설명하는 용도.
+    // [2026.09] 외부보고서 3/5 — 세무서 제출용(신고 사건). 고객이 아니라 과세관청이 읽는 문서.
+    // [2026.10.30] "참고보고서" → "검토조서"(세무사님 "제목을 검토조서로 변경하자 … 수신은 없애자"). 공문 개조식(가. → 1) → 가)),
+    //  부제 "- ○○○ ○○세 신고 관련 참고사항 -", 붙임, 서명 한 줄. 정리용(쟁점 없음)·쟁점용 두 갈래 × 양도·증여·상속 —
+    //  드라이브 틀(업무관리자\보고서템플릿\검토조서.md)이 있으면 그것을 쓰고, 여기 것은 틀을 못 읽을 때의 바탕이다.
+    //  두 쪽 모두 rwShapeReviewMemo_가 사건 세목·갈래에 맞는 묶음만 남긴다.
     reference: {
-      promptDefault: '참고보고서_' + (c ? (c.고객명 || '') : ''),
-      fallbackName: '참고보고서',
-      // [2026.09] doc-reference 테마 전용 구조 — 고객용 3종과 달리 과세관청이 읽는 공문서라
-      // 화려한 레터헤드 대신 회사명만 작게 넣고(<div class="letterhead">), 본문은 "1. 2. 3."
-      // 번호 매긴 개조식으로 구성한다(ul을 쓰면 doc-reference 테마가 자동으로 번호를 매김).
-      md: '<div class="letterhead"><span class="brand">이음세무컨설팅 NETAX</span><span class="doc-date">' + todayStr + '</span></div>\n\n'
-        + '# 참고보고서\n\n'
-        + '<table class="meta">\n'
-        + '<tr><td class="k">수신</td><td>OOO세무서장 귀하</td></tr>\n'
-        + '<tr><td class="k">발신</td><td>이음세무컨설팅 (신고대리인)</td></tr>\n'
-        + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' ' + semokLabel + ' 신고 관련 참고사항 안내</td></tr>\n'
-        + (c && c.법정일 ? '<tr><td class="k">법정신고기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
-        + '</table>\n\n'
-        + '## 신고 개요\n\n' + overviewFactsMd + '\n'
-        + '## 특정항목 설명\n\n'
-        + '(신고서를 처리하실 때 참고하실 사항을 항목별로 설명합니다. 아래처럼 목록으로 적으면 1. 2. 3.으로 자동 번호가 매겨집니다.)\n\n'
-        + '- \n\n'
+      promptDefault: '검토조서',
+      fallbackName: '검토조서',
+      md: '<div class="letterhead"><span class="brand">이음세무컨설팅</span><span class="doc-date">⚠[확인필요: 작성일]</span></div>\n\n'
+        + '# 검토조서\n\n'
+        + '<!-- 양도 시작 -->\n<div class="subtitle">- ⚠[확인필요: 납세자] 양도소득세 신고 관련 참고사항 -</div>\n<!-- 양도 끝 -->\n'
+        + '<!-- 증여 시작 -->\n<div class="subtitle">- ⚠[확인필요: 납세자] 증여세 신고 관련 참고사항 -</div>\n<!-- 증여 끝 -->\n'
+        + '<!-- 상속 시작 -->\n<div class="subtitle">- 망 ⚠[확인필요: 피상속인] 상속세 신고 관련 참고사항 -</div>\n<!-- 상속 끝 -->\n\n'
+        + '## 1. 신고 개요\n\n'
+        + '<!-- 양도 시작 -->\n- 납세자: ⚠[확인필요: 납세자]\n- 신고 구분: ⚠[확인필요: 양도소득세 예정·확정·기한후·수정 신고]\n- 양도자산: ⚠[확인필요: 소재지]\n- 취득일: ⚠[확인필요: 취득일(기준)]\n- 양도일: ⚠[확인필요: 양도일(기준)]\n- 신고 내용: ✍️[AI 작성: 일반 과세 / 비과세·감면 적용(조문)]\n<!-- 양도 끝 -->\n'
+        + '<!-- 증여 시작 -->\n- 수증자: ⚠[확인필요: 수증자]\n- 증여자: ⚠[확인필요: 증여자(수증자와의 관계)]\n- 신고 구분: 증여세 신고\n- 증여재산: ⚠[확인필요: 증여재산(소재지·종류)]\n- 증여일: ⚠[확인필요: 증여일(기준)]\n<!-- 증여 끝 -->\n'
+        + '<!-- 상속 시작 -->\n- 피상속인: 망 ⚠[확인필요: 피상속인]\n- 상속개시일: ⚠[확인필요: 상속개시일]\n- 상속인: ⚠[확인필요: 상속인(관계·성명)]\n- 신고 구분: 상속세 신고\n- 신고인: ⚠[확인필요: 신고인]\n<!-- 상속 끝 -->\n\n'
+        + '## 2. 사실관계\n\n- ⚠[확인필요: 날짜] ✍️[AI 작성: 사실 한 줄](붙임 1)\n\n'
+        + '<!-- 정리용 시작 -->\n## 3. 신고 내용\n\n'
+        + '(금액마다 산출근거와 세부 내역을 아래 단계로 적습니다 — 두 칸 들여 쓰면 1), 네 칸 들여 쓰면 가). 여러 건은 건마다 한 줄, 해당 없으면 "없음")\n\n'
+        + '- ⚠[확인필요: 항목]: ⚠[확인필요: 금액]원\n  - 산출근거: ✍️[AI 작성: 산출근거]\n'
+        + '<!-- 정리용 끝 -->\n'
+        + '<!-- 쟁점용 시작 -->\n## 3. ✍️[AI 작성: 쟁점 이름] 적용 근거\n\n- ✍️[AI 작성: 요건 묶음 이름]\n  - ✍️[AI 작성: 요건 한 줄(조문)]\n- 사실 대입\n  - ✍️[AI 작성: 요건마다 이 사건 사실 한 줄]\n\n'
+        + '## 4. 신고 내용\n\n- 위 사실관계와 법령에 따라 ✍️[AI 작성: 적용한 내용과 금액]을 적용하여 신고함\n<!-- 쟁점용 끝 -->\n\n'
+        + '<div class="attach-k">붙임</div>\n\n- ✍️[AI 작성: 서류명] 1부.  끝.\n\n'
+        + '<div class="signline">⚠[확인필요: 작성일]<br><span class="name">이음세무컨설팅 세무사 조종호</span></div>\n'
     },
     // [2026.09] 외부보고서 4/5 — 진행보고서(불복 사건, 고객에게 전달). 불복은 처리기간이 길어
     // 중간중간 진행상황을 알려야 하므로, 지금까지 경과와 다음 일정을 중심으로 짠다.
@@ -1296,8 +1303,19 @@ async function createNewDoc(kind){
     }
   };
   const tpl = templates[kind] || templates.blank;
-  const name = await nxPrompt_('새 문서의 이름을 입력하세요.', tpl.promptDefault);
-  if (name === null) return; // 취소
+  // [2026.10.30] 검토조서는 두 갈래(세무사님 "특별한 쟁점없이 신고내용을 정리만 하는 검토조서도 있어야 한다") — 이름 대신 쟁점을 묻는다.
+  //  비우면 정리용 "검토조서", 적으면 쟁점용 "검토조서_쟁점이름"(고객명은 넣지 않음 — 사건 폴더로 앎). 이 이름이 저장 파일 이름이 된다(saveToDrive)
+  let rwIssue_ = '';
+  let name;
+  if (kind === 'reference') {
+    const ans = await nxPrompt_('검토조서 — 따로 설명할 쟁점이 있으면 쟁점 이름을 적어 주세요(예: 혼인합가비과세).\n쟁점 없이 신고 내용 정리만이면 비워 두고 확인을 누르세요.', '');
+    if (ans === null) return; // 취소
+    rwIssue_ = String(ans).trim().replace(/^검토조서_?/, '').replace(/[\\/:*?"<>|]/g, '').trim();
+    name = rwIssue_ ? '검토조서_' + rwIssue_ : '검토조서';
+  } else {
+    name = await nxPrompt_('새 문서의 이름을 입력하세요.', tpl.promptDefault);
+    if (name === null) return; // 취소
+  }
   // [2026.09 신규] "업무관리자/보고서템플릿" 폴더에 이 보고서 종류(fallbackName, 예: "검토서")와
   // 이름이 같은 파일을 미리 넣어뒀으면, 코드에 내장된 기본 골격 대신 그 내용을 초안으로 쓴다.
   // 없거나 조회에 실패해도 조용히 기본 골격을 그대로 쓴다(의뢰서템플릿과 같은 원칙).
@@ -1308,6 +1326,7 @@ async function createNewDoc(kind){
       if (tres && tres.found && tres.content) mdContent = tres.content;
     } catch (err) { /* 조용히 기본 골격 사용 */ }
   }
+  if (kind === 'reference') mdContent = rwShapeReviewMemo_(mdContent, { semok: semokLabel, issue: rwIssue_, date: todayStr, client: c ? (c.고객명 || '') : '' });
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
   const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
@@ -1339,6 +1358,25 @@ function addReviewSpecificDoc(){ createNewDoc('review_specific'); }
 function addAdvisoryDoc(){ createNewDoc('advisory'); }
 function addFilingDoc(){ createNewDoc('filing'); }
 function addReferenceDoc(){ createNewDoc('reference'); }
+// [2026.10.30] 검토조서 틀 다듬기 — 틀(드라이브 검토조서.md 또는 위 내장 틀)의 "양도/증여/상속 시작~끝"·"정리용/쟁점용 시작~끝" 묶음 중
+//  사건 세목·갈래에 맞는 것만 남기고, 작성일·납세자·쟁점 이름을 채운다. 세목을 모르면(사건 없이 만들 때) 세목 묶음은 셋 다 남긴다.
+function rwShapeReviewMemo_(md, o){
+  let out = String(md || '');
+  const semok = String((o && o.semok) || '');
+  const key = /양도/.test(semok) ? '양도' : /증여/.test(semok) ? '증여' : /상속/.test(semok) ? '상속' : '';
+  const keep = function(tag, on){
+    out = out.replace(new RegExp('<!-- ' + tag + ' 시작 -->[ \\t]*\\r?\\n?([\\s\\S]*?)<!-- ' + tag + ' 끝 -->[ \\t]*\\r?\\n?', 'g'), function(_, inner){ return on ? inner : ''; });
+  };
+  if (key) ['양도', '증여', '상속'].forEach(function(t){ keep(t, t === key); });
+  const issue = String((o && o.issue) || '').trim();
+  keep('정리용', !issue);
+  keep('쟁점용', !!issue);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String((o && o.date) || ''));
+  if (m) out = out.split('⚠[확인필요: 작성일]').join(m[1] + '. ' + Number(m[2]) + '. ' + Number(m[3]) + '.');
+  if (o && o.client) out = out.split('⚠[확인필요: 납세자]').join(o.client);
+  if (issue) out = out.split('✍️[AI 작성: 쟁점 이름]').join(issue);
+  return out.replace(/\n{3,}/g, '\n\n');
+}
 function addProgressDoc(){ createNewDoc('progress'); }
 function addAppealDoc(){ createNewDoc('appeal_petition'); }
 function addTranslationDoc(){ createNewDoc('translation'); }
@@ -2191,6 +2229,8 @@ async function saveToDrive(){
     const typeLabel = RW_DOC_TYPE_FILENAME_LABELS_[d.docType];
     if (typeLabel) {
       cleanBaseName = typeLabel;
+      // [2026.10.30] 검토조서는 만들 때 받은 이름("검토조서" 또는 "검토조서_쟁점이름")을 그대로 파일 이름으로 — 겹치면 아래에서 다른 쟁점 이름을 받는다
+      if (d.docType === 'reference' && /^검토조서(_.+)?$/.test(String(d.name || '').trim())) cleanBaseName = String(d.name).trim();
       // [2026.09.17 재설계] 개별검토서는 "특정 쟁점 하나에 국한된 검토"라는 정의 자체가
       // 세부명칭 없이는 성립하지 않으므로(종합검토서와 달리), 충돌 여부와 상관없이 저장할
       // 때마다 항상 쟁점(세부명칭)을 물어본다.
@@ -2673,6 +2713,136 @@ async function downloadAsPdf(){
   }
 }
 
+// [2026.10.30] 인쇄용 PDF(보기용과 따로) — 세무사님 원문: "형식은 다르더라도 인쇄는 제대로 되어야 하는데 여백이 하나도 없게 인쇄가 되었었다 …
+//  여백을 조절할 수도 없이 pdf파일이 생성되었었다. 확인하여 그런 일이 생기지 않도록 해달라" / "pdf파일을 만들때 여백이 없도록 한 것은
+//  외부보고서를 링크로 걸어서 확인할때 여백이 오히려 불편하게 작용하여 그렇게 했던 것이다."
+//  → 위 downloadAsPdf(보기용·여백 없음)는 그대로 두고, 인쇄용을 따로 둔다(세무사님 "즉 보기용과 인쇄용이 달라야 하는 것이다"): 인쇄(@page)와 같은 A4 여백(위 30·좌우 25·아래 25mm)·
+//  같은 글 폭(160mm)으로 문서를 다시 그린 뒤, 글줄·그림이 걸치지 않는 자리에서만 쪽을 나눈다(쪽 나눔 표시가 있으면 거기서). 제목이 쪽 끝에 홀로 남으면 다음 쪽으로.
+const RW_PRINT_PDF_MARGIN_MM_ = { top: 30, right: 25, bottom: 25, left: 25 };
+function rwPdfPageCuts_(doc, pageH){
+  const top0 = doc.getBoundingClientRect().top;
+  const total = doc.getBoundingClientRect().height;
+  // 걸치면 안 되는 덩어리: 글줄 하나하나·그림·차트
+  const atoms = [];
+  const walker = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT, null);
+  const rng = document.createRange();
+  let tn;
+  while ((tn = walker.nextNode())) {
+    if (!tn.nodeValue || !tn.nodeValue.trim()) continue;
+    rng.selectNodeContents(tn);
+    const rs = rng.getClientRects();
+    for (let i = 0; i < rs.length; i++) if (rs[i].height > 0) atoms.push([rs[i].top - top0, rs[i].bottom - top0]);
+  }
+  doc.querySelectorAll('img, svg, canvas, .chart-wrapper, .mermaid').forEach(function(el){ const r = el.getBoundingClientRect(); if (r.height > 0) atoms.push([r.top - top0, r.bottom - top0]); });
+  // 자를 수 있는 자리 후보: 글줄·덩어리 끝
+  const cands = Array.from(new Set(atoms.map(function(a){ return Math.ceil(a[1]); }))).sort(function(a, b){ return a - b; });
+  const forced = Array.from(doc.querySelectorAll('.doc-pagebreak')).map(function(el){ return el.getBoundingClientRect().top - top0; }).sort(function(a, b){ return a - b; });
+  const heads = Array.from(doc.querySelectorAll('h1, h2, h3, h4')).map(function(el){ const r = el.getBoundingClientRect(); return [r.top - top0, r.bottom - top0]; });
+  const clear = function(y){ for (let i = 0; i < atoms.length; i++) { if (atoms[i][0] < y - 0.5 && atoms[i][1] > y + 0.5) return false; } return true; };
+  const cuts = [0];
+  let start = 0, guard = 0;
+  while (total - start > pageH + 0.5 && guard++ < 500) {
+    const limit = start + pageH;
+    const f = forced.find(function(y){ return y > start + 1 && y <= limit; });
+    let cut = null;
+    if (f != null) cut = f;
+    else {
+      for (let i = cands.length - 1; i >= 0; i--) {
+        const y = cands[i];
+        if (y > limit) continue;
+        if (y <= start + pageH * 0.3) break;
+        if (clear(y)) { cut = y; break; }
+      }
+      if (cut == null) cut = limit; // 한 덩어리가 한 쪽보다 큰 경우만 — 어쩔 수 없이 쪽 높이에서 자름
+      // 제목이 쪽 끝에 홀로 남으면 제목 앞에서 넘김
+      const h = heads.find(function(hd){ return hd[1] <= cut + 1 && cut - hd[1] < 6; });
+      if (h && h[0] > start + pageH * 0.3) cut = Math.floor(h[0]) - 1;
+    }
+    cuts.push(cut);
+    start = cut;
+  }
+  // 강제 쪽 나눔이 남은 높이 안에 더 있으면 반영
+  forced.forEach(function(y){ if (y > start + 1) { cuts.push(y); start = y; } });
+  cuts.push(total);
+  return cuts;
+}
+async function downloadAsPrintPdf(){
+  const d = getSelected();
+  if (!d) return;
+  if (typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined'){
+    showToast('PDF 생성 라이브러리를 불러오지 못했습니다.', 'error');
+    return;
+  }
+  const src = document.getElementById('renderOut');
+  if (!src) return;
+  showToast('인쇄용 PDF 만드는 중…', 'info');
+  const M = RW_PRINT_PDF_MARGIN_MM_, PW = 210, PH = 297;
+  const CW = PW - M.left - M.right, CH = PH - M.top - M.bottom;
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute; left:0; top:0; z-index:-1; pointer-events:none; background:#fff;';
+  const doc = src.cloneNode(true);
+  doc.removeAttribute('id');
+  doc.classList.add('nx-pdfprint');
+  doc.style.boxShadow = 'none'; doc.style.margin = '0'; doc.style.maxWidth = 'none'; doc.style.padding = '0';
+  doc.style.width = CW + 'mm'; doc.style.background = '#fff';
+  holder.appendChild(doc);
+  // [2026.10.30] 검토조서는 쪽마다 머리글(이음세무컨설팅 · 작성일) — 세무사님 "매 쪽 머리글". 브라우저 인쇄(mdrender setReferencePageHead_)와
+  // 같은 모양으로 위 여백 칸에 찍고, 본문 맨 위 머리글 줄은 감춘다(1쪽에 두 번 나오지 않게).
+  let head = null;
+  const lh = doc.classList.contains('doc-reference') ? doc.querySelector('.letterhead') : null;
+  if (lh) {
+    head = document.createElement('div');
+    head.style.cssText = 'width:' + CW + 'mm; display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:3mm; border-bottom:0.75pt solid #0D1B3D; background:#fff; font-family:"Noto Sans KR",sans-serif;';
+    const b = document.createElement('span'), t = document.createElement('span');
+    b.textContent = ((lh.querySelector('.brand') || {}).textContent || '').trim();
+    t.textContent = ((lh.querySelector('.doc-date') || {}).textContent || '').trim();
+    b.style.cssText = 'font-size:9.5pt; font-weight:700; color:#0D1B3D; letter-spacing:0.05em;';
+    t.style.cssText = 'font-size:9pt; color:#666;';
+    head.appendChild(b); head.appendChild(t);
+    holder.appendChild(head);
+    lh.style.display = 'none';
+  }
+  document.body.appendChild(holder);
+  try {
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+    let headImg = null, headHmm = 0;
+    if (head) {
+      const hb = head.getBoundingClientRect();
+      const hc = await html2canvas(head, { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: -window.scrollY, scrollX: -window.scrollX });
+      headImg = hc.toDataURL('image/png');
+      headHmm = hb.height * CW / hb.width;
+      head.remove();
+    }
+    const box = doc.getBoundingClientRect();
+    const pxPerMm = box.width / CW;
+    const cuts = rwPdfPageCuts_(doc, CH * pxPerMm);
+    const canvas = await html2canvas(doc, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowHeight: Math.ceil(box.height) + 50, scrollY: -window.scrollY, scrollX: -window.scrollX });
+    const sc = canvas.height / box.height;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pages = cuts.length - 1;
+    for (let i = 0; i < pages; i++) {
+      const a = cuts[i], b = cuts[i + 1];
+      const hPx = Math.max(1, Math.round((b - a) * sc));
+      const pc = document.createElement('canvas');
+      pc.width = canvas.width; pc.height = hPx;
+      const ctx = pc.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, pc.width, pc.height);
+      ctx.drawImage(canvas, 0, Math.round(a * sc), canvas.width, hPx, 0, 0, canvas.width, hPx);
+      if (i > 0) pdf.addPage();
+      pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', M.left, M.top, CW, (b - a) / pxPerMm);
+      if (headImg) pdf.addImage(headImg, 'PNG', M.left, M.top - 1 - headHmm, CW, headHmm);
+      if (headImg || pages > 1) { pdf.setFontSize(9); pdf.setTextColor(120); pdf.text('- ' + (i + 1) + ' -', PW / 2, PH - 12, { align: 'center' }); }
+    }
+    pdf.save((d.name || '문서') + '.pdf');
+    showToast('인쇄용 PDF로 저장했습니다(A4 여백).', 'success');
+  } catch (err) {
+    showToast('PDF 생성 실패: ' + (err && err.message ? err.message : err), 'error');
+  } finally {
+    holder.remove();
+  }
+}
+
 function openInNewWindow(){
   if (!getSelected()) return;
   const html = buildStandaloneHtml(true); // true: "편집기로 돌아가기" 버튼 포함 (다운로드용과 구분)
@@ -2700,6 +2870,10 @@ document.getElementById('dlHtml').addEventListener('click', () => {
 document.getElementById('dlPdf').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
   downloadAsPdf();
+});
+document.getElementById('dlPrintPdf').addEventListener('click', () => {
+  document.getElementById('downloadPopup').classList.remove('show');
+  downloadAsPrintPdf();
 });
 
 // 툴바가 화면 폭에 따라 한 줄/두 줄로 바뀌므로, 미리보기 플로팅 컨트롤(확대축소・전체화면)이

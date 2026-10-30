@@ -310,7 +310,7 @@
   .doc-progress .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
 
   /* =========================================================
-     테마 3-4 : 참고보고서 (세무서 제출용 — 고객용 3종과 달리 과세관청이 읽는 공문서다.
+     테마 3-4 : 검토조서(옛 참고보고서) (세무서 제출용 — 고객용 3종과 달리 과세관청이 읽는 공문서다.
      화려한 레터헤드 대신 회사명은 작게만 넣고, 본문은 격식 있는 공문 톤・번호 매긴
      개조식으로 구성한다.)
      ========================================================= */
@@ -328,35 +328,46 @@
   }
   .doc-reference .letterhead .brand{ font-size:9.5pt; color:#0D1B3D; font-weight:700; letter-spacing:0.05em; }
   .doc-reference .letterhead .doc-date{ font-size:9pt; color:#666; }
+  /* [2026.10.30] 검토조서(옛 참고보고서) — 세무사님이 견본으로 정하신 모양: 큰 제목 아래 굵은 부제 "- ○○○ ○○세 신고 관련 참고사항 -",
+     공문 개조식 번호 "## 1. 제목" → 가. → 1) → 가)(가. 단계는 한글 한 글자 들여씀), 글자 사이 벌어짐 없이 왼쪽 맞춤, 붙임, 서명 한 줄 가운데.
+     항목이 14개를 넘으면 "하." 다음을 "거. 너. 더. …"로 잇는다(공문 관례 — 브라우저 기본 한글 번호는 "가가."로 찍힘). */
   .doc-reference h1{
     text-align:center; font-size:18pt; font-weight:700;
-    letter-spacing:0.3em; text-indent:0.3em; margin:0 0 10mm 0;
+    letter-spacing:0.3em; text-indent:0.3em; margin:0 0 3mm 0;
   }
+  .doc-reference .subtitle{ text-align:center; font-size:14pt; font-weight:700; margin:0 0 10mm 0; }
+  .doc-reference h1 + .subtitle{ margin-top:0; }
   .doc-reference table.meta{
     border-collapse:collapse; width:100%; margin:0 0 8mm 0;
     font-size:10.5pt; font-family:'Noto Sans KR',sans-serif;
   }
   .doc-reference table.meta td{ padding:1.6mm 0; border-bottom:0.75pt solid #ddd; }
   .doc-reference table.meta td.k{ width:20mm; color:#555; font-weight:600; }
-  .doc-reference h2{
-    font-size:13pt; font-weight:700; margin:8mm 0 4mm 0;
-    padding-bottom:1.5mm; border-bottom:1pt solid #999;
-  }
+  .doc-reference h2{ font-size:12.5pt; font-weight:700; margin:7mm 0 3mm 0; }
   .doc-reference h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; }
-  .doc-reference p{ margin:0 0 3mm 0; text-align:justify; }
-  /* 공문 특유의 "1. 2. 3." 번호 매긴 개조식 — 딱딱한 공문 톤에 맞춤 */
-  .doc-reference ul{ margin:0 0 3mm 0; padding-left:0; list-style:none; counter-reset:refitem; }
-  .doc-reference ul li{
-    position:relative; padding-left:6mm; margin-bottom:2mm; text-align:justify; counter-increment:refitem;
-  }
-  .doc-reference ul li::before{ content:counter(refitem) "."; position:absolute; left:0; font-weight:700; }
+  .doc-reference p{ margin:0 0 3mm 0; text-align:left; }
+  /* [2026.10.30] 번호(가. 1) 가))는 CSS 계수기가 아니라 렌더러가 글자로 넣는다(numberReferenceLists_) — PDF 만들기(html2canvas)가
+     한글 번호 계수기를 몰라 1. 2.로 찍던 결함. 글자로 넣으면 화면·인쇄·보기용/인쇄용 PDF가 같다. */
+  .doc-reference ul{ margin:0 0 2mm 0; padding-left:0; list-style:none; }
+  .doc-reference ul li{ position:relative; padding-left:7mm; margin-bottom:1.5mm; text-align:left; }
+  .doc-reference ul li > .ref-mk{ position:absolute; left:0; }
+  .doc-reference > ul{ margin-left:1em; }
+  .doc-reference ul ul{ margin-top:1.2mm; }
+  .doc-reference li > p{ margin:0; }
+  /* 붙임 — "<div class="attach-k">붙임</div>" 다음 글머리표 목록("- 서류 1부.")에 1. 2. 번호를 붙인다(줄 앞 "1."은 렌더러가 제목으로 바꾸므로 쓰지 않음). 마지막 줄 끝에 "끝." */
+  .doc-reference .attach-k{ float:left; width:13mm; margin-top:7mm; font-weight:700; }
+  .doc-reference .attach-k + ul, .doc-reference .attach-k + ol{ margin:7mm 0 0 13mm; }
+  .doc-reference .attach-k + ul > li{ padding-left:0; margin-bottom:0.5mm; }
+  .doc-reference .attach-k + ul > li > .ref-mk{ position:static; }
+  .doc-reference .attach-k + ul::after{ content:""; display:block; clear:both; }
   .doc-reference table:not(.meta){
     border-collapse:collapse; width:100%; margin:3mm 0 2mm 0;
     font-size:10pt; font-family:'Noto Sans KR',sans-serif;
   }
   .doc-reference table:not(.meta) th, .doc-reference table:not(.meta) td{ border:0.75pt solid #666; padding:1.8mm 2.4mm; overflow-wrap:break-word; }
   .doc-reference table:not(.meta) th{ background:#f0f0f0; font-weight:700; text-align:center; }
-  .doc-reference .signline{ text-align:right; margin-top:14mm; font-size:11.5pt; }
+  .doc-reference .signline{ clear:both; text-align:center; margin-top:16mm; font-size:11.5pt; line-height:2; }
+  .doc-reference .signline .name{ font-size:13pt; font-weight:700; letter-spacing:0.2em; }
   .doc-reference hr{ border:none; border-top:0.5pt solid #999; margin:6mm 0; }
   .doc-reference a{ color:#0D1B3D; }
 
@@ -492,6 +503,13 @@
     .doc-summary .doc-pagebreak::before, .doc-summary .doc-pagebreak::after{ border-top:none; }
     @page{ size:A4; margin:30mm 25mm 25mm 25mm; } /* 위 30 우 25 아래 25 좌 25 - 인쇄 대화상자 "사용자 지정" 클릭시 이 값이 기본 입력되도록 함 */
   }
+
+  /* [2026.10.30] 인쇄용 PDF(작성관리 내려받기 "인쇄용 PDF") — 위 @media print와 같은 모양으로 문서를 다시 그릴 때 붙는 표시(.nx-pdfprint).
+     여백은 PDF 쪽에 두므로 문서 자체 여백·그림자·폭 제한을 없애고, 레터헤드 음수 여백과 쪽 나눔 표시선을 인쇄처럼 맞춘다. */
+  .nx-pdfprint.nx-pdfprint{ box-shadow:none; margin:0; max-width:none; padding:0; }
+  .doc-advisory.nx-pdfprint .letterhead, .doc-filing.nx-pdfprint .letterhead, .doc-progress.nx-pdfprint .letterhead{ margin:0 0 12mm 0; }
+  .nx-pdfprint.nx-pdfprint .doc-pagebreak{ margin:0; height:0; overflow:hidden; }
+  .nx-pdfprint.nx-pdfprint .doc-pagebreak::before, .nx-pdfprint.nx-pdfprint .doc-pagebreak::after{ border-top:none; }
 
   /* ===== Chart.js 차트 (자문・신고보고서 공용, 테마 무관 전역 클래스) ===== */
   .chart-wrapper {
@@ -763,6 +781,7 @@ function rwGuessDocTypeFromFilename_(name){
   // "검토서"만 있으면 사람이 rwAskDocTypeForFile_에서 직접 고르게 null을 돌려준다.
   if (name.includes('종합검토서')) return 'review';
   if (name.includes('개별검토서')) return 'review_specific';
+  if (name.includes('검토조서')) return 'reference'; // [2026.10.30] 세무서 제출용(옛 참고보고서)
   if (name.includes('검토서')) return null;
   if (name.includes('자문')) return 'advisory';
   if (name.includes('신고') && name.includes('보고서')) return 'filing';
@@ -869,6 +888,9 @@ function preprocess(md, opts){
   // 표준 마크다운은 #과 글자 사이에 공백이 있어야만 제목으로 인식한다 — 공백 없는 "#제목"도
   // 제목으로 인식되게 렌더링 직전에 공백을 채워 넣는다(저장되는 원본 글자는 그대로 둠).
   md = md.replace(/^(#{1,6})([^#\s])/gm, '$1 $2');
+  // [2026.10.30] 날짜로 시작하는 목록 줄("- 2026. 3. 1. 계약 체결")을 마크다운이 "2026번부터 시작하는 번호 목록"으로 잘못 읽어
+  //  "가. 1. 3. 1. …"처럼 깨졌다(검토조서 사실관계 시험에서 발견) — 글머리표 바로 뒤 연도(19xx·20xx) 다음 점은 글자로 둔다
+  md = md.replace(/^(\s*[-*+]\s+)((?:19|20)\d{2})\.(?=\s)/gm, '$1$2\\.');
   // [2026.09 신규] 법률/공문서식 개요번호(Ⅰ. → 1. → A. → ⅰ. 순서로 깊어지는 문단번호)를
   // 그 레벨에 맞는 제목으로 자동 인식한다 — 번호 자체는 그대로 두고 앞에 #을 필요한 개수만큼
   // 붙인다. 로마숫자는 일반 영문자(I,V,X 등)와 겹치는 유니코드 전용 로마숫자 문자만 인식해서
@@ -1124,7 +1146,50 @@ function applyCalloutColors(container) {
 }
 
 // ===== 목차 자동 생성: h2(장 제목) 기준 =====
+// [2026.10.30] 검토조서 목록 번호 — 1단 가. / 2단 1) / 3단 가) / 4단 (1) / 5단 (가) / 붙임 1. — 글자로 넣는다(위 CSS 주석 참고)
+function numberReferenceLists_(container) {
+  if (!container || !container.classList || !container.classList.contains('doc-reference')) return;
+  const HAN = ['가','나','다','라','마','바','사','아','자','차','카','타','파','하','거','너','더','러','머','버','서','어','저','처','커','터','퍼','허'];
+  container.querySelectorAll('ul').forEach(ul => {
+    let depth = 0;
+    for (let p = ul.parentElement; p && p !== container; p = p.parentElement) if (p.tagName === 'UL') depth++;
+    const prev = ul.previousElementSibling;
+    const attach = depth === 0 && prev && prev.classList && prev.classList.contains('attach-k');
+    let n = 0;
+    Array.from(ul.children).forEach(li => {
+      if (li.tagName !== 'LI' || li.querySelector(':scope > .ref-mk')) return;
+      n++;
+      const han = HAN[n - 1] || String(n);
+      const mk = document.createElement('span');
+      mk.className = 'ref-mk';
+      mk.textContent = attach ? n + '. ' : depth === 0 ? han + '.' : depth === 1 ? n + ')' : depth === 2 ? han + ')' : depth === 3 ? '(' + n + ')' : '(' + han + ')';
+      li.insertBefore(mk, li.firstChild);
+    });
+  });
+}
+
+// [2026.10.30] 검토조서 인쇄 — 쪽마다 머리글(이음세무컨설팅 · 작성일)과 아래 쪽 번호(세무사님 "매 쪽 머리글").
+// 브라우저 인쇄의 쪽 여백 칸(@page 위·아래 칸)에 찍고, 본문 맨 위 머리글 줄은 인쇄 때만 감춘다(1쪽에 두 번 나오지 않게).
+// 글 안에 <style>로 넣어 두므로 새 창 완성본(nxMdStandaloneHtml)으로 옮겨 가도 그대로 인쇄된다. 인쇄용 PDF는 작성관리 쪽이 같은 모양으로 그린다.
+function setReferencePageHead_(container) {
+  if (!container || !container.classList || !container.classList.contains('doc-reference')) return;
+  const lh = container.querySelector('.letterhead');
+  if (!lh) return;
+  const q = t => '"' + String(t || '').replace(/["\\]/g, '').replace(/\s+/g, ' ').trim() + '"';
+  const brand = (lh.querySelector('.brand') || {}).textContent || '';
+  const date = (lh.querySelector('.doc-date') || {}).textContent || '';
+  const st = document.createElement('style');
+  st.className = 'nx-ref-pagehead';
+  st.textContent = '@media print{ .doc-reference .letterhead{ display:none !important; } } '
+    + '@page{ @top-left{ content:' + q(brand) + '; font-family:"Noto Sans KR",sans-serif; font-size:9.5pt; font-weight:700; color:#0D1B3D; vertical-align:bottom; padding-bottom:3mm; border-bottom:0.75pt solid #0D1B3D; }'
+    + ' @top-right{ content:' + q(date) + '; font-family:"Noto Sans KR",sans-serif; font-size:9pt; color:#666; vertical-align:bottom; padding-bottom:3mm; border-bottom:0.75pt solid #0D1B3D; }'
+    + ' @bottom-center{ content:"- " counter(page) " -"; font-size:9pt; color:#777; } }';
+  container.appendChild(st);
+}
+
 function buildTableOfContents(container) {
+  // [2026.10.30] 검토조서(세무서 제출용)는 공문 — 목차를 넣지 않는다(세무사님이 정하신 견본에 목차 없음, 넣지 않는 것 목록)
+  if (container && container.classList && container.classList.contains('doc-reference')) return;
   const EXCLUDE_HEADINGS = ['기본 사실관계'];
   const headings = Array.from(container.querySelectorAll('h2')).filter(h => {
     const text = h.textContent.trim();
@@ -1446,6 +1511,8 @@ async function nxMdRender(out, src, opts){
       renderKatex(out);
       applyCalloutColors(out);
       buildTableOfContents(out);
+      numberReferenceLists_(out);
+      setReferencePageHead_(out);
       if (opts.statutes !== false) linkifyStatutes(out);
       markScrollableTables(out);
       // 폰트 로딩 등으로 초기 측정이 부정확할 수 있어 잠시 후 한 번 더 갱신
