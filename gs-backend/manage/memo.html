@@ -1654,6 +1654,7 @@
     btn.disabled = true;
     callGas('work_create_case', createPayload).then(function(res){
       if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return null; }
+      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
       var overviewPayload = { id: res.case.id, 사건개요: memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data) };
       if (data._baseDate) overviewPayload.기준일 = data._baseDate;
       return callGas('work_update_case', overviewPayload).then(function(res2){
@@ -2344,6 +2345,7 @@
     callGas('work_create_case', createPayload).then(function(res){
       if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return; }
       if (res.warning) toast(res.warning);
+      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
       toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
       memoReqApplyStepEl.style.display = 'none';
       memoReqShowRegisteredBar_(res.case);
