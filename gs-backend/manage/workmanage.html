@@ -539,6 +539,13 @@
       var 고객명 = document.getElementById('wcNewCustomer').value.trim();
       if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
       saveBtn.disabled = true;
+      // [2026.10.30 B1 — 세무사님 "A1·B1부터 해라"] 저장이 30초쯤(사건 폴더·의뢰서·고객 접속 만들기) 걸리는데 단추만 잠겨 눌러도 반응이 없는 것처럼 보였다 —
+      //  단추 글자를 "저장 중… N초"로 바꿔 지나간 초를 보이고, 실패하면 원래 글자로 되돌린다(성공하면 화면이 사건으로 바뀐다)
+      var saveBtnHtml = saveBtn.innerHTML, saveT0 = Date.now();
+      var saveTick = function(){ saveBtn.textContent = '저장 중… ' + Math.round((Date.now() - saveT0) / 1000) + '초 (30초쯤 걸립니다)'; saveBtn.title = '사건 폴더·의뢰서·고객 접속을 만드는 중입니다'; };
+      saveTick();
+      var saveTimer = setInterval(saveTick, 1000);
+      var saveDone = function(ok){ clearInterval(saveTimer); if (!ok){ saveBtn.innerHTML = saveBtnHtml; saveBtn.disabled = false; } };
       var upType = newUptypeSel.value;
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1;
       var payload = {
@@ -562,7 +569,8 @@
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
       callGas('work_create_case', payload).then(function(res){
-        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveBtn.disabled = false; return; }
+        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveDone(false); return; }
+        saveDone(true);
         showToast('사건을 등록했습니다.', 'success');
         // [2026.09 버그수정] 동명이인인데 전화번호가 달라 새 고객으로 등록된 경우, 서버가
         // 알려주는 주의문구를 그냥 버리지 않고 보여준다 — 실제로 같은 사람이면 고객관리에서
@@ -589,7 +597,7 @@
           };
           linkBookingCase_(1);
         }
-      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveBtn.disabled = false; });
+      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveDone(false); });
     });
   }
 

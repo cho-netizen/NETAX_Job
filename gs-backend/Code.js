@@ -16500,7 +16500,22 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         // [2026.10.30 2단계 보고서 한 길] 사건이 연결된 대화에서 넥스가 문서를 저장하면 자문 장부 보고서 칸에 적는다(어느 파일인지·언제) — 인용한 저장본은 넥스가 do=advice로 잇는다
         if (nxCaseId_ && r && !r.is_error && block.name === 'save_file_to_folder' && typeof ledgerAdvPut_ === 'function') {
           try { const cr = job_findCase_(nxCaseId_), bi = block.input || {}; let so = {}; try { so = JSON.parse(String(r.content || '{}')); } catch (e) { so = {}; }
-            if (cr && !so.error) { const ar = ledgerAdvPut_(cr, { item: '보고서', title: String(bi.name || '문서').slice(0, 120), file: String(so.id || so.fileId || bi.name || '').slice(0, 160), status: '초안', why: '넥스가 저장(save_file_to_folder)' }, '넥스'); if (ar && ar.ok) r.content = String(r.content) + '\n[자문 장부] 보고서 칸에 적음(id ' + ar.id + ') — 인용한 계산 저장본은 case_ledger do=advice item=보고서 id=' + ar.id + ' calc=[…]로 잇는다'; } } catch (e) {}
+            if (cr && !so.error) {
+              // [2026.10.30 A1 — 세무사님 "A1·B1부터 해라"] 운영 실측(가상비용실측)에서 ① 보고서를 고쳐 저장할 때마다 같은 파일의 보고서 칸이 새로 생기고(보1·보2) 새 칸엔 계산 저장본이 안 이어졌다
+              //  ② 넥스가 장부보다 보고서를 먼저 저장해 보고서에 "자문 장부에 적지 못했다"가 남았고, 위험·근거는 적지 않은 채 "장부 저장 오류"라고 말했다(오류 기록 없음).
+              //  → 같은 파일의 보고서 칸이 있으면 그 칸을 고치고(제목·저장본 그대로), 저장 결과에 지금 자문 장부의 실제 상태(항목별 개수·빈 칸)를 붙여 넥스가 사실대로 보고서·말을 맞추게 한다
+              const fileKey = String(so.id || so.fileId || bi.name || '').slice(0, 160);
+              let before = {}; try { before = ledgerAdvList_(ledgerLoad_(cr.id)); } catch (e) { before = {}; }
+              const same = (before.보고서 || []).filter(function (x) { return x && x.file && x.file === fileKey; })[0];
+              const ar = same ? ledgerAdvPut_(cr, { item: '보고서', id: same.id, file: fileKey, why: '넥스가 다시 저장(save_file_to_folder)' }, '넥스')
+                : ledgerAdvPut_(cr, { item: '보고서', title: String(bi.name || '문서').slice(0, 120), file: fileKey, status: '초안', why: '넥스가 저장(save_file_to_folder)' }, '넥스');
+              let now = {}; try { now = ledgerAdvList_(ledgerLoad_(cr.id)); } catch (e) { now = before; }
+              const cnt = ['쟁점', '대안', '근거', '위험', '권고'].map(function (k) { return k + ' ' + ((now[k] || []).length); }).join(' · ');
+              const empty = ['쟁점', '대안', '근거', '위험', '권고'].filter(function (k) { return !(now[k] || []).length; });
+              if (ar && ar.ok) r.content = String(r.content) + '\n[자문 장부] 보고서 칸 ' + (same ? '고침' : '적음') + '(id ' + ar.id + (same && same.calc && same.calc.length ? ', 이어 둔 저장본 ' + same.calc.length + '개 그대로' : '') + ') — 인용한 계산 저장본은 case_ledger do=advice item=보고서 id=' + ar.id + ' calc=[…]로 잇는다';
+              r.content = String(r.content) + '\n[자문 장부 실제 상태 — 이 숫자가 사실이다] ' + cnt + (empty.length ? ' · 빈 칸: ' + empty.join('·') + ' — 보고서보다 장부가 먼저다. 지금 case_ledger do=advice로 빈 칸을 적고, 보고서에 장부 상태를 적었다면 이 숫자와 맞게 고쳐라(못 적었다고 쓰려면 도구가 돌려준 오류 문구를 그대로)' : ' · 빈 칸 없음');
+            }
+          } catch (e) {}
         }
         if (r && r.type === 'tool_result' && r.tool_use_id === block.id) return r;
         return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '도구 "' + block.name + '" 처리 코드가 결과를 만들지 못했다 — 이 도구 없이 진행하거나 세무사님께 말씀드려라.' };
