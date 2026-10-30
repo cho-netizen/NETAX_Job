@@ -1025,21 +1025,40 @@ function ledgerView_(c) {
 // [2026.10.31 J — 할 일 장부 4번 "도구 카드·성적표" / 세무사님 "한번에 몽땅 완전자동모드로 끝내라"]
 //  넥스가 이 사건에서 부른 도구를 장부에 남긴다 — 도구 이름·성공/실패·실패 까닭·도구 부족 신고. 사건마다 "어느 도구를 썼고 어디서 막혔나"가 남아
 //  다음 고칠 거리(빠진 도구·자주 실패하는 도구)를 찾는 바탕이 된다(토큰 0, 고객 값은 적지 않음 — 실패 까닭 앞부분만).
+//  [2026.10.31 운영 확인] 장부 파일·전체 잠금(ledgerMutate_)에 쓰면 잠금이 바쁠 때 기록이 말없이 빠지고(가상 상속 자문 25번 중 3번만 남음),
+//  도구를 부를 때마다 장부 전체를 다시 써 다른 저장과 잠금을 다퉜다 → 사건마다 따로 둔 도구 기록 파일(<사건ID>.도구.json)에 잠금 없이 쓴다(한 사건 대화는 한 줄로 차례차례 부르므로 겹쳐 쓰지 않음)
+var LEDGER_TOOL_MEMO_ = {};
+function ledgerToolFile_(caseId, create) {
+  const folder = ledgerFolder_(), name = String(caseId).replace(/[^\w-]/g, '_') + '.도구.json', it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return create ? folder.createFile(name, '[]', 'application/json') : null;
+}
+function ledgerToolLogRead_(caseId) {
+  const k = String(caseId || '');
+  if (!k) return [];
+  if (LEDGER_TOOL_MEMO_[k]) return LEDGER_TOOL_MEMO_[k];
+  let log = [];
+  try { const f = ledgerToolFile_(k, false); if (f) log = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]') || []; } catch (e) { log = []; }
+  return (LEDGER_TOOL_MEMO_[k] = Array.isArray(log) ? log : []);
+}
 function ledgerToolLogPut_(caseId, items) {
   if (!caseId || !Array.isArray(items) || !items.length) return 0;
-  return ledgerMutate_(caseId, function (L) {
-    const log = Array.isArray(L.toolLog) ? L.toolLog : [], at = caseProcNow_();
-    items.forEach(function (x) {
-      if (!x || !x.tool) return;
-      log.push({ at: at, tool: String(x.tool).slice(0, 60), ok: !!x.ok, why: x.ok ? '' : String(x.why || '').replace(/\s+/g, ' ').slice(0, 140), gap: x.gap ? String(x.gap).replace(/\s+/g, ' ').slice(0, 160) : '' });
-    });
-    L.toolLog = log.slice(-400);
-    return items.length;
+  const k = String(caseId), at = caseProcNow_();
+  const log = ledgerToolLogRead_(k).slice();
+  items.forEach(function (x) {
+    if (!x || !x.tool) return;
+    log.push({ at: at, tool: String(x.tool).slice(0, 60), ok: !!x.ok, why: x.ok ? '' : String(x.why || '').replace(/\s+/g, ' ').slice(0, 140), gap: x.gap ? String(x.gap).replace(/\s+/g, ' ').slice(0, 160) : '' });
   });
+  const keep = log.slice(-400);
+  ledgerToolFile_(k, true).setContent(JSON.stringify(keep));
+  LEDGER_TOOL_MEMO_[k] = keep;
+  return items.length;
 }
 // 성적표 — 도구마다 부른 수·성공·실패·실패 까닭(셋까지)·마지막으로 부른 때, 그리고 도구 부족 신고. 많이 부른 도구부터
+//  기록은 도구 기록 파일 + 예전에 장부 안(L.toolLog)에 남은 것(10-31 처음 배포분)
 function ledgerToolCard_(L) {
-  const log = (L && Array.isArray(L.toolLog)) ? L.toolLog : [], by = {};
+  const old = (L && Array.isArray(L.toolLog)) ? L.toolLog : [];
+  const log = old.concat(L && L.caseId ? ledgerToolLogRead_(L.caseId) : []), by = {};
   log.forEach(function (x) {
     const t = by[x.tool] || (by[x.tool] = { 도구: x.tool, 부름: 0, 성공: 0, 실패: 0, 실패까닭: [], 마지막: '' });
     t.부름++; t.마지막 = x.at || t.마지막;
