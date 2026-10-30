@@ -1845,17 +1845,7 @@ function caseFlowEvidence_(c, L, lines) {
   // 빈 칸 → 그 칸 값이 적히는 서식 종류(TRC_NEED_DOC_TYPES_ — 서식·기관 기재 방식). 폴더에 그 종류 서류가 이미 있으면 받을 것이 아니라 읽기 문제라 더하지 않는다
   // 서류를 아직 다 읽지 못했으면(못읽음·파일 장부 없음) 빈 칸 → 받을 서류는 더하지 않는다 — 폴더에 있는데 안 읽힌 서류를 또 받으라고 하지 않게
   const kbFiles = (L.kb && L.kb.files) || [], readDone = kbFiles.length && !kbFiles.some(function (f) { return f.st === '못읽음'; });
-  let needs = [];
-  if (readDone) try { needs = c.세목 === 'transfer' ? (((caseProcLoad_(c.id) || {}).needs || {}).list || []) : (typeof giNeeds_ === 'function' ? giNeeds_(c) : []); } catch (e) { needs = []; }
-  needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov; }).forEach(function (n) {
-    const types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[String(n.p).split('.').pop()]) || [];
-    const names = types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(Boolean);
-    if (!names.length) return;
-    if (names.some(function (nm) { return fileKinds.indexOf(nm.replace(/\s/g, '').slice(0, 4)) !== -1 || fileKinds.indexOf(nm) !== -1; })) return;
-    if (list.some(function (e) { return e && e.status !== '확보됨' && e.slotKey !== 'flow:칸:' + n.p && names.some(function (nm) { return String(e.label || '').indexOf(nm.slice(0, 4)) !== -1; }); })) return; // 이미 받을 목록에 같은 종류(이 칸 때문에 더한 항목 자신은 빼고)
-    want['flow:칸:' + n.p] = { label: names.join(' 또는 ') + ' — ' + String(n.l).replace(/\(.*$/, '').trim() + ' 근거', note: '사건처리 한 바퀴: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' };
-  });
-  // 가설 쟁점(사건분류 후보) → 그 분류에서 늘 필요한 서류(필요증빙 틀) — 사건분류가 정해지기 전에만
+  // 가설 쟁점(사건분류 후보) → 그 분류에서 늘 필요한 서류(필요증빙 틀) — 사건분류가 정해지기 전에만. 아래 빈 칸 서류보다 먼저 짠다(같은 바퀴에 둘 다 올렸다가 다음 바퀴에 칸 쪽을 지우지 않게)
   const clsRow = (L.rows || {})['사건분류'], clsSettled = clsRow && /^(확정|추정)$/.test(clsRow.state) && clsRow.v;
   const issue = (L.ov || {})['ov.쟁점'];
   const tpl = typeof WORK_EVIDENCE_TEMPLATES_ !== 'undefined' ? WORK_EVIDENCE_TEMPLATES_[c.세목] : null;
@@ -1864,6 +1854,20 @@ function caseFlowEvidence_(c, L, lines) {
       (tpl.사건분류[cls] || []).forEach(function (label) { const k = 'flow:쟁점:' + cls + ':' + label; if (!has(label, k)) want[k] = { label: label, note: '사건처리 한 바퀴: 의뢰서 등이 말한 쟁점 「' + cls + '」를 확인할 서류(가설 — 사건분류가 정해지면 다시 봄)' }; });
     });
   }
+  let needs = [];
+  if (readDone) try { needs = c.세목 === 'transfer' ? (((caseProcLoad_(c.id) || {}).needs || {}).list || []) : (typeof giNeeds_ === 'function' ? giNeeds_(c) : []); } catch (e) { needs = []; }
+  needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov; }).forEach(function (n) {
+    const types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[String(n.p).split('.').pop()]) || [];
+    const names = types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(Boolean);
+    if (!names.length) return;
+    if (names.some(function (nm) { return fileKinds.indexOf(nm.replace(/\s/g, '').slice(0, 4)) !== -1 || fileKinds.indexOf(nm) !== -1; })) return;
+    // 이미 받을 목록에 같은 종류가 있는가 — 세무사님이 넣은 항목·쟁점 서류만 본다. 이 규칙이 바퀴마다 다시 짜는 칸 항목(flow:칸:)끼리는 서로를 세지 않는다
+    //  [2026.10.30] 예전엔 형제 칸 항목(같은 매매계약서를 원하는 취득가액·취득일)이 서로를 "이미 있음"으로 봐 다음 바퀴에 모두 지워지고 그다음 바퀴에 다시 올라왔다(받을 증빙 5→0→5, 중요한 순간 알림도 헛울림)
+    const sameKind = function (label) { return names.some(function (nm) { return String(label || '').indexOf(nm.slice(0, 4)) !== -1; }); };
+    if (list.some(function (e) { return e && e.status !== '확보됨' && !/^flow:칸:/.test(String(e.slotKey || '')) && !(/^flow:쟁점:/.test(String(e.slotKey || '')) && !want[e.slotKey]) && sameKind(e.label); })) return;
+    if (Object.keys(want).some(function (k) { return /^flow:쟁점:/.test(k) && sameKind(want[k].label); })) return;
+    want['flow:칸:' + n.p] = { label: names.join(' 또는 ') + ' — ' + String(n.l).replace(/\(.*$/, '').trim() + ' 근거', note: '사건처리 한 바퀴: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' };
+  });
   let add = 0, del = 0;
   const today = caseProcToday_();
   Object.keys(want).forEach(function (k, i) {
