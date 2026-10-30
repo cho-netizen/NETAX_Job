@@ -1,13 +1,13 @@
 # 템플릿 사본 목록 — 경로<TAB>드라이브 기준본 MD5(base64). 📥 반영 때 드라이브 파일이 이 기준본과 같을 때만 덮어씀.
-보고서/종합검토서.md	bcd+CgsBrcb5wmcjYNNNFg==
-보고서/자문보고서.md	q1ZaaYbonGDO+jdN+7I9HQ==
-보고서/신고보고서.md	rt7rrR9z7MDUlkpNTDaUuA==
+보고서/종합검토서.md	Qyxzv0rCHDGedyoe8oPG0g==
+보고서/자문보고서.md	hd+kzofkgWWjCSoOSp9bXQ==
+보고서/신고보고서.md	60/FfVGruWq2qw8f+0FIqw==
 보고서/검토조서.md	3BXkChq44BqXZQfM5owWJw==
-보고서/진행보고서.md	AehNuSxwhr1/04sCtv6+zg==
-보고서/불복청구서.md	/CSFivPyIq/pEwPjLrdo0A==
-보고서/번역서.md	4XcKUjZQOMkMMwZPT9B07w==
-보고서/요약보고서.md	G90OwSf8UypB9Fd3JE807Q==
-보고서/개별검토서.md	9o0WmlcG/NPtQEblim7hZg==
+보고서/진행보고서.md	NZ+V4LZLKfmwnGCBQKh+sg==
+보고서/불복청구서.md	R1s2ssFluqShSIvsSPkHNA==
+보고서/번역서.md	HIPWoBPIlsA15g+Ym8a1Kw==
+보고서/요약보고서.md	VKwGDdHo1VhcupPACENVDw==
+보고서/개별검토서.md	Y6rco5MecfUUb8ELHKmdCA==
 의뢰서/의뢰서_양도.md	QFFfAR8wdhLH/KDOyabzfA==
 의뢰서/의뢰서_증여.md	Zg3q/hVYdPUtDEp2ld6tSg==
 의뢰서/의뢰서_상속.md	dBGdu/66RsnjYF5vBWHxlw==
