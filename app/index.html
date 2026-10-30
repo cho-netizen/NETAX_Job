@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 16:15 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 16:23 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -7227,6 +7227,11 @@ function nxMdOpenWindow(title, src, opts){
           h += th6;
         })();
         if ((r.계산저장본 || []).length) h += '<div style="margin-top:8px;"><b>계산 저장본</b>' + r.계산저장본.slice().reverse().map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.계산일 || '') + ' ' + esc(s.이름 || s.구분 || '') + ' <span style="color:var(--sub);">(' + esc(s.구분 || '') + ' · ' + esc(s.id || '') + ')</span> — ' + (s.최종세액 != null ? '납부세액 ' + esc(Number(s.최종세액).toLocaleString('ko-KR')) + '원' : '세액 칸 없음(평가 등)') + '</div>'; }).join('') + '</div>';
+        // [2026.10.31 J — 할 일 장부 4번] 넥스 도구 카드: 이 사건에서 넥스가 부른 도구·실패·도구 부족 신고
+        var tk = r.도구카드;
+        if (tk && tk.부름) h += '<div style="margin-top:8px;"><b>🧰 넥스 도구 카드</b> <span style="color:var(--sub);">' + esc(tk.줄 || '') + '</span>'
+          + (tk.도구 || []).map(function(t){ return '<div style="margin:2px 0 0 8px;">· ' + esc(t.도구) + ' — ' + t.부름 + '번' + (t.실패 ? ' <span style="color:#b23;">실패 ' + t.실패 + '</span>' + (t.실패까닭 && t.실패까닭[0] ? ' <span style="color:var(--sub);">(' + esc(t.실패까닭[0]) + ')</span>' : '') : '') + ' <span style="color:var(--sub);">' + esc(String(t.마지막 || '').slice(5, 16)) + '</span></div>'; }).join('')
+          + ((tk.모자람 || []).length ? '<div style="margin:4px 0 0 8px;"><b>도구 부족 신고</b>' + tk.모자람.slice().reverse().map(function(g){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(String(g.때 || '').slice(5, 16)) + ' ' + esc(g.모자람) + '</div>'; }).join('') + '</div>' : '') + '</div>';
         if ((r.기록 || []).length) h += '<div style="margin-top:8px;"><b>장부 기록</b>' + r.기록.slice().reverse().slice(0, 20).map(function(x){ return '<div style="margin:2px 0 0 8px; color:var(--sub);">' + esc(x.at) + ' ' + esc(x.by) + ' ' + esc(x.what) + ' — ' + esc(x.detail) + '</div>'; }).join('') + '</div>';
         h += '<div id="chLgOut" style="margin-top:8px;"></div></div>';
         body.innerHTML = h;
@@ -63035,6 +63040,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       + ' · 공부 조회 ' + (d.공부 || 0) + '필지' + (d.추정 ? ' · 추정 ' + d.추정 + '칸' : '') // [2026.10.29 계획서 3판]
       + (last ? ' <span style="color:var(--sub);">· 마지막 한 바퀴 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
       + nxAiCostStripHtml_(r.AI비용)
+      + (r.도구카드 && r.도구카드.부름 ? ' <span style="color:var(--sub);">· ' + nxLgEsc_(r.도구카드.줄) + '</span>' : '') // [2026.10.31 J] 자세히는 📒 장부 펼치기 아래 🧰
       + ' <button type="button" class="ghost-btn nx-lg-open" style="padding:1px 8px; font-size:12px;">📒 장부 펼치기</button>'
       + ' <button type="button" class="ghost-btn nx-lg-re" title="장부를 다시 읽기" style="padding:1px 6px; font-size:12px;">↻</button>';
     b.querySelector('.nx-lg-open').addEventListener('click', function(){ nxLedgerPanelOpen_(el._view, id); });
