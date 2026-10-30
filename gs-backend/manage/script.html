@@ -1086,10 +1086,45 @@
       + (d.사슬물건 ? ' · 거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '') : '') // [2026.10.29 거래 사슬]
       + ' · 공부 조회 ' + (d.공부 || 0) + '필지' + (d.추정 ? ' · 추정 ' + d.추정 + '칸' : '') // [2026.10.29 계획서 3판]
       + (last ? ' <span style="color:var(--sub);">· 마지막 한 바퀴 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
+      + nxAiCostStripHtml_(r.AI비용)
       + ' <button type="button" class="ghost-btn nx-lg-open" style="padding:1px 8px; font-size:12px;">📒 장부 펼치기</button>'
       + ' <button type="button" class="ghost-btn nx-lg-re" title="장부를 다시 읽기" style="padding:1px 6px; font-size:12px;">↻</button>';
     b.querySelector('.nx-lg-open').addEventListener('click', function(){ nxLedgerPanelOpen_(el._view, id); });
+    var cb = b.querySelector('.nx-lg-cost'); if (cb) cb.addEventListener('click', function(){ nxAiCostPanelOpen_(id, r.사건 || ''); });
     b.querySelector('.nx-lg-re').addEventListener('click', function(){ delete NX_LG_.cache[id]; el._shownId = null; nxLedgerStripTick_(); });
+  }
+  // [2026.10.30 비용 기록] 장부 띠의 "🤖 AI ○원" — 세무사님 "변경된 부분에 대한 비용이 지불되는 것인지 당초분에 대한 비용도 또 지불되는지에 대한 검토가 선행되어야 한다".
+  //  누적 금액과 그중 다시 읽기(저장분 다시 읽음, 정가 10%)·새로 읽기·저장(처음 올림)·쓴 글. [자세히]는 호출마다 한 줄 표(서버 case_proc step aiCost, 비용 기록 시트 읽기만 — 0원)
+  function nxAiCostWon_(w){ return Math.round(+w || 0).toLocaleString('ko-KR') + '원'; }
+  function nxAiCostStripHtml_(c){
+    if (!c || c.error || !c.n) return ' <span style="color:var(--sub);">· 🤖 AI 비용 기록 없음</span>';
+    var p = c.parts || {};
+    return ' <span title="' + nxLgEsc_(c.line || '') + '">· 🤖 AI ' + nxAiCostWon_(c.won) + ' <span style="color:var(--sub);">(다시 읽기 ' + nxAiCostWon_(p.캐시읽기) + ' · 새로 읽기·저장 ' + nxAiCostWon_((p.새로읽기 || 0) + (p.캐시쓰기 || 0)) + ' · 쓴 글 ' + nxAiCostWon_(p.쓴글) + ')</span></span>'
+      + ' <button type="button" class="ghost-btn nx-lg-cost" style="padding:1px 8px; font-size:12px;">🤖 비용 자세히</button>';
+  }
+  function nxAiCostPanelOpen_(id, name){
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
+    var p = document.getElementById('nxAiCostPanel');
+    if (!p) { p = document.createElement('div'); p.id = 'nxAiCostPanel'; p.style.cssText = 'position:fixed; top:0; right:0; bottom:0; width:min(760px, 100vw); background:var(--bg, #fff); border-left:1px solid var(--line); box-shadow:-4px 0 16px rgba(0,0,0,.15); z-index:9001; overflow:auto; padding:12px 14px; font-size:12.5px;'; document.body.appendChild(p); }
+    var e = nxLgEsc_;
+    var head = '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;"><b style="font-size:14px;">🤖 이 사건 AI 비용</b><span style="color:var(--sub);">' + e(name) + '</span><button type="button" class="ghost-btn" id="nxAiCostClose" style="margin-left:auto;">닫기 ✕</button></div>';
+    p.innerHTML = head + '<div class="log-empty" style="margin-top:10px;">비용 기록을 읽는 중…</div>';
+    p.style.display = 'block';
+    var bindClose = function(){ var x = document.getElementById('nxAiCostClose'); if (x) x.addEventListener('click', function(){ p.style.display = 'none'; }); };
+    bindClose();
+    callGas('case_proc', { caseId: id, step: 'aiCost', rows: true }).then(function(r){
+      if (!r || !r.ok) { p.innerHTML = head + '<div class="log-empty" style="margin-top:10px;">비용 기록을 읽지 못했습니다' + (r && r.error ? ' — ' + e(r.error) : '') + '</div>'; bindClose(); return; }
+      var cell = function(t, w, num){ return '<td style="padding:3px 8px; border-top:1px solid var(--line); max-width:' + w + 'px; overflow-x:auto; white-space:nowrap;' + (num ? ' text-align:right;' : '') + '" title="' + e(t) + '">' + e(t) + '</td>'; };
+      var n = function(x){ return (+x || 0).toLocaleString('ko-KR'); };
+      var rows = (r.rows || []).slice().reverse();
+      var h = head + '<div style="margin-top:8px;">' + e(r.line || '') + '</div>'
+        + '<div style="margin-top:6px; color:var(--sub);">다시 읽기 = 앞서 보낸 같은 글을 저장분에서 다시 읽은 값(정가의 10%) · 새로 읽기·저장 = 처음 보내거나 5분 넘게 지나 다시 올린 글(저장은 정가의 125%) · 쓴 글 = 넥스가 쓴 답·보고서. 토큰은 글의 양 단위입니다.</div>'
+        + (rows.length ? '<div style="overflow-x:auto; margin-top:6px;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap;"><tr>' + ['시각', '종류', '단계', '새로 읽은 글', '처음 올려 저장', '다시 읽은 글', '쓴 글', '원', '말씀'].map(function(t){ return '<th style="text-align:left; padding:2px 8px;">' + e(t) + '</th>'; }).join('') + '</tr>'
+          + rows.map(function(x){ return '<tr>' + cell(String(x.시각).slice(5, 16), 90) + cell(x.종류, 110) + cell(x.단계, 40, true) + cell(n(x.새로읽은글), 80, true) + cell(n(x.캐시쓰기), 80, true) + cell(n(x.캐시읽기), 80, true) + cell(n(x.쓴글), 70, true) + cell(nxAiCostWon_(x.원), 70, true) + cell(x.말씀 || '', 220) + '</tr>'; }).join('') + '</table></div>'
+          : '<div class="log-empty" style="margin-top:10px;">아직 이 사건에서 AI를 부른 기록이 없습니다(10-30 기록을 시작한 뒤부터 쌓입니다).</div>');
+      p.innerHTML = h; bindClose();
+    }).catch(function(err){ p.innerHTML = head + '<div class="log-empty" style="margin-top:10px;">비용 기록을 읽지 못했습니다 — ' + e(err && err.message || err) + '</div>'; bindClose(); });
   }
   // 옆 패널 — 처리개요에서는 아래 📒 사건 장부 전부를 연다(같은 화면에 두 벌 두지 않음), 다른 화면에서는 오른쪽에 펼친다
   function nxLedgerPanelOpen_(view, id){

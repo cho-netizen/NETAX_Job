@@ -15463,6 +15463,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   // [2026.10.29 넥스 하나 — 계획서 3판 5단계] 대화가 사건에 연결돼 있으면 사건 도구(gas_run·case_status·value_set·calc_scenario·law_* 등)도 같은 넥스가 쥔다.
   //  🤖 넥스로 처리·"이 사건 처리하자"도 이 대화창 넥스가 맡는다(AiLeadLive.js nxCaseChatTools_ 설명)
   const nxCaseId_ = String((body.context && body.context.linkedCase && body.context.linkedCase.id) || '').trim();
+  // [2026.10.30 비용 기록] 이 요청(넥스 대화 한 단계)의 기록 정보 — 차례의 몇 번째 단계·대화 번호는 화면이 costMeta로 보냄. 같은 실행에서 넥스 도구가 부르는 판단 도구 등은 각자 종류를 덮어 씀
+  try {
+    const cm = body.costMeta || {}, lastU = (body.messages || []).slice().reverse().filter(function (m) { return m && m.role === 'user' && (typeof m.content === 'string' || (Array.isArray(m.content) && m.content.some(function (b) { return b && b.type === 'text'; }))); })[0];
+    const qTxt = lastU ? (typeof lastU.content === 'string' ? lastU.content : lastU.content.filter(function (b) { return b && b.type === 'text'; }).map(function (b) { return b.text; }).join(' ')) : '';
+    AI_COST_CTX_ = { kind: '넥스 대화', caseId: nxCaseId_, caseName: String((body.context && body.context.linkedCase && body.context.linkedCase.name) || ''), convId: String(cm.convId || ''), step: cm.round || '', q: qTxt };
+  } catch (e) { AI_COST_CTX_ = { kind: '넥스 대화', caseId: nxCaseId_ }; }
+  const costCtx_ = AI_COST_CTX_; // 도구 실행 중 다른 입구가 AI_COST_CTX_를 바꿔도 이 요청의 기록 정보는 그대로
   if (nxCaseId_ && isJobPanel_ && typeof nxCaseChatTools_ === 'function') {
     try { nxCaseChatTools_(tools.map(function (t) { return t.name; })).forEach(function (t) { tools.push(t); }); } catch (e) { console.log('사건 도구 붙이기 실패: ' + e.message); }
   }
@@ -16507,7 +16514,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       assistantContent: result.content,
       toolResults: toolResults,
       clientActions: clientActions,
-      usage: buildClaudeUsageInfo_(result, cfg, model, advisorModel)
+      usage: buildClaudeUsageInfo_(result, cfg, model, advisorModel, costCtx_)
     };
   }
 
@@ -16521,6 +16528,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   // 하나도 안 쓴 채 턴을 마치는 경우가 실사용 중 확인됐다. 사용자 입장에서 빈 응답은 항상
   // 나쁜 결과이므로, 텍스트가 비어있으면 이유 불문하고 도구 없이 "지금까지로 마무리해달라"고
   // 한 번 더 요청해 최소한 뭔가 답을 받는다.
+  let wrapUsage_ = null; // [2026.10.30 비용 기록] 마무리 한 번 더 부른 값 — 예전엔 비용에 전혀 안 잡혔다
   if (!replyText) {
     try {
       const wrapUpMessages = messages.concat([
@@ -16533,6 +16541,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       const wrapUpResponse = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', wrapUpOptions);
       if (wrapUpResponse.getResponseCode() === 200) {
         const wrapUpResult = JSON.parse(wrapUpResponse.getContentText());
+        try { wrapUsage_ = buildClaudeUsageInfo_(wrapUpResult, cfg, model, null, Object.assign({}, costCtx_ || {}, { kind: '넥스 대화 마무리' })); } catch (e) {}
         replyText = (wrapUpResult.content || [])
           .filter(function (b) { return b.type === 'text'; })
           .map(function (b) { return b.text; })
@@ -16546,16 +16555,23 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
     }
   }
 
+  const finalUsage_ = buildClaudeUsageInfo_(result, cfg, model, advisorModel, costCtx_);
+  if (wrapUsage_) { // 화면 차례 합계에도 마무리 몫을 더한다(시트에는 따로 한 줄)
+    ['costUsd', 'inputTokens', 'outputTokens', 'cacheWriteTokens', 'cacheReadTokens'].forEach(function (k) { finalUsage_[k] = (finalUsage_[k] || 0) + (wrapUsage_[k] || 0); });
+    if (finalUsage_.parts && wrapUsage_.parts) Object.keys(finalUsage_.parts).forEach(function (k) { finalUsage_.parts[k] += (wrapUsage_.parts[k] || 0); });
+  }
   return {
     done: true,
     reply: replyText,
     clientActions: clientActions,
-    usage: buildClaudeUsageInfo_(result, cfg, model, advisorModel)
+    usage: finalUsage_
   };
 }
 
 // callClaude의 done:false/done:true 두 반환 지점에서 공통으로 쓰는 이번 라운드 토큰·비용 계산.
-function buildClaudeUsageInfo_(result, cfg, model, advisorModel) {
+// [2026.10.30 비용 기록] meta = { kind, caseId, caseName, convId, step, q } — 주면(없으면 AI_COST_CTX_) 호출마다 _AI비용기록 시트에 한 줄(aiCostLog_).
+//  AI를 부르는 곳이 모두 이 함수를 거치므로 기록 자리가 하나다(자리마다 따로 짓지 않음). meta.noLog면 기록하지 않음.
+function buildClaudeUsageInfo_(result, cfg, model, advisorModel, meta) {
   const webSearchUses = (result.content || [])
     .filter(function (b) { return b.type === 'server_tool_use' && b.name === 'web_search'; })
     .length;
@@ -16577,9 +16593,109 @@ function buildClaudeUsageInfo_(result, cfg, model, advisorModel) {
   }
 
   const info = { inputTokens: inputTokens, outputTokens: outputTokens, costUsd: costUsd, model: model, webSearchUses: webSearchUses, advisorModel: advisorModel, cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens };
+  // [2026.10.30 비용 기록] 네 갈래 달러 — 새로 읽은 글·캐시 쓰기(처음 올려 저장)·캐시 읽기(저장분 다시 읽기)·쓴 글. 그 밖(웹 검색·조언 모델)은 총액 − 네 갈래
+  info.parts = {
+    in: (inputTokens / 1e6) * cfg.input,
+    cw: (cacheWriteTokens / 1e6) * cfg.input * 1.25,
+    cr: (cacheReadTokens / 1e6) * (cfg.cacheRead != null ? cfg.cacheRead : cfg.input * 0.1),
+    out: (outputTokens / 1e6) * cfg.output
+  };
+  info.parts.etc = Math.max(0, costUsd - info.parts.in - info.parts.cw - info.parts.cr - info.parts.out);
   ai_recordUsage_(info);
+  if (!(meta && meta.noLog)) aiCostLog_(info, meta || AI_COST_CTX_ || {});
   return info;
 }
+
+// ============================================================
+// [2026.10.30 비용 기록] 사건별·단계별 AI 비용 — 세무사님 "단번에 끝나지 않고 계속 수정하거나 변경하거나 하는 등의 작업이 이루어질 때
+//  변경된 부분에 대한 비용이 지불되는 것인지 당초분에 대한 비용도 또 지불되는지에 대한 검토가 선행되어야 한다" → 계획서(총괄관리자\넥스_비용기록_계획서_20261030.md).
+//  AI 호출마다 서버가 답을 받자마자 _AI대화기록\_AI비용기록 시트(달마다 탭)에 한 줄. 예전 기록은 화면이 차례 끝에 합계만 보냈고(화면이 바뀌면 빠짐),
+//  기록 파일 쓰기가 서버 잠금 5초를 못 잡으면 조용히 버려져 10-30 시험 7건 중 3건이 빠졌다 — 시트 줄 덧붙이기는 서버 잠금을 쓰지 않는다.
+//  쓰기 실패는 버리지 않고 _오류기록.json에. 기존 월 합계(ai_recordUsage_)·유료질문기록(ai_logPaid_)은 그대로.
+// ============================================================
+var AI_COST_CTX_ = null; // 이 실행의 기본 기록 정보 { kind, caseId, caseName, convId, step, q } — callClaude·사건처리 입구·미리 읽기가 정함
+var AI_COST_NAME_MEMO_ = {};
+const AI_COST_SHEET_NAME_ = '_AI비용기록';
+const AI_COST_SHEET_PROP_ = 'AI_COST_SHEET_ID';
+const AI_COST_HEAD_ = ['시각', '사건ID', '사건명', '대화ID', '종류', '모델', '새로 읽은 글(토큰)', '캐시 쓰기(토큰)', '캐시 읽기(토큰)', '쓴 글(토큰)', '새로 읽기(원)', '캐시 쓰기(원)', '캐시 읽기(원)', '쓴 글(원)', '그 밖(원)', '합계(원)', '단계', '말씀 앞부분'];
+const AI_COST_KRW_ = 1400; // 사건처리 AI 비용과 같은 환율(CASEPROC_AI_KRW_)
+function aiCostSheet_(month) {
+  const props = PropertiesService.getScriptProperties();
+  let ss = null;
+  const id = props.getProperty(AI_COST_SHEET_PROP_);
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) {
+    const folder = ai_convFolder_();
+    const it = folder.getFilesByName(AI_COST_SHEET_NAME_);
+    if (it.hasNext()) ss = SpreadsheetApp.openById(it.next().getId());
+    else { ss = SpreadsheetApp.create(AI_COST_SHEET_NAME_); DriveApp.getFileById(ss.getId()).moveTo(folder); }
+    props.setProperty(AI_COST_SHEET_PROP_, ss.getId());
+  }
+  let sh = ss.getSheetByName(month);
+  if (!sh) {
+    sh = ss.insertSheet(month);
+    sh.getRange('A:D').setNumberFormat('@'); // 시각·사건ID·사건명·대화ID는 글자 그대로(시각을 날짜로 바꿔 시간대만큼 어긋나던 사건 시트와 같은 일을 막음)
+    sh.appendRow(AI_COST_HEAD_); sh.setFrozenRows(1);
+    const first = ss.getSheets()[0]; if (first && first.getName() !== month && first.getLastRow() === 0) { try { ss.deleteSheet(first); } catch (e) {} } // 새로 만든 시트의 빈 "시트1"
+  }
+  return sh;
+}
+function aiCostCaseName_(caseId) {
+  if (!caseId) return '';
+  if (AI_COST_NAME_MEMO_[caseId] !== undefined) return AI_COST_NAME_MEMO_[caseId];
+  let n = '';
+  try { const c = job_findCase_(caseId); n = c ? String(c.사건명 || c.고객명 || '') : ''; } catch (e) { n = ''; }
+  AI_COST_NAME_MEMO_[caseId] = n;
+  return n;
+}
+// 한 줄로 만들기(시트 쓰기와 떼어 시험할 수 있게)
+function aiCostRow_(info, meta, now) {
+  const m = meta || {}, p = info.parts || {}, won = function (usd) { return Math.round((+usd || 0) * AI_COST_KRW_ * 10) / 10; };
+  const caseId = String(m.caseId || '').trim();
+  return [
+    Utilities.formatDate(now || new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), caseId, String(m.caseName || (caseId ? aiCostCaseName_(caseId) : '')).slice(0, 80), String(m.convId || '').slice(0, 40),
+    String(m.kind || '그 밖').slice(0, 20), String(info.model || ''),
+    info.inputTokens || 0, info.cacheWriteTokens || 0, info.cacheReadTokens || 0, info.outputTokens || 0,
+    won(p.in), won(p.cw), won(p.cr), won(p.out), won(p.etc), won(info.costUsd),
+    m.step != null ? m.step : '', String(m.q || '').replace(/\s+/g, ' ').slice(0, 80)
+  ];
+}
+function aiCostLog_(info, meta) {
+  try {
+    if (!info || !(info.costUsd > 0 || info.inputTokens || info.outputTokens)) return;
+    const row = aiCostRow_(info, meta);
+    aiCostSheet_(String(row[0]).slice(0, 7)).appendRow(row);
+  } catch (e) {
+    console.error('AI 비용 기록 실패: ' + (e && e.message || e));
+    try { ai_logBug({ entry: { kind: 'cost-log', where: 'aiCostLog_', message: 'AI 비용 기록을 시트에 쓰지 못함: ' + String(e && e.message || e).slice(0, 300), detail: JSON.stringify({ meta: meta || {}, model: info && info.model, usd: info && info.costUsd, in: info && info.inputTokens, cw: info && info.cacheWriteTokens, cr: info && info.cacheReadTokens, out: info && info.outputTokens }).slice(0, 1200) } }); } catch (e2) {}
+  }
+}
+// 한 사건의 비용 합계·호출 목록 — 처리개요 사건 장부(case_proc step 'aiCost')·넥스 case_status가 같은 것을 본다(토큰 0, 시트 읽기만)
+function aiCostCaseSummary_(caseId, opt) {
+  const id = String(caseId || '').trim();
+  const out = { ok: true, caseId: id, n: 0, won: 0, byKind: {}, parts: { 새로읽기: 0, 캐시쓰기: 0, 캐시읽기: 0, 쓴글: 0, 그밖: 0 }, rows: [] };
+  if (!id) return out;
+  let ss = null;
+  try { const sid = PropertiesService.getScriptProperties().getProperty(AI_COST_SHEET_PROP_); if (sid) ss = SpreadsheetApp.openById(sid); } catch (e) { ss = null; }
+  if (!ss) return Object.assign(out, { note: '아직 기록이 없습니다(비용 기록 시트가 없음).' });
+  ss.getSheets().forEach(function (sh) {
+    if (!/^\d{4}-\d{2}$/.test(sh.getName()) || sh.getLastRow() < 2) return;
+    sh.getRange(2, 1, sh.getLastRow() - 1, AI_COST_HEAD_.length).getValues().forEach(function (r) {
+      if (String(r[1]) !== id) return;
+      const w = +r[15] || 0;
+      out.n++; out.won += w;
+      out.byKind[r[4]] = Math.round(((out.byKind[r[4]] || 0) + w) * 10) / 10;
+      out.parts.새로읽기 += +r[10] || 0; out.parts.캐시쓰기 += +r[11] || 0; out.parts.캐시읽기 += +r[12] || 0; out.parts.쓴글 += +r[13] || 0; out.parts.그밖 += +r[14] || 0;
+      if (opt && opt.rows) out.rows.push({ 시각: r[0] instanceof Date ? Utilities.formatDate(r[0], 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss') : String(r[0]), 종류: r[4], 모델: r[5], 새로읽은글: r[6], 캐시쓰기: r[7], 캐시읽기: r[8], 쓴글: r[9], 원: w, 단계: r[16], 말씀: r[17] });
+    });
+  });
+  out.won = Math.round(out.won * 10) / 10;
+  Object.keys(out.parts).forEach(function (k) { out.parts[k] = Math.round(out.parts[k] * 10) / 10; });
+  out.line = out.n ? '🤖 이 사건 AI 비용 누적 ' + aiCostWon_(out.won) + '(' + Object.keys(out.byKind).map(function (k) { return k + ' ' + aiCostWon_(out.byKind[k]); }).join(' · ') + ') — 그중 다시 읽기 ' + aiCostWon_(out.parts.캐시읽기) + ' · 새로 읽기·저장 ' + aiCostWon_(out.parts.새로읽기 + out.parts.캐시쓰기) + ' · 쓴 글 ' + aiCostWon_(out.parts.쓴글) + (out.parts.그밖 >= 1 ? ' · 그 밖 ' + aiCostWon_(out.parts.그밖) : '') + ' (' + out.n + '번 호출)' : '🤖 이 사건 AI 비용 기록 없음(10-30 기록을 시작한 뒤 아직 AI를 부르지 않음)';
+  if (opt && opt.rows) out.rows = out.rows.slice(-300);
+  return out;
+}
+function aiCostWon_(w) { return Math.round(+w || 0).toLocaleString('ko-KR') + '원'; }
 
 // [2026.10.09] AI 사용 전략 — "이번 달 어느 모델에 얼마 썼나"를 보이게 한다. 채팅 한 라운드마다(job·work 공용,
 // 모든 기기 합계) 모델별 호출 횟수·금액(USD)을 스크립트 속성 AI_USAGE_yyyy-MM에 더한다. 기록 실패는 답변에
@@ -16661,7 +16777,9 @@ function ai_voiceBrief_(body) {
 function ai_logDirect_(json, model, kind, q) {
   try {
     if (!json || json.error || !MODEL_CONFIG[model]) return;
-    const u = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null);
+    // [2026.10.30 비용 기록] 비용 기록 시트의 종류 이름(한국어) — 사건이 걸린 실행이면 그 사건도
+    const kindKo = { voice: '음성', audit: '지침 점검', template: '템플릿 점검', names: '고객 이름 찾기', federation: 'AI 회의', blog: '블로그 글감', shorts: '쇼츠 대본', report: '보고서' }[kind] || String(kind || '그 밖');
+    const u = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null, Object.assign({}, AI_COST_CTX_ || {}, { kind: kindKo, q: q }));
     ai_logPaid_({ entry: { kind: kind, model: model, usd: u.costUsd, q: q } });
   } catch (e) { /* 기록 실패는 무시 */ }
 }
@@ -27333,7 +27451,7 @@ function cpNexPrereadWake_(c, opt) {
   let messages = [{ role: 'user', content: caseProcAiMask_(first) }], won = 0, rounds = 0, done = null, calls = [], err = '';
   for (; rounds < 8; rounds++) {
     if (Date.now() - t0 > 200000) { err = '시간이 모자라 멈춤'; break; }
-    const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, system, tools, caseProcAiCacheMark_(messages), 2500, 'low');
+    const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, system, tools, caseProcAiCacheMark_(messages), 2500, 'low', { kind: '넥스 미리 읽기', caseId: c.id, caseName: c.사건명 || '', step: rounds + 1, q: '변동 ' + pend.length + '개' }); // [2026.10.30 비용 기록]
     if (r.error) { err = r.error; break; }
     won += r.won || 0;
     const content = r.json.content || [], uses = content.filter(function (b) { return b.type === 'tool_use'; });
@@ -27460,7 +27578,7 @@ function cpNexMomentWake_(c, items, opt) {
   let messages = [{ role: 'user', content: caseProcAiMask_(first) }], won = 0, rounds = 0, done = null, calls = [], err = '';
   for (; rounds < 6; rounds++) {
     if (Date.now() - t0 > budget) { err = '시간이 모자라 멈춤'; break; }
-    const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, system, tools, caseProcAiCacheMark_(messages), 2000, 'low');
+    const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, system, tools, caseProcAiCacheMark_(messages), 2000, 'low', { kind: '넥스 중요한 순간', caseId: c.id, caseName: c.사건명 || '', step: rounds + 1, q: '새로 생긴 일 ' + items.length + '개' }); // [2026.10.30 비용 기록]
     if (r.error) { err = r.error; break; }
     won += r.won || 0;
     const content = r.json.content || [], uses = content.filter(function (b) { return b.type === 'tool_use'; });
@@ -29557,7 +29675,7 @@ function tc_extractCaseDocs_(body) {
   const reply = (json.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');
   if (!String(reply).trim()) return { error: 'AI 응답이 비어 있습니다(stop_reason: ' + (json.stop_reason || '없음') + (json.stop_reason === 'refusal' ? ' — AI가 답을 거절함(개인정보 등). 규칙 자동채우기 결과를 쓰거나 직접 입력하세요' : json.stop_reason === 'max_tokens' ? ' — 답이 길어 잘림' : '') + ').' };
   let usage = null;
-  try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null); } catch (e) {}
+  try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null, { kind: '서류 정리', caseId: caseId, caseName: String(found.row[col.사건명] || ''), q: '세액계산 자동채우기(서류 ' + used.length + '개)' }); } catch (e) {} // [2026.10.30 비용 기록]
   try { if (usage) ai_logPaid_({ entry: { kind: 'autofill', model: model, usd: usage.costUsd, q: '세액계산 자동채우기 — ' + found.row[col.사건명] + ' (서류 ' + used.length + '개)' } }); } catch (e) {}
   try { if (reply && reply.length < 90000) tcCache.put(tcKey, reply, 21600); } catch (e) {} // 기억은 가린 그대로(캐시에 원래 번호를 두지 않음)
   return { success: true, reply: tcMask.restore(reply), files: used, skipped: skipped, usd: usage ? usage.costUsd : null };
@@ -31674,7 +31792,10 @@ function caseProcTimed_(body) {
   CP_SECURED_LOG_ = []; // [2026.10.19] 이번 실행의 조회 결과(확보자료) — 끝에서 cpSecuredFlush_가 사건 폴더/확보자료/에 남긴다
   CP_SHEET_MEMO_ON_ = true; WORK_DATA_MEMO_ = null; // [2026.10.23 속도 ㅅ6차] 작업관리 시트는 이 실행에서 한 번만 읽는다
   CASEPROC_PATCH_DEFER_ = true; CASEPROC_PATCH_Q_ = {}; // [2026.10.23 속도 ㅅ6차 — S6] 결정 파일 쓰기는 모아서 실행 끝에 한 번
+  const costPrev_ = AI_COST_CTX_; // [2026.10.30 비용 기록] 이 실행 안의 AI 호출(서류 판단 등)이 사건 번호를 갖게 — 넥스 대화 안에서 불렸으면 그 정보를 그대로 둠
+  if (!costPrev_) AI_COST_CTX_ = { kind: '사건처리', caseId: String(body && body.caseId || '').trim(), q: String(body && body.step || '') };
   try { r = caseProcTimedRun_(body, t0); } finally {
+    AI_COST_CTX_ = costPrev_;
     try { caseProcPatchFlush_(); } catch (e) { console.log('결정 파일 모아 쓰기 실패: ' + (e && e.message || e)); }
     CP_SHEET_MEMO_ON_ = false; WORK_DATA_MEMO_ = null;
     CP_FILES_MEMO_ON_ = false; CP_FILES_MEMO_ = {}; // [2026.10.23 속도 ㅅ7차]
@@ -31760,6 +31881,7 @@ function caseProc0_(body) {
     if (body.step === 'draft') return caseProcDraft_(c);
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
     if (body.step === 'status') return caseProcStatus_(c, body);
+    if (body.step === 'aiCost') return aiCostCaseSummary_(c.id, { rows: !!body.rows }); // [2026.10.30 비용 기록] 이 사건 AI 비용(사건 장부 머리·[자세히] 표)
     if (body.step === 'facts') return caseProcFactsView_(c);
     if (body.step === 'view') return caseProcUserView_(c, body); // [2026.10.22 세무사님↔GAS 소통] 사건 화면이 열릴 때 — 현황·다음 할 일·GAS 알림·작업 기록(0원) · [특단 T5] light면 폴더를 훑지 않음
     if (body.step === 'alertSeen') { caseProcPatch_(c.id, function (sv) { (sv.alerts || []).forEach(function (a) { a.seen = true; }); }); return { ok: true }; } // [2026.10.22 1단계] 판단 재료 보기(읽기 전용, 0원) — 넥스만 보던 사람·자산·계약·돈 흐름·시간 순서를 세무사님 화면에도

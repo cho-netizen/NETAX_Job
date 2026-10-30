@@ -180,7 +180,8 @@ function caseProcAiMaskMsgs_(messages) {
   return (Array.isArray(messages) ? messages : []).map(function (m) { return Object.assign({}, m, { content: Array.isArray(m.content) ? m.content.map(one) : one(m.content) }); });
 }
 // ---------- 모델 한 번 부르기 ----------
-function caseProcAiCall_(model, system, tools, messages, maxTokens, effort) {
+// [2026.10.30 비용 기록] costMeta = { kind: '넥스 미리 읽기'|'판단 도구', caseId, caseName, q } — 비용 기록 시트의 종류·사건. 없으면 '판단 도구'(+ 이 실행의 사건)
+function caseProcAiCall_(model, system, tools, messages, maxTokens, effort, costMeta) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
   if (!apiKey) return { error: 'AI 열쇠(ANTHROPIC_API_KEY)가 설정되지 않았습니다.' };
   const cfg = MODEL_CONFIG[model];
@@ -204,7 +205,9 @@ function caseProcAiCall_(model, system, tools, messages, maxTokens, effort) {
   let won = 0;
   // 시험 모드: 비용만 셈(buildClaudeUsageInfo_는 사용량 속성에 쓰고 ai_logPaid_는 기록 파일에 씀 — 둘 다 안 부름)
   if (CASEPROC_AI_DRY_) { const u = json.usage || {}; won = Math.round((((u.input_tokens || 0) * cfg.input + (u.output_tokens || 0) * cfg.output + (u.cache_creation_input_tokens || 0) * cfg.input * 1.25 + (u.cache_read_input_tokens || 0) * (cfg.cacheRead != null ? cfg.cacheRead : cfg.input * 0.1)) / 1e6) * CASEPROC_AI_KRW_ * 10) / 10; return { json: json, won: won }; }
-  try { const u = buildClaudeUsageInfo_(json, cfg, model, null); won = Math.round(u.costUsd * CASEPROC_AI_KRW_ * 10) / 10; ai_logPaid_({ entry: { kind: 'caseproc-ai', model: model, usd: u.costUsd, q: (CASEPROC_AI_DRY_ ? '[시험] ' : '') + '사건처리 AI 지휘' } }); } catch (e) {}
+  // [2026.10.30 비용 기록] 유료질문기록의 이름이 옛 "사건처리 AI 지휘"로만 찍혀 무엇에 쓴 돈인지 안 보였다 — 종류(넥스 미리 읽기·판단 도구)로
+  const cm = Object.assign({ kind: '판단 도구' }, (typeof AI_COST_CTX_ !== 'undefined' && AI_COST_CTX_) ? { caseId: AI_COST_CTX_.caseId, caseName: AI_COST_CTX_.caseName, convId: AI_COST_CTX_.convId, step: AI_COST_CTX_.step } : {}, costMeta || {});
+  try { const u = buildClaudeUsageInfo_(json, cfg, model, null, cm); won = Math.round(u.costUsd * CASEPROC_AI_KRW_ * 10) / 10; ai_logPaid_({ entry: { kind: 'caseproc-ai', model: model, usd: u.costUsd, q: (CASEPROC_AI_DRY_ ? '[시험] ' : '') + cm.kind + (cm.caseName ? ' — ' + cm.caseName : '') } }); } catch (e) {}
   return { json: json, won: won };
 }
 // 마지막 메시지 끝에 캐시 경계(지난 차례까지 다시 읽기를 싸게)
@@ -224,7 +227,7 @@ function caseProcAiSubJudge_(model, input, effort) {
   const sys = '너는 세무사 사무실의 판단 보조다. 아래 재료(서류 원문 줄·후보)만 보고 물음에 답한다. 재료에 없는 것은 지어내지 않는다. ' +
     '답은 JSON 한 줄로만: {"답":"...","확실":"확실|불확실","근거":"재료의 어느 줄인지 한두 줄"}';
   const q = '[물음]\n' + caseProcAiMask_(String(input.question || '')).slice(0, 600) + (input.options && input.options.length ? '\n[후보]\n' + input.options.slice(0, 10).map(function (o, i) { return (i + 1) + '. ' + caseProcAiMask_(String(o)).slice(0, 160); }).join('\n') : '') + '\n[재료]\n' + caseProcAiMask_(String(input.material || '')).slice(0, 6000);
-  const r = caseProcAiCall_(model, sys, null, [{ role: 'user', content: q }], model === CASEPROC_AI_LIGHT_MODEL_ ? 800 : 2500, effort);
+  const r = caseProcAiCall_(model, sys, null, [{ role: 'user', content: q }], model === CASEPROC_AI_LIGHT_MODEL_ ? 800 : 2500, effort, { kind: '판단 도구', q: String(input.question || '').slice(0, 80) });
   if (r.error) return { text: JSON.stringify({ 오류: r.error }), won: 0 };
   const t = caseProcAiText_(r.json);
   let o = null; try { o = JSON.parse((/\{[\s\S]*\}/.exec(t) || ['{}'])[0]); } catch (e) { o = null; }
@@ -299,7 +302,8 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
       pack = { 파일목록: list, 더있음: !!fl.더있음, 의뢰서_메모_앞부분: bodies, 미리읽기요약: pre };
       ctx.packed = true;
     } catch (e) { pack = { 오류: '파일 목록·본문을 싣지 못함: ' + String(e && e.message || e).slice(0, 80) }; }
-    const base = { 반영현황표: rows, 현황: view, 남은질문: q, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_앞부분·미리읽기요약은 이미 실린 것 — case_files로 다시 부르지 마라. 본문이 더 필요한 파일만 file_read(여러 개면 같은 차례에 한꺼번에).' };
+    let costLine = ''; try { costLine = aiCostCaseSummary_(caseId).line || ''; } catch (e) { costLine = ''; } // [2026.10.30 비용 기록] 넥스가 "이 사건에 지금까지 ○원"을 말할 수 있게(시트 읽기만, 0원)
+    const base = { 반영현황표: rows, 현황: view, 남은질문: q, AI비용: costLine, 안내: '단계에 이미 시각이 있고 새서류가 없으면 gas_run을 부르지 않는다. 세무사님 값(누가=세무사님)은 바꾸지 않는다. 남은 일을 한두 줄로 세무사님께 말씀드리듯 정리해 두고 바로 이어 간다. 아래 파일목록·의뢰서_메모_앞부분·미리읽기요약은 이미 실린 것 — case_files로 다시 부르지 마라. 본문이 더 필요한 파일만 file_read(여러 개면 같은 차례에 한꺼번에).' };
     let txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack || {})));
     if (txt.length > 6000 && pack && pack.의뢰서_메모_앞부분) { pack.의뢰서_메모_앞부분 = '(길어서 뺌 — file_read)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }
     if (txt.length > 6000 && pack && pack.미리읽기요약) { pack.미리읽기요약 = '(길어서 뺌 — case_status 현황의 서류변동 참고)'; txt = caseProcAiMask_(JSON.stringify(Object.assign({}, base, pack))); }

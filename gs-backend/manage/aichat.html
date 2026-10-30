@@ -1990,6 +1990,12 @@
     var d = document.createElement('div');
     d.className = 'nxai-usage-foot';
     d.textContent = '🤖 ' + nxAiModelLabel_(usage.model) + ' · ' + nxAiWon_(usage.usd) + ' ($' + usage.usd.toFixed(4) + ')';
+    // [2026.10.30 비용 기록] 그중 무엇에 들었나 — 다시 읽기(저장분 다시 읽음, 정가 10%)·새로 읽기·저장(처음 올림, 125%)·쓴 글. 세무사님 "당초분에 대한 비용도 또 지불되는지" 검토용
+    if (usage.parts){
+      var p = usage.parts;
+      d.textContent += ' — ' + (usage.rounds ? usage.rounds + '단계 · ' : '') + '다시 읽기 ' + nxAiWon_(p.cr || 0) + ' · 새로 읽기·저장 ' + nxAiWon_((p.in || 0) + (p.cw || 0)) + ' · 쓴 글 ' + nxAiWon_(p.out || 0) + ((p.etc || 0) * 1400 >= 1 ? ' · 그 밖 ' + nxAiWon_(p.etc) : '');
+      d.title = '새로 읽은 글 ' + (usage.tIn || 0).toLocaleString('ko-KR') + ' · 처음 올려 저장(캐시 쓰기) ' + (usage.tCw || 0).toLocaleString('ko-KR') + ' · 저장분 다시 읽기(캐시 읽기) ' + (usage.tCr || 0).toLocaleString('ko-KR') + ' · 쓴 글 ' + (usage.tOut || 0).toLocaleString('ko-KR') + ' 토큰';
+    }
     bubble.appendChild(d);
   }
   function nxAiFreeKey_(){ var t = new Date(); return 'nx_ai_free_' + t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2); }
@@ -2148,7 +2154,8 @@
         messages: turnMessages,
         context: opts.context,
         autoRef: true,
-        forceWrapUp: forceWrapUp
+        forceWrapUp: forceWrapUp,
+        costMeta: { round: round + 1, convId: (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id) || '' } // [2026.10.30 비용 기록] 서버 비용 기록 시트의 단계·대화 번호
       }, opts.settingsPayload));
       var attempt = function(n){
         return fetch(NXAI_GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: opts.signal, body: requestBody })
@@ -2165,7 +2172,15 @@
       };
       return attempt(0).then(function(data){
         if (data.error){ opts.onError('오류: ' + data.error); return; }
-        if (data.usage){ usageSum.usd += (+data.usage.costUsd || 0); usageSum.model = data.usage.model || usageSum.model; }
+        if (data.usage){
+          usageSum.usd += (+data.usage.costUsd || 0); usageSum.model = data.usage.model || usageSum.model;
+          // [2026.10.30 비용 기록] 단계마다 네 갈래(새로 읽기·처음 올려 저장·다시 읽기·쓴 글)를 더해 말풍선 비용 줄에 보인다
+          usageSum.rounds = (usageSum.rounds || 0) + 1;
+          var up = data.usage.parts || null;
+          if (up){ usageSum.parts = usageSum.parts || { in: 0, cw: 0, cr: 0, out: 0, etc: 0 }; ['in', 'cw', 'cr', 'out', 'etc'].forEach(function(k){ usageSum.parts[k] += (+up[k] || 0); }); }
+          usageSum.tIn = (usageSum.tIn || 0) + (+data.usage.inputTokens || 0); usageSum.tCw = (usageSum.tCw || 0) + (+data.usage.cacheWriteTokens || 0);
+          usageSum.tCr = (usageSum.tCr || 0) + (+data.usage.cacheReadTokens || 0); usageSum.tOut = (usageSum.tOut || 0) + (+data.usage.outputTokens || 0);
+        }
         accumulated = accumulated.concat(data.clientActions || []);
         if (data.done === false){
           turnMessages = turnMessages.concat([

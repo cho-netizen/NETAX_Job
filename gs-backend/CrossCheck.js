@@ -453,7 +453,7 @@ function cxCallAi_(model, user) {
     let j = {}; try { j = JSON.parse(res.getContentText() || '{}'); } catch (e) {}
     if (j.error) return { error: 'AI 호출 실패: ' + (j.error.message || '') };
     txt = (j.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');
-    try { usd = buildClaudeUsageInfo_(j, cfg, model, null).costUsd || 0; } catch (e) {}
+    try { usd = buildClaudeUsageInfo_(j, cfg, model, null, Object.assign({}, (typeof AI_COST_CTX_ !== 'undefined' && AI_COST_CTX_) || {}, { kind: '서류 판단' })).costUsd || 0; } catch (e) {} // [2026.10.30 비용 기록]
   }
   try { if (txt && txt.length < 90000) cache.put(ck, txt, 21600); } catch (e) {}
   return { text: txt, usd: usd };

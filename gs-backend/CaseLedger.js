@@ -1001,7 +1001,9 @@ function ledgerFlowBrief_(c) {
   if (fl.마지막) fl.마지막 = { at: fl.마지막.at, why: fl.마지막.why, diff: fl.마지막.diff || [], rounds: (fl.마지막.rounds || []).slice(-5).map(function (x) { return { at: x.at, why: x.why, diff: x.diff || [] }; }) };
   const open = rows.filter(function (r) { return /^(물어볼것|증빙받을것|보류)$/.test(r.state); }).map(function (r) { return { label: r.label, state: r.state, ask: String(r.ask || '').slice(0, 200), 값: r.값 }; });
   const calc = rows.filter(function (r) { return !/^(q:|doc:|chk:)/.test(r.path) && /^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null; }).map(function (r) { return { label: r.label, 값: r.값, state: r.state, kind: r.kind, 이음: (r.fx || []).length }; });
-  return { ok: true, 사건: (c.사건명 || c.고객명 || ''), 흐름: fl, 물음: open, 칸: calc.slice(0, 80) };
+  // [2026.10.30 비용 기록] 이 사건 AI 비용 누적 — 장부 띠에 함께(같은 2분 주기, 서버를 따로 부르지 않음). 시트 읽기만, 0원
+  let cost = null; try { if (typeof aiCostCaseSummary_ === 'function') { const s = aiCostCaseSummary_(c.id); cost = { n: s.n, won: s.won, parts: s.parts, byKind: s.byKind, line: s.line }; } } catch (e) { cost = { error: String(e && e.message || e).slice(0, 80) }; }
+  return { ok: true, 사건: (c.사건명 || c.고객명 || ''), 흐름: fl, 물음: open, 칸: calc.slice(0, 80), AI비용: cost };
 }
 // [2026.10.29 넥스 1] 넥스용 장부 요약 — 세무사님 "ai가 처리할때는 사건장부 속의 정보를 적재적소에 제대로 활용하지 못하고 있다는 것인가?" → "그래라"
 //  예전엔 넥스가 장부를 보려면 장부 전체(ledger_read — 6,000자에서 잘려 뒤쪽 흐름이 늘 빠짐)를 따로 불러야 했고, 사건 현황(case_status·caseproc)에는 흐름이 없었다.

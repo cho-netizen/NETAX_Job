@@ -727,7 +727,7 @@ function aiCrossCheck_(body) {
   var json = {}; try { json = JSON.parse(res.getContentText()); } catch (e) {}
   if (json.error) return { error: 'AI 호출 실패: ' + (json.error.message || '') };
   var text = (json.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');
-  var usage = null; try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[DEFAULT_MODEL], DEFAULT_MODEL, null); } catch (e) {}
+  var usage = null; try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[DEFAULT_MODEL], DEFAULT_MODEL, null, Object.assign({}, (typeof AI_COST_CTX_ !== 'undefined' && AI_COST_CTX_) || {}, { kind: '세액 2중 검증', q: '세액 2중 검증(' + label + ')' })); } catch (e) {} // [2026.10.30 비용 기록]
   try { if (usage) ai_logPaid_({ entry: { kind: 'crosscheck', model: DEFAULT_MODEL, usd: usage.costUsd, q: '세액 2중 검증(' + label + ')' } }); } catch (e) {}
   var m = text.match(/```(?:json)?\s*([\s\S]*?)```/), ai = {};
   try { ai = JSON.parse(m ? m[1] : text.slice(text.lastIndexOf('{'))); } catch (e) { ai = {}; }
