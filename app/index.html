@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 14:26 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-30 16:15 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1263,7 +1263,7 @@
   .doc-filing ul li{ position:relative; padding-left:4mm; margin-bottom:1.4mm; text-indent:-4mm; text-align:justify; }
   .doc-filing ul li::before{ content:"·"; padding-right:2mm; color:#C8A244; font-weight:700; }
   .doc-filing table:not(.meta){ border-collapse:collapse; width:100%; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
-  .doc-filing table:not(.meta) th, .doc-filing table:not(.meta) td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; text-align:right; }
+  .doc-filing table:not(.meta) th, .doc-filing table:not(.meta) td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; text-align:left; } /* [2026.10.31] 세무사님 "표안에 내용이 왜 우측정렬이지? 좌측정렬해야한다" — 예전엔 금액 표로 보고 첫 칸 빼고 오른쪽 정렬 */
   .doc-filing table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
   .doc-filing table:not(.meta) td:first-child{ text-align:left; }
   .doc-filing table:not(.meta) tbody tr:last-child td{ font-weight:700; background:#FBF3DD; border-top:1.5pt solid #C8A244; }
@@ -1425,6 +1425,9 @@
   .doc-reference table:not(.meta) th{ background:#f0f0f0; font-weight:700; text-align:center; }
   .doc-reference .signline{ clear:both; text-align:center; margin-top:16mm; font-size:11.5pt; line-height:2; }
   .doc-reference .signline .name{ font-size:13pt; font-weight:700; letter-spacing:0.2em; }
+  /* [2026.10.30] 고객에게 나가는 자문·신고·진행보고서도 끝에 발신 서명 한 줄(외부 보고서 양식 점검 5번 — 서명란이 없었음) */
+  .doc-advisory .signline, .doc-filing .signline, .doc-progress .signline{ clear:both; text-align:right; margin:12mm 0 4mm; line-height:1.9; }
+  .doc-advisory .signline .name, .doc-filing .signline .name, .doc-progress .signline .name{ font-weight:700; letter-spacing:0.1em; }
   .doc-reference hr{ border:none; border-top:0.5pt solid #999; margin:6mm 0; }
   .doc-reference a{ color:#0D1B3D; }
 
@@ -7168,11 +7171,36 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.10.30 2단계] ⑥ 자문 — 세무사님 원문(10-29) "도구는 충분한데 왜 도구를 활용하여 고급 자문을 할 수 없냐고?" / "신고사건은 극히 일부분이다"
         //  쟁점·대안·근거·위험·권고·보고서 — 넥스 case_ledger do=advice와 같은 서버 함수(case_proc step ledgerAdvice). 숫자는 계산 저장본으로만 잇는다. 세무사님이 적은 항목은 넥스가 못 바꿈
         (function(){
-          var A = r.자문 || {}, KINDS = ['쟁점', '대안', '근거', '위험', '권고', '보고서'];
+          var A = r.자문 || {}, KINDS = ['문의', '쟁점', '대안', '근거', '위험', '권고', '보고서']; // [2026.10.30 복합 자문] 의뢰인 문의를 하나씩 쫓는 칸 — 맨 앞
           var th6 = '<div data-lg-sec="adv" style="display:none; margin-top:8px;">';
           th6 += '<div style="color:var(--sub);">사건의 자문 뼈대 — 무엇이 쟁점이고, 어떤 대안을 어느 계산 저장본으로 견주었고, 근거·위험은 무엇이며, 무엇을 권했고, 어느 보고서로 냈는지. 넥스가 적은 것과 세무사님이 적으신 것이 한 곳에 있습니다(세무사님 항목은 넥스가 바꾸지 못합니다).</div>';
+          // [2026.10.30 복합 자문 — 세무사님 "권하는 안대로"] 주 세목 + 함께 보는 세목(넥스 case_ledger do=taxes와 같은 서버 입구 step ledgerTaxes). 세무사님이 정하신 목록은 넥스가 못 바꿈
+          (function(){
+            var T = A.세목 || {}, codes = T.코드 || [], main = codes[0] || '', LB = { transfer: '양도', gift: '증여', inheritance: '상속' };
+            th6 += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><b>세목</b><span>주 세목 ' + esc(T.주 || LB[main] || main || '—') + '</span><span style="color:var(--sub);">함께 보는 세목</span>'
+              + ['transfer', 'gift', 'inheritance'].filter(function(t){ return t !== main; }).map(function(t){ return '<label style="white-space:nowrap;"><input type="checkbox" data-adv-tax="' + t + '"' + (codes.indexOf(t) > 0 ? ' checked' : '') + '> ' + LB[t] + '</label>'; }).join('')
+              + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 메모 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
+              + (T.누가 ? '<span style="color:var(--sub);">(' + esc(T.누가) + (T.때 ? ' · ' + esc(T.때) : '') + ')</span>' : '') + '</div>';
+            var Q = A.문의현황 || {};
+            if (Q.수) th6 += '<div style="margin-top:4px;"><b>문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
+          })();
           KINDS.forEach(function(k){
             var list = A[k] || [];
+            if (k === '문의'){ // 문의는 번호·세목·답을 보이고, 세목별로 묶는다
+              var byTax = {}; list.forEach(function(x){ var g = (x.세목 || []).join('·') || '세목 안 정함'; (byTax[g] = byTax[g] || []).push(x); });
+              th6 += '<div style="margin-top:8px;"><b>문의</b> <span style="color:var(--sub);">' + esc(list.length) + '개 — 의뢰인이 물으신 것을 하나씩. 보고서 "문의사항별 답변"이 같은 번호로 답합니다.</span>';
+              if (!list.length) th6 += '<div class="log-empty">아직 없음</div>';
+              Object.keys(byTax).forEach(function(g){
+                th6 += '<div style="margin-top:4px; color:var(--sub);">' + esc(g) + ' ' + esc(byTax[g].length) + '개</div>' + tbl(['번호', '세목', '물으신 것', '답', '상태·누가', ''], byTax[g].map(function(x){
+                  var st = x.상태 || '답 안 함';
+                  return '<tr>' + cell(x.번호 || '', 40) + cell((x.세목 || []).join('·'), 80) + cell(x.제목, 280) + cell(x.답 || x.내용 || '', 320, ' color:var(--sub);') + cell([st, x.누가].filter(Boolean).join(' · '), 120, st === '답 안 함' ? ' color:#b23;' : '')
+                    + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + ['답함', '보류', '답 안 함'].filter(function(v){ return v !== st; }).map(function(v){ return '<button type="button" class="ghost-btn" data-adv-st="' + esc(v) + '" data-adv-id="' + esc(x.id) + '" style="padding:1px 6px; font-size:11.5px;" title="이 문의를 「' + esc(v) + '」로 바꿉니다">' + esc(v) + '</button> '; }).join('')
+                    + '<button type="button" class="ghost-btn" data-adv-del="' + esc(x.id) + '" data-adv-kind="문의" style="padding:1px 6px; font-size:11.5px;" title="이 문의를 지웁니다(기록은 남음)">지우기</button></td></tr>';
+                }).join(''));
+              });
+              th6 += '</div>';
+              return;
+            }
             th6 += '<div style="margin-top:8px;"><b>' + esc(k) + '</b> <span style="color:var(--sub);">' + esc(list.length) + '개</span>'
               + (list.length ? tbl(['제목', '내용', '저장본·근거·파일', '상태·누가', ''], list.map(function(x){
                   var sv = (x.저장본 || []).map(function(s){ return (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
@@ -7194,7 +7222,7 @@ function nxMdOpenWindow(title, src, opts){
             });
             th6 += '<div id="chAdvCiteOut" style="margin-top:4px;"></div></div>';
           })();
-          th6 += '<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>적기</b><select id="chAdvKind">' + KINDS.map(function(k){ return '<option>' + esc(k) + '</option>'; }).join('') + '</select><input id="chAdvTitle" type="text" placeholder="한 줄 제목" style="width:260px;"><input id="chAdvText" type="text" placeholder="설명(선택)" style="width:300px;"><input id="chAdvCalc" type="text" placeholder="계산 저장본 id(쉼표, 선택)" style="width:180px;"><button type="button" id="chAdvAdd" class="ghost-btn">적기</button></div>';
+          th6 += '<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>적기</b><select id="chAdvKind">' + KINDS.map(function(k){ return '<option>' + esc(k) + '</option>'; }).join('') + '</select><input id="chAdvTitle" type="text" placeholder="한 줄 제목" style="width:260px;"><input id="chAdvText" type="text" placeholder="설명(선택)" style="width:300px;"><input id="chAdvCalc" type="text" placeholder="계산 저장본 id(쉼표, 선택)" style="width:180px;"><select id="chAdvTax" title="문의·쟁점의 세목(선택)"><option value="">세목(선택)</option><option>양도</option><option>증여</option><option>상속</option></select><input id="chAdvAns" type="text" placeholder="답 요지(문의만, 선택 — 적으면 답함)" style="width:240px;"><button type="button" id="chAdvAdd" class="ghost-btn">적기</button></div>';
           th6 += '<div id="chAdvOut" style="margin-top:6px;"></div></div>';
           h += th6;
         })();
@@ -7246,13 +7274,18 @@ function nxMdOpenWindow(title, src, opts){
           var t = (document.getElementById('chAdvTitle').value || '').trim(); if (!t){ showToast('제목을 적어 주세요.', 'warning'); return; }
           var cs = (document.getElementById('chAdvCalc').value || '').split(/[,\s]+/).filter(Boolean);
           advAdd.disabled = true;
-          call({ step: 'ledgerAdvice', item: document.getElementById('chAdvKind').value, title: t, text: (document.getElementById('chAdvText').value || '').trim(), calc: cs.length ? cs : undefined }).then(function(res){ advAdd.disabled = false; if (res && res.ok) reload(); else if (res) document.getElementById('chAdvOut').textContent = res.error || '적지 못했습니다'; });
+          var kd = document.getElementById('chAdvKind').value, tx = document.getElementById('chAdvTax').value, an = (document.getElementById('chAdvAns').value || '').trim();
+          call({ step: 'ledgerAdvice', item: kd, title: t, text: (document.getElementById('chAdvText').value || '').trim(), calc: cs.length ? cs : undefined, tax: tx ? [tx] : undefined, answer: kd === '문의' && an ? an : undefined, status: kd === '문의' && an ? '답함' : undefined }).then(function(res){ advAdd.disabled = false; if (res && res.ok) reload(); else if (res) document.getElementById('chAdvOut').textContent = res.error || '적지 못했습니다'; });
         });
         var advCite = document.getElementById('chAdvCite');
         if (advCite) advCite.addEventListener('click', function(){
           var t0 = advCite.textContent; advCite.disabled = true; advCite.textContent = '대조 중…(판례 많으면 1분쯤)';
           call({ step: 'ledgerCite' }).then(function(res){ advCite.disabled = false; advCite.textContent = t0; if (!res) return; var o = document.getElementById('chAdvCiteOut'); if (o) o.textContent = res.message || ''; if (res.ok && (res.결과 || []).length) setTimeout(reload, 600); });
         });
+        // [2026.10.30 복합 자문] 문의 상태 바꾸기·함께 보는 세목 저장 — 넥스 case_ledger do=advice(status)·do=taxes와 같은 서버 입구
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-adv-st]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerAdvice', item: '문의', id: b.getAttribute('data-adv-id'), status: b.getAttribute('data-adv-st') }).then(function(res){ if (res && res.ok) reload(); else { b.disabled = false; if (res) showToast(res.error || '바꾸지 못했습니다', 'warning'); } }); }); });
+        var taxSave = document.getElementById('chAdvTaxSave');
+        if (taxSave) taxSave.addEventListener('click', function(){ var t = Array.prototype.filter.call(body.querySelectorAll('input[data-adv-tax]'), function(x){ return x.checked; }).map(function(x){ return x.getAttribute('data-adv-tax'); }); taxSave.disabled = true; call({ step: 'ledgerTaxes', taxes: t }).then(function(res){ taxSave.disabled = false; if (res && res.ok){ showToast(res.message || '저장했습니다', 'success'); reload(); } else if (res) showToast(res.error || '저장하지 못했습니다', 'warning'); }); });
         Array.prototype.forEach.call(body.querySelectorAll('button[data-adv-del]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerAdvice', item: b.getAttribute('data-adv-kind'), id: b.getAttribute('data-adv-del'), remove: true }).then(function(res){ if (res && res.ok) reload(); else { b.disabled = false; if (res) showToast(res.error || '지우지 못했습니다', 'warning'); } }); }); });
         // [2026.10.29 계획서 3판] ⑤ 도구 단추 — 넥스 case_ledger do=lookup·estimate·calc·compare와 같은 서버 입구(case_proc step ledgerLookup·ledgerEstimate·ledgerCalc·ledgerCompare)
         var tOut = document.getElementById('chLgToolOut');
@@ -46940,6 +46973,7 @@ async function createNewDoc(kind){
         + '## 준비 및 확인 필요사항 (우선순위순)\n\n\n'
         + '## 다음 절차 / 실행 로드맵\n\n\n'
         + '*본 보고서는 제시된 사실관계를 기초로 작성된 세무 자문 의견입니다. 위 확인 필요사항이 확정되는 대로 재검토가 필요하며, 최종 실행 전 법령 변동 여부를 반드시 확인하시기 바랍니다.*\n\n'
+        + '<div class="signline">' + todayStr + '<br><span class="name">이음세무컨설팅 세무사 조종호</span></div>\n'
     },
     // [2026.09] 외부보고서 2/5 — 신고보고서(신고 사건, 고객에게 전달). 이미 접수까지 끝난
     // 신고 내용을 사후적으로 정리해서 알려주는 문서라 "산출근거"가 핵심이다.
@@ -46951,7 +46985,7 @@ async function createNewDoc(kind){
       md: '<div class="letterhead"><div class="brand">이음세무컨설팅 NETAX</div><h1>신고보고서</h1></div>\n\n'
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
-        + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">발신</td><td>이음세무컨설팅 조종호 세무사</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 신고 결과 보고</td></tr>\n'
         + '</table>\n\n'
@@ -46959,6 +46993,7 @@ async function createNewDoc(kind){
         + '## 신고 개요\n\n' + overviewFactsMd + '\n'
         + '## 신고 세액 및 산출근거\n\n\n'
         + '## 향후 유의사항\n\n'
+        + '<div class="signline">' + todayStr + '<br><span class="name">이음세무컨설팅 세무사 조종호</span></div>\n'
     },
     // [2026.09] 외부보고서 3/5 — 세무서 제출용(신고 사건). 고객이 아니라 과세관청이 읽는 문서.
     // [2026.10.30] "참고보고서" → "검토조서"(세무사님 "제목을 검토조서로 변경하자 … 수신은 없애자"). 공문 개조식(가. → 1) → 가)),
@@ -46998,7 +47033,7 @@ async function createNewDoc(kind){
       md: '<div class="letterhead"><div class="brand">이음세무컨설팅 NETAX</div><h1>진행보고서</h1></div>\n\n'
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
-        + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">발신</td><td>이음세무컨설팅 조종호 세무사</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 진행상황 보고</td></tr>\n'
         + (c && c.법정일 ? '<tr><td class="k">법정기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
@@ -47007,6 +47042,7 @@ async function createNewDoc(kind){
         + '- \n\n'
         + '## 향후 진행 계획 및 예상 일정\n\n'
         + '- \n\n'
+        + '<div class="signline">' + todayStr + '<br><span class="name">이음세무컨설팅 세무사 조종호</span></div>\n'
     },
     // [2026.09] 외부보고서 5/5 — 불복청구서(불복 사건, 조세심판원 등 처분청/심판기관에 제출).
     // 앞의 4종과 달리 서사형 보고서가 아니라 정식 청구 서식 — 청구취지·청구이유가 핵심이다.
@@ -47844,12 +47880,27 @@ document.getElementById('btnDownload').addEventListener('click', (e) => {
   e.stopPropagation();
   document.getElementById('downloadPopup').classList.toggle('show');
 });
+// [2026.10.30] 세무사님 "3번만 빼고 모두 고쳐라"(외부 보고서 양식 점검 7번) — 채우지 못한 ⚠[확인필요]·✍️[AI 작성] 칸이 남은 채로
+//  인쇄·내려받기·고객 보내기를 하면 빈칸이 고객·세무서 문서에 그대로 나간다. 막지는 않고(초안 인쇄도 있음) 몇 칸 남았는지 묻는다.
+function rwLeftMarksOk_(what){
+  const d = getSelected();
+  if (!d) return true;
+  const mdInputEl = document.getElementById('mdInput');
+  const md = (d.id === selectedId && mdInputEl) ? mdInputEl.value : (d.md || '');
+  const body = md.replace(/<!--[\s\S]*?-->/g, '');
+  const left = (body.match(/⚠\[확인필요/g) || []).length, ai = (body.match(/✍️\[AI 작성/g) || []).length;
+  if (!left && !ai) return true;
+  return confirm('아직 채우지 않은 칸이 있습니다 — 확인필요 ' + left + '칸 · AI 작성 ' + ai + '칸.\n이대로 ' + what + '하면 빈칸 표시가 문서에 그대로 나갑니다. 그래도 ' + what + '할까요?');
+}
+
 document.getElementById('dlDoc').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
+  if (!rwLeftMarksOk_('내려받기')) return;
   downloadAsDoc();
 });
 document.getElementById('dlPrint').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
+  if (!rwLeftMarksOk_('인쇄')) return;
   // 크롬 등 브라우저의 인쇄 머리글은 <title> 태그 내용을 그대로 찍는다.
   // 평소엔 "보고서 렌더시스템"이 고정 표시되므로, 인쇄 직전에만 실제 문서 이름으로 바꿨다가
   // 인쇄 대화상자가 닫히면 원래 제목으로 되돌린다.
@@ -48141,7 +48192,7 @@ function updatePublishButton(){
     ? '지금 화면의 완성본을 고객포털(my.netax.kr) 보고서함에 발행'
     : '검토서(내부문서)이거나 발행 대상이 아닌 문서입니다';
 }
-document.getElementById('btnPublish').addEventListener('click', publishToCustomer);
+document.getElementById('btnPublish').addEventListener('click', () => { if (rwLeftMarksOk_('고객에게 보내기')) publishToCustomer(); });
 
 // [2026.09 신규, 시험단계] 자문보고서를 구글 슬라이드로도 만든다 — publishToCustomer와 같은
 // 방식으로 d.reportFolderId(사건의 "보고서" 폴더)를 재사용한다. 파워포인트로 받고 싶으면
@@ -48631,14 +48682,17 @@ function openInNewWindow(){
 document.getElementById('btnNewWindow').addEventListener('click', openInNewWindow);
 document.getElementById('dlHtml').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
+  if (!rwLeftMarksOk_('내려받기')) return;
   downloadAsHtml();
 });
 document.getElementById('dlPdf').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
+  if (!rwLeftMarksOk_('내려받기')) return;
   downloadAsPdf();
 });
 document.getElementById('dlPrintPdf').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
+  if (!rwLeftMarksOk_('내려받기')) return;
   downloadAsPrintPdf();
 });
 
