@@ -5819,6 +5819,11 @@ function allocationRowComponentFieldsHtml_(a, showAcqStd){
 // 계산이다. 간편과 정밀의 차이는 필드 수가 아니라 "값을 손으로 다 채우느냐, 증빙을 올리면 AI가
 // 채워주느냐"뿐이다 — 그래서 같은 입력폼(정밀계산 화면)을 그대로 쓰고, 증빙업로드·AI자동입력
 // 버튼만 tier에 따라 보이거나 숨긴다(updateTaxCalcPaneVisibility의 taxCalcView 클래스 토글).
+// [2026.11.01] 세무사님 지시 — "정밀계산은 모든 기능을 화면에 모두 펼쳐놓은 기능이다, 간편계산은
+// 모든 기능이 들어있으나 최소한의 기본입력만 받아들이고 이후에는 관련되는 항목만 추가로 띄우는
+// 것으로 수정하라." 입력폼·데이터는 여전히 하나다. 간편일 때만 이 파일 맨 끝의 칸 띄우기 장치
+// (tcSimple_)가 기본 칸·값이 든 칸·넣은 값과 관련된 칸만 남기고 나머지 빈 칸을 숨긴다(숨긴 칸은
+// 카드 끝 "더 넣을 항목"에서 하나씩 열 수 있음). 값이 든 칸은 절대 숨기지 않는다.
 // ============================================================
 let taxCalcTier = 'simple';
 
@@ -14649,6 +14654,7 @@ function updateTaxCalcPaneVisibility(){
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
   taxCalcView.classList.toggle('taxcalc-view-tier-simple', taxCalcTier === 'simple');
   updateTaxLawRefButton_(which);
+  if (typeof tcSimple_ !== 'undefined') tcSimple_.refreshSoon();
 }
 
 document.querySelectorAll('.taxcalc-tab').forEach(function(tab){
@@ -17743,6 +17749,7 @@ function renderTcCaseBar_(){
     '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>📑 경우(안)로 저장</button>' +
     '<button type="button" id="tcGasFillBtn" class="ghost-btn" title="장부 값을 세액계산기 칸으로 옮기고(답하실 질문도 셉니다) 이어서 이 화면 칸을 채웁니다 — AI 없이 0원, 넥스 calc_fill과 같은 도구"' + (tcSelectedId ? '' : ' disabled') + '>⚡ 칸 채우기</button>' +
     '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn" title="넥스(AI)가 사건을 맡아 서류 읽기부터 계산까지 합니다 — 비용이 듭니다"' + (tcSelectedId ? '' : ' disabled') + '>🤖 넥스로 자동계산</button>' +
+    '<button type="button" id="tcOpenPrintBtn" class="ghost-btn"' + (tcSelectedId ? '' : ' disabled') + '>세액인쇄</button>' + // [2026.11.01] 옆 메뉴에서 뺀 세액인쇄로 가는 길
     '</div>' +
     (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
 
@@ -17750,6 +17757,7 @@ function renderTcCaseBar_(){
   document.getElementById('tcSaveScenarioBtn').addEventListener('click', function(){ tcSaveCurrentResult_({ scenario: true }); }); // [2026.10.27 경우별 저장] 넥스 calc_scenario와 같은 저장 모양(`안`)
   document.getElementById('tcAutoCalcBtn').addEventListener('click', tcRunAutoCalc_);
   document.getElementById('tcGasFillBtn').addEventListener('click', tcGasFill_); // [2026.10.22 1단계] AI 없이 0원
+  document.getElementById('tcOpenPrintBtn').addEventListener('click', function(){ if (typeof goToView_ === 'function') goToView_('print'); });
   // [2026.10.31] 칸 채우기 상자는 그 사건일 때만 — 다른 사건을 고르면 닫는다. 다른 화면에서 "세액계산에서 칸 채우기"로 왔으면 바로 띄운다
   (function(){ var fb = document.getElementById('tcFillBox'); if (fb && window.tcFillKeep_ && window.tcFillKeep_.caseId !== tcSelectedId){ fb.style.display = 'none'; fb.innerHTML = ''; window.tcFillKeep_ = null; } })();
   if (window.tcPendingFill_ && window.tcPendingFill_ === tcSelectedId && tcCurrentCase){ window.tcPendingFill_ = null; setTimeout(tcGasFill_, 300); }
@@ -18392,5 +18400,519 @@ function goToTaxCalc_(caseId){
   document.addEventListener('click', function(ev){ if (ev.target && ev.target.id === 'tcDocPaneBtn'){ if (pane) close(); else open(); } });
   // 계산기 화면을 떠나면 닫는다
   document.addEventListener('click', function(ev){ var m = ev.target.closest && ev.target.closest('.menu-item[data-view]'); if (m && m.getAttribute('data-view') !== 'taxcalc') close(); });
+})();
+</script>
+
+<!-- [2026.11.01] 간편계산 칸 띄우기 — 세무사님 지시: "간편계산은 모든 기능이 들어있으나 최소한의 기본입력만
+     받아들이고 이후에는 관련되는 항목만 추가로 띄우는 것으로 수정하라." 입력폼·데이터는 정밀계산과 하나다.
+     간편일 때만 이 장치가 칸마다 보일지 말지를 정한다(정밀로 바꾸면 이 장치가 붙인 표시를 모두 걷어 원래대로).
+     보이는 칸 = ① 세목별 기본 칸 ② 값이 든 칸(사건에서 불러온 값·넥스가 채운 값 — 숨은 값이 계산에 몰래 들어가지
+     않게, 값이 있으면 무조건 보인다) ③ 넣은 값과 관련된 칸(규칙) ④ "더 넣을 항목"에서 연 칸.
+     칸 목록·조건은 총괄관리자\_기록\간편계산_칸띄우기표_20261101.md 와 같다. -->
+<style>
+  .tcs-hide{ display:none !important; }
+  .tcs-more{ margin-top:10px; padding-top:8px; border-top:1px dashed var(--taxcalc-border); }
+  .tcs-more-toggle{ border:1px solid var(--gold); background:#fff; color:var(--navy); border-radius:99px; padding:3px 12px; font-size:12.5px; cursor:pointer; }
+  .tcs-more-toggle b{ color:var(--taxcalc-gold-deep, #93712a); }
+  .tcs-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .tcs-chip{ border:1px solid var(--taxcalc-border); background:#fff; color:var(--navy); border-radius:99px; padding:3px 10px; font-size:12.5px; cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tcs-chip:hover{ border-color:var(--gold); background:#fbf6e7; }
+  .tcs-chip.tcs-card-chip{ border-color:var(--navy); }
+</style>
+<script>
+var tcSimple_ = (function(){
+  var view = document.getElementById('taxCalcView');
+  if (!view) return { refreshSoon: function(){}, refresh: function(){} };
+
+  // ---- 칸 이름(열쇠) — 칸 안 첫 입력의 data-○field 이름, 없으면 id ----
+  function inputOf(f){ return f.querySelector('input,select,textarea'); }
+  function keyOf(f){
+    var i = inputOf(f); if (!i) return '';
+    for (var a = 0; a < i.attributes.length; a++){
+      var n = i.attributes[a].name;
+      if (/^data-[a-z]*field$/.test(n)) return n.slice(5) + ':' + i.attributes[a].value;
+    }
+    return i.id ? '#' + i.id : '';
+  }
+  function bareName(key){ return key.replace(/^[a-z]*:|^#/, ''); }
+  function findInput(scope, key){
+    if (!scope || !key) return null;
+    if (key.charAt(0) === '#'){ var el = document.getElementById(key.slice(1)); return el && scope.contains(el) ? el : null; }
+    var p = key.indexOf(':');
+    return scope.querySelector('[data-' + key.slice(0, p) + '="' + key.slice(p + 1) + '"]');
+  }
+  function valOf(el){
+    if (!el) return '';
+    if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
+    return String(el.value == null ? '' : el.value).trim();
+  }
+  // 처음부터 체크돼 나오는 칸(신고세액공제·각 공제 자격요건 등) — 체크를 끈 것이 "값을 넣은 것"이다
+  var DEFAULT_ON_RE = /(reportedintime|requirementmet|isspousepropertydivided|heirage18orolder|heirengagedinbusiness2yearsorexempt|heirbecameofficerbyfilingdeadline|heirbecameceowithin2years)$/i;
+  function isReadonlyInput(el){ return !el || el.readOnly || el.disabled; }
+  function hasValue(f, key){
+    var ins = f.querySelectorAll('input,select,textarea');
+    for (var i = 0; i < ins.length; i++){
+      var el = ins[i];
+      if (isReadonlyInput(el) || el.type === 'button' || el.type === 'file') continue;
+      if (el.type === 'checkbox' || el.type === 'radio'){
+        if (DEFAULT_ON_RE.test(key) ? !el.checked : el.checked) return true;
+      } else if (el.tagName === 'SELECT'){
+        if (el.options.length && el.value !== el.options[0].value) return true;
+      } else {
+        var sv = String(el.value).trim();
+        // 숫자 칸에 자동으로 들어간 0은 빈칸과 같게 본다(예: 사업용자산 순액 합계가 0으로 채워짐)
+        if (sv !== '' && !(/^[0,.]+$/.test(sv) && el.type !== 'date')) return true;
+      }
+    }
+    return false;
+  }
+
+  // ---- 규칙에서 쓰는 값 찾기: 같은 줄 → 같은 카드 → 같은 계약 묶음 → 같은 하위탭 → 세목 화면 ----
+  function ctxFor(f, pane){
+    var scopes = [f.closest('.taxcalc-grid'), f.closest('.taxcalc-asset'), f.closest('.taxcalc-contract-group'), f.closest('.taxcalc-subpane'), pane].filter(Boolean);
+    function v(key){ for (var i = 0; i < scopes.length; i++){ var el = findInput(scopes[i], key); if (el) return valOf(el); } return ''; }
+    function num(key){ var n = Number(String(v(key)).replace(/,/g, '')); return isFinite(n) ? n : 0; }
+    function anyIn(key, test){ var p = key.indexOf(':'); var sel = key.charAt(0) === '#' ? key : '[data-' + key.slice(0, p) + '="' + key.slice(p + 1) + '"]'; var els = pane.querySelectorAll(sel); for (var i = 0; i < els.length; i++){ if (test(valOf(els[i]))) return true; } return false; }
+    return { v: v, num: num, anyIn: anyIn };
+  }
+
+  // ---- 세목별 기본 칸·관련 칸 규칙 ----
+  var FILING_DEP_RE = /(fraudulent|underreportedtax|paiddate|unpaiddays|monthsafterdesignated|designatedduedate|unpaidatdesignated|underreportedbase|reportedcalctax)$/i;
+  function filingStatusOf(f, pane){
+    var card = f.closest('.taxcalc-asset') || f.closest('.taxcalc-subpane') || pane;
+    var sel = card.querySelector('select[data-slfield="filingStatus"], select[data-dfield="filingStatus"], select[id$="FilingStatus"]');
+    return sel ? sel.value : '';
+  }
+  // 모든 세목 공통 규칙(작은 도구 계산기 포함)
+  function commonRule(key, f, pane, c){
+    var n = bareName(key);
+    if (FILING_DEP_RE.test(n)){ var fs = filingStatusOf(f, pane); return fs !== '' && fs !== 'ontime'; }
+    if (/reportedintime$/i.test(n)){ return filingStatusOf(f, pane) === 'ontime'; }
+    return null;
+  }
+  var HOUSE = function(t){ return t === 'house'; };
+  var LAND = function(c){ return c.v('field:assetType') === 'other' && c.v('field:assetKind') === 'land'; };
+  var CFG = {
+    taxCalcTransferPane: {
+      configured: function(f){ return !!f.closest('[data-subpane="realestate"],[data-subpane="stock"]'); },
+      basic: ['slfield:name', 'slfield:regNo', 'slfield:filingStatus', 'cfield:date', 'cfield:totalPrice', 'costfield:label', 'costfield:amount',
+        'field:assetType', 'field:acquisitionDate', 'field:acquisitionPrice',
+        '#stAssetCategory', '#stTransferDate', '#stTransferPrice', '#stAcquisitionDate', '#stAcquisitionPrice', '#stTransferExpenses', '#stFilingStatus'],
+      rules: {
+        'slfield:multiHouseCount': function(c){ return c.anyIn('field:assetType', function(t){ return t === 'house' || t === 'presale_right'; }); },
+        'slfield:isMultiHouseRentalExemption': function(c){ var m = c.v('slfield:multiHouseCount'); return m === '2' || m === '3'; },
+        'slfield:mhRentalLocation': function(c){ return c.v('slfield:isMultiHouseRentalExemption') === true; },
+        'slfield:mhRentalRegistrationDate': function(c){ return c.v('slfield:isMultiHouseRentalExemption') === true; },
+        'slfield:mhRentalStartDate': function(c){ return c.v('slfield:isMultiHouseRentalExemption') === true; },
+        'slfield:reportedIncomeAmount': function(c){ return c.v('slfield:filingStatus') === 'underreported'; },
+        'field:assetKind': function(c){ return c.v('field:assetType') === 'other'; },
+        'field:rightOrOtherKind': function(c){ return c.v('field:assetType') === 'other' && c.v('field:assetKind') === 'other'; },
+        'field:assetSubType': LAND, 'field:isNonBusinessLand': LAND,
+        'field:isEightYearFarmland': function(c){ return LAND(c) && /^(전|답|과수원)$/.test(c.v('field:assetSubType')); },
+        'field:isFarmlandSubstitutionExempt': function(c){ return LAND(c) && /^(전|답|과수원)$/.test(c.v('field:assetSubType')); },
+        'field:isLivestockLandExempt': function(c){ return LAND(c) && c.v('field:assetSubType') === '목장용지'; },
+        'field:isForestManagementExempt': function(c){ return LAND(c) && c.v('field:assetSubType') === '임야'; },
+        'field:isOneHouseOneFamily': function(c){ return HOUSE(c.v('field:assetType')); },
+        'field:isReconstructionRights': function(c){ return HOUSE(c.v('field:assetType')); },
+        'field:isAdjustedArea': function(c){ var t = c.v('field:assetType'); return t === 'house' || t === 'presale_right'; },
+        'field:mhRentalExemptionType': function(c){ return HOUSE(c.v('field:assetType')) && c.anyIn('slfield:multiHouseCount', function(m){ return m === '2' || m === '3'; }); },
+        // 취득가액을 모르면(취득일만 있음) 환산·매매사례·감정가액·기준시가 칸이 필요하다
+        'field:comparableTransactionPrice': function(c){ return c.v('field:acquisitionDate') !== '' && c.v('field:acquisitionPrice') === ''; },
+        'field:appraisalValue': function(c){ return c.v('field:acquisitionDate') !== '' && c.v('field:acquisitionPrice') === ''; },
+        'field:acquisitionStandardPriceForExpense': function(c){ return c.v('field:acquisitionDate') !== '' && c.v('field:acquisitionPrice') === ''; },
+        'field:transferStandardPriceForConversion': function(c){ return c.v('field:acquisitionDate') !== '' && c.v('field:acquisitionPrice') === ''; },
+        'field:compensationType': function(c){ return c.v('cfield:transferCause') === 'expropriation'; },
+        'field:donorRelation': function(c){ return c.v('field:isGiftedAsset') === true; },
+        'field:acquisitionContractId': function(c, f){ var s = f.querySelector('select'); return !!s && s.options.length > 2; },
+        'costfield:expenseCode': function(c){ return c.num('costfield:amount') > 0; },
+        'costfield:payee': function(c){ return c.num('costfield:amount') > 0; },
+        'costfield:payeeBizRegNo': function(c){ return c.num('costfield:amount') > 0; },
+        'costfield:payDate': function(c){ return c.num('costfield:amount') > 0; },
+        'costfield:receiptType': function(c){ return c.num('costfield:amount') > 0; },
+        '#stIsDaejuju': function(c){ return c.v('#stAssetCategory') === 'domestic_stock'; },
+        '#stIsSmallMedium': function(c){ var t = c.v('#stAssetCategory'); return t === 'domestic_stock' || t === 'foreign_stock'; },
+        '#stHoldingMonths': function(c){ return c.v('#stIsDaejuju') === true; },
+        '#stMajorityNonBizLand': function(c){ return c.v('#stAssetCategory') === 'other_asset'; },
+        '#stGiftDate': function(c){ return c.v('#stDonorRelation') !== ''; },
+        '#stDonorAcqPrice': function(c){ return c.v('#stDonorRelation') !== ''; },
+        '#stGiftTaxPaid': function(c){ return c.v('#stDonorRelation') !== ''; },
+        '#stGiftTaxableValue': function(c){ return c.v('#stDonorRelation') !== ''; }
+      }
+    },
+    taxCalcGiftPane: {
+      configured: function(f){ return !!f.closest('[data-subpane="general"]'); },
+      basic: ['#giftDate', 'dnfield:name', 'dnfield:regNo', 'dfield:name', 'dfield:relation', 'dfield:giftAmount', 'dfield:filingStatus'],
+      rules: {
+        'dfield:debtObjProven': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:acqDate': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:acqPrice': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:acqExpense': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:otherAssetsGiftValueSum': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:priorPaidTax': function(c){ return c.num('dfield:priorAmount') > 0; },
+        'dfield:priorGiftTaxableBase': function(c){ return c.num('dfield:priorAmount') > 0; },
+        'dfield:priorRelationDeductionUsed': function(c){ return c.num('dfield:priorAmount') > 0; },
+        'dfield:genSkipOver2B': function(c){ return c.num('dfield:genSkipAmount') > 0; },
+        'dfield:genSkipPriorPaid': function(c){ return c.num('dfield:genSkipAmount') > 0; },
+        'dfield:genSkipSubstitute': function(c){ return c.num('dfield:genSkipAmount') > 0; },
+        // 혼인·출산 증여재산공제는 직계존속에게서 받은 증여만(상증법 §53의2) — 증여자 관계가 직계존속이면 칸을 띄운다
+        '#giftMarriageDate': function(c){ return c.anyIn('dfield:relation', function(r){ return r === '직계존속'; }); },
+        '#giftBirthDate': function(c){ return c.anyIn('dfield:relation', function(r){ return r === '직계존속'; }); },
+        '#giftPriorMbMarriageSame': function(c){ return c.v('#giftMarriageDate') !== ''; },
+        '#giftPriorMbMarriageOther': function(c){ return c.v('#giftMarriageDate') !== ''; },
+        '#giftPriorMbMarriageOver10': function(c){ return c.v('#giftMarriageDate') !== ''; },
+        '#giftPriorMbBirthSame': function(c){ return c.v('#giftBirthDate') !== ''; },
+        '#giftPriorMbBirthOther': function(c){ return c.v('#giftBirthDate') !== ''; },
+        '#giftPriorMbBirthOver10': function(c){ return c.v('#giftBirthDate') !== ''; },
+        '#gfFarmType': function(c){ return c.num('#giftFarmlandExemption') > 0; },
+        '#giftForeignBase': function(c){ return c.num('#giftForeignTax') > 0; },
+        '#giftStockAppraisalCount': function(c){ return c.num('#giftStockAppraisalFee') > 0; }
+      }
+    },
+    taxCalcInheritancePane: {
+      configured: function(){ return true; },
+      basic: ['#ihDeceasedName', '#ihDeathDate', 'hfield:name', 'hfield:regNo', 'hfield:relation', '#ihGrossEstateGeneral', '#ihEstate',
+        'dbfield:amount', 'ffield:amount', 'duefield:amount', '#ihFilingStatus'],
+      rules: {
+        'dbfield:debtType': function(c){ return c.num('dbfield:amount') > 0; },
+        'dbfield:creditorName': function(c){ return c.num('dbfield:amount') > 0; },
+        'dbfield:creditorRegNo': function(c){ return c.num('dbfield:amount') > 0; },
+        'dbfield:creditorAddress': function(c){ return c.num('dbfield:amount') > 0; },
+        'dbfield:startDate': function(c){ return c.num('dbfield:amount') > 0; },
+        'dbfield:endDate': function(c){ return c.num('dbfield:amount') > 0; },
+        'dbfield:heirIdx': function(c){ return c.num('dbfield:amount') > 0; },
+        'duefield:duesType': function(c){ return c.num('duefield:amount') > 0; },
+        'duefield:year': function(c){ return c.num('duefield:amount') > 0; },
+        'duefield:quarter': function(c){ return c.num('duefield:amount') > 0; },
+        'duefield:heirIdx': function(c){ return c.num('duefield:amount') > 0; },
+        'ffield:payee': function(c){ return c.num('ffield:amount') > 0; },
+        'ffield:bizNo': function(c){ return c.num('ffield:amount') > 0; },
+        'ffield:category': function(c){ return c.num('ffield:amount') > 0; },
+        'ffield:detail': function(c){ return c.num('ffield:amount') > 0; },
+        'ffield:heirIdx': function(c){ return c.num('ffield:amount') > 0; },
+        // 상속인 중 배우자가 있으면 배우자상속공제 칸
+        '#ihSpouseActual': function(c){ return c.anyIn('hfield:relation', function(r){ return r === '배우자'; }); },
+        '#ihSpouseNonTaxable': function(c){ return c.anyIn('hfield:relation', function(r){ return r === '배우자'; }); },
+        'field:isSpousePropertyDivided': function(c){ return c.anyIn('hfield:relation', function(r){ return r === '배우자'; }); },
+        '#ihGenSkipAmount': function(c){ return c.anyIn('hfield:relation', function(r){ return /세대생략/.test(String(r)); }); },
+        '#ihGenSkipRatio': function(c){ return c.num('#ihGenSkipAmount') > 0; },
+        '#ihGenSkipOver2B': function(c){ return c.num('#ihGenSkipAmount') > 0; },
+        '#ihGenSkipMinorHeir': function(c){ return c.num('#ihGenSkipAmount') > 0; },
+        '#ihCohabitValue': function(c){ return c.anyIn('hfield:isCohabitHouse', function(x){ return x === true; }); },
+        'field:tenYearCohabitationRequirementMet': function(c){ return c.num('#ihCohabitValue') > 0; },
+        'field:tenYearOneHouseholdRequirementMet': function(c){ return c.num('#ihCohabitValue') > 0; },
+        'field:noHouseOrJointHeirRequirementMet': function(c){ return c.num('#ihCohabitValue') > 0; },
+        '#ihForeignBase': function(c){ return c.num('#ihForeignTax') > 0; },
+        '#ihStockAppraisalCount': function(c){ return c.num('#ihStockAppraisalFee') > 0; },
+        '#ihReinheritedPropertyValue': function(c){ return c.num('#ihPriorInheritanceTax') > 0; },
+        '#ihPriorInheritanceTotalPropertyValue': function(c){ return c.num('#ihPriorInheritanceTax') > 0; },
+        '#ihPriorInheritanceTaxableBase': function(c){ return c.num('#ihPriorInheritanceTax') > 0; },
+        '#ihPriorInheritanceDate': function(c){ return c.num('#ihPriorInheritanceTax') > 0; },
+        '#ihYearsSincePrior': function(c){ return c.num('#ihPriorInheritanceTax') > 0; },
+        '#ihForProfitExempted': function(c){ return c.num('#ihForProfitBequest') > 0; },
+        '#ihForProfitRatio': function(c){ return c.num('#ihForProfitBequest') > 0; }
+      },
+      // 가업·영농상속공제: 그 묶음에 값을 하나라도 넣으면 같은 묶음(세부내역·자격요건) 칸을 모두 띄운다
+      sectionRules: [
+        { re: /^(#ihBusiness|field:(decedentOwnership|decedentCeoTenure|heirAge18OrOlder|heirEngagedInBusiness|heirBecameOfficer|heirBecameCeo))/, any: /^#ihBusiness/ },
+        { re: /^(#ihFarming|field:(decedentFarming|heirFarming))/, any: /^#ihFarming/ }
+      ]
+    },
+    taxCalcAcquisitionPane: {
+      configured: function(){ return true; },
+      basic: ['#atAcquisitionType', '#atPropertyType', '#atValue', '#atAcquisitionDate', '#atFilingStatus'],
+      rules: {
+        '#atExclusiveArea': function(c){ return c.v('#atPropertyType') === 'house'; },
+        '#atEupMyeonArea': function(c){ return c.v('#atExclusiveArea') !== ''; },
+        '#atHouseCount': function(c){ return c.v('#atAcquisitionType') === 'paid' && c.v('#atPropertyType') === 'house'; },
+        '#atAdjustedArea': function(c){ return c.v('#atAcquisitionType') === 'paid' && c.v('#atPropertyType') === 'house'; },
+        '#atOneHouseInherit': function(c){ return c.v('#atAcquisitionType') === 'inheritance' && c.v('#atPropertyType') === 'house'; },
+        '#atAdjustedAreaGift': function(c){ return c.v('#atAcquisitionType') === 'gift' && c.v('#atPropertyType') === 'house'; },
+        '#atStandardPriceForGift': function(c){ return c.v('#atAcquisitionType') === 'gift'; },
+        '#atDebtAssumedAmount': function(c){ return c.v('#atAcquisitionType') === 'gift'; },
+        '#atSelfFarmingFarmer': function(c){ return c.v('#atPropertyType') === 'farmland'; },
+        '#atSpouseExceptionType': function(c){ return c.v('#atSpouseTransaction') === true; },
+        '#atMarketValueGate': function(c){ return c.v('#atSpouseTransaction') === true || c.v('#atOtherRelatedParty') === true; },
+        '#atMergerOrDivision': function(c){ return c.v('#atCorporation') === true; },
+        '#atExemptSpouseGift': function(c){ return c.v('#atAdjustedAreaGift') === true; },
+        '#atSmallLowValueHousing': function(c){ return c.v('#atFirstTimeBuyer') === true; },
+        '#atCoOwnerReliefUsed': function(c){ return c.v('#atFirstTimeBuyer') === true; },
+        '#atSmallHouse85': function(c){ return c.v('#atNationalMeritorious') === true; },
+        '#atMeritoriousLoan': function(c){ return c.v('#atNationalMeritorious') === true; },
+        '#atPriorDisasterValue': function(c){ return c.v('#atDisasterRestoration') === true; },
+        '#atPriorEminentDomainValue': function(c){ return c.v('#atEminentDomain') === true; },
+        '#atAbsenteeOwner': function(c){ return c.v('#atEminentDomain') === true; }
+      }
+    }
+  };
+  // "더 넣을 항목"에서 여러 칸을 한 단추로 묶는 것(묶지 않은 칸은 칸 이름이 단추가 된다)
+  var GROUPS = [
+    { re: /(:(address|addressDong|addressHo|phone|email|taxOffice)|#ihDeceased(Address|Dong|Ho|TaxOffice)|#ihReporter(Phone|Email))$/, label: '주소·연락처' },
+    { re: /priorFiled/, label: '2회째 예정신고' },
+    { re: /(monthsafterdesignated|designatedduedate|unpaidatdesignated)$/i, label: '고지 후 체납' },
+    { re: /(fraudulent|underreportedtax|paiddate|unpaiddays|underreportedbase|reportedcalctax)$/i, label: '납부일·가산세' },
+    { re: /^bfield:/, label: '양수인' },
+    { re: /^field:(assetLocation|assetDong|assetHo|assetArea)$/, label: '소재지·면적' },
+    { re: /^costfield:/, label: '비용 세부' },
+    { re: /^field:(comparableTransactionPrice|appraisalValue|acquisitionStandardPriceForExpense|transferStandardPriceForConversion|useEstimatedNecessaryExpense)$/, label: '환산·매매사례·감정가액' },
+    { re: /^#giftPriorMb/, label: '기존 혼인·출산공제' },
+    { re: /^dfield:(priorAmount|priorPaidTax|priorGiftTaxableBase|priorRelationDeductionUsed|priorRelationDeductionUsedOther)$/, label: '10년 내 기증여' },
+    { re: /^dfield:genSkip/, label: '세대생략 증여' },
+    { re: /^dfield:(debtAssumed|debtObjProven|acqDate|acqPrice|acqExpense|otherAssetsGiftValueSum)$/, label: '부담부증여' },
+    { re: /^hfield:(hasPriorGift|priorGift)/, label: '사전증여' },
+    { re: /^dfield:(category|oneYear|twoYear)/, label: '처분재산·채무 산입(부표4)' },
+    { re: /^(#ihBusiness|field:(decedentOwnership|decedentCeoTenure|heirAge18OrOlder|heirEngagedInBusiness|heirBecameOfficer|heirBecameCeo))/, label: '가업상속공제' },
+    { re: /^(#ihFarming|field:(decedentFarming|heirFarming))/, label: '영농상속공제' },
+    { re: /^#ih(PriorInheritance|Reinherited|YearsSincePrior)/, label: '단기재상속공제' },
+    { re: /^#ihForProfit/, label: '영리법인 유증' },
+    { re: /^#ihNonHeir/, label: '상속인 아닌 자 증여·유증' },
+    { re: /^#ihGenSkip/, label: '세대생략 상속' },
+    { re: /^#ihReporter/, label: '신고인 정보' }
+  ];
+
+  function shortLabel(text){
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    s = s.replace(/^(\[[^\]]*\]\s*)+/, '').replace(/^\([^)]*\)\s*/, '').replace(/^[└·▪•\-\s]+/, '');
+    var cut = s.search(/[(（—:]| - /);
+    if (cut > 3) s = s.slice(0, cut);
+    s = s.trim();
+    return s.length > 22 ? s.slice(0, 21) + '…' : s;
+  }
+
+  var opened = {};        // 칸 묶음 키 → true ("더 넣을 항목"에서 연 것)
+  var openedCards = {};   // 카드 키 → true
+  var drawerOpen = {};    // 상자 키 → true (펼친 "더 넣을 항목")
+  var busy = false, timer = null, observer = null;
+
+  function activePane(){
+    var panes = view.querySelectorAll('.taxcalc-body > .taxcalc-pane');
+    for (var i = 0; i < panes.length; i++){ if (panes[i].style.display !== 'none' && panes[i].querySelector('.taxcalc-field')) return panes[i]; }
+    return null;
+  }
+  function isOrigHidden(el, pane){
+    var h = el.closest('[style*="display: none"],[style*="display:none"]');
+    return !!(h && pane.contains(h));
+  }
+  // 원래 코드가 스스로 보였다 숨겼다 하는 칸(체크하면 아래 세부사항 등) — 이 장치는 손대지 않는다
+  function isConditional(f){
+    for (var a = 0; a < f.attributes.length; a++){ if (/^data-show-if/.test(f.attributes[a].name)) return true; }
+    var st = f.getAttribute('style');
+    return st !== null && (st === '' || /display/.test(st));
+  }
+  function containerOf(el, pane){
+    var c = el.parentElement && el.parentElement.closest('.taxcalc-asset,.taxcalc-subpane');
+    return c && pane.contains(c) ? c : pane;
+  }
+  function boxKey(pane, box){
+    if (box === pane) return pane.id + '/P';
+    var all = pane.querySelectorAll('.taxcalc-asset,.taxcalc-subpane');
+    return pane.id + '/' + Array.prototype.indexOf.call(all, box);
+  }
+  function groupLabel(f, key){
+    for (var i = 0; i < GROUPS.length; i++){ if (GROUPS[i].re.test(key)) return GROUPS[i].label; }
+    // 소제목 바로 밑 줄이면 소제목 이름으로 묶는다(카드 제목은 빼고)
+    var grid = f.closest('.taxcalc-grid');
+    var prev = grid && grid.previousElementSibling;
+    while (prev && !prev.classList.contains('taxcalc-asset-head') && (prev.classList.contains('taxcalc-result-note') || prev.classList.contains('taxcalc-hint'))) prev = prev.previousElementSibling;
+    if (prev && prev.classList.contains('taxcalc-asset-head')){
+      var parent = prev.parentElement, firstHead = parent && parent.querySelector(':scope > .taxcalc-asset-head');
+      if (!(parent && parent.classList.contains('taxcalc-asset') && firstHead === prev)) return shortLabel(prev.textContent);
+    }
+    var lab = f.querySelector('label');
+    return shortLabel(lab ? lab.textContent : key);
+  }
+  function headLabel(card){
+    var h = card.querySelector('.taxcalc-asset-head');
+    var b = h && (h.querySelector('b') || h);
+    return shortLabel(b ? b.textContent : '');
+  }
+
+  function clearAll(){
+    view.querySelectorAll('.tcs-hide').forEach(function(el){ el.classList.remove('tcs-hide'); });
+    view.querySelectorAll('.tcs-more').forEach(function(el){ el.remove(); });
+  }
+
+  function refresh(){
+    timer = null;
+    if (busy) return;
+    busy = true;
+    if (observer) observer.disconnect();
+    try {
+      ensureBar();
+      if (typeof taxCalcTier === 'undefined' || taxCalcTier !== 'simple'){ clearAll(); return; }
+      var pane = activePane();
+      view.querySelectorAll('.taxcalc-body > .taxcalc-pane').forEach(function(p){
+        if (p !== pane){ p.querySelectorAll('.tcs-hide').forEach(function(el){ el.classList.remove('tcs-hide'); }); p.querySelectorAll('.tcs-more').forEach(function(el){ el.remove(); }); }
+      });
+      if (!pane) return;
+      apply(pane);
+    } finally {
+      if (observer) observer.observe(view, { childList: true, subtree: true });
+      busy = false;
+    }
+  }
+
+  function apply(pane){
+    var cfg = CFG[pane.id] || null;
+    var focusField = document.activeElement && document.activeElement.closest ? document.activeElement.closest('.taxcalc-field') : null;
+    var fields = Array.prototype.slice.call(pane.querySelectorAll('.taxcalc-field'));
+    var info = [];
+    // 1차: 칸마다 보일지
+    fields.forEach(function(f){
+      var key = keyOf(f), ins = f.querySelectorAll('input,select,textarea');
+      var editable = Array.prototype.some.call(ins, function(i){ return !isReadonlyInput(i) && i.type !== 'button'; });
+      var it = { f: f, key: key, cond: isConditional(f), ro: !editable, show: true, box: containerOf(f, pane) };
+      info.push(it);
+      if (it.cond || it.ro) return;
+      if (isOrigHidden(f, pane)){ it.origHidden = true; }
+      var configured = cfg && cfg.configured(f);
+      var cardKey = (function(){ var card = f.closest('.taxcalc-asset'); return card ? boxKey(pane, card) : ''; })();
+      var c = ctxFor(f, pane);
+      var show;
+      if (hasValue(f, key) || f === focusField) show = true;
+      else if (cardKey && openedCards[cardKey]) show = true;
+      else if (opened[boxKey(pane, it.box) + '|' + groupLabel(f, key)]) show = true;
+      else {
+        var r = commonRule(key, f, pane, c);
+        if (r !== null) show = r;
+        else if (!configured) show = true;
+        else if (cfg.basic.indexOf(key) >= 0) show = true;
+        else if (cfg.rules && cfg.rules[key]) show = !!cfg.rules[key](c, f);
+        else show = false;
+      }
+      it.show = show;
+    });
+    // 묶음 규칙(가업·영농상속공제): 묶음 안 칸 하나라도 값이 있으면 묶음 전체를 보인다
+    if (cfg && cfg.sectionRules){
+      cfg.sectionRules.forEach(function(sr){
+        var on = info.some(function(it){ return sr.any.test(it.key) && !it.cond && !it.ro && hasValue(it.f, it.key); });
+        if (on) info.forEach(function(it){ if (sr.re.test(it.key)) it.show = true; });
+      });
+    }
+    // 2차: 읽기 전용(자동 계산)·입력 없는(판정 단추 등) 칸은 바로 앞 입력 칸을 따라 보인다(앞 칸이 없으면 같은 줄 아무 칸)
+    var shownNow = function(o){ return o.cond ? !isOrigHidden(o.f, pane) && o.f.style.display !== 'none' : o.show; };
+    info.forEach(function(it, idx){
+      if (!it.ro || it.cond) return;
+      var grid = it.f.closest('.taxcalc-grid');
+      for (var j = idx - 1; j >= 0; j--){
+        var o = info[j];
+        if (o.f.closest('.taxcalc-grid') !== grid) break;
+        if (!o.ro){ it.show = shownNow(o); return; }
+      }
+      it.show = info.some(function(o){ return o !== it && !o.ro && shownNow(o) && o.f.closest('.taxcalc-grid') === grid; });
+    });
+    info.forEach(function(it){ it.f.classList.toggle('tcs-hide', !it.cond && !it.show); });
+
+    var visibleField = function(scope){
+      return info.some(function(it){ return scope.contains(it.f) && !it.f.classList.contains('tcs-hide') && !isOrigHidden(it.f, pane); });
+    };
+    var hasFields = function(scope){ return info.some(function(it){ return scope.contains(it.f) && !it.cond; }); };
+
+    // 줄(grid): 보이는 칸이 없으면 줄째 숨김
+    pane.querySelectorAll('.taxcalc-grid').forEach(function(g){ g.classList.toggle('tcs-hide', hasFields(g) && !visibleField(g)); });
+    // 소제목: 다음 소제목까지 보이는 칸이 없으면 소제목과 그 안 안내를 숨김(카드 제목은 빼고)
+    pane.querySelectorAll('.taxcalc-asset-head').forEach(function(h){
+      var parent = h.parentElement;
+      if (parent && parent.classList.contains('taxcalc-asset') && parent.querySelector(':scope > .taxcalc-asset-head') === h) return;
+      // 소제목이 거느리는 것 = 바로 뒤 첫 입력 묶음(과 그 앞뒤 안내)까지 — 그 뒤의 제목 없는 줄은 다른 묶음이다
+      var members = [], s = h.nextElementSibling, gotFields = false;
+      while (s && !s.classList.contains('taxcalc-asset-head') && !s.classList.contains('tcs-more')){
+        var hasF = s.classList.contains('taxcalc-field') || !!s.querySelector('.taxcalc-field');
+        if (hasF && gotFields) break;
+        if (hasF) gotFields = true;
+        members.push(s); s = s.nextElementSibling;
+      }
+      if (!gotFields){ h.classList.remove('tcs-hide'); return; }
+      var shownF = function(x){ return !x.classList.contains('tcs-hide') && !isOrigHidden(x, pane); };
+      var any = members.some(function(m){
+        if (m.classList.contains('taxcalc-field')) return shownF(m);
+        return Array.prototype.some.call(m.querySelectorAll('.taxcalc-field'), shownF);
+      });
+      h.classList.toggle('tcs-hide', !any);
+      members.forEach(function(m){ if (m.classList.contains('taxcalc-result-note') || m.classList.contains('taxcalc-hint')) m.classList.toggle('tcs-hide', !any); });
+    });
+    // 카드: 보이는 칸이 하나도 없으면 카드째 숨기고, 바깥 상자의 "더 넣을 항목"에 카드 이름 단추를 둔다
+    var hiddenCards = [];
+    pane.querySelectorAll('.taxcalc-asset').forEach(function(card){
+      var hide = hasFields(card) && !visibleField(card) && !isOrigHidden(card, pane) && !(card.querySelector('.taxcalc-result') && card.querySelector('.taxcalc-result').textContent.trim());
+      card.classList.toggle('tcs-hide', hide);
+      if (hide) hiddenCards.push(card);
+    });
+
+    // "더 넣을 항목" 상자
+    var chipsByBox = new Map();
+    function addChip(box, chip){ if (!chipsByBox.has(box)) chipsByBox.set(box, []); var arr = chipsByBox.get(box); if (!arr.some(function(c){ return c.key === chip.key; })) arr.push(chip); }
+    info.forEach(function(it){
+      if (it.cond || it.ro || it.show || it.origHidden) return;
+      if (it.box.classList.contains('tcs-hide')) return;
+      var lab = groupLabel(it.f, it.key);
+      if (!lab) return;
+      addChip(it.box, { key: boxKey(pane, it.box) + '|' + lab, label: lab, card: false });
+    });
+    hiddenCards.forEach(function(card){
+      if (card.parentElement && card.parentElement.closest('.taxcalc-asset.tcs-hide')) return;
+      var box = containerOf(card, pane);
+      var lab = headLabel(card);
+      if (lab) addChip(box, { key: boxKey(pane, card), label: lab, card: true });
+    });
+    pane.querySelectorAll('.tcs-more').forEach(function(d){ if (!chipsByBox.has(d.parentElement) && !(d.parentElement === pane && chipsByBox.has(pane))) d.remove(); });
+    chipsByBox.forEach(function(chips, box){
+      var bk = boxKey(pane, box);
+      var sig = (drawerOpen[bk] ? '1' : '0') + chips.map(function(c){ return c.key; }).join('¦');
+      var d = null;
+      for (var i = 0; i < box.children.length; i++){ if (box.children[i].classList.contains('tcs-more')){ d = box.children[i]; break; } }
+      if (!d){
+        d = document.createElement('div'); d.className = 'tcs-more';
+        var runBtn = null;
+        if (box.classList.contains('taxcalc-pane') || box.classList.contains('taxcalc-subpane')){
+          for (var j = 0; j < box.children.length; j++){ if (box.children[j].classList.contains('taxcalc-run-btn')){ runBtn = box.children[j]; break; } }
+        }
+        if (runBtn) box.insertBefore(d, runBtn); else box.appendChild(d);
+      }
+      if (d.getAttribute('data-sig') === sig) return;
+      d.setAttribute('data-sig', sig);
+      d.setAttribute('data-box', bk);
+      d.innerHTML = '<button type="button" class="tcs-more-toggle">더 넣을 항목 <b>' + chips.length + '</b> ' + (drawerOpen[bk] ? '▾' : '▸') + '</button>' +
+        (drawerOpen[bk] ? '<div class="tcs-chips">' + chips.map(function(c){
+          return '<button type="button" class="tcs-chip' + (c.card ? ' tcs-card-chip' : '') + '" data-chip="' + c.key.replace(/"/g, '&quot;') + '" data-card="' + (c.card ? 1 : 0) + '" title="' + c.label.replace(/"/g, '&quot;') + ' 칸을 엽니다">+ ' + c.label.replace(/</g, '&lt;') + '</button>';
+        }).join('') + '</div>' : '');
+    });
+  }
+
+  // 화면 맨 위 한 줄(간편일 때만) — "모든 칸 보기"는 정밀계산으로 바꾼다
+  // [2026.11.01] 간편 안내 띠("간편계산 — 기본 칸부터 …" + 모든 칸 보기)는 맨 위 간편계산/정밀계산 단추와 같은 일이라 두지 않는다(시각적 중복 — 정밀계산 = 모든 칸)
+  function ensureBar(){ var bar = document.getElementById('tcsBar'); if (bar) bar.remove(); }
+
+  function refreshSoon(delay){
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(refresh, delay == null ? 40 : delay);
+  }
+
+  view.addEventListener('click', function(e){
+    var t = e.target;
+    var tog = t.closest && t.closest('.tcs-more-toggle');
+    if (tog){ var d = tog.closest('.tcs-more'); var bk = d.getAttribute('data-box'); drawerOpen[bk] = !drawerOpen[bk]; refresh(); return; }
+    var chip = t.closest && t.closest('.tcs-chip');
+    if (chip){
+      var k = chip.getAttribute('data-chip');
+      if (chip.getAttribute('data-card') === '1') openedCards[k] = true; else opened[k] = true;
+      refresh();
+      return;
+    }
+    refreshSoon(80);
+  });
+  view.addEventListener('input', function(){ refreshSoon(120); });
+  view.addEventListener('change', function(){ refreshSoon(30); });
+  view.addEventListener('focusout', function(){ refreshSoon(150); });
+  observer = new MutationObserver(function(){ refreshSoon(60); });
+  observer.observe(view, { childList: true, subtree: true });
+  // 사건 값 불러오기처럼 화면을 다시 그리지 않고 값만 넣는 길도 있어서, 세액계산 화면이 열려 있는 동안 가끔 다시 본다
+  // [2026.11.01] 한 번 훑는 데 0.07~0.15초 걸려 1.5초마다 돌면 칸에 글자를 넣다 멈칫한다 — 3초마다, 칸에 글자를 넣는 중(입력칸에 커서)엔 쉰다(입력·바꿈은 위 이벤트가 따로 본다)
+  setInterval(function(){
+    if (document.hidden || view.offsetParent === null || typeof taxCalcTier === 'undefined' || taxCalcTier !== 'simple' || timer) return;
+    var a = document.activeElement; if (a && view.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+    refresh();
+  }, 3000);
+  refreshSoon(0);
+  return { refresh: refresh, refreshSoon: refreshSoon };
 })();
 </script>

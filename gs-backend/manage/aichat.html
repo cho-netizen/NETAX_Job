@@ -645,7 +645,7 @@
     if (typeof goToView_ === 'function') goToView_(name);
     var side = nxAiEl_('sideAI');
     if (side){
-      ['sideMenu'].forEach(function(id){ var el = nxAiEl_(id); if (el) el.classList.remove('expanded'); });
+      // [2026.11.01] 옆 메뉴는 수동 접기 — AI 창을 펼쳐도 메뉴는 그대로 둔다
       side.classList.add('expanded');
     }
   }
@@ -1654,8 +1654,8 @@
   // [2026.10.08] job 기능 연결 — 화면 열기 / 실행 제안 카드
   // ============================================================
   var NXAI_VIEW_LABELS_ = { dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', clientmanage: '고객관리', collections: '수금관리',
-    casehandling: '처리개요', ledger: '사건 장부', lawsearch: '법령조회', docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성',
-    reports: '열람관리', 'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서 모음', settings: '설정', manual: '사용자메뉴얼' };
+    casehandling: '처리개요', ledger: '사건 장부', lawsearch: '법령정보', docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', taxplan: '절세플랜', reportwriter: '문서작성',
+    reports: '열람관리', 'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼' };
   // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
   function nxAiOpenJobView_(view, caseId, clientId, then, taxTab){
     var side = nxAiEl_('sideAI');
@@ -2809,18 +2809,6 @@
     if (!tok){ nxAiToast_('먼저 로그인해 주세요.'); return; }
     return nxAiNexTakeCase_(text, knownCaseId);
   }
-  // [2026.10.21 넥스 하나로] 세무사님 원문: "같은 채팅창내에서의 대화는 어떤 ai라도 모두 공유하는 것으로 알고 있었다"
-  //  지금 채팅창의 최근 대화(글만, 최근 16개) — 사건 지휘 넥스가 첫 글에서 받는다. 그림·파일 조각은 빼고 글자만(가리기는 서버가 보내기 직전에)
-  function nxAiCpChatSnapshot_(){
-    var out = [];
-    (nxAiConv.messages || []).slice(-16).forEach(function(m){
-      if (!m || (m.role !== 'user' && m.role !== 'assistant')) return;
-      var t = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.filter(function(b){ return b && b.type === 'text'; }).map(function(b){ return b.text; }).join('\n') : '');
-      t = String(t || '').trim();
-      if (t) out.push({ role: m.role, text: t.slice(0, 1200) });
-    });
-    return out;
-  }
   // 세액계산 화면에 같은 사건이 열려 있으면 그 화면의 증여일·상속개시일도 날짜 대조·후보에 넣는다(값은 읽기만)
   function nxAiCaseProcScreenDate_(caseId){
     try {
@@ -3354,17 +3342,6 @@
     if (st.screen && st.home) add0('📒 장부 화면 ›', '값 넣기·물어볼 것 답하기·반영 현황표·판단 재료 — 넥스가 쓰는 것과 같은 장부', function(){ if (typeof goToLedger_ === 'function') goToLedger_(st.caseId); });
     return row;
   }
-  function nxAiCpWaitText_(st, open){
-    var o = nxAiCpOpenInputs_(st), qn = o.qName;
-    open = open || o.open;
-    if (!st.waitEl) return;
-    // [2026.10.22] 항목별로 묶어 여쭙는다(세무사님 "항목별로 그루핑해서 질문하는 것이 기본이지 그걸 어떻게 갯수로 설정을 하냐?") — 계산기 카드(양도계약·취득·특례·증여자·관계 등) 단위
-    var tax = nxAiCpTax_(st), groups = {}, order = [];
-    open.forEach(function(it){ var cd = nxAiCpCard_(it, tax), k = cd.card; if (!groups[k]){ groups[k] = []; order.push({ k: k, no: cd.no }); } groups[k].push(qn(it).replace(/[「」]/g, '')); });
-    order.sort(function(a, b){ return a.no - b.no; });
-    // [2026.10.23 ㅅ11차 — 점검표 134] 질문 목록은 넥스 말풍선과 아래 질문 카드에 이미 있으므로 여기선 한 줄만(항목 이름만)
-    st.waitEl.textContent = '🤖 넥스: 계산하기 전에 여쭐 것 ' + open.length + '개(' + order.map(function(g){ return g.k; }).join('·') + ') — 아래 질문에서 고르시거나 채팅창에 말로 답해 주세요. 답을 주시면 이어서 세액계산·서식·검토서까지 하겠습니다.';
-  }
   function nxAiCpAiMark_(st, it){
     var op = st.aiOpin && st.aiOpin[it.id], ug = st.aiUrgent && st.aiUrgent[it.id];
     if (op && !(it.ask && it.ask.aiJudge)) it.ask = Object.assign({}, it.ask || {}, { aiJudge: { by: 'ai', model: op.model || '', value: op.value, sure: op.sure, why: op.why } });
@@ -3372,17 +3349,6 @@
     if (ug && !it._aiUg){ it._aiUg = 1; if (ug.note) it.detail = '🤖 넥스 메모 — ' + ug.note + (it.detail ? ' · ' + it.detail : ''); }
     return it;
   }
-  function nxAiCpSlim_(it){
-    var a = it.ask || null;
-    return { id: it.id, kind: it.kind, text: String(it.text || '').slice(0, 400), detail: String(it.detail || '').slice(0, 1500),
-      ask: a ? { mode: a.mode, target: a.target, label: a.label, input: a.input, cands: ((Array.isArray(a.cands) && a.cands.length) ? a.cands : (Array.isArray(a.options) ? a.options : [])).slice(0, 12).map(function(q){ return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label, src: q.src }; }) } : null };
-  }
-  // [2026.10.22 넥스 도구 이름 — 🔧 넥스 → GAS 줄에 쉬운 말로]
-  var NXAI_CP_TOOL_KO_ = { case_status: '현황 보기', case_read: '📖 서류 읽기', calc_fill: '칸 채우기', issue_bundle: '쟁점 묶음', fact_map: '사실 지도', doc_find: '서류 다시 찾기', value_set: '값 넣기', ask_user: '질문 올리기',
-    quick_judge: '좁은 판단(저가 AI)', ask_higher: '어려운 판단(상위 AI)', law_lookup: '조문 보기', law_search: '예규·판례 찾기', law_attach: '근거 첨부', law_decisions: 'AI 회의 결론', list_business_managers: '지침 목록', load_business_manager: '지침 읽기',
-    search_tax_items: '절세 아이템 찾기', read_tax_item: '절세 아이템 읽기', case_view: '사건 보기', calc_fill: '칸·질문 보기', doc_facts: '서류 정리 결과', facts_find: '사실 찾기', report_tool_gap: '도구 부족 신고', people_roster: '사람 명단',
-    money_links: '돈 흐름', time_order: '시간 순서', contract_list: '계약 목록', owner_assets: '자산 목록', law_checks: '법령 점검', public_lookup: '공공 조회', form_needs: '서식 칸', forms_check: '서식 대조', tax_calc: '세액계산', save_draft: '초안' };
-  function nxAiCpToolsKo_(calls){ var n = {}; (calls || []).forEach(function(c){ var c0 = String(c).replace(/\(.*$/, ''); var k = (NXAI_CP_TOOL_KO_[c0] || c0) + String(c).slice(c0.length); n[k] = (n[k] || 0) + 1; }); return Object.keys(n).map(function(k){ return k + (n[k] > 1 ? ' ×' + n[k] : ''); }).join(' · '); }
   // [2026.10.22 넥스가 주인 — 기록부 먼저·남은 일만] 세무사님 원문: "직접 처리하다가 남은 작업을 AI에게 시킬 수 있으니 이것을 어떻게 할지나 고민하라" / "나한테 물을 것이 있으면 물어봐야한다는 뜻이다"
   //  넥스가 사건을 받으면 case_status(서버, 0원)로 세무사님이 직접 하신 일·지난 처리·반영 현황표를 먼저 보고, 남은 일만 GAS 도구로 부른다:
   //   gas_run(증빙 읽기·칸 채우기 — 안 됐거나 새 서류가 있을 때만) · gas_finish(계산·서식·저장·검토서 — 여쭐 것이 없고 맡은 범위에 들 때).
@@ -3397,38 +3363,6 @@
     if (g.opinions.length) L.push('의견(넣지 않음): ' + g.opinions.slice(0, 12).join(' / '));
     if (g.asks.length) L.push('여쭌 것: ' + g.asks.slice(0, 10).join(' / '));
     return L.join('\n');
-  }
-  // AI가 끝난 뒤 — 보고·넣은 값·AI 의견을 보이고, 값을 넣었으면 칸 채우기를 한 번 더 돌려 화면에 반영
-  function nxAiCaseProcAiDone_(st, ai, r, line){
-    var dec = r.decisions || [], ops = r.opinions || [], asks = r.asks || [];
-    st.aiOpin = {}; ops.forEach(function(o){ st.aiOpin[o.itemId] = Object.assign({ model: 'Sonnet 5.5' }, o, { sure: (o.sure || '불확실') + ' — 넣지 않음' }); });
-    // 넣은 값도 그 질문에 🤖 AI 판단 상자로(맞으면 그대로, 다르면 세무사님이 고침 — 고친 것은 다음 처리 때 기록에 붙음)
-    dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); }).forEach(function(d){ st.aiOpin[d.itemId] = { model: 'Sonnet 5.5', value: d.value, why: d.why, sure: '확실 — 넣음' }; });
-    // [2026.10.21 넥스 하나로] 급하지 않은 질문의 메모도 그 질문에 붙인다(예전엔 급한 것만 붙고 나머지 메모는 사라짐)
-    // [2026.10.23 ㅅ14차 — 점검표 141] 한 메모가 여러 질문(ids)에 걸리면 첫 카드에만 전문을 붙이고 나머지 카드엔 "같은 메모" 한 줄만(세 카드에 긴 글이 똑같이 붙던 것)
-    st.aiUrgent = {}; asks.forEach(function(a){ var ids = a.ids || []; ids.forEach(function(id, ii){ var first = ids[0], fl = ''; if (ii > 0){ var fi = (st.items || []).filter(function(x){ return x.id === first; })[0]; fl = fi ? String((fi.ask && fi.ask.label) || fi.text || '').slice(0, 24) : ''; } st.aiUrgent[id] = { note: ii === 0 ? a.note : (a.note ? '「' + (fl || '앞') + '」 카드의 넥스 메모와 같음' : ''), urgent: !!a.urgent }; }); });
-    var newAsks = asks.filter(function(a){ return !(a.ids || []).length && String(a.note || '').trim(); });
-    var applied = dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); });
-    // 채팅 기록 요약(nxAiCaseProcFoot_)에 넣을 넥스 보고 — 이어서 채팅으로 "왜 그 값?"을 물으면 같은 넥스가 이 내용을 보고 답한다
-    st.aiDigest = { report: String(r.report || ''), applied: applied.map(function(d){ return d.칸 + ' = ' + d.value + ' (근거: ' + d.why + ')'; }),
-      opinions: ops.map(function(o){ return o.itemId + ' = ' + o.value + ' (' + o.why + ', 넣지 않음)'; }), asks: asks.filter(function(a){ return String(a.note || '').trim(); }).map(function(a){ return (a.urgent ? '(계산을 막음) ' : '') + a.note; }) };
-    var stopTxt = { cap: '비용 상한에 닿아 멈춤', rounds: '바퀴 상한에 닿아 멈춤', max_tokens: '답이 길어 잘림' }[ai.stop] || '';
-    st.setStep('ai', applied.length || ops.length ? '🤖' : '✅', '판단 ' + dec.length + '개(넣음 ' + applied.length + ' · AI 의견 ' + ops.length + ') · ' + ai.round + '바퀴 · ' + ai.won + '원' + (stopTxt ? ' · ' + stopTxt : ''));
-    if (r.report) st.say('🤖 넥스: ' + r.report); // [2026.10.22] 넥스 보고는 세무사님께 하는 말 — 대화 자리(위)에
-    applied.forEach(function(d){ line('🤖 넣음: ' + d.칸 + ' = ' + d.value + ' — 근거: ' + d.why + ' (' + d.sure + ')'); });
-    ops.forEach(function(o){ line('🤖 AI 의견(넣지 않음 — 질문에서 확인): ' + o.itemId + ' = ' + o.value + ' — ' + o.why + ' (' + o.sure + ')'); });
-    // [2026.10.22] 거절된 판단은 서버가 그 질문의 🤖 AI 의견(근거 대조 못 통과)으로 붙여 위 줄에 이미 나온다 — 같은 내용을 두 번 보이지 않게, 의견이 없는 거절만
-    dec.filter(function(d){ return /^거절/.test(d.결과 || '') && !ops.some(function(o){ return o.itemId === d.itemId && o.rejected; }); }).forEach(function(d){ line('근거 대조에서 거절: ' + d.칸 + ' = ' + d.value + ' — ' + d.결과, 'nxai-cp-line nxai-muted'); });
-    if (r.gaps && r.gaps.length) line('모자랐던 도구(기록함): ' + r.gaps.map(function(g){ return g.want; }).join(' / '), 'nxai-cp-line nxai-muted');
-    if (newAsks.length) st.say('💬 넥스가 따로 여쭐 것 ' + newAsks.length + '가지: ' + newAsks.map(function(a){ return a.note; }).join(' / ') + ' — 채팅창에 말로 답해 주세요.');
-    // 값을 넣었으면 칸 채우기를 다시(넣은 값으로 남은 칸·질문이 바뀜). AI 의견·계산을 막는 질문 표시는 nxAiCpAiMark_가 붙인다
-    //  [2026.10.21] 넥스가 새로 여쭌 것(질문 목록 밖)도 칸 채우기를 다시 돌려야 질문으로 뜬다(서버가 마지막 지휘 기록에서 올림 — finish를 먼저 부름)
-    //  [2026.10.22 시험가동] 하시다가 넘기신 경우(넥스가 현황만 보고 서류 읽기·칸 채우기를 건너뜀)엔 화면에 질문 상자가 하나도 없어(넥스 말만 있고 "물어볼 것 1건")
-    //  단추로 답할 수 없었다 — 그때는 칸 채우기 결과(질문 목록)를 한 번 불러온다(서류는 다시 읽지 않음, 0원)
-    if (applied.length || newAsks.length || (ai.spots && ai.spots.lightApplied) || !st.items.some(function(it){ return it.step === 'overview'; })) return nxAiCaseProcLoop_(st, 0);
-    st.items.forEach(function(it){ if (it.step === 'overview') nxAiCpAiMark_(st, it); });
-    nxAiCaseProcItems_(st, 'overview');
-    return Promise.resolve();
   }
   // 6단계 — 결정·남은 일 저장(작업일지 한 줄) + 종합검토서 초안(보류 = 추가로 확인할 사항)
   // [2026.10.22 ⑥ 응답 유실 복구] 긴 단계(검토서 초안·서식 PDF 저장) — 다리(gasbridge)가 6분 30초까지 같은 요청번호로 결과를 다시 받아오지만, 그래도 실패하면
@@ -4636,16 +4570,6 @@
     if (mode === 'folder'){ var r8 = rowEl(); btn('📁 증빙 폴더 만들기', function(){ apply('folder', '1', '세무사님 확인', ['basic']).then(function(){ nxAiCaseProcRun_(st.bubble, st.caseId, { gasOnly: true, screen: st.screen, home: st.home }); }); }, true, r8); return; } // [2026.10.29 넥스 하나] 이 화면 길은 GAS — 넥스는 대화창에서
     if (mode === 'view'){ nxAiOpenJobView_(ask.view, st.caseId); pane.hidden = true; return; }
     pane.hidden = true;
-  }
-  // 판단 근거 설명만 AI(유료) — 사건 자료를 함께 보낸다. 답을 본 뒤 [확인]의 선택지로 정한다.
-  function nxAiCaseProcJudge_(st, it, q){
-    if (!st.case){ nxAiToast_('사건 자료를 아직 못 불러왔습니다.'); return; }
-    nxAiConfirm_('이 항목의 근거 설명을 AI에게 묻습니다(유료). 사건 자료(사건 기본·처리개요·증빙·저장된 계산 결과)를 함께 보냅니다.\n\n' + it.text + '\n\n진행할까요?').then(function(ok){
-      if (!ok) return;
-      var prompt = '[판단 근거 요청 — 사건처리]\n' + (q || it.text) + '\n\n' + nxAiStrategyBrief_(st.case)
-        + '\n\n[지시] 위 자료에 있는 사실만 근거로 판단하고, 자료에 없는 사실은 지어내지 말고 "확인필요"로 남겨라. 세액이 필요하면 세액계산 도구로만 계산하라. 근거 조문을 밝히고, 판단에 부족한 서류·사실을 목록으로 정리하라.';
-      nxAiSendAI_(prompt, { noGem: true, displayText: '🤔 판단 근거 요청 — ' + it.text.slice(0, 70) });
-    });
   }
   // [2026.10.17 세무사님 지시 — "증빙관리의 스캔·PDF관리 기능은 세액계산을 잘 하기 위한 도구"] 판독이 나쁜 사진을 스캔 도구와 같은 원근보정
   //  (모서리 찾기 → 호모그래피로 펴기 → 흑백·대비)으로 고쳐 "<원본>_보정.pdf"로 같은 폴더에 저장한다. 원본은 그대로 두고, 서버가 더 잘 읽힌 쪽 하나만 읽는다.

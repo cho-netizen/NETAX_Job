@@ -70,7 +70,7 @@
     var html = '';
     // ① 제안 대기
     html += '<details class="kh-sec" id="khSecPend"' + (pend.length ? ' open' : '') + '><summary class="nx-l3">지침·템플릿 제안 대기 ' + pend.length + '건</summary><div class="kh-in nx-in">'
-      + '<div class="kh-note">매주 월요일 루틴이 초안을 만들고, 📥 반영 때 각 폴더 「_제안함」에 들어옵니다. 바로 쓰이지 않습니다 — 보고 채택해야 실제 지침·템플릿이 됩니다.</div>';
+      + '<div class="nx-help">매주 월요일 루틴이 초안을 만들고, 📥 반영 때 각 폴더 「_제안함」에 들어옵니다. 바로 쓰이지 않습니다 — 보고 채택해야 실제 지침·템플릿이 됩니다.</div>';
     if (!pend.length) html += '<div class="kh-note">대기 중인 제안이 없습니다.</div>';
     pend.forEach(function(p, i){
       html += '<div class="kh-row"><span class="kh-badge ' + (KH_ACT_[p.작업] || '') + '">' + esc_(p.작업) + '</span><span class="kh-t">' + esc_(p.종류) + ' · ' + esc_(String(p.대상 || '').replace(/\.(md|txt)$/i, '')) + '</span>'
@@ -89,7 +89,7 @@
     var laws = st.개정 || [], lawTodo = laws.filter(function(v){ return !v.확인 && (v.문서.length || v.절세); }).length;
     if (laws.length) {
       html += '<details class="kh-sec" id="khSecLaw"' + (lawTodo ? ' open' : '') + '><summary class="nx-l3">확인할 법령 개정 ' + lawTodo + '건' + (laws.length > lawTodo ? ' (확인함 ' + (laws.length - lawTodo) + ')' : '') + '</summary><div class="kh-in nx-in">'
-        + '<div class="kh-note">법령 개정 감시가 잡은 개정 중 지침·템플릿·절세 아이템이 인용한 조문입니다. 원문을 대조해 결론을 한 번 누르면 그 조문을 인용한 모든 파일에 같이 적용됩니다 — "실질 변경 없음"(예: 다른 법 개정으로 법률 이름만 바뀜)이면 표시가 풀리고, "있음"이면 반영할 때까지 남습니다. 파일 내용은 고치지 않습니다.</div>';
+        + '<div class="nx-help">법령 개정 감시가 잡은 개정 중 지침·템플릿·절세 아이템이 인용한 조문입니다. 원문을 대조해 결론을 한 번 누르면 그 조문을 인용한 모든 파일에 같이 적용됩니다 — "실질 변경 없음"(예: 다른 법 개정으로 법률 이름만 바뀜)이면 표시가 풀리고, "있음"이면 반영할 때까지 남습니다. 파일 내용은 고치지 않습니다.</div>';
       laws.forEach(function(v, i){
         html += '<div class="kh-row">' + (v.확인 ? '<span class="kh-badge ' + (v.확인.결론 === '없음' ? 'kh-ok' : 'kh-del') + '">실질 변경 ' + esc_(v.확인.결론) + '</span>' : '<span class="kh-badge kh-fix">확인 전</span>')
           + '<span class="kh-t">' + esc_(v.법령) + ' §' + esc_(v.jo) + (v.제목 ? ' ' + esc_(v.제목) : '') + '</span>'
@@ -105,7 +105,7 @@
     //  확인조치사항에 판단 대기로 올라간 쟁점인데 아이템·지침에 같은 쟁점의 [확인 필요]가 남은 곳(밤 점검, KnowHow.js knhClsNightly_). 고치지 않고 보이기만.
     var cl = st.분류 || null, clc = (cl && cl.후보) || [];
     html += '<details class="kh-sec" id="khSecCls"' + (clc.length ? ' open' : '') + '><summary class="nx-l3">표시 분류 오류 후보 ' + (cl ? (cl.ran ? clc.length + '곳' : '⚠ 검사 안 됨') : '— 아직 검사 전') + '</summary><div class="kh-in nx-in">'
-      + '<div class="kh-note">규칙: 한 쟁점에 표시는 하나 — [확인 필요](근거 못 찾음) → 결론 나면 표시 지움 / 근거끼리 부딪히면 확인조치사항에 올리고 그 자리 표시를 "[판단 대기 — 확인조치사항 💡 절]"로 바꿈. 아래는 확인조치사항 미결 항목과 같은 쟁점 낱말이 든 [확인 필요] 줄이 아직 남은 곳입니다. 낱말 맞춤이라 헛잡힘이 있을 수 있습니다 — 보고 맞으면 그 줄 표시를 바꿔 주세요. 파일은 고치지 않습니다.</div>';
+      + '<div class="nx-help">규칙: 한 쟁점에 표시는 하나 — [확인 필요](근거 못 찾음) → 결론 나면 표시 지움 / 근거끼리 부딪히면 확인조치사항에 올리고 그 자리 표시를 "[판단 대기 — 확인조치사항 💡 절]"로 바꿈. 아래는 확인조치사항 미결 항목과 같은 쟁점 낱말이 든 [확인 필요] 줄이 아직 남은 곳입니다. 낱말 맞춤이라 헛잡힘이 있을 수 있습니다 — 보고 맞으면 그 줄 표시를 바꿔 주세요. 파일은 고치지 않습니다.</div>';
     if (cl) html += '<div class="kh-note">' + esc_(cl.at || '') + ' 검사 · 확인조치사항 미결 ' + (cl.미결 || 0) + '건 · 읽은 아이템·지침 ' + (cl.파일 || 0) + '개' + (cl.파일안적은항목 ? ' · 💡 항목 중 파일 이름을 안 적은 것 ' + cl.파일안적은항목 + '건(낱말로 찾음)' : '') + '</div>';
     if (cl && !cl.ran) html += '<div class="kh-warn">⚠ ' + esc_(cl.reason || '이유 모름') + '</div>';
     ((cl && cl.warn) || []).forEach(function(w){ html += '<div class="kh-warn">⚠ ' + esc_(w) + '</div>'; });
@@ -146,7 +146,7 @@
     var cov = (r && r.coverage) || [];
     var gaps = cov.filter(function(c){ return c.빈칸 && c.빈칸.length; }).length;
     html += '<details class="kh-sec" id="khSecCov"><summary class="nx-l3">업무별 지침·템플릿 보유 현황' + (cov.length ? ' — 빈칸 있는 업무 ' + gaps + '/' + cov.length : '') + '</summary><div class="kh-in nx-in">'
-      + '<div class="kh-note">빨간 글씨(빈칸)가 다음 작성 대상입니다. 사건 수는 작업관리 전체(괄호는 최근 6개월). 매주 루틴이 사건 많은 빈칸부터 초안을 만듭니다.</div>';
+      + '<div class="nx-help">빨간 글씨(빈칸)가 다음 작성 대상입니다. 사건 수는 작업관리 전체(괄호는 최근 6개월). 매주 루틴이 사건 많은 빈칸부터 초안을 만듭니다.</div>';
     if ((r && r.newNeeded || []).length) html += '<div class="kh-row"><span class="kh-badge kh-new">다음 작성 대상</span><ul>' + r.newNeeded.slice(0, 12).map(function(n){ return '<li>' + esc_(n.업무) + ' — ' + esc_((n.빈칸 || []).join(', ')) + '</li>'; }).join('') + '</ul></div>';
     if (cov.length) {
       html += '<div class="kh-cov">';

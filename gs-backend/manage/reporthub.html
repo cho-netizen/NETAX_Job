@@ -4,7 +4,7 @@
      실제 네이버 블로그·구글 등록/업로드는 별도 프로젝트로 미뤄뒀고, 여기서는 "복사해서
      붙여넣을 수 있는 초안"까지만 만든다. -->
 <div class="view" id="view-reporthub">
-  <div class="view-head"><h2>보고서 모음</h2></div>
+  <div class="view-head"><h2>보고서들</h2></div>
   <div class="nx-tabbar" style="padding:0 14px; margin:8px 0 0;">
     <button type="button" class="rh-subtab-btn nx-tab active" data-rhtab="collect">모아보기</button>
     <button type="button" class="rh-subtab-btn nx-tab" data-rhtab="template">템플릿다듬기</button>
@@ -15,11 +15,10 @@
   <!-- 모아보기 -->
   <div id="rhPaneCollect" class="rh-pane">
     <div class="memo-toolbar tb-row" style="border-top:none;">
-      <input type="text" id="rhSearchInput" placeholder="🔍 고객명·사건명·파일명으로 찾기" style="flex:1; min-width:160px; padding:7px 10px; border:1px solid var(--line); border-radius:6px;">
-      <button type="button" id="rhBtnFilenameCleanup" class="ghost-btn" title="의뢰내용류 파일을 사건의뢰서로 통일하고, 나머지 보고서 파일명에서 사건명을 떼어 정리"><span class="btn-tx">🧹 파일명 정비</span></button>
-      <button type="button" id="rhBtnTemplateNameFix" class="ghost-btn" title="업무관리자/보고서템플릿 폴더의 '검토서' 템플릿을 종합검토서/개별검토서로 정리"><span class="btn-tx">📋 보고서템플릿 정리</span></button>
+      <!-- [2026.10.31] 세무사님 "검색란이 너무 넓다(화면에 보이는 란은 작아도 … 충분히 받아들이면)" · "버튼들이 유효한 버튼인지 위치가 맞는지 검토" — 검색칸은 작게(글자는 얼마든지 들어감),
+           한 번 쓰고 마는 정비 단추(파일명 정비·보고서템플릿 이름 정리·전체 다시 훑기)는 설정 › 정비도구로 옮김 -->
+      <input type="text" id="rhSearchInput" placeholder="고객명·사건명·파일명으로 찾기" style="width:200px; padding:7px 10px; border:1px solid var(--line); border-radius:6px;">
       <button type="button" id="rhRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
-      <button type="button" id="rhForceRescanBtn" class="ghost-btn" title="캐시를 쓰지 않고 모든 사건 폴더를 처음부터 다시 훑습니다(느림) — 의뢰서 원문 판정 등 분류 규칙이 바뀐 직후 한 번씩만 쓰세요"><span class="btn-tx">전체 재스캔</span></button>
     </div>
     <div id="rhFileListWrap" style="flex:1; overflow-y:auto; padding:0 4px;">
       <div class="spinner">불러오는 중…</div>
@@ -131,8 +130,8 @@
       files.forEach(function(f){
         html += '<tr data-case-id="' + f.caseId + '" data-file-id="' + f.id + '">' +
           '<td style="white-space:nowrap; cursor:pointer;">' + rhFormatDate_(f.modifiedDate) + '</td>' +
-          '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:220px;" title="' + esc(f.사건명 || '') + '">' + esc(f.사건명 || '') + '</span>' + '</td>' +
-          '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:260px;" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' + '</td>' +
+          '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:170px;" title="' + esc(f.사건명 || '') + '">' + esc(f.사건명 || '') + '</span>' + '</td>' +
+          '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:240px;" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' + '</td>' +
           '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '📤 발행' : '✏️ 초안') + '</td>' +
           // [2026.10.18 탭연결 15번] 보고서 모음에서 그 사건 처리개요로 바로(예전엔 문서작성으로만 갔다)
           '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn" data-case-id="' + esc(f.caseId) + '" title="이 사건 처리개요로">🧭 처리개요</button> ' : '') + '<button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
@@ -211,17 +210,17 @@
       });
     }
     document.getElementById('rhRefreshBtn').addEventListener('click', rhLoadFiles_);
-    document.getElementById('rhForceRescanBtn').addEventListener('click', function(){
+    window.rhForceRescan_ = function(){ // 설정 › 정비도구에서 부름
       document.getElementById('rhFileListWrap').innerHTML = '<div class="spinner">전체 재스캔 중… (사건이 많으면 시간이 걸릴 수 있습니다)</div>';
       callGas('list_all_reports', { forceRebuild: true }).then(function(res){
         rhAllFiles_ = res.files || [];
         rhRenderFileList_(rhAllFiles_);
         rhRefreshContentSourceOptions_();
-        showToast('전체 재스캔을 완료했습니다.', 'success');
+        showToast('보고서 ' + rhAllFiles_.length + '개를 처음부터 다시 훑었습니다.', 'success');
       }).catch(function(e){
-        document.getElementById('rhFileListWrap').innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>';
+        document.getElementById('rhFileListWrap').innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; showToast('다시 훑기 오류: ' + e.message, 'error');
       });
-    });
+    };
 
     // [2026.09.17 신규] "보고서 모음 정비" — (1) 의뢰내용류 파일을 <사건의뢰서>로 통일(이미
     // rh_isReportFile_에서 노출 자체는 제외됨), (2) 나머지 보고서 파일명에서 사건명을 떼고
@@ -301,19 +300,19 @@
         overlay.querySelector('#rhfcBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
       });
     }
-    document.getElementById('rhBtnFilenameCleanup').addEventListener('click', rhOpenFilenameCleanupModal_);
+    window.rhOpenFilenameCleanupModal_ = rhOpenFilenameCleanupModal_; // 설정 › 정비도구에서 부름
     // [2026.09.17 신규] "보고서템플릿도 바꾸거나 없는 것은 새로 만들어서 일치시켜라" — 옛
     // "검토서" 커스텀 템플릿이 있으면 "종합검토서"로 이름을 바꾸고, 둘 중 없는 쪽은 기본
     // 골격으로 새로 만든다. 이름 변경/새 파일 추가만 하는 안전한 작업이라 dry-run 없이 바로
     // 실행하고 결과만 보여준다.
-    document.getElementById('rhBtnTemplateNameFix').addEventListener('click', function(){
+    window.rhTemplateNameFix_ = function(){ // 설정 › 정비도구에서 부름
       callGas('migrate_report_template_names', {}).then(function(res){
         if (res.success === false){ nxAlert_(res.message || '실패했습니다.', '보고서템플릿 정리'); return; }
         nxAlert_(res.log.join('\n'), '보고서템플릿 정리 결과');
       }).catch(function(err){
         nxAlert_('오류: ' + (err && err.message ? err.message : err), '보고서템플릿 정리');
       });
-    });
+    };
     document.getElementById('rhSearchInput').addEventListener('input', function(e){
       var q = e.target.value.trim().toLowerCase();
       if (!q){ rhRenderFileList_(rhAllFiles_); return; }

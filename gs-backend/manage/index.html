@@ -80,7 +80,7 @@
   <div id="appRoot">
     <nav id="sideMenu">
       <div id="sideMenuInner">
-        <div class="menu-brand">NETAX</div>
+        <div class="menu-brand"><span class="mb-name">NETAX</span><button type="button" id="sideMenuToggle" title="메뉴 펼치기">▶</button></div>
 
         <!-- [2026.10.08] job AI탭 — 메뉴 맨 위(세무사님 지정). aichat.html 참고 -->
         <div class="menu-item" data-view="ai">🤖 AI</div>
@@ -98,7 +98,7 @@
         <div class="menu-item" data-view="lawsearch">⚖️ 법령정보</div>
         <div class="menu-item" data-view="docs">📁 증빙확보</div>
         <div class="menu-item" data-view="taxcalc">🧮 세액계산</div>
-        <div class="menu-item" data-view="print">🖨 세액인쇄</div>
+        <!-- [2026.11.01] 세무사님 "나안으로 가자" — 세액인쇄는 세액계산 결과만 찍으므로 옆 메뉴에서 빼고 세액계산 사건 줄의 「세액인쇄」 단추로 연다(화면은 그대로) -->
         <div class="menu-item" data-view="taxplan">💡 절세플랜</div>
         <div class="menu-item" data-view="reportwriter">✍ 문서작성</div>
         <div class="menu-item" data-view="reports">📖 열람관리</div>
@@ -107,12 +107,15 @@
         <div class="menu-group-label">부가서비스</div>
         <div class="menu-item" data-view="memo-text">📝 일반메모</div>
         <div class="menu-item" data-view="memo-hand">✍ 필기메모</div>
-        <div class="menu-item" data-view="reporthub">📚 보고서 모음·블로그·쇼츠</div>
+        <div class="menu-item" data-view="reporthub">📚 보고서들</div>
 
-        <div class="menu-group-label">&nbsp;</div>
-        <div class="menu-item" data-view="manual">❓ 사용자메뉴얼</div>
+        <div class="menu-group-label">기타</div><!-- [2026.11.01] 세무사님 "분류명이 빠졌는데 급한대로 <기타>" -->
+        <div class="menu-item" data-view="manual">❓ 매 뉴 얼</div>
         <div class="menu-item" data-view="settings">⚙️ 설정</div>
       </div>
+      <!-- [2026.11.01] 세무사님 "스크롤바를 … 두껍게 만들지 못할 것이라면 메뉴하단으로 그리고 상단으로 버튼" — 막대는 숨기고 더 갈 곳이 있을 때만 보임 -->
+      <button type="button" class="sm-scroll" id="sideMenuUp" title="위로">▲</button>
+      <button type="button" class="sm-scroll" id="sideMenuDown" title="아래로">▼</button>
     </nav>
 
     <main id="centerWork">
@@ -254,16 +257,80 @@
         if (!el.classList.contains('expanded')){
           SIDE_PANEL_IDS_.forEach(function(otherId){
             if (otherId === 'sideAI' && nxSidePinned_()) return; // 📌 고정된 사이드바는 접지 않음(2026-10-16)
+            if (otherId === 'sideMenu') return; // [2026.11.01] 세무사님 "자동숨김 … 수동숨김 수동펼침" → 그 뒤 "나안": 메뉴는 고정(NETAX 줄)·저절로 숨김(덮어 보이기)으로 스스로 접고 펴므로 AI 창이 건드리지 않는다
             if (otherId !== id) document.getElementById(otherId).classList.remove('expanded');
           });
+          if (id === 'sideMenu'){ nxSideMenuPeek_(true); e.stopPropagation(); return; } // 손으로 띠를 누르면(태블릿·휴대폰) 덮어서 나타남
           el.classList.add('expanded');
           e.stopPropagation(); // 펴지는 이 클릭이 바로 아래 document 리스너로 번져서 즉시 다시 접히지 않도록
         }
       });
     });
+    // [2026.11.01] 세무사님 "넓은 모니터에서는 굳이 접을 필요가 없어서 … 저절로 숨겨졌다가 마우스를 가져가면 나타나게" → "나안으로 가자"
+    // 평소엔 왼쪽 끝 얇은 띠만 남고, 띠에 마우스를 0.3초 대면 가운데 화면 위에 덮어 나타남(화면을 밀지 않음).
+    // 메뉴를 고르면 바로, 마우스를 빼면 0.5초 뒤 숨는다. NETAX 줄을 누르면 고정(늘 펼쳐 자리 차지) ↔ 풀기, 고른 것을 기억.
+    function nxSideMenuApply_(){
+      var m = document.getElementById('sideMenu'), t = document.getElementById('sideMenuToggle');
+      var pinned = m.classList.contains('pinned'), open = pinned || m.classList.contains('peek');
+      m.classList.toggle('expanded', open);
+      if (open && window.nxSideMenuFit_) window.nxSideMenuFit_(); // 펼친 다음에 잰다(먼저 재면 숨은 화면에서 0 → 기본 폭 190으로 남음)
+      setTimeout(nxSideMenuScrollBtns_, 0); // 위·아래 단추 보임 다시 맞춤
+      if (t){ t.textContent = pinned ? '◀' : '▶'; t.title = pinned ? '고정 풀기(저절로 숨김)' : '늘 펼쳐 두기(고정)'; }
+    }
+    function nxSideMenuPeek_(on){
+      var m = document.getElementById('sideMenu');
+      clearTimeout(window.nxSideMenuPeekT_);
+      if (m.classList.contains('pinned')) return;
+      m.classList.toggle('peek', !!on);
+      nxSideMenuApply_();
+    }
+    function nxSideMenuSetPin_(pin){
+      var m = document.getElementById('sideMenu');
+      clearTimeout(window.nxSideMenuPeekT_);
+      m.classList.toggle('pinned', !!pin);
+      m.classList.remove('peek');
+      nxSideMenuApply_();
+      try { localStorage.setItem('nx_menu_pin', pin ? '1' : '0'); } catch (er) {}
+    }
+    (function(){
+      var m = document.getElementById('sideMenu');
+      m.addEventListener('mouseenter', function(){
+        clearTimeout(window.nxSideMenuPeekT_);
+        if (m.classList.contains('pinned') || m.classList.contains('peek')) return;
+        window.nxSideMenuPeekT_ = setTimeout(function(){ nxSideMenuPeek_(true); }, 300); // 스쳐 지나가면 열리지 않게
+      });
+      m.addEventListener('mouseleave', function(){
+        clearTimeout(window.nxSideMenuPeekT_);
+        if (!m.classList.contains('peek')) return;
+        window.nxSideMenuPeekT_ = setTimeout(function(){ nxSideMenuPeek_(false); }, 500);
+      });
+    })();
+    // NETAX 줄 어디를 눌러도 고정 ↔ 풀기
+    document.querySelector('#sideMenu .menu-brand').addEventListener('click', function(e){
+      e.stopPropagation();
+      nxSideMenuSetPin_(!document.getElementById('sideMenu').classList.contains('pinned'));
+    });
+    // [2026.11.01] 메뉴 위·아래 단추 — 더 올라갈(내려갈) 곳이 있을 때만 보이고, 누르면 보이는 높이의 70%씩 밀린다
+    function nxSideMenuScrollBtns_(){
+      var inner = document.getElementById('sideMenuInner'), up = document.getElementById('sideMenuUp'), dn = document.getElementById('sideMenuDown');
+      if (!inner || !up) return;
+      up.classList.toggle('show', inner.scrollTop > 2);
+      dn.classList.toggle('show', inner.scrollTop + inner.clientHeight < inner.scrollHeight - 2);
+    }
+    ['sideMenuUp', 'sideMenuDown'].forEach(function(id){
+      document.getElementById(id).addEventListener('click', function(e){
+        e.stopPropagation();
+        var inner = document.getElementById('sideMenuInner');
+        inner.scrollBy({ top: (id === 'sideMenuUp' ? -1 : 1) * Math.round(inner.clientHeight * 0.7), behavior: 'smooth' });
+      });
+    });
+    document.getElementById('sideMenuInner').addEventListener('scroll', nxSideMenuScrollBtns_);
+    window.addEventListener('resize', nxSideMenuScrollBtns_);
     function nxSidePinned_(){ try { return localStorage.getItem('nx_side_pin') === '1'; } catch (e) { return false; } }
     document.addEventListener('click', function(e){
-      ['sideMenu', 'sideAI'].forEach(function(id){
+      var sm = document.getElementById('sideMenu');
+      if (sm.classList.contains('peek') && !sm.contains(e.target)) nxSideMenuPeek_(false); // 덮어 나온 메뉴는 바깥을 누르면 숨음(고정은 그대로)
+      ['sideAI'].forEach(function(id){
         if (id === 'sideAI' && nxSidePinned_()) return; // 📌 고정
         var el = document.getElementById(id);
         if (el.classList.contains('expanded') && !el.contains(e.target)) el.classList.remove('expanded');
@@ -299,23 +366,39 @@
       item.appendChild(labelSpan);
       // 접힌 상태에서 이 항목을 눌러 바로 이동할 때, 클릭이 #sideMenu까지 번져서(펼치기
       // 핸들러) 같이 펼쳐지지 않도록 막는다 — 예전 아이콘 전용 목록도 같은 이유로 이렇게 했다.
-      item.addEventListener('click', function(e){ e.stopPropagation(); });
+      item.addEventListener('click', function(e){ e.stopPropagation(); nxSideMenuPeek_(false); }); // 고르면 바로 숨음(고정이면 그대로)
     });
 
     // [2026.09] 펼친 폭이 210px로 고정이라 텍스트보다 쓸데없이 넓었던 것 — 가장 긴 항목의
     // 실제 너비만큼만 펼쳐지도록, 잠깐 화면에 안 보이게 펼쳐서 폭을 재고 그 값을 CSS 변수로
     // 적용한다(style.html의 --side-expanded-w 참고).
-    (function(){
+    // [2026.11.01] 로그인 전엔 화면이 숨어 있어 0으로 재져 늘 최소 폭(120)이었다 — 펼칠 때마다 다시 잰다
+    window.nxSideMenuFit_ = function(){
       var innerEl = document.getElementById('sideMenuInner');
+      var menuEl = document.getElementById('sideMenu');
+      var wasExp = menuEl.classList.contains('expanded');
       var prevDisplay = innerEl.style.display, prevVisibility = innerEl.style.visibility;
       innerEl.style.visibility = 'hidden';
       innerEl.style.display = 'block';
-      var measured = innerEl.scrollWidth;
+      // [2026.11.01] 펼친 모양(아이콘 없이 이름만)으로 재야 긴 이름이 잘리지 않는다 — 접힌 채 재면 이름이 빠져 늘 최소 폭이 됐다
+      menuEl.classList.add('expanded');
+      // [2026.11.01] 세무사님 "메뉴의 폭을 정확하게 글씨가 끝나는 폭으로" — 가장 긴 글씨의 오른쪽 끝(메뉴 왼쪽에서 잰 값) + 스크롤 막대 폭, 최소 폭 없음 / 11-01 "지금보다 약 5% 더 넓게" → "너무 넓혔다 … 2.5%" → 글씨 폭의 1.025배 → "한글자 정도만큼 더 줄이자" → 이름 끝 + 13(◀ 자리, 한 글자) — ◀는 재는 데서 뺌
+      var measured = 0, left = menuEl.getBoundingClientRect().left;
+      innerEl.querySelectorAll('.menu-item .mi-label, .menu-group-label, .menu-brand .mb-name').forEach(function(x){
+        var ta = x.style.textAlign; if (x.classList.contains('menu-group-label')) x.style.textAlign = 'left'; /* 묶음 이름은 가운데 정렬이라 왼쪽에 붙여 재야 글씨 폭이 나온다 */
+        var fw = x.style.fontWeight; if (x.classList.contains('mi-label')) x.style.fontWeight = '700'; /* 지금 고른 줄은 굵게 보이므로 굵은 글씨로 잰다 */ var rg = document.createRange(); rg.selectNodeContents(x); var rc = rg.getBoundingClientRect(); x.style.fontWeight = fw; x.style.textAlign = ta;
+        if (rc.width && rc.right - left > measured) measured = rc.right - left;
+      });
+      var bar = innerEl.offsetWidth - innerEl.clientWidth;
+      if (!wasExp) menuEl.classList.remove('expanded');
       innerEl.style.display = prevDisplay;
       innerEl.style.visibility = prevVisibility;
-      var fitWidth = Math.min(Math.max(measured + 2, 120), 260);
-      document.documentElement.style.setProperty('--side-expanded-w', fitWidth + 'px');
-    })();
+      if (measured > 0){ document.documentElement.style.setProperty('--side-expanded-w', Math.ceil(measured + 13 + bar) + 'px'); setTimeout(nxSideMenuScrollBtns_, 0); }
+      // 로그인 창 뒤라 아직 안 보이면(0) 보일 때까지 0.5초마다 다시 잰다 — 펼친 채로 열었을 때 기본 폭(190)으로 남던 것
+      else if (menuEl.classList.contains('expanded')){ clearTimeout(window.nxSideMenuFitT_); window.nxSideMenuFitT_ = setTimeout(window.nxSideMenuFit_, 500); }
+    };
+    window.nxSideMenuFit_();
+    (function(){ var o = false; try { var v = localStorage.getItem('nx_menu_pin'); o = v === null ? localStorage.getItem('nx_menu_open') === '1' : v === '1'; } catch (er) {} nxSideMenuSetPin_(o); })();
   </script>
 
   <?!= include_('manage/script') ?>

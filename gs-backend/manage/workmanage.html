@@ -8,8 +8,7 @@
       <option value="보류">보류</option>
       <option value="완료">완료</option>
     </select>
-    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:180px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
-    <div class="spacer"></div>
+    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:230px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
   </div>
   <div class="manage-split">
     <div class="manage-split-list"><div id="workCaseList" class="log-list"></div></div>
@@ -900,13 +899,6 @@
     });
   }
 
-  function applyUpdatedCase(caseObj){
-    var idx = workCases.findIndex(function(c){ return c.id === caseObj.id; });
-    if (idx !== -1) workCases[idx] = caseObj; else workCases.push(caseObj);
-    workSelectedCaseId = caseObj.id;
-    renderWorkCaseList();
-    renderWorkCaseDetail(caseObj);
-  }
 
   // [2026.09.15 신규] 수금관리 등 다른 화면에서 사건명을 눌러 작업관리로 바로 이동할 때 씀
   // (casehandling.html의 goToCaseHandling_과 같은 패턴).

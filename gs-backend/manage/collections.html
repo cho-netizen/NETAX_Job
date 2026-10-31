@@ -7,9 +7,8 @@
   <div class="editor-toolbar">
     <h2 class="tb-title">수금관리</h2>
     <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
-    <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더의 홈택스 매출내역 엑셀을 읽어 새로 추가된 현금영수증만 반영합니다">🧾 홈택스 매출내역 가져오기</button>
-    <span class="editor-filename">전체 고객 수금 내역(자문내역 중 수금 기록)</span>
-    <div class="spacer"></div>
+    <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더에 내려받아 둔 홈택스 매출내역 엑셀을 읽어, 아직 목록에 없는 현금영수증만 수금 내역에 더합니다(밤에도 한 번 자동으로 돕니다)">홈택스 매출내역</button>
+    <button type="button" id="btnColStats" class="ghost-btn" title="지금 걸린 조건(고객명·기간·미연결·종류) 그대로 월별·분기별·반기별·연도별 합계를 봅니다">기간별 통계</button>
     <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
     <input type="date" id="colFromDate" title="시작일" style="width:95px;">
     <span style="color:var(--sub); font-size:12px;">~</span>
@@ -42,11 +41,11 @@
         <button type="button" id="colNewCancel" class="ghost-btn">취소</button>
       </div>
     </div>
-    <div class="card">
-      <h3>기간별 통계
-        <select id="colStatPeriod" style="float:right; font-size:12.5px;">
-          <option value="" selected>없음</option>
-          <option value="month">월별</option>
+    <!-- [2026.10.31] 세무사님 "기간별통계 기능을 그냥 버튼으로 만들어 버튼줄에 배치(기간 설정을 유지하면서)" — 위 단추로 열고 닫는다. 고른 단위(월·분기·반기·연)는 닫았다 열어도 그대로 -->
+    <div class="card" id="colStatsCard" style="display:none;">
+      <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">기간별 통계
+        <select id="colStatPeriod" style="font-size:12.5px; font-weight:normal;">
+          <option value="month" selected>월별</option>
           <option value="quarter">분기별</option>
           <option value="half">반기별</option>
           <option value="year">연도별</option>
@@ -244,7 +243,7 @@
   function colRenderStats_(logs){
     var period = document.getElementById('colStatPeriod').value;
     var box = document.getElementById('colStats');
-    if (!period){ box.innerHTML = ''; return; } // "없음"(기본값) — 평소엔 통계 카드를 접어둔다
+    if (document.getElementById('colStatsCard').style.display === 'none'){ box.innerHTML = ''; return; } // 단추로 열었을 때만 센다
     if (!logs.length){ box.innerHTML = '<div class="empty-row">통계를 낼 데이터가 없습니다.</div>'; return; }
     var groups = {};
     var order = [];
@@ -299,11 +298,11 @@
     row.style.borderColor = '';
     row.innerHTML =
       '<div class="log-date">' + escapeHtml(fmtDateShort_(l.날짜)) + '</div>' +
-      '<div class="log-text" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
-      escapeHtml(colClientDisplayName_(l)) + ' · ' + escapeHtml(colAmountText_(l.금액)) +
-      (l.수취증빙 ? ' · ' + escapeHtml(l.수취증빙) : '') +
-      ' · <span>🔗 다른 기록과 중복으로 판단되어 자동 정리됨(집계 제외)</span>' +
-      '</div>' +
+      '<span class="col-c col-c-name">' + escapeHtml(colClientDisplayName_(l)) + '</span>' +
+      '<span class="col-c col-c-amt">' + escapeHtml(colAmountText_(l.금액)) + '</span>' +
+      '<span class="col-c col-c-rcpt">' + escapeHtml(l.수취증빙 || '') + '</span>' +
+      '<span class="col-c col-c-case"></span>' +
+      '<span class="col-c col-c-memo">다른 기록과 중복으로 판단되어 자동 정리됨(집계 제외)</span>' +
       '<button type="button" class="ghost-btn col-undo-dedup-btn sm" style="flex:0 0 auto;">되돌리기</button>';
     row.querySelector('.col-undo-dedup-btn').addEventListener('click', function(){
       nxConfirm_('이 기록을 다시 정상 수금 내역으로 되돌릴까요? (중복이 아니라 착오로 정리된 경우에 사용)').then(function(ok){
@@ -336,19 +335,19 @@
     // 안 됐다. 연결 안 된 경우에도 회색 "사건 미연결"을 항상 표시하고, 눌러서 바로 사건을
     // 고를 수 있게 한다(미연결 고객처럼 굳이 빨간 경고까지는 아니고 — 사건 연결은 선택사항).
     var caseHtml = caseName === '(삭제된 사건)'
-      ? ' · <span class="col-link-case" style="cursor:pointer; color:#a83232; text-decoration:underline dotted; text-underline-offset:2px;" title="연결된 사건이 지워졌습니다 — 클릭해서 다른 사건에 연결">🗂 (삭제된 사건)</span>'
+      ? '<span class="col-link-case" style="cursor:pointer; color:#a83232; text-decoration:underline dotted; text-underline-offset:2px;" title="연결된 사건이 지워졌습니다 — 클릭해서 다른 사건에 연결">(삭제된 사건)</span>'
       : caseName
-      ? ' · <span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 작업관리·처리개요로 이동">🗂 ' + escapeHtml(caseName) + '</span>'
-      : (unlinked ? '' : ' · <span class="col-link-case" style="cursor:pointer; color:var(--sub); text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 사건 연결">사건 미연결</span>');
+      ? '<span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="' + escapeHtml(caseName) + ' — 클릭하면 작업관리·처리개요로 이동">' + escapeHtml(caseName) + '</span>'
+      : (unlinked ? '' : '<span class="col-link-case" style="cursor:pointer; color:var(--sub); text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 사건 연결">사건 미연결</span>');
     row.style.borderColor = unlinked ? '#e3b3b3' : '';
     row.innerHTML =
       '<div class="log-date">' + escapeHtml(fmtDateShort_(l.날짜)) + '</div>' +
-      '<div class="log-text" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
-      nameHtml + ' · ' + escapeHtml(colAmountText_(l.금액)) +
-      (l.수취증빙 ? ' · ' + escapeHtml(l.수취증빙) : '') +
-      caseHtml +
-      (memoHtml ? ' · ' + memoHtml : '') +
-      '</div>' +
+      // [2026.10.31] 세무사님 "수금내역을 … 표처럼 필드별로 세로정렬, 데이타길이에 맞도록 필드길이" — 고객·금액·증빙·사건·비고를 칸마다 따로(.col-c, style.html 수금 목록 칸)
+      '<span class="col-c col-c-name">' + nameHtml + '</span>' +
+      '<span class="col-c col-c-amt">' + escapeHtml(colAmountText_(l.금액)) + '</span>' +
+      '<span class="col-c col-c-rcpt">' + escapeHtml(l.수취증빙 || '') + '</span>' +
+      '<span class="col-c col-c-case">' + caseHtml + '</span>' +
+      '<span class="col-c col-c-memo">' + memoHtml + '</span>' +
       (unlinked ? '<button type="button" class="ghost-btn col-link-btn sm" style="flex:0 0 auto;">고객 연결</button>' : '') +
       '<span class="log-edit" title="수정" style="cursor:pointer; margin-right:6px; margin-left:6px; flex:0 0 auto;">✏️</span>' +
       '<span class="log-del" title="삭제" style="flex:0 0 auto;">✕</span>';
@@ -531,7 +530,14 @@
     colRenderList_();
   });
   document.getElementById('colSourceFilter').addEventListener('change', colRenderList_);
-  document.getElementById('colStatPeriod').addEventListener('change', colRenderList_);
+  document.getElementById('colStatPeriod').addEventListener('change', function(){ try{ localStorage.setItem('nxColStatPeriod', this.value); }catch(e){} colRenderList_(); });
+  try{ var colSp0_ = localStorage.getItem('nxColStatPeriod'); if (colSp0_) document.getElementById('colStatPeriod').value = colSp0_; }catch(e){}
+  document.getElementById('btnColStats').addEventListener('click', function(){
+    var card = document.getElementById('colStatsCard'), on = card.style.display === 'none';
+    card.style.display = on ? '' : 'none';
+    this.classList.toggle('on', on);
+    colRenderList_();
+  });
 
   // [2026.09.15 신규] 고객사건/0_NX_0의 홈택스 매출내역 엑셀을 지금 바로 반영 — 세무사님이
   // 새로 다운로드한 뒤 바로 확인하고 싶을 때 쓴다(야간에도 자동으로 한 번 더 돈다).

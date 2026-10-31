@@ -45,8 +45,8 @@
   #view-taxplan .tpi-it{ display:block; width:100%; text-align:left; border:none; border-bottom:1px solid var(--line); background:none; color:var(--ink); font:inherit; font-size:13px; padding:7px 10px; cursor:pointer; }
   #view-taxplan .tpi-it:hover{ background:var(--bg); }
   #view-taxplan .tpi-it.on{ background:var(--taxcalc-info-bg, #e7eef6); font-weight:700; }
-  #view-taxplan .tpi-it small{ display:block; font-weight:400; font-size:11px; opacity:.75; margin-top:2px; }
-  #view-taxplan .tpi-warn{ display:inline-block; font-size:10.5px; font-weight:700; color:#9a5b00; background:#fff3d6; border:1px solid #f0c36d; border-radius:4px; padding:0 4px; margin-right:2px; }
+  #view-taxplan .tpi-it small{ display:block; font-weight:400; font-size:12px; color:var(--sub); margin-top:2px; }
+  #view-taxplan .tpi-warn{ display:inline-block; font-size:11.5px; font-weight:700; color:#9a5b00; background:#fff3d6; border:1px solid #f0c36d; border-radius:4px; padding:0 4px; margin-right:2px; }
   #view-taxplan .tpi-curbox{ border:1px solid #f0c36d; background:#fff8e6; color:#5c3d00; border-radius:8px; padding:8px 10px; margin:0 0 8px; font-size:12.5px; }
   #view-taxplan .tpi-curbox ul{ margin:4px 0 4px 18px; padding:0; }
   #view-taxplan .tp-chip.tpi-curchip{ border-color:#f0c36d; color:#9a5b00; }
@@ -67,7 +67,7 @@
     <div id="tpCalcPane" style="display:none;">
     <div class="tp-casebar" id="tpCaseBar"></div>
     <!-- [2026.10.31] 공통 하위 탭 모양(.nx-tab) — 세액계산 탭 이름(taxcalc-tab)을 빌려 써서 세액계산 화면의 "지금 탭" 찾기에 섞일 수 있었음 -->
-    <div class="nx-tabbar" id="tpGroupTabs" style="margin:0 0 10px;">
+    <div class="nx-tabbar sub" id="tpGroupTabs" style="margin:0 0 10px;">
       <button type="button" class="nx-tab active" data-tp-group="inh">상속</button>
       <button type="button" class="nx-tab" data-tp-group="tr">양도</button>
       <button type="button" class="nx-tab" data-tp-group="gift">증여</button>
@@ -772,7 +772,7 @@
   }
   function renderCaseBar_(){
     var nm = caseName_();
-    document.getElementById('tpCaseBar').innerHTML = '<span>세액계산에 열린 사건: <b>' + esc_(nm || '없음') + '</b></span><span class="tp-hint">사건 없이도 상담용으로 계산할 수 있습니다. 결과는 비교만 하고 사건에 저장하지 않습니다 — 고른 안은 세액계산에 직접 넣으세요.</span>';
+    document.getElementById('tpCaseBar').innerHTML = '<span>세액계산에 열린 사건: <b>' + esc_(nm || '없음') + '</b></span><span class="nx-help">사건 없이도 상담용으로 계산할 수 있습니다. 결과는 비교만 하고 사건에 저장하지 않습니다 — 고른 안은 세액계산에 직접 넣으세요.</span>';
   }
   function render_(){ renderCaseBar_(); renderKinds_(); renderForm_(); document.getElementById('tpResult').innerHTML = ''; }
 
@@ -1100,7 +1100,7 @@
         (rootUrl_ ? '<a class="tp-btn ghost" style="text-decoration:none;" href="' + esc_(rootUrl_) + '" target="_blank" rel="noopener noreferrer">📂 드라이브 폴더</a>' : '') +
         '<span class="tpi-note" id="tpiFill"></span>' +
       '</div>' +
-      '<div class="nx-tabbar" style="margin:0 0 10px;">' + [''].concat(names).map(function(nm){ return '<button type="button" class="nx-tab' + (group_ === nm ? ' on' : '') + '" data-tpi-g="' + esc_(nm) + '">' + esc_(nm || '전체') + ' ' + countOf_(nm) + '</button>'; }).join('') + '</div>' +
+      '<div class="nx-tabbar sub" style="margin:0 0 10px;">' + [''].concat(names).map(function(nm){ return '<button type="button" class="nx-tab' + (group_ === nm ? ' on' : '') + '" data-tpi-g="' + esc_(nm) + '">' + esc_(nm || '전체') + ' ' + countOf_(nm) + '</button>'; }).join('') + '</div>' +
       '<div class="tp-kinds">' + [''].concat(KINDS_).map(function(k){ return '<button type="button" class="tp-chip' + (kind_ === k ? ' on' : '') + '" data-tpi-k="' + esc_(k) + '">' + esc_(k || '모든 종류') + '</button>'; }).join('') +
         (curCount_() || curOnly_ ? '<button type="button" class="tp-chip tpi-curchip' + (curOnly_ ? ' on' : '') + '" data-tpi-cur="1" title="인용 조문 개정·본문 날짜 지남·개편안·기준일 1년 넘음 — 밤마다 판정">⚠ 현행화 필요 ' + curCount_() + '</button>' : '') +
         '<span class="tpi-note" style="align-self:center;">결정은 세무사님 — 계산은 비교 계산 탭과 세액계산에서</span></div>' +

@@ -427,7 +427,7 @@
     ai: 'AI', dashboard: '대시보드', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', ledger: '사건 장부', lawsearch: '법령정보', clientmanage: '고객관리',
     collections: '수금관리',
     docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', taxplan: '절세플랜', reportwriter: '문서작성', reports: '열람관리',
-    'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서 모음', settings: '설정', manual: '사용자메뉴얼'
+    'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼'
   };
 
   // ---- 로그인 게이트 ----
@@ -840,7 +840,7 @@
   function goToView_(name){
     showView(name);
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
-      i.classList.toggle('active', i.getAttribute('data-view') === name);
+      i.classList.toggle('active', i.getAttribute('data-view') === (name === 'print' ? 'taxcalc' : name)); // [2026.11.01] 세액인쇄는 세액계산 안 화면
     });
   }
 
@@ -1202,7 +1202,7 @@
     casehandling: 'help-casehandling', ledger: 'help-ledger', lawsearch: 'help-lawsearch', clientmanage: 'help-clientmanage',
     collections: 'help-collections',
     docs: 'help-docs', taxcalc: 'help-taxcalc', taxplan: 'help-taxplan', reportwriter: 'help-reportwriter', reports: 'help-reports',
-    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-hand', settings: 'help-settings', manual: 'help-toc'
+    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-hand', settings: 'help-settings', reporthub: 'help-reporthub', ai: 'help-aisidebar', manual: 'help-toc'
   };
   function goToHelp_(sectionId){
     goToView_('manual');
@@ -1437,5 +1437,30 @@
       for (var k = 0; k < recs.length; k++){ var t = recs[k].target; if (!(t.classList && (t.classList.contains('nx-tabmore-arrow') || (recs[k].attributeName === 'class' && t.matches && t.matches(SEL_))))) return queue_(); }
     }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
     queue_();
+  })();
+</script>
+<script>
+  // [2026.11.01] 세무사님 "설명은 충분해야 하지만 화면을 깔끔해야 한다 … 화면에다가 항목명 같은 곳에다가 설명을 마구 적지 말라" —
+  // 늘 깔려 있던 설명문(.nx-help)은 숨겨 두고, 바로 앞 제목·단추 옆에 작은 「?」를 붙인다. 마우스를 올리면 말풍선으로, 누르면 그 자리에 펼쳐 보인다(손가락 화면도 됨).
+  // 바뀌는 상태 글(불러오는 중·건수 등)은 .nx-help로 바꾸지 않는다 — 늘 보여야 하는 것이기 때문.
+  (function(){
+    function prepare_(el){
+      if (el.dataset.nxh) return; el.dataset.nxh = '1';
+      var a = el.previousElementSibling, b = document.createElement('button');
+      if (!a && el.parentElement && el.parentElement.previousElementSibling && /^(SUMMARY|H3|H4)$/.test(el.parentElement.previousElementSibling.tagName)) a = el.parentElement.previousElementSibling; // 접히는 묶음 안 첫 줄이면 묶음 제목 옆에
+      b.type = 'button'; b.className = 'nx-help-btn'; b.textContent = '?';
+      b.title = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      b.setAttribute('aria-label', '설명 보기');
+      b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); el.classList.toggle('open'); b.classList.toggle('on', el.classList.contains('open')); });
+      if (a && /^(H2|H3|H4|SUMMARY|LABEL)$/.test(a.tagName) || (a && a.classList && (a.classList.contains('nx-l3') || a.classList.contains('nx-l4')))) a.appendChild(b);
+      else if (a && (a.tagName === 'BUTTON' || (a.classList && a.classList.contains('nx-help-anchor')))) a.insertAdjacentElement('afterend', b);
+      else { b.classList.add('nx-help-lone'); b.textContent = '? 설명'; el.insertAdjacentElement('beforebegin', b); }
+      if (a && a.tagName === 'BUTTON' && !a.title) a.title = b.title;
+    }
+    function scan_(root){ var list = (root || document).querySelectorAll('.nx-help:not([data-nxh])'); for (var i = 0; i < list.length; i++) prepare_(list[i]); }
+    var t_ = 0;
+    new MutationObserver(function(){ if (!t_) t_ = setTimeout(function(){ t_ = 0; scan_(); }, 60); }).observe(document.body, { childList: true, subtree: true });
+    scan_();
+    window.nxHelpScan_ = scan_;
   })();
 </script>
