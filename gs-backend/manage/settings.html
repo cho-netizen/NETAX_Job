@@ -13,13 +13,22 @@
 </style>
 <div class="view" id="view-settings">
   <div class="view-head"><h2>설정</h2></div>
+  <!-- [2026.10.31] 세무사님 "너무 복잡해 져서 … 기능별로 구분하여 하위탭을 만들어야 하는지 검토하라" → "권장안대로": 다섯 하위 탭.
+       ① 기본 ② 시스템 관리(지침·법령 판단 대기·지침 점검) ③ 운영·반영(운영 버전·📥·🗳·🔑·↩·🩺·오류 기록·개선 후보) ④ 정비도구 ⑤ 개발자 시험(접힘) -->
+  <div id="stTabs" style="display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px;">
+    <button type="button" class="ghost-btn" data-sttab="1">① 기본</button>
+    <button type="button" class="ghost-btn" data-sttab="2">② 시스템 관리</button>
+    <button type="button" class="ghost-btn" data-sttab="3">③ 운영·반영</button>
+    <button type="button" class="ghost-btn" data-sttab="4">④ 정비도구</button>
+    <button type="button" class="ghost-btn" data-sttab="5" style="color:var(--sub);">⑤ 개발자 시험</button>
+  </div>
   <div class="view-body">
-    <div class="card" style="max-width:360px;">
+    <div class="card" data-sttab="1" style="max-width:360px;">
       <h3>비밀번호 변경</h3>
       <div id="settingsPwBody"></div>
     </div>
     <!-- [2026.10.22] 지문 로그인·모든 기기 로그아웃 — 세무사님 "지문으로, 나머지는 권장대로"(기기 3종 2차) -->
-    <div class="card" style="max-width:360px;">
+    <div class="card" data-sttab="1" style="max-width:360px;">
       <h3>👆 로그인</h3>
       <div id="stFpState" style="font-size:13px; margin-bottom:8px;"></div>
       <button type="button" id="stFpToggle"></button>
@@ -54,7 +63,7 @@
     </script>
     <!-- [2026.10.08] work.netax.kr 설정 창에서 옮겨온 항목 — AI 관련 설정(강도·온도 등)은 대화하다
          바로 바꾸도록 AI 화면의 ⚙(Alt+S)에 두고, 앱 전체에 걸리는 것만 여기 둔다. 둘 다 이 기기에만 기억. -->
-    <div class="card" style="max-width:480px;">
+    <div class="card" data-sttab="1" style="max-width:480px;">
       <h3>🖥 화면</h3>
       <label style="display:flex; align-items:center; gap:8px; margin:6px 0 12px; font-size:14px;">
         <input type="checkbox" id="settingsDarkMode"> 🌙 다크모드
@@ -70,13 +79,15 @@
       <div class="settings-tool-desc">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
-    <div class="card" style="max-width:720px;" id="stSysAdminCard">
+    <div class="card" data-sttab="2" style="max-width:720px;" id="stSysAdminCard">
       <h3>🧭 시스템 관리</h3>
-      <div class="settings-tool-desc" style="margin:0 0 6px;">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 작성관리에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
+      <div class="settings-tool-desc" style="margin:0 0 6px;">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 문서작성에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
       <div id="stSysAdminBody"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 🧭 시스템 관리 점검 결과에">🧾 지침 점검</button></div>
+      <div class="st-out-slot"></div>
     </div>
-    <div class="card" style="max-width:720px;" id="stBugCard">
-      <h3>🐞 오류 기록</h3>
+    <div class="card" data-sttab="3" style="max-width:720px;" id="stBugCard">
+      <h3>🚀 운영·반영 · 🐞 오류 기록</h3>
       <!-- [2026.10.20] 운영 버전·최근 반영 내역·진행 중인 반영·배포 직후 점검 — 세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지" -->
       <div id="stDeployInfo" class="settings-tool-desc" style="margin:0 0 8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">운영 버전 확인 중…</div>
       <div class="settings-tool-desc" style="margin:0 0 8px;">job 화면과 AI가 일하다 난 오류가 자동으로 쌓입니다. 이상한 점을 일일이 설명하지 않으셔도, Claude Code에게 "오류 기록 확인해줘"라고 하면 이 기록을 보고 원인을 찾습니다.</div>
@@ -84,99 +95,59 @@
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
-        <button type="button" class="ghost-btn" id="stBtnAnswerKey" style="display:none;" title="사건 폴더에 _정답지.json이 있는 실사건을 '이 사건 처리하자'와 같은 단계·세액계산 엔진으로 다시 처리해 정답과 칸별로 대조합니다(AI 비용 0). 결과는 총괄관리자/_정답지점검/_정답지점검결과.json, 불일치는 개선 후보에 올라감">🧪 정답지 점검</button>
-        <button type="button" class="ghost-btn" id="stBtnAnswerKeyDraft" title="사건 폴더의 양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)를 무료 글자인식으로 읽어 _정답지.json 초안을 만듭니다(AI 비용 0) — 세무사님이 확인해 '확정'으로 바꿔 주세요">📝 정답지 초안</button>
-        <button type="button" class="ghost-btn" id="stBtnOcrCount" title="모든 사건 폴더의 서류 중 서버 글자인식 기억이 이미 있는 것·아직 없는 것·글자로 못 바꾸는 형식을 사건별로 셉니다(글자인식은 하지 않음, AI 비용 0)">🔤 글자인식 미리 세기</button>
-        <button type="button" class="ghost-btn" id="stBtnOcrBatch" title="모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 무료 글자인식으로 읽어 기억에 쌓습니다(사건은 저장·정리하지 않음, AI 비용 0). 서류가 많으면 몇 시간 걸립니다 — 창을 닫아도 이어지게 하려면 ⏰ 자동 이어 읽기를 켜세요">🔤 글자인식 일괄 읽기</button>
-        <button type="button" class="ghost-btn" id="stBtnOcrReread" title="글자인식 기억이 0자로 남은 PDF(웹 화면을 Print to PDF로 저장한 예규 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요(AI 비용 0)">🔤 빈 글자 PDF 다시 읽기</button>
-        <button type="button" class="ghost-btn" id="stBtnOcrTrigger" title="서버가 5분마다 혼자 글자인식 일괄을 이어서 합니다(다 읽으면 저절로 꺼짐). 한 번 더 누르면 끕니다">⏰ 자동 이어 읽기</button>
-        <button type="button" class="ghost-btn" id="stBtnTaxpayerFix" title="납세자가 비었거나(상속은) 의뢰인 이름으로 잘못 들어간 사건을, 사건 폴더 서류로 확인한 납세자로 고치고 사건명·폴더명을 '고객명(납세자)_세목_업무유형'으로 맞춥니다. 먼저 미리보기 → 확인 후 적용(AI 비용 0)">🏷 납세자·사건명 정리</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
-        <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
-        <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 🧭 시스템 관리 점검 결과에">🧾 지침 점검</button>
         <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">🗳 승인 대기 수정안</button>
         <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">🔑 깃허브 열쇠</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
-        <button type="button" class="ghost-btn" id="stBtnT6Compare" style="display:none;" title="[2026.10.23 T6 2단계] 가상사건을 골라 같은 사건을 GAS와 Cloud Run 읽기 전용 시험 서비스(같은 코드)로 나란히 돌려 초·칸·질문을 대조합니다. 세액 계산·저장은 하지 않고 결과만 총괄관리자\_가상사건에 기록합니다(가상사건 폴더만 권한)">🧪 시험 서비스 비교</button>
-        <button type="button" class="ghost-btn" id="stBtnT6OcrMem" title="[2026.10.27 T6 3단계] 가상사건 폴더마다 글자 기억 사본(_글자기억.json)을 둡니다 — 화면이 시험 서비스를 직접 부를 때 그 사건 폴더만 읽어 글자를 쓰게(업무관리자 기억 폴더는 공유하지 않음). 4분 30초 단위로 이어서 돕니다">🧪 _글자기억.json 만들기(가상사건)</button>
-        <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">⚡ 직결 켜기/끄기</button>
-        <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">🧪 폴더 공유 현황·정리</button>
         <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
-      <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
+      <div class="st-out-slot"><div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div></div>
     </div>
     <!-- [2026.10.19] 🤝 AI 회의 · 개발자 소통 — 세무사님 "이 방향으로 수정하자"(AI 연합체를 회의 틀 하나로, 돌지 않는 것은 삭제).
          안건 두 종류: ⚖️ 법령(판단 대기 — 회장 Claude=조정 세션), 🛠 시스템(개선 후보 보고서 — 회장=주간 정비 루틴). 위원 = Gemini API(무료 등급)·OpenRouter.
          회의 기록 표는 앱 전용(app-only/judgewait.html — 법령 탭 "🤝 판단 대기"와 같은 표). 서버: Federation.js. 설명: docs/ai-federation.md -->
-    <div class="card" style="max-width:720px;" id="stFedCard">
-      <h3>🤝 AI 회의 · 개발자 소통</h3>
-      <div class="settings-tool-desc" style="margin:0 0 8px;">위원 AI(Gemini API)가 안건마다 답하고 회장(Claude)이 결론을 냅니다. 결론이 안 난 것과 돈 드는 결정만 세무사님께 올라옵니다. 고객 정보는 위원에게 보내지 않습니다(자동 차단).</div>
+    <!-- [2026.10.31] "🤝 AI 회의 · 개발자 소통" → "⚖️ 법령 판단 대기"(세무사님 "권장안대로"). 지운 단추: 🛠 시스템 안건(돌지 않음)·📝 요청 상태(대시보드 🛠 개선요구 카드와 같음)·
+         ❓ 개발자 질문(대시보드 📋 확인조치사항 카드 맨 위에서 답함). 👥 위원 상태는 ⑤ 개발자 시험으로(10-22 "기능은 지우지 않는다") -->
+    <div class="card" data-sttab="2" style="max-width:720px;" id="stFedCard">
+      <h3>⚖️ 법령 판단 대기</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">법령 해석이 갈리는 안건 — 회장(Claude)이 조문 원문으로 결론을 내고, 결론이 안 난 것만 세무사님께 올라옵니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
-        <button type="button" class="ghost-btn" data-fed="law">⚖️ 회의 기록(법령)</button>
+        <button type="button" class="ghost-btn" data-fed="law">⚖️ 판단 기록</button>
         <button type="button" class="ghost-btn" data-fed="need">🙋 세무사님 결정 필요</button>
-        <button type="button" class="ghost-btn" data-fed="sys">🛠 시스템 안건</button>
-        <button type="button" class="ghost-btn" data-fed="req">📝 요청 상태</button>
-        <button type="button" class="ghost-btn" data-fed="q">❓ 개발자 질문</button>
-        <button type="button" class="ghost-btn" data-fed="reg">👥 위원 상태</button>
       </div>
-      <div id="stFedBox" class="settings-tool-desc">버튼을 누르면 내용이 보입니다.</div>
+      <div class="st-fed-box settings-tool-desc" id="stFedBox">버튼을 누르면 내용이 보입니다.</div>
     </div>
 <script>
+  // [2026.10.31] 하위 탭 — 고른 탭은 이 기기에 기억. 도구 결과(stBugList 한 칸을 여러 도구가 같이 씀)는 누른 단추가 있는 카드의 칸으로 옮겨 보인다
   (function(){
-    var box = function(){ return document.getElementById('stFedBox'); };
+    var view = document.getElementById('view-settings');
+    function show(n){
+      n = String(n || '1');
+      Array.prototype.forEach.call(view.querySelectorAll('.card[data-sttab]'), function(c){ c.style.display = c.getAttribute('data-sttab') === n ? '' : 'none'; });
+      Array.prototype.forEach.call(document.querySelectorAll('#stTabs [data-sttab]'), function(b){ var on = b.getAttribute('data-sttab') === n; b.classList.toggle('active', on); b.style.fontWeight = on ? '700' : ''; b.style.borderColor = on ? 'var(--gold)' : ''; });
+      try { localStorage.setItem('nxSettingsTab', n); } catch (e) {}
+    }
+    window.stShowTab_ = show;
+    document.getElementById('stTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-sttab]'); if (b) show(b.getAttribute('data-sttab')); });
+    var saved = '1'; try { saved = localStorage.getItem('nxSettingsTab') || '1'; } catch (e) {}
+    show(saved);
+    view.addEventListener('click', function(e){
+      var b = e.target.closest && e.target.closest('button[id^="stBtn"]'); if (!b) return;
+      var card = b.closest('.card'), slot = card && card.querySelector('.st-out-slot'), list = document.getElementById('stBugList');
+      if (slot && list && !slot.contains(list)) slot.appendChild(list);
+    }, true);
+  })();
+  (function(){
+    var fedBox_ = null;
+    var box = function(){ return fedBox_ || document.getElementById('stFedBox'); };
     var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
     var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
-    var STATUS_COLOR = { '접수': 'var(--sub)', '고침': '#6f42c1', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
     function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); return r; }); }
     function showMeeting(onlyNeed){
       if (typeof jwRenderInto_ !== 'function'){ box().textContent = '회의 기록 표는 앱(job.netax.kr/app)에서 보입니다.'; return; }
       jwRenderInto_(box(), onlyNeed ? '결정 필요' : '');
     }
-    function showSys(){
-      box().textContent = '불러오는 중…';
-      callGas('improve_report_get', {}).then(function(r){
-        var rep = r && r.report;
-        if (!rep){ box().innerHTML = '아직 개선 후보 보고서가 없습니다(매일 새벽에 만들어집니다).'; return; }
-        box().innerHTML = '<div style="margin-bottom:4px;">이번 보고서(' + h(String(rep.generatedAt || '').slice(0, 16)) + ')의 안건 — 위원(Gemini API)에게 묻고 회장(주간 정비 루틴)이 결론을 내 고침 작업(PR)으로 올립니다. 결론이 안 난 것·돈 드는 결정은 ❓ 개발자 질문으로 옵니다.</div>'
-          + ((rep.headline || []).length ? (rep.headline || []).map(function(x){ return row(h(x)); }).join('') : row('안건 없음'));
-      }).catch(err);
-    }
-    function showReq(){
-      box().textContent = '불러오는 중…';
-      loadStatus().then(function(r){
-        // [2026.10.20] 끝나지 않은 요청 전부(오래된 순·며칠째)를 앞에, 끝난 것(최근 15건)은 접어 둔다 — 대시보드 🛠 개선요구 카드와 같은 자료
-        var open = r.openRequests || [], done = r.doneRequests || [];
-        if (!open.length && !done.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
-        // [2026.10.28] 처리 내역(누가·언제·무엇·커밋·운영 판)을 펼쳐 보이고, 상태가 무엇이든 👍 확인 / ↩ 다시 요구(✍ 건의 창) — 대시보드 개선요구 카드와 같은 규칙
-        var hist = function(x){
-          var hs = x.history || [];
-          if (!hs.length) return '<br><span style="color:var(--sub); font-size:12px;">처리 내역 없음' + (x.commit ? ' · 커밋 ' + h(x.commit) : '') + '</span>';
-          return '<details style="margin-top:2px;"><summary style="cursor:pointer; color:var(--sub); font-size:12px;">처리 내역 ' + hs.length + '건 — 마지막: ' + h(String(hs[hs.length - 1].at).slice(5, 16) + ' ' + hs[hs.length - 1].who + ' · ' + String(hs[hs.length - 1].what).slice(0, 60)) + '</summary><div style="font-size:12px; padding-left:8px; border-left:2px solid var(--line);">'
-            + hs.map(function(e){ return '<div>' + h(String(e.at).slice(0, 16)) + ' <b>' + h(e.who) + '</b> — ' + h(e.what) + (e.commit ? ' <span style="color:var(--sub);">커밋 ' + h(e.commit) + '</span>' : '') + (e.ver ? ' <span style="color:var(--sub);">운영 @' + h(e.ver) + '</span>' : '') + '</div>'; }).join('') + '</div></details>';
-        };
-        var one = function(x){
-          var btns = x.status !== '확인완료' ? '<div style="margin-top:3px;"><button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨 — 끝</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '" data-fedtitle="' + h(String(x.text).slice(0, 120)) + '">↩ 부족함 — 다시 요구 적기</button></div>' : '';
-          return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + (x.ver ? ' · 운영 @' + x.ver : '')) + '</span><br>' + h(x.text) + (x.reopenNote ? '<br><span style="color:#a83232;">↩ 세무사님 다시 요구: ' + h(x.reopenNote) + '</span>' : '') + hist(x) + btns);
-        };
-        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '남은 요청 ' + open.length + '건') + '</b> · 흐름: 접수 → 고침(PC Claude·개발자 수정안) → 배포 → 반영됨 → 세무사님 👍 확인 또는 ↩ 다시 요구</div>'
-          + (open.length ? open.map(one).join('') : row('남은 요청이 없습니다.'))
-          + (done.length ? '<details style="margin-top:6px;"><summary style="cursor:pointer; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(one).join('') + '</details>' : '');
-      }).catch(err);
-    }
-    function showQ(){
-      box().textContent = '불러오는 중…';
-      loadStatus().then(function(r){
-        var qs = r.questions || [];
-        if (!qs.length){ box().innerHTML = '개발자의 질문이 없습니다.'; return; }
-        box().innerHTML = qs.map(function(q){
-          return row('<b>' + h(q.id) + ' ' + h(q.title) + '</b><div style="white-space:pre-wrap; margin:3px 0;">' + h(q.body) + '</div>'
-            + (q.answer ? '<div style="color:var(--success);">✅ 답함(' + h(q.answeredAt) + '): ' + h(q.answer) + '</div>' : '')
-            + '<button type="button" class="ghost-btn" data-fedans="' + h(q.id) + '">' + (q.answer ? '답 고치기' : '✍ 답하기') + '</button>');
-        }).join('');
-      }).catch(err);
-    }
-    // 위원 상태 — Gemini API(키·오늘 사용량), OpenRouter 칸(키를 넣으면 위원 추가), Claude(기존 배차)
     function showReg(){
       box().textContent = '불러오는 중…';
       loadStatus().then(function(r){
@@ -189,24 +160,19 @@
       }).catch(err);
     }
     document.addEventListener('click', function(ev){
-      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel]');
-      if (!t || !document.getElementById('stFedCard') || !document.getElementById('stFedCard').contains(t)) return;
+      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedkey],[data-fedkeydel]');
+      var card = t && t.closest('#stFedCard, #stDevCard'); if (!card) return;
+      fedBox_ = card.querySelector('.st-fed-box');
       var d = t.dataset;
       if (d.fed === 'law') return showMeeting(false);
       if (d.fed === 'need') return showMeeting(true);
-      if (d.fed === 'sys') return showSys();
-      if (d.fed === 'req') return showReq();
-      if (d.fed === 'q') return showQ();
       if (d.fed === 'reg') return showReg();
-      if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
-      if (d.fedno) return (typeof nxSuggestOpen_ === 'function' ? nxSuggestOpen_({ reopenId: d.fedno, title: d.fedtitle || '' }).then(function(r){ if (r && r.success) showReq(); }) : nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); })).catch(err); // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)
-      if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
       if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showReg(); }); }).catch(err);
       if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showReg); }).catch(err);
     });
   })();
 </script>
-    <div class="card" style="max-width:480px;">
+    <div class="card" data-sttab="1" style="max-width:480px;">
       <h3>🔗 바로가기</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
         <a class="ghost-btn" href="https://console.anthropic.com" target="_blank" rel="noopener" style="text-decoration:none;">Claude 콘솔 열기 ↗</a>
@@ -219,12 +185,12 @@
          값이라 사건별 데이터가 아니라 이 앱 전체에 1세트만 저장하고(PropertiesService,
          getTaxAgentSettings_/saveTaxAgentSettings_ — Code.js), 양도세·상속세·증여세 모든
          인쇄서식·전자신고파일(taxAgentField_, taxcalc.html)이 공통으로 읽어 쓴다. -->
-    <div class="card" style="max-width:480px;">
+    <div class="card" data-sttab="1" style="max-width:480px;">
       <h3>🖋 세무대리인 정보</h3>
       <div class="taxcalc-result-note" style="margin-bottom:8px;">양도세·상속세·증여세의 모든 인쇄서식·전자신고파일에 공통으로 반영됩니다. 한 번만 입력해두면 됩니다.</div>
       <div id="settingsTaxAgentBody"></div>
     </div>
-    <div class="card" style="max-width:720px;">
+    <div class="card" data-sttab="4" style="max-width:720px;" id="stToolsCard">
       <h3>🛠 정비도구</h3>
       <div class="settings-tools-group">
         <h4>사건관리</h4>
@@ -256,7 +222,30 @@
           <div class="settings-tool-desc">이름 칸에 "3733"처럼 실명이 아니라 숫자만 적힌, 옛날 오류로 생긴 이상한 고객 기록을 찾아 정리합니다.</div>
         </div>
       </div>
+      <div class="settings-tools-group">
+        <h4>서류 글자인식·사건 정리</h4>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <button type="button" class="ghost-btn" id="stBtnOcrCount" title="모든 사건 폴더의 서류 중 서버 글자인식 기억이 이미 있는 것·아직 없는 것·글자로 못 바꾸는 형식을 사건별로 셉니다(글자인식은 하지 않음, AI 비용 0)">🔤 글자인식 미리 세기</button>
+          <button type="button" class="ghost-btn" id="stBtnOcrBatch" title="모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 무료 글자인식으로 읽어 기억에 쌓습니다(사건은 저장·정리하지 않음, AI 비용 0). 서류가 많으면 몇 시간 걸립니다 — 창을 닫아도 이어지게 하려면 ⏰ 자동 이어 읽기를 켜세요">🔤 글자인식 일괄 읽기</button>
+          <button type="button" class="ghost-btn" id="stBtnOcrReread" title="글자인식 기억이 0자로 남은 PDF(웹 화면을 Print to PDF로 저장한 예규 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요(AI 비용 0)">🔤 빈 글자 PDF 다시 읽기</button>
+          <button type="button" class="ghost-btn" id="stBtnOcrTrigger" title="서버가 5분마다 혼자 글자인식 일괄을 이어서 합니다(다 읽으면 저절로 꺼짐). 한 번 더 누르면 끕니다">⏰ 자동 이어 읽기</button>
+          <button type="button" class="ghost-btn" id="stBtnTaxpayerFix" title="납세자가 비었거나(상속은) 의뢰인 이름으로 잘못 들어간 사건을, 사건 폴더 서류로 확인한 납세자로 고치고 사건명·폴더명을 '고객명(납세자)_세목_업무유형'으로 맞춥니다. 먼저 미리보기 → 확인 후 적용(AI 비용 0)">🏷 납세자·사건명 정리</button>
+        </div>
+        <div class="st-out-slot"></div>
+      </div>
       <div class="taxcalc-result-note" style="margin-top:6px;">공통: 📅 캘린더 재동기화만 누르는 즉시 돌아가고(자료는 안 바꿈), 나머지는 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
+    </div>
+    <div class="card" data-sttab="5" style="max-width:720px;" id="stDevCard">
+      <details><summary style="cursor:pointer; font-weight:700;">🧪 개발자 시험 — 평소엔 쓰지 않습니다</summary>
+        <div class="settings-tool-desc" style="margin:6px 0;">빠른 읽기 서버(시험 단계) 켜기·끄기, 그 서버에 공유된 사건 폴더, AI 위원 연결 상태.</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">⚡ 직결 켜기/끄기</button>
+          <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">🧪 폴더 공유 현황·정리</button>
+          <button type="button" class="ghost-btn" data-fed="reg">👥 위원 상태</button>
+        </div>
+        <div class="st-fed-box settings-tool-desc"></div>
+        <div class="st-out-slot"></div>
+      </details>
     </div>
   </div>
 </div>
@@ -495,66 +484,7 @@
         }).join('');
       }).catch(function(err){ bugList.textContent = '자가점검을 실행하지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
-    // [2026.10.14 토큰0] 🧪 정답지 점검 — 서버가 사건마다 기본→증빙→처리개요 단계와 세액계산 엔진을 돌려 정답지와 대조(확인창·대화 전환 없음)
-    function akRender_(res){
-      var cases = (res && res.cases) || [];
-      if (!cases.length){ bugList.innerHTML = '정답지(_정답지.json)가 있는 사건이 없습니다 — 사건 폴더에 정답지를 넣거나 📝 정답지 초안을 먼저 만드세요.'; return; }
-      var cell = 'padding:3px 6px;border-top:1px solid var(--line);vertical-align:top;';
-      var fmt = function(v){ if (Array.isArray(v)) return v.join(', '); if (typeof v === 'number') return v.toLocaleString('ko-KR'); return String(v == null ? '' : v); };
-      bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 정답지 점검 ' + res.pass + '/' + res.total + ' 통과</b> · ' + escapeHtml(res.at || '') + ' · AI 비용 0</div>' + cases.map(function(c){
-        var head = '<div style="margin-top:8px;"><b>' + (c.pass ? '✅ 통과' : '❌ 불일치') + ' — ' + escapeHtml(c.사건명 || c.caseId) + (c.수증자 ? ' · 수증자 ' + escapeHtml(c.수증자) : '') + '</b>' + (c.상태 ? ' <span style="color:var(--sub);">(정답지 ' + escapeHtml(c.상태) + ')</span>' : '') + '</div>'
-          // [2026.10.15] 값이 비는 이유(서류 없음·규칙이 못 읽음)와 질문 종류별 개수
-          + (c.why ? '<div style="color:var(--sub);font-size:12px;">도구 값이 빈 이유: ' + escapeHtml(c.why) + '</div>' : '')
-          + (c.qcats && Object.keys(c.qcats).length ? '<div style="color:var(--sub);font-size:12px;">질문 종류: ' + Object.keys(c.qcats).map(function(k){ return escapeHtml(k) + ' ' + c.qcats[k]; }).join(' · ') + '</div>' : '');
-        if (c.error) return head + '<div style="color:#a83232;">' + escapeHtml(c.error) + '</div>';
-        var rows = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:520px;"><tr><th style="' + cell + 'text-align:left;">칸</th><th style="' + cell + 'text-align:right;">정답</th><th style="' + cell + 'text-align:right;">도구 값</th><th style="' + cell + 'text-align:left;">출처</th><th style="' + cell + '"></th></tr>'
-          + (c.rows || []).map(function(r){ return '<tr><td style="' + cell + '">' + escapeHtml(r.field) + '</td><td style="' + cell + 'text-align:right;">' + escapeHtml(fmt(r.expected)) + '</td><td style="' + cell + 'text-align:right;">' + escapeHtml(fmt(r.tool)) + '</td><td style="' + cell + 'color:var(--sub);">' + escapeHtml(r.src || '') + '</td><td style="' + cell + '">' + (r.ok ? '✅' : '❌') + '</td></tr>'; }).join('') + '</table></div>';
-        var extra = (c.extra || []).length ? '<div style="margin-top:4px;"><b>❌ 정답지에 없는 질문(결함) ' + c.extra.length + '건</b>' + c.extra.map(function(x){ return '<div style="' + cell + '">· ' + escapeHtml(x.text) + (x.detail ? '<br><span style="color:var(--sub);">' + escapeHtml(x.detail).replace(/\n/g, '<br>') + '</span>' : '') + '</div>'; }).join('') + '</div>' : '';
-        var miss = (c.missing || []).length ? '<div style="margin-top:4px;"><b>❌ 정답지엔 있는데 도구가 안 물은 것 ' + c.missing.length + '건</b>' + c.missing.map(function(x){ return '<div style="' + cell + '">· ' + escapeHtml(x) + '</div>'; }).join('') + '</div>' : '';
-        return head + rows + extra + miss;
-      }).join('');
-    }
-    document.getElementById('stBtnAnswerKey').addEventListener('click', function(){
-      var tries = 0, netFails = 0;
-      var step = function(first){
-        // [2026.10.16] 이어 부르기(cont)는 새 점검을 시작하지 않는다 — 끝난 결과 응답을 놓치고 다시 부르면 끝난 점검을 처음부터 또 돌렸다(08:14 완료 → 08:15 1/27 재시작)
-        return callGas('answerkey_run', first ? {} : { cont: true }).then(function(r){ // [2026.10.15] 멈췄다 다시 누르면 처음부터가 아니라 이어서(서버가 진행 상태를 기억)
-          if (r && r.error) throw new Error(r.error);
-          netFails = 0;
-          // [2026.10.16] 서버가 앞선 실행(끊긴 실행이 남긴 표시 포함)으로 "바쁨"이면 20초 쉬고 다시 — 쉬지 않고 수백 번 부르다 400번 한도로 멈추던 것
-          if (r && r.more && r.busy){
-            bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + ' · 서버가 앞 사건을 처리 중이라 20초 뒤 이어서 부릅니다';
-            return new Promise(function(res){ setTimeout(res, 20000); }).then(function(){ return step(false); });
-          }
-          if (r && r.more){
-            if (++tries > 400) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
-            bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + (r.progress ? ' · 서류 읽는 중 ' + r.progress.done + '/' + r.progress.total + '(처음 읽는 서류는 한 건에 10~40초)' : '');
-            return step(false);
-          }
-          akRender_(r && r.result);
-        }, function(err){
-          // [2026.10.15] 서버 호출 하나가 오래 걸려 화면 쪽 요청만 끊긴 경우(시간 초과·연결 끊김) — 서버는 진행 상태를 저장하므로 잠깐 쉬고 이어서 다시 부른다
-          //  (예전: 한 번 끊기면 점검 전체가 "signal is aborted"로 멈춰 밤새 기다려도 진행이 없었다)
-          var msg = String(err && err.message || err);
-          if (/abort|Failed to fetch|NetworkError|timeout|시간|응답 없음|network|load failed/i.test(msg) && ++netFails <= 30){
-            bugList.textContent = '🧪 정답지 점검 — 서버 응답이 늦어 연결이 끊겼습니다. 20초 뒤 이어서 다시 부릅니다(' + netFails + '번째)…';
-            return new Promise(function(res){ setTimeout(res, 20000); }).then(function(){ return step(false); });
-          }
-          throw err;
-        });
-      };
-      bugList.textContent = '🧪 정답지 점검 중… (AI 비용 0)';
-      step(true).catch(function(err){ bugList.textContent = '정답지 점검을 하지 못했습니다: ' + (err && err.message ? err.message : err); });
-    });
-    document.getElementById('stBtnAnswerKeyDraft').addEventListener('click', function(){
-      bugList.textContent = '📝 신고서(홈택스·양도코리아)로 정답지 초안 만드는 중…(AI 비용 0)';
-      var allMade = [], rounds = 0;
-      var draftStep = function(){ return callGas('answerkey_draft', {}).then(function(r){ allMade = allMade.concat((r && r.made) || []); if (r && r.more && ++rounds < 15){ bugList.textContent = '📝 정답지 초안 만드는 중… ' + allMade.length + '건 처리(서류를 처음 읽으면 오래 걸립니다)'; return draftStep(); } return { made: allMade }; }); };
-      draftStep().then(function(r){
-        var made = (r && r.made) || [];
-        bugList.innerHTML = made.length ? made.map(function(m){ return '<div style="padding:3px 0;border-top:1px solid var(--line);">' + escapeHtml(m.사건명 || m.caseId) + ' — ' + (m.error ? escapeHtml(m.error) : '초안 저장(' + escapeHtml(m.from) + '): ' + escapeHtml(Object.keys(m.fields).map(function(k){ return k + ' ' + Number(m.fields[k]).toLocaleString('ko-KR'); }).join(', '))) + '</div>'; }).join('') : '새로 만든 초안이 없습니다(정답지가 이미 있거나, 신고서 PDF가 없는 사건뿐).';
-      }).catch(function(err){ bugList.textContent = '초안을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
-    });
+    // [2026.10.31] 세무사님 "권장안대로" — 지운 단추: 🧪 정답지 점검·정답지 초안(10-29 정답지 잣대 버림), 🧪 시험 서비스 비교·_글자기억.json 만들기(시험 단계 끝), ✍ 개선요구사항 적기(대시보드 🛠 개선요구 카드로 옮김). 서버 기능은 그대로
     // [2026.10.18 1번 세션 — 최대 수집] 🔤 서버 글자인식 일괄 — 기억에 없는 서류만 무료 글자인식(사건 저장·정리 없음). 서버가 4분 30초마다 끊고 진행을 기억하므로 화면은 이어서 거듭 부른다
     function ocrbRender_(r, title){
       var s = (r && r.sum) || {}, cs = (r && r.cases) || {}, cell = 'padding:3px 6px;border-top:1px solid var(--line);vertical-align:top;';
@@ -600,27 +530,6 @@
     document.getElementById('stBtnOcrCount').addEventListener('click', function(){ ocrbRun_(true); });
     document.getElementById('stBtnOcrBatch').addEventListener('click', function(){ ocrbRun_(false); });
     (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (confirm('글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
-    // [2026.10.27 T6 3단계] 🧪 _글자기억.json 만들기(가상사건) — 서버 t6_ocrmem_build를 4분 30초 단위로 이어 부른다(next가 null이면 끝). 세무사님도 직접 누른다
-    (function(){
-      var b = document.getElementById('stBtnT6OcrMem'); if (!b) return;
-      var busy = false;
-      b.addEventListener('click', function(){
-        if (busy) { nxAlert_('글자 기억 사본 만들기가 진행 중입니다.'); return; }
-        busy = true; var lines = [];
-        var step = function(skip){
-          bugList.textContent = '🧪 글자 기억 사본 만드는 중… (' + (skip + 1) + '번째부터)';
-          return callGas('t6_ocrmem_build', { skip: skip }).then(function(r){
-            if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
-            lines = lines.concat(r.lines || []);
-            (r.done || []).forEach(function(d){ if (d.why) lines.push('  · ' + d.사건명 + ': ' + d.why); });
-            bugList.innerHTML = '<div><b>🧪 _글자기억.json 만들기</b> — 가상사건 ' + r.total + '건</div>' + lines.map(function(l){ return '<div style="font-size:12px;">' + escapeHtml(l) + '</div>'; }).join('');
-            if (r.next != null) return step(r.next);
-            busy = false;
-          });
-        };
-        step(0).catch(function(err){ busy = false; bugList.textContent = '글자 기억 사본을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
-      });
-    })();
     // [2026.10.27 T6 4단계] 🧪 폴더 공유 현황·정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){
       var b = document.getElementById('stBtnT6Share'); if (!b) return;
@@ -666,63 +575,6 @@
           document.getElementById('t6DirectOn').addEventListener('click', function(){ set(true); });
           document.getElementById('t6DirectOff').addEventListener('click', function(){ set(false); });
         }).catch(function(err){ bugList.textContent = '직결 상태를 바꾸지 못했습니다: ' + (err && err.message ? err.message : err); });
-      });
-    })();
-    // [2026.10.23 T6 2단계] 🧪 시험 서비스 비교 — 가상사건 목록에서 고른 N건에 case_proc 'allCompare'를 차례로 돌려 표(사건·GAS 초·Cloud Run 초·칸 불일치 수)로 보인다.
-    //  세무사님도 직접 누른다(GAS 도구는 넥스와 세무사님이 같이 쓰는 도구). 서버 쪽: Code.js caseProcAllCompare_. 결과 기록: 총괄관리자\_가상사건\_시험서비스_비교_YYYYMMDD.json
-    (function(){
-      var btn = document.getElementById('stBtnT6Compare'); if (!btn) return;
-      var t6Busy = false;
-      // [2026.10.27 T6 3단계 — 점검 결함(10-27, 1건 고르려다 4건 돌아감)] 고른 사건은 자료(t6Sel)로 들고, 그릴 때마다 체크 상태를 자료대로 다시 맞춘다(L2_screen_ui: 다시 그린 뒤 checked 잔류). 처음 열 때만 최근 3건을 기본으로
-      var t6Sel = null;
-      var t6Sync = function(){ bugList.querySelectorAll('.t6pick').forEach(function(x){ x.checked = !!(t6Sel && t6Sel[x.getAttribute('data-id')]); }); };
-      btn.addEventListener('click', function(){
-        if (t6Busy) { nxAlert_('비교가 진행 중입니다 — 끝날 때까지 기다려 주세요.'); return; }
-        bugList.textContent = '🧪 가상사건 목록을 불러오는 중…';
-        callGas('work_get_cases', {}).then(function(res){
-          var list = ((res && res.cases) || []).filter(function(c){ return /^가상/.test(String(c.사건명 || c.고객명 || '')); });
-          list.sort(function(a, b){ return String(b.생성일 || '').localeCompare(String(a.생성일 || '')); });
-          if (!list.length) { bugList.textContent = '가상사건이 없습니다(사건명이 "가상"으로 시작하는 사건만 대상).'; return; }
-          if (!t6Sel){ t6Sel = {}; list.slice(0, 3).forEach(function(c){ t6Sel[c.id] = true; }); }
-          var rows = list.map(function(c){ return '<label style="display:block; padding:2px 0;"><input type="checkbox" class="t6pick" data-id="' + escapeHtml(c.id) + '" data-name="' + escapeHtml(c.사건명 || '') + '"> ' + escapeHtml(c.사건명 || c.id) + ' <span style="color:var(--muted); font-size:12px;">' + escapeHtml(c.세목 || '') + ' · ' + escapeHtml(c.상태 || '') + '</span></label>'; }).join('');
-          bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 시험 서비스 비교 — 가상사건 ' + list.length + '건 중 고르세요</b> <span style="color:var(--muted); font-size:12px;">(한 건에 1~3분 — GAS 한 번 + 시험 서비스 한 번)</span> <span id="t6Route" style="font-size:12px; color:var(--muted);">· 지금 ⚡ 길: 확인 중…</span></div>' +
-            '<div style="max-height:220px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">' + rows + '</div>' +
-            '<div style="display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn" id="t6Start">▶ 고른 사건 비교 시작</button><button type="button" class="ghost-btn" id="t6All">모두 고르기</button><button type="button" class="ghost-btn" id="t6None">모두 풀기</button></div>' +
-            '<div id="t6Out" style="margin-top:8px;"></div>';
-          t6Sync();
-          bugList.querySelectorAll('.t6pick').forEach(function(x){ x.addEventListener('change', function(){ t6Sel[x.getAttribute('data-id')] = x.checked; }); });
-          // [T6 3단계] 지금 ⚡가 어느 길인지(직결/GAS) — 토큰 입구(readerToken)로 한 번 확인(50분 기억)
-          var routeEl = document.getElementById('t6Route');
-          if (typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_('').then(function(tk){ if (routeEl) routeEl.textContent = '· 지금 ⚡ 길: ' + (tk && tk.direct ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS(' + ((tk && tk.why) || '직결 꺼짐') + ')'); }); else if (routeEl) routeEl.textContent = '· 지금 ⚡ 길: GAS';
-          document.getElementById('t6All').addEventListener('click', function(){ list.forEach(function(c){ t6Sel[c.id] = true; }); t6Sync(); });
-          document.getElementById('t6None').addEventListener('click', function(){ t6Sel = {}; t6Sync(); });
-          document.getElementById('t6Start').addEventListener('click', function(){
-            t6Sync();
-            var picked = list.filter(function(c){ return !!t6Sel[c.id]; }).map(function(c){ return { id: c.id, name: c.사건명 || '' }; });
-            if (!picked.length) { nxAlert_('비교할 가상사건을 하나 이상 골라 주세요.'); return; }
-            var out = document.getElementById('t6Out'), results = [];
-            var th = '<tr><th style="text-align:left;">사건</th><th>길</th><th>GAS 초</th><th>Cloud Run 초<br><span style="font-weight:normal; font-size:11px;">(/read · 깨우기 포함)</span></th><th>서비스 안쪽 초</th><th>칸 불일치</th><th>질문</th><th>증빙</th><th style="text-align:left;">비고</th></tr>';
-            var draw = function(doneCount){
-              var trs = results.map(function(r){
-                if (r.error) return '<tr><td>' + escapeHtml(r.name) + '</td><td colspan="8" style="color:#b00;">' + escapeHtml(r.error) + '</td></tr>';
-                var mm = (r.mismatches || []).length;
-                return '<tr><td>' + escapeHtml(r.name) + '</td><td style="text-align:center;">' + escapeHtml(r.route || (r.direct ? '직결' : 'GAS 비교')) + '</td><td style="text-align:right;">' + r.gasSec + '</td><td style="text-align:right;">' + r.runSec + ' · ' + r.runSecIncl + '</td><td style="text-align:right;">' + (r.runInner ? r.runInner.inner : '—') + '</td><td style="text-align:center;' + (mm ? ' color:#b00; font-weight:bold;' : '') + '">' + mm + '</td><td style="text-align:center;">' + (r.questionsA || []).length + '↔' + (r.questionsB || []).length + '</td><td style="text-align:center;">' + r.evidenceA + '↔' + r.evidenceB + '</td><td style="font-size:12px;">' + escapeHtml([(r.runError ? '서비스 오류: ' + r.runError : ''), (mm ? (r.mismatches || []).map(function(m){ return m.key + '(' + (m.a || '—') + '↔' + (m.b || '—') + ')'; }).join(', ') : ''), ((r.questionsOnlyA || []).length || (r.questionsOnlyB || []).length ? '질문 GAS만 ' + (r.questionsOnlyA || []).join(',') + ' / 서비스만 ' + (r.questionsOnlyB || []).join(',') : ''), (r.unreadFiles && r.unreadFiles.length ? '못 읽음 ' + r.unreadFiles.length : ''), (r.codeVersion ? '판 ' + r.codeVersion : '')].filter(Boolean).join(' · ')) + '</td></tr>';
-              }).join('');
-              out.innerHTML = '<div style="margin-bottom:4px;">' + (doneCount < picked.length ? '⏳ ' + doneCount + '/' + picked.length + ' 비교 중… (' + escapeHtml(picked[doneCount].name) + ')' : '✅ ' + picked.length + '건 비교 끝 — 기록: 총괄관리자\\_가상사건\\_시험서비스_비교_오늘날짜.json') + '</div>' +
-                '<div style="overflow:auto;"><table style="border-collapse:collapse; font-size:12.5px; white-space:nowrap;">' + th + trs + '</table></div>';
-            };
-            t6Busy = true; draw(0);
-            var i = 0;
-            var next = function(){
-              if (i >= picked.length) { t6Busy = false; draw(picked.length); return; }
-              var p = picked[i];
-              callGas('case_proc', { caseId: p.id, step: 'allCompare', noAi: true, by: '세무사님' }).then(function(r){
-                if (!r || r.error) results.push({ name: p.name, error: (r && r.error) || '응답 없음' }); else results.push(Object.assign({ name: p.name }, r));
-              }).catch(function(err){ results.push({ name: p.name, error: (err && err.message) || String(err) }); }).then(function(){ i++; draw(i); next(); });
-            };
-            next();
-          });
-        }).catch(function(err){ bugList.textContent = '가상사건 목록을 못 불러왔습니다: ' + (err && err.message ? err.message : err); });
       });
     })();
     document.getElementById('stBtnOcrTrigger').addEventListener('click', function(){
@@ -778,14 +630,6 @@
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
           + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 🗳 승인 대기 수정안에서 ✅ 승인·반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
-    });
-    // [2026.10.09 토큰0] ✍ 개선요구사항 — 총괄관리자 폴더 개선요구사항.md에 덧붙이고 개선 후보 보고서에 바로 올린다(0원)
-    // [2026.10.28] 어느 화면에서든 같은 창(script.html nxSuggestOpen_ — 오른쪽 아래 ✍·Alt+Q)을 띄운다. 입구만 둘, 동작은 하나.
-    document.getElementById('stBtnImproveReq').addEventListener('click', function(){
-      if (typeof nxSuggestOpen_ !== 'function') return;
-      nxSuggestOpen_().then(function(r){
-        if (r && r.success) bugList.textContent = '✅ 개선요구사항을 적었습니다 — 개선 후보에 올라갔습니다. 바로 처리하려면 AI 탭 🛠 → 지금 실행.';
-      });
     });
     // [2026.10.09 토큰0] 🧾 지침 점검 — 밤에는 "지침 바뀜"만 표시하고, 유료 AI 점검은 이 버튼으로만
     document.getElementById('stBtnSysAudit').addEventListener('click', function(){

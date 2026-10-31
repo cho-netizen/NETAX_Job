@@ -361,7 +361,7 @@ function commReportGap_(input) {
   if (e.urgent && res && res.success) { // 잠금 밖에서(개선요구사항 적기도 잠금을 씀)
     try {
       var add = improve_addRequest_({ text: '🚨 긴급 — 넥스 신고(세액·신고 결과 오류): ' + e.want + (e.blocker ? ' / 막힌 이유: ' + e.blocker : '') + (e.area ? ' / 분야: ' + e.area : '') });
-      try { if (typeof notifyOwner_ === 'function') notifyOwner_('urgent', '넥스 긴급 신고(세액·신고 결과 오류) — ' + e.want.slice(0, 80)); } catch (x) {} // [2026.10.22] 손목·휴대폰으로 바로
+      try { if (typeof notifyOwner_ === 'function') notifyOwner_('digest', '넥스 긴급 신고(세액·신고 결과 오류) — ' + e.want.slice(0, 80)); } catch (x) {} // [2026.10.22] 손목·휴대폰으로 바로 → [2026.10.31] 세무사님 "권장안대로": 개선요구 🚨 긴급(대시보드 오늘 줄)과 겹쳐 '답할 알림'에서 빼고 아침 묶음 문자 한 줄로 — 고칠 사람은 개발 쪽
       res.message += add && add.success ? ' 세액·신고 결과 오류라 개선요구사항에 🚨 긴급으로도 올렸다 — 사용자에게 "긴급으로 올렸다"고 알리고, 고쳐지기 전까지 그 결과는 손으로 검산하라고 말하라.' : ' (긴급 등록은 실패 — 사용자에게 설정 🐞 카드에서 직접 적어 달라고 말하라.)';
     } catch (x) { res.message += ' (긴급 등록 실패: ' + String(x && x.message || x).slice(0, 80) + ')'; }
   }
@@ -419,6 +419,7 @@ function commDevQuestions_() {
   blocks.forEach(function (b) {
     var m = b.match(/^##\s+(Q-[\w-]+)\s*(.*)/);
     if (!m) return;
+    if (/^질문 제목/.test(m[2].trim()) || /아래에 질문을 추가하세요/.test(b)) return; // [2026.10.31] 적는 법 견본 블록을 질문으로 세던 것 — 대시보드 '개발자 질문 1건' 헛숫자
     qs.push({ id: m[1], title: m[2].trim().slice(0, 120), body: b.split('\n').slice(1).join('\n').trim().slice(0, 1500), answer: answers[m[1]] ? answers[m[1]].text : '', answeredAt: answers[m[1]] ? answers[m[1]].at : '' });
   });
   return qs;

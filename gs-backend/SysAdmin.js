@@ -150,13 +150,7 @@ function sysAdminList_() {
     items = items.concat(bms);
   } else warn.push('업무관리자 폴더가 설정되어 있지 않습니다(스크립트 속성 BUSINESS_MANAGER_FOLDER_ID).');
 
-  // 4) 0 NETAX/_확인조치사항.md(Followup.js followupFile_ — 대시보드 카드와 같은 파일)
-  try {
-    var ff = typeof followupFile_ === 'function' ? followupFile_() : null;
-    var root = getNetaxRootFolder_();
-    if (ff) items.push(sysAdminFileInfo_(ff, { key: 'followup', group: '0 NETAX', title: '확인조치사항', where: root ? root.getName() : '', use: SYSADMIN_USES_.followup, editable: false }));
-    else items.push({ key: 'followup', group: '0 NETAX', title: '확인조치사항', name: '_확인조치사항.md', where: root ? root.getName() : '', use: SYSADMIN_USES_.followup, editable: false, exists: false });
-  } catch (e) { warn.push('확인조치사항 파일 확인 중 오류: ' + e.message); }
+  // [2026.10.31] 확인조치사항은 목록에서 뺌 — 세무사님 "권장안대로": 세무사님 결정은 대시보드 📋 확인조치사항 카드 한 곳에서(같은 파일을 두 화면에서 보이던 중복)
 
   return { success: true, items: items, warn: warn, canCreateBm: !!bmFolder };
 }

@@ -688,7 +688,20 @@
     renderChBody_();
   });
 
+  // [2026.10.31] 세무사님 "사건현황 : 상단의 사건장부와는 무슨 차이가 있는 것인이 위치는 맞는 것인지" → "권장안대로": 📒 장부 띠와 📍 사건 현황을 맨 위 한 칸으로 —
+  //  장부 수 → 서류 쪽 사실(GAS) → 🤖 넥스 줄(색으로 갈림). 띠는 공용(script.html)이라, 본문을 다시 그리기 전에 제자리(사건 고르는 줄 아래)로 돌려놓고 그린 뒤 칸 안으로 옮긴다.
+  function chStripPark_(){
+    var st = chBodyEl.querySelector('.nx-ledger-strip');
+    if (st && st._homeRow && st._homeRow.parentNode) st._homeRow.parentNode.insertBefore(st, st._homeRow.nextSibling);
+  }
+  function chStripDock_(){
+    var host = document.getElementById('chGasStripSlot'); if (!host) return;
+    var view = document.getElementById('view-casehandling') || document;
+    var st = Array.prototype.filter.call(view.querySelectorAll('.nx-ledger-strip'), function(s){ return !host.contains(s); })[0];
+    if (st) { host.appendChild(st); st.style.margin = '0 0 6px'; }
+  }
   function renderChBody_(){
+    chStripPark_();
     if (chTypedCase_ !== chSelectedId){ chTyped_ = {}; chTypedCase_ = chSelectedId; } // 다른 사건으로 옮기면 적던 값은 버린다
     if (!chBodyEl._chTypedWired){ chBodyEl._chTypedWired = true; chBodyEl.addEventListener('input', function(e){ var el = e.target; if (el && el.id && /^(chOv_|chEdit)/.test(el.id) && 'value' in el) chTyped_[el.id] = el.value; }); }
     if (!chSelectedId){
@@ -704,6 +717,12 @@
     //  화면을 새로 연 직후 첫 ⚡가 토큰 발급(GAS 1번 ≈ 7초)을 기다리지 않게. 로그인 전이면 아이챗 쪽 함수가 스스로 안 부른다. 결과는 기다리지 않고 실패해도 조용히(⚡ 때 다시 받음).
     try { if (c.폴더ID && typeof window.nxAiCpReaderToken_ === 'function') window.nxAiCpReaderToken_(c.id, { forCase: true }).catch(function(){}); } catch (e) {} // forCase: 다른 사건 토큰이 기억돼 있어도 이 사건으로 한 번 부른다(그때 서버가 이 사건 폴더를 공유)
     chBodyEl.innerHTML =
+      '<div class="card" id="chGasCard">' +
+      '<div id="chGasStripSlot"></div>' +
+      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>📍 사건 현황</b><span style="font-size:12px; color:var(--sub);">GAS가 본 서류 쪽 사실</span></div>' +
+      '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
+      '<div id="chNexLine" style="display:none; margin-top:8px; padding:6px 8px; border-radius:6px; border-left:3px solid #7a3db8; background:rgba(122,61,184,0.08); font-size:12.5px;"></div>' +
+      '</div>' +
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
       '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향 <span style="font-weight:400;">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
@@ -715,11 +734,6 @@
       // [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"·"권장안대로 고치라고"] "GAS 도구" 칸을 걷었다 — 처리개요는 요약(세무사님 "처리개요는 말 그대로 개요잖아 요약이잖아").
       //  도구는 다루는 화면으로: 📖 서류 읽기·📂 읽을 목록 → 증빙확보, 칸 채우기 → 세액계산, 장부·반영 현황표·판단 재료·칸 값 고치기 → 📒 사건 장부 화면. 장부 수는 맨 위 📒 사건 장부 띠가 보인다.
       //  여기엔 GAS가 본 사실(새 서류·읽을 목록·알림·만든 결과물)만, 넥스가 남긴 말은 그 아래 따로 🤖 넥스 줄(10-22 "AI와 GAS가 소통하는 것은 나와 소통하는 것과 가시적으로 구분되어야")
-      '<div class="card" id="chGasCard">' +
-      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>📍 사건 현황</b><span style="font-size:12px; color:var(--sub);">GAS가 본 사실 — 할 일 순서는 정하지 않습니다</span></div>' +
-      '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
-      '<div id="chNexLine" style="display:none; margin-top:8px; padding:6px 8px; border-radius:6px; border-left:3px solid #7a3db8; background:rgba(122,61,184,0.08); font-size:12.5px;"></div>' +
-      '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
       '<div class="card">' +
       '<div id="chMyPortalBody">불러오는 중…</div>' +
@@ -879,6 +893,7 @@
       if (typeof goToLawSearch_ === 'function') goToLawSearch_(c.id);
     });
     chBindGasCard_(c); // [2026.10.31] 사건 현황 칸·🤖 넥스 줄
+    chStripDock_(); setTimeout(chStripDock_, 800); // 📒 장부 띠를 그 칸 맨 위로(띠가 늦게 붙는 첫 열기도)
     document.getElementById('chTaxCalcOpenBtn').addEventListener('click', function(){
       if (typeof goToTaxCalc_ === 'function') goToTaxCalc_(c.id);
     });
@@ -1163,7 +1178,7 @@
         var parts = [];
         if (r.계산 && r.계산.세액 != null) parts.push('세액 <b>' + Number(r.계산.세액).toLocaleString('ko-KR') + '원</b>(' + esc(r.계산.날짜) + ')');
         if (r.서식 && r.서식.파일) parts.push('서식 PDF' + (r.서식.서식수 ? ' ' + r.서식.서식수 + '개' : '') + ' <a href="' + drive(r.서식.파일) + '" target="_blank" rel="noopener">[열기]</a>');
-        if (r.검토서 && r.검토서.파일) parts.push('종합검토서 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a>' + btn('writer', '✍ 작성관리에서 열기'));
+        if (r.검토서 && r.검토서.파일) parts.push('종합검토서 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a>' + btn('writer', '✍ 문서작성에서 열기'));
         if (parts.length) h += '<div style="margin-top:4px;">만든 것: ' + parts.join(' · ') + '</div>';
         // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태
         var w = r.서류변동 || null;

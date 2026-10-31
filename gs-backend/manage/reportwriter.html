@@ -324,7 +324,7 @@
       <button id="dlHtml">HTML로 다운로드</button>
       <button id="dlPdf" title="화면에 보이는 그대로 PDF 파일로 바로 저장(인쇄 대화상자 없이) — 여백 없이, 링크로 화면에서 볼 때용">보기용 PDF(여백 없음)</button>
       <button id="dlPrintPdf" title="세무서 제출·인쇄용 — A4 여백(위 30·좌우 25·아래 25mm)을 두고, 글줄이 잘리지 않게 쪽을 나눠 PDF로 바로 저장">인쇄용 PDF(A4 여백)</button>
-      <button id="dlPrint">Print / PDF</button>
+      <button id="dlPrint">인쇄 / PDF</button>
     </div>
   </div>
   <span id="saveState"></span>
@@ -3166,7 +3166,7 @@ function rwAiOpenDoc_(){
 }
 function rwAiApplyEdit_(id, content){
   const cur = rwAiOpenDoc_();
-  if (!cur || cur.id !== id) return { error: '작성관리 편집창에 그 문서가 열려 있지 않습니다 — 그 문서를 다시 연 뒤 적용하세요.' };
+  if (!cur || cur.id !== id) return { error: '문서작성 편집창에 그 문서가 열려 있지 않습니다 — 그 문서를 다시 연 뒤 적용하세요.' };
   const d = getSelected();
   const mdInput = document.getElementById('mdInput');
   const previous = mdInput.value;

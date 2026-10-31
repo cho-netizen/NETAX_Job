@@ -104,7 +104,7 @@
       <div id="docsTextEditBar" style="display:none; margin-bottom:10px; gap:8px;">
         <button type="button" id="btnDocsTextEdit" class="ghost-btn">✏ 편집</button>
         <!-- [2026.10.20] 세무사님 승인("추천대로 하마") — .md는 작성관리 편집창에서 바로 열기(goToReportWriter_ {fileId}, 처리개요와 같은 경로) -->
-        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">✍ 작성관리에서 열기</button>
+        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">✍ 문서작성에서 열기</button>
         <button type="button" id="btnDocsTextSave" class="save-btn" style="display:none;">💾 저장</button>
         <button type="button" id="btnDocsTextCancel" class="ghost-btn" style="display:none;">취소</button>
         <span id="docsTextSaveStatus" style="font-size:11.5px; color:var(--sub);"></span>
@@ -338,7 +338,7 @@
       <div id="docsDiagramPreview" style="flex:1 1 260px; min-height:340px; border:1px solid var(--line); border-radius:8px; padding:8px; overflow:auto; background:#fff;"></div>
     </div>
     <div class="scan-row" style="padding:0 16px 16px; justify-content:flex-end;">
-      <button type="button" id="btnDocsDiagramCopy" class="ghost-btn">📋 mermaid 코드 복사(보고서용)</button>
+      <button type="button" id="btnDocsDiagramCopy" class="ghost-btn">📋 그림 코드 복사(보고서용)</button>
       <button type="button" id="btnDocsDiagramSave" class="save-btn">저장</button>
     </div>
   </div>
@@ -1578,7 +1578,7 @@
       { label: '🗺 관계도', onClick: docsOpenDiagramModal_ },
       { sep: true },
       { label: '🔍 파일 검색', onClick: docsOpenSearchModal_ },
-      { label: '🔗 제출현황', onClick: function(){
+      { label: '📍 처리개요로', onClick: function(){ // [2026.10.31] 이름이 하는 일(처리개요 화면으로 가기)과 달랐음
         if (!docsSelectedCaseId_){ toast('먼저 사건을 선택해주세요(위 "사건" 드롭다운).', 'warning'); return; }
         if (typeof goToView_ === 'function') goToView_('casehandling');
         if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);

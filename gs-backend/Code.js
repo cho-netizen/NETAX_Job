@@ -4014,10 +4014,10 @@ function job_buildProposal_(input) {
     const dirs = Array.isArray(params.dirs) ? params.dirs : (params.dirs ? [params.dirs] : []), files = Array.isArray(params.files) ? params.files : (params.files ? [params.files] : []);
     const on = Array.isArray(params.on) ? params.on : (params.on ? [params.on] : []), off = Array.isArray(params.off) ? params.off : (params.off ? [params.off] : []); // [2026.10.28 읽을 대상 ④] 파일 단위 켜기·끄기(체크 목록)
     const ids = Array.isArray(params.ids) ? params.ids : (params.ids ? [params.ids] : []); // [2026.10.28] 목록을 처음 정할 때 — 켤 파일 전부(그 밖은 끔). 넥스가 case_files/file_read로 읽고 판단한 뒤
-    if (ids.length) return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — GAS가 읽을 파일 목록을 ' + ids.length + '개로 정하기(넥스가 폴더를 읽고 고른 것: ' + ids.slice(0, 6).join(', ') + (ids.length > 6 ? ' 외' : '') + ') — 그 밖의 파일은 GAS가 읽지 않습니다' + ' ([실행] 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 목록으로 읽습니다)', gasAction: spec.gas, payload: { caseId: c.id, step: 'readScope', mode: 'list', ids: ids, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
+    if (ids.length) return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — GAS가 읽을 파일 목록을 ' + ids.length + '개로 정하기(넥스가 폴더를 읽고 고른 것: ' + ids.slice(0, 6).join(', ') + (ids.length > 6 ? ' 외' : '') + ') — 그 밖의 파일은 GAS가 읽지 않습니다' + ' ([실행] 뒤 📖 서류 읽기를 다시 돌리면 그 목록으로 읽습니다)', gasAction: spec.gas, payload: { caseId: c.id, step: 'readScope', mode: 'list', ids: ids, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
     if (!params.clear && !dirs.length && !files.length && !on.length && !off.length) return { error: 'ids(켤 파일 이름 전부), on/off(켤·끌 파일 이름·폴더 이름), dirs(폴더 이름), files(파일 이름) 중 하나, 아니면 clear:true.' };
     const listMode = on.length || off.length;
-    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + (params.clear ? '읽을 범위를 풀어 사건 폴더 전체를 읽기' : listMode ? '읽을 파일 목록에서 ' + (on.length ? '켬: ' + on.join(', ') : '') + (on.length && off.length ? ' / ' : '') + (off.length ? '끔: ' + off.join(', ') : '') + ' — 목록에 켜진 파일만 읽습니다' : '서류 읽기·칸 채우기를 폴더 ' + dirs.join(', ') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로만 — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다') + ' ([실행] 뒤 "⚡ GAS로 처리"를 다시 돌리면 그 목록으로 읽습니다)', gasAction: spec.gas, payload: listMode ? { caseId: c.id, step: 'readScope', on: on, off: off, note: String(params.why || '').slice(0, 120), by: '넥스' } : { caseId: c.id, step: 'readScope', dirs: dirs, files: files, clear: !!params.clear, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + (params.clear ? '읽을 범위를 풀어 사건 폴더 전체를 읽기' : listMode ? '읽을 파일 목록에서 ' + (on.length ? '켬: ' + on.join(', ') : '') + (on.length && off.length ? ' / ' : '') + (off.length ? '끔: ' + off.join(', ') : '') + ' — 목록에 켜진 파일만 읽습니다' : '서류 읽기·칸 채우기를 폴더 ' + dirs.join(', ') + (files.length ? ' · 파일 ' + files.length + '개' : '') + '로만 — 범위 밖 서류는 읽지도 후보로 쓰지도 않습니다') + ' ([실행] 뒤 📖 서류 읽기를 다시 돌리면 그 목록으로 읽습니다)', gasAction: spec.gas, payload: listMode ? { caseId: c.id, step: 'readScope', on: on, off: off, note: String(params.why || '').slice(0, 120), by: '넥스' } : { caseId: c.id, step: 'readScope', dirs: dirs, files: files, clear: !!params.clear, note: String(params.why || '').slice(0, 120), by: '넥스' }, kind: input.action, caseId: c.id } };
   }
   // [2026.10.27 경우별 저장] 경우(안) 계산 — 세목·입력·이름을 받아 서버 엔진으로 계산해 따로 저장(기본 저장본·세무사님 값은 그대로)
   if (input.action === 'calc_scenario') {
@@ -17419,7 +17419,7 @@ function todoList_() {
   const open = cases.filter(function (c) { return c.상태 !== '완료'; });
   const pick = function (c) { return { caseId: c.id, 사건: String(c.사건명 || c.고객명 || ''), 법정일: String(c.법정일 || '') }; };
   const out = { at: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), 마감: [], 지남: [], 오늘예약: [], 넥스질문: [], 고객서류: [], 확인요청: 0, 긴급요청: 0, 카카오오류: 0, 알림대기: [] };
-  open.filter(function (c) { return c.상태 !== '보류' && c.법정일; }).sort(function (a, b) { return String(a.법정일).localeCompare(String(b.법정일)); }).forEach(function (c) {
+  open.filter(function (c) { return c.상태 !== '보류' && c.법정일 && !/상담|자문/.test(String(c.업무유형 || '')); }).sort(function (a, b) { return String(a.법정일).localeCompare(String(b.법정일)); }).forEach(function (c) { // [2026.10.31] 세무사님 "권장안대로" — 상담·자문은 법정 신고기한이 없어 '기한 지남·마감'에서 뺀다(그 날짜는 약속일)
     if (c.법정일 < today) out.지남.push(pick(c)); else if (c.법정일 <= in3) out.마감.push(pick(c));
   });
   try {
@@ -17444,7 +17444,7 @@ function todoList_() {
   try { out.고객서류 = custUploadsRecent_(3).slice(0, 10); } catch (e) {}
   try { const ra = commRequestsAll_(); out.확인요청 = ra.open.filter(function (r) { return r.status === '반영됨'; }).length; out.긴급요청 = ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length; } catch (e) {}
   try { out.카카오오류 = kakaoErrorsRecent_(3).length; } catch (e) {}
-  try { out.알림대기 = notifyLog_().filter(function (x) { return x.status === '대기'; }).slice(0, 10); } catch (e) {}
+  try { out.알림대기 = notifyLog_().filter(function (x) { return x.status === '대기' && !/^넥스 긴급 신고/.test(String(x.text || '')); }).slice(0, 10); } catch (e) {} // [2026.10.31] 넥스 기능 부족 신고는 개선요구 🚨(긴급 요청 칩)과 겹쳐 뺌
   return out;
 }
 // ⑤ 알림에서 바로 답하기 — 급한 알림 문자 끝에 job.netax.kr/m/?a=번호, 누르면 확인/보류/나중에
@@ -18054,8 +18054,8 @@ function handleGetNightlyStatus(body) {
       const r = ir.report;
       items.push({
         label: '🛠 개선 후보 (AI 비용 0, 최근 7일)',
-        ok: !r.candidateCount,
-        failLabel: '개선 후보 ' + r.candidateCount + '건',
+        ok: !r.candidateCount && !r.guideWorkCount,
+        failLabel: '개선 후보 ' + r.candidateCount + '건' + (r.guideWorkCount ? ' · 지침 정비 ' + r.guideWorkCount : ''),
         date: String(r.generatedAt || '').slice(0, 10),
         message: r.candidateCount ? (r.headline || []).slice(0, 4).join('\n') + '\n→ AI 탭 🛠(웹 Claude Code)가 고쳐 깃허브에 올림, 매주 월요일 아침 자동 — 설정 🐞 카드 🗳 승인 대기 수정안에서 승인·반영' : '최근 7일 개선할 거리 없음'
       });
@@ -41894,7 +41894,7 @@ function buildImprovementReport_() {
     if (ak) {
       report.answerKey = ak;
       ak.fails.forEach(function (f) { headline.unshift('🧪 정답지 점검 불일치(사건 ' + f.caseId + ') — ' + (f.error || ('다른 칸 ' + f.fields.length + '·필요 없는 질문 ' + f.extra.length + '·빠진 질문 ' + f.missing))); });
-      report.candidateCount += ak.fails.length;
+      // [2026.10.31] 셈에서 뺌 — 정답지 맞추기는 10-29 세무사님 결정으로 버린 잣대("정답지 세액 맞추기를 잣대로 삼지 않는다"), 결과도 10-16에 멈춘 옛 기록
       report.guide.push('answerKey(🧪 정답지 점검): 실사건 정답지와 사건처리(서버 단계+화면 엔진) 결과의 불일치. 최우선 — 총괄관리자/_정답지점검/_정답지점검결과.json의 rows(칸·정답·도구값·출처)와 extra(정답지에 없는 질문)를 보고 서류 규칙·사건처리 단계를 고친다. 고객 정보(이름·주소·금액)는 PR·커밋에 쓰지 말 것(일반화).');
     }
   } catch (e) { report.answerKeyError = String(e && e.message || e).slice(0, 200); }
@@ -41949,7 +41949,7 @@ function buildImprovementReport_() {
   // [2026.10.20] 📚 지침·템플릿 정비(KnowHow.js, 토큰 0) — 밤 판정·현황판·재료·승인 대기·반려 사유 → 주간 루틴이 신규·수정 초안·폐기 제안 PR
   try {
     var kh = typeof knhForReport_ === 'function' ? knhForReport_() : null;
-    if (kh) { report.knowhow = kh.data; kh.head.forEach(function (h) { headline.push(h); }); report.candidateCount += kh.count; report.guide.push(kh.guide); }
+    if (kh) { report.knowhow = kh.data; kh.head.forEach(function (h) { headline.push(h); }); report.guideWorkCount = kh.count; report.guide.push(kh.guide); } // [2026.10.31] 지침 [확인 필요]·초안은 코드 고칠 거리가 아니라 "지침 정비 N"으로 따로(대시보드)
   } catch (e) { report.knowhowError = String(e && e.message || e).slice(0, 200); }
   // [2026.10.22] 세무사님 "개선하는데 고객정보가 왜 들어가야 하는지도 이해가 되지 않는다" — 저장 전에 보고서 전체에서 고객 이름·주민번호·전화·계좌를 가린다
   //  안내문(guide·principles)은 우리가 쓴 글이라 가리지 않는다(짧은 이름이 낱말과 겹쳐 안내문이 깨지지 않게)

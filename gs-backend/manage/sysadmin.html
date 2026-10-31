@@ -79,7 +79,7 @@
     if (!it.exists) h += '<div class="sa-missing">드라이브에서 이 파일을 찾지 못했습니다.</div>';
     else {
       h += '<div class="sa-btns"><button type="button" class="ghost-btn" data-sa-act="view">👁 보기</button>';
-      if (it.editable) h += '<button type="button" class="ghost-btn" data-sa-act="edit">✏ 작성관리에서 편집</button>';
+      if (it.editable) h += '<button type="button" class="ghost-btn" data-sa-act="edit">✏ 문서작성에서 편집</button>';
       else if (it.key === 'improve') h += '<button type="button" class="ghost-btn" data-sa-act="improve">✍ 개선요구사항 적기로</button>';
       else if (it.key === 'followup') h += '<button type="button" class="ghost-btn" data-sa-act="followup">📋 대시보드 카드에서 고치기</button>';
       if (it.url) h += '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>';
@@ -186,7 +186,7 @@
   }
 
   function saOpenEditor_(fileId){
-    if (typeof goToReportWriter_ !== 'function'){ saToast_('작성관리 화면을 찾지 못했습니다.'); return; }
+    if (typeof goToReportWriter_ !== 'function'){ saToast_('문서작성 화면을 찾지 못했습니다.'); return; }
     var ov = document.getElementById('saViewOverlay'); if (ov) ov.remove();
     goToReportWriter_('', { fileId: fileId, noDocTypeAsk: true });
   }
@@ -199,7 +199,7 @@
     ov.innerHTML = '<div class="modal-panel sa-view-panel">'
       + '<div class="modal-head"><span>' + saEsc_(it.title) + ' — ' + saEsc_(it.name || '') + '</span><span class="modal-close" data-sa-v="close" title="닫기">✕</span></div>'
       + '<div class="sa-view-bar">'
-      + (it.editable ? '<button type="button" class="save-btn" data-sa-v="edit">✏ 작성관리에서 편집</button>' : '')
+      + (it.editable ? '<button type="button" class="save-btn" data-sa-v="edit">✏ 문서작성에서 편집</button>' : '')
       + (it.url ? '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>' : '')
       + '<span class="sa-view-note">' + (it.editable ? '편집창에서 💾 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.' : (it.key === 'improve' ? '보기 전용 — 새 요청은 🐞 카드의 ✍ 개선요구사항 적기로.' : '보기 전용 — 고치기는 대시보드 📋 확인조치사항 카드에서.')) + '</span>'
       + '</div>'
@@ -326,7 +326,7 @@
     ov.className = 'modal-overlay';
     ov.innerHTML = '<div class="modal-panel sa-view-panel">'
       + '<div class="modal-head"><span>' + saEsc_(name) + (line ? ' — ' + line + '줄' : '') + '</span><span class="modal-close" data-sa-v="close" title="닫기">✕</span></div>'
-      + '<div class="sa-view-bar"><button type="button" class="save-btn" data-sa-v="edit">✏ 작성관리에서 편집</button>'
+      + '<div class="sa-view-bar"><button type="button" class="save-btn" data-sa-v="edit">✏ 문서작성에서 편집</button>'
       + '<span class="sa-view-note">점검이 짚은 줄을 노랗게 표시했습니다. 고친 뒤 🔎 지금 규칙 점검(0원)으로 다시 확인하세요.</span></div>'
       + '<div class="sa-view-body" id="saViewBody"><div class="settings-tool-desc" style="padding:14px;">불러오는 중…</div></div></div>';
     document.body.appendChild(ov);
@@ -377,7 +377,7 @@
         if (!first || !first.trim()) return;
         callGas('sysadmin_new_bm', { name: name.trim(), firstLine: first.trim() }).then(function(res){
           if (!res || res.error){ saToast_('만들지 못했습니다: ' + (res && res.error || '응답 없음')); return; }
-          saToast_('「' + res.name + '」을 만들었습니다 — 작성관리에서 내용을 채우고 💾 저장하세요.');
+          saToast_('「' + res.name + '」을 만들었습니다 — 문서작성에서 내용을 채우고 💾 저장하세요.');
           saState_.loadedAt = 0;
           saOpenEditor_(res.fileId);
         }).catch(function(err){ saToast_('만들지 못했습니다: ' + (err && err.message || String(err))); });
@@ -397,7 +397,7 @@
     if (!it) return;
     if (act === 'view') saView_(it);
     else if (act === 'edit') saOpenEditor_(it.fileId);
-    else if (act === 'improve') { var ib = document.getElementById('stBtnImproveReq'); if (ib) { ib.scrollIntoView({ block: 'center' }); ib.click(); } }
+    else if (act === 'improve') { if (typeof nxSuggestOpen_ === 'function') nxSuggestOpen_(); } // [2026.10.31] 설정의 ✍ 개선요구 적기 단추는 지움 — 작은 창으로 바로
     else if (act === 'followup') { if (typeof goToView_ === 'function') goToView_('dashboard'); }
   });
 

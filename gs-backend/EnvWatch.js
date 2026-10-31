@@ -251,9 +251,9 @@ function envCalendar_() {
     if (ly < y && out.every(function (o) { return !/건물기준시가/.test(o.항목); })) out.push({ 시기: '상시', 항목: '건물기준시가 잔가율 표가 ' + ly + '년까지 — ' + y + '년 고시 반영 필요', 코드확인: '' });
   } catch (e) {}
   try {
-    if (ymd > '2026-06-30' && typeof lsConvRate_ === 'function') {
+    if (ymd > '2026-11-25' && typeof lsConvRate_ === 'function') {
       var t = lsConvRate_(ymd);
-      if (t && t.표밖) out.push({ 시기: '상시', 항목: '전월세 전환율 기준금리 표(LS_BOK_RATES_) 확인 범위가 지남 — 최근 기준금리 변경 반영 필요', 코드확인: '표 확인 범위 2026-06-30까지' });
+      if (t && t.표밖) out.push({ 시기: '상시', 항목: '전월세 전환율 기준금리 표(LS_BOK_RATES_) 확인 범위가 지남 — 최근 기준금리 변경 반영 필요', 코드확인: '표 확인 범위 2026-11-25까지(한국은행 기준금리 추이 2026.8.27. 3.00%까지 반영)' });
     }
   } catch (e) {}
   return out;
@@ -519,8 +519,11 @@ function envWatchForReport_() {
   if (pc) head.push('📜 예규·판례·고시 신착 ' + pc + '건(주간)');
   var cc = r.capabilities && r.capabilities.items ? r.capabilities.items.length : 0;
   if (cc) head.push('🛰️ 새로 가능해진 기술 후보 ' + cc + '건(주간)');
+  // [2026.10.31] 세무사님 "개선후보가 245건이라니 맞는 것인가?" → "권장안대로": 셈에는 고칠 거리만 — 그림 판독 진행 줄(진척 숫자)과
+  //  바깥 서버 일시 장애(5xx 응답·연결 끊김, 다음 밤에 저절로 풀림)는 보여 주기만 하고 세지 않는다
+  var notWork = head.filter(function (h) { return /^👁 /.test(h) || (/^🔧 /.test(h) && /응답 (5\d\d|없음)|Bad Gateway|Service Unavailable|timed? ?out|시간 초과/i.test(h)); }).length;
   return { at: r.at, head: head, laws: r.laws, forms: r.forms, refs: r.refs, lawVision: r.lawVision, precedents: r.precedents, calendar: r.calendar, tech: r.tech, capabilities: r.capabilities,
-    count: head.length };
+    count: head.length - notWork };
 }
 // 새벽 4시 전용 실행(시간 트리거) — 감시 후 개선 후보 보고서를 다시 만든다(2시 묶음이 만든 보고서에 이 결과를 덧붙이려고)
 function runEnvWatchNightly() {

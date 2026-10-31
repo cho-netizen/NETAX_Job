@@ -134,7 +134,7 @@
         + (f.tags && f.tags.length ? ' <span class="kh-m">(' + esc_(f.tags.join(' · ')) + ')</span>' : '')
         + '<div class="kh-m">고친 날 ' + esc_(String(f.modified || '').slice(0, 10)) + ' · ' + (f.kind === '지침' ? '읽힘 ' : '쓰임 ') + Number(f.uses && f.uses.n || 0) + '회' + (f.uses && f.uses.last ? '(마지막 ' + esc_(f.uses.last) + ')' : '') + '</div>';
       if (f.reasons && f.reasons.length) html += '<ul>' + f.reasons.map(function(x){ return '<li>' + (x.type === '폐기' ? '🗑 ' : x.type === '수정' ? '✏ ' : x.type === '보완' ? '🔍 ' : 'ℹ ') + esc_(x.why) + (x.detail && x.detail.length && x.type === '수정' && /자기점검/.test(x.why) ? '<div class="kh-m">' + x.detail.map(esc_).join('<br>') + '</div>' : '') + '</li>'; }).join('') + '</ul>';
-      if (f.fileId) html += '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="viewfile" data-i="' + idx + '">👁 보기</button><button type="button" class="ghost-btn" data-kh="editfile" data-i="' + idx + '">✏ 작성관리에서 편집</button></div>';
+      if (f.fileId) html += '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="viewfile" data-i="' + idx + '">👁 보기</button><button type="button" class="ghost-btn" data-kh="editfile" data-i="' + idx + '">✏ 문서작성에서 편집</button></div>';
       html += '</div>';
     });
     html += '</div></details>';
@@ -229,7 +229,7 @@
       if (d.curExists) h += '<button type="button" class="ghost-btn kh-tab" data-t="cur">📘 지금 파일</button>';
       h += '<span style="flex:1 1 20px;"></span>';
       if (isDel) h += '<button type="button" class="save-btn" data-khv="retire">✅ 폐기(「_폐기」로 옮김)</button><button type="button" class="ghost-btn" data-khv="keep">✖ 유지</button>';
-      else h += '<button type="button" class="save-btn" data-khv="adopt">✅ 채택</button>' + (d.fileId ? '<button type="button" class="ghost-btn" data-khv="edit">✏ 작성관리에서 고쳐서 채택</button>' : '') + '<button type="button" class="ghost-btn" data-khv="reject">✖ 반려</button>';
+      else h += '<button type="button" class="save-btn" data-khv="adopt">✅ 채택</button>' + (d.fileId ? '<button type="button" class="ghost-btn" data-khv="edit">✏ 문서작성에서 고쳐서 채택</button>' : '') + '<button type="button" class="ghost-btn" data-khv="reject">✖ 반려</button>';
       document.getElementById('khVBar').innerHTML = h;
       var note = esc_(d.이유 || '') + (d.baseChanged ? ' <b style="color:var(--danger);">⚠ 이 초안을 만든 뒤 지금 파일이 바뀌었습니다 — 차이를 꼭 보고 채택하세요(채택하면 지금 파일이 초안으로 바뀌고 지금 판은 「_이전판」에).</b>' : '')
         + (d.propMissing ? ' <b style="color:var(--danger);">⚠ 제안 파일을 찾지 못했습니다.</b>' : '')
@@ -261,7 +261,7 @@
       else if (a === 'adopt') { var edited = false; try { edited = !!localStorage.getItem('khEdited_' + p.id); } catch (er) {} decide('adopt', { edited: edited }); }
       else if (a === 'reject' || a === 'retire' || a === 'keep') decide(a);
       else if (a === 'edit') {
-        if (typeof goToReportWriter_ !== 'function') { toast_('작성관리 화면을 찾지 못했습니다.'); return; }
+        if (typeof goToReportWriter_ !== 'function') { toast_('문서작성 화면을 찾지 못했습니다.'); return; }
         try { localStorage.setItem('khEdited_' + p.id, '1'); } catch (er) {}
         close();
         goToReportWriter_('', { fileId: detail.fileId, noDocTypeAsk: true });

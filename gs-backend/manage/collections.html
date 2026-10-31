@@ -217,7 +217,8 @@
     // 몇 건인지 항상 같이 보여준다 — "다운자료가 안 보인다"는 신고가 오면 이 숫자만으로도
     // "애초에 이 화면이 아는 다운자료가 0건인지" vs "있는데 화면에 안 뜨는지"를 바로 구분한다.
     var totalDownloadCount = colLogsCache_.filter(function(l){ return l.승인번호; }).length;
-    summaryEl.textContent = activeLogs.length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '') + ' · 전체 다운자료 ' + totalDownloadCount + '건';
+    summaryEl.textContent = activeLogs.length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
+    summaryEl.title = '전체 다운자료(승인번호 있는 기록) ' + totalDownloadCount + '건 — 필터와 상관없이 센 수'; // [2026.10.31] 점검용 숫자는 줄에서 빼 마우스를 올리면 보이게
     colList.innerHTML = '';
     logs.forEach(function(l){
       var row = document.createElement('div');

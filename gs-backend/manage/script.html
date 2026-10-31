@@ -766,7 +766,7 @@
       nxPlaceSaveSoon_(); // [2026.10.22] 이어 보기 — 이 기기에서 보는 곳을 기억
     };
     if (needsUnsavedConfirm_){
-      nxConfirm_('작성관리에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){
+      nxConfirm_('문서작성에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){
         if (ok) proceedShowView_();
       });
     } else {
@@ -781,7 +781,15 @@
     if (!id){ id = 'd' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('nxDeviceId', id); } catch (e) {} }
     return id;
   }
-  function nxDeviceLabel_(){ return window.nxCover ? '휴대폰 말하기' : ({ phone: '휴대폰', tablet: '태블릿', pc: 'PC' })[window.nxLayout] || '다른 기기'; }
+  // [2026.10.31] 세무사님 "태블릿에서 본 적 없는데 무슨 말인가?" → "권장안대로": 화면 너비로 기기를 짐작하던 것(좁힌 PC 창·Claude 시험 창도 '태블릿')을
+  //  기기마다 한 번 붙인 이름으로. 이름이 없으면 기기 종류(브라우저가 알려 주는 것)로만 짐작하고, 띠에서 바로 이름을 붙일 수 있다.
+  function nxDeviceName_(){ try { return localStorage.getItem('nxDeviceName') || ''; } catch (e) { return ''; } }
+  function nxDeviceLabel_(){
+    var n = nxDeviceName_(); if (n) return n;
+    var ua = navigator.userAgent || '';
+    var kind = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? '태블릿' : /Mobi|iPhone|Android/i.test(ua) ? '휴대폰' : 'PC';
+    return (window.nxCover ? '휴대폰 말하기' : kind) + '(이름 없는 기기)';
+  }
   var nxPlaceTimer_ = null;
   function nxPlaceSaveSoon_(){
     clearTimeout(nxPlaceTimer_);
@@ -804,9 +812,18 @@
       bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px;';
       var mins = Math.max(1, Math.round((Date.now() - p.at) / 60000));
       bar.innerHTML = '<span>' + escapeHtml(parts[1] || '다른 기기') + '에서 ' + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
-        + '<button type="button" class="save-btn" data-place="go" style="padding:3px 10px;">이어 열기</button><button type="button" class="ghost-btn" data-place="x" style="padding:3px 10px;">닫기</button>';
+        + '<button type="button" class="save-btn" data-place="go" style="padding:3px 10px;">이어 열기</button><button type="button" class="ghost-btn" data-place="x" style="padding:3px 10px;">닫기</button>'
+        + '<button type="button" class="ghost-btn" data-place="name" style="padding:3px 10px;" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">🏷 이 기기 이름' + (nxDeviceName_() ? ': ' + escapeHtml(nxDeviceName_()) : ' 정하기') + '</button>';
       bar.addEventListener('click', function(e){
-        var b = e.target.closest('[data-place]'); if (!b) return; bar.remove();
+        var b = e.target.closest('[data-place]'); if (!b) return;
+        if (b.getAttribute('data-place') === 'name'){
+          nxPrompt_('이 기기의 이름을 적어 주세요(예: 사무실 PC, 집 노트북, 갤럭시탭).', nxDeviceName_()).then(function(v){
+            v = String(v || '').trim().slice(0, 20); if (!v) return;
+            try { localStorage.setItem('nxDeviceName', v); } catch (er) {}
+            b.textContent = '🏷 이 기기 이름: ' + v; toast('이 기기 이름을 「' + v + '」로 정했습니다.');
+          }); return;
+        }
+        bar.remove();
         if (b.getAttribute('data-place') !== 'go') return;
         if (p.convId && typeof nxAiOpenConv_ === 'function'){ goToView_('ai'); setTimeout(function(){ nxAiOpenConv_(p.convId); }, 300); return; }
         if (p.caseId && typeof nxCaseJump_ === 'function'){ nxCaseJump_(p.view, p.caseId); return; }
@@ -1046,10 +1063,13 @@
     var row = afterEl.parentNode; if (!row || !row.parentNode) return;
     var nx = row.nextElementSibling;
     if (nx && nx.classList && nx.classList.contains('nx-ledger-strip')) { nx._getCaseId = getCaseId; nx._view = fromView; return; }
+    // [2026.10.31] 처리개요에선 띠를 📍 사건 현황 칸 맨 위로 옮겨 한 칸으로 보인다 — 옮겨 간 띠가 있으면 새로 만들지 않는다
+    var same = NX_LG_.strips.filter(function(s){ return s._homeRow === row && document.body.contains(s); })[0];
+    if (same) { same._getCaseId = getCaseId; same._view = fromView; return; }
     var el = document.createElement('div');
     el.className = 'nx-ledger-strip';
     el.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 4px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; background:var(--card, transparent);';
-    el._getCaseId = getCaseId; el._view = fromView; el._shownId = null;
+    el._getCaseId = getCaseId; el._view = fromView; el._shownId = null; el._homeRow = row;
     el.innerHTML = '<b>📒 사건 장부</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
     row.parentNode.insertBefore(el, row.nextSibling);
     NX_LG_.strips.push(el);
