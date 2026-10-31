@@ -22,7 +22,8 @@ var SYS_AUDIT_RETIRED_ = [
 ];
 // 살아 있는 netax.kr 주소(코드 안에 실제로 쓰이는 것). 여기 없는 *.netax.kr은 "모르는 주소"로 표시한다.
 var SYS_AUDIT_HISTORY_RE_ = /예전|옛\s|옛날|은퇴|폐기|퇴역|시절|대신|더 이상|쓰지 말|쓰지 않|금지|없어졌|바뀌었|현행화/;
-var SYS_AUDIT_LIVE_HOSTS_ = ['job.netax.kr', 'work.netax.kr', 'my.netax.kr', 'rpt.netax.kr', 'desk.netax.kr', 'card.netax.kr', 'www.netax.kr', 'netax.kr'];
+// [2026.10.31] dev.netax.kr = work 스테이징(NETAX_Work-staging CNAME, work와 함께 예비) — 빠뜨려 "모르는 주소"로 잡혔다
+var SYS_AUDIT_LIVE_HOSTS_ = ['job.netax.kr', 'work.netax.kr', 'dev.netax.kr', 'my.netax.kr', 'rpt.netax.kr', 'desk.netax.kr', 'card.netax.kr', 'www.netax.kr', 'netax.kr'];
 // 도구로 보이는 snake_case 이름의 앞말(백틱 밖에서도 도구 이름으로 본다)
 var SYS_AUDIT_TOOL_VERBS_ = /^(calculate|lookup|list|read|save|get|search|check|apply|create|update|delete|load|present|browse|add|send|export|register|manage|verify|explain|allocate|report|propose|audit|remember|job|case|docs|doc|find|set|write|run|edit|open|upload|move)_/;
 // 법령 이름 → 정비본 색인 키(공백 없는 이름). 시행령·시행규칙은 뒤에 붙인다.
@@ -119,7 +120,7 @@ function sysAuditRules_(input) {
       var rseen = {};
       refs.forEach(function (r) {
         r = r.replace(/\.(md|txt)$/i, '');
-        if (rseen[r] || !/[가-힣]/.test(r) || /[○<>{}]|OO/.test(r)) return; rseen[r] = 1;
+        if (rseen[r] || !/[가-힣]/.test(r) || /[○<>{}*]|OO/.test(r)) return; rseen[r] = 1; // "서류_*"처럼 *는 여러 지침을 묶어 부르는 말
         out.totals.guideRefs++;
         if (!bmSet[r]) add(ln, '없는 지침', '문제', '가리키는 지침 "' + r + '"이 업무관리자 폴더에 없음 — AI가 불러올 수 없음', '');
       });
@@ -152,8 +153,9 @@ function sysAuditRules_(input) {
       });
 
       // 조문 표기 형식 — "제N조"보다 "법률명 §N"(작성관리 자동 링크·체크리스트 표기)
-      if (!inCode && f.role === 'bm') {
-        var km = line.match(/제\s*\d+\s*조(?:\s*의\s*\d+)?/);
+      // [2026.10.31] 법령 원문 인용(> 원문 줄, 따옴표 안)은 법 글자 그대로라 "제N조"가 맞다 — 빼고 본다(주의 53건 대부분이 이것이었음)
+      if (!inCode && f.role === 'bm' && !/^\s*>/.test(raw)) {
+        var km = line.replace(/"[^"]*"|“[^”]*”|「[^」]*」\s*제\s*\d+\s*조(?:\s*의\s*\d+)?/g, ' ').match(/제\s*\d+\s*조(?:\s*의\s*\d+)?/);
         if (km && !/§/.test(line) && !/부칙|대통령령\s*제|법률\s*제|시행령\s*제|규칙\s*제/.test(line.slice(0, line.indexOf(km[0])))) add(ln, '형식', '주의', '조문 표기 "' + km[0] + '" — "법률명 §조번호" 형식으로', '');
       }
 
@@ -162,6 +164,8 @@ function sysAuditRules_(input) {
         String(raw).replace(/^\s*(?:[-*>]|\d+[.)])\s*/, '').split(/(?<=[다요음함]\.)\s+|(?<=\.)\s+(?=[가-힣])/).forEach(function (s) {
           var k = s.replace(/[*`~]/g, '').replace(/\s+/g, ' ').trim();
           if (k.replace(/\s/g, '').length < 30) return;
+          // [2026.10.31] 도구·화면 길잡이 줄("조문: lookup_statute_article(…)", "AI 도구: browse_tax_calculators(…)")은 지침마다 제 도구를 적는 자리라 중복으로 안 본다
+          if (/^(?:[가-힣A-Za-z ]{1,8}:\s*)?[a-z][a-z0-9_]+\(/.test(k)) return;
           var e = sentenceMap[k] || (sentenceMap[k] = []);
           if (!e.some(function (x) { return x.file === f.name; })) e.push({ file: f.name, line: ln });
         });
@@ -283,6 +287,10 @@ function sysAuditToolNames_() {
   try { if (typeof getClientActionTools_ === 'function') add(getClientActionTools_({ openFile: { liveContent: '' } })); } catch (e) { }
   if (typeof JOB_AI_TOOLS_ !== 'undefined') add(JOB_AI_TOOLS_);
   if (typeof CASEPROC_AI_TOOLS_ !== 'undefined') add(CASEPROC_AI_TOOLS_);
+  // [2026.10.31] 사건이 연결된 대화창 넥스에 붙는 사건 도구(report_parts 등) — 빠뜨려 업무별 일하는 법 지침 6장이 "없는 도구"로 잘못 잡혔다
+  try { if (typeof nxCaseChatTools_ === 'function') add(nxCaseChatTools_([])); } catch (e) { }
+  // [2026.10.31] AI 회사 쪽에서 도는 도구(Code.js callClaude가 늘 붙이는 web_search·web_fetch, 켤 때 붙는 code_execution) — 빠뜨려 "없는 도구"로 잡혔다
+  add([{ name: 'web_search' }, { name: 'web_fetch' }, { name: 'code_execution' }]);
   var walk = function (o, d) {
     if (!o || typeof o !== 'object' || d > 8) return;
     if (Array.isArray(o.enum)) o.enum.forEach(function (v) { if (typeof v === 'string') names.push(v); });
@@ -459,7 +467,8 @@ function sysAuditRunAi_(files, changedNames, opts) {
   var maxChunks = opts.maxChunks || SYS_AUDIT_AI_MAX_CHUNKS_, done = {};
   for (var i = 0; i < chunks.length; i++) {
     if (i >= maxChunks || (opts.deadline && Date.now() > opts.deadline)) { chunks.slice(i).forEach(function (c) { r.deferred = r.deferred.concat(c.changed); }); break; }
-    var c = chunks[i], ans = aiAskMany_([gem], sysAuditAiPrompt_(c, byName, sendText), 4000)[0] || { ok: false, error: '응답 없음' };
+    // [2026.10.31] 4000 → 16000: 생각하는 모델(gemini-3.6-flash)이 생각에 몫을 다 써 10-31 03:43 "빈 응답", 10:4x 답이 JSON 중간에 끊겨 "형식이 달라 읽지 못함"이었다
+    var c = chunks[i], ans = aiAskMany_([gem], sysAuditAiPrompt_(c, byName, sendText), 16000)[0] || { ok: false, error: '응답 없음' };
     r.chunks++;
     if (!ans.ok) {
       var limit = /quota|exhaust|429|rate|limit|한도/i.test(ans.error || '');
@@ -699,15 +708,22 @@ function sysAuditPathData_() {
   var master = '';
   try { master = getMasterProfileText_() || ''; } catch (e) { }
   var prompt = function (ctx) { return buildContextSystemPrompt(DEFAULT_SYSTEM_PROMPT + '\n\n' + master, { context: ctx, messages: [] }).full; };
+  // [2026.10.31] 넥스는 하나 — 사건이 연결된 대화창 넥스는 job AI 도구에 사건 도구(nxCaseChatTools_)가 더 붙는다(Code.js callClaude).
+  //  예전엔 job AI(사건 도구 없이)와 "AI 지휘"(사건 도구만)를 따로 대조해, 같은 넥스가 실제로 가진 도구를 "없다"고 20건 잘못 잡았다.
+  //  그래서 job 경로 = job AI 도구 + 사건 도구, 지휘 경로(사건 맡은 넥스 일하는 방식) = 같은 도구로 본다.
+  var jobTools = probe({ aiPanel: 'tab', openFile: { liveContent: '' }, openDiagram: true });
+  var caseTools = [];
+  try { if (typeof nxCaseChatTools_ === 'function') caseTools = nxCaseChatTools_(jobTools.map(function (t) { return t.name; })).map(function (t) { return { name: t.name, description: String(t.description || '') }; }); } catch (e) { }
+  var jobAll = jobTools.concat(caseTools);
   var paths = [
-    { key: 'job', label: 'job AI(AI탭·사이드바)', tools: probe({ aiPanel: 'tab', openFile: { liveContent: '' }, openDiagram: true }), prompt: prompt({ aiPanel: 'tab' }) },
-    { key: 'work', label: 'work AI', tools: probe({ openFile: { liveContent: '' }, openDiagram: true }), prompt: prompt({}) }
+    { key: 'job', label: 'job AI(AI탭·사이드바 — 사건 연결 땐 사건 도구 포함)', tools: jobAll, prompt: prompt({ aiPanel: 'tab' }) },
+    // work AI는 사건 도구가 안 붙는다 — 함께 쓰는 도구 설명 속 "사건이 연결된 대화에서 file_read…"는 조건 글이라 대조에서 뺀다
+    { key: 'work', label: 'work AI', tools: probe({ openFile: { liveContent: '' }, openDiagram: true }), prompt: prompt({}), skipDescNames: caseTools.map(function (t) { return t.name; }) }
   ];
-  if (typeof caseProcAiLiveTools_ === 'function') {
-    var lt = caseProcAiLiveTools_().map(function (t) { return { name: t.name, description: String(t.description || '') }; });
+  if (caseTools.length) {
     var ls = '';
     try { ls = typeof nxCaseChatGuide_ === 'function' ? nxCaseChatGuide_('점검') : ''; } catch (e) { ls = ''; } // [2026.10.21] 마스터 프로필은 job 경로에서 보므로 지휘 고유 부분만
-    paths.push({ key: 'lead', label: 'AI 지휘(이 사건 처리하자)', tools: lt, prompt: ls });
+    paths.push({ key: 'lead', label: '사건 맡은 넥스(대화창 — 이 사건 처리하자)', tools: jobAll, prompt: ls });
   }
   return paths;
 }
@@ -736,7 +752,8 @@ function sysAuditPathCheck_(paths, files) {
     var on = {};
     p.tools.forEach(function (t) { on[t.name] = 1; });
     names(p.prompt).forEach(function (n) { if (!on[n]) add(p, n, '지시문'); });
-    p.tools.forEach(function (t) { names(t.description).forEach(function (n) { if (!on[n]) add(p, n, '도구 설명(' + t.name + ')'); }); });
+    var skip = p.skipDescNames || [];
+    p.tools.forEach(function (t) { names(t.description).forEach(function (n) { if (!on[n] && skip.indexOf(n) === -1) add(p, n, '도구 설명(' + t.name + ')'); }); });
     if (p.key === 'job') (files || []).forEach(function (f) { if (f.role === 'bm') names(f.text).forEach(function (n) { if (!on[n]) add(p, n, '지침 ' + f.name); }); });
   });
   probs.forEach(function (x) {

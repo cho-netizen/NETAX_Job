@@ -78,7 +78,9 @@ function aiParseResponse_(e, resp) {
   if (e.provider === 'gemini') text = (((body.candidates || [])[0] || {}).content || {}).parts ? body.candidates[0].content.parts.map(function (p) { return p.text || ''; }).join('') : '';
   else if (e.provider === 'openai') text = (((body.choices || [])[0] || {}).message || {}).content || '';
   else if (e.provider === 'claude') { text = (body.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n'); try { ai_logDirect_(body, aiModelOf_(e), 'federation', '연합체 호출'); } catch (x) {} }
-  return text ? { ok: true, text: text } : { ok: false, error: '빈 응답' };
+  // [2026.10.31] 제미니가 글 없이 끝나면 끝난 까닭(MAX_TOKENS 등)도 적는다 — "빈 응답"만으로는 원인을 몰랐다
+  var why = e.provider === 'gemini' ? String((((body.candidates || [])[0] || {}).finishReason) || (body.promptFeedback && body.promptFeedback.blockReason) || '') : '';
+  return text ? { ok: true, text: text } : { ok: false, error: '빈 응답' + (why ? '(' + why + ')' : '') };
 }
 // 여러 AI에 동시에 묻기(fetchAll) — 실패·한도 초과는 그 AI만 빠진다
 function aiAskMany_(entries, prompt, maxTokens) {

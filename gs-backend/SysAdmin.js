@@ -41,14 +41,21 @@ var SYSADMIN_CLAUDE_RULE_USES_ = {
   'L2_job_server.md': 'Claude가 서버 코드·AI 연결을 고칠 때 읽음 — 서버 코드(.js)를 고치려는 순간 붙습니다.',
   'L2_caseproc.md': 'Claude가 사건처리 자동화·점검 측정 작업 때 읽음 — 사건처리·교차검증·정답지 점검 코드를 고치거나 재현기를 돌리려는 순간 붙습니다.',
   // [2026.10.30] 세무사님 "해야할일을 잊어버리지 않도록 하는 조치부터 하고 나서, 진행하라" — 큰 줄기 남은 일 장부
-  'TODO.md': 'Claude가 대화를 시작할 때마다, 대화가 길어져 요약된 직후마다 읽음 — 큰 줄기에서 남은 일(넥스 전체 설계도 기준). 끝나거나 새로 생기면 Claude가 그 자리에서 고칩니다.'
+  'TODO.md': 'Claude가 대화를 시작할 때마다, 대화가 길어져 요약된 직후마다 읽음 — 큰 줄기에서 남은 일(넥스 전체 설계도 기준). 끝나거나 새로 생기면 Claude가 그 자리에서 고칩니다.',
+  // [2026.10.31] 세무사님 "클로드 작업원칙이 왜 지저분하게 나열되어 있는가? 일목요연하게 정리하라" — 사연 보관 파일이 "언제 읽게 할지 말씀해 주세요"로 잘못 보였다
+  'L1_history.md': 'Claude가 자동으로 읽지 않는 보관 파일 — 규칙마다 왜 생겼는지(질책 원문·사연)를 남겨 둡니다. 규칙 자체는 1층·2층에 있습니다.'
 };
 var SYSADMIN_CLAUDE_RULE_TITLES_ = {
   'README.md': '안내', 'L1_core.md': '1층 — 매번 읽는 핵심 원칙',
   'L2_taxlaw.md': '2층 — 세법·세액계산', 'L2_deploy.md': '2층 — 배포·커밋·푸시', 'L2_sessions.md': '2층 — 세션·작업자 띄우기',
   'L2_drive_files.md': '2층 — 드라이브 파일 옮기기·지우기', 'L2_screen_ui.md': '2층 — 화면 코드', 'L2_job_server.md': '2층 — 서버 코드·AI 연결',
-  'L2_caseproc.md': '2층 — 사건처리 자동화·점검 측정', 'TODO.md': '할 일 장부 — 큰 줄기 남은 일'
+  'L2_caseproc.md': '2층 — 사건처리 자동화·점검 측정', 'TODO.md': '할 일 장부 — 큰 줄기 남은 일',
+  'L1_history.md': '사연 보관 — 질책 원문·옛 1층'
 };
+// [2026.10.31] 화면에서 세 묶음으로 나눈다 — 늘 읽음(1층·장부) / 작업할 때 읽음(2층) / 보관·안내
+function sysAdminClaudeRuleTier_(name) {
+  return (name === 'L1_core.md' || name === 'TODO.md') ? 'always' : /^L2_/.test(name) ? 'work' : 'keep';
+}
 function sysAdminClaudeRuleUse_(name) {
   return SYSADMIN_CLAUDE_RULE_USES_[name] || 'Claude가 아직 자동으로 읽지 않는 파일입니다 — 언제 읽게 할지 Claude에게 말씀해 주세요(1층·2층 연결은 세무사님 컴퓨터의 훅이 정합니다).';
 }
@@ -119,9 +126,9 @@ function sysAdminList_() {
           if (!/\.(md|txt)$/i.test(crf.getName()) || crf.isTrashed()) continue;
           var crName = crf.getName();
           var crTitle = SYSADMIN_CLAUDE_RULE_TITLES_[crName] || crName.replace(/\.(md|txt)$/i, '');
-          crs.push(sysAdminFileInfo_(crf, { key: 'claudeRule', group: 'Claude 작업원칙', title: crTitle, where: crLabel, use: sysAdminClaudeRuleUse_(crName), editable: true }));
+          crs.push(sysAdminFileInfo_(crf, { key: 'claudeRule', group: 'Claude 작업원칙', title: crTitle, where: crLabel, use: sysAdminClaudeRuleUse_(crName), tier: sysAdminClaudeRuleTier_(crName), editable: true }));
         }
-        var crRank = function (n) { return n === 'README.md' ? 0 : /^L1_/.test(n) ? 1 : /^L2_/.test(n) ? 2 : 3; };
+        var crRank = function (n) { var t = sysAdminClaudeRuleTier_(n); return t === 'always' ? (n === 'L1_core.md' ? 0 : 1) : t === 'work' ? 2 : (n === 'L1_history.md' ? 3 : 4); };
         crs.sort(function (a, b) { return crRank(a.name) - crRank(b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
         items = items.concat(crs);
       } else warn.push('총괄관리자 안에 「' + SYSADMIN_CLAUDE_RULES_FOLDER_ + '」 폴더가 없습니다 — Claude 작업원칙 파일을 찾지 못했습니다.');

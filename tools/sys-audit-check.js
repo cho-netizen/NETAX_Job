@@ -32,6 +32,11 @@ function toolNames() {
   }
   const cat = code.slice(code.indexOf('const TAX_TOOL_CATEGORIES_ = {'), code.indexOf('const TAX_TOOL_TO_CATEGORY_'));
   for (const m of cat.matchAll(/^\s{2}(\w+): \{ label:/gm)) names.add(m[1]);
+  // [2026.10.31] 사건이 연결된 대화창 넥스에 붙는 사건 도구(report_parts) — 서버 sysAuditToolNames_와 같게
+  const live = fs.readFileSync(path.join(SRC, 'AiLeadLive.js'), 'utf8').match(/var NX_CASE_REPORT_TOOL_ = \{ name: '([a-z_]+)'/);
+  if (live) { names.add(live[1]); tools++; }
+  // [2026.10.31] AI 회사 쪽에서 도는 도구 — 서버 sysAuditToolNames_와 같게
+  for (const n of ['web_search', 'web_fetch', 'code_execution']) { names.add(n); tools++; }
   const pa = code.slice(code.indexOf('const JOB_PROPOSE_ACTIONS_ = {')); for (const m of pa.slice(0, pa.indexOf('\n};')).matchAll(/^\s{2}(\w+): \{/gm)) names.add(m[1]);
   return { names: [...names], toolCount: tools };
 }

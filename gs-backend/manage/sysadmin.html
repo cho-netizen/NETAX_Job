@@ -13,6 +13,14 @@
 <style>
   #stSysAdminCard .sa-tools{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:4px 0 10px; }
   #stSysAdminCard .sa-group{ margin:14px 0 6px; font-size:13px; font-weight:700; color:var(--navy); }
+  #stSysAdminCard .sa-sub{ margin:8px 0 6px; font-size:12.5px; font-weight:700; color:var(--sub); cursor:default; }
+  #stSysAdminCard details.sa-rdet > summary.sa-sub{ cursor:pointer; }
+  #stSysAdminCard details.sa-rdet{ margin-bottom:8px; }
+  #stSysAdminCard .sa-rrow{ display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:6px; padding:5px 8px; margin-bottom:4px; background:var(--panel); min-width:0; }
+  #stSysAdminCard .sa-rtitle{ flex:0 0 auto; font-size:13px; font-weight:700; color:var(--ink); white-space:nowrap; }
+  #stSysAdminCard .sa-ruse{ flex:1 1 auto; min-width:0; font-size:12px; color:var(--sub); white-space:nowrap; overflow-x:auto; }
+  #stSysAdminCard .sa-rbtns{ flex:0 0 auto; display:flex; gap:4px; }
+  #stSysAdminCard .sa-rbtns .ghost-btn{ font-size:12px; padding:2px 8px; }
   #stSysAdminCard .sa-item{ border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--panel); }
   #stSysAdminCard .sa-head{ display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; }
   #stSysAdminCard .sa-title{ font-size:14px; font-weight:700; color:var(--ink); }
@@ -80,6 +88,33 @@
     return h + '</div>';
   }
 
+  // [2026.10.31] 세무사님 "클로드 작업원칙이 왜 지저분하게 나열되어 있는가? 일목요연하게 정리하라" — 같은 크기 카드 12장이
+  //  한 줄로 늘어서 "늘 읽는 것 / 작업할 때만 / 보관"이 안 갈렸다. 세 묶음으로 나누고 2층 7개는 한 줄씩 접어 둔다(SysAdmin.js tier).
+  function saRuleRowHtml_(it, idx){
+    var use = String(it.use || '').replace(/^Claude가\s*/, '');
+    return '<div class="sa-rrow" data-sa-idx="' + idx + '"><span class="sa-rtitle">' + saEsc_(String(it.title || '').replace(/^2층 — /, '')) + '</span>'
+      + '<span class="sa-ruse" title="' + saEsc_(it.use || '') + '">' + saEsc_(use) + '</span>'
+      + (it.exists ? '<span class="sa-rbtns"><button type="button" class="ghost-btn" data-sa-act="view">👁 보기</button>'
+        + (it.editable ? '<button type="button" class="ghost-btn" data-sa-act="edit">✏ 편집</button>' : '') + '</span>' : '<span class="sa-missing">파일 없음</span>')
+      + '</div>';
+  }
+  function saClaudeRulesHtml_(items){
+    var by = { always: [], work: [], keep: [] };
+    items.forEach(function(it, i){
+      if (it.group !== 'Claude 작업원칙') return;
+      var n = String(it.name || ''), t = it.tier || ((n === 'L1_core.md' || n === 'TODO.md') ? 'always' : /^L2_/.test(n) ? 'work' : 'keep');
+      (by[t] || by.keep).push([it, i]);
+    });
+    if (!by.always.length && !by.work.length && !by.keep.length) return '';
+    var h = '<div class="sa-group">Claude 작업원칙</div>';
+    if (by.always.length) h += '<div class="sa-sub">늘 읽음 — 말씀하실 때마다·대화 시작 때 붙음</div>' + by.always.map(function(p){ return saItemHtml_(p[0], p[1]); }).join('');
+    if (by.work.length) h += '<details class="sa-rdet"><summary class="sa-sub">작업할 때 읽음 — 2층 ' + by.work.length + '개 (그 작업을 하려는 순간에만 붙음)</summary>'
+      + by.work.map(function(p){ return saRuleRowHtml_(p[0], p[1]); }).join('') + '</details>';
+    if (by.keep.length) h += '<details class="sa-rdet"><summary class="sa-sub">보관·안내 — 자동으로 읽지 않음 (' + by.keep.length + '개)</summary>'
+      + by.keep.map(function(p){ return saRuleRowHtml_(p[0], p[1]); }).join('') + '</details>';
+    return h;
+  }
+
   function saRender_(res){
     var box = saBody_(); if (!box) return;
     var items = saState_.items = (res && res.items) || [];
@@ -90,6 +125,7 @@
     ((res && res.warn) || []).forEach(function(w){ html += '<div class="sa-warn">⚠ ' + saEsc_(w) + '</div>'; });
     html += '<div class="sa-audit" id="saAuditBox">' + (saAudit_.html || '<div class="settings-tool-desc">점검 결과 불러오는 중…</div>') + '</div>';
     SA_GROUP_ORDER_.forEach(function(g){
+      if (g === 'Claude 작업원칙') { html += saClaudeRulesHtml_(items); return; }
       var rows = [];
       items.forEach(function(it, i){ if (it.group === g) rows.push(saItemHtml_(it, i)); });
       if (!rows.length) return;
