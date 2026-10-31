@@ -487,7 +487,7 @@
       renderNewCaseForm({
         고객명: b.name, 전화: b.phone || '', 고객유형: b.type || '',
         현재세무처리: b.statuses || '', 관련분야: b.field || '',
-        개요: b.situation || '', bookingRowIndex: b._rowIndex,
+        개요: b.situation || '', bookingRowIndex: b._rowIndex, bookingName: b.name || '',
         의뢰일: b.reservedDate || '',
         세목: guessedSemok,
         // 예약은 정의상 아직 정식 수임 전 첫 상담이므로, 불복(별도 세부유형 체계라 "상담"이

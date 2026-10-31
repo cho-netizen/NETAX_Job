@@ -569,7 +569,7 @@
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
       // [2026.10.30 예약 결과 관리] 예약에서 시작했으면 서버가 사건을 만들면서 바로 잇는다(예전엔 저장 뒤 화면이 따로 불러, 그 사이 창을 닫으면 끊겼다)
-      if (prefill.bookingRowIndex) payload.bookingRowIndex = prefill.bookingRowIndex;
+      if (prefill.bookingRowIndex) { payload.bookingRowIndex = prefill.bookingRowIndex; if (prefill.bookingName) payload.bookingName = prefill.bookingName; } // [2026.10.31 정리] 예약 이름도 보내 서버가 그 줄이 맞는지 본다(예약관리 연결과 같은 장치)
       callGas('work_create_case', payload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveDone(false); return; }
         saveDone(true);
@@ -591,7 +591,7 @@
           // 그대로 남아 다시 누르면 똑같은 사건이 중복으로 또 만들어질 위험이 있었다. 한 번
           // 자동 재시도하고, 그래도 실패하면 눈에 띄게 경고해서 예약목록을 직접 확인하게 한다.
           var linkBookingCase_ = function(retryLeft){
-            callGas('link_booking_case', { rowIndex: prefill.bookingRowIndex, caseId: res.case.id }).then(function(linkRes){
+            callGas('link_booking_case', { rowIndex: prefill.bookingRowIndex, caseId: res.case.id, expectName: prefill.bookingName || '' }).then(function(linkRes){
               if (linkRes && linkRes.success === false){ throw new Error(linkRes.message || '연결 실패'); }
               if (typeof loadBookingList === 'function') loadBookingList();
             }).catch(function(err){

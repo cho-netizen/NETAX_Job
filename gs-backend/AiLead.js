@@ -8,7 +8,7 @@
 //   · CASEPROC_AI_TOOLS_ — 최상위 AI에게 줄 사건처리 도구 정의(이름은 영문만 가능 — 설명은 한국어)
 //   · caseProcAiExec_(caseId, name, input) — 도구 실행. 결과는 AI가 읽기 좋게 짧게 줄이고(caseProcAiSum_*) 개인정보를 가린다(caseProcAiMask_)
 //   · caseProcAiCheckBasis_ — 값_정하기(value_set)의 근거 대조: 근거 서류 원문·조회 결과에 그 값이 없으면 거절(지어내기 막기)
-//  아직 어디에도 연결하지 않았다(채팅·화면·서버 입구 없음) — 재현기 tools/ailead-replay.js가 이 함수들을 직접 부른다.
+//  [2026.10.31 정리] 지금은 넥스 사건 대화가 이 도구들을 쓴다(AiLeadLive.js caseProcAiLiveTools_·caseProcAiLiveExec_ → Code.js 넥스 채팅).
 // =========================================================
 var CASEPROC_AI_SUM_MAX_ = 1500; // 도구 결과 요약 한 번의 목표 글자 수(넘으면 줄을 줄인다)
 
@@ -437,7 +437,7 @@ function caseProcAiExec_(caseId, name, input) {
     if (name === 'case_view') r = step('basic');
     else if (name === 'docs_read') r = step('evidence', input.phase === 'read' ? { phase: 'read' } : {});
     else if (name === 'case_read') r = step('read', { budgetMs: 100000, by: '넥스' }); // 채팅 한 요청(약 4분) 안에 다른 도구와 함께 돌도록 100초씩 — 다 못 읽으면 more/partial, 다시 부르면 이어 감 // [2026.10.31 묶음 해체] 📖 서류 읽기 — 화면 단추와 같은 입구
-    else if (name === 'calc_fill') { r = step('fill', { budgetMs: 100000, by: '넥스' }); if (r && r.items) CASEPROC_AI_LAST_ITEMS_[caseId] = r.items; } // 칸 채우기 — 화면 단추와 같은 입구(장부 적기·질문 판정까지)
+    else if (name === 'calc_fill') { r = step('fill', { budgetMs: 100000, by: '넥스' }); if (r && r.items) CASEPROC_AI_LAST_ITEMS_[caseId] = r.items; if (r && !r.error && !r.case) { try { WORK_DATA_MEMO_ = null; const cf = akReadCase_(caseId); if (cf) r = Object.assign({}, r, { case: cf }); } catch (e) {} } } // [2026.10.31] 낱개 칸 채우기 입구는 사건을 돌려주지 않아 넥스 요약의 "채운 칸"이 늘 비었다(넥스 "칸이 안 채워졌다") — 채운 뒤 사건을 새로 읽어 붙인다 // 칸 채우기 — 화면 단추와 같은 입구(장부 적기·질문 판정까지)
     else if (name === 'tax_calc') r = step('calc');
     else if (name === 'forms_check') r = step('output');
     else if (name === 'form_needs') r = typeof formNeeds_ === 'function' ? formNeeds_(caseId, input) : { error: '서식 도구가 이 판에 없음' }; // [2026.10.19 B-5]

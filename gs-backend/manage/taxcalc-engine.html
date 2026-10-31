@@ -6111,7 +6111,9 @@
       years = isOffshore ? 7 : 5; basis = '§26의2①본문/단서 — 원칙(' + years + '년, 역외거래 여부 반영)';
     }
 
-    const exclusionDeadline = addYearsToDateStr_(p.exclusionPeriodStartDate, years);
+    // [2026.10.31 회장 결론] 기산일(시행령 §12의3 "국세를 부과할 수 있는 날")은 0시부터 시작하므로 그날을 넣어 셈(민법 §157 단서)
+    //  → 기간은 n년 뒤 같은 날의 전날에 끝남(민법 §160②). 옛 판은 n년 뒤 같은 날을 만료일로 보여 하루 늦었음.
+    const exclusionDeadline = (function (s) { if (!s) return s; const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() - 1); return formatDateStr_(d); })(addYearsToDateStr_(p.exclusionPeriodStartDate, years));
     const result = {
       기산일: p.exclusionPeriodStartDate, 적용기간_년: years, 적용근거: basis,
       부과제척기간_만료일: exclusionDeadline,

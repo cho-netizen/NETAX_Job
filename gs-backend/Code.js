@@ -4077,7 +4077,7 @@ const JOB_AI_TOOLS_ = [
       + 'caseproc_fix{caseId,target,value,label,why}(이미 확정돼 남은질문에 없는 세액계산 입력 칸을 고치기 — target은 calc:a0.assetType·calc:c0.totalPrice·calc:a0.acquisitionPrice·expenses(필요경비 {items:[{kind:취득|양도,label,amount}]})·trTaxFee·ov:사건분류·base(기준일) 등. 세무사님이 정하신 값이면 카드에 그 사실이 적히고 [실행]이 세무사님 확인이 된다 — 네가 스스로 바꾸지 말고 먼저 지금 값과 서류 값을 말씀드려라) / '
       + 'caseproc_undo{caseId,target(선택)}(마지막 칸 고침을 전 값으로 되돌리기) / '
       + 'caseproc_decide{caseId,qids[],decision(done=확인·해소 | 보류 | 무시 | 예정),note(근거 한 줄)}(서류로 네가 푼 질문·세무사님이 답한 질문을 닫아 다음 처리 때 다시 묻지 않게 — 서류 ⚠ 확인 질문을 읽고 풀었으면 꼭 닫아라) / '
-      + 'calc_scenario{caseId,tax(transfer|gift|inheritance — 생략하면 사건 세목),name,changes:[{path,value}],input(선택: 엔진 입력 전체),why}(경우(안)별 세액계산 — 세액계산기를 서버에서 돌려 이름 붙여 따로 저장. 양도 path: a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·a0.acquisitionDate·costs·taxfee·사건분류·seller.multiHouseCount, 증여·상속 path: giftAmount·relation·taxableEstateAmount·hasSpouse 같은 엔진 입력 이름. 세액 숫자는 반드시 이 저장본에서만 — 암산한 세액을 답에 쓰지 마라. 같은 사건에서 양도세 안·증여세 안·상속세 안을 각각 저장해 견줄 수 있다) / '
+      + 'calc_scenario{caseId,tax(transfer|gift|inheritance — 생략하면 사건 세목),name,changes:[{path,value}],input(선택: 엔진 입력 전체),why}(경우(안)별 세액계산 — 바탕은 늘 지금 사건 장부(case_ledger do=calc와 같음), changes만 얹어 서버에서 돌려 이름 붙여 따로 저장. 장부가 비면 계산하지 않고 알림. 양도 path: a0.assetType·a0.isOneHouseOneFamily·c0.totalPrice·a0.acquisitionPrice·a0.acquisitionDate·costs·taxfee·사건분류·seller.multiHouseCount, 증여·상속 path: giftAmount·relation·taxableEstateAmount·hasSpouse 같은 엔진 입력 이름. 세액 숫자는 반드시 이 저장본에서만 — 암산한 세액을 답에 쓰지 마라. 같은 사건에서 양도세 안·증여세 안·상속세 안을 각각 저장해 견줄 수 있다) / '
       + 'caseproc_scope{caseId,ids[](목록을 처음 정할 때 켤 파일 이름 전부 — 그 밖은 끔),on[](읽을 목록에 켤 파일 이름·폴더 이름 — 폴더면 그 아래 전부),off[](끌 파일·폴더),dirs[](그 폴더만),files[](그 파일만),clear(true면 전체로),why}(세무사님이 "○○ 폴더(파일)만 읽어라"·"○○는 빼라"고 하시면 — 그 뒤 서류 읽기·칸 채우기·⚠ 질문·직결이 그 목록만 쓴다. 읽을 목록이 아직 없으면(읽을범위 null) job_lookup case_files로 목록을 보고 모르는 파일은 file_read로 읽어 판단한 뒤 ids(켤 파일 이름 전부 — 그 밖은 끔)로 정하고 정한 목록과 이유를 세무사님께 보고한다 — 읽지 않고 체크하지 않는다. 정한 뒤 "이 사건 처리하자"를 다시).',
     input_schema: {
       type: 'object',
@@ -4467,7 +4467,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'gh_pr_close') return jsonResponse(gh_prClose_(body));
   if (body.action === 'gh_set_token') return jsonResponse(gh_setToken_(body));
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
-  if (body.action === 'gh_deploy_apply') { const ga = gh_deployApply_(body); if (ga && ga.success) ga.check = deploySmokeRemote_(); return jsonResponse(ga); } // (옛 화면용 — 새 화면은 deploy_job_start)
+  if (body.action === 'gh_deploy_apply' || body.action === 'gh_rollback') return jsonResponse({ success: false, error: '옛 반영·되돌리기 입구는 닫았습니다 — 설정 🐞의 📥·↩ 단추(deploy_job_start)를 쓰세요' }); // [2026.10.31 정리] 화면·바깥 어디서도 안 부르고 안전장치(작업 단계·잠금)를 건너뛰던 옛 입구
   // [2026.10.20] 반영 작업을 화면 요청 밖(1회용 트리거)에서 — 화면은 시작만 하고 deploy_job_status로 단계를 본다(세무사님 "승인반영을 눌렀는데 계속 대기중이다")
   if (body.action === 'deploy_job_start') return jsonResponse(deployJobStart_(body));
   if (body.action === 'deploy_job_status') return jsonResponse(deployJobStatus_());
@@ -4484,7 +4484,6 @@ function dispatchClientAction0_(body) {
     return jsonResponse(o);
   }
   if (body.action === 'deploy_check_last') return jsonResponse(deployCheckLast_());
-  if (body.action === 'gh_rollback') { const rb = gh_rollback_(); if (rb && rb.success) { rb.check = deploySmokeRemote_(); try { deployRecord_({ kind: 'rollback', ver: rb.to, msg: rb.message, check: rb.check }); } catch (e) {} } return jsonResponse(rb); } // ↩ 되돌리기 + 되돌린 버전 점검
   if (body.action === 'doc_regress_set_baseline') return jsonResponse(docRegressSetBaseline_(body)); // 서류 회귀시험 표본 기준값
   if (body.action === 'doc_regress_run') return jsonResponse(docRegressRunNightly_(!!body.force));
   if (body.action === 'corr_log') return jsonResponse(corrLog_(body)); // 자동 입력값을 세무사님이 고친 기록(고객 값 없음)
@@ -4529,9 +4528,7 @@ function dispatchClientAction0_(body) {
     return jsonResponse(saveTaxAgentSettings_(body));
   }
   // (함수 정의는 getTaxAgentSettings_/saveTaxAgentSettings_ 참고 — 파일 하단)
-  if (body.action === 'send_email') {
-    return jsonResponse(toolSendEmail(body.to, body.subject, body.body));
-  }
+  if (body.action === 'send_email') return jsonResponse({ success: false, error: '메일 바로 보내기 입구는 닫았습니다 — 메일은 초안으로만 만듭니다' }); // [2026.10.31 정리] 화면 단추 없음·넥스 도구는 10-19부터 초안만(toolDraftEmail_)인데 이 입구만 바로 보냈다
   if (body.action === 'get_calendar_events') {
     return jsonResponse(toolLookupCalendarEvents(body.startDate, body.endDate));
   }
@@ -10760,7 +10757,9 @@ function toolCalculateTaxExclusionPeriod(p) {
     years = isOffshore ? 7 : 5; basis = '§26의2①본문/단서 — 원칙(' + years + '년, 역외거래 여부 반영)';
   }
 
-  const exclusionDeadline = addYearsToDateStr_(p.exclusionPeriodStartDate, years);
+  // [2026.10.31 회장 결론] 기산일(시행령 §12의3 "국세를 부과할 수 있는 날")은 0시부터 시작하므로 그날을 넣어 셈(민법 §157 단서)
+  //  → 기간은 n년 뒤 같은 날의 전날에 끝남(민법 §160②). 옛 판은 n년 뒤 같은 날을 만료일로 보여 하루 늦었음.
+  const exclusionDeadline = (function (s) { if (!s) return s; const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() - 1); return formatDateStr_(d); })(addYearsToDateStr_(p.exclusionPeriodStartDate, years));
   const result = {
     기산일: p.exclusionPeriodStartDate, 적용기간_년: years, 적용근거: basis,
     부과제척기간_만료일: exclusionDeadline,
@@ -25080,7 +25079,7 @@ function work_createCase0_(params) {
 
     const id = Utilities.getUuid();
     const now = new Date();
-    const seMok = String(params.세목 || '').trim();
+    const seMok = (typeof ledgerTaxCode_ === 'function' && ledgerTaxCode_(params.세목)) || String(params.세목 || '').trim(); // [2026.10.31] "양도"·"증여세" 등 한글 세목도 열쇠로 저장(위 work_updateCase0_와 같은 이유)
     const upType = String(params.업무유형 || '').trim();
     const 기준일 = String(params.기준일 || '').trim();
     const 고객명 = String(params.고객명 || '').trim();
@@ -25223,7 +25222,7 @@ function work_createCaseFull_(params) {
   //  아니면 같은 전화·같은 이름의 확정 예약을 후보로 돌려준다 — 잇는 것은 세무사님이 정한다(자동으로 잇지 않음). 실패해도 사건 등록은 그대로.
   try {
     if (params.bookingRowIndex) {
-      const lk = booking_linkCase({ rowIndex: Number(params.bookingRowIndex), caseId: r.case.id });
+      const lk = booking_linkCase({ rowIndex: Number(params.bookingRowIndex), caseId: r.case.id, expectName: params.bookingName || '' }); // [2026.10.31 정리] 화면이 본 예약 이름으로 줄 확인
       r.bookingLinked = !!(lk && lk.success !== false);
       if (!r.bookingLinked) r.bookingLinkError = (lk && lk.message) || '예약 연결 실패';
     } else {
@@ -25253,6 +25252,8 @@ function work_updateCase(params) {
   return r;
 }
 function work_updateCase0_(params) {
+  // [2026.10.31] 세목은 열쇠(transfer·gift·inheritance)로 저장한다 — "양도"처럼 한글로 들어오면 세목 열쇠를 보는 곳(계약서 역할 판별·받을 증빙·장부 계산)이 모두 비켜 갔다(가상증빙역할 운영 확인)
+  if (params && params.세목 !== undefined && typeof ledgerTaxCode_ === 'function') params = Object.assign({}, params, { 세목: ledgerTaxCode_(params.세목) || String(params.세목).trim() });
   return withLock_(8000, function () {
     const sheet = work_getSheet_();
     const col = work_colMap_(work_values_(sheet)[0]); // [2026.10.23 속도 ㅅ6차] 사건처리 실행 안에선 시트 메모(아래 setValues는 found.row 배열을 제자리에서 고치므로 메모도 같이 바뀐다)
@@ -27703,10 +27704,22 @@ function t6ApplyRead_(c, body) {
     const cur = akReadCase_(c.id) || c, up = { id: c.id };
     let any = false;
     if (cr.사건개요 && typeof cr.사건개요 === 'object' && JSON.stringify(cr.사건개요) !== JSON.stringify(cur.사건개요 || {})) { up.사건개요 = cr.사건개요; any = true; }
-    if (Array.isArray(cr.증빙목록) && JSON.stringify(cr.증빙목록) !== JSON.stringify(cur.증빙목록 || [])) { up.증빙목록 = cr.증빙목록; any = true; }
+    // [2026.10.31 세 길 합치기 1 — 세무사님 "권장안대로"] 받을 증빙 목록은 장부만 짠다 — 직결 서비스 결과로 목록을 통째로 덮지 않는다(그 사이 세무사님 ✓·넣은 항목이 사라졌다).
+    //  서비스가 읽은 서류로 "확보됨"을 매긴 틀 항목(장부 칸 항목·need: 옛 항목 말고)만 지금 목록에 옮기고, 장부가 칸 상태로 다시 짠다(아래 caseFlowEvidence_)
+    if (Array.isArray(cr.증빙목록)) {
+      const byId = {}; cr.증빙목록.forEach(function (e) { if (e && e.id) byId[e.id] = e; });
+      let marked = 0;
+      const merged = (Array.isArray(cur.증빙목록) ? cur.증빙목록 : []).map(function (e) {
+        const n = e && byId[e.id];
+        if (!n || e.status === '확보됨' || n.status !== '확보됨' || /^(flow:|need:)/.test(String(e.slotKey || ''))) return e;
+        marked++; return Object.assign({}, e, { status: '확보됨', 확보일: n.확보일 || caseProcToday_(), note: n.note || e.note });
+      });
+      if (marked) { up.증빙목록 = merged; any = true; }
+    }
     if (cr.기준일 && String(cr.기준일) !== String(cur.기준일 || '')) { up.기준일 = cr.기준일; any = true; }
     if (cr.법정일 && String(cr.법정일) !== String(cur.법정일 || '')) { up.법정일 = cr.법정일; any = true; }
     if (any) { const r = work_updateCase(up); saved.caseRow = !!(r && r.success !== false); if (r && r.success === false) return { ok: false, error: '사건 행 저장 실패: ' + (r.message || ''), saved: saved }; }
+    try { const c3 = akReadCase_(c.id); if (c3 && typeof caseFlowEvidence_ === 'function') saved.evidence = caseFlowEvidence_(c3, ledgerLoad_(c.id, true), null); } catch (e) { saved.evidence = { error: String(e && e.message || e).slice(0, 100) }; }
   }
   // [2026.10.28 🌐 바깥 조회] 직결 서비스는 바깥 호출(UrlFetchApp)을 못 한다 — 결과를 저장한 뒤 GAS가 여기서 토지대장·토지이용계획·공시가격·건축물대장 묶음을 돌린다
   let outside = null;
@@ -32606,13 +32619,6 @@ function caseProcPrevValue_(c, sv, target) {
   if ((m = /^case:(.+)$/.exec(target))) return c[m[1]] ? { v: c[m[1]], src: '사건 정보', at: '', who: '세무사님' } : null;
   return null;
 }
-// 필요경비 저장 모양({acq, tr}) → 반영 입력 모양({items:[{kind…}]})
-function caseProcCostsToItems_(v) {
-  if (!v || typeof v !== 'object') return { items: [] };
-  if (Array.isArray(v.items)) return { items: v.items };
-  const mk = function (kind) { return function (x) { return { kind: kind, label: String(x.label || '').replace(/\s*\([^)]*\)\s*$/, ''), amount: Number(x.amount) || 0, file: String(x.file || ''), date: String(x.date || x.payDate || '') }; }; };
-  return { items: (v.acq || []).map(mk('취득')).concat((v.tr || []).map(mk('양도'))) };
-}
 function caseProcValueFix_(c, body) {
   const target = String(body.target || '').trim();
   if (!target) return { ok: false, error: '고칠 칸(target)이 필요합니다.' };
@@ -32734,10 +32740,22 @@ function caseProcScenario_(c, body) {
   if (!changes.length && !given) return { ok: false, error: '바꿀 칸(changes[{path, value}]) 또는 엔진 입력(input)이 필요합니다.' };
   const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
-  const sameTax = all.filter(function (e) { return e && e.세목 === label; });
-  const baseEntry = body.baseId ? sameTax.filter(function (e) { return String(e.id) === String(body.baseId); })[0] : sameTax.filter(function (e) { return !e.안; }).slice(-1)[0];
-  const lastScen = sameTax.filter(function (e) { return e.안 && e.저장값 && e.저장값.scenario; }).slice(-1)[0];
-  const sv = caseProcLoad_(c.id) || {};
+  // [2026.10.31 세 길 합치기 2 — 세무사님 "권장안대로"] 경우 계산의 바탕은 늘 사건 장부 — 바꿔 볼 값(changes)만 이번 계산에 얹는다(장부 값은 그대로).
+  //  예전엔 옛 계산기 저장본·칸 채우기 결과를 바탕으로 따로 계산해 장부 시험 계산과 세액이 갈렸다(주택 단기세율 60%→40% 사건). 호출자가 엔진 입력(input)을 통째로 준 경우만 그 입력으로.
+  //  옛 저장본은 그대로 보관·인용(다시 계산하지 않음). 장부가 비면 계산하지 않고 알린다(2-가)
+  if (!given) {
+    const L0 = ledgerLoad_(c.id);
+    const valued = Object.keys(L0.rows || {}).filter(function (p) { const r = L0.rows[p]; return !/^(q|chk|need|doc):/.test(p) && r && r.v !== '' && r.v != null; });
+    if (!valued.length) return { ok: false, emptyLedger: true, error: '장부가 비었습니다 — 경우 계산은 장부를 바탕으로 합니다. 서류 읽기(📖)·칸 채우기를 먼저 하거나, 의뢰서 값을 추정으로(case_ledger do=estimate) 넣은 뒤 다시 계산하세요.' + (all.some(function (e) { return e && e.세목 === label; }) ? ' (옛 저장본은 그대로 보관·인용할 수 있습니다)' : '') };
+    const over = changes.map(function (ch) { const p0 = String((ch && ch.path) || '').trim(); return { path: tax === 'transfer' ? (ledgerTargetPath_(p0) || p0) : p0, value: ch && ch.value }; });
+    const n0 = all.filter(function (e) { return e && e.안; }).length + 1;
+    let nm = String(body.name || '').trim().slice(0, 60) || (label + ' 안' + n0);
+    if (all.some(function (e) { return e && e.안 && e.안.이름 === nm; })) nm += '(' + n0 + ')';
+    const lr = ledgerCalcRun_(c, { tax: tax, name: nm, over: over, why: body.why, by: by });
+    if (!lr || !lr.ok) return lr || { ok: false, error: '장부 계산 실패' };
+    try { caseProcLog_(c.id, { by: by, what: '경우(안) 계산 저장', key: lr.id, detail: nm + ' — ' + label + ' 납부세액 ' + Number(lr.최종세액 || 0).toLocaleString('ko-KR') + '원 (바탕: 사건 장부)' }); } catch (e) { }
+    return { ok: true, id: lr.id, 안: nm, 세목: label, 최종세액: lr.최종세액, 바꾼칸: lr.가정 || [], 바탕: '사건 장부(정함+추정)', 요약: lr.요약, gaps: lr.gaps, 추가확인: lr.추가확인, message: '경우(안) 「' + nm + '」 저장 — ' + label + ' 납부세액 ' + Number(lr.최종세액 || 0).toLocaleString('ko-KR') + '원 (바탕: 사건 장부' + ((lr.가정 || []).length ? ', 바꾼 칸 ' + lr.가정.length : '') + ')' };
+  }
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
   const num = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0; };
   const diff = [], problems = [];
@@ -32745,9 +32763,7 @@ function caseProcScenario_(c, body) {
   if (tax === 'transfer') {
     let st = null;
     if (given && Array.isArray(given.transferAssets)) { st = given; baseFrom = '호출자가 준 계산기 입력'; }
-    else if (baseEntry && baseEntry.저장값 && Array.isArray(baseEntry.저장값.transferAssets) && baseEntry.저장값.transferAssets.length) { st = JSON.parse(JSON.stringify(baseEntry.저장값)); baseFrom = '기본 저장본 ' + String(baseEntry.id || '') + '(' + String(baseEntry.계산일 || '') + ')'; }
-    else if (sv.trCalc && sv.trCalc.state && (sv.trCalc.state.transferAssets || []).length) { st = JSON.parse(JSON.stringify(sv.trCalc.state)); baseFrom = '사건처리 계산기 입력(' + String(sv.trCalc.at || '').slice(0, 10) + ')'; }
-    else return { ok: false, error: '바탕이 될 양도 계산 저장본·계산기 입력이 없습니다 — 먼저 기본 계산을 한 번 저장하거나 input(계산기 입력)을 주세요.' };
+    else return { ok: false, error: '양도 엔진 입력(input)은 transferAssets가 든 계산기 입력이어야 합니다 — 장부 바탕으로 계산하려면 input 없이 changes만 주세요.' };
     st.transferAssets = st.transferAssets || []; st.transferContracts = st.transferContracts || []; st.transferSellers = st.transferSellers && st.transferSellers.length ? st.transferSellers : [{}];
     changes.forEach(function (ch) {
       const p = String((ch && ch.path) || '').trim().replace(/^calc:/, '').replace(/^expenses$/, 'costs').replace(/^trTaxFee$/, 'taxfee').replace(/^ov:사건분류$/, '사건분류');
@@ -32765,19 +32781,8 @@ function caseProcScenario_(c, body) {
     lines = ['거래 ' + res.거래건수 + '건 · 비과세 ' + res.비과세건수 + '건', '합산과세표준 ' + won(res.합산과세표준), '산출세액 합계 ' + won(res.산출세액_합계), '지방소득세 ' + won(res.지방소득세), '납부세액 합계 ' + won(res.납부세액_합계)];
     res = { 최종: Number(res.납부세액_합계), 요약값: { 거래건수: res.거래건수, 비과세건수: res.비과세건수, 합산과세표준: res.합산과세표준, 산출세액_합계: res.산출세액_합계, 지방소득세: res.지방소득세, 납부세액_합계: res.납부세액_합계, 자산별_내역: (res.자산별_내역 || []).slice(0, 6) } };
   } else {
-    // 증여·상속 — 엔진 입력(평평한 값)이 바탕. 사건 자료에서 만들 수 있는 것은 증여 처리개요(정답지 점검기와 같은 조립)뿐, 상속은 저장본·호출자 입력으로
-    let base = null;
-    if (given) { base = given; baseFrom = '호출자가 준 엔진 입력'; }
-    else if (lastScen) { base = JSON.parse(JSON.stringify(lastScen.저장값.inputs || {})); baseFrom = '앞선 안 ' + String(lastScen.id) + '(' + String(lastScen.안.이름 || '') + ')의 엔진 입력'; }
-    else if (tax === 'gift') {
-      const ov = c.사건개요 || {}, rel = String(ov.giftRelation || '');
-      if (!num(ov.giftAmount)) return { ok: false, error: '바탕이 될 증여 입력이 없습니다(처리개요 증여재산가액 없음) — input{giftAmount, relation, giftDate…}를 주세요.' };
-      base = { giftAmount: num(ov.giftAmount), relation: /^배우자/.test(rel) ? '배우자' : /^직계존속/.test(rel) ? '직계존속' : /^직계비속/.test(rel) ? '직계비속' : /기타친족/.test(rel) ? '기타친족' : '기타', isGenerationSkip: /2촌 이상/.test(rel), giftDate: c.기준일 || undefined };
-      if (num(ov.giftDebtAssumed)) { base.debtAssumedAmount = num(ov.giftDebtAssumed); base.isDebtObjectivelyProven = true; }
-      if (num(ov.giftPriorAmount)) base.priorGiftAmount = num(ov.giftPriorAmount);
-      if (num(ov.giftAppraisalFee)) base.appraisalFeeAmount = num(ov.giftAppraisalFee);
-      baseFrom = '사건 처리개요(증여재산가액·관계·인수채무·10년 합산)';
-    } else return { ok: false, error: '상속 경우 계산은 바탕 입력이 필요합니다 — 앞선 안이 없으면 input{taxableEstateAmount, hasSpouse, childCount, …}(calculate_inheritance_tax 입력)를 주세요.' };
+    // 증여·상속 — 호출자가 준 엔진 입력(평평한 값)으로만(장부 바탕 계산은 위 ledgerCalcRun_으로)
+    const base = given; baseFrom = '호출자가 준 엔진 입력';
     changes.forEach(function (ch) {
       const k = String((ch && ch.path) || '').trim(); if (!k) { problems.push('빈 칸 이름'); return; }
       const prev = base[k]; let v = ch.value;
@@ -32798,7 +32803,7 @@ function caseProcScenario_(c, body) {
   const total = res.최종;
   const summary = ['[경우(안)] ' + name + ' — ' + label, '바탕: ' + baseFrom, diff.length ? '바꾼 칸: ' + diff.map(function (d) { return (d.이름 || d.칸) + ' ' + d.전 + ' → ' + d.후; }).join(' / ') : '바꾼 칸 없음(입력 그대로)'].concat(lines, [body.why ? '이유: ' + String(body.why).slice(0, 200) : '']).filter(Boolean).join('\n');
   const entry = { id: 'tc_' + Date.now(), 세목: label, 구분: '경우(안) 서버 계산', 요약: summary, 최종세액: Number.isFinite(total) ? total : undefined, 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
-    안: { 이름: name, 세목: tax, 바꾼칸: diff, 누가: by, 때: caseProcNow_(), 바탕: baseFrom, 바탕저장본id: baseEntry ? String(baseEntry.id || '') : '', 이유: String(body.why || '').slice(0, 200) },
+    안: { 이름: name, 세목: tax, 바꾼칸: diff, 누가: by, 때: caseProcNow_(), 바탕: baseFrom, 바탕저장본id: '', 이유: String(body.why || '').slice(0, 200) },
     // 저장값은 작게(시트 한 칸 한도) — 엔진에 넣은 입력과 결과 요약만. 다음 안은 이 inputs를 바탕으로 이어 바꿀 수 있다
     저장값: { scenario: true, tax: tax, inputs: slimIn, result: res.요약값 } };
   const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
@@ -35120,11 +35125,10 @@ function caseProcEvidence_(c, body) {
   // 자동 정리로 종류가 확실히 판별되고(⚠ 없음) 칸이 하나로 정해지는 서류는 증빙목록을 확보됨(근거 파일명)으로 반영
   if (!virtual) {
     const marks = [];
-    req.forEach(function (e) {
+    // [2026.10.31 세 길 합치기 1] 장부 칸에 묶인 항목(flow:칸:·옛 need:)은 장부 칸 상태로만 확보됨 — 아래 서류 종류로 매기는 것은 틀 항목·세무사님이 넣은 항목만
+    const reqT = req.filter(function (e) { return !/^(flow:칸:|need:)/.test(String((e && e.slotKey) || '')); });
+    reqT.forEach(function (e) {
       if (e.status === '확보됨') return;
-      // [2026.10.30 D] 장부가 칸 상태로 짠 항목(flow:칸:)은 장부가 판단한다 — 그 칸이 서류 값으로 차면 받을 증빙 계산이 지운다.
-      //  여기서 파일 종류만 보고 확보로 매기면 양도 계약서가 취득가액 증빙으로 "확보됨"이 됐다(가상장부오형 운영 확인)
-      if (/^flow:칸:/.test(String(e.slotKey || ''))) return;
       const types = caseProcEvTypes_(e.label);
       if (!types) return;
       const lm = /\(([^)]*)\)\s*$/.exec(e.label);
@@ -35138,7 +35142,7 @@ function caseProcEvidence_(c, body) {
       if (hit.length) { e.status = '확보됨'; e._auto = hit[0].name; marks.push(e); }
     });
     // [2026.10.16] 분양계약서(분양금액표 검산 일치, 매수인 = 납세자)가 든 파일은 '취득 당시 매매계약서 또는 취득가액 증빙' 확보 — 고객W(양도 계약서와 한 파일이라 역할 판정이 양도로만 됨)
-    if (c.세목 === 'transfer') req.forEach(function (e) {
+    if (c.세목 === 'transfer') reqT.forEach(function (e) {
       if (e.status === '확보됨' || !/취득\s*당시|취득\s*가액\s*증빙/.test(e.label)) return;
       const nm = [c.납세자, c.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
       const sf = docs.filter(function (f) { if (!f.p || f.p.t !== 'contract' || f.p.office) return false; let t = ''; try { t = tc_docText_(f) || ''; } catch (err) {} const s = caseProcSupplyOf_(t); return !!(s && (!s.buyer || tcNameIn_(s.buyer, nm))); })[0];
@@ -35147,7 +35151,7 @@ function caseProcEvidence_(c, body) {
     // [2026.10.29 땜질 심사] 묶음 파일 이름에 서류 이름이 나열됐다고 내용 확인 없이 "확보됨"으로 매기던 것을 걷어냄(고객Z 파일 이름 버릇) —
     //  그런 칸은 "비슷한 파일 있음"으로 남고, 묶음 나누기(splitCands — 한 파일에 든 여러 서류 나누기)로 내용을 확인해 확보한다(서류 내용이 먼저, 이름은 보조)
     // 내용으로 정리하지 않는 파일(엑셀·CSV 거래내역, 검토 문서)로 채우는 칸 — 파일 이름으로(상속: 피상속인 금융거래내역·사전증여 검토 자료)
-    req.forEach(function (e) {
+    reqT.forEach(function (e) {
       if (e.status === '확보됨' || c.세목 !== 'inheritance' || !/사전\s*증여|금융\s*거래\s*내역/.test(e.label)) return;
       const fh = files.filter(function (f) { return /거래\s*내역|금융\s*자료|입출금/.test(f.name) && !/^_/.test(f.name); });
       if (fh.length) { e.status = '확보됨'; e._auto = fh.map(function (f) { return f.name; }).slice(0, 3).join(', '); marks.push(e); }
@@ -35159,7 +35163,7 @@ function caseProcEvidence_(c, body) {
       const ofType = function (t) { return docs.filter(function (f) { return f.p && f.p.t === t && !f.p.office; }); };
       // [2026.10.18 3차 수정 N] 가족관계증명서 칸은 피상속인(사망)이 적힌 증명서만(famDecInfo — 위 설명)
       const famHit = function (selfOnly) { const d = famDecInfo(); if (!d.known) return ofType('family').length ? ofType('family')[0].name : ''; return selfOnly ? d.self : (d.self || d.any); };
-      req.forEach(function (e) {
+      reqT.forEach(function (e) {
         if (e.status === '확보됨') return;
         const L = String(e.label || '');
         let hit = '';
@@ -35180,7 +35184,7 @@ function caseProcEvidence_(c, body) {
     //  (고객D(고객D 납세자): 등기부등본.pdf·감정평가서.pdf가 있는데 "미확보"로 물었다), 증여계약서는 판독 ⚠가 있어도 종류가 맞으면 확보(⚠는 그 서류 칸에서 따로 묻는다)
     if (c.세목 === 'gift') {
       const ofT = function (ts) { return docs.filter(function (f) { return f.p && ts.indexOf(f.p.t) !== -1 && !f.p.office; }); };
-      req.forEach(function (e) {
+      reqT.forEach(function (e) {
         if (e.status === '확보됨' || marks.indexOf(e) !== -1) return;
         const L = String(e.label || '');
         let hit = '';
@@ -50021,7 +50025,7 @@ function ctCompare_(docs) {
 // 검산: 계약금+중도금+잔금=보증금 / 종전 보증금+증액=새 보증금이 맞을 때만 확정, 아니면 ⚠확인필요.
 // =========================================================
 // 한국은행 기준금리 변경 이력(전월세 전환율 계산용). 표 밖 날짜는 ⚠확인필요로 표시한다.
-var LS_BOK_RATES_ = [['2014-08-14', 2.25], ['2014-10-15', 2.00], ['2015-03-12', 1.75], ['2015-06-11', 1.50], ['2016-06-09', 1.25], ['2017-11-30', 1.50], ['2018-11-30', 1.75], ['2019-07-18', 1.50], ['2019-10-16', 1.25], ['2020-03-17', 0.75], ['2020-05-28', 0.50], ['2021-08-26', 0.75], ['2021-11-25', 1.00], ['2022-01-14', 1.25], ['2022-04-14', 1.50], ['2022-05-26', 1.75], ['2022-07-13', 2.25], ['2022-08-25', 2.50], ['2022-10-12', 3.00], ['2022-11-24', 3.25], ['2023-01-13', 3.50], ['2024-10-11', 3.25], ['2024-11-28', 3.00], ['2025-02-25', 2.75], ['2025-05-29', 2.50]];
+var LS_BOK_RATES_ = [['2014-08-14', 2.25], ['2014-10-15', 2.00], ['2015-03-12', 1.75], ['2015-06-11', 1.50], ['2016-06-09', 1.25], ['2017-11-30', 1.50], ['2018-11-30', 1.75], ['2019-07-18', 1.50], ['2019-10-16', 1.25], ['2020-03-17', 0.75], ['2020-05-28', 0.50], ['2021-08-26', 0.75], ['2021-11-25', 1.00], ['2022-01-14', 1.25], ['2022-04-14', 1.50], ['2022-05-26', 1.75], ['2022-07-13', 2.25], ['2022-08-25', 2.50], ['2022-10-12', 3.00], ['2022-11-24', 3.25], ['2023-01-13', 3.50], ['2024-10-11', 3.25], ['2024-11-28', 3.00], ['2025-02-25', 2.75], ['2025-05-29', 2.50], ['2026-07-16', 2.75], ['2026-08-27', 3.00]]; // [2026.10.31] 7·8월 인상 더함(한국은행 통화정책방향 2026.8.27. 등), 10.22. 3.00% 유지 — 그 뒤 날짜는 다음 금통위(11.26.) 뒤 다시 확인
 // 주택임대차보호법 시행령 제9조 월차임 전환율(민간임대주택법 임대료 증액 비교에도 이 비율) — 10%와 아래 중 낮은 것
 //  ~2016.11.29: 기준금리×4 / 2016.11.30~2020.9.28: 기준금리+3.5%p / 2020.9.29~: 기준금리+2%p
 function lsConvRate_(ymd) {
@@ -50029,7 +50033,7 @@ function lsConvRate_(ymd) {
   LS_BOK_RATES_.forEach(function (x) { if (ymd >= x[0]) b = x[1]; });
   if (b === null) return null;
   var r = ymd < '2016-11-30' ? b * 4 : ymd < '2020-09-29' ? b + 3.5 : b + 2;
-  return { 기준금리: b, 전환율: Math.min(10, Math.round(r * 100) / 100), 표밖: !known || ymd > '2026-06-30' };
+  return { 기준금리: b, 전환율: Math.min(10, Math.round(r * 100) / 100), 표밖: !known || ymd > '2026-11-25' };
 }
 // 환산보증금 = 보증금 + 월세×12 ÷ 전환율
 function lsConverted_(dep, rent, rate) { return Math.round((dep || 0) + (rent || 0) * 12 / (rate / 100)); }
@@ -52467,7 +52471,7 @@ function trcOverview_(c, ov, rf, lines, items) {
   lines.push('🎯 세액계산기가 지금 원하는 칸 ' + ns.total + '개 — 증빙·답으로 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움') + (ns.later.length ? ' · 지금은 필요 없음: ' + ns.later.join(' / ') : ''));
   lines.push('세액계산기 입력: 양도인 ' + S.state.transferSellers.length + ' · 양도계약 ' + S.state.transferContracts.length + ' · 양도자산 ' + S.state.transferAssets.length + ' — 채운 칸 ' + Object.keys(S.src).length + '개(증빙·답), 남은 질문 ' + items.filter(function (x) { return x.kind !== 'check' || x.ask; }).length + '개');
   trcSummaryToOv_(c, S, lines);
-  try { trcNeedEvidence_(c, S, needs, lines); } catch (e) {} // 새로 드러난 사실이 필요로 하는 서류 → 증빙목록
+  // [2026.10.31 세 길 합치기 1] 받을 증빙은 장부만 짠다 — 예전 이 자리의 손 목록(trcNeedEvidence_ — 거주연수·출입국·증여 이월과세 서류)은 장부 표 LEDGER_NEED_DOC_EXTRA_로 옮김
   const focus = ns.missing.length ? trcNeedScanFocus_(c, needs) : [];
   try { caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: needs, sum: ns }; }); } catch (e) {}
   return { ok: true, lines: lines, items: items, case: c, calcHash: h, needs: ns, loop: focus.length ? { scan: focus.map(function (f) { return f.id; }), why: '필요한 칸(' + ns.missing.slice(0, 3).join('·') + ')의 근거가 될 사진 판독이 나쁨: ' + focus.map(function (f) { return f.name + '(' + f.why + ')'; }).join(', ') } : null };
@@ -53760,7 +53764,6 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
   let resDocs = []; try { resDocs = caseProcFiles_(c).filter(function (f) { return /출입국|주민\s*등록|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
   if (!ans['a0.oaResident5yr']) {
     const r5 = trcOverseasRes5_(pp, a.transferDate || c.기준일 || '');
-    S.facts.oaRes = { ee: pp.ee.length, gapFrom: r5.gapFrom }; // 증빙목록 되먹임(trcNeedEvidence_) — 이미 있는 출입국사실증명을 또 요청하지 않고, 모자라는 기간만
     q('oa:res5', 'judge', '국외자산 카드 「양도일까지 계속 5년 이상 국내 거주」 — 아니면 국외자산 양도세 납세의무가 없습니다(§118의2).' + (r5.text ? ' ' + r5.text : resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
       { mode: 'options', target: 'calc:a0.oaResident5yr', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] }, r5.detail || '');
   }
@@ -53921,28 +53924,14 @@ function trcLocAlt_(c, loc) {
   } catch (e) {}
   return out;
 }
-// 새로 드러난 사실이 필요로 하는 서류를 증빙목록에 더한다(되먹임) — 세액계산기의 빈 칸이 그 서류로만 채워지는 경우만
-function trcNeedEvidence_(c, S, needs, lines) {
-  const want = [];
-  const miss = function (p) { return needs.some(function (n) { return n.p === p && !n.ok && !n.later; }); };
-  (S.facts.gift || []).forEach(function (g) {
-    if (miss(g.p + '.acquisitionPrice')) want.push(['need:' + g.p + '.giftreturn', '증여세 신고서(증여받은 자산 취득가액 — 소득세법 시행령 §163⑨ 증여세 신고·결정가액)']);
-    if (miss(g.p + '.donorAcquisitionPrice') || miss(g.p + '.donorAcquisitionDate')) want.push(['need:' + g.p + '.donoracq', '증여자 취득 당시 계약서·등기부(이월과세 비교 — 증여자 취득일·취득가액)']);
-  });
-  (S.state.transferAssets || []).forEach(function (a, i) { if (miss('a' + i + '.residenceYears')) want.push(['need:a' + i + '.res', '양도인 주민등록초본 전체 이력(1세대1주택 거주연수)']); });
-  // [2026.10.18 정밀분석 국외자산] 출입국사실증명이 이미 있으면 다시 요청하지 않고, 양도일 전 5년을 다 덮지 못할 때만 그 앞 기간을 요청한다
-  const oaR = S.facts.oaRes || {};
-  if (miss('a0.oaResident5yr') && !oaR.ee) want.push(['need:a0.oa5', '출입국 사실증명(국외자산 5년 이상 국내 거주 — §118의2)']);
-  else if (miss('a0.oaResident5yr') && oaR.gapFrom) want.push(['need:a0.oa5', '출입국 사실증명 — ' + oaR.gapFrom + ' 이전부터 조회한 것(지금 서류는 양도일 전 5년을 다 덮지 못함 — §118의2)']);
-  if (!want.length) return;
-  const list = Array.isArray(c.증빙목록) ? c.증빙목록.slice() : [];
-  const add = want.filter(function (w) { return !list.some(function (e) { return e && (e.slotKey === w[0] || e.label === w[1]); }); });
-  if (!add.length) return;
-  const today = caseProcToday_();
-  add.forEach(function (w, i) { list.push({ id: 'ev_' + Date.now() + '_n' + i, source: 'requested', label: w[1], slotKey: w[0], fromClassification: null, note: '사건처리: 세액계산기 빈 칸의 근거 서류', status: '미확보', 요청일: today }); });
-  const up = work_updateCase({ id: c.id, 증빙목록: list, 기대수정일: c.수정일 });
-  if (up && up.success !== false) { c.증빙목록 = list; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; lines.push('✏ 증빙목록에 받을 서류 추가(새로 드러난 사실이 필요로 함): ' + add.map(function (w) { return w[1]; }).join(', ')); }
-}
+// [2026.10.31 세 길 합치기 1 — 세무사님 "권장안대로"] 칸 → 그 칸 값이 적히는 서류 이름 중 서류 종류(TRC_NEED_DOC_TYPES_)로 없는 것 — 장부 받을 증빙 짜기(caseFlowEvidence_)가 함께 본다.
+//  예전엔 칸 채우기 끝(trcNeedEvidence_)이 이 서류들을 받을 증빙 목록에 넣기만 하고 빼지 않아 한 번 들어가면 남았다(받을 증빙 판단이 세 곳)
+const LEDGER_NEED_DOC_EXTRA_ = {
+  residenceYears: ['주민등록초본 전체 이력'], // 1세대1주택 거주연수
+  oaResident5yr: ['출입국 사실증명'], // 국외자산 5년 이상 국내 거주 — 소득세법 §118의2
+  acquisitionPrice: ['증여세 신고서'], // 증여받은 자산의 취득가액 — 소득세법 시행령 §163⑨ 증여세 신고·결정가액
+  donorAcquisitionPrice: ['증여자 취득 당시 계약서'], donorAcquisitionDate: ['증여자 취득 당시 계약서'] // 이월과세 비교
+};
 // 사건분류(특례) 선택지 — 서류로 드러난 사실로 해당 없는 갈래는 뺀다(판 물건이 토지면 주택 특례, 주택이면 토지 특례 …). 정하지는 않는다
 function trcClassOptions_(S, tpl, ans) {
   const a0 = S.state.transferAssets[0] || {}, c0 = S.state.transferContracts[0] || {}, cause = String(c0.transferCause || '');

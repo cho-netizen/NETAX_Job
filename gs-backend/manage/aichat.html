@@ -3078,7 +3078,7 @@
           // [H③] 직결 결과를 그릴 때 기록부 결정으로 답한 질문은 ✅ 답함으로 — 화면 결정에 기록부 결정을 합쳐 둔다
           st.decisions = Object.assign({}, rd.dec || {}, st.decisions || {});
           if (rd.rec && rd.rec.readScope) lineTo('evidence', '📂 읽을 범위: 폴더 ' + ((rd.rec.readScope.dirs || []).join(', ') || '(없음)') + ((rd.rec.readScope.files || []).length ? ' · 파일 ' + rd.rec.readScope.files.length + '개' : '') + ' — 이 범위만 읽습니다', 'nxai-muted');
-          ['basic', 'evidence', 'overview'].forEach(function(k){ st.setStep(k, '🔄', '시험 서비스(직결)로 서류를 읽는 중…'); });
+          ['basic', 'evidence'].forEach(function(k){ st.setStep(k, '🔄', '시험 서비스(직결)로 서류를 읽는 중…'); }); // [2026.10.31] 직결은 📖 서류 읽기만 — 칸 채우기 줄을 켜 두면 서류 읽기가 끝나도 "읽는 중"으로 남았다
           var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
           var tmr = ctrl ? setTimeout(function(){ ctrl.abort(); }, 12000) : null;
           return fetch(url + '/read', { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk.token }, body: JSON.stringify({ caseId: st.caseId, folderId: rd.row.폴더ID, sheetRow: rd.row, decisions: rd.dec, record: rd.rec || null }), signal: ctrl ? ctrl.signal : undefined })
@@ -3093,11 +3093,11 @@
               if (r.partial || r.more) return give('서류를 다 못 읽음(이어 읽기는 GAS가)');
               if (Array.isArray(r.unreadFiles) && r.unreadFiles.length) return give('글자 기억이 없는 서류 ' + r.unreadFiles.length + '개(글자인식은 GAS가)');
               var sg = r.stages;
-              if (!sg.basic || !sg.overview) return give('단계 결과가 비어 있음');
+              if (!sg.basic) return give('단계 결과가 비어 있음'); // [2026.10.31] 📖 서류 읽기 도구는 칸 채우기(overview)를 내지 않는다 — 예전엔 overview가 없다고 직결을 늘 버리고 GAS 서버로 다시 읽었다
               return st.doStep('basic', undefined, sg.basic).then(function(b){
                 if (b && b.blocked) return give('증빙 폴더 없음');
                 st.loopNotes = [];
-                return (sg.evidence ? st.doStep('evidence', undefined, sg.evidence) : Promise.resolve()).then(function(){ return st.doStep('overview', undefined, sg.overview); }).then(function(){
+                return (sg.evidence ? st.doStep('evidence', undefined, sg.evidence) : Promise.resolve()).then(function(){ return sg.overview ? st.doStep('overview', undefined, sg.overview) : null; }).then(function(){
                   st.route = '직결'; st.firstShown = true; st.secFirst = Math.round((Date.now() - st.t0) / 1000);
                   var tmTxt = r.timing ? ' — 시험 서비스 ' + (r.timing.total != null ? r.timing.total : '?') + '초(드라이브 ' + (r.timing.drive || 0) + '·①' + (r.timing.basic || 0) + '·③' + (r.timing.overview || 0) + ')' : '';
                   lineTo('overview', '⚡→첫 결과 ' + st.secFirst + '초(직결' + tmTxt + ') · 직결 왕복 ' + Math.round((Date.now() - tDirect) / 100) / 10 + '초 · 사건 행: ' + (rd.from || '?') + (tk.fresh ? ' · 토큰 새로 받음' : ''), 'nxai-muted');
@@ -3319,7 +3319,9 @@
   function nxAiCpGasSayText_(st){
     var tax0 = nxAiCpTax_(st), byCard = {}, nq = 0;
     st.items.forEach(function(it){ var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; nq++; var k = nxAiCpCard_(it, tax0).card; byCard[k] = (byCard[k] || 0) + 1; });
-    return '⚡ GAS가 한 일: 서류 ' + (st.files || []).length + '개를 읽어 칸을 채웠습니다. ' + (nq ? '여쭐 것 ' + nq + '개 — ' + Object.keys(byCard).map(function(k){ return k + ' ' + byCard[k]; }).join(' · ') + ' (아래에 항목별로)' : '여쭐 것은 없습니다.');
+    // [2026.10.31] 낱개 도구마다 한 일을 그대로 — 예전 한 바퀴 글("서류 n개를 읽어 칸을 채웠습니다")이 서류 읽기에도·칸 채우기(서류 0개)에도 똑같이 나왔다
+    var did = st.tool === 'fill' ? '장부 값을 세액계산기 칸에 옮겼습니다.' : '서류 ' + (st.files || []).length + '개를 읽어 장부에 적었습니다.';
+    return '⚡ GAS가 한 일: ' + did + ' ' + (nq ? '여쭐 것 ' + nq + '개 — ' + Object.keys(byCard).map(function(k){ return k + ' ' + byCard[k]; }).join(' · ') + ' (아래에 항목별로)' : '여쭐 것은 없습니다.');
   }
   // [2026.10.31 묶음 해체] 도구가 끝나면 다음 도구는 세무사님이 고르신다 — 고정 묶음 단추 없이 낱개 단추만(승인 ① "두지 않음")
   function nxAiCpEndNoFinish_(st, msg){
@@ -5764,6 +5766,9 @@
     var cpSt = nxAiCaseProcForReply_();
     if (cpSt && !/처리\s*(하자|합시다|해\s*줘|해\s*주세요)/.test(text)){ try { if (nxAiCaseProcReply_(cpSt, text)) return; } catch (e) { if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '사건처리 말로 답하기', message: String(e && e.message || e), detail: text }); } }
     var intent = nxAiDetectLocal_(text);
+    // [2026.10.31 장부 5-3 덜 고친 것] 60자 넘는 글은 위 판별이 아예 안 봐서, "○○ 사건 처리하자"를 길게 쓰시면 연결된 다른 사건으로 넥스가 일했다 —
+    //  글 길이와 상관없이 사건 이름을 적어 맡기신 말이면 사건 맡기기로(사건을 찾아 바꾸고 말씀 전체를 그대로 넥스에게)
+    if (!intent && nxAiExplicitCaseName_(text)) intent = { kind: 'caseproc' };
     // [2026.10.23 ㅅ12차 — 점검표 142] 넥스가 묻는 중·단추 대기 중에 온 말을 GAS 규칙이 못 알아들으면 넥스(AI)에게 열린 질문 목록과 함께 넘긴다(무료 제미니는 거치지 않음 — 사건 답은 제미니 몫이 아니고, 150초 기다리는 동안 보내기가 잠겼다)
     if (!intent && cpSt && (cpSt.waiting || cpSt.paused)) return nxAiSendAI_(text, { noGem: true, cpHint: nxAiCpHint_(cpSt, [text]) });
     if (!intent) return nxAiSendAI_();

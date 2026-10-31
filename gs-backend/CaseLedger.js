@@ -348,7 +348,12 @@ function ledgerPathSort_(a, b) {
   return g(a) - g(b) || (a < b ? -1 : a > b ? 1 : 0);
 }
 function ledgerQuestions_(caseId) { return ledgerRows_(caseId, { state: ['물어볼것', '증빙받을것'] }); }
-function ledgerReviewNotes_(caseId) { return ledgerRows_(caseId, { state: ['추정', '증빙받을것', '보류'] }); }
+// [2026.10.31 정리] tax를 주면 그 세목 칸만(다른 세목 칸은 뺌, 세목 없는 칸·서류 줄은 둠) — 예전엔 증여 계산의 "추가로 확인할 사항"에 양도 칸 취득일이 섞였다(복합 자문 원점 점검)
+function ledgerReviewNotes_(caseId, tax) {
+  const rows = ledgerRows_(caseId, { state: ['추정', '증빙받을것', '보류'] });
+  if (!tax) return rows;
+  return rows.filter(function (r) { const t = ledgerPathTax_(r.path) || (/^(seller\.|costs$|taxfee$)/.test(r.path) ? 'transfer' : ''); return !t || t === tax; });
+}
 function ledgerSummary_(caseId) {
   const L = ledgerLoad_(caseId), n = {};
   LEDGER_STATES_.forEach(function (s) { n[s] = 0; });
@@ -504,7 +509,8 @@ function ledgerInhInput_(c, L) {
 function ledgerCalcRun_(c, body) {
   body = body || {};
   // [2026.10.30 복합 자문] 세목을 골라 돌린다(body.tax) — 주 세목이 아니어도 함께 보는 세목이면 그 세목 장부 칸으로 계산. 안 주면 사건 주 세목
-  const tax = String(body.tax || c.세목 || '');
+  // [2026.10.31] 사건 세목은 "양도"처럼 한글로 저장돼 있다 — 열쇠(transfer 등)로 바꿔 본다. 예전엔 세목 없이 부르면 양도 사건도 "양도·증여·상속만 합니다"로 실패했다(가상넥스도구 넥스 3번 실패)
+  const tax = ledgerTaxCode_(body.tax || c.세목) || String(body.tax || c.세목 || '');
   if (body.tax && ledgerTaxes_(c).indexOf(tax) === -1) return { ok: false, error: '이 사건의 주 세목·함께 보는 세목이 아닙니다(' + tax + ') — 먼저 case_ledger do=taxes로 함께 보는 세목에 넣으세요' };
   if (tax === 'gift' || tax === 'inheritance') return ledgerCalcGiftInh_(c, body, tax);
   if (tax !== 'transfer') return { ok: false, error: '장부 계산은 양도·증여·상속만 합니다' };
@@ -518,7 +524,7 @@ function ledgerCalcRun_(c, body) {
   const res = runUiEngineCalcTool_('calculate_transfer_tax_multi', { transactions: inputs });
   if (!res || res.error) return { ok: false, error: '계산 실패: ' + ((res && res.error) || '엔진 없음'), gaps: cs.gaps };
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
-  const est = ledgerReviewNotes_(c.id);
+  const est = ledgerReviewNotes_(c.id, 'transfer');
   const lines = ['거래 ' + res.거래건수 + '건 · 비과세 ' + res.비과세건수 + '건', '합산과세표준 ' + won(res.합산과세표준), '산출세액 합계 ' + won(res.산출세액_합계), '지방소득세 ' + won(res.지방소득세), '납부세액 합계 ' + won(res.납부세액_합계)];
   if ((cs.assumed || []).length) lines.push('이번 계산의 가정(장부 값은 그대로) ' + cs.assumed.length + '칸: ' + cs.assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
   if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (r) { return r.label + '(' + r.state + (r.state === '추정' ? ' ' + r.값 : '') + ')'; }).join(', ').slice(0, 300));
@@ -554,7 +560,7 @@ function ledgerCalcGiftInh_(c, body, tax) {
   const r = runUiEngineCalcTool_(gift ? 'calculate_gift_tax' : 'calculate_inheritance_tax', b.input);
   if (!r || r.error) return { ok: false, error: '계산 실패: ' + ((r && r.error) || '엔진 없음'), gaps: b.gaps };
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
-  const est = ledgerReviewNotes_(c.id), label = gift ? '증여세' : '상속세';
+  const est = ledgerReviewNotes_(c.id, gift ? 'gift' : 'inheritance'), label = gift ? '증여세' : '상속세';
   const 산출 = gift ? (r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액) : r.산출세액;
   const lines = ['과세표준 ' + won(r.과세표준), '산출세액 ' + won(산출), '신고세액공제 ' + won(r.신고세액공제), '납부세액 ' + won(r.납부세액)];
   if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (x) { return x.label + '(' + x.state + ')'; }).join(', ').slice(0, 300));
@@ -1209,7 +1215,12 @@ function ledgerToolRun_(input, by) {
   const kind = input.kind === '세무사님' ? '세무사님' : input.kind === '추정' ? '추정' : '넥스';
   const who = String(by || '넥스').slice(0, 6);
   let r;
-  if (d === 'set') r = ledgerSet_(c.id, { path: input.path, value: input.value, kind: kind, by: who, file: input.file, page: input.page, quote: input.quote, why: input.why, label: input.label, cands: input.cands });
+  if (d === 'set' && kind !== '세무사님') { // [2026.10.31 세 길 합치기 3] 넥스 값은 한 문(ledgerNexGate_)을 지난다
+    const g = ledgerNexGate_(c, input.value, ledgerNexSetBasis_(input), input.path);
+    if (!g.ok) r = { ok: false, refused: true, error: '넣지 않음 — ' + g.why + (g.retry ? ' (값은 그대로, file과 quote(그 판단을 받치는 원문 문구)를 붙여 다시)' : '') };
+    else r = ledgerSet_(c.id, { path: input.path, value: input.value, kind: g.kind, by: who, file: g.kind === '넥스' ? input.file : '', page: input.page, quote: input.quote, why: [input.why, g.provisional || !input.file ? g.why : ''].filter(Boolean).join(' · '), label: input.label, cands: input.cands });
+  }
+  else if (d === 'set') r = ledgerSet_(c.id, { path: input.path, value: input.value, kind: kind, by: who, file: input.file, page: input.page, quote: input.quote, why: input.why, label: input.label, cands: input.cands });
   else if (d === 'ask') r = ledgerAsk_(c.id, { path: input.path, label: input.label, question: input.question || input.why, cands: input.cands, needDoc: !!input.needDoc, by: who });
   else if (d === 'decide') r = ledgerDecide_(c.id, { path: input.path, decision: input.decision, note: input.note || input.why, by: who });
   else if (d === 'undo') r = ledgerUndo_(c.id, { path: input.path, by: who });
@@ -1231,6 +1242,28 @@ function ledgerToolRun_(input, by) {
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
 }
+// [2026.10.31 세 길 합치기 3 — 세무사님 "권장안대로"] 넥스가 칸에 값을 넣는 길(질문 답 value_set·확정 칸 고치기 value_set target·장부 적기 case_ledger set)은
+//  모두 이 문 하나를 지난다 — 예전엔 질문 답만 서류 원문을 대조하고 나머지 둘은 대조 없이 넣었다.
+//  근거가 서류(file)면 늘 원문 대조(없으면 거절) / 말씀·상담 메모·조회·후보면 그 근거대로 넥스 값(받을 증빙은 장부가 남김) / 근거를 안 밝히거나 추론이면 추정(3-가)
+function ledgerNexGate_(c, value, basis, itemId) {
+  basis = basis || {};
+  const k = basis.kind || (basis.file ? 'doc' : '');
+  if (k === 'doc') {
+    const chk = caseProcAiCheckBasis_(c, value, Object.assign({}, basis, { kind: 'doc' }), itemId || '', c.id);
+    return chk.ok ? { ok: true, kind: '넥스', why: chk.why, file: chk.file || basis.file || '' } : { ok: false, why: chk.why, retry: !!chk.retry, file: chk.file || '' };
+  }
+  if (k === 'cand' || k === 'lookup') { const chk = caseProcAiCheckBasis_(c, value, basis, itemId || '', c.id); return chk.ok ? { ok: true, kind: '넥스', why: chk.why } : { ok: false, why: chk.why }; }
+  if (k === 'user' || k === 'memo') return { ok: true, kind: '넥스', why: k === 'user' ? '세무사님 말씀 기준(잠정 — 서류로 확인할 것)' : '상담 메모 기준(잠정 — 서류로 확인할 것)' };
+  if (k === 'infer') return Array.isArray(basis.facts) && basis.facts.length ? { ok: true, kind: '추정', provisional: true, why: '추론(잠정) — 근거 사실 ' + basis.facts.length + '개' } : { ok: false, why: '추론 값은 근거 사실 목록(facts)이 필요' };
+  return { ok: true, kind: '추정', provisional: true, why: '근거를 밝히지 않음 — 추정으로 적음(서류로 확인할 것)' };
+}
+// case_ledger do=set을 넥스가 부를 때의 근거 — file이 있으면 서류, why가 있으면 말씀·메모, 둘 다 없으면 근거 없음
+function ledgerNexSetBasis_(input) {
+  if (input.file) return { kind: 'doc', file: input.file, page: input.page, quote: input.quote };
+  if (input.kind === '추정') return { kind: 'infer', facts: [String(input.why || '추정')] };
+  if (String(input.why || '').trim()) return { kind: 'memo' };
+  return {};
+}
 // case_proc 입구(step: ledger·ledgerSet·ledgerAsk·ledgerDecide·ledgerUndo·ledgerCalc·ledgerImport) — 화면·넥스·사이드바가 같은 길
 function ledgerApi_(c, body) {
   body = body || {};
@@ -1244,10 +1277,7 @@ function ledgerApi_(c, body) {
   }
   switch (body.step) {
     case 'ledger': return ledgerView_(c);
-    case 'ledgerSet': return ledgerSet_(c.id, Object.assign({}, body, { kind: body.kind || who, by: body.by || who }));
     case 'ledgerAsk': return ledgerAsk_(c.id, Object.assign({}, body, { by: body.by || who }));
-    case 'ledgerDecide': return ledgerDecide_(c.id, Object.assign({}, body, { by: body.by || who }));
-    case 'ledgerUndo': return ledgerUndo_(c.id, Object.assign({}, body, { by: body.by || who }));
     case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who, name: body.name, over: body.over, why: body.why, tax: body.tax ? ledgerTaxCode_(body.tax) || String(body.tax) : '' });
     case 'ledgerTaxes': return ledgerTaxesSet_(c, body, body.by || who); // [2026.10.30 복합 자문] 📒 ⑥ 함께 보는 세목 — 넥스 case_ledger do=taxes와 같은 함수
     case 'ledgerLookup': return ledgerLookup_(c, body, body.by || who); // [2026.10.29 계획서 3판] 📒 ⑤ 도구 — 넥스 case_ledger와 같은 함수
@@ -1948,12 +1978,16 @@ function caseFlowEvidence_(c, L, lines) {
   // [2026.10.30 B] 칸이 찼어도 그 값의 근거가 서류가 아니면(넥스가 말씀·상담 메모로 적은 값·추정) 계산엔 쓰되 받을 증빙은 남긴다 — "말씀 기준(잠정)". 서류로 확인되면 그때 빠진다.
   const readOk = !kbFiles.some(function (f) { return f.st === '못읽음'; });
   const slotNames = function (p) {
-    const types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[String(p).split('.').pop()]) || [];
-    return types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(Boolean);
+    const k = String(p).split('.').pop(), types = (typeof TRC_NEED_DOC_TYPES_ !== 'undefined' && TRC_NEED_DOC_TYPES_[k]) || [];
+    // [2026.10.31 세 길 합치기 1] 서류 종류로 없는 서류 이름(출입국 사실증명·증여세 신고서 …)도 같은 표에서 — 예전 칸 채우기 끝의 손 목록을 옮김
+    const extra = (typeof LEDGER_NEED_DOC_EXTRA_ !== 'undefined' && LEDGER_NEED_DOC_EXTRA_[k]) || [];
+    // 더 자세한 이름(주민등록초본 → 주민등록초본 전체 이력)이 있으면 짧은 이름은 뺀다
+    return types.map(function (t) { return (typeof CASEPROC_SCAN_TYPE_NAME_ !== 'undefined' && CASEPROC_SCAN_TYPE_NAME_[t]) || ''; }).filter(function (nm) { return nm && !extra.some(function (x) { return x !== nm && x.indexOf(nm) === 0; }); }).concat(extra);
   };
   const cands = [];
   if (readOk) Object.keys(L.rows || {}).forEach(function (p) {
-    if (/^(q:|doc:|chk:)/.test(p) || !/^(seller\.|c\d+\.|a\d+\.|g\d+\.|h\d+\.)/.test(p)) return;
+    // [2026.10.31 정리] 칸 경로의 세목은 ledgerPathTax_ 한 곳으로 — 예전 거름(g\d+.·h\d+.)은 증여 칸(g.giftAmount)·상속 칸(i.…)을 못 잡아 증여·상속 장부의 "증빙받을것"이 받을 증빙에 안 올랐다
+    if (/^(q:|doc:|chk:)/.test(p) || !(/^seller\./.test(p) || ledgerPathTax_(p))) return;
     const r = L.rows[p] || {}, src = r.src || {}, lab = String(r.label || ledgerLabel_(p) || p);
     if (r.state === '증빙받을것') cands.push({ p: p, l: lab, ledger: true, note: '장부 확인: 장부 「' + lab + '」 칸이 증빙 받을 것' + (r.ask ? ' — ' + String(r.ask).slice(0, 80) : '') });
     else if (/^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null && !src.file && (r.state === '추정' || /^(넥스|추정)$/.test(String(src.kind || ''))))
@@ -1961,7 +1995,7 @@ function caseFlowEvidence_(c, L, lines) {
   });
   // [2026.10.30 복합 자문 — 세무사님 "권하는 안대로"] 함께 보는 세목(주 세목 말고)마다 그 세목에서 늘 필요한 서류(필요증빙 틀 공통) — 주 세목 공통 서류는 사건개요를 처음 저장할 때 이미 들어간다.
   //  함께 보는 세목을 빼면 다음 바퀴에 이 항목도 빠진다(flow: 항목은 바퀴마다 다시 짬). 같은 이름 서류는 한 번만
-  ledgerTaxes_(c, L).filter(function (t) { return t !== c.세목; }).forEach(function (t) {
+  ledgerTaxes_(c, L).filter(function (t) { return t !== (ledgerTaxCode_(c.세목) || c.세목); }) /* [2026.10.31] 세목이 한글("양도")로 저장된 옛 사건에서 주 세목을 함께 보는 세목으로 잘못 세어 받을 증빙 8건이 붙었다 */.forEach(function (t) {
     const tt = typeof WORK_EVIDENCE_TEMPLATES_ !== 'undefined' ? WORK_EVIDENCE_TEMPLATES_[t] : null, nm = (typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[t]) || t;
     ((tt && tt.공통) || []).forEach(function (label) { const k = 'flow:세목:' + t + ':' + label; if (!has(label, k) && !Object.keys(want).some(function (k2) { return want[k2].label === label; })) want[k] = { label: label, note: '함께 보는 세목 「' + nm + '」에서 늘 필요한 서류(복합 자문 — 그 세목 쟁점을 확인할 바탕)' }; });
   });
@@ -1978,7 +2012,7 @@ function caseFlowEvidence_(c, L, lines) {
     //  [2026.10.30] 예전엔 형제 칸 항목(같은 매매계약서를 원하는 취득가액·취득일)이 서로를 "이미 있음"으로 봐 다음 바퀴에 모두 지워지고 그다음 바퀴에 다시 올라왔다(받을 증빙 5→0→5, 중요한 순간 알림도 헛울림)
     const sameKind = function (label) { return names.some(function (nm) { return String(label || '').indexOf(nm.slice(0, 4)) !== -1; }); };
     //  [2026.10.31 복합 자문] 함께 보는 세목 공통 서류(flow:세목:)도 세지 않는다 — 운영 원점 점검(가상복합문의)에서 증여 쪽 "증여계약서" 항목이 양도 물건의 "취득일 근거"(… 또는 증여계약서 …)를 둘째 바퀴부터 지움(19→18)
-    if (list.some(function (e) { return e && e.status !== '확보됨' && !/^flow:(칸|세목):/.test(String(e.slotKey || '')) &&!(/^flow:쟁점:/.test(String(e.slotKey || '')) && !want[e.slotKey]) && sameKind(e.label); })) return;
+    if (list.some(function (e) { return e && e.status !== '확보됨' && !/^(flow:(칸|세목):|need:)/.test(String(e.slotKey || '')) && !(/^flow:쟁점:/.test(String(e.slotKey || '')) && !want[e.slotKey]) && sameKind(e.label); })) return;
     if (Object.keys(want).some(function (k) { return /^flow:쟁점:/.test(k) && sameKind(want[k].label); })) return;
     want['flow:칸:' + n.p] = { label: names.join(' 또는 ') + ' — ' + String(n.l).replace(/\(.*$/, '').trim() + ' 근거' + (n.spoken ? ' (지금 값은 말씀 기준·잠정)' : ''), note: n.note };
   });
@@ -1996,7 +2030,15 @@ function caseFlowEvidence_(c, L, lines) {
     list.push({ id: 'ev_' + Date.now() + '_f' + i, source: 'requested', label: want[k].label, slotKey: k, fromClassification: null, note: want[k].note, status: '미확보', 요청일: today }); add++;
   });
   // [2026.10.30] 서류를 다 못 읽은 동안엔 빈 칸 → 받을 서류를 새로 짜지 않을 뿐, 지난번에 짠 칸 항목(flow:칸:)은 지우지 않는다(예전엔 "근거가 사라진 항목"으로 지워 받을 증빙이 사라졌다)
-  const kept = list.filter(function (e) { const sk = String((e && e.slotKey) || ''); const gone = e && /^flow:/.test(sk) && e.status !== '확보됨' && !want[sk] && (readOk || !/^flow:칸:/.test(sk)); if (gone) del++; return !gone; });
+  // [2026.10.31 세 길 합치기 1 — 세무사님 "권장안대로"] "확보됨"도 장부 칸 상태로 — 장부가 짠 칸 항목의 칸이 서류 값으로 확정(출처 파일 있음)되면 지우지 않고 확보됨(그 파일)으로 남긴다
+  list.forEach(function (e) {
+    const m = e && e.status !== '확보됨' && !want[e.slotKey] && /^flow:칸:(.+)$/.exec(String(e.slotKey || ''));
+    const r = m && (L.rows || {})[m[1]];
+    if (!r || r.state !== '확정' || !(r.src && r.src.file) || /^(넥스|추정)$/.test(String(r.src.kind || ''))) return;
+    e.status = '확보됨'; e.확보일 = today; e.note = [e.note, '장부: 「' + (r.label || m[1]) + '」 칸이 서류(' + String(r.src.file).slice(0, 80) + ')로 확정'].filter(Boolean).join(' / '); add++;
+  });
+  // [1-가] 칸 채우기 끝이 넣던 옛 항목(need:)은 장부 판단으로 다시 걸러 지운다 — 같은 서류는 장부가 칸 항목(flow:칸:)으로 다시 짠다. 확보된 것은 그대로 둔다
+  const kept = list.filter(function (e) { const sk = String((e && e.slotKey) || ''); const gone = e && e.status !== '확보됨' && ((/^flow:/.test(sk) && !want[sk] && (readOk || !/^flow:칸:/.test(sk))) || (/^need:/.test(sk) && readOk)); if (gone) del++; return !gone; });
   if (!add && !del) return { add: 0, del: 0 };
   const up = work_updateCase({ id: c.id, 증빙목록: kept, 기대수정일: c.수정일 });
   if (up && up.success !== false) { c.증빙목록 = kept; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; if (lines) lines.push('✏ 확보할 증빙 다시 짬(장부 적기): ' + (add ? '+' + add + ' ' : '') + (del ? '−' + del + '(근거가 사라진 항목)' : '')); return { add: add, del: del }; }
