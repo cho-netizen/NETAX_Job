@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-31 03:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-31 03:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -53754,6 +53754,38 @@ function rwAiApplyEdit_(id, content){
     return h;
   }
 
+  // [2026.10.31] 세무사님 "업무관리지침도 정비하자" / "장황하게 나열되지 않도록 해야 한다" — 지침 93장이 큰 카드로 한 줄로 늘어섰다.
+  //  파일 이름 앞부분으로 무리를 나눠 한 줄씩 접어 둔다(넥스 일하는 법만 펼침). 새 지침도 이름 앞부분으로 저절로 제자리에 간다.
+  var SA_BM_KINDS_ = [
+    ['nex', '넥스 일하는 법', /^넥스_일하는법_/],
+    ['file', '서류 읽기', /^서류_/],
+    ['filing', '신고·불복·조사·기한', /^(신고|불복|신고기한|부과제척기간|분납|세무조사|해명자료|특수관계인|기준시가|세액인쇄)_?/],
+    ['yd', '양도', /^양도_/], ['gift', '증여', /^증여_/], ['inh', '상속', /^상속_/], ['val', '평가', /^평가_/]
+  ];
+  var SA_BM_ORDER_ = ['nex', 'common', 'yd', 'gift', 'inh', 'val', 'file', 'filing'];
+  function saBmHtml_(items){
+    var by = {}, total = 0;
+    items.forEach(function(it, i){
+      if (it.group !== '업무관리자 지침') return;
+      var n = String(it.name || ''), k = 'common';
+      for (var j = 0; j < SA_BM_KINDS_.length; j++) if (SA_BM_KINDS_[j][2].test(n)) { k = SA_BM_KINDS_[j][0]; break; }
+      (by[k] = by[k] || []).push([it, i]); total++;
+    });
+    if (!total) return '';
+    var label = { common: '공통 절차·안내' };
+    SA_BM_KINDS_.forEach(function(x){ label[x[0]] = x[1]; });
+    var h = '<div class="sa-group">업무관리자 지침 (' + total + '개)</div>';
+    SA_BM_ORDER_.forEach(function(k){
+      var list = by[k]; if (!list) return;
+      h += '<details class="sa-rdet"' + (k === 'nex' ? ' open' : '') + '><summary class="sa-sub">' + saEsc_(label[k]) + ' (' + list.length + '개)</summary>'
+        + list.map(function(p){
+          var it = p[0];
+          return saRuleRowHtml_({ title: String(it.name || '').replace(/\.md$/, ''), use: it.firstLine || '(첫 줄 비어 있음 — 첫 줄에 다루는 것을 한 줄로 적어 주세요)', exists: it.exists, editable: it.editable }, p[1]);
+        }).join('') + '</details>';
+    });
+    return h;
+  }
+
   function saRender_(res){
     var box = saBody_(); if (!box) return;
     var items = saState_.items = (res && res.items) || [];
@@ -53765,6 +53797,7 @@ function rwAiApplyEdit_(id, content){
     html += '<div class="sa-audit" id="saAuditBox">' + (saAudit_.html || '<div class="settings-tool-desc">점검 결과 불러오는 중…</div>') + '</div>';
     SA_GROUP_ORDER_.forEach(function(g){
       if (g === 'Claude 작업원칙') { html += saClaudeRulesHtml_(items); return; }
+      if (g === '업무관리자 지침') { html += saBmHtml_(items); return; }
       var rows = [];
       items.forEach(function(it, i){ if (it.group === g) rows.push(saItemHtml_(it, i)); });
       if (!rows.length) return;
