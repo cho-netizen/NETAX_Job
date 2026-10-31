@@ -108,8 +108,8 @@
 
   <aside class="nxai-preview" id="nxAiPreview">
     <div class="nxai-pv-head">
-      <button type="button" class="nxai-pv-tab on" data-pv="files" id="nxAiPvTabFiles">📂 사건 자료</button>
-      <button type="button" class="nxai-pv-tab" data-pv="view" id="nxAiPvTabView">👁 미리보기</button>
+      <button type="button" class="nxai-pv-tab nx-tab sub on" data-pv="files" id="nxAiPvTabFiles">사건 자료</button>
+      <button type="button" class="nxai-pv-tab nx-tab sub" data-pv="view" id="nxAiPvTabView">미리보기</button>
       <span class="nxai-spacer"></span>
       <button type="button" class="nxai-icon dark" id="nxAiPvPosBtn" title="미리보기 위치">A</button>
       <button type="button" class="nxai-icon dark nxai-fold" id="nxAiPvToggle" title="미리보기 칸 숨기기">»</button>
@@ -385,8 +385,7 @@
   html.nx-dark #nxAiPvPosBtn{ border-color:#2e384c; }
   html.nx-dark #nxAiPvPosBtn.fixed{ background:var(--gold); color:var(--navy); border-color:var(--gold); }
   .nxai-pv-head{ display:flex; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid var(--line); }
-  .nxai-pv-tab{ border:none; background:none; padding:6px 10px; border-radius:7px; cursor:pointer; font-size:12.5px; color:var(--ink); }
-  .nxai-pv-tab.on{ background:#e3e7ef; font-weight:700; }
+  /* [2026.10.31] 사건 자료·미리보기 탭 모양은 공통 하위 탭(style.html .nx-tab) */
   .nxai-pv-files{ flex:1; overflow-y:auto; padding:8px; min-height:0; }
   /* [2026.10.20] 사건 작업대 — 위 칸 산출물 / 아래 칸 증빙(각자 스크롤) */
   .nxai-pv-files:not([hidden]){ display:flex; flex-direction:column; }
@@ -1137,7 +1136,7 @@
     if (arch.length){
       var det = document.createElement('details');
       det.className = 'nxai-pv-sys';
-      det.innerHTML = '<summary>⚙ 보관·시스템 ' + arch.length + '개 (_이전판 등)</summary>';
+      det.innerHTML = '<summary>보관·시스템 ' + arch.length + '개 (_이전판 등)</summary>';
       arch.forEach(function(it){ det.appendChild(nxAiPvFileRow_(it.f, 'report', it.dir)); });
       sec.appendChild(det);
     }
@@ -2610,10 +2609,10 @@
   // ============================================================
   // [2026.10.31 묶음 해체] 세무사님 원문(10-31) "gas로 처리라는 말 자체가 말도 안되는 소리다" — ①~⑦ 순서표를 없애고 도구 이름만. 줄은 그 도구를 누를 때만 보인다(st.setStep이 펼침)
   var NXAI_CP_STEPS_ = [
-    { key: 'ai', title: '🤖 넥스' },
-    { key: 'basic', title: '사건파악' }, { key: 'evidence', title: '📖 서류 읽기·정리' }, { key: 'overview', title: '칸 채우기' },
-    { key: 'calc', title: '🧮 세액계산' }, { key: 'output', title: '🖨 서식·참고자료 대조' }, { key: 'save', title: '결정·남은 일 저장' },
-    { key: 'status', title: '📊 반영 현황표' }
+    { key: 'ai', title: '넥스' },
+    { key: 'basic', title: '사건파악' }, { key: 'evidence', title: '서류 읽기·정리' }, { key: 'overview', title: '칸 채우기' },
+    { key: 'calc', title: '세액계산' }, { key: 'output', title: '서식·참고자료 대조' }, { key: 'save', title: '결정·남은 일 저장' },
+    { key: 'status', title: '반영 현황표' }
   ];
   var NXAI_CP_KIND_ = { missing: '⬜ 미확보', check: '⚠ 확인필요', judge: '🤔 판단필요', todo: '▶ 할 일' };
   // ============================================================
@@ -3510,7 +3509,7 @@
     var ico = { '읽음': '✅', '일부': '△', '못읽음': '⚠', '대기': '⏳', '제외': '—' };
     var need = function(r){ return r.st === '못읽음' || r.st === '대기' ? 0 : ((r.st === '읽음' || r.st === '일부') && !r.use ? 1 : (r.st === '일부' ? 2 : (r.st === '읽음' ? 3 : 4))); };
     var sorted = rows.slice().sort(function(a, b){ return need(a) - need(b); });
-    return '<details class="nxai-cp-ledger"' + (s.silent || s.못읽음 || s.대기 ? ' open' : '') + '><summary>📒 폴더 파일 점검 — 파일 ' + s.files + '개 = 점검 ' + s.rows + '줄'
+    return '<details class="nxai-cp-ledger"' + (s.silent || s.못읽음 || s.대기 ? ' open' : '') + '><summary>폴더 파일 점검 — 파일 ' + s.files + '개 = 점검 ' + s.rows + '줄'
       + ' · 읽음 ' + s.읽음 + ' · 일부 ' + s.일부 + ' · 못 읽음 ' + s.못읽음 + ' · 대기 ' + s.대기 + ' · 제외 ' + s.제외 + (s.unused ? ' · <b>처리 기록에 안 나온 서류 ' + s.unused + '</b>' : '') + (s.truncated ? ' · ⚠ 파일이 너무 많아 일부 못 봄' : '') + '</summary>'
       + '<table class="nxai-cp-table"><tr><th></th><th>파일</th><th>종류·이유</th><th>쓰인 곳</th></tr>'
       + sorted.map(function(r){

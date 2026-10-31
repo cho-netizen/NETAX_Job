@@ -5,9 +5,10 @@
 </style>
 <div class="view" id="view-collections">
   <div class="editor-toolbar">
+    <h2 class="tb-title">수금관리</h2>
     <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
     <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더의 홈택스 매출내역 엑셀을 읽어 새로 추가된 현금영수증만 반영합니다">🧾 홈택스 매출내역 가져오기</button>
-    <span class="editor-filename">💰 전체 고객 수금 내역(자문내역 중 수금 기록)</span>
+    <span class="editor-filename">전체 고객 수금 내역(자문내역 중 수금 기록)</span>
     <div class="spacer"></div>
     <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
     <input type="date" id="colFromDate" title="시작일" style="width:95px;">
@@ -42,7 +43,7 @@
       </div>
     </div>
     <div class="card">
-      <h3>📊 기간별 통계
+      <h3>기간별 통계
         <select id="colStatPeriod" style="float:right; font-size:12.5px;">
           <option value="" selected>없음</option>
           <option value="month">월별</option>
@@ -303,7 +304,7 @@
       (l.수취증빙 ? ' · ' + escapeHtml(l.수취증빙) : '') +
       ' · <span>🔗 다른 기록과 중복으로 판단되어 자동 정리됨(집계 제외)</span>' +
       '</div>' +
-      '<button type="button" class="ghost-btn col-undo-dedup-btn" style="flex:0 0 auto; padding:3px 8px; font-size:11.5px;">되돌리기</button>';
+      '<button type="button" class="ghost-btn col-undo-dedup-btn sm" style="flex:0 0 auto;">되돌리기</button>';
     row.querySelector('.col-undo-dedup-btn').addEventListener('click', function(){
       nxConfirm_('이 기록을 다시 정상 수금 내역으로 되돌릴까요? (중복이 아니라 착오로 정리된 경우에 사용)').then(function(ok){
         if (!ok) return;
@@ -348,7 +349,7 @@
       caseHtml +
       (memoHtml ? ' · ' + memoHtml : '') +
       '</div>' +
-      (unlinked ? '<button type="button" class="ghost-btn col-link-btn" style="flex:0 0 auto; padding:3px 8px; font-size:11.5px;">고객 연결</button>' : '') +
+      (unlinked ? '<button type="button" class="ghost-btn col-link-btn sm" style="flex:0 0 auto;">고객 연결</button>' : '') +
       '<span class="log-edit" title="수정" style="cursor:pointer; margin-right:6px; margin-left:6px; flex:0 0 auto;">✏️</span>' +
       '<span class="log-del" title="삭제" style="flex:0 0 auto;">✕</span>';
     var linkBtn = row.querySelector('.col-link-btn');
@@ -440,8 +441,8 @@
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (l.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
       '</select>' +
       '<input type="text" class="colEditMemo" placeholder="비고" value="' + escapeHtml(l.내용 || '') + '" style="flex:1; min-width:100px; font-size:12px;">' +
-      '<button type="button" class="save-btn colEditSave" style="padding:3px 8px;">저장</button>' +
-      '<button type="button" class="ghost-btn colEditCancel" style="padding:3px 8px;">취소</button>' +
+      '<button type="button" class="save-btn colEditSave sm">저장</button>' +
+      '<button type="button" class="ghost-btn colEditCancel sm">취소</button>' +
       '</div>';
     var editCaseSelect = row.querySelector('.colEditCase');
     colPopulateCaseSelect_(editCaseSelect, l.고객명, l.사건ID, l.고객ID);

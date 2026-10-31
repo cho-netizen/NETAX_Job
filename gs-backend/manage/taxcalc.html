@@ -4302,7 +4302,7 @@ function tcRunServerFill_(caseId){
   var box = tcFillBoxEl_(); if (!box) return;
   box.style.display = ''; box.innerHTML = '';
   var close = document.createElement('div'); close.style.cssText = 'text-align:right;';
-  close.innerHTML = '<button type="button" class="ghost-btn" style="font-size:11.5px;">닫기 ✕</button>';
+  close.innerHTML = '<button type="button" class="ghost-btn sm">닫기 ✕</button>';
   close.firstChild.addEventListener('click', function(){ box.style.display = 'none'; box.innerHTML = ''; window.tcFillKeep_ = null; });
   box.appendChild(close);
   var b = document.createElement('div'); b.className = 'nxai-cp-screen'; box.appendChild(b);
@@ -7621,8 +7621,8 @@ function tcJudgmentPendingHtml_(list){
       return '<div style="margin-bottom:6px;"><b>⚠ 세무사님 판단 대기 — ' + escapeHtml(j.제목) + '</b> <span style="font-size:11.5px;">(' + escapeHtml(j.근거) + ', 조견표 ' + escapeHtml(j.조견표) + ')</span><br>' +
         '해석 A(지금 기본 — ' + escapeHtml(j.해석A) + '): 산출세액 <b>' + won(j.세액A) + '</b> / 해석 B(' + escapeHtml(j.해석B) + '): <b>' + won(j.세액B) + '</b>' + (j.비고 ? ' <span style="font-size:11.5px;">— ' + escapeHtml(j.비고) + '</span>' : '') + '<br>' +
         '<span style="font-size:12px;">이 사건은 어느 해석으로? </span>' +
-        '<button type="button" class="ghost-btn" data-action="judgment-pick" data-jid="' + escapeHtml(j.id) + '" data-pick="A" style="padding:2px 8px;">해석 A</button> ' +
-        '<button type="button" class="ghost-btn" data-action="judgment-pick" data-jid="' + escapeHtml(j.id) + '" data-pick="B" style="padding:2px 8px;">해석 B</button>' +
+        '<button type="button" class="ghost-btn sm" data-action="judgment-pick" data-jid="' + escapeHtml(j.id) + '" data-pick="A">해석 A</button> ' +
+        '<button type="button" class="ghost-btn sm" data-action="judgment-pick" data-jid="' + escapeHtml(j.id) + '" data-pick="B">해석 B</button>' +
         '<span class="tc-judgment-picked" data-jid="' + escapeHtml(j.id) + '" style="font-size:12px; margin-left:6px;"></span></div>';
     }).join('') +
     '<div style="font-size:11.5px;">고른 답은 기록만 됩니다(계산은 해석 A 그대로). 같은 답이 되풀이되면 기본값 후보로 올립니다 — 세무사님 확인 목록(_확인조치사항.md)에 올라 있습니다.</div></div>';
@@ -14556,7 +14556,7 @@ function renderPrintPane(){
       (printCaseName
         ? '<span>🧮 이 서식은 「<b>' + escapeHtml(printCaseName) + '</b>」 사건의 세액계산 결과입니다.</span>'
         : '<span>⚠ 세액계산에서 고른 사건이 없습니다 — 아래 서식은 사건 없이 계산한 값입니다(사건 서식이면 세액계산에서 사건을 먼저 고르세요).</span>') +
-      '<button type="button" class="ghost-btn" data-action="print-back-to-taxcalc" style="padding:3px 10px;">🧮 세액계산으로</button>' +
+      '<button type="button" class="ghost-btn sm" data-action="print-back-to-taxcalc">🧮 세액계산으로</button>' +
     '</div>' +
     '<div class="taxcalc-tabs">' +
       availableGroups.map(function(g){
@@ -17743,7 +17743,6 @@ function renderTcCaseBar_(){
     '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>📑 경우(안)로 저장</button>' +
     '<button type="button" id="tcGasFillBtn" class="ghost-btn" title="장부 값을 세액계산기 칸으로 옮기고(답하실 질문도 셉니다) 이어서 이 화면 칸을 채웁니다 — AI 없이 0원, 넥스 calc_fill과 같은 도구"' + (tcSelectedId ? '' : ' disabled') + '>⚡ 칸 채우기</button>' +
     '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn" title="넥스(AI)가 사건을 맡아 서류 읽기부터 계산까지 합니다 — 비용이 듭니다"' + (tcSelectedId ? '' : ' disabled') + '>🤖 넥스로 자동계산</button>' +
-    '<button type="button" id="tcBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>' +
     '</div>' +
     (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
 
@@ -17759,13 +17758,8 @@ function renderTcCaseBar_(){
     tcCurrentCase = tcSelectedId ? tcCases.filter(function(c){ return c.id === tcSelectedId; })[0] : null;
     renderTcCaseBar_();
   });
-  // [2026.09] 처리개요에서 넘어온 경우가 많은데 왼쪽 메뉴로 되돌아가야만 해서 불편하다는
-  // 지적 — 지금 고른 사건을 그대로 들고 처리개요로 돌아가는 버튼.
-  document.getElementById('tcBackToCaseBtn').addEventListener('click', function(){
-    if (typeof goToView_ === 'function') goToView_('casehandling');
-    if (tcSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(tcSelectedId);
-  });
-  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('tcBackToCaseBtn'), 'taxcalc', function(){ return tcSelectedId; });
+  // [2026.10.31] 세무사님 "이사건다른화면 콤보가 있는데, 처리개요버튼이 있는 것은 기능중복" / "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" — ↩ 처리개요 단추를 빼고 "↪ 이 사건 다른 화면"(처리개요 포함)을 사건 고르는 칸 바로 뒤에
+  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('tcCaseSelect'), 'taxcalc', function(){ return tcSelectedId; });
   if (tcSelectedId) renderTcSavedList_(tcCurrentCase ? (tcCurrentCase.세액계산결과 || []) : []);
   if (tcSelectedId !== tcLastAppliedCaseId_) {
     tcResetOverviewInputsForNewCase_();

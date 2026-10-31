@@ -1,9 +1,7 @@
 <!-- [2026.10.19 조견표 체계] 세무사님 말씀 — "서식관리도 조견표와 마찬가지로 법령탭속에 하위탭으로" — 법령조회를 "법령정보"로 바꾸고
      하위 탭 [📜 법령][📄 서식][📋 조견표]. 법령 탭은 예전 법령조회 그대로(사건 첨부), 서식·조견표는 사건 없이 본다. 설계: netax-inventory/maps/설계_조견표체계.md -->
 <style>
-  .lsi-tabs{ display:flex; gap:0; border-bottom:1px solid var(--line); padding:0 14px; flex-wrap:wrap; }
-  .lsi-tab{ background:none; border:none; border-bottom:2px solid transparent; padding:9px 14px; font-size:14px; color:var(--sub); cursor:pointer; }
-  .lsi-tab.active{ color:var(--navy); font-weight:600; border-bottom-color:var(--gold); }
+  /* [2026.10.31] 법령·서식·조견표·세제개편 탭 모양은 공통 하위 탭(style.html .nx-tab) */
   .lsi-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; align-items:center; }
   .lsi-chip{ border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:4px 11px; font-size:12.5px; cursor:pointer; color:inherit; }
   .lsi-chip.active{ border-color:var(--navy); color:var(--navy); font-weight:600; }
@@ -34,21 +32,19 @@
   .lsi-grid .lsi-files a{ margin-right:6px; }
 </style>
 <div class="view" id="view-lawsearch">
-  <div class="view-head"><h2>⚖️ 법령정보</h2></div>
-  <div class="lsi-tabs">
-    <button type="button" class="lsi-tab active" data-lsitab="law">📜 법령</button>
-    <button type="button" class="lsi-tab" data-lsitab="form">📄 서식</button>
-    <button type="button" class="lsi-tab" data-lsitab="ref">📋 조견표</button>
-    <button type="button" class="lsi-tab" data-lsitab="reform">🧾 세제개편</button>
+  <div class="view-head"><h2>법령정보</h2></div>
+  <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" — 사건 고르는 줄은 어느 화면이든 제목 줄 바로 아래, 하위 탭 줄 위 -->
+  <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
+    <select id="lsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+  </div>
+  <div class="lsi-tabs nx-tabbar" style="padding:0 14px; margin:0;">
+    <button type="button" class="lsi-tab nx-tab active" data-lsitab="law">법령</button>
+    <button type="button" class="lsi-tab nx-tab" data-lsitab="form">서식</button>
+    <button type="button" class="lsi-tab nx-tab" data-lsitab="ref">조견표</button>
+    <button type="button" class="lsi-tab nx-tab" data-lsitab="reform">세제개편</button>
   </div>
   <div class="view-body">
     <div id="lsiPane-law">
-      <div class="card">
-        <div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <select id="lsCaseSelect" style="min-width:220px; max-width:420px;"><option value="">사건을 선택하세요</option></select>
-          <button type="button" id="lsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
-        </div>
-      </div>
       <!--@@APP_ONLY:lawdb-card@@-->
       <!--@@APP_ONLY:judgewait@@-->
       <div class="card">
@@ -147,13 +143,9 @@
   // [2026.09] 법령조회·증빙확보·세액계산·문서작성은 처리개요 카드에서 넘어오는 경우가
   // 많은데, 다시 처리개요로 돌아가려면 왼쪽 메뉴를 찾아 눌러야 해서 불편하다는 지적 —
   // 지금 고른 사건을 그대로 들고 처리개요로 돌아가는 버튼을 추가한다.
-  document.getElementById('lsBackToCaseBtn').addEventListener('click', function(){
-    if (typeof goToView_ === 'function') goToView_('casehandling');
-    if (lsSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(lsSelectedId);
-  });
   // 공용 함수(script.html)는 맨 마지막에 읽히므로 화면이 다 읽힌 뒤에 붙인다
   document.addEventListener('DOMContentLoaded', function(){
-    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('lsBackToCaseBtn'), 'lawsearch', function(){ return lsSelectedId; });
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('lsCaseSelect'), 'lawsearch', function(){ return lsSelectedId; });
   });
 
   function lsResultTitle_(category, item){
@@ -434,7 +426,7 @@
         (entry.결과 ? '<br><span title="판결문 문장에서 자동으로 찾은 참고용 표시 — 정확한 분류 아님" style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; font-size:11px; color:var(--navy); display:inline-block; margin-top:3px;">' + escapeHtml(entry.결과) + '</span>' : '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.제목 || '') + '</b>' +
         ' <span style="font-size:11.5px;color:var(--sub);">' + (entry.첨부 === 'AI' ? (entry.확인 ? '🤖 AI 첨부(확정)' : '🤖 AI 첨부(미확인)') : '직접 첨부') + (entry.판 ? ' · ' + escapeHtml(String(entry.판)) + ' 시행판' : '') + (entry.쓸곳 ? ' · 쓸 곳: ' + escapeHtml(entry.쓸곳) : '') + (entry.이유 ? ' · ' + escapeHtml(entry.이유) : '') + '</span>' +
-        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok" style="font-size:11.5px;padding:1px 6px;">✔ 확정</button>' : '') +
+        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok sm">✔ 확정</button>' : '') +
         (entry.요약 ? '<br><span style="color:var(--sub); font-size:12.5px; white-space:pre-wrap;">' + escapeHtml(entry.요약) + '</span>' : '') + '</div>' +
         '<span class="log-del" title="첨부 해제">✕</span>';
       var okBtn = row.querySelector('.ls-ai-ok');
@@ -1148,8 +1140,8 @@
       // [2026.10.19 서버 용량] 조견표 자료는 job.netax.kr/app 화면에만 들어 있다(예전 구글 주소 화면은 빈 값)
       (LSI_REF_TABLES_.length ? '' : '<div class="lsi-note" style="color:#b26a00; margin-bottom:8px;">이 화면(예전 구글 주소)에는 조견표 자료가 없습니다. <a href="https://job.netax.kr/app/" target="_blank" rel="noopener">job.netax.kr/app</a> 화면에서 보세요.</div>') +
       '<div style="display:flex; gap:16px; flex-wrap:wrap;">' +
-      '<div style="flex:1; min-width:260px;"><b>1부 세법 외 사실 이력</b><ul style="margin:6px 0 0 18px;">' + (part('1부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
-      '<div style="flex:1; min-width:260px;"><b>2부 세법 안 조견표</b><ul style="margin:6px 0 0 18px;">' + (part('2부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
+      '<div style="flex:1; min-width:260px;"><div class="nx-l3" style="margin-top:0;">1부 세법 외 사실 이력</div><ul style="margin:6px 0 0 18px;">' + (part('1부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
+      '<div style="flex:1; min-width:260px;"><div class="nx-l3" style="margin-top:0;">2부 세법 안 조견표</div><ul style="margin:6px 0 0 18px;">' + (part('2부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
       '</div></div><div id="lsiRefBox"></div>';
     lsiWireLinks_(pane);
     if (lsiOpenRef_) lsiShowRef_(lsiOpenRef_);
@@ -1261,7 +1253,7 @@
       var srcs = g.files.filter(function(f){ return !/\.md$/i.test(f.name); });
       return '<div class="card" data-lsirf="' + lsiEsc_(g.id) + '">' +
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">' +
-          '<h3 style="margin:0;">' + lsiEsc_(g.name) + '</h3>' +
+          '<h3 class="nx-l3" style="margin:0;">' + lsiEsc_(g.name) + '</h3>' +
           (g.enacted ? '<span class="lsi-badge ok">개정세법(확정)</span>' : '<span class="lsi-badge warn">개편안 — 확정 전, 계산·신고에 쓰지 않음</span>') +
           '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfmove="' + (g.enacted ? 'back' : 'enact') + '">' + (g.enacted ? '↩ 개편안으로 되돌리기' : '✅ 확정 — 개정세법으로 옮기기') + '</button>' +
         '</div>' +
@@ -1277,8 +1269,8 @@
         '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfreload="1">↻ 새로 읽기</button>' +
       '</div>' +
       (lsiReformError_ ? '<div class="card lsi-note" style="color:#a33;">폴더를 읽지 못했습니다: ' + lsiEsc_(lsiReformError_) + '</div>' : '') +
-      '<h3 style="margin:14px 4px 6px;">개편안 (확정 전) <span class="lsi-note">' + pend.length + '건</span></h3>' + (pend.length ? pend.map(card).join('') : '<div class="card lsi-note">없음</div>') +
-      '<h3 style="margin:14px 4px 6px;">개정세법 (확정) <span class="lsi-note">' + done.length + '건</span></h3>' + (done.length ? done.map(card).join('') : '<div class="card lsi-note">없음</div>');
+      '<h3 style="margin:14px 4px 10px; font-size:16px; color:var(--navy); padding-bottom:6px; border-bottom:2px solid var(--line);">개편안 (확정 전) <span class="lsi-note">' + pend.length + '건</span></h3>' + (pend.length ? pend.map(card).join('') : '<div class="card lsi-note">없음</div>') +
+      '<h3 style="margin:14px 4px 10px; font-size:16px; color:var(--navy); padding-bottom:6px; border-bottom:2px solid var(--line);">개정세법 (확정) <span class="lsi-note">' + done.length + '건</span></h3>' + (done.length ? done.map(card).join('') : '<div class="card lsi-note">없음</div>');
     pane.querySelectorAll('[data-lsirfreload]').forEach(function(b){ b.addEventListener('click', function(){ lsiReform_ = null; lsiRenderReform_(); }); });
     pane.querySelectorAll('[data-lsirfdoc]').forEach(function(b){
       b.addEventListener('click', function(){

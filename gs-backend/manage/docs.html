@@ -40,13 +40,12 @@
 </style>
 
 <div class="view" id="view-docs">
-  <div class="view-head" style="padding-bottom:0;"><h2>📁 증빙확보</h2></div>
+  <div class="view-head"><h2>증빙확보</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
     <select id="docsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
     <!-- [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"] 서류를 다루는 GAS 도구는 서류 옆에(예전엔 처리개요 "GAS 도구" 칸) — 넥스도 같은 서버 입구(case_read·set_read_scope) -->
     <button type="button" id="docsReadBtn" class="ghost-btn" style="display:none;" title="읽을 목록의 서류를 읽어 장부에 적습니다(AI 없이 0원, 하신 일은 사건 기록부에)"><span class="btn-ic">📖</span><span class="btn-tx"> 서류 읽기</span></button>
     <button type="button" id="docsScopeBtn" class="ghost-btn" style="display:none;" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다"><span class="btn-ic">📂</span><span class="btn-tx"> 읽을 목록</span></button>
-    <button type="button" id="docsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
   </div>
   <div class="docs-toolbar tb-row">
     <button type="button" id="docsBtnUp" class="ghost-btn" title="상위 폴더"><span class="btn-ic">⬆</span><span class="btn-tx"> 상위</span></button>
@@ -61,15 +60,15 @@
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
   <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:8px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px; flex-wrap:wrap;">
     <span id="docsSelectionCount"></span>
-    <button type="button" id="docsBtnScanSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔에 추가</span></button>
-    <button type="button" id="docsBtnPdfMgrSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리에 추가</span></button>
+    <button type="button" id="docsBtnScanSelected" class="ghost-btn sm"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔에 추가</span></button>
+    <button type="button" id="docsBtnPdfMgrSelected" class="ghost-btn sm"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리에 추가</span></button>
     <!-- [2026.09 이식] work.netax.kr 참고화면과 같은 방식 — 체크한 항목에 바로 쓸 수 있는
          이름변경·공유·삭제·이동. 이름변경은 한 번에 하나만 뜻이 있어 1개 선택했을 때만 보인다. -->
-    <button type="button" id="docsBtnRenameSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">✏️</span><span class="btn-tx"> 이름변경</span></button>
-    <button type="button" id="docsBtnShareSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">🔗</span><span class="btn-tx"> 공유</span></button>
-    <button type="button" id="docsBtnMoveSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📂</span><span class="btn-tx"> 이동</span></button>
-    <button type="button" id="docsBtnDeleteSelected" class="btn danger" style="font-size:12px;"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
-    <button type="button" id="docsBtnClearSelection" class="ghost-btn" style="font-size:12px; margin-left:auto;">선택 해제</button>
+    <button type="button" id="docsBtnRenameSelected" class="ghost-btn sm"><span class="btn-ic">✏️</span><span class="btn-tx"> 이름변경</span></button>
+    <button type="button" id="docsBtnShareSelected" class="ghost-btn sm"><span class="btn-ic">🔗</span><span class="btn-tx"> 공유</span></button>
+    <button type="button" id="docsBtnMoveSelected" class="ghost-btn sm"><span class="btn-ic">📂</span><span class="btn-tx"> 이동</span></button>
+    <button type="button" id="docsBtnDeleteSelected" class="btn danger sm"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
+    <button type="button" id="docsBtnClearSelection" class="ghost-btn sm" style="margin-left:auto;">선택 해제</button>
   </div>
   <div style="position:relative; flex:1; min-height:0; display:flex;">
     <div class="docs-list" id="docsList" style="flex:1; overflow-y:auto;"><div class="spinner">불러오는 중…</div></div>
@@ -680,11 +679,8 @@
       });
       document.getElementById('docsReadBtn').addEventListener('click', function(){ docsRunCaseTool_('read'); });
       document.getElementById('docsScopeBtn').addEventListener('click', function(){ docsRunCaseTool_('scope'); });
-      document.getElementById('docsBackToCaseBtn').addEventListener('click', function(){
-        if (typeof goToView_ === 'function') goToView_('casehandling');
-        if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
-      });
-      if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('docsBackToCaseBtn'), 'docs', function(){ return docsSelectedCaseId_; });
+      // [2026.10.31] 세무사님 "이사건다른화면 콤보가 있는데, 처리개요버튼이 있는 것은 기능중복" / "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" — ↩ 처리개요 단추를 빼고 "↪ 이 사건 다른 화면"(처리개요 포함)을 사건 고르는 칸 바로 뒤에
+      if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('docsCaseSelect'), 'docs', function(){ return docsSelectedCaseId_; });
     }
     docsGetAllCases_(true).then(function(cases){
       sel.innerHTML = buildCaseOptionsHtml_(cases);
@@ -734,7 +730,7 @@
     var box = document.getElementById('docsToolBox'); if (!box) return;
     box.style.display = ''; box.innerHTML = '';
     var close = document.createElement('div'); close.style.cssText = 'text-align:right;';
-    close.innerHTML = '<button type="button" class="ghost-btn" style="font-size:11.5px;">닫기 ✕</button>';
+    close.innerHTML = '<button type="button" class="ghost-btn sm">닫기 ✕</button>';
     close.firstChild.addEventListener('click', function(){ box.style.display = 'none'; box.innerHTML = ''; window.docsToolKeep_ = null; });
     box.appendChild(close);
     var inner = document.createElement('div'); box.appendChild(inner);
@@ -927,8 +923,8 @@
         (entry.note ? '<br><span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(entry.note) + '</span>' : '') +
         (sub && sub.submitted ? '<br><span style="color:#b8860b; font-size:12.5px; font-weight:600;">📤 고객이 이미 제출함(' + escapeHtml(sub.fileName || '') + (sub.uploadedAt ? ', ' + escapeHtml(String(sub.uploadedAt).slice(0, 10)) : '') + ') — 확인 후 확보완료로 표시하세요</span>' : '') +
         '</div>' +
-        (source !== 'auto' ? '<button type="button" class="ghost-btn docsEvToggleBtn" style="padding:3px 8px; font-size:12px;">' + (got ? '미확보로' : '확보완료') + '</button>' : '') +
-        (source === 'requested' ? '<button type="button" class="ghost-btn docsEvRenameBtn" style="padding:3px 8px; font-size:12px;">이름변경</button>' : '') +
+        (source !== 'auto' ? '<button type="button" class="ghost-btn docsEvToggleBtn sm">' + (got ? '미확보로' : '확보완료') + '</button>' : '') +
+        (source === 'requested' ? '<button type="button" class="ghost-btn docsEvRenameBtn sm">이름변경</button>' : '') +
         '<span class="log-del" title="삭제">✕</span>';
       if (source !== 'auto'){
         row.querySelector('.docsEvToggleBtn').addEventListener('click', function(){
@@ -988,13 +984,13 @@
       '<div style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-bottom:8px;">' +
       '<div style="font-size:12.5px; margin-bottom:6px;"><b>' + escapeHtml(picked.roadAddr || picked.jibunAddr || '') + '</b></div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">' +
-      '<button type="button" id="docsEvRealPriceBtn" class="ghost-btn" style="font-size:12px;">실거래가 조회(참고)</button>' +
+      '<button type="button" id="docsEvRealPriceBtn" class="ghost-btn sm">실거래가 조회(참고)</button>' +
       '</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
       '<select id="docsEvPriceKind" style="width:140px;"><option value="land">개별공시지가(토지)</option><option value="apartment">공동주택가격</option><option value="house">개별주택가격</option></select>' +
       '<input type="text" id="docsEvDong" placeholder="동(선택)" style="width:70px;">' +
       '<input type="text" id="docsEvHo" placeholder="호" style="width:70px;">' +
-      '<button type="button" id="docsEvPriceBtn" class="ghost-btn" style="font-size:12px;">공시가격 조회</button>' +
+      '<button type="button" id="docsEvPriceBtn" class="ghost-btn sm">공시가격 조회</button>' +
       '</div>' +
       '</div>';
 
@@ -1750,7 +1746,7 @@
         return '<div class="docs-trash-row" data-i="' + i + '">' +
           '<span class="docs-icon">' + (it.type === 'folder' ? '📁' : '📄') + '</span>' +
           '<span class="docs-name" style="flex:1;">' + escapeHtml(it.name) + '</span>' +
-          '<button type="button" class="ghost-btn" data-act="restore" style="font-size:12px;">↩ 복원</button>' +
+          '<button type="button" class="ghost-btn sm" data-act="restore">↩ 복원</button>' +
           '</div>';
       }).join('');
       listEl.querySelectorAll('[data-act="restore"]').forEach(function(btn, idx){

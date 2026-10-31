@@ -1,24 +1,29 @@
 <div class="view" id="view-reports">
   <div class="view-head"><h2>열람관리</h2></div>
+  <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" / "이사건다른화면콤보를 사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" —
+       사건 고르는 줄을 다른 화면처럼 제목 줄 바로 아래(하위 탭 줄 위)로, "↪ 이 사건 다른 화면"은 그 바로 뒤에. 사건 없이 등록도 그대로 된다 -->
+  <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
+    <select id="repNewCase" style="min-width:220px; max-width:360px;" title="보고서를 이 사건 작업일지에 남기려면 고르세요(고르지 않으면 사건 없이 등록)"><option value="">사건 없이 등록</option></select>
+  </div>
   <div class="view-body">
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <button type="button" class="btn" id="repMainTabBtn-issue" data-reptab="issue" style="font-weight:600;">📄 보고서 발급</button>
-      <button type="button" class="btn" id="repMainTabBtn-lawref" data-reptab="lawref">⚖️ 세법령·서식 자료실</button>
+    <div class="nx-tabbar">
+      <button type="button" class="nx-tab active" id="repMainTabBtn-issue" data-reptab="issue">보고서 발급</button>
+      <button type="button" class="nx-tab" id="repMainTabBtn-lawref" data-reptab="lawref">세법령·서식 자료실</button>
     </div>
 
     <div id="repTab-lawref" style="display:none;">
       <div class="card">
         <h3>세법령·서식·전자신고파일작성법 — 즉시 열람</h3>
         <div style="font-size:11.5px; color:var(--sub); margin-bottom:10px;">세무사님 구글드라이브 업무관리자 › 서식·조견표 폴더에 정리해두신 국세청 공식 서식·법령정보·전자신고파일 작성요령을 이 앱 안에서 바로 열람합니다(외부 사이트를 따로 열 필요 없음). 폴더에 새 자료를 넣으면 여기에도 바로 반영됩니다.</div>
-        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;">
-          <button type="button" class="btn" data-lawreftab="5" style="font-weight:600;">상속세</button>
-          <button type="button" class="btn" data-lawreftab="6">증여세</button>
-          <button type="button" class="btn" data-lawreftab="7">양도소득세</button>
-          <button type="button" class="btn" data-lawreftab="pdf">법제처 서식 PDF</button>
-          <button type="button" class="btn" data-lawreftab="b5">해설서·상속</button>
-          <button type="button" class="btn" data-lawreftab="b6">해설서·증여</button>
-          <button type="button" class="btn" data-lawreftab="b7">해설서·양도</button>
-          <a href="https://drive.google.com/drive/folders/1eyEDEL5K47_TNlzhKQ--qHMrIK3K8f3h" target="_blank" rel="noopener" class="btn" style="margin-left:auto; text-decoration:none;">📂 드라이브에서 직접 열기 ↗</a>
+        <div class="nx-tabbar sub">
+          <button type="button" class="nx-tab active" data-lawreftab="5">상속세</button>
+          <button type="button" class="nx-tab" data-lawreftab="6">증여세</button>
+          <button type="button" class="nx-tab" data-lawreftab="7">양도소득세</button>
+          <button type="button" class="nx-tab" data-lawreftab="pdf">법제처 서식 PDF</button>
+          <button type="button" class="nx-tab" data-lawreftab="b5">해설서·상속</button>
+          <button type="button" class="nx-tab" data-lawreftab="b6">해설서·증여</button>
+          <button type="button" class="nx-tab" data-lawreftab="b7">해설서·양도</button>
+          <a href="https://drive.google.com/drive/folders/1eyEDEL5K47_TNlzhKQ--qHMrIK3K8f3h" target="_blank" rel="noopener" class="btn" style="margin-left:auto; margin-bottom:4px; text-decoration:none;">📂 드라이브에서 직접 열기 ↗</a>
         </div>
         <iframe id="lawrefFrame" src="https://drive.google.com/embeddedfolderview?id=1J1hH035TN_0zjJ4WfmC5K1s24zMCpfdY#list" style="width:100%; height:70vh; min-height:480px; border:1px solid var(--line); border-radius:6px;"></iframe>
       </div>
@@ -30,8 +35,6 @@
       <!-- [2026.10.18 탭연결 9번] 사건을 고르면 고객명이 채워지고 그 사건 보고서 폴더의 파일을 골라 링크를 넣는다. 등록하면 그 사건 작업일지에 열람번호가 남는다. -->
       <div style="font-size:12px; color:var(--sub); margin-bottom:8px;">진행 중인 사건 고객에게는 처리개요의 <b>고객창구(my.netax.kr)</b>로 보고서를 보여주는 것이 기본입니다. 이곳(rpt.netax.kr 열람번호)은 고객창구가 없는 예전 고객·단건 발급용입니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
-        <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">사건(선택)</label>
-          <select id="repNewCase" style="width:100%;"><option value="">사건 없이 등록</option></select></div>
         <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">그 사건의 보고서 파일</label>
           <select id="repNewCaseFile" style="width:100%;" disabled><option value="">사건을 먼저 고르세요</option></select></div>
       </div>
@@ -77,15 +80,14 @@
   function repSwitchMainTab_(tab){
     document.getElementById('repTab-issue').style.display = tab === 'issue' ? '' : 'none';
     document.getElementById('repTab-lawref').style.display = tab === 'lawref' ? '' : 'none';
-    document.getElementById('repMainTabBtn-issue').style.fontWeight = tab === 'issue' ? '600' : '400';
-    document.getElementById('repMainTabBtn-lawref').style.fontWeight = tab === 'lawref' ? '600' : '400';
+    document.getElementById('repMainTabBtn-issue').classList.toggle('active', tab === 'issue');
+    document.getElementById('repMainTabBtn-lawref').classList.toggle('active', tab === 'lawref');
   }
   document.getElementById('repMainTabBtn-issue').addEventListener('click', function(){ repSwitchMainTab_('issue'); });
   document.getElementById('repMainTabBtn-lawref').addEventListener('click', function(){ repSwitchMainTab_('lawref'); if (!reportsLoaded) initReports(); });
   document.querySelectorAll('[data-lawreftab]').forEach(function(btn){
     btn.addEventListener('click', function(){
-      document.querySelectorAll('[data-lawreftab]').forEach(function(b){ b.style.fontWeight = '400'; });
-      btn.style.fontWeight = '600';
+      document.querySelectorAll('[data-lawreftab]').forEach(function(b){ b.classList.toggle('active', b === btn); });
       document.getElementById('lawrefFrame').src = 'https://drive.google.com/embeddedfolderview?id=' + REP_LAWREF_FOLDERS_[btn.dataset.lawreftab] + '#list';
     });
   });
@@ -136,9 +138,9 @@
     document.getElementById('repNewLink').value = opt.getAttribute('data-url') || '';
     if (!document.getElementById('repNewTitle').value.trim()) document.getElementById('repNewTitle').value = opt.textContent.replace(/^\[[^\]]*\]\s*/, '').replace(/\.[^.]+$/, '');
   });
-  // 위 탭 버튼 옆에 "↪ 이 사건 다른 화면" 상자(고른 사건 기준) — 공용 함수는 script.html이라 화면이 다 읽힌 뒤 붙인다
+  // 사건 고르는 칸 바로 뒤에 "↪ 이 사건 다른 화면" 상자(고른 사건 기준) — 공용 함수는 script.html이라 화면이 다 읽힌 뒤 붙인다
   document.addEventListener('DOMContentLoaded', function(){
-    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('repMainTabBtn-lawref'), 'reports', function(){ return document.getElementById('repNewCase').value; });
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('repNewCase'), 'reports', function(){ return document.getElementById('repNewCase').value; });
   });
   // 다른 화면("↪ 이 사건 다른 화면")에서 그 사건을 들고 열람관리로 올 때
   function goToReports_(caseId){
@@ -165,12 +167,12 @@
       window._reportListCache = list;
       if (!list.length){ box.innerHTML = '<div class="empty-row">등록된 보고서가 없습니다.</div>'; return; }
       list.sort(function(a, b){ return String(b.issued).localeCompare(String(a.issued)); });
-      var html = '<table class="list-table"><tr><th>고객명</th><th>명칭</th><th>열람번호</th><th>발급일</th><th>만료일</th>' +
+      var html = '<table class="list-table" style="width:auto;"><tr><th>고객명</th><th>명칭</th><th>열람번호</th><th>발급일</th><th>만료일</th>' +
         '<th>열람</th><th>처리</th></tr>';
       list.forEach(function(r){
         var expiredBadge = r.is_expired ? ' <span style="color:var(--danger);">(만료)</span>' : '';
         var accessInfo = r.access_count ? (r.access_count + '회, 최근 ' + fmtDateShort_((r.last_access||'').slice(0,10))) : '미열람';
-        html += '<tr><td>' + esc_(r.name) + '</td><td>' + esc_(r.title) + '</td><td><code>' + esc_(r.report_id) + '</code></td>' +
+        html += '<tr><td>' + '<span class="nx-cut" style="max-width:120px;" title="' + esc_(r.name) + '">' + esc_(r.name) + '</span>' + '</td><td>' + '<span class="nx-cut" style="max-width:240px;" title="' + esc_(r.title) + '">' + esc_(r.title) + '</span>' + '</td><td><code>' + esc_(r.report_id) + '</code></td>' +
           '<td>' + esc_(fmtIssuedDate_(r.issued)) + '</td><td>' + esc_(fmtIssuedDate_(r.expiry)) + expiredBadge + '</td>' +
           '<td style="font-size:12px; color:var(--sub);">' + esc_(accessInfo) + '</td>' +
           '<td><span class="tb-row" style="display:inline-flex; flex-wrap:wrap; gap:4px;">' +

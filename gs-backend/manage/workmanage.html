@@ -1,5 +1,6 @@
 <div class="view" id="view-workmanage">
   <div class="editor-toolbar">
+    <h2 class="tb-title">작업관리</h2>
     <button type="button" id="btnWorkCaseNew" class="save-btn">+ 새 사건</button>
     <select id="workCaseFilterStatus" title="상태로 필터">
       <option value="">전체</option>
@@ -295,7 +296,8 @@
       var prog = workProgress(c);
       var overdue = c.법정일 && c.법정일 < todayStr && c.상태 !== '완료';
       var row = document.createElement('div');
-      row.className = 'log-entry';
+      // [2026.10.31] 세무사님 "카드모양으로 감쌀 경우에는 색상처리를 해야" — 사건 카드마다 상태 색 띠(기한 지남 빨강·진행 남색·보류 회색·완료 초록, style.html)
+      row.className = 'log-entry ' + (overdue ? 'st-over' : c.상태 === '완료' ? 'st-done' : c.상태 === '보류' ? 'st-hold' : 'st-go');
       row.style.cursor = 'pointer';
       if (c.id === workSelectedCaseId) row.style.outline = '2px solid var(--navy)';
       var noDeadlineText = workDeadlineFieldLabel_(c.업무유형) === '처리시한' ? '시한없음' : '기한없음';
@@ -323,7 +325,7 @@
       // 넘치면 줄바꿈되어 카드 높이가 들쭉날쭉해졌다 — 줄바꿈 대신 한 줄로 자르고 "..."로
       // 표시한다(요약 목록이니 전체는 클릭해서 상세보기에서 확인).
       row.innerHTML =
-        '<div class="log-date"' + dateStyle + '>' + (overdue ? '<span style="color:#a83232;">⏰</span> ' : '') + escapeHtml(c.법정일 ? fmtDateShort_(c.법정일) : noDeadlineText) + '</div>' +
+        '<div class="log-date"' + (overdue ? ' style="color:#a83232; font-weight:700;" title="기한 지남"' : dateStyle) + '>' + escapeHtml(c.법정일 ? fmtDateShort_(c.법정일) : noDeadlineText) + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(custName || '(고객명 없음)') + '</b>' + (subBits.length ? ' <span style="color:var(--sub);">' + subBits.join(' ') + '</span>' : '') +
         '<div style="color:var(--sub); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(WORK_SEMOK_LABELS[c.세목] || c.세목 || '') + (c.업무유형 ? ' · ' + escapeHtml(c.업무유형) : '') + ' · ' + escapeHtml(c.상태 || '') +
         (prog.total ? (' · 하위업무 ' + prog.done + '/' + prog.total) : '') + workMyPortalBadgeText_(c) + '</div></div>';
@@ -515,13 +517,11 @@
     workCaseDetail.innerHTML =
       // [2026.09.16 버그수정] 실사용 지적 — 삭제 버튼이 저장 버튼과 다른 줄에 따로 떨어져
       // 있어서 두 확정동작 버튼이 한눈에 안 들어왔다(고객관리와 같은 이유로 같이 고침) →
-      // 삭제는 아래 저장 버튼 옆으로 옮긴다. "처리개요"는 아이콘 없이 "처리"로 줄이고 고객
-      // 아이콘 바로 오른쪽에 둔다(사건을 열자마자 가장 먼저 찾게 되는 이동 버튼이라 고객명
-      // 바로 옆이 자연스럽다).
+      // 삭제는 아래 저장 버튼 옆으로 옮긴다. 고객 아이콘 바로 오른쪽엔 "↪ 이 사건 다른 화면"
+      // (처리개요 포함, 아래 nxCaseJumpAttach_) — 예전 "처리" 단추는 같은 일이라 뺐다(10-31).
       '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
       '<input type="text" id="wcEditCustomerName" placeholder="고객명" value="' + escapeHtml(c.고객명 || '') + '" size="' + Math.max(4, String(c.고객명 || '').length + 2) + '" style="font-weight:700; font-size:15px;">' +
       '<button type="button" id="wcViewCustomer" class="ghost-btn" title="이 고객 정보 빠르게 보기·수정">👤</button>' +
-      '<button type="button" id="wcGoToProcess" class="ghost-btn" title="처리방향·작업일지·법령예규판례는 여기서">처리</button>' +
       '<input type="text" id="wcEditTaxpayer" placeholder="납세자(의뢰인과 다르면 입력)" value="' + escapeHtml(c.납세자 || '') + '" size="' + Math.max(6, String(c.납세자 || '').length + 2) + '">' +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; margin-top:8px;">' +
@@ -565,10 +565,8 @@
     renderWorkTree(c.하위업무 || [], document.getElementById('wcTree'), c.id, 0);
     if (typeof enhanceDateInputs === 'function') enhanceDateInputs(workCaseDetail);
 
-    document.getElementById('wcGoToProcess').addEventListener('click', function(){
-      if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id);
-    });
-    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('wcGoToProcess'), 'workmanage', function(){ return c.id; });
+    // [2026.10.31] 세무사님 "이사건다른화면 콤보가 있는데, 처리개요버튼이 있는 것은 기능중복" / "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" — "처리" 단추를 빼고 "↪ 이 사건 다른 화면"(처리개요 포함)을 사건 고르는 칸 바로 뒤에
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('wcViewCustomer'), 'workmanage', function(){ return c.id; });
 
     var newRootFormWrap = document.getElementById('wcNewRootFormWrap');
     document.getElementById('wcAddRootToggle').addEventListener('click', function(){
@@ -854,7 +852,7 @@
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
         '<input type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
         '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px; width:95px;' + (overdue ? ' color:#a83232;' : '') + '">' +
-        '<button type="button" class="ghost-btn wcNodeAddChild" style="padding:3px 8px;">+ 하위</button>' +
+        '<button type="button" class="ghost-btn wcNodeAddChild sm">+ 하위</button>' +
         '<span class="log-del wcNodeDelete" title="삭제">✕</span>' +
         '</div>' +
         '<div class="wcChildFormWrap" style="display:none; margin-top:4px; margin-left:20px; gap:6px; flex-wrap:wrap;"></div>' +
@@ -884,8 +882,8 @@
           childFormWrap.innerHTML =
             '<input type="text" class="wcChildTitle" placeholder="세부항목 이름" style="flex:1; min-width:120px; font-size:12.5px;">' +
             '<input type="date" class="wcChildDue" style="font-size:12px; width:95px;">' +
-            '<button type="button" class="save-btn wcChildSave" style="padding:3px 8px;">추가</button>' +
-            '<button type="button" class="ghost-btn wcChildCancel" style="padding:3px 8px;">취소</button>';
+            '<button type="button" class="save-btn wcChildSave sm">추가</button>' +
+            '<button type="button" class="ghost-btn wcChildCancel sm">취소</button>';
           childFormWrap.querySelector('.wcChildCancel').addEventListener('click', function(){ childFormWrap.style.display = 'none'; childFormWrap.innerHTML = ''; });
           childFormWrap.querySelector('.wcChildSave').addEventListener('click', function(){
             var t = childFormWrap.querySelector('.wcChildTitle').value.trim();

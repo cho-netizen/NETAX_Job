@@ -281,11 +281,10 @@
 <div class="view" id="view-reportwriter">
 <div id="rwRoot">
 
-<div class="view-head" style="padding-bottom:0;"><h2>✍ 문서작성</h2></div>
+<div class="view-head"><h2>문서작성</h2></div>
 <div id="rwCaseBar" class="tb-row" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--bar-bg); color:var(--ink); font-size:12.5px; border-bottom:1px solid var(--line); flex-wrap:wrap;">
   <select id="rwCaseSelect" style="min-width:200px; max-width:320px; font-size:12.5px;"><option value="">사건을 선택하세요</option></select>
   <span id="rwCaseReports" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"></span>
-  <button type="button" id="rwBackToCaseBtn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
 </div>
 
 <div id="toolbar">
@@ -2985,23 +2984,9 @@ function rwInitCaseBar_(){
   sel.addEventListener('change', function(){
     rwRenderCaseReports_(sel.value);
   });
-  // [2026.09] 다른 화면들처럼 이 화면도 처리개요로 바로 돌아가는 버튼이 있어야 한다는 지적.
-  document.getElementById('rwBackToCaseBtn').addEventListener('click', function(){
-    function proceed(){
-      if (typeof goToView_ === 'function') goToView_('casehandling');
-      if (sel.value && typeof goToCaseHandling_ === 'function') goToCaseHandling_(sel.value);
-    }
-    // [2026.09 버그수정] beforeunload 경고는 이 화면(#view-reportwriter)이 active일 때만
-    // 걸리는데, 이 버튼으로 처리개요로 넘어가는 순간 active가 풀려버려 정작 가장 흔한
-    // "다 썼으니 나간다" 경로에서는 드라이브 미저장 경고가 한 번도 못 뜬다 — 여기서 먼저 확인.
-    if (rwHasUnsavedDriveChanges_()){
-      nxConfirm_('드라이브에 저장하지 않은 내용이 있습니다. 그래도 처리개요로 이동할까요?').then(function(ok){ if (ok) proceed(); });
-    } else {
-      proceed();
-    }
-  });
-  // [2026.10.13] 이 사건의 다른 화면으로 바로 가기 — 처리개요 버튼과 같은 미저장 확인을 거친다
-  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('rwBackToCaseBtn'), 'reportwriter', function(){ return sel.value; }, function(go){
+  // [2026.10.31] 세무사님 "이사건다른화면 콤보가 있는데, 처리개요버튼이 있는 것은 기능중복" / "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" — ↩ 처리개요 단추를 빼고 "↪ 이 사건 다른 화면"(처리개요 포함)을 사건 고르는 칸 바로 뒤에
+  // 이동 전 드라이브 미저장 확인([2026.09 버그수정] — 화면을 떠나는 순간 beforeunload 경고는 못 뜬다)은 그대로
+  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(sel, 'reportwriter', function(){ return sel.value; }, function(go){
     if (rwHasUnsavedDriveChanges_()) nxConfirm_('드라이브에 저장하지 않은 내용이 있습니다. 그래도 다른 화면으로 이동할까요?').then(function(ok){ if (ok) go(); });
     else go();
   });

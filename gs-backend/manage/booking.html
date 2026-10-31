@@ -7,15 +7,18 @@
     <div class="card">
       <!-- [2026.10.30 예약 결과 관리] 세무사님 "이 목록이 언제까지 누적되는지? … 예약확정후 취소하거나 노쇼가 있을 수 있고, 방문상담하여 사건접수로
            이어질 수도 있는데, 그런 사항이 관리가 되지 않는다" → 목록을 처리할 것·지난 기록·전체로 나누고(기록은 지우지 않음), 확정 뒤 결과 적기·기존 사건에 연결·연결 확인. -->
+      <!-- [2026.10.31] 실행 단추(연결 확인·직권등록)는 제목 줄 오른쪽에 함께, 보기 바꾸기(처리할 것·지난 기록·전체)는 공통 하위 탭 — 세무사님 "직권등록버튼만 우측에 동떨어져 있구나" -->
       <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">상담신청 목록
-        <span id="bkModeBar" style="display:flex; flex-wrap:wrap; gap:6px; font-weight:normal;">
-          <button type="button" class="ghost-btn" data-bk-mode="todo" style="font-size:12px; padding:4px 10px;" title="새 신청·다가오는 확정 예약·결과를 적을 예약·사건에 이을 후보가 있는 예약">처리할 것</button>
-          <button type="button" class="ghost-btn" data-bk-mode="past" style="font-size:12px; padding:4px 10px;" title="거절·취소·사건접수·상담완료·노쇼로 끝난 예약(지우지 않고 보관)">지난 기록</button>
-          <button type="button" class="ghost-btn" data-bk-mode="all" style="font-size:12px; padding:4px 10px;">전체</button>
+        <span style="margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; font-weight:normal;">
+          <button type="button" id="bkLinkReview" class="ghost-btn sm" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약관리의 사건 시작을 거치지 않고 만든 사건)">연결 확인</button>
+          <button type="button" id="bkAdminToggle" class="ghost-btn sm">+ 직권등록</button>
         </span>
-        <button type="button" id="bkLinkReview" class="ghost-btn" style="font-size:12px; padding:4px 10px;" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약관리의 사건 시작을 거치지 않고 만든 사건)">🔗 연결 확인</button>
-        <button type="button" id="bkAdminToggle" class="ghost-btn" style="margin-left:auto; font-size:12px; padding:4px 10px;">+ 직권등록</button>
       </h3>
+      <div id="bkModeBar" class="nx-tabbar" style="margin:8px 0 0;">
+        <button type="button" class="nx-tab" data-bk-mode="todo" title="새 신청·다가오는 확정 예약·결과를 적을 예약·사건에 이을 후보가 있는 예약">처리할 것</button>
+        <button type="button" class="nx-tab" data-bk-mode="past" title="거절·취소·사건접수·상담완료·노쇼로 끝난 예약(지우지 않고 보관)">지난 기록</button>
+        <button type="button" class="nx-tab" data-bk-mode="all">전체</button>
+      </div>
       <div id="bkAdminForm" style="display:none; flex-direction:column; gap:8px; max-width:420px; margin:12px 0;">
         <label style="font-size:12px; color:var(--sub);">이름 *<br><input type="text" id="bkNewName" size="10" placeholder="예: 홍길동"></label>
         <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" size="14" placeholder="010-1234-5678"></label>
@@ -122,8 +125,7 @@
     document.querySelectorAll('#bkModeBar [data-bk-mode]').forEach(function(btn){
       var m = btn.getAttribute('data-bk-mode');
       btn.textContent = m === 'todo' ? '처리할 것 ' + todoN : (m === 'past' ? '지난 기록 ' + (all.length - todoN) : '전체 ' + all.length);
-      btn.style.fontWeight = m === mode ? '700' : '';
-      btn.style.borderColor = m === mode ? 'var(--navy, #0d1b3d)' : '';
+      btn.classList.toggle('active', m === mode); // [2026.10.31] 지금 고른 것은 남색 칠(설정 탭과 같은 모양, style.html)
     });
     if (!list.length){
       box.innerHTML = '<div class="empty-row">' + (mode === 'todo' ? '처리할 예약이 없습니다. 지난 기록은 위 "지난 기록"에서 볼 수 있습니다.' : '신청 내역이 없습니다.') + '</div>';
@@ -132,12 +134,12 @@
     }
     // [2026.09 버그수정] 데이터 길이에 맞춰 각 열 폭을 지정한다. 제목칸에도 줄바꿈 금지.
     var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
-    // [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로
-    var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:1050px;"><colgroup>'
+    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로
+    var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:930px;"><colgroup>'
       + '<col style="width:140px"><col style="width:70px"><col style="width:95px"><col style="width:80px"><col style="width:70px">'
-      + '<col style="width:400px"><col style="width:100px"><col style="width:120px"><col style="width:250px">'
+      + '<col style="width:280px"><col style="width:100px"><col style="width:120px"><col style="width:250px">'
       + '</colgroup><tr><th ' + th(140) + '>희망일시</th><th ' + th(70) + '>이름</th><th ' + th(110) + '>연락처</th><th ' + th(80) + '>유형</th><th ' + th(70) + '>관련분야</th>' +
-      '<th ' + th(400) + '>상황</th><th ' + th(100) + '>상태</th><th ' + th(120) + '>예약처리</th><th ' + th(250) + '>사건처리</th></tr>';
+      '<th ' + th(280) + '>상황</th><th ' + th(100) + '>상태</th><th ' + th(120) + '>예약처리</th><th ' + th(250) + '>사건처리</th></tr>';
     list.forEach(function(b, idx){
       // [2026.09.16 버그수정] 배지·버튼 글자 자체에 직접 줄바꿈 금지를 건다.
       var hasMemo = !!(b.resultMemo || b.resultDate);
@@ -166,7 +168,7 @@
         '<td ' + td(110) + '>' + esc(b.phone) + '</td>' +
         '<td ' + td(80, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'type\')">' + esc(b.type) + '</td>' +
         '<td ' + td(70, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'field\')">' + esc(b.field || '-') + '</td>' +
-        '<td ' + td(400, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'situation\')">' + esc(b.situation) + '</td>' +
+        '<td ' + td(280, ' cursor:pointer;') + ' title="' + esc(b.situation) + '" onclick="bookingShowSituation_(' + idx + ', \'situation\')">' + esc(b.situation) + '</td>' +
         '<td ' + td(100) + '>' + badge + '</td>' +
         '<td style="white-space:nowrap;">' + actions + '</td>' +
         '<td style="white-space:nowrap;">' + caseCell + '</td>' +
@@ -196,7 +198,7 @@
     overlay.className = 'modal-overlay';
     overlay.style.zIndex = '9990';
     overlay.innerHTML = '<div class="modal-panel" style="width:min(' + (width || 520) + 'px, 94vw);">' +
-      '<div class="modal-head"><span>' + esc(title) + '</span><button type="button" class="ghost-btn" data-bk-close="1" style="padding:2px 10px;">닫기</button></div>' +
+      '<div class="modal-head"><span>' + esc(title) + '</span><button type="button" class="ghost-btn sm" data-bk-close="1">닫기</button></div>' +
       '<div class="modal-body" id="bkModalBody">' + bodyHtml + '</div></div>';
     document.body.appendChild(overlay);
     overlay.addEventListener('click', function(e){ if (e.target === overlay || e.target.closest('[data-bk-close]')) bookingCloseModal_(); });
@@ -310,7 +312,7 @@
       if (!res || res.success === false){ body.innerHTML = '<div class="empty-row">' + esc((res && res.message) || '불러오지 못했습니다') + '</div>'; return; }
       var caseLine = function(c){ return '「' + esc(c.사건명 || '') + '」 <span style="color:var(--sub); font-size:12px;">' + esc(c.고객명 || '') + ' · 만든 날 ' + esc(c.생성일 || '-') + (c.상태 ? ' · ' + esc(c.상태) : '') + '</span>'; };
       var h = '<div style="font-size:12.5px; color:var(--sub);">이으면 이 예약의 결과가 "사건접수"가 되고, 예약 캘린더 일정은 지워집니다(사건 일정은 사건 쪽에서 관리).</div>';
-      h += '<div style="font-weight:700; margin-top:8px;">같은 건일 수 있는 사건</div>';
+      h += '<div class="nx-l3" style="margin:10px 0 6px;">같은 건일 수 있는 사건</div>';
       if ((res.candidates || []).length){
         res.candidates.forEach(function(c, i){ h += bookingPairHtml_('c' + i, { rowIndex: rowIndex, caseId: c.caseId, 사건명: c.사건명, bookingName: b.name, 근거: c.근거, 강함: c.강함 }, caseLine(c), true); });
       } else h += '<div class="empty-row" style="padding:6px 0;">전화번호나 이름이 같은 사건이 없습니다.</div>';

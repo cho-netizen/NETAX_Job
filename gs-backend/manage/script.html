@@ -640,8 +640,8 @@
       bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--gold, #c9a227); border-radius:8px; background:var(--gold-light, #fdf6e3); font-size:13px;';
       bar.innerHTML = '<span>' + (curName ? '이 화면은 지금 「' + escapeHtml(curName) + '」 사건입니다. ' : '이 화면은 사건이 골라져 있지 않습니다. ') +
         '방금 보던 「<b>' + escapeHtml(lastName) + '</b>」 사건으로 열까요?</span>' +
-        '<button type="button" class="save-btn" data-follow="go" style="padding:3px 10px;">「' + escapeHtml(lastName) + '」로 열기</button>' +
-        '<button type="button" class="ghost-btn" data-follow="stay" style="padding:3px 10px;">' + (curName ? '그대로 두기' : '닫기') + '</button>';
+        '<button type="button" class="save-btn sm" data-follow="go">「' + escapeHtml(lastName) + '」로 열기</button>' +
+        '<button type="button" class="ghost-btn sm" data-follow="stay">' + (curName ? '그대로 두기' : '닫기') + '</button>';
       bar.addEventListener('click', function(e){
         var b = e.target.closest('[data-follow]');
         if (!b) return;
@@ -812,8 +812,8 @@
       bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px;';
       var mins = Math.max(1, Math.round((Date.now() - p.at) / 60000));
       bar.innerHTML = '<span>' + escapeHtml(parts[1] || '다른 기기') + '에서 ' + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
-        + '<button type="button" class="save-btn" data-place="go" style="padding:3px 10px;">이어 열기</button><button type="button" class="ghost-btn" data-place="x" style="padding:3px 10px;">닫기</button>'
-        + '<button type="button" class="ghost-btn" data-place="name" style="padding:3px 10px;" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">🏷 이 기기 이름' + (nxDeviceName_() ? ': ' + escapeHtml(nxDeviceName_()) : ' 정하기') + '</button>';
+        + '<button type="button" class="save-btn sm" data-place="go">이어 열기</button><button type="button" class="ghost-btn sm" data-place="x">닫기</button>'
+        + '<button type="button" class="ghost-btn sm" data-place="name" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">🏷 이 기기 이름' + (nxDeviceName_() ? ': ' + escapeHtml(nxDeviceName_()) : ' 정하기') + '</button>';
       bar.addEventListener('click', function(e){
         var b = e.target.closest('[data-place]'); if (!b) return;
         if (b.getAttribute('data-place') === 'name'){
@@ -1042,7 +1042,7 @@
     });
     return sel;
   }
-  // 이미 있는 버튼(예: "↩ 처리개요") 바로 뒤에 한 번만 붙인다
+  // 사건 고르는 칸 바로 뒤에 한 번만 붙인다 — [2026.10.31] 세무사님 "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다"(예전엔 ↩ 처리개요 단추 뒤, 그 단추는 이 상자와 같은 일이라 뺐다)
   function nxCaseJumpAttach_(afterEl, fromView, getCaseId, beforeLeave){
     if (!afterEl || !afterEl.parentNode) return;
     try { nxLedgerStripAttach_(afterEl, fromView, getCaseId); } catch (e) {} // [2026.10.29] 사건 화면마다 맨 위 사건 장부 띠(사건 고르는 줄 바로 아래)
@@ -1070,7 +1070,7 @@
     el.className = 'nx-ledger-strip';
     el.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 4px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; background:var(--card, transparent);';
     el._getCaseId = getCaseId; el._view = fromView; el._shownId = null; el._homeRow = row;
-    el.innerHTML = '<b>📒 사건 장부</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
+    el.innerHTML = '<b>사건 장부</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
     row.parentNode.insertBefore(el, row.nextSibling);
     NX_LG_.strips.push(el);
     if (!NX_LG_.timer) NX_LG_.timer = setInterval(nxLedgerStripTick_, 2000);
@@ -1113,8 +1113,8 @@
       + (last ? ' <span style="color:var(--sub);">· 마지막 장부 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
       + nxAiCostStripHtml_(r.AI비용)
       + (r.도구카드 && r.도구카드.부름 ? ' <span style="color:var(--sub);">· ' + nxLgEsc_(r.도구카드.줄) + '</span>' : '') // [2026.10.31 J] 자세히는 📒 장부 펼치기 아래 🧰
-      + (el._view === 'ledger' ? '' : ' <button type="button" class="ghost-btn nx-lg-open" style="padding:1px 8px; font-size:12px;" title="요약을 옆에 펼칩니다">📒 장부 펼치기</button> <button type="button" class="ghost-btn nx-lg-screen" style="padding:1px 8px; font-size:12px;" title="📒 사건 장부 화면으로 — 값 넣기·물어볼 것 답하기·반영 현황표·판단 재료">장부 화면 ›</button>') // [2026.10.31 처리개요 도구 정리] 장부 화면 열기
-      + ' <button type="button" class="ghost-btn nx-lg-re" title="장부를 다시 읽기" style="padding:1px 6px; font-size:12px;">↻</button>';
+      + (el._view === 'ledger' ? '' : ' <button type="button" class="ghost-btn nx-lg-open sm" title="요약을 옆에 펼칩니다">📒 장부 펼치기</button> <button type="button" class="ghost-btn nx-lg-screen sm" title="📒 사건 장부 화면으로 — 값 넣기·물어볼 것 답하기·반영 현황표·판단 재료">장부 화면 ›</button>') // [2026.10.31 처리개요 도구 정리] 장부 화면 열기
+      + ' <button type="button" class="ghost-btn nx-lg-re sm" title="장부를 다시 읽기">↻</button>';
     var ob = b.querySelector('.nx-lg-open'); if (ob) ob.addEventListener('click', function(){ nxLedgerPanelOpen_(el._view, id); });
     var sb = b.querySelector('.nx-lg-screen'); if (sb) sb.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(id); });
     var cb = b.querySelector('.nx-lg-cost'); if (cb) cb.addEventListener('click', function(){ nxAiCostPanelOpen_(id, r.사건 || ''); });
@@ -1127,7 +1127,7 @@
     if (!c || c.error || !c.n) return ' <span style="color:var(--sub);">· 🤖 AI 비용 기록 없음</span>';
     var p = c.parts || {};
     return ' <span title="' + nxLgEsc_(c.line || '') + '">· 🤖 AI ' + nxAiCostWon_(c.won) + ' <span style="color:var(--sub);">(다시 읽기 ' + nxAiCostWon_(p.캐시읽기) + ' · 새로 읽기·저장 ' + nxAiCostWon_((p.새로읽기 || 0) + (p.캐시쓰기 || 0)) + ' · 쓴 글 ' + nxAiCostWon_(p.쓴글) + ')</span></span>'
-      + ' <button type="button" class="ghost-btn nx-lg-cost" style="padding:1px 8px; font-size:12px;">🤖 비용 자세히</button>';
+      + ' <button type="button" class="ghost-btn nx-lg-cost sm">🤖 비용 자세히</button>';
   }
   function nxAiCostPanelOpen_(id, name){
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
@@ -1168,25 +1168,25 @@
     else {
       var f = r.흐름 || {}, last = f.마지막;
       var ST = { '가설': '가설(서류 확인 전)', '확정': '정함', '추정': '추정', '물어볼것': '물어볼 것', '증빙받을것': '받을 것', '보류': '보류', '무시': '무시' };
-      h += '<div style="margin-top:8px;"><b>마지막 장부 적기</b> <span style="color:var(--sub);">' + (last ? e(last.at) + (last.why ? ' · ' + e(last.why) : '') + ' → ' + e((last.diff || []).join(' · ') || '바뀐 것 없음') : '아직 없음') + '</span></div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">마지막 장부 적기</b> <span style="color:var(--sub);">' + (last ? e(last.at) + (last.why ? ' · ' + e(last.why) : '') + ' → ' + e((last.diff || []).join(' · ') || '바뀐 것 없음') : '아직 없음') + '</span></div>';
       var q = r.물음 || [];
-      h += '<div style="margin-top:10px;"><b>남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 📒 사건 장부 화면 ④ 물어볼 것에서(또는 AI 창에서 넥스에게 말로)</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 📒 사건 장부 화면 ④ 물어볼 것에서(또는 AI 창에서 넥스에게 말로)</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var ov = f.사건개요 || [];
-      h += '<div style="margin-top:10px;"><b>사건개요</b>' + (ov.length ? tbl(['칸', '값', '상태', '가설과'], ov.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label, 150) + cell(x.값, 260, g ? ' color:#a60;' : '') + cell(ST[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(x.hypNote || '', 220, x.hypNote ? ' color:#b23;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">사건개요</b>' + (ov.length ? tbl(['칸', '값', '상태', '가설과'], ov.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label, 150) + cell(x.값, 260, g ? ' color:#a60;' : '') + cell(ST[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(x.hypNote || '', 220, x.hypNote ? ' color:#b23;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       // [2026.10.29 거래 사슬] 물건마다 계약서·등기 고리 — 사슬 밖 계약서는 빨갛게
       var chn = f.사슬 || null;
-      if (chn && (chn.rows || []).length) h += '<div style="margin-top:10px;"><b>거래 사슬</b> <span style="color:var(--sub);">누가 누구에게 — 사슬 밖 계약서는 칸에 쓰지 않고 질문으로</span>' + chn.rows.map(function(rw){ return '<div style="margin-top:3px;">' + e(rw.물건) + ' <span style="color:var(--sub);">— 납세자 위치: ' + e(rw.납세자위치 || '') + '</span>' + tbl(['날짜', '내용', '누구', '이음'], (rw.고리 || []).map(function(st){ return '<tr>' + cell(st.at || '', 90) + cell((st.kind === '등기' ? '등기 ' : '') + (st.what || ''), 180) + cell(st.to || '', 200) + cell(st.밖 ? '⚠ 사슬 밖 — ' + st.밖 : (st.등기 || ''), 260, st.밖 ? ' color:#b23;' : '') + '</tr>'; }).join('')) + '</div>'; }).join('') + ((chn.off || []).length ? '<div style="color:#b23; margin-top:3px;">사슬 밖 계약서 ' + chn.off.length + '건 — ' + chn.off.map(function(o){ return e(o.file) + ': ' + e(o.why); }).join(' / ') + '</div>' : '') + '</div>';
+      if (chn && (chn.rows || []).length) h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">거래 사슬</b> <span style="color:var(--sub);">누가 누구에게 — 사슬 밖 계약서는 칸에 쓰지 않고 질문으로</span>' + chn.rows.map(function(rw){ return '<div style="margin-top:3px;">' + e(rw.물건) + ' <span style="color:var(--sub);">— 납세자 위치: ' + e(rw.납세자위치 || '') + '</span>' + tbl(['날짜', '내용', '누구', '이음'], (rw.고리 || []).map(function(st){ return '<tr>' + cell(st.at || '', 90) + cell((st.kind === '등기' ? '등기 ' : '') + (st.what || ''), 180) + cell(st.to || '', 200) + cell(st.밖 ? '⚠ 사슬 밖 — ' + st.밖 : (st.등기 || ''), 260, st.밖 ? ' color:#b23;' : '') + '</tr>'; }).join('')) + '</div>'; }).join('') + ((chn.off || []).length ? '<div style="color:#b23; margin-top:3px;">사슬 밖 계약서 ' + chn.off.length + '건 — ' + chn.off.map(function(o){ return e(o.file) + ': ' + e(o.why); }).join(' / ') + '</div>' : '') + '</div>';
       var ev = (f.증빙 || []).slice().sort(function(a, b){ return (a.state === '증빙받을것' ? 0 : 1) - (b.state === '증빙받을것' ? 0 : 1); });
       // [2026.10.29 계획서 3판] 받는 곳(도구·세무사님·고객 — 보이기만) · 공부 사실(조회한 필지) — 조회·추정·시험 계산 단추는 📒 사건 장부 화면 ⑤ 도구에
-      h += '<div style="margin-top:10px;"><b>확보할 증빙</b>' + (ev.length ? tbl(['서류', '상태', '받는 곳', '왜'], ev.map(function(x){ var dd = x.서류 || {}; return '<tr>' + cell(dd.label || x.label, 240) + cell(x.state === '확정' ? '확보' : (ST[x.state] || x.state), 60, x.state === '증빙받을것' ? ' color:#a60;' : '') + cell((x.받는곳 === '도구' ? '🔎 도구로 조회' : (x.받는곳 || '')) + (x.도구확보 ? ' — 받음' : ''), 120, x.받는곳 === '도구' ? ' color:#2563eb;' : '') + cell(dd.note || '', 260, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">확보할 증빙</b>' + (ev.length ? tbl(['서류', '상태', '받는 곳', '왜'], ev.map(function(x){ var dd = x.서류 || {}; return '<tr>' + cell(dd.label || x.label, 240) + cell(x.state === '확정' ? '확보' : (ST[x.state] || x.state), 60, x.state === '증빙받을것' ? ' color:#a60;' : '') + cell((x.받는곳 === '도구' ? '🔎 도구로 조회' : (x.받는곳 || '')) + (x.도구확보 ? ' — 받음' : ''), 120, x.받는곳 === '도구' ? ' color:#2563eb;' : '') + cell(dd.note || '', 260, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var pb = f.공부 || [], tgt = (f.조회대상 || []).filter(function(t){ return !t.조회함; });
-      h += '<div style="margin-top:10px;"><b>공부 사실 ' + pb.length + '필지</b> <span style="color:var(--sub);">조회·추정·시험 계산·세목 비교 단추는 📒 사건 장부 화면 ⑤ 도구에</span>' + (pb.length ? pb.map(function(p){ return '<div style="margin-top:3px;">' + e(p.소재지) + tbl(['항목', '값'], (p.받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160) + cell(it.v, 360) + '</tr>'; }).join('') + (p.못받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160, ' color:#b23;') + cell('못 받음 — ' + (it.err || ''), 360, ' color:#b23;') + '</tr>'; }).join('')) + '</div>'; }).join('') : '<div class="log-empty">없음</div>') + (tgt.length ? '<div style="color:#a60; margin-top:3px;">아직 조회 안 한 필지: ' + tgt.map(function(t){ return e(t.소재지); }).join(', ') + '</div>' : '') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">공부 사실 ' + pb.length + '필지</b> <span style="color:var(--sub);">조회·추정·시험 계산·세목 비교 단추는 📒 사건 장부 화면 ⑤ 도구에</span>' + (pb.length ? pb.map(function(p){ return '<div style="margin-top:3px;">' + e(p.소재지) + tbl(['항목', '값'], (p.받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160) + cell(it.v, 360) + '</tr>'; }).join('') + (p.못받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160, ' color:#b23;') + cell('못 받음 — ' + (it.err || ''), 360, ' color:#b23;') + '</tr>'; }).join('')) + '</div>'; }).join('') : '<div class="log-empty">없음</div>') + (tgt.length ? '<div style="color:#a60; margin-top:3px;">아직 조회 안 한 필지: ' + tgt.map(function(t){ return e(t.소재지); }).join(', ') + '</div>' : '') + '</div>';
       var cc = r.칸 || [];
-      h += '<div style="margin-top:10px;"><b>계산 칸 ' + cc.length + '</b>' + (cc.length ? tbl(['칸', '값', '주인', '서류 사실'], cc.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(x.값 + (x.state === '추정' ? ' (추정)' : ''), 220, x.state === '추정' ? ' color:#a60;' : '') + cell(x.kind, 70) + cell(x.이음 ? x.이음 + '건과 이음' : '없음', 90, x.이음 ? '' : ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">계산 칸 ' + cc.length + '</b>' + (cc.length ? tbl(['칸', '값', '주인', '서류 사실'], cc.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(x.값 + (x.state === '추정' ? ' (추정)' : ''), 220, x.state === '추정' ? ' color:#a60;' : '') + cell(x.kind, 70) + cell(x.이음 ? x.이음 + '건과 이음' : '없음', 90, x.이음 ? '' : ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var hy = f.가설 || [];
-      h += '<div style="margin-top:10px;"><b>가설</b> <span style="color:var(--sub);">의뢰서·메모·대화가 말한 것 — 계산에 넣지 않음</span>' + (hy.length ? tbl(['항목', '값', '말한 곳'], hy.map(function(x){ return '<tr>' + cell(x.f, 70) + cell(x.v, 260) + cell((x.srcs || []).join(', ') + (x.by === '넥스' ? ' (넥스 판단)' : ''), 220, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">가설</b> <span style="color:var(--sub);">의뢰서·메모·대화가 말한 것 — 계산에 넣지 않음</span>' + (hy.length ? tbl(['항목', '값', '말한 곳'], hy.map(function(x){ return '<tr>' + cell(x.f, 70) + cell(x.v, 260) + cell((x.srcs || []).join(', ') + (x.by === '넥스' ? ' (넥스 판단)' : ''), 220, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var dir = f.처리방향 || [];
-      h += '<div style="margin-top:10px;"><b>처리방향</b>' + (dir.length ? dir.map(function(x){ return '<div style="margin:3px 0 0 4px; white-space:pre-wrap;">' + e(x.값) + '</div>'; }).join('') : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">처리방향</b>' + (dir.length ? dir.map(function(x){ return '<div style="margin:3px 0 0 4px; white-space:pre-wrap;">' + e(x.값) + '</div>'; }).join('') : '<div class="log-empty">없음</div>') + '</div>';
     }
     p.innerHTML = h; p.style.display = '';
     document.getElementById('nxLgClose').addEventListener('click', function(){ p.style.display = 'none'; });
@@ -1271,7 +1271,7 @@
               '<div id="nxSuggestImgs" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"></div>' +
               '<div style="display:flex; align-items:center; gap:10px; margin-top:8px; font-size:13px; flex-wrap:wrap;">' +
                 '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="nxSuggestUrgent"> 🚨 긴급</label>' +
-                '<button type="button" class="ghost-btn" id="nxSuggestPick" style="font-size:12px; padding:2px 8px;">📎 화면 캡처 붙이기</button>' +
+                '<button type="button" class="ghost-btn sm" id="nxSuggestPick">📎 화면 캡처 붙이기</button>' +
                 '<span style="font-size:11.5px; color:var(--sub);">캡처한 그림은 이 창에서 Ctrl+V로도 붙습니다</span>' +
                 '<input type="file" id="nxSuggestFile" accept="image/*" multiple hidden>' +
               '</div>') +
@@ -1392,5 +1392,50 @@
     window.addEventListener('load', function(){
       setTimeout(function(){ if (window.requestIdleCallback) requestIdleCallback(check_, { timeout: 10000 }); else check_(); }, 15000);
     });
+  })();
+
+  /* [2026.10.31] 하위 탭 줄이 좁은 화면에서 옆으로 밀려 뒤 탭이 가려지면 오른쪽 끝을 흐리고 ▶를 띄운다 — 세무사님 "작은화면에서 넘치면 어떻게 하려고 하는가?".
+     ▶를 누르면 그 줄을 옆으로 민다. 끝까지 밀었거나 다 들어가면 사라진다. 서버를 부르지 않는 화면 일만. 탭 이름 전체는 title로. */
+  (function(){
+    var SEL_ = '.nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs';
+    var arrows_ = [], queued_ = false;
+    function update_(){
+      queued_ = false;
+      var bars = document.querySelectorAll(SEL_), used = 0;
+      for (var i = 0; i < bars.length; i++){
+        var bar = bars[i];
+        Array.prototype.forEach.call(bar.querySelectorAll('.nx-tab, .taxcalc-tab, .taxcalc-subtab'), function(t){
+          if (!t.title && t.scrollWidth > t.clientWidth + 1) t.title = t.textContent.trim();
+        });
+        var over = bar.offsetParent && bar.scrollWidth > bar.clientWidth + 2;
+        var more = over && bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2, less = over && bar.scrollLeft > 2;
+        bar.classList.toggle('nx-more', !!more); bar.classList.toggle('nx-more-l', !!less);
+        if (!more && !less) continue;
+        var r = bar.getBoundingClientRect();
+        if (r.bottom < 0 || r.top > window.innerHeight) continue;
+        [[more, 1], [less, -1]].forEach(function(side){
+          if (!side[0]) return;
+          var a = arrows_[used];
+          if (!a){
+            a = document.createElement('button'); a.type = 'button'; a.className = 'nx-tabmore-arrow';
+            a.addEventListener('click', function(){ if (this._bar) this._bar.scrollBy({ left: this._dir * Math.max(120, this._bar.clientWidth * 0.7), behavior: 'smooth' }); });
+            document.body.appendChild(a); arrows_.push(a);
+          }
+          a._bar = bar; a._dir = side[1]; a.textContent = side[1] > 0 ? '▶' : '◀'; a.title = side[1] > 0 ? '뒤 탭 보기' : '앞 탭 보기';
+          a.style.position = 'fixed'; a.style.display = '';
+          a.style.left = (side[1] > 0 ? r.right - 24 : r.left + 2) + 'px'; a.style.top = (r.top + (r.height - 22) / 2) + 'px';
+          used++;
+        });
+      }
+      for (var j = used; j < arrows_.length; j++) arrows_[j].style.display = 'none';
+    }
+    function queue_(){ if (!queued_){ queued_ = true; requestAnimationFrame(update_); } }
+    window.addEventListener('resize', queue_);
+    document.addEventListener('scroll', queue_, true);
+    document.addEventListener('click', function(){ setTimeout(queue_, 50); }, true);
+    new MutationObserver(function(recs){
+      for (var k = 0; k < recs.length; k++){ var t = recs[k].target; if (!(t.classList && (t.classList.contains('nx-tabmore-arrow') || (recs[k].attributeName === 'class' && t.matches && t.matches(SEL_))))) return queue_(); }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+    queue_();
   })();
 </script>

@@ -92,12 +92,15 @@
   #view-memo-text.active, #view-memo-hand.active, #view-taxcalc.active, #view-reporthub.active{ display:flex; flex-direction:column; overflow:hidden; }
 
   /* [2026.09 신규] 보고서 모음 화면 */
-  .rh-subtab-btn{ background:#f2f3f6; border:1px solid var(--line); border-radius:6px; padding:6px 12px;
-    font-size:12.5px; font-family:inherit; cursor:pointer; color:var(--sub); }
-  .rh-subtab-btn.active{ background:var(--navy); color:#fff; border-color:var(--navy); font-weight:600; }
+  /* [2026.10.31] 모아보기·템플릿다듬기·글감만들기·쇼츠 탭 모양은 공통 하위 탭(.nx-tab) */
   .rh-pane{ flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-  .view-head{ padding:16px 22px 10px; }
-  .view-head h2{ margin:0; font-size:19px; color:var(--navy); }
+  /* [2026.10.31] 화면 맨 위 제목 줄은 어느 화면이든 한 모양 — 세무사님 "탭명이 들어가는 라인-타이틀라인의 두께와 모양을 좀 통일할 필요가 있겠다.
+     그러고 나서 그 속에 다른 버튼들이 들어갈 수 있겠지". 두께 52px·옅은 회색 바탕·아래 선 하나·왼쪽 22px에서 제목(19px) 시작, 단추는 같은 줄 안에.
+     제목만 있는 줄(.view-head)과 단추가 같이 있는 줄(.editor-toolbar + .tb-title)이 똑같이 보이게 둘을 같은 값으로 묶음. */
+  .view-head, .editor-toolbar:has(> h2.tb-title){ display:flex; align-items:center; gap:10px; flex-wrap:wrap; box-sizing:border-box;
+    min-height:52px; padding:6px 22px !important; background:#f9fafb; border-bottom:1px solid var(--line); flex-shrink:0; }
+  .view-head h2, .editor-toolbar > h2.tb-title{ margin:0 4px 0 0; font-size:19px; font-weight:700; color:var(--navy); line-height:1.3; white-space:nowrap; }
+  .view-head + .view-body{ padding-top:14px; }
   .view-body{ padding:0 22px 24px; }
 
   /* [2026.09 버그수정] 접힌 상태 배경이 #f1f2f5로 중앙 작업영역 배경(--bg:#e9eaee)과 거의
@@ -140,10 +143,36 @@
   /* ===== 공용 위젯 ===== */
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
   .card h3{ margin:0 0 10px; font-size:14px; color:var(--navy); }
+  /* [2026.10.31] 세무사님 "어느 항목이 상위항목인지 하위항목인지 어느 항목내 세부항목인지 분간이 되지 않는다" — 모든 화면 같은 단계 모양.
+     0 메뉴 이름(.view-head h2) → 1 하위 탭(탭 이름은 아래 제목으로 되풀이하지 않음) → 2 카드 제목(.view .card > h3, 큰 글자+밑줄, 아이콘 없음 — 10-31 "굳이 아이콘을 달리할 이유가 있는가? 오히려 트리구조를 혼란스럽게")
+     → 3 묶음(.nx-l3, 왼쪽 굵은 띠·아이콘 없음) → 4 작은 묶음(.nx-l4) → 그 아래 줄은 .nx-in 안에서 한 번 더 들여쓴다(가는 세로줄).
+     접히는 단계는 ▸(접힘)/▾(펼침) 표시. 아이콘은 실행 단추(👁 보기 등)에만. */
+  .view .card > h3{ font-size:16px; padding-bottom:8px; border-bottom:2px solid var(--line); margin:0 0 12px; }
+  /* 카드 안 h4는 3단계 묶음과 같은 모양(10-31 "설정탭뿐이 아니라 모든 탭에서 마찬가지다") */
+  .view .card h4{ display:block; margin:18px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); line-height:1.45; }
+  .view .card h4:first-child{ margin-top:4px; }
+  .nx-l3{ display:block; margin:18px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); line-height:1.45; }
+  .nx-l4{ display:block; margin:10px 0 5px; font-size:13px; font-weight:700; color:var(--ink); line-height:1.45; }
+  div.nx-l4{ padding-left:14px; } /* 접히지 않는 4단계도 접히는 것(▸ 자리)과 글자 줄을 맞춘다 */
+  .nx-l3 .nx-l-sub, .nx-l4 .nx-l-sub{ font-size:12px; font-weight:400; color:var(--sub); margin-left:6px; }
+  details > summary.nx-l3, details > summary.nx-l4{ cursor:pointer; list-style:none; }
+  details > summary.nx-l3::-webkit-details-marker, details > summary.nx-l4::-webkit-details-marker{ display:none; }
+  details > summary.nx-l3::before, details > summary.nx-l4::before{ content:'▸'; display:inline-block; width:14px; color:var(--sub); font-weight:400; }
+  details[open] > summary.nx-l3::before, details[open] > summary.nx-l4::before{ content:'▾'; }
+  /* [2026.10.31] 세무사님 "3차 항목은 아무 표시가 없이 바로 텍스트로 구성된다. 하위 항목도 기호글머리를 붙이면 좋겠다" — 4단계 제목 앞에 네모 글머리(▪), 접히는 것은 ▸/▾ 다음에 */
+  div.nx-l4::before{ content:'▪'; display:inline-block; width:12px; color:var(--navy); }
+  details > summary.nx-l4::before{ content:'▸\00a0\00a0▪'; width:auto; margin-right:4px; }
+  details[open] > summary.nx-l4::before{ content:'▾\00a0\00a0▪'; }
+  /* [2026.10.31] 세무사님 "하위 항목도 기호글머리" — 스크립트가 그리는 목록 줄(점검 결과·자세한 내용 등)도 같은 ▪ 글머리. "→" 안내 줄은 .nx-li-go(글머리 없이) */
+  .nx-li{ position:relative; padding-left:14px; overflow-wrap:anywhere; }
+  .nx-li::before{ content:'▪'; position:absolute; left:0; color:var(--navy); }
+  .nx-li-go{ color:var(--sub); padding-left:14px; }
+  .nx-in{ margin:0 0 6px 6px; padding-left:12px; border-left:2px solid var(--line); min-width:0; }
   /* [2026.09] 사건처리 카드들 — 예전엔 "제목 텍스트" + 그 밑에 "~에서 열기" 버튼이 따로
      있었는데, 제목 자체를 눌러서 바로 이동하도록 통합해 화면을 정리했다(사건처리화면). */
-  .ch-card-head-btn{ display:flex; align-items:center; gap:6px; width:100%; background:none; border:none;
-    padding:0; margin:0; font:inherit; font-size:12.5px; font-weight:700; color:var(--navy); cursor:pointer; text-align:left; }
+  /* [2026.10.31] 처리개요 카드 제목도 다른 묶음 제목(.nx-l3)과 같은 세로줄 단계 모양 — 세무사님 "처리개요서내 기한_하위업무는 아무 표시가 없다"(아이콘만 붙은 제목과 아무 표시 없는 제목이 섞여 있었음) */
+  .ch-card-head-btn{ display:flex; align-items:center; gap:6px; width:100%; background:none; border:none; border-left:4px solid var(--navy);
+    padding:1px 0 1px 9px; margin:0; font:inherit; font-size:14px; font-weight:700; color:var(--navy); cursor:pointer; text-align:left; line-height:1.45; }
   .ch-card-head-btn:hover{ text-decoration:underline; }
   .ch-card-head-arrow{ color:var(--sub); font-weight:400; }
   .empty-row{ color:var(--sub); font-size:13px; padding:10px 0; }
@@ -184,6 +213,8 @@
   table.list-table th{ text-align:left; padding:8px 10px; color:var(--sub); font-weight:600; border-bottom:1px solid var(--line); font-size:12px; }
   table.list-table td{ padding:9px 10px; border-bottom:1px solid var(--line); }
   table.list-table tr:hover td{ background:#f7f8fa; }
+  /* [2026.10.31] 세무사님 "보고서모음의 파일명 필드가 너무 넓다(다른 탭 다른 표에서도 모두 찾아서 맞게 줄여라)" — 표의 이름 칸은 정한 폭에서 말줄임, 전체 이름은 손 대면 보임 */
+  .nx-cut{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .spinner{ color:var(--sub); font-size:13px; padding:20px; text-align:center; }
 
@@ -208,21 +239,55 @@
     border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); line-height:1.2; box-sizing:border-box; display:inline-block; vertical-align:middle; }
   .ghost-btn:hover{ background:rgba(200,162,68,0.22); }
   .ghost-btn:active{ background:rgba(200,162,68,0.32); }
+  /* [2026.10.31] 예약 처리할 것/지난 기록/전체(목록 거르기) — 지금 고른 것 남색 칠 */
+  /* [2026.10.31] 하위 탭 공통 모양 — 세무사님 "가급적 탭내 하위탭의 모양이 같거나 유사하게 구성했으면 좋겠다. 지금은 각각 너무 다르다".
+     세액계산 탭 모양(밑줄 막대 + 지금 탭 남색 칠)을 기준으로 설정·법령정보·보고서 모음·세법령 자료실·사건 장부·AI 창 미리보기·지침 제안 보기를 모두 이 모양으로.
+     탭 이름 앞 번호·아이콘은 붙이지 않는다(순서에 뜻이 없고, 탭은 글자로 읽는 것). 둘째 줄(안쪽) 탭은 .sub로 한 단계 작게. */
+  .nx-tabbar{ display:flex; flex-wrap:wrap; gap:0; align-items:flex-end; border-bottom:1px solid var(--line); margin:0 0 12px; }
+  .nx-tab{ background:none; border:none; border-bottom:2px solid transparent; border-radius:6px 6px 0 0; padding:10px 14px;
+    font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.7; cursor:pointer; line-height:1.3; }
+  .nx-tab:hover{ opacity:1; }
+  .nx-tab.active, .nx-tab.on{ color:#fff; opacity:1; background:var(--navy); border-bottom-color:var(--navy); }
+  /* [2026.10.31] 하위 탭 크기는 어느 화면·어느 단계든 하나 — 세무사님 "하위탭의 탭크기를 탭별로 같게"(예전 .sub는 작은 탭이었음, 이름만 남김) */
+  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab{ padding:9px 10px; font-size:12px; white-space:nowrap; }
+  /* [2026.10.31] 하위 탭 폭 — 세무사님 "탭별 하위탭의 폭을 왜 동일하게 만들지 않았나?" / "최소한 탭내에서만큼은 하위탭의 너비가 같아야" /
+     "작은화면에서 넘치면 어떻게 하려고 하는가?" — 한 탭 줄 안의 탭은 늘 같은 폭: 넓으면 150(가장 긴 이름 "칸 값 고치기·고침 기록" 122+여백),
+     자리가 모자라면 그 줄 탭이 똑같이 함께 줄어든다(이름은 말줄임, 전체 이름은 title). 그래도 모자라면(한 탭 84 밑) 줄을 꺾지 않고
+     한 줄로 옆으로 밀어 보며, 뒤에 탭이 더 있으면 오른쪽 끝을 흐리고 ▶를 띄운다(script.html nxTabMore_). 두 줄로 꺾이는 탭 줄은 없다. */
+  .nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs{ flex-wrap:nowrap !important; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; position:relative; }
+  .nx-tabbar::-webkit-scrollbar, .taxcalc-tabs::-webkit-scrollbar, .taxcalc-subtabs::-webkit-scrollbar{ display:none; }
+  .nx-tab, .taxcalc-tab, .taxcalc-subtab{ flex:1 1 0; min-width:84px; max-width:150px; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab, body.lay-phone .taxcalc-subtab{ min-width:72px; max-width:120px; }
+  .taxcalc-tabs > :not(.taxcalc-tab){ flex:0 0 auto; }
+  .nx-tabbar.nx-more, .taxcalc-tabs.nx-more, .taxcalc-subtabs.nx-more{ -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); }
+  .nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px) !important; mask-image:linear-gradient(to right,transparent,#000 36px) !important; }
+  .nx-more.nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; }
+  .nx-tabmore-arrow{ position:absolute; z-index:5; width:22px; height:22px; border:none; border-radius:50%; background:var(--navy); color:#fff; font-size:11px; line-height:22px; padding:0; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+  html.nx-dark .nx-tab{ color:#e3e8f0; }
+  html.nx-dark .nx-tab.active, html.nx-dark .nx-tab.on{ background:#25304a; }
   /* [2026.10.29] 세무사님 "날짜를 키우거나 줄이는 버튼이 너무 작아서 제어를 할 수가 없다" — 대시보드 범위 칸(일정 전/후 며칠·마감임박 후 며칠·
      수금 전 며칠·메일 건수)은 숫자칸 속 작은 화살표 대신 양옆에 큰 − / + 단추를 둔다(손가락으로도 누를 수 있는 크기). */
   .dash-range{ display:flex; gap:6px 10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; font-size:12.5px; color:var(--sub); }
   .dash-step{ display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
-  .dash-step button{ width:32px; height:32px; padding:0; font-size:18px; font-weight:700; line-height:1; cursor:pointer; border-radius:6px;
+  .dash-step button{ width:30px; height:30px; padding:0; font-size:18px; font-weight:700; line-height:1; cursor:pointer; border-radius:6px;
     border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); font-family:inherit; touch-action:manipulation; user-select:none; }
   .dash-step button:hover{ background:rgba(200,162,68,0.22); }
   .dash-step button:active{ background:rgba(200,162,68,0.32); }
-  .dash-step input{ width:46px; height:32px; box-sizing:border-box; text-align:center; font-size:14px; font-weight:600; padding:0 2px; -moz-appearance:textfield; }
+  .dash-step input{ width:46px; height:30px; box-sizing:border-box; text-align:center; font-size:14px; font-weight:600; padding:0 2px; -moz-appearance:textfield; }
   .dash-step input::-webkit-outer-spin-button, .dash-step input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   /* border:none이면 .ghost-btn/.btn(둘 다 1px 테두리)과 border-box 계산이 달라져 미세하게
      낮이가 어긋난다 — 안 보이는 투명 테두리를 같은 두께로 둬서 셋 다 같은 박스모델을 쓴다. */
   .save-btn{ font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; border-radius:6px; padding:7px 14px;
     border:1px solid transparent; background:var(--navy); color:#fff; box-shadow:0 1px 2px rgba(16,24,40,0.12); line-height:1.2; box-sizing:border-box; display:inline-block; vertical-align:middle; }
   .save-btn:hover{ background:var(--navy-deep); }
+  /* [2026.10.31] 단추 크기는 둘뿐 — 세무사님 "타이틀 줄이나 하단에 있는 별도의 버튼보다 데이타 행에 있는 버튼의 높이가 더 높을 수가 있나?"
+     ① 기본(30px): 화면 위 도구줄·아래 실행 단추  ② 작은(22px, .sm): 제목 줄·자료 줄(표 칸·목록 줄) 안 단추.
+     화면마다 style로 적던 크기(94곳)는 걷어 내고 이 두 가지로만. 자료 줄 안 단추는 .sm을 안 붙여도 작은 크기 —
+     자료 줄 단추가 제목 줄 단추보다 커지는 일이 없게. */
+  .ghost-btn.sm, .btn.sm, .save-btn.sm,
+  td .ghost-btn, td .btn, td .save-btn,
+  .log-entry .ghost-btn, .log-entry .save-btn,
+  li .ghost-btn, li .save-btn{ font-size:11.5px !important; padding:3px 9px !important; line-height:1.2 !important; }
 
   /* [2026.09] "아이콘+버튼명" 툴바가 화면 폭이 좁아지면(특히 오른쪽 AI사이드바가 열려서
      작업영역이 좁아질 때) 버튼들이 줄바꿈되며 아래 내용과 겹치는 문제 — 1단계로 아이콘부터
@@ -243,6 +308,7 @@
      (수금관리 상단 메뉴행에서 실제로 재현됨). height를 min-height로 바꾸고 flex-wrap:wrap을
      걸어 안 들어가는 버튼은 다음 줄로 통째로 넘어가게 하고, 버튼/라벨 글자 자체에도
      white-space:nowrap을 걸어(.btn/.ghost-btn/.save-btn 참고) 안에서 잘리지 않게 한다. */
+  /* [2026.10.31] 도구 줄이 맨 위인 화면(작업관리·고객관리·수금관리·세액계산)도 맨 위 제목(.tb-title)을 넣어 다른 화면 제목 줄과 같은 모양(위 .view-head 묶음) — 세무사님 "탭명이 없앤 탭도 있네?" */
   .editor-toolbar{ display:flex; align-items:center; gap:10px; min-height:44px; padding:8px 12px;
     border-bottom:1px solid var(--line); flex-shrink:0; background:#f9fafb; flex-wrap:wrap; }
   .editor-filename{ font-size:12.5px; color:var(--sub); font-weight:600; white-space:nowrap; }
@@ -264,12 +330,21 @@
      내용 길이만큼만 차지하게 한다(고객관리 목록에만 적용 — .log-entry는 작업관리 등 다른
      화면에서도 널리 쓰여 전체를 바꾸면 그쪽 레이아웃이 깨진다). */
   #clientList .log-entry{ align-self:flex-start; width:fit-content; max-width:100%; }
+  /* [2026.10.31] 세무사님 "카드모양으로 감쌀 경우에는 색상처리를 해야 하는 것 아닌가? … 그렇게 카드형식으로 하지 않으려면 데이타베이스(표)형식으로 하던가 둘 중에 한 가지로 확실하게"
+     작업관리 사건 카드 = 상태 색 띠+옅은 바탕 / 고객관리 명단 = 가를 상태가 없어 상자 없이 표처럼 한 줄씩(밑줄) */
+  .log-entry.st-go{ border-left:4px solid var(--navy); background:rgba(31,45,90,0.04); }
+  .log-entry.st-over{ border-left:4px solid #a83232; background:rgba(168,50,50,0.06); }
+  .log-entry.st-hold{ border-left:4px solid #9aa1ad; background:rgba(120,130,150,0.07); }
+  .log-entry.st-done{ border-left:4px solid var(--success); background:rgba(31,122,77,0.05); }
+  #clientList .log-entry{ border:none; border-bottom:1px solid var(--line); border-radius:0; background:transparent; width:100%; padding:8px 6px; }
   /* 행뿐 아니라 패널 자체도 280px 고정이라, 좁아진 행 오른쪽에 빈 공간과 엉뚱한 위치의
      스크롤바가 남았다("좌측목록영역의 크기문제") — 패널도 내용에 맞춰 줄이되, 이름 하나 없이
      너무 좁아지거나(빈 목록) 유난히 긴 이름 하나 때문에 과하게 넓어지는 것만 막는다. */
-  #clientSplitList{ width:fit-content; max-width:360px; }
   .manage-split{ flex:1; display:flex; flex-direction:row; min-height:0; height:calc(100% - 44px); }
   .manage-split-list{ width:280px; min-width:220px; border-right:1px solid var(--line); overflow-y:auto; box-sizing:border-box; }
+  /* [2026.10.31] 고객 명단은 한 줄(이름·전화·구분)이 다 들어가는 만큼만 — 세무사님 "고객관리의 좌측 고객명단 필드가 너무 넓다" */
+  #clientSplitList{ width:210px; min-width:0; flex:0 0 210px; }
+  #clientSplitList .log-text{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .manage-split-detail{ flex:1; overflow-y:auto; padding:16px; box-sizing:border-box; }
   input[type=text], input[type=date], input[type=password], input[type=tel], select, textarea{
     font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:#fff; }
@@ -385,7 +460,7 @@
   .memo-floating-panel-body p.memo-help-section{ font-weight:700; color:var(--navy); margin:16px 0 6px; }
   .memo-floating-panel-body p.memo-help-section:first-child{ margin-top:0; }
 
-  .note-tb{ display:flex; align-items:center; gap:5px; height:44px; padding:0 10px; background:var(--navy); flex-shrink:0; flex-wrap:wrap; }
+  .note-tb{ display:flex; align-items:center; gap:5px; min-height:52px; box-sizing:border-box; padding:6px 22px; background:var(--navy); flex-shrink:0; flex-wrap:wrap; }
   .note-tb-btn{ flex:0 0 auto; width:30px; height:30px; border:none; border-radius:6px; background:rgba(255,255,255,0.14);
     color:#fff; font-size:15px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
   .note-tb-btn:hover{ background:rgba(255,255,255,0.24); }
@@ -431,25 +506,32 @@
   }
   .taxcalc-tabs{ display:flex; gap:0; border-bottom:1px solid var(--taxcalc-border); padding:0 14px; flex-shrink:0; }
   .taxcalc-tab{
-    background:none; border:none; border-bottom:2px solid transparent; padding:10px 14px;
-    font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.7; cursor:pointer;
-  }
-  .taxcalc-tab.active{ color:var(--navy); opacity:1; border-bottom-color:var(--gold); }
+    background:none; border:none; border-bottom:2px solid transparent; border-radius:6px 6px 0 0; padding:10px 14px;
+    font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.7; cursor:pointer; line-height:1.3;
+  } /* [2026.10.31] 공통 하위 탭(.nx-tab)과 같은 크기 */
+  .taxcalc-tab.active{ color:#fff; opacity:1; background:var(--navy); border-bottom-color:var(--navy); border-radius:6px 6px 0 0; } /* [2026.10.31] 지금 탭은 남색 칠(세무사님 "현재탭 … 활성탭에 대한 표시방법을 달리해야") */
   /* [2026.09.24] 양도소득세 탭 안의 부동산/주식등/국외자산 — 서로 계산을 절대 합칠 수 없는
      별도 세목이라 한 화면에 늘어놓지 않고 위 탭과 같은 모양의 하위 탭으로 완전히 분리한다. */
   /* [2026.09.24 재검토68] 증여세는 11개까지 늘어나 한 줄에 다 안 들어간다 — flex-wrap으로
      넓을 땐 한 줄, 좁을 때만 자동 줄바꿈([[feedback_responsive_line_wrap]] 원칙). */
   .taxcalc-subtabs{ display:flex; flex-wrap:wrap; gap:0; border-bottom:1px solid var(--taxcalc-border); margin-bottom:14px; }
   .taxcalc-subtab{
-    background:none; border:none; border-bottom:2px solid transparent; padding:8px 12px;
-    font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.6; cursor:pointer;
-  }
-  .taxcalc-subtab.active{ color:var(--navy); opacity:1; border-bottom-color:var(--gold); }
+    background:none; border:none; border-bottom:2px solid transparent; border-radius:6px 6px 0 0; padding:10px 14px;
+    font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.7; cursor:pointer; line-height:1.3;
+  } /* [2026.10.31] 공통 하위 탭(.nx-tab)과 같은 높이·글자 */
+  .taxcalc-subtab.active{ color:#fff; opacity:1; background:var(--navy); border-bottom-color:var(--navy); border-radius:6px 6px 0 0; }
   .taxcalc-body{ flex:1; overflow-y:auto; padding:14px; }
   .taxcalc-hint{ font-size:12px; color:var(--taxcalc-hint); margin-bottom:12px; line-height:1.55; }
   .taxcalc-asset{ border:1px solid var(--taxcalc-border); border-radius:10px; padding:12px; margin-bottom:12px; background:var(--panel); }
   .taxcalc-asset-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
   .taxcalc-asset-head b{ font-size:13px; font-weight:800; color:var(--ink); }
+  /* [2026.10.31] 세액계산도 같은 단계 모양(세무사님 "모든 탭에서 마찬가지다") — 같은 제목줄(.taxcalc-asset-head)이 깊이와 상관없이 13px 굵게 똑같아 위아래를 가릴 수 없었다.
+     탭 바로 아래 제목 = 2단계(큰 글자·밑줄), 그 안 상자 제목 = 3단계(왼쪽 남색 띠), 상자 속 상자 제목·같은 상자 안 둘째 제목부터 = 4단계(▪ 글머리) */
+  .taxcalc-subpane > .taxcalc-asset-head{ border-bottom:2px solid var(--line); padding-bottom:6px; margin-bottom:12px; }
+  .taxcalc-subpane > .taxcalc-asset-head b{ font-size:16px; color:var(--navy); }
+  .taxcalc-asset > .taxcalc-asset-head > b, .taxcalc-asset > .taxcalc-asset-head > span > b{ border-left:4px solid var(--navy); padding-left:9px; font-size:14px; color:var(--navy); }
+  .taxcalc-asset .taxcalc-asset > .taxcalc-asset-head > b, .taxcalc-asset .taxcalc-asset > .taxcalc-asset-head > span > b, .taxcalc-asset > .taxcalc-asset-head ~ .taxcalc-asset-head > b, .taxcalc-asset > .taxcalc-asset-head ~ .taxcalc-asset-head > span > b{ border-left:0; padding-left:0; font-size:13px; color:var(--ink); }
+  .taxcalc-asset .taxcalc-asset > .taxcalc-asset-head > b::before, .taxcalc-asset .taxcalc-asset > .taxcalc-asset-head > span > b::before, .taxcalc-asset > .taxcalc-asset-head ~ .taxcalc-asset-head > b::before, .taxcalc-asset > .taxcalc-asset-head ~ .taxcalc-asset-head > span > b::before{ content:'▪'; display:inline-block; width:12px; color:var(--navy); }
   /* [2026.09.20 필드 간격 정비, 최최종] auto-fill/1fr(그리드) 방식은 "공유 트랙" 구조상
      한 트랙의 최소폭(160px) 밑으로는 절대 못 내려가서, 성명처럼 95px면 충분한 필드도 항상
      60~90px가 남아 세무사님이 보기엔 여전히 "떨어져 보였다"(실측: 캡쳐 확인 후 grid 방식은
@@ -684,7 +766,6 @@
   /* [2026.10.08] 예전 @media (max-width:560px) — 화면 폭 대신 "화면 배치 기준"(설정 탭) 단계 클래스를
      따른다(body.lay-phone/lay-tablet/lay-pc, script.html nxApplyLayout_). 자동이면 폭 600px 미만이 폰. */
   body.lay-phone .taxcalc-tabs{ padding:0 8px; overflow-x:auto; }
-  body.lay-phone .taxcalc-tab{ padding:9px 10px; font-size:12px; white-space:nowrap; }
   body.lay-phone .taxcalc-body{ padding:10px; }
   body.lay-phone .taxcalc-tier-tabs{ order:3; width:100%; justify-content:center; }
   body.lay-phone .taxcalc-tier-tabs button{ flex:1; text-align:center; }
