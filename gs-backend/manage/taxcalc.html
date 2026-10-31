@@ -1221,8 +1221,8 @@ const AI_EXTRACTION_PRIORITY_HINT_ = '먼저 파일명에 "의뢰내용"이 포�
 // 사건 폴더 서류를 무료 OCR로 읽고, AI에게는 그 글자만 한 번 보내 칸을 채운다 — 예전(AI 채팅 전체로 파일을 하나씩 여는 방식)보다 훨씬 쌈.
 async function runFolderAiExtraction(instructionText){
   if (!tcCurrentCase || !tcCurrentCase.id) throw new Error('먼저 위쪽에서 사건을 선택하세요 — 그 사건 폴더의 서류를 읽습니다.');
-  // [2026.10.22 1단계] 이 채우기는 넥스(AI)가 숫자를 어느 칸에 넣을지 정한다(비용). AI 없이 하시려면 [⚡ GAS로 칸 채우기] — 넥스 지휘 중엔 묻지 않음
-  if (!window.nxWorkBy_ && !window.confirm('🤖 넥스(AI)로 서류를 읽어 칸을 채웁니다 — 비용이 듭니다.\n\nAI 없이 하시려면 [취소] 후 [⚡ GAS로 칸 채우기]를 누르세요.\n진행할까요?')) throw new Error('넥스(AI) 채우기를 취소했습니다 — [⚡ GAS로 칸 채우기]로 하실 수 있습니다.');
+  // [2026.10.22 1단계] 이 채우기는 넥스(AI)가 숫자를 어느 칸에 넣을지 정한다(비용). AI 없이 하시려면 [⚡ 칸 채우기] — 넥스 지휘 중엔 묻지 않음
+  if (!window.nxWorkBy_ && !window.confirm('🤖 넥스(AI)로 서류를 읽어 칸을 채웁니다 — 비용이 듭니다.\n\nAI 없이 하시려면 [취소] 후 [⚡ 칸 채우기]를 누르세요.\n진행할까요?')) throw new Error('넥스(AI) 채우기를 취소했습니다 — [⚡ GAS로 칸 채우기]로 하실 수 있습니다.');
   const res = await callGas('tc_extract_case_docs', { caseId: tcCurrentCase.id, instruction: instructionText });
   if (!res || res.error) throw new Error((res && res.error) || '서류를 읽지 못했습니다.');
   if (res.files && res.files.length) showToast('서류 ' + res.files.length + '개를 읽었습니다' + (res.skipped && res.skipped.length ? ' (못 읽은 파일 ' + res.skipped.length + '개)' : '') + (res.cached ? ' · 서류가 그대로라 지난 결과 재사용(0원)' : res.usd ? ' · AI 약 ' + Math.max(1, Math.round(res.usd * 1400)) + '원' : ''), 'success');
@@ -4277,14 +4277,52 @@ async function runAiAutoFillInheritanceAI_(){
 //  (같은 사건을 두 방식으로 처리하지 않게). 예전 동작(AI가 서류 글을 보고 칸 채우기)은 tcRunAutoCalcOld_로 남아,
 //  "처리하자" 흐름 안에서 입력값이 비었을 때 세무사님이 승인하는 예비 단계(aichat.html)에서만 쓴다.
 // [2026.10.22 1단계 — AI 없이 직접] 세무사님 "AI없이 내가 직접 작업하는 것에 불편함이 없도록" / "GAS로 대부분의 업무를 처리할 수 있도록"
-//  사건처리(GAS — 처리개요 화면 GAS 도구 📖 서류 읽기·칸 채우기)가 서류에서 읽어 채운 처리개요·계산기 입력을 계산기 칸에 다시 채운다(0원). 사건을 고를 때 하는 것과 같은 길
+//  사건처리(GAS — 증빙확보 📖 서류 읽기·세액계산 칸 채우기)가 서류에서 읽어 채운 처리개요·계산기 입력을 계산기 칸에 다시 채운다(0원). 사건을 고를 때 하는 것과 같은 길
+// [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"·결정 ② "권장안대로"] 칸 채우기 하나로 — 이름만 같고 하는 일이 다른 둘(처리개요의 서버 칸 채우기 · 여기의 화면 칸 베끼기)을
+//  하나로 묶었다: 서버 칸 채우기(장부 → 계산기 칸, 답하실 질문 세기 — 넥스 calc_fill과 같은 입구)를 이 화면 위 상자에서 돌리고, 끝나면 이어서 화면 칸까지 채운다(0원).
+//  질문은 상자에 수만 — 답은 📒 사건 장부 화면 한 곳에서(결정 ③)
 function tcGasFill_(){
   if (!tcCurrentCase || !tcCurrentCase.id){ nxAlert_('먼저 사건을 고르세요.'); return; }
-  if (!window.confirm('칸 채우기(GAS 도구, AI 없이 0원)\n\n사건처리(GAS)가 서류에서 읽어 둔 값으로 계산기 칸을 다시 채웁니다.\n직접 고치신 칸이 덮일 수 있습니다. 진행할까요?\n\n(아직 서류를 안 읽었으면 처리개요 화면의 [📖 서류 읽기]부터 하세요.)')) return;
-  var c = tcCurrentCase;
-  tcApplyOverviewToInputs_(c); tcApplyOverviewToTransfer_(c); tcApplyOverviewToSellers_(c); tcApplyOverviewToValuationAssets_(c); tcApplyOverviewToHeirs_(c); tcApplyOverviewToGiftParties_(c); tcApplyCaseBaseDate_(c); tcApplyGiftRelation_(c); tcSyncContractParties_(c);
-  tcLoadTransferCalcIn_(c).then(function(ok){ showToast('⚡ 사건처리(GAS) 값으로 칸을 채웠습니다(0원)' + (ok ? ' — 양도 계산기 입력 포함' : ''), 'success'); tcWorkLog_('계산기 칸 채우기(GAS)', (c.세목 || '') + ' 사건처리 값 불러옴'); });
+  if (!window.confirm('칸 채우기(GAS 도구, AI 없이 0원)\n\n장부 값을 세액계산기 칸으로 옮기고(답하실 질문도 셉니다), 이어서 이 화면 칸을 채웁니다.\n직접 고치신 칸이 덮일 수 있습니다. 진행할까요?\n\n(아직 서류를 안 읽었으면 📁 증빙확보의 [📖 서류 읽기]부터 하세요.)')) return;
+  tcRunServerFill_(tcCurrentCase.id);
 }
+function tcFillBoxEl_(){
+  var el = document.getElementById('tcFillBox');
+  if (!el && tcCaseBarEl && tcCaseBarEl.parentNode){
+    el = document.createElement('div'); el.id = 'tcFillBox';
+    el.style.cssText = 'display:none; margin:6px 0; padding:8px 10px; border:1px solid var(--line); border-radius:8px; max-height:55vh; overflow-y:auto; background:var(--panel);';
+    tcCaseBarEl.parentNode.insertBefore(el, tcCaseBarEl.nextSibling);
+  }
+  return el;
+}
+function tcRunServerFill_(caseId){
+  var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+  if (!tok) return;
+  if (typeof nxAiCaseProcRun_ !== 'function'){ showToast('사건처리 도구를 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', 'error'); return; }
+  var box = tcFillBoxEl_(); if (!box) return;
+  box.style.display = ''; box.innerHTML = '';
+  var close = document.createElement('div'); close.style.cssText = 'text-align:right;';
+  close.innerHTML = '<button type="button" class="ghost-btn" style="font-size:11.5px;">닫기 ✕</button>';
+  close.firstChild.addEventListener('click', function(){ box.style.display = 'none'; box.innerHTML = ''; window.tcFillKeep_ = null; });
+  box.appendChild(close);
+  var b = document.createElement('div'); b.className = 'nxai-cp-screen'; box.appendChild(b);
+  window.tcFillKeep_ = { caseId: caseId }; window.nxCpLive_ = null;
+  nxAiCaseProcRun_(b, caseId, { gasOnly: true, screen: true, home: 'taxcalc', tool: 'fill' });
+}
+// 서버 칸 채우기가 끝나면(aichat nxAiCpEndNoFinish_가 부름) 새로 저장된 사건 값을 받아 화면 칸에 넣는다 — 사건을 고를 때 하는 것과 같은 길
+function tcAfterServerFill_(caseId){
+  if (tcSelectedId !== caseId) return;
+  callGas('work_get_cases', {}).then(function(res){
+    tcCases = (res && res.cases) || tcCases;
+    var c = tcCases.filter(function(x){ return x.id === caseId; })[0];
+    if (!c || tcSelectedId !== caseId) return;
+    tcCurrentCase = c;
+    tcApplyOverviewToInputs_(c); tcApplyOverviewToTransfer_(c); tcApplyOverviewToSellers_(c); tcApplyOverviewToValuationAssets_(c); tcApplyOverviewToHeirs_(c); tcApplyOverviewToGiftParties_(c); tcApplyCaseBaseDate_(c); tcApplyGiftRelation_(c); tcSyncContractParties_(c);
+    tcLoadTransferCalcIn_(c).then(function(ok){ showToast('⚡ 장부 값으로 계산기 칸을 채웠습니다(0원)' + (ok ? ' — 양도 계산기 입력 포함' : ''), 'success'); tcWorkLog_('계산기 칸 채우기(GAS)', (c.세목 || '') + ' 장부 값 반영'); });
+  }).catch(function(e){ showToast('사건 값을 다시 받지 못했습니다: ' + (e && e.message || e), 'error'); });
+}
+// 다른 화면(증빙확보 상자의 "세액계산에서 칸 채우기")에서 — 이 사건으로 세액계산을 열고 칸 채우기를 띄운다
+function goToTaxCalcFill_(caseId){ window.tcPendingFill_ = caseId; goToTaxCalc_(caseId); }
 function tcRunAutoCalc_(){
   if (typeof nxAiCaseProc_ === 'function' && tcCurrentCase && tcCurrentCase.id){
     window.nxOpenSideAI_();
@@ -17703,7 +17741,7 @@ function renderTcCaseBar_(){
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 저장</button>' +
     '<input type="text" id="tcScenarioName" placeholder="안 이름(비우면 자동)" style="width:150px;" title="경우(안) 이름 — 예: 비과세 적용 전, 필요경비 제외, 증여세로 할 때. 비우면 안N(바꾼 칸 요약)"' + (tcSelectedId ? '' : ' disabled') + '>' +
     '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>📑 경우(안)로 저장</button>' +
-    '<button type="button" id="tcGasFillBtn" class="ghost-btn" title="사건처리(GAS)로 서류에서 읽어 둔 값을 계산기 칸에 다시 채웁니다 — AI 없이 0원"' + (tcSelectedId ? '' : ' disabled') + '>⚡ GAS로 칸 채우기</button>' +
+    '<button type="button" id="tcGasFillBtn" class="ghost-btn" title="장부 값을 세액계산기 칸으로 옮기고(답하실 질문도 셉니다) 이어서 이 화면 칸을 채웁니다 — AI 없이 0원, 넥스 calc_fill과 같은 도구"' + (tcSelectedId ? '' : ' disabled') + '>⚡ 칸 채우기</button>' +
     '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn" title="넥스(AI)가 사건을 맡아 서류 읽기부터 계산까지 합니다 — 비용이 듭니다"' + (tcSelectedId ? '' : ' disabled') + '>🤖 넥스로 자동계산</button>' +
     '<button type="button" id="tcBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>' +
     '</div>' +
@@ -17713,6 +17751,9 @@ function renderTcCaseBar_(){
   document.getElementById('tcSaveScenarioBtn').addEventListener('click', function(){ tcSaveCurrentResult_({ scenario: true }); }); // [2026.10.27 경우별 저장] 넥스 calc_scenario와 같은 저장 모양(`안`)
   document.getElementById('tcAutoCalcBtn').addEventListener('click', tcRunAutoCalc_);
   document.getElementById('tcGasFillBtn').addEventListener('click', tcGasFill_); // [2026.10.22 1단계] AI 없이 0원
+  // [2026.10.31] 칸 채우기 상자는 그 사건일 때만 — 다른 사건을 고르면 닫는다. 다른 화면에서 "세액계산에서 칸 채우기"로 왔으면 바로 띄운다
+  (function(){ var fb = document.getElementById('tcFillBox'); if (fb && window.tcFillKeep_ && window.tcFillKeep_.caseId !== tcSelectedId){ fb.style.display = 'none'; fb.innerHTML = ''; window.tcFillKeep_ = null; } })();
+  if (window.tcPendingFill_ && window.tcPendingFill_ === tcSelectedId && tcCurrentCase){ window.tcPendingFill_ = null; setTimeout(tcGasFill_, 300); }
   document.getElementById('tcCaseSelect').addEventListener('change', function(){
     tcSelectedId = this.value || null;
     tcCurrentCase = tcSelectedId ? tcCases.filter(function(c){ return c.id === tcSelectedId; })[0] : null;

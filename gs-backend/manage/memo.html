@@ -2301,16 +2301,16 @@
     return Object.keys(overview).length ? overview : null;
   }
 
-  // [2026.10.22 묶음 ㅁ3] 등록이 끝난 뒤 다음 할 일을 그 자리에서 — "처리개요로 가기"(GAS 도구)·"증빙 넣기"(서류 올리기)
+  // [2026.10.22 묶음 ㅁ3] 등록이 끝난 뒤 다음 할 일을 그 자리에서 — "처리개요로 가기"·"증빙 넣기"(서류 올리기·📖 서류 읽기 — [2026.10.31] 서류 도구는 증빙확보에)
   function memoReqShowRegisteredBar_(c){
     try {
       var old = document.getElementById('memoReqRegisteredBar'); if (old) old.remove();
       var bar = document.createElement('div'); bar.id = 'memoReqRegisteredBar';
       bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; padding:8px 10px; border:1px solid #2a7a4f; border-radius:8px; background:#eef8f1; font-size:13px;';
       var t = document.createElement('span'); t.textContent = '✅ 「' + String(c.사건명 || c.고객명 || '') + '」 사건을 등록했습니다 — 다음:'; bar.appendChild(t);
-      var b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'save-btn'; b1.textContent = '🧭 처리개요로 가기(📖 서류 읽기 등 GAS 도구)';
+      var b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'save-btn'; b1.textContent = '🧭 처리개요로 가기';
       b1.addEventListener('click', function(){ if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
-      var b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'ghost-btn'; b2.textContent = '📁 증빙 넣기(서류 올리기)';
+      var b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'ghost-btn'; b2.textContent = '📁 증빙 넣기·📖 서류 읽기';
       b2.addEventListener('click', function(){ if (typeof nxAiOpenJobView_ === 'function') nxAiOpenJobView_('docs', c.id); else if (typeof goToView_ === 'function') goToView_('docs'); });
       var b3 = document.createElement('button'); b3.type = 'button'; b3.className = 'ghost-btn'; b3.textContent = '닫기'; b3.addEventListener('click', function(){ bar.remove(); });
       bar.appendChild(b1); bar.appendChild(b2); bar.appendChild(b3);

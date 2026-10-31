@@ -27829,7 +27829,7 @@ function cpNexFileMark_(sv, f) { // 목록 한 줄의 표시 — 🆕 새 / ✏ 
   if (ch) return ch.kind === '바뀜' ? '✏ 바뀜(' + ch.at + ')' : '🆕 새 파일(' + ch.at + ')';
   return '';
 }
-// 사건별 스위치 — 처리개요 GAS 칸 "🤖 넥스 미리 읽기 끔/켬"
+// 사건별 스위치 — 처리개요 사건 현황 칸 🤖 넥스 줄 "넥스 미리 읽기 끔/켬"
 function cpNexPrereadSwitch_(c, body, by) {
   const off = !!(body && body.off);
   caseProcPatch_(c.id, function (sv) { sv.nexPreread = sv.nexPreread || {}; sv.nexPreread.off = off; caseProcLogTo_(sv, { by: by || '세무사님', what: '넥스 미리 읽기 ' + (off ? '끔' : '켬'), detail: '' }); });
@@ -32829,7 +32829,7 @@ function caseProcFactsView_(c) {
   const parts = [['people_roster', '사람 명단'], ['owner_assets', '자산 목록'], ['contract_list', '계약 목록'], ['money_links', '돈 흐름'], ['time_order', '시간 순서'], ['law_checks', '법령 점검']];
   const out = {};
   parts.forEach(function (p) { try { const r = caseProcAiFactTool_(c.id, p[0], {}); out[p[1]] = r && r.error ? { 오류: r.error } : r; } catch (e) { out[p[1]] = { 오류: String(e && e.message || e).slice(0, 100) }; } });
-  try { caseProcLog_(c.id, { by: '세무사님', what: '판단 재료 보기', detail: '' }); } catch (e) {}
+  // [2026.10.31 처리개요 도구 정리] 보기만 하는 일은 사건 기록부에 줄을 남기지 않는다(예전엔 볼 때마다 "세무사님 판단 재료 보기"가 쌓였다)
   return { ok: true, 재료: JSON.parse(cxMask_(JSON.stringify(out))) };
 }
 // [2026.10.22 세무사님↔GAS 소통] 세무사님 "기존에 AI와 GAS의 소통을 참고해서 사용자와 GAS의 소통에 부족한 부분을 포착하였다면, 그 부분을 포함해서 원점에서 사용자와 GAS의 소통에 만전을 기하라"
@@ -32848,10 +32848,12 @@ function caseProcUserView_(c, body) {
   if (newF.length) next.push({ do: 'scope', text: '새 파일 ' + newF.length + '개 — 체크 안 됨(' + newF.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (newF.length > 3 ? ' 외' : '') + ') — 읽을 목록에서 체크하면 다음 읽기부터 읽습니다' }); // [2026.10.28 읽을 대상 ③] 소리 없이 읽지도 빠지지도 않게
   if (!st['증빙 읽기·정리']) next.push({ do: 'read', text: '서류를 아직 읽지 않았습니다 — 📖 서류 읽기부터' });
   else if (Array.isArray(v.새서류) && v.새서류.length) next.push({ do: 'read', text: '서류를 읽은 뒤 새로 들어온 서류 ' + v.새서류.length + '개(' + v.새서류.slice(0, 3).join(', ') + (v.새서류.length > 3 ? ' 외' : '') + ') — 다시 읽기' });
-  if (v.남은질문수) next.push({ do: 'fill', text: '답하실 질문 ' + v.남은질문수 + '개' + (v.보류질문수 ? ' (보류 ' + v.보류질문수 + '개 따로)' : '') });
-  if (!last) next.push({ do: 'calc', text: '세액계산 결과가 아직 저장되지 않았습니다' });
-  if (last && !v.서식PDF) next.push({ do: 'output', text: '서식 PDF가 사건 폴더에 저장되지 않았습니다' });
-  if (!v.검토서 && last) next.push({ do: 'report', text: '종합검토서가 아직 없습니다 — 작성관리에서 양식으로 쓰거나 넥스에게 맡기세요(장부의 보류·추정 줄이 "확인 필요"에 미리 들어갑니다)' });
+  // [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"·"권장안대로 고치라고"] "다음 할 일"은 사실만 — 세액계산·서식 PDF·검토서가 없다는 것을 할 일로 꼽던 줄을 뺐다
+  //  (읽기 → 계산 → 서식 → 검토서 차례로 꼽는 것은 걷어 낸 한 바퀴 순서였고, 자문 사건에 "세액계산 저장 안 됨"을 띄웠다). 질문 수는 장부(아래 장부)가 센다
+  let ledgerN = null; try { ledgerN = ledgerSummary_(c.id); } catch (e) {}
+  // 알림은 GAS 규칙 알림과 넥스가 남긴 말을 갈라 돌려준다(10-22 "AI와 GAS가 소통하는 것은 나와 소통하는 것과 가시적으로 구분")
+  const alertsAll = (sv.alerts || []).filter(function (a) { return !a.seen; }).slice(-10);
+  const isNexAlert = function (a) { return /^넥스/.test(String(a.kind || '')); };
   // [2026.10.22 묶음 ㄱ6] 다 끝났을 때 결과 요약 재료 — 서식 PDF·검토서 파일(화면이 "끝남 — 세액 ○원 · 서식 [열기] · 검토서 [열기]" 한 줄로 보인다, 가상양도7 표 39)
   const pdfInfo = sv.printPdf ? { 이름: sv.printPdf.name || '', 때: sv.printPdf.at || '', 파일: sv.printPdf.id || '', 서식수: sv.printPdf.forms || 0 } : null;
   const draftInfo = v.검토서 || null; // [2026.10.31] 양식으로 쓴 종합검토서(초안 아님)
@@ -32859,7 +32861,7 @@ function caseProcUserView_(c, body) {
   const heldN = v.보류질문수 || 0;
   // [2026.10.23 속도 ㅅ9차] 저장된 질문·결정·사건 기본을 같이 돌려준다 — 화면을 새로 고친 뒤 "답하실 질문 N개"를 누르면 ①②③을 다시 돌리지 않고 이 질문을 바로 보인다(aichat st.gasRun 이어받기)
   const slimCase = { id: c.id, 사건명: c.사건명, 고객명: c.고객명, 납세자: c.납세자, 세목: c.세목, 업무유형: c.업무유형, 기준일: c.기준일, 법정일: c.법정일, 폴더ID: c.폴더ID, 상태: c.상태, 사건개요: c.사건개요 || {}, 수정일: c.수정일, my_report_id: c.my_report_id };
-  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: v.알림 || [], 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0,
+  return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: alertsAll.filter(function (a) { return !isNexAlert(a); }).map(function (a) { return a.at + ' ' + a.text; }), 넥스알림: alertsAll.filter(isNexAlert).map(function (a) { return a.at + ' ' + a.text; }), 장부: ledgerN, 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0,
     서류변동: watchS, // [2026.10.28 감시]
     읽을목록: { 방식: scope0 ? (scope0.mode === 'list' ? 'list' : 'dirs') : 'none', 켠수: scope0 && Array.isArray(scope0.files) ? scope0.files.length : null, 누가: scope0 ? (scope0.by || '') : '', 때: scope0 ? (scope0.at || '') : '', 새파일: newF }, // [2026.10.28 읽을 대상 ②] 화면이 ⚡ 처음 누를 때 목록이 없으면 체크 목록을 먼저 띄운다
     질문: (Array.isArray(sv.remaining) ? sv.remaining : []).slice(0, 80), 결정: sv.decisions || {}, 바탕: t6RecordForReader_(sv), 사건: slimCase, 저장때: sv.savedAt || '', 칸채움때: (sv.steps && sv.steps.overview && sv.steps.overview.at) || '' }; // [2026.10.27 H] 바탕 = 직결 요청에 실을 기록부(결정·읽을 범위·답 저장소·고침 기록…)
@@ -33110,7 +33112,7 @@ function caseProcFiles0_(c, opt) {
   }
   return res;
 }
-// [2026.10.27 F] 읽을 범위 정하기·보기 — 넥스(채팅 카드 caseproc_scope·지휘 set_read_scope)와 화면(처리개요 GAS 칸 📂)이 같은 입구. 폴더 이름(사건 폴더 기준 상대 경로)·파일 이름 목록. clear면 전체로
+// [2026.10.27 F] 읽을 범위 정하기·보기 — 넥스(채팅 카드 caseproc_scope·지휘 set_read_scope)와 화면(증빙확보 📂 읽을 목록)이 같은 입구. 폴더 이름(사건 폴더 기준 상대 경로)·파일 이름 목록. clear면 전체로
 function caseProcReadScope_(c, body) {
   const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
   // [2026.10.28 읽을 대상 ②④] 체크 목록 저장 — ids(켠 파일 id 전부: 화면 [이 목록으로 읽기]) 또는 on/off(지금 목록에서 파일·폴더 켜기·끄기: 넥스 set_read_scope·caseproc_scope, 파일 이름·폴더 이름도 됨) → readScope { mode:'list', files, seen }

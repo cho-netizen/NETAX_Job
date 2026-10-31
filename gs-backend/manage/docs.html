@@ -43,6 +43,9 @@
   <div class="view-head" style="padding-bottom:0;"><h2>📁 증빙확보</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
     <select id="docsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+    <!-- [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"] 서류를 다루는 GAS 도구는 서류 옆에(예전엔 처리개요 "GAS 도구" 칸) — 넥스도 같은 서버 입구(case_read·set_read_scope) -->
+    <button type="button" id="docsReadBtn" class="ghost-btn" style="display:none;" title="읽을 목록의 서류를 읽어 장부에 적습니다(AI 없이 0원, 하신 일은 사건 기록부에)"><span class="btn-ic">📖</span><span class="btn-tx"> 서류 읽기</span></button>
+    <button type="button" id="docsScopeBtn" class="ghost-btn" style="display:none;" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다"><span class="btn-ic">📂</span><span class="btn-tx"> 읽을 목록</span></button>
     <button type="button" id="docsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
   </div>
   <div class="docs-toolbar tb-row">
@@ -54,6 +57,7 @@
     <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
     <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
   </div>
+  <div id="docsToolBox" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:8px 14px; overflow-y:auto; max-height:55vh; background:var(--panel);"></div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
   <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:8px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px; flex-wrap:wrap;">
     <span id="docsSelectionCount"></span>
@@ -674,6 +678,8 @@
           });
         });
       });
+      document.getElementById('docsReadBtn').addEventListener('click', function(){ docsRunCaseTool_('read'); });
+      document.getElementById('docsScopeBtn').addEventListener('click', function(){ docsRunCaseTool_('scope'); });
       document.getElementById('docsBackToCaseBtn').addEventListener('click', function(){
         if (typeof goToView_ === 'function') goToView_('casehandling');
         if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
@@ -698,7 +704,7 @@
     var sel = document.getElementById('docsCaseSelect');
     getCustomerRootPath_().then(function(basePath){
       var rel = docsPath.slice(basePath.length); // 고객사건 루트 밑으로 몇 단계 들어왔는지
-      if (rel.length < 1 || rel.length > 2){ docsSelectedCaseId_ = null; if (sel) sel.value = ''; return; }
+      if (rel.length < 1 || rel.length > 2){ docsSelectedCaseId_ = null; if (sel) sel.value = ''; docsCaseToolsSync_(); return; }
       var currentFolderId = (rel.length === 1 && docsCurrentListing) ? docsCurrentListing.folderId : null;
       docsGetAllCases_().then(function(cases){
         var c = currentFolderId
@@ -707,8 +713,49 @@
         if (!c) c = cases.filter(function(x){ return String(x.사건명 || '').trim() === rel[0]; })[0];
         docsSelectedCaseId_ = c ? c.id : null;
         if (sel) sel.value = c ? c.id : '';
+        docsCaseToolsSync_();
       });
     });
+  }
+
+  // [2026.10.31 처리개요 도구 정리] 📖 서류 읽기·📂 읽을 목록 — 사건 폴더를 보고 있을 때만 단추가 보인다. 진행 상자는 이 화면 위쪽에(화면을 옮겼다 와도 같은 사건이면 그대로)
+  function docsCaseToolsSync_(){
+    var on = !!docsSelectedCaseId_;
+    ['docsReadBtn', 'docsScopeBtn'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = on ? '' : 'none'; });
+    var box = document.getElementById('docsToolBox');
+    if (box && (!on || (window.docsToolKeep_ && window.docsToolKeep_.caseId !== docsSelectedCaseId_))){ box.style.display = 'none'; box.innerHTML = ''; window.docsToolKeep_ = null; }
+    var p = window.docsPendingTool_;
+    if (on && p && p.caseId === docsSelectedCaseId_){ window.docsPendingTool_ = null; docsRunCaseTool_(p.tool); }
+  }
+  function docsRunCaseTool_(tool){
+    var id = docsSelectedCaseId_; if (!id) return;
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
+    var box = document.getElementById('docsToolBox'); if (!box) return;
+    box.style.display = ''; box.innerHTML = '';
+    var close = document.createElement('div'); close.style.cssText = 'text-align:right;';
+    close.innerHTML = '<button type="button" class="ghost-btn" style="font-size:11.5px;">닫기 ✕</button>';
+    close.firstChild.addEventListener('click', function(){ box.style.display = 'none'; box.innerHTML = ''; window.docsToolKeep_ = null; });
+    box.appendChild(close);
+    var inner = document.createElement('div'); box.appendChild(inner);
+    window.docsToolKeep_ = { caseId: id, tool: tool };
+    if (tool === 'scope'){
+      // [2026.10.28 읽을 대상 ②] 공용 체크 목록(aichat nxCpReadListUi_ — ⚡ 첫 실행 관문과 같은 그림). 서버 step readList/readScope — 넥스 set_read_scope와 같은 입구
+      if (typeof window.nxCpReadListUi_ !== 'function'){ inner.innerHTML = '<div class="log-empty">체크 목록 화면이 이 판에 없습니다(AI 탭 코드 미포함)</div>'; return; }
+      window.nxCpReadListUi_(inner, id, {}).then(function(res){ if (res && res.saved){ if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); docsRunCaseTool_('scope'); } });
+      return;
+    }
+    if (typeof nxAiCaseProcRun_ !== 'function'){ inner.innerHTML = '<div class="log-empty">사건처리 도구를 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.</div>'; return; }
+    var b = document.createElement('div'); b.className = 'nxai-cp-screen'; inner.appendChild(b);
+    window.nxCpLive_ = null;
+    nxAiCaseProcRun_(b, id, { gasOnly: true, screen: true, home: 'docs', tool: 'read' });
+  }
+  // 다른 화면(처리개요 사건 현황의 "증빙확보에서 📖 서류 읽기" 등)에서 그 사건 폴더를 열고 도구를 바로 띄운다
+  function goToDocsTool_(c, tool){
+    if (!c) return;
+    window.docsPendingTool_ = { caseId: c.id, tool: tool === 'scope' ? 'scope' : 'read' };
+    if (typeof docsSelectedCaseId_ !== 'undefined' && docsSelectedCaseId_ === c.id && document.getElementById('view-docs').classList.contains('active')){ docsCaseToolsSync_(); return; }
+    if (typeof nxOpenCaseDocs_ === 'function') nxOpenCaseDocs_(c); else if (typeof nxCaseJump_ === 'function') nxCaseJump_('docs', c.id);
   }
 
   function docsNavigate(path){
