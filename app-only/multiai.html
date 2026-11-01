@@ -126,7 +126,7 @@
       var can = x.status === '사용 가능';
       return '<div class="mai-slot"><div class="mai-row"><label><input type="checkbox" data-maion="' + maiEsc_(x.id) + '"' + (mai_.on[x.id] ? ' checked' : '') + (can ? '' : ' disabled') + '> <b>' + maiEsc_(x.name) + '</b></label>' +
         '<span class="mai-chip">무료 등급 · 오늘 ' + (x.usedToday || 0) + '번</span><span class="mai-note">' + maiEsc_(can ? '' : x.status + ' — 설정 🤝 → 👥 위원 상태') + '</span></div>' + maiAnsBox_(x) + '</div>';
-    }).join('') + '<button type="button" class="ghost-btn" data-mai="api">🤝 위원에게 묻기</button>' : '<div class="mai-note">위원 명단을 받지 못했습니다.</div>');
+    }).join('') + '<button type="button" class="ghost-btn" data-mai="api">위원에게 묻기</button>' : '<div class="mai-note">위원 명단을 받지 못했습니다.</div>');
     // 위원 칸에 없는 저장된 답(예전 회의·다른 이름) — 읽기만
     var extra = Object.keys(mai_.ans).filter(function(id){ return id.charAt(0) !== '_' && !mai_.api.some(function(x){ return x.id === id; }) && mai_.ans[id].text; });
     if (extra.length) html += '<div class="mai-sec">그 밖에 저장된 답</div>' + extra.map(function(id){ return '<div class="mai-slot"><b>' + maiEsc_(maiSlot_(id).name) + '</b>' + maiAnsBox_(maiSlot_(id)) + '</div>'; }).join('');
@@ -202,7 +202,7 @@
         return '<label style="display:block;margin:3px 0;"><input type="radio" name="maiPick" value="' + maiEsc_(c.기호) + '"' + (d && d.선택 === c.기호 ? ' checked' : '') + '> <b>' + maiEsc_(c.기호) + '</b> ' + maiEsc_(c.내용) + (maj.key === c.기호 ? ' <span class="mai-chip">AI 다수</span>' : '') + '</label>';
       }).join('') +
       '<textarea id="maiMemo" placeholder="메모(근거·이유, 비워도 됨)" style="width:100%;box-sizing:border-box;min-height:44px;">' + maiEsc_(d && d.메모 || '') + '</textarea>' +
-      maiAttPickHtml_() + '<button type="button" class="btn" data-mai="decide">✔ 결정 저장</button>';
+      maiAttPickHtml_() + '<button type="button" class="btn" data-mai="decide">결정 저장</button>';
   }
   // 첨부 후보 — 법제처에 있는 것(✔)만. "있다"는 "이 쟁점과 관련 있다"가 아니므로(AI가 엉뚱한 실재 판례를 댈 수 있음) 판례·심판례는 사건명을 보고 세무사님이 체크, 조문만 기본 체크
   function maiAttPickHtml_(){

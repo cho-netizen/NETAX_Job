@@ -320,7 +320,7 @@
         var valueSpan = container.querySelector('#ccRrnValue');
         if (valueSpan.style.display !== 'none' && valueSpan.textContent){
           valueSpan.style.display = 'none';
-          ccRevealRrnBtn.textContent = '👁 보기';
+          ccRevealRrnBtn.textContent = '보기';
           return;
         }
         callGas('client_get_rrn', { id: c.id }).then(function(res){
@@ -780,7 +780,7 @@
             '</label>';
         });
         html += '<div style="display:flex; justify-content:flex-end; margin-top:6px;">' +
-          '<button type="button" class="ghost-btn cdaMergeBtn" data-group="' + gi + '">🔁 합치기</button>' +
+          '<button type="button" class="ghost-btn cdaMergeBtn" data-group="' + gi + '">합치기</button>' +
           '</div></div>';
       });
       body.innerHTML = html;

@@ -244,7 +244,7 @@
       '<input type="text" id="lsFormType" placeholder="서식종류(선택, 예: 서식, 별표)" style="flex:1; min-width:120px; font-size:12.5px;">' +
       '</div>' +
       '<div id="lsResults"></div>' +
-      '<div id="lsResultsActionBar" style="display:none; margin-top:8px;"><button type="button" id="lsAttachSelectedBtn" class="save-btn">➕ 선택한 항목 첨부</button></div>' +
+      '<div id="lsResultsActionBar" style="display:none; margin-top:8px;"><button type="button" id="lsAttachSelectedBtn" class="save-btn">선택한 항목 첨부</button></div>' +
       '</div>' +
       '<div class="card">' +
       '<div style="font-size:12px; color:var(--sub); margin-bottom:6px;">이 사건에 첨부된 자료</div>' +
@@ -398,7 +398,7 @@
       var newList = (targetCase.법령예규판례 || []).concat(newEntries);
       lsSaveAttachments_(newList, targetCase).then(function(ok){
         btn.disabled = false;
-        btn.textContent = '➕ 선택한 항목 첨부';
+        btn.textContent = '선택한 항목 첨부';
         if (ok){
           showToast((targetCase === lsCurrentCase ? '' : ('(' + (targetCase.사건명 || '') + ') ')) + newEntries.length + '건 첨부했습니다.', 'success');
           // [2026.09 버그수정] 그 사이 다른 사건으로 넘어갔으면 지금 화면(#lsResults)은 이미
@@ -426,7 +426,7 @@
         (entry.결과 ? '<br><span title="판결문 문장에서 자동으로 찾은 참고용 표시 — 정확한 분류 아님" style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; font-size:11px; color:var(--navy); display:inline-block; margin-top:3px;">' + escapeHtml(entry.결과) + '</span>' : '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.제목 || '') + '</b>' +
         ' <span style="font-size:11.5px;color:var(--sub);">' + (entry.첨부 === 'AI' ? (entry.확인 ? '🤖 AI 첨부(확정)' : '🤖 AI 첨부(미확인)') : '직접 첨부') + (entry.판 ? ' · ' + escapeHtml(String(entry.판)) + ' 시행판' : '') + (entry.쓸곳 ? ' · 쓸 곳: ' + escapeHtml(entry.쓸곳) : '') + (entry.이유 ? ' · ' + escapeHtml(entry.이유) : '') + '</span>' +
-        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok sm">✔ 확정</button>' : '') +
+        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok sm">확정</button>' : '') +
         (entry.요약 ? '<br><span style="color:var(--sub); font-size:12.5px; white-space:pre-wrap;">' + escapeHtml(entry.요약) + '</span>' : '') + '</div>' +
         '<span class="log-del" title="첨부 해제">✕</span>';
       var okBtn = row.querySelector('.ls-ai-ok');
@@ -540,8 +540,8 @@
     return '<div class="lsi-review" data-lsirevkey="' + lsiEsc_(key) + '" style="margin:8px 0; padding:8px 10px; border:1px dashed var(--line); border-radius:6px;">' +
       '<div style="font-size:12.5px; margin-bottom:6px;">' + line + '</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
-      '<button type="button" class="btn" data-lsirev="확인">✅ 이 표 확인</button>' +
-      '<button type="button" class="btn" data-lsirevmemo="1">✏ 고칠 곳 메모</button>' +
+      '<button type="button" class="btn" data-lsirev="확인">이 표 확인</button>' +
+      '<button type="button" class="btn" data-lsirevmemo="1">고칠 곳 메모</button>' +
       '<button type="button" class="btn" data-lsirev="보류">⏸ 보류</button>' +
       (rv ? '<button type="button" class="ghost-btn" data-lsirev="지움">기록 지우기</button>' : '') + '</div>' +
       '<div class="lsi-revmemo" style="display:none; margin-top:6px;"><textarea rows="2" style="width:100%;" aria-label="고칠 곳 메모" placeholder="어느 행·칸을 어떻게 고쳐야 하는지 적어 주세요">' + lsiEsc_(rv && rv.메모 || '') + '</textarea>' +
@@ -692,7 +692,7 @@
     var html = '<div class="card">' +
       '<div class="nx-help">서식은 세법을 가장 먼저 정밀하게 해석한 기준입니다. 서식마다 <b>칸 해설</b>(칸 → 근거 조문 → 계산기 칸 → 쓰이는 조견표)을 쌓아 갑니다. ' +
       (lsiCatalogOn_() ? '목록은 법령 시행규칙 별지 기준 전체 서식(모두 ' + allCount + '개, 지방세 신고서 제외 — 신고에 내는 서식은 세액인쇄가 고릅니다)이고, 원본은' : '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은') + ' 드라이브에서 서식번호로 찾습니다 — <b>법제처 PDF</b>(업무관리자\\서식\\법제처 원본(PDF)의 법제처 공식 서식)를 먼저, 한글 서식(업무관리자\\서식\\한글 서식)은 그 옆에 둡니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
-      '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' (' + lsiFormRows_(g).length + ')</button>'; }).join('') + '</div>';
+      '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' <span class="nx-n">' + lsiFormRows_(g).length + '</span></button>'; }).join('') + '</div>';
     var noFile = 0;
     var gridRows = rows.map(function(r){
       var files = lsiFolderFiles_ ? lsiMatchFiles_(r.formNo, r.title) : null;
@@ -1258,7 +1258,7 @@
           '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfmove="' + (g.enacted ? 'back' : 'enact') + '">' + (g.enacted ? '↩ 개편안으로 되돌리기' : '✅ 확정 — 개정세법으로 옮기기') + '</button>' +
         '</div>' +
         (g.error ? '<div class="lsi-note" style="color:#a33;">이 폴더를 읽지 못했습니다: ' + lsiEsc_(g.error) + '</div>' : '') +
-        '<div style="margin-top:8px;"><b>비교분석 해설서</b> ' + (docs.length ? docs.map(function(f){ return '<button type="button" class="btn" style="margin:2px 6px 2px 0;" data-lsirfdoc="' + lsiEsc_(f.id) + '" data-lsirfname="' + lsiEsc_(f.name) + '">📖 ' + lsiEsc_(f.name.replace(/\.md$/i, '')) + '</button>'; }).join('') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
+        '<div style="margin-top:8px;"><b>비교분석 해설서</b> ' + (docs.length ? docs.map(function(f){ return '<button type="button" class="btn" style="margin:2px 6px 2px 0;" data-lsirfdoc="' + lsiEsc_(f.id) + '" data-lsirfname="' + lsiEsc_(f.name) + '">' + lsiEsc_(f.name.replace(/\.md$/i, '')) + '</button>'; }).join('') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
         '<div class="lsi-files" style="margin-top:6px;"><b>원문</b> ' + (srcs.length ? srcs.map(function(f){ return '<a href="' + lsiEsc_(f.url) + '" target="_blank" rel="noopener noreferrer">📄 ' + lsiEsc_(f.name) + '</a>'; }).join('') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
       '</div>';
     };
@@ -1266,7 +1266,7 @@
     pane.innerHTML =
       '<div class="card" style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">' +
         '<span class="nx-help">세제개편안의 원문과 현행 세법과의 비교분석 해설서입니다. 확정되면 "확정 — 개정세법으로 옮기기"를 누르세요.</span>' +
-        '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfreload="1">↻ 새로 읽기</button>' +
+        '<button type="button" class="ghost-btn" style="margin-left:auto;" data-lsirfreload="1">↻ 새로</button>' +
       '</div>' +
       (lsiReformError_ ? '<div class="card lsi-note" style="color:#a33;">폴더를 읽지 못했습니다: ' + lsiEsc_(lsiReformError_) + '</div>' : '') +
       '<h3 style="margin:14px 4px 10px; font-size:16px; color:var(--navy); padding-bottom:6px; border-bottom:2px solid var(--line);">개편안 (확정 전) <span class="lsi-note">' + pend.length + '건</span></h3>' + (pend.length ? pend.map(card).join('') : '<div class="card lsi-note">없음</div>') +

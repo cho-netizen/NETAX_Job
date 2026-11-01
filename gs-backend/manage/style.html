@@ -120,6 +120,12 @@
   #nxCaseBar{ position:absolute; top:0; left:0; right:0; z-index:30; background:var(--panel); border-bottom:1px solid var(--line); padding:8px 16px 0; }
   #nxCaseBar[hidden]{ display:none; }
   .card[hidden], .ch-empty-line[hidden]{ display:none !important; } /* [2026.11.01] 빈 카드 숨김(처리개요 빈 카드·대시보드 답하실 것) — .card 자체 display가 hidden을 이기지 않게 */
+  /* [2026.11.01] 입력칸은 자료 길이만큼 — 세무사님 "입력란을 데이터 입력길이 이내로 설정하는 것도 선호한다" / "불필요하게 화면을 잡아먹는 것을 나는 너무너무 싫어한다"
+     금액(숫자) 12글자 · 날짜 10글자 · 선택칸은 가장 긴 선택지까지(넘쳐도 360) · 한 줄 글 칸은 420까지(긴 글은 여러 줄 칸). 줄을 꽉 채우던 칸도 이 폭에서 멈춘다 */
+  #centerWork input[inputmode="numeric"], #centerWork input.taxcalc-money{ max-width:12em !important; }
+  #centerWork input[type="date"]{ width:9.5em !important; max-width:100%; }
+  #centerWork select{ max-width:min(100%, 360px) !important; }
+  #centerWork input[type="text"]:not([inputmode]), #centerWork input[type="search"], #centerWork input[type="url"], #centerWork input:not([type]){ max-width:min(100%, 420px) !important; }
   /* [2026.11.01 화면구조 개편 ④] 시험 자료 숨김 체크(고객·넥스 대화 목록) */
   .nx-test-toggle{ display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-sub); color:var(--sub); white-space:nowrap; cursor:pointer; }
   .nx-test-toggle[hidden]{ display:none !important; }
@@ -136,12 +142,9 @@
   #nxCaseBar #cbFind{ width:110px; height:30px; border:1px solid var(--line); border-radius:6px; padding:0 8px; font-size:var(--fs-sub); background:#f7f8fa; }
   #nxCaseBar #cbCaseSelect{ max-width:280px; min-width:0; height:30px; border:1px solid var(--line); border-radius:6px; font-size:var(--fs-sub); background:#f7f8fa; }
   #nxCaseBar .cb-strip-host .nx-ledger-strip{ margin:6px 0 0 !important; }
-  #nxCaseBar .cb-tabs{ display:flex; gap:2px; overflow-x:auto; margin-top:6px; scrollbar-width:none; }
-  #nxCaseBar .cb-tabs::-webkit-scrollbar{ display:none; }
-  #nxCaseBar .cb-tab{ border:none; background:none; padding:8px 16px 7px; font-size:var(--fs-body); color:var(--sub); border-bottom:3px solid transparent; white-space:nowrap; font-weight:600; cursor:pointer; }
-  #nxCaseBar .cb-tab:hover{ color:var(--navy); background:#f5f7fb; }
-  #nxCaseBar .cb-tab.on{ color:var(--navy); border-bottom-color:var(--gold); }
-  @media (max-width:600px){ #nxCaseBar{ padding:6px 10px 0; } #nxCaseBar .cb-pick{ margin-left:0; width:100%; } #nxCaseBar #cbCaseSelect{ flex:1; max-width:none; } #nxCaseBar .cb-tab{ padding:8px 10px 7px; } }
+  /* [2026.11.01] 세무사님 "사건작업의 1차 하위탭은 개요, 사실... 아닌가? 왜 달리 구현하였지?" — 따로 만든 밑줄 탭을 걷고 공통 하위 탭(nx-tabbar·nx-tab) 모양을 그대로 쓴다. 머리줄 안이라 위 여백만 두고 아래 여백은 없앤다. */
+  #nxCaseBar .cb-tabs.nx-tabbar{ margin:6px 0 0; border-bottom:none; }
+  @media (max-width:600px){ #nxCaseBar{ padding:6px 10px 0; } #nxCaseBar .cb-pick{ margin-left:0; width:100%; } #nxCaseBar #cbCaseSelect{ flex:1; max-width:none; } }
   @media print{ #nxCaseBar{ display:none !important; } body.cb-on #centerWork > .view{ top:0; } }
   /* 작업공간 안에서는 화면마다 따로 있던 사건 고르기·장부 띠·화면 제목을 숨긴다(머리줄이 대신함, 기능은 그대로) */
   body.cb-on #centerWork > .view .nx-ledger-strip,
@@ -371,22 +374,26 @@
   .nx-tab{ background:none; border:none; border-bottom:2px solid transparent; border-radius:6px 6px 0 0; padding:10px 14px;
     font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.7; cursor:pointer; line-height:1.3; }
   .nx-tab:hover{ opacity:1; }
+  /* [2026.11.01] 세무사님 "탭명에 현황까지 붙여놓아서 너-무 길다" / "항상 같은 유형이 또 있는지 모두 찾아봐야" — 탭·묶음 단추 이름 뒤 숫자는 글 대신 작은 숫자 표 하나(.nx-n), 손볼 것은 금색(.warn). 자세한 현황은 말풍선·탭 밑 한 줄로 */
+  .nx-n{ display:inline-block; min-width:16px; padding:0 4px; margin-left:3px; border-radius:8px; background:rgba(127,127,127,.22); color:inherit; font-size:11px; font-weight:600; line-height:16px; text-align:center; }
+  .nx-n.warn{ background:var(--gold); color:#fff; }
   .nx-tab.active, .nx-tab.on{ color:#fff; opacity:1; background:var(--navy); border-bottom-color:var(--navy); }
   /* [2026.10.31] 하위 탭 크기는 어느 화면·어느 단계든 하나 — 세무사님 "하위탭의 탭크기를 탭별로 같게"(예전 .sub는 작은 탭이었음, 이름만 남김) */
-  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab{ padding:9px 10px; font-size:12px; white-space:nowrap; }
+  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab, body.lay-phone .taxcalc-subtab{ padding:9px 6px; font-size:12px; white-space:nowrap; } /* [2026.11.01] 휴대폰은 옆 여백 6 — 탭 다섯·여섯 줄이 옆으로 밀리지 않게 */
   /* [2026.10.31] 하위 탭 폭 — 세무사님 "탭별 하위탭의 폭을 왜 동일하게 만들지 않았나?" / "최소한 탭내에서만큼은 하위탭의 너비가 같아야" /
      "작은화면에서 넘치면 어떻게 하려고 하는가?" — 한 탭 줄 안의 탭은 늘 같은 폭: 넓으면 150(가장 긴 이름 "칸 값 고치기·고침 기록" 122+여백),
      자리가 모자라면 그 줄 탭이 똑같이 함께 줄어든다(이름은 말줄임, 전체 이름은 title). 그래도 모자라면(한 탭 84 밑) 줄을 꺾지 않고
      한 줄로 옆으로 밀어 보며, 뒤에 탭이 더 있으면 오른쪽 끝을 흐리고 ▶를 띄운다(script.html nxTabMore_). 두 줄로 꺾이는 탭 줄은 없다. */
   .nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs{ flex-wrap:nowrap !important; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; position:relative; }
   .nx-tabbar::-webkit-scrollbar, .taxcalc-tabs::-webkit-scrollbar, .taxcalc-subtabs::-webkit-scrollbar{ display:none; }
-  .nx-tab, .taxcalc-tab, .taxcalc-subtab{ flex:1 1 0; min-width:var(--tabmin, 84px); max-width:150px; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab, body.lay-phone .taxcalc-subtab{ min-width:var(--tabmin, 72px); max-width:120px; }
+  /* [2026.11.01] 세무사님 "화면이 부족함에도 너무 넓게 잡는 것은 오히려 빠른 작업을 방해" — 자리가 넉넉하면 같은 폭(150까지), 모자라면 탭마다 제 이름 폭까지만 줄어든다(이름은 안 잘림). 그래도 모자랄 때만 옆으로 밀기 */
+  .nx-tab, .taxcalc-tab, .taxcalc-subtab{ flex:1 1 0; min-width:max-content; max-width:150px; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab, body.lay-phone .taxcalc-subtab{ min-width:max-content; max-width:120px; }
   .taxcalc-tabs > :not(.taxcalc-tab){ flex:0 0 auto; }
   .nx-tabbar.nx-more, .taxcalc-tabs.nx-more, .taxcalc-subtabs.nx-more{ -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); }
   .nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px) !important; mask-image:linear-gradient(to right,transparent,#000 36px) !important; }
   .nx-more.nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; }
-  .nx-tabmore-arrow{ position:absolute; z-index:5; width:22px; height:22px; border:none; border-radius:50%; background:var(--navy); color:#fff; font-size:11px; line-height:22px; padding:0; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+  .nx-tabmore-arrow{ position:absolute; z-index:35; /* [2026.11.01] 사건 작업 머리줄(30) 위에도 보이게 */  width:22px; height:22px; border:none; border-radius:50%; background:var(--navy); color:#fff; font-size:11px; line-height:22px; padding:0; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25); }
   html.nx-dark #view-ai .nx-tab{ color:#e3e8f0; }
   html.nx-dark #view-ai .nx-tab.active, html.nx-dark #view-ai .nx-tab.on{ background:#25304a; }
   /* [2026.10.29] 세무사님 "날짜를 키우거나 줄이는 버튼이 너무 작아서 제어를 할 수가 없다" — 대시보드 범위 칸(일정 전/후 며칠·마감임박 후 며칠·
@@ -421,8 +428,9 @@
      폭 기준이 전혀 충족되지 않는 문제가 있었다 — "아이콘 생략 단계로 안 넘어가고 바로
      2줄이 된다"는 지적. 폭 숫자가 아니라 "실제로 한 줄에 다 들어가는지"를 스크립트가 직접
      재보고 이 클래스를 붙이는 방식(script.html의 tbCollapseAll_)으로 바꿨다. */
-  .btn-ic{ flex-shrink:0; }
-  .tb-row.tb-ic-off .btn-ic, .scan-row.tb-ic-off .btn-ic{ display:none; }
+  /* [2026.11.01] 세무사님 "습관적으로 붙인 아이콘은 없는지" — 평소엔 글만, 한 줄에 다 안 들어갈 때만(tb-tx-off) 글 대신 아이콘 */
+  .btn-ic{ flex-shrink:0; display:none; }
+  .tb-row.tb-tx-off .btn-ic, .scan-row.tb-tx-off .btn-ic{ display:inline; }
   .tb-row.tb-tx-off .btn-tx, .scan-row.tb-tx-off .btn-tx{ display:none; }
   /* [2026.11.01] 휴대폰 폭: 사건 고르기 칸(고정 220)·탭 이동 칸이 줄 밖으로 넘치던 것 — 좁은 화면에선 사건 줄만 두 줄로 꺾고 사건 칸은 남은 폭만큼 */
   @media (max-width:600px){ .tb-row:has(select[id$="CaseSelect"]){ flex-wrap:wrap; row-gap:6px; } .tb-row select[id$="CaseSelect"]{ width:auto !important; min-width:0; flex:1 1 140px; max-width:100%; } }
@@ -492,6 +500,8 @@
     font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:#fff; }
   input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
   input[type=number], input[inputmode=numeric], input[inputmode=decimal]{ text-align:right; }
+  /* [2026.11.01] 세무사님 "대시보드 … 날짜값이 중앙정렬되도록" — 대시보드 범위 칸(일정 전·후·마감임박·최근 수금·메일 통수)은 위 오른쪽 맞춤보다 나중에 가운데 */
+  .dash-step input[type=number]{ text-align:center; }
   /* [2026.09.16] 세무사님 지시 — 날짜칸이 좁아진 상태에서 글자가 왼쪽에 붙어있으면 남는
      여백이 오른쪽으로만 몰려 어색해 보인다는 지적. 모든 날짜칸에 가운데정렬을 적용.
      [주의] 순수 <input type=date>뿐 아니라, enhanceDateInputs(taxcalc.html)가 렌더링 직후
@@ -803,7 +813,7 @@
     color:var(--ink); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:14px;
   }
   .taxcalc-add-asset:hover{ border-color:var(--gold); background:var(--taxcalc-chip-bg-hover); color:var(--navy); }
-  /* [2026.09 버그수정] 세무사님 지적 — "+ 계약 추가"/"+ 항목 추가"처럼 제목행(.taxcalc-asset-head)
+  /* [2026.09 버그수정] 세무사님 지적 — "+ 계약"/"+ 항목 추가"처럼 제목행(.taxcalc-asset-head)
      안에서 "🧮 계산근거"·"✕ 삭제" 같은 작은 칩 버튼과 나란히 놓이는 추가버튼은, 목록 아래에
      혼자 크게 놓이는 표준 .taxcalc-add-asset(카드 하나를 통째로 새로 만드는 CTA)과 똑같이
      width:100%·큰 패딩을 써서 같은 줄의 다른 버튼보다 훨씬 커 보였다 — 제목행용 작은 버전을
@@ -955,13 +965,17 @@
   /* (탭 모양 — 세액계산 탭 규칙보다 뒤에 두어야 이김) */
   /* [2026.10.31] 세무사님 "비활성 하위탭이 탭인지 알수가 없다 … 최소한 일반텍스트와는 구별" — 안 고른 탭도 옅은 바탕·테두리를 둔 단추 모양.
      "하위탭아래 2차하위탭은 1차탭과는 또 다른 색상이어야 한다(트리구조)" — 1단 지금 탭은 남색, 2단(탭 안의 탭: .nx-tabbar.sub·세액계산 세목 안 탭)은 청색. */
-  :root{ --tab-off:#eef1f6; --tab-off-hover:#e1e6ef; --tab-off-line:#cfd5df; --tab2:#0D1B3D; }
-  html.nx-dark #view-ai{ --tab-off:#1d2536; --tab-off-hover:#26304a; --tab-off-line:#33405a; --tab2:#0D1B3D; }
+  :root{ --tab-off:#eef1f6; --tab-off-hover:#e1e6ef; --tab-off-line:#cfd5df; --tab2:#2f6690; }
+  html.nx-dark #view-ai{ --tab-off:#1d2536; --tab-off-hover:#26304a; --tab-off-line:#33405a; --tab2:#3a78a8; }
   .nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs{ gap:3px; }
   .nx-tab, .taxcalc-tab, .taxcalc-subtab{ background:var(--tab-off); border:1px solid var(--tab-off-line); border-bottom:none; opacity:1; color:var(--ink); }
   .nx-tab:hover, .taxcalc-tab:hover, .taxcalc-subtab:hover{ background:var(--tab-off-hover); }
   .nx-tab.active, .nx-tab.on, .taxcalc-tab.active, .taxcalc-subtab.active{ background:var(--navy); border-color:var(--navy); color:#fff; }
-  .nx-tabbar.sub .nx-tab.active, .nx-tabbar.sub .nx-tab.on, .taxcalc-subtab.active{ background:var(--tab2); border-color:var(--tab2); color:#fff; }
+  .nx-tabbar.sub .nx-tab.active, .nx-tabbar.sub .nx-tab.on, .nx-tab.sub.on, .nx-tab.sub.active, .taxcalc-subtab.active{ background:var(--tab2); border-color:var(--tab2); color:#fff; }
+  /* [2026.11.01] 사건 작업 안에서는 머리줄 탭(개요·사실…)이 1단이므로 화면 안 탭을 한 단씩 내린다: 화면 첫 탭 줄 = 2단(청색 채움), 그 밑 탭 줄 = 3단(흰 바탕·청색 글자·청색 테두리) */
+  body.cb-on #centerWork > .view .nx-tabbar:not(.sub) .nx-tab.active, body.cb-on #centerWork > .view .nx-tabbar:not(.sub) .nx-tab.on, body.cb-on #centerWork > .view .taxcalc-tab.active{ background:var(--tab2); border-color:var(--tab2); color:#fff; }
+  body.cb-on #centerWork > .view .nx-tabbar:not(.sub){ border-bottom-color:var(--tab2); }
+  body.cb-on #centerWork > .view .nx-tabbar.sub .nx-tab.active, body.cb-on #centerWork > .view .nx-tabbar.sub .nx-tab.on, body.cb-on #centerWork > .view .nx-tab.sub.on, body.cb-on #centerWork > .view .taxcalc-subtab.active{ background:#fff; border-color:var(--tab2); color:var(--tab2); font-weight:700; }
   .nx-tabbar.sub, .taxcalc-subtabs{ border-bottom-color:var(--tab2); }
   html.nx-dark #view-ai .nx-tab{ color:#e3e8f0; } /* [2026.11.01] 어두운 화면은 가운데 화면을 통째로 뒤집어(invert) 만든다 — 탭에 어두운 색을 따로 주면 두 번 뒤집혀 밝게 보였다. 뒤집지 않는 AI 창에만 */
   html.nx-dark #view-ai .nx-tab.active, html.nx-dark #view-ai .nx-tab.on{ background:#25304a; border-color:#25304a; }

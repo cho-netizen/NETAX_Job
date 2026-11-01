@@ -11,12 +11,12 @@
          바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
     <div class="card dash-cover">
       <h3>할일
-        <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">구글 태스크 열기</a>
+        <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
       </h3>
       <!-- [2026.09.16 버그수정] 실사용 지적 — 날짜칸이 항상 보여서 마감일 없는 대부분의
            할일에도 매번 빈 칸이 따라다녔다. 날짜가 필요할 때만 "일정" 버튼으로 펼치게 한다. -->
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
-        <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">📅 일정</button>
+        <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
         <input type="date" id="dashNewTaskDue" style="display:none;">
         <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
@@ -31,7 +31,7 @@
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
     <div class="card dash-cover">
       <h3>일정
-        <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">구글 캘린더 열기</a>
+        <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
       </h3>
       <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
       <div class="dash-range">
@@ -53,12 +53,12 @@
     </div>
     <!-- [2026.10.18 탭연결 14번] 고객이 고객창구(my.netax.kr)로 자료를 올려도 알림이 없어, 사건마다 증빙확보·작업관리를 열어 봐야 했다 -->
     <div class="card">
-      <h3>고객이 올린 자료(확인 대기)</h3>
+      <h3>고객 올린 자료</h3>
       <div id="dashUploads"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card">
       <h3>최근 수금내역
-        <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">🧾 지금 확인</button>
+        <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">확인</button>
       </h3>
       <div class="dash-range">
         <span class="dash-step">오늘부터 전 <button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashPayBefore" min="0" max="3650" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button> 일 수금</span>
@@ -71,9 +71,9 @@
          진입 시 바로 보이도록 카드 3개를 추가한다. -->
     <div class="card">
       <h3>안읽은 메일
-        <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">구글 메일 열기</a>
+        <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
         <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
-        <button type="button" id="dashEmailsReadAll" class="ghost-btn sm" style="float:right; margin-right:6px;">☑ 전체 읽음</button>
+        <button type="button" id="dashEmailsReadAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 읽음</button>
       </h3>
       <div class="dash-range">
         <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
@@ -327,7 +327,7 @@
         html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#b3261e; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
           '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td>' +
           // [2026.10.29] 세무사님 "대시보드에서 진행을 즉시 완료로 변경할 수 있거나…" — 줄 누르기(처리개요로 이동)와 따로, 이 단추는 그 자리에서 완료 처리
-          '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="작업관리로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)">✓ 완료</button></td></tr>';
+          '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="작업관리로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)">완료</button></td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -345,7 +345,7 @@
       doneBtn.disabled = true; doneBtn.textContent = '확인 중…';
       nxCompleteCaseQuick_(dc).then(function(updated){
         if (updated){ loadDashDeadlines(); return; }
-        doneBtn.disabled = false; doneBtn.textContent = '✓ 완료';
+        doneBtn.disabled = false; doneBtn.textContent = '완료';
       });
       return;
     }
@@ -495,7 +495,7 @@
         toast('확인 실패: ' + (e && e.message ? e.message : e));
       }).finally(function(){
         dashScanReceiptsBtn.disabled = false;
-        dashScanReceiptsBtn.textContent = '🧾 지금 확인';
+        dashScanReceiptsBtn.textContent = '확인';
       });
     });
   }
@@ -954,7 +954,7 @@
   }
   function dashImproveRowHtml_(x){
     var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '고침' ? '고침 — 배포 대기' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
-    var btns = x.status !== '확인완료' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn sm" data-impok="' + esc(x.id) + '">👍 잘 됨 — 끝</button><button type="button" class="ghost-btn sm" data-impno="' + esc(x.id) + '" data-imptitle="' + esc(String(x.text).slice(0, 120)) + '">↩ 부족함 — 다시 요구 적기</button></div>' : '';
+    var btns = x.status !== '확인완료' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn sm" data-impok="' + esc(x.id) + '">잘 됨 — 끝</button><button type="button" class="ghost-btn sm" data-impno="' + esc(x.id) + '" data-imptitle="' + esc(String(x.text).slice(0, 120)) + '">부족함 — 다시 요구 적기</button></div>' : '';
     // [2026.10.31] 세무사님 "박스나 테두리로 카드모양으로 감쌀 경우에는 색상처리를 해야 하는 것 아닌가?" — 요청 하나마다 상태 색 띠(왼쪽)와 옅은 바탕을 준다
     var col = DASH_IMPROVE_COLOR_[x.status] || 'var(--sub)', bg = DASH_IMPROVE_BG_[x.status] || 'transparent';
     return '<div style="padding:7px 10px 7px 11px; border:1px solid var(--line); border-left:4px solid ' + col + '; border-radius:8px; background:' + bg + '; margin-bottom:6px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">'
@@ -972,7 +972,7 @@
     var open = r.openRequests || [], done = r.doneRequests || [];
     sum.textContent = open.length ? '대기 ' + open.length + '건 · 가장 오래된 것 ' + (r.oldestDays || 0) + '일째' + (r.toConfirm ? ' · 🔔 확인할 것 ' + r.toConfirm + '건' : '') : '남은 요청 없음';
     // [2026.10.31] ✍ 개선요구사항 적기를 설정에서 이 카드로 옮김(세무사님 "권장안대로")
-    var html = '<div style="margin-bottom:6px;"><button type="button" class="ghost-btn sm" data-impnew="1" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라갑니다(AI 비용 0)">✍ 개선요구사항 적기</button></div>'
+    var html = '<div style="margin-bottom:6px;"><button type="button" class="ghost-btn sm" data-impnew="1" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라갑니다(AI 비용 0)">개선요구사항 적기</button></div>'
       + (open.length ? open.map(dashImproveRowHtml_).join('') : '<div class="empty-row">남은 개선요구가 없습니다.</div>');
     if (done.length) html += '<details id="dashImproveDone" style="margin-top:8px;"' + (dashImprove_.doneOpen ? ' open' : '') + '><summary style="cursor:pointer; font-size:12.5px; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(dashImproveRowHtml_).join('') + '</details>';
     html += '<div class="nx-help">흐름: 대기 → 개발자 수정안(매주 월요일 루틴) → 승인·📥 반영 → 반영됨 → 세무사님 👍 확인. 원본 개선요구사항.md는 지우지 않고 계속 쌓입니다.</div>';
@@ -1043,7 +1043,7 @@
       var row = function(inner, warn){ return '<div style="padding:7px 10px; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; border-radius:8px; background:#fff; margin-bottom:4px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">' + inner + '</div>'; };
       var html = '';
       (r.questions || []).filter(function(q){ return !q.answer; }).forEach(function(q){
-        html += row('❓ <b>개발자 질문</b> ' + esc(q.title) + (q.body ? '<div style="font-size:12px; color:var(--sub); white-space:pre-wrap;">' + esc(String(q.body).slice(0, 400)) + '</div>' : '') + '<div style="margin-top:4px;"><button type="button" class="ghost-btn sm" data-dashqans="' + esc(q.id) + '">✍ 답하기</button></div>');
+        html += row('❓ <b>개발자 질문</b> ' + esc(q.title) + (q.body ? '<div style="font-size:12px; color:var(--sub); white-space:pre-wrap;">' + esc(String(q.body).slice(0, 400)) + '</div>' : '') + '<div style="margin-top:4px;"><button type="button" class="ghost-btn sm" data-dashqans="' + esc(q.id) + '">답하기</button></div>');
       });
       var ups = r.uploads || [];
       if (ups.length) html += row('<details><summary style="cursor:pointer;"><b>📥 고객이 보낸 서류 ' + ups.length + '건</b>(최근 7일, 고객창구·카카오) — 사건 증빙확보에서 확인</summary>'

@@ -117,7 +117,7 @@
     var shown = list || [];
     if (!list && linked) shown = [linked];
     nxCmEl_('cmBody').innerHTML =
-      '<button type="button" class="cm-btn gold big" id="cmSay">🎤 고객 이름 말하기</button>' +
+      '<button type="button" class="cm-btn gold big" id="cmSay">고객 이름 말하기</button>' +
       (note ? '<div class="cm-msg">' + note + '</div>' : '') +
       shown.map(nxCmCaseBtn_).join('') +
       '<button type="button" class="cm-btn" id="cmNoCase">사건 없이 녹음<small>보관함에 저장, 나중에 사건으로 옮김</small></button>';
@@ -292,7 +292,7 @@
           nxCm_.st = 'done';
           nxCmMsg_('<div class="cm-msg">✅ 사건 폴더에 상담내용을 저장했습니다</div>' +
             '<div class="cm-brief">' + nxCmEsc_(j.brief || '') + '</div>' +
-            '<div class="cm-row"><button type="button" class="cm-btn" id="cmHear">🔊 요약 듣기</button><button type="button" class="cm-btn gold" id="cmNew">새 녹음</button></div>');
+            '<div class="cm-row"><button type="button" class="cm-btn" id="cmHear">요약 듣기</button><button type="button" class="cm-btn gold" id="cmNew">새 녹음</button></div>');
           nxCm_.lastBrief = j.brief || '';
         } else if (j.status === 'error'){
           clearInterval(nxCm_.poll);
@@ -323,7 +323,7 @@
         nxCm_.st = 'left';
         nxCmEl_('cmCase').textContent = left.caseName || '사건 없음';
         nxCmMsg_('<div class="cm-msg">올리지 못한 녹음이 이 휴대폰에 남아 있습니다 (' + nxCmFmt_(left.activeMs || 0) + ').</div>' +
-          '<button type="button" class="cm-btn gold big" id="cmLeftUp">⬆ 올려서 요약하기</button><button type="button" class="cm-btn" id="cmLeftDrop">버리기</button>');
+          '<button type="button" class="cm-btn gold big" id="cmLeftUp">올려서 요약하기</button><button type="button" class="cm-btn" id="cmLeftDrop">버리기</button>');
         nxCm_.left = { blob: new Blob(chunks, { type: left.mime || 'audio/webm' }), meta: left };
       });
     });

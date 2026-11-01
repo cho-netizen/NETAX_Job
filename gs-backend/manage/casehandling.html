@@ -211,7 +211,7 @@
       // [2026.10.28] 관계 등 고정 선택지 칸도 같은 원칙 — 저장된 값이 선택지에 없으면(GAS·사이드바가 적은 글이 선택지와 조금 다를 때) 끼워 넣어 보존한다.
       //  예전엔 사건분류만 보존해, 관계 칸은 "선택 안 함"으로 보이다 저장하면 말없이 지워졌다(증여 값이 장부로 이어지면 손대지 않은 칸이 "비움"으로 잡힘)
       if (value && opts.indexOf(value) === -1) opts = opts.concat([value]);
-      return '<select ' + common + '>' + opts.map(function(opt){
+      return '<select ' + idAttr + ' style="width:auto; max-width:100%; box-sizing:border-box;">' + opts.map(function(opt){ // [2026.11.01] 선택칸은 가장 긴 선택지만큼(세무사님 "입력란을 데이터 입력길이 이내로")
         return '<option value="' + escapeHtml(opt) + '"' + (opt === (value || '') ? ' selected' : '') + '>' + (opt || '(선택 안 함)') + '</option>';
       }).join('') + '</select>';
     }
@@ -266,11 +266,11 @@
     return '<div class="chAssetCard" data-idx="' + idx + '" style="grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px 12px; position:relative;">' +
       (showDelete ? '<button type="button" class="chAssetDelBtn ghost-btn sm" data-idx="' + idx + '" style="position:absolute; top:6px; right:6px;" title="이 물건 삭제">✕</button>' : '') +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">자산종류</label>' +
-      '<select class="chAssetField" data-field="assetType" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      '<select class="chAssetField" data-field="assetType" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">선택</option>' +
       CH_ASSET_TYPE_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetType ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
-      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">선택</option>' +
       CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
@@ -280,7 +280,7 @@
       '</div></div>' +
       '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select class="chAssetField" data-field="assetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      '<select class="chAssetField" data-field="assetDong" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
@@ -342,7 +342,7 @@
       '</div>' +
       '<div id="chTransferGroupAmountsHost" style="display:contents;">' + chBuildTransferGroupAmountsHtml_(list, overview) + '</div>' +
       '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
-      '<div style="grid-column:1/-1;"><button type="button" id="chAssetAddBtn" class="ghost-btn sm">+ 물건 추가</button>' +
+      '<div style="grid-column:1/-1;"><button type="button" id="chAssetAddBtn" class="ghost-btn sm">+ 물건</button>' +
       (list.length > 1 ? ' <span style="color:var(--sub); font-size:12px;">물건 ' + list.length + '건 — 실제 사건개요서 목록입니다(대표 1건이 아닙니다).</span>' : '') +
       '</div>';
   }
@@ -520,7 +520,7 @@
     return '<div class="chAssetCard" data-idx="' + idx + '" style="grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px 12px; position:relative;">' +
       (showDelete ? '<button type="button" class="chAssetDelBtn ghost-btn sm" data-idx="' + idx + '" style="position:absolute; top:6px; right:6px;" title="이 물건 삭제">✕</button>' : '') +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
-      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">선택</option>' +
       CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
@@ -530,7 +530,7 @@
       '</div></div>' +
       '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select class="chAssetField" data-field="assetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      '<select class="chAssetField" data-field="assetDong" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
@@ -542,7 +542,7 @@
     var list = overview._chAssetListWorking || (overview._chAssetListWorking = chGetLocationAssetList_(overview));
     var cardsHtml = list.map(function(asset, idx){ return chBuildLocationAssetCardHtml_(asset, idx, idx > 0); }).join('');
     return '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
-      '<div style="grid-column:1/-1;"><button type="button" id="chAssetAddBtn" class="ghost-btn sm">+ 물건 추가</button>' +
+      '<div style="grid-column:1/-1;"><button type="button" id="chAssetAddBtn" class="ghost-btn sm">+ 물건</button>' +
       (list.length > 1 ? ' <span style="color:var(--sub); font-size:12px;">물건 ' + list.length + '건 — 증여재산가액/상속세과세가액은 아래 사건 전체 합계 1개로 입력합니다.</span>' : '') +
       '</div>';
   }
@@ -602,7 +602,7 @@
       c.세목 === 'gift' ? chBuildGiftBlockHtml_(overview, c.기준일) :
       c.세목 === 'inheritance' ? chBuildInheritanceBlockHtml_(overview, c.기준일) :
       c.세목 === 'objection' ? chBuildObjectionBlockHtml_(c) : '';
-    // [2026.09 버그수정] 실사용 지적 — "+ 물건 추가" 버튼 바로 아래에 사건분류·특이사항
+    // [2026.09 버그수정] 실사용 지적 — "+ 물건" 버튼 바로 아래에 사건분류·특이사항
     // 입력란이 구분선 없이 바로 붙어 있어서, 마치 그 버튼(물건 추가)에 딸린 입력란인 것처럼
     // 보였다. 실제로는 물건 목록과 전혀 무관한, 사건 전체에 대한 별도 항목이라 구분선을 넣어
     // 시각적으로 갈라놓는다.
@@ -701,7 +701,7 @@
     if (st) { host.appendChild(st); st.style.margin = '0 0 6px'; }
   }
   // [2026.11.01 화면구조 개편 ②] 비어 있는 카드(아직 ○○ 없습니다·0건뿐)는 숨기고 맨 아래 "없음:" 한 줄에 이름만 — 누르면 그 카드를 펴고 그 카드 머리 단추를 누른다(추가·열기 길은 그대로)
-  var CH_EMPTY_NAMES_ = { ev:'서류(증빙)', memo:'메모', tc:'계산', rep:'보고서', pay:'수금', log:'작업일지', law:'근거(법령)' };
+  var CH_EMPTY_NAMES_ = { ev:'서류', memo:'메모', tc:'계산', rep:'보고서', pay:'수금', log:'작업일지', law:'근거' };
   function chCardIsEmpty_(card){
     if (card.getAttribute('data-ch-is-empty') === '1') return true;
     if (card._chShown) return false;
@@ -769,7 +769,7 @@
       '</div>' +
       '<div class="card" id="chProgressCard"></div>' +
       '<div class="card" data-ch-empty="ev">' +
-      '<button type="button" id="chEvOpenDocsBtn" class="ch-card-head-btn">서류(증빙) <span class="ch-card-head-arrow">›</span></button>' +
+      '<button type="button" id="chEvOpenDocsBtn" class="ch-card-head-btn">서류 <span class="ch-card-head-arrow">›</span></button>' +
       '<div id="chEvSummary" style="font-size:13px; color:var(--sub); margin-top:6px;"></div>' +
       '</div>' +
       '<div class="card">' +
@@ -778,7 +778,7 @@
       '<div class="card" data-ch-empty="memo">' +
       '<button type="button" id="chMemoOpenBtn" class="ch-card-head-btn">메모 <span class="ch-card-head-arrow">›</span></button>' +
       '<div id="chMemoSummary" style="font-size:13px; color:var(--sub); margin-top:6px;">확인 중…</div>' +
-      '<button type="button" id="chConsultInboxBtn" class="ghost-btn" style="margin-top:6px; font-size:12.5px;">🎙 보관함 녹음 가져오기</button>' +
+      '<button type="button" id="chConsultInboxBtn" class="ghost-btn" style="margin-top:6px; font-size:12.5px;">보관함 녹음 가져오기</button>' +
       '</div>' +
       '</div><div class="ch-col ch-col-facts"><div class="ch-col-h">사실 <span>사건개요서</span></div>' +
       '<div class="card">' +
@@ -816,7 +816,7 @@
       '<div id="chLogAuto" style="margin-top:6px;"></div>' + // [2026.10.31] 저절로 남은 기록(누가·언제·무엇) — 예전 GAS 칸의 "최근 작업 기록"을 여기 한 칸으로
       '</div>' +
       '<div class="card" data-ch-empty="law"' + ((c.법령예규판례 || []).length ? '' : ' data-ch-is-empty="1"') + '>' +
-      '<button type="button" id="chLawOpenBtn" class="ch-card-head-btn">근거(법령) <span class="ch-card-head-arrow">›</span></button>' +
+      '<button type="button" id="chLawOpenBtn" class="ch-card-head-btn">근거 <span class="ch-card-head-arrow">›</span></button>' +
       '<div style="font-size:13px; color:var(--sub); margin-top:6px;">' + ((c.법령예규판례 || []).length ? ('첨부된 자료 ' + (c.법령예규판례 || []).length + '건') : '아직 첨부된 자료가 없습니다.') + '</div>' +
       '</div>' +
       '</div></div>' +
@@ -1270,13 +1270,13 @@
         if (w) h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(다음 틱·처리개요 새로 고침 때)') + '</div>';
         if (!h) h = '<div style="color:var(--sub);">GAS가 알려 드릴 새 사실이 없습니다.</div>';
         nowEl.innerHTML = h;
-        // 🤖 넥스 줄 — 넥스가 남긴 말·넥스 미리 읽기 스위치·AI 창 열기(GAS 사실과 눈으로 갈림)
+        // 🤖 넥스 줄 — 넥스가 남긴 말·넥스 미리 읽기 스위치·넥스 창(GAS 사실과 눈으로 갈림)
         if (nexEl){
           var na = r.넥스알림 || [], nh = '<b style="color:#7a5c14;">🤖 넥스</b>';
           nh += na.length ? '<div style="margin-top:3px;">' + na.map(function(a){ return '· ' + esc(a); }).join('<br>') + btn('seen', '확인했어요', ' data-who="nex"') + '</div>' : ' <span style="color:var(--sub);">넥스가 남긴 말이 없습니다</span>';
           nh += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">' + (w && w.넥스읽음수 ? '넥스가 읽은 파일 ' + w.넥스읽음수 + '개 · ' : '') + (w && w.넥스마지막 ? '넥스 미리 읽기 마지막 ' + esc(w.넥스마지막) + ' · ' : '')
-            + btn('nexpre', (w && w.넥스미리읽기끔) ? '🤖 넥스 미리 읽기 켜기' : '🤖 넥스 미리 읽기 끄기', ' data-off="' + (w && w.넥스미리읽기끔 ? '1' : '0') + '" title="새 서류가 들어오면 넥스(AI)가 미리 읽고 영향이 있어 보일 때만 한 줄 보고합니다(계산기 칸은 바꾸지 않음). 끄면 GAS 감시만 합니다"')
-            + btn('ai', '💬 AI 창 열기') + '</div>';
+            + btn('nexpre', (w && w.넥스미리읽기끔) ? '미리 읽기 켜기' : '미리 읽기 끄기', ' data-off="' + (w && w.넥스미리읽기끔 ? '1' : '0') + '" title="새 서류가 들어오면 넥스(AI)가 미리 읽고 영향이 있어 보일 때만 한 줄 보고합니다(계산기 칸은 바꾸지 않음). 끄면 GAS 감시만 합니다"')
+            + btn('ai', '넥스 창') + '</div>';
           nexEl.innerHTML = nh; nexEl.style.display = '';
         }
         // 저절로 남은 기록 → 작업일지 칸 안(접힘)
@@ -1407,8 +1407,8 @@
         '<div class="nx-l3" style="margin:0;">기한·하위업무</div>' + // [2026.10.31] 세무사님 "처리개요서내 기한_하위업무는 아무 표시가 없다" — 다른 묶음 제목과 같은 세로줄 단계 모양
 
         '<span style="display:flex; gap:6px; flex-wrap:wrap;">' +
-          (c.상태 !== '완료' ? '<button type="button" class="ghost-btn sm" data-ch-prog="done" title="작업관리로 가지 않고 이 사건을 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)">✓ 사건 완료</button>' : '') +
-          '<button type="button" class="ghost-btn sm" data-ch-prog="work">📌 작업관리에서 고치기</button>' +
+          (c.상태 !== '완료' ? '<button type="button" class="ghost-btn sm" data-ch-prog="done" title="작업관리로 가지 않고 이 사건을 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)">사건 완료</button>' : '') +
+          '<button type="button" class="ghost-btn sm" data-ch-prog="work">고치기</button>' +
         '</span>' +
       '</div>' +
       '<div style="font-size:13px; margin-top:6px;">' + escapeHtml(label) + ': ' + (c.법정일 ? escapeHtml(String(c.법정일).slice(0, 10)) + dday : '<span style="color:var(--sub);">아직 없음</span>') +
@@ -1429,7 +1429,7 @@
       if (typeof nxCompleteCaseQuick_ !== 'function') return;
       doneBtn.disabled = true; doneBtn.textContent = '확인 중…';
       nxCompleteCaseQuick_(c).then(function(updated){
-        if (!updated){ doneBtn.disabled = false; doneBtn.textContent = '✓ 사건 완료'; return; }
+        if (!updated){ doneBtn.disabled = false; doneBtn.textContent = '사건 완료'; return; }
         // 이 화면의 다른 저장이 기대수정일 충돌로 막히지 않게 상태·기한·수정일을 같이 맞추고 카드를 다시 그린다
         ['상태', '법정일', '완료전법정일', '수정일'].forEach(function(k){ if (updated[k] !== undefined) c[k] = updated[k]; });
         chRenderProgress_(c);
@@ -1530,8 +1530,9 @@
       // 없고, 보고서는 그냥 웹페이지로 보여줄 뿐이다) — 세무사에게 실제로 없는 접근제어 기능이
       // 있는 것처럼 잘못된 안도감을 줄 수 있어 선택지를 없앤다(항상 "허용"으로 연결).
       box.innerHTML =
-        '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">아직 고객창구에 연결되지 않았습니다. 연결하면 위 "요청자료"가 고객 체크리스트로 자동 전달되고, 고객이 고객창구로 들어와 직접 자료를 올리고 진행상황·결과보고서를 확인할 수 있습니다.</div>' +
-        '<button type="button" id="chMyConnectBtn" class="ch-card-head-btn">고객창구 연결하기 <span class="ch-card-head-arrow">›</span></button>';
+        // [2026.11.01] 세무사님 "같은 그룹의 자료인데도 강제줄바꿈으로 화면을 낭비하거나 뻘쭘하게 하지 말라" — 상태와 단추를 한 줄에, 긴 설명은 단추 말풍선으로
+        '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;"><span style="font-size:12.5px; color:var(--sub);">고객창구 연결 안 됨</span>' +
+        '<button type="button" id="chMyConnectBtn" class="ghost-btn sm" title="연결하면 위 &quot;요청자료&quot;가 고객 체크리스트로 자동 전달되고, 고객이 고객창구로 들어와 직접 자료를 올리고 진행상황·결과보고서를 확인할 수 있습니다.">창구 연결 ›</button></div>';
       document.getElementById('chMyConnectBtn').addEventListener('click', function(){
         var connectBtn = this;
         nxConfirm_(c.고객명 + '님을 위한 고객창구을 새로 만들까요?').then(function(ok){
@@ -1611,10 +1612,10 @@
           var btn = document.getElementById('chMySendSmsBtn');
           btn.disabled = true; btn.textContent = '전송 중…';
           callGas('send_my_portal_sms', { caseId: c.id }).then(function(res){
-            btn.disabled = false; btn.textContent = '📱 문자로 전달';
+            btn.disabled = false; btn.textContent = '문자로 전달';
             if (res.success === false){ showToast(res.message || '전송 실패', 'error'); return; }
             showToast('문자를 전송했습니다.', 'success');
-          }).catch(function(err){ btn.disabled = false; btn.textContent = '📱 문자로 전달'; showToast('전송 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
+          }).catch(function(err){ btn.disabled = false; btn.textContent = '문자로 전달'; showToast('전송 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
         });
       });
       document.getElementById('chMyAddItemBtn').addEventListener('click', function(){
@@ -1670,7 +1671,7 @@
       // <a href> 대신 버튼 + goToReportWriter_ 호출을 쓴다. saveFolderId(내부보고서 폴더ID)를
       // 넘기면 작성관리가 처음 저장할 때 이 폴더 안에 .md를 새로 만들고, publishFolderId(보고서
       // 폴더ID)는 "고객에게 발행"을 눌렀을 때 완성본(.html)이 처음 만들어질 곳을 알려준다.
-      var newDocLink = '<button type="button" id="chNewReportBtn" class="ghost-btn sm" style="margin-bottom:8px;">✍ 새 문서 작성</button>';
+      var newDocLink = '<button type="button" id="chNewReportBtn" class="ghost-btn sm" style="margin-bottom:8px;">새 문서</button>';
       var mdBases = {};
       var rows = internalFiles.filter(function(f){ return /\.md$/i.test(f.name); }).map(function(f){
         var base = f.name.replace(/\.md$/i, '');
@@ -1678,7 +1679,7 @@
         var published = publishedByBase[base];
         var status = published ? '📤 발행됨' : '✏️ 작성중(미발행)';
         return '<div class="log-entry"><div class="log-date" style="color:var(--navy);">' + status + '</div><div class="log-text">' + escapeHtml(base) +
-          ' <button type="button" class="chEditReportBtn ghost-btn sm" data-file-id="' + escapeHtml(f.id) + '" style="margin-left:6px;">✍ 편집</button>' +
+          ' <button type="button" class="chEditReportBtn ghost-btn sm" data-file-id="' + escapeHtml(f.id) + '" style="margin-left:6px;">편집</button>' +
           '</div></div>';
       });
       // 옛날 방식(.md 없이 .html 단일 파일만 있던 시절)에 만들어진 보고서는 그 .html을 그대로 편집하게 둔다.
@@ -1687,11 +1688,13 @@
         return m && !mdBases[m[1]];
       }).map(function(f){
         return '<div class="log-entry"><div class="log-date" style="color:var(--navy);">📤 발행됨(구버전)</div><div class="log-text">' + escapeHtml(f.name.replace(/\.html?$/i, '')) +
-          ' <button type="button" class="chEditReportBtn ghost-btn sm" data-file-id="' + escapeHtml(f.id) + '" style="margin-left:6px;">✍ 편집</button>' +
+          ' <button type="button" class="chEditReportBtn ghost-btn sm" data-file-id="' + escapeHtml(f.id) + '" style="margin-left:6px;">편집</button>' +
           '</div></div>';
       });
       var allRows = rows.concat(legacyRows);
-      box.innerHTML = newDocLink + (allRows.length ? allRows.join('') : '<div class="log-empty">아직 작성한 보고서가 없습니다.</div>');
+      // [2026.11.01] 보고서가 없으면 "없음"과 [새 문서]를 한 줄에(같은 묶음을 위아래로 가르지 않음), 있으면 단추 아래 목록
+      box.innerHTML = allRows.length ? newDocLink + allRows.join('')
+        : '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;"><span class="log-empty" style="padding:0;">아직 없음</span>' + newDocLink.replace(' style="margin-bottom:8px;"', '') + '</div>';
       var newBtn = document.getElementById('chNewReportBtn');
       if (newBtn){
         newBtn.addEventListener('click', function(){

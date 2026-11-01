@@ -545,7 +545,7 @@
       input.focus();
       // [2026.10.22] 지문 로그인 — 이 기기에서 켜 두었으면 "👆 지문으로 입장" 단추(세무사님 "지문으로")
       if (nxFp_.ready()){
-        var fpBtn = document.createElement('button'); fpBtn.type = 'button'; fpBtn.id = 'loginFpBtn'; fpBtn.textContent = '👆 지문으로 입장';
+        var fpBtn = document.createElement('button'); fpBtn.type = 'button'; fpBtn.id = 'loginFpBtn'; fpBtn.textContent = '지문으로 입장';
         fpBtn.style.cssText = 'margin-top:10px; width:100%;';
         (form || btn).parentNode.insertBefore(fpBtn, err);
         fpBtn.addEventListener('click', function(){
@@ -838,14 +838,14 @@
       var mins = Math.max(1, Math.round((Date.now() - p.at) / 60000));
       bar.innerHTML = '<span>' + escapeHtml(parts[1] || '다른 기기') + '에서 ' + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
         + '<button type="button" class="save-btn sm" data-place="go">이어 열기</button><button type="button" class="ghost-btn sm" data-place="x">닫기</button>'
-        + '<button type="button" class="ghost-btn sm" data-place="name" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">🏷 이 기기 이름' + (nxDeviceName_() ? ': ' + escapeHtml(nxDeviceName_()) : ' 정하기') + '</button>';
+        + '<button type="button" class="ghost-btn sm" data-place="name" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">이 기기 이름' + (nxDeviceName_() ? ': ' + escapeHtml(nxDeviceName_()) : ' 정하기') + '</button>';
       bar.addEventListener('click', function(e){
         var b = e.target.closest('[data-place]'); if (!b) return;
         if (b.getAttribute('data-place') === 'name'){
           nxPrompt_('이 기기의 이름을 적어 주세요(예: 사무실 PC, 집 노트북, 갤럭시탭).', nxDeviceName_()).then(function(v){
             v = String(v || '').trim().slice(0, 20); if (!v) return;
             try { localStorage.setItem('nxDeviceName', v); } catch (er) {}
-            b.textContent = '🏷 이 기기 이름: ' + v; toast('이 기기 이름을 「' + v + '」로 정했습니다.');
+            b.textContent = '이 기기 이름: ' + v; toast('이 기기 이름을 「' + v + '」로 정했습니다.');
           }); return;
         }
         bar.remove();
@@ -1119,7 +1119,7 @@
     if (NX_CB_.inited) return;
     var bar = document.getElementById('nxCaseBar'); if (!bar) return;
     NX_CB_.inited = true;
-    bar.querySelector('.cb-tabs').innerHTML = NX_CB_TABS_.map(function(t){ return '<button type="button" class="cb-tab" data-cb-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
+    bar.querySelector('.cb-tabs').innerHTML = NX_CB_TABS_.map(function(t){ return '<button type="button" class="cb-tab nx-tab" data-cb-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
     bar.addEventListener('click', function(e){
       var b = e.target.closest('[data-cb-tab]'); if (!b) return;
       nxCbGo_(b.getAttribute('data-cb-tab'), nxCbCurId_());
@@ -1277,7 +1277,7 @@
       + (last ? ' <span style="color:var(--sub);" title="' + nxLgEsc_((last.diff || []).join(' · ')) + '">· 마지막 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + '</span>' : '')
       + nxAiCostStripHtml_(r.AI비용)
       + (r.도구카드 && r.도구카드.부름 ? ' <span style="color:var(--sub);">· ' + nxLgEsc_(r.도구카드.줄) + '</span>' : '') // [2026.10.31 J] 자세히는 📒 장부 펼치기 아래 🧰
-      + (el._view === 'ledger' ? '' : ' <button type="button" class="ghost-btn nx-lg-open sm" title="요약을 옆에 펼칩니다">📒 장부 펼치기</button> <button type="button" class="ghost-btn nx-lg-screen sm" title="📒 사건 장부 화면으로 — 값 넣기·물어볼 것 답하기·반영 현황표·판단 재료">장부 화면 ›</button>') // [2026.10.31 처리개요 도구 정리] 장부 화면 열기
+      + (el._view === 'ledger' ? '' : ' <button type="button" class="ghost-btn nx-lg-open sm" title="요약을 옆에 펼칩니다">장부 펼치기</button> <button type="button" class="ghost-btn nx-lg-screen sm" title="📒 사건 장부 화면으로 — 값 넣기·물어볼 것 답하기·반영 현황표·판단 재료">장부 ›</button>') // [2026.10.31 처리개요 도구 정리] 장부 화면 열기
       + ' <button type="button" class="ghost-btn nx-lg-re sm" title="장부를 다시 읽기">↻</button>';
     var ob = b.querySelector('.nx-lg-open'); if (ob) ob.addEventListener('click', function(){ nxLedgerPanelOpen_(el._view, id); });
     var sb = b.querySelector('.nx-lg-screen'); if (sb) sb.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(id); });
@@ -1435,7 +1435,7 @@
               '<div id="nxSuggestImgs" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"></div>' +
               '<div style="display:flex; align-items:center; gap:10px; margin-top:8px; font-size:13px; flex-wrap:wrap;">' +
                 '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="nxSuggestUrgent"> 🚨 긴급</label>' +
-                '<button type="button" class="ghost-btn sm" id="nxSuggestPick">📎 화면 캡처 붙이기</button>' +
+                '<button type="button" class="ghost-btn sm" id="nxSuggestPick">화면 캡처 붙이기</button>' +
                 '<span style="font-size:11.5px; color:var(--sub);">캡처한 그림은 이 창에서 Ctrl+V로도 붙습니다</span>' +
                 '<input type="file" id="nxSuggestFile" accept="image/*" multiple hidden>' +
               '</div>') +
@@ -1560,22 +1560,17 @@
   /* [2026.10.31] 하위 탭 줄이 좁은 화면에서 옆으로 밀려 뒤 탭이 가려지면 오른쪽 끝을 흐리고 ▶를 띄운다 — 세무사님 "작은화면에서 넘치면 어떻게 하려고 하는가?".
      ▶를 누르면 그 줄을 옆으로 민다. 끝까지 밀었거나 다 들어가면 사라진다. 서버를 부르지 않는 화면 일만. 탭 이름 전체는 title로. */
   (function(){
-    var SEL_ = '.nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs';
+    var SEL_ = '.nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs'; // [2026.11.01] 사건 작업 탭 줄도 nx-tabbar라 함께 잰다
     var arrows_ = [], queued_ = false;
     function update_(){
       queued_ = false;
       var bars = document.querySelectorAll(SEL_), used = 0;
       for (var i = 0; i < bars.length; i++){
         var bar = bars[i];
-        // [2026.11.01] 세무사님 "가독성" — 이름이 「일반 증…」처럼 잘리면 읽을 수 없다. 그 줄 탭의 가장 긴 이름이 다 들어가는 폭을
-        //  그 줄 모든 탭의 최소 폭으로(같은 폭 원칙 유지, 190까지). 자리가 모자라면 위처럼 옆으로 밀어 보고 ▶가 뜬다.
-        var need = 0;
-        Array.prototype.forEach.call(bar.querySelectorAll('.nx-tab, .taxcalc-tab, .taxcalc-subtab'), function(t){
-          if (t.offsetParent && t.scrollWidth > need) need = t.scrollWidth;
+        // [2026.11.01] 탭 최소 폭은 CSS(제 이름 폭)로 — 예전엔 여기서 "지금 폭"을 재 최소 폭으로 삼아 잴 때마다 커져 190까지 벌어졌음(세무사님 "너무 넓게 잡는 것")
+        Array.prototype.forEach.call(bar.querySelectorAll(".nx-tab, .taxcalc-tab, .taxcalc-subtab"), function(t){
           if (!t.title && t.scrollWidth > t.clientWidth + 1) t.title = t.textContent.trim();
         });
-        var mw = need ? Math.min(Math.max(need + 2, document.body.classList.contains('lay-phone') ? 72 : 84), 190) + 'px' : '';
-        if (mw && bar.style.getPropertyValue('--tabmin') !== mw) bar.style.setProperty('--tabmin', mw);
         var over = bar.offsetParent && bar.scrollWidth > bar.clientWidth + 2;
         var more = over && bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2, less = over && bar.scrollLeft > 2;
         bar.classList.toggle('nx-more', !!more); bar.classList.toggle('nx-more-l', !!less);

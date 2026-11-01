@@ -101,10 +101,10 @@
       <!-- [2026.09 신규] 텍스트/md 파일 — 사건개시템플릿이 자동으로 만들어주는 체크리스트 등을
            내려받지 않고 바로 여기서 고쳐 쓸 수 있게, "보기 전용"에 편집 모드를 추가한다. -->
       <div id="docsTextEditBar" style="display:none; margin-bottom:10px; gap:8px;">
-        <button type="button" id="btnDocsTextEdit" class="ghost-btn">✏ 편집</button>
+        <button type="button" id="btnDocsTextEdit" class="ghost-btn">편집</button>
         <!-- [2026.10.20] 세무사님 승인("추천대로 하마") — .md는 작성관리 편집창에서 바로 열기(goToReportWriter_ {fileId}, 처리개요와 같은 경로) -->
-        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">✍ 문서작성에서 열기</button>
-        <button type="button" id="btnDocsTextSave" class="save-btn" style="display:none;">💾 저장</button>
+        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">문서작성에서 열기</button>
+        <button type="button" id="btnDocsTextSave" class="save-btn" style="display:none;">저장</button>
         <button type="button" id="btnDocsTextCancel" class="ghost-btn" style="display:none;">취소</button>
         <span id="docsTextSaveStatus" style="font-size:11.5px; color:var(--sub);"></span>
       </div>
@@ -179,7 +179,7 @@
       <div class="scan-row">
         <input type="text" id="pdfMgrWatermarkText" placeholder="워터마크 문구(영문 권장 — 한글은 깨질 수 있음)" style="flex:1; min-width:160px;">
         <input type="file" id="pdfMgrSignatureInput" accept="image/*" style="display:none;">
-        <button type="button" id="btnPdfMgrSignature" class="ghost-btn">🖋 서명 관리</button>
+        <button type="button" id="btnPdfMgrSignature" class="ghost-btn">서명 관리</button>
         <select id="pdfMgrSignaturePos">
           <option value="br" selected>서명: 우측 하단</option>
           <option value="bl">서명: 좌측 하단</option>
@@ -193,11 +193,11 @@
     </div>
     <div class="scan-row" style="padding:0 16px 6px; border-top:1px solid var(--line); padding-top:12px;">
       <input type="text" id="pdfMgrExtractName" placeholder="추출할 파일 이름" style="flex:1; min-width:120px;">
-      <button type="button" id="btnPdfMgrExtract" class="ghost-btn">✂ 선택 추출</button>
+      <button type="button" id="btnPdfMgrExtract" class="ghost-btn">선택 추출</button>
     </div>
     <div class="scan-row" style="padding:0 16px 16px;">
       <input type="text" id="pdfMgrSaveName" placeholder="전체 저장 파일 이름" style="flex:1; min-width:120px;">
-      <button type="button" id="btnPdfMgrSaveAll" class="save-btn">💾 전체 저장</button>
+      <button type="button" id="btnPdfMgrSaveAll" class="save-btn">전체 저장</button>
     </div>
   </div>
 </div>
@@ -245,7 +245,7 @@
     </div>
     <div class="scan-body">
       <div class="scan-row">
-        <button type="button" id="btnSigPlaceConfirm" class="save-btn">✔ 적용</button>
+        <button type="button" id="btnSigPlaceConfirm" class="save-btn">적용</button>
       </div>
       <div id="sigPlaceStageWrap">
         <div id="sigPlaceStage">
@@ -268,7 +268,7 @@
     <div class="modal-body">
       <textarea id="ocrResultText" readonly></textarea>
       <div class="scan-row" style="margin-top:8px;">
-        <button type="button" id="btnOcrResultCopy" class="ghost-btn">📋 클립보드에 복사</button>
+        <button type="button" id="btnOcrResultCopy" class="ghost-btn">클립보드에 복사</button>
       </div>
     </div>
   </div>
@@ -287,7 +287,7 @@
     </div>
     <div class="scan-body">
       <div class="scan-row" style="align-items:center;">
-        <button type="button" id="docsBtnCalcTemplate" class="ghost-btn">📋 세무 템플릿</button>
+        <button type="button" id="docsBtnCalcTemplate" class="ghost-btn">세무 템플릿</button>
         <span class="nx-help">세율·공제는 자동 계산되지만, 보유기간·관계 등 사안별 값은 행의 계산식을 직접 고쳐 넣으세요.</span>
         <span id="docsCalcSaveStatus" style="margin-left:auto; font-size:11.5px; color:var(--sub); white-space:nowrap;"></span>
       </div>
@@ -317,7 +317,7 @@
       </table>
       <div class="scan-row">
         <button type="button" id="docsBtnCalcAddRow" class="ghost-btn">+ 행 추가</button>
-        <button type="button" id="docsBtnCalcCopyTable" class="ghost-btn">📋 표 복사(보고서에 붙여넣기용)</button>
+        <button type="button" id="docsBtnCalcCopyTable" class="ghost-btn">표 복사(보고서에 붙여넣기용)</button>
       </div>
     </div>
   </div>
@@ -337,7 +337,7 @@
       <div id="docsDiagramPreview" style="flex:1 1 260px; min-height:340px; border:1px solid var(--line); border-radius:8px; padding:8px; overflow:auto; background:#fff;"></div>
     </div>
     <div class="scan-row" style="padding:0 16px 16px; justify-content:flex-end;">
-      <button type="button" id="btnDocsDiagramCopy" class="ghost-btn">📋 그림 코드 복사(보고서용)</button>
+      <button type="button" id="btnDocsDiagramCopy" class="ghost-btn">그림 코드 복사(보고서용)</button>
       <button type="button" id="btnDocsDiagramSave" class="save-btn">저장</button>
     </div>
   </div>
@@ -828,7 +828,7 @@
       '<div style="margin-bottom:14px;">' +
       '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">자동확보</div>' +
       addrPickerHtml +
-      '<button type="button" id="docsEvAutoAddrBtn" class="ghost-btn" style="margin-bottom:8px;">🏠 주소로 자동조회(실거래가·공시가격)</button>' +
+      '<button type="button" id="docsEvAutoAddrBtn" class="ghost-btn" style="margin-bottom:8px;">주소로 자동조회(실거래가·공시가격)</button>' +
       '<div id="docsEvAutoPicked"></div>' +
       '<div id="docsEvListAuto"></div>' +
       '</div>' +
@@ -1529,7 +1529,7 @@
         return '<div class="docs-trash-row" data-i="' + i + '">' +
           '<span class="docs-icon">' + (it.type === 'folder' ? '📁' : '📄') + '</span>' +
           '<span class="docs-name" style="flex:1;">' + escapeHtml(it.name) + '</span>' +
-          '<button type="button" class="ghost-btn sm" data-act="restore">↩ 복원</button>' +
+          '<button type="button" class="ghost-btn sm" data-act="restore">복원</button>' +
           '</div>';
       }).join('');
       listEl.querySelectorAll('[data-act="restore"]').forEach(function(btn, idx){
@@ -2035,7 +2035,7 @@
     }catch(err){
       toast('추출 중 오류: ' + (err && err.message ? err.message : err));
     }finally{
-      btn.disabled = false; btn.textContent = '✂ 선택 추출';
+      btn.disabled = false; btn.textContent = '선택 추출';
     }
   });
 
@@ -2055,7 +2055,7 @@
     }catch(err){
       toast('저장 중 오류: ' + (err && err.message ? err.message : err));
     }finally{
-      btn.disabled = false; btn.textContent = '💾 전체 저장';
+      btn.disabled = false; btn.textContent = '전체 저장';
     }
   });
 
@@ -2339,7 +2339,7 @@
       var worker = await getTesseractWorker_();
       var parts = [];
       for (var i = 0; i < targets.length; i++){
-        btn.textContent = '🔤 추출 중… (' + (i + 1) + '/' + targets.length + ')';
+        btn.textContent = '추출 중… (' + (i + 1) + '/' + targets.length + ')';
         var entry = targets[i];
         try{
           var canvas = await renderPdfMgrEntryToCanvas_(entry);
@@ -2357,7 +2357,7 @@
       toast('텍스트 추출 중 오류: ' + (err && err.message ? err.message : err));
     }finally{
       btn.disabled = false;
-      btn.textContent = '🔤 텍스트 추출';
+      btn.textContent = '텍스트 추출';
     }
   });
 

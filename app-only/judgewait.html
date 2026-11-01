@@ -3,7 +3,7 @@
   <h3 style="margin-top:0;">법령 판단 대기</h3>
   <div class="nx-help" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점(⚖️ 법령 안건)입니다. 위원(Gemini API)이 같은 질문지(쟁점·선택지·서식 칸 해설·조문 원문)에 답하고, 근거가 법제처에 실제로 있는지(✔/⚠) 확인한 뒤 회장(Claude)이 결론을 냅니다. 결론이 안 난 것(🙋 결정 필요)만 세무사님이 고릅니다. 엔진은 자동으로 고치지 않습니다.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-    <button type="button" class="ghost-btn" id="jwLoad">판단 대기 목록</button>
+    <button type="button" class="ghost-btn" id="jwLoad">판단 대기</button>
     <select id="jwFilter" aria-label="상태 고르기"><option value="">전체</option><option value="회의 전">회의 전</option><option value="위원 답함">위원 답함</option><option value="회장 결론">회장 결론</option><option value="결정 필요">🙋 결정 필요</option><option value="세무사님 결정">세무사님 결정</option></select>
     <span id="jwCount" class="lsi-note"></span>
   </div>

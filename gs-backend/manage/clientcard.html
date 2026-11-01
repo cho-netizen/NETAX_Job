@@ -61,7 +61,7 @@
   }
   function nxCcPick_(list, note){
     nxCc_.cur = null;
-    nxCcBody_('<button type="button" class="cc-btn gold big" id="ccSay">🎤 고객 이름 말하기</button>' +
+    nxCcBody_('<button type="button" class="cc-btn gold big" id="ccSay">고객 이름 말하기</button>' +
       (note ? '<div class="cc-msg">' + note + '</div>' : '') +
       (list || []).map(function(c){
         return '<button type="button" class="cc-btn" data-cc-client="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.성명) + '<small>' + nxCcEsc_([c.구분, c.전화번호].filter(Boolean).join(' · ')) + '</small></button>';
@@ -137,7 +137,7 @@
         nxCc_.sums[i] = f.sum;
         var w = f.when.replace(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2}).*/, '$2/$3 $4:$5');
         return '<div class="cc-sum"><b>최근 상담 ' + nxCcEsc_(w) + ' · ' + nxCcEsc_(f.caseName) + '</b>\n' + nxCcEsc_(f.sum) + '</div>' +
-          '<button type="button" class="cc-btn" data-cc-hear="' + i + '">🔊 요약 듣기</button>';
+          '<button type="button" class="cc-btn" data-cc-hear="' + i + '">요약 듣기</button>';
       }).join('');
     });
   }

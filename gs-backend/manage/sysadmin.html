@@ -76,10 +76,10 @@
     h += '<div class="sa-use">쓰임: ' + saEsc_(it.use || '') + '</div>';
     if (!it.exists) h += '<div class="sa-missing">드라이브에서 이 파일을 찾지 못했습니다.</div>';
     else {
-      h += '<div class="sa-btns"><button type="button" class="ghost-btn" data-sa-act="view">👁 보기</button>';
-      if (it.editable) h += '<button type="button" class="ghost-btn" data-sa-act="edit">✏ 문서작성에서 편집</button>';
-      else if (it.key === 'improve') h += '<button type="button" class="ghost-btn" data-sa-act="improve">✍ 개선요구사항 적기로</button>';
-      else if (it.key === 'followup') h += '<button type="button" class="ghost-btn" data-sa-act="followup">📋 대시보드 카드에서 고치기</button>';
+      h += '<div class="sa-btns"><button type="button" class="ghost-btn" data-sa-act="view">보기</button>';
+      if (it.editable) h += '<button type="button" class="ghost-btn" data-sa-act="edit">문서작성에서 편집</button>';
+      else if (it.key === 'improve') h += '<button type="button" class="ghost-btn" data-sa-act="improve">개선요구사항 적기로</button>';
+      else if (it.key === 'followup') h += '<button type="button" class="ghost-btn" data-sa-act="followup">대시보드 카드에서 고치기</button>';
       if (it.url) h += '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>';
       h += '</div>';
     }
@@ -92,8 +92,8 @@
     var use = String(it.use || '').replace(/^Claude가\s*/, '');
     return '<div class="sa-rrow" data-sa-idx="' + idx + '"><span class="sa-rtitle">' + saEsc_(String(it.title || '').replace(/^2층 — /, '')) + '</span>'
       + '<span class="sa-ruse" title="' + saEsc_(it.use || '') + '">' + saEsc_(use) + '</span>'
-      + (it.exists ? '<span class="sa-rbtns"><button type="button" class="ghost-btn" data-sa-act="view">👁 보기</button>'
-        + (it.editable ? '<button type="button" class="ghost-btn" data-sa-act="edit">✏ 편집</button>' : '') + '</span>' : '<span class="sa-missing">파일 없음</span>')
+      + (it.exists ? '<span class="sa-rbtns"><button type="button" class="ghost-btn" data-sa-act="view">보기</button>'
+        + (it.editable ? '<button type="button" class="ghost-btn" data-sa-act="edit">편집</button>' : '') + '</span>' : '<span class="sa-missing">파일 없음</span>')
       + '</div>';
   }
   function saClaudeRulesHtml_(items){
@@ -149,8 +149,8 @@
     var box = saBody_(); if (!box) return;
     var items = saState_.items = (res && res.items) || [];
     var html = '<div class="sa-tools">'
-      + '<button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button>'
-      + (res && res.canCreateBm ? '<button type="button" class="ghost-btn" data-sa-act="newbm">➕ 새 업무관리자 지침</button>' : '')
+      + '<button type="button" class="ghost-btn" data-sa-act="reload">새로고침</button>'
+      + (res && res.canCreateBm ? '<button type="button" class="ghost-btn" data-sa-act="newbm">새 업무관리자 지침</button>' : '')
       + '</div>';
     ((res && res.warn) || []).forEach(function(w){ html += '<div class="sa-warn">⚠ ' + saEsc_(w) + '</div>'; });
     var ab = saAuditBox_(); if (ab && saAudit_.html) ab.innerHTML = saAudit_.html;
@@ -173,13 +173,13 @@
     if (!saState_.items.length) box.innerHTML = '<div class="settings-tool-desc">불러오는 중…</div>';
     callGas('sysadmin_list', {}).then(function(res){
       saState_.loading = false;
-      if (!res || res.error){ box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button></div>'; return; }
+      if (!res || res.error){ box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">새로고침</button></div>'; return; }
       saState_.loadedAt = Date.now();
       saRender_(res);
       saAuditLoad_();
     }).catch(function(err){
       saState_.loading = false;
-      box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">🔄 다시 불러오기</button></div>';
+      box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">새로고침</button></div>';
     });
   }
 
@@ -197,7 +197,7 @@
     ov.innerHTML = '<div class="modal-panel sa-view-panel">'
       + '<div class="modal-head"><span>' + saEsc_(it.title) + ' — ' + saEsc_(it.name || '') + '</span><span class="modal-close" data-sa-v="close" title="닫기">✕</span></div>'
       + '<div class="sa-view-bar">'
-      + (it.editable ? '<button type="button" class="save-btn" data-sa-v="edit">✏ 문서작성에서 편집</button>' : '')
+      + (it.editable ? '<button type="button" class="save-btn" data-sa-v="edit">문서작성에서 편집</button>' : '')
       + (it.url ? '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>' : '')
       + '<span class="sa-view-note">' + (it.editable ? '편집창에서 💾 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.' : (it.key === 'improve' ? '보기 전용 — 새 요청은 🐞 카드의 ✍ 개선요구사항 적기로.' : '보기 전용 — 고치기는 대시보드 📋 확인조치사항 카드에서.')) + '</span>'
       + '</div>'
@@ -243,9 +243,9 @@
   function saAuditBtns_(r){
     var law = r && r.ai && r.ai.items ? r.ai.items.filter(function(x){ return x.세법판단필요; }).length : 0;
     return '<div class="sa-tools" style="margin-top:8px;">'
-      + '<button type="button" class="ghost-btn" data-sa-act="arun" title="AI 없이 규칙으로만 — 비용 0원, 1분 안팎">🔎 지금 규칙 점검(0원)</button>'
-      + '<button type="button" class="ghost-btn" data-sa-act="aai" title="바뀐 지침만 무료 AI(제미니)에게 — 비용 0원, 최대 3분. 무료 한도를 넘으면 유료로 바꾸지 않고 다음 밤으로">🤖 무료 AI 점검 지금</button>'
-      + (law ? '<button type="button" class="ghost-btn" data-sa-act="apaid" title="무료 AI가 세법 판단이 필요하다고 표시한 항목과 그 파일만 유료 AI(Sonnet)에게 — 비용 발생">🧾 판단 필요 ' + law + '건만 유료 점검</button>' : '')
+      + '<button type="button" class="ghost-btn" data-sa-act="arun" title="AI 없이 규칙으로만 — 비용 0원, 1분 안팎">규칙 점검</button>'
+      + '<button type="button" class="ghost-btn" data-sa-act="aai" title="바뀐 지침만 무료 AI(제미니)에게 — 비용 0원, 최대 3분. 무료 한도를 넘으면 유료로 바꾸지 않고 다음 밤으로">무료 AI 점검</button>'
+      + (law ? '<button type="button" class="ghost-btn" data-sa-act="apaid" title="무료 AI가 세법 판단이 필요하다고 표시한 항목과 그 파일만 유료 AI(Sonnet)에게 — 비용 발생">판단 필요 ' + law + '건만 유료 점검</button>' : '')
       + '</div>';
   }
   function saAuditHtml_(res){
@@ -325,8 +325,8 @@
     ov.className = 'modal-overlay';
     ov.innerHTML = '<div class="modal-panel sa-view-panel">'
       + '<div class="modal-head"><span>' + saEsc_(name) + (line ? ' — ' + line + '줄' : '') + '</span><span class="modal-close" data-sa-v="close" title="닫기">✕</span></div>'
-      + '<div class="sa-view-bar"><button type="button" class="save-btn" data-sa-v="edit">✏ 문서작성에서 편집</button>'
-      + '<span class="sa-view-note">점검이 짚은 줄을 노랗게 표시했습니다. 고친 뒤 🔎 지금 규칙 점검(0원)으로 다시 확인하세요.</span></div>'
+      + '<div class="sa-view-bar"><button type="button" class="save-btn" data-sa-v="edit">문서작성에서 편집</button>'
+      + '<span class="sa-view-note">점검이 짚은 줄을 노랗게 표시했습니다. 고친 뒤 🔎 규칙 점검으로 다시 확인하세요.</span></div>'
       + '<div class="sa-view-body" id="saViewBody"><div class="settings-tool-desc" style="padding:14px;">불러오는 중…</div></div></div>';
     document.body.appendChild(ov);
     function close(){ document.removeEventListener('keydown', onKey); ov.remove(); }

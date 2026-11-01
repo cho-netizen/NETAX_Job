@@ -6,7 +6,7 @@
          같이 붙여서 카드 하나로 합친다(행 수 절감). -->
     <div class="card">
       <!-- [2026.10.30 예약 결과 관리] 세무사님 "이 목록이 언제까지 누적되는지? … 예약확정후 취소하거나 노쇼가 있을 수 있고, 방문상담하여 사건접수로
-           이어질 수도 있는데, 그런 사항이 관리가 되지 않는다" → 목록을 처리할 것·지난 기록·전체로 나누고(기록은 지우지 않음), 확정 뒤 결과 적기·기존 사건에 연결·연결 확인. -->
+           이어질 수도 있는데, 그런 사항이 관리가 되지 않는다" → 목록을 처리할 것·지난 기록·전체로 나누고(기록은 지우지 않음), 확정 뒤 결과 적기·사건 연결·연결 확인. -->
       <!-- [2026.10.31] 실행 단추(연결 확인·직권등록)는 제목 줄 오른쪽에 함께, 보기 바꾸기(처리할 것·지난 기록·전체)는 공통 하위 탭 — 세무사님 "직권등록버튼만 우측에 동떨어져 있구나" -->
       <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">상담신청 목록
         <span style="margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; font-weight:normal;">
@@ -73,7 +73,7 @@
   }
   function bookingIsTodo_(kind){ return kind !== 'done' && kind !== 'stale'; }
   function bookingBadge_(b){
-    if (b._kind === 'stale') return b.status === '신청' ? '⚪ 지난 신청(처리 안 함)' : '⚪ 지난 예약(결과 안 적음)';
+    if (b._kind === 'stale') return b.status === '신청' ? '⚪ 처리 안 함' : '⚪ 결과 없음';
     if (b.status === '신청') return '🔴 신청';
     if (b.status === '거절') return '🚫 거절';
     if (b.caseId) return '📁 사건접수';
@@ -144,7 +144,7 @@
     }
     // [2026.09 버그수정] 데이터 길이에 맞춰 각 열 폭을 지정한다. 제목칸에도 줄바꿈 금지.
     var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
-    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로. [2026.11.01] 세무사님 "데이타길이에 맞지 않는 필드" — 실제 자료 폭을 재서(일시 101·이름 36·상태 73·예약처리 79·사건처리 245) 일시 115·이름 62·상태 92·예약처리 95·사건처리 265(상황 280은 세무사님 지정 그대로)
+    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "사건 연결"이 붙어 250px로. [2026.11.01] 세무사님 "데이타길이에 맞지 않는 필드" — 실제 자료 폭을 재서(일시 101·이름 36·상태 73·예약처리 79·사건처리 245) 일시 115·이름 62·상태 92·예약처리 95·사건처리 265(상황 280은 세무사님 지정 그대로)
     var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:930px;"><colgroup>'
       + '<col style="width:115px"><col style="width:62px"><col style="width:100px"><col style="width:90px"><col style="width:70px">'
       + '<col style="width:280px"><col style="width:92px"><col style="width:95px"><col style="width:265px">'
@@ -164,11 +164,11 @@
       }
       var caseCell = '-';
       if (b.caseId){
-        caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingGoToCase(\'' + esc(b.caseId) + '\')">🔗 사건 연결됨</button>';
+        caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingGoToCase(\'' + esc(b.caseId) + '\')">사건 연결됨</button>';
       } else if (b.status === '확정'){
         var nC = (b.linkCandidates || []).length;
         caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingStartCase(' + b._rowIndex + ')">사건 시작</button> ' +
-          '<button type="button" class="' + (nC ? 'save-btn' : 'ghost-btn') + '" style="white-space:nowrap;" onclick="bookingOpenLink_(' + b._rowIndex + ')"' + (nC ? ' title="같은 고객으로 만든 사건이 있습니다 — 눌러서 확인"' : '') + '>기존 사건에 연결' + (nC ? ' (후보 ' + nC + ')' : '') + '</button>';
+          '<button type="button" class="' + (nC ? 'save-btn' : 'ghost-btn') + '" style="white-space:nowrap;" onclick="bookingOpenLink_(' + b._rowIndex + ')"' + (nC ? ' title="같은 고객으로 만든 사건이 있습니다 — 눌러서 확인"' : '') + '>사건 연결' + (nC ? ' (후보 ' + nC + ')' : '') + '</button>';
       }
       // [2026.09.16 버그수정(2차)] 각 <td>에 실제 폭(px)을 직접 못박는다(colgroup과 별개인 이중 안전장치).
       var td = function(px, extra){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' + (extra || '') + '"'; };
@@ -311,11 +311,11 @@
     });
   }
 
-  // ---- 기존 사건에 연결(예약 한 줄 → 사건 고르기) ----
+  // ---- 사건 연결(예약 한 줄 → 사건 고르기) ----
   function bookingOpenLink_(rowIndex){
     var b = bookingFind_(rowIndex); if (!b) return;
     window._bkPairs = {};
-    var ov = bookingOpenModal_('기존 사건에 연결 — ' + b.name + '님 ' + b.reservedDate, '<div class="spinner">같은 고객의 사건을 찾는 중…</div>', 560);
+    var ov = bookingOpenModal_('사건 연결 — ' + b.name + '님 ' + b.reservedDate, '<div class="spinner">같은 고객의 사건을 찾는 중…</div>', 560);
     bookingWirePairs_(ov, function(){ setTimeout(bookingCloseModal_, 900); });
     callGas('booking_case_candidates', { rowIndex: rowIndex, expectName: b.name }).then(function(res){
       var body = document.getElementById('bkModalBody'); if (!body) return;

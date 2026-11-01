@@ -84,10 +84,9 @@
 
         <!-- [2026.11.01] 세무사님 "이제 제대로 고민을 했구나 권장안대로 하마"(화면구조_개편안_20261101 2절 ③) — 메뉴를 일의 순서로:
              오늘 → 접수 → 사건 → 고객·돈 → 자료 → 설정. 사건 화면 여덟은 "사건 작업공간" 하나의 탭으로(script.html nxCbInit_), 넥스는 오른쪽 곁 창
-             (넥스 대화는 큰 화면으로 볼 때), 필기메모는 오른쪽 아래 떠 있는 단추로. 옛 메뉴 이름: AI·대시보드·예약관리·작업관리·고객관리·수금관리·처리개요… -->
-        <div class="menu-group-label">오늘</div>
-        <div class="menu-item active" data-view="dashboard">📊 오늘 할 일</div>
-        <div class="menu-item" data-view="ai">🤖 넥스 대화</div>
+             (넥스 대화 메뉴 줄은 11-01 없앰 — 곁 창의 「⤢ 크게」·「⤡ 작게」로 오감), 필기메모는 오른쪽 아래 떠 있는 단추로. 옛 메뉴 이름: AI·대시보드·예약관리·작업관리·고객관리·수금관리·처리개요… -->
+        <!-- [2026.11.01] 세무사님 "오늘 항목에 오늘할일이 들어있는데, 그냥 <오늘>이라고만 하자" — 묶음 이름과 줄 이름이 겹쳐 줄 하나로 -->
+        <div class="menu-item active" data-view="dashboard">📊 오늘</div>
 
         <div class="menu-group-label">접수</div>
         <div class="menu-item" data-view="booking">📅 예약·상담</div>
@@ -95,7 +94,7 @@
 
         <div class="menu-group-label">사건</div>
         <div class="menu-item" data-view="workmanage">📌 사건 목록</div>
-        <div class="menu-item" data-view="casehandling">🧭 사건 작업공간</div>
+        <div class="menu-item" data-view="casehandling">🧭 사건 작업</div><!-- [2026.11.01] 세무사님 "<사건 작업공간>을 <사건 작업>으로" -->
 
         <div class="menu-group-label">고객·돈</div>
         <div class="menu-item" data-view="clientmanage">🙋 고객</div>
@@ -122,7 +121,7 @@
           <span class="cb-pick"><label class="cb-live"><input type="checkbox" id="cbLiveOnly" checked> 진행</label><input type="search" id="cbFind" placeholder="사건 찾기"><select id="cbCaseSelect" title="사건 바꾸기"><option value="">사건 고르기…</option></select></span>
         </div>
         <div class="cb-strip-host"></div>
-        <div class="cb-tabs" role="tablist"></div>
+        <div class="cb-tabs nx-tabbar" role="tablist"></div>
       </div>
       <!-- [2026.10.08] AI탭 — aichat.html의 AI 화면(#nxAi)이 이 메뉴를 열면 여기로, 다른 메뉴에선 오른쪽 사이드바로 옮겨간다 -->
       <div class="view" id="view-ai"><div id="nxAiTabHost"></div></div>
@@ -160,11 +159,11 @@
             <button type="button" class="taxcalc-tab active" data-tab="transfer">양도소득세</button>
             <button type="button" class="taxcalc-tab" data-tab="gift">증여세</button>
             <button type="button" class="taxcalc-tab" data-tab="inheritance">상속세</button>
-            <button type="button" class="taxcalc-tab" data-tab="giftinheritanceshared">증여·상속 공통</button>
+            <button type="button" class="taxcalc-tab" data-tab="giftinheritanceshared">공통</button>
             <button type="button" class="taxcalc-tab" data-tab="acquisition">취득세</button>
             <button type="button" class="taxcalc-tab" data-tab="registrationlicense">등록면허세</button>
             <!-- [2026.10.22] 원본 서류 나란히(기기 3종 2차 #8) — 태블릿·PC에서 계산기 옆에 이 사건 폴더의 증빙 원본을 띄워 칸과 대조 -->
-            <button type="button" id="tcDocPaneBtn" class="ghost-btn" style="margin-left:auto; align-self:center;" title="이 사건 폴더의 원본 서류를 계산기 옆에 띄웁니다">📄 원본 나란히</button>
+            <button type="button" id="tcDocPaneBtn" class="ghost-btn" style="margin-left:auto; align-self:center;" title="이 사건 폴더의 원본 서류를 계산기 옆에 띄웁니다">원본 나란히</button>
           </div>
           <div class="taxcalc-body">
             <div id="taxCalcTransferPane" class="taxcalc-pane"></div>

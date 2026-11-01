@@ -16,9 +16,9 @@
   <div id="rhPaneCollect" class="rh-pane">
     <div class="memo-toolbar tb-row" style="border-top:none;">
       <!-- [2026.10.31] 세무사님 "검색란이 너무 넓다(화면에 보이는 란은 작아도 … 충분히 받아들이면)" · "버튼들이 유효한 버튼인지 위치가 맞는지 검토" — 검색칸은 작게(글자는 얼마든지 들어감),
-           한 번 쓰고 마는 정비 단추(파일명 정비·보고서템플릿 이름 정리·전체 다시 훑기)는 설정 › 정비도구로 옮김 -->
+           한 번 쓰고 마는 정비 단추(파일명 정비·템플릿 이름·전체 다시 훑기)는 설정 › 정비도구로 옮김 -->
       <input type="text" id="rhSearchInput" class="nx-find" placeholder="찾기" title="고객명·사건명·파일명으로 찾기">
-      <button type="button" id="rhRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
+      <button type="button" id="rhRefreshBtn" class="ghost-btn"><span class="btn-tx">새로고침</span></button>
     </div>
     <div id="rhFileListWrap" style="flex:1; overflow-y:auto; padding:0 4px;">
       <div class="spinner">불러오는 중…</div>
@@ -28,8 +28,8 @@
   <!-- 템플릿다듬기 -->
   <div id="rhPaneTemplate" class="rh-pane" style="display:none;">
     <div class="memo-toolbar tb-row" style="border-top:none;">
-      <span style="font-size:12.5px; color:var(--sub); flex:1;">템플릿 점검 결과입니다(AI 비용 절약을 위해 매일 밤 자동 실행은 멈췄습니다 — 필요할 때 오른쪽 버튼으로 점검). 실제 사건에서 쓰인 보고서 사본들을 원본 템플릿과 비교해 공통으로 추가된 항목·안 채워지는 항목을 찾아줍니다.</span>
-      <button type="button" id="rhRunTemplateBtn" class="ghost-btn"><span class="btn-tx">🛠 지금 다시 점검하기</span></button>
+      <span class="nx-help" style="font-size:12.5px; color:var(--sub); flex:1;">템플릿 점검 결과입니다(AI 비용 절약을 위해 매일 밤 자동 실행은 멈췄습니다 — 필요할 때 오른쪽 버튼으로 점검). 실제 사건에서 쓰인 보고서 사본들을 원본 템플릿과 비교해 공통으로 추가된 항목·안 채워지는 항목을 찾아줍니다.</span>
+      <button type="button" id="rhRunTemplateBtn" class="ghost-btn"><span class="btn-tx">다시 점검</span></button>
     </div>
     <div id="rhTemplateResult" style="flex:1; overflow-y:auto; padding:16px; white-space:pre-wrap; font-size:13.5px; line-height:1.6;">
       <div class="spinner">불러오는 중…</div>
@@ -46,22 +46,22 @@
         <option value="google_blog">구글 블로그(긴 글)</option>
         <option value="google_news">구글 비즈니스 소식(짧게)</option>
       </select>
-      <button type="button" id="rhGenerateContentBtn" class="save-btn"><span class="btn-tx">✏ 글감 만들기</span></button>
+      <button type="button" id="rhGenerateContentBtn" class="save-btn"><span class="btn-tx">글감 만들기</span></button>
     </div>
     <div id="rhContentResultWrap" style="flex:1; overflow-y:auto; padding:16px; display:none;">
       <div style="display:flex; justify-content:flex-end; gap:6px; margin-bottom:8px;">
-        <button type="button" id="rhNaverConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">🔗 네이버 연동하기</span></button>
-        <button type="button" id="rhNaverPostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">📤 네이버 블로그에 올리기</span></button>
+        <button type="button" id="rhNaverConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">네이버 연동하기</span></button>
+        <button type="button" id="rhNaverPostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">네이버 블로그에 올리기</span></button>
         <button type="button" id="rhGoogleConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">구글 블로그 연동하기</span></button>
-        <button type="button" id="rhGooglePostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">📤 구글 블로그에 올리기</span></button>
+        <button type="button" id="rhGooglePostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">구글 블로그에 올리기</span></button>
         <button type="button" id="rhGoogleBizConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">구글 비즈니스 연동하기</span></button>
-        <button type="button" id="rhGoogleBizPostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">📤 구글 비즈니스에 올리기</span></button>
-        <button type="button" id="rhCopyContentBtn" class="ghost-btn"><span class="btn-tx">📋 복사</span></button>
+        <button type="button" id="rhGoogleBizPostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">구글 비즈니스에 올리기</span></button>
+        <button type="button" id="rhCopyContentBtn" class="ghost-btn"><span class="btn-tx">복사</span></button>
       </div>
       <div id="rhTitleCardWrap" style="display:none; margin-bottom:14px; padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2, #f7f7f8);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <span style="font-size:12.5px; color:var(--sub);">🖼 대표이미지(자동 생성) — 블로그에 올릴 때 함께 등록됩니다</span>
-          <button type="button" id="rhTitleCardRegenBtn" class="ghost-btn"><span class="btn-tx">🔄 다시 만들기</span></button>
+          <button type="button" id="rhTitleCardRegenBtn" class="ghost-btn"><span class="btn-tx">다시 만들기</span></button>
         </div>
         <div id="rhTitleCardImgBox" style="display:flex; justify-content:center;">
           <img id="rhTitleCardImg" style="max-width:280px; width:100%; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.2);">
@@ -80,10 +80,10 @@
   <div id="rhPaneShorts" class="rh-pane" style="display:none;">
     <div class="memo-toolbar tb-row" style="border-top:none; flex-wrap:wrap;">
       <select id="rhShortsSourceSelect" style="flex:1; min-width:160px;"><option value="">보고서를 골라 쇼츠 대본 만들기</option></select>
-      <button type="button" id="rhShortsMakeBtn" class="save-btn" title="고른 보고서로 순돌이 쇼츠 대본(질문·답·정리, 45~55초)을 만들어 새 편 폴더에 저장 — AI 사용(편당 수십 원)"><span class="btn-tx">🐶 대본 만들기</span></button>
+      <button type="button" id="rhShortsMakeBtn" class="save-btn" title="고른 보고서로 순돌이 쇼츠 대본(질문·답·정리, 45~55초)을 만들어 새 편 폴더에 저장 — AI 사용(편당 수십 원)"><span class="btn-tx">대본 만들기</span></button>
       <button type="button" id="rhShortsNewBtn" class="ghost-btn" title="대본 없이 빈 편 폴더만 만들기"><span class="btn-tx">＋ 빈 편</span></button>
-      <button type="button" id="rhShortsFolderBtn" class="ghost-btn" title="드라이브 쇼츠 폴더 열기"><span class="btn-tx">📂 쇼츠 폴더</span></button>
-      <button type="button" id="rhShortsRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
+      <button type="button" id="rhShortsFolderBtn" class="ghost-btn" title="드라이브 쇼츠 폴더 열기"><span class="btn-tx">쇼츠 폴더</span></button>
+      <button type="button" id="rhShortsRefreshBtn" class="ghost-btn"><span class="btn-tx">새로고침</span></button>
     </div>
     <div id="rhShortsWrap" style="flex:1; overflow-y:auto; padding:12px 16px;">
       <div class="spinner">불러오는 중…</div>
@@ -233,7 +233,7 @@
       overlay.style.display = 'flex';
       overlay.innerHTML =
         '<div class="modal-panel" style="width:min(820px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-          '<div class="modal-head"><span>🧹 보고서 파일명 정비</span><span class="modal-close" id="rhfcClose">✕</span></div>' +
+          '<div class="modal-head"><span>🧹 파일명 정비</span><span class="modal-close" id="rhfcClose">✕</span></div>' +
           '<div class="modal-body" style="overflow-y:auto;">' +
             '<div id="rhfcBody">확인 중… (파일이 많으면 시간이 걸릴 수 있습니다)</div>' +
           '</div>' +
@@ -375,7 +375,7 @@
         var html = '<div style="padding:10px 12px; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">' +
           '<b>🐶 순돌이 기준 그림</b><span style="color:var(--sub); font-size:12.5px;">' + (ref && ref.images.length ? ref.images.length + '장 — 모든 편에 같은 그림을 쓰고 클립보드 글자만 바꿉니다' : '아직 없음 — 순돌이 원본 그림을 올려 주세요') + '</span>' +
           '<span style="flex:1;"></span>' +
-          (ref ? '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + ref.folderId + '" data-kind="그림"><span class="btn-tx">⬆ 그림 올리기</span></button> <a class="ghost-btn" href="' + ref.url + '" target="_blank" rel="noopener">📂 열기</a>' : '') +
+          (ref ? '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + ref.folderId + '" data-kind="그림"><span class="btn-tx">그림 올리기</span></button> <a class="ghost-btn" href="' + ref.url + '" target="_blank" rel="noopener">📂 열기</a>' : '') +
           '</div>';
         if (res.docs && res.docs.length) html += '<div style="margin-bottom:10px; font-size:12.5px; color:var(--sub);">📄 공통 문서: ' + res.docs.map(function(d){ return '<a href="' + rhShortsDriveFile_(d.id) + '" target="_blank" rel="noopener">' + esc(d.name) + '</a>'; }).join(' · ') + '</div>';
         if (!res.episodes.length) html += '<div class="empty-row">아직 편이 없습니다. 위에서 보고서를 골라 "🐶 대본 만들기"를 누르거나 "＋ 빈 편"으로 시작하세요.</div>';
@@ -387,8 +387,8 @@
               '<td style="white-space:nowrap; font-size:12.5px;">' + esc(e.단계) + (e.게시 ? ' · <a href="' + esc(e.게시) + '" target="_blank" rel="noopener">보기</a>' : '') + '</td>' +
               '<td style="white-space:nowrap;">' +
               (e.대본 ? '<a class="ghost-btn" href="' + rhShortsDriveFile_(e.대본.id) + '" target="_blank" rel="noopener">📝 대본</a> ' : '') +
-              '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + e.folderId + '" data-kind="녹음·영상"><span class="btn-tx">⬆ 녹음·영상</span></button> ' +
-              '<button type="button" class="ghost-btn rhShortsPost" data-folder="' + e.folderId + '"><span class="btn-tx">🔗 게시 링크</span></button> ' +
+              '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + e.folderId + '" data-kind="녹음·영상"><span class="btn-tx">녹음·영상</span></button> ' +
+              '<button type="button" class="ghost-btn rhShortsPost" data-folder="' + e.folderId + '"><span class="btn-tx">게시 링크</span></button> ' +
               '<a class="ghost-btn" href="' + e.url + '" target="_blank" rel="noopener">📂</a></td></tr>';
           });
           html += '</table>';

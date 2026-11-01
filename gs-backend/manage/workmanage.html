@@ -910,7 +910,7 @@
     var tree = document.getElementById('wcTree');
     if (tree) { renderWorkTree(existing.하위업무 || [], tree, existing.id, 0); if (typeof enhanceDateInputs === 'function') enhanceDateInputs(tree); }
     var toggle = document.getElementById('wcAddRootToggle');
-    if (toggle) toggle.textContent = '➕ 하위업무 ' + workProgress(existing).done + ' / ' + workProgress(existing).total;
+    if (toggle) toggle.textContent = '하위업무 ' + workProgress(existing).done + ' / ' + workProgress(existing).total;
     if (warning) showToast(warning, 'warning');
   }
 

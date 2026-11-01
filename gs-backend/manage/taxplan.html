@@ -18,6 +18,7 @@
   #view-taxplan .tp-grid label.tp-check{ flex-direction:row; align-items:center; gap:6px; }
   #view-taxplan .tp-grid input[type=text], #view-taxplan .tp-grid select{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:5px 7px; font:inherit; background:var(--panel); color:var(--ink); }
   #view-taxplan .tp-grid input.tp-num{ text-align:right; }
+  #view-taxplan .tp-grid label > input, #view-taxplan .tp-grid label > select{ align-self:flex-start; max-width:100%; } /* [2026.11.01] 칸 폭은 자료 길이만큼(늘이지 않음) */
   #view-taxplan .tp-sub{ margin:16px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); } /* [2026.10.31] 3단계 묶음 모양 */
   #view-taxplan .tp-src{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; background:var(--taxcalc-info-bg, #e7eef6); color:var(--taxcalc-info, #0D1B3D); border-radius:4px; padding:6px 10px; margin-bottom:10px; font-size:12px; }
   #view-taxplan .tp-btn{ background:var(--navy); color:#fff; border:none; border-radius:6px; padding:7px 14px; font:inherit; font-size:12.5px; font-weight:700; line-height:1.2; cursor:pointer; } /* [2026.10.31] 공통 기본 단추(30px)와 같은 크기 */
@@ -461,7 +462,9 @@
     if (opt.type === 'select') return '<label>' + esc_(label) + '<select data-tp-field="' + id + '">' + opt.options.map(function(o){ return '<option value="' + esc_(o[0]) + '"' + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc_(o[1]) + '</option>'; }).join('') + '</select>' + (opt.from ? '<span class="tp-hint">' + esc_(opt.from) + '</span>' : '') + '</label>';
     var isNum = opt.type === 'num';
     var shown = isNum && val !== '' && !isNaN(num_(val)) && num_(val) > 0 ? won_(num_(val)) : val;
-    return '<label>' + esc_(label) + '<input type="text" data-tp-field="' + id + '"' + (isNum ? ' class="tp-num" inputmode="numeric"' : '') + ' value="' + esc_(shown) + '"' + (opt.ph ? ' placeholder="' + esc_(opt.ph) + '"' : '') + '>' + (opt.from ? '<span class="tp-hint" style="font-size:11px;">' + esc_(opt.from) + '</span>' : '') + '</label>';
+    // [2026.11.01] 세무사님 "입력란을 데이터 입력길이 이내로" — 날짜(2026-09-01)·분수(3/7)처럼 견본이 짧은 칸은 견본 길이만큼
+    var shortW = !isNum && opt.ph && opt.ph.length <= 10 ? ' style="width:' + (opt.ph.length + 3) + 'ch;"' : '';
+    return '<label>' + esc_(label) + '<input type="text" data-tp-field="' + id + '"' + (isNum ? ' class="tp-num" inputmode="numeric"' : '') + shortW + ' value="' + esc_(shown) + '"' + (opt.ph ? ' placeholder="' + esc_(opt.ph) + '"' : '') + '>' + (opt.from ? '<span class="tp-hint" style="font-size:11px;">' + esc_(opt.from) + '</span>' : '') + '</label>';
   };
   var RELATION_OPTS_ = [['직계존속', '부모·조부모가 줌'], ['배우자', '배우자가 줌'], ['직계비속', '자녀·손자녀가 줌'], ['기타친족', '그 밖의 친족(4촌 혈족·3촌 인척)이 줌'], ['', '친족 아님']];
   var ASSET_OPTS_ = [['other', '토지·건물(주택 아님)'], ['house', '주택']];
@@ -471,8 +474,8 @@
     var b = base_[which];
     if (b) return '<div class="tp-src"><span>' + (note ? esc_(note) : '세액계산 ' + esc_(tabLabel) + ' 탭에서 마지막으로 계산한 값을 바탕으로 합니다 — 그 탭의 다른 칸(공제·사전증여·감면 요건 등)은 그대로 쓰고 아래 칸만 바꿔 넣습니다.') + '</span><button type="button" class="tp-btn ghost" data-tp-action="unload" data-tp-which="' + which + '">불러온 값 빼고 이 칸만으로</button></div>';
     var has = which === 'inh' ? !!window.tcLastInheritanceInput_ : which === 'tr' ? !!(window.tcLastTransferInputs_ && window.tcLastTransferInputs_.inputs && window.tcLastTransferInputs_.inputs.length) : !!(window.tcLastGiftInputs_ && window.tcLastGiftInputs_.length);
-    return '<div class="tp-src"><span>' + (has ? '세액계산 ' + esc_(tabLabel) + ' 탭에서 계산한 값이 있습니다.' : '사건 없이 이 칸만으로 계산합니다(상담용). 사건 값으로 하려면 세액계산 ' + esc_(tabLabel) + ' 탭에서 [계산]을 한 번 누른 뒤 불러오세요.') + '</span>' +
-      (has ? '<button type="button" class="tp-btn ghost" data-tp-action="load" data-tp-which="' + which + '">그 값 불러오기</button>' : '<button type="button" class="tp-btn ghost" data-tp-action="goto" data-tp-tab="' + (which === 'inh' ? 'inheritance' : which === 'tr' ? 'transfer' : 'gift') + '">세액계산 ' + esc_(tabLabel) + ' 탭 열기</button>') + '</div>';
+    return '<div class="tp-src"><span' + (has ? '>세액계산 ' + esc_(tabLabel) + ' 값 있음' : ' title="사건 값으로 하려면 세액계산 ' + esc_(tabLabel) + ' 탭에서 [계산]을 한 번 누른 뒤 불러오세요.">칸 값만으로 계산(상담용)') + '</span>' +
+      (has ? '<button type="button" class="tp-btn ghost" data-tp-action="load" data-tp-which="' + which + '">그 값 불러오기</button>' : '<button type="button" class="tp-btn ghost" data-tp-action="goto" data-tp-tab="' + (which === 'inh' ? 'inheritance' : which === 'tr' ? 'transfer' : 'gift') + '">' + esc_(tabLabel) + ' 계산 열기</button>') + '</div>';
   }
   var fromTag_ = function(which){ return base_[which] ? '세액계산에서 불러옴' : ''; };
 
@@ -481,7 +484,7 @@
     if (kind_ === 'spouse' || kind_ === 'valuation'){
       var f = fromTag_('inh');
       h += sourceBar_('inh', '상속세');
-      h += '<div class="tp-card"><h3>' + (kind_ === 'spouse' ? '<small>배우자 몫을 바꿔 1차 상속세와 2차 상속세(가정) 합계를 나란히 봅니다</small>' : '<small>부동산을 기준시가로 신고할 때와 감정가로 신고할 때, 상속세와 나중 양도세 합계를 봅니다</small>') + '</h3><div class="tp-grid">' +
+      h += '<div class="tp-card"><h3>' + (kind_ === 'spouse' ? '<small>배우자 몫 비교</small>' : '<small>부동산을 기준시가로 신고할 때와 감정가로 신고할 때, 상속세와 나중 양도세 합계를 봅니다</small>') + '</h3><div class="tp-grid">' +
         field_('ihDate', '상속개시일', { ph: '2026-09-01', from: f }) +
         field_('ihEstate', '상속세 과세가액(원)', { type: 'num', from: f || '총상속재산에서 공과금·채무를 빼고 10년 내 사전증여를 더한 값(장례비는 빼지 않음)' }) +
         (f ? '' : field_('ihFuneral', '장례비용(원)', { type: 'num', from: '비우면 최소 500만원 공제' })) +
@@ -1049,8 +1052,8 @@
     // 제목은 문서 첫 줄(# 제목)이 보여 주므로 이 줄엔 다시 쓰지 않는다(시각적 중복). 고치는 중일 때만 파일 이름을 보인다.
     var head = '<div class="tpi-bar"><span class="tpi-note">' + esc_(cur_.group) + (editing_ ? ' · ' + esc_(title_(cur_.name)) : '') + '</span>' +
       '<span style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">' +
-      (editing_ ? '<button type="button" class="tp-btn" data-tpi-act="save">💾 저장</button><button type="button" class="tp-btn ghost" data-tpi-act="cancel">취소</button>'
-        : '<span id="tpiCalcBtn"></span><button type="button" class="tp-btn ghost" data-tpi-act="win">↗ 새 창</button><button type="button" class="tp-btn ghost" data-tpi-act="edit">✏ 고치기</button>') +
+      (editing_ ? '<button type="button" class="tp-btn" data-tpi-act="save">저장</button><button type="button" class="tp-btn ghost" data-tpi-act="cancel">취소</button>'
+        : '<span id="tpiCalcBtn"></span><button type="button" class="tp-btn ghost" data-tpi-act="win">새 창</button><button type="button" class="tp-btn ghost" data-tpi-act="edit">고치기</button>') +
       '</span></div>';
     if (!Object.prototype.hasOwnProperty.call(cache_, cur_.id)){
       box.innerHTML = head + '<div class="tpi-note">읽는 중…</div>';
@@ -1074,7 +1077,7 @@
       // [2026.10.22] 개정 때문이면 그 자리에서 확인 결론을 기록(🧭 📚 "확인할 법령 개정"과 같은 기록 — 한 번 누르면 그 조문을 인용한 지침·템플릿·아이템 전부에 적용)
       var lawBtns = (cu && cu.법령 || []).map(function(v, i){
         return '<div class="tpi-note" style="margin:3px 0;">' + esc_(v.법령 + ' §' + v.jo + ' ' + v.시행일 + (v.구분 === '시행예정' ? ' 시행 예정' : ' 시행')) + (v.확인 === '있음' ? ' — 확인: 실질 변경 있음' : '') +
-          ' <button type="button" class="tp-btn ghost" data-tpi-law="' + i + '" data-v="없음">✔ 실질 변경 없음</button> <button type="button" class="tp-btn ghost" data-tpi-law="' + i + '" data-v="있음">⚠ 실질 변경 있음</button></div>';
+          ' <button type="button" class="tp-btn ghost" data-tpi-law="' + i + '" data-v="없음">실질 변경 없음</button> <button type="button" class="tp-btn ghost" data-tpi-law="' + i + '" data-v="있음">⚠ 실질 변경 있음</button></div>';
       }).join('');
       if (cu) info += '<div class="tpi-curbox"><b>⚠ 현행화 필요</b><ul>' + cu.이유.map(function(r){ return '<li>' + esc_(r) + '</li>'; }).join('') + '</ul>' + lawBtns +
         '<div class="tpi-note">넥스는 이 아이템을 인용할 때 이 사실을 함께 말합니다. 개정 때문이면 원문을 대조해 위 버튼으로 결론을 한 번 기록하면 그 조문을 인용한 지침·템플릿·아이템 전부에 적용됩니다(🧭 시스템 관리 "⚖ 확인할 법령 개정"과 같은 기록). 내용을 고쳤으면 ✏ 고치기로 머리 줄에 "&gt; 기준일: 고친 날짜"를 적고 💾 저장하면 다음 ↻ 새로 읽기부터 풀립니다.</div></div>';
@@ -1082,7 +1085,7 @@
     box.innerHTML = head + info + '<div id="tpiMd"></div>';
     var m = meta_(src), key = String(m['비교 계산'] || '').trim();
     if (key && typeof window.nxTaxPlanGoCalc_ === 'function'){
-      document.getElementById('tpiCalcBtn').innerHTML = '<button type="button" class="tp-btn ghost" data-tpi-act="calc" data-tpi-key="' + esc_(key) + '">🧮 이 내용으로 비교 계산</button>';
+      document.getElementById('tpiCalcBtn').innerHTML = '<button type="button" class="tp-btn ghost" data-tpi-act="calc" data-tpi-key="' + esc_(key) + '">이 내용으로 비교 계산</button>';
     }
     var out = document.getElementById('tpiMd');
     if (typeof nxMdRender === 'function') nxMdRender(out, src, { theme: 'memo', rich: true, outline: false, extraClass: 'nx-md-view' });
@@ -1096,11 +1099,11 @@
     p.innerHTML =
       '<div class="tpi-bar">' +
         '<input type="search" id="tpiQuery" placeholder="찾을 말(예: 부담부증여, 국외, 이월과세)" value="' + esc_(query_) + '">' +
-        '<button type="button" class="tp-btn ghost" data-tpi-act="reload">↻ 새로 읽기</button>' +
+        '<button type="button" class="tp-btn ghost" data-tpi-act="reload">↻ 새로</button>' +
         (rootUrl_ ? '<a class="tp-btn ghost" style="text-decoration:none;" href="' + esc_(rootUrl_) + '" target="_blank" rel="noopener noreferrer">📂 드라이브 폴더</a>' : '') +
         '<span class="tpi-note" id="tpiFill"></span>' +
       '</div>' +
-      '<div class="nx-tabbar sub" style="margin:0 0 10px;">' + [''].concat(names).map(function(nm){ return '<button type="button" class="nx-tab' + (group_ === nm ? ' on' : '') + '" data-tpi-g="' + esc_(nm) + '">' + esc_(nm || '전체') + ' ' + countOf_(nm) + '</button>'; }).join('') + '</div>' +
+      '<div class="nx-tabbar sub" style="margin:0 0 10px;">' + [''].concat(names).map(function(nm){ return '<button type="button" class="nx-tab' + (group_ === nm ? ' on' : '') + '" data-tpi-g="' + esc_(nm) + '">' + esc_(nm || '전체') + (countOf_(nm) ? ' <span class="nx-n">' + countOf_(nm) + '</span>' : '') + '</button>'; }).join('') + '</div>' +
       '<div class="tp-kinds">' + [''].concat(KINDS_).map(function(k){ return '<button type="button" class="tp-chip' + (kind_ === k ? ' on' : '') + '" data-tpi-k="' + esc_(k) + '">' + esc_(k || '모든 종류') + '</button>'; }).join('') +
         (curCount_() || curOnly_ ? '<button type="button" class="tp-chip tpi-curchip' + (curOnly_ ? ' on' : '') + '" data-tpi-cur="1" title="인용 조문 개정·본문 날짜 지남·개편안·기준일 1년 넘음 — 밤마다 판정">⚠ 현행화 필요 ' + curCount_() + '</button>' : '') +
         '<span class="tpi-note" style="align-self:center;">결정은 세무사님 — 계산은 비교 계산 탭과 세액계산에서</span></div>' +

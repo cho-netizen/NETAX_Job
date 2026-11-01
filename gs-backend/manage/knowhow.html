@@ -75,7 +75,7 @@
     pend.forEach(function(p, i){
       html += '<div class="kh-row"><span class="kh-badge ' + (KH_ACT_[p.작업] || '') + '">' + esc_(p.작업) + '</span><span class="kh-t">' + esc_(p.종류) + ' · ' + esc_(String(p.대상 || '').replace(/\.(md|txt)$/i, '')) + '</span>'
         + '<div>' + esc_(p.이유 || '') + '</div><div class="kh-m">' + esc_(p.at || '') + ' · ' + esc_(p.출처 || '') + ' · ' + esc_(p.id) + '</div>'
-        + '<div class="kh-btns"><button type="button" class="save-btn" data-kh="open" data-i="' + i + '">👁 보기·차이 → 결정</button></div></div>';
+        + '<div class="kh-btns"><button type="button" class="save-btn" data-kh="open" data-i="' + i + '">보기·차이 → 결정</button></div></div>';
     });
     if ((st.decisions || []).length) {
       html += '<details style="margin-top:6px;"><summary class="nx-l4">최근 결정 ' + st.decisions.length + '건</summary>';
@@ -95,7 +95,7 @@
           + '<span class="kh-t">' + esc_(v.법령) + ' §' + esc_(v.jo) + (v.제목 ? ' ' + esc_(v.제목) : '') + '</span>'
           + '<div class="kh-m">' + esc_(v.시행일) + (v.구분 === '시행예정' ? ' 시행 예정' : ' 시행') + ' · 감지 ' + esc_(v.감지일 || '') + ' · 걸린 지침·템플릿 ' + v.문서.length + '개 · 절세 아이템 ' + v.절세 + '개' + (v.확인 ? ' · 확인 ' + esc_(String(v.확인.at || '').slice(0, 10)) + (v.확인.메모 ? ' — ' + esc_(v.확인.메모) : '') : '') + '</div>'
           + (v.문서.length ? '<details><summary class="kh-m" style="cursor:pointer;">걸린 파일 보기</summary><div class="kh-m">' + v.문서.map(esc_).join(' · ') + '</div></details>' : '')
-          + '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="없음">✔ 실질 변경 없음</button><button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="있음">⚠ 실질 변경 있음</button>'
+          + '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="없음">실질 변경 없음</button><button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="있음">⚠ 실질 변경 있음</button>'
           + (v.확인 ? '<button type="button" class="ghost-btn" data-kh="law" data-i="' + i + '" data-v="">기록 지우기</button>' : '') + '</div></div>';
       });
       html += '</div></details>';
@@ -115,7 +115,7 @@
         + '<div>확인조치사항: ' + esc_(c.항목) + ' <span class="kh-m">(' + esc_(c.절 || '') + ' · ' + c.확인조치줄 + '줄)</span></div>'
         + '<div class="kh-m">' + esc_(c.찾은방법) + ' · 쟁점 낱말: ' + esc_((c.쟁점낱말 || []).join(', ')) + '</div><ul>'
         + c.줄들.map(function(x){ return '<li>' + x.줄 + '줄 ' + esc_(x.표시) + ' — ' + esc_(x.글) + ' <span class="kh-m">(맞은 낱말 ' + esc_(x.낱말.join(', ')) + ')</span></li>'; }).join('') + '</ul>'
-        + '<div class="kh-btns">' + (c.fileId ? '<button type="button" class="ghost-btn" data-kh="clsview" data-i="' + i + '">👁 이 파일 보기</button>' : '') + (cl.확인조치fileId ? '<button type="button" class="ghost-btn" data-kh="clsfollow">📋 확인조치사항 보기</button>' : '') + '</div></div>';
+        + '<div class="kh-btns">' + (c.fileId ? '<button type="button" class="ghost-btn" data-kh="clsview" data-i="' + i + '">이 파일 보기</button>' : '') + (cl.확인조치fileId ? '<button type="button" class="ghost-btn" data-kh="clsfollow">확인조치사항 보기</button>' : '') + '</div></div>';
     });
     html += '<div class="kh-btns"><button type="button" class="ghost-btn sm" data-kh="clsrun">지금 다시 검사(0원)</button></div></div></details>';
 
@@ -137,7 +137,7 @@
         + (f.tags && f.tags.length ? ' <span class="kh-m">(' + esc_(f.tags.join(' · ')) + ')</span>' : '')
         + '<div class="kh-m">고친 날 ' + esc_(String(f.modified || '').slice(0, 10)) + ' · ' + (f.kind === '지침' ? '읽힘 ' : '쓰임 ') + Number(f.uses && f.uses.n || 0) + '회' + (f.uses && f.uses.last ? '(마지막 ' + esc_(f.uses.last) + ')' : '') + '</div>';
       if (f.reasons && f.reasons.length) html += '<ul>' + f.reasons.map(function(x){ return '<li>' + ((x.type ? '<b>' + esc_(x.type) + '</b> · ' : '')) + esc_(x.why) + (x.detail && x.detail.length && x.type === '수정' && /자기점검/.test(x.why) ? '<div class="kh-m">' + x.detail.map(esc_).join('<br>') + '</div>' : '') + '</li>'; }).join('') + '</ul>';
-      if (f.fileId) html += '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="viewfile" data-i="' + idx + '">👁 보기</button><button type="button" class="ghost-btn" data-kh="editfile" data-i="' + idx + '">✏ 문서작성에서 편집</button></div>';
+      if (f.fileId) html += '<div class="kh-btns"><button type="button" class="ghost-btn" data-kh="viewfile" data-i="' + idx + '">보기</button><button type="button" class="ghost-btn" data-kh="editfile" data-i="' + idx + '">문서작성에서 편집</button></div>';
       html += '</div>';
     });
     html += '</div></details>';
@@ -231,8 +231,8 @@
       if (d.curExists && !isDel) h += '<button type="button" class="nx-tab sub kh-tab" data-t="diff">지금 파일과 차이</button>';
       if (d.curExists) h += '<button type="button" class="nx-tab sub kh-tab" data-t="cur">지금 파일</button>';
       h += '<span style="flex:1 1 20px;"></span>';
-      if (isDel) h += '<button type="button" class="save-btn" data-khv="retire">✅ 폐기(「_폐기」로 옮김)</button><button type="button" class="ghost-btn" data-khv="keep">✖ 유지</button>';
-      else h += '<button type="button" class="save-btn" data-khv="adopt">✅ 채택</button>' + (d.fileId ? '<button type="button" class="ghost-btn" data-khv="edit">✏ 문서작성에서 고쳐서 채택</button>' : '') + '<button type="button" class="ghost-btn" data-khv="reject">✖ 반려</button>';
+      if (isDel) h += '<button type="button" class="save-btn" data-khv="retire">폐기(「_폐기」로 옮김)</button><button type="button" class="ghost-btn" data-khv="keep">유지</button>';
+      else h += '<button type="button" class="save-btn" data-khv="adopt">채택</button>' + (d.fileId ? '<button type="button" class="ghost-btn" data-khv="edit">문서작성에서 고쳐서 채택</button>' : '') + '<button type="button" class="ghost-btn" data-khv="reject">반려</button>';
       document.getElementById('khVBar').innerHTML = h;
       var note = esc_(d.이유 || '') + (d.baseChanged ? ' <b style="color:var(--danger);">⚠ 이 초안을 만든 뒤 지금 파일이 바뀌었습니다 — 차이를 꼭 보고 채택하세요(채택하면 지금 파일이 초안으로 바뀌고 지금 판은 「_이전판」에).</b>' : '')
         + (d.propMissing ? ' <b style="color:var(--danger);">⚠ 제안 파일을 찾지 못했습니다.</b>' : '')
