@@ -35,7 +35,7 @@
   <div class="view-head"><h2>법령정보</h2></div>
   <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" — 사건 고르는 줄은 어느 화면이든 제목 줄 바로 아래, 하위 탭 줄 위 -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="lsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+    <select id="lsCaseSelect"><option value="">사건을 선택하세요</option></select>
   </div>
   <div class="lsi-tabs nx-tabbar" style="padding:0 14px; margin:0;">
     <button type="button" class="lsi-tab nx-tab active" data-lsitab="law">법령</button>
@@ -51,7 +51,7 @@
         <h3 style="margin-top:0;">조문으로 찾아보기</h3>
         <div class="nx-help">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-          <select id="lsiArtLaw" style="min-width:200px;" aria-label="법령 고르기"></select>
+          <select id="lsiArtLaw" aria-label="법령 고르기"></select>
           <span>제</span><input type="text" id="lsiArtNo" style="width:80px;" placeholder="예: 24, 97의2" aria-label="조문 번호"><span>조</span>
           <button type="button" class="btn" id="lsiArtGo">보기</button>
         </div>

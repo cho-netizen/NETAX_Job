@@ -349,10 +349,10 @@
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
       '<label>고객명(의뢰인) *<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" size="' + Math.max(String(prefill.고객명 || '').length, 8) + '" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" size="' + Math.max(String(prefill.납세자 || '').length, 8) + '" placeholder="(선택)"></label>' +
-      '<label>세목<br><select id="wcNewSemok" style="width:100%;">' +
+      '<label>세목<br><select id="wcNewSemok">' +
         Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '">' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') +
       '</select></label>' +
-      '<label>업무유형<br><select id="wcNewUptype" style="width:100%;"></select></label>' +
+      '<label>업무유형<br><select id="wcNewUptype"></select></label>' +
       '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
       '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate"></label></div>' +
       '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline"></label>' +

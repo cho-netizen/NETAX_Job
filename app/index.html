@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 09:02 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 10:56 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -389,10 +389,15 @@
   #nxCaseBar[hidden]{ display:none; }
   .card[hidden], .ch-empty-line[hidden]{ display:none !important; } /* [2026.11.01] 빈 카드 숨김(처리개요 빈 카드·대시보드 답하실 것) — .card 자체 display가 hidden을 이기지 않게 */
   /* [2026.11.01] 입력칸은 자료 길이만큼 — 세무사님 "입력란을 데이터 입력길이 이내로 설정하는 것도 선호한다" / "불필요하게 화면을 잡아먹는 것을 나는 너무너무 싫어한다"
-     금액(숫자) 12글자 · 날짜 10글자 · 선택칸은 가장 긴 선택지까지(넘쳐도 360) · 한 줄 글 칸은 420까지(긴 글은 여러 줄 칸). 줄을 꽉 채우던 칸도 이 폭에서 멈춘다 */
+     금액(숫자) 12글자 · 날짜 10글자 · 한 줄 글 칸은 420까지(긴 글은 여러 줄 칸). 줄을 꽉 채우던 칸도 이 폭에서 멈춘다 */
   #centerWork input[inputmode="numeric"], #centerWork input.taxcalc-money{ max-width:12em !important; }
   #centerWork input[type="date"]{ width:9.5em !important; max-width:100%; }
-  #centerWork select{ max-width:min(100%, 360px) !important; }
+  /* [2026.11.02] 고르기 칸은 모든 화면 한 규칙 — 세무사님 "사건개요서내 유형 콤보란의 폭이 왜 그리 넓은가? … 동일유형 전수조사하라" / "당장 고쳐라".
+     예전엔 "가장 긴 선택지만큼"(설명이 든 긴 선택지 때문에 고른 값은 「배우자」인데 칸은 257)·화면마다 따로 준 폭(100%·220~360)이었다.
+     이제 칸 폭 = 고른 값의 글자 길이(field-sizing), 많아도 12글자. 펼친 목록엔 선택지 전체 글이 그대로 보이고, 잘린 값은 손을 대면 전체가 뜬다(script.html).
+     화면마다 적힌 폭은 모두 이 규칙이 이긴다. 사건·법령 이름처럼 값 자체가 긴 고르기만 20글자까지 */
+  select{ field-sizing:content; width:auto !important; min-width:0 !important; max-width:min(100%, 12em) !important; flex:0 0 auto !important; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; }
+  select[id$="CaseSelect"], select[id$="CaseSel"], select[id*="Law"]{ max-width:min(100%, 20em) !important; }
   #centerWork input[type="text"]:not([inputmode]), #centerWork input[type="search"], #centerWork input[type="url"], #centerWork input:not([type]){ max-width:min(100%, 420px) !important; }
   /* [2026.11.01 화면구조 개편 ④] 시험 자료 숨김 체크(고객·넥스 대화 목록) */
   .nx-test-toggle{ display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-sub); color:var(--sub); white-space:nowrap; cursor:pointer; }
@@ -412,7 +417,7 @@
   #nxCaseBar .cb-strip-host .nx-ledger-strip{ margin:6px 0 0 !important; }
   /* [2026.11.01] 세무사님 "사건작업의 1차 하위탭은 개요, 사실... 아닌가? 왜 달리 구현하였지?" — 따로 만든 밑줄 탭을 걷고 공통 하위 탭(nx-tabbar·nx-tab) 모양을 그대로 쓴다. 머리줄 안이라 위 여백만 두고 아래 여백은 없앤다. */
   #nxCaseBar .cb-tabs.nx-tabbar{ margin:6px 0 0; border-bottom:none; }
-  @media (max-width:600px){ #nxCaseBar{ padding:6px 10px 0; } #nxCaseBar .cb-pick{ margin-left:0; width:100%; } #nxCaseBar #cbCaseSelect{ flex:1; max-width:none; } }
+  @media (max-width:600px){ #nxCaseBar{ padding:6px 10px 0; } #nxCaseBar .cb-pick{ margin-left:0; width:100%; } #nxCaseBar #cbCaseSelect{ flex:1 1 0 !important; min-width:0 !important; max-width:none !important; } }
   @media print{ #nxCaseBar{ display:none !important; } body.cb-on #centerWork > .view{ top:0; } }
   /* 작업공간 안에서는 화면마다 따로 있던 사건 고르기·장부 띠·화면 제목을 숨긴다(머리줄이 대신함, 기능은 그대로) */
   body.cb-on #centerWork > .view .nx-ledger-strip,
@@ -994,7 +999,7 @@
      "분양권(§104①1호·2호·3호 — ...)"처럼 긴 옵션이 하나만 있으면 그 옵션 길이만큼
      통째로 넓어져 있었다(실측 607px). 셀렉트만 상한을 둬서 긴 옵션은 그 옵션이 실제
      선택됐을 때만 말줄임(...)되게 한다. */
-  .taxcalc-field select{ max-width:280px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  /* [2026.11.02] 폭 상한은 위 "고르기 칸 한 규칙"(고른 값 길이, 많아도 12글자)으로 옮김 */
   /* [2026.10.08 추가, 재검토127] 위 max-width:280으로는 부족했다 — .taxcalc-field가
      align-items 기본값(stretch)이라, select는 max-width 상한 안에서도 그릴드 칸 폭까지
      계속 늘어나 있었다(그래서 "정상(기한내) 신고"처럼 짧은 보기를 골라도 넓게 보임).
@@ -3039,7 +3044,7 @@ function nxMdOpenWindow(title, src, opts){
       </h3>
       <div class="nx-help">세무사님이 확인·결정하실 일 — 체크·고치기·추가가 원본 파일(_확인조치사항.md)에 바로 저장됩니다.</div>
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
-        <select id="dashFollowSec" style="max-width:100%; min-width:0; flex:0 1 180px;" title="어느 절에 넣을지"></select>
+        <select id="dashFollowSec" style="flex:0 1 180px;" title="어느 절에 넣을지"></select>
         <input type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
       <div id="dashFollowList"><div class="spinner">불러오는 중…</div></div>
@@ -5491,10 +5496,10 @@ function nxMdOpenWindow(title, src, opts){
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
       '<label>고객명(의뢰인) *<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" size="' + Math.max(String(prefill.고객명 || '').length, 8) + '" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" size="' + Math.max(String(prefill.납세자 || '').length, 8) + '" placeholder="(선택)"></label>' +
-      '<label>세목<br><select id="wcNewSemok" style="width:100%;">' +
+      '<label>세목<br><select id="wcNewSemok">' +
         Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '">' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') +
       '</select></label>' +
-      '<label>업무유형<br><select id="wcNewUptype" style="width:100%;"></select></label>' +
+      '<label>업무유형<br><select id="wcNewUptype"></select></label>' +
       '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
       '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate"></label></div>' +
       '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline"></label>' +
@@ -6091,7 +6096,7 @@ function nxMdOpenWindow(title, src, opts){
   <div class="view-head"><h2>처리개요</h2></div>
   <!-- [2026.10.31] 사건 고르는 줄은 어느 화면이든 같은 모양·같은 자리(제목 줄 바로 아래) — 세무사님 "사건콤보라인이 먼저 윗줄에" -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="chCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+    <select id="chCaseSelect"><option value="">사건을 선택하세요</option></select>
   </div>
   <div class="view-body">
     <div id="chBody"></div>
@@ -6300,7 +6305,7 @@ function nxMdOpenWindow(title, src, opts){
       // [2026.10.28] 관계 등 고정 선택지 칸도 같은 원칙 — 저장된 값이 선택지에 없으면(GAS·사이드바가 적은 글이 선택지와 조금 다를 때) 끼워 넣어 보존한다.
       //  예전엔 사건분류만 보존해, 관계 칸은 "선택 안 함"으로 보이다 저장하면 말없이 지워졌다(증여 값이 장부로 이어지면 손대지 않은 칸이 "비움"으로 잡힘)
       if (value && opts.indexOf(value) === -1) opts = opts.concat([value]);
-      return '<select ' + idAttr + ' style="width:auto; max-width:100%; box-sizing:border-box;">' + opts.map(function(opt){ // [2026.11.01] 선택칸은 가장 긴 선택지만큼(세무사님 "입력란을 데이터 입력길이 이내로")
+      return '<select ' + idAttr + ' style="box-sizing:border-box;">' + opts.map(function(opt){ // [2026.11.02] 폭은 style.html 고르기 칸 한 규칙(고른 값 길이, 많아도 12글자)
         return '<option value="' + escapeHtml(opt) + '"' + (opt === (value || '') ? ' selected' : '') + '>' + (opt || '(선택 안 함)') + '</option>';
       }).join('') + '</select>';
     }
@@ -6355,11 +6360,11 @@ function nxMdOpenWindow(title, src, opts){
     return '<div class="chAssetCard" data-idx="' + idx + '" style="grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px 12px; position:relative;">' +
       (showDelete ? '<button type="button" class="chAssetDelBtn ghost-btn sm" data-idx="' + idx + '" style="position:absolute; top:6px; right:6px;" title="이 물건 삭제">✕</button>' : '') +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">자산종류</label>' +
-      '<select class="chAssetField" data-field="assetType" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      '<select class="chAssetField" data-field="assetType" style="box-sizing:border-box;"><option value="">선택</option>' +
       CH_ASSET_TYPE_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetType ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
-      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="box-sizing:border-box;"><option value="">선택</option>' +
       CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
@@ -6369,7 +6374,7 @@ function nxMdOpenWindow(title, src, opts){
       '</div></div>' +
       '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select class="chAssetField" data-field="assetDong" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      '<select class="chAssetField" data-field="assetDong" style="box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
@@ -6609,7 +6614,7 @@ function nxMdOpenWindow(title, src, opts){
     return '<div class="chAssetCard" data-idx="' + idx + '" style="grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px 12px; position:relative;">' +
       (showDelete ? '<button type="button" class="chAssetDelBtn ghost-btn sm" data-idx="' + idx + '" style="position:absolute; top:6px; right:6px;" title="이 물건 삭제">✕</button>' : '') +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
-      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="box-sizing:border-box;"><option value="">선택</option>' +
       CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
@@ -6619,7 +6624,7 @@ function nxMdOpenWindow(title, src, opts){
       '</div></div>' +
       '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select class="chAssetField" data-field="assetDong" style="width:auto; max-width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      '<select class="chAssetField" data-field="assetDong" style="box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
@@ -7809,7 +7814,7 @@ function nxMdOpenWindow(title, src, opts){
       <div class="view" id="view-ledger">
   <div class="view-head"><h2>사건 장부</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="lgCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+    <select id="lgCaseSelect"><option value="">사건을 선택하세요</option></select>
   </div>
   <div style="flex:1 1 auto; overflow-y:auto; padding:10px 14px;">
     <div id="lgEmpty" class="explorer-status">위에서 사건을 고르세요.</div>
@@ -8056,7 +8061,7 @@ function nxMdOpenWindow(title, src, opts){
           h += '</table></div></div>';
         });
         var opts = PATHS.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
-        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select id="chLgPath" style="max-width:360px;">' + opts + '</select><input id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select id="chLgPath">' + opts + '</select><input id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
         h += '<div class="nx-help">세무사님이 넣은 값은 넥스·서류가 바꾸지 못합니다. 모든 고침은 기록(누가·언제·전 값 → 후 값)으로 남고 ↩로 되돌릴 수 있습니다.</div>';
         h += '</div>'; // ④ 칸 장부 끝
         // [2026.10.29 계획서 3판] ⑤ 도구 — 세무사님 원문(10-29) "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐이라고!" /
@@ -8083,8 +8088,8 @@ function nxMdOpenWindow(title, src, opts){
           th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">시험 계산</b> '
             + '<div class="nx-help">지금 장부(정함+추정)로 언제든 계산합니다. 경우 이름과 가정을 붙이면 경우(안)으로 따로 저장하고, 가정은 이번 계산에만 쓰여 장부 값은 그대로입니다. 장부 증여 칸은 한 건이라, 문의마다 다른 증여(배우자에게·자녀에게)는 세목 증여에 증여재산가액·관계를 가정으로 넣어 각각 저장합니다. 상속에서 「이어 계산할 증여」를 고르면 그 증여가 사전증여로 더해지고 증여세 공제 칸에 들어갑니다.</div>'
             + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><select id="chLgTax" title="계산할 세목">' + lgCodes.map(function(t){ return '<option value="' + esc(t) + '">' + esc(LGTX[t] || t) + '</option>'; }).join('') + '</select>'
-            + '<input id="chLgCaseName" type="text" placeholder="경우 이름(비우면 시험 계산)" style="width:220px;"><select id="chLgOverPath" style="max-width:300px;"><option value="">가정 없음</option>' + opts5 + '</select><input id="chLgOverVal" type="text" placeholder="가정 값" style="width:160px;"><button type="button" id="chLgAddOver" class="ghost-btn sm" title="가정을 하나 더 얹습니다">＋ 가정</button>'
-            + '<span id="chLgChainBox" style="display:none; gap:6px; align-items:center;"><select id="chLgChain" title="이어 계산할 증여 저장본" style="max-width:260px;"><option value="">이어 계산할 증여 없음</option>' + giftSaved.map(function(s){ return '<option value="' + esc(s.id) + '">' + esc(s.이름 + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '')) + '</option>'; }).join('') + '</select>'
+            + '<input id="chLgCaseName" type="text" placeholder="경우 이름(비우면 시험 계산)" style="width:220px;"><select id="chLgOverPath"><option value="">가정 없음</option>' + opts5 + '</select><input id="chLgOverVal" type="text" placeholder="가정 값" style="width:160px;"><button type="button" id="chLgAddOver" class="ghost-btn sm" title="가정을 하나 더 얹습니다">＋ 가정</button>'
+            + '<span id="chLgChainBox" style="display:none; gap:6px; align-items:center;"><select id="chLgChain" title="이어 계산할 증여 저장본"><option value="">이어 계산할 증여 없음</option>' + giftSaved.map(function(s){ return '<option value="' + esc(s.id) + '">' + esc(s.이름 + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '')) + '</option>'; }).join('') + '</select>'
             + '<label style="font-size:12px; white-space:nowrap;"><input type="checkbox" id="chLgChainHeir" checked> 받은 사람이 상속인</label><input id="chLgChainShare" type="text" placeholder="그 상속인 상속분(원)" style="width:150px;" title="증여세 공제 한도를 셈하는 데 필요합니다"></span>'
             + '<button type="button" id="chLgTry" class="ghost-btn">계산</button></div><div id="chLgOvers" style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"></div></div>';
           th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">세목 비교</b> <span style="color:var(--sub);">같은 사실로 양도·증여·상속을 각각 계산해 나란히 — 증여는 관계를 고르면(증여재산가액을 비우면 장부 양도가액을 시가로 가정), 상속은 과세가액을 적으면 계산합니다. 결과는 안으로 저장돼 검토서가 인용합니다</span>'
@@ -8320,7 +8325,7 @@ function nxMdOpenWindow(title, src, opts){
         var h = '<div style="font-size:12.5px;">';
         h += '<div><b>지금 정해진 값</b>' + (vals.length ? '<table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:4px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">누가</th><th style="text-align:left;padding:2px 8px;">출처·때</th><th></th></tr>'
           + vals.map(function(v){ return '<tr><td style="padding:2px 8px; border-top:1px solid var(--line);" title="' + esc(v.칸) + '">' + esc(v.이름 || v.칸) + '</td><td style="padding:2px 8px; border-top:1px solid var(--line); max-width:260px; overflow-x:auto;" title="' + esc(v.값) + '">' + esc(v.값) + '</td><td style="padding:2px 8px; border-top:1px solid var(--line);">' + esc(v.누가) + '</td><td style="padding:2px 8px; border-top:1px solid var(--line); max-width:260px; overflow-x:auto;" title="' + esc(v.출처) + '">' + esc(v.출처) + ' ' + esc(v.때) + '</td><td style="padding:2px 4px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-fix-pick="' + esc(v.칸) + '">고치기</button></td></tr>'; }).join('') + '</table>' : ' <span style="color:var(--sub);">아직 정한 값이 없습니다(서류 읽기·칸 채우기를 먼저)</span>') + '</div>';
-        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><select id="chFixTarget" style="max-width:360px;">' + opts + '</select><input id="chFixValue" type="text" placeholder="새 값" style="min-width:220px;"><input id="chFixWhy" type="text" placeholder="이유(선택)" style="min-width:180px;"><button type="button" class="save-btn" id="chFixGo">값 고치기</button></div>';
+        h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><select id="chFixTarget">' + opts + '</select><input id="chFixValue" type="text" placeholder="새 값" style="min-width:220px;"><input id="chFixWhy" type="text" placeholder="이유(선택)" style="min-width:180px;"><button type="button" class="save-btn" id="chFixGo">값 고치기</button></div>';
         h += '<div class="nx-help">고친 값은 사건 기록부에 "누가·언제·어느 칸·전 값 → 후 값"으로 남고, 그 칸이 걸린 남은 질문은 닫힙니다. 고친 뒤 세액계산을 다시 하면 새 값으로 계산됩니다.</div>';
         h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">고침 기록</b>' + (hist.length ? hist.slice().reverse().map(function(x){ var pv = x.prev && x.prev.v != null ? (typeof x.prev.v === 'object' ? JSON.stringify(x.prev.v) : String(x.prev.v)) : '(비어 있음)'; var nv = x.next ? (typeof x.next.v === 'object' ? JSON.stringify(x.next.v) : String(x.next.v)) : ''; return '<div style="margin:3px 0 0 8px;" title="' + esc(x.target) + '">· ' + esc(x.at) + ' ' + esc(x.by) + ' 「' + esc(x.label || x.target) + '」 ' + esc(pv.slice(0, 60)) + ' → ' + esc(nv.slice(0, 60)) + (x.why ? ' (' + esc(x.why) + ')' : '') + (x.undone ? ' <span style="color:var(--sub);">되돌림 ' + esc(x.undone) + '</span>' : ' <button type="button" class="ghost-btn sm" data-fix-undo="' + esc(x.target) + '">되돌리기</button>') + '</div>'; }).join('') : ' <span style="color:var(--sub);">없음</span>') + '</div>';
         if ((r.안 || []).length) h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">경우(안) 계산 저장본</b>' + r.안.map(function(s){ return '<div style="margin:3px 0 0 8px;">· ' + esc(s.이름) + ' — ' + esc(s.세목 || '') + ' ' + (s.최종세액 != null ? Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + ' (' + esc(s.누가 || '') + ' ' + esc(s.때 || '') + ', 저장본 ' + esc(s.id) + ')</div>'; }).join('') + '<div style="color:var(--sub); font-size:11.5px; margin-left:8px;">세액계산 화면에서 입력을 바꿔 계산한 뒤 [📑 안으로 저장]을 누르면 여기 쌓입니다.</div></div>';
@@ -8421,7 +8426,7 @@ function nxMdOpenWindow(title, src, opts){
   <div class="view-head"><h2>법령정보</h2></div>
   <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" — 사건 고르는 줄은 어느 화면이든 제목 줄 바로 아래, 하위 탭 줄 위 -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="lsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+    <select id="lsCaseSelect"><option value="">사건을 선택하세요</option></select>
   </div>
   <div class="lsi-tabs nx-tabbar" style="padding:0 14px; margin:0;">
     <button type="button" class="lsi-tab nx-tab active" data-lsitab="law">법령</button>
@@ -8580,7 +8585,7 @@ function nxMdOpenWindow(title, src, opts){
         <h3 style="margin-top:0;">조문으로 찾아보기</h3>
         <div class="nx-help">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-          <select id="lsiArtLaw" style="min-width:200px;" aria-label="법령 고르기"></select>
+          <select id="lsiArtLaw" aria-label="법령 고르기"></select>
           <span>제</span><input type="text" id="lsiArtNo" style="width:80px;" placeholder="예: 24, 97의2" aria-label="조문 번호"><span>조</span>
           <button type="button" class="btn" id="lsiArtGo">보기</button>
         </div>
@@ -10711,7 +10716,7 @@ function nxMdOpenWindow(title, src, opts){
       '<label>전화번호<br><input type="text" id="ccNewPhone" size="14" placeholder="(선택)"></label>' +
       '<label>추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에 쓰입니다)</label>' +
       ccExtraContactsBlockHtml_('ccNewExtra') +
-      '<label>구분<br><select id="ccNewType" style="width:100%;">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === '보통' ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
+      '<label>구분<br><select id="ccNewType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === '보통' ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
       '<label>주소<br><input type="text" id="ccNewAddr" size="14" placeholder="(선택)"></label>' +
       '<label>주민등록번호<br><input type="text" id="ccNewRrn" size="14" placeholder="(선택, 암호화되어 저장됩니다)"></label>' +
       '<label>메모<br><textarea id="ccNewMemo" style="width:100%; min-height:60px; font-family:inherit;" placeholder="(선택)"></textarea></label>' +
@@ -11548,13 +11553,13 @@ function nxMdOpenWindow(title, src, opts){
       <span style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="date" id="colFromDate" title="시작일">
       <span style="color:var(--sub); font-size:12px;">~</span>
       <input type="date" id="colToDate" title="종료일"></span>
-      <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
-        <input type="checkbox" id="colUnlinkedOnly"> 미연결만
-      </label>
-      <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
+      <!-- [2026.11.02] 세무사님 "미연결만이라는 체크박스뒤에 별도로 콤보박스가 있는데 합쳐야 하는 거 아닌가?" — 거르기 하나(연결 여부·자료 종류를 함께 고름, 두 조건을 같이 거는 경우도 남김) -->
+      <select id="colSourceFilter" title="발행자료(승인번호 없음)·다운자료(홈택스, 승인번호 있음)와 사건 미연결로 거릅니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
         <option value="" selected>모든 자료</option>
+        <option value="unlinked">미연결만</option>
         <option value="issued">발행자료만</option>
         <option value="download">다운자료만</option>
+        <option value="download-unlinked">다운자료 미연결</option>
       </select>
     </span>
     <span style="display:inline-flex; gap:6px; margin-left:auto; flex-wrap:wrap;">
@@ -11720,8 +11725,8 @@ function nxMdOpenWindow(title, src, opts){
   function colRenderList_(){
     var from = document.getElementById('colFromDate').value;
     var to = document.getElementById('colToDate').value;
-    var unlinkedOnly = document.getElementById('colUnlinkedOnly').checked;
-    var sourceFilter = document.getElementById('colSourceFilter').value;
+    var fv = document.getElementById('colSourceFilter').value;
+    var unlinkedOnly = /unlinked/.test(fv), sourceFilter = fv.replace(/-?unlinked/, '');
     var logs = colLogsCache_.filter(function(l){
       if (from && String(l.날짜 || '') < from) return false;
       if (to && String(l.날짜 || '') > to) return false;
@@ -12080,11 +12085,10 @@ function nxMdOpenWindow(title, src, opts){
   document.getElementById('colSearchInput').addEventListener('input', loadCollections_);
   document.getElementById('colFromDate').addEventListener('change', colRenderList_);
   document.getElementById('colToDate').addEventListener('change', colRenderList_);
-  document.getElementById('colUnlinkedOnly').addEventListener('change', function(){
-    colJustEditedIds_ = {}; // 필터를 직접 다시 켜고 끄면, 그 사이 연결한 항목 예외도 초기화하고 필터 원칙대로 다시 적용
+  document.getElementById('colSourceFilter').addEventListener('change', function(){
+    colJustEditedIds_ = {}; // 거르기를 직접 다시 고르면, 그 사이 연결한 항목 예외도 초기화하고 거르기 원칙대로 다시 적용
     colRenderList_();
   });
-  document.getElementById('colSourceFilter').addEventListener('change', colRenderList_);
   document.getElementById('colStatPeriod').addEventListener('change', function(){ try{ localStorage.setItem('nxColStatPeriod', this.value); }catch(e){} colRenderList_(); });
   try{ var colSp0_ = localStorage.getItem('nxColStatPeriod'); if (colSp0_) document.getElementById('colStatPeriod').value = colSp0_; }catch(e){}
   document.getElementById('btnColStats').addEventListener('click', function(){
@@ -12164,7 +12168,7 @@ function nxMdOpenWindow(title, src, opts){
 <div class="view" id="view-docs">
   <div class="view-head"><h2>증빙확보</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="docsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하세요</option></select>
+    <select id="docsCaseSelect"><option value="">사건을 선택하세요</option></select>
     <!-- [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"] 서류를 다루는 GAS 도구는 서류 옆에(예전엔 처리개요 "GAS 도구" 칸) — 넥스도 같은 서버 입구(case_read·set_read_scope) -->
     <button type="button" id="docsReadBtn" class="ghost-btn" style="display:none;" title="읽을 목록의 서류를 읽어 장부에 적습니다(AI 없이 0원, 하신 일은 사건 기록부에)"><span class="btn-ic">📖</span><span class="btn-tx"> 서류 읽기</span></button>
     <button type="button" id="docsScopeBtn" class="ghost-btn" style="display:none;" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다"><span class="btn-ic">📂</span><span class="btn-tx"> 읽을 목록</span></button>
@@ -12416,7 +12420,7 @@ function nxMdOpenWindow(title, src, opts){
       <div class="scan-row" style="align-items:center; flex-wrap:wrap;">
         <span style="font-size:12px; color:var(--sub);">📅 신고기한:</span>
         <input type="date" id="docsCalcDeadlineBaseDate" style="max-width:150px;">
-        <select id="docsCalcDeadlineType" style="max-width:220px;">
+        <select id="docsCalcDeadlineType">
           <option value="transfer">양도소득세(말일+2개월)</option>
           <option value="gift">증여세(말일+3개월)</option>
           <option value="inheritance">상속세(말일+6개월)</option>
@@ -12892,7 +12896,7 @@ function nxMdOpenWindow(title, src, opts){
       '<button type="button" id="docsEvRealPriceBtn" class="ghost-btn sm">실거래가 조회(참고)</button>' +
       '</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
-      '<select id="docsEvPriceKind" style="width:140px;"><option value="land">개별공시지가(토지)</option><option value="apartment">공동주택가격</option><option value="house">개별주택가격</option></select>' +
+      '<select id="docsEvPriceKind"><option value="land">개별공시지가(토지)</option><option value="apartment">공동주택가격</option><option value="house">개별주택가격</option></select>' +
       '<input type="text" id="docsEvDong" placeholder="동(선택)" style="width:70px;">' +
       '<input type="text" id="docsEvHo" placeholder="호" style="width:70px;">' +
       '<button type="button" id="docsEvPriceBtn" class="ghost-btn sm">공시가격 조회</button>' +
@@ -12941,7 +12945,7 @@ function nxMdOpenWindow(title, src, opts){
     var ovForAddrList = c.사건개요 || {};
     var addrAssetList = Array.isArray(ovForAddrList.물건목록) ? ovForAddrList.물건목록 : [];
     var addrPickerHtml = addrAssetList.length > 1
-      ? '<select id="docsEvAutoAddrSelect" style="margin-bottom:6px; max-width:100%;">' +
+      ? '<select id="docsEvAutoAddrSelect" style="margin-bottom:6px;">' +
         addrAssetList.map(function(a, i){ return '<option value="' + i + '">' + escapeHtml(a.assetLocation || ('물건' + (i + 1))) + '</option>'; }).join('') +
         '</select><br>'
       : '';
@@ -45168,7 +45172,7 @@ function renderTcCaseBar_(){
   // 증여세·상속세 중 맞는 자동계산 함수로 그대로 연결한다(tcRunAutoCalc_ 참고).
   tcCaseBarEl.innerHTML =
     '<div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
-    '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
+    '<select id="tcCaseSelect">' + options + '</select>' +
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>저장</button>' +
     '<input type="text" id="tcScenarioName" placeholder="안 이름(비우면 자동)" style="width:150px;" title="경우(안) 이름 — 예: 비과세 적용 전, 필요경비 제외, 증여세로 할 때. 비우면 안N(바꾼 칸 요약)"' + (tcSelectedId ? '' : ' disabled') + '>' +
     '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>안으로 저장</button>' +
@@ -47607,7 +47611,7 @@ document.addEventListener('click', function(e){ var x = e.target.closest && e.ta
 
 <div class="view-head"><h2>문서작성</h2></div>
 <div id="rwCaseBar" class="tb-row" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--bar-bg); color:var(--ink); font-size:12.5px; border-bottom:1px solid var(--line); flex-wrap:wrap;">
-  <select id="rwCaseSelect" style="min-width:200px; max-width:320px; font-size:12.5px;"><option value="">사건을 선택하세요</option></select>
+  <select id="rwCaseSelect" style="font-size:12.5px;"><option value="">사건을 선택하세요</option></select>
   <span id="rwCaseReports" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"></span>
 </div>
 
@@ -50673,7 +50677,7 @@ function rwAiApplyEdit_(id, content){
   <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" / "이사건다른화면콤보를 사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" —
        사건 고르는 줄을 다른 화면처럼 제목 줄 바로 아래(하위 탭 줄 위)로, "↪ 이 사건 다른 화면"은 그 바로 뒤에. 사건 없이 등록도 그대로 된다 -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="repNewCase" style="min-width:220px; max-width:360px;" title="보고서를 이 사건 작업일지에 남기려면 고르세요(고르지 않으면 사건 없이 등록)"><option value="">사건 없이 등록</option></select>
+    <select id="repNewCase" title="보고서를 이 사건 작업일지에 남기려면 고르세요(고르지 않으면 사건 없이 등록)"><option value="">사건 없이 등록</option></select>
   </div>
   <div class="view-body">
     <div class="nx-tabbar">
@@ -50706,7 +50710,7 @@ function rwAiApplyEdit_(id, content){
       <div class="nx-help">진행 중인 사건 고객에게는 처리개요의 <b>고객창구(my.netax.kr)</b>로 보고서를 보여주는 것이 기본입니다. 이곳(rpt.netax.kr 열람번호)은 고객창구가 없는 예전 고객·단건 발급용입니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
         <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">그 사건의 보고서 파일</label>
-          <select id="repNewCaseFile" style="width:100%;" disabled><option value="">사건을 먼저 고르세요</option></select></div>
+          <select id="repNewCaseFile" disabled><option value="">사건을 먼저 고르세요</option></select></div>
       </div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end;">
         <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">고객명 *</label>
@@ -50723,7 +50727,7 @@ function rwAiApplyEdit_(id, content){
         <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">자료 링크(구글드라이브) *</label>
           <input type="text" id="repNewLink" style="width:100%;" placeholder="https://drive.google.com/..."></div>
         <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">다운로드</label>
-          <select id="repNewPermission" style="width:90px;"><option value="허용">허용</option><option value="차단">차단</option></select></div>
+          <select id="repNewPermission"><option value="허용">허용</option><option value="차단">차단</option></select></div>
         <button type="button" id="repBtnRegister" class="save-btn">등록</button>
       </div>
       <div class="nx-help">등록하면 그 파일이 자동으로 "링크가 있는 모든 사용자·보기"로 공유설정되고, 4자리 열람번호가 발급됩니다.</div>
@@ -50999,7 +51003,7 @@ function rwAiApplyEdit_(id, content){
        지금(전부 한 폴더)보다 오히려 불편해지므로. -->
   <div class="memo-toolbar tb-row" style="border-top:none; background:#fff;">
     <span style="font-size:12px; color:var(--sub); flex-shrink:0;">저장 위치</span>
-    <select id="memoNotebookSelect" style="max-width:220px;"></select>
+    <select id="memoNotebookSelect"></select>
     <button type="button" id="memoNotebookAddBtn" class="ghost-btn"><span class="btn-tx">+ 노트북</span></button>
     <div id="memoTagChips" style="display:flex; gap:6px; flex-wrap:wrap; margin-left:6px;"></div>
   </div>
@@ -51057,7 +51061,7 @@ function rwAiApplyEdit_(id, content){
   <div id="memoOvPanel">
     <div id="memoOvSemokPick">
       <label style="font-size:12px; color:var(--sub); display:block; margin-bottom:6px;">세목을 선택하세요</label>
-      <select id="memoOvSemokSelect" style="max-width:240px;">
+      <select id="memoOvSemokSelect">
         <option value="">세목 선택</option>
         <option value="transfer">양도소득세</option>
         <option value="gift">증여세</option>
@@ -51086,7 +51090,7 @@ function rwAiApplyEdit_(id, content){
   <div id="memoReqPanel">
     <div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       <label style="font-size:12px; color:var(--sub);">의뢰서 템플릿:</label>
-      <select id="memoReqTemplateSelect" style="min-width:220px;"><option value="">불러오는 중…</option></select>
+      <select id="memoReqTemplateSelect"><option value="">불러오는 중…</option></select>
       <span style="margin-left:auto; font-size:11.5px; color:var(--sub);" id="memoReqNonTextNote"></span>
       <button type="button" id="memoReqApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 사건에 저장</span></button>
     </div>
@@ -51141,14 +51145,14 @@ function rwAiApplyEdit_(id, content){
     <div style="font-size:11.5px; color:var(--sub);">사건을 만들면서 지금 작성한 사건개요를 바로 반영합니다.</div>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoOvNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoOvNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
-    <select id="memoOvNewUptype" style="width:100%; box-sizing:border-box;"></select>
+    <select id="memoOvNewUptype" style="box-sizing:border-box;"></select>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style=" box-sizing:border-box;"></label>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoOvNewCaseConfirm" class="save-btn">등록하고 반영</button>
     </div>
     <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 적용</div>
-    <select id="memoOvApplyCaseSelect" style="width:100%; box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
+    <select id="memoOvApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyConfirm" class="save-btn">기존 사건에 적용</button>
     </div>
@@ -51166,21 +51170,21 @@ function rwAiApplyEdit_(id, content){
     <div style="font-size:11.5px; color:var(--sub);">지금 작성한 의뢰서 내용을 그 사건의 폴더에 파일로 저장합니다.</div>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoReqNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoReqNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
-    <select id="memoReqNewSemok" style="width:100%; box-sizing:border-box;">
+    <select id="memoReqNewSemok" style="box-sizing:border-box;">
       <option value="transfer">양도</option>
       <option value="gift">증여</option>
       <option value="inheritance">상속</option>
       <option value="objection">불복</option>
       <option value="business">사업</option>
     </select>
-    <select id="memoReqNewUptype" style="width:100%; box-sizing:border-box;"></select>
+    <select id="memoReqNewUptype" style="box-sizing:border-box;"></select>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoReqNewRequestDate" style="width:150px; box-sizing:border-box;"></label><!-- [2026.10.22 묶음 ㅁ3] 95px이면 "2026-10-2"로 잘림(가상양도7 표 6) -->
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoReqApplyCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoReqNewCaseConfirm" class="save-btn">등록하고 저장</button>
     </div>
     <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 저장</div>
-    <select id="memoReqApplyCaseSelect" style="width:100%; box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
+    <select id="memoReqApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoReqApplyConfirm" class="save-btn">기존 사건에 저장</button>
     </div>
@@ -53418,8 +53422,8 @@ function rwAiApplyEdit_(id, content){
   <!-- 글감만들기 -->
   <div id="rhPaneContent" class="rh-pane" style="display:none;">
     <div class="memo-toolbar tb-row" style="border-top:none;">
-      <select id="rhContentSourceSelect" style="flex:1; min-width:160px;"><option value="">먼저 "모아보기"에서 보고서를 확인한 뒤 여기서 골라주세요</option></select>
-      <select id="rhContentStyleSelect" style="min-width:170px;">
+      <select id="rhContentSourceSelect" style="flex:1;"><option value="">먼저 "모아보기"에서 보고서를 확인한 뒤 여기서 골라주세요</option></select>
+      <select id="rhContentStyleSelect">
         <option value="naver_blog">네이버 블로그(긴 글)</option>
         <option value="naver_news">네이버 소식(플레이스, 짧게)</option>
         <option value="google_blog">구글 블로그(긴 글)</option>
@@ -53458,7 +53462,7 @@ function rwAiApplyEdit_(id, content){
        파일은 드라이브 0 NETAX/콘텐츠/쇼츠/(편마다 폴더, _기준그림 폴더에 순돌이 원본 그림) -->
   <div id="rhPaneShorts" class="rh-pane" style="display:none;">
     <div class="memo-toolbar tb-row" style="border-top:none; flex-wrap:wrap;">
-      <select id="rhShortsSourceSelect" style="flex:1; min-width:160px;"><option value="">보고서를 골라 쇼츠 대본 만들기</option></select>
+      <select id="rhShortsSourceSelect" style="flex:1;"><option value="">보고서를 골라 쇼츠 대본 만들기</option></select>
       <button type="button" id="rhShortsMakeBtn" class="save-btn" title="고른 보고서로 순돌이 쇼츠 대본(질문·답·정리, 45~55초)을 만들어 새 편 폴더에 저장 — AI 사용(편당 수십 원)"><span class="btn-tx">대본 만들기</span></button>
       <button type="button" id="rhShortsNewBtn" class="ghost-btn" title="대본 없이 빈 편 폴더만 만들기"><span class="btn-tx">＋ 빈 편</span></button>
       <button type="button" id="rhShortsFolderBtn" class="ghost-btn" title="드라이브 쇼츠 폴더 열기"><span class="btn-tx">쇼츠 폴더</span></button>
@@ -56328,7 +56332,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" class="nxai-tool" id="nxAiStrategyBtn" title="🧠 전략 검토 — 연결된 사건을 최고급 AI가 경우의 수별로 비교하고 더 나은 대안을 제시합니다(세액은 계산엔진으로 계산, 실행 전 예상 비용 확인)">🧠</button>
       <button type="button" class="nxai-tool" id="nxAiImproveBtn" title="🛠 개선 후보 처리 — 웹 Claude Code가 job에 쌓인 오류·유료 질문·자가점검을 보고 고친 뒤 깃허브에 수정안을 올립니다(열리는 화면에서 '지금 실행'). 매주 월요일 아침엔 자동. 수정안 승인(Merge) 후 설정 🐞 카드의 📥 수정 반영">🛠</button>
       <button type="button" class="nxai-tool" id="nxAiClearBtn" title="입력창 비우기">✕</button>
-      <select id="nxAiGemTurns" class="nxai-model" style="width:auto" title="🔮·⚖로 제미니에게 물어볼 때 직전 대화를 몇 개(턴) 같이 보낼지 (0=입력창 내용만)">
+      <select id="nxAiGemTurns" class="nxai-model" title="🔮·⚖로 제미니에게 물어볼 때 직전 대화를 몇 개(턴) 같이 보낼지 (0=입력창 내용만)">
         <option value="0">0턴</option><option value="1">1턴</option><option value="2">2턴</option><option value="3">3턴</option><option value="4">4턴</option><option value="5">5턴</option>
       </select>
       <button type="button" class="nxai-tool" id="nxAiGemBtn" title="입력창 내용을 제미니(무료)에게 물어보기 — NX 외부조회 커넥터 확장프로그램 필요. 고객 개인정보는 넣지 마세요">🔮</button>
@@ -63822,6 +63826,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     try { localStorage.setItem('nxShowTestData', cb.checked ? '1' : '0'); } catch (er) {}
     if (typeof renderClientList === 'function' && typeof clients !== 'undefined') renderClientList();
     if (typeof nxAiRenderConvList_ === 'function') nxAiRenderConvList_();
+  });
+  // [2026.11.02] 고르기 칸은 고른 값 길이(많아도 12글자, style.html)로 줄였다 — 잘린 값은 손을 대면 전체 글이 뜨게(따로 title을 준 칸은 그대로)
+  document.addEventListener('mouseover', function(e){
+    var s = e.target; if (!s || s.tagName !== 'SELECT') return;
+    var o = s.options[s.selectedIndex], t = o ? o.text : '';
+    if (!s.hasAttribute('title') || s.dataset.nxSelTitle === '1'){ s.title = t; s.dataset.nxSelTitle = '1'; }
   });
   var VIEW_LABELS_ = {
     ai: 'AI', dashboard: '대시보드', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', ledger: '사건 장부', lawsearch: '법령정보', clientmanage: '고객관리',

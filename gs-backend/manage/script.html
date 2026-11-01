@@ -440,6 +440,12 @@
     if (typeof renderClientList === 'function' && typeof clients !== 'undefined') renderClientList();
     if (typeof nxAiRenderConvList_ === 'function') nxAiRenderConvList_();
   });
+  // [2026.11.02] 고르기 칸은 고른 값 길이(많아도 12글자, style.html)로 줄였다 — 잘린 값은 손을 대면 전체 글이 뜨게(따로 title을 준 칸은 그대로)
+  document.addEventListener('mouseover', function(e){
+    var s = e.target; if (!s || s.tagName !== 'SELECT') return;
+    var o = s.options[s.selectedIndex], t = o ? o.text : '';
+    if (!s.hasAttribute('title') || s.dataset.nxSelTitle === '1'){ s.title = t; s.dataset.nxSelTitle = '1'; }
+  });
   var VIEW_LABELS_ = {
     ai: 'AI', dashboard: '대시보드', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', ledger: '사건 장부', lawsearch: '법령정보', clientmanage: '고객관리',
     collections: '수금관리',

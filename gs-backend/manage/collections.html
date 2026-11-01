@@ -12,13 +12,13 @@
       <span style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="date" id="colFromDate" title="시작일">
       <span style="color:var(--sub); font-size:12px;">~</span>
       <input type="date" id="colToDate" title="종료일"></span>
-      <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
-        <input type="checkbox" id="colUnlinkedOnly"> 미연결만
-      </label>
-      <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
+      <!-- [2026.11.02] 세무사님 "미연결만이라는 체크박스뒤에 별도로 콤보박스가 있는데 합쳐야 하는 거 아닌가?" — 거르기 하나(연결 여부·자료 종류를 함께 고름, 두 조건을 같이 거는 경우도 남김) -->
+      <select id="colSourceFilter" title="발행자료(승인번호 없음)·다운자료(홈택스, 승인번호 있음)와 사건 미연결로 거릅니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
         <option value="" selected>모든 자료</option>
+        <option value="unlinked">미연결만</option>
         <option value="issued">발행자료만</option>
         <option value="download">다운자료만</option>
+        <option value="download-unlinked">다운자료 미연결</option>
       </select>
     </span>
     <span style="display:inline-flex; gap:6px; margin-left:auto; flex-wrap:wrap;">
@@ -184,8 +184,8 @@
   function colRenderList_(){
     var from = document.getElementById('colFromDate').value;
     var to = document.getElementById('colToDate').value;
-    var unlinkedOnly = document.getElementById('colUnlinkedOnly').checked;
-    var sourceFilter = document.getElementById('colSourceFilter').value;
+    var fv = document.getElementById('colSourceFilter').value;
+    var unlinkedOnly = /unlinked/.test(fv), sourceFilter = fv.replace(/-?unlinked/, '');
     var logs = colLogsCache_.filter(function(l){
       if (from && String(l.날짜 || '') < from) return false;
       if (to && String(l.날짜 || '') > to) return false;
@@ -544,11 +544,10 @@
   document.getElementById('colSearchInput').addEventListener('input', loadCollections_);
   document.getElementById('colFromDate').addEventListener('change', colRenderList_);
   document.getElementById('colToDate').addEventListener('change', colRenderList_);
-  document.getElementById('colUnlinkedOnly').addEventListener('change', function(){
-    colJustEditedIds_ = {}; // 필터를 직접 다시 켜고 끄면, 그 사이 연결한 항목 예외도 초기화하고 필터 원칙대로 다시 적용
+  document.getElementById('colSourceFilter').addEventListener('change', function(){
+    colJustEditedIds_ = {}; // 거르기를 직접 다시 고르면, 그 사이 연결한 항목 예외도 초기화하고 거르기 원칙대로 다시 적용
     colRenderList_();
   });
-  document.getElementById('colSourceFilter').addEventListener('change', colRenderList_);
   document.getElementById('colStatPeriod').addEventListener('change', function(){ try{ localStorage.setItem('nxColStatPeriod', this.value); }catch(e){} colRenderList_(); });
   try{ var colSp0_ = localStorage.getItem('nxColStatPeriod'); if (colSp0_) document.getElementById('colStatPeriod').value = colSp0_; }catch(e){}
   document.getElementById('btnColStats').addEventListener('click', function(){

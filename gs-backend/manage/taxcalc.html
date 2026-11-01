@@ -17829,7 +17829,7 @@ function renderTcCaseBar_(){
   // 증여세·상속세 중 맞는 자동계산 함수로 그대로 연결한다(tcRunAutoCalc_ 참고).
   tcCaseBarEl.innerHTML =
     '<div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
-    '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
+    '<select id="tcCaseSelect">' + options + '</select>' +
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>저장</button>' +
     '<input type="text" id="tcScenarioName" placeholder="안 이름(비우면 자동)" style="width:150px;" title="경우(안) 이름 — 예: 비과세 적용 전, 필요경비 제외, 증여세로 할 때. 비우면 안N(바꾼 칸 요약)"' + (tcSelectedId ? '' : ' disabled') + '>' +
     '<button type="button" id="tcSaveScenarioBtn" class="ghost-btn" title="지금 입력·결과를 기본 저장본과 따로 \'경우(안)\'으로 이름 붙여 저장합니다 — 기본 저장본·서식·검토서 기본 숫자는 바뀌지 않고, 검토서 \'경우(안)별 세액 비교\'에 인용됩니다"' + (tcSelectedId ? '' : ' disabled') + '>안으로 저장</button>' +

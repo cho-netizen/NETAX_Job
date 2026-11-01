@@ -126,10 +126,15 @@
   #nxCaseBar[hidden]{ display:none; }
   .card[hidden], .ch-empty-line[hidden]{ display:none !important; } /* [2026.11.01] 빈 카드 숨김(처리개요 빈 카드·대시보드 답하실 것) — .card 자체 display가 hidden을 이기지 않게 */
   /* [2026.11.01] 입력칸은 자료 길이만큼 — 세무사님 "입력란을 데이터 입력길이 이내로 설정하는 것도 선호한다" / "불필요하게 화면을 잡아먹는 것을 나는 너무너무 싫어한다"
-     금액(숫자) 12글자 · 날짜 10글자 · 선택칸은 가장 긴 선택지까지(넘쳐도 360) · 한 줄 글 칸은 420까지(긴 글은 여러 줄 칸). 줄을 꽉 채우던 칸도 이 폭에서 멈춘다 */
+     금액(숫자) 12글자 · 날짜 10글자 · 한 줄 글 칸은 420까지(긴 글은 여러 줄 칸). 줄을 꽉 채우던 칸도 이 폭에서 멈춘다 */
   #centerWork input[inputmode="numeric"], #centerWork input.taxcalc-money{ max-width:12em !important; }
   #centerWork input[type="date"]{ width:9.5em !important; max-width:100%; }
-  #centerWork select{ max-width:min(100%, 360px) !important; }
+  /* [2026.11.02] 고르기 칸은 모든 화면 한 규칙 — 세무사님 "사건개요서내 유형 콤보란의 폭이 왜 그리 넓은가? … 동일유형 전수조사하라" / "당장 고쳐라".
+     예전엔 "가장 긴 선택지만큼"(설명이 든 긴 선택지 때문에 고른 값은 「배우자」인데 칸은 257)·화면마다 따로 준 폭(100%·220~360)이었다.
+     이제 칸 폭 = 고른 값의 글자 길이(field-sizing), 많아도 12글자. 펼친 목록엔 선택지 전체 글이 그대로 보이고, 잘린 값은 손을 대면 전체가 뜬다(script.html).
+     화면마다 적힌 폭은 모두 이 규칙이 이긴다. 사건·법령 이름처럼 값 자체가 긴 고르기만 20글자까지 */
+  select{ field-sizing:content; width:auto !important; min-width:0 !important; max-width:min(100%, 12em) !important; flex:0 0 auto !important; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; }
+  select[id$="CaseSelect"], select[id$="CaseSel"], select[id*="Law"]{ max-width:min(100%, 20em) !important; }
   #centerWork input[type="text"]:not([inputmode]), #centerWork input[type="search"], #centerWork input[type="url"], #centerWork input:not([type]){ max-width:min(100%, 420px) !important; }
   /* [2026.11.01 화면구조 개편 ④] 시험 자료 숨김 체크(고객·넥스 대화 목록) */
   .nx-test-toggle{ display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-sub); color:var(--sub); white-space:nowrap; cursor:pointer; }
@@ -149,7 +154,7 @@
   #nxCaseBar .cb-strip-host .nx-ledger-strip{ margin:6px 0 0 !important; }
   /* [2026.11.01] 세무사님 "사건작업의 1차 하위탭은 개요, 사실... 아닌가? 왜 달리 구현하였지?" — 따로 만든 밑줄 탭을 걷고 공통 하위 탭(nx-tabbar·nx-tab) 모양을 그대로 쓴다. 머리줄 안이라 위 여백만 두고 아래 여백은 없앤다. */
   #nxCaseBar .cb-tabs.nx-tabbar{ margin:6px 0 0; border-bottom:none; }
-  @media (max-width:600px){ #nxCaseBar{ padding:6px 10px 0; } #nxCaseBar .cb-pick{ margin-left:0; width:100%; } #nxCaseBar #cbCaseSelect{ flex:1; max-width:none; } }
+  @media (max-width:600px){ #nxCaseBar{ padding:6px 10px 0; } #nxCaseBar .cb-pick{ margin-left:0; width:100%; } #nxCaseBar #cbCaseSelect{ flex:1 1 0 !important; min-width:0 !important; max-width:none !important; } }
   @media print{ #nxCaseBar{ display:none !important; } body.cb-on #centerWork > .view{ top:0; } }
   /* 작업공간 안에서는 화면마다 따로 있던 사건 고르기·장부 띠·화면 제목을 숨긴다(머리줄이 대신함, 기능은 그대로) */
   body.cb-on #centerWork > .view .nx-ledger-strip,
@@ -731,7 +736,7 @@
      "분양권(§104①1호·2호·3호 — ...)"처럼 긴 옵션이 하나만 있으면 그 옵션 길이만큼
      통째로 넓어져 있었다(실측 607px). 셀렉트만 상한을 둬서 긴 옵션은 그 옵션이 실제
      선택됐을 때만 말줄임(...)되게 한다. */
-  .taxcalc-field select{ max-width:280px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  /* [2026.11.02] 폭 상한은 위 "고르기 칸 한 규칙"(고른 값 길이, 많아도 12글자)으로 옮김 */
   /* [2026.10.08 추가, 재검토127] 위 max-width:280으로는 부족했다 — .taxcalc-field가
      align-items 기본값(stretch)이라, select는 max-width 상한 안에서도 그릴드 칸 폭까지
      계속 늘어나 있었다(그래서 "정상(기한내) 신고"처럼 짧은 보기를 골라도 넓게 보임).
