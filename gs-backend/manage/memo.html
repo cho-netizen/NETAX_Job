@@ -32,7 +32,7 @@
     <button type="button" data-snip="bold" title="기울임/굵게 (Ctrl+B, 누를 때마다 * 하나씩 추가 — *=기울임, **=굵게, ***=굵게+기울임)">*</button>
     <button type="button" data-snip="underline" title="밑줄" style="text-decoration:underline;">U</button>
     <button type="button" data-snip="color" title="글자색">🎨</button>
-    <input type="color" id="memoColorInput" style="display:none;" value="#c0392b">
+    <input type="color" id="memoColorInput" style="display:none;" value="#b3261e">
     <button type="button" data-snip="list" title="목록">≡</button>
     <button type="button" data-snip="checklist" title="체크리스트">☑</button>
     <button type="button" data-snip="table" title="표">▦</button>
@@ -1845,7 +1845,7 @@
         ctx.putImageData(shapeSnapshotImageData, 0, 0);
         ctx.save();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-        ctx.setLineDash([6, 4]); ctx.strokeStyle = '#e11d48'; ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]); ctx.strokeStyle = '#b3261e'; ctx.lineWidth = 1.5;
         var rx = shapeStartPoint.x, ry = shapeStartPoint.y, rw = p.x - shapeStartPoint.x, rh = p.y - shapeStartPoint.y;
         ctx.strokeRect(rx, ry, rw, rh);
         ctx.fillStyle = 'rgba(225, 29, 72, 0.1)'; ctx.fillRect(rx, ry, rw, rh);
@@ -2306,7 +2306,7 @@
     try {
       var old = document.getElementById('memoReqRegisteredBar'); if (old) old.remove();
       var bar = document.createElement('div'); bar.id = 'memoReqRegisteredBar';
-      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; padding:8px 10px; border:1px solid #2a7a4f; border-radius:8px; background:#eef8f1; font-size:13px;';
+      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; padding:8px 10px; border:1px solid #0D1B3D; border-radius:8px; background:#eef1f7; font-size:13px;';
       var t = document.createElement('span'); t.textContent = '✅ 「' + String(c.사건명 || c.고객명 || '') + '」 사건을 등록했습니다 — 다음:'; bar.appendChild(t);
       var b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'save-btn'; b1.textContent = '🧭 처리개요로 가기';
       b1.addEventListener('click', function(){ if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });

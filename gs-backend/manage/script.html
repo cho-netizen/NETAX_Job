@@ -372,7 +372,7 @@
     var showStatus = opts.showStatus !== false;
     var selectedId = opts.selectedId;
     return '<option value="">' + escapeHtml(placeholder) + '</option>' +
-      (cases || []).slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
+      (cases || []).slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || '', 'ko', { numeric: true }); }).map(function(c){ // [2026.11.01] 가상양도2가 가상양도19 뒤로 가지 않게(자연 정렬)
         var label = escapeHtml(c.사건명 || '') + (showStatus ? ' (' + escapeHtml(c.상태 || '') + ')' : '');
         return '<option value="' + c.id + '"' + (selectedId !== undefined && c.id === selectedId ? ' selected' : '') + '>' + label + '</option>';
       }).join('');
@@ -423,12 +423,33 @@
   // 동기 호출하므로, 이 선언은 반드시 그 IIFE보다 앞에 있어야 한다(뒤에 두면 아직 정의되지
   // 않은 변수를 참조해 TypeError가 나고, 그 여파로 initDashboard 등 나머지 초기화가 전부
   // 실행되지 않는 버그가 실제로 발생했었다).
+  // [2026.11.01 화면구조 개편 ④] 세무사님 "권장안대로 하마" — 시험 자료(이름이 "가상"으로 시작: 가상사건 생성기·점검이 만든 고객·대화)는 목록에서 기본으로 숨긴다.
+  //  목록 위 「시험 자료 N」 체크로 보이게(이 기기 기억). 자료는 그대로 두고 보이기만 거른다.
+  function nxIsTestName_(s){ return /^\s*가상/.test(String(s || '')); }
+  function nxShowTest_(){ try { return localStorage.getItem('nxShowTestData') === '1'; } catch (e) { return false; } }
+  function nxTestToggleSync_(scope, hidden){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nx-testtoggle="' + scope + '"]'), function(l){
+      var cb = l.querySelector('input'); if (cb) cb.checked = nxShowTest_();
+      var n = l.querySelector('.nx-test-n'); if (n) n.textContent = hidden ? String(hidden) : '';
+      l.hidden = !hidden && !nxShowTest_(); // 시험 자료가 없으면 체크 칸도 숨김
+    });
+  }
+  document.addEventListener('change', function(e){
+    var cb = e.target; if (!cb || !cb.closest || !cb.closest('[data-nx-testtoggle]')) return;
+    try { localStorage.setItem('nxShowTestData', cb.checked ? '1' : '0'); } catch (er) {}
+    if (typeof renderClientList === 'function' && typeof clients !== 'undefined') renderClientList();
+    if (typeof nxAiRenderConvList_ === 'function') nxAiRenderConvList_();
+  });
   var VIEW_LABELS_ = {
     ai: 'AI', dashboard: '대시보드', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', ledger: '사건 장부', lawsearch: '법령정보', clientmanage: '고객관리',
     collections: '수금관리',
     docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', taxplan: '절세플랜', reportwriter: '문서작성', reports: '열람관리',
     'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼'
   };
+  // [2026.11.01] 사건 작업공간(아래 nxCbInit_) — 로그인 게이트가 곧바로 showView를 부르므로 위 VIEW_LABELS_처럼 여기 먼저 둔다
+  var NX_CB_TABS_ = [['casehandling', '개요'], ['ledger', '사실(장부)'], ['docs', '서류'], ['taxcalc', '계산'], ['taxplan', '절세'],
+    ['lawsearch', '근거'], ['reportwriter', '보고서'], ['reports', '고객 열람']];
+  var NX_CB_ = { inited: false, cases: [], loading: false, lawFree: false, shownId: null, strip: null };
 
   // ---- 로그인 게이트 ----
   // [2026.10.22] 지문 로그인 도우미 — 휴대폰 창구(/m/)와 같은 저장 이름을 쓴다(같은 job.netax.kr이라 기기당 한 번 켜면 둘 다).
@@ -591,6 +612,7 @@
         var fromAct = document.querySelector('.menu-item.active[data-view]');
         var fromCase = fromAct ? nxScreenCaseIdOf_(fromAct.getAttribute('data-view')) : '';
         if (fromCase) nxLastCaseId_ = fromCase;
+        nxCbSetLawFree_(view === 'lawsearch'); // [2026.11.01] 자료 › 법령·서식은 사건 머리줄 없이
         showView(view);
         items.forEach(function(i){ i.classList.remove('active'); });
         item.classList.add('active');
@@ -615,6 +637,7 @@
       if ((v === 'taxcalc' || v === 'print') && typeof tcSelectedId !== 'undefined') return tcSelectedId || '';
       if (v === 'lawsearch' && typeof lsSelectedId !== 'undefined') return lsSelectedId || '';
       if (v === 'reportwriter'){ var rs = document.getElementById('rwCaseSelect'); return rs ? rs.value : ''; }
+      if (v === 'reports'){ var rp = document.getElementById('repNewCase'); return (typeof repWantCaseId_ !== 'undefined' && repWantCaseId_) || (rp ? rp.value : ''); } // [2026.11.01] 사건 작업공간 고객 열람 탭
     } catch (e) {}
     return '';
   }
@@ -626,6 +649,7 @@
     var cur = nxScreenCaseIdOf_(view);
     if (cur === lastId) return;
     if (!cur && (view === 'casehandling' || view === 'ledger' || view === 'lawsearch')){ nxCaseJump_(view, lastId); return; }
+    if (nxCbIsCaseView_(view)) return; // [2026.11.01] 사건 작업공간 — 머리줄이 지금 사건을 보이고 거기서 바꾸므로 노란 띠는 띄우지 않는다
     callGas('work_get_cases', {}).then(function(res){
       var cases = (res && res.cases) || [];
       var nameOf = function(id){ var c = cases.filter(function(x){ return x.id === id; })[0]; return c ? (c.사건명 || c.고객명 || '') : ''; };
@@ -637,7 +661,7 @@
       var curNow = nxScreenCaseIdOf_(view), curName = curNow ? nameOf(curNow) : '';
       var bar = document.createElement('div');
       bar.id = 'nxCaseFollowBar';
-      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--gold, #c9a227); border-radius:8px; background:var(--gold-light, #fdf6e3); font-size:13px;';
+      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--gold, #C8A244); border-radius:8px; background:var(--gold-light, #fdf6e3); font-size:13px;';
       bar.innerHTML = '<span>' + (curName ? '이 화면은 지금 「' + escapeHtml(curName) + '」 사건입니다. ' : '이 화면은 사건이 골라져 있지 않습니다. ') +
         '방금 보던 「<b>' + escapeHtml(lastName) + '</b>」 사건으로 열까요?</span>' +
         '<button type="button" class="save-btn sm" data-follow="go">「' + escapeHtml(lastName) + '」로 열기</button>' +
@@ -731,6 +755,7 @@
       document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
       var target = document.getElementById('view-' + name);
       if (target) target.classList.add('active');
+      nxCbOnView_(name); // [2026.11.01] 사건 작업공간 머리줄
       window._currentViewLabel = VIEW_LABELS_[name] || name;
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
@@ -840,7 +865,7 @@
   function goToView_(name){
     showView(name);
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
-      i.classList.toggle('active', i.getAttribute('data-view') === (name === 'print' ? 'taxcalc' : name)); // [2026.11.01] 세액인쇄는 세액계산 안 화면
+      i.classList.toggle('active', i.getAttribute('data-view') === (nxCbIsCaseView_(name) && !(name === 'lawsearch' && NX_CB_.lawFree) ? 'casehandling' : name)); // [2026.11.01] 사건 화면은 모두 사건 작업공간 안의 탭
     });
   }
 
@@ -935,6 +960,7 @@
   var NX_CASE_VIEWS_ = [['casehandling', '처리개요'], ['ledger', '사건 장부'], ['workmanage', '작업관리'], ['docs', '증빙확보'], ['taxcalc', '세액계산'],
     ['print', '세액인쇄'], ['reportwriter', '문서작성'], ['lawsearch', '법령정보'], ['reports', '열람관리']]; // 열람관리: 탭연결 9번
   function nxCaseJump_(view, caseId){
+    NX_CB_.lawFree = false; // [2026.11.01] 사건을 들고 법령정보로 가면 작업공간의 근거 탭
     if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
     if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
     if (view === 'ledger' && typeof goToLedger_ === 'function'){ goToLedger_(caseId); return; } // [2026.10.31] 📒 사건 장부 화면
@@ -1050,6 +1076,141 @@
     if (next && next.classList && next.classList.contains('nx-case-jump')) return;
     afterEl.parentNode.insertBefore(nxCaseJumpSelect_(fromView, getCaseId, beforeLeave), afterEl.nextSibling);
   }
+
+  // =========================================================
+  // [2026.11.01] 사건 작업공간 — 세무사님 "이제 제대로 고민을 했구나 권장안대로 하마"(화면구조_개편안_20261101 2·3절).
+  //  사건 화면 여덟(개요·장부·서류·계산·절세·근거·보고서·열람)을 한 작업공간의 탭으로 묶는다: 맨 위 머리줄 하나에서 사건을 한 번만 고르고,
+  //  탭을 옮겨도 같은 사건. 화면마다 따로 있던 사건 고르기·장부 띠·화면 제목은 작업공간 안에서는 숨기고(기능은 그대로 — 머리줄이
+  //  각 화면의 "그 사건으로 열기"(nxCaseJump_)를 부른다), 장부 띠는 머리줄의 하나만 보인다. 머리줄의 사건은 지금 탭 화면이 들고 있는 사건을
+  //  그대로 읽어 보인다(따로 저장하지 않음 — 다른 화면에서 사건을 열고 넘어와도 맞다). 진행 단계 띠는 단계 기준이 정해지지 않아 아직 없다.
+  function nxCbViewOf_(v){ return v === 'print' ? 'taxcalc' : v; }
+  function nxCbIsCaseView_(v){ return v === 'print' || NX_CB_TABS_.some(function(t){ return t[0] === v; }); }
+  function nxCbActiveView_(){ var a = document.querySelector('#centerWork > .view.active'); return a ? a.id.replace(/^view-/, '') : ''; }
+  function nxCbCaseOf_(v){
+    if (v === 'taxplan') v = 'taxcalc';
+    return nxScreenCaseIdOf_(v);
+  }
+  function nxCbCurId_(){ var v = nxCbActiveView_(); return (nxCbIsCaseView_(v) && nxCbCaseOf_(v)) || NX_CB_.shownId || nxLastCaseId_ || ''; }
+  function nxCbLoadCases_(){
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok || NX_CB_.loading) return;
+    NX_CB_.loading = true;
+    callGas('work_get_cases', {}).then(function(res){
+      NX_CB_.loading = false;
+      NX_CB_.cases = (res && res.cases) || [];
+      nxCbFillSelect_();
+      NX_CB_.shownId = null; nxCbSync_();
+    }).catch(function(){ NX_CB_.loading = false; });
+  }
+  function nxCbFillSelect_(){
+    var sel = document.getElementById('cbCaseSelect'); if (!sel) return;
+    var onlyLive = document.getElementById('cbLiveOnly'), q = String((document.getElementById('cbFind') || {}).value || '').trim();
+    var list = NX_CB_.cases.filter(function(c){
+      if (onlyLive && onlyLive.checked && /완료|종결|취소/.test(String(c.상태 || ''))) return false;
+      if (q && (String(c.사건명 || '') + ' ' + String(c.고객명 || '') + ' ' + String(c.납세자 || '')).indexOf(q) === -1) return false;
+      return true;
+    });
+    var cur = nxCbCurId_();
+    if (cur && !list.some(function(c){ return c.id === cur; })){ var cc = NX_CB_.cases.filter(function(c){ return c.id === cur; })[0]; if (cc) list.unshift(cc); }
+    sel.innerHTML = buildCaseOptionsHtml_(list, { placeholder: '사건 고르기…' });
+    sel.value = cur || '';
+  }
+  function nxCbInit_(){
+    if (NX_CB_.inited) return;
+    var bar = document.getElementById('nxCaseBar'); if (!bar) return;
+    NX_CB_.inited = true;
+    bar.querySelector('.cb-tabs').innerHTML = NX_CB_TABS_.map(function(t){ return '<button type="button" class="cb-tab" data-cb-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
+    bar.addEventListener('click', function(e){
+      var b = e.target.closest('[data-cb-tab]'); if (!b) return;
+      nxCbGo_(b.getAttribute('data-cb-tab'), nxCbCurId_());
+    });
+    document.getElementById('cbCaseSelect').addEventListener('change', function(){
+      var id = this.value; if (!id) return;
+      var v = nxCbActiveView_(); if (!nxCbIsCaseView_(v)) v = 'casehandling';
+      nxLastCaseId_ = id;
+      nxCbGo_(nxCbViewOf_(v), id, true);
+    });
+    document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length) nxCbLoadCases_(); });
+    document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
+    document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
+    // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
+    var strip = document.createElement('div');
+    strip.className = 'nx-ledger-strip cb-strip';
+    strip.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px;';
+    strip._getCaseId = nxCbCurId_; strip._view = 'casehandling'; strip._shownId = null; strip._homeRow = bar;
+    strip.innerHTML = '<b>사건 장부</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
+    bar.querySelector('.cb-strip-host').appendChild(strip);
+    NX_CB_.strip = strip;
+    NX_LG_.strips.push(strip);
+    if (!NX_LG_.timer) NX_LG_.timer = setInterval(nxLedgerStripTick_, 2000);
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(nxCbMeasure_).observe(bar);
+    setInterval(function(){ if (document.body.classList.contains('cb-on')) nxCbSync_(); }, 1000);
+    nxCbLoadCases_();
+  }
+  function nxCbMeasure_(){
+    var bar = document.getElementById('nxCaseBar'), cw = document.getElementById('centerWork');
+    if (bar && cw) cw.style.setProperty('--cb-h', (document.body.classList.contains('cb-on') ? bar.offsetHeight : 0) + 'px');
+    if (typeof updatePreviewControlsPosition === 'function') { try { updatePreviewControlsPosition(); } catch (e) {} } // 문서작성 미리보기 확대 단추(화면 고정 자리)
+  }
+  // 탭 누름·사건 바꿈: 그 화면이 이미 같은 사건이면 화면만 옮기고, 아니면 그 화면의 "그 사건으로 열기"를 부른다
+  function nxCbGo_(v, id, force){
+    NX_CB_.lawFree = false;
+    var go = function(){
+      if (!id){ goToView_(v); return; }
+      if (v === 'taxplan'){
+        if (nxScreenCaseIdOf_('taxcalc') === id) { goToView_('taxplan'); return; }
+        nxCaseJump_('taxcalc', id); setTimeout(function(){ goToView_('taxplan'); }, 600); return;
+      }
+      if (!force && nxCbCaseOf_(v) === id){ goToView_(v); return; }
+      nxCaseJump_(v, id);
+    };
+    var rw = document.getElementById('view-reportwriter');
+    if (v !== 'reportwriter' && rw && rw.classList.contains('active') && typeof rwHasUnsavedDriveChanges_ === 'function' && rwHasUnsavedDriveChanges_()) {
+      nxConfirm_('문서작성에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){ if (ok) { rwHasUnsavedDriveChanges_ = function(){ return false; }; go(); } });
+      return;
+    }
+    go();
+  }
+  // 화면을 옮길 때마다(showView) — 사건 탭이면 머리줄을 보이고 지금 사건·기한·탭 표시를 맞춘다
+  function nxCbOnView_(name){
+    // 로그인 게이트가 이 파일을 다 읽기 전에 첫 화면을 열 수 있어(아래 NX_LG_ 등이 아직 없음) 한 박자 뒤에 맞춘다
+    if (typeof NX_LG_ === 'undefined' || !NX_LG_){ setTimeout(function(){ nxCbOnView_(name); }, 0); return; }
+    nxCbInit_();
+    var on = nxCbIsCaseView_(name) && !(name === 'lawsearch' && NX_CB_.lawFree);
+    document.body.classList.toggle('cb-on', on);
+    var bar = document.getElementById('nxCaseBar'); if (bar) bar.hidden = !on;
+    nxCbMeasure_();
+    if (on) nxCbSync_();
+  }
+  function nxCbSync_(){
+    var bar = document.getElementById('nxCaseBar'); if (!bar || bar.hidden) return;
+    var v = nxCbViewOf_(nxCbActiveView_());
+    bar.querySelectorAll('[data-cb-tab]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-cb-tab') === v); });
+    // 화면이 아직 사건을 못 잡았으면(증빙확보가 폴더를 여는 중 등) 머리줄은 보던 사건을 그대로 둔다 — 사건이 비어 보이지 않게
+    var id = (nxCbIsCaseView_(v) ? (nxCbCaseOf_(v) || '') : '') || NX_CB_.shownId || '';
+    if (id) nxLastCaseId_ = id;
+    if (id === NX_CB_.shownId) return;
+    NX_CB_.shownId = id;
+    var c = NX_CB_.cases.filter(function(x){ return x.id === id; })[0];
+    if (id && !c && NX_CB_.cases.length) nxCbLoadCases_(); // 새로 만든 사건 — 목록을 다시 받는다
+    var sel = document.getElementById('cbCaseSelect');
+    if (sel){ if (id && !Array.prototype.some.call(sel.options, function(o){ return o.value === id; })) nxCbFillSelect_(); sel.value = id; }
+    var nm = bar.querySelector('.cb-name'), meta = bar.querySelector('.cb-meta');
+    nm.textContent = c ? String(c.사건명 || c.고객명 || '') : (id ? '사건' : '사건을 골라 주세요');
+    var bits = [];
+    if (c){
+      if (c.상태) bits.push(escapeHtml(c.상태));
+      var due = String(c.법정일 || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(due)){
+        var dd = Math.round((new Date(due + 'T00:00:00') - new Date(nxLocalDateStr_() + 'T00:00:00')) / 86400000);
+        var lab = '기한 ' + due.slice(5) + ' (' + (dd === 0 ? '오늘' : dd > 0 ? 'D-' + dd : dd * -1 + '일 지남') + ')';
+        bits.push(dd <= 7 ? '<span class="cb-due-near">' + lab + '</span>' : lab);
+      }
+    }
+    meta.innerHTML = bits.join(' · ');
+  }
+  // 법령정보를 "자료" 메뉴(사건과 상관없이)로 열면 머리줄 없이 연다 — 작업공간의 근거 탭으로 열면 머리줄과 함께
+  function nxCbSetLawFree_(free){ NX_CB_.lawFree = !!free; }
 
   // =========================================================
   // [2026.10.29] 사건 장부 띠 — 세무사님 원문 "ai없이 수동으로 사건을 처리할때 사용자가 사건장부를 수시로 참조해야 하는 것이 아닌가?" → "권장대로 하자"
@@ -1181,7 +1342,7 @@
       if (chn && (chn.rows || []).length) h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">거래 사슬</b> <span style="color:var(--sub);">누가 누구에게 — 사슬 밖 계약서는 칸에 쓰지 않고 질문으로</span>' + chn.rows.map(function(rw){ return '<div style="margin-top:3px;">' + e(rw.물건) + ' <span style="color:var(--sub);">— 납세자 위치: ' + e(rw.납세자위치 || '') + '</span>' + tbl(['날짜', '내용', '누구', '이음'], (rw.고리 || []).map(function(st){ return '<tr>' + cell(st.at || '', 90) + cell((st.kind === '등기' ? '등기 ' : '') + (st.what || ''), 180) + cell(st.to || '', 200) + cell(st.밖 ? '⚠ 사슬 밖 — ' + st.밖 : (st.등기 || ''), 260, st.밖 ? ' color:#b23;' : '') + '</tr>'; }).join('')) + '</div>'; }).join('') + ((chn.off || []).length ? '<div style="color:#b23; margin-top:3px;">사슬 밖 계약서 ' + chn.off.length + '건 — ' + chn.off.map(function(o){ return e(o.file) + ': ' + e(o.why); }).join(' / ') + '</div>' : '') + '</div>';
       var ev = (f.증빙 || []).slice().sort(function(a, b){ return (a.state === '증빙받을것' ? 0 : 1) - (b.state === '증빙받을것' ? 0 : 1); });
       // [2026.10.29 계획서 3판] 받는 곳(도구·세무사님·고객 — 보이기만) · 공부 사실(조회한 필지) — 조회·추정·시험 계산 단추는 📒 사건 장부 화면 ⑤ 도구에
-      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">확보할 증빙</b>' + (ev.length ? tbl(['서류', '상태', '받는 곳', '왜'], ev.map(function(x){ var dd = x.서류 || {}; return '<tr>' + cell(dd.label || x.label, 240) + cell(x.state === '확정' ? '확보' : (ST[x.state] || x.state), 60, x.state === '증빙받을것' ? ' color:#a60;' : '') + cell((x.받는곳 === '도구' ? '🔎 도구로 조회' : (x.받는곳 || '')) + (x.도구확보 ? ' — 받음' : ''), 120, x.받는곳 === '도구' ? ' color:#2563eb;' : '') + cell(dd.note || '', 260, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">확보할 증빙</b>' + (ev.length ? tbl(['서류', '상태', '받는 곳', '왜'], ev.map(function(x){ var dd = x.서류 || {}; return '<tr>' + cell(dd.label || x.label, 240) + cell(x.state === '확정' ? '확보' : (ST[x.state] || x.state), 60, x.state === '증빙받을것' ? ' color:#a60;' : '') + cell((x.받는곳 === '도구' ? '🔎 도구로 조회' : (x.받는곳 || '')) + (x.도구확보 ? ' — 받음' : ''), 120, x.받는곳 === '도구' ? ' color:#0D1B3D;' : '') + cell(dd.note || '', 260, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var pb = f.공부 || [], tgt = (f.조회대상 || []).filter(function(t){ return !t.조회함; });
       h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">공부 사실 ' + pb.length + '필지</b> <span style="color:var(--sub);">조회·추정·시험 계산·세목 비교 단추는 📒 사건 장부 화면 ⑤ 도구에</span>' + (pb.length ? pb.map(function(p){ return '<div style="margin-top:3px;">' + e(p.소재지) + tbl(['항목', '값'], (p.받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160) + cell(it.v, 360) + '</tr>'; }).join('') + (p.못받음 || []).map(function(it){ return '<tr>' + cell(it.label, 160, ' color:#b23;') + cell('못 받음 — ' + (it.err || ''), 360, ' color:#b23;') + '</tr>'; }).join('')) + '</div>'; }).join('') : '<div class="log-empty">없음</div>') + (tgt.length ? '<div style="color:#a60; margin-top:3px;">아직 조회 안 한 필지: ' + tgt.map(function(t){ return e(t.소재지); }).join(', ') + '</div>' : '') + '</div>';
       var cc = r.칸 || [];
@@ -1292,7 +1453,7 @@
       var imgBox = overlay.querySelector('#nxSuggestImgs');
       var drawImgs = function(){
         if (!imgBox) return;
-        imgBox.innerHTML = images.map(function(im, i){ return '<span style="position:relative; display:inline-block;"><img src="' + im.dataUrl + '" alt="" style="height:64px; border:1px solid var(--line); border-radius:4px;"><button type="button" data-nx-img="' + i + '" title="빼기" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:none; background:#a83232; color:#fff; font-size:11px; cursor:pointer; line-height:18px; padding:0;">×</button></span>'; }).join('');
+        imgBox.innerHTML = images.map(function(im, i){ return '<span style="position:relative; display:inline-block;"><img src="' + im.dataUrl + '" alt="" style="height:64px; border:1px solid var(--line); border-radius:4px;"><button type="button" data-nx-img="' + i + '" title="빼기" style="position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%; border:none; background:#b3261e; color:#fff; font-size:11px; cursor:pointer; line-height:18px; padding:0;">×</button></span>'; }).join('');
       };
       var addFile = function(file){
         if (!file || !/^image\//.test(file.type)) return;
@@ -1354,8 +1515,7 @@
   var globalHelpBtn_ = document.getElementById('globalHelpBtn');
   if (globalHelpBtn_) {
     globalHelpBtn_.addEventListener('click', function(){
-      var activeItem = document.querySelector('.menu-item[data-view].active');
-      var viewName = activeItem ? activeItem.getAttribute('data-view') : null;
+      var viewName = nxCbActiveView_() || null; // [2026.11.01] 사건 작업공간 탭은 메뉴 한 줄이라 지금 화면으로 찾는다
       var sectionId = (viewName && HELP_SECTION_BY_VIEW_[viewName]) || 'help-toc';
       goToHelp_(sectionId);
     });

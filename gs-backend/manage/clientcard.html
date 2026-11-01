@@ -21,7 +21,7 @@
   .cc-btn{ border:none; border-radius:12px; background:rgba(255,255,255,0.1); color:#fff; font-size:16px; font-weight:600; padding:8px 12px; min-height:52px; cursor:pointer; text-align:left; text-decoration:none; display:block; }
   .cc-btn small{ display:block; font-size:12.5px; font-weight:400; color:#c9d2e6; }
   .cc-btn.gold{ background:var(--gold); color:var(--navy); text-align:center; }
-  .cc-btn.green{ background:#2f9e6b; text-align:center; }
+  .cc-btn.green{ background:#0D1B3D; text-align:center; }
   .cc-btn.big{ min-height:90px; font-size:20px; }
   .cc-name{ font-size:22px; font-weight:700; }
   .cc-sub{ font-size:13px; color:#c9d2e6; }
@@ -29,7 +29,7 @@
   .cc-case{ display:flex; gap:8px; align-items:stretch; background:rgba(255,255,255,0.06); border-radius:12px; padding:8px 10px; }
   .cc-case .info{ flex:1; min-width:0; font-size:15px; }
   .cc-case .info small{ display:block; font-size:13px; color:#c9d2e6; }
-  .cc-case .rec{ flex-shrink:0; width:52px; border:none; border-radius:10px; background:#e5484d; color:#fff; font-size:22px; cursor:pointer; }
+  .cc-case .rec{ flex-shrink:0; width:52px; border:none; border-radius:10px; background:#b3261e; color:#fff; font-size:22px; cursor:pointer; }
   .cc-dday{ color:#ffb4b4; font-weight:700; }
   .cc-sum{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
   .cc-sum b{ color:var(--gold-light); }
@@ -70,7 +70,7 @@
   function nxCcSay_(){
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR){ nxCcPick_(null, '이 브라우저는 음성 인식이 안 됩니다 — 크롬으로 열어 주세요.'); return; }
-    var b = nxCcEl_('ccSay'); if (b){ b.textContent = '듣는 중… 고객 이름을 말씀하세요'; b.classList.remove('gold'); b.style.background = '#e5484d'; }
+    var b = nxCcEl_('ccSay'); if (b){ b.textContent = '듣는 중… 고객 이름을 말씀하세요'; b.classList.remove('gold'); b.style.background = '#b3261e'; }
     var rec = new SR(); rec.lang = 'ko-KR'; rec.interimResults = false; rec.maxAlternatives = 3;
     var heard = [];
     rec.onresult = function(ev){ for (var i = 0; i < ev.results[0].length; i++) heard.push(ev.results[0][i].transcript); };

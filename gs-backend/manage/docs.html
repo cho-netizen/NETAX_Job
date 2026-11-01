@@ -704,7 +704,7 @@
         '<div class="log-date" style="color:' + (got ? 'var(--navy)' : 'var(--sub)') + ';">' + escapeHtml(entry.status || '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.label || '') + '</b>' +
         (entry.note ? '<br><span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(entry.note) + '</span>' : '') +
-        (sub && sub.submitted ? '<br><span style="color:#b8860b; font-size:12.5px; font-weight:600;">📤 고객이 이미 제출함(' + escapeHtml(sub.fileName || '') + (sub.uploadedAt ? ', ' + escapeHtml(String(sub.uploadedAt).slice(0, 10)) : '') + ') — 확인 후 확보완료로 표시하세요</span>' : '') +
+        (sub && sub.submitted ? '<br><span style="color:#7a5c14; font-size:12.5px; font-weight:600;">📤 고객이 이미 제출함(' + escapeHtml(sub.fileName || '') + (sub.uploadedAt ? ', ' + escapeHtml(String(sub.uploadedAt).slice(0, 10)) : '') + ') — 확인 후 확보완료로 표시하세요</span>' : '') +
         '</div>' +
         (source !== 'auto' ? '<button type="button" class="ghost-btn docsEvToggleBtn sm">' + (got ? '미확보로' : '확보완료') + '</button>' : '') +
         (source === 'requested' ? '<button type="button" class="ghost-btn docsEvRenameBtn sm">이름변경</button>' : '') +
@@ -2445,7 +2445,7 @@
       tdFormula.appendChild(formulaInput);
 
       var tdResult = document.createElement('td');
-      tdResult.style.cssText = 'padding:4px 6px; text-align:right; font-weight:600;' + (Number.isFinite(row.result) ? '' : 'color:#c0392b;');
+      tdResult.style.cssText = 'padding:4px 6px; text-align:right; font-weight:600;' + (Number.isFinite(row.result) ? '' : 'color:#b3261e;');
       tdResult.textContent = Number.isFinite(row.result) ? row.result.toLocaleString('ko-KR') : '오류';
 
       var tdDel = document.createElement('td');
@@ -2474,7 +2474,7 @@
       var tr = document.querySelector('#docsCalcRowsBody tr[data-row-id="' + row.id + '"]');
       if (!tr) return;
       var tdResult = tr.children[3];
-      tdResult.style.color = Number.isFinite(row.result) ? '' : '#c0392b';
+      tdResult.style.color = Number.isFinite(row.result) ? '' : '#b3261e';
       tdResult.textContent = Number.isFinite(row.result) ? row.result.toLocaleString('ko-KR') : '오류';
     });
   }
@@ -2721,7 +2721,7 @@
       return;
     }
     if (!window.mermaid){
-      preview.innerHTML = '<div style="color:#c0392b; font-size:12.5px;">mermaid 라이브러리를 불러오지 못했습니다.</div>';
+      preview.innerHTML = '<div style="color:#b3261e; font-size:12.5px;">mermaid 라이브러리를 불러오지 못했습니다.</div>';
       return;
     }
     var id = 'docsDiagram' + (docsDiagramRenderSeq_++);
@@ -2735,7 +2735,7 @@
         ? DOMPurify.sanitize(res.svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['foreignObject'] })
         : res.svg;
     }).catch(function(err){
-      preview.innerHTML = '<div style="color:#c0392b; font-size:12.5px; white-space:pre-wrap;">문법 오류:\n' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
+      preview.innerHTML = '<div style="color:#b3261e; font-size:12.5px; white-space:pre-wrap;">문법 오류:\n' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
     });
   }
 
@@ -2827,7 +2827,7 @@
       if (entry.dueDate){
         var overdue = entry.dueDate < todayStr;
         var dueToday = entry.dueDate === todayStr;
-        var badgeColor = overdue ? '#c0392b' : (dueToday ? '#b8860b' : 'var(--sub)');
+        var badgeColor = overdue ? '#b3261e' : (dueToday ? '#7a5c14' : 'var(--sub)');
         dueBadge = '<span style="display:inline-block; margin-top:2px; font-size:10.5px; color:' + badgeColor + ';">📌 ' + escapeHtml(fmtDateShort_(entry.dueDate)) + '</span>';
       }
       row.innerHTML = '<div class="log-date">' + escapeHtml(fmtDateShort_(entry.date)) + dueBadge + '</div>'

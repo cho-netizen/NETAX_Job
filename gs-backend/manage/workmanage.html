@@ -140,7 +140,7 @@
         return '<tr><td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
           '<td style="padding:4px 8px;">' + escapeHtml(it.사건명) + '</td>' +
           '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재완료일) + '</td>' +
-          '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.영수증발행일) + '</td></tr>';
+          '<td style="padding:4px 8px; color:#0D1B3D;">' + escapeHtml(it.영수증발행일) + '</td></tr>';
       }).join('');
       return '<table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 완료일</th><th style="padding:4px 8px;">영수증 발행일</th></tr></thead><tbody>' + rows + '</tbody></table>';
     }
@@ -324,7 +324,7 @@
       // 넘치면 줄바꿈되어 카드 높이가 들쭉날쭉해졌다 — 줄바꿈 대신 한 줄로 자르고 "..."로
       // 표시한다(요약 목록이니 전체는 클릭해서 상세보기에서 확인).
       row.innerHTML =
-        '<div class="log-date"' + (overdue ? ' style="color:#a83232; font-weight:700;" title="기한 지남"' : dateStyle) + '>' + escapeHtml(c.법정일 ? fmtDateShort_(c.법정일) : noDeadlineText) + '</div>' +
+        '<div class="log-date"' + (overdue ? ' style="color:#b3261e; font-weight:700;" title="기한 지남"' : dateStyle) + '>' + escapeHtml(c.법정일 ? fmtDateShort_(c.법정일) : noDeadlineText) + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(custName || '(고객명 없음)') + '</b>' + (subBits.length ? ' <span style="color:var(--sub);">' + subBits.join(' ') + '</span>' : '') +
         '<div style="color:var(--sub); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(WORK_SEMOK_LABELS[c.세목] || c.세목 || '') + (c.업무유형 ? ' · ' + escapeHtml(c.업무유형) : '') + ' · ' + escapeHtml(c.상태 || '') +
         (prog.total ? (' · 하위업무 ' + prog.done + '/' + prog.total) : '') + workMyPortalBadgeText_(c) + '</div></div>';
@@ -836,7 +836,7 @@
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">' +
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
         '<input type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
-        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#a83232;' : '') + '">' +
+        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#b3261e;' : '') + '">' +
         '<button type="button" class="ghost-btn wcNodeAddChild sm">+ 하위</button>' +
         '<span class="log-del wcNodeDelete" title="삭제">✕</span>' +
         '</div>' +

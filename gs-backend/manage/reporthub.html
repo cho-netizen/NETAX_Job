@@ -251,7 +251,7 @@
             return '<tr><td style="padding:4px 8px;">' + esc(it.고객명) + '</td>' +
               '<td style="padding:4px 8px;">' + esc(it.사건명) + '</td>' +
               '<td style="padding:4px 8px; color:#b23;">' + esc(it.oldName) + '</td>' +
-              '<td style="padding:4px 8px; color:#2a7a4f;">' + esc(it.newName) + '</td></tr>';
+              '<td style="padding:4px 8px; color:#0D1B3D;">' + esc(it.newName) + '</td></tr>';
           }).join('');
           html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">자동으로 이름을 바꿀 수 있는 파일 ' + res.renamePlan.length + '건입니다.</div>' +
             '<div style="overflow-x:auto; max-height:260px; overflow-y:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 파일명</th><th style="padding:4px 8px;">새 파일명</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
@@ -370,7 +370,7 @@
       callGas('shorts_list', {}).then(function(res){
         if (!res || res.error){ wrap.innerHTML = '<div class="empty-row">쇼츠 폴더를 읽지 못했습니다: ' + esc((res && res.error) || '응답 없음') + '</div>'; return; }
         rhShortsData_ = res;
-        var chip = function(on, label){ return '<span style="display:inline-block; padding:1px 7px; margin:1px 2px; border-radius:10px; font-size:11.5px; ' + (on ? 'background:#e6f4ea; color:#1e7b34;' : 'background:#f1f1f3; color:#999;') + '">' + (on ? '✓ ' : '') + label + '</span>'; };
+        var chip = function(on, label){ return '<span style="display:inline-block; padding:1px 7px; margin:1px 2px; border-radius:10px; font-size:11.5px; ' + (on ? 'background:#eef1f7; color:#0D1B3D;' : 'background:#f1f1f3; color:#999;') + '">' + (on ? '✓ ' : '') + label + '</span>'; };
         var ref = res.ref;
         var html = '<div style="padding:10px 12px; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">' +
           '<b>🐶 순돌이 기준 그림</b><span style="color:var(--sub); font-size:12.5px;">' + (ref && ref.images.length ? ref.images.length + '장 — 모든 편에 같은 그림을 쓰고 클립보드 글자만 바꿉니다' : '아직 없음 — 순돌이 원본 그림을 올려 주세요') + '</span>' +

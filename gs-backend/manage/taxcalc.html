@@ -1026,7 +1026,7 @@ function enhanceRegNoInputs(container){
     el.addEventListener('blur', function(){
       const check = validateResidentRegistrationNumber_(el.value);
       if (check.valid === false){
-        el.style.borderColor = '#e53935';
+        el.style.borderColor = '#b3261e';
         nxConfirm_('주민등록번호 형식 오류: ' + check.reason + '\n\n그래도 이 값을 그대로 입력하시겠습니까?\n(취소를 누르면 이 칸을 비웁니다)').then(function(proceed){
           if (!proceed){ el.value = ''; el.style.borderColor = ''; }
         });
@@ -3508,7 +3508,7 @@ function openOneHouseSpecialCaseModal_(idx){
     html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
     html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
     // [2026.10.19] 특례 판정에 그 양도일 연혁이 아직 없으면(예: 일시적 2주택 2023-01-12 전 양도) 경고
-    if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600;">' + escapeHtml(r.시점경고) + '</div>';
+    if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600;">' + escapeHtml(r.시점경고) + '</div>';
     if (r.적용여부){
       html += '<button type="button" class="taxcalc-run-btn" id="ohsApplyBtn" style="margin-top:8px;">1세대1주택 비과세로 체크하기</button>';
     }
@@ -7621,7 +7621,7 @@ function populateTransferCalcBasis_(idx){
 
 // [2026.10.19] 세무사님 판단 대기(엔진 판단대기) — 두 해석 세액을 나란히, 이 사건에서 고른 답을 기록(reftable_judgment_set). 계산은 해석 A 그대로.
 function tcJudgmentPendingHtml_(list){
-  return '<div class="taxcalc-result-note" style="border:1px solid #6a1b9a; border-radius:6px; padding:8px 10px; margin:0 0 8px; color:#4a148c;">' +
+  return '<div class="taxcalc-result-note" style="border:1px solid #7a5c14; border-radius:6px; padding:8px 10px; margin:0 0 8px; color:#7a5c14;">' +
     list.map(function(j){
       return '<div style="margin-bottom:6px;"><b>⚠ 세무사님 판단 대기 — ' + escapeHtml(j.제목) + '</b> <span style="font-size:11.5px;">(' + escapeHtml(j.근거) + ', 조견표 ' + escapeHtml(j.조견표) + ')</span><br>' +
         '해석 A(지금 기본 — ' + escapeHtml(j.해석A) + '): 산출세액 <b>' + won(j.세액A) + '</b> / 해석 B(' + escapeHtml(j.해석B) + '): <b>' + won(j.세액B) + '</b>' + (j.비고 ? ' <span style="font-size:11.5px;">— ' + escapeHtml(j.비고) + '</span>' : '') + '<br>' +
@@ -7637,10 +7637,10 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   let html = '<div class="taxcalc-result" style="margin-top:10px;">';
   if (label) html += '<div class="taxcalc-calcbasis-title" style="margin-bottom:4px;">' + label + '</div>';
   // [2026.10.19 조견표 0단계] 양도일이 2023 전이면 세율·장특공률 연혁이 아직 없어 현행 기준으로 계산됐다는 경고(엔진 시점경고) — 맨 위에
-  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
-  if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
+  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
+  if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b3261e; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
   if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 — 해석 A/B 세액, 고르면 기록
-  if (r.판단대기안내 && r.판단대기안내.length) html += '<div class="taxcalc-result-note" style="color:#6a1b9a; margin:0 0 6px;">' + r.판단대기안내.map(function(x){ return '⚠ ' + escapeHtml(x); }).join('<br>') + '</div>'; // [2026.10.20 J03] 입력을 더 넣어야 판정되는 안내
+  if (r.판단대기안내 && r.판단대기안내.length) html += '<div class="taxcalc-result-note" style="color:#7a5c14; margin:0 0 6px;">' + r.판단대기안내.map(function(x){ return '⚠ ' + escapeHtml(x); }).join('<br>') + '</div>'; // [2026.10.20 J03] 입력을 더 넣어야 판정되는 안내
   html += taxCalcResultRow('거래건수 / 비과세', r.거래건수 + '건 / ' + r.비과세건수 + '건');
   html += taxCalcResultRow('합산대상(장기) 소득금액', won(r.합산소득금액));
   html += taxCalcResultRow('기본공제', won(r.기본공제));
@@ -7658,7 +7658,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   (r.농어촌특별세_내역 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">농특세 ' + escapeHtml(x.농특세) + ' — ' + escapeHtml(String(x.감면)) + ' ' + won(x.감면세액) + ': ' + escapeHtml(x.근거) + '</div>'; });
   // [2026.10.19 서식 감사] 조특법 §133 한도로 감면하지 않은 금액(엔진 감면한도_조특법133)·그 시점 경고
   (r.감면한도_조특법133 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">' + escapeHtml(x.한도) + ' — 감면받을 세액 ' + won(x.감면받을세액_합계) + (x.직전4개과세기간_감면세액 ? ' + 직전 4개 과세기간 ' + won(x.직전4개과세기간_감면세액) : '') + ' 중 ' + won(x.감면하지않는금액) + '은 감면하지 않음(늦게 양도한 자산부터)</div>'; });
-  if (r.감면한도_시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.감면한도_시점경고) + '</div>';
+  if (r.감면한도_시점경고) html += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + escapeHtml(r.감면한도_시점경고) + '</div>';
   if (r.다운계약서_감면배제_추징액) html += taxCalcResultRow('다운계약서 감면배제 추징액', '+' + won(r.다운계약서_감면배제_추징액));
   if (r.비과세거래_다운계약서_추징액) html += taxCalcResultRow('다운계약서 비과세배제 추징액(별건)', '+' + won(r.비과세거래_다운계약서_추징액));
   html += taxCalcResultRow('합산(장기) 그룹 산출세액', won(r.합산그룹_산출세액));
@@ -8850,9 +8850,9 @@ function renderOneGiftResultHtml_(r, idx, donorLabel){
   if (r.error) return '<div class="taxcalc-error">' + donorLabel + ': ' + r.error + '</div>';
   let html = '<div class="taxcalc-result" style="margin-top:10px;">';
   html += '<div class="taxcalc-calcbasis-title" style="margin-bottom:4px;">' + donorLabel + '</div>';
-  if (r.신고세액공제_안내) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.신고세액공제_안내) + '</div>'; // [2026.10.22 증여-1]
+  if (r.신고세액공제_안내) html += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + escapeHtml(r.신고세액공제_안내) + '</div>'; // [2026.10.22 증여-1]
   if (r.옛국기법가산세) html += '<div class="taxcalc-result-note">' + escapeHtml(r.옛국기법가산세) + '</div>'; // [2026.10.22 증여-6]
-  if (r.납부능력면제_안내) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.납부능력면제_안내) + '</div>'; // [2026.10.22 증여-17]
+  if (r.납부능력면제_안내) html += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + escapeHtml(r.납부능력면제_안내) + '</div>'; // [2026.10.22 증여-17]
   if (r.부대비용대납액) html += taxCalcResultRow('증여재산가액(증여자가 대신 낸 취득세 등 ' + won(r.부대비용대납액) + ' 포함, 집행기준 47-36-6 ③)', won(r.증여재산가액)); // [2026.10.21]
   if (r.비과세재산가액) html += taxCalcResultRow('비과세재산가액', '-' + won(r.비과세재산가액));
   if (r.공익법인출연재산가액) html += taxCalcResultRow('공익법인등출연재산가액', '-' + won(r.공익법인출연재산가액));
@@ -8923,7 +8923,7 @@ function renderGiftResult(results){
     }).join('·') + (donorIdxs.length > 1 ? ' [동일인그룹]' : '');
     const donee = giftDonees[item.doneeIdx || 0] || {};
     const label = donorLabel + (giftDonees.length > 1 ? ' → 수증인 ' + tcPad2_((item.doneeIdx || 0) + 1) + (donee.name ? '(' + escapeHtml(donee.name) + ')' : '') : '');
-    return (item.공동입력안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">⚠ 증여 쌍이 둘 이상이라 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·외국납부 등)을 각 쌍의 증여재산가액 비율로 나눠 넣었습니다 — 그 금액이 특정 재산에 딸린 것이면 공동 칸을 비우고 "증여 재산 배분" 목록의 그 재산 칸(재해손실·감정평가수수료·비과세·외국납부)에 적으세요 — 그 재산을 받은 쌍에만 들어갑니다(상증법 §54·§55·§59). 이 쌍: ' + escapeHtml(Object.keys(item.공동입력안분).map(function(k){ return (GIFT_AI_FIELD_LABELS[k] || ({ museumDeferredTaxAmount: '박물관자료 징수유예', businessSuccessionDeferredTaxAmount: '가업승계 납부유예' })[k] || k) + ' ' + won(item.공동입력안분[k]); }).join(', ')) + '</div>' : '') + (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
+    return (item.공동입력안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">⚠ 증여 쌍이 둘 이상이라 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·외국납부 등)을 각 쌍의 증여재산가액 비율로 나눠 넣었습니다 — 그 금액이 특정 재산에 딸린 것이면 공동 칸을 비우고 "증여 재산 배분" 목록의 그 재산 칸(재해손실·감정평가수수료·비과세·외국납부)에 적으세요 — 그 재산을 받은 쌍에만 들어갑니다(상증법 §54·§55·§59). 이 쌍: ' + escapeHtml(Object.keys(item.공동입력안분).map(function(k){ return (GIFT_AI_FIELD_LABELS[k] || ({ museumDeferredTaxAmount: '박물관자료 징수유예', businessSuccessionDeferredTaxAmount: '가업승계 납부유예' })[k] || k) + ' ' + won(item.공동입력안분[k]); }).join(', ')) + '</div>' : '') + (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b3261e; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
   }).join('');
   if (list.length > 1 && list.every(function(item){ return !item.result.error; })){
     const totalTax = list.reduce(function(s, item){ return s + (numVal(item.result.납부세액) || 0) + ((item.result.대납분재계산 && item.result.대납분재계산.적용) ? (numVal(item.result.대납분재계산.추가납부세액) || 0) : 0); }, 0);
@@ -9070,7 +9070,7 @@ function renderSpecialRateGiftResult(r){
   if (r.납부세액공제) html += taxCalcResultRow('납부세액공제(앞선 특례분 세액, §58)', '-' + won(r.납부세액공제));
   if (r.납부세액공제_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.납부세액공제_안내) + '</div>'; // [2026.10.20 J25]
   if (r.그때법_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.그때법_안내) + '</div>'; // [2026.10.20] 증여일별 한도·공제·세율
-  if (r.공동승계_안내) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.공동승계_안내) + '</div>'; // [2026.10.22 증여-7]
+  if (r.공동승계_안내) html += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + escapeHtml(r.공동승계_안내) + '</div>'; // [2026.10.22 증여-7]
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제(§59)', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -9237,7 +9237,7 @@ function renderBusinessOpportunityGiftResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   if (r.환급세액) html += taxCalcResultRow('환급세액(법 §45의4③ 단서)', won(r.환급세액), { total: true });
-  if (r.환급_확인필요) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.환급_확인필요) + '</div>'; // [2026.10.22 변경-13]
+  if (r.환급_확인필요) html += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + escapeHtml(r.환급_확인필요) + '</div>'; // [2026.10.22 변경-13]
   html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
   html += tcToolSaveButtonHtml_('jt');
   html += '</div>';
@@ -10302,7 +10302,7 @@ function trAttach2StockRecord_(stock, seq){
 //  예전 조사 기록(자경·축사·어업·산지·대토·국가양도산지·대토보상은 공용 13호, 55호는 사업시행자 서류라 뺌)은 그 파일 주석과 git 기록에 있다.
 // [2026.10.19 서식 선택 고침] 법령이 신청 서식을 정하지 않은 감면 — 서식 대신 '제출서류 안내'(화면에만, 인쇄 안 함)
 function trFilingGuidePageHtml_(title, lines){
-  return '<div class="taxcalc-result-note" style="margin:8px 0; padding:8px 10px; background:#fffbea; border:1px dashed #b26a00; border-radius:6px;"><div style="font-weight:600;">📌 ' + escapeHtml(title) + ' — 제출서류 안내(서식 아님, 인쇄되지 않음)</div>' +
+  return '<div class="taxcalc-result-note" style="margin:8px 0; padding:8px 10px; background:#fffbea; border:1px dashed #7a5c14; border-radius:6px;"><div style="font-weight:600;">📌 ' + escapeHtml(title) + ' — 제출서류 안내(서식 아님, 인쇄되지 않음)</div>' +
     '<ul style="font-size:12.5px; margin:6px 0 0 18px;">' + lines.map(function(l){ return '<li>' + escapeHtml(l) + '</li>'; }).join('') + '</ul></div>';
 }
 function trCompensationReductionPrintPageHtml_(asset){
@@ -13371,16 +13371,16 @@ function renderInheritanceResult(r){
   lastInheritanceResult = r.error ? null : r;
   if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; renderHeirTool(); return; }
   let html = '<div class="taxcalc-result">';
-  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>'; // [2026.10.19] 상속개시일 연혁 경고
-  if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
+  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>'; // [2026.10.19] 상속개시일 연혁 경고
+  if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b3261e; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
   if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 ④ 부담채무Ⅱ — 해석 A/B 세액, 고르면 기록
-  if (r.채무겹침주의) html += '<div class="taxcalc-result-note" style="color:#a83232;">' + escapeHtml(r.채무겹침주의) + '</div>';
-  if (r.신고세액공제_안내) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.신고세액공제_안내) + '</div>'; // [2026.10.22 상속-1]
+  if (r.채무겹침주의) html += '<div class="taxcalc-result-note" style="color:#b3261e;">' + escapeHtml(r.채무겹침주의) + '</div>';
+  if (r.신고세액공제_안내) html += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + escapeHtml(r.신고세액공제_안내) + '</div>'; // [2026.10.22 상속-1]
   if (r.옛국기법가산세) html += '<div class="taxcalc-result-note">' + escapeHtml(r.옛국기법가산세) + '</div>'; // [2026.10.22 상속-5]
   // [2026.10.09] 실사용 점검에서 발견 — 처리개요의 상속인 이름은 이름만 넘어오고 관계(배우자·자녀…)는 비어 있어,
   // 배우자가 있는데도 배우자공제(최소 5억)가 0원으로 계산되는데 아무 경고가 없었다. 관계가 빈 상속인이 있으면 알린다.
   const ihNoRelation_ = (inheritanceHeirs || []).filter(function(h){ return h && String(h.name || '').trim() && !h.relation; }).map(function(h){ return h.name; });
-  if (ihNoRelation_.length) html += '<div class="taxcalc-result-note" style="color:#a83232;">⚠ 상속인 명부에서 관계가 비어 있는 사람이 있습니다(' + escapeHtml(ihNoRelation_.join(', ')) + ') — 배우자·자녀·대습상속인 등 관계를 골라야 배우자공제·인적공제·법정상속분이 맞게 계산됩니다. 지금 결과는 그 사람들을 공제 판단에서 뺀 값입니다.</div>';
+  if (ihNoRelation_.length) html += '<div class="taxcalc-result-note" style="color:#b3261e;">⚠ 상속인 명부에서 관계가 비어 있는 사람이 있습니다(' + escapeHtml(ihNoRelation_.join(', ')) + ') — 배우자·자녀·대습상속인 등 관계를 골라야 배우자공제·인적공제·법정상속분이 맞게 계산됩니다. 지금 결과는 그 사람들을 공제 판단에서 뺀 값입니다.</div>';
   if (r.피상속인_거주구분 === '비거주자') html += '<div class="taxcalc-result-note">⚠ 피상속인이 비거주자로 설정되어 기초공제(2억원)와 감정평가수수료공제만 적용되고, 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 모두 0원 처리되었습니다.</div>';
   if (r.비과세재산가액) html += taxCalcResultRow('비과세재산가액', '-' + won(r.비과세재산가액));
   if (r.공익법인출연재산가액) html += taxCalcResultRow('공익법인출연재산가액', '-' + won(r.공익법인출연재산가액));
@@ -14388,9 +14388,9 @@ function tcOfficialSummaryHtml_(done){
     (d.r.mapped || []).forEach(function(m){ (m.notes || []).forEach(function(t){ if (/^⚠/.test(String(t))) warn.push(String(t)); }); (m.missing || []).forEach(function(x){ miss.push(m.formKey + ' ' + (x.칸 || x.key || x)); }); (m.checks || []).filter(function(c){ return c.맞음 === false; }).forEach(function(c){ bad.push(m.formKey + ' ' + [c.칸, c.내용 || c.식].filter(Boolean).join(' ') + (c.서식값 != null ? ' (서식 ' + Number(c.서식값).toLocaleString('ko-KR') + ' ↔ 계산 ' + Number(c.계산값).toLocaleString('ko-KR') + ')' : '')); }); });
     const over = (d.r.report && d.r.report.overflow) || [];
     return '✅ ' + escapeHtml(d.label) + ' — 새 창으로 열었습니다.' +
-      (bad.length ? '<br><span style="color:#b00020;">⚠ 서식 산식 검산 틀림: ' + escapeHtml(bad.join(', ')) + '</span>' : '') +
-      (warn.length ? '<br><span style="color:#b26a00;">' + warn.map(escapeHtml).join('<br>') + '</span>' : '') +
-      (over.length ? '<br><span style="color:#b26a00;">⚠ 칸을 넘친 값 ' + over.length + '개 — 출력물을 확인하세요</span>' : '') +
+      (bad.length ? '<br><span style="color:#b3261e;">⚠ 서식 산식 검산 틀림: ' + escapeHtml(bad.join(', ')) + '</span>' : '') +
+      (warn.length ? '<br><span style="color:#7a5c14;">' + warn.map(escapeHtml).join('<br>') + '</span>' : '') +
+      (over.length ? '<br><span style="color:#7a5c14;">⚠ 칸을 넘친 값 ' + over.length + '개 — 출력물을 확인하세요</span>' : '') +
       (miss.length ? '<details><summary style="cursor:pointer;">비운 칸 ' + miss.length + '개(계산기에 없거나 화면에 입력이 없음 — 출력물에 직접 적으세요)</summary>' + escapeHtml(miss.join(' · ')) + '</details>' : '');
     }).join('<br>');
 }
@@ -14421,7 +14421,7 @@ function tcOfficialBatchRun_(formNos){
     if (!list.length) throw new Error('찍을 계산 결과가 없습니다 — 먼저 계산하세요.');
     return FP.renderWithMappers(list, null).then(function(r){ FP.open(r.blob, label + '_법정서식.pdf'); tcWorkLog_('서식 출력', label + ' ' + uniq.length + '종'); return [{ label: label, r: r }]; }); // [2026.10.22 작업 기록부]
   }).then(function(done){ if (note) say(tcOfficialSummaryHtml_(done)); else showToast('원본 모양 서식을 새 창으로 열었습니다.', 'success'); })
-    .catch(function(e){ const m = '⚠ 원본 모양 일괄출력 실패: ' + (e && e.message ? e.message : String(e)); if (note) say('<span style="color:#b00020;">' + escapeHtml(m) + '</span>'); else nxAlert_(m); });
+    .catch(function(e){ const m = '⚠ 원본 모양 일괄출력 실패: ' + (e && e.message ? e.message : String(e)); if (note) say('<span style="color:#b3261e;">' + escapeHtml(m) + '</span>'); else nxAlert_(m); });
 }
 function tcOfficialOneRun_(formNo){
   const note = document.getElementById('printOfficialNote');
@@ -14434,7 +14434,7 @@ function tcOfficialOneRun_(formNo){
     if (!jobs.length) throw new Error('이 서식에 찍을 계산 결과가 없습니다 — 먼저 계산하세요.');
     return jobs.reduce(function(p, j){ return p.then(function(acc){ return FP.renderWithMappers(j.list, null).then(function(r){ FP.open(r.blob, j.label + '_법정서식.pdf'); tcWorkLog_('서식 출력', j.label); acc.push({ label: j.label, r: r }); return acc; }); }); }, Promise.resolve([]));
   }).then(function(done){ if (note) say(tcOfficialSummaryHtml_(done)); else showToast('원본 모양 서식을 새 창으로 열었습니다.', 'success'); })
-    .catch(function(e){ const m = '⚠ 원본 모양 출력 실패: ' + (e && e.message ? e.message : String(e)); if (note) say('<span style="color:#b00020;">' + escapeHtml(m) + '</span>'); else nxAlert_(m); });
+    .catch(function(e){ const m = '⚠ 원본 모양 출력 실패: ' + (e && e.message ? e.message : String(e)); if (note) say('<span style="color:#b3261e;">' + escapeHtml(m) + '</span>'); else nxAlert_(m); });
 }
 function tcOfficialFormRun_(){
   const tax = TC_OFFICIAL_FORM_TAX_[printActiveGroup_];
@@ -14458,7 +14458,7 @@ function tcOfficialFormRun_(){
     return ctxs.reduce(function(p, c){ return p.then(function(acc){ return FP.renderWithMappers(formsFor(c.ctx), c.ctx).then(function(r){ FP.open(r.blob, c.label + '_법정서식.pdf'); acc.push({ label: c.label, r: r }); return acc; }); }); }, Promise.resolve([]));
   }).then(function(done){
     say(tcOfficialSummaryHtml_(done));
-  }).catch(function(e){ say('<span style="color:#b00020;">⚠ 원본 모양 출력 실패: ' + escapeHtml(e && e.message ? e.message : String(e)) + '</span>'); });
+  }).catch(function(e){ say('<span style="color:#b3261e;">⚠ 원본 모양 출력 실패: ' + escapeHtml(e && e.message ? e.message : String(e)) + '</span>'); });
 }
 function printEfileStatusLabel_(formNo){
   if (PRINT_EFILE_INCLUDED_FORMNO_.indexOf(formNo) !== -1) return { label: '전자', cls: 'ok' };
@@ -14576,15 +14576,15 @@ function renderPrintPane(){
         }).join('') +
       '</div>' +
       // [2026.10.19 원본 모양 출력] 법정서식 원본 PDF(드라이브 법정서식원본(법제처)) 위에 위치판대로 값을 찍는다 — 모듈은 깃허브 페이지 app/formprint(서버 용량 밖)
-      ((anyReady && TC_OFFICIAL_FORM_TAX_[printActiveGroup_]) ? '<div class="taxcalc-result-note" style="margin:10px 0 4px; padding:8px 10px; border:1px solid #2a7a4f; border-radius:6px;">' +
+      ((anyReady && TC_OFFICIAL_FORM_TAX_[printActiveGroup_]) ? '<div class="taxcalc-result-note" style="margin:10px 0 4px; padding:8px 10px; border:1px solid #0D1B3D; border-radius:6px;">' +
         '<b>📄 법정서식 원본 모양으로 출력</b> <span style="font-size:12px;">(' + escapeHtml(TC_OFFICIAL_FORM_LABEL_[printActiveGroup_]) + ' — 국세청 공식 서식 PDF 위에 계산 값을 찍습니다)</span><br>' +
         (printActiveGroup_ === '증여세' ? '' : '<label style="font-size:12.5px;">신고구분 <select id="printOfficialKind">' + (function(){ var def = tcPrintKindDefault_(printActiveGroup_); return (printActiveGroup_ === '상속세' ? ['기한 내 신고', '수정신고', '기한 후 신고'] : ['확정신고', '예정신고', '수정신고', '기한 후 신고']).map(function(o){ return '<option' + (o === def ? ' selected' : '') + '>' + o + '</option>'; }).join(''); })() + '</select></label> ' /* 서식 보기 글자와 같게 — 상속 9호는 기한 내·수정·기한 후, 양도 84호는 예정·확정·수정·기한 후 */) +
         '<label style="font-size:12.5px;">신고일 <input type="date" id="printOfficialDate" value="' + escapeHtml(tcTodayStr_()) + '"></label> ' +
         '<button type="button" class="save-btn" data-action="print-official-form">📄 원본 모양 출력</button>' +
         '<div id="printOfficialNote" style="margin-top:6px; font-size:12.5px;"></div></div>' : '') +
-      (anyReady ? '<div class="taxcalc-result-note" style="color:#8a5a00; margin:4px 0 8px;">아래 표에서 "📄 원본 모양"은 국세청 공식 서식 PDF에 값을 찍습니다. "🖨 인쇄"가 남은 서식은 원본 모양이 아직 없는 서식이라 예전 모양(칸 번호를 화면이 매김 — 원본과 다를 수 있음)입니다.</div>' : '') +
+      (anyReady ? '<div class="taxcalc-result-note" style="color:#7a5c14; margin:4px 0 8px;">아래 표에서 "📄 원본 모양"은 국세청 공식 서식 PDF에 값을 찍습니다. "🖨 인쇄"가 남은 서식은 원본 모양이 아직 없는 서식이라 예전 모양(칸 번호를 화면이 매김 — 원본과 다를 수 있음)입니다.</div>' : '') +
       (fpLoading ? '<div class="taxcalc-result-note" style="margin:8px 0;">⏳ 원본 모양 서식 모듈을 불러오는 중입니다 — 잠시 뒤 서식 목록이 나옵니다.</div>' : '') +
-      ((!fp && printFpLoadState_ === 'fail' && anyCalc) ? '<div class="taxcalc-result-note" style="margin:8px 0; color:#b00020;">⚠ 원본 모양 서식 모듈을 불러오지 못해 원본 모양 서식 줄을 보여 줄 수 없습니다(' + escapeHtml(printFpLoadError_) + ') — 화면을 새로 고친 뒤 다시 들어오세요.</div>' : '') +
+      ((!fp && printFpLoadState_ === 'fail' && anyCalc) ? '<div class="taxcalc-result-note" style="margin:8px 0; color:#b3261e;">⚠ 원본 모양 서식 모듈을 불러오지 못해 원본 모양 서식 줄을 보여 줄 수 없습니다(' + escapeHtml(printFpLoadError_) + ') — 화면을 새로 고친 뒤 다시 들어오세요.</div>' : '') +
       (anyReady
         ? printRenderTable_(requiredRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 신고서 본문') +
           printRenderTable_(optionalRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 사안에 따라 붙는 첨부·특례 서식')
@@ -14719,7 +14719,7 @@ function handleTaxCalcClick_(e){
     let up = target.parentElement; while (up) { if (up.tagName === 'DETAILS') up.open = true; up = up.parentElement; }
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (typeof target.focus === 'function') target.focus();
-    const old = target.style.outline; target.style.outline = '3px solid #f59e0b'; setTimeout(function(){ target.style.outline = old; }, 2500);
+    const old = target.style.outline; target.style.outline = '3px solid #C8A244'; setTimeout(function(){ target.style.outline = old; }, 2500);
     return;
   }
   if (action === 'switch-print-subtab'){
@@ -16226,7 +16226,7 @@ function handleTaxCalcClick_(e){
     // 재산평가 자산 배분으로만 금액을 나누는데, 그걸 몰라 "계산이 안 된다"로 보였다(실사용 점검 중 발견).
     if (!results.length){
       const box0 = document.getElementById('taxCalcGiftResult');
-      box0.innerHTML = '<div class="taxcalc-result"><div class="taxcalc-result-note" style="color:#a83232;">⚠ 계산할 증여 금액이 없습니다 — ' +
+      box0.innerHTML = '<div class="taxcalc-result"><div class="taxcalc-result-note" style="color:#b3261e;">⚠ 계산할 증여 금액이 없습니다 — ' +
         (doneeCount > 1
           ? '수증인이 ' + doneeCount + '명이라 증여자별 "증여재산가액" 칸 대신 <b>재산평가 자산 배분</b>(위 "재산평가 자산 배분" 칸)에서 각 자산을 어느 증여자→어느 수증인 몫으로 나눌지 정해야 계산됩니다. 재산평가 탭에서 자산을 등록하고 여기서 배분해 주세요. (수증인을 1명만 두면 증여재산가액 칸에 바로 입력할 수 있습니다.)'
           : '증여자 카드의 "증여재산가액"을 입력해 주세요.') + '</div></div>';
@@ -17751,7 +17751,7 @@ function renderTcCaseBar_(){
     '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn" title="넥스(AI)가 사건을 맡아 서류 읽기부터 계산까지 합니다 — 비용이 듭니다"' + (tcSelectedId ? '' : ' disabled') + '>🤖 넥스로 자동계산</button>' +
     '<button type="button" id="tcOpenPrintBtn" class="ghost-btn"' + (tcSelectedId ? '' : ' disabled') + '>세액인쇄</button>' + // [2026.11.01] 옆 메뉴에서 뺀 세액인쇄로 가는 길
     '</div>' +
-    (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
+    (tcSelectedId ? '<div id="tcLedgerDiff" class="tc-ledger-diff" hidden></div><div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
 
   document.getElementById('tcSaveBtn').addEventListener('click', tcSaveCurrentResult_);
   document.getElementById('tcSaveScenarioBtn').addEventListener('click', function(){ tcSaveCurrentResult_({ scenario: true }); }); // [2026.10.27 경우별 저장] 넥스 calc_scenario와 같은 저장 모양(`안`)
@@ -17825,9 +17825,9 @@ function renderTcSavedList_(list){
       '<span class="tc-saved-toggle-arrow" style="color:var(--sub); font-size:11px; flex-shrink:0; width:14px;">▾</span>' +
       '<div class="log-date" style="flex-shrink:0;">' + escapeHtml(fmtDateShort_(entry.계산일) || entry.계산일 || '') + '</div>' +
       '<div class="log-text" style="flex:1;"><b>' + escapeHtml(entry.세목 || '') + ' · ' + escapeHtml(entry.구분 || '') + '</b>' +
-      (Number.isFinite(entry.최종세액) ? ' <b style="color:var(--accent, #2a7a4f);">' + won(entry.최종세액) + '</b>' : '') +
+      (Number.isFinite(entry.최종세액) ? ' <b style="color:var(--accent, #0D1B3D);">' + won(entry.최종세액) + '</b>' : '') +
       (entry.기준일스냅샷 ? ' <span style="color:var(--sub); font-size:11px;">(기준일: ' + escapeHtml(entry.기준일스냅샷) + ')</span>' : '') +
-      (isScen ? ' <span style="color:#8a5a00; font-weight:700; font-size:11px;" title="' + escapeHtml((entry.안.바꾼칸 || []).map(function(d){ return (d.이름 || d.칸) + ' ' + d.전 + ' → ' + d.후; }).join(' / ') || '바꾼 칸 기록 없음') + '">📑 안: ' + escapeHtml(entry.안.이름 || '') + (entry.안.누가 ? ' (' + escapeHtml(entry.안.누가) + ')' : '') + '</span>' : (isLatest ? ' <span style="color:#2a7a4f; font-weight:700; font-size:11px;">최신</span>' : ' <span style="color:var(--sub); font-size:11px;">이전 계산</span>')) + '</div>' +
+      (isScen ? ' <span style="color:#7a5c14; font-weight:700; font-size:11px;" title="' + escapeHtml((entry.안.바꾼칸 || []).map(function(d){ return (d.이름 || d.칸) + ' ' + d.전 + ' → ' + d.후; }).join(' / ') || '바꾼 칸 기록 없음') + '">📑 안: ' + escapeHtml(entry.안.이름 || '') + (entry.안.누가 ? ' (' + escapeHtml(entry.안.누가) + ')' : '') + '</span>' : (isLatest ? ' <span style="color:#0D1B3D; font-weight:700; font-size:11px;">최신</span>' : ' <span style="color:var(--sub); font-size:11px;">이전 계산</span>')) + '</div>' +
       '<span class="log-del" title="삭제">✕</span>' +
       '</div>' +
       '<div class="tc-saved-preview" style="display:none; color:var(--sub); font-size:12.5px; margin:6px 0 0 22px; white-space:pre-wrap;">' + escapeHtml(preview) + '</div>';
@@ -18249,7 +18249,8 @@ function tcSaveCurrentResult_(opts){
     window.tcLastSaveDoneAt_ = Date.now(); // [2026.10.23 특단 반응 잣대] 사건처리 ④가 "저장 끝"을 고정 5초 대신 이 신호로 안다
     if (ok) {
       showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — 납부세액 ' + won(totalNum) : '') + '.', 'success');
-      tcSyncOverviewAmounts_(tab);
+      // [2026.11.01 사실 입력 한 곳] 경우(안)은 견주어 보려고 바꾼 값이라 사건 사실(처리개요·장부)을 덮어쓰지 않는다 — 기본 저장만 2026-09 요청대로 처리개요를 고친다
+      if (!opts.scenario) { tcSyncOverviewAmounts_(tab); tcLedgerDiffCheck_(tab); }
     }
   });
   };
@@ -18338,6 +18339,70 @@ function tcSyncOverviewAmounts_(tab){
   }).catch(function(){});
 }
 
+// [2026.11.01 사실 입력 한 곳] 사건 사실의 주인은 장부다. 기본 저장 뒤 계산에 쓴 값이 장부 값과 다르면 한 줄로 알리고,
+//  「장부에 반영」을 누르면 그 칸을 세무사님 값으로 장부에 적는다(누르지 않으면 장부는 그대로 — 말없이 덮지 않음).
+//  장부에 값이 있는 칸만 견준다(빈 칸·물어볼 것은 칸 채우기·장부 화면에서). 상속은 장부 칸이 계산기 칸과 1:1이 아니라 견주지 않는다.
+function tcLedgerCalcVals_(tab){
+  var out = {};
+  var put = function(p, v){ if (v === undefined || v === null || typeof v === 'object') return; out[p] = v; };
+  if (tab === 'transfer'){
+    var skip = /^(id|transferContractId|acquisitionExpenseItems|totalExpenseItems|externalMembers|buyers|provisional|name|_\w+)$/;
+    var s0 = (typeof transferSellers !== 'undefined' && transferSellers[0]) || {};
+    Object.keys(s0).forEach(function(k){ if (!skip.test(k)) put('seller.' + k, s0[k]); });
+    (typeof transferContracts !== 'undefined' ? transferContracts : []).forEach(function(ct, i){
+      Object.keys(ct || {}).forEach(function(k){ if (!skip.test(k)) put('c' + i + '.' + k, ct[k]); });
+      var b = ((ct && ct.buyers) || [])[0] || {}; Object.keys(b).forEach(function(k){ if (!skip.test(k)) put('c' + i + '.buyer.' + k, b[k]); });
+    });
+    (typeof transferAssets !== 'undefined' ? transferAssets : []).forEach(function(a, i){ Object.keys(a || {}).forEach(function(k){ if (!skip.test(k)) put('a' + i + '.' + k, a[k]); }); });
+  } else if (tab === 'gift'){
+    ['giftDoneeName','giftDonorName','giftRelation','giftAmount','giftDebtAssumed','giftDebtProven','giftPriorAmount','giftPriorPaidTax','giftPriorDeductionUsed','giftAppraisalFee','giftPriorMarriageDeductionUsed'].forEach(function(k){
+      var el = document.getElementById(k); if (el) put('g.' + k, el.value);
+    });
+  }
+  return out;
+}
+function tcLedgerSame_(a, b){
+  var s = function(x){ return String(x == null ? '' : x).trim(); }, A = s(a), B = s(b);
+  if (A === B) return true;
+  var num = /^-?[\d,]+(\.\d+)?원?$/;
+  if (num.test(A) && num.test(B)) return Number(A.replace(/[,원]/g, '')) === Number(B.replace(/[,원]/g, ''));
+  if (/^(true|false)$/.test(A) || /^(true|false)$/.test(B)) return (A === 'true') === (B === 'true' || B === 'Y' || B === '예');
+  return false;
+}
+function tcLedgerDiffCheck_(tab){
+  var box = document.getElementById('tcLedgerDiff');
+  if (!box || !tcCurrentCase || (tab !== 'transfer' && tab !== 'gift')) { if (box) box.hidden = true; return; }
+  var caseId = tcCurrentCase.id, vals = tcLedgerCalcVals_(tab);
+  callGas('case_proc', { caseId: caseId, step: 'ledger', by: '세무사님' }).then(function(res){
+    if (!res || res.ok === false || !tcCurrentCase || tcCurrentCase.id !== caseId) return;
+    var diff = (res.줄 || []).filter(function(r){
+      return r && Object.prototype.hasOwnProperty.call(vals, r.path) && /^(확정|추정)$/.test(r.state) && r.v !== '' && r.v != null && typeof r.v !== 'object'
+        && String(vals[r.path]).trim() !== '' && !tcLedgerSame_(r.v, vals[r.path]);
+    });
+    if (!diff.length){ box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = '<span class="tc-ledger-diff-t">이번 계산 값이 장부와 다른 칸 ' + diff.length + '개</span>'
+      + '<span class="tc-ledger-diff-list">' + diff.slice(0, 6).map(function(r){ return escapeHtml(r.label || r.path) + ' ' + escapeHtml(String(r.값 || r.v)) + ' → ' + escapeHtml(String(vals[r.path])); }).join(' · ') + (diff.length > 6 ? ' 외 ' + (diff.length - 6) + '칸' : '') + '</span>'
+      + '<button type="button" class="save-btn" data-tc-ld="apply">장부에 반영</button>'
+      + '<button type="button" class="ghost-btn" data-tc-ld="keep">장부는 그대로</button>';
+    box.hidden = false;
+    box.onclick = function(ev){
+      var b = ev.target.closest('[data-tc-ld]'); if (!b) return;
+      if (b.getAttribute('data-tc-ld') === 'keep'){ box.hidden = true; box.innerHTML = ''; return; }
+      b.disabled = true;
+      var n = 0, fail = 0;
+      diff.reduce(function(p, r){
+        return p.then(function(){
+          return callGas('case_proc', { caseId: caseId, step: 'ledgerSet', by: '세무사님', path: r.path, value: vals[r.path], kind: '세무사님', why: '세액계산 기본 저장에 쓴 값' })
+            .then(function(x){ if (x && x.ok !== false && !x.error) n++; else fail++; }).catch(function(){ fail++; });
+        });
+      }, Promise.resolve()).then(function(){
+        showToast('장부에 ' + n + '칸 반영' + (fail ? ' · ' + fail + '칸은 못 함(장부 화면에서 확인)' : '') + '했습니다.', fail ? 'warning' : 'success');
+        box.hidden = true; box.innerHTML = '';
+      });
+    };
+  }).catch(function(){});
+}
+
 // 사건처리 카드의 "🧮 세액계산 열기" 버튼에서 호출 — goToLawSearch_/goToCaseHandling_과 같은
 // 패턴(goToView_가 showView를 태워 initTaxCalc를 자동으로 한 번 더 부르지만, lawsearch·
 // casehandling도 마찬가지로 그 뒤에 preselectId로 자기 목록을 다시 불러온다).
@@ -18370,7 +18435,7 @@ function goToTaxCalc_(caseId){
         + fs.map(function(f){ return '<div class="tcdp-row" data-folder="' + escapeHtml(f.id) + '" data-name="' + escapeHtml(f.name) + '">📁 ' + escapeHtml(f.name) + '</div>'; }).join('')
         + files.map(function(f){ return '<div class="tcdp-row" data-file="' + escapeHtml(f.id) + '" data-name="' + escapeHtml(f.name) + '">📄 ' + escapeHtml(f.name) + '</div>'; }).join('');
       box.innerHTML = html || '<div style="padding:8px; color:var(--sub);">빈 폴더입니다.</div>';
-    }).catch(function(e){ box.innerHTML = '<div style="padding:8px; color:#a83232;">폴더를 못 읽었습니다: ' + escapeHtml(e.message) + '</div>'; });
+    }).catch(function(e){ box.innerHTML = '<div style="padding:8px; color:#b3261e;">폴더를 못 읽었습니다: ' + escapeHtml(e.message) + '</div>'; });
   }
   function open(){
     if (!tcSelectedId){ toast('먼저 위에서 사건을 골라 주세요.'); return; }

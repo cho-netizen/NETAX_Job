@@ -222,15 +222,29 @@
     // 몇 건인지 항상 같이 보여준다 — "다운자료가 안 보인다"는 신고가 오면 이 숫자만으로도
     // "애초에 이 화면이 아는 다운자료가 0건인지" vs "있는데 화면에 안 뜨는지"를 바로 구분한다.
     var totalDownloadCount = colLogsCache_.filter(function(l){ return l.승인번호; }).length;
-    summaryEl.textContent = activeLogs.length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
+    summaryEl.textContent = activeLogs.filter(function(l){ return Number(l.금액) || 0; }).length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
     summaryEl.title = '전체 다운자료(승인번호 있는 기록) ' + totalDownloadCount + '건 — 필터와 상관없이 센 수'; // [2026.10.31] 점검용 숫자는 줄에서 빼 마우스를 올리면 보이게
     colList.innerHTML = '';
-    logs.forEach(function(l){
+    // [2026.11.01 화면구조 개편 ④] 금액 없는 기록(문자 발송·메모 — 수금이 아님)은 목록 맨 아래 접힌 묶음으로(검토서 2절 11번). 합계는 원래부터 금액만 더함
+    var noAmt = logs.filter(function(l){ return !(Number(l.금액) || 0) && !l.중복정리; });
+    logs.filter(function(l){ return noAmt.indexOf(l) === -1; }).forEach(function(l){
       var row = document.createElement('div');
       row.className = 'log-entry';
       colRenderRowView_(row, l);
       colList.appendChild(row);
     });
+    if (noAmt.length){
+      var det = document.createElement('details');
+      det.className = 'col-noamt';
+      det.innerHTML = '<summary style="cursor:pointer; font-size:12.5px; color:var(--sub); padding:6px 4px;">금액 없는 기록(문자·메모) ' + noAmt.length + '건</summary>';
+      noAmt.forEach(function(l){
+        var row = document.createElement('div');
+        row.className = 'log-entry';
+        colRenderRowView_(row, l);
+        det.appendChild(row);
+      });
+      colList.appendChild(det);
+    }
   }
 
   // [2026.09.15 신규] 세무사님 요청 — 월별/분기별/반기별/연도별 통계. 지금 목록에 걸려있는
@@ -332,7 +346,7 @@
     // [2026.09.15 신규] 고객명을 누르면 고객관리로, 사건명을 누르면 작업관리/처리개요 중
     // 고를 수 있게 — 세무사님 지적: "사건과 연결했다면서 어디로도 못 가면 무슨 소용이냐."
     var nameHtml = unlinked
-      ? '<b style="color:#a83232;">⚠ 미연결</b>'
+      ? '<b style="color:#b3261e;">⚠ 미연결</b>'
       : '<b class="col-goto-client" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 고객관리로 이동">' + escapeHtml(colClientDisplayName_(l)) + '</b>';
     var caseName = colCaseName_(l.사건ID);
     // [2026.09.16 신규] 세무사님 지적 — "사건명이 왜 안 보이나, 연결여부는 어떻게 아나?"
@@ -340,7 +354,7 @@
     // 안 됐다. 연결 안 된 경우에도 회색 "사건 미연결"을 항상 표시하고, 눌러서 바로 사건을
     // 고를 수 있게 한다(미연결 고객처럼 굳이 빨간 경고까지는 아니고 — 사건 연결은 선택사항).
     var caseHtml = caseName === '(삭제된 사건)'
-      ? '<span class="col-link-case" style="cursor:pointer; color:#a83232; text-decoration:underline dotted; text-underline-offset:2px;" title="연결된 사건이 지워졌습니다 — 클릭해서 다른 사건에 연결">(삭제된 사건)</span>'
+      ? '<span class="col-link-case" style="cursor:pointer; color:#b3261e; text-decoration:underline dotted; text-underline-offset:2px;" title="연결된 사건이 지워졌습니다 — 클릭해서 다른 사건에 연결">(삭제된 사건)</span>'
       : caseName
       ? '<span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="' + escapeHtml(caseName) + ' — 클릭하면 작업관리·처리개요로 이동">' + escapeHtml(caseName) + '</span>'
       : (unlinked ? '' : '<span class="col-link-case" style="cursor:pointer; color:var(--sub); text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 사건 연결">사건 미연결</span>');

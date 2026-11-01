@@ -38,7 +38,7 @@
       <div id="stFpState" style="font-size:13px; margin-bottom:8px;"></div>
       <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
         <button type="button" class="ghost-btn" id="stFpToggle"></button>
-        <button type="button" class="ghost-btn" id="stRevokeAll" style="background:#a83232; border-color:#a83232; color:#fff;">모든 기기에서 로그아웃</button>
+        <button type="button" class="ghost-btn" id="stRevokeAll" style="background:#b3261e; border-color:#b3261e; color:#fff;">모든 기기에서 로그아웃</button>
       </div>
       <div class="nx-help">휴대폰을 잃어버렸을 때 — 모든 기기(이 기기 포함)의 로그인과 지문 로그인을 끊습니다. 다시 쓰려면 비밀번호로 들어오세요.</div>
     </div>
@@ -533,7 +533,7 @@
         var last = res && res.last;
         if (!last){ bugList.textContent = '점검 결과를 받지 못했습니다.'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (last.ok ? '✅ 모두 정상' : '⚠ 이상 있음') + '</b> · ' + escapeHtml(last.at) + '</div>' + last.items.map(function(x){
-          return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + (x.ok ? '✅ ' : '⚠ ') + escapeHtml(x.name) + (x.ok ? '' : '<br><span style="color:#a83232;">' + escapeHtml(x.msg) + '</span>') + '</div>';
+          return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + (x.ok ? '✅ ' : '⚠ ') + escapeHtml(x.name) + (x.ok ? '' : '<br><span style="color:#b3261e;">' + escapeHtml(x.msg) + '</span>') + '</div>';
         }).join('');
       }).catch(function(err){ bugList.textContent = '자가점검을 실행하지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
@@ -648,7 +648,7 @@
         var items = (r && r.items) || [];
         var chg = items.filter(function(x){ return x.새납세자; }), na = items.filter(function(x){ return x.판단불가 || x.error; });
         bugList.innerHTML = '<div><b>🏷 미리보기</b> · 대상 ' + items.length + '건 · 바꿀 것 ' + chg.length + '건 · 판단불가 ' + na.length + '건' + (r.사건명점검 && r.사건명점검.count != null ? ' · 그 밖에 이름 규칙과 다른 사건 ' + r.사건명점검.count + '건(🏷 사건명 점검)' : '') + '</div>'
-          + (r.warn && r.warn.length ? '<div style="color:#a83232;">' + r.warn.map(escapeHtml).join('<br>') + '</div>' : '')
+          + (r.warn && r.warn.length ? '<div style="color:#b3261e;">' + r.warn.map(escapeHtml).join('<br>') + '</div>' : '')
           + '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:520px;"><tr><th style="' + cell + '">지금 사건명</th><th style="' + cell + '">납세자</th><th style="' + cell + '">바뀔 사건명</th><th style="' + cell + '">근거</th></tr>'
           + chg.map(function(x){ return '<tr><td style="' + cell + '">' + escapeHtml(x.사건명) + '</td><td style="' + cell + '">' + escapeHtml((x.이전납세자 || '(빈칸)') + ' → ' + x.새납세자) + '</td><td style="' + cell + '">' + escapeHtml(x.이후사건명 || x.예상사건명) + (x.적용 ? ' ✅' : '') + '</td><td style="' + cell + 'color:var(--sub);">' + escapeHtml(x.근거 || '') + '</td></tr>'; }).join('') + '</table></div>'
           + (na.length ? '<details style="margin-top:6px;"><summary>판단불가 ' + na.length + '건(바꾸지 않음)</summary>' + na.map(function(x){ return '<div style="' + cell + '">' + escapeHtml(x.사건명 + ' — ' + (x.판단불가 || x.error)) + '</div>'; }).join('') + '</details>' : '');
@@ -719,7 +719,7 @@
         if (!r || !r.success){ bugList.textContent = '수정안을 확인하지 못했습니다: ' + ((r && r.error) || ''); return; }
         if (!r.count){ bugList.innerHTML = '<b>✅ 승인 대기 수정안이 없습니다.</b>'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>🗳 승인 대기 수정안 ' + r.count + '건</b>'
-          + (r.hasToken ? '' : ' · <span style="color:var(--danger,#c0392b);">승인·반려하려면 먼저 🔑 깃허브 열쇠를 넣어 주세요</span>') + '</div>'
+          + (r.hasToken ? '' : ' · <span style="color:var(--danger,#b3261e);">승인·반려하려면 먼저 🔑 깃허브 열쇠를 넣어 주세요</span>') + '</div>'
           + r.prs.map(function(p){
             return '<div style="padding:6px 0; border-top:1px solid var(--line);">'
               + '<div><b>#' + p.number + ' ' + escapeHtml(p.title) + '</b> · ' + escapeHtml(p.at) + '</div>'
@@ -796,7 +796,7 @@
     function djCheckLine_(chk){
       if (!chk) return '배포 직후 점검 기록 없음';
       var bad = (chk.items || []).filter(function(x){ return !x.ok; });
-      return (chk.ok ? '배포 직후 점검 정상' : '<span style="color:#a83232; font-weight:700;">배포 직후 점검 이상 ' + bad.length + '건</span>') + ' (' + escapeHtml(djAt_(chk.at)) + ')'; // [2026.10.31] 줄 앞 아이콘 뗌 — 이상은 빨간 글자로만
+      return (chk.ok ? '배포 직후 점검 정상' : '<span style="color:#b3261e; font-weight:700;">배포 직후 점검 이상 ' + bad.length + '건</span>') + ' (' + escapeHtml(djAt_(chk.at)) + ')'; // [2026.10.31] 줄 앞 아이콘 뗌 — 이상은 빨간 글자로만
     }
     function djRenderInfo_(st){
       if (!djInfoBox || !st || !st.success) return;
@@ -806,8 +806,8 @@
       if (h0 && (!live || !live.ver || live.ver === h0.ver)) line += ' · 커밋 ' + escapeHtml(h0.sha || '-') + ' · ' + escapeHtml(djAt_(h0.at)) + ' 반영(' + escapeHtml(djKind_(st, h0.kind)) + ')' + (h0.msg ? ' — ' + escapeHtml(h0.msg) : '');
       else if (live) line += ' · ' + escapeHtml(String(live.desc || '').slice(0, 90)) + (live.updated ? ' · ' + escapeHtml(djAt_(new Date(Date.parse(live.updated) + 9 * 3600000).toISOString().replace('T', ' '))) + ' 반영' : '');
       var html = '<div>' + line + '</div><div>' + djCheckLine_(st.check) + '</div>';
-      if (st.active && j) html += '<div style="color:var(--accent,#2b6cb0);">⏳ 진행 중: ' + escapeHtml(djKind_(st, j.kind)) + (j.title ? ' · ' + escapeHtml(j.title) : '') + ' — ' + escapeHtml(j.label || '') + ' · ' + djDur_(st.now - j.startedAt) + '째</div>';
-      else if (st.stale && j) html += '<div style="color:var(--danger,#c0392b);">⚠ ' + escapeHtml(djKind_(st, j.kind)) + '이(가) ' + djDur_(st.now - j.startedAt) + ' 전에 시작했는데 끝난 기록이 없습니다 — 실패했을 수 있습니다. 위 운영 버전이 바뀌었는지 보세요.</div>';
+      if (st.active && j) html += '<div style="color:var(--accent,#0D1B3D);">⏳ 진행 중: ' + escapeHtml(djKind_(st, j.kind)) + (j.title ? ' · ' + escapeHtml(j.title) : '') + ' — ' + escapeHtml(j.label || '') + ' · ' + djDur_(st.now - j.startedAt) + '째</div>';
+      else if (st.stale && j) html += '<div style="color:var(--danger,#b3261e);">⚠ ' + escapeHtml(djKind_(st, j.kind)) + '이(가) ' + djDur_(st.now - j.startedAt) + ' 전에 시작했는데 끝난 기록이 없습니다 — 실패했을 수 있습니다. 위 운영 버전이 바뀌었는지 보세요.</div>';
       if (h.length) html += '<details style="margin-top:4px;"><summary class="nx-l4" style="margin:6px 0 2px;">최근 반영 내역<span class="nx-l-sub">' + h.length + '건</span></summary>' + h.map(function(x){
         return '<div style="padding:2px 0; border-top:1px solid var(--line);">' + escapeHtml(djAt_(x.at)) + ' · @' + escapeHtml(x.ver || '?') + ' · ' + escapeHtml(djKind_(st, x.kind))
           + (x.sha ? ' · ' + escapeHtml(x.sha) : '') + (x.msg ? ' — ' + escapeHtml(x.msg) : '') + (x.checkOk === true ? ' · 점검 ✅' : x.checkOk === false ? ' · 점검 ⚠' : '') + '</div>';
@@ -822,7 +822,7 @@
       var head = '<div><b>' + escapeHtml(djKind_(st, j.kind)) + '</b>' + (j.title ? ' · ' + escapeHtml(j.title) : '') + ' · 경과 ' + djDur_(el) + '</div>';
       var html;
       if (j.stage === 'failed'){
-        html = head + '<div style="color:var(--danger,#c0392b);"><b>❌ 반영하지 못했습니다</b> — ' + escapeHtml(j.error || '') + '</div>' + steps
+        html = head + '<div style="color:var(--danger,#b3261e);"><b>❌ 반영하지 못했습니다</b> — ' + escapeHtml(j.error || '') + '</div>' + steps
           + '<div>운영은 그대로입니다(위 운영 버전 줄). 원인이 깃허브 쪽이면 잠시 뒤 다시 누르고, 반복되면 Claude에게 이 문구를 알려 주세요.</div>';
       } else if (j.version){
         html = head + '<div><b>✅ 반영 완료 — 버전 @' + escapeHtml(j.version) + '</b>' + (j.sha ? ' · 커밋 ' + escapeHtml(j.sha) : '') + (j.from ? ' (@' + escapeHtml(j.from) + '에서 되돌림)' : '') + '</div>';
@@ -830,11 +830,11 @@
         else {
           var ce = st.now - (j.swappedAt || j.startedAt);
           html += '<div>⏳ ' + escapeHtml(j.label || '배포 직후 점검 중') + ' · ' + djDur_(ce) + '째</div>';
-          if (ce > DJ_WARN_CHECK_MS) html += '<div style="color:var(--danger,#c0392b);">⚠ 점검이 5분 넘게 끝나지 않습니다 — 반영은 끝났습니다. 점검 결과는 잠시 뒤 위 "배포 직후 점검" 줄에서 확인하세요.</div>';
+          if (ce > DJ_WARN_CHECK_MS) html += '<div style="color:var(--danger,#b3261e);">⚠ 점검이 5분 넘게 끝나지 않습니다 — 반영은 끝났습니다. 점검 결과는 잠시 뒤 위 "배포 직후 점검" 줄에서 확인하세요.</div>';
         }
       } else {
         html = head + steps + '<div>⏳ <b>' + escapeHtml(j.label || '') + '</b></div>';
-        if (st.stale || el > DJ_WARN_SWAP_MS) html += '<div style="color:var(--danger,#c0392b);">⚠ ' + (st.stale ? '진행 기록이 멈췄습니다' : '3분이 넘었습니다') + ' — 지연 또는 실패일 수 있습니다. 확인 방법: 위 "🚀 운영 @번호"가 바뀌면 반영된 것입니다. 10분이 지나도 그대로면 이 화면을 새로고침한 뒤 다시 누르거나, Claude에게 "반영 상태 확인해줘"라고 하세요.</div>';
+        if (st.stale || el > DJ_WARN_SWAP_MS) html += '<div style="color:var(--danger,#b3261e);">⚠ ' + (st.stale ? '진행 기록이 멈췄습니다' : '3분이 넘었습니다') + ' — 지연 또는 실패일 수 있습니다. 확인 방법: 위 "🚀 운영 @번호"가 바뀌면 반영된 것입니다. 10분이 지나도 그대로면 이 화면을 새로고침한 뒤 다시 누르거나, Claude에게 "반영 상태 확인해줘"라고 하세요.</div>';
       }
       bugList.innerHTML = html;
     }
@@ -858,7 +858,7 @@
           if (j.done || st.stale){ djWatch = null; return; }
         } else if (!w.id && !w.starting && Date.now() - w.since > DJ_WARN_SWAP_MS){
           djWatch = null;
-          bugList.innerHTML = '<div style="color:var(--danger,#c0392b);">⚠ 3분이 지나도 서버에 시작 기록이 보이지 않습니다 — 반영이 시작되지 않은 것 같습니다. 위 운영 버전 줄을 확인하고 다시 눌러 주세요.</div>';
+          bugList.innerHTML = '<div style="color:var(--danger,#b3261e);">⚠ 3분이 지나도 서버에 시작 기록이 보이지 않습니다 — 반영이 시작되지 않은 것 같습니다. 위 운영 버전 줄을 확인하고 다시 눌러 주세요.</div>';
           return;
         }
         if (Date.now() - w.t0 > DJ_GIVEUP_MS){ djWatch = null; bugList.insertAdjacentHTML('beforeend', '<div>15분이 지나 자동 확인을 멈췄습니다 — 🔄 불러오기나 화면 새로고침으로 다시 확인하세요.</div>'); return; }
@@ -910,7 +910,7 @@
     function deployCheckHtml_(chk){
       if (!chk) return '';
       var bad = (chk.items || []).filter(function(x){ return !x.ok; });
-      return '<div style="margin-top:6px;"><div class="nx-l4" style="margin:4px 0 3px;' + (chk.ok ? '' : ' color:#a83232;') + '">' + (chk.ok ? '배포 직후 점검 정상' : '배포 직후 점검 이상 ' + bad.length + '건') + '<span class="nx-l-sub">' + escapeHtml(chk.at || '') + '</span></div>'
+      return '<div style="margin-top:6px;"><div class="nx-l4" style="margin:4px 0 3px;' + (chk.ok ? '' : ' color:#b3261e;') + '">' + (chk.ok ? '배포 직후 점검 정상' : '배포 직후 점검 이상 ' + bad.length + '건') + '<span class="nx-l-sub">' + escapeHtml(chk.at || '') + '</span></div>'
         + (bad.length ? bad.map(function(x){ return '<div class="nx-li" style="padding-top:1px; padding-bottom:1px;">' + escapeHtml(x.name) + ' — ' + escapeHtml(x.msg) + '</div>'; }).join('') + '<div class="nx-li-go">→ 이상하면 ↩ 되돌리기를 누르세요.</div>' : '') + '</div>';
     }
     callGas('deploy_check_last', {}).then(function(r){

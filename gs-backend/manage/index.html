@@ -82,35 +82,31 @@
       <div id="sideMenuInner">
         <div class="menu-brand"><span class="mb-name">NETAX</span><button type="button" id="sideMenuToggle" title="메뉴 펼치기">▶</button></div>
 
-        <!-- [2026.10.08] job AI탭 — 메뉴 맨 위(세무사님 지정). aichat.html 참고 -->
-        <div class="menu-item" data-view="ai">🤖 AI</div>
+        <!-- [2026.11.01] 세무사님 "이제 제대로 고민을 했구나 권장안대로 하마"(화면구조_개편안_20261101 2절 ③) — 메뉴를 일의 순서로:
+             오늘 → 접수 → 사건 → 고객·돈 → 자료 → 설정. 사건 화면 여덟은 "사건 작업공간" 하나의 탭으로(script.html nxCbInit_), 넥스는 오른쪽 곁 창
+             (넥스 대화는 큰 화면으로 볼 때), 필기메모는 오른쪽 아래 떠 있는 단추로. 옛 메뉴 이름: AI·대시보드·예약관리·작업관리·고객관리·수금관리·처리개요… -->
+        <div class="menu-group-label">오늘</div>
+        <div class="menu-item active" data-view="dashboard">📊 오늘 할 일</div>
+        <div class="menu-item" data-view="ai">🤖 넥스 대화</div>
 
-        <div class="menu-group-label">관리</div>
-        <div class="menu-item active" data-view="dashboard">📊 대시보드</div>
-        <div class="menu-item" data-view="booking">📅 예약관리</div>
-        <div class="menu-item" data-view="workmanage">📌 작업관리</div>
-        <div class="menu-item" data-view="clientmanage">🙋 고객관리</div>
-        <div class="menu-item" data-view="collections">💰 수금관리</div>
+        <div class="menu-group-label">접수</div>
+        <div class="menu-item" data-view="booking">📅 예약·상담</div>
+        <div class="menu-item" data-view="memo-text">📝 의뢰 메모</div>
 
-        <div class="menu-group-label">처리</div>
-        <div class="menu-item" data-view="casehandling">🧭 처리개요</div>
-        <div class="menu-item" data-view="ledger">📒 사건 장부</div>
-        <div class="menu-item" data-view="lawsearch">⚖️ 법령정보</div>
-        <div class="menu-item" data-view="docs">📁 증빙확보</div>
-        <div class="menu-item" data-view="taxcalc">🧮 세액계산</div>
-        <!-- [2026.11.01] 세무사님 "나안으로 가자" — 세액인쇄는 세액계산 결과만 찍으므로 옆 메뉴에서 빼고 세액계산 사건 줄의 「세액인쇄」 단추로 연다(화면은 그대로) -->
-        <div class="menu-item" data-view="taxplan">💡 절세플랜</div>
-        <div class="menu-item" data-view="reportwriter">✍ 문서작성</div>
-        <div class="menu-item" data-view="reports">📖 열람관리</div>
+        <div class="menu-group-label">사건</div>
+        <div class="menu-item" data-view="workmanage">📌 사건 목록</div>
+        <div class="menu-item" data-view="casehandling">🧭 사건 작업공간</div>
 
-        <!-- [2026.10.18 탭연결 11번] 세무사님 말씀·서버(gs-extra) 이름과 같게 "부가서비스"로(예전 이름: 메모). 블로그·쇼츠가 보고서 모음 안에 있다는 것도 메뉴에 드러낸다 -->
-        <div class="menu-group-label">부가서비스</div>
-        <div class="menu-item" data-view="memo-text">📝 일반메모</div>
-        <div class="menu-item" data-view="memo-hand">✍ 필기메모</div>
+        <div class="menu-group-label">고객·돈</div>
+        <div class="menu-item" data-view="clientmanage">🙋 고객</div>
+        <div class="menu-item" data-view="collections">💰 수금</div>
+
+        <div class="menu-group-label">자료</div>
+        <div class="menu-item" data-view="lawsearch">⚖️ 법령·서식</div>
         <div class="menu-item" data-view="reporthub">📚 보고서들</div>
+        <div class="menu-item" data-view="manual">❓ 매뉴얼</div>
 
-        <div class="menu-group-label">기타</div><!-- [2026.11.01] 세무사님 "분류명이 빠졌는데 급한대로 <기타>" -->
-        <div class="menu-item" data-view="manual">❓ 매 뉴 얼</div>
+        <div class="menu-group-label">설정</div>
         <div class="menu-item" data-view="settings">⚙️ 설정</div>
       </div>
       <!-- [2026.11.01] 세무사님 "스크롤바를 … 두껍게 만들지 못할 것이라면 메뉴하단으로 그리고 상단으로 버튼" — 막대는 숨기고 더 갈 곳이 있을 때만 보임 -->
@@ -119,6 +115,15 @@
     </nav>
 
     <main id="centerWork">
+      <!-- [2026.11.01] 사건 작업공간 머리줄 — 사건 화면 여덟의 맨 위 한 줄(사건 고르기·기한·장부 띠·탭). script.html nxCbInit_ -->
+      <div id="nxCaseBar" hidden>
+        <div class="cb-row">
+          <b class="cb-name">사건을 골라 주세요</b><span class="cb-meta"></span>
+          <span class="cb-pick"><label class="cb-live"><input type="checkbox" id="cbLiveOnly" checked> 진행</label><input type="search" id="cbFind" placeholder="사건 찾기"><select id="cbCaseSelect" title="사건 바꾸기"><option value="">사건 고르기…</option></select></span>
+        </div>
+        <div class="cb-strip-host"></div>
+        <div class="cb-tabs" role="tablist"></div>
+      </div>
       <!-- [2026.10.08] AI탭 — aichat.html의 AI 화면(#nxAi)이 이 메뉴를 열면 여기로, 다른 메뉴에선 오른쪽 사이드바로 옮겨간다 -->
       <div class="view" id="view-ai"><div id="nxAiTabHost"></div></div>
       <!-- [2026.10.20] 공용 보고서 렌더러 — 작성관리·증빙확보·AI탭이 쓴다. 작성관리가 이 파일의 상수·함수를 쓰므로 먼저 둔다 -->
@@ -219,6 +224,8 @@
         background:var(--navy); color:var(--gold); font-size:18px; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.28);">✍</button>
       <!-- [2026.10.22] 고객에게 보여주기(기기 3종 검토 C-3, 태블릿) — 왼쪽 메뉴·넥스 칸·도움말을 숨기고 가운데 화면만 크게.
            세무사님 "권장순서대로 하고…" — 가장 작게 먼저: 지금 화면(세액 비교·절세 방안 등)을 그대로 크게 보여 줄 뿐, 내용은 바꾸지 않는다. -->
+      <!-- [2026.11.01] 필기메모 — 메뉴에서 빼고 어느 화면에서나 띄우는 단추로(개편안 ③) -->
+      <button type="button" id="nxHandMemoBtn" title="필기메모 — 손글씨 메모 화면" onclick="goToView_('memo-hand')">✏</button>
       <button type="button" id="nxPresentBtn" title="고객에게 보여주기 — 메뉴·넥스 칸을 숨기고 이 화면만 크게"
         onclick="document.body.classList.toggle('nx-present')">🖥</button>
     </main>

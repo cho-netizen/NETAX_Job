@@ -5,7 +5,7 @@
      설계: netax-inventory/maps/절세플랜탭_설계_20261020.md. 새 계산 로직 없음 — 세액계산 엔진(taxcalc-engine.html)을 입력만 바꿔
      여러 번 돌려 나란히 놓는다. 서버를 부르지 않는다(토큰 0). 결정은 세무사님 — 화면은 비교표만, "권장"을 단정하지 않는다. */
   #view-taxplan .tp-casebar{ display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center; padding:8px 0 10px; border-bottom:1px solid var(--line); margin-bottom:10px; font-size:13px; }
-  #view-taxplan .tp-casebar .tp-hint{ color:var(--taxcalc-info, #2b5c8a); font-size:12px; }
+  #view-taxplan .tp-casebar .tp-hint{ color:var(--taxcalc-info, #0D1B3D); font-size:12px; }
   #view-taxplan .tp-kinds{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
   #view-taxplan .tp-chip{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:14px; padding:4px 11px; background:var(--panel); color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
   #view-taxplan .tp-chip.on{ background:var(--navy); color:#fff; border-color:var(--navy); }
@@ -19,11 +19,11 @@
   #view-taxplan .tp-grid input[type=text], #view-taxplan .tp-grid select{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:5px 7px; font:inherit; background:var(--panel); color:var(--ink); }
   #view-taxplan .tp-grid input.tp-num{ text-align:right; }
   #view-taxplan .tp-sub{ margin:16px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); } /* [2026.10.31] 3단계 묶음 모양 */
-  #view-taxplan .tp-src{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; background:var(--taxcalc-info-bg, #e7eef6); color:var(--taxcalc-info, #2b5c8a); border-radius:4px; padding:6px 10px; margin-bottom:10px; font-size:12px; }
+  #view-taxplan .tp-src{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; background:var(--taxcalc-info-bg, #e7eef6); color:var(--taxcalc-info, #0D1B3D); border-radius:4px; padding:6px 10px; margin-bottom:10px; font-size:12px; }
   #view-taxplan .tp-btn{ background:var(--navy); color:#fff; border:none; border-radius:6px; padding:7px 14px; font:inherit; font-size:12.5px; font-weight:700; line-height:1.2; cursor:pointer; } /* [2026.10.31] 공통 기본 단추(30px)와 같은 크기 */
   #view-taxplan .tp-btn.ghost{ background:var(--panel); color:var(--navy); border:1px solid var(--navy); padding:7px 14px; font-weight:600; }
   #view-taxplan .tp-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
-  #view-taxplan .tp-assume{ background:var(--taxcalc-warning-bg, #fbeedf); color:var(--taxcalc-warning, #b45309); border-radius:4px; padding:6px 10px; margin-bottom:8px; font-size:12px; }
+  #view-taxplan .tp-assume{ background:var(--taxcalc-warning-bg, #fbeedf); color:var(--taxcalc-warning, #7a5c14); border-radius:4px; padding:6px 10px; margin-bottom:8px; font-size:12px; }
   #view-taxplan .tp-err{ background:var(--taxcalc-danger-bg, #fbe7e5); color:var(--taxcalc-danger, #b3261e); border-radius:4px; padding:6px 10px; font-size:12px; }
   #view-taxplan .tp-tblwrap{ overflow-x:auto; }
   #view-taxplan table.tp-tbl{ border-collapse:collapse; table-layout:fixed; }
@@ -46,10 +46,10 @@
   #view-taxplan .tpi-it:hover{ background:var(--bg); }
   #view-taxplan .tpi-it.on{ background:var(--taxcalc-info-bg, #e7eef6); font-weight:700; }
   #view-taxplan .tpi-it small{ display:block; font-weight:400; font-size:12px; color:var(--sub); margin-top:2px; }
-  #view-taxplan .tpi-warn{ display:inline-block; font-size:11.5px; font-weight:700; color:#9a5b00; background:#fff3d6; border:1px solid #f0c36d; border-radius:4px; padding:0 4px; margin-right:2px; }
-  #view-taxplan .tpi-curbox{ border:1px solid #f0c36d; background:#fff8e6; color:#5c3d00; border-radius:8px; padding:8px 10px; margin:0 0 8px; font-size:12.5px; }
+  #view-taxplan .tpi-warn{ display:inline-block; font-size:11.5px; font-weight:700; color:#7a5c14; background:#fff3d6; border:1px solid #f0c36d; border-radius:4px; padding:0 4px; margin-right:2px; }
+  #view-taxplan .tpi-curbox{ border:1px solid #f0c36d; background:#fff8e6; color:#7a5c14; border-radius:8px; padding:8px 10px; margin:0 0 8px; font-size:12.5px; }
   #view-taxplan .tpi-curbox ul{ margin:4px 0 4px 18px; padding:0; }
-  #view-taxplan .tp-chip.tpi-curchip{ border-color:#f0c36d; color:#9a5b00; }
+  #view-taxplan .tp-chip.tpi-curchip{ border-color:#f0c36d; color:#7a5c14; }
   .nx-dark #view-taxplan .tpi-warn, .nx-dark #view-taxplan .tpi-curbox{ background:#3a2e12; color:#f5d48a; border-color:#7a5a1a; }
   #view-taxplan .tpi-doc{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:8px; background:var(--panel); padding:12px 14px; min-height:200px; }
   #view-taxplan .tpi-doc textarea{ width:100%; min-height:60vh; box-sizing:border-box; font-family:Consolas, monospace; font-size:12.5px; border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:8px; background:var(--panel); color:var(--ink); }

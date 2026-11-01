@@ -62,9 +62,9 @@
   }
   /* "모아보기" 재클릭으로 스크롤 동기화를 꺼둔 상태 — 남색(켜짐)과 확실히 구분되는 호박색 톤으로 전환 */
   #toolbar #layoutBoth.sync-off{
-    background:#fdf1dc; border-color:#e0a936;
+    background:#fdf1dc; border-color:#C8A244;
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.08);
-    color:#8a5a0a;
+    color:#7a5c14;
   }
   #toolbar .hint{font-size:11.5px; color:var(--sub); margin-left:auto;}
   #toolbar .sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px;}
@@ -336,7 +336,7 @@
       <button data-snip="bold" title="기울임/굵게 (Ctrl+B, 누를 때마다 * 하나씩 추가 — *=기울임, **=굵게, ***=굵게+기울임)">*</button>
       <button data-snip="underline" title="밑줄" style="text-decoration:underline;">U</button>
       <button data-snip="color" title="글자색">🎨</button>
-      <input type="color" id="rwColorInput" style="display:none;" value="#c0392b">
+      <input type="color" id="rwColorInput" style="display:none;" value="#b3261e">
       <button data-snip="list" title="목록">≡</button>
       <button data-snip="checklist" title="체크리스트">☑</button>
       <button data-snip="table" title="표">▦</button>
@@ -2457,12 +2457,12 @@ function showSlideLink_(url, pptxUrl){
   el.style.minWidth = 'auto';
   const a = document.createElement('a');
   a.href = url; a.target = '_blank'; a.textContent = '슬라이드 열기';
-  a.style.cssText = 'color:#8fb98f; text-decoration:underline; margin-right:8px;';
+  a.style.cssText = 'color:#c9d2e6; text-decoration:underline; margin-right:8px;';
   el.appendChild(a);
   if (pptxUrl) {
     const p = document.createElement('a');
     p.href = pptxUrl; p.target = '_blank'; p.textContent = 'PPTX 다운로드';
-    p.style.cssText = 'color:#8fb98f; text-decoration:underline;';
+    p.style.cssText = 'color:#c9d2e6; text-decoration:underline;';
     el.appendChild(p);
   }
 }
@@ -2928,8 +2928,9 @@ function updatePreviewControlsPosition(){
     pc.style.top = ''; // 모바일에서는 CSS(우측 하단 고정)에 맡김
     return;
   }
-  const toolbarHeight = document.getElementById('toolbar').offsetHeight;
-  pc.style.top = (toolbarHeight + 12) + 'px';
+  // [2026.11.01] 사건 작업공간 머리줄 아래로 화면이 내려가므로 높이가 아니라 도구줄의 실제 아래 끝(화면 기준)으로 잡는다
+  const tb = document.getElementById('toolbar');
+  pc.style.top = (Math.max(tb.getBoundingClientRect().bottom, tb.offsetHeight) + 12) + 'px';
 }
 window.addEventListener('resize', updatePreviewControlsPosition);
 document.addEventListener('fullscreenchange', updatePreviewControlsPosition);

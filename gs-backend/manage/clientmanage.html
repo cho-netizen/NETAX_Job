@@ -3,6 +3,7 @@
     <h2 class="tb-title">고객관리</h2>
     <button type="button" id="btnClientNew" class="save-btn">+ 새 고객</button>
     <input type="text" id="clientSearchInput" class="nx-find" placeholder="고객 찾기" title="이름으로 찾기">
+    <label class="nx-test-toggle" data-nx-testtoggle="client" hidden title="이름이 「가상」으로 시작하는 시험 자료를 보입니다"><input type="checkbox"> 시험 자료 <span class="nx-test-n"></span></label>
   </div>
   <div class="manage-split">
     <div class="manage-split-list" id="clientSplitList"><div id="clientList" class="log-list"></div></div>
@@ -114,7 +115,7 @@
       var all = res.clients || [];
       // [2026.09.18 버그수정] "수금내역에서 고객이 가나다순으로 뜨지 않는다" — 원래 순서 그대로
       // (시트 행 순서, 대개 등록순) 자동완성 목록에 넣어서, 이름을 알아도 찾기 어려웠다.
-      all = all.slice().sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko'); });
+      all = all.slice().sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko', { numeric: true }); });
       clientNameOptions.innerHTML = '';
       all.forEach(function(c){
         if (!c.성명) return;
@@ -131,7 +132,13 @@
       clientList.innerHTML = '<div class="log-empty">등록된 고객이 없습니다.</div>';
       return;
     }
-    clients.slice().sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko'); }).forEach(function(c){
+    // [2026.11.01] 가나다·숫자 순(가상2 < 가상10), 시험 자료는 기본으로 숨김(nxIsTestName_)
+    var showTest = typeof nxShowTest_ === 'function' ? nxShowTest_() : true;
+    var testN = clients.filter(function(c){ return typeof nxIsTestName_ === 'function' && nxIsTestName_(c.성명); }).length;
+    if (typeof nxTestToggleSync_ === 'function') nxTestToggleSync_('client', testN);
+    var shownList = clients.filter(function(c){ return showTest || !nxIsTestName_(c.성명); });
+    if (!shownList.length){ clientList.innerHTML = '<div class="log-empty">시험 자료만 있습니다 — 위 「시험 자료」를 체크하면 보입니다.</div>'; return; }
+    shownList.sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko', { numeric: true }); }).forEach(function(c){
       var row = document.createElement('div');
       row.className = 'log-entry';
       row.style.cursor = 'pointer';
@@ -140,7 +147,7 @@
       // [2026.09.16 버그수정] "관리화면 취지에 맞게 이름·전화번호·분류가 모두 한 줄에 표시되게
       // 하라" — 구분(로얄/우수/보통/영세)이 줄바꿈되어 아래줄에 따로 나오던 것을 한 줄로 합친다.
       // [2026.11.01 화면 정비] 세무사님 "깔끔·가독성, 낭비되는 공간 없이" — 한 줄을 낮추고, 구분은 보통이 아닐 때만 색 꼬리표로(줄마다 되풀이되던 「· 보통」 뺌), 전화는 오른쪽 옅게
-      var tierCol = { 로얄: '#a07a1c', 우수: '#2d6a9f', 영세: '#7a8396' }[c.구분] || '';
+      var tierCol = { 로얄: '#a07a1c', 우수: '#0D1B3D', 영세: '#7a8396' }[c.구분] || '';
       row.innerHTML =
         '<div class="log-text" style="display:flex; align-items:center; gap:6px; min-width:0;"><b style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(c.성명 || '') + '</b>' +
         (tierCol ? '<span style="font-size:11px; font-weight:700; color:' + tierCol + '; border:1px solid ' + tierCol + '; border-radius:8px; padding:0 6px; line-height:16px;">' + escapeHtml(c.구분) + '</span>' : '') +
@@ -273,6 +280,8 @@
     container.innerHTML =
       // [2026.11.01 화면 정비] 세무사님 "정보·도구 유기적 배치" — 이름표 없이 칸만 늘어서 무엇이 무슨 칸인지 몰랐던 것을
       //  이름표 붙은 두 줄로(① 성명·구분 + 저장·문자·삭제 ② 전화·주소·주민번호), 추가 연락처는 그 아래. 칸 id는 그대로.
+      // [2026.11.01 화면구조 개편 ④] 세무사님 "권장안대로 하마"(견본 ② 고객 한 사람 화면) — 넓으면 두 칸: 왼쪽 기본, 오른쪽 사건·흐름·돈. 칸 id·배선은 그대로
+      '<div class="cc-board"><div class="cc-col"><div class="ch-col-h">기본</div>' +
       '<div class="nx-form-row" style="margin-top:0;">' +
       '<input type="text" id="ccEditName" placeholder="성명" value="' + escapeHtml(c.성명 || '') + '" size="' + Math.max(6, String(c.성명 || '').length + 2) + '" style="font-weight:700; font-size:15px;">' +
       '<span class="nx-fl">구분 <select id="ccEditType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></span>' +
@@ -290,13 +299,17 @@
       '</div>' +
       '<div style="margin:12px 0 10px;"><span class="nx-fl" style="font-weight:600; color:var(--ink);">추가 연락처</span> <span class="nx-help">공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다</span>' +
       ccExtraContactsBlockHtml_('ccEditExtra') + '</div>' +
-      '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; max-width:500px; min-height:50px; font-family:inherit; margin-bottom:16px;">' + escapeHtml(c.메모 || '') + '</textarea>' +
+      '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; min-height:50px; font-family:inherit;">' + escapeHtml(c.메모 || '') + '</textarea>' +
+      '</div><div class="cc-col">' +
       // [2026.10.18 탭연결 3번] 고객관리에서 바로 이 고객의 새 사건을 연다(작업관리 새 사건 폼에 고객을 고정해 넘김 — 동명이인 혼동 없음)
-      '<h4 style="margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">서비스 이력 <button type="button" class="ghost-btn sm" data-cc-new-case="1" style="font-weight:400;">＋ 이 고객으로 새 사건</button></h4>' +
+      '<div class="ch-col-h cc-h">사건 <button type="button" class="ghost-btn sm" data-cc-new-case="1">＋ 이 고객으로 새 사건</button></div>' +
       '<div id="ccLogList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
-      '<h4 style="margin-bottom:6px; margin-top:18px; display:flex; gap:8px; align-items:center;">수금 내역 <button type="button" id="ccPaymentToggle" class="ghost-btn sm" style="font-weight:400;">＋ 수금 추가</button></h4>' + // [2026.11.01] 제목 글자를 누르는 숨은 단추 → 제목 + 단추
+      '<div class="ch-col-h cc-h">흐름 <span>예약 → 사건 → 수금, 날짜순</span></div>' +
+      '<div id="ccFlow" class="cc-flow"><div class="log-empty">불러오는 중…</div></div>' +
+      '<div class="ch-col-h cc-h">돈 <span id="ccMoneySum"></span><button type="button" id="ccPaymentToggle" class="ghost-btn sm">＋ 수금 추가</button></div>' + // [2026.11.01] 제목 글자를 누르는 숨은 단추 → 제목 + 단추
       '<div id="ccPaymentList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
-      '<div id="ccNewPaymentFormWrap" style="display:none; margin-top:10px; gap:6px; flex-wrap:wrap; align-items:center;"></div>';
+      '<div id="ccNewPaymentFormWrap" style="display:none; margin-top:10px; gap:6px; flex-wrap:wrap; align-items:center;"></div>' +
+      '</div></div>';
 
     container.querySelector('#ccEditPhone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
     var ccEditExtraList = ccWireExtraContacts_('ccEditExtra', c.추가연락처, container);
@@ -431,6 +444,7 @@
 
     loadClientLogs_(c, container);
     loadClientPayments_(c, container);
+    loadClientFlow_(c, container);
 
     if (container === clientDetail) clientMainPanelBaseline_ = quickViewCurrentSignature_(container);
   }
@@ -505,6 +519,50 @@
     return roles.filter(function(r, i){ return roles.indexOf(r) === i; });
   }
 
+  // [2026.11.01 화면구조 개편 ④] 흐름 — 이 고객의 예약(전화번호 숫자가 같은 것)·사건 시작·수금을 날짜순 한 줄씩. 읽기만(서버 변경 없음).
+  //  예약은 고객 ID 없이 이름·전화로만 들어오므로 전화 숫자로 잇는다(전화가 없으면 예약은 못 이음 — 맨 끝에 알림)
+  function loadClientFlow_(c, container){
+    container = container || clientDetail;
+    var box = container.querySelector('#ccFlow'); if (!box) return;
+    var digits = function(p){ return String(p || '').replace(/\D/g, ''); };
+    var phones = [digits(c.전화번호)].concat((c.추가연락처 || []).map(function(x){ return digits(x && (x.전화번호 || x.전화)); })).filter(function(p){ return p.length >= 9; });
+    Promise.all([
+      callGas('list_bookings', {}).catch(function(){ return {}; }),
+      callGas('work_get_cases', {}).catch(function(){ return {}; }),
+      callGas('client_get_consult_logs', { 고객ID: c.id }).catch(function(){ return {}; })
+    ]).then(function(r){
+      var rows = [];
+      (r[0].bookings || []).forEach(function(b){
+        if (!phones.length || phones.indexOf(digits(b.phone)) === -1) return;
+        var st = b.caseId ? '사건접수' : (b.result || b.status || '');
+        rows.push({ d: String(b.reservedDate || ''), k: '예약', t: (b.type || '상담') + (b.field ? ' · ' + b.field : ''), s: st });
+      });
+      (r[1].cases || []).filter(function(wc){ return clientRolesInCase_(wc, c.id).length > 0; }).forEach(function(wc){
+        rows.push({ d: String(wc.의뢰일 || '').slice(0, 10), k: '사건', t: wc.사건명 || '', s: wc.상태 || '', id: wc.id });
+      });
+      (r[2].logs || []).forEach(function(p){
+        var amt = Number(p.금액) || 0;
+        rows.push({ d: String(p.날짜 || '').slice(0, 10), k: amt ? '수금' : '기록', t: amt ? (amt.toLocaleString('ko-KR') + '원' + (p.수취증빙 ? ' · ' + p.수취증빙 : '')) : (p.수취증빙 || p.비고 || p.메모 || '금액 없는 기록'), s: '' });
+      });
+      rows = rows.filter(function(x){ return x.d; });
+      rows.sort(function(a, b){ return b.d.localeCompare(a.d); });
+      if (!rows.length){ box.innerHTML = '<div class="log-empty">아직 흐름이 없습니다.</div>'; return; }
+      box.innerHTML = rows.slice(0, 40).map(function(x){
+        return '<div class="cc-flow-row"><span class="cc-flow-d">' + escapeHtml(x.d.slice(2)) + '</span><span class="cc-flow-k">' + escapeHtml(x.k) + '</span>' +
+          '<span class="cc-flow-t" title="' + escapeHtml(x.t) + '">' + (x.id ? '<a href="#" data-cc-flow-case="' + escapeHtml(x.id) + '">' + escapeHtml(x.t) + '</a>' : escapeHtml(x.t)) + '</span>' +
+          (x.s ? '<span class="cc-flow-s">' + escapeHtml(x.s) + '</span>' : '') + '</div>';
+      }).join('') + (phones.length ? '' : '<div class="cc-flow-note">전화번호가 없어 예약은 잇지 못했습니다.</div>');
+      if (!box.dataset.wired){
+        box.dataset.wired = '1';
+        box.addEventListener('click', function(e){
+          var a = e.target.closest && e.target.closest('[data-cc-flow-case]'); if (!a) return;
+          e.preventDefault();
+          if (container !== clientDetail && typeof closeClientQuickView_ === 'function') { try { closeClientQuickView_(); } catch (er) {} }
+          if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(a.getAttribute('data-cc-flow-case'));
+        });
+      }
+    });
+  }
   function loadClientLogs_(c, container){
     container = container || clientDetail;
     var listEl = container.querySelector('#ccLogList');
@@ -565,7 +623,7 @@
       '<div class="log-date" style="flex:0 0 58px;">' + escapeHtml(wc.의뢰일 ? fmtDateShort_(wc.의뢰일) : '') + '</div>' +
       '<div class="log-text" style="flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHtml(wc.사건명 || '') + '">' +
       '<b>' + escapeHtml(wc.사건명 || '') + '</b> <span style="color:var(--sub);">' + escapeHtml(semokLabel) + (wc.업무유형 ? '·' + escapeHtml(wc.업무유형) : '') + '</span>' +
-      ' <span style="color:' + (wc.상태 === '완료' ? '#16a34a' : 'var(--navy)') + '; font-weight:600;">' + escapeHtml(wc.상태 || '') + '</span>' +
+      ' <span style="color:' + (wc.상태 === '완료' ? '#0D1B3D' : 'var(--navy)') + '; font-weight:600;">' + escapeHtml(wc.상태 || '') + '</span>' +
       rolesHtml.replace(/^ · /, ' ') +
       (wc.법정일 ? ' <span style="color:var(--sub);">' + escapeHtml(deadlineLabel) + ' ' + escapeHtml(fmtDateShort_(wc.법정일)) + '</span>' : '') +
       '</div>' +
@@ -593,6 +651,15 @@
       }
       var payments = res.logs || [];
       var cases = (casesRes.cases || []).filter(function(wc){ return wc.고객ID === c.id; });
+      // [2026.11.01 화면구조 개편 ④] 돈 줄 머리 — 받은 합계(금액 있는 기록만). 청구·미수는 서버에 칸이 없어 아직 못 셈(사실 입력 한 곳 계획서에 넣음)
+      var sumEl = container.querySelector('#ccMoneySum');
+      // [2026.11.01 사실 입력 한 곳 5] 청구 = 이 고객 사건들의 청구액(사건개요.청구액, 처리개요 수금 카드에서 적음) 합 · 미수 = 청구 − 받은 금액
+      if (sumEl){
+        var paid = payments.filter(function(p){ return Number(p.금액) || 0; }), paidSum = paid.reduce(function(t, p){ return t + (Number(p.금액) || 0); }, 0);
+        var billSum = cases.reduce(function(t, wc){ var ov = wc.사건개요; if (typeof ov === 'string') { try { ov = JSON.parse(ov); } catch (e) { ov = {}; } } return t + (Number(String((ov || {}).청구액 || '').replace(/[^\d]/g, '')) || 0); }, 0);
+        var wn = function(n){ return n.toLocaleString('ko-KR') + '원'; };
+        sumEl.textContent = (billSum ? '청구 ' + wn(billSum) + ' · ' : '') + (paid.length ? '받은 금액 ' + wn(paidSum) + ' · ' + paid.length + '건' : (billSum ? '받은 금액 0원' : '')) + (billSum ? ' · ' + (billSum > paidSum ? '미수 ' + wn(billSum - paidSum) : '미수 없음') : '');
+      }
       if (!payments.length){
         listEl.innerHTML = '<div class="log-empty">아직 수금 내역이 없습니다.</div>';
         return;

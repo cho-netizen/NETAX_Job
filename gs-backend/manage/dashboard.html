@@ -83,6 +83,12 @@
     <!-- [2026.10.31] 세무사님 "대시보드에서 개선요구와 지침템플릿제안을 확인조치사항앞으로 옮기자" — 할일 아래에서 확인조치사항 바로 앞으로 -->
     <!-- [2026.10.20] 세무사님 "개선요구사항을 언제 조치하고 지우나? 계속 누적관리하나?" → "그렇게 하라"(원장은 누적, 할 일은 끝날 때까지, 화면엔 남은 것만 앞에).
          설정 🐞 ✍로 적은 요청 중 끝나지 않은 것(접수·재오픈·반영됨)을 한 줄로 보이고, 누르면 목록(끝난 것은 접힘). 자료는 설정 🤝 📝 요청 상태와 같다(Federation.js commStatus_). -->
+    <!-- [2026.11.01 화면구조 개편 ③] 세무사님 "권장안대로 하마" — 확인조치사항·야간 점검(개발자 일)은 설정 › 시스템 관리로 옮김(dashMoveDevCards_). 그 카드 맨 위에 있던
+         "세무사님이 하실 일"(개발자 질문·법령 판단 결정·고객이 보낸 서류·카카오 오류)만 여기 남긴다 — 할 것이 없으면 카드째 숨김 -->
+    <div class="card dash-cover" id="dashAskCard" hidden>
+      <h3>답하실 것</h3>
+      <div id="dashFedStatus"></div>
+    </div>
     <div class="card dash-cover" id="dashImproveCard">
       <h3 style="margin-bottom:0;"><button type="button" id="dashImproveHead" style="all:unset; cursor:pointer; display:block; width:100%;">개선요구 <span id="dashImproveSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span id="dashImproveArrow" style="float:right; font-size:12px; color:var(--sub);">▾</span></button></h3>
       <div id="dashImproveList" style="display:none; margin-top:8px;"></div>
@@ -103,7 +109,6 @@
         </span>
       </h3>
       <div class="nx-help">세무사님이 확인·결정하실 일 — 체크·고치기·추가가 원본 파일(_확인조치사항.md)에 바로 저장됩니다.</div>
-      <div id="dashFedStatus"></div>
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <select id="dashFollowSec" style="max-width:100%; min-width:0; flex:0 1 180px;" title="어느 절에 넣을지"></select>
         <input type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
@@ -127,7 +132,7 @@
     <!-- [2026.09 신규] "매일 밤 자동으로 뭘 하는지 내가 어떻게 아느냐"는 지적에 따라 추가 —
          야간 자동점검(시스템 자기점검/템플릿 점검 등 — [2026.10.20] 오늘의 요약은 중복이라 뺌)이 실제로 어젯밤 돌았는지,
          결과가 뭐였는지를 대시보드에서 바로 확인한다. -->
-    <div class="card">
+    <div class="card" id="dashNightlyCard">
       <h3>야간 자동점검 상태</h3>
       <!-- [2026.10.20] 운영 버전 한 줄 — 세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지"(자세한 내역은 설정 🐞 카드) -->
       <a href="#" id="dashDeployLine" style="display:block; font-size:12.5px; padding:4px 0 6px; border-bottom:1px solid var(--line); color:inherit; text-decoration:none;" title="눌러서 설정 🐞 카드의 반영 내역 보기">운영 버전 확인 중…</a>
@@ -147,7 +152,7 @@
     callGas('todo_list', {}).then(function(t){
       var box = document.getElementById('dashToday'); if (!box) return;
       if (!t || t.error){ box.innerHTML = '<b>오늘</b> <span style="color:var(--sub)">불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
-      var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#a83232' : 'var(--line)') + '; color:' + (warn ? '#a83232' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
+      var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; color:' + (warn ? '#b3261e' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
       var asksN = (t.넥스질문 || []).reduce(function(s, x){ return s + (x.질문수 || 0); }, 0);
       var html = '<b>오늘</b>'
         + chip((t.지남 || []).length, '기한 지남', 'dashDeadlines', true)
@@ -319,7 +324,7 @@
         // [2026.10.31] 기한 지남은 빨간 굵은 글자로만(⏰ 아이콘은 같은 뜻을 되풀이)
         var dateCell = (c.법정일 === prevDeadlineDate) ? '' : esc(c.법정일);
         prevDeadlineDate = c.법정일;
-        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#a83232; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#b3261e; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
           '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td>' +
           // [2026.10.29] 세무사님 "대시보드에서 진행을 즉시 완료로 변경할 수 있거나…" — 줄 누르기(처리개요로 이동)와 따로, 이 단추는 그 자리에서 완료 처리
           '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="작업관리로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)">✓ 완료</button></td></tr>';
@@ -415,12 +420,15 @@
     callGas('list_bookings', {}).then(function(res){
       // [2026.10.18 탭연결 4번] 줄을 누르면 예약관리의 그 신청으로 간다(승인·사건 시작은 거기서) — 시트 줄번호는 예약관리와 같은 규칙(순서+2)
       var all = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; });
-      var list = all.filter(function(b){ return b.status === '신청'; });
+      // [2026.11.01] 예약관리와 같은 잣대(bookingKind_) — 2주 넘게 지난 신청·확정은 「지난 기록」이라 여기서도 안 센다
+      var bkToday = (typeof bookingTodayStr_ === 'function') ? bookingTodayStr_() : '';
+      var kindOf = function(b){ return (typeof bookingKind_ === 'function' && bkToday) ? bookingKind_(b, bkToday) : ''; };
+      var list = all.filter(function(b){ return b.status === '신청' && kindOf(b) !== 'stale'; });
       var box = document.getElementById('dashBookings');
       // [2026.10.30 예약 결과 관리] 날짜 지난 확정 예약 중 결과를 안 적은 것·연결 후보가 있는 것 — 누르면 예약관리 '처리할 것'으로
       var today0 = (typeof workTodayStr_ === 'function') ? workTodayStr_() : new Date().toISOString().slice(0, 10);
-      var needN = all.filter(function(b){ return b.status === '확정' && !b.caseId && ((!b.result && b.reservedDate && b.reservedDate < today0) || (b.linkCandidates && b.linkCandidates.length)); }).length;
-      var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#a83232; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약관리에서 보기</a></div>' : '';
+      var needN = all.filter(function(b){ return b.status === '확정' && !b.caseId && kindOf(b) !== 'stale' && ((!b.result && b.reservedDate && b.reservedDate < today0) || (b.linkCandidates && b.linkCandidates.length)); }).length;
+      var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#b3261e; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약관리에서 보기</a></div>' : '';
       if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>' + needHtml; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th></tr>';
       list.forEach(function(b){
@@ -440,8 +448,12 @@
       var pad2 = function(n){ return (n < 10 ? '0' : '') + n; };
       var sinceStr = since.getFullYear() + '-' + pad2(since.getMonth() + 1) + '-' + pad2(since.getDate());
       var logs = (res.logs || []).filter(function(l){ return String(l.날짜 || '').slice(0, 10) >= sinceStr; });
+      // [2026.11.01 화면구조 개편 ④] 금액 없는 기록(문자 발송·메모)은 수금이 아니다 — 표에서 빼고 아래 한 줄로 수만(검토서 2절 11번)
+      var noAmtN = logs.filter(function(l){ return !(Number(l.금액) || 0); }).length;
+      logs = logs.filter(function(l){ return Number(l.금액) || 0; });
+      var noAmtLine = noAmtN ? '<div style="font-size:12px; color:var(--sub); margin-top:4px;">금액 없는 기록(문자·메모) ' + noAmtN + '건은 수금관리 「금액 없는 기록」에</div>' : '';
       var box = document.getElementById('dashPayments');
-      if (!logs.length){ box.innerHTML = '<div class="empty-row">최근 ' + payDays + '일 동안 수금 내역이 없습니다.</div>'; return; }
+      if (!logs.length){ box.innerHTML = '<div class="empty-row">최근 ' + payDays + '일 동안 수금 내역이 없습니다.</div>' + noAmtLine; return; }
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
       var thNowrap2 = ' style="' + ellipsis + '"';
@@ -459,7 +471,7 @@
           // [2026.10.29] 세무사님 "사건미연결이라는 메시지가 필요해 보인다" — 사건 없는 상담 영수증도 기록되게 하면서, 사건이 안 붙은 수금은 이 카드에서도 보이게
           (l.사건ID ? '' : ' <span style="color:var(--sub); font-size:11px;">· 사건 미연결</span>') + '</td></tr>';
       });
-      html += '</table></div>';
+      html += '</table></div>' + noAmtLine;
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashPayments').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
@@ -626,7 +638,7 @@
       + '<div style="flex:0 0 auto; padding-top:2px;"><input type="checkbox" class="dashTaskDone" ' + (done ? 'checked' : '') + '></div>'
       + '<div class="log-text" style="flex:0 1 auto; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 8px;" title="눌러서 수정">'
       + '<span style="' + (done ? 'text-decoration:line-through; color:var(--sub);' : '') + '">' + esc(t.제목) + '</span>'
-      + (t.마감일 ? '<span style="font-size:11px; white-space:nowrap; ' + (overdue ? 'color:#a83232; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
+      + (t.마감일 ? '<span style="font-size:11px; white-space:nowrap; ' + (overdue ? 'color:#b3261e; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
       + '</div>'
       + '<button type="button" class="log-del dashTaskDel" title="삭제">✕</button>'
       + '</div>';
@@ -661,7 +673,7 @@
       box.innerHTML = rows.slice(0, 12).map(function(r){
         var overdue = r.n.dueDate && r.n.dueDate < todayStr;
         return '<div class="log-entry" data-sub-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 이 사건 작업관리로">' +
-          '<div class="log-date"' + (overdue ? ' style="color:#a83232; font-weight:700;"' : '') + '>' + esc(r.n.dueDate ? fmtDateShort_(r.n.dueDate) : '') + '</div>' +
+          '<div class="log-date"' + (overdue ? ' style="color:#b3261e; font-weight:700;"' : '') + '>' + esc(r.n.dueDate ? fmtDateShort_(r.n.dueDate) : '') + '</div>' +
           '<div class="log-text">' + esc(r.n.title || '') + ' <span style="color:var(--sub); font-size:12px;">· ' + esc(r.c.사건명 || '') + (r.n.status && r.n.status !== '대기' ? ' · ' + esc(r.n.status) : '') + '</span></div></div>';
       }).join('') + (rows.length > 12 ? '<div style="font-size:12px; color:var(--sub);">외 ' + (rows.length - 12) + '건 — 작업관리에서 보기</div>' : '');
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>'; });
@@ -928,7 +940,7 @@
 
   // [2026.10.20] 🛠 개선요구 — 끝나지 않은 요청 전부(오래된 순)·며칠째. 반영됨은 👍 잘 됨 / ↩ 다시 고쳐 주세요(설정 📝 요청 상태와 같은 서버 함수).
   var dashImprove_ = { open: false, doneOpen: false };
-  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '고침': '#6f42c1', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+  var DASH_IMPROVE_COLOR_ = { '접수': 'var(--sub)', '고침': '#7a5c14', '반영됨': '#0D1B3D', '확인완료': 'var(--success)', '재오픈': '#b3261e' };
   var DASH_IMPROVE_BG_ = { '접수': 'rgba(120,130,150,0.06)', '고침': 'rgba(111,66,193,0.07)', '반영됨': 'rgba(31,111,235,0.07)', '확인완료': 'rgba(31,122,77,0.06)', '재오픈': 'rgba(168,50,50,0.07)' };
   // [2026.10.28] 처리 내역(누가·언제·무엇을·커밋·운영 판)을 요청마다 펼쳐 보이고, 상태가 무엇이든 👍 확인 / ↩ 다시 요구를 할 수 있게 —
   //  세무사님 "처리가 되었으면서 거기에 남아있는것도 이해가 되지 않고, 각각 어떻게 처리되었는지 확인할 수도 없다" / "개선한 사항이 정상이면 확인만 하면 되지만 부족해 보이면 다시 요구사항을 적을 수 있도록"
@@ -949,7 +961,7 @@
       + '<span style="color:' + (DASH_IMPROVE_COLOR_[x.status] || 'var(--sub)') + '; font-weight:700;">[' + esc(label) + ']</span> '
       + (x.urgent ? '🚨 ' : '') + '<span style="font-size:11.5px; color:var(--sub);">' + esc(x.id + ' · ' + String(x.at).slice(0, 10)) + (x.status !== '확인완료' ? ' · ' + (x.days || 0) + '일째' : '') + (x.ver ? ' · 운영 @' + esc(x.ver) : '') + '</span>'
       + '<div style="white-space:pre-wrap;">' + esc(x.text) + '</div>'
-      + (x.reopenNote ? '<div style="font-size:12px; color:#a83232;">↩ 세무사님 다시 요구: ' + esc(x.reopenNote) + '</div>' : '')
+      + (x.reopenNote ? '<div style="font-size:12px; color:#b3261e;">↩ 세무사님 다시 요구: ' + esc(x.reopenNote) + '</div>' : '')
       + dashImproveHistHtml_(x)
       + btns + '</div>';
   }
@@ -1006,6 +1018,21 @@
   //  ① 세무사님이 하실 일 → 📋 확인조치사항 카드 맨 위(dashFedStatus): 개발자 질문(그 자리에서 답하기)·법령 판단 대기 결정·고객이 보낸 서류·카카오 오류
   //  ② 주간 개발자 실행·최근 바뀐 기능 → 🌙 카드 운영 버전 줄 아래 한두 줄(dashRoutineLine)
   //  반영 확인·🚨 긴급 요청은 🛠 개선요구 카드가 원래 처리한다(겹쳐 보이지 않게 여기서는 뺌).
+  // [2026.11.01 화면구조 개편 ③] 개발자 일 카드 둘을 설정 › 시스템 관리(탭 ②) 맨 아래로 옮긴다 — 카드 노드를 통째로 옮기므로 단추 배선(getElementById로 직접 붙임)은 그대로.
+  //  불러오기도 그대로(대시보드를 열 때 함께 받음 — 대시보드가 첫 화면이라 설정을 열 때는 이미 채워져 있다)
+  function dashMoveDevCards_(){
+    var fed = document.getElementById('stFedCard');
+    if (!fed){ setTimeout(dashMoveDevCards_, 200); return; }
+    var at = fed;
+    ['dashFollowCard', 'dashNightlyCard'].forEach(function(id){
+      var c = document.getElementById(id); if (!c) return;
+      c.classList.remove('dash-cover'); c.setAttribute('data-sttab', '2');
+      at.parentNode.insertBefore(c, at.nextSibling); at = c;
+    });
+    var cur = '1'; try { cur = localStorage.getItem('nxSettingsTab') || '1'; } catch (e) {}
+    if (typeof window.stShowTab_ === 'function') window.stShowTab_(cur);
+  }
+  dashMoveDevCards_();
   var dashCommP_ = null;
   function dashComm_(){ return dashCommP_ || callGas('comm_status', {}); } // 처음 열 때만 함께 씀(initDashboard)
   function loadDashFed_(){
@@ -1013,7 +1040,7 @@
       var box = document.getElementById('dashFedStatus'), line = document.getElementById('dashRoutineLine');
       if (!box || !line) return;
       if (!r || r.error){ line.textContent = '개발자 실행 기록을 불러오지 못했습니다' + (r && r.error ? ': ' + r.error : ''); return; }
-      var row = function(inner, warn){ return '<div style="padding:7px 10px; border:1px solid ' + (warn ? '#a83232' : 'var(--line)') + '; border-radius:8px; background:#fff; margin-bottom:4px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">' + inner + '</div>'; };
+      var row = function(inner, warn){ return '<div style="padding:7px 10px; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; border-radius:8px; background:#fff; margin-bottom:4px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">' + inner + '</div>'; };
       var html = '';
       (r.questions || []).filter(function(q){ return !q.answer; }).forEach(function(q){
         html += row('❓ <b>개발자 질문</b> ' + esc(q.title) + (q.body ? '<div style="font-size:12px; color:var(--sub); white-space:pre-wrap;">' + esc(String(q.body).slice(0, 400)) + '</div>' : '') + '<div style="margin-top:4px;"><button type="button" class="ghost-btn sm" data-dashqans="' + esc(q.id) + '">✍ 답하기</button></div>');
@@ -1022,17 +1049,19 @@
       if (ups.length) html += row('<details><summary style="cursor:pointer;"><b>📥 고객이 보낸 서류 ' + ups.length + '건</b>(최근 7일, 고객창구·카카오) — 사건 증빙확보에서 확인</summary>'
         + ups.slice(0, 15).map(function(u){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(u.at).slice(5)) + ' · ' + esc(u.경로 || '') + ' · ' + esc(u.사건 || u.rid || '') + ' — ' + esc((u.항목 ? u.항목 + ': ' : '') + (u.파일 || '')) + (u.caseId ? '' : ' (연결된 사건 없음)') + '</div>'; }).join('') + '</details>');
       var kes = r.kakaoErrors || [];
-      if (kes.length) html += row('<details><summary style="cursor:pointer; color:#a83232;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
+      if (kes.length) html += row('<details><summary style="cursor:pointer; color:#b3261e;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
       box.innerHTML = html;
+      var askCard = document.getElementById('dashAskCard'); if (askCard) askCard.hidden = !html;
       // 법령 판단 대기 — 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만
       callGas('ai_judge_get', {}).then(function(j){
         var n = ((j && j.doc && j.doc.항목) || []).filter(function(x){ return x.결정 && x.결정.선택 === '보류'; }).length;
-        if (n) box.insertAdjacentHTML('afterbegin', row('⚖️ <b style="color:#a83232;">법령 판단 대기 — 세무사님 결정 필요 ' + n + '건</b> <a href="#" data-dashgo="settings" data-dashgo-card="stFedCard">설정 → 시스템 관리 → ⚖️ 법령 판단 대기</a>', true));
+        if (n && askCard) askCard.hidden = false;
+        if (n) box.insertAdjacentHTML('afterbegin', row('⚖️ <b style="color:#b3261e;">법령 판단 대기 — 세무사님 결정 필요 ' + n + '건</b> <a href="#" data-dashgo="settings" data-dashgo-card="stFedCard">설정 → 시스템 관리 → ⚖️ 법령 판단 대기</a>', true));
       }).catch(function(){});
       // 🌙 카드 한두 줄
       var rt = r.routine || {}, rl = rt.last, parts = [];
-      if (rt.missing) parts.push('<span style="color:#a83232;">⚠ 이번 주 개발자 실행 기록 없음' + (rl ? '(마지막 ' + esc(String(rl.date).slice(5)) + ')' : '') + '</span>');
+      if (rt.missing) parts.push('<span style="color:#b3261e;">⚠ 이번 주 개발자 실행 기록 없음' + (rl ? '(마지막 ' + esc(String(rl.date).slice(5)) + ')' : '') + '</span>');
       else if (rl) parts.push('🛠 개발자 실행 ' + esc(String(rl.date).slice(5)) + ' — ' + (rl.status === 'error' ? '⚠ 멈춤' : rl.status === 'none' ? '후보 없음' : '고침 ' + (rl.fixed || []).length + '건 · 넘김 ' + (rl.skipped || []).length + '건') + (/^https:\/\/github\.com\//.test(String(rl.pr || '')) ? ' <a href="' + esc(rl.pr) + '" target="_blank" rel="noopener">수정안</a>' : ''));
       var ch = (r.changes || [])[0];
       if (ch) parts.push('✨ 최근 바뀐 기능 ' + esc(String(ch.at).slice(5, 10)) + ' · ' + esc(String(ch.msg).slice(0, 70)));
@@ -1072,11 +1101,11 @@
       var bad = chk ? (chk.items || []).filter(function(x){ return !x.ok; }).length : 0;
       var parts = ['운영 @' + esc(ver || '?')];
       if (atTxt) parts.push(esc(atTxt));
-      parts.push(!chk ? '점검 기록 없음' : chk.ok ? '점검 정상' : '<span style="color:#a83232; font-weight:700;">점검 이상 ' + bad + '건</span>');
+      parts.push(!chk ? '점검 기록 없음' : chk.ok ? '점검 정상' : '<span style="color:#b3261e; font-weight:700;">점검 이상 ' + bad + '건</span>');
       var s = Math.max(0, Math.round((st.now - ((j && j.startedAt) || st.now)) / 1000));
-      if (st.active && j) parts.push('<span style="color:var(--accent,#2b6cb0); font-weight:700;">⏳ ' + esc((st.kinds && st.kinds[j.kind]) || '반영') + ' 진행 중 — ' + esc(j.version ? '@' + j.version + ' 반영됨, ' + (j.label || '') : (j.label || '')) + ' · ' + (s >= 60 ? Math.floor(s / 60) + '분 ' : '') + (s % 60) + '초째</span>');
-      else if (st.stale && j) parts.push('<span style="color:#a83232;">⚠ 끝나지 않은 반영 기록이 있음</span>');
-      else if (j && j.done && j.stage === 'failed' && st.now - (j.finishedAt || 0) < 86400000) parts.push('<span style="color:#a83232;">❌ 최근 반영 실패</span>');
+      if (st.active && j) parts.push('<span style="color:var(--accent,#0D1B3D); font-weight:700;">⏳ ' + esc((st.kinds && st.kinds[j.kind]) || '반영') + ' 진행 중 — ' + esc(j.version ? '@' + j.version + ' 반영됨, ' + (j.label || '') : (j.label || '')) + ' · ' + (s >= 60 ? Math.floor(s / 60) + '분 ' : '') + (s % 60) + '초째</span>');
+      else if (st.stale && j) parts.push('<span style="color:#b3261e;">⚠ 끝나지 않은 반영 기록이 있음</span>');
+      else if (j && j.done && j.stage === 'failed' && st.now - (j.finishedAt || 0) < 86400000) parts.push('<span style="color:#b3261e;">❌ 최근 반영 실패</span>');
       el.innerHTML = parts.join(' · ');
       if (st.active) dashDeployTimer = setTimeout(loadDashDeployLine_, 10000);
     }).catch(function(){ var el = document.getElementById('dashDeployLine'); if (el) el.textContent = '운영 버전을 확인하지 못했습니다.'; });
@@ -1094,7 +1123,7 @@
       if (!items.length){ box.innerHTML = '<div class="empty-row">확인할 항목이 없습니다.</div>'; return; }
       var html = '';
       items.forEach(function(it){
-        var badge = it.ok ? '<span style="color:var(--success); font-weight:700;">✅ 정상</span>' : '<span style="color:#a83232; font-weight:700;">⚠ ' + esc(it.failLabel || '실행 안 됨') + '</span>';
+        var badge = it.ok ? '<span style="color:var(--success); font-weight:700;">✅ 정상</span>' : '<span style="color:#b3261e; font-weight:700;">⚠ ' + esc(it.failLabel || '실행 안 됨') + '</span>';
         html += '<div style="padding:8px 0; border-bottom:1px solid var(--line);">'
           + '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">'
           + '<span class="nx-l3" style="margin:0;">' + esc(dashNoLeadIcon_(it.label)) + '</span>' + badge
@@ -1104,7 +1133,7 @@
           + '</div>';
       });
       if (!res.allOk){
-        html = '<div class="empty-row" style="color:#a83232; margin-bottom:6px;">⚠ 확인이 필요한 항목이 있습니다 — 자가점검 이상은 설정 → 🐞 오류 기록에 자세히 남아 있고, Claude Code에게 "오류 기록 확인해줘"라고 하면 됩니다.</div>' + html;
+        html = '<div class="empty-row" style="color:#b3261e; margin-bottom:6px;">⚠ 확인이 필요한 항목이 있습니다 — 자가점검 이상은 설정 → 🐞 오류 기록에 자세히 남아 있고, Claude Code에게 "오류 기록 확인해줘"라고 하면 됩니다.</div>' + html;
       }
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashNightlyStatus').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
