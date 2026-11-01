@@ -121,6 +121,7 @@
           + lgTb('groups', '맞대기', nSt('맞대기:', /^미결$/), '서류끼리 갈림 ' + nSt('맞대기:', /^미결$/) + ' · 서류마다 다름 ' + nSt('맞대기:', /^서로 다름/) + ' · 판정 ' + nSt('맞대기:', /^판정됨$/) + ' · 일치 ' + nSt('맞대기:', /^일치$/) + ' · 서류 1종 ' + nSt('맞대기:', /^단독$/))
           + lgTb('links', '칸으로 간 길', nSt('칸:', /^서류와 다름|^서류 값과 다름/), '다름 ' + nSt('칸:', /^서류와 다름|^서류 값과 다름/) + ' · 서류에 없는 값 ' + nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/) + ' · 서류와 같음 ' + nSt('칸:', /^서류와 일치|^서류 1/) + ' · 세무사님 값 ' + nSt('칸:', /^세무사님/))
           + lgTb('rows', '칸 장부', sum.물어볼것, (sum.전체 || 0) + '줄 · 물어볼 것 ' + (sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + (sum.증빙받을것 || 0) + ' · 추정 ' + (sum.추정 || 0) + ' · 확정 ' + (sum.확정 || 0) + (sum.at ? ' · 마지막 ' + sum.at : ''))
+          + (r.물건 && r.물건.ok ? lgTb('obj', '물건', (r.물건.요약 || {}).소재지모름, (r.물건.요약 || {}).줄 + '줄 · 소재지 모름 ' + ((r.물건.요약 || {}).소재지모름 || 0) + ' · 주택 수 모름 ' + (((r.물건.요약 || {}).주택수 || {}).모름 || 0)) : '')
           + (fl ? lgTb('tools', '도구', 0, '공부 조회 ' + (fb0.공부 || 0) + '필지 · 추정 ' + (fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교') : '')
           + lgTb('adv', '자문', 0, '쟁점 ' + ((r.자문 || {}).쟁점 || []).length + ' · 대안 ' + ((r.자문 || {}).대안 || []).length + ' · 권고 ' + ((r.자문 || {}).권고 || []).length + ' · 보고서 ' + ((r.자문 || {}).보고서 || []).length)
           + '</div><div class="lg-tab-detail" style="font-size:12px; color:var(--sub); margin-top:4px;"></div></div>';
@@ -188,6 +189,34 @@
           }).join('');
           h += '<div data-lg-sec="links" style="display:none; margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">계산기 칸으로 간 길</b> <span style="color:var(--sub);">칸마다 지금 값이 서류 값과 어떻게 이어졌는지 ' + esc(links.length) + '줄 — "서류와 다름"·"빈 칸(갈림)"은 질문으로 섰고, "서류에 이 칸 값 없음"은 세무사님 답·추정·계산으로 채워질 칸입니다(처리개요를 돌릴 때마다 갱신)</span>'
             + (links.length ? tbl(['칸', '지금 값', '넣은 주체 — 근거 파일', '서류와', '그 칸 종류의 서류 값(서류 수: 출처)', '지금 값이 나온 서류(모든 사실에서)', '판정 · 이유', '맞댄 방법'], lb) : '<div class="log-empty">아직 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리면 채워집니다</div>') + '</div>';
+        }
+        // [2026.11.01 물건 장부] 세무사님 원문(11-01) "물건별로 구분하여 관리가 가능하도록 당연히 수정되어야 한다" — 사건의 물건(집·땅·오피스텔…)을 한 줄씩.
+        //  넥스 case_ledger do=objects·object·object_drop·object_sell과 같은 서버 함수(ledgerObjects·ledgerObjSet·ledgerObjDrop·ledgerObjSell). 세무사님이 적은 칸은 넥스가 못 바꿈
+        var ob = r.물건 || null, obList = (ob && ob.물건) || [], obSum = (ob && ob.요약) || {}, obEnum = (ob && ob.고르기) || {};
+        if (ob && ob.ok){
+          var OBF = ['종류', '쓰임', '소재지', '동', '호', '소유자', '지분', '취득일', '취득원인', '면적', '주택수', '주택수근거', '쓸곳', '메모'];
+          var OBW = { 종류: 70, 쓰임: 50, 소재지: 240, 동: 50, 호: 50, 소유자: 70, 지분: 50, 취득일: 90, 취득원인: 60, 면적: 60, 주택수: 60, 주택수근거: 160, 쓸곳: 50, 메모: 160 };
+          var OBN = { 주택수: '주택 수', 주택수근거: '주택 수 근거', 쓸곳: '쓸 곳' };
+          var ownCol = function(o, k){ var w = (o.칸주인 || {})[k]; return w === '세무사님' ? '' : (w === '넥스' ? ' color:#7a5c14;' : (w ? ' color:var(--sub);' : '')); };
+          var oh = '<div data-lg-sec="obj" style="display:none; margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">물건 목록</b> <span style="color:var(--sub);">'
+            + esc(obSum.줄 || 0) + '줄 · 소재지 모름 ' + esc(obSum.소재지모름 || 0) + ' · 주택 수 든다 ' + esc((obSum.주택수 || {}).든다 || 0) + ' / 모름 ' + esc((obSum.주택수 || {}).모름 || 0)
+            + ' — 의뢰 글·서류에서 규칙이 뽑은 줄은 회색, 넥스가 적은 칸은 갈색, 세무사님이 적으신 칸은 검정</span>';
+          oh += obList.length ? tbl(['번호', '', '상태'].concat(OBF.map(function(k){ return OBN[k] || k; })).concat(['양도 자산', '판정', '출처']), obList.map(function(o){
+              var pj = o.판정 ? (o.판정.묶음 ? o.판정.묶음 + ' ' : '') + (o.판정.결론 || o.판정.상태 || '') + (o.판정.잠정 ? '(잠정)' : '') : ''; // [2026.11.01] 종합판정 도구 결과 — 대표 묶음 이름·결론·잠정(묶음별 전체는 판정.묶음들)
+              return '<tr>' + cell(String(o.번호), 30) + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;"><button type="button" class="ghost-btn sm" data-ob-edit="' + esc(o.id) + '">고치기</button> <button type="button" class="ghost-btn sm" data-ob-sell="' + esc(o.id) + '" title="이 물건의 소재지·동·호·면적·취득일·종류를 양도 계산 자산 칸으로 보냅니다(정해진 자산 칸은 덮지 않음)">양도 자산으로</button> <button type="button" class="ghost-btn sm" data-ob-drop="' + esc(o.id) + '">지우기</button></td>' + cell(o.상태 || '', 50, o.상태 === '정함' ? '' : ' color:#a60;')
+                + OBF.map(function(k){ return cell(o[k] == null ? '' : String(o[k]), OBW[k], ownCol(o, k)); }).join('')
+                + cell(o.자산 || '', 60) + cell(pj, 160) + cell((o.출처 || []).join(' / '), 220, ' color:var(--sub);')
+                + '</tr>';
+            }).join('')) : '<div class="log-empty">아직 물건이 없습니다 — 의뢰 글·서류를 읽으면 규칙이 채우고, 아래에서 직접 더할 수도 있습니다</div>';
+          oh += '<div id="chObForm" style="margin-top:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;"><div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b id="chObFormT">물건 더하기</b><span id="chObFormId" style="display:none;"></span>'
+            + OBF.map(function(k){
+                var w = Math.min(OBW[k] + 20, 260), ph = OBN[k] || k;
+                if (obEnum[k]) return '<label style="font-size:12px; white-space:nowrap;">' + esc(ph) + ' <select data-ob-f="' + esc(k) + '"><option value=""></option>' + obEnum[k].filter(Boolean).map(function(v){ return '<option>' + esc(v) + '</option>'; }).join('') + '</select></label>';
+                return '<input type="text" data-ob-f="' + esc(k) + '" placeholder="' + esc(ph) + (k === '취득일' ? '(2020-05-01)' : '') + '" style="width:' + w + 'px;">';
+              }).join('')
+            + '<button type="button" id="chObSave" class="ghost-btn">저장</button><button type="button" id="chObNew" class="ghost-btn" style="display:none;">새로 쓰기</button></div></div>';
+          oh += '</div>';
+          h += oh;
         }
         h += '<div data-lg-sec="rows">';
         var kbFact = {}; ((kb && kb.facts) || []).forEach(function(f){ if (f.id) kbFact[f.id] = f; });
@@ -332,6 +361,26 @@
         var tab0 = 'flow'; try { tab0 = sessionStorage.getItem('chLgTab') || 'flow'; } catch (e) {} // [2026.10.29] 처음엔 ⓪ 사건 흐름부터
         if (!body.querySelector('[data-lg-sec="' + tab0 + '"]')) tab0 = 'rows';
         showSec(tab0);
+        // [2026.11.01 물건 장부] 고치기 → 아래 칸에 채움 · 저장(새 줄이거나 고친 줄) · 지우기 · 양도 자산으로
+        var obForm = document.getElementById('chObForm');
+        if (obForm){
+          var obById = {}; obList.forEach(function(o){ obById[o.id] = o; });
+          var obFill = function(o){ document.getElementById('chObFormId').textContent = o ? o.id : ''; document.getElementById('chObFormT').textContent = o ? '물건 ' + o.번호 + ' 고치기' : '물건 더하기'; document.getElementById('chObNew').style.display = o ? '' : 'none';
+            Array.prototype.forEach.call(obForm.querySelectorAll('[data-ob-f]'), function(x){ var k = x.getAttribute('data-ob-f'); x.value = o && o[k] != null ? String(o[k]) : ''; }); };
+          Array.prototype.forEach.call(body.querySelectorAll('button[data-ob-edit]'), function(b){ b.addEventListener('click', function(){ obFill(obById[b.getAttribute('data-ob-edit')]); obForm.scrollIntoView({ block: 'nearest' }); }); });
+          document.getElementById('chObNew').addEventListener('click', function(){ obFill(null); });
+          document.getElementById('chObSave').addEventListener('click', function(){
+            var id = document.getElementById('chObFormId').textContent, o0 = id ? obById[id] : null, f = {};
+            Array.prototype.forEach.call(obForm.querySelectorAll('[data-ob-f]'), function(x){ var k = x.getAttribute('data-ob-f'), v = (x.value || '').trim(), was = o0 && o0[k] != null ? String(o0[k]) : ''; if (v !== was && (v || o0)) f[k] = v; });
+            if (!Object.keys(f).length){ showToast(id ? '바뀐 칸이 없습니다.' : '칸을 하나 이상 적어 주세요.', 'warning'); return; }
+            var sv = document.getElementById('chObSave'); sv.disabled = true;
+            call({ step: 'ledgerObjSet', id: id || undefined, f: f }).then(function(res){ sv.disabled = false; if (res) reload(); });
+          });
+          Array.prototype.forEach.call(body.querySelectorAll('button[data-ob-drop]'), function(b){ b.addEventListener('click', function(){
+            if (b.getAttribute('data-sure') !== '1'){ b.setAttribute('data-sure', '1'); b.textContent = '정말 지우기'; setTimeout(function(){ b.removeAttribute('data-sure'); b.textContent = '지우기'; }, 4000); return; }
+            b.disabled = true; call({ step: 'ledgerObjDrop', id: b.getAttribute('data-ob-drop') }).then(function(res){ if (res) reload(); else b.disabled = false; }); }); });
+          Array.prototype.forEach.call(body.querySelectorAll('button[data-ob-sell]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerObjSell', id: b.getAttribute('data-ob-sell') }).then(function(res){ if (res) reload(); else b.disabled = false; }); }); });
+        }
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-file]'), function(b){ b.addEventListener('click', function(){
           var n = b.getAttribute('data-lg-file'), list = ((kb && kb.facts) || []).filter(function(f){ return f.f === n; });
           var box = document.getElementById('chLgFileFacts');

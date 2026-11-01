@@ -11645,4 +11645,404 @@
     };
   };
 })();
+// ============================================================
+// [2026.10.21 신규 · 2026.11.01 엔진으로 옮김] 절세플랜 비교 계산(nxTaxPlanCalc_) — 화면과 떨어진 순수 함수라 세액계산 엔진 파일에 두어
+//  서버(넥스 도구 calculate_tax_plan_compare)와 절세플랜 화면이 같은 계산을 쓴다(세무사님 11-01 "모든 도구는 넥스가 자유자재로").
+//  모든 세액은 엔진 함수(calculateInheritanceTaxJS·calculateGiftTaxJS·calculateTransferTaxMultiJS·calculateBurdenedGiftTransferJS·
+//  allocateInheritanceTaxByHeirJS)가 낸다. 여기서 하는 일은 시나리오별로 입력 한두 칸만 바꿔 넣는 것뿐이다.
+// ============================================================
+(function(){
+  var W = window;
+  var n_ = function(v){ var x = Number(v); return isFinite(x) ? x : 0; };
+  var copy_ = function(o){ return JSON.parse(JSON.stringify(o || {})); };
+  var assign_ = function(){ var t = {}; for (var i = 0; i < arguments.length; i++){ var s = arguments[i] || {}; for (var k in s) if (Object.prototype.hasOwnProperty.call(s, k)) t[k] = s[k]; } return t; };
+  var C = W.nxTaxPlanCalc_ = {};
+
+  // 날짜 문자열(YYYY-MM-DD)에 해를 더한다 — 2차 상속 가정일용
+  C.addYears_ = function(d, y){
+    var s = String(d || ''); if (s.length < 10) return '';
+    return String(Number(s.slice(0, 4)) + Math.round(n_(y))) + s.slice(4, 10);
+  };
+
+  // ① 배우자 상속분 배분 — 배우자 몫(실제 상속받은 금액)만 바꿔 1차 상속세, 그 몫이 배우자 고유재산과 함께 다시 상속될 때(2차, 가정)의 상속세를 나란히.
+  //   o: { custom: 직접 입력 배우자 몫, spouseOwn: 배우자 고유재산, years: 배우자 사망까지 햇수, childCount2: 2차 상속 자녀 수 }
+  //   근거: 상증법 §19①(실제 상속받은 금액, 법정상속분 등 한도)·④(5억 미만이면 5억), §30(10년 안 재상속 단기재상속 세액공제).
+  C.spouse = function(base, o){
+    o = o || {};
+    if (!base || !(n_(base.taxableEstateAmount) > 0)) return { error: '상속세 과세가액을 넣어 주세요.' };
+    if (!(n_(base.spouseLegalShareRatio) > 0)) return { error: '배우자 법정상속분 비율을 넣어 주세요(예: 배우자와 자녀 2명이면 3/7).' };
+    var calc = W.calculateInheritanceTaxJS;
+    var b = assign_(copy_(base), { hasSpouse: true, isSpouseOnlyHeir: false, isSpousePropertyDivided: true });
+    var r0 = calc(assign_(b, { spouseActualInheritedAmount: 0 }));
+    if (!r0 || r0.error) return { error: (r0 && r0.error) || '상속세 계산이 되지 않았습니다.' };
+    var limit = n_(r0.배우자공제한도액);
+    var estate = n_(b.taxableEstateAmount);
+    var cand = [
+      { label: '0원 (배우자 몫 없음 — 최소 5억 공제)', a: 0 },
+      { label: '5억', a: 500000000 },
+      { label: '법정상속분 한도까지', a: Math.min(limit, 3000000000, estate) }
+    ];
+    if (n_(o.custom) > 0) cand.push({ label: '직접 입력', a: Math.min(n_(o.custom), estate) });
+    var seen = {}, rows = [];
+    var years = Math.max(0, n_(o.years));
+    var date1 = String(b.dateOfDeath || b.inheritanceDate || '');
+    var date2 = C.addYears_(date1, years);
+    var kids2 = o.childCount2 != null && o.childCount2 !== '' ? n_(o.childCount2) : n_(b.childCount);
+    cand.forEach(function(c){
+      var a = Math.round(c.a);
+      if (seen[a]) return; seen[a] = 1;
+      var r1 = calc(assign_(b, { spouseActualInheritedAmount: a }));
+      if (!r1 || r1.error) { rows.push({ label: c.label, a: a, error: (r1 && r1.error) || '계산 안 됨' }); return; }
+      var estate2 = n_(o.spouseOwn) + a, r2 = null, t2 = 0;
+      if (estate2 > 0){
+        var p2 = { dateOfDeath: date2, inheritanceDate: date2, taxableEstateAmount: estate2, hasSpouse: false, childCount: kids2, filingStatus: 'ontime' };
+        if (years < 10 && a > 0){
+          // §30② — 전의 상속세 산출세액 × 재상속분 ÷ 전의 상속재산가액 × 공제율. 전의 상속재산가액은 사건 칸(총상속재산가액)이 있으면 그 값, 없으면 과세가액으로 근사.
+          p2.priorInheritanceTax = n_(r1.산출세액);
+          p2.reinheritedPropertyValue = a;
+          p2.priorInheritanceTotalPropertyValue = n_(b.totalGrossEstateValue) || n_(r1.상속세과세가액_적용값) || estate;
+          p2.priorInheritanceTaxableBase = n_(r1.상속세과세가액_적용값) || estate;
+          p2.yearsSincePriorInheritance = Math.max(1, years);
+        }
+        r2 = calc(p2);
+        t2 = r2 && !r2.error ? n_(r2.납부세액) : 0;
+      }
+      var alloc = null, kids1 = n_(b.childCount);
+      if (kids1 > 0 && W.allocateInheritanceTaxByHeirJS){
+        var each = Math.max(0, (estate - a) / kids1);
+        var heirs = [{ actualInheritedValue: a }];
+        for (var i = 0; i < kids1; i++) heirs.push({ actualInheritedValue: each });
+        var al = W.allocateInheritanceTaxByHeirJS(r1, heirs);
+        if (al && !al.error) alloc = al;
+      }
+      rows.push({ label: c.label, a: a, ded: n_(r1.배우자공제), t1: n_(r1.납부세액), t2: t2, total: n_(r1.납부세액) + t2, r1: r1, r2: r2, alloc: alloc,
+        credit2: r2 && !r2.error ? n_(r2.단기재상속세액공제) : 0, err2: r2 && r2.error ? r2.error : '' });
+    });
+    return { rows: rows, limit: limit, date2: date2, years: years, kids2: kids2 };
+  };
+
+  // ② 토지보상 방식 비교 + 감면 하나 고르기 — 같은 거래에 감면 방식만 바꿔 calculateTransferTaxMultiJS로(한 과세기간 합산·§133 한도·농특세까지 엔진이 계산).
+  //   o: { split: {cash, bond, bond_3y, bond_5y, land_replacement} 실제 받은 금액, farm: 8년 자경 요건을 갖춤 }
+  //   실제 나눔대로 = 같은 자산을 받은 금액 비율로 나눠 방식별 거래로 넣음 — [확인 필요] 서식 감면소득금액 계산과 같은 숫자인지 서식 칸 대조 전.
+  var COMP_KINDS_ = [
+    { key: 'cash', label: '전액 현금보상' }, { key: 'bond', label: '전액 채권보상' },
+    { key: 'bond_3y', label: '채권 3년 만기 특약' }, { key: 'bond_5y', label: '채권 5년 만기 특약' },
+    { key: 'land_replacement', label: '대토보상(감면 선택)' }
+  ];
+  C.COMP_KINDS_ = COMP_KINDS_;
+  var PRICE_KEYS_ = ['transferPrice', 'acquisitionPrice', 'necessaryExpenses', 'appraisalValue', 'comparableTransactionPrice', 'transferStandardPriceForConversion', 'acquisitionStandardPriceForConversion', 'acquisitionStandardPriceForExpense'];
+  C.comp = function(base, o, filingParams){
+    o = o || {};
+    if (!base || !(n_(base.transferPrice) > 0)) return { error: '보상금(양도가액)을 넣어 주세요.' };
+    if (!base.transferDate || !base.acquisitionDate) return { error: '취득일과 양도(수용)일을 넣어 주세요.' };
+    var fp = assign_({ filingStatus: 'ontime' }, filingParams || {});
+    var b = assign_(copy_(base), { compensationType: '', isEightYearFarmland: false });
+    var run = function(pieces){ return W.calculateTransferTaxMultiJS(pieces, fp); };
+    var pick = function(label, r, note){
+      if (!r || r.error) return { label: label, error: (r && r.error) || '계산 안 됨' };
+      var gate = [];
+      (r.자산별_내역 || []).forEach(function(x){ var rr = (x && x.결과) || x || {}; ['수용감면_요건안내', '자경농지감면_요건안내'].forEach(function(k){ if (rr[k] && gate.indexOf(rr[k]) === -1) gate.push(rr[k]); }); });
+      var total = n_(r.납부세액_합계_농특세포함) || (n_(r.납부세액_합계) + n_(r.농어촌특별세));
+      var red = n_(r.합산조특법세액감면액) || (n_(r.합산수용감면액) + n_(r.합산자경감면액));
+      // 감면이 없으면 엔진이 "감면 전 산출세액" 칸을 따로 내지 않는다 — 그때는 양도소득세 그대로가 감면 전 세액
+      return { label: label, note: note || '', before: n_(r.합산감면전_산출세액) || (n_(r.산출세액_합계) + red), red: red,
+        tax: n_(r.산출세액_합계),rural: n_(r.농어촌특별세), local: n_(r.지방소득세), total: total, net: n_(base.transferPrice) - total, gate: gate, r: r };
+    };
+    var rows = [pick('감면 없음(비교 기준)', run([assign_(b)]))];
+    COMP_KINDS_.forEach(function(k){ rows.push(pick(k.label, run([assign_(b, { compensationType: k.key })]))); });
+    var sp = o.split || {}, keys = COMP_KINDS_.map(function(k){ return k.key; }).filter(function(k){ return n_(sp[k]) > 0; });
+    var sum = keys.reduce(function(s, k){ return s + n_(sp[k]); }, 0);
+    if (keys.length > 1 && sum > 0){
+      var given = {}, pieces = keys.map(function(k, i){
+        var f = n_(sp[k]) / sum, piece = assign_(b, { compensationType: k });
+        PRICE_KEYS_.forEach(function(pk){
+          if (!(n_(b[pk]) > 0)) return;
+          var v = i === keys.length - 1 ? n_(b[pk]) - (given[pk] || 0) : Math.round(n_(b[pk]) * f);
+          given[pk] = (given[pk] || 0) + v; piece[pk] = v;
+        });
+        return piece;
+      });
+      rows.push(pick('실제 받은 대로 나눔', run(pieces), keys.map(function(k){ return COMP_KINDS_.filter(function(x){ return x.key === k; })[0].label.replace('전액 ', '') + ' ' + Math.round(n_(sp[k]) / sum * 100) + '%'; }).join(' · ')));
+    }
+    if (o.farm) rows.push(pick('8년 자경농지 감면(수용 감면 대신)', run([assign_(b, { isEightYearFarmland: true })])));
+    return { rows: rows };
+  };
+
+  // ④ 10년 안 같은 증여자 증여의 기납부세액 추정 — 실제 낸 세액을 모를 때만, 과거 증여를 그 증여일 기준으로 다시 계산한 "증여 당시 산출세액"을 추정값으로 쓴다.
+  //   근거: 상증법 §47②(10년 합산), §58①·②(가산한 증여재산에 대해 납부하였거나 납부할 증여세액 공제, 한도 산식). 앞 증여를 차례로 합산하며 계산(앞 증여의 산출세액은
+  //   그 앞 증여까지 합산한 값이라, 마지막 과거 증여의 합산 결과를 이번 계산에 넘긴다 — 엔진 증여세 대납 재계산과 같은 방식).
+  //   cur: { giftAmount, giftDate, relation, isMinor }, rows: [{ date, amount }], actualPaid: 실제 낸 세액 합계(알면)
+  C.prior = function(base, cur, rows, actualPaid){
+    cur = cur || {};
+    if (!(n_(cur.giftAmount) > 0) || !cur.giftDate) return { error: '이번 증여의 날짜와 금액을 넣어 주세요.' };
+    var calc = W.calculateGiftTaxJS;
+    var d = String(cur.giftDate), from = C.addYears_(d, -10);
+    var list = (rows || []).filter(function(x){ return x && n_(x.amount) > 0 && x.date; }).map(function(x){ return { date: String(x.date), amount: Math.round(n_(x.amount)) }; });
+    list.sort(function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    var used = [], out = [];
+    list.forEach(function(x){
+      if (x.date >= d) { out.push({ date: x.date, amount: x.amount, skip: '이번 증여일 이후라 합산하지 않음' }); return; }
+      if (x.date < from) { out.push({ date: x.date, amount: x.amount, skip: '10년 밖이라 합산하지 않음(§47②)' }); return; }
+      used.push(x);
+    });
+    var acc = null;
+    used.forEach(function(x){
+      var p = { giftAmount: x.amount, giftDate: x.date, relation: cur.relation, isMinor: !!cur.isMinor, filingStatus: 'ontime' };
+      if (acc) { p.priorGiftAmount = n_(acc.증여세과세가액); p.priorPaidTax = n_(acc.산출세액_할증전); p.priorGiftTaxableBase = n_(acc.과세표준); p.priorRelationDeductionUsed = n_(acc.증여재산공제); }
+      var r = calc(p);
+      if (!r || r.error) { out.push({ date: x.date, amount: x.amount, error: (r && r.error) || '계산 안 됨' }); return; }
+      out.push({ date: x.date, amount: x.amount, aggTax: n_(r.산출세액_할증전), ownTax: n_(r.산출세액_할증전) - (acc ? n_(acc.산출세액_할증전) : 0), ded: n_(r.증여재산공제) });
+      acc = r;
+    });
+    out.sort(function(a, b){ return a.date < b.date ? -1 : 1; });
+    var useActual = n_(actualPaid) > 0;
+    var p = assign_(copy_(base), { giftAmount: Math.round(n_(cur.giftAmount)), giftDate: d, relation: cur.relation, isMinor: !!cur.isMinor });
+    if (acc) {
+      p.priorGiftAmount = n_(acc.증여세과세가액);
+      p.priorPaidTax = useActual ? Math.round(n_(actualPaid)) : n_(acc.산출세액_할증전);
+      p.priorGiftTaxableBase = n_(acc.과세표준);
+      p.priorRelationDeductionUsed = n_(acc.증여재산공제);
+    } else {
+      ['priorGiftAmount', 'priorPaidTax', 'priorGiftTaxableBase', 'priorRelationDeductionUsed'].forEach(function(k){ delete p[k]; });
+    }
+    var r = calc(p);
+    if (!r || r.error) return { error: (r && r.error) || '이번 증여세가 계산되지 않았습니다.', rows: out };
+    return { rows: out, result: r, estimated: !!acc && !useActual, priorPaid: acc ? p.priorPaidTax : 0, priorAmount: acc ? p.priorGiftAmount : 0 };
+  };
+
+  // ⑤ 부담부증여 vs 단순증여 — 증여세(받는 사람)와 채무 인수분 양도세(주는 사람)를 합쳐 비교.
+  //   근거: 상증법 §47①(인수 채무 차감)·③(배우자·직계존비속 간 채무 인수는 객관적 입증 없으면 인수 안 한 것으로 추정), 소득세법 §88①(채무 인수분은 양도),
+  //   소득세법 시행령 §159(양도로 보는 부분의 양도가액·취득가액 = 채무액 비율). 세액계산 증여세 탭 "채무를 양도세로 보내기"와 같은 경로(필요경비도 채무 비율로).
+  //   o: { giftDate, value, relation, isMinor, debt, proven, customDebt, acqDate, acqPrice, acqExpense, assetType, transferExempt }
+  C.burden = function(o){
+    o = o || {};
+    if (!(n_(o.value) > 0) || !o.giftDate) return { error: '증여일과 증여재산 평가액을 넣어 주세요.' };
+    var gcalc = W.calculateGiftTaxJS, gbase = { giftAmount: Math.round(n_(o.value)), giftDate: o.giftDate, relation: o.relation, isMinor: !!o.isMinor, filingStatus: 'ontime' };
+    var rows = [];
+    var g0 = gcalc(gbase);
+    rows.push({ label: '단순증여(채무 안 넘김)', debt: 0, gift: g0 && !g0.error ? n_(g0.납부세액) : 0, tr: 0, err: g0 && g0.error ? g0.error : '', notes: [] });
+    var debts = [];
+    if (n_(o.debt) > 0) debts.push({ label: '부담부증여(채무 전부 넘김)', d: Math.round(n_(o.debt)) });
+    if (n_(o.customDebt) > 0 && Math.round(n_(o.customDebt)) !== Math.round(n_(o.debt))) debts.push({ label: '채무 일부만 넘김(직접 입력)', d: Math.round(n_(o.customDebt)) });
+    debts.forEach(function(x){
+      var d = Math.min(x.d, Math.round(n_(o.value))), notes = [];
+      var g = gcalc(assign_(gbase, { debtAssumedAmount: d, isDebtObjectivelyProven: !!o.proven }));
+      if (!g || g.error) { rows.push({ label: x.label, debt: d, err: (g && g.error) || '증여세 계산 안 됨' }); return; }
+      var tr = 0;
+      if (g.채무공제_배제여부){
+        notes.push('채무를 증여재산에서 빼지 않았습니다 — ' + (g.채무공제_배제사유 || '배우자·직계존비속 간 채무 인수는 객관적으로 입증돼야 뺍니다(상증법 §47③)') + '. 이 경우 양도로 보는 부분도 없습니다.');
+      } else if (o.transferExempt){
+        notes.push('채무 인수분 양도세는 비과세(1세대1주택 등)로 가정해 0원입니다 — 요건은 세액계산 양도세 탭에서 확인하세요.');
+      } else {
+        var bg = W.calculateBurdenedGiftTransferJS({ assetAcquisitionPrice: Math.round(n_(o.acqPrice)), assetGiftValue: Math.round(n_(o.value)), totalDebtAmount: d, necessaryExpenses: 0 });
+        if (!bg || bg.error) { rows.push({ label: x.label, debt: d, err: (bg && bg.error) || '양도분 계산 안 됨' }); return; }
+        if (!o.acqDate) { rows.push({ label: x.label, debt: d, gift: n_(g.납부세액), err: '양도세를 계산하려면 주는 사람의 취득일을 넣어 주세요.' }); return; }
+        var t = { assetType: o.assetType || 'other', acquisitionDate: o.acqDate, transferDate: o.giftDate,
+          transferPrice: bg.양도로보는부분_양도가액, acquisitionPrice: bg.양도로보는부분_취득가액, isBurdenedGiftDebtPortion: true,
+          necessaryExpenses: n_(o.acqExpense) > 0 ? Math.round(n_(o.acqExpense) * n_(bg.채무액비율)) : 0 };
+        var tr_ = W.calculateTransferTaxMultiJS([t], { filingStatus: 'ontime' });
+        if (!tr_ || tr_.error) { rows.push({ label: x.label, debt: d, gift: n_(g.납부세액), err: (tr_ && tr_.error) || '양도세 계산 안 됨' }); return; }
+        tr = n_(tr_.납부세액_합계_농특세포함) || n_(tr_.납부세액_합계);
+        notes.push('양도로 보는 부분: 양도가액 ' + n_(bg.양도로보는부분_양도가액).toLocaleString('ko-KR') + '원 · 취득가액 ' + n_(bg.양도로보는부분_취득가액).toLocaleString('ko-KR') + '원(채무 비율 ' + (Math.round(n_(bg.채무액비율) * 10000) / 100) + '%, 소득세법 시행령 §159)');
+      }
+      rows.push({ label: x.label, debt: d, gift: n_(g.납부세액), tr: tr, notes: notes });
+    });
+    rows.forEach(function(x){ if (!x.err) x.total = n_(x.gift) + n_(x.tr); });
+    return { rows: rows };
+  };
+
+  // ⑦ 상속재산 평가액(기준시가 vs 감정가) → 상속세 + 이후 양도세. 상속받은 자산의 취득가액은 상속세 평가액(소득세법 시행령 §163⑨ — 지침 상속_평가액과_이후양도),
+  //   감정평가수수료는 상속세에서 공제(엔진 한도대로). 양도는 상속개시일 취득으로 본다.
+  //   o: { stdValue, apprValue, fee, sellPrice, sellDate, sellExpense, assetType, exempt }
+  C.valuation = function(base, o){
+    o = o || {};
+    if (!base || !(n_(base.taxableEstateAmount) > 0)) return { error: '상속세 과세가액을 넣어 주세요.' };
+    if (!(n_(o.stdValue) > 0) || !(n_(o.apprValue) > 0)) return { error: '이 부동산의 기준시가와 감정가를 넣어 주세요.' };
+    var date = String(base.dateOfDeath || base.inheritanceDate || '');
+    if (!date) return { error: '상속개시일을 넣어 주세요.' };
+    var diff = Math.round(n_(o.apprValue) - n_(o.stdValue));
+    var mk = function(label, val, extra){
+      var p = assign_(copy_(base), extra || {});
+      var r = W.calculateInheritanceTaxJS(p);
+      if (!r || r.error) return { label: label, err: (r && r.error) || '상속세 계산 안 됨' };
+      var tr = 0, trErr = '';
+      if (o.exempt) tr = 0;
+      else if (n_(o.sellPrice) > 0 && o.sellDate){
+        var t = W.calculateTransferTaxMultiJS([{ assetType: o.assetType || 'other', acquisitionDate: date, transferDate: o.sellDate, transferPrice: Math.round(n_(o.sellPrice)), acquisitionPrice: Math.round(val), necessaryExpenses: Math.round(n_(o.sellExpense)), acquisitionCause: 'inheritance' }], { filingStatus: 'ontime' });
+        if (!t || t.error) trErr = (t && t.error) || '양도세 계산 안 됨'; else tr = n_(t.납부세액_합계_농특세포함) || n_(t.납부세액_합계);
+      } else trErr = '이후 양도가액·양도일을 넣으면 양도세까지 계산합니다';
+      return { label: label, val: val, inh: n_(r.납부세액), tr: tr, trErr: trErr, total: n_(r.납부세액) + tr, r: r };
+    };
+    var rows = [mk('기준시가로 신고', n_(o.stdValue))];
+    var ex = { taxableEstateAmount: n_(base.taxableEstateAmount) + diff, appraisalFeeAmount: n_(base.appraisalFeeAmount) + Math.round(n_(o.fee)) };
+    ['totalGrossEstateValue', 'grossEstateValue'].forEach(function(k){ if (n_(base[k]) > 0) ex[k] = n_(base[k]) + diff; });
+    rows.push(mk('감정가로 신고', n_(o.apprValue), ex));
+    return { rows: rows };
+  };
+
+  // [2026.10.21 자주 묻는 유형 4가지] 아래 split·joint·gen·loan도 새 계산 없이 엔진 함수만 입력을 바꿔 부른다.
+  // ⑧ 같은 해 두 건 vs 해를 나눠 양도 — 같은 해: calculateTransferTaxMultiJS 한 번(합산 누진·§104⑤ 비교과세·기본공제 1회),
+  //   나눔: 둘째 양도일만 다음 해로 바꿔 각각 따로(해마다 누진·기본공제). 근거(지침 양도_예정신고_확정신고_합산 원문): 소득세법 §92②(과세표준),
+  //   §103①②(그룹별 연 250만원, 먼저 양도한 자산부터), §104⑤(둘 이상 양도 — 합계 × 기본세율과 자산별 세액 합계 중 큰 것), 양도시기 §98·시행령 §162①1·2호.
+  //   a, b: 거래 입력(엔진 거래 칸 그대로), o: { deferDate: 둘째를 미룬 양도일 — 비우면 다음 해 1월 2일 }
+  C.split = function(a, b, o){
+    o = o || {};
+    var chk = function(t, nm){
+      if (!t || !(n_(t.transferPrice) > 0)) return nm + ' 양도가액을 넣어 주세요.';
+      if (!t.acquisitionDate || !t.transferDate) return nm + ' 취득일과 양도일을 넣어 주세요.';
+      return '';
+    };
+    var e = chk(a, '첫째 자산') || chk(b, '둘째 자산'); if (e) return { error: e };
+    var y = String(b.transferDate).slice(0, 4);
+    if (String(a.transferDate).slice(0, 4) !== y) return { error: '두 자산의 양도일이 같은 해여야 "같은 해 두 건"과 비교할 수 있습니다.' };
+    var defer = String(o.deferDate || '').trim() || (Number(y) + 1) + '-01-02';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(defer) || defer.slice(0, 4) <= y) return { error: '둘째를 미룬 양도일은 다음 해 이후 날짜(예: ' + (Number(y) + 1) + '-01-02)로 넣어 주세요.' };
+    var fp = { filingStatus: 'ontime' };
+    var run = function(list){
+      var r = W.calculateTransferTaxMultiJS(list.map(copy_), fp);
+      if (!r || r.error) return { err: (r && r.error) || '양도세 계산 안 됨' };
+      return { tax: n_(r.산출세액_합계), rural: n_(r.농어촌특별세), local: n_(r.지방소득세), basic: n_(r.기본공제), total: n_(r.납부세액_합계_농특세포함) || n_(r.납부세액_합계), r: r };
+    };
+    var rows = [];
+    var both = run([a, b]);
+    rows.push(both.err ? { label: '같은 해(' + y + '년)에 두 건 함께', err: both.err }
+      : { label: '같은 해(' + y + '년)에 두 건 함께', y1: both.total, y2: null, basic: both.basic, tax: both.tax, rural: both.rural, local: both.local, total: both.total });
+    var rA = run([a]), rB = run([assign_(b, { transferDate: defer })]);
+    var lb = '둘째를 다음 해로(' + defer + ')';
+    if (rA.err || rB.err) rows.push({ label: lb, err: rA.err || rB.err });
+    else rows.push({ label: lb, y1: rA.total, y2: rB.total, basic: rA.basic + rB.basic, tax: rA.tax + rB.tax, rural: rA.rural + rB.rural, local: rA.local + rB.local, total: rA.total + rB.total });
+    return { rows: rows, year: Number(y), defer: defer };
+  };
+
+  // ⑬ 단독명의 vs 부부 공동명의(50:50) — 처음부터 공동 소유인 경우. 같은 자산을 단독으로 팔 때(calculateTransferTaxSingleJS 한 번) vs
+  //   가액을 반씩 나눠 두 사람이 각각 팔 때(지분별로 두 번 — 기본공제·누진세율 사람마다). 근거: 소득세법 §103①(연 250만원 — 거주자마다), §104①1호·§55①(누진세율).
+  //   나중에 배우자에게 지분을 증여하고 파는 경우는 이월과세(소득세법 §97의2)라 이 비교가 맞지 않는다(화면에 주의 줄).
+  C.joint = function(t){
+    if (!t || !(n_(t.transferPrice) > 0)) return { error: '양도가액을 넣어 주세요.' };
+    if (!t.acquisitionDate || !t.transferDate) return { error: '취득일과 양도일을 넣어 주세요.' };
+    if (t.isOneHouseOneFamily) return { error: '1세대1주택(비과세·고가주택) 사건은 비과세·12억 판정을 주택 전체로 하므로 가액을 반으로 나눈 이 비교가 맞지 않습니다 — 세액계산 양도세 탭에서 지분대로 계산하세요.' };
+    var S = W.calculateTransferTaxSingleJS;
+    var pick = function(r){
+      if (!r || r.error) return { err: (r && r.error) || '양도세 계산 안 됨' };
+      return { gain: n_(r.양도차익), ltd: n_(r.장기보유특별공제액), basic: n_(r.기본공제), base: n_(r.과세표준), tax: n_(r.산출세액), local: n_(r.지방소득세), total: n_(r.납부세액_합계), r: r };
+    };
+    var half = function(i){
+      var p = copy_(t);
+      PRICE_KEYS_.forEach(function(k){ if (n_(t[k]) > 0){ var h = Math.floor(n_(t[k]) / 2); p[k] = i === 0 ? h : n_(t[k]) - h; } });
+      return p;
+    };
+    var r0 = pick(S(copy_(t))), r1 = pick(S(half(0))), r2 = pick(S(half(1)));
+    var rows = [];
+    rows.push(r0.err ? { label: '단독명의(한 사람이 전부)', err: r0.err } : assign_(r0, { label: '단독명의(한 사람이 전부)' }));
+    if (r1.err || r2.err) rows.push({ label: '부부 공동명의 50:50(두 사람 합계)', err: r1.err || r2.err });
+    else {
+      var sum = { label: '부부 공동명의 50:50(두 사람 합계)', each: [r1, r2] };
+      ['gain', 'ltd', 'basic', 'base', 'tax', 'local', 'total'].forEach(function(k){ sum[k] = r1[k] + r2[k]; });
+      rows.push(sum);
+    }
+    return { rows: rows };
+  };
+
+  // ⑪ 손주에게 바로(세대생략) vs 자녀를 거쳐 두 번 — 조부모→손주(isGenerationSkip, 할증 §57①: 30%, 미성년이면서 20억 초과 40%) vs
+  //   조부모→자녀, 자녀→손주 두 번(각각 calculateGiftTaxJS, 할증 없음). 같은 재산(같은 금액)이 손주에게 간다고 보고, 자녀 몫 증여세는 자녀가 따로 낸다고 가정.
+  //   o: { giftDate, amount, minor: 손주가 미성년 }
+  C.gen = function(o){
+    o = o || {};
+    var amt = Math.round(n_(o.amount));
+    if (!(amt > 0) || !o.giftDate) return { error: '증여일과 증여할 금액을 넣어 주세요.' };
+    var G = W.calculateGiftTaxJS;
+    var gp = { giftAmount: amt, giftDate: o.giftDate, relation: '직계존속', filingStatus: 'ontime' };
+    var d = G(assign_(gp, { isMinor: !!o.minor, isGenerationSkip: true, generationSkipOver2Billion: amt > 2000000000 }));
+    var s1 = G(assign_(gp, { isMinor: false }));
+    var s2 = G(assign_(gp, { isMinor: !!o.minor }));
+    var rows = [];
+    if (!d || d.error) rows.push({ label: '조부모 → 손주 바로', err: (d && d.error) || '증여세 계산 안 됨' });
+    else rows.push({ label: '조부모 → 손주 바로', g1: n_(d.납부세액), g2: null, prem: n_(d.세대생략할증액), total: n_(d.납부세액), rate: n_(d.산출세액_할증전) > 0 ? n_(d.세대생략할증액) / n_(d.산출세액_할증전) : 0, r: d });
+    if (!s1 || s1.error || !s2 || s2.error) rows.push({ label: '조부모 → 자녀 → 손주(두 번)', err: (s1 && s1.error) || (s2 && s2.error) || '증여세 계산 안 됨' });
+    else rows.push({ label: '조부모 → 자녀 → 손주(두 번)', g1: n_(s1.납부세액), g2: n_(s2.납부세액), prem: 0, total: n_(s1.납부세액) + n_(s2.납부세액), r1: s1, r2: s2 });
+    return { rows: rows };
+  };
+
+  // ⑭ 부모님께 돈 빌리기(이자율별) vs 그냥 증여 — 이익은 엔진 calculateInterestFreeLoanGiftAmountJS(상증법 §41의4: 대출금액 × 적정이자율 − 실제 이자,
+  //   1천만원 미만이면 과세 안 함 — 시행령 §31의4②), 그 이익의 증여세는 calculateGiftTaxJS(합산배제 아님 → 증여재산공제 적용). 첫 1년만(§41의4② 해마다 다시).
+  //   o: { date, principal, rate: 실제 이자율(연 %), appr: 적정이자율(연 %, 비우면 엔진 기본 4.6), minor, usedDed: 10년 안 다른 증여로 이미 쓴 증여재산공제 }
+  C.loan = function(o){
+    o = o || {};
+    var P = Math.round(n_(o.principal));
+    if (!(P > 0) || !o.date) return { error: '빌리는 날과 금액을 넣어 주세요.' };
+    var L = W.calculateInterestFreeLoanGiftAmountJS, G = W.calculateGiftTaxJS;
+    if (typeof L !== 'function') return { error: '세액계산 엔진에 금전 무상대출 계산(§41의4)이 없습니다.' };
+    var appr = (o.appr != null && String(o.appr).trim() !== '') ? n_(o.appr) : 4.6;
+    var gift_ = function(amt){ return G({ giftAmount: amt, giftDate: o.date, relation: '직계존속', isMinor: !!o.minor, priorRelationDeductionUsedOther: Math.round(n_(o.usedDed)), filingStatus: 'ontime' }); };
+    var mk = function(label, ratePct){
+      var interest = Math.round(P * ratePct / 100);
+      var l = L({ loanPrincipal: P, appropriateInterestRatePercent: appr, actualInterestPaid: interest, loanMonths: 12 });
+      if (!l || l.error) return { label: label, err: (l && l.error) || '이익 계산 안 됨' };
+      var tax = 0;
+      if (l.과세대상여부){
+        var g = gift_(n_(l.증여재산가액));
+        if (!g || g.error) return { label: label, err: (g && g.error) || '증여세 계산 안 됨' };
+        tax = n_(g.납부세액);
+      }
+      return { label: label, interest: interest, apprAmt: n_(l.적정이자상당액), benefit: n_(l.이번거래이익), taxable: !!l.과세대상여부, gift: tax, total: interest + tax };
+    };
+    var rows = [mk('무이자로 빌림', 0)];
+    var rate = n_(o.rate);
+    if (rate > 0 && Math.abs(rate - appr) > 1e-9) rows.push(mk('이자 연 ' + rate + '%로 빌림', rate));
+    rows.push(mk('적정이자율 연 ' + appr + '%로 빌림', appr));
+    var g0 = gift_(P);
+    rows.push(!g0 || g0.error ? { label: '같은 금액 그냥 증여', err: (g0 && g0.error) || '증여세 계산 안 됨' }
+      : { label: '같은 금액 그냥 증여', interest: 0, apprAmt: null, benefit: P, taxable: true, gift: n_(g0.납부세액), total: n_(g0.납부세액), isGift: true });
+    return { rows: rows, appr: appr, principal: P };
+  };
+
+  // [2026.11.01] 넥스 도구 calculate_tax_plan_compare 입구 — 위 9가지를 kind로 골라 부르고, 결과를 넥스가 읽기 쉽게(엔진 결과 통째 r 빼고) 줄여 돌려준다.
+  //  안마다 "안N_이름·안N_합계" 칸도 펼쳐 둔다 — 사건에 경우(안)으로 저장될 때 숫자 칸만 남기 때문.
+  var KIND_LABEL_ = { spouse: '배우자 상속분 배분', valuation: '평가액(기준시가·감정가)과 이후 양도', comp: '토지보상 방식 비교·감면 고르기',
+    split: '같은 해 두 건 vs 해를 나눠 양도', joint: '단독명의 vs 부부 공동명의(50:50)', prior: '10년 내 기납부세액 추정',
+    burden: '부담부증여 vs 단순증여', gen: '손주에게 바로 vs 자녀를 거쳐 두 번', loan: '부모님께 돈 빌리기 — 이자율별 vs 그냥 증여' };
+  C.KIND_LABEL_ = KIND_LABEL_;
+  var slim_ = function(v){
+    if (Array.isArray(v)) return v.map(slim_);
+    if (!v || typeof v !== 'object') return v;
+    var o = {};
+    for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) { if (k === 'r' || k === 'r1' || k === 'r2' || k === 'result') continue; o[k] = slim_(v[k]); }
+    return o;
+  };
+  W.calculateTaxPlanCompareJS = function(p){
+    p = p || {};
+    var kind = String(p.kind || '');
+    var o = p.options || {};
+    var res;
+    if (kind === 'spouse') res = C.spouse(p.base, o);
+    else if (kind === 'valuation') res = C.valuation(p.base, o);
+    else if (kind === 'comp') res = C.comp(p.base, o, p.filingParams);
+    else if (kind === 'split') res = C.split(p.a, p.b, o);
+    else if (kind === 'joint') res = C.joint(p.base);
+    else if (kind === 'prior') res = C.prior(p.base, p.cur, p.priorGifts, p.actualPaid);
+    else if (kind === 'burden') res = C.burden(o);
+    else if (kind === 'gen') res = C.gen(o);
+    else if (kind === 'loan') res = C.loan(o);
+    else return { error: 'kind는 ' + Object.keys(KIND_LABEL_).join('·') + ' 중 하나로 넣어 주세요.' };
+    if (!res || res.error) return { error: (res && res.error) || '계산이 되지 않았습니다.', 비교: KIND_LABEL_[kind] };
+    var out = { 비교: KIND_LABEL_[kind], 결과: slim_(res) };
+    if (kind === 'prior') {
+      var rr = res.result || {};
+      out.납부세액 = n_(rr.납부세액); out.산출세액 = n_(rr.산출세액); out.기납부세액공제 = n_(rr.기납부세액공제);
+      out.기납부세액_추정여부 = !!res.estimated; out.합산한_과거증여 = n_(res.priorAmount); out.공제한_기납부세액 = n_(res.priorPaid);
+      return out;
+    }
+    var best = null;
+    (res.rows || []).forEach(function(x, i){
+      out['안' + (i + 1) + '_이름'] = String(x.label || '').slice(0, 70);
+      if (x.err || x.error) { out['안' + (i + 1) + '_오류'] = String(x.err || x.error).slice(0, 70); return; }
+      if (x.total == null) return;
+      out['안' + (i + 1) + '_합계'] = n_(x.total);
+      if (!best || n_(x.total) < n_(best.total)) best = x;
+    });
+    if (best) { out.가장적은안 = String(best.label || '').slice(0, 70); out.가장적은합계 = n_(best.total); }
+    out.안내 = '합계는 안마다 내는 세금 합계(지방소득세·농어촌특별세 포함 여부는 결과 칸대로) — 결론·권고 전에 결과의 주의 줄(gate·notes)과 가정(2차 상속일·자녀 수 등)을 함께 밝힌다.';
+    return out;
+  };
+})();
 </script>

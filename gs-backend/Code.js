@@ -179,7 +179,9 @@ const BASIC_TOOL_NAMES_ = new Set([
   // 정확히 가져오게 하기 위함(사용자 지적: "AI가 법령조회하느라 바쁜" 비효율 해소).
   'search_tax_precedent', 'get_tax_precedent_detail',
   // [2026.10.13] job으로 할 수 없는 요청을 개발자(주간 정비 루틴)에게 남기는 신고(Federation.js commReportGap_)
-  'report_capability_gap'
+  'report_capability_gap',
+  // [2026.11.01] 절세 비교(절세플랜 9가지) — 자문마다 쓰므로 늘 켬
+  'calculate_tax_plan_compare'
 ]);
 
 // calculate_* 92개 + 계산 관련 유틸 4개(allocate_inheritance_tax_by_heir 등) = 96개를
@@ -2248,6 +2250,28 @@ const DRIVE_TOOLS = [
     }
   },
   {
+    // [2026.11.01] 절세플랜 화면의 비교 9가지를 넥스도 쓰게(세무사님 "넥스플랜이든 뭐든 모든 도구는 넥스가 자유자재로") — 계산은 엔진 calculateTaxPlanCompareJS(화면과 같은 함수)
+    name: 'calculate_tax_plan_compare',
+    description: '절세 비교(절세플랜 화면과 같은 계산, 토큰 0) — 같은 사실에 한두 칸만 바꿔 여러 안의 세금 합계를 나란히 낸다. kind: spouse(배우자 상속분 0·5억·법정상속분 한도·직접 입력 → 1차+2차 상속세, 상증법§19·§30) / valuation(상속 부동산 기준시가 vs 감정가 → 상속세+이후 양도세, 소득세법 시행령§163⑨) / comp(토지보상 현금·채권·만기특약·대토·8년 자경 감면 고르기, 조특법§77·§69) / split(같은 해 두 건 vs 둘째를 다음 해로, 소득세법§103·§104⑤) / joint(단독명의 vs 부부 공동명의 50:50) / prior(10년 내 같은 증여자 증여 기납부세액 추정, 상증법§47②·§58) / burden(부담부증여 vs 단순증여 — 증여세+채무 인수분 양도세, 상증법§47①③·소득세법 시행령§159) / gen(손주에게 바로(세대생략 할증 §57) vs 자녀를 거쳐 두 번) / loan(부모님께 무이자·이자율별로 빌리기 vs 그냥 증여, 상증법§41의4). 결과의 안N_합계·가장적은안으로 견주고, 사건이 연결돼 있으면 경우(안)으로 저장된다. 세액은 이 결과로만 말한다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['spouse', 'valuation', 'comp', 'split', 'joint', 'prior', 'burden', 'gen', 'loan'] },
+        base: { type: 'object', description: 'spouse·valuation: calculate_inheritance_tax 입력(taxableEstateAmount·dateOfDeath·childCount, spouse면 spouseLegalShareRatio 필수 — 배우자와 자녀 2명이면 3/7=0.428571…). comp·joint: calculate_transfer_tax 거래 입력 하나(transferPrice·transferDate·acquisitionDate·acquisitionPrice 등). prior: calculate_gift_tax 입력(이번 증여 외 칸).' },
+        options: { type: 'object', description: 'spouse {custom 직접 입력 배우자 몫, spouseOwn 배우자 고유재산, years 배우자 사망까지 햇수, childCount2} / valuation {stdValue, apprValue, fee 감정수수료, sellPrice, sellDate, sellExpense, assetType, exempt} / comp {split:{cash,bond,bond_3y,bond_5y,land_replacement 실제 받은 금액}, farm:true(8년 자경 요건)} / split {deferDate 둘째를 미룬 양도일} / burden {giftDate, value, relation, isMinor, debt, proven 채무 객관적 입증, customDebt, acqDate, acqPrice, acqExpense, assetType, transferExempt} / gen {giftDate, amount, minor} / loan {date, principal, rate 실제 이자율 %, appr 적정이자율 %(비우면 4.6), minor, usedDed 이미 쓴 증여재산공제}' },
+        a: { type: 'object', description: 'split: 첫째 자산 거래 입력' },
+        b: { type: 'object', description: 'split: 둘째 자산 거래 입력(같은 해 양도일)' },
+        cur: { type: 'object', description: 'prior: 이번 증여 {giftAmount, giftDate, relation, isMinor}' },
+        priorGifts: { type: 'array', items: { type: 'object' }, description: 'prior: 같은 증여자의 과거 증여 [{date, amount}]' },
+        actualPaid: { type: 'number', description: 'prior: 실제 낸 과거 증여세 합계(알면 — 없으면 추정)' },
+        filingParams: { type: 'object', description: 'comp: 신고 구분 등(생략하면 기한 내 신고)' },
+        name: { type: 'string', description: '경우(안) 이름(사건 연결 시 저장 이름)' },
+        why: { type: 'string', description: '왜 이 비교를 하는지 한 줄' }
+      },
+      required: ['kind']
+    }
+  },
+  {
     name: 'calculate_burdened_gift_transfer',
     description: '부담부증여시 양도로 보는 부분의 취득가액·양도가액을 계산한다(소득세법시행령§159). 부담부증여로 수증자가 인수한 채무액에 상당하는 부분은 양도로 보며, 취득가액·양도가액 모두 "자산가액×(채무액÷증여가액)" 비율로 안분한다. 양도세 과세대상 자산과 비과세대상 자산을 함께 부담부증여하는 경우에는 먼저 총채무액을 과세대상 자산가액 비율로 안분한다(§159②). 결과의 양도가액·취득가액·필요경비를 calculate_transfer_tax 등 일반 양도세 계산기에 넣어 나머지 세액을 계산한다.',
     input_schema: {
@@ -4135,7 +4159,8 @@ const JOB_AI_TOOLS_ = [
         status: { type: 'string', description: 'advice일 때 잠정·확정·보류(문의는 답 안 함·자료 기다림·답함·보류 — 자료 기다림 = 결론을 가르는 사실이 없어 질문·받을 서류·가정 계산까지 한 문의)' },
         id: { type: 'string', description: 'advice일 때 고칠·지울 항목 id, cite일 때 계산 저장본 id' },
         remove: { type: 'boolean', description: 'advice일 때 true면 그 항목을 지움' },
-        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'taxes', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'taxes', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs', 'objects', 'object', 'object_drop', 'object_sell'], description: '[2026.11.01 물건 장부] objects: 물건 목록 보기(이 세대가 가진 물건 전부, 한 줄 = 물건 하나 — 세목과 상관없음). object: 물건 줄 더하기·고치기 — id(없으면 새 줄), f{소유자·지분·종류·쓰임(주거|업무|모름)·소재지·동·호·취득일·취득원인·면적·주택수(든다|안 든다|모름)·주택수근거·쓸곳(양도|증여|상속|보유)·메모}, file·quote·why(근거). 세무사님이 적은 칸은 바뀌지 않음. object_drop: id. object_sell: id — 그 물건을 양도 계산 자산 칸(a0…)으로 보냄(정해지지 않은 값은 추정으로). ' + '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
+        f: { type: 'object', description: 'object일 때 물건 칸 값(소유자·지분·종류·쓰임·소재지·동·호·취득일·취득원인·면적·주택수·주택수근거·쓸곳·메모)' },
         loc: { type: 'string', description: 'lookup일 때 소재지(지번·도로명 주소). 비우면 장부·처리개요·의뢰서 가설의 모든 필지' },
         what: { type: 'array', items: { type: 'string', enum: ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'] }, description: 'lookup일 때 고를 조회(비우면 매매사례 뺀 전부)' },
         dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' } } }, description: 'lookup일 때 공시가격·조정대상지역 기준일들(비우면 장부 취득일·양도일·기준일, 없으면 의뢰서 가설 날짜)' },
@@ -24769,6 +24794,66 @@ function work_resolveTaxpayer_(seMok, rawTaxpayer, caseOverview) {
   }
   return taxpayer;
 }
+// [2026.11.01 경우(안) 저장 자리] 세무사님 "물건별로 … 모든 도구는 넥스가 자유자재로" — 계산 저장본이 사건 행 한 칸(구글 시트 5만 자)에 모두 들어가
+//  경우(안)을 몇 개 견주면 "칸 한도" 거절이 났다(계획서 물건장부_1주택판정 3절). 칸에 다 들어가면 지금처럼 칸에, 넘칠 만하면 저장본의 본문
+//  (계산에 쓴 입력 저장값·결과 글 등 — 목록 칸 아닌 것 전부)을 사건 장부 폴더의 <사건ID>.계산저장본.json으로 옮기고 칸엔 목록(이름·세목·세액·날짜·id·안)만 둔다.
+//  읽는 길은 행 읽기 한 곳(work_readRow_)에서 본문을 다시 붙이므로 화면·넥스·보고서·처리개요는 바뀐 것을 모른다(읽는 곳마다 고치지 않음).
+//  🧪 점검기 모래상자는 행 읽기·쓰기를 메모리로 바꿔 끼우므로 이 파일을 건드리지 않는다.
+var WORK_CALC_SPILL_AT_ = 38000;   // 칸 글이 이보다 길어지면 본문을 파일로(5만 자 한도에 여유)
+var WORK_CALC_LIGHT_KEYS_ = ['id', '세목', '구분', '계산일', '최종세액', '기준일스냅샷', '도구키', '안', '본문'];
+var WORK_CALC_BODY_MEMO_ = {};
+function work_calcBodyFile_(caseId, create) {
+  const folder = ledgerFolder_();
+  const name = String(caseId).replace(/[^\w-]/g, '_') + '.계산저장본.json';
+  const it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return create ? folder.createFile(name, '{}', 'application/json') : null;
+}
+function work_calcBodyRead_(caseId, fresh) {
+  const k = String(caseId || '');
+  if (!fresh && WORK_CALC_BODY_MEMO_[k]) return WORK_CALC_BODY_MEMO_[k];
+  const f = work_calcBodyFile_(caseId, false);
+  const m = f ? (JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}) : {};
+  WORK_CALC_BODY_MEMO_[k] = m;
+  return m;
+}
+// 칸에서 읽은 목록에 파일의 본문을 다시 붙인다 — 파일을 못 읽으면 목록만(세액·이름은 칸에 있음)
+function work_calcHydrate_(caseId, list) {
+  if (!caseId || !list.some(function (e) { return e && e.본문 === '파일'; })) return list;
+  let m;
+  try { m = work_calcBodyRead_(caseId, false); } catch (e) { console.error('계산 저장본 본문 파일을 못 읽음(목록만): ' + (e && e.message || e)); return list; }
+  return list.map(function (e) {
+    if (!e || e.본문 !== '파일' || !m[e.id]) return e;
+    const o = Object.assign({}, e, m[e.id]); delete o.본문; return o;
+  });
+}
+// 저장할 목록 → 칸에 넣을 글. 넘칠 만하면 본문을 파일로 옮긴다(잠금 안에서 불린다 — work_updateCase0_)
+function work_calcStoreText_(caseId, list) {
+  const full = JSON.stringify(list);
+  const anyFile = list.some(function (e) { return e && e.본문 === '파일'; });
+  if (full.length <= WORK_CALC_SPILL_AT_ && !anyFile) return { text: full };
+  let m;
+  try { m = work_calcBodyRead_(caseId, true); } catch (e) { return { error: '계산 저장본 본문 파일을 못 읽어 저장하지 않았습니다: ' + (e && e.message || e) }; }
+  const next = {};
+  const light = list.map(function (e) {
+    if (!e || typeof e !== 'object' || !e.id) return e;
+    if (e.본문 === '파일') { if (m[e.id]) next[e.id] = m[e.id]; return e; } // 본문은 이미 파일에 있음(다시 안 붙인 채로 들어온 줄)
+    const body = {}, head = {};
+    Object.keys(e).forEach(function (k) { if (WORK_CALC_LIGHT_KEYS_.indexOf(k) !== -1) head[k] = e[k]; else body[k] = e[k]; });
+    if (typeof e.요약 === 'string') head.요약 = e.요약.length > 300 ? e.요약.slice(0, 300) + '…' : e.요약;
+    if (!Object.keys(body).length) return e;
+    head.본문 = '파일'; next[e.id] = body;
+    return head;
+  });
+  const text = JSON.stringify(light);
+  if (text.length > 49000) return { error: '이 사건의 계산 저장본 목록이 칸 한도(5만 자)에 닿았습니다(저장본 ' + list.length + '개) — 오래된 경우(안)을 정리한 뒤 다시 저장하세요.' };
+  try {
+    const f = work_calcBodyFile_(caseId, true);
+    f.setContent(JSON.stringify(next));
+    WORK_CALC_BODY_MEMO_[String(caseId)] = next;
+  } catch (e) { return { error: '계산 저장본 본문 파일에 쓰지 못해 저장하지 않았습니다: ' + (e && e.message || e) }; }
+  return { text: text, spilled: Object.keys(next).length };
+}
 function work_readRow_(col, rowValues) {
   let subtasks = [];
   try { subtasks = JSON.parse(rowValues[col.하위업무] || '[]'); } catch (e) { subtasks = []; }
@@ -24785,6 +24870,7 @@ function work_readRow_(col, rowValues) {
   let taxCalcResults = [];
   try { taxCalcResults = JSON.parse(rowValues[col.세액계산결과] || '[]'); } catch (e) { taxCalcResults = []; }
   if (!Array.isArray(taxCalcResults)) taxCalcResults = [];
+  taxCalcResults = work_calcHydrate_(rowValues[col.id], taxCalcResults);
   let caseOverview = {};
   try { caseOverview = JSON.parse(rowValues[col.사건개요] || '{}'); } catch (e) { caseOverview = {}; }
   if (!caseOverview || typeof caseOverview !== 'object' || Array.isArray(caseOverview)) caseOverview = {};
@@ -25323,7 +25409,11 @@ function work_updateCase0_(params) {
     if (params.세액계산결과 !== undefined) {
       let taxCalcResults = params.세액계산결과;
       if (typeof taxCalcResults === 'string') { try { taxCalcResults = JSON.parse(taxCalcResults); } catch (e) { taxCalcResults = null; } }
-      if (Array.isArray(taxCalcResults)) row[col.세액계산결과] = JSON.stringify(taxCalcResults);
+      if (Array.isArray(taxCalcResults)) {
+        const st = work_calcStoreText_(params.id, taxCalcResults);
+        if (st.error) return { success: false, message: st.error };
+        row[col.세액계산결과] = st.text;
+      }
     }
     // [2026.10.30 계산 저장 한 길] 계산 저장본 하나 덧붙이기 — 잠금 안에서 지금 칸 목록을 읽어 붙인다. 예전엔 부르는 곳마다 목록 전체를 미리 읽어
     //  "목록+새 것"을 통째로 다시 써서, 한 차례에 계산을 잇달아 저장하면 앞 저장본이 사라졌다(10-30 운영 시험: 넥스가 A안 재계산 저장 뒤 C1·C2를 저장 → A안 재계산본이 없어짐)
@@ -25331,9 +25421,9 @@ function work_updateCase0_(params) {
       let cur = []; try { cur = JSON.parse(String(row[col.세액계산결과] || '[]')); } catch (e) { cur = []; }
       if (!Array.isArray(cur)) cur = [];
       const next = cur.concat([params.세액계산결과추가]);
-      const txt = JSON.stringify(next);
-      if (txt.length > 49000) return { success: false, message: '이 사건의 계산 저장본이 칸 한도(5만 자)에 닿았습니다 — 오래된 경우(안)을 정리한 뒤 다시 저장하세요.' };
-      row[col.세액계산결과] = txt;
+      const st = work_calcStoreText_(params.id, next);
+      if (st.error) return { success: false, message: st.error };
+      row[col.세액계산결과] = st.text;
     }
     // [2026.09 버그수정] 예전엔 params.사건개요가 이번 호출에 실제로 실려왔을 때만 필요증빙
     // 템플릿을 재계산했다 — 그래서 작업관리에서 세목/업무유형만 바꾸고(예: "상담"→"신고")
@@ -53445,6 +53535,8 @@ function caseProcGrasp_(c) {
   if (texts.length) lines.push('가설 출처 글: ' + texts.map(function (m) { return m.file; }).join(', '));
   tgk('가설·낱말 뽑기');
   try { if (typeof ledgerHypPut_ === 'function') ledgerHypPut_(c.id, hyp, c); } catch (e) { lines.push('⚠ 가설을 사건 장부에 남기지 못함: ' + String(e && e.message || e).slice(0, 80)); } // [2026.10.29 계획서 1단계] 가설은 사건 장부 가설 층(L.hyp) — 사건처리 기록 파일(sv.grasp)에 따로 두지 않는다
+  // [2026.11.01 물건 장부] 같은 출처 글로 물건 목록(한 줄 = 물건 하나, 개수만 적힌 말은 소재지 모름 줄)을 맞춘다 — 다시 돌려도 같은 줄
+  try { if (typeof ledgerObjSync_ === 'function' && texts.length) { const os = ledgerObjSync_(c.id, texts); if (os && (os.add || os.drop)) lines.push('📦 물건 목록 ' + os.n + '줄' + (os.add ? ' · 더함 ' + os.add : '') + (os.drop ? ' · 뺌 ' + os.drop + '(근거 글이 사라짐)' : '')); } } catch (e) { lines.push('⚠ 물건 목록을 맞추지 못함: ' + String(e && e.message || e).slice(0, 80)); }
   tgk('가설·기록부 쓰기');
   return { lines: lines, hyp: hyp };
 }

@@ -1057,7 +1057,7 @@ function ledgerView_(c) {
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 세목: e.세목 || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
-  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L, true), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows), 도구카드: ledgerToolCard_(L) };
+  return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L, true), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows), 도구카드: ledgerToolCard_(L), 물건: (function () { try { return ledgerObjList_(c, L); } catch (e) { return { ok: false, error: String(e && e.message || e) }; } })() }; // [2026.11.01 물건 장부] 📒 물건 탭
 }
 // [2026.10.31 J — 할 일 장부 4번 "도구 카드·성적표" / 세무사님 "한번에 몽땅 완전자동모드로 끝내라"]
 //  넥스가 이 사건에서 부른 도구를 장부에 남긴다 — 도구 이름·성공/실패·실패 까닭·도구 부족 신고. 사건마다 "어느 도구를 썼고 어디서 막혔나"가 남아
@@ -1158,6 +1158,8 @@ function ledgerNexBrief_(c, max) {
     공부사실: (fl.공부 || []).map(function (p) { return { 소재지: cut(p.소재지, 60), 받음: (p.받음 || []).map(function (it) { return cut(it.label, 20) + ': ' + cut(it.v, 70); }).slice(0, 8), 못받음: (p.못받음 || []).map(function (it) { return cut(it.label, 20) + ': ' + cut(it.err, 50); }).slice(0, 4) }; }),
     조회안한필지: (fl.조회대상 || []).filter(function (t) { return !t.조회함; }).map(function (t) { return cut(t.소재지, 60) + ' (' + cut(t.어디서, 40) + ')'; }),
     칸값: calc,
+    // [2026.11.01 물건 장부] 이 세대 물건 전부(세목과 상관없음) — 주택 수·소재지 모름 줄을 넥스가 바로 보게(고치기는 case_ledger do=object)
+    물건목록: ((L.obj && L.obj.list) || []).map(function (r, i) { const o = ledgerObjOut_(r, i); return cut([o.id, o.상태, o.종류 || '종류 모름', o.소재지 || '소재지 모름', o.동 ? o.동 + '동' : '', o.호 ? o.호 + '호' : '', o.쓰임 ? '쓰임 ' + o.쓰임 : '', '주택 수 ' + (o.주택수 || '모름'), o.자산 ? '→' + o.자산 : '', o.판정 ? '판정 ' + (o.판정.결과 || o.판정.result || '') : ''].filter(Boolean).join(' '), 140); }),
     도구카드: (function () { const k = ledgerToolCard_(L); return k.부름 ? { 줄: k.줄, 자주실패: k.도구.filter(function (t) { return t.실패; }).slice(0, 5).map(function (t) { return t.도구 + " 실패 " + t.실패 + "/" + t.부름 + (t.실패까닭[0] ? " — " + cut(t.실패까닭[0], 80) : ""); }), 부족신고: k.모자람.slice(-5).map(function (g) { return cut(g.모자람, 100); }) } : null; })(), // [2026.10.31 J] 이 사건에서 넥스가 쓴 도구·막힌 곳 — 같은 도구가 또 실패하면 다른 길로
     자문: ledgerAdvBrief_(c, L), // [2026.10.30 2단계] 쟁점·대안·근거·위험·권고·보고서(저장본 이름·세액 붙임)
     거래사슬: ((fl.사슬 && fl.사슬.rows) || []).map(function (r) { return { 물건: cut(r.물건, 60), 납세자위치: r.납세자위치, 고리: (r.고리 || []).map(function (s) { return s.at + ' ' + (s.kind === '등기' ? '등기 ' + s.what + ' ' + s.to : s.what + ' ' + s.to) + (s.밖 ? ' [사슬 밖]' : ''); }).slice(0, 8) }; }),
@@ -1165,7 +1167,7 @@ function ledgerNexBrief_(c, max) {
     안내: '사건 장부 요약(토큰 0). 가설과다름·다른값서류는 세무사님께 여쭐 거리다(세무사님 값은 바꾸지 않는다). 서류 사실은 case_ledger do:facts(find_kind·find_file·find_value·find_to)로 찾고, 장부 전체는 ledger_read(사건 지휘)·job_lookup kind=ledger(대화창). 조회안한필지가 있으면 case_ledger do=lookup, 의뢰서 등 가설에 거래가 있는데 칸이 비면 do=estimate 뒤 do=calc(시험 계산), 다른 세목과 견주려면 do=compare. 받을 것의 [도구]는 조회로, [세무사님]·[고객]은 세무사님께 항목별로 여쭐 거리다(고객에게 직접 보내지 않는다).'
   };
   let txt = JSON.stringify(out);
-  ['칸값', '공부사실', '거래사슬', '확보할증빙_받을것', '사건개요_정함', '사건개요_가설', '남은물음'].forEach(function (k) {
+  ['칸값', '물건목록', '공부사실', '거래사슬', '확보할증빙_받을것', '사건개요_정함', '사건개요_가설', '남은물음'].forEach(function (k) {
     const n0 = (out[k] || []).length;
     while (txt.length > max && out[k] && out[k].length) { out[k] = out[k].slice(0, Math.floor(out[k].length / 2)); txt = JSON.stringify(out); }
     if (out[k] && out[k].length < n0) { out[k + '_줄임'] = n0 + '개 중 ' + out[k].length + '개만 — 나머지는 장부 전체에서'; txt = JSON.stringify(out); }
@@ -1268,7 +1270,12 @@ function ledgerToolRun_(input, by) {
   else if (d === 'advice_view') r = { ok: true, 자문: ledgerAdvBrief_(c) }; // 자문 장부 보기(읽기만)
   else if (d === 'cite') { const ce = typeof caseProcCalcCite_ === 'function' ? caseProcCalcCite_(c, input.id) : null; r = ce ? Object.assign({ ok: true }, ce) : { ok: false, error: '그 계산 저장본이 이 사건에 없음: ' + (input.id || '') }; } // [2026.10.30] 저장본 하나 인용(입력·결과 — 보고서 숫자의 원천)
   else if (d === 'check_refs') r = ledgerCiteRun_(c, input, who); // [2026.10.30 근거 확인 — 세무사님 "권하는 안대로"] 보고서·근거 칸의 조문·판례·심판례를 원문과 대조(📒 ⑥ 🔎와 같은 함수)
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs 중 하나' };
+  // [2026.11.01 물건 장부] 물건 목록 보기·더하기/고치기·지우기·양도 자산으로 보내기(📒 물건 탭과 같은 함수)
+  else if (d === 'objects') r = ledgerObjList_(c);
+  else if (d === 'object') r = ledgerObjSet_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
+  else if (d === 'object_drop') r = ledgerObjDrop_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
+  else if (d === 'object_sell') r = ledgerObjSell_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1317,6 +1324,10 @@ function ledgerApi_(c, body) {
     case 'ledgerAdvice': return ledgerAdvPut_(c, body, body.by || who); // [2026.10.30 2단계] 📒 ⑥ 자문 — 넥스 case_ledger do=advice와 같은 함수
     case 'ledgerAdviceView': return { ok: true, 자문: ledgerAdvBrief_(c) };
     case 'ledgerCite': return ledgerCiteRun_(c, body, body.by || who); // [2026.10.30] 📒 ⑥ 🔎 근거 확인 — 넥스 case_ledger do=check_refs와 같은 함수
+    case 'ledgerObjects': return ledgerObjList_(c); // [2026.11.01 물건 장부] 📒 물건 탭 — 넥스 case_ledger do=objects·object·object_drop·object_sell과 같은 함수
+    case 'ledgerObjSet': return ledgerObjSet_(c, body, body.by || who);
+    case 'ledgerObjDrop': return ledgerObjDrop_(c, body, body.by || who);
+    case 'ledgerObjSell': return ledgerObjSell_(c, body, body.by || who);
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
     case 'ledgerFlow': return ledgerFlowBrief_(c); // [2026.10.29] 사건 화면마다 맨 위 장부 띠·옆 패널(가벼운 묶음 — 서류 사실 전부는 싣지 않음)
@@ -2030,6 +2041,8 @@ function caseFlowEvidence_(c, L, lines) {
     const tt = typeof WORK_EVIDENCE_TEMPLATES_ !== 'undefined' ? WORK_EVIDENCE_TEMPLATES_[t] : null, nm = (typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[t]) || t;
     ((tt && tt.공통) || []).forEach(function (label) { const k = 'flow:세목:' + t + ':' + label; if (!has(label, k) && !Object.keys(want).some(function (k2) { return want[k2].label === label; })) want[k] = { label: label, note: '함께 보는 세목 「' + nm + '」에서 늘 필요한 서류(복합 자문 — 그 세목 쟁점을 확인할 바탕)' }; });
   });
+  // [2026.11.01 물건 장부] 소재지 모름 물건마다 등기부·건축물대장(물건 목록에 소재지가 적히면 다음 바퀴에 빠짐)
+  try { const ow = ledgerObjEvWant_(L); Object.keys(ow).forEach(function (k) { if (!has(ow[k].label, k)) want[k] = ow[k]; }); } catch (e) { }
   let needs = [];
   if (readDone) try { needs = c.세목 === 'transfer' ? (((caseProcLoad_(c.id) || {}).needs || {}).list || []) : (typeof giNeeds_ === 'function' ? giNeeds_(c) : []); } catch (e) { needs = []; }
   needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov && !(L.rows || {})[n.p]; }).forEach(function (n) { cands.push({ p: n.p, l: n.l, note: '장부 확인: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' }); });
@@ -2455,5 +2468,246 @@ function ledgerAdvBrief_(c, L, full) {
   try { const L1 = L || ledgerLoad_(c.id), lb = function (t) { return (typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[t]) || t; }, tx = L1.taxes || {};
     out.세목 = { 주: lb(c.세목), 함께: (tx.list || []).map(lb), 코드: ledgerTaxes_(c, L1), 누가: tx.by || '', 때: tx.at || '' };
     out.문의현황 = ledgerInqStatus_(L1); } catch (e) { }
+  return out;
+}
+
+// ============================================================
+// [2026.11.01 물건 장부] 세무사님 원문(11-01): "물건별로 구분하여 관리가 가능하도록 당연히 수정되어야 한다" — 계획서 물건장부_1주택판정 1절
+//  사건 장부에 세목과 상관없는 「물건 목록」(L.obj)을 둔다 — 한 줄 = 물건 하나(같은 건물 다른 호수는 다른 줄). 이 세대가 가진 물건 전부를 적는 바탕이고,
+//  양도 계산에 들어갈 물건은 여기서 골라 자산 칸(a0.…)으로 보낸다(ledgerObjSell_). 1세대1주택 판정 도구는 이 목록으로 주택 수를 세고 줄마다 판정(판정 칸)을 남긴다.
+//  예전엔 의뢰 글에서 같은 종류·같은 글을 하나로 합쳐(출처만 덧붙임) 같은 넓이 오피스텔 세 칸이 한 줄로 남았고, 주소 없이 개수만 적힌 말(「오피스텔 다섯 칸」)은 물건이 되지 않았다.
+//  규칙: ① 같은 물건은 소재지·동·호수가 같을 때만 — 같은 글이 되풀이된 것은 출처만 합친다(개수를 줄이지 않음)
+//        ② 개수만 있는 말은 「소재지 모름」 줄을 그 개수만큼(같은 종류의 주소 있는 줄은 그 개수에서 뺀다), 받을 서류에 줄마다 등기부·건축물대장
+//        ③ 칸마다 주인(세무사님 > 넥스 > 규칙) — 낮은 급은 높은 급이 적은 칸을 덮지 못한다(사건 장부 칸과 같은 규칙)
+//        ④ 의뢰 글에서 규칙이 세운 줄은 그 글이 사라지면 빠진다(사람·넥스가 손댄 줄은 남음) — 다시 돌려도 같은 줄
+// ============================================================
+var LEDGER_OBJ_FIELDS_ = ['소유자', '지분', '종류', '쓰임', '소재지', '동', '호', '취득일', '취득원인', '면적', '주택수', '주택수근거', '쓸곳', '자산', '메모'];
+var LEDGER_OBJ_ENUM_ = { 쓰임: ['주거', '업무', '모름'], 주택수: ['든다', '안 든다', '모름'], 쓸곳: ['', '양도', '증여', '상속', '보유'] };
+var LEDGER_OBJ_KIND_RE_ = '아파트|오피스텔|다가구\\s*주택|다가구|다세대\\s*주택|다세대|연립\\s*주택|연립|빌라|단독\\s*주택|단독|주택|상가|점포|건물|토지|농지|임야|대지|조합원\\s*입주권|입주권|분양권';
+var LEDGER_OBJ_NUM_ = { 한: 1, 하나: 1, 두: 2, 둘: 2, 세: 3, 셋: 3, 네: 4, 넷: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10 };
+function ledgerObjKind_(s) {
+  s = String(s || '').replace(/\s+/g, '');
+  if (/입주권/.test(s)) return '입주권';
+  if (/분양권/.test(s)) return '분양권';
+  if (/다가구/.test(s)) return '다가구주택'; if (/다세대/.test(s)) return '다세대주택'; if (/연립/.test(s)) return '연립주택'; if (/빌라/.test(s)) return '빌라';
+  if (/단독/.test(s)) return '단독주택'; if (/아파트/.test(s)) return '아파트'; if (/오피스텔/.test(s)) return '오피스텔';
+  if (/상가|점포/.test(s)) return '상가'; if (/농지/.test(s)) return '농지'; if (/임야/.test(s)) return '임야'; if (/토지|대지/.test(s)) return '토지';
+  if (/주택/.test(s)) return '주택'; if (/건물/.test(s)) return '건물';
+  return '';
+}
+// 종류만 보고 정하는 첫 표시 — 판정이 아니다(판정은 1세대1주택 판정 도구가 실제 쓰임·특례로 다시 본다)
+function ledgerObjHouseGuess_(kind) {
+  if (/^(아파트|다가구주택|다세대주택|연립주택|빌라|단독주택|주택)$/.test(kind)) return { v: '든다', why: '공부상 종류가 주택 — 판정 도구가 실제 쓰임·특례로 다시 봄' };
+  if (/^(오피스텔|건물)$/.test(kind)) return { v: '모름', why: '실제 쓰임(주거/업무)에 따라 다름 — 실제 쓰임 확인 필요' };
+  if (/^(입주권|분양권)$/.test(kind)) return { v: '모름', why: '입주권·분양권 — 판정 도구가 취득 시기·특례로 봄' };
+  if (/^(상가|토지|농지|임야)$/.test(kind)) return { v: '안 든다', why: '공부상 종류가 주택이 아님 — 실제 쓰임이 주거면 다시 봄' };
+  return { v: '모름', why: '종류 모름' };
+}
+function ledgerObjAddrKey_(f) { // 같은 물건인가 — 소재지(띄어쓰기·번지·행정구역 접미어 뺌)+동+호
+  const loc = String((f && f.소재지) || '').replace(/\s+|번지|특별시|광역시|특별자치시|특별자치도/g, '');
+  if (!loc) return '';
+  return loc + '|' + String(f.동 || '').replace(/\D/g, '') + '|' + String(f.호 || '').replace(/\D/g, '');
+}
+// 글 하나에서 물건 후보 — 주소 있는 물건(최대 30) + 개수만 있는 말(종류별 가장 큰 개수)
+function ledgerObjScan_(text, file) {
+  const t = String(text || ''), out = { addr: [], counts: {} };
+  const addrRe = /([가-힣]{2,}(?:특별시|광역시|특별자치시|특별자치도|도|시)\s+[가-힣]{1,}(?:시|군|구)(?:\s+[가-힣]{1,}구)?\s+[가-힣0-9]{1,}(?:읍|면|동|가|로|길)[^\n,;]{0,30}?\d+(?:-\d+)?(?:\s*번지)?(?:[^\n,;]{0,20}?\d+\s*동\s*\d+\s*호|[^\n,;]{0,20}?\d+\s*호)?)/g;
+  const kindRe = new RegExp(LEDGER_OBJ_KIND_RE_);
+  let m, n = 0;
+  while ((m = addrRe.exec(t)) && n < 30) {
+    const raw = m[1].replace(/\s+/g, ' ').trim();
+    const dh = /(\d{1,4})\s*동\s*(\d{1,5})\s*호/.exec(raw), ho = dh ? null : /(\d{1,5})\s*호/.exec(raw);
+    let loc = raw; if (dh) loc = raw.slice(0, dh.index).trim(); else if (ho) loc = raw.slice(0, ho.index).trim();
+    // 번지 뒤에 붙은 건물 이름(「… 123 ○○아파트」)은 소재지에서 뺀다 — 종류는 아래에서 따로 본다
+    const lm = /^(.*?\d+(?:-\d+)?(?:\s*번지)?)(?:\s|$)/.exec(loc); if (lm && lm[1].length >= 8) loc = lm[1];
+    const near = t.slice(Math.max(0, m.index - 24), m.index) + ' ' + raw + ' ' + t.slice(m.index + m[0].length, m.index + m[0].length + 24);
+    const km = kindRe.exec(near);
+    out.addr.push({ f: { 소재지: loc.slice(0, 80), 동: dh ? dh[1] : '', 호: dh ? dh[2] : (ho ? ho[1] : ''), 종류: km ? ledgerObjKind_(km[0]) : '' }, quote: raw.slice(0, 80), file: file });
+    n++;
+  }
+  const numW = Object.keys(LEDGER_OBJ_NUM_).sort(function (a, b) { return b.length - a.length; }).join('|');
+  const cntRe = new RegExp('(' + LEDGER_OBJ_KIND_RE_ + ')\\s*(\\d{1,2}|' + numW + ')\\s*(채|칸|호실|개|필지|건|세대)', 'g');
+  const cntRe2 = new RegExp('(\\d{1,2}|' + numW + ')\\s*(채|칸|개|필지|건|세대)\\s*(?:의\\s*)?(' + LEDGER_OBJ_KIND_RE_ + ')', 'g');
+  const put = function (kindW, numS, quote) {
+    const k = ledgerObjKind_(kindW), nn = /^\d+$/.test(numS) ? Number(numS) : LEDGER_OBJ_NUM_[numS];
+    if (!k || !(nn >= 1 && nn <= 30)) return;
+    const prev = out.counts[k]; if (!prev || prev.n < nn) out.counts[k] = { n: nn, quote: quote.slice(0, 60), file: file };
+  };
+  while ((m = cntRe.exec(t))) put(m[1], m[2], m[0]);
+  while ((m = cntRe2.exec(t))) put(m[3], m[1], m[0]);
+  return out;
+}
+function ledgerObjState_(row) {
+  const f = row.f || {}, own = row.own || {};
+  if (!f.소재지) return '모름';
+  const hard = function (k) { return /^(세무사님|서류)$/.test(own[k] || ''); };
+  return hard('소재지') && hard('종류') ? '정함' : '추정';
+}
+function ledgerObjOut_(row, i) {
+  const o = { id: row.id, 번호: i + 1, 상태: row.state || ledgerObjState_(row), 출처: (row.srcs || []).map(function (s) { return (s.file || s.kind) + (s.quote ? ' "' + s.quote + '"' : ''); }).slice(0, 6), 칸주인: row.own || {} };
+  LEDGER_OBJ_FIELDS_.forEach(function (k) { if (row.f && row.f[k] !== undefined && row.f[k] !== '') o[k] = row.f[k]; });
+  if (row.판정) o.판정 = row.판정;
+  return o;
+}
+// 의뢰 글 등에서 규칙이 뽑은 후보로 물건 목록 맞추기(잠금 안 — L을 고친다). 돌려주는 것: { add, drop, keep }
+function ledgerObjSyncInner_(L, scans) {
+  const O = L.obj = L.obj || { list: [], seq: 0, at: '' };
+  const now = caseProcNow_(), want = [], counts = {}, gone = O.gone || [];
+  const srcOf = function (file, quote) { return { kind: '규칙', who: 'GAS', file: file, quote: quote }; };
+  (scans || []).forEach(function (s) {
+    (s.addr || []).forEach(function (a) {
+      const key = ledgerObjAddrKey_(a.f); if (!key) return;
+      const w = want.filter(function (x) { return x.sig === 'addr:' + key; })[0];
+      if (w) { if (!w.f.종류 && a.f.종류) w.f.종류 = a.f.종류; if (!w.srcs.some(function (z) { return z.file === a.file; })) w.srcs.push(srcOf(a.file, a.quote)); }
+      else want.push({ sig: 'addr:' + key, f: Object.assign({}, a.f), srcs: [srcOf(a.file, a.quote)] });
+    });
+    Object.keys(s.counts || {}).forEach(function (k) {
+      const c0 = s.counts[k], p = counts[k];
+      if (!p || p.n < c0.n) counts[k] = { n: c0.n, srcs: [srcOf(c0.file, c0.quote)].concat(p ? p.srcs : []).slice(0, 6) };
+      else if (!p.srcs.some(function (z) { return z.file === c0.file; })) p.srcs.push(srcOf(c0.file, c0.quote));
+    });
+  });
+  // 개수 말 — 같은 종류의 주소 있는 줄(규칙이 뽑은 것 + 사람·넥스가 적은 것)은 개수에서 뺀다
+  Object.keys(counts).forEach(function (k) {
+    const known = want.filter(function (w) { return w.f.종류 === k; }).length + O.list.filter(function (r) { return r.f && r.f.종류 === k && r.f.소재지 && !/^(addr:|수:)/.test(String(r.sig || '')); }).length;
+    for (let i = known; i < counts[k].n; i++) want.push({ sig: '수:' + k + '#' + (i + 1), f: { 종류: k }, srcs: counts[k].srcs.slice() });
+  });
+  const touched = function (r) { return Object.keys(r.own || {}).some(function (k) { return r.own[k] !== '규칙'; }); };
+  let add = 0, drop = 0, keep = 0;
+  want.forEach(function (w) {
+    if (gone.indexOf(w.sig) !== -1) return; // 사람·넥스가 지운 줄은 같은 글로 다시 세우지 않는다
+    const hg = ledgerObjHouseGuess_(w.f.종류 || '');
+    let r = O.list.filter(function (x) { return x.sig === w.sig; })[0];
+    if (!r && /^addr:/.test(w.sig)) r = O.list.filter(function (x) { return ledgerObjAddrKey_(x.f) && 'addr:' + ledgerObjAddrKey_(x.f) === w.sig; })[0];
+    if (!r) {
+      O.seq = (O.seq || 0) + 1;
+      r = { id: 'o' + O.seq, sig: w.sig, f: {}, own: {}, srcs: [], at: now, hist: [] };
+      O.list.push(r); add++;
+      ledgerLogTo_(L, { by: 'GAS', what: '물건 더함', path: 'obj.' + r.id, detail: (w.f.종류 || '종류 모름') + ' ' + (w.f.소재지 || '소재지 모름') + (w.f.동 ? ' ' + w.f.동 + '동' : '') + (w.f.호 ? ' ' + w.f.호 + '호' : '') + ' — ' + w.srcs.map(function (z) { return z.file; }).join(', ').slice(0, 100) });
+    } else keep++;
+    const fill = Object.assign({}, w.f, { 주택수: hg.v, 주택수근거: hg.why });
+    Object.keys(fill).forEach(function (k) { if (fill[k] === '' || fill[k] == null) return; if (r.own[k] && r.own[k] !== '규칙') return; r.f[k] = fill[k]; r.own[k] = '규칙'; });
+    w.srcs.forEach(function (z) { if (!r.srcs.some(function (y) { return y.file === z.file && y.quote === z.quote; })) r.srcs.push(z); });
+    r.srcs = r.srcs.slice(-8); r.wanted = true;
+  });
+  O.list = O.list.filter(function (r) {
+    const w = r.wanted; delete r.wanted;
+    if (w || touched(r) || !/^(addr:|수:)/.test(String(r.sig || ''))) return true;
+    drop++; ledgerLogTo_(L, { by: 'GAS', what: '물건 뺌', path: 'obj.' + r.id, detail: (r.f.종류 || '') + ' ' + (r.f.소재지 || '소재지 모름') + ' — 근거 글이 사라짐' });
+    return false;
+  });
+  O.list.forEach(function (r) { r.state = ledgerObjState_(r); });
+  if (add || drop) O.at = now;
+  return { add: add, drop: drop, keep: keep, n: O.list.length };
+}
+// 사건파악(caseProcGrasp_)이 부른다 — 가설 출처 글(의뢰서·상담 메모·대화) 전부로 물건 목록을 맞춘다
+function ledgerObjSync_(caseId, texts) {
+  const scans = (texts || []).map(function (m) { return ledgerObjScan_(m.text, m.file); });
+  return ledgerMutate_(caseId, function (L) { return ledgerObjSyncInner_(L, scans); });
+}
+// 보기 — 화면(📒 물건 탭)·넥스(case_ledger do=objects)가 같은 것을 본다
+function ledgerObjList_(c, L) {
+  L = L || ledgerLoad_(c.id);
+  const list = ((L.obj && L.obj.list) || []).map(ledgerObjOut_);
+  const cnt = function (v) { return list.filter(function (o) { return o.주택수 === v; }).length; };
+  return { ok: true, 물건: list, 요약: { 줄: list.length, 소재지모름: list.filter(function (o) { return !o.소재지; }).length, 주택수: { 든다: cnt('든다'), 모름: cnt('모름'), 안든다: cnt('안 든다') } }, 칸: LEDGER_OBJ_FIELDS_, 고르기: LEDGER_OBJ_ENUM_ };
+}
+// 더하기·고치기 — input: { id?(없으면 새 줄), f:{칸:값}, file?, quote?, why? }. who: 세무사님 | 넥스
+function ledgerObjSet_(c, input, who) {
+  input = input || {};
+  const kind = who === '세무사님' ? '세무사님' : '넥스', rank = LEDGER_RANK_[kind] || 0;
+  const f = Object.assign({}, input.f || {});
+  const bad = Object.keys(f).filter(function (k) { return LEDGER_OBJ_FIELDS_.indexOf(k) === -1 || (LEDGER_OBJ_ENUM_[k] && f[k] !== '' && LEDGER_OBJ_ENUM_[k].indexOf(String(f[k])) === -1); });
+  if (bad.length) return { ok: false, error: '받지 않는 칸·값: ' + bad.map(function (k) { return k + (LEDGER_OBJ_ENUM_[k] ? '(' + LEDGER_OBJ_ENUM_[k].filter(Boolean).join('|') + ')' : ''); }).join(', ') + ' — 칸은 ' + LEDGER_OBJ_FIELDS_.join('·') };
+  if (f.종류) { const k2 = ledgerObjKind_(f.종류); if (k2) f.종류 = k2; }
+  const r = ledgerMutate_(c.id, function (L) {
+    const O = L.obj = L.obj || { list: [], seq: 0, at: '' };
+    let row = input.id ? O.list.filter(function (x) { return x.id === String(input.id); })[0] : null;
+    if (input.id && !row) return { ok: false, error: '물건 목록에 그 줄이 없음: ' + input.id };
+    let isNew = !row;
+    // 같은 물건이 이미 있으면(소재지·동·호가 같음) 새 줄을 만들지 않고 그 줄을 고친다
+    if (isNew && f.소재지) { const k = ledgerObjAddrKey_(f), same = O.list.filter(function (x) { return ledgerObjAddrKey_(x.f) === k; })[0]; if (same) { row = same; isNew = false; } }
+    if (isNew) { O.seq = (O.seq || 0) + 1; row = { id: 'o' + O.seq, sig: 'by:' + kind, f: {}, own: {}, srcs: [], at: caseProcNow_(), hist: [] }; }
+    const refused = [], changed = [];
+    Object.keys(f).forEach(function (k) {
+      const v = typeof f[k] === 'string' ? f[k].trim() : f[k];
+      if ((LEDGER_RANK_[row.own[k]] || 0) > rank) { if (JSON.stringify(row.f[k]) !== JSON.stringify(v)) refused.push(k + '(' + row.own[k] + ' 값 ' + row.f[k] + ')'); return; }
+      if (JSON.stringify(row.f[k]) === JSON.stringify(v) && row.own[k] === kind) return;
+      changed.push(k + ' ' + (row.f[k] == null || row.f[k] === '' ? '(빈칸)' : row.f[k]) + '→' + (v === '' || v == null ? '(지움)' : v));
+      if (v === '' || v == null) { delete row.f[k]; delete row.own[k]; } else { row.f[k] = v; row.own[k] = kind; }
+    });
+    // 종류를 고쳤는데 주택 수 칸이 규칙 값이면 새 종류로 첫 표시를 다시
+    if (f.종류 && (!row.own.주택수 || row.own.주택수 === '규칙') && f.주택수 === undefined) { const hg = ledgerObjHouseGuess_(row.f.종류); row.f.주택수 = hg.v; row.f.주택수근거 = hg.why; row.own.주택수 = '규칙'; row.own.주택수근거 = '규칙'; }
+    // 주택 수를 사람이 정했는데 근거 칸이 아직 규칙 글이면 그 글은 맞지 않으니 "누가 정함"으로
+    if (f.주택수 !== undefined && f.주택수근거 === undefined && row.own.주택수 === kind && row.own.주택수근거 === '규칙') { row.f.주택수근거 = kind + '이 정함' + (input.why ? ' — ' + String(input.why).slice(0, 60) : ''); row.own.주택수근거 = kind; }
+    if (input.file || input.quote || input.why) row.srcs =(row.srcs || []).concat([{ kind: kind, who: String(who || kind).slice(0, 6), file: String(input.file || '').slice(0, 80), quote: String(input.quote || input.why || '').slice(0, 80) }]).slice(-8);
+    if (isNew) O.list.push(row);
+    if (!changed.length && !isNew) return { ok: true, same: true, 줄: ledgerObjOut_(row, O.list.indexOf(row)), refused: refused, message: refused.length ? '바꾸지 못함 — ' + refused.join(', ') : '그대로' };
+    row.state = ledgerObjState_(row); row.at = caseProcNow_();
+    row.hist = (row.hist || []).concat([{ at: row.at, by: String(who || kind).slice(0, 6), what: changed.join(' · ').slice(0, 200), why: String(input.why || '').slice(0, 80) }]).slice(-20);
+    O.at = row.at;
+    ledgerLogTo_(L, { by: who || kind, what: isNew ? '물건 더함' : '물건 고침', path: 'obj.' + row.id, detail: changed.join(' · ').slice(0, 200) + (refused.length ? ' / 못 바꿈 ' + refused.join(', ') : '') });
+    return { ok: true, 줄: ledgerObjOut_(row, O.list.indexOf(row)), refused: refused, message: (isNew ? '물건 더함 ' : '물건 고침 ') + row.id + (refused.length ? ' — 못 바꿈 ' + refused.join(', ') : '') };
+  });
+  if (r && r.ok && !r.same && typeof cpFlowQueueAdd_ === 'function') cpFlowQueueAdd_(c.id, kind + ' 물건 목록 — ' + (r.줄 && r.줄.id));
+  return r;
+}
+// 지우기 — 세무사님이 적은 칸이 있는 줄은 세무사님만
+function ledgerObjDrop_(c, input, who) {
+  const kind = who === '세무사님' ? '세무사님' : '넥스';
+  return ledgerMutate_(c.id, function (L) {
+    const O = L.obj = L.obj || { list: [], seq: 0, at: '' };
+    const row = O.list.filter(function (x) { return x.id === String((input || {}).id || ''); })[0];
+    if (!row) return { ok: false, error: '물건 목록에 그 줄이 없음: ' + ((input || {}).id || '') };
+    if (kind !== '세무사님' && Object.keys(row.own || {}).some(function (k) { return row.own[k] === '세무사님'; })) return { ok: false, refused: true, error: '세무사님이 적은 칸이 있는 줄은 넥스가 지우지 못합니다' };
+    O.list = O.list.filter(function (x) { return x !== row; });
+    if (/^(addr:|수:)/.test(String(row.sig || ''))) O.gone = (O.gone || []).concat([row.sig]).slice(-60); // 같은 글로 다시 세우지 않게
+    O.at = caseProcNow_();
+    ledgerLogTo_(L, { by: who || kind, what: '물건 지움', path: 'obj.' + row.id, detail: (row.f.종류 || '') + ' ' + (row.f.소재지 || '소재지 모름') + ((input || {}).why ? ' — ' + String(input.why).slice(0, 80) : '') });
+    return { ok: true, message: '물건 ' + row.id + ' 지움' };
+  });
+}
+// 양도 계산에 넣기 — 물건 한 줄을 자산 칸(a<i>.…)으로. 물건 줄이 「정함」이 아니거나 그 칸이 규칙 값이면 추정으로 들어간다(장부 칸 주인 규칙은 그대로 — 정해진 자산 칸은 안 덮음)
+var LEDGER_OBJ_TO_ASSET_ = { 소재지: 'assetLocation', 동: 'assetDong', 호: 'assetHo', 면적: 'assetArea', 취득일: 'acquisitionDate' };
+function ledgerObjSell_(c, input, who) {
+  input = input || {};
+  const kind = who === '세무사님' ? '세무사님' : '넥스';
+  const L0 = ledgerLoad_(c.id, true), O = L0.obj || { list: [] };
+  const row = O.list.filter(function (x) { return x.id === String(input.id || ''); })[0];
+  if (!row) return { ok: false, error: '물건 목록에 그 줄이 없음: ' + (input.id || '') };
+  let idx = row.f.자산 ? Number(String(row.f.자산).replace(/\D/g, '')) : NaN;
+  if (isNaN(idx)) {
+    const used = {};
+    Object.keys(L0.rows || {}).forEach(function (p) { const m = /^a(\d+)\./.exec(p); if (m) used[m[1]] = 1; });
+    O.list.forEach(function (x) { if (x.f && x.f.자산) used[String(x.f.자산).replace(/\D/g, '')] = 1; });
+    idx = 0; while (used[idx]) idx++;
+  }
+  const a = 'a' + idx, ops = [];
+  const hard = function (k) { return /^(세무사님|넥스|서류)$/.test(row.own[k] || ''); };
+  const op = function (path, v, k) { ops.push({ path: path, value: v, kind: kind, by: String(who || kind).slice(0, 6), estimate: !(hard(k) && row.state === '정함'), why: '물건 목록 ' + row.id + '에서(' + (row.f.종류 || '') + ' ' + (row.f.소재지 || '') + ')' }); };
+  Object.keys(LEDGER_OBJ_TO_ASSET_).forEach(function (k) { if (row.f[k]) op(a + '.' + LEDGER_OBJ_TO_ASSET_[k], row.f[k], k); });
+  const k = row.f.종류 || '';
+  if (k) {
+    op(a + '.assetType', k === '분양권' ? 'presale_right' : (row.f.주택수 === '든다' || k === '입주권' || (k === '오피스텔' && row.f.쓰임 === '주거')) ? 'house' : 'other', '종류');
+    op(a + '.assetKind', /^(토지|농지|임야)$/.test(k) ? 'land' : /^(입주권|분양권)$/.test(k) ? 'other' : 'land_building', '종류');
+  }
+  if (!ops.length) return { ok: false, error: '보낼 값이 없음 — 소재지·종류부터 적으세요' };
+  const res = ledgerBatch_(c.id, ops);
+  ledgerMutate_(c.id, function (L) {
+    const r = ((L.obj && L.obj.list) || []).filter(function (x) { return x.id === row.id; })[0];
+    if (r) { r.f.자산 = a; r.own.자산 = kind; r.f.쓸곳 = '양도'; r.own.쓸곳 = kind; }
+    ledgerLogTo_(L, { by: who || kind, what: '물건 → 양도 자산', path: 'obj.' + row.id, detail: row.id + ' → ' + a + ' 칸 ' + res.set + '개' + (res.refused ? ', 못 바꿈 ' + res.refused : '') });
+  });
+  if (typeof cpFlowQueueAdd_ === 'function') cpFlowQueueAdd_(c.id, kind + ' 물건 → 양도 자산 ' + a);
+  return { ok: true, 자산: a, 넣음: res.set, 못바꿈: res.refused, 오류: res.errors, message: '물건 ' + row.id + ' → 양도 자산 ' + a + '(칸 ' + res.set + '개' + (res.refused ? ', 이미 정해진 칸 ' + res.refused + '개는 그대로' : '') + ')' };
+}
+// 받을 서류 — 소재지 모름 줄마다 등기부·건축물대장(caseFlowEvidence_가 바퀴마다 다시 짠다 — 소재지가 적히면 빠짐)
+function ledgerObjEvWant_(L) {
+  const out = {}, list = (L.obj && L.obj.list) || [], nth = {};
+  list.forEach(function (r) {
+    if (!r.f || r.f.소재지) return;
+    const k = r.f.종류 || '물건'; nth[k] = (nth[k] || 0) + 1;
+    out['flow:물건:' + r.id] = { label: '등기사항전부증명서·건축물대장 — ' + k + ' ' + nth[k] + '번째(소재지 모름)', note: '장부 물건 목록 ' + r.id + ': 개수만 적힌 말(' + String(((r.srcs || [])[0] || {}).quote || '') + ')에서 세운 줄 — 소재지·동·호를 알면 물건 목록에 적으세요' };
+  });
   return out;
 }
