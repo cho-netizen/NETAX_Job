@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 13:36 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 16:26 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -7966,6 +7966,7 @@ function nxMdOpenWindow(title, src, opts){
           + lgTb('links', '칸으로 간 길', nSt('칸:', /^서류와 다름|^서류 값과 다름/), '다름 ' + nSt('칸:', /^서류와 다름|^서류 값과 다름/) + ' · 서류에 없는 값 ' + nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/) + ' · 서류와 같음 ' + nSt('칸:', /^서류와 일치|^서류 1/) + ' · 세무사님 값 ' + nSt('칸:', /^세무사님/))
           + lgTb('rows', '칸 장부', sum.물어볼것, (sum.전체 || 0) + '줄 · 물어볼 것 ' + (sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + (sum.증빙받을것 || 0) + ' · 추정 ' + (sum.추정 || 0) + ' · 확정 ' + (sum.확정 || 0) + (sum.at ? ' · 마지막 ' + sum.at : ''))
           + (r.물건 && r.물건.ok ? lgTb('obj', '물건', (r.물건.요약 || {}).소재지모름, (r.물건.요약 || {}).줄 + '줄 · 소재지 모름 ' + ((r.물건.요약 || {}).소재지모름 || 0) + ' · 주택 수 모름 ' + (((r.물건.요약 || {}).주택수 || {}).모름 || 0)) : '')
+          + lgTb('fam', '가족', 0, '고객(가족) 지도 — 사람 · 지난 이전(증여·상속·양도 건별) · 시간줄 · 잇기 계산 · 미래 계획(같은 고객 사건이 함께 씀)')
           + (fl ? lgTb('tools', '도구', 0, '공부 조회 ' + (fb0.공부 || 0) + '필지 · 추정 ' + (fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교') : '')
           + lgTb('adv', '자문', 0, '쟁점 ' + ((r.자문 || {}).쟁점 || []).length + ' · 대안 ' + ((r.자문 || {}).대안 || []).length + ' · 권고 ' + ((r.자문 || {}).권고 || []).length + ' · 보고서 ' + ((r.자문 || {}).보고서 || []).length)
           + '</div><div class="lg-tab-detail" style="font-size:12px; color:var(--sub); margin-top:4px;"></div></div>';
@@ -8062,6 +8063,9 @@ function nxMdOpenWindow(title, src, opts){
           oh += '</div>';
           h += oh;
         }
+        // [2026.11.01 복잡사건 ①~④] 세무사님 "고쳐라"(넥스_복잡사건_능력점검 4절) — 고객(가족) 지도. 사건 하나 = 거래 하나라 여러 해·여러 사람의 이전을 담을 곳이 없었다.
+        //  넥스 case_ledger do=family·person·transfer·family_drop·chain·plan과 같은 서버 함수(ledgerFamily…ledgerFamPlan). 탭을 열 때 불러온다(같은 고객 사건 목록을 읽어 무거움)
+        h += '<div data-lg-sec="fam" style="display:none; margin-top:8px;"><div id="chFamBox"><div class="log-empty">가족 지도를 불러오는 중…</div></div><div id="chFamOut" style="margin-top:8px;"></div></div>';
         h += '<div data-lg-sec="rows">';
         var kbFact = {}; ((kb && kb.facts) || []).forEach(function(f){ if (f.id) kbFact[f.id] = f; });
         h += '<div id="chLgFxBox" style="margin-top:6px;"></div>';
@@ -8145,6 +8149,9 @@ function nxMdOpenWindow(title, src, opts){
             var Q = A.문의현황 || {};
             if (Q.수) th6 += '<div style="margin-top:4px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.자료기다림 || []).length ? ' · <span style="color:var(--gold, #a8862e);" title="결론을 가르는 사실이 아직 없어 넥스가 질문·받을 서류·가정별 시험 계산까지 해 둔 문의">자료 기다림 ' + esc(Q.자료기다림.length) + '</span>' : '') + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
           })();
+          // [2026.11.02 쪼개 처리] 이음에 적힌 id를 이름으로(자문 항목·물건·사람·지난 이전·계획·판정·조회·장부 칸)
+          var advTitle = {}; KINDS.forEach(function(k2){ (A[k2] || []).forEach(function(y){ advTitle[y.id] = k2 + ' ' + (y.제목 || ''); }); });
+          var tieNames = function(x){ return (x.이음풀이 || (x.이음 || []).map(function(id){ return { id: id }; })).map(function(p){ return advTitle[p.id] || (p.종류 && p.종류 !== '모름' ? p.종류 + ' ' + (p.이름 || p.id) : p.id); }); };
           KINDS.forEach(function(k){
             var list = A[k] || [];
             if (k === '문의'){ // 문의는 번호·세목·답을 보이고, 세목별로 묶는다
@@ -8155,8 +8162,7 @@ function nxMdOpenWindow(title, src, opts){
                 th6 += '<div style="margin-top:4px; color:var(--sub);">' + esc(g) + ' ' + esc(byTax[g].length) + '개</div>' + tbl(['번호', '세목', '물으신 것', '답', '이어진 쟁점·계산', '상태·누가', ''], byTax[g].map(function(x){
                   var st = x.상태 || '답 안 함';
                   // [2026.11.01 종합 컨설팅 점검] 문의 → 이어진 쟁점·권고·계산 저장본을 한 줄에서 따라가게(넥스가 links·calc로 잇는 것)
-                  var advTitle = {}; KINDS.forEach(function(k2){ (A[k2] || []).forEach(function(y){ advTitle[y.id] = k2 + ' ' + (y.제목 || ''); }); });
-                  var tie = (x.이음 || []).map(function(id){ return advTitle[id] || id; }).concat((x.저장본 || []).map(function(s){ return '계산 ' + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : ''); }));
+                  var tie = tieNames(x).concat((x.저장본 || []).map(function(s){ return '계산 ' + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : ''); }));
                   return '<tr>' + cell(x.번호 || '', 40) + cell((x.세목 || []).join('·'), 80) + cell(x.제목, 280) + cell(x.답 || x.내용 || '', 320, ' color:var(--sub);') + cell(tie.join(' · '), 260) + cell([st, x.누가].filter(Boolean).join(' · '), 120, st === '답 안 함' ? ' color:#b23;' : '')
                     + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + ['답함', '자료 기다림', '보류', '답 안 함'].filter(function(v){ return v !== st; }).map(function(v){ return '<button type="button" class="ghost-btn sm" data-adv-st="' + esc(v) + '" data-adv-id="' + esc(x.id) + '" title="이 문의를 「' + esc(v) + '」로 바꿉니다">' + esc(v) + '</button> '; }).join('')
                     + '<button type="button" class="ghost-btn sm" data-adv-del="' + esc(x.id) + '" data-adv-kind="문의" title="이 문의를 지웁니다(기록은 남음)">지우기</button></td></tr>';
@@ -8166,12 +8172,22 @@ function nxMdOpenWindow(title, src, opts){
               return;
             }
             th6 += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(k) + '</b> <span style="color:var(--sub);">' + esc(list.length) + '개</span>'
-              + (list.length ? tbl(['제목', '내용', '저장본·근거·파일', '상태·누가', ''], list.map(function(x){
-                  var sv = (x.저장본 || []).map(function(s){ return (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
-                  var extra = sv.concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).concat(x.근거확인 ? ['근거 확인 ✅' + x.근거확인.수.ok + ' ❌' + x.근거확인.수.bad + (x.근거확인.수.warn ? ' ⚠' + x.근거확인.수.warn : '') + ' ❓' + x.근거확인.수.unk + ' (' + x.근거확인.때 + ')'] : []).join(' · ');
+              + (list.length ? tbl(['제목', '내용', '이음·인용·근거', '상태·누가', ''], list.map(function(x){
+                  var sv = (x.저장본 || []).map(function(s){ return (s.종류 ? s.종류 + ' ' : '') + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
+                  var extra = tieNames(x).map(function(t){ return '→ ' + t; }).concat(sv).concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).concat(x.근거확인 ? ['근거 확인 ✅' + x.근거확인.수.ok + ' ❌' + x.근거확인.수.bad + (x.근거확인.수.warn ? ' ⚠' + x.근거확인.수.warn : '') + ' ❓' + x.근거확인.수.unk + ' (' + x.근거확인.때 + ')'] : []).join(' · ');
                   return '<tr>' + cell(x.제목, 260) + cell(x.내용 || '', 360, ' color:var(--sub);') + cell(extra, 300) + cell([x.상태, x.누가].filter(Boolean).join(' · '), 120) + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-adv-del="' + esc(x.id) + '" data-adv-kind="' + esc(k) + '" title="이 항목을 지웁니다(기록은 남음)">지우기</button></td></tr>';
                 }).join('')) : '<div class="log-empty">아직 없음</div>') + '</div>';
           });
+          // [2026.11.02 쪼개 처리 ⑤·②] 쟁점별 처리 점검 · 물건별 — 쟁점 하나씩 대안·계산·권고까지 갔나, 물건마다 무엇이 이어졌나(넥스가 보는 것과 같음)
+          (function(){
+            var P = A.처리점검 || {}, rows = P.쟁점별 || [];
+            th6 += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">쟁점별 처리 점검</b> <span style="color:var(--sub);">' + (rows.length ? '덜 된 쟁점 ' + esc(P.덜된쟁점 || 0) + ' / ' + esc(rows.length) : '쟁점 없음') + '</span>';
+            if (rows.length) th6 += tbl(['쟁점', '상태', '대안', '저장본', '권고', '빈 곳'], rows.map(function(r){ return '<tr>' + cell(r.쟁점, 260) + cell(r.상태, 60) + cell(r.대안, 40) + cell(r.저장본, 50) + cell(r.권고, 40) + cell((r.빈곳 || []).join(' · ') || '없음', 240, (r.빈곳 || []).length ? ' color:#b23;' : ' color:var(--sub);') + '</tr>'; }).join(''));
+            if ((P.쟁점에안이은문의 || []).length) th6 += '<div style="margin-top:4px; color:var(--sub);">쟁점에 안 이은 문의: ' + esc(P.쟁점에안이은문의.join(' / ')) + '</div>';
+            var O = Array.isArray(A.물건별) ? A.물건별 : [];
+            if (O.length) th6 += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">물건별</b>' + tbl(['물건', '판정', '이어진 자문'], O.map(function(o){ return '<tr>' + cell(o.이름, 220) + cell((o.판정 || []).join(' · ') || '—', 260) + cell((o.자문 || []).join(' · ') || o.빈곳, 360, (o.자문 || []).length ? '' : ' color:var(--sub);') + '</tr>'; }).join('')) + '</div>';
+            th6 += '</div>';
+          })();
           // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다"] 보고서·근거 칸의 조문·판례·심판례를 원문과 대조한 표(GAS, 0원) — 넥스 보고서 저장 때 자동, 🔎로 다시
           (function(){
             var lines = [];
@@ -8225,6 +8241,66 @@ function nxMdOpenWindow(title, src, opts){
             b.disabled = true; call({ step: 'ledgerObjDrop', id: b.getAttribute('data-ob-drop') }).then(function(res){ if (res) reload(); else b.disabled = false; }); }); });
           Array.prototype.forEach.call(body.querySelectorAll('button[data-ob-sell]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerObjSell', id: b.getAttribute('data-ob-sell') }).then(function(res){ if (res) reload(); else b.disabled = false; }); }); });
         }
+        // [2026.11.01 복잡사건] 👪 가족 탭 — 열 때 불러와 그림(사람·지난 이전·합산·시간줄·빈칸·같은 고객 사건) + 적기·잇기 계산·미래 계획
+        var famBox = document.getElementById('chFamBox'), famLoaded = false;
+        var FAM_KINDS = ['증여', '부담부증여', '양도', '상속', '빌림', '갚음', '매매', '그밖'], FAM_RELS = ['배우자', '직계존속', '직계비속', '기타친족', '기타'];
+        var famWon = function(n){ n = Number(n || 0); return n ? n.toLocaleString('ko-KR') : ''; };
+        var famSel = function(k, list, ph){ return '<label style="font-size:12px; white-space:nowrap;">' + esc(ph) + ' <select data-fm-f="' + esc(k) + '" aria-label="' + esc(ph) + '"><option value="">선택</option>' + list.map(function(v){ return '<option>' + esc(v) + '</option>'; }).join('') + '</select></label>'; };
+        var famIn = function(k, ph, w, tip){ return '<input type="text" data-fm-f="' + esc(k) + '" aria-label="' + esc(ph) + '" placeholder="' + esc(ph) + '" title="' + esc(tip || ph) + '" style="width:' + w + 'px;">'; };
+        var famVals = function(box){ var f = {}; Array.prototype.forEach.call(box.querySelectorAll('[data-fm-f]'), function(x){ var v = (x.value || '').trim(); if (v) f[x.getAttribute('data-fm-f')] = v; }); return f; };
+        var famRender = function(fm){
+          var who = {}; (fm.사람 || []).forEach(function(p){ who[p.id] = p.이름; }); var nm = function(x){ return who[x] || x || ''; };
+          var fh = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">사람</b> <span style="color:var(--sub);">' + esc((fm.사람 || []).length) + '명 — 같은 고객의 사건이 함께 씁니다</span>';
+          fh += (fm.사람 || []).length ? tbl(['이름', '관계', '생년월일', '사망일', '배우자', '부모', '메모', ''], fm.사람.map(function(p){ return '<tr>' + cell(p.이름 || '', 90) + cell(p.관계 || '', 80) + cell(p.생년월일 || '', 90) + cell(p.사망일 || '', 90) + cell(nm(p.배우자), 80) + cell((Array.isArray(p.부모) ? p.부모 : String(p.부모 || '').split(/[,·]/)).map(function(x){ return nm(String(x).trim()); }).filter(Boolean).join('·'), 90) + cell(p.메모 || p.출처 || '', 200, ' color:var(--sub);') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-fm-drop="' + esc(p.id) + '">지우기</button></td></tr>'; }).join('')) : '<div class="log-empty">아직 사람이 없습니다 — 아래에서 더하거나, 이전 줄을 적으면 이름이 저절로 들어갑니다</div>';
+          fh += '<div id="chFmP" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famIn('이름', '이름', 90) + famIn('관계', '관계(본인 기준)', 110) + famIn('생년월일', '생년월일', 100, '예: 1940-02-01') + famIn('사망일', '사망일', 100, '예: 2027-06-01') + famIn('배우자', '배우자 이름', 100) + famIn('부모', '부모 이름', 100, '쉼표로 여럿 — 손자녀면 꼭(세대생략 할증·자녀 수 판정에 씀)') + '<button type="button" id="chFmPSave" class="ghost-btn">사람 저장</button></div>';
+          var gx = {}; (fm.합산 || []).forEach(function(g){ gx[g.id] = g; });
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">지난 이전</b> <span style="color:var(--sub);">한 줄 = 한 건. 날짜가 그 건의 「그때 법」 기준일입니다. 관계는 받는 사람 기준 주는 사람</span></div>';
+          fh += (fm.이전 || []).length ? tbl(['날짜', '종류', '주는 → 받는', '관계', '물건', '금액', '그때 산출세액', '신고', '10년 합산될 지난 증여', '근거', ''], fm.이전.map(function(t){ var g = gx[t.id];
+              return '<tr>' + cell(t.날짜 || '', 90) + cell(t.종류 || '', 70) + cell(nm(t.주는) + ' → ' + nm(t.받는), 150) + cell(t.관계 || '', 70) + cell(t.물건 || '', 140) + cell(famWon(t.금액), 110, ' text-align:right;') + cell(famWon(t.산출세액), 100, ' text-align:right;') + cell(t.신고 || '', 50)
+                + cell(g && g.합산될지난증여 ? famWon(g.합산될지난증여) : '', 120, ' text-align:right;') + cell(t.근거 || '', 180, ' color:var(--sub);')
+                + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + (/^(증여|부담부증여|상속)$/.test(t.종류 || '') ? '<button type="button" class="ghost-btn sm" data-fm-chain="' + esc(t.id) + '" title="이 물건을 판 양도와 이어 계산합니다(아래 칸에 양도가액·양도일)">잇기 계산</button> ' : '') + '<button type="button" class="ghost-btn sm" data-fm-drop="' + esc(t.id) + '">지우기</button></td></tr>'; }).join('')) : '<div class="log-empty">아직 지난 이전이 없습니다</div>';
+          fh += '<div id="chFmT" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famSel('종류', FAM_KINDS, '종류') + famIn('날짜', '날짜', 100, '예: 2020-06-01') + famIn('주는', '주는 사람', 90) + famIn('받는', '받는 사람', 90) + famSel('관계', FAM_RELS, '관계') + famIn('물건', '물건', 140) + famIn('금액', '금액', 110, '예: 3억 · 200000000') + famIn('산출세액', '그때 산출세액', 110) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '증여받은 물건이면 — 이월과세·우회양도 계산에 씀') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('채무인수', '인수 채무', 100, '부담부증여면 받은 사람이 떠안은 빚') + famIn('특례', '특례', 80, '가업승계·창업자금 특례 증여면 — 다른 증여와 합산 안 함·상속엔 기간 없이 가산') + famIn('적정이자율', '이자율 %', 70, '빌림 줄 — 적정이자율(비우면 4.6%)') + famIn('이자', '낸 이자', 90, '빌림 줄 — 해마다 실제 낸 이자') + famIn('감면세액', '감면세액', 100, '양도 줄 — 그때 받은 조특법 감면세액(5년 한도 계산)') + famIn('감면', '감면 종류', 80, '양도 줄 — 자경·대토·수용 등') + famSel('신고', ['예', '아니오', '모름'], '신고') + famIn('근거', '근거(서류·말씀)', 160) + '<button type="button" id="chFmTSave" class="ghost-btn">이전 저장</button></div>';
+          fh += '<div id="chFmC" style="margin-top:6px; display:none; gap:6px; flex-wrap:wrap; align-items:center;"><b id="chFmCT"></b><span id="chFmCId" style="display:none;"></span>' + famIn('양도가액', '양도가액', 110) + famIn('양도일', '양도일', 100, '예: 2027-03-01') + famIn('필요경비', '필요경비', 100) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '이월과세·우회양도에 필요 — 비우면 지도 값') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('권리가액', '입주권 권리가액', 120, '입주권이면 — 관리처분계획의 종전자산 평가액') + famIn('관리처분인가일', '관리처분 인가일', 110, '입주권이면') + famIn('청산금', '낸 청산금', 100, '입주권이면') + famIn('주택연면적', '주택 연면적', 90, '겸용주택(주택+상가)이면 ㎡') + famIn('주택외연면적', '상가 연면적', 90, '겸용주택이면 ㎡') + '<button type="button" id="chFmCRun" class="ghost-btn">잇기 계산 저장</button></div>';
+          var tl = fm.시간줄 || [], fut = [];
+          tl.forEach(function(r){ (r.앞으로 || []).forEach(function(a){ if (a.날짜) fut.push(a); }); });
+          fut.sort(function(a, b){ return a.날짜 < b.날짜 ? -1 : 1; });
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">시간줄</b></div>';
+          fh += tl.length ? tbl(['날짜', '때', '무엇', '누구', '금액'], tl.map(function(r){ return '<tr>' + cell(r.날짜 || '', 90) + cell(r.때 || '', 50, r.때 === '앞으로' ? ' color:#7a5c14;' : ' color:var(--sub);') + cell(r.무엇 || '', 220) + cell(r.누구 || '', 150) + cell(famWon(r.금액), 110, ' text-align:right;') + '</tr>'; }).join('')) : '<div class="log-empty">시간줄에 놓을 것이 없습니다</div>';
+          var famToday = new Date().toISOString().slice(0, 10), futN = fut.filter(function(a){ return a.날짜 >= famToday; }).length; if (fut.length) fh += '<div style="margin-top:6px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">기한</b> <span style="color:var(--sub);">앞으로 ' + futN + ' · 지남 ' + (fut.length - futN) + '</span></div>' + fut.map(function(a){ var past = a.날짜 < famToday; return '<div style="margin:2px 0 0 8px;' + (past ? ' color:var(--sub);' : '') + '">▪ ' + esc(a.날짜) + (past ? ' (지남)' : '') + ' — ' + esc(a.무엇) + '</div>'; }).join('');
+          if ((fm.빈칸 || []).length) fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">채울 칸</b></div>' + fm.빈칸.map(function(g){ return '<div style="margin:2px 0 0 8px; color:#a60;">▪ ' + esc(typeof g === 'string' ? g : ((g.무엇 || '') + (g.빈칸 && g.빈칸.length ? ' — 빈 칸: ' + g.빈칸.join(', ') : ''))) + '</div>'; }).join('');
+          if ((fm.같은고객사건 || []).length) fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">같은 고객 사건</b></div>' + fm.같은고객사건.map(function(x){ return '<div style="margin:2px 0 0 8px;">▪ ' + esc(x.사건명 || x.id) + ' · ' + esc(x.세목 || '') + (x.기준일 ? ' · ' + esc(x.기준일) : '') + (x.상태 ? ' · ' + esc(x.상태) : '') + '</div>'; }).join('');
+          // 미래 계획 — 이전 계획 × 사망 시점 × 재산 증가율
+          var ppl = (fm.사람 || []).map(function(p){ return p.이름; });
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">미래 계획 견주기</b> <span style="color:var(--sub);">증가율·사망 시점은 가정, 세율·공제는 지금 아는 법</span></div>';
+          fh += '<div id="chFmPl" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famSel('피상속인', ppl, '피상속인') + famSel('배우자', ppl, '배우자') + famIn('재산', '피상속인 지금 재산', 130, '예: 40억') + famIn('배우자재산', '배우자 지금 재산', 130) + famIn('증가율', '재산 증가율 %/년', 120) + famIn('자녀수', '자녀 수', 70) + famIn('사망후년', '사망 몇 년 뒤', 110, '쉼표로: 5,10,15') + famIn('배우자사망후년', '배우자는 그 뒤 몇 년', 140, '비우면 2차 상속 안 셈') + '</div>'
+            + '<textarea id="chFmPlSteps" aria-label="이전 계획" placeholder="이전 계획 — 한 줄에 하나: 해, 주는 사람, 받는 사람, 금액, 관계(받는 사람 기준)&#10;예: 2027, 한도식, 한민수, 5억, 직계존속" style="width:100%; max-width:560px; height:64px; margin-top:6px;"></textarea>'
+            + '<div><button type="button" id="chFmPlRun" class="ghost-btn">계획 견주기</button></div>';
+          famBox.innerHTML = fh;
+          var go = function(step, payload, btn){ if (btn) btn.disabled = true; return call(Object.assign({ step: step }, payload)).then(function(res){ if (btn) btn.disabled = false; return res; }); };
+          document.getElementById('chFmPSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmP')); if (!f.이름){ showToast('이름을 적어 주세요.', 'warning'); return; } go('ledgerFamPerson', { person: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
+          document.getElementById('chFmTSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmT')); if (!f.종류 || !f.날짜){ showToast('종류와 날짜를 적어 주세요.', 'warning'); return; } go('ledgerFamTransfer', { transfer: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
+          Array.prototype.forEach.call(famBox.querySelectorAll('button[data-fm-drop]'), function(b){ b.addEventListener('click', function(){
+            if (b.getAttribute('data-sure') !== '1'){ b.setAttribute('data-sure', '1'); b.textContent = '정말 지우기'; setTimeout(function(){ b.removeAttribute('data-sure'); b.textContent = '지우기'; }, 4000); return; }
+            go('ledgerFamDrop', { id: b.getAttribute('data-fm-drop') }, b).then(function(res){ if (res) famLoad(); }); }); });
+          var cBox = document.getElementById('chFmC');
+          Array.prototype.forEach.call(famBox.querySelectorAll('button[data-fm-chain]'), function(b){ b.addEventListener('click', function(){ var t = (fm.이전 || []).filter(function(x){ return x.id === b.getAttribute('data-fm-chain'); })[0] || {}; document.getElementById('chFmCId').textContent = t.id || ''; document.getElementById('chFmCT').textContent = (t.날짜 || '') + ' ' + (t.종류 || '') + ' ' + (t.물건 || '') + ' → 양도'; cBox.style.display = 'flex'; var x = cBox.querySelector('[data-fm-f="양도가액"]'); if (x) x.focus(); }); });
+          document.getElementById('chFmCRun').addEventListener('click', function(){ var f = famVals(cBox); if (!f.양도가액 || !f.양도일){ showToast('양도가액과 양도일을 적어 주세요.', 'warning'); return; } var fromId = document.getElementById('chFmCId').textContent, btn = this, ex = {}; ['주는이취득가액', '주는이취득일'].forEach(function(k){ if (f[k]){ ex[k] = f[k]; delete f[k]; } }); (Object.keys(ex).length ? go('ledgerFamTransfer', { transfer: Object.assign({ id: fromId }, ex) }, btn) : Promise.resolve(true)).then(function(ok){ if (!ok) return null; return go('ledgerFamChain', { from: fromId, sale: f }, btn); }).then(function(res){ if (!res) return; document.getElementById('chFamOut').innerHTML = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">잇기 계산 결과</b>' + (res.요약 || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">▪ ' + esc(l) + '</div>'; }).join('') + '<div style="margin:4px 0 0 8px; color:var(--sub);">경우(안)로 저장했습니다 — 세액계산 기록에서 견줄 수 있습니다</div>'; }); });
+          document.getElementById('chFmPlRun').addEventListener('click', function(){
+            var f = famVals(document.getElementById('chFmPl'));
+            if (!f.피상속인 || !f.재산){ showToast('피상속인과 지금 재산을 적어 주세요.', 'warning'); return; }
+            var steps = (document.getElementById('chFmPlSteps').value || '').split(/\n/).map(function(l){ var a = l.split(/[,，]/).map(function(s){ return s.trim(); }); if (a.length < 4 || !a[0]) return null; var rel = a.length >= 5 && !/^[\d억천백십만원.\s]+$/.test(a[a.length - 1]) ? a.pop() : ''; return { 해: a[0], 주는: a[1], 받는: a[2], 금액: a.slice(3).join(''), 관계: rel }; }).filter(Boolean);
+            var plan = { 피상속인: f.피상속인, 증가율: parseFloat(String(f.증가율 || 0).replace(/[^\d.-]/g, '')) || 0, 재산: {}, 이전계획: steps };
+            plan.재산[f.피상속인] = f.재산; if (f.배우자){ plan.배우자 = f.배우자; if (f.배우자재산) plan.재산[f.배우자] = f.배우자재산; } else plan.배우자 = false;
+            if (f.자녀수) plan.상속인수 = { 자녀수: Number(f.자녀수) };
+            if (f.사망후년) plan.사망후년 = f.사망후년.split(/[,\s]+/).map(Number).filter(function(n){ return n >= 0; });
+            if (f.배우자사망후년) plan.배우자사망후년 = Number(f.배우자사망후년);
+            go('ledgerFamPlan', { plan: plan }, this).then(function(res){ if (!res) return; document.getElementById('chFamOut').innerHTML = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">미래 계획 견주기 결과</b>' + (res.요약 || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">' + esc(l) + '</div>'; }).join(''); });
+          });
+        };
+        var famLoad = function(){ famLoaded = true; call({ step: 'ledgerFamily' }).then(function(res){ if (!res){ famBox.innerHTML = '<div class="log-empty">가족 지도를 못 불러왔습니다 — 탭을 다시 눌러 주세요</div>'; famLoaded = false; return; } famRender(res); }); };
+        var famTabBtn = body.querySelector('button[data-lg-tab="fam"]');
+        if (famTabBtn) famTabBtn.addEventListener('click', function(){ if (!famLoaded) famLoad(); });
+        if (tab0 === 'fam') famLoad();
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-file]'), function(b){ b.addEventListener('click', function(){
           var n = b.getAttribute('data-lg-file'), list = ((kb && kb.facts) || []).filter(function(f){ return f.f === n; });
           var box = document.getElementById('chLgFileFacts');
@@ -16641,6 +16717,12 @@ function nxMdOpenWindow(title, src, opts){
         const apprStd = Number(t.approvalDateStandardPrice) || 0;
         if (acqStd > 0 && apprStd > 0) originalAcqPrice = Math.round(rightsValue * acqStd / apprStd);
       }
+      // [2026.11.02 복잡물건 점검 #4] 종전자산 취득가액이 비면 예전엔 0으로 셈(인가 전 차익이 권리가액 전부로 부풀었음).
+      //  보통 취득가액 칸에 넣은 값이 있으면 그것을 종전자산(기존건물·부수토지) 취득가액으로 쓰고, 둘 다 없으면 멈춘다.
+      if (!originalAcqPrice) {
+        if (acquisitionPrice > 0) { originalAcqPrice = acquisitionPrice; acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '종전자산 취득가액 칸이 비어 취득가액(' + acquisitionPrice.toLocaleString('ko-KR') + '원)을 기존건물·부수토지 취득가액으로 썼습니다(시행령 §166①).'; }
+        else return { error: '재건축·재개발 특례: 종전자산(기존건물과 그 부수토지) 취득가액이 필요합니다 — 모르면 환산(시행령 §166③, 취득일·인가일 기준시가)을 쓰세요.' };
+      }
       const originalNecessaryExpenses = Number(t.originalNecessaryExpenses) || 0;
 
       // 관리처분계획등인가전양도차익 = (평가액-기존건물취득가액)-필요경비(§97①2·3호 또는 §163⑥)
@@ -16988,6 +17070,28 @@ function nxMdOpenWindow(title, src, opts){
     const d = new Date(dateStr + 'T00:00:00Z');
     d.setUTCDate(d.getUTCDate() + 1);
     return d.toISOString().slice(0, 10);
+  }
+  // [2026.11.02 복잡물건 점검 #1] 겸용주택(주택+상가) 한 건을 주택 부분·주택 외 부분 두 거래로 나눈다.
+  //  나누는 때: ① 주택 연면적 ≤ 주택 외 연면적(시행령 §154③ 단서 — 주택 부분만 주택) ② 주택 연면적이 더 커도 고가주택이고
+  //  2022.1.1 이후 양도(시행령 §160① 괄호 "주택 외의 부분은 주택으로 보지 않는다", 부칙(2020.2.11) §1 3호·§42 경과조치).
+  //  나누는 비율: 기준시가(주택분·주택 외분)를 넣으면 그 비율, 없으면 연면적 비율(토지는 시행령 §154④처럼 면적 비율로 봄) — 값과 근거를 거래에 남긴다.
+  //  칸: mixedUseHouseArea·mixedUseOtherArea(연면적 ㎡), mixedUseHouseStdPrice·mixedUseOtherStdPrice(선택).
+  function expandMixedUseHouse_(t) {
+    const ha = Number(t && t.mixedUseHouseArea) || 0, na = Number(t && t.mixedUseOtherArea) || 0;
+    if (!t || t.assetType !== 'house' || !(ha > 0 && na > 0)) return [t];
+    const price = Number(t.transferPrice) || 0, d = String(t.transferDate || '').slice(0, 10);
+    const high = price > highValueAt_(d, 'house') && d >= '2022-01-01';
+    if (ha > na && !high) return [Object.assign({}, t, { _겸용주택: '주택 연면적이 더 커 전부 주택(시행령 §154③ 본문)' })];
+    const hs = Number(t.mixedUseHouseStdPrice) || 0, ns = Number(t.mixedUseOtherStdPrice) || 0;
+    const byStd = hs > 0 && ns > 0, r = byStd ? hs / (hs + ns) : ha / (ha + na);
+    const why = (ha > na ? '고가주택인 겸용주택 — 주택 외 부분은 주택이 아님(시행령 §160① 괄호, 2022.1.1 이후 양도)' : '주택 연면적이 주택 외 부분보다 크지 않아 주택 부분만 주택(시행령 §154③ 단서·④)')
+      + ' · 나눈 비율 주택 ' + (Math.round(r * 10000) / 100) + '%(' + (byStd ? '기준시가 비율' : '연면적 비율 — 기준시가를 넣으면 그 비율로 다시 나눔') + ')';
+    const part = function (v, k) { if (v == null || v === '') return v; const n = Number(v) || 0; return k ? Math.round(n * r) : n - Math.round(n * r); };
+    const scaled = function (k) { const o = {}; ['transferPrice', 'acquisitionPrice', 'necessaryExpenses', 'transferStandardPriceForConversion', 'acquisitionStandardPriceForConversion'].forEach(function (f) { if (t[f] != null && t[f] !== '') o[f] = part(t[f], k); }); return o; };
+    const house = Object.assign({}, t, scaled(true), { _겸용주택: '주택 부분 · ' + why, mixedUseHouseArea: null, mixedUseOtherArea: null });
+    const other = Object.assign({}, t, scaled(false), { assetType: 'other', isOneHouseOneFamily: false, _겸용주택: '주택 외 부분(상가 등, 일반 자산) · ' + why, mixedUseHouseArea: null, mixedUseOtherArea: null });
+    if (high) house._고가주택판정양도가액 = price;
+    return [house, other];
   }
   function expandReplotmentIncrease_(t) {
     const paid = Number(t.replotmentSettlementPaid) || 0;
@@ -17784,6 +17888,14 @@ function nxMdOpenWindow(title, src, opts){
       }
     }
     replotAppend_.forEach(function (p) { transactions = transactions.concat([p.t]); txLabels_.push(p.label); });
+    // [2026.11.02] 겸용주택(주택+상가) — 주택 부분·주택 외 부분 두 거래로(시행령 §154③ 단서·§160① 괄호). 주택 외 부분은 맨 뒤에 붙인다
+    const mixedAppend_ = [];
+    for (let i = 0; i < transactions.length; i++) {
+      const parts = expandMixedUseHouse_(transactions[i]);
+      if (parts.length === 2) { transactions = transactions.slice(); transactions[i] = parts[0]; const lb = txLabels_[i]; txLabels_[i] = lb + '(겸용주택 주택 부분)'; mixedAppend_.push({ t: parts[1], label: lb + '(겸용주택 주택 외 부분)' }); }
+      else if (parts[0] !== transactions[i]) { transactions = transactions.slice(); transactions[i] = parts[0]; }
+    }
+    mixedAppend_.forEach(function (p) { transactions = transactions.concat([p.t]); txLabels_.push(p.label); });
     // 이월과세(§97의2) — 거래 카드에 "배우자·직계존속에게 증여받음"을 체크해뒀으면, 합산 계산에
     // 넣기 전에 이 거래 단독 기준으로 적용여부를 먼저 판정해 취득가액·취득일·필요경비를 확정한다.
     // (예전엔 별도 계산기에서 계산한 결과를 손으로 옮겨 입력해야 했다 — 이제는 자동 반영된다.)
@@ -17915,6 +18027,7 @@ function nxMdOpenWindow(title, src, opts){
     const assetNotes = [];
     cores.forEach(function (c) {
       if (c.acquisitionPriceMethodNote) assetNotes.push({ idx: c.idx, 구분: '취득가액산정', 특례: c.acquisitionPriceMethodNote });
+      if (c.raw._겸용주택) assetNotes.push({ idx: c.idx, 구분: '겸용주택(시행령 §154③·§160①)', 사유: c.raw._겸용주택 });
       if (c.raw._이월과세_적용여부 !== undefined) {
         assetNotes.push({ idx: c.idx, 구분: '이월과세(§97의2)', 적용여부: c.raw._이월과세_적용여부, 사유: c.raw._이월과세_미적용사유, 비교: c.raw._이월과세_비교 });
       }
@@ -19573,6 +19686,20 @@ function nxMdOpenWindow(title, src, opts){
         : '상증세법 §3조의2①에 따라, 전체 산출세액·세액공제·가산세 등을 상속인별 실제상속재산가액 비율로 안분했습니다(유산세 방식). 정확한 법정 비율(시행령§3①1호의 상속인별 상속세과세표준상당액 비율)을 쓰려면 상속인별 사전증여 내역(priorGiftTaxableBase·priorGiftAmount)을 함께 입력하세요 — 사전증여가 없으면 이 실제상속재산가액 비율과 결과가 같습니다. 상속공제는 전체 1회만 적용되는 항목이라 인별로 나누지 않았습니다. 반올림 잔액은 실제상속재산가액이 가장 큰 상속인에게 몰아서 합계를 맞췄습니다.'
     };
   };
+
+  // [2026.11] 안분 결과에 연대납부·비거주 상속인 알림 — 각자 몫을 나눠도 상속세는 받은 재산 한도로 함께 낼 의무(상증법 §3의2③)
+  (function () {
+    const base_ = window.allocateInheritanceTaxByHeirJS;
+    window.allocateInheritanceTaxByHeirJS = function (agg, heirs) {
+      const r = base_.apply(this, arguments);
+      if (!r || r.error || !Array.isArray(heirs)) return r;
+      const notes = ['연대납부: 상속인·수유자는 각자 받았거나 받을 재산을 한도로 상속세 전체를 연대해 낼 의무가 있음(상증법 §3의2③) — 위 안분은 각자 몫일 뿐, 다른 상속인이 안 내면 한도 안에서 대신 낼 수 있음'];
+      const nonRes = heirs.filter(function (h) { return h && (h.isNonResident === true || /비거주|외국 ?거주|해외 ?거주/.test(String(h.memo || h.메모 || h.relation || ''))); });
+      if (nonRes.length) notes.push('국내에 주소·거소가 없는 상속인(' + nonRes.map(function (h) { return h.name || h.이름 || '이름 없음'; }).join('·') + ') — 납세관리인을 정해 신고(국세기본법 §82①·③, 금융재산 지급·명의변경 청구 땐 확인서 필요 §82⑥) · 상속인이 외국에 주소를 두면 신고기한 9개월(상증법 §67④)');
+      r.알림 = (r.알림 || []).concat(notes);
+      return r;
+    };
+  })();
 
   // 조특법§30의5(창업자금)·§30의6(가업승계 주식등) 증여세 과세특례 ([별지 제10호의2서식]) — Code.js toolCalculateSpecialRateGiftTax와 동일 로직.
   // [2026.10.22 검토대상 증여-7] 조특법 §30의6②(2019.12.31. 신설, 2020.1.1. 이후 증여분) — 가업 주식을 증여받아 승계한 거주자가 2인 이상이면
@@ -24033,8 +24160,12 @@ function nxMdOpenWindow(title, src, opts){
     if (!p.wasResidentFiveYearsContinuously) {
       return { 적용여부: false, 안내: '양도일까지 계속 5년 이상 국내에 주소 또는 거소를 둔 거주자가 아니어서 국외자산 양도소득세(§118의2) 적용대상이 아닙니다.' };
     }
+    // [2026.11.02 복잡물건 점검 #9] 외화 금액 + 받은·쓴 날 환율 → 원화(시행령 §178의5① — 수령·지출한 날 현재 외국환거래법에 따른 기준환율·재정환율,
+    //  ② 장기할부는 §162①3호의 양도일·취득일). 칸: transferPriceForeign·transferExchangeRate, acquisitionPriceForeign·acquisitionExchangeRate,
+    //  capitalExpenditureForeign·capitalExchangeRate, transferExpensesForeign·transferExpensesExchangeRate. 원화 칸을 넣었으면 원화 칸이 먼저.
+    const fx_ = overseasFx_(p); p = fx_.p; const fxNotes_ = fx_.notes;
     const transferPrice = Number(p.transferPrice) || 0;
-    if (transferPrice <= 0) return { error: '양도가액이 필요합니다.' };
+    if (transferPrice <= 0) return { error: Number(p.transferPriceForeign) > 0 ? '양도가액 외화는 있는데 받은 날 환율(transferExchangeRate)이 없습니다(시행령 §178의5①).' : '양도가액이 필요합니다.' };
     // [2026.10.22 검토대상 양도-11] §118의8이 §97③을 준용 — 보유기간 사업소득 필요경비에 넣은 감가상각비는 취득가액에서 뺀다.
     const depOa_ = Math.max(0, Number(p.depreciationDeductedAsBusinessExpense) || 0);
     const acquisitionPrice = Math.max(0, (Number(p.acquisitionPrice) || 0) - depOa_);
@@ -24061,7 +24192,7 @@ function nxMdOpenWindow(title, src, opts){
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
     const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
 
-    return {
+    return { 외화환산: fxNotes_.length ? fxNotes_ : undefined,
       적용여부: true,
       양도차익: Math.round(gain), 기본공제: basicDeduction, 과세표준: taxBase,
       산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit,
@@ -24074,15 +24205,26 @@ function nxMdOpenWindow(title, src, opts){
   // 국외자산 양도소득세 다건 합산 (소득세법§118의7①) — calculateOverseasAssetTransferTaxJS(단일거래)는
   // 거래마다 기본공제(연250만원)를 각각 적용해버리므로, 같은 과세기간에 국외자산을 2건 이상 양도하면
   // 이 함수로 합산해야 §118의7①(전체 통틀어 1회)을 정확히 반영한다.
+  // 외화 → 원화(시행령 §178의5①) — 한 건·여러 건 국외자산 계산이 같이 씀. 돌려줌: { p: 원화 칸 채운 사본, notes }
+  function overseasFx_(p, label) {
+    const fxNotes_ = [];
+    p = Object.assign({}, p);
+    [['transferPrice', 'transferPriceForeign', 'transferExchangeRate', '양도가액'], ['acquisitionPrice', 'acquisitionPriceForeign', 'acquisitionExchangeRate', '취득가액'], ['capitalExpenditure', 'capitalExpenditureForeign', 'capitalExchangeRate', '자본적지출'], ['transferExpenses', 'transferExpensesForeign', 'transferExpensesExchangeRate', '양도비']].forEach(function (k) {
+      if (Number(p[k[0]]) > 0) return; const a = Number(p[k[1]]) || 0, r = Number(p[k[2]]) || 0;
+      if (a > 0 && r > 0) { p[k[0]] = Math.round(a * r); fxNotes_.push((label || '') + k[3] + ' ' + a.toLocaleString('ko-KR') + ' × 환율 ' + r + ' = ' + p[k[0]].toLocaleString('ko-KR') + '원'); }
+      else if (a > 0) fxNotes_.push((label || '') + k[3] + ' 외화 ' + a.toLocaleString('ko-KR') + '은 있는데 그날 환율이 없어 원화로 못 바꿈 — 기준환율·재정환율을 넣을 것(시행령 §178의5①)');
+    });
+    return { p: p, notes: fxNotes_ };
+  }
   window.calculateOverseasAssetTransferTaxMultiJS = function (transactions, filingParams) {
     filingParams = filingParams || {};
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래 목록(transactions)이 1건 이상 필요합니다.' };
 
     let totalGain = 0;
     let totalForeignTaxPaid = 0, overseasCvp_ = 0;
-    const perTxn = [];
+    const perTxn = [], fxAll_ = [];
     for (let i = 0; i < transactions.length; i++) {
-      const t = transactions[i] || {};
+      const fxm_ = overseasFx_(transactions[i] || {}, (i + 1) + '번째 거래 '); const t = fxm_.p; fxAll_.push.apply(fxAll_, fxm_.notes);
       if (!t.wasResidentFiveYearsContinuously) {
         return { error: (i + 1) + '번째 거래: 양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자가 아니어서 §118의2 적용대상이 아닙니다.' };
       }
@@ -24144,7 +24286,7 @@ function nxMdOpenWindow(title, src, opts){
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
     const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + overseasCvp_);
 
-    return {
+    return { 외화환산: fxAll_.length ? fxAll_ : undefined,
       거래건수: transactions.length, 환산가산세: overseasCvp_ || undefined,
       환산가산세_안내: overseasCvp_ ? '국외 신축·증축 건물을 5년 안에 양도하면서 취득가액을 시가·평가액으로 정해 그 건물분의 5%를 더했습니다(소득세법 §118의8이 §114의2를 준용 — 체크한 거래만).' : undefined,
       거래별_내역: perTxn,
@@ -26950,9 +27092,10 @@ function nxMdOpenWindow(title, src, opts){
     }
     const ha = Number(tg.주택면적), na = Number(tg.주택외면적);
     if (ha > 0 && na > 0) {
-      row('겸용주택', '주택 ' + ha + '㎡ · 주택 외 ' + na + '㎡', '시행령 §154③·④', ha > na ? '전부 주택' : '주택 부분만');
+      const highMix_ = price > hv && String(T || '') >= '2022-01-01';
+      row('겸용주택', '주택 ' + ha + '㎡ · 주택 외 ' + na + '㎡', '시행령 §154③·④·§160① 괄호', ha > na && !highMix_ ? '전부 주택' : '주택 부분만');
       if (ha <= na) notes.push('주택 연면적이 주택 외 부분보다 크지 않아 주택 부분(과 그 비율의 토지)만 주택으로 봅니다(시행령 §154③ 단서·④)');
-      if (ha > na && price > hv) notes.push('[확인 필요] 고가 겸용주택 — 주택 부분만 주택으로 보는 개정 규정(2022.1.1 이후 양도)의 조문 원문을 아직 대조하지 않았습니다');
+      if (ha > na && highMix_) notes.push('고가 겸용주택 — 2022.1.1 이후 양도는 주택 외 부분을 주택으로 보지 않음(시행령 §160① 괄호, 부칙(2020.2.11) §1 3호·§42): 주택 부분만 비과세·12억 초과분 계산, 주택 외 부분은 일반 자산 — 양도 계산에 연면적(mixedUseHouseArea·mixedUseOtherArea)을 넣으면 두 거래로 나눔');
     }
 
     // 결론 — 안 됨이 하나라도 있으면 안 됨(그래도 모르는 칸·특례 후보가 있으면 잠정), 모름이 있으면 충족 잠정, 없으면 충족

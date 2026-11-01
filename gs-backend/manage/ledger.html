@@ -122,6 +122,7 @@
           + lgTb('links', '칸으로 간 길', nSt('칸:', /^서류와 다름|^서류 값과 다름/), '다름 ' + nSt('칸:', /^서류와 다름|^서류 값과 다름/) + ' · 서류에 없는 값 ' + nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/) + ' · 서류와 같음 ' + nSt('칸:', /^서류와 일치|^서류 1/) + ' · 세무사님 값 ' + nSt('칸:', /^세무사님/))
           + lgTb('rows', '칸 장부', sum.물어볼것, (sum.전체 || 0) + '줄 · 물어볼 것 ' + (sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + (sum.증빙받을것 || 0) + ' · 추정 ' + (sum.추정 || 0) + ' · 확정 ' + (sum.확정 || 0) + (sum.at ? ' · 마지막 ' + sum.at : ''))
           + (r.물건 && r.물건.ok ? lgTb('obj', '물건', (r.물건.요약 || {}).소재지모름, (r.물건.요약 || {}).줄 + '줄 · 소재지 모름 ' + ((r.물건.요약 || {}).소재지모름 || 0) + ' · 주택 수 모름 ' + (((r.물건.요약 || {}).주택수 || {}).모름 || 0)) : '')
+          + lgTb('fam', '가족', 0, '고객(가족) 지도 — 사람 · 지난 이전(증여·상속·양도 건별) · 시간줄 · 잇기 계산 · 미래 계획(같은 고객 사건이 함께 씀)')
           + (fl ? lgTb('tools', '도구', 0, '공부 조회 ' + (fb0.공부 || 0) + '필지 · 추정 ' + (fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교') : '')
           + lgTb('adv', '자문', 0, '쟁점 ' + ((r.자문 || {}).쟁점 || []).length + ' · 대안 ' + ((r.자문 || {}).대안 || []).length + ' · 권고 ' + ((r.자문 || {}).권고 || []).length + ' · 보고서 ' + ((r.자문 || {}).보고서 || []).length)
           + '</div><div class="lg-tab-detail" style="font-size:12px; color:var(--sub); margin-top:4px;"></div></div>';
@@ -218,6 +219,9 @@
           oh += '</div>';
           h += oh;
         }
+        // [2026.11.01 복잡사건 ①~④] 세무사님 "고쳐라"(넥스_복잡사건_능력점검 4절) — 고객(가족) 지도. 사건 하나 = 거래 하나라 여러 해·여러 사람의 이전을 담을 곳이 없었다.
+        //  넥스 case_ledger do=family·person·transfer·family_drop·chain·plan과 같은 서버 함수(ledgerFamily…ledgerFamPlan). 탭을 열 때 불러온다(같은 고객 사건 목록을 읽어 무거움)
+        h += '<div data-lg-sec="fam" style="display:none; margin-top:8px;"><div id="chFamBox"><div class="log-empty">가족 지도를 불러오는 중…</div></div><div id="chFamOut" style="margin-top:8px;"></div></div>';
         h += '<div data-lg-sec="rows">';
         var kbFact = {}; ((kb && kb.facts) || []).forEach(function(f){ if (f.id) kbFact[f.id] = f; });
         h += '<div id="chLgFxBox" style="margin-top:6px;"></div>';
@@ -301,6 +305,9 @@
             var Q = A.문의현황 || {};
             if (Q.수) th6 += '<div style="margin-top:4px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.자료기다림 || []).length ? ' · <span style="color:var(--gold, #a8862e);" title="결론을 가르는 사실이 아직 없어 넥스가 질문·받을 서류·가정별 시험 계산까지 해 둔 문의">자료 기다림 ' + esc(Q.자료기다림.length) + '</span>' : '') + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
           })();
+          // [2026.11.02 쪼개 처리] 이음에 적힌 id를 이름으로(자문 항목·물건·사람·지난 이전·계획·판정·조회·장부 칸)
+          var advTitle = {}; KINDS.forEach(function(k2){ (A[k2] || []).forEach(function(y){ advTitle[y.id] = k2 + ' ' + (y.제목 || ''); }); });
+          var tieNames = function(x){ return (x.이음풀이 || (x.이음 || []).map(function(id){ return { id: id }; })).map(function(p){ return advTitle[p.id] || (p.종류 && p.종류 !== '모름' ? p.종류 + ' ' + (p.이름 || p.id) : p.id); }); };
           KINDS.forEach(function(k){
             var list = A[k] || [];
             if (k === '문의'){ // 문의는 번호·세목·답을 보이고, 세목별로 묶는다
@@ -311,8 +318,7 @@
                 th6 += '<div style="margin-top:4px; color:var(--sub);">' + esc(g) + ' ' + esc(byTax[g].length) + '개</div>' + tbl(['번호', '세목', '물으신 것', '답', '이어진 쟁점·계산', '상태·누가', ''], byTax[g].map(function(x){
                   var st = x.상태 || '답 안 함';
                   // [2026.11.01 종합 컨설팅 점검] 문의 → 이어진 쟁점·권고·계산 저장본을 한 줄에서 따라가게(넥스가 links·calc로 잇는 것)
-                  var advTitle = {}; KINDS.forEach(function(k2){ (A[k2] || []).forEach(function(y){ advTitle[y.id] = k2 + ' ' + (y.제목 || ''); }); });
-                  var tie = (x.이음 || []).map(function(id){ return advTitle[id] || id; }).concat((x.저장본 || []).map(function(s){ return '계산 ' + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : ''); }));
+                  var tie = tieNames(x).concat((x.저장본 || []).map(function(s){ return '계산 ' + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : ''); }));
                   return '<tr>' + cell(x.번호 || '', 40) + cell((x.세목 || []).join('·'), 80) + cell(x.제목, 280) + cell(x.답 || x.내용 || '', 320, ' color:var(--sub);') + cell(tie.join(' · '), 260) + cell([st, x.누가].filter(Boolean).join(' · '), 120, st === '답 안 함' ? ' color:#b23;' : '')
                     + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + ['답함', '자료 기다림', '보류', '답 안 함'].filter(function(v){ return v !== st; }).map(function(v){ return '<button type="button" class="ghost-btn sm" data-adv-st="' + esc(v) + '" data-adv-id="' + esc(x.id) + '" title="이 문의를 「' + esc(v) + '」로 바꿉니다">' + esc(v) + '</button> '; }).join('')
                     + '<button type="button" class="ghost-btn sm" data-adv-del="' + esc(x.id) + '" data-adv-kind="문의" title="이 문의를 지웁니다(기록은 남음)">지우기</button></td></tr>';
@@ -322,12 +328,22 @@
               return;
             }
             th6 += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(k) + '</b> <span style="color:var(--sub);">' + esc(list.length) + '개</span>'
-              + (list.length ? tbl(['제목', '내용', '저장본·근거·파일', '상태·누가', ''], list.map(function(x){
-                  var sv = (x.저장본 || []).map(function(s){ return (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
-                  var extra = sv.concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).concat(x.근거확인 ? ['근거 확인 ✅' + x.근거확인.수.ok + ' ❌' + x.근거확인.수.bad + (x.근거확인.수.warn ? ' ⚠' + x.근거확인.수.warn : '') + ' ❓' + x.근거확인.수.unk + ' (' + x.근거확인.때 + ')'] : []).join(' · ');
+              + (list.length ? tbl(['제목', '내용', '이음·인용·근거', '상태·누가', ''], list.map(function(x){
+                  var sv = (x.저장본 || []).map(function(s){ return (s.종류 ? s.종류 + ' ' : '') + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '') + (s.없음 ? ' (없음)' : ''); });
+                  var extra = tieNames(x).map(function(t){ return '→ ' + t; }).concat(sv).concat((x.근거 || []).map(function(g){ return '근거 ' + g; })).concat(x.파일 ? ['파일 ' + x.파일] : []).concat(x.근거확인 ? ['근거 확인 ✅' + x.근거확인.수.ok + ' ❌' + x.근거확인.수.bad + (x.근거확인.수.warn ? ' ⚠' + x.근거확인.수.warn : '') + ' ❓' + x.근거확인.수.unk + ' (' + x.근거확인.때 + ')'] : []).join(' · ');
                   return '<tr>' + cell(x.제목, 260) + cell(x.내용 || '', 360, ' color:var(--sub);') + cell(extra, 300) + cell([x.상태, x.누가].filter(Boolean).join(' · '), 120) + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-adv-del="' + esc(x.id) + '" data-adv-kind="' + esc(k) + '" title="이 항목을 지웁니다(기록은 남음)">지우기</button></td></tr>';
                 }).join('')) : '<div class="log-empty">아직 없음</div>') + '</div>';
           });
+          // [2026.11.02 쪼개 처리 ⑤·②] 쟁점별 처리 점검 · 물건별 — 쟁점 하나씩 대안·계산·권고까지 갔나, 물건마다 무엇이 이어졌나(넥스가 보는 것과 같음)
+          (function(){
+            var P = A.처리점검 || {}, rows = P.쟁점별 || [];
+            th6 += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">쟁점별 처리 점검</b> <span style="color:var(--sub);">' + (rows.length ? '덜 된 쟁점 ' + esc(P.덜된쟁점 || 0) + ' / ' + esc(rows.length) : '쟁점 없음') + '</span>';
+            if (rows.length) th6 += tbl(['쟁점', '상태', '대안', '저장본', '권고', '빈 곳'], rows.map(function(r){ return '<tr>' + cell(r.쟁점, 260) + cell(r.상태, 60) + cell(r.대안, 40) + cell(r.저장본, 50) + cell(r.권고, 40) + cell((r.빈곳 || []).join(' · ') || '없음', 240, (r.빈곳 || []).length ? ' color:#b23;' : ' color:var(--sub);') + '</tr>'; }).join(''));
+            if ((P.쟁점에안이은문의 || []).length) th6 += '<div style="margin-top:4px; color:var(--sub);">쟁점에 안 이은 문의: ' + esc(P.쟁점에안이은문의.join(' / ')) + '</div>';
+            var O = Array.isArray(A.물건별) ? A.물건별 : [];
+            if (O.length) th6 += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">물건별</b>' + tbl(['물건', '판정', '이어진 자문'], O.map(function(o){ return '<tr>' + cell(o.이름, 220) + cell((o.판정 || []).join(' · ') || '—', 260) + cell((o.자문 || []).join(' · ') || o.빈곳, 360, (o.자문 || []).length ? '' : ' color:var(--sub);') + '</tr>'; }).join('')) + '</div>';
+            th6 += '</div>';
+          })();
           // [2026.10.30 근거 확인 — 세무사님 "4번 시험사건에 내가 일일이 그런 걸 확인할 시간이 없다"] 보고서·근거 칸의 조문·판례·심판례를 원문과 대조한 표(GAS, 0원) — 넥스 보고서 저장 때 자동, 🔎로 다시
           (function(){
             var lines = [];
@@ -381,6 +397,66 @@
             b.disabled = true; call({ step: 'ledgerObjDrop', id: b.getAttribute('data-ob-drop') }).then(function(res){ if (res) reload(); else b.disabled = false; }); }); });
           Array.prototype.forEach.call(body.querySelectorAll('button[data-ob-sell]'), function(b){ b.addEventListener('click', function(){ b.disabled = true; call({ step: 'ledgerObjSell', id: b.getAttribute('data-ob-sell') }).then(function(res){ if (res) reload(); else b.disabled = false; }); }); });
         }
+        // [2026.11.01 복잡사건] 👪 가족 탭 — 열 때 불러와 그림(사람·지난 이전·합산·시간줄·빈칸·같은 고객 사건) + 적기·잇기 계산·미래 계획
+        var famBox = document.getElementById('chFamBox'), famLoaded = false;
+        var FAM_KINDS = ['증여', '부담부증여', '양도', '상속', '빌림', '갚음', '매매', '그밖'], FAM_RELS = ['배우자', '직계존속', '직계비속', '기타친족', '기타'];
+        var famWon = function(n){ n = Number(n || 0); return n ? n.toLocaleString('ko-KR') : ''; };
+        var famSel = function(k, list, ph){ return '<label style="font-size:12px; white-space:nowrap;">' + esc(ph) + ' <select data-fm-f="' + esc(k) + '" aria-label="' + esc(ph) + '"><option value="">선택</option>' + list.map(function(v){ return '<option>' + esc(v) + '</option>'; }).join('') + '</select></label>'; };
+        var famIn = function(k, ph, w, tip){ return '<input type="text" data-fm-f="' + esc(k) + '" aria-label="' + esc(ph) + '" placeholder="' + esc(ph) + '" title="' + esc(tip || ph) + '" style="width:' + w + 'px;">'; };
+        var famVals = function(box){ var f = {}; Array.prototype.forEach.call(box.querySelectorAll('[data-fm-f]'), function(x){ var v = (x.value || '').trim(); if (v) f[x.getAttribute('data-fm-f')] = v; }); return f; };
+        var famRender = function(fm){
+          var who = {}; (fm.사람 || []).forEach(function(p){ who[p.id] = p.이름; }); var nm = function(x){ return who[x] || x || ''; };
+          var fh = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">사람</b> <span style="color:var(--sub);">' + esc((fm.사람 || []).length) + '명 — 같은 고객의 사건이 함께 씁니다</span>';
+          fh += (fm.사람 || []).length ? tbl(['이름', '관계', '생년월일', '사망일', '배우자', '부모', '메모', ''], fm.사람.map(function(p){ return '<tr>' + cell(p.이름 || '', 90) + cell(p.관계 || '', 80) + cell(p.생년월일 || '', 90) + cell(p.사망일 || '', 90) + cell(nm(p.배우자), 80) + cell((Array.isArray(p.부모) ? p.부모 : String(p.부모 || '').split(/[,·]/)).map(function(x){ return nm(String(x).trim()); }).filter(Boolean).join('·'), 90) + cell(p.메모 || p.출처 || '', 200, ' color:var(--sub);') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-fm-drop="' + esc(p.id) + '">지우기</button></td></tr>'; }).join('')) : '<div class="log-empty">아직 사람이 없습니다 — 아래에서 더하거나, 이전 줄을 적으면 이름이 저절로 들어갑니다</div>';
+          fh += '<div id="chFmP" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famIn('이름', '이름', 90) + famIn('관계', '관계(본인 기준)', 110) + famIn('생년월일', '생년월일', 100, '예: 1940-02-01') + famIn('사망일', '사망일', 100, '예: 2027-06-01') + famIn('배우자', '배우자 이름', 100) + famIn('부모', '부모 이름', 100, '쉼표로 여럿 — 손자녀면 꼭(세대생략 할증·자녀 수 판정에 씀)') + '<button type="button" id="chFmPSave" class="ghost-btn">사람 저장</button></div>';
+          var gx = {}; (fm.합산 || []).forEach(function(g){ gx[g.id] = g; });
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">지난 이전</b> <span style="color:var(--sub);">한 줄 = 한 건. 날짜가 그 건의 「그때 법」 기준일입니다. 관계는 받는 사람 기준 주는 사람</span></div>';
+          fh += (fm.이전 || []).length ? tbl(['날짜', '종류', '주는 → 받는', '관계', '물건', '금액', '그때 산출세액', '신고', '10년 합산될 지난 증여', '근거', ''], fm.이전.map(function(t){ var g = gx[t.id];
+              return '<tr>' + cell(t.날짜 || '', 90) + cell(t.종류 || '', 70) + cell(nm(t.주는) + ' → ' + nm(t.받는), 150) + cell(t.관계 || '', 70) + cell(t.물건 || '', 140) + cell(famWon(t.금액), 110, ' text-align:right;') + cell(famWon(t.산출세액), 100, ' text-align:right;') + cell(t.신고 || '', 50)
+                + cell(g && g.합산될지난증여 ? famWon(g.합산될지난증여) : '', 120, ' text-align:right;') + cell(t.근거 || '', 180, ' color:var(--sub);')
+                + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + (/^(증여|부담부증여|상속)$/.test(t.종류 || '') ? '<button type="button" class="ghost-btn sm" data-fm-chain="' + esc(t.id) + '" title="이 물건을 판 양도와 이어 계산합니다(아래 칸에 양도가액·양도일)">잇기 계산</button> ' : '') + '<button type="button" class="ghost-btn sm" data-fm-drop="' + esc(t.id) + '">지우기</button></td></tr>'; }).join('')) : '<div class="log-empty">아직 지난 이전이 없습니다</div>';
+          fh += '<div id="chFmT" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famSel('종류', FAM_KINDS, '종류') + famIn('날짜', '날짜', 100, '예: 2020-06-01') + famIn('주는', '주는 사람', 90) + famIn('받는', '받는 사람', 90) + famSel('관계', FAM_RELS, '관계') + famIn('물건', '물건', 140) + famIn('금액', '금액', 110, '예: 3억 · 200000000') + famIn('산출세액', '그때 산출세액', 110) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '증여받은 물건이면 — 이월과세·우회양도 계산에 씀') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('채무인수', '인수 채무', 100, '부담부증여면 받은 사람이 떠안은 빚') + famIn('특례', '특례', 80, '가업승계·창업자금 특례 증여면 — 다른 증여와 합산 안 함·상속엔 기간 없이 가산') + famIn('적정이자율', '이자율 %', 70, '빌림 줄 — 적정이자율(비우면 4.6%)') + famIn('이자', '낸 이자', 90, '빌림 줄 — 해마다 실제 낸 이자') + famIn('감면세액', '감면세액', 100, '양도 줄 — 그때 받은 조특법 감면세액(5년 한도 계산)') + famIn('감면', '감면 종류', 80, '양도 줄 — 자경·대토·수용 등') + famSel('신고', ['예', '아니오', '모름'], '신고') + famIn('근거', '근거(서류·말씀)', 160) + '<button type="button" id="chFmTSave" class="ghost-btn">이전 저장</button></div>';
+          fh += '<div id="chFmC" style="margin-top:6px; display:none; gap:6px; flex-wrap:wrap; align-items:center;"><b id="chFmCT"></b><span id="chFmCId" style="display:none;"></span>' + famIn('양도가액', '양도가액', 110) + famIn('양도일', '양도일', 100, '예: 2027-03-01') + famIn('필요경비', '필요경비', 100) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '이월과세·우회양도에 필요 — 비우면 지도 값') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('권리가액', '입주권 권리가액', 120, '입주권이면 — 관리처분계획의 종전자산 평가액') + famIn('관리처분인가일', '관리처분 인가일', 110, '입주권이면') + famIn('청산금', '낸 청산금', 100, '입주권이면') + famIn('주택연면적', '주택 연면적', 90, '겸용주택(주택+상가)이면 ㎡') + famIn('주택외연면적', '상가 연면적', 90, '겸용주택이면 ㎡') + '<button type="button" id="chFmCRun" class="ghost-btn">잇기 계산 저장</button></div>';
+          var tl = fm.시간줄 || [], fut = [];
+          tl.forEach(function(r){ (r.앞으로 || []).forEach(function(a){ if (a.날짜) fut.push(a); }); });
+          fut.sort(function(a, b){ return a.날짜 < b.날짜 ? -1 : 1; });
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">시간줄</b></div>';
+          fh += tl.length ? tbl(['날짜', '때', '무엇', '누구', '금액'], tl.map(function(r){ return '<tr>' + cell(r.날짜 || '', 90) + cell(r.때 || '', 50, r.때 === '앞으로' ? ' color:#7a5c14;' : ' color:var(--sub);') + cell(r.무엇 || '', 220) + cell(r.누구 || '', 150) + cell(famWon(r.금액), 110, ' text-align:right;') + '</tr>'; }).join('')) : '<div class="log-empty">시간줄에 놓을 것이 없습니다</div>';
+          var famToday = new Date().toISOString().slice(0, 10), futN = fut.filter(function(a){ return a.날짜 >= famToday; }).length; if (fut.length) fh += '<div style="margin-top:6px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">기한</b> <span style="color:var(--sub);">앞으로 ' + futN + ' · 지남 ' + (fut.length - futN) + '</span></div>' + fut.map(function(a){ var past = a.날짜 < famToday; return '<div style="margin:2px 0 0 8px;' + (past ? ' color:var(--sub);' : '') + '">▪ ' + esc(a.날짜) + (past ? ' (지남)' : '') + ' — ' + esc(a.무엇) + '</div>'; }).join('');
+          if ((fm.빈칸 || []).length) fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">채울 칸</b></div>' + fm.빈칸.map(function(g){ return '<div style="margin:2px 0 0 8px; color:#a60;">▪ ' + esc(typeof g === 'string' ? g : ((g.무엇 || '') + (g.빈칸 && g.빈칸.length ? ' — 빈 칸: ' + g.빈칸.join(', ') : ''))) + '</div>'; }).join('');
+          if ((fm.같은고객사건 || []).length) fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">같은 고객 사건</b></div>' + fm.같은고객사건.map(function(x){ return '<div style="margin:2px 0 0 8px;">▪ ' + esc(x.사건명 || x.id) + ' · ' + esc(x.세목 || '') + (x.기준일 ? ' · ' + esc(x.기준일) : '') + (x.상태 ? ' · ' + esc(x.상태) : '') + '</div>'; }).join('');
+          // 미래 계획 — 이전 계획 × 사망 시점 × 재산 증가율
+          var ppl = (fm.사람 || []).map(function(p){ return p.이름; });
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">미래 계획 견주기</b> <span style="color:var(--sub);">증가율·사망 시점은 가정, 세율·공제는 지금 아는 법</span></div>';
+          fh += '<div id="chFmPl" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famSel('피상속인', ppl, '피상속인') + famSel('배우자', ppl, '배우자') + famIn('재산', '피상속인 지금 재산', 130, '예: 40억') + famIn('배우자재산', '배우자 지금 재산', 130) + famIn('증가율', '재산 증가율 %/년', 120) + famIn('자녀수', '자녀 수', 70) + famIn('사망후년', '사망 몇 년 뒤', 110, '쉼표로: 5,10,15') + famIn('배우자사망후년', '배우자는 그 뒤 몇 년', 140, '비우면 2차 상속 안 셈') + '</div>'
+            + '<textarea id="chFmPlSteps" aria-label="이전 계획" placeholder="이전 계획 — 한 줄에 하나: 해, 주는 사람, 받는 사람, 금액, 관계(받는 사람 기준)&#10;예: 2027, 한도식, 한민수, 5억, 직계존속" style="width:100%; max-width:560px; height:64px; margin-top:6px;"></textarea>'
+            + '<div><button type="button" id="chFmPlRun" class="ghost-btn">계획 견주기</button></div>';
+          famBox.innerHTML = fh;
+          var go = function(step, payload, btn){ if (btn) btn.disabled = true; return call(Object.assign({ step: step }, payload)).then(function(res){ if (btn) btn.disabled = false; return res; }); };
+          document.getElementById('chFmPSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmP')); if (!f.이름){ showToast('이름을 적어 주세요.', 'warning'); return; } go('ledgerFamPerson', { person: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
+          document.getElementById('chFmTSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmT')); if (!f.종류 || !f.날짜){ showToast('종류와 날짜를 적어 주세요.', 'warning'); return; } go('ledgerFamTransfer', { transfer: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
+          Array.prototype.forEach.call(famBox.querySelectorAll('button[data-fm-drop]'), function(b){ b.addEventListener('click', function(){
+            if (b.getAttribute('data-sure') !== '1'){ b.setAttribute('data-sure', '1'); b.textContent = '정말 지우기'; setTimeout(function(){ b.removeAttribute('data-sure'); b.textContent = '지우기'; }, 4000); return; }
+            go('ledgerFamDrop', { id: b.getAttribute('data-fm-drop') }, b).then(function(res){ if (res) famLoad(); }); }); });
+          var cBox = document.getElementById('chFmC');
+          Array.prototype.forEach.call(famBox.querySelectorAll('button[data-fm-chain]'), function(b){ b.addEventListener('click', function(){ var t = (fm.이전 || []).filter(function(x){ return x.id === b.getAttribute('data-fm-chain'); })[0] || {}; document.getElementById('chFmCId').textContent = t.id || ''; document.getElementById('chFmCT').textContent = (t.날짜 || '') + ' ' + (t.종류 || '') + ' ' + (t.물건 || '') + ' → 양도'; cBox.style.display = 'flex'; var x = cBox.querySelector('[data-fm-f="양도가액"]'); if (x) x.focus(); }); });
+          document.getElementById('chFmCRun').addEventListener('click', function(){ var f = famVals(cBox); if (!f.양도가액 || !f.양도일){ showToast('양도가액과 양도일을 적어 주세요.', 'warning'); return; } var fromId = document.getElementById('chFmCId').textContent, btn = this, ex = {}; ['주는이취득가액', '주는이취득일'].forEach(function(k){ if (f[k]){ ex[k] = f[k]; delete f[k]; } }); (Object.keys(ex).length ? go('ledgerFamTransfer', { transfer: Object.assign({ id: fromId }, ex) }, btn) : Promise.resolve(true)).then(function(ok){ if (!ok) return null; return go('ledgerFamChain', { from: fromId, sale: f }, btn); }).then(function(res){ if (!res) return; document.getElementById('chFamOut').innerHTML = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">잇기 계산 결과</b>' + (res.요약 || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">▪ ' + esc(l) + '</div>'; }).join('') + '<div style="margin:4px 0 0 8px; color:var(--sub);">경우(안)로 저장했습니다 — 세액계산 기록에서 견줄 수 있습니다</div>'; }); });
+          document.getElementById('chFmPlRun').addEventListener('click', function(){
+            var f = famVals(document.getElementById('chFmPl'));
+            if (!f.피상속인 || !f.재산){ showToast('피상속인과 지금 재산을 적어 주세요.', 'warning'); return; }
+            var steps = (document.getElementById('chFmPlSteps').value || '').split(/\n/).map(function(l){ var a = l.split(/[,，]/).map(function(s){ return s.trim(); }); if (a.length < 4 || !a[0]) return null; var rel = a.length >= 5 && !/^[\d억천백십만원.\s]+$/.test(a[a.length - 1]) ? a.pop() : ''; return { 해: a[0], 주는: a[1], 받는: a[2], 금액: a.slice(3).join(''), 관계: rel }; }).filter(Boolean);
+            var plan = { 피상속인: f.피상속인, 증가율: parseFloat(String(f.증가율 || 0).replace(/[^\d.-]/g, '')) || 0, 재산: {}, 이전계획: steps };
+            plan.재산[f.피상속인] = f.재산; if (f.배우자){ plan.배우자 = f.배우자; if (f.배우자재산) plan.재산[f.배우자] = f.배우자재산; } else plan.배우자 = false;
+            if (f.자녀수) plan.상속인수 = { 자녀수: Number(f.자녀수) };
+            if (f.사망후년) plan.사망후년 = f.사망후년.split(/[,\s]+/).map(Number).filter(function(n){ return n >= 0; });
+            if (f.배우자사망후년) plan.배우자사망후년 = Number(f.배우자사망후년);
+            go('ledgerFamPlan', { plan: plan }, this).then(function(res){ if (!res) return; document.getElementById('chFamOut').innerHTML = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">미래 계획 견주기 결과</b>' + (res.요약 || []).map(function(l){ return '<div style="margin:2px 0 0 8px;">' + esc(l) + '</div>'; }).join(''); });
+          });
+        };
+        var famLoad = function(){ famLoaded = true; call({ step: 'ledgerFamily' }).then(function(res){ if (!res){ famBox.innerHTML = '<div class="log-empty">가족 지도를 못 불러왔습니다 — 탭을 다시 눌러 주세요</div>'; famLoaded = false; return; } famRender(res); }); };
+        var famTabBtn = body.querySelector('button[data-lg-tab="fam"]');
+        if (famTabBtn) famTabBtn.addEventListener('click', function(){ if (!famLoaded) famLoad(); });
+        if (tab0 === 'fam') famLoad();
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-file]'), function(b){ b.addEventListener('click', function(){
           var n = b.getAttribute('data-lg-file'), list = ((kb && kb.facts) || []).filter(function(f){ return f.f === n; });
           var box = document.getElementById('chLgFileFacts');

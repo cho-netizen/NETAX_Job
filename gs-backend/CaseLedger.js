@@ -574,6 +574,13 @@ function ledgerCalcGiftInh_(c, body, tax) {
     const bad = chained.filter(function (x) { return x.error; });
     if (bad.length) return { ok: false, error: '이어 계산할 증여를 못 찾음: ' + bad.map(function (x) { return x.id; }).join(', ') + ' — 증여 계산 저장 결과의 id(tc_…)를 주세요' };
   }
+  // [2026.11.01 복잡사건 ②] 장부 사전증여 칸이 비면 가족 지도의 지난 증여를 합산(증여 §47②·§58 / 상속 §13①·§28) — 장부 칸이나 chainFrom이 있으면 두 번 더하지 않게 건너뜀
+  const famLines = [];
+  const famRow = function (p) { const x = L.rows[p]; return x && (x.state === '확정' || x.state === '추정') && x.v !== '' && x.v != null; };
+  if (gift && !famRow('g.giftPriorAmount') && typeof famAutoPriorGift_ === 'function') { const fa = famAutoPriorGift_(c, b.input, L); if (fa) [].push.apply(famLines, fa.줄); }
+  if (!gift && !chained.length && !famRow('i.priorGiftHeirAmount') && !famRow('i.priorGiftOtherAmount') && typeof famAutoEstatePrior_ === 'function') { const fa = famAutoEstatePrior_(c, b.input, L); if (fa) [].push.apply(famLines, fa.줄); }
+  // [2026.11.01 복잡사건 ⑤] 상속 — 종합판정(동거주택·가업상속)이 충족이면 그 엔진칸을 넣는다(가정 over가 뒤에서 이김). 잠정·안 됨은 넣지 않고 알림만
+  if (!gift && L.judge) Object.keys(L.judge).forEach(function (k) { const j = L.judge[k]; if (!/동거주택|가업상속/.test(k) || !j) return; if (j.결론 === '충족' && !j.잠정) { Object.keys(j.엔진칸 || {}).forEach(function (f) { if (b.input[f] === undefined) b.input[f] = j.엔진칸[f]; }); famLines.push('종합판정 ' + j.표시 + ' — 계산에 넣음'); } else famLines.push('종합판정 ' + j.표시 + ' — ' + (j.결론 === '충족' ? '잠정이라 계산에 넣지 않음(경우(안)로 over를 주어 견줄 것)' : '계산에 넣지 않음')); });
   // [2026.10.29 계획서 3판] 경우 이름·가정 — 증여·상속은 엔진 입력 이름(giftAmount·relation·taxableEstateAmount…)으로 이번 계산에만 바꿔 넣는다(장부 값은 그대로)
   const nm = String((body && body.name) || '').trim().slice(0, 60), assumed = [];
   (Array.isArray(body && body.over) ? body.over : []).slice(0, 20).forEach(function (x) {
@@ -592,6 +599,7 @@ function ledgerCalcGiftInh_(c, body, tax) {
   if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (x) { return x.judged ? x.label : x.label + '(' + x.state + ')'; }).join(', ').slice(0, 300));
   if ((b.gaps || []).length) lines.push('남은 물어볼 것·빈 칸: ' + b.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
+  [].push.apply(lines, famLines);
   if (assumed.length) lines.push('이번 계산의 가정(장부 값은 그대로): ' + assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
   if (chained.length) {
     lines.push('이어 계산한 증여 ' + chained.length + '건: ' + chained.map(function (x) { return x.이름 + '(' + won(x.증여재산가액) + ', ' + (x.상속인 ? '상속인' : '상속인 아닌 사람') + ')'; }).join(', ').slice(0, 300));
@@ -1277,7 +1285,14 @@ function ledgerToolRun_(input, by) {
   else if (d === 'object') r = ledgerObjSet_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
   else if (d === 'object_drop') r = ledgerObjDrop_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
   else if (d === 'object_sell') r = ledgerObjSell_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell·judge 중 하나' };
+  // [2026.11.01 복잡사건 ①~④] 고객(가족) 지도 — 사람·지난 이전(건별)·시간줄 보기/적기, 지난 이전 → 양도 잇기 계산, 미래 이전 계획 비교(FamilyMap.js)
+  else if (d === 'family') r = famView_(c);
+  else if (d === 'person') r = famPersonSet_(c, input, kind === '세무사님' ? '세무사님' : who);
+  else if (d === 'transfer') r = famTransferSet_(c, input, kind === '세무사님' ? '세무사님' : who);
+  else if (d === 'family_drop') r = famDrop_(c, input, kind === '세무사님' ? '세무사님' : who);
+  else if (d === 'chain') r = famChainRun_(c, input, who);
+  else if (d === 'plan') r = famPlanRun_(c, input, who);
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell·judge·family·person·transfer·family_drop·chain·plan 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1330,6 +1345,13 @@ function ledgerApi_(c, body) {
     case 'ledgerObjSet': return ledgerObjSet_(c, body, body.by || who);
     case 'ledgerObjDrop': return ledgerObjDrop_(c, body, body.by || who);
     case 'ledgerObjSell': return ledgerObjSell_(c, body, body.by || who);
+    // [2026.11.01 복잡사건] 👪 가족 탭 — 넥스 case_ledger do=family·person·transfer·family_drop·chain·plan과 같은 함수(FamilyMap.js)
+    case 'ledgerFamily': return famView_(c);
+    case 'ledgerFamPerson': return famPersonSet_(c, body, body.by || who);
+    case 'ledgerFamTransfer': return famTransferSet_(c, body, body.by || who);
+    case 'ledgerFamDrop': return famDrop_(c, body, body.by || who);
+    case 'ledgerFamChain': return famChainRun_(c, body, body.by || who);
+    case 'ledgerFamPlan': return famPlanRun_(c, body, body.by || who);
     case 'ledgerJudge': return ledgerJudgeRun_(c, body, body.by || who); // [2026.11.01 종합판정 ①] 세액계산 「판정」 — 넥스 judge_tax_relief와 같은 함수
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
@@ -2259,7 +2281,7 @@ function ledgerLookup_(c, input, by) {
   let saved = 0; try { saved = cpSecuredFlush_(c.id); } catch (e) {}
   const brief = rows.map(function (r) {
     const ok = (r.items || []).filter(function (it) { return it.ok && it.k !== 'geo' && it.k !== 'region'; }), no = (r.items || []).filter(function (it) { return !it.ok; });
-    return { 소재지: r.loc, 어디서: r.from || '', 받음: ok.map(function (it) { return it.label + ': ' + String(it.v || '').slice(0, 120); }), 못받음: no.map(function (it) { return it.label + ': ' + String(it.err || '').slice(0, 100); }) };
+    return { 소재지: r.loc, 인용id: ledgerPubKey_(r.loc), 어디서: r.from || '', 받음: ok.map(function (it) { return it.label + ': ' + String(it.v || '').slice(0, 120); }), 못받음: no.map(function (it) { return it.label + ': ' + String(it.err || '').slice(0, 100); }) };
   });
   return { ok: true, n: rows.length, 대상: brief, 칸채움: filled, 확보자료PDF: saved, 다음에: skipped,
     message: '공부 조회 ' + rows.length + '필지' + (keys.length ? '(' + whatIn.join('·') + ')' : '') + ' — ' + brief.map(function (b) { return b.소재지 + ' 받음 ' + b.받음.length + (b.못받음.length ? '·못 받음 ' + b.못받음.length : ''); }).join(' / ') + (filled ? ' · 빈 칸 ' + filled + '개 채움(토지대장)' : '') + (saved ? ' · 확보자료 PDF ' + saved + '개' : '') + (skipped.length ? ' · 다음에: ' + skipped.join(', ') : '') };
@@ -2406,6 +2428,9 @@ var LEDGER_ADV_KINDS_ = { 문의: 'inqs', 쟁점: 'issues', 대안: 'alts', 근�
 // 문의 상태(의뢰인이 물은 것 하나에 대한 우리 답) — 답 안 함 · 답함 · 보류(답을 못 내 "추가로 확인할 사항"으로)
 // [2026.11.01 종합 컨설팅] 자료 기다림 — 결론을 가르는 사실(갈림길)이 아직 없어 질문·받을 서류·가정별 시험 계산까지 해 둔 문의(성급한 결론 대신, 세무사님 화면에 보임)
 var LEDGER_INQ_STATES_ = ['답 안 함', '자료 기다림', '답함', '보류'];
+// [2026.11.02 쪼개 처리 ⑦] 쟁점·대안·근거·위험·권고 상태는 정해진 말만(셈이 되게) — 보고서는 초안·최종
+var LEDGER_ADV_STATES_ = ['잠정', '확정', '보류', '버림'];
+var LEDGER_REPORT_STATES_ = ['초안', '최종'];
 // 문의 답 현황 — 넥스가 보고서를 저장할 때 넥스에게만 돌려준다(GAS는 넥스 글에 아무것도 붙이지 않는다)
 function ledgerInqStatus_(L) {
   const inq = ledgerAdvList_(L).문의 || [];
@@ -2424,6 +2449,7 @@ function ledgerAdvPut_(c, input, who) {
   const title = String(input.title || '').trim().slice(0, 120);
   if (!title && !input.id) return { ok: false, error: 'title(한 줄 제목)이 필요합니다' };
   if (kind === '문의' && input.status != null && LEDGER_INQ_STATES_.indexOf(String(input.status)) === -1) return { ok: false, error: '문의 상태(status)는 ' + LEDGER_INQ_STATES_.join('·') + ' 중 하나' };
+  if (kind !== '문의' && input.status != null && input.status !== '') { const okSt = kind === '보고서' ? LEDGER_REPORT_STATES_ : LEDGER_ADV_STATES_; if (okSt.indexOf(String(input.status)) === -1) return { ok: false, error: kind + ' 상태(status)는 ' + okSt.join('·') + ' 중 하나' }; }
   const by = String(who || '넥스').slice(0, 6), rank = function (w) { return w === '세무사님' ? 3 : w === '넥스' ? 2 : 1; };
   const arr = function (x) { return (Array.isArray(x) ? x : (x == null || x === '' ? [] : [x])).map(function (s) { return String(s).slice(0, 200); }).slice(0, 20); };
   return ledgerMutate_(c.id, function (L) {
@@ -2462,16 +2488,79 @@ function ledgerAdvPut_(c, input, who) {
 // 넥스·화면이 보는 자문 장부 요약 — 항목마다 제목·상태·누가·잇는 저장본(그 저장본의 이름·세액은 사건 계산 결과에서 바로 붙임)
 function ledgerAdvBrief_(c, L, full) {
   const lists = ledgerAdvList_(L || ledgerLoad_(c.id)), calcs = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
-  const cite = function (id) { const e = calcs.filter(function (x) { return x && String(x.id) === String(id); })[0]; return e ? { id: e.id, 이름: e.안 ? e.안.이름 : '기본 저장본', 세목: e.세목, 최종세액: e.최종세액 } : { id: id, 없음: '사건에 이 저장본이 없음' }; };
+  // [2026.11.02 쪼개 처리 ①] 계산 저장본뿐 아니라 계획(pl…)·판정(judge.…)·조회(pub.…) 결과도 인용할 수 있게 — 같은 풀이를 이음(links)에도 쓴다
+  const L0 = L || ledgerLoad_(c.id), rz = ledgerRefResolver_(c, L0);
+  const cite = function (id) { const e = calcs.filter(function (x) { return x && String(x.id) === String(id); })[0]; if (e) return { id: e.id, 이름: e.안 ? e.안.이름 : '기본 저장본', 세목: e.세목, 최종세액: e.최종세액 }; const g = rz(id); return g.종류 !== '모름' ? g : { id: id, 없음: '사건에 이 저장본·계획·판정·조회 결과가 없음' }; };
   const out = {};
-  Object.keys(lists).forEach(function (k) { out[k] = lists[k].map(function (x) { const o = { id: x.id, 제목: x.title, 상태: x.status || '', 누가: x.by || '' }; if (x.no) o.번호 = x.no; if (x.tax && x.tax.length) o.세목 = x.tax.map(function (t) { return (typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[t]) || t; }); if (x.answer) o.답 = String(x.answer).slice(0, 300); if (x.text) o.내용 = String(x.text).slice(0, 300); if (x.calc && x.calc.length) o.저장본 = x.calc.map(cite); if (x.refs && x.refs.length) o.근거 = x.refs; if (x.links && x.links.length) o.이음 = x.links; if (x.file) o.파일 = x.file; if (x.cite) o.근거확인 = { 때: x.cite.at, 수: x.cite.수, 없음: x.cite.bad || [], 목록: citeBriefList_(x.cite.items, full) }; return o; }); });
+  Object.keys(lists).forEach(function (k) { out[k] = lists[k].map(function (x) { const o = { id: x.id, 제목: x.title, 상태: x.status || '', 누가: x.by || '' }; if (x.no) o.번호 = x.no; if (x.tax && x.tax.length) o.세목 = x.tax.map(function (t) { return (typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[t]) || t; }); if (x.answer) o.답 = String(x.answer).slice(0, 300); if (x.text) o.내용 = String(x.text).slice(0, 300); if (x.calc && x.calc.length) o.저장본 = x.calc.map(cite); if (x.refs && x.refs.length) o.근거 = x.refs; if (x.links && x.links.length) { o.이음 = x.links; o.이음풀이 = x.links.map(function (id) { const e = calcs.filter(function (y) { return y && String(y.id) === String(id); })[0]; return e ? { id: id, 종류: '계산', 이름: e.안 ? e.안.이름 : '기본 저장본' } : rz(id); }); } if (x.file) o.파일 = x.file; if (x.cite) o.근거확인 = { 때: x.cite.at, 수: x.cite.수, 없음: x.cite.bad || [], 목록: citeBriefList_(x.cite.items, full) }; return o; }); });
   // [2026.10.30] 근거 칸 전체 대조 결과(🔎 근거 확인) — 화면·넥스가 같은 것을 본다
   try { const bc = ((L || ledgerLoad_(c.id)).adv || {}).basisCite; if (bc) out.근거칸확인 = { 때: bc.at, 수: bc.수, 목록: citeBriefList_(bc.items, full) }; } catch (e) { }
   // [2026.10.30 복합 자문] 주 세목·함께 보는 세목과 문의 답 현황 — 화면(📒 ⑥)·넥스가 같은 것을 본다
   try { const L1 = L || ledgerLoad_(c.id), lb = function (t) { return (typeof CASEPROC_TAX_LABEL_ !== 'undefined' && CASEPROC_TAX_LABEL_[t]) || t; }, tx = L1.taxes || {};
     out.세목 = { 주: lb(c.세목), 함께: (tx.list || []).map(lb), 코드: ledgerTaxes_(c, L1), 누가: tx.by || '', 때: tx.at || '' };
     out.문의현황 = ledgerInqStatus_(L1); } catch (e) { }
+  // [2026.11.02 쪼개 처리 ②·⑤·⑦] 물건별 모아 보기 · 쟁점별 처리 점검(쟁점·대안 상태 셈 포함) — 화면(📒 ⑥)·넥스가 같은 것을 본다
+  try { out.물건별 = ledgerAdvByObject_(L0, lists); } catch (e) { out.물건별 = { 오류: e.message }; }
+  try { out.처리점검 = ledgerAdvGaps_(lists); } catch (e) { out.처리점검 = { 오류: e.message }; }
   return out;
+}
+// [2026.11.02 쪼개 처리 ①·②] 이음·인용에 적힌 id를 풀어 무엇인지 알려 준다 — 자문 항목·물건·사람·지난 이전·계획·판정·조회·장부 칸
+function ledgerRefResolver_(c, L) {
+  L = L || {};
+  let F = null; const fam = function () { if (F === null) { try { F = (typeof famLoad_ === 'function' && typeof famKeyOf_ === 'function') ? (famLoad_(famKeyOf_(c)) || {}) : {}; } catch (e) { F = {}; } } return F; };
+  const advAll = []; try { const A = L.adv || {}; Object.keys(LEDGER_ADV_KINDS_).forEach(function (k) { (A[LEDGER_ADV_KINDS_[k]] || []).forEach(function (x) { if (x && !x.removed) advAll.push({ k: k, x: x }); }); }); } catch (e) { }
+  return function (id0) {
+    const id = String(id0 == null ? '' : id0).trim();
+    const a = advAll.filter(function (y) { return y.x.id === id; })[0];
+    if (a) return { id: id, 종류: '자문 ' + a.k, 이름: a.x.title, 상태: a.x.status || '' };
+    const o = ((L.obj && L.obj.list) || []).filter(function (y) { return y && y.id === id; })[0];
+    if (o) { const f = o.f || {}; return { id: id, 종류: '물건', 이름: [f.종류, f.소재지, f.동 ? f.동 + '동' : '', f.호 ? f.호 + '호' : ''].filter(Boolean).join(' ') || id, 판정: o.판정 ? (o.판정.묶음들 || [o.판정]).map(function (j) { return j.표시; }) : [] }; }
+    const jk = id.replace(/^judge\./, '');
+    if (L.judge && L.judge[jk]) { const j = L.judge[jk]; return { id: id, 종류: '판정', 이름: j.표시 || jk, 결론: j.결론, 잠정: !!j.잠정, 때: j.때 || '' }; }
+    if (L.pub && L.pub[id]) { const p = L.pub[id]; return { id: id, 종류: '조회', 이름: p.label || id, 때: p.at || '' }; }
+    if (L.rows && L.rows[id]) { const r = L.rows[id]; return { id: id, 종류: '장부 칸', 이름: (r.src && r.src.label) || id, 값: typeof ledgerValueText_ === 'function' ? ledgerValueText_(id, r.v) : String(r.v), 상태: r.state || '' }; }
+    {
+      const G = fam();
+      const pl = (G.계획 || []).filter(function (y) { return y && y.id === id; })[0];
+      if (pl) return { id: id, 종류: '계획', 이름: pl.이름 || id, 때: pl.때 || '' };
+      const ps = (G.사람 || []).filter(function (y) { return y && y.id === id; })[0];
+      if (ps) return { id: id, 종류: '사람', 이름: ps.이름 + (ps.관계 ? '(' + ps.관계 + ')' : '') };
+      const tr = (G.이전 || []).filter(function (y) { return y && y.id === id; })[0];
+      if (tr) return { id: id, 종류: '지난 이전', 이름: [tr.날짜, tr.종류, tr.물건].filter(Boolean).join(' ') };
+    }
+    return { id: id, 종류: '모름', 이름: id };
+  };
+}
+// [2026.11.02 쪼개 처리 ②] 물건마다 — 그 물건에 이어진 자문 항목과 판정을 한자리에(이음에 물건 id를 적으면 모인다)
+function ledgerAdvByObject_(L, lists) {
+  const objs = ((L && L.obj && L.obj.list) || []).filter(function (o) { return o && o.state !== '지움'; });
+  return objs.map(function (o) {
+    const f = o.f || {}, items = [];
+    Object.keys(lists).forEach(function (k) { lists[k].forEach(function (x) { if ((x.links || []).indexOf(o.id) !== -1) items.push(k + ' ' + x.id + ' ' + x.title + (x.status ? '(' + x.status + ')' : '')); }); });
+    const jd = Object.keys((L && L.judge) || {}).filter(function (k) { return k.indexOf('@' + o.id) !== -1; }).map(function (k) { return L.judge[k].표시; });
+    const oj = o.판정 ? (o.판정.묶음들 || [o.판정]).map(function (j) { return j.표시; }) : [];
+    return { id: o.id, 이름: [f.종류, f.소재지, f.동 ? f.동 + '동' : '', f.호 ? f.호 + '호' : ''].filter(Boolean).join(' ') || o.id, 판정: oj.concat(jd.filter(function (t) { return oj.indexOf(t) === -1; })), 자문: items, 빈곳: items.length ? '' : '이 물건에 이어진 쟁점·대안이 없음 — 물건마다 쟁점을 적고 links에 물건 id를 넣는다' };
+  });
+}
+// [2026.11.02 쪼개 처리 ⑤·⑦] 쟁점 하나씩 끝까지 갔나 — 쟁점마다 대안·계산 저장본·권고가 이어졌나, 문의가 쟁점에 이어졌나, 상태 셈
+function ledgerAdvGaps_(lists) {
+  const iss = lists.쟁점 || [], alts = lists.대안 || [], recs = lists.권고 || [], inqs = lists.문의 || [];
+  const linked = function (arr, id) { return arr.filter(function (x) { return (x.links || []).indexOf(id) !== -1; }); };
+  const rows = iss.map(function (s) {
+    const al = linked(alts, s.id), alIds = al.map(function (a) { return a.id; });
+    const calcN = (s.calc || []).length + al.reduce(function (n, a) { return n + (a.calc || []).length; }, 0);
+    const rc = recs.filter(function (r) { return (r.links || []).some(function (l) { return l === s.id || alIds.indexOf(l) !== -1; }); });
+    const gap = [];
+    if (!al.length) gap.push('대안 없음');
+    if (!calcN) gap.push('계산 저장본 없음');
+    if (!rc.length) gap.push('권고 없음');
+    if (rc.length && !rc.some(function (r) { return (r.calc || []).length; }) && calcN) gap.push('권고가 저장본을 잇지 않음');
+    return { id: s.id, 쟁점: s.title, 상태: s.status || '(없음)', 대안: al.length, 저장본: calcN, 권고: rc.length, 빈곳: gap };
+  });
+  const issIds = iss.map(function (s) { return s.id; });
+  const inqLoose = inqs.filter(function (q) { return !(q.links || []).some(function (l) { return issIds.indexOf(l) !== -1; }); }).map(function (q) { return (q.no ? q.no + '. ' : '') + q.title; });
+  const cnt = function (arr) { const m = {}; arr.forEach(function (x) { const st = x.status || '(없음)'; m[st] = (m[st] || 0) + 1; }); return m; };
+  return { 쟁점별: rows, 덜된쟁점: rows.filter(function (r) { return r.빈곳.length; }).length, 쟁점에안이은문의: inqLoose, 상태셈: { 쟁점: cnt(iss), 대안: cnt(alts) } };
 }
 
 // ============================================================
@@ -2766,7 +2855,7 @@ function ledgerJudgeRun_(c, input, by) {
   // 넥스 도구는 영문 칸(target·household…)으로 보낸다(도구 칸 이름은 영문이어야 함) — 엔진 칸(한글)으로 맞춤
   [['group', '묶음'], ['transferDate', '양도일'], ['target', '대상'], ['household', '세대'], ['items', '물건'], ['specials', '특례'], ['holdingException', '보유거주예외'], ['mutualLease', '상생임대'], ['bothCases', '경우둘']].forEach(function (m) { if (input[m[0]] !== undefined && input[m[1]] === undefined) input[m[1]] = input[m[0]]; });
   const kind = String(input.묶음 || '1세대1주택');
-  if (kind !== '1세대1주택') return { ok: false, error: '아직 만들지 않은 묶음: ' + kind + ' (지금은 1세대1주택만)' };
+  if (kind !== '1세대1주택') return judgeMoreRun_(c, input, by); // [2026.11.01 복잡사건 ⑤] 8년 자경·동거주택·가업상속(JudgeMore.js)
   const who = String(by || '세무사님').slice(0, 6);
   const L = ledgerLoad_(c.id, true);
   const b = ledgerJudgeInput_(c, L, input);
@@ -2812,6 +2901,11 @@ function ledgerJudgeRun_(c, input, by) {
           o.판정 = Object.assign({}, one, { 묶음들: list });
         }
       }
+      // [2026.11.02 쪼개 처리 ③·⑥] 요건별 셈표·확인할 것·받을 서류도 판정 칸(L.judge)에 남겨 자문(쟁점·근거)이 judge.열쇠로 인용한다
+      L2.judge = L2.judge || {};
+      const jkey = '1세대1주택' + (b.objRow ? '@' + b.objRow.id : '');
+      L2.judge[jkey] = { 결론: r.결론, 잠정: !!r.잠정, 표시: r.표시, 요건: (r.셈표 || []).slice(0, 30), 할일: (r.확인할것 || []).slice(0, 20), 받을서류: (r.받을서류 || []).slice(0, 20), 사후관리: (r.사후관리 || []).slice(0, 10), 근거: r.근거, 때: caseProcNow_(), 누가: who, 물건: b.objRow ? b.objRow.id : '', 장부값: value };
+      out.판정열쇠 = 'judge.' + jkey;
       ledgerLogTo_(L2, { by: who, what: '종합판정', path: b.path, detail: r.표시.slice(0, 200) });
     });
     if (b.objRow) out.물건 = b.objRow.id;
@@ -2820,3 +2914,30 @@ function ledgerJudgeRun_(c, input, by) {
 }
 // 검토서·처리개요가 판정 줄을 보일 때 — 판정 줄은 근거 글(why)이 곧 "1세대1주택 — 비과세 — 잠정(남은 것: …)"
 function ledgerJudgeLabel_(r) { return r && String(r.why || '').indexOf(LEDGER_JUDGE_TAG_) === 0 ? String(r.why).slice(LEDGER_JUDGE_TAG_.length) : ''; }
+// [2026.11.02 쪼개 처리 ④·⑤] 넥스가 보고서를 저장하면 — 보고서에 적힌 세액이 사건 계산 저장본에 있는 숫자인지, 쟁점마다 끝까지 갔는지 넥스에게만 돌려준다
+//  (GAS는 넥스 글을 고치지 않는다 — 10-30 근거 확인표 사건. 고칠지는 넥스가 정한다)
+function ledgerReportCheck_(c, text) {
+  const out = [], t = String(text || '');
+  const calcs = Array.isArray(c && c.세액계산결과) ? c.세액계산결과 : [];
+  const known = {};
+  const addN = function (v) { const n = Math.round(Number(v)); if (Number.isFinite(n) && n > 0) known[n] = true; };
+  calcs.forEach(function (e) {
+    if (!e) return; addN(e.최종세액);
+    const rs = e.저장값 && e.저장값.result; if (rs && typeof rs === 'object') Object.keys(rs).forEach(function (k) { addN(rs[k]); });
+    String(e.요약 || '').replace(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*원/g, function (m, d) { addN(String(d).replace(/,/g, '')); return m; });
+  });
+  const re = /(납부할?\s*세액|산출세액|결정세액|총\s*세액|세액|세금|증여세|상속세|양도소득세)[^\d\n]{0,20}((?:\d{1,3}(?:,\d{3})+|\d{5,}))\s*원/g;
+  const miss = [], seen = {}; let m, n = 0;
+  while ((m = re.exec(t)) && n < 200) { n++; const v = Number(m[2].replace(/,/g, '')); if (!v || seen[v]) continue; seen[v] = true; if (!known[v]) miss.push(m[1].replace(/\s+/g, '') + ' ' + v.toLocaleString('ko-KR') + '원'); }
+  if (!calcs.length && n) out.push('[세액 대조] 보고서에 세액이 ' + n + '곳 적혔는데 사건에 계산 저장본이 하나도 없다 — 세액은 계산 도구로 돌려 저장한 값만 쓴다');
+  else if (miss.length) out.push('[세액 대조 — 저장본에 없는 숫자] ' + miss.slice(0, 12).join(' · ') + (miss.length > 12 ? ' 외 ' + (miss.length - 12) : '') + ' — 계산 저장본의 숫자와 다르다. 머릿속 셈이면 계산 도구로 돌려 저장하고 그 숫자로 고쳐라(억·만원으로 줄여 쓴 숫자는 대조하지 못함)');
+  else if (n) out.push('[세액 대조] 보고서 세액 ' + Object.keys(seen).length + '가지 모두 계산 저장본에 있음');
+  try {
+    const g = ledgerAdvGaps_(ledgerAdvList_(ledgerLoad_(c.id)));
+    const bad = g.쟁점별.filter(function (r) { return r.빈곳.length; });
+    if (bad.length) out.push('[쟁점별 처리 점검] 덜 된 쟁점 ' + bad.length + '/' + g.쟁점별.length + ': ' + bad.slice(0, 10).map(function (r) { return r.쟁점.slice(0, 30) + '(' + r.빈곳.join('·') + ')'; }).join(' / ') + ' — 쟁점 하나씩 대안·계산 저장본·권고를 잇고(case_ledger do=advice links·calc) 보고서와 맞춰라');
+    else if (g.쟁점별.length) out.push('[쟁점별 처리 점검] 쟁점 ' + g.쟁점별.length + '개 모두 대안·저장본·권고가 이어짐');
+    if (g.쟁점에안이은문의.length) out.push('[쟁점에 안 이은 문의] ' + g.쟁점에안이은문의.slice(0, 8).join(' / ') + ' — 문의마다 links에 그 문의를 다루는 쟁점 id를 넣는다');
+  } catch (e) { out.push('[쟁점별 처리 점검 — 읽기 실패: ' + e.message + ']'); }
+  return out;
+}

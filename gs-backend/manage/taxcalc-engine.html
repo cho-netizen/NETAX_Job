@@ -1507,6 +1507,12 @@
         const apprStd = Number(t.approvalDateStandardPrice) || 0;
         if (acqStd > 0 && apprStd > 0) originalAcqPrice = Math.round(rightsValue * acqStd / apprStd);
       }
+      // [2026.11.02 복잡물건 점검 #4] 종전자산 취득가액이 비면 예전엔 0으로 셈(인가 전 차익이 권리가액 전부로 부풀었음).
+      //  보통 취득가액 칸에 넣은 값이 있으면 그것을 종전자산(기존건물·부수토지) 취득가액으로 쓰고, 둘 다 없으면 멈춘다.
+      if (!originalAcqPrice) {
+        if (acquisitionPrice > 0) { originalAcqPrice = acquisitionPrice; acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '종전자산 취득가액 칸이 비어 취득가액(' + acquisitionPrice.toLocaleString('ko-KR') + '원)을 기존건물·부수토지 취득가액으로 썼습니다(시행령 §166①).'; }
+        else return { error: '재건축·재개발 특례: 종전자산(기존건물과 그 부수토지) 취득가액이 필요합니다 — 모르면 환산(시행령 §166③, 취득일·인가일 기준시가)을 쓰세요.' };
+      }
       const originalNecessaryExpenses = Number(t.originalNecessaryExpenses) || 0;
 
       // 관리처분계획등인가전양도차익 = (평가액-기존건물취득가액)-필요경비(§97①2·3호 또는 §163⑥)
@@ -1854,6 +1860,28 @@
     const d = new Date(dateStr + 'T00:00:00Z');
     d.setUTCDate(d.getUTCDate() + 1);
     return d.toISOString().slice(0, 10);
+  }
+  // [2026.11.02 복잡물건 점검 #1] 겸용주택(주택+상가) 한 건을 주택 부분·주택 외 부분 두 거래로 나눈다.
+  //  나누는 때: ① 주택 연면적 ≤ 주택 외 연면적(시행령 §154③ 단서 — 주택 부분만 주택) ② 주택 연면적이 더 커도 고가주택이고
+  //  2022.1.1 이후 양도(시행령 §160① 괄호 "주택 외의 부분은 주택으로 보지 않는다", 부칙(2020.2.11) §1 3호·§42 경과조치).
+  //  나누는 비율: 기준시가(주택분·주택 외분)를 넣으면 그 비율, 없으면 연면적 비율(토지는 시행령 §154④처럼 면적 비율로 봄) — 값과 근거를 거래에 남긴다.
+  //  칸: mixedUseHouseArea·mixedUseOtherArea(연면적 ㎡), mixedUseHouseStdPrice·mixedUseOtherStdPrice(선택).
+  function expandMixedUseHouse_(t) {
+    const ha = Number(t && t.mixedUseHouseArea) || 0, na = Number(t && t.mixedUseOtherArea) || 0;
+    if (!t || t.assetType !== 'house' || !(ha > 0 && na > 0)) return [t];
+    const price = Number(t.transferPrice) || 0, d = String(t.transferDate || '').slice(0, 10);
+    const high = price > highValueAt_(d, 'house') && d >= '2022-01-01';
+    if (ha > na && !high) return [Object.assign({}, t, { _겸용주택: '주택 연면적이 더 커 전부 주택(시행령 §154③ 본문)' })];
+    const hs = Number(t.mixedUseHouseStdPrice) || 0, ns = Number(t.mixedUseOtherStdPrice) || 0;
+    const byStd = hs > 0 && ns > 0, r = byStd ? hs / (hs + ns) : ha / (ha + na);
+    const why = (ha > na ? '고가주택인 겸용주택 — 주택 외 부분은 주택이 아님(시행령 §160① 괄호, 2022.1.1 이후 양도)' : '주택 연면적이 주택 외 부분보다 크지 않아 주택 부분만 주택(시행령 §154③ 단서·④)')
+      + ' · 나눈 비율 주택 ' + (Math.round(r * 10000) / 100) + '%(' + (byStd ? '기준시가 비율' : '연면적 비율 — 기준시가를 넣으면 그 비율로 다시 나눔') + ')';
+    const part = function (v, k) { if (v == null || v === '') return v; const n = Number(v) || 0; return k ? Math.round(n * r) : n - Math.round(n * r); };
+    const scaled = function (k) { const o = {}; ['transferPrice', 'acquisitionPrice', 'necessaryExpenses', 'transferStandardPriceForConversion', 'acquisitionStandardPriceForConversion'].forEach(function (f) { if (t[f] != null && t[f] !== '') o[f] = part(t[f], k); }); return o; };
+    const house = Object.assign({}, t, scaled(true), { _겸용주택: '주택 부분 · ' + why, mixedUseHouseArea: null, mixedUseOtherArea: null });
+    const other = Object.assign({}, t, scaled(false), { assetType: 'other', isOneHouseOneFamily: false, _겸용주택: '주택 외 부분(상가 등, 일반 자산) · ' + why, mixedUseHouseArea: null, mixedUseOtherArea: null });
+    if (high) house._고가주택판정양도가액 = price;
+    return [house, other];
   }
   function expandReplotmentIncrease_(t) {
     const paid = Number(t.replotmentSettlementPaid) || 0;
@@ -2650,6 +2678,14 @@
       }
     }
     replotAppend_.forEach(function (p) { transactions = transactions.concat([p.t]); txLabels_.push(p.label); });
+    // [2026.11.02] 겸용주택(주택+상가) — 주택 부분·주택 외 부분 두 거래로(시행령 §154③ 단서·§160① 괄호). 주택 외 부분은 맨 뒤에 붙인다
+    const mixedAppend_ = [];
+    for (let i = 0; i < transactions.length; i++) {
+      const parts = expandMixedUseHouse_(transactions[i]);
+      if (parts.length === 2) { transactions = transactions.slice(); transactions[i] = parts[0]; const lb = txLabels_[i]; txLabels_[i] = lb + '(겸용주택 주택 부분)'; mixedAppend_.push({ t: parts[1], label: lb + '(겸용주택 주택 외 부분)' }); }
+      else if (parts[0] !== transactions[i]) { transactions = transactions.slice(); transactions[i] = parts[0]; }
+    }
+    mixedAppend_.forEach(function (p) { transactions = transactions.concat([p.t]); txLabels_.push(p.label); });
     // 이월과세(§97의2) — 거래 카드에 "배우자·직계존속에게 증여받음"을 체크해뒀으면, 합산 계산에
     // 넣기 전에 이 거래 단독 기준으로 적용여부를 먼저 판정해 취득가액·취득일·필요경비를 확정한다.
     // (예전엔 별도 계산기에서 계산한 결과를 손으로 옮겨 입력해야 했다 — 이제는 자동 반영된다.)
@@ -2781,6 +2817,7 @@
     const assetNotes = [];
     cores.forEach(function (c) {
       if (c.acquisitionPriceMethodNote) assetNotes.push({ idx: c.idx, 구분: '취득가액산정', 특례: c.acquisitionPriceMethodNote });
+      if (c.raw._겸용주택) assetNotes.push({ idx: c.idx, 구분: '겸용주택(시행령 §154③·§160①)', 사유: c.raw._겸용주택 });
       if (c.raw._이월과세_적용여부 !== undefined) {
         assetNotes.push({ idx: c.idx, 구분: '이월과세(§97의2)', 적용여부: c.raw._이월과세_적용여부, 사유: c.raw._이월과세_미적용사유, 비교: c.raw._이월과세_비교 });
       }
@@ -4439,6 +4476,20 @@
         : '상증세법 §3조의2①에 따라, 전체 산출세액·세액공제·가산세 등을 상속인별 실제상속재산가액 비율로 안분했습니다(유산세 방식). 정확한 법정 비율(시행령§3①1호의 상속인별 상속세과세표준상당액 비율)을 쓰려면 상속인별 사전증여 내역(priorGiftTaxableBase·priorGiftAmount)을 함께 입력하세요 — 사전증여가 없으면 이 실제상속재산가액 비율과 결과가 같습니다. 상속공제는 전체 1회만 적용되는 항목이라 인별로 나누지 않았습니다. 반올림 잔액은 실제상속재산가액이 가장 큰 상속인에게 몰아서 합계를 맞췄습니다.'
     };
   };
+
+  // [2026.11] 안분 결과에 연대납부·비거주 상속인 알림 — 각자 몫을 나눠도 상속세는 받은 재산 한도로 함께 낼 의무(상증법 §3의2③)
+  (function () {
+    const base_ = window.allocateInheritanceTaxByHeirJS;
+    window.allocateInheritanceTaxByHeirJS = function (agg, heirs) {
+      const r = base_.apply(this, arguments);
+      if (!r || r.error || !Array.isArray(heirs)) return r;
+      const notes = ['연대납부: 상속인·수유자는 각자 받았거나 받을 재산을 한도로 상속세 전체를 연대해 낼 의무가 있음(상증법 §3의2③) — 위 안분은 각자 몫일 뿐, 다른 상속인이 안 내면 한도 안에서 대신 낼 수 있음'];
+      const nonRes = heirs.filter(function (h) { return h && (h.isNonResident === true || /비거주|외국 ?거주|해외 ?거주/.test(String(h.memo || h.메모 || h.relation || ''))); });
+      if (nonRes.length) notes.push('국내에 주소·거소가 없는 상속인(' + nonRes.map(function (h) { return h.name || h.이름 || '이름 없음'; }).join('·') + ') — 납세관리인을 정해 신고(국세기본법 §82①·③, 금융재산 지급·명의변경 청구 땐 확인서 필요 §82⑥) · 상속인이 외국에 주소를 두면 신고기한 9개월(상증법 §67④)');
+      r.알림 = (r.알림 || []).concat(notes);
+      return r;
+    };
+  })();
 
   // 조특법§30의5(창업자금)·§30의6(가업승계 주식등) 증여세 과세특례 ([별지 제10호의2서식]) — Code.js toolCalculateSpecialRateGiftTax와 동일 로직.
   // [2026.10.22 검토대상 증여-7] 조특법 §30의6②(2019.12.31. 신설, 2020.1.1. 이후 증여분) — 가업 주식을 증여받아 승계한 거주자가 2인 이상이면
@@ -8899,8 +8950,12 @@
     if (!p.wasResidentFiveYearsContinuously) {
       return { 적용여부: false, 안내: '양도일까지 계속 5년 이상 국내에 주소 또는 거소를 둔 거주자가 아니어서 국외자산 양도소득세(§118의2) 적용대상이 아닙니다.' };
     }
+    // [2026.11.02 복잡물건 점검 #9] 외화 금액 + 받은·쓴 날 환율 → 원화(시행령 §178의5① — 수령·지출한 날 현재 외국환거래법에 따른 기준환율·재정환율,
+    //  ② 장기할부는 §162①3호의 양도일·취득일). 칸: transferPriceForeign·transferExchangeRate, acquisitionPriceForeign·acquisitionExchangeRate,
+    //  capitalExpenditureForeign·capitalExchangeRate, transferExpensesForeign·transferExpensesExchangeRate. 원화 칸을 넣었으면 원화 칸이 먼저.
+    const fx_ = overseasFx_(p); p = fx_.p; const fxNotes_ = fx_.notes;
     const transferPrice = Number(p.transferPrice) || 0;
-    if (transferPrice <= 0) return { error: '양도가액이 필요합니다.' };
+    if (transferPrice <= 0) return { error: Number(p.transferPriceForeign) > 0 ? '양도가액 외화는 있는데 받은 날 환율(transferExchangeRate)이 없습니다(시행령 §178의5①).' : '양도가액이 필요합니다.' };
     // [2026.10.22 검토대상 양도-11] §118의8이 §97③을 준용 — 보유기간 사업소득 필요경비에 넣은 감가상각비는 취득가액에서 뺀다.
     const depOa_ = Math.max(0, Number(p.depreciationDeductedAsBusinessExpense) || 0);
     const acquisitionPrice = Math.max(0, (Number(p.acquisitionPrice) || 0) - depOa_);
@@ -8927,7 +8982,7 @@
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
     const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
 
-    return {
+    return { 외화환산: fxNotes_.length ? fxNotes_ : undefined,
       적용여부: true,
       양도차익: Math.round(gain), 기본공제: basicDeduction, 과세표준: taxBase,
       산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit,
@@ -8940,15 +8995,26 @@
   // 국외자산 양도소득세 다건 합산 (소득세법§118의7①) — calculateOverseasAssetTransferTaxJS(단일거래)는
   // 거래마다 기본공제(연250만원)를 각각 적용해버리므로, 같은 과세기간에 국외자산을 2건 이상 양도하면
   // 이 함수로 합산해야 §118의7①(전체 통틀어 1회)을 정확히 반영한다.
+  // 외화 → 원화(시행령 §178의5①) — 한 건·여러 건 국외자산 계산이 같이 씀. 돌려줌: { p: 원화 칸 채운 사본, notes }
+  function overseasFx_(p, label) {
+    const fxNotes_ = [];
+    p = Object.assign({}, p);
+    [['transferPrice', 'transferPriceForeign', 'transferExchangeRate', '양도가액'], ['acquisitionPrice', 'acquisitionPriceForeign', 'acquisitionExchangeRate', '취득가액'], ['capitalExpenditure', 'capitalExpenditureForeign', 'capitalExchangeRate', '자본적지출'], ['transferExpenses', 'transferExpensesForeign', 'transferExpensesExchangeRate', '양도비']].forEach(function (k) {
+      if (Number(p[k[0]]) > 0) return; const a = Number(p[k[1]]) || 0, r = Number(p[k[2]]) || 0;
+      if (a > 0 && r > 0) { p[k[0]] = Math.round(a * r); fxNotes_.push((label || '') + k[3] + ' ' + a.toLocaleString('ko-KR') + ' × 환율 ' + r + ' = ' + p[k[0]].toLocaleString('ko-KR') + '원'); }
+      else if (a > 0) fxNotes_.push((label || '') + k[3] + ' 외화 ' + a.toLocaleString('ko-KR') + '은 있는데 그날 환율이 없어 원화로 못 바꿈 — 기준환율·재정환율을 넣을 것(시행령 §178의5①)');
+    });
+    return { p: p, notes: fxNotes_ };
+  }
   window.calculateOverseasAssetTransferTaxMultiJS = function (transactions, filingParams) {
     filingParams = filingParams || {};
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래 목록(transactions)이 1건 이상 필요합니다.' };
 
     let totalGain = 0;
     let totalForeignTaxPaid = 0, overseasCvp_ = 0;
-    const perTxn = [];
+    const perTxn = [], fxAll_ = [];
     for (let i = 0; i < transactions.length; i++) {
-      const t = transactions[i] || {};
+      const fxm_ = overseasFx_(transactions[i] || {}, (i + 1) + '번째 거래 '); const t = fxm_.p; fxAll_.push.apply(fxAll_, fxm_.notes);
       if (!t.wasResidentFiveYearsContinuously) {
         return { error: (i + 1) + '번째 거래: 양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자가 아니어서 §118의2 적용대상이 아닙니다.' };
       }
@@ -9010,7 +9076,7 @@
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
     const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + overseasCvp_);
 
-    return {
+    return { 외화환산: fxAll_.length ? fxAll_ : undefined,
       거래건수: transactions.length, 환산가산세: overseasCvp_ || undefined,
       환산가산세_안내: overseasCvp_ ? '국외 신축·증축 건물을 5년 안에 양도하면서 취득가액을 시가·평가액으로 정해 그 건물분의 5%를 더했습니다(소득세법 §118의8이 §114의2를 준용 — 체크한 거래만).' : undefined,
       거래별_내역: perTxn,
@@ -11816,9 +11882,10 @@
     }
     const ha = Number(tg.주택면적), na = Number(tg.주택외면적);
     if (ha > 0 && na > 0) {
-      row('겸용주택', '주택 ' + ha + '㎡ · 주택 외 ' + na + '㎡', '시행령 §154③·④', ha > na ? '전부 주택' : '주택 부분만');
+      const highMix_ = price > hv && String(T || '') >= '2022-01-01';
+      row('겸용주택', '주택 ' + ha + '㎡ · 주택 외 ' + na + '㎡', '시행령 §154③·④·§160① 괄호', ha > na && !highMix_ ? '전부 주택' : '주택 부분만');
       if (ha <= na) notes.push('주택 연면적이 주택 외 부분보다 크지 않아 주택 부분(과 그 비율의 토지)만 주택으로 봅니다(시행령 §154③ 단서·④)');
-      if (ha > na && price > hv) notes.push('[확인 필요] 고가 겸용주택 — 주택 부분만 주택으로 보는 개정 규정(2022.1.1 이후 양도)의 조문 원문을 아직 대조하지 않았습니다');
+      if (ha > na && highMix_) notes.push('고가 겸용주택 — 2022.1.1 이후 양도는 주택 외 부분을 주택으로 보지 않음(시행령 §160① 괄호, 부칙(2020.2.11) §1 3호·§42): 주택 부분만 비과세·12억 초과분 계산, 주택 외 부분은 일반 자산 — 양도 계산에 연면적(mixedUseHouseArea·mixedUseOtherArea)을 넣으면 두 거래로 나눔');
     }
 
     // 결론 — 안 됨이 하나라도 있으면 안 됨(그래도 모르는 칸·특례 후보가 있으면 잠정), 모름이 있으면 충족 잠정, 없으면 충족
