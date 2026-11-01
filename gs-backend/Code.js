@@ -4132,7 +4132,7 @@ const JOB_AI_TOOLS_ = [
         calc: { type: 'array', items: { type: 'string' }, description: 'advice일 때 잇는 계산 저장본 id(tc_…)' },
         refs: { type: 'array', items: { type: 'string' }, description: 'advice일 때 근거(조문·판례·예규·절세 아이템·지침 이름)' },
         links: { type: 'array', items: { type: 'string' }, description: 'advice일 때 이어진 자문 항목 id' },
-        status: { type: 'string', description: 'advice일 때 잠정·확정·보류(문의는 답 안 함·답함·보류)' },
+        status: { type: 'string', description: 'advice일 때 잠정·확정·보류(문의는 답 안 함·자료 기다림·답함·보류 — 자료 기다림 = 결론을 가르는 사실이 없어 질문·받을 서류·가정 계산까지 한 문의)' },
         id: { type: 'string', description: 'advice일 때 고칠·지울 항목 id, cite일 때 계산 저장본 id' },
         remove: { type: 'boolean', description: 'advice일 때 true면 그 항목을 지움' },
         do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'taxes', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs'], description: '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
@@ -4142,6 +4142,9 @@ const JOB_AI_TOOLS_ = [
         onlyNew: { type: 'boolean', description: 'lookup일 때 아직 조회 안 한 필지만' },
         values: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {}, why: { type: 'string' } } }, description: 'estimate일 때 넣을 가정값(비우면 의뢰서 등 가설에서)' },
         name: { type: 'string', description: 'calc·compare일 때 경우 이름(예: 1세대1주택 비과세 적용 전)' },
+        chainFrom: { type: 'array', items: { type: 'string' }, description: '[2026.11.01] calc tax=inheritance일 때 이어 계산할 저장된 증여 계산 id(tc_…) — 그 증여가 사전증여로 상속 과세가액에 더해지고 증여세 공제 칸에 들어간다. 장부 증여 칸은 한 건이라 장부 밖 증여는 tax=gift over에 giftAmount·relation을 주어 먼저 계산·저장한다' },
+        chainHeir: { type: 'boolean', description: 'chainFrom 증여를 받은 사람이 상속인이면 true(기본), 아니면 false' },
+        chainShare: { description: 'chainFrom 증여를 받은 상속인이 받을 실제 상속분(원, chainFrom 순서대로 배열 가능) — 증여세 공제 한도에 필요' },
         over: { type: 'array', items: { type: 'object', properties: { path: { type: 'string' }, value: {} } }, description: 'calc일 때 이번 계산에만 쓰는 가정(장부 칸 경로 — 증여·상속은 엔진 입력 이름)' },
         gift: { type: 'object', description: 'compare일 때 증여 비교 입력(calculate_gift_tax 입력 — relation 배우자|직계존속|직계비속|기타친족|기타 필수, giftAmount·giftDate·priorGiftAmount 등)' },
         inheritance: { type: 'object', description: 'compare일 때 상속 비교 입력(calculate_inheritance_tax 입력 — taxableEstateAmount·hasSpouse·childCount 등)' },
@@ -16573,7 +16576,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
               try {
                 if (typeof ledgerInqStatus_ === 'function') {
                   const iq = ledgerInqStatus_(ledgerLoad_(cr.id));
-                  if (iq.수) r.content = String(r.content) + '\n[문의 답 현황 — 이 숫자가 사실이다] 문의 ' + iq.수 + ' · 답함 ' + iq.답함 + ' · 보류 ' + iq.보류
+                  if (iq.수) r.content = String(r.content) + '\n[문의 답 현황 — 이 숫자가 사실이다] 문의 ' + iq.수 + ' · 답함 ' + iq.답함 + ' · 보류 ' + iq.보류 + ((iq.자료기다림 || []).length ? ' · 자료 기다림 ' + iq.자료기다림.length + ': ' + iq.자료기다림.join(' / ').slice(0, 300) + ' — 이 문의들은 결론 대신 가정별로만 쓰고, 여쭐 것·받을 서류를 채팅 맨 앞에 항목별로' : '')
                     + (iq.답안함.length ? ' · 답 안 함 ' + iq.답안함.length + ': ' + iq.답안함.join(' / ').slice(0, 600) + ' — 보고서 "문의사항별 답변"에 답을 쓰고 case_ledger do=advice item=문의 id status=답함(answer 답 요지)으로 적어라. 답을 못 내면 status=보류로 적고 "추가로 확인할 사항"에 올린 뒤 같은 이름으로 다시 저장하라' : ' · 모두 답함·보류');
                 }
               } catch (e) { r.content = String(r.content) + '\n[문의 답 현황 — 읽기 실패: ' + e.message + ']'; }
@@ -32737,7 +32740,7 @@ function caseProcScenario_(c, body) {
   if (!label) return { ok: false, error: '세목은 transfer(양도)·gift(증여)·inheritance(상속) 중 하나입니다.' };
   const changes = Array.isArray(body.changes) ? body.changes : [];
   const given = body.input && typeof body.input === 'object' ? JSON.parse(JSON.stringify(body.input)) : null;
-  if (!changes.length && !given) return { ok: false, error: '바꿀 칸(changes[{path, value}]) 또는 엔진 입력(input)이 필요합니다.' };
+  if (!changes.length && !given && !body.chainFrom) return { ok: false, error: '바꿀 칸(changes[{path, value}]) 또는 엔진 입력(input) 또는 이어 계산할 증여(chainFrom)가 필요합니다.' };
   const by = caseProcWho_('', body.by) === '넥스' ? '넥스' : '세무사님';
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
   // [2026.10.31 세 길 합치기 2 — 세무사님 "권장안대로"] 경우 계산의 바탕은 늘 사건 장부 — 바꿔 볼 값(changes)만 이번 계산에 얹는다(장부 값은 그대로).
@@ -32751,7 +32754,7 @@ function caseProcScenario_(c, body) {
     const n0 = all.filter(function (e) { return e && e.안; }).length + 1;
     let nm = String(body.name || '').trim().slice(0, 60) || (label + ' 안' + n0);
     if (all.some(function (e) { return e && e.안 && e.안.이름 === nm; })) nm += '(' + n0 + ')';
-    const lr = ledgerCalcRun_(c, { tax: tax, name: nm, over: over, why: body.why, by: by });
+    const lr = ledgerCalcRun_(c, { tax: tax, name: nm, over: over, why: body.why, by: by, chainFrom: body.chainFrom, chainHeir: body.chainHeir, chainShare: body.chainShare });
     if (!lr || !lr.ok) return lr || { ok: false, error: '장부 계산 실패' };
     try { caseProcLog_(c.id, { by: by, what: '경우(안) 계산 저장', key: lr.id, detail: nm + ' — ' + label + ' 납부세액 ' + Number(lr.최종세액 || 0).toLocaleString('ko-KR') + '원 (바탕: 사건 장부)' }); } catch (e) { }
     return { ok: true, id: lr.id, 안: nm, 세목: label, 최종세액: lr.최종세액, 바꾼칸: lr.가정 || [], 바탕: '사건 장부(정함+추정)', 요약: lr.요약, gaps: lr.gaps, 추가확인: lr.추가확인, message: '경우(안) 「' + nm + '」 저장 — ' + label + ' 납부세액 ' + Number(lr.최종세액 || 0).toLocaleString('ko-KR') + '원 (바탕: 사건 장부' + ((lr.가정 || []).length ? ', 바꾼 칸 ' + lr.가정.length : '') + ')' };
@@ -33473,6 +33476,8 @@ function caseProcSepTax_(c, tax) {
   if (!CASEPROC_TAX_LABEL_[cur] || !tax || tax === cur) return false;
   if (cur === 'inheritance' && tax === 'gift') return false;
   if (cur === 'transfer' && (tax === 'gift' || tax === 'inheritance')) return false;
+  // [2026.11.01 종합 컨설팅 — 세무사님 "단일 자문사건에 ai를 가둬서도 안된다"] 함께 보는 세목(장부 taxes)이면 다른 세목 폴더로 보지 않는다 — 폴더 이름(「…_증여_자문」) 하나가 양도·상속 서류를 GAS 읽기에서 빼던 것
+  try { if (typeof ledgerTaxes_ === 'function' && ledgerTaxes_(c).indexOf(tax) !== -1) return false; } catch (e) {}
   return true;
 }
 // files: [{ name, dir }] (dir = 사건 폴더 기준 상대 경로, '' = 사건 폴더) → { sep: { 경로: 이유 }, ref: { 경로: 이유 } }
@@ -34196,10 +34201,22 @@ function cpfPageMarks_(t) {
   return marks;
 }
 function cpfPageAt_(marks, at) { let p = null; for (let i = 0; i < marks.length && marks[i].at <= at; i++) p = marks[i].p; return p; }
+// [2026.11.01 종합 컨설팅 점검 ②] job이 만든 의뢰서 틀(첫머리 "<!-- 바탕 템플릿")의 괄호 안내·> 안내 줄·주석·값 없는 칸은 사실이 아니다 —
+//  같은 길이 빈칸으로 지워(글자 위치 그대로) 칸 이름과 적힌 값만 남긴다. 예전엔 빈 틀의 「증여재산공제 해당 구분(배우자 6억원/…)」이 사실 「배우자 6억원」으로 들어갔다(강문영 10-30)
+function cpfBlankTemplateHelp_(t) {
+  if (!/<!--\s*바탕 템플릿/.test(t.slice(0, 400))) return t;
+  const sp = function (s) { return s.replace(/[^\n]/g, ' '); };
+  return t.replace(/<!--[\s\S]*?-->/g, sp)
+    .replace(/^[ \t]*>.*$/gm, sp)
+    .replace(/^([ \t]*[-*][ \t]*)([^:\n：]*)([:：])(.*)$/gm, function (m0, a, lab, c, val) {
+      if (!val.trim()) return sp(m0);
+      return a + lab.replace(/[(（][^)）\n]*[)）]/g, sp) + c + val;
+    });
+}
 // 공통 뽑기 — 서류 종류와 상관없이 글자 속 열쇠(주민번호+이름·계좌·지번·도로명·동호·번호)와 날짜·금액·면적·지분. 앞 낱말을 칸 이름으로.
 //  ruledVals: 규칙이 이미 뽑은 값(같은 값이면 read.sameAsRule 표시만 — 버리지 않음, 상1). onlyKeys: 통장처럼 줄 사실이 이미 다 있는 서류는 열쇠만
 function cpfCommon_(text, base, ruledVals, onlyKeys) {
-  const t = String(text || ''), out = [], LIMIT = CPF_LIMITS_.common, marks = cpfPageMarks_(t);
+  const t = cpfBlankTemplateHelp_(String(text || '')), out = [], LIMIT = CPF_LIMITS_.common, marks = cpfPageMarks_(t);
   const note = '서류 규칙 없음 — 글자에서 뽑음';
   const atSeen = {}; let dropped = 0;
   const label = function (at) {

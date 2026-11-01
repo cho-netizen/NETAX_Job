@@ -283,6 +283,19 @@
         })();
       </script>
     </div>
+    <!-- [2026.11.01] 의뢰 메모 화면 도구줄에 있던 한 번 쓰고 마는 「템플릿 이름정리」를 보고서들 정비 단추처럼 여기로 옮김 -->
+    <div class="card" data-sttab="4">
+      <h3>의뢰 메모</h3>
+      <div class="settings-tools-group">
+        <div class="settings-tool-item">
+          <button type="button" class="ghost-btn" id="stBtnMemoTplNameFix">템플릿 이름</button>
+          <div class="nx-help">의뢰서템플릿 폴더의 옛 이름(「증여신고」 등) 파일에 「의뢰서_」를 앞에 붙입니다(이름만 바꿔 누르면 바로 돌고 결과를 보여 드림).</div>
+        </div>
+      </div>
+      <script>
+        document.getElementById('stBtnMemoTplNameFix').addEventListener('click', function(){ if (typeof window.memoReqTplNameFix_ === 'function') window.memoReqTplNameFix_(); else showToast('의뢰 메모 화면을 아직 못 불러왔습니다 — 잠시 뒤 다시 눌러 주세요.', 'error'); });
+      </script>
+    </div>
     <div class="card" data-sttab="5" id="stDevCard">
       <h3>빠른 읽기 서버·AI 위원 연결</h3>
         <div class="nx-help">빠른 읽기 서버(시험 단계) 켜기·끄기, 그 서버에 공유된 사건 폴더, AI 위원 연결 상태.</div>

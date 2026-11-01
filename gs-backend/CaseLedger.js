@@ -547,8 +547,32 @@ function ledgerCalcRun_(c, body) {
 
 function ledgerCalcGiftInh_(c, body, tax) {
   const by = String((body && body.by) || '넥스').slice(0, 6), L = ledgerLoad_(c.id), gift = (tax || c.세목) === 'gift';
-  const b = gift ? ledgerGiftInput_(c, L) : ledgerInhInput_(c, L);
-  if (!b.input) return { ok: false, error: '장부에 계산기 필수 칸이 없음: ' + (b.gaps || []).join(', '), gaps: b.gaps };
+  let b = gift ? ledgerGiftInput_(c, L) : ledgerInhInput_(c, L);
+  // [2026.11.01 종합 컨설팅 점검 ⑧] 장부 증여 칸(g.*)은 한 건뿐이다 — 문의마다 다른 증여(배우자에게·자녀에게 …)를 견주려면
+  //  장부가 비어 있어도 가정(over)에 giftAmount·relation(상속은 taxableEstateAmount)을 주면 그 값으로 계산한다(장부 값은 그대로)
+  const ov0 = {}; (Array.isArray(body && body.over) ? body.over : []).forEach(function (x) { if (x && x.path) ov0[String(x.path).trim()] = x.value; });
+  if (!b.input && gift && ov0.giftAmount && ov0.relation) b = { input: { giftAmount: 0, relation: '', giftDate: (L.rows['기준일'] && L.rows['기준일'].v) || c.기준일 || undefined, isDoneeResident: true }, gaps: ['장부에 증여 칸 없음 — 가정(over) 값으로만 계산'] };
+  if (!b.input && !gift && ov0.taxableEstateAmount) b = { input: { taxableEstateAmount: 0, isDecedentResident: true }, gaps: ['장부에 상속 재산 칸 없음 — 가정(over) 값으로만 계산'] };
+  if (!b.input) return { ok: false, error: '장부에 계산기 필수 칸이 없음: ' + (b.gaps || []).join(', ') + (gift ? ' — 장부 밖 증여를 견주려면 over에 giftAmount·relation(배우자/직계존속/직계비속/기타친족/기타)을 주세요' : ' — over에 taxableEstateAmount를 주면 그 값으로 계산합니다'), gaps: b.gaps };
+  // [2026.11.01 점검 ⑤] 증여 → 상속 이어 계산 — chainFrom(저장된 증여 계산 id 목록)의 증여재산가액·과세표준·산출세액을 상속 입력의 사전증여 칸(§13 가산·§28 공제)에 더한다.
+  //  chainHeir=false면 상속인 아닌 사람에게 한 증여로 넣는다. 합산 기간(상속인 10년·그 밖 5년) 안인지는 계산기가 보지 않으므로 결과에 확인할 것으로 적는다
+  const chained = []; let chainAdd = 0;
+  if (!gift && body && body.chainFrom) {
+    const all0 = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
+    [].concat(body.chainFrom).slice(0, 10).forEach(function (id) {
+      const e = all0.filter(function (x) { return x && x.id === String(id); })[0];
+      if (!e || !/증여/.test(String(e.세목 || '')) || !e.저장값) { chained.push({ id: id, error: '저장된 증여 계산을 못 찾음' }); return; }
+      const amt = Number((e.저장값.inputs || {}).giftAmount) || 0, rs = e.저장값.result || {}, base = Number(rs.과세표준) || 0, paid = Number(rs.산출세액) || 0;
+      const heir = body.chainHeir !== false && body.chainHeir !== 'false';
+      if (heir) { const shs = body.chainShare == null ? [] : [].concat(body.chainShare), sh0 = shs[chained.length] != null ? shs[chained.length] : shs[0];
+      const share = Number(String(sh0 == null ? '' : sh0).replace(/[^\d]/g, '')) || 0; b.input.priorGiftHeirs = (b.input.priorGiftHeirs || []).concat([share ? { priorGiftAmount: amt, priorGiftTaxableBase: base, priorGiftTaxPaid: paid, actualInheritedValue: share } : { priorGiftAmount: amt, priorGiftTaxableBase: base, priorGiftTaxPaid: paid }]); b.input.giftToHeirsWithin10Years = (Number(b.input.giftToHeirsWithin10Years) || 0) + amt; }
+      else { b.input.nonHeirPriorGiftAmountTotal = (Number(b.input.nonHeirPriorGiftAmountTotal) || 0) + amt; b.input.nonHeirPriorGiftTaxableBaseTotal = (Number(b.input.nonHeirPriorGiftTaxableBaseTotal) || 0) + base; b.input.nonHeirPriorGiftTaxPaidTotal = (Number(b.input.nonHeirPriorGiftTaxPaidTotal) || 0) + paid; }
+      chainAdd += amt; // 과세가액 가산은 가정(over)을 얹은 뒤에 더한다 — over의 taxableEstateAmount가 사전증여 몫을 덮지 않게
+      chained.push({ id: e.id, 이름: (e.안 && e.안.이름) || e.세목, 증여재산가액: amt, 과세표준: base, 산출세액: paid, 상속인: heir });
+    });
+    const bad = chained.filter(function (x) { return x.error; });
+    if (bad.length) return { ok: false, error: '이어 계산할 증여를 못 찾음: ' + bad.map(function (x) { return x.id; }).join(', ') + ' — 증여 계산 저장 결과의 id(tc_…)를 주세요' };
+  }
   // [2026.10.29 계획서 3판] 경우 이름·가정 — 증여·상속은 엔진 입력 이름(giftAmount·relation·taxableEstateAmount…)으로 이번 계산에만 바꿔 넣는다(장부 값은 그대로)
   const nm = String((body && body.name) || '').trim().slice(0, 60), assumed = [];
   (Array.isArray(body && body.over) ? body.over : []).slice(0, 20).forEach(function (x) {
@@ -557,6 +581,7 @@ function ledgerCalcGiftInh_(c, body, tax) {
     if (typeof prev === 'number' || /Amount|Count|Value|Price|Years|Total|Fee|Within/.test(k)) v = Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0; else if (typeof prev === 'boolean' || /^(is|has)[A-Z]/.test(k)) v = /^(true|1|예|있음|해당|적용|yes|y)$/i.test(String(v).trim()); else v = String(v == null ? '' : v).trim();
     b.input[k] = v; assumed.push({ 칸: k, 이름: k, 전: prev == null ? '(비어 있음)' : String(prev), 후: String(v) });
   });
+  if (chainAdd) { b.input.priorGiftedAmountIncludedInEstate = (Number(b.input.priorGiftedAmountIncludedInEstate) || 0) + chainAdd; b.input.taxableEstateAmount = (Number(b.input.taxableEstateAmount) || 0) + chainAdd; }
   const r = runUiEngineCalcTool_(gift ? 'calculate_gift_tax' : 'calculate_inheritance_tax', b.input);
   if (!r || r.error) return { ok: false, error: '계산 실패: ' + ((r && r.error) || '엔진 없음'), gaps: b.gaps };
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
@@ -567,7 +592,13 @@ function ledgerCalcGiftInh_(c, body, tax) {
   if ((b.gaps || []).length) lines.push('남은 물어볼 것·빈 칸: ' + b.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
   if (assumed.length) lines.push('이번 계산의 가정(장부 값은 그대로): ' + assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
-  const isCase = !!nm || assumed.length > 0, name = nm || (label + ' 장부 경우 ' + (all.filter(function (e) { return e && e.안; }).length + 1));
+  if (chained.length) {
+    lines.push('이어 계산한 증여 ' + chained.length + '건: ' + chained.map(function (x) { return x.이름 + '(' + won(x.증여재산가액) + ', ' + (x.상속인 ? '상속인' : '상속인 아닌 사람') + ')'; }).join(', ').slice(0, 300));
+    lines.push('확인할 것: 증여일이 상속 개시 전 합산 기간(상속인 10년·그 밖 5년) 안인지 · 공제할 증여세는 그 증여의 산출세액으로 넣음');
+    if (r.증여세액공제_상속분입력필요) lines.push('⚠ 증여세 공제 0원 — 그 상속인이 받을 실제 상속분(chainShare, 원)이 있어야 공제 한도를 셈. chainShare를 주고 다시 계산하세요');
+    if (b.input.priorGiftedAmountIncludedInEstate && (L.rows['i.priorGiftHeirAmount'] || L.rows['i.priorGiftOtherAmount'])) lines.push('⚠ 장부 사전증여 칸에도 값이 있음 — 같은 증여라면 두 번 더해졌으니 장부 칸이나 chainFrom 중 하나만');
+  }
+  const isCase = !!nm || assumed.length > 0 || chained.length > 0, name = nm || (label + ' 장부 경우 ' + (all.filter(function (e) { return e && e.안; }).length + 1));
   const entry = { id: 'tc_' + Date.now(), 세목: label, 구분: isCase ? '경우(안) 장부 계산' : '장부 계산(서버)', 요약: [isCase ? '[경우(안)] ' + name : '[장부 계산] ' + (c.사건명 || c.고객명 || '')].concat(lines).join('\n'), 최종세액: Number(r.납부세액), 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''), 저장값: { ledger: true, tax: c.세목, inputs: b.input, result: { 과세표준: r.과세표준, 산출세액: 산출, 신고세액공제: r.신고세액공제, 납부세액: r.납부세액 } } };
   if (isCase) entry.안 = { 이름: name, 세목: gift ? 'gift' : 'inheritance', 바꾼칸: assumed, 누가: by, 때: caseProcNow_(), 바탕: '사건 장부(정함+추정)', 바탕저장본id: '', 이유: String((body && body.why) || '').slice(0, 200) };
   const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
@@ -1025,7 +1056,7 @@ function ledgerView_(c) {
   const rows = ledgerRows_(c.id), L = ledgerLoad_(c.id);
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
-  const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
+  const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 세목: e.세목 || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
   return { ok: true, 사건: (c.사건명 || c.고객명 || '') + ' · ' + (c.세목 || ''), 요약: ledgerSummary_(c.id), 줄: rows, 상태별: by, 기록: (L.log || []).slice(-40), 계산저장본: calcs, 자문: ledgerAdvBrief_(c, L, true), 칸코드: LEDGER_ENUMS_, 서류역할: LEDGER_DOC_ROLES_, 바탕: ledgerKbView_(c.id, c), 흐름: ledgerFlowView_(c, L, rows), 도구카드: ledgerToolCard_(L) };
 }
 // [2026.10.31 J — 할 일 장부 4번 "도구 카드·성적표" / 세무사님 "한번에 몽땅 완전자동모드로 끝내라"]
@@ -1224,7 +1255,7 @@ function ledgerToolRun_(input, by) {
   else if (d === 'ask') r = ledgerAsk_(c.id, { path: input.path, label: input.label, question: input.question || input.why, cands: input.cands, needDoc: !!input.needDoc, by: who });
   else if (d === 'decide') r = ledgerDecide_(c.id, { path: input.path, decision: input.decision, note: input.note || input.why, by: who });
   else if (d === 'undo') r = ledgerUndo_(c.id, { path: input.path, by: who });
-  else if (d === 'calc') r = ledgerCalcRun_(c, { by: who, name: input.name, over: input.over, why: input.why, tax: input.tax ? ledgerTaxCode_(input.tax) || String(input.tax) : '' });
+  else if (d === 'calc') r = ledgerCalcRun_(c, { by: who, name: input.name, over: input.over, why: input.why, chainFrom: input.chainFrom, chainHeir: input.chainHeir, chainShare: input.chainShare, tax: input.tax ? ledgerTaxCode_(input.tax) || String(input.tax) : '' });
   else if (d === 'taxes') r = ledgerTaxesSet_(c, input, who); // [2026.10.30 복합 자문] 함께 보는 세목 정하기(주 세목은 그대로) // [2026.10.29 계획서 3판] 시험 계산 — 경우 이름·가정
   else if (d === 'lookup') r = ledgerLookup_(c, input, who); // [2026.10.29 계획서 3판] 공부 조회(있는 조회 도구를 낱개로)
   else if (d === 'estimate') r = ledgerEstimate_(c, input, who); // 의뢰서 등 가설·가정값 → 추정
@@ -1278,7 +1309,7 @@ function ledgerApi_(c, body) {
   switch (body.step) {
     case 'ledger': return ledgerView_(c);
     case 'ledgerAsk': return ledgerAsk_(c.id, Object.assign({}, body, { by: body.by || who }));
-    case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who, name: body.name, over: body.over, why: body.why, tax: body.tax ? ledgerTaxCode_(body.tax) || String(body.tax) : '' });
+    case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who, name: body.name, over: body.over, why: body.why, chainFrom: body.chainFrom, chainHeir: body.chainHeir, chainShare: body.chainShare, tax: body.tax ? ledgerTaxCode_(body.tax) || String(body.tax) : '' });
     case 'ledgerTaxes': return ledgerTaxesSet_(c, body, body.by || who); // [2026.10.30 복합 자문] 📒 ⑥ 함께 보는 세목 — 넥스 case_ledger do=taxes와 같은 함수
     case 'ledgerLookup': return ledgerLookup_(c, body, body.by || who); // [2026.10.29 계획서 3판] 📒 ⑤ 도구 — 넥스 case_ledger와 같은 함수
     case 'ledgerEstimate': return ledgerEstimate_(c, body, body.by || who);
@@ -2357,12 +2388,13 @@ function ledgerTaxesSet_(c, input, who) {
 }
 var LEDGER_ADV_KINDS_ = { 문의: 'inqs', 쟁점: 'issues', 대안: 'alts', 근거: 'basis', 위험: 'risks', 권고: 'recs', 보고서: 'reports' };
 // 문의 상태(의뢰인이 물은 것 하나에 대한 우리 답) — 답 안 함 · 답함 · 보류(답을 못 내 "추가로 확인할 사항"으로)
-var LEDGER_INQ_STATES_ = ['답 안 함', '답함', '보류'];
+// [2026.11.01 종합 컨설팅] 자료 기다림 — 결론을 가르는 사실(갈림길)이 아직 없어 질문·받을 서류·가정별 시험 계산까지 해 둔 문의(성급한 결론 대신, 세무사님 화면에 보임)
+var LEDGER_INQ_STATES_ = ['답 안 함', '자료 기다림', '답함', '보류'];
 // 문의 답 현황 — 넥스가 보고서를 저장할 때 넥스에게만 돌려준다(GAS는 넥스 글에 아무것도 붙이지 않는다)
 function ledgerInqStatus_(L) {
   const inq = ledgerAdvList_(L).문의 || [];
   const open = inq.filter(function (x) { return (x.status || '답 안 함') === '답 안 함'; });
-  return { 수: inq.length, 답함: inq.filter(function (x) { return x.status === '답함'; }).length, 보류: inq.filter(function (x) { return x.status === '보류'; }).length, 답안함: open.map(function (x) { return (x.no ? x.no + '. ' : '') + x.title; }) };
+  return { 수: inq.length, 답함: inq.filter(function (x) { return x.status === '답함'; }).length, 보류: inq.filter(function (x) { return x.status === '보류'; }).length, 자료기다림: inq.filter(function (x) { return x.status === '자료 기다림'; }).map(function (x) { return (x.no ? x.no + '. ' : '') + x.title; }), 답안함: open.map(function (x) { return (x.no ? x.no + '. ' : '') + x.title; }) };
 }
 function ledgerAdvList_(L) {
   const A = (L && L.adv) || {}, out = {};

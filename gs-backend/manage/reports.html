@@ -122,10 +122,11 @@
     fileSel.innerHTML = '<option value="">불러오는 중…</option>';
     callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
       if (!sub || sub.error) throw new Error((sub && sub.error) || '');
-      return Promise.all([callGas('listFolder', { folderId: sub.reportFolderId }), callGas('listFolder', { folderId: sub.internalFolderId })]);
+      // [2026.11.01] 고객에게 여는 파일은 발행 폴더에서만 — 예전엔 내부 폴더(검토서 원본 등)까지 목록에 섞여 잘못 고르면 내부 문서가 고객에게 갔다
+      return Promise.all([callGas('listFolder', { folderId: sub.reportFolderId })]);
     }).then(function(rs){
       var files = [];
-      [['발행', rs[0]], ['내부', rs[1]]].forEach(function(p){ ((p[1] && p[1].files) || []).forEach(function(f){ files.push({ kind: p[0], f: f }); }); });
+      [['발행', rs[0]]].forEach(function(p){ ((p[1] && p[1].files) || []).forEach(function(f){ files.push({ kind: p[0], f: f }); }); });
       fileSel.innerHTML = '<option value="">' + (files.length ? '파일을 고르면 링크가 채워집니다' : '보고서 폴더에 파일이 없습니다') + '</option>' +
         files.map(function(x){ return '<option value="' + escapeHtml(x.f.id) + '" data-url="' + escapeHtml(x.f.url || ('https://drive.google.com/file/d/' + x.f.id + '/view')) + '">[' + x.kind + '] ' + escapeHtml(x.f.name) + '</option>'; }).join('');
       fileSel.disabled = !files.length;

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 04:35 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 06:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -369,6 +369,11 @@
 
   #centerWork{ flex:1; min-width:0; height:100%; overflow:hidden; position:relative; background:var(--bg); }
   /* [2026.10.22] 고객에게 보여주기(🖥) — 태블릿·PC에서만 단추가 보이고, 누르면 메뉴·넥스 칸·도움말을 숨기고 가운데만 크게 */
+  /* [2026.11.01] 오른쪽 아래 떠 있는 단추(넥스·펜·메모·?)가 화면 맨 아래 내용(처리개요 「저장」 등)을 가리던 것 — 화면마다 끝까지 내려도 단추 위로 올라오게 아래 여백을 둔다.
+     통째로 스크롤하는 화면은 화면 자체에, 칸이 나뉜 화면은 오른쪽 아래 끝에 닿는 스크롤 칸에. */
+  #centerWork > .view{ padding-bottom:72px; }
+  #view-ai, #view-workmanage, #view-clientmanage, #view-docs, #view-taxcalc, #view-reportwriter, #view-memo-text, #view-memo-hand, #view-reporthub{ padding-bottom:0; }
+  #view-workmanage .manage-split-detail, #clientDetailCol, #docsList, #view-taxcalc .taxcalc-body, #previewPane, #rhFileListWrap{ padding-bottom:72px; }
   #nxPresentBtn{ position:absolute; right:68px; bottom:18px; z-index:35; width:42px; height:42px; border-radius:50%; border:none;
     background:var(--navy); color:var(--gold); font-size:18px; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.28); }
   body.lay-phone #nxPresentBtn{ display:none; }
@@ -452,6 +457,16 @@
      전부 밝은 배경 기준 색상에서 남색 배경에 맞는 밝은 글자색으로 다시 맞췄다. */
   #sideAI{ width:14px; flex-shrink:0; background:var(--navy); border-left:1px solid var(--line); position:relative; transition:width .15s ease; z-index:40; cursor:pointer; overflow:hidden; }
   #sideAI.expanded{ width:min(320px, 88vw); cursor:default; }
+  /* [2026.11.01] 세무사님 "우측사이드바 열림을 좌측메뉴바 열림과 똑같이 … 숨겨졌을 때 너비로 같게" — 왼쪽 메뉴와 같은 틀:
+     평소 오른쪽 끝 얇은 띠(6px, 손으로 누르는 화면 14px)만, 대면 가운데 화면 위에 덮어 나타남(자리는 띠 폭 그대로), 📌 고정(.pinned)이면 자리 차지 */
+  #sideAI:not(.expanded){ width:6px; border-left:none; }
+  @media (pointer:coarse){ #sideAI:not(.expanded){ width:14px; } }
+  #sideAI:not(.expanded):hover{ background:var(--gold); }
+  #sideAI.expanded.pinned{ width:var(--ai-w, min(320px, 88vw)); }
+  #sideAI.expanded:not(.pinned){ width:6px; overflow:visible; z-index:1000; border-left:none; }
+  @media (pointer:coarse){ #sideAI.expanded:not(.pinned){ width:14px; } }
+  #sideAI.expanded:not(.pinned) #sideAIInner{ left:auto; right:0; width:var(--ai-w, min(320px, 88vw)); background:var(--navy); box-shadow:-4px 0 14px rgba(0,0,0,.28); }
+  html.nx-dark #sideAI.expanded:not(.pinned) #sideAIInner{ background:#0b1120; }
   #sideAIInner{ position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
   /* [2026.09 버그수정] 접힌 상태(14px)에서도 #sideAIInner 내용(입력창 등 기본 흰 배경을 가진
      요소들)이 그대로 그려져 overflow:hidden에 잘려나간 조각들이 남색 배경 중간중간에 흰
@@ -6652,7 +6667,7 @@ function nxMdOpenWindow(title, src, opts){
     var fields = CH_CASE_OVERVIEW_FIELDS_[c.세목];
     if (!fields){
       return '<div class="nx-l3" style="margin-top:0;">사건처리개시 — 처리대상 · 처리방향</div>' +
-        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상 <span style="font-weight:400;">(무엇을 처리하는지)</span></label>' +
+        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상<span class="tc-x" title="무엇을 처리하는지">(무엇을 처리하는지)</span></label>' +
         '<input type="text" id="chEditTarget" placeholder="예: OO아파트 매각건의 양도소득세 신고" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box;">';
     }
     var overview = c._chOverviewWorking = Object.assign({}, c.사건개요 || {});
@@ -6837,7 +6852,7 @@ function nxMdOpenWindow(title, src, opts){
     chBodyEl.innerHTML = '<div class="ch-board"><div class="ch-col ch-col-todo"><div class="ch-col-h">지금 할 일</div>' +
       '<div class="card" id="chGasCard">' +
       '<div id="chGasStripSlot"></div>' +
-      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>📍 사건 현황</b><span style="font-size:12px; color:var(--sub);">GAS가 본 서류 쪽 사실</span></div>' +
+      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>사건 현황</b><span style="font-size:12px; color:var(--sub);">GAS가 본 서류 쪽 사실</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
       '<div id="chNexLine" style="display:none; margin-top:8px; padding:6px 8px; border-radius:6px; border-left:3px solid #7a5c14; background:rgba(200,162,68,0.10); font-size:12.5px;"></div>' +
       '</div>' +
@@ -6857,7 +6872,7 @@ function nxMdOpenWindow(title, src, opts){
       '</div><div class="ch-col ch-col-facts"><div class="ch-col-h">사실 <span>사건개요서</span></div>' +
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향 <span style="font-weight:400;">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향<span class="tc-x" title="법령·예규·판례를 검토해 어떻게 처리할지">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
       '<textarea id="chEditDirection" placeholder="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
       '<div style="margin-top:8px; text-align:right;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
@@ -7888,7 +7903,8 @@ function nxMdOpenWindow(title, src, opts){
         if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
         var rows = r.줄 || [], sum = r.요약 || {};
         var h = '<div style="font-size:12.5px;">';
-        h += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>사건 장부</b><span style="color:var(--sub);">' + esc(sum.전체 || 0) + '줄 · 물어볼 것 ' + esc(sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + esc(sum.증빙받을것 || 0) + ' · 추정 ' + esc(sum.추정 || 0) + ' · 확정 ' + esc(sum.확정 || 0) + (sum.at ? ' · 마지막 ' + esc(sum.at) : '') + '</span>'
+        // [2026.11.01] 장부 요약 두 겹 — 맨 위 머리줄 장부 띠와 같은 셈을 여기서 또 보여 줘 겹쳤다. 여기엔 단추만 두고, 줄 수·마지막 때는 「칸 장부」 탭 현황 줄로 옮긴다
+        h += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">'
           + '<button type="button" id="chLgCalc" class="ghost-btn" title="장부의 확정·추정 줄로 세액계산기를 돌려 사건에 저장합니다. 물어볼 것이 남아도 막지 않고, 빈 칸과 추정은 결과에 적습니다">장부로 세액계산</button>'
           + (!(sum.전체) ? '<button type="button" id="chLgImport" class="ghost-btn" title="옛 사건처리 결정 파일(정한 값·남은 질문)을 장부로 한 번 옮깁니다">옛 기록 옮겨오기</button>' : '') + '</div>';
         var cell = function(t, w, extra){ return '<td style="padding:3px 8px; border-top:1px solid var(--line); max-width:' + w + 'px; overflow-x:auto; white-space:nowrap;' + (extra || '') + '" title="' + esc(t) + '">' + esc(t) + '</td>'; };
@@ -7912,7 +7928,7 @@ function nxMdOpenWindow(title, src, opts){
           + lgTb('files', '모은 것', 0, '파일 ' + (kb && kb.files || []).length + '개 · 사실 ' + (ks.사실 || 0) + '건' + (kp && (kp.사실 || 0) !== (ks.사실 || 0) ? ' (전 ' + (kp.사실 || 0) + ')' : ''))
           + lgTb('groups', '맞대기', nSt('맞대기:', /^미결$/), '서류끼리 갈림 ' + nSt('맞대기:', /^미결$/) + ' · 서류마다 다름 ' + nSt('맞대기:', /^서로 다름/) + ' · 판정 ' + nSt('맞대기:', /^판정됨$/) + ' · 일치 ' + nSt('맞대기:', /^일치$/) + ' · 서류 1종 ' + nSt('맞대기:', /^단독$/))
           + lgTb('links', '칸으로 간 길', nSt('칸:', /^서류와 다름|^서류 값과 다름/), '다름 ' + nSt('칸:', /^서류와 다름|^서류 값과 다름/) + ' · 서류에 없는 값 ' + nSt('칸:', /^서류에 없는 값|^추정\(서류에 없음/) + ' · 서류와 같음 ' + nSt('칸:', /^서류와 일치|^서류 1/) + ' · 세무사님 값 ' + nSt('칸:', /^세무사님/))
-          + lgTb('rows', '칸 장부', sum.물어볼것, '물어볼 것 ' + (sum.물어볼것 || 0) + ' · 추정 ' + (sum.추정 || 0) + ' · 확정 ' + (sum.확정 || 0))
+          + lgTb('rows', '칸 장부', sum.물어볼것, (sum.전체 || 0) + '줄 · 물어볼 것 ' + (sum.물어볼것 || 0) + ' · 증빙 받을 것 ' + (sum.증빙받을것 || 0) + ' · 추정 ' + (sum.추정 || 0) + ' · 확정 ' + (sum.확정 || 0) + (sum.at ? ' · 마지막 ' + sum.at : ''))
           + (fl ? lgTb('tools', '도구', 0, '공부 조회 ' + (fb0.공부 || 0) + '필지 · 추정 ' + (fb0.추정 || 0) + '칸 · 시험 계산 · 세목 비교') : '')
           + lgTb('adv', '자문', 0, '쟁점 ' + ((r.자문 || {}).쟁점 || []).length + ' · 대안 ' + ((r.자문 || {}).대안 || []).length + ' · 권고 ' + ((r.자문 || {}).권고 || []).length + ' · 보고서 ' + ((r.자문 || {}).보고서 || []).length)
           + '</div><div class="lg-tab-detail" style="font-size:12px; color:var(--sub); margin-top:4px;"></div></div>';
@@ -8031,8 +8047,17 @@ function nxMdOpenWindow(title, src, opts){
                 + tbl(['항목', '값', '출처'], (p.받음 || []).map(function(it){ return '<tr>' + cell(it.label, 200) + cell(it.v, 460) + cell(it.src, 280, ' color:var(--sub);') + '</tr>'; }).join('') + (p.못받음 || []).map(function(it){ return '<tr>' + cell(it.label, 200, ' color:#b23;') + cell('못 받음 — ' + (it.err || ''), 460, ' color:#b23;') + cell('', 280) + '</tr>'; }).join('')) + '</div>'; }).join('') : '<div class="log-empty">아직 조회한 필지가 없습니다</div>') + '</div>';
           th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">의뢰서 값을 추정으로</b> <span style="color:var(--sub);">의뢰서·메모가 말한 거래(취득·양도 날짜·금액)와 물건(소재지)을 비어 있는 계산 칸에 「추정」으로 넣습니다. 정해진 칸은 건드리지 않고, 서류가 들어오면 서류 값이 이기며 다르면 여쭙니다</span> <button type="button" id="chLgEstimate" class="ghost-btn">추정으로 넣기</button></div>';
           var opts5 = PATHS.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
-          th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">시험 계산</b> <span style="color:var(--sub);">지금 장부(정함+추정)로 언제든 계산합니다. 경우 이름과 가정을 붙이면 경우(안)으로 따로 저장하고, 가정은 이번 계산에만 쓰여 장부 값은 그대로입니다</span>'
-            + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><input id="chLgCaseName" type="text" placeholder="경우 이름(비우면 시험 계산)" style="width:220px;"><select id="chLgOverPath" style="max-width:300px;"><option value="">가정 없음</option>' + opts5 + '</select><input id="chLgOverVal" type="text" placeholder="가정 값" style="width:160px;"><button type="button" id="chLgTry" class="ghost-btn">계산</button></div></div>';
+          // [2026.11.01 종합 컨설팅 점검] 넥스가 하는 경우 계산을 세무사님도 화면에서 — 세목 고르기(주·함께 보는 세목)·가정 여러 칸·증여 → 상속 이어 계산
+          var lgCodes = ((r.자문 || {}).세목 || {}).코드 || [], LGTX = { transfer: '양도', gift: '증여', inheritance: '상속' };
+          if (!lgCodes.length) lgCodes = ['transfer'];
+          var giftSaved = (r.계산저장본 || []).filter(function(s){ return /증여/.test(s.세목 || ''); });
+          th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">시험 계산</b> '
+            + '<div class="nx-help">지금 장부(정함+추정)로 언제든 계산합니다. 경우 이름과 가정을 붙이면 경우(안)으로 따로 저장하고, 가정은 이번 계산에만 쓰여 장부 값은 그대로입니다. 장부 증여 칸은 한 건이라, 문의마다 다른 증여(배우자에게·자녀에게)는 세목 증여에 증여재산가액·관계를 가정으로 넣어 각각 저장합니다. 상속에서 「이어 계산할 증여」를 고르면 그 증여가 사전증여로 더해지고 증여세 공제 칸에 들어갑니다.</div>'
+            + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><select id="chLgTax" title="계산할 세목">' + lgCodes.map(function(t){ return '<option value="' + esc(t) + '">' + esc(LGTX[t] || t) + '</option>'; }).join('') + '</select>'
+            + '<input id="chLgCaseName" type="text" placeholder="경우 이름(비우면 시험 계산)" style="width:220px;"><select id="chLgOverPath" style="max-width:300px;"><option value="">가정 없음</option>' + opts5 + '</select><input id="chLgOverVal" type="text" placeholder="가정 값" style="width:160px;"><button type="button" id="chLgAddOver" class="ghost-btn sm" title="가정을 하나 더 얹습니다">＋ 가정</button>'
+            + '<span id="chLgChainBox" style="display:none; gap:6px; align-items:center;"><select id="chLgChain" title="이어 계산할 증여 저장본" style="max-width:260px;"><option value="">이어 계산할 증여 없음</option>' + giftSaved.map(function(s){ return '<option value="' + esc(s.id) + '">' + esc(s.이름 + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '')) + '</option>'; }).join('') + '</select>'
+            + '<label style="font-size:12px; white-space:nowrap;"><input type="checkbox" id="chLgChainHeir" checked> 받은 사람이 상속인</label><input id="chLgChainShare" type="text" placeholder="그 상속인 상속분(원)" style="width:150px;" title="증여세 공제 한도를 셈하는 데 필요합니다"></span>'
+            + '<button type="button" id="chLgTry" class="ghost-btn">계산</button></div><div id="chLgOvers" style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"></div></div>';
           th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">세목 비교</b> <span style="color:var(--sub);">같은 사실로 양도·증여·상속을 각각 계산해 나란히 — 증여는 관계를 고르면(증여재산가액을 비우면 장부 양도가액을 시가로 가정), 상속은 과세가액을 적으면 계산합니다. 결과는 안으로 저장돼 검토서가 인용합니다</span>'
             + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><label style="font-size:12px;">증여 관계 <select id="chCmpRel"><option value="">비교 안 함</option><option>직계비속</option><option>직계존속</option><option>배우자</option><option>기타친족</option><option>기타</option></select></label><input id="chCmpGiftAmt" type="text" placeholder="증여재산가액(비우면 장부 양도가액)" style="width:220px;">'
             + '<label style="font-size:12px;">상속 과세가액 <input id="chCmpInhAmt" type="text" placeholder="비우면 비교 안 함" style="width:150px;"></label><label style="font-size:12px;"><input type="checkbox" id="chCmpSpouse"> 배우자 있음</label><label style="font-size:12px;">자녀 수 <input id="chCmpKids" type="number" min="0" value="1" style="width:50px;"></label><button type="button" id="chCmpGo" class="ghost-btn">비교</button></div></div>';
@@ -8053,7 +8078,7 @@ function nxMdOpenWindow(title, src, opts){
               + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 메모 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
               + (T.누가 ? '<span style="color:var(--sub);">(' + esc(T.누가) + (T.때 ? ' · ' + esc(T.때) : '') + ')</span>' : '') + '</div>';
             var Q = A.문의현황 || {};
-            if (Q.수) th6 += '<div style="margin-top:4px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
+            if (Q.수) th6 += '<div style="margin-top:4px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.자료기다림 || []).length ? ' · <span style="color:var(--gold, #a8862e);" title="결론을 가르는 사실이 아직 없어 넥스가 질문·받을 서류·가정별 시험 계산까지 해 둔 문의">자료 기다림 ' + esc(Q.자료기다림.length) + '</span>' : '') + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
           })();
           KINDS.forEach(function(k){
             var list = A[k] || [];
@@ -8062,10 +8087,13 @@ function nxMdOpenWindow(title, src, opts){
               th6 += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의</b> <span style="color:var(--sub);">' + esc(list.length) + '개 — 의뢰인이 물으신 것을 하나씩. 보고서 "문의사항별 답변"이 같은 번호로 답합니다.</span>';
               if (!list.length) th6 += '<div class="log-empty">아직 없음</div>';
               Object.keys(byTax).forEach(function(g){
-                th6 += '<div style="margin-top:4px; color:var(--sub);">' + esc(g) + ' ' + esc(byTax[g].length) + '개</div>' + tbl(['번호', '세목', '물으신 것', '답', '상태·누가', ''], byTax[g].map(function(x){
+                th6 += '<div style="margin-top:4px; color:var(--sub);">' + esc(g) + ' ' + esc(byTax[g].length) + '개</div>' + tbl(['번호', '세목', '물으신 것', '답', '이어진 쟁점·계산', '상태·누가', ''], byTax[g].map(function(x){
                   var st = x.상태 || '답 안 함';
-                  return '<tr>' + cell(x.번호 || '', 40) + cell((x.세목 || []).join('·'), 80) + cell(x.제목, 280) + cell(x.답 || x.내용 || '', 320, ' color:var(--sub);') + cell([st, x.누가].filter(Boolean).join(' · '), 120, st === '답 안 함' ? ' color:#b23;' : '')
-                    + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + ['답함', '보류', '답 안 함'].filter(function(v){ return v !== st; }).map(function(v){ return '<button type="button" class="ghost-btn sm" data-adv-st="' + esc(v) + '" data-adv-id="' + esc(x.id) + '" title="이 문의를 「' + esc(v) + '」로 바꿉니다">' + esc(v) + '</button> '; }).join('')
+                  // [2026.11.01 종합 컨설팅 점검] 문의 → 이어진 쟁점·권고·계산 저장본을 한 줄에서 따라가게(넥스가 links·calc로 잇는 것)
+                  var advTitle = {}; KINDS.forEach(function(k2){ (A[k2] || []).forEach(function(y){ advTitle[y.id] = k2 + ' ' + (y.제목 || ''); }); });
+                  var tie = (x.이음 || []).map(function(id){ return advTitle[id] || id; }).concat((x.저장본 || []).map(function(s){ return '계산 ' + (s.이름 || s.id) + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : ''); }));
+                  return '<tr>' + cell(x.번호 || '', 40) + cell((x.세목 || []).join('·'), 80) + cell(x.제목, 280) + cell(x.답 || x.내용 || '', 320, ' color:var(--sub);') + cell(tie.join(' · '), 260) + cell([st, x.누가].filter(Boolean).join(' · '), 120, st === '답 안 함' ? ' color:#b23;' : '')
+                    + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + ['답함', '자료 기다림', '보류', '답 안 함'].filter(function(v){ return v !== st; }).map(function(v){ return '<button type="button" class="ghost-btn sm" data-adv-st="' + esc(v) + '" data-adv-id="' + esc(x.id) + '" title="이 문의를 「' + esc(v) + '」로 바꿉니다">' + esc(v) + '</button> '; }).join('')
                     + '<button type="button" class="ghost-btn sm" data-adv-del="' + esc(x.id) + '" data-adv-kind="문의" title="이 문의를 지웁니다(기록은 남음)">지우기</button></td></tr>';
                 }).join(''));
               });
@@ -8182,11 +8210,32 @@ function nxMdOpenWindow(title, src, opts){
         var estB = document.getElementById('chLgEstimate'); if (estB) estB.addEventListener('click', function(){
           busy(estB, true); call({ step: 'ledgerEstimate' }).then(function(res){ busy(estB, false); if (!res) return; showTool('📝 추정으로 넣기', res, [res.message].concat((res.skipped || []).length ? ['이미 정해져 둔 칸: ' + res.skipped.join(', ')] : [])); setTimeout(reload, 1200); });
         });
+        // [2026.11.01] 세목마다 가정 칸 목록 — 양도는 장부 칸, 증여·상속은 계산기 입력 이름(넥스 do=calc over와 같음)
+        var LG_OVER = { transfer: null, gift: [['giftAmount', '증여재산가액'], ['relation', '관계(배우자·직계존속·직계비속·기타친족·기타)'], ['giftDate', '증여일'], ['priorGiftAmount', '10년 안 앞선 증여액'], ['debtAssumedAmount', '인수 채무'], ['appraisalFeeAmount', '감정평가수수료']],
+          inheritance: [['taxableEstateAmount', '상속 과세가액'], ['hasSpouse', '배우자 있음(예·아니오)'], ['childCount', '자녀 수'], ['netFinancialAssets', '순금융재산'], ['funeralCostAmount', '장례비']] };
+        var lgOvers = [], lgTaxSel = document.getElementById('chLgTax'), lgPathSel = document.getElementById('chLgOverPath'), lgPath0 = lgPathSel ? lgPathSel.innerHTML : '';
+        var lgDrawOvers = function(){ var box = document.getElementById('chLgOvers'); if (!box) return; box.innerHTML = lgOvers.map(function(o, i){ return '<span class="ghost-btn sm" style="cursor:default;">' + esc(o.label) + ' = ' + esc(o.value) + ' <a href="#" data-lg-ovdel="' + i + '" title="이 가정을 뺍니다">✕</a></span>'; }).join('');
+          Array.prototype.forEach.call(box.querySelectorAll('[data-lg-ovdel]'), function(a){ a.addEventListener('click', function(ev){ ev.preventDefault(); lgOvers.splice(Number(a.getAttribute('data-lg-ovdel')), 1); lgDrawOvers(); }); }); };
+        if (lgTaxSel) lgTaxSel.addEventListener('change', function(){
+          var t = lgTaxSel.value, L5 = LG_OVER[t];
+          lgPathSel.innerHTML = L5 ? '<option value="">가정 없음</option>' + L5.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('') : lgPath0;
+          lgOvers = []; lgDrawOvers();
+          var cb = document.getElementById('chLgChainBox'); if (cb) cb.style.display = t === 'inheritance' ? 'inline-flex' : 'none';
+        });
+        if (lgTaxSel) lgTaxSel.dispatchEvent(new Event('change')); // 처음 고른 세목(주 세목)의 가정 칸 목록으로 맞춘다 — 증여 사건에 양도 칸이 뜨지 않게
+        var lgAddOne = function(){ var op = lgPathSel.value, ov = (document.getElementById('chLgOverVal').value || '').trim(); if (!op) return true; if (!ov){ showToast('가정 값을 적어 주세요.', 'warning'); return false; }
+          lgOvers = lgOvers.filter(function(o){ return o.path !== op; }).concat([{ path: op, value: ov, label: lgPathSel.options[lgPathSel.selectedIndex].textContent }]); lgPathSel.value = ''; document.getElementById('chLgOverVal').value = ''; lgDrawOvers(); return true; };
+        var addOv = document.getElementById('chLgAddOver'); if (addOv) addOv.addEventListener('click', function(){ lgAddOne(); });
         var tryB = document.getElementById('chLgTry'); if (tryB) tryB.addEventListener('click', function(){
-          var nm = (document.getElementById('chLgCaseName').value || '').trim(), op = document.getElementById('chLgOverPath').value, ov = (document.getElementById('chLgOverVal').value || '').trim();
-          if (op && !ov){ showToast('가정 값을 적어 주세요.', 'warning'); return; }
+          var nm = (document.getElementById('chLgCaseName').value || '').trim();
+          if (!lgAddOne()) return;
+          var tx = lgTaxSel ? lgTaxSel.value : '', p5 = { step: 'ledgerCalc', name: nm, over: lgOvers.map(function(o){ return { path: o.path, value: o.value }; }) };
+          if (tx) p5.tax = tx;
+          var chs = document.getElementById('chLgChain');
+          if (tx === 'inheritance' && chs && chs.value){ p5.chainFrom = [chs.value]; p5.chainHeir = !!document.getElementById('chLgChainHeir').checked; var shv = (document.getElementById('chLgChainShare').value || '').replace(/[^\d]/g, ''); if (shv) p5.chainShare = Number(shv); }
           busy(tryB, true, '계산 중…'); if (tOut) tOut.innerHTML = '<div class="log-empty">시험 계산 중…</div>';
-          call({ step: 'ledgerCalc', name: nm, over: op ? [{ path: op, value: ov }] : [] }).then(function(res){
+          call(p5).then(function(res){
+            lgOvers = []; lgDrawOvers();
             busy(tryB, false, '🧮 계산');
             if (!res){ if (tOut) tOut.innerHTML = ''; return; }
             showTool('🧮 ' + (res.이름 ? '경우(안) 「' + res.이름 + '」' : '시험 계산') + ' — 저장본 ' + (res.id || ''), res, (res.요약 || []).concat((res.gaps || []).length ? ['비어 있는 칸 ' + res.gaps.length + '개 — ④ 칸 장부에서 넣거나 추정으로'] : []));
@@ -44505,7 +44554,8 @@ function renderTcSavedList_(list){
 function tcWorkLog_(what, detail){ try { if (typeof tcCurrentCase === 'undefined' || !tcCurrentCase || !tcCurrentCase.id || !sessionStorage.getItem('nxManageSessionToken')) return; callGas('case_proc', { caseId: tcCurrentCase.id, step: 'log', by: window.nxWorkBy_ || '세무사님', what: what, detail: detail || '' }).catch(function(){}); } catch (e) {} }
 // 계산 저장 기록 — 같은 세목 직전 저장보다 세액이 크게 달라지면(100만원 이상·30% 이상) 넥스가 먼저 말을 걸 재료(중요한 순간 ②)
 function tcSaveLog_(entry){
-  var prev = (tcCurrentCase.세액계산결과 || []).filter(function(e){ return e.세목 === entry.세목 && Number.isFinite(e.최종세액); }).slice(-1)[0];
+  // [2026.11.01] 견주기는 기본 저장본끼리만 — 경우(안)은 일부러 바꾼 값이라 "세액이 크게 달라짐" 알림 재료가 아니다
+  var prev = entry.안 ? null : (tcCurrentCase.세액계산결과 || []).filter(function(e){ return !e.안 && e.세목 === entry.세목 && Number.isFinite(e.최종세액); }).slice(-1)[0];
   var lg = { by: window.nxWorkBy_ || '세무사님', what: '세액계산 저장', detail: (entry.세목 || '') + ' ' + (entry.구분 || '') + (Number.isFinite(entry.최종세액) ? ' 최종세액 ' + Number(entry.최종세액).toLocaleString('ko-KR') + '원' : '') };
   if (prev && Number.isFinite(entry.최종세액)){ var d = Math.abs(entry.최종세액 - prev.최종세액); if (d >= 1000000 && d >= Math.abs(prev.최종세액) * 0.3){ lg.alertKind = 'tax-jump'; lg.alert = (entry.세목 || '') + ' 세액이 ' + Number(prev.최종세액).toLocaleString('ko-KR') + '원 → ' + Number(entry.최종세액).toLocaleString('ko-KR') + '원으로 크게 바뀌었습니다. 사건분류나 입력이 바뀐 것이 맞는지 보시겠어요?'; } }
   return lg;
@@ -47858,7 +47908,8 @@ function rwBuildOverviewFactsMd_(c){
 }
 function rwLatestTaxAmount_(c){
   if (!c || !Array.isArray(c.세액계산결과) || !c.세액계산결과.length) return null;
-  const matches = c.세액계산결과.filter(function(e){ return e && Number.isFinite(e.최종세액); });
+  // [2026.11.01] 경우(안) 저장본(e.안)은 견주어 보려고 바꾼 값 — 보고서 기본 세액이 되지 않는다(서버 caseProcLastCalc_와 같은 기준)
+  const matches = c.세액계산결과.filter(function(e){ return e && !e.안 && Number.isFinite(e.최종세액); });
   if (!matches.length) return null;
   matches.sort(function(a, b){ return String(a.계산일).localeCompare(String(b.계산일)); });
   return matches[matches.length - 1].최종세액;
@@ -50363,10 +50414,11 @@ function rwAiApplyEdit_(id, content){
     fileSel.innerHTML = '<option value="">불러오는 중…</option>';
     callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
       if (!sub || sub.error) throw new Error((sub && sub.error) || '');
-      return Promise.all([callGas('listFolder', { folderId: sub.reportFolderId }), callGas('listFolder', { folderId: sub.internalFolderId })]);
+      // [2026.11.01] 고객에게 여는 파일은 발행 폴더에서만 — 예전엔 내부 폴더(검토서 원본 등)까지 목록에 섞여 잘못 고르면 내부 문서가 고객에게 갔다
+      return Promise.all([callGas('listFolder', { folderId: sub.reportFolderId })]);
     }).then(function(rs){
       var files = [];
-      [['발행', rs[0]], ['내부', rs[1]]].forEach(function(p){ ((p[1] && p[1].files) || []).forEach(function(f){ files.push({ kind: p[0], f: f }); }); });
+      [['발행', rs[0]]].forEach(function(p){ ((p[1] && p[1].files) || []).forEach(function(f){ files.push({ kind: p[0], f: f }); }); });
       fileSel.innerHTML = '<option value="">' + (files.length ? '파일을 고르면 링크가 채워집니다' : '보고서 폴더에 파일이 없습니다') + '</option>' +
         files.map(function(x){ return '<option value="' + escapeHtml(x.f.id) + '" data-url="' + escapeHtml(x.f.url || ('https://drive.google.com/file/d/' + x.f.id + '/view')) + '">[' + x.kind + '] ' + escapeHtml(x.f.name) + '</option>'; }).join('');
       fileSel.disabled = !files.length;
@@ -50657,7 +50709,6 @@ function rwAiApplyEdit_(id, content){
     <div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       <label style="font-size:12px; color:var(--sub);">의뢰서 템플릿:</label>
       <select id="memoReqTemplateSelect" style="min-width:220px;"><option value="">불러오는 중…</option></select>
-      <button type="button" id="memoReqTplNameFixBtn" class="ghost-btn" title="의뢰서템플릿 폴더의 파일명에 '의뢰서_' 접두어를 일괄로 붙입니다">템플릿 이름정리</button>
       <span style="margin-left:auto; font-size:11.5px; color:var(--sub);" id="memoReqNonTextNote"></span>
       <button type="button" id="memoReqApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 사건에 저장</span></button>
     </div>
@@ -52675,7 +52726,8 @@ function rwAiApplyEdit_(id, content){
   // [2026.09.17 신규] "증여신고" 등 옛 이름 그대로인 템플릿 파일에 "의뢰서_" 접두어를 일괄로
   // 붙인다 — 이름변경뿐이라 파괴적이지 않으므로 dry-run 없이 바로 실행하고 결과만 보여준다
   // (보고서템플릿 정리 버튼과 동일 원칙).
-  document.getElementById('memoReqTplNameFixBtn').addEventListener('click', function(){
+  // [2026.11.01] 단추는 설정 › 정비도구 › 의뢰 메모로 옮김(거기서 부름)
+  window.memoReqTplNameFix_ = function(){
     callGas('migrate_case_template_names', {}).then(function(res){
       if (res.success === false){ nxAlert_(res.message || '실패했습니다.', '템플릿 이름정리'); return; }
       nxAlert_(res.log.join('\n'), '템플릿 이름정리 결과');
@@ -52683,7 +52735,7 @@ function rwAiApplyEdit_(id, content){
     }).catch(function(err){
       nxAlert_('오류: ' + (err && err.message ? err.message : err), '템플릿 이름정리');
     });
-  });
+  };
   memoReqTemplateSelectEl.addEventListener('change', function(){
     var tpl = memoReqTemplates_.filter(function(t){ return t.id === memoReqTemplateSelectEl.value; })[0];
     memoReqSelectedTemplate_ = tpl || null;
@@ -53952,6 +54004,19 @@ function rwAiApplyEdit_(id, content){
           document.getElementById('stBtnRhTemplateNameFix').addEventListener('click', call('rhTemplateNameFix_'));
           document.getElementById('stBtnRhForceRescan').addEventListener('click', function(){ showToast('보고서 전체를 다시 훑는 중입니다(시간이 걸립니다)…', 'info'); call('rhForceRescan_')(); });
         })();
+      </script>
+    </div>
+    <!-- [2026.11.01] 의뢰 메모 화면 도구줄에 있던 한 번 쓰고 마는 「템플릿 이름정리」를 보고서들 정비 단추처럼 여기로 옮김 -->
+    <div class="card" data-sttab="4">
+      <h3>의뢰 메모</h3>
+      <div class="settings-tools-group">
+        <div class="settings-tool-item">
+          <button type="button" class="ghost-btn" id="stBtnMemoTplNameFix">템플릿 이름</button>
+          <div class="nx-help">의뢰서템플릿 폴더의 옛 이름(「증여신고」 등) 파일에 「의뢰서_」를 앞에 붙입니다(이름만 바꿔 누르면 바로 돌고 결과를 보여 드림).</div>
+        </div>
+      </div>
+      <script>
+        document.getElementById('stBtnMemoTplNameFix').addEventListener('click', function(){ if (typeof window.memoReqTplNameFix_ === 'function') window.memoReqTplNameFix_(); else showToast('의뢰 메모 화면을 아직 못 불러왔습니다 — 잠시 뒤 다시 눌러 주세요.', 'error'); });
       </script>
     </div>
     <div class="card" data-sttab="5" id="stDevCard">
@@ -55876,7 +55941,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     </div>
     <div class="nxai-attachbar" id="nxAiAttachBar"></div>
     <div class="nxai-input-row">
-      <textarea id="nxAiInput" rows="1" placeholder="메시지 입력 (Enter 전송, Shift+Enter 줄바꿈, 이미지 붙여넣기 가능)"></textarea>
+      <textarea id="nxAiInput" rows="1" placeholder="메시지 입력" title="Enter 전송 · Shift+Enter 줄바꿈 · 이미지 붙여넣기 가능"></textarea>
       <button type="button" id="nxAiSend" class="nxai-send" title="보내기">➤</button>
     </div>
     <div class="nxai-tools">
@@ -56266,7 +56331,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai.mode-side .nxai-model{ background:transparent; color:#fff; border-color:rgba(255,255,255,.25); }
   .nxai.mode-side .nxai-model option{ color:var(--ink); }
   .nxai.mode-side .nxai-chip{ background:rgba(255,255,255,.15); }
-  .nxai-resize{ position:absolute; left:-10px; top:0; bottom:-2000px; width:6px; cursor:ew-resize; z-index:2; }
+  /* [2026.11.01] left:-10px이면 넥스 창 바깥(가려지는 곳)에 놓여 끌리지 않았음 → 창 왼쪽 끝 안으로 */
+  .nxai-resize{ position:absolute; left:0; top:0; bottom:-2000px; width:6px; cursor:ew-resize; z-index:2; }
   .nxai-resize:hover, .nxai-resize.dragging{ background:rgba(200,162,68,.35); }
 
   /* ===== 모달 ===== */
@@ -56945,7 +57011,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     head.className = 'nxai-pv-sechead';
     var keep = rep ? rep.files.filter(function(it){ return it.keep; }) : [];
     var arch = rep ? rep.files.filter(function(it){ return !it.keep; }) : [];
-    head.innerHTML = '<b>📝 보고서</b><span class="s">' + (rep ? '.md ' + keep.length + '개 — ' : '') + '열면 보고서 모양, AI가 열린 문서를 보고 고칩니다</span>';
+    head.innerHTML = '<b>보고서</b><span class="s">' + (rep ? '.md ' + keep.length + '개 — ' : '') + '열면 보고서 모양, AI가 열린 문서를 보고 고칩니다</span>';
     var re = document.createElement('button');
     re.type = 'button'; re.className = 'nxai-btn'; re.textContent = '🔄'; re.title = '보고서 목록 새로 받기';
     re.addEventListener('click', function(){ nxAiPvRenderReports_(sec, null); nxAiPvScanCase_(true).then(function(r){ if (sec.isConnected && r) nxAiPvRenderReports_(sec, r); }); });
@@ -62263,9 +62329,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var pin = nxAiEl_('nxAiPin'); if (!pin) return;
       var isOn = function(){ try { return localStorage.getItem('nx_side_pin') === '1'; } catch (e) { return false; } };
       var paint = function(){ pin.classList.toggle('on', isOn()); pin.title = (isOn() ? '사이드바 고정 켜짐 — 누르면 해제' : '사이드바 고정 — 켜면 바깥을 눌러도 접히지 않습니다'); };
-      pin.addEventListener('click', function(e){ e.stopPropagation(); try { localStorage.setItem('nx_side_pin', isOn() ? '0' : '1'); } catch (er) {} paint(); var s = nxAiEl_('sideAI'); if (s && isOn()) s.classList.add('expanded'); });
+      // [2026.11.01] 고정 = 자리 차지(.pinned), 풀면 덮어 보이기로 돌아감(왼쪽 메뉴 NETAX 줄과 같은 뜻)
+      pin.addEventListener('click', function(e){ e.stopPropagation(); try { localStorage.setItem('nx_side_pin', isOn() ? '0' : '1'); } catch (er) {} paint(); var s = nxAiEl_('sideAI'); if (s){ s.classList.toggle('pinned', isOn()); if (isOn()) s.classList.add('expanded'); } });
       paint();
-      var s0 = nxAiEl_('sideAI'); if (s0 && isOn() && !s0.classList.contains('nxai-away')) s0.classList.add('expanded');
+      var s0 = nxAiEl_('sideAI'); if (s0){ s0.classList.toggle('pinned', isOn()); if (isOn() && !s0.classList.contains('nxai-away')) s0.classList.add('expanded'); }
     })();
     nxAiEl_('nxAiFontDown').addEventListener('click', function(e){ e.stopPropagation(); nxAiApplyFont_((parseFloat(nxAiLs_(NXAI_FONT_KEY)) || 13.5) - 1); });
     nxAiEl_('nxAiFontUp').addEventListener('click', function(e){ e.stopPropagation(); nxAiApplyFont_((parseFloat(nxAiLs_(NXAI_FONT_KEY)) || 13.5) + 1); });
@@ -62416,13 +62483,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       new MutationObserver(function(){
         if (side.classList.contains('expanded')){
           var saved = parseInt(nxAiLs_(WIDTH_KEY), 10);
-          if (saved) side.style.width = Math.min(Math.max(saved, MIN_W), maxW()) + 'px';
+          if (saved) side.style.setProperty('--ai-w', Math.min(Math.max(saved, MIN_W), maxW()) + 'px'); // [2026.11.01] 폭은 덮어 나올 때·고정일 때 같이 쓰는 값(--ai-w)으로
           // [2026.10.13] 펼칠 때 그 화면의 사건으로 맞추고, 펼쳐져 있는 동안 화면 사건이 바뀌면 따라간다(1.5초마다 가볍게 확인)
           nxAiLastSyncedScreenCase_ = '';
           nxAiSyncToScreenCase_();
           if (!caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500);
         } else {
-          side.style.width = '';
           if (caseWatch_){ clearInterval(caseWatch_); caseWatch_ = null; }
         }
       }).observe(side, { attributes: true, attributeFilter: ['class'] });
@@ -62432,11 +62498,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (nxAiMode !== 'side') return;
         e.preventDefault(); e.stopPropagation();
         handle.classList.add('dragging'); handle.setPointerCapture(e.pointerId);
-        var onMove = function(ev){ side.style.width = Math.min(Math.max(window.innerWidth - ev.clientX, MIN_W), maxW()) + 'px'; };
+        var onMove = function(ev){ side.style.setProperty('--ai-w', Math.min(Math.max(window.innerWidth - ev.clientX, MIN_W), maxW()) + 'px'); };
         var onUp = function(){
           handle.classList.remove('dragging');
           handle.removeEventListener('pointermove', onMove); handle.removeEventListener('pointerup', onUp);
-          nxAiLs_(WIDTH_KEY, String(parseInt(side.style.width, 10)));
+          nxAiLs_(WIDTH_KEY, String(parseInt(side.style.getPropertyValue('--ai-w'), 10)));
         };
         handle.addEventListener('pointermove', onMove); handle.addEventListener('pointerup', onUp);
       });
@@ -62818,6 +62884,27 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         clearTimeout(window.nxSideMenuPeekT_);
         if (!m.classList.contains('peek')) return;
         window.nxSideMenuPeekT_ = setTimeout(function(){ nxSideMenuPeek_(false); }, 500);
+      });
+    })();
+    // [2026.11.01] 세무사님 "우측사이드바 열림을 좌측메뉴바 열림과 똑같이" — 오른쪽 넥스 창도 띠에 0.3초 대면 덮어 나타나고, 빼면 0.5초 뒤 숨는다(📌 고정이면 그대로).
+    // 쓰는 중엔 숨기지 않는다: 입력칸에 글을 쓰고 있거나(포커스), 넥스 창이 띄운 고르기 메뉴·사건 고르기·설정 창이 열려 있을 때 — 바깥을 누르면 숨음.
+    (function(){
+      var a = document.getElementById('sideAI');
+      var busy = function(){
+        var f = document.activeElement;
+        if (a.matches(':hover') || (a.contains(f) && f.matches('textarea, input, select, [contenteditable="true"]'))) return true; // 단추를 누른 뒤 남은 포커스는 쓰는 중으로 치지 않음
+        if (window.nxAiMenuEl && document.body.contains(window.nxAiMenuEl)) return true;
+        return ['nxAiCaseOverlay', 'nxAiSettingsOverlay'].some(function(id){ var o = document.getElementById(id); return o && !o.hidden; });
+      };
+      a.addEventListener('mouseenter', function(){
+        clearTimeout(window.nxSideAIPeekT_);
+        if (a.classList.contains('expanded') || a.classList.contains('nxai-away')) return;
+        window.nxSideAIPeekT_ = setTimeout(function(){ a.classList.add('expanded'); }, 300);
+      });
+      a.addEventListener('mouseleave', function(){
+        clearTimeout(window.nxSideAIPeekT_);
+        if (!a.classList.contains('expanded') || nxSidePinned_()) return;
+        window.nxSideAIPeekT_ = setTimeout(function(){ if (!busy() && !nxSidePinned_()) a.classList.remove('expanded'); }, 500);
       });
     })();
     // NETAX 줄 어디를 눌러도 고정 ↔ 풀기

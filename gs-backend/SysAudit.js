@@ -469,6 +469,14 @@ function sysAuditRunAi_(files, changedNames, opts) {
     if (i >= maxChunks || (opts.deadline && Date.now() > opts.deadline)) { chunks.slice(i).forEach(function (c) { r.deferred = r.deferred.concat(c.changed); }); break; }
     // [2026.10.31] 4000 → 16000: 생각하는 모델(gemini-3.6-flash)이 생각에 몫을 다 써 10-31 03:43 "빈 응답", 10:4x 답이 JSON 중간에 끊겨 "형식이 달라 읽지 못함"이었다
     var c = chunks[i], ans = aiAskMany_([gem], sysAuditAiPrompt_(c, byName, sendText), 16000)[0] || { ok: false, error: '응답 없음' };
+    // [2026.11.01] 10-31 11:2x·11-01 03:43 두 번 "high demand"(제미니 쪽 잠깐 붐빔)로 첫 물음에서 바로 그만두고 하루를 넘겼다 —
+    // 잠깐 붐빔·빈 응답은 30초·60초 쉬고 두 번 더 묻는다(무료 한도 초과는 다시 물어도 안 되므로 그대로 다음 밤으로)
+    for (var tries = 0; !ans.ok && tries < 2 && sysAuditAiTransient_(ans.error); tries++) {
+      var wait = tries ? 60000 : 30000;
+      if (opts.deadline && Date.now() + wait + 60000 > opts.deadline) break;
+      Utilities.sleep(wait);
+      ans = aiAskMany_([gem], sysAuditAiPrompt_(c, byName, sendText), 16000)[0] || { ok: false, error: '응답 없음' };
+    }
     r.chunks++;
     if (!ans.ok) {
       var limit = /quota|exhaust|429|rate|limit|한도/i.test(ans.error || '');
@@ -587,10 +595,28 @@ function sysAuditAiNightly_(opts) {
 function runSysAuditAiNightly() {
   try { sysAuditAiNightly_({ trigger: '새벽 3시' }); } catch (err) { console.error('무료 AI 지침 점검 실패: ' + err.message); }
 }
+// [2026.11.01] 새벽 5시 다시 — 3시 점검이 제미니 붐빔 등으로 못 돌았을 때만 한 번 더(돌았으면 아무것도 안 함, 무료 그대로)
+function runSysAuditAiRetry() {
+  try {
+    var folder = sysAuditReportFolder_(); if (!folder) return;
+    var ai = (sysAuditReadJson_(folder, SYS_AUDIT_RESULT_FILE_) || {}).ai || {};
+    var today = sysAuditNow_().slice(0, 10);
+    if (String(ai.lastRunAt || '').slice(0, 10) === today) return;          // 오늘 이미 실제로 돎
+    if (!(ai.errors || []).length && !(ai.deferred || []).length) return;  // 볼 것도 막힌 것도 없음
+    sysAuditAiNightly_({ trigger: '새벽 5시 다시' });
+  } catch (err) { console.error('무료 AI 지침 점검 다시 실패: ' + err.message); }
+}
+function sysAuditAiTransient_(err) {
+  var e = String(err || '');
+  if (/quota|exhaust|429|rate|한도/i.test(e)) return false;
+  return /high demand|overload|unavailable|503|500|try again|응답 없음|빈 응답|timed? ?out|시간 초과/i.test(e);
+}
 function sysAuditEnsureTrigger_() {
-  var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'runSysAuditAiNightly'; });
+  var names = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+  var has = names.indexOf('runSysAuditAiNightly') !== -1, hasRetry = names.indexOf('runSysAuditAiRetry') !== -1;
   if (!has) ScriptApp.newTrigger('runSysAuditAiNightly').timeBased().everyDays(1).atHour(3).create();
-  return { ok: true, existed: has };
+  if (!hasRetry) ScriptApp.newTrigger('runSysAuditAiRetry').timeBased().everyDays(1).atHour(5).create();
+  return { ok: true, existed: has, retryExisted: hasRetry };
 }
 
 // 대시보드·개선 후보 보고서용 한 줄 요약

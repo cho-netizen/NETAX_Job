@@ -69,7 +69,7 @@
     </div>
     <div class="nxai-attachbar" id="nxAiAttachBar"></div>
     <div class="nxai-input-row">
-      <textarea id="nxAiInput" rows="1" placeholder="메시지 입력 (Enter 전송, Shift+Enter 줄바꿈, 이미지 붙여넣기 가능)"></textarea>
+      <textarea id="nxAiInput" rows="1" placeholder="메시지 입력" title="Enter 전송 · Shift+Enter 줄바꿈 · 이미지 붙여넣기 가능"></textarea>
       <button type="button" id="nxAiSend" class="nxai-send" title="보내기">➤</button>
     </div>
     <div class="nxai-tools">
@@ -459,7 +459,8 @@
   .nxai.mode-side .nxai-model{ background:transparent; color:#fff; border-color:rgba(255,255,255,.25); }
   .nxai.mode-side .nxai-model option{ color:var(--ink); }
   .nxai.mode-side .nxai-chip{ background:rgba(255,255,255,.15); }
-  .nxai-resize{ position:absolute; left:-10px; top:0; bottom:-2000px; width:6px; cursor:ew-resize; z-index:2; }
+  /* [2026.11.01] left:-10px이면 넥스 창 바깥(가려지는 곳)에 놓여 끌리지 않았음 → 창 왼쪽 끝 안으로 */
+  .nxai-resize{ position:absolute; left:0; top:0; bottom:-2000px; width:6px; cursor:ew-resize; z-index:2; }
   .nxai-resize:hover, .nxai-resize.dragging{ background:rgba(200,162,68,.35); }
 
   /* ===== 모달 ===== */
@@ -1138,7 +1139,7 @@
     head.className = 'nxai-pv-sechead';
     var keep = rep ? rep.files.filter(function(it){ return it.keep; }) : [];
     var arch = rep ? rep.files.filter(function(it){ return !it.keep; }) : [];
-    head.innerHTML = '<b>📝 보고서</b><span class="s">' + (rep ? '.md ' + keep.length + '개 — ' : '') + '열면 보고서 모양, AI가 열린 문서를 보고 고칩니다</span>';
+    head.innerHTML = '<b>보고서</b><span class="s">' + (rep ? '.md ' + keep.length + '개 — ' : '') + '열면 보고서 모양, AI가 열린 문서를 보고 고칩니다</span>';
     var re = document.createElement('button');
     re.type = 'button'; re.className = 'nxai-btn'; re.textContent = '🔄'; re.title = '보고서 목록 새로 받기';
     re.addEventListener('click', function(){ nxAiPvRenderReports_(sec, null); nxAiPvScanCase_(true).then(function(r){ if (sec.isConnected && r) nxAiPvRenderReports_(sec, r); }); });
@@ -6456,9 +6457,10 @@
       var pin = nxAiEl_('nxAiPin'); if (!pin) return;
       var isOn = function(){ try { return localStorage.getItem('nx_side_pin') === '1'; } catch (e) { return false; } };
       var paint = function(){ pin.classList.toggle('on', isOn()); pin.title = (isOn() ? '사이드바 고정 켜짐 — 누르면 해제' : '사이드바 고정 — 켜면 바깥을 눌러도 접히지 않습니다'); };
-      pin.addEventListener('click', function(e){ e.stopPropagation(); try { localStorage.setItem('nx_side_pin', isOn() ? '0' : '1'); } catch (er) {} paint(); var s = nxAiEl_('sideAI'); if (s && isOn()) s.classList.add('expanded'); });
+      // [2026.11.01] 고정 = 자리 차지(.pinned), 풀면 덮어 보이기로 돌아감(왼쪽 메뉴 NETAX 줄과 같은 뜻)
+      pin.addEventListener('click', function(e){ e.stopPropagation(); try { localStorage.setItem('nx_side_pin', isOn() ? '0' : '1'); } catch (er) {} paint(); var s = nxAiEl_('sideAI'); if (s){ s.classList.toggle('pinned', isOn()); if (isOn()) s.classList.add('expanded'); } });
       paint();
-      var s0 = nxAiEl_('sideAI'); if (s0 && isOn() && !s0.classList.contains('nxai-away')) s0.classList.add('expanded');
+      var s0 = nxAiEl_('sideAI'); if (s0){ s0.classList.toggle('pinned', isOn()); if (isOn() && !s0.classList.contains('nxai-away')) s0.classList.add('expanded'); }
     })();
     nxAiEl_('nxAiFontDown').addEventListener('click', function(e){ e.stopPropagation(); nxAiApplyFont_((parseFloat(nxAiLs_(NXAI_FONT_KEY)) || 13.5) - 1); });
     nxAiEl_('nxAiFontUp').addEventListener('click', function(e){ e.stopPropagation(); nxAiApplyFont_((parseFloat(nxAiLs_(NXAI_FONT_KEY)) || 13.5) + 1); });
@@ -6609,13 +6611,12 @@
       new MutationObserver(function(){
         if (side.classList.contains('expanded')){
           var saved = parseInt(nxAiLs_(WIDTH_KEY), 10);
-          if (saved) side.style.width = Math.min(Math.max(saved, MIN_W), maxW()) + 'px';
+          if (saved) side.style.setProperty('--ai-w', Math.min(Math.max(saved, MIN_W), maxW()) + 'px'); // [2026.11.01] 폭은 덮어 나올 때·고정일 때 같이 쓰는 값(--ai-w)으로
           // [2026.10.13] 펼칠 때 그 화면의 사건으로 맞추고, 펼쳐져 있는 동안 화면 사건이 바뀌면 따라간다(1.5초마다 가볍게 확인)
           nxAiLastSyncedScreenCase_ = '';
           nxAiSyncToScreenCase_();
           if (!caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500);
         } else {
-          side.style.width = '';
           if (caseWatch_){ clearInterval(caseWatch_); caseWatch_ = null; }
         }
       }).observe(side, { attributes: true, attributeFilter: ['class'] });
@@ -6625,11 +6626,11 @@
         if (nxAiMode !== 'side') return;
         e.preventDefault(); e.stopPropagation();
         handle.classList.add('dragging'); handle.setPointerCapture(e.pointerId);
-        var onMove = function(ev){ side.style.width = Math.min(Math.max(window.innerWidth - ev.clientX, MIN_W), maxW()) + 'px'; };
+        var onMove = function(ev){ side.style.setProperty('--ai-w', Math.min(Math.max(window.innerWidth - ev.clientX, MIN_W), maxW()) + 'px'); };
         var onUp = function(){
           handle.classList.remove('dragging');
           handle.removeEventListener('pointermove', onMove); handle.removeEventListener('pointerup', onUp);
-          nxAiLs_(WIDTH_KEY, String(parseInt(side.style.width, 10)));
+          nxAiLs_(WIDTH_KEY, String(parseInt(side.style.getPropertyValue('--ai-w'), 10)));
         };
         handle.addEventListener('pointermove', onMove); handle.addEventListener('pointerup', onUp);
       });

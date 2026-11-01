@@ -578,7 +578,7 @@
     var fields = CH_CASE_OVERVIEW_FIELDS_[c.세목];
     if (!fields){
       return '<div class="nx-l3" style="margin-top:0;">사건처리개시 — 처리대상 · 처리방향</div>' +
-        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상 <span style="font-weight:400;">(무엇을 처리하는지)</span></label>' +
+        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상<span class="tc-x" title="무엇을 처리하는지">(무엇을 처리하는지)</span></label>' +
         '<input type="text" id="chEditTarget" placeholder="예: OO아파트 매각건의 양도소득세 신고" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box;">';
     }
     var overview = c._chOverviewWorking = Object.assign({}, c.사건개요 || {});
@@ -763,7 +763,7 @@
     chBodyEl.innerHTML = '<div class="ch-board"><div class="ch-col ch-col-todo"><div class="ch-col-h">지금 할 일</div>' +
       '<div class="card" id="chGasCard">' +
       '<div id="chGasStripSlot"></div>' +
-      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>📍 사건 현황</b><span style="font-size:12px; color:var(--sub);">GAS가 본 서류 쪽 사실</span></div>' +
+      '<div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;"><b>사건 현황</b><span style="font-size:12px; color:var(--sub);">GAS가 본 서류 쪽 사실</span></div>' +
       '<div id="chGasNow" style="margin-top:6px; font-size:12.5px;"><span style="color:var(--sub);">GAS가 이 사건 현황을 보는 중…</span></div>' +
       '<div id="chNexLine" style="display:none; margin-top:8px; padding:6px 8px; border-radius:6px; border-left:3px solid #7a5c14; background:rgba(200,162,68,0.10); font-size:12.5px;"></div>' +
       '</div>' +
@@ -783,7 +783,7 @@
       '</div><div class="ch-col ch-col-facts"><div class="ch-col-h">사실 <span>사건개요서</span></div>' +
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향 <span style="font-weight:400;">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향<span class="tc-x" title="법령·예규·판례를 검토해 어떻게 처리할지">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
       '<textarea id="chEditDirection" placeholder="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
       '<div style="margin-top:8px; text-align:right;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +

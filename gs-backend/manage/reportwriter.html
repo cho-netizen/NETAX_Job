@@ -961,7 +961,8 @@ function rwBuildOverviewFactsMd_(c){
 }
 function rwLatestTaxAmount_(c){
   if (!c || !Array.isArray(c.세액계산결과) || !c.세액계산결과.length) return null;
-  const matches = c.세액계산결과.filter(function(e){ return e && Number.isFinite(e.최종세액); });
+  // [2026.11.01] 경우(안) 저장본(e.안)은 견주어 보려고 바꾼 값 — 보고서 기본 세액이 되지 않는다(서버 caseProcLastCalc_와 같은 기준)
+  const matches = c.세액계산결과.filter(function(e){ return e && !e.안 && Number.isFinite(e.최종세액); });
   if (!matches.length) return null;
   matches.sort(function(a, b){ return String(a.계산일).localeCompare(String(b.계산일)); });
   return matches[matches.length - 1].최종세액;

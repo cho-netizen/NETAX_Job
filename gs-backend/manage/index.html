@@ -311,6 +311,27 @@
         window.nxSideMenuPeekT_ = setTimeout(function(){ nxSideMenuPeek_(false); }, 500);
       });
     })();
+    // [2026.11.01] 세무사님 "우측사이드바 열림을 좌측메뉴바 열림과 똑같이" — 오른쪽 넥스 창도 띠에 0.3초 대면 덮어 나타나고, 빼면 0.5초 뒤 숨는다(📌 고정이면 그대로).
+    // 쓰는 중엔 숨기지 않는다: 입력칸에 글을 쓰고 있거나(포커스), 넥스 창이 띄운 고르기 메뉴·사건 고르기·설정 창이 열려 있을 때 — 바깥을 누르면 숨음.
+    (function(){
+      var a = document.getElementById('sideAI');
+      var busy = function(){
+        var f = document.activeElement;
+        if (a.matches(':hover') || (a.contains(f) && f.matches('textarea, input, select, [contenteditable="true"]'))) return true; // 단추를 누른 뒤 남은 포커스는 쓰는 중으로 치지 않음
+        if (window.nxAiMenuEl && document.body.contains(window.nxAiMenuEl)) return true;
+        return ['nxAiCaseOverlay', 'nxAiSettingsOverlay'].some(function(id){ var o = document.getElementById(id); return o && !o.hidden; });
+      };
+      a.addEventListener('mouseenter', function(){
+        clearTimeout(window.nxSideAIPeekT_);
+        if (a.classList.contains('expanded') || a.classList.contains('nxai-away')) return;
+        window.nxSideAIPeekT_ = setTimeout(function(){ a.classList.add('expanded'); }, 300);
+      });
+      a.addEventListener('mouseleave', function(){
+        clearTimeout(window.nxSideAIPeekT_);
+        if (!a.classList.contains('expanded') || nxSidePinned_()) return;
+        window.nxSideAIPeekT_ = setTimeout(function(){ if (!busy() && !nxSidePinned_()) a.classList.remove('expanded'); }, 500);
+      });
+    })();
     // NETAX 줄 어디를 눌러도 고정 ↔ 풀기
     document.querySelector('#sideMenu .menu-brand').addEventListener('click', function(e){
       e.stopPropagation();

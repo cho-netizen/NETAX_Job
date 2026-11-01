@@ -464,7 +464,7 @@ function commSeamList_() {
     // [2026.10.31 J] 넥스 도구 카드 — 사건 대화에서 넥스가 부른 도구·실패·부족 신고가 그 사건 장부에 남고, 화면 📒(장부 펼치기·띠)과 넥스 장부 요약이 같은 것을 본다
     { 길: '넥스 도구 카드 — 장부 기록 → 화면 📒·넥스 장부 요약', fn: function () { if (typeof ledgerToolLogPut_ !== 'function' || typeof ledgerToolCard_ !== 'function') return '도구 카드 함수가 이 판에 없음'; var k = ledgerToolCard_({ toolLog: [{ at: 'x', tool: 'seam', ok: false, why: 'w', gap: 'g' }] }); return k && k.부름 === 1 && k.실패 === 1 && k.모자람.length === 1 ? '' : '도구 카드 집계가 틀림'; } },
     // [2026.10.31 H] 업무별 일하는 법 — 사건을 맡은 넥스 일하는 방식에 업무별 지침(넥스_일하는법_○○)을 먼저 읽는 줄이 있는지
-    { 길: '넥스 업무별 일하는 법 — 일하는 방식에 지침 읽기 줄', fn: function () { if (typeof nxCaseChatGuide_ !== 'function') return '사건 넥스 일하는 방식이 이 판에 없음'; var g = nxCaseChatGuide_('seam'); return ['양도', '증여', '상속', '세무조사', '불복경정', '가족법인'].every(function (k) { return g.indexOf('넥스_일하는법_' + k) !== -1; }) ? '' : '일하는 방식에 업무별 지침 이름이 빠짐'; } },
+    { 길: '넥스 업무별 일하는 법 — 일하는 방식에 지침 읽기 줄', fn: function () { if (typeof nxCaseChatGuide_ !== 'function') return '사건 넥스 일하는 방식이 이 판에 없음'; var g = nxCaseChatGuide_('seam'); return ['종합자문', '양도', '증여', '상속', '세무조사', '불복경정', '가족법인'].every(function (k) { return g.indexOf('넥스_일하는법_' + k) !== -1; }) ? '' : '일하는 방식에 업무별 지침 이름이 빠짐'; } },
     // 넥스 ↔ GAS(도구)
     { 길: '대화창 넥스 조회 길(사건처리·AI 판단·AI 회의 결론)', fn: function () { return need(lookupKinds(), ['caseproc', 'ai_review', 'law_decisions'], '조회 종류'); } },
     { 길: '사건을 맡은 넥스 — 질문(장부 do=ask)·도구 부족 신고(한 길: 개발자 기록 + 사건처리 빠진 도구 기록)·AI 회의 결론', fn: function () { var m = need(chatTools(), ['case_ledger', 'report_capability_gap'], '대화창 도구') || need(leadTools(), ['law_decisions'], '사건 도구'); if (m) return m; return String(callClaude).indexOf('caseProcAiLogGaps_') === -1 ? '사건 연결 대화의 도구 부족 신고가 사건처리 빠진 도구 기록에 안 감' : ''; } },

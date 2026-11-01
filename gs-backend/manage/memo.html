@@ -106,7 +106,6 @@
     <div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       <label style="font-size:12px; color:var(--sub);">의뢰서 템플릿:</label>
       <select id="memoReqTemplateSelect" style="min-width:220px;"><option value="">불러오는 중…</option></select>
-      <button type="button" id="memoReqTplNameFixBtn" class="ghost-btn" title="의뢰서템플릿 폴더의 파일명에 '의뢰서_' 접두어를 일괄로 붙입니다">템플릿 이름정리</button>
       <span style="margin-left:auto; font-size:11.5px; color:var(--sub);" id="memoReqNonTextNote"></span>
       <button type="button" id="memoReqApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 사건에 저장</span></button>
     </div>
@@ -2124,7 +2123,8 @@
   // [2026.09.17 신규] "증여신고" 등 옛 이름 그대로인 템플릿 파일에 "의뢰서_" 접두어를 일괄로
   // 붙인다 — 이름변경뿐이라 파괴적이지 않으므로 dry-run 없이 바로 실행하고 결과만 보여준다
   // (보고서템플릿 정리 버튼과 동일 원칙).
-  document.getElementById('memoReqTplNameFixBtn').addEventListener('click', function(){
+  // [2026.11.01] 단추는 설정 › 정비도구 › 의뢰 메모로 옮김(거기서 부름)
+  window.memoReqTplNameFix_ = function(){
     callGas('migrate_case_template_names', {}).then(function(res){
       if (res.success === false){ nxAlert_(res.message || '실패했습니다.', '템플릿 이름정리'); return; }
       nxAlert_(res.log.join('\n'), '템플릿 이름정리 결과');
@@ -2132,7 +2132,7 @@
     }).catch(function(err){
       nxAlert_('오류: ' + (err && err.message ? err.message : err), '템플릿 이름정리');
     });
-  });
+  };
   memoReqTemplateSelectEl.addEventListener('change', function(){
     var tpl = memoReqTemplates_.filter(function(t){ return t.id === memoReqTemplateSelectEl.value; })[0];
     memoReqSelectedTemplate_ = tpl || null;

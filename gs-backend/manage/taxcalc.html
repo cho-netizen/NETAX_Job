@@ -17856,7 +17856,8 @@ function renderTcSavedList_(list){
 function tcWorkLog_(what, detail){ try { if (typeof tcCurrentCase === 'undefined' || !tcCurrentCase || !tcCurrentCase.id || !sessionStorage.getItem('nxManageSessionToken')) return; callGas('case_proc', { caseId: tcCurrentCase.id, step: 'log', by: window.nxWorkBy_ || '세무사님', what: what, detail: detail || '' }).catch(function(){}); } catch (e) {} }
 // 계산 저장 기록 — 같은 세목 직전 저장보다 세액이 크게 달라지면(100만원 이상·30% 이상) 넥스가 먼저 말을 걸 재료(중요한 순간 ②)
 function tcSaveLog_(entry){
-  var prev = (tcCurrentCase.세액계산결과 || []).filter(function(e){ return e.세목 === entry.세목 && Number.isFinite(e.최종세액); }).slice(-1)[0];
+  // [2026.11.01] 견주기는 기본 저장본끼리만 — 경우(안)은 일부러 바꾼 값이라 "세액이 크게 달라짐" 알림 재료가 아니다
+  var prev = entry.안 ? null : (tcCurrentCase.세액계산결과 || []).filter(function(e){ return !e.안 && e.세목 === entry.세목 && Number.isFinite(e.최종세액); }).slice(-1)[0];
   var lg = { by: window.nxWorkBy_ || '세무사님', what: '세액계산 저장', detail: (entry.세목 || '') + ' ' + (entry.구분 || '') + (Number.isFinite(entry.최종세액) ? ' 최종세액 ' + Number(entry.최종세액).toLocaleString('ko-KR') + '원' : '') };
   if (prev && Number.isFinite(entry.최종세액)){ var d = Math.abs(entry.최종세액 - prev.최종세액); if (d >= 1000000 && d >= Math.abs(prev.최종세액) * 0.3){ lg.alertKind = 'tax-jump'; lg.alert = (entry.세목 || '') + ' 세액이 ' + Number(prev.최종세액).toLocaleString('ko-KR') + '원 → ' + Number(entry.최종세액).toLocaleString('ko-KR') + '원으로 크게 바뀌었습니다. 사건분류나 입력이 바뀐 것이 맞는지 보시겠어요?'; } }
   return lg;
