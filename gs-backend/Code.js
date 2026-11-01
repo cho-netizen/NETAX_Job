@@ -171,7 +171,7 @@ const BASIC_TOOL_NAMES_ = new Set([
   // 아래는 계산기만큼 무겁지 않아(설명이 짧음) 굳이 분야별 탐색 대상에 안 넣고 항상 켜둠.
   'lookup_statute_article', 'lookup_real_estate_price', 'lookup_building_register', 'search_address',
   'lookup_official_price', 'lookup_land_info', 'search_address_kakao', 'lookup_business_status', 'verify_business_registration',
-  'get_building_price_index_tables', 'lookup_adjusted_area',
+  'get_building_price_index_tables', 'lookup_adjusted_area', 'judge_tax_relief',
   'list_business_managers', 'load_business_manager', 'audit_business_managers', 'propose_new_business_manager',
   'browse_tax_calculators',
   // [2026.08] 예규·판례도 국가법령정보센터 API로 GAS가 직접 가져오게 추가 — AI가 웹서치로
@@ -504,6 +504,28 @@ const DRIVE_TOOLS = [
         }
       },
       required: ['address', 'dates']
+    }
+  },
+  // [2026.11.01 종합판정 ①] 비과세·공제·감면 종합판정 도구(엔진 judgeTaxReliefJS, 토큰 0) — 세무사님 "비과세공제감면 종합판정도구" · 화면 세액계산 「판정」과 같은 함수
+  {
+    name: 'judge_tax_relief',
+    description: '비과세·공제·감면 요건을 조문대로 하나씩 대조해 판정한다(지금은 묶음 「1세대1주택」 — 소득세법 §89①3호·시행령 §152의3·§154·§155·§155의2·§155의3·§156의2·§156의3, 조특법 §71의2·§98의9·§99의4). 결과: 결론(충족/안 됨)·잠정 여부·요건별 셈표(요건·사실·근거조문·결과)·남은 것(모르는 사실)·받을 서류·고가주택/부수토지/겸용 알림. 모르는 사실은 모름으로 두고 잠정 결론을 낸다 — 사실을 지어 넣지 말 것. caseId를 주면 사건 장부(양도일·취득일·양도가액·거주기간·거주자·물건 장부)에서 사실을 모으고 취득 당시 조정대상지역은 조정대상지역 도구로 보며, 결과를 1세대1주택 칸에 GAS 값으로 넣는다(잠정이면 추정, 세무사님·넥스가 정한 값은 바꾸지 않고 알림만, write:false면 보기만). caseId 없이 사실만 주면 판정만 돌려준다. 특례 종류: 일시적2주택·상속주택·동거봉양·혼인·문화유산주택·이농주택·귀농주택·부득이수도권밖·장기임대 거주주택·장기저당담보·조합원입주권 일시적·사업기간 대체주택·상속 조합원입주권·분양권 일시적·상속 분양권·농어촌주택(조특)·미분양주택(조특)·인구감소지역주택(조특) — 입력은 그 특례 계산기(calculate_*_exclusion)의 칸 이름 그대로.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        group: { type: 'string', enum: ['1세대1주택'], description: '판정할 묶음(지금은 1세대1주택만)' },
+        caseId: { type: 'string', description: '사건 ID(주면 장부 사실을 모으고 결과를 장부에 넣음)' },
+        asset: { type: 'string', description: '판정할 양도자산 칸(a0·a1…, 기본 a0)' },
+        write: { type: 'boolean', description: 'false면 장부에 넣지 않고 보기만(경우 견주기용)' },
+        transferDate: { type: 'string', description: 'YYYY-MM-DD(장부보다 먼저)' },
+        target: { type: 'object', description: '판정 주택 사실 — 취득일·취득원인·양도가액·취득당시조정(true/false)·통산시작일(§154⑧)·주거사용시작일(§154⑤ 단서)·거주개월 또는 거주[{전입,전출}](§154⑥)·주택면적·주택외면적(§154③)·토지면적·정착면적·용도지역(§154⑦)' },
+        household: { type: 'object', description: '거주자(true/false)·배우자(true/false)·나이·배우자사망이혼·소득요건(true/false, §152의3 3호)·비거주자전환(§154⑧2호 — 보유 3년)' },
+        items: { type: 'array', description: '세대가 가진 주택·조합원입주권·분양권 전부(판정 주택은 대상:true). 칸: 이름·종류·주택수(든다/안 든다/모름)·주택수근거·취득일·취득원인·양도일(이미 판 것)', items: { type: 'object' } },
+        specials: { type: 'array', description: '[{종류, 입력:{…그 특례 계산기 칸}}] — 다른 주택 1채마다 맞는 특례 하나', items: { type: 'object' } },
+        holdingException: { type: 'object', description: '시행령 §154① 단서 1~3·5호 — reasonType(rental5y·expropriation·emigration·overseas_study·domestic_relocation·pre_notice_contract)과 그 칸(calculate_holding_residency_exception과 같음)' },
+        bothCases: { type: 'boolean', description: '잠정이면 1세대1주택 「예」·「아니오」 두 경우(안)를 계산기로 함께 계산해 저장(사건이 있을 때)' },
+        mutualLease: { type: 'object', description: '시행령 §155의3 — calculate_mutual_growth_lease_exclusion과 같은 칸' }
+      }
     }
   },
   {
@@ -4159,7 +4181,7 @@ const JOB_AI_TOOLS_ = [
         status: { type: 'string', description: 'advice일 때 잠정·확정·보류(문의는 답 안 함·자료 기다림·답함·보류 — 자료 기다림 = 결론을 가르는 사실이 없어 질문·받을 서류·가정 계산까지 한 문의)' },
         id: { type: 'string', description: 'advice일 때 고칠·지울 항목 id, cite일 때 계산 저장본 id' },
         remove: { type: 'boolean', description: 'advice일 때 true면 그 항목을 지움' },
-        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'taxes', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs', 'objects', 'object', 'object_drop', 'object_sell'], description: '[2026.11.01 물건 장부] objects: 물건 목록 보기(이 세대가 가진 물건 전부, 한 줄 = 물건 하나 — 세목과 상관없음). object: 물건 줄 더하기·고치기 — id(없으면 새 줄), f{소유자·지분·종류·쓰임(주거|업무|모름)·소재지·동·호·취득일·취득원인·면적·주택수(든다|안 든다|모름)·주택수근거·쓸곳(양도|증여|상속|보유)·메모}, file·quote·why(근거). 세무사님이 적은 칸은 바뀌지 않음. object_drop: id. object_sell: id — 그 물건을 양도 계산 자산 칸(a0…)으로 보냄(정해지지 않은 값은 추정으로). ' + '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
+        do: { type: 'string', enum: ['set', 'ask', 'decide', 'undo', 'calc', 'taxes', 'lookup', 'estimate', 'compare', 'import', 'hyp', 'facts', 'brief', 'advice', 'advice_view', 'cite', 'check_refs', 'objects', 'object', 'object_drop', 'object_sell', 'judge'], description: '[2026.11.01 물건 장부] objects: 물건 목록 보기(이 세대가 가진 물건 전부, 한 줄 = 물건 하나 — 세목과 상관없음). object: 물건 줄 더하기·고치기 — id(없으면 새 줄), f{소유자·지분·종류·쓰임(주거|업무|모름)·소재지·동·호·취득일·취득원인·면적·주택수(든다|안 든다|모름)·주택수근거·쓸곳(양도|증여|상속|보유)·메모}, file·quote·why(근거). 세무사님이 적은 칸은 바뀌지 않음. object_drop: id. object_sell: id — 그 물건을 양도 계산 자산 칸(a0…)으로 보냄(정해지지 않은 값은 추정으로). ' + '[2026.10.29] lookup: 공부 조회 — 있는 조회 도구(토지대장·토지이용계획·토지이음·건축물대장·공시가격·조정대상지역·매매사례)를 필지 하나(loc) 또는 장부·처리개요·의뢰서 가설의 모든 필지에, what으로 고른 것만(비우면 매매사례 뺀 전부). 결과는 장부 공부 사실·확보자료 PDF, 서류 없이 의뢰 메모만 있어도 된다. estimate: 의뢰서 등 가설의 거래 날짜·금액·물건을 계산 칸에 추정으로(values[{path,value,why}]를 주면 그 가정값을 추정으로 — 정해진 칸은 안 바꿈). calc: 장부(정함+추정)로 시험 계산 — 언제든, name(경우 이름)·over[{path,value}](이번 계산에만 쓰는 가정, 장부 값은 그대로)를 붙이면 경우(안)으로 저장. compare: 같은 사실로 세목 비교 — 양도 사건은 장부로 양도세, gift{relation 필수, giftAmount 없으면 장부 양도가액}, inheritance{calculate_inheritance_tax 입력}를 각각 계산해 나란히' },
         f: { type: 'object', description: 'object일 때 물건 칸 값(소유자·지분·종류·쓰임·소재지·동·호·취득일·취득원인·면적·주택수·주택수근거·쓸곳·메모)' },
         loc: { type: 'string', description: 'lookup일 때 소재지(지번·도로명 주소). 비우면 장부·처리개요·의뢰서 가설의 모든 필지' },
         what: { type: 'array', items: { type: 'string', enum: ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'] }, description: 'lookup일 때 고를 조회(비우면 매매사례 뺀 전부)' },
@@ -15807,6 +15829,19 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       if (block.name === 'lookup_adjusted_area') {
         const resultObj = typeof adjAreaLookupTool_ === 'function' ? adjAreaLookupTool_(block.input || {}) : { error: '조정대상지역 이력표(AdjArea.js)가 서버에 없습니다.' };
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
+      }
+
+      if (block.name === 'judge_tax_relief') { // [2026.11.01 종합판정 ①] 사건이 있으면 장부와 잇는 길(ledgerJudgeRun_), 없으면 엔진 판정만 — 화면 「판정」과 같은 함수
+        const gi = Object.assign({}, block.input || {}); let resultObj;
+        [['group', '묶음'], ['transferDate', '양도일'], ['target', '대상'], ['household', '세대'], ['items', '물건'], ['specials', '특례'], ['holdingException', '보유거주예외'], ['mutualLease', '상생임대'], ['bothCases', '경우둘']].forEach(function (m) { if (gi[m[0]] !== undefined) { gi[m[1]] = gi[m[0]]; delete gi[m[0]]; } }); // 영문 칸 → 엔진 칸
+        try {
+          const cid = String(gi.caseId || '');
+          const cj = cid && typeof job_findCase_ === 'function' ? job_findCase_(cid) : null;
+          if (cid && !cj) resultObj = { ok: false, error: '사건을 찾을 수 없습니다: ' + cid };
+          else if (cj) { resultObj = ledgerJudgeRun_(cj, gi, '넥스'); if (resultObj && resultObj.ok && gi.write !== false) clientActions.push({ type: 'ledger_changed', caseId: cj.id, do: 'judge' }); }
+          else { const eng = getUiCalcEngine_(); resultObj = typeof eng.judgeTaxReliefJS === 'function' ? eng.judgeTaxReliefJS(gi) : { error: '엔진에 판정 셈이 없습니다' }; }
+        } catch (err) { resultObj = { ok: false, error: '종합판정 오류: ' + err.message }; }
+        return { type: 'tool_result', tool_use_id: block.id, is_error: !!(resultObj && (resultObj.error && !resultObj.ok)), content: JSON.stringify(resultObj).slice(0, 20000) };
       }
 
       if (block.name === 'report_capability_gap') {
@@ -33057,7 +33092,7 @@ function caseFileInFiledFolder_(fileId) {
 //  작성관리 새 종합검토서(양식 자리만 채움)·넥스 보고서 재료가 같은 입구(step 'reviewNotes')를 부른다. 0원
 function caseProcReviewNotes_(c) {
   const out = [], seen = {};
-  try { (typeof ledgerReviewNotes_ === 'function' ? ledgerReviewNotes_(c.id) : []).forEach(function (r) { const k = String(r.label || r.path || ''); if (!k || seen[k]) return; seen[k] = 1; out.push({ 확인할것: k + (r.state === '추정' && r.값 != null && r.값 !== '' ? ' — 지금 추정값 ' + r.값 : ''), 상태: r.state, 어디서: r.state === '증빙받을것' ? '고객에게 서류로' : r.state === '보류' ? '세무사님 판단·서류' : '서류로 확인(지금은 추정)' }); }); } catch (e) {}
+  try { (typeof ledgerReviewNotes_ === 'function' ? ledgerReviewNotes_(c.id) : []).forEach(function (r) { const k = String(r.label || r.path || ''); if (!k || seen[k]) return; seen[k] = 1; out.push({ 확인할것: k + (!r.judged && r.state === '추정' && r.값 != null && r.값 !== '' ? ' — 지금 추정값 ' + r.값 : ''), 상태: r.state, 어디서: r.state === '증빙받을것' ? '고객에게 서류로' : r.state === '보류' ? '세무사님 판단·서류' : '서류로 확인(지금은 추정)' }); }); } catch (e) {}
   try { const sv = caseProcLoad_(c.id) || {}, dec = sv.decisions || {}; (sv.remaining || []).forEach(function (it) { const d = dec[it.id] && dec[it.id].d; if (d !== '보류' && d !== '예정') return; const k = String(it.text || it.label || '').slice(0, 120); if (!k || seen[k]) return; seen[k] = 1; out.push({ 확인할것: k, 상태: d === '예정' ? '받을 예정' : '보류', 어디서: d === '예정' ? '고객에게 서류로' : '세무사님 판단·서류' }); }); } catch (e) {}
   return { ok: true, rows: out.slice(0, 40) };
 }

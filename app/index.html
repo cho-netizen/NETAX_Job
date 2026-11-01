@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 08:15 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 09:02 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26742,6 +26742,198 @@ function nxMdOpenWindow(title, src, opts){
       안내: '§65①·' + meta.근거 + '는 이 권리의 평가에 객관적 계산식을 두지 않고 "' + meta.고려요소 + '"을 고려한 적정가액으로만 정합니다. 이 계산기는 그 적정가액 자체를 계산하지 않으므로, 위 고려요소를 근거로 감정평가법인 등 전문가의 평가나 사실관계 조사를 통해 별도로 금액을 확정해서 위 재산평가 금액란에 직접 입력하세요.'
     };
   };
+
+  // ============================================================
+  // [2026.11.01 종합판정 ①] 비과세·공제·감면 종합판정 도구 — 첫 묶음 「1세대1주택」(소득세법 §89①3호·§121② 단서, 시행령 §152의3·§154·§155·§155의2·§155의3·§156·§156의2·§156의3).
+  //  계획서: 총괄관리자\_기록\종합판정도구_1_1세대1주택_계획서_20261101.html. 화면(세액계산 「판정」)·넥스(judge_tax_relief)·서버(ledgerJudgeRun_)가 이 함수 하나를 쓴다(토큰 0).
+  //  받은 사실만 쓰고, 모르는 것은 "모름"으로 남긴 채 잠정 결론을 낸다(공통원칙 5절). 결론을 장부에 넣을지·세무사님 값과 부딪히는지는 서버가 정한다.
+  //  기존 특례 판정 함수(일시적 2주택·상속주택·동거봉양·혼인 등)는 그대로 불러 쓴다 — 요건 문장을 여기서 다시 쓰지 않는다.
+  //  들어가는 것(모두 선택, 없으면 모름):
+  //   양도일 / 대상 {취득일, 취득원인, 양도가액, 취득당시조정(true|false|null), 통산시작일(§154⑧), 주거사용시작일(§154⑤ 단서),
+  //               거주개월 또는 거주[{전입, 전출}](§154⑥), 주택면적·주택외면적(§154③), 토지면적·정착면적·용도지역(§154⑦)}
+  //   물건 [{이름, 종류(주택|조합원입주권|분양권|…), 주택수(든다|안 든다|모름), 주택수근거, 취득일, 양도일, 대상(true면 판정할 물건)}]
+  //   세대 {거주자, 배우자, 나이, 배우자사망이혼, 소득요건, 비거주자전환(§154⑧2호)} / 특례 [{종류, 입력}] / 보유거주예외 {reasonType, …} / 상생임대 {…}
+  // ============================================================
+  const JUDGE_SPECIAL_ = {
+    '일시적2주택': { fn: 'calculateTemporaryTwoHouseExclusionJS', 근거: '시행령 §155①' },
+    '상속주택': { fn: 'calculateInheritedHouseExclusionJS', 근거: '시행령 §155②·③' },
+    '동거봉양': { fn: 'calculateCohabitationMergerExclusionJS', 근거: '시행령 §155④' },
+    '혼인': { fn: 'calculateMarriageMergerExclusionJS', 근거: '시행령 §155⑤' },
+    '문화유산주택': { fn: 'calculateCulturalHeritageHouseExclusionJS', 근거: '시행령 §155⑥' },
+    '이농주택': { fn: 'calculateEmigratedFarmHouseExclusionJS', 근거: '시행령 §155⑦2호' },
+    '귀농주택': { fn: 'calculateReturnFarmHouseExclusionJS', 근거: '시행령 §155⑦3호·⑩' },
+    '부득이수도권밖': { fn: '', 근거: '시행령 §155⑧' },
+    '장기임대 거주주택': { fn: 'calculateRentalHousingResidenceExclusionJS', 근거: '시행령 §155⑳' },
+    '장기저당담보': { fn: 'calculateLongTermMortgageHouseExclusionJS', 근거: '시행령 §155의2', 거주만: true },
+    '조합원입주권 일시적': { fn: 'calculateReconstructionRightsOneHouseExclusionJS', 근거: '시행령 §156의2③·④' },
+    '사업기간 대체주택': { fn: 'calculateReplacementHouseExclusionJS', 근거: '시행령 §156의2⑤' },
+    '상속 조합원입주권': { fn: 'calculateInheritedUnionRightExclusionJS', 근거: '시행령 §156의2⑥' },
+    '분양권 일시적': { fn: 'calculatePresaleRightOneHouseExclusionJS', 근거: '시행령 §156의3②·③' },
+    '상속 분양권': { fn: 'calculateInheritedPresaleRightExclusionJS', 근거: '시행령 §156의3④' },
+    '농어촌주택(조특)': { fn: 'calculateRuralHouseOneHouseExclusionJS', 근거: '조세특례제한법 §99의4' },
+    '미분양주택(조특)': { fn: 'calculateUnsoldHouseOneHouseExclusionJS', 근거: '조세특례제한법 §98의9' },
+    '인구감소지역주택(조특)': { fn: 'calculatePopulationDeclineAreaHouseExclusionJS', 근거: '조세특례제한법 §71의2' }
+  };
+  window.judgeTaxReliefJS = function (p) {
+    p = p || {};
+    const kind = p.묶음 || '1세대1주택';
+    if (kind === '1세대1주택') return judgeOneHouse_(p);
+    return { error: '아직 만들지 않은 묶음입니다: ' + kind + ' (지금은 1세대1주택만 — 계획서 5절 순서)' };
+  };
+  window.judgeTaxReliefKindsJS = function () {
+    return { 묶음: ['1세대1주택'], 특례종류: Object.keys(JUDGE_SPECIAL_).map(function (k) { return { 종류: k, 근거: JUDGE_SPECIAL_[k].근거, 함수: JUDGE_SPECIAL_[k].fn || '(여기서 셈)' }; }) };
+  };
+  function judgeOneHouse_(p) {
+    const T = String(p.양도일 || '').slice(0, 10);
+    const tg = p.대상 || {};
+    const hh = p.세대 || {};
+    const rows = [], left = [], ask = [], docs = [], notes = [];
+    const row = function (요건, 사실, 근거조문, 결과, 출처) { rows.push({ 요건: 요건, 사실: 사실, 근거조문: 근거조문, 출처: 출처 || '', 결과: 결과 }); return 결과; };
+    const unk = function (what, doc) { if (left.indexOf(what) < 0) left.push(what); if (doc && docs.indexOf(doc) < 0) docs.push(doc); };
+    const isDate_ = function (s) { return /^\d{4}-\d{2}-\d{2}/.test(String(s || '')); };
+    let bad = false;
+    if (!isDate_(T)) { unk('양도일'); row('양도일', '없음', '시행령 §154①', '모름'); }
+
+    // 1) 거주자 — 비거주자는 §89①3호를 적용하지 않는다(법 §121② 단서). 출국 예외(시행령 §154①2호나·다목)는 아래 보유거주예외로 본다.
+    //  「이미」 = 화면 판정 창이 같은 확인 기능으로 먼저 낸 결과(그대로 씀 — 다시 셈하지 않음)
+    const ex = p.보유거주예외 && p.보유거주예외.이미 && typeof p.보유거주예외.이미 === 'object' ? p.보유거주예외.이미 : p.보유거주예외 && p.보유거주예외.reasonType ? window.calculateHoldingResidencyExceptionJS(Object.assign({ transferDate: T }, p.보유거주예외)) : null;
+    const exOk = !!(ex && ex.적용여부 === true);
+    const exAbroad = exOk && /^(emigration|overseas_study)$/.test(p.보유거주예외.reasonType);
+    if (hh.거주자 === false && !exAbroad) bad = row('거주자', '비거주자', '소득세법 §121② 단서', '안 됨') === '안 됨';
+    else if (hh.거주자 === false) row('거주자', '비거주자 — 출국일 현재 1주택·출국 후 2년 안 양도', '시행령 §154①2호나·다목', '충족');
+    else if (hh.거주자 === true) row('거주자', '거주자', '소득세법 §121② 단서', '충족');
+    else { row('거주자', '모름', '소득세법 §121② 단서', '모름'); unk('양도하는 분이 거주자인지', '출입국사실증명'); }
+
+    // 2) 1세대 — 배우자와 함께 구성(법 §88 6호), 배우자가 없으면 30세 이상·배우자 사망·이혼·소득 요건 중 하나(시행령 §152의3)
+    if (hh.배우자 === true) row('1세대', '배우자 있음', '소득세법 §88 6호', '충족');
+    else if (hh.배우자 === false) {
+      const a = Number(hh.나이);
+      if (Number.isFinite(a) && a >= 30) row('1세대', '배우자 없음 · 나이 ' + a + '세', '시행령 §152의3 1호', '충족');
+      else if (hh.배우자사망이혼) row('1세대', '배우자 없음 · 사망 또는 이혼', '시행령 §152의3 2호', '충족');
+      else if (hh.소득요건 === true) row('1세대', '배우자 없음 · 소득 기준 중위소득 40% 이상', '시행령 §152의3 3호', '충족');
+      else if (hh.소득요건 === false && Number.isFinite(a)) bad = row('1세대', '배우자 없음 · ' + a + '세 · 소득 요건 못 갖춤', '시행령 §152의3', '안 됨') === '안 됨' || bad;
+      else { row('1세대', '배우자 없음 · 나이·소득 모름', '시행령 §152의3', '모름'); unk('나이 또는 소득(배우자 없는 1세대 요건)', '가족관계증명서'); }
+    } else { row('1세대', '배우자 여부 모름', '소득세법 §88 6호 · 시행령 §152의3', '모름'); unk('배우자 여부', '가족관계증명서'); }
+
+    // 3) 양도일 현재 주택 수 — 공동소유는 각자 1주택(시행령 §154의2), 조합원입주권·분양권을 함께 가지면 §89①3호를 적용하지 않는다(법 §89②, 특례는 시행령 §156의2·§156의3)
+    const list = Array.isArray(p.물건) ? p.물건 : [];
+    const others = list.filter(function (o) { return o && !o.대상; }).filter(function (o) {
+      if (!/주택|조합원입주권|분양권/.test(String(o.종류 || ''))) return false;
+      return !(isDate_(o.양도일) && isDate_(T) && String(o.양도일).slice(0, 10) < T); // 판정 물건보다 먼저 판 것은 빠짐(같은 날 양도는 시행령 §154⑨ 고르는 순서)
+    });
+    const counted = [], maybe = [];
+    others.forEach(function (o) {
+      let st = o.주택수 || '모름';
+      if (/분양권/.test(String(o.종류)) && isDate_(o.취득일) && String(o.취득일).slice(0, 10) < '2021-01-01' && st === '든다') st = '모름'; // [확인 필요] 2021.1.1 전 취득 분양권은 주택 수에서 빠지는지 — 법률 제17477호 부칙 원문 대조 전
+      if (st === '든다') counted.push(o); else if (st === '모름') maybe.push(o);
+    });
+    const nm = function (o) { return (o.이름 || o.종류 || '물건') + (o.주택수근거 ? '(' + o.주택수근거 + ')' : ''); };
+    const spec = Array.isArray(p.특례) ? p.특례 : [];
+    const specOut = spec.map(function (s) {
+      const m = JUDGE_SPECIAL_[s && s.종류];
+      if (!m) return { 종류: s && s.종류, 결과: '모름', 안내: '모르는 특례 종류', 근거: '' };
+      let r;
+      if (s.이미 && typeof s.이미 === 'object') r = s.이미; // 화면 판정 창이 같은 확인 기능으로 먼저 낸 결과
+      else if (s.종류 === '부득이수도권밖') { // 시행령 §155⑧ — 부득이한 사유로 취득한 수도권 밖 주택 + 일반주택, 사유 해소일부터 3년 안에 일반주택 양도
+        const q = s.입력 || {};
+        if (!q.isOutsideCapital || !q.acquiredForUnavoidableReason) r = { 적용여부: q.isOutsideCapital === false || q.acquiredForUnavoidableReason === false ? false : undefined, 안내: '수도권 밖 주택인지·부득이한 사유(취학·근무·질병 요양 등, 시행규칙)로 취득했는지가 필요합니다.' };
+        else if (!isDate_(q.reasonResolvedDate)) r = { error: '부득이한 사유가 해소된 날이 필요합니다.' };
+        else { const lim = addYearsToDateStr_(String(q.reasonResolvedDate).slice(0, 10), 3); r = T <= lim ? { 적용여부: true, 안내: '사유 해소일부터 3년 안(' + lim + '까지)에 일반주택을 양도 — 시행령 §155⑧' } : { 적용여부: false, 안내: '사유 해소일부터 3년(' + lim + ')을 넘겨 양도 — 시행령 §155⑧' }; }
+      } else {
+        const fn = window[m.fn];
+        try { r = typeof fn === 'function' ? fn(Object.assign({ transferDate: T, formerHouseTransferDate: T, generalHouseTransferDate: T, formerHouseAcquisitionDate: isDate_(tg.취득일) ? String(tg.취득일).slice(0, 10) : undefined }, s.입력 || {})) : { error: '엔진에 함수 없음: ' + m.fn }; } catch (e) { r = { error: String(e && e.message || e) }; }
+      }
+      const res = r && r.적용여부 === true ? '충족' : r && r.적용여부 === false && !r.판단대기 ? '안 됨' : '모름';
+      return { 종류: s.종류, 결과: res, 안내: r ? (r.error || r.안내 || '') : '', 근거: m.근거, 거주만: !!m.거주만, 물건: s.물건 || '' };
+    });
+    const coverOk = specOut.filter(function (s) { return s.결과 === '충족' && !s.거주만; });
+    specOut.forEach(function (s) { row('특례 — ' + s.종류, s.안내, s.근거, s.결과); if (s.결과 === '모름') unk(s.종류 + ' 특례 요건(' + (s.안내 || '입력 모자람') + ')'); });
+    let houseState;
+    if (!counted.length && !maybe.length) houseState = row('양도일 현재 주택 수', '이 주택 1채', '소득세법 §89①3호가목 · 시행령 §154①', '충족');
+    else if (counted.length && coverOk.length >= counted.length) houseState = row('양도일 현재 주택 수', '다른 ' + counted.map(nm).join(', ') + ' — 특례로 1주택으로 봄', '소득세법 §89①3호나목', maybe.length ? '모름' : '충족');
+    else if (counted.length) {
+      houseState = row('양도일 현재 주택 수', '다른 ' + counted.map(nm).join(', ') + (coverOk.length ? ' — 특례 ' + coverOk.length + '개로는 모자람' : ' — 맞는 특례 없음'), /입주권|분양권/.test(counted.map(function (o) { return o.종류; }).join()) ? '소득세법 §89② · §89①3호' : '소득세법 §89①3호', specOut.some(function (s) { return s.결과 === '모름'; }) ? '모름' : '안 됨');
+      if (houseState === '안 됨') bad = true;
+      if (!spec.length) counted.forEach(function (o) {
+        const c = String(o.취득원인 || '');
+        const cand = /상속/.test(c) ? '상속주택(시행령 §155②)' : /입주권/.test(String(o.종류)) ? '조합원입주권 특례(시행령 §156의2)' : /분양권/.test(String(o.종류)) ? '분양권 특례(시행령 §156의3)' : '일시적 2주택(시행령 §155①)·혼인·동거봉양 합가(§155④⑤) 등';
+        ask.push(nm(o) + ' — 맞는 특례가 있는지: ' + cand);
+      });
+    } else houseState = row('양도일 현재 주택 수', '이 주택 1채 · 주택 수 모르는 것 ' + maybe.length + '개', '소득세법 §89①3호 · 시행령 §154의2', '모름');
+    maybe.forEach(function (o) { unk((o.이름 || o.종류 || '물건') + '이(가) 주택 수에 드는지', /오피스텔/.test(String(o.이름 || o.종류)) ? '실제 쓰임(전입 여부·임대차계약)' : ''); });
+
+    // 4) 보유기간 2년(§154⑧2호 거주자 3년) — 법 §95④로 셈(시행령 §154⑤), 주거용으로 쓴 날부터(⑤ 단서), 통산(⑧)
+    const st = isDate_(tg.통산시작일) ? tg.통산시작일 : isDate_(tg.주거사용시작일) ? tg.주거사용시작일 : tg.취득일;
+    const exBoth = exOk && ex.면제범위 === 'both';
+    const needY = hh.비거주자전환 ? 3 : 2;
+    if (exBoth) row('보유기간', '보유·거주기간 제한 없음 — ' + (ex.안내 || ''), '시행령 §154① 단서(1~3호)', '충족');
+    else if (!isDate_(st) || !isDate_(T)) { row('보유기간', !isDate_(st) ? '취득일 모름' : '양도일 모름', '시행령 §154①·⑤', '모름'); if (!isDate_(st)) unk('취득일', '등기부등본'); }
+    else {
+      const y = fullYearsElapsed(String(st).slice(0, 10), T);
+      const r = row('보유기간 ' + needY + '년 이상', String(st).slice(0, 10) + ' ~ ' + T + ' · ' + y + '년' + (isDate_(tg.통산시작일) ? ' (통산 — 시행령 §154⑧)' : isDate_(tg.주거사용시작일) ? ' (주거용으로 쓴 날부터 — 시행령 §154⑤ 단서)' : ''), '시행령 §154①·⑤' + (needY === 3 ? '·⑧2호' : ''), y >= needY ? '충족' : '안 됨');
+      if (r === '안 됨') bad = true;
+    }
+
+    // 5) 거주기간 2년 — 취득 당시 조정대상지역 주택만(시행령 §154① 괄호), 주민등록 전입일~전출일(⑥). 상생임대(§155의3)·장기저당(§155의2)·5호는 거주만 면제
+    const resFree = exOk ? ex.안내 : '';
+    const sang = p.상생임대 && p.상생임대.이미 && typeof p.상생임대.이미 === 'object' ? p.상생임대.이미 : p.상생임대 ? window.calculateMutualGrowthLeaseExclusionJS(Object.assign({ transferDate: T }, p.상생임대)) : null;
+    const mort = specOut.filter(function (s) { return s.거주만 && s.결과 === '충족'; })[0];
+    let resCounted = null; // 전입~전출로 센 거주개월(시행령 §154⑥) — 장특공 표2 거주연수 칸에도 쓰도록 돌려줌(조정지역이 아니어도 셈)
+    if (Array.isArray(tg.거주) && tg.거주.some(function (g) { return g && isDate_(g.전입); })) { resCounted = 0; tg.거주.forEach(function (g) { if (g && isDate_(g.전입)) resCounted += fullMonthsElapsed(String(g.전입).slice(0, 10), isDate_(g.전출) ? String(g.전출).slice(0, 10) : T); }); }
+    if (sang) row('상생임대(거주요건 면제)', sang.error || sang.안내 || '', '시행령 §155의3', sang.적용여부 === true ? '충족' : sang.적용여부 === false && !sang.판단대기 ? '안 됨' : '모름');
+    if (tg.취득당시조정 === false) row('거주기간', '취득 당시 조정대상지역 아님 — 거주요건 없음', '시행령 §154① 괄호', '해당 없음');
+    else if (exOk) row('거주기간', '거주기간 제한 없음 — ' + resFree, '시행령 §154① 단서', '충족');
+    else if (sang && sang.적용여부 === true) row('거주기간', '상생임대주택으로 거주기간 제한 없음', '시행령 §155의3①', '충족');
+    else if (mort) row('거주기간', '장기저당담보주택으로 거주기간 제한 없음', '시행령 §155의2', '충족');
+    else {
+      let mon = Number(tg.거주개월);
+      if (!Number.isFinite(mon) && Array.isArray(tg.거주) && tg.거주.length) {
+        mon = 0; tg.거주.forEach(function (g) { if (isDate_(g.전입)) mon += fullMonthsElapsed(String(g.전입).slice(0, 10), isDate_(g.전출) ? String(g.전출).slice(0, 10) : T); });
+      }
+      const need = tg.취득당시조정 === true;
+      if (!Number.isFinite(mon)) {
+        if (need) { row('거주기간 2년 이상', '거주기간 모름', '시행령 §154①·⑥', '모름'); unk('거주기간(전입일~전출일)', '주민등록초본(주소 변동 전부)'); }
+        else { row('거주기간', '취득 당시 조정대상지역인지·거주기간 모름', '시행령 §154① 괄호·⑥', '모름'); unk('취득 당시 조정대상지역인지'); unk('거주기간(전입일~전출일)', '주민등록초본(주소 변동 전부)'); }
+      } else if (need) { if (row('거주기간 2년 이상', Math.floor(mon / 12) + '년 ' + (mon % 12) + '개월(취득 당시 조정대상지역)', '시행령 §154①·⑥', mon >= 24 ? '충족' : '안 됨') === '안 됨') bad = true; }
+      else { row('거주기간', Math.floor(mon / 12) + '년 ' + (mon % 12) + '개월 · 취득 당시 조정대상지역인지 모름', '시행령 §154① 괄호', mon >= 24 ? '충족' : '모름'); if (mon < 24) unk('취득 당시 조정대상지역인지'); }
+    }
+
+    // 6) 다 맞아도 남는 것 — 고가주택(12억 초과분 과세, 법 §89①3호 괄호·§95③), 부수토지 배율(시행령 §154⑦), 겸용주택(시행령 §154③④)
+    const price = Number(tg.양도가액);
+    const hv = highValueAt_(T, 'house');
+    if (Number.isFinite(price) && price > 0) {
+      if (price > hv) notes.push('고가주택 — 양도가액 ' + price.toLocaleString('ko-KR') + '원이 ' + (hv / 100000000) + '억원을 넘어 넘는 부분만 과세(소득세법 §89①3호 괄호·§95③, 시행령 §160)');
+      row('고가주택', price.toLocaleString('ko-KR') + '원 · 기준 ' + (hv / 100000000) + '억원', '소득세법 §89①3호 괄호', price > hv ? '일부 과세' : '해당 없음');
+    } else { row('고가주택', '양도가액 모름', '소득세법 §89①3호 괄호', '모름'); unk('양도가액(고가주택 여부)', '매매계약서'); }
+    const land = Number(tg.토지면적), base = Number(tg.정착면적);
+    if (land > 0 && base > 0 && tg.용도지역) {
+      const z = String(tg.용도지역);
+      const mul = /도시지역 밖|그 밖/.test(z) ? 10 : /수도권 밖/.test(z) ? 5 : /녹지/.test(z) ? 5 : /주거|상업|공업/.test(z) ? 3 : 0;
+      if (mul) { const lim = base * mul; row('주택부수토지', '토지 ' + land + '㎡ · 정착 ' + base + '㎡ × ' + mul + '배 = ' + lim + '㎡', '시행령 §154⑦', land <= lim ? '충족' : '일부 과세'); if (land > lim) notes.push('부수토지 ' + (land - lim) + '㎡는 배율(' + mul + '배)을 넘어 비과세가 아닙니다(시행령 §154⑦)'); }
+      else { row('주택부수토지', '용도지역 「' + z + '」을 배율 표에 못 맞춤', '시행령 §154⑦', '모름'); unk('주택부수토지의 용도지역(수도권 안 주거·상업·공업 / 수도권 안 녹지 / 수도권 밖 도시지역 / 도시지역 밖)', '토지이용계획확인서'); }
+    }
+    const ha = Number(tg.주택면적), na = Number(tg.주택외면적);
+    if (ha > 0 && na > 0) {
+      row('겸용주택', '주택 ' + ha + '㎡ · 주택 외 ' + na + '㎡', '시행령 §154③·④', ha > na ? '전부 주택' : '주택 부분만');
+      if (ha <= na) notes.push('주택 연면적이 주택 외 부분보다 크지 않아 주택 부분(과 그 비율의 토지)만 주택으로 봅니다(시행령 §154③ 단서·④)');
+      if (ha > na && price > hv) notes.push('[확인 필요] 고가 겸용주택 — 주택 부분만 주택으로 보는 개정 규정(2022.1.1 이후 양도)의 조문 원문을 아직 대조하지 않았습니다');
+    }
+
+    // 결론 — 안 됨이 하나라도 있으면 안 됨(그래도 모르는 칸·특례 후보가 있으면 잠정), 모름이 있으면 충족 잠정, 없으면 충족
+    const anyUnk = rows.some(function (r) { return r.결과 === '모름'; });
+    let 결론, 잠정;
+    if (bad) { 결론 = '안 됨'; 잠정 = anyUnk || ask.length > 0; }
+    else if (anyUnk) { 결론 = '충족'; 잠정 = true; }
+    else { 결론 = '충족'; 잠정 = false; }
+    const leftAll = left.concat(ask);
+    return {
+      묶음: '1세대1주택', 결론: 결론, 잠정: 잠정, 남은것: leftAll,
+      표시: '1세대1주택 — ' + (결론 === '충족' ? (잠정 ? '' : '비과세') : '비과세 안 됨') + (잠정 ? (결론 === '충족' ? '' : ' — ') + '잠정(남은 것: ' + (leftAll.slice(0, 4).join(' · ') || '확인할 것') + (leftAll.length > 4 ? ' 외 ' + (leftAll.length - 4) : '') + ')' : ''),
+      셈표: rows, 특례: specOut, 센거주개월: resCounted, 확인할것: leftAll, 받을서류: docs, 사후관리: notes,
+      보유거주예외: ex ? { 적용여부: ex.적용여부, 면제범위: ex.면제범위, 안내: ex.error || ex.안내 } : null,
+      때: T, 근거: '소득세법 §89①3호 · 시행령 §154 · §155 (' + (T || '양도일 모름') + ' 양도분)'
+    };
+  }
 })();
 // ============================================================
 // [2026.10.21 신규 · 2026.11.01 엔진으로 옮김] 절세플랜 비교 계산(nxTaxPlanCalc_) — 화면과 떨어진 순수 함수라 세액계산 엔진 파일에 두어
@@ -30147,14 +30339,34 @@ function openBuildingStandardPriceModal_(onApply){
 // 지시("나머지 부속계산기도 흡수하라")에 따라 독립 계산기 3개(u9/pd/rh)를 삭제하고, "1세대1주택
 // 비과세 전제" 체크박스 옆 버튼 하나로 통합한다. 셋 다 "세액은 계산 안 하고 적용 가능 여부만
 // 판정"하는 구조라 세액 계산과는 다르게, 판정 통과시 그 체크박스를 대신 체크해주는 것으로 반영한다.
-function openOneHouseSpecialCaseModal_(idx){
+// [2026.11.01 종합판정 ①] 세무사님 "비과세공제감면 종합판정도구" — 이 창이 종합판정 창(1세대1주택 묶음)이 됐다. 위: 기본 요건(엔진 judgeTaxReliefJS —
+//  넥스 judge_tax_relief·서버 ledgerJudgeRun_과 같은 셈), 아래: 특례 확인(옛 특정주택 제외 판정 그대로 — 서식 연결 포함). 특례 확인 결과는 판정에 그대로 들어간다(다시 셈하지 않음).
+//  옛 카드 단추 「특정주택 제외 판정」은 지우고 「판정」 하나로(계획서 종합판정도구_1 정할 것 ②).
+const OHJ_PROVISION_KIND_ = { u9: '미분양주택(조특)', pd: '인구감소지역주택(조특)', rh: '농어촌주택(조특)', pr: '분양권 일시적', tw: '일시적2주택', ci: '조합원입주권 일시적', rp: '사업기간 대체주택', ih: '상속주택', cb: '동거봉양', mc: '혼인', iu: '상속 조합원입주권', ip: '상속 분양권', lr: '장기임대 거주주택', ch: '문화유산주택', ef: '이농주택', rf: '귀농주택', mp: '장기저당담보' };
+function openTaxReliefJudgeModal_(idx){
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.style.display = 'flex';
   overlay.innerHTML =
-    '<div class="modal-panel" style="width:min(560px, 94vw);">' +
-      '<div class="modal-head"><span>특정주택 제외 판정(1세대1주택 비과세용)</span><span class="modal-close" id="btnCloseOhs">✕</span></div>' +
+    '<div class="modal-panel" style="width:min(720px, 94vw);">' +
+      '<div class="modal-head"><span>종합판정 — 1세대1주택 비과세</span><span class="modal-close" id="btnCloseOhs">✕</span></div>' +
       '<div class="modal-body">' +
+        '<div class="taxcalc-asset-head"><b>기본 요건</b><span class="taxcalc-field-help" style="margin-left:8px;">모르는 칸은 비워 두면 잠정으로 판정합니다</span></div>' +
+        '<div class="taxcalc-grid" id="ohjBasic">' +
+          '<div class="taxcalc-field"><label>양도일</label><input type="date" id="ohjT" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>취득일</label><input type="date" id="ohjA" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>양도가액(원)</label><input type="text" id="ohjPrice" style="width:12em;"></div>' +
+          '<div class="taxcalc-field"><label>취득 원인</label><select id="ohjCause"><option value="">모름</option><option>매매</option><option>상속</option><option>증여</option><option>신축</option></select></div>' +
+          '<div class="taxcalc-field"><label>거주자</label><select id="ohjRes"><option value="">모름</option><option value="y">거주자</option><option value="n">비거주자</option></select></div>' +
+          '<div class="taxcalc-field"><label>세대(§152의3)</label><select id="ohjFam"><option value="">모름</option><option value="sp">배우자 있음</option><option value="30">배우자 없음·30세 이상</option><option value="inc">배우자 없음·소득 요건 충족</option><option value="no">배우자 없음·요건 안 됨</option></select></div>' +
+          '<div class="taxcalc-field"><label>취득 당시 조정대상지역</label><select id="ohjAdj"><option value="">모름</option><option value="y">예</option><option value="n">아니오</option></select></div>' +
+          '<div class="taxcalc-field"><label>거주기간</label><input type="number" id="ohjResY" placeholder="년" style="width:5em;"> <input type="number" id="ohjResM" placeholder="개월" style="width:5em;"></div>' +
+          '<div class="taxcalc-field"><label>양도일 현재 다른 주택·입주권·분양권</label><select id="ohjOther"><option value="">모름</option><option value="0">없음</option><option value="1">있음</option></select></div>' +
+          '<div class="taxcalc-field" id="ohjOtherBox" style="display:none;"><label>있는 것</label><input type="number" id="ohjOtherN" value="1" min="1" style="width:4em;"> <select id="ohjOtherKind"><option>주택</option><option>조합원입주권</option><option>분양권</option></select></div>' +
+        '</div>' +
+        '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"><button type="button" class="taxcalc-run-btn" id="ohjRunBtn">판정</button></div>' +
+        '<div id="ohjResult"></div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>특례 확인</b><span class="taxcalc-field-help" style="margin-left:8px;">다른 주택이 있거나 보유·거주 요건이 모자랄 때 — 확인 결과는 위 판정에 들어갑니다</span></div>' +
         '<div class="taxcalc-field" style="margin-bottom:8px;"><label>적용 조문</label><select id="ohsProvision">' +
           '<option value="u9">수도권 밖 준공후미분양주택(조특법§98의9, 2024.1.10~2026.12.31 취득)</option>' +
           '<option value="pd">인구감소지역 주택(조특법§71의2, 2024.1.4~2026.12.31 취득)</option>' +
@@ -30213,7 +30425,7 @@ function openOneHouseSpecialCaseModal_(idx){
         '</div>' +
         '<div id="ohsPr" style="display:none;">' +
           '<div class="taxcalc-grid">' +
-            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 기본 요건의 취득일·양도일(비면 카드 값)을 씁니다.</div>' +
             '<div class="taxcalc-field"><label>분양권 취득일</label><input type="date" id="prAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
             '<div class="taxcalc-field checkbox"><input type="checkbox" id="prHoldingException"><label for="prHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호 — 임차인거주주택 취득, 수용·협의매수, 해외이주 등)에 해당</label></div>' +
           '</div>' +
@@ -30230,7 +30442,7 @@ function openOneHouseSpecialCaseModal_(idx){
         '</div>' +
         '<div id="ohsTw" style="display:none;">' +
           '<div class="taxcalc-grid">' +
-            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 신규주택 취득일 기준 조정대상지역 여부에 따라 처분기한이 2년 또는 3년으로 자동 분기됩니다(2026.10.1 개정 반영).</div>' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 기본 요건의 취득일·양도일(비면 카드 값)을 씁니다. 신규주택 취득일 기준 조정대상지역 여부에 따라 처분기한이 2년 또는 3년으로 자동 분기됩니다(2026.10.1 개정 반영).</div>' +
             '<div class="taxcalc-field"><label>신규주택 취득일</label><input type="date" id="twNewAcqDate" min="1900-01-01" max="2099-12-31"></div>' +
             '<div class="taxcalc-field checkbox"><input type="checkbox" id="twHoldingException"><label for="twHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
             '<div class="taxcalc-field checkbox"><input type="checkbox" id="twFormerAdjusted"><label for="twFormerAdjusted">신규주택 취득일 현재 종전주택이 조정대상지역 소재</label></div>' +
@@ -30278,7 +30490,7 @@ function openOneHouseSpecialCaseModal_(idx){
               '<option value="domestic_relocation">3호: 1년 이상 거주 후 취학·근무·질병요양 등으로 양도</option>' +
               '<option value="pre_notice_contract">5호: 조정대상지역 공고 전 매매계약(무주택세대) — 거주기간만 면제</option>' +
             '</select></div>' +
-            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 아래 입력칸은 선택한 사유에 맞는 것만 채우세요.</div>' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 기본 요건의 취득일·양도일(비면 카드 값)을 씁니다. 아래 입력칸은 선택한 사유에 맞는 것만 채우세요.</div>' +
             '<div class="taxcalc-field"><label>[1호만] 임차일~양도일 세대전원 거주기간 합계</label><input type="number" id="hrLivedYears" placeholder="년"></div>' +
           '</div>' +
           '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>2호가목만 — 사업인정고시일·잔존주택 특례</b></div>' +
@@ -30305,7 +30517,7 @@ function openOneHouseSpecialCaseModal_(idx){
         '</div>' +
         '<div id="ohsCi" style="display:none;">' +
           '<div class="taxcalc-grid">' +
-            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 기본 요건의 취득일·양도일(비면 카드 값)을 씁니다.</div>' +
             '<div class="taxcalc-field"><label>조합원입주권 취득일</label><input type="date" id="ciAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
             '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciHoldingException"><label for="ciHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
           '</div>' +
@@ -30407,7 +30619,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpBeforeMaturity"><label for="mpBeforeMaturity">계약기간 만료 전에 양도함(체크시 적용배제)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpCohabitation"><label for="mpCohabitation">장기저당담보주택 보유 직계존속(배우자측 포함)을 동거봉양하기 위해 합가해 2주택이 됨</label></div>' +
         '</div>' +
-        '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
+        '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">특례 확인</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
     '</div>';
@@ -30417,6 +30629,69 @@ function openOneHouseSpecialCaseModal_(idx){
   overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
   enhanceNumberInputs(overlay);
   enhanceDateInputs(overlay);
+  // [2026.11.01 종합판정 ①] 기본 요건 칸 — 카드 값으로 미리 채움
+  (function(){
+    const a = transferAssets[idx] || {}, s0 = transferSellers[(a.sellerIdx != null && transferSellers[a.sellerIdx]) ? a.sellerIdx : 0] || {};
+    const set = function(id, v){ const el = overlay.querySelector('#' + id); if (el && v != null && v !== '') el.value = v; };
+    set('ohjT', a.transferDate); set('ohjA', a.acquisitionDate); set('ohjPrice', a.transferPrice ? Number(a.transferPrice).toLocaleString() : '');
+    if (s0.isTransferorResident === true) set('ohjRes', 'y'); else if (s0.isTransferorResident === false) set('ohjRes', 'n');
+    if (a.residenceYears !== '' && a.residenceYears != null && Number.isFinite(Number(a.residenceYears))) set('ohjResY', Number(a.residenceYears));
+    const oth = overlay.querySelector('#ohjOther'); oth.addEventListener('change', function(){ overlay.querySelector('#ohjOtherBox').style.display = oth.value === '1' ? '' : 'none'; });
+  })();
+  const ohjInput_ = function(){
+    const g = function(id){ const el = overlay.querySelector('#' + id); return el ? String(el.value || '').trim() : ''; };
+    const p = { 묶음: '1세대1주택', 양도일: g('ohjT') || undefined, 대상: {}, 세대: {}, 물건: [] };
+    if (g('ohjA')) p.대상.취득일 = g('ohjA'); if (numVal(g('ohjPrice'))) p.대상.양도가액 = numVal(g('ohjPrice')); if (g('ohjCause')) p.대상.취득원인 = g('ohjCause');
+    if (g('ohjAdj') === 'y') p.대상.취득당시조정 = true; else if (g('ohjAdj') === 'n') p.대상.취득당시조정 = false; // 모름이면 비움 — 사건 장부 반영 때 서버가 조정대상지역 도구로 봄
+    if (g('ohjResY') !== '' || g('ohjResM') !== '') p.대상.거주개월 = (numVal(g('ohjResY')) || 0) * 12 + (numVal(g('ohjResM')) || 0);
+    if (g('ohjRes') === 'y') p.세대.거주자 = true; else if (g('ohjRes') === 'n') p.세대.거주자 = false;
+    const fm = g('ohjFam'); if (fm === 'sp') p.세대.배우자 = true; else if (fm === '30') { p.세대.배우자 = false; p.세대.나이 = 30; } else if (fm === 'inc') { p.세대.배우자 = false; p.세대.나이 = 29; p.세대.소득요건 = true; } else if (fm === 'no') { p.세대.배우자 = false; p.세대.나이 = 29; p.세대.소득요건 = false; }
+    const ot = g('ohjOther');
+    if (ot === '1') { const n = Math.max(1, Math.min(9, numVal(g('ohjOtherN')) || 1)), k = g('ohjOtherKind') || '주택'; for (let i = 0; i < n; i++) p.물건.push({ 이름: k + (n > 1 ? ' ' + (i + 1) : ''), 종류: k, 주택수: '든다' }); }
+    else if (ot === '') p.물건.push({ 이름: '다른 보유 주택·조합원입주권·분양권', 종류: '주택', 주택수: '모름' });
+    p.물건.push({ 이름: '판정 주택', 종류: '주택', 주택수: '든다', 대상: true });
+    const L = overlay._ohsLast;
+    if (L && L.provision === 'hr') p.보유거주예외 = { reasonType: L.reasonType, 이미: L.r };
+    else if (L && L.provision === 'mg') p.상생임대 = { 이미: L.r };
+    else if (L && OHJ_PROVISION_KIND_[L.provision]) p.특례 = [{ 종류: OHJ_PROVISION_KIND_[L.provision], 이미: L.r }];
+    return p;
+  };
+  const ohjShow_ = function(r, srv){
+    const box = overlay.querySelector('#ohjResult');
+    if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + escapeHtml((r && r.error) || '판정하지 못했습니다.') + '</div>'; return; }
+    let h = '<div class="taxcalc-result" style="margin-top:10px;"><div style="font-weight:700; font-size:15px; color:' + (r.결론 === '충족' && !r.잠정 ? '#1b2a41' : '#7a5c14') + ';">' + escapeHtml(r.표시) + '</div>';
+    h += '<div style="overflow-x:auto;"><table style="width:100%; margin-top:6px; border-collapse:collapse; font-size:13px;"><thead><tr><th style="white-space:nowrap;">요건</th><th>사실</th><th style="white-space:nowrap;">근거</th><th style="white-space:nowrap;">결과</th></tr></thead><tbody>' +
+      (r.셈표 || []).map(function(x){ const c = x.결과 === '안 됨' ? 'color:#b42318;' : x.결과 === '모름' ? 'color:#7a5c14;' : ''; return '<tr><td style="white-space:nowrap;">' + escapeHtml(x.요건 || '') + '</td><td style="white-space:nowrap; max-width:300px; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHtml(x.사실 || '') + '">' + escapeHtml(x.사실 || '') + '</td><td style="white-space:nowrap;">' + escapeHtml(x.근거조문 || '') + '</td><td style="white-space:nowrap; font-weight:600;' + c + '">' + escapeHtml(x.결과 || '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    if ((r.확인할것 || []).length) h += '<div class="taxcalc-result-note"><b>남은 것</b> ▪ ' + r.확인할것.map(escapeHtml).join(' ▪ ') + '</div>';
+    if ((r.받을서류 || []).length) h += '<div class="taxcalc-result-note"><b>받을 서류</b> ▪ ' + r.받을서류.map(escapeHtml).join(' ▪ ') + '</div>';
+    if ((r.사후관리 || []).length) h += '<div class="taxcalc-result-note" style="color:#7a5c14;">' + r.사후관리.map(escapeHtml).join('<br>') + '</div>';
+    if (srv) h += '<div class="taxcalc-result-note"><b>사건 장부</b> ' + escapeHtml(srv.장부 || '') + (srv.거주연수 ? ' · 거주연수 ' + escapeHtml(srv.거주연수) : '') + ((srv.알림 || []).length ? '<br>' + srv.알림.map(escapeHtml).join('<br>') : '') + ((srv.경우 || []).length ? '<br>경우(안): ' + srv.경우.map(function(k){ return escapeHtml(k.이름 + ' ' + (k.오류 ? '— ' + k.오류 : Number(k.최종세액 || 0).toLocaleString() + '원')); }).join(' / ') : '') + '</div>';
+    h += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">';
+    if (!r.잠정) h += '<button type="button" class="taxcalc-run-btn" id="ohjApplyBtn">' + (r.결론 === '충족' ? '계산기 칸 체크' : '계산기 칸 체크 풀기') + '</button>';
+    const cs = (typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.id) ? tcCurrentCase : null;
+    if (cs) h += '<button type="button" class="taxcalc-ai-btn" id="ohjLedgerBtn">사건 장부에 반영</button>' + (r.잠정 ? '<label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" id="ohjCaseTwo" checked>경우(안) 둘 계산</label>' : '');
+    h += '</div>';
+    if (r.잠정) h += '<div class="taxcalc-result-note">잠정 판정이라 계산기 칸은 그대로 둡니다(계획서 정할 것 ① — 정황이 없으면 과세로 봄).</div>';
+    h += '</div>';
+    box.innerHTML = h;
+    const ap = box.querySelector('#ohjApplyBtn');
+    if (ap) ap.addEventListener('click', function(){ transferAssets[idx].isOneHouseOneFamily = r.결론 === '충족'; close(); renderTransferPane(); showToast(r.결론 === '충족' ? '1세대1주택 비과세 전제를 체크했습니다.' : '1세대1주택 비과세 전제를 풀었습니다.', 'success'); });
+    const lb = box.querySelector('#ohjLedgerBtn');
+    if (lb) lb.addEventListener('click', function(){
+      if (!sessionStorage.getItem('nxManageSessionToken')){ showToast('로그인 뒤에 반영할 수 있습니다.', 'warning'); return; }
+      lb.disabled = true; lb.textContent = '반영하는 중…';
+      const two = box.querySelector('#ohjCaseTwo');
+      callGas('case_proc', Object.assign({ caseId: cs.id, step: 'ledgerJudge', by: '세무사님', asset: 'a' + idx, 경우둘: !!(two && two.checked) }, (function(){ const q = ohjInput_(); if (!String((overlay.querySelector('#ohjOther') || {}).value || '')) delete q.물건; return q; })())).then(function(res){
+        if (!res || res.ok === false || res.error){ lb.disabled = false; lb.textContent = '사건 장부에 반영'; showToast((res && (res.error || res.message)) || '반영하지 못했습니다.', 'error'); return; }
+        ohjShow_(res.결과, res); showToast('사건 장부: ' + (res.장부 || '반영'), 'success');
+      }).catch(function(e){ lb.disabled = false; lb.textContent = '사건 장부에 반영'; showToast('오류: ' + (e && e.message || e), 'error'); });
+    });
+  };
+  overlay.querySelector('#ohjRunBtn').addEventListener('click', function(){
+    if (typeof window.judgeTaxReliefJS !== 'function'){ ohjShow_({ error: '세액 엔진에 판정 셈이 없습니다.' }); return; }
+    let r; try { r = window.judgeTaxReliefJS(ohjInput_()); } catch (e) { r = { error: '판정 오류: ' + (e && e.message || e) }; }
+    ohjShow_(r, null);
+  });
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
     ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr', 'ohsCh', 'ohsEf', 'ohsRf', 'ohsMp'].forEach(function(id){
@@ -30455,6 +30730,8 @@ function openOneHouseSpecialCaseModal_(idx){
     overlay.querySelector('#ipLargestShare').checked = r.신청인이소유자;
   });
   overlay.querySelector('#ohsRunBtn').addEventListener('click', function(){
+    // [2026.11.01 종합판정 ①] 종전주택 취득일·양도일은 위 기본 요건 칸 값(비면 카드 값) — 카드 값은 바꾸지 않음
+    const ohsA_ = { transferDate: (overlay.querySelector('#ohjT').value || '').trim() || transferAssets[idx].transferDate, acquisitionDate: (overlay.querySelector('#ohjA').value || '').trim() || transferAssets[idx].acquisitionDate };
     const provision = provisionSel.value;
     let r;
     if (provision === 'u9'){
@@ -30489,8 +30766,8 @@ function openOneHouseSpecialCaseModal_(idx){
       });
     } else if (provision === 'pr'){
       r = calculatePresaleRightOneHouseExclusionJS({
-        formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
-        formerHouseTransferDate: transferAssets[idx].transferDate,
+        formerHouseAcquisitionDate: ohsA_.acquisitionDate,
+        formerHouseTransferDate: ohsA_.transferDate,
         presaleRightAcquisitionDate: document.getElementById('prAcquisitionDate').value,
         meetsHoldingPeriodException: document.getElementById('prHoldingException').checked,
         unableToTransferWithinThreeYearsReason: document.getElementById('prLateTransferReason').checked,
@@ -30500,8 +30777,8 @@ function openOneHouseSpecialCaseModal_(idx){
       });
     } else if (provision === 'tw'){
       r = calculateTemporaryTwoHouseExclusionJS({
-        formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
-        formerHouseTransferDate: transferAssets[idx].transferDate,
+        formerHouseAcquisitionDate: ohsA_.acquisitionDate,
+        formerHouseTransferDate: ohsA_.transferDate,
         newHouseAcquisitionDate: document.getElementById('twNewAcqDate').value,
         meetsHoldingPeriodException: document.getElementById('twHoldingException').checked,
         isFormerHouseAdjustedArea: document.getElementById('twFormerAdjusted').checked,
@@ -30526,13 +30803,13 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
         conversionRatePercent: numVal((document.getElementById('mgConversionRate') || {}).value) || 0, // [2026.10.20] §155의3② 전환
-        transferDate: transferAssets[idx].transferDate
+        transferDate: ohsA_.transferDate
       });
     } else if (provision === 'hr'){
       r = calculateHoldingResidencyExceptionJS({
         reasonType: document.getElementById('hrReasonType').value,
-        acquisitionDate: transferAssets[idx].acquisitionDate,
-        transferDate: transferAssets[idx].transferDate,
+        acquisitionDate: ohsA_.acquisitionDate,
+        transferDate: ohsA_.transferDate,
         livedYears: numVal(document.getElementById('hrLivedYears').value),
         publicNoticeDate: document.getElementById('hrPublicNoticeDate').value,
         isRemainderSale: document.getElementById('hrIsRemainderSale').checked,
@@ -30547,8 +30824,8 @@ function openOneHouseSpecialCaseModal_(idx){
       });
     } else if (provision === 'ci'){
       r = calculateReconstructionRightsOneHouseExclusionJS({
-        formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
-        formerHouseTransferDate: transferAssets[idx].transferDate,
+        formerHouseAcquisitionDate: ohsA_.acquisitionDate,
+        formerHouseTransferDate: ohsA_.transferDate,
         unionMembershipRightAcquisitionDate: document.getElementById('ciAcquisitionDate').value,
         meetsHoldingPeriodException: document.getElementById('ciHoldingException').checked,
         unableToTransferWithinThreeYearsReason: document.getElementById('ciLateTransferReason').checked,
@@ -30565,7 +30842,7 @@ function openOneHouseSpecialCaseModal_(idx){
         isOverseasException: document.getElementById('rpOverseas').checked,
         movedInWithinThreeYearsOfCompletion: document.getElementById('rpMovedIn').checked,
         residedOneYearOrMoreAfterMoveIn: document.getElementById('rpResided1YAfter').checked,
-        replacementHouseTransferDate: transferAssets[idx].transferDate
+        replacementHouseTransferDate: ohsA_.transferDate
       });
     } else if (provision === 'ih'){
       r = calculateInheritedHouseExclusionJS({
@@ -30576,14 +30853,14 @@ function openOneHouseSpecialCaseModal_(idx){
     } else if (provision === 'cb'){
       r = calculateCohabitationMergerExclusionJS({
         mergeDate: document.getElementById('cbMergeDate').value,
-        transferDate: transferAssets[idx].transferDate,
+        transferDate: ohsA_.transferDate,
         directAncestorAge60OrOlder: document.getElementById('cbAge60').checked,
         severeIllnessException: document.getElementById('cbSevereIllness').checked
       });
     } else if (provision === 'mc'){
       r = calculateMarriageMergerExclusionJS({
         marriageDate: document.getElementById('mcMarriageDate').value,
-        transferDate: transferAssets[idx].transferDate
+        transferDate: ohsA_.transferDate
       });
     } else if (provision === 'iu'){
       r = calculateInheritedUnionRightExclusionJS({
@@ -30637,7 +30914,7 @@ function openOneHouseSpecialCaseModal_(idx){
         meetsFarmingPurposeRequirement: document.getElementById('rfFarmingPurpose').checked,
         wholeFamilyMovedIn: document.getElementById('rfMovedIn').checked,
         acquisitionDate: document.getElementById('rfAcquisitionDate').value,
-        generalHouseTransferDate: transferAssets[idx].transferDate,
+        generalHouseTransferDate: ohsA_.transferDate,
         isNotFirstGeneralHouseSinceReturn: document.getElementById('rfNotFirst').checked
       });
     } else {
@@ -30649,6 +30926,7 @@ function openOneHouseSpecialCaseModal_(idx){
         isCohabitationMerger: document.getElementById('mpCohabitation').checked
       });
     }
+    overlay._ohsLast = r && !r.error ? { provision: provision, r: r, reasonType: provision === 'hr' ? document.getElementById('hrReasonType').value : '' } : null; // [2026.11.01 종합판정 ①]
     const resultBox = document.getElementById('ohsResult');
     if (!r || r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
@@ -33336,7 +33614,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isOneHouseOneFamily" id="oneHouse-' + idx + '"><label for="oneHouse-' + idx + '">1세대1주택 비과세 전제</label></div>' +
           // [2026.10.20] 2005년 양도 고가주택 장특공 25%·50%(소득세법 §95②2호·3호 2005.1.1. 판, 시행령 §159의2 기준면적)
           '<div class="taxcalc-field checkbox" data-show-if="isOneHouseOneFamily" style="display:none;"><input type="checkbox" data-field="isBelowStandardAreaHighValueHouse" id="bsaHv-' + idx + '"><label for="bsaHv-' + idx + '">(2005년 양도 고가주택만) 기준면적 미만 — 단독 연면적 264㎡·부수토지 495㎡ 미만 또는 공동주택 전용 149㎡ 미만(시행령 §159의2): 장특공 5년 이상 25%·10년 이상 50%</label></div>' +
-          '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">특정주택 제외 판정</button></div>' +
+          '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-relief-judge" data-idx="' + idx + '" title="1세대1주택 비과세 요건을 조문대로 하나씩 대조합니다(특례 확인 포함)">판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">만 연수(장특공 표2는 연 단위)</span></div>' +
           // [2026.10.22 검토대상 양도-4] 소득세법 §95⑤·⑥ — 상가·사무실 등을 주택으로 바꾼 1세대1주택(2025.1.1. 이후 양도)
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>주택으로 바꾼 날(해당할 때만)</label><input type="date" data-field="houseConversionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">주택이 아닌 건물을 사실상 주거용으로 쓴 날(분명하지 않으면 공부상 용도 변경일, §95⑥) — 비주택 기간은 표1, 주택 기간은 표2(§95⑤). 거주연수는 그날 뒤 거주만</span></div>' +
@@ -33993,7 +34271,7 @@ function renderTransferPane(){
     // 안내할 뿐 자동 반영이 안 되는 구식 구조였다.
     // [2026.09.23 삭제] 수도권밖미분양(u9)·인구감소지역(pd)·농어촌주택(rh) 1세대1주택 특례
     // 독립 계산기 3개도 삭제 — 위 "1세대1주택 비과세 전제" 체크박스 옆 "🔍 특정주택 제외 판정"
-    // 인라인 모달(openOneHouseSpecialCaseModal_)로 흡수했다. 통과하면 그 체크박스를 대신
+    // 인라인 모달(openTaxReliefJudgeModal_ — 2026.11.01 종합판정 창)로 흡수했다. 통과하면 그 체크박스를 대신
     // 체크해준다(세액계산 자체는 원래도 안 하던 순수 판정 도구라 이 방식이 자연스럽다).
     // [2026.09.23 삭제] 구조조정대상부동산(§43)·장기임대주택등(§97계열)·국가양도산지(§85의10)
     // 독립 계산기 3개도 삭제 — 세무사님 지시("나머지 부속계산기도 전부 전수조사해서 중복부분을
@@ -34053,7 +34331,7 @@ function renderTransferPane(){
       // 사후판정이라 위 모달로는 다룰 수 없어 pr(공공매입임대주택 사후관리)과 같은 패턴으로
       // 여기 둔다.
       '<div id="trSpecialCase-rfc" style="display:none;">' +
-        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 "🔍 특정주택 제외 판정"(귀농주택)으로 받습니다. 이 도구는 귀농일부터 3년 요건 미충족시 추징 여부만 확인합니다</div>' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 「판정」 창의 특례 확인(귀농주택)으로 받습니다. 이 도구는 귀농일부터 3년 요건 미충족시 추징 여부만 확인합니다</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfcFarming3Y"><label for="rfcFarming3Y">귀농일부터 계속하여 3년 이상 영농 또는 영어에 종사함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfcResided3Y"><label for="rfcResided3Y">그 3년 동안 귀농주택에 거주함</label></div>' +
@@ -34066,7 +34344,7 @@ function renderTransferPane(){
       // 위 모달(lr)로 비과세 판정을 받은 뒤 임대기간요건(또는 운영기간요건)을 못 채우면
       // [거주주택 양도 당시 장기임대주택으로 안 봤을 경우 세액-당초납부세액]을 추징한다.
       '<div id="trSpecialCase-lrc" style="display:none;">' +
-        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 "🔍 특정주택 제외 판정"(장기임대주택·장기어린이집)으로 받습니다. 이 도구는 임대(운영)기간요건 미충족시 추징 여부만 확인합니다</div>' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 「판정」 창의 특례 확인(장기임대주택·장기어린이집)으로 받습니다. 이 도구는 임대(운영)기간요건 미충족시 추징 여부만 확인합니다</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrcMeetsPeriod"><label for="lrcMeetsPeriod">임대기간요건(또는 운영기간요건)을 충족함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrcExempt">[위 체크 안했을 때만]<label for="lrcExempt">수용 등 부득이한 사유, 재건축·재개발·리모델링 기간 특례(§155㉒2호)에 해당</label></div>' +
@@ -34080,7 +34358,7 @@ function renderTransferPane(){
       // 상태(민법 법정상속분 의제)로 일반주택을 먼저 양도해 비과세받은 뒤, 나중에(제척기간 내)
       // 협의분할등기한 결과 §155②③ 요건을 상실하면 추징한다.
       '<div id="trSpecialCase-udr" style="display:none;">' +
-        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 "🔍 특정주택 제외 판정"(상속주택)으로 받습니다. 이 도구는 나중에 협의분할등기한 결과 비과세 요건을 잃었는지만 확인합니다</div>' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 「판정」 창의 특례 확인(상속주택)으로 받습니다. 이 도구는 나중에 협의분할등기한 결과 비과세 요건을 잃었는지만 확인합니다</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="udrDivided"><label for="udrDivided">상속주택 외 주택(일반주택)을 양도한 후 협의분할등기를 함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="udrLosesExemption">[위 체크시만]<label for="udrLosesExemption">그 등기 결과 §155②③ 요건을 더 이상 충족하지 못하게 됨</label></div>' +
@@ -43050,8 +43328,8 @@ function handleTaxCalcClick_(e){
   } else if (action === 'open-prenotice-std-helper'){
     const idx = numVal(btn.dataset.idx);
     openPreNoticeStdHelper_(function(value){ transferAssets[idx].lrAcquisitionStandardPrice = value; renderTransferPane(); });
-  } else if (action === 'open-one-house-special-modal'){
-    openOneHouseSpecialCaseModal_(numVal(btn.dataset.idx));
+  } else if (action === 'open-tax-relief-judge'){ // [2026.11.01 종합판정 ①] 옛 open-one-house-special-modal(특정주택 제외 판정)을 합침
+    openTaxReliefJudgeModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-non-business-land-modal'){
     openNonBusinessLandModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-controlling-shareholder-modal'){

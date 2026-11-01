@@ -255,7 +255,7 @@ function ledgerSetInner_(L, p) {
       return { ok: false, refused: true, prev: ledgerRowOut_(path, prev), message: '「' + label + '」은 ' + prevKind + '이 정한 값(' + ledgerValueText_(path, prev.v) + ')입니다 — ' + kind + '은(는) 바꾸지 못합니다. 서류 값이 다르면 그 사실만 말씀드립니다.' };
     }
     // ③ 서류·규칙끼리는 더 확실한 쪽만 덮는다(같은 확신이면 나중 것 — 교차검증은 넥스·규칙이 따로 한다)
-    if (prevSettled && (kind === '서류' || kind === '규칙') && (prevKind === '서류' || prevKind === '규칙') && prev.sure === '확실' && sure !== '확실') {
+    if (prevSettled && (kind === '서류' || kind === '규칙') && (prevKind === '서류' || prevKind === '규칙') && prev.sure === '확실' && sure !== '확실' && !(input.estimate && ledgerJudgeLabel_(prev.src) && /^종합판정 /.test(String(input.why || '')))) {
       return ledgerAskInner_(L, path, { label: label, question: '서류끼리 값이 다릅니다 — ' + ledgerValueText_(path, prev.v) + '(' + (prev.src.file || prevKind) + ') / ' + ledgerValueText_(path, norm.v) + '(' + (src.file || kind) + ')', cands: [{ v: prev.v, src: prev.src.file || prevKind }, { v: norm.v, src: src.file || kind }].concat(input.cands || []), by: by, keep: true });
     }
     // ④ 서류·규칙이 애매·모름이면 값을 정하지 않고 물어볼 것으로(후보와 함께)
@@ -350,7 +350,8 @@ function ledgerPathSort_(a, b) {
 function ledgerQuestions_(caseId) { return ledgerRows_(caseId, { state: ['물어볼것', '증빙받을것'] }); }
 // [2026.10.31 정리] tax를 주면 그 세목 칸만(다른 세목 칸은 뺌, 세목 없는 칸·서류 줄은 둠) — 예전엔 증여 계산의 "추가로 확인할 사항"에 양도 칸 취득일이 섞였다(복합 자문 원점 점검)
 function ledgerReviewNotes_(caseId, tax) {
-  const rows = ledgerRows_(caseId, { state: ['추정', '증빙받을것', '보류'] });
+  // [2026.11.01 종합판정 ①] 판정 줄(근거 글이 "종합판정 …")은 그 글을 이름으로 — "1세대1주택 — 비과세 — 잠정(남은 것: …)"이 검토서·처리개요에 그대로 보인다
+  const rows = ledgerRows_(caseId, { state: ['추정', '증빙받을것', '보류'] }).map(function (r) { const j = ledgerJudgeLabel_(r); return j ? Object.assign({}, r, { label: j, judged: true }) : r; });
   if (!tax) return rows;
   return rows.filter(function (r) { const t = ledgerPathTax_(r.path) || (/^(seller\.|costs$|taxfee$)/.test(r.path) ? 'transfer' : ''); return !t || t === tax; });
 }
@@ -527,7 +528,7 @@ function ledgerCalcRun_(c, body) {
   const est = ledgerReviewNotes_(c.id, 'transfer');
   const lines = ['거래 ' + res.거래건수 + '건 · 비과세 ' + res.비과세건수 + '건', '합산과세표준 ' + won(res.합산과세표준), '산출세액 합계 ' + won(res.산출세액_합계), '지방소득세 ' + won(res.지방소득세), '납부세액 합계 ' + won(res.납부세액_합계)];
   if ((cs.assumed || []).length) lines.push('이번 계산의 가정(장부 값은 그대로) ' + cs.assumed.length + '칸: ' + cs.assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
-  if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (r) { return r.label + '(' + r.state + (r.state === '추정' ? ' ' + r.값 : '') + ')'; }).join(', ').slice(0, 300));
+  if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (r) { return r.judged ? r.label : r.label + '(' + r.state + (r.state === '추정' ? ' ' + r.값 : '') + ')'; }).join(', ').slice(0, 300));
   if (cs.gaps.length) lines.push('비어 있는 칸: ' + cs.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
   // [2026.10.30 E] 과세대상 구분이 비면 엔진은 "그 밖 자산"으로 계산한다 — 주택·분양권이면 단기세율·중과가 달라지므로 결과 맨 앞에 알린다(말없이 기본값 쓰지 않음)
   const noType = cs.gaps.filter(function (g) { return /\.assetType$/.test(g); });
@@ -588,7 +589,7 @@ function ledgerCalcGiftInh_(c, body, tax) {
   const est = ledgerReviewNotes_(c.id, gift ? 'gift' : 'inheritance'), label = gift ? '증여세' : '상속세';
   const 산출 = gift ? (r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액) : r.산출세액;
   const lines = ['과세표준 ' + won(r.과세표준), '산출세액 ' + won(산출), '신고세액공제 ' + won(r.신고세액공제), '납부세액 ' + won(r.납부세액)];
-  if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (x) { return x.label + '(' + x.state + ')'; }).join(', ').slice(0, 300));
+  if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (x) { return x.judged ? x.label : x.label + '(' + x.state + ')'; }).join(', ').slice(0, 300));
   if ((b.gaps || []).length) lines.push('남은 물어볼 것·빈 칸: ' + b.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
   if (assumed.length) lines.push('이번 계산의 가정(장부 값은 그대로): ' + assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
@@ -1269,13 +1270,14 @@ function ledgerToolRun_(input, by) {
   else if (d === 'advice') r = ledgerAdvPut_(c, input, who); // [2026.10.30 2단계] 자문 장부 — 쟁점·대안·근거·위험·권고·보고서 적기·고치기·지우기
   else if (d === 'advice_view') r = { ok: true, 자문: ledgerAdvBrief_(c) }; // 자문 장부 보기(읽기만)
   else if (d === 'cite') { const ce = typeof caseProcCalcCite_ === 'function' ? caseProcCalcCite_(c, input.id) : null; r = ce ? Object.assign({ ok: true }, ce) : { ok: false, error: '그 계산 저장본이 이 사건에 없음: ' + (input.id || '') }; } // [2026.10.30] 저장본 하나 인용(입력·결과 — 보고서 숫자의 원천)
+  else if (d === 'judge') r = ledgerJudgeRun_(c, input, who); // [2026.11.01 종합판정 ①] 비과세·공제·감면 종합판정(지금은 1세대1주택) — 화면 「판정」·judge_tax_relief와 같은 함수
   else if (d === 'check_refs') r = ledgerCiteRun_(c, input, who); // [2026.10.30 근거 확인 — 세무사님 "권하는 안대로"] 보고서·근거 칸의 조문·판례·심판례를 원문과 대조(📒 ⑥ 🔎와 같은 함수)
   // [2026.11.01 물건 장부] 물건 목록 보기·더하기/고치기·지우기·양도 자산으로 보내기(📒 물건 탭과 같은 함수)
   else if (d === 'objects') r = ledgerObjList_(c);
   else if (d === 'object') r = ledgerObjSet_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
   else if (d === 'object_drop') r = ledgerObjDrop_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
   else if (d === 'object_sell') r = ledgerObjSell_(c, input, kind === '세무사님' ? '세무사님' : '넥스');
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell 중 하나' };
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell·judge 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1328,6 +1330,7 @@ function ledgerApi_(c, body) {
     case 'ledgerObjSet': return ledgerObjSet_(c, body, body.by || who);
     case 'ledgerObjDrop': return ledgerObjDrop_(c, body, body.by || who);
     case 'ledgerObjSell': return ledgerObjSell_(c, body, body.by || who);
+    case 'ledgerJudge': return ledgerJudgeRun_(c, body, body.by || who); // [2026.11.01 종합판정 ①] 세액계산 「판정」 — 넥스 judge_tax_relief와 같은 함수
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
     case 'ledgerFlow': return ledgerFlowBrief_(c); // [2026.10.29] 사건 화면마다 맨 위 장부 띠·옆 패널(가벼운 묶음 — 서류 사실 전부는 싣지 않음)
@@ -2711,3 +2714,109 @@ function ledgerObjEvWant_(L) {
   });
   return out;
 }
+
+// ============================================================
+// [2026.11.01 종합판정 ①] 비과세·공제·감면 종합판정 — 「1세대1주택」 묶음을 사건 장부에 잇는 길(화면 세액계산 「판정」·넥스 judge_tax_relief·case_ledger do=judge가 같은 함수)
+// ------------------------------------------------------------
+// 세무사님 원문(11-01): "판정내용이 당연히 연결 … 잠정이면 종합검토결과에 1세대1주택-잠정" / "비과세공제감면 종합판정도구 라고 해야하는 거 같다"
+// 계획서: 총괄관리자\_기록\종합판정도구_1_1세대1주택_계획서_20261101.html(5절 잇기). 셈은 엔진 judgeTaxReliefJS 하나 — 여기서는 장부에서 사실을 모아 넘기고 결과를 칸에 적을 뿐.
+//  ① 사실: 장부 칸(a?·c?·seller) + 물건 장부(L.obj, 있으면) + 이번에 받은 사실(input — 넥스·화면이 알려 준 세대·특례·다른 물건). 물건 장부가 없고 다른 물건도 안 받았으면
+//     "다른 보유 주택 — 모름" 한 줄을 넣어 잠정으로 둔다(이 주택 하나만 보고 비과세라 하지 않음).
+//  ② 취득 당시 조정대상지역: 받은 값이 없으면 조정대상지역 도구(caseProcAdjAreaAt_ '거주' — 시행령 §154② 표 포함)로 소재지·취득일을 본다.
+//  ③ 결과는 a?.isOneHouseOneFamily 칸에 규칙(GAS) 값으로 — 잠정이면 추정. 세무사님·넥스가 정한 값은 덮지 않고(장부 규칙 ①②) 다르면 알림만.
+//     칸의 근거(why)는 "종합판정 1세대1주택 — … 잠정(남은 것: …)" — 검토서 "추가로 확인할 사항"·처리개요가 이 글을 그대로 보인다(ledgerReviewNotes_).
+//  ④ 물건 장부가 있으면 그 물건 줄의 판정(row.판정 — 대표 결과 + 묶음들)도 적는다. 사건 단위 판정 저장소는 새로 만들지 않는다(읽고 쓰는 길 전부에 넣어야 하므로).
+// ============================================================
+var LEDGER_JUDGE_TAG_ = '종합판정 ';
+function ledgerJudgeInput_(c, L, input) {
+  input = input || {};
+  const v = function (p) { const r = L.rows[p]; return r && (r.state === '확정' || r.state === '추정') && r.v !== '' && r.v !== undefined && r.v !== null ? r.v : undefined; };
+  const ai = Math.max(0, Number(String(input.asset == null ? 0 : input.asset).replace(/\D/g, '')) || 0), A = 'a' + ai;
+  const ci = Number(String(v(A + '.contract') || 'c0').replace(/\D/g, '')) || 0, C = 'c' + ci;
+  const resY = Number(v(A + '.residenceYears'));
+  const tg = { 취득일: v(A + '.acquisitionDate'), 양도가액: Number(v(A + '.transferPrice') || v(C + '.totalPrice')) || undefined, 소재지: v(A + '.assetLocation'), 취득원인: v(A + '.acquisitionCause') };
+  if (v(A + '.residenceYears') !== undefined && Number.isFinite(resY) && resY >= 0) tg.거주개월 = Math.round(resY * 12);
+  const p = { 묶음: '1세대1주택', 양도일: v(C + '.date') || v('기준일'), 대상: tg, 세대: {}, 물건: null };
+  const res = v('seller.isTransferorResident'); if (res === true || res === false) p.세대.거주자 = res;
+  // 물건 장부(있을 때만) — 판정할 물건은 이 자산(쓸곳·자산이 A인 줄) 또는 input.objId
+  const ol = L.obj && Array.isArray(L.obj.list) ? L.obj.list.filter(function (o) { return o && o.state !== '지움'; }) : null;
+  let objRow = null;
+  if (ol && ol.length) {
+    objRow = ol.filter(function (o) { return input.objId ? o.id === input.objId : o.f && (o.f.자산 === A || o.f.쓸곳 === A); })[0] || null;
+    p.물건 = ol.map(function (o) { const f = o.f || {}; return { 이름: [f.소재지, f.동, f.호].filter(Boolean).join(' ') || o.id, 종류: f.종류 || '', 주택수: f.주택수 || (f.쓰임 === '주거' ? '든다' : f.쓰임 === '업무' ? '안 든다' : '모름'), 주택수근거: f.주택수근거 || '', 취득일: f.취득일 || '', 취득원인: f.취득원인 || '', 양도일: o.sold || f.양도일 || '', 대상: objRow ? o.id === objRow.id : false, id: o.id }; });
+    if (objRow && objRow.f) { if (!tg.취득일 && objRow.f.취득일) tg.취득일 = objRow.f.취득일; if (!tg.취득원인 && objRow.f.취득원인) tg.취득원인 = objRow.f.취득원인; if (!tg.소재지 && objRow.f.소재지) tg.소재지 = objRow.f.소재지; }
+  }
+  // 받은 사실이 장부보다 먼저(이번 판정에만 — 장부 칸은 바꾸지 않는다)
+  ['양도일', '특례', '보유거주예외', '상생임대'].forEach(function (k) { if (input[k] != null && input[k] !== '') p[k] = input[k]; });
+  if (input.대상 && typeof input.대상 === 'object') Object.keys(input.대상).forEach(function (k) { if (input.대상[k] !== undefined && input.대상[k] !== '') p.대상[k] = input.대상[k]; });
+  if (input.세대 && typeof input.세대 === 'object') Object.keys(input.세대).forEach(function (k) { if (input.세대[k] !== undefined && input.세대[k] !== '') p.세대[k] = input.세대[k]; });
+  if (Array.isArray(input.물건)) p.물건 = input.물건.map(function (o) { return Object.assign({}, o, { 대상: !!(o && o.대상) }); });
+  if (!p.물건) p.물건 = [{ 이름: '다른 보유 주택·조합원입주권·분양권(물건 장부 없음)', 종류: '주택', 주택수: '모름' }];
+  if (!p.물건.some(function (o) { return o && o.대상; })) p.물건.push({ 이름: '판정 주택', 종류: '주택', 주택수: '든다', 대상: true });
+  const adjNote = [];
+  if (p.대상.취득당시조정 === undefined || p.대상.취득당시조정 === '') {
+    if (typeof caseProcAdjAreaAt_ === 'function' && p.대상.소재지 && p.대상.취득일) {
+      try { const a = caseProcAdjAreaAt_(String(p.대상.소재지), String(p.대상.취득일).slice(0, 10), '거주'); p.대상.취득당시조정 = a.판정 === '조정' ? true : a.판정 === '비조정' ? false : null; adjNote.push('취득 당시 조정대상지역: ' + a.판정 + ' — ' + (a.이유 || '') + ' (조정대상지역 도구)'); } catch (e) { p.대상.취득당시조정 = null; adjNote.push('조정대상지역 도구 오류: ' + e.message); }
+    } else p.대상.취득당시조정 = null;
+  }
+  return { p: p, path: A + '.isOneHouseOneFamily', objRow: objRow, adjNote: adjNote };
+}
+function ledgerJudgeRun_(c, input, by) {
+  input = Object.assign({}, input || {});
+  // 넥스 도구는 영문 칸(target·household…)으로 보낸다(도구 칸 이름은 영문이어야 함) — 엔진 칸(한글)으로 맞춤
+  [['group', '묶음'], ['transferDate', '양도일'], ['target', '대상'], ['household', '세대'], ['items', '물건'], ['specials', '특례'], ['holdingException', '보유거주예외'], ['mutualLease', '상생임대'], ['bothCases', '경우둘']].forEach(function (m) { if (input[m[0]] !== undefined && input[m[1]] === undefined) input[m[1]] = input[m[0]]; });
+  const kind = String(input.묶음 || '1세대1주택');
+  if (kind !== '1세대1주택') return { ok: false, error: '아직 만들지 않은 묶음: ' + kind + ' (지금은 1세대1주택만)' };
+  const who = String(by || '세무사님').slice(0, 6);
+  const L = ledgerLoad_(c.id, true);
+  const b = ledgerJudgeInput_(c, L, input);
+  const eng = getUiCalcEngine_();
+  if (!eng || typeof eng.judgeTaxReliefJS !== 'function') return { ok: false, error: '엔진에 판정 셈이 없습니다(judgeTaxReliefJS)' };
+  const r = eng.judgeTaxReliefJS(b.p);
+  if (!r || r.error) return { ok: false, error: (r && r.error) || '판정 실패' };
+  const out = { ok: true, 결과: r, 넣은사실: b.p, 알림: b.adjNote.slice(), 칸: b.path };
+  if (input.write === false) { out.장부 = '보기만 — 장부에 넣지 않음'; return out; }
+  const prev = L.rows[b.path];
+  const prevKind = prev && prev.src ? prev.src.kind : '';
+  // 계획서 정할 것 ①(11-01 "만들자"로 권장안): 잠정(모름이 남음)이면 장부 칸은 의뢰 말씀·서류 정황 쪽 값을 추정으로, 정황이 없으면 「아니오(과세)」 — 세액을 적게 보지 않게.
+  //  반대쪽은 경우(안)로 함께 계산(input.경우둘). 모름 없이 끝난 판정은 결론 그대로.
+  const prevHint = prev && (prev.state === '확정' || prev.state === '추정') && typeof prev.v === 'boolean' && !ledgerJudgeLabel_(prev.src) ? prev.v : null;
+  const value = !r.잠정 ? r.결론 === '충족' : r.결론 === '안 됨' ? false : prevHint !== null ? prevHint : false;
+  const valueWhy = r.잠정 && r.결론 === '충족' ? (prevHint === true ? ' · 장부엔 정황(' + (prev.src && prev.src.kind || '앞 값') + ')대로 비과세로 둠' : ' · 장부엔 과세로 둠(정황 없음 — 세액을 적게 보지 않게)') : '';
+  out.장부값 = value;
+  if (prev && (prev.state === '확정' || prev.state === '추정') && /^(세무사님|넥스)$/.test(prevKind) && prev.v !== '' && prev.v != null) {
+    out.장부 = '그대로 둠 — ' + prevKind + '이 정한 값(' + ledgerValueText_(b.path, prev.v) + ')';
+    if (prev.v !== value) out.알림.push('판정(' + r.표시 + ')이 ' + prevKind + '이 정한 1세대1주택 값(' + ledgerValueText_(b.path, prev.v) + ')과 다릅니다 — 칸은 바꾸지 않았습니다');
+  } else {
+    const w = ledgerSet_(c.id, { path: b.path, value: value, kind: '규칙', by: 'GAS', estimate: !!r.잠정, sure: r.잠정 ? '애매' : '확실', why: (LEDGER_JUDGE_TAG_ + r.표시 + valueWhy).slice(0, 200), label: '1세대1주택 비과세', quote: r.근거 });
+    out.장부 = w.ok ? (w.same ? '그대로(같은 결과)' : w.message) : '넣지 못함 — ' + (w.message || w.error || '');
+  }
+  // 계획서 정할 것 ③: 판정이 전입~전출로 센 거주기간을 장특공 표2 거주연수 칸에도(시행령 §154⑥ 기간 — 세무사님·넥스 값은 안 덮음)
+  if (r.센거주개월 != null) {
+    const rp = b.path.replace(/.isOneHouseOneFamily$/, '.residenceYears'), pr = L.rows[rp], yrs = Math.floor(r.센거주개월 / 12);
+    if (pr && pr.src && /^(세무사님|넥스)$/.test(pr.src.kind) && pr.v !== '' && pr.v != null) { if (Number(pr.v) !== yrs) out.알림.push('판정이 센 거주기간(' + yrs + '년)이 ' + pr.src.kind + '이 정한 거주연수(' + pr.v + '년)와 다릅니다 — 칸은 바꾸지 않았습니다'); }
+    else { const w2 = ledgerSet_(c.id, { path: rp, value: yrs, kind: '규칙', by: 'GAS', sure: '확실', why: '종합판정이 전입~전출로 셈(' + Math.floor(r.센거주개월 / 12) + '년 ' + (r.센거주개월 % 12) + '개월, 시행령 §154⑥)', label: '거주연수' }); out.거주연수 = w2.ok ? (w2.same ? '그대로' : yrs + '년 넣음') : '못 넣음 — ' + (w2.message || w2.error || ''); }
+  }
+  // 잠정이면 경우(안) 둘 — 비과세(충족)일 때·과세일 때를 장부 계산으로 저장(장부 값은 그대로, ledgerCalcRun_ 가정 over)
+  if (input.경우둘 && r.잠정) {
+    out.경우 = [true, false].map(function (bv) { try { const k = ledgerCalcRun_(c, { tax: 'transfer', by: who, name: '1세대1주택 ' + (bv ? '비과세로 볼 때' : '과세로 볼 때'), over: [{ path: b.path, value: bv }] }); return k && k.ok ? { 이름: k.이름, 최종세액: k.최종세액, id: k.id } : { 이름: bv ? '비과세로 볼 때' : '과세로 볼 때', 오류: (k && k.error) || '계산 실패' }; } catch (e) { return { 이름: bv ? '비과세로 볼 때' : '과세로 볼 때', 오류: e.message }; } });
+  }
+  // 물건 장부가 있으면 그 줄의 판정도(대표 + 묶음들) · 장부 기록 한 줄
+  try {
+    ledgerMutate_(c.id, function (L2) {
+      if (b.objRow) {
+        const o = L2.obj && Array.isArray(L2.obj.list) ? L2.obj.list.filter(function (x) { return x && x.id === b.objRow.id; })[0] : null;
+        if (o) {
+          const one = { 묶음: r.묶음, 결론: r.결론, 잠정: !!r.잠정, 남은것: (r.남은것 || []).slice(0, 12), 표시: r.표시, 때: caseProcNow_(), 누가: who };
+          const list = (o.판정 && Array.isArray(o.판정.묶음들) ? o.판정.묶음들 : []).filter(function (x) { return x && x.묶음 !== r.묶음; }).concat([one]);
+          o.판정 = Object.assign({}, one, { 묶음들: list });
+        }
+      }
+      ledgerLogTo_(L2, { by: who, what: '종합판정', path: b.path, detail: r.표시.slice(0, 200) });
+    });
+    if (b.objRow) out.물건 = b.objRow.id;
+  } catch (e) { out.알림.push('판정 기록 못 남김: ' + e.message); }
+  return out;
+}
+// 검토서·처리개요가 판정 줄을 보일 때 — 판정 줄은 근거 글(why)이 곧 "1세대1주택 — 비과세 — 잠정(남은 것: …)"
+function ledgerJudgeLabel_(r) { return r && String(r.why || '').indexOf(LEDGER_JUDGE_TAG_) === 0 ? String(r.why).slice(LEDGER_JUDGE_TAG_.length) : ''; }
