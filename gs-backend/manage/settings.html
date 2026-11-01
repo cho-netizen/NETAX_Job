@@ -53,16 +53,16 @@
         if (nxFp_.ready()){ nxFp_.disable(); paint(); toast('이 기기 지문 로그인을 껐습니다.'); return; }
         nxFp_.supported().then(function(ok){
           if (!ok){ toast('이 기기는 지문 로그인을 지원하지 않습니다.'); return; }
-          nxFp_.enable().then(function(){ paint(); toast('지문 로그인을 켰습니다.'); }, function(e){ toast('지문 로그인을 켜지 못했습니다: ' + ((e && e.message) || e)); });
+          nxFp_.enable().then(function(){ paint(); toast('지문 로그인을 켰습니다.'); }, function(e){ toast('지문 로그인을 켜지 못했습니다: ' + nxErrText_(e)); });
         });
       });
       document.getElementById('stRevokeAll').addEventListener('click', function(){
-        if (!confirm('모든 기기(이 기기 포함)에서 로그아웃할까요?\n지문 로그인도 모두 꺼지고, 다시 비밀번호로 들어와야 합니다.')) return;
+        if (!nxConfirmGate_('stLogoutAll', '모든 기기(이 기기 포함)에서 로그아웃할까요?\n지문 로그인도 모두 꺼지고, 다시 비밀번호로 들어와야 합니다.')) return;
         callGas('sess_revoke_all', {}).then(function(r){
           nxFp_.disable();
           try{ sessionStorage.removeItem('nxManageSessionToken'); localStorage.removeItem('nxMobileToken'); localStorage.removeItem('nxWatchTok'); }catch(e){}
           alert((r && r.message) || '로그아웃했습니다.'); location.reload();
-        }).catch(function(e){ toast('로그아웃하지 못했습니다: ' + e.message); });
+        }).catch(function(e){ toast('로그아웃하지 못했습니다: ' + nxErrText_(e)); });
       });
       // 지문 도우미(script.html)가 이 화면 뒤에 실릴 수 있어 화면이 다 실린 뒤 그린다
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paint); else setTimeout(paint, 0);
@@ -83,7 +83,7 @@
         <option value="phone">폰 화면으로 고정</option>
       </select>
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
-      <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
+      <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·보고서 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
     <!-- [2026.10.31] 세무사님 "하위탭의 탭명이 그대로 내용에 유지되고 있어 중복" — 탭 ② 안 첫 카드 이름이 또 "시스템 관리"였다.
@@ -91,7 +91,7 @@
          내용은 sysadmin.html(파일 목록·점검 결과)·knowhow.html(정비 판정·제안)이 채운다 — 두 카드 모두 .sa-scope -->
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
-      <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 문서작성에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
+      <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 보고서 탭에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
       <div id="stSysAdminBody"></div>
     </div>
     <div class="card sa-scope" data-sttab="2" id="stSysCheckCard">
@@ -227,7 +227,7 @@
       <div class="st-out-slot"></div>
     </div>
     <div class="card" data-sttab="4">
-      <h3>고객관리</h3>
+      <h3>고객</h3>
       <div class="settings-tools-group">
         <div class="settings-tool-item">
           <button type="button" id="stBtnClientDupAudit" class="ghost-btn">중복 고객</button>
@@ -301,7 +301,7 @@
         <div class="nx-help">빠른 읽기 서버(시험 단계) 켜기·끄기, 그 서버에 공유된 사건 폴더, AI 위원 연결 상태.</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px;">
           <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">직결 전환</button>
-          <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">공유 정리</button>
+          <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">공유 정리</button>
           <button type="button" class="ghost-btn" data-fed="reg">위원 상태</button>
         </div>
         <div class="st-fed-box settings-tool-desc"></div>
@@ -595,7 +595,7 @@
     }
     document.getElementById('stBtnOcrCount').addEventListener('click', function(){ ocrbRun_(true); });
     document.getElementById('stBtnOcrBatch').addEventListener('click', function(){ ocrbRun_(false); });
-    (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (confirm('글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
+    (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (nxConfirmGate_('stOcrReread', '글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
     // [2026.10.27 T6 4단계] 🧪 공유 정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){
       var b = document.getElementById('stBtnT6Share'); if (!b) return;
@@ -604,7 +604,7 @@
         callGas('t6_share_status', {}).then(function(r){
           if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
           var rows = (r.list || []).map(function(x){ return '<div style="font-size:12px;">· ' + escapeHtml(x.사건명 || '') + ' <span style="color:var(--muted);">' + escapeHtml(x.at || '') + (x.by ? ' · ' + escapeHtml(x.by) : '') + '</span></div>'; }).join('');
-          bugList.innerHTML = '<div><b>🧪 빠른 서버 로봇 계정이 볼 수 있는 사건 폴더 ' + r.count + '개</b> <span style="font-size:12px; color:var(--muted);">(처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)</span></div>' +
+          bugList.innerHTML = '<div><b>🧪 빠른 서버 로봇 계정이 볼 수 있는 사건 폴더 ' + r.count + '개</b> <span style="font-size:12px; color:var(--muted);">(개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)</span></div>' +
             '<div style="margin:4px 0; ' + (r.check ? 'color:#b00;' : 'color:var(--muted);') + ' font-size:12px;">' + escapeHtml(r.check || '점검 정상 — 모두 완료 안 된 사건') + '</div>' +
             '<div style="max-height:200px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">' + (rows || '<div style="font-size:12px;">없음</div>') + '</div>' +
             '<button type="button" class="ghost-btn" id="t6ShareClean"' + (r.check ? '' : ' aria-disabled="true" data-why="거둘 공유가 없습니다 — 모두 완료 안 된 사건입니다"') + '>완료·없는 사건의 공유 거두기</button>';
@@ -635,7 +635,7 @@
             callGas('t6_direct_set', { on: on }).then(function(r2){
               if (!r2 || r2.ok === false) throw new Error((r2 && r2.error) || '응답 없음');
               try { window.nxAiCpReaderTokenReset_ && window.nxAiCpReaderTokenReset_(); } catch (e) {}
-              bugList.textContent = '⚡ 직결: ' + (r2.direct ? '켬' : '끔') + ' (' + r2.at + ') — 다음 ⚡부터 적용됩니다(처리개요 화면을 새로 열면 바로).';
+              bugList.textContent = '⚡ 직결: ' + (r2.direct ? '켬' : '끔') + ' (' + r2.at + ') — 다음 ⚡부터 적용됩니다(개요 화면을 새로 열면 바로).';
             }).catch(function(err){ bugList.textContent = '직결 상태를 바꾸지 못했습니다: ' + (err && err.message ? err.message : err); });
           };
           document.getElementById('t6DirectOn').addEventListener('click', function(){ set(true); });

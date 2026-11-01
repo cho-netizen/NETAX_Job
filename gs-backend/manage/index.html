@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
   <base target="_top">
   <meta charset="utf-8">
@@ -58,6 +58,7 @@
   <?!= include_('manage/style') ?>
 </head>
 <body>
+  <a class="nx-skip" href="#centerWork">본문으로 건너뛰기</a><!-- [2026.11.01] 기본서(W3C 2.4.1) — 키보드로 메뉴를 건너뛰어 바로 본문으로 -->
 
   <div id="loginGate">
     <div class="login-box">
@@ -80,7 +81,7 @@
   <div id="appRoot">
     <nav id="sideMenu">
       <div id="sideMenuInner">
-        <div class="menu-brand"><span class="mb-name">NETAX</span><button type="button" id="sideMenuToggle" title="메뉴 펼치기">▶</button></div>
+        <div class="menu-brand"><span class="mb-name">NETAX</span><button type="button" id="sideMenuToggle" title="메뉴 펼치기" aria-label="메뉴 고정">▶</button></div>
 
         <!-- [2026.11.01] 세무사님 "이제 제대로 고민을 했구나 권장안대로 하마"(화면구조_개편안_20261101 2절 ③) — 메뉴를 일의 순서로:
              오늘 → 접수 → 사건 → 고객·돈 → 자료 → 설정. 사건 화면 여덟은 "사건 작업공간" 하나의 탭으로(script.html nxCbInit_), 넥스는 오른쪽 곁 창
@@ -113,7 +114,7 @@
       <button type="button" class="sm-scroll" id="sideMenuDown" title="아래로">▼</button>
     </nav>
 
-    <main id="centerWork">
+    <main id="centerWork" tabindex="-1">
       <!-- [2026.11.01] 사건 작업공간 머리줄 — 사건 화면 여덟의 맨 위 한 줄(사건 고르기·기한·장부 띠·탭). script.html nxCbInit_ -->
       <div id="nxCaseBar" hidden>
         <div class="cb-row">
@@ -239,7 +240,7 @@
   <!-- [2026.10.16] 커버화면은 탭 버튼 없이 밀기로만 화면을 바꾼다(세무사님) — 녹음 중일 때만 작은 표시(누르면 녹음 화면) -->
   <button type="button" id="nxCmRecBadge" hidden>● 녹음 중</button>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
     // [2026.09] 작성관리(report-writer)는 더 이상 work.netax.kr을 새 창으로 여는 링크가 아니라
@@ -310,6 +311,11 @@
         if (!m.classList.contains('peek')) return;
         window.nxSideMenuPeekT_ = setTimeout(function(){ nxSideMenuPeek_(false); }, 500);
       });
+      // [2026.11.01] 기본서(W3C 2.1.1) — 키보드(Tab)로 메뉴에 들어오면 마우스를 댄 것처럼 펼치고, 메뉴 밖으로 나가면 접는다
+      // 접힌 띠는 메뉴 줄이 숨어 있어 Tab이 닿지 않는다 — 띠 자체를 한 칸으로 두어 Tab이 닿으면 펼치고, 다음 Tab부터 메뉴 줄로 간다
+      m.setAttribute('tabindex', '0'); m.setAttribute('aria-label', '메뉴');
+      m.addEventListener('focusin', function(){ if (!m.classList.contains('pinned')) nxSideMenuPeek_(true); });
+      m.addEventListener('focusout', function(e){ if (!m.contains(e.relatedTarget) && m.classList.contains('peek')) nxSideMenuPeek_(false); });
     })();
     // [2026.11.01] 세무사님 "우측사이드바 열림을 좌측메뉴바 열림과 똑같이" — 오른쪽 넥스 창도 띠에 0.3초 대면 덮어 나타나고, 빼면 0.5초 뒤 숨는다(📌 고정이면 그대로).
     // 쓰는 중엔 숨기지 않는다: 입력칸에 글을 쓰고 있거나(포커스), 넥스 창이 띄운 고르기 메뉴·사건 고르기·설정 창이 열려 있을 때 — 바깥을 누르면 숨음.

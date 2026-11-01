@@ -1,5 +1,5 @@
 <div class="view" id="view-booking">
-  <div class="view-head"><h2>예약관리</h2></div>
+  <div class="view-head"><h2>예약·상담</h2></div>
   <div class="view-body">
     <!-- [2026.09.16 버그수정] 실사용 지적 — "+직권등록" 버튼만 있는 카드가 한 줄을 통째로
          차지해서 화면을 위아래로 불필요하게 길게 만들었다 — "상담신청 목록" 제목 줄에
@@ -10,7 +10,7 @@
       <!-- [2026.10.31] 실행 단추(연결 확인·직권등록)는 제목 줄 오른쪽에 함께, 보기 바꾸기(처리할 것·지난 기록·전체)는 공통 하위 탭 — 세무사님 "직권등록버튼만 우측에 동떨어져 있구나" -->
       <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">상담신청 목록
         <span style="margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; font-weight:normal;">
-          <button type="button" id="bkLinkReview" class="ghost-btn sm" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약관리의 사건 시작을 거치지 않고 만든 사건)">연결 확인</button>
+          <button type="button" id="bkLinkReview" class="ghost-btn sm" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약·상담의 사건 시작을 거치지 않고 만든 사건)">연결 확인</button>
           <button type="button" id="bkAdminToggle" class="ghost-btn sm">+ 직권등록</button>
         </span>
       </h3>
@@ -268,7 +268,7 @@
         if (!res || res.success === false){ toast((res && res.message) || '저장 실패'); return; }
         toast(res.message || '저장했습니다.');
         bookingCloseModal_(); bookingAfterChange_();
-      }).catch(function(e){ btn.disabled = false; btn.textContent = '저장'; toast('오류: ' + e.message); });
+      }).catch(function(e){ btn.disabled = false; btn.textContent = '저장'; toast('오류: ' + nxErrText_(e)); });
     });
   }
 
@@ -307,7 +307,7 @@
           toast('후보에서 뺐습니다.');
         }
         bookingAfterChange_();
-      }).catch(function(err){ btns.forEach(function(x){ x.disabled = false; }); toast('오류: ' + err.message); });
+      }).catch(function(err){ btns.forEach(function(x){ x.disabled = false; }); toast('오류: ' + nxErrText_(err)); });
     });
   }
 
@@ -370,7 +370,7 @@
       h += bookingPairHtml_('a' + i, { rowIndex: c.rowIndex, caseId: res.case.id, 사건명: res.case.사건명, bookingName: c.name, 근거: c.근거, 강함: c.강함 },
         esc(c.reservedDate) + ' ' + esc(c.reservedTime) + ' · <b>' + esc(c.name) + '</b>' + (c.phone ? ' · ' + esc(c.phone) : '') + (c.result ? ' · ' + esc(c.result) : ''), true);
     });
-    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약관리 "연결 확인"에서 다시 볼 수 있음)</button></div>';
+    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약·상담 "연결 확인"에서 다시 볼 수 있음)</button></div>';
     var ov = bookingOpenModal_('이 사건과 같은 건일 수 있는 예약', h, 560);
     bookingWirePairs_(ov, function(){ setTimeout(bookingCloseModal_, 1200); });
   }
@@ -400,7 +400,7 @@
           if (res && res.success === false){ toast(res.message || '승인 실패'); return; }
           toast('승인되었습니다.'); initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
         })
-        .catch(function(e){ toast('오류: ' + e.message); });
+        .catch(function(e){ toast('오류: ' + nxErrText_(e)); });
     });
   }
 
@@ -414,7 +414,7 @@
           if (res && res.success === false){ toast(res.message || '거절 실패'); return; }
           toast('거절되었습니다.'); initBooking(true);
         })
-        .catch(function(e){ toast('오류: ' + e.message); });
+        .catch(function(e){ toast('오류: ' + nxErrText_(e)); });
     });
   }
 
@@ -462,7 +462,7 @@
       document.getElementById('bkNewTime').value = '';
       document.getElementById('bkAdminForm').style.display = 'none';
       initBooking(true);
-    }).catch(function(e){ btn.disabled = false; btn.textContent = '등록'; toast('오류: ' + e.message); });
+    }).catch(function(e){ btn.disabled = false; btn.textContent = '등록'; toast('오류: ' + nxErrText_(e)); });
     });
   });
 

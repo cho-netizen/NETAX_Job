@@ -134,7 +134,7 @@
           '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:240px;" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' + '</td>' +
           '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '발행' : '초안') + '</td>' +
           // [2026.10.18 탭연결 15번] 보고서 모음에서 그 사건 처리개요로 바로(예전엔 문서작성으로만 갔다)
-          '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn ghost-btn sm" data-case-id="' + esc(f.caseId) + '" title="이 사건 처리개요로">처리개요</button> ' : '') + '<button type="button" class="rhRenameBtn ghost-btn sm" data-file-id="' + f.id + '" title="파일명 직접 수정">이름 고치기</button> ' +
+          '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn ghost-btn sm" data-case-id="' + esc(f.caseId) + '" title="이 사건 개요로">개요</button> ' : '') + '<button type="button" class="rhRenameBtn ghost-btn sm" data-file-id="' + f.id + '" title="파일명 직접 수정">이름 고치기</button> ' +
           '<button type="button" class="rhDeleteBtn btn danger sm" data-file-id="' + f.id + '" title="이 파일을 휴지통으로 보냅니다">삭제</button></td>' +
           '</tr>';
       });
@@ -171,7 +171,7 @@
               rhRenderFileList_(rhAllFiles_);
               showToast('파일명을 변경했습니다.', 'success');
             }).catch(function(err){
-              nxAlert_('오류: ' + (err && err.message ? err.message : err), '파일명 수정');
+              nxAlert_('오류: ' + nxErrText_(err), '파일명 수정');
             });
           });
         });
@@ -193,7 +193,7 @@
               rhRenderFileList_(rhAllFiles_);
               showToast('휴지통으로 보냈습니다.', 'success');
             }).catch(function(err){
-              nxAlert_('오류: ' + (err && err.message ? err.message : err), '파일 삭제');
+              nxAlert_('오류: ' + nxErrText_(err), '파일 삭제');
             });
           });
         });
@@ -218,7 +218,7 @@
         rhRefreshContentSourceOptions_();
         showToast('보고서 ' + rhAllFiles_.length + '개를 처음부터 다시 훑었습니다.', 'success');
       }).catch(function(e){
-        document.getElementById('rhFileListWrap').innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; showToast('다시 훑기 오류: ' + e.message, 'error');
+        document.getElementById('rhFileListWrap').innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; showToast('다시 훑기 오류: ' + nxErrText_(e), 'error');
       });
     };
 
@@ -260,7 +260,7 @@
           html += '<div class="log-empty">자동으로 정리할 파일이 없습니다.</div>';
         }
         if (res.collisions.length){
-          html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.collisions.length + '건은 같은 사건 안에 같은 유형 보고서가 여러 개 있어(원래는 있을 수 없는 경우) 자동으로 이름을 못 바꿉니다 — 정말 같은 문서인지, 내용이 다르다면 파일명 뒤에 어떤 세부명칭을 붙일지 직접 확인해주세요(증빙확보에서 각 파일을 열어보고 이름을 바꿀 수 있습니다).</div>';
+          html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.collisions.length + '건은 같은 사건 안에 같은 유형 보고서가 여러 개 있어(원래는 있을 수 없는 경우) 자동으로 이름을 못 바꿉니다 — 정말 같은 문서인지, 내용이 다르다면 파일명 뒤에 어떤 세부명칭을 붙일지 직접 확인해주세요(서류 탭에서 각 파일을 열어보고 이름을 바꿀 수 있습니다).</div>';
           html += res.collisions.map(function(c){
             var fnames = c.files.map(function(f){ return '<li>' + esc(f.oldName) + '</li>'; }).join('');
             return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
@@ -310,7 +310,7 @@
         if (res.success === false){ nxAlert_(res.message || '실패했습니다.', '보고서템플릿 정리'); return; }
         nxAlert_(res.log.join('\n'), '보고서템플릿 정리 결과');
       }).catch(function(err){
-        nxAlert_('오류: ' + (err && err.message ? err.message : err), '보고서템플릿 정리');
+        nxAlert_('오류: ' + nxErrText_(err), '보고서템플릿 정리');
       });
     };
     document.getElementById('rhSearchInput').addEventListener('input', function(e){
@@ -433,7 +433,7 @@
         if (!cr || cr.error){ showToast('저장하지 못했습니다: ' + ((cr && cr.error) || '')); return; }
         showToast('"' + cr.name + '" 편에 대본을 저장했습니다 — 📝 대본에서 확인·수정하세요(세법 내용은 꼭 확인).');
         rhLoadShorts_();
-      }).catch(function(err){ showToast('오류: ' + (err && err.message || err)); }).finally(function(){ btn.disabled = false; });
+      }).catch(function(err){ showToast('오류: ' + nxErrText_(err)); }).finally(function(){ btn.disabled = false; });
     });
     document.getElementById('rhShortsWrap').addEventListener('click', function(ev){
       var up = ev.target.closest('.rhShortsUp');
@@ -514,7 +514,7 @@
         img.src = 'data:image/png;base64,' + res.imageBase64;
         img.style.opacity = '1';
       }).catch(function(e){
-        toast('타이틀카드 생성 중 오류: ' + (e && e.message ? e.message : e));
+        toast('타이틀카드 생성 중 오류: ' + nxErrText_(e));
         wrap.style.display = 'none';
       }).finally(function(){ regenBtn.disabled = false; });
     }
@@ -608,7 +608,7 @@
             if (r2.connected){ rhStopNaverPoll_(); rhUpdateNaverButtons_(); toast('네이버 연동이 확인되었습니다.'); }
           }).catch(function(){});
         }, 3000);
-      }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+      }).catch(function(e){ toast('오류: ' + nxErrText_(e)); });
     });
     document.getElementById('rhGoogleConnectBtn').addEventListener('click', function(){
       callGas('google_blog_get_auth_url', {}).then(function(res){
@@ -624,7 +624,7 @@
             if (r2.connected){ rhStopGooglePoll_(); rhUpdateGoogleButtons_(); toast('구글 블로그 연동이 확인되었습니다.'); }
           }).catch(function(){});
         }, 3000);
-      }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+      }).catch(function(e){ toast('오류: ' + nxErrText_(e)); });
     });
     document.getElementById('rhGoogleBizConnectBtn').addEventListener('click', function(){
       callGas('google_biz_get_auth_url', {}).then(function(res){
@@ -640,7 +640,7 @@
             if (r2.connected){ rhStopGoogleBizPoll_(); rhUpdateGoogleBizButtons_(); toast('구글 비즈니스 프로필 연동이 확인되었습니다.'); }
           }).catch(function(){});
         }, 3000);
-      }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+      }).catch(function(e){ toast('오류: ' + nxErrText_(e)); });
     });
     document.getElementById('rhNaverPostBtn').addEventListener('click', function(){
       nxConfirm_('지금 화면의 글을 네이버 블로그에 바로 올릴까요? (올린 뒤에는 네이버 블로그에서 직접 수정해야 합니다)').then(function(ok){
@@ -653,7 +653,7 @@
         toast('네이버 블로그에 올렸습니다!');
         if (res.postUrl) window.open(res.postUrl, '_blank');
       }).catch(function(e){
-        toast('오류: ' + (e && e.message ? e.message : e));
+        toast('오류: ' + nxErrText_(e));
       }).finally(function(){ btn.disabled = false; });
       });
     });
@@ -668,7 +668,7 @@
         toast('구글 블로그에 올렸습니다!');
         if (res.postUrl) window.open(res.postUrl, '_blank');
       }).catch(function(e){
-        toast('오류: ' + (e && e.message ? e.message : e));
+        toast('오류: ' + nxErrText_(e));
       }).finally(function(){ btn.disabled = false; });
       });
     });
@@ -683,7 +683,7 @@
         toast('구글 비즈니스 프로필에 올렸습니다!');
         if (res.postUrl) window.open(res.postUrl, '_blank');
       }).catch(function(e){
-        toast('오류: ' + (e && e.message ? e.message : e));
+        toast('오류: ' + nxErrText_(e));
       }).finally(function(){ btn.disabled = false; });
       });
     });

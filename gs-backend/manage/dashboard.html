@@ -18,12 +18,12 @@
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
         <input type="date" id="dashNewTaskDue" style="display:none;">
-        <input title="새 할일" type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
+        <label for="dashNewTaskTitle" class="nx-vlabel">새 할일</label><input title="새 할일" type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
       <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
       <!-- [2026.10.18 탭연결 16번] 구글 할일과 작업관리 하위업무가 서로 다른 목록이라 한쪽만 보게 됐다 — 같은 카드에서 사건 하위업무(완료 전)도 함께 본다 -->
       <div class="nx-l3">사건 하위업무<span class="nx-l-sub">마감 7일 안·지난 것</span></div>
-      <div class="nx-help">체크·추가는 작업관리나 처리개요에서 합니다.</div>
+      <div class="nx-help">체크·추가는 사건 목록이나 개요에서 합니다.</div>
       <div id="dashSubtasks"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
@@ -324,10 +324,10 @@
         // [2026.10.31] 기한 지남은 빨간 굵은 글자로만(⏰ 아이콘은 같은 뜻을 되풀이)
         var dateCell = (c.법정일 === prevDeadlineDate) ? '' : esc(c.법정일);
         prevDeadlineDate = c.법정일;
-        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#b3261e; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 개요로 이동"><td style="' + nowrap + (overdue ? ' color:#b3261e; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
           '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td>' +
           // [2026.10.29] 세무사님 "대시보드에서 진행을 즉시 완료로 변경할 수 있거나…" — 줄 누르기(처리개요로 이동)와 따로, 이 단추는 그 자리에서 완료 처리
-          '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="작업관리로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 작업관리와 같음)">완료</button></td></tr>';
+          '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="사건 목록으로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 사건 목록과 같음)">완료</button></td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -405,7 +405,7 @@
       rows.sort(function(a, b){ return b.latest.localeCompare(a.latest); });
       box.innerHTML = '<table class="list-table"><tr><th>올린 날</th><th>사건명</th><th>자료</th></tr>' + rows.map(function(r){
         var what = r.items.slice(0, 3).join(', ') + (r.items.length > 3 ? ' 외 ' + (r.items.length - 3) + '건' : '') + (r.extra ? (r.items.length ? ' · ' : '') + '기타 제출 ' + r.extra + '개' : '');
-        return '<tr data-up-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 이 사건 증빙확보에서 확인"><td style="white-space:nowrap;">' + esc(String(r.latest).slice(0, 10)) + '</td><td>' + '<span class="nx-cut" style="max-width:220px;" title="' + esc(r.c.사건명 || '') + '">' + esc(r.c.사건명 || '') + '</span>' + '</td><td>' + esc(what) + '</td></tr>';
+        return '<tr data-up-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 이 사건 서류 탭에서 확인"><td style="white-space:nowrap;">' + esc(String(r.latest).slice(0, 10)) + '</td><td>' + '<span class="nx-cut" style="max-width:220px;" title="' + esc(r.c.사건명 || '') + '">' + esc(r.c.사건명 || '') + '</span>' + '</td><td>' + esc(what) + '</td></tr>';
       }).join('') + '</table>';
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>'; });
   }
@@ -428,11 +428,11 @@
       // [2026.10.30 예약 결과 관리] 날짜 지난 확정 예약 중 결과를 안 적은 것·연결 후보가 있는 것 — 누르면 예약관리 '처리할 것'으로
       var today0 = (typeof workTodayStr_ === 'function') ? workTodayStr_() : new Date().toISOString().slice(0, 10);
       var needN = all.filter(function(b){ return b.status === '확정' && !b.caseId && kindOf(b) !== 'stale' && ((!b.result && b.reservedDate && b.reservedDate < today0) || (b.linkCandidates && b.linkCandidates.length)); }).length;
-      var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#b3261e; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약관리에서 보기</a></div>' : '';
+      var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#b3261e; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약·상담에서 보기</a></div>' : '';
       if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>' + needHtml; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th></tr>';
       list.forEach(function(b){
-        html += '<tr data-bk-row="' + b._rowIndex + '" style="cursor:pointer;" title="눌러서 예약관리에서 승인·사건 시작"><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
+        html += '<tr data-bk-row="' + b._rowIndex + '" style="cursor:pointer;" title="눌러서 예약·상담에서 승인·사건 시작"><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
           '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td></tr>';
       });
       html += '</table>' + needHtml;
@@ -451,7 +451,7 @@
       // [2026.11.01 화면구조 개편 ④] 금액 없는 기록(문자 발송·메모)은 수금이 아니다 — 표에서 빼고 아래 한 줄로 수만(검토서 2절 11번)
       var noAmtN = logs.filter(function(l){ return !(Number(l.금액) || 0); }).length;
       logs = logs.filter(function(l){ return Number(l.금액) || 0; });
-      var noAmtLine = noAmtN ? '<div style="font-size:12px; color:var(--sub); margin-top:4px;">금액 없는 기록(문자·메모) ' + noAmtN + '건은 수금관리 「금액 없는 기록」에</div>' : '';
+      var noAmtLine = noAmtN ? '<div style="font-size:12px; color:var(--sub); margin-top:4px;">금액 없는 기록(문자·메모) ' + noAmtN + '건은 수금 화면 「금액 없는 기록」에</div>' : '';
       var box = document.getElementById('dashPayments');
       if (!logs.length){ box.innerHTML = '<div class="empty-row">최근 ' + payDays + '일 동안 수금 내역이 없습니다.</div>' + noAmtLine; return; }
       var nowrap = 'white-space:nowrap; overflow:hidden;';
@@ -466,8 +466,8 @@
         var dateCell = (l.날짜 === prevPayDate) ? '' : esc(l.날짜);
         prevPayDate = l.날짜;
         // [2026.10.18 탭연결 4번] 줄을 누르면 사건이 연결된 수금은 그 사건 처리개요(💰 수금 카드)로, 아니면 수금관리로 간다
-        html += '<tr data-pay-case="' + esc(l.사건ID || '') + '" style="cursor:pointer;" title="' + (l.사건ID ? '눌러서 이 사건 처리개요로' : '눌러서 수금관리로') + '"><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
-          (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + (l.사건ID ? '' : ' · 사건 미연결(수금관리에서 사건을 연결할 수 있습니다)') + '">' + esc(l.수취증빙) +
+        html += '<tr data-pay-case="' + esc(l.사건ID || '') + '" style="cursor:pointer;" title="' + (l.사건ID ? '눌러서 이 사건 개요로' : '눌러서 수금 화면으로') + '"><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
+          (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + (l.사건ID ? '' : ' · 사건 미연결(수금 화면에서 사건을 연결할 수 있습니다)') + '">' + esc(l.수취증빙) +
           // [2026.10.29] 세무사님 "사건미연결이라는 메시지가 필요해 보인다" — 사건 없는 상담 영수증도 기록되게 하면서, 사건이 안 붙은 수금은 이 카드에서도 보이게
           (l.사건ID ? '' : ' <span style="color:var(--sub); font-size:11px;">· 사건 미연결</span>') + '</td></tr>';
       });
@@ -488,11 +488,11 @@
           ? (res.added + '건 새로 기록, 오류 ' + res.errors.length + '건: ' + res.errors[0])
           : (res.added ? res.added + '건 새로 기록했습니다.' : '새로 인식된 현금영수증이 없습니다.');
         // [2026.10.29] 상담 사건 없이 "1 상담사건" 폴더에 저장한 영수증은 고객에만 연결해 기록한다(사건 미연결) — 그 사실을 바로 알린다
-        if (res.noCase) msg += ' 그중 ' + res.noCase + '건(' + (res.noCaseNames || []).join(', ') + ')은 사건 미연결로 기록했습니다 — 수금관리에서 "사건 미연결"을 눌러 사건을 연결할 수 있습니다.';
+        if (res.noCase) msg += ' 그중 ' + res.noCase + '건(' + (res.noCaseNames || []).join(', ') + ')은 사건 미연결로 기록했습니다 — 수금 화면에서 "사건 미연결"을 눌러 사건을 연결할 수 있습니다.';
         toast(msg);
         if (res.added) loadDashPayments();
       }).catch(function(e){
-        toast('확인 실패: ' + (e && e.message ? e.message : e));
+        toast('확인 실패: ' + nxErrText_(e));
       }).finally(function(){
         dashScanReceiptsBtn.disabled = false;
         dashScanReceiptsBtn.textContent = '확인';
@@ -597,7 +597,7 @@
     callGas('mark_email_read', { threadId: id }).then(function(res){
       if (res.error){ nxAlert_('읽음 처리 실패: ' + res.error); cb.disabled = false; cb.checked = false; return; }
       if (row) row.style.opacity = '0.4';
-    }).catch(function(err){ nxAlert_('읽음 처리 실패: ' + err.message); cb.disabled = false; cb.checked = false; });
+    }).catch(function(err){ nxAlert_('읽음 처리 실패: ' + nxErrText_(err)); cb.disabled = false; cb.checked = false; });
   });
 
   // [2026.10.20] 전체 읽음 — 지금 목록에 보이는(아직 체크 안 한) 메일을 한꺼번에 읽음 처리하고,
@@ -672,10 +672,10 @@
       var todayStr = dashYmd_(new Date());
       box.innerHTML = rows.slice(0, 12).map(function(r){
         var overdue = r.n.dueDate && r.n.dueDate < todayStr;
-        return '<div class="log-entry" data-sub-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 이 사건 작업관리로">' +
+        return '<div class="log-entry" data-sub-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 사건 목록으로">' +
           '<div class="log-date"' + (overdue ? ' style="color:#b3261e; font-weight:700;"' : '') + '>' + esc(r.n.dueDate ? fmtDateShort_(r.n.dueDate) : '') + '</div>' +
           '<div class="log-text">' + esc(r.n.title || '') + ' <span style="color:var(--sub); font-size:12px;">· ' + esc(r.c.사건명 || '') + (r.n.status && r.n.status !== '대기' ? ' · ' + esc(r.n.status) : '') + '</span></div></div>';
-      }).join('') + (rows.length > 12 ? '<div style="font-size:12px; color:var(--sub);">외 ' + (rows.length - 12) + '건 — 작업관리에서 보기</div>' : '');
+      }).join('') + (rows.length > 12 ? '<div style="font-size:12px; color:var(--sub);">외 ' + (rows.length - 12) + '건 — 사건 목록에서 보기</div>' : '');
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>'; });
   }
   document.getElementById('dashSubtasks').addEventListener('click', function(e){
@@ -706,7 +706,7 @@
       titleEl.value = ''; dueEl.value = '';
       dueEl.style.display = 'none'; // 다음 할일은 다시 "일정" 버튼을 눌러야 나오게 초기화
       loadDashTasks_();
-    }).catch(function(e){ titleEl.disabled = false; dueEl.disabled = false; toast('추가 중 오류: ' + e.message); });
+    }).catch(function(e){ titleEl.disabled = false; dueEl.disabled = false; toast('추가 중 오류: ' + nxErrText_(e)); });
   }
   document.getElementById('dashNewTaskDueToggle').addEventListener('click', function(){
     var dueEl = document.getElementById('dashNewTaskDue');
@@ -733,7 +733,7 @@
       callGas('update_google_task', { taskId: taskId, completed: checkbox.checked }).then(function(res){
         if (res.error){ toast('수정 실패: ' + res.error); checkbox.checked = !checkbox.checked; checkbox.disabled = false; return; }
         loadDashTasks_();
-      }).catch(function(err){ toast('수정 중 오류: ' + err.message); checkbox.disabled = false; });
+      }).catch(function(err){ toast('수정 중 오류: ' + nxErrText_(err)); checkbox.disabled = false; });
       return;
     }
     if (e.target.classList.contains('dashTaskDel')){
@@ -742,7 +742,7 @@
         callGas('delete_google_task', { taskId: taskId }).then(function(res){
           if (res.error){ toast('삭제 실패: ' + res.error); return; }
           loadDashTasks_();
-        }).catch(function(err){ toast('삭제 중 오류: ' + err.message); });
+        }).catch(function(err){ toast('삭제 중 오류: ' + nxErrText_(err)); });
       });
       return;
     }
@@ -790,7 +790,7 @@
       callGas('update_google_task', { taskId: taskId, title: newTitle, dueDate: newDue }).then(function(res){
         if (res.error){ toast('수정 실패: ' + res.error); btn.disabled = false; return; }
         loadDashTasks_();
-      }).catch(function(err){ toast('수정 중 오류: ' + err.message); btn.disabled = false; });
+      }).catch(function(err){ toast('수정 중 오류: ' + nxErrText_(err)); btn.disabled = false; });
     }
   });
 
@@ -879,7 +879,7 @@
       if (res && res.error){ toast((res.stale ? '' : '저장 실패: ') + res.error); if (onFail) onFail(); }
       if (res && res.sections) dashFollowRender_(res); else if (res && res.error) loadDashFollow_();
       return res;
-    }).catch(function(e){ toast('저장 중 오류: ' + (e && e.message ? e.message : e)); if (onFail) onFail(); });
+    }).catch(function(e){ toast('저장 중 오류: ' + nxErrText_(e)); if (onFail) onFail(); });
   }
   document.getElementById('dashFollowReload').addEventListener('click', loadDashFollow_);
   document.getElementById('dashFollowSec').addEventListener('change', function(e){ dashFollow_.sec = e.target.value; });
@@ -999,7 +999,7 @@
         if (res && res.error){ toast(res.error); b.disabled = false; return; }
         toast(ok ? '확인 완료로 바꿨습니다.' : '다시 고쳐 달라고 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다.');
         loadDashImprove_();
-      }).catch(function(err){ toast('오류: ' + (err && err.message ? err.message : err)); b.disabled = false; });
+      }).catch(function(err){ toast('오류: ' + nxErrText_(err)); b.disabled = false; });
     };
     if (b.hasAttribute('data-impok')) return send(true);
     // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)에서 — 저장되면 서버가 재오픈으로 바꾸고 여기 목록을 다시 그린다
@@ -1046,7 +1046,7 @@
         html += row('❓ <b>개발자 질문</b> ' + esc(q.title) + (q.body ? '<div style="font-size:12px; color:var(--sub); white-space:pre-wrap;">' + esc(String(q.body).slice(0, 400)) + '</div>' : '') + '<div style="margin-top:4px;"><button type="button" class="ghost-btn sm" data-dashqans="' + esc(q.id) + '">답하기</button></div>');
       });
       var ups = r.uploads || [];
-      if (ups.length) html += row('<details><summary style="cursor:pointer;"><b>📥 고객이 보낸 서류 ' + ups.length + '건</b>(최근 7일, 고객창구·카카오) — 사건 증빙확보에서 확인</summary>'
+      if (ups.length) html += row('<details><summary style="cursor:pointer;"><b>📥 고객이 보낸 서류 ' + ups.length + '건</b>(최근 7일, 고객창구·카카오) — 사건 서류 탭에서 확인</summary>'
         + ups.slice(0, 15).map(function(u){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(u.at).slice(5)) + ' · ' + esc(u.경로 || '') + ' · ' + esc(u.사건 || u.rid || '') + ' — ' + esc((u.항목 ? u.항목 + ': ' : '') + (u.파일 || '')) + (u.caseId ? '' : ' (연결된 사건 없음)') + '</div>'; }).join('') + '</details>');
       var kes = r.kakaoErrors || [];
       if (kes.length) html += row('<details><summary style="cursor:pointer; color:#b3261e;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
@@ -1076,7 +1076,7 @@
     nxPrompt_('개발자 질문 ' + id + '에 대한 답을 적어 주세요.', '').then(function(a){
       a = String(a || '').trim(); if (!a) return;
       return callGas('comm_dev_answer', { id: id, text: a }).then(function(res){ toast(res && res.error ? '저장 실패: ' + res.error : '답을 저장했습니다 — 다음 개발자 실행 때 읽습니다.'); loadDashFed_(); });
-    }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+    }).catch(function(e){ toast('오류: ' + nxErrText_(e)); });
   });
   document.addEventListener('click', function(ev){
     var t = ev.target.closest && ev.target.closest('[data-dashgo]');

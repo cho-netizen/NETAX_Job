@@ -5,11 +5,11 @@
 </style>
 <div class="view" id="view-collections">
   <div class="editor-toolbar">
-    <h2 class="tb-title">수금관리</h2>
+    <h2 class="tb-title">수금</h2>
     <!-- [2026.11.01] 세무사님 "정보가 유기적으로 배치 … 관련 버튼이나 콤보박스와 같은 도구들도 마찬가지" — 찾기·기간·거르기는 제목 바로 옆 한 묶음(기간 두 칸이 갈라지지 않게), 하는 일 단추는 오른쪽 끝 -->
     <span class="tb-group" style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
       <input type="text" id="colSearchInput" class="nx-find" list="clientNameOptions" placeholder="고객 찾기" title="고객명으로 찾기">
-      <span style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="date" id="colFromDate" title="시작일">
+      <span style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><label for="colFromDate" class="nx-vlabel">기간</label><input type="date" id="colFromDate" title="시작일">
       <span style="color:var(--sub); font-size:12px;">~</span>
       <input type="date" id="colToDate" title="종료일"></span>
       <!-- [2026.11.02] 세무사님 "미연결만이라는 체크박스뒤에 별도로 콤보박스가 있는데 합쳐야 하는 거 아닌가?" — 거르기 하나(연결 여부·자료 종류를 함께 고름, 두 조건을 같이 거는 경우도 남김) -->
@@ -82,8 +82,8 @@
       <span class="modal-close" id="colCaseNavClose" title="닫기">✕</span>
     </div>
     <div class="modal-body" style="gap:8px;">
-      <button type="button" id="colCaseNavToWork" class="ghost-btn" style="width:100%;">작업관리에서 보기</button>
-      <button type="button" id="colCaseNavToHandling" class="ghost-btn" style="width:100%;">처리개요에서 보기</button>
+      <button type="button" id="colCaseNavToWork" class="ghost-btn" style="width:100%;">사건 목록에서 보기</button>
+      <button type="button" id="colCaseNavToHandling" class="ghost-btn" style="width:100%;">개요에서 보기</button>
     </div>
   </div>
 </div>
@@ -347,7 +347,7 @@
     // 고를 수 있게 — 세무사님 지적: "사건과 연결했다면서 어디로도 못 가면 무슨 소용이냐."
     var nameHtml = unlinked
       ? '<b style="color:#b3261e;">⚠ 미연결</b>'
-      : '<b class="col-goto-client" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 고객관리로 이동">' + escapeHtml(colClientDisplayName_(l)) + '</b>';
+      : '<b class="col-goto-client" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 고객으로 이동">' + escapeHtml(colClientDisplayName_(l)) + '</b>';
     var caseName = colCaseName_(l.사건ID);
     // [2026.09.16 신규] 세무사님 지적 — "사건명이 왜 안 보이나, 연결여부는 어떻게 아나?"
     // 사건이 연결 안 됐을 땐 그냥 아무것도 안 보여서 "원래 이런 화면인지 고장인지" 구분이
@@ -356,7 +356,7 @@
     var caseHtml = caseName === '(삭제된 사건)'
       ? '<span class="col-link-case" style="cursor:pointer; color:#b3261e; text-decoration:underline dotted; text-underline-offset:2px;" title="연결된 사건이 지워졌습니다 — 클릭해서 다른 사건에 연결">(삭제된 사건)</span>'
       : caseName
-      ? '<span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="' + escapeHtml(caseName) + ' — 클릭하면 작업관리·처리개요로 이동">' + escapeHtml(caseName) + '</span>'
+      ? '<span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="' + escapeHtml(caseName) + ' — 클릭하면 사건 목록·개요로 이동">' + escapeHtml(caseName) + '</span>'
       : (unlinked ? '' : '<span class="col-link-case" style="cursor:pointer; color:var(--sub); text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 사건 연결">사건 미연결</span>');
     row.style.borderColor = unlinked ? '#e3b3b3' : '';
     row.innerHTML =

@@ -107,7 +107,7 @@
   @supports not selector(::-webkit-scrollbar){ *{ scrollbar-width:thin; scrollbar-color:#b0b6c0 transparent; } }
   #sideMenuInner{ scrollbar-width:none; }
   #sideMenuInner::-webkit-scrollbar{ display:none; }
-  .sm-scroll{ display:none; position:absolute; left:0; width:min(var(--side-expanded-w, 190px), 80vw); height:22px; border:none; padding:0; z-index:2; cursor:pointer; color:var(--gold-light); font-size:10px; background:var(--navy); }
+  .sm-scroll{ display:none; position:absolute; left:0; width:min(var(--side-expanded-w, 190px), 80vw); height:24px; border:none; padding:0; z-index:2; cursor:pointer; color:var(--gold-light); font-size:10px; background:var(--navy); }
   .sm-scroll:hover{ color:#fff; background:#26335a; }
   #sideMenu.expanded .sm-scroll.show{ display:block; }
   #sideMenuUp{ top:0; box-shadow:0 3px 6px rgba(0,0,0,.25); }
@@ -169,9 +169,10 @@
   /* 작업공간 안에서는 화면마다 따로 있던 사건 고르기·장부 띠·화면 제목을 숨긴다(머리줄이 대신함, 기능은 그대로) */
   body.cb-on #centerWork > .view .nx-ledger-strip,
   body.cb-on #centerWork > .view :is(#chCaseSelect, #chCaseFilterBox, #lgCaseSelect, #docsCaseSelect, #tcCaseSelect, #lsCaseSelect, #rwCaseSelect, #repNewCase, .nx-case-jump),
-  body.cb-on #centerWork > .view .view-head > h2, body.cb-on #centerWork > .view .editor-toolbar > h2.tb-title,
   body.cb-on #tpCaseBar > span:first-child{ display:none !important; }
-  body.cb-on #centerWork > .view .view-head:not(:has(> :not(h2))){ display:none !important; }
+  /* [2026.11.01] 기본서(W3C 1.3.1·2.4.6) — 작업공간에서 화면 제목은 눈에서만 감추고 읽어 주는 기계에는 남긴다(화면마다 큰 제목 하나) */
+  body.cb-on #centerWork > .view .view-head > h2, body.cb-on #centerWork > .view .editor-toolbar > h2.tb-title{ position:absolute !important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; margin:0 !important; padding:0 !important; }
+  body.cb-on #centerWork > .view .view-head:not(:has(> :not(h2))){ height:0; min-height:0 !important; padding:0 !important; border:0 !important; overflow:hidden; }
   body.cb-on #centerWork > .view .tb-row:not(:has(> :not(:is(select[id$="CaseSelect"], #repNewCase, #chCaseFilterBox, .nx-case-jump)))){ display:none !important; }
   /* [2026.10.22] 원본 서류 나란히(계산기 오른쪽) — 폰에서는 단추 숨김 */
   body.lay-phone #tcDocPaneBtn{ display:none; }
@@ -261,8 +262,9 @@
   /* [2026.11.01] 늘 깔려 있던 설명문은 숨기고 제목·단추 옆 「?」로(세무사님 "설명은 충분해야 하지만 화면을 깔끔해야 한다") — script.html nxHelpScan_ */
   .nx-help{ display:none; margin:4px 0 8px; padding:7px 10px; border-left:3px solid var(--gold); border-radius:0 6px 6px 0; background:rgba(200,162,68,0.09); font-size:12.5px; font-weight:400; color:var(--ink); line-height:1.55; }
   .nx-help.open{ display:block; }
-  .nx-help-btn{ display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; margin:0 0 0 6px; padding:0; vertical-align:middle; border:1px solid var(--gold); border-radius:50%; background:transparent; color:#9a7a26; font-size:11px; font-weight:700; line-height:1; cursor:pointer; }
-  .nx-help-btn.nx-help-lone{ width:auto; height:20px; margin:0 0 6px; padding:0 8px; border-radius:10px; font-size:11.5px; font-weight:600; }
+  .nx-help-btn{ display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; margin:0 0 0 6px; padding:0; vertical-align:middle; border:1px solid var(--gold); border-radius:50%; background:transparent; color:var(--gold-ink); font-size:11px; font-weight:700; line-height:1; cursor:pointer; position:relative; }
+  .nx-help-btn::after{ content:""; position:absolute; inset:-4px; } /* [2026.11.01] 기본서(W3C 2.5.8) — 보이는 동그라미는 17이지만 누를 자리는 25 */
+  .nx-help-btn.nx-help-lone{ width:auto; height:24px; margin:0 0 6px; padding:0 8px; border-radius:10px; font-size:11.5px; font-weight:600; }
   .nx-help-btn:hover, .nx-help-btn.on{ background:var(--gold); color:#fff; }
   html.nx-dark .nx-help-btn{ color:var(--gold-light); }
   .nx-l3{ display:block; margin:18px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); line-height:1.45; }
@@ -423,7 +425,7 @@
   .nx-tabbar.nx-more, .taxcalc-tabs.nx-more, .taxcalc-subtabs.nx-more{ -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); }
   .nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px) !important; mask-image:linear-gradient(to right,transparent,#000 36px) !important; }
   .nx-more.nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; }
-  .nx-tabmore-arrow{ position:absolute; z-index:35; /* [2026.11.01] 사건 작업 머리줄(30) 위에도 보이게 */  width:22px; height:22px; border:none; border-radius:50%; background:var(--navy); color:#fff; font-size:11px; line-height:22px; padding:0; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+  .nx-tabmore-arrow{ position:absolute; z-index:35; /* [2026.11.01] 사건 작업 머리줄(30) 위에도 보이게 */  width:24px; height:24px; border:none; border-radius:50%; background:var(--navy); color:#fff; font-size:11px; line-height:22px; padding:0; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25); }
   html.nx-dark #view-ai .nx-tab{ color:#e3e8f0; }
   html.nx-dark #view-ai .nx-tab.active, html.nx-dark #view-ai .nx-tab.on{ background:#25304a; }
   /* [2026.10.29] 세무사님 "날짜를 키우거나 줄이는 버튼이 너무 작아서 제어를 할 수가 없다" — 대시보드 범위 칸(일정 전/후 며칠·마감임박 후 며칠·
@@ -442,7 +444,7 @@
     border:1px solid transparent; background:var(--navy); color:#fff; box-shadow:0 1px 2px rgba(16,24,40,0.12); line-height:1.2; box-sizing:border-box; display:inline-block; vertical-align:middle; }
   .save-btn:hover{ background:var(--navy-deep); }
   /* [2026.10.31] 단추 크기는 둘뿐 — 세무사님 "타이틀 줄이나 하단에 있는 별도의 버튼보다 데이타 행에 있는 버튼의 높이가 더 높을 수가 있나?"
-     ① 기본(30px): 화면 위 도구줄·아래 실행 단추  ② 작은(22px, .sm): 제목 줄·자료 줄(표 칸·목록 줄) 안 단추.
+     ① 기본(30px): 화면 위 도구줄·아래 실행 단추  ② 작은(24px, .sm): 제목 줄·자료 줄(표 칸·목록 줄) 안 단추.
      화면마다 style로 적던 크기(94곳)는 걷어 내고 이 두 가지로만. 자료 줄 안 단추는 .sm을 안 붙여도 작은 크기 —
      자료 줄 단추가 제목 줄 단추보다 커지는 일이 없게. */
   .ghost-btn.sm, .btn.sm, .save-btn.sm,
@@ -482,7 +484,7 @@
      기준으로 정해야 해서 대부분의 행(완료·짧은 날짜)에는 항상 빈 공간이 남는다 — 애초에
      고정폭 자체가 원인이었다. flex:0 0 auto로 바꿔 각 행이 자기 글자 수만큼만 차지하게 한다
      (실측: "26-09-16" 약 49px, "⏰ 26-09-16" 약 68px — 행마다 실제 필요한 만큼만 차지). */
-  .log-entry .log-date{ flex:0 0 auto; font-size:11.5px; font-weight:700; color:var(--gold); white-space:nowrap; display:flex; flex-direction:column; gap:4px; }
+  .log-entry .log-date{ flex:0 0 auto; font-size:11.5px; font-weight:700; color:var(--gold-ink); white-space:nowrap; display:flex; flex-direction:column; gap:4px; }
   .log-entry .log-text{ flex:1; font-size:13px; color:var(--ink); line-height:1.5; white-space:pre-wrap; }
   .log-entry .log-del{ flex:0 0 auto; background:none; border:none; color:var(--sub); cursor:pointer; font-size:16px; font-weight:800; padding:0 4px; }
   .log-entry .log-del:hover{ color:var(--danger); }
@@ -1016,21 +1018,21 @@
 
   /* [2026.11.01] 입력칸·고르기·단추 공통 기준 — 세무사님 "검색창이든 콤보박스든 버튼이든 대부분 높이를 같게 해야 할텐데 완전 뒤죽박죽이다" /
      "흰색 바탕에 흰색 콤보박스를 배치하는 … 바탕과 데이타 사이에 색상차이를 전혀 두지 않고 있구나" / "데이타들의 폰트에 대한 일정한 기준이 없어 보인다".
-     ① 높이 둘: 기본 30(도구 줄·입력칸·고르기·실행 단추) / 작은 22(자료 줄·제목 줄 안 단추·덧붙이는 작은 단추).
+     ① 높이 둘: 기본 30(도구 줄·입력칸·고르기·실행 단추) / 작은 24(자료 줄·제목 줄 안 단추·덧붙이는 작은 단추).
      ② 입력칸·고르기는 바탕보다 옅은 남빛 회색 칸 + 진한 테두리 — 흰 카드 위에서도 칸이 보이게(어두운 화면은 반전 필터로 따라감).
      ③ 글자: 입력·자료 13 / 단추 12.5 / 작은 단추·보조 글 11.5~12. */
-  :root{ --field-bg:#f2f4f8; --field-line:#a3abba; --ctl-h:30px; --ctl-h-sm:22px; }
+  :root{ --field-bg:#f2f4f8; --field-line:#a3abba; --ctl-h:30px; --ctl-h-sm:24px; }
   input[type=text], input[type=date], input[type=password], input[type=tel], input[type=number], input[type=search], input[type=email], input[type=url], input:not([type]), select, textarea,
   .taxcalc-field input, .taxcalc-field select{ background-color:var(--field-bg); border:1px solid var(--field-line); border-radius:6px; color:var(--ink); font-size:13px; }
   .taxcalc-field input[readonly], input[readonly]{ background-color:#e4e7ed; }
   input[type=text], input[type=date], input[type=password], input[type=tel], input[type=number], input[type=search], input[type=email], input[type=url], input:not([type]), select{
     height:var(--ctl-h); box-sizing:border-box; padding-top:0; padding-bottom:0; vertical-align:middle; }
-  input::placeholder, textarea::placeholder{ color:#a2a9b6; opacity:1; font-style:italic; } /* 보기 글은 옅게·기울여 실제 값과 헷갈리지 않게 */
-  .taxcalc-field input::placeholder{ color:#a2a9b6; opacity:1; font-style:italic; }
+  input::placeholder, textarea::placeholder{ color:#687080; opacity:1; font-style:italic; } /* 보기 글은 옅게·기울여 실제 값과 헷갈리지 않게 */
+  .taxcalc-field input::placeholder{ color:#687080; opacity:1; font-style:italic; }
   /* [2026.11.02] 고르기 칸도 입력칸과 같게 — 아직 안 고른 칸의 「선택」류 안내 줄(script.html이 data-nx-ph로 표시)은 옅게·기울여 진짜 값과 가른다. 「해당 없음」「전체」처럼 고를 수 있는 답은 보통 글자 */
-  select:has(option[data-nx-ph]:checked){ color:#a2a9b6; font-style:italic; }
+  select:has(option[data-nx-ph]:checked){ color:#687080; font-style:italic; }
   select:has(option[data-nx-ph]:checked) option{ color:var(--ink); font-style:normal; }
-  select option[data-nx-ph]{ color:#a2a9b6; font-style:italic; }
+  select option[data-nx-ph]{ color:#687080; font-style:italic; }
   .ghost-btn, .btn, .save-btn, .taxcalc-add-asset, .taxcalc-run-btn, .tp-btn, .taxcalc-tier-tabs button{
     height:var(--ctl-h); min-height:0; padding-top:0; padding-bottom:0; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; gap:4px; white-space:nowrap; vertical-align:middle; line-height:1.2; }
   .ghost-btn.sm, .btn.sm, .save-btn.sm, td .ghost-btn, td .btn, td .save-btn, .log-entry .ghost-btn, .log-entry .save-btn, li .ghost-btn, li .save-btn,
@@ -1065,4 +1067,14 @@
   .tc-clamp:not(.open)::after{ content:""; }
   .tc-clamp{ cursor:pointer; }
 
+  /* [2026.11.01] 기본서(W3C 2.4.1) — 본문으로 건너뛰기: Tab을 처음 누르면 왼쪽 위에 뜬다 */
+  .nx-skip{ position:fixed; left:8px; top:-60px; z-index:100000; background:var(--navy,#1f2d4d); color:#fff; padding:8px 14px; border-radius:6px; font-weight:600; text-decoration:none; }
+  .nx-skip:focus{ top:8px; }
+  #centerWork:focus{ outline:none; }
+  /* [2026.11.01] 기본서(W3C 2.5.8) — 체크칸·고르기 동그라미는 18 이상, 옆 칸과 붙지 않게 */
+  input[type="checkbox"], input[type="radio"]{ min-width:18px; min-height:18px; margin-right:4px; cursor:pointer; }
+  /* [2026.11.01] 서버에 일을 보낸 단추 — 끝날 때까지 「처리 중」 */
+  .nx-busy{ cursor:progress !important; opacity:.6; }
+  /* [2026.11.01] 기본서(W3C 3.3.2) — 칸 앞 짧은 이름표(안내글은 쓰면 사라지므로 늘 보이는 이름) */
+  .nx-vlabel{ font-size:12px; font-weight:600; color:var(--sub); white-space:nowrap; margin-right:2px; cursor:pointer; }
 </style>

@@ -1,5 +1,5 @@
 <div class="view" id="view-reports">
-  <div class="view-head"><h2>열람관리</h2></div>
+  <div class="view-head"><h2>고객 열람</h2></div>
   <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" / "이사건다른화면콤보를 사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" —
        사건 고르는 줄을 다른 화면처럼 제목 줄 바로 아래(하위 탭 줄 위)로, "↪ 이 사건 다른 화면"은 그 바로 뒤에. 사건 없이 등록도 그대로 된다 -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
@@ -33,7 +33,7 @@
     <div class="card">
       <h3>새 보고서 등록</h3>
       <!-- [2026.10.18 탭연결 9번] 사건을 고르면 고객명이 채워지고 그 사건 보고서 폴더의 파일을 골라 링크를 넣는다. 등록하면 그 사건 작업일지에 열람번호가 남는다. -->
-      <div class="nx-help">진행 중인 사건 고객에게는 처리개요의 <b>고객창구(my.netax.kr)</b>로 보고서를 보여주는 것이 기본입니다. 이곳(rpt.netax.kr 열람번호)은 고객창구가 없는 예전 고객·단건 발급용입니다.</div>
+      <div class="nx-help">진행 중인 사건 고객에게는 개요의 <b>고객창구(my.netax.kr)</b>로 보고서를 보여주는 것이 기본입니다. 이곳(rpt.netax.kr 열람번호)은 고객창구가 없는 예전 고객·단건 발급용입니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
         <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">그 사건의 보고서 파일</label>
           <select id="repNewCaseFile" disabled><option value="">사건 먼저 선택</option></select></div>
@@ -304,7 +304,7 @@
       document.getElementById('repNewType').value = '';
       document.getElementById('repNewLink').value = '';
       loadReportList();
-    }).catch(function(err){ toast('등록 중 오류: ' + (err && err.message ? err.message : err)); })
+    }).catch(function(err){ toast('등록 중 오류: ' + nxErrText_(err)); })
       .finally(function(){ btn.disabled = false; btn.textContent = '등록'; });
   });
 </script>

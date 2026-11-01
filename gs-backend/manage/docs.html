@@ -40,7 +40,7 @@
 </style>
 
 <div class="view" id="view-docs">
-  <div class="view-head"><h2>증빙확보</h2></div>
+  <div class="view-head"><h2>서류</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
     <select id="docsCaseSelect"><option value="">사건 선택</option></select>
     <!-- [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"] 서류를 다루는 GAS 도구는 서류 옆에(예전엔 처리개요 "GAS 도구" 칸) — 넥스도 같은 서버 입구(case_read·set_read_scope) -->
@@ -103,7 +103,7 @@
       <div id="docsTextEditBar" style="display:none; margin-bottom:10px; gap:8px;">
         <button type="button" id="btnDocsTextEdit" class="ghost-btn">편집</button>
         <!-- [2026.10.20] 세무사님 승인("추천대로 하마") — .md는 작성관리 편집창에서 바로 열기(goToReportWriter_ {fileId}, 처리개요와 같은 경로) -->
-        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">문서작성에서 열기</button>
+        <button type="button" id="btnDocsOpenRw" class="ghost-btn" style="display:none;">보고서 탭에서 열기</button>
         <button type="button" id="btnDocsTextSave" class="save-btn" style="display:none;">저장</button>
         <button type="button" id="btnDocsTextCancel" class="ghost-btn" style="display:none;">취소</button>
         <span id="docsTextSaveStatus" style="font-size:11.5px; color:var(--sub);"></span>
@@ -674,7 +674,7 @@
         }).catch(function(){});
       }
       return res;
-    }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); throw err; });
+    }).catch(function(err){ showToast('저장 중 오류: ' + nxErrText_(err), 'error'); throw err; });
   }
 
   function docsAddEvidence_(c, entryPartial){
@@ -747,6 +747,8 @@
         });
       }
       row.querySelector('.log-del').addEventListener('click', function(){
+        // [2026.11.01] 기본서(닐슨 5 실수 막기) — 지우면 고객창구 점검표에서도 함께 빠지므로 한 번 묻는다
+        nxConfirm_('「' + (entry.label || '이 항목') + '」을 목록에서 지울까요?' + (source === 'requested' && c.my_report_id ? '\n고객창구(my.netax.kr) 점검표에서도 함께 빠집니다.' : ''), '지우기').then(function(ok){ if (!ok) return;
         var newList = (c.증빙목록 || []).filter(function(e){ return e.id !== entry.id; });
         docsSaveEvidence_(c, newList);
         // [2026.09 버그수정] 요청자료를 지워도 my.netax.kr 쪽 체크리스트엔 지저분한 옛 항목이
@@ -754,6 +756,7 @@
         if (source === 'requested' && c.my_report_id && entry.label){
           callGas('admin_remove_checklist_item', { report_id: c.my_report_id, item: entry.label }).catch(function(){});
         }
+        });
       });
       box.appendChild(row);
     });
@@ -808,7 +811,7 @@
           note: (picked.roadAddr || picked.jibunAddr || '') + (dong ? ' ' + dong + '동' : '') + (ho ? ' ' + ho + '호' : '') + ' (기준연도 ' + data.stdrYear + ')',
           status: '확보됨', 확보일: nxLocalDateStr_()
         });
-      }).catch(function(err){ showToast('조회 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
+      }).catch(function(err){ showToast('조회 중 오류: ' + nxErrText_(err), 'error'); });
     });
   }
 
@@ -1223,7 +1226,7 @@
           }).catch(function(err){
             saveBtn.disabled = false;
             statusEl.textContent = '';
-            toast('저장 중 오류: ' + (err && err.message ? err.message : err));
+            toast('저장 중 오류: ' + nxErrText_(err));
           });
         };
       });
@@ -1652,7 +1655,7 @@
       docsOpenScanModal_(fileObjs);
       if (fileObjs.length > 1) toast('총 ' + fileObjs.length + '개 — "담기"를 누를 때마다 다음 파일로 자동으로 넘어갑니다.');
     }catch(err){
-      toast('불러오기 중 오류: ' + (err && err.message ? err.message : err));
+      toast('불러오기 중 오류: ' + nxErrText_(err));
     }
   }
   document.getElementById('docsBtnScanSelected').addEventListener('click', function(){
@@ -1763,7 +1766,7 @@
       var fileObj = new File([blob], file.name, { type: file.mimeType || 'image/jpeg' });
       docsOpenScanModal_([fileObj]);
     }catch(err){
-      toast(file.name + ' 불러오기 중 오류: ' + (err && err.message ? err.message : err));
+      toast(file.name + ' 불러오기 중 오류: ' + nxErrText_(err));
     }
   }
   // ============================================================
@@ -1827,7 +1830,7 @@
       renderPdfMgrList();
       openPdfManager();
     }catch(err){
-      toast(file.name + ' 불러오기 중 오류: ' + (err && err.message ? err.message : err));
+      toast(file.name + ' 불러오기 중 오류: ' + nxErrText_(err));
     }
   }
 
@@ -1850,7 +1853,7 @@
           pdfMgrEntries.push({ id: pdfMgrIdSeq++, type: 'pdfpage', doc: doc, pdfjsDoc: pdfjsDoc, sourceName: sourceName, pageIndex: p2, checked: false, rotation: 0 });
         }
       }catch(err){
-        toast(file.name + ' 불러오기 실패: ' + (err && err.message ? err.message : err));
+        toast(file.name + ' 불러오기 실패: ' + nxErrText_(err));
       }
     }
     renderPdfMgrList();
@@ -2033,7 +2036,7 @@
         renderPdfMgrList();
       }
     }catch(err){
-      toast('추출 중 오류: ' + (err && err.message ? err.message : err));
+      toast('추출 중 오류: ' + nxErrText_(err));
     }finally{
       btn.disabled = false; btn.textContent = '선택 추출';
     }
@@ -2053,7 +2056,7 @@
       toast('저장했습니다: ' + name);
       docsNavigate(docsPath);
     }catch(err){
-      toast('저장 중 오류: ' + (err && err.message ? err.message : err));
+      toast('저장 중 오류: ' + nxErrText_(err));
     }finally{
       btn.disabled = false; btn.textContent = '전체 저장';
     }
@@ -2248,7 +2251,7 @@
       sigPlaceSigImg.style.left = Math.max(0, viewport.width - 170) + 'px';
       sigPlaceSigImg.style.top = Math.max(0, viewport.height - 110) + 'px';
     }catch(err){
-      toast('페이지 미리보기 실패: ' + (err && err.message ? err.message : err));
+      toast('페이지 미리보기 실패: ' + nxErrText_(err));
       sigPlaceOverlay.style.display = 'none';
     }
   }
@@ -2354,7 +2357,7 @@
       document.getElementById('ocrResultOverlay').style.display = 'flex';
       toast(targets.length + '개 페이지에서 텍스트를 추출했습니다.');
     }catch(err){
-      toast('텍스트 추출 중 오류: ' + (err && err.message ? err.message : err));
+      toast('텍스트 추출 중 오류: ' + nxErrText_(err));
     }finally{
       btn.disabled = false;
       btn.textContent = '텍스트 추출';
@@ -2515,7 +2518,7 @@
       statusEl.textContent = '저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     }).catch(function(err){
       statusEl.textContent = '저장 실패';
-      toast('계산기 저장 중 오류: ' + (err && err.message ? err.message : err));
+      toast('계산기 저장 중 오류: ' + nxErrText_(err));
     });
   }
 
@@ -2760,7 +2763,7 @@
       clearTimeout(btn._flashTimer);
       btn._flashTimer = setTimeout(function(){ btn.textContent = '저장'; }, 1200);
     }).catch(function(err){
-      toast('관계도 저장 중 오류: ' + (err && err.message ? err.message : err));
+      toast('관계도 저장 중 오류: ' + nxErrText_(err));
     });
   }
 
@@ -2861,7 +2864,7 @@
       callGas('syncGlobalLog', { path: docsLogPath_, folderId: docsLogFolderId_, entries: docsLogEntries_ }).catch(function(){});
     }).catch(function(err){
       statusEl.textContent = '저장 실패';
-      toast('경과지 저장 중 오류: ' + (err && err.message ? err.message : err));
+      toast('경과지 저장 중 오류: ' + nxErrText_(err));
     });
   }
 

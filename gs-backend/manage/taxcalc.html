@@ -1222,7 +1222,7 @@ const AI_EXTRACTION_PRIORITY_HINT_ = '먼저 파일명에 "의뢰내용"이 포�
 async function runFolderAiExtraction(instructionText){
   if (!tcCurrentCase || !tcCurrentCase.id) throw new Error('먼저 위쪽에서 사건을 선택하세요 — 그 사건 폴더의 서류를 읽습니다.');
   // [2026.10.22 1단계] 이 채우기는 넥스(AI)가 숫자를 어느 칸에 넣을지 정한다(비용). AI 없이 하시려면 [⚡ 칸 채우기] — 넥스 지휘 중엔 묻지 않음
-  if (!window.nxWorkBy_ && !window.confirm('🤖 넥스(AI)로 서류를 읽어 칸을 채웁니다 — 비용이 듭니다.\n\nAI 없이 하시려면 [취소] 후 [⚡ 칸 채우기]를 누르세요.\n진행할까요?')) throw new Error('넥스(AI) 채우기를 취소했습니다 — [⚡ GAS로 칸 채우기]로 하실 수 있습니다.');
+  if (!window.nxWorkBy_ && !nxConfirmGate_('tcAiFill', '🤖 넥스(AI)로 서류를 읽어 칸을 채웁니다 — 비용이 듭니다.\n\nAI 없이 하시려면 [취소] 후 [⚡ 칸 채우기]를 누르세요.\n진행할까요?')) throw new Error('넥스(AI) 채우기를 취소했습니다 — [⚡ GAS로 칸 채우기]로 하실 수 있습니다.');
   const res = await callGas('tc_extract_case_docs', { caseId: tcCurrentCase.id, instruction: instructionText });
   if (!res || res.error) throw new Error((res && res.error) || '서류를 읽지 못했습니다.');
   if (res.files && res.files.length) showToast('서류 ' + res.files.length + '개를 읽었습니다' + (res.skipped && res.skipped.length ? ' (못 읽은 파일 ' + res.skipped.length + '개)' : '') + (res.cached ? ' · 서류가 그대로라 지난 결과 재사용(0원)' : res.usd ? ' · AI 약 ' + Math.max(1, Math.round(res.usd * 1400)) + '원' : ''), 'success');
@@ -3345,7 +3345,7 @@ function openTaxReliefJudgeModal_(idx){
       callGas('case_proc', Object.assign({ caseId: cs.id, step: 'ledgerJudge', by: '세무사님', asset: 'a' + idx, 경우둘: !!(two && two.checked) }, (function(){ const q = ohjInput_(); if (!String((overlay.querySelector('#ohjOther') || {}).value || '')) delete q.물건; return q; })())).then(function(res){
         if (!res || res.ok === false || res.error){ lb.disabled = false; lb.textContent = '사건 장부에 반영'; showToast((res && (res.error || res.message)) || '반영하지 못했습니다.', 'error'); return; }
         ohjShow_(res.결과, res); showToast('사건 장부: ' + (res.장부 || '반영'), 'success');
-      }).catch(function(e){ lb.disabled = false; lb.textContent = '사건 장부에 반영'; showToast('오류: ' + (e && e.message || e), 'error'); });
+      }).catch(function(e){ lb.disabled = false; lb.textContent = '사건 장부에 반영'; showToast('오류: ' + nxErrText_(e), 'error'); });
     });
   };
   overlay.querySelector('#ohjRunBtn').addEventListener('click', function(){
@@ -3937,7 +3937,7 @@ async function runAiAutoFillTransferBulk(){
           const summary = rt.map(function(t, i){ return (i + 1) + ') ' + (t.assetLocation || '소재지 미확인') + '\n   양도 ' + won(t.transferPrice) + ' ' + (t.transferDate || '') + ' / 취득 ' + won(t.acquisitionPrice) + ' ' + (t.acquisitionDate || '') + (t.acquisitionExpenses ? ' / 취득부대비용 ' + won(t.acquisitionExpenses) : ''); }).join('\n');
           const msg = '⚡ 서류를 규칙으로 정리해 거래 ' + rt.length + '건을 찾았습니다(AI 비용 0원).\n\n' + summary + '\n\n근거:\n- ' + (rf.evidence || []).slice(0, 8).join('\n- ') +
             '\n\n[확인] 이 값으로 채우기(빈 칸·특례는 직접 또는 다시 눌러 AI로)\n[취소] AI 자동채우기로 진행(유료)';
-          if (window.confirm(msg)){ json = { sellerName: rf.sellerName, transactions: rt }; ruleUsed = true; }
+          if (await nxConfirm_(msg)){ json = { sellerName: rf.sellerName, transactions: rt }; ruleUsed = true; }
         }
       } catch (e) { /* 규칙 단계 실패 — AI로 진행 */ }
     }
@@ -4177,7 +4177,7 @@ async function runAiAutoFillInheritanceFull_(){
       lines.push('금융재산 ' + won(rf.financialValue) + ' · 장례비 ' + won(rf.funeral && rf.funeral.value) + (rf.niche ? ' · 봉안시설 ' + won(rf.niche.value) : ''));
       lines.push('총상속재산가액 ' + (rf.grossEstate ? won(rf.grossEstate) : '(재산 평가가 다 정해지지 않아 비워 둠)'));
       const msg = '⚡ 서류를 규칙으로 정리했습니다(AI 비용 0원).\n\n' + lines.join('\n') + '\n\n[확인] 이 값으로 채우기  [취소] AI 자동채우기로 진행(유료)';
-      if (window.confirm(msg)){
+      if (await nxConfirm_(msg)){
         const filled = tcApplyInheritanceRule_(rf);
         const statusEl = document.getElementById('aiStatus-inheritance');
         if (statusEl) statusEl.innerHTML = renderAiStatusHtml({ _aiStatus: 'done', _aiFilledFields: filled.concat(['(서류 규칙 정리 · AI 미사용, 토큰 0)']), _aiFileName: '서류 규칙 정리(토큰 0)' });
@@ -4369,7 +4369,7 @@ async function runAiAutoFillInheritanceAI_(){
 //  질문은 상자에 수만 — 답은 📒 사건 장부 화면 한 곳에서(결정 ③)
 function tcGasFill_(){
   if (!tcCurrentCase || !tcCurrentCase.id){ nxAlert_('먼저 사건을 고르세요.'); return; }
-  if (!window.confirm('칸 채우기(GAS 도구, AI 없이 0원)\n\n장부 값을 세액계산기 칸으로 옮기고(답하실 질문도 셉니다), 이어서 이 화면 칸을 채웁니다.\n직접 고치신 칸이 덮일 수 있습니다. 진행할까요?\n\n(아직 서류를 안 읽었으면 서류 탭의 [서류 읽기]부터 하세요.)')) return;
+  if (!nxConfirmGate_('tcFill', '칸 채우기(GAS 도구, AI 없이 0원)\n\n장부 값을 세액계산기 칸으로 옮기고(답하실 질문도 셉니다), 이어서 이 화면 칸을 채웁니다.\n직접 고치신 칸이 덮일 수 있습니다. 진행할까요?\n\n(아직 서류를 안 읽었으면 서류 탭의 [서류 읽기]부터 하세요.)')) return;
   tcRunServerFill_(tcCurrentCase.id);
 }
 function tcFillBoxEl_(){
@@ -4405,7 +4405,7 @@ function tcAfterServerFill_(caseId){
     tcCurrentCase = c;
     tcApplyOverviewToInputs_(c); tcApplyOverviewToTransfer_(c); tcApplyOverviewToSellers_(c); tcApplyOverviewToValuationAssets_(c); tcApplyOverviewToHeirs_(c); tcApplyOverviewToGiftParties_(c); tcApplyCaseBaseDate_(c); tcApplyGiftRelation_(c); tcSyncContractParties_(c);
     tcLoadTransferCalcIn_(c).then(function(ok){ showToast('⚡ 장부 값으로 계산기 칸을 채웠습니다(0원)' + (ok ? ' — 양도 계산기 입력 포함' : ''), 'success'); tcWorkLog_('계산기 칸 채우기(GAS)', (c.세목 || '') + ' 장부 값 반영'); });
-  }).catch(function(e){ showToast('사건 값을 다시 받지 못했습니다: ' + (e && e.message || e), 'error'); });
+  }).catch(function(e){ showToast('사건 값을 다시 받지 못했습니다: ' + nxErrText_(e), 'error'); });
 }
 // 다른 화면(증빙확보 상자의 "세액계산에서 칸 채우기")에서 — 이 사건으로 세액계산을 열고 칸 채우기를 띄운다
 function goToTaxCalcFill_(caseId){ window.tcPendingFill_ = caseId; goToTaxCalc_(caseId); }
@@ -4639,7 +4639,7 @@ async function tcCrossCheck_(kind){
     const lines = r.rows.map(function(x){ return (x.일치 ? '✅ ' : '⚠ ') + x.항목 + ': 엔진 ' + won(x.엔진) + ' / AI ' + won(x.AI); }).join('\n');
     await nxConfirm_((r.allSame ? '✅ 엔진과 AI 독립 계산이 일치합니다.' : '⚠ 엔진과 AI 독립 계산이 다릅니다 — 어느 쪽이 맞는지 법령으로 확인하세요.') + '\n\n' + lines
       + '\n\nAI 확신: ' + (r.confidence || '-') + (r.caution ? '\nAI 주의: ' + r.caution : '') + '\n비용: 약 ' + (r.krw == null ? '?' : r.krw) + '원\n\n[AI 계산 과정]\n' + String(r.steps || '').slice(0, 1800), '🔍 2중 검증 결과');
-  } catch (e) { showToast('2중 검증 실패: ' + (e && e.message ? e.message : e), 'error'); }
+  } catch (e) { showToast('2중 검증 실패: ' + nxErrText_(e), 'error'); }
 }
 
 // [2026.09.30 신규, 재검토86] 세무사님 지적 계속 — 특례세율(sr)·일감몰아주기(jm)·일감떼어주기(jt)·
@@ -11245,7 +11245,7 @@ function tcPendingConfirmList_(){
 function tcPendingConfirmOk_(what){
   var L = tcPendingConfirmList_();
   if (!L.length) return true;
-  return window.confirm('확인 전 칸이 ' + L.length + '개 남아 있습니다 — ' + L.join(' / ') + '\n\n사건처리 질문에 아직 답하지 않은 잠정값입니다. 그래도 ' + (what || '출력할') + '까요?');
+  return nxConfirmGate_('tcPending', '확인 전 칸이 ' + L.length + '개 남아 있습니다 — ' + L.join(' / ') + '\n\n사건처리 질문에 아직 답하지 않은 잠정값입니다. 그래도 ' + (what || '출력할') + '까요?');
 }
 function openPrintFormWindow_(title, bodyHtml){
   if (!tcPendingConfirmOk_('신고서를 출력할')) return;
@@ -14685,7 +14685,7 @@ function renderPrintPane(){
           maybe.map(function(m){ return '<tr><td>' + escapeHtml(m.title) + '</td><td class="print-hub-formno">' + escapeHtml(printShortFormNo_(m.formNo)) + '</td><td>' + escapeHtml(m.why) + '</td></tr>'; }).join('') +
           '</table>';
       })() +
-      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 해설은 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령정보 › 서식</button>에서 봅니다.</div>' +
+      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 해설은 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령·서식 › 서식</button>에서 봅니다.</div>' +
       (efileItems.length ? efileItems.map(function(item){
         return '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>';
       }).join('') : '') +
@@ -15084,7 +15084,7 @@ function handleTaxCalcClick_(e){
         if (!a.assetSubType && data.ledger.지목 && a.assetKind === 'land') a.assetSubType = data.ledger.지목;
       }
       rerender();
-    }).catch(function(err){ a.landInfo = null; rerender(); nxAlert_('토지정보 조회 실패: ' + (err && err.message || err)); });
+    }).catch(function(err){ a.landInfo = null; rerender(); nxAlert_('토지정보 조회 실패: ' + nxErrText_(err)); });
   } else if (action === 'open-address-search'){
     // 이 버튼이 어느 자산 목록(양도세 거래카드/증여·상속 재산평가 자산행) 안에 있는지 DOM으로
     // 찾아서, 검색결과를 그 자산의 소재지·동·면적 관련 상태에 바로 채운다.
@@ -15313,7 +15313,7 @@ function handleTaxCalcClick_(e){
       if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_());
       else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       else renderTransferPane();
-    }).catch(function(err){ nxAlert_('공시가격 조회 실패: ' + (err && err.message || err)); });
+    }).catch(function(err){ nxAlert_('공시가격 조회 실패: ' + nxErrText_(err)); });
   } else if (action === 'add-building-floor-row'){
     const idx = numVal(btn.dataset.idx);
     const a = transferAssets[idx];
@@ -16531,7 +16531,7 @@ function handleTaxCalcClick_(e){
       if (!res || res.error) throw new Error((res && res.error) || '저장 실패');
       document.querySelectorAll('.tc-judgment-picked[data-jid="' + jid + '"]').forEach(function(el){ el.textContent = '✔ 이 사건: 해석 ' + pick + ' 기록(지금까지 A ' + (res.count.A || 0) + '건 · B ' + (res.count.B || 0) + '건)'; });
       showToast('판단을 기록했습니다. 계산은 해석 A 그대로입니다.', 'success');
-    }).catch(function(err){ showToast('기록하지 못했습니다: ' + (err && err.message || err), 'warning'); });
+    }).catch(function(err){ showToast('기록하지 못했습니다: ' + nxErrText_(err), 'warning'); });
   } else if (action === 'print-open-form-catalog'){
     if (typeof goToView_ === 'function') goToView_('lawsearch');
     if (typeof lsiShowTab_ === 'function'){ if (typeof lsiFormGroup_ !== 'undefined') lsiFormGroup_ = printActiveGroup_; lsiShowTab_('form'); }
@@ -17960,7 +17960,7 @@ function tcSaveList_(newList, log){
     renderTcSavedList_(newList);
     if (typeof loadWorkCases === 'function') loadWorkCases();
     return true;
-  }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); return false; });
+  }).catch(function(err){ showToast('저장 중 오류: ' + nxErrText_(err), 'error'); return false; });
 }
 
 // [2026.10.06 신규, 재검토113] 세무사님 지적 — "모든 계산기에 저장기능이 있어야 저장된
@@ -18547,7 +18547,7 @@ function goToTaxCalc_(caseId){
         pane.querySelector('.tcdp-title').textContent = r.getAttribute('data-name'); pane.querySelector('.tcdp-back').style.display = '';
       });
       list(caseFolderId, stack[0].name);
-    }).catch(function(e){ toast('사건 정보를 못 받았습니다: ' + e.message); });
+    }).catch(function(e){ toast('사건 정보를 못 받았습니다: ' + nxErrText_(e)); });
   }
   document.addEventListener('click', function(ev){ if (ev.target && ev.target.id === 'tcDocPaneBtn'){ if (pane) close(); else open(); } });
   // 계산기 화면을 떠나면 닫는다

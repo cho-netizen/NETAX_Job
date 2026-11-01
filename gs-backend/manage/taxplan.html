@@ -58,7 +58,7 @@
 </style>
 
 <div class="view" id="view-taxplan">
-  <div class="view-head"><h2>절세플랜</h2></div>
+  <div class="view-head"><h2>절세</h2></div>
   <div class="view-body">
     <div class="tp-modes nx-tabbar" id="tpModes">
       <button type="button" class="tp-mode nx-tab on" data-tp-mode="items">절세 아이템</button>
@@ -792,7 +792,7 @@
         return;
       }
       if (t.hasAttribute('data-tpi-open')){
-        if (editing_ && !confirm('고치던 내용을 버리고 다른 아이템을 열까요?')) return;
+        if (editing_ && !nxConfirmGate_('tpLeave', '고치던 내용을 버리고 다른 아이템을 열까요?')) return;
         editing_ = false;
         cur_ = { id: t.getAttribute('data-tpi-open'), name: t.getAttribute('data-tpi-name'), group: t.getAttribute('data-tpi-group') };
         renderList_(); renderDoc_();
@@ -815,7 +815,7 @@
           if (!r || r.error) throw new Error((r && r.error) || '저장하지 못했습니다');
           cache_[id] = txt; lsSet_(id, 'saved', txt); editing_ = false; // 다음 목록에서 드라이브 수정 시각이 달라 한 번 다시 읽는다
           showToast('저장했습니다.', 'success'); renderDoc_(); renderList_();
-        }).catch(function(err){ t.disabled = false; showToast('저장하지 못했습니다: ' + err.message, 'warning'); });
+        }).catch(function(err){ t.disabled = false; showToast('저장하지 못했습니다: ' + nxErrText_(err), 'warning'); });
       }
     });
     root.addEventListener('input', function(e){

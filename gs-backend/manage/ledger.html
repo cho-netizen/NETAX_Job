@@ -1,10 +1,10 @@
 <div class="view" id="view-ledger">
-  <div class="view-head"><h2>사건 장부</h2></div>
+  <div class="view-head"><h2>사실(장부)</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
     <select id="lgCaseSelect"><option value="">사건 선택</option></select>
   </div>
   <div style="flex:1 1 auto; overflow-y:auto; padding:10px 14px;">
-    <div id="lgEmpty" class="explorer-status">위에서 사건을 고르세요.</div>
+    <div id="lgEmpty" class="explorer-status">사건을 아직 고르지 않았습니다 — 위쪽 사건 칸에서 고르거나 <button type="button" class="ghost-btn sm" onclick="showView('workmanage')">사건 목록에서 고르기</button></div>
     <div id="lgWrap" style="display:none;">
       <!-- [2026.10.31] 아래 본문(lgBody)을 바꿔 보여 주는 하위 탭이라 공통 하위 탭 모양(.nx-tab), 앞 아이콘 없음 -->
       <div id="lgToolTabs" class="nx-tabbar" style="margin:0;">
@@ -87,7 +87,7 @@
       if (!tokOk()) return;
       body.innerHTML = '<div class="log-empty">사건 장부를 읽는 중…</div>';
       var reload = function(){ document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
-      var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + (e && e.message || e), 'error'); return null; }); };
+      var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + nxErrText_(e), 'error'); return null; }); };
       var STATE_KO = { 물어볼것: '❓ 물어볼 것', 증빙받을것: '📎 증빙 받을 것', 추정: '≈ 추정', 확정: '✅ 확정', 보류: '⏸ 보류', 무시: '— 무시' };
       var KIND_KO = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: '규칙', 추정: '추정', 계산: '계산' };
       var PATHS = [['seller.name', '양도인 성명'], ['seller.regNo', '양도인 주민등록번호'], ['seller.address', '양도인 주소'], ['seller.multiHouseCount', '보유 주택 수'], ['c0.date', '양도일'], ['c0.totalPrice', '양도가액'], ['c0.transferCause', '양도 원인(sale 매매 · expropriation 수용 · exchange 교환)'], ['c0.buyer.name', '양수인 성명'], ['c0.buyer.regNo', '양수인 주민등록번호'], ['c0.buyer.relation', '양수인 관계(none 없음 · sibling 형제자매 · lineal 직계 · spouse 배우자 · relative 친족)'], ['a0.assetLocation', '소재지'], ['a0.assetKind', '자산 종류(land 토지 · building 건물 · land_building 토지+건물)'], ['a0.assetType', '과세대상 구분(house 주택 · other 그 외 · presale_right 분양권)'], ['a0.acquisitionDate', '취득일'], ['a0.acquisitionPrice', '취득가액'], ['costs', '필요경비(예: 취득세 3,583,600원, 중개수수료 2,090,000원 — 서버가 항목으로 풂)'], ['taxfee', '신고 세무비용'], ['사건분류', '사건분류'], ['기준일', '기준일(양도일)']];
@@ -113,8 +113,8 @@
         // [2026.11.01] 세무사님 "장부아래 탭명에 현황까지 붙여놓아서 너-무 길다" — 탭엔 이름과 손볼 것 숫자(있을 때만)만, 현황 전체는 탭 줄 밑 한 줄(지금 탭)·말풍선으로
         var lgTb = function(key, name, n, detail){ return '<button type="button" class="nx-tab" data-lg-tab="' + key + '" data-lg-detail="' + esc(detail) + '" title="' + esc(name + ' — ' + detail) + '">' + esc(name) + (n ? ' <span class="nx-n warn">' + esc(n) + '</span>' : '') + '</button>'; };
         h += '<div style="margin-top:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">'
-          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리거나 오른쪽 단추를 누르세요') + ' · 칸과 서류 사실은 한 장부(사건 폴더에 파일이 들어오거나 바뀌면 그때 바로 다시 모음)</span>'
-          + '<button type="button" id="chLgKbBuild" class="ghost-btn" title="칸 값은 건드리지 않고, 사건 폴더 서류를 다시 훑어 파일 장부·서류 사실·서류끼리 맞대기를 지금 서류로 다시 만듭니다(계산기 칸으로 간 길은 다음 처리개요 때 갱신)">서류 사실 다시 모으기</button></div>'
+          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(개요)를 돌리거나 오른쪽 단추를 누르세요') + ' · 칸과 서류 사실은 한 장부(사건 폴더에 파일이 들어오거나 바뀌면 그때 바로 다시 모음)</span>'
+          + '<button type="button" id="chLgKbBuild" class="ghost-btn" title="칸 값은 건드리지 않고, 사건 폴더 서류를 다시 훑어 파일 장부·서류 사실·서류끼리 맞대기를 지금 서류로 다시 만듭니다(계산기 칸으로 간 길은 다음 개요 때 갱신)">서류 사실 다시 모으기</button></div>'
           + '<div class="nx-tabbar sub" style="margin:6px 0 0;">'
           + (fl ? lgTb('flow', '사건 흐름', fb0.질문, '가설 ' + (fb0.가설 || 0) + ' → 사건개요(정함 ' + (fb0.개요확정 || 0) + ' · 가설 ' + (fb0.개요가설 || 0) + (fb0.개요다름 ? ' · 가설과 다름 ' + fb0.개요다름 : '') + ') → 확보할 증빙(확보 ' + (fb0.증빙확보 || 0) + ' / 받을 것 ' + (fb0.증빙미확보 || 0) + ') → 서류 사실 ' + (fb0.서류사실 || 0) + ' → 칸 ' + (fb0.칸값 || 0) + '(서류와 이음 ' + (fb0.칸이음 || 0) + ') → 질문 ' + (fb0.질문 || 0)) : '')
           + lgTb('files', '모은 것', 0, '파일 ' + (kb && kb.files || []).length + '개 · 사실 ' + (ks.사실 || 0) + '건' + (kp && (kp.사실 || 0) !== (ks.사실 || 0) ? ' (전 ' + (kp.사실 || 0) + ')' : ''))
@@ -140,7 +140,7 @@
             + (ovs.length ? tbl(['칸', '값', '상태', '주인', '근거', '가설과'], ovs.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 300, g ? ' color:#a60;' : '') + cell(ST_KO[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(OWNK[x.kind] != null ? OWNK[x.kind] : x.kind, 80) + cell([x.file, x.quote, x.why].filter(Boolean).join(' · '), 300, ' color:var(--sub);') + cell(x.hypNote || '', 300, x.hypNote ? ' color:#b23; font-weight:600;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">사건개요가 아직 없습니다</div>') + '</div>';
           var dirs = fl.처리방향 || [];
           fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">처리방향</b> <span style="color:var(--sub);">세무사님 글은 GAS가 고치지 않습니다 — GAS가 정한 갈래(사건분류)는 위 사건개요에 따로 보입니다</span>'
-            + (dirs.length ? tbl(['칸', '글', '주인', '때'], dirs.map(function(x){ return '<tr>' + cell(x.label || x.path, 90) + cell(x.값 || '', 520) + cell(OWNK[x.kind] != null ? OWNK[x.kind] : x.kind, 80) + cell(x.at || '', 130, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">처리방향이 아직 없습니다(처리개요 화면 위쪽 "처리방향"에 쓰시면 장부에 들어옵니다)</div>') + '</div>';
+            + (dirs.length ? tbl(['칸', '글', '주인', '때'], dirs.map(function(x){ return '<tr>' + cell(x.label || x.path, 90) + cell(x.값 || '', 520) + cell(OWNK[x.kind] != null ? OWNK[x.kind] : x.kind, 80) + cell(x.at || '', 130, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">처리방향이 아직 없습니다(개요 화면 위쪽 "처리방향"에 쓰시면 장부에 들어옵니다)</div>') + '</div>';
           // [2026.10.29 거래 사슬] 세무사님 "당해 양도자의 위치가 계약서 내용과 어떤 관계인지에 대한 검토" — 물건마다 계약서·등기 고리를 날짜 순으로, 사슬 밖 계약서는 빨갛게
           var chn = fl.사슬 || null, chRows = (chn && chn.rows) || [], chOff = (chn && chn.off) || [];
           fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">거래 사슬</b> <span style="color:var(--sub);">물건마다 계약서·등기부를 이어 누가 누구에게 넘겼는지 — 사슬과 이어지지 않는 계약서는 칸에 쓰지 않고 질문으로 올립니다' + (chn && chn.at ? ' · ' + esc(chn.at) : '') + '</span>'
@@ -187,8 +187,8 @@
             var own = l.owner ? (OWN_KO[l.owner.kind] != null ? OWN_KO[l.owner.kind] : l.owner.kind) + (l.owner.state === '추정' ? '·추정' : '') + (l.owner.file ? ' — ' + l.owner.file : '') : '';
             return '<tr>' + cell(l.label, 200) + cell(l.cur === '' ? '(빈 칸)' : (l.curTxt || l.cur), 160) + cell(own, 200) + cell(l.res, 210, col) + cell((l.vals || []).map(function(v){ return v.v + '(' + (v.n || 0) + '종: ' + v.src + ')'; }).join('  ‖  '), 460) + cell(l.cur === '' ? '' : ((l.seen || []).length ? (l.seen || []).length + '개: ' + l.seen.join(', ') : '어느 서류에도 없음'), 320, (l.cur !== '' && !(l.seen || []).length) ? ' color:#a60;' : '') + cell([l.d ? '판정 ' + l.d : '', l.rule, l.why].filter(Boolean).join(' · '), 300) + cell(l.by, 160, ' color:var(--sub);') + '</tr>';
           }).join('');
-          h += '<div data-lg-sec="links" style="display:none; margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">계산기 칸으로 간 길</b> <span style="color:var(--sub);">칸마다 지금 값이 서류 값과 어떻게 이어졌는지 ' + esc(links.length) + '줄 — "서류와 다름"·"빈 칸(갈림)"은 질문으로 섰고, "서류에 이 칸 값 없음"은 세무사님 답·추정·계산으로 채워질 칸입니다(처리개요를 돌릴 때마다 갱신)</span>'
-            + (links.length ? tbl(['칸', '지금 값', '넣은 주체 — 근거 파일', '서류와', '그 칸 종류의 서류 값(서류 수: 출처)', '지금 값이 나온 서류(모든 사실에서)', '판정 · 이유', '맞댄 방법'], lb) : '<div class="log-empty">아직 없습니다 — 「이 사건 처리하자」(처리개요)를 돌리면 채워집니다</div>') + '</div>';
+          h += '<div data-lg-sec="links" style="display:none; margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">계산기 칸으로 간 길</b> <span style="color:var(--sub);">칸마다 지금 값이 서류 값과 어떻게 이어졌는지 ' + esc(links.length) + '줄 — "서류와 다름"·"빈 칸(갈림)"은 질문으로 섰고, "서류에 이 칸 값 없음"은 세무사님 답·추정·계산으로 채워질 칸입니다(개요를 돌릴 때마다 갱신)</span>'
+            + (links.length ? tbl(['칸', '지금 값', '넣은 주체 — 근거 파일', '서류와', '그 칸 종류의 서류 값(서류 수: 출처)', '지금 값이 나온 서류(모든 사실에서)', '판정 · 이유', '맞댄 방법'], lb) : '<div class="log-empty">아직 없습니다 — 「이 사건 처리하자」(개요)를 돌리면 채워집니다</div>') + '</div>';
         }
         // [2026.11.01 물건 장부] 세무사님 원문(11-01) "물건별로 구분하여 관리가 가능하도록 당연히 수정되어야 한다" — 사건의 물건(집·땅·오피스텔…)을 한 줄씩.
         //  넥스 case_ledger do=objects·object·object_drop·object_sell과 같은 서버 함수(ledgerObjects·ledgerObjSet·ledgerObjDrop·ledgerObjSell). 세무사님이 적은 칸은 넥스가 못 바꿈
@@ -259,7 +259,7 @@
           var LK_WHAT = ['토지대장', '토지이용계획', '토지이음', '건축물대장', '공시가격', '조정대상지역', '매매사례'];
           var th5 = '<div data-lg-sec="tools" style="display:none; margin-top:8px;">';
           th5 += '<div><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">공부 조회</b> <span style="color:var(--sub);">지금 있는 조회 도구로 필지마다 공부 사실을 가져와 장부에 남깁니다(확보자료 PDF도). 서류 없이 의뢰서에 소재지만 있어도 됩니다. 새 필지가 생기면 GAS가 한 바퀴 때 스스로도 조회합니다</span></div>';
-          th5 += tbl(['조회할 필지', '어디서 나온 소재지', '조회', ''], tg.length ? tg.map(function(t){ return '<tr>' + cell(t.소재지, 300) + cell(t.어디서, 300, ' color:var(--sub);') + cell(t.조회함 ? '✓ 함' : '아직', 60, t.조회함 ? '' : ' color:#a60;') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-lk-loc="' + esc(t.소재지) + '">조회</button></td></tr>'; }).join('') : '<tr><td colspan="4" style="padding:3px 8px; color:var(--sub);">장부 소재지·처리개요 물건·의뢰서 가설에 필지가 없습니다 — 아래에 소재지를 적어 조회하세요</td></tr>');
+          th5 += tbl(['조회할 필지', '어디서 나온 소재지', '조회', ''], tg.length ? tg.map(function(t){ return '<tr>' + cell(t.소재지, 300) + cell(t.어디서, 300, ' color:var(--sub);') + cell(t.조회함 ? '✓ 함' : '아직', 60, t.조회함 ? '' : ' color:#a60;') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-lk-loc="' + esc(t.소재지) + '">조회</button></td></tr>'; }).join('') : '<tr><td colspan="4" style="padding:3px 8px; color:var(--sub);">장부 소재지·개요 물건·의뢰서 가설에 필지가 없습니다 — 아래에 소재지를 적어 조회하세요</td></tr>');
           th5 += '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px;"><input id="chLkLoc" type="text" placeholder="소재지(비우면 위 필지 전부)" style="width:280px;">'
             + LK_WHAT.map(function(w){ return '<label style="font-size:11.5px; white-space:nowrap;"><input type="checkbox" data-lk-what="' + esc(w) + '"> ' + esc(w) + '</label>'; }).join('')
             + '<button type="button" id="chLkGo" class="ghost-btn" title="고른 항목만 조회합니다 — 아무것도 고르지 않으면 매매사례를 뺀 전부">조회</button></div>';
@@ -495,7 +495,7 @@
             showToast(res.message || '비교했습니다.', 'success');
             if (tOut) tOut.innerHTML = '<div><div class="nx-l4" style="margin:6px 0 3px;">세목 비교</div>' + tbl(['세목', '납부세액', '전제', '저장본'], (res.비교 || []).map(function(x){ return '<tr>' + cell(x.세목, 90) + cell(Number(x.납부세액 || 0).toLocaleString('ko-KR') + '원', 140, ' font-weight:600;') + cell(x.전제 || '', 380, ' color:var(--sub);') + cell(x.저장본 || '', 160, ' color:var(--sub);') + '</tr>'; }).join('')) + ((res.못함 || []).length ? '<div style="margin:4px 0 0 8px; color:#b23;">못 한 것: ' + res.못함.map(esc).join(' / ') + '</div>' : '') + '</div>';
             if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
-          }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + (e && e.message || e), 'error'); });
+          }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + nxErrText_(e), 'error'); });
         });
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
@@ -529,14 +529,14 @@
           callGas('case_proc', { caseId: c.id, step: 'valueFix', target: target, value: v, why: why.value.trim(), by: '세무사님' }).then(function(res){
             if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '고치지 못했습니다.', 'error'); document.getElementById('chFixGo').disabled = false; return; }
             showToast(res.message || '고쳤습니다.', 'success'); reload();
-          }).catch(function(e){ showToast('고치는 중 오류: ' + (e && e.message || e), 'error'); document.getElementById('chFixGo').disabled = false; });
+          }).catch(function(e){ showToast('고치는 중 오류: ' + nxErrText_(e), 'error'); document.getElementById('chFixGo').disabled = false; });
         });
         Array.prototype.forEach.call(body.querySelectorAll('button[data-fix-undo]'), function(b){ b.addEventListener('click', function(){
           b.disabled = true;
           callGas('case_proc', { caseId: c.id, step: 'valueUndo', target: b.getAttribute('data-fix-undo'), by: '세무사님' }).then(function(res){
             if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '되돌리지 못했습니다.', 'error'); b.disabled = false; return; }
             showToast(res.message || '되돌렸습니다.', 'success'); reload();
-          }).catch(function(e){ showToast('되돌리는 중 오류: ' + (e && e.message || e), 'error'); b.disabled = false; });
+          }).catch(function(e){ showToast('되돌리는 중 오류: ' + nxErrText_(e), 'error'); b.disabled = false; });
         }); });
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">정한 값을 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });

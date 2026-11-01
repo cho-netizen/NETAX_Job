@@ -183,10 +183,45 @@
     var msg = r && r.message ? r.message : String(r || '');
     if (!msg || /AUTH_REQUIRED|AbortError/.test(msg)) return;
     if (r && r.nxAction){
-      try{ toast('⚠ ' + NX_ACTION_VERB_(r.nxAction) + '에 실패했습니다 — ' + msg.slice(0, 120) + ' (잠시 후 다시 시도해 주세요)'); }catch(err){}
+      try{ toast('⚠ ' + NX_ACTION_VERB_(r.nxAction) + '에 실패했습니다 — ' + nxErrText_(r)); }catch(err){}
     }
     nxLogBug_({ kind: 'promise', where: r && r.nxAction ? '서버요청 ' + r.nxAction : '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
   });
+
+  // [2026.11.01] 기본서(닐슨 5 실수 막기) — 단추를 눌러 서버에 일을 보냈으면 끝날 때까지 그 단추를 막는다(두 번 눌러 두 번 저장되지 않게).
+  //  화면마다 고치지 않고 여기 한 곳에서: 방금(0.4초 안) 누른 단추가 서버 요청을 냈으면 그 단추에 「처리 중」 표시, 끝나면 푼다.
+  var nxPressed_ = null;
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('button, [role="button"]');
+    if (!b) return;
+    if (b.getAttribute('aria-busy') === 'true'){ e.preventDefault(); e.stopImmediatePropagation(); toast('처리 중입니다 — 끝날 때까지 기다려 주세요'); return; }
+    nxPressed_ = { el: b, at: Date.now() };
+  }, true);
+  function nxBusyTake_(action){
+    if (action === 'ai_log_bug' || !nxPressed_ || Date.now() - nxPressed_.at > 400) return null;
+    var b = nxPressed_.el; if (!b.isConnected) return null;
+    b._nxBusy = (b._nxBusy || 0) + 1;
+    b.setAttribute('aria-busy', 'true'); b.classList.add('nx-busy');
+    return b;
+  }
+  function nxBusyFree_(b){
+    if (!b) return;
+    b._nxBusy = Math.max(0, (b._nxBusy || 1) - 1);
+    if (!b._nxBusy){ b.removeAttribute('aria-busy'); b.classList.remove('nx-busy'); }
+  }
+  // [2026.11.01] 기본서(닐슨 9 오류 글) — 서버가 돌려준 원문(영어·기술 글)을 그대로 띄우지 않고, 왜 안 됐는지와 어떻게 하면 되는지로 바꾼다.
+  //  쓰는 곳: 모든 화면의 「…하지 못했습니다: 」 뒤(원래 err.message 자리). 한글로 이미 풀어 쓴 서버 글은 그대로 두고 할 일만 덧붙인다.
+  function nxErrText_(err){
+    var m = String(err && err.message !== undefined ? err.message : (err || '')).replace(/^(Exception|Error|TypeError|ReferenceError):\s*/i, '').trim();
+    if (/AUTH_REQUIRED/.test(m)) return '로그인이 끝났습니다 — 다시 로그인해 주세요';
+    if (/Failed to fetch|NetworkError|network|연결 실패|인터넷/i.test(m)) return '인터넷 연결이 끊겼습니다 — 연결을 확인하고 다시 눌러 주세요';
+    if (/timed? ?out|시간 초과|Exceeded maximum execution|최대 실행 시간/i.test(m)) return '서버가 너무 오래 걸렸습니다 — 잠시 뒤 다시 눌러 주세요';
+    if (/lock|잠금|바쁩니다|busy/i.test(m)) return '다른 작업이 저장 중입니다 — 몇 초 뒤 다시 눌러 주세요';
+    if (/too many times|quota|Bandwidth|한도/i.test(m)) return '구글 사용 한도를 넘었습니다 — 잠시(길면 내일) 뒤 다시 하세요';
+    if (!m) return '까닭을 알 수 없습니다 — 다시 눌러 보고, 또 나오면 ✍ 개선 건의로 알려 주세요';
+    if (!/[가-힣]/.test(m)) return '서버가 처리하지 못했습니다(' + m.slice(0, 60) + ') — 다시 눌러 보고, 또 나오면 ✍ 개선 건의로 알려 주세요';
+    return /세요|십시오|주십/.test(m) ? m : m + ' — 다시 해 보고, 또 나오면 ✍ 개선 건의로 알려 주세요';
+  }
 
   // [2026.10.13] 오류 재현 묶음 — 최근 서버 요청 8개(이름·성공/실패·걸린 시간만, 입력값은 남기지 않음)를 오류 기록에 붙인다
   var nxRecentCalls_ = [];
@@ -198,10 +233,11 @@
   function callGasRaw_(action, payload){
     callGasProgress_(1);
     var nxDone = action === 'ai_log_bug' ? function(){} : nxRecentCallStart_(action);
+    var nxBtn = nxBusyTake_(action);
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
-          callGasProgress_(-1);
+          callGasProgress_(-1); nxBusyFree_(nxBtn);
           nxDone(!(res && res.error));
           if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
           // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
@@ -223,7 +259,7 @@
           else resolve(res);
         })
         .withFailureHandler(function(err){
-          callGasProgress_(-1);
+          callGasProgress_(-1); nxBusyFree_(nxBtn);
           nxDone(false);
           if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
           err.nxAction = action;
@@ -298,6 +334,16 @@
       { label: '취소', value: false, className: 'ghost-btn', isCancel: true }
     ] });
   }
+  // [2026.11.01] 기본서(닐슨 4 일관성) — 확인 창은 이 화면 창(nxConfirm_) 하나로. 「확인하면 이어서 하던 일」이 바로 답을 받아야 하는 곳은
+  //  처음 누를 땐 창만 띄우고(false), [확인]을 누르면 같은 단추를 한 번 더 눌러 준다(그때는 true) — 부르는 쪽 코드를 바꾸지 않아도 된다.
+  var nxGateOk_ = {};
+  function nxConfirmGate_(key, message, title){
+    if (nxGateOk_[key]){ delete nxGateOk_[key]; return true; }
+    var b = nxPressed_ && Date.now() - nxPressed_.at < 1500 ? nxPressed_.el : null;
+    if (!b) return window.confirm(message); // 단추 없이 불린 경우(드묾)만 브라우저 창
+    nxConfirm_(message, title).then(function(ok){ if (ok && b.isConnected){ nxGateOk_[key] = true; b.click(); delete nxGateOk_[key]; } });
+    return false;
+  }
   // 네이티브 prompt()도 같은 이유(iframe 안내문구)로 못 쓴다 — 입력칸이 있는 커스텀 대화상자로
   // 대체. 네이티브 prompt()과 달리 Promise<string|null>을 돌려준다(취소=null).
   function nxPrompt_(message, defaultValue, title){
@@ -356,6 +402,144 @@
     e.preventDefault(); e.stopImmediatePropagation();
     toast(b.getAttribute('data-why') || '지금은 누를 수 없습니다');
   }, true);
+
+  // [2026.11.01] 기본서(W3C 2.1.1·4.1.2·2.4.3) — 화면마다 따로 고치지 않고 한 곳에서: 그려지는 모든 화면에 자동으로 붙는다
+  //  ① 누름 상자(onclick 붙은 div·줄, 메뉴 줄, 사건 줄)는 Tab으로 닿고 Enter·Space로 누른다
+  //  ② 탭 줄은 탭 줄·탭·지금 탭을 알리고, ←→로 옆 탭으로 간다
+  //  ③ 덮는 창은 창이라고 알리고, 열리면 창 안으로 가고, Esc로 닫고, 닫히면 누르던 자리로 돌아온다
+  //  ④ 이름표 없는 칸은 바로 앞 글(또는 안내 말)을 이름으로 잇는다
+  (function(){
+    var PRESS_ = '.menu-item[data-view], .log-entry, div[onclick], span[onclick], li[onclick], td[onclick], tr[onclick], label[onclick], [role="button"]:not(button):not(a):not(input)';
+    var TABBAR_ = '.nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs, .taxcalc-tier-tabs';
+    var TAB_ = '.nx-tab, .taxcalc-tab, .taxcalc-subtab, .tp-mode';
+    var OVER_ = '.modal-overlay, .nxai-overlay, .statute-modal-backdrop';
+    var FOCUSABLE_ = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    function shown_(el){ return !!(el && el.isConnected && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden'); }
+    function press_(root){
+      root.querySelectorAll(PRESS_).forEach(function(el){
+        if (el.hasAttribute('tabindex')) return;
+        el.setAttribute('tabindex', '0');
+        if (!el.hasAttribute('role') && !/^(TD|TR)$/.test(el.tagName)) el.setAttribute('role', 'button');
+      });
+    }
+    function tabs_(root){
+      root.querySelectorAll(TABBAR_).forEach(function(bar){
+        if (bar.getAttribute('role') !== 'tablist') bar.setAttribute('role', 'tablist');
+        Array.prototype.forEach.call(bar.children, function(t){
+          if (!t.matches || !t.matches(TAB_)) return;
+          if (t.getAttribute('role') !== 'tab') t.setAttribute('role', 'tab');
+          var on = t.classList.contains('active') || t.classList.contains('on') ? 'true' : 'false';
+          if (t.getAttribute('aria-selected') !== on) t.setAttribute('aria-selected', on);
+        });
+      });
+    }
+    function label_(root){
+      root.querySelectorAll('input:not([type="hidden"]):not([type="button"]):not([type="submit"]), select, textarea').forEach(function(c){
+        if (c._nxL) return;
+        c._nxL = true;
+        // 날짜·금액 칸은 휴대폰에서 숫자 자판이 뜨게(이 앱 날짜 칸은 숫자만 쳐도 2026-01-31로 맞춰 주는 글 칸이라 달력 칸으로 바꾸지 않는다)
+        if (c.tagName === 'INPUT' && (c.type === 'text' || !c.getAttribute('type')) && !c.hasAttribute('inputmode')){
+          var ph_ = c.getAttribute('placeholder') || '', hint_ = (c.id || '') + ' ' + (c.getAttribute('aria-label') || '') + ' ' + (c.title || '');
+          if (/\btaxcalc-(date|money)\b/.test(c.className) || /^Y{4}/.test(ph_) || (/Amount|금액|\(원\)/i.test(hint_) && !/억|만/.test(ph_))) c.setAttribute('inputmode', 'numeric');
+          if (/\btaxcalc-date\b/.test(c.className) && !c.title) c.title = '날짜 — 숫자만 치면 2026-01-31처럼 맞춰집니다';
+        }
+        if (c.hasAttribute('aria-label') || c.hasAttribute('aria-labelledby')) return;
+        if (c.closest('label')) return;
+        if (c.id && document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(c.id) : c.id) + '"]')) return;
+        var name = '';
+        var p = c.previousElementSibling;
+        if (p && (/^(SPAN|B|STRONG|SMALL|DIV)$/.test(p.tagName) || (p.tagName === 'LABEL' && !p.htmlFor)) && !p.querySelector('input,select,textarea,button')) name = (p.textContent || '').trim();
+        // 체크칸·고르기 단추는 이름표가 칸 뒤에 온다
+        var nx = c.nextElementSibling;
+        if (!name && (c.type === 'checkbox' || c.type === 'radio') && nx && nx.tagName === 'LABEL' && !nx.htmlFor) name = (nx.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+        if (!name || name.length > 60) name = c.getAttribute('title') || c.getAttribute('placeholder') || '';
+        if (name) c.setAttribute('aria-label', name.replace(/[:：]\s*$/, ''));
+      });
+    }
+    var lastFocus_ = [];
+    function dialogs_(root){
+      var list = root.matches && root.matches(OVER_) ? [root] : root.querySelectorAll(OVER_);
+      Array.prototype.forEach.call(list, function(ov){
+        var panel = ov.querySelector('.modal-panel, .nxai-modal, .scan-modal-panel') || ov;
+        if (panel.getAttribute('role') !== 'dialog'){
+          panel.setAttribute('role', 'dialog');
+          panel.setAttribute('aria-modal', 'true');
+          var head = panel.querySelector('.modal-head span, .modal-head, h3, h2');
+          // 창 이름 = 머리 글에서 닫기 기호(✕·×)를 빼고 한 줄로
+          if (head && !panel.hasAttribute('aria-label')) panel.setAttribute('aria-label', (head.textContent || '').replace(/[✕×]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60));
+        }
+        if (shown_(ov) && !ov._nxOpened){
+          ov._nxOpened = true;
+          lastFocus_.push(document.activeElement);
+          if (!ov.contains(document.activeElement)){
+            var f = panel.querySelector('input:not([type="hidden"]), select, textarea') || panel.querySelector(FOCUSABLE_);
+            if (f) f.focus();
+          }
+        }
+      });
+    }
+    function back_(){
+      var el = lastFocus_.pop();
+      if (el && el.isConnected && el.focus) el.focus();
+    }
+    function all_(root){ press_(root); tabs_(root); label_(root); dialogs_(root); }
+    var queued_ = false;
+    function later_(){
+      if (queued_) return; queued_ = true;
+      // 그리기 타이머(requestAnimationFrame)는 뒤에 깔린 탭에서 멈추므로 짧은 시간 타이머로 묶는다
+      setTimeout(function(){
+        queued_ = false;
+        all_(document);
+        // 닫힌(지워지거나 숨은) 창은 누르던 자리로 돌려보낸다
+        document.querySelectorAll(OVER_).forEach(function(ov){ if (ov._nxOpened && !shown_(ov)){ ov._nxOpened = false; back_(); } });
+        if (closedGone_){ closedGone_ = false; back_(); }
+      }, 30);
+    }
+    var closedGone_ = false;
+    var mo = new MutationObserver(function(muts){
+      for (var i = 0; i < muts.length; i++){
+        var m = muts[i];
+        for (var j = 0; j < m.removedNodes.length; j++){ var n = m.removedNodes[j]; if (n._nxOpened){ n._nxOpened = false; closedGone_ = true; } }
+      }
+      later_();
+    });
+    function start_(){
+      all_(document);
+      mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start_); else start_();
+
+    document.addEventListener('keydown', function(e){
+      var t = e.target;
+      // ① 누름 상자: Enter·Space
+      if ((e.key === 'Enter' || e.key === ' ') && t && t.matches && t.matches(PRESS_) && !/^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test(t.tagName)){
+        e.preventDefault(); t.click(); return;
+      }
+      // ② 탭 줄: ←→ Home End
+      if (t && t.matches && t.matches(TAB_) && /^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key)){
+        var bar = t.closest(TABBAR_); if (!bar) return;
+        var ts = Array.prototype.filter.call(bar.querySelectorAll(TAB_), shown_);
+        var i = ts.indexOf(t); if (i < 0) return;
+        var k = e.key === 'Home' ? 0 : e.key === 'End' ? ts.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + ts.length) % ts.length;
+        e.preventDefault(); ts[k].focus(); ts[k].click(); return;
+      }
+      // ③ 덮는 창: Esc로 닫기(공용 확인·입력 창은 제 손으로 닫는다), Tab은 창 안에서만 돈다
+      if (e.key === 'Escape' || e.key === 'Tab'){
+        var ovs = Array.prototype.filter.call(document.querySelectorAll(OVER_), shown_);
+        var ov = ovs[ovs.length - 1]; if (!ov || ov.id === 'nxDialogOverlay') return;
+        if (e.key === 'Escape'){
+          var x = ov.querySelector('.modal-close, [data-close], .nxai-close');
+          if (!x) x = Array.prototype.filter.call(ov.querySelectorAll('button'), function(b){ return /^(닫기|취소|✕|×)$/.test((b.textContent || '').trim()); })[0];
+          if (x){ e.preventDefault(); x.click(); }
+          return;
+        }
+        var fs = Array.prototype.filter.call(ov.querySelectorAll(FOCUSABLE_), shown_);
+        if (!fs.length) return;
+        if (e.shiftKey && (document.activeElement === fs[0] || !ov.contains(document.activeElement))){ e.preventDefault(); fs[fs.length - 1].focus(); }
+        else if (!e.shiftKey && (document.activeElement === fs[fs.length - 1] || !ov.contains(document.activeElement))){ e.preventDefault(); fs[0].focus(); }
+      }
+    }, true);
+  })();
 
   function escapeHtml(s){
     if (s === undefined || s === null) return '';
@@ -586,7 +770,7 @@
     var _enter = enterApp;
     enterApp = function(){
       _enter.apply(this, arguments);
-      if (!nxFp_.ready() && !nxFp_.asked()) setTimeout(function(){ nxFp_.supported().then(function(ok){ if (ok && confirm('이 기기에서 다음부터 지문으로 들어오시겠어요?\n(비밀번호 대신 기기 잠금 지문을 씁니다. 90일마다 비밀번호로 한 번 다시 켭니다.)')) nxFp_.enable().then(function(){ toast('지문 로그인을 켰습니다.'); }, function(e){ toast('지문 로그인을 켜지 못했습니다: ' + ((e && e.message) || e)); }); nxFp_.markAsked(); }); }, 1500);
+      if (!nxFp_.ready() && !nxFp_.asked()) setTimeout(function(){ nxFp_.supported().then(function(ok){ if (ok) nxConfirm_('이 기기에서 다음부터 지문으로 들어오시겠어요?\n(비밀번호 대신 기기 잠금 지문을 씁니다. 90일마다 비밀번호로 한 번 다시 켭니다.)').then(function(y){ if (y) nxFp_.enable().then(function(){ toast('지문 로그인을 켰습니다.'); }, function(e){ toast('지문 로그인을 켜지 못했습니다: ' + nxErrText_(e)); }); }); nxFp_.markAsked(); }); }, 1500);
     };
   })();
 
@@ -815,7 +999,7 @@
       nxPlaceSaveSoon_(); // [2026.10.22] 이어 보기 — 이 기기에서 보는 곳을 기억
     };
     if (needsUnsavedConfirm_){
-      nxConfirm_('문서작성에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){
+      nxConfirm_('보고서 탭에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){
         if (ok) proceedShowView_();
       });
     } else {
@@ -981,8 +1165,9 @@
   // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
   // (AI 탭 nxAiOpenJobView_와 같은 동작).
   // [2026.11.01] 세무사님 "<탭 이동>이라고 안내메시지를 변경하고, 보여지는 데이타도 아이콘은 없애라" — 상자 폭이 보일 글자(화면 이름) 길이만큼만
-  var NX_CASE_VIEWS_ = [['casehandling', '처리개요'], ['ledger', '사건 장부'], ['workmanage', '작업관리'], ['docs', '증빙확보'], ['taxcalc', '세액계산'],
-    ['print', '세액인쇄'], ['reportwriter', '문서작성'], ['lawsearch', '법령정보'], ['reports', '열람관리']]; // 열람관리: 탭연결 9번
+  // [2026.11.01] 기본서(닐슨 4 일관성) — 메뉴·사건 작업 탭과 같은 이름으로
+  var NX_CASE_VIEWS_ = [['casehandling', '개요'], ['ledger', '사실(장부)'], ['workmanage', '사건 목록'], ['docs', '서류'], ['taxcalc', '계산'],
+    ['print', '세액인쇄'], ['reportwriter', '보고서'], ['lawsearch', '근거(법령)'], ['reports', '고객 열람']]; // 열람관리: 탭연결 9번
   function nxCaseJump_(view, caseId){
     NX_CB_.lawFree = false; // [2026.11.01] 사건을 들고 법령정보로 가면 작업공간의 근거 탭
     if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
@@ -1190,7 +1375,7 @@
     };
     var rw = document.getElementById('view-reportwriter');
     if (v !== 'reportwriter' && rw && rw.classList.contains('active') && typeof rwHasUnsavedDriveChanges_ === 'function' && rwHasUnsavedDriveChanges_()) {
-      nxConfirm_('문서작성에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){ if (ok) { rwHasUnsavedDriveChanges_ = function(){ return false; }; go(); } });
+      nxConfirm_('보고서 탭에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?').then(function(ok){ if (ok) { rwHasUnsavedDriveChanges_ = function(){ return false; }; go(); } });
       return;
     }
     go();
@@ -1513,7 +1698,7 @@
             if (!reopenId && urgent) nxConfirm_('🚨 긴급으로 올렸습니다.\n지금 바로 처리 실행 화면(웹 Claude Code)을 열까요?\n열린 화면에서 "실행"을 한 번 누르면 바로 고치기 시작합니다.', '긴급 처리').then(function(ok){ if (ok) window.open('https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3', '_blank'); });
           }
           else { okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장하지 못했습니다: ' + ((r && r.error) || '')); }
-        }).catch(function(err){ okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장 중 오류: ' + (err && err.message ? err.message : err)); });
+        }).catch(function(err){ okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장 중 오류: ' + nxErrText_(err)); });
       };
       overlay.querySelector('[data-nx-val="cancel"]').addEventListener('click', function(){ close(null); });
       okBtn.addEventListener('click', save);

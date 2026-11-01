@@ -30,7 +30,7 @@
   .lsi-grid .lsi-files a{ margin-right:6px; }
 </style>
 <div class="view" id="view-lawsearch">
-  <div class="view-head"><h2>법령정보</h2></div>
+  <div class="view-head"><h2>법령·서식</h2></div>
   <!-- [2026.10.31] 세무사님 "사건콤보라인이 먼저 윗줄에 위치해야" — 사건 고르는 줄은 어느 화면이든 제목 줄 바로 아래, 하위 탭 줄 위 -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
     <select title="사건" id="lsCaseSelect"><option value="">사건 선택</option></select>
@@ -49,7 +49,7 @@
         <h3 style="margin-top:0;">조문으로 찾아보기</h3>
         <div class="nx-help">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-          <select id="lsiArtLaw" aria-label="법령 고르기"></select>
+          <label for="lsiArtLaw" class="nx-vlabel">법령</label><select id="lsiArtLaw" aria-label="법령 고르기"></select>
           <span>제</span><input title="예: 24, 97의2" type="text" id="lsiArtNo" style="width:80px;" aria-label="조문 번호"><span>조</span>
           <button type="button" class="btn" id="lsiArtGo">보기</button>
         </div>
@@ -202,7 +202,7 @@
       if (targetCase === lsCurrentCase) renderLsAttached_(lsCurrentCase);
       if (typeof loadWorkCases === 'function') loadWorkCases();
       return true;
-    }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); return false; });
+    }).catch(function(err){ showToast('저장 중 오류: ' + nxErrText_(err), 'error'); return false; });
   }
 
   function renderLsBody_(){
@@ -560,7 +560,7 @@
           lsiReviews_ = r.reviews || {}; lsiReviewFailed_ = false;
           showToast(st === '지움' ? '기록을 지웠습니다.' : '저장했습니다.', 'success');
           redraw();
-        }).catch(function(e){ b.disabled = false; showToast('저장하지 못했습니다: ' + e.message, 'warning'); });
+        }).catch(function(e){ b.disabled = false; showToast('저장하지 못했습니다: ' + nxErrText_(e), 'warning'); });
       });
     });
   }
@@ -1288,7 +1288,7 @@
             if (!r || r.error) throw new Error((r && r.error) || '옮기지 못했습니다');
             showToast(enact ? '개정세법으로 옮겼습니다.' : '개편안으로 되돌렸습니다.', 'success');
             lsiReform_ = null; lsiRenderReform_();
-          }).catch(function(e){ b.disabled = false; showToast('옮기지 못했습니다: ' + e.message, 'warning'); });
+          }).catch(function(e){ b.disabled = false; showToast('옮기지 못했습니다: ' + nxErrText_(e), 'warning'); });
         });
       });
     });

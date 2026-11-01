@@ -1,8 +1,8 @@
 <div class="view" id="view-workmanage">
   <div class="editor-toolbar">
-    <h2 class="tb-title">작업관리</h2>
+    <h2 class="tb-title">사건 목록</h2>
     <button type="button" id="btnWorkCaseNew" class="save-btn">+ 새 사건</button>
-    <select id="workCaseFilterStatus" title="상태로 필터">
+    <label for="workCaseFilterStatus" class="nx-vlabel">상태</label><select id="workCaseFilterStatus" title="상태로 필터">
       <option value="">전체</option>
       <option value="진행" selected>진행</option>
       <option value="보류">보류</option>
@@ -110,7 +110,7 @@
         showToast('캘린더 재동기화 완료 — ' + res.synced + '건 성공' + (res.failed ? ', ' + res.failed + '건 실패' : '') + '.', 'success');
       }).catch(function(err){
         btn.disabled = false;
-        showToast('재동기화 중 오류: ' + (err && err.message ? err.message : err), 'error');
+        showToast('재동기화 중 오류: ' + nxErrText_(err), 'error');
       });
     });
   }
@@ -485,7 +485,7 @@
               if (typeof loadBookingList === 'function') loadBookingList();
             }).catch(function(err){
               if (retryLeft > 0) { linkBookingCase_(retryLeft - 1); return; }
-              showToast('사건은 만들어졌지만 예약과 자동으로 연결하지 못했습니다. 예약관리에서 이 예약이 "사건 시작" 상태로 남아있는지 확인하고, 다시 누르지 말고 알려주세요(중복 사건이 생길 수 있습니다).', 'error');
+              showToast('사건은 만들어졌지만 예약과 자동으로 연결하지 못했습니다. 예약·상담에서 이 예약이 "사건 시작" 상태로 남아있는지 확인하고, 다시 누르지 말고 알려주세요(중복 사건이 생길 수 있습니다).', 'error');
               console.error('link_booking_case 실패: ' + (err && err.message ? err.message : err));
             });
           };
@@ -743,10 +743,10 @@
     // (청구액·미수 관리는 새 기능이라 만들지 않았다 — 여기서는 "이 사건에 연결된 입금 기록이 하나라도 있나"만 본다)
     var subPending = 0;
     (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.status !== '완료') subPending++; walk(n.children); }); })(c.하위업무);
-    if (subPending) warnings.push('작업관리 하위업무 중 ' + subPending + '건이 아직 완료 전입니다.');
+    if (subPending) warnings.push('사건 목록 하위업무 중 ' + subPending + '건이 아직 완료 전입니다.');
     var payCheck = callGas('client_get_consult_logs', {}).then(function(res){
       var paid = ((res && res.logs) || []).filter(function(l){ return l.사건ID === c.id && Number(l.금액) > 0; });
-      if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 처리개요 수금 카드나 수금 화면에서 이 사건으로 기록하세요.');
+      if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 개요 수금 카드나 수금 화면에서 이 사건으로 기록하세요.');
     }).catch(function(){});
     if (!c.폴더ID) return payCheck.then(function(){ return warnings; });
     return payCheck.then(function(){ return callGas('get_case_subfolders', { caseId: c.id }); }).then(function(sub){
@@ -819,7 +819,7 @@
         if (typeof workCases !== 'undefined'){ workCases.forEach(function(x){ if (x.id === c.id) Object.assign(x, updated); }); }
         return updated;
       });
-    }).catch(function(e){ showToast('완료 처리 중 오류가 났습니다: ' + ((e && e.message) || e), 'error'); return null; });
+    }).catch(function(e){ showToast('완료 처리 중 오류가 났습니다: ' + nxErrText_(e), 'error'); return null; });
   }
 
 
