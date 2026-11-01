@@ -42,7 +42,7 @@
 <div class="view" id="view-docs">
   <div class="view-head"><h2>증빙확보</h2></div>
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="docsCaseSelect"><option value="">사건을 선택하세요</option></select>
+    <select id="docsCaseSelect"><option value="">사건 선택</option></select>
     <!-- [2026.10.31 처리개요 도구 정리 — 세무사님 "나안으로 가자"] 서류를 다루는 GAS 도구는 서류 옆에(예전엔 처리개요 "GAS 도구" 칸) — 넥스도 같은 서버 입구(case_read·set_read_scope) -->
     <button type="button" id="docsReadBtn" class="ghost-btn" style="display:none;" title="읽을 목록의 서류를 읽어 장부에 적습니다(AI 없이 0원, 하신 일은 사건 기록부에)"><span class="btn-ic">📖</span><span class="btn-tx"> 서류 읽기</span></button>
     <button type="button" id="docsScopeBtn" class="ghost-btn" style="display:none;" title="읽을 파일을 체크해 정합니다(폴더 체크 = 그 아래 전부, 파일 체크 = 예외; 이미지·산출물은 기본 꺼짐) — 체크하지 않은 파일은 서류 읽기·칸 채우기·직결·넥스가 읽지도 후보로 쓰지도 않습니다"><span class="btn-ic">📂</span><span class="btn-tx"> 읽을 목록</span></button>
@@ -282,7 +282,7 @@
 <div class="modal-overlay" id="docsCalcOverlay" style="display:none;">
   <div class="scan-modal-panel">
     <div class="modal-head">
-      <span>🧮 계산기 — <span id="docsCalcFolderLabel"></span></span>
+      <span>계산기 — <span id="docsCalcFolderLabel"></span></span>
       <span class="modal-close" id="btnCloseDocsCalc" title="닫기">✕</span>
     </div>
     <div class="scan-body">
@@ -293,8 +293,8 @@
       </div>
       <div class="scan-row" style="align-items:center; flex-wrap:wrap;">
         <span style="font-size:12px; color:var(--sub);">📅 신고기한:</span>
-        <input type="date" id="docsCalcDeadlineBaseDate" style="max-width:150px;">
-        <select id="docsCalcDeadlineType">
+        <input title="기준일" type="date" id="docsCalcDeadlineBaseDate" style="max-width:150px;">
+        <select title="기한 종류" id="docsCalcDeadlineType">
           <option value="transfer">양도소득세(말일+2개월)</option>
           <option value="gift">증여세(말일+3개월)</option>
           <option value="inheritance">상속세(말일+6개월)</option>
@@ -333,7 +333,7 @@
       <span class="modal-close" id="btnCloseDocsDiagram" title="닫기">✕</span>
     </div>
     <div class="scan-body" style="display:flex; gap:12px; flex-wrap:wrap; align-items:stretch;">
-      <textarea id="docsDiagramInput" style="flex:1 1 260px; min-height:340px; font-family:monospace; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:8px;" placeholder="graph TD&#10;  A[아버지] --&gt; B[자녀1]&#10;  A --&gt; C[자녀2]"></textarea>
+      <textarea title="관계도 글" id="docsDiagramInput" style="flex:1 1 260px; min-height:340px; font-family:monospace; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:8px;" placeholder="graph TD&#10;  A[아버지] --&gt; B[자녀1]&#10;  A --&gt; C[자녀2]"></textarea>
       <div id="docsDiagramPreview" style="flex:1 1 260px; min-height:340px; border:1px solid var(--line); border-radius:8px; padding:8px; overflow:auto; background:#fff;"></div>
     </div>
     <div class="scan-row" style="padding:0 16px 16px; justify-content:flex-end;">
@@ -360,7 +360,7 @@
         </div>
         <div style="display:flex; flex-direction:column; gap:3px; flex:1; min-width:160px;">
           <label style="font-size:11px; color:var(--sub);">내용</label>
-          <input type="text" id="docsLogTextInput" placeholder="예: 등기부등본 요청함">
+          <input title="예: 등기부등본 요청함" type="text" id="docsLogTextInput">
         </div>
         <div style="display:flex; flex-direction:column; gap:3px;">
           <label style="font-size:11px; color:var(--sub);">마감일(선택, 캘린더 등록)</label>
@@ -771,8 +771,8 @@
       '</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
       '<select id="docsEvPriceKind"><option value="land">개별공시지가(토지)</option><option value="apartment">공동주택가격</option><option value="house">개별주택가격</option></select>' +
-      '<input type="text" id="docsEvDong" placeholder="동(선택)" style="width:70px;">' +
-      '<input type="text" id="docsEvHo" placeholder="호" style="width:70px;">' +
+      '<input title="동" type="text" id="docsEvDong" placeholder="동(선택)" style="width:70px;">' +
+      '<input title="호" type="text" id="docsEvHo" placeholder="호" style="width:70px;">' +
       '<button type="button" id="docsEvPriceBtn" class="ghost-btn sm">공시가격 조회</button>' +
       '</div>' +
       '</div>';
@@ -835,8 +835,8 @@
       '<div style="margin-bottom:14px;">' +
       '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">추가확보</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
-      '<input type="text" id="docsEvManualLabel" placeholder="자료명 (예: 등기부등본)" style="flex:1; min-width:140px;">' +
-      '<input type="text" id="docsEvManualNote" placeholder="메모·링크(선택)" style="flex:1; min-width:140px;">' +
+      '<input title="예: 등기부등본" type="text" id="docsEvManualLabel" placeholder="자료명" style="flex:1; min-width:140px;">' +
+      '<input title="메모·링크" type="text" id="docsEvManualNote" placeholder="메모·링크(선택)" style="flex:1; min-width:140px;">' +
       '<button type="button" id="docsEvManualAddBtn" class="save-btn">추가</button>' +
       '</div>' +
       '<div id="docsEvListManual"></div>' +
@@ -844,8 +844,8 @@
       '<div>' +
       '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span class="tc-x" title="고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영">(고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
-      '<input type="text" id="docsEvReqLabel" placeholder="요청할 자료명 (예: 매매계약서)" style="flex:1; min-width:140px;">' +
-      '<input type="text" id="docsEvReqNote" placeholder="메모(선택)" style="flex:1; min-width:140px;">' +
+      '<input title="예: 매매계약서" type="text" id="docsEvReqLabel" placeholder="요청할 자료명" style="flex:1; min-width:140px;">' +
+      '<input title="메모" type="text" id="docsEvReqNote" placeholder="메모(선택)" style="flex:1; min-width:140px;">' +
       '<button type="button" id="docsEvReqAddBtn" class="save-btn">추가</button>' +
       '</div>' +
       '<div id="docsEvListRequested"></div>' +
@@ -1353,11 +1353,11 @@
       { label: '📤 파일 업로드', onClick: function(){ document.getElementById('docsBtnUpload').click(); } },
       { sep: true },
       { label: '📋 경과지', onClick: docsOpenLogModal_ },
-      { label: '🧮 계산기', onClick: docsOpenCalcModal_ },
+      { label: '계산기', onClick: docsOpenCalcModal_ },
       { label: '🗺 관계도', onClick: docsOpenDiagramModal_ },
       { sep: true },
       { label: '🔍 파일 검색', onClick: docsOpenSearchModal_ },
-      { label: '📍 처리개요로', onClick: function(){ // [2026.10.31] 이름이 하는 일(처리개요 화면으로 가기)과 달랐음
+      { label: '개요로', onClick: function(){ // [2026.10.31] 이름이 하는 일(처리개요 화면으로 가기)과 달랐음
         if (!docsSelectedCaseId_){ toast('먼저 사건을 선택해주세요(위 "사건" 드롭다운).', 'warning'); return; }
         if (typeof goToView_ === 'function') goToView_('casehandling');
         if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
@@ -2436,7 +2436,7 @@
       tdFormula.style.padding = '4px 6px';
       var formulaInput = document.createElement('input');
       formulaInput.type = 'text';
-      formulaInput.placeholder = '예: 500000000 또는 =[1]*0.06';
+      formulaInput.placeholder = '금액 또는 =식'; formulaInput.title = '예: 500000000 또는 =[1]*0.06';
       formulaInput.value = row.formula || '';
       formulaInput.style.width = '100%';
       formulaInput.addEventListener('input', function(){ row.formula = formulaInput.value; docsUpdateCalcResults_(); });

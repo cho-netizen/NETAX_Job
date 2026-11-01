@@ -87,7 +87,7 @@
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
     <!-- [2026.10.31] 세무사님 "하위탭의 탭명이 그대로 내용에 유지되고 있어 중복" — 탭 ② 안 첫 카드 이름이 또 "시스템 관리"였다.
-         하는 일대로 셋으로 나눔: 📄 지침 파일(목록·보기·편집) / 🔎 지침 점검(점검 결과·정비 판정·제안) / ⚖️ 법령 판단 대기.
+         하는 일대로 셋으로 나눔: 📄 지침 파일(목록·보기·편집) / 🔎 지침 점검(점검 결과·정비 판정·제안) / 법령 판단 대기.
          내용은 sysadmin.html(파일 목록·점검 결과)·knowhow.html(정비 판정·제안)이 채운다 — 두 카드 모두 .sa-scope -->
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
@@ -381,12 +381,12 @@
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">관리번호</label>' +
       '<input type="text" id="setTaxAgentMgmtNo" style="width:110px;"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
-      '<input type="text" id="setTaxAgentPhone" style="width:130px;" placeholder="02 1234 5678"></div>' +
+      '<input type="text" id="setTaxAgentPhone" style="width:130px;" placeholder="00 0000 0000"></div>' +
       '</div>' +
       // [2026.10.20 전자신고 대조] 전자신고 파일 머리 레코드 필수 값(사무소 고정값)
       '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;" title="양도 전자신고 — 관리번호와 둘 중 하나 필수">생년월일 <span class="tc-x">양도 전자신고 파일에 들어갑니다 — 관리번호와 둘 중 하나는 꼭 넣어야 합니다</span></label>' +
-      '<input type="text" id="setTaxAgentBirth" style="width:110px;" placeholder="YYYYMMDD"></div>' +
+      '<input title="세무대리인 생년월일(8자리)" type="text" id="setTaxAgentBirth" style="width:110px;" placeholder="YYYYMMDD"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">홈택스 사용자ID <span class="tc-x">전자신고 파일 머리 줄에 들어가는 사용자ID</span></label>' +
       '<input type="text" id="setHometaxUserId" style="width:150px;"></div>' +
       '<button type="button" id="setBtnTaxAgentSave" class="save-btn">저장</button>' +
@@ -469,7 +469,7 @@
     overlay.className = 'modal-overlay';
     overlay.style.display = 'flex';
     overlay.innerHTML = '<div class="modal-panel" style="width:min(720px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-      '<div class="modal-head"><span>📂 하위폴더 점검</span><span class="modal-close" data-x="1">✕</span></div>' +
+      '<div class="modal-head"><span>하위폴더 점검</span><span class="modal-close" title="닫기" role="button" data-x="1">✕</span></div>' +
       '<div class="modal-body" style="overflow-y:auto;" id="stSfBody"><div class="spinner">사건 폴더를 확인하는 중… (사건이 많으면 1~4분)</div></div></div>';
     document.body.appendChild(overlay);
     var close = function(){ overlay.remove(); };
@@ -607,7 +607,7 @@
           bugList.innerHTML = '<div><b>🧪 빠른 서버 로봇 계정이 볼 수 있는 사건 폴더 ' + r.count + '개</b> <span style="font-size:12px; color:var(--muted);">(처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)</span></div>' +
             '<div style="margin:4px 0; ' + (r.check ? 'color:#b00;' : 'color:var(--muted);') + ' font-size:12px;">' + escapeHtml(r.check || '점검 정상 — 모두 완료 안 된 사건') + '</div>' +
             '<div style="max-height:200px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-bottom:6px;">' + (rows || '<div style="font-size:12px;">없음</div>') + '</div>' +
-            '<button type="button" class="ghost-btn" id="t6ShareClean"' + (r.check ? '' : ' disabled') + '>완료·없는 사건의 공유 거두기</button>';
+            '<button type="button" class="ghost-btn" id="t6ShareClean"' + (r.check ? '' : ' aria-disabled="true" data-why="거둘 공유가 없습니다 — 모두 완료 안 된 사건입니다"') + '>완료·없는 사건의 공유 거두기</button>';
           var cb = document.getElementById('t6ShareClean');
           if (cb) cb.addEventListener('click', function(){
             bugList.textContent = '공유를 거두는 중…';
@@ -629,7 +629,7 @@
           var now = !!r.direct;
           // 확인창(confirm) 대신 그 자리에 켜기/끄기 단추 — 안내문 옆에 바로 누를 단추(L2_screen_ui)
           bugList.innerHTML = '<div>지금 ⚡ 길: <b>' + (now ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS 한 번 호출(직결 꺼짐)') + '</b></div>' +
-            '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"><button type="button" class="ghost-btn" id="t6DirectOn"' + (now ? ' disabled' : '') + '>직결 켜기(시험 서비스를 먼저 부르고, 안 되면 GAS 길로)</button><button type="button" class="ghost-btn" id="t6DirectOff"' + (now ? '' : ' disabled') + '>직결 끄기(GAS 길로)</button></div>';
+            '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"><button type="button" class="ghost-btn" id="t6DirectOn"' + (now ? ' aria-disabled="true" data-why="직결은 이미 켜져 있습니다"' : '') + '>직결 켜기(시험 서비스를 먼저 부르고, 안 되면 GAS 길로)</button><button type="button" class="ghost-btn" id="t6DirectOff"' + (now ? '' : ' aria-disabled="true" data-why="직결은 이미 꺼져 있습니다"') + '>직결 끄기(GAS 길로)</button></div>';
           var set = function(on){
             bugList.textContent = '⚡ 직결을 ' + (on ? '켜는' : '끄는') + ' 중…';
             callGas('t6_direct_set', { on: on }).then(function(r2){

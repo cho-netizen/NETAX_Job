@@ -20,10 +20,10 @@
         <button type="button" class="nx-tab" data-bk-mode="all">전체</button>
       </div>
       <div id="bkAdminForm" style="display:none; flex-direction:column; gap:8px; max-width:420px; margin:12px 0;">
-        <label style="font-size:12px; color:var(--sub);">이름 *<br><input type="text" id="bkNewName" size="10" placeholder="예: 홍길동"></label>
-        <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" size="14" placeholder="010-1234-5678"></label>
-        <label style="font-size:12px; color:var(--sub);">유형<br><input type="text" id="bkNewType" size="16" placeholder="예: 양도소득세 상담"></label>
-        <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input type="text" id="bkNewField" size="10" placeholder="예: 부동산"></label>
+        <label style="font-size:12px; color:var(--sub);">이름 *<br><input title="예: 홍길동" type="text" id="bkNewName" size="10"></label>
+        <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" size="14" placeholder="010-0000-0000"></label>
+        <label style="font-size:12px; color:var(--sub);">유형<br><input title="예: 양도소득세 상담" type="text" id="bkNewType" size="16"></label>
+        <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input title="예: 부동산" type="text" id="bkNewField" size="10"></label>
         <div style="display:flex; gap:8px;">
           <label style="font-size:12px; color:var(--sub);">날짜<br><input type="date" id="bkNewDate"></label>
           <label style="font-size:12px; color:var(--sub);">시간<br><input type="time" id="bkNewTime" style="width:100px;"></label>
@@ -238,7 +238,7 @@
     });
     h += '<div id="bkResWhen" style="display:none; gap:8px; margin-top:8px;"><label style="font-size:12px; color:var(--sub);">새 날짜<br><input type="date" id="bkResDate"></label><label style="font-size:12px; color:var(--sub);">새 시간<br><input type="time" id="bkResTime"></label></div>' +
       '<div id="bkResSmsRow" style="display:none; margin-top:8px; font-size:13px;"><label style="cursor:pointer;"><input type="checkbox" id="bkResSms"> 고객에게 문자 보내기</label><div id="bkResSmsText" style="color:var(--sub); font-size:12.5px; margin-top:2px;"></div></div>' +
-      '<label style="font-size:12px; color:var(--sub); margin-top:8px;">메모(선택)<br><textarea id="bkResMemo" rows="2" style="width:100%; box-sizing:border-box; font-family:inherit;" placeholder="예: 다음 주 서류 가지고 다시 오기로"></textarea></label>' +
+      '<label style="font-size:12px; color:var(--sub); margin-top:8px;">메모(선택)<br><textarea title="예: 다음 주 서류 가지고 다시 오기로" id="bkResMemo" rows="2" style="width:100%; box-sizing:border-box; font-family:inherit;"></textarea></label>' +
       (b.resultMemo ? '<div style="font-size:12px; color:var(--sub); white-space:pre-wrap; margin-top:4px;">지난 기록\n' + esc(b.resultMemo) + '</div>' : '') +
       '<div style="display:flex; gap:8px; margin-top:12px;"><button type="button" class="save-btn" id="bkResSave">저장</button><button type="button" class="ghost-btn" data-bk-close="1">닫기</button></div>';
     var ov = bookingOpenModal_('예약 결과 적기', h, 460);

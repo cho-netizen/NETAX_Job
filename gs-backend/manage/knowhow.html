@@ -1,5 +1,5 @@
 <!-- ============================================================
-     [2026.10.20] 🧭 시스템 관리 안 📚 지침·템플릿 정비 — 세무사님 "지침서·검토서·보고서·의뢰서 템플릿이 노하우의 최종 결정체…
+     [2026.10.20] 시스템 관리 안 📚 지침·템플릿 정비 — 세무사님 "지침서·검토서·보고서·의뢰서 템플릿이 노하우의 최종 결정체…
      지속적으로 만들도록 하는 장치를 마련하라", "기존 파일을 점검하여 수정할 것은 수정하고 폐기할 것은 폐기하고 새로 만들 것은 만들어야 한다".
      서버는 KnowHow.js(knh_* 동작). 이 파일은 settings.html의 🧭 카드(#stSysAdminCard) 안, 파일 목록(#stSysAdminBody) 위에 제 구획을 스스로 끼운다
      (sysadmin.html을 고치는 다른 작업과 겹치지 않게). 대시보드 한 줄(#dashKnhCard)도 여기서 채운다.
@@ -280,7 +280,7 @@
   function viewFile_(f){
     var old = document.getElementById('khViewOverlay'); if (old) old.remove();
     var ov = document.createElement('div'); ov.id = 'khViewOverlay'; ov.className = 'modal-overlay';
-    ov.innerHTML = '<div class="modal-panel kh-view-panel"><div class="modal-head"><span>' + esc_(f.kind + ' · ' + f.name) + '</span><span class="modal-close" data-khv="close">✕</span></div><div class="kh-view-body" id="khVBody"><div class="kh-note" style="padding:14px;">불러오는 중…</div></div></div>';
+    ov.innerHTML = '<div class="modal-panel kh-view-panel"><div class="modal-head"><span>' + esc_(f.kind + ' · ' + f.name) + '</span><span class="modal-close" title="닫기" role="button" data-khv="close">✕</span></div><div class="kh-view-body" id="khVBody"><div class="kh-note" style="padding:14px;">불러오는 중…</div></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener('click', function(e){ if (e.target === ov || (e.target.closest('[data-khv]'))) ov.remove(); });
     callGas('readFile', { fileId: f.fileId }).then(function(res){ var b = document.getElementById('khVBody'); if (!b) return; if (!res || res.error) { b.innerHTML = '<div class="kh-warn" style="padding:14px;">읽지 못했습니다: ' + esc_(res && res.error || '응답 없음') + '</div>'; return; } mdInto_(b, res.content); });

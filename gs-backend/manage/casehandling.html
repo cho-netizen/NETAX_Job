@@ -2,7 +2,7 @@
   <div class="view-head"><h2>처리개요</h2></div>
   <!-- [2026.10.31] 사건 고르는 줄은 어느 화면이든 같은 모양·같은 자리(제목 줄 바로 아래) — 세무사님 "사건콤보라인이 먼저 윗줄에" -->
   <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <select id="chCaseSelect"><option value="">사건을 선택하세요</option></select>
+    <select id="chCaseSelect"><option value="">사건 선택</option></select>
   </div>
   <div class="view-body">
     <div id="chBody"></div>
@@ -275,12 +275,12 @@
       '</select></div>' +
       '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
       '<div style="display:flex; gap:6px;">' +
-      '<input type="text" class="chAssetField" data-field="assetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(asset.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
+      '<input title="예: OO시 OO구 OO동 123-4" type="text" class="chAssetField" data-field="assetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(asset.assetLocation || '') + '">' +
       '<button type="button" class="chAssetAddrSearchBtn ghost-btn" data-idx="' + idx + '" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
       '</div></div>' +
       '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select class="chAssetField" data-field="assetDong" style="box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      '<select class="chAssetField" data-field="assetDong" style="box-sizing:border-box;"><option value="">직접입력/해당 없음</option>' +
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
@@ -301,10 +301,10 @@
       // 매번 똑같은 값을 일일이 타이핑할 필요가 없게 한다.
       (hideAcqGroup ? '' :
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득계약 구분(선택)</label>' +
-      '<input type="text" class="chAssetField" data-field="취득계약구분" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.취득계약구분 || '') + '" placeholder="예: A계약(다른 물건과 같이 샀으면)"></div>') +
+      '<input title="예: A계약(다른 물건과 같이 샀으면)" type="text" class="chAssetField" data-field="취득계약구분" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.취득계약구분 || '') + '"></div>') +
       (hideTransferGroup ? '' :
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도계약 구분(선택)</label>' +
-      '<input type="text" class="chAssetField" data-field="양도계약구분" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.양도계약구분 || '') + '" placeholder="예: A계약(다른 물건과 같이 팔면)"></div>') +
+      '<input title="예: A계약(다른 물건과 같이 팔면)" type="text" class="chAssetField" data-field="양도계약구분" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.양도계약구분 || '') + '"></div>') +
       '</div>';
   }
 
@@ -525,12 +525,12 @@
       '</select></div>' +
       '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
       '<div style="display:flex; gap:6px;">' +
-      '<input type="text" class="chAssetField" data-field="assetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(asset.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
+      '<input title="예: OO시 OO구 OO동 123-4" type="text" class="chAssetField" data-field="assetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(asset.assetLocation || '') + '">' +
       '<button type="button" class="chAssetAddrSearchBtn ghost-btn" data-idx="' + idx + '" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
       '</div></div>' +
       '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select class="chAssetField" data-field="assetDong" style="box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      '<select class="chAssetField" data-field="assetDong" style="box-sizing:border-box;"><option value="">직접입력/해당 없음</option>' +
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
@@ -579,7 +579,7 @@
     if (!fields){
       return '<div class="nx-l3" style="margin-top:0;">사건처리개시 — 처리대상 · 처리방향</div>' +
         '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상<span class="tc-x" title="무엇을 처리하는지">(무엇을 처리하는지)</span></label>' +
-        '<input type="text" id="chEditTarget" placeholder="예: OO아파트 매각건의 양도소득세 신고" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box;">';
+        '<input title="예: OO아파트 매각건의 양도소득세 신고" type="text" id="chEditTarget" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box;">';
     }
     var overview = c._chOverviewWorking = Object.assign({}, c.사건개요 || {});
     // [2026.10.30] 불복 사건개요서가 생기면서 예전 「처리대상」 한 줄 칸이 화면에서 빠진다 — 이미 적어 둔 처리대상 글이 있고 쟁점 요지가 비어 있으면
@@ -650,7 +650,7 @@
         chSelectedId = wantId;
         renderChBody_();
       }
-    }).catch(function(){ chCaseSelectEl.innerHTML = '<option value="">불러오지 못했습니다</option>'; });
+    }).catch(function(){ chCaseSelectEl.innerHTML = '<option value="">불러오지 못함</option>'; });
   }
 
   // [2026.10.22 묶음 ㅁ4] 사건이 100개를 넘어(완료 포함) 콤보만으로 못 찾는다(가상양도7 표 8: 한글 타이핑 안 됨) — 글자 검색칸 + "진행 중만"(기본 켬). 고른 사건이 걸러지면 그 사건은 목록에 남긴다
@@ -784,7 +784,7 @@
       '<div class="card">' +
       chBuildOverviewCardHtml_(c) +
       '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향<span class="tc-x" title="법령·예규·판례를 검토해 어떻게 처리할지">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
-      '<textarea id="chEditDirection" placeholder="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
+      '<textarea title="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" id="chEditDirection" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
       '<div style="margin-top:8px; text-align:right;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
       // [2026.10.18 탭연결 7번] 처리 중에도 기한(법정일·처리시한)과 작업관리 하위업무가 보이고, 끝낸 하위업무는 여기서 바로 체크한다
@@ -940,7 +940,7 @@
       if (typeof goToLawSearch_ === 'function') goToLawSearch_(c.id);
     });
     chBindGasCard_(c); // [2026.10.31] 사건 현황 칸·🤖 넥스 줄
-    chStripDock_(); setTimeout(chStripDock_, 800); // 📒 장부 띠를 그 칸 맨 위로(띠가 늦게 붙는 첫 열기도)
+    chStripDock_(); setTimeout(chStripDock_, 800); // 장부 띠를 그 칸 맨 위로(띠가 늦게 붙는 첫 열기도)
     document.getElementById('chTaxCalcOpenBtn').addEventListener('click', function(){
       if (typeof goToTaxCalc_ === 'function') goToTaxCalc_(c.id);
     });
@@ -1072,8 +1072,8 @@
         newLogFormWrap.style.display = 'flex';
         var todayStr = nxLocalDateStr_();
         newLogFormWrap.innerHTML =
-          '<input type="date" id="chNewLogDate" value="' + todayStr + '">' +
-          '<input type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
+          '<input title="날짜" type="date" id="chNewLogDate" value="' + todayStr + '">' +
+          '<input title="진행 내용" type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
           '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다">' +
           '<button type="button" id="chAddLog" class="save-btn">추가</button>' +
           '<button type="button" id="chAddLogCancel" class="ghost-btn">취소</button>';
@@ -1180,8 +1180,8 @@
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
           '<input type="date" id="chNewPayDate" title="날짜(생략하면 오늘)">' +
-          '<input type="number" id="chNewPayAmount" placeholder="금액" size="8">' +
-          '<select id="chNewPayReceipt">' +
+          '<input title="금액(원)" type="number" id="chNewPayAmount" placeholder="금액" size="8">' +
+          '<select title="증빙" id="chNewPayReceipt">' +
           '<option value="">수취증빙 선택</option>' +
           '<option value="현금영수증">현금영수증</option>' +
           '<option value="세금계산서">세금계산서</option>' +
@@ -1258,12 +1258,12 @@
         if ((r.알림 || []).length) h += '<div style="background:#fff4e0; color:#7a5c14; border-radius:6px; padding:6px 8px; margin-bottom:6px;"><b>⚠ GAS 알림</b><br>' + r.알림.map(function(a){ return '· ' + esc(a); }).join('<br>') + btn('seen', '확인했어요', ' data-who="gas"') + '</div>';
         // 서류 쪽 사실(새 서류·읽을 목록·아직 안 읽음) — 도구는 증빙확보에 있다
         var nx = r.다음 || [];
-        if (nx.length) h += nx.map(function(n){ return '<div style="margin:2px 0;">· ' + esc(n.text) + (n.do === 'scope' ? btn('scope', '📁 증빙확보에서 📂 읽을 목록') : n.do === 'read' ? btn('read', '📁 증빙확보에서 📖 서류 읽기') : '') + '</div>'; }).join('');
+        if (nx.length) h += nx.map(function(n){ return '<div style="margin:2px 0;">· ' + esc(n.text) + (n.do === 'scope' ? btn('scope', '서류 탭의 읽을 목록') : n.do === 'read' ? btn('read', '서류 탭에서 서류 읽기') : '') + '</div>'; }).join('');
         // 만든 결과물(있는 것만) — 없는 것을 할 일로 꼽지 않는다
         var parts = [];
         if (r.계산 && r.계산.세액 != null) parts.push('세액 <b>' + Number(r.계산.세액).toLocaleString('ko-KR') + '원</b>(' + esc(r.계산.날짜) + ')');
         if (r.서식 && r.서식.파일) parts.push('서식 PDF' + (r.서식.서식수 ? ' ' + r.서식.서식수 + '개' : '') + ' <a href="' + drive(r.서식.파일) + '" target="_blank" rel="noopener">[열기]</a>');
-        if (r.검토서 && r.검토서.파일) parts.push('종합검토서 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a>' + btn('writer', '✍ 문서작성에서 열기'));
+        if (r.검토서 && r.검토서.파일) parts.push('종합검토서 <a href="' + drive(r.검토서.파일) + '" target="_blank" rel="noopener">[열기]</a>' + btn('writer', '보고서 탭에서 열기'));
         if (parts.length) h += '<div style="margin-top:4px;">만든 것: ' + parts.join(' · ') + '</div>';
         // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태
         var w = r.서류변동 || null;
@@ -1353,7 +1353,7 @@
     if (!c.폴더ID){
       // [2026.10.18 탭연결 1번] 막다른 문구 대신 할 일을 알려준다 — 메모·증빙확보 버튼을 누르면 업무유형을 물어 폴더를 만든다
       el.textContent = (String(c.업무유형 || '') === '상담')
-        ? '상담 사건이라 아직 사건 폴더가 없습니다 — 메모·증빙을 올리려면 "📝 메모"나 "📁 증빙확보"를 눌러 업무유형(신고·자문)을 정하세요.'
+        ? '상담 사건이라 아직 사건 폴더가 없습니다 — 메모·증빙을 올리려면 「의뢰 메모」나 「서류」 탭를 눌러 업무유형(신고·자문)을 정하세요.'
         : '이 사건은 Drive 폴더가 없어 메모를 확인할 수 없습니다.';
     } else {
       callGas('listFolder', { folderId: c.폴더ID }).then(function(res){
@@ -1458,7 +1458,7 @@
     overlay.className = 'modal-overlay';
     overlay.style.display = 'flex';
     overlay.innerHTML = '<div class="modal-panel" style="width:min(560px, 94vw); max-height:84vh; display:flex; flex-direction:column;">' +
-      '<div class="modal-head"><span>🎙 보관함 상담 녹음 → 이 사건</span><span class="modal-close" data-x="1">✕</span></div>' +
+      '<div class="modal-head"><span>보관함 상담 녹음 → 이 사건</span><span class="modal-close" title="닫기" role="button" data-x="1">✕</span></div>' +
       '<div class="modal-body" style="overflow-y:auto;" id="chCiBody"><div class="spinner">보관함 읽는 중…</div></div></div>';
     document.body.appendChild(overlay);
     var close = function(){ overlay.remove(); };
@@ -1469,7 +1469,7 @@
       if (!res || res.error){ body.innerHTML = '<div class="log-empty">' + escapeHtml((res && res.error) || '보관함을 읽지 못했습니다.') + '</div>'; return; }
       var items = res.items || [];
       if (!items.length){ body.innerHTML = '<div class="log-empty">보관함이 비어 있습니다.</div>'; return; }
-      body.innerHTML = '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">옮길 녹음을 고르세요. 상담내용(.md)은 이 사건 폴더 바로 안(📝 메모에서 보임), 원본 음성은 사건 폴더/상담녹음/으로 옮깁니다.</div>' +
+      body.innerHTML = '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">옮길 녹음을 고르세요. 상담내용(.md)은 이 사건 폴더 바로 안(의뢰 메모에서 보임), 원본 음성은 사건 폴더/상담녹음/으로 옮깁니다.</div>' +
         items.map(function(it, i){
           var mine = it.caseName && it.caseName === c.사건명;
           return '<label style="display:flex; gap:8px; align-items:flex-start; padding:6px 0; border-bottom:1px solid var(--line);">' +
@@ -1598,7 +1598,7 @@
         (rows || '<div class="log-empty">체크리스트가 없습니다.</div>') +
         (extra.length ? '<div style="font-size:12px; color:var(--sub); margin-top:8px;">기타 제출 ' + extra.length + '건: ' + escapeHtml(extra.map(function(f){ return f.fileName; }).join(', ')) + '</div>' : '') +
         '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">' +
-        '<input type="text" id="chMyNewItem" placeholder="추가로 요청할 자료명" style="flex:1; min-width:140px;">' +
+        '<input title="추가로 요청할 자료" type="text" id="chMyNewItem" placeholder="추가로 요청할 자료명" style="flex:1; min-width:140px;">' +
         '<button type="button" id="chMyAddItemBtn" class="save-btn">추가</button>' +
         '</div>';
 

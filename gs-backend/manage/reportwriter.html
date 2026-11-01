@@ -157,17 +157,7 @@
   }
   #previewPane > *{ direction: ltr; }
 
-  /* 편집창・미리보기 스크롤바를 동일한 모양(얇고 은은하게)으로 통일 */
-  #mdInput, #previewPane{
-    scrollbar-width: thin;
-    scrollbar-color: #b0b6c0 transparent;
-  }
-  #mdInput::-webkit-scrollbar, #previewPane::-webkit-scrollbar{ width:10px; height:10px; }
-  #mdInput::-webkit-scrollbar-track, #previewPane::-webkit-scrollbar-track{ background:transparent; }
-  #mdInput::-webkit-scrollbar-thumb, #previewPane::-webkit-scrollbar-thumb{
-    background:#b0b6c0; border-radius:6px; border:2px solid transparent; background-clip:padding-box;
-  }
-  #mdInput::-webkit-scrollbar-thumb:hover, #previewPane::-webkit-scrollbar-thumb:hover{ background:#8f96a3; background-clip:padding-box; }
+  /* [2026.11.02] 편집창·미리보기 스크롤 막대 모양은 style.html "스크롤 막대 한 모양"의 기준이 되어 그쪽으로 옮김 */
 
   #previewControls{
     position:fixed; top:58px; right:24px; z-index:80;
@@ -283,7 +273,7 @@
 
 <div class="view-head"><h2>문서작성</h2></div>
 <div id="rwCaseBar" class="tb-row" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--bar-bg); color:var(--ink); font-size:12.5px; border-bottom:1px solid var(--line); flex-wrap:wrap;">
-  <select id="rwCaseSelect" style="font-size:12.5px;"><option value="">사건을 선택하세요</option></select>
+  <select id="rwCaseSelect" style="font-size:12.5px;"><option value="">사건 선택</option></select>
   <span id="rwCaseReports" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"></span>
 </div>
 
@@ -353,11 +343,11 @@
       <button id="btnMdHelp" title="마크다운 문법 도움말 전체보기">❓</button>
     </div>
     <div id="findReplaceBar" style="display:none;">
-      <input type="text" id="findInput" placeholder="찾기">
+      <input title="찾을 말" type="text" id="findInput" placeholder="찾기">
       <span id="findStatus"></span>
       <button id="findPrev" title="이전 (Shift+Enter)">◀</button>
       <button id="findNext" title="다음 (Enter)">▶</button>
-      <input type="text" id="replaceInput" placeholder="바꾸기">
+      <input title="바꿀 말" type="text" id="replaceInput" placeholder="바꾸기">
       <button id="replaceOne" title="현재 항목만 바꾸기">바꾸기</button>
       <button id="replaceAllBtn" title="전체 바꾸기">모두 바꾸기</button>
     </div>

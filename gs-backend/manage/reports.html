@@ -36,15 +36,15 @@
       <div class="nx-help">진행 중인 사건 고객에게는 처리개요의 <b>고객창구(my.netax.kr)</b>로 보고서를 보여주는 것이 기본입니다. 이곳(rpt.netax.kr 열람번호)은 고객창구가 없는 예전 고객·단건 발급용입니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
         <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">그 사건의 보고서 파일</label>
-          <select id="repNewCaseFile" disabled><option value="">사건을 먼저 고르세요</option></select></div>
+          <select id="repNewCaseFile" disabled><option value="">사건 먼저 선택</option></select></div>
       </div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end;">
         <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">고객명 *</label>
-          <input type="text" id="repNewName" style="width:120px;" placeholder="예: 홍길동"></div>
+          <input title="예: 홍길동" type="text" id="repNewName" style="width:120px;"></div>
         <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">명칭</label>
-          <input type="text" id="repNewTitle" style="width:160px;" placeholder="예: 상속세 자문보고서"></div>
+          <input title="예: 상속세 자문보고서" type="text" id="repNewTitle" style="width:160px;"></div>
         <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">유형</label>
-          <input type="text" id="repNewType" list="repTypeOptions" style="width:130px;" placeholder="예: 자문보고서">
+          <input title="예: 자문보고서" type="text" id="repNewType" list="repTypeOptions" style="width:130px;">
           <datalist id="repTypeOptions">
             <option value="자문보고서"><option value="신고보고서"><option value="검토조서">
             <option value="진행보고서"><option value="처리보고서"><option value="청구서">
@@ -116,7 +116,7 @@
   function repOnCaseChange_(){
     var sel = document.getElementById('repNewCase'), fileSel = document.getElementById('repNewCaseFile');
     var c = repCases_.filter(function(x){ return x.id === sel.value; })[0];
-    if (!c){ fileSel.innerHTML = '<option value="">사건을 먼저 고르세요</option>'; fileSel.disabled = true; return; }
+    if (!c){ fileSel.innerHTML = '<option value="">사건 먼저 선택</option>'; fileSel.disabled = true; return; }
     document.getElementById('repNewName').value = c.고객명 || '';
     fileSel.disabled = true;
     fileSel.innerHTML = '<option value="">불러오는 중…</option>';

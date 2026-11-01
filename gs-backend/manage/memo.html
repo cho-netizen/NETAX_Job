@@ -53,7 +53,7 @@
     <span id="memoFindStatus"></span>
     <button type="button" id="memoFindPrev" title="이전 (Shift+Enter)">◀</button>
     <button type="button" id="memoFindNext" title="다음 (Enter)">▶</button>
-    <input type="text" id="memoReplaceInput" placeholder="바꾸기">
+    <input title="바꿀 말" type="text" id="memoReplaceInput" placeholder="바꾸기">
     <button type="button" id="memoReplaceOne" title="현재 항목만 바꾸기">바꾸기</button>
     <button type="button" id="memoReplaceAllBtn" title="전체 바꾸기">모두 바꾸기</button>
   </div>
@@ -143,7 +143,7 @@
   <div class="box">
     <div id="memoSaveStepTitle" style="font-weight:700; color:var(--navy); font-size:14px;">고객명을 입력하세요</div>
     <div id="memoSaveStepDesc" style="font-size:11.5px; color:var(--sub);">이미 있는 사건 폴더(예: "홍길동 양도")가 있으면 그 사건파일에 이어서 저장되고, 없으면 고객명만으로 새 폴더가 만들어집니다. <b>비워두고 저장하면</b> 일반메모로 분류되어 파일명을 따로 입력받습니다.</div>
-    <input type="text" id="memoFolderInput" placeholder="예: 김철수 (비워두면 일반메모)">
+    <input title="예: 김철수" type="text" id="memoFolderInput" placeholder="고객명(비우면 일반메모)">
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoSaveCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoSaveConfirm" class="save-btn">저장</button>
@@ -160,14 +160,14 @@
     <div style="font-size:11.5px; color:var(--sub);">사건을 만들면서 지금 작성한 사건개요를 바로 반영합니다.</div>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoOvNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoOvNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
-    <select id="memoOvNewUptype" style="box-sizing:border-box;"></select>
+    <select title="업무유형" id="memoOvNewUptype" style="box-sizing:border-box;"></select>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style=" box-sizing:border-box;"></label>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoOvNewCaseConfirm" class="save-btn">등록하고 반영</button>
     </div>
     <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 적용</div>
-    <select id="memoOvApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
+    <select id="memoOvApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건 선택</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyConfirm" class="save-btn">기존 사건에 적용</button>
     </div>
@@ -185,7 +185,7 @@
     <div style="font-size:11.5px; color:var(--sub);">지금 작성한 의뢰서 내용을 그 사건의 폴더에 파일로 저장합니다.</div>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoReqNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoReqNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
-    <select id="memoReqNewSemok" style="box-sizing:border-box;">
+    <select title="세목" id="memoReqNewSemok" style="box-sizing:border-box;">
       <option value="transfer">양도</option>
       <option value="gift">증여</option>
       <option value="inheritance">상속</option>
@@ -199,7 +199,7 @@
       <button type="button" id="memoReqNewCaseConfirm" class="save-btn">등록하고 저장</button>
     </div>
     <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 저장</div>
-    <select id="memoReqApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
+    <select id="memoReqApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건 선택</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoReqApplyConfirm" class="save-btn">기존 사건에 저장</button>
     </div>
@@ -473,7 +473,7 @@
   var SAVE_STEP_LABELS_DEFAULT_ = {
     title: '고객명을 입력하세요',
     desc: '이미 있는 사건 폴더(예: "홍길동 양도")가 있으면 그 사건파일에 이어서 저장되고, 없으면 고객명만으로 새 폴더가 만들어집니다. <b>비워두고 저장하면</b> 일반메모로 분류되어 파일명을 따로 입력받습니다.',
-    placeholder: '예: 김철수 (비워두면 일반메모)'
+    placeholder: '고객명(비우면 일반메모)'
   };
   function openSaveDialog(content, onDone, extraFile){
     pendingSaveContent = content;
@@ -1605,7 +1605,7 @@
     var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '자문', '상담'];
     uptypeSel.innerHTML = uptypeOptions.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
     var applySel = document.getElementById('memoOvApplyCaseSelect');
-    applySel.innerHTML = '<option value="">사건을 선택하세요</option>';
+    applySel.innerHTML = '<option value="">사건 선택</option>';
     callGas('work_get_cases', {}).then(function(res){
       var cases = (res.cases || []).filter(function(c){ return c.세목 === memoOvCurrentSemok_; });
       memoOvApplyCases_ = cases;
@@ -2106,16 +2106,16 @@
       if (res.error){ memoReqTemplateSelectEl.innerHTML = '<option value="">' + escapeHtml(res.error) + '</option>'; return; }
       memoReqTemplates_ = res.templates || [];
       if (!memoReqTemplates_.length){
-        memoReqTemplateSelectEl.innerHTML = '<option value="">의뢰서템플릿 폴더에 파일이 없습니다</option>';
+        memoReqTemplateSelectEl.innerHTML = '<option value="">파일 없음</option>';
         return;
       }
       // [2026.10.22 묶음 ㅁ4] 자주 쓰는 신고 3개(양도·상속·증여)를 맨 위에 — 목록 27개 가나다순에 섞여 찾기 어려웠다(가상양도7 표 4)
       var memoReqTplRank_ = function(n){ n = String(n || ''); return /양도\s*신고/.test(n) ? 0 : /상속\s*신고/.test(n) ? 1 : /증여\s*신고/.test(n) ? 2 : 9; };
       var memoReqTplSorted_ = memoReqTemplates_.slice().sort(function(a, b){ return (memoReqTplRank_(a.name) - memoReqTplRank_(b.name)) || String(a.name).localeCompare(String(b.name), 'ko'); });
-      memoReqTemplateSelectEl.innerHTML = '<option value="">템플릿을 선택하세요</option>' +
+      memoReqTemplateSelectEl.innerHTML = '<option value="">템플릿 선택</option>' +
         memoReqTplSorted_.map(function(t){ return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('');
     }).catch(function(err){
-      memoReqTemplateSelectEl.innerHTML = '<option value="">불러오기 실패</option>';
+      memoReqTemplateSelectEl.innerHTML = '<option value="">불러오지 못함</option>';
       toast('템플릿 목록을 불러오지 못했습니다: ' + (err && err.message ? err.message : err));
     });
   }
@@ -2212,8 +2212,8 @@
     applySel.innerHTML = '<option value="">불러오는 중…</option>';
     callGas('work_get_cases', {}).then(function(res){
       memoReqAllCases_ = res.cases || [];
-      applySel.innerHTML = buildCaseOptionsHtml_(memoReqAllCases_, { placeholder: '사건을 선택하세요' });
-    }).catch(function(){ applySel.innerHTML = '<option value="">불러오기 실패</option>'; });
+      applySel.innerHTML = buildCaseOptionsHtml_(memoReqAllCases_, { placeholder: '사건 선택' });
+    }).catch(function(){ applySel.innerHTML = '<option value="">불러오지 못함</option>'; });
 
     memoReqApplyStepEl.style.display = 'flex';
   });
@@ -2310,7 +2310,7 @@
       var t = document.createElement('span'); t.textContent = '✅ 「' + String(c.사건명 || c.고객명 || '') + '」 사건을 등록했습니다 — 다음:'; bar.appendChild(t);
       var b1 = document.createElement('button'); b1.type = 'button'; b1.className = 'save-btn'; b1.textContent = '처리개요로 가기';
       b1.addEventListener('click', function(){ if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
-      var b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'ghost-btn'; b2.textContent = '증빙 넣기·📖 서류 읽기';
+      var b2 = document.createElement('button'); b2.type = 'button'; b2.className = 'ghost-btn'; b2.textContent = '증빙 넣기·서류 읽기';
       b2.addEventListener('click', function(){ if (typeof nxAiOpenJobView_ === 'function') nxAiOpenJobView_('docs', c.id); else if (typeof goToView_ === 'function') goToView_('docs'); });
       var b3 = document.createElement('button'); b3.type = 'button'; b3.className = 'ghost-btn'; b3.textContent = '닫기'; b3.addEventListener('click', function(){ bar.remove(); });
       bar.appendChild(b1); bar.appendChild(b2); bar.appendChild(b3);

@@ -18,7 +18,7 @@
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
         <input type="date" id="dashNewTaskDue" style="display:none;">
-        <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
+        <input title="새 할일" type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
       <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
       <!-- [2026.10.18 탭연결 16번] 구글 할일과 작업관리 하위업무가 서로 다른 목록이라 한쪽만 보게 됐다 — 같은 카드에서 사건 하위업무(완료 전)도 함께 본다 -->
@@ -35,15 +35,15 @@
       </h3>
       <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
       <div class="dash-range">
-        <span class="dash-step">오늘 전 <button type="button" data-step-for="dashCalRangeBefore" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashCalRangeBefore" min="0" max="365" value="0"><button type="button" data-step-for="dashCalRangeBefore" data-step="1" title="하루 늘리기">+</button> 일</span>
-        <span class="dash-step">~ 후 <button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashCalRangeAfter" min="0" max="365" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button> 일</span>
+        <span class="dash-step">오늘 전 <button type="button" data-step-for="dashCalRangeBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘 전 며칠" type="number" id="dashCalRangeBefore" min="0" max="365" value="0"><button type="button" data-step-for="dashCalRangeBefore" data-step="1" title="하루 늘리기">+</button> 일</span>
+        <span class="dash-step">~ 후 <button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘 후 며칠" type="number" id="dashCalRangeAfter" min="0" max="365" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button> 일</span>
       </div>
       <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card dash-cover">
       <h3>마감임박 작업</h3>
       <div class="dash-range">
-        <span class="dash-step">오늘부터 후 <button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashDeadlineAfter" min="0" max="365" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
+        <span class="dash-step">오늘부터 후 <button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지" type="number" id="dashDeadlineAfter" min="0" max="365" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
       </div>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -61,7 +61,7 @@
         <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">확인</button>
       </h3>
       <div class="dash-range">
-        <span class="dash-step">오늘부터 전 <button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input type="number" id="dashPayBefore" min="0" max="3650" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button> 일 수금</span>
+        <span class="dash-step">오늘부터 전 <button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 전까지" type="number" id="dashPayBefore" min="0" max="3650" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button> 일 수금</span>
       </div>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -76,7 +76,7 @@
         <button type="button" id="dashEmailsReadAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 읽음</button>
       </h3>
       <div class="dash-range">
-        <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
+        <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input title="몇 통" type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
       </div>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -111,7 +111,7 @@
       <div class="nx-help">세무사님이 확인·결정하실 일 — 체크·고치기·추가가 원본 파일(_확인조치사항.md)에 바로 저장됩니다.</div>
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <select id="dashFollowSec" style="flex:0 1 180px;" title="어느 절에 넣을지"></select>
-        <input type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
+        <input title="새 확인사항" type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
       <div id="dashFollowList"><div class="spinner">불러오는 중…</div></div>
       <style>
@@ -759,7 +759,7 @@
       var textDiv = row.querySelector('.log-text');
       textDiv.innerHTML = '<input type="text" class="dashTaskEditTitle" value="' + esc(t.제목) + '" style="width:100%; box-sizing:border-box; margin-bottom:4px;">'
         + '<div style="display:flex; gap:6px; align-items:center;">'
-        + '<input type="date" class="dashTaskEditDue" value="' + esc(t.마감일 || '') + '" style="max-width:150px;">'
+        + '<input title="마감일" type="date" class="dashTaskEditDue" value="' + esc(t.마감일 || '') + '" style="max-width:150px;">'
         + '<button type="button" class="save-btn dashTaskEditSave sm">저장</button>'
         + '<button type="button" class="ghost-btn dashTaskEditCancel sm">취소</button>'
         + '</div>';
@@ -1057,7 +1057,7 @@
       callGas('ai_judge_get', {}).then(function(j){
         var n = ((j && j.doc && j.doc.항목) || []).filter(function(x){ return x.결정 && x.결정.선택 === '보류'; }).length;
         if (n && askCard) askCard.hidden = false;
-        if (n) box.insertAdjacentHTML('afterbegin', row('⚖️ <b style="color:#b3261e;">법령 판단 대기 — 세무사님 결정 필요 ' + n + '건</b> <a href="#" data-dashgo="settings" data-dashgo-card="stFedCard">설정 → 시스템 관리 → ⚖️ 법령 판단 대기</a>', true));
+        if (n) box.insertAdjacentHTML('afterbegin', row('⚖️ <b style="color:#b3261e;">법령 판단 대기 — 세무사님 결정 필요 ' + n + '건</b> <a href="#" data-dashgo="settings" data-dashgo-card="stFedCard">설정 → 시스템 관리 → 법령 판단 대기</a>', true));
       }).catch(function(){});
       // 🌙 카드 한두 줄
       var rt = r.routine || {}, rl = rt.last, parts = [];

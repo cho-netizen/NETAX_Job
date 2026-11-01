@@ -199,8 +199,8 @@
     addBtn.addEventListener('click', function(){
       formEl.style.display = 'flex';
       formEl.innerHTML =
-        '<input type="text" class="cc-extra-name" placeholder="이름" size="5" style="font-size:12px;">' +
-        '<input type="text" class="cc-extra-phone" placeholder="전화번호" size="13" style="font-size:12px;">' +
+        '<input title="이름" type="text" class="cc-extra-name" placeholder="이름" size="5" style="font-size:12px;">' +
+        '<input title="전화번호" type="text" class="cc-extra-phone" placeholder="전화번호" size="13" style="font-size:12px;">' +
         '<button type="button" class="save-btn cc-extra-confirm sm">추가</button>' +
         '<button type="button" class="ghost-btn cc-extra-cancel sm">취소</button>';
       formEl.querySelector('.cc-extra-phone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
@@ -403,8 +403,8 @@
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
           '<input type="date" id="ccNewPayDate" title="날짜(생략하면 오늘)">' +
-          '<input type="number" id="ccNewPayAmount" placeholder="금액" size="8">' +
-          '<select id="ccNewPayReceipt">' +
+          '<input title="금액(원)" type="number" id="ccNewPayAmount" placeholder="금액" size="8">' +
+          '<select title="증빙" id="ccNewPayReceipt">' +
           '<option value="">수취증빙 선택</option>' +
           '<option value="현금영수증">현금영수증</option>' +
           '<option value="세금계산서">세금계산서</option>' +
@@ -459,7 +459,7 @@
     overlay.style.display = 'flex';
     overlay.innerHTML =
       '<div class="modal-panel" style="width:min(420px, 92vw);">' +
-        '<div class="modal-head"><span>📱 문자 보내기 — ' + escapeHtml(c.성명 || '') + '</span><span class="modal-close" id="csClose">✕</span></div>' +
+        '<div class="modal-head"><span>문자 보내기 — ' + escapeHtml(c.성명 || '') + '</span><span class="modal-close" title="닫기" role="button" id="csClose">✕</span></div>' +
         '<div class="modal-body">' +
           '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">받는 번호: ' + escapeHtml(c.전화번호) + '</div>' +
           '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">파일(현금영수증 등)을 같이 보내려면, 증빙관리에서 그 파일의 공유링크를 복사해 아래 메시지에 붙여넣으세요.</div>' +
@@ -706,9 +706,9 @@
     var receiptOptions = ['', '현금영수증', '세금계산서', '신용카드'];
     row.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
-      '<input type="date" class="payEditDate" value="' + escapeHtml(pay.날짜 || '') + '" style="font-size:12px;">' +
-      '<input type="number" class="payEditAmount" placeholder="금액" value="' + (pay.금액 || '') + '" size="' + Math.max(5, String(pay.금액 || '').length + 1) + '" style="font-size:12px;">' +
-      '<select class="payEditReceipt" style="font-size:12px;">' +
+      '<input title="날짜" type="date" class="payEditDate" value="' + escapeHtml(pay.날짜 || '') + '" style="font-size:12px;">' +
+      '<input title="금액(원)" type="number" class="payEditAmount" placeholder="금액" value="' + (pay.금액 || '') + '" size="' + Math.max(5, String(pay.금액 || '').length + 1) + '" style="font-size:12px;">' +
+      '<select title="증빙" class="payEditReceipt" style="font-size:12px;">' +
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (pay.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
       '</select>' +
       '<select class="payEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option>' +
@@ -756,7 +756,7 @@
     overlay.style.display = 'flex';
     overlay.innerHTML =
       '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>🔁 중복 고객 점검</span><span class="modal-close" id="cdaClose">✕</span></div>' +
+        '<div class="modal-head"><span>중복 고객 점검</span><span class="modal-close" title="닫기" role="button" id="cdaClose">✕</span></div>' +
         '<div class="modal-body" style="overflow-y:auto;">' +
           '<div id="cdaBody">확인 중…</div>' +
         '</div>' +
@@ -835,7 +835,7 @@
     overlay.style.display = 'flex';
     overlay.innerHTML =
       '<div class="modal-panel" style="width:min(520px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>🔢 숫자 이름 고객 정리</span><span class="modal-close" id="cdnClose">✕</span></div>' +
+        '<div class="modal-head"><span>숫자 이름 고객 정리</span><span class="modal-close" title="닫기" role="button" id="cdnClose">✕</span></div>' +
         '<div class="modal-body" style="overflow-y:auto;"><div id="cdnBody">확인 중…</div></div>' +
       '</div>';
     document.body.appendChild(overlay);
@@ -904,7 +904,7 @@
     if (!candidates.length){
       overlay.innerHTML =
         '<div class="modal-panel" style="width:min(600px, 96vw);">' +
-          '<div class="modal-head"><span>🗂 사건폴더 전수조사 결과</span><span class="modal-close" id="csrClose">✕</span></div>' +
+          '<div class="modal-head"><span>사건폴더 전수조사 결과</span><span class="modal-close" title="닫기" role="button" id="csrClose">✕</span></div>' +
           '<div class="modal-body"><div class="log-empty">' + scanNote + '사건개요에 없는 새 이름을 파일명에서 찾지 못했습니다.</div></div>' +
         '</div>';
       document.body.appendChild(overlay);
@@ -913,7 +913,7 @@
       return;
     }
     var html = '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-      '<div class="modal-head"><span>🗂 사건폴더 전수조사 결과(' + candidates.length + '건)</span><span class="modal-close" id="csrClose">✕</span></div>' +
+      '<div class="modal-head"><span>사건폴더 전수조사 결과(' + candidates.length + '건)</span><span class="modal-close" title="닫기" role="button" id="csrClose">✕</span></div>' +
       '<div class="modal-body" style="overflow-y:auto;">' +
       '<div class="taxcalc-result-note" style="margin-bottom:8px;">' + scanNote + '그 중 사건 폴더 안 파일 이름에서 AI가 찾아낸 이름은 아래와 같습니다. 실제 관계자가 맞는 것만 체크하고 "선택 등록"을 누르세요 — 틀리게 찾은 항목은 체크를 풀면 등록되지 않습니다.</div>' +
       candidates.map(function(c, i){

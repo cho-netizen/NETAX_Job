@@ -39,8 +39,8 @@
   <!-- 글감만들기 -->
   <div id="rhPaneContent" class="rh-pane" style="display:none;">
     <div class="memo-toolbar tb-row" style="border-top:none;">
-      <select id="rhContentSourceSelect" style="flex:1;"><option value="">먼저 "모아보기"에서 보고서를 확인한 뒤 여기서 골라주세요</option></select>
-      <select id="rhContentStyleSelect">
+      <select id="rhContentSourceSelect" style="flex:1;" title="먼저 「모아보기」에서 보고서를 확인한 뒤 고릅니다"><option value="">보고서 선택</option></select>
+      <select title="글 모양" id="rhContentStyleSelect">
         <option value="naver_blog">네이버 블로그(긴 글)</option>
         <option value="naver_news">네이버 소식(플레이스, 짧게)</option>
         <option value="google_blog">구글 블로그(긴 글)</option>
@@ -79,7 +79,7 @@
        파일은 드라이브 0 NETAX/콘텐츠/쇼츠/(편마다 폴더, _기준그림 폴더에 순돌이 원본 그림) -->
   <div id="rhPaneShorts" class="rh-pane" style="display:none;">
     <div class="memo-toolbar tb-row" style="border-top:none; flex-wrap:wrap;">
-      <select id="rhShortsSourceSelect" style="flex:1;"><option value="">보고서를 골라 쇼츠 대본 만들기</option></select>
+      <select title="쇼츠 대본을 만들 보고서" id="rhShortsSourceSelect" style="flex:1;"><option value="">보고서 선택</option></select>
       <button type="button" id="rhShortsMakeBtn" class="save-btn" title="고른 보고서로 순돌이 쇼츠 대본(질문·답·정리, 45~55초)을 만들어 새 편 폴더에 저장 — AI 사용(편당 수십 원)"><span class="btn-tx">대본 만들기</span></button>
       <button type="button" id="rhShortsNewBtn" class="ghost-btn" title="대본 없이 빈 편 폴더만 만들기"><span class="btn-tx">＋ 빈 편</span></button>
       <button type="button" id="rhShortsFolderBtn" class="ghost-btn" title="드라이브 쇼츠 폴더 열기"><span class="btn-tx">쇼츠 폴더</span></button>
@@ -233,7 +233,7 @@
       overlay.style.display = 'flex';
       overlay.innerHTML =
         '<div class="modal-panel" style="width:min(820px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-          '<div class="modal-head"><span>🧹 파일명 정비</span><span class="modal-close" id="rhfcClose">✕</span></div>' +
+          '<div class="modal-head"><span>파일명 정비</span><span class="modal-close" title="닫기" role="button" id="rhfcClose">✕</span></div>' +
           '<div class="modal-body" style="overflow-y:auto;">' +
             '<div id="rhfcBody">확인 중… (파일이 많으면 시간이 걸릴 수 있습니다)</div>' +
           '</div>' +
@@ -347,7 +347,7 @@
     // ---- 글감만들기 ----
     function rhRefreshContentSourceOptions_(){
       var sel = document.getElementById('rhContentSourceSelect');
-      sel.innerHTML = '<option value="">보고서를 선택하세요</option>';
+      sel.innerHTML = '<option value="">보고서 선택</option>';
       rhAllFiles_.forEach(function(f){
         var opt = document.createElement('option');
         opt.value = f.id;
@@ -357,7 +357,7 @@
       // 쇼츠 탭의 보고서 고르기도 같은 목록으로
       var ss = document.getElementById('rhShortsSourceSelect');
       if (ss){
-        ss.innerHTML = '<option value="">보고서를 골라 쇼츠 대본 만들기</option>' + Array.prototype.slice.call(sel.options, 1).map(function(o){ return '<option value="' + o.value + '">' + esc(o.textContent) + '</option>'; }).join('');
+        ss.innerHTML = '<option value="">보고서 선택</option>' + Array.prototype.slice.call(sel.options, 1).map(function(o){ return '<option value="' + o.value + '">' + esc(o.textContent) + '</option>'; }).join('');
       }
     }
 

@@ -125,7 +125,7 @@
     overlay.style.display = 'flex';
     overlay.innerHTML =
       '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>💰 완료일-영수증일 보정</span><span class="modal-close" id="wfrClose">✕</span></div>' +
+        '<div class="modal-head"><span>완료일-영수증일 보정</span><span class="modal-close" title="닫기" role="button" id="wfrClose">✕</span></div>' +
         '<div class="modal-body" style="overflow-y:auto;">' +
           '<div id="wfrBody">확인 중…</div>' +
         '</div>' +
@@ -344,8 +344,8 @@
     prefill = prefill || {};
     workCaseDetail.innerHTML =
       '<h3 style="margin-top:0;">새 사건 등록</h3>' +
-      (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🗂 예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
-      (prefill.고객ID ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🙋 고객관리에서 시작 — 저장하면 고객관리의 그 고객에 바로 연결됩니다.</div>' : '') +
+      (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
+      (prefill.고객ID ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">고객에서 시작 — 저장하면 고객의 그 고객에 바로 연결됩니다.</div>' : '') +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
       '<label>고객명(의뢰인) *<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" size="' + Math.max(String(prefill.고객명 || '').length, 8) + '" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" size="' + Math.max(String(prefill.납세자 || '').length, 8) + '" placeholder="(선택)"></label>' +
@@ -558,7 +558,7 @@
       if (newRootFormWrap.style.display === 'none'){
         newRootFormWrap.style.display = 'flex';
         newRootFormWrap.innerHTML =
-          '<input type="text" id="wcNewRootTitle" placeholder="새 하위업무 (예: 자료수집)" style="flex:1; min-width:160px;">' +
+          '<input title="예: 자료수집" type="text" id="wcNewRootTitle" placeholder="새 하위업무" style="flex:1; min-width:160px;">' +
           '<input type="date" id="wcNewRootDue" title="마감일(선택)">' +
           '<button type="button" id="wcAddRoot" class="save-btn">추가</button>' +
           '<button type="button" id="wcAddRootCancel" class="ghost-btn">취소</button>';
@@ -746,7 +746,7 @@
     if (subPending) warnings.push('작업관리 하위업무 중 ' + subPending + '건이 아직 완료 전입니다.');
     var payCheck = callGas('client_get_consult_logs', {}).then(function(res){
       var paid = ((res && res.logs) || []).filter(function(l){ return l.사건ID === c.id && Number(l.금액) > 0; });
-      if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 처리개요 💰 수금 카드나 수금관리에서 이 사건으로 기록하세요.');
+      if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 처리개요 수금 카드나 수금 화면에서 이 사건으로 기록하세요.');
     }).catch(function(){});
     if (!c.폴더ID) return payCheck.then(function(){ return warnings; });
     return payCheck.then(function(){ return callGas('get_case_subfolders', { caseId: c.id }); }).then(function(sub){
@@ -835,8 +835,8 @@
       row.innerHTML =
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">' +
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
-        '<input type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
-        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#b3261e;' : '') + '">' +
+        '<input title="항목 이름" type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
+        '<input title="기한" type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#b3261e;' : '') + '">' +
         '<button type="button" class="ghost-btn wcNodeAddChild sm">+ 하위</button>' +
         '<span class="log-del wcNodeDelete" title="삭제">✕</span>' +
         '</div>' +
@@ -865,8 +865,8 @@
         if (childFormWrap.style.display === 'none'){
           childFormWrap.style.display = 'flex';
           childFormWrap.innerHTML =
-            '<input type="text" class="wcChildTitle" placeholder="세부항목 이름" style="flex:1; min-width:120px; font-size:12.5px;">' +
-            '<input type="date" class="wcChildDue" style="font-size:12px;">' +
+            '<input title="세부항목 이름" type="text" class="wcChildTitle" placeholder="세부항목 이름" style="flex:1; min-width:120px; font-size:12.5px;">' +
+            '<input title="기한" type="date" class="wcChildDue" style="font-size:12px;">' +
             '<button type="button" class="save-btn wcChildSave sm">추가</button>' +
             '<button type="button" class="ghost-btn wcChildCancel sm">취소</button>';
           childFormWrap.querySelector('.wcChildCancel').addEventListener('click', function(){ childFormWrap.style.display = 'none'; childFormWrap.innerHTML = ''; });

@@ -95,6 +95,16 @@
   #sideMenu.peek #sideMenuInner{ right:auto; width:min(var(--side-expanded-w, 190px), 80vw); background:var(--navy); box-shadow:4px 0 14px rgba(0,0,0,.28); }
   html.nx-dark #sideMenu.peek #sideMenuInner{ background:#0b1120; }
   /* [2026.11.01] 스크롤 막대 숨김 → 위·아래 단추(index.html nxSideMenuScrollBtns_) */
+  /* [2026.11.02] 스크롤 막대는 모든 화면 한 모양 — 세무사님 "사실(장부) 속에 데이타가 길 경우 … 가로스크롤바 … 너무 두꺼워 지저분하다. 기존에 있던 다른 스크롤바와 일관성있게 통일하라".
+     기준 = 문서작성 편집창·미리보기에 있던 얇고 은은한 막대(손잡이 6px·회색·마우스를 올리면 진하게). 표 칸 안 막대만 더 얇게(손잡이 4px, 법령 서식 표 칸에 있던 것) — 행 높이가 거의 안 늘게.
+     scrollbar-width·scrollbar-color를 주면 크롬이 아래 모양을 무시하므로 그 둘은 이 모양을 못 그리는 브라우저(파이어폭스)에만 준다. */
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:#b0b6c0; border-radius:6px; border:2px solid transparent; background-clip:padding-box; }
+  ::-webkit-scrollbar-thumb:hover{ background:#8f96a3; background-clip:padding-box; }
+  :is(td, th, .lsi-cell) ::-webkit-scrollbar, :is(td, th, .lsi-cell)::-webkit-scrollbar{ width:6px; height:6px; }
+  :is(td, th, .lsi-cell) ::-webkit-scrollbar-thumb, :is(td, th, .lsi-cell)::-webkit-scrollbar-thumb{ border-width:1px; border-radius:3px; }
+  @supports not selector(::-webkit-scrollbar){ *{ scrollbar-width:thin; scrollbar-color:#b0b6c0 transparent; } }
   #sideMenuInner{ scrollbar-width:none; }
   #sideMenuInner::-webkit-scrollbar{ display:none; }
   .sm-scroll{ display:none; position:absolute; left:0; width:min(var(--side-expanded-w, 190px), 80vw); height:22px; border:none; padding:0; z-index:2; cursor:pointer; color:var(--gold-light); font-size:10px; background:var(--navy); }
@@ -571,6 +581,7 @@
   .scan-tray-item button{ border:none; background:none; cursor:pointer; font-size:15px; color:var(--sub); padding:2px 6px; }
   .scan-tray-item button:hover{ color:var(--danger); }
   .ghost-btn:disabled{ opacity:0.5; cursor:not-allowed; }
+  button[aria-disabled="true"]{ opacity:0.5; cursor:help; }
 
   /* ===== 메모 ===== */
   .memo-toolbar{ display:flex; align-items:center; gap:8px; min-height:44px; padding:6px 12px; border-bottom:1px solid var(--line); flex-shrink:0; background:#f9fafb; flex-wrap:wrap; }
@@ -834,7 +845,7 @@
   }
   .taxcalc-add-asset:hover{ border-color:var(--gold); background:var(--taxcalc-chip-bg-hover); color:var(--navy); }
   /* [2026.09 버그수정] 세무사님 지적 — "+ 계약"/"+ 항목 추가"처럼 제목행(.taxcalc-asset-head)
-     안에서 "🧮 계산근거"·"✕ 삭제" 같은 작은 칩 버튼과 나란히 놓이는 추가버튼은, 목록 아래에
+     안에서 "계산근거"·"✕ 삭제" 같은 작은 칩 버튼과 나란히 놓이는 추가버튼은, 목록 아래에
      혼자 크게 놓이는 표준 .taxcalc-add-asset(카드 하나를 통째로 새로 만드는 CTA)과 똑같이
      width:100%·큰 패딩을 써서 같은 줄의 다른 버튼보다 훨씬 커 보였다 — 제목행용 작은 버전을
      따로 둔다(점선 테두리는 "추가" 의미를 유지하되 크기만 이웃 버튼들과 맞춤). */
@@ -978,7 +989,10 @@
   html.nx-dark body > .modal-overlay > *{ filter:invert(1) hue-rotate(180deg); }
   html.nx-dark #sideMenu, html.nx-dark #sideAI{ background:#0b1120; }
   /* 스크롤바는 반전 필터가 안 먹어서 밝게 남는다 — 어두운 색을 직접 준다 */
-  html.nx-dark, html.nx-dark *{ scrollbar-color:#3a4356 #121826; }
+  /* [2026.11.02] 그린 스크롤 막대는 위 반전 필터를 탄다 — 반전되는 화면 안은 밝은 판 막대가 저절로 어두워지므로, 반전 안 되는 곳(넥스 창·옆 메뉴·쪽 전체 막대)만 어두운 색을 준다 */
+  html.nx-dark::-webkit-scrollbar-thumb, html.nx-dark :is(#view-ai, #sideMenu, #sideAI, .nxai-overlay) ::-webkit-scrollbar-thumb{ background:#3a4356; background-clip:padding-box; }
+  html.nx-dark::-webkit-scrollbar-thumb:hover, html.nx-dark :is(#view-ai, #sideMenu, #sideAI, .nxai-overlay) ::-webkit-scrollbar-thumb:hover{ background:#56627a; background-clip:padding-box; }
+  @supports not selector(::-webkit-scrollbar){ html.nx-dark, html.nx-dark *{ scrollbar-color:#3a4356 #121826; } }
   @media print{
     html.nx-dark #centerWork > .view, html.nx-dark #centerWork > .view *, html.nx-dark body > *{ filter:none !important; }
   }
@@ -1012,7 +1026,11 @@
   input[type=text], input[type=date], input[type=password], input[type=tel], input[type=number], input[type=search], input[type=email], input[type=url], input:not([type]), select{
     height:var(--ctl-h); box-sizing:border-box; padding-top:0; padding-bottom:0; vertical-align:middle; }
   input::placeholder, textarea::placeholder{ color:#a2a9b6; opacity:1; font-style:italic; } /* 보기 글은 옅게·기울여 실제 값과 헷갈리지 않게 */
-  .taxcalc-field input::placeholder{ color:#a2a9b6; opacity:1; }
+  .taxcalc-field input::placeholder{ color:#a2a9b6; opacity:1; font-style:italic; }
+  /* [2026.11.02] 고르기 칸도 입력칸과 같게 — 아직 안 고른 칸의 「선택」류 안내 줄(script.html이 data-nx-ph로 표시)은 옅게·기울여 진짜 값과 가른다. 「해당 없음」「전체」처럼 고를 수 있는 답은 보통 글자 */
+  select:has(option[data-nx-ph]:checked){ color:#a2a9b6; font-style:italic; }
+  select:has(option[data-nx-ph]:checked) option{ color:var(--ink); font-style:normal; }
+  select option[data-nx-ph]{ color:#a2a9b6; font-style:italic; }
   .ghost-btn, .btn, .save-btn, .taxcalc-add-asset, .taxcalc-run-btn, .tp-btn, .taxcalc-tier-tabs button{
     height:var(--ctl-h); min-height:0; padding-top:0; padding-bottom:0; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; gap:4px; white-space:nowrap; vertical-align:middle; line-height:1.2; }
   .ghost-btn.sm, .btn.sm, .save-btn.sm, td .ghost-btn, td .btn, td .save-btn, .log-entry .ghost-btn, .log-entry .save-btn, li .ghost-btn, li .save-btn,

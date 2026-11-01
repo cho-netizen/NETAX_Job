@@ -31,11 +31,11 @@
     <div class="card" id="colNewFormCard" style="display:none;">
       <h3>새 수금 추가</h3>
       <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-        <input type="text" id="colNewCustomer" list="clientNameOptions" placeholder="고객명" size="6" style="flex:0 0 auto;">
-        <select id="colNewCase"><option value="">사건 선택 안 함</option></select>
+        <input title="고객명" type="text" id="colNewCustomer" list="clientNameOptions" placeholder="고객명" size="6" style="flex:0 0 auto;">
+        <select title="사건" id="colNewCase"><option value="">사건 선택 안 함</option></select>
         <input type="date" id="colNewDate" title="날짜(생략하면 오늘)">
-        <input type="number" id="colNewAmount" placeholder="금액" size="7" style="flex:0 0 auto;">
-        <select id="colNewReceipt">
+        <input title="금액(원)" type="number" id="colNewAmount" placeholder="금액" size="7" style="flex:0 0 auto;">
+        <select title="증빙" id="colNewReceipt">
           <option value="">수취증빙 선택</option>
           <option value="현금영수증">현금영수증</option>
           <option value="세금계산서">세금계산서</option>
@@ -68,7 +68,7 @@
 <div class="modal-overlay" id="colDetailOverlay" style="display:none;">
   <div class="modal-panel" style="max-width:480px;">
     <div class="modal-head">
-      <span>💰 수금 상세</span>
+      <span>수금 상세</span>
       <span class="modal-close" id="colDetailClose" title="닫기">✕</span>
     </div>
     <div class="modal-body" id="colDetailBody"></div>
@@ -452,10 +452,10 @@
     row.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
       '<input type="text" class="colEditCustomer" list="clientNameOptions" placeholder="고객명" value="' + escapeHtml(colClientDisplayName_(l)) + '" size="' + Math.max(4, String(colClientDisplayName_(l)).length) + '" style="font-size:12px;">' +
-      '<select class="colEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option></select>' +
-      '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px;">' +
-      '<input type="number" class="colEditAmount" placeholder="금액" value="' + (l.금액 || '') + '" size="' + Math.max(5, String(l.금액 || '').length + 1) + '" style="font-size:12px;">' +
-      '<select class="colEditReceipt" style="font-size:12px;">' +
+      '<select title="사건" class="colEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option></select>' +
+      '<input title="날짜" type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px;">' +
+      '<input title="금액(원)" type="number" class="colEditAmount" placeholder="금액" value="' + (l.금액 || '') + '" size="' + Math.max(5, String(l.금액 || '').length + 1) + '" style="font-size:12px;">' +
+      '<select title="증빙" class="colEditReceipt" style="font-size:12px;">' +
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (l.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
       '</select>' +
       '<input type="text" class="colEditMemo" placeholder="비고" value="' + escapeHtml(l.내용 || '') + '" style="flex:1; min-width:100px; font-size:12px;">' +
