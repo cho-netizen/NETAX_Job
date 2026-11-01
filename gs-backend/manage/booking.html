@@ -25,7 +25,7 @@
         <label style="font-size:12px; color:var(--sub);">유형<br><input type="text" id="bkNewType" size="16" placeholder="예: 양도소득세 상담"></label>
         <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input type="text" id="bkNewField" size="10" placeholder="예: 부동산"></label>
         <div style="display:flex; gap:8px;">
-          <label style="font-size:12px; color:var(--sub);">날짜<br><input type="date" id="bkNewDate" style="width:95px;"></label>
+          <label style="font-size:12px; color:var(--sub);">날짜<br><input type="date" id="bkNewDate"></label>
           <label style="font-size:12px; color:var(--sub);">시간<br><input type="time" id="bkNewTime" style="width:100px;"></label>
         </div>
         <label style="font-size:12px; color:var(--sub);">상황(의뢰 내용)<br><textarea id="bkNewSituation" rows="3" style="width:100%; font-family:inherit; box-sizing:border-box;" placeholder="상담 내용을 적어두면 사건 시작 시 그대로 넘어갑니다"></textarea></label>
@@ -134,10 +134,10 @@
     }
     // [2026.09 버그수정] 데이터 길이에 맞춰 각 열 폭을 지정한다. 제목칸에도 줄바꿈 금지.
     var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
-    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로
+    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로. [2026.11.01] 세무사님 "데이타길이에 맞지 않는 필드" — 실제 자료 폭을 재서(일시 101·이름 36·상태 73·예약처리 79·사건처리 245) 일시 115·이름 62·상태 92·예약처리 95·사건처리 265(상황 280은 세무사님 지정 그대로)
     var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:930px;"><colgroup>'
-      + '<col style="width:140px"><col style="width:70px"><col style="width:95px"><col style="width:80px"><col style="width:70px">'
-      + '<col style="width:280px"><col style="width:100px"><col style="width:120px"><col style="width:250px">'
+      + '<col style="width:115px"><col style="width:62px"><col style="width:100px"><col style="width:90px"><col style="width:70px">'
+      + '<col style="width:280px"><col style="width:92px"><col style="width:95px"><col style="width:265px">'
       + '</colgroup><tr><th ' + th(140) + '>희망일시</th><th ' + th(70) + '>이름</th><th ' + th(110) + '>연락처</th><th ' + th(80) + '>유형</th><th ' + th(70) + '>관련분야</th>' +
       '<th ' + th(280) + '>상황</th><th ' + th(100) + '>상태</th><th ' + th(120) + '>예약처리</th><th ' + th(250) + '>사건처리</th></tr>';
     list.forEach(function(b, idx){

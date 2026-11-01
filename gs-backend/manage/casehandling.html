@@ -226,7 +226,7 @@
     // 남아 보였다. 그리드 칸 자체 크기는 그대로 두고(다른 칸과 줄이 맞아야 하므로) 입력창만
     // 실제 데이터 길이에 맞춰 좁혀 왼쪽으로 붙인다.
     if (field.type === 'date'){
-      return '<input type="date" ' + idAttr + ' style="width:95px; box-sizing:border-box;" value="' + v + '">';
+      return '<input type="date" ' + idAttr + ' style=" box-sizing:border-box;" value="' + v + '">';
     }
     if (field.type === 'number'){
       return '<input type="number" ' + idAttr + ' style="width:70px; box-sizing:border-box;" value="' + v + '">';
@@ -286,7 +286,7 @@
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
       '<input type="text" class="chAssetField" data-field="assetHo" size="6" style="box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득일(선택)</label>' +
-      '<input type="date" class="chAssetField" data-field="취득일" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
+      '<input type="date" class="chAssetField" data-field="취득일" style=" box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
       // [2026.09 재설계] "양도가액은 물건별이 아니라 양도계약 단위로 정해지는 값"이라는 지적 —
       // 물건 카드마다 따로 입력하던 것을 없애고, 아래 "양도계약별 금액"란(chBuildTransferGroupAmountsHtml_)
       // 에서 계약(그룹) 하나당 한 번만 입력하도록 옮겼다. 취득가액은 사용자 판단에 따라
@@ -338,7 +338,7 @@
     return bundleControls +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>' +
       '<div id="chTransferGroupAmountsHost" style="display:contents;">' + chBuildTransferGroupAmountsHtml_(list, overview) + '</div>' +
       '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
@@ -551,7 +551,7 @@
     return chBuildLocationFieldsHtml_(overview) +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">증여일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
@@ -559,7 +559,7 @@
     return chBuildLocationFieldsHtml_(overview) +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">상속개시일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
@@ -567,7 +567,7 @@
   function chBuildObjectionBlockHtml_(c){
     return '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">' + escapeHtml(chObjectionBaseLabel_(c.업무유형)) + '</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(c.기준일 || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(c.기준일 || '') + '">' +
       '</div>';
   }
 
@@ -657,13 +657,14 @@
   var chCaseFilterText_ = '', chCaseOnlyOpen_ = true;
   function chEnsureCaseFilterUi_(){
     if (document.getElementById('chCaseFilterBox') || !chCaseSelectEl || !chCaseSelectEl.parentNode) return;
-    var box = document.createElement('div'); box.id = 'chCaseFilterBox'; box.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 6px;';
-    var inp = document.createElement('input'); inp.type = 'search'; inp.id = 'chCaseFilterText'; inp.placeholder = '🔍 사건 찾기(고객명·납세자·사건명)'; inp.style.cssText = 'flex:1; min-width:160px; box-sizing:border-box;';
+    // [2026.11.01] 세무사님 "검색창을 클릭했을때 데이타만 모두 받아들이면 되는 거지 입력란을 그렇게 무식하게 크게 잡아 놓은다고 뭐가 좋은가?" / "<진행중만> 체크박스를 <진행>으로 변경하여 맨앞에 배치하라" — [진행] [찾기 칸(좁게, 누르면 넓어짐)] [사건 고르기] 한 줄
+    var box = document.createElement('div'); box.id = 'chCaseFilterBox'; box.style.cssText = 'display:flex; gap:6px; align-items:center;';
+    var inp = document.createElement('input'); inp.type = 'search'; inp.id = 'chCaseFilterText'; inp.className = 'nx-find'; inp.placeholder = '사건 찾기'; inp.title = '고객명·납세자·사건명으로 찾기';
     inp.addEventListener('input', function(){ chCaseFilterText_ = inp.value.trim(); renderChCaseSelect_(); });
     var lab = document.createElement('label'); lab.style.cssText = 'font-size:12.5px; display:flex; gap:4px; align-items:center; white-space:nowrap;';
     var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = chCaseOnlyOpen_; cb.addEventListener('change', function(){ chCaseOnlyOpen_ = cb.checked; renderChCaseSelect_(); });
-    lab.appendChild(cb); lab.appendChild(document.createTextNode('진행 중만'));
-    box.appendChild(inp); box.appendChild(lab);
+    lab.appendChild(cb); lab.appendChild(document.createTextNode('진행')); lab.title = '진행 중인 사건만(완료 빼기)';
+    box.appendChild(lab); box.appendChild(inp);
     chCaseSelectEl.parentNode.insertBefore(box, chCaseSelectEl);
   }
   function renderChCaseSelect_(){
@@ -1024,9 +1025,9 @@
         newLogFormWrap.style.display = 'flex';
         var todayStr = nxLocalDateStr_();
         newLogFormWrap.innerHTML =
-          '<input type="date" id="chNewLogDate" value="' + todayStr + '" style="width:95px;">' +
+          '<input type="date" id="chNewLogDate" value="' + todayStr + '">' +
           '<input type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
-          '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다" style="width:95px;">' +
+          '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다">' +
           '<button type="button" id="chAddLog" class="save-btn">추가</button>' +
           '<button type="button" id="chAddLogCancel" class="ghost-btn">취소</button>';
         document.getElementById('chAddLogCancel').addEventListener('click', function(){ newLogFormWrap.style.display = 'none'; newLogFormWrap.innerHTML = ''; });
@@ -1093,7 +1094,7 @@
       if (newPaymentFormWrap.style.display === 'none'){
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
-          '<input type="date" id="chNewPayDate" title="날짜(생략하면 오늘)" style="width:95px;">' +
+          '<input type="date" id="chNewPayDate" title="날짜(생략하면 오늘)">' +
           '<input type="number" id="chNewPayAmount" placeholder="금액" size="8">' +
           '<select id="chNewPayReceipt">' +
           '<option value="">수취증빙 선택</option>' +

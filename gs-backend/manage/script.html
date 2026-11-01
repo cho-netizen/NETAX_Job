@@ -931,8 +931,9 @@
   // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,
   // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
   // (AI 탭 nxAiOpenJobView_와 같은 동작).
-  var NX_CASE_VIEWS_ = [['casehandling', '🧭 처리개요'], ['ledger', '📒 사건 장부'], ['workmanage', '🗂 작업관리'], ['docs', '📁 증빙확보'], ['taxcalc', '🧮 세액계산'],
-    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령정보'], ['reports', '📖 열람관리']]; // 열람관리: 탭연결 9번
+  // [2026.11.01] 세무사님 "<탭 이동>이라고 안내메시지를 변경하고, 보여지는 데이타도 아이콘은 없애라" — 상자 폭이 보일 글자(화면 이름) 길이만큼만
+  var NX_CASE_VIEWS_ = [['casehandling', '처리개요'], ['ledger', '사건 장부'], ['workmanage', '작업관리'], ['docs', '증빙확보'], ['taxcalc', '세액계산'],
+    ['print', '세액인쇄'], ['reportwriter', '문서작성'], ['lawsearch', '법령정보'], ['reports', '열람관리']]; // 열람관리: 탭연결 9번
   function nxCaseJump_(view, caseId){
     if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
     if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
@@ -1030,8 +1031,7 @@
     var sel = document.createElement('select');
     sel.className = 'nx-case-jump';
     sel.title = '이 사건의 다른 화면으로 바로 이동';
-    sel.style.maxWidth = '170px';
-    sel.innerHTML = '<option value="">↪ 이 사건 다른 화면</option>' + NX_CASE_VIEWS_.filter(function(v){ return v[0] !== fromView; })
+    sel.innerHTML = '<option value="">탭 이동</option>' + NX_CASE_VIEWS_.filter(function(v){ return v[0] !== fromView; })
       .map(function(v){ return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('');
     sel.addEventListener('change', function(){
       var v = sel.value; sel.value = '';
@@ -1088,6 +1088,7 @@
       if (el._shownId === id && !stale) return;
       if (old && el._shownId !== id) nxLedgerStripRender_(el, id, old.r);
       el._shownId = id;
+      if (!old) el.querySelector('.nx-lg-body').textContent = '장부 읽는 중…'; // [2026.11.01] 사건을 골랐는데 "사건을 고르면"이 남아 고장처럼 보이던 것
       if (!stale || (old && old.loading)) return;
       NX_LG_.cache[id] = { t: Date.now(), r: old ? old.r : null, loading: true };
       callGas('case_proc', { caseId: id, step: 'ledgerFlow' }).then(function(r){
@@ -1104,13 +1105,15 @@
     var f = r.흐름, d = f.띠 || {}, last = f.마지막;
     var red = function(n, t){ return n ? '<span style="color:#b23; font-weight:600;">' + t + '</span>' : t; };
     b.style.color = '';
-    b.innerHTML = '가설 ' + (d.가설 || 0) + ' → 사건개요 정함 ' + (d.개요확정 || 0) + ' · 가설 ' + (d.개요가설 || 0) + (d.개요다름 ? ' · ' + red(1, '가설과 다름 ' + d.개요다름) : '')
-      + ' → 확보할 증빙 확보 ' + (d.증빙확보 || 0) + ' / ' + red(d.증빙미확보, '받을 것 ' + (d.증빙미확보 || 0))
-      + ' → 서류 사실 ' + (d.서류사실 || 0) + ' → 칸 ' + (d.칸값 || 0) + '(서류와 이음 ' + (d.칸이음 || 0) + ')'
-      + ' → ' + red(d.질문, '질문 ' + (d.질문 || 0))
-      + (d.사슬물건 ? ' · 거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '') : '') // [2026.10.29 거래 사슬]
-      + ' · 공부 조회 ' + (d.공부 || 0) + '필지' + (d.추정 ? ' · 추정 ' + d.추정 + '칸' : '') // [2026.10.29 계획서 3판]
-      + (last ? ' <span style="color:var(--sub);">· 마지막 장부 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
+    // [2026.11.01 화면 정비] 세무사님 "깔끔하고 가독성" — 0인 항목까지 화살표로 줄줄이 늘어놓던 것을, 수가 있는 항목만 짧게 보인다(받을 것·질문은 빨강). 다 0이면 한 줄 안내.
+    var parts = [];
+    var add = function(n, t, warn){ if (n) parts.push(warn ? red(1, t + ' ' + n) : t + ' ' + n); };
+    add(d.가설, '가설'); add(d.개요확정, '개요 정함'); add(d.개요가설, '개요 가설'); add(d.개요다름, '가설과 다름', 1);
+    add(d.증빙확보, '증빙 확보'); add(d.증빙미확보, '받을 것', 1); add(d.서류사실, '서류 사실'); add(d.칸값, '칸'); add(d.칸이음, '서류와 이은 칸'); add(d.질문, '질문', 1);
+    if (d.사슬물건) parts.push('거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '')); // [2026.10.29 거래 사슬]
+    add(d.공부, '공부 조회(필지)'); add(d.추정, '추정 칸'); // [2026.10.29 계획서 3판]
+    b.innerHTML = (parts.length ? parts.join(' · ') : '<span style="color:var(--sub);">장부가 아직 비어 있습니다</span>')
+      + (last ? ' <span style="color:var(--sub);" title="' + nxLgEsc_((last.diff || []).join(' · ')) + '">· 마지막 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + '</span>' : '')
       + nxAiCostStripHtml_(r.AI비용)
       + (r.도구카드 && r.도구카드.부름 ? ' <span style="color:var(--sub);">· ' + nxLgEsc_(r.도구카드.줄) + '</span>' : '') // [2026.10.31 J] 자세히는 📒 장부 펼치기 아래 🧰
       + (el._view === 'ledger' ? '' : ' <button type="button" class="ghost-btn nx-lg-open sm" title="요약을 옆에 펼칩니다">📒 장부 펼치기</button> <button type="button" class="ghost-btn nx-lg-screen sm" title="📒 사건 장부 화면으로 — 값 넣기·물어볼 것 답하기·반영 현황표·판단 재료">장부 화면 ›</button>') // [2026.10.31 처리개요 도구 정리] 장부 화면 열기
@@ -1124,10 +1127,10 @@
   //  누적 금액과 그중 다시 읽기(저장분 다시 읽음, 정가 10%)·새로 읽기·저장(처음 올림)·쓴 글. [자세히]는 호출마다 한 줄 표(서버 case_proc step aiCost, 비용 기록 시트 읽기만 — 0원)
   function nxAiCostWon_(w){ return Math.round(+w || 0).toLocaleString('ko-KR') + '원'; }
   function nxAiCostStripHtml_(c){
-    if (!c || c.error || !c.n) return ' <span style="color:var(--sub);">· 🤖 AI 비용 기록 없음</span>';
+    if (!c || c.error || !c.n) return ''; // [2026.11.01 화면 정비] 기록 없으면 띠에 안 보임
     var p = c.parts || {};
-    return ' <span title="' + nxLgEsc_(c.line || '') + '">· 🤖 AI ' + nxAiCostWon_(c.won) + ' <span style="color:var(--sub);">(다시 읽기 ' + nxAiCostWon_(p.캐시읽기) + ' · 새로 읽기·저장 ' + nxAiCostWon_((p.새로읽기 || 0) + (p.캐시쓰기 || 0)) + ' · 쓴 글 ' + nxAiCostWon_(p.쓴글) + ')</span></span>'
-      + ' <button type="button" class="ghost-btn nx-lg-cost sm">🤖 비용 자세히</button>';
+    return ' <span title="' + nxLgEsc_('다시 읽기 ' + nxAiCostWon_(p.캐시읽기) + ' · 새로 읽기·저장 ' + nxAiCostWon_((p.새로읽기 || 0) + (p.캐시쓰기 || 0)) + ' · 쓴 글 ' + nxAiCostWon_(p.쓴글) + (c.line ? ' — ' + c.line : '')) + '">· AI ' + nxAiCostWon_(c.won) + '</span>'
+      + ' <button type="button" class="ghost-btn nx-lg-cost sm">비용 자세히</button>';
   }
   function nxAiCostPanelOpen_(id, name){
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
@@ -1404,9 +1407,15 @@
       var bars = document.querySelectorAll(SEL_), used = 0;
       for (var i = 0; i < bars.length; i++){
         var bar = bars[i];
+        // [2026.11.01] 세무사님 "가독성" — 이름이 「일반 증…」처럼 잘리면 읽을 수 없다. 그 줄 탭의 가장 긴 이름이 다 들어가는 폭을
+        //  그 줄 모든 탭의 최소 폭으로(같은 폭 원칙 유지, 190까지). 자리가 모자라면 위처럼 옆으로 밀어 보고 ▶가 뜬다.
+        var need = 0;
         Array.prototype.forEach.call(bar.querySelectorAll('.nx-tab, .taxcalc-tab, .taxcalc-subtab'), function(t){
+          if (t.offsetParent && t.scrollWidth > need) need = t.scrollWidth;
           if (!t.title && t.scrollWidth > t.clientWidth + 1) t.title = t.textContent.trim();
         });
+        var mw = need ? Math.min(Math.max(need + 2, document.body.classList.contains('lay-phone') ? 72 : 84), 190) + 'px' : '';
+        if (mw && bar.style.getPropertyValue('--tabmin') !== mw) bar.style.setProperty('--tabmin', mw);
         var over = bar.offsetParent && bar.scrollWidth > bar.clientWidth + 2;
         var more = over && bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2, less = over && bar.scrollLeft > 2;
         bar.classList.toggle('nx-more', !!more); bar.classList.toggle('nx-more-l', !!less);
@@ -1454,6 +1463,7 @@
       b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); el.classList.toggle('open'); b.classList.toggle('on', el.classList.contains('open')); });
       if (a && /^(H2|H3|H4|SUMMARY|LABEL)$/.test(a.tagName) || (a && a.classList && (a.classList.contains('nx-l3') || a.classList.contains('nx-l4')))) a.appendChild(b);
       else if (a && (a.tagName === 'BUTTON' || (a.classList && a.classList.contains('nx-help-anchor')))) a.insertAdjacentElement('afterend', b);
+      else if (el.closest('.card') && el.closest('.card').querySelector(':scope > h3') && !el.closest('.card').querySelector(':scope > h3 .nx-help-btn')) el.closest('.card').querySelector(':scope > h3').appendChild(b); /* [2026.11.01] 홀로 남은 설명은 「? 설명」 알약 대신 카드 제목 옆 「?」로 */
       else { b.classList.add('nx-help-lone'); b.textContent = '? 설명'; el.insertAdjacentElement('beforebegin', b); }
       if (a && a.tagName === 'BUTTON' && !a.title) a.title = b.title;
     }

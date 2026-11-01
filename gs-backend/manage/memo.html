@@ -2,7 +2,7 @@
   <div class="view-head"><h2>일반메모</h2></div>
   <div class="memo-toolbar tb-row">
     <div class="memo-search-wrap">
-      <input type="text" id="memoSearch" placeholder="🔍 저장된 일반메모 검색·열기" autocomplete="off">
+      <input type="text" id="memoSearch" class="nx-find" placeholder="메모 찾기" title="저장된 일반메모 찾아 열기" autocomplete="off">
       <div class="memo-search-dropdown" id="memoSearchDropdown"></div>
     </div>
     <button type="button" id="memoBtnNew" class="ghost-btn"><span class="btn-ic">+</span><span class="btn-tx">메모</span></button>
@@ -162,7 +162,7 @@
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoOvNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoOvNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
     <select id="memoOvNewUptype" style="width:100%; box-sizing:border-box;"></select>
-    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style="width:95px; box-sizing:border-box;"></label>
+    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style=" box-sizing:border-box;"></label>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoOvNewCaseConfirm" class="save-btn">등록하고 반영</button>

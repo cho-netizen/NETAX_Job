@@ -8,7 +8,7 @@
       <option value="보류">보류</option>
       <option value="완료">완료</option>
     </select>
-    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:230px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
+    <input type="text" id="workCaseSearchInput" class="nx-find" placeholder="사건 찾기" title="의뢰인·납세자·완료일로 찾기">
   </div>
   <div class="manage-split">
     <div class="manage-split-list"><div id="workCaseList" class="log-list"></div></div>
@@ -353,9 +353,9 @@
         Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '">' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') +
       '</select></label>' +
       '<label>업무유형<br><select id="wcNewUptype" style="width:100%;"></select></label>' +
-      '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate" style="width:95px;"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
-      '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate" style="width:95px;"></label></div>' +
-      '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline" style="width:95px;"></label>' +
+      '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
+      '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate"></label></div>' +
+      '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline"></label>' +
       '<label>진행메모<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="어떻게 처리할 계획인지">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
       '<button type="button" id="wcNewSave" class="save-btn">저장</button>' +
@@ -518,40 +518,26 @@
       // 있어서 두 확정동작 버튼이 한눈에 안 들어왔다(고객관리와 같은 이유로 같이 고침) →
       // 삭제는 아래 저장 버튼 옆으로 옮긴다. 고객 아이콘 바로 오른쪽엔 "↪ 이 사건 다른 화면"
       // (처리개요 포함, 아래 nxCaseJumpAttach_) — 예전 "처리" 단추는 같은 일이라 뺐다(10-31).
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
-      '<input type="text" id="wcEditCustomerName" placeholder="고객명" value="' + escapeHtml(c.고객명 || '') + '" size="' + Math.max(4, String(c.고객명 || '').length + 2) + '" style="font-weight:700; font-size:15px;">' +
+      // [2026.11.01] 세무사님 "정보가 유기적으로 배치되어 있어야 하고 관련 버튼이나 콤보박스와 같은 도구들도 마찬가지" — 이름표 없던 고객·납세자 칸에 이름표,
+      // 줄 1 = 누구(고객·납세자·탭 이동), 줄 2 = 무슨 일(세목·업무·상태), 줄 3 = 날짜(의뢰일·기준일·법정일 — 법정일만 따로 상자에 있던 것을 같은 줄로), 저장·삭제는 줄 2 오른쪽 끝
+      '<div class="nx-form-row">' +
+      '<label class="nx-fl">고객 <input type="text" id="wcEditCustomerName" placeholder="고객명" value="' + escapeHtml(c.고객명 || '') + '" size="' + Math.max(4, String(c.고객명 || '').length + 2) + '" style="font-weight:700;"></label>' +
       '<button type="button" id="wcViewCustomer" class="ghost-btn" title="이 고객 정보 빠르게 보기·수정">👤</button>' +
-      '<input type="text" id="wcEditTaxpayer" placeholder="납세자(의뢰인과 다르면 입력)" value="' + escapeHtml(c.납세자 || '') + '" size="' + Math.max(6, String(c.납세자 || '').length + 2) + '">' +
+      '<label class="nx-fl">납세자 <input type="text" id="wcEditTaxpayer" placeholder="의뢰인과 다를 때" value="' + escapeHtml(c.납세자 || '') + '" size="' + Math.max(8, String(c.납세자 || '').length + 2) + '"></label>' +
       '</div>' +
-      '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; margin-top:8px;">' +
-      '<select id="wcEditSemok">' + Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '"' + (k === c.세목 ? ' selected' : '') + '>' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') + '</select>' +
-      '<select id="wcEditUptype"></select>' +
-      // [2026.09 버그수정] 날짜칸(input type=date)에 폭을 안 주면 브라우저 기본 폭(캘린더
-      // 아이콘 포함 여유공간)이 실제 "2026-09-05" 길이보다 훨씬 넓게 나와 눈에 계속 거슬린다는
-      // 지적 — 이 화면의 모든 날짜칸에 데이터 길이에 맞춘 폭을 준다.
-      // [2026.09.16 재조정] 130px도 여전히 커 보인다는 재지적 — 세액계산(taxcalc.html)의
-      // 같은 종류 날짜칸에서 확정한 110px과 맞춘다(전수조사로 확정된 값, 실측 검증됨).
-      '<label style="font-size:12px; color:var(--sub);">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '" style="width:95px;"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn">오늘</button></label>' +
-      '<label id="wcEditBaseDateWrap" style="font-size:12px; color:var(--sub);"><span id="wcEditBaseDateLabel">기준일</span> <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '" style="width:95px;"></label>' +
-      '<select id="wcEditStatus">' + WORK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === c.상태 ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
-      '<button type="button" id="wcSaveCase" class="save-btn">저장</button>' +
-      '<button type="button" id="wcDeleteCase" class="btn danger" title="삭제">삭제</button>' +
+      '<div class="nx-form-row">' +
+      '<label class="nx-fl">세목 <select id="wcEditSemok">' + Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '"' + (k === c.세목 ? ' selected' : '') + '>' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="nx-fl">업무 <select id="wcEditUptype"></select></label>' +
+      '<label class="nx-fl">상태 <select id="wcEditStatus">' + WORK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === c.상태 ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></label>' +
+      '<span style="margin-left:auto; display:inline-flex; gap:6px;"><button type="button" id="wcSaveCase" class="save-btn">저장</button>' +
+      '<button type="button" id="wcDeleteCase" class="btn danger" title="삭제">삭제</button></span>' +
       '</div>' +
-      '<div style="margin-bottom:12px;">' +
-      // [2026.09 버그수정] 완료 처리하면 법정일이 완료일(오늘)로 덮어써지는데, 이 칸이 항상
-      // c.법정일만 보여줘서 완료된 사건을 다시 열어보면 마치 "원래 처리시한이 오늘이었다"처럼
-      // 보였다 — 완료 상태에서는 백업해둔 원래 처리시한(완료전법정일)을 대신 보여준다.
-      // [2026.09.18 버그수정] 세무사님 지적 — "법정일이 이상한 옛날 날짜(예: 20-07-23)로
-      // 나오는데 왜 그런지도 모르겠고 고칠 방법도 없다." 원인: 신고 등 법정기한 유형은 여기
-      // 입력칸 자체가 항상 숨겨져 있었다(법정일=기준일로 서버가 자동계산하는 유형이라 직접
-      // 입력받을 필요가 없다고 봤음) — 그런데 그 자동계산의 바탕이 되는 기준일이 잘못
-      // 입력됐거나 계산 자체가 어긋난 경우, 고칠 방법이 정말 하나도 없었다. 상담·해명자료
-      // (처리시한, 원래도 직접입력)와 똑같이 이 칸을 모든 유형에서 항상 보이게 해서, 이상하게
-      // 나온 값을 직접 고칠 수 있게 한다 — 다만 자동계산 유형에서 이 칸을 건드리지 않고
-      // 저장하면(대부분의 평소 저장) 기존처럼 기준일 기반 자동계산이 그대로 적용된다
-      // (saveCaseNow_의 dirty-check 참고).
-      '<label id="wcEditManualDeadlineLabel" style="display:inline-block; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">' + escapeHtml(isCompleted ? '완료일' : workDeadlineFieldLabel_(c.업무유형)) + '</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '" style="width:95px;"></label>' +
-      (workMyPortalBadgeText_(c) ? ' <span style="background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
+      '<div class="nx-form-row" style="margin-bottom:12px;">' +
+      '<label class="nx-fl">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn">오늘</button></label>' +
+      '<label id="wcEditBaseDateWrap" class="nx-fl"><span id="wcEditBaseDateLabel">기준일</span> <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '"></label>' +
+      // 완료 상태에서는 이름표가 "완료일"(아래 onEditUptypeChange 참고). 자동계산 유형도 직접 고칠 수 있게 늘 보인다(2026.09.18).
+      '<label id="wcEditManualDeadlineLabel" class="nx-fl" style="font-weight:600; color:var(--ink);"><span id="wcEditManualDeadlineText">' + escapeHtml(isCompleted ? '완료일' : workDeadlineFieldLabel_(c.업무유형)) + '</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '"></label>' +
+      (workMyPortalBadgeText_(c) ? ' <span class="nx-fl">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
       '<div style="margin-bottom:14px;">' +
       '<label id="wcEditOverviewLabel" style="font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px;">' + (c.상태 === '완료' ? '처리내용' : '진행메모') + '</label>' +
@@ -573,7 +559,7 @@
         newRootFormWrap.style.display = 'flex';
         newRootFormWrap.innerHTML =
           '<input type="text" id="wcNewRootTitle" placeholder="새 하위업무 (예: 자료수집)" style="flex:1; min-width:160px;">' +
-          '<input type="date" id="wcNewRootDue" title="마감일(선택)" style="width:95px;">' +
+          '<input type="date" id="wcNewRootDue" title="마감일(선택)">' +
           '<button type="button" id="wcAddRoot" class="save-btn">추가</button>' +
           '<button type="button" id="wcAddRootCancel" class="ghost-btn">취소</button>';
         document.getElementById('wcAddRootCancel').addEventListener('click', function(){ newRootFormWrap.style.display = 'none'; newRootFormWrap.innerHTML = ''; });
@@ -610,7 +596,7 @@
       // 이 입력칸을 여기서 안 보여주고 처리개요의 사건개요서(양도일 칸)에서만 편집한다.
       document.getElementById('wcEditBaseDateLabel').textContent = WORK_BASE_DATE_LABELS_[editSemokSel.value] || '기준일';
       var hasOverviewTemplate = typeof CH_CASE_OVERVIEW_FIELDS_ !== 'undefined' && !!CH_CASE_OVERVIEW_FIELDS_[editSemokSel.value];
-      document.getElementById('wcEditBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : 'inline-block';
+      document.getElementById('wcEditBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : 'inline-flex';
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(editUptypeSel.value) !== -1;
       // [2026.09.18] 자동계산 유형에서도 법정일을 직접 고칠 수 있어야 하므로 이 칸은 이제
       // 유형과 상관없이 항상 보인다 — 라벨 문구만 유형에 맞게 "법정일"/"처리시한"으로 바뀐다.
@@ -850,7 +836,7 @@
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">' +
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
         '<input type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
-        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px; width:95px;' + (overdue ? ' color:#a83232;' : '') + '">' +
+        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#a83232;' : '') + '">' +
         '<button type="button" class="ghost-btn wcNodeAddChild sm">+ 하위</button>' +
         '<span class="log-del wcNodeDelete" title="삭제">✕</span>' +
         '</div>' +
@@ -880,7 +866,7 @@
           childFormWrap.style.display = 'flex';
           childFormWrap.innerHTML =
             '<input type="text" class="wcChildTitle" placeholder="세부항목 이름" style="flex:1; min-width:120px; font-size:12.5px;">' +
-            '<input type="date" class="wcChildDue" style="font-size:12px; width:95px;">' +
+            '<input type="date" class="wcChildDue" style="font-size:12px;">' +
             '<button type="button" class="save-btn wcChildSave sm">추가</button>' +
             '<button type="button" class="ghost-btn wcChildCancel sm">취소</button>';
           childFormWrap.querySelector('.wcChildCancel').addEventListener('click', function(){ childFormWrap.style.display = 'none'; childFormWrap.innerHTML = ''; });

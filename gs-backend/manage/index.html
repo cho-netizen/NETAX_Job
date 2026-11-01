@@ -398,7 +398,7 @@
       else if (menuEl.classList.contains('expanded')){ clearTimeout(window.nxSideMenuFitT_); window.nxSideMenuFitT_ = setTimeout(window.nxSideMenuFit_, 500); }
     };
     window.nxSideMenuFit_();
-    (function(){ var o = false; try { var v = localStorage.getItem('nx_menu_pin'); o = v === null ? localStorage.getItem('nx_menu_open') === '1' : v === '1'; } catch (er) {} nxSideMenuSetPin_(o); })();
+    (function(){ var o = false; try { var v = localStorage.getItem('nx_menu_pin'); o = v === null ? localStorage.getItem('nx_menu_open') === '1' : v === '1'; } catch (er) {} if (o && window.innerWidth < 700){ document.getElementById('sideMenu').classList.remove('pinned'); nxSideMenuApply_(); return; } /* [2026.11.01] 휴대폰 폭에선 넓은 화면에서 고정해 둔 메뉴도 펼쳐 두지 않는다(가운데 화면이 절반으로 줄던 것) — 기억한 고정값은 그대로 둠 */ nxSideMenuSetPin_(o); })();
   </script>
 
   <?!= include_('manage/script') ?>

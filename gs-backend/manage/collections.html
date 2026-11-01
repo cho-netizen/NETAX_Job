@@ -6,21 +6,26 @@
 <div class="view" id="view-collections">
   <div class="editor-toolbar">
     <h2 class="tb-title">수금관리</h2>
-    <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
-    <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더에 내려받아 둔 홈택스 매출내역 엑셀을 읽어, 아직 목록에 없는 현금영수증만 수금 내역에 더합니다(밤에도 한 번 자동으로 돕니다)">홈택스 매출내역</button>
-    <button type="button" id="btnColStats" class="ghost-btn" title="지금 걸린 조건(고객명·기간·미연결·종류) 그대로 월별·분기별·반기별·연도별 합계를 봅니다">기간별 통계</button>
-    <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
-    <input type="date" id="colFromDate" title="시작일" style="width:95px;">
-    <span style="color:var(--sub); font-size:12px;">~</span>
-    <input type="date" id="colToDate" title="종료일" style="width:95px;">
-    <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
-      <input type="checkbox" id="colUnlinkedOnly"> 미연결만
-    </label>
-    <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
-      <option value="" selected>전체</option>
-      <option value="issued">발행자료만</option>
-      <option value="download">다운자료만</option>
-    </select>
+    <!-- [2026.11.01] 세무사님 "정보가 유기적으로 배치 … 관련 버튼이나 콤보박스와 같은 도구들도 마찬가지" — 찾기·기간·거르기는 제목 바로 옆 한 묶음(기간 두 칸이 갈라지지 않게), 하는 일 단추는 오른쪽 끝 -->
+    <span class="tb-group" style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+      <input type="text" id="colSearchInput" class="nx-find" list="clientNameOptions" placeholder="고객 찾기" title="고객명으로 찾기">
+      <span style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="date" id="colFromDate" title="시작일">
+      <span style="color:var(--sub); font-size:12px;">~</span>
+      <input type="date" id="colToDate" title="종료일"></span>
+      <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
+        <input type="checkbox" id="colUnlinkedOnly"> 미연결만
+      </label>
+      <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
+        <option value="" selected>모든 자료</option>
+        <option value="issued">발행자료만</option>
+        <option value="download">다운자료만</option>
+      </select>
+    </span>
+    <span style="display:inline-flex; gap:6px; margin-left:auto; flex-wrap:wrap;">
+      <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
+      <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더에 내려받아 둔 홈택스 매출내역 엑셀을 읽어, 아직 목록에 없는 현금영수증만 수금 내역에 더합니다(밤에도 한 번 자동으로 돕니다)">홈택스 매출내역</button>
+      <button type="button" id="btnColStats" class="ghost-btn" title="지금 걸린 조건(고객명·기간·미연결·종류) 그대로 월별·분기별·반기별·연도별 합계를 봅니다">기간별 통계</button>
+    </span>
   </div>
   <div class="view-body">
     <div class="card" id="colNewFormCard" style="display:none;">
@@ -28,7 +33,7 @@
       <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
         <input type="text" id="colNewCustomer" list="clientNameOptions" placeholder="고객명" size="6" style="flex:0 0 auto;">
         <select id="colNewCase"><option value="">사건 선택 안 함</option></select>
-        <input type="date" id="colNewDate" title="날짜(생략하면 오늘)" style="width:95px;">
+        <input type="date" id="colNewDate" title="날짜(생략하면 오늘)">
         <input type="number" id="colNewAmount" placeholder="금액" size="7" style="flex:0 0 auto;">
         <select id="colNewReceipt">
           <option value="">수취증빙 선택</option>
@@ -434,7 +439,7 @@
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
       '<input type="text" class="colEditCustomer" list="clientNameOptions" placeholder="고객명" value="' + escapeHtml(colClientDisplayName_(l)) + '" size="' + Math.max(4, String(colClientDisplayName_(l)).length) + '" style="font-size:12px;">' +
       '<select class="colEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option></select>' +
-      '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px; width:95px;">' +
+      '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px;">' +
       '<input type="number" class="colEditAmount" placeholder="금액" value="' + (l.금액 || '') + '" size="' + Math.max(5, String(l.금액 || '').length + 1) + '" style="font-size:12px;">' +
       '<select class="colEditReceipt" style="font-size:12px;">' +
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (l.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +

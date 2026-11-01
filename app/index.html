@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-31 17:07 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 00:57 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -514,8 +514,8 @@
   }
 
   table.list-table{ width:100%; border-collapse:collapse; font-size:13px; }
-  table.list-table th{ text-align:left; padding:8px 10px; color:var(--sub); font-weight:600; border-bottom:1px solid var(--line); font-size:12px; }
-  table.list-table td{ padding:9px 10px; border-bottom:1px solid var(--line); }
+  table.list-table th{ text-align:left; padding:6px 10px; color:var(--sub); font-weight:600; border-bottom:1px solid var(--line); font-size:12px; }
+  table.list-table td{ padding:5px 10px; /* [2026.11.01] 표 줄을 낮춰 한 화면에 더 많이(세무사님 "낭비되는 공간 없이") */ border-bottom:1px solid var(--line); }
   table.list-table tr:hover td{ background:#f7f8fa; }
   /* [2026.10.31] 세무사님 "보고서모음의 파일명 필드가 너무 넓다(다른 탭 다른 표에서도 모두 찾아서 맞게 줄여라)" — 표의 이름 칸은 정한 폭에서 말줄임, 전체 이름은 손 대면 보임 */
   .nx-cut{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -560,15 +560,15 @@
      한 줄로 옆으로 밀어 보며, 뒤에 탭이 더 있으면 오른쪽 끝을 흐리고 ▶를 띄운다(script.html nxTabMore_). 두 줄로 꺾이는 탭 줄은 없다. */
   .nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs{ flex-wrap:nowrap !important; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; position:relative; }
   .nx-tabbar::-webkit-scrollbar, .taxcalc-tabs::-webkit-scrollbar, .taxcalc-subtabs::-webkit-scrollbar{ display:none; }
-  .nx-tab, .taxcalc-tab, .taxcalc-subtab{ flex:1 1 0; min-width:84px; max-width:150px; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab, body.lay-phone .taxcalc-subtab{ min-width:72px; max-width:120px; }
+  .nx-tab, .taxcalc-tab, .taxcalc-subtab{ flex:1 1 0; min-width:var(--tabmin, 84px); max-width:150px; box-sizing:border-box; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.lay-phone .nx-tab, body.lay-phone .taxcalc-tab, body.lay-phone .taxcalc-subtab{ min-width:var(--tabmin, 72px); max-width:120px; }
   .taxcalc-tabs > :not(.taxcalc-tab){ flex:0 0 auto; }
   .nx-tabbar.nx-more, .taxcalc-tabs.nx-more, .taxcalc-subtabs.nx-more{ -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent); }
   .nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px) !important; mask-image:linear-gradient(to right,transparent,#000 36px) !important; }
   .nx-more.nx-more-l{ -webkit-mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent) !important; }
   .nx-tabmore-arrow{ position:absolute; z-index:5; width:22px; height:22px; border:none; border-radius:50%; background:var(--navy); color:#fff; font-size:11px; line-height:22px; padding:0; text-align:center; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.25); }
-  html.nx-dark .nx-tab{ color:#e3e8f0; }
-  html.nx-dark .nx-tab.active, html.nx-dark .nx-tab.on{ background:#25304a; }
+  html.nx-dark #view-ai .nx-tab{ color:#e3e8f0; }
+  html.nx-dark #view-ai .nx-tab.active, html.nx-dark #view-ai .nx-tab.on{ background:#25304a; }
   /* [2026.10.29] 세무사님 "날짜를 키우거나 줄이는 버튼이 너무 작아서 제어를 할 수가 없다" — 대시보드 범위 칸(일정 전/후 며칠·마감임박 후 며칠·
      수금 전 며칠·메일 건수)은 숫자칸 속 작은 화살표 대신 양옆에 큰 − / + 단추를 둔다(손가락으로도 누를 수 있는 크기). */
   .dash-range{ display:flex; gap:6px 10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; font-size:12.5px; color:var(--sub); }
@@ -604,6 +604,8 @@
   .btn-ic{ flex-shrink:0; }
   .tb-row.tb-ic-off .btn-ic, .scan-row.tb-ic-off .btn-ic{ display:none; }
   .tb-row.tb-tx-off .btn-tx, .scan-row.tb-tx-off .btn-tx{ display:none; }
+  /* [2026.11.01] 휴대폰 폭: 사건 고르기 칸(고정 220)·탭 이동 칸이 줄 밖으로 넘치던 것 — 좁은 화면에선 사건 줄만 두 줄로 꺾고 사건 칸은 남은 폭만큼 */
+  @media (max-width:600px){ .tb-row:has(select[id$="CaseSelect"]){ flex-wrap:wrap; row-gap:6px; } .tb-row select[id$="CaseSelect"]{ width:auto !important; min-width:0; flex:1 1 140px; max-width:100%; } }
 
   .explorer-status{ padding:16px 14px; font-size:13px; color:var(--sub); }
   /* [2026.09.16 버그수정] 예약관리(booking.html)와 같은 종류의 문제 — 화면이 좁아져 버튼·
@@ -616,8 +618,8 @@
   .editor-toolbar{ display:flex; align-items:center; gap:10px; min-height:44px; padding:8px 12px;
     border-bottom:1px solid var(--line); flex-shrink:0; background:#f9fafb; flex-wrap:wrap; }
   .spacer{ flex:1; }
-  .log-list{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; box-sizing:border-box; }
-  .log-entry{ display:flex; gap:12px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; position:relative; }
+  .log-list{ flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:6px; box-sizing:border-box; }
+  .log-entry{ display:flex; gap:12px; padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; position:relative; }
   /* [2026.09 버그수정] 고정 폭(84px→66px로 줄였다가도 여전히 지적받음)은 결국 "가장 긴 경우"
      기준으로 정해야 해서 대부분의 행(완료·짧은 날짜)에는 항상 빈 공간이 남는다 — 애초에
      고정폭 자체가 원인이었다. flex:0 0 auto로 바꿔 각 행이 자기 글자 수만큼만 차지하게 한다
@@ -626,18 +628,19 @@
   .log-entry .log-text{ flex:1; font-size:13px; color:var(--ink); line-height:1.5; white-space:pre-wrap; }
   .log-entry .log-del{ flex:0 0 auto; background:none; border:none; color:var(--sub); cursor:pointer; font-size:16px; font-weight:800; padding:0 4px; }
   .log-entry .log-del:hover{ color:var(--danger); }
+  .log-entry .log-edit{ flex:0 0 auto; font-size:13px; opacity:.75; } .log-entry .log-edit:hover{ opacity:1; } /* [2026.11.01] 자료 줄의 고치기·지우기 표시가 글자보다 커 보이던 것 */
   /* [2026.10.31] 수금 내역 — 칸마다 같은 폭으로 세로 줄 맞춤(세무사님 "표처럼 필드별로 세로정렬 … 데이타길이에 맞도록 필드길이"), 넘치면 말줄임·좁은 화면은 옆으로 밀기 */
   #btnColStats.on{ background:var(--navy); border-color:var(--navy); color:#fff; } /* 통계를 펼친 동안은 눌린 모양 */
   #colList{ overflow-x:auto; }
   #colList .log-entry{ align-items:center; gap:10px; min-width:max-content; }
   #colList .log-date{ width:58px; }
   #colList .col-c{ flex:0 0 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
-  #colList .col-c-name{ width:84px; }
-  #colList .col-c-amt{ width:96px; text-align:right; }
-  #colList .col-c-rcpt{ width:72px; }
-  #colList .col-c-case{ width:220px; }
+  #colList .col-c-name{ width:60px; } /* [2026.11.01] 실제 자료 최대 폭(이름 55·금액 74·증빙 60·사건 162)에 맞춤 — 세무사님 "수금내역의 이름필드와 수수료 필드의 간격이 너무 큰 것" */
+  #colList .col-c-amt{ width:78px; text-align:right; font-variant-numeric:tabular-nums; }
+  #colList .col-c-rcpt{ width:64px; }
+  #colList .col-c-case{ width:170px; }
   #colList .col-c-memo{ flex:1 1 0; min-width:140px; max-width:420px; }
-  .log-empty{ padding:16px 14px; font-size:12.5px; color:var(--sub); }
+  .log-empty{ padding:6px 10px; font-size:12.5px; color:var(--sub); }
   /* [2026.09.16 신규] "고객관리 좌측 목록의 필드길이를 줄이자, 휴대폰번호가 끝나는 지점에
      맞춰라" — 위 .log-date와 같은 원인(고정폭 컨테이너가 가장 긴 이름 기준으로 정해져 있어
      "1"/"2"처럼 짧은 이름도 항상 넓은 빈 칸을 남김)이라, 컨테이너 폭이 아니라 각 행 자체를
@@ -650,7 +653,10 @@
   .log-entry.st-over{ border-left:4px solid #a83232; background:rgba(168,50,50,0.06); }
   .log-entry.st-hold{ border-left:4px solid #9aa1ad; background:rgba(120,130,150,0.07); }
   .log-entry.st-done{ border-left:4px solid var(--success); background:rgba(31,122,77,0.05); }
-  #clientList .log-entry{ border:none; border-bottom:1px solid var(--line); border-radius:0; background:transparent; width:100%; padding:8px 6px; }
+  #clientList .log-entry{ border:none; border-bottom:1px solid var(--line); border-radius:0; background:transparent; width:100%; padding:5px 10px; }
+  #clientList{ gap:0; padding:4px 0; }
+  #clientList .log-entry:hover{ background:rgba(200,162,68,0.12); }
+  #clientList .log-entry.on{ background:var(--navy); } #clientList .log-entry.on b, #clientList .log-entry.on span{ color:#fff !important; border-color:#fff !important; }
   /* 행뿐 아니라 패널 자체도 280px 고정이라, 좁아진 행 오른쪽에 빈 공간과 엉뚱한 위치의
      스크롤바가 남았다("좌측목록영역의 크기문제") — 패널도 내용에 맞춰 줄이되, 이름 하나 없이
      너무 좁아지거나(빈 목록) 유난히 긴 이름 하나 때문에 과하게 넓어지는 것만 막는다. */
@@ -671,6 +677,7 @@
      안 그러면 바로 위 숫자칸 우측정렬 규칙(input[inputmode=numeric])에 걸려 그쪽이 이긴다
      (실제로 처음엔 .taxcalc-date를 빠뜨려서 작업관리 등 날짜칸이 하나도 안 먹혔었다). */
   input[type=date], input.taxcalc-date{ text-align:center; }
+  input.taxcalc-date{ width:100px; } /* [2026.11.01] 직접 입력 날짜 칸 한 폭(YYYY-MM-DD 10자) */
   label{ font-size:12.5px; color:var(--sub); }
 
   .modal-overlay{ position:fixed; inset:0; background:rgba(13,27,61,0.55); display:flex; align-items:center;
@@ -893,8 +900,8 @@
      type="text"+class="taxcalc-date"(직접 입력용 커스텀 포맷)로 바꿔버려서, 처음에
      input[type="date"] 선택자로 걸었더니 실제로는 하나도 안 먹었다 — 바뀐 뒤의
      실제 상태(.taxcalc-date 클래스)를 기준으로 다시 걸었다. */
-  .taxcalc-field > input[type="date"]{ align-self:flex-start; width:auto; }
-  .taxcalc-field > input.taxcalc-date{ align-self:flex-start; width:95px; }
+  .taxcalc-field > input[type="date"]{ align-self:flex-start; width:124px; }
+  .taxcalc-field > input.taxcalc-date{ align-self:flex-start; width:100px; }
   .taxcalc-field > input[type="number"]{ align-self:flex-start; width:auto; }
   /* [2026.09.20 자체 점검] 금액(원) 입력칸은 enhanceNumberInputs가 렌더 직후 type="number"를
      type="text"+class="taxcalc-money"로 바꿔버려서 위 규칙이 실제로는 적용된 적이 없었다
@@ -1127,15 +1134,63 @@
   /* [2026.10.31] 세무사님 "비활성 하위탭이 탭인지 알수가 없다 … 최소한 일반텍스트와는 구별" — 안 고른 탭도 옅은 바탕·테두리를 둔 단추 모양.
      "하위탭아래 2차하위탭은 1차탭과는 또 다른 색상이어야 한다(트리구조)" — 1단 지금 탭은 남색, 2단(탭 안의 탭: .nx-tabbar.sub·세액계산 세목 안 탭)은 청색. */
   :root{ --tab-off:#eef1f6; --tab-off-hover:#e1e6ef; --tab-off-line:#cfd5df; --tab2:#2f6690; }
-  html.nx-dark{ --tab-off:#1d2536; --tab-off-hover:#26304a; --tab-off-line:#33405a; --tab2:#3a78a8; }
+  html.nx-dark #view-ai{ --tab-off:#1d2536; --tab-off-hover:#26304a; --tab-off-line:#33405a; --tab2:#3a78a8; }
   .nx-tabbar, .taxcalc-tabs, .taxcalc-subtabs{ gap:3px; }
   .nx-tab, .taxcalc-tab, .taxcalc-subtab{ background:var(--tab-off); border:1px solid var(--tab-off-line); border-bottom:none; opacity:1; color:var(--ink); }
   .nx-tab:hover, .taxcalc-tab:hover, .taxcalc-subtab:hover{ background:var(--tab-off-hover); }
   .nx-tab.active, .nx-tab.on, .taxcalc-tab.active, .taxcalc-subtab.active{ background:var(--navy); border-color:var(--navy); color:#fff; }
   .nx-tabbar.sub .nx-tab.active, .nx-tabbar.sub .nx-tab.on, .taxcalc-subtab.active{ background:var(--tab2); border-color:var(--tab2); color:#fff; }
   .nx-tabbar.sub, .taxcalc-subtabs{ border-bottom-color:var(--tab2); }
-  html.nx-dark .nx-tab, html.nx-dark .taxcalc-tab, html.nx-dark .taxcalc-subtab{ color:#e3e8f0; }
-  html.nx-dark .nx-tab.active, html.nx-dark .nx-tab.on, html.nx-dark .taxcalc-tab.active{ background:#25304a; border-color:#25304a; }
+  html.nx-dark #view-ai .nx-tab{ color:#e3e8f0; } /* [2026.11.01] 어두운 화면은 가운데 화면을 통째로 뒤집어(invert) 만든다 — 탭에 어두운 색을 따로 주면 두 번 뒤집혀 밝게 보였다. 뒤집지 않는 AI 창에만 */
+  html.nx-dark #view-ai .nx-tab.active, html.nx-dark #view-ai .nx-tab.on{ background:#25304a; border-color:#25304a; }
+
+  /* [2026.11.01] 입력칸·고르기·단추 공통 기준 — 세무사님 "검색창이든 콤보박스든 버튼이든 대부분 높이를 같게 해야 할텐데 완전 뒤죽박죽이다" /
+     "흰색 바탕에 흰색 콤보박스를 배치하는 … 바탕과 데이타 사이에 색상차이를 전혀 두지 않고 있구나" / "데이타들의 폰트에 대한 일정한 기준이 없어 보인다".
+     ① 높이 둘: 기본 30(도구 줄·입력칸·고르기·실행 단추) / 작은 22(자료 줄·제목 줄 안 단추·덧붙이는 작은 단추).
+     ② 입력칸·고르기는 바탕보다 옅은 남빛 회색 칸 + 진한 테두리 — 흰 카드 위에서도 칸이 보이게(어두운 화면은 반전 필터로 따라감).
+     ③ 글자: 입력·자료 13 / 단추 12.5 / 작은 단추·보조 글 11.5~12. */
+  :root{ --field-bg:#f2f4f8; --field-line:#a3abba; --ctl-h:30px; --ctl-h-sm:22px; }
+  input[type=text], input[type=date], input[type=password], input[type=tel], input[type=number], input[type=search], input[type=email], input[type=url], input:not([type]), select, textarea,
+  .taxcalc-field input, .taxcalc-field select{ background-color:var(--field-bg); border:1px solid var(--field-line); border-radius:6px; color:var(--ink); font-size:13px; }
+  .taxcalc-field input[readonly], input[readonly]{ background-color:#e4e7ed; }
+  input[type=text], input[type=date], input[type=password], input[type=tel], input[type=number], input[type=search], input[type=email], input[type=url], input:not([type]), select{
+    height:var(--ctl-h); box-sizing:border-box; padding-top:0; padding-bottom:0; vertical-align:middle; }
+  input::placeholder, textarea::placeholder{ color:#a2a9b6; opacity:1; font-style:italic; } /* 보기 글은 옅게·기울여 실제 값과 헷갈리지 않게 */
+  .taxcalc-field input::placeholder{ color:#a2a9b6; opacity:1; }
+  .ghost-btn, .btn, .save-btn, .taxcalc-add-asset, .taxcalc-run-btn, .tp-btn, .taxcalc-tier-tabs button{
+    height:var(--ctl-h); min-height:0; padding-top:0; padding-bottom:0; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; gap:4px; white-space:nowrap; vertical-align:middle; line-height:1.2; }
+  .ghost-btn.sm, .btn.sm, .save-btn.sm, td .ghost-btn, td .btn, td .save-btn, .log-entry .ghost-btn, .log-entry .save-btn, li .ghost-btn, li .save-btn,
+  .taxcalc-add-asset-inline, .taxcalc-calcbasis-btn, .tcs-more-toggle, .tp-chip{
+    height:var(--ctl-h-sm) !important; padding-top:0 !important; padding-bottom:0 !important; display:inline-flex; align-items:center; box-sizing:border-box; white-space:nowrap; }
+  td input:not([type=checkbox]):not([type=radio]), td select, .log-entry select, li select{ height:26px; }
+  /* 찾기 칸 — 세무사님 "미리 칸을 그렇게 넓게 차지할 필요가 있나? 검색창을 클릭했을때 데이타만 모두 받아들이면 되는 거지": 평소 좁게, 누르면 넓어짐 */
+  input[type=date]{ width:124px; min-width:124px; } /* 날짜 칸 한 폭(2026-10-07 + 달력 단추) — 화면마다 95·110으로 적어 글자가 잘리던 것 */
+  input.nx-find{ width:96px; flex:0 0 auto; min-width:0; transition:width .15s; }
+  input.nx-find:focus, input.nx-find:not(:placeholder-shown){ width:190px; }
+  /* [2026.11.01] 대시보드 반응형 — 세무사님 "불필요하게 화면을 많이 사용해도 안되고 … 반응형으로 화면크기나 비율에 따라 적절히 표현": 넓은 화면은 카드를 두세 줄로 나란히, 좁으면 한 줄 */
+  #view-dashboard .view-body{ column-width:440px; column-gap:14px; }
+  #view-dashboard .view-body > .card{ break-inside:avoid; display:inline-block; width:100%; box-sizing:border-box; margin:0 0 14px; }
+  #view-dashboard #dashTodayCard{ column-span:all; display:block; } /* 카드 높이가 제각각이라 칸 나눔(위에서 아래로 채움)으로 빈 틈 없이 */
+  @media (max-width:560px){ #view-dashboard .view-body{ column-count:1; } }
+
+  /* [2026.11.01] 입력 줄 공통 — 칸마다 앞에 작은 이름표(이름표 없이 칸만 늘어서 무슨 칸인지 모르던 것), 관련 칸끼리 한 줄 */
+  .nx-form-row{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:8px; }
+  .nx-fl{ display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--sub); white-space:nowrap; }
+
+  /* [2026.11.01] 사건 목록 촘촘하게 — 세무사님 "불필요하게 화면을 많이 사용해도 안되고": 카드 사이 10→4, 안쪽 10→6 */
+  #workCaseList{ gap:4px; padding:8px; }
+  #workCaseList .log-entry{ padding:6px 10px; gap:10px; }
+
+  /* [2026.11.01] 세액계산 항목명 괄호 설명 → 끝의 작은 「?」(마우스 올리면 전체 글) — 글은 그대로 두고 보이기만 */
+  .tc-x{ font-size:0; display:inline-block; vertical-align:1px; margin-left:4px; cursor:help; }
+  .tc-x::before{ content:"?"; display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; border:1px solid var(--gold, #c8a244); color:var(--gold, #a8862e); font-size:10px; font-weight:700; line-height:1; }
+  .tc-x.open{ font-size:11.5px; color:var(--sub); font-weight:400; }
+  .tc-x.open::before{ margin-right:4px; }
+
+  .tc-clamp:not(.open){ display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+  .tc-clamp:not(.open)::after{ content:""; }
+  .tc-clamp{ cursor:pointer; }
+
 </style>
 
 </head>
@@ -2773,7 +2828,7 @@ function nxMdOpenWindow(title, src, opts){
            할일에도 매번 빈 칸이 따라다녔다. 날짜가 필요할 때만 "일정" 버튼으로 펼치게 한다. -->
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">📅 일정</button>
-        <input type="date" id="dashNewTaskDue" style="display:none; width:95px;">
+        <input type="date" id="dashNewTaskDue" style="display:none;">
         <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
       <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
@@ -4440,7 +4495,7 @@ function nxMdOpenWindow(title, src, opts){
         <label style="font-size:12px; color:var(--sub);">유형<br><input type="text" id="bkNewType" size="16" placeholder="예: 양도소득세 상담"></label>
         <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input type="text" id="bkNewField" size="10" placeholder="예: 부동산"></label>
         <div style="display:flex; gap:8px;">
-          <label style="font-size:12px; color:var(--sub);">날짜<br><input type="date" id="bkNewDate" style="width:95px;"></label>
+          <label style="font-size:12px; color:var(--sub);">날짜<br><input type="date" id="bkNewDate"></label>
           <label style="font-size:12px; color:var(--sub);">시간<br><input type="time" id="bkNewTime" style="width:100px;"></label>
         </div>
         <label style="font-size:12px; color:var(--sub);">상황(의뢰 내용)<br><textarea id="bkNewSituation" rows="3" style="width:100%; font-family:inherit; box-sizing:border-box;" placeholder="상담 내용을 적어두면 사건 시작 시 그대로 넘어갑니다"></textarea></label>
@@ -4549,10 +4604,10 @@ function nxMdOpenWindow(title, src, opts){
     }
     // [2026.09 버그수정] 데이터 길이에 맞춰 각 열 폭을 지정한다. 제목칸에도 줄바꿈 금지.
     var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
-    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로
+    // [2026.10.31] 세무사님 "상황란의 필드길이가 너무 길다 현재 길이의 70% 정도로" — 상황 칸 400→280px(넘치는 글은 … + 마우스 올리면 전체). [2026.09.16] 유형 칸 80px, 상황 칸 450px. [2026.10.30] 사건처리 칸에 "기존 사건에 연결"이 붙어 250px로. [2026.11.01] 세무사님 "데이타길이에 맞지 않는 필드" — 실제 자료 폭을 재서(일시 101·이름 36·상태 73·예약처리 79·사건처리 245) 일시 115·이름 62·상태 92·예약처리 95·사건처리 265(상황 280은 세무사님 지정 그대로)
     var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:930px;"><colgroup>'
-      + '<col style="width:140px"><col style="width:70px"><col style="width:95px"><col style="width:80px"><col style="width:70px">'
-      + '<col style="width:280px"><col style="width:100px"><col style="width:120px"><col style="width:250px">'
+      + '<col style="width:115px"><col style="width:62px"><col style="width:100px"><col style="width:90px"><col style="width:70px">'
+      + '<col style="width:280px"><col style="width:92px"><col style="width:95px"><col style="width:265px">'
       + '</colgroup><tr><th ' + th(140) + '>희망일시</th><th ' + th(70) + '>이름</th><th ' + th(110) + '>연락처</th><th ' + th(80) + '>유형</th><th ' + th(70) + '>관련분야</th>' +
       '<th ' + th(280) + '>상황</th><th ' + th(100) + '>상태</th><th ' + th(120) + '>예약처리</th><th ' + th(250) + '>사건처리</th></tr>';
     list.forEach(function(b, idx){
@@ -4938,7 +4993,7 @@ function nxMdOpenWindow(title, src, opts){
       <option value="보류">보류</option>
       <option value="완료">완료</option>
     </select>
-    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:230px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
+    <input type="text" id="workCaseSearchInput" class="nx-find" placeholder="사건 찾기" title="의뢰인·납세자·완료일로 찾기">
   </div>
   <div class="manage-split">
     <div class="manage-split-list"><div id="workCaseList" class="log-list"></div></div>
@@ -5283,9 +5338,9 @@ function nxMdOpenWindow(title, src, opts){
         Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '">' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') +
       '</select></label>' +
       '<label>업무유형<br><select id="wcNewUptype" style="width:100%;"></select></label>' +
-      '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate" style="width:95px;"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
-      '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate" style="width:95px;"></label></div>' +
-      '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline" style="width:95px;"></label>' +
+      '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
+      '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate"></label></div>' +
+      '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline"></label>' +
       '<label>진행메모<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="어떻게 처리할 계획인지">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
       '<button type="button" id="wcNewSave" class="save-btn">저장</button>' +
@@ -5448,40 +5503,26 @@ function nxMdOpenWindow(title, src, opts){
       // 있어서 두 확정동작 버튼이 한눈에 안 들어왔다(고객관리와 같은 이유로 같이 고침) →
       // 삭제는 아래 저장 버튼 옆으로 옮긴다. 고객 아이콘 바로 오른쪽엔 "↪ 이 사건 다른 화면"
       // (처리개요 포함, 아래 nxCaseJumpAttach_) — 예전 "처리" 단추는 같은 일이라 뺐다(10-31).
-      '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
-      '<input type="text" id="wcEditCustomerName" placeholder="고객명" value="' + escapeHtml(c.고객명 || '') + '" size="' + Math.max(4, String(c.고객명 || '').length + 2) + '" style="font-weight:700; font-size:15px;">' +
+      // [2026.11.01] 세무사님 "정보가 유기적으로 배치되어 있어야 하고 관련 버튼이나 콤보박스와 같은 도구들도 마찬가지" — 이름표 없던 고객·납세자 칸에 이름표,
+      // 줄 1 = 누구(고객·납세자·탭 이동), 줄 2 = 무슨 일(세목·업무·상태), 줄 3 = 날짜(의뢰일·기준일·법정일 — 법정일만 따로 상자에 있던 것을 같은 줄로), 저장·삭제는 줄 2 오른쪽 끝
+      '<div class="nx-form-row">' +
+      '<label class="nx-fl">고객 <input type="text" id="wcEditCustomerName" placeholder="고객명" value="' + escapeHtml(c.고객명 || '') + '" size="' + Math.max(4, String(c.고객명 || '').length + 2) + '" style="font-weight:700;"></label>' +
       '<button type="button" id="wcViewCustomer" class="ghost-btn" title="이 고객 정보 빠르게 보기·수정">👤</button>' +
-      '<input type="text" id="wcEditTaxpayer" placeholder="납세자(의뢰인과 다르면 입력)" value="' + escapeHtml(c.납세자 || '') + '" size="' + Math.max(6, String(c.납세자 || '').length + 2) + '">' +
+      '<label class="nx-fl">납세자 <input type="text" id="wcEditTaxpayer" placeholder="의뢰인과 다를 때" value="' + escapeHtml(c.납세자 || '') + '" size="' + Math.max(8, String(c.납세자 || '').length + 2) + '"></label>' +
       '</div>' +
-      '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; margin-top:8px;">' +
-      '<select id="wcEditSemok">' + Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '"' + (k === c.세목 ? ' selected' : '') + '>' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') + '</select>' +
-      '<select id="wcEditUptype"></select>' +
-      // [2026.09 버그수정] 날짜칸(input type=date)에 폭을 안 주면 브라우저 기본 폭(캘린더
-      // 아이콘 포함 여유공간)이 실제 "2026-09-05" 길이보다 훨씬 넓게 나와 눈에 계속 거슬린다는
-      // 지적 — 이 화면의 모든 날짜칸에 데이터 길이에 맞춘 폭을 준다.
-      // [2026.09.16 재조정] 130px도 여전히 커 보인다는 재지적 — 세액계산(taxcalc.html)의
-      // 같은 종류 날짜칸에서 확정한 110px과 맞춘다(전수조사로 확정된 값, 실측 검증됨).
-      '<label style="font-size:12px; color:var(--sub);">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '" style="width:95px;"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn">오늘</button></label>' +
-      '<label id="wcEditBaseDateWrap" style="font-size:12px; color:var(--sub);"><span id="wcEditBaseDateLabel">기준일</span> <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '" style="width:95px;"></label>' +
-      '<select id="wcEditStatus">' + WORK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === c.상태 ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
-      '<button type="button" id="wcSaveCase" class="save-btn">저장</button>' +
-      '<button type="button" id="wcDeleteCase" class="btn danger" title="삭제">삭제</button>' +
+      '<div class="nx-form-row">' +
+      '<label class="nx-fl">세목 <select id="wcEditSemok">' + Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '"' + (k === c.세목 ? ' selected' : '') + '>' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="nx-fl">업무 <select id="wcEditUptype"></select></label>' +
+      '<label class="nx-fl">상태 <select id="wcEditStatus">' + WORK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === c.상태 ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></label>' +
+      '<span style="margin-left:auto; display:inline-flex; gap:6px;"><button type="button" id="wcSaveCase" class="save-btn">저장</button>' +
+      '<button type="button" id="wcDeleteCase" class="btn danger" title="삭제">삭제</button></span>' +
       '</div>' +
-      '<div style="margin-bottom:12px;">' +
-      // [2026.09 버그수정] 완료 처리하면 법정일이 완료일(오늘)로 덮어써지는데, 이 칸이 항상
-      // c.법정일만 보여줘서 완료된 사건을 다시 열어보면 마치 "원래 처리시한이 오늘이었다"처럼
-      // 보였다 — 완료 상태에서는 백업해둔 원래 처리시한(완료전법정일)을 대신 보여준다.
-      // [2026.09.18 버그수정] 세무사님 지적 — "법정일이 이상한 옛날 날짜(예: 20-07-23)로
-      // 나오는데 왜 그런지도 모르겠고 고칠 방법도 없다." 원인: 신고 등 법정기한 유형은 여기
-      // 입력칸 자체가 항상 숨겨져 있었다(법정일=기준일로 서버가 자동계산하는 유형이라 직접
-      // 입력받을 필요가 없다고 봤음) — 그런데 그 자동계산의 바탕이 되는 기준일이 잘못
-      // 입력됐거나 계산 자체가 어긋난 경우, 고칠 방법이 정말 하나도 없었다. 상담·해명자료
-      // (처리시한, 원래도 직접입력)와 똑같이 이 칸을 모든 유형에서 항상 보이게 해서, 이상하게
-      // 나온 값을 직접 고칠 수 있게 한다 — 다만 자동계산 유형에서 이 칸을 건드리지 않고
-      // 저장하면(대부분의 평소 저장) 기존처럼 기준일 기반 자동계산이 그대로 적용된다
-      // (saveCaseNow_의 dirty-check 참고).
-      '<label id="wcEditManualDeadlineLabel" style="display:inline-block; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">' + escapeHtml(isCompleted ? '완료일' : workDeadlineFieldLabel_(c.업무유형)) + '</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '" style="width:95px;"></label>' +
-      (workMyPortalBadgeText_(c) ? ' <span style="background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
+      '<div class="nx-form-row" style="margin-bottom:12px;">' +
+      '<label class="nx-fl">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn">오늘</button></label>' +
+      '<label id="wcEditBaseDateWrap" class="nx-fl"><span id="wcEditBaseDateLabel">기준일</span> <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '"></label>' +
+      // 완료 상태에서는 이름표가 "완료일"(아래 onEditUptypeChange 참고). 자동계산 유형도 직접 고칠 수 있게 늘 보인다(2026.09.18).
+      '<label id="wcEditManualDeadlineLabel" class="nx-fl" style="font-weight:600; color:var(--ink);"><span id="wcEditManualDeadlineText">' + escapeHtml(isCompleted ? '완료일' : workDeadlineFieldLabel_(c.업무유형)) + '</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '"></label>' +
+      (workMyPortalBadgeText_(c) ? ' <span class="nx-fl">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
       '<div style="margin-bottom:14px;">' +
       '<label id="wcEditOverviewLabel" style="font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px;">' + (c.상태 === '완료' ? '처리내용' : '진행메모') + '</label>' +
@@ -5503,7 +5544,7 @@ function nxMdOpenWindow(title, src, opts){
         newRootFormWrap.style.display = 'flex';
         newRootFormWrap.innerHTML =
           '<input type="text" id="wcNewRootTitle" placeholder="새 하위업무 (예: 자료수집)" style="flex:1; min-width:160px;">' +
-          '<input type="date" id="wcNewRootDue" title="마감일(선택)" style="width:95px;">' +
+          '<input type="date" id="wcNewRootDue" title="마감일(선택)">' +
           '<button type="button" id="wcAddRoot" class="save-btn">추가</button>' +
           '<button type="button" id="wcAddRootCancel" class="ghost-btn">취소</button>';
         document.getElementById('wcAddRootCancel').addEventListener('click', function(){ newRootFormWrap.style.display = 'none'; newRootFormWrap.innerHTML = ''; });
@@ -5540,7 +5581,7 @@ function nxMdOpenWindow(title, src, opts){
       // 이 입력칸을 여기서 안 보여주고 처리개요의 사건개요서(양도일 칸)에서만 편집한다.
       document.getElementById('wcEditBaseDateLabel').textContent = WORK_BASE_DATE_LABELS_[editSemokSel.value] || '기준일';
       var hasOverviewTemplate = typeof CH_CASE_OVERVIEW_FIELDS_ !== 'undefined' && !!CH_CASE_OVERVIEW_FIELDS_[editSemokSel.value];
-      document.getElementById('wcEditBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : 'inline-block';
+      document.getElementById('wcEditBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : 'inline-flex';
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(editUptypeSel.value) !== -1;
       // [2026.09.18] 자동계산 유형에서도 법정일을 직접 고칠 수 있어야 하므로 이 칸은 이제
       // 유형과 상관없이 항상 보인다 — 라벨 문구만 유형에 맞게 "법정일"/"처리시한"으로 바뀐다.
@@ -5780,7 +5821,7 @@ function nxMdOpenWindow(title, src, opts){
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">' +
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
         '<input type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
-        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px; width:95px;' + (overdue ? ' color:#a83232;' : '') + '">' +
+        '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#a83232;' : '') + '">' +
         '<button type="button" class="ghost-btn wcNodeAddChild sm">+ 하위</button>' +
         '<span class="log-del wcNodeDelete" title="삭제">✕</span>' +
         '</div>' +
@@ -5810,7 +5851,7 @@ function nxMdOpenWindow(title, src, opts){
           childFormWrap.style.display = 'flex';
           childFormWrap.innerHTML =
             '<input type="text" class="wcChildTitle" placeholder="세부항목 이름" style="flex:1; min-width:120px; font-size:12.5px;">' +
-            '<input type="date" class="wcChildDue" style="font-size:12px; width:95px;">' +
+            '<input type="date" class="wcChildDue" style="font-size:12px;">' +
             '<button type="button" class="save-btn wcChildSave sm">추가</button>' +
             '<button type="button" class="ghost-btn wcChildCancel sm">취소</button>';
           childFormWrap.querySelector('.wcChildCancel').addEventListener('click', function(){ childFormWrap.style.display = 'none'; childFormWrap.innerHTML = ''; });
@@ -6117,7 +6158,7 @@ function nxMdOpenWindow(title, src, opts){
     // 남아 보였다. 그리드 칸 자체 크기는 그대로 두고(다른 칸과 줄이 맞아야 하므로) 입력창만
     // 실제 데이터 길이에 맞춰 좁혀 왼쪽으로 붙인다.
     if (field.type === 'date'){
-      return '<input type="date" ' + idAttr + ' style="width:95px; box-sizing:border-box;" value="' + v + '">';
+      return '<input type="date" ' + idAttr + ' style=" box-sizing:border-box;" value="' + v + '">';
     }
     if (field.type === 'number'){
       return '<input type="number" ' + idAttr + ' style="width:70px; box-sizing:border-box;" value="' + v + '">';
@@ -6177,7 +6218,7 @@ function nxMdOpenWindow(title, src, opts){
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
       '<input type="text" class="chAssetField" data-field="assetHo" size="6" style="box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득일(선택)</label>' +
-      '<input type="date" class="chAssetField" data-field="취득일" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
+      '<input type="date" class="chAssetField" data-field="취득일" style=" box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
       // [2026.09 재설계] "양도가액은 물건별이 아니라 양도계약 단위로 정해지는 값"이라는 지적 —
       // 물건 카드마다 따로 입력하던 것을 없애고, 아래 "양도계약별 금액"란(chBuildTransferGroupAmountsHtml_)
       // 에서 계약(그룹) 하나당 한 번만 입력하도록 옮겼다. 취득가액은 사용자 판단에 따라
@@ -6229,7 +6270,7 @@ function nxMdOpenWindow(title, src, opts){
     return bundleControls +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>' +
       '<div id="chTransferGroupAmountsHost" style="display:contents;">' + chBuildTransferGroupAmountsHtml_(list, overview) + '</div>' +
       '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
@@ -6442,7 +6483,7 @@ function nxMdOpenWindow(title, src, opts){
     return chBuildLocationFieldsHtml_(overview) +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">증여일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
@@ -6450,7 +6491,7 @@ function nxMdOpenWindow(title, src, opts){
     return chBuildLocationFieldsHtml_(overview) +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">상속개시일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
@@ -6458,7 +6499,7 @@ function nxMdOpenWindow(title, src, opts){
   function chBuildObjectionBlockHtml_(c){
     return '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">' + escapeHtml(chObjectionBaseLabel_(c.업무유형)) + '</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(c.기준일 || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style=" box-sizing:border-box;" value="' + escapeHtml(c.기준일 || '') + '">' +
       '</div>';
   }
 
@@ -6548,13 +6589,14 @@ function nxMdOpenWindow(title, src, opts){
   var chCaseFilterText_ = '', chCaseOnlyOpen_ = true;
   function chEnsureCaseFilterUi_(){
     if (document.getElementById('chCaseFilterBox') || !chCaseSelectEl || !chCaseSelectEl.parentNode) return;
-    var box = document.createElement('div'); box.id = 'chCaseFilterBox'; box.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 6px;';
-    var inp = document.createElement('input'); inp.type = 'search'; inp.id = 'chCaseFilterText'; inp.placeholder = '🔍 사건 찾기(고객명·납세자·사건명)'; inp.style.cssText = 'flex:1; min-width:160px; box-sizing:border-box;';
+    // [2026.11.01] 세무사님 "검색창을 클릭했을때 데이타만 모두 받아들이면 되는 거지 입력란을 그렇게 무식하게 크게 잡아 놓은다고 뭐가 좋은가?" / "<진행중만> 체크박스를 <진행>으로 변경하여 맨앞에 배치하라" — [진행] [찾기 칸(좁게, 누르면 넓어짐)] [사건 고르기] 한 줄
+    var box = document.createElement('div'); box.id = 'chCaseFilterBox'; box.style.cssText = 'display:flex; gap:6px; align-items:center;';
+    var inp = document.createElement('input'); inp.type = 'search'; inp.id = 'chCaseFilterText'; inp.className = 'nx-find'; inp.placeholder = '사건 찾기'; inp.title = '고객명·납세자·사건명으로 찾기';
     inp.addEventListener('input', function(){ chCaseFilterText_ = inp.value.trim(); renderChCaseSelect_(); });
     var lab = document.createElement('label'); lab.style.cssText = 'font-size:12.5px; display:flex; gap:4px; align-items:center; white-space:nowrap;';
     var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = chCaseOnlyOpen_; cb.addEventListener('change', function(){ chCaseOnlyOpen_ = cb.checked; renderChCaseSelect_(); });
-    lab.appendChild(cb); lab.appendChild(document.createTextNode('진행 중만'));
-    box.appendChild(inp); box.appendChild(lab);
+    lab.appendChild(cb); lab.appendChild(document.createTextNode('진행')); lab.title = '진행 중인 사건만(완료 빼기)';
+    box.appendChild(lab); box.appendChild(inp);
     chCaseSelectEl.parentNode.insertBefore(box, chCaseSelectEl);
   }
   function renderChCaseSelect_(){
@@ -6915,9 +6957,9 @@ function nxMdOpenWindow(title, src, opts){
         newLogFormWrap.style.display = 'flex';
         var todayStr = nxLocalDateStr_();
         newLogFormWrap.innerHTML =
-          '<input type="date" id="chNewLogDate" value="' + todayStr + '" style="width:95px;">' +
+          '<input type="date" id="chNewLogDate" value="' + todayStr + '">' +
           '<input type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
-          '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다" style="width:95px;">' +
+          '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다">' +
           '<button type="button" id="chAddLog" class="save-btn">추가</button>' +
           '<button type="button" id="chAddLogCancel" class="ghost-btn">취소</button>';
         document.getElementById('chAddLogCancel').addEventListener('click', function(){ newLogFormWrap.style.display = 'none'; newLogFormWrap.innerHTML = ''; });
@@ -6984,7 +7026,7 @@ function nxMdOpenWindow(title, src, opts){
       if (newPaymentFormWrap.style.display === 'none'){
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
-          '<input type="date" id="chNewPayDate" title="날짜(생략하면 오늘)" style="width:95px;">' +
+          '<input type="date" id="chNewPayDate" title="날짜(생략하면 오늘)">' +
           '<input type="number" id="chNewPayAmount" placeholder="금액" size="8">' +
           '<select id="chNewPayReceipt">' +
           '<option value="">수취증빙 선택</option>' +
@@ -8061,17 +8103,17 @@ function nxMdOpenWindow(title, src, opts){
     <div id="lsiPane-law">
             <div class="card" id="lsiDbCard">
         <h3 style="margin-top:0;">법령 원문 (법령 정비본)</h3>
-        <div class="lsi-note" style="margin-bottom:8px;">법제처 원문을 법령정보 모양으로 봅니다. 조문 전체나 항 하나를 [복사]로 그대로 인용할 수 있고, 판(시행일)을 고르면 그때 법령을 봅니다. 그림 산식은 글로 옮긴 것(세무사님 타이핑·판독)이나 법제처 글자상자로 보여 줍니다.</div>
+        <div class="nx-help" style="margin-bottom:8px;">법제처 원문을 법령정보 모양으로 봅니다. 조문 전체나 항 하나를 [복사]로 그대로 인용할 수 있고, 판(시행일)을 고르면 그때 법령을 봅니다. 그림 산식은 글로 옮긴 것(세무사님 타이핑·판독)이나 법제처 글자상자로 보여 줍니다.</div>
         <div id="lsiDbBar" class="lsidb-bar"><button type="button" class="btn" id="lsiDbOpen">법령 원문 열기</button></div>
         <div id="lsiDbBody"></div>
       </div>
 
       <!-- [2026.10.19] ⚖️ 법령정보 → 📜 법령 탭 "🤝 판단 대기" 카드 — 앱에만(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <div class="card" id="jwCard">
-  <h3 style="margin-top:0;">판단 대기 — AI 회의 기록</h3>
-  <div class="lsi-note" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점(⚖️ 법령 안건)입니다. 위원(Gemini API)이 같은 질문지(쟁점·선택지·서식 칸 해설·조문 원문)에 답하고, 근거가 법제처에 실제로 있는지(✔/⚠) 확인한 뒤 회장(Claude)이 결론을 냅니다. 결론이 안 난 것(🙋 결정 필요)만 세무사님이 고릅니다. 엔진은 자동으로 고치지 않습니다.</div>
+  <h3 style="margin-top:0;">법령 판단 대기</h3>
+  <div class="nx-help" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점(⚖️ 법령 안건)입니다. 위원(Gemini API)이 같은 질문지(쟁점·선택지·서식 칸 해설·조문 원문)에 답하고, 근거가 법제처에 실제로 있는지(✔/⚠) 확인한 뒤 회장(Claude)이 결론을 냅니다. 결론이 안 난 것(🙋 결정 필요)만 세무사님이 고릅니다. 엔진은 자동으로 고치지 않습니다.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-    <button type="button" class="ghost-btn" id="jwLoad">📋 회의 기록</button>
+    <button type="button" class="ghost-btn" id="jwLoad">판단 대기 목록</button>
     <select id="jwFilter" aria-label="상태 고르기"><option value="">전체</option><option value="회의 전">회의 전</option><option value="위원 답함">위원 답함</option><option value="회장 결론">회장 결론</option><option value="결정 필요">🙋 결정 필요</option><option value="세무사님 결정">세무사님 결정</option></select>
     <span id="jwCount" class="lsi-note"></span>
   </div>
@@ -10110,7 +10152,7 @@ function nxMdOpenWindow(title, src, opts){
   <div class="editor-toolbar">
     <h2 class="tb-title">고객관리</h2>
     <button type="button" id="btnClientNew" class="save-btn">+ 새 고객</button>
-    <input type="text" id="clientSearchInput" placeholder="이름으로 검색…">
+    <input type="text" id="clientSearchInput" class="nx-find" placeholder="고객 찾기" title="이름으로 찾기">
   </div>
   <div class="manage-split">
     <div class="manage-split-list" id="clientSplitList"><div id="clientList" class="log-list"></div></div>
@@ -10244,16 +10286,15 @@ function nxMdOpenWindow(title, src, opts){
       row.className = 'log-entry';
       row.style.cursor = 'pointer';
       row.title = (c.성명 || '') + (c.전화번호 ? ' · ' + c.전화번호 : '') + ' · ' + (c.구분 || '보통'); // 좁은 명단에서 잘린 글은 마우스를 올리면 다 보임
-      if (c.id === selectedClientId) row.style.outline = '2px solid var(--navy)';
+      if (c.id === selectedClientId) row.classList.add('on');
       // [2026.09.16 버그수정] "관리화면 취지에 맞게 이름·전화번호·분류가 모두 한 줄에 표시되게
       // 하라" — 구분(로얄/우수/보통/영세)이 줄바꿈되어 아래줄에 따로 나오던 것을 한 줄로 합친다.
+      // [2026.11.01 화면 정비] 세무사님 "깔끔·가독성, 낭비되는 공간 없이" — 한 줄을 낮추고, 구분은 보통이 아닐 때만 색 꼬리표로(줄마다 되풀이되던 「· 보통」 뺌), 전화는 오른쪽 옅게
+      var tierCol = { 로얄: '#a07a1c', 우수: '#2d6a9f', 영세: '#7a8396' }[c.구분] || '';
       row.innerHTML =
-        '<div class="log-text"><b>' + escapeHtml(c.성명 || '') + '</b>' +
-        (c.전화번호 ? ' · ' + escapeHtml(c.전화번호) : '') +
-        // 수정화면이 구분 빈값을 이미 "보통"으로 간주해왔다(ccEditType의 `c.구분 || '보통'`) —
-        // 목록도 같은 기본값을 보여줘야, 예전에 자동등록만 되고 구분을 한 번도 안 고친 고객도
-        // 새로 만든 고객과 똑같이 일관되게 보인다.
-        ' · <span style="color:var(--sub); font-size:12px;">' + escapeHtml(c.구분 || '보통') + '</span>' +
+        '<div class="log-text" style="display:flex; align-items:center; gap:6px; min-width:0;"><b style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(c.성명 || '') + '</b>' +
+        (tierCol ? '<span style="font-size:11px; font-weight:700; color:' + tierCol + '; border:1px solid ' + tierCol + '; border-radius:8px; padding:0 6px; line-height:16px;">' + escapeHtml(c.구분) + '</span>' : '') +
+        (c.전화번호 ? '<span style="margin-left:auto; color:var(--sub); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums;">' + escapeHtml(c.전화번호) + '</span>' : '') +
         '</div>';
       row.addEventListener('click', function(){ clientShowingNewForm = false; selectedClientId = c.id; renderClientList(); renderClientDetail(c); });
       clientList.appendChild(row);
@@ -10380,32 +10421,30 @@ function nxMdOpenWindow(title, src, opts){
   function renderClientDetail(c, container){
     container = container || clientDetail;
     container.innerHTML =
-      '<div style="margin-bottom:8px;">' +
+      // [2026.11.01 화면 정비] 세무사님 "정보·도구 유기적 배치" — 이름표 없이 칸만 늘어서 무엇이 무슨 칸인지 몰랐던 것을
+      //  이름표 붙은 두 줄로(① 성명·구분 + 저장·문자·삭제 ② 전화·주소·주민번호), 추가 연락처는 그 아래. 칸 id는 그대로.
+      '<div class="nx-form-row" style="margin-top:0;">' +
       '<input type="text" id="ccEditName" placeholder="성명" value="' + escapeHtml(c.성명 || '') + '" size="' + Math.max(6, String(c.성명 || '').length + 2) + '" style="font-weight:700; font-size:15px;">' +
-      '</div>' +
-      // [2026.09.16 버그수정] 실사용 지적 — 삭제 버튼이 성명 줄 맨 끝에 혼자 떨어져 있어서
-      // 저장(확정동작)과 삭제(확정동작)가 서로 다른 줄에 따로 놀았다. 두 확정동작 버튼은
-      // 나란히 붙여서 저장 바로 옆(오른쪽)에 삭제를 둔다.
-      '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px;">' +
-      '<input type="text" id="ccEditPhone" placeholder="전화번호" value="' + escapeHtml(c.전화번호 || '') + '" size="13">' +
-      '<select id="ccEditType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
-      '<input type="text" id="ccEditAddr" placeholder="주소" value="' + escapeHtml(c.주소 || '') + '" size="20">' +
+      '<span class="nx-fl">구분 <select id="ccEditType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></span>' +
+      '<span style="margin-left:auto; display:inline-flex; gap:6px;">' +
       '<button type="button" id="ccSaveClient" class="save-btn">저장</button>' +
-      '<button type="button" id="ccSendSms" class="ghost-btn" title="이 고객에게 문자를 보냅니다(현금영수증 등 파일 링크를 메시지에 붙여넣어 같이 보낼 수 있습니다)">📱 문자</button>' +
+      '<button type="button" id="ccSendSms" class="ghost-btn" title="이 고객에게 문자를 보냅니다(현금영수증 등 파일 링크를 메시지에 붙여넣어 같이 보낼 수 있습니다)">문자</button>' +
       '<button type="button" id="ccDeleteClient" class="btn danger" title="삭제">삭제</button>' +
+      '</span></div>' +
+      '<div class="nx-form-row">' +
+      '<span class="nx-fl">전화 <input type="text" id="ccEditPhone" placeholder="010-0000-0000" value="' + escapeHtml(c.전화번호 || '') + '" style="width:118px;"></span>' +
+      '<span class="nx-fl">주소 <input type="text" id="ccEditAddr" placeholder="주소" value="' + escapeHtml(c.주소 || '') + '" style="width:240px;"></span>' +
+      '<span class="nx-fl">주민번호 <b style="font-weight:600; color:' + (c.주민번호등록됨 ? 'var(--ink)' : 'var(--sub)') + ';">' + (c.주민번호등록됨 ? '등록됨' : '미등록') + '</b>' +
+      (c.주민번호등록됨 ? '<button type="button" id="ccRevealRrn" class="ghost-btn sm">보기</button><span id="ccRrnValue" style="font-size:12px; color:var(--ink); display:none;"></span>' : '') +
+      '<input type="text" id="ccEditRrn" placeholder="바꿀 때만 입력" title="바꿀 때만 입력 — 암호화해 저장합니다" style="width:120px;"></span>' +
       '</div>' +
-      '<div style="margin-bottom:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
-      '<label style="font-size:12px; color:var(--sub);">주민등록번호(' + (c.주민번호등록됨 ? '등록됨' : '미등록') + ')</label>' +
-      (c.주민번호등록됨 ? '<button type="button" id="ccRevealRrn" class="ghost-btn sm">👁 보기</button><span id="ccRrnValue" style="font-size:12px; color:var(--ink); display:none;"></span>' : '') +
-      '<input type="text" id="ccEditRrn" placeholder="변경 시에만 입력(암호화 저장)" size="18" style="font-size:12px;">' +
-      '</div>' +
-      '<div style="margin-bottom:14px;"><label style="font-size:12px; color:var(--sub);">추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다)</label><br>' +
+      '<div style="margin:12px 0 10px;"><span class="nx-fl" style="font-weight:600; color:var(--ink);">추가 연락처</span> <span class="nx-help">공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다</span>' +
       ccExtraContactsBlockHtml_('ccEditExtra') + '</div>' +
       '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; max-width:500px; min-height:50px; font-family:inherit; margin-bottom:16px;">' + escapeHtml(c.메모 || '') + '</textarea>' +
       // [2026.10.18 탭연결 3번] 고객관리에서 바로 이 고객의 새 사건을 연다(작업관리 새 사건 폼에 고객을 고정해 넘김 — 동명이인 혼동 없음)
       '<h4 style="margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">서비스 이력 <button type="button" class="ghost-btn sm" data-cc-new-case="1" style="font-weight:400;">＋ 이 고객으로 새 사건</button></h4>' +
       '<div id="ccLogList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
-      '<h4 id="ccPaymentToggle" style="margin-bottom:6px; margin-top:18px; cursor:pointer; width:fit-content;" title="눌러서 수금 내역 추가">➕ 수금관리</h4>' +
+      '<h4 style="margin-bottom:6px; margin-top:18px; display:flex; gap:8px; align-items:center;">수금 내역 <button type="button" id="ccPaymentToggle" class="ghost-btn sm" style="font-weight:400;">＋ 수금 추가</button></h4>' + // [2026.11.01] 제목 글자를 누르는 숨은 단추 → 제목 + 단추
       '<div id="ccPaymentList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
       '<div id="ccNewPaymentFormWrap" style="display:none; margin-top:10px; gap:6px; flex-wrap:wrap; align-items:center;"></div>';
 
@@ -10500,7 +10539,7 @@ function nxMdOpenWindow(title, src, opts){
       if (newPaymentFormWrap.style.display === 'none'){
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
-          '<input type="date" id="ccNewPayDate" title="날짜(생략하면 오늘)" style="width:95px;">' +
+          '<input type="date" id="ccNewPayDate" title="날짜(생략하면 오늘)">' +
           '<input type="number" id="ccNewPayAmount" placeholder="금액" size="8">' +
           '<select id="ccNewPayReceipt">' +
           '<option value="">수취증빙 선택</option>' +
@@ -10670,18 +10709,20 @@ function nxMdOpenWindow(title, src, opts){
     var rolesHtml = (roles && roles.length)
       ? ' · ' + roles.map(function(r){ return '<span style="background:var(--gold-light); color:var(--navy-deep); border-radius:4px; padding:1px 6px; font-size:11px; font-weight:700;">' + escapeHtml(r) + '</span>'; }).join(' ')
       : '';
+    // [2026.11.01 화면 정비] 세무사님 "낭비되는 공간 없이" — 세 줄 카드(사건명 / 법정일 / 단추)를 한 줄로: 의뢰일 · 사건명 · 세목·업무 · 상태 · 법정일 … 단추는 오른쪽 끝
+    row.style.cssText += 'display:flex; align-items:center; gap:10px; padding:6px 10px;';
     row.innerHTML =
-      '<div class="log-date">' + escapeHtml(wc.의뢰일 ? fmtDateShort_(wc.의뢰일) : '') + '</div>' +
-      '<div class="log-text">' +
-      '🗂 <b>' + escapeHtml(wc.사건명 || '') + '</b> · ' + escapeHtml(semokLabel) + (wc.업무유형 ? ' · ' + escapeHtml(wc.업무유형) : '') +
-      ' · <span style="color:' + (wc.상태 === '완료' ? '#16a34a' : 'var(--sub)') + ';">' + escapeHtml(wc.상태 || '') + '</span>' +
-      rolesHtml +
-      (wc.법정일 ? '<br>' + escapeHtml(deadlineLabel) + ': ' + escapeHtml(fmtDateShort_(wc.법정일)) : '') +
-      '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">' +
-        '<button type="button" class="ghost-btn sm" data-cc-case-go="handle" data-case-id="' + escapeHtml(wc.id) + '">🧭 처리개요</button>' +
-        '<button type="button" class="ghost-btn sm" data-cc-case-go="work" data-case-id="' + escapeHtml(wc.id) + '">📌 작업관리</button>' +
+      '<div class="log-date" style="flex:0 0 58px;">' + escapeHtml(wc.의뢰일 ? fmtDateShort_(wc.의뢰일) : '') + '</div>' +
+      '<div class="log-text" style="flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHtml(wc.사건명 || '') + '">' +
+      '<b>' + escapeHtml(wc.사건명 || '') + '</b> <span style="color:var(--sub);">' + escapeHtml(semokLabel) + (wc.업무유형 ? '·' + escapeHtml(wc.업무유형) : '') + '</span>' +
+      ' <span style="color:' + (wc.상태 === '완료' ? '#16a34a' : 'var(--navy)') + '; font-weight:600;">' + escapeHtml(wc.상태 || '') + '</span>' +
+      rolesHtml.replace(/^ · /, ' ') +
+      (wc.법정일 ? ' <span style="color:var(--sub);">' + escapeHtml(deadlineLabel) + ' ' + escapeHtml(fmtDateShort_(wc.법정일)) + '</span>' : '') +
       '</div>' +
-      '</div>';
+      '<span style="flex:0 0 auto; display:inline-flex; gap:4px;">' +
+        '<button type="button" class="ghost-btn sm" data-cc-case-go="handle" data-case-id="' + escapeHtml(wc.id) + '">처리개요</button>' +
+        '<button type="button" class="ghost-btn sm" data-cc-case-go="work" data-case-id="' + escapeHtml(wc.id) + '">작업관리</button>' +
+      '</span>';
   }
 
   function loadClientPayments_(c, container){
@@ -10748,7 +10789,7 @@ function nxMdOpenWindow(title, src, opts){
     var receiptOptions = ['', '현금영수증', '세금계산서', '신용카드'];
     row.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
-      '<input type="date" class="payEditDate" value="' + escapeHtml(pay.날짜 || '') + '" style="font-size:12px; width:95px;">' +
+      '<input type="date" class="payEditDate" value="' + escapeHtml(pay.날짜 || '') + '" style="font-size:12px;">' +
       '<input type="number" class="payEditAmount" placeholder="금액" value="' + (pay.금액 || '') + '" size="' + Math.max(5, String(pay.금액 || '').length + 1) + '" style="font-size:12px;">' +
       '<select class="payEditReceipt" style="font-size:12px;">' +
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (pay.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
@@ -11104,21 +11145,26 @@ function nxMdOpenWindow(title, src, opts){
 <div class="view" id="view-collections">
   <div class="editor-toolbar">
     <h2 class="tb-title">수금관리</h2>
-    <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
-    <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더에 내려받아 둔 홈택스 매출내역 엑셀을 읽어, 아직 목록에 없는 현금영수증만 수금 내역에 더합니다(밤에도 한 번 자동으로 돕니다)">홈택스 매출내역</button>
-    <button type="button" id="btnColStats" class="ghost-btn" title="지금 걸린 조건(고객명·기간·미연결·종류) 그대로 월별·분기별·반기별·연도별 합계를 봅니다">기간별 통계</button>
-    <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
-    <input type="date" id="colFromDate" title="시작일" style="width:95px;">
-    <span style="color:var(--sub); font-size:12px;">~</span>
-    <input type="date" id="colToDate" title="종료일" style="width:95px;">
-    <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
-      <input type="checkbox" id="colUnlinkedOnly"> 미연결만
-    </label>
-    <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
-      <option value="" selected>전체</option>
-      <option value="issued">발행자료만</option>
-      <option value="download">다운자료만</option>
-    </select>
+    <!-- [2026.11.01] 세무사님 "정보가 유기적으로 배치 … 관련 버튼이나 콤보박스와 같은 도구들도 마찬가지" — 찾기·기간·거르기는 제목 바로 옆 한 묶음(기간 두 칸이 갈라지지 않게), 하는 일 단추는 오른쪽 끝 -->
+    <span class="tb-group" style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+      <input type="text" id="colSearchInput" class="nx-find" list="clientNameOptions" placeholder="고객 찾기" title="고객명으로 찾기">
+      <span style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap;"><input type="date" id="colFromDate" title="시작일">
+      <span style="color:var(--sub); font-size:12px;">~</span>
+      <input type="date" id="colToDate" title="종료일"></span>
+      <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
+        <input type="checkbox" id="colUnlinkedOnly"> 미연결만
+      </label>
+      <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
+        <option value="" selected>모든 자료</option>
+        <option value="issued">발행자료만</option>
+        <option value="download">다운자료만</option>
+      </select>
+    </span>
+    <span style="display:inline-flex; gap:6px; margin-left:auto; flex-wrap:wrap;">
+      <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
+      <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더에 내려받아 둔 홈택스 매출내역 엑셀을 읽어, 아직 목록에 없는 현금영수증만 수금 내역에 더합니다(밤에도 한 번 자동으로 돕니다)">홈택스 매출내역</button>
+      <button type="button" id="btnColStats" class="ghost-btn" title="지금 걸린 조건(고객명·기간·미연결·종류) 그대로 월별·분기별·반기별·연도별 합계를 봅니다">기간별 통계</button>
+    </span>
   </div>
   <div class="view-body">
     <div class="card" id="colNewFormCard" style="display:none;">
@@ -11126,7 +11172,7 @@ function nxMdOpenWindow(title, src, opts){
       <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
         <input type="text" id="colNewCustomer" list="clientNameOptions" placeholder="고객명" size="6" style="flex:0 0 auto;">
         <select id="colNewCase"><option value="">사건 선택 안 함</option></select>
-        <input type="date" id="colNewDate" title="날짜(생략하면 오늘)" style="width:95px;">
+        <input type="date" id="colNewDate" title="날짜(생략하면 오늘)">
         <input type="number" id="colNewAmount" placeholder="금액" size="7" style="flex:0 0 auto;">
         <select id="colNewReceipt">
           <option value="">수취증빙 선택</option>
@@ -11532,7 +11578,7 @@ function nxMdOpenWindow(title, src, opts){
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
       '<input type="text" class="colEditCustomer" list="clientNameOptions" placeholder="고객명" value="' + escapeHtml(colClientDisplayName_(l)) + '" size="' + Math.max(4, String(colClientDisplayName_(l)).length) + '" style="font-size:12px;">' +
       '<select class="colEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option></select>' +
-      '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px; width:95px;">' +
+      '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px;">' +
       '<input type="number" class="colEditAmount" placeholder="금액" value="' + (l.금액 || '') + '" size="' + Math.max(5, String(l.금액 || '').length + 1) + '" style="font-size:12px;">' +
       '<select class="colEditReceipt" style="font-size:12px;">' +
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (l.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
@@ -11787,7 +11833,7 @@ function nxMdOpenWindow(title, src, opts){
     </div>
     <div class="modal-body">
       <div style="display:flex; gap:8px; margin-bottom:10px;">
-        <input type="text" id="docsSearchInput" placeholder="파일·폴더 이름으로 검색" style="flex:1;">
+        <input type="text" id="docsSearchInput" class="nx-find" placeholder="파일 찾기" title="파일·폴더 이름으로 찾기">
         <button type="button" id="docsSearchRunBtn" class="save-btn">검색</button>
       </div>
       <div id="docsSearchResults"></div>
@@ -12021,7 +12067,7 @@ function nxMdOpenWindow(title, src, opts){
       <div class="scan-row" style="align-items:flex-end; flex-wrap:wrap;">
         <div style="display:flex; flex-direction:column; gap:3px;">
           <label style="font-size:11px; color:var(--sub);">날짜</label>
-          <input type="date" id="docsLogDateInput" style="width:95px;">
+          <input type="date" id="docsLogDateInput">
         </div>
         <div style="display:flex; flex-direction:column; gap:3px; flex:1; min-width:160px;">
           <label style="font-size:11px; color:var(--sub);">내용</label>
@@ -12029,7 +12075,7 @@ function nxMdOpenWindow(title, src, opts){
         </div>
         <div style="display:flex; flex-direction:column; gap:3px;">
           <label style="font-size:11px; color:var(--sub);">마감일(선택, 캘린더 등록)</label>
-          <input type="date" id="docsLogDueInput" style="width:95px;">
+          <input type="date" id="docsLogDueInput">
         </div>
         <button type="button" id="btnDocsLogAdd" class="save-btn">+ 추가</button>
         <span id="docsLogSaveStatus" style="margin-left:auto; font-size:11.5px; color:var(--sub); white-space:nowrap;"></span>
@@ -12507,7 +12553,7 @@ function nxMdOpenWindow(title, src, opts){
       '<div id="docsEvListManual"></div>' +
       '</div>' +
       '<div>' +
-      '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span style="font-weight:400;">(고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
+      '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span class="tc-x" title="고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영">(고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
       '<input type="text" id="docsEvReqLabel" placeholder="요청할 자료명 (예: 매매계약서)" style="flex:1; min-width:140px;">' +
       '<input type="text" id="docsEvReqNote" placeholder="메모(선택)" style="flex:1; min-width:140px;">' +
@@ -32166,7 +32212,7 @@ function renderCostItemsSectionHtml_(a, listKey, title, placeholderExample, kind
         codeOptions.map(function(o){ return '<option value="' + o.code + '"' + (it.expenseCode === o.code ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div class="taxcalc-field"><label>지급처</label><input type="text" data-costfield="payee" value="' + (it.payee || '').replace(/"/g, '&quot;') + '" placeholder="예: OO공인중개사"></div>' +
-      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="예: 123-45-67890, 없으면 비움"></div>' +
+      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="123-45-67890"></div>' +
       '<div class="taxcalc-field"><label>지급일자</label><input type="date" data-costfield="payDate" value="' + (it.payDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>증빙종류</label><select data-costfield="receiptType">' +
         '<option value="taxinvoice"' + (it.receiptType === 'taxinvoice' ? ' selected' : '') + '>세금계산서</option>' +
@@ -44086,7 +44132,7 @@ function renderTcSavedList_(list){
   var wrap = document.getElementById('tcSavedList');
   if (!wrap) return;
   if (!list.length){
-    wrap.innerHTML = '<div class="log-empty">아직 저장된 계산 결과가 없습니다.</div>';
+    wrap.innerHTML = ''; // [2026.11.01 화면 정비] 저장본이 없으면 빈 줄로 자리만 차지하던 안내를 뺌(계산 칸이 위로 올라옴)
     return;
   }
   wrap.innerHTML = '';
@@ -45205,6 +45251,90 @@ var tcSimple_ = (function(){
   refreshSoon(0);
   return { refresh: refresh, refreshSoon: refreshSoon };
 })();
+</script>
+<script>
+// [2026.11.01] 항목명 다듬기 — 세무사님 "항목명인지 설명문인지 분간도 되지 않는 항목명이 수두룩하고, 데이타길이 보다 길어진 항목명이 너무 많고 … 콤보박스에 안내메시지같은 데이타가 들어있는 것이 수두룩"
+//  글자는 지우지 않는다(세법 문장 그대로): 항목명의 괄호 속 설명은 항목명 끝 작은 「?」 안으로 접고(마우스 올리면 전체, 누르면 펼침), 고르기 칸 보기의 괄호 설명은 보기 글에서 빼 마우스 올리면 보이게.
+//  고르기 칸의 값(value)은 그대로라 계산·저장·서식에는 영향 없음. 화면이 다시 그려지면 새로 생긴 칸만 다시 다듬는다.
+// [2026.11.01] 같은 다듬기를 처리개요(사건개요서 칸)에도 — 세무사님 "모든 탭에서 마찬가지다"
+var TC_TIDY_ = ['view-taxcalc', 'view-casehandling', 'view-ledger'].map(function(vid){ return (function(view){
+  if (!view) return null;
+  var UNIT_ = /^\((원|%|년|개월|월|일|㎡|명|건|회|주|채|세|만원|억원|년수)\)$/;
+  function splitAt_(t){
+    var i = t.indexOf('('); var j = t.indexOf(' — ');
+    var k = (i > 1 && (j < 0 || i < j)) ? i : (j > 1 ? j : -1);
+    return k;
+  }
+  function tidyLabel_(lab){
+    if (lab.dataset.tidy) return; lab.dataset.tidy = '1';
+    var full = lab.textContent.replace(/\s+/g, ' ').trim();
+    if (full.length <= 14) return;
+    var walker = document.createTreeWalker(lab, NodeFilter.SHOW_TEXT, null), node, hit = null, at = -1;
+    while ((node = walker.nextNode())){
+      if (node.parentNode.closest && node.parentNode.closest('.tc-x, .nx-help, button, select, option')) continue;
+      var k = splitAt_(node.nodeValue);
+      if (/^\s*\[[^\]]{2,20}\]\s*\S/.test(node.nodeValue)) {
+        // 앞에 붙은 [2회째]·[확정·수정신고] 같은 꼬리표는 뒤로 보내 이름이 먼저 읽히게
+        var mb = node.nodeValue.match(/^(\s*)(\[[^\]]+\])\s*(.+)$/);
+        if (mb){ node.nodeValue = mb[1] + mb[3] + ' '; var sb0 = document.createElement('span'); sb0.className = 'tc-x'; sb0.textContent = mb[2]; sb0.title = mb[2]; node.parentNode.insertBefore(sb0, node.nextSibling); return; }
+      }
+      if (k < 0 && /^\s*\(/.test(node.nodeValue)) {
+        // 앞에 붙은 조건 괄호 "(2006년 이전 …) 그때 신고한 …" → 괄호를 뒤로 보낸다
+        var m = node.nodeValue.match(/^(\s*)(\([^)]*\))\s*(.+)$/);
+        if (m && m[3].length >= 2){ node.nodeValue = m[1] + m[3] + ' '; var sp0 = document.createElement('span'); sp0.className = 'tc-x'; sp0.textContent = m[2]; sp0.title = m[2]; node.parentNode.insertBefore(sp0, node.nextSibling); return; }
+        continue;
+      }
+      if (k >= 0){ hit = node; at = k; break; }
+    }
+    if (!hit) return;
+    var rest = hit.nodeValue.slice(at);
+    if (UNIT_.test(rest.trim()) && !hit.nextSibling) return;
+    var sp = document.createElement('span'); sp.className = 'tc-x';
+    hit.nodeValue = hit.nodeValue.slice(0, at);
+    sp.appendChild(document.createTextNode(rest));
+    // 같은 부모 안 뒤따르는 글·글꼴 조각도 함께(입력칸·단추는 남김)
+    var nx = hit.nextSibling;
+    while (nx){ var nn = nx.nextSibling; if (nx.nodeType === 1 && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(nx.tagName)) break; if (nx.nodeType === 1 && nx.querySelector && nx.querySelector('input,select,textarea,button')) break; sp.appendChild(nx); nx = nn; }
+    sp.title = sp.textContent.trim();
+    hit.parentNode.insertBefore(sp, hit.nextSibling);
+  }
+  function tidyOption_(o){
+    if (o.dataset.tidy) return; o.dataset.tidy = '1';
+    var t = o.textContent; var k = splitAt_(t);
+    if (k < 2 || t.length <= 12) return;
+    var short = t.slice(0, k).trim(); if (short.length < 2) return;
+    o.title = t; o.dataset.full = t; o.textContent = short;
+  }
+  function run(){
+    view.querySelectorAll((view.id === 'view-taxcalc' ? '.taxcalc-field > label:not([data-tidy])' : 'label:not([data-tidy])') + ', label:not([data-tidy]) > input[type=checkbox], label:not([data-tidy]) > input[type=radio]').forEach(function(x){ tidyLabel_(x.tagName === 'LABEL' ? x : x.parentNode); });
+    // 묶음 제목 옆 회색 설명 「… — 왜 그런지」는 「—」 앞만 남기고 뒤는 「?」로(사건 장부 화면 등)
+    view.querySelectorAll('b + span:not([data-tidy]), .nx-l3 + span:not([data-tidy])').forEach(function(sp){ sp.dataset.tidy = '1'; if (sp.children.length) return; var t = sp.textContent, k = t.indexOf(' — '); if (k < 2 || t.length < 40 || /[→+]|\d{2}:\d{2}/.test(t.slice(k))) return; /* 뒤쪽이 자료(바뀐 것·시각)면 그대로 */ sp.textContent = t.slice(0, k); var x = document.createElement('span'); x.className = 'tc-x'; x.textContent = t.slice(k); x.title = t.slice(k + 3); sp.appendChild(x); });
+    // 사건 고르기 칸은 사건명 괄호가 동명이인을 가르므로 줄이지 않는다
+    view.querySelectorAll('select:not([id$="CaseSelect"]) option:not([data-tidy])').forEach(tidyOption_);
+    // 입력칸 속 안내 글 「예: 101동」·「…(검색 또는 직접입력)」·「…, 없으면 비움」은 보기 값만 남김(전체는 손 대면 보임)
+    view.querySelectorAll('input[placeholder]:not([data-ph])').forEach(function(i){ i.dataset.ph = '1'; var p = i.placeholder, q = p.replace(/^숫자만,\s*/, '').replace(/^예\s*[:)]\s*/, '').replace(/\s*\((검색 또는 직접입력|선택)\)\s*$/, '').replace(/,\s*없으면 비움$/, ''); if (q !== p && q.length >= 1){ i.placeholder = q; if (!i.title) i.title = p; } });
+    // 같은 일을 하는 「+ 추가」가 카드 머리에 이미 있으면 맨 아래 큰 단추는 숨김(목록이 비면 큰 단추가 다시 보임)
+    view.querySelectorAll('button.taxcalc-add-asset[data-action]').forEach(function(b){ var p = b.parentElement; var dup = p && p.querySelector('.taxcalc-add-asset-inline[data-action="' + b.dataset.action + '"]'); b.style.display = dup ? 'none' : ''; });
+    // 카드 안 긴 설명 글은 한 줄로 접고 누르면 펼침(⚠·❗ 경고와 계산 결과 글은 그대로)
+    view.querySelectorAll('.taxcalc-result-note:not([data-tidy])').forEach(function(n){ n.dataset.tidy = '1'; var t = n.textContent.trim(); if (t.length > 70 && !/[⚠❗✖❌]/.test(t) && !n.querySelector('input,select,button,table')) { n.classList.add('tc-clamp'); n.title = '눌러서 펼치기'; } });
+    // 고른 보기의 전체 글은 칸에 마우스를 올리면 보이게
+    view.querySelectorAll('select').forEach(function(s){ var o = s.options[s.selectedIndex]; s.title = o && o.dataset.full ? o.dataset.full : (s.title && !s.dataset.titleSet ? s.title : ''); if (o && o.dataset.full) s.dataset.titleSet = '1'; });
+  }
+  var tm = null; function soon(){ if (tm) return; tm = setTimeout(function(){ tm = null; try { run(); } catch (e) {} }, 150); }
+  new MutationObserver(soon).observe(view, { childList: true, subtree: true });
+  view.addEventListener('change', soon);
+  // 「?」를 누르면(손가락 화면) 전체 글을 띄우고, 체크박스가 같이 눌리지 않게 막는다
+  view.addEventListener('click', function(e){
+    var cl = e.target.closest && e.target.closest('.tc-clamp'); if (cl && !e.target.closest('a,button,input,select')) { cl.classList.toggle('open'); return; }
+    var x = e.target.closest && e.target.closest('.tc-x'); if (!x) return;
+    e.preventDefault(); e.stopPropagation();
+    if (typeof showToast === 'function') showToast(x.title, 'info'); else x.classList.toggle('open');
+  }, true);
+  soon();
+  return { run: run };
+})(document.getElementById(vid)); });
+// 다른 화면에 손으로 붙인 「?」(.tc-x)도 누르면 전체 글이 뜨게
+document.addEventListener('click', function(e){ var x = e.target.closest && e.target.closest('.tc-x'); if (!x || x.closest('#view-taxcalc, #view-casehandling, #view-ledger')) return; e.preventDefault(); e.stopPropagation(); if (typeof showToast === 'function') showToast(x.title || x.textContent, 'info'); }, true);
 </script>
 
       <style>
@@ -50041,7 +50171,7 @@ function rwAiApplyEdit_(id, content){
   <div class="view-head"><h2>일반메모</h2></div>
   <div class="memo-toolbar tb-row">
     <div class="memo-search-wrap">
-      <input type="text" id="memoSearch" placeholder="🔍 저장된 일반메모 검색·열기" autocomplete="off">
+      <input type="text" id="memoSearch" class="nx-find" placeholder="메모 찾기" title="저장된 일반메모 찾아 열기" autocomplete="off">
       <div class="memo-search-dropdown" id="memoSearchDropdown"></div>
     </div>
     <button type="button" id="memoBtnNew" class="ghost-btn"><span class="btn-ic">+</span><span class="btn-tx">메모</span></button>
@@ -50201,7 +50331,7 @@ function rwAiApplyEdit_(id, content){
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoOvNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoOvNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
     <select id="memoOvNewUptype" style="width:100%; box-sizing:border-box;"></select>
-    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style="width:95px; box-sizing:border-box;"></label>
+    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style=" box-sizing:border-box;"></label>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoOvNewCaseConfirm" class="save-btn">등록하고 반영</button>
@@ -52454,7 +52584,7 @@ function rwAiApplyEdit_(id, content){
     <div class="memo-toolbar tb-row" style="border-top:none;">
       <!-- [2026.10.31] 세무사님 "검색란이 너무 넓다(화면에 보이는 란은 작아도 … 충분히 받아들이면)" · "버튼들이 유효한 버튼인지 위치가 맞는지 검토" — 검색칸은 작게(글자는 얼마든지 들어감),
            한 번 쓰고 마는 정비 단추(파일명 정비·보고서템플릿 이름 정리·전체 다시 훑기)는 설정 › 정비도구로 옮김 -->
-      <input type="text" id="rhSearchInput" placeholder="고객명·사건명·파일명으로 찾기" style="width:200px; padding:7px 10px; border:1px solid var(--line); border-radius:6px;">
+      <input type="text" id="rhSearchInput" class="nx-find" placeholder="찾기" title="고객명·사건명·파일명으로 찾기">
       <button type="button" id="rhRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
     </div>
     <div id="rhFileListWrap" style="flex:1; overflow-y:auto; padding:0 4px;">
@@ -52569,10 +52699,10 @@ function rwAiApplyEdit_(id, content){
           '<td style="white-space:nowrap; cursor:pointer;">' + rhFormatDate_(f.modifiedDate) + '</td>' +
           '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:170px;" title="' + esc(f.사건명 || '') + '">' + esc(f.사건명 || '') + '</span>' + '</td>' +
           '<td style="cursor:pointer;">' + '<span class="nx-cut" style="max-width:240px;" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' + '</td>' +
-          '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '📤 발행' : '✏️ 초안') + '</td>' +
+          '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '발행' : '초안') + '</td>' +
           // [2026.10.18 탭연결 15번] 보고서 모음에서 그 사건 처리개요로 바로(예전엔 문서작성으로만 갔다)
-          '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn" data-case-id="' + esc(f.caseId) + '" title="이 사건 처리개요로">🧭 처리개요</button> ' : '') + '<button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
-          '<button type="button" class="rhDeleteBtn" data-file-id="' + f.id + '" title="이 파일을 휴지통으로 보냅니다">🗑 삭제</button></td>' +
+          '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn ghost-btn sm" data-case-id="' + esc(f.caseId) + '" title="이 사건 처리개요로">처리개요</button> ' : '') + '<button type="button" class="rhRenameBtn ghost-btn sm" data-file-id="' + f.id + '" title="파일명 직접 수정">이름 고치기</button> ' +
+          '<button type="button" class="rhDeleteBtn btn danger sm" data-file-id="' + f.id + '" title="이 파일을 휴지통으로 보냅니다">삭제</button></td>' +
           '</tr>';
       });
       html += '</table>';
@@ -53162,14 +53292,15 @@ function rwAiApplyEdit_(id, content){
      여기 한 군데로 모았다("정비도구들을 검토하고 재정비하여 한군데로 모아서 설정탭으로
      옮기자") — 각 화면 툴바는 실제로 자주 쓰는 기능만 남기고, 가끔 쓰는 일괄 보정·점검류는
      여기서 찾는다. */
-  #view-settings .settings-tools-group{ margin-bottom:18px; }
+  #view-settings .settings-tools-group{ margin-bottom:12px; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; } /* [2026.11.01] 단추를 한 줄씩 세로로 쌓던 것을 나란히(좁으면 꺾임) */
   /* [2026.09.19] "언뜻 이해되지 않는데, 설명이 필요하지 않나?" — 마우스를 올려야만 보이는
      title 툴팁만으로는 부족하다는 지적으로, 버튼 밑에 쉬운 말 설명을 항상 화면에 보이게
      한 줄씩 둔다.
      [2026.11.01] 세무사님 "설명은 충분해야 하지만 화면을 깔끔해야 한다 … 항목명 같은 곳에다가 설명을 마구 적지 말라" — 설명은 그대로 두고
      단추 옆 「?」를 누르면 그 자리에 펼쳐진다(마우스만이 아니라 손가락으로도 — 09.19 지적대로 말풍선만으로 끝내지 않음, 공통 .nx-help). */
-  #view-settings .settings-tool-item{ margin-bottom:8px; display:flex; flex-wrap:wrap; align-items:center; } /* [2026.10.31] 폭 제한 없앰 — 세무사님 "설정탭의 경우 … 폭을 제한하고 있는 것이다" */
+  #view-settings .settings-tool-item{ display:flex; flex-wrap:wrap; align-items:center; } /* [2026.10.31] 폭 제한 없앰 — 세무사님 "설정탭의 경우 … 폭을 제한하고 있는 것이다" */
   #view-settings .settings-tool-item > .nx-help{ flex-basis:100%; }
+  #view-settings .settings-tool-item:has(> .nx-help.open){ flex-basis:100%; }
   #view-settings .settings-tool-item > button{ min-width:0; }
   #view-settings .settings-tool-desc{ font-size:12.5px; color:var(--sub); margin:4px 0 0 2px; line-height:1.4; }
 </style>
@@ -53257,7 +53388,7 @@ function rwAiApplyEdit_(id, content){
       <div class="nx-help">매일 새벽 규칙 점검(0원)·지침이 바뀐 날의 무료 AI 점검 결과와, 지침·템플릿 정비 판정·제안입니다. 제목을 눌러 펼칩니다.</div>
       <div class="sa-audit" id="saAuditBox"><div class="settings-tool-desc">점검 결과 불러오는 중…</div></div>
       <div id="stKnhSlot"></div>
-      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">🧾 유료 AI로 지침 전체 점검</button></div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">유료 AI로 지침 전체 점검</button></div>
       <div class="st-out-slot"></div>
     </div>
     <div class="card" data-sttab="3" id="stBugCard">
@@ -53266,14 +53397,14 @@ function rwAiApplyEdit_(id, content){
       <div id="stDeployInfo" class="settings-tool-desc" style="margin:0 0 8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">운영 버전 확인 중…</div>
       <div class="nx-help">job 화면과 AI가 일하다 난 오류가 자동으로 쌓입니다. 이상한 점을 일일이 설명하지 않으셔도, Claude Code에게 "오류 기록 확인해줘"라고 하면 이 기록을 보고 원인을 찾습니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
-        <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
-        <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
-        <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
-        <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
-        <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">🗳 승인 대기 수정안</button>
-        <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">🔑 깃허브 열쇠</button>
-        <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
-        <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
+        <button type="button" class="ghost-btn" id="stBtnBugRefresh">불러오기</button>
+        <button type="button" class="ghost-btn" id="stBtnBugClear">기록 비우기</button>
+        <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">지금 자가점검</button>
+        <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">개선 후보 보기</button>
+        <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">승인 대기 수정안</button>
+        <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">깃허브 열쇠</button>
+        <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">수정 반영</button>
+        <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">되돌리기</button>
       </div>
       <div class="st-out-slot"><div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div></div>
     </div>
@@ -53286,8 +53417,8 @@ function rwAiApplyEdit_(id, content){
       <h3>법령 판단 대기</h3>
       <div class="nx-help">법령 해석이 갈리는 안건 — 회장(Claude)이 조문 원문으로 결론을 내고, 결론이 안 난 것만 세무사님께 올라옵니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
-        <button type="button" class="ghost-btn" data-fed="law">⚖️ 판단 기록</button>
-        <button type="button" class="ghost-btn" data-fed="need">🙋 세무사님 결정 필요</button>
+        <button type="button" class="ghost-btn" data-fed="law">판단 기록</button>
+        <button type="button" class="ghost-btn" data-fed="need">세무사님 결정 필요</button>
       </div>
       <div class="st-fed-box settings-tool-desc" id="stFedBox">버튼을 누르면 내용이 보입니다.</div>
     </div>
@@ -53327,7 +53458,7 @@ function rwAiApplyEdit_(id, content){
       loadStatus().then(function(r){
         var reg = r.registry || [];
         var line = function(x){ return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + ' · 오늘 ' + (x.usedToday || 0) + '번' + (x.dailyFree ? '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span>' + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : '')
-          + (x.keyProp === 'OPENROUTER_API_KEY' ? '<br><span style="color:var(--sub);">openrouter.ai → Keys → Create Key(무료 모델만 씀)</span><br><button type="button" class="ghost-btn" data-fedkey="OPENROUTER_API_KEY">🔑 ' + (x.status === '키 없음' ? '넣기' : '바꾸기') + '</button>' + (x.status === '키 없음' ? '' : ' <button type="button" class="ghost-btn" data-fedkeydel="OPENROUTER_API_KEY">지우기</button>') : '')); };
+          + (x.keyProp === 'OPENROUTER_API_KEY' ? '<br><span style="color:var(--sub);">openrouter.ai → Keys → Create Key(무료 모델만 씀)</span><br><button type="button" class="ghost-btn" data-fedkey="OPENROUTER_API_KEY">' + (x.status === '키 없음' ? '넣기' : '바꾸기') + '</button>' + (x.status === '키 없음' ? '' : ' <button type="button" class="ghost-btn" data-fedkeydel="OPENROUTER_API_KEY">지우기</button>') : '')); };
         box().innerHTML = '<div style="margin-top:2px;"><b>위원</b></div>' + reg.filter(function(x){ return x.member; }).map(line).join('')
           + '<div style="margin-top:8px;"><b>Claude API(회장·기존 기능)</b></div>' + reg.filter(function(x){ return !x.member; }).map(line).join('')
           + '<div style="margin-top:8px;"><b>배차표</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
@@ -53370,15 +53501,15 @@ function rwAiApplyEdit_(id, content){
       <div class="nx-help">공통: 📅 캘린더 재동기화만 누르는 즉시 돌아가고(자료는 안 바꿈), 나머지는 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
       <div class="settings-tools-group">
         <div class="settings-tool-item">
-          <button type="button" id="stBtnFixCompletionAfterReceipt" class="ghost-btn">💰 완료일-영수증일 보정</button>
+          <button type="button" id="stBtnFixCompletionAfterReceipt" class="ghost-btn">완료일-영수증일 보정</button>
           <div class="nx-help">사건이 "완료"로 처리됐는데 완료일보다 나중 날짜의 현금영수증이 그 고객 앞으로 찍혀있으면(완료 처리를 너무 일찍 한 경우), 완료일을 그 영수증 날짜로 고쳐줍니다. 고객이 사건을 하나만 가진 경우에만 자동으로 고치고, 여러 개면 "확인 필요"로만 알려줍니다. 목록을 불러오기 전에, 사건ID가 비어 있던 옛 현금영수증 기록을 사건에 먼저 연결해 저장합니다(영수증-사건 연결 보완 — 완료일은 아직 안 바꿈).</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnResyncCalendars" class="ghost-btn">📅 캘린더 재동기화</button>
+          <button type="button" id="stBtnResyncCalendars" class="ghost-btn">캘린더 재동기화</button>
           <div class="nx-help">사건의 법정기한·완료일과 구글 캘린더 일정이 어긋나 보일 때, 지금 저장된 값 기준으로 캘린더 표시만 다시 맞춥니다. 데이터 자체는 안 바꾸는 가장 안전한 도구입니다.</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnStdSubfolders" class="ghost-btn">📂 _신고제출·확보자료 폴더 점검</button>
+          <button type="button" id="stBtnStdSubfolders" class="ghost-btn">_신고제출·확보자료 폴더 점검</button>
           <div class="nx-help">[2026.10.19] 이제 새 사건 폴더에는 「확보자료」(모든 사건)와 「_신고제출」(신고 사건)이 자동으로 생깁니다. 그 전에 만든 사건 폴더 중 이 폴더가 없는 사건을 먼저 보여주고, 고른 사건에만 빈 폴더를 만듭니다(다른 파일·폴더는 건드리지 않음).</div>
         </div>
       </div>
@@ -53388,15 +53519,15 @@ function rwAiApplyEdit_(id, content){
       <h3>고객관리</h3>
       <div class="settings-tools-group">
         <div class="settings-tool-item">
-          <button type="button" id="stBtnClientDupAudit" class="ghost-btn">🔁 중복 고객 점검</button>
+          <button type="button" id="stBtnClientDupAudit" class="ghost-btn">중복 고객 점검</button>
           <div class="nx-help">이름이나 전화번호가 같은데 고객이 두 명으로 따로 등록된 경우(오타 등)를 찾아 보여줍니다. 진짜 같은 사람이면 하나를 골라 합칠 수 있습니다.</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnClientScanCaseFiles" class="ghost-btn">🗂 사건폴더 전수조사</button>
+          <button type="button" id="stBtnClientScanCaseFiles" class="ghost-btn">사건폴더 전수조사</button>
           <div class="nx-help">사건 폴더(하위 폴더 포함) 안 파일들을 AI로 훑어서, 사건에는 기록 안 됐지만 서류에 등장하는 사람(공동상속인 등)의 이름·전화번호·주소·주민등록번호를 찾아 고객으로 등록할 수 있게 보여줍니다. 사건·파일이 많으면 시간이 꽤 걸릴 수 있습니다.</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnClientDeleteNumericNames" class="ghost-btn">🔢 숫자 이름 고객 정리</button>
+          <button type="button" id="stBtnClientDeleteNumericNames" class="ghost-btn">숫자 이름 고객 정리</button>
           <div class="nx-help">이름 칸에 "3733"처럼 실명이 아니라 숫자만 적힌, 옛날 오류로 생긴 이상한 고객 기록을 찾아 정리합니다.</div>
         </div>
       </div>
@@ -53409,8 +53540,8 @@ function rwAiApplyEdit_(id, content){
           <button type="button" class="ghost-btn" id="stBtnOcrCount" title="모든 사건 폴더의 서류 중 서버 글자인식 기억이 이미 있는 것·아직 없는 것·글자로 못 바꾸는 형식을 사건별로 셉니다(글자인식은 하지 않음, AI 비용 0)">글자인식 미리 세기</button>
           <button type="button" class="ghost-btn" id="stBtnOcrBatch" title="모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 무료 글자인식으로 읽어 기억에 쌓습니다(사건은 저장·정리하지 않음, AI 비용 0). 서류가 많으면 몇 시간 걸립니다 — 창을 닫아도 이어지게 하려면 ⏰ 자동 이어 읽기를 켜세요">글자인식 일괄 읽기</button>
           <button type="button" class="ghost-btn" id="stBtnOcrReread" title="글자인식 기억이 0자로 남은 PDF(웹 화면을 Print to PDF로 저장한 예규 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요(AI 비용 0)">빈 글자 PDF 다시 읽기</button>
-          <button type="button" class="ghost-btn" id="stBtnOcrTrigger" title="서버가 5분마다 혼자 글자인식 일괄을 이어서 합니다(다 읽으면 저절로 꺼짐). 한 번 더 누르면 끕니다">⏰ 자동 이어 읽기</button>
-          <button type="button" class="ghost-btn" id="stBtnTaxpayerFix" title="납세자가 비었거나(상속은) 의뢰인 이름으로 잘못 들어간 사건을, 사건 폴더 서류로 확인한 납세자로 고치고 사건명·폴더명을 '고객명(납세자)_세목_업무유형'으로 맞춥니다. 먼저 미리보기 → 확인 후 적용(AI 비용 0)">🏷 납세자·사건명 정리</button>
+          <button type="button" class="ghost-btn" id="stBtnOcrTrigger" title="서버가 5분마다 혼자 글자인식 일괄을 이어서 합니다(다 읽으면 저절로 꺼짐). 한 번 더 누르면 끕니다">자동 이어 읽기</button>
+          <button type="button" class="ghost-btn" id="stBtnTaxpayerFix" title="납세자가 비었거나(상속은) 의뢰인 이름으로 잘못 들어간 사건을, 사건 폴더 서류로 확인한 납세자로 고치고 사건명·폴더명을 '고객명(납세자)_세목_업무유형'으로 맞춥니다. 먼저 미리보기 → 확인 후 적용(AI 비용 0)">납세자·사건명 정리</button>
         </div>
         <div class="st-out-slot"></div>
       </div>
@@ -53445,9 +53576,9 @@ function rwAiApplyEdit_(id, content){
       <h3>빠른 읽기 서버·AI 위원 연결</h3>
         <div class="nx-help">빠른 읽기 서버(시험 단계) 켜기·끄기, 그 서버에 공유된 사건 폴더, AI 위원 연결 상태.</div>
         <div style="display:flex; flex-wrap:wrap; gap:6px;">
-          <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">⚡ 직결 켜기/끄기</button>
-          <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">🧪 폴더 공유 현황·정리</button>
-          <button type="button" class="ghost-btn" data-fed="reg">👥 위원 상태</button>
+          <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">직결 켜기/끄기</button>
+          <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 처리개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">폴더 공유 현황·정리</button>
+          <button type="button" class="ghost-btn" data-fed="reg">위원 상태</button>
         </div>
         <div class="st-fed-box settings-tool-desc"></div>
         <div class="st-out-slot"></div>
@@ -53470,15 +53601,15 @@ function rwAiApplyEdit_(id, content){
   // DOM에 존재한다.
   function settingsRenderPwForm_(){
     document.getElementById('settingsPwBody').innerHTML =
-      '<div style="display:flex; flex-direction:column; gap:8px;">' +
+      '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">현재 비밀번호</label>' +
-      '<input type="password" id="setCurPw" style="width:100%;" autocomplete="off"></div>' +
+      '<input type="password" id="setCurPw" style="width:160px;" autocomplete="off"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">새 비밀번호</label>' +
-      '<input type="password" id="setNewPw" style="width:100%;" autocomplete="off"></div>' +
+      '<input type="password" id="setNewPw" style="width:160px;" autocomplete="off"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">새 비밀번호 확인</label>' +
-      '<input type="password" id="setNewPw2" style="width:100%;" autocomplete="off"></div>' +
-      '<button type="button" id="setBtnChangePw" class="save-btn" style="align-self:flex-start;">변경</button>' +
-      '<div id="setPwMsg" style="font-size:12px; min-height:16px;"></div>' +
+      '<input type="password" id="setNewPw2" style="width:160px;" autocomplete="off"></div>' +
+      '<button type="button" id="setBtnChangePw" class="save-btn">변경</button>' +
+      '<div id="setPwMsg" style="font-size:12px; min-height:16px; flex-basis:100%;"></div>' +
       '</div>';
     document.getElementById('setBtnChangePw').addEventListener('click', function(){
       var cur = document.getElementById('setCurPw').value;
@@ -53517,21 +53648,26 @@ function rwAiApplyEdit_(id, content){
     var body = document.getElementById('settingsTaxAgentBody');
     body.innerHTML =
       '<div style="display:flex; flex-direction:column; gap:8px;">' +
+      /* [2026.11.01 화면 정비] 칸 너비를 자료 길이에 맞춰 한 줄에 여럿(좁으면 꺾임), 긴 안내는 이름표 「?」 말풍선으로 */
+      '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">성명</label>' +
-      '<input type="text" id="setTaxAgentName" style="width:100%;" placeholder="없으면 비움"></div>' +
+      '<input type="text" id="setTaxAgentName" style="width:110px;"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">사업자등록번호</label>' +
-      '<input type="text" id="setTaxAgentBizNo" style="width:100%;" placeholder="000-00-00000"></div>' +
+      '<input type="text" id="setTaxAgentBizNo" style="width:130px;" placeholder="000-00-00000"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">관리번호</label>' +
-      '<input type="text" id="setTaxAgentMgmtNo" style="width:100%;" placeholder="세무대리인 관리번호"></div>' +
+      '<input type="text" id="setTaxAgentMgmtNo" style="width:110px;"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
-      '<input type="text" id="setTaxAgentPhone" style="width:100%;" placeholder="02 1234 5678"></div>' +
+      '<input type="text" id="setTaxAgentPhone" style="width:130px;" placeholder="02 1234 5678"></div>' +
+      '</div>' +
       // [2026.10.20 전자신고 대조] 전자신고 파일 머리 레코드 필수 값(사무소 고정값)
-      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">세무대리인 생년월일</label>' +
-      '<input type="text" id="setTaxAgentBirth" style="width:100%;" placeholder="YYYYMMDD (양도 전자신고 — 관리번호와 둘 중 하나 필수)"></div>' +
-      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">홈택스 사용자ID</label>' +
-      '<input type="text" id="setHometaxUserId" style="width:100%;" placeholder="전자신고 파일 머리 레코드의 사용자ID"></div>' +
-      '<div style="font-size:12px; color:var(--sub);">세무대리 대표자 주민등록번호는 저장하지 않습니다 — 양도 전자신고 파일을 만들 때만 그 자리에서 받고 지웁니다.</div>' +
-      '<button type="button" id="setBtnTaxAgentSave" class="save-btn" style="align-self:flex-start;">저장</button>' +
+      '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;" title="양도 전자신고 — 관리번호와 둘 중 하나 필수">생년월일 <span class="tc-x">양도 전자신고 파일에 들어갑니다 — 관리번호와 둘 중 하나는 꼭 넣어야 합니다</span></label>' +
+      '<input type="text" id="setTaxAgentBirth" style="width:110px;" placeholder="YYYYMMDD"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">홈택스 사용자ID <span class="tc-x">전자신고 파일 머리 줄에 들어가는 사용자ID</span></label>' +
+      '<input type="text" id="setHometaxUserId" style="width:150px;"></div>' +
+      '<button type="button" id="setBtnTaxAgentSave" class="save-btn">저장</button>' +
+      '</div>' +
+      '<div style="font-size:12px; color:var(--sub);">대표자 주민등록번호는 저장하지 않습니다 — 양도 전자신고 파일을 만들 때만 받고 지웁니다.</div>' +
       '<div id="setTaxAgentMsg" style="font-size:12px; min-height:16px;"></div>' +
       '</div>';
     callGas('get_tax_agent_settings').then(function(res){
@@ -53769,7 +53905,7 @@ function rwAiApplyEdit_(id, content){
           var now = !!r.direct;
           // 확인창(confirm) 대신 그 자리에 켜기/끄기 단추 — 안내문 옆에 바로 누를 단추(L2_screen_ui)
           bugList.innerHTML = '<div>지금 ⚡ 길: <b>' + (now ? '직결(시험 서비스를 화면이 직접 부름)' : 'GAS 한 번 호출(직결 꺼짐)') + '</b></div>' +
-            '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"><button type="button" class="ghost-btn" id="t6DirectOn"' + (now ? ' disabled' : '') + '>⚡ 직결 켜기(시험 서비스를 먼저 부르고, 안 되면 GAS 길로)</button><button type="button" class="ghost-btn" id="t6DirectOff"' + (now ? '' : ' disabled') + '>직결 끄기(GAS 길로)</button></div>';
+            '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"><button type="button" class="ghost-btn" id="t6DirectOn"' + (now ? ' disabled' : '') + '>직결 켜기(시험 서비스를 먼저 부르고, 안 되면 GAS 길로)</button><button type="button" class="ghost-btn" id="t6DirectOff"' + (now ? '' : ' disabled') + '>직결 끄기(GAS 길로)</button></div>';
           var set = function(on){
             bugList.textContent = '⚡ 직결을 ' + (on ? '켜는' : '끄는') + ' 중…';
             callGas('t6_direct_set', { on: on }).then(function(r2){
@@ -54966,7 +55102,7 @@ function rwAiApplyEdit_(id, content){
         <li><b>물건이 여러 건인데 계약이 하나면</b>: "전체 묶기" 체크박스를 켭니다 → 금액을 한 번만 입력해도 소속 물건 전체에 적용됩니다.</li>
         <li><b>주소를 자동으로 채우려면</b>: 물건목록의 🔍(주소검색)을 누르고 건물명이나 도로명을 검색해 고릅니다.</li>
         <li><b>검토 방향을 남기려면</b>: "처리방향" 칸에 입력 후 저장합니다.</li>
-        <li><b>법령정보·증빙확보·세액계산·문서작성으로 넘어가려면</b>: 사건 칸 옆 「↪ 이 사건 다른 화면」에서 고릅니다 — 지금 선택한 사건이 그대로 그 화면으로 넘어갑니다(다른 화면에서도 같은 칸이 사건 칸 바로 옆에 있습니다).</li>
+        <li><b>법령정보·증빙확보·세액계산·문서작성으로 넘어가려면</b>: 사건 칸 옆 「탭 이동」에서 고릅니다 — 지금 선택한 사건이 그대로 그 화면으로 넘어갑니다(다른 화면에서도 같은 칸이 사건 칸 바로 옆에 있습니다).</li>
         <li><b>사건 현황 칸</b>: GAS가 본 사실(새로 들어온 서류·읽을 목록·알림·만든 세액·서식 PDF·종합검토서)만 보입니다. 할 일 순서는 정하지 않습니다. 장부 수(물어볼 것·받을 증빙·추정)는 맨 위 📒 사건 장부 띠에 있고, [장부 화면 ›]으로 장부를 엽니다.</li>
         <li><b>🤖 넥스 줄</b>: 넥스(AI)가 남긴 말은 GAS 알림과 따로 보라색 줄에 보입니다. 넥스 미리 읽기 켜기·끄기와 AI 창 열기도 여기 있습니다.</li>
         <li><b>저절로 남은 기록(누가·언제·무엇)</b>: 📓 작업일지 칸 아래에 접혀 있습니다.</li>
@@ -62376,7 +62512,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       else if (menuEl.classList.contains('expanded')){ clearTimeout(window.nxSideMenuFitT_); window.nxSideMenuFitT_ = setTimeout(window.nxSideMenuFit_, 500); }
     };
     window.nxSideMenuFit_();
-    (function(){ var o = false; try { var v = localStorage.getItem('nx_menu_pin'); o = v === null ? localStorage.getItem('nx_menu_open') === '1' : v === '1'; } catch (er) {} nxSideMenuSetPin_(o); })();
+    (function(){ var o = false; try { var v = localStorage.getItem('nx_menu_pin'); o = v === null ? localStorage.getItem('nx_menu_open') === '1' : v === '1'; } catch (er) {} if (o && window.innerWidth < 700){ document.getElementById('sideMenu').classList.remove('pinned'); nxSideMenuApply_(); return; } /* [2026.11.01] 휴대폰 폭에선 넓은 화면에서 고정해 둔 메뉴도 펼쳐 두지 않는다(가운데 화면이 절반으로 줄던 것) — 기억한 고정값은 그대로 둠 */ nxSideMenuSetPin_(o); })();
   </script>
 
   <script>
@@ -63312,8 +63448,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,
   // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
   // (AI 탭 nxAiOpenJobView_와 같은 동작).
-  var NX_CASE_VIEWS_ = [['casehandling', '🧭 처리개요'], ['ledger', '📒 사건 장부'], ['workmanage', '🗂 작업관리'], ['docs', '📁 증빙확보'], ['taxcalc', '🧮 세액계산'],
-    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령정보'], ['reports', '📖 열람관리']]; // 열람관리: 탭연결 9번
+  // [2026.11.01] 세무사님 "<탭 이동>이라고 안내메시지를 변경하고, 보여지는 데이타도 아이콘은 없애라" — 상자 폭이 보일 글자(화면 이름) 길이만큼만
+  var NX_CASE_VIEWS_ = [['casehandling', '처리개요'], ['ledger', '사건 장부'], ['workmanage', '작업관리'], ['docs', '증빙확보'], ['taxcalc', '세액계산'],
+    ['print', '세액인쇄'], ['reportwriter', '문서작성'], ['lawsearch', '법령정보'], ['reports', '열람관리']]; // 열람관리: 탭연결 9번
   function nxCaseJump_(view, caseId){
     if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
     if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
@@ -63411,8 +63548,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var sel = document.createElement('select');
     sel.className = 'nx-case-jump';
     sel.title = '이 사건의 다른 화면으로 바로 이동';
-    sel.style.maxWidth = '170px';
-    sel.innerHTML = '<option value="">↪ 이 사건 다른 화면</option>' + NX_CASE_VIEWS_.filter(function(v){ return v[0] !== fromView; })
+    sel.innerHTML = '<option value="">탭 이동</option>' + NX_CASE_VIEWS_.filter(function(v){ return v[0] !== fromView; })
       .map(function(v){ return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('');
     sel.addEventListener('change', function(){
       var v = sel.value; sel.value = '';
@@ -63469,6 +63605,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (el._shownId === id && !stale) return;
       if (old && el._shownId !== id) nxLedgerStripRender_(el, id, old.r);
       el._shownId = id;
+      if (!old) el.querySelector('.nx-lg-body').textContent = '장부 읽는 중…'; // [2026.11.01] 사건을 골랐는데 "사건을 고르면"이 남아 고장처럼 보이던 것
       if (!stale || (old && old.loading)) return;
       NX_LG_.cache[id] = { t: Date.now(), r: old ? old.r : null, loading: true };
       callGas('case_proc', { caseId: id, step: 'ledgerFlow' }).then(function(r){
@@ -63485,13 +63622,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var f = r.흐름, d = f.띠 || {}, last = f.마지막;
     var red = function(n, t){ return n ? '<span style="color:#b23; font-weight:600;">' + t + '</span>' : t; };
     b.style.color = '';
-    b.innerHTML = '가설 ' + (d.가설 || 0) + ' → 사건개요 정함 ' + (d.개요확정 || 0) + ' · 가설 ' + (d.개요가설 || 0) + (d.개요다름 ? ' · ' + red(1, '가설과 다름 ' + d.개요다름) : '')
-      + ' → 확보할 증빙 확보 ' + (d.증빙확보 || 0) + ' / ' + red(d.증빙미확보, '받을 것 ' + (d.증빙미확보 || 0))
-      + ' → 서류 사실 ' + (d.서류사실 || 0) + ' → 칸 ' + (d.칸값 || 0) + '(서류와 이음 ' + (d.칸이음 || 0) + ')'
-      + ' → ' + red(d.질문, '질문 ' + (d.질문 || 0))
-      + (d.사슬물건 ? ' · 거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '') : '') // [2026.10.29 거래 사슬]
-      + ' · 공부 조회 ' + (d.공부 || 0) + '필지' + (d.추정 ? ' · 추정 ' + d.추정 + '칸' : '') // [2026.10.29 계획서 3판]
-      + (last ? ' <span style="color:var(--sub);">· 마지막 장부 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + (last.why ? ' ' + nxLgEsc_(last.why) : '') + ' → ' + nxLgEsc_((last.diff || []).length ? last.diff.join(' · ') : '바뀐 것 없음') + '</span>' : ' <span style="color:var(--sub);">· 아직 한 바퀴를 돈 적 없음</span>')
+    // [2026.11.01 화면 정비] 세무사님 "깔끔하고 가독성" — 0인 항목까지 화살표로 줄줄이 늘어놓던 것을, 수가 있는 항목만 짧게 보인다(받을 것·질문은 빨강). 다 0이면 한 줄 안내.
+    var parts = [];
+    var add = function(n, t, warn){ if (n) parts.push(warn ? red(1, t + ' ' + n) : t + ' ' + n); };
+    add(d.가설, '가설'); add(d.개요확정, '개요 정함'); add(d.개요가설, '개요 가설'); add(d.개요다름, '가설과 다름', 1);
+    add(d.증빙확보, '증빙 확보'); add(d.증빙미확보, '받을 것', 1); add(d.서류사실, '서류 사실'); add(d.칸값, '칸'); add(d.칸이음, '서류와 이은 칸'); add(d.질문, '질문', 1);
+    if (d.사슬물건) parts.push('거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '')); // [2026.10.29 거래 사슬]
+    add(d.공부, '공부 조회(필지)'); add(d.추정, '추정 칸'); // [2026.10.29 계획서 3판]
+    b.innerHTML = (parts.length ? parts.join(' · ') : '<span style="color:var(--sub);">장부가 아직 비어 있습니다</span>')
+      + (last ? ' <span style="color:var(--sub);" title="' + nxLgEsc_((last.diff || []).join(' · ')) + '">· 마지막 적기 ' + nxLgEsc_(String(last.at || '').slice(5)) + '</span>' : '')
       + nxAiCostStripHtml_(r.AI비용)
       + (r.도구카드 && r.도구카드.부름 ? ' <span style="color:var(--sub);">· ' + nxLgEsc_(r.도구카드.줄) + '</span>' : '') // [2026.10.31 J] 자세히는 📒 장부 펼치기 아래 🧰
       + (el._view === 'ledger' ? '' : ' <button type="button" class="ghost-btn nx-lg-open sm" title="요약을 옆에 펼칩니다">📒 장부 펼치기</button> <button type="button" class="ghost-btn nx-lg-screen sm" title="📒 사건 장부 화면으로 — 값 넣기·물어볼 것 답하기·반영 현황표·판단 재료">장부 화면 ›</button>') // [2026.10.31 처리개요 도구 정리] 장부 화면 열기
@@ -63505,10 +63644,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   //  누적 금액과 그중 다시 읽기(저장분 다시 읽음, 정가 10%)·새로 읽기·저장(처음 올림)·쓴 글. [자세히]는 호출마다 한 줄 표(서버 case_proc step aiCost, 비용 기록 시트 읽기만 — 0원)
   function nxAiCostWon_(w){ return Math.round(+w || 0).toLocaleString('ko-KR') + '원'; }
   function nxAiCostStripHtml_(c){
-    if (!c || c.error || !c.n) return ' <span style="color:var(--sub);">· 🤖 AI 비용 기록 없음</span>';
+    if (!c || c.error || !c.n) return ''; // [2026.11.01 화면 정비] 기록 없으면 띠에 안 보임
     var p = c.parts || {};
-    return ' <span title="' + nxLgEsc_(c.line || '') + '">· 🤖 AI ' + nxAiCostWon_(c.won) + ' <span style="color:var(--sub);">(다시 읽기 ' + nxAiCostWon_(p.캐시읽기) + ' · 새로 읽기·저장 ' + nxAiCostWon_((p.새로읽기 || 0) + (p.캐시쓰기 || 0)) + ' · 쓴 글 ' + nxAiCostWon_(p.쓴글) + ')</span></span>'
-      + ' <button type="button" class="ghost-btn nx-lg-cost sm">🤖 비용 자세히</button>';
+    return ' <span title="' + nxLgEsc_('다시 읽기 ' + nxAiCostWon_(p.캐시읽기) + ' · 새로 읽기·저장 ' + nxAiCostWon_((p.새로읽기 || 0) + (p.캐시쓰기 || 0)) + ' · 쓴 글 ' + nxAiCostWon_(p.쓴글) + (c.line ? ' — ' + c.line : '')) + '">· AI ' + nxAiCostWon_(c.won) + '</span>'
+      + ' <button type="button" class="ghost-btn nx-lg-cost sm">비용 자세히</button>';
   }
   function nxAiCostPanelOpen_(id, name){
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
@@ -63785,9 +63924,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var bars = document.querySelectorAll(SEL_), used = 0;
       for (var i = 0; i < bars.length; i++){
         var bar = bars[i];
+        // [2026.11.01] 세무사님 "가독성" — 이름이 「일반 증…」처럼 잘리면 읽을 수 없다. 그 줄 탭의 가장 긴 이름이 다 들어가는 폭을
+        //  그 줄 모든 탭의 최소 폭으로(같은 폭 원칙 유지, 190까지). 자리가 모자라면 위처럼 옆으로 밀어 보고 ▶가 뜬다.
+        var need = 0;
         Array.prototype.forEach.call(bar.querySelectorAll('.nx-tab, .taxcalc-tab, .taxcalc-subtab'), function(t){
+          if (t.offsetParent && t.scrollWidth > need) need = t.scrollWidth;
           if (!t.title && t.scrollWidth > t.clientWidth + 1) t.title = t.textContent.trim();
         });
+        var mw = need ? Math.min(Math.max(need + 2, document.body.classList.contains('lay-phone') ? 72 : 84), 190) + 'px' : '';
+        if (mw && bar.style.getPropertyValue('--tabmin') !== mw) bar.style.setProperty('--tabmin', mw);
         var over = bar.offsetParent && bar.scrollWidth > bar.clientWidth + 2;
         var more = over && bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2, less = over && bar.scrollLeft > 2;
         bar.classList.toggle('nx-more', !!more); bar.classList.toggle('nx-more-l', !!less);
@@ -63835,6 +63980,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       b.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); el.classList.toggle('open'); b.classList.toggle('on', el.classList.contains('open')); });
       if (a && /^(H2|H3|H4|SUMMARY|LABEL)$/.test(a.tagName) || (a && a.classList && (a.classList.contains('nx-l3') || a.classList.contains('nx-l4')))) a.appendChild(b);
       else if (a && (a.tagName === 'BUTTON' || (a.classList && a.classList.contains('nx-help-anchor')))) a.insertAdjacentElement('afterend', b);
+      else if (el.closest('.card') && el.closest('.card').querySelector(':scope > h3') && !el.closest('.card').querySelector(':scope > h3 .nx-help-btn')) el.closest('.card').querySelector(':scope > h3').appendChild(b); /* [2026.11.01] 홀로 남은 설명은 「? 설명」 알약 대신 카드 제목 옆 「?」로 */
       else { b.classList.add('nx-help-lone'); b.textContent = '? 설명'; el.insertAdjacentElement('beforebegin', b); }
       if (a && a.tagName === 'BUTTON' && !a.title) a.title = b.title;
     }

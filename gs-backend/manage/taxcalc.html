@@ -5876,7 +5876,7 @@ function renderCostItemsSectionHtml_(a, listKey, title, placeholderExample, kind
         codeOptions.map(function(o){ return '<option value="' + o.code + '"' + (it.expenseCode === o.code ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div class="taxcalc-field"><label>지급처</label><input type="text" data-costfield="payee" value="' + (it.payee || '').replace(/"/g, '&quot;') + '" placeholder="예: OO공인중개사"></div>' +
-      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="예: 123-45-67890, 없으면 비움"></div>' +
+      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="123-45-67890"></div>' +
       '<div class="taxcalc-field"><label>지급일자</label><input type="date" data-costfield="payDate" value="' + (it.payDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>증빙종류</label><select data-costfield="receiptType">' +
         '<option value="taxinvoice"' + (it.receiptType === 'taxinvoice' ? ' selected' : '') + '>세금계산서</option>' +
@@ -17796,7 +17796,7 @@ function renderTcSavedList_(list){
   var wrap = document.getElementById('tcSavedList');
   if (!wrap) return;
   if (!list.length){
-    wrap.innerHTML = '<div class="log-empty">아직 저장된 계산 결과가 없습니다.</div>';
+    wrap.innerHTML = ''; // [2026.11.01 화면 정비] 저장본이 없으면 빈 줄로 자리만 차지하던 안내를 뺌(계산 칸이 위로 올라옴)
     return;
   }
   wrap.innerHTML = '';
@@ -18915,4 +18915,88 @@ var tcSimple_ = (function(){
   refreshSoon(0);
   return { refresh: refresh, refreshSoon: refreshSoon };
 })();
+</script>
+<script>
+// [2026.11.01] 항목명 다듬기 — 세무사님 "항목명인지 설명문인지 분간도 되지 않는 항목명이 수두룩하고, 데이타길이 보다 길어진 항목명이 너무 많고 … 콤보박스에 안내메시지같은 데이타가 들어있는 것이 수두룩"
+//  글자는 지우지 않는다(세법 문장 그대로): 항목명의 괄호 속 설명은 항목명 끝 작은 「?」 안으로 접고(마우스 올리면 전체, 누르면 펼침), 고르기 칸 보기의 괄호 설명은 보기 글에서 빼 마우스 올리면 보이게.
+//  고르기 칸의 값(value)은 그대로라 계산·저장·서식에는 영향 없음. 화면이 다시 그려지면 새로 생긴 칸만 다시 다듬는다.
+// [2026.11.01] 같은 다듬기를 처리개요(사건개요서 칸)에도 — 세무사님 "모든 탭에서 마찬가지다"
+var TC_TIDY_ = ['view-taxcalc', 'view-casehandling', 'view-ledger'].map(function(vid){ return (function(view){
+  if (!view) return null;
+  var UNIT_ = /^\((원|%|년|개월|월|일|㎡|명|건|회|주|채|세|만원|억원|년수)\)$/;
+  function splitAt_(t){
+    var i = t.indexOf('('); var j = t.indexOf(' — ');
+    var k = (i > 1 && (j < 0 || i < j)) ? i : (j > 1 ? j : -1);
+    return k;
+  }
+  function tidyLabel_(lab){
+    if (lab.dataset.tidy) return; lab.dataset.tidy = '1';
+    var full = lab.textContent.replace(/\s+/g, ' ').trim();
+    if (full.length <= 14) return;
+    var walker = document.createTreeWalker(lab, NodeFilter.SHOW_TEXT, null), node, hit = null, at = -1;
+    while ((node = walker.nextNode())){
+      if (node.parentNode.closest && node.parentNode.closest('.tc-x, .nx-help, button, select, option')) continue;
+      var k = splitAt_(node.nodeValue);
+      if (/^\s*\[[^\]]{2,20}\]\s*\S/.test(node.nodeValue)) {
+        // 앞에 붙은 [2회째]·[확정·수정신고] 같은 꼬리표는 뒤로 보내 이름이 먼저 읽히게
+        var mb = node.nodeValue.match(/^(\s*)(\[[^\]]+\])\s*(.+)$/);
+        if (mb){ node.nodeValue = mb[1] + mb[3] + ' '; var sb0 = document.createElement('span'); sb0.className = 'tc-x'; sb0.textContent = mb[2]; sb0.title = mb[2]; node.parentNode.insertBefore(sb0, node.nextSibling); return; }
+      }
+      if (k < 0 && /^\s*\(/.test(node.nodeValue)) {
+        // 앞에 붙은 조건 괄호 "(2006년 이전 …) 그때 신고한 …" → 괄호를 뒤로 보낸다
+        var m = node.nodeValue.match(/^(\s*)(\([^)]*\))\s*(.+)$/);
+        if (m && m[3].length >= 2){ node.nodeValue = m[1] + m[3] + ' '; var sp0 = document.createElement('span'); sp0.className = 'tc-x'; sp0.textContent = m[2]; sp0.title = m[2]; node.parentNode.insertBefore(sp0, node.nextSibling); return; }
+        continue;
+      }
+      if (k >= 0){ hit = node; at = k; break; }
+    }
+    if (!hit) return;
+    var rest = hit.nodeValue.slice(at);
+    if (UNIT_.test(rest.trim()) && !hit.nextSibling) return;
+    var sp = document.createElement('span'); sp.className = 'tc-x';
+    hit.nodeValue = hit.nodeValue.slice(0, at);
+    sp.appendChild(document.createTextNode(rest));
+    // 같은 부모 안 뒤따르는 글·글꼴 조각도 함께(입력칸·단추는 남김)
+    var nx = hit.nextSibling;
+    while (nx){ var nn = nx.nextSibling; if (nx.nodeType === 1 && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(nx.tagName)) break; if (nx.nodeType === 1 && nx.querySelector && nx.querySelector('input,select,textarea,button')) break; sp.appendChild(nx); nx = nn; }
+    sp.title = sp.textContent.trim();
+    hit.parentNode.insertBefore(sp, hit.nextSibling);
+  }
+  function tidyOption_(o){
+    if (o.dataset.tidy) return; o.dataset.tidy = '1';
+    var t = o.textContent; var k = splitAt_(t);
+    if (k < 2 || t.length <= 12) return;
+    var short = t.slice(0, k).trim(); if (short.length < 2) return;
+    o.title = t; o.dataset.full = t; o.textContent = short;
+  }
+  function run(){
+    view.querySelectorAll((view.id === 'view-taxcalc' ? '.taxcalc-field > label:not([data-tidy])' : 'label:not([data-tidy])') + ', label:not([data-tidy]) > input[type=checkbox], label:not([data-tidy]) > input[type=radio]').forEach(function(x){ tidyLabel_(x.tagName === 'LABEL' ? x : x.parentNode); });
+    // 묶음 제목 옆 회색 설명 「… — 왜 그런지」는 「—」 앞만 남기고 뒤는 「?」로(사건 장부 화면 등)
+    view.querySelectorAll('b + span:not([data-tidy]), .nx-l3 + span:not([data-tidy])').forEach(function(sp){ sp.dataset.tidy = '1'; if (sp.children.length) return; var t = sp.textContent, k = t.indexOf(' — '); if (k < 2 || t.length < 40 || /[→+]|\d{2}:\d{2}/.test(t.slice(k))) return; /* 뒤쪽이 자료(바뀐 것·시각)면 그대로 */ sp.textContent = t.slice(0, k); var x = document.createElement('span'); x.className = 'tc-x'; x.textContent = t.slice(k); x.title = t.slice(k + 3); sp.appendChild(x); });
+    // 사건 고르기 칸은 사건명 괄호가 동명이인을 가르므로 줄이지 않는다
+    view.querySelectorAll('select:not([id$="CaseSelect"]) option:not([data-tidy])').forEach(tidyOption_);
+    // 입력칸 속 안내 글 「예: 101동」·「…(검색 또는 직접입력)」·「…, 없으면 비움」은 보기 값만 남김(전체는 손 대면 보임)
+    view.querySelectorAll('input[placeholder]:not([data-ph])').forEach(function(i){ i.dataset.ph = '1'; var p = i.placeholder, q = p.replace(/^숫자만,\s*/, '').replace(/^예\s*[:)]\s*/, '').replace(/\s*\((검색 또는 직접입력|선택)\)\s*$/, '').replace(/,\s*없으면 비움$/, ''); if (q !== p && q.length >= 1){ i.placeholder = q; if (!i.title) i.title = p; } });
+    // 같은 일을 하는 「+ 추가」가 카드 머리에 이미 있으면 맨 아래 큰 단추는 숨김(목록이 비면 큰 단추가 다시 보임)
+    view.querySelectorAll('button.taxcalc-add-asset[data-action]').forEach(function(b){ var p = b.parentElement; var dup = p && p.querySelector('.taxcalc-add-asset-inline[data-action="' + b.dataset.action + '"]'); b.style.display = dup ? 'none' : ''; });
+    // 카드 안 긴 설명 글은 한 줄로 접고 누르면 펼침(⚠·❗ 경고와 계산 결과 글은 그대로)
+    view.querySelectorAll('.taxcalc-result-note:not([data-tidy])').forEach(function(n){ n.dataset.tidy = '1'; var t = n.textContent.trim(); if (t.length > 70 && !/[⚠❗✖❌]/.test(t) && !n.querySelector('input,select,button,table')) { n.classList.add('tc-clamp'); n.title = '눌러서 펼치기'; } });
+    // 고른 보기의 전체 글은 칸에 마우스를 올리면 보이게
+    view.querySelectorAll('select').forEach(function(s){ var o = s.options[s.selectedIndex]; s.title = o && o.dataset.full ? o.dataset.full : (s.title && !s.dataset.titleSet ? s.title : ''); if (o && o.dataset.full) s.dataset.titleSet = '1'; });
+  }
+  var tm = null; function soon(){ if (tm) return; tm = setTimeout(function(){ tm = null; try { run(); } catch (e) {} }, 150); }
+  new MutationObserver(soon).observe(view, { childList: true, subtree: true });
+  view.addEventListener('change', soon);
+  // 「?」를 누르면(손가락 화면) 전체 글을 띄우고, 체크박스가 같이 눌리지 않게 막는다
+  view.addEventListener('click', function(e){
+    var cl = e.target.closest && e.target.closest('.tc-clamp'); if (cl && !e.target.closest('a,button,input,select')) { cl.classList.toggle('open'); return; }
+    var x = e.target.closest && e.target.closest('.tc-x'); if (!x) return;
+    e.preventDefault(); e.stopPropagation();
+    if (typeof showToast === 'function') showToast(x.title, 'info'); else x.classList.toggle('open');
+  }, true);
+  soon();
+  return { run: run };
+})(document.getElementById(vid)); });
+// 다른 화면에 손으로 붙인 「?」(.tc-x)도 누르면 전체 글이 뜨게
+document.addEventListener('click', function(e){ var x = e.target.closest && e.target.closest('.tc-x'); if (!x || x.closest('#view-taxcalc, #view-casehandling, #view-ledger')) return; e.preventDefault(); e.stopPropagation(); if (typeof showToast === 'function') showToast(x.title || x.textContent, 'info'); }, true);
 </script>

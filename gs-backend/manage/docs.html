@@ -122,7 +122,7 @@
     </div>
     <div class="modal-body">
       <div style="display:flex; gap:8px; margin-bottom:10px;">
-        <input type="text" id="docsSearchInput" placeholder="파일·폴더 이름으로 검색" style="flex:1;">
+        <input type="text" id="docsSearchInput" class="nx-find" placeholder="파일 찾기" title="파일·폴더 이름으로 찾기">
         <button type="button" id="docsSearchRunBtn" class="save-btn">검색</button>
       </div>
       <div id="docsSearchResults"></div>
@@ -356,7 +356,7 @@
       <div class="scan-row" style="align-items:flex-end; flex-wrap:wrap;">
         <div style="display:flex; flex-direction:column; gap:3px;">
           <label style="font-size:11px; color:var(--sub);">날짜</label>
-          <input type="date" id="docsLogDateInput" style="width:95px;">
+          <input type="date" id="docsLogDateInput">
         </div>
         <div style="display:flex; flex-direction:column; gap:3px; flex:1; min-width:160px;">
           <label style="font-size:11px; color:var(--sub);">내용</label>
@@ -364,7 +364,7 @@
         </div>
         <div style="display:flex; flex-direction:column; gap:3px;">
           <label style="font-size:11px; color:var(--sub);">마감일(선택, 캘린더 등록)</label>
-          <input type="date" id="docsLogDueInput" style="width:95px;">
+          <input type="date" id="docsLogDueInput">
         </div>
         <button type="button" id="btnDocsLogAdd" class="save-btn">+ 추가</button>
         <span id="docsLogSaveStatus" style="margin-left:auto; font-size:11.5px; color:var(--sub); white-space:nowrap;"></span>
@@ -842,7 +842,7 @@
       '<div id="docsEvListManual"></div>' +
       '</div>' +
       '<div>' +
-      '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span style="font-weight:400;">(고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
+      '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span class="tc-x" title="고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영">(고객에게 요청 — 고객창구에 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
       '<input type="text" id="docsEvReqLabel" placeholder="요청할 자료명 (예: 매매계약서)" style="flex:1; min-width:140px;">' +
       '<input type="text" id="docsEvReqNote" placeholder="메모(선택)" style="flex:1; min-width:140px;">' +
