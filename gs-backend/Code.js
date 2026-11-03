@@ -1740,6 +1740,172 @@ const DRIVE_TOOLS = [
       required: ['provision']
     }
   },
+  // [2026.11.03 결산 — 넥스 도구 없던 엔진 계산기 10개] 화면 세액계산에만 있고 넥스가 부를 길이 없던 계산기를 이름 그대로 잇는다(runUiEngineCalcTool_가 같은 엔진 함수를 부름).
+  {
+    name: 'calculate_exit_tax',
+    description: '국외전출세(국외전출자 국내주식등 과세특례, 소득세법 §118의9~§118의18)를 계산한다. 출국일을 양도일로 보아 출국일 시가와 취득가액·필요경비로 양도차익을 셈 — 대상: 출국일 10년 전부터 국내 거주 5년 이상(§118의9①1호)이고 직전 연도 말 대주주(§118의9①2호). 국내주식등은 3억 이하 20%·초과 25%(§118의11 1호), 2027-01-01 이후 출국분은 국외주식등도(중소기업 10%·그 밖 20%, 법률 제21221호 부칙 §8 — 시가 합계 5억 이하·외국인근로자 보유분 제외). 기본공제 250만원(§118의10④). 출국 뒤 실제로 더 싸게 팔면 조정공제(§118의12), 외국납부세액공제(§118의13)와 비거주자 국내원천소득 공제(§118의14 — 둘 중 하나)·납부유예(§118의16)·보유현황 미신고 가산세(§118의15)도 함께 본다. 넥스가 암산하지 말고 이 도구로.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        departureDate: { type: 'string', description: '출국일(YYYY-MM-DD) — 이날을 양도일로 봄.' },
+        residenceYearsIn10: { type: 'number', description: '출국일 10년 전부터 출국일까지 국내에 주소·거소를 둔 기간 합계(년). 5 미만이면 대상 아님.' },
+        isMajorShareholder: { type: 'boolean', description: '출국일이 속하는 해의 직전 연도 말 대주주인지(대주주 판정 도구로 먼저 확인).' },
+        departureMarketValue: { type: 'number', description: '국내주식등의 출국일 당시 시가(원, 시행령 §178의9).' },
+        acquisitionPrice: { type: 'number', description: '국내주식등 취득가액(원).' },
+        otherNecessaryExpenses: { type: 'number', description: '그 밖 필요경비(원).' },
+        actualTransferPrice: { type: 'number', description: '출국 뒤 국내주식등을 실제로 판 값(원) — 출국일 시가보다 낮으면 조정공제(§118의12). 아직 안 팔았으면 비움.' },
+        actualTransferDate: { type: 'string', description: '실제 양도일(YYYY-MM-DD, 팔았을 때).' },
+        foreignSmeMarketValue: { type: 'number', description: '(2027-01-01 이후 출국) 국외 중소기업 주식등 출국일 시가(원).' },
+        foreignSmeAcquisitionPrice: { type: 'number', description: '국외 중소기업 주식등 취득가액(원).' },
+        foreignSmeOtherExpenses: { type: 'number', description: '국외 중소기업 주식등 그 밖 필요경비(원).' },
+        actualTransferPriceForeignSme: { type: 'number', description: '국외 중소기업 주식등 실제 양도가액(원).' },
+        foreignOtherMarketValue: { type: 'number', description: '(2027-01-01 이후 출국) 그 밖 국외주식등 출국일 시가(원).' },
+        foreignOtherAcquisitionPrice: { type: 'number', description: '그 밖 국외주식등 취득가액(원).' },
+        foreignOtherOtherExpenses: { type: 'number', description: '그 밖 국외주식등 그 밖 필요경비(원).' },
+        actualTransferPriceForeignOther: { type: 'number', description: '그 밖 국외주식등 실제 양도가액(원).' },
+        isForeignWorkerHolding: { type: 'boolean', description: '외국인근로자(그 배우자·20세 이하 직계비속 포함)의 근로 시작 전 취득 국외주식등인지(과세 제외).' },
+        foreignTaxPaid: { type: 'number', description: '실제 양도 때 외국에 낸 세액(원) — 외국납부세액공제(§118의13).' },
+        nonresidentSourceTaxEquivalent: { type: 'number', description: '비거주자 국내원천소득으로 낸 세액 상당액(원) — §118의14 공제(이 공제를 하면 외국납부세액공제 안 함).' },
+        isStudyAbroadDeferral: { type: 'boolean', description: '납부유예(§118의16) 받을지 — 유학 등 사유.' },
+        holdingReportNotFiled: { type: 'boolean', description: '출국 전 국내주식등 보유현황을 신고하지 않았는지 — 가산세(§118의15).' },
+        faceValueForPenalty: { type: 'number', description: '보유현황 미신고 가산세 바탕이 되는 액면가액(원).' }
+      },
+      required: ['departureDate', 'residenceYearsIn10', 'isMajorShareholder', 'departureMarketValue', 'acquisitionPrice']
+    }
+  },
+  {
+    name: 'calculate_derivative_transfer_tax',
+    description: '파생상품등 양도소득세(소득세법 §94①5호·§104⑥·시행령 §167의9)를 계산한다. 그해 국내·국외 파생상품 손익을 통산해 기본공제 250만원을 한 번 빼고 탄력세율(2016·2017 5%, 2018.4.1.~ 10% — 과세연도로 맞춤, 2015년까지는 과세 대상 아님)을 곱한다. 부동산·주식 등 다른 양도소득과는 통산하지 않는다. 신고 상태에 따라 가산세·지방소득세 10%까지.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxYear: { type: 'number', description: '과세연도(예 2026) — 세율을 그해 것으로.' },
+        domesticGainLoss: { type: 'number', description: '국내 파생상품 손익 합계(원, 손실은 음수).' },
+        overseasGainLoss: { type: 'number', description: '국외 파생상품 손익 합계(원, 손실은 음수).' },
+        filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: '기한 안 신고 / 무신고 / 과소신고.' },
+        isFraudulent: { type: 'boolean', description: '부정행위 여부(가산세 40%).' },
+        underreportedTaxAmount: { type: 'number', description: '과소신고한 세액(원).' },
+        fraudulentUnderreportedTaxAmount: { type: 'number', description: '그중 부정행위로 과소신고한 세액(원).' },
+        unpaidDays: { type: 'number', description: '납부지연 날수.' },
+        unpaidTaxForLatePenalty: { type: 'number', description: '납부지연 바탕 세액(원).' },
+        unpaidTaxAtDesignatedDueDate: { type: 'number', description: '고지 납부기한까지 안 낸 세액(원).' }
+      },
+      required: ['domesticGainLoss']
+    }
+  },
+  {
+    name: 'calculate_controlling_shareholder_stock',
+    description: '주식이 기타자산(특정주식)인지 판정한다(소득세법 §94①4호다목·라목, 시행령 §158). 다목: 법인 자산총액 중 부동산등(①1·2호 + 다른 법인 주식 × 그 법인 부동산 비율) 50% 이상인 법인의 과점주주(본인+특수관계인 50% 초과)가 주식 50% 이상을 과점주주 밖의 사람에게 양도(3년 안 합산, §158②). 라목: 골프장·스키장·휴양시설·부동산업(§158⑧) 법인이고 부동산등 80% 이상이면 지분 무관. 해당하면 자산 구분 「기타자산」으로 기본세율 — 양도소득세 계산 도구에 그대로 넘긴다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        totalAssetValue: { type: 'number', description: '발행법인 자산총액(원, 장부가액 — 토지는 기준시가가 더 크면 기준시가, 시행령 §158④).' },
+        realEstateValue: { type: 'number', description: '법인이 가진 부동산·부동산에 관한 권리 가액(원).' },
+        otherCorpStockValue: { type: 'number', description: '법인이 가진 다른 법인 주식 가액(원).' },
+        otherCorpRealEstateRatio: { type: 'number', description: '그 다른 법인의 부동산등 보유비율(0~1).' },
+        shareholderGroupOwnershipRatio: { type: 'number', description: '본인+특수관계인 합산 지분율(0~1).' },
+        transferRatioToOutsiders: { type: 'number', description: '이번에 과점주주 밖의 사람에게 넘기는 비율(0~1).' },
+        combinedWithPriorThreeYearSalesReaches50Pct: { type: 'boolean', description: '과점주주 누군가의 양도일부터 거꾸로 3년 안 양도를 합치면 50% 이상인지(§158②).' },
+        isSpecialBusinessUnderDecree158_8: { type: 'boolean', description: '골프장·스키장 등 체육시설업, 휴양시설관련업, 부동산업·부동산개발업 법인인지(§158⑧, 라목).' }
+      },
+      required: ['totalAssetValue', 'realEstateValue', 'shareholderGroupOwnershipRatio']
+    }
+  },
+  {
+    name: 'calculate_acquisition_allocation',
+    description: '한 계약으로 여러 물건을 함께 산 경우 계약 전체 취득가액·취득비용을 물건별로 나눈다(소득세법 §100②·시행령 §166⑥ — 취득 당시 기준시가 비율, 기준시가가 없으면 감정가액 비율). 양도가액 없이 취득 쪽만 나눌 때(아직 안 판 물건, 다른 계약으로 판 물건) 쓴다. 판 물건까지 함께 나누면 양도 안분 도구.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        totalAcquisitionPrice: { type: 'number', description: '계약 전체 취득가액(원).' },
+        totalAcquisitionExpense: { type: 'number', description: '계약 전체 취득비용(원, 취득세 등).' },
+        assets: { type: 'array', description: '물건 목록(2개 이상).', items: { type: 'object', properties: { label: { type: 'string', description: '물건 이름(예 토지·건물).' }, standardPriceAcquisition: { type: 'number', description: '취득 당시 기준시가(없으면 감정가액, 원).' } } } }
+      },
+      required: ['totalAcquisitionPrice', 'assets']
+    }
+  },
+  {
+    name: 'calculate_pre_notice_standard_price',
+    description: '기준시가가 처음 고시·공시되기 전에 취득한 자산의 취득 당시 기준시가를 환산한다(소득세법 시행령 §164⑤⑥⑦) — 환산취득가액·개산공제 바탕. kind house(§164⑦ 개별·공동주택): 최초 공시 주택가격 × 취득 당시 (토지+건물 기준시가) ÷ 최초 공시 당시 (토지+건물). officetel(§164⑥ 오피스텔·상업용 건물): 최초 고시 기준시가 × 같은 비율. building(§164⑤ 건물): 최초 고시 기준시가 × 국세청 기준율(조견표 2부-08).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['house', 'officetel', 'building'], description: '자산 종류.' },
+        firstNoticePrice: { type: 'number', description: '최초로 고시·공시된 기준시가(주택가격, 원).' },
+        acqLandStd: { type: 'number', description: '취득 당시 토지 기준시가(개별공시지가 × 면적, 원).' },
+        acqBuildingStd: { type: 'number', description: '취득 당시 건물 기준시가(원).' },
+        firstLandStd: { type: 'number', description: '최초 고시 당시 토지 기준시가(원).' },
+        firstBuildingStd: { type: 'number', description: '최초 고시 당시 건물 기준시가(원).' },
+        baseRate: { type: 'number', description: 'building일 때 국세청 기준율(소수).' }
+      },
+      required: ['kind', 'firstNoticePrice']
+    }
+  },
+  {
+    name: 'calculate_pre1990_acquisition_standard_price',
+    description: '1990-08-30 전에 취득한 토지의 취득 당시 기준시가를 환산한다(소득세법 시행령 §164④): 1990.1.1. 개별공시지가 × 취득 당시 과세시가표준액 ÷ [(1990.8.30. 현재 + 그 직전) 과세시가표준액 평균과 1990.8.30. 현재 중 작은 값]. 1990.1.1. 개별공시지가를 넘지 못한다. 등급가액 표는 조견표.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        price19900101: { type: 'number', description: '1990.1.1. 기준 개별공시지가로 셈한 토지 가액(원).' },
+        taxStdAtAcquisition: { type: 'number', description: '취득 당시 과세시가표준액(토지등급가액, 원).' },
+        taxStdAt19900830: { type: 'number', description: '1990.8.30. 현재 과세시가표준액(원).' },
+        taxStdBeforeThat: { type: 'number', description: '1990.8.30. 직전에 결정된 과세시가표준액(원).' }
+      },
+      required: ['price19900101', 'taxStdAtAcquisition', 'taxStdAt19900830', 'taxStdBeforeThat']
+    }
+  },
+  {
+    name: 'calculate_return_farm_house_clawback',
+    description: '귀농주택 1세대1주택 특례 사후관리 추징(소득세법 시행령 §155⑫) — 귀농일부터 계속 3년 이상 영농(어)에 종사하지 않거나 그 기간 거주하지 않으면 당초 비과세를 취소하고 덜 낸 세액을 추징. 상속이면 피상속인·상속인 영농기간을 합쳐 「계속 종사」로 넣는다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        continuedFarmingThreeYears: { type: 'boolean', description: '귀농일부터 계속 3년 이상 영농·영어에 종사했는지.' },
+        residedDuringThreeYears: { type: 'boolean', description: '그 3년 동안 귀농주택에 거주했는지.' },
+        originalTaxSaved: { type: 'number', description: '특례로 덜 낸 세액(원) — 특례 없이 양도소득세 계산 도구로 셈한 세액 − 낸 세액.' }
+      },
+      required: ['continuedFarmingThreeYears', 'residedDuringThreeYears', 'originalTaxSaved']
+    }
+  },
+  {
+    name: 'calculate_rental_housing_residence_clawback',
+    description: '장기임대주택·장기어린이집이 있는 거주주택 비과세의 사후관리 추징(소득세법 시행령 §155㉒) — 임대(운영)기간 요건을 못 채우면 [거주주택 양도 때 장기임대주택으로 안 봤을 경우의 세액 − 당초 낸 세액]을 추징. 수용 등 부득이한 사유·재건축·재개발·리모델링 기간 특례(㉒2호가~다목)는 요건을 갖춘 것으로 보아 추징 안 함. 말소 특례(§155㉓)는 1주택 판정 도구로.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        meetsRentalOrChildcarePeriodRequirement: { type: 'boolean', description: '임대·운영기간 요건을 채웠는지.' },
+        hasExemptReason: { type: 'boolean', description: '수용·재건축 등 부득이한 사유(㉒2호)가 있는지.' },
+        taxIfNotLongTerm: { type: 'number', description: '장기임대주택으로 안 봤을 때의 거주주택 양도소득세(원) — 양도소득세 계산 도구로 먼저 셈.' },
+        taxPaidAtTransfer: { type: 'number', description: '당초 낸 세액(원).' }
+      },
+      required: ['meetsRentalOrChildcarePeriodRequirement', 'taxIfNotLongTerm', 'taxPaidAtTransfer']
+    }
+  },
+  {
+    name: 'calculate_inherited_house_undivided_registration_clawback',
+    description: '상속주택 미분할 상태에서 일반주택을 비과세로 판 뒤 협의분할 등기로 비과세 요건을 잃은 경우의 추가 신고·납부(소득세법 시행령 §155⑲) — 등기일이 속하는 달 말일부터 2개월 안. 추가 세액은 양도소득세 계산 도구로 다시 셈해 넣는다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        laterDividedAndRegistered: { type: 'boolean', description: '양도 뒤 상속재산을 협의분할해 등기했는지.' },
+        wouldLoseExemptionAfterDivision: { type: 'boolean', description: '그 분할 결과 비과세 요건을 잃는지.' },
+        additionalTaxAmount: { type: 'number', description: '비과세 없이 다시 셈한 세액 − 당초 낸 세액(원).' }
+      },
+      required: ['laterDividedAndRegistered', 'wouldLoseExemptionAfterDivision']
+    }
+  },
+  {
+    name: 'calculate_opportunity_segment_profit',
+    description: '사업기회 제공(일감떼어주기, 상증법 §45의4) 증여의제의 「수혜법인의 이익」을 해마다 셈한다(시행령 §34의4③). 가 방법(본문): 받은 사업부문 영업이익(부문 매출 − 부문 원가 − 부문 판관비) + 세무조정. 나 방법(단서·시행규칙 §10의9② — 부문 회계를 안 나눴을 때): (전체 영업이익 + 세무조정) × 부문 매출 ÷ 전체 매출. 원 미만 버림. 그 합계를 사업기회 증여세 계산 도구에 넣는다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        years: { type: 'array', description: '연도마다 한 줄.', items: { type: 'object', properties: { totalSales: { type: 'number', description: '전체 매출(원).' }, segmentSales: { type: 'number', description: '받은 사업부문 매출(원).' }, costTotal: { type: 'number', description: '전체 매출원가(원).' }, costSegment: { type: 'number', description: '부문 매출원가(원, 가 방법).' }, expenseTotal: { type: 'number', description: '전체 판관비(원).' }, expenseSegment: { type: 'number', description: '부문 판관비(원, 가 방법).' }, taxAdjustment: { type: 'number', description: '세무조정 금액(원).' }, method: { type: 'string', enum: ['a', 'b', ''], description: 'a 가 방법 / b 나 방법 / 비우면 부문 원가·판관비가 있으면 가.' } } } }
+      },
+      required: ['years']
+    }
+  },
   {
     name: 'calculate_unsold_house_one_house_exclusion',
     description: '수도권 밖 준공후미분양주택 취득자에 대한 1세대1주택 비과세 특례(조특법§98의9, 2024.1.10~2026.12.31 취득분, 현재 시행중)를 판정한다. 1주택을 보유한 1세대가 이 기간 중 수도권 밖 준공후미분양주택을 취득한 후 종전주택을 양도하면, 그 준공후미분양주택은 1세대1주택 비과세(소득세법§89①3호) 판정시 소유주택으로 보지 않는다. 세액을 계산하지 않고 적용 가능 여부만 판정한다.',
@@ -3655,6 +3821,9 @@ const UI_ENGINE_CALC_TOOL_EXCEPTIONS_ = {
 };
 const UI_ENGINE_CALC_TOOL_ARGS_ = {
   calculate_transfer_tax: ['calculateTransferTaxSingleJS'],
+  calculate_pre1990_acquisition_standard_price: ['calculatePre1990AcquisitionStandardPriceJS', function (i) {
+    return [i.price19900101, i.taxStdAtAcquisition, i.taxStdAt19900830, i.taxStdBeforeThat];
+  }],
   calculate_transfer_tax_multi: ['calculateTransferTaxMultiJS', function (input) {
     return [input.transactions, {
       filingStatus: input.filingStatus, isFraudulent: input.isFraudulent, underreportedTaxAmount: input.underreportedTaxAmount,
