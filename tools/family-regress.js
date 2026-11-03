@@ -765,6 +765,296 @@ ok(xs3.양도부분 && xs3.양도부분.양도일 === '2026-07-01' && xs3.양도
 { const A = judgeAuction_({ 양도: [{ 이름: '집', 자산: '아파트', 최초경매기일: '2025-11-20', 매각허가일: '2026-01-08', 대금완납일: '2026-02-10', 매각대금: 460000000, 취득일: '2018-03-15', 취득가액: 300000000 }, { 이름: '땅', 자산: '토지', 소유자지위: '물상보증인', 최초경매기일: '2025-09-01', 대금완납일: '2026-01-20', 매각대금: 250000000 }], 취득: [{ 이름: '상가', 대금완납일: '2023-04-14', 낙찰가: 500000000, 취득세등: 23000000, 인수보증금: 80000000, 보증금구상: '불가', 유치권변제: 30000000, 유치권합의금: 20000000, 명도비: 15000000, 이자: 30000000, 양도일: '2026-09-30', 양도가액: 900000000 }], 기준일: '2026-11-03' });
   ok(A.넘어간것[0].양도시기 === '2026-02-10' && A.넘어간것[1].잠정 === true && A.넘어간것[1].비사업용기간_양도일 === '2025-09-01' && A.낙찰받은것[0].인정취득가액 === 633000000 && A.낙찰받은것[0].다넣으면 === 698000000 && A.경우.length === 4, '경매 — 완납일·물상보증·낙찰 취득가액', JSON.stringify(A.결론));
 }
+// [2026.11.03 복잡사건 105 「소씨 시골집과 서울 집」] 농어촌주택 — 일반주택이 먼저인지·3년 못 채움 추징·증축 가액
+{ const L = { 읍면동: '면', 수도권: '아니오', 도시지역: '아니오', 조정대상지역: '아니오', 토지거래허가구역: '아니오', 관광단지: '아니오' }, G = { 취득일: '2015-03-10', 양도일: '2026-08-20', 양도가액: 1000000000, 취득가액: 500000000 };
+  const A = judgeRuralHouse_({ 일반주택: G, 농어촌주택: { 취득일: '2022-06-01', 기준시가: 180000000 }, 소재지: L, 같은연접: '아니오', 기준일: '2026-11-03' });
+  const B = judgeRuralHouse_({ 일반주택: Object.assign({}, G, { 취득일: '2023-02-01' }), 농어촌주택: { 취득일: '2021-04-01', 기준시가: 150000000 }, 소재지: L, 같은연접: '아니오' });
+  const C = judgeRuralHouse_({ 일반주택: G, 농어촌주택: { 취득일: '2025-03-01', 기준시가: 200000000, 처분일: '2026-12-15', 처분사유: '매매' }, 소재지: L, 같은연접: '아니오' });
+  const D = judgeRuralHouse_({ 종류: '고향', 일반주택: G, 농어촌주택: { 취득일: '2020-05-01', 기준시가: 250000000, 추가취득가액: 70000000 }, 고향: { 등재10년: '예', 별표12시: '예' }, 소재지: { 수도권: '아니오', 조정대상지역: '아니오', 관광단지: '아니오' }, 같은연접: '아니오' });
+  ok(A.적용 === true && A.경우[0].엔진칸.isOneHouseOneFamily === true && B.적용 === false && C.추징 === true && C.할일.some(x => x.indexOf('2027-02-28') >= 0) && D.적용 === false, '농어촌주택 — 먼저 보유·추징 기한·증축 가액', JSON.stringify([A.결론, B.결론, C.결론, D.결론]));
+}
+// [2026.11.03 복잡사건 106 「선씨 재건축 동안 산 집」] 대체주택 — 인가 뒤 취득·1년 거주·출국 단서·다른 주택
+{ const B = { 종류: '재건축', 사업시행인가일: '2021-06-15', 완성일: '2024-12-20' }, R = { 취득일: '2021-09-01', 전입일: '2021-09-10', 전출일: '2025-02-01', 양도일: '2026-09-30', 양도가액: 900000000, 취득가액: 500000000 }, M = { 전입일: '2025-02-01', 세대전원: '예' };
+  const A = judgeReplacementHouse_({ 사업: B, 취득때주택수: 1, 대체주택: R, 이사: M, 기준일: '2026-11-03' });
+  const Bx = judgeReplacementHouse_({ 사업: B, 취득때주택수: 1, 대체주택: Object.assign({}, R, { 취득일: '2021-03-01', 전입일: '2021-03-05' }), 이사: M, 기준일: '2026-11-03' });
+  const D = judgeReplacementHouse_({ 사업: { 종류: '재개발', 사업시행인가일: '2019-04-01', 완성일: '2023-06-30' }, 취득때주택수: 1, 대체주택: { 취득일: '2019-08-01', 전입일: '2019-08-10', 전출일: '2023-12-31', 양도일: '2026-05-31' }, 이사: { 출국일: '2024-03-01', 출국사유: '근무', 입국일: '2026-02-01' }, 기준일: '2026-11-03' });
+  const E = judgeReplacementHouse_({ 사업: B, 취득때주택수: 2, 대체주택: R, 이사: M, 기준일: '2026-11-03' });
+  ok(A.적용 === true && A.경우[0].엔진칸.isOneHouseOneFamily === true && Bx.적용 === false && D.적용 === true && /잠정/.test(D.결론) && E.적용 === false, '대체주택 — 인가 뒤 취득·출국 단서 잠정·다른 주택', JSON.stringify([A.결론, Bx.결론, D.결론, E.결론]));
+}
+// [2026.11.03 복잡사건 107 「염씨 빚 갚으려 판 논」] 경영회생 — 임차기간 안 환매·일부 환매·상속인
+{ const P = { 양도인: { 농업인: '예', 직접경작: '예' }, 공사양도: { 양도일: '2019-05-10', 면적: 10000, 납부세액: 30000000, 가산세: 2000000 }, 임차: { 시작일: '2019-05-10', 끝일: '2026-05-09', 직접경작: '예' }, 환매: { 환매일: '2025-11-20', 면적: 6000 }, 기준일: '2026-11-03' };
+  const A = judgeFarmRevival_(P);
+  const B = judgeFarmRevival_(Object.assign({}, P, { 환매: { 환매일: '2026-06-01', 면적: 6000 } }));
+  const C = judgeFarmRevival_(Object.assign({}, P, { 사망: { 사망일: '2024-03-15', 상속인농업인: '아니오', 상속인직접경작: '예' }, 환매: { 환매일: '2025-11-20', 누가: '상속인' } }));
+  ok(A.적용 === true && A.환급액 === 16800000 && B.적용 === false && C.적용 === false, '경영회생 — 일부 환매 환급·기간 뒤 환매·상속인 농업인 아님', JSON.stringify([A.결론, B.결론, C.결론]));
+}
+// [2026.11.03 복잡사건 108 「하씨 산불 난 과수원」] 재해손실 — 보험금 빼기·기한 뒤·도난·개시 전·증여 3개월
+{ const R = [{ 이름: '과수원', 평가액: 300000000, 재난일: '2026-04-12', 재난종류: '산불', 손실비율: 60, 보험금: 50000000 }, { 이름: '아파트', 평가액: 900000000, 재난일: '2026-10-02', 재난종류: '화재', 손실가액: 200000000 }, { 이름: '농기계', 평가액: 40000000, 재난일: '2026-05-03', 재난종류: '도난', 손실가액: 40000000 }, { 이름: '임야', 평가액: 100000000, 재난일: '2026-01-20', 재난종류: '산사태', 손실가액: 30000000 }];
+  const A = judgeDisasterLoss_({ 종류: '상속', 상속개시일: '2026-02-10', 피상속인거주자: '예', 재산: R, 기준일: '2026-11-03' });
+  const B = judgeDisasterLoss_({ 종류: '상속', 상속개시일: '2026-02-10', 피상속인거주자: '예', 외국주소: '예', 재산: R, 기준일: '2026-11-03' });
+  const C = judgeDisasterLoss_({ 종류: '증여', 증여일: '2026-06-15', 재산: [{ 이름: '하우스', 평가액: 500000000, 재난일: '2026-10-05', 재난종류: '태풍', 손실가액: 30000000 }], 기준일: '2026-11-03' });
+  ok(A.재해손실공제 === 130000000 && B.재해손실공제 === 330000000 && C.재해손실공제 === 0 && C.신고기한 === '2026-09-30', '재해손실 — 보험금 빼기·기한 6/9개월·도난·개시 전·증여 3개월', JSON.stringify([A.결론, B.결론, C.결론]));
+}
+// [2026.11.03 복잡사건 122 「연씨 농지·축사 농업회사법인 출자」] 농업법인 현물출자 — 새 이월과세·옛 감면(채무 몫·§133 한도)·일반 회사·농업인 아님·2년 차 60% 추징+이자·상속 예외·8년 통산·편입 3년 제외 농지
+{ const 기 = { 출자일: '2026-05-15', 법인종류: '농업회사법인', 농업법인: '예', 농업인: { 거주: '같은시군구', 경작연수: 12, 소득기준넘은해수: 1 }, 신청: '예정',
+    자산: [{ 이름: '논', 종류: '농지', 실제경작: '예', 시가: 900000000, 취득가액: 400000000, 취득일: '2019-03-01', 지역: '군', 용도지역: '농림' },
+      { 이름: '축사', 종류: '축사등', 시가: 300000000, 취득가액: 150000000, 취득일: '2020-06-01' },
+      { 이름: '창고 옆 대지', 종류: '대지', 시가: 150000000, 취득가액: 60000000, 취득일: '2015-01-01' }],
+    처분: [{ 날짜: '2027-09-01', 비율: 30, 방법: '양도' }, { 날짜: '2028-03-01', 비율: 30, 방법: '양도' }], 납부일: '2028-05-31' };
+  const 산 = function (cs) { if (!cs || !cs.length) return 0; const r = calc('calculate_transfer_tax_multi', { transactions: cs }); return r ? r.산출세액_합계 : 0; };
+  const A0 = judgeFarmCorpContribution_(기), 이월 = 산(A0.경우[0].이월칸들), A = judgeFarmCorpContribution_(Object.assign({}, 기, { 세액: 이월 }));
+  const 옛 = Object.assign({}, 기, { 출자일: '2025-11-20', 처분: [], 자산: [Object.assign({}, 기.자산[0], { 담보채무: 180000000 }), 기.자산[1], 기.자산[2]] });
+  const B0 = judgeFarmCorpContribution_(옛), B = judgeFarmCorpContribution_(Object.assign({}, 옛, { 세액: 산(B0.경우[0].엔진칸들.filter(function (c) { return c._이름 === '논'; })) }));
+  const C = judgeFarmCorpContribution_(Object.assign({}, 기, { 법인종류: '주식회사' }));
+  const D = judgeFarmCorpContribution_(Object.assign({}, 기, { 농업인: { 거주: '아님', 경작연수: 12 } }));
+  const E = judgeFarmCorpContribution_(Object.assign({}, 기, { 세액: 이월, 처분: [{ 날짜: '2027-09-01', 비율: 60, 방법: '사망 상속' }] }));
+  const F = judgeFarmCorpContribution_(Object.assign({}, 기, { 세액: 이월, 처분: [{ 날짜: '2028-07-01', 비율: 60, 방법: '양도' }] }));
+  const G = judgeFarmCorpContribution_(Object.assign({}, 기, { 자산: [Object.assign({}, 기.자산[0], { 지역: '시동', 용도지역: '주거', 편입일: '2021-01-01' }), 기.자산[1]] }));
+  const 지금 = 산(A.경우[0].엔진칸들), 못 = 산(A.경우[1].엔진칸들);
+  console.log('122', 이월, 지금, 못, JSON.stringify([A.추징, B.감면세액, B.감면비율]));
+  ok(A.결론 === '충족' && A.갈래 === '새 법(이월과세)' && A.대상자산.length === 2 && A.제외자산.length === 1 && 이월 > 0 && 지금 > 0 && 못 > 지금 + 이월 - 1
+    && A.추징 && A.추징.사유일 === '2028-03-01' && A.추징.기한 === '2028-05-31' && A.추징.세액 === 이월 && A.추징.이자 === Math.floor(이월 * 670 * 22 / 100000)
+    && B.갈래 === '옛 법(감면)' && B.감면세액 === 100000000 && Math.abs(B.감면비율[0] - 0.8) < 1e-9 && B.감면비율[1] === 0
+    && C.결론 === '안 됨' && D.결론 === '안 됨' && !E.추징 && !F.추징 && F.알림.some(function (n) { return /8년/.test(n); })
+    && G.제외자산.some(function (x) { return x.이름 === '논'; }) && G.대상자산.length === 1,
+    '농업법인출자 — 새 이월과세·옛 감면 채무 몫·§133 1억 한도·일반 회사·농업인 아님·60% 추징+이자·상속 예외·8년 통산·편입 제외', JSON.stringify([A.표시, B.표시, C.표시, D.표시, G.표시]));
+}
+// [2026.11.03 복잡사건 121 「석씨 공장 둘 통합」] 중소기업 간 통합 이월과세(조특법 §31) — 요건 통과·설립 1년 안 법인+과점주주·주식가액 < 순자산·소비성서비스업·업무무관 부동산 제외·4년째 60% 양도 추징·가업승계 증여 예외·§32 길 그대로
+{ const 기 = { 특례: '통합', 통합일: '2026-06-30', 통합법인설립일: '2019-03-02', 중소기업: '예', 소비성서비스업: '아니오', 업종: '금속가공 제조업', 주된자산모두승계: '예', 통합법인주주: '예', 과점주주: '예',
+    자산: [{ 이름: '공장 토지', 종류: '토지', 시가: 1800000000, 사업사용: '예' }, { 이름: '공장 건물', 종류: '건물', 시가: 600000000, 사업사용: '예' }, { 이름: '기계장치', 종류: '기계', 시가: 200000000, 사업사용: '예' }, { 이름: '창고 옆 나대지', 종류: '토지', 시가: 300000000, 사업사용: '아니오', 업무무관: '예' }],
+    부채: 900000000, 받은주식가액: 2000000000, 적용신청: '예정' };
+  const A = judgeIncorp32_(기);
+  const B = judgeIncorp32_(Object.assign({}, 기, { 통합법인설립일: '2025-12-01' }));
+  const C = judgeIncorp32_(Object.assign({}, 기, { 받은주식가액: 1500000000 }));
+  const D = judgeIncorp32_(Object.assign({}, 기, { 소비성서비스업: '예' }));
+  const E = judgeIncorp32_(Object.assign({}, 기, { 처분: [{ 날짜: '2030-03-15', 비율: 60, 방법: '양도' }] }));
+  const F = judgeIncorp32_(Object.assign({}, 기, { 처분: [{ 날짜: '2029-01-10', 비율: 60, 방법: '증여', 가업승계특례: '예' }] }));
+  const G = judgeIncorp32_({ 전환방법: '현물출자', 소비성서비스업: '아니오', 자산: [{ 이름: '상가', 종류: '건물', 시가: 500000000, 사업사용: '예' }], 자본금: 500000000, 설립등기일: '2026-06-30' });
+  const 순 = 1800000000 + 600000000 + 200000000 + 300000000 - 900000000;
+  console.log('121', JSON.stringify([A.결론, A.표시, A.순자산가액, A.엔진칸, A.사후관리기산일, A.제외자산.map(function (x) { return x.이름; }), B.결론, C.결론, D.결론, E.알림.filter(function (n) { return /⚠/.test(n); }), F.알림.filter(function (n) { return /⚠/.test(n); }).length, G.특례, G.엔진칸]));
+  ok(A.결론 === '충족' && A.특례 === '조특법 §31' && A.엔진칸.provision === 'sect31' && A.순자산가액 === 순 && A.제외자산.length === 1 && A.대상자산.length === 3 && A.사후관리기산일 === '2026-06-30'
+    && A.할일.some(function (h) { return h.때 === '2026-08-31'; }) && A.할일.some(function (h) { return h.때 === '2031-06-30'; })
+    && B.결론 === '안 됨' && C.결론 === '안 됨' && D.결론 === '안 됨'
+    && E.알림.some(function (n) { return /⚠/.test(n) && /2030-05-31/.test(n) && /§31⑦/.test(n); }) && E.할일.some(function (h) { return h.때 === '2030-05-31'; })
+    && !F.알림.some(function (n) { return /⚠/.test(n); }) && G.특례 === '조특법 §32' && G.엔진칸.provision === 'sect32',
+    '중소기업통합 — §31 요건·설립 1년 안 과점주주·주식가액 부족·소비성·업무무관 제외·5년 안 60% 양도·가업승계 예외·§32 길 그대로', JSON.stringify([A.표시, B.표시, C.표시, D.표시]));
+}
+// [2026.11.03 복잡사건 120 「방씨 철공소 이전」] 공장 이전 분할납부 — 지방 산단 이전 60%·대전 산단 밖 ✘·대전 산단 ✔·1.5년 가동 토지만·예정가 18억→실제 15억 정산·2년 뒤 폐업 추징·3년 넘김 ✘·중소기업 경로
+{ const 거래 = { assetType: 'land', transferPrice: 3000000000, acquisitionPrice: 1200000000, necessaryExpenses: 50000000, acquisitionDate: '2010-05-01', transferDate: '2026-03-20', acquisitionCause: 'purchase' };
+  const 전 = calc('calculate_transfer_tax_multi', { transactions: [거래] }); const 세 = 전 ? 전.산출세액_합계 : 0;
+  const 기 = { 양도일: '2026-03-20', 사업인정고시일: '2025-09-01', 양수자: '사업시행자', 기존공장: { 소재: '과밀억제', 가동시작: '2012-03-01', 토지취득일: '2010-05-01', 양도가액: 3000000000, 양도차익: 1750000000 },
+    신규공장: { 소재: '충북 음성', 산업단지: '예', 예정가액: 1800000000 }, 세액: 세, 거래: 거래, 오늘: '2026-11-03' };
+  const 신 = function (x) { return Object.assign({}, 기, { 신규공장: Object.assign({}, 기.신규공장, x) }); };
+  const A = judgeFactoryRelocation_(기);
+  const B = judgeFactoryRelocation_(신({ 소재: '대전광역시', 산업단지: '아니오' }));
+  const C = judgeFactoryRelocation_(신({ 소재: '대전광역시', 산업단지: '예' }));
+  const D = judgeFactoryRelocation_(Object.assign({}, 기, { 기존공장: Object.assign({}, 기.기존공장, { 가동시작: '2024-03-01', 토지취득일: '2019-01-01' }) }));
+  const E = judgeFactoryRelocation_(신({ 취득가액: 1500000000, 사업개시일: '2027-06-01' }));
+  const F = judgeFactoryRelocation_(신({ 사업개시일: '2027-06-01' }).폐업일 ? 기 : Object.assign(신({ 취득가액: 1800000000, 사업개시일: '2027-06-01' }), { 폐업일: '2028-04-15' }));
+  const G = judgeFactoryRelocation_(신({ 취득가액: 1800000000, 사업개시일: '2029-06-01' }));
+  const H = judgeFactoryRelocation_(Object.assign({}, 기, { 특례: '중소기업이전', 사업인정고시일: '', 양수자: '', 중소기업: '예', 신규공장: { 소재: '충남 천안', 예정가액: 3500000000 } }));
+  const ea = calc('calculate_transfer_tax_multi', { transactions: [A.엔진칸] });
+  console.log('120', 세, JSON.stringify([A.비율, A.분할세액, A.지금낼세액, A.납부일정, A.예정신고기한, A.이전마감]), JSON.stringify([D.토지만, D.결론, E.정산, F.추징, G.결론, H.조문, H.분할세액, B.표시, C.결론]));
+  ok(세 > 0 && ea && ea.산출세액_합계 === 세 && A.분할 === true && A.비율 === 60 && A.분할세액 === Math.floor(세 * 0.6) && A.지금낼세액 === 세 - A.분할세액 && A.납부일정.length === 5 && A.납부일정[0].때 === '2032-05-31' && A.예정신고기한 === '2026-05-31'
+    && B.분할 === false && C.분할 === true && D.분할 === true && D.토지만 === true && E.정산 && E.정산.넘게받은세액 === Math.floor(세 * 0.1) && E.비율 === 50
+    && F.추징 && F.추징.세액 === Math.floor(세 * 0.6) && F.추징.납부기한 === '2028-06-30' && F.추징.이자 > 0 && G.분할 === false && H.조문 === '조특법 §85의8' && H.분할 === true && H.비율 === 100,
+    '공장이전 — 지방 60%·광역시 산단 밖/안·토지만·예정가 정산·폐업 추징·3년 넘김·중소기업 100%', JSON.stringify([A.표시, B.표시, C.표시, D.표시, E.표시, F.표시, G.표시, H.표시]));
+}
+// [2026.11.03 복잡사건 119 「엄씨 논 바꾸기」] 농지 교환 — 도시 주거지역 편입 3년 지나 제외 농지·군 지역 3호 잠정·3년 안 수용·사망 통산·차액 1/4 초과·단서 가·환지예정지·농지소재지 밖
+{ const 기 = { 교환일: '2026-05-10', 사유: '경작상필요',
+    넘긴농지: { 시가: 400000000, 취득가액: 150000000, 취득일: '2010-04-01', 농지: '예', 지역: '시동', 용도지역: '주거', 편입일: '2021-03-01', 단서가: '아니오', 단서나: '아니오' },
+    받은농지: { 시가: 340000000, 농지: '예' }, 정산금: { 받음: 60000000 }, 경작: { 시작: '2026-05-10', 거주지역: '같은시군구' } };
+  const 군 = function (x) { return Object.assign({}, 기, x, { 넘긴농지: Object.assign({}, 기.넘긴농지, { 지역: '군', 용도지역: '그밖', 편입일: '' }, (x && x.넘긴농지) || {}) }); };
+  const A = judgeFarmlandExchange_(기);
+  const G = judgeFarmlandExchange_(군({}));
+  const H = judgeFarmlandExchange_(군({ 경작: Object.assign({}, 기.경작, { 수용일: '2028-05-01' }) }));
+  const I = judgeFarmlandExchange_(군({ 경작: Object.assign({}, 기.경작, { 사망일: '2027-05-10', 상속인계속경작: '예' }), 오늘: '2029-06-01' }));
+  const J = judgeFarmlandExchange_(군({ 받은농지: { 시가: 280000000, 농지: '예' }, 정산금: { 받음: 120000000 } }));
+  const K = judgeFarmlandExchange_(Object.assign({}, 기, { 넘긴농지: Object.assign({}, 기.넘긴농지, { 단서가: '예' }), 경작: Object.assign({}, 기.경작, { 끝: '2030-01-01' }) }));
+  const L = judgeFarmlandExchange_(군({ 넘긴농지: { 환지예정지지정일: '2022-01-01' } }));
+  const M = judgeFarmlandExchange_(군({ 경작: { 시작: '2026-05-10', 거주지역: '아님' } }));
+  const t = function (k) { const r = calc('calculate_transfer_tax_multi', { transactions: [k.엔진칸] }); return r ? r.납부세액_합계 : 0; };
+  const ea = A.경우.map(t), eg = G.경우.map(t), ek = t(K.경우[0]);
+  console.log('119', JSON.stringify(A.경우.map(function (k, i) { return [k.이름.slice(0, 40), ea[i]]; })), JSON.stringify(G.경우.map(function (k, i) { return [k.이름.slice(0, 40), eg[i]]; })), ek, JSON.stringify([G.할일, A.차액비율, A.양도가액]));
+  ok(A.결론 === '안 됨' && A.제외농지 === true && A.양도가액 === 400000000 && !A.엔진칸.isFarmlandExchange && ea[0] > 0 && A.경우.some(function (k) { return k.견주기; }) && ea[1] === 0
+    && G.비과세 === true && G.잠정 === true && G.삼년되는날 === '2029-05-10' && G.할일.some(function (h) { return h.때 === '2029-05-10까지'; }) && eg[0] === 0 && eg[1] > 0
+    && H.삼년경작 === true && H.잠정 !== true && I.삼년경작 === true && J.결론 === '안 됨' && J.차액비율 === 30
+    && K.제외농지 === false && K.비과세 === true && ek === 0 && L.제외농지 === true && L.결론 === '안 됨' && M.결론 === '안 됨' && M.삼년경작 === false,
+    '농지교환 — §153④1호 제외·3호 잠정·⑤수용·⑥상속 통산·1/4 초과·단서 가·④2호·농지소재지 밖·엔진 비과세/과세', JSON.stringify([A.표시, G.표시, H.표시, I.표시, J.표시, K.표시, L.표시, M.표시, ea, eg, ek]));
+}
+// [2026.11.03 복잡사건 118 「설씨 가족회사 주식 증여」] 비상장주식 평가 방법 — 부동산과다 2:3·추정이익 네 요건(신고기한 넘긴 평가서 ✘)·사업개시 3년 미만·부동산 80%·처분이익으로 일시 사건 셈·할증 배제·심의 기한
+{ const 기 = { 원인: '증여', 평가기준일: '2026-06-30',
+    회사: { 사업개시일: '2019-03-01', 발행주식수: 100000, 순손익: [3000000000, 300000000, 200000000], 처분손익: [2800000000, 0, 0], 세전손익: [3000000000, 300000000, 200000000],
+      자산총액: 10000000000, 부동산등가액: 5500000000, 주식등가액: 0, 순자산가액: 8000000000, 중소기업: '아니오', 중견매출5천억미만: '아니오', 청산중: '아니오', 휴업폐업: '아니오' },
+    주주: { 최대주주: '예', 평가할주식수: 20000 },
+    추정이익: { '1주당': 3500, 평가기관수: 2, 신고: '예', 산정기준일: '2026-06-30', 작성일: '2026-08-20' } };
+  const m = function (o) { return Object.assign({}, 기, o); }, mc = function (o) { return m({ 회사: Object.assign({}, 기.회사, o) }); };
+  const A = judgeUnlistedValuation_(기);
+  const B = judgeUnlistedValuation_(m({ 추정이익: {} }));
+  const C = judgeUnlistedValuation_(mc({ 사업개시일: '2024-01-01' }));
+  const D = judgeUnlistedValuation_(mc({ 부동산등가액: 8200000000 }));
+  const E = judgeUnlistedValuation_(m({ 추정이익: Object.assign({}, 기.추정이익, { 작성일: '2026-10-10' }) }));
+  const F = judgeUnlistedValuation_(m({ 추정이익: Object.assign({}, 기.추정이익, { 신고: null }) }));
+  const G = judgeUnlistedValuation_(mc({ 결손3년: '예' }));
+  const v = function (k) { const r = calc('calculate_unlisted_stock_value', k.엔진칸); return r ? r.평가총액 : 0; };
+  const gt = function (amt) { const r = calc('calculate_gift_tax', { giftAmount: amt, relation: '직계존속', giftDate: '2026-06-30' }); return r ? (r.납부할세액 != null ? r.납부할세액 : r.납부세액) : 0; };
+  const va = A.경우.map(v), vb = B.경우.map(v);
+  console.log('118', JSON.stringify(A.경우.map(function (k, i) { return [k.이름.slice(0, 40), va[i], gt(va[i])]; })), JSON.stringify(B.경우.map(function (k, i) { return [k.이름.slice(0, 40), vb[i], gt(vb[i])]; })),
+    JSON.stringify([v(C.경우[0]), v(D.경우[0]), v(E.경우[0]), F.잠정, F.경우.map(function (k) { return k.이름.slice(0, 20); }), v(G.경우[0]), G.할증배제]), JSON.stringify(A.할일.map(function (h) { return h.때; })));
+  ok(A.가중치 === '2:3' && A.부동산비율 === 55 && A.추정이익사용 && A.할증 && A.신고기한 === '2026-09-30' && va[0] === 1536000000 && A.할일[0].때 === '2026-07-22까지'
+    && vb[0] === 2719992000 && B.경우.some(function (k) { return /3:2/.test(k.이름); }) && vb[B.경우.findIndex(function (k) { return /3:2/.test(k.이름); })] === 3120000000
+    && B.경우.some(function (k) { return /추정이익 없이/.test(k.이름); })
+    && A.결론 === '충족' && !A.잠정 && C.순자산가치만 && v(C.경우[0]) === 1920000000 && v(D.경우[0]) === 1920000000 && !E.추정이익사용 && E.추정요건.some(function (r) { return r.결과 === '✘'; }) && !E.잠정 && v(E.경우[0]) === 2719992000
+    && F.잠정 && !F.추정이익사용 && F.경우.some(function (k) { return /\[모름\]/.test(k.이름); }) && !G.할증 && v(G.경우[0]) === 1280000000,
+    '비상장평가 — 2:3·추정이익·신고기한 넘긴 평가서·개시 3년·부동산 80%·모름·할증 배제', JSON.stringify([A.표시, B.표시, C.표시, D.표시, E.표시, F.표시, G.표시, va, vb]));
+}
+// [2026.11.03 복잡사건 117 「맹씨 회사 주식 교환」] 주식의 포괄적 교환 과세이연 — 2년 안 취득분 금전 간주로 80% 못 넘음·이연 뒤 2년 안 처분 추징·소액주주·기간 뒤 처분·지배주주 모름·모회사 보유 안 함
+{ const 기 = { 교환: { 종류: '교환', 교환일: '2026-03-31', 사업연도말: '12-31', 양법인1년사업: '예', 자회사사업계속: '예', 지분대로배정: '예' },
+    주주: { 취득가액: 300000000, 취득일: '2015-06-01', 지분율: 30, 지분시가: 2800000000, 지배주주: '예', 대주주: '예', 중소기업: '아니오' },
+    대가: { 모회사주식가액: 2400000000, 모회사주식수: 40000, 금전등: 400000000 }, 보유: { 모회사: '예', 주주: '예' },
+    모회사사전취득: { 지배주주: '아니오', '2년안취득지분율': 30, '2년안취득가액': 750000000 } };
+  const 없이 = Object.assign({}, 기, { 모회사사전취득: {}, 처분: [{ 날짜: '2027-05-20', 주식수: 10000, 양도가액: 700000000 }] });
+  const A = judgeShareSwap_(기);
+  const B = judgeShareSwap_(없이);
+  const C = judgeShareSwap_(Object.assign({}, 없이, { 주주: Object.assign({}, 기.주주, { 지분율: 0.5, 지분시가: 500000000, 지배주주: null }) }));
+  const D = judgeShareSwap_(Object.assign({}, 없이, { 처분: [{ 날짜: '2029-03-01', 주식수: 10000, 양도가액: 700000000 }] }));
+  const E = judgeShareSwap_(Object.assign({}, 기, { 모회사사전취득: { '2년안취득지분율': 30, '2년안취득가액': 750000000 } }));
+  const F = judgeShareSwap_(Object.assign({}, 없이, { 보유: { 모회사: '아니오' }, 처분: [] }));
+  const t = function (k) { const r = calc('calculate_stock_transfer_tax', k.엔진칸); return r ? r.납부세액_합계 : 0; };
+  const ea = A.경우.map(t), eb = B.경우.map(t);
+  const 추 = B.경우.filter(function (k) { return k.추징; })[0], 처B = B.경우.filter(function (k) { return /^처분/.test(k.이름); })[0];
+  const 처C = C.경우.filter(function (k) { return /^처분/.test(k.이름); })[0], 처D = D.경우.filter(function (k) { return /^처분/.test(k.이름); })[0];
+  const g1 = calc('calculate_share_swap_gain_recognition', { acquisitionPrice: 300000000, stockConsiderationValue: 2400000000, otherConsiderationValue: 400000000, deemedCashPriorAcquisition: 250000000 });
+  const g2 = calc('calculate_share_swap_gain_recognition', { acquisitionPrice: 300000000, stockConsiderationValue: 2400000000, otherConsiderationValue: 400000000, swappedShares: 40000, soldShares: 10000 });
+  console.log('117', JSON.stringify(A.경우.map(function (k, i) { return [k.이름.slice(0, 34), ea[i]]; })), JSON.stringify(B.경우.map(function (k, i) { return [k.이름.slice(0, 34), eb[i]]; })), '추징세액', t(추) - eb[0], JSON.stringify(B.할일), JSON.stringify([g1.이연적용여부, g2.나중_취득가액_합계, g2.나중_취득가액_처분분]));
+  ok(A.결론 === '안 됨' && A.금전간주 === 250000000 && A.판정비율 < 80 && /전부 양도/.test(A.경우[0].이름) && A.경우.some(function (k) { return k.견주기 && /2년 안/.test(k.이름); }) && ea[0] > ea[1] && ea[1] > 0
+    && B.이연 === true && B.지금과세 === 400000000 && B.나중취득가액합계 === 300000000 && JSON.stringify(B.사후관리기간) === '["2027-01-01","2028-12-31"]' && !!추 && t(추) > eb[0]
+    && 처B.엔진칸.acquisitionPrice === 600000000 && B.할일.some(function (h) { return h.때 === '2027-08-31까지'; })
+    && C.대상주주 === false && !C.추징 && 처C.엔진칸.acquisitionPrice === 75000000 && !D.추징 && 처D.엔진칸.acquisitionPrice === 75000000
+    && E.잠정 === true && E.이연 === true && E.경우.some(function (k) { return /\[모름\] 이연이 안 되면/.test(k.이름); }) && F.결론 === '안 됨'
+    && g1.이연적용여부 === false && g2.나중_취득가액_합계 === 300000000 && g2.나중_취득가액_처분분 === 75000000,
+    '주식교환 — 2년 안 취득분 금전 간주·추징·소액주주·기간 뒤·지배주주 모름·모회사 보유 안 함·엔진 나중 취득가액', JSON.stringify([A.표시, B.표시, C.표시, D.표시, E.표시, F.표시, ea, eb]));
+}
+// [2026.11.03 복잡사건 116 「염씨 산 소나무 숲」] 자경산지 감면 — 경영 기간은 인가일부터(취득일부터 세면 30%로 부풂)·상속 승계·거주 안 함·준보전산지·상속 뒤 6개월·편입 3년 지남
+{ const 기 = { 산지: { 취득일: '1990-04-01', 인가일: '2008-05-01', 양도일: '2026-06-15', 보전산지: '예', 양도가액: 600000000, 취득가액: 30000000, 필요경비: 10000000 },
+    사람: { 임업인: '예', 양도일거주자: '예', 거주지역: '같은 시군구', 거주연수: 36, 경영방법: '상시 종사' } };
+  const A = judgeSelfForest_(기);
+  const B = judgeSelfForest_({ 산지: { 취득일: '2019-03-01', 인가일: '2000-01-01', 양도일: '2026-06-15', 보전산지: '예', 양도가액: 600000000, 취득가액: 200000000 }, 사람: { 임업인: '예', 거주지역: '연접', 경영방법: '절반 이상 자기 노동' },
+    경영: [{ 시작: '2000-01-01', 끝: '2019-02-28', 누가: '피상속인' }, { 시작: '2019-03-01', 끝: '2026-06-15', 누가: '본인' }], 상속: { 상속받은날: '2019-03-01', 상속후경영개월: 87 } });
+  const C = judgeSelfForest_(Object.assign({}, 기, { 사람: Object.assign({}, 기.사람, { 거주지역: '아님' }) }));
+  const D = judgeSelfForest_(Object.assign({}, 기, { 산지: Object.assign({}, 기.산지, { 보전산지: '아니오' }) }));
+  const E = judgeSelfForest_({ 산지: { 취득일: '2025-01-10', 인가일: '2000-01-01', 양도일: '2026-06-15', 보전산지: '예' }, 사람: { 임업인: '예', 거주지역: '30km 이내', 경영방법: '상시 종사' },
+    경영: [{ 시작: '2000-01-01', 끝: '2025-01-09', 누가: '피상속인' }, { 시작: '2025-01-10', 끝: '2025-07-10', 누가: '본인' }], 상속: { 상속받은날: '2025-01-10', 상속후경영개월: 6 } });
+  const F = judgeSelfForest_(Object.assign({}, 기, { 산지: Object.assign({}, 기.산지, { 도시지역: '예', 주거지역편입일: '2020-01-01', 기준시가: { 취득: 20000000, 편입: 200000000, 양도: 400000000 } }) }));
+  const t = function (k) { const r = calc('calculate_transfer_tax_multi', { transactions: [k.엔진칸] }); return r ? r.납부세액_합계 : 0; };
+  const ea = A.경우.map(t), eb = B.경우.map(t);
+  console.log('116', JSON.stringify(A.경우.map(function (k, i) { return [k.이름.slice(0, 30), ea[i]]; })), JSON.stringify(B.경우.map(function (k, i) { return [k.이름.slice(0, 30), eb[i]]; })), t(F.경우[0]));
+  ok(A.감면율 === 10 && A.직접경영연수 === 18 && A.경우[0].엔진칸.forestManagedYears === 18 && A.경우.some(function (k) { return k.견주기 && /취득일부터/.test(k.이름); })
+    && ea[0] > 0 && ea[0] > ea[1] && ea[2] > ea[0]
+    && B.감면율 === 20 && B.피상속인기간더함 === true && C.결론 === '안 됨' && /감면 없음/.test(C.경우[0].이름) && D.결론 === '안 됨'
+    && E.피상속인기간더함 === null && E.감면율 === 0 && E.잠정 === true && E.경우.some(function (k) { return /\[모름\]/.test(k.이름); })
+    && F.잠정 === true && F.경우[0].엔진칸.zoneIncorporated === true && A.할일[0].때 === '2026-08-31까지',
+    '자경산지 — 인가일부터·상속 승계·거주 안 함·준보전·상속 뒤 6개월·편입 3년 지남', JSON.stringify([A.결론, A.표시, B.표시, C.표시, D.표시, E.표시, F.표시, ea, eb]));
+}
+// [2026.11.03 복잡사건 115 「곽씨 종중 땅」] 법인 아닌 단체 양도 — 분배 안 하면 1거주자·나누면 구성원별·일부만 확인·법인 승인·2005년 전 종중 농지 비사업용 아님·종원 명의
+{ const 기 = { 단체: { 이름: '곽씨 종중', 법인승인: '아니오' }, 분배: { 비율정함: '아니오', 사실상분배: '아니오', 구성원: [{ 이름: '갑', 비율: 25 }, { 이름: '을', 비율: 25 }, { 이름: '병', 비율: 25 }, { 이름: '정', 비율: 25 }] },
+    토지: { 종류: '농지', 취득일: '1990-05-01', 취득가액: 50000000, 양도일: '2026-06-10', 양도가액: 1200000000, 필요경비: 20000000, 등기명의: '곽갑수' } };
+  const A = judgeClanLand_(기);
+  const B = judgeClanLand_(Object.assign({}, 기, { 분배: Object.assign({}, 기.분배, { 사실상분배: '예' }) }));
+  const C = judgeClanLand_(Object.assign({}, 기, { 단체: { 이름: '곽씨 종중', 법인승인: '예' } }));
+  const D = judgeClanLand_(Object.assign({}, 기, { 분배: { 비율정함: '예', 구성원: [{ 이름: '갑', 비율: 25 }, { 이름: '을', 비율: 25 }] } }));
+  const E = judgeClanLand_(Object.assign({}, 기, { 토지: Object.assign({}, 기.토지, { 취득일: '2010-03-01' }) }));
+  const F = judgeClanLand_(Object.assign({}, 기, { 분배: { 구성원: 기.분배.구성원 } }));
+  const t = function (k) { const r = calc('calculate_transfer_tax_multi', { transactions: [k.엔진칸] }); return r ? r.납부세액_합계 : 0; };
+  const ea = A.경우.map(t), eb = B.경우.map(t);
+  console.log('115', JSON.stringify(A.경우.map(function (k, i) { return [k.이름.slice(0, 26), ea[i]]; })), JSON.stringify(eb));
+  ok(A.과세방식 === '1거주자' && A.비사업용 === false && A.경우[0].엔진칸.isNonBusinessLand === undefined && A.경우.some(function (k) { return k.견주기 && /구성원/.test(k.이름); }) && A.경우.some(function (k) { return /비사업용/.test(k.이름) && k.엔진칸.isNonBusinessLand; })
+    && A.알림.some(function (x) { return /§14①/.test(x); }) && A.할일.some(function (x) { return x.때 === '2026-08-31까지'; })
+    && B.과세방식 === '구성원별' && B.경우.filter(function (k) { return !k.견주기 && /구성원/.test(k.이름); }).length === 4 && B.경우[0].엔진칸.transferPrice === 300000000
+    && C.법인으로봄 === true && /법인세/.test(C.결론) && D.과세방식 === '섞임' && D.경우.some(function (k) { return /나머지/.test(k.이름) && k.엔진칸.transferPrice === 600000000; })
+    && E.비사업용 === null && E.경우.some(function (k) { return /비사업용 토지면/.test(k.이름); }) && F.과세방식 === null && F.경우.length >= 5
+    && ea[0] > 0 && eb[0] > 0 && ea[0] > eb.slice(0, 4).reduce(function (s, x) { return s + x; }, 0),
+    '법인아닌단체 — 1거주자·구성원별·섞임·법인 승인·2005년 전 종중 농지·2010년 취득·분배 모름', JSON.stringify([A.결론, B.결론, C.결론, D.결론, E.결론, F.결론, ea, eb]));
+}
+// [2026.11.03 복잡사건 114 「노씨 부부 연이은 상속」] 단기재상속 — 1년 6개월 뒤 배우자 사망(2년 이내 90%)·처분 재산 뺌·미납 전의 상속세 공과금·경과연수 꽉 찬 해 잘못·10년 지남
+{ const 기 = { 전상속개시일: '2025-03-10', 상속개시일: '2026-09-20', 이번피상속인지위: '배우자', 전상속세산출세액: 600000000, 전상속재산가액: 3000000000, 전상속세과세가액: 2800000000,
+    재상속재산: [{ 이름: '서초 아파트', 전가액: 800000000, 지금가액: 950000000, 남음: '예' }, { 이름: '예금', 전가액: 200000000, 지금가액: 0, 남음: '아니오' }],
+    이번피상속인몫전상속세: 100000000, 사망전납부액: 40000000, 전배우자분할: '예',
+    엔진칸: { taxableEstateAmount: 1500000000, hasSpouse: false, childCount: 2, filingStatus: 'ontime' } };
+  const A = judgeReinheritance_(기);
+  const B = judgeReinheritance_(Object.assign({}, 기, { 상속개시일: '2035-04-01' }));
+  const C = judgeReinheritance_(Object.assign({}, 기, { 이번피상속인지위: '그밖(남)' }));
+  const D = judgeReinheritance_(Object.assign({}, 기, { 상속개시일: '2025-08-01', 전배우자분할: '아니오' }));
+  const e = A.경우.map(function (k) { return calc('calculate_inheritance_tax', k.엔진칸); });
+  console.log('114', JSON.stringify(A.경우.map(function (k, i) { return [k.이름.slice(0, 18), e[i].산출세액, e[i].단기재상속세액공제, e[i].납부세액]; })));
+  ok(A.공제율 === 90 && A.이내 === 2 && A.재상속분 === 800000000 && A.처분재산 === 200000000 && A.미납전상속세 === 60000000 && A.경우[0].엔진칸.taxableEstateAmount === 1440000000
+    && A.경우.some(function (k) { return /공과금/.test(k.이름); }) && A.경우.some(function (k) { return /꽉 찬 해/.test(k.이름); }) && A.경우.some(function (k) { return /시가/.test(k.이름); })
+    && e[0].단기재상속세액공제 > 0 && B.경우[0].엔진칸.priorInheritanceTax === undefined && /없음/.test(B.결론) && /없음/.test(C.결론)
+    && D.할일.some(function (x) { return /분할/.test(x.무엇); }) && D.알림.some(function (x) { return /§24①/.test(x); }) && D.공제율 === 100,
+    '재상속 — 2년 이내 90%·처분 재산 뺌·미납 전의 상속세 공과금·꽉 찬 해 잘못·10년 지남·지위 아님·분할기한 전 사망', JSON.stringify([A.결론, B.결론, C.결론, D.결론, e.map(function (x) { return x.납부세액; })]));
+}
+// [2026.11.03 복잡사건 113 「소씨 상가 신탁 수익권」] 신탁 수익권 양도 — 수익권 일부 양도·위탁자 지위까지 넘김(신탁재산 양도)·수익증권 제외·담보 우선수익권·지배권 모름 두 경우
+{ const 일 = { 수익권: { 종류: '부동산 관리신탁 수익권(수익 40%)' }, 양도인지위: '수익자', 지배이전: { 수익권전부: '아니오' }, 양도일: '2026-05-15', 양도가액: 460000000, 취득일: '2021-03-10', 취득가액: 300000000, 양도비용: 4000000 };
+  const A = judgeTrustBeneficiary_(일);
+  const 자 = { 수익권: { 종류: '부동산 관리신탁 수익권(자익신탁 전부)' }, 양도인지위: '위탁자겸수익자', 지배이전: { 위탁자지위이전: '예', 수익권전부: '예' }, 양도일: '2026-05-15', 양도가액: 1200000000, 취득가액: 700000000, 양도비용: 10000000, 신탁재산: { 자산: '상가', 취득일: '2015-03-01', 취득가액: 700000000 } };
+  const B = judgeTrustBeneficiary_(자);
+  const C = judgeTrustBeneficiary_({ 수익권: { 종류: '금전신탁 수익증권', 자본시장법수익증권: '예' }, 양도일: '2026-05-15', 양도가액: 100000000, 취득가액: 90000000 });
+  const D = judgeTrustBeneficiary_({ 수익권: { 종류: '담보신탁 1순위 우선수익권', 담보채권자: '예', 채권원리금범위: '예' }, 양도일: '2026-05-15', 양도가액: 500000000, 취득가액: 500000000 });
+  const D2 = judgeTrustBeneficiary_({ 수익권: { 종류: '담보신탁 1순위 우선수익권', 담보채권자: '예', 채권원리금범위: '아니오' }, 양도일: '2026-05-15', 양도가액: 520000000, 취득가액: 500000000 });
+  const E = judgeTrustBeneficiary_(Object.assign({}, 자, { 지배이전: {} }));
+  const F = judgeTrustBeneficiary_(Object.assign({}, 일, { 양수인관계: '아들', 위탁자통제: { 해지권: '예' } }));
+  const ea = calc('calculate_stock_transfer_tax', A.경우[0].엔진칸);
+  const eb = calc('calculate_transfer_tax_multi', { transactions: [B.경우[0].엔진칸] });
+  const ebw = calc('calculate_stock_transfer_tax', B.경우[1].엔진칸);
+  console.log('113', JSON.stringify([ea.과세표준, ea.산출세액, ea.납부세액_합계, ea.예정신고기한, ebw.산출세액, ebw.납부세액_합계]), JSON.stringify([eb.합산과세표준, eb.산출세액_합계, eb.납부세액_합계]));
+  ok(A.결론 === '신탁 수익권 양도(§94①6호)' && A.경우.length === 1 && B.지배권이전 === true && B.경우[0].엔진 === 'calculate_transfer_tax' && B.경우.length === 2 && C.제외수익권 === true && C.경우.length === 0 && D.제외수익권 === true && D2.제외수익권 === false && E.지배권이전 === null && E.경우.length === 2
+    && F.알림.some(function (x) { return /§2의3②/.test(x); }) && F.알림.some(function (x) { return /§101①/.test(x); }) && ea.산출세액 === 30700000 && /2026-07-31/.test(ea.예정신고기한),
+    '신탁수익권 — 수익권 일부 양도·위탁자 지위 이전(신탁재산 양도)·수익증권 제외·담보 우선수익권 범위 안/밖·지배권 모름 두 경우·특수관계·위탁자 귀속', JSON.stringify([A.결론, B.결론, C.결론, D.결론, D2.결론, E.결론, ea.산출세액, ea.예정신고기한]));
+}
+// [2026.11.03 복잡사건 112 「여씨 배우자 양도」] §44 — 대가 일부 입증·전부 입증·경매 배제·우회 3년·②단서
+{ const 상 = { 관계: '아내', 처분방식: '매매', 자산: '상가', 시가: 900000000, 대가: 600000000, 양도일: '2026-03-10', 취득일: '2012-05-01', 취득가액: 350000000, 양도비용: 10000000,
+    대가출처: [{ 금액: 200000000, 출처: '신고소득(근로)', 증빙: '예' }, { 금액: 100000000, 출처: '예금 해지(재산처분)', 증빙: '예' }, { 금액: 300000000, 출처: '은행 대출', 증빙: '예' }] };
+  const A = judgeSpouseTransfer44_(상);
+  const B = judgeSpouseTransfer44_(Object.assign({}, 상, { 대가출처: [{ 금액: 400000000, 출처: '신고소득', 증빙: '예' }, { 금액: 200000000, 출처: '아파트 처분', 증빙: '예' }] }));
+  const C = judgeSpouseTransfer44_(Object.assign({}, 상, { 처분방식: '경매', 대가: 880000000, 대가출처: [] }));
+  const 땅 = { 관계: '아들', 자산: '토지', 취득일: '2010-04-01', 취득가액: 150000000, 우회: { 당초양도일: '2023-03-01', 당초양도가액: 300000000, 재양도일: '2025-02-01', 재양도시가: 500000000, 재양도대가: 400000000, 최종양수인관계: '아들', 중간특수관계: '예', 중간관계: '동생', 당초양도자결정세액: 20000000, 양수자결정세액: 10000000, 비교증여세: 80000000 } };
+  const E = judgeSpouseTransfer44_(땅);
+  const F = judgeSpouseTransfer44_(Object.assign({}, 땅, { 우회: Object.assign({}, 땅.우회, { 재양도일: '2026-04-01' }) }));
+  const G = judgeSpouseTransfer44_(Object.assign({}, 땅, { 우회: Object.assign({}, 땅.우회, { 당초양도자결정세액: 80000000, 양수자결정세액: 40000000 }) }));
+  const g = calc('calculate_gift_tax', Object.assign({ filingStatus: 'ontime' }, A.경우[0].엔진칸));
+  ok(A.추정 === true && A.경우.length >= 3 && B.추정 === false && C.추정 === false && C.배제 === true && E.추정 === true && F.추정 === false && G.추정 === false && g.납부세액 === 48500000,
+    '배우자양도추정 — 일부 입증 세 경우·전부 입증·경매 배제·우회 3년·②단서', JSON.stringify([A.결론, B.결론, C.결론, E.결론, F.결론, G.결론, g.납부세액]));
+}
+// [2026.11.03 복잡사건 111 「연씨 장기일반 매입임대」] §97의5 감면 — 3개월 안 등록·10년 계속 임대(6개월 공실)·자동말소 아파트·엔진 §97의3과 겹쳐 받기 막음
+{ const 계 = [{ 시작: '2018-07-01', 끝: '2020-06-30', 보증금: 200000000 }, { 시작: '2020-07-15', 끝: '2022-07-14', 보증금: 210000000 }, { 시작: '2022-08-01', 끝: '2024-07-31', 보증금: 220000000 }, { 시작: '2024-08-01', 끝: '2026-07-31', 보증금: 230000000 }, { 시작: '2026-08-01', 끝: '2028-07-31', 보증금: 240000000 }];
+  const 바 = { transferDate: '2028-08-20', transferPrice: 500000000, assetType: 'house', acquisitionDate: '2018-05-10', acquisitionPrice: 220000000, acquisitionCause: 'purchase', houseCount: 3, necessaryExpenses: 5000000 };
+  const 기 = { 양도일: '2028-08-20', 거주자: '예', 취득일: '2018-05-10', 등록일: '2018-07-01', 종류: '매입', 계약: 계, 전용면적: 59, 수도권: '예', 임대개시기준시가: 250000000, 기준시가: { 취득: 150000000, 임대끝: 340000000, 양도: 340000000 }, 바탕: 바 };
+  const A = judgeRental9705_(기);
+  const B = judgeRental9705_(Object.assign({}, 기, { 등록일: '2018-09-20' }));
+  const C = judgeRental9705_(Object.assign({}, 기, { 계약: 계.map(function (c, i) { return i === 2 ? { 시작: '2023-02-20', 끝: c.끝, 보증금: c.보증금 } : c; }) }));
+  const D = judgeRental9705_(Object.assign({}, 기, { 아파트: '예', 말소일: '2026-07-02', 말소사유: '자동' }));
+  const e1 = calc('calculate_transfer_tax_multi', { transactions: [A.경우[0].엔진칸] });
+  const e2 = calc('calculate_transfer_tax_multi', { transactions: [Object.assign({}, A.경우[0].엔진칸, A.경우[1].엔진칸, { longTermRentalHouseProvision: 'sect97_5' })] });
+  ok(A.적용 === true && B.적용 === false && C.적용 === false && D.적용 === false && D.장기임대특례율 === 50 && A.경우.length === 4 && e1.합산조특법세액감면액 === 62710000 && e2.합산조특법세액감면액 === 62710000 && e2.농어촌특별세 === 12542000,
+    '장기일반감면 — 법대로 100%·등록 4개월 뒤·7개월 공실·자동말소 아파트(§97의3 50%)·§97의3과 함께 넣어도 한 번만', JSON.stringify([A.결론, B.결론, C.결론, D.결론, e1.합산조특법세액감면액, e2.합산조특법세액감면액, e2.농어촌특별세]));
+}
+// [2026.11.03 복잡사건 110 「피씨 2013 미분양 아파트」] 신축주택감면 — 6억·85㎡ 둘 다 넘음·해제 재계약·날인·5년 안/뒤
+{ const B = { 주택: { 종류: '미분양', 공급자: '사업주체', 계약일: '2013-06-01', 취득일: '2013-08-01', 실거래가액: 400000000, 면적: 84, 날인: '예' }, 해제: { 없음: '예' }, 양도: { 양도일: '2018-06-01', 양도가액: 550000000 }, 기준일: '2026-11-03' };
+  const A = judgeNewHouse99_2_(B);
+  const Bg = judgeNewHouse99_2_(Object.assign({}, B, { 주택: Object.assign({}, B.주택, { 실거래가액: 700000000, 면적: 110 }) }));
+  const C = judgeNewHouse99_2_(Object.assign({}, B, { 해제: { 전계약해제: '예', 해제자본인또는가족: '예' } }));
+  const N = judgeNewHouse99_2_(Object.assign({}, B, { 주택: Object.assign({}, B.주택, { 날인: '아니오' }) }));
+  const L = judgeNewHouse99_2_(Object.assign({}, B, { 양도: { 양도일: '2026-09-01' } }));
+  ok(A.적용 === true && A.오년안 === true && Bg.적용 === false && C.적용 === false && N.적용 === false && L.적용 === true && L.오년안 === false, '신축주택감면 — 6억·85㎡·해제 재계약·날인·5년 안/뒤', JSON.stringify([A.결론, Bg.결론, C.결론, N.결론, L.결론]));
+}
+// [2026.11.03 복잡사건 109 「맹씨 한우 축사」] 축사용지 — 편입 3년·상속 3년 안 통산·폐업 확인서
+{ const B = { 양도인: { 거주자: '예', 거주지역: '같은 군', 거주년수: 20, 직접축산: '예', 축산년수: 20 }, 토지: { 취득일: '2000-01-01', 지역: '군', 축사용지면적: 3000, 총양도면적: 4000 }, 폐업: { 확인서: '예' }, 양도: { 양도일: '2026-09-15' }, 기준일: '2026-11-03' };
+  const A = judgeLivestockLand_(B);
+  const D = judgeLivestockLand_(Object.assign({}, B, { 토지: { 취득일: '2000-01-01', 지역: '동', 편입일: '2020-03-01' } }));
+  const E = judgeLivestockLand_(Object.assign({}, B, { 양도인: Object.assign({}, B.양도인, { 축산년수: 0.5 }), 토지: { 취득일: '2024-05-01', 취득원인: '상속', 지역: '군' }, 상속: { 상속일: '2024-05-01', 피상속인축산년수: 15, 상속뒤축산년수: 0.5 } }));
+  const G = judgeLivestockLand_(Object.assign({}, B, { 폐업: { 확인서: '아니오' } }));
+  ok(A.적용 === true && A.면적비율 === 0.75 && D.적용 === false && E.적용 === true && E.축산년수_통산 === 15.5 && G.적용 === false, '축사용지 — 면적 비율·시 동 편입 3년·상속 3년 안 통산·폐업 확인서', JSON.stringify([A.결론, D.결론, E.결론, G.결론]));
+}
 const ch = judgeCohabit_({ 상속개시일: '2027-06-01', 상속인관계: '직계비속', 상속인생년월일: '1968-09-01', 동거시작일: '2010-01-01', 일세대일주택10년: '예', 무주택또는공동: '예', 주택가액: 900000000, 담보채무: 100000000, 상속지분: 1 });
 ok(ch.결론 === '충족' && ch.엔진칸 && ch.엔진칸.cohabitingHouseValue !== undefined, '동거주택 — 17년 동거·무주택', ch.표시 + ' · 공제 ' + won(ch.공제 || ch.공제추정 || Math.min(600000000, 800000000)));
 const ch2 = judgeCohabit_({ 상속개시일: '2027-06-01', 상속인관계: '직계비속', 동거시작일: '2010-01-01' });

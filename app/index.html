@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-03 11:27 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-03 14:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -617,6 +617,27 @@
   .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy);
     color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; z-index:999; opacity:0; transition:opacity .2s; pointer-events:none; }
   .toast.shown{ opacity:1; }
+  /* [2026.11.03] 기다림 띠(script.html nxWait_) — 세무사님 "기다리는 동안 지루하지 않도록" → "권장안대로 하자". 알림(토스트) 바로 위 가운데, 끝남 알림은 오른쪽 아래 떠 있는 단추 위 */
+  #nxWaitBar{ position:fixed; bottom:76px; left:50%; transform:translateX(-50%); z-index:998; width:min(440px, calc(100vw - 32px));
+    background:var(--panel, #fff); color:var(--ink, #222); border:1px solid var(--line); border-left:4px solid var(--gold); border-radius:8px;
+    box-shadow:0 4px 14px rgba(0,0,0,.14); padding:8px 12px; font-size:13px; line-height:1.5; }
+  #nxWaitBar[hidden], #nxWaitDone[hidden]{ display:none; }
+  #nxWaitBar .nw-top{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  #nxWaitBar .nw-name{ font-weight:700; color:var(--navy); }
+  #nxWaitBar .nw-sec{ color:var(--sub); font-variant-numeric:tabular-nums; }
+  #nxWaitBar .nw-bar{ height:6px; background:#e6e8ee; border-radius:3px; overflow:hidden; margin:5px 0 2px; }
+  #nxWaitBar .nw-bar i{ display:block; height:100%; background:var(--gold); transition:width .9s linear; }
+  #nxWaitBar .nw-slow{ color:var(--gold-ink, #8a6414); margin-top:3px; }
+  #nxWaitBar .nw-see{ margin-top:4px; color:var(--sub); white-space:nowrap; display:flex; gap:4px; min-width:0; }
+  #nxWaitBar .nw-see button{ background:none; border:none; padding:0; color:var(--navy); text-decoration:underline; cursor:pointer; font:inherit; flex:1 1 auto; min-width:0; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #nxWaitBar .nw-act{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+  #nxWaitBar.mini{ width:auto; max-width:calc(100vw - 32px); padding:4px 10px; cursor:pointer; }
+  #nxWaitBar.mini .nw-bar, #nxWaitBar.mini .nw-slow, #nxWaitBar.mini .nw-see, #nxWaitBar.mini .nw-act{ display:none; }
+  #nxWaitDone{ position:fixed; right:16px; bottom:72px; z-index:998; max-width:min(360px, calc(100vw - 32px)); display:flex; gap:10px; align-items:center;
+    background:var(--navy); color:#fff; border-radius:8px; padding:9px 12px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.18); }
+  #nxWaitDone.fail{ background:#b3261e; }
+  #nxWaitDone button{ background:#fff; color:var(--navy); border:none; border-radius:6px; padding:3px 10px; font:inherit; font-weight:700; cursor:pointer; }
+  #nxWaitDone button.nw-x{ background:none; color:#fff; padding:0 2px; font-weight:400; }
 
   /* [2026.09] "저장 버튼을 눌러도 아무 반응이 없어 답답하다" — 저장 버튼 하나하나를 고치는
      대신, 서버에 요청을 보내는 동안(callGas, script.html) 화면 맨 위에 항상 뜨는 진행바
@@ -16840,7 +16861,11 @@ function nxMdOpenWindow(title, src, opts){
       const feCat = t.farmlandExchangeCategory;
       const feCategoryOk = (feCat === 'cat1' || feCat === 'cat2' || feCat === 'cat4')
         || (feCat === 'cat3' && (!!t.farmlandExchangeCultivation3YearsMet || !!t.farmlandExchangeExpropriationException));
-      if (feWithinQuarter && feCategoryOk) {
+      // [2026.11.03 복잡사건 119] 시행령 §153① 괄호 "제4항 각 호의 어느 하나에 해당하는 농지는 제외" — 예전엔 ④를 안 봐서, 도시 주거·상업·공업지역에 편입된 지 3년 지난 농지(④1호)·
+      //  농지 밖 환지예정지 지정 3년 지난 농지(④2호)도 비과세로 셌다. 판정 묶음 「농지교환」이 ④를 가려 farmlandExchangeExcludedLand로 넘긴다. 비과세가 안 되면 그 까닭을 알림에 남긴다.
+      const feExcluded = !!t.farmlandExchangeExcludedLand;
+      if (!(feWithinQuarter && feCategoryOk && !feExcluded)) acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 농지 교환 비과세(소득세법 §89①2호) 안 됨 — ' + [!feWithinQuarter ? '두 농지 가액 차이가 큰 쪽의 4분의 1을 넘거나 가액이 비어 있음(시행령 §153①)' : '', !feCategoryOk ? '교환 사유(§153① 각 호)·3호의 3년 거주·경작 요건을 못 갖춤' : '', feExcluded ? '§153④ 제외 농지(도시 주거·상업·공업지역 편입 3년 경과 또는 환지예정지 지정 3년 경과)' : ''].filter(Boolean).join(' · ') + ' — 일반 교환(양도)으로 계산합니다.';
+      if (feWithinQuarter && feCategoryOk && !feExcluded) {
         return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
       }
     }
@@ -17318,7 +17343,8 @@ function nxMdOpenWindow(title, src, opts){
       // 기간이므로 holdingYears와 별도로 계산한다.
       isForestManagementExempt: !!t.isForestManagementExempt && !reductionNotYet_('69_4', t.transferDate),
       reductionNotYetNote: ['69_2', '69_3', '69_4', '70'].filter(function (s) { return t[{ '69_2': 'isLivestockLandExempt', '69_3': 'isFisheryLandExempt', '69_4': 'isForestManagementExempt', '70': 'isFarmlandSubstitutionExempt' }[s]]; }).map(function (s) { return reductionNotYet_(s, t.transferDate); }).filter(Boolean).join(' '),
-      forestManagementYears: t.acquisitionDate ? fullYearsElapsed(t.acquisitionDate, t.transferDate) : 0,
+      // [2026.11.03 복잡사건 116] 조특령 §66의4③ — 직접 경영한 기간은 취득하고 산림경영계획인가를 받은 날부터 셈(취득일부터가 아님)·상속 승계(⑥⑦) — forestManagedYears(직접 경영 연수)를 주면 그 값, 비우면 예전대로 취득일부터
+      forestManagementYears: Number(t.forestManagedYears) >= 0 && t.forestManagedYears !== '' && t.forestManagedYears != null ? Math.floor(Number(t.forestManagedYears)) : (t.acquisitionDate ? fullYearsElapsed(t.acquisitionDate, t.transferDate) : 0),
       conversionValuePenalty, pensionAccountContribution: Number(t.pensionAccountContribution) || 0,
       raw: t
     };
@@ -18104,6 +18130,11 @@ function nxMdOpenWindow(title, src, opts){
         _신축주택감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined
       });
     }
+    // [2026.11.03 복잡사건 110] §99의2 5년 안 양도는 세액 100% 감면 — 같은 해 다른 양도와 합산할 때 이 자산 소득도 과세표준에 남기고 그 몫 산출세액을 뺀다(미분양 §98의3과 같은 처리, 소득세법 §90①).
+    //  예전엔 소득금액을 빼는 방식이라 다른 자산의 누진세율 구간이 낮아져 세액이 법보다 적게 나왔다. 단기(2년 미만)는 예전 방식.
+    if (reduction.감면방식 === '세액감면' && (baseCore.rateHoldingYears != null ? baseCore.rateHoldingYears : baseCore.holdingYears) >= 2) {
+      return Object.assign({}, t, { _신축주택감면_적용여부: true, _신축주택감면_세액감면율: 1, _신축주택감면_안내: reduction.안내 + ' (세액감면 — 합산 산출세액 중 이 자산 몫 × 100%)' });
+    }
     return Object.assign({}, t, {
       _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면_비과세대상_양도소득금액,
       _신축주택감면_적용여부: true,
@@ -18193,8 +18224,15 @@ function nxMdOpenWindow(title, src, opts){
   // 방식이고 나머지(전액면제 100%)는 소득금액공제 방식과 결과가 같아(0=0) 오버라이드로 처리한다.
   function resolveLongTermRentalHouseReductionAdjustment_(t) {
     if (!t.longTermRentalHouseProvision) return t;
+    // [2026.11.03 복잡사건 111] §97의5②: §97의3(장특공 특례)·§97의4(추가공제)와 겹쳐 받지 못함 — 예전엔 rentalSpecialType을 함께 넣으면 70% 장특공 뒤 남은 세액을 또 100% 감면해 둘 다 받았다.
+    //  §97의5 감면이 실제로 붙을 때만 장기임대 장특 특례 칸을 빼고 셈(감면이 안 붙으면 원래 칸 그대로). 어느 쪽이 적은지는 따로 돌려 견줄 것.
+    const orig_ = t; let dupNote_ = '';
+    if (t.longTermRentalHouseProvision === 'sect97_5' && (t.rentalSpecialType === 'rental_general' || t.rentalSpecialType === 'rental_long')) {
+      t = Object.assign({}, t); delete t.rentalSpecialType; delete t.rentalYears;
+      dupNote_ = ' ※ §97의5②에 따라 §97의3·§97의4 장기임대 장특공 특례는 함께 받지 못해 빼고 셈했습니다 — 특례만 받는 경우를 따로 돌려 납부가 적은 쪽을 신청하세요.';
+    }
     const baseCore = transferAssetCore(t);
-    if (baseCore.error) return t;
+    if (baseCore.error) return orig_;
     const reduction = window.calculateLongTermRentalHouseReductionJS({
       provision: t.longTermRentalHouseProvision, subType: t.lrSubType,
       transferPrice: Number(t.transferPrice) || 0,
@@ -18208,16 +18246,16 @@ function nxMdOpenWindow(title, src, opts){
     // [2026.10.20 J30] §97의5 기준시가가 모자라면 근사하지 않고 계산을 멈춘다(합산 계산이 이 오류를 돌려줌)
     if (reduction && reduction.error && t.longTermRentalHouseProvision === 'sect97_5') return Object.assign({}, t, { _장기임대감면_오류: reduction.error });
     if (!reduction || reduction.error || !reduction.적용여부) {
-      return Object.assign({}, t, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
+      return Object.assign({}, orig_, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
     }
     if (reduction.세액감면방식) {
-      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_감면소득비율: reduction.감면소득비율, _장기임대감면_안내: reduction.안내 });
+      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_감면소득비율: reduction.감면소득비율, _장기임대감면_안내: reduction.안내 + dupNote_ });
     }
     return Object.assign({}, t, {
       _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면대상_양도소득금액,
       _장기임대감면_적용여부: true,
       _장기임대감면_제외소득금액: reduction.감면대상_양도소득금액,
-      _장기임대감면_안내: reduction.안내
+      _장기임대감면_안내: reduction.안내 + dupNote_
     });
   }
 
@@ -18464,6 +18502,7 @@ function nxMdOpenWindow(title, src, opts){
         else { assetNotes.push({ idx: c.idx, 구분: '국가양도산지감면(§85의10)', 적용여부: false, 사유: (nfCheck && (nfCheck.error || nfCheck.안내)) || undefined }); }
       }
       else if (c.raw._구조조정감면_세액감면율) { label = '구조조정대상 부동산 감면(조특법§43, 세액 ' + c.raw._구조조정감면_세액감면율 + '% 감면)'; rate = c.raw._구조조정감면_세액감면율 / 100; sec = '43'; }
+      else if (c.raw._신축주택감면_세액감면율) { label = '신축주택 등 감면(조특법§99의2, 5년 이내 양도 — 세액 100% 감면)'; rate = 1; sec = '99_2'; }
       else if (c.raw._미분양감면_세액감면율) { label = '미분양주택 감면(조특법 ' + String(c.raw.unsoldHouseReductionProvision || '').replace('sect98_', '§98의') + ', 5년 이내 양도 — 세액 ' + Math.round(c.raw._미분양감면_세액감면율 * 100) + '% 감면)'; rate = c.raw._미분양감면_세액감면율; }
       else if (c.raw._장기임대감면_세액감면율) {
         label = c.raw.longTermRentalHouseProvision === 'sect97_5'
@@ -20355,9 +20394,11 @@ function nxMdOpenWindow(title, src, opts){
     const otherConsiderationValue = Number(p.otherConsiderationValue) || 0;
     const totalConsideration = stockConsiderationValue + otherConsiderationValue;
     if (!(totalConsideration > 0)) return { error: '교환·이전대가가 필요합니다.' };
-    const stockRatio = stockConsiderationValue / totalConsideration;
+    // [2026.11.03 복잡사건 117] 80% 판정 때 완전모회사가 교환일 전 2년 안에 취득한 완전자회사 주식(시행령 §35의2⑤)은 금전으로 교부한 것으로 보아 대가 합계에 더한다(판정에만 — ③의 즉시 과세 금액에는 넣지 않음).
+    const deemedCash = Math.max(0, Number(p.deemedCashPriorAcquisition) || 0);
+    const stockRatio = stockConsiderationValue / (totalConsideration + deemedCash);
     if (stockRatio < 0.8) {
-      return { 이연적용여부: false, 안내: '조특법§38①2호 — 교환·이전대가 중 완전모회사 주식가액이 80% 이상이어야 합니다(현재 ' + (Math.round(stockRatio * 10000) / 100) + '%).' };
+      return { 이연적용여부: false, 안내: '조특법§38①2호 — 교환·이전대가 중 완전모회사 주식가액이 80% 이상이어야 합니다(현재 ' + (Math.round(stockRatio * 10000) / 100) + '%' + (deemedCash ? ', 교환일 전 2년 안 취득분 ' + deemedCash + '원을 금전으로 봄 — 시행령§35의2⑤' : '') + ').' };
     }
     if (p.willHoldUntilFiscalYearEnd === false) {
       return { 이연적용여부: false, 안내: '조특법§38①2호 — 사업연도 종료일까지 보유해야 합니다.' };
@@ -20380,7 +20421,11 @@ function nxMdOpenWindow(title, src, opts){
       이번에_과세되는_양도소득: Math.round(recognizedGainNow),
       이연되는_양도소득: Math.round(deferredGain),
       사후관리_추징액: clawback,
-      안내: '이번에_과세되는_양도소득을 위 일반 양도세 계산기의 양도차익으로 넣어 세액을 계산하세요(시행령§35의2③ — MIN(전체양도차익, 주식외 재산가액)). 나머지는 완전모회사등주식 처분시 정산됩니다.' + (clawbackNote ? ' ' + clawbackNote : '')
+      // [2026.11.03 복잡사건 117] 나중에 완전모회사등주식을 팔 때의 취득가액(시행령 §35의2④) = (완전자회사 주식 취득가액 + ③ 양도소득 − ③2호 금액) × 처분 주식 수 ÷ 교환으로 받은 주식 수
+      나중_취득가액_합계: Math.round(acquisitionPrice + recognizedGainNow - otherConsiderationValue),
+      나중_취득가액_처분분: (Number(p.swappedShares) > 0 && Number(p.soldShares) > 0) ? Math.round((acquisitionPrice + recognizedGainNow - otherConsiderationValue) * Math.min(Number(p.soldShares), Number(p.swappedShares)) / Number(p.swappedShares)) : null,
+      판정비율: Math.round(stockRatio * 10000) / 100,
+      안내: '이번에_과세되는_양도소득을 위 일반 양도세 계산기의 양도차익으로 넣어 세액을 계산하세요(시행령§35의2③ — MIN(전체양도차익, 주식외 재산가액)). 나머지는 완전모회사등주식 처분시 정산됩니다 — 그때 취득가액은 나중_취득가액(시행령§35의2④, 교환으로 받은 주식을 먼저 판 것으로 봄)입니다. 사후관리 사유로 추징되면 그 주식의 취득가액은 교환일 현재 시가입니다(시행령§35의2⑫1호).' + (clawbackNote ? ' ' + clawbackNote : '')
     };
   };
 
@@ -23172,7 +23217,18 @@ function nxMdOpenWindow(title, src, opts){
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
     const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + bookkeepingPenalty + localIncomeTax);
 
-    return { 외화환산: stFx_.length ? stFx_ : undefined,
+    // [2026.11.03 복잡사건 113] 예정신고 기한은 자산 종류마다 다르다(소득세법 §105①) — 1호: 기타자산(§94①4호)·신탁 수익권(6호)은 양도일이 속하는 달의 말일부터 2개월,
+    //  2호: 주식등(3호가·나목)은 반기 말일부터 2개월, 국외주식등(3호다목)·파생상품등(5호)은 예정신고 없음(확정신고만). 예전엔 넥스 도구 안내가 모두 「반기별」이라 했다.
+    const stTd_ = String(p.transferDate || '').slice(0, 10);
+    let stPrelim_;
+    if (assetCategory === 'foreign_stock' || assetCategory === 'derivative') stPrelim_ = '예정신고 없음(소득세법 §105① 괄호 — §94①3호다목·5호 제외), 다음 해 5월 확정신고(§110)';
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(stTd_)) {
+      const y_ = +stTd_.slice(0, 4), m_ = +stTd_.slice(5, 7);
+      const endM_ = (assetCategory === 'domestic_stock') ? (m_ <= 6 ? 6 : 12) : m_;
+      const dl_ = new Date(Date.UTC(y_, endM_ + 2, 0)).toISOString().slice(0, 10);
+      stPrelim_ = dl_ + '까지 — ' + (assetCategory === 'domestic_stock' ? '양도일이 속하는 반기의 말일부터 2개월(§105①2호)' : '양도일이 속하는 달의 말일부터 2개월(§105①1호, ' + (assetCategory === 'trust_beneficiary' ? '신탁 수익권 §94①6호' : '기타자산 §94①4호') + ')');
+    } else stPrelim_ = assetCategory === 'domestic_stock' ? '양도일이 속하는 반기의 말일부터 2개월(§105①2호) — 양도일(transferDate)을 넣으면 날짜로' : '양도일이 속하는 달의 말일부터 2개월(§105①1호) — 양도일(transferDate)을 넣으면 날짜로';
+    return { 외화환산: stFx_.length ? stFx_ : undefined, 예정신고기한: stPrelim_,
       양도차익: Math.round(gain),
       손익통산_적용후_소득금액: Math.round(combinedGain),
       기본공제: basicDeduction,
@@ -23442,7 +23498,9 @@ function nxMdOpenWindow(title, src, opts){
     if (['sect99', 'sect99_2', 'sect99_3'].indexOf(provision) === -1) {
       return { error: 'provision을 sect99(1998~99년 취득)/sect99_2(2013년 취득)/sect99_3(2001~2003년 취득) 중에서 선택하세요.' };
     }
-    if (p.isHighPriceHouseExcluded) {
+    // [2026.11.03 복잡사건 110] 고가주택 배제 단서는 §99①·§99의3①에만 있고 §99의2에는 없음(조특법 §99의2① 원문) — sect99_2는 체크해도 배제하지 않고 알림만
+    const hiNote99_2_ = provision === 'sect99_2' && p.isHighPriceHouseExcluded ? ' ※ §99의2에는 고가주택 배제 단서가 없어(§99①·§99의3① 단서와 다름) 고가주택 체크를 쓰지 않았습니다.' : '';
+    if (p.isHighPriceHouseExcluded && provision !== 'sect99_2') {
       return {
         적용여부: false,
         안내: '고가주택(소득세법§89①3호 비과세 제외 대상)에 해당하여 이 감면(조특법' + (provision === 'sect99' ? '§99' : provision === 'sect99_2' ? '§99의2' : '§99의3') + ')을 적용하지 않습니다.'
@@ -23467,7 +23525,7 @@ function nxMdOpenWindow(title, src, opts){
     const necessaryExpenses = Number(p.necessaryExpenses) || 0;
     const totalGain = transferPrice - acquisitionPrice - necessaryExpenses;
 
-    let exemptGain, note;
+    let exemptGain, note, reduceMode_ = '소득금액';
     // [2026.10.20 세액 고침 — 법령 세션 원문 대조] 조특령 §99①·§99의3①(법제처 원문 그림 산식) 단서: 종전주택을 재개발·재건축해 취득한 신축주택
     //  (법 §98의3② 각 호)은 감면소득 = 양도소득금액 × (양도 당시 − 신축주택 취득 당시 기준시가) ÷ (양도 당시 − 종전주택 취득 당시 기준시가) — 5년 안 양도(1호)도
     //  전액이 아니라 이 비율, 5년 뒤(2호)는 분모가 종전주택 취득 당시 기준시가. formerHouseAcquisitionStandardPrice가 있으면 적용(§99의2는 해당 없음).
@@ -23486,6 +23544,7 @@ function nxMdOpenWindow(title, src, opts){
       note = '종전주택을 재개발·재건축해 취득한 신축주택 — 5년 뒤 양도: 감면소득 = 양도소득금액 × (5년 되는 날 ' + fyStd_ + ' − 신축 취득 당시 ' + acqStd_ + ') ÷ (양도 당시 ' + trfStd_ + ' − 종전주택 취득 당시 ' + formerStd_ + ')(조특령 §99①2호 단서).';
     } else if (yearsHeld <= 5) {
       exemptGain = totalGain;
+      if (provision === 'sect99_2') reduceMode_ = '세액감면'; // [2026.11.03 복잡사건 110] §99의2① "양도소득세의 100분의 100에 상당하는 세액을 감면"
       note = provision === 'sect99_2'
         ? '취득일로부터 5년 이내 양도이므로 그 양도소득세 전액(100%)을 감면합니다(조특법§99의2①).'
         : '취득일로부터 5년 이내 양도이므로 취득일부터 양도일까지 발생한 양도소득금액 전액을 과세대상소득금액에서 뺍니다.';
@@ -23504,7 +23563,8 @@ function nxMdOpenWindow(title, src, opts){
       전체양도차익: Math.round(totalGain),
       감면_비과세대상_양도소득금액: Math.round(exemptGain),
       과세대상양도소득금액: taxableGain,
-      안내: note + ' 이 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 그 자산의 양도차익으로 대신 넣어 나머지 세액을 계산하세요(장기보유특별공제·기본공제 등은 그 계산기에서 별도 적용됩니다).'
+      감면방식: reduceMode_,
+      안내: note + hiNote99_2_ + ' 이 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 그 자산의 양도차익으로 대신 넣어 나머지 세액을 계산하세요(장기보유특별공제·기본공제 등은 그 계산기에서 별도 적용됩니다).'
     };
   };
 
@@ -23997,6 +24057,9 @@ function nxMdOpenWindow(title, src, opts){
     // [2026.10.20 서식 감사 — 서식이 법령보다 늦은 칸 확정] §99의4①1호나목·2호다목(법제처 원문): 주택+딸린 토지 가액(취득 당시 기준시가) 한도 —
     //  2023.1.1. 이후 양도 3억원(법률 제19199호, 부칙 제39조 시행 전 양도는 종전 2억원), 한옥은 2014.1.1. 이후 구입분 4억원(법률 제12173호 부칙 제32조).
     //  대지 660㎡ 요건은 2021.1.1. 이후 양도분부터 없음(법률 제17759호 부칙 제21조②). transferDate는 일반주택 양도일.
+    // [2026.11.03 복잡사건 105] 일반주택은 농어촌주택등 「취득 전에 보유하던 다른 주택」이어야 함(§99의4① 본문) — 일반주택 취득일을 주면 확인(없으면 예전대로)
+    const genAcqRh_ = String(p.generalHouseAcquisitionDate || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(genAcqRh_) && genAcqRh_ >= String(acquisitionDate).slice(0, 10)) return { 적용여부: false, 안내: '일반주택(' + genAcqRh_ + ' 취득)이 농어촌주택등(' + String(acquisitionDate).slice(0, 10) + ' 취득) 취득 전에 보유하던 주택이 아니어서 적용대상이 아닙니다(조특법 §99의4① 본문 「그 농어촌주택등 취득 전에 보유하던 다른 주택」).' };
     const trRh_ = String(p.transferDate || '').slice(0, 10);
     // [2026.10.22 검토대상 변경-11] 2023년 전 양도의 종전 한도도 농어촌주택 취득일로 갈림(법제처 판별·부칙 원문): 2008.1.1. 전 취득 7천만원(2006판),
     //  2008년 취득 1억5천만원(법률 제8827호 부칙 제31조 "취득 당시 가액기준 … 시행 후 최초로 취득하는 분부터"), 2009.1.1. 이후 취득 2억원(법률 제9272호 부칙 제22조).
@@ -24085,6 +24148,11 @@ function nxMdOpenWindow(title, src, opts){
   window.calculateReplacementHouseExclusionJS = function (p) {
     p = p || {};
     if (!p.businessApprovalDate || !p.replacementHouseAcquisitionDate) return { error: '사업시행인가일과 대체주택 취득일이 필요합니다.' };
+    // [2026.11.03 복잡사건 106] 본문 "국내에 1주택을 소유한 1세대" — 대체주택 사기 직전 세대의 국내 주택(입주권 포함) 수.
+    //  칸이 비면 예전대로 보되, 2채 이상이면 특례 대상이 아님(판정 묶음 「대체주택」과 같음).
+    if (p.houseCountBeforeReplacement != null && p.houseCountBeforeReplacement !== '' && Number(p.houseCountBeforeReplacement) > 1) {
+      return { 적용여부: false, 안내: '대체주택을 사기 전에 국내에 1주택(사업 대상)만 소유한 1세대여야 하는데(시행령§156의2⑤ 본문), ' + Number(p.houseCountBeforeReplacement) + '채를 소유해 적용대상이 아닙니다.' };
+    }
     if (new Date(p.replacementHouseAcquisitionDate).getTime() < new Date(p.businessApprovalDate).getTime()) {
       return { 적용여부: false, 안내: '재개발·재건축 등 사업시행인가일 이후에 대체주택을 취득해야 하는데(시행령§156의2⑤1호), 그 전에 취득해 적용대상이 아닙니다.' };
     }
@@ -24093,6 +24161,28 @@ function nxMdOpenWindow(title, src, opts){
     }
     if (!p.newHousingCompletionDate) {
       return { error: '신축주택 완성(예정)일이 필요합니다(시행령§156의2⑤2호·3호 판정용).' };
+    }
+    if (!p.replacementHouseTransferDate) {
+      return { error: '대체주택 양도일이 필요합니다(시행령§156의2⑤3호 — 완성 전 또는 완성 뒤 3년 안 양도 판정용).' };
+    }
+    // [2026.11.03 복잡사건 106] 2호 단서 — 취학·근무로 세대전원 출국: 완성 뒤 3년 안 출국, 출국 뒤 3년 안 입국, 입국 뒤 1년 이상 계속 거주.
+    //  출국일·입국일을 넣으면 날짜로 확인하고, 안 넣으면 예전대로 isOverseasException 표시만 믿음(residedOneYearOrMoreAfterReentry로 1년 거주).
+    if (p.isOverseasException && (p.departureDate || p.reentryDate)) {
+      const add3_ = function (d) { const x = new Date(d); x.setFullYear(x.getFullYear() + 3); return x.getTime(); };
+      if (p.departureDate && new Date(p.departureDate).getTime() > add3_(p.newHousingCompletionDate)) {
+        return { 적용여부: false, 안내: '국외 출국 예외는 신축주택 완성 뒤 3년 안에 취학·근무로 세대전원이 출국한 경우인데(시행령§156의2⑤2호 단서), 완성 뒤 3년이 지나 출국해 적용대상이 아닙니다.' };
+      }
+      if (p.departureDate && p.reentryDate && new Date(p.reentryDate).getTime() > add3_(p.departureDate)) {
+        return { 적용여부: false, 안내: '국외 출국 예외는 출국 뒤 3년 안에 출국 사유가 해소되어 입국해야 하는데(시행령§156의2⑤2호 단서), 3년이 지나 입국해 적용대상이 아닙니다.' };
+      }
+      if (p.residedOneYearOrMoreAfterReentry === false) {
+        return { 적용여부: false, 안내: '국외 출국 예외는 입국한 뒤 1년 이상 계속 거주해야 하는데(시행령§156의2⑤2호 단서), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+      }
+    }
+    // 2호 괄호 — 취학·근무상 형편·질병 요양 등 부득이한 사유로 일부 세대원이 못 온 것은 세대전원 이사로 봄.
+    //  allHouseholdMoved === false(일부만 이사)인데 partialMoveInUnavoidable(부득이)도 아니면 요건 못 갖춤. 칸이 비면 예전대로.
+    if (!p.isOverseasException && p.allHouseholdMoved === false && !p.partialMoveInUnavoidable) {
+      return { 적용여부: false, 안내: '신축주택 완성 뒤 3년 안에 세대전원이 이사해야 하는데(시행령§156의2⑤2호), 일부 세대원이 취학·근무상 형편·질병 요양 등 부득이한 사유 없이 이사하지 않아 적용대상이 아닙니다.' };
     }
     if (!p.isOverseasException && (!p.movedInWithinThreeYearsOfCompletion || !p.residedOneYearOrMoreAfterMoveIn)) {
       return { 적용여부: false, 안내: '신축주택이 완성된 후 3년 이내에 세대전원이 이사하여 1년 이상 거주해야 하는데(시행령§156의2⑤2호, 국외출국 등 부득이한 사유는 예외), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
@@ -25801,7 +25891,17 @@ function nxMdOpenWindow(title, src, opts){
   // 환매농지를 다시 양도할 때는 한국농어촌공사에 양도하기 전 원래의 취득가액·취득시기를 그대로 적용한다.
   window.calculateFarmlandRepurchaseRefundJS = function (p) {
     p = p || {};
-    if (!p.wasRepurchasedWithinLeaseTerm) {
+    // [2026.11.03 복잡사건 107] 날짜·상속인 칸을 주면 표시만 믿지 않고 가름 — 임차기간 끝(leaseEndDate)·환매일(repurchaseDate)로 「임차기간 내 환매」(§70의2①),
+    //  상속인 환매(repurchasedBy '상속인')는 피상속인이 임차기간 중 사망(deathDate, leaseStartDate~leaseEndDate)·상속인 농업인(heirIsFarmer)·직접 경작(heirFarmsDirectly)(§70의2⑤). 칸을 비우면 예전대로.
+    const ymd107_ = function (v) { const m = String(v || '').match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; };
+    const lEnd_ = ymd107_(p.leaseEndDate), rDate_ = ymd107_(p.repurchaseDate), lStart_ = ymd107_(p.leaseStartDate), dDate_ = ymd107_(p.deathDate);
+    if (lEnd_ && rDate_ && rDate_ > lEnd_) return { 환급가능여부: false, 안내: '환매일 ' + rDate_ + '이 임차기간 끝 ' + lEnd_ + '을 넘겨 조특법§70의2①의 환급대상이 아닙니다.' };
+    if (p.leaseFarmedDirectly === false) return { 환급가능여부: false, 안내: '공사에서 임차한 뒤 직접 경작·축산하지 않아(재임대·휴경 등) 조특법§70의2①의 환급대상이 아닙니다.' };
+    if (p.repurchasedBy === '상속인') {
+      if (dDate_ && ((lStart_ && dDate_ < lStart_) || (lEnd_ && dDate_ > lEnd_))) return { 환급가능여부: false, 안내: '피상속인이 임차기간 중에 사망하지 않아 조특법§70의2⑤의 상속인 환급대상이 아닙니다.' };
+      if (p.heirIsFarmer === false || p.heirFarmsDirectly === false) return { 환급가능여부: false, 안내: '환매한 상속인이 농업인이 아니거나 직접 경작·축산하지 않아 조특법§70의2⑤1호·2호를 못 채웁니다.' };
+    }
+    if (!p.wasRepurchasedWithinLeaseTerm && !(lEnd_ && rDate_)) {
       return { 환급가능여부: false, 안내: '한국농어촌공사와의 임차기간 내에 해당 농지등을 환매하지 않아 조특법§70의2①의 환급대상이 아닙니다.' };
     }
     const originalTaxPaid = Number(p.originalTaxPaid) || 0;
@@ -27264,7 +27364,8 @@ function nxMdOpenWindow(title, src, opts){
     // 하나의(평가기준일 현재) 발행주식총수로 나누면, 그 사이 증자·감자가 있었을 때 왜곡된다.
     // [2026.10.22 검토대상 증여-4] 시행령 §56① 후단 "그 가액이 음수인 경우에는 영으로 한다"(2011.7.25.판부터 "0원 이하 → 0원"), §55① "순자산가액이 0원 이하인 경우에는 0원"(법제처 원문)
     const weightedNetProfitPerShare = Math.max(0, ((Number(netProfit1YearAgo) || 0) / s1 * 3 + (Number(netProfit2YearsAgo) || 0) / s2 * 2 + (Number(netProfit3YearsAgo) || 0) / s3 * 1) / 6);
-    const profitValuePerShare = weightedNetProfitPerShare / 0.10;
+    // [2026.11.03 복잡사건 118] 일시·우발 사건으로 최근 3년 순손익이 왜곡되면 신용평가기관·회계법인·세무법인 둘 이상이 낸 1주당 추정이익 평균을 가중평균 대신 쓴다(상증령 §56② 1~4호 요건 — judge 「비상장평가」가 가림)
+    const profitValuePerShare = ((netAssetOnlyFlags && Number(netAssetOnlyFlags.estimatedProfitPerShare) > 0) ? Number(netAssetOnlyFlags.estimatedProfitPerShare) : weightedNetProfitPerShare) / 0.10;
     const netAssetValuePerShare = Math.max(0, Number(netAssetValue) || 0) / shares;
     const weights = isRealEstateHeavy ? [2, 3] : [3, 2];
     let valuePerShare = (profitValuePerShare * weights[0] + netAssetValuePerShare * weights[1]) / (weights[0] + weights[1]);
@@ -27294,7 +27395,8 @@ function nxMdOpenWindow(title, src, opts){
       isNewOrDormantOrClosedBusiness: p.isNewOrDormantOrClosedBusiness,
       isRealEstateAssetRatio80Plus: p.isRealEstateAssetRatio80Plus,
       isStockAssetRatio80Plus: p.isStockAssetRatio80Plus,
-      hasFixedDissolutionWithin3Years: p.hasFixedDissolutionWithin3Years
+      hasFixedDissolutionWithin3Years: p.hasFixedDissolutionWithin3Years,
+      estimatedProfitPerShare: p.estimatedProfitPerShare
     };
     const result = unlistedStockValuePerShare(p.netProfit1YearAgo, p.netProfit2YearsAgo, p.netProfit3YearsAgo, totalIssuedShares, p.netAssetValue, !!p.isRealEstateHeavy, netAssetOnlyFlags, p.totalIssuedShares1YearAgo, p.totalIssuedShares2YearsAgo, p.totalIssuedShares3YearsAgo, p.valuationDate);
     let totalValue = Math.round(result.평가액_1주당 * ownedShares);
@@ -28053,7 +28155,15 @@ function nxMdOpenWindow(title, src, opts){
     return Math.max(0, Math.min(1, (b - a) / (c - a)));
   }
   // 감면 목록(reds)에 편입 비율을 붙인다 — 감면이 모두 자경류면 자산의 감면 대상 비율로(정확), 수용 감면과 섞이면 자경류 감면율에 곱함(근사).
+  // [2026.11.03 복잡사건 109] 축사용지 감면(§69의2)은 감면세액 = 산출세액 × 축사용지 면적 ÷ 총 양도면적(시행령 §66의2⑨, 세액 산식) — 면적 칸 둘을 주면 그 감면의 감면율에 곱함(비우면 예전대로)
+  function livestockAreaRatio69_2_(t) {
+    if (!t || !t.isLivestockLandExempt) return null;
+    const a = Number(t.livestockLandArea), b = Number(t.totalTransferArea);
+    return a > 0 && b > 0 ? Math.min(1, a / b) : null;
+  }
   function applyZoneRatio69_(t, reds, baseRatio) {
+    const ar109_ = livestockAreaRatio69_2_(t);
+    if (ar109_ != null && reds) reds.forEach(function (x) { if (x.key === 'farm' && x.sec === '69_2') { x.rate = (Number(x.rate) || 0) * ar109_; x.label = (x.label || '') + ' — 축사용지 면적 비율 ' + (Math.round(ar109_ * 10000) / 100) + '%'; } });
     const zr = zoneIncorpRatio69_(t);
     if (zr == null || !reds || !reds.some(function (x) { return x.key === 'farm'; })) return { reducedRatio: baseRatio };
     if (reds.every(function (x) { return x.key === 'farm'; })) return { reducedRatio: (baseRatio != null ? Math.min(baseRatio, 1) : 1) * zr, zoneRatio: zr };
@@ -28506,6 +28616,7 @@ function nxMdOpenWindow(title, src, opts){
           p2.priorInheritanceTotalPropertyValue = n_(b.totalGrossEstateValue) || n_(r1.상속세과세가액_적용값) || estate;
           p2.priorInheritanceTaxableBase = n_(r1.상속세과세가액_적용값) || estate;
           p2.yearsSincePriorInheritance = Math.max(1, years);
+          if (date1) p2.priorInheritanceDate = date1; // [2026.11.03 복잡사건 114] 날짜로 「n년 이내」(§30②2호)
         }
         r2 = calc(p2);
         t2 = r2 && !r2.error ? n_(r2.납부세액) : 0;
@@ -32119,9 +32230,13 @@ function openTaxReliefJudgeModal_(idx){
           '<div class="taxcalc-result-note" style="flex-basis:100%;">대체주택(이 양도자산)의 양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 보유·거주기간 제한이 아예 없습니다(대체주택 자체의 취득일은 아래 별도 입력).</div>' +
           '<div class="taxcalc-field"><label>사업시행인가일</label><input type="date" id="rpApprovalDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>대체주택 취득일</label><input type="date" id="rpAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label for="rpHouseCount">대체주택 사기 전 주택 수(입주권 포함)</label><input type="number" id="rpHouseCount" min="0" max="20" step="1" style="width:5em;" title="사업 대상 주택만 있으면 1 — 2 이상이면 특례 대상 아님(시행령 §156의2⑤ 본문), 모르면 비움"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpResided1Y"><label for="rpResided1Y">대체주택에서 1년 이상 거주</label></div>' +
           '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="rpCompletionDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpOverseas"><label for="rpOverseas">국외출국 등 부득이한 사유로 전입·거주 요건 예외 해당</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpOverseas"><label for="rpOverseas">완성 뒤 3년 안 취학·근무로 세대전원 출국(단서)</label></div>' +
+          '<div class="taxcalc-field"><label for="rpDeparture">[출국했으면] 출국일</label><input type="date" id="rpDeparture" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label for="rpReentry">[출국했으면] 입국일</label><input type="date" id="rpReentry" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpPartialUnavoidable"><label for="rpPartialUnavoidable">일부 세대원이 취학·근무·질병 요양 등 부득이하게 이사 못 함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpMovedIn">[위 예외 아니면]<label for="rpMovedIn">신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpResided1YAfter">[위 예외 아니면]<label for="rpResided1YAfter">전입 후 1년 이상 계속 거주</label></div>' +
         '</div>' +
@@ -32440,6 +32555,10 @@ function openTaxReliefJudgeModal_(idx){
         isOverseasException: document.getElementById('rpOverseas').checked,
         movedInWithinThreeYearsOfCompletion: document.getElementById('rpMovedIn').checked,
         residedOneYearOrMoreAfterMoveIn: document.getElementById('rpResided1YAfter').checked,
+        houseCountBeforeReplacement: document.getElementById('rpHouseCount').value,
+        departureDate: document.getElementById('rpDeparture').value,
+        reentryDate: document.getElementById('rpReentry').value,
+        partialMoveInUnavoidable: document.getElementById('rpPartialUnavoidable').checked,
         replacementHouseTransferDate: ohsA_.transferDate
       });
     } else if (provision === 'ih'){
@@ -35285,6 +35404,8 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isLivestockLandExempt" id="livestock-' + idx + '"><label for="livestock-' + idx + '">8년 이상 자경 축사용지 폐업 감면(§69의2)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isLivestockLandExempt" style="display:none;"><input type="checkbox" data-field="isLivestockRestartedWithin5Years" id="livestockRestart-' + idx + '"><label for="livestockRestart-' + idx + '">[§69의2만] 양도 후 5년 이내 축산업 재개(§69의2②, 감면세액 추징)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isLivestockRestartedWithin5Years" style="display:none;"><input type="checkbox" data-field="isLivestockRestartException" id="livestockRestartExc-' + idx + '"><label for="livestockRestartExc-' + idx + '">[재개 체크시만] 상속 등 부득이한 사유(추징 예외)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="isLivestockLandExempt" style="display:none;"><label for="livestockArea-' + idx + '">축사용지 면적(㎡)</label><input type="number" data-field="livestockLandArea" id="livestockArea-' + idx + '"><span class="taxcalc-field-help">한 번에 판 땅 중 축사와 딸린 토지 — 총 양도면적과 함께 넣으면 감면세액에 면적 비율을 곱함(시행령 §66의2⑨)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isLivestockLandExempt" style="display:none;"><label for="livestockTotalArea-' + idx + '">총 양도면적(㎡)</label><input type="number" data-field="totalTransferArea" id="livestockTotalArea-' + idx + '"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFisheryLandExempt" id="fishery-' + idx + '"><label for="fishery-' + idx + '">8년 이상 자영 어업용토지 감면(§69의3)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandSubstitutionExempt" id="farmsub-' + idx + '"><label for="farmsub-' + idx + '">농지대토 감면(§70)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isFarmlandSubstitutionExempt" style="display:none;"><input type="checkbox" data-field="isFarmlandSubstitutionRequirementFailed" id="farmsubFail-' + idx + '"><label for="farmsubFail-' + idx + '">[§70만] 사후에 요건 미충족(§70④, 감면세액+이자상당액 추징)</label></div>' +
@@ -35411,7 +35532,7 @@ function renderPropertyCardHtml_(idx, opts){
             '<option value="sect99_2">§99의2(2013.4.1~2013.12.31 취득, 6억원 또는 85㎡ 이하)</option>' +
             '<option value="sect99_3">§99의3(2001.5.23~2003.6.30 취득)</option>' +
           '</select></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="newHouseReductionProvision" style="display:none;"><input type="checkbox" data-field="nhIsHighPriceHouseExcluded" id="nhHigh-' + idx + '"><label for="nhHigh-' + idx + '">고가주택(소득세법§89①3호 비과세 제외 대상)에 해당함(체크시 이 감면 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="newHouseReductionProvision" style="display:none;"><input type="checkbox" data-field="nhIsHighPriceHouseExcluded" id="nhHigh-' + idx + '"><label for="nhHigh-' + idx + '">[§99·§99의3만] 고가주택(소득세법§89①3호 비과세 제외 대상)에 해당함(체크시 이 감면 적용배제)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="newHouseReductionProvision" style="display:none;"><input type="checkbox" data-field="nhIsPriceOrAreaQualified" id="nhQual-' + idx + '"><label for="nhQual-' + idx + '">[§99의2만] 취득가액 6억원 이하 또는 전용면적 85㎡ 이하 요건 충족</label></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>취득일로부터 5년 시점 평가액</label><input type="number" data-field="nhFiveYearMarkValue" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 근사치 계산용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="nhAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 정확한 계산용</span></div>' +
@@ -35926,6 +36047,10 @@ function renderTransferPane(){
         '<div class="taxcalc-result-note" style="margin:6px 0;">한국농어촌공사에 양도한 농지등을 임차기간 내 환매했을 때</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="frWithinLeaseTerm"><label for="frWithinLeaseTerm">한국농어촌공사와의 임차기간 내에 환매함</label></div>' +
+          '<div class="taxcalc-field"><label for="frLeaseEnd">임차기간 끝</label><input type="date" id="frLeaseEnd"><span class="taxcalc-field-help">환매일과 함께 넣으면 체크 대신 날짜로 가름</span></div>' +
+          '<div class="taxcalc-field"><label for="frRepurchaseDate">환매일</label><input type="date" id="frRepurchaseDate"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="frByHeir"><label for="frByHeir">농업인이 임차 중 사망해 상속인이 환매(§70의2⑤)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="frHeirOk"><label for="frHeirOk">그 상속인이 농업인이고 직접 경작</label></div>' +
           '<div class="taxcalc-field"><label>한국농어촌공사 양도 당시 납부한 양도소득세</label><input type="number" id="frOriginalTax" placeholder="원"><span class="taxcalc-field-help">서식 ⑧ — 가산세·가산금이 섞였으면 아래 칸에</span></div>' +
           '<div class="taxcalc-field"><label>그중 가산세·가산금</label><input type="number" id="frOriginalPenalty" placeholder="원"><span class="taxcalc-field-help">환급에서 뺌(작성방법 4)</span></div>' +
           '<div class="taxcalc-field"><label>양도한 면적</label><input type="number" step="0.01" id="frOriginalArea" placeholder="㎡"><span class="taxcalc-field-help">서식 ⑤ — 일부만 환매했을 때</span></div>' +
@@ -36409,6 +36534,7 @@ function collectTransferInput(vals){
     isEightYearFarmland: !!vals.isEightYearFarmland,
     zoneIncorporated: !!vals.zoneIncorporated, zoneStdAcq: vals.zoneIncorporated ? (numVal(vals.zoneStdAcq) || 0) : 0, zoneStdIncorp: vals.zoneIncorporated ? (numVal(vals.zoneStdIncorp) || 0) : 0, zoneStdTransfer: vals.zoneIncorporated ? (numVal(vals.zoneStdTransfer) || 0) : 0, // [2026.10.22 양도-12]
     isLivestockLandExempt: !!vals.isLivestockLandExempt,
+    livestockLandArea: vals.isLivestockLandExempt ? (numVal(vals.livestockLandArea) || 0) : 0, totalTransferArea: vals.isLivestockLandExempt ? (numVal(vals.totalTransferArea) || 0) : 0, // [2026.11.03 복잡사건 109] 시행령 §66의2⑨
     isLivestockRestartedWithin5Years: !!vals.isLivestockRestartedWithin5Years,
     isLivestockRestartException: !!vals.isLivestockRestartException,
     isFisheryLandExempt: !!vals.isFisheryLandExempt,
@@ -39869,7 +39995,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="ihArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
         '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="ihStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
         '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="ihStockAppraisalCount" placeholder="1"></div>' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분 − 보험금·구상액(재산별 합계, 별지 6호서식 ③)</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>동거주택상속공제 자격요건(§23의2①) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 동거주택가액을 입력했다면, 실제와 달라 하나라도 체크 해제하면 이 공제가 전액 배제됩니다.</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -40990,7 +41116,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="giftArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
         '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="giftStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
         '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="giftStockAppraisalCount" placeholder="1"></div>' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분 − 보험금·구상액(재산별 합계, 별지 6호서식 ③)</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>비과세·과세가액 불산입(§46·§48·§52·§52의2)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -44891,7 +45017,9 @@ function handleTaxCalcClick_(e){
     const input = {
       wasRepurchasedWithinLeaseTerm: document.getElementById('frWithinLeaseTerm').checked,
       originalTaxPaid: numVal(document.getElementById('frOriginalTax').value) || 0,
-      originalPenaltyAmount: numVal((document.getElementById('frOriginalPenalty') || {}).value) || 0, originalArea: numVal((document.getElementById('frOriginalArea') || {}).value) || 0, repurchasedArea: numVal((document.getElementById('frRepurchasedArea') || {}).value) || 0 // [2026.10.20 N21]
+      originalPenaltyAmount: numVal((document.getElementById('frOriginalPenalty') || {}).value) || 0, originalArea: numVal((document.getElementById('frOriginalArea') || {}).value) || 0, repurchasedArea: numVal((document.getElementById('frRepurchasedArea') || {}).value) || 0, // [2026.10.20 N21]
+      leaseEndDate: (document.getElementById('frLeaseEnd') || {}).value || '', repurchaseDate: (document.getElementById('frRepurchaseDate') || {}).value || '', // [2026.11.03 복잡사건 107]
+      repurchasedBy: (document.getElementById('frByHeir') || {}).checked ? '상속인' : '', heirIsFarmer: (document.getElementById('frByHeir') || {}).checked ? !!(document.getElementById('frHeirOk') || {}).checked : undefined, heirFarmsDirectly: (document.getElementById('frByHeir') || {}).checked ? !!(document.getElementById('frHeirOk') || {}).checked : undefined
     };
     renderFarmlandRepurchaseResult(calculateFarmlandRepurchaseRefundJS(input));
   } else if (action === 'run-stock-transfer'){
@@ -55836,6 +55964,21 @@ function rwAiApplyEdit_(id, content){
       <label style="display:flex; align-items:center; gap:8px; margin:6px 0 12px; font-size:14px;">
         <input type="checkbox" id="settingsDarkMode"> 다크모드
       </label>
+      <!-- [2026.11.03] 기다림 대책 ④ — 오래 걸린 일이 끝날 때 짧은 소리(세무사님 "권장안대로": 기본 끔, 여기서 켬). 이 기기에만 기억 -->
+      <label style="display:flex; align-items:center; gap:8px; margin:0 0 12px; font-size:14px;" title="2초 넘게 걸린 일을 다른 화면·다른 창에서 기다리실 때, 끝나면 짧게 소리를 냅니다">
+        <input type="checkbox" id="settingsWaitSound"> 오래 걸린 일이 끝나면 소리
+      </label>
+      <script>
+      (function(){
+        var cb = document.getElementById('settingsWaitSound');
+        try { cb.checked = localStorage.getItem('nxWaitSound') === '1'; } catch (e) {}
+        cb.addEventListener('change', function(){
+          try { localStorage.setItem('nxWaitSound', cb.checked ? '1' : '0'); } catch (e) {}
+          if (cb.checked && typeof nxWaitBeep_ === 'function') nxWaitBeep_(true);
+          toast(cb.checked ? '끝남 소리를 켰습니다(이 기기).' : '끝남 소리를 껐습니다.');
+        });
+      })();
+      </script>
       <div style="font-size:13px; margin-bottom:6px;">화면 배치 기준</div>
       <select id="settingsLayout" style="font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">
         <option value="auto">자동 감지(기본)</option>
@@ -65205,6 +65348,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var listKey = CALLGAS_SHARED_READS_[action];
         hit = { at: Date.now(), promise: callGasRaw_(action, payload).then(function(res){
           if (!res || !Array.isArray(res[listKey])) throw new Error('목록을 받지 못했습니다(서버 응답 이상) — 잠시 후 다시 시도하세요.');
+          if (action === 'work_get_cases') nxWait_.cases = res.cases; // [2026.11.03] 기다리는 동안 볼 것(마감 임박) — 받아 둔 목록만 씀
           return nxOverlayPending_(action, res);
         }) };
         callGasShared_[action] = hit;
@@ -65501,16 +65645,205 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxRecentCalls_.push(rec); if (nxRecentCalls_.length > 8) nxRecentCalls_.shift();
     return function(ok){ rec.ok = ok; rec.ms = Date.now() - rec.s; };
   }
+  // [2026.11.03] 기다림 띠 — 세무사님 "사용자가 변화를 기다리는 시간이 오래 걸릴 경우 기다리는 동안 지루하지 않도록 하기 위한 대책을 강구하라" → 계획서
+  //  (총괄관리자\_기록\기다림_대책_계획서_20261103.html) → "권장안대로 하자". 화면마다 고치지 않고 서버 요청 길(callGasRaw_) 한 곳에서:
+  //  ① 세무사님이 누른 일이 2초를 넘기면 아래 가운데 띠에 하는 일 이름·지난 초 ② 이 기기에서 같은 일이 걸린 보통 시간(가운데 값)이 있으면 금빛 막대,
+  //  보통의 2배를 넘기면 느림 알림 ③ 10초를 넘기면 「다른 일 하기」(띠를 접음, 일은 그대로 돎) ④ 다른 화면에 가 계시거나 접어 두셨으면 끝날 때
+  //  오른쪽 아래 「…끝 — 열기」, 창이 가려져 있으면 창 제목 앞 「✔ 끝」, 소리는 설정 › 기본에서 켬(기본 끔) ⑤ 10초를 넘기면 지금 사건의 확인할 것·받을 서류
+  //  (사건이 없으면 마감 임박 사건)을 한 줄씩 돌려 보임 — 이미 받아 둔 장부·사건 목록만 씀(서버 요청을 늘리지 않음).
+  //  가짜 막대는 넣지 않는다: 막대는 이 기기 기록이 있을 때만. 타이머가 혼자 부르는 요청(장부 띠 새로 읽기·위치 저장 등)은 띠를 띄우지 않는다.
+  var NX_WAIT_NAMES_ = {
+    work_get_cases: '사건 목록 받기', client_get_clients: '고객 명단 받기', admin_create_case: '사건 만들기', work_update_case: '사건 고치기',
+    admin_get_case: '사건 불러오기', admin_apply: '사건 저장', ensure_case_folder: '사건 폴더 만들기', get_case_subfolders: '사건 폴더 살피기',
+    listFolder: '폴더 목록 받기', createFolder: '폴더 만들기', uploadFile: '파일 올리기', readFile: '파일 읽기', readFileBinary: '파일 받기',
+    moveItem: '파일 옮기기', renameItem: '이름 바꾸기', deleteItem: '파일 지우기', searchFiles: '파일 찾기', listTrash: '휴지통 받기',
+    client_get_consult_logs: '상담 기록 받기', list_bookings: '예약 목록 받기', ai_conv_list: '넥스 대화 목록 받기', ai_conv_load: '넥스 대화 불러오기',
+    generate_report_content: '보고서 만들기', list_all_reports: '보고서 목록 받기', create_advisory_slide_report: '자문 발표 자료 만들기',
+    t6_share_cleanup: '공유 정리', system_audit_run: '시스템 점검', sysaudit_run: '시스템 점검', sysaudit_ai_run: '무료 AI 점검', self_check_run: '자체 점검',
+    ocr_batch_run: '서류 글자 읽기', ocr_batch_trigger: '서류 글자 읽기 맡기기', tc_extract_case_docs: '서류에서 계산 칸 찾기',
+    doc_parse: '서류 읽기', doc_parse_multi: '서류 여러 장 읽기', doc_parse_image: '사진 서류 읽기', doc_parse_text: '서류 글 읽기',
+    lookupLandInfo: '토지 정보 조회', lookupOfficialPrice: '공시가격 조회', lookupRealPrice: '실거래가 조회', lookupExchangeRate: '환율 조회',
+    law_search_precedent: '판례 찾기', law_get_precedent_detail: '판례 불러오기', search_emails: '메일 찾기', scan_cash_receipts: '현금영수증 훑기',
+    import_hometax_receipts: '홈택스 매출 가져오기', client_scan_case_files_for_names: '사건 파일에서 이름 찾기', client_audit_duplicates: '같은 고객 찾기',
+    work_resync_all_calendars: '달력 다시 맞추기', deploy_job_start: '운영 반영', post_to_naver_blog: '네이버 블로그 올리기', post_to_google_blog: '구글 블로그 올리기',
+    shorts_create_episode: '쇼츠 만들기', export_user_manual: '매뉴얼 내보내기', knh_run: '노하우 정리', knh_index: '노하우 색인', improve_report_run: '개선 보고서 만들기',
+    'case_proc:view': '사건 처리 화면 불러오기', 'case_proc:overview': '처리개요 불러오기', 'case_proc:ledger': '사실(장부) 읽기', 'case_proc:ledgerFlow': '장부 흐름 읽기',
+    'case_proc:scanSaved': '저장된 서류 훑기', 'case_proc:scanCands': '서류 후보 훑기', 'case_proc:readList': '읽을 서류 목록 받기', 'case_proc:readScope': '읽을 범위 저장',
+    'case_proc:facts': '서류 사실 모으기', 'case_proc:calcin': '계산 칸 채우기', 'case_proc:multi': '도구 여러 개 돌리기', 'case_proc:nexPreread': '넥스 미리 읽기',
+    'case_proc:ledgerCalc': '시험 계산', 'case_proc:ledgerCompare': '세목 견주기', 'case_proc:ledgerLookup': '공부 조회', 'case_proc:ledgerJudge': '판정 돌리기',
+    'case_proc:ledgerEstimate': '잠정치 추정', 'case_proc:ledgerImport': '옛 자료 장부로 옮기기', 'case_proc:ledgerKbBuild': '장부 다시 모으기',
+    'case_proc:ledgerFamily': '가족 지도 읽기', 'case_proc:ledgerTaxes': '세목 묶음 읽기', 'case_proc:ledgerAdvice': '자문 장부 읽기',
+    'case_proc:bundlePlan': '제출 묶음 짜기', 'case_proc:bundlePages': '제출 묶음 쪽 고르기', 'case_proc:bundleCands': '제출 묶음 후보', 'case_proc:bundleSaved': '제출 묶음 만들기',
+    'case_proc:pdfPlan': 'PDF 만들기 짜기', 'case_proc:pdfApply': 'PDF 만들기', 'case_proc:pdfReflat': 'PDF 다시 펴기', 'case_proc:renamePlan': '파일 이름 짜기',
+    'case_proc:renameApply': '파일 이름 바꾸기', 'case_proc:splitCands': 'PDF 나눌 곳 찾기', 'case_proc:splitPages': 'PDF 쪽 보기', 'case_proc:splitSaved': 'PDF 나누기',
+    'case_proc:submitPlan': '제출 계획 짜기', 'case_proc:submitSave': '제출 계획 저장', 'case_proc:save': '사건처리 저장', 'case_proc:apply': '사건처리 반영'
+  };
+  var NX_WAIT_SKIP_ = { ai_log_bug: 1, save_times: 1, place_save: 1, place_get: 1, ai_log_paid: 1, corr_log: 1, syncGlobalLog: 1 };
+  var NX_WAIT_KEY_ = 'nxWaitTimes', NX_WAIT_SOUND_KEY_ = 'nxWaitSound';
+  var nxWait_ = { touch: 0, jobs: [], lastUserEnd: 0, timer: null, mini: false, seeAt: 0, seeIdx: 0, primed: false, cases: null, title0: '' };
+  // 세무사님 손길(누름·키·화면 옮김) 시각 — 1.5초 안에 나간 요청과, 세무사님 요청이 끝나고 0.3초 안에 이어 나간 요청만 「세무사님이 기다리는 일」로 본다
+  function nxWaitTouch_(){ nxWait_.touch = Date.now(); }
+  document.addEventListener('pointerdown', nxWaitTouch_, true);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab' || /^Arrow/.test(e.key)) nxWaitTouch_(); }, true);
+  function nxWaitTimesRead_(){ try { var o = JSON.parse(localStorage.getItem(NX_WAIT_KEY_) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+  function nxWaitTimesNote_(key, ms){
+    var o = nxWaitTimesRead_(); var a = Array.isArray(o[key]) ? o[key] : []; a.push(Math.round(ms)); o[key] = a.slice(-15);
+    var ks = Object.keys(o); if (ks.length > 200) delete o[ks[0]];
+    try { localStorage.setItem(NX_WAIT_KEY_, JSON.stringify(o)); } catch (e) {}
+  }
+  function nxWaitMedian_(key){
+    var a = (nxWaitTimesRead_()[key] || []).slice().sort(function(x, y){ return x - y; });
+    if (a.length < 2) return 0; // 한 번 잰 것으로는 보통이라 하지 않는다
+    var m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+  // 처음 쓰는 기기는 기록이 없다 — 띠가 처음 뜰 때 한 번만 서버의 「저장 걸린 시간」(서버 안 시간)을 받아 비어 있는 일의 처음 값으로 쓴다(로그인 뒤에만)
+  function nxWaitPrime_(){
+    if (nxWait_.primed) return; nxWait_.primed = true;
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok || !manageAppSessionToken_) return;
+    callGasRaw_('save_times', {}).then(function(res){
+      var by = {}; ((res && res.items) || []).forEach(function(x){ if (Array.isArray(x) && x[1] && x[2] > 0) (by[x[1]] = by[x[1]] || []).push(x[2]); });
+      var o = nxWaitTimesRead_(), ch = false;
+      Object.keys(by).forEach(function(k){ if (!o[k] && by[k].length >= 2){ o[k] = by[k].slice(-15); ch = true; } });
+      if (ch) try { localStorage.setItem(NX_WAIT_KEY_, JSON.stringify(o)); } catch (e) {}
+    }).catch(function(){});
+  }
+  function nxWaitName_(action, payload){
+    var step = payload && payload.step ? String(payload.step) : '';
+    var n = (step && NX_WAIT_NAMES_[action + ':' + step]) || NX_WAIT_NAMES_[action];
+    if (n) return n;
+    var lab = window._currentViewLabel || '화면';
+    return action === 'case_proc' ? lab + ' — 사건처리 도구' : lab + ' — ' + (NX_ACTION_VERB_(action) === '저장·처리' ? '저장·처리' : '불러오기');
+  }
+  function nxWaitActiveView_(){ var a = document.querySelector('#centerWork > .view.active'); return a ? a.id.replace(/^view-/, '') : ''; }
+  function nxWaitSec_(ms){ var s = Math.floor(ms / 1000); return s < 60 ? s + '초' : Math.floor(s / 60) + '분 ' + (s % 60) + '초'; }
+  function nxWaitEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function nxWaitStart_(action, payload){
+    if (NX_WAIT_SKIP_[action]) return function(){};
+    var now = Date.now();
+    var userBusy = nxWait_.jobs.some(function(j){ return j.user; });
+    var user = now - nxWait_.touch < 1500 || userBusy || now - nxWait_.lastUserEnd < 300;
+    var key = action + (payload && payload.step ? ':' + payload.step : '');
+    var job = { key: key, name: nxWaitName_(action, payload), s: now, user: user, view: nxWaitActiveView_(), viewLabel: window._currentViewLabel || '', shown: false };
+    nxWait_.jobs.push(job);
+    if (user) nxWaitTick_();
+    return function(ok, errMsg){
+      var ms = Date.now() - job.s;
+      if (ok) nxWaitTimesNote_(key, ms);
+      nxWait_.jobs = nxWait_.jobs.filter(function(j){ return j !== job; });
+      if (job.user) nxWait_.lastUserEnd = Date.now();
+      // 끝남 알림 — 띠가 떴던 일(2초 넘김)을 세무사님이 다른 화면에서·접어 둔 채·창을 가린 채 기다리셨으면
+      if (job.shown && job.user && (job.away || nxWaitActiveView_() !== job.view || document.hidden)) nxWaitDone_(job, ok, errMsg);
+      nxWaitTick_();
+    };
+  }
+  function nxWaitBarEl_(){
+    var b = document.getElementById('nxWaitBar');
+    if (!b){
+      b = document.createElement('div'); b.id = 'nxWaitBar'; b.hidden = true; b.setAttribute('role', 'status'); b.setAttribute('aria-live', 'polite');
+      document.body.appendChild(b);
+      b.addEventListener('click', function(e){
+        if (e.target.closest('[data-nw-away]')){ nxWait_.mini = true; nxWait_.jobs.forEach(function(j){ if (j.shown) j.away = true; }); nxWaitPaint_(); return; }
+        var see = e.target.closest('[data-nw-see]');
+        if (see){ var it = nxWait_.seeList && nxWait_.seeList[+see.getAttribute('data-nw-see')]; nxWait_.jobs.forEach(function(j){ if (j.shown) j.away = true; }); nxWait_.mini = true; nxWaitPaint_(); if (it && it.go) it.go(); return; }
+        if (nxWait_.mini){ nxWait_.mini = false; nxWaitPaint_(); }
+      });
+    }
+    return b;
+  }
+  function nxWaitTick_(){
+    clearTimeout(nxWait_.timer);
+    var live = nxWait_.jobs.filter(function(j){ return j.user; });
+    if (!live.length){ var b0 = document.getElementById('nxWaitBar'); if (b0) b0.hidden = true; nxWait_.mini = false; nxWait_.seeList = null; return; }
+    nxWaitPaint_();
+    nxWait_.timer = setTimeout(nxWaitTick_, 1000);
+  }
+  // 기다리는 동안 볼 것 — 지금 사건 장부(이미 받아 둔 것)의 확인할 것·받을 서류, 없으면 받아 둔 사건 목록의 마감 임박
+  function nxWaitSeeList_(){
+    var out = [];
+    try {
+      var id = typeof nxCbCurId_ === 'function' ? nxCbCurId_() : '';
+      var c0 = id && typeof NX_LG_ !== 'undefined' && NX_LG_ && NX_LG_.cache[id], r = c0 && c0.r;
+      if (r && r.ok){
+        var nm = r.사건 ? '「' + r.사건 + '」 ' : '';
+        var goL = function(){ nxCaseJump_('ledger', id); };
+        (r.물음 || []).filter(function(q){ return q.state !== '보류' && q.state !== '무시'; }).slice(0, 6).forEach(function(q){ out.push({ t: nm + '확인할 것 — ' + (q.label || '') + (q.ask ? ': ' + q.ask : ''), go: goL }); });
+        ((r.흐름 || {}).증빙 || []).filter(function(x){ return x.state === '증빙받을것'; }).slice(0, 6).forEach(function(x){ out.push({ t: nm + '받을 서류 — ' + ((x.서류 && x.서류.label) || x.label || ''), go: goL }); });
+      }
+      if (!out.length && Array.isArray(nxWait_.cases)){
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var lim = new Date(today.getTime() + 14 * 86400000), d2 = function(d){ return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+        nxWait_.cases.filter(function(c){ return c && c.상태 !== '완료' && c.상태 !== '보류' && c.법정일 && String(c.법정일) <= d2(lim); })
+          .sort(function(a, b){ return String(a.법정일).localeCompare(String(b.법정일)); }).slice(0, 6)
+          .forEach(function(c){ out.push({ t: '마감 임박 — ' + (c.사건명 || '') + ' (' + String(c.법정일).slice(0, 10) + ')', go: function(){ nxCaseJump_('casehandling', c.id); } }); });
+      }
+    } catch (e) {}
+    return out;
+  }
+  function nxWaitPaint_(){
+    var live = nxWait_.jobs.filter(function(j){ return j.user; }), now = Date.now();
+    var shown = live.filter(function(j){ return now - j.s >= 2000; });
+    var b = nxWaitBarEl_();
+    if (!shown.length){ b.hidden = true; return; }
+    shown.forEach(function(j){ j.shown = true; });
+    nxWaitPrime_();
+    var j = shown.reduce(function(a, x){ return x.s < a.s ? x : a; }), el = now - j.s, med = nxWaitMedian_(j.key);
+    var more = shown.length > 1 ? ' 외 ' + (shown.length - 1) + '건' : '';
+    var h = '<div class="nw-top"><span class="nw-name">' + nxWaitEsc_(j.name) + more + '</span><span class="nw-sec">' + (med ? '보통 ' + (med < 1000 ? '1초 안' : nxWaitSec_(med)) + ' · ' : '') + nxWaitSec_(el) + ' 지남</span>'
+      + (nxWait_.mini ? '<span class="nw-sec">· 눌러서 펼치기</span>' : '') + '</div>';
+    if (med) h += '<div class="nw-bar"><i style="width:' + Math.min(100, Math.round(el / med * 100)) + '%"></i></div>';
+    if (med && el > med * 2) h += '<div class="nw-slow">평소보다 오래 걸립니다 — 구글 서버가 느립니다. 다른 화면으로 가셔도 끝나면 알려 드립니다.</div>';
+    if (el >= 10000){
+      if (!nxWait_.seeList || now - nxWait_.seeAt > 4000){ nxWait_.seeList = nxWaitSeeList_(); nxWait_.seeAt = now; nxWait_.seeIdx++; }
+      var sl = nxWait_.seeList;
+      if (sl.length){ var k = nxWait_.seeIdx % sl.length; h += '<div class="nw-see">그동안: <button type="button" data-nw-see="' + k + '" title="' + nxWaitEsc_(sl[k].t) + ' — 눌러서 그 자리로(일은 그대로 돎)">' + nxWaitEsc_(sl[k].t) + '</button></div>'; }
+      h += '<div class="nw-act"><button type="button" class="ghost-btn btn-sm" data-nw-away title="띠를 접습니다 — 일은 그대로 돌고, 끝나면 알려 드립니다">다른 일 하기</button></div>';
+    }
+    b.innerHTML = h; b.classList.toggle('mini', nxWait_.mini); b.hidden = false;
+    if (nxWait_.mini) b.title = '눌러서 펼치기'; else b.removeAttribute('title');
+  }
+  // 끝남 알림 — 「열기」는 그 일을 부른 화면으로 돌아가되, 다시 불러오지 않는다(숨은 화면에 결과가 이미 그려져 있음 — showView의 nxNoReloadOnce_)
+  function nxWaitDone_(job, ok, errMsg){
+    var d = document.getElementById('nxWaitDone');
+    if (!d){ d = document.createElement('div'); d.id = 'nxWaitDone'; d.setAttribute('role', 'status'); d.setAttribute('aria-live', 'polite'); document.body.appendChild(d); }
+    var canOpen = job.view && nxWaitActiveView_() !== job.view;
+    d.className = ok ? '' : 'fail';
+    d.innerHTML = '<span>' + nxWaitEsc_(job.name) + (ok ? ' 끝' : ' 안 됨 — ' + nxWaitEsc_(nxErrText_(errMsg))) + '</span>'
+      + (canOpen ? '<button type="button" data-nw-open>열기</button>' : '') + '<button type="button" class="nw-x" data-nw-x aria-label="알림 닫기">✕</button>';
+    d.hidden = false;
+    d.onclick = function(e){
+      if (e.target.closest('[data-nw-open]')){ window.nxNoReloadOnce_ = job.view; goToView_(job.view); d.hidden = true; }
+      else if (e.target.closest('[data-nw-x]')) d.hidden = true;
+    };
+    clearTimeout(d._t); d._t = setTimeout(function(){ d.hidden = true; }, 20000);
+    if (document.hidden){
+      if (!nxWait_.title0) nxWait_.title0 = document.title;
+      document.title = (ok ? '✔ 끝 · ' : '⚠ 안 됨 · ') + nxWait_.title0;
+    }
+    var snd = false; try { snd = localStorage.getItem(NX_WAIT_SOUND_KEY_) === '1'; } catch (e) {}
+    if (snd) nxWaitBeep_(ok);
+  }
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && nxWait_.title0){ document.title = nxWait_.title0; nxWait_.title0 = ''; } });
+  function nxWaitBeep_(ok){
+    try {
+      var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+      var ac = nxWaitBeep_._ac || (nxWaitBeep_._ac = new C()), o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.value = ok ? 880 : 330; g.gain.setValueAtTime(0.0001, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.15, ac.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.35);
+      o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.4);
+    } catch (e) {}
+  }
+
   function callGasRaw_(action, payload){
     var nxQuiet = !!(payload && payload._ob); // 보낼 함 저장은 뒤에서 — 단추를 막거나 위 진행 막대를 켜지 않는다(아래 띠 「저장 중」이 대신 알림)
     if (!nxQuiet) callGasProgress_(1);
     var nxDone = action === 'ai_log_bug' ? function(){} : nxRecentCallStart_(action);
     var nxBtn = nxQuiet ? null : nxBusyTake_(action);
+    var nxWaitEnd = nxQuiet ? function(){} : nxWaitStart_(action, payload); // [2026.11.03] 기다림 띠
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
           if (!nxQuiet) callGasProgress_(-1); nxBusyFree_(nxBtn);
-          nxDone(!(res && res.error));
+          nxDone(!(res && res.error)); nxWaitEnd(!(res && res.error), res && res.error);
           if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
           // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
           // 알림·새로고침 없이 조용히 실패시킨다(로그인 화면이 그대로 보이게). 로그인 전 서버 호출 실수가 다시 생겨도 로그인을 막지 못하게.
@@ -65532,7 +65865,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         })
         .withFailureHandler(function(err){
           if (!nxQuiet) callGasProgress_(-1); nxBusyFree_(nxBtn);
-          nxDone(false);
+          nxDone(false); nxWaitEnd(false, err && err.message || err);
           if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
           err.nxAction = action;
           reject(err);
@@ -66242,6 +66575,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
       nxCoverSync_();
       tbCollapseAllDebounced_();
+      // [2026.11.03] 기다림 띠 「…끝 — 열기」로 돌아온 화면은 다시 불러오지 않는다 — 숨어 있던 사이에 결과가 이미 그려져 있다(다시 부르면 또 기다림)
+      var nxSkipInit = window.nxNoReloadOnce_ === name; window.nxNoReloadOnce_ = '';
+      if (!nxSkipInit){
       if (name === 'consult' && typeof nxCmOpen_ === 'function') nxCmOpen_();
       if (name === 'clientcard' && typeof nxCcOpen_ === 'function') nxCcOpen_();
       if (name === 'booking' && typeof initBooking === 'function') initBooking();
@@ -66268,6 +66604,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (name === 'dashboard' && typeof initDashboard === 'function') {
         if (typeof dashboardLoaded !== 'undefined') dashboardLoaded = false;
         initDashboard();
+      }
       }
       nxPlaceSaveSoon_(); // [2026.10.22] 이어 보기 — 이 기기에서 보는 곳을 기억
     };

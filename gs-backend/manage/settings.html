@@ -75,6 +75,21 @@
       <label style="display:flex; align-items:center; gap:8px; margin:6px 0 12px; font-size:14px;">
         <input type="checkbox" id="settingsDarkMode"> 다크모드
       </label>
+      <!-- [2026.11.03] 기다림 대책 ④ — 오래 걸린 일이 끝날 때 짧은 소리(세무사님 "권장안대로": 기본 끔, 여기서 켬). 이 기기에만 기억 -->
+      <label style="display:flex; align-items:center; gap:8px; margin:0 0 12px; font-size:14px;" title="2초 넘게 걸린 일을 다른 화면·다른 창에서 기다리실 때, 끝나면 짧게 소리를 냅니다">
+        <input type="checkbox" id="settingsWaitSound"> 오래 걸린 일이 끝나면 소리
+      </label>
+      <script>
+      (function(){
+        var cb = document.getElementById('settingsWaitSound');
+        try { cb.checked = localStorage.getItem('nxWaitSound') === '1'; } catch (e) {}
+        cb.addEventListener('change', function(){
+          try { localStorage.setItem('nxWaitSound', cb.checked ? '1' : '0'); } catch (e) {}
+          if (cb.checked && typeof nxWaitBeep_ === 'function') nxWaitBeep_(true);
+          toast(cb.checked ? '끝남 소리를 켰습니다(이 기기).' : '끝남 소리를 껐습니다.');
+        });
+      })();
+      </script>
       <div style="font-size:13px; margin-bottom:6px;">화면 배치 기준</div>
       <select id="settingsLayout" style="font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">
         <option value="auto">자동 감지(기본)</option>

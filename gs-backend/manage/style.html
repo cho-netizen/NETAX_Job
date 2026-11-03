@@ -351,6 +351,27 @@
   .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy);
     color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; z-index:999; opacity:0; transition:opacity .2s; pointer-events:none; }
   .toast.shown{ opacity:1; }
+  /* [2026.11.03] 기다림 띠(script.html nxWait_) — 세무사님 "기다리는 동안 지루하지 않도록" → "권장안대로 하자". 알림(토스트) 바로 위 가운데, 끝남 알림은 오른쪽 아래 떠 있는 단추 위 */
+  #nxWaitBar{ position:fixed; bottom:76px; left:50%; transform:translateX(-50%); z-index:998; width:min(440px, calc(100vw - 32px));
+    background:var(--panel, #fff); color:var(--ink, #222); border:1px solid var(--line); border-left:4px solid var(--gold); border-radius:8px;
+    box-shadow:0 4px 14px rgba(0,0,0,.14); padding:8px 12px; font-size:13px; line-height:1.5; }
+  #nxWaitBar[hidden], #nxWaitDone[hidden]{ display:none; }
+  #nxWaitBar .nw-top{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  #nxWaitBar .nw-name{ font-weight:700; color:var(--navy); }
+  #nxWaitBar .nw-sec{ color:var(--sub); font-variant-numeric:tabular-nums; }
+  #nxWaitBar .nw-bar{ height:6px; background:#e6e8ee; border-radius:3px; overflow:hidden; margin:5px 0 2px; }
+  #nxWaitBar .nw-bar i{ display:block; height:100%; background:var(--gold); transition:width .9s linear; }
+  #nxWaitBar .nw-slow{ color:var(--gold-ink, #8a6414); margin-top:3px; }
+  #nxWaitBar .nw-see{ margin-top:4px; color:var(--sub); white-space:nowrap; display:flex; gap:4px; min-width:0; }
+  #nxWaitBar .nw-see button{ background:none; border:none; padding:0; color:var(--navy); text-decoration:underline; cursor:pointer; font:inherit; flex:1 1 auto; min-width:0; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #nxWaitBar .nw-act{ display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
+  #nxWaitBar.mini{ width:auto; max-width:calc(100vw - 32px); padding:4px 10px; cursor:pointer; }
+  #nxWaitBar.mini .nw-bar, #nxWaitBar.mini .nw-slow, #nxWaitBar.mini .nw-see, #nxWaitBar.mini .nw-act{ display:none; }
+  #nxWaitDone{ position:fixed; right:16px; bottom:72px; z-index:998; max-width:min(360px, calc(100vw - 32px)); display:flex; gap:10px; align-items:center;
+    background:var(--navy); color:#fff; border-radius:8px; padding:9px 12px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.18); }
+  #nxWaitDone.fail{ background:#b3261e; }
+  #nxWaitDone button{ background:#fff; color:var(--navy); border:none; border-radius:6px; padding:3px 10px; font:inherit; font-weight:700; cursor:pointer; }
+  #nxWaitDone button.nw-x{ background:none; color:#fff; padding:0 2px; font-weight:400; }
 
   /* [2026.09] "저장 버튼을 눌러도 아무 반응이 없어 답답하다" — 저장 버튼 하나하나를 고치는
      대신, 서버에 요청을 보내는 동안(callGas, script.html) 화면 맨 위에 항상 뜨는 진행바

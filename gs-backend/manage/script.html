@@ -137,6 +137,7 @@
         var listKey = CALLGAS_SHARED_READS_[action];
         hit = { at: Date.now(), promise: callGasRaw_(action, payload).then(function(res){
           if (!res || !Array.isArray(res[listKey])) throw new Error('목록을 받지 못했습니다(서버 응답 이상) — 잠시 후 다시 시도하세요.');
+          if (action === 'work_get_cases') nxWait_.cases = res.cases; // [2026.11.03] 기다리는 동안 볼 것(마감 임박) — 받아 둔 목록만 씀
           return nxOverlayPending_(action, res);
         }) };
         callGasShared_[action] = hit;
@@ -433,16 +434,205 @@
     nxRecentCalls_.push(rec); if (nxRecentCalls_.length > 8) nxRecentCalls_.shift();
     return function(ok){ rec.ok = ok; rec.ms = Date.now() - rec.s; };
   }
+  // [2026.11.03] 기다림 띠 — 세무사님 "사용자가 변화를 기다리는 시간이 오래 걸릴 경우 기다리는 동안 지루하지 않도록 하기 위한 대책을 강구하라" → 계획서
+  //  (총괄관리자\_기록\기다림_대책_계획서_20261103.html) → "권장안대로 하자". 화면마다 고치지 않고 서버 요청 길(callGasRaw_) 한 곳에서:
+  //  ① 세무사님이 누른 일이 2초를 넘기면 아래 가운데 띠에 하는 일 이름·지난 초 ② 이 기기에서 같은 일이 걸린 보통 시간(가운데 값)이 있으면 금빛 막대,
+  //  보통의 2배를 넘기면 느림 알림 ③ 10초를 넘기면 「다른 일 하기」(띠를 접음, 일은 그대로 돎) ④ 다른 화면에 가 계시거나 접어 두셨으면 끝날 때
+  //  오른쪽 아래 「…끝 — 열기」, 창이 가려져 있으면 창 제목 앞 「✔ 끝」, 소리는 설정 › 기본에서 켬(기본 끔) ⑤ 10초를 넘기면 지금 사건의 확인할 것·받을 서류
+  //  (사건이 없으면 마감 임박 사건)을 한 줄씩 돌려 보임 — 이미 받아 둔 장부·사건 목록만 씀(서버 요청을 늘리지 않음).
+  //  가짜 막대는 넣지 않는다: 막대는 이 기기 기록이 있을 때만. 타이머가 혼자 부르는 요청(장부 띠 새로 읽기·위치 저장 등)은 띠를 띄우지 않는다.
+  var NX_WAIT_NAMES_ = {
+    work_get_cases: '사건 목록 받기', client_get_clients: '고객 명단 받기', admin_create_case: '사건 만들기', work_update_case: '사건 고치기',
+    admin_get_case: '사건 불러오기', admin_apply: '사건 저장', ensure_case_folder: '사건 폴더 만들기', get_case_subfolders: '사건 폴더 살피기',
+    listFolder: '폴더 목록 받기', createFolder: '폴더 만들기', uploadFile: '파일 올리기', readFile: '파일 읽기', readFileBinary: '파일 받기',
+    moveItem: '파일 옮기기', renameItem: '이름 바꾸기', deleteItem: '파일 지우기', searchFiles: '파일 찾기', listTrash: '휴지통 받기',
+    client_get_consult_logs: '상담 기록 받기', list_bookings: '예약 목록 받기', ai_conv_list: '넥스 대화 목록 받기', ai_conv_load: '넥스 대화 불러오기',
+    generate_report_content: '보고서 만들기', list_all_reports: '보고서 목록 받기', create_advisory_slide_report: '자문 발표 자료 만들기',
+    t6_share_cleanup: '공유 정리', system_audit_run: '시스템 점검', sysaudit_run: '시스템 점검', sysaudit_ai_run: '무료 AI 점검', self_check_run: '자체 점검',
+    ocr_batch_run: '서류 글자 읽기', ocr_batch_trigger: '서류 글자 읽기 맡기기', tc_extract_case_docs: '서류에서 계산 칸 찾기',
+    doc_parse: '서류 읽기', doc_parse_multi: '서류 여러 장 읽기', doc_parse_image: '사진 서류 읽기', doc_parse_text: '서류 글 읽기',
+    lookupLandInfo: '토지 정보 조회', lookupOfficialPrice: '공시가격 조회', lookupRealPrice: '실거래가 조회', lookupExchangeRate: '환율 조회',
+    law_search_precedent: '판례 찾기', law_get_precedent_detail: '판례 불러오기', search_emails: '메일 찾기', scan_cash_receipts: '현금영수증 훑기',
+    import_hometax_receipts: '홈택스 매출 가져오기', client_scan_case_files_for_names: '사건 파일에서 이름 찾기', client_audit_duplicates: '같은 고객 찾기',
+    work_resync_all_calendars: '달력 다시 맞추기', deploy_job_start: '운영 반영', post_to_naver_blog: '네이버 블로그 올리기', post_to_google_blog: '구글 블로그 올리기',
+    shorts_create_episode: '쇼츠 만들기', export_user_manual: '매뉴얼 내보내기', knh_run: '노하우 정리', knh_index: '노하우 색인', improve_report_run: '개선 보고서 만들기',
+    'case_proc:view': '사건 처리 화면 불러오기', 'case_proc:overview': '처리개요 불러오기', 'case_proc:ledger': '사실(장부) 읽기', 'case_proc:ledgerFlow': '장부 흐름 읽기',
+    'case_proc:scanSaved': '저장된 서류 훑기', 'case_proc:scanCands': '서류 후보 훑기', 'case_proc:readList': '읽을 서류 목록 받기', 'case_proc:readScope': '읽을 범위 저장',
+    'case_proc:facts': '서류 사실 모으기', 'case_proc:calcin': '계산 칸 채우기', 'case_proc:multi': '도구 여러 개 돌리기', 'case_proc:nexPreread': '넥스 미리 읽기',
+    'case_proc:ledgerCalc': '시험 계산', 'case_proc:ledgerCompare': '세목 견주기', 'case_proc:ledgerLookup': '공부 조회', 'case_proc:ledgerJudge': '판정 돌리기',
+    'case_proc:ledgerEstimate': '잠정치 추정', 'case_proc:ledgerImport': '옛 자료 장부로 옮기기', 'case_proc:ledgerKbBuild': '장부 다시 모으기',
+    'case_proc:ledgerFamily': '가족 지도 읽기', 'case_proc:ledgerTaxes': '세목 묶음 읽기', 'case_proc:ledgerAdvice': '자문 장부 읽기',
+    'case_proc:bundlePlan': '제출 묶음 짜기', 'case_proc:bundlePages': '제출 묶음 쪽 고르기', 'case_proc:bundleCands': '제출 묶음 후보', 'case_proc:bundleSaved': '제출 묶음 만들기',
+    'case_proc:pdfPlan': 'PDF 만들기 짜기', 'case_proc:pdfApply': 'PDF 만들기', 'case_proc:pdfReflat': 'PDF 다시 펴기', 'case_proc:renamePlan': '파일 이름 짜기',
+    'case_proc:renameApply': '파일 이름 바꾸기', 'case_proc:splitCands': 'PDF 나눌 곳 찾기', 'case_proc:splitPages': 'PDF 쪽 보기', 'case_proc:splitSaved': 'PDF 나누기',
+    'case_proc:submitPlan': '제출 계획 짜기', 'case_proc:submitSave': '제출 계획 저장', 'case_proc:save': '사건처리 저장', 'case_proc:apply': '사건처리 반영'
+  };
+  var NX_WAIT_SKIP_ = { ai_log_bug: 1, save_times: 1, place_save: 1, place_get: 1, ai_log_paid: 1, corr_log: 1, syncGlobalLog: 1 };
+  var NX_WAIT_KEY_ = 'nxWaitTimes', NX_WAIT_SOUND_KEY_ = 'nxWaitSound';
+  var nxWait_ = { touch: 0, jobs: [], lastUserEnd: 0, timer: null, mini: false, seeAt: 0, seeIdx: 0, primed: false, cases: null, title0: '' };
+  // 세무사님 손길(누름·키·화면 옮김) 시각 — 1.5초 안에 나간 요청과, 세무사님 요청이 끝나고 0.3초 안에 이어 나간 요청만 「세무사님이 기다리는 일」로 본다
+  function nxWaitTouch_(){ nxWait_.touch = Date.now(); }
+  document.addEventListener('pointerdown', nxWaitTouch_, true);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab' || /^Arrow/.test(e.key)) nxWaitTouch_(); }, true);
+  function nxWaitTimesRead_(){ try { var o = JSON.parse(localStorage.getItem(NX_WAIT_KEY_) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+  function nxWaitTimesNote_(key, ms){
+    var o = nxWaitTimesRead_(); var a = Array.isArray(o[key]) ? o[key] : []; a.push(Math.round(ms)); o[key] = a.slice(-15);
+    var ks = Object.keys(o); if (ks.length > 200) delete o[ks[0]];
+    try { localStorage.setItem(NX_WAIT_KEY_, JSON.stringify(o)); } catch (e) {}
+  }
+  function nxWaitMedian_(key){
+    var a = (nxWaitTimesRead_()[key] || []).slice().sort(function(x, y){ return x - y; });
+    if (a.length < 2) return 0; // 한 번 잰 것으로는 보통이라 하지 않는다
+    var m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+  // 처음 쓰는 기기는 기록이 없다 — 띠가 처음 뜰 때 한 번만 서버의 「저장 걸린 시간」(서버 안 시간)을 받아 비어 있는 일의 처음 값으로 쓴다(로그인 뒤에만)
+  function nxWaitPrime_(){
+    if (nxWait_.primed) return; nxWait_.primed = true;
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok || !manageAppSessionToken_) return;
+    callGasRaw_('save_times', {}).then(function(res){
+      var by = {}; ((res && res.items) || []).forEach(function(x){ if (Array.isArray(x) && x[1] && x[2] > 0) (by[x[1]] = by[x[1]] || []).push(x[2]); });
+      var o = nxWaitTimesRead_(), ch = false;
+      Object.keys(by).forEach(function(k){ if (!o[k] && by[k].length >= 2){ o[k] = by[k].slice(-15); ch = true; } });
+      if (ch) try { localStorage.setItem(NX_WAIT_KEY_, JSON.stringify(o)); } catch (e) {}
+    }).catch(function(){});
+  }
+  function nxWaitName_(action, payload){
+    var step = payload && payload.step ? String(payload.step) : '';
+    var n = (step && NX_WAIT_NAMES_[action + ':' + step]) || NX_WAIT_NAMES_[action];
+    if (n) return n;
+    var lab = window._currentViewLabel || '화면';
+    return action === 'case_proc' ? lab + ' — 사건처리 도구' : lab + ' — ' + (NX_ACTION_VERB_(action) === '저장·처리' ? '저장·처리' : '불러오기');
+  }
+  function nxWaitActiveView_(){ var a = document.querySelector('#centerWork > .view.active'); return a ? a.id.replace(/^view-/, '') : ''; }
+  function nxWaitSec_(ms){ var s = Math.floor(ms / 1000); return s < 60 ? s + '초' : Math.floor(s / 60) + '분 ' + (s % 60) + '초'; }
+  function nxWaitEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function nxWaitStart_(action, payload){
+    if (NX_WAIT_SKIP_[action]) return function(){};
+    var now = Date.now();
+    var userBusy = nxWait_.jobs.some(function(j){ return j.user; });
+    var user = now - nxWait_.touch < 1500 || userBusy || now - nxWait_.lastUserEnd < 300;
+    var key = action + (payload && payload.step ? ':' + payload.step : '');
+    var job = { key: key, name: nxWaitName_(action, payload), s: now, user: user, view: nxWaitActiveView_(), viewLabel: window._currentViewLabel || '', shown: false };
+    nxWait_.jobs.push(job);
+    if (user) nxWaitTick_();
+    return function(ok, errMsg){
+      var ms = Date.now() - job.s;
+      if (ok) nxWaitTimesNote_(key, ms);
+      nxWait_.jobs = nxWait_.jobs.filter(function(j){ return j !== job; });
+      if (job.user) nxWait_.lastUserEnd = Date.now();
+      // 끝남 알림 — 띠가 떴던 일(2초 넘김)을 세무사님이 다른 화면에서·접어 둔 채·창을 가린 채 기다리셨으면
+      if (job.shown && job.user && (job.away || nxWaitActiveView_() !== job.view || document.hidden)) nxWaitDone_(job, ok, errMsg);
+      nxWaitTick_();
+    };
+  }
+  function nxWaitBarEl_(){
+    var b = document.getElementById('nxWaitBar');
+    if (!b){
+      b = document.createElement('div'); b.id = 'nxWaitBar'; b.hidden = true; b.setAttribute('role', 'status'); b.setAttribute('aria-live', 'polite');
+      document.body.appendChild(b);
+      b.addEventListener('click', function(e){
+        if (e.target.closest('[data-nw-away]')){ nxWait_.mini = true; nxWait_.jobs.forEach(function(j){ if (j.shown) j.away = true; }); nxWaitPaint_(); return; }
+        var see = e.target.closest('[data-nw-see]');
+        if (see){ var it = nxWait_.seeList && nxWait_.seeList[+see.getAttribute('data-nw-see')]; nxWait_.jobs.forEach(function(j){ if (j.shown) j.away = true; }); nxWait_.mini = true; nxWaitPaint_(); if (it && it.go) it.go(); return; }
+        if (nxWait_.mini){ nxWait_.mini = false; nxWaitPaint_(); }
+      });
+    }
+    return b;
+  }
+  function nxWaitTick_(){
+    clearTimeout(nxWait_.timer);
+    var live = nxWait_.jobs.filter(function(j){ return j.user; });
+    if (!live.length){ var b0 = document.getElementById('nxWaitBar'); if (b0) b0.hidden = true; nxWait_.mini = false; nxWait_.seeList = null; return; }
+    nxWaitPaint_();
+    nxWait_.timer = setTimeout(nxWaitTick_, 1000);
+  }
+  // 기다리는 동안 볼 것 — 지금 사건 장부(이미 받아 둔 것)의 확인할 것·받을 서류, 없으면 받아 둔 사건 목록의 마감 임박
+  function nxWaitSeeList_(){
+    var out = [];
+    try {
+      var id = typeof nxCbCurId_ === 'function' ? nxCbCurId_() : '';
+      var c0 = id && typeof NX_LG_ !== 'undefined' && NX_LG_ && NX_LG_.cache[id], r = c0 && c0.r;
+      if (r && r.ok){
+        var nm = r.사건 ? '「' + r.사건 + '」 ' : '';
+        var goL = function(){ nxCaseJump_('ledger', id); };
+        (r.물음 || []).filter(function(q){ return q.state !== '보류' && q.state !== '무시'; }).slice(0, 6).forEach(function(q){ out.push({ t: nm + '확인할 것 — ' + (q.label || '') + (q.ask ? ': ' + q.ask : ''), go: goL }); });
+        ((r.흐름 || {}).증빙 || []).filter(function(x){ return x.state === '증빙받을것'; }).slice(0, 6).forEach(function(x){ out.push({ t: nm + '받을 서류 — ' + ((x.서류 && x.서류.label) || x.label || ''), go: goL }); });
+      }
+      if (!out.length && Array.isArray(nxWait_.cases)){
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var lim = new Date(today.getTime() + 14 * 86400000), d2 = function(d){ return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+        nxWait_.cases.filter(function(c){ return c && c.상태 !== '완료' && c.상태 !== '보류' && c.법정일 && String(c.법정일) <= d2(lim); })
+          .sort(function(a, b){ return String(a.법정일).localeCompare(String(b.법정일)); }).slice(0, 6)
+          .forEach(function(c){ out.push({ t: '마감 임박 — ' + (c.사건명 || '') + ' (' + String(c.법정일).slice(0, 10) + ')', go: function(){ nxCaseJump_('casehandling', c.id); } }); });
+      }
+    } catch (e) {}
+    return out;
+  }
+  function nxWaitPaint_(){
+    var live = nxWait_.jobs.filter(function(j){ return j.user; }), now = Date.now();
+    var shown = live.filter(function(j){ return now - j.s >= 2000; });
+    var b = nxWaitBarEl_();
+    if (!shown.length){ b.hidden = true; return; }
+    shown.forEach(function(j){ j.shown = true; });
+    nxWaitPrime_();
+    var j = shown.reduce(function(a, x){ return x.s < a.s ? x : a; }), el = now - j.s, med = nxWaitMedian_(j.key);
+    var more = shown.length > 1 ? ' 외 ' + (shown.length - 1) + '건' : '';
+    var h = '<div class="nw-top"><span class="nw-name">' + nxWaitEsc_(j.name) + more + '</span><span class="nw-sec">' + (med ? '보통 ' + (med < 1000 ? '1초 안' : nxWaitSec_(med)) + ' · ' : '') + nxWaitSec_(el) + ' 지남</span>'
+      + (nxWait_.mini ? '<span class="nw-sec">· 눌러서 펼치기</span>' : '') + '</div>';
+    if (med) h += '<div class="nw-bar"><i style="width:' + Math.min(100, Math.round(el / med * 100)) + '%"></i></div>';
+    if (med && el > med * 2) h += '<div class="nw-slow">평소보다 오래 걸립니다 — 구글 서버가 느립니다. 다른 화면으로 가셔도 끝나면 알려 드립니다.</div>';
+    if (el >= 10000){
+      if (!nxWait_.seeList || now - nxWait_.seeAt > 4000){ nxWait_.seeList = nxWaitSeeList_(); nxWait_.seeAt = now; nxWait_.seeIdx++; }
+      var sl = nxWait_.seeList;
+      if (sl.length){ var k = nxWait_.seeIdx % sl.length; h += '<div class="nw-see">그동안: <button type="button" data-nw-see="' + k + '" title="' + nxWaitEsc_(sl[k].t) + ' — 눌러서 그 자리로(일은 그대로 돎)">' + nxWaitEsc_(sl[k].t) + '</button></div>'; }
+      h += '<div class="nw-act"><button type="button" class="ghost-btn btn-sm" data-nw-away title="띠를 접습니다 — 일은 그대로 돌고, 끝나면 알려 드립니다">다른 일 하기</button></div>';
+    }
+    b.innerHTML = h; b.classList.toggle('mini', nxWait_.mini); b.hidden = false;
+    if (nxWait_.mini) b.title = '눌러서 펼치기'; else b.removeAttribute('title');
+  }
+  // 끝남 알림 — 「열기」는 그 일을 부른 화면으로 돌아가되, 다시 불러오지 않는다(숨은 화면에 결과가 이미 그려져 있음 — showView의 nxNoReloadOnce_)
+  function nxWaitDone_(job, ok, errMsg){
+    var d = document.getElementById('nxWaitDone');
+    if (!d){ d = document.createElement('div'); d.id = 'nxWaitDone'; d.setAttribute('role', 'status'); d.setAttribute('aria-live', 'polite'); document.body.appendChild(d); }
+    var canOpen = job.view && nxWaitActiveView_() !== job.view;
+    d.className = ok ? '' : 'fail';
+    d.innerHTML = '<span>' + nxWaitEsc_(job.name) + (ok ? ' 끝' : ' 안 됨 — ' + nxWaitEsc_(nxErrText_(errMsg))) + '</span>'
+      + (canOpen ? '<button type="button" data-nw-open>열기</button>' : '') + '<button type="button" class="nw-x" data-nw-x aria-label="알림 닫기">✕</button>';
+    d.hidden = false;
+    d.onclick = function(e){
+      if (e.target.closest('[data-nw-open]')){ window.nxNoReloadOnce_ = job.view; goToView_(job.view); d.hidden = true; }
+      else if (e.target.closest('[data-nw-x]')) d.hidden = true;
+    };
+    clearTimeout(d._t); d._t = setTimeout(function(){ d.hidden = true; }, 20000);
+    if (document.hidden){
+      if (!nxWait_.title0) nxWait_.title0 = document.title;
+      document.title = (ok ? '✔ 끝 · ' : '⚠ 안 됨 · ') + nxWait_.title0;
+    }
+    var snd = false; try { snd = localStorage.getItem(NX_WAIT_SOUND_KEY_) === '1'; } catch (e) {}
+    if (snd) nxWaitBeep_(ok);
+  }
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && nxWait_.title0){ document.title = nxWait_.title0; nxWait_.title0 = ''; } });
+  function nxWaitBeep_(ok){
+    try {
+      var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+      var ac = nxWaitBeep_._ac || (nxWaitBeep_._ac = new C()), o = ac.createOscillator(), g = ac.createGain();
+      o.frequency.value = ok ? 880 : 330; g.gain.setValueAtTime(0.0001, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.15, ac.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.35);
+      o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + 0.4);
+    } catch (e) {}
+  }
+
   function callGasRaw_(action, payload){
     var nxQuiet = !!(payload && payload._ob); // 보낼 함 저장은 뒤에서 — 단추를 막거나 위 진행 막대를 켜지 않는다(아래 띠 「저장 중」이 대신 알림)
     if (!nxQuiet) callGasProgress_(1);
     var nxDone = action === 'ai_log_bug' ? function(){} : nxRecentCallStart_(action);
     var nxBtn = nxQuiet ? null : nxBusyTake_(action);
+    var nxWaitEnd = nxQuiet ? function(){} : nxWaitStart_(action, payload); // [2026.11.03] 기다림 띠
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
           if (!nxQuiet) callGasProgress_(-1); nxBusyFree_(nxBtn);
-          nxDone(!(res && res.error));
+          nxDone(!(res && res.error)); nxWaitEnd(!(res && res.error), res && res.error);
           if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
           // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
           // 알림·새로고침 없이 조용히 실패시킨다(로그인 화면이 그대로 보이게). 로그인 전 서버 호출 실수가 다시 생겨도 로그인을 막지 못하게.
@@ -464,7 +654,7 @@
         })
         .withFailureHandler(function(err){
           if (!nxQuiet) callGasProgress_(-1); nxBusyFree_(nxBtn);
-          nxDone(false);
+          nxDone(false); nxWaitEnd(false, err && err.message || err);
           if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
           err.nxAction = action;
           reject(err);
@@ -1174,6 +1364,9 @@
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
       nxCoverSync_();
       tbCollapseAllDebounced_();
+      // [2026.11.03] 기다림 띠 「…끝 — 열기」로 돌아온 화면은 다시 불러오지 않는다 — 숨어 있던 사이에 결과가 이미 그려져 있다(다시 부르면 또 기다림)
+      var nxSkipInit = window.nxNoReloadOnce_ === name; window.nxNoReloadOnce_ = '';
+      if (!nxSkipInit){
       if (name === 'consult' && typeof nxCmOpen_ === 'function') nxCmOpen_();
       if (name === 'clientcard' && typeof nxCcOpen_ === 'function') nxCcOpen_();
       if (name === 'booking' && typeof initBooking === 'function') initBooking();
@@ -1200,6 +1393,7 @@
       if (name === 'dashboard' && typeof initDashboard === 'function') {
         if (typeof dashboardLoaded !== 'undefined') dashboardLoaded = false;
         initDashboard();
+      }
       }
       nxPlaceSaveSoon_(); // [2026.10.22] 이어 보기 — 이 기기에서 보는 곳을 기억
     };

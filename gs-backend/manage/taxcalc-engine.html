@@ -1341,7 +1341,11 @@
       const feCat = t.farmlandExchangeCategory;
       const feCategoryOk = (feCat === 'cat1' || feCat === 'cat2' || feCat === 'cat4')
         || (feCat === 'cat3' && (!!t.farmlandExchangeCultivation3YearsMet || !!t.farmlandExchangeExpropriationException));
-      if (feWithinQuarter && feCategoryOk) {
+      // [2026.11.03 복잡사건 119] 시행령 §153① 괄호 "제4항 각 호의 어느 하나에 해당하는 농지는 제외" — 예전엔 ④를 안 봐서, 도시 주거·상업·공업지역에 편입된 지 3년 지난 농지(④1호)·
+      //  농지 밖 환지예정지 지정 3년 지난 농지(④2호)도 비과세로 셌다. 판정 묶음 「농지교환」이 ④를 가려 farmlandExchangeExcludedLand로 넘긴다. 비과세가 안 되면 그 까닭을 알림에 남긴다.
+      const feExcluded = !!t.farmlandExchangeExcludedLand;
+      if (!(feWithinQuarter && feCategoryOk && !feExcluded)) acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 농지 교환 비과세(소득세법 §89①2호) 안 됨 — ' + [!feWithinQuarter ? '두 농지 가액 차이가 큰 쪽의 4분의 1을 넘거나 가액이 비어 있음(시행령 §153①)' : '', !feCategoryOk ? '교환 사유(§153① 각 호)·3호의 3년 거주·경작 요건을 못 갖춤' : '', feExcluded ? '§153④ 제외 농지(도시 주거·상업·공업지역 편입 3년 경과 또는 환지예정지 지정 3년 경과)' : ''].filter(Boolean).join(' · ') + ' — 일반 교환(양도)으로 계산합니다.';
+      if (feWithinQuarter && feCategoryOk && !feExcluded) {
         return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
       }
     }
@@ -1819,7 +1823,8 @@
       // 기간이므로 holdingYears와 별도로 계산한다.
       isForestManagementExempt: !!t.isForestManagementExempt && !reductionNotYet_('69_4', t.transferDate),
       reductionNotYetNote: ['69_2', '69_3', '69_4', '70'].filter(function (s) { return t[{ '69_2': 'isLivestockLandExempt', '69_3': 'isFisheryLandExempt', '69_4': 'isForestManagementExempt', '70': 'isFarmlandSubstitutionExempt' }[s]]; }).map(function (s) { return reductionNotYet_(s, t.transferDate); }).filter(Boolean).join(' '),
-      forestManagementYears: t.acquisitionDate ? fullYearsElapsed(t.acquisitionDate, t.transferDate) : 0,
+      // [2026.11.03 복잡사건 116] 조특령 §66의4③ — 직접 경영한 기간은 취득하고 산림경영계획인가를 받은 날부터 셈(취득일부터가 아님)·상속 승계(⑥⑦) — forestManagedYears(직접 경영 연수)를 주면 그 값, 비우면 예전대로 취득일부터
+      forestManagementYears: Number(t.forestManagedYears) >= 0 && t.forestManagedYears !== '' && t.forestManagedYears != null ? Math.floor(Number(t.forestManagedYears)) : (t.acquisitionDate ? fullYearsElapsed(t.acquisitionDate, t.transferDate) : 0),
       conversionValuePenalty, pensionAccountContribution: Number(t.pensionAccountContribution) || 0,
       raw: t
     };
@@ -2605,6 +2610,11 @@
         _신축주택감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined
       });
     }
+    // [2026.11.03 복잡사건 110] §99의2 5년 안 양도는 세액 100% 감면 — 같은 해 다른 양도와 합산할 때 이 자산 소득도 과세표준에 남기고 그 몫 산출세액을 뺀다(미분양 §98의3과 같은 처리, 소득세법 §90①).
+    //  예전엔 소득금액을 빼는 방식이라 다른 자산의 누진세율 구간이 낮아져 세액이 법보다 적게 나왔다. 단기(2년 미만)는 예전 방식.
+    if (reduction.감면방식 === '세액감면' && (baseCore.rateHoldingYears != null ? baseCore.rateHoldingYears : baseCore.holdingYears) >= 2) {
+      return Object.assign({}, t, { _신축주택감면_적용여부: true, _신축주택감면_세액감면율: 1, _신축주택감면_안내: reduction.안내 + ' (세액감면 — 합산 산출세액 중 이 자산 몫 × 100%)' });
+    }
     return Object.assign({}, t, {
       _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면_비과세대상_양도소득금액,
       _신축주택감면_적용여부: true,
@@ -2694,8 +2704,15 @@
   // 방식이고 나머지(전액면제 100%)는 소득금액공제 방식과 결과가 같아(0=0) 오버라이드로 처리한다.
   function resolveLongTermRentalHouseReductionAdjustment_(t) {
     if (!t.longTermRentalHouseProvision) return t;
+    // [2026.11.03 복잡사건 111] §97의5②: §97의3(장특공 특례)·§97의4(추가공제)와 겹쳐 받지 못함 — 예전엔 rentalSpecialType을 함께 넣으면 70% 장특공 뒤 남은 세액을 또 100% 감면해 둘 다 받았다.
+    //  §97의5 감면이 실제로 붙을 때만 장기임대 장특 특례 칸을 빼고 셈(감면이 안 붙으면 원래 칸 그대로). 어느 쪽이 적은지는 따로 돌려 견줄 것.
+    const orig_ = t; let dupNote_ = '';
+    if (t.longTermRentalHouseProvision === 'sect97_5' && (t.rentalSpecialType === 'rental_general' || t.rentalSpecialType === 'rental_long')) {
+      t = Object.assign({}, t); delete t.rentalSpecialType; delete t.rentalYears;
+      dupNote_ = ' ※ §97의5②에 따라 §97의3·§97의4 장기임대 장특공 특례는 함께 받지 못해 빼고 셈했습니다 — 특례만 받는 경우를 따로 돌려 납부가 적은 쪽을 신청하세요.';
+    }
     const baseCore = transferAssetCore(t);
-    if (baseCore.error) return t;
+    if (baseCore.error) return orig_;
     const reduction = window.calculateLongTermRentalHouseReductionJS({
       provision: t.longTermRentalHouseProvision, subType: t.lrSubType,
       transferPrice: Number(t.transferPrice) || 0,
@@ -2709,16 +2726,16 @@
     // [2026.10.20 J30] §97의5 기준시가가 모자라면 근사하지 않고 계산을 멈춘다(합산 계산이 이 오류를 돌려줌)
     if (reduction && reduction.error && t.longTermRentalHouseProvision === 'sect97_5') return Object.assign({}, t, { _장기임대감면_오류: reduction.error });
     if (!reduction || reduction.error || !reduction.적용여부) {
-      return Object.assign({}, t, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
+      return Object.assign({}, orig_, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
     }
     if (reduction.세액감면방식) {
-      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_감면소득비율: reduction.감면소득비율, _장기임대감면_안내: reduction.안내 });
+      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_감면소득비율: reduction.감면소득비율, _장기임대감면_안내: reduction.안내 + dupNote_ });
     }
     return Object.assign({}, t, {
       _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면대상_양도소득금액,
       _장기임대감면_적용여부: true,
       _장기임대감면_제외소득금액: reduction.감면대상_양도소득금액,
-      _장기임대감면_안내: reduction.안내
+      _장기임대감면_안내: reduction.안내 + dupNote_
     });
   }
 
@@ -2965,6 +2982,7 @@
         else { assetNotes.push({ idx: c.idx, 구분: '국가양도산지감면(§85의10)', 적용여부: false, 사유: (nfCheck && (nfCheck.error || nfCheck.안내)) || undefined }); }
       }
       else if (c.raw._구조조정감면_세액감면율) { label = '구조조정대상 부동산 감면(조특법§43, 세액 ' + c.raw._구조조정감면_세액감면율 + '% 감면)'; rate = c.raw._구조조정감면_세액감면율 / 100; sec = '43'; }
+      else if (c.raw._신축주택감면_세액감면율) { label = '신축주택 등 감면(조특법§99의2, 5년 이내 양도 — 세액 100% 감면)'; rate = 1; sec = '99_2'; }
       else if (c.raw._미분양감면_세액감면율) { label = '미분양주택 감면(조특법 ' + String(c.raw.unsoldHouseReductionProvision || '').replace('sect98_', '§98의') + ', 5년 이내 양도 — 세액 ' + Math.round(c.raw._미분양감면_세액감면율 * 100) + '% 감면)'; rate = c.raw._미분양감면_세액감면율; }
       else if (c.raw._장기임대감면_세액감면율) {
         label = c.raw.longTermRentalHouseProvision === 'sect97_5'
@@ -4856,9 +4874,11 @@
     const otherConsiderationValue = Number(p.otherConsiderationValue) || 0;
     const totalConsideration = stockConsiderationValue + otherConsiderationValue;
     if (!(totalConsideration > 0)) return { error: '교환·이전대가가 필요합니다.' };
-    const stockRatio = stockConsiderationValue / totalConsideration;
+    // [2026.11.03 복잡사건 117] 80% 판정 때 완전모회사가 교환일 전 2년 안에 취득한 완전자회사 주식(시행령 §35의2⑤)은 금전으로 교부한 것으로 보아 대가 합계에 더한다(판정에만 — ③의 즉시 과세 금액에는 넣지 않음).
+    const deemedCash = Math.max(0, Number(p.deemedCashPriorAcquisition) || 0);
+    const stockRatio = stockConsiderationValue / (totalConsideration + deemedCash);
     if (stockRatio < 0.8) {
-      return { 이연적용여부: false, 안내: '조특법§38①2호 — 교환·이전대가 중 완전모회사 주식가액이 80% 이상이어야 합니다(현재 ' + (Math.round(stockRatio * 10000) / 100) + '%).' };
+      return { 이연적용여부: false, 안내: '조특법§38①2호 — 교환·이전대가 중 완전모회사 주식가액이 80% 이상이어야 합니다(현재 ' + (Math.round(stockRatio * 10000) / 100) + '%' + (deemedCash ? ', 교환일 전 2년 안 취득분 ' + deemedCash + '원을 금전으로 봄 — 시행령§35의2⑤' : '') + ').' };
     }
     if (p.willHoldUntilFiscalYearEnd === false) {
       return { 이연적용여부: false, 안내: '조특법§38①2호 — 사업연도 종료일까지 보유해야 합니다.' };
@@ -4881,7 +4901,11 @@
       이번에_과세되는_양도소득: Math.round(recognizedGainNow),
       이연되는_양도소득: Math.round(deferredGain),
       사후관리_추징액: clawback,
-      안내: '이번에_과세되는_양도소득을 위 일반 양도세 계산기의 양도차익으로 넣어 세액을 계산하세요(시행령§35의2③ — MIN(전체양도차익, 주식외 재산가액)). 나머지는 완전모회사등주식 처분시 정산됩니다.' + (clawbackNote ? ' ' + clawbackNote : '')
+      // [2026.11.03 복잡사건 117] 나중에 완전모회사등주식을 팔 때의 취득가액(시행령 §35의2④) = (완전자회사 주식 취득가액 + ③ 양도소득 − ③2호 금액) × 처분 주식 수 ÷ 교환으로 받은 주식 수
+      나중_취득가액_합계: Math.round(acquisitionPrice + recognizedGainNow - otherConsiderationValue),
+      나중_취득가액_처분분: (Number(p.swappedShares) > 0 && Number(p.soldShares) > 0) ? Math.round((acquisitionPrice + recognizedGainNow - otherConsiderationValue) * Math.min(Number(p.soldShares), Number(p.swappedShares)) / Number(p.swappedShares)) : null,
+      판정비율: Math.round(stockRatio * 10000) / 100,
+      안내: '이번에_과세되는_양도소득을 위 일반 양도세 계산기의 양도차익으로 넣어 세액을 계산하세요(시행령§35의2③ — MIN(전체양도차익, 주식외 재산가액)). 나머지는 완전모회사등주식 처분시 정산됩니다 — 그때 취득가액은 나중_취득가액(시행령§35의2④, 교환으로 받은 주식을 먼저 판 것으로 봄)입니다. 사후관리 사유로 추징되면 그 주식의 취득가액은 교환일 현재 시가입니다(시행령§35의2⑫1호).' + (clawbackNote ? ' ' + clawbackNote : '')
     };
   };
 
@@ -7673,7 +7697,18 @@
     const localIncomeTax = Math.round(taxAfterCredit * 0.1);
     const totalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + bookkeepingPenalty + localIncomeTax);
 
-    return { 외화환산: stFx_.length ? stFx_ : undefined,
+    // [2026.11.03 복잡사건 113] 예정신고 기한은 자산 종류마다 다르다(소득세법 §105①) — 1호: 기타자산(§94①4호)·신탁 수익권(6호)은 양도일이 속하는 달의 말일부터 2개월,
+    //  2호: 주식등(3호가·나목)은 반기 말일부터 2개월, 국외주식등(3호다목)·파생상품등(5호)은 예정신고 없음(확정신고만). 예전엔 넥스 도구 안내가 모두 「반기별」이라 했다.
+    const stTd_ = String(p.transferDate || '').slice(0, 10);
+    let stPrelim_;
+    if (assetCategory === 'foreign_stock' || assetCategory === 'derivative') stPrelim_ = '예정신고 없음(소득세법 §105① 괄호 — §94①3호다목·5호 제외), 다음 해 5월 확정신고(§110)';
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(stTd_)) {
+      const y_ = +stTd_.slice(0, 4), m_ = +stTd_.slice(5, 7);
+      const endM_ = (assetCategory === 'domestic_stock') ? (m_ <= 6 ? 6 : 12) : m_;
+      const dl_ = new Date(Date.UTC(y_, endM_ + 2, 0)).toISOString().slice(0, 10);
+      stPrelim_ = dl_ + '까지 — ' + (assetCategory === 'domestic_stock' ? '양도일이 속하는 반기의 말일부터 2개월(§105①2호)' : '양도일이 속하는 달의 말일부터 2개월(§105①1호, ' + (assetCategory === 'trust_beneficiary' ? '신탁 수익권 §94①6호' : '기타자산 §94①4호') + ')');
+    } else stPrelim_ = assetCategory === 'domestic_stock' ? '양도일이 속하는 반기의 말일부터 2개월(§105①2호) — 양도일(transferDate)을 넣으면 날짜로' : '양도일이 속하는 달의 말일부터 2개월(§105①1호) — 양도일(transferDate)을 넣으면 날짜로';
+    return { 외화환산: stFx_.length ? stFx_ : undefined, 예정신고기한: stPrelim_,
       양도차익: Math.round(gain),
       손익통산_적용후_소득금액: Math.round(combinedGain),
       기본공제: basicDeduction,
@@ -7943,7 +7978,9 @@
     if (['sect99', 'sect99_2', 'sect99_3'].indexOf(provision) === -1) {
       return { error: 'provision을 sect99(1998~99년 취득)/sect99_2(2013년 취득)/sect99_3(2001~2003년 취득) 중에서 선택하세요.' };
     }
-    if (p.isHighPriceHouseExcluded) {
+    // [2026.11.03 복잡사건 110] 고가주택 배제 단서는 §99①·§99의3①에만 있고 §99의2에는 없음(조특법 §99의2① 원문) — sect99_2는 체크해도 배제하지 않고 알림만
+    const hiNote99_2_ = provision === 'sect99_2' && p.isHighPriceHouseExcluded ? ' ※ §99의2에는 고가주택 배제 단서가 없어(§99①·§99의3① 단서와 다름) 고가주택 체크를 쓰지 않았습니다.' : '';
+    if (p.isHighPriceHouseExcluded && provision !== 'sect99_2') {
       return {
         적용여부: false,
         안내: '고가주택(소득세법§89①3호 비과세 제외 대상)에 해당하여 이 감면(조특법' + (provision === 'sect99' ? '§99' : provision === 'sect99_2' ? '§99의2' : '§99의3') + ')을 적용하지 않습니다.'
@@ -7968,7 +8005,7 @@
     const necessaryExpenses = Number(p.necessaryExpenses) || 0;
     const totalGain = transferPrice - acquisitionPrice - necessaryExpenses;
 
-    let exemptGain, note;
+    let exemptGain, note, reduceMode_ = '소득금액';
     // [2026.10.20 세액 고침 — 법령 세션 원문 대조] 조특령 §99①·§99의3①(법제처 원문 그림 산식) 단서: 종전주택을 재개발·재건축해 취득한 신축주택
     //  (법 §98의3② 각 호)은 감면소득 = 양도소득금액 × (양도 당시 − 신축주택 취득 당시 기준시가) ÷ (양도 당시 − 종전주택 취득 당시 기준시가) — 5년 안 양도(1호)도
     //  전액이 아니라 이 비율, 5년 뒤(2호)는 분모가 종전주택 취득 당시 기준시가. formerHouseAcquisitionStandardPrice가 있으면 적용(§99의2는 해당 없음).
@@ -7987,6 +8024,7 @@
       note = '종전주택을 재개발·재건축해 취득한 신축주택 — 5년 뒤 양도: 감면소득 = 양도소득금액 × (5년 되는 날 ' + fyStd_ + ' − 신축 취득 당시 ' + acqStd_ + ') ÷ (양도 당시 ' + trfStd_ + ' − 종전주택 취득 당시 ' + formerStd_ + ')(조특령 §99①2호 단서).';
     } else if (yearsHeld <= 5) {
       exemptGain = totalGain;
+      if (provision === 'sect99_2') reduceMode_ = '세액감면'; // [2026.11.03 복잡사건 110] §99의2① "양도소득세의 100분의 100에 상당하는 세액을 감면"
       note = provision === 'sect99_2'
         ? '취득일로부터 5년 이내 양도이므로 그 양도소득세 전액(100%)을 감면합니다(조특법§99의2①).'
         : '취득일로부터 5년 이내 양도이므로 취득일부터 양도일까지 발생한 양도소득금액 전액을 과세대상소득금액에서 뺍니다.';
@@ -8005,7 +8043,8 @@
       전체양도차익: Math.round(totalGain),
       감면_비과세대상_양도소득금액: Math.round(exemptGain),
       과세대상양도소득금액: taxableGain,
-      안내: note + ' 이 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 그 자산의 양도차익으로 대신 넣어 나머지 세액을 계산하세요(장기보유특별공제·기본공제 등은 그 계산기에서 별도 적용됩니다).'
+      감면방식: reduceMode_,
+      안내: note + hiNote99_2_ + ' 이 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 그 자산의 양도차익으로 대신 넣어 나머지 세액을 계산하세요(장기보유특별공제·기본공제 등은 그 계산기에서 별도 적용됩니다).'
     };
   };
 
@@ -8498,6 +8537,9 @@
     // [2026.10.20 서식 감사 — 서식이 법령보다 늦은 칸 확정] §99의4①1호나목·2호다목(법제처 원문): 주택+딸린 토지 가액(취득 당시 기준시가) 한도 —
     //  2023.1.1. 이후 양도 3억원(법률 제19199호, 부칙 제39조 시행 전 양도는 종전 2억원), 한옥은 2014.1.1. 이후 구입분 4억원(법률 제12173호 부칙 제32조).
     //  대지 660㎡ 요건은 2021.1.1. 이후 양도분부터 없음(법률 제17759호 부칙 제21조②). transferDate는 일반주택 양도일.
+    // [2026.11.03 복잡사건 105] 일반주택은 농어촌주택등 「취득 전에 보유하던 다른 주택」이어야 함(§99의4① 본문) — 일반주택 취득일을 주면 확인(없으면 예전대로)
+    const genAcqRh_ = String(p.generalHouseAcquisitionDate || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(genAcqRh_) && genAcqRh_ >= String(acquisitionDate).slice(0, 10)) return { 적용여부: false, 안내: '일반주택(' + genAcqRh_ + ' 취득)이 농어촌주택등(' + String(acquisitionDate).slice(0, 10) + ' 취득) 취득 전에 보유하던 주택이 아니어서 적용대상이 아닙니다(조특법 §99의4① 본문 「그 농어촌주택등 취득 전에 보유하던 다른 주택」).' };
     const trRh_ = String(p.transferDate || '').slice(0, 10);
     // [2026.10.22 검토대상 변경-11] 2023년 전 양도의 종전 한도도 농어촌주택 취득일로 갈림(법제처 판별·부칙 원문): 2008.1.1. 전 취득 7천만원(2006판),
     //  2008년 취득 1억5천만원(법률 제8827호 부칙 제31조 "취득 당시 가액기준 … 시행 후 최초로 취득하는 분부터"), 2009.1.1. 이후 취득 2억원(법률 제9272호 부칙 제22조).
@@ -8586,6 +8628,11 @@
   window.calculateReplacementHouseExclusionJS = function (p) {
     p = p || {};
     if (!p.businessApprovalDate || !p.replacementHouseAcquisitionDate) return { error: '사업시행인가일과 대체주택 취득일이 필요합니다.' };
+    // [2026.11.03 복잡사건 106] 본문 "국내에 1주택을 소유한 1세대" — 대체주택 사기 직전 세대의 국내 주택(입주권 포함) 수.
+    //  칸이 비면 예전대로 보되, 2채 이상이면 특례 대상이 아님(판정 묶음 「대체주택」과 같음).
+    if (p.houseCountBeforeReplacement != null && p.houseCountBeforeReplacement !== '' && Number(p.houseCountBeforeReplacement) > 1) {
+      return { 적용여부: false, 안내: '대체주택을 사기 전에 국내에 1주택(사업 대상)만 소유한 1세대여야 하는데(시행령§156의2⑤ 본문), ' + Number(p.houseCountBeforeReplacement) + '채를 소유해 적용대상이 아닙니다.' };
+    }
     if (new Date(p.replacementHouseAcquisitionDate).getTime() < new Date(p.businessApprovalDate).getTime()) {
       return { 적용여부: false, 안내: '재개발·재건축 등 사업시행인가일 이후에 대체주택을 취득해야 하는데(시행령§156의2⑤1호), 그 전에 취득해 적용대상이 아닙니다.' };
     }
@@ -8594,6 +8641,28 @@
     }
     if (!p.newHousingCompletionDate) {
       return { error: '신축주택 완성(예정)일이 필요합니다(시행령§156의2⑤2호·3호 판정용).' };
+    }
+    if (!p.replacementHouseTransferDate) {
+      return { error: '대체주택 양도일이 필요합니다(시행령§156의2⑤3호 — 완성 전 또는 완성 뒤 3년 안 양도 판정용).' };
+    }
+    // [2026.11.03 복잡사건 106] 2호 단서 — 취학·근무로 세대전원 출국: 완성 뒤 3년 안 출국, 출국 뒤 3년 안 입국, 입국 뒤 1년 이상 계속 거주.
+    //  출국일·입국일을 넣으면 날짜로 확인하고, 안 넣으면 예전대로 isOverseasException 표시만 믿음(residedOneYearOrMoreAfterReentry로 1년 거주).
+    if (p.isOverseasException && (p.departureDate || p.reentryDate)) {
+      const add3_ = function (d) { const x = new Date(d); x.setFullYear(x.getFullYear() + 3); return x.getTime(); };
+      if (p.departureDate && new Date(p.departureDate).getTime() > add3_(p.newHousingCompletionDate)) {
+        return { 적용여부: false, 안내: '국외 출국 예외는 신축주택 완성 뒤 3년 안에 취학·근무로 세대전원이 출국한 경우인데(시행령§156의2⑤2호 단서), 완성 뒤 3년이 지나 출국해 적용대상이 아닙니다.' };
+      }
+      if (p.departureDate && p.reentryDate && new Date(p.reentryDate).getTime() > add3_(p.departureDate)) {
+        return { 적용여부: false, 안내: '국외 출국 예외는 출국 뒤 3년 안에 출국 사유가 해소되어 입국해야 하는데(시행령§156의2⑤2호 단서), 3년이 지나 입국해 적용대상이 아닙니다.' };
+      }
+      if (p.residedOneYearOrMoreAfterReentry === false) {
+        return { 적용여부: false, 안내: '국외 출국 예외는 입국한 뒤 1년 이상 계속 거주해야 하는데(시행령§156의2⑤2호 단서), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+      }
+    }
+    // 2호 괄호 — 취학·근무상 형편·질병 요양 등 부득이한 사유로 일부 세대원이 못 온 것은 세대전원 이사로 봄.
+    //  allHouseholdMoved === false(일부만 이사)인데 partialMoveInUnavoidable(부득이)도 아니면 요건 못 갖춤. 칸이 비면 예전대로.
+    if (!p.isOverseasException && p.allHouseholdMoved === false && !p.partialMoveInUnavoidable) {
+      return { 적용여부: false, 안내: '신축주택 완성 뒤 3년 안에 세대전원이 이사해야 하는데(시행령§156의2⑤2호), 일부 세대원이 취학·근무상 형편·질병 요양 등 부득이한 사유 없이 이사하지 않아 적용대상이 아닙니다.' };
     }
     if (!p.isOverseasException && (!p.movedInWithinThreeYearsOfCompletion || !p.residedOneYearOrMoreAfterMoveIn)) {
       return { 적용여부: false, 안내: '신축주택이 완성된 후 3년 이내에 세대전원이 이사하여 1년 이상 거주해야 하는데(시행령§156의2⑤2호, 국외출국 등 부득이한 사유는 예외), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
@@ -10302,7 +10371,17 @@
   // 환매농지를 다시 양도할 때는 한국농어촌공사에 양도하기 전 원래의 취득가액·취득시기를 그대로 적용한다.
   window.calculateFarmlandRepurchaseRefundJS = function (p) {
     p = p || {};
-    if (!p.wasRepurchasedWithinLeaseTerm) {
+    // [2026.11.03 복잡사건 107] 날짜·상속인 칸을 주면 표시만 믿지 않고 가름 — 임차기간 끝(leaseEndDate)·환매일(repurchaseDate)로 「임차기간 내 환매」(§70의2①),
+    //  상속인 환매(repurchasedBy '상속인')는 피상속인이 임차기간 중 사망(deathDate, leaseStartDate~leaseEndDate)·상속인 농업인(heirIsFarmer)·직접 경작(heirFarmsDirectly)(§70의2⑤). 칸을 비우면 예전대로.
+    const ymd107_ = function (v) { const m = String(v || '').match(/(\d{4})\D?(\d{1,2})\D?(\d{1,2})/); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; };
+    const lEnd_ = ymd107_(p.leaseEndDate), rDate_ = ymd107_(p.repurchaseDate), lStart_ = ymd107_(p.leaseStartDate), dDate_ = ymd107_(p.deathDate);
+    if (lEnd_ && rDate_ && rDate_ > lEnd_) return { 환급가능여부: false, 안내: '환매일 ' + rDate_ + '이 임차기간 끝 ' + lEnd_ + '을 넘겨 조특법§70의2①의 환급대상이 아닙니다.' };
+    if (p.leaseFarmedDirectly === false) return { 환급가능여부: false, 안내: '공사에서 임차한 뒤 직접 경작·축산하지 않아(재임대·휴경 등) 조특법§70의2①의 환급대상이 아닙니다.' };
+    if (p.repurchasedBy === '상속인') {
+      if (dDate_ && ((lStart_ && dDate_ < lStart_) || (lEnd_ && dDate_ > lEnd_))) return { 환급가능여부: false, 안내: '피상속인이 임차기간 중에 사망하지 않아 조특법§70의2⑤의 상속인 환급대상이 아닙니다.' };
+      if (p.heirIsFarmer === false || p.heirFarmsDirectly === false) return { 환급가능여부: false, 안내: '환매한 상속인이 농업인이 아니거나 직접 경작·축산하지 않아 조특법§70의2⑤1호·2호를 못 채웁니다.' };
+    }
+    if (!p.wasRepurchasedWithinLeaseTerm && !(lEnd_ && rDate_)) {
       return { 환급가능여부: false, 안내: '한국농어촌공사와의 임차기간 내에 해당 농지등을 환매하지 않아 조특법§70의2①의 환급대상이 아닙니다.' };
     }
     const originalTaxPaid = Number(p.originalTaxPaid) || 0;
@@ -11765,7 +11844,8 @@
     // 하나의(평가기준일 현재) 발행주식총수로 나누면, 그 사이 증자·감자가 있었을 때 왜곡된다.
     // [2026.10.22 검토대상 증여-4] 시행령 §56① 후단 "그 가액이 음수인 경우에는 영으로 한다"(2011.7.25.판부터 "0원 이하 → 0원"), §55① "순자산가액이 0원 이하인 경우에는 0원"(법제처 원문)
     const weightedNetProfitPerShare = Math.max(0, ((Number(netProfit1YearAgo) || 0) / s1 * 3 + (Number(netProfit2YearsAgo) || 0) / s2 * 2 + (Number(netProfit3YearsAgo) || 0) / s3 * 1) / 6);
-    const profitValuePerShare = weightedNetProfitPerShare / 0.10;
+    // [2026.11.03 복잡사건 118] 일시·우발 사건으로 최근 3년 순손익이 왜곡되면 신용평가기관·회계법인·세무법인 둘 이상이 낸 1주당 추정이익 평균을 가중평균 대신 쓴다(상증령 §56② 1~4호 요건 — judge 「비상장평가」가 가림)
+    const profitValuePerShare = ((netAssetOnlyFlags && Number(netAssetOnlyFlags.estimatedProfitPerShare) > 0) ? Number(netAssetOnlyFlags.estimatedProfitPerShare) : weightedNetProfitPerShare) / 0.10;
     const netAssetValuePerShare = Math.max(0, Number(netAssetValue) || 0) / shares;
     const weights = isRealEstateHeavy ? [2, 3] : [3, 2];
     let valuePerShare = (profitValuePerShare * weights[0] + netAssetValuePerShare * weights[1]) / (weights[0] + weights[1]);
@@ -11795,7 +11875,8 @@
       isNewOrDormantOrClosedBusiness: p.isNewOrDormantOrClosedBusiness,
       isRealEstateAssetRatio80Plus: p.isRealEstateAssetRatio80Plus,
       isStockAssetRatio80Plus: p.isStockAssetRatio80Plus,
-      hasFixedDissolutionWithin3Years: p.hasFixedDissolutionWithin3Years
+      hasFixedDissolutionWithin3Years: p.hasFixedDissolutionWithin3Years,
+      estimatedProfitPerShare: p.estimatedProfitPerShare
     };
     const result = unlistedStockValuePerShare(p.netProfit1YearAgo, p.netProfit2YearsAgo, p.netProfit3YearsAgo, totalIssuedShares, p.netAssetValue, !!p.isRealEstateHeavy, netAssetOnlyFlags, p.totalIssuedShares1YearAgo, p.totalIssuedShares2YearsAgo, p.totalIssuedShares3YearsAgo, p.valuationDate);
     let totalValue = Math.round(result.평가액_1주당 * ownedShares);
@@ -12554,7 +12635,15 @@
     return Math.max(0, Math.min(1, (b - a) / (c - a)));
   }
   // 감면 목록(reds)에 편입 비율을 붙인다 — 감면이 모두 자경류면 자산의 감면 대상 비율로(정확), 수용 감면과 섞이면 자경류 감면율에 곱함(근사).
+  // [2026.11.03 복잡사건 109] 축사용지 감면(§69의2)은 감면세액 = 산출세액 × 축사용지 면적 ÷ 총 양도면적(시행령 §66의2⑨, 세액 산식) — 면적 칸 둘을 주면 그 감면의 감면율에 곱함(비우면 예전대로)
+  function livestockAreaRatio69_2_(t) {
+    if (!t || !t.isLivestockLandExempt) return null;
+    const a = Number(t.livestockLandArea), b = Number(t.totalTransferArea);
+    return a > 0 && b > 0 ? Math.min(1, a / b) : null;
+  }
   function applyZoneRatio69_(t, reds, baseRatio) {
+    const ar109_ = livestockAreaRatio69_2_(t);
+    if (ar109_ != null && reds) reds.forEach(function (x) { if (x.key === 'farm' && x.sec === '69_2') { x.rate = (Number(x.rate) || 0) * ar109_; x.label = (x.label || '') + ' — 축사용지 면적 비율 ' + (Math.round(ar109_ * 10000) / 100) + '%'; } });
     const zr = zoneIncorpRatio69_(t);
     if (zr == null || !reds || !reds.some(function (x) { return x.key === 'farm'; })) return { reducedRatio: baseRatio };
     if (reds.every(function (x) { return x.key === 'farm'; })) return { reducedRatio: (baseRatio != null ? Math.min(baseRatio, 1) : 1) * zr, zoneRatio: zr };
@@ -13007,6 +13096,7 @@
           p2.priorInheritanceTotalPropertyValue = n_(b.totalGrossEstateValue) || n_(r1.상속세과세가액_적용값) || estate;
           p2.priorInheritanceTaxableBase = n_(r1.상속세과세가액_적용값) || estate;
           p2.yearsSincePriorInheritance = Math.max(1, years);
+          if (date1) p2.priorInheritanceDate = date1; // [2026.11.03 복잡사건 114] 날짜로 「n년 이내」(§30②2호)
         }
         r2 = calc(p2);
         t2 = r2 && !r2.error ? n_(r2.납부세액) : 0;

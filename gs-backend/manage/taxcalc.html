@@ -3267,9 +3267,13 @@ function openTaxReliefJudgeModal_(idx){
           '<div class="taxcalc-result-note" style="flex-basis:100%;">대체주택(이 양도자산)의 양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 보유·거주기간 제한이 아예 없습니다(대체주택 자체의 취득일은 아래 별도 입력).</div>' +
           '<div class="taxcalc-field"><label>사업시행인가일</label><input type="date" id="rpApprovalDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>대체주택 취득일</label><input type="date" id="rpAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label for="rpHouseCount">대체주택 사기 전 주택 수(입주권 포함)</label><input type="number" id="rpHouseCount" min="0" max="20" step="1" style="width:5em;" title="사업 대상 주택만 있으면 1 — 2 이상이면 특례 대상 아님(시행령 §156의2⑤ 본문), 모르면 비움"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpResided1Y"><label for="rpResided1Y">대체주택에서 1년 이상 거주</label></div>' +
           '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="rpCompletionDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpOverseas"><label for="rpOverseas">국외출국 등 부득이한 사유로 전입·거주 요건 예외 해당</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpOverseas"><label for="rpOverseas">완성 뒤 3년 안 취학·근무로 세대전원 출국(단서)</label></div>' +
+          '<div class="taxcalc-field"><label for="rpDeparture">[출국했으면] 출국일</label><input type="date" id="rpDeparture" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label for="rpReentry">[출국했으면] 입국일</label><input type="date" id="rpReentry" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpPartialUnavoidable"><label for="rpPartialUnavoidable">일부 세대원이 취학·근무·질병 요양 등 부득이하게 이사 못 함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpMovedIn">[위 예외 아니면]<label for="rpMovedIn">신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpResided1YAfter">[위 예외 아니면]<label for="rpResided1YAfter">전입 후 1년 이상 계속 거주</label></div>' +
         '</div>' +
@@ -3588,6 +3592,10 @@ function openTaxReliefJudgeModal_(idx){
         isOverseasException: document.getElementById('rpOverseas').checked,
         movedInWithinThreeYearsOfCompletion: document.getElementById('rpMovedIn').checked,
         residedOneYearOrMoreAfterMoveIn: document.getElementById('rpResided1YAfter').checked,
+        houseCountBeforeReplacement: document.getElementById('rpHouseCount').value,
+        departureDate: document.getElementById('rpDeparture').value,
+        reentryDate: document.getElementById('rpReentry').value,
+        partialMoveInUnavoidable: document.getElementById('rpPartialUnavoidable').checked,
         replacementHouseTransferDate: ohsA_.transferDate
       });
     } else if (provision === 'ih'){
@@ -6433,6 +6441,8 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isLivestockLandExempt" id="livestock-' + idx + '"><label for="livestock-' + idx + '">8년 이상 자경 축사용지 폐업 감면(§69의2)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isLivestockLandExempt" style="display:none;"><input type="checkbox" data-field="isLivestockRestartedWithin5Years" id="livestockRestart-' + idx + '"><label for="livestockRestart-' + idx + '">[§69의2만] 양도 후 5년 이내 축산업 재개(§69의2②, 감면세액 추징)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isLivestockRestartedWithin5Years" style="display:none;"><input type="checkbox" data-field="isLivestockRestartException" id="livestockRestartExc-' + idx + '"><label for="livestockRestartExc-' + idx + '">[재개 체크시만] 상속 등 부득이한 사유(추징 예외)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="isLivestockLandExempt" style="display:none;"><label for="livestockArea-' + idx + '">축사용지 면적(㎡)</label><input type="number" data-field="livestockLandArea" id="livestockArea-' + idx + '"><span class="taxcalc-field-help">한 번에 판 땅 중 축사와 딸린 토지 — 총 양도면적과 함께 넣으면 감면세액에 면적 비율을 곱함(시행령 §66의2⑨)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isLivestockLandExempt" style="display:none;"><label for="livestockTotalArea-' + idx + '">총 양도면적(㎡)</label><input type="number" data-field="totalTransferArea" id="livestockTotalArea-' + idx + '"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFisheryLandExempt" id="fishery-' + idx + '"><label for="fishery-' + idx + '">8년 이상 자영 어업용토지 감면(§69의3)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandSubstitutionExempt" id="farmsub-' + idx + '"><label for="farmsub-' + idx + '">농지대토 감면(§70)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isFarmlandSubstitutionExempt" style="display:none;"><input type="checkbox" data-field="isFarmlandSubstitutionRequirementFailed" id="farmsubFail-' + idx + '"><label for="farmsubFail-' + idx + '">[§70만] 사후에 요건 미충족(§70④, 감면세액+이자상당액 추징)</label></div>' +
@@ -6559,7 +6569,7 @@ function renderPropertyCardHtml_(idx, opts){
             '<option value="sect99_2">§99의2(2013.4.1~2013.12.31 취득, 6억원 또는 85㎡ 이하)</option>' +
             '<option value="sect99_3">§99의3(2001.5.23~2003.6.30 취득)</option>' +
           '</select></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="newHouseReductionProvision" style="display:none;"><input type="checkbox" data-field="nhIsHighPriceHouseExcluded" id="nhHigh-' + idx + '"><label for="nhHigh-' + idx + '">고가주택(소득세법§89①3호 비과세 제외 대상)에 해당함(체크시 이 감면 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="newHouseReductionProvision" style="display:none;"><input type="checkbox" data-field="nhIsHighPriceHouseExcluded" id="nhHigh-' + idx + '"><label for="nhHigh-' + idx + '">[§99·§99의3만] 고가주택(소득세법§89①3호 비과세 제외 대상)에 해당함(체크시 이 감면 적용배제)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="newHouseReductionProvision" style="display:none;"><input type="checkbox" data-field="nhIsPriceOrAreaQualified" id="nhQual-' + idx + '"><label for="nhQual-' + idx + '">[§99의2만] 취득가액 6억원 이하 또는 전용면적 85㎡ 이하 요건 충족</label></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>취득일로부터 5년 시점 평가액</label><input type="number" data-field="nhFiveYearMarkValue" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 근사치 계산용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="nhAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 정확한 계산용</span></div>' +
@@ -7074,6 +7084,10 @@ function renderTransferPane(){
         '<div class="taxcalc-result-note" style="margin:6px 0;">한국농어촌공사에 양도한 농지등을 임차기간 내 환매했을 때</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="frWithinLeaseTerm"><label for="frWithinLeaseTerm">한국농어촌공사와의 임차기간 내에 환매함</label></div>' +
+          '<div class="taxcalc-field"><label for="frLeaseEnd">임차기간 끝</label><input type="date" id="frLeaseEnd"><span class="taxcalc-field-help">환매일과 함께 넣으면 체크 대신 날짜로 가름</span></div>' +
+          '<div class="taxcalc-field"><label for="frRepurchaseDate">환매일</label><input type="date" id="frRepurchaseDate"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="frByHeir"><label for="frByHeir">농업인이 임차 중 사망해 상속인이 환매(§70의2⑤)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="frHeirOk"><label for="frHeirOk">그 상속인이 농업인이고 직접 경작</label></div>' +
           '<div class="taxcalc-field"><label>한국농어촌공사 양도 당시 납부한 양도소득세</label><input type="number" id="frOriginalTax" placeholder="원"><span class="taxcalc-field-help">서식 ⑧ — 가산세·가산금이 섞였으면 아래 칸에</span></div>' +
           '<div class="taxcalc-field"><label>그중 가산세·가산금</label><input type="number" id="frOriginalPenalty" placeholder="원"><span class="taxcalc-field-help">환급에서 뺌(작성방법 4)</span></div>' +
           '<div class="taxcalc-field"><label>양도한 면적</label><input type="number" step="0.01" id="frOriginalArea" placeholder="㎡"><span class="taxcalc-field-help">서식 ⑤ — 일부만 환매했을 때</span></div>' +
@@ -7557,6 +7571,7 @@ function collectTransferInput(vals){
     isEightYearFarmland: !!vals.isEightYearFarmland,
     zoneIncorporated: !!vals.zoneIncorporated, zoneStdAcq: vals.zoneIncorporated ? (numVal(vals.zoneStdAcq) || 0) : 0, zoneStdIncorp: vals.zoneIncorporated ? (numVal(vals.zoneStdIncorp) || 0) : 0, zoneStdTransfer: vals.zoneIncorporated ? (numVal(vals.zoneStdTransfer) || 0) : 0, // [2026.10.22 양도-12]
     isLivestockLandExempt: !!vals.isLivestockLandExempt,
+    livestockLandArea: vals.isLivestockLandExempt ? (numVal(vals.livestockLandArea) || 0) : 0, totalTransferArea: vals.isLivestockLandExempt ? (numVal(vals.totalTransferArea) || 0) : 0, // [2026.11.03 복잡사건 109] 시행령 §66의2⑨
     isLivestockRestartedWithin5Years: !!vals.isLivestockRestartedWithin5Years,
     isLivestockRestartException: !!vals.isLivestockRestartException,
     isFisheryLandExempt: !!vals.isFisheryLandExempt,
@@ -11017,7 +11032,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="ihArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
         '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="ihStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
         '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="ihStockAppraisalCount" placeholder="1"></div>' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분 − 보험금·구상액(재산별 합계, 별지 6호서식 ③)</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>동거주택상속공제 자격요건(§23의2①) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 동거주택가액을 입력했다면, 실제와 달라 하나라도 체크 해제하면 이 공제가 전액 배제됩니다.</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -12138,7 +12153,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="giftArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
         '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="giftStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
         '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="giftStockAppraisalCount" placeholder="1"></div>' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분 − 보험금·구상액(재산별 합계, 별지 6호서식 ③)</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>비과세·과세가액 불산입(§46·§48·§52·§52의2)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -16039,7 +16054,9 @@ function handleTaxCalcClick_(e){
     const input = {
       wasRepurchasedWithinLeaseTerm: document.getElementById('frWithinLeaseTerm').checked,
       originalTaxPaid: numVal(document.getElementById('frOriginalTax').value) || 0,
-      originalPenaltyAmount: numVal((document.getElementById('frOriginalPenalty') || {}).value) || 0, originalArea: numVal((document.getElementById('frOriginalArea') || {}).value) || 0, repurchasedArea: numVal((document.getElementById('frRepurchasedArea') || {}).value) || 0 // [2026.10.20 N21]
+      originalPenaltyAmount: numVal((document.getElementById('frOriginalPenalty') || {}).value) || 0, originalArea: numVal((document.getElementById('frOriginalArea') || {}).value) || 0, repurchasedArea: numVal((document.getElementById('frRepurchasedArea') || {}).value) || 0, // [2026.10.20 N21]
+      leaseEndDate: (document.getElementById('frLeaseEnd') || {}).value || '', repurchaseDate: (document.getElementById('frRepurchaseDate') || {}).value || '', // [2026.11.03 복잡사건 107]
+      repurchasedBy: (document.getElementById('frByHeir') || {}).checked ? '상속인' : '', heirIsFarmer: (document.getElementById('frByHeir') || {}).checked ? !!(document.getElementById('frHeirOk') || {}).checked : undefined, heirFarmsDirectly: (document.getElementById('frByHeir') || {}).checked ? !!(document.getElementById('frHeirOk') || {}).checked : undefined
     };
     renderFarmlandRepurchaseResult(calculateFarmlandRepurchaseRefundJS(input));
   } else if (action === 'run-stock-transfer'){
