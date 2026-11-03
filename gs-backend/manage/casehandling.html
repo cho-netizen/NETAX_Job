@@ -916,7 +916,7 @@
       } else {
         payload.처리대상 = document.getElementById('chEditTarget').value.trim();
       }
-      callGas('work_update_case', payload).then(function(res){
+      nxCaseSave_(payload).then(function(res){
         // [2026.10.23 ㅅ16차 — 점검표 195] 충돌(그 사이 GAS 처리·세액계산 저장이 사건을 고침)이면 최신으로 다시 불러오되 적으신 값은 chTyped_로 되살려 [저장]만 다시 누르시면 되게 — 예전엔 입력이 통째로 날아가 0으로 보였다(가상증여8 세 번)
         if (res.conflict){ showToast('그 사이 사건이 다른 곳(GAS 처리·세액계산)에서 바뀌어 최신 내용으로 다시 불러왔습니다 — 적으신 값은 그대로 두었으니 [저장]을 다시 눌러 주세요.', 'warning'); loadChCases_(); return; }
         if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
@@ -1021,7 +1021,7 @@
   // 같은 객체 참조이므로, 성공 시에는 그 자리에서 필드만 갱신하고 로그 목록 영역만 다시
   // 그린다. 충돌(다른 곳에서 먼저 저장됨)일 때만 전체 새로고침이 안전하므로 그 경로는 유지.
   function chSaveLog_(c, newLog, onSuccess){
-    callGas('work_update_case', { id: c.id, 작업일지: newLog, 기대수정일: c.수정일 }).then(function(res){
+    nxCaseSave_({ id: c.id, 작업일지: newLog, 기대수정일: c.수정일 }).then(function(res){
       if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadChCases_(); return; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
       if (res.case) Object.assign(c, res.case); else c.작업일지 = newLog;
@@ -1130,7 +1130,7 @@
         var v = String((document.getElementById('chBillInput') || {}).value || '').replace(/[^\d]/g, '');
         var ov = Object.assign({}, c.사건개요 || {}); if (v) ov.청구액 = v; else delete ov.청구액;
         b.disabled = true;
-        callGas('work_update_case', { id: c.id, 사건개요: ov, 기대수정일: c.수정일 }).then(function(res){
+        nxCaseSave_({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 }).then(function(res){
           if (res && res.conflict){ showToast(res.message || '다른 곳에서 먼저 고쳤습니다. 사건을 다시 불러 주세요.', 'warning'); b.disabled = false; return; }
           if (!res || res.error || res.success === false){ showToast((res && (res.error || res.message)) || '저장하지 못했습니다.', 'error'); b.disabled = false; return; }
           c.사건개요 = ov; if (res.case && res.case.수정일) c.수정일 = res.case.수정일;
@@ -1143,8 +1143,32 @@
   function chRenderPayments_(c){
     var list = document.getElementById('chPaymentList');
     if (!list) return;
-    callGas('client_get_consult_logs', { 사건ID: c.id }).then(function(res){
-      var payments = res.logs || [];
+    callGas('client_get_consult_logs', { 사건ID: c.id }).then(function(res){ chPayDraw_(c, res.logs || []); }).catch(function(){ list.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>'; });
+    chWirePaymentForm_(c);
+  }
+  // [2026.11.03 전수조사 다시] 수금 줄 — 화면 먼저. 마지막으로 그린 목록에 한 줄을 넣거나 빼 바로 다시 그리고, 서버엔 보낼 함으로 뒤에서.
+  //  서버가 받으면 조용히 다시 받아 맞추고, 실패하면 되돌린다(화면 아래 붉은 띠).
+  var chPayShown_ = { caseId: '', payments: [] };
+  function chPaySave_(c, action, payload, row, prev){
+    var id = payload.id;
+    function apply_(ch){
+      if (chPayShown_.caseId !== c.id) return;
+      var pays = chPayShown_.payments.slice(), i = -1;
+      pays.forEach(function(p, k){ if (String(p.id) === String(id)) i = k; });
+      if (!ch) { if (i >= 0) pays.splice(i, 1); } else if (i >= 0) pays[i] = Object.assign({}, pays[i], ch); else pays.unshift(ch);
+      chPayDraw_(c, pays);
+    }
+    nxSaveLater_(action, payload, { key: 'log_' + id, label: (c.사건명 || '사건') + (row ? ' 수금 추가' : ' 수금 삭제'),
+      patch: [row ? { list: 'logs', op: 'upsert', id: id, row: row } : { list: 'logs', op: 'delete', id: id }],
+      onDone: function(){ if (chPayShown_.caseId === c.id) chRenderPayments_(c); },
+      onFail: function(){ apply_(prev || null); }, redo: function(){ apply_(row || null); } });
+    apply_(row);
+  }
+  function chPayDraw_(c, payments){
+    var list = document.getElementById('chPaymentList');
+    if (!list) return;
+    chPayShown_ = { caseId: c.id, payments: payments };
+    {
       var countEl = document.getElementById('chPaymentCount');
       if (countEl) countEl.textContent = payments.length ? (payments.length + '건 · 합계 ' + payments.reduce(function(s, p){ return s + (Number(p.금액) || 0); }, 0).toLocaleString('ko-KR') + '원') : '아직 수금 내역이 없습니다.';
       chRenderBill_(c, payments.reduce(function(s, p){ return s + (Number(p.금액) || 0); }, 0));
@@ -1160,16 +1184,17 @@
         row.querySelector('.log-del').addEventListener('click', function(){
           nxConfirm_('이 수금 내역을 삭제할까요?').then(function(ok){
             if (!ok) return;
-            callGas('client_delete_consult_log', { id: pay.id }).then(function(delRes){
-              if (delRes.error || delRes.success === false){ showToast(delRes.error || delRes.message || '삭제 실패', 'error'); return; }
-              chRenderPayments_(c);
-            }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+            chPaySave_(c, 'client_delete_consult_log', { id: pay.id }, null, pay);
           });
         });
         list.appendChild(row);
       });
-    }).catch(function(){ list.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>'; });
-
+    }
+  }
+  // 수금 추가 칸은 처음 한 번만 연결되므로, 누를 때 쓰는 사건은 늘 지금 연 사건으로(예전엔 처음 연 사건에 붙어 다른 사건으로 바꿔도 그 사건에 들어갈 수 있었음)
+  var chPayFormCase_ = null;
+  function chWirePaymentForm_(c0){
+    chPayFormCase_ = c0;
     var newPaymentFormWrap = document.getElementById('chNewPaymentFormWrap');
     var paymentToggleBtn = document.getElementById('chPaymentToggle');
     // chRenderLog_의 chLogToggle과 같은 이유(재호출 시 핸들러 중복 방지) — 최초 1회만 연결.
@@ -1193,18 +1218,17 @@
         document.getElementById('chAddPayment').addEventListener('click', function(){
           var amount = document.getElementById('chNewPayAmount').value;
           if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
-          callGas('client_add_consult_log', {
-            고객ID: c.고객ID, 고객명: c.고객명, 사건ID: c.id,
-            날짜: document.getElementById('chNewPayDate').value,
+          var c = chPayFormCase_ || c0;
+          var payNew = {
+            id: nxNewId_(), 고객ID: c.고객ID, 고객명: c.고객명, 사건ID: c.id,
+            날짜: document.getElementById('chNewPayDate').value || new Date().toISOString().slice(0, 10),
             금액: amount,
             수취증빙: document.getElementById('chNewPayReceipt').value
-          }).then(function(res){
-            if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
-            showToast('수금 내역을 추가했습니다.', 'success');
-            newPaymentFormWrap.style.display = 'none';
-            newPaymentFormWrap.innerHTML = '';
-            chRenderPayments_(c);
-          }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
+          };
+          chPaySave_(c, 'client_add_consult_log', payNew, Object.assign({}, payNew, { 금액: Number(amount) || 0 }), null);
+          showToast('수금 내역을 추가했습니다.', 'success');
+          newPaymentFormWrap.style.display = 'none';
+          newPaymentFormWrap.innerHTML = '';
         });
       } else {
         newPaymentFormWrap.style.display = 'none';
@@ -1297,7 +1321,7 @@
   function chSaveEvidence_(c, newList){
     // [2026.09 버그수정] chAddRequestedItem_ 등 호출부가 저장 완료 시점에 맞춰 자신의 화면
     // 일부(my포털 체크리스트 등)를 추가로 갱신할 수 있도록 프라미스를 그대로 반환한다.
-    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일, _log: window.nxEvidenceLog_(c.증빙목록, newList) }).then(function(res){
+    return nxCaseSave_({ id: c.id, 증빙목록: newList, 기대수정일: c.수정일, _log: window.nxEvidenceLog_(c.증빙목록, newList) }).then(function(res){
       if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadChCases_(); return res; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return res; }
       if (res.case) Object.assign(c, res.case); else c.증빙목록 = newList;
@@ -1451,7 +1475,8 @@
             if (res.warning) showToast(res.warning);
             chRenderProgress_(c);
           },
-          onFail: function(){ cb.checked = !cb.checked; (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = cb.checked ? '완료' : '대기'; else walk(n.children); }); })(c.하위업무); chRenderProgress_(c); } });
+          onFail: function(){ cb.checked = !cb.checked; (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = cb.checked ? '완료' : '대기'; else walk(n.children); }); })(c.하위업무); chRenderProgress_(c); },
+          redo: function(){ cb.checked = st === '완료'; (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = st; else walk(n.children); }); })(c.하위업무); chRenderProgress_(c); } });
       });
     });
   }
@@ -1491,7 +1516,7 @@
         var stamps = Array.prototype.filter.call(body.querySelectorAll('input[type=checkbox]'), function(x){ return x.checked; })
           .map(function(x){ return items[Number(x.getAttribute('data-i'))].stamp; });
         if (!stamps.length){ showToast('옮길 녹음을 고르세요.'); return; }
-        btn.disabled = true;
+        btn.disabled = true; btn.textContent = '옮기는 중…'; // 파일을 실제로 옮겨야 사건 화면에서 보이므로 기다리되 진행 중임을 보인다
         // 폴더 없는 상담 사건이면 업무유형을 먼저 물어 폴더를 만든다(탭연결 1번과 같은 도우미)
         nxEnsureCaseFolder_(c, '상담 녹음을').then(function(cc){
           if (!cc || !cc.폴더ID){ btn.disabled = false; return; }
@@ -1518,9 +1543,8 @@
     // 다시 그릴 수 있도록 프라미스를 반환한다.
     var saved = chAddEvidence_(c, { source: 'requested', label: label, note: note || '', status: '미확보', 요청일: nxLocalDateStr_() });
     if (c.my_report_id){
-      saved = saved.then(function(res){
-        return callGas('admin_add_checklist_item', { report_id: c.my_report_id, item: label }).catch(function(){}).then(function(){ return res; });
-      });
+      // [2026.11.03 전수조사 다시] 고객창구 점검표 넣기는 기다리지 않는다(보낼 함 — 실패는 화면 아래 붉은 띠)
+      nxSaveLater_('admin_add_checklist_item', { report_id: c.my_report_id, item: label }, { label: '고객창구 점검표에 넣기 — ' + label });
     }
     return saved;
   }
@@ -1559,7 +1583,7 @@
             c.폴더ID = folderRes.folderId;
             return callGas('admin_create_case', { name: c.고객명, case_name: c.사건명, checklist: requestedLabels, permission: permission, folder_id: folderRes.folderId }).then(function(res){
               if (res.success === false){ showToast(res.message || '연결 실패', 'error'); btn.disabled = false; return; }
-              return callGas('work_update_case', { id: c.id, my_report_id: res.report_id }).then(function(updRes){
+              return nxCaseSave_({ id: c.id, my_report_id: res.report_id }).then(function(updRes){
                 showToast('고객창구을 연결했습니다 — 접속코드 ' + res.report_id, 'success');
                 // [2026.09 버그수정] 연결 성공 후 loadChCases_()로 카드 전체를 다시 그리면 그 사이
                 // 입력 중이던 다른 폼이 날아갔다 — c에 새 report_id만 반영하고 my포털 카드만 다시

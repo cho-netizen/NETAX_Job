@@ -192,7 +192,7 @@
   // 사건의 화면(DOM)이 통째로 다시 그려져 있으므로 건드리지 않는다.
   function lsSaveAttachments_(newList, targetCase){
     targetCase = targetCase || lsCurrentCase;
-    return callGas('work_update_case', { id: targetCase.id, 법령예규판례: newList, 기대수정일: targetCase.수정일 }).then(function(res){
+    return nxCaseSave_({ id: targetCase.id, 법령예규판례: newList, 기대수정일: targetCase.수정일 }).then(function(res){
       if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); if (targetCase === lsCurrentCase && typeof loadLsCases_ === 'function') loadLsCases_(targetCase.id); return false; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return false; }
       targetCase.법령예규판례 = newList;
@@ -554,13 +554,23 @@
       b.addEventListener('click', function(){
         var st = b.dataset.lsirev;
         if (st === '메모' && !memo.querySelector('textarea').value.trim()){ showToast('메모를 적어 주세요.', 'warning'); return; }
-        b.disabled = true;
-        callGas('reftable_review_set', { key: key, state: st, ver: lsiVer_(obj), memo: memo.querySelector('textarea').value.trim() }).then(function(r){
-          if (!r || r.error) throw new Error((r && r.error) || '저장 실패');
-          lsiReviews_ = r.reviews || {}; lsiReviewFailed_ = false;
-          showToast(st === '지움' ? '기록을 지웠습니다.' : '저장했습니다.', 'success');
-          redraw();
-        }).catch(function(e){ b.disabled = false; showToast('저장하지 못했습니다: ' + nxErrText_(e), 'warning'); });
+        // [2026.11.03 전수조사 다시] 확인 기록은 화면에 바로 그리고 서버엔 보낼 함으로 뒤에서 — 받으면 서버 기록으로 맞추고, 실패하면 되돌린다
+        var mtxt = memo.querySelector('textarea').value.trim();
+        var prevAll = Object.assign({}, lsiReviews_ || {});
+        lsiReviews_ = Object.assign({}, lsiReviews_ || {});
+        if (st === '지움') delete lsiReviews_[key];
+        else {
+          var cur = Object.assign({}, lsiReviews_[key] || {});
+          if (st !== '메모'){ cur.상태 = st; cur.판 = lsiVer_(obj); }
+          cur.메모 = mtxt; cur.시각 = new Date().toLocaleString('ko-KR');
+          lsiReviews_[key] = cur;
+        }
+        showToast(st === '지움' ? '기록을 지웠습니다.' : '저장했습니다.', 'success');
+        redraw();
+        var nextAll = lsiReviews_;
+        nxSaveLater_('reftable_review_set', { key: key, state: st, ver: lsiVer_(obj), memo: mtxt }, { key: 'lsirev_' + key, label: '조견표·서식 확인 기록',
+          onDone: function(r){ if (r && r.reviews){ lsiReviews_ = r.reviews; lsiReviewFailed_ = false; } },
+          onFail: function(){ lsiReviews_ = prevAll; redraw(); }, redo: function(){ lsiReviews_ = nextAll; redraw(); } });
       });
     });
   }
@@ -1283,12 +1293,12 @@
         nxConfirm_(enact ? '「' + g.name + '」을(를) 확정된 개정세법으로 옮길까요?\n드라이브 업무관리자\\법령\\세제개편 → 개정세법 폴더로 폴더째 옮깁니다(되돌릴 수 있음).'
           : '「' + g.name + '」을(를) 다시 확정 전 개편안으로 옮길까요?', enact ? '개정세법으로 재분류' : '개편안으로 되돌리기').then(function(ok){
           if (!ok) return;
-          b.disabled = true;
-          callGas('moveItem', { id: id, type: 'folder', destPath: enact ? LSI_ENACTED_PATH_ : LSI_REFORM_PATH_ }).then(function(r){
-            if (!r || r.error) throw new Error((r && r.error) || '옮기지 못했습니다');
-            showToast(enact ? '개정세법으로 옮겼습니다.' : '개편안으로 되돌렸습니다.', 'success');
-            lsiReform_ = null; lsiRenderReform_();
-          }).catch(function(e){ b.disabled = false; showToast('옮기지 못했습니다: ' + nxErrText_(e), 'warning'); });
+          // [2026.11.03 전수조사 다시] 줄은 바로 빼서 보이고 서버엔 보낼 함으로 뒤에서 — 옮겨지면 목록을 다시 받고, 실패하면 줄이 다시 보인다
+          var line = b.closest('[data-lsirf]'); if (line) line.style.display = 'none';
+          showToast(enact ? '개정세법으로 옮깁니다.' : '개편안으로 되돌립니다.', 'success');
+          nxSaveLater_('moveItem', { id: id, type: 'folder', destPath: enact ? LSI_ENACTED_PATH_ : LSI_REFORM_PATH_ }, { key: 'drive_' + id, label: enact ? '개정세법으로 옮기기 — ' + g.name : '개편안으로 되돌리기 — ' + g.name,
+            onDone: function(){ lsiReform_ = null; if (lsiActiveTab_ === 'reform') lsiRenderReform_(); },
+            onFail: function(){ if (line) line.style.display = ''; }, redo: function(){ if (line) line.style.display = 'none'; } });
         });
       });
     });

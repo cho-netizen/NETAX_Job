@@ -459,17 +459,28 @@
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
       // [2026.10.30 예약 결과 관리] 예약에서 시작했으면 서버가 사건을 만들면서 바로 잇는다(예전엔 저장 뒤 화면이 따로 불러, 그 사이 창을 닫으면 끊겼다)
       if (prefill.bookingRowIndex) { payload.bookingRowIndex = prefill.bookingRowIndex; if (prefill.bookingName) payload.bookingName = prefill.bookingName; } // [2026.10.31 정리] 예약 이름도 보내 서버가 그 줄이 맞는지 본다(예약관리 연결과 같은 장치)
-      callGas('work_create_case', payload).then(function(res){
-        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveDone(false); return; }
-        saveDone(true);
-        showToast('사건을 등록했습니다.', 'success');
+      // [2026.11.03 전수조사 다시] 세무사님 "답답해서 사용하지 못하는 일이 생기면 안된다" — 예전엔 사건 줄·폴더·의뢰서 원문·고객창구를 다 만들 때까지(30초쯤) 기다렸다.
+      //  이제 화면이 번호를 먼저 만들어 목록에 바로 넣고 그 사건을 연다. 서버는 줄만 쓰고 답하며(같은 번호는 한 번만), 폴더·고객창구는 서버 뒤에서(BgQueue.js case_folder).
+      payload.id = nxNewId_();
+      payload.폴더뒤로 = true;
+      var semokLbl_ = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[payload.세목]) || payload.세목 || '';
+      var tmpRow_ = { 고객명: 고객명, 납세자: payload.납세자, 세목: payload.세목, 업무유형: upType, 의뢰일: payload.의뢰일, 기준일: payload.기준일, 개요: payload.개요, 법정일: payload.법정일 || '',
+        사건명: 고객명 + (payload.납세자 && payload.납세자 !== 고객명 ? '(' + payload.납세자 + ')' : '') + ' ' + semokLbl_ + ' ' + upType, 상태: '진행', 폴더ID: '',
+        하위업무: [], 작업일지: [], 법령예규판례: [], 증빙목록: [], 세액계산결과: [], 사건개요: {}, 생성일: new Date().toISOString(), _만드는중: true };
+      saveDone(true);
+      workShowingNewForm = false;
+      workSelectedCaseId = payload.id;
+      nxSaveLater_('work_create_case', payload, { key: 'case_' + payload.id, label: tmpRow_.사건명 + ' 만들기', patch: [{ list: 'cases', op: 'upsert', id: payload.id, row: tmpRow_ }],
+        onDone: function(res){ wcAfterCreate_(res); },
+        onFail: function(why){ showToast('사건을 만들지 못했습니다 — ' + why + ' (화면 아래 「다시 보내기」)', 'error'); } });
+      renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(payload.id) || Object.assign({ id: payload.id }, tmpRow_));
+      showToast('사건을 등록했습니다 — 폴더·고객창구는 뒤에서 만듭니다.', 'success');
+      function wcAfterCreate_(res){
+        if (res.case && String(workSelectedCaseId) === String(res.case.id) && !workShowingNewForm && typeof wcIsTyping_ === 'function' && !wcIsTyping_()) { renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(res.case.id) || res.case); }
         // [2026.09 버그수정] 동명이인인데 전화번호가 달라 새 고객으로 등록된 경우, 서버가
         // 알려주는 주의문구를 그냥 버리지 않고 보여준다 — 실제로 같은 사람이면 고객관리에서
         // 직접 병합/정리해야 한다는 걸 바로 알 수 있게.
         if (res.warning) showToast(res.warning, 'warning');
-        workShowingNewForm = false;
-        workSelectedCaseId = res.case.id;
-        loadWorkCases();
         if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
         if (prefill.bookingRowIndex && res.bookingLinked){
           if (typeof loadBookingList === 'function') loadBookingList();
@@ -494,7 +505,7 @@
           // [2026.10.30] 예약관리를 거치지 않고 만든 사건 — 같은 전화·이름의 확정 예약이 있으면 이을지 여쭌다(서버가 후보를 돌려줄 때만 창이 뜬다)
           bookingAskLinkAfterCreate_(res);
         }
-      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveDone(false); });
+      }
     });
   }
 
@@ -671,22 +682,20 @@
         overviewPatch[taxpayerField] = 납세자;
         payload.사건개요 = Object.assign({}, c.사건개요 || {}, overviewPatch);
       }
-      callGas('work_update_case', payload).then(function(res){
-        if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadWorkCases(); return; }
-        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
-        if (!silent) showToast('저장했습니다.', 'success');
-        if (res.warning) showToast(res.warning, 'warning');
-        // [2026.10.09 버그수정] 상태를 바꾸면 자동 저장되고, 응답(수 초) 후 상세 화면 전체를 다시 그려 그 사이 다른 칸에
-        // 입력하던 내용(진행메모 등)이 지워졌다(처리개요와 같은 문제). 이미 입력 중이면 데이터만 최신으로 맞추고 목록만 갱신한다.
-        var wcActive_ = document.activeElement;
-        var wcTyping_ = wcActive_ && /^(INPUT|TEXTAREA)$/.test(wcActive_.tagName) && workCaseDetail.contains(wcActive_);
-        if (wcTyping_ && res.case){
-          Object.assign(c, res.case);
-          var wcCached_ = workCases.filter(function(x){ return x.id === c.id; })[0];
-          if (wcCached_ && wcCached_ !== c) Object.assign(wcCached_, res.case);
-          renderWorkCaseList();
-        } else loadWorkCases();
-      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
+      // [2026.11.03 전수조사 다시] 화면 먼저 — 고친 칸을 목록·상세에 바로 넣고 서버엔 뒤에서(같은 사건끼리 차례로). 서버가 다시 만든 값(사건명·법정일)은 답이 오면 맞춘다.
+      //  예전엔 답(수 초)을 기다린 뒤 목록 전체를 다시 받았다(또 수 초). 충돌(다른 기기가 먼저 고침)이면 서버 줄로 바꿔 보이고 화면 아래 띠에 남는다.
+      nxCaseSave_(payload, { base: c, label: (c.사건명 || '사건') + ' 저장',
+        onDone: function(res){
+          if (!res || !res.case) return;
+          var cur = nxFindCase_(res.case.id); if (cur && cur !== c) Object.assign(c, cur); else Object.assign(c, res.case);
+          if (String(workSelectedCaseId) !== String(c.id)) { renderWorkCaseList(); return; }
+          // [2026.10.09] 입력 중이면 상세는 다시 그리지 않는다(쓰던 글이 지워지지 않게) — 목록만
+          if (wcIsTyping_()) renderWorkCaseList(); else { renderWorkCaseList(); renderWorkCaseDetail(c); }
+        },
+        onFail: function(why){ if (/먼저 저장|충돌/.test(String(why))) { var cur = nxFindCase_(c.id); if (cur && String(workSelectedCaseId) === String(c.id) && !wcIsTyping_()) { renderWorkCaseList(); renderWorkCaseDetail(cur); } } } });
+      Object.keys(payload).forEach(function(k){ if (k !== '기대수정일' && k.charAt(0) !== '_') c[k] = payload[k]; });
+      if (!silent) showToast('저장했습니다.', 'success');
+      renderWorkCaseList();
     }
     document.getElementById('wcSaveCase').addEventListener('click', function(){ saveCaseNow_(false); });
     // [2026.09 버그수정] 증빙이 하나도 안 갖춰지고 보고서도 전혀 발행되지 않은 채로 "완료"로
@@ -721,12 +730,12 @@
     document.getElementById('wcDeleteCase').addEventListener('click', function(){
       nxConfirm_('"' + c.사건명 + '" 사건을 삭제할까요? 하위업무와 캘린더 일정도 함께 지워집니다.').then(function(ok){
         if (!ok) return;
-        callGas('work_delete_case', { id: c.id }).then(function(res){
-          if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
-          workSelectedCaseId = null;
-          showToast('삭제했습니다.', 'success');
-          loadWorkCases();
-        }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+        // [2026.11.03 전수조사 다시] 화면 먼저 — 목록에서 바로 빼고 서버엔 뒤에서(달력·보고서 목록 정리는 서버 뒤에서). 실패하면 화면 아래 띠에 남고 [지우기]하면 목록을 다시 받는다
+        nxSaveLater_('work_delete_case', { id: c.id }, { key: 'case_' + c.id, label: (c.사건명 || '사건') + ' 지우기', patch: [{ list: 'cases', op: 'delete', id: c.id }],
+          onFail: function(why){ showToast('삭제하지 못했습니다 — ' + why, 'error'); } });
+        workSelectedCaseId = null;
+        showToast('삭제했습니다.', 'success');
+        renderWorkCaseList(); workCaseDetail.innerHTML = '<div class="explorer-status">왼쪽에서 사건을 선택하거나 "+ 새 사건"을 눌러주세요.</div>';
       });
     });
   }
@@ -735,6 +744,8 @@
   // [2026.09] 완료 처리 직전에 "요청자료가 다 안 모였는데도/보고서를 발행하지 않았는데도
   // 완료로 넘어가는" 실수를 막기 위한 가벼운 사전 점검. 저장을 막지는 않고(예외적으로 증빙·
   // 보고서 없이도 완료해야 하는 사건이 있을 수 있으므로) 확인 메시지만 띄운다.
+  // 상세 화면에서 글을 쓰는 중인가(쓰는 중엔 상세를 다시 그리지 않는다 — 쓰던 글이 지워지지 않게)
+  function wcIsTyping_(){ var a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && workCaseDetail && workCaseDetail.contains(a)); }
   function checkCompletionReadiness_(c){
     var warnings = [];
     var unresolved = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested' && e.status !== '확보됨'; });
@@ -749,14 +760,15 @@
       if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 개요 수금 카드나 수금 화면에서 이 사건으로 기록하세요.');
     }).catch(function(){});
     if (!c.폴더ID) return payCheck.then(function(){ return warnings; });
-    return payCheck.then(function(){ return callGas('get_case_subfolders', { caseId: c.id }); }).then(function(sub){
-      if (sub.error || !sub.reportFolderId) return warnings;
+    // [2026.11.03 전수조사 다시] 수금 확인과 보고서 확인을 차례로 하던 것(서버 세 번 줄지어 10초 넘게)을 함께 보낸다
+    var repCheck = callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
+      if (!sub || sub.error || !sub.reportFolderId) return;
       return callGas('listFolder', { folderId: sub.reportFolderId }).then(function(res){
         var hasHtml = !res.error && (res.files || []).some(function(f){ return /\.html?$/i.test(f.name); });
         if (!hasHtml) warnings.push('고객에게 발행된 보고서(.html)가 아직 없습니다.');
-        return warnings;
       });
-    }).catch(function(){ return warnings; });
+    }).catch(function(){});
+    return Promise.all([payCheck, repCheck]).then(function(){ return warnings; });
   }
 
   // [2026.09.16 신규] "시스템 개통 전에 이미 완료된 사건을 지금 완료 처리하니 완료일이
@@ -809,13 +821,13 @@
       return wcPromptCompletionDate_();
     }).then(function(dateVal){
       if (!dateVal) return null;
-      return callGas('work_update_case', { id: c.id, 상태: '완료', 완료일: dateVal, 기대수정일: c.수정일 }).then(function(res){
-        if (res && res.conflict){ showToast(res.message || '그 사이 다른 곳에서 이 사건이 고쳐졌습니다. 새로 불러온 뒤 다시 눌러 주세요.', 'warning'); return null; }
-        if (!res || res.error || res.success === false){ showToast((res && (res.error || res.message)) || '완료 처리에 실패했습니다.', 'error'); return null; }
-        if (res.warning) showToast(res.warning, 'warning');
+      var prevSt = c.상태;
+      // [2026.11.03] 화면 먼저 — 보낼 함으로 뒤에서 저장(실패하면 화면 아래 붉은 띠에서 다시 보내기)
+      return nxCaseSave_({ id: c.id, 상태: '완료', 완료일: dateVal, 기대수정일: c.수정일 }, { base: c, label: (c.사건명 || '사건') + ' 완료 처리',
+        onFail: function(){ if (typeof workCases !== 'undefined'){ workCases.forEach(function(x){ if (x.id === c.id) x.상태 = prevSt; }); } },
+        redo: function(){ if (typeof workCases !== 'undefined'){ workCases.forEach(function(x){ if (x.id === c.id) x.상태 = '완료'; }); } } }).then(function(res){
         showToast('완료로 처리했습니다(' + dateVal + ').', 'success');
-        var updated = res.case || Object.assign({}, c, { 상태: '완료', 법정일: dateVal });
-        // 작업관리 목록이 이미 열려 있었다면 그 자료도 맞춘다(다음에 작업관리로 가도 옛 상태로 안 보이게)
+        var updated = res.case || Object.assign({}, c, { 상태: '완료', 완료일: dateVal });
         if (typeof workCases !== 'undefined'){ workCases.forEach(function(x){ if (x.id === c.id) Object.assign(x, updated); }); }
         return updated;
       });
@@ -917,13 +929,38 @@
   // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — applySubtaskUpdate_로 바꾸면서(카드 전체
   // 재구성 대신 트리만 갱신) "새 하위업무" 입력폼이 예전엔 전체 재구성 때 자동으로 닫히던
   // 것이 이제 안 닫히고 방금 넣은 값 그대로 계속 열려 있었다 — 성공 콜백으로 직접 닫아준다.
+  // [2026.11.03] 세무사님 "답답해서 사용하지 못하는 일이 생기면 안된다" — 추가·지우기도 화면에 먼저(번호는 화면이 만들어 두 번 가도 한 번만), 서버는 보낼 함으로 뒤에서.
+  function wsFindNode_(caseObj, nodeId){
+    var hit = null;
+    (function walk(nodes, parent){ (nodes || []).forEach(function(n, i){ if (hit) return; if (n.id === nodeId) hit = { list: nodes, idx: i, node: n }; else walk(n.children, n); }); })(caseObj && caseObj.하위업무);
+    return hit;
+  }
+  function wsSubDone_(caseId){
+    return function(res){
+      if (!res || !res.case) return;
+      var tree = document.getElementById('wcTree');
+      if (tree && tree.contains(document.activeElement)){ var ex = workCases.filter(function(c){ return c.id === caseId; })[0]; if (ex) ex.수정일 = res.case.수정일; if (res.warning) showToast(res.warning, 'warning'); return; }
+      applySubtaskUpdate_(res.case, res.warning);
+    };
+  }
   function addWorkSubtask(caseId, parentId, title, dueDate, onSuccess){
     if (!title){ showToast('항목 이름을 입력해주세요.', 'warning'); return; }
-    callGas('work_add_subtask', { id: caseId, parentId: parentId, title: title, dueDate: dueDate }).then(function(res){
-      if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
-      applySubtaskUpdate_(res.case, res.warning);
-      if (typeof onSuccess === 'function') onSuccess();
-    }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
+    var existing = workCases.filter(function(c){ return c.id === caseId; })[0];
+    var nodeId = nxNewId_();
+    var newNode = { id: nodeId, title: title, status: '대기', assignee: '', dueDate: dueDate || '', children: [] };
+    if (existing){
+      if (!Array.isArray(existing.하위업무)) existing.하위업무 = [];
+      var parent = parentId ? wsFindNode_(existing, parentId) : null;
+      if (parent){ if (!Array.isArray(parent.node.children)) parent.node.children = []; parent.node.children.push(newNode); }
+      else existing.하위업무.push(newNode);
+      applySubtaskUpdate_(existing);
+    }
+    if (typeof onSuccess === 'function') onSuccess();
+    nxSaveLater_('work_add_subtask', { id: caseId, parentId: parentId, title: title, dueDate: dueDate, nodeId: nodeId }, { key: 'sub_' + caseId,
+      label: '하위업무 ' + String(title).slice(0, 20) + ' 추가',
+      onDone: wsSubDone_(caseId),
+      onFail: function(){ if (!existing) return; var h = wsFindNode_(existing, nodeId); if (h){ h.list.splice(h.idx, 1); applySubtaskUpdate_(existing); } },
+      redo: function(){ if (!existing || wsFindNode_(existing, nodeId)) return; var pr = parentId ? wsFindNode_(existing, parentId) : null; if (pr){ if (!Array.isArray(pr.node.children)) pr.node.children = []; pr.node.children.push(newNode); } else existing.하위업무.push(newNode); applySubtaskUpdate_(existing); } });
   }
 
   // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 상태·이름·기한 고침은 화면에 먼저 적고 서버엔 뒤에서(같은 사건은 차례로).
@@ -942,14 +979,19 @@
         if (tree && tree.contains(document.activeElement)){ var ex = workCases.filter(function(c){ return c.id === caseId; })[0]; if (ex) ex.수정일 = res.case.수정일; if (res.warning) showToast(res.warning, 'warning'); return; }
         applySubtaskUpdate_(res.case, res.warning);
       },
-      onFail: function(){ if (node && before){ Object.keys(fields).forEach(function(k){ node[k] = before[k]; }); applySubtaskUpdate_(existing); } } });
+      onFail: function(){ if (node && before){ Object.keys(fields).forEach(function(k){ node[k] = before[k]; }); applySubtaskUpdate_(existing); } },
+      redo: function(){ if (node){ Object.assign(node, fields); applySubtaskUpdate_(existing); } } });
   }
 
   function deleteWorkSubtask(caseId, nodeId){
-    callGas('work_delete_subtask', { id: caseId, nodeId: nodeId }).then(function(res){
-      if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
-      applySubtaskUpdate_(res.case, res.warning);
-    }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+    var existing = workCases.filter(function(c){ return c.id === caseId; })[0];
+    var h = wsFindNode_(existing, nodeId), removed = null, at = -1, list = null;
+    if (h){ list = h.list; at = h.idx; removed = list.splice(at, 1)[0]; applySubtaskUpdate_(existing); }
+    nxSaveLater_('work_delete_subtask', { id: caseId, nodeId: nodeId }, { key: 'sub_' + caseId,
+      label: '하위업무 ' + String((removed && removed.title) || '').slice(0, 20) + ' 지우기',
+      onDone: wsSubDone_(caseId),
+      onFail: function(){ if (removed && list){ list.splice(Math.min(at, list.length), 0, removed); applySubtaskUpdate_(existing); } },
+      redo: function(){ if (removed && list){ var k = list.indexOf(removed); if (k >= 0){ list.splice(k, 1); applySubtaskUpdate_(existing); } } } });
   }
 
   document.getElementById('btnWorkCaseNew').addEventListener('click', renderNewCaseForm);

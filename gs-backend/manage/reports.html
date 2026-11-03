@@ -155,7 +155,7 @@
       var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
       if (!c) return;
       var log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: nxLocalDateStr_(), text: text, dueDate: '' }]);
-      return callGas('work_update_case', { id: c.id, 작업일지: log, 기대수정일: c.수정일 });
+      return nxCaseSave_({ id: c.id, 작업일지: log, 기대수정일: c.수정일 });
     }).catch(function(){});
   }
 
@@ -200,19 +200,19 @@
           } else if (act === 'reset'){
             nxConfirm_('이 보고서의 비밀번호를 초기화할까요? 고객이 다음 접속 시 새로 설정합니다.').then(function(ok){
               if (!ok) return;
-              callGas('clear_password', { report_id: id }).then(function(res){
-                if (res.error || res.success === false){ toast(res.message || res.error || '초기화 실패'); return; }
-                toast('비밀번호를 초기화했습니다.');
-              });
+              // [2026.11.03 전수조사 다시] 서버 답을 기다리지 않는다(보낼 함 — 실패하면 화면 아래 붉은 띠에 다시 보내기)
+              toast('비밀번호를 초기화했습니다.');
+              nxSaveLater_('clear_password', { report_id: id }, { key: 'rpt_' + id, label: '보고서 비밀번호 초기화' });
             });
           } else if (act === 'del'){
             nxConfirm_('이 보고서 등록을 삭제할까요? 열람번호가 즉시 무효화됩니다.').then(function(ok){
               if (!ok) return;
-              callGas('delete_report', { report_id: id }).then(function(res){
-                if (res.error || res.success === false){ toast(res.message || res.error || '삭제 실패'); return; }
-                toast('삭제했습니다.');
-                loadReportList();
-              });
+              // [2026.11.03 전수조사 다시] 줄은 바로 빼고 서버엔 보낼 함으로 뒤에서 — 받으면 목록을 다시 받고, 실패하면 줄이 다시 보인다
+              var tr = btn.closest('tr'); if (tr) tr.style.display = 'none';
+              toast('삭제했습니다.');
+              nxSaveLater_('delete_report', { report_id: id }, { key: 'rpt_' + id, label: '보고서 등록 삭제',
+                onDone: function(){ loadReportList(); },
+                onFail: function(){ if (tr) tr.style.display = ''; }, redo: function(){ if (tr) tr.style.display = 'none'; } });
             });
           }
         });

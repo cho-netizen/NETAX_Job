@@ -647,19 +647,14 @@
         e.stopPropagation();
         nxConfirm_('"' + entry.file.name + '" 메모를 삭제할까요?(휴지통으로 이동)').then(function(ok){
         if (!ok) return;
-        callGas('deleteItem', { id: entry.file.id, type: 'file' }).then(function(res){
-          if (res && res.error) throw new Error(res.error);
-          toast('삭제했습니다.');
-          // [2026.09 버그수정] 지금 편집 중인 메모를 검색창에서 삭제(휴지통 이동)해도
-          // editingGeneralMemoFile이 그대로 남아있어서, 이어서 "저장"을 누르면 휴지통에 있는
-          // 파일에 조용히 다시 쓰였다("저장했습니다" 토스트까지 뜨지만 목록엔 안 보임 —
-          // 사실상 내용 유실). 지금 편집 중인 파일이 삭제된 것이면 새 메모 상태로 되돌린다.
-          if (editingGeneralMemoFile && editingGeneralMemoFile.id === entry.file.id) {
-            editingGeneralMemoFile = null;
-          }
-          return refreshGeneralMemoList();
-        }).then(function(){ memoSearch.dispatchEvent(new Event('input')); })
-          .catch(function(err){ toast('삭제 실패: ' + nxErrText_(err)); });
+        // [2026.11.03 전수조사 다시] 줄은 바로 빼고 휴지통 보내기는 보낼 함으로 뒤에서 — 받으면 목록을 다시 받고, 실패하면 줄이 다시 보인다
+        row.style.display = 'none';
+        if (editingGeneralMemoFile && editingGeneralMemoFile.id === entry.file.id) editingGeneralMemoFile = null;
+        toast('삭제했습니다.');
+        nxSaveLater_('deleteItem', { id: entry.file.id, type: 'file' }, { key: 'drive_' + entry.file.id, label: '메모 삭제 — ' + entry.file.name,
+          onDone: function(){ refreshGeneralMemoList().then(function(){ memoSearch.dispatchEvent(new Event('input')); }).catch(function(){}); },
+          onFail: function(){ row.style.display = ''; }, redo: function(){ row.style.display = 'none'; } });
+        // [2026.09 버그수정] 지금 편집 중인 메모를 지우면 편집 상태도 비운다(휴지통 파일에 조용히 다시 쓰이던 것) — 위에서 바로 비움
         });
       });
       row.appendChild(delBtn);
@@ -1651,21 +1646,13 @@
     };
     var btn = document.getElementById('memoOvNewCaseConfirm');
     btn.disabled = true;
-    callGas('work_create_case', createPayload).then(function(res){
-      if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return null; }
-      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
-      var overviewPayload = { id: res.case.id, 사건개요: memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data) };
-      if (data._baseDate) overviewPayload.기준일 = data._baseDate;
-      return callGas('work_update_case', overviewPayload).then(function(res2){
-        if (res2.success === false){ toast('사건은 등록됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
-        toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 사건개요를 반영했습니다.');
-        memoOvApplyStepEl.style.display = 'none';
-        if (typeof loadWorkCases === 'function') loadWorkCases();
-        memoOvDeleteAppliedDraft_();
-      });
-    }).catch(function(err){
-      toast('등록 중 오류: ' + nxErrText_(err));
-    }).finally(function(){ btn.disabled = false; });
+    // [2026.11.03 전수조사 다시] 화면 먼저 — 사건개요는 등록과 한 번에 보내고(서버 work_createCase가 받아 씀), 폴더·고객창구는 서버 뒤에서
+    createPayload.사건개요 = memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data);
+    var tmpCase_ = nxCaseCreateLater_(createPayload, { onDone: function(res){ if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); } }); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
+    toast('"' + tmpCase_.사건명 + '" 사건을 등록하고 사건개요를 반영했습니다 — 폴더는 뒤에서 만듭니다.');
+    memoOvApplyStepEl.style.display = 'none';
+    memoOvDeleteAppliedDraft_();
+    btn.disabled = false;
   });
 
   document.getElementById('memoOvApplyConfirm').addEventListener('click', function(){
@@ -1688,7 +1675,7 @@
     if (taxpayerFieldApply_ && data[taxpayerFieldApply_]) payload.납세자 = data[taxpayerFieldApply_];
     var btn = document.getElementById('memoOvApplyConfirm');
     btn.disabled = true;
-    callGas('work_update_case', payload).then(function(res){
+    nxCaseSave_(payload).then(function(res){
       if (res.conflict){ toast(res.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 다시 시도해주세요.'); return; }
       if (res.success === false){ toast(res.message || '적용 실패'); return; }
       toast('"' + (c.사건명 || '') + '" 사건에 반영했습니다.');
@@ -2342,17 +2329,12 @@
     var tpl0 = memoReqSelectedTemplate_;
     if (tpl0){ createPayload.의뢰서 = { fileName: tpl0.name + '_' + 고객명 + (tpl0.ext || '.md'), templateFileId: tpl0.id }; if (tpl0.isText) createPayload.의뢰서.editedContent = memoReqTextareaEl.value; }
     if (overview) createPayload.사건개요 = overview;
-    callGas('work_create_case', createPayload).then(function(res){
-      if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return; }
-      if (res.warning) toast(res.warning);
-      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
-      toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
-      memoReqApplyStepEl.style.display = 'none';
-      memoReqShowRegisteredBar_(res.case);
-      if (typeof loadWorkCases === 'function') loadWorkCases();
-    }).catch(function(err){
-      toast('등록 중 오류: ' + nxErrText_(err));
-    }).finally(function(){ btn.disabled = false; stage(btnText0); });
+    // [2026.11.03 전수조사 다시] 화면 먼저 — 사건은 목록에 바로, 폴더·의뢰서 저장·고객창구는 서버 뒤에서(예전엔 30초쯤 기다림)
+    var tmpCase_ = nxCaseCreateLater_(createPayload, { onDone: function(res){ if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); } }); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
+    toast('"' + tmpCase_.사건명 + '" 사건을 등록했습니다' + (overview ? '(사건개요도 같이 채움)' : '') + ' — 폴더·의뢰서는 뒤에서 저장합니다.');
+    memoReqApplyStepEl.style.display = 'none';
+    memoReqShowRegisteredBar_(tmpCase_);
+    btn.disabled = false; stage(btnText0);
   });
 
   document.getElementById('memoReqApplyConfirm').addEventListener('click', function(){
@@ -2374,7 +2356,7 @@
       var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[c.세목] : null;
       var payload = { id: c.id, 사건개요: Object.assign({}, c.사건개요 || {}, overview), 기대수정일: c.수정일 };
       if (taxpayerField_ && overview[taxpayerField_]) payload.납세자 = overview[taxpayerField_];
-      return callGas('work_update_case', payload).then(function(res2){
+      return nxCaseSave_(payload).then(function(res2){
         if (res2.conflict){ toast(res2.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 파일은 저장됐지만 사건개요는 반영 못 했습니다.'); return; }
         if (res2.success === false){ toast('파일은 저장됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
         toast('"' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장하고 사건개요도 채웠습니다.');

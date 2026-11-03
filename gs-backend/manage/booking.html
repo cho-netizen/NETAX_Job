@@ -99,9 +99,9 @@
     bookingRender_();
   });
 
-  function loadBookingList(){
+  function loadBookingList(quiet){
     var box = document.getElementById('bookingList');
-    box.innerHTML = '<div class="spinner">불러오는 중…</div>';
+    if (!quiet || !(window._bookingAll || []).length) box.innerHTML = '<div class="spinner">불러오는 중…</div>'; // [2026.11.03] 고친 뒤 다시 받을 땐 목록을 비우지 않고 조용히
     callGas('list_bookings', {}).then(function(res){
       window._bookingAll = (res.bookings || []).map(function(b, idx){
         b._rowIndex = idx + 2; // 시트 1행=헤더, 배열 0번째 = 2행
@@ -224,7 +224,7 @@
   }
   function bookingCloseModal_(){ var o = document.getElementById('bkModal'); if (o) o.remove(); }
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.getElementById('bkModal') && !document.getElementById('nxDialogOverlay')) bookingCloseModal_(); });
-  function bookingAfterChange_(){ initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; } }
+  function bookingAfterChange_(){ bookingLoaded = true; loadBookingList(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; } }
 
   // ---- 결과 적기 ----
   var BOOKING_RESULT_OPTS_ = [
@@ -280,7 +280,8 @@
         toast(b.name + '님 결과를 적었습니다' + (payload.sms ? ' — 고객 문자는 1분 안에 보냅니다.' : '.'));
         nxSaveLater_('booking_set_result', payload, { label: b.name + '님 예약 결과(' + o.v + ')',
           onDone: function(){ bookingQuietReload_(); },
-          onFail: function(){ b.result = keep.result; b.status = keep.status; bookingRender_(); } });
+          onFail: function(){ b.result = keep.result; b.status = keep.status; bookingRender_(); },
+          redo: function(){ if (o.v === '지우기') b.result = ''; else { b.result = o.v; if (o.v === '고객취소' || o.v === '사무소취소') b.status = '취소'; } bookingRender_(); } });
         return;
       }
       var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
@@ -313,22 +314,32 @@
       var row = ov.querySelector('[data-bk-pair-row="' + key + '"]');
       var btns = row ? row.querySelectorAll('button') : [];
       btns.forEach(function(x){ x.disabled = true; });
+      // [2026.11.03 전수조사 다시] 누르는 즉시 결과를 보여 주고(이었습니다·후보에서 뺌) 서버엔 뒤에서 — 실패하면 되돌려 알린다
+      var hid = [];
+      if (lk){
+        toast(p.bookingName + '님 예약을 「' + (p.사건명 || '사건') + '」에 이었습니다.');
+        // 같은 예약의 다른 후보 줄은 더 볼 필요가 없다
+        Object.keys(window._bkPairs).forEach(function(k){ var q = window._bkPairs[k]; if (q && q.rowIndex === p.rowIndex){ var r2 = ov.querySelector('[data-bk-pair-row="' + k + '"]'); if (r2 && r2 !== row){ r2.style.display = 'none'; hid.push(r2); } } });
+        var html0 = row ? row.innerHTML : '';
+        if (row) row.innerHTML = '<span style="color:#0D1B3D;">✅ 이었습니다 — ' + esc(p.bookingName) + '님 예약 ↔ 「' + esc(p.사건명 || '') + '」</span>';
+        if (onLinked) onLinked(p);
+      } else {
+        if (row){ row.style.display = 'none'; hid.push(row); }
+        toast('후보에서 뺐습니다.');
+      }
+      var undo_ = function(why){
+        hid.forEach(function(x){ x.style.display = ''; });
+        if (lk && row && html0) row.innerHTML = html0;
+        btns.forEach(function(x){ x.disabled = false; });
+        nxAlert_((lk ? '사건 연결' : '후보 빼기') + '이 서버에 들어가지 않았습니다: ' + why + '\n다시 눌러 주세요.');
+        bookingAfterChange_();
+      };
       var act = lk ? callGas('link_booking_case', { rowIndex: p.rowIndex, caseId: p.caseId, expectName: p.bookingName })
                    : callGas('booking_dismiss_candidate', { rowIndex: p.rowIndex, caseId: p.caseId, expectName: p.bookingName });
       act.then(function(res){
-        if (!res || res.success === false){ btns.forEach(function(x){ x.disabled = false; }); toast((res && res.message) || '처리 실패'); return; }
-        if (lk){
-          toast(p.bookingName + '님 예약을 「' + (p.사건명 || '사건') + '」에 이었습니다.');
-          // 같은 예약의 다른 후보 줄은 더 볼 필요가 없다
-          Object.keys(window._bkPairs).forEach(function(k){ var q = window._bkPairs[k]; if (q && q.rowIndex === p.rowIndex){ var r2 = ov.querySelector('[data-bk-pair-row="' + k + '"]'); if (r2 && r2 !== row) r2.remove(); } });
-          if (row) row.innerHTML = '<span style="color:#0D1B3D;">✅ 이었습니다 — ' + esc(p.bookingName) + '님 예약 ↔ 「' + esc(p.사건명 || '') + '」</span>';
-          if (onLinked) onLinked(p);
-        } else {
-          if (row) row.remove();
-          toast('후보에서 뺐습니다.');
-        }
+        if (!res || res.success === false){ undo_((res && res.message) || '처리 실패'); return; }
         bookingAfterChange_();
-      }).catch(function(err){ btns.forEach(function(x){ x.disabled = false; }); toast('오류: ' + nxErrText_(err)); });
+      }).catch(function(err){ undo_(nxErrText_(err)); });
     });
   }
 
@@ -416,12 +427,16 @@
     if (!b) return;
     nxConfirm_(b.name + '님의 신청을 승인할까요?\n\n승인하면 고객에게 예약 확정 문자가 바로 발송되고 캘린더에 일정이 등록됩니다.').then(function(ok){
       if (!ok) return;
+      // [2026.11.03 전수조사 다시] 줄은 바로 「확정」으로 바꿔 보이고 서버 답을 기다리지 않는다. 문자가 두 번 가면 안 되므로
+      //  보낼 함(다시 보내기) 대신 한 번만 보내고, 실패하면 줄을 「신청」으로 되돌려 알린다.
+      var prevSt = b.status; b.status = '확정'; bookingRender_();
+      toast('승인했습니다 — 문자·캘린더는 뒤에서 처리합니다.');
       callGas('approve', { rowIndex: rowIndex, eventId: b.eventId, phone: b.phone, reservedDate: b.reservedDate, reservedTime: b.reservedTime })
         .then(function(res){
-          if (res && res.success === false){ toast(res.message || '승인 실패'); return; }
-          toast('승인되었습니다.'); initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
+          if (res && res.success === false){ b.status = prevSt; bookingRender_(); nxAlert_('승인이 서버에 들어가지 않았습니다: ' + (res.message || '') + '\n줄을 「신청」으로 되돌렸습니다.'); return; }
+          bookingAfterChange_();
         })
-        .catch(function(e){ toast('오류: ' + nxErrText_(e)); });
+        .catch(function(e){ b.status = prevSt; bookingRender_(); nxAlert_('승인 중 오류: ' + nxErrText_(e) + '\n줄을 「신청」으로 되돌렸습니다 — 다시 눌러 주세요.'); });
     });
   }
 
@@ -430,12 +445,14 @@
     if (!b) return;
     nxConfirm_(b.name + '님의 신청을 거절할까요?\n\n거절하면 고객에게 거절 안내 문자가 바로 발송됩니다.').then(function(ok){
       if (!ok) return;
+      var prevSt = b.status; b.status = '거절'; bookingRender_();
+      toast('거절했습니다 — 안내 문자는 뒤에서 보냅니다.');
       callGas('reject', { rowIndex: rowIndex, phone: b.phone })
         .then(function(res){
-          if (res && res.success === false){ toast(res.message || '거절 실패'); return; }
-          toast('거절되었습니다.'); initBooking(true);
+          if (res && res.success === false){ b.status = prevSt; bookingRender_(); nxAlert_('거절이 서버에 들어가지 않았습니다: ' + (res.message || '') + '\n줄을 되돌렸습니다.'); return; }
+          bookingAfterChange_();
         })
-        .catch(function(e){ toast('오류: ' + nxErrText_(e)); });
+        .catch(function(e){ b.status = prevSt; bookingRender_(); nxAlert_('거절 중 오류: ' + nxErrText_(e) + '\n줄을 되돌렸습니다 — 다시 눌러 주세요.'); });
     });
   }
 

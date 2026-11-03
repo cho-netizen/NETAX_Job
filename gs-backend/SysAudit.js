@@ -822,7 +822,8 @@ function sysAuditPrefixRoutes_(code) {
   return out;
 }
 function sysAuditScreenActions_(html) {
-  var o = {}, m, re = /callGas(?:Raw_)?\(\s*['"]([A-Za-z0-9_]+)['"]/g;
+  // [2026.11.03] 화면 보낼 함(nxSaveLater_ — 화면 먼저, 서버는 뒤에서)으로 부르는 동작도 센다(전엔 work_update_subtask 등을 「빠진 기능」으로 잘못 셌다)
+  var o = {}, m, re = /(?:callGas(?:Raw_)?|nxSaveLater_)\(\s*['"]([A-Za-z0-9_]+)['"]/g;
   while ((m = re.exec(String(html)))) o[m[1]] = 1;
   return Object.keys(o).sort();
 }

@@ -137,13 +137,16 @@
         var listKey = CALLGAS_SHARED_READS_[action];
         hit = { at: Date.now(), promise: callGasRaw_(action, payload).then(function(res){
           if (!res || !Array.isArray(res[listKey])) throw new Error('목록을 받지 못했습니다(서버 응답 이상) — 잠시 후 다시 시도하세요.');
-          return res;
+          return nxOverlayPending_(action, res);
         }) };
         callGasShared_[action] = hit;
         hit.promise.catch(function(){ if (callGasShared_[action] === hit) delete callGasShared_[action]; });
       }
       return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
     }
+    // 보낼 함 저장(_ob)은 목록 기억을 지우지 않는다 — 화면이 먼저 넣은 값(patch)과 서버가 돌려준 줄로 기억을 고쳐 다음 화면이 목록을 다시 받느라 멈추지 않게
+    if (payload && payload._ob) return callGasRaw_(action, payload);
+    if (NX_LIST_OF_ACTION_[action]) return callGasRaw_(action, payload).then(function(res){ return nxOverlayPending_(action, res, payload); });
     if (callGasTouchesLists_(action)){
       // [2026.10.09 버그수정] 저장 "시작"에만 기억을 지우면, 저장이 도는 사이 다른 화면이 사건 목록을 읽어 저장 전 목록이
       // 다시 1분간 기억됐다(시험 사건 8개를 만들었는데 목록엔 6개만 보임 — 실사용 점검에서 발견). 끝날 때도 한 번 더 지운다.
@@ -162,22 +165,33 @@
   function nxOutboxWrite_(a){ try { localStorage.setItem(NX_OUTBOX_KEY_, JSON.stringify(a.slice(-50))); } catch (e) {} }
   function nxOutboxPatch_(id, patch){ var a = nxOutboxRead_(); a.forEach(function(j){ if (j.id === id) Object.assign(j, patch); }); nxOutboxWrite_(a); }
   function nxOutboxDrop_(id){ nxOutboxWrite_(nxOutboxRead_().filter(function(j){ return j.id !== id; })); }
-  // opt: { label: '띠에 보일 이름', onDone(res), onFail(err문구) } — 돌려주는 프라미스는 서버 답(실패해도 거절하지 않고 null)
+  // opt: { label: '띠에 보일 이름', onDone(res), onFail(err문구), redo() } — redo: 실패로 화면을 되돌린 뒤 「다시 보내기」를 누르면 보내기 전에 화면 바꿈을 다시 올린다
+  //  ([2026.11.03 화면 사본 시험] 예전엔 다시 보내 서버에선 지워졌는데 화면엔 되살린 줄이 그대로 남았다). 돌려주는 프라미스는 서버 답(실패해도 거절하지 않고 null)
   function nxSaveLater_(action, payload, opt){
     opt = opt || {};
     var id = 'ob' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    var job = { id: id, action: action, payload: Object.assign({}, payload || {}, { _ob: id }), label: String(opt.label || '저장').slice(0, 60), at: Date.now(), state: 'sending', tries: 0 };
+    var job = { id: id, action: action, payload: Object.assign({}, payload || {}, { _ob: id }), label: String(opt.label || '저장').slice(0, 60), at: Date.now(), state: 'sending', tries: 0, patch: opt.patch || null };
     var a = nxOutboxRead_(); a.push(job); nxOutboxWrite_(a);
     nxOutboxHooks_[id] = opt;
+    if (opt.patch) nxListsApply_(opt.patch); // 화면 목록 사본(모든 화면)에 바로 넣는다 — 서버 답을 기다리지 않음
     // 같은 열쇠(opt.key — 예: 같은 사건 하위업무)는 앞 저장이 끝난 뒤 차례로 보낸다(빨리 두 번 누르면 순서가 뒤바뀌지 않게)
     if (opt.key){ var prev = nxOutboxChains_[opt.key] || Promise.resolve(); var p = prev.then(function(){ return nxOutboxSend_(job); }); nxOutboxChains_[opt.key] = p; nxOutboxPatch_(id, { state: 'sending' }); nxOutboxBar_(); return p; }
     return nxOutboxSend_(job);
   }
   function nxOutboxSend_(job){
-    nxOutboxPatch_(job.id, { state: 'sending', tries: (job.tries || 0) + 1, sentAt: Date.now() }); nxOutboxBar_();
+    // [2026.11.03 전수조사 다시] 같은 사건 저장이 줄지어 갈 때, 앞 저장이 서버에서 수정일을 바꾸면 뒤 저장의 기대수정일(화면이 그 전에 본 값)이
+    //  안 맞아 「다른 화면이 먼저 저장」으로 막혔다. 이 기기가 마지막으로 받은 그 사건 수정일로 바꿔 보낸다(다른 기기가 고친 것은 여전히 잡힌다).
+    if (job.payload && job.payload.기대수정일 && job.payload.id && NX_CASE_STAMP_[job.payload.id]) job.payload.기대수정일 = NX_CASE_STAMP_[job.payload.id];
     var t0 = Date.now(), hook = nxOutboxHooks_[job.id] || {};
+    if (job.state === 'failed'){ // 다시 보내기 — 실패 때 되돌린 화면 바꿈을 다시 올린다
+      if (job.patch) nxListsApply_(job.patch);
+      try { if (hook.redo) hook.redo(); } catch (e) {}
+    }
+    nxOutboxPatch_(job.id, { state: 'sending', tries: (job.tries || 0) + 1, sentAt: Date.now(), payload: job.payload }); nxOutboxBar_();
     return callGas(job.action, job.payload).then(function(res){
       nxSaveTimeNote_(job.action, Date.now() - t0, job.label);
+      if (res && res.case && res.case.id && res.case.수정일) nxCaseStampNote_(res.case);
+      if (res && res.conflict && res.case) nxListsApply_([{ list: 'cases', op: 'upsert', id: res.case.id, row: res.case }]);
       if (!res || res.success === false || res.error){
         var why = (res && (res.message || res.error)) || '서버 답이 없습니다';
         nxOutboxPatch_(job.id, { state: 'failed', err: String(why).slice(0, 200) }); nxOutboxBar_();
@@ -186,6 +200,12 @@
         return null;
       }
       nxOutboxDrop_(job.id); delete nxOutboxHooks_[job.id]; nxOutboxBar_();
+      // 서버가 돌려준 진짜 줄(사건·고객·상담)로 모든 화면 목록 사본을 맞춘다(화면이 먼저 넣은 값 → 서버 값)
+      var real = [];
+      if (res.case && res.case.id) real.push({ list: 'cases', op: 'upsert', id: res.case.id, row: res.case });
+      if (res.client && res.client.id) real.push({ list: 'clients', op: 'upsert', id: res.client.id, row: res.client });
+      if (res.log && res.log.id) real.push({ list: 'logs', op: 'upsert', id: res.log.id, row: res.log });
+      if (real.length) nxListsApply_(real);
       try { if (hook.onDone) hook.onDone(res); } catch (e) {}
       return res;
     }, function(err){
@@ -195,6 +215,102 @@
       try { if (hook.onFail) hook.onFail(why); } catch (e) {}
       return null;
     });
+  }
+  // [2026.11.03 전수조사 다시] 화면 먼저 반영 — 목록 사본 고치기.
+  //  patch = [{ list: 'cases'|'clients'|'logs', op: 'upsert'|'delete', id, row }]
+  //  · 공유 목록 기억(사건·고객)과 화면마다 들고 있는 사건 목록 사본(작업관리·처리개요·장부·문서작성·세액계산·대시보드·넥스 창 등)을 한 번에 고친다.
+  //  · 서버에서 목록을 새로 받아도(1분 기억이 끝나 다시 받거나 새로 열어도) 보낼 함에 남은 저장은 그 위에 다시 입힌다 — 내가 넣은 값이 사라졌다 돌아오지 않게.
+  var NX_LIST_OF_ACTION_ = { work_get_cases: 'cases', client_get_clients: 'clients', client_get_consult_logs: 'logs' };
+  var NX_CASE_STAMP_ = {};
+  function nxCaseStampNote_(c){
+    if (!c || !c.id || !c.수정일) return;
+    var prev = NX_CASE_STAMP_[c.id];
+    if (!prev || new Date(c.수정일).getTime() >= new Date(prev).getTime()) NX_CASE_STAMP_[c.id] = c.수정일;
+  }
+  function nxPatchArr_(arr, p){
+    if (!Array.isArray(arr) || !p || p.id == null) return arr;
+    var i = -1; for (var k = 0; k < arr.length; k++){ if (arr[k] && String(arr[k].id) === String(p.id)){ i = k; break; } }
+    if (p.op === 'delete'){ if (i >= 0) arr.splice(i, 1); return arr; }
+    if (i >= 0) arr[i] = Object.assign({}, arr[i], p.row || {});
+    else if (p.op === 'upsert' && p.row && !p.onlyIfFound) arr.unshift(Object.assign({ id: p.id }, p.row));
+    return arr;
+  }
+  // 화면 전역에 흩어진 사건 목록 사본 이름(있는 것만) — 새 화면이 사건 목록을 따로 들고 있으면 여기 한 줄 더한다
+  var NX_CASE_ARRAYS_ = ['workCases', 'chCases', 'lsCases', 'docsAllCasesCache_', 'nxAiCaseCache', 'rwCases_', 'tcCases', 'lgCases_', 'memoReqAllCases_', 'repCases_', 'colAllCasesCache_'];
+  var NX_CASE_ONE_ = ['lsCurrentCase', 'tcCurrentCase'];
+  function nxListsApply_(patches){
+    (patches || []).forEach(function(p){
+      if (!p || !p.list) return;
+      if (p.list === 'cases' && p.row && p.row.수정일) nxCaseStampNote_(Object.assign({ id: p.id }, p.row));
+      // 공유 목록 기억 — 답(프라미스)의 목록을 제자리에서 고친다(다음에 꺼내 가는 화면은 고친 사본을 받음)
+      Object.keys(callGasShared_).forEach(function(act){
+        if (NX_LIST_OF_ACTION_[act] !== p.list) return;
+        var hit = callGasShared_[act];
+        hit.promise = hit.promise.then(function(res){ if (res && Array.isArray(res[p.list])) nxPatchArr_(res[p.list], p); return res; });
+      });
+      if (p.list !== 'cases') { try { document.dispatchEvent(new CustomEvent('nx-list-patch', { detail: p })); } catch (e) {} return; }
+      NX_CASE_ARRAYS_.forEach(function(n){ try { var arr = window[n]; if (Array.isArray(arr)) nxPatchArr_(arr, Object.assign({}, p, { onlyIfFound: n !== 'workCases' && n !== 'chCases' })); } catch (e) {} });
+      try { if (window.nxCc_ && Array.isArray(window.nxCc_.cases)) nxPatchArr_(window.nxCc_.cases, Object.assign({}, p, { onlyIfFound: true })); } catch (e) {}
+      NX_CASE_ONE_.forEach(function(n){ try { var c = window[n]; if (c && String(c.id) === String(p.id) && p.op !== 'delete' && p.row) Object.assign(c, p.row); } catch (e) {} });
+      try { document.dispatchEvent(new CustomEvent('nx-list-patch', { detail: p })); } catch (e) {}
+    });
+  }
+  // 서버가 준 목록에 아직 서버에 닿지 않은(보내는 중·실패) 저장을 다시 입힌다
+  function nxOverlayPending_(action, res, payload){
+    var listName = NX_LIST_OF_ACTION_[action];
+    if (!listName || !res || !Array.isArray(res[listName])) return res;
+    if (listName === 'cases') res.cases.forEach(nxCaseStampNote_);
+    // 상담·수금 기록은 고객마다 따로 받으므로, 다른 고객의 아직 안 보낸 기록이 이 고객 목록에 끼지 않게 고객ID로 거른다
+    var wantClient = payload && payload.고객ID ? String(payload.고객ID) : '';
+    nxOutboxRead_().forEach(function(j){ (j.patch || []).forEach(function(p){
+      if (p.list !== listName) return;
+      if (listName === 'logs' && wantClient && p.row && p.row.고객ID && String(p.row.고객ID) !== wantClient) return;
+      if (listName === 'logs' && payload && payload.사건ID && p.row && String(p.row.사건ID || '') !== String(payload.사건ID)) return;
+      nxPatchArr_(res[listName], p);
+    }); });
+    return res;
+  }
+  // 화면에서 새 줄 번호 만들기 — 서버가 같은 번호를 받아 그대로 쓴다(사건·고객·상담·하위업무). 같은 번호로 두 번 오면 서버는 처음 것만 만든다.
+  function nxNewId_(){ return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+  // 사건 저장 — 화면 먼저. 지금 보고 있는 사건 줄에 고친 칸을 넣어 모든 화면 목록에 바로 보이고, 서버엔 같은 사건끼리 차례로 뒤에서 보낸다.
+  //  돌려주는 값은 바로 풀리는 { success:true, queued:true, case: 화면에 넣은 줄 } — 예전 then(res => res.case …) 코드가 그대로 돈다.
+  //  opt: { label, base: 지금 사건 객체(없으면 목록에서 찾음), onDone(res), onFail(why) }
+  function nxCaseSave_(payload, opt){
+    opt = opt || {};
+    var id = payload && payload.id; if (!id) return Promise.resolve({ success: false, message: '사건이 없습니다' });
+    var base = opt.base || nxFindCase_(id) || { id: id };
+    var row = {}; Object.keys(payload).forEach(function(k){ if (k !== '_log' && k !== '기대수정일' && k.charAt(0) !== '_') row[k] = payload[k]; });
+    if (typeof row.사건개요 === 'string') { try { row.사건개요 = JSON.parse(row.사건개요); } catch (e) {} }
+    var local = Object.assign({}, base, row);
+    nxSaveLater_('work_update_case', payload, { key: 'case_' + id, label: opt.label || ((base.사건명 || '사건') + ' 저장'), patch: [{ list: 'cases', op: 'upsert', id: id, row: row }],
+      onDone: function(res){ if (res && res.warning) toast(res.warning); if (opt.onDone) opt.onDone(res); },
+      onFail: function(why){ if (opt.onFail) opt.onFail(why); }, redo: opt.redo });
+    return Promise.resolve({ success: true, queued: true, case: local });
+  }
+  // 사건 만들기 — 화면 먼저. 번호를 화면이 정해 목록에 바로 넣고, 서버는 줄만 쓰고(같은 번호는 한 번만) 폴더·의뢰서·고객창구는 서버 뒤에서(BgQueue.js case_folder).
+  //  돌려주는 값: 화면에 넣은 임시 줄(id·사건명 들어 있음). opt: { label, onDone(res), onFail(why) }
+  function nxCaseCreateLater_(payload, opt){
+    opt = opt || {};
+    payload.id = payload.id || nxNewId_();
+    payload.폴더뒤로 = true;
+    var semokLbl = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[payload.세목]) || payload.세목 || '';
+    var tmp = { id: payload.id, 고객명: payload.고객명 || '', 납세자: payload.납세자 || '', 세목: payload.세목 || '', 업무유형: payload.업무유형 || '', 의뢰일: payload.의뢰일 || '', 기준일: payload.기준일 || '', 개요: payload.개요 || '', 법정일: payload.법정일 || '',
+      사건명: (payload.고객명 || '') + (payload.납세자 && payload.납세자 !== payload.고객명 ? '(' + payload.납세자 + ')' : '') + ' ' + semokLbl + ' ' + (payload.업무유형 || ''), 상태: '진행', 폴더ID: '',
+      하위업무: [], 작업일지: [], 법령예규판례: [], 증빙목록: [], 세액계산결과: [], 사건개요: (payload.사건개요 && typeof payload.사건개요 === 'object') ? payload.사건개요 : {}, 생성일: new Date().toISOString(), _만드는중: true };
+    nxSaveLater_('work_create_case', payload, { key: 'case_' + payload.id, label: opt.label || (tmp.사건명 + ' 만들기'), patch: [{ list: 'cases', op: 'upsert', id: payload.id, row: tmp }],
+      onDone: function(res){ if (res && res.warning) toast(res.warning); if (opt.onDone) opt.onDone(res); },
+      onFail: function(why){ toast('사건을 만들지 못했습니다 — ' + why + ' (화면 아래 「다시 보내기」)'); if (opt.onFail) opt.onFail(why); }, redo: opt.redo });
+    return tmp;
+  }
+  function nxFindCase_(id){
+    var found = null;
+    NX_CASE_ARRAYS_.concat(['__cc']).some(function(n){
+      var arr = n === '__cc' ? (window.nxCc_ && window.nxCc_.cases) : window[n];
+      if (!Array.isArray(arr)) return false;
+      for (var i = 0; i < arr.length; i++) if (arr[i] && String(arr[i].id) === String(id)) { found = arr[i]; return true; }
+      return false;
+    });
+    return found;
   }
   // 화면 아래 작은 띠 — 보내는 중이면 「저장 중 n건」, 실패가 있으면 붉은 띠와 단추
   function nxOutboxBar_(){
@@ -209,7 +325,7 @@
         var act = b.getAttribute('data-ob-act'), id = b.getAttribute('data-ob-id');
         var list = nxOutboxRead_().filter(function(j){ return j.state === 'failed' && (!id || j.id === id); });
         if (act === 'retry') list.forEach(function(j){ nxOutboxSend_(j); });
-        else if (act === 'drop') nxConfirm_('저장 안 된 ' + list.length + '건을 지울까요?\n\n지우면 서버에 보내지 않습니다(화면에 먼저 보였던 값은 다음에 새로 열 때 서버 값으로 돌아갑니다).').then(function(ok){ if (!ok) return; list.forEach(function(j){ nxOutboxDrop_(j.id); }); nxOutboxBar_(); });
+        else if (act === 'drop') nxConfirm_('저장 안 된 ' + list.length + '건을 지울까요?\n\n지우면 서버에 보내지 않습니다(화면에 먼저 보였던 값은 다음에 새로 열 때 서버 값으로 돌아갑니다).').then(function(ok){ if (!ok) return; list.forEach(function(j){ nxOutboxDrop_(j.id); }); callGasShared_ = {}; nxOutboxBar_(); if (typeof loadWorkCases === 'function' && document.getElementById('workCaseList')) loadWorkCases(); });
       });
       document.body.appendChild(bar);
     }
@@ -318,13 +434,14 @@
     return function(ok){ rec.ok = ok; rec.ms = Date.now() - rec.s; };
   }
   function callGasRaw_(action, payload){
-    callGasProgress_(1);
+    var nxQuiet = !!(payload && payload._ob); // 보낼 함 저장은 뒤에서 — 단추를 막거나 위 진행 막대를 켜지 않는다(아래 띠 「저장 중」이 대신 알림)
+    if (!nxQuiet) callGasProgress_(1);
     var nxDone = action === 'ai_log_bug' ? function(){} : nxRecentCallStart_(action);
-    var nxBtn = nxBusyTake_(action);
+    var nxBtn = nxQuiet ? null : nxBusyTake_(action);
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
-          callGasProgress_(-1); nxBusyFree_(nxBtn);
+          if (!nxQuiet) callGasProgress_(-1); nxBusyFree_(nxBtn);
           nxDone(!(res && res.error));
           if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
           // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
@@ -346,7 +463,7 @@
           else resolve(res);
         })
         .withFailureHandler(function(err){
-          callGasProgress_(-1); nxBusyFree_(nxBtn);
+          if (!nxQuiet) callGasProgress_(-1); nxBusyFree_(nxBtn);
           nxDone(false);
           if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
           err.nxAction = action;
@@ -1309,7 +1426,7 @@
       buttons: buttons
     }).then(function(upType){
       if (!upType) return null;
-      return callGas('work_update_case', { id: c.id, 업무유형: upType, 기대수정일: c.수정일 }).then(function(res){
+      return callGas('work_update_case', { id: c.id, 업무유형: upType, 기대수정일: c.수정일, 폴더바로: true, 이름맞춤바로: true }).then(function(res){
         if (!res || res.error || res.success === false){ showToast((res && (res.message || res.error)) || '업무유형을 바꾸지 못했습니다.'); return null; }
         Object.assign(c, res.case || {});
         if (!c.폴더ID){ showToast('업무유형은 "' + upType + '"(으)로 바꿨지만 폴더를 만들지 못했습니다 — 잠시 후 다시 시도해 주세요.'); return null; }

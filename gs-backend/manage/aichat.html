@@ -840,25 +840,25 @@
       if (!title || !title.trim()) return;
       title = title.trim();
       if (!id){ nxAiConv.title = title; nxAiRefreshTitle_(); return; } // 아직 저장 전인 대화 — 저장할 때 같이 반영
-      callGas('ai_conv_rename', { id: id, title: title }).then(function(res){
-        if (res && res.error){ nxAiToast_(res.error); return; }
-        var c = nxAiConvList.find(function(x){ return x.id === id; });
-        if (c) c.title = title;
-        if (nxAiConv.id === id) nxAiConv.title = title;
-        nxAiRenderConvList_(); nxAiRefreshTitle_();
-      });
+      // [2026.11.03 전수조사 다시] 제목은 바로 바꾸고 서버엔 보낼 함으로 뒤에서 — 실패하면 옛 제목으로 되돌린다
+      var c = nxAiConvList.find(function(x){ return x.id === id; });
+      var old = c ? c.title : (nxAiConv.id === id ? nxAiConv.title : '');
+      var setT = function(t){ if (c) c.title = t; if (nxAiConv.id === id) nxAiConv.title = t; nxAiRenderConvList_(); nxAiRefreshTitle_(); };
+      setT(title);
+      nxSaveLater_('ai_conv_rename', { id: id, title: title }, { key: 'aiconv_' + id, label: '대화 이름 바꾸기 — ' + title, onFail: function(){ setT(old); }, redo: function(){ setT(title); } });
     });
   }
 
   function nxAiDeleteConv_(id){
     nxAiConfirm_('이 대화를 삭제할까요? (드라이브 휴지통으로 이동 — 30일 안에는 복구할 수 있습니다)').then(function(ok){
       if (!ok) return;
-      callGas('ai_conv_delete', { id: id }).then(function(res){
-        if (res && res.error){ nxAiToast_(res.error); return; }
-        nxAiConvList = nxAiConvList.filter(function(c){ return c.id !== id; });
-        if (nxAiConv.id === id){ nxAiConv = nxAiBlankConv_(); nxAiRenderConversation_(); nxAiRefreshCaseUi_(); }
-        nxAiRenderConvList_();
-      });
+      // [2026.11.03 전수조사 다시] 목록에서 바로 빼고 서버엔 보낼 함으로 뒤에서 — 실패하면 목록에 되살린다
+      var before = nxAiConvList.slice();
+      nxAiConvList = nxAiConvList.filter(function(c){ return c.id !== id; });
+      if (nxAiConv.id === id){ nxAiConv = nxAiBlankConv_(); nxAiRenderConversation_(); nxAiRefreshCaseUi_(); }
+      nxAiRenderConvList_();
+      nxSaveLater_('ai_conv_delete', { id: id }, { key: 'aiconv_' + id, label: '대화 삭제', onFail: function(){ nxAiConvList = before; nxAiRenderConvList_(); },
+        redo: function(){ nxAiConvList = nxAiConvList.filter(function(c){ return c.id !== id; }); nxAiRenderConvList_(); } });
     });
   }
 
@@ -1744,7 +1744,8 @@
           var phone = c ? String(c.전화번호 || '').replace(/[^0-9]/g, '') : '';
           if (!phone){ nxAiToast_('이 고객의 전화번호가 없습니다.'); return; }
           location.href = 'sms:' + phone + '?body=' + encodeURIComponent(text);
-          callGas('client_add_consult_log', { 고객ID: p.고객ID, 고객명: c.성명 || '', 유형: '문자 발송(내 휴대폰)', 내용: text.slice(0, 1000), 사건ID: p.caseId || '', 담당자: '넥스 초안 → 세무사님 휴대폰' }).catch(function(){});
+          // [2026.11.03 전수조사 다시] 문자앱으로 화면이 넘어가며 끊겨도 기록이 남게 보낼 함으로(다시 열면 이어 보냄, 같은 번호는 한 번만)
+          nxSaveLater_('client_add_consult_log', { id: nxNewId_(), 고객ID: p.고객ID, 고객명: c.성명 || '', 유형: '문자 발송(내 휴대폰)', 내용: text.slice(0, 1000), 사건ID: p.caseId || '', 담당자: '넥스 초안 → 세무사님 휴대폰' }, { label: '휴대폰 문자 기록' });
           if (p.caseId) callGas('work_append_log', { caseId: p.caseId, text: '[고객 문자 — 내 휴대폰] ' + text.slice(0, 200) }).catch(function(){});
           finish('📱 휴대폰 문자앱을 열었습니다(보낸 것으로 상담 기록에 남김).', true);
         }).catch(function(e){ nxAiToast_('전화번호를 못 찾았습니다: ' + nxErrText_(e)); });

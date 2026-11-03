@@ -589,6 +589,57 @@
     }).catch(function(){ listEl.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>'; });
   }
 
+  // [2026.11.03 전수조사 다시] 세무사님 "답답해서 사용하지 못하는 일이 생기면 안된다" — 이름 바꾸기·지우기·옮기기는
+  //  지금 보이는 목록에서 바로 고치고(서버 답 안 기다림), 서버엔 보낼 함으로 뒤에서 보낸다. 서버가 받으면 이 폴더를 조용히
+  //  다시 받아 맞추고(「불러오는 중」 없이), 실패하면 원래 목록으로 되돌린다(화면 아래 붉은 띠에 다시 보내기).
+  function docsListSnap_(){ var d = docsCurrentListing || {}; return { folderId: d.folderId, folders: (d.folders || []).slice(), files: (d.files || []).slice() }; }
+  function docsListRestore_(snap){
+    if (!docsCurrentListing || docsCurrentListing.folderId !== snap.folderId) return;
+    docsCurrentListing.folders = snap.folders; docsCurrentListing.files = snap.files; renderDocsList();
+  }
+  // ids의 줄을 고친다 — fn(줄)이 null을 돌려주면 뺀다
+  function docsListEdit_(ids, fn){
+    var d = docsCurrentListing; if (!d) return;
+    var want = {}; ids.forEach(function(i){ want[i] = true; });
+    ['folders', 'files'].forEach(function(k){
+      d[k] = (d[k] || []).map(function(x){ return want[x.id] ? fn(Object.assign({}, x)) : x; }).filter(Boolean);
+    });
+    renderDocsList();
+  }
+  var docsQuietTimer_ = null;
+  function docsReloadQuiet_(){
+    clearTimeout(docsQuietTimer_);
+    docsQuietTimer_ = setTimeout(function(){
+      var d = docsCurrentListing; if (!d || !d.folderId) return;
+      try { if (!sessionStorage.getItem('nxManageSessionToken')) return; } catch (e) { return; } // 로그인 전엔 부르지 않는다
+      var fid = d.folderId;
+      callGas('listFolder', { folderId: fid }).then(function(res){
+        if (!res || res.error || !docsCurrentListing || docsCurrentListing.folderId !== fid) return;
+        docsCurrentListing.folders = res.folders || []; docsCurrentListing.files = res.files || [];
+        renderDocsList();
+      }).catch(function(){});
+    }, 400);
+  }
+  function docsSendLater_(action, payload, label, snap){
+    return nxSaveLater_(action, payload, { key: 'drive_' + payload.id, label: label,
+      onDone: function(){ docsReloadQuiet_(); },
+      onFail: function(){ docsListRestore_(snap); },
+      redo: function(){ // 다시 보내기 — 이 줄의 바꿈만 다시 올린다
+        if (action === 'renameItem') docsListEdit_([payload.id], function(x){ x.name = payload.newName; return x; });
+        else if (action === 'deleteItem' || (action === 'moveItem' && payload.destFolderId !== snap.folderId)) docsListEdit_([payload.id], function(){ return null; });
+      } });
+  }
+  // 만들기(폴더·문서)는 서버가 정한 번호가 있어야 열 수 있어 답을 기다린다 — 그동안 목록 맨 위에 「만드는 중」 줄을 바로 보여 준다
+  function docsTempRow_(kind, name, note){
+    var d = docsCurrentListing; if (!d) return null;
+    var tid = 'tmp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    var row = { id: tid, name: name + ' (' + (note || '만드는 중') + '…)', mimeType: kind === 'doc' ? 'application/vnd.google-apps.document' : '' };
+    if (kind === 'folder') d.folders = [row].concat(d.folders || []); else d.files = [row].concat(d.files || []);
+    renderDocsList();
+    return tid;
+  }
+  function docsTempDrop_(tid){ if (tid) docsListEdit_([tid], function(){ return null; }); }
+
   // ============================================================
   // [2026.09] "사건처리는 이 사건의 대시보드, 실제 증빙 파일 작업은 증빙관리에서" 원칙에 따라
   // 증빙 3분류(자동확보/추가확보/요청자료) 체크리스트를 여기로 옮겼다. 지금 보고 있는 폴더가
@@ -652,7 +703,7 @@
   // 그대로 날아갔다(실사용 감사 지적). c 객체와 캐시를 그 자리에서 갱신하고, 증빙 목록
   // 3칸(자동/추가/요청)만 다시 그린다.
   function docsSaveEvidence_(c, newList){
-    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일, _log: window.nxEvidenceLog_(c.증빙목록, newList) }).then(function(res){
+    return nxCaseSave_({ id: c.id, 증빙목록: newList, 기대수정일: c.수정일, _log: window.nxEvidenceLog_(c.증빙목록, newList) }).then(function(res){
       if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); }); return res; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return res; }
       if (res.case) Object.assign(c, res.case); else c.증빙목록 = newList;
@@ -1325,11 +1376,10 @@
     items.push({ label: '✏️ 이름변경', onClick: function(){
       nxPrompt_('새 이름을 입력하세요:', label).then(function(newName){
         if (!newName || !newName.trim() || newName.trim() === label) return;
-        callGas('renameItem', { id: id, type: type, newName: newName.trim() }).then(function(res){
-          if (res.error){ toast('이름변경 실패: ' + res.error); return; }
-          toast('이름을 변경했습니다.');
-          docsNavigate(docsPath);
-        });
+        var snap = docsListSnap_(), nn = newName.trim();
+        docsListEdit_([id], function(x){ x.name = nn; return x; });
+        docsSendLater_('renameItem', { id: id, type: type, newName: nn }, '이름 바꾸기 — ' + nn, snap);
+        toast('이름을 변경했습니다.');
       });
     } });
     items.push({ label: '🔗 공유', onClick: function(){ docsShareItem_(id, type, label); } });
@@ -1338,11 +1388,10 @@
     items.push({ label: '🗑 삭제', danger: true, onClick: function(){
       nxConfirm_('"' + label + '"을(를) 삭제할까요? (휴지통으로 이동)').then(function(ok){
         if (!ok) return;
-        callGas('deleteItem', { id: id, type: type }).then(function(res){
-          if (res.error){ toast('삭제 실패: ' + res.error); return; }
-          toast('삭제했습니다.');
-          docsNavigate(docsPath);
-        });
+        var snap = docsListSnap_();
+        docsListEdit_([id], function(){ return null; });
+        docsSendLater_('deleteItem', { id: id, type: type }, '삭제 — ' + label, snap);
+        toast('삭제했습니다.');
       });
     } });
     return items;
@@ -1385,12 +1434,16 @@
   function docsCreateBlankDoc_(){
     nxPrompt_('새 문서 이름을 입력하세요:', '새 문서').then(function(name){
     if (!name || !name.trim()) return;
+    // 새 창은 누른 순간 열어 둔다(서버 답 뒤에 열면 브라우저가 팝업으로 막음) — 답이 오면 그 창을 문서로 보낸다
+    var win = null; try { win = window.open('about:blank', '_blank'); } catch (e) {}
+    var tid = docsTempRow_('doc', name.trim());
     callGas('createBlankDoc', { folderId: docsCurrentListing.folderId, name: name.trim() }).then(function(res){
-      if (res.error){ toast('문서 만들기 실패: ' + res.error); return; }
+      if (res.error){ docsTempDrop_(tid); if (win) try { win.close(); } catch (e) {} toast('문서 만들기 실패: ' + res.error); return; }
       toast('문서를 만들었습니다.');
-      docsNavigate(docsPath);
-      if (res.url) window.open(res.url, '_blank');
-    });
+      docsReloadQuiet_();
+      if (res.url){ if (win) win.location.href = res.url; else window.open(res.url, '_blank'); }
+      else if (win) try { win.close(); } catch (e) {}
+    }).catch(function(){ docsTempDrop_(tid); if (win) try { win.close(); } catch (e) {} toast('문서 만들기 중 오류가 났습니다.'); });
     });
   }
 
@@ -1458,16 +1511,16 @@
     if (!docsMoveBrowseFolderId_){ toast('이동할 위치를 확인하지 못했습니다.', 'error'); return; }
     var blocked = docsMoveTargets_.some(function(t){ return t.type === 'folder' && t.id === docsMoveBrowseFolderId_; });
     if (blocked){ toast('같은 폴더로는 이동할 수 없습니다.', 'warning'); return; }
-    Promise.all(docsMoveTargets_.map(function(t){
-      return callGas('moveItem', { id: t.id, type: t.type, destFolderId: docsMoveBrowseFolderId_ });
-    })).then(function(results){
-      var failed = results.filter(function(r){ return r.error; });
-      if (failed.length) toast('일부 이동 실패(' + failed.length + '건): ' + failed[0].error, 'error');
-      else toast('이동했습니다.');
-      docsSelectedIds = {};
-      document.getElementById('docsMoveOverlay').style.display = 'none';
-      docsNavigate(docsPath);
+    var snap = docsListSnap_(), dest = docsMoveBrowseFolderId_;
+    var movedIds = docsMoveTargets_.map(function(t){ return t.id; });
+    docsSelectedIds = {};
+    updateDocsSelectionBar_();
+    if (dest !== snap.folderId) docsListEdit_(movedIds, function(){ return null; });
+    docsMoveTargets_.forEach(function(t){
+      docsSendLater_('moveItem', { id: t.id, type: t.type, destFolderId: dest }, '옮기기 — ' + (t.name || ''), snap);
     });
+    toast('이동했습니다.');
+    document.getElementById('docsMoveOverlay').style.display = 'none';
   });
 
   // ---- 파일 검색 ----
@@ -1538,12 +1591,12 @@
       listEl.querySelectorAll('[data-act="restore"]').forEach(function(btn, idx){
         btn.addEventListener('click', function(){
           var it = items[idx];
-          callGas('restoreItem', { id: it.id, type: it.type }).then(function(res2){
-            if (res2.error){ toast('복원 실패: ' + res2.error); return; }
-            toast('"' + it.name + '"을(를) 복원했습니다.');
-            docsLoadTrash_();
-            docsNavigate(docsPath);
-          });
+          // 휴지통 줄은 바로 빼고, 서버엔 뒤에서 — 받으면 지금 폴더를 조용히 다시 받는다
+          var trRow = btn.closest('.docs-trash-row'); if (trRow) trRow.style.display = 'none';
+          nxSaveLater_('restoreItem', { id: it.id, type: it.type }, { key: 'drive_' + it.id, label: '복원 — ' + it.name,
+            onDone: function(){ docsReloadQuiet_(); },
+            onFail: function(){ if (trRow) trRow.style.display = ''; }, redo: function(){ if (trRow) trRow.style.display = 'none'; } });
+          toast('"' + it.name + '"을(를) 복원했습니다.');
         });
       });
     });
@@ -1589,12 +1642,12 @@
     var it = items[0];
     nxPrompt_('새 이름을 입력하세요:', it.name).then(function(newName){
     if (!newName || !newName.trim() || newName.trim() === it.name) return;
-    callGas('renameItem', { id: it.id, type: it.type, newName: newName.trim() }).then(function(res){
-      if (res.error){ toast('이름변경 실패: ' + res.error); return; }
-      toast('이름을 변경했습니다.');
-      docsSelectedIds = {};
-      docsNavigate(docsPath);
-    });
+    var snap = docsListSnap_(), nn = newName.trim();
+    docsSelectedIds = {};
+    updateDocsSelectionBar_();
+    docsListEdit_([it.id], function(x){ x.name = nn; return x; });
+    docsSendLater_('renameItem', { id: it.id, type: it.type, newName: nn }, '이름 바꾸기 — ' + nn, snap);
+    toast('이름을 변경했습니다.');
     });
   });
   document.getElementById('docsBtnShareSelected').addEventListener('click', function(){
@@ -1607,13 +1660,12 @@
     var label = items.length === 1 ? ('"' + items[0].name + '"') : (items.length + '개 항목');
     nxConfirm_(label + '을(를) 삭제할까요? (휴지통으로 이동)').then(function(ok){
       if (!ok) return;
-      Promise.all(items.map(function(it){ return callGas('deleteItem', { id: it.id, type: it.type }); })).then(function(results){
-        var failed = results.filter(function(r){ return r.error; });
-        if (failed.length) toast('일부 삭제 실패(' + failed.length + '건): ' + failed[0].error, 'error');
-        else toast('삭제했습니다.');
-        docsSelectedIds = {};
-        docsNavigate(docsPath);
-      });
+      var snap = docsListSnap_();
+      docsSelectedIds = {};
+      updateDocsSelectionBar_();
+      docsListEdit_(items.map(function(it){ return it.id; }), function(){ return null; });
+      items.forEach(function(it){ docsSendLater_('deleteItem', { id: it.id, type: it.type }, '삭제 — ' + it.name, snap); });
+      toast('삭제했습니다.');
     });
   });
   document.getElementById('docsBtnMoveSelected').addEventListener('click', function(){
@@ -1668,11 +1720,12 @@
   document.getElementById('docsBtnNewFolder').addEventListener('click', function(){
     nxPrompt_('새 폴더 이름을 입력하세요:').then(function(name){
     if (!name || !name.trim()) return;
+    var tid = docsTempRow_('folder', name.trim());
     callGas('createFolder', { path: docsPath, name: name.trim() }).then(function(res){
-      if (res.error){ toast('폴더 생성 실패: ' + res.error); return; }
+      if (res.error){ docsTempDrop_(tid); toast('폴더 생성 실패: ' + res.error); return; }
       toast('폴더를 만들었습니다.');
-      docsNavigate(docsPath);
-    });
+      docsReloadQuiet_();
+    }).catch(function(){ docsTempDrop_(tid); toast('폴더 만들기 중 오류가 났습니다.'); });
     });
   });
   document.getElementById('docsBtnUpload').addEventListener('click', function(){
@@ -1683,14 +1736,16 @@
     if (!files.length) return;
     var remaining = files.length;
     files.forEach(function(file){
+      // [2026.11.03 전수조사 다시] 올리는 동안 목록에 「올리는 중」 줄을 바로 보여 준다(파일 내용은 서버에 닿아야 해서 기다림)
+      var tid = docsTempRow_('file', file.name, '올리는 중');
       var reader = new FileReader();
       reader.onload = function(){
         var base64 = reader.result.split(',')[1];
         callGas('uploadFile', { path: docsPath, name: file.name, mimeType: file.type || 'application/octet-stream', base64Data: base64 }).then(function(res){
           remaining--;
-          if (res.error) toast('업로드 실패(' + file.name + '): ' + res.error);
-          if (remaining === 0){ toast('업로드를 마쳤습니다.'); docsNavigate(docsPath); }
-        });
+          if (res.error){ docsTempDrop_(tid); toast('업로드 실패(' + file.name + '): ' + res.error); }
+          if (remaining === 0){ toast('업로드를 마쳤습니다.'); docsReloadQuiet_(); }
+        }).catch(function(){ remaining--; docsTempDrop_(tid); toast('업로드 실패(' + file.name + ') — 다시 올려 주세요.'); if (remaining === 0) docsReloadQuiet_(); });
       };
       reader.readAsDataURL(file);
     });
@@ -1742,7 +1797,7 @@
             }
             if (failed.length){ toast('일부 저장 실패: ' + failed.join(', ')); return false; }
             toast(docs.length > 1 ? (docs.length + '개 문서를 저장했습니다.') : ('저장했습니다: ' + docs[0].name + '.pdf'));
-            docsNavigate(docsPath);
+            docsReloadQuiet_();
             return true;
           }
         }
@@ -2030,7 +2085,7 @@
       var res = await callGas('uploadFile', { path: docsPath, name: name, mimeType: 'application/pdf', base64Data: base64 });
       if (res.error){ toast('저장 실패: ' + res.error); return; }
       toast('추출해서 저장했습니다: ' + name);
-      docsNavigate(docsPath);
+      docsReloadQuiet_();
       if (await nxConfirm_('추출한 ' + checked.length + '개 페이지를 지금 목록에서 지울까요?\n(취소하면 그대로 남습니다)')){
         pdfMgrEntries = pdfMgrEntries.filter(function(en){ return !en.checked; });
         renderPdfMgrList();
@@ -2054,7 +2109,7 @@
       var res = await callGas('uploadFile', { path: docsPath, name: name, mimeType: 'application/pdf', base64Data: base64 });
       if (res.error){ toast('저장 실패: ' + res.error); return; }
       toast('저장했습니다: ' + name);
-      docsNavigate(docsPath);
+      docsReloadQuiet_();
     }catch(err){
       toast('저장 중 오류: ' + nxErrText_(err));
     }finally{
@@ -2555,7 +2610,7 @@
   function docsCloseCalcModal_(){
     var pending = docsCalcSaveTimer_ ? (clearTimeout(docsCalcSaveTimer_), docsCalcSaveTimer_ = null, docsSaveCalcNow_()) : Promise.resolve();
     document.getElementById('docsCalcOverlay').style.display = 'none';
-    pending.then(function(){ docsNavigate(docsPath); }); // 방금 저장한 계산기.json이 목록에 바로 보이도록
+    pending.then(function(){ docsReloadQuiet_(); }); // 방금 저장한 계산기.json이 목록에 바로 보이도록
   }
 
   // ---- 계산기 템플릿 — 자주 쓰는 세무 계산 패턴(work.netax.kr explorer.js CALC_TEMPLATES 그대로) ----
@@ -2788,7 +2843,7 @@
 
   function docsCloseDiagramModal_(){
     document.getElementById('docsDiagramOverlay').style.display = 'none';
-    docsNavigate(docsPath); // 방금 저장한 관계도.mmd가 목록에 바로 보이도록 새로고침
+    docsReloadQuiet_(); // 방금 저장한 관계도.mmd가 목록에 바로 보이도록 새로고침
   }
 
   // 보고서(reportwriter.html)는 이미 ```mermaid 코드블록을 도식으로 렌더링하므로, 여기서
@@ -2895,7 +2950,7 @@
 
   function docsCloseLogModal_(){
     document.getElementById('docsLogOverlay').style.display = 'none';
-    docsNavigate(docsPath); // 방금 저장한 경과지.json이 목록에 바로 보이도록
+    docsReloadQuiet_(); // 방금 저장한 경과지.json이 목록에 바로 보이도록
   }
 
   document.getElementById('btnDocsLogAdd').addEventListener('click', function(){

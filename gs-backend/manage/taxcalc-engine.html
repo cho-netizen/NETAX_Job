@@ -1270,9 +1270,11 @@
     // [2026.10.19] 개산공제율(시행령 §163⑥) — 토지·건물 3%(미등기 0.3%), 분양권 등 부동산을 취득할 수 있는 권리(§94①2호가목)는 4호 '그 밖의 자산' 1%
     // [2026.10.22 검토대상 양도-7] 시행령 §163⑥3호 "법 §94①2호 나목·다목 자산(지상권·전세권·등기된 부동산임차권, 미등기 제외) 취득 당시 기준시가 × 7/100",
     //  4호 "그 밖의 자산 × 1/100"(법제처 원문). t.rightOrOtherKind = 'lease_right'(지상권·전세권·등기 부동산임차권) | 'misc_other'(영업권·시설물이용권 등 기타자산).
-    const roKind_ = t.rightOrOtherKind === 'lease_right' || t.rightOrOtherKind === 'misc_other' ? t.rightOrOtherKind : '';
+    // [2026.11.03 복잡사건 103] 'acquire_right' = 분양권·조합원입주권이 아닌 부동산을 취득할 수 있는 권리(§94①2호가목 — 이주자택지·협의양도인택지 공급권, 지역주택조합 조합원 지위 중 분양권 아닌 것 등):
+    //  장기보유특별공제 없음(§95② — 2호가목 중 조합원입주권만), 개산공제 1%(시행령 §163⑥4호 그 밖의 자산), 단기세율은 §104①2·3호(2호 자산 40·50%) 그대로.
+    const roKind_ = t.rightOrOtherKind === 'lease_right' || t.rightOrOtherKind === 'misc_other' || t.rightOrOtherKind === 'acquire_right' ? t.rightOrOtherKind : '';
     // [2026.11.03 복잡사건 89] 0.3%는 미등기양도자산일 때만 — 시행령 §168①3호(8년 자경·농지대토 감면 토지)는 미등기양도자산에서 빠지므로 3%(아래 isUnregistered와 같은 기준).
-    const estimatedRateFor_ = function () { return (t.assetType === 'presale_right' || roKind_ === 'misc_other') ? 0.01 : ((t.isUnregisteredTransfer && !(t.isEightYearFarmland || t.isFarmlandSubstitutionExempt)) ? 0.003 : (roKind_ === 'lease_right' ? 0.07 : 0.03)); };
+    const estimatedRateFor_ = function () { return (t.assetType === 'presale_right' || roKind_ === 'misc_other' || roKind_ === 'acquire_right') ? 0.01 : ((t.isUnregisteredTransfer && !(t.isEightYearFarmland || t.isFarmlandSubstitutionExempt)) ? 0.003 : (roKind_ === 'lease_right' ? 0.07 : 0.03)); };
     if (!t.necessaryExpenses && (t.useEstimatedNecessaryExpense || acquisitionPriceUsedConversionOrStandardOnly) && acquisitionStandardPriceForConversion > 0) {
       const estimatedExpenseRate = estimatedRateFor_();
       necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(고객X: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
@@ -1709,7 +1711,7 @@
       //  2016년 안 양도면 3년이 안 되므로 장특공 0. 2017.1.1. 이후 양도분은 단서 삭제로 취득일부터(법률 제14389호 부칙 제14조).
       const d16_ = String(t.transferDate || '').slice(0, 10);
       // [2026.10.22 검토대상 양도-10] §95② 장특공은 §94①1호 자산(토지·건물)과 조합원입주권만 — 지상권·전세권·부동산임차권(§94①2호)·기타자산(4호)은 없음
-      if (roKind_ && ltRate > 0) { ltRate = 0; acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + (roKind_ === 'lease_right' ? '부동산에 관한 권리(지상권·전세권·부동산임차권)' : '기타자산') + '는 장기보유특별공제 대상이 아님(소득세법 §95② — §94①1호 자산·조합원입주권만).'; }
+      if (roKind_ && ltRate > 0) { ltRate = 0; acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + (roKind_ === 'lease_right' ? '부동산에 관한 권리(지상권·전세권·부동산임차권)' : roKind_ === 'acquire_right' ? '부동산을 취득할 수 있는 권리(조합원입주권 아닌 것)' : '기타자산') + '는 장기보유특별공제 대상이 아님(소득세법 §95② — §94①1호 자산·조합원입주권만).'; }
       if (refHistoryOn_() && t.isNonBusinessLand && ltRate > 0 && d16_ >= '2016-01-01' && d16_ <= '2016-12-31' && String(t.acquisitionDate || '').slice(0, 10) < '2016-01-01') {
         ltRate = 0;
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '2016년 양도 비사업용 토지라 장특공 보유기간은 2016.1.1.부터(§95④ 단서, 법률 제13558호) — 3년 미만이라 장특공 없음';
@@ -2036,7 +2038,9 @@
     const pFarm = pick('sect133PriorFarm'), pWide = pick('sect133PriorWide'); // [2026.10.20 J20] 옛 2호다 3억 묶음 — 비우면 pFarm
     // [2026.10.22 검토대상 양도-17] §133③(법제처 원문): 토지를 분할(1년 안 분할 포함)해 일부를 양도하거나 지분을 양도한 뒤 2년 안에 나머지를 같은 사람이나 그 배우자에게
     //  양도하면 1개 과세기간에 모두 양도한 것으로 본다 — ①1호·②1호(과세기간 한도)에 앞선(다른 해) 양도의 감면세액을 더한다(sect133SameBuyerPriorReduction).
-    return { p70: pick('sect133PriorSect70'), pFarm: pFarm, pComp: pick('sect133PriorComp'), pWide: pWide > 0 ? pWide : pFarm, pSame: pick('sect133SameBuyerPriorReduction') };
+    return { p70: pick('sect133PriorSect70'), pFarm: pFarm, pComp: pick('sect133PriorComp'), pWide: pWide > 0 ? pWide : pFarm, pSame: pick('sect133SameBuyerPriorReduction'), pSameComp: pick('sect133SameBuyerPriorComp') };
+    // [2026.11.03 복잡사건 96] 예전엔 pSame 하나를 ①1호·②1호 두 한도에 똑같이 더했다 — 2025년 이후엔 ①(자경 등)과 ②(수용 등)가 따로라 앞선 §69 감면이 §77 2억 한도를 깎았다.
+    //  이제 pSame = 자경 등(§133①1호) 묶음 앞선 감면, pSameComp = 수용 등(§77·§77의2·§77의3, ②1호) 묶음 앞선 감면. 2024년 이전 판(수용이 한 묶음)은 둘을 더함.
   }
   // [2026.10.20 J21 — 조견표 2부-33] 양도소득세 감면분 농어촌특별세 — 농특세법 §3·§5①1호: 조특법으로 감면받는 소득세 감면세액 × 100분의 20.
   //  비과세는 농특세법 §4·시행령 §4에 열거된 것만(2026.5.12. 법·2026.1.2. 시행령 원문): 조특법 §66~§70(자경·축사·어업·자경산지·대토 — 시행령 §4①1호),
@@ -2165,7 +2169,7 @@
         const mem = reds.filter(function (x) { return x.raw > 0 && inCap(x, cap); });
         if (!mem.length) return;
         const sum = mem.reduce(function (t, x) { return t + x.raw; }, 0);
-        const pr = cap.prior ? Math.max(0, Number(prior[cap.prior]) || 0) : (/1호.*과세기간/.test(cap.이름) && !/5개 과세기간/.test(cap.이름) ? Math.max(0, Number(prior.pSame) || 0) : 0); // [2026.10.22 양도-17] §133③
+        const pr = cap.prior ? Math.max(0, Number(prior[cap.prior]) || 0) : (/1호.*과세기간/.test(cap.이름) && !/5개 과세기간/.test(cap.이름) ? (/②1호/.test(cap.이름) ? Math.max(0, Number(prior.pSameComp) || 0) : Math.max(0, Number(prior.pSame) || 0) + (/^옛/.test(cap.이름) ? Math.max(0, Number(prior.pSameComp) || 0) : 0)) : 0); // [2026.10.22 양도-17] §133③ · [2026.11.03 복잡사건 96] 묶음별
         const ex = Math.min(sum, Math.max(0, pr + sum - cap.한도));
         if (ex > 0 && (!best || ex > best.ex)) best = { cap: cap, mem: mem, ex: ex, sum: sum, pr: pr };
       });

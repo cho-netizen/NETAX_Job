@@ -620,17 +620,17 @@
     var btn = this;
     var cbs = dashEmailCbs_().filter(function(cb){ return cb.checked; });
     if (!cbs.length) return;
-    btn.disabled = true;
-    cbs.forEach(function(cb){ cb.disabled = true; var row = cb.closest('tr'); if (row) row.style.opacity = '0.4'; });
-    var fails = 0;
-    Promise.all(cbs.map(function(cb){
-      return callGas('mark_email_read', { threadId: cb.getAttribute('data-id') })
-        .then(function(res){ if (res.error) fails++; })
-        .catch(function(){ fails++; });
-    })).then(function(){
-      if (fails) nxAlert_('읽음 처리 실패 ' + fails + '통 — 목록을 다시 불러옵니다.');
-      loadDashEmails_();
+    // [2026.11.03 전수조사 다시] 고른 줄은 바로 감추고 서버엔 보낼 함으로 뒤에서(실패한 줄은 다시 보이고 화면 아래 붉은 띠).
+    //  다 보내지면 다음 묶음이 보이도록 목록을 다시 받는다.
+    var left = cbs.length;
+    cbs.forEach(function(cb){
+      var row = cb.closest('tr'); cb.checked = false; if (row) row.style.display = 'none';
+      nxSaveLater_('mark_email_read', { id: cb.getAttribute('data-id'), threadId: cb.getAttribute('data-id') }, { key: 'mail_' + cb.getAttribute('data-id'), label: '메일 읽음 처리',
+        onDone: function(){ if (--left <= 0) loadDashEmails_(); },
+        onFail: function(){ left--; if (row) row.style.display = ''; },
+        redo: function(){ left = Math.max(left, 0) + 1; if (row) row.style.display = 'none'; } }); // 다시 보내 받아지면 목록도 다시 받는다
     });
+    dashEmailSelSync_();
   });
 
   // [2026.09 신규] 구글 태스크(할일) — 종전 챗봇의 "할일 뭐있어"/"할일 추가해줘" 기능을
@@ -695,13 +695,29 @@
     if (row && typeof goToWorkManage_ === 'function') goToWorkManage_(row.getAttribute('data-sub-case'));
   });
 
+  // [2026.11.03 전수조사 다시] 할일 체크·고치기·지우기는 가진 목록(dashTasksCache_)을 바로 고쳐 다시 그리고 서버엔 보낼 함으로 뒤에서.
+  //  실패하면 원래 줄로 되돌린다(화면 아래 붉은 띠에 다시 보내기). 추가는 서버 번호가 있어야 해 답을 기다리되 줄은 바로 보인다.
+  function dashTasksDraw_(){
+    var box = document.getElementById('dashTasks');
+    if (!dashTasksCache_.length){ box.innerHTML = '<div class="empty-row">할일이 없습니다.</div>'; return; }
+    box.innerHTML = dashTasksCache_.map(dashTaskRowHtml_).join('');
+  }
+  function dashTaskSave_(taskId, payload, after, label){
+    var before = dashTasksCache_.slice();
+    if (after) dashTasksCache_ = dashTasksCache_.map(function(x){ return x.id === taskId ? Object.assign({}, x, after) : x; });
+    else dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== taskId; });
+    dashTasksDraw_();
+    nxSaveLater_(payload.title !== undefined || payload.completed !== undefined ? 'update_google_task' : 'delete_google_task', Object.assign({ id: taskId, taskId: taskId }, payload),
+      { key: 'gtask_' + taskId, label: label,
+        onFail: function(){ dashTasksCache_ = before; dashTasksDraw_(); },
+        redo: function(){ if (after) dashTasksCache_ = dashTasksCache_.map(function(x){ return x.id === taskId ? Object.assign({}, x, after) : x; }); else dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== taskId; }); dashTasksDraw_(); } });
+  }
   function loadDashTasks_(){
     callGas('get_google_tasks', {}).then(function(res){
       var box = document.getElementById('dashTasks');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       dashTasksCache_ = res.할일 || [];
-      if (!dashTasksCache_.length){ box.innerHTML = '<div class="empty-row">할일이 없습니다.</div>'; return; }
-      box.innerHTML = dashTasksCache_.map(dashTaskRowHtml_).join('');
+      dashTasksDraw_();
     }).catch(function(e){ document.getElementById('dashTasks').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
   function dashAddTask_(){
@@ -709,16 +725,18 @@
     var dueEl = document.getElementById('dashNewTaskDue');
     var title = titleEl.value.trim();
     if (!title) return;
-    titleEl.disabled = true; dueEl.disabled = true;
     var payload = { title: title };
     if (dueEl.value) payload.dueDate = dueEl.value;
+    // 줄은 바로 목록 맨 위에 보이고 입력칸은 곧바로 비워 다음 할일을 이어 쓸 수 있게 — 서버 번호가 오면 목록을 다시 받는다
+    var tmp = { id: 'tmp' + Date.now().toString(36), 제목: title + ' (넣는 중…)', 마감일: payload.dueDate || '' };
+    dashTasksCache_ = [tmp].concat(dashTasksCache_); dashTasksDraw_();
+    titleEl.value = ''; dueEl.value = '';
+    dueEl.style.display = 'none'; // 다음 할일은 다시 "일정" 버튼을 눌러야 나오게 초기화
+    var dropTmp = function(){ dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== tmp.id; }); dashTasksDraw_(); if (!titleEl.value) titleEl.value = title; };
     callGas('add_google_task', payload).then(function(res){
-      titleEl.disabled = false; dueEl.disabled = false;
-      if (res.error){ toast('추가 실패: ' + res.error); return; }
-      titleEl.value = ''; dueEl.value = '';
-      dueEl.style.display = 'none'; // 다음 할일은 다시 "일정" 버튼을 눌러야 나오게 초기화
+      if (res.error){ dropTmp(); toast('추가 실패: ' + res.error); return; }
       loadDashTasks_();
-    }).catch(function(e){ titleEl.disabled = false; dueEl.disabled = false; toast('추가 중 오류: ' + nxErrText_(e)); });
+    }).catch(function(e){ dropTmp(); toast('추가 중 오류: ' + nxErrText_(e)); });
   }
   document.getElementById('dashNewTaskDueToggle').addEventListener('click', function(){
     var dueEl = document.getElementById('dashNewTaskDue');
@@ -741,20 +759,13 @@
 
     if (e.target.classList.contains('dashTaskDone')){
       var checkbox = e.target;
-      checkbox.disabled = true;
-      callGas('update_google_task', { taskId: taskId, completed: checkbox.checked }).then(function(res){
-        if (res.error){ toast('수정 실패: ' + res.error); checkbox.checked = !checkbox.checked; checkbox.disabled = false; return; }
-        loadDashTasks_();
-      }).catch(function(err){ toast('수정 중 오류: ' + nxErrText_(err)); checkbox.disabled = false; });
+      dashTaskSave_(taskId, { completed: checkbox.checked }, { 상태: checkbox.checked ? 'completed' : 'needsAction' }, '할일 ' + (checkbox.checked ? '완료' : '되돌림') + ' — ' + t.제목);
       return;
     }
     if (e.target.classList.contains('dashTaskDel')){
       nxConfirm_('"' + t.제목 + '" 할일을 삭제할까요?').then(function(ok){
         if (!ok) return;
-        callGas('delete_google_task', { taskId: taskId }).then(function(res){
-          if (res.error){ toast('삭제 실패: ' + res.error); return; }
-          loadDashTasks_();
-        }).catch(function(err){ toast('삭제 중 오류: ' + nxErrText_(err)); });
+        dashTaskSave_(taskId, {}, null, '할일 삭제 — ' + t.제목);
       });
       return;
     }
@@ -797,12 +808,7 @@
       var newTitle = row.querySelector('.dashTaskEditTitle').value.trim();
       var newDue = row.querySelector('.dashTaskEditDue').value;
       if (!newTitle){ toast('제목을 입력해주세요.'); return; }
-      var btn = e.target;
-      btn.disabled = true;
-      callGas('update_google_task', { taskId: taskId, title: newTitle, dueDate: newDue }).then(function(res){
-        if (res.error){ toast('수정 실패: ' + res.error); btn.disabled = false; return; }
-        loadDashTasks_();
-      }).catch(function(err){ toast('수정 중 오류: ' + nxErrText_(err)); btn.disabled = false; });
+      dashTaskSave_(taskId, { title: newTitle, dueDate: newDue }, { 제목: newTitle, 마감일: newDue }, '할일 고침 — ' + newTitle);
     }
   });
 
@@ -1006,12 +1012,14 @@
     var b = e.target.closest && e.target.closest('[data-impok],[data-impno]');
     if (!b) return;
     var send = function(ok, note){
-      b.disabled = true;
-      return callGas('comm_request_confirm', { id: b.getAttribute(ok ? 'data-impok' : 'data-impno'), ok: ok, note: note || '' }).then(function(res){
-        if (res && res.error){ toast(res.error); b.disabled = false; return; }
-        toast(ok ? '확인 완료로 바꿨습니다.' : '다시 고쳐 달라고 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다.');
-        loadDashImprove_();
-      }).catch(function(err){ toast('오류: ' + nxErrText_(err)); b.disabled = false; });
+      // [2026.11.03 전수조사 다시] 그 줄은 바로 감추고 서버엔 보낼 함으로 뒤에서 — 받으면 목록을 다시 그리고, 실패하면 줄이 다시 보인다
+      var rid = b.getAttribute(ok ? 'data-impok' : 'data-impno');
+      var line = b.parentNode && b.parentNode.parentNode; // 버튼 줄의 바깥 = 요청 카드 하나
+      if (line) line.style.display = 'none';
+      toast(ok ? '확인 완료로 바꿨습니다.' : '다시 고쳐 달라고 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다.');
+      return nxSaveLater_('comm_request_confirm', { id: rid, ok: ok, note: note || '' }, { key: 'req_' + rid, label: ok ? '개선요구 확인' : '개선요구 다시 고쳐 달라',
+        onDone: function(){ loadDashImprove_(); },
+        onFail: function(){ if (line) line.style.display = ''; }, redo: function(){ if (line) line.style.display = 'none'; } });
     };
     if (b.hasAttribute('data-impok')) return send(true);
     // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)에서 — 저장되면 서버가 재오픈으로 바꾸고 여기 목록을 다시 그린다
@@ -1091,15 +1099,16 @@
     if (!b) return;
     ev.preventDefault();
     var act = b.getAttribute('data-dashbg'), wrap = b.closest('div[style*="border"]');
-    b.disabled = true;
-    callGas('bg_failed_act', { id: b.getAttribute('data-id'), act: act }).then(function(res){
-      toast((res && res.message) || (res && res.error) || '처리했습니다.');
-      if (res && res.success && wrap){
-        wrap.remove();
-        var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
-        if (box && askCard && !box.children.length) askCard.hidden = true; // 마지막 줄이면 빈 카드를 남기지 않음(처음 그릴 때와 같은 규칙)
-      } else b.disabled = false;
-    }).catch(function(e){ b.disabled = false; toast('오류: ' + nxErrText_(e)); });
+    // [2026.11.03 전수조사 다시] 줄은 바로 감추고 서버엔 보낼 함으로 뒤에서 — 실패하면 줄이 다시 보인다
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    if (wrap) wrap.style.display = 'none';
+    var leftVisible = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1;
+    if (askCard && !leftVisible) askCard.hidden = true; // 마지막 줄이면 빈 카드를 남기지 않음(처음 그릴 때와 같은 규칙)
+    toast(act === 'retry' ? '다시 하도록 넘겼습니다.' : '처리했습니다.');
+    nxSaveLater_('bg_failed_act', { id: b.getAttribute('data-id'), act: act }, { key: 'bgf_' + b.getAttribute('data-id'), label: '뒤에서 할 일 ' + (act === 'retry' ? '다시 하기' : '지우기'),
+      onDone: function(){ if (wrap) wrap.remove(); },
+      onFail: function(){ if (wrap) wrap.style.display = ''; if (askCard) askCard.hidden = false; },
+      redo: function(){ if (wrap) wrap.style.display = 'none'; var n = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1; if (askCard && !n) askCard.hidden = true; } });
   });
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('[data-dashqans]');

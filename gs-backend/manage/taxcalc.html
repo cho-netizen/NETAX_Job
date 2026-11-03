@@ -6282,7 +6282,7 @@ function renderPropertyCardHtml_(idx, opts){
           // 안 됨 — 각자의 실제 용도가 라벨에 드러나도록 이름을 확실히 갈라놓는다.
           '<div class="taxcalc-field"><label>과세대상 구분</label><select data-field="assetType"><option value="other">그 외 부동산</option><option value="house">주택·조합원입주권</option><option value="presale_right">분양권</option></select><span class="taxcalc-field-help">세율 특례 판정용 — 분양권은 §104①1호·2호·3호(1년미만 70%/1년이상 60% 단일세율, 장기보유특별공제·기본세율누진 배제)</span></div>' +
           // [2026.10.22 검토대상 양도-7·10] 그 외 부동산 중 부동산에 관한 권리·기타자산 — 개산공제율(시행령 §163⑥ 7%·1%), 장특공 없음(§95②), 기타자산은 단기세율 없음(§104①)
-          '<div class="taxcalc-field"><label>권리·기타자산이면</label><select data-field="rightOrOtherKind"><option value="">토지·건물(해당 없음)</option><option value="lease_right">지상권·전세권·등기된 부동산임차권</option><option value="misc_other">기타자산(영업권·시설물이용권 등)</option></select><span class="taxcalc-field-help">그 외 부동산일 때만 — 장기보유특별공제 없음(§95②), 개산공제 7%·1%(시행령 §163⑥), 기타자산은 보유기간과 관계없이 기본세율</span></div>' +
+          '<div class="taxcalc-field"><label>권리·기타자산이면</label><select data-field="rightOrOtherKind"><option value="">토지·건물(해당 없음)</option><option value="lease_right">지상권·전세권·등기된 부동산임차권</option><option value="misc_other">기타자산(영업권·시설물이용권 등)</option><option value="acquire_right">택지 공급권 등 취득 권리(분양권·입주권 아님)</option></select><span class="taxcalc-field-help">그 외 부동산일 때만 — 장기보유특별공제 없음(§95②), 개산공제 7%·1%(시행령 §163⑥), 기타자산은 보유기간과 관계없이 기본세율</span></div>' +
           assetDetailFieldsHtml_(transferAssets[idx], idx) +
         '</div>' +
         // [2026.09 전면 재설계] 세무사님 지시 — 이 자산이 이미 어느 양도계약 카드 "안에"
@@ -6444,7 +6444,9 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="zoneIncorporated" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="zoneStdTransfer" placeholder="원"><span class="taxcalc-field-help">수용·협의매수면 보상가액 산정 기초 기준시가(조특령 §66⑦)</span></div>' +
           // [2026.10.19 서식 감사] 조특법 §133①2호 — 5개 과세기간 한도는 직전 4개 과세기간에 감면받은 세액을 더해 본다(양도인 한 사람 값, 자산 아무 곳에 한 번)
           // [2026.10.22 검토대상 양도-17] 조특법 §133③ — 분할·지분 양도 뒤 2년 안 같은 사람(배우자)에게 나머지 양도: 1개 과세기간으로 봄
-          '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFisheryLandExempt|isFarmlandSubstitutionExempt|isForestManagementExempt|compensationType" style="display:none;"><label>같은 사람에게 2년 안 앞서 판 부분의 감면세액</label><input type="number" data-field="sect133SameBuyerPriorReduction" placeholder="원"><span class="taxcalc-field-help">토지를 나누거나 지분으로 앞서(다른 해에) 판 뒤 2년 안에 나머지를 같은 사람이나 그 배우자에게 팔았으면 그때 감면세액 — 과세기간 1억·2억 한도에 합쳐 봄(조특법 §133③)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFisheryLandExempt|isFarmlandSubstitutionExempt|isForestManagementExempt|compensationType" style="display:none;"><label>같은 사람에게 2년 안 앞서 판 부분의 감면세액 — 자경 등</label><input type="number" data-field="sect133SameBuyerPriorReduction" placeholder="원"><span class="taxcalc-field-help">토지를 나누거나(앞선 양도 전 1년 안 분할) 지분으로 앞서(다른 해, 2024년 이후) 판 뒤 2년 안에 나머지를 같은 사람이나 그 배우자에게 팔았으면 그때 자경·축사·어업·자경산지·대토 등(§133①) 감면세액 — 과세기간 1억 한도에 합쳐 봄(조특법 §133③). 2024년 양도면 수용 감면도 여기에</span></div>' +
+          // [2026.11.03 복잡사건 96] §133③ — 2025년 이후 양도는 수용 등(§77·§77의2·§77의3) 묶음(②1호 2억)이 따로
+          '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>같은 사람에게 2년 안 앞서 판 부분의 감면세액 — 수용 등</label><input type="number" data-field="sect133SameBuyerPriorComp" placeholder="원"><span class="taxcalc-field-help">위와 같은 경우 앞선 양도의 수용·대토보상·개발제한구역(§77·§77의2·§77의3) 감면세액 — 2025년 이후 양도분 과세기간 2억 한도에 합쳐 봄(조특법 §133②1호·③)</span></div>' +
           '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFisheryLandExempt|isFarmlandSubstitutionExempt|isForestManagementExempt|compensationType" style="display:none;"><label>직전 4개 과세기간 감면세액 — §66~§70 묶음</label><input type="number" data-field="sect133PriorFarm" placeholder="원"><span class="taxcalc-field-help">조특법 §133①2호나목 5개 과세기간 2억원 한도용. 자경·축사·어업·자경산지·대토로 감면받은 양도소득세 합계(2024년 이전 양도분이면 수용 §77·§77의2 감면도 더함). 양도인 한 사람 값 — 자산 하나에만 넣으세요</span></div>' +
           // [2026.10.20 J20] 옛 §133①2호다목 5개 과세기간 3억원(2010~2017년 양도·2018~2019년 경과조치) — 비우면 위 §66~§70 묶음 값
           '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFarmlandSubstitutionExempt|compensationType" style="display:none;"><label>직전 4개 과세기간 감면세액 — 옛 3억원 묶음(2010~2019년 양도분)</label><input type="number" data-field="sect133PriorWide" placeholder="비우면 위 값"><span class="taxcalc-field-help">2010~2017년 양도분 옛 조특법 §133①2호(2010년 나목·2011~2017년 다목) 5개 과세기간 3억원 한도용 — 자경·축사·대토·수용(§69·§69의2·§70·§77, 2016년부터 §77의2도) 감면세액 합계. 2011~2013년 양도분은 2011.1.1. 전 §77(20·25%) 감면분 제외. 양도인 한 사람 값 — 자산 하나에만</span></div>' +
@@ -7601,6 +7603,7 @@ function collectTransferInput(vals){
     // [2026.10.19 서식 감사] 조특법 §133 5개 과세기간 한도 — 직전 4개 과세기간 감면세액(양도인 한 사람 값, 지분으로 나누지 않음)
     sect133PriorFarm: numVal(vals.sect133PriorFarm) || 0,
     sect133SameBuyerPriorReduction: numVal(vals.sect133SameBuyerPriorReduction) || 0, // [2026.10.22 양도-17]
+    sect133SameBuyerPriorComp: numVal(vals.sect133SameBuyerPriorComp) || 0, // [2026.11.03 복잡사건 96] 수용 등 묶음
     sect133PriorSect70: numVal(vals.sect133PriorSect70) || 0,
     sect133PriorComp: numVal(vals.sect133PriorComp) || 0,
     sect133PriorWide: numVal(vals.sect133PriorWide) || 0, // [2026.10.20 J20] 옛 2호다 3억 묶음
@@ -16689,11 +16692,13 @@ function handleTaxCalcClick_(e){
     const jid = btn.dataset.jid, pick = btn.dataset.pick;
     const caseId = (typeof tcSelectedId !== 'undefined' && tcSelectedId) ? tcSelectedId : '';
     const caseName = (typeof tcCurrentCase !== 'undefined' && tcCurrentCase) ? String(tcCurrentCase.사건명 || '') : '';
-    callGas('reftable_judgment_set', { id: jid, pick: pick, caseId: caseId, caseName: caseName }).then(function(res){
-      if (!res || res.error) throw new Error((res && res.error) || '저장 실패');
-      document.querySelectorAll('.tc-judgment-picked[data-jid="' + jid + '"]').forEach(function(el){ el.textContent = '✔ 이 사건: 해석 ' + pick + ' 기록(지금까지 A ' + (res.count.A || 0) + '건 · B ' + (res.count.B || 0) + '건)'; });
-      showToast('판단을 기록했습니다. 계산은 해석 A 그대로입니다.', 'success');
-    }).catch(function(err){ showToast('기록하지 못했습니다: ' + nxErrText_(err), 'warning'); });
+    // [2026.11.03 전수조사 다시] 표시는 바로 바꾸고 서버엔 보낼 함으로 뒤에서(실패는 화면 아래 붉은 띠에 다시 보내기)
+    const tcJudgMark_ = function(t){ document.querySelectorAll('.tc-judgment-picked[data-jid="' + jid + '"]').forEach(function(el){ el.textContent = t; }); };
+    tcJudgMark_('✔ 이 사건: 해석 ' + pick + ' 기록');
+    showToast('판단을 기록했습니다. 계산은 해석 A 그대로입니다.', 'success');
+    nxSaveLater_('reftable_judgment_set', { id: jid, pick: pick, caseId: caseId, caseName: caseName }, { key: 'judg_' + jid + '_' + caseId, label: '법령 판단 기록 — 해석 ' + pick,
+      onDone: function(res){ if (res && res.count) tcJudgMark_('✔ 이 사건: 해석 ' + pick + ' 기록(지금까지 A ' + (res.count.A || 0) + '건 · B ' + (res.count.B || 0) + '건)'); },
+      onFail: function(){ tcJudgMark_(''); }, redo: function(){ tcJudgMark_('✔ 이 사건: 해석 ' + pick + ' 기록'); } });
   } else if (action === 'print-open-form-catalog'){
     if (typeof goToView_ === 'function') goToView_('lawsearch');
     if (typeof lsiShowTab_ === 'function'){ if (typeof lsiFormGroup_ !== 'undefined') lsiFormGroup_ = printActiveGroup_; lsiShowTab_('form'); }
@@ -18584,7 +18589,7 @@ function tcSyncOverviewAmounts_(tab){
   if (newBaseDate) payload.기준일 = newBaseDate;
   // [2026.09 버그수정] 사건개요를 통째로 덮어쓰는 자동 동기화인데 잠금이 빠져 있었다 — 마침
   // 그 사이 사건처리 화면에서 사건개요서를 저장했다면 그 내용을 조용히 덮어쓸 수 있었다.
-  callGas('work_update_case', payload).then(function(res){
+  nxCaseSave_(payload).then(function(res){
     if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadTcCases_(tcCurrentCase.id); return; }
     if (res.success === false) return;
     tcCurrentCase.사건개요 = overview;

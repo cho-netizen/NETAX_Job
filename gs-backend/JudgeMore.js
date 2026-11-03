@@ -3447,11 +3447,1007 @@ function judgeFarmInheritance_(p) {
   w.표시 = '영농상속공제 — ' + w.결론 + (w.남은것.length ? ' · 남은 것 ' + w.남은것.length : '') + (추징 ? ' · 5년 안 ' + 추징.사유 + ' 추징' : '');
   return w;
 }
-var JUDGE_MORE_ = { '영농상속': judgeFarmInheritance_, '영농상속공제': judgeFarmInheritance_, '영농 상속': judgeFarmInheritance_, '법인거래': judgeCorpIndividualDeal_, '법인 거래': judgeCorpIndividualDeal_, '가족법인 거래': judgeCorpIndividualDeal_, '특수관계법인 거래': judgeCorpIndividualDeal_, '비거주자양도': judgeNonResidentTransfer_, '비거주자 양도': judgeNonResidentTransfer_, '재외국민 양도': judgeNonResidentTransfer_, '외국인 양도': judgeNonResidentTransfer_, '부담부증여': judgeBurdenedGift_, '부담부 증여': judgeBurdenedGift_, '채무 인수 증여': judgeBurdenedGift_, '환산가산세': judgeNewBuildConversion_, '신축 환산 가산세': judgeNewBuildConversion_, '감정가액 가산세': judgeNewBuildConversion_, '미등기': judgeUnregistered_, '미등기양도': judgeUnregistered_, '미등기 양도자산': judgeUnregistered_, '확정신고': judgeFinalReturn_, '확정신고 의무': judgeFinalReturn_, '예정신고 합산': judgeFinalReturn_, '정비청산': judgeRedevCash_, '현금청산': judgeRedevCash_, '재개발 현금청산': judgeRedevCash_, '매도청구': judgeRedevCash_, '의제취득': judgeDeemedAcq_, '의제취득일': judgeDeemedAcq_, '1985년 전 취득': judgeDeemedAcq_, '세대판정': judgeHousehold_, '1세대 범위': judgeHousehold_, '세대 구성': judgeHousehold_, '중과판정': judgeSurcharge_, '다주택 중과': judgeSurcharge_, '중과 제외': judgeSurcharge_, '필요경비': judgeExpenses_, '필요경비 판정': judgeExpenses_, '자본적지출': judgeExpenses_, '주택여부': judgeIsHouse_, '주택 해당': judgeIsHouse_, '사실상 주거용': judgeIsHouse_, '부수토지': judgeHouseLandExcess_, '주택부수토지': judgeHouseLandExcess_, '부수토지 배율': judgeHouseLandExcess_, '양도시기': judgeTransferTiming_, '취득시기': judgeTransferTiming_, '양도·취득시기': judgeTransferTiming_, '보상금구분': judgeCompensationSplit_, '수용보상금': judgeCompensationSplit_, '보상금 가르기': judgeCompensationSplit_, '대토보상': judgeLandReplacement_, '대토': judgeLandReplacement_, '대토보상 과세이연': judgeLandReplacement_, '부동산매매업': judgeRealEstateDealer_, '매매업': judgeRealEstateDealer_, '부동산 단타': judgeRealEstateDealer_, '공동상속': judgeCoInheritedHouse_, '공동상속주택': judgeCoInheritedHouse_, '공동상속주택 소수지분': judgeCoInheritedHouse_, '다가구': judgeMultiHousehold_, '다가구주택': judgeMultiHousehold_, '다가구 한 채': judgeMultiHousehold_, '상속채무': judgeInheritDebt_, '상속 채무 공제': judgeInheritDebt_, '채무 공과금 장례비': judgeInheritDebt_, '토지건물구분': judgeLandBuildingSplit_, '일괄양도 안분': judgeLandBuildingSplit_, '토지 건물 가액 구분': judgeLandBuildingSplit_, '상속평가': judgeInheritValuation_, '상속 평가 선택': judgeInheritValuation_, '감정평가 신고': judgeInheritValuation_, '증여시기': judgeGiftTiming_, '증여 날짜': judgeGiftTiming_, '증여일 고르기': judgeGiftTiming_, '생활비교육비': judgeFamilySupportGift_, '비과세증여': judgeFamilySupportGift_, '혼인출산공제': judgeFamilySupportGift_, '세무조사절차': judgeTaxAudit_, '세무조사': judgeTaxAudit_, '세무조사 통지': judgeTaxAudit_, '세금대납': judgeTaxProxyPay_, '상속세 대납': judgeTaxProxyPay_, '증여세 대납': judgeTaxProxyPay_, '차명계좌': judgeBorrowedAccount_, '차명 예금': judgeBorrowedAccount_, '차명계좌 증여추정': judgeBorrowedAccount_, '부동산명의신탁': judgeNomineeRealty_, '명의신탁 부동산': judgeNomineeRealty_, '제2차납세의무': judgeSecondaryLiability_, '제2차 납세의무': judgeSecondaryLiability_, '과점주주': judgeSecondaryLiability_, '특별연고자': judgeSpecialRelation_, '특별연고자 분여': judgeSpecialRelation_, '재산분여': judgeSpecialRelation_, '기타자산': judgeOtherAsset_, '영업권': judgeOtherAsset_, '회원권': judgeOtherAsset_, '영업권·회원권': judgeOtherAsset_, '한정승인': judgeLimitedAccept_, '상속 한정승인': judgeLimitedAccept_, '특별한정승인': judgeLimitedAccept_, '국외증여': judgeForeignGift_, '국외 증여': judgeForeignGift_, '국외재산 증여': judgeForeignGift_, '거주자': judgeResidency_, '거주자 판정': judgeResidency_, '비거주자': judgeResidency_, '상속인': judgeHeirShares_, '법정상속분': judgeHeirShares_, '상속인·법정상속분': judgeHeirShares_, '불복기한': judgeAppealDeadline_, '불복': judgeAppealDeadline_, '경정청구기한': judgeAppealDeadline_, '양도여부': judgeTransferScope_, '계약해제': function (p) { p = Object.assign({}, p || {}); if (!p.유형) p.유형 = '계약해제'; return judgeTransferScope_(p); }, '양도로 보지 않음': judgeTransferScope_, '농지대토': judgeFarmSwap_, '대토': judgeFarmSwap_, '농지대토 감면': judgeFarmSwap_, '법인전환': judgeIncorp32_, '법인전환 이월과세': judgeIncorp32_, '8년자경': judgeSelfFarm_, '자경': judgeSelfFarm_, '8년 자경농지 감면': judgeSelfFarm_, '동거주택': judgeCohabit_, '동거주택 상속공제': judgeCohabit_, '가업상속': judgeFamilyBiz_, '가업상속공제': judgeFamilyBiz_ };
+// [2026.11.03 복잡사건 95 「심씨 그린벨트 땅」] 개발제한구역 매수·해제 뒤 수용 감면 — 조특법 §77의3·시행령 §74·시행규칙 §30
+//  엔진은 감면 종류(restricted_zone_40·25)만 고르면 40%·25%를 깎았다 — 매수청구·협의매수인지, 지정일 전 취득·20년 전 취득인지,
+//  취득부터 기준일까지 계속 거주했는지(상속은 피상속인 취득일·거주 합침, 부득이 사유는 고교 이상 취학·징집·1년 이상 요양만),
+//  해제 뒤 수용은 해제일부터 1년(경제자유구역 등 먼저 지정이면 5년) 안 사업인정고시인지를 보는 곳이 없었다.
+//  p: { 방식(매수청구|협의매수|해제후협의|해제후수용|일반매매), 지정일, 해제일, 사업인정고시일, 먼저지정(경제자유구역|택지개발지구|산업단지|기업도시 — 해제 전 지정이면), 먼저지정일,
+//       매수청구일, 협의매수일, 양도일, 취득일, 취득원인(매매|상속|증여), 피상속인취득일, 거주:[{시작,끝,지역(같은시군구|연접|30km안|밖)}], 부득이:[{시작,끝,사유}],
+//       양도가액, 취득가액, 필요경비, 자경8년(예), 직접경작(예 — 수용 §77 농특세), 채권(예) }
+function judgeGbPurchase_(p) {
+  p = p || {};
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Number(v || 0).toLocaleString('ko-KR'); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [];
+  const 방식 = String(p.방식 || '');
+  const 해제후 = /해제/.test(방식), 수용 = /수용/.test(방식);
+  const 안매수 = !해제후 && /매수청구|협의매수/.test(방식);
+  const 양도일 = jmYmd_(p.양도일), 지정 = jmYmd_(p.지정일), 해제 = jmYmd_(p.해제일), 고시 = jmYmd_(p.사업인정고시일);
+  // 1) 넘긴 길
+  let 길ok = null, 길왜 = '';
+  if (안매수) { 길ok = true; 길왜 = '개발제한구역 안 토지를 ' + (/청구/.test(방식) ? '토지매수 청구(개발제한구역법 §17)' : '협의매수(개발제한구역법 §20)') + '로 넘김 → §77의3①'; }
+  else if (해제후) {
+    if (!해제 || !고시) { 길왜 = '해제일·사업인정고시일을 몰라 단서(1년·5년)를 못 봄'; 할일.push({ 무엇: '개발제한구역 해제 고시문(해제일)·사업인정고시문(또는 고시로 보는 실시계획 승인 고시)', 때: '신고 전', 근거: '조특법 §77의3② 단서' }); }
+    else {
+      const 먼저 = jmYmd_(p.먼저지정일), 먼저됨 = !!(p.먼저지정 && 먼저 && 먼저 <= 해제);
+      const 끝 = famAddY_(해제, 먼저됨 ? 5 : 1);
+      길ok = 고시 <= 끝;
+      길왜 = '해제 ' + 해제 + ' → 사업인정고시 ' + 고시 + (길ok ? ' — ' : ' — 기한 ' + 끝 + '을 넘김, ') + (먼저됨 ? '해제 전에 ' + p.먼저지정 + '로 지정(' + 먼저 + ')돼 5년 안' : '1년 안') + (길ok ? '이라 §77의3②' : '이 아니라 감면 없음');
+      if (!먼저됨 && !길ok) notes.push('해제 전에 경제자유구역·택지개발지구·산업단지·기업도시개발구역 등으로 먼저 지정됐으면 5년까지 봄(시행령 §74②) — 지정 고시를 확인할 것');
+    }
+  } else { 길ok = false; 길왜 = (방식 || '넘긴 길 모름') + ' — 개발제한구역법상 매수청구·협의매수나 해제 뒤 공익사업 협의매수·수용이 아니어서 §77의3 대상 아님'; }
+  reqs.push(jmReq_('넘긴 길', 길ok, 길왜, 해제후 ? '조특법 §77의3② 단서·시행령 §74②' : '조특법 §77의3①'));
+  // 2) 기준일 — ①은 매수청구일·협의매수일, ②는 사업인정고시일
+  const 기준 = 해제후 ? 고시 : jmYmd_(/청구/.test(방식) ? p.매수청구일 : p.협의매수일) || jmYmd_(p.매수청구일) || jmYmd_(p.협의매수일);
+  if (!기준 && 길ok !== false) 할일.push({ 무엇: 해제후 ? '사업인정고시일' : '토지매수 청구서 접수일(매수청구) 또는 협의매수 계약일', 때: '신고 전', 근거: '조특법 §77의3①②' });
+  // 3) 기한
+  const 기한ok = 양도일 ? 양도일 <= '2028-12-31' : null;
+  reqs.push(jmReq_('2028.12.31.까지 양도', 기한ok, 양도일 ? 양도일 : '양도일 모름', '조특법 §77의3①②'));
+  // 4) 취득일 — 상속은 피상속인 취득일(§77의3③)
+  const 상속 = /상속/.test(String(p.취득원인 || '')), 증여 = /증여/.test(String(p.취득원인 || ''));
+  const 취 = jmYmd_(p.취득일), 피취 = jmYmd_(p.피상속인취득일);
+  const 감면취득 = 상속 ? 피취 : 취;
+  if (상속 && !피취) 할일.push({ 무엇: '피상속인이 그 토지를 취득한 날(옛 등기부·토지대장)', 때: '신고 전', 근거: '조특법 §77의3③' });
+  if (증여) notes.push('증여받은 토지는 증여받은 날이 취득일 — 상속처럼 앞사람 취득일을 쓰는 규정(§77의3③)이 없음. 증여자 거주 기간도 합치지 않음(시행령 §74④은 피상속인만)');
+  let 율 = 0, 율왜 = '';
+  if (감면취득 && 기준) {
+    const 이십 = famAddY_(기준, -20);
+    if (지정 && 감면취득 <= 지정) { 율 = 40; 율왜 = (상속 ? '피상속인 ' : '') + '취득 ' + 감면취득 + ' — 지정일(' + 지정 + ') 이전'; }
+    else if (감면취득 <= 이십) { 율 = 25; 율왜 = (상속 ? '피상속인 ' : '') + '취득 ' + 감면취득 + ' — ' + (해제후 ? '사업인정고시일' : '매수청구·협의매수일') + '(' + 기준 + ')부터 20년 이전(' + 이십 + ' 이전)' + (지정 ? '' : ' — 지정일을 몰라 40%는 못 봄'); }
+    else { 율왜 = '취득 ' + 감면취득 + ' — 지정일(' + (지정 || '모름') + ') 뒤이고 ' + 기준 + '부터 20년 이전(' + 이십 + ')도 아님'; }
+    if (!지정 && 율 !== 40) 할일.push({ 무엇: '개발제한구역 지정 고시일(토지이용계획확인서·지정 고시문)', 때: '신고 전', 근거: '조특법 §77의3①1호' });
+  } else 율왜 = '취득일·기준일을 몰라 못 가림';
+  reqs.push(jmReq_('취득 시기(40%·25%)', 율 ? true : (감면취득 && 기준 ? false : null), 율왜 + (율 ? ' → ' + 율 + '%' : ''), '조특법 §77의3①②' + (율 === 40 ? '1호' : 율 === 25 ? '2호' : '') + (상속 ? '·③' : '')));
+  // 5) 거주 — 취득일부터 기준일까지 계속, 그 지역 안
+  const 지역ok = function (v) { const s = String(v || ''); return /같은|연접|30/.test(s) && !/밖|아님/.test(s); };
+  let 거주ok = null, 거주왜 = '';
+  const 거 = [].concat(p.거주 || []);
+  if (감면취득 && 기준 && 거.length) {
+    let list = jmMerge_(거.filter(function (x) { return 지역ok(x.지역) && jmYmd_(x.시작); }).map(function (x) { return { s: jmYmd_(x.시작), e: jmYmd_(x.끝) || 기준 }; }));
+    let 인정 = 0; const 안된 = [];
+    [].concat(p.부득이 || []).forEach(function (x) {
+      const a = jmYmd_(x.시작), b = jmYmd_(x.끝); if (!a || !b) return;
+      const s = String(x.사유 || '');
+      if (/고등|대학|취학|징집|병역|입대|요양|치료|질병/.test(s) && !/중학|초등|유치/.test(s)) { list = jmMerge_(list.concat([{ s: a, e: b }])); 인정 += jmDays_(a, b) + 1; }
+      else 안된.push(s || '사유 없음');
+    });
+    const 창 = jmMerge_(list.map(function (x) { return { s: x.s < 감면취득 ? 감면취득 : x.s, e: x.e > 기준 ? 기준 : x.e }; }).filter(function (x) { return x.s <= x.e; }));
+    const 빈 = jmDays_(감면취득, 기준) + 1 - jmLen_(창);
+    거주ok = 빈 <= 1;
+    const 첫빈 = 거주ok ? '' : (function () { let c = 감면취득; for (let i = 0; i < 창.length; i++) { if (창[i].s > c) return c + '~' + famAddD_(창[i].s, -1); c = famAddD_(창[i].e, 1); } return c + '~' + 기준; })();
+    거주왜 = (상속 ? '피상속인·상속인 거주 합쳐 ' : '') + 감면취득 + '~' + 기준 + (거주ok ? ' 계속 거주' + (인정 ? '(부득이 사유 ' + Math.round(인정) + '일 거주로 봄)' : '') : ' 중 ' + Math.round(빈) + '일 끊김(' + 첫빈 + ')') + (안된.length ? ' — 「' + 안된.join('·') + '」는 부득이 사유 아님(고교 이상 취학·징집·1년 이상 요양만, 시행규칙 §30)' : '');
+  } else { 거주왜 = '거주 이력(주민등록 초본)을 몰라 못 봄'; 할일.push({ 무엇: '주민등록 초본(취득일부터 ' + (해제후 ? '사업인정고시일' : '매수청구·협의매수일') + '까지 주소 이력)' + (상속 ? '·피상속인 제적 초본' : '') + ' — 토지 소재 시·군·구, 연접 시·군·구 또는 30km 안이었는지', 때: '신고 전', 근거: '시행령 §74①④' }); }
+  reqs.push(jmReq_('취득부터 계속 거주', 거주ok, 거주왜, '조특법 §77의3①②·시행령 §74①④·시행규칙 §30'));
+  // 결론
+  const 감면 = 길ok === true && 기한ok !== false && 율 > 0 && 거주ok === true;
+  const 잠정 = !감면 && 길ok !== false && 기한ok !== false && (율 > 0 || !(감면취득 && 기준)) && 거주ok == null;
+  const 표 = 감면 ? '§77의3' + (해제후 ? '②' : '①') + ' ' + 율 + '% 감면' : 잠정 ? '§77의3 감면 잠정(' + (율 || '?') + '%) — 확인할 것 남음' : '§77의3 감면 없음';
+  // 겹치는 감면
+  const 자경 = jmYn_(p.자경8년) === true;
+  if (자경) notes.push('8년 자경 감면(§69)과 겹치면 하나만(§127⑦) — 엔진이 경우마다 세액을 내니 덜 내는 쪽을 고를 것. §69는 농특세가 없고(농특세법 시행령 §4①1호), §77의3은 감면세액의 20% 농특세가 붙음');
+  if (해제후 && 수용) notes.push('해제 뒤 공익사업 수용·협의매수는 §77(수용 감면, 현금 15%)과도 겹침 — 하나만(§127⑦). §77은 사업인정고시일부터 2년 이전 취득·2026.12.31. 양도까지, 직접 경작 농지면 농특세 없음');
+  else if (해제후) notes.push('해제 뒤 협의매수는 §77(공익사업 수용 감면)과도 겹칠 수 있음 — 하나만(§127⑦)');
+  if (감면 || 잠정) {
+    notes.push('§77의3 감면세액의 20%는 농어촌특별세(농특세법 §4 비과세 목록에 §77의3 없음) · 감면 한도 과세기간 2억원·5년 3억원(§133②) — 엔진이 셈');
+    할일.push({ 무엇: '세액감면신청서 + 토지매수 청구·협의매수(해제 뒤면 수용·협의매수) 사실 확인 서류', 때: '양도 과세표준 신고(예정신고 포함) 때', 근거: '시행령 §74③' });
+  }
+  if (!해제후) notes.push('개발제한구역법상 매수청구·협의매수가 토지보상법 협의매수·수용에 드는지에 따라 비사업용 토지 예외(시행령 §168의14③3호)가 갈림 [확인 필요] — 「비사업용 토지」 판정에서 따로 볼 것');
+  // 엔진 칸
+  const 가 = n(p.양도가액), 취가 = n(p.취득가액);
+  if (가 && 양도일 && 취) {
+    const 바탕 = { transferPrice: 가, transferDate: 양도일, assetType: 'other', acquisitionDate: 취, acquisitionPrice: 취가, necessaryExpenses: n(p.필요경비), acquisitionCause: 상속 ? 'inheritance' : 증여 ? 'gift' : 'purchase' };
+    if (상속 && 피취) { 바탕.isInheritedAsset = true; 바탕.decedentAcquisitionDate = 피취; }
+    if (jmYn_(p.비사업용) === true) 바탕.isNonBusinessLand = true;
+    const zt = 율 === 25 ? 'restricted_zone_25' : 'restricted_zone_40';
+    if (감면 || 잠정) 경우.push({ 이름: '① 법대로 — §77의3 ' + 율 + '% 감면' + (잠정 ? '(잠정)' : ''), 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, 바탕, { compensationType: zt }) });
+    else {
+      경우.push({ 이름: '① 법대로 — §77의3 감면 없음', 엔진: 'calculate_transfer_tax', 엔진칸: 바탕 });
+      if (길ok !== false) 경우.push({ 이름: '② 잘못 — 요건을 안 보고 ' + (율 === 25 ? '25' : '40') + '% 감면', 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, 바탕, { compensationType: zt }), 잘못: true });
+    }
+    if (자경) 경우.push({ 이름: '③ 견줌 — 8년 자경 감면(§69)으로', 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, 바탕, { isEightYearFarmland: true }) });
+    if (해제후 && 수용) {
+      const y2 = 취 && 고시 ? (famAddY_(고시, -2) >= (상속 && 피취 ? 피취 : 취)) : null;
+      if (y2 !== false) { const c = Object.assign({}, 바탕, { compensationType: jmYn_(p.채권) === true ? 'bond' : 'cash', publicNoticeDate: 고시 }); if (jmYn_(p.직접경작) === true) c.isCompensationOnSelfCultivatedLand = true; 경우.push({ 이름: '④ 견줌 — 수용 감면(§77①, ' + (jmYn_(p.채권) === true ? '채권' : '현금') + ')으로', 엔진: 'calculate_transfer_tax', 엔진칸: c }); }
+    }
+  }
+  return jmWrap_('개발제한구역', reqs, { 적용: true, 결론: 표, 감면: 감면, 잠정: 잠정 || undefined, 감면율: 감면 || 잠정 ? 율 : 0, 항: 해제후 ? '②' : '①', 기준일: 기준 || null, 감면취득일: 감면취득 || null, 경우: 경우, 엔진칸: 경우[0] && 경우[0].엔진칸, 엔진칸늘: 경우.length > 1 || undefined, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 96 「엄씨 땅 쪼개 팔기」] 토지를 나눠(또는 지분으로) 해를 넘겨 같은 사람에게 팔 때 감면 한도 합산 — 조특법 §133③(법률 제19936호 부칙: 2024.1.1. 이후 양도분부터)
+//  엔진에는 「같은 사람에게 2년 안 앞서 판 부분의 감면세액」 칸이 있었지만 넥스 양도 도구에 그 칸이 없었고, 어떤 앞선 양도가 합산 대상인지
+//  (분할은 앞선 양도일부터 거꾸로 1년 안·지분 양도는 분할 없이·2년 안·같은 사람이나 그 배우자·2024년 이후) 가르는 도구가 없었다.
+//  또 엔진은 그 금액 하나를 §133①1호(자경 등 1억)와 ②1호(수용 등 2억, 2025년 이후 양도) 두 한도에 똑같이 더했다 — 묶음별로 나눔.
+//  p: { 이번: { 양도일, 산사람, 감면(자경|수용 …), 같은땅(예) },
+//       앞선: [{ 양도일, 산사람, 배우자(예 — 이번 산 사람이 그 사람의 배우자), 분할일, 지분(예), 감면세액, 감면(자경|축사|대토|수용|대토보상|개발제한구역 …) }],
+//       바탕: { 엔진 양도 칸(이번 자산) } }
+function judgeSplitSale_(p) {
+  p = p || {};
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Number(v || 0).toLocaleString('ko-KR'); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [], 줄 = [];
+  const 이번 = p.이번 || {};
+  const 이번일 = jmYmd_(이번.양도일), 이번해 = 이번일 ? 이번일.slice(0, 4) : '';
+  const 새묶음 = !이번일 || 이번일 >= '2025-01-01'; // 2025.1.1. 이후 양도: ①(자경 등)과 ②(수용 등) 한도가 따로(법률 제20778호 부칙 제15조①)
+  const 수용류 = function (s) { return /수용|77|대토보상|개발제한|그린벨트/.test(String(s || '')) && !/농지대토|대토감면|70/.test(String(s || '')); };
+  let 합자경 = 0, 합수용 = 0, 잠정자경 = 0, 잠정수용 = 0, 같은해 = 0;
+  [].concat(p.앞선 || []).forEach(function (a, i) {
+    const d = jmYmd_(a.양도일), 분 = jmYmd_(a.분할일), 지분 = jmYn_(a.지분) === true, 세 = n(a.감면세액);
+    const 왜 = [];
+    let ok = true, 모름 = false;
+    if (!d) { ok = false; 모름 = true; 왜.push('앞선 양도일 모름'); }
+    if (d && d < '2024-01-01') { ok = false; 왜.push('앞선 양도 ' + d + ' — 2024.1.1. 전 양도는 합산하지 않음(법률 제19936호 부칙)'); }
+    if (d && 이번일 && 이번일 <= d) { ok = false; 왜.push('이번 양도가 앞선 양도보다 늦지 않음'); }
+    if (d && 이번일 && d.slice(0, 4) === 이번해) { ok = false; 같은해++; 왜.push('같은 해(' + 이번해 + ') 양도 — 원래 한 과세기간이라 이 칸이 아니라 여러 건 계산(합산)으로 넣을 것'); }
+    if (d && 이번일 && 이번일 > famAddY_(d, 2)) { ok = false; 왜.push('이번 양도 ' + 이번일 + ' — 앞선 양도일부터 2년(' + famAddY_(d, 2) + ')을 넘김'); }
+    if (!지분) {
+      if (!분) { 모름 = true; 왜.push('분할일 모름 — 분할등기일(토지대장·등기부)을 볼 것'); }
+      else if (d && (분 > d || 분 < famAddY_(d, -1))) { ok = false; 왜.push('분할 ' + 분 + ' — 앞선 양도일부터 거꾸로 1년(' + famAddY_(d, -1) + '~' + d + ') 안이 아님'); }
+      else if (d) 왜.push('분할 ' + 분 + ' — 앞선 양도 전 1년 안');
+    } else 왜.push('지분 양도 — 분할 요건 없음');
+    const 같은사람 = 이번.산사람 && a.산사람 && String(이번.산사람).trim() === String(a.산사람).trim();
+    const 배우자 = jmYn_(a.배우자) === true;
+    if (같은사람) 왜.push('같은 사람(' + a.산사람 + ')에게');
+    else if (배우자) 왜.push('앞서 산 ' + (a.산사람 || '사람') + '의 배우자에게');
+    else if (jmYn_(a.배우자) === false || (이번.산사람 && a.산사람)) { ok = false; 왜.push('다른 사람(' + (a.산사람 || '?') + ' → ' + (이번.산사람 || '?') + ')에게 — 배우자도 아니면 합산 안 함'); }
+    else { 모름 = true; 왜.push('산 사람이 같은지·배우자인지 모름'); }
+    const 수 = 수용류(a.감면);
+    const 들어감 = ok && !모름, 잠 = ok && 모름;
+    if (들어감) { if (수) 합수용 += 세; else 합자경 += 세; }
+    if (잠) { if (수) 잠정수용 += 세; else 잠정자경 += 세; }
+    if (!세 && (들어감 || 잠)) 할일.push({ 무엇: '앞선 양도(' + (d || (i + 1) + '번째') + ')의 신고서 — 감면받은 양도소득세액', 때: '신고 전', 근거: '조특법 §133③' });
+    줄.push({ 앞선양도일: d || null, 산사람: a.산사람 || null, 감면: a.감면 || null, 감면세액: 세, 묶음: 수 ? '§133②1호(수용 등 2억)' : '§133①1호(자경 등 1억)', 합산: 들어감 ? '예' : 잠 ? '잠정' : '아니오', 왜: 왜.join(' · ') });
+  });
+  const 대상 = 합자경 + 합수용 > 0, 잠정 = !대상 && 잠정자경 + 잠정수용 > 0;
+  reqs.push(jmReq_('나눠(지분으로) 해를 넘겨 같은 사람·배우자에게 2년 안 양도', 대상 ? true : 잠정 ? null : false, 줄.map(function (x) { return x.앞선양도일 + ' ' + x.합산 + ' — ' + x.왜; }).join(' / ') || '앞선 양도 없음', '조특법 §133③·법률 제19936호 부칙'));
+  const 칸자경 = 새묶음 ? 합자경 : 합자경 + 합수용, 칸수용 = 새묶음 ? 합수용 : 0;
+  const 잠자경 = 새묶음 ? 잠정자경 : 잠정자경 + 잠정수용, 잠수용 = 새묶음 ? 잠정수용 : 0;
+  const 표 = 대상 ? '§133③ 합산 — 이번 과세기간 한도에 앞선 감면 ' + won(합자경 + 합수용) + '원을 더해 봄' : 잠정 ? '§133③ 합산 잠정 — 확인할 것 남음(앞선 감면 ' + won(잠정자경 + 잠정수용) + '원)' : '§133③ 합산 대상 아님 — 해마다 따로 한도';
+  if (!새묶음) notes.push('이번 양도가 2024년 — 그해엔 수용(§77·§77의2·§77의3)도 자경 등과 한 묶음(옛 §133①1호 1억원)이라 앞선 감면을 모두 그 칸에 더함');
+  notes.push('§133③은 과세기간 한도(①1호 1억·②1호 2억)에만 씀. 5개 과세기간 한도(①2호·②2호)는 앞선 양도가 직전 4개 과세기간이면 원래 들어감 — 「직전 4개 과세기간 감면세액」 칸(sect133PriorFarm·sect133PriorComp)에도 그 감면을 넣을 것');
+  notes.push('앞선 해 신고는 그대로 두고, 한 과세기간으로 보아 넘는 몫은 자산양도 순서에 따라 늦게 판 이번 양도에서 깎임(§133① 후단 "자산양도의 순서에 따라 합산") — 앞선 해를 고쳐 신고해야 하는지 [확인 필요]');
+  if (같은해) notes.push('같은 해에 판 부분은 원래 한 과세기간 — 이 칸 말고 양도소득세 여러 건 계산(calculate_transfer_tax_multi)으로 함께 넣어야 한도가 맞음');
+  notes.push('「동일인」은 산 사람 기준 — 법인이면 같은 법인. 공익사업 시행자에게 나눠 수용된 경우도 같은 시행자면 해당');
+  // 엔진 칸
+  const 바탕 = p.바탕 || null;
+  if (바탕 && 바탕.transferDate && 바탕.transferPrice) {
+    const 붙 = function (a, b) { const c = Object.assign({}, 바탕); if (a) c.sect133SameBuyerPriorReduction = a; if (b) c.sect133SameBuyerPriorComp = b; return c; };
+    if (대상 || 잠정) {
+      경우.push({ 이름: '① 법대로 — 앞선 감면을 과세기간 한도에 합산' + (잠정 ? '(잠정)' : ''), 엔진: 'calculate_transfer_tax', 엔진칸: 대상 ? 붙(칸자경, 칸수용) : 붙(잠자경, 잠수용) });
+      경우.push({ 이름: '② 잘못 — 해마다 따로 한도(합산 안 함)', 엔진: 'calculate_transfer_tax', 엔진칸: 붙(0, 0), 잘못: true });
+    } else 경우.push({ 이름: '① 법대로 — 따로 한도', 엔진: 'calculate_transfer_tax', 엔진칸: 붙(0, 0) });
+  }
+  if (대상 || 잠정) 할일.push({ 무엇: '앞선 양도의 매매계약서(산 사람)·분할 전후 토지대장·등기부(분할일)·산 사람 가족관계(배우자인지)', 때: '신고 전', 근거: '조특법 §133③' });
+  return jmWrap_('나눠팔기', reqs, { 적용: true, 결론: 표, 합산: 대상, 잠정: 잠정 || undefined, 앞선감면_자경묶음: 대상 ? 칸자경 : 잠자경, 앞선감면_수용묶음: 대상 ? 칸수용 : 잠수용, 엔진칸: { sect133SameBuyerPriorReduction: 대상 ? 칸자경 : 잠자경, sect133SameBuyerPriorComp: 대상 ? 칸수용 : 잠수용 }, 앞선양도: 줄, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 97 「도씨 임대 빌라」] 장기일반민간임대주택 장기보유특별공제 70%(옛 규정 8년 50%) 특례 요건 — 조특법 §97의3, 시행령 §97의3②③④, 시행규칙 §44
+//  엔진은 등록 시기·종류(rental9703Eligibility_)와 임대연수만 받아 특례율을 줬다. 10년 계속 등록·통산 임대(공실 3개월·재개발 기간), 임대료 5% 증액 제한·1년 안 증액 금지,
+//  국민주택규모, 임대개시일 기준시가 6억(수도권 밖 3억), 자동말소 아파트 매입임대(8년 간주)를 가르는 도구가 없어 넥스가 「장기일반」 표시만 보고 70%를 붙일 수 있었다.
+//  p: { 양도일, 거주자(예), 등록일(장기일반·공공지원 등록), 종류(건설|매입), 아파트(예), 등록신청일, 단기변경일, 임대개시일(없으면 등록일), 말소일, 말소사유(자동|자진),
+//       전용면적, 수도권(예), 읍면(예 — 수도권 밖 도시지역 아닌 읍·면), 임대개시기준시가(주택+부수토지), 취득일, 계약일(취득 계약금 지급일),
+//       계약: [{ 시작, 끝, 보증금, 월세 }], 전환율(%, 보증금↔월세 환산), 재개발: { 인가일, 준공일 }, 상속: { 피상속인임대일수 }, 바탕: 엔진 양도 칸 }
+function jmAddM_(d, m) { const t = new Date(d); t.setUTCMonth(t.getUTCMonth() + m); return t.toISOString().slice(0, 10); }
+function judgeRental9703_(p) {
+  p = p || {};
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Number(v || 0).toLocaleString('ko-KR'); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [], 계약줄 = [];
+  const T = jmYmd_(p.양도일), R = jmYmd_(p.등록일), S0 = jmYmd_(p.임대개시일) || R;
+  const 말소 = jmYmd_(p.말소일), 자동 = /자동/.test(String(p.말소사유 || ''));
+  const 매입 = /매입|purchase/.test(String(p.종류 || '')), 건설 = /건설|construction/.test(String(p.종류 || ''));
+  const 아파트 = jmYn_(p.아파트) === true, 신청 = jmYmd_(p.등록신청일) || R, 변경 = jmYmd_(p.단기변경일);
+  // ① 거주자
+  const 거 = jmYn_(p.거주자);
+  reqs.push(jmReq_('거주자', 거 === false ? false : 거 === true ? true : null, 거 === false ? '비거주자는 대상 아님' : 거 === true ? '거주자' : '거주자인지 모름', '시행령 §97의3①'));
+  // ② 등록 시기·종류(엔진 rental9703Eligibility_와 같은 기준)
+  let 등록ok = null, 등록왜 = '';
+  if (!R) 등록왜 = '장기일반·공공지원 등록일 모름 — 임대사업자 등록만으로는 대상 아님';
+  else if (R > '2027-12-31') { 등록ok = false; 등록왜 = '등록 ' + R + ' — 2027.12.31.까지 등록분만'; }
+  else if (변경 && 변경 >= '2020-07-11') { 등록ok = false; 등록왜 = '단기임대를 ' + 변경 + '에 장기일반으로 변경 신고 — 2020.7.11. 이후 변경 주택 제외(§97의3① 괄호)'; }
+  else if (R >= '2023-01-01') { 등록ok = 매입 ? false : 건설 ? true : null; 등록왜 = '2023.1.1. 이후 등록 — 민간건설임대만' + (매입 ? ' — 매입임대라 대상 아님' : 건설 ? '' : ' — 건설·매입 모름'); }
+  else if (매입 && R > '2020-12-31') { 등록ok = false; 등록왜 = '매입임대 ' + R + ' 등록 — 2020.12.31.까지 등록분만'; }
+  else if (매입 && 아파트 && 신청 >= '2020-07-11') { 등록ok = false; 등록왜 = '아파트 매입임대를 ' + 신청 + '에 장기일반 등록 신청 — 2020.7.11. 이후 신청 제외'; }
+  else { 등록ok = true; 등록왜 = '등록 ' + R + (매입 ? ' 매입' : 건설 ? ' 건설' : '') + '임대 — 2022.12.31. 이전 등록이라 종전 규정(8년 50%·10년 70%, 법률 부칙 제38조)'; }
+  reqs.push(jmReq_('장기일반·공공지원 등록 시기·종류', 등록ok, 등록왜, '조특법 §97의3①·부칙'));
+  const 옛규정 = !!R && R <= '2022-12-31';
+  // ③ 계속 등록·통산 임대
+  const 끝 = 말소 && (!T || 말소 < T) ? 말소 : T;
+  const cs = [].concat(p.계약 || []).map(function (c) { return { s: jmYmd_(c.시작), e: jmYmd_(c.끝), 보: n(c.보증금), 월: n(c.월세) }; })
+    .filter(function (c) { return c.s; }).sort(function (a, b) { return a.s < b.s ? -1 : 1; });
+  const 재 = p.재개발 || null, 재s = 재 && jmYmd_(재.인가일) ? jmAddM_(jmYmd_(재.인가일), -6) : '', 재e = 재 && jmYmd_(재.준공일) ? jmAddM_(jmYmd_(재.준공일), 6) : '';
+  let 임대일 = 0, 공실산입 = 0, 간주 = false;
+  const 공실불산입 = [], 재개발줄 = [];
+  if (S0 && 끝 && cs.length) {
+    const iv = [];
+    cs.forEach(function (c, i) {
+      const s = c.s < S0 ? S0 : c.s, e = c.e && c.e < 끝 ? c.e : 끝;
+      if (e >= s) iv.push({ s: s, e: e });
+      const nx = cs[i + 1];
+      if (nx && c.e) {
+        const gap = jmDays_(c.e, nx.s) - 1;
+        if (gap > 0) {
+          if (재s && 재e && c.e >= 재s && nx.s <= 재e) 재개발줄.push(c.e + '~' + nx.s + '(' + gap + '일)');
+          else if (nx.s <= jmAddM_(c.e, 3)) { iv.push({ s: famAddD_(c.e, 1), e: famAddD_(nx.s, -1) }); 공실산입 += gap; }
+          else 공실불산입.push(c.e + '~' + nx.s + '(' + gap + '일)');
+        }
+      }
+    });
+    임대일 = jmLen_(jmMerge_(iv));
+  }
+  const 상속일 = n(p.상속 && p.상속.피상속인임대일수);
+  임대일 += 상속일;
+  const 연수 = Math.floor(임대일 / 365.25 * 100) / 100;
+  const 등록10 = R && 끝 ? famAddY_(R, 10) <= 끝 : null, 등록8 = R && 끝 ? famAddY_(R, 8) <= 끝 : null;
+  let 기간ok = null, 기간왜 = '', 엔진연수 = 0;
+  if (옛규정 && 매입 && 아파트 && 자동 && 말소) {
+    간주 = true; 엔진연수 = 8; 기간ok = true;
+    기간왜 = '아파트 매입임대 자동말소(' + 말소 + ') — 8년 등록·임대로 봄(옛 시행령 §97의3②2호, 2020.10.7. 신설·2020.8.18. 이후 말소분) → 50%만';
+  } else if (!cs.length || !S0) {
+    기간왜 = '임대 계약 목록·임대개시일 없음 — 임대차계약서·표준임대차계약 신고 내역을 받을 것';
+  } else {
+    const 열 = S0 && 임대일 >= jmDays_(S0, famAddY_(S0, 10)), 여덟 = S0 && 임대일 >= jmDays_(S0, famAddY_(S0, 8));
+    if (열 && 등록10 !== false) { 엔진연수 = 10; 기간ok = true; }
+    else if (옛규정 && 여덟 && 등록8 !== false) { 엔진연수 = 8; 기간ok = true; }
+    else { 엔진연수 = Math.floor(연수); 기간ok = false; }
+    기간왜 = '통산 임대 ' + 임대일 + '일(약 ' + 연수 + '년' + (공실산입 ? ', 3개월 안 공실 ' + 공실산입 + '일 넣음' : '') + (상속일 ? ', 피상속인 ' + 상속일 + '일 합산' : '') + ')' +
+      (공실불산입.length ? ' · 3개월 넘는 공실 ' + 공실불산입.join(', ') + '는 안 셈' : '') +
+      (재개발줄.length ? ' · 재개발 등 기간 ' + 재개발줄.join(', ') + '는 계속 임대로 보되 날수는 안 셈' : '') +
+      ' · 계속 등록 ' + R + '~' + 끝 + (등록10 === false ? '(10년 안 됨)' : '') +
+      (말소 && (!T || 말소 < T) ? ' · ' + (자동 ? '자동' : '자진') + '말소 ' + 말소 : '') + (엔진연수 === 8 && 기간ok ? ' → 8년 이상 50%(옛 규정)' : '');
+  }
+  reqs.push(jmReq_('10년 이상 계속 등록·통산 임대(옛 규정은 8년 50%)', 기간ok, 기간왜, '시행령 §97의3②④·§97⑤·시행규칙 §44'));
+  // ④ 임대료 5%·1년
+  const 전환 = n(p.전환율);
+  const 환산 = function (c) { return c.보 + c.월 * 12 / (전환 / 100); };
+  let 증액ok = cs.length >= 2 ? true : null, 증액모름 = false, 앞증액 = '';
+  for (let i = 1; i < cs.length; i++) {
+    const a = cs[i - 1], b = cs[i];
+    let r = null, 왜 = '';
+    if (!a.월 && !b.월) r = a.보 ? b.보 / a.보 - 1 : null;
+    else if (a.보 === b.보 && a.월 && b.월) r = b.월 / a.월 - 1;
+    else if (전환) r = 환산(b) / 환산(a) - 1;
+    else 왜 = '보증금·월세가 함께 바뀜 — 전환율이 없어 증가율 모름(민간임대주택법 §44④ 기준 [확인 필요])';
+    const 옛계약 = b.s < '2020-02-11';
+    const 일년 = r > 0 && !!앞증액 && jmDays_(앞증액, b.s) < 365, 앞증액일 = 앞증액;
+    if (r > 0) 앞증액 = b.s;
+    let 판 = r == null ? null : r > 0.05 + 1e-9 ? false : true;
+    if (일년) 판 = false;
+    if (옛계약 && 판 === false) 판 = null;
+    if (판 === false) 증액ok = false; else if (판 === null) 증액모름 = true;
+    계약줄.push({ 판정: 판 === true ? '✔' : 판 === false ? '✘' : '?', 줄: b.s + ' 계약 보증금 ' + won(b.보) + '·월세 ' + won(b.월) + (r == null ? '' : ' — 증가율 ' + Math.round(r * 10000) / 100 + '%') +
+      (일년 ? ' · 앞선 증액(' + 앞증액일 + ')부터 1년 안 다시 증액' : '') + (옛계약 && r > 0.05 ? ' · 2020.2.11. 전 계약 — 그때 기준 [확인 필요]' : '') + (왜 ? ' · ' + 왜 : '') });
+  }
+  if (증액ok === true && 증액모름) 증액ok = null;
+  reqs.push(jmReq_('임대료 등 증가율 5% 이하·1년 안 다시 증액 없음', 증액ok, cs.length < 2 ? '갱신·새 계약 목록 없음' : 계약줄.map(function (x) { return x.판정 + ' ' + x.줄; }).join(' / '), '시행령 §97의3③1호·부칙(2020.2.11.) 제16조'));
+  // ⑤ 국민주택규모
+  const 면 = n(p.전용면적), 한면 = jmYn_(p.읍면) === true ? 100 : 85;
+  reqs.push(jmReq_('국민주택규모(전용 ' + 한면 + '㎡) 이하', 면 ? 면 <= 한면 : null, 면 ? '전용 ' + 면 + '㎡' + (한면 === 100 ? '(수도권 밖 도시지역 아닌 읍·면 100㎡)' : '') : '전용면적 모름', '시행령 §97의3③2호·주택법 §2 6호'));
+  // ⑥ 임대개시일 기준시가
+  const 계 = jmYmd_(p.계약일), 취 = jmYmd_(p.취득일), 옛취득 = (취 && 취 <= '2018-09-13') || (계 && 계 <= '2018-09-13');
+  const 한도 = jmYn_(p.수도권) === false ? 300000000 : 600000000, 기 = n(p.임대개시기준시가);
+  let 가ok = null, 가왜 = '';
+  if (T && T < '2018-10-23') { 가ok = true; 가왜 = '2018.10.23. 전 양도 — 기준시가 요건 없음'; }
+  else if (옛취득) { 가ok = true; 가왜 = '2018.9.13. 이전 취득(계약금 지급) — 종전 규정(시행령 부칙 2018.10.23.)'; }
+  else if (!기) 가왜 = '임대개시일 기준시가(주택+부수토지) 모름' + (jmYn_(p.수도권) == null ? ' · 수도권인지 모름' : '');
+  else { 가ok = 기 <= 한도; 가왜 = '임대개시일 기준시가 ' + won(기) + '원 — 한도 ' + won(한도) + '원(' + (한도 === 300000000 ? '수도권 밖' : '수도권') + ')'; }
+  reqs.push(jmReq_('임대개시일 기준시가 ' + 한도 / 1e8 + '억원 이하', 가ok, 가왜, '시행령 §97의3③4호·부칙(2018.10.23.)'));
+  // 결론
+  const 결과들 = reqs.map(function (r) { return r.결과; });
+  const 안됨 = 결과들.indexOf('✘') >= 0, 모름 = !안됨 && 결과들.indexOf('?') >= 0;
+  const 율 = 안됨 ? 0 : 엔진연수 >= 10 ? 70 : 엔진연수 >= 8 && 옛규정 ? 50 : 0;
+  const 결론 = 안됨 ? '§97의3 특례 안 됨 — 일반 장기보유특별공제' : !율 ? '§97의3 아직 기간 미달' : '§97의3 ' + 율 + '%' + (모름 ? ' 잠정 — 확인할 것 남음' : ' 특례') + ' — 임대기간 중 양도차익에만(시행령 §97의3⑤)';
+  notes.push('특례는 신청해야 받음 — 예정·확정신고 때 과세특례적용신청서(조특법 §97의3③·시행령 §97의3⑥). 엔진은 신청·안 함을 둘 다 셈해 적은 쪽을 기본으로 냄');
+  notes.push('§97의4(장기임대주택 추가공제)와 겹쳐 받지 못함(§97의3②) · 다주택 중과는 시행령 §167의3대로 따로 판정');
+  if (간주) notes.push('자동말소 아파트 8년 간주 호는 2023.2.28. 개정으로 지워짐 — 2022.12.31. 이전 등록분에 계속 쓰는지 시행령 부칙 경과조치 [확인 필요]');
+  if (공실불산입.length) notes.push('3개월 넘는 공실은 임대기간에서 빠짐(시행규칙 §44) — 통산 10년이 늦어짐');
+  if (상속일) notes.push('상속받은 임대주택은 피상속인 임대기간을 합산(시행령 §97⑤3호 준용) — 상속인이 다시 등록했는지 확인');
+  // 엔진칸
+  const 바탕 = p.바탕 || null;
+  if (바탕 && 바탕.transferDate && 바탕.transferPrice) {
+    const 특 = function (y) { return Object.assign({}, 바탕, { rentalSpecialType: 'rental_general', rentalYears: y, rentalRegistrationDate: R || 바탕.rentalRegistrationDate, rentalHousingKind: 매입 ? 'purchase' : 건설 ? 'construction' : 바탕.rentalHousingKind, rentalIsApartment: 아파트, rentalApplyDate: jmYmd_(p.등록신청일) || 바탕.rentalApplyDate, rentalConversionDate: 변경 || 바탕.rentalConversionDate }); };
+    const 일 = function () { const c = Object.assign({}, 바탕); delete c.rentalSpecialType; delete c.rentalYears; return c; };
+    if (안됨) { 경우.push({ 이름: '① 법대로 — 특례 없음(일반 장특공)', 엔진: 'calculate_transfer_tax', 엔진칸: 일() }); 경우.push({ 이름: '② 잘못 — 요건 안 보고 70%', 엔진: 'calculate_transfer_tax', 엔진칸: 특(10), 잘못: true }); }
+    else if (율) { 경우.push({ 이름: '① 법대로 — §97의3 ' + 율 + '%' + (모름 ? '(잠정)' : ''), 엔진: 'calculate_transfer_tax', 엔진칸: 특(엔진연수) }); 경우.push({ 이름: '② 특례 안 될 때 — 일반 장특공', 엔진: 'calculate_transfer_tax', 엔진칸: 일() }); }
+    else 경우.push({ 이름: '① 법대로 — 기간 미달(일반 장특공)', 엔진: 'calculate_transfer_tax', 엔진칸: 일() });
+  }
+  if (모름 || !cs.length) 할일.push({ 무엇: '임대사업자·장기일반 등록증(등록일·말소일), 표준임대차계약서 전부(보증금·월세·기간), 임대개시일 기준시가, 건축물대장(전용면적)', 때: '신고 전', 근거: '조특법 §97의3' });
+  return jmWrap_('장기임대특례', reqs, { 적용: true, 결론: 결론, 특례율: 율, 잠정: 모름 || undefined, 임대일수: 임대일, 엔진연수: 엔진연수, 간주8년: 간주 || undefined, 계약: 계약줄, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 98 「표씨 지난 일들」] 국세 부과제척기간 — 세목·거래마다 기산일(국세기본법 시행령 §12의3)을 스스로 찾고
+//  기간(국세기본법 §26의2①②④)·특례(⑤ 안 날부터 1년, ⑥ 결정·판결·경정청구 뒤)를 가려 오늘 부과할 수 있는지 냄.
+//  엔진(calculate_tax_exclusion_period)은 기산일·무신고·부정행위를 사람이 넣어야 했고, 부담부증여 양도소득세(④ 후단 — 증여세와 같은 기간)·
+//  상속세 거짓·누락 부분만 15년·⑥ 특례·신고기한이 쉬는 날일 때를 가르는 곳이 없었다.
+//  p: { 기준일, 공휴일:[…], 건: [{ 이름, 세목(양도|소득|상속|증여|부담부증여양도), 거래일(양도일·상속개시일·증여일 — 양도·소득은 그 해),
+//       신고기한(직접 — 주면 그 날), 비거주(예 — 상속 9개월), 신고(예|아니오), 부정행위(예), 거짓누락(예), 누락유형(가공채무|미등기재산|금융자산),
+//       역외(예), 추징사유일(감면·공제 사후 추징 사유가 생긴 날), 불복확정일(§55·감사원·행정소송 결정·판결 확정), 판결확정일(거래 관련 민사 판결 §26의2⑥5호),
+//       경정청구일(§45의2 경정청구한 날), 특례: { 유형(1~8 — ⑤ 각 호), 재산가액, 안날, 사망(예 — 상속인·증여자·수증자 중 사망) } }] }
+function judgeExclusionPeriod_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10), hol = p.공휴일 || [];
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Number(v || 0).toLocaleString('ko-KR'); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [], 줄 = [];
+  const 끝날 = function (s, y) { return famAddD_(famAddY_(s, y), -1); }; // 기산일 넣어 셈(민법 §157 단서)·n년 뒤 같은 날 전날(§160②) — 엔진과 같음
+  const 남은 = function (e) { return Math.round(jmDays_(today, e)); };
+  const 유형이름 = { 1: '제3자 명의 피상속인·증여자 재산 취득', 2: '계약 중 상속 개시로 등기 안 한 재산', 3: '국외 재산', 4: '등기 필요 없는 유가증권·서화·골동품', 5: '수증자 명의 증여자 금융자산', 6: '비거주 피상속인 국내재산', 7: '명의신탁재산 증여의제(§45의2)', 8: '가상자산사업자 밖 가상자산' };
+  let 끝남수 = 0, 가능수 = 0, 잠정수 = 0, 쉼미룸 = false;
+  [].concat(p.건 || []).forEach(function (c, i) {
+    const 이름 = c.이름 || ((i + 1) + '번째');
+    const 세목 = String(c.세목 || '');
+    const 상증 = /상속|^증여$/.test(세목), 부담 = /부담부/.test(세목), 상속 = /상속/.test(세목);
+    const 거래 = jmYmd_(c.거래일), why = [], 근 = [];
+    const 신고 = jmYn_(c.신고), 부정 = jmYn_(c.부정행위) === true, 거누 = jmYn_(c.거짓누락) === true || !!c.누락유형, 역외 = jmYn_(c.역외) === true;
+    // 1) 법정신고기한 → 기산일(시행령 §12의3①1호 신고기한 다음 날, 예정신고기한은 넣지 않음)
+    let 기한 = jmYmd_(c.신고기한), 기한근 = '받은 신고기한';
+    if (!기한 && 거래) {
+      const y = +거래.slice(0, 4), m = +거래.slice(5, 7);
+      if (상속) { 기한 = new Date(Date.UTC(y, m + (jmYn_(c.비거주) === true ? 9 : 6), 0)).toISOString().slice(0, 10); 기한근 = '상속개시일 달 말일부터 ' + (jmYn_(c.비거주) === true ? '9' : '6') + '개월(상증법 §67①)'; }
+      else if (/^증여$/.test(세목)) { 기한 = famGiftDue_(거래); 기한근 = '증여일 달 말일부터 3개월(상증법 §68①)'; }
+      else { 기한 = (y + 1) + '-05-31'; 기한근 = '다음 해 5월 31일 확정신고기한(소득세법 §110①·§70①) — 예정신고기한은 기산에 넣지 않음(시행령 §12의3①1호 후단)'; }
+    }
+    let 기산 = '', 기산근 = '';
+    if (기한) {
+      const w = []; const 기한2 = apShift_(기한, hol, w);
+      if (기한2 !== 기한) { 쉼미룸 = true; 근.push('신고기한 ' + 기한 + '이 쉬는 날이라 ' + 기한2 + '까지(국세기본법 §5①) — 기산일도 그 다음 날로 봄 [확인 필요]'); }
+      기산 = famAddD_(기한2, 1); 기산근 = 기한근 + ' → 다음 날';
+    }
+    const 추징 = jmYmd_(c.추징사유일);
+    if (추징) { 기산 = 추징; 기산근 = '감면·공제 추징 사유가 생긴 날(시행령 §12의3②3호)'; }
+    if (!기산) { 잠정수++; 줄.push({ 이름: 이름, 세목: 세목, 결론: '잠정 — 거래일·신고기한 모름', 왜: '거래일(양도일·상속개시일·증여일)이나 신고기한을 넣을 것' }); return; }
+    // 2) 기간
+    let 년, 기간근;
+    if (상증 || 부담) {
+      const 무 = 신고 === false;
+      if (부정 || 무) { 년 = 15; 기간근 = '§26의2④' + (부정 ? '1호 부정행위' : '2호 무신고') + ' 15년'; }
+      else { 년 = 10; 기간근 = '§26의2④ 본문 10년'; }
+      if (부담) 기간근 += ' — 부담부증여의 양도소득세도 증여세와 같음(④ 후단)';
+      if (신고 == null && !부정) { why.push('신고했는지 모름 — 신고했으면 10년(' + 끝날(기산, 10) + '까지), 안 했으면 15년(' + 끝날(기산, 15) + '까지)'); }
+    } else {
+      if (부정) { 년 = 역외 ? 15 : 10; 기간근 = '§26의2②2호 부정행위 ' + 년 + '년'; }
+      else if (신고 === false) { 년 = 역외 ? 10 : 7; 기간근 = '§26의2②1호 무신고 ' + 년 + '년'; }
+      else { 년 = 역외 ? 7 : 5; 기간근 = '§26의2① ' + 년 + '년'; }
+      if (역외) 기간근 += '(역외거래)';
+      if (신고 == null && !부정) why.push('신고했는지 모름 — 신고했으면 ' + 년 + '년(' + 끝날(기산, 년) + '까지), 안 했으면 ' + (역외 ? 10 : 7) + '년(' + 끝날(기산, 역외 ? 10 : 7) + '까지)');
+    }
+    const 기본끝 = 끝날(기산, 년);
+    const 부분 = [];
+    // 상증 신고했는데 거짓·누락이면 그 부분만 15년(④3호·시행령 §12의2②)
+    if (상증 && 신고 === true && !부정 && 거누) { 부분.push({ 부분: '거짓·누락한 부분(' + (c.누락유형 || '거짓·누락') + ')', 년: 15, 끝: 끝날(기산, 15), 근거: '§26의2④3호·시행령 §12의2②' }); 기간근 += ' — 신고한 나머지 부분'; }
+    // 3) 특례 ⑤·⑥
+    const 특 = [];
+    const sp = c.특례 || null;
+    if (sp && (상증 || 부담)) {
+      const 유 = Number(sp.유형) || 0, 가 = n(sp.재산가액), 안 = jmYmd_(sp.안날), 죽 = jmYn_(sp.사망) === true;
+      const ok = 부정 && 유형이름[유] && 가 > 5000000000 && !죽 && 안;
+      const 왜5 = [];
+      if (!부정) 왜5.push('부정행위로 포탈한 경우만');
+      if (!유형이름[유]) 왜5.push('⑤ 각 호 유형을 넣을 것(1~8)'); else 왜5.push(유 + '호 ' + 유형이름[유]);
+      if (가 && 가 <= 5000000000) 왜5.push('재산가액 ' + won(가) + '원 — 50억원 이하라 안 됨(⑤ 단서)'); else if (가) 왜5.push('재산가액 ' + won(가) + '원 > 50억원');
+      if (죽) 왜5.push('상속인·증여자·수증자 중 사망 — 안 됨(⑤ 단서)');
+      if (!안) 왜5.push('과세관청이 안 날 모름');
+      if (ok) 특.push({ 특례: '§26의2⑤ 안 날부터 1년', 끝: famAddY_(안, 1), 왜: 왜5.join(' · ') });
+      else if (부정 || 유) notes.push(이름 + ': §26의2⑤ 1년 특례 안 걸림 — ' + 왜5.join(' · '));
+    }
+    const 불 = jmYmd_(c.불복확정일); if (불) 특.push({ 특례: '§26의2⑥1호 결정·판결 확정 뒤 1년(그 결정·판결에 따른 경정만)', 끝: famAddY_(불, 1), 왜: '확정 ' + 불 });
+    const 판 = jmYmd_(c.판결확정일); if (판) 특.push({ 특례: '§26의2⑥5호 거래가 판결로 다르게 확정된 날부터 1년', 끝: famAddY_(판, 1), 왜: '확정 ' + 판 });
+    const 경 = jmYmd_(c.경정청구일); if (경) 특.push({ 특례: '§26의2⑥3호 경정청구일부터 2개월(그 청구에 따른 경정만)', 끝: jmAddM_(경, 2), 왜: '청구 ' + 경 });
+    // 4) 오늘 판정
+    const 끝들 = [기본끝].concat(부분.map(function (x) { return x.끝; })).concat(특.map(function (x) { return x.끝; }));
+    const 늦은끝 = 끝들.sort().slice(-1)[0];
+    const 가능 = today <= 늦은끝, 잠 = why.length > 0;
+    if (잠) 잠정수++; else if (가능) 가능수++; else 끝남수++;
+    const 결론 = (잠 ? '잠정 — ' : '') + (today <= 기본끝 ? '부과 가능 — ' + 기본끝 + '까지(남은 ' + 남은(기본끝) + '일)' : '기본 기간 끝남(' + 기본끝 + ')') +
+      부분.map(function (x) { return ' · ' + x.부분 + ' ' + (today <= x.끝 ? x.끝 + '까지 가능' : x.끝 + ' 끝남'); }).join('') +
+      특.map(function (x) { return ' · ' + x.특례 + ' ' + (today <= x.끝 ? x.끝 + '까지 가능' : x.끝 + ' 끝남'); }).join('');
+    줄.push({ 이름: 이름, 세목: 세목, 거래일: 거래 || null, 신고기한: 기한 || null, 기산일: 기산, 기산근거: 기산근, 기간_년: 년, 기간근거: 기간근, 만료일: 기본끝, 부분: 부분.length ? 부분 : undefined, 특례: 특.length ? 특 : undefined, 오늘부과: 가능, 결론: 결론, 왜: why.concat(근).join(' · ') || undefined });
+    reqs.push(jmReq_(이름 + ' — 오늘(' + today + ') 부과할 수 있음', 잠 ? null : 가능, 결론, '국세기본법 §26의2·시행령 §12의3'));
+    // 엔진칸 — 엔진 제척기간 계산으로 다시 셈
+    경우.push({ 이름: 이름 + ' — 엔진 다시 셈', 엔진: 'calculate_tax_exclusion_period', 엔진칸: { exclusionPeriodStartDate: 기산, isOffshoreTransaction: 역외, isInheritanceOrGiftTax: 상증 || 부담, isUnreported: 신고 === false, isFraudulent: 부정, isFalseOrOmittedReport: false } });
+    // 할 일
+    if (가능 && 신고 === false) 할일.push({ 무엇: 이름 + ' — 기한 후 신고(§45의3)·가산세 감면(§48②) 검토(넥스 가산세 감면 도구) — 세무조사 통지 전에 해야 감면', 때: '지금', 근거: '국세기본법 §45의3·§48②' });
+    if (가능 && 거누 && 신고 === true) 할일.push({ 무엇: 이름 + ' — 누락한 부분 수정신고(§45) 검토', 때: '지금', 근거: '국세기본법 §45·§48②' });
+    if (!가능 && !잠) 할일.push({ 무엇: 이름 + ' — 세무조사·고지가 오면 「부과제척기간(' + 늦은끝 + ') 경과」를 다툴 근거(신고서 접수증·신고기한)를 챙겨 둠', 때: '조사·고지 때', 근거: '국세기본법 §26의2' });
+  });
+  if (쉼미룸) notes.push('신고기한이 토요일·공휴일이면 §5①로 다음 날까지가 신고기한 — 그 경우 기산일을 미뤄진 기한 다음 날로 셈 [확인 필요 — 법령상 「연장」(시행령 §12의3②2호)과 §5① 자동 미룸이 같은지]');
+  notes.push('기간은 기산일을 넣어 세고 n년 뒤 같은 날의 전날 끝(민법 §157 단서·§160②) — 엔진과 같음');
+  notes.push('예정신고만 하고 확정신고를 안 해도 되는 양도도 기산일은 확정신고기한(다음 해 5월 31일) 다음 날(시행령 §12의3①1호 후단)');
+  notes.push('부정행위로 가산세 부과대상이 되면 그 가산세는 10년(§26의2②3호) · 이월결손금 공제 땐 그 결손금 해 소득세가 공제한 해 신고기한부터 1년(③)');
+  notes.push('제척기간은 부과(증액경정 포함)의 기한 — 납세자가 더 낸 세금을 돌려받는 경정청구는 따로(§45의2 법정신고기한부터 5년, 넥스 불복기한 판정)');
+  notes.push('명의대여·사실상 귀속자가 결정·판결로 확인되면 그 확정일부터 1년 안 실제 귀속자에게 다시 부과(§26의2⑦)');
+  notes.push('2019.12.31 개정 전에 성립한 국세는 그때 규정(옛 §26의2) — 기간은 대체로 같으나 역외거래·⑤ 각 호(가상자산 8호 등)가 뒤에 생겨 [확인 필요]');
+  const 결 = '제척기간 ' + 줄.length + '건 — 부과 가능 ' + 가능수 + ' · 끝남 ' + 끝남수 + (잠정수 ? ' · 잠정 ' + 잠정수 : '');
+  return jmWrap_('제척기간', reqs, { 적용: true, 결론: 결, 기준일: today, 건별: 줄, 경우: 경우, 엔진칸늘: 경우.length > 1 || undefined, 엔진칸: 경우[0] ? 경우[0].엔진칸 : undefined, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 99 「석씨 다운계약서」] 부정행위인지·신고 가산세 — 누락·과소 항목마다 그 행위가 「조세범 처벌법」 §3⑥ 각 호의
+//  적극적 행위인지(국세기본법 §26의2②2호·시행령 §12의2①) 가르고, 부정 부분만 40%(역외 60%)·나머지 10%(국세기본법 §47의3①, 시행령 §27의2③
+//  과세표준 비율 나누기)·무신고 40%/20%(§47의2①)·가산세 안 붙는 부분(§47의3④)·감면(§48①②)·납부지연(§47의4①1호)을 셈.
+//  엔진(calculate_filing_penalty_reduction)은 다른 계산기가 낸 가산세에 감면만 붙였고, 「무엇이 부정행위인가」·부정 부분만 40%로 나누기·
+//  부정이면 제척기간 10년(상증 15년)·조세범 처벌 기준(§3①)을 가르는 곳이 없었다.
+//  p: { 세목(양도|소득|상속|증여), 법정신고기한(없으면 거래일로 셈), 거래일, 신고(예|아니오), 역외(예), 신고할세액(가산세 뺀 바른 세액),
+//       신고한세액, 납부한세액(신고 때 낸 돈 — 없으면 신고한세액·무신고면 0), 수정신고일, 기한후신고일, 경정예지(예 — 조사 통지 등으로 미리 알고 냄),
+//       정당한사유(예|아니오 + 정당한사유내용), 납부일, 고지일, 기준일, 공휴일:[…],
+//       항목: [{ 이름, 과세표준(누락·과소한 과세표준), 행위(무엇을 했나 — 다운계약서·차명계좌·이중장부·단순 누락·착오 …), 이유(평가차이|공제착오|소송|부담부평가) }] }
+function judgeFraud_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10), hol = p.공휴일 || [];
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Math.round(Number(v || 0)).toLocaleString('ko-KR'); };
+  const 버림 = function (v) { return Math.floor(v); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [], 줄 = [];
+  const 세목 = String(p.세목 || ''), 상증 = /상속|증여/.test(세목) && !/양도/.test(세목), 역외 = jmYn_(p.역외) === true;
+  const 신고 = jmYn_(p.신고);
+  // 1) 법정신고기한(쉬는 날이면 §5①로 미룸 — 납부기한도 같음)
+  let 기한 = jmYmd_(p.법정신고기한);
+  const 거래 = jmYmd_(p.거래일);
+  if (!기한 && 거래) {
+    const y = +거래.slice(0, 4), m = +거래.slice(5, 7);
+    if (/상속/.test(세목)) 기한 = new Date(Date.UTC(y, m + 6, 0)).toISOString().slice(0, 10);
+    else if (/증여/.test(세목)) 기한 = famGiftDue_(거래);
+    else 기한 = (y + 1) + '-05-31';
+    notes.push('법정신고기한을 거래일로 셈(' + 기한 + ') — 양도는 확정신고기한으로 셈, 예정신고만 해야 하는 건이면 예정신고기한(양도일 달 말일부터 2개월, 소득세법 §105①)을 직접 넣을 것');
+  }
+  if (기한) 기한 = apShift_(기한, hol, []);
+  // 2) 항목마다 부정행위 가르기(조세범 처벌법 §3⑥: 조세의 부과·징수를 불가능하게 하거나 현저히 곤란하게 하는 「적극적 행위」)
+  const 호표 = [
+    [1, /이중\s*장부|거짓\s*기장|장부.*(거짓|허위)/, '이중장부의 작성 등 장부의 거짓 기장'],
+    [2, /거짓\s*(증빙|문서|계약)|허위\s*(증빙|계약|영수증)|다운\s*계약|업\s*계약|가짜\s*(영수증|계약|증빙)|이면\s*계약/, '거짓 증빙 또는 거짓 문서의 작성 및 수취'],
+    [3, /파기|폐기|없앰|지움/, '장부와 기록의 파기'],
+    [4, /은닉|숨김|숨겼|차명|남의\s*이름|명의\s*신탁|빼돌|조작|은폐|가장/, '재산의 은닉, 소득·수익·행위·거래의 조작 또는 은폐'],
+    [5, /고의.*장부|장부.*(안\s*씀|미작성|안\s*만듦)|세금계산서.*조작|계산서.*조작/, '고의로 장부를 작성·비치하지 않음 또는 (세금)계산서·합계표 조작'],
+    [6, /전사적|ERP|전산\s*조작|전자세금계산서.*조작/, '전사적 기업자원 관리설비 또는 전자세금계산서의 조작'],
+    [7, /위계|부정한\s*행위|속임/, '그 밖에 위계에 의한 행위 또는 부정한 행위']
+  ];
+  const 단순 = /단순|누락만|빠뜨림|깜빡|착오|실수|몰라|몰랐|해석|이견|잘못\s*앎|계산\s*틀림/;
+  const 면제이유 = {
+    평가차이: { 상증: true, 왜: '상증법 §60②③·§66으로 평가한 가액으로 결정(부정행위면 제외) — 가산세 없음', 근거: '국세기본법 §47의3④1호다목' },
+    공제착오: { 상증: true, 왜: '상속·증여 공제(§18~§24·§53·§53의2·§54) 적용 착오 — 가산세 없음', 근거: '국세기본법 §47의3④1호나목' },
+    소송: { 상증: true, 왜: '신고 때 소유권 소송 등으로 상속·증여재산으로 확정되지 않음 — 가산세 없음', 근거: '국세기본법 §47의3④1호가목' },
+    부담부평가: { 양도: true, 왜: '부담부증여 양도 부분을 상증법 §60②③·§66 평가액으로 결정(부정행위면 제외) — 가산세 없음', 근거: '국세기본법 §47의3④1호의2' }
+  };
+  let 과표합 = 0, 부정과표 = 0, 잠정과표 = 0, 제외과표 = 0, 다운 = false;
+  [].concat(p.항목 || []).forEach(function (h, i) {
+    const 이름 = h.이름 || ((i + 1) + '번째 항목'), 과 = n(h.과세표준), 행 = String(h.행위 || '');
+    과표합 += 과;
+    let 판 = null, 호 = null, 왜 = '', 근거 = '조세범 처벌법 §3⑥ · 국세기본법 시행령 §12의2①';
+    const 맞 = 호표.filter(function (t) { return t[1].test(행); });
+    if (맞.length && !(단순.test(행) && !맞.length)) { 판 = true; 호 = 맞.map(function (t) { return t[0]; }); 왜 = 맞.map(function (t) { return t[0] + '호 ' + t[2]; }).join(' · '); }
+    else if (단순.test(행)) { 판 = false; 왜 = '적극적 행위 없이 신고에서 빠뜨림·착오 — 부정행위 아님(§3⑥ 본문 「적극적 행위」)'; }
+    else { 왜 = 행 ? '「' + 행 + '」만으로는 가르지 못함 — 계약서·장부·계좌 등 무엇을 꾸미거나 숨겼는지 확인' : '무엇을 했는지(행위) 모름'; }
+    if (/다운\s*계약|업\s*계약|이면\s*계약|거짓\s*계약/.test(행)) 다운 = true;
+    const 이 = h.이유 && 면제이유[h.이유];
+    let 제외 = false;
+    if (이 && 판 !== true && ((이.상증 && 상증) || (이.양도 && /양도/.test(세목)))) { 제외 = true; 제외과표 += 과; }
+    else if (이 && 판 === true) notes.push(이름 + ': ' + h.이유 + ' 사유가 있어도 부정행위면 가산세가 붙음(§47의3④ 괄호)');
+    else if (이) notes.push(이름 + ': ' + h.이유 + ' 사유는 ' + (이.상증 ? '상속세·증여세' : '부담부증여 양도소득세') + '에만 — 이 세목엔 안 걸림');
+    if (!제외) { if (판 === true) 부정과표 += 과; else if (판 == null) 잠정과표 += 과; }
+    줄.push({ 이름: 이름, 과세표준: 과, 행위: 행 || null, 부정행위: 판 === true ? '예' : 판 === false ? '아니오' : '모름', 조세범처벌법_호: 호 || undefined, 왜: 왜, 가산세제외: 제외 ? 이.왜 : undefined, 근거: 제외 ? 근거 + ' · ' + 이.근거 : 근거 });
+    reqs.push(jmReq_(이름 + ' — 부정행위 아님', 판 == null ? null : !판, 왜 + (제외 ? ' · ' + 이.왜 : ''), 근거));
+  });
+  if (부정과표 + 잠정과표 > 0) notes.push('부정행위는 행위(§3⑥ 각 호)에 더해 「조세의 부과와 징수를 불가능하게 하거나 현저히 곤란하게」 한 결과가 있어야 함(§3⑥ 본문) — 숨긴 정도·세무서가 알 수 있었는지 정황을 함께 볼 것 [확인 필요 — 사실 판단]');
+  const 과소과표 = n(p.과소과세표준) || 과표합;
+  // 3) 가산세 셈
+  const 바른 = n(p.신고할세액), 한 = 신고 === false ? 0 : n(p.신고한세액);
+  const 부정율 = 역외 ? 0.6 : 0.4;
+  const 셈 = function (잠정부정) { // 잠정 항목을 부정으로 볼지
+    const 부과 = 부정과표 + (잠정부정 ? 잠정과표 : 0);
+    if (신고 === false) {
+      const 무 = 바른, 부정무 = 부과 > 0;
+      return { 종류: '무신고', 세액: 무, 부정세액: 부정무 ? 무 : 0, 일반세액: 부정무 ? 0 : 무, 제외세액: 0, 가산세: 버림(무 * (부정무 ? 부정율 : 0.2)), 율: 부정무 ? (역외 ? '60%' : '40%') : '20%', 근거: '국세기본법 §47의2①' + (부정무 ? '1호' : '2호') };
+    }
+    const 소 = Math.max(0, 바른 - 한);
+    const 부 = 과소과표 > 0 ? 버림(소 * 부과 / 과소과표) : 0;
+    const 제 = 과소과표 > 0 ? 버림(소 * 제외과표 / 과소과표) : 0;
+    const 일 = Math.max(0, 소 - 부 - 제);
+    return { 종류: '과소신고', 세액: 소, 부정세액: 부, 일반세액: 일, 제외세액: 제, 가산세: 버림(부 * 부정율) + 버림(일 * 0.1), 율: '부정 ' + (역외 ? '60%' : '40%') + ' · 나머지 10%', 근거: '국세기본법 §47의3①1호·2호 · 시행령 §27의2③(과세표준 비율로 나눔)' + (제 ? ' · §47의3④' : '') };
+  };
+  const 법대로 = 셈(false), 잠정부정 = 잠정과표 > 0 ? 셈(true) : null;
+  if (신고 == null) reqs.push(jmReq_('법정신고기한까지 신고했는지 앎', null, '신고했으면 과소신고(§47의3), 안 했으면 무신고(§47의2)', '국세기본법 §47의2·§47의3'));
+  if (!바른) reqs.push(jmReq_('바른 세액(가산세 뺀 신고했어야 할 세액)을 앎', null, '계산 엔진으로 누락 항목을 넣어 다시 셀 것', '국세기본법 §47의2①·§47의3①'));
+  // 4) 감면(§48) — 정당한 사유는 사실 판단
+  const 정 = jmYn_(p.정당한사유), 예지 = jmYn_(p.경정예지) === true;
+  const 수정 = jmYmd_(p.수정신고일), 후 = jmYmd_(p.기한후신고일);
+  let 감면율 = 0, 감면근거 = '', 감면왜 = '';
+  if (정 === true) { 감면율 = 1; 감면근거 = '국세기본법 §48①2호'; 감면왜 = '정당한 사유' + (p.정당한사유내용 ? '(' + p.정당한사유내용 + ')' : '') + ' — 인정 여부는 과세관청·불복에서 정함 [확인 필요]'; }
+  else if (기한 && 신고 !== false && 수정 && !예지) {
+    const 표 = [[1, 0.9, '가'], [3, 0.75, '나'], [6, 0.5, '다'], [12, 0.3, '라'], [18, 0.2, '마'], [24, 0.1, '바']];
+    const t = 표.find(function (x) { return 수정 <= jmAddM_(기한, x[0]); });
+    if (t) { 감면율 = t[1]; 감면근거 = '국세기본법 §48②1호' + t[2] + '목'; 감면왜 = '수정신고 ' + 수정 + ' — 기한 지난 뒤 ' + t[0] + '개월 안'; }
+    else 감면왜 = '수정신고가 기한 지난 뒤 2년 넘음 — 감면 없음';
+  } else if (기한 && 신고 === false && 후 && !예지) {
+    const 표 = [[1, 0.5, '가'], [3, 0.3, '나'], [6, 0.2, '다']];
+    const t = 표.find(function (x) { return 후 <= jmAddM_(기한, x[0]); });
+    if (t) { 감면율 = t[1]; 감면근거 = '국세기본법 §48②2호' + t[2] + '목'; 감면왜 = '기한 후 신고 ' + 후 + ' — 기한 지난 뒤 ' + t[0] + '개월 안'; }
+    else 감면왜 = '기한 후 신고가 기한 지난 뒤 6개월 넘음 — 감면 없음';
+  } else if (예지 && (수정 || 후)) 감면왜 = '경정·결정할 것을 미리 알고 냄 — §48② 감면 없음(조사 통지 뒤 수정신고 등)';
+  if (정 == null && p.정당한사유내용) reqs.push(jmReq_('정당한 사유', null, p.정당한사유내용 + ' — 시행령 §28①(세법해석 질의회신대로 신고·수용 등으로 의무 이행 못 함) 같은 사정인지', '국세기본법 §48①·시행령 §28①'));
+  const 감면 = function (r) { const g = r.가산세 - 버림(r.가산세 * (1 - 감면율) + 1e-6); return { 감면전: r.가산세, 감면: g, 감면뒤: r.가산세 - g }; };
+  // 5) 납부지연(§47의4①1호) — 법정납부기한 다음 날부터 납부일(고지 전 납부)·고지일 전날까지, 1일 이자율(시행령 §27의4①)
+  const 미납 = Math.max(0, 바른 - (p.납부한세액 != null ? n(p.납부한세액) : 한));
+  const 끝 = jmYmd_(p.납부일) || jmYmd_(p.고지일) || today;
+  let 지연 = 0; const 지연줄 = [];
+  if (기한 && 미납 > 0 && 끝 > 기한) {
+    const 율표 = [['0000-01-01', '2019-02-11', 0.0003], ['2019-02-12', '2022-02-14', 0.00025], ['2022-02-15', '9999-12-31', 0.00022]];
+    const s0 = famAddD_(기한, 1), e0 = famAddD_(끝, -1);
+    율표.forEach(function (t) {
+      const s = s0 > t[0] ? s0 : t[0], e = e0 < t[1] ? e0 : t[1];
+      if (s <= e) { const d = Math.round(jmDays_(s, e)) + 1; const a = 버림(미납 * d * t[2]); 지연 += a; 지연줄.push({ 기간: s + '~' + e, 일수: d, 이율: (t[2] * 100).toFixed(3) + '%/일', 금액: a }); }
+    });
+    if (지연줄.length > 1) notes.push('납부지연 기간이 이율 바뀐 날(2019-02-12·2022-02-15)을 넘어 나눠 셈 — 옛 이율과 부칙(기간분부터 새 율) [확인 필요]');
+  }
+  // 6) 경우(엔진칸 — 넥스 가산세 감면 도구로 다시 셈)
+  const 엔진칸 = function (r) { return { originalPenaltyAmount: r.가산세, filingType: 신고 === false ? 'late_filing' : 'revised', statutoryFilingDeadline: 기한 || undefined, filingDate: (신고 === false ? 후 : 수정) || undefined, isAmendedAfterAuditNotice: 예지, hasJustifiableReason: 정 === true }; };
+  const 경우줄 = function (이름, r, 근) { const g = 감면(r); 경우.push({ 이름: 이름, 신고가산세: r.가산세, 감면: g.감면, 감면뒤: g.감면뒤, 납부지연: 지연, 합계: g.감면뒤 + 지연, 나눔: { 부정세액: r.부정세액, 일반세액: r.일반세액, 제외세액: r.제외세액 }, 근거: 근, 엔진: r.가산세 > 0 && (감면율 > 0 || (수정 || 후)) ? 'calculate_filing_penalty_reduction' : undefined, 엔진칸: r.가산세 > 0 ? 엔진칸(r) : undefined }); };
+  경우줄('① 법대로' + (잠정과표 ? '(모르는 항목은 부정 아님으로)' : ''), 법대로, 법대로.근거);
+  if (잠정부정) 경우줄('② 모르는 항목도 부정행위면', 잠정부정, 잠정부정.근거);
+  if (신고 !== false && 부정과표 > 0) { const 다일반 = { 가산세: 버림(법대로.부정세액 * 0.1) + 버림(법대로.일반세액 * 0.1), 부정세액: 0, 일반세액: 법대로.부정세액 + 법대로.일반세액, 제외세액: 법대로.제외세액 }; 경우줄('잘못 — 부정 부분도 10%로 셈', 다일반, '부정행위를 놓침'); }
+  if (신고 !== false && 과소과표 > 0 && (부정과표 > 0 || 제외과표 > 0) && 부정과표 < 과소과표) { const 다부정 = { 가산세: 버림((법대로.세액) * 부정율), 부정세액: 법대로.세액, 일반세액: 0, 제외세액: 0 }; 경우줄('잘못 — 과소 전부를 40%로 셈', 다부정, '부정 부분만 나누지 않음(시행령 §27의2③ 어김)'); }
+  // 7) 제척기간·조세범·비과세 제한
+  const 포탈 = 신고 === false ? (부정과표 > 0 ? 바른 : 0) : 법대로.부정세액;
+  if (부정과표 > 0) {
+    notes.push('부정행위가 있으면 부과제척기간이 ' + (상증 ? '15년(국세기본법 §26의2④1호)' : (역외 ? '15년' : '10년') + '(§26의2②2호)') + ' — 판정 묶음 「제척기간」에 부정행위: 예로 넣어 만료일을 셀 것');
+    const 가중 = (포탈 >= 300000000 && 바른 > 0 && 포탈 / 바른 >= 0.3) || 포탈 >= 500000000;
+    notes.push('포탈세액 ' + won(포탈) + '원' + (가중 ? ' — 조세범 처벌법 §3① 단서(3억 이상·30% 이상 또는 5억 이상) 해당: 3년 이하 징역 또는 3배 이하 벌금' : ' — §3① 본문(2년 이하 징역 또는 2배 이하 벌금) 범위') + ' · 법정신고기한 뒤 2년 안 수정신고·6개월 안 기한 후 신고면 형 감경 가능(§3③)');
+    할일.push({ 무엇: '부정 항목 증빙(계약서 원본·계좌·장부)을 모아 정말 「적극적 행위」인지·세무서가 알 수 있었는지 가름 — 다툴 여지가 있으면 10% 쪽 근거를 정리', 때: '조사 대응 때', 근거: '조세범 처벌법 §3⑥ · 국세기본법 §47의3①' });
+  }
+  if (다운 && /양도/.test(세목)) notes.push('거래가액을 실제와 다르게 적은 계약서면 1세대1주택 등 비과세·감면도 줄어듦(소득세법 §91②·조특법 §129②: 비과세받을 세액과 차액 중 적은 금액을 뺌) — 넥스 양도 계산 칸 contractPriceDifference로 셈');
+  if (정 !== true && (신고 === false ? !후 : !수정) && 바른 > 한) 할일.push({ 무엇: (신고 === false ? '기한 후 신고(§45의3)' : '수정신고(§45)') + ' — 세무조사 통지 전이면 가산세 감면(§48②), 늦을수록 감면이 줄어듦' + (기한 ? '(지금 ' + (신고 === false ? (today <= jmAddM_(기한, 6) ? '감면 남음' : '6개월 지나 감면 없음') : (today <= jmAddM_(기한, 24) ? '감면 남음' : '2년 지나 감면 없음')) + ')' : ''), 때: '지금', 근거: '국세기본법 §45·§45의3·§48②' });
+  notes.push('신고 가산세(§47의2·§47의3)와 납부지연가산세(§47의4)는 따로 — §48② 감면은 신고 가산세에만');
+  notes.push('예정신고 때 가산세가 붙은 부분은 확정신고 때 또 붙이지 않음(§47의2⑤·§47의3⑥)');
+  const 결 = '부정행위 ' + (부정과표 > 0 ? '있음(과세표준 ' + won(부정과표) + '원)' : '없음') + (잠정과표 ? ' · 모름 ' + won(잠정과표) + '원' : '') + ' — ' + 법대로.종류 + ' 가산세 ' + won(감면(법대로).감면뒤) + '원' + (지연 ? ' + 납부지연 ' + won(지연) + '원' : '');
+  return jmWrap_('부정행위', reqs, { 적용: true, 결론: 결, 기준일: today, 법정신고기한: 기한 || null, 항목별: 줄, 가산세: { 법대로: 법대로, 잠정부정: 잠정부정 || undefined, 감면율: 감면율, 감면근거: 감면근거 || undefined, 감면왜: 감면왜 || undefined, 납부지연: 지연, 납부지연줄: 지연줄, 미납세액: 미납 }, 포탈세액: 포탈, 경우: 경우, 엔진칸늘: 경우.length > 1 || undefined, 엔진칸: 경우[0] ? 경우[0].엔진칸 : undefined, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 100 「정씨 돌려받을 세금」] 국세환급금·환급가산금 — 경정청구·불복·감면으로 돌려받을 세금에 붙는 이자(국세기본법 §52)를
+//  원인마다 기산일(시행령 §43의3①)부터 지급결정일(충당이면 충당일)까지 이율 바뀐 날마다 나눠 셈하고(시행규칙 §19의3), 불복 확정 뒤 40일 넘어 주면 1.5배(②단서),
+//  고충민원만으로 돌려받으면 0(§52③), 체납·고지세액에 먼저 충당(§51②)·남은 돈 30일 안 지급(§51⑥)·경정청구 결정 2개월(§45의2③)·소멸시효 5년(§54)을 가름.
+//  엔진에는 상속세 특례 경정(§79)과 사후관리 이자에만 환급가산금 이율이 있었고, 일반 환급가산금을 셈하는 도구가 없었다.
+//  이율 표는 엔진 REFUND_INTEREST_RATE_HISTORY(2026.10.19 조견표 원문 대조)와 같은 값 — 바꿀 때 둘 다 맞출 것.
+//  p: { 세목, 원인(경정|착오|이중|감면|법개정|불복|고충민원|환급신고), 환급세액, 납부:[{일, 금액}](나눠 냈으면 모두), 법정신고기한(원천징수·중간예납분이 있으면),
+//       원천징수납부액, 감면결정일, 법개정시행일, 경정청구일, 결정일(환급 결정일), 지급일, 불복확정일, 고충민원(예), 충당:[{이름, 금액, 종류(체납|고지|자진), 동의(예)}], 기준일 }
+const JM_REFUND_RATE_ = [{ from: '2012-03-01', rate: 0.040 }, { from: '2013-03-01', rate: 0.034 }, { from: '2014-03-14', rate: 0.029 }, { from: '2015-03-06', rate: 0.025 },
+  { from: '2016-03-07', rate: 0.018 }, { from: '2017-03-15', rate: 0.016 }, { from: '2018-03-19', rate: 0.018 }, { from: '2019-03-20', rate: 0.021 }, { from: '2020-03-13', rate: 0.018 },
+  { from: '2021-03-16', rate: 0.012 }, { from: '2023-03-20', rate: 0.029 }, { from: '2024-03-22', rate: 0.035 }, { from: '2025-03-21', rate: 0.031 }];
+function judgeRefund_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10);
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Math.round(Number(v || 0)).toLocaleString('ko-KR'); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [];
+  const 원인 = String(p.원인 || ''), 환급 = n(p.환급세액);
+  const 고충 = jmYn_(p.고충민원) === true;
+  // 1) 기산일(시행령 §43의3①) — 그날의 다음 날
+  let 조각 = [], 기산왜 = '', 기산근거 = '';
+  const 납부 = [].concat(p.납부 || []).map(function (x) { return { 일: jmYmd_(x.일), 금액: n(x.금액) }; }).filter(function (x) { return x.일 && x.금액; }).sort(function (a, b) { return a.일 < b.일 ? -1 : 1; });
+  const 원천 = n(p.원천징수납부액), 신고기한 = jmYmd_(p.법정신고기한);
+  if (원천 && 신고기한) 납부.push({ 일: 신고기한, 금액: 원천, 간주: true }); // 원천징수·중간예납은 법정신고기한에 낸 것으로 봄(1호 단서)
+  납부.sort(function (a, b) { return a.일 < b.일 ? -1 : 1; });
+  if (/감면/.test(원인)) {
+    const d = jmYmd_(p.감면결정일); 기산근거 = '시행령 §43의3①2호';
+    if (d) { 조각 = [{ 일: d, 금액: 환급 }]; 기산왜 = '적법하게 낸 세금의 감면 — 감면 결정일(' + d + ') 다음 날부터'; }
+    else 기산왜 = '감면 결정일 모름';
+  } else if (/법개정/.test(원인)) {
+    const d = jmYmd_(p.법개정시행일); 기산근거 = '시행령 §43의3①3호';
+    if (d) { 조각 = [{ 일: d, 금액: 환급 }]; 기산왜 = '적법하게 낸 뒤 법이 바뀜 — 개정 법률 시행일(' + d + ') 다음 날부터'; }
+    else 기산왜 = '개정 법률 시행일 모름';
+  } else if (/환급신고/.test(원인)) {
+    기산근거 = '시행령 §43의3①4호'; 기산왜 = '세법에 따른 환급세액 신고·신청분 — 신고일(법정신고기일 전이면 그날)·신청일부터 30일 지난 날 다음 날부터(세법 환급기한이 있으면 그 다음 날)';
+    const d = jmYmd_(p.경정청구일) || 신고기한; if (d) 조각 = [{ 일: famAddD_(d, 30), 금액: 환급 }];
+    notes.push('4호는 소득세법 등의 환급세액(원천징수 초과 등)에 씀 — 양도·상속·증여세를 더 낸 것을 경정으로 돌려받으면 1호');
+  } else {
+    기산근거 = '시행령 §43의3①1호';
+    if (!납부.length) 기산왜 = '낸 날 모름 — 납부일(나눠 냈으면 모두)을 넣을 것';
+    else { // 나눠 냈으면 마지막 납부분부터 거꾸로(1호 단서)
+      let 남 = 환급;
+      for (let i = 납부.length - 1; i >= 0 && 남 > 0; i--) { const a = Math.min(남, 납부[i].금액); 조각.unshift({ 일: 납부[i].일, 금액: a, 간주: 납부[i].간주 }); 남 -= a; }
+      if (남 > 0) { notes.push('환급세액이 낸 돈 합계보다 ' + won(남) + '원 많음 — 납부 내역을 다시 볼 것'); reqs.push(jmReq_('환급세액이 낸 돈 안', false, '환급 ' + won(환급) + '원 > 납부 합계', '국세기본법 §51①')); }
+      기산왜 = (/착오|이중/.test(원인) ? '잘못·이중 낸 세금' : '낸 뒤 신고·부과를 경정·취소') + ' — 납부일 다음 날부터' + (조각.length > 1 ? '(나눠 낸 것은 마지막 납부분부터 거꾸로 채움)' : '');
+    }
+  }
+  // 2) 끝(§52①: 충당하는 날 또는 지급결정을 하는 날까지) · 결정 기한
+  const 청구 = jmYmd_(p.경정청구일), 결정 = jmYmd_(p.결정일), 지급 = jmYmd_(p.지급일), 확정 = jmYmd_(p.불복확정일);
+  let 끝 = 결정, 잠정끝 = false;
+  if (!끝) {
+    if (청구 && /경정/.test(원인)) { 끝 = jmAddM_(청구, 2); 잠정끝 = true; notes.push('결정일 모름 — 경정청구일부터 2개월 안 결정(§45의2③)으로 보고 ' + 끝 + '까지 셈(잠정)'); }
+    else { 끝 = today; 잠정끝 = true; notes.push('결정일 모름 — 기준일(' + today + ')까지 셈(잠정)'); }
+  }
+  if (청구) {
+    const 기한 = jmAddM_(청구, 2);
+    reqs.push(jmReq_('경정청구를 2개월 안에 결정', 결정 ? 결정 <= 기한 : (today <= 기한 ? null : false), '청구 ' + 청구 + ' → 결정 기한 ' + 기한 + (결정 ? ' · 결정 ' + 결정 : ' · 아직 결정 없음'), '국세기본법 §45의2③'));
+    if (!결정 && today > 기한) 할일.push({ 무엇: '2개월 안 결정·통지가 없으면 그 다음 날부터 이의신청·심사·심판청구 가능(§45의2③ 후단·§61②·§68②)', 때: '지금', 근거: '국세기본법 §45의2③' });
+  }
+  if (결정) {
+    const 지기 = famAddD_(결정, 30);
+    reqs.push(jmReq_('남은 환급금을 결정일부터 30일 안 지급', 지급 ? 지급 <= 지기 : null, '결정 ' + 결정 + ' → 지급 기한 ' + 지기 + (지급 ? ' · 지급 ' + 지급 : ''), '국세기본법 §51⑥'));
+  }
+  // 3) 이율 — 기본이자율을 바뀐 날마다 나눔, 불복 확정 뒤 40일 넘어 지급하면 1.5배(시행령 §43의3② 단서)
+  const 불복 = /불복/.test(원인) || !!확정;
+  let 배 = 1, 배왜 = '';
+  if (불복 && 확정) {
+    const 사십 = famAddD_(확정, 40), 줄날 = 지급 || 결정;
+    if (줄날 && 줄날 >= 사십 && 확정 >= '2020-02-11') { 배 = 1.5; 배왜 = '불복 결정·판결 확정(' + 확정 + ')부터 40일 지난 뒤(' + 줄날 + ') 지급 — 기본이자율의 1.5배'; }
+    else if (!줄날) notes.push('불복으로 돌려받는 돈 — 확정일(' + 확정 + ')부터 40일(' + 사십 + ') 넘어 지급하면 이율 1.5배(시행령 §43의3② 단서)');
+    if (배 > 1) notes.push('1.5배를 기산일부터 전 기간에 곱함 — 단서 문언(「그 경우 … 1.5배에 해당하는 이자율을 적용」)대로이나 2020-02-11 신설 부칙의 적용 범위 [확인 필요]');
+  }
+  const 셈 = function (zz, 끝날, 율배) {
+    let 합 = 0; const 줄 = [];
+    zz.forEach(function (z) {
+      const s0 = famAddD_(z.일, 1); if (!(끝날 >= s0)) return;
+      JM_REFUND_RATE_.forEach(function (h, i) {
+        const 다음 = JM_REFUND_RATE_[i + 1] ? famAddD_(JM_REFUND_RATE_[i + 1].from, -1) : '9999-12-31';
+        const s = s0 > h.from ? s0 : h.from, e = 끝날 < 다음 ? 끝날 : 다음;
+        if (s <= e) { const d = Math.round(jmDays_(s, e)) + 1; const a = z.금액 * d * h.rate * 율배 / 365; 합 += a; 줄.push({ 금액: z.금액, 기간: s + '~' + e, 일수: d, 연이율: (h.rate * 율배 * 100).toFixed(2) + '%', 가산금: Math.floor(a) }); }
+      });
+      if (s0 < JM_REFUND_RATE_[0].from) notes.push('2012-03-01 전 기간은 이율 표가 없어 첫 이율로 셈하지 않고 뺌 [확인 필요]');
+    });
+    return { 가산금: Math.floor(합), 줄: 줄 };
+  };
+  // 4) 충당(§51②) — 체납은 동의 없이, 고지·자진납부 세금은 동의할 때만
+  let 남은 = 환급; const 충줄 = [];
+  [].concat(p.충당 || []).forEach(function (c) {
+    const 종 = String(c.종류 || ''), 동 = jmYn_(c.동의) === true, 액 = n(c.금액);
+    const 됨 = /체납/.test(종) || 동;
+    const a = 됨 ? Math.min(남은, 액) : 0; 남은 -= a;
+    충줄.push({ 이름: c.이름 || 종, 금액: 액, 충당: a, 왜: /체납/.test(종) ? '체납 국세 — 동의 없이 충당(§51②2호), 체납 법정납부기한과 환급금 발생일 중 늦은 때로 거슬러 소멸(§51③)' : 동 ? '동의해 충당(§51②1호·3호, §51④)' : '고지·자진납부 세금은 동의할 때만 충당(§51② 단서) — 동의 안 하면 지급' });
+  });
+  const 기본 = 고충 ? { 가산금: 0, 줄: [] } : 셈(조각, 끝, 배);
+  if (고충) reqs.push(jmReq_('경정청구·불복에 따른 환급(고충민원만이면 가산금 없음)', /경정|불복/.test(원인) || 청구 || 확정 ? true : false, '고충민원 처리만으로 환급·충당하면 환급가산금을 붙이지 않음', '국세기본법 §52③·시행령 §43의3③'));
+  if (고충 && (청구 || /경정|불복/.test(원인))) { const r2 = 셈(조각, 끝, 배); 기본.가산금 = r2.가산금; 기본.줄 = r2.줄; }
+  경우.push({ 이름: '① 법대로', 환급세액: 환급, 환급가산금: 기본.가산금, 받을돈: 환급 + 기본.가산금, 충당: 환급 - 남은, 지급: 남은 + 기본.가산금 });
+  if (불복 && 확정 && 배 === 1) { const r15 = 셈(조각, 끝, 1.5); 경우.push({ 이름: '② 확정 뒤 40일 넘어 지급되면(1.5배)', 환급세액: 환급, 환급가산금: r15.가산금, 받을돈: 환급 + r15.가산금 }); }
+  if (조각.length > 1) { const 첫 = 셈([{ 일: 조각[0].일, 금액: 환급 }], 끝, 배); 경우.push({ 이름: '잘못 — 처음 낸 날부터 전부 셈', 환급세액: 환급, 환급가산금: 첫.가산금, 받을돈: 환급 + 첫.가산금, 근거: '시행령 §43의3①1호 단서 어김' }); }
+  if (/감면|법개정/.test(원인) && 납부.length) { const 잘 = 셈([{ 일: 납부[납부.length - 1].일, 금액: 환급 }], 끝, 배); 경우.push({ 이름: '잘못 — 납부일부터 셈', 환급세액: 환급, 환급가산금: 잘.가산금, 받을돈: 환급 + 잘.가산금, 근거: '감면·법개정은 결정일·시행일부터(2·3호)' }); }
+  // 5) 알림
+  notes.push('환급금·환급가산금을 받을 권리는 행사할 수 있는 때부터 5년이면 소멸시효(§54①) — 안내·통지로는 중단 안 됨(③)');
+  notes.push('지방소득세(양도·종합소득분)를 함께 돌려받는 몫은 지방세라 따로(지방세기본법) — 이 도구는 국세만');
+  if (/경정/.test(원인) && !청구) notes.push('경정청구 기한: 법정신고기한 지난 뒤 5년(§45의2①), 후발 사유는 안 날부터 3개월(②) — 판정 묶음 「불복기한」으로 셀 것');
+  if (/양도/.test(p.세목 || '') && /경정/.test(원인)) notes.push('양도소득세를 돌려받으면 지방소득세도 같이 경정청구해야 함(지방세 범위 — 안내만)');
+  if (환급 && 남은 < 환급) notes.push('충당한 ' + won(환급 - 남은) + '원에는 충당일까지 가산금이 붙음(§52①) — 지금은 지급결정일 하나로 셈 [확인 필요: 충당일이 다르면 나눠 셀 것]');
+  const 결 = (원인 || '원인 모름') + ' 환급 ' + won(환급) + '원 + 환급가산금 ' + won(기본.가산금) + '원' + (배 > 1 ? '(1.5배)' : '') + (환급 - 남은 ? ' · 충당 ' + won(환급 - 남은) + '원' : '') + ' · 지급 ' + won(남은 + 기본.가산금) + '원' + (잠정끝 ? ' (결정일 잠정)' : '');
+  return jmWrap_('환급가산금', reqs, { 적용: true, 결론: 결, 기준일: today, 기산: { 근거: 기산근거, 왜: 기산왜, 조각: 조각 }, 끝날: 끝, 이율배수: 배, 이율배수왜: 배왜 || undefined, 환급가산금: 기본.가산금, 가산금줄: 기본.줄, 충당: 충줄, 지급액: 남은 + 기본.가산금, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 101 「강씨 공장 물려받기」] 가업상속 상속세 납부유예(상증법 §72의2·시행령 §69의2·§69의3) — 가업상속공제 대신 납부유예를 고를 때
+//  유예 금액(납부세액 × 가업상속재산 ÷ 총상속재산), 사후관리 사유마다 징수할 세액(처분 비율·종사·지분 감소 5년 안 전부/뒤 비율·고용 70%·상속인 사망)과
+//  이자상당액(신고기한 다음 날~사유일, 그때 이자율 ÷ 365로 나눠 셈, 다시 유예받은 것은 50%), 신고·납부기한(사유 달 말일부터 6개월), 다시 유예(⑥)를 가름.
+//  엔진에는 이자 계산(method split)만 있고, 유예 금액·사유별 징수세액·공제와 견주기를 셈하는 도구가 없었다. 이율 표는 환급가산금 판정(JM_REFUND_RATE_)과 같은 것을 씀.
+//  p: { 상속개시일, 비거주(예), 중소기업(예), 가업상속공제(예 — 받았으면 유예 못 함), 영농상속공제(예), 담보(예), 상속세납부세액, 가업상속재산가액, 총상속재산가액, 다시유예(예 — ⑥에 따라 받은 유예),
+//       사유:[{ 일, 종류(처분|종사|휴폐업|지분|고용|사망|담보|징수불능), 처분비율(%), 감소지분율, 개시지분율, 정당한사유(예), 다음상속인공제(예 — 사망 때 다음 상속인이 가업상속공제·유예), 수증특례(예 — 지분 감소가 조특법 §30의6·§30의7 증여) }],
+//       고용:{ 정규직평균비율(%), 총급여평균비율(%) }(5년 평균 ÷ 직전 2년 평균), 기준일 }
+function judgeDefer_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10);
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Math.round(Number(v || 0)).toLocaleString('ko-KR'); };
+  const 말일 = function (d) { const t = new Date(d); return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).toISOString().slice(0, 10); };
+  const 말일더하기 = function (d, m) { const t = new Date(d); return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1 + m, 0)).toISOString().slice(0, 10); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [];
+  const 개시 = jmYmd_(p.상속개시일);
+  const 신고기한 = 개시 ? 말일더하기(개시, jmYn_(p.비거주) === true ? 9 : 6) : '';
+  // 1) 요건(§72의2①②)
+  reqs.push(jmReq_('상속인이 가업(중소기업)을 상속받음', jmYn_(p.중소기업), '가업상속공제 대상 가업(§18의2①) 가운데 중소기업만 — 중견기업은 유예 대상 아님', '상속세및증여세법 §72의2①1호'));
+  const 공제받음 = jmYn_(p.가업상속공제) === true || jmYn_(p.영농상속공제) === true;
+  reqs.push(jmReq_('가업상속공제(영농상속공제 포함)를 받지 않음', jmYn_(p.가업상속공제) == null && jmYn_(p.영농상속공제) == null ? null : !공제받음, 공제받음 ? '공제를 받았으면 납부유예를 못 함 — 둘 가운데 하나만' : '', '상속세및증여세법 §72의2①2호'));
+  reqs.push(jmReq_('담보 제공', jmYn_(p.담보), '', '상속세및증여세법 §72의2②'));
+  if (개시) 할일.push({ 무엇: '상속세 신고 때(수정·기한 후 신고 포함) 납부유예신청서·가업상속재산명세서 제출 — 허가 통지는 신고기한 지난 날부터 9개월 안', 때: 신고기한, 근거: '시행령 §69의2①②1호' });
+  // 2) 유예 금액(시행령 §69의3①)
+  const 납부 = n(p.상속세납부세액), 가업 = n(p.가업상속재산가액), 총 = n(p.총상속재산가액);
+  let 유예 = 0;
+  if (납부 && 가업 && 총) 유예 = Math.floor(납부 * Math.min(1, 가업 / 총));
+  else notes.push('유예 금액 = 상속세 납부세액 × 가업상속 재산가액(시행령 §15⑤) ÷ 총 상속재산가액 — 세 값을 넣을 것');
+  // 3) 사후관리 사유(§72의2③⑤) — 차례로 남은 유예액에서 징수
+  const 반 = jmYn_(p.다시유예) === true ? 0.5 : 1;
+  const 이자 = function (액, 끝) {
+    if (!신고기한 || !끝) return { 이자: 0, 줄: [] };
+    const s0 = famAddD_(신고기한, 1); let 합 = 0; const 줄 = [];
+    JM_REFUND_RATE_.forEach(function (h, i) {
+      const 다음 = JM_REFUND_RATE_[i + 1] ? famAddD_(JM_REFUND_RATE_[i + 1].from, -1) : '9999-12-31';
+      const s = s0 > h.from ? s0 : h.from, e = 끝 < 다음 ? 끝 : 다음;
+      if (s <= e) { const d = Math.round(jmDays_(s, e)) + 1; const a = 액 * d * h.rate * 반 / 365; 합 += a; 줄.push({ 기간: s + '~' + e, 일수: d, 연이율: (h.rate * 반 * 100).toFixed(2) + '%', 이자: Math.floor(a) }); }
+    });
+    return { 이자: Math.floor(합), 줄: 줄 };
+  };
+  let 남 = 유예; const 징수줄 = [];
+  const 오년 = 개시 ? famAddD_(jmAddM_(개시, 60), -1) : '';
+  [].concat(p.사유 || []).map(function (x) { return Object.assign({}, x, { 일: jmYmd_(x.일) }); }).sort(function (a, b) { return (a.일 || '') < (b.일 || '') ? -1 : 1; }).forEach(function (x) {
+    const 종 = String(x.종류 || ''), 일 = x.일, 정당 = jmYn_(x.정당한사유) === true;
+    let 액 = 0, 왜 = '', 근거 = '', 다시 = false;
+    if (정당 && !/사망/.test(종)) { 징수줄.push({ 일: 일, 종류: 종, 징수세액: 0, 왜: '정당한 사유 — 징수 안 함(시행령 §69의3②, §15⑧ 각 목 가운데 상속인 사망 목은 빼고)' }); return; }
+    if (/처분/.test(종)) {
+      const r = n(x.처분비율) / 100;
+      if (r >= 0.4) { 액 = Math.floor(유예 * r); 왜 = '가업용 자산 ' + (r * 100) + '% 처분(40% 이상) — 유예세액 × 처분 비율'; }
+      else 왜 = '처분 ' + (r * 100) + '% — 40% 미만이라 징수 없음';
+      근거 = '§72의2③1호·시행령 §69의3③(개인 가업만 해당)';
+    } else if (/휴폐업/.test(종)) { 액 = 남; 왜 = '1년 이상 휴업(실적 없음 포함)·폐업 — 가업에 종사 안 한 것으로 봄, 전부'; 근거 = '§72의2③2호·시행령 §69의3④2호'; }
+    else if (/종사/.test(종)) {
+      if (오년 && 일 > 오년) 왜 = '대표이사 등으로 종사 안 함 — 상속개시일부터 5년(' + 오년 + ') 지난 뒤라 징수 없음';
+      else { 액 = 남; 왜 = '5년 안 대표이사 등으로 종사 안 함 — 전부'; }
+      근거 = '§72의2③2호·시행령 §69의3④1호';
+    } else if (/지분/.test(종)) {
+      if (jmYn_(x.수증특례) === true) 다시 = true;
+      if (오년 && 일 <= 오년) { 액 = 남; 왜 = '상속개시일부터 5년 안 지분 감소 — 전부'; 근거 = '§72의2③3호가목'; }
+      else {
+        const b = n(x.감소지분율), c = n(x.개시지분율);
+        if (b && c) { 액 = Math.min(남, Math.floor(유예 * b / c)); 왜 = '5년 뒤 지분 감소 — 유예세액 × 감소 지분율 ' + b + ' ÷ 개시 지분율 ' + c; }
+        else 왜 = '5년 뒤 지분 감소 — 감소 지분율·개시 지분율이 있어야 셈(잠정 0)';
+        근거 = '§72의2③3호나목·시행령 §69의3⑥';
+      }
+    } else if (/고용/.test(종)) {
+      const g = p.고용 || {}, a = n(g.정규직평균비율), b = n(g.총급여평균비율);
+      if (a && b) { if (a < 70 && b < 70) { 액 = 남; 왜 = '5년 평균 정규직 ' + a + '%·총급여 ' + b + '% — 둘 다 70% 미달, 전부'; } else 왜 = '정규직 ' + a + '%·총급여 ' + b + '% — 둘 다 70% 미달일 때만 징수, 없음'; }
+      else 왜 = '정규직 수·총급여 5년 평균 비율이 있어야 셈';
+      근거 = '§72의2③4호(§18의2⑤4호, 90%를 70%로)';
+    } else if (/사망/.test(종)) {
+      액 = 남; 왜 = '상속인 사망 — 전부'; 근거 = '§72의2③5호';
+      if (jmYn_(x.다음상속인공제) === true) 다시 = true;
+    } else if (/담보|징수불능/.test(종)) { 액 = 남; 왜 = (/담보/.test(종) ? '담보 명령 안 따름' : '국세징수법 §9① 사유로 전액 징수 못 할 우려') + ' — 전부 또는 일부(세무서 재량)'; 근거 = '§72의2⑤·시행령 §69의3⑨'; }
+    else 왜 = '사유 종류 모름(처분·종사·휴폐업·지분·고용·사망·담보·징수불능)';
+    액 = Math.min(액, 남); 남 -= 액;
+    const iz = 이자(액, 일), 기한 = 일 ? 말일더하기(일, 6) : '';
+    const 줄 = { 일: 일, 종류: 종, 징수세액: 액, 이자상당액: iz.이자, 합계: 액 + iz.이자, 왜: 왜, 근거: 근거, 신고납부기한: 액 && !/담보|징수불능/.test(종) ? 기한 : undefined, 이자줄: iz.줄 };
+    if (다시 && 액) { 줄.다시유예 = /지분/.test(종) ? '수증자가 조특법 §30의6 특례·§30의7 유예를 받으면 이 세액·이자도 다시 유예 신청 가능(§72의2⑥1호) — 그 뒤 이자는 50%' : '다음 상속인이 가업상속공제·납부유예를 받으면 다시 유예 신청 가능(§72의2⑥2호) — 그 뒤 이자는 50%(시행령 §69의3⑦)'; }
+    징수줄.push(줄);
+    if (액 && !/담보|징수불능/.test(종)) 할일.push({ 무엇: 종 + ' 사유 신고·납부(납부유예 사후관리추징사유 신고 및 자진납부 계산서) ' + won(액 + iz.이자) + '원', 때: 기한, 근거: '§72의2④·시행령 §69의3⑧' });
+  });
+  // 4) 경우 — 유예 고른 뒤 사유별 결과, 공제와 견줄 엔진칸 안내
+  const 낸 = 징수줄.reduce(function (s, x) { return s + (x.합계 || 0); }, 0);
+  경우.push({ 이름: '① 납부유예 — 지금 안 내는 상속세', 유예세액: 유예, 신고때낼세액: 납부 - 유예 });
+  if (징수줄.length) 경우.push({ 이름: '② 사유가 생겨 낼 돈(세액 + 이자)', 합계: 낸, 남은유예세액: 남 });
+  notes.push('가업상속공제(§18의2)와 견줄 것: 공제는 상속세 과세가액에서 빼고(최대 600억), 사후관리는 5년 — 유예는 세액을 미룰 뿐 사라지지 않고 지분 감소·처분·사망 때까지 계속 따라감(종사는 5년 한정, 휴폐업은 언제든). 공제 쪽은 판정 묶음 「가업상속」과 상속세 엔진칸(가업상속공제 칸)으로 셈');
+  notes.push('이자율은 사유가 생긴 때의 국세환급가산금 이자율 ÷ 365, 기간 중 바뀌면 바뀌기 전 기간은 그때 이율(시행령 §69의3⑦3호) — 엔진 이자 계산(method split)과 같은 셈');
+  if (반 < 1) notes.push('다시 받은 유예(§72의2⑥)라 이자율 × 50%(시행령 §69의3⑦)');
+  notes.push('세무서는 해마다 사유가 생겼는지 확인(시행령 §69의3⑩) — 해마다 지분·종사·고용 자료를 챙길 것');
+  notes.push('조특법 §30의7(가업승계 증여세 납부유예)은 같은 짜임이지만 증여세 쪽 — 이 묶음은 상속세(§72의2)만 셈 [확인 필요: §30의7 요건·비율은 따로 대조]');
+  const 안됨 = 공제받음 || jmYn_(p.중소기업) === false;
+  const 결 = 안됨 ? '납부유예 못 함 — ' + (공제받음 ? '가업상속공제(영농상속공제)를 받음(§72의2①2호)' : '중소기업 아님(§72의2①1호)') + (유예 ? ' · 유예했다면 ' + won(유예) + '원' : '') : (유예 ? '납부유예 ' + won(유예) + '원(납부세액 ' + won(납부) + ' × 가업 ' + won(가업) + ' ÷ 총 ' + won(총) + ')' : '유예 금액 못 셈') + (징수줄.length ? ' · 사유 ' + 징수줄.length + '건 징수 ' + won(낸) + '원(이자 포함) · 남은 유예 ' + won(남) + '원' : '');
+  return jmWrap_('납부유예', reqs, { 적용: !안됨, 결론: 결, 기준일: today, 신고기한: 신고기한, 유예세액: 유예, 징수: 징수줄, 남은유예세액: 남, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 102 「한씨 아버지가 집을 팔고 돌아가심」] 상속으로 인한 납세의무 승계(국세기본법 §24·시행령 §11·§12) — 피상속인이 판 재산의 양도소득세를 누가·언제·얼마까지
+//  거래마다 양도시기(잔금일·등기접수일 중 빠른 날, 소득세법 시행령 §162①1·2호)가 사망 전이면 피상속인 양도 → 상속인이 승계(상속받은 재산 한도), 사망 뒤면 상속인 양도(취득가액은 상속개시일 평가액, 시행령 §163⑨).
+//  상속인별 몫은 민법 상속분, 수유자·포기자·유류분·보험금이 있으면 받은 재산 비율(시행령 §11④), 받은 재산 = 자산 − (부채 + 상속세)(§11①). 포기·한정승인자가 받은 보험금은 받은 재산(§24②1호).
+//  승계 세금은 상속세 공과금으로 뺌(상증법 §14①1호·시행령 §9①). 대표자 신고 30일(시행령 §12), 확정신고 상속개시 달 말일부터 6개월(소득세법 §118·§74①).
+//  p: { 상속개시일, 거래:[{ 이름, 잔금일, 등기일, 양도가액, 받은대금(사망 전 받은 계약금·중도금 등), 양도세(엔진으로 셈한 세액 — 지방소득세 빼고), 신고(예) }], 체납:[{ 세목, 금액 }],
+//       상속인:[{ 이름, 상속분(분수 '3/7' 또는 %), 자산, 부채, 상속세, 포기(예), 한정승인(예), 수유자(예), 유류분(예), 보험금 }], 기준일 }
+function judgeSuccession_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10);
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Math.round(Number(v || 0)).toLocaleString('ko-KR'); };
+  const 말일더하기 = function (d, m) { const t = new Date(d); return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1 + m, 0)).toISOString().slice(0, 10); };
+  const 분수 = function (v) { const s = String(v == null ? '' : v).trim(); const m = s.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/); if (m) return Number(m[1]) / Number(m[2]); const x = famNum_(s.replace('%', '')); return x > 1 ? x / 100 : x; };
+  const reqs = [], notes = [], 할일 = [], 경우 = [];
+  const 개시 = jmYmd_(p.상속개시일);
+  reqs.push(jmReq_('상속개시일', 개시 ? true : null, 개시 || '없음 — 사망 전후를 가를 수 없음', '국세기본법 §24①'));
+  const 확정기한 = 개시 ? 말일더하기(개시, 6) : '';
+  // 1) 거래마다 누구 양도인가
+  const 거래줄 = []; let 승계양도세 = 0, 미수채권 = 0;
+  [].concat(p.거래 || []).forEach(function (x) {
+    const 잔 = jmYmd_(x.잔금일), 등 = jmYmd_(x.등기일);
+    const 시기 = [잔, 등].filter(Boolean).sort()[0] || '';
+    const 줄 = { 이름: x.이름 || '', 양도시기: 시기 || '?', 근거: '소득세법 §98·시행령 §162①1·2호(대금청산일과 등기접수일 중 빠른 날) — 장기할부·허가구역 등은 판정 묶음 「양도시기」로' };
+    if (!시기 || !개시) { 줄.누구 = '?'; 줄.왜 = '양도시기나 상속개시일을 모름'; 거래줄.push(줄); return; }
+    const 가 = n(x.양도가액), 받 = n(x.받은대금), 세 = n(x.양도세);
+    if (시기 <= 개시) {
+      줄.누구 = '피상속인 양도 — 상속인이 납세의무 승계';
+      const 예정 = 말일더하기(시기, 2);
+      줄.예정신고기한 = 예정; 줄.확정신고기한 = 확정기한;
+      if (jmYn_(x.신고) === true) 줄.왜 = '피상속인이 이미 신고 — 남은 세액·가산세만 승계';
+      else if (예정 < 개시) 줄.왜 = '예정신고기한(' + 예정 + ')이 사망 전에 지났는데 신고 안 함 — 무신고 가산세·납부지연까지 승계(국세기본법 §24①: 부과되거나 납부할 국세)';
+      else 줄.왜 = '사망 때 예정신고기한(' + 예정 + ')이 남아 있음 — 상속인이 신고 [확인 필요: 예정신고는 §105① 기한(' + 예정 + '), 확정신고는 §118→§74① 상속개시 달 말일부터 6개월(' + 확정기한 + ') — 예정신고 기한에도 §74가 준용되는지 원문에 없음, 빠른 날로 하는 것이 안전]';
+      줄.양도세 = 세 || undefined;
+      if (세) 승계양도세 += 세; else 줄.빈칸 = '양도세 — 넥스 양도 도구(엔진)로 피상속인을 양도인으로 먼저 셈';
+      const 미수 = 가 && 받 < 가 ? 가 - 받 : 0;
+      if (미수 && 잔 && 잔 > 개시) { 줄.미수잔금 = 미수; 미수채권 += 미수; }
+      else if (가 && 받 < 가 && (!잔 || 잔 > 개시)) { 줄.미수잔금 = 가 - 받; 미수채권 += 가 - 받; }
+      if (줄.미수잔금) 줄.상속재산 = '등기가 먼저 넘어가 사망 때 받지 못한 잔금 ' + won(줄.미수잔금) + '원은 상속재산(받을 채권)';
+      할일.push({ 무엇: (x.이름 || '양도') + ' 피상속인 명의 양도소득세 신고·납부(상속인 연명 또는 대표자)', 때: 예정 >= 개시 && 예정 < 확정기한 ? 예정 : 확정기한, 근거: '소득세법 §105①·§118·§74①' });
+    } else {
+      줄.누구 = '상속인 양도 — 계약은 피상속인이 했지만 양도시기가 사망 뒤';
+      줄.왜 = '상속인이 양도자. 취득가액은 상속개시일 현재 상속세 평가액(소득세법 시행령 §163⑨) — 평가기간(상속개시일 전후 6개월) 안 매매가액이면 시가가 되어 양도차익이 거의 없음(상증법 §60②·시행령 §49①)';
+      줄.상속재산 = 가 ? '상속재산 가액 [확인 필요: 매매대금 ' + won(가) + '원에서 사망 전 받은 계약금·중도금 ' + won(받) + '원을 뺀 ' + won(가 - 받) + '원을 부동산 평가액으로 볼지 — 받은 대금은 현금·예금으로 따로 상속재산]' : undefined;
+      줄.양도세 = 0;
+      줄.신고 = { 예정신고기한: 말일더하기(시기, 2), 근거: '상속인 각자 지분만큼 양도(공동상속이면 지분별 신고)' };
+      할일.push({ 무엇: (x.이름 || '양도') + ' 상속인 이름 양도소득세 예정신고(취득가액 = 상속 평가액)', 때: 말일더하기(시기, 2), 근거: '소득세법 §105①1호' });
+    }
+    거래줄.push(줄);
+  });
+  const 체납 = [].concat(p.체납 || []).reduce(function (s, x) { return s + n(x.금액); }, 0);
+  const 승계 = 승계양도세 + 체납;
+  // 2) 상속인별 받은 재산·몫(§24③·시행령 §11)
+  const 사람 = [].concat(p.상속인 || []);
+  const 특수 = 사람.some(function (h) { return jmYn_(h.수유자) === true || jmYn_(h.포기) === true || jmYn_(h.유류분) === true || n(h.보험금) > 0; });
+  const 줄들 = 사람.map(function (h) {
+    const 포기 = jmYn_(h.포기) === true, 한정 = jmYn_(h.한정승인) === true;
+    let 받은 = Math.max(0, n(h.자산) - n(h.부채) - n(h.상속세));
+    if (포기) 받은 = 0;
+    const 보험 = n(h.보험금);
+    if (보험 && (포기 || 한정)) 받은 += 보험;
+    else if (보험 && n(h.체납일수) && n(h.납입일수)) 받은 += Math.floor(보험 * Math.min(1, n(h.체납일수) / n(h.납입일수)));
+    return { 이름: h.이름 || '', 상속분: 분수(h.상속분), 받은재산: 받은, 포기: 포기 || undefined, 한정승인: 한정 || undefined, 보험금: 보험 || undefined };
+  });
+  const 합 = 줄들.reduce(function (s, x) { return s + x.받은재산; }, 0);
+  줄들.forEach(function (x) {
+    x.비율 = 특수 ? (합 ? x.받은재산 / 합 : 0) : x.상속분;
+    x.비율근거 = 특수 ? '받은 재산 ÷ 합계(시행령 §11④ — 수유자·포기자·유류분·보험금이 있음)' : '민법 상속분(§24③ 본문)';
+    x.몫 = Math.floor(승계 * x.비율);
+    x.한도 = x.받은재산;
+    x.낼세금 = Math.min(x.몫, x.한도);
+    x.넘는부분 = x.몫 - x.낼세금 > 0 ? x.몫 - x.낼세금 : undefined;
+  });
+  const 한도합 = 합, 결손 = Math.max(0, 승계 - 한도합);
+  if (사람.length) {
+    reqs.push(jmReq_('상속인별 몫과 받은 재산 한도', true, '각자 몫까지, 받은 재산 한도 안에서 연대 납부(§24③) — 한 사람이 낼 수 있는 최대는 자기 받은 재산', '국세기본법 §24③·시행령 §11'));
+    할일.push({ 무엇: '상속인 대표자 신고(성명·주소) — 안 하면 세무서가 지정', 때: 개시 ? famAddD_(개시, 30) : '', 근거: '국세기본법 §24③ 후단·시행령 §12' });
+  }
+  if (줄들.some(function (x) { return x.포기 && x.보험금; })) notes.push('상속을 포기한 사람이 받은 보험금(상증법 §8)은 상속받은 재산으로 보아 승계 세금을 냄(§24②1호, 포기자도 상속인으로 봄)');
+  if (줄들.some(function (x) { return !x.포기 && !x.한정승인 && x.보험금; })) notes.push('포기·한정승인하지 않은 상속인의 보험금은 피상속인이 체납 중에 보험료를 낸 경우만 체납 일수 비율로 받은 재산에 넣음(§24②2호) — 상속인 줄에 체납일수·납입일수(최초~마지막 보험료 납입 기간)를 넣으면 보험금 × 체납일수 ÷ 납입일수를 받은 재산에 더함, 없으면 넣지 않음');
+  const 넘침 = 줄들.reduce(function (s, x) { return s + (x.넘는부분 || 0); }, 0);
+  if (넘침 && !결손) notes.push('몫이 받은 재산보다 큰 상속인이 있어 그 넘는 ' + won(넘침) + '원은 그 사람이 내지 않지만, 다른 상속인이 자기 받은 재산 한도 안에서 연대하여 낼 수 있음(§24③ 연대 납부) [확인 필요: 연대 범위가 각자 받은 재산 전부인지 — 몫을 넘긴 금액까지 징수 대상인지 집행 사례]');
+  if (결손) notes.push('승계 세금 ' + won(승계) + '원이 상속인들이 받은 재산 합계 ' + won(한도합) + '원보다 큼 — 넘는 ' + won(결손) + '원은 상속인이 내지 않음(§24① 한도)');
+  // 3) 상속세 쪽
+  if (승계) notes.push('승계한 세금 ' + won(승계) + '원은 상속세 과세가액에서 공과금으로 뺌(상증법 §14①1호·시행령 §9①: 상속개시일 현재 피상속인이 낼 의무가 있는 조세) — 판정 묶음 「상속채무」·상속세 엔진칸 공과금에 넣을 것. 사망 뒤 상속인이 판 재산의 양도세는 상속인 자기 세금이라 빼지 않음');
+  if (미수채권) notes.push('사망 전 등기가 넘어가고 못 받은 잔금 ' + won(미수채권) + '원은 상속재산(채권)으로 더함');
+  notes.push('피상속인 양도대금을 사망 전 1년 2억·2년 5억 넘게 쓰고 쓴 곳을 밝히지 못하면 상속 추정(상증법 §15①1호) — 판정 묶음 「상속채무」·상속세 엔진 처분재산 칸');
+  notes.push('피상속인에게 한 결정·고지·독촉은 승계한 상속인에게도 효력(§24⑥) — 사망 전 피상속인에게 나온 고지서·독촉은 상속인에게 다시 하지 않아도 그대로 효력');
+  경우.push({ 이름: '① 승계 세금 나누기', 승계세금: 승계, 양도세: 승계양도세, 체납: 체납, 상속인별: 줄들.map(function (x) { return { 이름: x.이름, 낼세금: x.낼세금 }; }) });
+  if (승계) 경우.push({ 이름: '② 상속세 공과금 공제', 공과금: 승계, 엔진칸뜻: '상속세 계산기 taxableEstateAmount(과세가액)를 정할 때 재산에서 이 공과금을 뺌 — 판정 묶음 「상속채무」 공과금 줄에 넣으면 같이 셈' });
+  const 결 = (거래줄.length ? 거래줄.map(function (x) { return (x.이름 || '거래') + ' ' + (/^피상속인/.test(x.누구 || '') ? '피상속인 양도' : /^상속인/.test(x.누구 || '') ? '상속인 양도' : '?'); }).join(' · ') + ' — ' : '') + '승계 세금 ' + won(승계) + '원' + (줄들.length ? '(' + 줄들.map(function (x) { return x.이름 + ' ' + won(x.낼세금); }).join(', ') + ')' : '') + (결손 ? ' · 한도 넘어 안 냄 ' + won(결손) + '원' : '');
+  return jmWrap_('납세의무승계', reqs, { 적용: true, 결론: 결, 기준일: today, 확정신고기한: 확정기한 || undefined, 거래: 거래줄, 승계세금: 승계, 상속인별: 줄들, 결손: 결손, 미수잔금채권: 미수채권, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 103 「서씨 딱지와 조합원 지위」] 부동산을 취득할 수 있는 권리(소득세법 §94①2호가목)를 셋으로 가름 — 분양권·조합원입주권·그 밖의 취득 권리
+//  분양권 = 시행령 §152의5 법률(건축물분양법·공공주택특별법·도시개발법·도시정비법·소규모주택정비법·산업입지법·주택법·택지개발촉진법)에 따른 「주택」 공급계약으로 공급받는 자로 선정된 지위(§88 10호).
+//  조합원입주권 = 도시정비법·소규모주택정비법 관리처분계획 인가 등으로 취득한 입주자 지위(§88 9호) — 엔진은 주택(house)과 같은 세율 길.
+//  그 밖(이주자택지·협의양도인택지 공급권, 상가·오피스텔 분양 지위 등 주택 아닌 것) = 2호가목 일반 권리: 세율 §104①1·2·3호(2년 이상 기본세율·1~2년 40%·1년 미만 50%),
+//  장기보유특별공제 없음(§95② — 1호 자산과 2호가목 중 조합원입주권만), 개산공제 1%(시행령 §163⑥4호 — 그 밖의 자산). 분양권은 60%(1년 미만 70%), 장특 없음.
+//  p: { 권리:[{ 이름, 공급대상(주택|택지|상가|오피스텔|기타), 근거법(주택법·택지개발촉진법·공공주택특별법·도시정비법 등), 지위(분양계약|당첨|조합원|이주자택지|협의양도인택지|원조합원|승계조합원),
+//        사업계획승인(예/아니오 — 지역주택조합), 취득일, 양도일, 양도가액, 취득가액, 웃돈(프리미엄), 전매제한(예) }], 기준일 }
+function judgeAcquireRight_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10);
+  const won = function (v) { return Math.round(Number(v || 0)).toLocaleString('ko-KR'); };
+  const 분양권법 = /건축물의\s*분양|건축물분양|공공주택|도시개발|도시\s*및\s*주거환경|도시정비|소규모주택|빈집|산업입지|주택법|택지개발/;
+  const 입주권법 = /도시\s*및\s*주거환경|도시정비|소규모주택|빈집/;
+  const reqs = [], notes = [], 할일 = [], 경우 = [], 줄들 = [];
+  const list = Array.isArray(p.권리) ? p.권리 : (p.권리 ? [p.권리] : []);
+  reqs.push(jmReq_('권리 목록', list.length ? true : null, list.length ? list.length + '건' : '없음 — 권리:[{이름, 공급대상, 근거법, 지위, 취득일, 양도일}]', '소득세법 §94①2호가목'));
+  list.forEach(function (r, i) {
+    r = r || {};
+    const 이름 = r.이름 || ('권리 ' + (i + 1));
+    const 대상 = String(r.공급대상 || '');
+    const 법 = String(r.근거법 || '');
+    const 지위 = String(r.지위 || '');
+    const 취득 = jmYmd_(r.취득일), 양도 = jmYmd_(r.양도일);
+    const 일수 = 취득 && 양도 ? jmDays_(취득, 양도) : null;
+    const 보유 = 취득 && 양도 ? (famAddD_(jmAddM_(취득, 24), -1) < 양도 ? '2년 이상' : famAddD_(jmAddM_(취득, 12), -1) < 양도 ? '1년 이상 2년 미만' : '1년 미만') : '';
+    let 종류 = '', 근거 = '', 엔진 = null, 세율 = '', 장특 = '', 잠정 = false;
+    const 칸 = { transferPrice: famNum_(r.양도가액) || undefined, acquisitionPrice: famNum_(r.취득가액) || undefined, acquisitionDate: 취득 || undefined, transferDate: 양도 || undefined };
+    const 주택공급 = /주택|아파트|공동주택|다세대|연립/.test(대상);
+    const 지역조합 = /지역주택조합|직장주택조합/.test(법 + 지위 + 이름);
+    if (/조합원/.test(지위) && 입주권법.test(법)) {
+      종류 = '조합원입주권'; 근거 = '소득세법 §88 9호(도시정비법·소규모주택정비법)';
+      엔진 = Object.assign({ assetType: 'house' }, 칸);
+      세율 = '주택과 같음 — 1년 미만 70%·1~2년 60%·2년 이상 기본세율(§104①1~3호)';
+      장특 = /승계/.test(지위) ? '승계조합원: 장기보유특별공제 없음(§95② — 원조합원의 관리처분계획 인가 전 차익만)' : '원조합원: 관리처분계획 인가 전 종전 부동산 보유분 차익만 장기보유특별공제(§95②) — 인가일·권리가액을 따로 넣어 엔진 조합원입주권 계산 길로 셈 [확인 필요: 인가일·권리가액 칸]';
+      할일.push(이름 + ': 관리처분계획 인가일·권리가액·청산금을 받아 둘 것(원조합원 장특·주택 수 판정)');
+    } else if (지역조합 && !/분양계약|당첨/.test(지위)) {
+      종류 = '지역주택조합 조합원 지위 — 분양권인지 원문에 결론 없음';
+      근거 = '소득세법 §88 10호·시행령 §152의5(주택법은 분양권 근거법) [확인 필요: 사업계획승인 전 조합원 지위가 「공급받는 자로 선정된 지위」인지]';
+      잠정 = true;
+      const A = Object.assign({ assetType: 'presale_right' }, 칸), B = Object.assign({ assetType: 'other', rightOrOtherKind: 'acquire_right' }, 칸);
+      엔진 = /^예|^y|승인/i.test(String(r.사업계획승인 || '')) ? A : B;
+      세율 = '경우 ① 분양권으로 보면 60%(1년 미만 70%) · 경우 ② 그 밖의 권리로 보면 ' + (보유 === '2년 이상' ? '기본세율' : 보유 === '1년 미만' ? '50%' : '40%');
+      장특 = '어느 쪽이든 장기보유특별공제 없음(§95②)';
+      경우.push({ 이름: 이름 + ' ① 분양권으로 봄', 엔진칸: A });
+      경우.push({ 이름: 이름 + ' ② 그 밖의 취득 권리로 봄', 엔진칸: B });
+      notes.push(이름 + ': 사업계획승인' + (r.사업계획승인 ? '(' + r.사업계획승인 + ')' : ' 여부 모름') + ' — 승인 뒤 동·호수 배정·공급계약이 있으면 분양권 쪽, 승인 전 조합 가입 단계면 그 밖의 권리 쪽으로 잠정. 두 경우를 함께 보이고 세무사님 판단 [확인 필요]');
+      할일.push(이름 + ': 조합 가입계약서·사업계획승인일·동호수 배정 여부·공급계약서를 받을 것');
+    } else if (주택공급 && (분양권법.test(법) || !법)) {
+      종류 = '분양권'; 근거 = '소득세법 §88 10호·시행령 §152의5' + (법 ? '' : ' (근거법 빈칸 — 잠정)');
+      잠정 = !법;
+      엔진 = Object.assign({ assetType: 'presale_right' }, 칸);
+      세율 = '1년 미만 70%·1년 이상 60%(§104①1·2·3호 단서 — 보유기간 2년 넘어도 기본세율 아님)';
+      장특 = '장기보유특별공제 없음(§95②)';
+      notes.push(이름 + ': 분양권은 1세대 주택 수에 들어갈 수 있음(§89②·§104⑦ 등 — 적용 시작일 부칙 원문 못 찾음 [확인 필요]). 같은 세대가 집을 팔 때 판정 묶음 「중과판정」·「1세대1주택」과 함께 볼 것');
+    } else {
+      종류 = '그 밖의 부동산을 취득할 수 있는 권리(분양권·조합원입주권 아님)';
+      근거 = '소득세법 §94①2호가목' + (/택지/.test(대상 + 지위) ? ' — 택지(토지) 공급이라 「주택」 공급계약 지위가 아님(§88 10호)' : '');
+      엔진 = Object.assign({ assetType: 'other', rightOrOtherKind: 'acquire_right' }, 칸);
+      세율 = 보유 === '2년 이상' ? '기본세율(§104①1호)' : 보유 === '1년 미만' ? '50%(§104①3호)' : 보유 ? '40%(§104①2호)' : '보유기간 모름';
+      장특 = '장기보유특별공제 없음(§95② — 2호가목 중 조합원입주권만 공제)';
+      if (!대상) { 잠정 = true; notes.push(이름 + ': 공급대상(주택·택지·상가) 빈칸 — 그 밖의 권리로 잠정, 주택이면 분양권으로 바뀌어 60%·주택 수 포함'); }
+    }
+    if (엔진 && 엔진.assetType === 'other' && !칸.acquisitionPrice) notes.push(이름 + ': 취득가액 빈칸 — 환산하면 개산공제는 1%(시행령 §163⑥4호). 토지처럼 3%를 쓰지 않도록 엔진칸에 rightOrOtherKind acquire_right를 꼭 넣을 것');
+    if (/^예|^y/i.test(String(r.전매제한 || ''))) notes.push(이름 + ': 전매제한 기간 안 양도 — 공급 계약이 취소되거나 무효가 될 수 있고, 무효면 양도 자체가 없던 것이 되어 판정 「계약해제」·「양도여부」로 다시 볼 것 [확인 필요: 근거법 전매제한 조문]');
+    if (famNum_(r.웃돈)) notes.push(이름 + ': 웃돈(프리미엄) ' + won(r.웃돈) + '원은 양도가액에 들어감 — 다운계약이면 신고 불성실(실지거래가액, §96①). 산 사람의 나중 취득가액도 웃돈 포함');
+    reqs.push(jmReq_(이름 + ' 종류', 잠정 ? null : true, 종류, 근거));
+    줄들.push({ 이름: 이름, 종류: 종류, 보유: 보유 || undefined, 보유일수: 일수 == null ? undefined : 일수, 세율: 세율, 장기보유특별공제: 장특, 근거: 근거, 잠정: 잠정 || undefined, 엔진칸: 엔진 });
+    if (엔진 && !경우.some(function (k) { return k.이름.indexOf(이름 + ' ') === 0; })) 경우.push({ 이름: 이름, 엔진칸: 엔진 });
+    if (양도) 할일.push(이름 + ': 예정신고 기한 ' + new Date(Date.UTC(+양도.slice(0, 4), +양도.slice(5, 7) + 2, 0)).toISOString().slice(0, 10) + '(양도일이 속한 달 말일부터 2개월, §105①1호)');
+  });
+  if (list.length) notes.push('권리 자체는 등기하는 자산이 아니어서 미등기양도자산(§104③ 70%)으로 보지 않음 — 시행령 §168①2호(법률상 등기 불가) 취지. 권리가 아니라 이미 등기할 수 있게 된 토지·건물을 등기 없이 팔면 판정 「미등기」로 볼 것 [확인 필요]');
+  const 결 = 줄들.map(function (x) { return x.이름 + ' ' + x.종류.replace(/ —.*$/, '') + (x.잠정 ? '(잠정)' : '') + ' · ' + x.세율.replace(/ —.*$/, ''); }).join(' / ') || '권리 없음';
+  return jmWrap_('부동산권리', reqs, { 적용: list.length > 0, 결론: 결, 기준일: today, 권리별: 줄들, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+// [2026.11.03 복잡사건 104 「설씨 경매로 잃은 집·경매로 산 상가」] 경매·공매 — 넘어간 쪽(양도)과 낙찰받은 쪽(취득)을 함께 가름
+//  양도: 경매·공매도 유상이전(대가 = 채무의 감소, 집행기준 88-0-2) · 본인 자산을 경매로 자기가 다시 취득하면 양도 아님(집행기준 88-152-3 표) ·
+//        양도·취득시기 = 매각대금 완납일(소득세법 §98·시행령 §162①, 집행기준 표 「경락에 의한 자산 취득 — 경매대금을 완납한 날」) ·
+//        비사업용 토지 기간기준의 양도일 = 최초 경매기일·최초 공매일(시행령 §168의14②1·2호, 집행기준 104의3-168의14-25).
+//  취득: 취득가액 = 낙찰가 + 취득세 등 부대비용(시행령 §163①1호) · 대항력 있는 보증금을 떠안고 구상할 수 없으면 필요경비(집행기준 97-163-15, 대항력 있는 임차인이 경락받아 못 받은 보증금 포함) ·
+//        민사집행법상 유치권자에게 변제한 채권액은 필요경비(97-163-16) · 법적 지급의무 없는 유치권 합의금은 아님(97-163-17) · 명도비용은 취득가액 아님(97-163-18) · 이자 아님(97-163-19) ·
+//        채권자가 강제경매로 채무자 토지를 취득하면 「채권 변제를 받기 위해 취득한 토지」(2년 비사업용 아님)가 아님(집행기준 104의3-168의14-19).
+//  p: { 양도:[{ 이름, 자산(주택|토지|상가|그밖), 방식(임의경매|강제경매|공매), 낙찰자(남|본인), 소유자지위(채무자|물상보증인), 최초경매기일, 매각허가일, 대금완납일, 매각대금, 배당받은금액, 취득일, 취득가액, 필요경비, 1세대1주택(예) }],
+//       취득:[{ 이름, 자산, 방식, 대금완납일, 낙찰가, 취득세등, 인수보증금, 보증금구상(가능|불가), 유치권변제, 유치권합의금, 명도비, 이자, 채권자로서취득(예), 양도일, 양도가액 }], 기준일 }
+function judgeAuction_(p) {
+  p = p || {};
+  const today = jmYmd_(p.기준일) || new Date().toISOString().slice(0, 10);
+  const won = function (v) { return Math.round(Number(v || 0)).toLocaleString('ko-KR'); };
+  const reqs = [], notes = [], 할일 = [], 경우 = [], 양도줄 = [], 취득줄 = [];
+  const 양도들 = Array.isArray(p.양도) ? p.양도 : (p.양도 ? [p.양도] : []);
+  const 취득들 = Array.isArray(p.취득) ? p.취득 : (p.취득 ? [p.취득] : []);
+  const 자산칸 = function (a) { return /주택|아파트|빌라|다세대/.test(String(a || '')) ? 'house' : 'other'; };
+  const 기한 = function (d) { return new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) + 2, 0)).toISOString().slice(0, 10); };
+  reqs.push(jmReq_('경매 목록', (양도들.length + 취득들.length) ? true : null, '넘어간 것 ' + 양도들.length + '건 · 낙찰받은 것 ' + 취득들.length + '건', '소득세법 §88 1호·집행기준 88-0-2'));
+
+  양도들.forEach(function (r, i) {
+    r = r || {};
+    const 이름 = r.이름 || ('넘어간 자산 ' + (i + 1));
+    const 공매 = /공매/.test(String(r.방식 || ''));
+    const 완납 = jmYmd_(r.대금완납일), 첫기일 = jmYmd_(r.최초경매기일), 허가 = jmYmd_(r.매각허가일);
+    let 양도임 = true, 잠정 = false, 근거 = '경매·공매도 유상이전 — 대가는 채무의 감소(소득세법 §88 1호, 집행기준 88-0-2)';
+    if (/본인/.test(String(r.낙찰자 || ''))) { 양도임 = false; 근거 = '본인 소유 자산을 경매로 자기가 다시 취득 — 양도로 보지 않음(집행기준 88-152-3 표)'; }
+    if (양도임 && /물상보증/.test(String(r.소유자지위 || ''))) {
+      잠정 = true;
+      notes.push(이름 + ': 남의 빚 담보(물상보증인)로 넘어간 경우 — 집행기준에서 따로 정한 원문을 못 찾음. 매각대금으로 남의 빚이 갚아져 구상권이 생기므로 유상이전으로 보는 쪽으로 잠정 [확인 필요: 예규·판례]. 구상권을 실제로 받을 수 없게 된 사정은 양도가액을 줄이지 않는지도 [확인 필요]');
+    }
+    const 칸 = { assetType: 자산칸(r.자산), transferPrice: famNum_(r.매각대금) || undefined, transferDate: 완납 || undefined, acquisitionPrice: famNum_(r.취득가액) || undefined, acquisitionDate: jmYmd_(r.취득일) || undefined, necessaryExpenses: famNum_(r.필요경비) || undefined };
+    if (/^예|^y/i.test(String(r['1세대1주택'] || ''))) 칸.isOneHouseOneFamily = true;
+    if (!완납) { 잠정 = true; notes.push(이름 + ': 매각대금 완납일 빈칸 — 양도시기는 완납일(시행령 §162①). 매각허가일' + (허가 ? '(' + 허가 + ')' : '') + '이 아님. 법원 「배당표」·「대금완납증명」으로 확인'); 할일.push(이름 + ': 경매 사건번호로 대금완납일·매각대금·배당표를 받을 것'); }
+    if (양도임) {
+      if (r.배당받은금액 != null && r.배당받은금액 !== '' && !/물상보증/.test(String(r.소유자지위 || '')) && famNum_(r.매각대금) && famNum_(r.배당받은금액) < famNum_(r.매각대금)) notes.push(이름 + ': 손에 쥔 돈(배당 ' + won(r.배당받은금액) + '원)이 적어도 양도가액은 매각대금 ' + won(r.매각대금) + '원 — 나머지는 채권자에게 가서 내 빚이 줄었으므로(집행기준 88-0-2 「채무의 감소」). 세금을 낼 돈이 없을 수 있으니 미리 알림');
+      if (/토지|땅|임야|농지|대지/.test(String(r.자산 || ''))) notes.push(이름 + ': 비사업용 토지 판정의 기간기준은 양도일 대신 ' + (공매 ? '최초 공매일' : '최초 경매기일') + (첫기일 ? '(' + 첫기일 + ')' : '(빈칸)') + '로 셈(시행령 §168의14②' + (공매 ? '2' : '1') + '호) — 판정 「비사업용 토지」에 그 날을 양도일로 넣을 것. 세율·장기보유특별공제의 보유기간은 그대로 완납일까지');
+      if (칸.assetType === 'house') notes.push(이름 + ': 경매로 넘어간 집도 1세대1주택 비과세가 됨(양도 원인 제한 없음, 소득세법 §89①3호) — 판정 「1세대1주택」을 함께 볼 것');
+      if (완납) 할일.push(이름 + ': 예정신고 기한 ' + 기한(완납) + '(완납일이 속한 달 말일부터 2개월, §105①1호) — 경매로 넘어가 신고를 놓치기 쉬움(무신고 가산세 국세기본법 §47의2)');
+      경우.push({ 이름: 이름 + ' 양도', 엔진칸: 칸 });
+    }
+    reqs.push(jmReq_(이름 + ' 양도인가', 잠정 ? null : true, 양도임 ? '양도' + (잠정 ? '(잠정)' : '') : '양도 아님', 근거));
+    양도줄.push({ 이름: 이름, 양도: 양도임, 잠정: 잠정 || undefined, 양도시기: 완납 || undefined, 비사업용기간_양도일: 첫기일 || undefined, 양도가액: famNum_(r.매각대금) || undefined, 근거: 근거, 엔진칸: 양도임 ? 칸 : null });
+  });
+
+  취득들.forEach(function (r, i) {
+    r = r || {};
+    const 이름 = r.이름 || ('낙찰받은 자산 ' + (i + 1));
+    const 완납 = jmYmd_(r.대금완납일);
+    const 낙찰 = famNum_(r.낙찰가) || 0, 부대 = famNum_(r.취득세등) || 0, 보증 = famNum_(r.인수보증금) || 0, 유치 = famNum_(r.유치권변제) || 0;
+    const 합의 = famNum_(r.유치권합의금) || 0, 명도 = famNum_(r.명도비) || 0, 이자 = famNum_(r.이자) || 0;
+    const 구상불가 = /불가|없|아니/.test(String(r.보증금구상 || ''));
+    const 넣음 = [], 뺌 = [];
+    let 인정 = 낙찰 + 부대;
+    넣음.push('낙찰가 ' + won(낙찰) + '원(시행령 §163①1호)'); if (부대) 넣음.push('취득세 등 ' + won(부대) + '원');
+    if (보증) {
+      if (구상불가) { 인정 += 보증; 넣음.push('떠안은 대항력 보증금 ' + won(보증) + '원(구상 불가 — 집행기준 97-163-15)'); }
+      else if (r.보증금구상) 뺌.push('떠안은 보증금 ' + won(보증) + '원 — 전 소유자에게 구상할 수 있으면 필요경비 아님(97-163-15)');
+      else { 뺌.push('떠안은 보증금 ' + won(보증) + '원 — 구상 가능 여부 모름(잠정 뺌)'); 할일.push(이름 + ': 떠안은 보증금을 전 소유자에게 받을 수 있는지(구상) 확인 — 받을 수 없으면 필요경비(97-163-15)'); }
+    }
+    if (유치) { 인정 += 유치; 넣음.push('민사집행법상 유치권자에게 갚은 채권 ' + won(유치) + '원(97-163-16)'); }
+    if (합의) 뺌.push('지급 의무 없는 유치권 합의금 ' + won(합의) + '원(97-163-17)');
+    if (명도) 뺌.push('명도비 ' + won(명도) + '원 — 소유권 확보 직접비용 아님(97-163-18)');
+    if (이자) 뺌.push('낙찰 대출 이자·지연 이자 ' + won(이자) + '원(97-163-19)');
+    const 다 = 인정 + 합의 + 명도 + 이자 + (구상불가 ? 0 : 보증);
+    if (/^예|^y/i.test(String(r.채권자로서취득 || ''))) notes.push(이름 + ': 채권자가 강제경매를 신청해 매각허가로 취득한 토지는 「채권 변제를 받기 위해 취득한 토지」(취득 뒤 2년 비사업용 아님)로 보지 않음(집행기준 104의3-168의14-19) — 사업에 쓰지 않으면 처음부터 비사업용 기간');
+    if (!완납) 할일.push(이름 + ': 대금완납일 확인 — 취득시기는 완납일(집행기준 「경락에 의한 자산 취득」)');
+    취득줄.push({ 이름: 이름, 취득시기: 완납 || undefined, 인정취득가액: 인정, 다넣으면: 다, 넣는것: 넣음, 빼는것: 뺌 });
+    reqs.push(jmReq_(이름 + ' 취득가액', 뺌.some(function (x) { return /모름/.test(x); }) ? null : true, won(인정) + '원(넣지 않는 것 ' + won(다 - 인정) + '원)', '시행령 §163①·집행기준 97-163-15~19'));
+    const 양도일 = jmYmd_(r.양도일), 양도가 = famNum_(r.양도가액);
+    if (양도일 && 양도가) {
+      const 기본 = { assetType: 자산칸(r.자산), transferPrice: 양도가, transferDate: 양도일, acquisitionDate: 완납 || undefined };
+      경우.push({ 이름: 이름 + ' ① 법대로', 엔진칸: Object.assign({}, 기본, { acquisitionPrice: 인정 }) });
+      if (다 !== 인정) 경우.push({ 이름: 이름 + ' ② 쓴 돈 다 넣음(틀린 길)', 엔진칸: Object.assign({}, 기본, { acquisitionPrice: 다 }) });
+    }
+  });
+  if (취득들.length) notes.push('낙찰받은 사람의 취득세 등은 영수증이 있어야 함 — 명도비·합의금·이자는 낸 돈이어도 양도 때 빼지 못하므로, 낙찰가를 정할 때 그만큼 세금이 더 남는다는 것을 미리 알릴 것');
+  const 결 = 양도줄.map(function (x) { return x.이름 + ' ' + (x.양도 ? '양도' + (x.잠정 ? '(잠정)' : '') : '양도 아님'); }).concat(취득줄.map(function (x) { return x.이름 + ' 취득가액 ' + won(x.인정취득가액) + '원'; })).join(' / ') || '경매 없음';
+  return jmWrap_('경매', reqs, { 적용: (양도들.length + 취득들.length) > 0, 결론: 결, 기준일: today, 넘어간것: 양도줄, 낙찰받은것: 취득줄, 경우: 경우, 알림: notes, 할일: 할일 });
+}
+var JUDGE_MORE_ = { '경매': judgeAuction_, '공매': judgeAuction_, '경락': judgeAuction_, '경매취득': judgeAuction_, '부동산권리': judgeAcquireRight_, '분양권판정': judgeAcquireRight_, '택지공급권': judgeAcquireRight_, '지역주택조합': judgeAcquireRight_, '납세의무승계': judgeSuccession_, '상속인 납세의무': judgeSuccession_, '사망 전 양도': judgeSuccession_, '납부유예': judgeDefer_, '가업납부유예': judgeDefer_, '상속세납부유예': judgeDefer_, '환급가산금': judgeRefund_, '국세환급': judgeRefund_, '경정환급': judgeRefund_, '부정행위': judgeFraud_, '가산세판정': judgeFraud_, '신고불성실': judgeFraud_, '제척기간': judgeExclusionPeriod_, '부과제척기간': judgeExclusionPeriod_, '장기임대특례': judgeRental9703_, '장기일반민간임대': judgeRental9703_, '97의3': judgeRental9703_, '나눠팔기': judgeSplitSale_, '토지분할양도': judgeSplitSale_, '감면한도합산': judgeSplitSale_, '개발제한구역': judgeGbPurchase_, '개발제한구역감면': judgeGbPurchase_, '그린벨트': judgeGbPurchase_, '영농상속': judgeFarmInheritance_, '영농상속공제': judgeFarmInheritance_, '영농 상속': judgeFarmInheritance_, '법인거래': judgeCorpIndividualDeal_, '법인 거래': judgeCorpIndividualDeal_, '가족법인 거래': judgeCorpIndividualDeal_, '특수관계법인 거래': judgeCorpIndividualDeal_, '비거주자양도': judgeNonResidentTransfer_, '비거주자 양도': judgeNonResidentTransfer_, '재외국민 양도': judgeNonResidentTransfer_, '외국인 양도': judgeNonResidentTransfer_, '부담부증여': judgeBurdenedGift_, '부담부 증여': judgeBurdenedGift_, '채무 인수 증여': judgeBurdenedGift_, '환산가산세': judgeNewBuildConversion_, '신축 환산 가산세': judgeNewBuildConversion_, '감정가액 가산세': judgeNewBuildConversion_, '미등기': judgeUnregistered_, '미등기양도': judgeUnregistered_, '미등기 양도자산': judgeUnregistered_, '확정신고': judgeFinalReturn_, '확정신고 의무': judgeFinalReturn_, '예정신고 합산': judgeFinalReturn_, '정비청산': judgeRedevCash_, '현금청산': judgeRedevCash_, '재개발 현금청산': judgeRedevCash_, '매도청구': judgeRedevCash_, '의제취득': judgeDeemedAcq_, '의제취득일': judgeDeemedAcq_, '1985년 전 취득': judgeDeemedAcq_, '세대판정': judgeHousehold_, '1세대 범위': judgeHousehold_, '세대 구성': judgeHousehold_, '중과판정': judgeSurcharge_, '다주택 중과': judgeSurcharge_, '중과 제외': judgeSurcharge_, '필요경비': judgeExpenses_, '필요경비 판정': judgeExpenses_, '자본적지출': judgeExpenses_, '주택여부': judgeIsHouse_, '주택 해당': judgeIsHouse_, '사실상 주거용': judgeIsHouse_, '부수토지': judgeHouseLandExcess_, '주택부수토지': judgeHouseLandExcess_, '부수토지 배율': judgeHouseLandExcess_, '양도시기': judgeTransferTiming_, '취득시기': judgeTransferTiming_, '양도·취득시기': judgeTransferTiming_, '보상금구분': judgeCompensationSplit_, '수용보상금': judgeCompensationSplit_, '보상금 가르기': judgeCompensationSplit_, '대토보상': judgeLandReplacement_, '대토': judgeLandReplacement_, '대토보상 과세이연': judgeLandReplacement_, '부동산매매업': judgeRealEstateDealer_, '매매업': judgeRealEstateDealer_, '부동산 단타': judgeRealEstateDealer_, '공동상속': judgeCoInheritedHouse_, '공동상속주택': judgeCoInheritedHouse_, '공동상속주택 소수지분': judgeCoInheritedHouse_, '다가구': judgeMultiHousehold_, '다가구주택': judgeMultiHousehold_, '다가구 한 채': judgeMultiHousehold_, '상속채무': judgeInheritDebt_, '상속 채무 공제': judgeInheritDebt_, '채무 공과금 장례비': judgeInheritDebt_, '토지건물구분': judgeLandBuildingSplit_, '일괄양도 안분': judgeLandBuildingSplit_, '토지 건물 가액 구분': judgeLandBuildingSplit_, '상속평가': judgeInheritValuation_, '상속 평가 선택': judgeInheritValuation_, '감정평가 신고': judgeInheritValuation_, '증여시기': judgeGiftTiming_, '증여 날짜': judgeGiftTiming_, '증여일 고르기': judgeGiftTiming_, '생활비교육비': judgeFamilySupportGift_, '비과세증여': judgeFamilySupportGift_, '혼인출산공제': judgeFamilySupportGift_, '세무조사절차': judgeTaxAudit_, '세무조사': judgeTaxAudit_, '세무조사 통지': judgeTaxAudit_, '세금대납': judgeTaxProxyPay_, '상속세 대납': judgeTaxProxyPay_, '증여세 대납': judgeTaxProxyPay_, '차명계좌': judgeBorrowedAccount_, '차명 예금': judgeBorrowedAccount_, '차명계좌 증여추정': judgeBorrowedAccount_, '부동산명의신탁': judgeNomineeRealty_, '명의신탁 부동산': judgeNomineeRealty_, '제2차납세의무': judgeSecondaryLiability_, '제2차 납세의무': judgeSecondaryLiability_, '과점주주': judgeSecondaryLiability_, '특별연고자': judgeSpecialRelation_, '특별연고자 분여': judgeSpecialRelation_, '재산분여': judgeSpecialRelation_, '기타자산': judgeOtherAsset_, '영업권': judgeOtherAsset_, '회원권': judgeOtherAsset_, '영업권·회원권': judgeOtherAsset_, '한정승인': judgeLimitedAccept_, '상속 한정승인': judgeLimitedAccept_, '특별한정승인': judgeLimitedAccept_, '국외증여': judgeForeignGift_, '국외 증여': judgeForeignGift_, '국외재산 증여': judgeForeignGift_, '거주자': judgeResidency_, '거주자 판정': judgeResidency_, '비거주자': judgeResidency_, '상속인': judgeHeirShares_, '법정상속분': judgeHeirShares_, '상속인·법정상속분': judgeHeirShares_, '불복기한': judgeAppealDeadline_, '불복': judgeAppealDeadline_, '경정청구기한': judgeAppealDeadline_, '양도여부': judgeTransferScope_, '계약해제': function (p) { p = Object.assign({}, p || {}); if (!p.유형) p.유형 = '계약해제'; return judgeTransferScope_(p); }, '양도로 보지 않음': judgeTransferScope_, '농지대토': judgeFarmSwap_, '대토': judgeFarmSwap_, '농지대토 감면': judgeFarmSwap_, '법인전환': judgeIncorp32_, '법인전환 이월과세': judgeIncorp32_, '8년자경': judgeSelfFarm_, '자경': judgeSelfFarm_, '8년 자경농지 감면': judgeSelfFarm_, '동거주택': judgeCohabit_, '동거주택 상속공제': judgeCohabit_, '가업상속': judgeFamilyBiz_, '가업상속공제': judgeFamilyBiz_ };
 // 사건에서 부름(ledgerJudgeRun_가 1세대1주택이 아닌 묶음을 넘김) — 사실(facts)은 넥스·세무사님이 준 값, 결과는 장부 기록 + 물건 줄 판정 묶음들 + 장부 판정 칸(L.judge)
 function judgeMoreRun_(c, input, by) {
   const kind = String(input.묶음 || input.group || ''), fn = JUDGE_MORE_[kind.replace(/\s+/g, ' ').trim()] || JUDGE_MORE_[kind.replace(/\s/g, '')];
-  if (!fn) return { ok: false, error: '없는 묶음: ' + kind + ' — 1세대1주택·8년자경·농지대토·양도여부·계약해제·한정승인·특별연고자·제2차납세의무·부동산명의신탁·차명계좌·세금대납·세무조사절차·생활비교육비·증여시기·상속평가·토지건물구분·상속채무·다가구·공동상속·부동산매매업·대토보상·보상금구분·양도시기·부수토지·주택여부·필요경비·중과판정·세대판정·의제취득·정비청산·확정신고·미등기·환산가산세·부담부증여·비거주자양도·법인거래·영농상속·기타자산·불복기한·상속인·거주자·동거주택·가업상속·법인전환·국외증여 중 하나' };
+  if (!fn) return { ok: false, error: '없는 묶음: ' + kind + ' — 1세대1주택·8년자경·농지대토·양도여부·계약해제·한정승인·특별연고자·제2차납세의무·부동산명의신탁·차명계좌·세금대납·세무조사절차·생활비교육비·증여시기·상속평가·토지건물구분·상속채무·다가구·공동상속·부동산매매업·대토보상·보상금구분·양도시기·부수토지·주택여부·필요경비·중과판정·세대판정·의제취득·정비청산·확정신고·미등기·환산가산세·부담부증여·비거주자양도·법인거래·영농상속·개발제한구역·나눠팔기·장기임대특례·제척기간·부정행위·환급가산금·납부유예·납세의무승계·부동산권리·경매·기타자산·불복기한·상속인·거주자·동거주택·가업상속·법인전환·국외증여 중 하나' };
   const r = fn(input.facts || input.사실 || {});
   const out = { ok: true, 결과: r, 넣은사실: input.facts || input.사실 || {}, 알림: (r.알림 || []).slice() };
   if (input.write === false) { out.장부 = '보기만 — 장부에 넣지 않음'; return out; }

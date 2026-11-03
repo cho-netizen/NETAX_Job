@@ -165,14 +165,13 @@
           nxPrompt_('새 파일명을 입력해주세요(확장자 포함).', f.name, '파일명 수정').then(function(newName){
             if (!newName || !newName.trim() || newName.trim() === f.name) return;
             newName = newName.trim();
-            callGas('rename_report_file', { fileId: fileId, newName: newName }).then(function(res){
-              if (res.success === false){ nxAlert_(res.message || '이름 변경에 실패했습니다.', '파일명 수정'); return; }
-              f.name = newName;
-              rhRenderFileList_(rhAllFiles_);
-              showToast('파일명을 변경했습니다.', 'success');
-            }).catch(function(err){
-              nxAlert_('오류: ' + nxErrText_(err), '파일명 수정');
-            });
+            // [2026.11.03 전수조사 다시] 목록 이름을 바로 바꾸고 서버엔 보낼 함으로 뒤에서 — 실패하면 옛 이름으로 되돌린다
+            var oldName = f.name;
+            f.name = newName;
+            rhRenderFileList_(rhAllFiles_);
+            showToast('파일명을 바꿨습니다.', 'success');
+            nxSaveLater_('rename_report_file', { fileId: fileId, newName: newName }, { key: 'rh_' + fileId, label: '파일명 수정 — ' + newName,
+              onFail: function(){ f.name = oldName; rhRenderFileList_(rhAllFiles_); }, redo: function(){ f.name = newName; rhRenderFileList_(rhAllFiles_); } });
           });
         });
       });
@@ -187,14 +186,14 @@
           if (!f) return;
           nxConfirm_('"' + f.name + '" 파일을 휴지통으로 보냅니다. 계속할까요?').then(function(ok){
             if (!ok) return;
-            callGas('delete_report_file', { fileId: fileId }).then(function(res){
-              if (res.success === false){ nxAlert_(res.message || '삭제에 실패했습니다.', '파일 삭제'); return; }
-              rhAllFiles_ = rhAllFiles_.filter(function(x){ return x.id !== fileId; });
-              rhRenderFileList_(rhAllFiles_);
-              showToast('휴지통으로 보냈습니다.', 'success');
-            }).catch(function(err){
-              nxAlert_('오류: ' + nxErrText_(err), '파일 삭제');
-            });
+            // [2026.11.03 전수조사 다시] 줄은 바로 빼고 서버엔 보낼 함으로 뒤에서 — 실패하면 줄을 되살린다
+            var before = rhAllFiles_.slice();
+            rhAllFiles_ = rhAllFiles_.filter(function(x){ return x.id !== fileId; });
+            rhRenderFileList_(rhAllFiles_);
+            showToast('휴지통으로 보냈습니다.', 'success');
+            nxSaveLater_('delete_report_file', { fileId: fileId }, { key: 'rh_' + fileId, label: '파일 삭제 — ' + f.name,
+              onFail: function(){ rhAllFiles_ = before; rhRenderFileList_(rhAllFiles_); },
+              redo: function(){ rhAllFiles_ = rhAllFiles_.filter(function(x){ return x.id !== fileId; }); rhRenderFileList_(rhAllFiles_); } });
           });
         });
       });
@@ -442,10 +441,9 @@
       if (post){
         var url = window.prompt('유튜브 쇼츠 등 게시한 주소를 붙여 넣으세요.', '');
         if (!url || !/^https?:\/\//.test(url.trim())) return;
-        callGas('shorts_set_posted', { folderId: post.dataset.folder, url: url.trim() }).then(function(res){
-          if (!res || res.error){ showToast('저장 실패: ' + ((res && res.error) || '')); return; }
-          showToast('게시 링크를 저장했습니다.'); rhLoadShorts_();
-        });
+        // [2026.11.03 전수조사 다시] 서버 답을 기다리지 않는다 — 받으면 목록을 다시 받는다(실패는 화면 아래 붉은 띠)
+        showToast('게시 링크를 저장했습니다.');
+        nxSaveLater_('shorts_set_posted', { folderId: post.dataset.folder, url: url.trim() }, { key: 'shorts_' + post.dataset.folder, label: '쇼츠 게시 링크', onDone: function(){ rhLoadShorts_(); } });
       }
     });
     document.getElementById('rhShortsFileInput').addEventListener('change', function(){

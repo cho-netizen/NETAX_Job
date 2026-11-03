@@ -163,6 +163,32 @@
     return found ? found.id : '';
   }
 
+  // [2026.11.03 전수조사 다시] 세무사님 "답답해서 사용하지 못하는 일이 생기면 안된다" — 수금 줄 추가·고치기·지우기는 화면 목록에 바로 넣고(서버 답 안 기다림),
+  //  서버엔 보낼 함으로 뒤에서. 서버가 받으면 목록을 조용히(「불러오는 중」 없이) 다시 받아 중복 자동 정리 등 서버가 바꾼 것까지 맞추고, 실패하면 원래 줄로 되돌린다.
+  function colSave_(action, payload, row, prev, label){
+    var id = payload.id;
+    function apply_(r){
+      var i = -1; colLogsCache_.forEach(function(x, k){ if (String(x.id) === String(id)) i = k; });
+      if (!r) { if (i >= 0) colLogsCache_.splice(i, 1); } else if (i >= 0) colLogsCache_[i] = Object.assign({}, colLogsCache_[i], r); else colLogsCache_.unshift(r);
+      colRenderList_();
+    }
+    nxSaveLater_(action, payload, { key: 'log_' + id, label: label || '수금 저장',
+      patch: [row ? { list: 'logs', op: 'upsert', id: id, row: row } : { list: 'logs', op: 'delete', id: id }],
+      onDone: function(res){ if (res && res.dedupRemoved) showToast('다른 경로로 이미 있던 중복 기록 ' + res.dedupRemoved + '건을 자동 정리했습니다.', 'success'); colReloadQuiet_(); },
+      onFail: function(){ apply_(prev || null); }, redo: function(){ apply_(row || null); } });
+    apply_(row);
+  }
+  function colReloadQuiet_(){
+    var search = document.getElementById('colSearchInput').value.trim();
+    var fetchPayload = search ? { search: search } : {};
+    fetchPayload.includeMerged = true;
+    callGas('client_get_consult_logs', fetchPayload).then(function(res){
+      if (!res || res.error || res.success === false) return;
+      colLogsCache_ = res.logs || [];
+      colRenderList_();
+    }).catch(function(){});
+  }
+
   function loadCollections_(){
     colList.innerHTML = '<div class="spinner">불러오는 중…</div>';
     var search = document.getElementById('colSearchInput').value.trim();
@@ -384,10 +410,7 @@
     row.querySelector('.log-del').addEventListener('click', function(){
       nxConfirm_(l.고객명 + '님의 ' + colAmountText_(l.금액) + ' 수금 내역을 삭제할까요?').then(function(ok){
         if (!ok) return;
-        callGas('client_delete_consult_log', { id: l.id }).then(function(res){
-          if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
-          loadCollections_();
-        }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+        colSave_('client_delete_consult_log', { id: l.id }, null, l, (l.고객명 || '') + ' 수금 삭제');
       });
     });
     // [2026.09.16 버그수정] 세무사님 지적 — "좁은 화면에서는 오히려 상세보기가 더 잘 돼야
@@ -491,14 +514,11 @@
       // 서버의 이름 기반 찾기/생성 경로를 그대로 탄다.
       var matchedClientId_ = colFindClientIdByName_(고객명);
       if (matchedClientId_) editPayload.고객ID = matchedClientId_;
-      callGas('client_update_consult_log', editPayload).then(function(res){
-        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
-        showToast('저장했습니다.' + (res.dedupRemoved ? ' (다른 경로로 이미 있던 중복 기록 ' + res.dedupRemoved + '건 자동 정리됨)' : ''), 'success');
-        // "미연결만" 필터를 켜둔 채로 방금 연결한 항목도, 제대로 연결됐는지 바로 눈으로
-        // 확인할 수 있도록 이번 방문 동안은 그 필터에서 예외로 계속 보여준다.
-        colJustEditedIds_[l.id] = true;
-        loadCollections_();
-      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
+      // "미연결만" 필터를 켜둔 채로 방금 연결한 항목도, 제대로 연결됐는지 바로 눈으로
+      // 확인할 수 있도록 이번 방문 동안은 그 필터에서 예외로 계속 보여준다.
+      colJustEditedIds_[l.id] = true;
+      colSave_('client_update_consult_log', editPayload, Object.assign({}, l, editPayload, { 금액: Number(amount) || 0, 고객ID: editPayload.고객ID || (고객명 === l.고객명 ? l.고객ID : '') }), l, 고객명 + ' 수금 고침');
+      showToast('저장했습니다.', 'success');
     });
   }
 
@@ -533,12 +553,11 @@
     // 비워서 서버의 이름 기반 찾기/생성 경로를 그대로 탄다) — colEditSave와 같은 원칙.
     var matchedNewClientId_ = colFindClientIdByName_(고객명);
     if (matchedNewClientId_) newPayload.고객ID = matchedNewClientId_;
-    callGas('client_add_consult_log', newPayload).then(function(res){
-      if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
-      showToast('수금 내역을 추가했습니다.' + (res.dedupRemoved ? ' (다른 경로로 이미 있던 중복 기록 ' + res.dedupRemoved + '건 자동 정리됨)' : ''), 'success');
-      document.getElementById('colNewCancel').click();
-      loadCollections_();
-    }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
+    newPayload.id = nxNewId_();
+    if (!newPayload.날짜) newPayload.날짜 = new Date().toISOString().slice(0, 10);
+    colSave_('client_add_consult_log', newPayload, Object.assign({}, newPayload, { 금액: Number(amount) || 0, 유형: '수금' }), null, 고객명 + ' 수금 추가');
+    showToast('수금 내역을 추가했습니다.', 'success');
+    document.getElementById('colNewCancel').click();
   });
 
   document.getElementById('colSearchInput').addEventListener('input', loadCollections_);

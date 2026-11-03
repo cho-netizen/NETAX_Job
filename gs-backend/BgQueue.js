@@ -46,9 +46,85 @@ var BGQ_HANDLERS_ = {
     work_deleteCaseCalendarEvents_(a.caseId); // 그 사이 사건이 지워졌으면 일정도 지운다
   },
   // 주간 개선 후보 보고서 다시 만들기(11-03 개선요구 저장 지연을 풀며 1분 트리거로 미루던 것을 이 장치로 옮김)
-  improve_report: function () { buildImprovementReport_(); }
+  improve_report: function () { buildImprovementReport_(); },
+  // [2026.11.03 전수조사 다시] 사건 폴더·의뢰서 원문·고객창구 연결 — 작업관리 새 사건(폴더뒤로)·상담→자문/신고 저장에서 뒤로 미룬 드라이브 일.
+  //  드라이브 일은 잠금 밖에서, 시트에는 짧은 잠금 안에서 폴더ID·my_report_id 두 칸만 쓴다(수정일은 건드리지 않음 — 화면이 들고 있는 기대수정일과 어긋나지 않게)
+  case_folder: function (a) {
+    const r = bgqCaseRow_(a.caseId);
+    if (!r) return; // 그 사이 지운 사건
+    if (String(r.row[r.col.업무유형] || '') === '상담') return; // 다시 상담으로 바꿨으면 폴더가 필요 없다
+    let folderId = String(r.row[r.col.폴더ID] || '');
+    if (!folderId) { folderId = work_getOrCreateCaseFolder_(r.row[r.col.사건명], r.row[r.col.업무유형]); if (!folderId) throw new Error('드라이브 폴더를 만들지 못함'); }
+    if (a.seed) {
+      try {
+        const folder = DriveApp.getFolderById(folderId);
+        let has = false; const it = folder.getFiles();
+        while (it.hasNext()) { if (String(it.next().getName()).indexOf(CASE_TEMPLATE_NAME_PREFIX_) === 0) { has = true; break; } } // 다시 해도 두 장 생기지 않게
+        if (!has) {
+          const seMok = r.row[r.col.세목], upType = r.row[r.col.업무유형];
+          const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
+          const multi = /자문|상담/.test(upType) && work_intakeTaxCount_(r.row[r.col.개요]) >= 2;
+          work_seedCaseTemplateIfAny_(folder, (multi ? ['복합자문'] : []).concat([semokLabel + upType, upType, semokLabel]).map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }), r.row[r.col.개요]);
+        }
+      } catch (e) { console.log('뒤에서 의뢰서 원문 넣기 실패(폴더는 계속): ' + e.message); }
+    }
+    if (a.req && a.req.fileName) { // 의뢰 메모에서 고친 의뢰서 글 — 같은 이름 파일이 이미 있으면 다시 넣지 않음
+      const fd = DriveApp.getFolderById(folderId);
+      if (!fd.getFilesByName(a.req.fileName).hasNext()) { const sv = handleSaveCaseFromTemplate(Object.assign({}, a.req, { folderId: folderId })); if (sv && sv.error) throw new Error('의뢰서 저장 실패: ' + sv.error); }
+    }
+    let reportId = String(r.row[r.col.my_report_id] || '');
+    if (!reportId) {
+      const my = my_handleAdminCreateCase({ admin_code: PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'), name: r.row[r.col.고객명], case_name: r.row[r.col.사건명], checklist: [], permission: '허용', folder_id: folderId });
+      if (my && my.success !== false && my.report_id) reportId = my.report_id;
+    }
+    withLock_(8000, function () {
+      const sheet = work_getSheet_();
+      const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+      const found = work_findCaseRow_(sheet, col, a.caseId);
+      if (!found) return;
+      if (!found.row[col.폴더ID]) sheet.getRange(found.rowIndex, col.폴더ID + 1).setValue(folderId);
+      if (reportId && !found.row[col.my_report_id]) sheet.getRange(found.rowIndex, col.my_report_id + 1).setValue(reportId);
+      SpreadsheetApp.flush();
+      try { work_valuesDirty_(); } catch (e) {}
+    });
+    if (!reportId) throw new Error('고객창구 연결 실패(폴더는 만듦)');
+  },
+  // 사건명·고객명이 바뀐 저장 — 폴더 이름·고객창구 사건명·보고서 목록을 그때의 사건 줄로 맞춘다(같은 값이면 쓰지 않음)
+  case_names: function (a) {
+    const r = bgqCaseRow_(a.caseId);
+    if (!r) return;
+    const name = String(r.row[r.col.사건명] || ''), cust = r.row[r.col.고객명];
+    if (r.row[r.col.폴더ID]) { const fd = DriveApp.getFolderById(r.row[r.col.폴더ID]); if (fd.getName() !== name) fd.setName(name); }
+    if (r.row[r.col.my_report_id]) my_setCaseNamesByReportId_(r.row[r.col.my_report_id], name, cust);
+    const idx = rh_loadReportIndex_();
+    if (idx) {
+      let changed = false;
+      idx.forEach(function (x) { if (x.caseId === a.caseId && (x.사건명 !== name || x.고객명 !== cust)) { x.사건명 = name; x.고객명 = cust; changed = true; } });
+      if (changed) rh_saveReportIndex_(idx);
+    }
+  },
+  // 업무유형이 신고로 바뀐 저장 — 신고제출·확보자료 폴더
+  case_std_subfolders: function (a) {
+    const r = bgqCaseRow_(a.caseId);
+    if (!r || !r.row[r.col.폴더ID]) return;
+    work_ensureCaseStdSubfolders_(DriveApp.getFolderById(r.row[r.col.폴더ID]), r.row[r.col.업무유형]);
+  },
+  // 지운 사건 — 달력 일정·보고서 목록 줄 걷기
+  case_deleted: function (a) {
+    if (bgqCaseRow_(a.caseId)) return; // 같은 번호가 다시 살아 있으면 건드리지 않는다
+    work_deleteCaseCalendarEvents_(a.caseId);
+    const idx = rh_loadReportIndex_();
+    if (idx) { const kept = idx.filter(function (x) { return x.caseId !== a.caseId; }); if (kept.length !== idx.length) rh_saveReportIndex_(kept); }
+  }
 };
-var BGQ_LABELS_ = { sms: '문자 보내기', cal_delete: '예약 일정 지우기', cal_confirm: '예약 일정 확정 색', case_calendar: '사건 달력 맞추기', improve_report: '개선 후보 보고서 다시 만들기' };
+function bgqCaseRow_(caseId) {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  for (let i = 1; i < data.length; i++) if (String(data[i][col.id]) === String(caseId)) return { col: col, row: data[i] };
+  return null;
+}
+var BGQ_LABELS_ = { sms: '문자 보내기', cal_delete: '예약 일정 지우기', cal_confirm: '예약 일정 확정 색', case_calendar: '사건 달력 맞추기', improve_report: '개선 후보 보고서 다시 만들기', case_folder: '사건 폴더·고객창구 만들기', case_names: '사건 이름 맞추기(폴더·고객창구·보고서 목록)', case_std_subfolders: '신고제출 폴더 만들기', case_deleted: '지운 사건 달력·보고서 목록 정리' };
 
 // 적기 — key를 주면 같은 열쇠의 일은 하나만 남는다(같은 사건을 연달아 고쳐도 달력은 마지막 값으로 한 번). why는 실패 목록에 보일 짧은 설명.
 function bgEnqueue_(kind, args, key, why) {
@@ -105,7 +181,7 @@ function bgqDrain_(budgetMs) {
     if (!job) continue;
     let res, err = '';
     try { res = BGQ_HANDLERS_[job.k] ? BGQ_HANDLERS_[job.k](job.a || {}) : { permanent: '모르는 종류' }; } catch (e) { err = String(e && e.message || e).slice(0, 200); }
-    if (!err && /^cal_|case_calendar/.test(job.k)) { try { CacheService.getScriptCache().remove('dsc_ver_get_calendar_events'); } catch (e) {} } // 대시보드 달력 기억 지움
+    if (!err && /^cal_|case_calendar|case_deleted/.test(job.k)) { try { CacheService.getScriptCache().remove('dsc_ver_get_calendar_events'); } catch (e) {} } // 대시보드 달력 기억 지움
     if (!err && !(res && res.permanent)) continue; // 끝
     job.t = (job.t || 0) + 1;
     const why = res && res.permanent ? res.permanent : err;
@@ -143,7 +219,7 @@ function bgqFailedAct_(body) {
   const props = PropertiesService.getScriptProperties();
   let list = []; try { list = JSON.parse(props.getProperty(BGQ_FAILED_PROP_) || '[]'); } catch (e) { list = []; }
   const it = list.filter(function (x) { return x.id === id; })[0];
-  if (!it) return { success: false, message: '이미 처리된 항목입니다.' };
+  if (!it) return { success: true, already: true, message: '이미 처리된 항목입니다.' }; // [2026.11.03] 화면 보낼 함이 다시 보내도 두 번 넣지 않고 성공으로
   props.setProperty(BGQ_FAILED_PROP_, JSON.stringify(list.filter(function (x) { return x.id !== id; })));
   if (act === 'retry') { bgEnqueue_(it.k, it.a, null, it.why); return { success: true, message: '다시 하도록 적었습니다(1분 안).' }; }
   return { success: true, message: '목록에서 지웠습니다.' };
