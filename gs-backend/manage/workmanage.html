@@ -926,11 +926,23 @@
     }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
   }
 
+  // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 상태·이름·기한 고침은 화면에 먼저 적고 서버엔 뒤에서(같은 사건은 차례로).
+  //  서버 답이 오면 그 사건 값으로 맞추되, 세무사님이 하위업무 칸에 손대는 중이면 트리를 다시 그리지 않는다(쓰던 칸이 날아가지 않게).
   function updateWorkSubtask(caseId, nodeId, fields){
-    callGas('work_update_subtask', Object.assign({ id: caseId, nodeId: nodeId }, fields)).then(function(res){
-      if (res.error || res.success === false){ showToast(res.error || res.message || '수정 실패', 'error'); return; }
-      applySubtaskUpdate_(res.case, res.warning);
-    }).catch(function(){ showToast('수정 중 오류가 발생했습니다.', 'error'); });
+    var existing = workCases.filter(function(c){ return c.id === caseId; })[0];
+    var node = null;
+    (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) node = n; else walk(n.children); }); })(existing && existing.하위업무);
+    var before = node ? Object.assign({}, node) : null;
+    if (node){ Object.assign(node, fields); renderWorkCaseList(); var tg = document.getElementById('wcAddRootToggle'); if (tg) tg.textContent = '하위업무 ' + workProgress(existing).done + ' / ' + workProgress(existing).total; }
+    nxSaveLater_('work_update_subtask', Object.assign({ id: caseId, nodeId: nodeId }, fields), { key: 'sub_' + caseId,
+      label: '하위업무 ' + String((node && node.title) || '').slice(0, 20) + ' 고침',
+      onDone: function(res){
+        if (!res.case) return;
+        var tree = document.getElementById('wcTree');
+        if (tree && tree.contains(document.activeElement)){ var ex = workCases.filter(function(c){ return c.id === caseId; })[0]; if (ex) ex.수정일 = res.case.수정일; if (res.warning) showToast(res.warning, 'warning'); return; }
+        applySubtaskUpdate_(res.case, res.warning);
+      },
+      onFail: function(){ if (node && before){ Object.keys(fields).forEach(function(k){ node[k] = before[k]; }); applySubtaskUpdate_(existing); } } });
   }
 
   function deleteWorkSubtask(caseId, nodeId){

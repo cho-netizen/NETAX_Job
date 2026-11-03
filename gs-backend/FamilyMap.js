@@ -384,9 +384,15 @@ function famChainInputs_(F, t, sale) {
       if (gift) notes.push('지도에 증여재산가액이 없어 시가 ' + famWon_(famNum_(t.시가)) + '·낸 값으로 상증법 §35 계산 ' + famWon_(gift) + ' — 실제로 증여세를 과세받았는지(신고·결정) 확인할 것');
       if (!gift) notes.push('시가보다 싸게 샀지만 증여재산가액이 0 — §35 기준(시가 30%·3억 중 적은 금액) 아래면 더할 것 없음');
     }
-    const acq = paid + gift;
+    let acq = paid + gift;
+    // [2026.11.03 복잡사건 85 「고씨 비싸게 판 집」] 가족에게서 시가보다 비싸게 산 집 — 나중에 팔 때 취득가액은 시가(소득세법 §101①·시행령 §167③1호·④, 차액 3억 이상 또는 시가 5% 이상),
+    //  기준 아래면 낸 값 − 판 사람에게 과세된 증여재산가액(시행령 §163⑩1호). 예전엔 낸 값 그대로 넣어 부풀린 취득가액으로 양도세를 적게 셌다
+    if (famNum_(t.시가) && famNum_(t.시가) < paid && typeof toolCalculateLowPriceTransferGiftAmount === 'function') {
+      const hg = toolCalculateLowPriceTransferGiftAmount({ fairMarketValue: famNum_(t.시가), transferPrice: paid, isSpecialRelation: t.특수관계 !== '아니오' });
+      if (hg && famNum_(hg.매수인_나중양도_취득가액)) { acq = famNum_(hg.매수인_나중양도_취득가액); gift = 0; notes.push('시가 ' + famWon_(famNum_(t.시가)) + '보다 비싸게 ' + famWon_(paid) + '에 산 집 — 취득가액 ' + famWon_(acq) + ' (' + hg.취득가액_근거 + ')'); }
+    }
     return { tool: 'calculate_transfer_tax_multi', input: { transactions: [Object.assign({}, common, { acquisitionDate: famYmd_(t.날짜), acquisitionPrice: acq })] }, 알림: notes,
-      법: '매매로 산 자산 — 취득가액 = 실제 낸 값 ' + famWon_(paid) + (gift ? ' + 과세받은 증여재산가액 ' + famWon_(gift) + '(소득세법 시행령 §163⑩1호)' : '') + ' · 취득일 = 매매일(시행령 §162 — 대금청산일과 등기접수일 중 빠른 날, 지도 날짜가 그 날인지 확인할 것)' };
+      법: '매매로 산 자산 — 취득가액 = ' + (acq !== paid + gift || famNum_(t.시가) < paid ? famWon_(acq) + '(비싸게 산 집 — 시행령 §167④·§163⑩1호, 알림 참고) · 실제 낸 값 ' : '실제 낸 값 ') + famWon_(paid) + (gift ? ' + 과세받은 증여재산가액 ' + famWon_(gift) + '(소득세법 시행령 §163⑩1호)' : '') + ' · 취득일 = 매매일(시행령 §162 — 대금청산일과 등기접수일 중 빠른 날, 지도 날짜가 그 날인지 확인할 것)' };
   }
   // [2026.11.02 복잡사건 「배씨 이혼」] 이혼 재산분할(민법 §839의2)로 받은 자산 — 양도·증여가 아니라 공동재산을 나눈 것이므로 받은 사람이 팔 때
   //  취득일·취득가액은 전 배우자가 당초 취득한 날·값([확인 필요] 조문 없음 — 판례·소득세 집행기준 기준, 번호 확인). 위자료로 넘긴 것은 넘긴 사람의 「양도」 줄로 적는다

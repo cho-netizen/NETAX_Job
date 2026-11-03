@@ -125,6 +125,10 @@
   var CALLGAS_SHARED_TTL_MS_ = 60000;
   var CALLGAS_READONLY_RE_ = /(^|_)(get|list|search|read|lookup|load|check)/i;
   var callGasShared_ = {};
+  // [2026.11.03] 세무사님 "권장안대로 하자"(저장 기다림 전수조사 ②) — 예전엔 어떤 저장이든(이어 보기 위치 저장까지) 목록 기억을 통째로 지워
+  //  화면을 옮길 때마다 사건 목록을 다시 받았다(운영 기록 319번). 이제 사건·고객 목록에 닿을 수 있는 저장만 지운다. 빠뜨린 저장이 있어도 기억은 1분이면 저절로 새로 받는다.
+  var CALLGAS_LIST_WRITE_RE_ = /^(work_|client_|case_|booking_|link_booking|taxpayer_|approve|reject|saveCase|ensure_case|ledger_|family_|createFolder|moveItem|renameItem|deleteItem|restoreItem)/;
+  function callGasTouchesLists_(action){ return CALLGAS_LIST_WRITE_RE_.test(action) && !CALLGAS_READONLY_RE_.test(action); }
   function callGas(action, payload){
     var isPlain = !payload || Object.keys(payload).length === 0;
     if (CALLGAS_SHARED_READS_[action] && isPlain){
@@ -140,13 +144,96 @@
       }
       return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
     }
-    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0){
+    if (callGasTouchesLists_(action)){
       // [2026.10.09 버그수정] 저장 "시작"에만 기억을 지우면, 저장이 도는 사이 다른 화면이 사건 목록을 읽어 저장 전 목록이
       // 다시 1분간 기억됐다(시험 사건 8개를 만들었는데 목록엔 6개만 보임 — 실사용 점검에서 발견). 끝날 때도 한 번 더 지운다.
       callGasShared_ = {};
       return callGasRaw_(action, payload).then(function(res){ callGasShared_ = {}; return res; }, function(err){ callGasShared_ = {}; throw err; });
     }
     return callGasRaw_(action, payload);
+  }
+  // [2026.11.03] 보낼 함 — 화면에 먼저 반영하고 서버엔 뒤에서 보낸다(세무사님 "입력정보를 임시기억했다가 백그라운드로 정리하고 화면에서 바로 넘어가는
+  //  방법은 없나?" → 전수조사 → "권장안대로 하자"). 보낸 것은 이 기기(localStorage)에 적어 두고, 서버가 받았다고 답하면 지운다.
+  //  · 실패하면 화면 아래 띠에 「저장 안 됨」과 [다시 보내기]·[지우기] — 소리 없이 사라지지 않는다.
+  //  · 창을 닫았다 열면 아직 못 보낸 것을 다시 보낸다. 서버는 같은 보낼 함 번호(_ob)를 한 번만 실행한다(Code.js dispatchClientAction_).
+  //  · 세액 확정·신고서처럼 결과를 보고 판단하는 일은 이 함을 쓰지 않고 지금처럼 기다린다(결정 ②).
+  var NX_OUTBOX_KEY_ = 'nxOutbox', nxOutboxHooks_ = {}, nxOutboxChains_ = {};
+  function nxOutboxRead_(){ try { var a = JSON.parse(localStorage.getItem(NX_OUTBOX_KEY_) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function nxOutboxWrite_(a){ try { localStorage.setItem(NX_OUTBOX_KEY_, JSON.stringify(a.slice(-50))); } catch (e) {} }
+  function nxOutboxPatch_(id, patch){ var a = nxOutboxRead_(); a.forEach(function(j){ if (j.id === id) Object.assign(j, patch); }); nxOutboxWrite_(a); }
+  function nxOutboxDrop_(id){ nxOutboxWrite_(nxOutboxRead_().filter(function(j){ return j.id !== id; })); }
+  // opt: { label: '띠에 보일 이름', onDone(res), onFail(err문구) } — 돌려주는 프라미스는 서버 답(실패해도 거절하지 않고 null)
+  function nxSaveLater_(action, payload, opt){
+    opt = opt || {};
+    var id = 'ob' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    var job = { id: id, action: action, payload: Object.assign({}, payload || {}, { _ob: id }), label: String(opt.label || '저장').slice(0, 60), at: Date.now(), state: 'sending', tries: 0 };
+    var a = nxOutboxRead_(); a.push(job); nxOutboxWrite_(a);
+    nxOutboxHooks_[id] = opt;
+    // 같은 열쇠(opt.key — 예: 같은 사건 하위업무)는 앞 저장이 끝난 뒤 차례로 보낸다(빨리 두 번 누르면 순서가 뒤바뀌지 않게)
+    if (opt.key){ var prev = nxOutboxChains_[opt.key] || Promise.resolve(); var p = prev.then(function(){ return nxOutboxSend_(job); }); nxOutboxChains_[opt.key] = p; nxOutboxPatch_(id, { state: 'sending' }); nxOutboxBar_(); return p; }
+    return nxOutboxSend_(job);
+  }
+  function nxOutboxSend_(job){
+    nxOutboxPatch_(job.id, { state: 'sending', tries: (job.tries || 0) + 1, sentAt: Date.now() }); nxOutboxBar_();
+    var t0 = Date.now(), hook = nxOutboxHooks_[job.id] || {};
+    return callGas(job.action, job.payload).then(function(res){
+      nxSaveTimeNote_(job.action, Date.now() - t0, job.label);
+      if (!res || res.success === false || res.error){
+        var why = (res && (res.message || res.error)) || '서버 답이 없습니다';
+        nxOutboxPatch_(job.id, { state: 'failed', err: String(why).slice(0, 200) }); nxOutboxBar_();
+        toast('저장 안 됨 — ' + job.label + ': ' + why);
+        try { if (hook.onFail) hook.onFail(why); } catch (e) {}
+        return null;
+      }
+      nxOutboxDrop_(job.id); delete nxOutboxHooks_[job.id]; nxOutboxBar_();
+      try { if (hook.onDone) hook.onDone(res); } catch (e) {}
+      return res;
+    }, function(err){
+      var why = typeof nxErrText_ === 'function' ? nxErrText_(err) : String(err && err.message || err);
+      nxOutboxPatch_(job.id, { state: 'failed', err: String(why).slice(0, 200) }); nxOutboxBar_();
+      toast('저장 안 됨 — ' + job.label + ' (화면 아래 「다시 보내기」)');
+      try { if (hook.onFail) hook.onFail(why); } catch (e) {}
+      return null;
+    });
+  }
+  // 화면 아래 작은 띠 — 보내는 중이면 「저장 중 n건」, 실패가 있으면 붉은 띠와 단추
+  function nxOutboxBar_(){
+    var a = nxOutboxRead_(), sending = a.filter(function(j){ return j.state === 'sending'; }), failed = a.filter(function(j){ return j.state === 'failed'; });
+    var bar = document.getElementById('nxOutboxBar');
+    if (!sending.length && !failed.length){ if (bar) bar.remove(); return; }
+    if (!bar){
+      bar = document.createElement('div'); bar.id = 'nxOutboxBar'; bar.setAttribute('role', 'status');
+      bar.style.cssText = 'position:fixed; left:12px; bottom:12px; z-index:9000; max-width:min(440px, calc(100vw - 24px)); padding:7px 10px; border-radius:8px; font-size:12.5px; line-height:1.5; box-shadow:0 2px 8px rgba(0,0,0,.18);';
+      bar.addEventListener('click', function(ev){
+        var b = ev.target.closest && ev.target.closest('[data-ob-act]'); if (!b) return;
+        var act = b.getAttribute('data-ob-act'), id = b.getAttribute('data-ob-id');
+        var list = nxOutboxRead_().filter(function(j){ return j.state === 'failed' && (!id || j.id === id); });
+        if (act === 'retry') list.forEach(function(j){ nxOutboxSend_(j); });
+        else if (act === 'drop') nxConfirm_('저장 안 된 ' + list.length + '건을 지울까요?\n\n지우면 서버에 보내지 않습니다(화면에 먼저 보였던 값은 다음에 새로 열 때 서버 값으로 돌아갑니다).').then(function(ok){ if (!ok) return; list.forEach(function(j){ nxOutboxDrop_(j.id); }); nxOutboxBar_(); });
+      });
+      document.body.appendChild(bar);
+    }
+    if (failed.length){
+      bar.style.background = '#fff4f3'; bar.style.border = '1px solid #b3261e'; bar.style.color = '#4a1410';
+      bar.innerHTML = '<b style="color:#b3261e;">저장 안 됨 ' + failed.length + '건</b>' + (sending.length ? ' · 저장 중 ' + sending.length + '건' : '')
+        + failed.slice(0, 4).map(function(j){ return '<div style="overflow-wrap:anywhere;">▪ ' + esc(j.label) + ' — ' + esc(j.err || '') + '</div>'; }).join('')
+        + (failed.length > 4 ? '<div>그 밖 ' + (failed.length - 4) + '건</div>' : '')
+        + '<div style="margin-top:4px; display:flex; gap:6px;"><button type="button" class="save-btn sm" data-ob-act="retry">다시 보내기</button><button type="button" class="ghost-btn sm" data-ob-act="drop">지우기</button></div>';
+    } else {
+      bar.style.background = '#fff'; bar.style.border = '1px solid var(--line, #d9dde5)'; bar.style.color = 'inherit';
+      bar.textContent = '저장 중 ' + sending.length + '건 — 다른 일을 하셔도 됩니다';
+    }
+  }
+  // 창을 다시 열었을 때 — 못 보낸 것(보내는 중에 창이 닫힘)은 다시 보내고, 실패한 것은 띠로 보인다. 로그인 뒤에만(10-14 장애)
+  function nxOutboxResume_(){
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
+    nxOutboxRead_().forEach(function(j){ if (j.state === 'sending' && Date.now() - (j.sentAt || j.at || 0) > 120000) nxOutboxSend_(j); }); // 2분 넘게 답이 없던 것만(다른 창이 보내는 중일 수 있음)
+    nxOutboxBar_();
+  }
+  // [2026.11.03] 저장마다 걸린 시간(화면에서 잰 왕복) — 이 기기에 최근 100건. 설정 › 시스템 관리 「저장 걸린 시간」이 서버 기록과 함께 보인다
+  function nxSaveTimeNote_(action, ms, label){
+    try { var a = JSON.parse(localStorage.getItem('nxSaveTimes') || '[]'); a.push([Date.now(), String(action).slice(0, 40), ms, String(label || '').slice(0, 40)]); localStorage.setItem('nxSaveTimes', JSON.stringify(a.slice(-100))); } catch (e) {}
   }
   // [2026.10.08] 버그 자동기록 — 화면 스크립트 오류를 서버 _오류기록.json에 남긴다(Code.js ai_logBug).
   // 같은 오류는 한 번만, 한 번 열 때 최대 10건(오류가 반복돼 서버를 두드리지 않게).
@@ -791,6 +878,7 @@
       tbCollapseInit_();
       showView('dashboard');
       if (typeof initDashboard === 'function') initDashboard();
+      setTimeout(nxOutboxResume_, 3000); // [2026.11.03] 보낼 함에 남은 것 다시 보내기
       setTimeout(nxPlaceOffer_, 2500); // [2026.10.22] 이어 보기 띠
       if (typeof initAiSidebar === 'function') initAiSidebar();
       // 작업관리 "새 사건" 폼의 고객명 자동완성(clientNameOptions)이 처음부터 채워져 있도록,
@@ -1340,6 +1428,7 @@
       nxCbGo_(nxCbViewOf_(v), id, true);
     });
     document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length) nxCbLoadCases_(); });
+    document.getElementById('cbEditCase').addEventListener('click', function(){ nxCaseJump_('workmanage', NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
     document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
     // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
@@ -1417,6 +1506,7 @@
       }
     }
     meta.innerHTML = bits.join(' · ');
+    var eb = document.getElementById('cbEditCase'); if (eb) eb.hidden = !id;
   }
   // 법령정보를 "자료" 메뉴(사건과 상관없이)로 열면 머리줄 없이 연다 — 작업공간의 근거 탭으로 열면 머리줄과 함께
   function nxCbSetLawFree_(free){ NX_CB_.lawFree = !!free; }

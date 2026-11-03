@@ -119,6 +119,9 @@
       <div id="nxCaseBar" hidden>
         <div class="cb-row">
           <b class="cb-name">사건을 골라 주세요</b><span class="cb-meta"></span>
+          <!-- [2026.11.03] 세무사님 "구조를 변경하고 나니 종전의 작업관리탭이 사라졌네? 사건을 양도상담사건에서 불복사건으로 변경하고 싶은데 변경할 방법이 없구나"(요청 R2611012327) —
+               세목·업무·상태·기한을 고치는 칸은 사건 목록(옛 작업관리)에 그대로 있는데, 사건 작업 화면에서 그리 가는 길이 없었다 → 머리줄에서 바로 그 사건을 연다 -->
+          <button type="button" class="ghost-btn sm" id="cbEditCase" hidden title="세목·업무·상태·기한·고객을 고칩니다(사건 목록에서 이 사건을 엽니다)">사건 정보 고치기</button>
           <span class="cb-pick"><label class="cb-live"><input type="checkbox" id="cbLiveOnly" checked> 진행</label><input type="search" id="cbFind" placeholder="사건 찾기"><select id="cbCaseSelect" title="사건 바꾸기"><option value="">사건 고르기…</option></select></span>
         </div>
         <div class="cb-strip-host"></div>

@@ -110,6 +110,7 @@
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">기록 비우기</button>
+        <button type="button" class="ghost-btn" id="stBtnSaveTimes" title="저장할 때마다 걸린 시간 — 서버 안에서 걸린 시간(최근 6시간)과 이 기기에서 잰 왕복 시간(최근 100건), 뒤에서 할 일 남은 수">저장 걸린 시간</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">자가점검</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">개선 후보</button>
         <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">수정안</button>
@@ -540,6 +541,22 @@
       }).catch(function(err){ bugList.textContent = '불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
     }
     document.getElementById('stBtnBugRefresh').addEventListener('click', loadBugs);
+    // [2026.11.03] 저장 걸린 시간(세무사님 "권장안대로 하자" — 저장 기다림 전수조사 ⑧). 서버 기록(Code.js saveTimeNote_) + 이 기기 왕복(script.html nxSaveTimeNote_)
+    document.getElementById('stBtnSaveTimes').addEventListener('click', function(){
+      bugList.textContent = '불러오는 중…';
+      callGas('save_times', {}).then(function(res){
+        var mine = []; try { mine = JSON.parse(localStorage.getItem('nxSaveTimes') || '[]').slice().reverse(); } catch (e) {}
+        var NM = { work_update_subtask: '하위업무 고침', work_add_subtask: '하위업무 추가', work_delete_subtask: '하위업무 지움', work_update_case: '사건 고침', work_create_case: '사건 만들기', work_delete_case: '사건 지움', booking_set_result: '예약 결과', approve: '예약 승인', reject: '예약 거절', booking_admin_create: '예약 직권등록', client_add_consult_log: '상담기록 추가', client_update_consult_log: '상담기록 고침', client_delete_consult_log: '상담기록 지움', client_save_client: '고객 저장', case_proc: '사건처리 도구', createFolder: '폴더 만들기', uploadFile: '파일 올리기', moveItem: '파일 옮기기', renameItem: '이름 바꾸기', deleteItem: '파일 지우기', improve_request_save: '개선요구 저장' };
+        var nm = function(a){ return NM[a] || ('그 밖 저장 · ' + a); };
+        var sec = function(ms){ return (Math.round(ms / 100) / 10).toFixed(1) + '초'; };
+        var srv = (res && res.items) || [];
+        bugList.innerHTML = '<div style="margin-bottom:4px;">뒤에서 할 일 남은 수: <b>' + escapeHtml(String(res && res.뒤에남은일 != null ? res.뒤에남은일 : '?')) + '</b></div>'
+          + '<div style="font-weight:600; margin-top:6px;">이 기기에서 잰 시간(누르고 답 받기까지) ' + mine.length + '건</div>'
+          + (mine.length ? mine.slice(0, 40).map(function(x){ var d = new Date(x[0]); return '<div style="padding:2px 0; border-top:1px solid var(--line); white-space:nowrap; overflow-x:auto;">' + escapeHtml(('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + ' ' + d.toTimeString().slice(0, 8)) + ' · <b>' + sec(x[2]) + '</b> · ' + escapeHtml(x[3] || nm(x[1])) + '</div>'; }).join('') : '<div class="settings-tool-desc">아직 없음 — 보낼 함을 쓰는 저장(예약 결과·하위업무)부터 적힙니다.</div>')
+          + '<div style="font-weight:600; margin-top:8px;">서버 안에서 걸린 시간(최근 6시간) ' + srv.length + '건</div>'
+          + (srv.length ? srv.slice(0, 60).map(function(x){ return '<div style="padding:2px 0; border-top:1px solid var(--line); white-space:nowrap; overflow-x:auto;">' + escapeHtml(x[0]) + ' · <b' + (x[2] > 5000 ? ' style="color:#b3261e;"' : '') + '>' + sec(x[2]) + '</b> · ' + escapeHtml(nm(x[1])) + '</div>'; }).join('') : '<div class="settings-tool-desc">아직 없음</div>');
+      }).catch(function(e){ bugList.textContent = '오류: ' + nxErrText_(e); });
+    });
     document.getElementById('stBtnSelfCheck').addEventListener('click', function(){
       bugList.textContent = '🩺 자가점검 중… (30초쯤 걸립니다)';
       callGas('self_check_run', {}).then(function(res){

@@ -8415,6 +8415,8 @@ function renderGiftDonorRegistry(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>증여자 취득일</label><input type="date" data-dfield="acqDate" value="' + (d.acqDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>증여자 취득가액(이 증여자 몫 전체 기준)</label><input type="number" data-dfield="acqPrice" placeholder="원" value="' + (d.acqPrice || '') + '"></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="stdValued"' + (d.stdValued ? ' checked' : '') + '><label>증여재산을 기준시가로 평가함(그러면 양도분 취득가액도 기준시가, 소득령 §159①1호)</label></div>' +
+        '<div class="taxcalc-field"><label>증여자 취득 당시 기준시가</label><input type="number" data-dfield="acqStdPrice" placeholder="원" value="' + (d.acqStdPrice || '') + '"><span class="taxcalc-field-help">기준시가로 평가했을 때만</span></div>' +
         '<div class="taxcalc-field"><label>증여자 필요경비(이 증여자 몫 전체 기준)</label><input type="number" data-dfield="acqExpense" placeholder="원" value="' + (d.acqExpense || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>함께 증여한 다른 재산의 증여재산가액 합계</label><input type="number" data-dfield="otherAssetsGiftValueSum" placeholder="원" value="' + (d.otherAssetsGiftValueSum || '') + '"><span class="taxcalc-field-help">양도세 비과세대상 재산과 함께 부담부증여한 경우만(§159②), 없으면 0</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="send-debt-to-transfer" data-idx="' + idx + '">인수채무분을 양도세 거래로 보내기</button></div>' +
@@ -16182,6 +16184,8 @@ function handleTaxCalcClick_(e){
       const giftDate = document.getElementById('giftDate').value;
       const bg = calculateBurdenedGiftTransferJS({
         assetAcquisitionPrice: donorAcqPrice,
+        // [2026.11.03 복잡사건 91] 기준시가로 평가했으면 취득가액도 기준시가(소득령 §159①1호 괄호)
+        giftValuedByStandardPrice: !!donor.stdValued, acquisitionStandardPrice: numVal(donor.acqStdPrice) || 0,
         assetGiftValue: giftAmount,
         totalDebtAmount: debtAmount,
         otherAssetsGiftValueSum: numVal(donor.otherAssetsGiftValueSum) || 0,
@@ -18866,6 +18870,8 @@ var tcSimple_ = (function(){
         'dfield:acqPrice': function(c){ return c.num('dfield:debtAssumed') > 0; },
         'dfield:acqExpense': function(c){ return c.num('dfield:debtAssumed') > 0; },
         'dfield:otherAssetsGiftValueSum': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:stdValued': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:acqStdPrice': function(c){ return c.num('dfield:debtAssumed') > 0 && c.v('dfield:stdValued') === true; },
         'dfield:priorPaidTax': function(c){ return c.num('dfield:priorAmount') > 0; },
         'dfield:priorGiftTaxableBase': function(c){ return c.num('dfield:priorAmount') > 0; },
         'dfield:priorRelationDeductionUsed': function(c){ return c.num('dfield:priorAmount') > 0; },
@@ -18975,7 +18981,7 @@ var tcSimple_ = (function(){
     { re: /^#giftPriorMb/, label: '기존 혼인·출산공제' },
     { re: /^dfield:(priorAmount|priorPaidTax|priorGiftTaxableBase|priorRelationDeductionUsed|priorRelationDeductionUsedOther)$/, label: '10년 내 기증여' },
     { re: /^dfield:genSkip/, label: '세대생략 증여' },
-    { re: /^dfield:(debtAssumed|debtObjProven|acqDate|acqPrice|acqExpense|otherAssetsGiftValueSum)$/, label: '부담부증여' },
+    { re: /^dfield:(debtAssumed|debtObjProven|acqDate|acqPrice|acqExpense|otherAssetsGiftValueSum|stdValued|acqStdPrice)$/, label: '부담부증여' },
     { re: /^hfield:(hasPriorGift|priorGift)/, label: '사전증여' },
     { re: /^dfield:(category|oneYear|twoYear)/, label: '처분재산·채무 산입(부표4)' },
     { re: /^(#ihBusiness|field:(decedentOwnership|decedentCeoTenure|heirAge18OrOlder|heirEngagedInBusiness|heirBecameOfficer|heirBecameCeo))/, label: '가업상속공제' },

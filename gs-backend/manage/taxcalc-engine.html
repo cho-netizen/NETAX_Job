@@ -1224,6 +1224,11 @@
         return { error: '환산취득가액을 계산하려면 양도당시 기준시가도 필요합니다(취득당시기준시가만으로는 계산할 수 없습니다 — 시행령§176의2②2호). 양도당시 기준시가를 확인해 입력해주세요.' };
       }
     }
+    // [2026.11.03 복잡사건 86] 의제취득일(시행령 §162⑥⑦ — 토지·건물 등 1985.1.1., 주식 1986.1.1.) 전에 취득한 자산에 옛 계약서 값을 그대로 넣으면 —
+    //  시행령 §176의2④는 의제취득일 현재 가액(③1~3호)과 「취득 당시 실지거래가액 + 생산자물가상승분」 중 많은 것을 취득가액으로 한다. 계산은 그대로 두고 알림만(판정 「의제취득」이 셈).
+    if (Number(t.acquisitionPrice) > 0 && t.acquisitionDate && t.acquisitionDate < '1985-01-01' && !t.isReconstructionRights) {
+      acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 취득일(' + t.acquisitionDate + ')이 의제취득일(1985.1.1.) 전입니다 — 넣은 취득가액 ' + Math.round(Number(t.acquisitionPrice)).toLocaleString('ko-KR') + '원을 그대로 쓰지 말고, 의제취득일 현재 가액(매매사례·감정·환산)과 「취득 당시 실지거래가액 + 생산자물가상승분」 중 많은 것을 취득가액으로 넣으세요(소득세법 시행령 §176의2④, 판정 「의제취득」).';
+    }
     // §97③ — 보유기간 중 그 자산에 대한 감가상각비를 사업소득금액 계산시 필요경비에 산입했거나
     // 산입할 금액이 있으면, 그 금액을 취득가액에서 공제한다(사업경비로 이미 공제받은 감가상각비를
     // 취득가액에도 남겨두면 이중공제가 되기 때문). 실제 산입액은 과거 사업소득 신고내역에 따른
@@ -1266,7 +1271,8 @@
     // [2026.10.22 검토대상 양도-7] 시행령 §163⑥3호 "법 §94①2호 나목·다목 자산(지상권·전세권·등기된 부동산임차권, 미등기 제외) 취득 당시 기준시가 × 7/100",
     //  4호 "그 밖의 자산 × 1/100"(법제처 원문). t.rightOrOtherKind = 'lease_right'(지상권·전세권·등기 부동산임차권) | 'misc_other'(영업권·시설물이용권 등 기타자산).
     const roKind_ = t.rightOrOtherKind === 'lease_right' || t.rightOrOtherKind === 'misc_other' ? t.rightOrOtherKind : '';
-    const estimatedRateFor_ = function () { return (t.assetType === 'presale_right' || roKind_ === 'misc_other') ? 0.01 : (t.isUnregisteredTransfer ? 0.003 : (roKind_ === 'lease_right' ? 0.07 : 0.03)); };
+    // [2026.11.03 복잡사건 89] 0.3%는 미등기양도자산일 때만 — 시행령 §168①3호(8년 자경·농지대토 감면 토지)는 미등기양도자산에서 빠지므로 3%(아래 isUnregistered와 같은 기준).
+    const estimatedRateFor_ = function () { return (t.assetType === 'presale_right' || roKind_ === 'misc_other') ? 0.01 : ((t.isUnregisteredTransfer && !(t.isEightYearFarmland || t.isFarmlandSubstitutionExempt)) ? 0.003 : (roKind_ === 'lease_right' ? 0.07 : 0.03)); };
     if (!t.necessaryExpenses && (t.useEstimatedNecessaryExpense || acquisitionPriceUsedConversionOrStandardOnly) && acquisitionStandardPriceForConversion > 0) {
       const estimatedExpenseRate = estimatedRateFor_();
       necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(고객X: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
@@ -1392,11 +1398,14 @@
     //  시행령 §156① 일부 양도·일부 타인 소유는 전체로 환산, §160① 후단 12억 × 양도 부분 비율 = 비율로는 (전체 − 12억) ÷ 전체).
     //  화면이 공동양도인 지분만큼 양도가액을 나눠 넘길 때 wholeHouseTransferPrice(나누기 전 전체 양도가액)를 함께 준다.
     const hvPrice_ = Number(t.wholeHouseTransferPrice) > transferPrice ? Number(t.wholeHouseTransferPrice) : transferPrice;
+    // [2026.11.03 복잡사건 90] §114의2② — 1세대1주택 비과세(12억 이하)로 끝나도 신축·증축 5년 안 감정·환산 가산세는 붙는다(산출세액이 없어도).
+    //  예전엔 이 길이 가산세를 셈하기 전에 돌아가 0이었음. 기준은 아래 conversionValuePenalty와 같다(건물분 가액·양도일 연혁).
+    const cvpExempt_ = function () { const b = Number(t.convertedBuildingAcquisitionValueForPenalty) || (acquisitionPriceUsedAppraisalOrConversion ? acquisitionPrice : 0), r = conversionPenaltyRuleAt_(t.transferDate), ap = !t.acquisitionPrice && !(Number(t.comparableTransactionPrice) > 0) && Number(t.appraisalValue) > 0; return t.isNewBuildingWithin5Years && b > 0 && r !== 'none' && !(r === 'conversion_new_only' && ap) ? Math.round(b * 0.05) : 0; };
     if (isOneHouse && hvPrice_ <= HV_HOUSE_) {
-      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t, conversionValuePenalty: cvpExempt_() };
     }
     if (isOneMemberRightOnly && hvPrice_ <= HV_RIGHT_) {
-      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t, conversionValuePenalty: cvpExempt_() };
     }
     // [2026.09 버그수정] 세무사님 "완전무결" 지시로 재점검 중 발견 — 준공된 신축주택(재건축·재개발
     // §166②1호) 양도는 그 자체로 "주택"이므로 §89①3호 비과세(12억 이하 전액 비과세) 대상인데,
@@ -1405,7 +1414,7 @@
     // 요건)으로 게이트해서 exempt 처리한다.
     const isCompletedHouseOneFamily = isReconstruction && !!t.isCompletedNewHousing && !!t.isOneHouseOneFamily && isResidentBenefitEligible;
     if (isCompletedHouseOneFamily && hvPrice_ <= HV_HOUSE_) {
-      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t, conversionValuePenalty: cvpExempt_() };
     }
     // [2026.10.19 버그수정] 재건축·재개발 신축주택(준공 후)을 1세대1주택 고가주택으로 양도하면 장기보유특별공제도
     // 1세대1주택 표(§95② 단서 표2 — 시행령§159의4, law.go.kr 원문: 양도일 현재 1주택 + 보유기간 중 거주 2년 이상)를
@@ -1610,6 +1619,13 @@
       if (refHistoryOn_() && t.isBelowStandardAreaHighValueHouse && d05_ >= '2005-01-01' && d05_ <= '2005-12-31') {
         ltRate = holdingYears >= 10 ? 0.50 : holdingYears >= 5 ? 0.25 : holdingYears >= 3 ? 0.10 : 0;
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '2005년 양도 기준면적 미만 고가주택 장특공 ' + Math.round(ltRate * 100) + '%(소득세법 §95②2호·3호, 시행령 §159의2)';
+      }
+      // [2026.11.03 복잡사건 92 「강씨 재외동포 아파트」] 소득세법 §121② 단서·시행령 §180의2① — 비거주자에겐 §95② 단서(표2)를 적용하지 않는다.
+      //  출국 2년 안 예외(§154①2호 나·다목)는 §180의2① 단서가 "§89①3호를 적용할 때"만 빼 줘서, 비과세는 받아도 표2까지 받는지는 [확인 필요].
+      //  기본은 예전대로(표2), nonResidentTable2Excluded면 문언대로 표1(보유기간별 공제율).
+      if (t.isTransferorResident === false && t.nonResidentTable2Excluded) {
+        ltRate = longTermRateAt_(holdingYears, t.transferDate);
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '비거주자 — 출국 2년 안 1주택 비과세는 받되 장특공은 표1 ' + Math.round(ltRate * 100) + '%(소득세법 §121② 단서·시행령 §180의2①, 표2 배제 — [확인 필요])';
       }
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
@@ -2207,7 +2223,9 @@
       return {
         입력값: { 양도가액: core.transferPrice, 취득가액: core.acquisitionPrice, 필요경비: core.necessaryExpenses, 보유기간_년: core.holdingYears },
         취득가액_산정방법: core.acquisitionPriceMethodNote || undefined,
-        비과세여부: true, 납부세액: 0, 시점경고: rateHistoryWarning_(core) || undefined
+        비과세여부: true, 납부세액: core.conversionValuePenalty || 0, 시점경고: rateHistoryWarning_(core) || undefined,
+        // [2026.11.03 복잡사건 90] 비과세여도 §114의2 가산세는 결정세액에 더함(②) — 지방소득세는 산출세액 몫이라 0
+        환산취득가액가산세: core.conversionValuePenalty || undefined, 납부세액_합계: core.conversionValuePenalty ? core.conversionValuePenalty : undefined
       };
     }
 
@@ -3301,7 +3319,7 @@
       assetNotes.push({ idx: x.idx, 구분: '단기양도(개별)', 특례: x.label, 감면액: x.allowed,
         감면산식: 'A ' + Math.round(x.A).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(x.D).toLocaleString('ko-KR') + ' × E 10%' });
     });
-    const conversionValuePenaltyTotal = active.reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0);
+    const conversionValuePenaltyTotal = active.concat(exempt).reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0); // [2026.11.03 복잡사건 90] 비과세 거래도(§114의2②)
 
     // 조특법§99의14① + 조특령§99의13② + 소득령§40의2②1호 라목 — 자산마다 ⑮ = min(남은 1억 한도, 납입액, 양도차액) × 10%.
     //  같은 해 두 번째 부동산은 앞 부동산이 쓴 한도를 뺀 나머지에서(누적 1억). 그 합계를 (풀 전체) 산출세액으로 한 번만 캡한다
@@ -7354,14 +7372,29 @@
     const core = window.calculateLowPriceTransferGiftAmountJS;
     window.calculateLowPriceTransferGiftAmountJS = function (p) {
       p = p || {}; const r = core(p);
-      if (!r || r.error || !r.과세대상여부 || !(Number(r.증여재산가액) > 0)) return r;
-      const paid = Number(p.transferPrice) || 0, gift = Number(r.증여재산가액);
-      if (paid < Number(p.fairMarketValue)) {
-        r.수증자_나중양도_취득가액 = paid + gift;
-        r.취득가액_근거 = '소득세법 시행령 §163⑩1호 — 상증법 §35로 증여세를 과세받은 증여재산가액을 취득가액에 더함: 실제 낸 값 ' + paid + '원 + 증여재산가액 ' + gift + '원(증여세를 실제로 과세받은 경우에 한함)';
+      // [2026.11.03 복잡사건 85 「고씨 비싸게 판 집」] 거래 양쪽 양도소득세 값까지 — 예전엔 저가양수 매수인 취득가액만 냈고, 고가양도는 "따로 볼 것"으로 끝나
+      //  ① 고가로 판 사람 양도가액에서 증여재산가액을 빼지 않고(소득세법 §96③2호가) ② 고가로 산 사람이 나중에 팔 때 낸 값 그대로 취득가액을 넣고(시행령 §167④)
+      //  ③ 저가로 판 사람의 시가 재계산(§101①·시행령 §167③ — 차액 3억 이상 또는 시가 5% 이상, 증여세 기준 30%보다 넓음)을 증여세가 0이면 알리지 않았다
+      const fmv = Number(p.fairMarketValue) || 0, paid = Number(p.transferPrice) || 0, gift = (r && r.과세대상여부 && Number(r.증여재산가액) > 0) ? Number(r.증여재산가액) : 0;
+      if (!r || r.error || !fmv || paid === fmv) return r;
+      const rel = p.isSpecialRelation !== false, diff = Math.abs(fmv - paid);
+      const 부당 = rel && (diff >= 300000000 || diff >= fmv * 0.05);
+      const 기준 = '차액 ' + diff + '원' + (부당 ? ' ≥ 3억 또는 시가 5%(' + Math.round(fmv * 0.05) + '원)' : ' < 3억·시가 5%(' + Math.round(fmv * 0.05) + '원)');
+      if (paid < fmv) {
+        if (gift) {
+          r.수증자_나중양도_취득가액 = paid + gift;
+          r.취득가액_근거 = '소득세법 시행령 §163⑩1호 — 상증법 §35로 증여세를 과세받은 증여재산가액을 취득가액에 더함: 실제 낸 값 ' + paid + '원 + 증여재산가액 ' + gift + '원. 매수인이 나중에 이 자산을 팔 때 acquisitionPrice에 이 값을 넣을 것(증여세를 실제로 과세받은 경우에 한함 — 신고·결정 확인)';
+        }
+        r.매도인_양도가액 = 부당 ? fmv : paid;
+        r.매도인_근거 = 부당 ? '소득세법 §101①·시행령 §167③1호·④ — 특수관계인에게 시가보다 싸게 팔아 ' + 기준 + ': 판 사람 양도가액을 시가 ' + fmv + '원으로 다시 셈(증여세 과세 여부와 따로)' : (rel ? '부당행위 기준 아래(' + 기준 + ') — 판 사람은 실제 받은 값' : '특수관계 없음 — 판 사람은 실제 받은 값');
       } else {
-        r.취득가액_근거 = '고가양도 — 이익을 얻은 매도인이 수증자. 매수인 쪽은 소득세법 §101①·시행령 §167④를 따로 볼 것';
+        r.매도인_양도가액 = paid - gift;
+        r.매도인_근거 = gift ? '소득세법 §96③2호가 — 비싸게 판 사람은 증여재산가액 ' + gift + '원을 양도가액에서 뺌: ' + paid + ' − ' + gift + ' = ' + (paid - gift) + '원(같은 돈에 증여세와 양도세가 겹치지 않게). 판 사람이 증여세 수증자(증여자는 산 사람)' : '증여재산가액 0 — 판 사람은 실제 받은 값';
+        r.매수인_나중양도_취득가액 = 부당 ? fmv : paid - gift;
+        r.취득가액_근거 = 부당 ? '소득세법 §101①·시행령 §167③1호·④ — 특수관계인에게서 시가보다 비싸게 사 ' + 기준 + ': 산 사람이 나중에 팔 때 취득가액은 시가 ' + fmv + '원. [확인 필요] 부당행위가 안 걸린다고 보면 시행령 §163⑩1호로 낸 값 − 증여재산가액 = ' + (paid - gift) + '원' : (gift ? '시행령 §163⑩1호 — 판 사람에게 과세된 증여재산가액을 빼서 ' + paid + ' − ' + gift + ' = ' + (paid - gift) + '원' : '부당행위 기준 아래(' + 기준 + ')·증여 없음 — 산 사람은 낸 값 그대로');
+        if (p.isListedStock) r.취득가액_근거 += ' · 상장주식은 시가를 법인세법 시행령 §89① 시가로, 3억·5% 기준 없이 봄(시행령 §167⑦)';
       }
+      r.부당행위계산 = 부당;
       return r;
     };
   })();
@@ -10688,7 +10721,10 @@
   // 과세대상 자산가액이 차지하는 비율로 총채무액을 먼저 안분한 뒤 위 계산식을 적용하도록 한다.
   window.calculateBurdenedGiftTransferJS = function (p) {
     p = p || {};
-    const assetAcquisitionPrice = Number(p.assetAcquisitionPrice) || 0;
+    // [2026.11.03 복잡사건 91] §159①1호 괄호 — 증여가액을 기준시가(상증법 §61①②⑤·§66)로 평가했으면 취득가액도 취득 당시 기준시가로 한다.
+    //  예전엔 실지 취득가액만 받아, 기준시가 평가 + 실가 취득가액이 섞이면 양도차익이 줄었음.
+    if (p.giftValuedByStandardPrice && !(Number(p.acquisitionStandardPrice) > 0)) return { error: '증여가액을 기준시가로 평가했으면 취득가액도 취득 당시 기준시가로 합니다(소득세법 시행령 §159①1호 괄호) — acquisitionStandardPrice(취득 당시 기준시가)가 필요합니다.' };
+    const assetAcquisitionPrice = p.giftValuedByStandardPrice ? Number(p.acquisitionStandardPrice) : (Number(p.assetAcquisitionPrice) || 0);
     const assetGiftValue = Number(p.assetGiftValue) || 0;
     if (assetGiftValue <= 0) return { error: '양도세 과세대상 자산의 증여재산가액(상증세법상 평가액)이 필요합니다.' };
     const totalDebtAmount = Number(p.totalDebtAmount) || 0;
@@ -10714,7 +10750,7 @@
     const gain = transferPortionTransferPrice - transferPortionAcquisitionPrice - necessaryExpenses;
 
     return {
-      안분채무액: allocatedDebtToAsset, 채무액비율: debtRatio,
+      안분채무액: allocatedDebtToAsset, 채무액비율: debtRatio, 취득가액기준: p.giftValuedByStandardPrice ? '취득 당시 기준시가(§159①1호 괄호)' : '실지 취득가액',
       양도로보는부분_양도가액: transferPortionTransferPrice, 양도로보는부분_취득가액: transferPortionAcquisitionPrice,
       필요경비: necessaryExpenses, 양도차익: Math.round(gain),
       안내: note + '이 양도가액(' + transferPortionTransferPrice + '원)·취득가액(' + transferPortionAcquisitionPrice + '원)·필요경비를 위 일반 양도세 계산기에 그대로 넣어 나머지 세액(장기보유특별공제·기본공제·세율 등)을 계산하세요. 배우자·직계존비속간 부담부증여는 채무 인수를 객관적으로 입증하지 못하면 양도로 보지 않습니다(소득세법§101②·상증세법§47③과 같은 취지 — 이 계산기는 인수 사실이 입증됐다는 전제입니다).'

@@ -111,6 +111,14 @@
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  // [2026.11.03] 뒤에서 저장이 끝난 뒤 목록을 조용히 맞춘다(「불러오는 중」으로 화면을 비우지 않음)
+  function bookingQuietReload_(){
+    callGas('list_bookings', {}).then(function(res){
+      if (!res || !Array.isArray(res.bookings)) return;
+      window._bookingAll = res.bookings.map(function(b, idx){ b._rowIndex = idx + 2; return b; });
+      if (document.getElementById('bookingList')) bookingRender_();
+    }).catch(function(){});
+  }
   function bookingRender_(){
     var box = document.getElementById('bookingList');
     var today = bookingTodayStr_();
@@ -261,6 +269,19 @@
       if (o.v === '일정변경'){
         payload.newDate = document.getElementById('bkResDate').value; payload.newTime = document.getElementById('bkResTime').value;
         if (!payload.newDate || !payload.newTime){ toast('새 날짜와 시간을 넣어 주세요.'); return; }
+      }
+      // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 일정변경 말고는 화면에 먼저 적고 창을 바로 닫는다(서버는 뒤에서, 문자도 뒤에서 1분 안에).
+      //  일정변경은 달력 빈 시간을 그 자리에서 봐야 해서 지금처럼 기다린다(겹치면 바로 알려야 함).
+      if (o.v !== '일정변경'){
+        var keep = { result: b.result, status: b.status };
+        if (o.v === '지우기') b.result = ''; else { b.result = o.v; if (o.v === '고객취소' || o.v === '사무소취소') b.status = '취소'; }
+        bookingCloseModal_(); bookingRender_();
+        if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
+        toast(b.name + '님 결과를 적었습니다' + (payload.sms ? ' — 고객 문자는 1분 안에 보냅니다.' : '.'));
+        nxSaveLater_('booking_set_result', payload, { label: b.name + '님 예약 결과(' + o.v + ')',
+          onDone: function(){ bookingQuietReload_(); },
+          onFail: function(){ b.result = keep.result; b.status = keep.status; bookingRender_(); } });
+        return;
       }
       var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
       callGas('booking_set_result', payload).then(function(res){

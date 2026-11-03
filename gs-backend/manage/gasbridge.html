@@ -86,6 +86,8 @@
       var action = item.args[0];
       if (!SHADOW_CHECK || sv.shadowDone[action]) return;
       sv.shadowDone[action] = true;
+      // [2026.11.03] 견주기는 하루 한 번만(화면을 열 때마다 조회를 두 번 하던 것 — 저장 기다림 전수조사)
+      try { var dk = 'nxShadowDay_' + sv.name + '_' + action, today = new Date().toISOString().slice(0, 10); if (localStorage.getItem(dk) === today) return; localStorage.setItem(dk, today); } catch (e) {}
       var a = JSON.stringify(sideResult);
       send([{ fn: item.fn, args: item.args, resolve: function(mainResult){
         var b = JSON.stringify(mainResult);
@@ -109,7 +111,8 @@
           });
           return;
         }
-        if (fnName === 'manageApp_call' && args && SOLO_ACTIONS[args[0]]){
+        // [2026.11.03] 저장(조회 아닌 것)도 묶지 않고 혼자 — 느린 조회 뒤에 줄을 서지 않게(저장 기다림 전수조사 ③)
+        if (fnName === 'manageApp_call' && args && (SOLO_ACTIONS[args[0]] || !/(^|_)(get|list|search|read|lookup|load|check|status)/i.test(String(args[0] || '')))){
           send([{ fn: fnName, args: args, resolve: resolve, reject: reject }]);
           return;
         }

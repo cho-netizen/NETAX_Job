@@ -1439,14 +1439,19 @@
     });
     box.querySelectorAll('input[data-ch-sub]').forEach(function(cb){
       cb.addEventListener('change', function(){
-        cb.disabled = true;
-        callGas('work_update_subtask', { id: c.id, nodeId: cb.getAttribute('data-ch-sub'), status: cb.checked ? '완료' : '대기' }).then(function(res){
-          if (!res || res.success === false || !res.case){ showToast((res && (res.message || res.error)) || '하위업무를 저장하지 못했습니다.'); cb.checked = !cb.checked; cb.disabled = false; return; }
-          // 이 화면의 다른 저장(작업일지 등)이 기대수정일 충돌로 막히지 않게 수정일도 같이 맞춘다
-          c.하위업무 = res.case.하위업무; c.수정일 = res.case.수정일;
-          if (res.warning) showToast(res.warning);
-          chRenderProgress_(c);
-        }).catch(function(){ showToast('하위업무 저장 중 오류가 났습니다.'); cb.checked = !cb.checked; cb.disabled = false; });
+        // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 체크는 바로 반영하고 서버엔 뒤에서(같은 사건은 차례로). 실패하면 체크를 되돌리고 화면 아래 띠에 남는다
+        var nodeId = cb.getAttribute('data-ch-sub'), st = cb.checked ? '완료' : '대기';
+        (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = st; else walk(n.children); }); })(c.하위업무);
+        chRenderProgress_(c);
+        nxSaveLater_('work_update_subtask', { id: c.id, nodeId: nodeId, status: st }, { key: 'sub_' + c.id, label: '하위업무 ' + (st === '완료' ? '완료' : '되돌림') + ' 표시',
+          onDone: function(res){
+            if (!res.case) return;
+            // 이 화면의 다른 저장(작업일지 등)이 기대수정일 충돌로 막히지 않게 수정일도 같이 맞춘다
+            c.하위업무 = res.case.하위업무; c.수정일 = res.case.수정일;
+            if (res.warning) showToast(res.warning);
+            chRenderProgress_(c);
+          },
+          onFail: function(){ cb.checked = !cb.checked; (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = cb.checked ? '완료' : '대기'; else walk(n.children); }); })(c.하위업무); chRenderProgress_(c); } });
       });
     });
   }

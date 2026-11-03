@@ -73,7 +73,10 @@
       <h3>안읽은 메일
         <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
         <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
-        <button type="button" id="dashEmailsReadAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 읽음</button>
+        <!-- [2026.11.03] 세무사님 "전체선택버튼으로 선택한 다음에 일부체크해제 하고 나서 나머지를 읽음처리하고 싶은데 그런 기능이 없다"(요청 R2611031216) —
+             체크는 고르기만 하고(바로 읽음 처리 안 함), 「전체 선택」으로 다 고른 뒤 빼고 싶은 것만 풀고 「읽음 처리」로 고른 것만 처리 -->
+        <button type="button" id="dashEmailsReadSel" class="ghost-btn sm" style="float:right; margin-right:6px;" disabled title="체크한 메일만 읽음 처리">읽음 처리</button>
+        <button type="button" id="dashEmailsSelAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 선택</button>
       </h3>
       <div class="dash-range">
         <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input title="몇 통" type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
@@ -560,7 +563,7 @@
       var box = document.getElementById('dashEmails');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.메일 || [];
-      if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; return; }
+      if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; dashEmailSelSync_(); return; }
       // 한 줄에 다 들어오도록 table-layout:fixed + 고정폭 열(체크박스/날짜/시간/보낸사람) + 제목만 남은
       // 폭을 전부 쓰되 ellipsis로 잘라 보여준다(줄바꿈 없이).
       var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:380px;"><colgroup>'
@@ -575,7 +578,7 @@
         var nowrap = 'white-space:nowrap; overflow:hidden;';
         var ellipsis = nowrap + ' text-overflow:ellipsis;';
         html += '<tr>'
-          + '<td><input type="checkbox" class="dash-email-read-cb" data-id="' + esc(m.id || '') + '"></td>'
+          + '<td><input type="checkbox" class="dash-email-read-cb" aria-label="이 메일 고르기" data-id="' + esc(m.id || '') + '"></td>'
           + '<td style="' + nowrap + '">' + dateCell + '</td>'
           + '<td style="' + nowrap + '">' + esc(timePart) + '</td>'
           + '<td style="' + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
@@ -584,38 +587,47 @@
       });
       html += '</table></div>';
       box.innerHTML = html;
+      dashEmailSelSync_();
     }).catch(function(e){ document.getElementById('dashEmails').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  // [2026.11.03] 체크는 고르기만 — 고른 수를 「읽음 처리」 단추에 보이고, 다 골랐으면 「전체 선택」이 「선택 해제」로 바뀐다
+  function dashEmailCbs_(){
+    return Array.prototype.slice.call(document.querySelectorAll('#dashEmails .dash-email-read-cb'))
+      .filter(function(cb){ return !cb.disabled && cb.getAttribute('data-id'); });
+  }
+  function dashEmailSelSync_(){
+    var cbs = dashEmailCbs_();
+    var n = cbs.filter(function(cb){ return cb.checked; }).length;
+    var rb = document.getElementById('dashEmailsReadSel');
+    rb.disabled = !n;
+    rb.textContent = n ? '읽음 처리 (' + n + ')' : '읽음 처리';
+    document.getElementById('dashEmailsSelAll').textContent = (cbs.length && n === cbs.length) ? '선택 해제' : '전체 선택';
+  }
   document.getElementById('dashEmails').addEventListener('change', function(e){
-    var cb = e.target.closest('.dash-email-read-cb');
-    if (!cb) return;
-    var id = cb.getAttribute('data-id');
-    if (!id){ cb.checked = false; return; }
-    cb.disabled = true;
-    var row = cb.closest('tr');
-    callGas('mark_email_read', { threadId: id }).then(function(res){
-      if (res.error){ nxAlert_('읽음 처리 실패: ' + res.error); cb.disabled = false; cb.checked = false; return; }
-      if (row) row.style.opacity = '0.4';
-    }).catch(function(err){ nxAlert_('읽음 처리 실패: ' + nxErrText_(err)); cb.disabled = false; cb.checked = false; });
+    if (e.target.closest('.dash-email-read-cb')) dashEmailSelSync_();
+  });
+  document.getElementById('dashEmailsSelAll').addEventListener('click', function(){
+    var cbs = dashEmailCbs_();
+    var all = cbs.length && cbs.every(function(cb){ return cb.checked; });
+    cbs.forEach(function(cb){ cb.checked = !all; });
+    dashEmailSelSync_();
   });
 
-  // [2026.10.20] 전체 읽음 — 지금 목록에 보이는(아직 체크 안 한) 메일을 한꺼번에 읽음 처리하고,
+  // [2026.10.20] 전체 읽음 → [2026.11.03] 고른 것만 읽음 처리하고,
   // 남은 안읽은 메일이 있으면 다음 묶음이 보이도록 목록을 다시 불러온다.
-  document.getElementById('dashEmailsReadAll').addEventListener('click', function(){
+  document.getElementById('dashEmailsReadSel').addEventListener('click', function(){
     var btn = this;
-    var cbs = Array.prototype.slice.call(document.querySelectorAll('#dashEmails .dash-email-read-cb'))
-      .filter(function(cb){ return !cb.disabled && cb.getAttribute('data-id'); });
+    var cbs = dashEmailCbs_().filter(function(cb){ return cb.checked; });
     if (!cbs.length) return;
     btn.disabled = true;
-    cbs.forEach(function(cb){ cb.checked = true; cb.disabled = true; });
+    cbs.forEach(function(cb){ cb.disabled = true; var row = cb.closest('tr'); if (row) row.style.opacity = '0.4'; });
     var fails = 0;
     Promise.all(cbs.map(function(cb){
       return callGas('mark_email_read', { threadId: cb.getAttribute('data-id') })
         .then(function(res){ if (res.error) fails++; })
         .catch(function(){ fails++; });
     })).then(function(){
-      btn.disabled = false;
       if (fails) nxAlert_('읽음 처리 실패 ' + fails + '통 — 목록을 다시 불러옵니다.');
       loadDashEmails_();
     });
@@ -1051,6 +1063,12 @@
       var kes = r.kakaoErrors || [];
       if (kes.length) html += row('<details><summary style="cursor:pointer; color:#b3261e;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
+      // [2026.11.03] 뒤에서 할 일(예약 문자·달력·보고서)이 세 번 해도 안 된 것 — 세무사님이 다시 하거나 지움
+      (r.bgFailed || []).slice().reverse().forEach(function(f){
+        html += row('⚠ <b style="color:#b3261e;">' + esc(f.종류) + ' 안 됨</b> ' + esc(f.무엇) + (f.받는번호 ? ' (' + esc(f.받는번호) + ')' : '')
+          + '<div style="font-size:12px; color:var(--sub);">' + esc(String(f.at).slice(5)) + ' · ' + esc(f.오류 || '') + '</div>'
+          + '<div style="margin-top:4px; display:flex; gap:6px;"><button type="button" class="ghost-btn sm" data-dashbg="retry" data-id="' + esc(f.id) + '">다시 하기</button><button type="button" class="ghost-btn sm" data-dashbg="dismiss" data-id="' + esc(f.id) + '">지우기</button></div>', true);
+      });
       box.innerHTML = html;
       var askCard = document.getElementById('dashAskCard'); if (askCard) askCard.hidden = !html;
       // 법령 판단 대기 — 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만
@@ -1068,6 +1086,21 @@
       line.innerHTML = parts.join('<br>') || '<span style="color:var(--sub);">개발자 실행 기록 없음</span>';
     }).catch(function(e){ var l = document.getElementById('dashRoutineLine'); if (l) l.textContent = '오류: ' + e.message; });
   }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest && ev.target.closest('[data-dashbg]');
+    if (!b) return;
+    ev.preventDefault();
+    var act = b.getAttribute('data-dashbg'), wrap = b.closest('div[style*="border"]');
+    b.disabled = true;
+    callGas('bg_failed_act', { id: b.getAttribute('data-id'), act: act }).then(function(res){
+      toast((res && res.message) || (res && res.error) || '처리했습니다.');
+      if (res && res.success && wrap){
+        wrap.remove();
+        var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+        if (box && askCard && !box.children.length) askCard.hidden = true; // 마지막 줄이면 빈 카드를 남기지 않음(처음 그릴 때와 같은 규칙)
+      } else b.disabled = false;
+    }).catch(function(e){ b.disabled = false; toast('오류: ' + nxErrText_(e)); });
+  });
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('[data-dashqans]');
     if (!b) return;

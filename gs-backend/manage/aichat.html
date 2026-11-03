@@ -443,7 +443,9 @@
   .nxai.mode-side #nxAiToSide, .nxai.mode-side #nxAiHide{ display:none; }
   .nxai.mode-tab #nxAiPin, .nxai.mode-tab #nxAiCollapse, .nxai.mode-tab #nxAiOpenTab, .nxai.mode-tab #nxAiNewBtnSide, .nxai.mode-tab .nxai-resize{ display:none; }
   .nxai.mode-tab .nxai-body{ padding:18px 22px; }
-  .nxai.mode-tab .nxai-msg.ai{ max-width:880px; }
+  /* [2026.11.03] 세무사님 "창이 충분히 넓을 때 창을 모두 사용하지 않는다. 질문 답변 모두 창너비의 90%를 사용하여 줄 수를 줄였으면"(요청 R2611021757) — 답 880px 상한·질문 88% → 둘 다 90% */
+  .nxai.mode-tab .nxai-msg.ai{ max-width:90%; }
+  .nxai.mode-tab .nxai-msg.me{ max-width:90%; }
   #sideAI.nxai-away{ display:none; }
 
   /* ===== 사이드바 모드 — 기존 사이드바처럼 남색 바탕 유지(세무사님 요청 사항) ===== */

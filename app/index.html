@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-01 21:53 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-03 09:58 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -119,6 +119,8 @@
       var action = item.args[0];
       if (!SHADOW_CHECK || sv.shadowDone[action]) return;
       sv.shadowDone[action] = true;
+      // [2026.11.03] 견주기는 하루 한 번만(화면을 열 때마다 조회를 두 번 하던 것 — 저장 기다림 전수조사)
+      try { var dk = 'nxShadowDay_' + sv.name + '_' + action, today = new Date().toISOString().slice(0, 10); if (localStorage.getItem(dk) === today) return; localStorage.setItem(dk, today); } catch (e) {}
       var a = JSON.stringify(sideResult);
       send([{ fn: item.fn, args: item.args, resolve: function(mainResult){
         var b = JSON.stringify(mainResult);
@@ -142,7 +144,8 @@
           });
           return;
         }
-        if (fnName === 'manageApp_call' && args && SOLO_ACTIONS[args[0]]){
+        // [2026.11.03] 저장(조회 아닌 것)도 묶지 않고 혼자 — 느린 조회 뒤에 줄을 서지 않게(저장 기다림 전수조사 ③)
+        if (fnName === 'manageApp_call' && args && (SOLO_ACTIONS[args[0]] || !/(^|_)(get|list|search|read|lookup|load|check|status)/i.test(String(args[0] || '')))){
           send([{ fn: fnName, args: args, resolve: resolve, reject: reject }]);
           return;
         }
@@ -1405,6 +1408,9 @@
       <div id="nxCaseBar" hidden>
         <div class="cb-row">
           <b class="cb-name">사건을 골라 주세요</b><span class="cb-meta"></span>
+          <!-- [2026.11.03] 세무사님 "구조를 변경하고 나니 종전의 작업관리탭이 사라졌네? 사건을 양도상담사건에서 불복사건으로 변경하고 싶은데 변경할 방법이 없구나"(요청 R2611012327) —
+               세목·업무·상태·기한을 고치는 칸은 사건 목록(옛 작업관리)에 그대로 있는데, 사건 작업 화면에서 그리 가는 길이 없었다 → 머리줄에서 바로 그 사건을 연다 -->
+          <button type="button" class="ghost-btn sm" id="cbEditCase" hidden title="세목·업무·상태·기한·고객을 고칩니다(사건 목록에서 이 사건을 엽니다)">사건 정보 고치기</button>
           <span class="cb-pick"><label class="cb-live"><input type="checkbox" id="cbLiveOnly" checked> 진행</label><input type="search" id="cbFind" placeholder="사건 찾기"><select id="cbCaseSelect" title="사건 바꾸기"><option value="">사건 고르기…</option></select></span>
         </div>
         <div class="cb-strip-host"></div>
@@ -3038,7 +3044,10 @@ function nxMdOpenWindow(title, src, opts){
       <h3>안읽은 메일
         <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
         <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
-        <button type="button" id="dashEmailsReadAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 읽음</button>
+        <!-- [2026.11.03] 세무사님 "전체선택버튼으로 선택한 다음에 일부체크해제 하고 나서 나머지를 읽음처리하고 싶은데 그런 기능이 없다"(요청 R2611031216) —
+             체크는 고르기만 하고(바로 읽음 처리 안 함), 「전체 선택」으로 다 고른 뒤 빼고 싶은 것만 풀고 「읽음 처리」로 고른 것만 처리 -->
+        <button type="button" id="dashEmailsReadSel" class="ghost-btn sm" style="float:right; margin-right:6px;" disabled title="체크한 메일만 읽음 처리">읽음 처리</button>
+        <button type="button" id="dashEmailsSelAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 선택</button>
       </h3>
       <div class="dash-range">
         <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input title="몇 통" type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
@@ -3525,7 +3534,7 @@ function nxMdOpenWindow(title, src, opts){
       var box = document.getElementById('dashEmails');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.메일 || [];
-      if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; return; }
+      if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; dashEmailSelSync_(); return; }
       // 한 줄에 다 들어오도록 table-layout:fixed + 고정폭 열(체크박스/날짜/시간/보낸사람) + 제목만 남은
       // 폭을 전부 쓰되 ellipsis로 잘라 보여준다(줄바꿈 없이).
       var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:380px;"><colgroup>'
@@ -3540,7 +3549,7 @@ function nxMdOpenWindow(title, src, opts){
         var nowrap = 'white-space:nowrap; overflow:hidden;';
         var ellipsis = nowrap + ' text-overflow:ellipsis;';
         html += '<tr>'
-          + '<td><input type="checkbox" class="dash-email-read-cb" data-id="' + esc(m.id || '') + '"></td>'
+          + '<td><input type="checkbox" class="dash-email-read-cb" aria-label="이 메일 고르기" data-id="' + esc(m.id || '') + '"></td>'
           + '<td style="' + nowrap + '">' + dateCell + '</td>'
           + '<td style="' + nowrap + '">' + esc(timePart) + '</td>'
           + '<td style="' + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
@@ -3549,38 +3558,47 @@ function nxMdOpenWindow(title, src, opts){
       });
       html += '</table></div>';
       box.innerHTML = html;
+      dashEmailSelSync_();
     }).catch(function(e){ document.getElementById('dashEmails').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  // [2026.11.03] 체크는 고르기만 — 고른 수를 「읽음 처리」 단추에 보이고, 다 골랐으면 「전체 선택」이 「선택 해제」로 바뀐다
+  function dashEmailCbs_(){
+    return Array.prototype.slice.call(document.querySelectorAll('#dashEmails .dash-email-read-cb'))
+      .filter(function(cb){ return !cb.disabled && cb.getAttribute('data-id'); });
+  }
+  function dashEmailSelSync_(){
+    var cbs = dashEmailCbs_();
+    var n = cbs.filter(function(cb){ return cb.checked; }).length;
+    var rb = document.getElementById('dashEmailsReadSel');
+    rb.disabled = !n;
+    rb.textContent = n ? '읽음 처리 (' + n + ')' : '읽음 처리';
+    document.getElementById('dashEmailsSelAll').textContent = (cbs.length && n === cbs.length) ? '선택 해제' : '전체 선택';
+  }
   document.getElementById('dashEmails').addEventListener('change', function(e){
-    var cb = e.target.closest('.dash-email-read-cb');
-    if (!cb) return;
-    var id = cb.getAttribute('data-id');
-    if (!id){ cb.checked = false; return; }
-    cb.disabled = true;
-    var row = cb.closest('tr');
-    callGas('mark_email_read', { threadId: id }).then(function(res){
-      if (res.error){ nxAlert_('읽음 처리 실패: ' + res.error); cb.disabled = false; cb.checked = false; return; }
-      if (row) row.style.opacity = '0.4';
-    }).catch(function(err){ nxAlert_('읽음 처리 실패: ' + nxErrText_(err)); cb.disabled = false; cb.checked = false; });
+    if (e.target.closest('.dash-email-read-cb')) dashEmailSelSync_();
+  });
+  document.getElementById('dashEmailsSelAll').addEventListener('click', function(){
+    var cbs = dashEmailCbs_();
+    var all = cbs.length && cbs.every(function(cb){ return cb.checked; });
+    cbs.forEach(function(cb){ cb.checked = !all; });
+    dashEmailSelSync_();
   });
 
-  // [2026.10.20] 전체 읽음 — 지금 목록에 보이는(아직 체크 안 한) 메일을 한꺼번에 읽음 처리하고,
+  // [2026.10.20] 전체 읽음 → [2026.11.03] 고른 것만 읽음 처리하고,
   // 남은 안읽은 메일이 있으면 다음 묶음이 보이도록 목록을 다시 불러온다.
-  document.getElementById('dashEmailsReadAll').addEventListener('click', function(){
+  document.getElementById('dashEmailsReadSel').addEventListener('click', function(){
     var btn = this;
-    var cbs = Array.prototype.slice.call(document.querySelectorAll('#dashEmails .dash-email-read-cb'))
-      .filter(function(cb){ return !cb.disabled && cb.getAttribute('data-id'); });
+    var cbs = dashEmailCbs_().filter(function(cb){ return cb.checked; });
     if (!cbs.length) return;
     btn.disabled = true;
-    cbs.forEach(function(cb){ cb.checked = true; cb.disabled = true; });
+    cbs.forEach(function(cb){ cb.disabled = true; var row = cb.closest('tr'); if (row) row.style.opacity = '0.4'; });
     var fails = 0;
     Promise.all(cbs.map(function(cb){
       return callGas('mark_email_read', { threadId: cb.getAttribute('data-id') })
         .then(function(res){ if (res.error) fails++; })
         .catch(function(){ fails++; });
     })).then(function(){
-      btn.disabled = false;
       if (fails) nxAlert_('읽음 처리 실패 ' + fails + '통 — 목록을 다시 불러옵니다.');
       loadDashEmails_();
     });
@@ -4016,6 +4034,12 @@ function nxMdOpenWindow(title, src, opts){
       var kes = r.kakaoErrors || [];
       if (kes.length) html += row('<details><summary style="cursor:pointer; color:#b3261e;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
+      // [2026.11.03] 뒤에서 할 일(예약 문자·달력·보고서)이 세 번 해도 안 된 것 — 세무사님이 다시 하거나 지움
+      (r.bgFailed || []).slice().reverse().forEach(function(f){
+        html += row('⚠ <b style="color:#b3261e;">' + esc(f.종류) + ' 안 됨</b> ' + esc(f.무엇) + (f.받는번호 ? ' (' + esc(f.받는번호) + ')' : '')
+          + '<div style="font-size:12px; color:var(--sub);">' + esc(String(f.at).slice(5)) + ' · ' + esc(f.오류 || '') + '</div>'
+          + '<div style="margin-top:4px; display:flex; gap:6px;"><button type="button" class="ghost-btn sm" data-dashbg="retry" data-id="' + esc(f.id) + '">다시 하기</button><button type="button" class="ghost-btn sm" data-dashbg="dismiss" data-id="' + esc(f.id) + '">지우기</button></div>', true);
+      });
       box.innerHTML = html;
       var askCard = document.getElementById('dashAskCard'); if (askCard) askCard.hidden = !html;
       // 법령 판단 대기 — 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만
@@ -4033,6 +4057,21 @@ function nxMdOpenWindow(title, src, opts){
       line.innerHTML = parts.join('<br>') || '<span style="color:var(--sub);">개발자 실행 기록 없음</span>';
     }).catch(function(e){ var l = document.getElementById('dashRoutineLine'); if (l) l.textContent = '오류: ' + e.message; });
   }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest && ev.target.closest('[data-dashbg]');
+    if (!b) return;
+    ev.preventDefault();
+    var act = b.getAttribute('data-dashbg'), wrap = b.closest('div[style*="border"]');
+    b.disabled = true;
+    callGas('bg_failed_act', { id: b.getAttribute('data-id'), act: act }).then(function(res){
+      toast((res && res.message) || (res && res.error) || '처리했습니다.');
+      if (res && res.success && wrap){
+        wrap.remove();
+        var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+        if (box && askCard && !box.children.length) askCard.hidden = true; // 마지막 줄이면 빈 카드를 남기지 않음(처음 그릴 때와 같은 규칙)
+      } else b.disabled = false;
+    }).catch(function(e){ b.disabled = false; toast('오류: ' + nxErrText_(e)); });
+  });
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('[data-dashqans]');
     if (!b) return;
@@ -4764,6 +4803,14 @@ function nxMdOpenWindow(title, src, opts){
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  // [2026.11.03] 뒤에서 저장이 끝난 뒤 목록을 조용히 맞춘다(「불러오는 중」으로 화면을 비우지 않음)
+  function bookingQuietReload_(){
+    callGas('list_bookings', {}).then(function(res){
+      if (!res || !Array.isArray(res.bookings)) return;
+      window._bookingAll = res.bookings.map(function(b, idx){ b._rowIndex = idx + 2; return b; });
+      if (document.getElementById('bookingList')) bookingRender_();
+    }).catch(function(){});
+  }
   function bookingRender_(){
     var box = document.getElementById('bookingList');
     var today = bookingTodayStr_();
@@ -4914,6 +4961,19 @@ function nxMdOpenWindow(title, src, opts){
       if (o.v === '일정변경'){
         payload.newDate = document.getElementById('bkResDate').value; payload.newTime = document.getElementById('bkResTime').value;
         if (!payload.newDate || !payload.newTime){ toast('새 날짜와 시간을 넣어 주세요.'); return; }
+      }
+      // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 일정변경 말고는 화면에 먼저 적고 창을 바로 닫는다(서버는 뒤에서, 문자도 뒤에서 1분 안에).
+      //  일정변경은 달력 빈 시간을 그 자리에서 봐야 해서 지금처럼 기다린다(겹치면 바로 알려야 함).
+      if (o.v !== '일정변경'){
+        var keep = { result: b.result, status: b.status };
+        if (o.v === '지우기') b.result = ''; else { b.result = o.v; if (o.v === '고객취소' || o.v === '사무소취소') b.status = '취소'; }
+        bookingCloseModal_(); bookingRender_();
+        if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
+        toast(b.name + '님 결과를 적었습니다' + (payload.sms ? ' — 고객 문자는 1분 안에 보냅니다.' : '.'));
+        nxSaveLater_('booking_set_result', payload, { label: b.name + '님 예약 결과(' + o.v + ')',
+          onDone: function(){ bookingQuietReload_(); },
+          onFail: function(){ b.result = keep.result; b.status = keep.status; bookingRender_(); } });
+        return;
       }
       var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
       callGas('booking_set_result', payload).then(function(res){
@@ -6104,11 +6164,23 @@ function nxMdOpenWindow(title, src, opts){
     }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
   }
 
+  // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 상태·이름·기한 고침은 화면에 먼저 적고 서버엔 뒤에서(같은 사건은 차례로).
+  //  서버 답이 오면 그 사건 값으로 맞추되, 세무사님이 하위업무 칸에 손대는 중이면 트리를 다시 그리지 않는다(쓰던 칸이 날아가지 않게).
   function updateWorkSubtask(caseId, nodeId, fields){
-    callGas('work_update_subtask', Object.assign({ id: caseId, nodeId: nodeId }, fields)).then(function(res){
-      if (res.error || res.success === false){ showToast(res.error || res.message || '수정 실패', 'error'); return; }
-      applySubtaskUpdate_(res.case, res.warning);
-    }).catch(function(){ showToast('수정 중 오류가 발생했습니다.', 'error'); });
+    var existing = workCases.filter(function(c){ return c.id === caseId; })[0];
+    var node = null;
+    (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) node = n; else walk(n.children); }); })(existing && existing.하위업무);
+    var before = node ? Object.assign({}, node) : null;
+    if (node){ Object.assign(node, fields); renderWorkCaseList(); var tg = document.getElementById('wcAddRootToggle'); if (tg) tg.textContent = '하위업무 ' + workProgress(existing).done + ' / ' + workProgress(existing).total; }
+    nxSaveLater_('work_update_subtask', Object.assign({ id: caseId, nodeId: nodeId }, fields), { key: 'sub_' + caseId,
+      label: '하위업무 ' + String((node && node.title) || '').slice(0, 20) + ' 고침',
+      onDone: function(res){
+        if (!res.case) return;
+        var tree = document.getElementById('wcTree');
+        if (tree && tree.contains(document.activeElement)){ var ex = workCases.filter(function(c){ return c.id === caseId; })[0]; if (ex) ex.수정일 = res.case.수정일; if (res.warning) showToast(res.warning, 'warning'); return; }
+        applySubtaskUpdate_(res.case, res.warning);
+      },
+      onFail: function(){ if (node && before){ Object.keys(fields).forEach(function(k){ node[k] = before[k]; }); applySubtaskUpdate_(existing); } } });
   }
 
   function deleteWorkSubtask(caseId, nodeId){
@@ -7564,14 +7636,19 @@ function nxMdOpenWindow(title, src, opts){
     });
     box.querySelectorAll('input[data-ch-sub]').forEach(function(cb){
       cb.addEventListener('change', function(){
-        cb.disabled = true;
-        callGas('work_update_subtask', { id: c.id, nodeId: cb.getAttribute('data-ch-sub'), status: cb.checked ? '완료' : '대기' }).then(function(res){
-          if (!res || res.success === false || !res.case){ showToast((res && (res.message || res.error)) || '하위업무를 저장하지 못했습니다.'); cb.checked = !cb.checked; cb.disabled = false; return; }
-          // 이 화면의 다른 저장(작업일지 등)이 기대수정일 충돌로 막히지 않게 수정일도 같이 맞춘다
-          c.하위업무 = res.case.하위업무; c.수정일 = res.case.수정일;
-          if (res.warning) showToast(res.warning);
-          chRenderProgress_(c);
-        }).catch(function(){ showToast('하위업무 저장 중 오류가 났습니다.'); cb.checked = !cb.checked; cb.disabled = false; });
+        // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 체크는 바로 반영하고 서버엔 뒤에서(같은 사건은 차례로). 실패하면 체크를 되돌리고 화면 아래 띠에 남는다
+        var nodeId = cb.getAttribute('data-ch-sub'), st = cb.checked ? '완료' : '대기';
+        (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = st; else walk(n.children); }); })(c.하위업무);
+        chRenderProgress_(c);
+        nxSaveLater_('work_update_subtask', { id: c.id, nodeId: nodeId, status: st }, { key: 'sub_' + c.id, label: '하위업무 ' + (st === '완료' ? '완료' : '되돌림') + ' 표시',
+          onDone: function(res){
+            if (!res.case) return;
+            // 이 화면의 다른 저장(작업일지 등)이 기대수정일 충돌로 막히지 않게 수정일도 같이 맞춘다
+            c.하위업무 = res.case.하위업무; c.수정일 = res.case.수정일;
+            if (res.warning) showToast(res.warning);
+            chRenderProgress_(c);
+          },
+          onFail: function(){ cb.checked = !cb.checked; (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.id === nodeId) n.status = cb.checked ? '완료' : '대기'; else walk(n.children); }); })(c.하위업무); chRenderProgress_(c); } });
       });
     });
   }
@@ -16434,6 +16511,11 @@ function nxMdOpenWindow(title, src, opts){
         return { error: '환산취득가액을 계산하려면 양도당시 기준시가도 필요합니다(취득당시기준시가만으로는 계산할 수 없습니다 — 시행령§176의2②2호). 양도당시 기준시가를 확인해 입력해주세요.' };
       }
     }
+    // [2026.11.03 복잡사건 86] 의제취득일(시행령 §162⑥⑦ — 토지·건물 등 1985.1.1., 주식 1986.1.1.) 전에 취득한 자산에 옛 계약서 값을 그대로 넣으면 —
+    //  시행령 §176의2④는 의제취득일 현재 가액(③1~3호)과 「취득 당시 실지거래가액 + 생산자물가상승분」 중 많은 것을 취득가액으로 한다. 계산은 그대로 두고 알림만(판정 「의제취득」이 셈).
+    if (Number(t.acquisitionPrice) > 0 && t.acquisitionDate && t.acquisitionDate < '1985-01-01' && !t.isReconstructionRights) {
+      acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 취득일(' + t.acquisitionDate + ')이 의제취득일(1985.1.1.) 전입니다 — 넣은 취득가액 ' + Math.round(Number(t.acquisitionPrice)).toLocaleString('ko-KR') + '원을 그대로 쓰지 말고, 의제취득일 현재 가액(매매사례·감정·환산)과 「취득 당시 실지거래가액 + 생산자물가상승분」 중 많은 것을 취득가액으로 넣으세요(소득세법 시행령 §176의2④, 판정 「의제취득」).';
+    }
     // §97③ — 보유기간 중 그 자산에 대한 감가상각비를 사업소득금액 계산시 필요경비에 산입했거나
     // 산입할 금액이 있으면, 그 금액을 취득가액에서 공제한다(사업경비로 이미 공제받은 감가상각비를
     // 취득가액에도 남겨두면 이중공제가 되기 때문). 실제 산입액은 과거 사업소득 신고내역에 따른
@@ -16476,7 +16558,8 @@ function nxMdOpenWindow(title, src, opts){
     // [2026.10.22 검토대상 양도-7] 시행령 §163⑥3호 "법 §94①2호 나목·다목 자산(지상권·전세권·등기된 부동산임차권, 미등기 제외) 취득 당시 기준시가 × 7/100",
     //  4호 "그 밖의 자산 × 1/100"(법제처 원문). t.rightOrOtherKind = 'lease_right'(지상권·전세권·등기 부동산임차권) | 'misc_other'(영업권·시설물이용권 등 기타자산).
     const roKind_ = t.rightOrOtherKind === 'lease_right' || t.rightOrOtherKind === 'misc_other' ? t.rightOrOtherKind : '';
-    const estimatedRateFor_ = function () { return (t.assetType === 'presale_right' || roKind_ === 'misc_other') ? 0.01 : (t.isUnregisteredTransfer ? 0.003 : (roKind_ === 'lease_right' ? 0.07 : 0.03)); };
+    // [2026.11.03 복잡사건 89] 0.3%는 미등기양도자산일 때만 — 시행령 §168①3호(8년 자경·농지대토 감면 토지)는 미등기양도자산에서 빠지므로 3%(아래 isUnregistered와 같은 기준).
+    const estimatedRateFor_ = function () { return (t.assetType === 'presale_right' || roKind_ === 'misc_other') ? 0.01 : ((t.isUnregisteredTransfer && !(t.isEightYearFarmland || t.isFarmlandSubstitutionExempt)) ? 0.003 : (roKind_ === 'lease_right' ? 0.07 : 0.03)); };
     if (!t.necessaryExpenses && (t.useEstimatedNecessaryExpense || acquisitionPriceUsedConversionOrStandardOnly) && acquisitionStandardPriceForConversion > 0) {
       const estimatedExpenseRate = estimatedRateFor_();
       necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(고객X: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
@@ -16602,11 +16685,14 @@ function nxMdOpenWindow(title, src, opts){
     //  시행령 §156① 일부 양도·일부 타인 소유는 전체로 환산, §160① 후단 12억 × 양도 부분 비율 = 비율로는 (전체 − 12억) ÷ 전체).
     //  화면이 공동양도인 지분만큼 양도가액을 나눠 넘길 때 wholeHouseTransferPrice(나누기 전 전체 양도가액)를 함께 준다.
     const hvPrice_ = Number(t.wholeHouseTransferPrice) > transferPrice ? Number(t.wholeHouseTransferPrice) : transferPrice;
+    // [2026.11.03 복잡사건 90] §114의2② — 1세대1주택 비과세(12억 이하)로 끝나도 신축·증축 5년 안 감정·환산 가산세는 붙는다(산출세액이 없어도).
+    //  예전엔 이 길이 가산세를 셈하기 전에 돌아가 0이었음. 기준은 아래 conversionValuePenalty와 같다(건물분 가액·양도일 연혁).
+    const cvpExempt_ = function () { const b = Number(t.convertedBuildingAcquisitionValueForPenalty) || (acquisitionPriceUsedAppraisalOrConversion ? acquisitionPrice : 0), r = conversionPenaltyRuleAt_(t.transferDate), ap = !t.acquisitionPrice && !(Number(t.comparableTransactionPrice) > 0) && Number(t.appraisalValue) > 0; return t.isNewBuildingWithin5Years && b > 0 && r !== 'none' && !(r === 'conversion_new_only' && ap) ? Math.round(b * 0.05) : 0; };
     if (isOneHouse && hvPrice_ <= HV_HOUSE_) {
-      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t, conversionValuePenalty: cvpExempt_() };
     }
     if (isOneMemberRightOnly && hvPrice_ <= HV_RIGHT_) {
-      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t, conversionValuePenalty: cvpExempt_() };
     }
     // [2026.09 버그수정] 세무사님 "완전무결" 지시로 재점검 중 발견 — 준공된 신축주택(재건축·재개발
     // §166②1호) 양도는 그 자체로 "주택"이므로 §89①3호 비과세(12억 이하 전액 비과세) 대상인데,
@@ -16615,7 +16701,7 @@ function nxMdOpenWindow(title, src, opts){
     // 요건)으로 게이트해서 exempt 처리한다.
     const isCompletedHouseOneFamily = isReconstruction && !!t.isCompletedNewHousing && !!t.isOneHouseOneFamily && isResidentBenefitEligible;
     if (isCompletedHouseOneFamily && hvPrice_ <= HV_HOUSE_) {
-      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t, conversionValuePenalty: cvpExempt_() };
     }
     // [2026.10.19 버그수정] 재건축·재개발 신축주택(준공 후)을 1세대1주택 고가주택으로 양도하면 장기보유특별공제도
     // 1세대1주택 표(§95② 단서 표2 — 시행령§159의4, law.go.kr 원문: 양도일 현재 1주택 + 보유기간 중 거주 2년 이상)를
@@ -16820,6 +16906,13 @@ function nxMdOpenWindow(title, src, opts){
       if (refHistoryOn_() && t.isBelowStandardAreaHighValueHouse && d05_ >= '2005-01-01' && d05_ <= '2005-12-31') {
         ltRate = holdingYears >= 10 ? 0.50 : holdingYears >= 5 ? 0.25 : holdingYears >= 3 ? 0.10 : 0;
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '2005년 양도 기준면적 미만 고가주택 장특공 ' + Math.round(ltRate * 100) + '%(소득세법 §95②2호·3호, 시행령 §159의2)';
+      }
+      // [2026.11.03 복잡사건 92 「강씨 재외동포 아파트」] 소득세법 §121② 단서·시행령 §180의2① — 비거주자에겐 §95② 단서(표2)를 적용하지 않는다.
+      //  출국 2년 안 예외(§154①2호 나·다목)는 §180의2① 단서가 "§89①3호를 적용할 때"만 빼 줘서, 비과세는 받아도 표2까지 받는지는 [확인 필요].
+      //  기본은 예전대로(표2), nonResidentTable2Excluded면 문언대로 표1(보유기간별 공제율).
+      if (t.isTransferorResident === false && t.nonResidentTable2Excluded) {
+        ltRate = longTermRateAt_(holdingYears, t.transferDate);
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '비거주자 — 출국 2년 안 1주택 비과세는 받되 장특공은 표1 ' + Math.round(ltRate * 100) + '%(소득세법 §121② 단서·시행령 §180의2①, 표2 배제 — [확인 필요])';
       }
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
@@ -17417,7 +17510,9 @@ function nxMdOpenWindow(title, src, opts){
       return {
         입력값: { 양도가액: core.transferPrice, 취득가액: core.acquisitionPrice, 필요경비: core.necessaryExpenses, 보유기간_년: core.holdingYears },
         취득가액_산정방법: core.acquisitionPriceMethodNote || undefined,
-        비과세여부: true, 납부세액: 0, 시점경고: rateHistoryWarning_(core) || undefined
+        비과세여부: true, 납부세액: core.conversionValuePenalty || 0, 시점경고: rateHistoryWarning_(core) || undefined,
+        // [2026.11.03 복잡사건 90] 비과세여도 §114의2 가산세는 결정세액에 더함(②) — 지방소득세는 산출세액 몫이라 0
+        환산취득가액가산세: core.conversionValuePenalty || undefined, 납부세액_합계: core.conversionValuePenalty ? core.conversionValuePenalty : undefined
       };
     }
 
@@ -18511,7 +18606,7 @@ function nxMdOpenWindow(title, src, opts){
       assetNotes.push({ idx: x.idx, 구분: '단기양도(개별)', 특례: x.label, 감면액: x.allowed,
         감면산식: 'A ' + Math.round(x.A).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(x.D).toLocaleString('ko-KR') + ' × E 10%' });
     });
-    const conversionValuePenaltyTotal = active.reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0);
+    const conversionValuePenaltyTotal = active.concat(exempt).reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0); // [2026.11.03 복잡사건 90] 비과세 거래도(§114의2②)
 
     // 조특법§99의14① + 조특령§99의13② + 소득령§40의2②1호 라목 — 자산마다 ⑮ = min(남은 1억 한도, 납입액, 양도차액) × 10%.
     //  같은 해 두 번째 부동산은 앞 부동산이 쓴 한도를 뺀 나머지에서(누적 1억). 그 합계를 (풀 전체) 산출세액으로 한 번만 캡한다
@@ -22564,14 +22659,29 @@ function nxMdOpenWindow(title, src, opts){
     const core = window.calculateLowPriceTransferGiftAmountJS;
     window.calculateLowPriceTransferGiftAmountJS = function (p) {
       p = p || {}; const r = core(p);
-      if (!r || r.error || !r.과세대상여부 || !(Number(r.증여재산가액) > 0)) return r;
-      const paid = Number(p.transferPrice) || 0, gift = Number(r.증여재산가액);
-      if (paid < Number(p.fairMarketValue)) {
-        r.수증자_나중양도_취득가액 = paid + gift;
-        r.취득가액_근거 = '소득세법 시행령 §163⑩1호 — 상증법 §35로 증여세를 과세받은 증여재산가액을 취득가액에 더함: 실제 낸 값 ' + paid + '원 + 증여재산가액 ' + gift + '원(증여세를 실제로 과세받은 경우에 한함)';
+      // [2026.11.03 복잡사건 85 「고씨 비싸게 판 집」] 거래 양쪽 양도소득세 값까지 — 예전엔 저가양수 매수인 취득가액만 냈고, 고가양도는 "따로 볼 것"으로 끝나
+      //  ① 고가로 판 사람 양도가액에서 증여재산가액을 빼지 않고(소득세법 §96③2호가) ② 고가로 산 사람이 나중에 팔 때 낸 값 그대로 취득가액을 넣고(시행령 §167④)
+      //  ③ 저가로 판 사람의 시가 재계산(§101①·시행령 §167③ — 차액 3억 이상 또는 시가 5% 이상, 증여세 기준 30%보다 넓음)을 증여세가 0이면 알리지 않았다
+      const fmv = Number(p.fairMarketValue) || 0, paid = Number(p.transferPrice) || 0, gift = (r && r.과세대상여부 && Number(r.증여재산가액) > 0) ? Number(r.증여재산가액) : 0;
+      if (!r || r.error || !fmv || paid === fmv) return r;
+      const rel = p.isSpecialRelation !== false, diff = Math.abs(fmv - paid);
+      const 부당 = rel && (diff >= 300000000 || diff >= fmv * 0.05);
+      const 기준 = '차액 ' + diff + '원' + (부당 ? ' ≥ 3억 또는 시가 5%(' + Math.round(fmv * 0.05) + '원)' : ' < 3억·시가 5%(' + Math.round(fmv * 0.05) + '원)');
+      if (paid < fmv) {
+        if (gift) {
+          r.수증자_나중양도_취득가액 = paid + gift;
+          r.취득가액_근거 = '소득세법 시행령 §163⑩1호 — 상증법 §35로 증여세를 과세받은 증여재산가액을 취득가액에 더함: 실제 낸 값 ' + paid + '원 + 증여재산가액 ' + gift + '원. 매수인이 나중에 이 자산을 팔 때 acquisitionPrice에 이 값을 넣을 것(증여세를 실제로 과세받은 경우에 한함 — 신고·결정 확인)';
+        }
+        r.매도인_양도가액 = 부당 ? fmv : paid;
+        r.매도인_근거 = 부당 ? '소득세법 §101①·시행령 §167③1호·④ — 특수관계인에게 시가보다 싸게 팔아 ' + 기준 + ': 판 사람 양도가액을 시가 ' + fmv + '원으로 다시 셈(증여세 과세 여부와 따로)' : (rel ? '부당행위 기준 아래(' + 기준 + ') — 판 사람은 실제 받은 값' : '특수관계 없음 — 판 사람은 실제 받은 값');
       } else {
-        r.취득가액_근거 = '고가양도 — 이익을 얻은 매도인이 수증자. 매수인 쪽은 소득세법 §101①·시행령 §167④를 따로 볼 것';
+        r.매도인_양도가액 = paid - gift;
+        r.매도인_근거 = gift ? '소득세법 §96③2호가 — 비싸게 판 사람은 증여재산가액 ' + gift + '원을 양도가액에서 뺌: ' + paid + ' − ' + gift + ' = ' + (paid - gift) + '원(같은 돈에 증여세와 양도세가 겹치지 않게). 판 사람이 증여세 수증자(증여자는 산 사람)' : '증여재산가액 0 — 판 사람은 실제 받은 값';
+        r.매수인_나중양도_취득가액 = 부당 ? fmv : paid - gift;
+        r.취득가액_근거 = 부당 ? '소득세법 §101①·시행령 §167③1호·④ — 특수관계인에게서 시가보다 비싸게 사 ' + 기준 + ': 산 사람이 나중에 팔 때 취득가액은 시가 ' + fmv + '원. [확인 필요] 부당행위가 안 걸린다고 보면 시행령 §163⑩1호로 낸 값 − 증여재산가액 = ' + (paid - gift) + '원' : (gift ? '시행령 §163⑩1호 — 판 사람에게 과세된 증여재산가액을 빼서 ' + paid + ' − ' + gift + ' = ' + (paid - gift) + '원' : '부당행위 기준 아래(' + 기준 + ')·증여 없음 — 산 사람은 낸 값 그대로');
+        if (p.isListedStock) r.취득가액_근거 += ' · 상장주식은 시가를 법인세법 시행령 §89① 시가로, 3억·5% 기준 없이 봄(시행령 §167⑦)';
       }
+      r.부당행위계산 = 부당;
       return r;
     };
   })();
@@ -25898,7 +26008,10 @@ function nxMdOpenWindow(title, src, opts){
   // 과세대상 자산가액이 차지하는 비율로 총채무액을 먼저 안분한 뒤 위 계산식을 적용하도록 한다.
   window.calculateBurdenedGiftTransferJS = function (p) {
     p = p || {};
-    const assetAcquisitionPrice = Number(p.assetAcquisitionPrice) || 0;
+    // [2026.11.03 복잡사건 91] §159①1호 괄호 — 증여가액을 기준시가(상증법 §61①②⑤·§66)로 평가했으면 취득가액도 취득 당시 기준시가로 한다.
+    //  예전엔 실지 취득가액만 받아, 기준시가 평가 + 실가 취득가액이 섞이면 양도차익이 줄었음.
+    if (p.giftValuedByStandardPrice && !(Number(p.acquisitionStandardPrice) > 0)) return { error: '증여가액을 기준시가로 평가했으면 취득가액도 취득 당시 기준시가로 합니다(소득세법 시행령 §159①1호 괄호) — acquisitionStandardPrice(취득 당시 기준시가)가 필요합니다.' };
+    const assetAcquisitionPrice = p.giftValuedByStandardPrice ? Number(p.acquisitionStandardPrice) : (Number(p.assetAcquisitionPrice) || 0);
     const assetGiftValue = Number(p.assetGiftValue) || 0;
     if (assetGiftValue <= 0) return { error: '양도세 과세대상 자산의 증여재산가액(상증세법상 평가액)이 필요합니다.' };
     const totalDebtAmount = Number(p.totalDebtAmount) || 0;
@@ -25924,7 +26037,7 @@ function nxMdOpenWindow(title, src, opts){
     const gain = transferPortionTransferPrice - transferPortionAcquisitionPrice - necessaryExpenses;
 
     return {
-      안분채무액: allocatedDebtToAsset, 채무액비율: debtRatio,
+      안분채무액: allocatedDebtToAsset, 채무액비율: debtRatio, 취득가액기준: p.giftValuedByStandardPrice ? '취득 당시 기준시가(§159①1호 괄호)' : '실지 취득가액',
       양도로보는부분_양도가액: transferPortionTransferPrice, 양도로보는부분_취득가액: transferPortionAcquisitionPrice,
       필요경비: necessaryExpenses, 양도차익: Math.round(gain),
       안내: note + '이 양도가액(' + transferPortionTransferPrice + '원)·취득가액(' + transferPortionAcquisitionPrice + '원)·필요경비를 위 일반 양도세 계산기에 그대로 넣어 나머지 세액(장기보유특별공제·기본공제·세율 등)을 계산하세요. 배우자·직계존비속간 부담부증여는 채무 인수를 객관적으로 입증하지 못하면 양도로 보지 않습니다(소득세법§101②·상증세법§47③과 같은 취지 — 이 계산기는 인수 사실이 입증됐다는 전제입니다).'
@@ -36938,6 +37051,8 @@ function renderGiftDonorRegistry(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>증여자 취득일</label><input type="date" data-dfield="acqDate" value="' + (d.acqDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>증여자 취득가액(이 증여자 몫 전체 기준)</label><input type="number" data-dfield="acqPrice" placeholder="원" value="' + (d.acqPrice || '') + '"></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="stdValued"' + (d.stdValued ? ' checked' : '') + '><label>증여재산을 기준시가로 평가함(그러면 양도분 취득가액도 기준시가, 소득령 §159①1호)</label></div>' +
+        '<div class="taxcalc-field"><label>증여자 취득 당시 기준시가</label><input type="number" data-dfield="acqStdPrice" placeholder="원" value="' + (d.acqStdPrice || '') + '"><span class="taxcalc-field-help">기준시가로 평가했을 때만</span></div>' +
         '<div class="taxcalc-field"><label>증여자 필요경비(이 증여자 몫 전체 기준)</label><input type="number" data-dfield="acqExpense" placeholder="원" value="' + (d.acqExpense || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>함께 증여한 다른 재산의 증여재산가액 합계</label><input type="number" data-dfield="otherAssetsGiftValueSum" placeholder="원" value="' + (d.otherAssetsGiftValueSum || '') + '"><span class="taxcalc-field-help">양도세 비과세대상 재산과 함께 부담부증여한 경우만(§159②), 없으면 0</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="send-debt-to-transfer" data-idx="' + idx + '">인수채무분을 양도세 거래로 보내기</button></div>' +
@@ -44705,6 +44820,8 @@ function handleTaxCalcClick_(e){
       const giftDate = document.getElementById('giftDate').value;
       const bg = calculateBurdenedGiftTransferJS({
         assetAcquisitionPrice: donorAcqPrice,
+        // [2026.11.03 복잡사건 91] 기준시가로 평가했으면 취득가액도 기준시가(소득령 §159①1호 괄호)
+        giftValuedByStandardPrice: !!donor.stdValued, acquisitionStandardPrice: numVal(donor.acqStdPrice) || 0,
         assetGiftValue: giftAmount,
         totalDebtAmount: debtAmount,
         otherAssetsGiftValueSum: numVal(donor.otherAssetsGiftValueSum) || 0,
@@ -47389,6 +47506,8 @@ var tcSimple_ = (function(){
         'dfield:acqPrice': function(c){ return c.num('dfield:debtAssumed') > 0; },
         'dfield:acqExpense': function(c){ return c.num('dfield:debtAssumed') > 0; },
         'dfield:otherAssetsGiftValueSum': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:stdValued': function(c){ return c.num('dfield:debtAssumed') > 0; },
+        'dfield:acqStdPrice': function(c){ return c.num('dfield:debtAssumed') > 0 && c.v('dfield:stdValued') === true; },
         'dfield:priorPaidTax': function(c){ return c.num('dfield:priorAmount') > 0; },
         'dfield:priorGiftTaxableBase': function(c){ return c.num('dfield:priorAmount') > 0; },
         'dfield:priorRelationDeductionUsed': function(c){ return c.num('dfield:priorAmount') > 0; },
@@ -47498,7 +47617,7 @@ var tcSimple_ = (function(){
     { re: /^#giftPriorMb/, label: '기존 혼인·출산공제' },
     { re: /^dfield:(priorAmount|priorPaidTax|priorGiftTaxableBase|priorRelationDeductionUsed|priorRelationDeductionUsedOther)$/, label: '10년 내 기증여' },
     { re: /^dfield:genSkip/, label: '세대생략 증여' },
-    { re: /^dfield:(debtAssumed|debtObjProven|acqDate|acqPrice|acqExpense|otherAssetsGiftValueSum)$/, label: '부담부증여' },
+    { re: /^dfield:(debtAssumed|debtObjProven|acqDate|acqPrice|acqExpense|otherAssetsGiftValueSum|stdValued|acqStdPrice)$/, label: '부담부증여' },
     { re: /^hfield:(hasPriorGift|priorGift)/, label: '사전증여' },
     { re: /^dfield:(category|oneYear|twoYear)/, label: '처분재산·채무 산입(부표4)' },
     { re: /^(#ihBusiness|field:(decedentOwnership|decedentCeoTenure|heirAge18OrOlder|heirEngagedInBusiness|heirBecameOfficer|heirBecameCeo))/, label: '가업상속공제' },
@@ -55551,6 +55670,7 @@ function rwAiApplyEdit_(id, content){
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">기록 비우기</button>
+        <button type="button" class="ghost-btn" id="stBtnSaveTimes" title="저장할 때마다 걸린 시간 — 서버 안에서 걸린 시간(최근 6시간)과 이 기기에서 잰 왕복 시간(최근 100건), 뒤에서 할 일 남은 수">저장 걸린 시간</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">자가점검</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">개선 후보</button>
         <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">수정안</button>
@@ -55981,6 +56101,22 @@ function rwAiApplyEdit_(id, content){
       }).catch(function(err){ bugList.textContent = '불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
     }
     document.getElementById('stBtnBugRefresh').addEventListener('click', loadBugs);
+    // [2026.11.03] 저장 걸린 시간(세무사님 "권장안대로 하자" — 저장 기다림 전수조사 ⑧). 서버 기록(Code.js saveTimeNote_) + 이 기기 왕복(script.html nxSaveTimeNote_)
+    document.getElementById('stBtnSaveTimes').addEventListener('click', function(){
+      bugList.textContent = '불러오는 중…';
+      callGas('save_times', {}).then(function(res){
+        var mine = []; try { mine = JSON.parse(localStorage.getItem('nxSaveTimes') || '[]').slice().reverse(); } catch (e) {}
+        var NM = { work_update_subtask: '하위업무 고침', work_add_subtask: '하위업무 추가', work_delete_subtask: '하위업무 지움', work_update_case: '사건 고침', work_create_case: '사건 만들기', work_delete_case: '사건 지움', booking_set_result: '예약 결과', approve: '예약 승인', reject: '예약 거절', booking_admin_create: '예약 직권등록', client_add_consult_log: '상담기록 추가', client_update_consult_log: '상담기록 고침', client_delete_consult_log: '상담기록 지움', client_save_client: '고객 저장', case_proc: '사건처리 도구', createFolder: '폴더 만들기', uploadFile: '파일 올리기', moveItem: '파일 옮기기', renameItem: '이름 바꾸기', deleteItem: '파일 지우기', improve_request_save: '개선요구 저장' };
+        var nm = function(a){ return NM[a] || ('그 밖 저장 · ' + a); };
+        var sec = function(ms){ return (Math.round(ms / 100) / 10).toFixed(1) + '초'; };
+        var srv = (res && res.items) || [];
+        bugList.innerHTML = '<div style="margin-bottom:4px;">뒤에서 할 일 남은 수: <b>' + escapeHtml(String(res && res.뒤에남은일 != null ? res.뒤에남은일 : '?')) + '</b></div>'
+          + '<div style="font-weight:600; margin-top:6px;">이 기기에서 잰 시간(누르고 답 받기까지) ' + mine.length + '건</div>'
+          + (mine.length ? mine.slice(0, 40).map(function(x){ var d = new Date(x[0]); return '<div style="padding:2px 0; border-top:1px solid var(--line); white-space:nowrap; overflow-x:auto;">' + escapeHtml(('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + ' ' + d.toTimeString().slice(0, 8)) + ' · <b>' + sec(x[2]) + '</b> · ' + escapeHtml(x[3] || nm(x[1])) + '</div>'; }).join('') : '<div class="settings-tool-desc">아직 없음 — 보낼 함을 쓰는 저장(예약 결과·하위업무)부터 적힙니다.</div>')
+          + '<div style="font-weight:600; margin-top:8px;">서버 안에서 걸린 시간(최근 6시간) ' + srv.length + '건</div>'
+          + (srv.length ? srv.slice(0, 60).map(function(x){ return '<div style="padding:2px 0; border-top:1px solid var(--line); white-space:nowrap; overflow-x:auto;">' + escapeHtml(x[0]) + ' · <b' + (x[2] > 5000 ? ' style="color:#b3261e;"' : '') + '>' + sec(x[2]) + '</b> · ' + escapeHtml(nm(x[1])) + '</div>'; }).join('') : '<div class="settings-tool-desc">아직 없음</div>');
+      }).catch(function(e){ bugList.textContent = '오류: ' + nxErrText_(e); });
+    });
     document.getElementById('stBtnSelfCheck').addEventListener('click', function(){
       bugList.textContent = '🩺 자가점검 중… (30초쯤 걸립니다)';
       callGas('self_check_run', {}).then(function(res){
@@ -58033,7 +58169,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai.mode-side #nxAiToSide, .nxai.mode-side #nxAiHide{ display:none; }
   .nxai.mode-tab #nxAiPin, .nxai.mode-tab #nxAiCollapse, .nxai.mode-tab #nxAiOpenTab, .nxai.mode-tab #nxAiNewBtnSide, .nxai.mode-tab .nxai-resize{ display:none; }
   .nxai.mode-tab .nxai-body{ padding:18px 22px; }
-  .nxai.mode-tab .nxai-msg.ai{ max-width:880px; }
+  /* [2026.11.03] 세무사님 "창이 충분히 넓을 때 창을 모두 사용하지 않는다. 질문 답변 모두 창너비의 90%를 사용하여 줄 수를 줄였으면"(요청 R2611021757) — 답 880px 상한·질문 88% → 둘 다 90% */
+  .nxai.mode-tab .nxai-msg.ai{ max-width:90%; }
+  .nxai.mode-tab .nxai-msg.me{ max-width:90%; }
   #sideAI.nxai-away{ display:none; }
 
   /* ===== 사이드바 모드 — 기존 사이드바처럼 남색 바탕 유지(세무사님 요청 사항) ===== */
@@ -64853,6 +64991,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   var CALLGAS_SHARED_TTL_MS_ = 60000;
   var CALLGAS_READONLY_RE_ = /(^|_)(get|list|search|read|lookup|load|check)/i;
   var callGasShared_ = {};
+  // [2026.11.03] 세무사님 "권장안대로 하자"(저장 기다림 전수조사 ②) — 예전엔 어떤 저장이든(이어 보기 위치 저장까지) 목록 기억을 통째로 지워
+  //  화면을 옮길 때마다 사건 목록을 다시 받았다(운영 기록 319번). 이제 사건·고객 목록에 닿을 수 있는 저장만 지운다. 빠뜨린 저장이 있어도 기억은 1분이면 저절로 새로 받는다.
+  var CALLGAS_LIST_WRITE_RE_ = /^(work_|client_|case_|booking_|link_booking|taxpayer_|approve|reject|saveCase|ensure_case|ledger_|family_|createFolder|moveItem|renameItem|deleteItem|restoreItem)/;
+  function callGasTouchesLists_(action){ return CALLGAS_LIST_WRITE_RE_.test(action) && !CALLGAS_READONLY_RE_.test(action); }
   function callGas(action, payload){
     var isPlain = !payload || Object.keys(payload).length === 0;
     if (CALLGAS_SHARED_READS_[action] && isPlain){
@@ -64868,13 +65010,96 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
       return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
     }
-    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0){
+    if (callGasTouchesLists_(action)){
       // [2026.10.09 버그수정] 저장 "시작"에만 기억을 지우면, 저장이 도는 사이 다른 화면이 사건 목록을 읽어 저장 전 목록이
       // 다시 1분간 기억됐다(시험 사건 8개를 만들었는데 목록엔 6개만 보임 — 실사용 점검에서 발견). 끝날 때도 한 번 더 지운다.
       callGasShared_ = {};
       return callGasRaw_(action, payload).then(function(res){ callGasShared_ = {}; return res; }, function(err){ callGasShared_ = {}; throw err; });
     }
     return callGasRaw_(action, payload);
+  }
+  // [2026.11.03] 보낼 함 — 화면에 먼저 반영하고 서버엔 뒤에서 보낸다(세무사님 "입력정보를 임시기억했다가 백그라운드로 정리하고 화면에서 바로 넘어가는
+  //  방법은 없나?" → 전수조사 → "권장안대로 하자"). 보낸 것은 이 기기(localStorage)에 적어 두고, 서버가 받았다고 답하면 지운다.
+  //  · 실패하면 화면 아래 띠에 「저장 안 됨」과 [다시 보내기]·[지우기] — 소리 없이 사라지지 않는다.
+  //  · 창을 닫았다 열면 아직 못 보낸 것을 다시 보낸다. 서버는 같은 보낼 함 번호(_ob)를 한 번만 실행한다(Code.js dispatchClientAction_).
+  //  · 세액 확정·신고서처럼 결과를 보고 판단하는 일은 이 함을 쓰지 않고 지금처럼 기다린다(결정 ②).
+  var NX_OUTBOX_KEY_ = 'nxOutbox', nxOutboxHooks_ = {}, nxOutboxChains_ = {};
+  function nxOutboxRead_(){ try { var a = JSON.parse(localStorage.getItem(NX_OUTBOX_KEY_) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function nxOutboxWrite_(a){ try { localStorage.setItem(NX_OUTBOX_KEY_, JSON.stringify(a.slice(-50))); } catch (e) {} }
+  function nxOutboxPatch_(id, patch){ var a = nxOutboxRead_(); a.forEach(function(j){ if (j.id === id) Object.assign(j, patch); }); nxOutboxWrite_(a); }
+  function nxOutboxDrop_(id){ nxOutboxWrite_(nxOutboxRead_().filter(function(j){ return j.id !== id; })); }
+  // opt: { label: '띠에 보일 이름', onDone(res), onFail(err문구) } — 돌려주는 프라미스는 서버 답(실패해도 거절하지 않고 null)
+  function nxSaveLater_(action, payload, opt){
+    opt = opt || {};
+    var id = 'ob' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    var job = { id: id, action: action, payload: Object.assign({}, payload || {}, { _ob: id }), label: String(opt.label || '저장').slice(0, 60), at: Date.now(), state: 'sending', tries: 0 };
+    var a = nxOutboxRead_(); a.push(job); nxOutboxWrite_(a);
+    nxOutboxHooks_[id] = opt;
+    // 같은 열쇠(opt.key — 예: 같은 사건 하위업무)는 앞 저장이 끝난 뒤 차례로 보낸다(빨리 두 번 누르면 순서가 뒤바뀌지 않게)
+    if (opt.key){ var prev = nxOutboxChains_[opt.key] || Promise.resolve(); var p = prev.then(function(){ return nxOutboxSend_(job); }); nxOutboxChains_[opt.key] = p; nxOutboxPatch_(id, { state: 'sending' }); nxOutboxBar_(); return p; }
+    return nxOutboxSend_(job);
+  }
+  function nxOutboxSend_(job){
+    nxOutboxPatch_(job.id, { state: 'sending', tries: (job.tries || 0) + 1, sentAt: Date.now() }); nxOutboxBar_();
+    var t0 = Date.now(), hook = nxOutboxHooks_[job.id] || {};
+    return callGas(job.action, job.payload).then(function(res){
+      nxSaveTimeNote_(job.action, Date.now() - t0, job.label);
+      if (!res || res.success === false || res.error){
+        var why = (res && (res.message || res.error)) || '서버 답이 없습니다';
+        nxOutboxPatch_(job.id, { state: 'failed', err: String(why).slice(0, 200) }); nxOutboxBar_();
+        toast('저장 안 됨 — ' + job.label + ': ' + why);
+        try { if (hook.onFail) hook.onFail(why); } catch (e) {}
+        return null;
+      }
+      nxOutboxDrop_(job.id); delete nxOutboxHooks_[job.id]; nxOutboxBar_();
+      try { if (hook.onDone) hook.onDone(res); } catch (e) {}
+      return res;
+    }, function(err){
+      var why = typeof nxErrText_ === 'function' ? nxErrText_(err) : String(err && err.message || err);
+      nxOutboxPatch_(job.id, { state: 'failed', err: String(why).slice(0, 200) }); nxOutboxBar_();
+      toast('저장 안 됨 — ' + job.label + ' (화면 아래 「다시 보내기」)');
+      try { if (hook.onFail) hook.onFail(why); } catch (e) {}
+      return null;
+    });
+  }
+  // 화면 아래 작은 띠 — 보내는 중이면 「저장 중 n건」, 실패가 있으면 붉은 띠와 단추
+  function nxOutboxBar_(){
+    var a = nxOutboxRead_(), sending = a.filter(function(j){ return j.state === 'sending'; }), failed = a.filter(function(j){ return j.state === 'failed'; });
+    var bar = document.getElementById('nxOutboxBar');
+    if (!sending.length && !failed.length){ if (bar) bar.remove(); return; }
+    if (!bar){
+      bar = document.createElement('div'); bar.id = 'nxOutboxBar'; bar.setAttribute('role', 'status');
+      bar.style.cssText = 'position:fixed; left:12px; bottom:12px; z-index:9000; max-width:min(440px, calc(100vw - 24px)); padding:7px 10px; border-radius:8px; font-size:12.5px; line-height:1.5; box-shadow:0 2px 8px rgba(0,0,0,.18);';
+      bar.addEventListener('click', function(ev){
+        var b = ev.target.closest && ev.target.closest('[data-ob-act]'); if (!b) return;
+        var act = b.getAttribute('data-ob-act'), id = b.getAttribute('data-ob-id');
+        var list = nxOutboxRead_().filter(function(j){ return j.state === 'failed' && (!id || j.id === id); });
+        if (act === 'retry') list.forEach(function(j){ nxOutboxSend_(j); });
+        else if (act === 'drop') nxConfirm_('저장 안 된 ' + list.length + '건을 지울까요?\n\n지우면 서버에 보내지 않습니다(화면에 먼저 보였던 값은 다음에 새로 열 때 서버 값으로 돌아갑니다).').then(function(ok){ if (!ok) return; list.forEach(function(j){ nxOutboxDrop_(j.id); }); nxOutboxBar_(); });
+      });
+      document.body.appendChild(bar);
+    }
+    if (failed.length){
+      bar.style.background = '#fff4f3'; bar.style.border = '1px solid #b3261e'; bar.style.color = '#4a1410';
+      bar.innerHTML = '<b style="color:#b3261e;">저장 안 됨 ' + failed.length + '건</b>' + (sending.length ? ' · 저장 중 ' + sending.length + '건' : '')
+        + failed.slice(0, 4).map(function(j){ return '<div style="overflow-wrap:anywhere;">▪ ' + esc(j.label) + ' — ' + esc(j.err || '') + '</div>'; }).join('')
+        + (failed.length > 4 ? '<div>그 밖 ' + (failed.length - 4) + '건</div>' : '')
+        + '<div style="margin-top:4px; display:flex; gap:6px;"><button type="button" class="save-btn sm" data-ob-act="retry">다시 보내기</button><button type="button" class="ghost-btn sm" data-ob-act="drop">지우기</button></div>';
+    } else {
+      bar.style.background = '#fff'; bar.style.border = '1px solid var(--line, #d9dde5)'; bar.style.color = 'inherit';
+      bar.textContent = '저장 중 ' + sending.length + '건 — 다른 일을 하셔도 됩니다';
+    }
+  }
+  // 창을 다시 열었을 때 — 못 보낸 것(보내는 중에 창이 닫힘)은 다시 보내고, 실패한 것은 띠로 보인다. 로그인 뒤에만(10-14 장애)
+  function nxOutboxResume_(){
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
+    nxOutboxRead_().forEach(function(j){ if (j.state === 'sending' && Date.now() - (j.sentAt || j.at || 0) > 120000) nxOutboxSend_(j); }); // 2분 넘게 답이 없던 것만(다른 창이 보내는 중일 수 있음)
+    nxOutboxBar_();
+  }
+  // [2026.11.03] 저장마다 걸린 시간(화면에서 잰 왕복) — 이 기기에 최근 100건. 설정 › 시스템 관리 「저장 걸린 시간」이 서버 기록과 함께 보인다
+  function nxSaveTimeNote_(action, ms, label){
+    try { var a = JSON.parse(localStorage.getItem('nxSaveTimes') || '[]'); a.push([Date.now(), String(action).slice(0, 40), ms, String(label || '').slice(0, 40)]); localStorage.setItem('nxSaveTimes', JSON.stringify(a.slice(-100))); } catch (e) {}
   }
   // [2026.10.08] 버그 자동기록 — 화면 스크립트 오류를 서버 _오류기록.json에 남긴다(Code.js ai_logBug).
   // 같은 오류는 한 번만, 한 번 열 때 최대 10건(오류가 반복돼 서버를 두드리지 않게).
@@ -65519,6 +65744,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       tbCollapseInit_();
       showView('dashboard');
       if (typeof initDashboard === 'function') initDashboard();
+      setTimeout(nxOutboxResume_, 3000); // [2026.11.03] 보낼 함에 남은 것 다시 보내기
       setTimeout(nxPlaceOffer_, 2500); // [2026.10.22] 이어 보기 띠
       if (typeof initAiSidebar === 'function') initAiSidebar();
       // 작업관리 "새 사건" 폼의 고객명 자동완성(clientNameOptions)이 처음부터 채워져 있도록,
@@ -66068,6 +66294,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxCbGo_(nxCbViewOf_(v), id, true);
     });
     document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length) nxCbLoadCases_(); });
+    document.getElementById('cbEditCase').addEventListener('click', function(){ nxCaseJump_('workmanage', NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
     document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
     // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
@@ -66145,6 +66372,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
     }
     meta.innerHTML = bits.join(' · ');
+    var eb = document.getElementById('cbEditCase'); if (eb) eb.hidden = !id;
   }
   // 법령정보를 "자료" 메뉴(사건과 상관없이)로 열면 머리줄 없이 연다 — 작업공간의 근거 탭으로 열면 머리줄과 함께
   function nxCbSetLawFree_(free){ NX_CB_.lawFree = !!free; }
