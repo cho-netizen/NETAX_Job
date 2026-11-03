@@ -2182,6 +2182,17 @@ function openNonBusinessLandModal_(idx){
         // [2026.10.19 조견표 2부-06 원문 대조] 시행령 §168의6은 양도일 현재가 아니라 기간 합계(직전 5년·직전 3년·전체 비율)로 판정
         '<div class="taxcalc-grid"><div class="taxcalc-field"><label>그중 양도일 직전 5년 안(년)</label><input type="number" id="nblBizLast5" placeholder="비우면 양도일까지 이어진 것으로" step="0.1"></div>' +
           '<div class="taxcalc-field"><label>그중 직전 3년 안(년)</label><input type="number" id="nblBizLast3" placeholder="비우면 양도일까지 이어진 것으로" step="0.1"></div></div>' +
+        // [2026.11.02 복잡사건 23] 시행령 §168의14③·§168의8③2호 — 기간과 상관없이 사업용으로 보는 토지(상속·증여 8년 자경, 수용, 상속 농지)
+        '<details class="taxcalc-details" style="margin:6px 0;"><summary>사업용으로 보는 경우(상속·증여·수용·종중)</summary><div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label for="nblAcqCause">취득 원인</label><select id="nblAcqCause"><option value="purchase">매매 등</option><option value="inheritance">상속</option><option value="gift">증여</option></select></div>' +
+          '<div class="taxcalc-field"><label for="nblInhDate">상속개시일·증여일</label><input type="date" id="nblInhDate"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblAncestor8"><label for="nblAncestor8">부모(직계존속)·배우자가 8년 이상 재촌·자경한 땅을 그분께 받음</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblUrbanAtTransfer"><label for="nblUrbanAtTransfer">양도 당시 도시지역 안(녹지지역·개발제한구역은 빼고)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblExpropriated"><label for="nblExpropriated">공익사업 협의매수·수용</label></div>' +
+          '<div class="taxcalc-field"><label for="nblNoticeDate">사업인정고시일</label><input type="date" id="nblNoticeDate"></div>' +
+          '<div class="taxcalc-field"><label for="nblAcqDate">취득일(상속이면 돌아가신 분 취득일)</label><input type="date" id="nblAcqDate"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblClan"><label for="nblClan">종중 소유 농지(2005년 말까지 취득)</label></div>' +
+        '</div></details>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblSignificantReason"><label for="nblSignificantReason">거주 또는 사업과 직접 관련 있다고 인정할 상당한 이유(시행령상 예외, 별도 확인)</label></div>' +
         '<button type="button" class="taxcalc-run-btn" id="nblRunBtn" style="margin-top:8px;">판정하기</button>' +
         '<div id="nblResult"></div>' +
@@ -2202,6 +2213,11 @@ function openNonBusinessLandModal_(idx){
     const holdingYears = numVal(overlay.querySelector('#nblHoldingYears').value);
     const input = { landType: landType, holdingYears: holdingYears, hasSignificantReasonException: overlay.querySelector('#nblSignificantReason').checked,
       transferDate: (transferAssets[idx] || {}).transferDate || '', businessUseYearsLast5: overlay.querySelector('#nblBizLast5').value, businessUseYearsLast3: overlay.querySelector('#nblBizLast3').value }; // [2026.10.19] 양도일 2015.2.3. 전이면 80% 기준
+    const ta_ = transferAssets[idx] || {}, cause_ = overlay.querySelector('#nblAcqCause').value; // [2026.11.02] 사업용 의제 칸
+    Object.assign(input, { acquisitionCause: cause_, inheritanceDate: overlay.querySelector('#nblInhDate').value || '', ancestorFarmed8Years: overlay.querySelector('#nblAncestor8').checked,
+      isUrbanAreaAtTransfer: overlay.querySelector('#nblUrbanAtTransfer').checked, isExpropriated: overlay.querySelector('#nblExpropriated').checked,
+      publicNoticeDate: overlay.querySelector('#nblNoticeDate').value || '', acquisitionDate: ta_.acquisitionDate || '',
+      decedentAcquisitionDate: overlay.querySelector('#nblAcqDate').value || '', isClanOwnedFarmland: overlay.querySelector('#nblClan').checked, clanAcquisitionDate: overlay.querySelector('#nblClan').checked ? '2005-12-31' : '' });
     if (landType === 'farmland'){
       input.meetsResidencyAndCultivation = overlay.querySelector('#nblMeetsResidency').checked;
       input.businessUseYears = numVal(overlay.querySelector('#nblBizYearsFarm').value);
@@ -2224,6 +2240,7 @@ function openNonBusinessLandModal_(idx){
     if (r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
     html += taxCalcResultRow('비사업용토지 여부', r.비사업용여부 ? '해당(세율 10%p 가산)' : '해당 없음', { total: true });
+    if (r.사업용의제) html += taxCalcResultRow('사업용으로 보는 근거', r.사업용의제);
     html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
     html += '<button type="button" class="taxcalc-run-btn" id="nblApplyBtn" style="margin-top:8px;">이 판정결과로 체크하기</button>';
     html += '</div>';
@@ -2233,6 +2250,62 @@ function openNonBusinessLandModal_(idx){
       close();
       renderTransferPane();
       showToast('비사업용토지 ' + (r.비사업용여부 ? '해당' : '해당 없음') + '으로 체크했습니다.', 'success');
+    });
+  });
+}
+// [2026.11.02 복잡사건 24] 대주주 판정(소득세법 시행령 §157·§167의8) — 넥스 도구와 같은 엔진 함수(checkMajorShareholderJS)
+function openMajorShareholderModal_(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(600px, 94vw);">' +
+      '<div class="modal-head"><span>대주주 판정</span><span class="modal-close" title="닫기" role="button" id="btnCloseMs">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-field"><label for="msMarket">시장</label><select id="msMarket"><option value="kospi">코스피</option><option value="kosdaq">코스닥</option><option value="konex">코넥스</option><option value="unlisted">비상장</option></select></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label for="msOwnRatio">직전 사업연도 말 본인 지분(%)</label><input type="number" id="msOwnRatio" step="0.001"></div>' +
+          '<div class="taxcalc-field"><label for="msOwnValue">그날 본인 보유 시가총액(원)</label><input type="number" id="msOwnValue"></div>' +
+        '</div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="msLargest"><label for="msLargest">본인과 특수관계인 지분 합계가 그 회사에서 가장 많음(최대주주)</label></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label for="msRelRatio">더할 특수관계인 지분 합계(%)</label><input type="number" id="msRelRatio" step="0.001"></div>' +
+          '<div class="taxcalc-field"><label for="msRelValue">그 시가총액 합계(원)</label><input type="number" id="msRelValue"></div>' +
+        '</div>' +
+        '<div id="msUnlisted" style="display:none;" class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="msVenture"><label for="msVenture">장외에서 거래되는 벤처기업 주식(기준 40억)</label></div>' +
+          '<div class="taxcalc-field"><label for="msAfterRatio">기준일 뒤 취득으로 늘어난 지분(%)</label><input type="number" id="msAfterRatio" step="0.001"></div>' +
+          '<div class="taxcalc-field"><label for="msCrossDate">4% 이상이 된 날</label><input type="date" id="msCrossDate"></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="msRunBtn" style="margin-top:8px;">판정하기</button>' +
+        '<div id="msResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseMs').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  overlay.querySelector('#msMarket').addEventListener('change', function(){ overlay.querySelector('#msUnlisted').style.display = this.value === 'unlisted' ? '' : 'none'; });
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#msRunBtn').addEventListener('click', function(){
+    const v = function (id) { return overlay.querySelector(id).value; };
+    const r = window.checkMajorShareholderJS({ marketType: v('#msMarket'), transferDate: (document.getElementById('stTransferDate') || {}).value || '',
+      ownRatioPct: v('#msOwnRatio'), ownMarketValue: numVal(v('#msOwnValue')), isLargestShareholderGroup: overlay.querySelector('#msLargest').checked,
+      relatedRatioPct: v('#msRelRatio'), relatedMarketValue: numVal(v('#msRelValue')), isVentureOtcTraded: overlay.querySelector('#msVenture').checked,
+      ratioAfterAcquisitionPct: v('#msAfterRatio'), crossedThresholdDate: v('#msCrossDate') });
+    const box = overlay.querySelector('#msResult');
+    if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('대주주 여부', r.대주주여부 ? '대주주' : '대주주 아님', { total: true });
+    html += taxCalcResultRow('기준(' + r.시장 + ')', r.기준);
+    html += taxCalcResultRow('판정 근거', r.판정근거);
+    html += taxCalcResultRow('더한 특수관계인', r.상세.더한_범위);
+    html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+    html += '<button type="button" class="taxcalc-run-btn" id="msApplyBtn" style="margin-top:8px;">이 판정으로 「대주주」 칸 맞추기</button></div>';
+    box.innerHTML = html;
+    box.querySelector('#msApplyBtn').addEventListener('click', function(){
+      const cb = document.getElementById('stIsDaejuju'); if (cb) { cb.checked = !!r.대주주여부; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+      close(); showToast('대주주 ' + (r.대주주여부 ? '해당' : '해당 없음') + '으로 맞췄습니다.', 'success');
     });
   });
 }
@@ -3204,11 +3277,18 @@ function openTaxReliefJudgeModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihGiftedWithin2y"><label for="ihGiftedWithin2y">일반주택(이 양도자산)이 상속개시 전 2년 이내 피상속인으로부터 증여받은 것임(해당시 적용배제)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihCoInherited"><label for="ihCoInherited">상속주택이 공동상속주택(2인 이상 공동소유)임</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihLargestShare">[공동상속일 때만]<label for="ihLargestShare">신청인이 최대지분자임</label></div>' +
+          '<div class="taxcalc-field"><label for="ihInhDate">상속개시일</label><input type="date" id="ihInhDate" min="1900-01-01" max="2099-12-31" title="이 양도주택(일반주택)을 상속개시일 뒤에 취득했으면 상속주택 특례가 없습니다(시행령 §155② 괄호)"></div>' +
+          '<div class="taxcalc-field"><label for="ihSameHH">상속개시 당시 돌아가신 분과 같은 세대</label><select id="ihSameHH"><option value="">모름</option><option value="y">예</option><option value="n">아니오</option></select></div>' +
+          '<div class="taxcalc-field"><label for="ihMerged">[같은 세대면] 동거봉양하려고 세대를 합침</label><select id="ihMerged"><option value="">모름</option><option value="y">예</option><option value="n">아니오</option></select></div>' +
+          '<div class="taxcalc-field"><label for="ihAge60">[같은 세대면] 합친 날 직계존속 중 60세 이상 있음</label><select id="ihAge60"><option value="">모름</option><option value="y">예</option><option value="n">아니오</option></select></div>' +
+          '<div class="taxcalc-field"><label for="ihHeldBefore">[같은 세대면] 합치기 전부터 돌아가신 분이 그 집을 보유</label><select id="ihHeldBefore"><option value="">모름</option><option value="y">예</option><option value="n">아니오</option></select></div>' +
         '</div>' +
         '<div id="ohsCb" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field"><label>합가일</label><input type="date" id="cbMergeDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbAge60"><label for="cbAge60">봉양 대상 직계존속(배우자의 직계존속 포함)이 60세 이상</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbSevereIllness">[60세 미만이면]<label for="cbSevereIllness">국민건강보험법령상 중증질환 요양급여 대상자임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbAncNoHouse"><label for="cbAncNoHouse">합친 날 직계존속은 집이 없었음(합친 뒤 취득)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbSelfNoHouse"><label for="cbSelfNoHouse">합친 날 본인 세대는 집이 없었음(합친 뒤 취득)</label></div>' +
         '</div>' +
         '<div id="ohsMc" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="mcMarriageDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -3254,6 +3334,10 @@ function openTaxReliefJudgeModal_(idx){
           '</div>' +
           '<div id="lrManualField" class="taxcalc-field checkbox" style="display:none;"><input type="checkbox" id="lrMeetsRequirements"><label for="lrMeetsRequirements">장기임대주택(가·나·다·라·바·사·아·자목 중 해당, 등록시기·면적·호수 등 세부요건은 직접 확인) 또는 장기어린이집 요건 충족(별도 확인)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrBeforePeriod"><label for="lrBeforePeriod">임대기간요건(10년 등)을 채우기 전에 거주주택을 양도함(시행령 §155㉑ — 특례 적용, 뒤에 못 채우면 추징)</label></div>' +
+          '<div class="taxcalc-field"><label>임대 등록 말소일(말소됐으면)</label><input type="text" id="lrDeregDate" placeholder="YYYY-MM-DD" maxlength="10"></div>' +
+          '<div class="taxcalc-field"><label>말소 사유</label><select id="lrDeregReason"><option value="">모름</option><option value="auto">임대의무기간 끝나 자동 말소</option><option value="voluntary">의무기간 중 자진 말소</option></select></div>' +
+          '<div class="taxcalc-field"><label>[자진 말소] 의무기간 절반 이상 임대</label><select id="lrDeregHalf"><option value="">모름</option><option value="y">예</option><option value="n">아니오</option></select></div>' +
+          '<div class="taxcalc-field"><label>[임대주택 여러 채] 처음 말소된 날</label><input type="text" id="lrFirstDereg" placeholder="YYYY-MM-DD" maxlength="10"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrHasPriorResidence"><label for="lrHasPriorResidence">민간임대주택 등록(또는 어린이집 운영) 이력이 있는 거주주택을 과거에 이미 양도한 적이 있음("직전거주주택보유주택" — 해당시 안분비과세)</label></div>' +
         '</div>' +
         '<div id="ohsCh" class="taxcalc-grid" style="display:none;">' +
@@ -3392,6 +3476,7 @@ function openTaxReliefJudgeModal_(idx){
   });
   overlay.querySelector('#ohsRunBtn').addEventListener('click', function(){
     // [2026.11.01 종합판정 ①] 종전주택 취득일·양도일은 위 기본 요건 칸 값(비면 카드 값) — 카드 값은 바꾸지 않음
+    const ohsTri_ = function (id) { const v = (overlay.querySelector('#' + id) || {}).value; return v === 'y' ? true : v === 'n' ? false : undefined; };
     const ohsA_ = { transferDate: (overlay.querySelector('#ohjT').value || '').trim() || transferAssets[idx].transferDate, acquisitionDate: (overlay.querySelector('#ohjA').value || '').trim() || transferAssets[idx].acquisitionDate };
     const provision = provisionSel.value;
     let r;
@@ -3509,14 +3594,18 @@ function openTaxReliefJudgeModal_(idx){
       r = calculateInheritedHouseExclusionJS({
         isGeneralHouseGiftedWithin2Years: document.getElementById('ihGiftedWithin2y').checked,
         isCoInheritedHouse: document.getElementById('ihCoInherited').checked,
-        isLargestShareHolder: document.getElementById('ihLargestShare').checked
+        isLargestShareHolder: document.getElementById('ihLargestShare').checked,
+        // [2026.11.02] 시행령 §155② 괄호(상속개시 당시 보유한 일반주택)·단서(같은 세대 상속은 동거봉양 합가 전부터 보유한 주택만)
+        inheritanceDate: document.getElementById('ihInhDate').value || undefined, generalHouseAcquisitionDate: ohsA_.acquisitionDate,
+        sameHouseholdAtInheritance: ohsTri_('ihSameHH'), mergedForCohabitation: ohsTri_('ihMerged'), ancestorAge60AtMerge: ohsTri_('ihAge60'), heldBeforeMerge: ohsTri_('ihHeldBefore')
       });
     } else if (provision === 'cb'){
       r = calculateCohabitationMergerExclusionJS({
         mergeDate: document.getElementById('cbMergeDate').value,
         transferDate: ohsA_.transferDate,
         directAncestorAge60OrOlder: document.getElementById('cbAge60').checked,
-        severeIllnessException: document.getElementById('cbSevereIllness').checked
+        severeIllnessException: document.getElementById('cbSevereIllness').checked,
+        ancestorHeldHouseAtMerge: document.getElementById('cbAncNoHouse').checked ? false : undefined, selfHeldHouseAtMerge: document.getElementById('cbSelfNoHouse').checked ? false : undefined // 시행령 §155④ 각자 1주택
       });
     } else if (provision === 'mc'){
       r = calculateMarriageMergerExclusionJS({
@@ -3541,8 +3630,11 @@ function openTaxReliefJudgeModal_(idx){
       const lrInput = {
         residencePeriodMonths: numVal(document.getElementById('lrResidenceMonths').value),
         hasPriorQualifyingResidence: document.getElementById('lrHasPriorResidence').checked,
-        beforeRentalPeriodMet: document.getElementById('lrBeforePeriod').checked
+        beforeRentalPeriodMet: document.getElementById('lrBeforePeriod').checked,
+        transferDate: ohsA_.transferDate // [2026.11.02 염씨] 말소 뒤 5년(시행령 §155㉓) 판정용
       };
+      const lrDd_ = (document.getElementById('lrDeregDate').value || '').trim();
+      if (lrDd_) { lrInput.deregistration = { date: lrDd_, reason: document.getElementById('lrDeregReason').value || undefined, halfPeriodMet: ohsTri_('lrDeregHalf') }; lrInput.firstDeregistrationDate = (document.getElementById('lrFirstDereg').value || '').trim() || undefined; }
       if (document.getElementById('lrUseMaCalc').checked){
         lrInput.rentalItemMa = {
           rentalYears: numVal(document.getElementById('lrMaYears').value),
@@ -3591,10 +3683,11 @@ function openTaxReliefJudgeModal_(idx){
     const resultBox = document.getElementById('ohsResult');
     if (!r || r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
-    html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
+    html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : (r.판단대기 === true ? '확인 필요(잠정)' : '적용 안 됨'), { total: true });
     html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
     // [2026.10.19] 특례 판정에 그 양도일 연혁이 아직 없으면(예: 일시적 2주택 2023-01-12 전 양도) 경고
     if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600;">' + escapeHtml(r.시점경고) + '</div>';
+    if (r.보유기간_알림) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600;">' + escapeHtml(r.보유기간_알림) + '</div>';
     if (r.적용여부){
       html += '<button type="button" class="taxcalc-run-btn" id="ohsApplyBtn" style="margin-top:8px;">1세대1주택 비과세로 체크하기</button>';
     }
@@ -6626,6 +6719,7 @@ function renderSellerRegistry(){
       '<div class="taxcalc-grid" style="margin-top:8px;">' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-slfield="isTransferorResident"' + idOf('trResident') + '><option value="resident"' + (!isNonResident ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (isNonResident ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">1세대1주택 비과세·고가주택 12억 초과분 과세(§89①3호·§95③)는 거주자만 적용</span></div>' +
         (isNonResident ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isNonResidentTwoYearException"' + idOf('trNonResidentTwoYearException') + (s.isNonResidentTwoYearException ? ' checked' : '') + '><label>출국일 당시 1주택 보유 + 출국 후 2년 이내 양도(시행령§154①2호나·다목)</label></div>' : '') +
+        (isNonResident ? '<div class="taxcalc-field"><label>출국일</label><input type="date" data-slfield="departureDate"' + idOf('trDepartureDate') + ' value="' + (s.departureDate || '') + '" min="1900-01-01" max="2099-12-31" title="넣으면 출국일부터 2년이 지난 양도는 위 예외를 적용하지 않음"></div>' : '') +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>신고 상태 · 가산세(이 양도인 몫)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -7053,12 +7147,12 @@ function renderTransferPane(){
         '<div class="taxcalc-field"><label>양도비용</label><input type="number" id="stTransferExpenses" placeholder="원"><span class="taxcalc-field-help">증권거래세 등, 없으면 0</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="stMajorityNonBizLand"><label for="stMajorityNonBizLand">[기타자산만] 발행법인 자산의 50%이상이 비사업용토지(§104①9호, 기본세율+10%p 가산)</label></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-controlling-shareholder-modal" title="과점주주 특정주식(§94①4호다목)·부동산과다보유법인 주식(라목) 해당여부를 판정합니다">기타자산(과점주주·부동산과다법인) 판정</button></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="stIsDaejuju"><label for="stIsDaejuju">대주주(국내주식만 해당, 지분율·시가총액 기준은 별도 확인)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="stIsDaejuju"><label for="stIsDaejuju">대주주(국내주식만 해당)</label><button type="button" class="taxcalc-ai-btn" data-action="open-major-shareholder-modal" style="margin-left:6px;" title="직전 사업연도 말 지분율·시가총액으로 대주주인지 판정합니다(소득세법 시행령 §157·§167의8)">대주주 판정</button></div>' +
         '<div class="taxcalc-field"><label>기장누락·미기장 소득금액(대주주만, §115)</label><input type="number" id="stUnrecordedIncome" placeholder="원"><span class="taxcalc-field-help">거래명세 등 기장의무 위반분, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>기장불성실가산세용 거래금액(산출세액 0원일 때만)</label><input type="number" id="stBookkeepingPenaltyTxAmount" placeholder="원"><span class="taxcalc-field-help">산출세액이 없을 때 거래금액×7/10000으로 가산</span></div>' +
         '<div class="taxcalc-field"><label>보유기간(대주주만)</label><input type="number" id="stHoldingMonths" placeholder="개월" maxlength="3"><span class="taxcalc-field-help">12개월 미만이면 30%</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="stIsSmallMedium"><label for="stIsSmallMedium">중소기업 발행주식</label></div>' +
-        '<div class="taxcalc-field"><label>같은 기간 다른 국내외주식 순손익</label><input type="number" id="stPriorNetGain" placeholder="원"><span class="taxcalc-field-help">이익+/손실-, 손익통산용, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>같은 기간 다른 순손익</label><input type="number" id="stPriorNetGain" placeholder="원"><span class="taxcalc-field-help">국내외주식: 이익+/손실- · 기타자산: 부동산 등 묶음 손실 중 이 주식 몫(-)만 · 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>이미 사용한 기본공제액(연 250만원 한도)</label><input type="number" id="stBasicDeductionUsed" placeholder="원"><span class="taxcalc-result-note" id="stBasicDeductionUsedHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">같은 기간 다른 주식양도에서 이미 썼으면</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액공제</label><input type="number" id="stForeignTax" placeholder="원"><span class="taxcalc-field-help">국외주식, 없으면 0</span></div>' +
       '</div>' +
@@ -7084,6 +7178,8 @@ function renderTransferPane(){
         '<div class="taxcalc-field"><label>증여자와의 관계</label><select id="stDonorRelation"><option value="">해당 없음(증여받은 자산 아님)</option><option value="spouse">배우자</option><option value="lineal">직계존속·직계비속</option></select></div>' +
         '<div class="taxcalc-field"><label>증여받은 날</label><input type="date" id="stGiftDate" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>증여자 취득가액</label><input type="number" id="stDonorAcqPrice" placeholder="원"><span class="taxcalc-field-help">이월과세 적용시 이 값을 취득가액으로 씀</span></div>' +
+        // [2026.11.02 복잡사건 24] 이월과세 세율 보유기간은 증여자 취득일부터(§104②2호) — 없으면 받은 사람 보유월수로 셈
+        '<div class="taxcalc-field"><label for="stDonorAcqDate">증여자 취득일</label><input type="date" id="stDonorAcqDate"><span class="taxcalc-field-help">이월과세면 세율 보유기간을 이날부터 셈</span></div>' +
         '<div class="taxcalc-field"><label>낸 증여세 산출세액</label><input type="number" id="stGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">이 자산분</span></div>' +
         '<div class="taxcalc-field"><label>전체 증여세 과세가액</label><input type="number" id="stGiftTaxableValue" placeholder="원"><span class="taxcalc-field-help">이 자산만 증여받았으면 위 취득가액(수증자 기준)과 동일</span></div>' +
       '</div>' +
@@ -7443,6 +7539,7 @@ function collectTransferInput(vals){
     houseConversionDate: vals.isOneHouseOneFamily ? (vals.houseConversionDate || '') : '', // [2026.10.22 양도-4]
     isTransferorResident: vals.isTransferorResident !== false,
     isNonResidentTwoYearException: !!vals.isNonResidentTwoYearException,
+    departureDate: vals.departureDate || '', // [2026.11.02] 비거주자 1주택 예외 2년 확인(엔진은 비거주자일 때만 씀)
     isAdjustedArea: !!vals.isAdjustedArea,
     presaleContractBeforeAdjNotice: !!vals.presaleContractBeforeAdjNotice, presaleNoHouseException: !!vals.presaleNoHouseException, // [2026.10.22 변경-2]
     multiHouseCount: numVal(vals.multiHouseCount) || 0,
@@ -7724,6 +7821,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (label) html += '<div class="taxcalc-calcbasis-title" style="margin-bottom:4px;">' + label + '</div>';
   // [2026.10.19 조견표 0단계] 양도일이 2023 전이면 세율·장특공률 연혁이 아직 없어 현행 기준으로 계산됐다는 경고(엔진 시점경고) — 맨 위에
   if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
+  if (r.보유기간_알림) html += '<div class="taxcalc-result-note" style="color:#7a5c14; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.보유기간_알림) + '</div>'; // [2026.11.02] 상속 자산 피상속인 취득일 빈칸
   if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b3261e; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
   if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 — 해석 A/B 세액, 고르면 기록
   if (r.판단대기안내 && r.판단대기안내.length) html += '<div class="taxcalc-result-note" style="color:#7a5c14; margin:0 0 6px;">' + r.판단대기안내.map(function(x){ return '⚠ ' + escapeHtml(x); }).join('<br>') + '</div>'; // [2026.10.20 J03] 입력을 더 넣어야 판정되는 안내
@@ -8013,6 +8111,7 @@ function renderStockTransferResult(r){
   } else if (r.이월과세_적용여부 === false){
     html += '<div class="taxcalc-result-note">⛔ 이월과세를 적용하지 않았습니다(' + (r.이월과세_미적용사유 || '') + ') — 수증자 본인의 취득가액으로 계산했습니다.</div>';
   }
+  if (r.보유기간_알림) html += '<div class="taxcalc-result-note">' + r.보유기간_알림 + '</div>'; // [2026.11.02] 증여자 취득일 없을 때
   if (r.이월과세_비교){
     html += taxCalcResultRow('(이월과세 적용시 세액)', won(r.이월과세_비교.적용시_세액));
     html += taxCalcResultRow('(이월과세 미적용시 세액)', won(r.이월과세_비교.미적용시_세액));
@@ -8486,6 +8585,11 @@ function renderGiftInheritanceSharedPane_(){
         '<div class="taxcalc-field"><label>발행주식총수등</label><input type="number" id="cdTotalShares" placeholder="주"><span class="taxcalc-field-help">주식등만</span></div>' +
         '<div class="taxcalc-field"><label>이번 출연주식수</label><input type="number" id="cdDonatedShares" placeholder="주"><span class="taxcalc-field-help">주식등만</span></div>' +
         '<div class="taxcalc-field"><label>합산대상 기존 보유 동일법인 주식수</label><input type="number" id="cdPriorRelatedShares" placeholder="주"><span class="taxcalc-field-help">없으면 0, 주식등만</span></div>' +
+        '<div class="taxcalc-field"><label>상속개시일</label><input type="date" id="cdDeathDate"><span class="taxcalc-field-help">상속세만 — 출연일과 함께 넣으면 신고기한(6개월)까지 출연했는지 봄(§16①)</span></div>' +
+        '<div class="taxcalc-field"><label>출연일</label><input type="date" id="cdDonationDate"><span class="taxcalc-field-help">상속세만 — 소유권을 넘긴 날</span></div>' +
+        '<div class="taxcalc-field"><label>이사 현원</label><input type="number" id="cdBoardSize" placeholder="명"><span class="taxcalc-field-help">상속세만 — 5명 미만이면 5명으로 봄</span></div>' +
+        '<div class="taxcalc-field"><label>상속인 이사 수</label><input type="number" id="cdHeirDirectors" placeholder="명"><span class="taxcalc-field-help">상속세만 — 이사 현원 5분의 1을 넘으면 불산입 안 됨(시행령 §13②2호)</span></div>' +
+        '<div class="taxcalc-field"><label>상속인 중요사항 결정권</label><select id="cdHeirControl"><option value="">모름</option><option value="no">없음</option><option value="yes">있음</option></select><span class="taxcalc-field-help">상속세만 — 이사 선임 등을 상속인이 정하면 불산입 안 됨</span></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-charity-donation-exclusion">과세가액 산입액 계산하기</button>' +
       '<div id="taxCalcCharityDonationExclusionResult"></div>' +
@@ -8773,6 +8877,30 @@ function renderGiftInheritanceSharedPane_(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-correction-claim">환급(추가납부)세액 계산</button>' +
       '<div id="taxCalcCorrectionClaimResult"></div>' +
+    '</div>' +
+    // [2026.11.02 「석씨 경매·무상대출」] 상증법 §79 특례 경정청구 — 넥스 도구(calculate_inheritance_special_correction)와 같은 엔진.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>특례 경정청구(상증법 §79)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label for="scKind">사유</label><select id="scKind">' +
+          '<option value="value_drop">상속 후 1년 안 수용·경매·공매로 값 내림</option>' +
+          '<option value="bulk_sale">할증평가 주식 일괄매각</option>' +
+          '<option value="lockup_sale">의무보유 주식 매각</option>' +
+          '<option value="litigation">상속회복·유류분 확정판결</option>' +
+          '<option value="free_use_end">부동산 무상사용 끝남</option>' +
+          '<option value="free_loan_end">무상대출 끝남</option>' +
+          '<option value="collateral_end">무상 담보 끝남</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label for="scEventDate">사유 생긴 날</label><input type="text" class="taxcalc-date" id="scEventDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label for="scDeathDate">상속개시일</label><input type="text" class="taxcalc-date" id="scDeathDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label for="scOrigValue">당초 평가액</label><input type="number" id="scOrigValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label for="scRealValue">보상·경매·매각가액</label><input type="number" id="scRealValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label for="scGiftTax">그 증여세 산출세액</label><input type="number" id="scGiftTax" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label for="scPeriodStart">무상 기간 시작</label><input type="text" class="taxcalc-date" id="scPeriodStart" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label for="scPeriodEnd">무상 기간 끝</label><input type="text" class="taxcalc-date" id="scPeriodEnd" placeholder="YYYY-MM-DD"></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-special-correction">기한·환급 보기</button>' +
+      '<div id="taxCalcSpecialCorrectionResult"></div>' +
     '</div>' +
     '</div>';
   renderGiftDoneeRegistry();
@@ -9736,7 +9864,11 @@ function renderFmvRecognitionResult(r){
     html += taxCalcResultRow(g.항목, g.통과 ? '통과' : '미통과');
     if (g.사유) html += '<div class="taxcalc-result-note">' + g.사유 + '</div>';
   });
-  html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.법정결정기한) {
+    html += taxCalcResultRow('심의 신청 구간', r.심의신청_가능구간 || '해당 없음');
+    html += taxCalcResultRow('법정결정기한', r.법정결정기한);
+  }
+  html += '<div class="taxcalc-result-note">' + (r.심의_안내 ? r.심의_안내 + ' ' : '') + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
 }
@@ -12396,7 +12528,8 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>특정법인이 얻는 이익</label><input type="number" id="scBenefitToCorp" placeholder="원"><span class="taxcalc-field-help">증여재산가액·채무면제이익·자본거래이익·시가차액 등, 별도 계산</span></div>' +
         '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>특정법인의 해당 사업연도 소득금액</label><input type="number" id="scCorpIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14</span></div>' +
-        '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
+        '<div class="taxcalc-field"><label>이 사람 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
+        '<div class="taxcalc-field"><label>가족 합계 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scGroupRatio" placeholder="0~1" title="지배주주와 그 친족 지분 합계 — 30% 이상이면 특정법인(시행령 §34의5⑤). 비우면 이 사람 지분으로 판정"></div>' +
         '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">세대생략 할증 전 금액(서식 10호의6 ㊲ "산출세액 한도" — 할증 ㊳은 한도 뒤에 더함). 비우면 (특정법인 이익 × 지분율)에 누진세율로 자동 계산</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>위 이전거래들의 법인세상당액(지배주주 몫 합계)</label><input type="number" id="scPriorCorpTax1y" placeholder="원"><span class="taxcalc-field-help">㊲ 한도용 — 이전거래 이익을 법인세 빼기 전으로 되돌리고 한도에서 뺌(시행령 §34의5⑨). 없으면 비움</span></div>' +
@@ -12430,7 +12563,7 @@ function renderGiftPane(){
       '<div class="taxcalc-asset-head"><b>⚠ (§41의2, 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFinalSettlement"><label for="edFinalSettlement">정산 신고임(실제소득세액 기준, 체크 안 하면 최초 신고=추정소득세상당액 기준)</label></div>' +
-        '<div class="taxcalc-field"><label>특수관계인이 실제 받은 배당등의 금액</label><input type="number" id="edBaseAmount" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>지분대로보다 더 받은 배당</label><input type="number" id="edBaseAmount" placeholder="원" title="받은 배당 − 지분대로라면 받았을 배당(시행령§31의2②1호) — 받은 배당 전부가 아님"></div>' +
         '<div class="taxcalc-field"><label>최대주주등의 과소배당금액이 차지하는 비율</label><input type="number" step="0.01" min="0" max="1" id="edShortfallRatio" placeholder="0~1"><span class="taxcalc-field-help">시행령§31의2②2호</span></div>' +
         '<div class="taxcalc-field"><label>추정 소득세상당액(선택)</label><input type="number" id="edEstimatedTax" placeholder="원"><span class="taxcalc-field-help">비워두면 시행규칙§10의3① 추정율표로 자동계산, 최초신고만</span></div>' +
         '<div class="taxcalc-field"><label>종합소득과세표준</label><input type="number" id="edComprehensiveBase" placeholder="원"><span class="taxcalc-field-help">초과배당금액발생연도, 초과배당금액 포함된 값 — 입력시 자동계산, 정산신고·종합과세만</span></div>' +
@@ -13166,6 +13299,7 @@ function renderGfEfileResult_(){
 }
 
 let lastInheritanceResult = null;
+let lastInheritanceInput_ = null; // [2026.11.02] 특례 경정청구(§79)가 그 입력으로 줄인 세액을 다시 계산
 let inheritanceHeirs = [{}, {}];
 let inheritanceHeirToolShown = false;
 let taxCalcHeirRegistryHasSpouse = false;
@@ -15841,6 +15975,27 @@ function handleTaxCalcClick_(e){
     const el = document.getElementById('crCorrectedTax');
     el.value = String(total);
     el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (action === 'run-special-correction'){
+    const v = function(id){ const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    const inp = { kind: v('scKind'), eventDate: v('scEventDate') };
+    if (v('scDeathDate')) inp.dateOfDeath = v('scDeathDate');
+    if (v('scOrigValue')) inp.originalValue = numVal(v('scOrigValue'));
+    if (v('scRealValue')) inp.realizedValue = numVal(v('scRealValue'));
+    if (v('scGiftTax')) inp.giftCalculatedTax = numVal(v('scGiftTax'));
+    if (v('scPeriodStart')) inp.periodStart = v('scPeriodStart');
+    if (v('scPeriodEnd')) inp.periodEnd = v('scPeriodEnd');
+    // 상속세를 먼저 계산해 두었으면 그 입력으로 줄인 세액까지 본다.
+    if (inp.kind !== 'litigation' && !/_end$/.test(inp.kind) && lastInheritanceInput_) inp.inheritanceInput = lastInheritanceInput_;
+    const r = window.calculateInheritanceSpecialCorrectionJS(inp);
+    const box = document.getElementById('taxCalcSpecialCorrectionResult');
+    if (r.error){ box.innerHTML = '<div class="taxcalc-result"><p>' + escapeHtml(r.error) + '</p></div>'; return; }
+    const rows = [['사유', r.사유], ['대상', r.대상 ? '예' : '아니오'], ['청구기한', r.청구기한 + (r.기한안 ? ' (기한 안)' : ' (지남)')]];
+    if (r.하락액 != null) rows.push(['하락액', won(r.하락액)]);
+    if (r.환급추정액 != null) rows.push(['상속세 환급 추정', won(r.환급추정액) + ' (납부 ' + won(r.당초_납부세액) + ' → ' + won(r.경정후_납부세액) + ')']);
+    if (r.기간월수 != null) rows.push(['기간·남은 월수', r.기간 + ' · ' + r.남은월수 + '/' + r.기간월수 + '개월']);
+    if (r.환급대상세액 != null) rows.push(['증여세 환급 대상', won(r.환급대상세액)]);
+    box.innerHTML = '<div class="taxcalc-result"><table class="taxcalc-table">' + rows.map(function(x){ return '<tr><th>' + escapeHtml(x[0]) + '</th><td>' + escapeHtml(String(x[1])) + '</td></tr>'; }).join('') + '</table>' +
+      '<ul>' + (r.안내 || []).map(function(t){ return '<li>' + escapeHtml(t) + '</li>'; }).join('') + '</ul><p class="taxcalc-field-help">' + escapeHtml(r.근거) + '</p></div>';
   } else if (action === 'run-correction-claim'){
     const input = {
       taxType: document.getElementById('crTaxType').value,
@@ -15921,6 +16076,7 @@ function handleTaxCalcClick_(e){
         giftReceivedDate: document.getElementById('stGiftDate').value,
         donorRelation: stDonorRelationSel,
         donorAcquisitionPrice: numVal(document.getElementById('stDonorAcqPrice').value) || 0,
+        donorAcquisitionDate: document.getElementById('stDonorAcqDate').value || '',
         doneeOwnAcquisitionPrice: input.acquisitionPrice,
         giftTaxPaid: numVal(document.getElementById('stGiftTaxPaid').value) || 0,
         giftTaxableValue: numVal(document.getElementById('stGiftTaxableValue').value) || 0
@@ -15993,6 +16149,8 @@ function handleTaxCalcClick_(e){
     openTaxReliefJudgeModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-non-business-land-modal'){
     openNonBusinessLandModal_(numVal(btn.dataset.idx));
+  } else if (action === 'open-major-shareholder-modal'){ // [2026.11.02 복잡사건 24]
+    openMajorShareholderModal_();
   } else if (action === 'open-controlling-shareholder-modal'){
     openControllingShareholderModal_();
   } else if (action === 'open-industrial-complex-lot-modal'){
@@ -16583,6 +16741,7 @@ function handleTaxCalcClick_(e){
       corporateTaxAfterCredit: numVal(document.getElementById('scCorpTax').value) || 0,
       corporateTaxableIncome: numVal(document.getElementById('scCorpIncome').value) || 0,
       shareholderOwnershipRatio: numVal(document.getElementById('scShareRatio').value) || 0,
+      groupOwnershipRatio: numVal(document.getElementById('scGroupRatio').value) || 0,
       directGiftTaxEquivalent: numVal(document.getElementById('scDirectGiftTax').value) || 0,
       priorBenefitsWithinOneYear: priorBenefitsArray_('scPriorBenefitsSum'),
       priorCorporateTaxEquivalentWithinOneYear: numVal((document.getElementById('scPriorCorpTax1y') || {}).value) || 0, // [2026.10.20] ㊲ 한도
@@ -16613,7 +16772,13 @@ function handleTaxCalcClick_(e){
       ratioType: document.getElementById('cdRatioType').value,
       totalIssuedShares: numVal(document.getElementById('cdTotalShares').value) || 0,
       donatedShares: numVal(document.getElementById('cdDonatedShares').value) || 0,
-      priorRelatedShares: numVal(document.getElementById('cdPriorRelatedShares').value) || 0
+      priorRelatedShares: numVal(document.getElementById('cdPriorRelatedShares').value) || 0,
+      // [2026.11.02] 상속세 불산입 요건(§16①·시행령 §13②) — 빈칸은 넘기지 않음(계산기가 확인 필요로 남김)
+      dateOfDeath: document.getElementById('cdDeathDate').value || undefined,
+      donationDate: document.getElementById('cdDonationDate').value || undefined,
+      boardSize: numVal(document.getElementById('cdBoardSize').value) || undefined,
+      heirDirectorCount: document.getElementById('cdHeirDirectors').value === '' ? undefined : numVal(document.getElementById('cdHeirDirectors').value),
+      heirControlsKeyDecisions: { yes: true, no: false }[document.getElementById('cdHeirControl').value]
     };
     renderCharityDonationExclusionResult(calculateCharityDonationTaxExclusionJS(input));
   } else if (action === 'run-public-interest-org-penalty'){
@@ -17030,7 +17195,7 @@ function handleTaxCalcClick_(e){
     };
     tcReportFormCorrections_();
     window.tcLastInheritanceInput_ = input; // [2026.10.13] 🔍 2중 검증용 입력 보관
-    renderInheritanceResult(calculateInheritanceTaxJS(input));
+    lastInheritanceInput_ = JSON.parse(JSON.stringify(input)); renderInheritanceResult(calculateInheritanceTaxJS(input));
   } else if (action === 'toggle-gift-calc-basis'){
     const b = document.getElementById('giftCalcBasis-' + numVal(btn.dataset.idx));
     b.style.display = b.style.display === 'none' ? 'block' : 'none';
@@ -18687,6 +18852,7 @@ var tcSimple_ = (function(){
         '#stMajorityNonBizLand': function(c){ return c.v('#stAssetCategory') === 'other_asset'; },
         '#stGiftDate': function(c){ return c.v('#stDonorRelation') !== ''; },
         '#stDonorAcqPrice': function(c){ return c.v('#stDonorRelation') !== ''; },
+        '#stDonorAcqDate': function(c){ return c.v('#stDonorRelation') !== ''; },
         '#stGiftTaxPaid': function(c){ return c.v('#stDonorRelation') !== ''; },
         '#stGiftTaxableValue': function(c){ return c.v('#stDonorRelation') !== ''; }
       }

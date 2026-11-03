@@ -580,7 +580,8 @@ function ledgerCalcGiftInh_(c, body, tax) {
   if (gift && !famRow('g.giftPriorAmount') && typeof famAutoPriorGift_ === 'function') { const fa = famAutoPriorGift_(c, b.input, L); if (fa) [].push.apply(famLines, fa.줄); }
   if (!gift && !chained.length && !famRow('i.priorGiftHeirAmount') && !famRow('i.priorGiftOtherAmount') && typeof famAutoEstatePrior_ === 'function') { const fa = famAutoEstatePrior_(c, b.input, L); if (fa) [].push.apply(famLines, fa.줄); }
   // [2026.11.01 복잡사건 ⑤] 상속 — 종합판정(동거주택·가업상속)이 충족이면 그 엔진칸을 넣는다(가정 over가 뒤에서 이김). 잠정·안 됨은 넣지 않고 알림만
-  if (!gift && L.judge) Object.keys(L.judge).forEach(function (k) { const j = L.judge[k]; if (!/동거주택|가업상속/.test(k) || !j) return; if (j.결론 === '충족' && !j.잠정) { Object.keys(j.엔진칸 || {}).forEach(function (f) { if (b.input[f] === undefined) b.input[f] = j.엔진칸[f]; }); famLines.push('종합판정 ' + j.표시 + ' — 계산에 넣음'); } else famLines.push('종합판정 ' + j.표시 + ' — ' + (j.결론 === '충족' ? '잠정이라 계산에 넣지 않음(경우(안)로 over를 주어 견줄 것)' : '계산에 넣지 않음')); });
+  // [2026.11.02 복잡사건 32·33] 상속인(배우자공제 비율)·거주자(상속·증여 공제 범위)도 — 거주자는 비거주(「안 됨」)여도 그 값이 칸이라 잠정만 아니면 넣음
+  if (L.judge) Object.keys(L.judge).forEach(function (k) { const j = L.judge[k]; if (!j) return; const res_ = /^거주자/.test(k); if (gift ? !res_ : !/동거주택|가업상속|상속인|거주자/.test(k)) return; if (res_ && !Object.keys(j.엔진칸 || {}).length) return; if (res_ ? !j.잠정 : (j.결론 === '충족' && !j.잠정)) { Object.keys(j.엔진칸 || {}).forEach(function (f) { if (b.input[f] === undefined) b.input[f] = j.엔진칸[f]; }); famLines.push('종합판정 ' + j.표시 + ' — 계산에 넣음'); } else famLines.push('종합판정 ' + j.표시 + ' — ' + (j.결론 === '충족' ? '잠정이라 계산에 넣지 않음(경우(안)로 over를 주어 견줄 것)' : '계산에 넣지 않음')); });
   // [2026.10.29 계획서 3판] 경우 이름·가정 — 증여·상속은 엔진 입력 이름(giftAmount·relation·taxableEstateAmount…)으로 이번 계산에만 바꿔 넣는다(장부 값은 그대로)
   const nm = String((body && body.name) || '').trim().slice(0, 60), assumed = [];
   (Array.isArray(body && body.over) ? body.over : []).slice(0, 20).forEach(function (x) {

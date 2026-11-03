@@ -5,7 +5,7 @@
 //  쓰는 곳: ① 넥스 case_ledger do=family·person·transfer·family_drop·chain·plan ② 장부 증여·상속 계산(지난 증여 자동 합산 — ledgerCalcGiftInh_)
 //  ③ 화면 📒 장부 › 가족 탭(같은 함수). GAS 도구라 토큰 0.
 var FAM_PREFIX_ = '_가족_';
-var FAM_KINDS_ = ['증여', '부담부증여', '양도', '상속', '빌림', '갚음', '매매', '그밖'];
+var FAM_KINDS_ = ['증여', '부담부증여', '양도', '상속', '빌림', '갚음', '매매', '재산분할', '그밖'];
 var FAM_RELS_ = ['배우자', '직계존속', '직계비속', '기타친족', '기타'];
 
 function famKeyOf_(c) { return String((c && (c.고객ID || c.고객명 || c.id)) || '').trim(); }
@@ -56,7 +56,22 @@ function famWon_(n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; }
 function famPerson_(F, who) { const w = String(who || '').trim(); if (!w) return null; return F.사람.filter(function (p) { return p.id === w; })[0] || F.사람.filter(function (p) { return p.이름 === w; })[0] || null; }
 function famName_(F, who) { const p = famPerson_(F, who); return p ? p.이름 : String(who || ''); }
 function famSpouseOf_(F, who) { const p = famPerson_(F, who); if (!p) return ''; if (p.배우자) return famName_(F, p.배우자); const q = F.사람.filter(function (x) { return x.배우자 && famName_(F, x.배우자) === p.이름; })[0]; return q ? q.이름 : ''; }
-function famIsGift_(t) { return t && /^(증여|부담부증여)$/.test(t.종류); }
+function famIsGift_(t) { return t && /^(증여|부담부증여)$/.test(t.종류) && !famGiftReturn_(t).없던것; }
+// [2026.11.02 「차씨 되돌림」] 증여 반환(상증법 §4④) — 증여 줄의 「반환일」을 보고 판정. 금전은 제외, 반환 전에 세무서가 결정(§76)했으면(「결정일」) 제외.
+//  신고기한(증여일 속한 달 말일부터 3개월, §68①)까지 반환 → 처음부터 증여 없던 것(합산·상속 가산·잇기에서 빠짐)
+//  신고기한 뒤 3개월 안 반환 → 당초 증여는 과세, 반환(다시 증여)은 과세 안 함 / 그 뒤 반환 → 반환도 새 증여(받은 사람 → 준 사람 줄을 따로 적을 것)
+function famGiftDue_(d) { d = famYmd_(d); if (!d) return ''; const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) + 3, 0)); return t.toISOString().slice(0, 10); }
+function famGiftReturn_(t) {
+  const back = famYmd_(t && t.반환일); if (!back || !/^(증여|부담부증여)$/.test(t.종류)) return {};
+  const d = famYmd_(t.날짜), due = famGiftDue_(d), due3 = due ? famGiftDue_(due.slice(0, 8) + '01') : '';
+  const cash = /현금|금전|예금|돈|송금|이체/.test(String(t.물건종류 || '') + ' ' + String(t.물건 || ''));
+  const dec = famYmd_(t.결정일), decided = dec && dec <= back;
+  if (cash) return { 단계: '금전', 신고기한: due, 알림: '금전 증여는 돌려줘도 §4④가 적용되지 않음 — 당초 증여 과세, 돌려준 것도 새 증여로 볼 수 있음(상증법 §4④ 괄호)' };
+  if (decided) return { 단계: '결정뒤', 신고기한: due, 알림: '반환 전에 세무서가 결정(' + dec + ')해 §4④ 괄호로 당초 증여 과세' };
+  if (due && back <= due) return { 없던것: true, 단계: '기한안', 신고기한: due, 알림: '신고기한(' + due + ')까지 돌려줘 처음부터 증여가 없던 것(§4④ 앞부분) — 합산·상속 가산에서 뺌' };
+  if (due3 && back <= due3) return { 단계: '3개월안', 신고기한: due, 알림: '신고기한 뒤 3개월(' + due3 + ') 안 반환 — 당초 증여는 과세, 반환은 과세 안 함(§4④ 뒷부분)' };
+  return { 단계: '그뒤', 신고기한: due, 알림: '신고기한 뒤 3개월(' + (due3 || '?') + ')이 지나 반환 — 당초 증여 과세, 반환도 새 증여(받은 사람 → 준 사람 줄을 따로 적을 것)' };
+}
 // 증여 한 건의 과세가액 몫 — 부담부증여는 인수 채무를 뺀 것(§47①). 금액이 없으면 0
 //  [2026.11.02 복잡물건 점검 #12] 채무 칸은 「채무인수」가 정식 이름 — 「채무」·「인수채무」로 적어도 같은 칸으로 읽는다(예전엔 말없이 0)
 function famDebt_(t) { return famNum_(t.채무인수 != null && t.채무인수 !== '' ? t.채무인수 : t.인수채무 != null && t.인수채무 !== '' ? t.인수채무 : t.채무); }
@@ -84,7 +99,15 @@ function famLoanGifts_(F, until) {
   return out.filter(function (x) { return x.금액 > 0; });
 }
 // 합산·가산이 보는 이전 목록 = 지도 줄 + 무상대출 이익(해마다)
-function famEvents_(F, until) { return F.이전.concat(famLoanGifts_(F, until)); }
+// [2026.11.02 복잡사건 35] 특례 증여 줄의 「특례밖금액」(사업무관자산 몫·한도 넘는 몫 — 엔진 기본세율적용대상_증여재산가액)은 일반 증여로 떼어 냄
+//  → 10년 합산(§47②)·상속 가산 10년(§13①)·§24 공제한도 차감·§28② 한도 공제를 보통 증여처럼. 그 몫의 과세표준·산출세액은 「특례밖과세표준」·「특례밖산출세액」
+function famSplitSpecial_(t) {
+  const x = famNum_(t.특례밖금액);
+  if (!famSpecial_(t) || !(x > 0)) return [t];
+  const a = Object.assign({}, t, { 금액: Math.max(0, famNum_(t.금액) - x) }), b = Object.assign({}, t, { id: (t.id || '') + '밖', 특례: '', 종류: '증여', 금액: x, 과세표준: famNum_(t.특례밖과세표준), 산출세액: famNum_(t.특례밖산출세액), 공제사용: famNum_(t.특례밖공제사용), 특례밖금액: 0 });
+  return [a, b];
+}
+function famEvents_(F, until) { return F.이전.reduce(function (a, t) { return a.concat(famSplitSpecial_(t)); }, []).concat(famLoanGifts_(F, until)); }
 // [2026.11.02 #5] 세대생략(상증법 §57①) — 받는 사람이 주는 사람의 자녀가 아닌 직계비속인가.
 //  판정 순서: ① 사람 줄의 「세대」 숫자(받는 − 주는 ≥ 2) ② 「부모」(받는 사람의 부모 이름·id 목록)에 주는 사람이 없고, 그 부모의 부모에 있음
 //  ③ 사람 줄 「관계」가 손자·손녀·증손 등이고 주는 사람이 본인·배우자(글로 추정 — 알림에 적음). 모르면 null.
@@ -192,6 +215,7 @@ function famTimeline_(F, today) {
       if (/^(배우자|직계존속|직계비속)$/.test(t.관계 || '')) r.앞으로.push({ 날짜: famAddY_(d, d >= '2023-01-01' ? 10 : 5), 무엇: '받은 사람이 팔면 이월과세(소득세법 §97의2①, ' + (d >= '2023-01-01' ? '2023.1.1. 이후 증여 10년' : '그 전 증여 5년') + ') 끝' });
       if (/무신고|모름|^아니|안 ?함/.test(t.신고 || '')) r.앞으로.push({ 날짜: famAddY_(d, 15), 무엇: '무신고 증여 부과제척기간 15년(국세기본법 §26의2④2호 — 부과할 수 있는 날(신고기한 다음 날)부터 셈, 그날은 대략)' });
     }
+    const rt = famGiftReturn_(t); if (rt.알림) { r.반환 = rt.단계; r.앞으로.push({ 날짜: famYmd_(t.반환일), 무엇: '반환 — ' + rt.알림 }); }
     if (t.종류 === '빌림' && d) r.앞으로.push({ 날짜: '', 무엇: '빌린 돈 — 이자·원금 갚은 기록이 없으면 증여 추정 다툼(상증법 §41의4 금전 무상대출 등 · 확인 필요)' });
     rows.push(r);
   });
@@ -244,9 +268,21 @@ function famPlanCompute_(F, plan, calc) {
         r = calc('calculate_gift_tax', inp) || {};
       }
       const 산출 = r.산출세액_할증후 != null ? r.산출세액_할증후 : (r.산출세액 || 0);
-      done.push({ i: s.i, 특례: s.특례, 날짜: s.날짜, 주는: s.주는, 받는: s.받는, 금액: s.금액, 산출: 산출, 공제: r.증여재산공제 || 0, 과세표준: r.과세표준 || 0, 관계: s.관계 });
-      out.증여.push({ 날짜: s.날짜, 누구: s.주는 + ' → ' + s.받는, 금액: s.금액, 합산: pr.합계, 특례: s.특례 || undefined, 세대생략: pr.세대생략 && pr.세대생략.해당 ? (pr.세대생략.대습 ? '대습(할증 없음)' : '할증') : undefined, 증여세: Number(r.납부세액) || 0, error: r.error });
-      out.증여세 += Number(r.납부세액) || 0;
+      // [2026.11.02 복잡사건 35] 특례 밖 몫(사업무관자산 몫·한도 넘는 몫, 엔진 기본세율적용대상_증여재산가액)은 일반 증여 — 따로 증여세를 매기고
+      //  상속 때도 보통 사전증여(10년 안만 가산·§24 공제한도 차감·§28② 한도)로 다룬다. 예전엔 그 몫의 증여세가 빠지고 상속에선 통째 특례로 셈
+      const out_ = s.특례 && !r.error ? Math.max(0, Number(r.기본세율적용대상_증여재산가액) || 0) : 0;
+      let r2 = null, 산출2 = 0;
+      if (out_ > 0) {
+        const pr2 = famPriorGifts_(F2, { date: s.날짜, donee: s.받는, donor: s.주는, relation: s.관계 || '직계존속', amount: out_ });
+        const inp2 = { giftAmount: out_, relation: s.관계 || '직계존속', giftDate: s.날짜, isDoneeResident: true };
+        if (pr2.합계) { inp2.priorGiftAmount = pr2.합계; inp2.priorPaidTax = pr2.기납부; if (pr2.공제사용) inp2.priorRelationDeductionUsed = pr2.공제사용; }
+        r2 = calc('calculate_gift_tax', inp2) || {};
+        산출2 = r2.산출세액_할증후 != null ? r2.산출세액_할증후 : (r2.산출세액 || 0);
+      }
+      done.push({ i: s.i, 특례: s.특례, 날짜: s.날짜, 주는: s.주는, 받는: s.받는, 금액: s.금액 - out_, 산출: 산출, 공제: r.증여재산공제 || 0, 과세표준: r.과세표준 || 0, 관계: s.관계 });
+      if (out_ > 0) done.push({ i: s.i + '밖', 특례: '', 날짜: s.날짜, 주는: s.주는, 받는: s.받는, 금액: out_, 산출: 산출2, 공제: r2.증여재산공제 || 0, 과세표준: r2.과세표준 || 0, 관계: s.관계 || '직계존속' });
+      out.증여.push({ 날짜: s.날짜, 누구: s.주는 + ' → ' + s.받는, 금액: s.금액, 합산: pr.합계, 특례: s.특례 || undefined, 특례밖: out_ || undefined, 특례밖증여세: r2 ? Number(r2.납부세액) || 0 : undefined, 세대생략: pr.세대생략 && pr.세대생략.해당 ? (pr.세대생략.대습 ? '대습(할증 없음)' : '할증') : undefined, 증여세: (Number(r.납부세액) || 0) + (r2 ? Number(r2.납부세액) || 0 : 0), error: r.error || (r2 && r2.error) });
+      out.증여세 += (Number(r.납부세액) || 0) + (r2 ? Number(r2.납부세액) || 0 : 0);
     });
     // 1차 상속 — 피상속인 재산을 불리고, 한 증여는 그 증여 뒤 불어날 몫까지 뺀다
     let est = estate0 * Math.pow(1 + g, T);
@@ -337,7 +373,33 @@ function famChainInputs_(F, t, sale) {
     if (!famNum_(t.금액)) return { error: '상속 줄에 상속개시일 현재 평가액(금액)이 없습니다' };
     return { tool: 'calculate_transfer_tax_multi', input: { transactions: [Object.assign({}, common, { acquisitionDate: famYmd_(t.날짜), acquisitionPrice: famNum_(t.금액), acquisitionCause: 'inheritance' })] }, 알림: notes, 법: '상속받은 자산 — 취득가액은 상속개시일 현재 평가액(소득세법 시행령 §163⑨)·취득일은 상속개시일(시행령 §162①5호)' };
   }
-  if (!famIsGift_(t)) return { error: '잇기 계산은 증여·부담부증여·상속 줄만 합니다(지금 줄: ' + t.종류 + ')' };
+  // [2026.11.02 복잡사건 「한씨 부자 매매」] 가족에게 싸게 산 집(매매 줄) — 취득가액 = 실제 낸 값 + 과세받은 증여재산가액(소득세법 시행령 §163⑩1호, 상증법 §35)
+  if (t.종류 === '매매') {
+    const paid = famNum_(t.금액); if (!paid) return { error: '매매 줄에 실제 낸 값(금액)이 없습니다' };
+    let gift = famNum_(t.증여재산가액 || t.증여의제이익);
+    if (!gift && famNum_(t.시가) > paid && typeof toolCalculateLowPriceTransferGiftAmount !== 'function') notes.push('증여재산가액 칸이 비어 취득가액에 못 더함 — 상증법 §35 계산(calculate_low_price_transfer_gift_amount)으로 세어 칸에 넣을 것');
+    else if (!gift && famNum_(t.시가) > paid) {
+      const lg = toolCalculateLowPriceTransferGiftAmount({ fairMarketValue: famNum_(t.시가), transferPrice: paid, isSpecialRelation: t.특수관계 !== '아니오' });
+      gift = lg && lg.과세대상여부 ? famNum_(lg.증여재산가액) : 0;
+      if (gift) notes.push('지도에 증여재산가액이 없어 시가 ' + famWon_(famNum_(t.시가)) + '·낸 값으로 상증법 §35 계산 ' + famWon_(gift) + ' — 실제로 증여세를 과세받았는지(신고·결정) 확인할 것');
+      if (!gift) notes.push('시가보다 싸게 샀지만 증여재산가액이 0 — §35 기준(시가 30%·3억 중 적은 금액) 아래면 더할 것 없음');
+    }
+    const acq = paid + gift;
+    return { tool: 'calculate_transfer_tax_multi', input: { transactions: [Object.assign({}, common, { acquisitionDate: famYmd_(t.날짜), acquisitionPrice: acq })] }, 알림: notes,
+      법: '매매로 산 자산 — 취득가액 = 실제 낸 값 ' + famWon_(paid) + (gift ? ' + 과세받은 증여재산가액 ' + famWon_(gift) + '(소득세법 시행령 §163⑩1호)' : '') + ' · 취득일 = 매매일(시행령 §162 — 대금청산일과 등기접수일 중 빠른 날, 지도 날짜가 그 날인지 확인할 것)' };
+  }
+  // [2026.11.02 복잡사건 「배씨 이혼」] 이혼 재산분할(민법 §839의2)로 받은 자산 — 양도·증여가 아니라 공동재산을 나눈 것이므로 받은 사람이 팔 때
+  //  취득일·취득가액은 전 배우자가 당초 취득한 날·값([확인 필요] 조문 없음 — 판례·소득세 집행기준 기준, 번호 확인). 위자료로 넘긴 것은 넘긴 사람의 「양도」 줄로 적는다
+  if (t.종류 === '재산분할') {
+    const gaps = []; if (!famYmd_(t.주는이취득일)) gaps.push('주는이취득일'); if (!famNum_(t.주는이취득가액)) gaps.push('주는이취득가액');
+    if (gaps.length) return { error: '재산분할 줄에 전 배우자 당초 ' + gaps.map(function (k) { return k === '주는이취득일' ? '취득일(주는이취득일)' : '취득가액(주는이취득가액)'; }).join('·') + '이 없습니다 — 등기부·당초 매매계약서로 채울 것', gaps: gaps };
+    notes.push('[확인 필요] 재산분할 자산의 취득일·취득가액을 전 배우자 당초 것으로 잇는 근거는 조문이 아닌 판례·집행기준 — 위자료·채무 대신 넘긴 부분이 섞였으면 그 부분은 넘긴 사람의 양도(대물변제)이고 받은 사람은 그날 그 값에 산 것');
+    if (/house|주택|아파트/.test(kindText)) notes.push('1세대1주택 보유·거주기간 — 전 배우자 보유기간을 이어 세는지는 [확인 필요](집행기준) · 이혼한 뒤엔 각자 1세대(시행령 §152의3 2호), 다만 사실상 이혼으로 보기 어려우면 배우자로 봄(소득세법 §88 6호 괄호)');
+    return { tool: 'calculate_transfer_tax_multi', input: { transactions: [Object.assign({}, common, { acquisitionDate: famYmd_(t.주는이취득일), acquisitionPrice: famNum_(t.주는이취득가액), necessaryExpenses: famNum_(common.necessaryExpenses) + famNum_(t.주는이필요경비) })] }, 알림: notes,
+      법: '이혼 재산분할로 받은 자산 — 취득일 ' + famYmd_(t.주는이취득일) + '·취득가액 ' + famWon_(famNum_(t.주는이취득가액)) + '(전 배우자 당초 것, [확인 필요] 판례·집행기준) · 분할일 ' + famYmd_(t.날짜) + '은 취득일이 아님' };
+  }
+  if (famGiftReturn_(t).없던것) return { error: '이 증여는 신고기한 안에 돌려줘 처음부터 없던 것(상증법 §4④) — 준 사람의 당초 취득으로 잇기 없이 계산할 것' };
+  if (!famIsGift_(t)) return { error: '잇기 계산은 증여·부담부증여·상속·매매·재산분할 줄만 합니다(지금 줄: ' + t.종류 + ')' };
   const rel = String(t.관계 || '');
   const g = famGiftValue_(t);
   if (!g) return { error: '증여 줄에 증여 당시 평가액(금액)이 없습니다' };
@@ -407,7 +469,7 @@ function famTransferSet_(c, input, by) {
     let row = t.id ? F.이전.filter(function (x) { return x.id === t.id; })[0] : null;
     if (t.id && !row) return { ok: false, error: '그 이전 줄이 없음: ' + t.id };
     const isNew = !row; if (!row) { row = { id: 't' + Date.now().toString(36) + F.이전.length }; F.이전.push(row); }
-    ['종류', '날짜', '주는', '받는', '관계', '물건', '물건종류', '금액', '평가', '채무인수', '과세가액', '과세표준', '산출세액', '납부세액', '공제사용', '신고', '합산배제', '상속분', '주는이취득가액', '주는이취득일', '주는이필요경비', '특례', '이자', '적정이자율', '상환일', '무상', '감면세액', '감면', '사건id', '근거', '메모'].forEach(function (k) { if (t[k] !== undefined) row[k] = typeof t[k] === 'string' ? t[k].trim().slice(0, 300) : t[k]; });
+    ['종류', '날짜', '주는', '받는', '관계', '물건', '물건종류', '금액', '평가', '채무인수', '과세가액', '과세표준', '산출세액', '납부세액', '공제사용', '신고', '합산배제', '상속분', '주는이취득가액', '주는이취득일', '주는이필요경비', '특례', '특례밖금액', '특례밖과세표준', '특례밖산출세액', '특례밖공제사용', '이자', '적정이자율', '상환일', '무상', '감면세액', '감면', '시가', '증여재산가액', '특수관계', '반환일', '결정일', '사건id', '근거', '메모'].forEach(function (k) { if (t[k] !== undefined) row[k] = typeof t[k] === 'string' ? t[k].trim().slice(0, 300) : t[k]; });
     if (row.날짜) row.날짜 = famYmd_(row.날짜) || row.날짜;
     row.누가 = String(by || '').slice(0, 6); row.때 = caseProcNow_(); if (!row.근거) row.근거 = '근거 없음 — 잠정(서류로 확인할 것)';
     // 사람이 지도에 없으면 이름만으로 더한다(관계는 비움 — 넥스·세무사님이 채움)
