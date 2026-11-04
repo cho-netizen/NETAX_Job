@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 207 저가 양수·부당행위 잇기</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 207 — 「부모가 자녀에게 싸게 파는 집 — 증여(상증법 §35)와 양도세 부당행위(소득세법 §101·시행령 §167) 두 계산기 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 같은 거래(시가 10억, 6억에 양도)를 증여 쪽 계산기(§35)와 양도세 쪽 계산기(§101 부당행위)에 넣어 문턱·금액·수증자의 나중 취득가액이 조문대로 맞물리는지 봤습니다. 모두 법대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「황씨」가 2026-03-10 시가 10억(§60 평가) 집을 아들에게 6억에 양도. 갈래: 7.5억(차액 2.5억) / 9.6억(차액 4천만) / 남에게 6억(비특수관계).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001·소득세법 시행령 20261001 시행판)</h2>
+<ul>
+<li>상증법 §35①·시행령 §26②: 특수관계인 간 저가 양수·고가 양도로 차액이 기준금액(시가 30%와 3억 중 적은 금액) 이상이면 차액 − 기준금액을 증여재산가액으로. §35②·시행령 §26③④: 비특수관계는 차액 30% 이상이면 차액 − 3억. §35③: 법인세법 시가에 해당해 §101①이 적용되지 않는 거래는 제외.</li>
+<li>소득세법 §101①·시행령 §167③④: 특수관계인에게 시가보다 낮게 양도해 차액이 3억 이상이거나 시가 5% 이상이면 양도가액을 시가로. 시행령 §163⑩1호: 수증자가 §35로 증여세를 과세받으면 그 증여재산가액을 취득가액에 더함.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 6억: 증여 (4억 − 3억) = 1억·수증자 취득가액 7억(6억 + 1억)·매도인 양도가액 10억(§167④) / 7.5억: 차액 2.5억 &lt; 3억 → 증여 없음, 양도세는 차액 2.5억 ≥ 5천만 → 시가 10억으로 / 9.6억: 차액 4천만 &lt; 5천만 → 부당행위 아님 / 비특수관계 6억: 차액 4억 ≥ 30% → 1억(정당한 사유는 따로).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>증여(§35)</th><th>양도세(§101)</th></tr>
+<tr><td>특수관계 6억</td><td>차액 4억 − 3억 = 1억 · 취득가액 7억</td><td>차액 4억 ≥ 5천만 → 양도가액 10억</td></tr>
+<tr><td>특수관계 7.5억</td><td>차액 2.5억 &lt; 3억 → 없음</td><td>차액 2.5억 ≥ 5천만 → 양도가액 10억</td></tr>
+<tr><td>특수관계 9.6억</td><td>—</td><td>차액 4천만 &lt; 5천만 → 부당행위 아님</td></tr>
+<tr><td>비특수관계 6억</td><td>차액 4억 ≥ 30% → 4억 − 3억 = 1억(정당한 사유 별도)</td><td>특수관계 아님 — §101 밖</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 206 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>차액이 꼭 기준금액(3억)인 경계 — 법은 「이상」이라 과세(이익 0), 도구 안내 글은 「초과하지 않아」 — 글만 다름</td><td>경계 미과세 글</td><td>중간</td></tr>
+<tr><td>2</td><td>§35③(법인세법 시가 거래 제외)은 개인 간 거래라 해당 없음 — 법인 거래는 「법인거래」 묶음</td><td>묶음</td><td>높음</td></tr>
+<tr><td>3</td><td>시가(§60) 자체는 「시가 인정범위 판정」 계산기로 먼저 — 두 계산기 모두 시가를 받음</td><td>안내</td><td>높음</td></tr>
+<tr><td>4</td><td>양도세 부당행위로 양도가액을 시가로 보면 매도인의 1세대1주택 고가 판정도 10억 기준 — 종합판정에 넣는 양도가액은 시가</td><td>넥스 몫</td><td>중간</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 넥스 지시문에 「특수관계 저가 거래는 두 계산기를 함께」 한 줄(지시문 금지 중이라 안 고침)</td><td>—</td><td>—</td></tr>
+</table>
+</main></body></html>
