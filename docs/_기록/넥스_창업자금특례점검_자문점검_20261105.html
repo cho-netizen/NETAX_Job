@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 222 창업자금 특례</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 222 — 「창업자금 증여세 과세특례(조특법 §30의5·시행령 §27의5) 계산기 점검 — 50억/100억 한도·5억 공제·10%·2회 합산·연혁·사용명세 가산세」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_special_rate_gift_tax, specialType startup)를 여덟 갈래로 돌려 §30의5①⑤·§133·2015/2023 연혁을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>65세 아버지가 35세 아들에게 2026-03-01 창업자금 30억 현금 증여. 견주기: 60억(고용 없음/10명 이상) / 앞선 특례 10억(당시 과세표준 5억·세액 5천만)에 이번 10억 / 2015년 40억 / 채무 5억 인수 / 사용명세 불분명 2억 / 17세·59세.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 판)</h2>
+<ul>
+<li>§30의5①: 18세 이상 거주자가 60세 이상 부모에게서 중소기업 창업 목적으로 토지·건물 등(소득세법 §94① 재산) 아닌 재산을 받으면 창업자금(과세가액 50억, 10명 이상 신규 고용이면 100억 한도)에 대해 5억 공제·10% — 2회 이상·부모 각각이면 과세가액 합산. ②: 2년 안 창업. ④: 4년 안 모두 사용. ⑤: 사용명세 미제출·불분명분 0.3% 가산세. ⑥⑦: 창업 안 함·용도 외 사용·10년 안 폐업 등이면 증여세 + 이자상당액(사유 달 말일부터 3개월 안 신고). 연혁: 한도 30억(~2015)·30억/50억(2016~2022)·50억/100억(2023~).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 30억 → 과세표준 25억 → 2.5억 / 60억 → 특례 50억(4.5억) + 일반세율 10억 따로 / 고용 10명 이상이면 60억 전부 특례(5.5억) / 2회 합산: 누적 20억 → 과세표준 15억 → 1.5억 − 앞선 세액 5천만(§58② 한도 안) = 1억 / 2015년 한도 30억 → 10억 일반 / 채무 5억 인수 → 25억 특례 / 사용명세 2억 불분명 → 60만 가산세(증여세 납부세액과 따로) / 17세·59세는 대상 아님.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>30억 / 60억 / 60억·고용 10명</td><td>2.5억 / 4.5억 + 일반 10억 / 5.5억</td><td>맞음(①)</td></tr>
+<tr><td>앞선 10억 + 이번 10억</td><td>합산 과세표준 15억 → 1.5억 − 5천만 = 1억</td><td>맞음(① 후단·§58)</td></tr>
+<tr><td>2015년 40억 / 채무 5억 / 사용명세 2억 / 나이</td><td>한도 30억 / 25억 특례 / 60만 별도 / 대상 아님</td><td>맞음(연혁·⑤)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 221 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>한도 넘는 부분(일반세율 10억)의 세액은 calculate_gift_tax로 따로 — 두 번 호출 순서는 안내에 있음</td><td>두 번 호출</td><td>높음</td></tr>
+<tr><td>2</td><td>⑥ 사후관리 추징(창업 안 함·용도 외·10년 안 폐업)과 이자상당액(시행령 ⑨ — 신고기한 다음 날부터, §11의2⑩2호 율)은 이 계산기에 없음 — calculate_clawback_interest로 손셈(판단거리)</td><td>—</td><td>중간</td></tr>
+<tr><td>3</td><td>창업 요건(§6③ 업종·중소기업·2년 안 등록·②1~4호 창업 아님 사유)은 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>4</td><td>토지·건물 등(소득세법 §94① 재산) 제외 — 현금·예금만 창업자금; 주식 증여는 대상 아님을 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>5</td><td>⑦ 50억 초과 창업자금의 5년 고용 유지 산식은 계산기 밖</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
