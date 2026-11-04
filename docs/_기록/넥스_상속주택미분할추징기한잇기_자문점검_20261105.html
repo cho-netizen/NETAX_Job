@@ -33,7 +33,7 @@ table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);pad
 <tr><td>등기 전 / 요건 유지</td><td>추징 없음(법정상속분 의제) / 없음</td><td>맞음(⑲ 본문)</td></tr>
 <tr><td>등기 2026-03-10·3천만 / 등기 2026-01-20</td><td class="red">추징 3천만, 기한 2026-06-01(5-31 일요일) / 2026-03-31</td><td>맞음(⑲ 단서·국기법 §5)</td></tr>
 </table>
-<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, node --check 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과. <span class="red">[바로잡음] 첫 커밋(a436f7f)은 Code.js 칸 추가 때 앞줄 쉼표가 빠진 문법 오류가 있었는데 node --check 실패 뒤에도 사슬이 이어져 올라갔음 — 바로 다음 보완 커밋(1d2fdf9)에서 고침. 원인: 문법 검사를 &&가 아닌 ;로 이어 둔 것. 도구 검문(nex-tool-check)은 Code.js 문법을 보지 않으니 세무사님 쪽 검문에 node --check를 더하면 좋겠습니다(판단거리).</span></p>
 <h2>6. 검토대상</h2>
 <table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
 <tr><td>1</td><td>추징 세액(특례 없이 낸 세액 − 낸 세액)은 양도세 계산기를 두 번 돌려 사람이 넣음 — 지시문 잇기 없음</td><td>칸</td><td>높음</td></tr>
