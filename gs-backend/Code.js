@@ -3410,7 +3410,7 @@ const DRIVE_TOOLS = [
     description: '배당차액(시행령§57③, 시행규칙§18②) — 기업공개 준비중인 주식등(상장 전 발행 신주) 평가시 상장주식 평가액에서 차감할 배당차액.',
     input_schema: { type: 'object', properties: {
       parValuePerShare: { type: 'number', description: '1주당 액면가액(원)' },
-      priorFiscalYearDividendRate: { type: 'number', description: '직전 사업연도 배당률' },
+      priorFiscalYearDividendRate: { type: 'number', description: '직전 사업연도 배당률(비율 0~1 — 10%면 0.1; 1을 넘겨 넣으면 도구가 100으로 나눔)' },
       daysFromFiscalYearStartToRecordDate: { type: 'number', description: '신주발행일이 속하는 사업연도 개시일부터 배당기산일 전일까지의 일수' }
     }, required: [] }
   },

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:33 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:34 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28098,8 +28098,10 @@ function nxMdOpenWindow(title, src, opts){
   // 뺀다. 신주발행일이 속하는 사업연도 개시일부터 배당기산일 전일까지의 일수만큼 직전기 배당률을
   // 일할 계산한 금액이다.
   window.calculateDividendDifferenceJS = function (parValuePerShare, priorFiscalYearDividendRate, daysFromFiscalYearStartToRecordDate) {
-    const value = Math.round((Number(parValuePerShare) || 0) * (Number(priorFiscalYearDividendRate) || 0) * ((Number(daysFromFiscalYearStartToRecordDate) || 0) / 365));
-    return { 배당차액: value };
+    // [2026.11.05 모의사건 251] 배당률 칸은 비율(0.1 = 10%) — 10처럼 1을 넘겨 넣으면 100으로 나눠 쓰고 알린다(215·220 지분비율 보호와 같음). 365 고정은 시행규칙 §18② 산식 그대로.
+    const rateIn_ = Number(priorFiscalYearDividendRate) || 0, rate_ = rateIn_ > 1 ? rateIn_ / 100 : rateIn_;
+    const value = Math.round((Number(parValuePerShare) || 0) * rate_ * ((Number(daysFromFiscalYearStartToRecordDate) || 0) / 365));
+    return { 배당차액: value, 적용배당률: rate_, 안내: (rateIn_ > 1 ? '배당률 ' + rateIn_ + '을 퍼센트로 보고 ' + rate_ + '로 셈했습니다(칸은 비율). ' : '') + '액면가액 × 직전기 배당률 × (사업연도 개시일~배당기산일 전일 일수 ÷ 365) — 시행규칙 §18②, 상장주식 평가액에서 뺌(시행령 §57③). 정관에 신주 배당 균등 규정이 있으면 단서 확인.' };
   };
 
   // 증자·감자 전 사업연도의 발행주식총수 환산 (시행령§56③단서, 시행규칙§17의3⑤) — 비상장주식의

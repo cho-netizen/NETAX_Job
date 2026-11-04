@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 251 배당차액</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 251 — 「상장법인 신주의 배당차액(상증법 §63②3호·시행령 §57③·시행규칙 §18②) 계산기 점검 — 액면 × 직전기 배당률 × 일수/365, 배당률 칸 보호」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_dividend_difference)를 세 갈래로 돌려 시행규칙 §18② 산식을 맞췄습니다. 산식은 맞았고, 배당률 칸이 비율(0.1)인데 10(%)을 넣으면 10배가 되는 것만 215·220과 같은 보호를 넣었습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>상장법인이 유가증권 신고 뒤 발행한 신주(액면 5천, 직전기 배당률 10%, 사업연도 개시일부터 배당기산일 전일까지 200일)를 상속. 견주기: 배당률 10으로 넣음 / 일수 0.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증령 20261001 시행판·시행규칙)</h2>
+<ul>
+<li>시행령 §57③: §63②3호 주식(상장법인이 신고 직전 6개월~상장 전에 발행한 신주)은 §63①1호가목 평가액에서 시행규칙 배당차액을 뺀 가액. 시행규칙 §18②: 배당차액 = 1주당 액면가액 × 직전기 배당률 × (신주 발행일이 속한 사업연도 개시일~배당기산일 전일 일수 ÷ 365) — 단서: 정관으로 신주에 균등 배당하면 제외.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>산식 맞음: 5천 × 0.1 × 200/365 = 274.</li>
+<li class="red">배당률을 10으로 넣으면 2,740(10배) — 칸 설명이 「배당률」뿐이라 넥스가 %로 넣기 쉬웠다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateDividendDifferenceJS: 1을 넘는 배당률은 100으로 나누고 안내, 적용배당률·근거 안내를 돌려줌. gs-backend/Code.js 칸 설명에 「비율 0~1」 명시(도구 수·지시문 길이 그대로, 검문 ✓ 78개·25,224자, node --check 통과). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>5천·0.1·200일 / 10으로 넣음 / 0일</td><td>274 / <span class="red">274(보정, 안내) — 전엔 2,740</span> / 0</td><td>맞음(§18②)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>단서(정관에 신주 균등 배당 규정)면 배당차액을 빼지 않음 — 사람이 가름(안내만)</td><td>안내</td><td>높음</td></tr>
+<tr><td>2</td><td>이 값을 빼는 자리(상장주식 평가액 §63①1호가목)는 calculate_listed_stock_value와 따로 — 지시문 잇기 없음</td><td>두 계산기</td><td>중간</td></tr>
+<tr><td>3</td><td>「직전기 배당률」이 액면 기준 배당률(%)인지 — 보통 그렇지만 사람이 확인</td><td>칸</td><td>중간</td></tr>
+<tr><td>4</td><td>윤년에도 365 고정 — 산식대로</td><td>365</td><td>높음</td></tr>
+<tr><td>5</td><td>§63②3호의 「신고 직전 6개월(3개월)~상장 전 발행 신주」 기간 판정은 250 공모 계산기의 기간 칸으로</td><td>다른 계산기</td><td>중간</td></tr>
+</table>
+</main></body></html>
