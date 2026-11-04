@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 195 공동소유 주택 수</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 195 — 「공동소유 주택의 주택 수 — 부부 공동명의(같은 집)와 남과의 공동소유(시행령 §154의2) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 넥스가 부부 공동명의 집을 「본인 지분」「배우자 지분」 두 줄로 적으면 종합판정이 2주택으로 세어 「안 됨」을 냈고, 남과 공동소유한 다른 집을 「주택 수 모름」으로 넣으면 잠정으로만 남겼습니다. 세대 기준 1주택과 §154의2(공동소유는 각자 소유)대로 고쳤습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「양씨」 부부가 2019-03-01 반반 명의로 산 집 한 채를 2026-09-01 양도 — 넥스가 물건 줄에 두 줄로 적음. 갈래: 같은주택 표시 / 이름은 같지만 취득일이 다른 별개 집 / 남과 30% 공동소유한 다른 집(주택 수 모름) / 상속으로 30% 공동소유(§155③ 후보).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 20260101·시행령 20261001 시행판)</h2>
+<ul>
+<li>법 §88 6호·§89①3호: 1세대(배우자와 함께 구성)가 1주택 — 세대원이 각자 지분으로 가진 같은 집은 세대의 1주택. 시행령 §154의2: 1주택을 여러 사람이 공동소유하면 (§155③ 공동상속주택 제외) 공동소유자 각자가 그 주택을 소유한 것으로 봄 — 지분이 작아도 주택 수에 듦.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">같은 집의 배우자 지분 줄을 「다른 주택」으로 세어 2주택 「안 됨」.</li>
+<li>남과 공동소유한 다른 집은 「모름」이면 잠정 「충족」으로 흘렀음 — §154의2로 각자 소유라 「든다」가 맞음(상속 공동소유는 ③ 소수지분 특례가 있으니 잠정 유지).</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">엔진 종합판정: 물건 줄에 같은주택=true이거나 이름(괄호 뺀 것)·취득일이 판정 물건과 같은 줄은 다른 주택에서 빼고 알림(「세대 기준 1주택」). 종류가 주택이고 지분(0~1 사이)이 적혀 있으며 상속이 아닌 「모름」 줄은 「든다」(근거 §154의2).</li>
+<li class="red">조립본 app/index.html 다시 만듦. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전</th><th>고친 뒤</th></tr>
+<tr><td>① 부부 공동명의 두 줄 / ② 같은주택 표시</td><td>안 됨(2주택) / 안 됨</td><td>충족 / 충족</td></tr>
+<tr><td>③ 이름 같고 취득일 다른 별개 집</td><td>안 됨</td><td>안 됨(그대로 — 다른 집)</td></tr>
+<tr><td>④ 남과 공동소유 30%·모름</td><td>충족(잠정)</td><td>안 됨 — 2주택(§154의2)</td></tr>
+<tr><td>⑤ 상속 공동소유 30%·모름</td><td>충족(잠정)</td><td>충족(잠정 — §155③ 특례 줄로 확정할 것)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·181~193 관련 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>이름·취득일로 같은 집을 추정하는 방식 — 같은 날 같은 이름으로 산 다른 호실(「○○아파트」 101호·102호)을 하나로 볼 위험 → 넥스가 호수까지 적거나 같은주택 표시를 쓰도록</td><td>이름·취득일</td><td>중간</td></tr>
+<tr><td>2</td><td>세대원이 아닌 사람(자녀 분가 세대)의 지분은 세대 밖 — 물건 줄에 세대 밖 소유자를 넣지 않는 것이 전제</td><td>전제</td><td>높음</td></tr>
+<tr><td>3</td><td>공동소유 집의 양도가액·고가 판정은 세대 전체 지분 기준(§156①) — 판정 물건의 양도가액 칸이 본인 지분만이면 고가 줄이 틀림</td><td>넣은 가액</td><td>중간</td></tr>
+<tr><td>4</td><td>④의 「든다」는 지분 0~1 사이일 때만 — 퍼센트(30)로 넣으면 1보다 커서 안 걸림</td><td>0~1만</td><td>높음</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: items 설명에 「같은 집 지분은 한 줄로(또는 같은주택=true), 지분은 0~1」 한 줄(지시문·도구 설명 금지 중이라 안 고침)</td><td>엔진 추정</td><td>—</td></tr>
+</table>
+</main></body></html>

@@ -13169,7 +13169,13 @@
 
     // 3) 양도일 현재 주택 수 — 공동소유는 각자 1주택(시행령 §154의2), 조합원입주권·분양권을 함께 가지면 §89①3호를 적용하지 않는다(법 §89②, 특례는 시행령 §156의2·§156의3)
     const list = Array.isArray(p.물건) ? p.물건 : [];
-    const others = list.filter(function (o) { return o && !o.대상; }).filter(function (o) {
+    // [2026.11.05 모의사건 195] 같은 집의 세대원 지분(부부 공동명의를 두 줄로 적은 경우)은 다른 주택이 아니다 — 세대 기준 1주택(법 §88 6호·§89①3호). 같은주택=true 또는 이름(괄호 뺀 것)·취득일이 판정 물건과 같으면 뺀다.
+    const tgItem_ = list.filter(function (o) { return o && o.대상; })[0] || {};
+    const baseName_ = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, '').trim(); };
+    const sameHouse_ = function (o) { return o.같은주택 === true || (baseName_(o.이름) && baseName_(o.이름) === baseName_(tgItem_.이름) && (!isDate_(o.취득일) || !isDate_(tgItem_.취득일) || String(o.취득일).slice(0, 10) === String(tgItem_.취득일).slice(0, 10))); };
+    const sameLines_ = list.filter(function (o) { return o && !o.대상 && sameHouse_(o); });
+    if (sameLines_.length) notes.push('같은 주택의 세대원 지분 줄(' + sameLines_.map(function (o) { return o.이름 || ''; }).join(', ') + ')은 다른 주택으로 세지 않음 — 세대 기준 1주택');
+    const others = list.filter(function (o) { return o && !o.대상 && !sameHouse_(o); }).filter(function (o) {
       // [2026.11.04 넥스 운영 시험 C] 오피스텔·근생 등 종류 글자에 「주택」이 없어도 주택 수 칸이 「든다」·「모름」이면 센다(시행령 §152의4 사실상 주거용) — 전엔 종류로만 걸러 오피스텔이 조용히 빠졌다
       if (!/주택|조합원입주권|분양권/.test(String(o.종류 || '')) && judgeHouseCountState_(o) === '안 든다') return false;
       if (!/주택|조합원입주권|분양권|오피스텔|주거|건물|호실|빌라|원룸/.test(String(o.종류 || '')) && judgeHouseCountState_(o) !== '든다') return false;
@@ -13178,6 +13184,8 @@
     const counted = [], maybe = [];
     others.forEach(function (o) {
       let st = judgeHouseCountState_(o); // 「든다(사실상 주거용)」·「포함」·true 같은 값도 든다로 읽음
+      // [2026.11.05 모의사건 195] 다른 사람과 공동소유한 주택(지분 적음)도 각자 소유로 봄(시행령 §154의2) — 「모름」이면 든다(상속 공동소유는 §155③ 소수지분 특례로 따로)
+      if (st === '모름' && /주택|오피스텔|주거|빌라|원룸/.test(String(o.종류 || '')) && o.지분 != null && o.지분 !== '' && Number(o.지분) > 0 && Number(o.지분) < 1 && !/상속/.test(String(o.취득원인 || ''))) { st = '든다'; o.주택수근거 = o.주택수근거 || '공동소유 지분 ' + o.지분 + ' — 각자 소유로 봄(시행령 §154의2)'; }
       // [2026.11.05 모의사건 185] 법률 제17477호 부칙 §4(원문 대조): §89② 본문(분양권을 주택 수에 넣음)은 「2021년 1월 1일 이후 공급계약·매매·증여 등으로 취득한 분양권부터」 — 그 전 취득 분양권은 주택 수에서 뺌(넥스가 「든다」로 넣어도). 2021-01-01 이후 취득 분양권·조합원입주권(2006-01-01 이후)은 법 §89②로 그 자체가 주택 수 — 「모름」이면 든다.
       if (/분양권/.test(String(o.종류)) && isDate_(o.취득일)) {
         if (String(o.취득일).slice(0, 10) < '2021-01-01') { st = '안 든다'; o.주택수근거 = o.주택수근거 || '2021-01-01 전 취득 분양권 — 주택 수 제외(법률 제17477호 부칙 §4)'; }
