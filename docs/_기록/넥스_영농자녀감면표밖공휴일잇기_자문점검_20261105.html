@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 221 영농자녀 감면·표 밖 공휴일</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 221 — 「영농자녀 농지 증여세 감면(조특법 §71·§133④) 계산기 점검과, 공휴일 표(~2027) 밖 해의 기한이 고정 공휴일을 안 미루던 틈」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_farmland_gift_tax_reduction)를 여덟 갈래로 돌려 §71①②④·§133④·연혁(농지 한도 2015, 염전 2020)을 맞췄습니다. 감면 계산은 모두 맞았으나, 사후관리 추징 신고기한이 2028-12-31(일요일) → 2029-01-01(신정)로 나왔습니다 — 공휴일 표가 2027년까지라 그 뒤 해의 기한은 고정 공휴일도 안 미루는, 모든 계산기에 걸친 틈이라 엔진의 기한 이동 함수에서 고쳤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>자경농민 아버지가 영농자녀 아들에게 2026-04-01 농지 5만㎡(8억)를 증여. 견주기: 5년 안 앞선 감면 7천만 / 2014년 증여 3.5만㎡ / 2028-09-10 양도(추징) / 정당한 사유 / 주거지역 / 어선 25톤 / 2019년 염전.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 판, 국세기본법 §5①, 관공서의 공휴일에 관한 규정)</h2>
+<ul>
+<li>§71①: 농지 4만㎡ 이내 등 종류별 면적 한도, 주거·상업·공업지역·개발사업지구 밖. ②: 5년 안 정당한 사유 없는 양도·영농 중단이면 감면세액 + 이자상당액 즉시 징수. ④: 사유 발생일이 속하는 달의 말일부터 3개월 안 신고·납부. §133④: 5년간 1억 한도. 농지 한도 2만9,700㎡ → 4만㎡는 2015.1.1 증여분부터(법률 제12853호 부칙).</li>
+<li>국세기본법 §5①: 기한이 공휴일·토요일·근로자의 날이면 다음 날. 관공서의 공휴일에 관한 규정 §2: 신정·삼일절·어린이날·현충일·광복절·개천절·한글날·성탄절은 날짜가 정해진 공휴일, 설·추석·석가탄신일은 음력. §3: 삼일절·어린이날·광복절·개천절·한글날·성탄절(·설·추석)이 토·일(어린이날은 토요일 포함)에 겹치면 다음 평일이 대체공휴일 — 신정·현충일은 대체 없음.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>감면 계산 맞음: 5만㎡ → 4만/5만 = 80% → 산출 1.65억 × 80% = 1.32억 → §133④ 한도로 1억 / 앞선 감면 7천만이면 남은 3천만 / 2014년은 2만9,700㎡ 한도 / 양도하면 감면세액 4천만 + 이자(10만분의 22 × 772일) 추징, 정당한 사유면 추징 없음 / 주거지역·25톤 어선·2020년 전 염전은 대상 아님.</li>
+<li class="red">추징 신고기한이 2029-01-01(월요일·신정)로 나옴 — 공휴일 표(HolidayDates.js ← 조견표 1부-02)가 2027-12-27까지라 2028년 뒤 기한은 요일·근로자의 날만 보고 고정 공휴일을 안 미뤘다. 5년 사후관리·장기 할부·장기 보유 뒤 양도처럼 2028년 뒤 기한을 내는 모든 계산기에 걸친 틈.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html shiftTaxDeadline_: 표의 마지막 해보다 뒤면 날짜 고정 공휴일(1.1·3.1·5.5·6.6·8.15·10.3·10.9·12.25)과 그 대체공휴일(3.1·5.5·8.15·10.3·10.9·12.25가 토·일이면 다음 평일)도 미룸. 표 안 해(~2027)와 연혁 끄기 모드는 전과 같음. 설·추석·석가탄신일·임시공휴일은 표 밖이면 여전히 못 봄([확인 필요] — 조견표 1부-02를 늘리면 그대로 반영).</li>
+<li>app/index.html 다시 만듦. 넥스 도구·지시문 그대로(검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>농지 5만㎡ 8억</td><td>80% → 1.32억 → 한도 1억</td><td>맞음(§71①1호가목·§133④)</td></tr>
+<tr><td>앞선 감면 7천만 / 2014년 3.5만㎡</td><td>3천만 / 한도 2만9,700㎡</td><td>맞음(§133④·부칙)</td></tr>
+<tr><td>2028-09-10 양도</td><td>추징 4천만 + 이자 6,793,600, 신고기한 <span class="red">2029-01-02 (전엔 2029-01-01 신정)</span></td><td>맞음(§71②④·국기법 §5①)</td></tr>
+<tr><td>기한 이동 12건(2026~2030: 12-31·3-1·10-3·5-5 토요일 대체·6-6·1-1·8-15·평일)</td><td class="red">모두 규정대로(표 안 해는 전과 같음)</td><td>맞음</td></tr>
+<tr><td>정당한 사유 / 주거지역 / 어선 25톤 / 2019 염전</td><td>추징 없음 / 대상 아님 ×3</td><td>맞음</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0(연혁 켬) · 연혁 끄기 18건 다름은 바탕 커밋과 같음 · 판정 회귀 20건 · 가족 회귀 · 이번 세션 시험 t174~t221 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>2028년 뒤 설·추석·석가탄신일·임시공휴일은 표에 없어 못 미룸 — 조견표 1부-02에 2028~2030년 공휴일을 더하면 build-holidays로 그대로 반영(세무사님 판단)</td><td>고정 공휴일만</td><td>높음</td></tr>
+<tr><td>2</td><td>대체공휴일 규정(§3)의 적용 시작(2021.8 삼일절·광복절·개천절·한글날, 2023 성탄절·석가탄신일)은 표 안 해라 표가 맡음 — 표 밖 해만 지금 규정으로</td><td>표 밖만 규정</td><td>높음</td></tr>
+<tr><td>3</td><td>영농자녀·자경농민 요건(소재지 거주·직접 영농·연령 등, 시행령 §68)은 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>4</td><td>감면세액 산식(전체 산출세액 × 농지 가액 ÷ 전체 증여재산가액)의 「전체 산출세액」은 calculate_gift_tax를 먼저 돌려 넣음 — 지시문에 순서는 있음</td><td>두 번 호출</td><td>높음</td></tr>
+<tr><td>5</td><td>2024.1.1 전 추징 사유의 이자상당액 [확인 필요]는 11-02 그대로</td><td>이자 안 셈</td><td>중간</td></tr>
+</table>
+</main></body></html>
