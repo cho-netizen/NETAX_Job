@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 모의사건 중간결산 215-224</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 모의사건 중간결산 215~224 · 2026-11-05</h1>
+<p class="sub">클라우드 세션(가지 claude/gifted-clarke-hqwn4y). 11-05 새벽 속행분 여섯 번째 열 건. 자본거래 증여(§38·§39·§39의2·§39의3)에서 조특법 특례(§30의5·§71)·국세기본법 기한(§5)으로 옮겨 가며 열 건 중 여덟 건에서 엔진 틈을 잡았습니다 — 그중 둘(221 공휴일 표 밖 해, 224 기한 미룬 날)은 한 계산기가 아니라 기한을 내는 모든 계산기에 걸친 것입니다.</p>
+<h2>1. 사건 카드</h2>
+<table><tr><th>번호·유형</th><th>놓치던 것</th><th>고친 것</th><th>검토대상</th></tr>
+<tr><td>215 감자 이익 증여</td><td class="red">지분비율 칸(0~1)에 60을 넣으면 100배</td><td class="red">엔진(÷100 보정·안내)</td><td>5</td></tr>
+<tr><td>216 증자 이익 상장 단서</td><td class="red">주권상장법인 증자 후 시가 견줌 단서(저가 적은 값·고가 큰 값) 없음</td><td class="red">엔진 + 도구 칸 listedPostValuePerShare</td><td>5</td></tr>
+<tr><td>217 재산가치 증가 이익</td><td>없음(네 항목 차감·30%/3억·5년·합산배제)</td><td>없음</td><td>5</td></tr>
+<tr><td>218 조직변경 이익</td><td>없음(지분·평가액 변동·문턱)</td><td>없음</td><td>5</td></tr>
+<tr><td>219 합병 이익 주식 외 대가</td><td class="red">주식 외 합병대가(현금) 갈래(시행령 §28③2호)가 「별도 계산」으로 비어 있음</td><td class="red">엔진 non_stock 갈래 + 도구 칸 5개</td><td>5</td></tr>
+<tr><td>220 현물출자 이익</td><td class="red">고가 갈래 지분비율 칸 퍼센트 100배</td><td class="red">엔진(÷100) — 첫 커밋에 빠져 보완 커밋</td><td>5</td></tr>
+<tr><td>221 영농자녀 감면·표 밖 공휴일</td><td class="red">공휴일 표(~2027) 밖 해의 기한이 고정 공휴일·대체공휴일을 안 미룸(모든 계산기)</td><td class="red">엔진 shiftTaxDeadline_(관공서 공휴일 규정 §2·§3)</td><td>5</td></tr>
+<tr><td>222 창업자금 특례</td><td>없음(50/100억·5억·10%·2회 합산·연혁)</td><td>없음</td><td>5</td></tr>
+<tr><td>223 특례 추징 재과세</td><td>없음(일반세율·이자·기한)</td><td>없음 — 재과세 신고세액공제 판단거리</td><td>5</td></tr>
+<tr><td>224 증여 반환 기한 미룬 날</td><td class="red">신고기한 끝날이 토·일·공휴일일 때 미룬 날(국기법 §5①)을 반환·재분할 판정이 안 봄</td><td class="red">엔진 rdDeadlineShifted_(225 재분할도 같이)</td><td>5</td></tr>
+</table>
+<h2>2. 공통점</h2>
+<ul>
+<li>「칸의 단위」(215·220 비율 0~1 vs %)와 「날짜 끝날」(221·224) — 넥스가 넣는 값의 모양에서 나는 틈이 이번 열 건의 절반. 같은 보호를 다른 비율 칸(§45의4·§45의5 지분비율 등)에도 두는 것이 다음 일감.</li>
+<li>증자·현물출자·합병 세 계산기는 같은 「상장 시가 견줌」·「주식 외 대가」 구조를 각각 다르게 갖고 있었음 — 216·219로 맞췄고 감자(§39의2)는 상장 단서가 조문에 없어 그대로.</li>
+<li>작업 실수: 220에서 편집 스크립트가 중간에 멈춘 채 뒤 단계(빌드·커밋)가 이어져 점검서만 올라감 — 보완 커밋으로 바로잡고, 그 뒤부터 편집·시험 성공 뒤에만 커밋되게 && 사슬로 묶음.</li>
+</ul>
+<h2>3. 검토대상 합계</h2>
+<p>50건(사건마다 5). 되풀이되는 것: 2028년 뒤 음력 공휴일 표(세무사님이 조견표 1부-02를 늘리면 자동 반영), 국기법 §5①이 신고 외 행위 기한(반환·재분할)에 미치는지 해석례, 비율 칸의 「본인 비율 vs 합계 비율」 [확인 필요]들.</p>
+<h2>4. 회귀·검문·서버 크기</h2>
+<p>엔진 회귀 174건 다름 0(연혁 끄기 18건 다름은 바탕 커밋과 같음) · 판정 20건 모두 맞음 · 가족 지도 통과 · 세션 시험 t174~t224 통과 · 넥스 도구 검문 ✓(78개·25,224자) · 서버 화면 파일 점검 ✓ · 조립본 약 10.8MB.</p>
+<h2>5. 커밋 목록(가지)</h2>
+<p>32402f6(215) 5b1936f(216) efe1892(217) 0f17e39(218) eeb932a(219) c2fd4d4(220)·dca1bfa(보완) fe58d81(221) 6eb3994(222) e6b5dd4(223) ae0570c(224)</p>
+</main></body></html>
