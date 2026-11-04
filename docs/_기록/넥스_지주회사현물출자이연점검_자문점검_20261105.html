@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 254 지주회사 현물출자 이연</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 254 — 「주식 현물출자로 지주회사 설립·전환 때 개인주주 과세이연(조특법 §38의2·시행령 §35의3) 계산기 점검 — 2026.12.31·두 요건·이연 양도소득·장래 취득가액·사후관리 2년」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_holding_company_contribution_deferral)를 네 갈래로 돌려 §38의2①③·시행령 §35의3⑦(사후관리 기간 = 현물출자일이 속하는 사업연도의 다음 사업연도 개시일부터 2년)을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>아버지가 2026-06-01 자기 회사 주식(취득가 3억)을 현물출자해 지주회사 주식 10억어치를 받음. 견주기: 2027년 출자 / 사업연도 말까지 미보유·자회사 사업 중단 / 2년 안 요건 상실.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 판)</h2>
+<ul>
+<li>§38의2①: 내국법인 주주가 2026.12.31까지 1호(지주회사·대통령령 주주가 취득 주식을 사업연도 종료일까지 보유)·2호(자회사가 사업연도 종료일까지 사업 계속)를 갖춰 주식을 현물출자해 지주회사를 설립·전환하면 양도차익 상당 양도소득세 과세를 이연(처분 때까지). ③: 지주회사는 취득 주식을 장부가액으로, 이후 시행령 기간(§35의3⑦ 다음 사업연도 개시일부터 2년)에 지주회사 요건 상실·자회사 사업 폐지·주식 처분 등이면 이연된 세액 과세.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 이연 양도소득 7억, 장래 처분 때 취득가액 3억(= 10억 − 7억) / 2027년 출자 밖 / 두 요건 빠지면 안 됨 / 2년 안 사유면 7억 추징(반기 말일부터 2개월 신고 안내).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>3억 → 10억 / 2027년 / 요건 둘 / 2년 안 사유</td><td>이연 7억·취득가액 3억 / 안 됨 / 안 됨 / 추징 7억</td><td>맞음(①③·시행령 §35의3⑦)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 251 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>개인주주 사후관리 세액의 신고기한(「사유 발생일이 속하는 반기 말일부터 2개월」)의 시행령 항 번호를 읽기용 판에서 대조하지 못함 — 판단거리</td><td>안내</td><td>중간</td></tr>
+<tr><td>2</td><td>②(전환지주회사의 지분비율미달자회사 주식 현물출자·자기주식교환 2년 안)·④ 중간지주회사 교환은 계산기 밖</td><td>—</td><td>중간</td></tr>
+<tr><td>3</td><td>「대통령령으로 정하는 주주」(대주주 등)·부득이한 사유(③ 단서)는 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>이연 뒤 지주회사 주식 처분 때 대주주 양도세(§94①3호·대주주 판정)는 주식 양도세 계산기로 — 취득가액은 이 결과</td><td>잇기</td><td>높음</td></tr>
+<tr><td>5</td><td>2026.12.31 일몰 뒤 연장 여부는 개정 확인</td><td>날짜</td><td>중간</td></tr>
+</table>
+</main></body></html>
