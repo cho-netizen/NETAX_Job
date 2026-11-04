@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 240 거주주택 특례</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 240 — 「장기임대주택 보유자의 거주주택 비과세 특례(소득세법 시행령 §155⑳~㉓) 계산기 점검 — 거주 2년·임대 요건·충족 전 양도(㉑)와 사후관리(㉒)·등록 말소 뒤 5년(㉓)·직전거주주택보유주택」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_rental_housing_residence_exclusion)를 아홉 갈래로 돌려 §155⑳~㉓(2026.9.30 개정판)을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다. 2019.2.12 개정의 「생애 한 차례」 적용례(부칙)는 읽기용 판 본문에 없어 판단거리로 남깁니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>장기임대주택 2채(민간임대 등록·사업자등록·5% 이내)를 둔 1세대가 2년 6개월 거주한 집을 양도. 견주기: 거주 23개월 / 임대 요건 미충족 / 임대기간 요건 충족 전 양도 / 2022-06-01 자동 말소 뒤 2027-03-01·06-02 양도 / 자진 말소(1/2 미만·모름) / 직전거주주택보유주택.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>§155⑳: 장기임대주택(§167의3①2호)·장기어린이집과 그 밖의 1주택을 둔 1세대가 1호(거주주택 보유기간 중 거주 2년 이상 — 직전거주주택보유주택은 등록일 이후 거주)·2호(양도일 현재 사업자등록·민간임대 등록·임대료 증가율 5% 이내)를 갖춰 거주주택을 양도하면 1주택으로 보아 §154① — 직전거주주택보유주택이면 직전거주주택 양도일 뒤 기간분만. ㉑: 임대기간요건 충족 전 양도도 적용. ㉒: 뒤에 못 채우면 그 달 말일부터 2개월 안에 (특례 없을 때 세액 − 낸 세액) 신고·납부. ㉓: 등록 말소(자진은 의무기간 1/2 이상 임대 뒤·자동) 뒤 5년 안 양도면 임대기간요건 갖춘 것으로.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 24개월 적용·23개월 안 됨 / 임대 요건 미충족 안 됨 / ㉑ 적용 + ㉒ 2개월 안내 / 자동 말소 2022-06-01 → 2027-03-01 적용·06-02 안 됨 / 자진 1/2 미만 안 됨·모름이면 판단 대기 / 직전거주주택보유주택은 적용하되 기간 안분 안내.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>거주 24 / 23개월 / 임대 요건 미충족</td><td>적용 / 안 됨 / 안 됨</td><td>맞음(⑳1호·2호)</td></tr>
+<tr><td>충족 전 양도</td><td>적용 + 2개월 사후관리 안내</td><td>맞음(㉑㉒)</td></tr>
+<tr><td>자동 말소 5년 안 / 뒤 / 자진 1/2 미만 / 모름</td><td>적용 / 안 됨 / 안 됨 / 대기</td><td>맞음(㉓)</td></tr>
+<tr><td>직전거주주택보유주택</td><td>적용(기간 안분 안내)</td><td>맞음(⑳ 후단)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 239 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>2019.2.12 개정 부칙(2019.2.12 이후 취득 거주주택은 최초 1회만 — 「생애 한 차례」)은 읽기용 판 본문에 없어 계산기에도 없음 — 두 번째 거주주택 양도 사건은 부칙 원문 확인(판단거리)</td><td>—</td><td>중간</td></tr>
+<tr><td>2</td><td>장기임대주택 요건(§167의3①2호 가~자목 — 등록 시기·기준시가·임대기간 5·8·10년)은 meetsLongTermRentalRequirements 칸으로 사람이 가름(rentalItemMa 마목만 도구가 셈)</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>직전거주주택보유주택의 「직전거주주택 양도일 뒤 기간분만」 안분 계산은 양도세 계산기 쪽 — 지시문 잇기 없음</td><td>안내</td><td>중간</td></tr>
+<tr><td>4</td><td>㉒ 사후관리 세액(특례 없을 때 − 낸 세액)은 calculate_rental_housing_residence_clawback로 따로</td><td>다른 계산기</td><td>높음</td></tr>
+<tr><td>5</td><td>2020.7.10 이전 등록 신청 한정(가목 아파트 등)·2020.8.18 이후 등록 불가 유형은 사람이 가름</td><td>—</td><td>높음</td></tr>
+</table>
+</main></body></html>
