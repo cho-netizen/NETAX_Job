@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 249 우회양도 부인</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 249 — 「증여 뒤 우회양도 부인(소득세법 §101②③) 계산기 점검 — 수증자 증여세+양도세 vs 증여자 직접 양도세, 10년(2023 전 5년) 경계, 실질 귀속·이월과세 대상 제외」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_donor_direct_transfer_deemed)를 일곱 갈래로 돌려 §101②③·법률 제19196호 부칙(2023.1.1 전 증여 5년)을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>형이 2023-03-01 동생에게 땅을 증여(증여세 4천만), 동생이 2026-05-01 양도(양도세 1천만). 형이 직접 팔았으면 양도세 1.2억. 견주기: 수증자 세액 1.3억 / 2022년 증여 뒤 7년 / 2023년 증여 뒤 7년·꼭 10년·다음 날 / 배우자(이월과세) / 양도대금이 동생에게 실질 귀속.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 읽기용 판)</h2>
+<ul>
+<li>§101②: 특수관계인(§97의2① 이월과세 적용 배우자·직계존비속 제외)에게 증여한 뒤 수증자가 증여일부터 10년 안에 양도했고, 1호(수증자 증여세 + 양도세) &lt; 2호(증여자 직접 양도 양도세)면 증여자가 직접 양도한 것으로 봄 — 단서: 양도소득이 수증자에게 실질 귀속되면 제외. ③: 그때 당초 증여엔 증여세를 안 매김. 2023.1.1 전 증여는 5년(법률 제19196호 부칙 §18).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 5천만 &lt; 1.2억 → 부인(증여자 양도세 1.2억) / 1.3억 ≥ 1.2억 → 그대로 / 2022년 증여 7년 뒤 → 5년 밖 / 2023년 증여 7년·꼭 10년 안·다음 날 밖 / 이월과세 대상·실질 귀속 → 제외.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>5천만 vs 1.2억 / 1.3억 vs 1.2억</td><td>부인 / 그대로</td><td>맞음(②1호·2호)</td></tr>
+<tr><td>2022 증여 7년 / 2023 증여 7년·10년·10년+1일</td><td>밖 / 안·안·밖</td><td>맞음(부칙·민법 기간)</td></tr>
+<tr><td>이월과세 대상 / 실질 귀속</td><td>제외 / 제외</td><td>맞음(② 괄호·단서)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 247 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>세 세액(수증자 증여세·양도세, 증여자 직접 양도세)은 각 계산기로 먼저 — 지시문에 순서 없음, 판단거리</td><td>칸</td><td>높음</td></tr>
+<tr><td>2</td><td>③ 당초 증여세 환급(이미 냈으면 경정청구)·④ 연대납세(증여자·수증자)는 안내만</td><td>안내</td><td>중간</td></tr>
+<tr><td>3</td><td>「실질 귀속」(양도대금이 수증자 통장에 남아 쓰였는지)은 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>특수관계인 범위(시행령 §98·국세기본법 시행령 §1의2)는 사람이</td><td>—</td><td>높음</td></tr>
+<tr><td>5</td><td>§97의2 이월과세(배우자·직계) 쪽은 「증여주택이월과세잇기」(181) 그대로 — 둘의 갈림은 수증자 관계로</td><td>갈림 칸</td><td>높음</td></tr>
+</table>
+</main></body></html>
