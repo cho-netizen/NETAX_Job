@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 180 비거주자 상속 잇기</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 180 — 「거주자 판정 → 비거주자 피상속인의 상속세(과세 범위·공제·채무·기한) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 「거주자」 묶음이 내는 엔진칸(isDecedentResident)을 상속세 계산기에 그대로 넣었을 때 공제·장례비가 법대로 줄어드는지 봤습니다. 엔진은 맞았고, 묶음 알림에 §14②(빼는 채무의 범위) 한 줄만 보탰습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>외국 영주권자 「하씨」가 2026-05-10 사망. 국내 주소·가족 없음, 올해 국내 체류 36일. 국내 재산 과세가액 30억(배우자 실제 상속 10억, 순금융재산 5억, 10년 동거주택 6억, 장례비 1,500만원). 물음: 거주자였다면과 견줘 공제·장례비·기한이 어떻게 달라지나.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102 시행판)</h2>
+<ul>
+<li>§3: 거주자는 모든 상속재산, 비거주자는 국내에 있는 상속재산만. §13②: 비거주자의 사전증여 가산은 국내 재산을 증여한 경우만. §14②: 비거주자는 그 상속재산의 공과금·그 재산을 목적으로 한 담보채무·국내 사업장 장부로 확인되는 채무만 뺀다(장례비·일반 채무는 ①의 거주자 조문).</li>
+<li>§18 기초공제 2억은 거주자·비거주자 모두. §18의2·§18의3·§19·§20·§21·§22·§23·§23의2(가업·영농·배우자·그 밖의 인적·일괄·금융재산·재해손실·동거주택)는 모두 「거주자의 사망」에 한정. §67④: 피상속인이나 상속인이 외국에 주소를 두면 신고기한 9개월.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>엔진(calculateInheritanceTaxJS)은 isDecedentResident=false면 기초공제 2억만 남기고 배우자·금융재산·동거주택·일괄공제와 장례비를 0으로 — 법대로. 「거주자」 묶음은 결론과 함께 엔진칸을 내고 비거주 알림(§3·§18·§13②·§67④)을 냄 — 이음새 이어짐.</li>
+<li class="red">묶음 알림에 §14②(비거주자는 그 재산의 공과금·담보채무·국내 사업장 채무만 뺌 — 장례비·일반 채무 못 뺌)가 없었음. 과세가액은 넥스가 셈해 계산기에 넣으므로, 이 줄이 없으면 국외 채무나 일반 채무를 빼고 과세가액을 넣을 수 있었음.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js 「거주자」 묶음(judgeResidency_)의 비거주 피상속인 알림에 §14② 한 구절 덧붙임. 엔진·Code.js·Federation.js는 손대지 않음.</li>
+<li>넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>거주자 묶음(상속세) — 국내 주소·가족 없음, 체류 36일</td><td>비거주자 · 엔진칸 {isDecedentResident:false} · 알림(§3·§18·§14②·§13②·§67④)</td></tr>
+<tr><td>그 엔진칸으로 상속세 계산</td><td>공제 합계 2억(기초만) · 장례비 0 · 과세표준 28억 · 산출 960,000,000</td></tr>
+<tr><td>거주자였다면</td><td>공제 합계 22억 500만(배우자 10억·일괄 5억·금융 1억·동거주택 6억·장례비 500만) · 산출 178,500,000</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·176~179 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>§67④의 「외국에 주소」와 「비거주자」는 같지 않음(국내 주소 없이 183일 거소만 있는 거주자, 국외 주소 둔 거주자) — 엔진 기한 셈은 isDecedentResident=false를 9개월로 봄</td><td>비거주자 = 9개월</td><td>중간</td></tr>
+<tr><td>2</td><td>과세가액(§13②·§14②)은 넥스가 셈해 넣음 — 계산기에 「국내 재산만·국내 채무만」 걸러 주는 칸이 없음</td><td>알림만</td><td>높음</td></tr>
+<tr><td>3</td><td>비거주자 피상속인의 상속인이 거주자인 경우 외국납부세액공제(§29)는 거주자 사망에만 — 비거주자 쪽은 국내 재산만이라 생기지 않는지</td><td>계산기</td><td>중간</td></tr>
+<tr><td>4</td><td>§21 일괄공제가 「거주자」 한정이라 비거주자는 기초 2억만 — 영주 목적 귀국 뒤 국내 사망은 거주자로 봄(시행령 §2②) → 묶음이 「귀국사망」 칸으로 처리</td><td>묶음</td><td>높음</td></tr>
+<tr><td>5</td><td>상속세 계산기 결과에 신고기한 칸이 없음 — 기한은 「납세의무성립」·특별연고자 묶음과 엔진 가산세 셈에만</td><td>—</td><td>—</td></tr>
+</table>
+</main></body></html>
