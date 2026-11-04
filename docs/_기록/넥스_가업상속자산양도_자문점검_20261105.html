@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 176 가업상속 자산 양도</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 176 — 「가업상속공제 받은 자산을 상속인이 파는 경우 — 양도세 안분과 상속세 사후관리 추징 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 양도세 계산기(소득세법 §97의2④·§95④)와 상속세 추징 계산기(상증법 §18의2⑤)는 각각 법대로 셈하고 있었고, 둘 사이의 §18의2⑩ 양도소득세 상당액을 넥스가 손으로 잇던 틈을 판정 묶음 하나로 메웠습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>개인가업(제조업) 토지. 2024-03-01 상속개시, 가업상속재산가액 25억 중 가업상속공제 15억(적용률 60%). 피상속인은 2000-01-10에 1억에 취득, 상속 당시 가액 10억. 상속인 「마씨」가 2026-09-01 15억에 양도 — 이 토지가 상속개시 당시 가업용 자산의 60%.</li>
+<li>물음: 양도세 취득가액은 얼마이고, 상속세 사후관리 추징은 얼마이며, 두 세금이 서로 어떻게 맞물리나.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법·시행령 20261001, 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>소득세법 §97의2④: 취득가액 = 피상속인 취득가액 × 가업상속공제적용률 + 상속개시일 현재 가액 × (1 − 적용률). 시행령 §163의2③(2026.2.27 개정): 개인가업 적용률 = 공제금액 ÷ 가업상속재산가액(자산별 공제금액은 평가액 안분), 법인가업 = 사업무관자산 뺀 자산 비율. ④: 대상은 개인가업 사업용 자산·법인가업 주식등.</li>
+<li>소득세법 §95④ 단서: 적용률 몫의 장기보유특별공제 보유기간은 피상속인 취득일부터. §104②1호: 세율 보유기간은 상속은 피상속인 취득일부터.</li>
+<li>상증법 §18의2⑤: 5년 안 정당한 사유 없이 1호 가업용 자산 40% 이상 처분·3호 지분 감소 등이면 공제받은 금액 × 율(시행령 §15⑮ 100%)[1호는 × 처분비율]을 과세가액에 산입 + 이자상당액. ⑨ 사유 발생 달 말일부터 6개월 안 신고·납부. ⑩ §97의2④로 낸 양도소득세 상당액을 상속세 산출세액에서 공제(음수면 0). 시행령 §15⑩ 처분비율은 누적, ㉑ 상당액 = §97의2④ 양도세 − §97 양도세.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>양도세 계산기는 businessSuccessionDeductionRatio·decedentAcquisitionValue·decedentAcquisitionDate로 §97의2④ 안분(4.6억)과 §95④ 장특공 안분(18%)을 맞게 셈 — 고칠 것 없음.</li>
+<li>추징 계산기(calculate_succession_deduction_clawback)는 transferTaxEquivalent를 "뺄 금액"으로만 받음 — 그 값(시행령 §15㉑)을 얻으려면 넥스가 양도세 계산기를 두 번 돌려 빼야 하는데 지시가 어디에도 없었음.</li>
+<li class="red">법인가업 주식을 팔면 「40% 처분」(1호)이 아니라 「지분 감소」(3호, 전액 추징)인데 구분해 주는 데가 없었음. 40% 미만으로 나눠 팔 때 시행령 §15⑩ 누적도 안 알림.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js에 「가업상속자산양도」 묶음(judgeBizAssetSale_, 별칭 가업상속자산·가업자산양도·§97의2④·§18의2⑩) 새로 만듦: 적용률 산정 → 양도세 계산기 두 번(§97의2④ 적용·미적용) → ⑩ 상당액 → 5년·처분비율(개인 1호)/지분 감소(법인 3호)·정당한 사유 → 당초 상속세 입력이 있으면 추징 계산기까지 돌려 결정 상속세·이자·신고기한을 냄. 양도세 예정신고 할 일도 함께.</li>
+<li class="red">Code.js judge 묶음 enum·facts 설명·묶음 설명에 「가업상속자산양도」 한 줄, Federation.js 이음새 점검 한 줄.</li>
+<li>넥스 지시문·도구 수는 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>개인 60% 처분(당초 상속세 입력 있음)</td><td>취득가액 4.6억 · 양도세 321,186,000(상속가액대로면 173,060,000) → 상당액 148,126,000 · 산입 9억 → 결정 상속세 301,874,000 + 이자 17,972,668 · 신고기한 2027-03-31</td></tr>
+<tr><td>30% 처분</td><td>추징 없음 · 누적 주의 알림 · ⑩ 공제도 없음</td></tr>
+<tr><td>5년 지나서(2029-03-02) 양도</td><td>추징 없음 · §97의2④ 안분은 그대로</td></tr>
+<tr><td>법인 주식 양도(적용률 80%)</td><td>3호 지분 감소 → 공제 전액 산입 알림 · 상당액 179,374,000 · 주식 예정신고는 반기 기준</td></tr>
+<tr><td>빈 입력 / 정당한 사유</td><td>잠정(남은 것 4) / 추징 없음·자료 갖출 것</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174 잇기 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓ · gs-backend(화면 빼고) 8.9MB</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>시행령 §15⑩ 처분비율의 분모·분자 가액 기준(상속개시 당시 평가액인지 장부가액인지)은 원문 1호·2호를 끝까지 못 봄</td><td>넥스가 넣은 비율을 그대로 씀</td><td>중간</td></tr>
+<tr><td>2</td><td>⑩ 상당액을 「산출세액」에서 빼라는 법 문언과 추징 계산기가 「늘어난 몫」에서 빼는 것이 같은지(당초 산출세액에서 빼면 음수 가능 → 0)</td><td>늘어난 몫에서 뺌(10-22 결정)</td><td>중간</td></tr>
+<tr><td>3</td><td>법인가업 주식 양도의 양도세는 주식 양도세 규정(§104①11호 등)인데 묶음은 자산종류 stock으로 같은 계산기를 부름 — 주식 세율이 맞게 나오는지</td><td>계산기에 맡김</td><td>낮음</td></tr>
+<tr><td>4</td><td>2023.1.1. 전 상속의 종전 7년·10년 추징표는 묶음이 계산기에만 맡김</td><td>계산기가 가름</td><td>높음</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 추징 계산기 transferTaxEquivalent 설명에 「§97의2④ 양도세 − §97 양도세(시행령 §15㉑)」를 적어야 넥스가 묶음 없이도 맞게 넣음(지시문·도구 설명 금지 중이라 안 고침)</td><td>묶음이 대신 셈</td><td>—</td></tr>
+</table>
+</main></body></html>
