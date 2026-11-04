@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 265 보유·거주요건 예외</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 265 — 「1세대1주택 보유·거주요건의 예외(소득세법 시행령 §154① 단서 1~3호·5호) 계산기 점검 — 임대주택 5년 거주, 수용(고시 전 취득·잔존주택 5년), 해외이주·국외 취학 2년, 1년 거주 부득이 양도, 공고 전 계약(무주택·보유기간 별도)」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_holding_residency_exception, 1세대1주택 판정 도구의 holdingException 칸)를 여섯 갈래로 돌려 §154① 단서를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다(186은 2017.8.2 전 계약 거주요건 면제를 종합판정에 넣은 것, 이번은 예외 계산기 전체).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>공공건설임대주택 5년(4.9년) 거주 뒤 분양 전환 양도 / 2019년 취득 주택이 2022년 고시 사업에 수용(고시 뒤 취득 / 잔존주택 5년 경계) / 2025-01-10 해외이주 출국 뒤 2년 안·뒤 양도, 출국 때 2주택 / 1년 거주 뒤 전근 양도 / 2017-07 계약·08-03 조정대상지역 공고(계약금 때 무주택, 보유 2년 따로 충족).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>§154① 단서: 1호 건설임대주택 임차일부터 세대 전원 5년 이상 거주 뒤 양도, 2호 가목 사업인정 고시 전 취득 주택의 협의매수·수용(잔존주택은 5년 안 양도 포함)·나목 해외이주 세대 전원 출국(출국일 1주택·2년 안 양도)·다목 1년 이상 국외 취학·근무 출국(같은 조건), 3호 1년 이상 거주 주택을 부득이한 사유로 양도 → 보유·거주기간 제한 없음; 5호 조정대상지역 공고 전 계약(계약금 지급일 무주택) → 거주기간만 제한 없음(보유 2년은 그대로).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 5년/4.9년 / 고시 전·뒤 / 잔존주택 5년 경계 / 2년·1주택 / 1년 거주 / 공고 전 계약·무주택이면 거주요건만 면제(residency_only), 보유기간을 따로 채웠다는 확인이 없으면 「보유기간은 그대로」 안내로 막음.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>1호 / 2호 가·나·다 / 3호 / 5호</td><td>각 요건대로 적용·안 됨, 면제범위 both/residency_only</td><td>맞음(§154① 단서)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 266 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>3호·1호 괄호의 부득이한 사유(시행규칙 §71③ 취학·근무·질병)는 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>2</td><td>5호 무주택 세대·계약금 지급 증빙·보유 2년 별도 충족은 사람이 — 186 종합판정과 같은 칸</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>2호 나·다목 「출국일 현재 1주택」에 분양권·입주권 포함 여부는 해석례</td><td>칸</td><td>중간</td></tr>
+<tr><td>4</td><td>잔존주택 5년의 기산(양도일 또는 수용일)은 사람이 originalTransferDate에 넣음</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>예외가 면제하는 범위(1~3호 보유+거주, 5호 거주만)는 「면제범위」로 돌려줌 — 종합판정이 씀</td><td>잇기</td><td>높음</td></tr>
+</table>
+</main></body></html>
