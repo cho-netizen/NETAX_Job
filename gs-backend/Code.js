@@ -1953,7 +1953,8 @@ const DRIVE_TOOLS = [
         wasOneHouseBeforeAcquisition: { type: 'boolean', description: '이 준공후미분양주택 취득 전 1주택을 보유한 1세대였는지.' },
         meetsAreaAndPriceRequirements: { type: 'boolean', description: '양도자(사업주체·분양사업자·시공자)·최초 계약·선착순 공급 요건(시행령 §98의8①3~5호)을 충족하는지.' },
         exclusiveArea: { type: 'number', description: '전용면적(㎡) — 85㎡ 초과면 제외.' },
-        acquisitionPrice: { type: 'number', description: '취득가액(원) — 6억원(2026.2.27. 이후 취득 7억원) 초과면 제외.' }
+        acquisitionPrice: { type: 'number', description: '취득가액(원) — 6억원(2026.2.27. 이후 취득 7억원) 초과면 제외.' },
+        transferredHouse: { type: 'string', enum: ['prior_house', 'unsold_house', 'later_house'], description: '[2026.11.05] 지금 양도하는 주택 — prior_house=미분양주택 취득 전부터 보유한 종전주택(이 조의 자리, 기본값), unsold_house=미분양주택 자체, later_house=미분양주택 뒤에 산 주택(둘 다 §98의9① 밖 → 일반 판정).' }
       },
       required: ['acquisitionDate']
     }
