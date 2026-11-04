@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 227 신탁이익 증여일</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 227 — 「신탁이익의 증여(상증법 §33·시행령 §25) — 증여일(실제 지급일·위탁자 사망일·약정일·최초 지급일) 판정을 「증여일」 묶음에 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">세액 계산기(calculate_trust_income_gift_tax)는 일반 증여세 산식이라 맞았으나, §33 신탁이익의 증여일을 정하는 시행령 §25①(실제 지급일 원칙, 사망·약정·분할 예외)은 어느 도구도 가르지 않고 안내 글로만 있었습니다. 「증여일」 묶음에 종류 「신탁이익」 갈래를 더했습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>아버지가 신탁회사에 3억을 맡기고 아들을 수익자로 지정. 견주기: 2026-03-10 실제 지급 / 받기 전 2025-12-01 아버지 사망 / 2026-01-31 약정일까지 미지급 / 5년 분할(최초 2026-02-01, 이번 2026-08-01) / 위탁자가 해지권 보유 / 날짜 모름.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§33①: 위탁자가 타인을 수익자로 지정한 신탁에서 수익자가 원본(1호)·수익(2호)을 받으면 대통령령이 정하는 날을 증여일로 그 권리의 가액을 증여재산가액으로. ②: 수익자 미특정·미존재면 위탁자(상속인)를 수익자로, 특정된 때 새 신탁. 시행령 §25①: 실제 지급되는 날 — 다만 1호 받기 전 위탁자 사망 → 사망일, 2호 약정일까지 미지급 → 약정일, 3호 여러 차례 → 최초 지급일(계약일에 미확정이거나 위탁자가 해지·수익자 변경·잔여재산 귀속권으로 실질 지배하면 각 실제 지급일). ②: 여러 차례면 §61 준용 평가.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">「증여일」 묶음(§24)엔 신탁이익 갈래가 없어 종류를 「기타」(인도일)로 넣거나 특례조문 §33으로 넣으면 「그 조문 계산기의 증여일을 쓸 것」으로만 돌려보냈는데, 그 계산기는 증여일을 셈하지 않는다 — 사망일·약정일·최초 지급일 예외를 넥스가 손으로 정해야 했다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/JudgeMore.js judgeGiftAcquisitionDate_: 종류 「신탁이익」 갈래(실제지급일·위탁자사망일·약정지급일·분할지급·최초지급일·이익미확정·위탁자지배) — §25① 본문·1~3호(단서 포함) 순서로 증여일·근거·신고기한·평가기간·10년 합산 시작일을 냄, §33②·§61 평가 알림.</li>
+<li class="red">gs-backend/Code.js 판정 도구 facts 설명의 증여일 칸 목록에 「신탁이익」과 그 칸 이름 한 줄(도구 수·지시문 길이 그대로, 검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>2026-03-10 실제 지급</td><td class="red">증여일 03-10(본문), 신고기한 06-30</td><td>맞음(§25① 본문·§68①)</td></tr>
+<tr><td>받기 전 위탁자 사망 2025-12-01 / 약정 2026-01-31 미지급</td><td class="red">12-01(1호) / 01-31(2호)</td><td>맞음</td></tr>
+<tr><td>분할 최초 02-01·이번 08-01 / 위탁자 해지권</td><td class="red">02-01(3호 본문) / 08-01(3호 단서)</td><td>맞음</td></tr>
+<tr><td>날 모름 / 세액 3억(직계존속)</td><td>잠정 / 과세표준 2.5억·산출 4천만</td><td>맞음</td></tr>
+</table>
+<p class="sub">판정 회귀 20건·가족 회귀 통과, node --check 통과, 검문 ✓, 서버 화면 파일 점검 통과(엔진 변경 없음).</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>특례조문 칸에 §33을 넣으면 여전히 「그 조문 계산기」로 돌려보냄 — 종류를 「신탁이익」으로 넣어야 이 갈래를 탐(칸 설명에 적음)</td><td>종류 기준</td><td>높음</td></tr>
+<tr><td>2</td><td>분할 지급의 가액(§61 준용, 시행령 §25②)은 「신탁수익권」 묶음·calculate_trust_benefit_value로 따로 — 지시문 잇기 없음, 판단거리</td><td>알림</td><td>중간</td></tr>
+<tr><td>3</td><td>수익자 미특정(§33②)의 「새 신탁」 시점은 사람이 가름</td><td>알림</td><td>높음</td></tr>
+<tr><td>4</td><td>위탁자 사망 때 §9(신탁재산 상속)와 §33의 경계 — 「신탁상속」 묶음과 함께 봐야 함</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>§25①1호 「받기 전」 판정에 실제지급일이 없으면 사망일만으로 가름(사망 뒤 지급도 사망일)</td><td>사망일</td><td>높음</td></tr>
+</table>
+</main></body></html>
