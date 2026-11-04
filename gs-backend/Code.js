@@ -2633,7 +2633,12 @@ const DRIVE_TOOLS = [
         deferredTaxAmount: { type: 'number', description: '이월과세액(원) — calculate_transfer_tax 등 일반 양도세 계산기로 별도 계산한 양도소득세.' },
         triggerEvent: { type: 'string', enum: ['none', 'business_discontinued', 'shares_disposed_50pct_plus'], description: 'none=사후관리 위반 없음(이월과세 계속 유지), business_discontinued=승계받은 사업을 폐지, shares_disposed_50pct_plus=취득한 주식·출자지분의 50% 이상을 처분.' },
         yearsSinceTransfer: { type: 'number', description: 'triggerEvent이 none이 아닐 때 — sect31은 사업용고정자산 양도일, sect32는 법인 설립등기일부터 사유발생일까지의 경과연수.' },
-        alreadyPaidByCorp: { type: 'number', description: 'triggerEvent이 사후관리 위반일 때 — 통합법인·전환법인이 이미 납부한 세액(원). 없으면 0.' }
+        alreadyPaidByCorp: { type: 'number', description: 'triggerEvent이 사후관리 위반일 때 — 통합법인·전환법인이 이미 납부한 세액(원). 없으면 0.' },
+        baseDate: { type: 'string', description: '[2026.11.05] 5년 기산일 YYYY-MM-DD — sect31 사업용고정자산 양도일, sect32 법인 설립등기일 → 사후관리기간을 날짜로, triggerDate와 함께 경과연수도 셈(yearsSinceTransfer 대신).' },
+        triggerDate: { type: 'string', description: '[2026.11.05] 사후관리 사유 발생일 YYYY-MM-DD → 납부기한(그달 말일부터 2개월, 쉬는 날 미룸).' },
+        assetIsHouseOrHousingRight: { type: 'boolean', description: '[2026.11.05] sect32 — 사업용고정자산이 주택·주택을 취득할 수 있는 권리면 true → 대상 아님(§32① 단서, 2020.12.29).' },
+        isConsumerServiceBusiness: { type: 'boolean', description: '[2026.11.05] 통합·전환 법인이 소비성서비스업(대통령령)이면 true → 대상 아님.' },
+        capitalMeetsRequirement: { type: 'boolean', description: '[2026.11.05] sect32 — 새 법인 자본금이 대통령령 금액(순자산가액) 이상인지. false면 대상 아님(§32②).' }
       },
       required: ['provision', 'deferredTaxAmount', 'triggerEvent']
     }

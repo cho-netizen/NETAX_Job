@@ -11248,13 +11248,24 @@
       return { error: 'triggerEvent을 none(사후관리 위반 없음)/business_discontinued(승계사업 폐지)/shares_disposed_50pct_plus(취득주식 50%이상 처분) 중에서 선택하세요.' };
     }
     const provisionLabel = provision === 'sect31' ? '조특법§31(중소기업간 통합)' : '조특법§32(법인전환)';
+    // [2026.11.05 모의사건 289] §32① 단서(주택·주택을 취득할 수 있는 권리 제외, 소비성서비스업 법인 제외)·② 자본금 요건·③ 이월과세 적용신청·⑤ 납부기한(사유일 달 말일부터 2개월, 쉬는 날 미룸)·5년 기산(설립등기일/양도일 → 사유일) — 전엔 글로만.
+    if (provision === 'sect32' && p.assetIsHouseOrHousingRight === true) return { 상태: '대상_아님', 이월과세액: 0, 납부세액: deferredTaxAmount, 안내: '사업용고정자산이 주택 또는 주택을 취득할 수 있는 권리면 §32① 단서로 이월과세 대상이 아닙니다(2020.12.29 개정) — 일반 양도세 그대로.' };
+    if (p.isConsumerServiceBusiness === true) return { 상태: '대상_아님', 이월과세액: 0, 납부세액: deferredTaxAmount, 안내: '소비성서비스업(대통령령)을 경영하는 법인으로의 ' + (provision === 'sect31' ? '통합' : '전환') + '은 이월과세 대상이 아닙니다(§32①·§31① 괄호).' };
+    if (provision === 'sect32' && p.capitalMeetsRequirement === false) return { 상태: '대상_아님', 이월과세액: 0, 납부세액: deferredTaxAmount, 안내: '새로 설립되는 법인의 자본금이 대통령령으로 정하는 금액(전환 사업장의 순자산가액) 이상이어야 합니다(§32②) — 못 미쳐 이월과세 대상이 아닙니다 [확인 필요: 시행령 §29 순자산가액 기준].' };
+    const baseD_ = String(p.baseDate || '').slice(0, 10), trD_ = String(p.triggerDate || '').slice(0, 10);
+    const isD_ = function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x); };
+    const filingNote_ = '이월과세 적용신청(§32③·§31③ — 양도소득세 예정·확정신고 때 이월과세적용신청서를 전환·통합법인과 함께 제출)을 해야 적용.';
     if (triggerEvent === 'none') {
-      return {
+      const r0_ = {
         상태: '이월과세_적용중', 이월과세액: deferredTaxAmount, 납부세액: 0,
-        안내: provisionLabel + '에 따라 이월과세를 적용받아 현재는 양도소득세를 납부하지 않습니다. ' + (provision === 'sect31' ? '통합법인' : '전환법인') + '이 나중에 이 자산을 양도할 때 이월과세액이 정산됩니다.'
+        안내: provisionLabel + '에 따라 이월과세를 적용받아 현재는 양도소득세를 납부하지 않습니다. ' + (provision === 'sect31' ? '통합법인' : '전환법인') + '이 나중에 이 자산을 양도할 때 이월과세액이 정산됩니다. ' + filingNote_
       };
+      if (isD_(baseD_)) { const e_ = new Date(baseD_ + 'T00:00:00Z'); e_.setUTCFullYear(e_.getUTCFullYear() + 5); e_.setUTCDate(e_.getUTCDate() - 1); r0_.사후관리기간 = baseD_ + '~' + e_.toISOString().slice(0, 10); r0_.사후관리기간_근거 = (provision === 'sect31' ? '사업용고정자산 양도일' : '법인 설립등기일') + '부터 5년(§31⑦·§32⑤) — 그 안에 승계사업 폐지·취득 주식 50% 이상 처분이면 추징'; }
+      return r0_;
     }
-    const yearsSinceTransfer = Number(p.yearsSinceTransfer);
+    let yearsSinceTransfer = Number(p.yearsSinceTransfer);
+    if (!(yearsSinceTransfer >= 0) && isD_(baseD_) && isD_(trD_)) { const A = new Date(baseD_ + 'T00:00:00Z'), B = new Date(trD_ + 'T00:00:00Z'); let y = B.getUTCFullYear() - A.getUTCFullYear(); if (B.getUTCMonth() < A.getUTCMonth() || (B.getUTCMonth() === A.getUTCMonth() && B.getUTCDate() < A.getUTCDate())) y--; yearsSinceTransfer = y + ((B - A) / 86400000 % 365.25 > 0 ? 0.01 : 0); }
+    const dueD_ = isD_(trD_) ? shiftTaxDeadline_(new Date(Date.UTC(Number(trD_.slice(0, 4)), Number(trD_.slice(5, 7)) + 2, 0)).toISOString().slice(0, 10)) : '';
     if (!(yearsSinceTransfer >= 0)) return { error: (provision === 'sect31' ? '사업용고정자산 양도일' : '법인 설립등기일') + '부터 사유발생일까지의 경과연수가 필요합니다.' };
     if (yearsSinceTransfer > 5) {
       return {
@@ -11267,6 +11278,8 @@
     return {
       상태: '추징대상', 이월과세액: deferredTaxAmount, 법인기납부세액: alreadyPaidByCorp,
       납부세액: clawbackAmount,
+      사유발생일: trD_ || undefined, 납부기한: dueD_ || undefined,
+      납부기한_근거: dueD_ ? (provision === 'sect31' ? '§31⑦' : '§32⑤') + ' — 사유 발생일이 속하는 달의 말일부터 2개월(쉬는 날이면 다음 날) · 이자상당가산액 규정 없음' : undefined,
       안내: (triggerEvent === 'business_discontinued' ? '승계받은 사업을 폐지하여' : '통합·전환으로 취득한 주식등의 50% 이상을 처분하여') + ' ' + provisionLabel + '의 사후관리 위반 사유가 발생했습니다. 사유발생일이 속하는 달의 말일부터 2개월 이내에 이월과세액(법인이 이미 납부한 세액 제외)을 양도소득세로 납부해야 합니다. 이 사후관리 위반에는 별도 이자상당가산액이 법문에 없습니다.'
     };
   };
