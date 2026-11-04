@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 178 초과배당</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 178 — 「초과배당에 따른 이익의 증여(상증법 §41의2) — 누가 포기했고 누가 받았나, 정산이 있나」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_excess_dividend_gift_tax)는 숫자를 세고 있었지만 「과소배당 비율」을 넥스가 주주 표에서 손으로 셈해 넣어야 했고, 정산 갈래의 기준인 「발생 연도」가 지급일이 아니라 배당소득 귀속연도라는 점을 가르는 자리가 없었습니다. 판정 묶음 하나로 메웠고 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>비상장 「서씨 상사」 배당 4억. 아버지(70%, 최대주주등)가 4천만원만 받고, 아들(20%, 특수관계인)이 3억 2천만원, 남(10%)이 4천만원을 받음. 갈래: 2025-12-20 지급 / 2025-12-20 결의·2026-03-20 지급 / 남도 포기(비율 60%) / 비례 배당 / 아들이 성실신고확인대상.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001·시행규칙 시행판)</h2>
+<ul>
+<li>§41의2①: 최대주주등(§22②)이 배당을 포기하거나 불균등하게 받아 그 특수관계인이 지분보다 높은 배당을 받으면, §4의2③(소득세 과세 시 증여세 제외)에도 불구하고 지급일을 증여일로 「초과배당금액 − 소득세 상당액」을 증여재산가액으로 한다.</li>
+<li>시행령 §31의2②: 초과배당금액 = (받은 배당 − 지분 비례 배당) × (최대주주등 과소배당 ÷ 전체 과소배당). ③(2026.2.27 개정): 증여세 신고기한이 발생 연도의 다음 해 6/1(성실신고확인대상 7/1) 이후면 실제 소득세액(1호), 그 밖은 시행규칙 §10의3① 추정율표(2호). ④ 정산증여재산가액 = 초과배당금액 − 실제 소득세액. ⑥ 1호면 정산(§41의2②③) 없음.</li>
+<li>§41의2②③: 정산 증여세 − 당초 증여세를 더 내고 반대면 환급 · 정산 신고기한 다음 해 5/1~5/31(성실신고확인대상 6/30). §68①: 증여세 신고기한은 증여일 속한 달 말일부터 3개월. 국세기본법 §5①: 토·일·공휴일이면 다음 날.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>계산기 칸 disproportionateShortfallRatio(과소배당 비율)·excessDividendBaseAmount를 넥스가 주주 표에서 손으로 셈 — 최대주주등 아닌 주주의 포기 몫을 비율에서 빼는 걸 놓치기 쉬웠음.</li>
+<li class="red">「초과배당금액이 발생한 연도」를 지급일 연도로 보면 신고기한(지급 달 말일 + 3개월)은 늘 다음 해 6/1 앞이라 1호(실제 소득세액)가 영영 안 걸림 — 발생 연도는 배당소득 귀속연도(잉여금처분 결의일, 소득세법 시행령 §46)로 봐야 전년도 결의·올해 3월 지급의 신고기한(6월 말)이 6/1 뒤가 되어 1호가 됨. 계산기 칸 excessDividendYear가 그래서 giftDate와 따로 있었던 것.</li>
+<li>배당소득세(원천 14%·종합과세)와 증여세가 둘 다 붙는다는 안내가 없었음.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js에 「초과배당」 묶음(judgeExcessDividend_, 별칭 불균등배당·배당포기·§41의2) 새로 만듦: 주주 표 → 비례 배당·차이 → 최대주주등 과소배당 비율 → 수증자별 초과배당금액 → 신고기한(§68①·§5①) vs 발생연도(결의일) 다음 해 6/1·7/1 → 갈래(추정율표+정산 / 실제 소득세액) → 계산기 호출 → 할 일(증여세 신고·정산 신고·배당소득 종합과세).</li>
+<li class="red">Code.js judge 묶음 enum·facts 설명·묶음 설명에 「초과배당」 한 줄, Federation.js 이음새 점검 한 줄.</li>
+<li>함께: 177 점검서의 거주 연수 오기(8.3년 → 5.5년) 고침 · 중간결산 165~174 파일 새로 씀. 계산기(엔진)·넥스 지시문·도구 수는 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>2025-12-20 지급</td><td>비율 100% · 아들 초과배당금액 2.4억 − 추정 소득세 상당액 71,260,000 = 168,740,000 → 증여세 23,035,560 · 신고 2026-03-31 · 정산 2026-06-01(5/31 일요일)</td></tr>
+<tr><td>2025-12-20 결의 · 2026-03-20 지급</td><td>신고기한 2026-06-30 ≥ 2026-06-01 → 실제 소득세액 갈래, 정산 없음 · 실제 세액 없이 돌리면 상한(36,860,000) + 「넣어 다시 셀 것」 · 종합소득과세표준 4억을 넣으면 상당액 93,200,000 → 증여세 18,779,200</td></tr>
+<tr><td>남(10%)도 포기</td><td>비율 60% → 아들 초과배당금액 1.2억(남의 포기 몫은 §41의2 밖)</td></tr>
+<tr><td>비례 배당</td><td>증여 없음</td></tr>
+<tr><td>아들 성실신고확인대상</td><td>기준 7/1 · 정산 2026-06-30</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·176·177 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>「초과배당금액이 발생한 연도」 = 배당소득 귀속연도(결의일)라는 읽기 — 법령 문언만으로 정한 것이라 해석례 대조 필요</td><td>결의일 없으면 지급일 연도로 보고 알림</td><td>중간</td></tr>
+<tr><td>2</td><td>최대주주등(§22②)을 넥스가 표시 — 본인+특수관계인 합계 최다 주주 판정은 「최대주주」 쪽 묶음·도구에 맡김</td><td>받은 표시 그대로</td><td>높음</td></tr>
+<tr><td>3</td><td>수증자가 여럿이고 최대주주등도 여럿일 때 비율은 전체 합으로 한 번 — 시행령 ②2호 문언과 같음</td><td>합으로 셈</td><td>높음</td></tr>
+<tr><td>4</td><td>정산 때 환급(당초 &gt; 정산)은 계산기 isFinalSettlement·initialGiftTaxAmount로 — 묶음은 할 일만</td><td>계산기</td><td>높음</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 계산기 excessDividendYear 설명에 「배당소득 귀속연도(결의일 연도), 지급일 연도가 아님」을 적어야 넥스가 묶음 없이도 맞게 넣음(지시문·도구 설명 금지 중이라 안 고침)</td><td>묶음이 대신</td><td>—</td></tr>
+</table>
+</main></body></html>
