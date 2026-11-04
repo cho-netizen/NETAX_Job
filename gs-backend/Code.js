@@ -3035,7 +3035,8 @@ const DRIVE_TOOLS = [
         farmInheritedValue: { type: 'number', description: '07일 때 영농상속받은 재산가액(서식 ㉕)' },
         transferTaxEquivalent: { type: 'number', description: '가업 — §18의2⑩ 양도소득세 상당액(뺄 금액)' },
         foreignHeirNineMonths: { type: 'boolean', description: '피상속인·상속인 국외 주소로 신고기한 9개월이면 true' },
-        assessmentDate: { type: 'string', description: '부과(신고) 당시 날짜 — 이자율 고를 때. 비우면 오늘' }
+        assessmentDate: { type: 'string', description: '부과(신고) 당시 날짜 — 이자율 고를 때. 비우면 오늘' },
+        justifiedReason: { type: 'string', description: '[2026.11.05] §18의2⑤ 「정당한 사유」(시행령 §15⑧) — 01: expropriation(수용·국가등 양도·시설 개체·사업장 이전 + 대체 취득)/state_gift/heir_death/reorg(조직변경 + 같은 업종)/useful_life_expired/business_change/rnd_use · 02: heir_death/state_gift/unavoidable(병역·질병) · 03: reorg/capital_increase(유상증자 제3자 배정)/heir_death_succeeded/state_gift/listing/even_free_reduction/court_reduction. 들면 추징 없음(괄호 조건은 사람이 확인). 04~09엔 목록 없음(영농은 시행령 §16 — 사람이 가름).' }
       },
       required: ['violationCode', 'inheritanceDate', 'violationDate', 'original']
     }
