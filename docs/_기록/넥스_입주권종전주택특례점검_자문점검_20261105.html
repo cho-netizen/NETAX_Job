@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 263 입주권·종전주택 특례</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 263 — 「1주택 + 조합원입주권 취득 뒤 종전주택 양도 특례(소득세법 §89② 단서·시행령 §156의2③④) 계산기 점검 — 1년 경과 취득·3년 안 양도·3년 초과면 완공 뒤 3년 안 전입+1년 거주」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_reconstruction_rights_one_house_exclusion)를 일곱 갈래로 돌려 §156의2③④를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다(190·191은 입주권 자체 양도·특례칸 채움, 이번은 종전주택 양도 특례).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2020-01-10 취득한 집을 둔 세대가 2021-03-01 조합원입주권을 취득. 종전주택 양도: 2024-03-01(꼭 3년) / 03-02 / 2026-05-01(완공 2025-01-10 뒤 전입·1년 거주) / 2028-02-01 / 전입 안 함 / 입주권을 1년 안(2020-12-01) 취득 / §154① 예외.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>§156의2③: 1주택 세대가 종전주택 취득일부터 1년 이상 지난 뒤(§154①1호·2호가목·3호 예외면 면제) 조합원입주권을 취득하고 그 취득일부터 3년 안에 종전주택을 양도하면 1주택으로. ④: 3년이 지나 양도해도 1호(신축주택 완성 뒤 3년 안 세대 전원 전입 + 1년 이상 계속 거주)·2호(완성 전 또는 완성 뒤 3년 안 양도)를 갖추면 적용. 분양권(§156의3②③)과 같은 구조.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 1년 안 취득 안 됨 / 꼭 3년 안 적용·다음 날 밖 / ④ 완공 뒤 3년 안 전입·거주면 적용 / 완공 뒤 3년 지남·전입 안 함 안 됨 / §154① 예외면 1년 요건 면제.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>1년 안 취득 / 3년·3년+1일 / ④ 충족 / 완공 뒤 3년 지남 / 전입 안 함 / 예외</td><td>안 됨 / 적용·안 됨 / 적용 / 안 됨 / 안 됨 / 적용</td><td>맞음(③④)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 255 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>③ 괄호 「부득이한 사유로 3년 안 양도 못 함」(시행규칙)의 목록은 사람이 — flag만</td><td>칸</td><td>중간</td></tr>
+<tr><td>2</td><td>④1호 「세대 전원 전입」의 예외(취학·근무 등)는 대체주택 계산기처럼 칸이 없음 — 판단거리</td><td>—</td><td>중간</td></tr>
+<tr><td>3</td><td>2021.1.1 전 취득 입주권은 경과규정 없음(원래 주택 수 포함) — 분양권과 다름, 안내에 있음</td><td>안내</td><td>높음</td></tr>
+<tr><td>4</td><td>종전주택 자체의 2년 보유·거주 요건은 1세대1주택 묶음이</td><td>묶음</td><td>높음</td></tr>
+<tr><td>5</td><td>입주권이 둘(승계·원조합원)인 경우는 계산기 밖</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
