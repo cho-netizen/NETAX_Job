@@ -872,6 +872,17 @@ function commSeamList_() {
     { 길: '넥스 → 엔진 계산기 10개(국외전출세·파생상품·기타자산 주식·취득가액 안분·최초 고시 전·1990 전 기준시가·사후관리 셋·사업기회 부문이익)', fn: function () { var m = need(chatTools(), ['calculate_exit_tax', 'calculate_derivative_transfer_tax', 'calculate_controlling_shareholder_stock', 'calculate_acquisition_allocation', 'calculate_pre_notice_standard_price', 'calculate_pre1990_acquisition_standard_price', 'calculate_return_farm_house_clawback', 'calculate_rental_housing_residence_clawback', 'calculate_inherited_house_undivided_registration_clawback', 'calculate_opportunity_segment_profit'], '대화창 도구'); if (m) return m; try { var r = runUiEngineCalcTool_('calculate_exit_tax', { departureDate: '2026-06-30', residenceYearsIn10: 8, isMajorShareholder: true, departureMarketValue: 1000000000, acquisitionPrice: 300000000 }); return r && !r.error ? '' : '국외전출세 도구가 엔진에 안 닿음: ' + JSON.stringify(r).slice(0, 120); } catch (err) { return '국외전출세 도구 호출 실패: ' + err.message; } } },
     // [2026.11.04 전용택 사건 — 넥스 암산] ① 열람한 계산기 분야가 대화 문맥(browsedCategories)·연결 사건 세목으로 다음 요청에도 열리는지 ② 보고서 저장 때 세액 숫자를 저장본과 대조하는지
     //  ③ 사건분류 「수용 등 공익사업 비과세·감면」이 1세대1주택을 켜지 않는지(토지 0원 사건) ④ 기능 부족 신고가 실제 기록됐을 때만 화면 표(gap_reported)가 가는지
+    // [2026.11.04 한 길] 값 넣기 한 길(value_set·tax_calc 사건 대화에서 뺌)·사건 잇기 도구·장부/계산 제안 길 없앰·세무사님 전용 칸 잠정+질문·case_update 계산 저장본 막음 — 배포마다 자동 점검
+    { 길: '넥스 도구 한 길 — 값 넣기 case_ledger 하나 · case_link 사건 잇기 · 장부/계산 제안 카드 없음 · 전용 칸 잠정+질문', fn: function () {
+      if (NX_CASE_CHAT_SKIP_.indexOf('value_set') === -1 || NX_CASE_CHAT_SKIP_.indexOf('tax_calc') === -1) return '사건 대화에 value_set·tax_calc가 다시 들어감(값 넣기·계산 길이 둘)';
+      if (!BASIC_TOOL_NAMES_.has('case_link') || !DRIVE_TOOLS.some(function (t) { return t.name === 'case_link'; })) return 'case_link 도구 없음';
+      if (JOB_CASE_UPDATE_FORBIDDEN_.indexOf('세액계산결과') === -1) return 'case_update가 계산 저장본을 덮어쓸 수 있음';
+      const p = job_buildProposal_({ action: 'caseproc_answer', params: { caseId: 'x', qid: 'q', target: 't', value: 'v' } }); if (!p || !p.error || p.error.indexOf('case_ledger') === -1) return '장부 제안 길이 아직 열려 있음';
+      if (typeof LEDGER_USER_ONLY_RE_ === 'undefined' || !LEDGER_USER_ONLY_RE_.test('c0.buyer.relation') || LEDGER_USER_ONLY_RE_.test('a0.acquisitionPrice')) return '세무사님 전용 칸 규칙이 다름';
+      if (String(ledgerToolRun_).indexOf('LEDGER_USER_ONLY_RE_') === -1) return '장부 넣기가 전용 칸을 안 봄';
+      const g = typeof nxCaseChatGuide_ === 'function' ? nxCaseChatGuide_('x') : ''; if (/(^|[^_a-z])(value_set|tax_calc|ask_user|report_tool_gap)([^_a-z]|$)/.test(g)) return '사건 지시문이 없는 도구를 가리킴';
+      return '';
+    } },
     { 길: '넥스 계산기 열람 → 다음 요청에도 열림(문맥·사건 세목) · 보고서 세액 대조 · 수용 분류 ≠ 1세대1주택 · 신고 표', fn: function () {
       try { var b = String(browsedTaxCategories_.toString()); if (b.indexOf('browsedCategories') === -1 || b.indexOf('BROWSE_CATS_BY_TAX_') === -1) return '열람 분야를 문맥·사건 세목으로 받는 줄이 없음'; } catch (e) { return '열람 분야 함수를 못 봄'; }
       try { var s = browsedTaxCategories_([], { context: { browsedCategories: ['transfer'] } }); if (!s.has('transfer')) return '문맥의 열람 분야가 안 열림'; } catch (e) { return '열람 분야 셈 실패: ' + e.message; }

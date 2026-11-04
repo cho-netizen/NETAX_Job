@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 08:44 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 14:22 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -60481,6 +60481,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var g = document.createElement('div'); g.className = 'nxai-saved';
         g.textContent = '📣 개발자에게 기능 부족 신고가 실제로 기록됐습니다' + (a.urgent ? ' (긴급)' : '') + (a.want ? ': ' + a.want : '');
         bubbleEl.appendChild(g);
+      } else if (a.type === 'case_link'){ // [2026.11.04 한 길] 넥스가 case_link로 대화의 사건을 잇거나 바꿈 — 🔗 단추와 같은 처리
+        if (a.case && a.case.id) nxAiLinkCase_({ id: a.case.id, 사건명: a.case.사건명 || '', 고객명: a.case.고객명 || '', 폴더ID: a.case.폴더ID || '' }); else nxAiLinkCase_(null);
       } else if (a.type === 'tax_unverified'){
         var w = document.createElement('div'); w.className = 'nxai-notice';
         w.textContent = '❌ 저장한 보고서' + (a.name ? '(' + a.name + ')' : '') + '의 세액 숫자 ' + a.count + '개가 이 사건 계산 저장본에 없습니다 — 계산 도구를 돌린 값이 아닙니다: ' + (a.nums || []).join(', ');
