@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -23224,10 +23224,24 @@ function nxMdOpenWindow(title, src, opts){
     let winner = parsed[0];
     for (let i = 1; i < parsed.length; i++) { if (parsed[i].giftAmount > winner.giftAmount) winner = parsed[i]; }
     const excluded = parsed.filter(function (c) { return c !== winner; });
+    // [2026.11.05 모의사건 239] §43①이 적는 조문만 「둘 이상 동시 적용 → 큰 것 하나」 — §33~§39, §39의2, §39의3, §40, §41의2~§41의5, §42, §42의2, §42의3, §44, §45, §45의3~§45의5.
+    //  §45의2(명의신탁)·§31(일반 증여)·§4 같은 조문을 후보에 섞으면 이 조항의 선택 대상이 아니라고 알린다(계산은 그대로).
+    const inList43_ = function (label) {
+      const m = String(label || '').replace(/\s/g, '').match(/§?(\d+)(?:의(\d+))?/); if (!m) return null;
+      const a = Number(m[1]), b = m[2] ? Number(m[2]) : 0;
+      if (b === 0) return (a >= 33 && a <= 40) || a === 42 || a === 44 || a === 45;
+      if (a === 39) return b === 2 || b === 3; if (a === 41) return b >= 2 && b <= 5; if (a === 42) return b === 2 || b === 3; if (a === 45) return b >= 3 && b <= 5;
+      return false;
+    };
+    const outside_ = parsed.filter(function (c) { return inList43_(c.article) === false; }).map(function (c) { return c.article; });
+    const ties_ = parsed.filter(function (c) { return c !== winner && c.giftAmount === winner.giftAmount; }).map(function (c) { return c.article; });
 
     return {
       적용조문: winner.article, 적용증여재산가액: winner.giftAmount,
       배제된조문: excluded.map(function (c) { return { article: c.article, giftAmount: c.giftAmount }; }),
+      '§43①_밖_조문': outside_.length ? outside_ : undefined,
+      '§43①_밖_안내': outside_.length ? outside_.join(', ') + '은(는) §43①이 적는 조문이 아니라 「큰 것 하나」 선택 대상이 아님 — 그 조문(예: §45의2 명의신탁·§31 일반 증여)은 따로 과세될 수 있으니 세무사님이 가름 [확인 필요]' : undefined,
+      같은_금액_조문: ties_.length ? ties_ : undefined,
       안내: '§43①에 따라 이익이 가장 많은 것(' + winner.article + ', ' + winner.giftAmount + '원) 하나만 적용하고 나머지(' +
         excluded.map(function (c) { return c.article; }).join(', ') + ')는 적용하지 않습니다. 적용조문의 증여재산가액만 계산기 상단의 giftAmount에 넣어 세액을 계산하세요.'
     };
