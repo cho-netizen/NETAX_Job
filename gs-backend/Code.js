@@ -3295,7 +3295,9 @@ const DRIVE_TOOLS = [
         doneeOwnAcquisitionPrice: { type: 'number', description: '수증자 본인 기준 취득가액(원) — 증여 당시 상증세법상 평가액(=증여세 과세가액 산정 기초)을 넣는다. 이월과세 미적용 시나리오의 취득가액이자, 증여세상당액 계산의 분자로도 쓰인다.' },
         giftTaxPaid: { type: 'number', description: '수증자가 이 주식등에 대해 납부했거나 납부할 증여세 산출세액(원) — 증여세상당액 계산에 쓰인다.' },
         giftTaxableValue: { type: 'number', description: '수증자의 전체 증여세 과세가액(원) — 이 주식등 외에 함께 증여받은 재산이 있으면 그 합계까지 포함한 전체 금액(이 주식만 증여받았다면 doneeOwnAcquisitionPrice와 같은 값).' },
-        filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: 'calculate_stock_transfer_tax와 동일.' }
+        filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: 'calculate_stock_transfer_tax와 동일.' },
+        donorNecessaryExpenses: { type: 'number', description: '[2026.11.05] 증여자가 그 주식등에 지출한 필요경비(소득세법 §97①2호 — 취득 부대비용 등, 원) — 이월과세 적용 시 수증자 필요경비에 포함(§97의2①2호).' },
+        divorcedBeforeTransfer: { type: 'boolean', description: '[2026.11.05] 배우자 증여분인데 양도 당시 이혼한 상태면 true — 그래도 이월과세(사망으로 혼인관계가 끝난 경우만 제외, §97의2① 괄호). 안내만.' }
       },
       required: ['assetCategory', 'transferPrice', 'transferDate', 'giftReceivedDate', 'donorRelation', 'doneeOwnAcquisitionPrice']
     }

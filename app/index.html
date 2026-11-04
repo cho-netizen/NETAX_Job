@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:42 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:44 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -23883,9 +23883,11 @@ function nxMdOpenWindow(title, src, opts){
 
     // [2026.10.20 세액 고침] 이월과세 적용 시 세율 판정 보유기간은 증여자가 취득한 날부터(§104②2호) — 증여자 취득일이 있으면 보유월수를 다시 셈
     const donorHoldMonths_ = (p.donorAcquisitionDate && p.transferDate) ? fullMonthsElapsed(p.donorAcquisitionDate, p.transferDate) : null;
+    // [2026.11.05 모의사건 287] §97의2①2호 — 증여자가 그 주식에 지출한 필요경비(§97①2호 — 취득 부대비용·증권거래세 등)도 수증자 필요경비에 넣는다. 전엔 증여세상당액(3호)만 더했음.
+    const donorExp_ = Math.max(0, Number(p.donorNecessaryExpenses) || 0);
     const withCarryoverParams = Object.assign({}, p, donorHoldMonths_ != null ? { holdingMonths: donorHoldMonths_ } : {}, {
       acquisitionPrice: donorAcqPrice,
-      transferExpenses: (Number(p.transferExpenses) || 0) + cappedGiftTaxEquivalent
+      transferExpenses: (Number(p.transferExpenses) || 0) + cappedGiftTaxEquivalent + donorExp_
     });
     const withResult = window.calculateStockTransferTaxJS(withCarryoverParams);
 
@@ -23896,7 +23898,10 @@ function nxMdOpenWindow(title, src, opts){
     if (chosen && !chosen.error) {
       chosen.이월과세_적용여부 = chosen === withResult;
       if (chosen !== withResult) chosen.이월과세_미적용사유 = '§97의2②3호 — 이월과세를 적용한 세액(' + withTax + '원)이 미적용시 세액(' + withoutTax + '원)보다 적어 미적용';
-      chosen.이월과세_비교 = { 적용시_세액: withTax, 미적용시_세액: withoutTax, 증여세상당액_필요경비산입: cappedGiftTaxEquivalent };
+      chosen.이월과세_비교 = { 적용시_세액: withTax, 미적용시_세액: withoutTax, 증여세상당액_필요경비산입: cappedGiftTaxEquivalent, 증여자_필요경비_산입: donorExp_ || undefined };
+      // [2026.11.05 모의사건 287] ① 괄호 — 배우자는 양도 당시 혼인관계가 소멸(이혼)됐어도 이월과세(사망으로 소멸은 제외), 직계존비속은 양도 당시 사망했으면 제외. 주식은 §104②2호 보유기간도 증여자 취득일부터.
+      chosen.이월과세_안내 = (p.donorRelation === 'spouse' && p.divorcedBeforeTransfer === true ? '양도 당시 이혼해 혼인관계가 끝났어도 배우자 증여분은 이월과세(§97의2① 괄호 — 사망으로 끝난 경우만 제외). ' : '')
+        + '필요경비 = 증여자 취득가액(1호) + 증여자가 지출한 필요경비(2호)' + (donorExp_ ? '(' + donorExp_.toLocaleString('ko-KR') + '원)' : '(donorNecessaryExpenses로 넣을 것)') + ' + 증여세상당액(3호, 양도가액 − 취득가액 한도) · 세율 보유기간은 증여자 취득일부터(§104②2호) · 1년 안 양도만(2025.1.1. 이후 증여분).';
       // [2026.11.02 복잡사건 24] 증여자 취득일이 없으면 이월과세 쪽 보유기간을 받은 사람 기간(holdingMonths)으로 셈 — 대주주 1년 미만 30%가 잘못 걸릴 수 있어 알림
       if (donorHoldMonths_ == null && (p.assetCategory || 'domestic_stock') === 'domestic_stock' && p.isDaejuju) chosen.보유기간_알림 = '⚠ 증여자 취득일이 없어 이월과세 쪽 세율 보유기간을 넣은 보유월수(' + (p.holdingMonths != null ? p.holdingMonths + '개월' : '없음') + ')로 셌습니다 — 이월과세면 증여자가 취득한 날부터 셉니다(소득세법 §104②2호). 1년 미만 30%가 걸렸다면 증여자 취득일을 넣고 다시 계산하세요.';
     }
