@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 266 거주주택 사후관리 기한</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 266 — 「장기임대주택 보유자 거주주택 특례의 사후관리 추징(소득세법 시행령 §155㉒) 계산기 — 추징액(특례 없을 때 세액 − 낸 세액)·예외 확인과 신고·납부기한(사유 달 말일부터 2개월) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_rental_housing_residence_clawback)를 세 갈래로 돌려 §155㉒를 맞췄습니다. 추징액·예외는 맞았으나 신고·납부기한을 글로만 안내해 사유 발생일 칸으로 셈하게 했습니다(244·255와 같은 자리).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>240의 세대가 거주주택을 특례로 비과세(낸 세액 2천만)한 뒤 임대주택을 2027-03-10 의무기간 전 팔아 요건 상실(특례 없을 때 세액 8천만). 견주기: 요건 충족 / 수용 등 부득이 / 사유 2026-03-10.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>§155㉒: ㉑을 적용받은 뒤 임대기간요건·운영기간요건을 못 채우게 된(임대의무호수를 임대하지 않은 기간 6개월 초과 포함) 때에는 그 사유 발생일이 속하는 달의 말일부터 2개월 안에 [특례 없이 냈을 세액 − ⑳으로 낸 세액]을 신고·납부 — 2호 특례(수용 등 부득이한 사유·재건축·리모델링 기간)는 요건을 갖춘 것으로.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>추징액 6천만·예외는 맞음.</li>
+<li class="red">신고·납부기한을 글로만 — 날짜를 내지 않았다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateRentalHousingResidenceClawbackJS: violationDate → 신고납부기한(사유 달 말일부터 2개월, 토·일·공휴일 미룸)·근거. gs-backend/Code.js 도구 칸 violationDate(도구 수·지시문 길이 그대로, node --check 통과). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>요건 충족 / 부득이</td><td>추징 없음</td><td>맞음(㉒2호)</td></tr>
+<tr><td>8천만 − 2천만, 사유 2027-03-10 / 2026-03-10</td><td class="red">6천만, 기한 2027-05-31 / 2026-06-01(5-31 일요일) — 전엔 기한 없음</td><td>맞음(㉒·국기법 §5)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>특례 없을 때 세액은 양도세 계산기로 다시 셈해 넣음 — 지시문 잇기 없음</td><td>칸</td><td>높음</td></tr>
+<tr><td>2</td><td>「임대의무호수 미임대 6개월 지난 날」을 사유 발생일로 넣는 것은 사람이(칸 설명에 적음)</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>추징에 가산세·이자가 붙는지(기한 안 신고면 없음)는 해석례</td><td>—</td><td>중간</td></tr>
+<tr><td>4</td><td>㉓ 등록 말소(자동·자진 1/2)로 요건을 갖춘 것으로 보는 경우는 240 계산기가 가름 — 여기선 hasExemptReason</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>거주주택 양도 뒤 임대주택 자체를 팔 때의 양도세는 별도</td><td>—</td><td>높음</td></tr>
+</table>
+</main></body></html>

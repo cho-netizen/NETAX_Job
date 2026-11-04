@@ -1911,7 +1911,8 @@ const DRIVE_TOOLS = [
         meetsRentalOrChildcarePeriodRequirement: { type: 'boolean', description: '임대·운영기간 요건을 채웠는지.' },
         hasExemptReason: { type: 'boolean', description: '수용·재건축 등 부득이한 사유(㉒2호)가 있는지.' },
         taxIfNotLongTerm: { type: 'number', description: '장기임대주택으로 안 봤을 때의 거주주택 양도소득세(원) — 양도소득세 계산 도구로 먼저 셈.' },
-        taxPaidAtTransfer: { type: 'number', description: '당초 낸 세액(원).' }
+        taxPaidAtTransfer: { type: 'number', description: '당초 낸 세액(원).' },
+        violationDate: { type: 'string', description: '[2026.11.05] 임대(운영)기간요건을 못 채우게 된 날(임대의무호수 미임대 6개월 지난 날 포함, YYYY-MM-DD) — 넣으면 신고·납부기한(그 달 말일부터 2개월, 시행령 §155㉒)을 셈.' }
       },
       required: ['meetsRentalOrChildcarePeriodRequirement', 'taxIfNotLongTerm', 'taxPaidAtTransfer']
     }

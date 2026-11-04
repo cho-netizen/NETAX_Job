@@ -9308,8 +9308,12 @@
       return { 추징대상: false, 안내: p.hasExemptReason ? '수용 등 부득이한 사유, 재건축·재개발 또는 리모델링 기간 특례(시행령§155㉒2호)에 해당해 임대(운영)기간요건을 갖춘 것으로 보아 사후관리 위반이 아닙니다.' : '임대기간요건(또는 운영기간요건)을 충족해 시행령§155㉒의 사후관리 위반이 아닙니다.' };
     }
     const clawback = Math.max(0, (Number(p.taxIfNotLongTerm) || 0) - (Number(p.taxPaidAtTransfer) || 0));
+    // [2026.11.05 모의사건 266] 시행령 §155㉒ — 사유가 발생한 날(임대의무호수를 임대하지 않은 기간이 6개월을 지난 날 포함)이 속하는 달의 말일부터 2개월 안 신고·납부.
+    //  violationDate를 주면 기한을 셈(토·일·공휴일은 국세기본법 §5①로 미룸). 전에는 글로만 안내했다(244·255와 같은 자리).
+    const vD_ = String(p.violationDate || '').slice(0, 10);
+    const vDue_ = /^\d{4}-\d{2}-\d{2}$/.test(vD_) ? shiftTaxDeadline_(new Date(Date.UTC(Number(vD_.slice(0, 4)), Number(vD_.slice(5, 7)) + 2, 0)).toISOString().slice(0, 10)) : '';
     return {
-      추징대상: true, 추징액: clawback,
+      추징대상: true, 추징액: clawback, 사유발생일: vD_ || undefined, 신고납부기한: vDue_ || undefined, 신고납부기한_근거: vDue_ ? '시행령 §155㉒ — 사유 발생 달 말일부터 2개월' : undefined,
       안내: '임대기간요건(또는 운영기간요건)을 충족하지 못해(시행령§155㉒) [거주주택 양도 당시 장기임대주택·장기어린이집으로 보지 않았을 경우 납부했을 세액 - 당초 납부한 세액]을 그 사유발생일이 속하는 달의 말일부터 2개월 이내에 양도소득세로 신고·납부해야 합니다.'
     };
   };
