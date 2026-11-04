@@ -1321,7 +1321,11 @@ const DRIVE_TOOLS = [
         giftCalculatedTax: { type: 'number', description: '②의 그 증여세 산출세액(세대생략 할증 포함, 원).' },
         periodStart: { type: 'string', description: '②의 무상사용·대출·담보 기간 시작일(YYYY-MM-DD).' },
         periodEnd: { type: 'string', description: '②의 기간 끝일(비우면 무상사용 5년·대출·담보 1년).' },
-        today: { type: 'string', description: '기준일(YYYY-MM-DD, 없으면 오늘) — 청구기한 안인지 본다.' }
+        today: { type: 'string', description: '기준일(YYYY-MM-DD, 없으면 오늘) — 청구기한 안인지 본다.' },
+        filedOrAssessed: { type: 'boolean', description: '[2026.11.05] ①은 상속세를 §67 신고했거나 §76 결정·경정받았는지, ②는 그 증여세를 결정·경정받았는지 — false면 대상 아님.' },
+        soldToRelatedParty: { type: 'boolean', description: '[2026.11.05] bulk_sale — 피상속인·상속인과 시행령 §2의2①1호 관계(친족 등)인 자에게 일괄 매각했으면 true → 제외(③2호 괄호).' },
+        lockupEndDate: { type: 'string', description: '[2026.11.05] lockup_sale — 의무보유 기간 만료일 YYYY-MM-DD → 매각일(eventDate)이 만료일부터 2개월 안인지 셈(③3호).' },
+        holdingProofSubmitted: { type: 'boolean', description: '[2026.11.05] lockup_sale — 보유 사실 증명서류를 국세청장에게 냈는지(안 내면 ③3호 밖).' }
       },
       required: ['kind', 'eventDate']
     }

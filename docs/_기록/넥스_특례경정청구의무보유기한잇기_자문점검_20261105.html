@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 271 특례 경정청구 의무보유 기한</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 271 — 「상속·증여세 경정 등의 청구 특례(상증법 §79·시행령 §81) 계산기 — 의무보유 주식 만료일부터 2개월·특수관계인 일괄매각 제외·신고·결정 전제·청구기한 쉬는 날 미룸」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>상속재산인 보호예수 주식(의무보유 만료 2026.4.1.)을 5.20.에 과세가액 5억보다 낮은 4억에 팔았다 — §79①2호로 경정청구할 수 있는가, 6.15.에 팔았다면. 다른 상속인은 할증평가된 최대주주 주식을 동생에게 일괄 매각했다. 경매로 값이 떨어진 토지는 2.1.에 매각대금이 완납됐다(6개월 뒤 8.1.이 토요일).</p>
+<h2>2. 법 (원문을 직접 읽음 — 상증법·시행령 읽기용 판)</h2>
+<ul>
+<li>§79① — 「§67 신고한 자 또는 §76 결정·경정받은 자」, 사유 발생일부터 6개월. ② — 「§37·§41의4·§42 증여세를 결정 또는 경정받은 자」, 3개월.</li>
+<li>시행령 §81③ 2호 — 할증평가 주식을 일괄 매각해 최대주주등이 아니게 된 경우(피상속인·상속인과 §2의2①1호 관계자에게 일괄 매각한 경우 제외). 3호 — 의무보유 주식을 <b>의무보유 기간 만료일부터 2개월 이내</b>에 매각, 매각가액이 과세가액보다 낮을 것, 보유 사실 증명서류를 국세청장에게 제출한 경우로 한정.</li>
+<li>국세기본법 §5① — 기한이 토·일·공휴일이면 다음 날.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">의무보유 만료일부터 2개월 안 매각인지·만료 전 매각인지를 글로만 알리고 날짜로 안 봤다(만료 전 매각이나 2개월 지난 매각도 「대상」).</li>
+<li class="red">특수관계인에게 일괄 매각(③2호 괄호)과 보유 증명서류 미제출(③3호 한정)도 글로만 — 대상 판정에 안 들어감.</li>
+<li class="red">①「신고·결정받은 자」 ②「결정·경정받은 자」 전제가 없었고, 청구기한이 쉬는 날이어도 달력 날짜 그대로.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateInheritanceSpecialCorrectionJS</code> — <code>lockupEndDate</code> → <code>의무보유만료일·매각기한_만료일부터2개월·매각기한안</code>, 만료 전·2개월 뒤 매각은 대상 ×; <code>holdingProofSubmitted:false</code> → ×; <code>soldToRelatedParty:true</code>(bulk_sale) → ×; <code>filedOrAssessed:false</code> → ×(①·② 각각 안내); 청구기한을 쉬는 날이면 다음 날로(<code>청구기한_미룸</code>).</li>
+<li class="red">도구 <code>calculate_inheritance_special_correction</code> 칸 4개 추가 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>경매 하락 · 사유 2026-02-01</td><td class="red">청구기한 2026-08-03(8.1 토 → 월) · 기준일 11.5라 기한 지남</td></tr>
+<tr><td>의무보유 만료 4.1 · 5.20 매각 4억(과세가액 5억)</td><td class="red">매각기한 6.1 · 안 · 대상 ○</td></tr>
+<tr><td>같은 주식 6.15 매각 / 3.15(만료 전) 매각 / 증명서류 미제출</td><td class="red">모두 대상 × (전에는 ○)</td></tr>
+<tr><td>할증 주식 동생에게 일괄매각 / 제3자에게</td><td class="red">× / ○</td></tr>
+<tr><td>무상대출 끝남 · 결정·경정 없음</td><td class="red">대상 × · 기한 2026-04-30</td></tr>
+<tr><td>유류분 판결 확정 2026-09-25</td><td>2027-03-25</td></tr>
+</table>
+<p>시험 t271 9건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>「사유가 발생한 날」을 경매는 매각대금 완납일, 수용은 보상 확정일로 보는 것이 맞는지(엔진은 받은 날짜 그대로)</td><td>세무사님 확인</td></tr>
+<tr><td>2</td><td>② 「결정 또는 경정받은 자」 — 신고만 하고 결정 통지가 없는 증여세(신고는 결정으로 봄?)를 어떻게 볼지</td><td>해석 확인</td></tr>
+<tr><td>3</td><td>③3호 가목·나목(자본시장법 처분 제한·회생 보호예수) 해당 여부는 사람이 가름</td><td>판단거리</td></tr>
+<tr><td>4</td><td>시행령 §81④(할증평가 가액에 대해서만)의 다시 계산 — 하락액이 아니라 할증분만 빼는 셈은 안 함(bulk_sale은 대상 판정만)</td><td>도구 부족 — 판단거리</td></tr>
+<tr><td>5</td><td>경정청구서 기재사항(시행령 §81①)·증빙 목록은 도구 밖</td><td>판단거리</td></tr>
+</table>
+</main></body></html>
