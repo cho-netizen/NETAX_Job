@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 191 특례 칸 자동 채움</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 191 — 「종합판정 특례 줄의 빈 칸을 물건 줄에서 채우기 — 입주권·분양권·일시적 2주택·대체주택·합가 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 종합판정은 특례 함수를 부를 때 양도일·판정 물건 취득일만 넘기고, 「그 특례의 다른 물건」(신규주택·입주권·분양권) 취득일이나 대체주택의 양도일은 넥스가 특례 입력에 따로 적어야 했습니다. 물건 줄에 이미 있는 날짜인데 입력을 비우면 「모름」으로 끝나던 자리라, 판정이 물건 줄에서 미리 채우도록 했습니다(입력에 적은 값이 이김). 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「피씨」 세대: 종전집(2015년) + 조합원입주권(2024-06-01 취득) — 2026-09-01 종전집 양도, 특례 입력은 비움. 같은 틀로 일시적 2주택(신규집 2025-01-10), 분양권 일시적(2024-06-01), 사업기간 대체주택(사업시행인가 2022-10-01·대체주택 2023-01-10 취득·완공 2026-03-01), 동거봉양(물건 줄에 합가일 2020-01-01).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 20261001 시행판)</h2>
+<ul>
+<li>§155①(일시적 2주택 — 신규주택 취득일부터 3년), §156의2③④(주택 + 조합원입주권 — 입주권 취득일부터 3년, 그 뒤면 완공 3년 안 전입·1년 거주·완공 전 또는 완공 3년 안 양도), ⑤(사업시행기간 대체주택 — 인가 뒤 취득·1년 거주·완공 3년 안 전입·완공 전 또는 3년 안 양도), §156의3②③(주택 + 분양권), §155④⑤(합가·혼인 — 합친 날·혼인한 날). 모두 「다른 물건의 취득일」 또는 「판정 물건의 양도일」이 요건의 기산점.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">특례 입력을 비우면 입주권·분양권·신규주택 취득일이 함수에 안 넘어가 「종전주택 취득일·입주권 취득일·양도일이 모두 필요합니다 — 모름」으로 끝남(물건 줄에 취득일이 있어도). 대체주택 특례는 판정 물건이 바로 대체주택인데 양도일·취득일을 다시 적어야 했음.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">엔진 종합판정 특례 호출: 특례 줄의 「물건」 이름으로 물건 줄을 찾아 그 취득일을 newHouseAcquisitionDate(일시적2주택)·unionMembershipRightAcquisitionDate(조합원입주권 일시적)·presaleRightAcquisitionDate(분양권 일시적)에, 판정 물건의 양도일·취득일을 replacementHouseTransferDate·replacementHouseAcquisitionDate(사업기간 대체주택)에, 물건 줄의 합가일·혼인일을 mergeDate·marriageDate에 미리 넣음. 입력에 적은 값이 있으면 그 값이 이김(③ 시험).</li>
+<li class="red">조립본 app/index.html 다시 만듦. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전</th><th>고친 뒤</th></tr>
+<tr><td>① 입주권 일시적 — 입력 비움</td><td>모름(잠정)</td><td>충족(§156의2③, 입주권 취득일 2024-06-01)</td></tr>
+<tr><td>② 일시적 2주택 — 입력 비움 / ③ 입력 2018-09-01이 물건 취득일을 이김</td><td>모름 / 안 됨</td><td>충족 / 안 됨(입력 우선)</td></tr>
+<tr><td>④ 사업기간 대체주택 — 양도일·취득일 자동</td><td>모름(양도일 필요)</td><td>충족(잠정 — 완공 뒤 전입·거주 예정 칸)</td></tr>
+<tr><td>⑤ 분양권 일시적 — 입력 비움 / ⑥ 동거봉양 — 물건 줄 합가일</td><td>모름 / 모름</td><td>충족 / 충족</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·181~187·190 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>물건 줄 「취득일」이 특례 기산점과 다른 경우(입주권은 관리처분인가일 기준 「취득」, 분양권은 계약일·잔금일 등) — 넥스가 넣는 취득일의 뜻</td><td>그대로 씀</td><td>중간</td></tr>
+<tr><td>2</td><td>특례 줄에 「물건」 이름을 안 적으면 채울 수 없음(175 가드도 마찬가지) — 물건이 하나뿐이면 그걸로 추정하는 게 나은지</td><td>이름 일치만</td><td>중간</td></tr>
+<tr><td>3</td><td>상속 입주권·상속 분양권 특례(§156의2⑥·§156의3④)는 피상속인 보유 상황 칸만 받아 날짜 채움이 없음</td><td>입력대로</td><td>높음</td></tr>
+<tr><td>4</td><td>④의 잠정 꼬리(완공 뒤 전입·거주 예정)는 함수가 미래 요건을 「약속」으로 받는 자리 — 사후관리 할 일로 돌릴지</td><td>잠정</td><td>중간</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: judge_tax_relief 설명의 specials 칸에 「물건 이름만 적으면 취득일은 물건 줄에서 채움」 한 줄(지시문·도구 설명 금지 중이라 안 고침)</td><td>엔진이 채움</td><td>—</td></tr>
+</table>
+</main></body></html>

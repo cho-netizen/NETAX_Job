@@ -13207,7 +13207,17 @@
         r = { 적용여부: false, 안내: '양도하는 주택이 상속주택 — 시행령 §155②는 상속주택을 둔 채 「일반주택」을 양도할 때의 특례라 적용 없음(일반주택을 먼저 팔거나, 상속주택만 남긴 뒤 파는 순서 검토)' };
       } else {
         const fn = window[m.fn];
+        // [2026.11.05 모의사건 191] 특례 줄의 「물건」(다른 주택·입주권·분양권)의 취득일과 판정 물건의 양도일·취득일을 특례 함수 칸에 미리 채운다 — 넥스가 입력을 비우면 「모름」으로 끝나던 자리(입력에 적은 값이 있으면 그 값이 이김)
+        const so_ = list.filter(function (o) { return o && !o.대상 && s.물건 && String(o.이름 || '') === String(s.물건); })[0];
+        const soAcq_ = so_ && isDate_(so_.취득일) ? String(so_.취득일).slice(0, 10) : undefined;
         try { r = typeof fn === 'function' ? fn(Object.assign({ transferDate: T, formerHouseTransferDate: T, generalHouseTransferDate: T, formerHouseAcquisitionDate: isDate_(tg.취득일) ? String(tg.취득일).slice(0, 10) : undefined,
+          newHouseAcquisitionDate: s.종류 === '일시적2주택' ? soAcq_ : undefined,
+          unionMembershipRightAcquisitionDate: s.종류 === '조합원입주권 일시적' ? soAcq_ : undefined,
+          presaleRightAcquisitionDate: s.종류 === '분양권 일시적' ? soAcq_ : undefined,
+          replacementHouseTransferDate: s.종류 === '사업기간 대체주택' ? T : undefined,
+          replacementHouseAcquisitionDate: s.종류 === '사업기간 대체주택' && isDate_(tg.취득일) ? String(tg.취득일).slice(0, 10) : undefined,
+          mergeDate: s.종류 === '동거봉양' && isDate_(so_ && so_.합가일) ? String(so_.합가일).slice(0, 10) : undefined,
+          marriageDate: s.종류 === '혼인' && isDate_(so_ && so_.혼인일) ? String(so_.혼인일).slice(0, 10) : undefined,
           // [2026.11.02] 상속주택 특례의 상속개시일을 안 넣었으면 물건 목록에서 취득원인 「상속」인 물건의 취득일을 쓴다(시행령 §155② 괄호 — 일반주택이 그 뒤 취득인지 보려고)
           inheritanceDate: s.종류 === '상속주택' ? (list.filter(function (o) { return o && !o.대상 && /상속/.test(String(o.취득원인 || '')) && isDate_(o.취득일); }).map(function (o) { return String(o.취득일).slice(0, 10); })[0]) : undefined,
           // [2026.11.02 염씨] 장기임대주택이 여러 채면 처음 말소된 날부터 5년(시행령 §155㉓ 괄호) — 같은 특례 줄들의 말소일 중 가장 이른 날
