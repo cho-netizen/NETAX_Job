@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 238 지상권·광업권 평가</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 238 — 「지상권(상증법 §61③·시행령 §51①·시행규칙 §16)·광업권(§64·시행령 §59⑥·시행규칙 §19⑤) 평가 계산기 점검 — 토지가액 2% 환산, 3년 평균소득 환산, 취득가액 − 감가상각」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_ground_right_value·calculate_mining_right_value)를 세 갈래로 돌려 조문과 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다. 236에서 비워 둔 영업권 환산 조문(시행규칙 §16② — 지상권과 같은 산식)도 이번에 찾아 236 점검서를 고쳤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>아버지가 남긴 지상권(토지가액 10억, 잔존 15년)과 광업권(전 3년 평균소득 2억, 채굴 가능 10년; 15억에 매입해 2억 상각).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증령 20261001 시행판·시행규칙)</h2>
+<ul>
+<li>시행령 §51①: 지상권 = 토지가액 × 시행규칙 율(§16① 연 2%)을 잔존연수(민법 §280·§281 준용)로 환산(§16② 각 연도 수입 ÷ 1.1ⁿ 합계). 시행령 §59⑥: 광업권·채석권 = 평가기준일 전 3년 평균소득(실적 없으면 예상 순소득)을 채굴 가능 연수로 환산(§19⑤ ÷ 1.1ⁿ 합계), 조업 가치 없으면 설비로만. §64: 취득가액 − 감가상각과 큰 값. 시행규칙 §16②는 영 §59② 영업권 환산에도 같이 쓰임.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 지상권 10억 × 2% = 2천만 × 7.606(15년) = 1억 5,212만 / 광업권 2억 × 6.1446(10년) = 12억 2,891만 / 매입 15억 − 2억 = 13억이 크면 13억.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만; 236 점검서 검토대상 1 문구 고침). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>지상권 10억·15년</td><td>1억 5,212만</td><td>맞음(§51①·§16①②)</td></tr>
+<tr><td>광업권 2억·10년 / 매입 15억·상각 2억</td><td>12억 2,891만 / 13억</td><td>맞음(§59⑥·§19⑤·§64)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 234 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>지상권 잔존연수(민법 §280 — 견고한 건물 30년·그 밖 15년·공작물 5년 최단, 약정 없으면 §281)는 사람이 셈</td><td>칸</td><td>높음</td></tr>
+<tr><td>2</td><td>광업권 「조업할 가치가 없는 경우」 설비 평가 단서는 계산기 밖</td><td>—</td><td>높음</td></tr>
+<tr><td>3</td><td>3년 평균소득의 「소득」 범위(순소득·세전)는 해석례 확인 — 판단거리</td><td>칸</td><td>중간</td></tr>
+<tr><td>4</td><td>지상권이 설정된 토지 쪽 평가(토지가액에서 지상권 가액을 빼는지)는 §61③·시행령 §51 밖 — 해석례</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>부동산 취득 권리(분양권·입주권, §51②)·특정시설물 이용권은 다른 계산기(납입금 + 프리미엄)</td><td>다른 칸</td><td>높음</td></tr>
+</table>
+</main></body></html>
