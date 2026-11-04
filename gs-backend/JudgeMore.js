@@ -7122,6 +7122,281 @@ function judgeCorpSecondary_(p) {
            { 경우: '③ [견주기] 특수관계인 합계 지분으로 한도', 책임액: 집단책임, 줄: ['책임 ' + (집단책임 == null ? '모름' : won(집단책임))] }],
     알림: notes, 할일: 할일 });
 }
+// [2026.11.04 복잡사건 152] 청산인 등의 제2차 납세의무(국세기본법 §38, 시행령 §19) — 해산한 법인이 국세를 안 내고 잔여재산을 나눠 준 때 청산인·받은 사람이 각자 한도까지 냄 + 받은 사람 의제배당·원천징수 연대(소득세법 §17②3호·§157①)
+function judgeLiquidatorSecondary_(p) {
+  p = p || {};
+  const n = function (v) { const x = famNum_(v); return x > 0 ? x : 0; };
+  const won = function (v) { return Number(v || 0).toLocaleString('ko-KR'); };
+  const 있음 = function (v) { return !(v == null || v === ''); };
+  const reqs = [], notes = [], 할일 = [];
+  const 세금 = Array.isArray(p.세금) ? p.세금 : [];
+  const 받은 = Array.isArray(p.받은사람들) ? p.받은사람들 : [];
+  const 세금합 = 세금.reduce(function (s, t) { return s + n(t && t.금액); }, 0);
+  const 원천합 = 세금.reduce(function (s, t) { return s + (t && jmYn_(t.원천징수) === true ? n(t.금액) : 0); }, 0);
+  const 받은합 = 받은.reduce(function (s, r) { return s + n(r && r.받은재산시가); }, 0);
+  if (!세금합 || !받은.length) return jmWrap_('청산인제2차납세의무', [jmReq_('못 낸 국세와 잔여재산을 받은 사람', null, '세금(세목·금액)과 받은사람들(이름·받은재산시가)을 넣을 것', '국세기본법 §38①')], { 경우: [], 할일: [{ 무엇: '법인 체납 내역(세목·법정기일·금액)과 잔여재산 분배 명세(받은 사람·재산·분배일) 받기', 때: '지금', 근거: '국세기본법 §38' }] });
+  const 해산 = jmYmd_(p.해산일), 분배 = jmYmd_(p.분배일), 확정 = jmYmd_(p.잔여재산가액확정일);
+  reqs.push(jmReq_('법인이 해산함', 있음(p.해산일) ? true : null, 해산 ? '해산일 ' + 해산 : '해산일 모름 — 법인등기부로 확인', '국세기본법 §38①'));
+  reqs.push(jmReq_('해산 법인이 내야 할 국세를 안 낸 채', true, '못 낸 국세 ' + won(세금합) + '원(' + 세금.map(function (t) { return (t.세목 || '국세') + ' ' + won(n(t.금액)); }).join(' · ') + ')', '국세기본법 §38①'));
+  reqs.push(jmReq_('잔여재산을 분배하거나 인도함', 받은합 > 0 ? true : false, '분배 합계(분배일·인도일 시가) ' + won(받은합) + '원' + (분배 ? ' · 분배일 ' + 분배 : ''), '국세기본법 §38①·시행령 §19'));
+  let 부족 = 있음(p.법인충당후부족액) ? n(p.법인충당후부족액) : null, 잠정 = false;
+  if (부족 == null) { 부족 = 세금합; 잠정 = true; notes.push('법인 재산에 강제징수를 해도 모자라는 금액을 모름 — 못 낸 국세 전부(' + won(세금합) + '원)를 잠정 부족액으로 셈. 법인에 남은 재산이 있으면 줄어듦'); }
+  reqs.push(jmReq_('법인에 강제징수를 해도 모자람', 부족 > 0 ? (잠정 ? null : true) : false, '부족액 ' + won(부족) + '원' + (잠정 ? '(잠정)' : ''), '국세기본법 §38①'));
+  const 요건 = 받은합 > 0 && 부족 > 0;
+  if (!있음(p.해산일)) { 잠정 = true; notes.push('해산일을 몰라 해산 여부를 잠정으로 두고 책임액을 셈 — 법인등기부(해산 등기)로 확인할 것'); }
+  const 사람 = [];
+  const 청한도 = 받은합;
+  사람.push({ 누구: '청산인' + (p.청산인 ? '(' + p.청산인 + ')' : ''), 한도: 청한도, 한도근거: '분배하거나 인도한 재산의 가액 합계(국세기본법 §38②1호·시행령 §19 분배일 시가)', 책임액: 요건 ? Math.min(부족, 청한도) : 0 });
+  받은.forEach(function (r) {
+    const v = n(r.받은재산시가);
+    사람.push({ 누구: '받은 사람 ' + (r.이름 || ''), 한도: v, 한도근거: '각자 받은 재산의 가액(국세기본법 §38②2호·시행령 §19 분배일 시가)', 책임액: 요건 ? Math.min(부족, v) : 0 });
+  });
+  const 배당 = 받은.map(function (r) {
+    const v = n(r.받은재산시가), c = 있음(r.주식취득가액) ? n(r.주식취득가액) : null;
+    return { 이름: r.이름 || '', 받은재산시가: v, 주식취득가액: c, 의제배당: c == null ? null : Math.max(0, v - c), 잠정: c == null };
+  });
+  배당.forEach(function (d) {
+    if (d.잠정) notes.push(d.이름 + ' 주식 취득가액 모름 — 의제배당 금액을 셀 수 없음(주식 취득 계약서·증자 납입 증빙 받을 것)');
+    else if (d.의제배당 > 0) notes.push(d.이름 + ' 의제배당 ' + won(d.의제배당) + '원 = 받은 재산 ' + won(d.받은재산시가) + ' − 주식 취득가액 ' + won(d.주식취득가액) + ' (소득세법 §17②3호, 물건은 시가 소득령 §27①) · 수입시기 잔여재산가액 확정일' + (확정 ? ' ' + 확정 : '') + '(소득령 §46 5호가) — 다른 금융소득과 합쳐 종합소득세: 이 시스템에 종합소득세 계산 도구 없음 → 넥스가 여쭐 것·도구 부족 신고');
+  });
+  if (원천합 > 0) notes.push('못 낸 국세 중 원천징수할 소득세 ' + won(원천합) + '원은 청산인이 분배액 한도로 받은 사람과 연대해 냄(소득세법 §157①) — 연대 한도 ' + won(Math.min(원천합, 받은합)) + '원, 위 제2차 납세의무와 겹치는 금액은 한 번만 걷음');
+  const 지분합 = 받은.reduce(function (s, r) { return s + n(r.지분); }, 0);
+  if (지분합 > 0 && 받은합 > 0) 받은.forEach(function (r) {
+    const 받비 = n(r.받은재산시가) / 받은합 * 100, 지 = n(r.지분) / 지분합 * 100;
+    if (받비 - 지 > 1) notes.push((r.이름 || '') + ' 지분 ' + 지.toFixed(1) + '%인데 잔여재산은 ' + 받비.toFixed(1) + '% 받음 — 지분보다 더 받은 몫은 다른 주주가 준 것으로 볼 여지(증여) [확인 필요 — 상증법 §4① 열거·§2 6호 포괄 증여, 의제배당과 겹침]'); else if (지 - 받비 > 1) notes.push((r.이름 || '') + ' 지분 ' + 지.toFixed(1) + '%인데 잔여재산은 ' + 받비.toFixed(1) + '%만 받음 — 덜 받은 몫은 더 받은 주주에게 준 것으로 볼 여지(그 주주 쪽 증여의 증여자) [확인 필요]');
+  });
+  notes.push('받은 재산(상가 등)을 나중에 팔 때 취득가액·취득일 — 의제배당으로 과세된 분배일 시가를 취득가액으로 볼지 [확인 필요 — 소득령 §163·§162 원문 대조]; 취득일은 분배(소유권 이전) 때로 보는 것이 보통 [확인 필요]');
+  if (!요건) notes.push('요건이 안 되어 제2차 납세의무가 없음 — 납부고지가 오면 불복 거리');
+  할일.push({ 무엇: '청산인·받은 사람이 제2차 납세의무 납부고지를 받으면 받은 날부터 90일 안 이의신청·심사·심판 청구(분배 시가·부족액을 다툼)', 때: '고지 받은 날부터 90일', 근거: '국세기본법 §55·§61·§68 — 날짜는 「불복기한」 판정으로 셀 것' });
+  할일.push({ 무엇: '잔여재산 분배 명세·분배일 시가 근거(감정·매매사례)와 법인 청산 재무제표 받기', 때: '지금', 근거: '국세기본법 시행령 §19' });
+  const 줄1 = 사람.map(function (s) { return s.누구 + ' 한도 ' + won(s.한도) + ' → 책임 ' + won(s.책임액); });
+  return jmWrap_('청산인제2차납세의무', reqs, { 요건: 요건, 잠정: 잠정, 부족액: 부족, 사람별: 사람, 의제배당: 배당, 원천징수연대: 원천합 > 0 ? Math.min(원천합, 받은합) : 0, 책임액: 사람.reduce(function (m, s) { return Math.max(m, s.책임액); }, 0),
+    경우: [{ 경우: '① 법대로 — 사람마다 받은 만큼까지(나라가 걷을 수 있는 합계)', 책임액: 요건 ? Math.min(부족, 받은합) : 0, 줄: ['부족 ' + won(부족)].concat(줄1, ['한 사람이 내면 그만큼 다른 사람 몫도 줄어듦 — 합계는 부족액과 분배 합계 중 적은 금액'] ) },
+           { 경우: '② [견주기] 받은 사람 각자에게 부족액 전부(한도 무시)', 책임액: 요건 ? 부족 : 0, 줄: 받은.map(function (r) { return (r.이름 || '') + ' ' + won(요건 ? 부족 : 0) + ' — 한도(§38②2호)를 무시한 틀린 셈'; }) }],
+    알림: notes, 할일: 할일 });
+}
+// [2026.11.04 복잡사건 153] 무상주(잉여금 자본전입)의 의제배당 — 소득세법 §17②2호·5호·③, 시행령 §27①②③⑤⑥⑦
+//  근거 원문(2026.11.04 업무관리자\법령 _본문 소득세법 20260101·시행령 20261001_36737 시행판에서 읽음):
+//   §17②2호: 법인의 잉여금 일부·전부를 자본·출자 금액에 전입해 받은 주식 가액은 의제배당. 다만 가목 자본준비금(시행령 §27④ — 법인세법 §17① 각 호, 법인세법 시행령 §12① 각 호 것은 뺌), 나목 재평가적립금(토지 재평가차액 몫은 뺌)을 전입한 것은 아님.
+//   §17②5호: 법인이 자기주식을 가진 채 2호 단서(과세 안 되는) 잉여금을 전입해 그 법인 외 주주의 지분비율이 늘면 늘어난 지분 가액은 의제배당.
+//   §17③ 단서: 자기주식소각이익 전입·토지 재평가 몫·5호 의제배당은 배당가산(Gross-up) 대상 아님.
+//   시행령 §27①1호가: 받은 주식 가액은 액면가액(⑥ 무액면은 전입액 ÷ 신규 주식 수). ②: 무상주를 받은 뒤 1주당 장부가 = 구주 1주당 장부가 ÷ (1 + 구주 1주당 신주 배정 수). ③: 의제배당 안 된 무상주를 받은 날부터 2년 안에 주식을 소각하거나 줄이면 그 무상주를 먼저 줄인 것으로 보고 취득가액 0. ⑦: 소액주주로 취득가액이 분명하지 않으면 액면가액.
+//   [확인 필요] 법인세법 시행령 §12① 각 호(자기주식소각이익 중 2년 안 소각·시가 초과 등 과세 몫)의 세부 — 원문 파일 못 찾아 잠정으로 둠.
+function judgeBonusShare_(p) {
+  p = p || {};
+  const n = function (v) { return famNum_(v); };
+  const won = function (v) { return Math.round(Number(v) || 0).toLocaleString('ko-KR') + '원'; };
+  const 있음 = function (v) { return v !== undefined && v !== null && String(v).trim() !== ''; };
+  const reqs = [], notes = [], 할일 = [];
+  const 전입들 = Array.isArray(p.전입들) ? p.전입들 : (있음(p.재원) ? [{ 재원: p.재원, 금액: p.전입액, 토지재평가차액: p.토지재평가차액, 자산재평가차액: p.자산재평가차액 }] : []);
+  const 신규 = n(p.신규주식수), 보유 = n(p.보유주식), 발행 = n(p.발행주식), 자기 = n(p.회사자기주식);
+  if (!전입들.length || !(신규 > 0)) {
+    return jmWrap_('무상주', [jmReq_('전입한 잉여금 재원·금액과 새로 낸 주식 수', null, '재원(이익잉여금·주식발행초과금·감자차익·자기주식소각이익·재평가적립금 등)과 신주 수를 알아야 과세 몫을 가름', '소득세법 §17②2호')], { 경우: [],
+      할일: [{ 무엇: '주주총회·이사회 의사록(무상증자 결의), 자본금과 적립금 조정명세서(을), 주주명부(전입 전후), 자기주식 현황 받기', 때: '지금', 근거: '소득세법 §17②2호·5호, 시행령 §27' }] });
+  }
+  const 무액면 = jmYn_(p.무액면) === true;
+  const 전입합 = 전입들.reduce(function (s, x) { return s + n(x.금액); }, 0);
+  const 액면 = 무액면 ? (신규 > 0 ? 전입합 / 신규 : 0) : n(p.액면가);
+  if (!(액면 > 0)) { notes.push('1주 액면가액을 몰라 의제배당 금액을 못 셈 — 정관·등기부로 확인(시행령 §27①1호가·⑥)'); 할일.push({ 무엇: '법인등기부·정관으로 1주 액면가액 확인', 때: '지금', 근거: '소득세법 시행령 §27①1호가' }); }
+  // 재원마다 과세 몫 가르기
+  const 잠정 = [];
+  let 과세액 = 0, 가산제외액 = 0, 비과세액 = 0, 잠정액 = 0;
+  const 갈래 = 전입들.map(function (x) {
+    const 재원 = String(x.재원 || '').replace(/\s/g, ''); const 금액 = n(x.금액);
+    let 과세 = 0, 가산X = 0, 비과세 = 0, 잠 = 0, 근거 = '', 메모 = '';
+    if (/이익잉여금|이익준비금|임의적립금|미처분이익|이월이익/.test(재원)) { 과세 = 금액; 근거 = '§17②2호 본문 — 자본준비금·재평가적립금이 아닌 잉여금'; }
+    else if (/주식발행초과금|주발초|감자차익/.test(재원)) { 비과세 = 금액; 근거 = '§17②2호가목·시행령 §27④(법인세법 §17①1호·4호) — 자본준비금'; }
+    else if (/자기주식소각이익|자기주식처분이익/.test(재원)) {
+      const 단기 = jmYn_(x.소각2년안), 시가초과 = jmYn_(x.시가초과);
+      if (단기 === true || 시가초과 === true) { 과세 = 금액; 가산X = 금액; 근거 = '법인세법 시행령 §12① 각 호 몫(소각 2년 안·시가가 취득가 넘음)은 자본준비금에서 빠짐 → 의제배당, 배당가산 없음(§17③ 단서) [확인 필요 — 법인세법 시행령 원문 대조]'; }
+      else if (단기 === false && 시가초과 === false) { 비과세 = 금액; 근거 = '법인세법 §17①·시행령 §12① 밖 자기주식소각이익 — 자본준비금 [확인 필요]'; }
+      else { 잠 = 금액; 근거 = '소각일·소각 당시 시가를 몰라 과세 여부 잠정 — 소각 2년 안이거나 시가가 취득가를 넘으면 과세 [확인 필요]'; 잠정.push('자기주식소각이익 ' + won(금액) + ' 과세 여부'); 할일.push({ 무엇: '자기주식 소각일·소각 당시 시가·취득가액 확인(전입일과 2년 견줌)', 때: '지금', 근거: '법인세법 시행령 §12① [확인 필요]' }); }
+    }
+    else if (/합병차익|분할차익/.test(재원)) { 잠 = 금액; 근거 = '합병·분할차익 중 피합병법인 이익잉여금 승계 몫 등은 과세(법인세법 §17①5·6호 단서) — 몫을 몰라 잠정 [확인 필요]'; 잠정.push(재원 + ' ' + won(금액) + ' 과세 몫'); 할일.push({ 무엇: '합병·분할차익 구성(승계 이익잉여금·의제배당 몫) 명세 받기', 때: '지금', 근거: '소득세법 §17②2호가, 법인세법 §17①5·6호 [확인 필요]' }); }
+    else if (/재평가적립금|재평가/.test(재원)) {
+      const 토지 = n(x.토지재평가차액), 자산 = n(x.자산재평가차액);
+      if (토지 > 0 && 자산 > 0) { 과세 = Math.round(금액 * 토지 / 자산); 가산X = 과세; 비과세 = 금액 - 과세; 근거 = '§17②2호나목 괄호·시행령 §27⑤ — 토지 재평가차액 몫(전입액 × 토지 재평가차액 ÷ 재평가차액 전체)만 과세, 배당가산 없음(§17③ 단서)'; }
+      else if (jmYn_(x.토지만) === true) { 과세 = 금액; 가산X = 금액; 근거 = '전부 토지 재평가차액 몫 — 과세, 배당가산 없음'; }
+      else { 잠 = 금액; 근거 = '토지 몫을 몰라 잠정 — 토지 재평가차액(1% 세율 몫)만 과세 [시행령 §27⑤]'; 잠정.push('재평가적립금 ' + won(금액) + ' 중 토지 몫'); 할일.push({ 무엇: '재평가 신고서·재평가차액 명세(토지·건물 나눔) 받기', 때: '지금', 근거: '소득세법 시행령 §27⑤' }); }
+    }
+    else { 잠 = 금액; 근거 = '재원을 몰라 잠정 — 이익잉여금이면 과세, 자본준비금이면 과세 안 됨'; 잠정.push('재원 모름 ' + won(금액)); 할일.push({ 무엇: '이사회 결의서·자본금과 적립금 조정명세서로 전입 재원 확인', 때: '지금', 근거: '소득세법 §17②2호' }); }
+    과세액 += 과세; 가산제외액 += 가산X; 비과세액 += 비과세; 잠정액 += 잠;
+    return { 재원: x.재원 || '(모름)', 금액: 금액, 과세: 과세, 배당가산제외: 가산X, 비과세: 비과세, 잠정: 잠, 근거: 근거 };
+  });
+  reqs.push(jmReq_('잉여금을 자본에 전입해 무상주를 줌', true, '전입 ' + won(전입합) + ' · 신주 ' + 신규.toLocaleString('ko-KR') + '주', '소득세법 §17②2호'));
+  reqs.push(jmReq_('과세되는 재원(이익잉여금 등)이 들어 있음', 과세액 > 0 ? true : (잠정액 > 0 ? null : false), '과세 ' + won(과세액) + ' · 비과세 ' + won(비과세액) + (잠정액 > 0 ? ' · 잠정 ' + won(잠정액) : ''), '소득세법 §17②2호 단서'));
+  // 이 주주 몫
+  const 몫비율 = 발행 > 0 && 보유 > 0 ? 보유 / 발행 : null;
+  const 받은 = 있음(p.받은신주) ? n(p.받은신주) : (몫비율 != null ? (자기 > 0 && 발행 - 자기 > 0 ? 신규 * 보유 / (발행 - 자기) : 신규 * 몫비율) : null);
+  if (받은 == null) { notes.push('이 주주의 보유 주식·발행 주식 수를 몰라 받은 무상주 수를 못 셈 — 주주명부 확인'); 할일.push({ 무엇: '주주명부(전입 직전)로 보유 주식·발행 주식·자기주식 수 확인', 때: '지금', 근거: '소득세법 §17②2호·5호' }); }
+  const 신규1 = 신규 > 0 ? 1 / 신규 : 0;
+  const 과세주 = 받은 != null ? 받은 * (과세액 / (전입합 || 1)) : 0;
+  const 잠정주 = 받은 != null ? 받은 * (잠정액 / (전입합 || 1)) : 0;
+  const 비과세주 = 받은 != null ? 받은 - 과세주 - 잠정주 : 0;
+  const 배당2호 = Math.round(과세주 * 액면);
+  const 배당2호잠정 = Math.round(잠정주 * 액면);
+  const 가산X몫 = 과세액 > 0 ? Math.round(배당2호 * 가산제외액 / 과세액) : 0;
+  // 5호 — 자기주식이 있고 비과세 재원을 전입해 지분이 늘어난 몫
+  let 배당5호 = 0, 증가분 = 0;
+  if (자기 > 0 && 받은 != null && 몫비율 != null && (비과세액 + 잠정액) > 0) {
+    const 정상 = 신규 * 몫비율; // 자기주식도 배정됐다면 받았을 수
+    증가분 = Math.max(0, 받은 - 정상) * ((비과세액) / (전입합 || 1));
+    배당5호 = Math.round(증가분 * 액면);
+    reqs.push(jmReq_('회사가 자기주식을 가진 채 과세 안 되는 잉여금을 전입해 다른 주주 지분이 늘어남', 배당5호 > 0, '늘어난 주식 ' + Math.round(증가분).toLocaleString('ko-KR') + '주 × 액면 ' + won(액면), '소득세법 §17②5호'));
+    if (배당5호 > 0) notes.push('§17②5호 의제배당 ' + won(배당5호) + ' — 자기주식에 배정 안 된 비과세 무상주가 다른 주주에게 돌아간 몫, 배당가산 없음(§17③ 단서)');
+  }
+  const 의제배당 = 배당2호 + 배당5호;
+  const 가산대상 = Math.max(0, 배당2호 - 가산X몫);
+  // 받은 뒤 장부가(시행령 §27②·③)
+  const 구주 = 보유 > 0 ? 보유 : null;
+  const 구주취득 = 있음(p.구주취득가액) ? n(p.구주취득가액) : (jmYn_(p.소액주주) === true && 구주 ? 구주 * n(p.액면가) : null);
+  if (!있음(p.구주취득가액) && jmYn_(p.소액주주) === true) notes.push('소액주주로 구주 취득가액이 분명하지 않아 액면가액으로 봄(시행령 §27⑦)');
+  let 장부 = null;
+  if (구주 && 받은 != null && 구주취득 != null) {
+    const 총주 = 구주 + 받은;
+    const 총가 = 구주취득 + 배당2호 + 배당5호; // 과세된 무상주는 액면(의제배당액)이 취득가액, 비과세분은 0
+    장부 = { 총주식: Math.round(총주), 총취득가액: Math.round(총가), 주당평균: 총주 > 0 ? Math.round(총가 / 총주) : 0, 비과세무상주: Math.round(비과세주) };
+    notes.push('무상주 받은 뒤 1주당 장부가 ' + won(장부.주당평균) + ' (구주 취득가 ' + won(구주취득) + ' + 과세된 무상주 ' + won(의제배당) + ') ÷ ' + 장부.총주식.toLocaleString('ko-KR') + '주 — 시행령 §27② · 나중 양도 때 취득가액(소득령 §163)');
+  }
+  // 2년 안 소각(시행령 §27③)
+  let 단기소각 = null;
+  const 전입일 = jmYmd_(p.전입일), 소각일 = jmYmd_(p.소각일);
+  if (전입일 && 소각일 && 비과세주 > 0) {
+    const d1 = new Date(전입일), d2 = new Date(소각일); const 두해 = new Date(d1); 두해.setFullYear(두해.getFullYear() + 2);
+    const 안 = d2 < 두해;
+    const 소각주 = n(p.소각주식수), 대가 = n(p.소각대가);
+    if (안 && 소각주 > 0) {
+      const 먼저 = Math.min(소각주, 비과세주);
+      const 나머지 = 소각주 - 먼저;
+      const 나머지원가 = 장부 && (장부.총주식 - 비과세주) > 0 ? 나머지 * ((구주취득 + 의제배당) / (장부.총주식 - 비과세주)) : 0;
+      const 배당소각 = Math.max(0, Math.round(대가 - 나머지원가));
+      단기소각 = { 소각주식수: 소각주, 비과세무상주먼저: Math.round(먼저), 취득가액: Math.round(나머지원가), 소각의제배당: 배당소각 };
+      notes.push('무상주 받은 날부터 2년 안 소각 — 비과세 무상주 ' + Math.round(먼저).toLocaleString('ko-KR') + '주를 먼저 소각한 것으로 보고 취득가액 0(시행령 §27③) → 소각 의제배당 ' + won(배당소각) + '(§17②1호)');
+    } else if (!안) notes.push('소각이 무상주 받은 날부터 2년 뒤 — §27③ 단기소각 규정 안 걸림, 평균 장부가로 셈');
+  } else if (비과세주 > 0) {
+    할일.push({ 무엇: '비과세 무상주를 받은 날부터 2년 안에 감자·소각 계획이 있으면 미리 셈(그 무상주가 먼저 소각되고 취득가 0)', 때: 전입일 ? (function () { const d = new Date(전입일); d.setFullYear(d.getFullYear() + 2); return d.toISOString().slice(0, 10) + ' 전'; })() : '전입일부터 2년', 근거: '소득세법 시행령 §27③' });
+  }
+  // 받은 때·과세
+  if (의제배당 > 0) {
+    notes.push('의제배당은 배당소득 — 법인이 지급 때 14% 원천징수(지방소득세 별도), 금융소득 합계 2천만원 넘으면 종합과세 [종합소득세 도구 없음 → 넥스가 다른 금융소득을 여쭈고 도구 부족 신고]');
+    할일.push({ 무엇: '그해 다른 이자·배당소득 합계 여쭘(2천만원 넘으면 종합과세), 원천징수영수증 받기', 때: '다음 해 5월 종합소득세 신고 전', 근거: '소득세법 §14③6호·§127①2호·§129①2호' });
+  }
+  if (잠정액 > 0) notes.push('잠정 몫 ' + won(잠정액) + ' — 과세면 의제배당 ' + won(배당2호잠정) + ' 늘어남(경우 ②)');
+  notes.push('무상주 취득시기 [확인 필요] — 양도 때 보유기간은 구주 취득일로 볼지 무상주 받은 날로 볼지 원문(소득령 §162) 대조');
+  const 근거줄 = 갈래.map(function (g) { return g.재원 + ' ' + won(g.금액) + ' → 과세 ' + won(g.과세) + (g.잠정 ? ' · 잠정 ' + won(g.잠정) : '') + (g.비과세 ? ' · 과세 안 함 ' + won(g.비과세) : '') + ' (' + g.근거 + ')'; });
+  return jmWrap_('무상주', reqs, { 요건: 의제배당 > 0, 잠정: 잠정, 재원별: 갈래, 액면가: 액면, 받은무상주: 받은 != null ? Math.round(받은) : null, 과세무상주: Math.round(과세주), 비과세무상주: Math.round(비과세주),
+    의제배당: 의제배당, 의제배당2호: 배당2호, 의제배당5호: 배당5호, 배당가산대상: 가산대상, 배당가산제외: 가산X몫 + 배당5호, 원천징수14: Math.floor(의제배당 * 0.14 / 10) * 10, 장부가: 장부, 단기소각: 단기소각,
+    경우: [{ 경우: '① 법대로 — 재원마다 가름(잠정 몫은 과세 안 함으로)', 세액: 의제배당, 줄: 근거줄.concat(['의제배당 ' + won(의제배당) + ' (2호 ' + won(배당2호) + ' · 5호 ' + won(배당5호) + ')']) },
+           { 경우: '② 잠정 몫도 과세로 보면', 세액: 의제배당 + 배당2호잠정, 줄: ['잠정 몫 ' + won(잠정액) + ' 더함 → 의제배당 ' + won(의제배당 + 배당2호잠정)] },
+           { 경우: '③ [견주기] 재원 안 가르고 무상주 전부 과세', 세액: 받은 != null ? Math.round(받은 * 액면) : 0, 줄: ['자본준비금 전입까지 과세한 틀린 셈'] },
+           { 경우: '④ [견주기] 무상주는 전부 과세 안 된다고 보면', 세액: 0, 줄: ['이익잉여금 전입 의제배당을 놓친 틀린 셈'] }],
+    알림: notes, 할일: 할일 });
+}
+
+// [2026.11.04 복잡사건 154 「대물변제」] 빚 대신 부동산을 넘김(대물변제)·양도담보·위자료로 넘김 — 양도인지·양도가액·부당행위·받는 쪽 증여·나중 취득가액을 가름
+//  근거 원문(2026.11.04 업무관리자\법령 _본문에서 읽음 — 소득세법 20260101·시행령 20261001·상증법 20260102 시행판):
+//   소득세법 §88 1호(양도 = 매도·교환·법인 현물출자 등으로 자산이 유상으로 사실상 이전되는 것) — 대물변제는 채무 소멸을 대가로 한 유상 이전 → 양도
+//   §96①(양도가액 = 실지거래가액) — 대물변제의 실지거래가액은 소멸한 채무 원리금 [확인 필요 — 권장: 소멸 채무액]
+//   §96③2호(특수관계인에게 시가보다 높게 넘기고 상증법 §35로 증여세 과세받으면 양도가액 = 시가)
+//   시행령 §151①(담보 목적 양도: 1. 담보 목적 의사표시 2. 채무자가 원래대로 사용·수익 3. 원금·이율·변제기한·방법 약정 — 모두 갖춘 계약서 사본을 확정신고서에 첨부하면 양도 아님)
+//   시행령 §151②(그 뒤 요건 위배하거나 채무불이행으로 변제에 충당한 때 그때 양도)
+//   §101①·시행령 §167③(특수관계인에게 시가보다 낮게 양도 — 차액 3억 이상이거나 시가 5% 이상일 때만) ④(시가로 계산) ⑤(시가는 상증법 §60~§66 준용)
+//   상증법 §35①(특수관계 저가 양수: 차액 − min(시가×30%, 3억)) ②(특수관계 아님: 차액 ≥ 시가×30%이면 차액 − 3억)
+//   시행령 §163⑩1호(받은 사람 나중 취득가액: §35 증여재산가액 더함)
+//   §105①1호(예정신고: 양도일 속한 달 말일부터 2개월)
+//   위자료 대신 넘김 = 양도 / 재산분할 = 양도 아님 — 판례 원문 시스템에 없음 → [실사건 때 확인]
+//  p: { 넘김:'대물변제'|'양도담보'|'위자료'|'재산분할', 자산:'주택'|'토지'|…, 채무원금, 이자, 시가, 취득가액, 비용, 취득일, 양도일, 특수관계:true|false|null,
+//       담보의사표시, 채무자사용수익, 원리금약정, 계약서첨부, 변제충당:true|false|null, 1세대1주택:true|false|null, 엔진칸:{} }
+function judgeDebtSettle_(p) {
+  p = p || {}; const reqs = [], notes = [], 할일 = [], 경우 = [];
+  const num = function (x) { const n = famNum_(x); return n > 0 ? n : 0; };
+  const won = famWon_;
+  const 넘김 = String(p.넘김 || '대물변제');
+  const 자산 = String(p.자산 || '');
+  const 원금 = num(p.채무원금), 이자 = num(p.이자), 시가 = num(p.시가);
+  const 채무액 = 원금 + 이자;
+  const 취득가액 = num(p.취득가액), 비용 = num(p.비용);
+  const 양도일 = jmYmd_(p.양도일);
+  const 특수 = jmYn_(p.특수관계);
+  let 양도 = null, 양도가액 = 0, 잠정 = false;
+
+  // 1) 양도인지
+  if (/재산분할/.test(넘김)) {
+    양도 = false;
+    reqs.push(jmReq_('양도인지', '✘', '이혼 재산분할로 넘김 — 공유재산을 나누는 것이라 양도 아님', '[실사건 때 확인] 판례(재산분할은 양도 아님) 원문 시스템에 없음'));
+    notes.push('재산분할로 받은 사람이 나중에 팔 때 취득일·취득가액은 전 배우자 당초 것 — 가족 지도 「재산분할」 종류로 잇기 [실사건 때 확인]');
+  } else if (/양도담보|담보/.test(넘김)) {
+    const 셋 = [jmYn_(p.담보의사표시), jmYn_(p.채무자사용수익), jmYn_(p.원리금약정)];
+    const 첨부 = jmYn_(p.계약서첨부), 충당 = jmYn_(p.변제충당);
+    const 이름 = ['1호 담보 목적 의사표시', '2호 채무자가 원래대로 사용·수익', '3호 원금·이율·변제기한·방법 약정'];
+    셋.forEach(function (v, i) { reqs.push(jmReq_(이름[i], v === true ? '✔' : v === false ? '✘' : '?', v == null ? '계약서로 확인' : '', '소득세법 시행령 §151①' + (i + 1) + '호')); });
+    reqs.push(jmReq_('계약서 사본 확정신고서 첨부', 첨부 === true ? '✔' : 첨부 === false ? '✘' : '?', '첨부해야 양도로 보지 않음', '시행령 §151① 본문'));
+    reqs.push(jmReq_('요건 위배·채무불이행으로 변제 충당', 충당 === true ? '✘' : 충당 === false ? '✔' : '?', 충당 === true ? '충당한 때 양도' : '', '시행령 §151②'));
+    if (충당 === true || 셋.indexOf(false) >= 0) 양도 = true;
+    else if (셋.every(function (v) { return v === true; }) && 첨부 !== false) { 양도 = false; if (첨부 == null) 잠정 = true; }
+    else { 양도 = null; 잠정 = true; }
+    if (양도 === false) 할일.push({ 무엇: '양도담보 계약서 사본을 확정신고서에 첨부(빠지면 양도로 봄)', 때: '다음 해 5월 확정신고', 근거: '시행령 §151①' });
+    if (충당 === true) notes.push('변제에 충당한 날이 양도일 — 그날 기준 양도가액 = 충당된 채무액(시행령 §151②)');
+  } else {
+    양도 = true;
+    reqs.push(jmReq_('양도인지', '✔', (/위자료/.test(넘김) ? '위자료 채무를 갚으려고 넘김' : '빚을 갚으려고 넘김(대물변제)') + ' — 채무 소멸을 대가로 한 유상 이전', '소득세법 §88 1호' + (/위자료/.test(넘김) ? ' · 위자료 판례 [실사건 때 확인]' : '')));
+  }
+
+  // 2) 양도가액·부당행위·받는 쪽 증여
+  let 증여액 = 0, 부당 = false, 고가 = false, 증여재산가액 = 0;
+  if (양도 !== false) {
+    if (채무액 <= 0) { 잠정 = true; reqs.push(jmReq_('없어진 채무액', '?', '원금·이자를 차용증·판결·합의서로 확인', '소득세법 §96①')); }
+    else reqs.push(jmReq_('없어진 채무액', '✔', '원금 ' + won(원금) + (이자 ? ' + 이자 ' + won(이자) : '') + ' = ' + won(채무액), '소득세법 §96① [확인 필요 — 권장: 소멸 채무 원리금을 실지거래가액으로]'));
+    양도가액 = 채무액;
+    if (시가 > 0 && 채무액 > 0 && 채무액 < 시가) {
+      const 차액 = 시가 - 채무액;
+      if (특수 === true) {
+        if (차액 >= 300000000 || 차액 >= 시가 * 0.05) {
+          부당 = true; 양도가액 = 시가;
+          reqs.push(jmReq_('부당행위(싸게 넘김)', '✘', '특수관계인에게 시가 ' + won(시가) + '보다 ' + won(차액) + ' 싸게 — 시가로 다시 셈', '소득세법 §101①·시행령 §167③④'));
+        } else reqs.push(jmReq_('부당행위(싸게 넘김)', '✔', '차액 ' + won(차액) + ' — 3억·시가 5% 모두 안 넘어 안 걸림', '시행령 §167③ 단서'));
+        const gate = Math.min(시가 * 0.3, 300000000);
+        증여액 = Math.max(0, Math.round(차액 - gate));
+      } else if (특수 === false) {
+        if (차액 >= 시가 * 0.3) 증여액 = Math.max(0, Math.round(차액 - 300000000));
+      } else { 잠정 = true; reqs.push(jmReq_('특수관계', '?', '채권자와의 관계를 세무사님께 여쭘', '소득세법 §101①·상증법 §35')); }
+      if (증여액 > 0) { 증여재산가액 = 증여액; notes.push('받는 쪽(채권자) 저가 양수 증여 ' + won(증여액) + ' — 상증법 §35' + (특수 ? '①' : '②') + ' · 증여세 신고는 받은 날 속한 달 말일부터 3개월(§68①)'); }
+    } else if (시가 > 0 && 채무액 > 시가) {
+      고가 = true;
+      const 차액2 = 채무액 - 시가;
+      const g2 = 특수 === true ? Math.max(0, Math.round(차액2 - Math.min(시가 * 0.3, 300000000))) : (차액2 >= 시가 * 0.3 ? Math.max(0, Math.round(차액2 - 300000000)) : 0);
+      if (g2 > 0) { 양도가액 = 채무액 - g2; notes.push('비싸게 넘김 — 넘긴 사람이 고가 양도 증여 ' + won(g2) + '(상증법 §35) → 양도가액 = 채무액 − 증여재산가액 ' + won(양도가액) + '(소득세법 §96③2호)'); }
+      if (특수 === true) notes.push('채권자 쪽 부당행위(시가보다 비싸게 취득) — 채권자가 나중에 팔 때 취득가액은 시가(시행령 §167④)');
+    } else if (시가 <= 0) { notes.push('시가 모름 — 감정가·매매사례로 시가 확인(시행령 §167⑤ 상증법 §60~§66 준용, 평가기간 전후 3개월) — 싸게 넘겼는지 못 가림'); 할일.push({ 무엇: '시가 확인(감정 또는 매매사례)', 때: '신고 전', 근거: '시행령 §167⑤' }); }
+  }
+
+  // 3) 받는 사람 나중 취득가액
+  const 나중취득가액 = 양도 === false ? 0 : (고가 && 특수 === true && 시가 > 0 ? 시가 : 채무액 + 증여재산가액);
+  if (양도 !== false && 채무액 > 0) notes.push('받은 사람 나중 취득가액 = 없어진 채권액 ' + won(채무액) + (증여재산가액 ? ' + 증여재산가액 ' + won(증여재산가액) + '(시행령 §163⑩1호)' : '') + ' → ' + won(나중취득가액));
+
+  // 4) 알림·할 일
+  if (/주택/.test(자산)) notes.push('1세대1주택이면 비과세(소득세법 §89①3호) — 대물변제여도 양도라 판정 그대로' + (jmYn_(p['1세대1주택']) == null ? ' — 1세대1주택 판정 묶음으로 확인' : ''));
+  notes.push('양도시기 [확인 필요 §162] — 대물변제 약정일·등기접수일 중 무엇으로 볼지 원문 대조(권장: 시행령 §162①1호 대금청산일 성격 = 채무 소멸일, 등기가 먼저면 등기접수일)');
+  if (양도 !== false) {
+    if (양도일) { const y = +양도일.slice(0, 4), m = +양도일.slice(5, 7); const last = new Date(Date.UTC(y, m + 2, 0)).toISOString().slice(0, 10); 할일.push({ 무엇: '양도소득세 예정신고·납부', 때: last + '까지', 근거: '소득세법 §105①1호' }); }
+    else 할일.push({ 무엇: '양도일 확인 뒤 예정신고(그 달 말일부터 2개월)', 때: '양도일 뒤', 근거: '소득세법 §105①1호' });
+  }
+
+  // 5) 경우(엔진칸)
+  const base = Object.assign({ assetType: /주택/.test(자산) ? 'house' : /토지/.test(자산) ? 'land' : 'other', acquisitionPrice: 취득가액 || undefined, necessaryExpenses: 비용 || undefined, acquisitionDate: jmYmd_(p.취득일) || undefined, transferDate: 양도일 || undefined }, p.엔진칸 || {});
+  if (양도 !== false && 양도가액 > 0) {
+    경우.push({ 이름: '① 법대로 — 양도가액 ' + won(양도가액), 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, base, { transferPrice: 양도가액 }) });
+    경우.push({ 이름: '② [견주기] 빚 갚은 것이라 양도 아니라고 잘못 봄 — 세금 0', 세액: 0, 줄: ['대물변제도 유상 이전이라 양도(§88 1호) — 이렇게 신고하면 무신고'] });
+    if (부당) 경우.push({ 이름: '③ [견주기] 시가 안 보고 채무액 ' + won(채무액) + '으로 신고', 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, base, { transferPrice: 채무액 }) });
+    else if (시가 > 0 && 시가 !== 양도가액) 경우.push({ 이름: '③ [견주기] 채무액 대신 시가 ' + won(시가) + '로 잘못 셈', 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, base, { transferPrice: 시가 }) });
+  }
+
+  const w = jmWrap_('대물변제', reqs, { 넘김: 넘김, 양도: 양도, 잠정: 잠정, 채무액: 채무액, 시가: 시가, 양도가액: 양도가액, 부당행위: 부당, 고가: 고가, 받는쪽증여: 증여재산가액, 나중취득가액: 나중취득가액, 경우: 경우, 알림: notes, 할일: 할일 });
+  w.결론 = 양도 === false ? '양도 아님(' + 넘김 + ')' + (잠정 ? ' — 잠정' : '') : 양도 === true ? '양도 — 양도가액 ' + won(양도가액) + (부당 ? '(시가로 다시 셈)' : '') + (잠정 ? ' — 잠정' : '') : '가르지 못함 — 잠정';
+  w.표시 = '대물변제 ' + w.결론;
+  return w;
+}
+
 // [2026.11.04 복잡사건 134] 국세의 우선(국세기본법 §35·§36) — 경매·공매 매각대금을 국세와 저당권·전세권·확정일자 임차인 등에게 어떤 차례로 나누나
 //  근거 원문(2026.11.04 업무관리자\법령 _본문에서 읽음 — 국세기본법 20261002 시행판·부칙 제19189호):
 //   §35①(국세는 다른 채권에 우선. 다만 1호 지방세·공과금 체납처분비 / 2호 강제집행·경매·파산 절차 비용 / 3호 법정기일 전에 설정된 가 전세권·질권·저당권 나 대항요건+확정일자 임차권 다 담보가등기로 담보된 채권
@@ -9318,7 +9593,7 @@ function judgeHeirPersonalDeduction_(p) {
   return r;
 }
 
-var JUDGE_MORE_ = { '인적공제': judgeHeirPersonalDeduction_, '일괄공제': judgeHeirPersonalDeduction_, '장애인공제': judgeHeirPersonalDeduction_, '연로자공제': judgeHeirPersonalDeduction_, '미성년자공제': judgeHeirPersonalDeduction_, '임대담보평가': judgeLeaseMortgageValuation_, '저당평가': judgeLeaseMortgageValuation_, '임대료환산': judgeLeaseMortgageValuation_, '담보평가': judgeLeaseMortgageValuation_, '공동명의': judgeJointOwnership_, '지분증여': judgeJointOwnership_, '공동명의전환': judgeJointOwnership_, '부부공동명의': judgeJointOwnership_, '합병의제배당': judgeMergerDividend_, '분할의제배당': judgeMergerDividend_, '합병대가': judgeMergerDividend_, '분할대가': judgeMergerDividend_, '합병교부금': judgeMergerDividend_, '자기주식': judgeTreasuryStock_, '주식소각': judgeTreasuryStock_, '배우자증여소각': judgeTreasuryStock_, '이익소각': judgeTreasuryStock_, '교차증여': judgeCrossGift_, '맞바꾼증여': judgeCrossGift_, '우회증여': judgeCrossGift_, '실질증여자': judgeCrossGift_, '사망퇴직금': judgeRetirementDeathPay_, '퇴직금등': judgeRetirementDeathPay_, '유족연금': judgeRetirementDeathPay_, '간주상속퇴직금': judgeRetirementDeathPay_, '대여금채권': judgeLoanReceivable_, '대여금': judgeLoanReceivable_, '채권평가': judgeLoanReceivable_, '회수불능채권': judgeLoanReceivable_, '보험금과세': judgeInsuranceTax_, '보험금': judgeInsuranceTax_, '사망보험금': judgeInsuranceTax_, '§34': judgeInsuranceTax_, '상속추정재산': judgeDisposalPresumption_, '처분재산 추정': judgeDisposalPresumption_, '상속개시전 처분재산': judgeDisposalPresumption_, '§15': judgeDisposalPresumption_, '가업승계증여': judgeBizSuccessionGift_, '가업승계 증여세 특례': judgeBizSuccessionGift_, '가업승계 주식 증여': judgeBizSuccessionGift_, '§30의6': judgeBizSuccessionGift_, '증여일': judgeGiftAcquisitionDate_, '증여재산 취득시기': judgeGiftAcquisitionDate_, '증여재산취득시기': judgeGiftAcquisitionDate_, '§24': judgeGiftAcquisitionDate_, '주식취득분': judgeStockLotMatching_, '선입선출': judgeStockLotMatching_, '§162⑤': judgeStockLotMatching_, '상속외국납부': judgeForeignEstateTaxCredit_, '외국납부세액공제': judgeForeignEstateTaxCredit_, '§29': judgeForeignEstateTaxCredit_, '미분양주택특례': judgeUnsoldHouse_, '미분양주택': judgeUnsoldHouse_, '준공후미분양': judgeUnsoldHouse_, '§98의3': judgeUnsoldHouse_, '양도담보물적납세': judgeTransferSecurity_, '물적납세의무': judgeTransferSecurity_, '양도담보권자': judgeTransferSecurity_, '§42': judgeTransferSecurity_, '연대납세의무': judgeJointLiability_, '연대납세': judgeJointLiability_, '§25': judgeJointLiability_, '국세우선': judgeTaxPriority_, '배당순위': judgeTaxPriority_, '§35': judgeTaxPriority_, '법인제2차납세의무': judgeCorpSecondary_, '법인제2차': judgeCorpSecondary_, '§40': judgeCorpSecondary_, '사업양수인': judgeBusinessTransferee_, '사업양수인제2차납세의무': judgeBusinessTransferee_, '§41': judgeBusinessTransferee_, '징수권소멸시효': judgeCollectionLimitation_, '소멸시효': judgeCollectionLimitation_, '국세징수권': judgeCollectionLimitation_, '§27': judgeCollectionLimitation_, '금융재산공제': judgeFinancialDeduction_, '금융재산상속공제': judgeFinancialDeduction_, '§22': judgeFinancialDeduction_, '추계': judgeEstimatedPrice_, '추계결정': judgeEstimatedPrice_, '추계취득가액': judgeEstimatedPrice_, '§176의2': judgeEstimatedPrice_, '후발적경정청구': judgeLateCorrectionClaim_, '후발적경정': judgeLateCorrectionClaim_, '경정청구사유': judgeLateCorrectionClaim_, '§45의2②': judgeLateCorrectionClaim_, '납부기한연장': judgePayDeadlineExtension_, '납부고지유예': judgePayDeadlineExtension_, '징수유예': judgePayDeadlineExtension_, '납부기한등연장': judgePayDeadlineExtension_, '국세징수법 §13': judgePayDeadlineExtension_, '공익신탁': judgePublicTrust_, '공익신탁불산입': judgePublicTrust_, '공익신탁재산': judgePublicTrust_, '§17': judgePublicTrust_, '§52': judgePublicTrust_, '공익법인사후관리': judgeCharityAftercare_, '출연재산사후관리': judgeCharityAftercare_, '공익법인 사후관리': judgeCharityAftercare_, '§48②': judgeCharityAftercare_, '문화유산징수유예': judgeCulturalDeferral_, '문화재징수유예': judgeCulturalDeferral_, '박물관자료': judgeCulturalDeferral_, '§74': judgeCulturalDeferral_, '신탁상속': judgeTrustInheritance_, '유언대용신탁': judgeTrustInheritance_, '수익자연속신탁': judgeTrustInheritance_, '신탁 상속': judgeTrustInheritance_, '§9': judgeTrustInheritance_, '농업법인출자': judgeFarmCorpContribution_, '영농조합 현물출자': judgeFarmCorpContribution_, '농업회사법인 현물출자': judgeFarmCorpContribution_, '§66⑦': judgeFarmCorpContribution_, '§68③': judgeFarmCorpContribution_, '중소기업통합': judgeIncorp32_, '중소기업 간 통합': judgeIncorp32_, '§31': judgeIncorp32_, '공장이전': judgeFactoryRelocation_, '공장 이전 분할납부': judgeFactoryRelocation_, '§85의7': judgeFactoryRelocation_, '§85의8': judgeFactoryRelocation_, '농지교환': judgeFarmlandExchange_, '농지 교환': judgeFarmlandExchange_, '교환·분합': judgeFarmlandExchange_, '§89①2호': judgeFarmlandExchange_, '비상장평가': judgeUnlistedValuation_, '비상장주식 평가': judgeUnlistedValuation_, '순자산가치': judgeUnlistedValuation_, '§54': judgeUnlistedValuation_, '주식교환': judgeShareSwap_, '주식의 포괄적 교환': judgeShareSwap_, '포괄적 교환': judgeShareSwap_, '§38': judgeShareSwap_, '자경산지': judgeSelfForest_, '자경산지 감면': judgeSelfForest_, '산지 감면': judgeSelfForest_, '§69의4': judgeSelfForest_, '법인아닌단체': judgeClanLand_, '종중': judgeClanLand_, '종중 양도': judgeClanLand_, '법인 아닌 단체': judgeClanLand_, '§2③': judgeClanLand_, '재상속': judgeReinheritance_, '단기재상속': judgeReinheritance_, '§30': judgeReinheritance_, '연이은상속': judgeReinheritance_, '2차상속': judgeReinheritance_, '신탁수익권': judgeTrustBeneficiary_, '신탁 수익권': judgeTrustBeneficiary_, '수익권양도': judgeTrustBeneficiary_, '§94①6호': judgeTrustBeneficiary_, '배우자양도추정': judgeSpouseTransfer44_, '§44': judgeSpouseTransfer44_, '배우자 양도 증여추정': judgeSpouseTransfer44_, '우회양도 증여추정': judgeSpouseTransfer44_, '장기일반감면': judgeRental9705_, '§97의5': judgeRental9705_, '97의5': judgeRental9705_, '임대주택감면': judgeRental9705_, '신축주택감면': judgeNewHouse99_2_, '신축주택': judgeNewHouse99_2_, '§99의2': judgeNewHouse99_2_, '99의2': judgeNewHouse99_2_, '2013신축주택': judgeNewHouse99_2_, '축사용지': judgeLivestockLand_, '축사': judgeLivestockLand_, '축사용지감면': judgeLivestockLand_, '재해손실': judgeDisasterLoss_, '재해손실공제': judgeDisasterLoss_, '재난손실': judgeDisasterLoss_, '경영회생': judgeFarmRevival_, '경영회생 농지': judgeFarmRevival_, '농지 환매': judgeFarmRevival_, '대체주택': judgeReplacementHouse_, '재건축 대체주택': judgeReplacementHouse_, '사업기간 대체주택': judgeReplacementHouse_, '농어촌주택': judgeRuralHouse_, '고향주택': judgeRuralHouse_, '농어촌주택특례': judgeRuralHouse_, '경매': judgeAuction_, '공매': judgeAuction_, '경락': judgeAuction_, '경매취득': judgeAuction_, '부동산권리': judgeAcquireRight_, '분양권판정': judgeAcquireRight_, '택지공급권': judgeAcquireRight_, '지역주택조합': judgeAcquireRight_, '납세의무승계': judgeSuccession_, '상속인 납세의무': judgeSuccession_, '사망 전 양도': judgeSuccession_, '납부유예': judgeDefer_, '가업납부유예': judgeDefer_, '상속세납부유예': judgeDefer_, '환급가산금': judgeRefund_, '국세환급': judgeRefund_, '경정환급': judgeRefund_, '부정행위': judgeFraud_, '가산세판정': judgeFraud_, '신고불성실': judgeFraud_, '제척기간': judgeExclusionPeriod_, '부과제척기간': judgeExclusionPeriod_, '장기임대특례': judgeRental9703_, '장기일반민간임대': judgeRental9703_, '97의3': judgeRental9703_, '나눠팔기': judgeSplitSale_, '토지분할양도': judgeSplitSale_, '감면한도합산': judgeSplitSale_, '개발제한구역': judgeGbPurchase_, '개발제한구역감면': judgeGbPurchase_, '그린벨트': judgeGbPurchase_, '영농상속': judgeFarmInheritance_, '영농상속공제': judgeFarmInheritance_, '영농 상속': judgeFarmInheritance_, '법인거래': judgeCorpIndividualDeal_, '법인 거래': judgeCorpIndividualDeal_, '가족법인 거래': judgeCorpIndividualDeal_, '특수관계법인 거래': judgeCorpIndividualDeal_, '비거주자양도': judgeNonResidentTransfer_, '비거주자 양도': judgeNonResidentTransfer_, '재외국민 양도': judgeNonResidentTransfer_, '외국인 양도': judgeNonResidentTransfer_, '부담부증여': judgeBurdenedGift_, '부담부 증여': judgeBurdenedGift_, '채무 인수 증여': judgeBurdenedGift_, '환산가산세': judgeNewBuildConversion_, '신축 환산 가산세': judgeNewBuildConversion_, '감정가액 가산세': judgeNewBuildConversion_, '미등기': judgeUnregistered_, '미등기양도': judgeUnregistered_, '미등기 양도자산': judgeUnregistered_, '확정신고': judgeFinalReturn_, '확정신고 의무': judgeFinalReturn_, '예정신고 합산': judgeFinalReturn_, '정비청산': judgeRedevCash_, '현금청산': judgeRedevCash_, '재개발 현금청산': judgeRedevCash_, '매도청구': judgeRedevCash_, '의제취득': judgeDeemedAcq_, '의제취득일': judgeDeemedAcq_, '1985년 전 취득': judgeDeemedAcq_, '세대판정': judgeHousehold_, '1세대 범위': judgeHousehold_, '세대 구성': judgeHousehold_, '중과판정': judgeSurcharge_, '다주택 중과': judgeSurcharge_, '중과 제외': judgeSurcharge_, '필요경비': judgeExpenses_, '필요경비 판정': judgeExpenses_, '자본적지출': judgeExpenses_, '주택여부': judgeIsHouse_, '주택 해당': judgeIsHouse_, '사실상 주거용': judgeIsHouse_, '부수토지': judgeHouseLandExcess_, '주택부수토지': judgeHouseLandExcess_, '부수토지 배율': judgeHouseLandExcess_, '양도시기': judgeTransferTiming_, '취득시기': judgeTransferTiming_, '양도·취득시기': judgeTransferTiming_, '보상금구분': judgeCompensationSplit_, '수용보상금': judgeCompensationSplit_, '보상금 가르기': judgeCompensationSplit_, '대토보상': judgeLandReplacement_, '대토': judgeLandReplacement_, '대토보상 과세이연': judgeLandReplacement_, '부동산매매업': judgeRealEstateDealer_, '매매업': judgeRealEstateDealer_, '부동산 단타': judgeRealEstateDealer_, '공동상속': judgeCoInheritedHouse_, '공동상속주택': judgeCoInheritedHouse_, '공동상속주택 소수지분': judgeCoInheritedHouse_, '다가구': judgeMultiHousehold_, '다가구주택': judgeMultiHousehold_, '다가구 한 채': judgeMultiHousehold_, '상속채무': judgeInheritDebt_, '상속 채무 공제': judgeInheritDebt_, '채무 공과금 장례비': judgeInheritDebt_, '토지건물구분': judgeLandBuildingSplit_, '일괄양도 안분': judgeLandBuildingSplit_, '토지 건물 가액 구분': judgeLandBuildingSplit_, '상속평가': judgeInheritValuation_, '상속 평가 선택': judgeInheritValuation_, '감정평가 신고': judgeInheritValuation_, '증여시기': judgeGiftTiming_, '증여 날짜': judgeGiftTiming_, '증여일 고르기': judgeGiftTiming_, '생활비교육비': judgeFamilySupportGift_, '비과세증여': judgeFamilySupportGift_, '혼인출산공제': judgeFamilySupportGift_, '세무조사절차': judgeTaxAudit_, '세무조사': judgeTaxAudit_, '세무조사 통지': judgeTaxAudit_, '세금대납': judgeTaxProxyPay_, '상속세 대납': judgeTaxProxyPay_, '증여세 대납': judgeTaxProxyPay_, '차명계좌': judgeBorrowedAccount_, '차명 예금': judgeBorrowedAccount_, '차명계좌 증여추정': judgeBorrowedAccount_, '부동산명의신탁': judgeNomineeRealty_, '명의신탁 부동산': judgeNomineeRealty_, '제2차납세의무': judgeSecondaryLiability_, '제2차 납세의무': judgeSecondaryLiability_, '과점주주': judgeSecondaryLiability_, '특별연고자': judgeSpecialRelation_, '특별연고자 분여': judgeSpecialRelation_, '재산분여': judgeSpecialRelation_, '기타자산': judgeOtherAsset_, '영업권': judgeOtherAsset_, '회원권': judgeOtherAsset_, '영업권·회원권': judgeOtherAsset_, '한정승인': judgeLimitedAccept_, '상속 한정승인': judgeLimitedAccept_, '특별한정승인': judgeLimitedAccept_, '국외증여': judgeForeignGift_, '국외 증여': judgeForeignGift_, '국외재산 증여': judgeForeignGift_, '거주자': judgeResidency_, '거주자 판정': judgeResidency_, '비거주자': judgeResidency_, '상속인': judgeHeirShares_, '법정상속분': judgeHeirShares_, '상속인·법정상속분': judgeHeirShares_, '불복기한': judgeAppealDeadline_, '불복': judgeAppealDeadline_, '경정청구기한': judgeAppealDeadline_, '양도여부': judgeTransferScope_, '계약해제': function (p) { p = Object.assign({}, p || {}); if (!p.유형) p.유형 = '계약해제'; return judgeTransferScope_(p); }, '양도로 보지 않음': judgeTransferScope_, '농지대토': judgeFarmSwap_, '대토': judgeFarmSwap_, '농지대토 감면': judgeFarmSwap_, '법인전환': judgeIncorp32_, '법인전환 이월과세': judgeIncorp32_, '8년자경': judgeSelfFarm_, '자경': judgeSelfFarm_, '8년 자경농지 감면': judgeSelfFarm_, '동거주택': judgeCohabit_, '동거주택 상속공제': judgeCohabit_, '가업상속': judgeFamilyBiz_, '가업상속공제': judgeFamilyBiz_ };
+var JUDGE_MORE_ = { '인적공제': judgeHeirPersonalDeduction_, '일괄공제': judgeHeirPersonalDeduction_, '장애인공제': judgeHeirPersonalDeduction_, '연로자공제': judgeHeirPersonalDeduction_, '미성년자공제': judgeHeirPersonalDeduction_, '임대담보평가': judgeLeaseMortgageValuation_, '저당평가': judgeLeaseMortgageValuation_, '임대료환산': judgeLeaseMortgageValuation_, '담보평가': judgeLeaseMortgageValuation_, '공동명의': judgeJointOwnership_, '지분증여': judgeJointOwnership_, '공동명의전환': judgeJointOwnership_, '부부공동명의': judgeJointOwnership_, '합병의제배당': judgeMergerDividend_, '분할의제배당': judgeMergerDividend_, '합병대가': judgeMergerDividend_, '분할대가': judgeMergerDividend_, '합병교부금': judgeMergerDividend_, '자기주식': judgeTreasuryStock_, '주식소각': judgeTreasuryStock_, '배우자증여소각': judgeTreasuryStock_, '이익소각': judgeTreasuryStock_, '교차증여': judgeCrossGift_, '맞바꾼증여': judgeCrossGift_, '우회증여': judgeCrossGift_, '실질증여자': judgeCrossGift_, '사망퇴직금': judgeRetirementDeathPay_, '퇴직금등': judgeRetirementDeathPay_, '유족연금': judgeRetirementDeathPay_, '간주상속퇴직금': judgeRetirementDeathPay_, '대여금채권': judgeLoanReceivable_, '대여금': judgeLoanReceivable_, '채권평가': judgeLoanReceivable_, '회수불능채권': judgeLoanReceivable_, '보험금과세': judgeInsuranceTax_, '보험금': judgeInsuranceTax_, '사망보험금': judgeInsuranceTax_, '§34': judgeInsuranceTax_, '상속추정재산': judgeDisposalPresumption_, '처분재산 추정': judgeDisposalPresumption_, '상속개시전 처분재산': judgeDisposalPresumption_, '§15': judgeDisposalPresumption_, '가업승계증여': judgeBizSuccessionGift_, '가업승계 증여세 특례': judgeBizSuccessionGift_, '가업승계 주식 증여': judgeBizSuccessionGift_, '§30의6': judgeBizSuccessionGift_, '증여일': judgeGiftAcquisitionDate_, '증여재산 취득시기': judgeGiftAcquisitionDate_, '증여재산취득시기': judgeGiftAcquisitionDate_, '§24': judgeGiftAcquisitionDate_, '주식취득분': judgeStockLotMatching_, '선입선출': judgeStockLotMatching_, '§162⑤': judgeStockLotMatching_, '상속외국납부': judgeForeignEstateTaxCredit_, '외국납부세액공제': judgeForeignEstateTaxCredit_, '§29': judgeForeignEstateTaxCredit_, '미분양주택특례': judgeUnsoldHouse_, '미분양주택': judgeUnsoldHouse_, '준공후미분양': judgeUnsoldHouse_, '§98의3': judgeUnsoldHouse_, '양도담보물적납세': judgeTransferSecurity_, '물적납세의무': judgeTransferSecurity_, '양도담보권자': judgeTransferSecurity_, '§42': judgeTransferSecurity_, '연대납세의무': judgeJointLiability_, '연대납세': judgeJointLiability_, '§25': judgeJointLiability_, '국세우선': judgeTaxPriority_, '배당순위': judgeTaxPriority_, '§35': judgeTaxPriority_, '법인제2차납세의무': judgeCorpSecondary_, '법인제2차': judgeCorpSecondary_, '§40': judgeCorpSecondary_, '사업양수인': judgeBusinessTransferee_, '사업양수인제2차납세의무': judgeBusinessTransferee_, '§41': judgeBusinessTransferee_, '징수권소멸시효': judgeCollectionLimitation_, '소멸시효': judgeCollectionLimitation_, '국세징수권': judgeCollectionLimitation_, '§27': judgeCollectionLimitation_, '금융재산공제': judgeFinancialDeduction_, '금융재산상속공제': judgeFinancialDeduction_, '§22': judgeFinancialDeduction_, '추계': judgeEstimatedPrice_, '추계결정': judgeEstimatedPrice_, '추계취득가액': judgeEstimatedPrice_, '§176의2': judgeEstimatedPrice_, '후발적경정청구': judgeLateCorrectionClaim_, '후발적경정': judgeLateCorrectionClaim_, '경정청구사유': judgeLateCorrectionClaim_, '§45의2②': judgeLateCorrectionClaim_, '납부기한연장': judgePayDeadlineExtension_, '납부고지유예': judgePayDeadlineExtension_, '징수유예': judgePayDeadlineExtension_, '납부기한등연장': judgePayDeadlineExtension_, '국세징수법 §13': judgePayDeadlineExtension_, '공익신탁': judgePublicTrust_, '공익신탁불산입': judgePublicTrust_, '공익신탁재산': judgePublicTrust_, '§17': judgePublicTrust_, '§52': judgePublicTrust_, '공익법인사후관리': judgeCharityAftercare_, '출연재산사후관리': judgeCharityAftercare_, '공익법인 사후관리': judgeCharityAftercare_, '§48②': judgeCharityAftercare_, '문화유산징수유예': judgeCulturalDeferral_, '문화재징수유예': judgeCulturalDeferral_, '박물관자료': judgeCulturalDeferral_, '§74': judgeCulturalDeferral_, '신탁상속': judgeTrustInheritance_, '유언대용신탁': judgeTrustInheritance_, '수익자연속신탁': judgeTrustInheritance_, '신탁 상속': judgeTrustInheritance_, '§9': judgeTrustInheritance_, '농업법인출자': judgeFarmCorpContribution_, '영농조합 현물출자': judgeFarmCorpContribution_, '농업회사법인 현물출자': judgeFarmCorpContribution_, '§66⑦': judgeFarmCorpContribution_, '§68③': judgeFarmCorpContribution_, '중소기업통합': judgeIncorp32_, '중소기업 간 통합': judgeIncorp32_, '§31': judgeIncorp32_, '공장이전': judgeFactoryRelocation_, '공장 이전 분할납부': judgeFactoryRelocation_, '§85의7': judgeFactoryRelocation_, '§85의8': judgeFactoryRelocation_, '농지교환': judgeFarmlandExchange_, '농지 교환': judgeFarmlandExchange_, '교환·분합': judgeFarmlandExchange_, '§89①2호': judgeFarmlandExchange_, '비상장평가': judgeUnlistedValuation_, '비상장주식 평가': judgeUnlistedValuation_, '순자산가치': judgeUnlistedValuation_, '§54': judgeUnlistedValuation_, '주식교환': judgeShareSwap_, '주식의 포괄적 교환': judgeShareSwap_, '포괄적 교환': judgeShareSwap_, '§38': judgeShareSwap_, '자경산지': judgeSelfForest_, '자경산지 감면': judgeSelfForest_, '산지 감면': judgeSelfForest_, '§69의4': judgeSelfForest_, '법인아닌단체': judgeClanLand_, '종중': judgeClanLand_, '종중 양도': judgeClanLand_, '법인 아닌 단체': judgeClanLand_, '§2③': judgeClanLand_, '재상속': judgeReinheritance_, '단기재상속': judgeReinheritance_, '§30': judgeReinheritance_, '연이은상속': judgeReinheritance_, '2차상속': judgeReinheritance_, '신탁수익권': judgeTrustBeneficiary_, '신탁 수익권': judgeTrustBeneficiary_, '수익권양도': judgeTrustBeneficiary_, '§94①6호': judgeTrustBeneficiary_, '배우자양도추정': judgeSpouseTransfer44_, '§44': judgeSpouseTransfer44_, '배우자 양도 증여추정': judgeSpouseTransfer44_, '우회양도 증여추정': judgeSpouseTransfer44_, '장기일반감면': judgeRental9705_, '§97의5': judgeRental9705_, '97의5': judgeRental9705_, '임대주택감면': judgeRental9705_, '신축주택감면': judgeNewHouse99_2_, '신축주택': judgeNewHouse99_2_, '§99의2': judgeNewHouse99_2_, '99의2': judgeNewHouse99_2_, '2013신축주택': judgeNewHouse99_2_, '축사용지': judgeLivestockLand_, '축사': judgeLivestockLand_, '축사용지감면': judgeLivestockLand_, '재해손실': judgeDisasterLoss_, '재해손실공제': judgeDisasterLoss_, '재난손실': judgeDisasterLoss_, '경영회생': judgeFarmRevival_, '경영회생 농지': judgeFarmRevival_, '농지 환매': judgeFarmRevival_, '대체주택': judgeReplacementHouse_, '재건축 대체주택': judgeReplacementHouse_, '사업기간 대체주택': judgeReplacementHouse_, '농어촌주택': judgeRuralHouse_, '고향주택': judgeRuralHouse_, '농어촌주택특례': judgeRuralHouse_, '경매': judgeAuction_, '공매': judgeAuction_, '경락': judgeAuction_, '경매취득': judgeAuction_, '부동산권리': judgeAcquireRight_, '분양권판정': judgeAcquireRight_, '택지공급권': judgeAcquireRight_, '지역주택조합': judgeAcquireRight_, '납세의무승계': judgeSuccession_, '상속인 납세의무': judgeSuccession_, '사망 전 양도': judgeSuccession_, '납부유예': judgeDefer_, '가업납부유예': judgeDefer_, '상속세납부유예': judgeDefer_, '환급가산금': judgeRefund_, '국세환급': judgeRefund_, '경정환급': judgeRefund_, '부정행위': judgeFraud_, '가산세판정': judgeFraud_, '신고불성실': judgeFraud_, '제척기간': judgeExclusionPeriod_, '부과제척기간': judgeExclusionPeriod_, '장기임대특례': judgeRental9703_, '장기일반민간임대': judgeRental9703_, '97의3': judgeRental9703_, '나눠팔기': judgeSplitSale_, '토지분할양도': judgeSplitSale_, '감면한도합산': judgeSplitSale_, '개발제한구역': judgeGbPurchase_, '개발제한구역감면': judgeGbPurchase_, '그린벨트': judgeGbPurchase_, '영농상속': judgeFarmInheritance_, '영농상속공제': judgeFarmInheritance_, '영농 상속': judgeFarmInheritance_, '법인거래': judgeCorpIndividualDeal_, '법인 거래': judgeCorpIndividualDeal_, '가족법인 거래': judgeCorpIndividualDeal_, '특수관계법인 거래': judgeCorpIndividualDeal_, '비거주자양도': judgeNonResidentTransfer_, '비거주자 양도': judgeNonResidentTransfer_, '재외국민 양도': judgeNonResidentTransfer_, '외국인 양도': judgeNonResidentTransfer_, '부담부증여': judgeBurdenedGift_, '부담부 증여': judgeBurdenedGift_, '채무 인수 증여': judgeBurdenedGift_, '환산가산세': judgeNewBuildConversion_, '신축 환산 가산세': judgeNewBuildConversion_, '감정가액 가산세': judgeNewBuildConversion_, '미등기': judgeUnregistered_, '미등기양도': judgeUnregistered_, '미등기 양도자산': judgeUnregistered_, '확정신고': judgeFinalReturn_, '확정신고 의무': judgeFinalReturn_, '예정신고 합산': judgeFinalReturn_, '정비청산': judgeRedevCash_, '현금청산': judgeRedevCash_, '재개발 현금청산': judgeRedevCash_, '매도청구': judgeRedevCash_, '의제취득': judgeDeemedAcq_, '의제취득일': judgeDeemedAcq_, '1985년 전 취득': judgeDeemedAcq_, '세대판정': judgeHousehold_, '1세대 범위': judgeHousehold_, '세대 구성': judgeHousehold_, '중과판정': judgeSurcharge_, '다주택 중과': judgeSurcharge_, '중과 제외': judgeSurcharge_, '필요경비': judgeExpenses_, '필요경비 판정': judgeExpenses_, '자본적지출': judgeExpenses_, '주택여부': judgeIsHouse_, '주택 해당': judgeIsHouse_, '사실상 주거용': judgeIsHouse_, '부수토지': judgeHouseLandExcess_, '주택부수토지': judgeHouseLandExcess_, '부수토지 배율': judgeHouseLandExcess_, '양도시기': judgeTransferTiming_, '취득시기': judgeTransferTiming_, '양도·취득시기': judgeTransferTiming_, '보상금구분': judgeCompensationSplit_, '수용보상금': judgeCompensationSplit_, '보상금 가르기': judgeCompensationSplit_, '대토보상': judgeLandReplacement_, '대토': judgeLandReplacement_, '대토보상 과세이연': judgeLandReplacement_, '부동산매매업': judgeRealEstateDealer_, '매매업': judgeRealEstateDealer_, '부동산 단타': judgeRealEstateDealer_, '공동상속': judgeCoInheritedHouse_, '공동상속주택': judgeCoInheritedHouse_, '공동상속주택 소수지분': judgeCoInheritedHouse_, '다가구': judgeMultiHousehold_, '다가구주택': judgeMultiHousehold_, '다가구 한 채': judgeMultiHousehold_, '상속채무': judgeInheritDebt_, '상속 채무 공제': judgeInheritDebt_, '채무 공과금 장례비': judgeInheritDebt_, '토지건물구분': judgeLandBuildingSplit_, '일괄양도 안분': judgeLandBuildingSplit_, '토지 건물 가액 구분': judgeLandBuildingSplit_, '상속평가': judgeInheritValuation_, '상속 평가 선택': judgeInheritValuation_, '감정평가 신고': judgeInheritValuation_, '증여시기': judgeGiftTiming_, '증여 날짜': judgeGiftTiming_, '증여일 고르기': judgeGiftTiming_, '생활비교육비': judgeFamilySupportGift_, '비과세증여': judgeFamilySupportGift_, '혼인출산공제': judgeFamilySupportGift_, '세무조사절차': judgeTaxAudit_, '세무조사': judgeTaxAudit_, '세무조사 통지': judgeTaxAudit_, '세금대납': judgeTaxProxyPay_, '상속세 대납': judgeTaxProxyPay_, '증여세 대납': judgeTaxProxyPay_, '차명계좌': judgeBorrowedAccount_, '차명 예금': judgeBorrowedAccount_, '차명계좌 증여추정': judgeBorrowedAccount_, '부동산명의신탁': judgeNomineeRealty_, '명의신탁 부동산': judgeNomineeRealty_, '제2차납세의무': judgeSecondaryLiability_, '제2차 납세의무': judgeSecondaryLiability_, '과점주주': judgeSecondaryLiability_, '특별연고자': judgeSpecialRelation_, '특별연고자 분여': judgeSpecialRelation_, '재산분여': judgeSpecialRelation_, '기타자산': judgeOtherAsset_, '영업권': judgeOtherAsset_, '회원권': judgeOtherAsset_, '영업권·회원권': judgeOtherAsset_, '한정승인': judgeLimitedAccept_, '상속 한정승인': judgeLimitedAccept_, '특별한정승인': judgeLimitedAccept_, '국외증여': judgeForeignGift_, '국외 증여': judgeForeignGift_, '국외재산 증여': judgeForeignGift_, '거주자': judgeResidency_, '거주자 판정': judgeResidency_, '비거주자': judgeResidency_, '상속인': judgeHeirShares_, '법정상속분': judgeHeirShares_, '상속인·법정상속분': judgeHeirShares_, '불복기한': judgeAppealDeadline_, '불복': judgeAppealDeadline_, '경정청구기한': judgeAppealDeadline_, '양도여부': judgeTransferScope_, '계약해제': function (p) { p = Object.assign({}, p || {}); if (!p.유형) p.유형 = '계약해제'; return judgeTransferScope_(p); }, '양도로 보지 않음': judgeTransferScope_, '농지대토': judgeFarmSwap_, '대토': judgeFarmSwap_, '농지대토 감면': judgeFarmSwap_, '법인전환': judgeIncorp32_, '법인전환 이월과세': judgeIncorp32_, '8년자경': judgeSelfFarm_, '자경': judgeSelfFarm_, '8년 자경농지 감면': judgeSelfFarm_, '동거주택': judgeCohabit_, '동거주택 상속공제': judgeCohabit_, '가업상속': judgeFamilyBiz_, '가업상속공제': judgeFamilyBiz_, '청산인제2차납세의무': judgeLiquidatorSecondary_, '청산인': judgeLiquidatorSecondary_, '잔여재산분배': judgeLiquidatorSecondary_, '§38①': judgeLiquidatorSecondary_, '무상주': judgeBonusShare_, '자본전입': judgeBonusShare_, '무상증자': judgeBonusShare_, '의제배당무상주': judgeBonusShare_, '§17②2호': judgeBonusShare_, '대물변제': judgeDebtSettle_, '위자료': judgeDebtSettle_, '채무변제양도': judgeDebtSettle_, '양도담보충당': judgeDebtSettle_ };
 // 판정 글(알림·할일·표시)에 계산 범위 밖 세금이 나오는지 — 「아님·없음·과세 안 함」으로 부정한 줄은 뺀다
 function judgeOutOfScope_(r) {
   const lines = [].concat(r.알림 || [], r.할일 || [], r.확인할것 || [], [r.표시 || '']).map(String).filter(function (t) { return !/(아님|아니|없음|안 됨|과세 안|해당 없|부과분 제외|비교 밖|건강보험)/.test(t) || /따로|별도|넣어/.test(t); });
@@ -9330,7 +9605,7 @@ function judgeOutOfScope_(r) {
 // 사건에서 부름(ledgerJudgeRun_가 1세대1주택이 아닌 묶음을 넘김) — 사실(facts)은 넥스·세무사님이 준 값, 결과는 장부 기록 + 물건 줄 판정 묶음들 + 장부 판정 칸(L.judge)
 function judgeMoreRun_(c, input, by) {
   const kind = String(input.묶음 || input.group || ''), fn = JUDGE_MORE_[kind.replace(/\s+/g, ' ').trim()] || JUDGE_MORE_[kind.replace(/\s/g, '')];
-  if (!fn) return { ok: false, error: '없는 묶음: ' + kind + ' — 1세대1주택·8년자경·농지대토·양도여부·계약해제·한정승인·특별연고자·제2차납세의무·부동산명의신탁·차명계좌·세금대납·세무조사절차·생활비교육비·증여시기·상속평가·토지건물구분·상속채무·다가구·공동상속·부동산매매업·대토보상·보상금구분·양도시기·부수토지·주택여부·필요경비·중과판정·세대판정·의제취득·정비청산·확정신고·미등기·환산가산세·부담부증여·비거주자양도·법인거래·영농상속·개발제한구역·나눠팔기·장기임대특례·제척기간·부정행위·환급가산금·납부유예·납세의무승계·부동산권리·경매·농어촌주택·대체주택·경영회생·재해손실·축사용지·신축주택감면·장기일반감면·배우자양도추정·기타자산·불복기한·상속인·거주자·동거주택·가업상속·법인전환·국외증여·공익법인사후관리·공익신탁·납부기한연장·후발적경정청구·추계·금융재산공제·징수권소멸시효·사업양수인·법인제2차납세의무·국세우선·연대납세의무·양도담보물적납세·미분양주택특례·상속외국납부·주식취득분·증여일·가업승계증여·상속추정재산·보험금과세·대여금채권·사망퇴직금·교차증여·자기주식·합병의제배당·공동명의·임대담보평가·인적공제 중 하나' };
+  if (!fn) return { ok: false, error: '없는 묶음: ' + kind + ' — 1세대1주택·8년자경·농지대토·양도여부·계약해제·한정승인·특별연고자·제2차납세의무·부동산명의신탁·차명계좌·세금대납·세무조사절차·생활비교육비·증여시기·상속평가·토지건물구분·상속채무·다가구·공동상속·부동산매매업·대토보상·보상금구분·양도시기·부수토지·주택여부·필요경비·중과판정·세대판정·의제취득·정비청산·확정신고·미등기·환산가산세·부담부증여·비거주자양도·법인거래·영농상속·개발제한구역·나눠팔기·장기임대특례·제척기간·부정행위·환급가산금·납부유예·납세의무승계·부동산권리·경매·농어촌주택·대체주택·경영회생·재해손실·축사용지·신축주택감면·장기일반감면·배우자양도추정·기타자산·불복기한·상속인·거주자·동거주택·가업상속·법인전환·국외증여·공익법인사후관리·공익신탁·납부기한연장·후발적경정청구·추계·금융재산공제·징수권소멸시효·사업양수인·법인제2차납세의무·국세우선·연대납세의무·양도담보물적납세·미분양주택특례·상속외국납부·주식취득분·증여일·가업승계증여·상속추정재산·보험금과세·대여금채권·사망퇴직금·교차증여·자기주식·합병의제배당·공동명의·임대담보평가·인적공제·청산인제2차납세의무 중 하나' };
   let r, facts = input.facts || input.사실 || {}, mapNote = '';
   // [2026.11.04 큰일 ⑦] 법인 이름이 있으면 가족 지도 지분을 먼저 읽는다 — 칸에 넣은 값이 있으면 그 값이 우선
   if (typeof famCorpFill_ === 'function' && c && (fn === JUDGE_MORE_['제2차납세의무'] || fn === JUDGE_MORE_['법인거래'])) {
