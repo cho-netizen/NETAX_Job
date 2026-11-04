@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 260 보험금 증여 계산</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 260 — 「보험금의 증여(상증법 §34①) 계산기 점검 — 타인 납부 보험료 몫(1호), 증여받은 재산으로 낸 보험료 몫 − 그 보험료(2호), 연금형의 정기금 평가」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_insurance_proceeds_gift_tax)를 네 갈래로 돌려 §34①1호·2호·§65①을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다(「보험금과세」 묶음(171?)은 §8·§34 갈림 판정, 이번은 계산기).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>만기보험금 3억(총 보험료 1억) — 아버지가 6천만 납부 / 아들이 증여받은 돈 4천만으로 납부 / 아들 본인 전부 납부 / 연금형(연 1,200만 10년)을 아버지가 전부 납부.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102 시행판)</h2>
+<ul>
+<li>§34①: 보험사고(만기 포함) 발생일을 증여일로 — 1호 수령인 아닌 자가 낸 보험료에 대한 보험금 상당액, 2호 계약기간에 증여받은 재산으로 낸 보험료에 대한 보험금 상당액 − 그 보험료. ②: §8 상속재산이면 적용 없음. 연금으로 받으면 §65① 정기금 평가(시행령 §62).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 3억 × 6/10 = 1.8억 / 3억 × 4/10 − 4천만 = 8천만 / 본인 납부면 0 / 연금형은 정기금 평가 1억 236만을 보험금으로.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>타인 6천만 / 증여재산 4천만 / 본인 / 연금형</td><td>1.8억 / 8천만 / 0 / 정기금 평가</td><td>맞음(§34①1호·2호·§65)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 255 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>§34②(§8 상속재산이면 증여 아님)의 갈림은 「보험금과세」 묶음이 — 계산기는 증여 전제</td><td>묶음</td><td>높음</td></tr>
+<tr><td>2</td><td>증여받은 재산으로 낸 보험료의 입증(자금 흐름)은 사람이</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>보험료 낸 사람이 여럿이면 payers 칸으로 사람마다 — 공제 한도 나눔(시행령 §46①2호) 11-04 그대로</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>2호에서 증여받은 재산 자체의 증여세(앞선 증여)와의 10년 합산은 priorGiftAmount로 사람이</td><td>칸</td><td>중간</td></tr>
+<tr><td>5</td><td>보험사고 전 해지환급금을 받는 경우(§34 밖, 일반 증여)는 사람이 가름</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
