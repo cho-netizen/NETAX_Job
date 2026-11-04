@@ -13051,10 +13051,81 @@
     if (/^(든|포함|예|들어|yes|true|y|1)/i.test(t)) return '든다';
     return '모름';
   }
+  // [2026.11.05 모의사건 190] 조합원입주권 자체 양도의 비과세(법 §89①4호) — 양도하는 물건이 조합원입주권이면 §89①3호(주택) 셈표가 아니라 4호 요건으로 가른다.
+  //  4호: 1조합원입주권 보유 1세대[관리처분계획 인가일·사업시행계획인가일(그 전 철거면 철거일) 현재 3호가목 요건을 갖춘 기존주택 소유]가 가. 양도일 현재 다른 주택·분양권 없음 / 나. 1주택만 있고(분양권 없음) 그 주택 취득일부터 3년 안 양도(부득이 사유 포함).
+  //  단서: 양도 당시 실지거래가액 12억 초과면 과세(고가 — 초과분, 시행령 §160·§166). 분양권은 2021-01-01 이후 취득분부터(법률 제17477호 부칙 §4 — [확인 필요: 4호 분양권 문구의 적용례]).
+  //  예전엔 입주권을 주택처럼 양도일 기준 보유·거주 2년으로 가르고 다른 주택이 있으면 「맞는 특례 없음」으로 끝냈다(나목 3년 특례 없음).
+  function judgeRightSale_(p) {
+    const T = String(p.양도일 || '').slice(0, 10), tg = p.대상 || {}, hh = p.세대 || {}, list = Array.isArray(p.물건) ? p.물건 : [];
+    const rows = [], left = [], docs = [], notes = [];
+    const row = function (요건, 사실, 근거조문, 결과) { rows.push({ 요건: 요건, 사실: 사실, 근거조문: 근거조문, 출처: '', 결과: 결과 }); return 결과; };
+    const unk = function (what, doc) { if (left.indexOf(what) < 0) left.push(what); if (doc && docs.indexOf(doc) < 0) docs.push(doc); };
+    const isDate_ = function (x) { return /^\d{4}-\d{2}-\d{2}/.test(String(x || '')); };
+    const addY_ = function (d, n) { const x = new Date(String(d).slice(0, 10) + 'T00:00:00Z'); x.setUTCFullYear(x.getUTCFullYear() + n); return x.toISOString().slice(0, 10); };
+    let bad = false;
+    if (!isDate_(T)) { unk('양도일'); row('양도일', '없음', '소득세법 §89①4호', '모름'); }
+    // 1) 거주자·1세대
+    if (hh.거주자 === false) { row('거주자', '비거주자 — §89①4호도 거주자의 양도에만(§121② 단서)', '소득세법 §121②', '안 됨'); bad = true; }
+    else row('거주자', hh.거주자 === true ? '거주자' : '거주자인지 모름(기본 거주자로 봄)', '소득세법 §121② 단서', hh.거주자 === true ? '충족' : '모름');
+    if (hh.거주자 !== true) unk('거주자 여부');
+    // 2) 인가일(철거일) 현재 기존주택이 3호가목 요건(보유 2년·조정이면 거주 2년)
+    const 인가 = isDate_(tg.철거일) ? String(tg.철거일).slice(0, 10) : isDate_(tg.관리처분인가일) ? String(tg.관리처분인가일).slice(0, 10) : (isDate_(tg.사업시행인가일) ? String(tg.사업시행인가일).slice(0, 10) : '');
+    const flag = tg.인가일현재1세대1주택;
+    if (flag === true) row('인가일 현재 기존주택 1세대1주택 요건', (인가 || '인가일') + ' 현재 3호가목 요건 갖춤(입력)', '소득세법 §89①4호 괄호', '충족');
+    else if (flag === false) { row('인가일 현재 기존주택 1세대1주택 요건', '못 갖춤(입력)', '소득세법 §89①4호 괄호', '안 됨'); bad = true; }
+    else if (인가 && isDate_(tg.취득일)) {
+      const y = fullYearsElapsed(String(tg.취득일).slice(0, 10), 인가);
+      const mon = Number(tg.인가일현재거주개월 != null ? tg.인가일현재거주개월 : tg.거주개월);
+      const needRes = tg.취득당시조정 === true;
+      const hold = y >= 2, res = needRes ? (Number.isFinite(mon) ? mon >= 24 : null) : true;
+      const r = hold === false || res === false ? '안 됨' : res === null ? '모름' : '충족';
+      row('인가일 현재 기존주택 1세대1주택 요건', '취득 ' + String(tg.취득일).slice(0, 10) + ' ~ 인가(철거) ' + 인가 + ' 보유 ' + y + '년' + (needRes ? ' · 거주 ' + (Number.isFinite(mon) ? mon + '개월' : '모름') + '(취득 당시 조정대상지역)' : '') + ' — 인가일 당시 세대의 다른 주택은 따로 확인', '소득세법 §89①4호 괄호·§89①3호가목·시행령 §154①', r);
+      if (r === '안 됨') bad = true; if (r === '모름') unk('인가일 현재 거주기간', '주민등록초본');
+      notes.push('인가일 현재 「1세대1주택」은 그때 세대가 다른 주택 없이 이 기존주택만 가졌는지까지 — 인가일현재1세대1주택 칸으로 확정할 것');
+    } else { row('인가일 현재 기존주택 1세대1주택 요건', '관리처분계획 인가일(철거일)·기존주택 취득일 또는 인가일현재1세대1주택 칸이 필요', '소득세법 §89①4호 괄호', '모름'); unk('관리처분계획 인가일 현재 1세대1주택 여부', '관리처분계획 인가서·등기부등본'); }
+    // 3) 양도일 현재 다른 물건 — 가목(없음) / 나목(1주택 3년)
+    const others = list.filter(function (o) { return o && !o.대상 && !(isDate_(o.양도일) && String(o.양도일).slice(0, 10) < T); });
+    const houses = others.filter(function (o) { return /주택|오피스텔|주거|빌라|원룸/.test(String(o.종류 || '')) && judgeHouseCountState_(o) !== '안 든다'; });
+    const rights = others.filter(function (o) { return /조합원입주권/.test(String(o.종류 || '')); });
+    const presale = others.filter(function (o) { return /분양권/.test(String(o.종류 || '')) && !(isDate_(o.취득일) && String(o.취득일).slice(0, 10) < '2021-01-01'); });
+    const nm = function (o) { return o.이름 || o.종류 || '물건'; };
+    if (rights.length) { row('조합원입주권 1개 보유', '다른 입주권 ' + rights.map(nm).join(', ') + ' — 4호는 「1개 보유한 1세대」', '소득세법 §89①4호', '안 됨'); bad = true; }
+    else if (!houses.length && !presale.length) row('양도일 현재 다른 주택·분양권 없음(가목)', others.length ? '주택 수에 안 드는 물건만: ' + others.map(nm).join(', ') : '없음', '소득세법 §89①4호가목', '충족');
+    else if (houses.length === 1 && !presale.length) {
+      const h = houses[0], acq = isDate_(h.취득일) ? String(h.취득일).slice(0, 10) : '';
+      if (!acq) { row('1주택 취득일부터 3년 안 양도(나목)', nm(h) + ' 취득일 모름', '소득세법 §89①4호나목', '모름'); unk(nm(h) + ' 취득일', '등기부등본'); }
+      else {
+        const lim = addY_(acq, 3), ok = T <= lim;
+        const exc = tg.부득이사유 === true;
+        row('1주택 취득일부터 3년 안 양도(나목)', nm(h) + ' 취득 ' + acq + ' → ' + lim + '까지' + (ok ? ' 안' : exc ? ' 넘겼으나 부득이한 사유(대통령령) 입력' : ' 넘김'), '소득세법 §89①4호나목' + (exc && !ok ? ' 괄호' : ''), ok || exc ? '충족' : '안 됨');
+        if (!ok && !exc) bad = true;
+        if (!ok && exc) notes.push('3년을 넘긴 부득이한 사유(대통령령 — 재건축 지연 등 시행령 §156의2 준용 [확인 필요])는 증빙을 갖출 것');
+      }
+    } else { row('양도일 현재 다른 주택·분양권', '주택 ' + houses.map(nm).join(', ') + (presale.length ? ' · 분양권 ' + presale.map(nm).join(', ') : '') + ' — 가목(없음)·나목(1주택·분양권 없음)에 안 맞음', '소득세법 §89①4호', '안 됨'); bad = true; }
+    const old = others.filter(function (o) { return /분양권/.test(String(o.종류 || '')) && isDate_(o.취득일) && String(o.취득일).slice(0, 10) < '2021-01-01'; });
+    if (old.length) notes.push('2021-01-01 전 취득 분양권(' + old.map(nm).join(', ') + ')은 4호 판정에서 뺌(법률 제17477호 부칙 §4) [확인 필요: 4호 적용례]');
+    // 4) 고가(12억 초과 과세)
+    const price = Number(tg.양도가액), hv = highValueAt_(T, 'right');
+    if (Number.isFinite(price) && price > 0) row('고가 조합원입주권', price.toLocaleString('ko-KR') + '원 · 기준 ' + (hv / 100000000) + '억원', '소득세법 §89①4호 단서', price > hv ? '일부 과세' : '해당 없음');
+    else { row('고가 조합원입주권', '양도가액 모름', '소득세법 §89①4호 단서', '모름'); unk('양도가액', '매매계약서'); }
+    notes.push('세액은 양도세 계산기(assetType 조합원입주권·isOneHouseOneFamily=비과세 요건 충족)로 — 12억 초과분은 기존주택분(인가 전)·청산금분 안분(시행령 §166)');
+    const anyUnk = rows.some(function (r) { return r.결과 === '모름'; });
+    let 결론, 잠정;
+    if (bad) { 결론 = '안 됨'; 잠정 = anyUnk; } else if (anyUnk) { 결론 = '충족'; 잠정 = true; } else { 결론 = '충족'; 잠정 = false; }
+    return {
+      묶음: '1세대1주택', 대상종류: '조합원입주권', 결론: 결론, 잠정: 잠정, 남은것: left,
+      표시: '1조합원입주권 양도(§89①4호) — ' + (결론 === '충족' ? (잠정 ? '' : '비과세') : '비과세 안 됨') + (잠정 ? (결론 === '충족' ? '' : ' — ') + '잠정(남은 것: ' + (left.slice(0, 4).join(' · ') || '확인할 것') + ')' : ''),
+      셈표: rows, 특례: [], 확인할것: left, 받을서류: docs, 사후관리: notes, 때: T, 근거: '소득세법 §89①4호 (' + (T || '양도일 모름') + ' 양도분)'
+    };
+  }
   window.judgeTaxReliefJS = function (p) {
     p = p || {};
     const kind = p.묶음 || '1세대1주택';
-    if (kind === '1세대1주택') return judgeOneHouse_(p);
+    if (kind === '1세대1주택') {
+      const tgo_ = (Array.isArray(p.물건) ? p.물건 : []).filter(function (o) { return o && o.대상; })[0];
+      if ((tgo_ && /조합원입주권/.test(String(tgo_.종류 || ''))) || /조합원입주권/.test(String((p.대상 || {}).종류 || ''))) return judgeRightSale_(p);
+      return judgeOneHouse_(p);
+    }
     return { error: '아직 만들지 않은 묶음입니다: ' + kind + ' (지금은 1세대1주택만 — 계획서 5절 순서)' };
   };
   window.judgeTaxReliefKindsJS = function () {
