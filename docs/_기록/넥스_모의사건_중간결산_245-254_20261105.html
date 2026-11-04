@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 모의사건 중간결산 245-254</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 모의사건 중간결산 245~254 · 2026-11-05</h1>
+<p class="sub">클라우드 세션(가지 claude/gifted-clarke-hqwn4y). 11-05 새벽 속행분 아홉 번째 열 건. 상속 입주권·가산세 감면·공익법인·비과세·우회양도·공모 전 주식·배당차액·건물 기준시가·유형재산·지주회사 — 열 건 중 다섯 건(246·247·250·251)에서 엔진 틈(또는 칸 보호)을 잡았습니다.</p>
+<h2>1. 사건 카드</h2>
+<table><tr><th>번호·유형</th><th>놓치던 것</th><th>고친 것</th><th>검토대상</th></tr>
+<tr><td>245 상속 입주권·분양권 특례</td><td>없음</td><td>없음(244 바로잡음 한 줄)</td><td>5</td></tr>
+<tr><td>246 가산세 감면 예정신고</td><td class="red">예정신고분을 확정신고기한까지 고치면 50%(§48②3호 다·라목) 없음</td><td class="red">엔진 + 도구 칸 3개</td><td>5</td></tr>
+<tr><td>247 공익법인 출연 불산입</td><td class="red">출연 기한 끝날이 토·일·공휴일일 때(224와 같은 자리)</td><td class="red">엔진</td><td>5</td></tr>
+<tr><td>248 비과세 상속·증여재산</td><td>없음(제사용 재산 한도)</td><td>없음</td><td>5</td></tr>
+<tr><td>249 우회양도 부인</td><td>없음(10년/5년·세액 비교)</td><td>없음</td><td>5</td></tr>
+<tr><td>250 공모 전 주식 평가 기간</td><td class="red">§63② 적용 기간(신고 직전 6개월·증여 3개월~상장 전)을 안 봄</td><td class="red">엔진 + 도구 칸 5개</td><td>5</td></tr>
+<tr><td>251 배당차액</td><td class="red">배당률 칸(비율)에 % 넣으면 10배</td><td class="red">엔진 보정·칸 설명</td><td>5</td></tr>
+<tr><td>252 건물 기준시가 산식</td><td>없음(고시 표 숫자는 미대조)</td><td>없음</td><td>5</td></tr>
+<tr><td>253 그 밖의 유형재산 평가</td><td>없음</td><td>없음</td><td>5</td></tr>
+<tr><td>254 지주회사 현물출자 이연</td><td>없음(2년 = 시행령 §35의3⑦)</td><td>없음</td><td>5</td></tr>
+</table>
+<h2>2. 공통점</h2>
+<ul>
+<li>「조문이 정한 기간 안인지」를 계산기가 안 보던 자리(250)와 「기한 끝날」(247), 「칸 단위」(251)가 또 나옴 — 같은 세 유형이 세션 내내 되풀이됨.</li>
+<li>국세기본법 §48②3호 다·라목(246)은 양도세 예정신고 사건에 흔한데 어느 도구에도 없었음 — 지시문 추가 없이 칸 세 개로 해결.</li>
+</ul>
+<h2>3. 검토대상 합계</h2>
+<p>50건. 되풀이: 고시·표 숫자(건물 기준시가) 대조, 신고세액공제가 추징·재과세에 붙는지, 사람이 가르는 사실(공익법인 해당·누구에게서 취득).</p>
+<h2>4. 회귀·검문</h2>
+<p>엔진 회귀 174건 다름 0 · 판정 20건 · 가족 지도 · 세션 시험 통과 · 넥스 도구 검문 ✓(78개·25,224자) · 서버 화면 파일 점검 ✓ · node --check(Code.js) 통과.</p>
+<h2>5. 커밋 목록(가지)</h2>
+<p>15e5f99(245) 9536bc6(246) 9edf6e6(247) b342534(248) 06baf6c(249) d27f74f(250) d3a8c63(251) b26a863(252) f9a3446(253) 3ede279(254)</p>
+</main></body></html>
