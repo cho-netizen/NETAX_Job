@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 294 동거주택 공제 동거기간</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 294 — 「동거주택 상속공제(상증법 §23의2·시행령 §20의2) — 1호 10년 동거를 날짜로(미성년 기간·② 못 산 기간 제외), 직계비속 요건, 시행령 §20의2① 2주택 간주 1~8호 안내」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>2026.4.10. 사망한 어머니의 집(5억)을 함께 살던 딸이 받는다 — ① 2010년부터 동거 ② 2018년부터 ③ 2014년부터인데 딸이 군 복무·해외 근무로 3년을 못 삼 ④ 2010년부터지만 딸이 2018.6.에야 성년 ⑤ 받는 사람이 형제. 딸이 혼인으로 2주택이 됐던 적이 있다면.</p>
+<h2>2. 법 (원문을 직접 읽음 — 상증법·시행령 읽기용 판)</h2>
+<ul>
+<li>§23의2① — 1호 피상속인과 상속인(직계비속·대습상속 배우자 한정)이 상속개시일부터 소급 10년 이상(상속인 미성년 기간 제외) 계속 한 주택 동거 / 2호 10년 이상 1세대 1주택(무주택 기간 포함) / 3호 무주택 또는 공동 1주택 보유 동거 상속인이 상속 → 상속주택가액(부수토지 포함·담보채무 뺌) 100%, 6억 한도. ② 대통령령 사유로 못 산 기간은 계속 동거로 보되 기간 불산입(시행령 §20의2② 징집 등, 2025.12.30).</li>
+<li>시행령 §20의2① — 2주택이어도 1세대 1주택으로 보는 1~8호(일시적 2주택 2년·상속인 혼인 5년·국가등록문화유산·이농·귀농·동거봉양 합가 5년·피상속인 혼인 5년·제3자 상속 공동소유).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">1호를 체크로만 받아 10년·미성년 기간·못 산 기간을 넥스가 셌고, 상속인이 직계비속이 아닌 경우(배우자·형제가 받은 집)도 체크만 켜면 공제됐다.</li>
+<li class="red">2주택 간주 1~8호를 가르는 안내가 없었다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateInheritanceTaxJS</code> — <code>cohabitationStartDate·heirMinorUntilDate·nonCohabitMonths</code>로 1호 연수를 셈해 체크 칸이 비면 채움(체크와 어긋나면 알림), <code>heirIsLinealDescendant:false</code>면 1호 ×, <code>twoHouseExceptionType</code>(1~8호) 안내 → <code>동거주택_안내</code>.</li>
+<li class="red">도구 <code>calculate_inheritance_tax</code> 칸 5개 추가 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>2010~2026 동거</td><td>공제 5억 · 「16.27년 → 10년 이상 ○」</td></tr>
+<tr><td>2018부터 / 2014부터 − 36개월 / 성년 2018.6부터</td><td class="red">0 / 0(9.3년) / 0(7.9년) — 전에는 체크대로</td></tr>
+<tr><td>형제 상속</td><td class="red">0(1호 밖)</td></tr>
+<tr><td>예전 체크 + 혼인 2주택 예외 / 예전 호출</td><td>5억 + 2호 안내 / 그대로</td></tr>
+</table>
+<p>시험 t294 7건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>「계속하여」 동거 — ② 사유 밖의 공백(이사 등)이 있으면 처음부터 다시 세는지(엔진은 시작일 하나만 받음)</td><td>판단거리</td></tr>
+<tr><td>2</td><td>2호(10년 1세대 1주택)는 여전히 체크 — 세대 구성·주택 수 연혁은 사람이 가름</td><td>판단거리</td></tr>
+<tr><td>3</td><td>시행령 §20의2② 각 호(2025.12.30 판) 원문은 「징집」까지만 읽음</td><td>원문 재확인</td></tr>
+<tr><td>4</td><td>동거 시작일 입증(주민등록 전입일 vs 사실상 동거) — 주민등록표로 봄</td><td>판단거리</td></tr>
+<tr><td>5</td><td>2020년 전 상속의 80%·5억(2016년 전 40%) 연혁은 엔진 연혁 모드 그대로</td><td>확인 끝</td></tr>
+</table>
+</main></body></html>
