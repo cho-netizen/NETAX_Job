@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 270 분납 기한 날짜</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 270 — 「상속·증여세 §70②·양도소득세 §112 분납 한도 계산기 — 분납기한을 날짜로(납부기한 미룸 + 2개월, 말일 자름)·양도세 연부연납 칸 무시·조문 표기 바로잡음·공용 월 더하기 넘침」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>상속세 자진납부액 3,500만(신고기한 2026.5.31. 일요일)과 양도세 예정신고 납부세액 1,800만(납부기한 2026.7.31.)을 각각 얼마까지 언제까지 나눠 낼 수 있는지. 양도세 쪽은 넥스가 「연부연납 허가」 칸을 잘못 켜 보냈다고 가정.</p>
+<h2>2. 법 (원문을 직접 읽음 — 상증법·시행령·소득세법·시행령 읽기용 판)</h2>
+<ul>
+<li>상증법 §70② — 「납부할 금액이 1천만원을 초과하는 경우 … 일부를 <b>납부기한이 지난 후 2개월 이내</b>에 분할납부. 다만 §71 연부연납을 허가받은 경우에는 그러하지 아니하다」. ① 납부할 금액 = 산출세액 − §69 공제 − 연부연납·납부유예(§72의2)·물납 신청액. 시행령 §66② — 2천만원 이하: 1천만원 초과분 / 초과: 50% 이하.</li>
+<li>소득세법 §112 — 「§106(예정) 또는 §111(확정)에 따라 납부할 세액이 <b>각각</b> 1천만원을 초과하는 자」 … 납부기한이 지난 후 2개월 이내. 시행령 §175 — 한도 산식 같음. 양도세엔 연부연납 제도가 없음.</li>
+<li>민법 §160③ — 월로 정한 기간에서 마지막 달에 해당일이 없으면 그 달 말일에 끝남. 국세기본법 §5① — 기한이 토·일·공휴일이면 다음 날.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">분납기한을 「신고기한이 지난 후 2개월 이내」 글로만 — 날짜를 안 줬고, 납부기한이 쉬는 날이라 미뤄진 경우도 안 봤다.</li>
+<li class="red">양도세인데 「연부연납 허가」 칸이 켜지면 분납을 막았다 — 양도세엔 연부연납이 없으니 §70② 단서가 닿지 않음.</li>
+<li class="red">도구 설명의 양도세 조문이 「소득세법 §77·시행령 §116」으로 틀려 있었다(엔진 주석은 10.21에 §112·§175로 고쳤는데 설명은 그대로). 「각각」(예정·확정 따로)과 납부유예 공제도 설명에 없었음.</li>
+<li class="red">공용 날짜 도우미(월 더하기)가 월말 넘침을 안 막아 12.31 + 2개월 = 3.3으로 셌다 — 269에서 만든 경정청구 2개월 특례 등 7곳이 쓰는 함수.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateInstallmentSplitPaymentLimitJS</code> — <code>paymentDeadline</code> 칸 → <code>납부기한</code>(쉬는 날 미룸·<code>납부기한_미룸</code>) → <code>분납기한</code>(2개월 뒤 같은 날, 없으면 말일, 쉬는 날이면 다음 날)·<code>분납기한_근거</code>·<code>납부할_금액_근거</code>(상증 §70① 빼는 것 / 양도 예정·확정 각각). transfer면 연부연납 칸을 무시하고 알림.</li>
+<li class="red">공용 <code>addMonthsToDateStr_</code> — 마지막 달 말일로 자름(민법 §160③). 회귀 174건 숫자 변화 없음.</li>
+<li class="red">도구 <code>calculate_installment_split_payment_limit</code> — 칸 1개(paymentDeadline) 추가, 조문·「각각」·납부유예 설명 바로잡음. 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>상속세 3,500만 · 납부기한 2026-05-31(일)</td><td class="red">지금 1,750만 · 분납 1,750만 · 납부기한 06-01로 미룸 · 분납기한 2026-08-03(8.1 토 → 월)</td></tr>
+<tr><td>양도세 1,800만 · 납부기한 2026-07-31 · 연부연납 칸 켜짐</td><td class="red">분납 800만 · 분납기한 2026-09-30(9.31 없음 → 말일) · 연부연납 칸 무시 알림</td></tr>
+<tr><td>상속세 1,800만 · 연부연납 허가</td><td>분납 ×(§70② 단서)</td></tr>
+<tr><td>양도세 900만</td><td>분납 × · 「예정·확정 각각」 안내</td></tr>
+<tr><td>납부기한 2026-12-31</td><td class="red">분납기한 2027-03-02(2.28 일 → 3.1 공휴일 → 3.2)</td></tr>
+<tr><td>269 경정청구 특례 2026-12-31 + 2개월</td><td class="red">2027-02-28(전에는 03-03)</td></tr>
+</table>
+<p>시험 t270 8건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>「납부기한이 지난 후 2개월」을 쉬는 날로 미뤄진 납부기한부터 세는지, 원래 기한부터 세는지</td><td>세무사님 확인(국세기본법 §5① 해석)</td></tr>
+<tr><td>2</td><td>양도세 예정신고분과 확정신고분이 같은 해에 둘 다 있으면 각각 따로 — 두 번 호출</td><td>판단거리</td></tr>
+<tr><td>3</td><td>분납 신청 서식(상증 신고서의 분납 칸·양도세 신고서 분납세액 칸)과 분납분 납부서 발급은 도구 밖</td><td>도구 부족 — 판단거리</td></tr>
+<tr><td>4</td><td>수정신고·기한후신고 세액에도 분납이 되는지(§70②는 「§67·§68 신고하는 자」)</td><td>해석 확인</td></tr>
+<tr><td>5</td><td>공용 월 더하기 고침이 닿는 다른 6곳(정기금·기한 계산)의 월말 사건은 회귀에 없어 숫자 변화 0 — 월말 날짜 사건으로 한 번 더 볼 것</td><td>회귀 사건 추가 판단거리</td></tr>
+</table>
+</main></body></html>

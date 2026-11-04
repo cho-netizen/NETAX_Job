@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:04 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:07 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -21752,24 +21752,41 @@ function nxMdOpenWindow(title, src, opts){
     const isTransfer = p.taxType === 'transfer';
     const provisionLabel = isTransfer ? '소득세법§112·시행령§175' : '상증세법§70②·시행령§66②';
     if (!totalTaxAmount || totalTaxAmount <= 0) return { error: '납부할 세액이 필요합니다.' };
-    if (p.hasInstallmentPaymentApproval) {
-      return { 분납가능여부: false, 안내: (isTransfer ? '' : '연부연납(§71)을 허가받은 경우에는 ') + '분납(' + provisionLabel + ')을 적용하지 않습니다(중복 불가).' };
+    // [2026.11.05 모의사건 270] 양도소득세엔 연부연납 제도가 없으니(§70② 단서는 상증세만) transfer면 이 칸을 무시하고 알린다. 전엔 양도세도 false로 막았음.
+    const annuNote_ = (isTransfer && p.hasInstallmentPaymentApproval) ? ' hasInstallmentPaymentApproval는 양도소득세엔 뜻이 없어(연부연납은 상증세 §71) 무시했습니다.' : '';
+    if (p.hasInstallmentPaymentApproval && !isTransfer) {
+      return { 분납가능여부: false, 안내: '연부연납(§71)을 허가받은 경우에는 분납(' + provisionLabel + ')을 적용하지 않습니다(중복 불가, §70② 단서).' };
     }
     if (totalTaxAmount <= 10000000) {
-      return { 분납가능여부: false, 안내: '납부할 세액이 1천만원을 초과하지 않아 분납할 수 없습니다(' + provisionLabel + ').' };
+      return { 분납가능여부: false, 안내: '납부할 세액이 1천만원을 초과하지 않아 분납할 수 없습니다(' + provisionLabel + ').' + (isTransfer ? ' 양도세는 예정신고분(§106)·확정신고분(§111) 각각 따로 1천만원을 봅니다(§112 「각각」).' : '') + annuNote_ };
     }
     const maxSplitAmount = totalTaxAmount <= 20000000
       ? (totalTaxAmount - 10000000)
       : Math.floor(totalTaxAmount * 0.5);
     const immediateDueAmount = totalTaxAmount - maxSplitAmount;
+    // [2026.11.05 모의사건 270] 분납기한을 날짜로 — 납부기한(= 신고기한, 쉬는 날이면 다음 날, 국세기본법 §5①)이 지난 후 2개월 → 그날도 쉬는 날이면 다음 날.
+    const pdRaw_ = p.paymentDeadline ? String(p.paymentDeadline).slice(0, 10) : '';
+    let pdSh_ = '', splitDue_ = '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(pdRaw_)) {
+      pdSh_ = shiftTaxDeadline_(pdRaw_) || pdRaw_;
+      // 2개월 뒤 같은 날, 그 달에 그 날이 없으면 말일(민법 §160③) — setUTCMonth 넘침(7.31+2 → 10.1) 막음
+      const y2_ = Number(pdSh_.slice(0, 4)), m2_ = Number(pdSh_.slice(5, 7)) + 2, day2_ = Number(pdSh_.slice(8, 10));
+      const last2_ = new Date(Date.UTC(y2_, m2_, 0)).getUTCDate();
+      const raw2_ = new Date(Date.UTC(y2_, m2_ - 1, Math.min(day2_, last2_))).toISOString().slice(0, 10);
+      splitDue_ = shiftTaxDeadline_(raw2_) || raw2_;
+    }
     return {
       분납가능여부: true,
       신고기한까지_납부할금액: immediateDueAmount,
       분납가능_최대금액: maxSplitAmount,
-      분납기한: '신고기한이 지난 후 2개월 이내',
+      분납기한: splitDue_ || '납부기한이 지난 후 2개월 이내',
+      납부기한: pdSh_ || undefined,
+      납부기한_미룸: pdSh_ && pdSh_ !== pdRaw_ ? pdRaw_ + '이 쉬는 날이라 ' + pdSh_ + '(국세기본법 §5①)' : undefined,
+      분납기한_근거: splitDue_ ? (isTransfer ? '소득세법 §112' : '상증법 §70②') + ' — 납부기한(' + pdSh_ + ')이 지난 후 2개월 [확인 필요: 미룬 납부기한부터 세는지]' : undefined,
+      납부할_금액_근거: isTransfer ? '§106(예정)·§111(확정)에 따라 납부할 세액 — 둘은 각각 따로 1천만원·한도를 봄(§112)' : '§70① — 산출세액에서 §69 신고세액공제·연부연납 신청액·납부유예(§72의2) 신청액·물납 신청액을 뺀 자진납부 금액',
       안내: (totalTaxAmount <= 20000000
         ? '세액이 2천만원 이하이므로 1천만원 초과분(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(' + provisionLabel + '1호).'
-        : '세액이 2천만원을 초과하므로 세액의 50% 이하(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(' + provisionLabel + '2호).')
+        : '세액이 2천만원을 초과하므로 세액의 50% 이하(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(' + provisionLabel + '2호).') + annuNote_ + (splitDue_ ? ' 분납분은 ' + splitDue_ + '까지.' : '')
     };
   };
 
@@ -22127,7 +22144,11 @@ function nxMdOpenWindow(title, src, opts){
   function addMonthsToDateStr_(dateStr, months) {
     const d = new Date(dateStr + 'T00:00:00');
     if (isNaN(d.getTime())) return null;
-    d.setMonth(d.getMonth() + months);
+    // [2026.11.05 모의사건 270] 월로 정한 기간은 마지막 달에 그 날이 없으면 그 달 말일(민법 §160③) — setMonth 넘침(12.31+2 → 3.3)을 막음
+    const day0 = d.getDate();
+    d.setDate(1); d.setMonth(d.getMonth() + months);
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day0, last));
     return formatDateStr_(d);
   }
   function addYearsToDateStr_(dateStr, years) {

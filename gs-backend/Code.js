@@ -2988,9 +2988,10 @@ const DRIVE_TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        totalTaxAmount: { type: 'number', description: '납부할 세액(원, §70①에 따라 각종 공제·연부연납·물납 신청분을 제외한 자진납부할 금액). 1천만원을 초과해야 분납 가능.' },
-        hasInstallmentPaymentApproval: { type: 'boolean', description: '이 세액에 대해 연부연납(§71)을 이미 허가받았는지. true면 분납을 적용할 수 없다.' },
-        taxType: { type: 'string', enum: ['inheritance', 'gift', 'transfer'], description: '세목(생략시 상속세·증여세 기준). transfer=양도소득세 분납(소득세법§77·시행령§116 — 납부기한 경과 후 2개월 이내, 한도 산식은 상증세와 같음).' }
+        totalTaxAmount: { type: 'number', description: '납부할 세액(원, §70①에 따라 신고세액공제·연부연납·납부유예(§72의2)·물납 신청분을 제외한 자진납부할 금액). 1천만원을 초과해야 분납 가능. 양도세는 예정신고분·확정신고분 각각 따로.' },
+        hasInstallmentPaymentApproval: { type: 'boolean', description: '이 세액에 대해 연부연납(§71)을 이미 허가받았는지. true면 분납을 적용할 수 없다(상속·증여세만 — 양도세엔 연부연납이 없어 무시).' },
+        taxType: { type: 'string', enum: ['inheritance', 'gift', 'transfer'], description: '세목(생략시 상속세·증여세 기준). transfer=양도소득세 분납(소득세법 §112·시행령 §175 — 예정(§106)·확정(§111) 납부세액 각각, 납부기한 경과 후 2개월 이내, 한도 산식은 상증세와 같음). [2026.11.05 조문 바로잡음: 전엔 §77·§116으로 적혀 있었음]' },
+        paymentDeadline: { type: 'string', description: '[2026.11.05] 납부기한(= 신고기한) YYYY-MM-DD — 쉬는 날이면 다음 날로 미루고 거기서 2개월 뒤를 분납기한 날짜로 돌려준다.' }
       },
       required: ['totalTaxAmount']
     }
