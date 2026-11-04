@@ -23372,7 +23372,8 @@ function t6MergeLedger_(caseId, Lin) {
 }
 function t6ApplyRead_(c, body) {
   const t0 = Date.now();
-  try { caseProcPatch_(c.id, function (sv) { sv.readRoute = { at: caseProcNow_(), 길: '직결(Cloud Run)' }; }); cpReadRouteLog_(c.id, '직결 applyRead'); } catch (e) {} // [2026.10.28 속도 C] 어느 길로 읽었는지(직결이 돌아 저장하러 온 것)
+  const routeName = String(body && body.route || '직결(Cloud Run)'); // [2026.11.05] 미리 읽기 틱이 직결로 읽은 것은 '직결(미리 읽기 틱)'으로 구분
+  try { caseProcPatch_(c.id, function (sv) { sv.readRoute = { at: caseProcNow_(), 길: routeName }; }); cpReadRouteLog_(c.id, routeName + ' applyRead'); } catch (e) {} // [2026.10.28 속도 C] 어느 길로 읽었는지(직결이 돌아 저장하러 온 것)
   const w = (body && body.written) || {};
   const df = w.decisionFile && typeof w.decisionFile === 'object' ? w.decisionFile : null;
   const cr = w.caseRow && typeof w.caseRow === 'object' ? w.caseRow : null;
@@ -23401,7 +23402,7 @@ function t6ApplyRead_(c, body) {
       if (keepGift) sv.giftDeal = keepGift;
       const changed = JSON.stringify(sv) !== before;
       ['basic', 'evidence', 'overview'].forEach(function (st) { if (df.steps && df.steps[st]) { sv.steps = sv.steps || {}; sv.steps[st] = { at: caseProcNow_(), by: who, via: '화면 직결' }; } });
-      if (body.timing && typeof body.timing === 'object') { const rec = { at: caseProcNow_(), ms: Math.round(Number(body.timing.total || 0) * 1000), tm: { basic: body.timing.basic, evidence_read: body.timing.ocr, evidence: body.timing.evidence, overview: body.timing.overview }, why: '화면 직결(Cloud Run)', drive: body.timing.drive, firstSec: body.firstSec }; sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }
+      if (body.timing && typeof body.timing === 'object') { const rec = { at: caseProcNow_(), ms: Math.round(Number(body.timing.total || 0) * 1000), tm: { basic: body.timing.basic, evidence_read: body.timing.ocr, evidence: body.timing.evidence, overview: body.timing.overview }, why: routeName === '직결(Cloud Run)' ? '화면 직결(Cloud Run)' : routeName, drive: body.timing.drive, firstSec: body.firstSec }; sv.timing = (Array.isArray(sv.timing) ? sv.timing : []).concat([rec]).slice(-20); }
       caseProcLogTo_(sv, { by: who, what: '단계: 사건파악·증빙 정리·칸 채우기(화면 직결)', detail: '서비스 결과 저장' + (changed ? '' : ' — 같은 내용') });
       saved.decisionFile = changed;
     });
@@ -23493,7 +23494,12 @@ function cpWatchCase_(c, opt) {
   //  다시 모은다(GAS만, 0원 — 새 글자인식은 하지 않고 기억에 있는 글자로. 아직 못 읽은 새 파일은 파일 장부에 "못읽음"으로 서고, 서류 미리 읽기가 읽은 뒤 그 틱에서 다시 모음).
   //  처음 대조(first)는 지문만 남긴다. 시간 한도 안에 못 하면 미뤄 두고 다음 틱 첫머리에(cpLedgerStaleRun_)
   let ledger = null;
-  if (changes.length && opt.ledger !== false) {
+  if (changes.length && opt.ledger !== false && typeof t6PrereadDirectOn_ === 'function' && t6PrereadDirectOn_() && String(c.상태 || '') !== '완료' && String(c.폴더ID || '').trim()) {
+    // [2026.11.05 미리 읽기 직결] 직결이 켜져 있으면 장부 다시 모으기는 여기서 돌리지 않는다 — 바로 뒤 장부 적기 바퀴('read')가 직결로 서류 읽기·장부 다시 모으기까지 하고 저장한다(직결 못 쓰면 그 바퀴가 GAS 서류 읽기 도구로 같은 일을 함)
+    const what0 = '폴더 변동 — ' + changes.slice(0, 3).map(function (x) { return x.kind + ' ' + x.name; }).join(', ') + (changes.length > 3 ? ' 외 ' + (changes.length - 3) + '개' : '');
+    cpFlowQueueAdd_(c.id, what0.slice(0, 60), 'read');
+    ledger = { viaReader: true };
+  } else if (changes.length && opt.ledger !== false) {
     if (opt.deadlineAt && Date.now() > opt.deadlineAt) { cpLedgerStaleAdd_(c.id); ledger = { deferred: true }; }
     else {
       const what = '폴더 변동 — ' + changes.slice(0, 3).map(function (x) { return x.kind + ' ' + x.name; }).join(', ') + (changes.length > 3 ? ' 외 ' + (changes.length - 3) + '개' : '');
@@ -23651,13 +23657,20 @@ function cpFlowQueueRun_(started, DEADLINE) {
     props.setProperty(CP_FLOW_RUNNING_, JSON.stringify({ id: item.id, t: Date.now() }));
     let r = null;
     try {
-      if (item.kind === 'read') r = caseProcTimed_({ caseId: item.id, step: 'read', budgetMs: Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000)), noAi: true, by: 'GAS', flowWhy: item.why });
+      if (item.kind === 'read') {
+        const budget = Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000));
+        // [2026.11.05 미리 읽기 직결] 직결이 켜져 있으면 먼저 직결로(서류 읽기 + 장부 적기까지 서비스가 하고 저장은 t6ApplyRead_) — 못 쓰면 지금처럼 GAS 서류 읽기 도구
+        let d = null;
+        if (typeof t6PrereadRead_ === 'function' && t6PrereadDirectOn_()) { const c0 = akReadCase_(item.id); d = c0 ? t6PrereadRead_(c0, item.why, budget) : { ok: false, why: '사건 없음' }; }
+        if (d && d.ok) r = { ok: true, direct: true, more: d.more, sec: d.timing ? d.timing.total : null };
+        else r = caseProcTimed_({ caseId: item.id, step: 'read', budgetMs: Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000)), noAi: true, by: 'GAS', flowWhy: item.why + (d ? ' · 직결 안 됨(' + d.why + ')' : '') });
+      }
       else { const c0 = akReadCase_(item.id); r = c0 ? { ok: true, flow: caseFlowRound_(c0, item.why, []) } : { ok: false, error: '사건 없음' }; }
     }
     catch (e) { r = { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
     finally { props.deleteProperty(CP_FLOW_RUNNING_); }
     if (r && (r.more || r.partial)) cpFlowQueueAdd_(item.id, item.why + '(이어서)', 'read'); // 서류 읽기가 길어 다 못 돌았으면 다음 틱에 이어서
-    done.push(item.id + ': ' + (r && r.error ? '실패 ' + r.error : r && r.flow ? (r.flow.diff.length ? r.flow.diff.join(' · ') : '바뀐 것 없음') : '바퀴 미완(' + ((r && (r.more || r.partial)) ? '다음 틱' : '') + ')'));
+    done.push(item.id + ': ' + (r && r.error ? '실패 ' + r.error : r && r.direct ? ('직결로 읽음' + (r.sec != null ? ' ' + r.sec + '초' : '') + (r.more ? ' · 이어서 다음 틱' : '')) : r && r.flow ? (r.flow.diff.length ? r.flow.diff.join(' · ') : '바뀐 것 없음') : '바퀴 미완(' + ((r && (r.more || r.partial)) ? '다음 틱' : '') + ')'));
   }
   return done;
 }
@@ -23767,6 +23780,59 @@ function cpWatchTick_(touched, started, DEADLINE) {
   try { cpFlowQueueRun_(started, DEADLINE).forEach(function (s) { out.lines.push('장부 적기 ' + s); out.flow = (out.flow || 0) + 1; }); } catch (e) { out.lines.push('장부 적기 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 계획서 2단계]
   try { cpNexMomentRun_(started, DEADLINE).forEach(function (s) { out.lines.push('중요한 순간 ' + s); out.moment = (out.moment || 0) + 1; }); } catch (e) { out.lines.push('중요한 순간 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 넥스 4] 밤엔 줄에 둠
   return out;
+}
+// =========================================================
+// [2026.11.05 미리 읽기 직결 — 세무사님 "1순위를 가안으로 옮겨보자" → 계획서 → "알았다. 구현하자"]
+//  1분 틱에서 가장 무거운 둘(장부 적기 바퀴 '읽기' = 📖 서류 읽기 도구 한 바퀴, 폴더 변동 때 장부 다시 모으기)을 직결(Cloud Run 읽기 서비스)로 보낸다.
+//  틱(GAS)은 사건 행·기록부 바탕·장부 바탕을 실어 /read를 부르고, 돌아온 결과는 화면 ⚡와 같은 저장 입구(t6ApplyRead_)로 저장한다 — 세무사님·넥스가 정한 값은 거기서 덮지 않는다.
+//  직결을 못 쓰면(꺼짐·주소 없음·폴더 공유 안 됨·통신·401/403·기록부 못 받음·증빙 폴더 없음·글자 기억 없는 서류) 그 사건은 지금처럼 GAS 길로 돌고 기록부 readRouteLog에 이유 한 줄.
+//  글자인식(드라이브 OCR)·지문 대조·넥스 깨우기·뒤에서 할 일은 그대로 GAS. 계획서: 총괄관리자\_기록\직결_미리읽기_이전_계획서_20261105.html
+// =========================================================
+function t6PrereadDirectOn_() { try { return /^(1|true|on|켬)$/i.test(String(PropertiesService.getScriptProperties().getProperty('T6_READER_DIRECT') || '').trim()); } catch (e) { return false; } }
+function t6PrereadUrl_() { try { return String(PropertiesService.getScriptProperties().getProperty(T6_READER_URL_PROP_) || (typeof T6_READER_URL_DEFAULT_ === 'string' ? T6_READER_URL_DEFAULT_ : '') || '').trim().replace(/\/+$/, ''); } catch (e) { return ''; } }
+// 요청 하나 준비 → { ok:true, req } (req는 UrlFetchApp.fetch 인자) 또는 { ok:false, why }
+function t6PrereadPrepare_(c, why, budgetMs) {
+  if (!c || !c.id) return { ok: false, why: '사건 없음' };
+  if (!t6PrereadDirectOn_()) return { ok: false, why: '직결 꺼짐' };
+  const url = t6PrereadUrl_(); if (!url) return { ok: false, why: '직결 주소 없음' };
+  if (!String(c.폴더ID || '').trim()) return { ok: false, why: '사건 폴더 없음' };
+  if (String(c.상태 || '') === '완료') return { ok: false, why: '완료 사건' };
+  let sh = null; try { sh = t6ShareCaseFolder_(c, '미리 읽기 틱 — ' + String(why || '').slice(0, 40)); } catch (e) { return { ok: false, why: '폴더 공유 못 함: ' + String(e && e.message || e).slice(0, 60) }; }
+  if (!sh || !(sh.shared || /이미 공유/.test(String(sh.skipped || '')))) return { ok: false, why: '폴더 공유 안 됨(' + String(sh && sh.skipped || '') + ')' };
+  try { t6OcrMemWrite_(DriveApp.getFolderById(c.폴더ID)); } catch (e) {} // 글자 기억 사본을 최신으로(같은 내용이면 쓰지 않음) — 직결은 이 사본으로 글자를 읽는다
+  let token = ''; try { token = ScriptApp.getIdentityToken(); } catch (e) { return { ok: false, why: 'ID 토큰 못 받음' }; }
+  if (!token) return { ok: false, why: 'ID 토큰 비어 있음' };
+  const sv0 = caseProcLoad_(c.id) || {};
+  const record = t6RecordForReader_(sv0);
+  try { const L = ledgerLoad_(c.id, true); if (L && L.rows) record.ledger = L; } catch (e) {} // 장부 바탕(세무사님·넥스가 정한 값)을 함께 — 없이 돌면 답한 칸을 다시 묻는다
+  const payload = { caseId: c.id, folderId: c.폴더ID, sheetRow: akReadCase_(c.id) || c, record: record, decisions: sv0.decisions || {}, options: { budgetMs: Math.max(60000, Math.min(240000, Number(budgetMs) || 200000)) }, __caller: 'preread:' + String(why || '').slice(0, 40) };
+  return { ok: true, req: { url: url + '/read', method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true } };
+}
+// 응답 하나 → 저장. { ok:true, direct:true, more, timing, saved } 또는 { ok:false, why } — 판정 규칙은 화면 ⚡(gasRunDirect_)와 같다
+function t6PrereadApply_(c, resp) {
+  let code = 0, r = null;
+  try { code = resp.getResponseCode(); } catch (e) { return { ok: false, why: '응답 없음' }; }
+  if (code === 401 || code === 403) return { ok: false, why: '인증 거절(' + code + ')' };
+  try { r = JSON.parse(resp.getContentText()); } catch (e) { return { ok: false, why: '응답 해석 실패(' + code + ')' }; }
+  if (code !== 200 || !r || !r.ok || !r.stages) return { ok: false, why: '응답 오류(' + code + (r && r.error ? ': ' + String(r.error).slice(0, 60) : '') + ')' };
+  if (!(r.seeded && r.seeded.record)) return { ok: false, why: '직결이 기록부를 못 받음(옛 판)' };
+  if (r.blocked) return { ok: false, why: '증빙 폴더 없음·권한 없음' };
+  if (Array.isArray(r.unreadFiles) && r.unreadFiles.length) return { ok: false, why: '글자 기억 없는 서류 ' + r.unreadFiles.length + '개(글자인식은 GAS가)' };
+  if (!r.stages.basic) return { ok: false, why: '단계 결과가 비어 있음' };
+  let a = null;
+  try { a = t6ApplyRead_(c, { written: r.written || {}, timing: r.timing || null, by: '자동', route: '직결(미리 읽기 틱)' }); } catch (e) { return { ok: false, why: '저장 실패: ' + String(e && e.message || e).slice(0, 80) }; }
+  if (!a || a.ok === false) return { ok: false, why: '저장 안 됨: ' + String(a && a.error || '').slice(0, 80) };
+  return { ok: true, direct: true, more: !!(r.partial || r.more), timing: r.timing || null, saved: a };
+}
+// 사건 하나를 직결로 읽어 저장 → { ok:true, direct:true, ... } / { ok:false, why } (why는 기록부 readRouteLog에 남긴다)
+function t6PrereadRead_(c, why, budgetMs) {
+  const p = t6PrereadPrepare_(c, why, budgetMs);
+  if (!p.ok) { cpReadRouteLog_(c && c.id, '틱 직결 안 됨: ' + p.why); return p; }
+  let resp = null;
+  try { resp = UrlFetchApp.fetch(p.req.url, p.req); } catch (e) { const why2 = '통신 오류: ' + String(e && e.message || e).slice(0, 60); cpReadRouteLog_(c.id, '틱 직결 안 됨: ' + why2); return { ok: false, why: why2 }; }
+  const r = t6PrereadApply_(c, resp);
+  if (!r.ok) cpReadRouteLog_(c.id, '틱 직결 안 됨: ' + r.why);
+  return r;
 }
 function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
   try { if (CacheService.getScriptCache().get('cp_evid_busy')) return; } catch (e) {} // [2026.10.23 속도 ㅅ6차] 화면의 ② 서류 읽기가 도는 중이면 이번 틱은 쉰다(같은 파일 동시 글자인식 방지)
