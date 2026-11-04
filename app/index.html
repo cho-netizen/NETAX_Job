@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:27 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -25872,9 +25872,12 @@ function nxMdOpenWindow(title, src, opts){
       const out = { 요건: [], 못갖춤: [], 남은것: [] };
       const dd = ymd(p.dateOfDeath), dn = ymd(p.donationDate);
       if (dd && dn) {
-        const m = p.isDecedentNonResident ? 9 : 6, due = new Date(Date.UTC(+dd.slice(0, 4), +dd.slice(5, 7) + m, 0)).toISOString().slice(0, 10);
+        const m = p.isDecedentNonResident ? 9 : 6, dueRaw = new Date(Date.UTC(+dd.slice(0, 4), +dd.slice(5, 7) + m, 0)).toISOString().slice(0, 10);
+        // [2026.11.05 모의사건 247] §16① 「§67 신고기한까지 출연」 — 기한 끝날이 토·일·공휴일이면 국세기본법 §5①로 미룬 날까지(224·225와 같은 읽기, 경계 하루는 [확인 필요]).
+        const due = shiftTaxDeadline_(dueRaw);
+        const edge = due !== dueRaw && dn > dueRaw && dn <= due ? ' [확인 필요: 달력 기한 ' + dueRaw + '이 토·일·공휴일이라 ' + due + '까지로 봄 — 출연 행위에도 §5①이 미치는지 해석례]' : '';
         const ok = dn <= due || !!p.delayedByUnavoidableReason;
-        out.요건.push({ 이름: '신고기한(' + due + ')까지 출연', 결과: ok ? '✔' : '✘', 왜: '출연일 ' + dn + (dn > due && p.delayedByUnavoidableReason ? ' — 부득이한 사유(시행령 §13①)로 그 사유가 없어진 날이 속하는 달 말일부터 6개월까지 연장' : ''), 근거: '상증법 §16①·§67①' });
+        out.요건.push({ 이름: '신고기한(' + due + ')까지 출연', 결과: ok ? '✔' : '✘', 왜: '출연일 ' + dn + edge + (dn > due && p.delayedByUnavoidableReason ? ' — 부득이한 사유(시행령 §13①)로 그 사유가 없어진 날이 속하는 달 말일부터 6개월까지 연장' : ''), 근거: '상증법 §16①·§67①' });
         if (!ok) out.못갖춤.push('신고기한 지나 출연');
       } else out.남은것.push('출연일·상속개시일(신고기한까지 출연했는지, §16①)');
       const board = Math.max(5, Number(p.boardSize) || 0), hd = p.heirDirectorCount;

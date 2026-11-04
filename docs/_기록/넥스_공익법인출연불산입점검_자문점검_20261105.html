@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 247 공익법인 출연 불산입</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 247 — 「공익법인 출연재산 과세가액 불산입(상증법 §16·§48①·시행령 §13) 계산기 — 출연 기한·이사 1/5·결정권·주식 10/20/5% 한도 확인과 기한 끝날이 토·일·공휴일일 때」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_charity_donation_tax_exclusion)를 일곱 갈래로 돌려 §16①②③·§48①·시행령 §13②를 맞췄습니다. 요건·한도는 맞았고, 「신고기한까지 출연」의 기한 끝날이 일요일일 때를 224·225와 같은 읽기(국세기본법 §5①, 경계 하루 [확인 필요])로 맞췄습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2025-11-20 사망, 상속인들이 2026-06-01 장학재단에 5억 출연(상속인 이사 1/5, 결정권 없음). 견주기: 06-02 출연 / 이사 2/5 / 비상장주식 15%(일반·의결권 미행사 공익법인) / 기존 3% + 8% / §16③ 예외.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§16①: 피상속인·상속인이 공익법인등에 출연한 재산은 §67 신고기한(부득이하면 사유 소멸 달 말일부터 6개월)까지 출연한 것이면 과세가액 불산입 — 시행령 §13②: 상속인 합의, 상속인 이사가 현원(5명 미만이면 5명)의 1/5 이하, 중요사항 결정권 없음. ②: 의결권 있는 주식은 출연분 + 1호 합산분이 10%(자선 등 의결권 미행사 20%, 상호출자제한 특수관계 5%)를 넘으면 초과분 산입. ③: 예외(주무관청 인정·3년 안 매각 등). §48①: 증여세도 같은 구조.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>요건·한도 맞음: 15% 출연 → 초과 5,000주분 3.33억 산입 / 20% 공익법인이면 0 / 기존 3% + 8% → 1% 초과 / §16③ 예외 0 / 이사 2/5 → 산입.</li>
+<li class="red">신고기한 2026-05-31(일요일)까지 출연 — 6-1 출연을 「기한 넘김」으로 봤다(국세기본법 §5①로 6-1까지가 기한).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateCharityDonationTaxExclusionJS: 출연 기한을 미룬 날(토·일·공휴일 → 다음 날)까지로 보고 경계 하루엔 [확인 필요: 출연 행위에도 §5①이 미치는지]. app/index.html 다시 만듦. 넥스 도구·지시문 그대로(검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>5억 일반재산·6-1 출연 / 6-2 / 이사 2/5</td><td class="red">불산입(확인 필요 표시) — 전엔 산입 / 산입 / 산입</td><td>맞음(§16①·시행령 §13②·국기법 §5)</td></tr>
+<tr><td>주식 15% / 20% 공익법인 / 3%+8% / §16③</td><td>3.33억 산입 / 0 / 초과분 / 0</td><td>맞음(§16②③)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>§5①이 출연 행위의 기한에 미치는지 — 해석례(경계 하루)</td><td>미룬 날 + 확인 필요</td><td>중간</td></tr>
+<tr><td>2</td><td>공익법인등 해당 여부(시행령 §12)·주무관청 설립허가는 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>3</td><td>§48② 사후관리(용도 외 사용·3년 미사용·운용소득 등 즉시 증여세)는 「공익법인사후관리」 묶음으로 — 계산기 밖(안내 있음)</td><td>묶음</td><td>높음</td></tr>
+<tr><td>4</td><td>상속인 이사 수의 「이사 현원」 산정 시점(출연 당시)은 사람이</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>출연 주식의 평가액(비상장 §63①1호나목)은 「비상장평가」 묶음·계산기로 먼저</td><td>다른 계산기</td><td>높음</td></tr>
+</table>
+</main></body></html>
