@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 16:30 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:08 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -18105,6 +18105,8 @@ function nxMdOpenWindow(title, src, opts){
       취득가액_산정방법: core.acquisitionPriceMethodNote || undefined,
       조합원입주권_재건축상세: core.reconstructionDetail,
       양도차익: Math.round(core.reconstructionDetail ? core.taxableGain : core.gainBeforeDeduction), 과세대상양도차익: Math.round(core.taxableGain),
+      // [2026.11.05 모의사건 181] §89①3호 주택(고가주택이라 12억 초과분만 과세)임을 표시 — 이월과세 배제(§97의2②2호 괄호 「고가주택 포함」) 판정이 읽는다
+      고가주택_1세대1주택: (core.isOneHouse || (core.reconstructionDetail && (core.reconstructionDetail.고가주택_12억초과비율 != null || core.reconstructionDetail.고가조합원입주권_12억초과비율 != null))) ? true : undefined,
       장기보유특별공제율: core.longTermRate, 장기보유특별공제액: core.longTermDeductionAmount,
       양도소득금액: Math.round(core.incomeAmount), 기본공제: basicDeduction, 과세표준: taxBase,
       적용세율_설명: appliedRateNote, 세율가산_내역: surchargeNotes, 자경농지감면액: farmlandReduction,
@@ -18195,8 +18197,9 @@ function nxMdOpenWindow(title, src, opts){
     const withResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, withBasis));
 
     // §97의2②2호 — 이월과세를 적용하면 §89①3호 비과세(1세대1주택 등)에 해당하게 되는 경우는 배제.
-    if (withResult && withResult.비과세여부) {
-      return Object.assign({ applied: false, reason: '§97의2②2호 — 이월과세 적용시 1세대1주택 등 비과세 대상이 되어 배제' }, withoutBasis);
+    //  [2026.11.05 모의사건 181] 같은 호 괄호 — 「비과세대상에서 제외되는 고가주택(딸린 토지 포함)을 포함한다」: 12억 초과분만 과세되는 고가주택 1세대1주택도 배제(예전엔 전부 비과세일 때만 걸러 고가주택은 증여자 취득가액으로 셌음).
+    if (withResult && (withResult.비과세여부 || withResult.고가주택_1세대1주택)) {
+      return Object.assign({ applied: false, reason: '§97의2②2호 — 이월과세 적용시 1세대1주택 등 비과세 대상' + (withResult.비과세여부 ? '' : '(고가주택 — 괄호)') + '이 되어 배제' }, withoutBasis);
     }
     const withTax = (withResult && typeof withResult.납부세액_합계 === 'number') ? withResult.납부세액_합계 : (withResult && withResult.비과세여부 ? 0 : Infinity);
     const withoutTax = (withoutResult && typeof withoutResult.납부세액_합계 === 'number') ? withoutResult.납부세액_합계 : (withoutResult && withoutResult.비과세여부 ? 0 : Infinity);
