@@ -3185,7 +3185,15 @@ const DRIVE_TOOLS = [
         appraisalValueAverage: { type: 'number', description: 'evidenceType이 appraisal일 때 필수 — 둘 이상(또는 기준시가 10억원 이하 부동산은 하나 이상) 감정기관 감정가액의 평균(원).' },
         supplementaryValue: { type: 'number', description: 'evidenceType이 appraisal일 때 — 상증세법§61·62·64·65에 따른 보충적평가액(원, 유가증권등§63 재산은 이 조항 적용대상이 아니므로 생략).' },
         similarAssetMarketValue90pct: { type: 'number', description: 'evidenceType이 appraisal일 때(선택) — 시행령§49④에 따른 유사재산 시가의 100분의 90에 해당하는 가액(원). 있으면 보충적평가액과 비교해 더 작은 쪽을 기준금액으로 쓴다.' },
-        hasHeirAbroad: { type: 'boolean', description: 'taxType이 inheritance일 때(선택) — 피상속인이나 상속인이 외국에 주소를 두었는지. true면 신고기한을 9개월로 보고(상증법 §67④) 평가기간 밖 증거의 심의 신청 구간(법정결정기한, 시행령 §78①)을 계산합니다. 결과 심의신청_가능구간·법정결정기한·심의_안내를 보세요.' }
+        hasHeirAbroad: { type: 'boolean', description: 'taxType이 inheritance일 때(선택) — 피상속인이나 상속인이 외국에 주소를 두었는지. true면 신고기한을 9개월로 보고(상증법 §67④) 평가기간 밖 증거의 심의 신청 구간(법정결정기한, 시행령 §78①)을 계산합니다. 결과 심의신청_가능구간·법정결정기한·심의_안내를 보세요.' },
+        auctionExclusionType: { type: 'string', enum: ['heir_bought_payment_in_kind', 'private_contract_after_auction', 'major_shareholder_unlisted_by_related'], description: '[2026.11.05] evidenceType이 expropriation_auction_public_sale(경매·공매)일 때 — 시행령 §49①3호 단서 가·다·라(물납 재산을 상속인·특수관계인이 경매 취득 / 절차 개시 뒤 수의계약 / 최대주주 비상장주식을 상속인·특수관계인이 경매 취득)면 시가 제외.' },
+        appraisalExclusionType: { type: 'string', enum: ['conditional', 'not_original_form'], description: '[2026.11.05] appraisal일 때 — 2호 단서 가(조건부 감정)·나(원형대로 감정 아님)면 제외.' },
+        appraisalCount: { type: 'integer', description: '[2026.11.05] 감정기관 수 — 둘 이상이어야 함. 하나로 되는 것은 기준시가 10억원 이하 부동산뿐(standardPriceForAppraisal·isRealEstateForAppraisal).' },
+        standardPriceForAppraisal: { type: 'number', description: '[2026.11.05] 그 부동산의 기준시가(원) — 감정기관이 하나일 때 10억 이하 판정용.' },
+        isRealEstateForAppraisal: { type: 'boolean', description: '[2026.11.05] 감정 대상이 부동산이면 true(하나의 감정기관 허용은 부동산만).' },
+        evidenceValue: { type: 'number', description: '[2026.11.05] 이 증거의 가액(원) — otherEvidences와 가장 가까운 날 고르기에 씀.' },
+        otherEvidences: { type: 'array', items: { type: 'object' }, description: '[2026.11.05] 같은 재산의 다른 시가 증거 [{evidenceType, evidenceDate, value}] — 평가기간 안 증거가 둘 이상이면 평가기준일에 가장 가까운 날(같으면 평균)을 시가로(시행령 §49②). 결과 둘이상_가액.' },
+        includesMultipleAssets: { type: 'boolean', description: '[2026.11.05] 이 가액에 둘 이상 재산이 함께 들어 있으면 true → §49③ 안분 안내.' },
       },
       required: ['taxType', 'valuationBaseDate', 'evidenceType', 'evidenceDate']
     }

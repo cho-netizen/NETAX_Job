@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 297 시가 인정 제외·가장 가까운 날</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 297 — 「시가 인정범위 판정(상증법 §60②·시행령 §49) — 3호 단서 경매·공매 제외(가·다·라)·2호 단서 감정 제외(가·나)·감정기관 수(둘 이상, 10억 이하 부동산 하나)·② 둘 이상 가액이면 가장 가까운 날·③ 둘 이상 재산 안분」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>2026.3.10. 상속·증여 재산의 시가 — ① 경매 절차 개시 뒤 수의계약으로 취득한 가액 ② 원형대로 감정하지 않은 감정가액 ③ 감정기관 하나(기준시가 15억 / 7억) ④ 증여일 전 매매(1.20.)·뒤 감정(3.25.)·기간 밖 매매(2025.8.)가 함께 있을 때 어느 것이 시가인가 ⑤ 토지·건물이 한 가액에 들어 있을 때.</p>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 시행령 읽기용 판)</h2>
+<ul>
+<li>시행령 §49① — 평가기간(상속 전후 6개월·증여 전 6·후 3개월) 안 1호 매매(가 특수관계 부당·나 비상장 소액 제외) / 2호 둘 이상 감정기관 평균(기준시가 10억 이하 부동산은 하나; 단서 가 조건부 감정·나 원형 아님 제외) / 3호 수용·경매·공매(단서 가 물납 재산을 상속인·특수관계인이 경매 취득 / 나 비상장 소액 / 다 절차 개시 뒤 수의계약 / 라 최대주주 비상장주식을 상속인·특수관계인이 경매 취득 → 제외). ② 판단 날짜(계약일·가격산정기준일과 평가서 작성일·가액 결정일), 둘 이상이면 평가기준일에 가장 가까운 날(같으면 평균). ③ 둘 이상 재산이 든 가액은 §61~65 평가액 비례 안분(감정가액 있으면 감정가액 비례).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">3호 단서 가·다·라(경매·공매 제외)와 2호 단서 가·나(감정 제외)가 없어 수의계약 취득가·조건부 감정도 시가로 봤다.</li>
+<li class="red">감정기관 수(둘 이상·10억 이하 부동산 하나)는 설명에만 있고 엔진은 평균값만 받았다. ② 「둘 이상이면 가장 가까운 날」과 ③ 안분도 없었다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>checkFairMarketValueRecognitionJS</code> — <code>auctionExclusionType</code>(3호 가·다·라)·<code>appraisalExclusionType</code>(2호 가·나) → 게이트 ×; <code>appraisalCount·standardPriceForAppraisal·isRealEstateForAppraisal</code> → 감정기관 수 게이트; <code>otherEvidences·evidenceValue</code> → 평가기간 안 증거 중 가장 가까운 날(같으면 평균)을 <code>둘이상_가액</code>으로; <code>includesMultipleAssets</code> → ③ 안내(<code>추가_안내</code>).</li>
+<li class="red">도구 <code>check_fair_market_value_recognition</code> 칸 8개 추가 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>경매 기본 / 수의계약</td><td>○ / <span class="red">×(다목)</span></td></tr>
+<tr><td>원형대로 감정 아님 / 감정 1곳·15억 / 감정 1곳·7억 부동산</td><td class="red">× / × / ○</td></tr>
+<tr><td>증여 3.10 · 매매 1.20·감정 3.25·2025.8 매매</td><td class="red">기간 안 2개 중 3.25 감정이 가장 가까움(2025.8은 기간 밖)</td></tr>
+<tr><td>둘 이상 재산</td><td>§49③ 안분 안내</td></tr>
+</table>
+<p>시험 t297 7건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>2호 뒷문장(감정가액이 보충적 평가액·유사재산 시가의 90% 미만이면 세무서장이 재감정 의뢰 — 원문 잘림)은 기존 「기준금액 미달 → 불인정」 근사 그대로</td><td>원문 재확인</td></tr>
+<tr><td>2</td><td>감정은 ②2호대로 가격산정기준일과 평가서 작성일 「둘 다」 기간 안이어야 하는지 — 엔진은 받은 증거일 하나만</td><td>해석 확인</td></tr>
+<tr><td>3</td><td>④ 유사재산 매매사례(면적·기준시가 5% 차이 등 시행규칙 §15③, 신고일까지)는 도구 밖</td><td>도구 부족 — 판단거리</td></tr>
+<tr><td>4</td><td>법정결정기한의 쉬는 날 미룸은 안 넣음(기존 주석대로)</td><td>판단거리</td></tr>
+<tr><td>5</td><td>양도세 부당행위(transfer) 쪽은 소득세법 시행령 §167⑤ 준용 — 새 게이트가 그대로 적용되는지</td><td>해석 확인</td></tr>
+</table>
+</main></body></html>

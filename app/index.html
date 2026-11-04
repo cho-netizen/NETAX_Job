@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 21:00 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 21:05 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -23262,6 +23262,38 @@ function nxMdOpenWindow(title, src, opts){
       });
     }
 
+    // [2026.11.05 모의사건 297] 시행령 §49①3호 단서 가·다·라(경매·공매 제외)·2호 단서 가·나(감정 제외)·감정기관 수(둘 이상, 기준시가 10억 이하 부동산은 하나)·② 둘 이상 가액이면 평가기준일에 가장 가까운 날(같으면 평균)·③ 둘 이상 재산 포함 안분 — 전엔 없었음.
+    const notes97_ = [];
+    if (evidenceType === 'expropriation_auction_public_sale' && p.auctionExclusionType) {
+      const AX_ = { heir_bought_payment_in_kind: '가목 — §73·§73의2로 물납한 재산을 상속인 또는 그 특수관계인이 경매·공매로 취득', private_contract_after_auction: '다목 — 경매·공매 절차 개시 뒤 수의계약으로 취득', major_shareholder_unlisted_by_related: '라목 — 최대주주등의 상속인·특수관계인이 최대주주등이 보유하던 비상장주식을 경매·공매로 취득' };
+      const ax_ = AX_[String(p.auctionExclusionType)];
+      if (ax_) { recognized = false; gates.push({ 항목: '경매·공매가액 제외 사유', 통과: false, 사유: '시행령 §49①3호 단서 ' + ax_ + ' — 그 경매·공매가액은 시가에서 제외(수용 보상가액엔 없는 단서).' }); }
+      else gates.push({ 항목: '경매·공매가액 제외 사유', 통과: true, 사유: 'auctionExclusionType은 heir_bought_payment_in_kind/private_contract_after_auction/major_shareholder_unlisted_by_related 중 하나 — 받은 값은 목록 밖이라 제외하지 않음' });
+    }
+    if (evidenceType === 'appraisal' && p.appraisalExclusionType) {
+      const PX_ = { conditional: '가목 — 일정한 조건이 충족될 것을 전제로 평가하는 등 상속·증여세 납부 목적에 맞지 않는 감정가액', not_original_form: '나목 — 평가기준일 현재 재산의 원형대로 감정하지 않은 감정가액' };
+      const px_ = PX_[String(p.appraisalExclusionType)];
+      if (px_) { recognized = false; gates.push({ 항목: '감정가액 제외 사유', 통과: false, 사유: '시행령 §49①2호 단서 ' + px_ + ' — 시가에서 제외.' }); }
+    }
+    if (evidenceType === 'appraisal' && p.appraisalCount != null && p.appraisalCount !== '') {
+      const cnt_ = Number(p.appraisalCount), sp_ = Number(p.standardPriceForAppraisal) || 0;
+      const oneOk_ = cnt_ >= 2 || (cnt_ === 1 && sp_ > 0 && sp_ <= 1000000000 && p.isRealEstateForAppraisal !== false);
+      if (!oneOk_) recognized = false;
+      gates.push({ 항목: '감정기관 수', 통과: oneOk_, 감정기관수: cnt_, 기준시가: sp_ || undefined, 사유: oneOk_ ? undefined : (cnt_ === 1 ? '감정기관이 하나 — 둘 이상의 공신력 있는 감정기관 평균이어야 하고, 하나로 되는 것은 기준시가 10억원 이하 부동산뿐(시행령 §49①2호 괄호 — standardPriceForAppraisal·isRealEstateForAppraisal)' : '감정기관 수가 0') });
+    }
+    if (Array.isArray(p.otherEvidences) && p.otherEvidences.length) {
+      const all_ = [{ 종류: evidenceType, 날짜: String(p.evidenceDate).slice(0, 10), 가액: Number(p.evidenceValue) || undefined }].concat(p.otherEvidences.map(function (e) { return { 종류: e.evidenceType || '', 날짜: String(e.evidenceDate || '').slice(0, 10), 가액: Number(e.value) || undefined }; }));
+      const inP_ = all_.filter(function (e) { const d = new Date(e.날짜 + 'T00:00:00'); return !isNaN(d.getTime()) && d >= periodStart && d <= periodEnd; });
+      inP_.forEach(function (e) { e.거리일 = Math.abs(Math.round((new Date(e.날짜 + 'T00:00:00') - baseDate) / 86400000)); });
+      inP_.sort(function (a, b) { return a.거리일 - b.거리일; });
+      if (inP_.length) {
+        const near_ = inP_.filter(function (e) { return e.거리일 === inP_[0].거리일; });
+        const vals_ = near_.map(function (e) { return e.가액; }).filter(function (v) { return v > 0; });
+        notes97_.push('평가기간 안 증거가 ' + inP_.length + '개 — 평가기준일에 가장 가까운 날(' + near_.map(function (e) { return e.날짜; }).join('·') + ', ' + inP_[0].거리일 + '일)의 가액을 시가로(시행령 §49② — 같은 거리가 둘 이상이면 평균' + (vals_.length > 1 ? ' ' + Math.round(vals_.reduce(function (t, v) { return t + v; }, 0) / vals_.length).toLocaleString('ko-KR') + '원' : '') + '). 판단 날짜: 매매는 계약일, 감정은 가격산정기준일과 평가서 작성일, 수용·경매·공매는 가액 결정일.');
+        p.__nearest = { 가장_가까운_증거: near_, 평가기간_안_증거: inP_ };
+      } else notes97_.push('추가 증거 중 평가기간 안에 든 것이 없음.');
+    }
+    if (p.includesMultipleAssets === true) notes97_.push('이 가액에 둘 이상 재산(토지·건물 등)이 함께 들어 있음 — 각 재산을 §61~65로 평가한 가액에 비례해 안분(같은 기관·같은 시기 감정가액이 있으면 감정가액 비례, 시행령 §49③) [확인 필요: 토지·건물 단서].');
     if (evidenceType === 'appraisal') {
       const appraisalAvg = Number(p.appraisalValueAverage) || 0;
       if (!appraisalAvg) return { error: '감정가액 평균이 필요합니다.' };
@@ -23283,6 +23315,7 @@ function nxMdOpenWindow(title, src, opts){
       시가인정여부: recognized, 평가기간이내여부: withinPeriod,
       평가기간_시작: fmt(periodStart), 평가기간_종료: fmt(periodEnd),
       게이트별_판정: gates,
+      둘이상_가액: p.__nearest || undefined, 추가_안내: notes97_.length ? notes97_ : undefined,
       심의신청_가능구간: reviewWindow_, 전2년_시작: twoYearStart_, 법정결정기한: statutoryDeadline_,
       심의_안내: (!withinPeriod && taxType !== 'transfer') ? (reviewWindow_ ? ('이 증거일은 「' + reviewWindow_ + '」 구간이라 평가심의위원회 심의를 거치면 시가에 포함될 수 있습니다(시행령 §49① 단서). 납세자뿐 아니라 지방국세청장·관할세무서장도 신청할 수 있어, 신고 뒤 세무서가 이 가액으로 더 높게 결정할 수 있습니다(법정결정기한 ' + statutoryDeadline_ + ', 시행령 §78①).') : ('이 증거일은 심의 신청 구간(전 2년: ' + twoYearStart_ + '~평가기간 시작 전 / 평가기간 뒤~법정결정기한 ' + statutoryDeadline_ + ')에도 들지 않아 시가로 쓸 수 없습니다(시행령 §49① 단서).')) : null,
       안내: periodNote + (recognized ? '' : ' 위 게이트 중 하나라도 통과하지 못하면 이 증거가액은 §60②의 시가로 인정되지 않으므로, 다른 시가 증거를 찾거나 §61~65의 보충적 평가방법을 사용해야 합니다.')
