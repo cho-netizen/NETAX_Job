@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:12 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -24517,15 +24517,34 @@ function nxMdOpenWindow(title, src, opts){
     if (p.holdingYears !== undefined && Number(p.holdingYears) < 3 && !p.isPendingHoldingPeriod) {
       return { 적용여부: false, 안내: '농어촌주택등을 3년 이상 보유하지 않아(또는 3년 보유요건 충족 전 일반주택 양도가 아니어서) 적용대상이 아닙니다(§99의4①④).' };
     }
-    if (p.triggerClawback && !p.isExemptedReason) {
+    // [2026.11.05 모의사건 273] ⑥ 납부기한(보유하지 않게 된 날이 속하는 달의 말일부터 2개월 — 쉬는 날이면 다음 날)·추징세액 기준(시행령 ⑧ 일반주택 양도 시점 §104 세액)·
+    //  ⑨ 부득이한 사유 종류(수용·협의매수 / 사망 상속 / 멸실)·⑩ 과세특례신고서 — 전엔 글로만. exemptedReasonType을 주면 종류를 맞춰 보고, 목록 밖이면 추징으로.
+    const EXR_ = { expropriation: '수용(협의매수 포함)', inheritance: '사망으로 인한 상속', destruction: '멸실' };
+    const exrT_ = p.exemptedReasonType ? String(p.exemptedReasonType) : '';
+    const exempt_ = exrT_ ? !!EXR_[exrT_] : !!p.isExemptedReason;
+    const nhRaw_ = String(p.nonHoldingDate || '').slice(0, 10);
+    let nhDue_ = '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(nhRaw_)) nhDue_ = shiftTaxDeadline_(new Date(Date.UTC(Number(nhRaw_.slice(0, 4)), Number(nhRaw_.slice(5, 7)) + 2, 0)).toISOString().slice(0, 10));
+    const filingRh_ = '일반주택 양도소득세 예정·확정신고기한 안에 과세특례신고서 제출(시행령 §99의4⑩ — 토지대장·건축물대장은 세무서가 공동이용으로 확인)';
+    if (p.triggerClawback && exempt_) {
+      return { 적용여부: true, 사후관리추징대상: false, 부득이한사유: exrT_ ? EXR_[exrT_] + '(시행령 §99의4⑨)' : '부득이한 사유(시행령 §99의4⑨ — 수용·협의매수·사망 상속·멸실) [확인 필요: 종류]', 신고_첨부: filingRh_,
+        안내: '3년 보유 전에 농어촌주택등을 보유하지 않게 됐지만 시행령 §99의4⑨의 부득이한 사유라 추징하지 않습니다(§99의4⑥ 단서).' };
+    }
+    if (p.triggerClawback && !exempt_) {
       return {
         적용여부: true, 사후관리추징대상: true,
+        보유하지_않게_된_날: nhRaw_ || undefined, 납부기한: nhDue_ || undefined,
+        납부기한_근거: nhDue_ ? '§99의4⑥ — 보유하지 않게 된 날이 속하는 달의 말일부터 2개월(쉬는 날이면 다음 날)' : undefined,
+        추징세액_기준: '일반주택을 양도한 시점에서 그 일반주택에 대해 소득세법 §104로 계산한 세액(시행령 §99의4⑧) — 특례 없이 2주택으로 본 세액을 일반 양도세 계산기로 셈(이자상당액 규정 없음 [확인 필요])',
+        부득이한사유_안내: exrT_ && !EXR_[exrT_] ? 'exemptedReasonType 「' + exrT_ + '」은 시행령 ⑨ 목록(expropriation/inheritance/destruction) 밖 — 추징으로 셈' : undefined,
         안내: '3년 이상 보유 요건을 충족하기 전에 일반주택을 양도해 특례를 적용받은 후, 농어촌주택등을 3년 이상 보유하지 않게 되었습니다. 그 보유하지 않게 된 날이 속하는 달의 말일부터 2개월 이내에, 특례를 적용받지 않았을 경우 납부했을 세액상당액을 양도소득세로 납부해야 합니다(§99의4⑥, 수용 등 부득이한 사유가 있으면 제외).'
       };
     }
     return {
       적용여부: true, 사후관리추징대상: false,
-      안내: '요건을 충족하여 그 ' + (houseType === 'hometown' ? '고향주택' : '농어촌주택') + '을 1세대1주택 비과세(소득세법§89①3호) 판정시 소유주택으로 보지 않습니다(조특법§99의4①). 위 일반 양도세 계산기에서 일반주택을 양도자산으로 놓고 "1세대1주택 비과세 요건 충족 전제"를 체크해 계산하세요.'
+      신고_첨부: filingRh_,
+      보유기간_기산: '증축·부수토지 추가 취득이 있어도 보유기간은 당초 취득일부터(시행령 ⑫), 가액·면적은 증가분을 포함(⑪) · 멸실 뒤 재건축은 통산(⑬3호)',
+      안내: '요건을 충족하여 그 ' + (houseType === 'hometown' ? '고향주택' : '농어촌주택') + '을 1세대1주택 비과세(소득세법§89①3호) 판정시 소유주택으로 보지 않습니다(조특법§99의4①). 위 일반 양도세 계산기에서 일반주택을 양도자산으로 놓고 "1세대1주택 비과세 요건 충족 전제"를 체크해 계산하세요.' + (p.isPendingHoldingPeriod ? ' 3년 보유 전 양도라(④) 뒤에 3년 미만으로 끝나면 ⑥ 추징(그달 말일부터 2개월 안 납부) — 수용·상속·멸실은 예외.' : '')
     };
   };
 

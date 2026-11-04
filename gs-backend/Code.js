@@ -2130,7 +2130,9 @@ const DRIVE_TOOLS = [
         holdingYears: { type: 'number', description: '농어촌주택등의 보유기간(년). 3년 미만이고 isPendingHoldingPeriod가 아니면 적용대상 아님.' },
         isPendingHoldingPeriod: { type: 'boolean', description: '아직 3년 보유요건을 채우지 못한 상태에서 일반주택을 먼저 양도하는 경우인지(§99의4④, 이 경우도 특례 적용 가능하나 이후 사후관리 대상).' },
         triggerClawback: { type: 'boolean', description: '특례 적용 후 농어촌주택등을 3년 이상 보유하지 않게 된 사후관리 위반 사유가 발생했는지.' },
-        isExemptedReason: { type: 'boolean', description: 'triggerClawback이 true일 때 — 수용 등 대통령령이 정하는 부득이한 사유에 해당하는지(true면 추징 예외).' }
+        isExemptedReason: { type: 'boolean', description: 'triggerClawback이 true일 때 — 수용 등 대통령령이 정하는 부득이한 사유에 해당하는지(true면 추징 예외).' },
+        exemptedReasonType: { type: 'string', enum: ['expropriation', 'inheritance', 'destruction'], description: '[2026.11.05] 부득이한 사유 종류(시행령 §99의4⑨) — expropriation=수용·협의매수 / inheritance=사망 상속 / destruction=멸실. 주면 isExemptedReason 대신 이것으로 가림(목록 밖이면 추징).' },
+        nonHoldingDate: { type: 'string', description: '[2026.11.05] triggerClawback일 때 농어촌주택등을 보유하지 않게 된 날 YYYY-MM-DD → 납부기한(그달 말일부터 2개월, 쉬는 날이면 다음 날, §99의4⑥).' }
       },
       required: ['acquisitionDate']
     }

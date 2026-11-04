@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 273 농어촌주택 추징 기한</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 273 — 「농어촌주택·고향주택 취득자 특례(조특법 §99의4) 판정기 — ⑥ 추징 납부기한(그달 말일부터 2개월)·추징세액 기준(시행령 ⑧)·⑨ 부득이한 사유 종류·⑩ 과세특례신고서·⑪⑫ 증축 때 보유기간」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>2024.5. 강원 어느 면의 농어촌주택(기준시가 2.5억)을 산 1세대가 2026.2. 서울 일반주택을 팔며 특례를 받았다(농어촌주택 보유 1년 9개월, ④). 그 뒤 2026.10.12. 농어촌주택을 팔았다면 언제까지 얼마를 내는가. 팔지 않고 상속으로 넘어갔다면.</p>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 발췌)</h2>
+<ul>
+<li>§99의4④ — 3년 보유 전 일반주택 양도도 적용. ⑥ — 3년 이상 보유하지 않게 되면 「특례를 적용받지 않았을 경우 납부했을 세액」을 <b>보유하지 않게 된 날이 속하는 달의 말일부터 2개월 이내</b> 납부. 단서 — 수용 등 부득이한 사유 제외. ⑤ 삭제 〈2025.12.23〉, ⑦ 과세특례신청.</li>
+<li>시행령 §99의4⑧ — 그 세액 = 일반주택 양도 시점의 그 일반주택에 대한 소득세법 §104 세액. ⑨ — 부득이한 사유 = 수용(협의매수 포함)·사망으로 인한 상속·멸실. ⑩ — 과세특례신고서를 §105·§110 신고기한 안에 제출. ⑪ 증축·부수토지 추가 취득분은 가액·면적에 포함, ⑫ 보유기간은 당초 취득일부터, ⑬3호 멸실 재건축 통산.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">⑥ 납부기한을 「말일부터 2개월」 글로만 — 날짜가 없었고 쉬는 날도 안 봄. 추징세액이 무엇인지(시행령 ⑧ 일반주택 양도 시점 §104 세액)도 안 적음.</li>
+<li class="red">부득이한 사유를 체크 하나로만 — 종류(수용·상속·멸실)를 못 가렸고, 목록 밖 사유를 「예외」로 넣어도 그대로 받음.</li>
+<li class="red">⑩ 신고서, ⑪⑫ 증축 때 가액·보유기간 기산을 안내하지 않음.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateRuralHouseOneHouseExclusionJS</code> — <code>nonHoldingDate</code> → <code>납부기한</code>(그달 말일 + 2개월, 쉬는 날 미룸)·<code>납부기한_근거</code>·<code>추징세액_기준</code>; <code>exemptedReasonType</code>(expropriation/inheritance/destruction)으로 ⑨ 종류를 가리고 목록 밖이면 추징 + 안내; 적용 결과에 <code>신고_첨부</code>·<code>보유기간_기산</code>, ④ 적용이면 사후관리 예고.</li>
+<li class="red">도구 <code>calculate_rural_house_one_house_exclusion</code> 칸 2개 추가 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>3년 전 양도(보유 1.8년, ④)</td><td>적용 ○ · 신고서 안내 · 「뒤에 3년 미만이면 ⑥ 추징」 예고</td></tr>
+<tr><td>2026-10-12 처분</td><td class="red">추징 대상 · 납부기한 2026-12-31 · 세액 기준 = 일반주택 양도 시점 §104 세액</td></tr>
+<tr><td>2026-11-03 처분</td><td class="red">납부기한 2027-02-01(1.31 일 → 월)</td></tr>
+<tr><td>사망 상속 / 목록 밖 「sale」 / 예전 체크</td><td class="red">추징 없음 / 추징 + 「목록 밖」 안내 / 추징 없음</td></tr>
+<tr><td>3년 뒤 양도</td><td>적용 ○ · 보유기간 기산 안내(⑫)</td></tr>
+</table>
+<p>시험 t273 7건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>추징세액(시행령 ⑧)에 이자상당액·가산세가 붙는지 — 조문에 이자 규정 없음</td><td>세무사님 확인</td></tr>
+<tr><td>2</td><td>2025.12.23. 삭제된 ⑤(종전 내용)와 ⑦ 개정의 적용례 — 발췌에 부칙 없음</td><td>부칙 원문 재확인</td></tr>
+<tr><td>3</td><td>①가목 기회발전특구(2025) 등 소재지 요건은 judge 「농어촌주택」 몫 — 이 계산기는 체크로 받음</td><td>판단거리</td></tr>
+<tr><td>4</td><td>「보유하지 않게 된 날」 — 매매는 잔금일·등기일 중 어느 것인지(소득세법 §98 양도시기로 봄)</td><td>해석 확인</td></tr>
+<tr><td>5</td><td>추징세액 자체 계산(특례 없이 2주택 상태로 일반주택 양도세)은 일반 양도세 계산기로 두 번째 호출</td><td>도구 부족 — 판단거리</td></tr>
+</table>
+</main></body></html>
