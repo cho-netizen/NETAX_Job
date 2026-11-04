@@ -1272,7 +1272,10 @@ const DRIVE_TOOLS = [
         monthsAfterDeadline: { type: 'number', description: '법정신고기한이 지난 후 수정신고(또는 기한후신고)까지 경과한 개월 수. 비우고 statutoryFilingDeadline·filingDate를 주면 날짜로 잰다(꼭 n개월째 날까지는 n개월 이내).' },
         statutoryFilingDeadline: { type: 'string', description: '법정신고기한(YYYY-MM-DD) — filingDate와 함께 주면 경과 개월을 날짜로 잰다.' },
         filingDate: { type: 'string', description: '수정신고·기한후신고를 한 날(YYYY-MM-DD). 넣으면 그때 감면 단계 — 수정신고: 2008년까지 6개월 50%만, 2009~2019 50·20·10%, 2020~ 90~10%. 기한후신고: 2011.8.2.까지 1개월 50%만, 2011.8.3.~2019 50·20%, 2020~ 50·30·20%. 비우면 지금 단계.' },
-        isAmendedAfterAuditNotice: { type: 'boolean', description: '과세표준과 세액을 경정(또는 결정)할 것을 미리 알고 수정신고(또는 기한후신고)를 한 경우인지. true면 §48②의 감면이 적용되지 않는다.' }
+        isAmendedAfterAuditNotice: { type: 'boolean', description: '과세표준과 세액을 경정(또는 결정)할 것을 미리 알고 수정신고(또는 기한후신고)를 한 경우인지. true면 §48②의 감면이 적용되지 않는다.' },
+        isPreliminaryReturn: { type: 'boolean', description: '[2026.11.05] 고치는 신고가 예정신고(중간신고)분인지 — 양도세 예정신고를 확정신고기한까지 수정·기한후신고하면 50% 감면(§48②3호 다·라목).' },
+        finalReturnDeadline: { type: 'string', description: '확정신고기한(YYYY-MM-DD, 양도세는 다음 해 5월 31일) — isPreliminaryReturn과 filingDate가 있으면 그 안인지 도구가 봄.' },
+        filedByFinalReturnDeadline: { type: 'boolean', description: '날짜 대신 — 확정신고기한 안에 고쳤으면 true.' }
       },
       required: ['originalPenaltyAmount']
     }

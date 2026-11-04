@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:17 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:27 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -22171,7 +22171,17 @@ function nxMdOpenWindow(title, src, opts){
       months = k === 0 ? 0 : (endOf_(k - 1) < fdt_ ? k - 0.5 : k);
     }
     if (!(months >= 0)) return { error: '법정신고기한이 지난 뒤 몇 개월인지(또는 법정신고기한과 신고일)가 필요합니다.' };
-    const rate = computeAmendmentPenaltyReductionRate_(months, filingType, p.filingDate);
+    let rate = computeAmendmentPenaltyReductionRate_(months, filingType, p.filingDate);
+    // [2026.11.05 모의사건 246] 국세기본법 §48②3호 다목·라목 — 예정신고(중간신고)를 했으나 과소신고한 것을 확정신고기한까지 수정신고(다목, 1호 라~바목에도 불구하고)
+    //  하거나, 예정신고를 안 했다가 확정신고기한까지 기한후신고(라목, 2호에도 불구하고)하면 50% 감면. 양도세 예정신고(양도 달 말일부터 2개월) 뒤 다음 해 5월 확정신고까지
+    //  고치는 흔한 경우인데 전에는 1호·2호 단계(6개월 넘으면 30%·0%)로만 셌다. isPreliminaryReturn + finalReturnDeadline(또는 filedByFinalReturnDeadline)이면 단계 율과 50% 중 큰 쪽.
+    let prelimNote_ = '';
+    if (p.isPreliminaryReturn && !p.isAmendedAfterAuditNotice) {
+      const frd_ = String(p.finalReturnDeadline || '').slice(0, 10);
+      const byFinal_ = p.filedByFinalReturnDeadline === true || (/^\d{4}-\d{2}-\d{2}$/.test(frd_) && /^\d{4}-\d{2}-\d{2}$/.test(fdt_) && fdt_ <= shiftTaxDeadline_(frd_));
+      if (byFinal_) { if (rate < 0.5) { rate = 0.5; prelimNote_ = ' 예정신고분을 확정신고기한' + (frd_ ? '(' + frd_ + ')' : '') + '까지 ' + (filingType === 'revised' ? '수정신고(§48②3호다목)' : '기한후신고(§48②3호라목)') + '해 50% 감면을 적용했습니다(1호·2호 단계 율보다 큼).'; } else prelimNote_ = ' 예정신고분을 확정신고기한까지 고쳤으나 1호·2호 단계 율(' + Math.round(rate * 100) + '%)이 50%보다 커 그대로.'; }
+      else if (frd_) prelimNote_ = ' 예정신고분이지만 확정신고기한(' + frd_ + ')을 넘겨 고쳐 §48②3호 다·라목 50%는 적용되지 않습니다.';
+    }
     const fdOld_ = refHistoryOn_() && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(String(p.filingDate || '').slice(0, 10)) && String(p.filingDate).slice(0, 10) < '2020-01-01' ? String(p.filingDate).slice(0, 10) : '';
     const reductionAmount = Math.round(originalPenaltyAmount * rate);
     const finalPenalty = originalPenaltyAmount - reductionAmount;
@@ -22179,6 +22189,7 @@ function nxMdOpenWindow(title, src, opts){
       적용조문: filingType === 'revised' ? '국세기본법§48②1호(수정신고 — 과소신고·초과환급신고가산세만 해당)' : '국세기본법§48②2호(기한후신고 — 무신고가산세만 해당)',
       경과개월수: months, 경과구간: months % 1 ? (Math.floor(months) + '개월 넘고 ' + Math.ceil(months) + '개월 이내') : (months + '개월'), 감면율: rate, 감면전가산세액: originalPenaltyAmount, 감면세액: reductionAmount, 최종가산세액: finalPenalty,
       그때법_안내: fdOld_ ? '그때 법(' + fdOld_ + ' 신고): ' + (filingType === 'revised' ? (fdOld_ < '2009-01-01' ? '수정신고 6개월 이내 50%만' : '수정신고 6개월 50%·1년 20%·2년 10%') + (fdOld_ < '2012-01-01' ? ' — 2011년까지는 납부불성실가산세(§47의4)도 감면 대상' : '') : (fdOld_ < '2011-01-01' ? '기한후신고 1개월 이내 50%만' : '기한후신고 1개월 50%·6개월 20%')) : undefined,
+      예정신고_확정기한_안내: prelimNote_ || undefined,
       안내: rate === 0
         ? ('법정신고기한이 지난 후 ' + (filingType === 'revised' ? '2년' : '6개월') + '을 초과하여 §48②에 따른 감면이 적용되지 않습니다.')
         : ('이 감면은 ' + (filingType === 'revised' ? '과소신고·초과환급신고가산세(§47의3)' : '무신고가산세(§47의2)') + '에만 적용되며, 납부지연가산세(§47의4)에는 적용되지 않습니다.')
@@ -24639,7 +24650,7 @@ function nxMdOpenWindow(title, src, opts){
   //     하나라도 충족하면 그 즉시 사업용으로 인정(= 비사업용 아님). 조문은 "비사업용으로 사용한
   //     기간이 다음을 모두 초과"라고 역으로 규정하지만, 그 여집합을 취하면 이 3가지 OR조건이 된다:
   //     소유 5년이상 → [양도일 직전5년 중 3년 이상]OR[직전3년 중 2년 이상]OR[소유기간의 60%이상]
-  //     소유 3년이상5년미만 → [최소 3년]OR[직전3년중2년이상]OR[60%이상]
+  //     소유 3년이상5년미만 → [최소 3년]OR[직전3년중2년이상] (비율 기준 없음 — 2026.11.05 모의사건 226)
   //     소유 2년이상3년미만 → [최소 2년]OR[60%이상]
   //     소유 2년미만 → [60%이상]만
   //     "사업용으로 사용한 기간"은 양도일부터 거슬러 연속된 기간으로 입력받는다(중간에 끊겼다가
@@ -24989,8 +25000,12 @@ function nxMdOpenWindow(title, src, opts){
       return { 추징대상: false, 안내: '협의분할등기 후에도 시행령§155②③의 요건을 계속 충족하면 추가 신고·납부 의무가 없습니다.' };
     }
     const additionalTax = Number(p.additionalTaxAmount) || 0;
+    // [2026.11.05 모의사건 244] 시행령 §155⑲ 단서 — 등기일이 속하는 달의 말일부터 2개월 안 신고·납부. registrationDate(협의분할 등기일)를 주면 기한을 셈(토·일·공휴일은 국세기본법 §5①로 미룸).
+    //  전에는 글로만 안내해 넥스가 날짜를 손으로 셌다.
+    const regD_ = String(p.registrationDate || '').slice(0, 10);
+    const regDue_ = /^\d{4}-\d{2}-\d{2}$/.test(regD_) ? shiftTaxDeadline_(new Date(Date.UTC(Number(regD_.slice(0, 4)), Number(regD_.slice(5, 7)) + 2, 0)).toISOString().slice(0, 10)) : '';
     return {
-      추징대상: true, 추징액: additionalTax,
+      추징대상: true, 추징액: additionalTax, 등기일: regD_ || undefined, 신고납부기한: regDue_ || undefined,
       안내: '상속주택을 등기 전 법정상속분에 따라 소유한 것으로 보아 비과세를 적용받았으나, 이후(국세 부과제척기간 내) 협의분할등기한 결과 시행령§155②③의 적용을 받지 못하게 되어(시행령§155⑲ 단서), 그 등기일이 속하는 달의 말일부터 2개월 이내에 추가 양도소득세를 신고·납부해야 합니다.'
     };
   };
