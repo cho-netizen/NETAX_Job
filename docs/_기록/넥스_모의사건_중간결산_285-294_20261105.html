@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 모의사건 중간결산 285-294</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 모의사건 중간결산 285~294 · 2026-11-05</h1>
+<p class="sub">클라우드 세션(가지 claude/gifted-clarke-hqwn4y). 11-05 새벽 속행분 열세 번째 열 건. 평가(§54·§61③·§63③)·이월과세(§97의2·조특법 §32)·1세대1주택 특례(대체주택)·안분·증여공제(§53의2)·상속공제(§23의2)를 돌았고, 열 건 중 아홉 건에서 엔진 틈(또는 설명 틀림)을 잡았습니다.</p>
+<h2>1. 사건 카드</h2>
+<table><tr><th>번호·유형</th><th>놓치던 것</th><th>고친 것</th><th>검토대상</th></tr>
+<tr><td>285 최대주주 할증 배제 설명</td><td class="red">도구 설명 셋이 조문과 다름(2·5·7호)</td><td class="red">설명 3개 × 2 도구(엔진 변경 없음)</td><td>5</td></tr>
+<tr><td>286 비상장주식 부동산 비율</td><td class="red">50%·80% 문턱을 체크로만</td><td class="red">엔진 + 칸 4</td><td>5</td></tr>
+<tr><td>287 주식 이월과세 증여자 필요경비</td><td class="red">①2호 없음·이혼 안내 없음</td><td class="red">엔진 + 칸 2</td><td>5</td></tr>
+<tr><td>288 (부동산 이월과세 — 이미 있음, 번호 건너뜀)</td><td>없음</td><td>없음</td><td>—</td></tr>
+<tr><td>289 법인전환 이월과세 기한·요건</td><td class="red">⑤ 기한·① 단서·② 자본금·③ 신청</td><td class="red">엔진 + 칸 5</td><td>5</td></tr>
+<tr><td>290 대체주택 기한 날짜</td><td class="red">전입·양도 기한 날짜·⑤ 후단</td><td class="red">엔진(화면 전용)</td><td>5</td></tr>
+<tr><td>291 회원권·분양권 평가</td><td class="red">입주권 산식뿐</td><td class="red">엔진 + 칸 1</td><td>5</td></tr>
+<tr><td>292 안분 유형재산 §62</td><td class="red">조문 표기 ④ 틀림·2026.2.27 개정 없음</td><td class="red">엔진 + 칸 1</td><td>5</td></tr>
+<tr><td>293 혼인·출산 공제 날짜</td><td class="red">2년을 체크로만·④~⑦ 없음</td><td class="red">엔진(겉함수) + 칸 5</td><td>5</td></tr>
+<tr><td>294 동거주택 공제 동거기간</td><td class="red">10년을 체크로만·직계비속 요건·2주택 간주</td><td class="red">엔진 + 칸 5</td><td>5</td></tr>
+</table>
+<p class="sub">288은 「부동산 이월과세 증여자 필요경비」를 보려다 이미 칸이 있음을 확인해 사건으로 세지 않음(점검서 없음).</p>
+<h2>2. 공통점</h2>
+<ul>
+<li>「체크로만 받던 요건을 날짜·숫자로 엔진이 가르게」(286·293·294)와 「개정 조문(2024~2026)이 계산기에 안 들어온 것」(287·289·292)이 되풀이 — 계산 본체는 맞고 입구가 좁았던 꼴.</li>
+<li>291에서 시험 글자 대조 실수로 체인이 멈춘 뒤 다시 돌림 — &amp;&amp; 체인이 커밋 전에 선 것을 확인(284의 교훈대로).</li>
+<li>핵심 계산기(증여세·상속세)는 본 함수를 안 건드리고 겉함수(293)·결과 칸 추가(294)로만 — 회귀 174건 숫자 변화 0 유지.</li>
+</ul>
+<h2>3. 검토대상 합계</h2>
+<p>45건(9건 × 5). 되풀이: 초일 산입·끝날 셈, 2026년 개정 부칙 적용례, 두 번 호출 잇기(기타자산 비율→비상장 평가, 이월과세액→사후관리), 묶음(JudgeMore)이 새 칸을 채워 주는지.</p>
+<h2>4. 회귀·검문</h2>
+<p>엔진 회귀 174건 다름 0 · 판정 20건 · 가족 지도 · 세션 시험 통과 · 넥스 도구 검문 ✓(78개·25,224자) · 서버 화면 파일 점검 ✓ · node --check(Code.js) 통과.</p>
+<h2>5. 커밋 목록(가지)</h2>
+<p>ceceeee(285) c9ac820(286) c2dff83(287) 97df949(289) 8e3e315(290) f1a7799(291) be66000(292) 15a52f0(293) 8f45035(294)</p>
+</main></body></html>
