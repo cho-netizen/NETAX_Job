@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:40 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:41 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28968,8 +28968,10 @@ function nxMdOpenWindow(title, src, opts){
     const land = Number(tg.토지면적), base = Number(tg.정착면적);
     if (land > 0 && base > 0 && tg.용도지역) {
       const z = String(tg.용도지역);
-      const mul = /도시지역 밖|그 밖/.test(z) ? 10 : /수도권 밖/.test(z) ? 5 : /녹지/.test(z) ? 5 : /주거|상업|공업/.test(z) ? 3 : 0;
-      if (mul) { const lim = base * mul; row('주택부수토지', '토지 ' + land + '㎡ · 정착 ' + base + '㎡ × ' + mul + '배 = ' + lim + '㎡', '시행령 §154⑦', land <= lim ? '충족' : '일부 과세'); if (land > lim) notes.push('부수토지 ' + (land - lim) + '㎡는 배율(' + mul + '배)을 넘어 비과세가 아닙니다(시행령 §154⑦)'); }
+      // [2026.11.05 모의사건 193] 연혁 — 수도권 주거·상업·공업 3배는 2020.2.11 개정 §154⑦(2022-01-01 이후 양도분부터, 부칙 [확인 필요]). 그 전 양도는 도시지역 5배·도시지역 밖 10배(수도권·용도 구분 없음). 연혁 꺼짐이면 지금 표.
+      const oldMul_ = refHistoryOn_() && isDate_(T) && T < '2022-01-01';
+      const mul = /도시지역 밖|그 밖/.test(z) ? 10 : oldMul_ ? (/도시지역|수도권|주거|상업|공업|녹지/.test(z) ? 5 : 0) : /수도권 밖/.test(z) ? 5 : /녹지/.test(z) ? 5 : /주거|상업|공업/.test(z) ? 3 : 0;
+      if (mul) { const lim = base * mul; row('주택부수토지', '토지 ' + land + '㎡ · 정착 ' + base + '㎡ × ' + mul + '배 = ' + lim + '㎡' + (oldMul_ && mul === 5 ? ' (2022-01-01 전 양도 — 도시지역 5배, 종전 규정)' : ''), '시행령 §154⑦' + (oldMul_ ? '(2020.2.11 개정 전)' : ''), land <= lim ? '충족' : '일부 과세'); if (land > lim) notes.push('부수토지 ' + (land - lim) + '㎡는 배율(' + mul + '배)을 넘어 비과세가 아닙니다(시행령 §154⑦)'); }
       else { row('주택부수토지', '용도지역 「' + z + '」을 배율 표에 못 맞춤', '시행령 §154⑦', '모름'); unk('주택부수토지의 용도지역(수도권 안 주거·상업·공업 / 수도권 안 녹지 / 수도권 밖 도시지역 / 도시지역 밖)', '토지이용계획확인서'); }
     }
     const ha = Number(tg.주택면적), na = Number(tg.주택외면적);
