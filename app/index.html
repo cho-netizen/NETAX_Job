@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 14:22 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 16:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -24436,6 +24436,8 @@ function nxMdOpenWindow(title, src, opts){
   // 하지 않는다(세무사님이 이미 아는 사실관계를 입력받는다).
   window.calculateInheritedHouseExclusionJS = function (p) {
     p = p || {};
+    // [2026.11.05 모의사건 174] 양도하는 주택이 상속주택이면 §155② 적용 없음(일반주택 양도 때의 특례).
+    if (p.isGeneralHouseTransfer === false) return { 적용여부: false, 안내: '양도하는 주택이 상속주택 — 시행령§155②는 일반주택을 양도할 때 상속주택을 소유주택으로 보지 않는 특례라 적용 없음(다른 주택이 있으면 2주택)' };
     if (p.isGeneralHouseGiftedWithin2Years) {
       return { 적용여부: false, 안내: '일반주택이 상속개시 전 2년 이내 피상속인으로부터 증여받은 것이면 시행령§155②의 "일반주택"에서 제외되어 적용대상이 아닙니다.' };
     }
@@ -28736,6 +28738,9 @@ function nxMdOpenWindow(title, src, opts){
         if (!q.isOutsideCapital || !q.acquiredForUnavoidableReason) r = { 적용여부: q.isOutsideCapital === false || q.acquiredForUnavoidableReason === false ? false : undefined, 안내: '수도권 밖 주택인지·부득이한 사유(취학·근무·질병 요양 등, 시행규칙)로 취득했는지가 필요합니다.' };
         else if (!isDate_(q.reasonResolvedDate)) r = { error: '부득이한 사유가 해소된 날이 필요합니다.' };
         else { const lim = addYearsToDateStr_(String(q.reasonResolvedDate).slice(0, 10), 3); r = T <= lim ? { 적용여부: true, 안내: '사유 해소일부터 3년 안(' + lim + '까지)에 일반주택을 양도 — 시행령 §155⑧' } : { 적용여부: false, 안내: '사유 해소일부터 3년(' + lim + ')을 넘겨 양도 — 시행령 §155⑧' }; }
+      } else if (s.종류 === '상속주택' && /상속/.test(String(tg.취득원인 || ''))) {
+        // [2026.11.05 모의사건 174 「상속 → 상속주택 양도」] 시행령 §155②는 「일반주택을 양도하는 경우」의 특례 — 양도하는 주택 자체가 상속주택이면 다른 주택을 빼 주지 않는다(다른 주택이 있으면 2주택).
+        r = { 적용여부: false, 안내: '양도하는 주택이 상속주택 — 시행령 §155②는 상속주택을 둔 채 「일반주택」을 양도할 때의 특례라 적용 없음. 상속주택을 먼저 팔면 다른 주택이 주택 수에 그대로 들어감(일반주택을 먼저 팔거나, 상속주택만 남긴 뒤 파는 순서 검토)' };
       } else {
         const fn = window[m.fn];
         try { r = typeof fn === 'function' ? fn(Object.assign({ transferDate: T, formerHouseTransferDate: T, generalHouseTransferDate: T, formerHouseAcquisitionDate: isDate_(tg.취득일) ? String(tg.취득일).slice(0, 10) : undefined,

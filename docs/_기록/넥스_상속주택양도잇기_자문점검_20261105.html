@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 174 상속주택 양도 잇기</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 174 — 「상속 평가 → 상속주택 양도(1세대1주택·취득가액·보유기간) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">이번 사건은 새 조문이 아니라 기존 묶음·엔진을 차례로 이어 돌려(상속평가 → 1세대1주택 종합판정 → 양도소득세 계산기) 이음새가 끊기는 곳을 찾는 복합 사건입니다. 새 판정 묶음·넥스 도구·지시문 줄은 더하지 않았고, 엔진 두 곳만 고쳤습니다(검문 ✓).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2026년 3월 10일 아버지 사망, 아들(2020년 1월 본인 집 보유)이 잠실 아파트를 상속(기준시가 6억, 유사매매 9억, 상속 뒤 감정 1곳 9.5억, 피상속인 취득 2005년). 아들은 2027년 6월 15일 상속 아파트를 10억에 팔려 함 — 본인 집은 그대로 둠.</li>
+<li>쟁점: 상속 평가액을 무엇으로 신고하나(그것이 양도 취득가액이 됨) · 상속주택을 먼저 팔아도 「상속주택 특례」로 비과세인가 · 양도세 세율·장특공 보유기간은 어디서부터인가.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 20260701·시행령 20261001·상증법·시행령)</h2>
+<ul>
+<li>소득세법 시행령 §155②: 상속받은 주택과 그 밖의 주택(일반주택 — 상속개시 당시 보유한 주택)을 각각 1개씩 보유한 1세대가 「일반주택을 양도하는 경우」 상속주택을 소유주택으로 보지 않음. 즉 상속주택을 먼저 팔면 특례가 없고 2주택입니다.</li>
+<li>시행령 §163⑨: 상속받은 자산의 취득가액 = 상속개시일 현재 상증법 §60~§66 평가액(결정·경정된 가액이 있으면 그 가액). 소득세법 §104②1호: 상속받은 자산의 세율(단기) 보유기간은 피상속인 취득일부터. §95④: 장기보유특별공제 보유기간은 상속개시일부터(통산 아님).</li>
+<li>상증법 §60·시행령 §49①: 평가기간(상속 전후 6개월) 안 매매·감정(기준시가 10억 이하 부동산은 감정 하나)이 시가 — 감정 9.5억이 있으면 기준시가 6억으로는 신고 위험.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">1세대1주택 종합판정(엔진)이 「상속주택 특례」를 양도하는 주택이 무엇인지 보지 않고 붙였습니다 — 상속주택 자체를 먼저 팔면서 본인 집을 둔 경우에도 「충족·비과세」로 나왔습니다(견주기: 10억 양도 비과세 vs 법대로 과세). §155② 함수도 「양도하는 주택이 상속주택」 칸(isGeneralHouseTransfer=false)을 무시했습니다.</li>
+<li>이음새 자체는 이어졌습니다: 상속평가 묶음이 감정 9.5억을 시가로 골라 주고(기준시가 6억 신고는 위험 표시), 그 값을 양도 취득가액에 넣으면 세액이 5,115,000(9.5억) / 16,935,000(9억) / 131,060,000(6억)으로 달라짐 — 넥스가 「상속세 적게 내려고 기준시가」로 신고하면 양도세가 1억 2천만 더 나오는 구조가 숫자로 보입니다.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">엔진(taxcalc-engine.html) 두 곳: ① 종합판정 특례 적용 단계에서 양도 대상의 취득원인이 「상속」이면 「상속주택」 특례를 「안 됨」으로(안내: 일반주택을 먼저 팔거나 상속주택만 남긴 뒤 파는 순서 검토) ② §155② 함수에 isGeneralHouseTransfer=false면 적용 없음. 조립본 app/index.html 다시 만듦(node tools/build-app.js).</li>
+<li>새 판정 묶음·넥스 도구·지시문 줄 없음(검문 ✓ 78개·25,224자). 엔진 회귀 174건 다름 0·판정 20건 모두 맞음.</li>
+<li>일반 규칙 한 줄: 「주택 수 특례는 ‘어느 집을 파는가’에 붙는 규칙 — 특례가 빼 주는 집(상속주택·임대주택·입주권)을 파는 경우엔 그 특례가 없다」 — 장기임대 거주주택(§155⑳)·입주권(§156의2)에도 같은 점검이 필요(검토대상 1).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>단계</th><th>판정</th><th>① 법대로</th><th>② 견주기</th></tr>
+<tr><td>상속평가</td><td>감정 9.5억이 시가 — 기준시가 6억 신고는 위험 · 수수료 300만 공제</td><td>9.5억</td><td>6억(기준시가)</td></tr>
+<tr><td>1세대1주택(상속주택 먼저 양도)</td><td>고치기 전 「충족·비과세」 → 고친 뒤 「안 됨」(특례 없음, 2주택)</td><td>과세</td><td>비과세로 잘못(무신고)</td></tr>
+<tr><td>1세대1주택(본인 집 먼저 양도)</td><td>상속주택 특례 충족 → 비과세(12억 이하)</td><td>0</td><td>—</td></tr>
+<tr><td>양도세(상속주택 10억, 세율 보유기간 2005년부터·장특공 0)</td><td>취득가액 9.5억 → 5,115,000 / 9억 → 16,935,000 / 6억 → 131,060,000</td><td>5,115,000</td><td>기준시가 신고면 1억 2,595만 더</td></tr>
+</table>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>같은 구조의 다른 특례(장기임대 거주주택·입주권·분양권·동거봉양·혼인)도 「특례가 빼 주는 집을 파는 경우」를 가르는지 — 다음 사건으로</td><td>미점검</td><td>—</td></tr>
+<tr><td>2</td><td>상속주택을 먼저 파는 순서 대안(본인 집 먼저 → 상속주택만 남긴 뒤 2년 보유)의 안내 문구</td><td>안내만</td><td>높음</td></tr>
+<tr><td>3</td><td>상속 평가액(감정)이 양도 취득가액이 되는 연결을 넥스가 자동으로 잇는지(엔진칸 전달)</td><td>상속평가 묶음 엔진칸에 있음 — 수동 연결</td><td>중간</td></tr>
+<tr><td>4</td><td>세율 보유기간(피상속인 취득일)과 장특공 보유기간(상속개시일) 구분 — 엔진 isInheritedAsset 설명대로</td><td>맞음</td><td>높음</td></tr>
+<tr><td>5</td><td>조립본 재생성 시 기존 「실명 의심 3곳」 경고(check-names) — 이번 고침과 무관, 부모 세션에서 확인</td><td>기록</td><td>—</td></tr>
+</table>
+</main></body></html>
