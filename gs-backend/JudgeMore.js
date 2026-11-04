@@ -40,14 +40,21 @@ function judgeSelfFarm_(p) {
   const inc = p.소득초과해 || {}, cut = function (list, who) { [].concat(Array.isArray(inc) ? (who === '본인' ? inc : []) : (inc[who] || [])).forEach(function (y) { y = String(y).slice(0, 4); if (/^\d{4}$/.test(y)) list = jmCut_(list, y + '-01-01', y + '-12-31'); }); return list; };
   let days = jmLen_(cut(per('본인'), '본인'));
   const 상속 = jmYmd_(p.상속받은날);
+  let 합산잠정 = false; // [2026.11.05 모의사건 188] 상속 뒤 경작 개월을 모르면 피상속인 기간을 더하되 그 기간이 있어야 8년이 되는 경우는 잠정
   if (상속) {
     const cont = Number(p.상속후경작개월), within3 = 양도 && 양도 <= famAddY_(상속, 3);
-    const ok = cont >= 12 ? true : within3 ? null : (p.상속후경작개월 == null || p.상속후경작개월 === '' ? null : false);
-    if (ok !== false) { const add = jmLen_(cut(per('피상속인'), '피상속인')) + jmLen_(cut(per('피상속인배우자'), '피상속인배우자')); days += add; if (add) notes.push('피상속인(배우자 포함) 경작 기간 ' + (add / 365.25).toFixed(1) + '년을 더함(조특령 §66⑪)'); }
-    if (ok === null) notes.push(cont >= 12 ? '' : within3 ? '상속 뒤 1년 이상 경작하지 않았어도 3년 안 양도면 수용·지정 지역일 때만 피상속인 기간을 더함(조특령 §66⑫) — 그 지역 지정 확인할 것' : '상속 뒤 이어 경작한 개월 수(상속후경작개월)를 모름');
+    // [2026.11.05 모의사건 188] 조특령 §66⑫ 원문 — 「1년 이상 경작하지 아니하더라도 ① 상속받은 날부터 3년이 되는 날까지 양도하거나 ② 협의매수·수용으로서 3년 안 지역 지정」 둘 중 하나면 피상속인(배우자) 경작기간을 상속인 경작기간으로 봄 — 예전엔 ①에도 지역 지정을 요구해 잠정으로 남겼음
+    const ok = cont >= 12 ? true : within3 ? true : (p.상속후경작개월 == null || p.상속후경작개월 === '' ? null : false);
+    if (ok !== false) { const add = jmLen_(cut(per('피상속인'), '피상속인')) + jmLen_(cut(per('피상속인배우자'), '피상속인배우자')); if (ok === null && add && days < need * 365.25 && days + add >= need * 365.25) 합산잠정 = true; days += add; if (add) notes.push('피상속인(배우자 포함) 경작 기간 ' + (add / 365.25).toFixed(1) + '년을 더함(조특령 §66⑪)'); }
+    if (ok === null) notes.push('상속 뒤 이어 경작한 개월 수(상속후경작개월)를 모름 — 1년 이상이면 피상속인 기간 합산(§66⑪), 아니면 3년 안 양도·수용 지정(§66⑫)만');
+    if (within3 && !(cont >= 12)) {
+      notes.push('상속받은 날(' + 상속 + ')부터 3년 안(' + famAddY_(상속, 3) + '까지) 양도 — 상속인이 1년 이상 경작하지 않았어도 피상속인(배우자) 경작기간을 상속인 경작기간으로 봄(조특령 §66⑫ 1갈래 — 지역 지정 불요)');
+      const dj = reqs.filter(function (r) { return /^직접 경작/.test(r.이름); })[0];
+      if (dj && dj.결과 !== '✔') { dj.결과 = '✔'; dj.왜 = '상속인은 경작 안 함 — 3년 안 양도라 피상속인 경작으로 봄(§66⑫)'; dj.근거 = '조특령 §66⑫·⑬'; }
+    } else if (!within3 && !(cont >= 12) && ok === false) notes.push('상속 뒤 1년 이상 경작도 않고 3년도 지남 — 피상속인 기간 합산 없음(§66⑪⑫), 상속인 본인 경작기간만');
   }
   const yrs = days / 365.25;
-  reqs.push(jmReq_(need + '년 이상 경작', (p.경작 || []).length ? yrs >= need : null, (p.경작 || []).length ? '센 기간 ' + yrs.toFixed(1) + '년(소득 기준 넘은 해 뺌)' : '경작 시작·끝 날을 모름', '조특법 §69①·조특령 §66④⑭'));
+  reqs.push(jmReq_(need + '년 이상 경작', (p.경작 || []).length ? (합산잠정 ? null : yrs >= need) : null, (p.경작 || []).length ? '센 기간 ' + yrs.toFixed(1) + '년(소득 기준 넘은 해 뺌)' + (합산잠정 ? ' — 피상속인 기간을 더해야 8년인데 상속 뒤 1년 이상 경작했는지(§66⑪) 몰라 잠정' : '') : '경작 시작·끝 날을 모름', '조특법 §69①·조특령 §66④⑪⑭'));
   reqs.push(jmReq_('양도일 현재 거주자', jmYn_(p.양도일거주자 == null ? true : p.양도일거주자), '', '조특령 §66①(비거주자 된 날부터 2년 이내 포함)'));
   reqs.push(jmReq_('양도일 현재 농지', jmYn_(p.양도일농지), jmYn_(p.양도일농지) === null ? '양도일 현재 실제 경작 중인 농지인지(매수자 형질변경 등은 계약일 기준 §66⑤)' : '', '조특령 §66⑤'));
   const 편입 = jmYmd_(p.도시편입일);

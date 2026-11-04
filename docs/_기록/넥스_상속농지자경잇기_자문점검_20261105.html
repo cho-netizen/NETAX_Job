@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 188 상속 농지 자경 잇기</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 188 — 「상속 농지 — 피상속인 경작기간 합산(조특령 §66⑪⑫) → 8년 자경 감면 → 한도 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 「8년자경」 묶음이 §66⑫의 두 갈래(3년 안 양도 / 수용 + 지역 지정)를 하나로 묶어 읽어, 상속 뒤 경작하지 않고 3년 안에 판 경우를 「지역 지정 확인」 잠정·상속인 직접경작 ✘로 냈습니다. 원문대로 고쳤고, 묶음→엔진(감면·한도·보유기간) 이음새는 맞았습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「국씨」가 2024-03-01 아버지(2010년부터 재촌·자경)에게서 농지를 상속(평가 4억, 피상속인 취득 2010-01-01), 본인은 경작하지 않고 2026-09-01 10억에 양도. 갈래: 3년 안 양도 / 2027-09-01(3년 넘김) 양도 / 상속 뒤 30개월 경작 / 경작 개월 모름·3년 넘김. 직전 4년 감면 5천만원.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 발췌본, 소득세법 20260101)</h2>
+<ul>
+<li>조특령 §66⑪: 상속인이 상속 농지를 1년 이상 계속 경작(재촌)하면 피상속인(배우자)이 경작한 기간을 상속인 경작기간으로 봄. ⑫: ⑪에도 불구하고 1년 이상 경작하지 않더라도 <b>상속받은 날부터 3년이 되는 날까지 양도하거나</b>, 협의매수·수용으로서 3년 안 지역 지정되는 경우에는 그 기간을 상속인 경작기간으로 봄. ⑭: 소득 기준 넘은 과세기간 제외.</li>
+<li>조특법 §69①: 8년 이상 직접 경작 농지 양도세 100% 감면. §133①: 과세기간 1억·5개 과세기간 2억 한도. 소득세법 §95④: 장특공 보유기간은 취득일부터(상속은 상속개시일 — 피상속인 취득일 기산은 이월과세·가업상속공제 자산만), §104②1호: 세율 보유기간은 피상속인 취득일부터.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">묶음이 ⑫를 「3년 안 양도 + 수용·지정 지역」으로 읽어 3년 안 양도를 잠정으로 남기고, 상속인 「직접 경작」 요건을 ✘로 두어 결론이 「안 됨」이었음. 원문은 3년 안 양도만으로 피상속인 기간을 상속인 경작으로 봄.</li>
+<li>상속 뒤 경작 개월을 모를 때 피상속인 기간을 그냥 더해 「충족」(확정)으로 냈음 — 그 기간이 있어야 8년이면 잠정이어야 함.</li>
+<li>엔진 이음새는 맞음: isEightYearFarmland로 감면 1억 한도(§133①1호)·장특공 0(상속개시일부터 2년)·감면 뒤 산출 115,010,000.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js 「8년자경」 묶음: 3년 안 양도면 지역 지정 없이 피상속인 기간 합산(알림에 §66⑫ 1갈래), 상속인이 경작 안 했어도 「직접 경작」 요건을 ✔(피상속인 경작으로 봄)로 바꿈. 경작 개월 모름 + 피상속인 기간이 있어야 8년이면 「8년 이상 경작」을 잠정(?)으로.</li>
+<li>엔진·Code.js·Federation.js는 손대지 않음. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전</th><th>고친 뒤</th></tr>
+<tr><td>① 경작 안 함·2.5년 내 양도</td><td>안 됨(직접 경작 ✘) + 지역 지정 확인 알림</td><td>충족 — 직접 경작 ✔(§66⑫), 16.7→14.2년 합산</td></tr>
+<tr><td>② 경작 안 함·3.5년 뒤 양도</td><td>안 됨</td><td>안 됨(합산 없음 알림)</td></tr>
+<tr><td>③ 상속 뒤 30개월 경작</td><td>충족 16.7년</td><td>그대로</td></tr>
+<tr><td>④ 경작 개월 모름·3.5년 뒤</td><td>충족(확정)</td><td>충족(잠정) — 8년 요건 ? + 알림</td></tr>
+<tr><td>⑤ ①의 엔진칸 → 양도세</td><td colspan="2">보유 2년·장특 0 · 감면 전 215,010,000 → 감면 1억(§133①1호) → 산출 115,010,000</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 176~180 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>§66⑫ 1갈래(3년 안 양도)에서 상속인의 재촌 요건 — ⑪ 괄호(거주하면서 경작)는 ⑪에만 걸려 있어 ⑫엔 없다고 읽음; §69① 「농지 소재지에 거주하는 거주자」 문언과의 관계는 해석례 대조 필요</td><td>재촌 칸은 받은 값</td><td>중간</td></tr>
+<tr><td>2</td><td>농어촌특별세(감면세액 20%)는 엔진 2071행 로직이 셈 — 이번 결과 칸 이름은 못 찾음(키 이름 확인)</td><td>엔진</td><td>중간</td></tr>
+<tr><td>3</td><td>피상속인 경작기간에서 소득 기준(⑭) 넘은 해를 빼려면 피상속인의 소득초과해를 넣어야 함 — 넥스가 피상속인 몫까지 넣는지</td><td>넣으면 뺌</td><td>높음</td></tr>
+<tr><td>4</td><td>직전 4년 감면액(priorFiveYearReductionAmount) 5천만원 입력이 5개 과세기간 2억 한도에 반영됐는지는 결과에 1호 한도만 보여 확인 못 함</td><td>엔진</td><td>중간</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 8년자경 묶음 설명에 「상속 농지는 상속받은날·상속후경작개월·피상속인 경작 줄을 꼭」 한 줄(지시문·도구 설명 금지 중이라 안 고침)</td><td>묶음 알림</td><td>—</td></tr>
+</table>
+</main></body></html>
