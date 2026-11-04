@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 269 제척기간 특례 호</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 269 — 「부과제척기간(국세기본법 §26의2) 계산기·판정 묶음 — ⑥의 나머지 호(1의2·1의3·2·4·6·7)·⑦ 실제 귀속자·③ 이월결손금 1년·②3호 부정행위 가산세 10년을 날짜로」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 판정 20건 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>2019년 양도(신고함, 기본 5년은 2025.6.1. 끝) 건에 대해 ① 2026.6. 다른 세목 심판 결정이 확정되어 같은 과세기간 양도세를 연동 조정해야 하는가 ② 2026.5. 공제한 이월결손금 때문에 그 결손 해 소득세를 다시 볼 수 있는가 ③ 부정행위 지급명세서 가산세는 몇 년인가 ④ 역외거래라면 외국 조세정보를 받은 뒤 얼마나 더 부과할 수 있는가.</p>
+<h2>2. 법 (원문을 직접 읽음 — 국세기본법 읽기용 판)</h2>
+<ul>
+<li>§26의2② 3호 — 부정행위로 소득세법 §81의10①4호·법인세법 §75의8①4호·부가세법 §60②2호·③·④ 가산세 대상이면 「해당 가산세를 부과할 수 있는 날부터 10년」.</li>
+<li>③ 〈2019.12.31·2024.12.31〉 — ①·②1호 기간이 끝난 날이 속하는 과세기간 이후에 이월결손금(조특법 §144① 이월 세액공제)을 공제하면, 그 결손금 해의 소득세·법인세는 「공제한 과세기간의 법정신고기한으로부터 1년」.</li>
+<li>⑥ — 1호 결정·판결 확정 1년 / 1의2호 연동 세목·과세기간 1년 / 1의3호 형사판결(§21①23·24호 소득) 1년 / 2호 상호합의 종료 1년 / 3호 경정청구·조정권고 2개월 / 4호 연동 2개월 / 5호 거래 관련 판결 1년 / 6호 역외 조세정보 받은 날 1년(요청은 기간 안, 받기는 요청부터 2년 안) / 7호 실효세율 변경 안 날 1년. ⑦ — 명의대여·사실상 귀속자·실질귀속자 확정 1년(당초 처분 취소하고 그 사람에게).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">엔진 <code>calculate_tax_exclusion_period</code>는 ⑥·⑦·③·②3호가 글로도 없었다 — 기본 기간과 ⑤ 1년 특례만.</li>
+<li class="red">판정 묶음 「제척기간」은 ⑥1호·3호·5호만 날짜로 세고, 1의2·1의3·2·4·6·7호와 ⑦·③·②3호는 알림 글로만 — 사건에 그 날짜가 있어도 「끝남」으로 결론 냈음.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 — <code>specialExtensionType</code>(⑥ 9유형 + ⑦)·<code>specialExtensionDate</code> → <code>특례제척기간_만료일·근거</code>(1년은 같은 날, 2개월은 두 달 뒤 같은 날), 역외 아닌데 6호면 경고. <code>lossCarryforwardDeductionFilingDeadline</code> → <code>이월결손금_제척기간_만료일</code>(상증세 제외). <code>isFraudPenaltyCase</code>+<code>fraudPenaltyAssessableDate</code> → <code>부정행위가산세_제척기간_만료일</code>(10년, 기산일 넣어 세고 전날 끝).</li>
+<li class="red">판정 묶음 <code>judgeExclusionPeriod_</code> — 건마다 연동결정확정일·형사판결확정일·상호합의종료일·연동경정청구일·조세정보받은날(역외만, 아니면 알림)·실효세율변경안날·명의귀속확정일·결손공제신고기한(기본 기간 안이면 ③ 자리 아님 알림, 결손공제가뒤로 강제)·가산세부정+가산세기산일을 특례 줄로 더해 오늘 부과 판정에 넣음.</li>
+<li class="red">도구 칸 5개(엔진)·판정 facts 설명에 칸 10개 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>엔진 기산 2021-06-01 · ⑥1호 확정 2026-09-10</td><td class="red">기본 2026-05-31 끝 · 특례 2027-09-10까지(그 결정에 따른 경정만)</td></tr>
+<tr><td>⑥3호 경정청구 2026-05-20</td><td class="red">2026-07-20</td></tr>
+<tr><td>③ 공제한 해 신고기한 2027-05-31</td><td class="red">2028-05-31 · 상증세로 넣으면 없음</td></tr>
+<tr><td>②3호 가산세 기산 2021-06-01</td><td class="red">2031-05-31</td></tr>
+<tr><td>판정: 2019 양도(2020-05-31 일요일 → 기한 6.1 → 기산 6.2, 기본 2025-06-01 끝) + 특례 날짜 9개</td><td class="red">특례 8줄(조세정보는 역외 아니라 뺌 + 알림) → 오늘(2026-11-05) 부과 가능 — 전에는 「끝남」</td></tr>
+<tr><td>역외 + 조세정보 2026-01-01 / 기본 기간 안 결손 공제</td><td class="red">⑥6호 2027-01-01 / ③ 자리 아님 알림</td></tr>
+</table>
+<p>시험 t269 12건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check(Code.js·JudgeMore.js) 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>「확정일부터 1년」「신고기한으로부터 1년」의 초일 — 확정일은 낮에 생기니 초일 불산입(민법 §157 본문) → 1년 뒤 같은 날 끝으로 셈. 기산일(0시)과 다르게 둔 것이 맞는지</td><td>세무사님 확인</td></tr>
+<tr><td>2</td><td>⑥6호 — 요청일이 기본 기간 안인지·받은 날이 요청부터 2년 안인지는 받은 날만 받아 못 봄</td><td>판단거리(요청일 칸은 안 둠)</td></tr>
+<tr><td>3</td><td>③은 ①·②1호만 말하므로 부정행위(②2호) 건엔 걸리지 않는다고 봄 — 판정은 부정이면 ③ 줄을 만들지 않음</td><td>해석 확인</td></tr>
+<tr><td>4</td><td>⑦은 이 건의 납세자가 아니라 실제 귀속자에게 부과하는 기간 — 판정이 「이 건 부과 가능」으로 묶어 보여 줌(왜 칸에 적음)</td><td>읽는 사람 주의</td></tr>
+<tr><td>5</td><td>2019.12.31 개정 전 성립 국세의 옛 ⑥ 각 호(1의2·1의3·6·7호는 뒤에 신설)</td><td>연혁 원문 없음 — 판단거리</td></tr>
+</table>
+</main></body></html>
