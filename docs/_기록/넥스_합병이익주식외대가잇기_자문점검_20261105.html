@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 219 합병 이익 주식 외 대가</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 219 — 「합병에 따른 이익의 증여(상증법 §38·시행령 §28) 계산기 — 주식 교부 산식·문턱 확인과 주식 외 합병대가(현금) 갈래(시행령 §28③2호) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_merger_benefit_gift_tax)를 일곱 갈래로 돌려 §38①②·시행령 §28②③④⑤를 맞췄습니다. 주식 교부 갈래(③1호)는 11-02 복잡사건 42에서 손본 대로 맞았고, 합병대가를 현금 등 주식 외 재산으로 받는 갈래(③2호)가 「별도로 계산하세요」로 비어 있던 것을 채웠습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>가족 계열사 합병: 과대평가 A(1주 5만, 10만 주)를 과소평가 B(1주 20만, 10만 주)가 1:1로 흡수(합병 후 20만 주). A 대주주인 아들이 6만 주 교부. 견주기: 상장 시가 10만 / 이익 2억 문턱 / 현금 합병대가(평가 3천·액면 5천·대가 7천, 20만 주 / 대가 4천 / 평가 6천 / 평가 100·1만 주).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§38①: 특수관계 법인 간 합병으로 대주주등(시행령 ② — 특수관계인 포함 1% 이상 또는 액면 3억 이상)이 얻은 이익을 합병등기일을 증여일로 증여재산가액, 기준금액 미만 제외. ②: 증여자가 대주주등 아닌 주주 2명 이상이면 1명으로 봄.</li>
+<li>시행령 §28③1호(주식 교부): (합병 후 1주당 평가가액 − 과대평가 법인 1주당 평가가액 × 합병 전 주식 수 ÷ 교부받은 주식 수) × 대주주등이 교부받은 주식 수. ⑤: 합병 후 1주당 가액 = (과대+과소 합병 직전 가액 합) ÷ 합병 후 주식 수, 상장이면 §63①1호가목 시가와 적은 값. <b>③2호(주식 외 재산): 합병당사법인 1주당 평가가액이 액면에 미달하고 평가가액을 넘겨 받은 때만, (액면가액 — 대가가 액면 미달이면 그 대가 — 평가가액) × 대주주등 주식 수.</b> ④: 기준금액 1호는 합병 후 주식 평가가액 30%와 3억 중 적은 금액, <b>2호는 3억</b>.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>주식 교부 갈래 맞음: 합병 후 1주 (50억+200억)÷20만 = 125,000 → (125,000 − 50,000)×6만 = 45억 / 상장 시가 10만이면 10만 / 이익 2억 &lt; 3억 제외.</li>
+<li class="red">주식 외 합병대가(③2호)는 계산기가 「별도로 계산하세요」로만 끝나 넥스가 손셈하거나 1호 산식에 억지로 넣기 쉬웠다 — 액면·대가 중 적은 값에서 평가가액을 뺀 금액 × 주식 수, 평가가액이 액면 미만일 때만, 기준금액 3억 고정(30% 갈래 없음)이라는 세 가지 다름이 있다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateMergerBenefitGiftTaxJS: considerationType non_stock 갈래 — partyValuePerShare·faceValuePerShare·considerationPerShare·largeShareholderShares로 ③2호 산식, 요건(평가 &lt; 액면·대가 &gt; 평가) 안 들면 「들지 않음」, 기준금액 3억, 「주식외대가_계산」 반환. 주식 교부 갈래 숫자는 그대로.</li>
+<li class="red">gs-backend/Code.js calculate_merger_benefit_gift_tax 칸 다섯 개 설명 추가(도구 수·지시문 길이 그대로, 검문 ✓ 78개·25,224자). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>주식 교부 A 5만·B 20만·1:1·6만 주</td><td>합병 후 125,000 → 이익 45억</td><td>맞음(③1호·⑤2호)</td></tr>
+<tr><td>상장 시가 10만 / 이익 2억</td><td>10만(적은 값) / 제외</td><td>맞음(⑤·④1호)</td></tr>
+<tr><td>현금 대가 7천·평가 3천·액면 5천·20만 주</td><td class="red">(5천 − 3천)×20만 = 4억 과세 (전엔 「별도 계산」)</td><td>맞음(③2호·④2호)</td></tr>
+<tr><td>대가 4천(액면 미달) / 평가 6천 / 평가 100·1만 주</td><td class="red">(4천 − 3천)×20만 = 2억 제외 / 들지 않음 / 4,900만 제외(3억 고정)</td><td>맞음</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, node --check 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>특수관계 법인 간 합병(시행령 ① — 직전 사업연도 개시일~합병등기일 사이 관계, 상장법인 간 합병 단서 제외)과 대주주등 판정은 사람이 가름</td><td>안내</td><td>높음</td></tr>
+<tr><td>2</td><td>⑥ 단서(상장법인: 나목 방식 차액이 가목 방식 차액보다 적으면 …)는 계산기에 없음 — 판단거리</td><td>—</td><td>중간</td></tr>
+<tr><td>3</td><td>④1호 문턱 분모 「합병 후 주식등의 평가가액」을 그 대주주가 받은 주식 평가액으로 읽은 것(복잡사건 42 그대로)</td><td>받은 주식 기준</td><td>중간</td></tr>
+<tr><td>4</td><td>②(대주주등 아닌 증여자 2명 이상 → 1명) 합산은 donorPortionRatio로 사람이 반영</td><td>칸</td><td>중간</td></tr>
+<tr><td>5</td><td>주식 + 현금 섞어 받은 합병(합병교부금)은 두 갈래를 따로 돌려 더함 — 지시문에 없음, 판단거리</td><td>두 번 호출</td><td>중간</td></tr>
+</table>
+</main></body></html>

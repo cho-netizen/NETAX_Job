@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 18:35 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 18:39 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26944,13 +26944,29 @@ function nxMdOpenWindow(title, src, opts){
     const overvaluedPreMergerShareCount = Number(p.overvaluedPreMergerShareCount) || 0;
     const sharesReceivedByOvervaluedShareholders = Number(p.sharesReceivedByOvervaluedShareholders) || 0;
     const largeShareholderSharesReceived = Number(p.largeShareholderSharesReceived) || 0;
-    if (postMergerValuePerShare <= 0 || sharesReceivedByOvervaluedShareholders <= 0 || largeShareholderSharesReceived <= 0) {
-      return { error: '합병후 1주당평가액, 과대평가법인 주주등이 교부받은 신설법인 주식수, 대주주등이 교부받은 주식수가 필요합니다.' };
+    // [2026.11.05 모의사건 219] 시행령 §28③2호 — 합병대가를 주식등 외 재산(현금 등)으로 받은 경우: 합병당사법인 1주당 평가가액이 액면가액에 미달하고 그 평가가액을 넘겨 받았을 때만,
+    //  (액면가액 — 합병대가가 액면에 미달하면 그 대가 — 1주당 평가가액) × 대주주등의 주식등 수. 기준금액은 3억(④2호, 30% 갈래 없음). 전에는 「별도로 계산하세요」로 끝났다.
+    const nonStock_ = p.considerationType === 'non_stock';
+    let thisTransactionGiftAmount, gateThreshold, nonStockInfo_ = null;
+    if (nonStock_) {
+      const pv_ = Number(p.partyValuePerShare) || 0, fv_ = Number(p.faceValuePerShare) || 0, cp_ = Number(p.considerationPerShare) || 0, ls_ = Number(p.largeShareholderShares) || 0;
+      if (!(pv_ > 0 && fv_ > 0 && cp_ > 0 && ls_ > 0)) return { error: '주식등 외 합병대가(non_stock)는 partyValuePerShare(합병당사법인 1주당 평가가액)·faceValuePerShare(액면가액)·considerationPerShare(1주당 합병대가)·largeShareholderShares(대주주등 주식 수)가 필요합니다.' };
+      const cap_ = Math.min(fv_, cp_);
+      if (!(pv_ < fv_ && cp_ > pv_)) {
+        return { 과세대상여부: false, 합병이익: 0, 납부세액: 0, 안내: '주식등 외 합병대가는 합병당사법인 1주당 평가가액(' + pv_ + '원)이 액면가액(' + fv_ + '원)에 미달하고 평가가액을 넘겨 지급받은 경우에만 §38 이익(시행령 §28③2호) — 이 사안은 그에 들지 않음.' };
+      }
+      thisTransactionGiftAmount = Math.max(0, Math.round((cap_ - pv_) * ls_));
+      gateThreshold = 300000000;
+      nonStockInfo_ = { 갈래: '주식등 외 재산(시행령 §28③2호)', 기준가액: cap_, 기준가액_근거: cp_ < fv_ ? '합병대가(액면 미달)' : '액면가액', 평가가액: pv_, 주식수: ls_, 기준금액: 300000000 };
+    } else {
+      if (postMergerValuePerShare <= 0 || sharesReceivedByOvervaluedShareholders <= 0 || largeShareholderSharesReceived <= 0) {
+        return { error: '합병후 1주당평가액, 과대평가법인 주주등이 교부받은 신설법인 주식수, 대주주등이 교부받은 주식수가 필요합니다.' };
+      }
+      const 나 = overvaluedPreMergerValuePerShare * (overvaluedPreMergerShareCount / sharesReceivedByOvervaluedShareholders);
+      thisTransactionGiftAmount = Math.max(0, Math.round((postMergerValuePerShare - 나) * largeShareholderSharesReceived));
+      const totalReceivedValue = postMergerValuePerShare * largeShareholderSharesReceived;
+      gateThreshold = Math.min(totalReceivedValue * 0.3, 300000000);
     }
-    const 나 = overvaluedPreMergerValuePerShare * (overvaluedPreMergerShareCount / sharesReceivedByOvervaluedShareholders);
-    const thisTransactionGiftAmount = Math.max(0, Math.round((postMergerValuePerShare - 나) * largeShareholderSharesReceived));
-    const totalReceivedValue = postMergerValuePerShare * largeShareholderSharesReceived;
-    const gateThreshold = Math.min(totalReceivedValue * 0.3, 300000000);
     // §43②·시행령§32의4 — 증여일부터 소급 1년 이내 동일한 합병등 거래가 더 있으면 각 이익을 합산해 기준금액을 계산.
     const priorBenefitSum = sumPriorBenefitsWithinOneYear(p.priorBenefitsWithinOneYear);
     const aggNote = priorBenefitSum > 0 ? (' (§43②에 따라 1년 이내 이전거래 이익 ' + priorBenefitSum + '원을 합산한 금액입니다.)') : '';
@@ -26988,12 +27004,12 @@ function nxMdOpenWindow(title, src, opts){
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), offshore60_(p), lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('gift', p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-11] 미납 기간 1일 율 연혁
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
-      과세대상여부: true, 합병후1주당평가액: Math.round(postMergerValuePerShare), 합병이익_전체: mgRatio_ < 1 ? mgAll_ : undefined, 증여자몫비율: mgRatio_ < 1 ? mgRatio_ : undefined, 이번거래합병이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 합병이익: giftAmount,
+      과세대상여부: true, 합병후1주당평가액: nonStock_ ? undefined : Math.round(postMergerValuePerShare), 주식외대가_계산: nonStockInfo_ || undefined, 합병이익_전체: mgRatio_ < 1 ? mgAll_ : undefined, 증여자몫비율: mgRatio_ < 1 ? mgRatio_ : undefined, 이번거래합병이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 합병이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
       과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
-      안내: '증여일은 합병등기일입니다(§38①). 대주주등이 2인 이상인 경우 각자 계산하며, 합병대가를 주식등 외 재산으로 받는 경우(1주당평가액이 액면가액에 미달하는 경우)는 이 계산기가 다루지 않으니 별도로 계산하세요.' + aggNote
+      안내: '증여일은 합병등기일입니다(§38①). 대주주등이 2인 이상인 경우 각자 계산하며, 합병대가를 주식등 외 재산으로 받는 경우(1주당평가액이 액면가액에 미달하는 경우)는 considerationType non_stock으로 셈(시행령 §28③2호, 기준금액 3억).' + aggNote
     };
   };
 
