@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 197 증여 합산 동일인</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 197 — 「증여 10년 합산의 「동일인」(상증법 §47②) — 증여일 묶음 → 증여세 계산기 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 「증여일」 묶음이 앞선 증여들을 증여자가 누구든 10년 합산해 계산기 priorGiftAmount로 넘겼습니다. §47②의 동일인은 같은 사람과(직계존속이면) 그 배우자뿐이라, 할아버지 증여에 아버지의 앞선 증여를 합치던 것을 고쳤습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「하씨」(1990년생)가 2026-03-10 현금 1억을 받음. 앞선 증여: 2020-03-01 5천만. 갈래: 지금 증여자 어머니·앞선 아버지 / 지금 할아버지·앞선 아버지 / 지금 할아버지·앞선 할머니 / 증여자 미기재 / 형·동생(기타친족) / 11년 전 아버지.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102 시행판)</h2>
+<ul>
+<li>§47②: 증여일 전 10년 이내에 동일인(증여자가 직계존속인 경우에는 그 직계존속의 배우자를 포함)으로부터 받은 증여재산가액 합계가 1천만원 이상이면 과세가액에 가산. §53: 증여재산공제는 수증자 기준 10년 한도(직계존속 전체 5천만) — 합산과 별개.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">앞선 증여의 「증여자」 칸을 보지 않고 모두 합산 — 할아버지 증여(1억)에 아버지의 5천만을 더해 과세가액 1.5억으로 계산기에 넘김(조부와 부는 동일인 아님). 형·동생도 같은 문제.</li>
+<li>부모(아버지↔어머니)는 동일인이라 합산이 맞고, 증여자 미기재는 같은 사람으로 봄 — 그대로.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js 「증여일」 묶음: 앞선 증여의 증여자가 적혀 있으면 지금 증여자와 같거나(직계존속일 때) 그 배우자(아버지↔어머니·할아버지↔할머니·외조부↔외조모·시부모·장인장모·계부모 짝)일 때만 10년 합산, 아니면 빼고 알림(「그 증여자의 §53 공제는 수증자 기준 10년 한도라 따로」).</li>
+<li>계산기·Code.js·Federation.js는 손대지 않음. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전 priorGiftAmount</th><th>고친 뒤</th></tr>
+<tr><td>① 어머니 지금·아버지 2020</td><td>5천만</td><td>5천만(동일인 — 배우자)</td></tr>
+<tr><td>② 할아버지 지금·아버지 2020</td><td>5천만</td><td>0 + 알림(동일인 아님)</td></tr>
+<tr><td>③ 할아버지 지금·할머니 2020 / ④ 증여자 미기재</td><td>5천만</td><td>5천만(그대로)</td></tr>
+<tr><td>⑤ 형 지금·동생 2020</td><td>5천만</td><td>0 + 알림</td></tr>
+<tr><td>⑥ 아버지 11년 전</td><td>0</td><td>0(10년 밖)</td></tr>
+</table>
+<p class="sub">판정 20건 모두 맞음 · 가족 지도 통과 · 176~180·188 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓(엔진 변경 없음).</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>계부·계모(직계존속의 배우자)와의 짝 — 「계부↔어머니」로 넣었으나 이혼·재혼으로 혼인 관계가 끊긴 경우는 동일인 아님(혼인 중만)</td><td>짝 표</td><td>중간</td></tr>
+<tr><td>2</td><td>증여자 이름을 「부」「父」「아빠」처럼 적으면 짝 표에 없어 같은 사람으로 봄(합산) — 보수적으로 합산되는 쪽</td><td>미지정=합산</td><td>중간</td></tr>
+<tr><td>3</td><td>동일인이 아닌 앞선 증여가 있을 때 §53 공제 잔액(수증자 기준 10년)은 계산기 relationDeductionLimit·priorRelationDeductionUsedOther로 따로 넣어야 함 — 묶음은 알림만</td><td>알림</td><td>중간</td></tr>
+<tr><td>4</td><td>§47② 단서 합산배제증여재산(§40·§41의3 등)은 앞선 증여 줄에 「합산배제」 표시 칸이 없음</td><td>없음</td><td>중간</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 증여일 묶음 설명에 「앞선증여들마다 증여자 이름(아버지·어머니…)을 꼭」 한 줄(지시문·도구 설명 금지 중이라 안 고침)</td><td>미기재=합산</td><td>—</td></tr>
+</table>
+</main></body></html>
