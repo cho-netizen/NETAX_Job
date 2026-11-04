@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 253 그 밖의 유형재산 평가</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 253 — 「선박·차량·기계장비·동산 등 그 밖의 유형재산 평가(상증법 §62·시행령 §52) 계산기 점검 — 재취득예상가액 → 장부가액 → 시가표준액 순서, 동산 처분예상가액, 서화·골동품은 감정」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_other_tangible_property_value)를 다섯 갈래로 돌려 §62①②·시행령 §52①②를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>아버지가 남긴 화물차(재취득예상가액 5천만·장부 3천만·시가표준액 2천만), 창고의 재고 상품(처분예상 800만·장부 600만), 서화 한 점.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§62①·시행령 §52①: 선박·항공기·차량·기계장비·입목은 처분할 경우 다시 취득할 수 있다고 예상되는 가액, 확인 안 되면 장부가액(취득가액 − 감가상각비), 그것도 없으면 지방세법 시가표준액. ②1호: 상품·제품 등 동산은 처분 때 취득 예상 가액, 없으면 장부가액. 2호: 판매용 아닌 서화·골동품은 전문분야별 2개 이상 감정기관 평균(감정평가심의회 감정가 미달이면 그 가액). §62③: 임대차가 있으면 §61⑤ 준용.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 차량 5천만(재취득) / 3천만(장부) / 2천만(시가표준액) 순서대로, 동산 800만·600만, 서화는 감정 필요 안내.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>차량 셋 / 동산 둘 / 서화</td><td>5천만·3천만·2천만 / 800만·600만 / 감정 안내</td><td>맞음(§52①②)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 251 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>「재취득예상가액이 확인되지 않는 경우」의 판단(중고차 시세가 있으면 그것) — 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>2</td><td>서화·골동품 감정가 평균·심의회 감정가 비교는 「서화골동품」 묶음으로</td><td>묶음</td><td>높음</td></tr>
+<tr><td>3</td><td>임대차 걸린 기계장비(§62③)는 재산평가 화면의 §66 공통 비교가 맡음 — 넥스 도구 호출에선 「임대담보평가」 묶음</td><td>묶음</td><td>중간</td></tr>
+<tr><td>4</td><td>감가상각비는 법인세법 기준(사업용)·개인 비사업용은 장부가 없을 수 있음 — 시가표준액으로</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>입목(입목에 관한 법률 적용)·영업권에 포함된 설비의 구분은 사람이</td><td>—</td><td>높음</td></tr>
+</table>
+</main></body></html>
