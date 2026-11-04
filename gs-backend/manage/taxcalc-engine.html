@@ -9339,8 +9339,12 @@
       return { 추징대상: false, 안내: '협의분할등기 후에도 시행령§155②③의 요건을 계속 충족하면 추가 신고·납부 의무가 없습니다.' };
     }
     const additionalTax = Number(p.additionalTaxAmount) || 0;
+    // [2026.11.05 모의사건 244] 시행령 §155⑲ 단서 — 등기일이 속하는 달의 말일부터 2개월 안 신고·납부. registrationDate(협의분할 등기일)를 주면 기한을 셈(토·일·공휴일은 국세기본법 §5①로 미룸).
+    //  전에는 글로만 안내해 넥스가 날짜를 손으로 셌다.
+    const regD_ = String(p.registrationDate || '').slice(0, 10);
+    const regDue_ = /^\d{4}-\d{2}-\d{2}$/.test(regD_) ? shiftTaxDeadline_(new Date(Date.UTC(Number(regD_.slice(0, 4)), Number(regD_.slice(5, 7)) + 2, 0)).toISOString().slice(0, 10)) : '';
     return {
-      추징대상: true, 추징액: additionalTax,
+      추징대상: true, 추징액: additionalTax, 등기일: regD_ || undefined, 신고납부기한: regDue_ || undefined,
       안내: '상속주택을 등기 전 법정상속분에 따라 소유한 것으로 보아 비과세를 적용받았으나, 이후(국세 부과제척기간 내) 협의분할등기한 결과 시행령§155②③의 적용을 받지 못하게 되어(시행령§155⑲ 단서), 그 등기일이 속하는 달의 말일부터 2개월 이내에 추가 양도소득세를 신고·납부해야 합니다.'
     };
   };

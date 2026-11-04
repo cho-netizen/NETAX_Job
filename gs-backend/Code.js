@@ -1920,6 +1920,7 @@ const DRIVE_TOOLS = [
         laterDividedAndRegistered: { type: 'boolean', description: '양도 뒤 상속재산을 협의분할해 등기했는지.' },
         wouldLoseExemptionAfterDivision: { type: 'boolean', description: '그 분할 결과 비과세 요건을 잃는지.' },
         additionalTaxAmount: { type: 'number', description: '비과세 없이 다시 셈한 세액 − 당초 낸 세액(원).' }
+        registrationDate: { type: 'string', description: '협의분할 등기일(YYYY-MM-DD) — 넣으면 신고·납부기한(등기일이 속하는 달의 말일부터 2개월, 시행령 §155⑲ 단서)을 셈.' },
       },
       required: ['laterDividedAndRegistered', 'wouldLoseExemptionAfterDivision']
     }
