@@ -3374,7 +3374,10 @@ const DRIVE_TOOLS = [
       creditGuaranteeAmount: { type: 'number', description: '시행령§63② — 물적담보 외에 신용보증기관의 보증이 있는 경우 그 보증금액(원). 담보채권액에서 이 금액만큼 차감한다.' },
       annualRent: { type: 'number', description: '연간 임대료(원). 임대차계약이 없으면 생략.' },
       deposit: { type: 'number', description: '임대보증금(원). 임대차계약이 없으면 생략.' },
-      ownershipRatio: { type: 'number', description: '평가대상 재산 중 피상속인·증여자가 보유한 지분율(0~1). 생략하면 1(단독소유)로 처리한다.' }
+      ownershipRatio: { type: 'number', description: '평가대상 재산 중 피상속인·증여자가 보유한 지분율(0~1). 생략하면 1(단독소유)로 처리한다.' },
+      securedDebts: { type: 'array', items: { type: 'number' }, description: '[2026.11.05] 같은 재산이 담보하는 채권이 여럿이면 각 채권액 배열(전세금·임차보증금 채권 포함) — 엔진이 합쳐 담보채권액으로(시행령 §63② 뒷부분). 주면 securedDebtAmount 대신 씀.' },
+      jointMortgage: { type: 'object', description: '[2026.11.05] 공동저당(시행령 §63①2호) — {totalDebt: 공동저당 채권액, propertyValues: [공동저당된 재산 전부의 평가기준일 가액], thisValue: 이 재산의 가액(비우면 baseValue)} → 가액 비율로 안분한 이 재산 몫을 담보채권액에 더함.' },
+      trustSecuredAmount: { type: 'number', description: '[2026.11.05] 담보신탁(§66 4호·시행령 §63①6호) — 신탁계약·수익증권이 우선수익자인 채권자에 대해 담보하는 채권액(원).' }
     }, required: ['baseValue'] }
   },
   {
