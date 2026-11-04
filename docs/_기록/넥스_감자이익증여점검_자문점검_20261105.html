@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 215 감자 이익 증여</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 215 — 「감자 이익의 증여(상증법 §39의2·시행령 §29의2) 계산기 점검 — 저가·고가 소각 산식·3억/30% 문턱·액면가 한정」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_capital_reduction_gift_tax)를 아홉 갈래로 돌려 §39의2①·시행령 §29의2①②·§43②를 맞췄습니다. 산식·문턱·액면가 한정은 모두 조문대로였고, 지분비율 칸(0~1)에 60처럼 퍼센트를 넣으면 이익이 100배가 되는 것만 보호를 넣었습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>가족 법인이 아버지 주식 1만 주를 1주당 5만(평가 10만)에 소각(저가 소각, 주주총회 결의 2026-03-10). 감자 뒤 아들 지분 60%. 견주기: 특수관계인 감자 주식 4천 주 / 차이 20%·이익 2억·4억 / 1년 안 같은 거래 1.5억 / 고가 소각(평가 3천·액면 5천·지급 8천, 평가 6천, 지급 4천).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§39의2①: 일부 주주 주식을 소각해 1호(시가보다 낮은 대가 — 소각 주주의 특수관계인인 대주주등이 얻은 이익)·2호(높은 대가 — 대주주등의 특수관계인인 소각 주주가 얻은 이익)를 얻으면 감자 주주총회 결의일을 증여일로 증여재산가액. 단서: 기준금액 미만 제외.</li>
+<li>시행령 §29의2①1호: (평가액 − 지급액) × 총 감자 주식 수 × 대주주등의 감자 후 지분비율 × (대주주등과 특수관계인의 감자 주식 수 ÷ 총 감자 주식 수). 2호: (지급액 − 평가액) × 그 주주의 감자 주식 수 — 평가액이 액면가(대가가 액면 미달이면 그 대가)에 미달할 때만. ②: 기준금액 3억, 다만 차액이 평가액의 30% 이상이면 0(2025.2.28 개정). 시행령 §28②: 대주주등 = 특수관계인 포함 1% 이상 또는 액면 3억 이상. §43②: 1년 안 같은 거래 합산. §39의2는 합산배제 아님 → 증여재산공제 적용.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>산식은 모두 맞음: 저가 (10만−5만)×1만×0.6×(1만/1만) = 3억 → 공제 5천만 → 과세표준 2.5억·산출 4천만 / 특수관계인 4천 주면 1.2억(차이 50% → 기준 0) / 20%·2억 제외·4억 과세 / 1년 안 1.5억 합산 3.5억 과세 / 고가 (8천−3천)×1만 = 5천만, 평가 6천(액면 이상)은 2호 아님, 지급 4천(액면 미달)이면 기준이 대가 4천.</li>
+<li class="red">감자 후 지분비율 칸은 0~1인데 60(%)을 넣으면 이익 300억으로 100배 — 칸 설명엔 적혀 있으나 넥스가 다른 계산기의 퍼센트 칸(shareholderOwnershipRatio 60)과 섞기 쉬움.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateCapitalReductionGiftTaxJS: 지분비율이 1을 넘으면 100으로 나눠 쓰고 안내에 「퍼센트로 보고 0.6으로 셈」을 붙임. 다른 숫자는 그대로.</li>
+<li>app/index.html 다시 만듦. 넥스 도구·지시문 그대로(검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>저가 1만 주·평가 10만·지급 5만·지분 0.6</td><td>3억 → 공제 5천만 → 산출 4천만</td><td>맞음(1호·§53)</td></tr>
+<tr><td>지분 60으로 넣음</td><td class="red">3억(0.6으로 보정, 안내) — 전엔 300억</td><td>보호</td></tr>
+<tr><td>특수관계인 감자 4천 주 / 20%·2억 / 20%·4억 / 1년 안 1.5억</td><td>1.2억 과세 / 제외 / 과세 / 3.5억 과세</td><td>맞음(②·§43②)</td></tr>
+<tr><td>고가 평가 3천·액면 5천·지급 8천 / 평가 6천 / 지급 4천</td><td>5천만 과세 / 2호 아님 / 500만 제외(기준 대가 4천)</td><td>맞음(2호 괄호)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>시행령 §29의2② 2025.2.28 개정 전(결의일 &lt; 2025.2.28) 기준금액 구조는 읽기용 판에 없어 안 넣음 — 판단거리</td><td>지금 조문</td><td>중간</td></tr>
+<tr><td>2</td><td>대주주등(1%·액면 3억) 판정·누가 특수관계인인지는 사람이 가름(안내만)</td><td>안내</td><td>높음</td></tr>
+<tr><td>3</td><td>증여재산공제 칸이 relationDeductionLimit(한도액)이라 relation을 넣어도 공제 0 — 제가 처음 그렇게 넣음. 칸 설명엔 있음</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>1호 산식의 마지막 항 「÷」(세무사님 타이핑 원문 「+」를 오타로 봄)은 10월 확인 그대로</td><td>÷</td><td>높음</td></tr>
+<tr><td>5</td><td>감자 뒤 §38(합병)·§39(증자)와 겹치는 자본거래 순서는 계산기 밖</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>

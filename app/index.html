@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 18:27 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 18:34 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -25638,10 +25638,13 @@ function nxMdOpenWindow(title, src, opts){
     const paymentPerShare = Number(p.paymentPerShare) || 0;
     if (valuePerShare <= 0) return { error: '감자한 주식등의 1주당 평가액이 필요합니다.' };
 
-    let giftAmount;
+    let giftAmount, ratioNote_ = '';
     if (caseType === 'low_price') {
       const totalReducedShares = Number(p.totalReducedShares) || 0;
-      const postReductionOwnershipRatio = Number(p.postReductionOwnershipRatio) || 0;
+      // [2026.11.05 모의사건 215] 감자후 지분비율은 0~1 — 60(%)처럼 1을 넘겨 넣으면 이익이 100배로 불어나므로 100으로 나눠 쓰고 알린다.
+      const ratioIn_ = Number(p.postReductionOwnershipRatio) || 0;
+      const postReductionOwnershipRatio = ratioIn_ > 1 ? ratioIn_ / 100 : ratioIn_;
+      if (ratioIn_ > 1) ratioNote_ = ' 감자후 지분비율 ' + ratioIn_ + '을 퍼센트로 보고 ' + postReductionOwnershipRatio + '로 셈했습니다(칸은 0~1).';
       const relatedReducedShares = Number(p.relatedReducedShares) || 0;
       if (totalReducedShares <= 0) return { error: '총 감자 주식등의 수가 필요합니다.' };
       giftAmount = Math.max(0, Math.round((valuePerShare - paymentPerShare) * totalReducedShares * postReductionOwnershipRatio * (relatedReducedShares / totalReducedShares)));
@@ -25705,7 +25708,7 @@ function nxMdOpenWindow(title, src, opts){
       과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
-      안내: '증여일은 감자를 위한 주주총회결의일 등입니다(시행령§29의2①). 대주주등의 판정기준은 §38·§39의2와 동일합니다.' + aggNote
+      안내: '증여일은 감자를 위한 주주총회결의일 등입니다(시행령§29의2①). 대주주등의 판정기준은 §38·§39의2와 동일합니다.' + aggNote + ratioNote_
     };
   };
 
