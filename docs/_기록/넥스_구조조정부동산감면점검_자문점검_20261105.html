@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 256 구조조정 부동산 감면</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 256 — 「구조조정대상 부동산 취득자 양도세 감면(조특법 §43, 1999.12.31 이전 취득) 계산기 점검 — 취득일 한정·5년 안 50% 세액감면·5년 초과분 소득공제」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_restructuring_property_reduction)를 세 갈래로 돌려 §43①의 짜임(1999.12.31 이전 취득 한정, 5년 안 양도 50% 세액감면, 5년 초과면 5년간 발생분 50% 소득공제)을 확인했습니다. 코드 변경은 없습니다. 지금은 거의 쓰이지 않는 옛 특례라 짧게 봤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>1998-06-01 구조조정대상 부동산 취득(3억). 견주기: 2000년 취득 / 2002년 양도(5년 안) / 2026년 양도(5년 초과, 기준시가 2억→3억→8억).</li>
+</ul>
+<h2>2. 법 (엔진 주석·10-19 서식 감사 원문 확인 — 조특법 §43은 읽기용 발췌에 없음)</h2>
+<ul>
+<li>§43①: 1999.12.31 이전에 취득한 구조조정대상 부동산을 취득일부터 5년 안에 양도하면 양도소득세의 50% 감면, 5년 뒤 양도하면 취득일부터 5년간 발생한 양도소득금액의 50%를 소득에서 공제.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 2000년 취득 안 됨 / 5년 안 세액감면 50% 표시 / 5년 초과는 5년 시점 기준시가 비례로 소득공제.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>2000년 취득 / 2002년 양도 / 2026년 양도</td><td>안 됨 / 세액감면 50% / 5년분 소득공제 50%</td><td>맞음(§43①)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 255 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>조특법 §43 원문이 읽기용 발췌에 없어 이번엔 엔진 주석(10-19 원문 확인)으로만 — 세무사님 쪽 원문 재확인(판단거리)</td><td>—</td><td>중간</td></tr>
+<tr><td>2</td><td>「구조조정대상 부동산」(기업 구조조정 매각분) 해당 여부는 사람이</td><td>—</td><td>높음</td></tr>
+<tr><td>3</td><td>세액감면 50%는 일반 양도세 계산기에 넘겨 산출세액에 적용 — 지시문 잇기 없음</td><td>표시</td><td>중간</td></tr>
+<tr><td>4</td><td>§133 감면 한도(연 1억·5년 2억)와 농특세는 묶음이</td><td>묶음</td><td>높음</td></tr>
+<tr><td>5</td><td>5년 시점 평가액 안분(기준시가 비례)은 §99·§98 계열과 같은 방식</td><td>비례</td><td>높음</td></tr>
+</table>
+</main></body></html>
