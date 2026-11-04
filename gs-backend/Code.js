@@ -2707,12 +2707,18 @@ const DRIVE_TOOLS = [
       properties: {
         provision: { type: 'string', enum: ['inheritance', 'gift'], description: 'inheritance=상증세법§72의2(가업상속납부유예), gift=조특법§30의7(가업승계증여세납부유예).' },
         deferredTaxAmount: { type: 'number', description: '납부유예된 세액(원).' },
-        triggerEvent: { type: 'string', enum: ['none', 'asset_disposed_40pct', 'not_engaged', 'equity_decreased', 'employment_failed', 'heir_death', 'donee_death'], description: 'none=사후관리 위반 없음, asset_disposed_40pct=가업용자산 40%이상 처분(inheritance만), not_engaged=가업 미종사, equity_decreased=지분 감소, employment_failed=고용유지요건(70%기준) 미달, heir_death=상속인 사망(inheritance만), donee_death=수증자 사망(gift만).' },
+        triggerEvent: { type: 'string', enum: ['none', 'asset_disposed_40pct', 'not_engaged', 'equity_decreased', 'employment_failed', 'heir_death', 'donee_death', 'collateral_order_violated', 'collection_risk'], description: 'none=사후관리 위반 없음, asset_disposed_40pct=가업용자산 40%이상 처분(inheritance만), not_engaged=가업 미종사, equity_decreased=지분 감소, employment_failed=고용유지요건(70%기준) 미달, heir_death=상속인 사망(inheritance만), donee_death=수증자 사망(gift만).' },
         disposalRatio: { type: 'number', description: 'triggerEvent가 asset_disposed_40pct일 때 필수 — 가업용자산 처분비율(0~1).' },
         yearsSinceBase: { type: 'number', description: 'triggerEvent가 equity_decreased일 때 필수 — 상속개시일(inheritance) 또는 증여일(gift)부터 지분 감소일까지의 경과연수.' },
         equityDecreaseRatio: { type: 'number', description: 'triggerEvent가 equity_decreased이고 yearsSinceBase가 5 초과일 때 — 이미 계산된 지분감소비율(B÷C, 0~1)을 직접 입력. equityRatioAtBase·currentEquityRatio를 입력하면 자동계산되므로 그 경우 생략 가능.' },
         equityRatioAtBase: { type: 'number', description: 'triggerEvent가 equity_decreased이고 yearsSinceBase가 5 초과일 때 — 기준일(상속개시일·증여일) 현재 지분율(0~1). currentEquityRatio와 함께 입력하면 시행령§69의3⑥·조특법시행령§27의7⑩ 산식으로 자동계산.' },
-        currentEquityRatio: { type: 'number', description: 'triggerEvent가 equity_decreased이고 yearsSinceBase가 5 초과일 때 — 지분감소사유 발생일 현재(감소 후) 지분율(0~1).' }
+        currentEquityRatio: { type: 'number', description: 'triggerEvent가 equity_decreased이고 yearsSinceBase가 5 초과일 때 — 지분감소사유 발생일 현재(감소 후) 지분율(0~1).' },
+        triggerDate: { type: 'string', description: '[2026.11.05] 사유 발생일 YYYY-MM-DD → 신고·납부기한(그달 말일부터 상속 6개월·증여 3개월, 쉬는 날 미룸, §72의2④·§30의7④).' },
+        justifiedReason: { type: 'boolean', description: '[2026.11.05] ③ 사유가 시행령의 「정당한 사유」(§69의3②·조특령)에 들면 true → 추징 없음(목록 해당 여부는 사람이 가름).' },
+        isRedeferredCase: { type: 'boolean', description: '[2026.11.05] 이 유예가 §72의2⑥에 따른 재유예(지분감소·사망 뒤 다시 받은 유예)이면 true → 5년 안 지분감소도 비율 계산(⑦)·이자율 50%.' },
+        doneeGotSpecialOrDeferral: { type: 'boolean', description: '[2026.11.05] inheritance·equity_decreased — 지분을 증여받은 수증자가 조특법 §30의6 특례 또는 §30의7 납부유예를 받았으면 true → ⑥1호 재유예 신청 가능 안내.' },
+        newHeirGotDeductionOrDeferral: { type: 'boolean', description: '[2026.11.05] inheritance·heir_death — 다시 상속받은 상속인이 가업상속공제 또는 납부유예를 받았으면 true → ⑥2호 재유예 안내.' },
+        partialRatio: { type: 'number', description: '[2026.11.05] triggerEvent가 collateral_order_violated(⑤1호 담보 명령 불이행)·collection_risk(⑤2호 국세징수법 §9①)일 때 — 세무서장이 징수하는 몫(0~1, 비우면 전부).' }
       },
       required: ['provision', 'deferredTaxAmount', 'triggerEvent']
     }
