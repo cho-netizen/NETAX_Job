@@ -154,6 +154,8 @@ try {
     else warn.push("Cloud Run 시험 서비스 문이 \"인증 없이 받기\"(화면 직결용) — 서비스 안 ID 토큰 검증(발급자·받는 이·이메일 허용 목록)으로 막음, 서비스 계정 권한은 가상사건 폴더만. 되돌리기: gcloud run services update netax-case-reader --no-allow-unauthenticated");
   }
 } catch (e) { }
+// [2026.11.04] 넥스 도구 검문(재발 방지) — 도구 수·지시문 길이가 기준을 넘거나, 없앤 도구를 가리키거나, 같은 일에 길이 둘이면 🚫(tools/nex-tool-check.js)
+try { const nx = require('./nex-tool-check.js'); nx.block.forEach((b) => block.push('넥스 도구 검문: ' + b)); nx.warn.forEach((w) => warn.push('넥스 도구 검문: ' + w)); } catch (e) { warn.push('넥스 도구 검문을 못 돌림: ' + e.message); }
 if (bytes > 9800000) warn.push('서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB — 10MB 한도 근처(큰 자료는 화면 쪽으로)');
 
 const out = ['변경 점검(올리기 전) — 기준 ' + base + ', 새로 더한 줄 ' + rows.length + '개, 서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB'];

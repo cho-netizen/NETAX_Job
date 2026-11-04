@@ -1252,6 +1252,8 @@ function ledgerFlowView_(c, L, rows) {
   };
 }
 // 넥스 도구(채팅 넥스 case_ledger · 지휘 넥스 case_ledger) — 바로 실행. 세무사님 말씀을 옮긴 값은 kind 세무사님(값 주인)·by 넥스(적은 이)
+// [2026.11.04 한 길] 세무사님 전용 칸(특수관계·시가·감정가·사전증여) — 넥스 값은 막지 않고 잠정으로 적고 여쭐 것으로 세운다(공통원칙 5절: 모르는 값에서 멈추지 않는다 / 특수관계는 세무사님 답으로만)
+var LEDGER_USER_ONLY_RE_ = /relation|relfmv|fmv|marketvalue|시가|특수관계|가족관계|감정가|appraisal|donorrelation|giftrelation|giftprior|priorgift|사전증여|합산/i;
 function ledgerToolRun_(input, by) {
   input = input || {};
   const c = typeof job_findCase_ === 'function' ? job_findCase_(String(input.caseId || '')) : null;
@@ -1260,7 +1262,12 @@ function ledgerToolRun_(input, by) {
   const kind = input.kind === '세무사님' ? '세무사님' : input.kind === '추정' ? '추정' : '넥스';
   const who = String(by || '넥스').slice(0, 6);
   let r;
-  if (d === 'set' && kind !== '세무사님') { // [2026.10.31 세 길 합치기 3] 넥스 값은 한 문(ledgerNexGate_)을 지난다
+  if (d === 'set' && kind !== '세무사님' && LEDGER_USER_ONLY_RE_.test(String(input.path || '') + ' ' + String(input.label || ''))) { // [2026.11.04 한 길] 세무사님 전용 칸 — 잠정 + 여쭐 것
+    let r1; try { r1 = ledgerSet_(c.id, { path: input.path, value: input.value, kind: '추정', by: who, file: input.file, page: input.page, quote: input.quote, why: ['세무사님 전용 칸 — 잠정(세무사님 답으로만 확정)', input.why].filter(Boolean).join(' · '), label: input.label, cands: input.cands }); } catch (e) { r1 = { ok: false, error: String(e && e.message || e) }; }
+    let r2 = null; try { r2 = ledgerAsk_(c.id, { path: input.path, label: input.label, question: '세무사님 답으로만 정하는 칸 — 넥스 잠정값 ' + String(input.value).slice(0, 60) + (input.why ? ' (근거: ' + String(input.why).slice(0, 120) + ')' : ''), cands: Array.isArray(input.cands) && input.cands.length ? input.cands : [{ v: input.value, src: String(input.file || input.why || '넥스 정황').slice(0, 80) }], needDoc: false, by: who }); } catch (e) { r2 = null; }
+    r = r1 && r1.ok ? Object.assign({}, r1, { 반영: '잠정으로 적고 여쭐 것으로 세움 — 이 칸(특수관계·시가·감정가·사전증여)은 세무사님 답으로만 확정된다', 질문: r2 && r2.ok ? '세움' : '못 세움' }) : r1;
+  }
+  else if (d === 'set' && kind !== '세무사님') { // [2026.10.31 세 길 합치기 3] 넥스 값은 한 문(ledgerNexGate_)을 지난다
     const g = ledgerNexGate_(c, input.value, ledgerNexSetBasis_(input), input.path);
     if (!g.ok) r = { ok: false, refused: true, error: '넣지 않음 — ' + g.why + (g.retry ? ' (값은 그대로, file과 quote(그 판단을 받치는 원문 문구)를 붙여 다시)' : '') };
     else r = ledgerSet_(c.id, { path: input.path, value: input.value, kind: g.kind, by: who, file: g.kind === '넥스' ? input.file : '', page: input.page, quote: input.quote, why: [input.why, g.provisional || !input.file ? g.why : ''].filter(Boolean).join(' · '), label: input.label, cands: input.cands });
