@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 234 상장주식 평가기준일</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 234 — 「상장주식 평가(상증법 §63①1호가목·시행령 §52의2) 계산기 — 전후 2개월 종가 평균·증자/합병 기간 조정 확인과 평가기준일이 공휴일일 때 그 전일(§52의2④)」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_listed_stock_value, 날짜별 종가 입력)를 일곱 갈래로 돌려 §63①1호가목·시행령 §52의2②④를 맞췄습니다. 2개월 창·증자/합병 조정·할증 구조는 맞았으나, 평가기준일이 토·일만 피하고 공휴일(어린이날·삼일절 등)은 그대로 쓰던 것을 공휴일 표(와 221의 표 밖 해 규칙)로 고쳤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2026-05-05(어린이날) 사망한 아버지의 코스피 상장주식 100주(종가 3-4 전 1만·뒤 2만). 견주기: 2026-03-01(일요일·삼일절) / 05-04(평일) / 4-10 증자 / 6-10 합병 / 2028-03-01(수요일, 표 밖 해) / 위치인자 호출.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§63①1호가목: 상장주식은 평가기준일(<b>공휴일 등 매매가 없는 날이면 그 전일</b>) 이전·이후 각 2개월 동안 공표된 매일의 최종 시세가액 평균. 시행령 §52의2②: 기준일 전 증자·합병 → 그 다음 날부터 기준일 뒤 2월까지(1호), 기준일 뒤 → 기준일 전 2월부터 그 전날까지(2호), 둘 다(3호). ④: 「매매가 없는 날」 = 관공서 공휴일·대체공휴일(1호) 등. §63③: 최대주주 할증.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>2개월 창(5-4 기준 3-4~7-4)·증자 조정(4-11~7-4, 1호)·합병 조정(3-4~6-9, 2호)·위치인자 호출 모두 맞음.</li>
+<li class="red">평가기준일이 어린이날(5-5 화요일)이면 그대로 5-5를 기준으로 창을 잡았다 — 법은 전일 5-4. 주석에도 「공휴일 목록은 없어 입력한 날을 그대로 씀」이라 적혀 있었는데, 이제 표(HolidayDates.js)와 표 밖 해 고정 공휴일 규칙이 있다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateListedStockValueJS: 평가기준일을 토·일·공휴일(표·표 밖 고정 공휴일)이면 그 전 매매일로 거듭 미루고(최대 10일), 평균계산에 「평가기준일_미룬이유」를 실음. 연혁 끄기 모드는 토·일만(전과 같음).</li>
+<li>app/index.html 다시 만듦. 넥스 도구·지시문 그대로(검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>5-5 어린이날 / 3-1 일요일 / 5-4 평일 / 2028-3-1(표 밖)</td><td class="red">5-4 / 2-27 / 5-4 / 2-29 (전엔 5-5·2-27·5-4·3-1)</td><td>맞음(가목 괄호·§52의2④)</td></tr>
+<tr><td>창 2개월 / 4-10 증자 / 6-10 합병</td><td>3-4~7-4 / 4-11~7-4(1호) / 3-4~6-9(2호)</td><td>맞음(§52의2②)</td></tr>
+<tr><td>위치인자(1.5만, 100주)</td><td>150만</td><td>맞음</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>거래소 휴장일(연말 12-31 등 공휴일 아닌 휴장)은 표에 없어 못 피함 — 종가 자료에 그 날이 없으면 평균엔 영향 없음, 기준일 자체가 휴장일인 드문 경우만</td><td>표 기준</td><td>중간</td></tr>
+<tr><td>2</td><td>2028년 뒤 설·추석 등 음력 공휴일은 221과 같이 표를 늘려야 함</td><td>고정 공휴일만</td><td>높음</td></tr>
+<tr><td>3</td><td>매매거래 정지·관리종목 기간이 낀 주식(§52의2③)은 가목 대상이 아님 — 사람이 가름(안내 있음)</td><td>안내</td><td>높음</td></tr>
+<tr><td>4</td><td>종가 자료는 거래소·증권사에서 받아 넣음 — 수집 지시문 없음</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>증여일 전 2개월 안에 증여자가 바뀌거나 여러 번 증여한 경우의 창은 사람이 가름</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>

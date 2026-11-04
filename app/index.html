@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:06 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:10 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -27872,7 +27872,12 @@ function nxMdOpenWindow(title, src, opts){
         const vd_ = String(p.valuationDate || '').slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(vd_)) return { error: '날짜별 종가로 평균을 내려면 평가기준일(valuationDate, YYYY-MM-DD)이 필요합니다.' };
         const b_ = new Date(vd_ + 'T00:00:00');
-        while (b_.getDay() === 0 || b_.getDay() === 6) b_.setDate(b_.getDate() - 1);
+        // [2026.11.05 모의사건 234] §63①1호가목 괄호·시행령 §52의2④ — 평가기준일이 공휴일·대체공휴일(1호)·토요일 등 매매가 없는 날이면 그 전일(연속이면 거듭).
+        //  전에는 토·일만 봤고 공휴일 표가 없어 어린이날(5.5)·삼일절 같은 날을 그대로 평가기준일로 썼다. 공휴일 표(~2027)와 표 밖 해의 고정 공휴일 규칙(221)을 같이 쓴다.
+        const holSet_ = refHistoryOn_() ? nxHolidays_() : {};
+        const isOff_ = function (d) { const k = f2_(d); return d.getDay() === 0 || d.getDay() === 6 || !!holSet_[k] || (refHistoryOn_() && nxFixedHolidayBeyondTable_(k)); };
+        let shifted_ = 0;
+        while (isOff_(b_) && shifted_ < 10) { b_.setDate(b_.getDate() - 1); shifted_++; }
         const s_ = new Date(b_.getTime()); s_.setMonth(s_.getMonth() - 2);
         const e_ = new Date(b_.getTime()); e_.setMonth(e_.getMonth() + 2);
         const ch_ = (Array.isArray(p.capitalChangeDates) ? p.capitalChangeDates : []).map(function (x) { return String(x).slice(0, 10); }).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x); });
@@ -27887,7 +27892,7 @@ function nxMdOpenWindow(title, src, opts){
         if (!used_.length) return { error: '평균 계산 기간(' + from_ + '~' + to_ + ') 안의 종가가 없습니다.' };
         const sum_ = used_.reduce(function (a, x) { return a + Number(x.close); }, 0);
         averageClosingPrice = sum_ / used_.length;
-        premiumParams = Object.assign({}, p, { __avgDetail: { 평가기준일_적용: bs_, 평균기간: from_ + '~' + to_, 근거: rule_, 반영일수: used_.length, 종가평균: Math.round(averageClosingPrice * 100) / 100 } });
+        premiumParams = Object.assign({}, p, { __avgDetail: { 평가기준일_적용: bs_, 평가기준일_미룬이유: bs_ !== vd_ ? '평가기준일 ' + vd_ + '이 토·일·공휴일이라 그 전 매매일(§63①1호가목 괄호·시행령 §52의2④)' : undefined, 평균기간: from_ + '~' + to_, 근거: rule_, 반영일수: used_.length, 종가평균: Math.round(averageClosingPrice * 100) / 100 } });
       }
     } else {
       averageClosingPrice = Number(p) || 0;
