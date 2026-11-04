@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:35 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:37 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26621,9 +26621,16 @@ function nxMdOpenWindow(title, src, opts){
     }
     const acq = (Number(p.acqLandStd) || 0) + (Number(p.acqBuildingStd) || 0);
     const atFirst = (Number(p.firstLandStd) || 0) + (Number(p.firstBuildingStd) || 0);
-    if (!(acq > 0 && atFirst > 0)) return { error: '취득 당시와 최초 고시(공시) 당시의 토지 기준시가(개별공시지가 × 면적)·건물 기준시가가 필요합니다(소득세법 시행령 §164' + (p.kind === 'officetel' ? '⑥' : '⑦') + ').' };
-    if (acq === atFirst) return { error: '취득 당시와 최초 고시(공시) 당시의 토지+건물 기준시가가 같습니다 — §164' + (p.kind === 'officetel' ? '⑥' : '⑦') + ' 괄호에 따라 §164⑧(재정경제부령 방법)을 준용하세요.' };
-    return { 취득당시_기준시가: Math.floor(first * acq / atFirst), 산식: (p.kind === 'officetel' ? '최초 고시 기준시가 ' : '최초 공시 주택가격 ') + first + ' × ' + acq + ' ÷ ' + atFirst + ' (소득세법 시행령 §164' + (p.kind === 'officetel' ? '⑥' : '⑦') + ')' };
+    const para_ = p.kind === 'officetel' ? '⑥' : '⑦';
+    // [2026.11.05 모의사건 284] ⑥·⑦ 뒷문장 — 최초 고시(공시) 당시 또는 취득 당시의 「나목 가액(건물 기준시가)」이 없으면 ⑤를 준용(최초 고시 기준시가 × 국세청 기준율). 전엔 「필요합니다」 오류로 멈춤.
+    const noBld_ = !(Number(p.acqBuildingStd) > 0) || !(Number(p.firstBuildingStd) > 0);
+    if (noBld_ && Number(p.baseRate) > 0) {
+      return { 취득당시_기준시가: Math.floor(first * Number(p.baseRate)), 산식: (p.kind === 'officetel' ? '최초 고시 기준시가 ' : '최초 공시 주택가격 ') + first + ' × 기준율 ' + p.baseRate + ' (소득세법 시행령 §164' + para_ + ' 뒷문장 → ⑤ 준용 — 취득·최초 고시 당시 건물 기준시가(나목)가 없어 토지+건물 비율 산식을 못 씀)', 준용: '§164⑤' };
+    }
+    // [2026.11.05 모의사건 284 보완] 건물 기준시가가 빠졌는데 기준율도 없으면 토지만으로 산식을 돌리지 않고 멈춤(토지 값만 있으면 그대로 계산해 버리던 틈).
+    if (noBld_ || !(acq > 0 && atFirst > 0)) return { error: '취득 당시와 최초 고시(공시) 당시의 토지 기준시가(개별공시지가 × 면적)·건물 기준시가가 모두 필요합니다(소득세법 시행령 §164' + para_ + ' — 분자·분모는 가목 + 나목 합계). 그때의 건물 기준시가(나목)가 아예 없으면(고시 전) ⑤ 준용 — 국세청 기준율(baseRate)을 넣으세요.' };
+    if (acq === atFirst) return { error: '취득 당시와 최초 고시(공시) 당시의 토지+건물 기준시가가 같습니다 — §164' + para_ + ' 괄호에 따라 §164⑧(재정경제부령 방법)을 준용하세요.' };
+    return { 취득당시_기준시가: Math.floor(first * acq / atFirst), 산식: (p.kind === 'officetel' ? '최초 고시 기준시가 ' : '최초 공시 주택가격 ') + first + ' × ' + acq + ' ÷ ' + atFirst + ' (소득세법 시행령 §164' + para_ + ')', 안내: '분자·분모는 각각 토지(가목 개별공시지가 × 면적) + 건물(나목) 기준시가 — 토지만 넣으면 산식이 아님. 환산취득가액(§176의2)·개산공제(§163⑥)의 바탕.' };
   };
 
   // 증자에 따른 이익의 증여 (상증세법§39, 시행령§29②) — 신주를 시가보다 낮거나 높은 가액으로 발행할 때
