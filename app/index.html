@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 16:28 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 16:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28732,15 +28732,22 @@ function nxMdOpenWindow(title, src, opts){
       const m = JUDGE_SPECIAL_[s && s.종류];
       if (!m) return { 종류: s && s.종류, 결과: '모름', 안내: '모르는 특례 종류', 근거: '' };
       let r;
-      if (s.이미 && typeof s.이미 === 'object') r = s.이미; // 화면 판정 창이 같은 확인 기능으로 먼저 낸 결과
+      // [2026.11.05 모의사건 175 「특례가 빼 주는 그 집을 파는 경우」] 한쪽 방향 특례(일반·종전주택을 양도할 때 다른 집을 주택 수에서 빼 주는 것)는 양도하는 주택이 바로 그 특례 주택이면 적용이 없다 —
+      //  시행령 §155②(상속주택)·⑥(문화유산주택)·⑦(이농·귀농주택)·⑧(수도권 밖 부득이)·⑳(장기임대주택 — 거주주택 양도)·§155의2(장기저당담보주택)·§156의2⑥·§156의3④(상속 입주권·분양권)·조특법 §99의4·§98의9·§71의2(농어촌·미분양·인구감소지역주택 — 일반주택 양도).
+      //  판정 물건의 이름이 특례 줄의 「물건」과 같거나, 판정 물건의 「성격」이 그 특례 주택이면 안 됨. (동거봉양·혼인은 먼저 파는 어느 집이든 되므로 제외, 일시적 2주택은 함수가 취득 순서로 가름)
+      const ONE_WAY_ = { '상속주택': '상속주택', '문화유산주택': '문화유산주택', '이농주택': '이농주택', '귀농주택': '귀농주택', '부득이수도권밖': '수도권 밖 부득이 취득 주택', '장기임대 거주주택': '장기임대주택(임대하는 집)', '장기저당담보': '장기저당담보주택', '상속 조합원입주권': '상속 조합원입주권', '상속 분양권': '상속 분양권', '농어촌주택(조특)': '농어촌주택·고향주택', '미분양주택(조특)': '미분양주택', '인구감소지역주택(조특)': '인구감소지역주택' };
+      const tgObj_ = list.filter(function (o) { return o && o.대상; })[0] || {};
+      const tgIs_ = s && ONE_WAY_[s.종류] && ((s.물건 && tgObj_.이름 && String(s.물건) === String(tgObj_.이름)) || (tg.성격 && String(ONE_WAY_[s.종류]).indexOf(String(tg.성격).replace(/\(.*\)/, '')) >= 0) || (tg.성격 && String(s.종류).indexOf(String(tg.성격)) >= 0));
+      if (tgIs_) r = { 적용여부: false, 안내: '양도하는 주택이 「' + ONE_WAY_[s.종류] + '」 그 자체 — 이 특례(' + m.근거 + ')는 그 집을 둔 채 일반(종전)주택을 양도할 때 그 집을 주택 수에서 빼 주는 것이라 적용 없음. 다른 주택이 있으면 2주택(순서를 바꾸거나 그 집만 남긴 뒤 파는 길 검토)' };
+      else if (s.이미 && typeof s.이미 === 'object') r = s.이미; // 화면 판정 창이 같은 확인 기능으로 먼저 낸 결과
+      else if (r) { /* 한쪽 방향 가드가 정함 */ }
       else if (s.종류 === '부득이수도권밖') { // 시행령 §155⑧ — 부득이한 사유로 취득한 수도권 밖 주택 + 일반주택, 사유 해소일부터 3년 안에 일반주택 양도
         const q = s.입력 || {};
         if (!q.isOutsideCapital || !q.acquiredForUnavoidableReason) r = { 적용여부: q.isOutsideCapital === false || q.acquiredForUnavoidableReason === false ? false : undefined, 안내: '수도권 밖 주택인지·부득이한 사유(취학·근무·질병 요양 등, 시행규칙)로 취득했는지가 필요합니다.' };
         else if (!isDate_(q.reasonResolvedDate)) r = { error: '부득이한 사유가 해소된 날이 필요합니다.' };
         else { const lim = addYearsToDateStr_(String(q.reasonResolvedDate).slice(0, 10), 3); r = T <= lim ? { 적용여부: true, 안내: '사유 해소일부터 3년 안(' + lim + '까지)에 일반주택을 양도 — 시행령 §155⑧' } : { 적용여부: false, 안내: '사유 해소일부터 3년(' + lim + ')을 넘겨 양도 — 시행령 §155⑧' }; }
       } else if (s.종류 === '상속주택' && /상속/.test(String(tg.취득원인 || ''))) {
-        // [2026.11.05 모의사건 174 「상속 → 상속주택 양도」] 시행령 §155②는 「일반주택을 양도하는 경우」의 특례 — 양도하는 주택 자체가 상속주택이면 다른 주택을 빼 주지 않는다(다른 주택이 있으면 2주택).
-        r = { 적용여부: false, 안내: '양도하는 주택이 상속주택 — 시행령 §155②는 상속주택을 둔 채 「일반주택」을 양도할 때의 특례라 적용 없음. 상속주택을 먼저 팔면 다른 주택이 주택 수에 그대로 들어감(일반주택을 먼저 팔거나, 상속주택만 남긴 뒤 파는 순서 검토)' };
+        r = { 적용여부: false, 안내: '양도하는 주택이 상속주택 — 시행령 §155②는 상속주택을 둔 채 「일반주택」을 양도할 때의 특례라 적용 없음(일반주택을 먼저 팔거나, 상속주택만 남긴 뒤 파는 순서 검토)' };
       } else {
         const fn = window[m.fn];
         try { r = typeof fn === 'function' ? fn(Object.assign({ transferDate: T, formerHouseTransferDate: T, generalHouseTransferDate: T, formerHouseAcquisitionDate: isDate_(tg.취득일) ? String(tg.취득일).slice(0, 10) : undefined,
