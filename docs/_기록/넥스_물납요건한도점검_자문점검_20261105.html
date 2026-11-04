@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 228 물납 요건·한도</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 228 — 「상속세 물납(상증법 §73·시행령 §73·§74) 계산기 점검 — 세 요건(1/2 초과·2천만 초과·금융재산 초과)과 물납 가능 세액 한도(1호·2호·비상장 ④)」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_property_in_kind_payment_eligibility)를 여덟 갈래로 돌려 §73①·시행령 §73①④⑤를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>상속재산 30억(부동산 20억·비상장주식 2억·예금 5억(금융 채무 1억)·상장주식 3억), 상속세 납부세액 6억. 견주기: 예금 1억 / 비상장 2억·20억(과세가액 28억·상속인 거주주택 순가액 6억) / 납부세액 1,500만 / 예금 7억 / 부동산·유가증권 딱 50%.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§73①: 1호 상속재산(상속인·수유자가 받은 §13 가산 증여재산 포함) 중 부동산·유가증권(국내 부동산 등 물납 충당 가능 재산) 가액이 상속재산가액의 1/2 초과, 2호 납부세액 2천만 초과, 3호 납부세액이 금융재산(시행령 ⑤ — 금전·예금·적금·보험금·어음 등, 가산 증여재산 제외) 초과 — 모두 갖춰야, 관리·처분 부적당(시행령 §71)이면 불허 가능. 시행령 §73①: 물납 가능 세액 ≤ min(1호 부동산·유가증권분 세액, 2호 납부세액 − (금융재산 − 금융 채무) − 상장 유가증권). ③: 부적당 재산으로 바뀐 분 제외. ④: 비상장주식 물납 ≤ 납부세액 − (과세가액 − 비상장주식 − 상속인 거주주택·부수토지 순가액). §74②: 충당 순서(국·공채 → 상장 → 국내 부동산 → 그 밖 유가증권 …).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 세 요건 충족(73.3% / 6억 &gt; 2천만 / 6억 &gt; 5억), 한도 1호 6억 × 22/30 = 4.4억, 2호 6억 − 4억 − 3억 &lt; 0 → 0 → 한도 0(적합한 물건이 없으면 ② 초과 허가 안내) / 예금 1억·상장 없음이면 한도 4.4억 / 비상장 2억이면 ④ 0, 20억이면 4억 / 1,500만·예금 7억·딱 50%는 요건 미달.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>30억·6억·예금 5억(채무 1억)·상장 3억</td><td>요건 충족, 한도 min(4.4억, 0) = 0</td><td>맞음(§73①·시행령 §73①)</td></tr>
+<tr><td>예금 1억·상장 없음</td><td>한도 4.4억(1호)</td><td>맞음</td></tr>
+<tr><td>비상장 2억 / 20억</td><td>④ 0 / 4억</td><td>맞음(시행령 §73④)</td></tr>
+<tr><td>1,500만 / 예금 7억 / 딱 50%</td><td>미달 ×3</td><td>맞음(①2호·3호·1호 「초과」)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 227 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>관리·처분 부적당 사유(시행령 §71 — 저당권 설정·토지와 건물 소유자 다름·묘지·결손 법인 주식 등)는 사람이 가름</td><td>안내</td><td>높음</td></tr>
+<tr><td>2</td><td>충당 순서(§74②)·수납가액(§75 — 신주 발행·감자 산식, 연부연납 중 물납 평가일)은 계산기 밖 — 판단거리</td><td>—</td><td>중간</td></tr>
+<tr><td>3</td><td>1호의 「물납 충당 가능 재산으로 한정」 — 상장주식(처분 제한 아닌 것)·국외 부동산은 빼고 realEstateSecuritiesValue에 넣어야 함(칸 설명에 있음)</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>증여세는 물납이 없음(§73은 상속세만) — 문화유산 등 §73의2는 cultural_heritage 갈래</td><td>갈래</td><td>높음</td></tr>
+<tr><td>5</td><td>신청·허가 기한(시행령 §70 → §67 준용: 신고기한까지 신청, 허가 통지, 수납일 30일)은 「연부연납」 묶음과 같이 — 지시문 잇기 없음</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
