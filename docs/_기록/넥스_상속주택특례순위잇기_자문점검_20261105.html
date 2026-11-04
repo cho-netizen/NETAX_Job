@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 192 상속주택 특례 순위</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 192 — 「상속주택 특례의 두 길 — §155②(1채)와 §155③(공동상속 소수지분) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 상속주택 특례 함수가 ③(공동상속 소수지분)을 ②의 「상속개시 당시 보유한 일반주택」 괄호 뒤에 두어 소수지분 상속인이 상속 뒤 산 집을 팔 때 탈락시켰고, 종합판정은 상속주택 특례 줄이 둘이면 둘 다 인정해 3주택을 비과세로 냈습니다. 둘 다 고쳤습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「탁씨」: 2020-04-01 형제 셋이 공동상속(탁씨 지분 30%)한 집이 있고, 2022-06-01 산 집을 2026-09-01 양도. 갈래: 최대지분자인 경우 / 상속주택이 2채(A·B 모두 단독) / 상속주택 1채 + 소수지분 1채 / (a)(b) 기본 갈래.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 20261001 시행판)</h2>
+<ul>
+<li>§155②: 상속받은 주택[피상속인이 2 이상 주택이면 1호 소유기간 → 2호 거주기간 → 3호 상속개시 당시 거주 → 4호 기준시가 순위의 1주택]과 그 밖의 주택(상속개시 당시 보유한 주택 — 2013.2.15 개정 괄호)을 각각 1개씩 소유한 1세대가 일반주택을 양도하면 1세대1주택으로 봄(단서: 상속개시 당시 같은 세대면 동거봉양 합가 전부터 보유한 주택만).</li>
+<li>§155③: §154①을 적용할 때 공동상속주택 외의 다른 주택을 양도하는 때에는 그 공동상속주택은 상속지분이 가장 큰 상속인(같으면 거주자 → 최연장자)의 소유로 봄 — ②의 괄호·단서 없음.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">소수지분 공동상속 + 상속 뒤 취득한 일반주택 → ② 괄호에 걸려 「안 됨」. ③은 일반주택 취득 시점과 무관하므로 「충족」이 맞음.</li>
+<li class="red">상속주택 2채(각각 특례 줄) → 종합판정이 둘 다 「특례로 1주택으로 봄」 → 충족. ②는 「각각 1개씩」이라 1채만 상속주택이고 나머지는 보통 주택 → 2주택 과세가 맞음.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">엔진 상속주택 특례 함수: isCoInheritedHouse && isLargestShareHolder===false면 ② 괄호·2년 증여·동거 단서보다 먼저 ③으로 「소유 주택 아님」(안내에 ③ 각 호 순위).</li>
+<li class="red">엔진 종합판정: 「상속주택」 특례가 ②로 둘 이상 충족이면 첫 줄만 인정하고 나머지는 「안 됨」(안내에 ② 각 호 순위·「각각 1개씩」). ③ 소수지분 줄은 제한 없음.</li>
+<li class="red">조립본 app/index.html 다시 만듦. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전</th><th>고친 뒤</th></tr>
+<tr><td>(a) 일반 2015 + 상속 2020 / (b) 일반 2022(상속 뒤)</td><td>충족 / 안 됨</td><td>그대로</td></tr>
+<tr><td>(c) 일반 2022 + 소수지분 공동상속</td><td>안 됨(② 괄호)</td><td>충족(③)</td></tr>
+<tr><td>(c2) 최대지분자 + 일반 2022</td><td>안 됨</td><td>안 됨(② 괄호)</td></tr>
+<tr><td>(d) 상속주택 2채</td><td>충족(둘 다 특례)</td><td>안 됨 — 둘째 줄 「안 됨」, 2주택</td></tr>
+<tr><td>(d2) 상속주택 1채 + 소수지분 1채</td><td>충족</td><td>충족(② 1채 + ③ 제외)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·181·182·185·187·190·191 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>서로 다른 피상속인(부·모)에게서 각각 1채씩 상속받은 경우에도 ② 「각각 1개씩」으로 1채만 인정하는지 — 해석례 대조 필요</td><td>1채만</td><td>중간</td></tr>
+<tr><td>2</td><td>피상속인이 2주택이었을 때 어느 집이 ② 각 호 순위의 상속주택인지는 넥스가 골라 첫 줄에 적어야 함(판정은 첫 줄 인정)</td><td>첫 줄</td><td>중간</td></tr>
+<tr><td>3</td><td>③의 지분 동률 때 거주자·최연장자 판정은 isLargestShareHolder 칸에 넥스가 녹여 넣음</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>공동상속주택이 ②의 상속주택(최대지분자)인 경우의 일반주택 취득 시점 요건은 그대로(c2)</td><td>② 괄호</td><td>높음</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: judge_tax_relief 설명의 상속주택 칸에 「소수지분이면 isCoInheritedHouse·isLargestShareHolder=false」 한 줄(지시문·도구 설명 금지 중이라 안 고침)</td><td>엔진</td><td>—</td></tr>
+</table>
+</main></body></html>
