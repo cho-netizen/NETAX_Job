@@ -96,6 +96,10 @@ function judgeCohabit_(p) {
   else notes.push('공제 = (주택가액 − 그 주택에 담보된 피상속인 채무) × 100%, 6억원 한도 → 약 ' + famWon_(공제) + (sh > 0 && sh < 1 ? '(그 상속인 지분 ' + sh + ')' : ''));
   const y = function (r) { return r.결과 === '✔' ? true : r.결과 === '✘' ? false : undefined; };
   const eng = { tenYearCohabitationRequirementMet: y(reqs[1]), tenYearOneHouseholdRequirementMet: y(reqs[2]), noHouseOrJointHeirRequirementMet: y(reqs[3]) };
+  // [2026.11.05 모의사건 299] 엔진이 새로 받는 칸(294)도 넘겨 엔진 쪽에서 한 번 더 세게 — 동거 시작일·직계비속 여부·못 산 기간(징집·취학·근무·요양만) 개월 수
+  if (시작) eng.cohabitationStartDate = 시작;
+  if (rel) eng.heirIsLinealDescendant = /직계비속|대습/.test(rel);
+  (function () { let d = 0; (p.동거못한기간 || []).forEach(function (x) { const a = jmYmd_(x.시작), b = jmYmd_(x.끝); if (a && b && b >= a && /징집|취학|근무|요양|질병/.test(String(x.사유 || ''))) d += jmDays_(a, b) + 1; }); if (d > 0) eng.nonCohabitMonths = Math.round(d / 30.4375 * 10) / 10; })();
   if (famNum_(p.주택가액)) eng.cohabitingHouseValue = Math.max(0, v); if (sh > 0 && sh <= 1) eng.cohabitingHouseShareRatio = sh;
   Object.keys(eng).forEach(function (k) { if (eng[k] === undefined) delete eng[k]; });
   return jmWrap_('동거주택 상속공제', reqs, { 센동거연수: cnt == null ? null : Math.round(cnt * 10) / 10, 공제추정: 공제, 알림: notes, 엔진칸: eng, 엔진칸뜻: '상속 계산 입력에 그대로(모르는 요건은 넣지 않음 — 계산기가 요건 미확인으로 표시)', 할일: [] });
@@ -1371,6 +1375,7 @@ function judgeFamilySupportGift_(p) {
     const e = { giftAmount: g.합, relation: rel, giftDate: g.날 || undefined, isDoneeResident: 거주 };
     if (rel === '직계존속' && 쓴관계) e.priorRelationDeductionUsedOther = 쓴관계;
     if (공제됨) { if (혼) e.isMarriageGift = true; else e.isBirthGift = true; if (쓴공제) e.priorMarriageOrBirthDeductionUsed = 쓴공제; }
+    if (혼인) e.marriageDate = 혼인; if (출생.length) e.childBirthDate = 출생[0]; // [2026.11.05 모의사건 299] 엔진(293)이 날짜로 2년을 한 번 더 가르도록
     if (조) e.isGenerationSkip = true;
     경우.push({ 이름: k + '(' + g.이름.filter(Boolean).join('·') + ') → ' + (p.수증자 || '수증자') + ' 과세 증여 ' + won(g.합) + '원' + (공제됨 ? (혼 ? ' (혼인 공제 기간 안)' : ' (출산 공제 기간 안)') : '') + (조 ? ' · 세대생략 할증' : ''), 엔진칸: e });
     if (rel === '직계존속') 쓴관계 += Math.min(g.합, Math.max(0, 50000000 - 쓴관계));
@@ -1442,6 +1447,7 @@ function judgeGiftTiming_(p) {
     if (미성년) e.isMinor = true;
     if (jmYn_(p.세대생략) === true) e.isGenerationSkip = true;
     if (혼) e.isMarriageGift = true; if (출) e.isBirthGift = true;
+    if (혼인) e.marriageDate = 혼인; if (출생.length) e.childBirthDate = 출생[0]; // [2026.11.05 모의사건 299]
     if (rel === '직계존속' && n(p.다른직계존속공제씀)) e.priorRelationDeductionUsedOther = n(p.다른직계존속공제씀);
     if (합산액 >= 10000000) { e.priorGiftAmount = 합산액; const t = 합산.reduce(function (s, g) { return s + g.낸세액; }, 0), b = 합산.reduce(function (s, g) { return s + g.과세표준; }, 0); if (t) e.priorPaidTax = t; if (b) e.priorGiftTaxableBase = b; }
     return { 증여일: d, 재산: 가액들, 증여재산가액: 합, 합산: 합산액 >= 10000000 ? 합산액 : 0, 합산에서빠진: 빠짐.map(function (g) { return g.날짜; }), 미성년: 미성년, 혼인공제기간: !!혼, 출산공제기간: !!출, 엔진칸: e };
@@ -3575,6 +3581,8 @@ function judgeGbPurchase_(p) {
   if (가 && 양도일 && 취) {
     const 바탕 = { transferPrice: 가, transferDate: 양도일, assetType: 'other', acquisitionDate: 취, acquisitionPrice: 취가, necessaryExpenses: n(p.필요경비), acquisitionCause: 상속 ? 'inheritance' : 증여 ? 'gift' : 'purchase' };
     if (상속 && 피취) { 바탕.isInheritedAsset = true; 바탕.decedentAcquisitionDate = 피취; }
+    // [2026.11.05 모의사건 299] 엔진 겉함수(298)가 같은 날짜로 40%/25%를 다시 가르도록 restrictedZone도 넘김
+    바탕.restrictedZone = { designationDate: 지정 || undefined, requestDate: 기준 || undefined, acquisitionDate: 취 || undefined, decedentAcquisitionDate: (상속 && 피취) ? 피취 : undefined, residedUntilRequest: 거주ok === true ? true : (거주ok === false ? false : undefined), isReleased: !!해제후, releaseDate: 해제 || undefined };
     if (jmYn_(p.비사업용) === true) 바탕.isNonBusinessLand = true;
     const zt = 율 === 25 ? 'restricted_zone_25' : 'restricted_zone_40';
     if (감면 || 잠정) 경우.push({ 이름: '① 법대로 — §77의3 ' + 율 + '% 감면' + (잠정 ? '(잠정)' : ''), 엔진: 'calculate_transfer_tax', 엔진칸: Object.assign({}, 바탕, { compensationType: zt }) });

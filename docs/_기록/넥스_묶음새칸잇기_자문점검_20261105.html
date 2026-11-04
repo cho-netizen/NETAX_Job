@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 299 묶음 새 칸 잇기</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 299 — 「판정 묶음 → 오늘 새로 만든 엔진 칸 잇기(동거주택 294·개발제한구역 298·혼인출산공제 293) — 묶음이 가른 사실을 엔진이 같은 날짜로 한 번 더 세게」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 판정 20건 · 넥스 도구 검문 ✓(78개·25,224자) · 세무사님 지시로 이 사건까지 하고 마무리</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>넥스가 판정 묶음(judge)으로 사실을 가른 뒤 엔진칸을 그대로 계산기에 넣을 때 — 묶음이 체크(true/false)만 넘기면 오늘 더한 날짜 칸(동거 시작일·못 산 기간, 개발제한구역 지정일·매수청구일·피상속인 취득일, 혼인신고일·출생일)은 엔진에 안 닿는다. 세 묶음의 엔진칸에 그 칸을 더해 묶음과 엔진이 같은 결론을 내는지 본다.</p>
+<h2>2. 법</h2>
+<ul><li>상증법 §23의2(294)·조특법 §77의3(298)·상증법 §53의2(293) — 각 점검서 그대로.</li></ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul><li class="red">묶음 「동거주택」·「개발제한구역」·「혼인출산공제」가 체크 칸·감면 종류만 엔진칸으로 넘겨, 오늘 엔진에 더한 날짜 칸이 비어 있었다(엔진의 재확인·안내가 안 나옴).</li></ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red"><code>judgeCohabit_</code> 엔진칸에 <code>cohabitationStartDate·heirIsLinealDescendant·nonCohabitMonths</code>(징집·취학·근무·요양 기간 합, 개월) 추가.</li>
+<li class="red"><code>judgeGbPurchase_</code> 엔진칸에 <code>restrictedZone</code>{지정일·기준일·취득일·피상속인 취득일·거주 여부·해제 뒤·해제일} 추가.</li>
+<li class="red"><code>judgeFamilySupportGift_</code>(두 자리) 엔진칸에 <code>marriageDate·childBirthDate</code> 추가. Code.js 변경 없음(묶음 입력 칸은 그대로).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>동거주택: 2012 동거·징집 18개월·직계비속</td><td class="red">묶음 엔진칸에 시작일·17.9개월·직계비속 → 엔진 12.8년 ○·공제 5억(같은 결론)</td></tr>
+<tr><td>개발제한구역: 상속(피상속인 1990 취득)·거주 계속</td><td class="red">restrictedZone → 엔진 겉함수도 40% — 묶음 결론과 같음</td></tr>
+<tr><td>혼인출산: 혼인신고 2025-06-10·증여 2026-03-01</td><td class="red">marriageDate → 엔진 안내 「혼인 공제: 2년 안」</td></tr>
+</table>
+<p>시험 t299 6건 통과 · 판정 20건 · 엔진 회귀 174건 다름 0 · 가족 지도 통과 · node --check(JudgeMore.js) 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>묶음 「금융재산공제」는 이미 최대주주 주식·차명을 뺀 순금융재산을 넘기므로 295의 새 칸은 안 넣음(0으로 둘 필요 없음)</td><td>확인 끝</td></tr>
+<tr><td>2</td><td>묶음 「제척기간」·「배우자」(없음)·「대체주택」(화면)엔 오늘 칸을 잇지 않음</td><td>다음 세션</td></tr>
+<tr><td>3</td><td>못 산 기간 개월 환산(30.4375일)은 근사 — 엔진은 개월 단위로 뺌</td><td>판단거리</td></tr>
+<tr><td>4</td><td>묶음 결론과 엔진 재확인이 어긋날 때 엔진은 묶음 체크를 우선(알림만) — 어느 쪽을 믿을지</td><td>세무사님 판단</td></tr>
+<tr><td>5</td><td>판정 회귀 20건은 새 칸이 든 사건이 없어 그대로 통과 — 회귀 사건 추가</td><td>판단거리</td></tr>
+</table>
+</main></body></html>
