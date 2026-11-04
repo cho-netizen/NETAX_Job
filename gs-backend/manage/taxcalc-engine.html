@@ -4558,7 +4558,23 @@
         if (!(isDecedentResident && p.hasSpouse) || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
         const y = +d.slice(0, 4), m = +d.slice(5, 7) + 6, due = new Date(Date.UTC(y, m, 0)); // §67① 상속개시일이 속하는 달의 말일부터 6개월
         const s = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth() + 1 + 9, 1)); s.setUTCDate(0); // 신고기한 다음날부터 9개월
-        return { 신고기한: due.toISOString().slice(0, 10), 분할기한: s.toISOString().slice(0, 10), 근거: '상증법 §19②(신고기한 다음날부터 9개월)·§67①', 안내: '이 날까지 배우자 몫을 나눠(등기·등록·명의개서) 신고해야 5억 넘는 배우자 공제를 받음 — 소송 등 부득이한 사유면 §19③으로 늘어남. ' + (p.isSpousePropertyDivided === false ? '지금 「분할 안 함」으로 넣어 5억만 공제됨' : '') };
+        // [2026.11.05 모의사건 296] 분할기한이 쉬는 날이면 다음 날(국세기본법 §5①)·③ 연장 — 시행령 §17② 1호(상속회복청구 소·분할 심판)·2호(상속인 미확정 등 세무서장 인정)면
+        //  분할기한(소송·심판은 종료일) 다음날부터 6개월, 그 6개월이 지나 §76 결정이 있으면 결정일까지. 사유 신고는 분할기한 안에(§17③). 한도식 A·D 뜻도 적는다.
+        const split_ = s.toISOString().slice(0, 10), splitSh_ = shiftTaxDeadline_(split_) || split_;
+        const addM6_ = function (d) { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); const y0 = x.getUTCFullYear(), m0 = x.getUTCMonth() + 6, d0 = x.getUTCDate(); const last = new Date(Date.UTC(y0, m0 + 1, 0)).getUTCDate(); const e = new Date(Date.UTC(y0, m0, Math.min(d0, last))); e.setUTCDate(e.getUTCDate() - 1); const raw = e.toISOString().slice(0, 10); return shiftTaxDeadline_(raw) || raw; };
+        const rt_ = p.divisionDelayReasonType ? String(p.divisionDelayReasonType) : '';
+        let ext_ = null;
+        if (rt_ === 'lawsuit' || rt_ === 'undetermined_heirs') {
+          const le_ = String(p.lawsuitEndDate || '').slice(0, 10);
+          const from_ = rt_ === 'lawsuit' && /^\d{4}-\d{2}-\d{2}$/.test(le_) ? le_ : splitSh_;
+          let until_ = addM6_(from_);
+          const dec_ = String(p.assessmentDecisionDate || '').slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dec_) && dec_ > until_) until_ = dec_;
+          ext_ = { 사유: rt_ === 'lawsuit' ? '시행령 §17②1호 — 상속회복청구 소 제기·상속재산 분할 심판 청구' + (from_ !== splitSh_ ? '(종료 ' + from_ + ')' : ' [확인 필요: 소송·심판 종료일을 lawsuitEndDate로]') : '시행령 §17②2호 — 상속인 미확정 등 세무서장 인정 사유', 연장분할기한: until_, 근거: '상증법 §19③ — ' + (rt_ === 'lawsuit' ? '소송·심판 종료일' : '분할기한') + ' 다음날부터 6개월' + (/^\d{4}-\d{2}-\d{2}$/.test(dec_) && dec_ === until_ ? '(그 뒤 §76 결정일 ' + dec_ + ')' : ''), 신고: '분할할 수 없는 사유를 입증 서류와 함께 분할기한(' + splitSh_ + ') 안에 신고해야 함(§19③ 단서·시행령 §17③)' };
+        } else if (rt_) ext_ = { 사유: 'divisionDelayReasonType 「' + rt_ + '」은 lawsuit/undetermined_heirs 중 하나여야 함' };
+        return { 신고기한: due.toISOString().slice(0, 10), 분할기한: split_, 분할기한_미룬날: splitSh_ !== split_ ? splitSh_ : undefined, 연장: ext_ || undefined, 근거: '상증법 §19②(신고기한 다음날부터 9개월)·§67①',
+          한도식_뜻: '한도 = (A 상속재산가액[자산총액 − 비과세 − 공과금·채무 − 공익 불산입, 시행령 §17①] − B 상속인 아닌 수유자 유증 + C 10년 안 상속인 사전증여) × D 배우자 법정상속분(포기자가 있어도 포기 안 한 것으로 본 비율) − E 배우자 사전증여 과세표준 · 30억 한도 · 최소 5억(④)',
+          안내: '이 날(' + splitSh_ + ')까지 배우자 몫을 나눠(등기·등록·명의개서) 신고해야 5억 넘는 배우자 공제를 받음 — 소송·심판·상속인 미확정 등 부득이한 사유면 §19③으로 6개월 연장(divisionDelayReasonType). ' + (p.isSpousePropertyDivided === false ? '지금 「분할 안 함」으로 넣어 5억만 공제됨' : '') };
       })(),
       금융재산상속공제: financialDeduction, 금융재산_안내: finNotes_.length ? finNotes_ : undefined, 동거주택상속공제: cohabitingHouseDeduction, 신고세액공제율: reportCreditRate_,
       동거주택상속공제_요건미확인: cohabitRequirementsUnverified, 동거주택상속공제_미충족요건목록: cohabitFailedRequirements, 동거주택_안내: cohabitNotes_.length ? cohabitNotes_ : undefined,
