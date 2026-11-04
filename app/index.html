@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:52 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:54 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -19832,6 +19832,30 @@ function nxMdOpenWindow(title, src, opts){
     };
   };
 
+  // [2026.11.05 모의사건 293] 혼인·출산 증여재산공제(§53의2) 날짜 가르기와 ④⑤⑥⑦ — 전엔 isMarriageGift·isBirthGift 체크만 받아 「혼인일 전후 2년」·「출생·입양일부터 2년」을 넥스가 셌고,
+  //  §4①4·5호·② 재산 배제(④)·부득이한 사유 반환(⑤ 사유 달 말일부터 3개월)·혼인 전 공제 뒤 2년 안 미혼(⑥ 2년 되는 날 달 말일부터 3개월 수정신고, 가산세 면제·이자상당액)·혼인무효(⑦ 판결 확정 달 말일부터 3개월)는 글도 없었음.
+  (function () {
+    const core_ = window.calculateGiftTaxJS;
+    const ymd_ = function (x) { const v = String(x || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; };
+    const addY_ = function (d, n) { let r = (Number(d.slice(0, 4)) + n) + d.slice(4); if (r.slice(5) === '02-29') r = r.slice(0, 5) + '02-28'; return r; };
+    const endM3_ = function (d) { return shiftTaxDeadline_(new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) + 3, 0)).toISOString().slice(0, 10)); };
+    window.calculateGiftTaxJS = function (p) {
+      p = Object.assign({}, p || {});
+      const notes = [];
+      const gd = ymd_(p.giftDate || p.giftReceivedDate), md = ymd_(p.marriageDate), bd = ymd_(p.childBirthDate);
+      if (p.isDeemedGiftUnderArt4 === true && (p.isMarriageGift || p.isBirthGift || md || bd)) { p.isMarriageGift = false; p.isBirthGift = false; notes.push('§4①4·5호·②(특수관계인 거래 이익 등 의제·추정 증여재산)에는 혼인·출산 공제를 적용하지 않음(§53의2④).'); }
+      else {
+        if (gd && md) { const ok = gd >= addY_(md, -2) && gd <= addY_(md, 2); if (p.isMarriageGift == null) p.isMarriageGift = ok; else if (p.isMarriageGift && !ok) { p.isMarriageGift = false; notes.push('증여일 ' + gd + '이 혼인신고일 ' + md + ' 전후 2년(' + addY_(md, -2) + '~' + addY_(md, 2) + ') 밖이라 혼인 공제 대상이 아님(§53의2① — 체크를 껐음).'); } if (ok) notes.push('혼인 공제: 혼인신고일 ' + md + ' 전후 2년 안 증여(' + gd + ').'); }
+        if (gd && bd) { const ok = gd >= bd && gd <= addY_(bd, 2); if (p.isBirthGift == null) p.isBirthGift = ok; else if (p.isBirthGift && !ok) { p.isBirthGift = false; notes.push('증여일 ' + gd + '이 출생일(입양신고일) ' + bd + '부터 2년(' + addY_(bd, 2) + ') 안이 아니라 출산 공제 대상이 아님(§53의2② — 체크를 껐음).'); } if (ok) notes.push('출산 공제: 출생·입양일 ' + bd + '부터 2년 안 증여(' + gd + ').'); }
+        if (p.isMarriageGift && gd && !md) { const two = addY_(gd, 2); notes.push('혼인 전 공제 — 증여일부터 2년(' + two + ') 안에 혼인하지 않으면 그 2년 되는 날이 속하는 달의 말일부터 3개월(' + endM3_(two) + ')까지 수정신고·기한후신고(§53의2⑥) — 무신고·과소신고·납부지연 가산세 면제(시행령 §46③), 신고기한 다음 날부터 신고일까지 이자상당액(§46④, 1일 10만분의 22).'); }
+        const ur = ymd_(p.unavoidableReasonDate); if (ur) notes.push('부득이한 사유(약혼자 사망·민법 §804 약혼해제 사유·국세청장 인정 사유, 시행령 §46②) 발생 ' + ur + ' → 그 달 말일부터 3개월(' + endM3_(ur) + ')까지 증여자에게 돌려주면 처음부터 증여 없던 것(§53의2⑤).');
+        const an = ymd_(p.annulmentFinalDate); if (an) notes.push('혼인무효 판결 확정 ' + an + ' → 그 달 말일부터 3개월(' + endM3_(an) + ')까지 수정신고·기한후신고하면 가산세 면제(§53의2⑦·시행령 §46③), 이자상당액은 붙음(§46④).');
+      }
+      const r = core_(p);
+      if (r && !r.error && notes.length) r.혼인출산공제_안내 = notes;
+      return r;
+    };
+  })();
   // 상속세 — gs-backend toolCalculateInheritanceTax와 동일 로직([별지 제9호서식] 기준).
   window.calculateInheritanceTaxJS = function (p) {
     // [2026.11.02 복잡사건 49] 영리법인이 유증받은 재산은 「상속인 아닌 자에게 유증한 재산」 — 공제 종합한도(§24①1호)·배우자공제 한도(§19①, 시행령 §17)에서 뺌. nonHeirBequestAmount를 따로 안 넣으면 영리법인 유증가액으로 채움

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 293 혼인·출산 공제 날짜</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 293 — 「혼인·출산 증여재산공제(상증법 §53의2) — 혼인신고일·출생일로 2년을 엔진이 가르고, ④ 의제 재산 배제·⑤ 부득이한 사유 반환·⑥ 2년 안 미혼 수정신고·⑦ 혼인무효 기한을 날짜로」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>2026.3.1. 아버지가 딸에게 1.5억 증여 — ① 딸은 2024.6.10. 혼인신고 ② 2023.12.1. 혼인신고 ③ 아직 혼인 전인데 혼인 공제를 받으려 함(언제까지 혼인해야 하고 못 하면 언제까지 수정신고?) ④ 2026.8.20. 약혼자 사망 ⑤ 2025.1.20. 출산.</p>
+<h2>2. 법 (원문을 직접 읽음 — 상증법·시행령 읽기용 판)</h2>
+<ul>
+<li>§53의2① 혼인신고일 전후 2년 안 직계존속 증여 1억 / ② 출생신고서상 출생일·입양신고일부터 2년 안 1억 / ③ 합쳐 1억 / ④ §4①4·5호·② 재산 제외 / ⑤ 부득이한 사유(시행령 §46②: 약혼자 사망·민법 §804 약혼해제 사유·국세청장 인정)로 사유 달 말일부터 3개월 안 반환 → 처음부터 없던 것 / ⑥ 혼인 전 공제 뒤 증여일부터 2년 안 미혼 → 2년 되는 날 달 말일부터 3개월까지 수정신고·기한후신고(가산세 면제 §46③, 이자상당액 §46④ 1일 10만분의 22) / ⑦ 혼인무효 판결 확정 달 말일부터 3개월.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">「2년 안」을 체크(isMarriageGift·isBirthGift)로만 받아 넥스가 날짜 셈을 해야 했고, 혼인 전 공제의 ⑥ 기한·⑤ 반환 기한·⑦·④ 배제는 글도 없었다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateGiftTaxJS</code> 앞에 덧씌운 겉함수 — <code>marriageDate·childBirthDate</code>로 2년 안/밖을 가르고(체크와 어긋나면 끄고 알림), <code>isDeemedGiftUnderArt4</code>면 공제 없음, 혼인 전 공제면 ⑥ 2년 날·수정신고 기한, <code>unavoidableReasonDate·annulmentFinalDate</code>로 ⑤⑦ 기한 → <code>혼인출산공제_안내</code>. 본 계산 함수는 손대지 않음.</li>
+<li class="red">도구 <code>calculate_gift_tax</code> 칸 5개 추가 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>혼인 2024-06-10 / 2023-12-01</td><td class="red">과세표준 0(공제 1억 + 5천만) / 1억(공제 밖 — 체크를 켰어도 끔)</td></tr>
+<tr><td>출산 2025-01-20 / 출생 전(2026-05-01)</td><td class="red">공제 ○ / ×</td></tr>
+<tr><td>혼인 전 공제</td><td class="red">2년 날 2028-03-01 · 수정신고 기한 2028-06-30 안내</td></tr>
+<tr><td>약혼자 사망 2026-08-20 / §4 의제 재산</td><td class="red">반환 기한 2026-11-30 / 공제 없음</td></tr>
+</table>
+<p>시험 t293 5건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>「혼인일 전후 2년」의 끝날(같은 날 포함)·초일 — 엔진은 양 끝 포함</td><td>세무사님 확인</td></tr>
+<tr><td>2</td><td>⑥ 이자상당액(신고기한 다음 날~신고일, 1일 10만분의 22)은 calculate_clawback_interest(provision=gift_marriage)로 두 번째 호출</td><td>두 번 호출</td></tr>
+<tr><td>3</td><td>2026.2.27 시행령 §46④ 개정 내용(율 조문 번호 바뀜?) — 발췌에 개정 표시만</td><td>원문 재확인</td></tr>
+<tr><td>4</td><td>혼인 전 공제를 받은 뒤 혼인한 날짜는 엔진에 없음(혼인했으면 marriageDate를 넣어 다시)</td><td>판단거리</td></tr>
+<tr><td>5</td><td>겉함수 방식 — 본 함수를 고친 것이 아니라 호출 때마다 앞에서 가름(다른 화면 호출도 같이 지남)</td><td>구조 확인 끝</td></tr>
+</table>
+</main></body></html>
