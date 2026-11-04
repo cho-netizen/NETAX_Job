@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:48 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -24650,10 +24650,13 @@ function nxMdOpenWindow(title, src, opts){
     const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
     const completionTime = new Date(p.newHousingCompletionDate).getTime();
     const transferTime = p.replacementHouseTransferDate ? new Date(p.replacementHouseTransferDate).getTime() : NaN;
+    // [2026.11.05 모의사건 290] 2호 전입 기한·3호 양도 기한을 날짜로 돌려주고(완성일 + 3년 같은 날 [확인 필요: 초일]), ⑤ 후단 「§154① 보유·거주기간 제한 없음」을 적는다 — 전엔 판정만.
+    const ymdR_ = function (t) { return new Date(t).toISOString().slice(0, 10); };
+    const dl3_ = ymdR_(addYears_(p.newHousingCompletionDate, 3));
     if (!(transferTime <= completionTime || transferTime <= addYears_(p.newHousingCompletionDate, 3))) {
-      return { 적용여부: false, 안내: '신축주택이 완성되기 전이거나 완성된 후 3년 이내에 대체주택을 양도해야 하는데(시행령§156의2⑤3호), 그 기한을 넘겨 적용대상이 아닙니다.' };
+      return { 적용여부: false, 양도기한: dl3_, 안내: '신축주택이 완성되기 전이거나 완성된 후 3년 이내(' + dl3_ + ')에 대체주택을 양도해야 하는데(시행령§156의2⑤3호), 그 기한을 넘겨 적용대상이 아닙니다.' };
     }
-    return { 적용여부: true, 안내: '재개발·재건축 등 사업시행기간 중 거주목적으로 취득한 대체주택이 시행령§156의2⑤의 요건(사업시행인가일 이후 취득+1년이상거주, 신축주택 완성후 3년이내 전입+1년이상거주, 완성전 또는 완성후 3년이내 양도)을 모두 충족해 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다(보유·거주기간 제한 없음).' };
+    return { 적용여부: true, 전입기한_완성후3년: dl3_, 양도기한_완성후3년: dl3_, 보유거주요건: '§154①의 2년 보유·거주기간 제한을 받지 않음(⑤ 후단) — 고가주택 12억 초과분 과세는 그대로', 안내: '재개발·재건축 등 사업시행기간 중 거주목적으로 취득한 대체주택이 시행령§156의2⑤의 요건(사업시행인가일 이후 취득+1년이상거주, 신축주택 완성후 3년이내 전입+1년이상거주, 완성전 또는 완성후 3년이내 양도)을 모두 충족해 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다(보유·거주기간 제한 없음).' };
   };
 
   // 상속주택 특례(시행령§155②)·공동상속주택 특례(§155③) — [2026.10.01 신규, 재검토103]
