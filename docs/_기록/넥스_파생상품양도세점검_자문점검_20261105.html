@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 230 파생상품 양도세</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 230 — 「파생상품등 양도소득세(소득세법 §94①5호·§103①3호·§104①13호·⑥, 시행령 §159의2·§161의2·§167의9) 계산기 점검 — 통산·250만 공제·탄력세율 연혁」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_derivative_transfer_tax)를 여섯 갈래로 돌려 조문과 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2026년 국내 코스피200 선물 이익 3천만, 해외 지수 옵션 손실 500만. 견주기: 2017년·2018년·2015년 / 국내 손실 3천만·해외 이익 1천만 / 이익 200만.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법·시행령 읽기용 판)</h2>
+<ul>
+<li>§94①5호: 파생상품등(시행령 §159의2 — 주가지수 장내파생상품, 차액결제거래(CFD), 파생결합증권, 해외 장내파생상품 등)의 거래·행위 소득(2016.1.1 시행). §103①3호: 그 소득별로 연 250만 공제(부동산·주식과 따로). §104①13호: 20%, ⑥: 시행령으로 인하 → §167의9 10%(2018.4.1~; 2016~2017 5%). 시행령 §161의2: 계좌별 반대거래 상계·권리행사·최종거래일 종료 기준, 먼저 거래한 것부터 소멸(⑤). 국내·국외 통산, 다른 양도소득과 통산 없음, 손실 이월 없음.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 통산 2,500만 − 250만 = 2,250만 × 10% = 225만(지방소득세 22.5만) / 2017년 5% / 2018년 10%(과세연도 단위; 2018.1~3월 5% 구분은 검토대상) / 2015년 과세 아님 / 통산 손실 0 / 200만은 공제 안.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>2026 국내 +3천만·해외 −500만</td><td>과세표준 2,250만 → 225만 + 지방 22.5만</td><td>맞음(§103①3호·§167의9)</td></tr>
+<tr><td>2017 / 2018 / 2015</td><td>5% / 10% / 0</td><td>맞음(연혁)</td></tr>
+<tr><td>통산 손실 / 200만</td><td>0 / 0</td><td>맞음</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 229 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>2018년은 3.31까지 5%·4.1부터 10%인데 과세연도 칸만 받아 10%로 — 거래일별로 나눠 넣는 칸 없음(판단거리, 2018년 사건만)</td><td>연도 단위</td><td>중간</td></tr>
+<tr><td>2</td><td>손익 자체(계좌별 상계·선입선출·권리행사 — 시행령 §161의2)는 증권사 손익 자료를 사람이 넣음</td><td>합계 칸</td><td>높음</td></tr>
+<tr><td>3</td><td>§159의2 범위(CFD 2021~, ETN·ELW 등)는 상품이 과세 대상인지 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>4</td><td>신고는 다음 해 5월 확정신고만(예정신고 없음, §105①3호 괄호) — 지시문 잇기 없음</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>비거주자·국외전출자의 파생상품 과세는 계산기 밖</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
