@@ -11787,19 +11787,23 @@
   //  ① 등기·등록·명의개서 등으로 상속분이 확정된 뒤에 ② 상속세 신고기한(상속개시일이 속하는 달의 말일부터 6개월, 피상속인이나 상속인이 외국에 주소를 두면 9개월 — §67①④)이 지나
   //  ③ 협의로 다시 나눠 당초 상속분보다 더 받은 몫 → 상속분이 준 상속인에게서 받은 증여(재분할일 현재 시가, §60). 기한 안 재분할·무효·취소 등 정당한 사유(시행령 §3의2 1~3호)는 증여 아님.
   function rdDeadline_(d, months) { const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)) - 1; return new Date(Date.UTC(y, m + 1 + months, 0)).toISOString().slice(0, 10); }
+  // [2026.11.05 모의사건 224·225] 신고기한 끝날이 토·일·공휴일이면 국세기본법 §5①로 다음 날까지가 기한 — 반환(§4④)·재분할(§4③) 판정도 그 미룬 날까지로 봄.
+  //  달력 날짜와 미룬 날 사이에 든 반환·재분할은 「미룬 기한 안」으로 보되 [확인 필요]를 붙인다(§5①이 신고 외 행위의 기한에도 미치는지 해석례).
+  function rdDeadlineShifted_(raw) { const s = shiftTaxDeadline_(raw); return s && s !== raw ? s : raw; }
   window.calculateInheritanceRedivisionGiftJS = function (p) {
     p = p || {};
     const id = String(p.inheritanceDate || '').slice(0, 10), rd = String(p.redivisionDate || '').slice(0, 10), isD = function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x); };
     if (!isD(id) || !isD(rd)) return { error: '상속개시일(inheritanceDate)·재분할일(redivisionDate, YYYY-MM-DD)이 필요합니다.' };
     const items = Array.isArray(p.items) ? p.items : [];
     if (!items.length) return { error: 'items([{ name, valueAtRedivision(재분할일 시가), before: {상속인: 지분}, after: {상속인: 지분} }])가 필요합니다.' };
-    const deadline = rdDeadline_(id, p.foreignAddress ? 9 : 6);
+    const deadline = rdDeadline_(id, p.foreignAddress ? 9 : 6), deadlineSh_ = rdDeadlineShifted_(deadline);
+    const edgeNote_ = deadlineSh_ !== deadline && rd > deadline && rd <= deadlineSh_ ? ' [확인 필요: 달력 기한 ' + deadline + '이 토·일·공휴일이라 국세기본법 §5①로 ' + deadlineSh_ + '까지 미룬 날 안의 재분할 — 신고 외 행위에도 §5①이 미치는지 해석례 확인]' : '';
     const reasons = { recovery_judgment: '상속회복청구의 소 확정판결로 상속인·상속재산이 바뀜(시행령 §3의2 1호)', creditor_subrogation: '채권자대위권(민법 §404)으로 법정상속분대로 등기된 것을 협의로 재분할(2호)', in_kind_denied: '신고기한 안 물납 신청을 위해 법정상속분 등기 → 물납 불허·변경명령으로 재분할(3호)', void_or_cancel: '당초 분할의 무효·취소 [확인 필요: 시행령 §3의2에 열거된 1~3호 말고도 무효·취소가 판결 등으로 확인되는지]' };
     const why = reasons[p.reason] || '';
     const registered = p.registeredBeforeRedivision !== false;
     let gift = true, judge = '';
     if (!registered) { gift = false; judge = '재분할 전 등기·등록·명의개서 등으로 상속분이 확정되지 않았음 — 처음 분할로 봄(§4③ 본문 「등기등으로 각 상속인의 상속분이 확정된 후」)'; }
-    else if (rd <= deadline) { gift = false; judge = '상속세 신고기한(' + deadline + ') 안 재분할 — 증여 아님(§4③ 단서). 대신 상속인별 상속재산이 바뀌므로 상속세 신고·배우자 실제 상속액(§19)을 바뀐 몫으로'; }
+    else if (rd <= deadlineSh_) { gift = false; judge = '상속세 신고기한(' + deadline + ') 안 재분할 — 증여 아님(§4③ 단서). 대신 상속인별 상속재산이 바뀌므로 상속세 신고·배우자 실제 상속액(§19)을 바뀐 몫으로' + edgeNote_; }
     else if (why) { gift = false; judge = why + ' — 정당한 사유라 증여 아님(§4③ 단서)'; }
     else judge = '신고기한(' + deadline + ') 지난 뒤 등기된 상속분을 협의로 다시 나눔 — 더 받은 몫은 줄어든 상속인에게서 받은 증여(§4③ 본문)';
     const flows = {}, rows = [];
@@ -11815,7 +11819,7 @@
     });
     const gifts = Object.keys(flows).map(function (key) { const pr = key.split('→'); return { 증여자: pr[0], 수증자: pr[1], 증여재산가액: gift ? Math.round(flows[key]) : 0, 넘어간_가액: Math.round(flows[key]) }; });
     return {
-      증여여부: gift, 판정: judge, 상속세_신고기한: deadline, 재분할일: rd, 재산별: rows, 증여자별: gifts,
+      증여여부: gift, 판정: judge, 상속세_신고기한: deadline, 신고기한_미룬날: deadlineSh_ !== deadline ? deadlineSh_ : undefined, 재분할일: rd, 재산별: rows, 증여자별: gifts,
       근거: '상증법 §4③ · 시행령 §3의2 · §67①④(신고기한) · §60(재분할일 시가)',
       안내: (gift ? '증여자·수증자 짝마다 calculate_gift_tax로 따로 계산(증여재산공제는 관계대로 — 형제자매 등 기타친족 1천만원 §53, 같은 증여자 10년 합산 §47②). 증여일 = 재분할일(재분할 협의·등기일 [확인 필요]). 부동산이면 받는 쪽 취득세는 지방세라 이 계산 밖. ' : '')
         + '재산마다 줄어든 상속인이 여럿이면 줄어든 몫 비율로 나눴습니다. 유류분 반환(민법 §1115)으로 넘어간 재산은 이 조(협의 재분할)가 아님 — 상속세 경정(§79)·당초 증여 취소로 따로 봄 [확인 필요].'
@@ -11909,23 +11913,27 @@
     const gd = String(p.giftDate || '').slice(0, 10), rd = String(p.returnDate || '').slice(0, 10), isD = function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x); };
     if (!isD(gd) || !isD(rd)) return { error: '증여일(giftDate)·반환일(returnDate, YYYY-MM-DD)이 필요합니다.' };
     if (rd < gd) return { error: '반환일이 증여일보다 앞섭니다.' };
-    const dl = rdDeadline_(gd, 3), dl2 = rdDeadline_(gd, 6);
+    const dl = rdDeadline_(gd, 3), dlSh_ = rdDeadlineShifted_(dl);
+    const dl2 = rdDeadline_(gd, 6), dl2Sh_ = rdDeadlineShifted_(dl2);
+    const edgeNote_ = (dlSh_ !== dl && rd > dl && rd <= dlSh_) ? ' [확인 필요: 달력 기한 ' + dl + '이 토·일·공휴일이라 국세기본법 §5①로 ' + dlSh_ + '까지 미룬 날 안의 반환 — 신고 외 행위에도 §5①이 미치는지 해석례 확인]'
+      : (dl2Sh_ !== dl2 && rd > dl2 && rd <= dl2Sh_) ? ' [확인 필요: 3개월 끝날 ' + dl2 + '이 토·일·공휴일이라 ' + dl2Sh_ + '까지로 본 반환 — 해석례 확인]' : '';
     const cash = p.assetType === 'cash', decided = !!p.decidedBeforeReturn;
     const gv = Math.max(0, Number(p.giftValue) || 0), rv = Math.max(0, Number(p.returnValue) || gv);
     const part = gv > 0 && rv > 0 ? Math.min(1, rv / gv) : 1;
     let orig = true, ret = true, judge, kind;
     if (cash) { kind = 'cash'; judge = '금전은 §4④ 괄호에서 빠짐 — 언제 돌려줘도 당초 증여는 과세, 돌려준 것도 새 증여로 봄 [확인 필요: 금전 반환을 새 증여로 과세하는지(국세청 해석·대법원 판례)]'; }
-    else if (rd <= dl && decided) { kind = 'decided'; judge = '신고기한(' + dl + ') 안 반환이지만 반환 전에 §76에 따라 과세표준·세액을 결정받음 — 처음부터 없던 것으로 보지 않음(§4④ 괄호). 당초 과세, 반환은 신고기한 안이라 과세 안 함 [확인 필요]'; ret = false; }
-    else if (rd <= dl) { kind = 'within'; orig = false; ret = false; judge = '증여세 신고기한(' + dl + ') 안 반환 — 처음부터 증여가 없었던 것으로 봄(§4④ 본문). 당초·반환 모두 과세 안 함'; }
-    else if (rd <= dl2) { kind = 'after3'; ret = false; judge = '신고기한(' + dl + ')이 지난 뒤 3개월(' + dl2 + ') 안 반환·재증여 — 당초 증여는 과세, 반환·재증여는 과세 안 함(§4④)'; }
+    else if (rd <= dlSh_ && decided) { kind = 'decided'; judge = '신고기한(' + dl + ') 안 반환이지만 반환 전에 §76에 따라 과세표준·세액을 결정받음 — 처음부터 없던 것으로 보지 않음(§4④ 괄호). 당초 과세, 반환은 신고기한 안이라 과세 안 함 [확인 필요]'; ret = false; }
+    else if (rd <= dlSh_) { kind = 'within'; orig = false; ret = false; judge = '증여세 신고기한(' + dl + ') 안 반환 — 처음부터 증여가 없었던 것으로 봄(§4④ 본문). 당초·반환 모두 과세 안 함'; }
+    else if (rd <= dl2Sh_) { kind = 'after3'; ret = false; judge = '신고기한(' + dl + ')이 지난 뒤 3개월(' + dl2 + ') 안 반환·재증여 — 당초 증여는 과세, 반환·재증여는 과세 안 함(§4④)'; }
     else { kind = 'late'; judge = '신고기한 뒤 3개월(' + dl2 + ')도 지나 반환 — 당초 증여 과세, 반환도 새 증여로 과세(§4①)'; }
+    if (edgeNote_) judge += edgeNote_;
     if (part < 1 && kind === 'within') { orig = true; judge += ' — 일부(' + Math.round(part * 100) + '%)만 반환: 반환한 몫만 없던 것, 남은 몫은 과세 [확인 필요]'; }
     const origAmt = orig ? (kind === 'within' ? Math.round(gv * (1 - part)) : gv) : 0;
     const transfer = kind === 'within' && part >= 1
       ? '양도소득세: 처음부터 증여가 없던 것이라 증여자의 당초 취득일·취득가액이 그대로 [확인 필요]'
       : '양도소득세: 돌려받은 재산의 취득일은 반환일, 취득가액은 반환일 현재 평가액(소득세법 시행령 §163⑨)으로 보는 해석이 있음 [확인 필요] — 되돌린 뒤 곧 팔면 보유기간·장기보유공제·1세대1주택 보유기간이 새로 시작될 수 있음. 배우자·직계존비속에게 받은 증여재산을 10년 안 양도하면 이월과세(§97의2) 따로 확인';
     return {
-      판정: judge, 증여세_신고기한: dl, 기한뒤_3개월: dl2, 반환일: rd,
+      판정: judge, 증여세_신고기한: dl, 신고기한_미룬날: dlSh_ !== dl ? dlSh_ : undefined, 기한뒤_3개월: dl2, 기한뒤_3개월_미룬날: dl2Sh_ !== dl2 ? dl2Sh_ : undefined, 반환일: rd,
       당초증여_과세: orig, 당초증여_과세가액: origAmt, 반환_과세: ret, 반환_과세가액: ret ? rv : 0,
       안내: [
         orig ? '당초 증여: calculate_gift_tax(증여일 ' + gd + ', 과세가액 ' + origAmt + ')' : '당초 증여: 이미 신고·납부했다면 처음부터 없던 것이므로 경정청구(국세기본법 §45의2①)로 돌려받음 [확인 필요]',

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 224 증여 반환 기한</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 224 — 「증여재산 반환·재증여(상증법 §4④) 판정 계산기 — 세 구간·금전·결정 뒤·일부 반환 확인과 신고기한 끝날이 토·일·공휴일일 때」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_gift_return)를 열 갈래로 돌려 §4④·§68①·§76을 맞췄습니다. 세 구간 판정은 맞았으나, 신고기한 끝날(증여 달 말일부터 3개월)이 일요일이면 국세기본법 §5①로 다음 날까지가 기한인데 달력 날짜로만 잘라 그 하루의 반환을 「기한 뒤」로 보던 것을 고쳤습니다(판정만 미룬 날 기준, 표시 기한은 달력 그대로 두고 「미룬날」을 따로).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>아버지가 2026-01-10 아들에게 아파트(5억)를 증여했다가 되돌림. 반환일 견주기: 04-20(기한 안) / 06-15(기한 뒤 3개월 안) / 09-01 / 현금 / 결정 뒤 / 2억만 / 2026-02-10 증여 → 기한 5-31(일요일) → 6-1 반환·6-2 반환.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102 시행판·국세기본법)</h2>
+<ul>
+<li>§4④: 증여재산(금전 제외)을 합의로 §68 신고기한까지 증여자에게 반환하면(반환 전 §76 결정받은 경우 제외) 처음부터 증여가 없었던 것으로, 신고기한 뒤 3개월 안 반환·재증여는 그 반환·재증여에 증여세를 안 매김. §68①: 증여받은 날이 속하는 달 말일부터 3개월. 국세기본법 §5①: 신고 등 기한이 토·일·공휴일이면 다음 날.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>세 구간·금전·결정 뒤·일부 반환 모두 조문대로.</li>
+<li class="red">2026-02-10 증여의 신고기한 끝날 2026-05-31은 일요일 — §5①로 6-1까지가 기한인데, 6-1 반환을 「기한 뒤 3개월 안」(당초 증여 과세)으로 봤다. 3개월 끝날도 같은 식.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html: rdDeadlineShifted_(기한 이동 함수 적용) 추가, calculateGiftReturnJS 판정은 미룬 날까지로, 달력 기한과 미룬 날 사이의 반환엔 「[확인 필요: §5①이 신고 외 행위의 기한에도 미치는지 해석례]」를 붙임. 결과에 신고기한_미룬날·기한뒤_3개월_미룬날 칸. 같은 도우미를 225 재분할 계산기도 씀.</li>
+<li>app/index.html 다시 만듦. 넥스 도구·지시문 그대로(검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>04-20 / 06-15 / 09-01 반환</td><td>둘 다 없음 / 당초만 과세 / 둘 다 과세</td><td>맞음(④ 본문·후단·§4①)</td></tr>
+<tr><td>현금 / 결정 뒤 / 2억만</td><td>둘 다 과세 / 당초 과세 / 남은 3억 과세</td><td>맞음(괄호·[확인 필요] 그대로)</td></tr>
+<tr><td>기한 5-31(일) → 6-1 반환 / 6-2 반환</td><td class="red">기한 안(확인 필요 표시) / 기한 뒤 3개월 안 — 전엔 6-1도 기한 뒤</td><td>맞음(국기법 §5①)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀(재분할 두 줄 포함) 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>§5①이 「신고」가 아닌 반환 행위의 기한(④ 「신고기한까지 반환」)에도 미치는지 — 해석례 확인(경계 하루에만 영향)</td><td>미룬 날까지 + 확인 필요</td><td>중간</td></tr>
+<tr><td>2</td><td>금전 반환을 새 증여로 과세하는지 [확인 필요]는 복잡사건 56 그대로</td><td>둘 다 과세</td><td>중간</td></tr>
+<tr><td>3</td><td>일부 반환 때 남은 몫만 과세 [확인 필요] 그대로</td><td>비율</td><td>중간</td></tr>
+<tr><td>4</td><td>반환일은 등기·명의 이전을 마친 날 — 사람이 넣음</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>되돌린 재산을 곧 팔 때 취득일·취득가액(소득세법 시행령 §163⑨) [확인 필요] 그대로</td><td>안내</td><td>중간</td></tr>
+</table>
+</main></body></html>
