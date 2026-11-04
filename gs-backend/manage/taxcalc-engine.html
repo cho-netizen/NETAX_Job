@@ -13644,6 +13644,45 @@
       const hit = (ts || []).filter(function (t) { return t && t.assetType !== 'house' && t.assetType !== 'presale_right' && !t.isFarmland && !t.isReconstructionRights; });
       return hit.length ? '부가가치세 따로 확인 — 주택 아닌 부동산' + (ts.length > 1 ? '(' + hit.length + '건)' : '') + '에 건물(상가·사무실 등)이 함께 넘어가고 판 사람이 사업자이면 건물분 부가가치세가 생길 수 있습니다(토지분은 면세, 사업 포괄양도는 공급으로 보지 않음 — 부가가치세법 원문 확인). 이 계산기는 계산하지 않습니다.' : '';
     };
+    // [2026.11.05 모의사건 298] 개발제한구역 매수·협의매수 감면(조특법 §77의3)을 날짜로 — restrictedZone {designationDate 지정일, requestDate 매수청구일·협의매수일(② 해제 뒤면 사업인정고시일),
+    //  acquisitionDate(비우면 자산 취득일), decedentAcquisitionDate(상속 토지는 피상속인 취득일 — ③), residedUntilRequest(소재지 거주 — 시행령 거주자), isReleased(② 해제 뒤 수용), releaseDate(해제일)}를 주면
+    //  ①1호(지정일 이전 취득 40%)·2호(매수청구일부터 20년 이전 취득 25%)를 가려 compensationType을 채우고(비어 있을 때만), ② 단서(해제일부터 1년 안 사업인정고시 — 경제자유구역 등은 다름 [확인 필요])를 본다. 전엔 40/25를 넥스가 골랐음.
+    (function () {
+      const sZ = window.calculateTransferTaxSingleJS, mZ = window.calculateTransferTaxMultiJS;
+      const ymdZ = function (x) { const v = String(x || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; };
+      const addYZ = function (d, n) { let r = (Number(d.slice(0, 4)) + n) + d.slice(4); if (r.slice(5) === '02-29') r = r.slice(0, 5) + '02-28'; return r; };
+      function applyZone_(t) {
+        const z = t && t.restrictedZone && typeof t.restrictedZone === 'object' ? t.restrictedZone : null;
+        if (!z) return null;
+        const notes = [];
+        const des = ymdZ(z.designationDate), req = ymdZ(z.requestDate), acq = ymdZ(z.decedentAcquisitionDate) || ymdZ(z.acquisitionDate) || ymdZ(t.acquisitionDate), rel = ymdZ(z.releaseDate);
+        if (ymdZ(z.decedentAcquisitionDate)) notes.push('상속받은 토지 — 피상속인 취득일 ' + acq + '을 취득일로 봄(§77의3③).');
+        let type = '';
+        if (z.residedUntilRequest === false) notes.push('취득일부터 매수청구일(협의매수일·사업인정고시일)까지 소재지(시행령 — 토지 소재 시·군·구·연접 등)에 거주한 거주자가 아니라 감면 없음(§77의3①②).');
+        else if (!req || !acq) notes.push('매수청구일(requestDate)·취득일이 있어야 40%/25%를 가름 — compensationType을 직접 넣거나 날짜를 줄 것.');
+        else if (des && acq <= des) { type = 'restricted_zone_40'; notes.push('지정일 ' + des + ' 이전 취득(' + acq + ') → 40%(①1호' + (z.isReleased ? '·②1호' : '') + ').'); }
+        else if (acq <= addYZ(req, -20)) { type = 'restricted_zone_25'; notes.push('매수청구일 ' + req + '부터 20년 이전(' + addYZ(req, -20) + ') 취득(' + acq + ') → 25%(①2호' + (z.isReleased ? '·②2호' : '') + ').'); }
+        else notes.push('취득일 ' + acq + '이 지정일 이후이고 매수청구일부터 20년 이전도 아니라 §77의3 감면 없음.');
+        if (type && z.isReleased === true) {
+          if (rel && req && req > addYZ(rel, 1)) { type = ''; notes.push('해제 뒤 수용인데 사업인정고시일 ' + req + '이 해제일 ' + rel + '부터 1년(' + addYZ(rel, 1) + ')을 지나 ② 단서로 감면 없음 [확인 필요: 경제자유구역 등 지정 지역은 다른 기간].'); }
+          else notes.push('개발제한구역 해제 뒤 협의매수·수용(②) — 해제일부터 1년 안 사업인정고시 요건' + (rel ? '(해제 ' + rel + ')' : ' [해제일 없음 — 확인]') + '.');
+        }
+        notes.push('감면신청서 + 매수청구·협의매수 확인 서류를 양도한 해 신고(예정신고 포함)와 함께 제출(시행령). 2025년 이후 양도분은 §77·§77의2·§77의3 따로 과세기간 2억 한도(§133②).');
+        const t2 = Object.assign({}, t);
+        if (!t2.compensationType && type) t2.compensationType = type;
+        else if (t2.compensationType && type && t2.compensationType !== type) notes.push('넣은 compensationType(' + t2.compensationType + ')과 날짜로 가른 ' + type + '이 다름 — 넣은 값을 그대로 씀 [확인].');
+        return { t: t2, notes: notes, type: type };
+      }
+      if (typeof sZ === 'function') window.calculateTransferTaxSingleJS = function (t) {
+        const a = applyZone_(t); if (!a) return sZ(t);
+        const r = sZ(a.t); if (r && !r.error) r.개발제한구역_판정 = { 감면구분: a.type || '없음', 안내: a.notes }; return r;
+      };
+      if (typeof mZ === 'function') window.calculateTransferTaxMultiJS = function (ts, fp) {
+        if (!Array.isArray(ts) || !ts.some(function (t) { return t && t.restrictedZone; })) return mZ(ts, fp);
+        const outs = [], ts2 = ts.map(function (t, i) { const a = applyZone_(t); if (!a) return t; outs.push({ 거래: i + 1, 감면구분: a.type || '없음', 안내: a.notes }); return a.t; });
+        const r = mZ(ts2, fp); if (r && !r.error) r.개발제한구역_판정 = outs; return r;
+      };
+    })();
     const s4 = window.calculateTransferTaxSingleJS, m4 = window.calculateTransferTaxMultiJS, k4 = window.calculateStockTransferTaxJS;
     if (typeof s4 === 'function') window.calculateTransferTaxSingleJS = function (t) { const r = s4(t); try { const w = r && !r.error && vatMsg_([t]); if (w) r.다른세목_확인 = w; } catch (e) {} return r; };
     if (typeof m4 === 'function') window.calculateTransferTaxMultiJS = function (ts, fp) { const r = m4(ts, fp); try { const w = r && !r.error && Array.isArray(ts) && vatMsg_(ts); if (w) r.다른세목_확인 = w; } catch (e) {} return r; };
