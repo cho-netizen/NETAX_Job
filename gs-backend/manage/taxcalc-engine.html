@@ -4279,7 +4279,16 @@
     const spouseLimit = spouseInheritanceLimit(estateValueForSpouseLimit, p.nonHeirBequestAmount, p.giftToHeirsWithin10Years, Number(p.spouseLegalShareRatio) || 0, p.spouseTaxableBaseOfPriorGift);
     const spouseDeduction = (isDecedentResident && p.hasSpouse) ? spouseInheritanceDeduction(p.spouseActualInheritedAmount, spouseLimit, p.isSpousePropertyDivided) : 0;
 
-    const financialDeduction = isDecedentResident ? financialAssetInheritanceDeduction(p.netFinancialAssets) : 0;
+    // [2026.11.05 모의사건 295] §22② — 최대주주등(시행령 §19②: 최대주주·최대출자자와 특수관계인)이 보유한 주식등과 §67 신고기한까지 신고하지 않은 타인 명의 금융재산은 금융재산에 넣지 않음. 전엔 순금융재산 하나만 받아 넥스가 빼야 했음.
+    //  금융채무는 금융회사등에 대한 채무(시행령 §19①·③ — 입증된 것)만 — 사채·개인 채무는 금융채무가 아님.
+    const finEx1_ = Math.max(0, Number(p.majorShareholderStockInFinancial) || 0), finEx2_ = Math.max(0, Number(p.unreportedNomineeFinancialAssets) || 0);
+    const netFinIn_ = Number(p.netFinancialAssets) || 0;
+    const netFinAdj_ = Math.max(0, netFinIn_ - finEx1_ - finEx2_);
+    const finNotes_ = [];
+    if (finEx1_ > 0) finNotes_.push('최대주주등 보유 주식등 ' + finEx1_.toLocaleString('ko-KR') + '원은 금융재산에서 뺌(§22②·시행령 §19②).');
+    if (finEx2_ > 0) finNotes_.push('신고기한까지 신고하지 않은 타인 명의 금융재산 ' + finEx2_.toLocaleString('ko-KR') + '원은 뺌(§22② 뒷부분).');
+    if (finNotes_.length) finNotes_.push('순금융재산 ' + netFinIn_.toLocaleString('ko-KR') + ' → ' + netFinAdj_.toLocaleString('ko-KR') + '원. 공제 = 2천만 이하 전액 / 초과면 20%와 2천만 중 큰 금액, 2억 한도(§22①). 금융채무는 금융회사등 채무만(시행령 §19).');
+    const financialDeduction = isDecedentResident ? financialAssetInheritanceDeduction(netFinAdj_) : 0;
     // §23의2①1~3호 — 동거주택상속공제는 3개 요건을 모두 갖춘 경우에만 적용된다. 세부요건 플래그를
     // 하나라도 제공하면 그 3개(AND)로 판정하고, 하나도 안 주면(구버전 호환) hasCohabitingHouseDeduction
     // 단일 플래그를 그대로 쓴다. 세부요건 중 일부만 지정되면 요건미확인으로 취급(안내에 반영).
@@ -4551,7 +4560,7 @@
         const s = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth() + 1 + 9, 1)); s.setUTCDate(0); // 신고기한 다음날부터 9개월
         return { 신고기한: due.toISOString().slice(0, 10), 분할기한: s.toISOString().slice(0, 10), 근거: '상증법 §19②(신고기한 다음날부터 9개월)·§67①', 안내: '이 날까지 배우자 몫을 나눠(등기·등록·명의개서) 신고해야 5억 넘는 배우자 공제를 받음 — 소송 등 부득이한 사유면 §19③으로 늘어남. ' + (p.isSpousePropertyDivided === false ? '지금 「분할 안 함」으로 넣어 5억만 공제됨' : '') };
       })(),
-      금융재산상속공제: financialDeduction, 동거주택상속공제: cohabitingHouseDeduction, 신고세액공제율: reportCreditRate_,
+      금융재산상속공제: financialDeduction, 금융재산_안내: finNotes_.length ? finNotes_ : undefined, 동거주택상속공제: cohabitingHouseDeduction, 신고세액공제율: reportCreditRate_,
       동거주택상속공제_요건미확인: cohabitRequirementsUnverified, 동거주택상속공제_미충족요건목록: cohabitFailedRequirements, 동거주택_안내: cohabitNotes_.length ? cohabitNotes_ : undefined,
       감정평가수수료공제: appraisalFeeDeduction, 재해손실공제: disasterLossDeduction,
       장례비용공제: funeralDeduction, 장례비용_과세가액반영액: funeralAppliedToEstate_, 공과금등_상속재산초과액: Math.max(0, funeralDeduction - estateBeforeGift_), 장례비용공제_일반분: funeralGeneralDeduction, 장례비용공제_봉안시설분: funeralNicheDeduction,

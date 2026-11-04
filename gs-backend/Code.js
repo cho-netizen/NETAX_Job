@@ -965,6 +965,8 @@ const DRIVE_TOOLS = [
         elderlyHeirCount: { type: 'integer', description: '§20①3호 — 상속인(배우자는 제외한다) 및 동거가족 중 65세 이상인 사람 수 (1인당 5천만원 공제). 배우자는 65세 이상이더라도 이 수에 포함하지 말 것. 자녀공제(1호)를 받는 65세 이상 자녀도 넣지 말 것(§20① 후단 합산은 1호+2호, 4호+1~3호·배우자공제뿐).' },
         disabledHeirRemainingYears: { type: 'number', description: '§20①4호 상속인(배우자 포함)·동거가족 중 장애인(소득세법 시행령 §107①)의 상속개시일 현재 통계청 기대여명 연수 합계(1년 미만은 1년, 1년당 1천만원) — 자녀·미성년자·연로자·배우자공제와 함께 받음.' },
         netFinancialAssets: { type: 'number', description: '순금융재산가액(금융재산-금융채무, 원). 2천만원 이하면 전액, 초과하면 20%와 2천만원 중 큰 금액(2억원 한도)이 공제된다. [2026.11.02 사건 51] 금융재산은 금융회사등이 취급하는 예금·적금·주식·채권·수익증권 등(시행령 §19①) — 가상자산은 이 목록에 없어 넣지 않음, 최대주주 주식도 뺌(§22②).' },
+        majorShareholderStockInFinancial: { type: 'number', description: '[2026.11.05] netFinancialAssets에 들어 있는 최대주주등(최대주주·최대출자자와 특수관계인, 시행령 §19②) 보유 주식등의 가액(원) — §22②로 금융재산에서 뺀다.' },
+        unreportedNomineeFinancialAssets: { type: 'number', description: '[2026.11.05] netFinancialAssets에 들어 있는, §67 신고기한까지 신고하지 않은 타인 명의 금융재산(원) — §22② 뒷부분으로 뺀다.' },
         hasCohabitingHouseDeduction: { type: 'boolean', description: '동거주택상속공제 구버전 단일 플래그 — 아래 3개 세부요건 플래그를 하나라도 넣으면 이 값 대신 그 3개(AND)로 정확히 판정한다. 세부요건을 모른다면 이 값 대신 반드시 아래 3개를 개별 확인해서 넣을 것을 권장한다.' },
         tenYearCohabitationRequirementMet: { type: 'boolean', description: '§23의2①1호 — 피상속인과 상속인(직계비속 등)이 상속개시일부터 소급 10년 이상(상속인이 미성년자였던 기간은 제외) 계속하여 한 주택에서 동거했는지. false면 동거주택상속공제 전액 배제.' },
         tenYearOneHouseholdRequirementMet: { type: 'boolean', description: '§23의2①2호 — 피상속인과 상속인이 상속개시일부터 소급 10년 이상 계속하여 1세대를 구성하면서 1세대1주택에 해당했는지(무주택기간도 1세대1주택 기간에 포함). false면 공제 전액 배제.' },
