@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 229 상생임대 승계 계약</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 229 — 「상생임대주택 특례(소득세법 시행령 §155의3) 판정 — 체결 기간·월력 기간·5% 증가율(전환 환산)·양도기한 확인과 「취득으로 승계된 임대차는 직전 계약 아님」·칸 이름 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">1세대1주택 판정 도구의 mutualLease 칸(→ 엔진 calculateMutualGrowthLeaseExclusionJS)을 열한 갈래로 돌려 §155의3①~③을 맞췄습니다. 기간·증가율·양도기한은 맞았으나, ①1호 괄호(주택 취득으로 임대인 지위가 승계된 계약은 직전임대차계약이 아님)가 없었고, 넥스에게 보이는 도구 설명엔 칸 이름이 없어(없는 도구 이름만 가리킴) 둘을 고쳤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>1주택 세대가 2022-03-01~2024-02-29 보증금 3억으로 임대한 뒤 2024-02-10 3억 1,500만(5%)으로 2024-03-01~2026-02-28 상생 계약, 2027-06-01 양도. 견주기: 3억 1,600만 / 양도 2028-01-01 / 상생 종료 2027-02-28·양도 2028-02-28·03-01 / 직전 17개월 / 체결 2021-12-19 / 월세 전환(전환율 없음·5%로 4.2억·3.02억) / 전 소유자 계약 승계.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>§155의3①: 1주택 세대가 1호 직전임대차계약(<b>취득으로 임대인 지위가 승계된 계약 제외</b>) 대비 보증금·임대료 증가율 5% 이내 계약을 2021.12.20~2026.12.31 체결, 2호 직전 임대 1년 6개월 이상, 3호 상생 임대 2년 이상이면, 임대 종료일부터 1년과 2029.12.31 중 빠른 날(2026.12.31 이전 종료면 2027.12.31)까지 양도할 때 §154①·§155⑳1호·§159의4의 거주기간 제한 없음. ②: 보증금↔월세 전환은 민간임대주택법 §44④ 전환율. ③: 월력 계산, 1개월 미만은 1개월. ④: 임차인 사정으로 새 계약이면 합산(시행규칙 요건).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>기간·증가율·양도기한 맞음: 5% 딱 → 적용, 5% 넘음 → 안 됨, 종료 2026-02-28 → 2027-12-31까지, 종료 2027-02-28 → 2028-02-28까지(03-01은 안 됨), 직전 2022-03-01~2023-07-30(16개월 30일 → 17개월) 미달, 2021-12-19 체결 → 밖, 전환은 전환율 없으면 판단 대기·4.2억(40%) 안 됨·3.02억(0.7%) 적용.</li>
+<li class="red">전 소유자가 맺은 임대차를 안고 산 집에서 그 계약을 직전임대차계약으로 넣으면 적용으로 나왔다 — ①1호 괄호로 제외돼야 함.</li>
+<li class="red">1세대1주택 판정 도구의 mutualLease 설명이 「calculate_mutual_growth_lease_exclusion과 같은 칸」인데 그 이름의 도구는 넥스 목록에 없어 칸 이름을 알 길이 없었다(도구 부족 — 칸 이름을 설명에 적어 해결).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateMutualGrowthLeaseExclusionJS: priorLeaseSucceededOnAcquisition이 true면 「직전임대차계약 아님」으로 적용 불가 안내(취득 뒤 새로 맺은 1년 6개월 계약부터).</li>
+<li class="red">gs-backend/Code.js 1세대1주택 판정 도구 mutualLease 설명에 칸 이름 전부(체결일·직전·상생 기간·보증금·월세·전환율·승계 여부)를 적음 — 도구 수·지시문 길이 그대로(검문 ✓ 78개·25,224자). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>5% 딱 / 5% 초과 / 체결 2021-12-19</td><td>적용 / 안 됨 / 밖</td><td>맞음(①1호)</td></tr>
+<tr><td>종료 2026-02-28·양도 2028-01-01 / 종료 2027-02-28·양도 02-28·03-01</td><td>안 됨 / 적용·안 됨</td><td>맞음(① 양도기한)</td></tr>
+<tr><td>직전 17개월 / 전환(없음·40%·0.7%)</td><td>안 됨 / 대기·안 됨·적용</td><td>맞음(②③)</td></tr>
+<tr><td>전 소유자 계약 승계</td><td class="red">안 됨(전엔 적용)</td><td>맞음(①1호 괄호)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, node --check 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>④ 임차인 사정으로 새 계약을 맺어 기간을 합산하는 경우(시행규칙 요건)는 칸이 없음 — 합산한 기간을 시작·종료일로 넣음(판단거리)</td><td>칸</td><td>중간</td></tr>
+<tr><td>2</td><td>이 특례는 거주요건만 면제 — 보유기간·1주택 판정은 1세대1주택 묶음이 따로(엔진 안내에 있음)</td><td>안내</td><td>높음</td></tr>
+<tr><td>3</td><td>전환율(주택임대차보호법 §7의2 — 연 10%와 기준금리+2% 중 낮은 것)의 「계약 당시」 값은 사람이 넣음</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>특례적용신고서(별지 83호의4)·계약서 첨부(⑤)는 할 일로만 — 지시문 잇기 없음</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>직전 계약이 승계 계약이면 취득 뒤 첫 계약이 「직전」, 그 다음이 「상생」 — 두 계약을 다시 넣어 돌리는 것은 사람이</td><td>안내</td><td>높음</td></tr>
+</table>
+</main></body></html>

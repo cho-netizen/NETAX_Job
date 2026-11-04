@@ -9473,6 +9473,11 @@
     if (!p.mutualLeaseContractDate || !p.priorLeaseStartDate || !p.priorLeaseEndDate || !p.mutualLeaseStartDate || !p.mutualLeaseEndDate || !p.transferDate) {
       return { error: '직전임대차 시작일·종료일, 상생임대차계약 체결일·시작일·종료일, 양도일이 모두 필요합니다.' };
     }
+    // [2026.11.05 모의사건 229] 시행령 §155의3①1호 괄호 — 「해당 주택의 취득으로 임대인의 지위가 승계된 경우의 임대차계약」은 직전임대차계약이 아님.
+    //  전 소유자가 맺은 임대차를 안고 산 집은 그 계약을 직전 계약으로 못 쓰고, 취득 뒤 1세대가 새로 맺은 계약부터 센다. 전에는 이 칸이 없어 승계 계약도 직전 계약으로 봤다.
+    if (p.priorLeaseSucceededOnAcquisition === true) {
+      return { 적용여부: false, 안내: '직전임대차계약이 주택 취득으로 임대인 지위가 승계된 계약(전 소유자가 맺은 계약)이라 시행령 §155의3①1호 괄호에 따라 직전임대차계약으로 보지 않습니다 — 취득 뒤 1세대가 임차인과 새로 맺은 계약(1년 6개월 이상)이 있어야 그 다음 계약이 상생임대차계약이 될 수 있습니다.' };
+    }
     const contractTime = new Date(p.mutualLeaseContractDate).getTime();
     if (!(contractTime >= new Date('2021-12-20').getTime() && contractTime <= new Date('2026-12-31').getTime())) {
       return { 적용여부: false, 안내: '상생임대차계약 체결일이 체결기한(2021.12.20~2026.12.31)을 벗어나 시행령§155의3의 적용대상이 아닙니다.' };
