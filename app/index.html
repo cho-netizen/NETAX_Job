@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28967,7 +28967,10 @@ function nxMdOpenWindow(title, src, opts){
     }
 
     // 6) 다 맞아도 남는 것 — 고가주택(12억 초과분 과세, 법 §89①3호 괄호·§95③), 부수토지 배율(시행령 §154⑦), 겸용주택(시행령 §154③④)
-    const price = Number(tg.양도가액);
+    // [2026.11.05 모의사건 196] 시행령 §156① — 지분 양도·일부 타인 소유면 실지거래가액 합계를 양도 부분 비율로 나눈 금액(= 주택 전체 가액)으로 12억을 봄. 대상.전체양도가액 또는 양도가액 ÷ 지분으로 환산(양도세 계산기 wholeHouseTransferPrice와 같은 뜻).
+    const share_ = Number(tg.지분); const whole_ = Number(tg.전체양도가액) > 0 ? Number(tg.전체양도가액) : (Number.isFinite(share_) && share_ > 0 && share_ < 1 && Number(tg.양도가액) > 0 ? Math.round(Number(tg.양도가액) / share_) : 0);
+    const price = whole_ > Number(tg.양도가액) ? whole_ : Number(tg.양도가액);
+    if (whole_ > Number(tg.양도가액)) notes.push('지분 양도 — 고가 판정은 주택 전체 가액 ' + whole_.toLocaleString('ko-KR') + '원 기준(시행령 §156①: 실지거래가액 합계 ÷ 양도 부분 비율) · 양도세 계산기에는 wholeHouseTransferPrice로 넣을 것');
     const hv = highValueAt_(T, 'house');
     if (Number.isFinite(price) && price > 0) {
       if (price > hv) notes.push('고가주택 — 양도가액 ' + price.toLocaleString('ko-KR') + '원이 ' + (hv / 100000000) + '억원을 넘어 넘는 부분만 과세(소득세법 §89①3호 괄호·§95③, 시행령 §160)');
