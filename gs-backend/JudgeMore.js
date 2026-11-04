@@ -2226,7 +2226,8 @@ function judgeTransferTiming_(p) {
       const d = 빠른([잔, jmYmd_(q.수용개시일), 등]);
       return { 날짜: d, 호: '7호', 왜: '청산일·수용개시일·등기접수일 중 빠른 날' };
     }
-    if (/할부/.test(원인)) {
+    // [2026.11.05 모의사건 203] 원인 글자에 「할부」가 없어도 장기할부=예(또는 할부횟수·최종할부일)면 3호로 — 예전엔 잔금 모름으로 흘러 등기접수일을 썼음
+    if (/할부/.test(원인) || jmYn_(q.장기할부) === true || (n(q.할부횟수) >= 2 && jmYmd_(q.최종할부일))) {
       const 회 = n(q.할부횟수), 끝 = jmYmd_(q.최종할부일), 처음 = 빠른([등, 인, 사]);
       let 장기 = null;
       if (회 && 끝 && 처음) { const y = new Date(다음날(처음)); y.setFullYear(y.getFullYear() + 1); 장기 = 회 >= 2 && 끝 >= y.toISOString().slice(0, 10); }
