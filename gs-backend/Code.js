@@ -1884,7 +1884,7 @@ const DRIVE_TOOLS = [
         acqBuildingStd: { type: 'number', description: '취득 당시 건물 기준시가(원).' },
         firstLandStd: { type: 'number', description: '최초 고시 당시 토지 기준시가(원).' },
         firstBuildingStd: { type: 'number', description: '최초 고시 당시 건물 기준시가(원).' },
-        baseRate: { type: 'number', description: 'building일 때 국세청 기준율(소수).' }
+        baseRate: { type: 'number', description: 'building일 때 국세청 기준율(소수). [2026.11.05] house·officetel도 취득·최초 고시 당시 건물 기준시가(나목)가 없으면 ⑥·⑦ 뒷문장대로 ⑤를 준용하므로 이 기준율을 넣으면 그 산식으로 셈.' }
       },
       required: ['kind', 'firstNoticePrice']
     }
