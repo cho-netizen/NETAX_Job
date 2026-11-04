@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 257 국유림·공공임대 토지 감면</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 257 — 「국가에 양도하는 산지 감면(조특법 §85의10)·공공매입임대주택 건설용 토지 감면(§97의10) 계산기 점검 — 일몰·2년 보유·도시지역 제외·감면율 연혁(20/15/10%)·3년 미건설 추징」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기 둘(calculate_national_forest_land_reduction·calculate_public_rental_housing_land_reduction)을 일곱 갈래로 돌려 §85의10(2010 신설, 감면율 20→15→10%, 2022.12.31 일몰)·§97의10(10%, 2027.12.31, ③ 3년 안 미건설 추징)을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>5년 보유한 산지(도시지역 밖)를 국유림법에 따라 국가에 양도(2022·2015·2012·2023·2009년) / 1.5년 보유·도시지역 / 주택건설사업자에게 공공매입임대주택 용지 양도(2026년, 2028년) / 3년 안 미건설(부득이한 사유 유무).</li>
+</ul>
+<h2>2. 법 (엔진 주석·10-20 법령 세션 옛 판 원문 — 조특법 §85의10·§97의10은 읽기용 발췌에 없음)</h2>
+<ul>
+<li>§85의10: 2년 이상 보유한 산지(도시지역 제외)를 2022.12.31까지 국유림법 §18로 국가에 양도하면 양도세 감면 — 2010~2013 20%, 2014~2015 15%, 2016~ 10%. §97의10(2026.2.27 §97의9에서 이동): 공공매입임대주택 건설용 토지를 2027.12.31까지 주택건설사업자에게 양도하면 10% 감면, ③ 3년 안 미건설(부득이한 사유 제외)이면 추징.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 2022 10%·2015 15%·2012 20% / 2023·2009 안 됨 / 1.5년·도시지역 안 됨 / 공공임대 10%·2028 안 됨 / 미건설 추징·부득이한 사유면 유지.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>산지 2022 / 2015 / 2012 / 2023 / 2009 / 1.5년 / 도시지역</td><td>10% / 15% / 20% / 안 됨 / 안 됨 / 안 됨 / 안 됨</td><td>맞음(§85의10·연혁)</td></tr>
+<tr><td>공공임대 2026 / 2028 / 미건설 / 부득이</td><td>10% / 안 됨 / 추징 / 유지</td><td>맞음(§97의10①③)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 255 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>두 조문 원문이 읽기용 발췌에 없어 엔진 주석(10-20 원문 확인)에 기댐 — 세무사님 쪽 원문 재확인</td><td>—</td><td>중간</td></tr>
+<tr><td>2</td><td>감면율은 일반 양도세 계산기 산출세액에 적용 — 두 번 호출(지시문 잇기 없음)</td><td>표시</td><td>중간</td></tr>
+<tr><td>3</td><td>§133 감면 한도·농특세(감면세액의 20%)는 묶음이</td><td>묶음</td><td>높음</td></tr>
+<tr><td>4</td><td>공공임대 추징의 이자상당액·신고기한은 계산기 밖</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>§85의10은 2022년 일몰 — 2023년 이후 사건엔 쓸 일이 없고 옛 사건 연혁만</td><td>연혁</td><td>높음</td></tr>
+</table>
+</main></body></html>
