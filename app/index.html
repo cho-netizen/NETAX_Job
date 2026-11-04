@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 18:39 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 18:42 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -25371,13 +25371,16 @@ function nxMdOpenWindow(title, src, opts){
     const listedPost_ = Number(p.listedPostValuePerShare) || 0;
     const postValuePerShare = listedPost_ > 0 ? (caseType === 'low_price' ? Math.min(postFormula_, listedPost_) : Math.max(postFormula_, listedPost_)) : postFormula_;
 
-    let giftAmount;
+    let giftAmount, ikRatioNote_ = '';
     if (caseType === 'low_price') {
       const allocatedShares = Number(p.allocatedShares) || 0;
       giftAmount = Math.max(0, Math.round((postValuePerShare - issuePricePerShare) * allocatedShares));
     } else {
       const acquiredShares = Number(p.acquiredShares) || 0;
-      const relatedShareholderRatio = Number(p.relatedShareholderRatio) || 0;
+      // [2026.11.05 모의사건 220] 지분비율 칸은 0~1 — 60(%)처럼 1을 넘기면 100배가 되므로 100으로 나눠 씀(감자 계산기 215와 같은 보호).
+      const relRatioIn_ = Number(p.relatedShareholderRatio) || 0;
+      const relatedShareholderRatio = relRatioIn_ > 1 ? relRatioIn_ / 100 : relRatioIn_;
+      if (relRatioIn_ > 1) ikRatioNote_ = ' 특수관계 주주 지분비율 ' + relRatioIn_ + '을 퍼센트로 보고 ' + relatedShareholderRatio + '로 셈했습니다(칸은 0~1).';
       giftAmount = Math.max(0, Math.round((issuePricePerShare - postValuePerShare) * acquiredShares * relatedShareholderRatio));
     }
     // [2026.10.22 검토대상 증여-2] 시행령 §29의3 단서(법제처 원문, 2011년판에도 있음) — "현물출자 전·후의 주식 1주당 가액이 모두 영 이하인 경우에는 이익이 없는 것으로 본다."
@@ -25427,7 +25430,7 @@ function nxMdOpenWindow(title, src, opts){
       과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
-      안내: '증여일은 현물출자 납입일 등입니다(시행령§29①을 준용). §39(증자에 따른 이익의 증여)와 계산구조가 같습니다.'
+      안내: '증여일은 현물출자 납입일 등입니다(시행령§29①을 준용). §39(증자에 따른 이익의 증여)와 계산구조가 같습니다.' + ikRatioNote_
         + (caseType === 'low_price'
           ? ' §39의3②·시행령§29⑤ — 현물출자자가 아닌 주주등 중 소액주주(지분 1% 미만이면서 액면가액 합계 3억원 미만)가 2명 이상이면, 그 소액주주들을 1명으로 보고 특수관계 여부 등을 판단해야 합니다.'
           : '') + aggNote
