@@ -2961,7 +2961,9 @@ const DRIVE_TOOLS = [
       debts: { type: 'number', description: '상속채무(원)' },
       heirs: { type: 'array', description: '상속인마다 { name, relation(child·spouse·parent·sibling), legalShare(법정상속분 0~1), inherited(협의·법정으로 받은 순상속분), bequest(유증), gifts(생전 증여 — 상속개시 때 가액), giftValueAtGiftTime(그 증여의 증여 당시 가액 — 증여세 경정용), giftDate }', items: { type: 'object' } },
       thirdPartyGifts: { type: 'array', description: '상속인 아닌 사람에게 한 증여 { name, amount(상속개시 때 가액), amountAtGiftTime, giftDate, withinOneYear(개시 전 1년 안), bothKnewHarm(양쪽이 유류분 손해를 알고 함, §1114) }', items: { type: 'object' } },
-      claimants: { type: 'array', items: { type: 'string' }, description: '실제 반환을 청구한 상속인 이름(없으면 부족액 있는 사람 모두)' }
+      claimants: { type: 'array', items: { type: 'string' }, description: '실제 반환을 청구한 상속인 이름(없으면 부족액 있는 사람 모두)' },
+      claimKnownDate: { type: 'string', description: '[2026.11.05] 유류분권리자가 상속 개시와 돌려받을 증여·유증을 안 날 YYYY-MM-DD → 민법 §1117 1년 시효 끝 날짜(상속개시부터 10년과 먼저 오는 날이 청구기한).' },
+      rulingFinalDate: { type: 'string', description: '[2026.11.05] 유류분 반환 판결·화해 확정일 YYYY-MM-DD → 증여세 경정청구 기한(국세기본법 §45의2② 3개월)·제3자 판결이면 상속세 특례 경정청구 기한(상증법 §79①1호 6개월), 쉬는 날 미룸.' }
     }, required: ['estateAtDeath', 'heirs'] }
   },
   {

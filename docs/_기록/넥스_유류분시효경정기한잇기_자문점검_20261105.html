@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 279 유류분 시효·경정 기한</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 279 — 「유류분 부족액·반환 계산기(민법 §1112~§1116) — §1117 소멸시효(안 때부터 1년·상속개시부터 10년)와 반환 확정 뒤 세금 기한(국세기본법 §45의2② 3개월·상증법 §79①1호 6개월)을 날짜로」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>2025.4.10. 사망, 적극재산 6억을 두 자녀가 3억씩, 장남은 2019년에 7억(상속 때 9억)을 미리 받았다. 차남의 유류분 부족액과 반환, 언제까지 청구해야 하는지(사망 때 알았음), 2026.8.31. 화해가 확정되면 증여세·상속세 경정청구는 언제까지인지.</p>
+<h2>2. 법 (원문·조문 — 민법은 발췌 없음, 조문 번호로)</h2>
+<ul>
+<li>민법 §1117 — 반환청구권은 「상속의 개시와 반환하여야 할 증여 또는 유증을 한 사실을 안 때로부터 1년」, 「상속이 개시한 때로부터 10년」이 지나면 소멸.</li>
+<li>국세기본법 §45의2②1호 — 판결·화해로 다른 것으로 확정된 때 안 날부터 3개월 경정청구. 상증법 §79①1호·시행령 §81② — 피상속인·상속인과 제3자 사이 유류분반환 확정판결이면 사유 발생일부터 6개월(271과 같은 자리).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">시효와 경정청구 기한을 안내 글로만 — 날짜를 안 주어 넥스가 「언제까지」를 못 답했음.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateForcedShareReturnJS</code> — <code>claimKnownDate</code>·<code>deathDate</code> → <code>소멸시효</code>(1년·10년·먼저 오는 날), <code>rulingFinalDate</code> → <code>반환확정_뒤_세금기한</code>(3개월·6개월, 말일 자름·쉬는 날 미룸). 셈·반환 배분은 손대지 않음.</li>
+<li class="red">도구 <code>calculate_forced_share_return</code> 칸 2개 추가 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>기초재산 15억 · 차남 유류분 3.75억 · 받은 3억</td><td>부족 0.75억 · 장남 증여에서 반환(그대로) · 10년 시효 2035-04-10</td></tr>
+<tr><td>안 날 2025-04-10</td><td class="red">1년 시효 2026-04-10 → 청구기한 2026-04-10</td></tr>
+<tr><td>확정 2026-08-31 / 2026-11-30</td><td class="red">증여세 경정 2026-11-30 · 상속세 특례 2027-03-02 / 2027-03-02(2.28 말일 자름 → 일 → 3.1 공휴일 → 3.2)</td></tr>
+<tr><td>날짜 없음</td><td>예전 결과 그대로</td></tr>
+</table>
+<p>시험 t279 5건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>민법 원문이 읽기용 판에 없음 — §1117 문언은 기억으로 적음(1년·10년)</td><td>원문 재확인</td></tr>
+<tr><td>2</td><td>시효 「안 때」의 초일 불산입·소송 제기에 따른 중단은 사람이 봄</td><td>판단거리</td></tr>
+<tr><td>3</td><td>국세기본법 §45의2② 「안 날」을 확정일로 본 것 — 송달일이 뒤면 그날부터</td><td>해석 확인</td></tr>
+<tr><td>4</td><td>2024.4.25. 헌재 결정 뒤 민법 개정(기여분 준용·상실 사유) 시행 여부에 따라 계산이 달라질 수 있음</td><td>연혁 확인</td></tr>
+<tr><td>5</td><td>유류분 계산의 가액(상속개시 때 시가)과 상증법 평가액의 차이는 도구 밖</td><td>판단거리</td></tr>
+</table>
+</main></body></html>
