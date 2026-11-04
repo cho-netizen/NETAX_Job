@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 258 이주택지·박물관·농지 환매</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 258 — 「산업단지 이주택지 세율특례(조특법 §104의20)·박물관 이전 분할납부(§83)·경영회생 농지 환매 환급(§70의2) 계산기 점검 — 일몰·1억·2년 거주, 5회 균분, 임차기간 내 환매·면적 비율·가산세 제외·상속인 환매」 자문점검 · 2026-11-05</h1>
+<p class="sub">세 계산기를 여섯 갈래로 돌려 §104의20(2012.12.31·분양가 1억·2년 거주)·§83(2022.12.31·5년 균분)·§70의2①⑤(임차기간 내 환매, 환매 면적 비율, 가산세·가산금 제외, 피상속인 임차기간 중 사망·상속인 농업인 직접 경작)를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다. 「경영회생」 묶음(169)은 판정, 이번은 계산기 쪽입니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>이주택지(분양가 9천만) 2012년 양도 / 1.1억·2013년·거주 2년 미달 / 박물관 종전시설 2022년 양도 세액 1억 1원 / 2023년 / 농어촌공사에 판 농지 1만㎡ 중 4천㎡를 2026-05-01 환매(당초 납부 5천만 중 가산세 500만) / 임차기간 뒤 환매 / 상속인 환매(피상속인 사망 2021·2024).</li>
+</ul>
+<h2>2. 법 (엔진 주석·10-20·11-03 원문 확인 — 세 조문 모두 읽기용 발췌에 없음)</h2>
+<ul>
+<li>§104의20: 이주택지(분양가 1억 이하, 실시계획승인일 소급 2년 거주)를 2012.12.31까지 양도하면 다주택 중과 대신 기본세율. §83: 3년 이상 운영 박물관 종전시설을 2022.12.31까지 양도하면 확정신고기한 뒤 3년 되는 날부터 5년간 균분 분할납부. §70의2①: 농어촌공사에 양도한 농지를 임차기간 내 환매하면 당초 양도세(환매 면적분, 가산세·가산금 제외 — 시행령 §67의2④·서식 51호의3) 환급, ⑤ 상속인 환매는 피상속인이 임차기간 중 사망·상속인 농업인 직접 경작.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 이주택지 적용/2013·1.1억·거주 미달 안 됨 / 박물관 5회 합계 일치·2023 안 됨 / 환급 (5천만 − 500만) × 40% = 1,800만 / 임차기간 뒤 안 됨 / 상속인: 임차 전 사망 안 됨·임차 중 사망+농업인 직접 경작 가능.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>이주택지 네 갈래 / 박물관 둘</td><td>적용·안 됨 ×3 / 5회 균분·일몰</td><td>맞음(§104의20·§83)</td></tr>
+<tr><td>농지 환매 40%·가산세 / 임차 뒤 / 상속인 둘</td><td>1,800만 / 안 됨 / 안 됨·가능</td><td>맞음(§70의2①⑤)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 255 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>세 조문 원문이 읽기용 발췌에 없어 엔진 주석(원문 확인 기록)에 기댐 — 세무사님 쪽 재확인</td><td>—</td><td>중간</td></tr>
+<tr><td>2</td><td>박물관 분할납부의 첫 회 납부일(확정신고기한 뒤 3년 되는 날)·3년 안 미이전 추징 이자는 계산기 밖(날짜 안 셈)</td><td>안내</td><td>중간</td></tr>
+<tr><td>3</td><td>환매 뒤 재양도 때 원래 취득가액·취득시기(§70의2③)는 양도세 계산기에 사람이 넣음</td><td>안내</td><td>높음</td></tr>
+<tr><td>4</td><td>환급 신청 기한·경정청구(§45의2)와의 관계는 「경정청구기한」 묶음</td><td>묶음</td><td>중간</td></tr>
+<tr><td>5</td><td>§104의20은 2012 일몰 — 옛 사건 연혁만</td><td>연혁</td><td>높음</td></tr>
+</table>
+</main></body></html>
