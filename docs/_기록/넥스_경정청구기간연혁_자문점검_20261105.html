@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 202 경정청구 기간 연혁</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 202 — 「일반 경정청구 5년(국세기본법 §45의2①)의 2015년 전 3년 연혁과 가산세 감면율 연혁 점검」 자문점검 · 2026-11-05</h1>
+<p class="sub">201을 이어받은 국세기본법 연혁 점검. 「경정청구기한」 묶음이 모든 신고기한에 5년을 적용해 2015-01-01 시행 전에 종전 3년이 지난 옛 신고까지 「남음」으로 냈습니다. 부칙대로 3년 갈래를 넣었습니다. 수정신고·기한후신고 가산세 감면율(2020.1.1 개정)은 엔진이 연혁 표대로였습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>법정신고기한 2011-05-31·2012-05-31·2013-05-31·2016-05-31의 경정청구 마감. 2019년·2021년 신고기한의 수정신고(1.5개월·4.5개월·9.5개월·1년10개월 뒤)·기한후신고(20일·2.5개월·5.5개월 뒤) 감면율.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 국세기본법 정비본)</h2>
+<ul>
+<li>§45의2①: 법정신고기한이 지난 후 5년 이내 경정청구. 2014.12.23 개정(시행 2015-01-01) 부칙 §7: ① 시행 이후 청구분부터 ② 시행 전에 종전 청구기간(3년)이 지난 분은 종전 규정.</li>
+<li>§48②: 수정신고 감면 — 1개월 90%·3개월 75%·6개월 50%·1년 30%·1년6개월 20%·2년 10%(2020.1.1 개정, 그 전 6개월 50%·1년 20%·2년 10%); 기한후신고 — 1개월 50%·3개월 30%·6개월 20%(그 전 1개월 50%·6개월 20%). 부칙: 시행 이후 최초 수정·기한후신고분부터.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">신고기한 2011-05-31(종전 3년 마감 2014-05-31 — 시행 전 경과)에 5년(2016-05-31)을 적용. 부칙 §7②로 2014-05-31(토요일 → 06-02)이 맞음. 2012년 이후 신고기한은 3년이 2015-01-01 뒤에 끝나 5년 적용 — 그대로.</li>
+<li>가산세 감면율은 엔진 연혁(refHistoryOn_, 2020-01-01 기준)이 표대로: 2019년 수정 1.5개월 50%·4.5개월 50%·9.5개월 30%, 2021년 90%·75%·30%·10%; 기한후 2019년 20일 50%·4.5개월 20%, 2021년 50%·30%·20%.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js 「경정청구기한」 묶음(judgeAppealDeadline_): 법정신고기한 + 3년이 2015-01-01 전이면 3년(근거에 부칙 §7②), 결정·경정 뒤 3개월 청구의 상한도 같은 햇수로.</li>
+<li>엔진·Code.js는 손대지 않음. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전</th><th>고친 뒤</th></tr>
+<tr><td>신고기한 2011-05-31</td><td>2016-05-31(5년)</td><td>2014-06-02(종전 3년, 부칙 §7②)</td></tr>
+<tr><td>2012-05-31 / 2013-05-31 / 2016-05-31</td><td>2017·2018·2021-05-31</td><td>그대로(5년)</td></tr>
+<tr><td>가산세 감면율 2019·2021(수정·기한후)</td><td colspan="2">엔진 연혁 표대로(코드 변경 없음)</td></tr>
+</table>
+<p class="sub">판정 20건 모두 맞음 · 가족 지도 통과 · 176~180·188·197·198·201 시험 그대로 · 넥스 도구 검문 ✓(엔진 변경 없음).</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>부칙 §7①「시행 이후 청구하는 분부터」 — 2015년 전에 이미 청구한 분은 종전 규정(묶음은 청구일을 안 봄)</td><td>신고기한 기준</td><td>중간</td></tr>
+<tr><td>2</td><td>2015년 전 신고의 「처분 받은 날부터 90일(지금 3개월)」 단서 연혁(2015: 90일 → 2022.12.31: 3개월)은 묶음이 3개월만</td><td>3개월</td><td>중간</td></tr>
+<tr><td>3</td><td>가산세 감면의 「세무조사 통지 뒤 수정신고 제외」(§48②1호 괄호)·「경정할 것을 미리 알고」는 isAmendedAfterAuditNotice 칸 — 이번엔 안 돌림</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>기한후신고 감면 2020 전 「6개월 20%」는 2019.12.31 개정 전 §48②2호(1개월 50%·6개월 20%) — 엔진 값과 같음</td><td>표</td><td>높음</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 넥스 지시문에 「옛 신고의 경정청구는 묶음 결과(3년·5년 갈래)를 쓸 것」 한 줄(지시문 금지 중이라 안 고침)</td><td>묶음</td><td>—</td></tr>
+</table>
+</main></body></html>
