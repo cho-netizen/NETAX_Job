@@ -1190,7 +1190,12 @@ const DRIVE_TOOLS = [
         deemedCashPriorAcquisition: { type: 'number', description: '80% 판정용(시행령§35의2⑤): 완전모회사가 교환일 전 2년 안에 취득한 완전자회사 주식의 취득가액 중 금전으로 보는 금액(지배주주 아니면 발행주식 20% 넘는 부분, 지배주주면 2년 안 취득분 전부). judge 「주식교환」이 셈. 없으면 0.' },
         swappedShares: { type: 'number', description: '교환으로 받은 완전모회사등주식 수(나중 취득가액 산식 시행령§35의2④의 분모).' },
         soldShares: { type: 'number', description: '이번에 처분한 완전모회사등주식 수(교환으로 받은 주식을 먼저 판 것으로 봄).' },
-        isClawbackTriggeredWithin2Years: { type: 'boolean', description: '완전자회사의 사업폐지 또는 완전모회사(일정 주주)의 취득주식 처분 사유가 교환·이전일이 속하는 사업연도의 다음 사업연도 개시일부터 2년 이내에 발생했는지(§38②, 시행령⑪). true면 이연되는_양도소득 전액을 추징한다.' }
+        isClawbackTriggeredWithin2Years: { type: 'boolean', description: '완전자회사의 사업폐지 또는 완전모회사(일정 주주)의 취득주식 처분 사유가 교환·이전일이 속하는 사업연도의 다음 사업연도 개시일부터 2년 이내에 발생했는지(§38②, 시행령⑪). true면 이연되는_양도소득 전액을 추징한다(fiscalYearEndDate·clawbackTriggerDate를 주면 엔진이 기간 안인지 스스로 봄).' },
+        unavoidableReasonHolding: { type: 'boolean', description: '[2026.11.05] ①2호 보유 요건을 못 지키는 것이 부득이한 사유(§38① 단서·시행령 §35의2⑬1호 → 법인세법 시행령 §80의2①1호 각 목)면 true — 요건이 빠져도 이연.' },
+        unavoidableReasonBusiness: { type: 'boolean', description: '[2026.11.05] ①3호 사업 계속 요건을 못 지키는 것이 부득이한 사유(⑬2호 → 법인세법 시행령 §80의2①2호 각 목)면 true.' },
+        clawbackUnavoidable: { type: 'boolean', description: '[2026.11.05] 사후관리 사유(폐지·처분)가 부득이한 사유(§38②1·2호 단서, 시행령 ⑮·⑯)면 true — 추징하지 않음.' },
+        fiscalYearEndDate: { type: 'string', description: '[2026.11.05] 교환·이전일이 속하는 사업연도의 종료일 YYYY-MM-DD — 사후관리 기간(다음 사업연도 개시일부터 2년)을 날짜로 돌려준다.' },
+        clawbackTriggerDate: { type: 'string', description: '[2026.11.05] 사후관리 사유 발생일 YYYY-MM-DD — 납부기한(사유 발생일이 속하는 반기 말일부터 2개월, 토·일·공휴일이면 다음 날)을 돌려준다.' }
       },
       required: ['stockConsiderationValue']
     }

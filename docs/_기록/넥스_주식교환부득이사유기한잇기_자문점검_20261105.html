@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 268 주식교환 부득이한 사유·기한</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 268 — 「주식의 포괄적 교환·이전 개인주주 과세이연(조특법 §38) 계산기 — ① 단서 부득이한 사유(2024.12.31 개정)·② 단서 추징 제외·사후관리 기간과 납부기한을 날짜로」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 넥스 도구 검문 ✓(78개·25,224자)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>A사(12월 결산) 개인주주가 2026.9. 주식의 포괄적 교환으로 B사 주식 9억 + 현금 1억을 받았다(A사 주식 취득가액 3억). 이연을 받은 뒤 ① 2028.3. A사가 수용으로 사업을 접으면 추징되는가 ② 2029.1. 처분이면 ③ 교환 해의 사업연도 끝까지 보유 못 하게 된 것이 법인세법 시행령 §80의2①1호 사유라면 애초 이연이 되는가.</p>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 발췌)</h2>
+<ul>
+<li>조특법 §38① 단서 〈개정 2024.12.31〉 — 「대통령령으로 정하는 부득이한 사유로 취득한 주식을 보유할 수 없거나 사업을 계속할 수 없는 경우에는 제2호 또는 제3호의 요건을 갖추지 못한 경우에도 … 과세를 이연받을 수 있다」. 시행령 §35의2⑬ 〈2025.2.28〉 — 법인세법 시행령 §80의2①1호 각 목(보유)·2호 각 목(사업).</li>
+<li>§38② — 「3년 이내의 범위에서 대통령령으로 정하는 기간」 = 시행령 ⑪ 「다음 사업연도 개시일부터 2년」. 1호·2호 단서(부득이한 폐지·처분 제외) → 시행령 ⑮·⑯ 〈신설 2025.2.28〉 → ⑬. 완전모회사는 1개월 안에 주주에게 알림.</li>
+<li>시행령 ⑫1호 — 거주자는 사유 발생일이 속하는 <b>반기 말일부터 2개월</b> 안에 이연세액 납부. ⑧ 고정자산 1/2 이상 처분·미사용 = 폐지 간주. ⑭ 과세특례신청서를 완전모회사와 함께 제출.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">① 단서가 없었다 — 보유·사업 계속 요건이 false면 무조건 「이연 못 함」. 2024.12.31 개정·2025.2.28 시행령으로 부득이한 사유면 이연되는데 그 길이 없었음.</li>
+<li class="red">② 단서(부득이한 폐지·처분은 추징 제외)도 없었다 — 체크만 있으면 전액 추징.</li>
+<li class="red">사후관리 기간과 납부기한을 글로만(「반기 말일부터 2개월」) — 날짜를 안 돌려줌. 255·244·266과 같은 「기한을 글로만」 유형.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateShareSwapGainRecognitionJS</code> — <code>unavoidableReasonHolding</code>·<code>unavoidableReasonBusiness</code>(단서 이연, 결과 <code>단서_적용</code>), <code>clawbackUnavoidable</code>(추징 제외), <code>fiscalYearEndDate</code>(→ <code>사후관리기간</code> 다음 사업연도 개시일부터 2년), <code>clawbackTriggerDate</code>(→ 기간 안인지 스스로 판정, <code>납부기한</code> 반기 말일 + 2개월·공휴일 미룸, <code>납부기한_근거</code>), <code>신고_첨부</code>(⑭), 안내에 ⑧ 폐지 간주·1개월 알림.</li>
+<li class="red">도구 <code>calculate_share_swap_gain_recognition</code> 칸 5개 추가·기존 칸 설명 보강 — 새 도구·지시문 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>기본(9억 주식 + 1억 현금, 취득 3억, 12월 결산)</td><td>지금 과세 1억 · 이연 6억 · 사후관리기간 2027-01-01~2028-12-31</td></tr>
+<tr><td>사유 2028-03-10</td><td class="red">추징 6억 · 납부기한 2028-08-31(상반기 말일 + 2개월)</td></tr>
+<tr><td>사유 2028-11-20</td><td class="red">납부기한 2029-02-28</td></tr>
+<tr><td>사유 2029-01-15</td><td class="red">기간 밖 → 추징 없음(전에는 체크하면 추징)</td></tr>
+<tr><td>사유 2028-03-10 + 부득이한 사유</td><td class="red">추징 없음(②1·2호 단서)</td></tr>
+<tr><td>보유 못 함 + 부득이한 사유 / 사업 계속 못 함 + 부득이한 사유</td><td class="red">이연 ○(단서_적용 한 줄) — 전에는 ×</td></tr>
+<tr><td>예전 방식(isClawbackTriggeredWithin2Years만)</td><td>전액 추징 그대로(날짜 없음)</td></tr>
+</table>
+<p>시험 t268 9건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · node --check 통과 · 서버 화면 파일 점검 ✓.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>법인세법 시행령 §80의2①1호·2호 각 목(파산·합병·회생·수용 등)의 원문은 발췌에 없음 — 부득이한 사유 해당 여부는 사람이 가름</td><td>원문 재확인 · 판단거리</td></tr>
+<tr><td>2</td><td>2024.12.31 개정 부칙(①단서 적용례)과 2025.2.28 시행령 부칙 — 그 전 교환분에 단서가 미치는지</td><td>부칙 원문 재확인</td></tr>
+<tr><td>3</td><td>⑫1호 괄호 「이미 납부한 부분과 ③에 따라 납부한 세액 제외」 — 추징액은 이연 양도소득의 세액이지 소득 자체가 아님(계산기는 소득 금액을 돌려주고 세액은 일반 계산기 몫)</td><td>두 번 호출 잇기 — 판단거리</td></tr>
+<tr><td>4</td><td>사업연도가 12월 결산이 아닐 때(fiscalYearEndDate로 받음) — 변경 사업연도가 끼면 「다음 사업연도 개시일」이 달라질 수 있음</td><td>판단거리</td></tr>
+<tr><td>5</td><td>완전모회사의 완전모회사 주식 80% 배정 요건(①2호 뒷부분·⑦ 배정 산식)은 도구 밖</td><td>도구 부족 — 판단거리</td></tr>
+</table>
+</main></body></html>
