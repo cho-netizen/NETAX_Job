@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 213 상장이익 취득일 기준</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 213 — 「주식 상장이익 증여(상증법 §41의3) 계산기 — ②2호 「증여받은 재산으로 취득」의 5년·월수 기준일」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_stock_listing_gift_tax)를 열 갈래로 돌려 §41의3①~⑤·시행령 §31의3①③⑤를 맞췄습니다. ②1호(주식을 직접 증여·유상취득)는 모두 맞았으나, ②2호(최대주주등에게서 증여받은 재산으로 다른 사람에게서 주식을 취득)에서 5년과 실질 증가 월수를 재산 증여일부터 세어 틀리는 것을 고쳤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>최대주주 아버지가 2020-01-10 아들에게 현금 증여, 아들이 2022-06-01 그 돈으로 다른 주주에게서 비상장주식 1만 주(@1만)를 취득, 2026-01-10 코스닥 상장, 정산기준일(3개월) 2026-04-10 @5만, 1주당 기업가치 실질 증가 5천. 견주기: 주식 직접 증여 2024-01-10 / 정산기준일 전 양도 / 이익 2천만 / 2029년 상장 / 증여 2018년·취득 2022년 / 가액 하락 환급.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§41의3①: 최대주주등의 특수관계인이 ②에 따라 주식을 증여받거나 취득한 경우, <b>그 주식등을 증여받거나 취득한 날부터 5년 이내</b> 상장돼 가액이 오르면 이익을 증여재산가액으로(기준금액 미만 제외). ②1호: 최대주주등에게서 증여·유상취득. ②2호: 증여받은 재산(<b>주식 취득일부터 소급 3년 이내</b> 최대주주등에게서 증여받은 재산)으로 최대주주등 아닌 자에게서 취득. ③: 정산기준일 = 상장일부터 3개월(그 안 사망·증여·양도는 그 날). ④: 당초 과세가액에 가산해 정산, 하락이 기준 이상이면 당초 세액 환급. ⑥: 섞여 불분명하면 증여받은 재산으로 추정.</li>
+<li>시행령 §31의3①: (정산기준일 1주당 평가액 − 증여·취득일 1주당 과세가액·취득가액 − 1주당 실질 증가 이익)×주식 수. ③: 기준금액 = (②·③호 합계×주식 수)×30%와 3억 중 적은 것. ⑤: 실질 증가 = (증여·<b>취득일</b>이 속한 사업연도 개시일~상장일 전일 1주당 순손익 합 ÷ 그 월수)×(증여·<b>취득일</b>~정산기준일 월수, 1월 미만 1월).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">②2호에서 originalGiftDate(현금 증여일 2020-01-10)와 acquisitionDate(주식 취득일 2022-06-01)를 둘 다 주면 증여일을 먼저 써서 「2020부터 5년 지나 상장 — 대상 아님」으로 틀렸다. 법은 「그 주식등을 … 취득한 날」부터 5년이라 취득일 기준 3년 7개월 → 과세(이익 3억 5천만, 과세표준 3억 2천만, 산출 5,400만). 실질 증가 월수도 증여일(27·28개월)로 세어 취득일 기준(26개월)보다 컸다.</li>
+<li class="red">②2호의 「소급 3년 이내 증여받은 재산」 요건을 보지 않았다 — 2018년 증여·2022년 취득은 ②2호에 들지 않는데 그대로 셌다.</li>
+<li>②1호(주식 직접 증여·유상취득)·정산기준일 3개월·조기 양도일·기준금액(min(30%, 3억))·5년·가액 하락 환급(당초 세액 전액)은 모두 조문대로.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateStockListingGiftTaxJS: 기준일을 acquisitionDate 우선(없으면 originalGiftDate)으로 바꿔 5년·실질 증가 월수를 주식 취득일부터 셈. 두 날을 다 주면 증여일이 취득일 소급 3년 안인지 알림(밖이면 「②2호 아님 — ②1호 직접 유상취득이 아니면 대상 아님 [확인 필요]」). 5년 초과 반환에도 계산메모를 실음. 계산 숫자(②1호)는 그대로.</li>
+<li>app/index.html 다시 만듦(build-app). 넥스 도구·지시문 그대로(검문 ✓ 78개·25,224자). 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>주식 직접 증여 2024-01-10·상장 2026-01-10·정산 @5만</td><td>이익 3억 5천만 → 과세표준 3억 2천만(3천만 공제) → 산출 5,400만, 정산기준일 2026-04-10</td><td>맞음(①·③·§47①)</td></tr>
+<tr><td>상장 뒤 2026-02-20 양도 / 이익 2천만 / 2029년 상장</td><td>정산기준일 2026-02-20 / 기준 4,500만 미달 / 5년 지남</td><td>맞음</td></tr>
+<tr><td>②2호 현금 증여 2020·취득 2022-06·상장 2026-01</td><td class="red">취득일부터 5년 안 → 과세 3억 5천만 (전엔 「5년 지남」)</td><td>맞음(①)</td></tr>
+<tr><td>②2호 증여 2018·취득 2022-06</td><td class="red">「소급 3년(2019-06-01) 밖 — ②2호 아님 [확인 필요]」 알림 (전엔 없음)</td><td>맞음(②2호 괄호)</td></tr>
+<tr><td>실질 증가 — 증여 2024-01-10·취득 2024-03-01·순손익 1.2만·사업연도 2024-01-01</td><td class="red">12,000÷25×26 = 12,480 (전엔 ÷25×28 = 13,440)</td><td>맞음(시행령 ⑤2호 취득일)</td></tr>
+<tr><td>가액 하락(@5만→@2만, 당초 세액 4천만)</td><td>환급 4천만</td><td>맞음(④ 단서)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>②2호에서 누구에게서 취득했는지(최대주주등 ②1호 / 그 밖 ②2호)는 칸이 없어 사람이 가름 — 3년 밖 알림은 [확인 필요]로만</td><td>알림</td><td>높음</td></tr>
+<tr><td>2</td><td>②2호 가산 대상은 「증여받은 재산의 증여세 과세가액」(④ 괄호) — originalGiftTaxableValue에 현금 증여 과세가액을 넣어야 정산 견주기가 맞음(칸 설명은 「증여받은 주식이면」) — 도구 설명 바꾸지 않고 판단거리</td><td>칸</td><td>중간</td></tr>
+<tr><td>3</td><td>⑥ 추정(증여재산과 다른 돈이 섞임, 증여재산 담보 차입)은 계산기 밖</td><td>—</td><td>높음</td></tr>
+<tr><td>4</td><td>⑦ 취득 뒤 신주 인수·배정분 포함, 시행령 ⑦ 무상주 발행 때 주식 수 조정은 주식 수 칸에 사람이 반영</td><td>주식 수 칸</td><td>중간</td></tr>
+<tr><td>5</td><td>④ 본문 정산(당초 과세가액에 가산) vs §47①·§55①3호 합산배제 3천만 공제 — 두 읽기 중 어느 쪽이 맞는지는 복잡사건 31 때부터 [확인 필요] 그대로</td><td>두 숫자 함께</td><td>중간</td></tr>
+</table>
+</main></body></html>

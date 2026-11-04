@@ -8526,9 +8526,17 @@
       settlementDate_ = (p.earlyEventDate && p.earlyEventDate < d3_) ? p.earlyEventDate : d3_;
       lsNotes_.push('정산기준일 ' + settlementDate_ + (settlementDate_ === d3_ ? '(상장일 ' + p.listingDate + '부터 3개월)' : '(상장 뒤 3개월 안 사망·증여·양도한 날)') + ' — §41의3③');
     }
-    const acqDate_ = p.originalGiftDate || p.acquisitionDate || '';
+    // [2026.11.05 모의사건 213] §41의3②2호(증여받은 재산으로 최대주주등 아닌 자에게서 취득) — 5년(①)·실질 증가 월수(시행령 §31의3⑤2호)의 기준일은
+    //  「그 주식등을 … 취득한 날」= 주식 취득일이지 재산 증여일이 아님. 전에는 originalGiftDate를 먼저 써서 현금 증여일부터 5년을 세었다(취득일 2년 반 뒤 상장도 「5년 지남」으로 틀림).
+    //  두 날을 다 주면 주식 취득일을 쓰고, 증여일이 취득일부터 소급 3년 밖이면 ②2호 「증여받은 재산」이 아니라고 알린다(②1호 최대주주등에게서 직접 유상취득이면 별개 — 사람이 가름).
+    const acqDate_ = p.acquisitionDate || p.originalGiftDate || '';
+    if (p.acquisitionDate && p.originalGiftDate && p.originalGiftDate < p.acquisitionDate) {
+      const back3_ = addYearsToDateStr_(p.acquisitionDate, -3);
+      if (p.originalGiftDate < back3_) lsNotes_.push('재산 증여일 ' + p.originalGiftDate + '이 주식 취득일 ' + p.acquisitionDate + '부터 소급 3년(' + back3_ + ') 밖 — §41의3②2호 「증여받은 재산으로 취득」에 들지 않음. 최대주주등에게서 직접 유상취득(②1호)이 아니면 §41의3 대상 아님 [확인 필요]');
+      else lsNotes_.push('§41의3②2호 — 5년·실질 증가 월수는 주식 취득일 ' + p.acquisitionDate + '부터 셈(재산 증여일 ' + p.originalGiftDate + '은 소급 3년 안)');
+    }
     if (acqDate_ && p.listingDate && p.listingDate > addYearsToDateStr_(acqDate_, 5)) {
-      return { 과세대상여부: false, 납부세액: 0, 안내: '증여·취득일(' + acqDate_ + ')부터 5년이 지나 상장(' + p.listingDate + ') — §41의3① 대상 아님(전환사채는 §41의3⑧ 5년 안 전환도 함께 볼 것)' };
+      return { 과세대상여부: false, 납부세액: 0, 계산메모: lsNotes_, 안내: '증여·취득일(' + acqDate_ + ')부터 5년이 지나 상장(' + p.listingDate + ') — §41의3① 대상 아님(전환사채는 §41의3⑧ 5년 안 전환도 함께 볼 것)' };
     }
     let realValueIncreasePerShare = Number(p.realValueIncreasePerShare) || 0;
     if (!p.realValueIncreasePerShare && Number(p.netIncomePerShareSum) && p.fiscalYearStartDate && p.listingDate && acqDate_ && settlementDate_) {
