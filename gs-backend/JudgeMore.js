@@ -864,7 +864,7 @@ function judgeLimitedAccept_(p) {
   if (재산합 !== 신고합) notes.push('평가기간 안 경매가 있어 상속재산 합계를 경락가로 고침: ' + 신고합.toLocaleString() + ' → ' + 재산합.toLocaleString() + '원(상증법 §60②)');
   const 순 = 재산합 - 채무 - 공과, 초과 = Math.max(0, -순);
   const 증여 = (p.사전증여 || []).map(function (g) {
-    const d = jmYmd_(g.증여일), 상속인 = jmYn_(g.상속인) !== false, 한 = 상속인 ? 10 : 5, 안 = d ? famAddY_(d, 한) > 사망 : null;
+    const d = jmYmd_(g.증여일), 상속인 = jmYn_(g.상속인) !== false, 한 = 상속인 ? 10 : 5, 안 = d ? famAddY_(d, 한) >= 사망 : null; // [2026.11.05 모의사건 198] 「상속개시일 전 10년(5년) 이내」 — 꼭 10년(5년) 되는 날 증여도 포함(역산 초일 불산입, 국세기본법 §4 → 민법 §157): 예전엔 그날을 빼 하루 어긋남
     return { 받은사람: g.받은사람 || '', 상속인: 상속인, 금액: n(g.금액), 증여일: d, 합산: 안, 과세표준: n(g.과세표준), 낸증여세: n(g.낸증여세), 근거: '상증법 §13①' + (상속인 ? '1호(상속인 10년)' : '2호(상속인 아닌 자 5년)') };
   });
   const 가산 = 증여.filter(function (g) { return g.합산 === true; }), 가산합 = 가산.reduce(function (t, g) { return t + g.금액; }, 0);
@@ -986,7 +986,8 @@ function judgeSpecialRelation_(p) {
   // 2) 과세가액 — 재산 − 채무·공과금 − 장례비(엔진이 한도 셈), 특별연고자는 상속인 아님 → 사전증여는 5년 안만(§13①2호)
   const 재산 = n(p.재산합계), 채무 = n(p.채무) + n(p.공과금), 분여합 = 분여.reduce(function (s, x) { return s + n(x.금액); }, 0);
   let 가산 = 0, 가산세액 = 0, 가산과표 = 0;
-  (p.사전증여 || []).forEach(function (g) { const d = jmYmd_(g.증여일); if (d && d > famAddY_(사망, -5)) { 가산 += n(g.금액); 가산세액 += n(g.낸증여세); 가산과표 += n(g.과세표준); } });
+  // [2026.11.05 모의사건 198] 「상속개시일 전 5년 이내」 — 꼭 5년 되는 날 증여도 포함(예전엔 그날을 뺌)
+  (p.사전증여 || []).forEach(function (g) { const d = jmYmd_(g.증여일); if (d && d >= famAddY_(사망, -5)) { 가산 += n(g.금액); 가산세액 += n(g.낸증여세); 가산과표 += n(g.과세표준); } });
   const 순 = Math.max(0, 재산 - 채무), 국가귀속 = Math.max(0, 순 - n(p.장례비) - 분여합);
   // 3) 신고기한 — §67① 상속개시 월말부터 6개월(국외 9개월), ③ 관리인이 그 기간 안에 선임되면 선임일부터
   const 기본기한 = (function () { const y = +사망.slice(0, 4), m = +사망.slice(5, 7) + (jmYn_(p.국외주소) === true ? 9 : 6); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); })();
