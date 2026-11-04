@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:16 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:18 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28753,7 +28753,11 @@ function nxMdOpenWindow(title, src, opts){
     const counted = [], maybe = [];
     others.forEach(function (o) {
       let st = judgeHouseCountState_(o); // 「든다(사실상 주거용)」·「포함」·true 같은 값도 든다로 읽음
-      if (/분양권/.test(String(o.종류)) && isDate_(o.취득일) && String(o.취득일).slice(0, 10) < '2021-01-01' && st === '든다') st = '모름'; // [확인 필요] 2021.1.1 전 취득 분양권은 주택 수에서 빠지는지 — 법률 제17477호 부칙 원문 대조 전
+      // [2026.11.05 모의사건 185] 법률 제17477호 부칙 §4(원문 대조): §89② 본문(분양권을 주택 수에 넣음)은 「2021년 1월 1일 이후 공급계약·매매·증여 등으로 취득한 분양권부터」 — 그 전 취득 분양권은 주택 수에서 뺌(넥스가 「든다」로 넣어도). 2021-01-01 이후 취득 분양권·조합원입주권(2006-01-01 이후)은 법 §89②로 그 자체가 주택 수 — 「모름」이면 든다.
+      if (/분양권/.test(String(o.종류)) && isDate_(o.취득일)) {
+        if (String(o.취득일).slice(0, 10) < '2021-01-01') { st = '안 든다'; o.주택수근거 = o.주택수근거 || '2021-01-01 전 취득 분양권 — 주택 수 제외(법률 제17477호 부칙 §4)'; }
+        else if (st === '모름') { st = '든다'; o.주택수근거 = o.주택수근거 || '2021-01-01 이후 취득 분양권 — 주택 수(법 §89②)'; }
+      } else if (/조합원입주권/.test(String(o.종류)) && isDate_(o.취득일) && String(o.취득일).slice(0, 10) >= '2006-01-01' && st === '모름') { st = '든다'; o.주택수근거 = o.주택수근거 || '조합원입주권 — 주택 수(법 §89②)'; }
       if (st === '든다') counted.push(o); else if (st === '모름') maybe.push(o);
     });
     const nm = function (o) { return (o.이름 || o.종류 || '물건') + (o.주택수근거 ? '(' + o.주택수근거 + ')' : ''); };

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 185 분양권 주택 수 연혁</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 185 — 「분양권·조합원입주권이 주택 수에 드는 시점(법 §89②·법률 제17477호 부칙 §4) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">종합판정의 주택 수 세기에서 분양권을 「2021-01-01 전 취득이면 [확인 필요]로 모름 처리」하던 줄을 부칙 원문으로 확정했습니다. 2021-01-01 전 취득 분양권은 주택 수에서 빼고, 그 뒤 취득 분양권·조합원입주권은 넥스가 「모름」으로 넣어도 주택 수에 넣습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「원씨」 세대: 집 한 채(2015년) + 분양권(2020-06-01 취득 / 2021-03-01 취득) 또는 조합원입주권(2019년). 2026-09-01 집을 팔 때 1세대1주택인지. 넥스가 분양권의 「주택 수」 칸을 모름·든다로 넣는 경우를 각각.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 20260101 시행판)</h2>
+<ul>
+<li>§89②: 1세대가 주택과 조합원입주권 또는 분양권을 보유하다가 그 주택을 양도하면 ①3호(1세대1주택 비과세)를 적용하지 않음(단서·시행령 §156의2·§156의3 특례 제외).</li>
+<li>법률 제17477호 부칙 §4: §89② 본문·§104⑦2호·4호의 개정규정은 2021년 1월 1일 이후 공급계약·매매·증여 등으로 취득한 분양권부터 적용.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">2021-01-01 전 취득 분양권을 넥스가 「든다」로 넣으면 「모름」으로 바꿔 잠정 결론만 냈음(「[확인 필요] 부칙 원문 대조 전」 주석) — 원문은 명확히 「2021-01-01 이후 취득 분양권부터」라 그 전 분양권은 주택 수에서 빼는 것이 맞음.</li>
+<li class="red">2021-01-01 이후 취득 분양권·조합원입주권을 「모름」으로 넣으면 세대가 「충족(잠정)」으로 흘렀음 — 법 §89②로 그 자체가 주택 수에 드는 것이라 「안 됨(특례 있는지만 잠정)」이 맞음.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">엔진 종합판정 주택 수 세기: 분양권은 취득일 2021-01-01 전이면 「안 든다」(근거 부칙 §4를 주택수근거에 적음), 그 뒤면 「모름」도 「든다」; 조합원입주권(2006-01-01 이후 취득)도 「모름」이면 「든다」. 취득일이 없으면 예전처럼 잠정.</li>
+<li class="red">조립본 app/index.html 다시 만듦. 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>고치기 전</th><th>고친 뒤</th></tr>
+<tr><td>분양권 2020-06 취득·모름 / 든다</td><td>충족(잠정) / 충족(잠정 — 모름으로 바꿈)</td><td>충족(확정) / 충족(확정, 부칙 §4)</td></tr>
+<tr><td>분양권 2021-03 취득·모름</td><td>충족(잠정)</td><td>안 됨 — 2주택(분양권 특례 §156의3 있는지만 잠정)</td></tr>
+<tr><td>조합원입주권 2019·모름</td><td>충족(잠정)</td><td>안 됨 — 2주택(§156의2 특례 있는지만 잠정)</td></tr>
+<tr><td>분양권 취득일 모름</td><td>충족(잠정)</td><td>그대로(잠정)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·181~184 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>2021-01-01 전에 계약한 분양권을 2021년 이후 증여·매매로 다시 취득한 경우(부칙은 「취득」 기준) — 넥스가 넣는 취득일이 최초 공급계약일인지 이번 취득일인지</td><td>넣은 취득일</td><td>중간</td></tr>
+<tr><td>2</td><td>조합원입주권의 2006-01-01 기준은 2005.12.31 개정 §89② 신설 시점에서 적음 — 부칙 원문은 정비본에서 못 봄</td><td>2006-01-01</td><td>중간</td></tr>
+<tr><td>3</td><td>§104⑦(조정대상지역 중과 주택 수)의 분양권도 같은 부칙 — 중과 쪽 주택 수 세기는 이번에 안 봄</td><td>—</td><td>중간</td></tr>
+<tr><td>4</td><td>분양권이 「주택을 취득할 수 있는 권리」(§88 10호) 정의에 드는지(오피스텔 분양권 등)는 넥스가 종류를 가려 넣음</td><td>종류 글자</td><td>높음</td></tr>
+<tr><td>5</td><td>도구 부족 — 판단거리: 종합판정 설명의 분양권 칸에 「취득일 필수(2021-01-01 기준)」 한 줄(지시문·도구 설명 금지 중이라 안 고침)</td><td>엔진 근거 글</td><td>—</td></tr>
+</table>
+</main></body></html>
