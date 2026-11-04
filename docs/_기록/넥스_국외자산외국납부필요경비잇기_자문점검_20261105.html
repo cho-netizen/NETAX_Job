@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 231 국외자산 외국납부세액</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 231 — 「국외자산 양도소득세(소득세법 §118의2~§118의8) 계산기 — 5년 거주·250만 공제·기본세율·외화 환산 확인과 외국납부세액 「필요경비 산입 방법」(§118의6①2호) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_overseas_asset_transfer_tax, 다건 포함)를 일곱 갈래로 돌려 §118의2·§118의4~§118의8·시행령 §178의5를 맞췄습니다. 세액공제 방식·공제 한도·외화 환산·옛 한도 안내는 맞았으나, 필요경비 산입 방법을 고르면 세액공제만 0으로 하고 외국 세금을 필요경비로 빼지 않던 것을 단건·다건 계산기 모두 고쳤습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>5년 넘게 국내 거주한 사람이 미국 주택을 2026-05-01 10억에 양도(취득 6억·양도비 2천만), 미국에 양도세 3천만 납부. 견주기: 세액공제 방식 / 필요경비 산입 방식 / 5년 미만 거주 / 달러 금액 + 환율 / 외국세 2억(한도) / 2019년 양도 / 다건(필요경비 방식 건 + 공제 방식 건).</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 읽기용 판)</h2>
+<ul>
+<li>§118의2: 양도일까지 계속 5년 이상 국내 주소·거소를 둔 거주자의 국외 토지·건물·부동산 권리 등. §118의4: 필요경비 = 실지 취득가액(없으면 소재국 시가·보충) + 자본적지출 + 양도비. §118의5: §55① 기본세율. §118의6①: 외국에서 낸 양도소득세는 1호 세액공제(한도 = 산출세액 × 그 자산 소득금액 ÷ 그해 국외자산 소득금액) 또는 <b>2호 필요경비 산입 방법</b> 중 선택. §118의7: 연 250만 공제(국내분과 따로). §118의8: 장기보유특별공제 없음(단서). 시행령 §178의5: 외화는 받은·지출한 날 기준환율·재정환율.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>세액공제 방식 맞음: 차익 3.8억 − 250만 = 3.775억 → 기본세율 1억 2,506만 − 공제 3천만 → 9,506만 + 지방 950.6만 = 1억 456.6만 / 외국세 2억이면 한도 = 산출세액 / 5년 미만 → 대상 아님 / 70만$×1,400 − 50만$×1,200 = 3.8억 / 2019년은 옛 한도 안내.</li>
+<li class="red">필요경비 산입 방법(expense)을 고르면 세액공제만 0으로 하고 외국세 3천만을 필요경비에서 빼지 않아 차익이 그대로 3.8억 — 법은 3.5억. 칸 설명이 「이미 필요경비에 포함해 입력했다면 선택」이라 넥스가 transferExpenses에 넣지 않으면 어느 방법을 골라도 공제 방식보다 세금이 많았다. 다건 계산기도 같았다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateOverseasAssetTransferTaxJS·calculateOverseasAssetTransferTaxMultiJS: expense면 foreignTaxPaidAmount를 양도차익에서 빼고 「외국납부세액_필요경비산입」으로 보여 줌.</li>
+<li class="red">gs-backend/Code.js 두 도구의 foreignTaxCreditMethod 설명을 「도구가 foreignTaxPaidAmount를 필요경비로 빼므로 transferExpenses에 또 넣지 말 것」으로(도구 수·지시문 길이 그대로, 검문 ✓ 78개·25,224자). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>세액공제 방식</td><td>산출 1억 2,506만 − 3천만, 합계 1억 456.6만</td><td>맞음(§118의6①1호·§118의7)</td></tr>
+<tr><td>필요경비 방식</td><td class="red">차익 3.5억·과세표준 3.475억·공제 0 (전엔 차익 3.8억)</td><td>맞음(§118의6①2호)</td></tr>
+<tr><td>5년 미만 / 외화 / 외국세 2억 / 2019년 / 다건</td><td>대상 아님 / 3.8억 / 한도 = 산출세액 / 옛 한도 안내 / 1건 3.5억 필요경비</td><td>맞음</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, node --check 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>어느 방법이 유리한지(세액공제 vs 필요경비)는 두 번 돌려 견줌 — 지시문에 없음, 판단거리</td><td>두 번 호출</td><td>높음</td></tr>
+<tr><td>2</td><td>필요경비 산입 방법의 「대통령령으로 정하는 국외자산 양도소득세액」 범위(시행령 §178의6)는 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>국외 부동산의 양도일(§118의8 → §98 준용)·외화 환율 날짜는 사람이 넣음</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>2019.12.31 이전 양도의 한도 산식(국외 주식 포함)은 J14 그대로 — 그때 국외 주식등은 이제 §94①3호 — 연혁 안내만</td><td>안내</td><td>중간</td></tr>
+<tr><td>5</td><td>국내 양도소득과의 통산·기본공제 구분은 안내 — 국내 건과 함께 신고할 때의 잇기는 지시문 밖</td><td>안내</td><td>중간</td></tr>
+</table>
+</main></body></html>

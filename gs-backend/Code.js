@@ -2217,7 +2217,7 @@ const DRIVE_TOOLS = [
         transferExpensesForeign: { type: 'number', description: '외화 양도비.' },
         transferExpensesExchangeRate: { type: 'number', description: '양도비 지출일 환율.' },
         foreignLoanFxGain: { type: 'number', description: '국외에서 외화를 빌려 이 자산을 취득했을 때 그 빚의 환율변동 환차익(원) — 양도소득에서 뺌(소득세법 §118의2 단서). 모르면 아래 세 칸으로' }, foreignLoanAmountForeign: { type: 'number', description: '취득용 외화차입금 중 양도 때까지 남은 원금(외화)' }, loanExchangeRate: { type: 'number', description: '빌린 날 환율' }, loanRepayExchangeRate: { type: 'number', description: '갚은 날(양도일) 환율 — 환차손이면 뺄 것 없음' },
-        foreignTaxCreditMethod: { type: 'string', enum: ['credit', 'expense'], description: 'credit=외국납부세액공제(산출세액 한도로 세액공제, 기본값), expense=필요경비산입방법(이미 필요경비에 포함해 입력했다면 이 값을 선택).' },
+        foreignTaxCreditMethod: { type: 'string', enum: ['credit', 'expense'], description: 'credit=외국납부세액공제(산출세액 한도로 세액공제, 기본값), expense=필요경비산입방법(§118의6①2호 — 도구가 foreignTaxPaidAmount를 필요경비로 빼므로 transferExpenses에 또 넣지 말 것).' },
         foreignTaxPaidAmount: { type: 'number', description: 'foreignTaxCreditMethod가 credit일 때 — 해당 양도소득에 대해 외국에 납부한 세액(원). 없으면 생략.' },
         domesticTransferIncomeAmount: { type: 'number', description: '같은 과세기간에 국내자산 양도소득금액도 함께 있는 경우 그 금액(원, §118의6① 세액공제한도 계산용). 외국납부세액공제 한도 = 산출세액 × (국외자산양도소득금액÷해당과세기간양도소득금액합계액)인데, 이 계산기가 다루는 국외자산양도소득 외에 같은 과세기간 국내 양도소득이 없다면 생략(비율=1로 계산).' },
         filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: 'ontime=정상신고, unreported=무신고, underreported=과소신고. 기본값 ontime.' },
@@ -2253,7 +2253,7 @@ const DRIVE_TOOLS = [
               capitalExpenditureForeign: { type: 'number', description: '외화 자본적지출' }, capitalExchangeRate: { type: 'number', description: '그 지출한 날 환율' },
               transferExpensesForeign: { type: 'number', description: '외화 양도비' }, transferExpensesExchangeRate: { type: 'number', description: '그 지출한 날 환율' },
               foreignLoanFxGain: { type: 'number', description: '국외에서 외화를 빌려 이 자산을 취득했을 때 그 빚의 환율변동 환차익(원) — 양도소득에서 뺌(소득세법 §118의2 단서). 모르면 아래 세 칸으로' }, foreignLoanAmountForeign: { type: 'number', description: '취득용 외화차입금 중 양도 때까지 남은 원금(외화)' }, loanExchangeRate: { type: 'number', description: '빌린 날 환율' }, loanRepayExchangeRate: { type: 'number', description: '갚은 날(양도일) 환율 — 환차손이면 뺄 것 없음' },
-              foreignTaxCreditMethod: { type: 'string', enum: ['credit', 'expense'], description: 'credit=외국납부세액공제(기본값), expense=필요경비산입방법(이미 위 금액에 포함해 입력했다면 선택).' },
+              foreignTaxCreditMethod: { type: 'string', enum: ['credit', 'expense'], description: 'credit=외국납부세액공제(기본값), expense=필요경비산입방법(도구가 foreignTaxPaidAmount를 필요경비로 뺌 — 위 금액에 또 넣지 말 것).' },
               foreignTaxPaidAmount: { type: 'number', description: 'foreignTaxCreditMethod가 credit일 때 — 이 거래의 양도소득에 대해 외국에 납부한 세액(원).' }
             },
             required: ['wasResidentFiveYearsContinuously']
