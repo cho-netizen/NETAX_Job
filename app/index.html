@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:26 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -25042,7 +25042,12 @@ function nxMdOpenWindow(title, src, opts){
     if (!p.isCulturalHeritage) {
       return { 적용여부: false, 안내: '지정문화유산·국가등록문화유산·천연기념물등에 해당하는 주택이어야 하는데(시행령§155⑥1호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
     }
-    return { 적용여부: true, 안내: '지정문화유산 등에 해당하는 주택과 일반주택을 각각 1개씩 보유한 1세대가 일반주택을 양도하여 시행령§155⑥에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+    // [2026.11.05 모의사건 280] ⑥ 본문 — 「각각 1개씩」 소유한 1세대가 「일반주택을 양도」할 때만. 문화유산 주택 자체를 팔거나, 일반주택이 둘(또는 문화유산 주택이 둘)이면 이 항의 자리가 아님. 전엔 1호 해당만 보고 「적용」.
+    const soldCh_ = p.transferredHouse ? String(p.transferredHouse) : 'general';
+    if (soldCh_ === 'heritage') return { 적용여부: false, 안내: '양도하는 주택이 문화유산 주택 자체여서 시행령 §155⑥의 자리가 아닙니다 — 이 항은 「일반주택을 양도하는 경우」에 문화유산 주택을 빼 주는 것. 문화유산 주택을 팔 때는 일반 1세대1주택·일시적 2주택 판정으로.' };
+    const gc_ = p.generalHouseCount == null ? 1 : Number(p.generalHouseCount), hc_ = p.heritageHouseCount == null ? 1 : Number(p.heritageHouseCount);
+    if (gc_ !== 1 || hc_ !== 1) return { 적용여부: false, 안내: '문화유산 주택과 일반주택을 국내에 「각각 1개씩」 소유해야 하는데(시행령 §155⑥ 본문) 일반주택 ' + gc_ + '개·문화유산 주택 ' + hc_ + '개라 적용대상이 아닙니다 — 일반주택이 둘이면 먼저 일시적 2주택(§155①) 등 다른 특례로 하나를 정리한 뒤 다시 봄 [확인 필요: 특례 겹침 순서].' };
+    return { 적용여부: true, 양도주택: '일반주택', 안내: '지정문화유산 등에 해당하는 주택과 일반주택을 각각 1개씩 보유한 1세대가 일반주택을 양도하여 시행령§155⑥에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다. 일반주택의 2년 보유(조정대상지역 거주) 요건은 §154①대로 따로 봄. 2호·3호는 1999.2.8. 삭제.' };
   };
   window.calculateEmigratedFarmHouseExclusionJS = function (p) {
     p = p || {};

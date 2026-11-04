@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 280 문화유산 주택 각 1개·양도주택</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 280 — 「문화유산 주택 1세대1주택 특례(소득세법 시행령 §155⑥) 판정기 — 「각각 1개씩」·「일반주택을 양도」 자리 가르기」 (2026-11-05, 클라우드 세션)</h1>
+<p class="sub">가지 claude/gifted-clarke-hqwn4y · 유료 AI 호출 없음 · 엔진 회귀 174건 다름 0 · 화면 특례 판정기(넥스 도구 아님 — 도구 검문 변화 없음)</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<p>국가등록문화유산 한옥 1채와 아파트 1채를 가진 1세대가 ① 아파트를 판다 ② 한옥을 판다 ③ 아파트가 둘이다. 각각 §155⑥으로 1주택으로 보는가.</p>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>시행령 §155⑥ 〈2024.9.10〉 — 「다음 각 호의 주택과 그 밖의 주택(일반주택)을 국내에 <b>각각 1개씩</b> 소유하고 있는 1세대가 <b>일반주택을 양도</b>하는 경우 … 1개의 주택을 소유하고 있는 것으로 보아 §154①을 적용」. 1호 지정문화유산·국가등록문화유산·천연기념물등. 2호·3호 삭제 〈1999.2.8〉.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li class="red">1호 해당(체크)만 보고 「적용」 — 문화유산 주택 자체를 팔거나 일반주택이 둘이어도 적용이라 했다(267과 같은 「어느 주택을 파는지」 유형).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">엔진 <code>calculateCulturalHeritageHouseExclusionJS</code> — <code>transferredHouse</code>(general 기본·heritage), <code>generalHouseCount</code>·<code>heritageHouseCount</code>(기본 1) → 자리 밖이면 적용 ×와 안내; 적용이면 <code>양도주택</code>·§154① 2년 보유 요건은 따로 본다는 글. 이 판정기는 화면 특례 목록(「문화유산주택」)에서만 쓰여 넥스 도구 설명은 없음.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>아파트 양도 · 각 1개</td><td>적용 ○ · 양도주택 일반주택</td></tr>
+<tr><td>한옥(문화유산 주택) 양도</td><td class="red">적용 × — 「자체여서 자리 아님」(전에는 ○)</td></tr>
+<tr><td>일반주택 2개 / 문화유산 주택 2개</td><td class="red">적용 × — 「각각 1개씩」(전에는 ○)</td></tr>
+<tr><td>1호 아님</td><td>적용 × 그대로</td></tr>
+</table>
+<p>시험 t280 5건 통과 · 엔진 회귀 174건 다름 0·✗ 0 · 판정 20건 · 가족 지도 통과 · 서버 화면 파일 점검 ✓(Code.js 변경 없음).</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>내용</th><th>판단거리</th></tr>
+<tr><td>1</td><td>일반주택이 둘일 때 일시적 2주택(§155①)과 ⑥을 겹쳐 쓸 수 있는지(순서)</td><td>해석 확인</td></tr>
+<tr><td>2</td><td>이 판정기를 넥스가 부를 도구가 없음(화면 전용) — 판정 묶음 「1세대1주택」이 이 자리를 가르는지</td><td>도구 부족 — 판단거리</td></tr>
+<tr><td>3</td><td>천연기념물등 「주택」의 범위(보호구역 토지 위 주택 등)</td><td>판단거리</td></tr>
+<tr><td>4</td><td>문화유산 주택을 상속·증여로 받은 경우의 취득 시기와 ⑥ 적용 — 조문은 취득 원인을 안 가림</td><td>확인 끝(제한 없음)</td></tr>
+<tr><td>5</td><td>⑥과 조특법 §99의4(농어촌주택)·§155⑦ 겹침 때 어느 것을 먼저 쓰는지</td><td>판단거리</td></tr>
+</table>
+</main></body></html>
