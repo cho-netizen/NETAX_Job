@@ -411,7 +411,9 @@ function ledgerCalcState_(caseId, over) {
 // 사건분류 글 → 계산기 체크(1세대1주택·비사업용·미등기·주택 수) — 서식의 체크 칸과 같다
 function ledgerApplyClass_(st, cls) {
   const a0 = st.transferAssets[0] || (st.transferAssets.push({ id: 'trc_a1_1', transferContractId: 'trc_c1' }), st.transferAssets[0]);
-  if (/1세대\s*1주택|비과세/.test(cls)) a0.isOneHouseOneFamily = true;
+  // [2026.11.04 전용택 사건] "비과세"라는 글자만 보고 1세대1주택을 켜던 것 — 사건분류 「수용 등 공익사업 비과세·감면」(토지)에도 1세대1주택이 붙어 양도세가 0원으로 저장됐다.
+  //  1세대1주택 비과세는 그 낱말이 있을 때만, 그리고 수용·공익사업·농지 같은 다른 분류 낱말이 없을 때만 켠다(수용감면은 compensationType 칸이 따로 받는다)
+  if (/1세대\s*1주택/.test(cls) || (/비과세/.test(cls) && !/수용|공익|농지|교환|분합|파산/.test(cls))) a0.isOneHouseOneFamily = true;
   // [2026.10.30 E] 사건분류가 주택·입주권·분양권을 말하면 과세대상 구분 칸도 그렇게 — 예전엔 1세대1주택 체크만 하고 구분 칸이 비어 엔진 기본(그 밖 자산)으로
   //  보유 1년 이상 2년 미만 주택을 40%로 계산했다(소득세법 §104①2·3호: 주택·조합원입주권 1년 미만 70%·2년 미만 60%, 그 밖 자산 50%·40%). 장부에 구분 줄이 있으면 그 줄이 이긴다
   if (!a0.assetType) { if (/분양권/.test(cls)) a0.assetType = 'presale_right'; else if (/주택|입주권/.test(cls)) a0.assetType = 'house'; }
