@@ -13162,7 +13162,16 @@
     maybe.forEach(function (o) { unk((o.이름 || o.종류 || '물건') + '이(가) 주택 수에 드는지', /오피스텔/.test(String(o.이름 || o.종류)) ? '실제 쓰임(전입 여부·임대차계약)' : ''); });
 
     // 4) 보유기간 2년(§154⑧2호 거주자 3년) — 법 §95④로 셈(시행령 §154⑤), 주거용으로 쓴 날부터(⑤ 단서), 통산(⑧)
-    const st = isDate_(tg.통산시작일) ? tg.통산시작일 : isDate_(tg.주거사용시작일) ? tg.주거사용시작일 : tg.취득일;
+    const st0_ = isDate_(tg.통산시작일) ? tg.통산시작일 : isDate_(tg.주거사용시작일) ? tg.주거사용시작일 : tg.취득일;
+    // [2026.11.05 모의사건 187] 연혁 — 2021-01-01~2022-05-09 양도(구 시행령 §154⑤, 2021.2.17 개정·2022.5.10 삭제): 2주택 이상 세대가 1주택 외를 모두 양도·증여·용도변경해 최종 1주택이 된 날부터 보유·거주기간을 다시 셈.
+    //  제외: 2021-01-01 현재 이미 1주택(부칙)·§155 등 특례로 1세대1주택으로 보아 종전주택을 비과세 양도한 경우(단서) → 대상.재기산제외=true. 최종1주택일은 대상.최종1주택일 또는 물건 줄의 다른 주택 양도일(2021-01-01 이후, 판정 양도일 전) 가운데 마지막 날. [확인 필요: 단서·부칙 문언]
+    let resetFrom_ = '';
+    if (refHistoryOn_() && isDate_(T) && T >= '2021-01-01' && T <= '2022-05-09' && tg.재기산제외 !== true) {
+      const soldDates_ = list.filter(function (o) { return o && !o.대상 && /주택|조합원입주권|분양권/.test(String(o.종류 || '')) && isDate_(o.양도일) && String(o.양도일).slice(0, 10) >= '2021-01-01' && String(o.양도일).slice(0, 10) < T; }).map(function (o) { return String(o.양도일).slice(0, 10); }).sort();
+      const last_ = isDate_(tg.최종1주택일) ? String(tg.최종1주택일).slice(0, 10) : (soldDates_.length ? soldDates_[soldDates_.length - 1] : '');
+      if (last_ && isDate_(st0_) && last_ > String(st0_).slice(0, 10)) { resetFrom_ = last_; notes.push('최종 1주택 재기산(구 시행령 §154⑤, 2021-01-01~2022-05-09 양도) — 다른 주택을 ' + last_ + '에 양도해 1주택이 된 날부터 보유·거주기간을 다시 셈. 2021-01-01 현재 이미 1주택이었거나 일시적 2주택 등 특례로 종전주택을 비과세 양도한 경우면 대상.재기산제외=true로 다시 돌릴 것 [확인 필요: 단서·부칙]'); }
+    }
+    const st = resetFrom_ || st0_;
     const exBoth = exOk && ex.면제범위 === 'both';
     // [2026.11.05 모의사건 186] 연혁 — 2012-06-29 개정(양도분부터) 전 양도는 보유 3년(그 전 §154① 「3년 이상」). 연혁 꺼짐이면 지금 조문(2년).
     const hist3_ = refHistoryOn_() && isDate_(T) && T < '2012-06-29';
@@ -13172,7 +13181,7 @@
     else if (!isDate_(st) || !isDate_(T)) { row('보유기간', !isDate_(st) ? '취득일 모름' : '양도일 모름', '시행령 §154①·⑤', '모름'); if (!isDate_(st)) unk('취득일', '등기부등본'); }
     else {
       const y = fullYearsElapsed(String(st).slice(0, 10), T);
-      const r = row('보유기간 ' + needY + '년 이상', String(st).slice(0, 10) + ' ~ ' + T + ' · ' + y + '년' + (isDate_(tg.통산시작일) ? ' (통산 — 시행령 §154⑧)' : isDate_(tg.주거사용시작일) ? ' (주거용으로 쓴 날부터 — 시행령 §154⑤ 단서)' : ''), '시행령 §154①·⑤' + (needY === 3 ? '·⑧2호' : ''), y >= needY ? '충족' : '안 됨');
+      const r = row('보유기간 ' + needY + '년 이상', String(st).slice(0, 10) + ' ~ ' + T + ' · ' + y + '년' + (resetFrom_ ? ' (최종 1주택이 된 날부터 재기산 — 구 시행령 §154⑤)' : isDate_(tg.통산시작일) ? ' (통산 — 시행령 §154⑧)' : isDate_(tg.주거사용시작일) ? ' (주거용으로 쓴 날부터 — 시행령 §154⑤ 단서)' : ''), '시행령 §154①·⑤' + (needY === 3 ? '·⑧2호' : ''), y >= needY ? '충족' : '안 됨');
       if (r === '안 됨') bad = true;
     }
 
@@ -13194,8 +13203,9 @@
     else if (mort) row('거주기간', '장기저당담보주택으로 거주기간 제한 없음', '시행령 §155의2', '충족');
     else {
       let mon = Number(tg.거주개월);
+      if (resetFrom_ && Number.isFinite(mon) && !(Array.isArray(tg.거주) && tg.거주.length)) { mon = NaN; notes.push('재기산 때문에 거주개월 숫자는 못 씀 — 거주[{전입, 전출}]로 넣으면 ' + resetFrom_ + ' 이후 거주만 셈'); }
       if (!Number.isFinite(mon) && Array.isArray(tg.거주) && tg.거주.length) {
-        mon = 0; tg.거주.forEach(function (g) { if (isDate_(g.전입)) mon += fullMonthsElapsed(String(g.전입).slice(0, 10), isDate_(g.전출) ? String(g.전출).slice(0, 10) : T); });
+        mon = 0; tg.거주.forEach(function (g) { if (isDate_(g.전입)) { const in_ = resetFrom_ && String(g.전입).slice(0, 10) < resetFrom_ ? resetFrom_ : String(g.전입).slice(0, 10), out_ = isDate_(g.전출) ? String(g.전출).slice(0, 10) : T; if (out_ > in_) mon += fullMonthsElapsed(in_, out_); } });
       }
       const need = tg.취득당시조정 === true;
       if (!Number.isFinite(mon)) {
