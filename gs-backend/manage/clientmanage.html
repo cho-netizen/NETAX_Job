@@ -271,6 +271,36 @@
     document.getElementById('ccNewSave').addEventListener('click', function(){
       var 성명 = document.getElementById('ccNewName').value.trim();
       if (!성명){ showToast('성명을 입력해주세요.', 'warning'); return; }
+      // [2026.11.04 큰일 ⑨ 같은 사람] 세무사님 "권장안대로"(큰일다섯_계획서_20261104 ⑨) — 이름이 같고 전화 끝 4자리가 같은 고객이
+      //  이미 있으면 「이미 있는 ○○님인가요?」(그 고객 열기 / 그래도 새로). 생년월일은 주민번호를 목록에 싣지 않는 원칙(2026.09.19)
+      //  때문에 화면에서 견줄 수 없어 쓰지 않는다. 전화를 비웠으면 같은 이름만으로 묻는다. 동명이인(전화 다름)은 그대로 새로 만든다.
+      if (!this.dataset.sameOk){
+        var last4 = function(s){ var d = String(s || '').replace(/\D/g, ''); return d.length >= 4 ? d.slice(-4) : ''; };
+        var newTail = last4(document.getElementById('ccNewPhone').value);
+        var nm = 성명.replace(/\s+/g, '');
+        var same = clients.filter(function(c){
+          if (String(c.성명 || '').replace(/\s+/g, '') !== nm) return false;
+          if (!newTail) return true;
+          var tails = [last4(c.전화번호)].concat((c.추가연락처 || []).map(function(x){ return last4(x && x.전화번호); }));
+          return tails.indexOf(newTail) !== -1;
+        });
+        if (same.length){
+          var box = document.getElementById('ccSameBox');
+          if (!box){ box = document.createElement('div'); box.id = 'ccSameBox'; box.setAttribute('role', 'alertdialog'); box.style.cssText = 'border:1px solid var(--gold, #b8860b); border-radius:8px; padding:10px; margin-top:8px; display:flex; flex-direction:column; gap:6px;'; this.parentNode.parentNode.appendChild(box); }
+          box.innerHTML = '<strong>이미 있는 ' + escapeHtml(성명) + '님인가요?</strong>' +
+            '<div style="font-size:12.5px; color:var(--sub);">' + (newTail ? '이름과 전화 끝 4자리가 같은 고객이 있습니다.' : '전화번호를 비워 같은 이름 고객을 보여 드립니다.') + '</div>' +
+            same.map(function(c){ return '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;"><span>' + escapeHtml(c.성명 || '') + ' · ' + escapeHtml(c.전화번호 || '전화 없음') + (c.등록일 ? ' · 등록 ' + escapeHtml(c.등록일) : '') + '</span><button type="button" class="ghost-btn" data-open-same="' + escapeHtml(String(c.id)) + '">그 고객 열기</button></div>'; }).join('') +
+            '<div><button type="button" class="ghost-btn" id="ccSameNew">그래도 새로 만들기</button></div>';
+          var saveBtn = this;
+          box.querySelectorAll('[data-open-same]').forEach(function(b){ b.addEventListener('click', function(){
+            var c = clients.filter(function(x){ return String(x.id) === b.getAttribute('data-open-same'); })[0]; if (!c) return;
+            clientShowingNewForm = false; selectedClientId = c.id; renderClientList(); renderClientDetail(c);
+          }); });
+          document.getElementById('ccSameNew').addEventListener('click', function(){ saveBtn.dataset.sameOk = '1'; saveBtn.click(); });
+          box.scrollIntoView({ block: 'nearest' });
+          return;
+        }
+      }
       // [2026.11.03 전수조사 다시] 세무사님 "답답해서 사용하지 못하는 일이 생기면 안된다" — 서버 답(3~5초)을 기다리지 않고
       //  번호를 화면이 정해 목록·상세에 바로 넣고, 서버엔 보낼 함으로 뒤에서 보낸다(같은 번호는 서버가 한 번만 만듦, 실패하면 화면 아래 붉은 띠)
       var newPayload = {
@@ -477,7 +507,7 @@
         '<div class="modal-head"><span>문자 보내기 — ' + escapeHtml(c.성명 || '') + '</span><span class="modal-close" title="닫기" role="button" id="csClose">✕</span></div>' +
         '<div class="modal-body">' +
           '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">받는 번호: ' + escapeHtml(c.전화번호) + '</div>' +
-          '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">파일(현금영수증 등)을 같이 보내려면, 증빙관리에서 그 파일의 공유링크를 복사해 아래 메시지에 붙여넣으세요.</div>' +
+          '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">파일(현금영수증 등)을 같이 보내려면, 서류 탭에서 그 파일의 공유링크를 복사해 아래 메시지에 붙여넣으세요.</div>' +
           '<textarea id="csMessage" placeholder="메시지 내용을 입력하세요" style="width:100%; min-height:110px; box-sizing:border-box; font-family:inherit; font-size:13px; padding:8px;"></textarea>' +
           '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">' +
             '<button type="button" id="csSendBtn" class="save-btn">보내기</button>' +

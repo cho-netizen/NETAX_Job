@@ -1372,7 +1372,7 @@ function rwFillReviewNotes_(md, rows){
   let end = sep + 1;
   while (end < lines.length && /^\|/.test(lines[end])) end++;
   const cell = function(s){ return String(s == null ? '' : s).replace(/\|/g, '/').replace(/\n/g, ' '); };
-  const body = rows.map(function(r, i){ return '| ' + (i + 1) + ' | ' + cell(r.확인할것) + ' (' + cell(r.상태) + ', 사건 장부) | ' + cell(r.어디서) + ' | | |'; });
+  const body = rows.map(function(r, i){ return '| ' + (i + 1) + ' | ' + cell(r.확인할것) + ' (' + cell(r.상태) + ', 사실(장부)) | ' + cell(r.어디서) + ' | | |'; });
   const keep = lines.slice(sep + 1, end).filter(function(l){ return !/✍️\[AI 작성/.test(l); });
   return lines.slice(0, sep + 1).concat(body, keep, lines.slice(end)).join('\n');
 }
@@ -2103,8 +2103,10 @@ function rwLeftMarksOk_(what){
   const md = (d.id === selectedId && mdInputEl) ? mdInputEl.value : (d.md || '');
   const body = md.replace(/<!--[\s\S]*?-->/g, '');
   const left = (body.match(/⚠\[확인필요/g) || []).length, ai = (body.match(/✍️\[AI 작성/g) || []).length;
-  if (!left && !ai) return true;
-  return nxConfirmGate_('rwLeftMarks', '아직 채우지 않은 칸이 있습니다 — 확인필요 ' + left + '칸 · AI 작성 ' + ai + '칸.\n이대로 ' + what + '하면 빈칸 표시가 문서에 그대로 나갑니다. 그래도 ' + what + '할까요?');
+  // [2026.11.04] ✍️[세무사님 작성 …] 칸도 빈칸으로 셈(내부보고서 양식 점검 ③)
+  const me = (body.match(/\[세무사님 작성/g) || []).length;
+  if (!left && !ai && !me) return true;
+  return nxConfirmGate_('rwLeftMarks', '아직 채우지 않은 칸이 있습니다 — 확인필요 ' + left + '칸 · AI 작성 ' + ai + '칸' + (me ? ' · 세무사님 작성 ' + me + '칸' : '') + '.\n이대로 ' + what + '하면 빈칸 표시가 문서에 그대로 나갑니다. 그래도 ' + what + '할까요?');
 }
 
 document.getElementById('dlDoc').addEventListener('click', () => {

@@ -17,8 +17,8 @@ var SYS_AUDIT_AI_CHUNK_CHARS_ = 90000;   // 요청 하나에 보내는 지침 �
 // 지금 없는 주소·화면·옛 방식 — 코드로 대조할 수 없는 것만 여기 적는다(도구 이름은 아래 sysAuditRules_가 실제 도구 목록과 대조).
 var SYS_AUDIT_RETIRED_ = [
   { re: /admin\.netax\.kr/g, why: '은퇴한 주소(admin.netax.kr) — 예약·사건은 job.netax.kr에서' },
-  { re: /report-writer\s*편집창|리포트\s*라이터/g, why: '옛 work 편집창 이름 — 지금은 작성관리 화면' },
-  { re: /(?:OO|○○|[가-힣A-Za-z0-9]+)사건\.txt/g, why: '옛 work 방식(OO사건.txt 정리) — 지금은 처리개요·세액계산기 칸' }
+  { re: /report-writer\s*편집창|리포트\s*라이터/g, why: '옛 work 편집창 이름 — 지금은 사건 작업 › 보고서 탭' },
+  { re: /(?:OO|○○|[가-힣A-Za-z0-9]+)사건\.txt/g, why: '옛 work 방식(OO사건.txt 정리) — 지금은 사실(장부)·계산 칸' }
 ];
 // 살아 있는 netax.kr 주소(코드 안에 실제로 쓰이는 것). 여기 없는 *.netax.kr은 "모르는 주소"로 표시한다.
 var SYS_AUDIT_HISTORY_RE_ = /예전|옛\s|옛날|은퇴|폐기|퇴역|시절|대신|더 이상|쓰지 말|쓰지 않|금지|없어졌|바뀌었|현행화/;

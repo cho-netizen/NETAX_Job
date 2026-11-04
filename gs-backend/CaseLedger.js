@@ -1233,7 +1233,7 @@ function ledgerFlowView_(c, L, rows) {
   // 사건개요 중 칸 장부가 주인인 칸(사건분류·기준일·증여 칸)도 같은 표에 — 같은 값을 두 곳에 두지 않고 보여만 준다
   (rows || []).forEach(function (r) { if (/^(사건분류|기준일)$/.test(r.path) || /^g\./.test(r.path)) ovRows.push(Object.assign({}, r, { fromRows: true })); });
   // [2026.10.29 계획서 3판 4단계] 받는 곳(도구·세무사님·고객)과 도구로 이미 받았는지 — 보이기만(고객에게 보내지 않음)
-  const ev = ledgerFlowRows_(L, 'ev').map(function (r) { const raw = (L.ev || {})[r.path] || {}, lb = (raw.v && raw.v.label) || r.label, where = ledgerEvWhere_(lb); return Object.assign(r, { 서류: raw.v || {}, owner: raw.src && raw.src.kind || '', 받는곳: where, 도구확보: where === '도구' ? ledgerEvToolHas_(L, lb) : '' }); });
+  const ev = ledgerFlowRows_(L, 'ev').map(function (r) { const raw = (L.ev || {})[r.path] || {}, lb = (raw.v && raw.v.label) || r.label, where = ledgerEvWhere_(lb); return Object.assign(r, { 서류: raw.v || {}, owner: raw.src && raw.src.kind || '', 받는곳: where, 도구확보: where === '도구' ? ledgerEvToolHas_(L, lb) : '', 고객받음: raw.고객 && raw.고객.받음 ? raw.고객 : null }); });
   const kbs = (L.kb && L.kb.sum) || {};
   const q = (rows || []).filter(function (r) { return /^(물어볼것|증빙받을것)$/.test(r.state); }).length;
   const calcRows = (rows || []).filter(function (r) { return !/^(q:|doc:)/.test(r.path) && r.v !== '' && r.v !== undefined && r.v !== null && /^(확정|추정)$/.test(r.state); });
@@ -1291,9 +1291,12 @@ function ledgerToolRun_(input, by) {
   else if (d === 'person') r = famPersonSet_(c, input, kind === '세무사님' ? '세무사님' : who);
   else if (d === 'transfer') r = famTransferSet_(c, input, kind === '세무사님' ? '세무사님' : who);
   else if (d === 'family_drop') r = famDrop_(c, input, kind === '세무사님' ? '세무사님' : who);
+  else if (d === 'corp') r = famCorpSet_(c, input, kind === '세무사님' ? '세무사님' : who); // [2026.11.04 큰일 ⑦] 법인 줄
+  else if (d === 'share') r = famShareSet_(c, input, kind === '세무사님' ? '세무사님' : who); // 지분 줄
+  else if (d === 'holdings') r = Object.assign({ ok: true }, famHoldings_(famLoad_(famKeyOf_(c)), input.법인 || input.corp || '', input.기준일 || input.date || ''));
   else if (d === 'chain') r = famChainRun_(c, input, who);
   else if (d === 'plan') r = famPlanRun_(c, input, who);
-  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell·judge·family·person·transfer·family_drop·chain·plan 중 하나' };
+  else r = { ok: false, error: 'do는 set·ask·decide·undo·calc·taxes·lookup·estimate·compare·import·hyp·facts·brief·advice·advice_view·cite·check_refs·objects·object·object_drop·object_sell·judge·family·person·transfer·family_drop·corp·share·holdings·chain·plan 중 하나' };
   if (r && r.ok) r.남은질문 = ledgerQuestions_(c.id).length;
   if (r && r.ok && /^(set|decide|undo)$/.test(d)) { try { r.처리개요 = ledgerGiftOvSync_(c.id); } catch (e) {} } // 증여 값은 장부가 주인 — 처리개요 요약을 다시 쓴다
   return r;
@@ -1351,8 +1354,12 @@ function ledgerApi_(c, body) {
     case 'ledgerFamPerson': return famPersonSet_(c, body, body.by || who);
     case 'ledgerFamTransfer': return famTransferSet_(c, body, body.by || who);
     case 'ledgerFamDrop': return famDrop_(c, body, body.by || who);
+    case 'ledgerFamCorp': return famCorpSet_(c, body, body.by || who);
+    case 'ledgerFamShare': return famShareSet_(c, body, body.by || who);
     case 'ledgerFamChain': return famChainRun_(c, body, body.by || who);
     case 'ledgerFamPlan': return famPlanRun_(c, body, body.by || who);
+    case 'ledgerJudgeList': return judgeListApi_(); // [2026.11.04 큰일 ④] 판정 창 — 판정 묶음 목록·칸(판정 함수에서 뽑음, JudgeForm.js)
+    case 'ledgerJudgePrefill': return judgePrefill_(c, body); // [2026.11.04 큰일 ④] 판정 창 — 장부·지난 판정에서 칸 미리 채우기
     case 'ledgerJudge': return ledgerJudgeRun_(c, body, body.by || who); // [2026.11.01 종합판정 ①] 세액계산 「판정」 — 넥스 judge_tax_relief와 같은 함수
     case 'ledgerImport': return ledgerImportLegacy_(c);
     case 'ledgerKbBuild': return ledgerKbBuild_(c);
@@ -1850,6 +1857,8 @@ function ledgerFromCaseWrite_(c, params, by) {
         delete L.ev[k]; out.ev++; ledgerLogTo_(L, { by: who, what: '확보할 증빙 뺌', path: k, detail: (r.v && r.v.label || k) + ' — 작업관리 증빙목록에서 빠짐' });
       });
     }
+    // [2026.11.04 ⑩-2] 받을 서류가 바뀌면 고객창구 점검표도 뒤에서 맞춘다(1분 안)
+    if (out.ev && typeof bgEnqueue_ === 'function') { try { bgEnqueue_('portal_sync', { caseId: c.id }, 'portal_sync_' + c.id, '장부 받을 서류 바뀜'); } catch (e) {} }
     return out;
   });
 }

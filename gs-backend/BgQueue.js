@@ -115,8 +115,89 @@ var BGQ_HANDLERS_ = {
     work_deleteCaseCalendarEvents_(a.caseId);
     const idx = rh_loadReportIndex_();
     if (idx) { const kept = idx.filter(function (x) { return x.caseId !== a.caseId; }); if (kept.length !== idx.length) rh_saveReportIndex_(kept); }
+  },
+  // [2026.11.04 큰일 다섯 ⑩-2] 장부 「받을 서류」 ↔ 고객창구 점검표 맞추기
+  portal_sync: function (a) { portalSyncCase_(a.caseId); },
+  // [2026.11.04 화면정비 ⑦] 세무사님 "권장안대로 하자"(판단거리_정리_2차) — 보고서를 발행(고객창구 「보고서_외부」에 올림)하면 고객에게 문자 한 통.
+  //  고객창구가 없거나 전화번호가 없으면 조용히 끝(실패 목록에 안 남김). 같은 문서를 6시간 안에 다시 발행해도 한 번만.
+  report_notice: function (a) {
+    const c = job_findCase_(String(a.caseId || ''));
+    if (!c || !c.my_report_id) return;
+    const cache = CacheService.getScriptCache(), mark = 'rn_sent_' + String(a.fileId || '').slice(0, 60);
+    try { if (a.fileId && cache.get(mark)) return; } catch (e) {}
+    const 고객ID = String(c.고객ID || '').trim();
+    if (!고객ID) return;
+    let phone = '';
+    const data = client_getSheets_().clients.getDataRange().getValues();
+    const ccol = client_colMap_(data[0], CLIENT_HEADERS);
+    for (let i = 1; i < data.length; i++) { if (String(data[i][ccol.id]).trim() === 고객ID) { phone = String(data[i][ccol.전화번호] || '').trim(); break; } }
+    if (!phone) return;
+    const r = booking_sendSMS(phone, '이음세무컨설팅입니다. 고객창구에 새 문서가 올라왔습니다.\nhttps://netax.kr/my/?report_id=' + c.my_report_id);
+    if (r && r.success === false) {
+      if (/설정|연락처가 없/.test(String(r.message || ''))) return { permanent: '문자 발송 설정이 없거나 연락처가 없습니다' };
+      throw new Error(r.message || '문자 발송 실패');
+    }
+    try { if (a.fileId) cache.put(mark, '1', 21600); } catch (e) {}
+  },
+  // [2026.11.04 ⑩-4] 사건 만들기 — 장부 첫 칸(세목·업무유형·납세자·받을 서류). 같은 값은 다시 안 씀(ledgerFromCaseWrite_가 같은 값 건너뜀)
+  case_ledger: function (a) {
+    const c = job_findCase_(String(a.caseId || ''));
+    if (!c) return; // 그 사이 지운 사건
+    const by = a.by === '넥스' ? '넥스' : '세무사님';
+    ledgerFromCaseWrite_(c, { 세목: c.세목 || '', 업무유형: c.업무유형 || '', 납세자: c.납세자 || '' }, by);
   }
 };
+
+// [2026.11.04 큰일 다섯 ⑩-2] 세무사님 "권장안대로 하자"(큰일다섯_계획서_20261104.html ⑩-2)
+//  화면(증빙확보)에서 직접 더한 서류만 고객창구(my.netax.kr) 점검표에 올라가고, 장부·넥스·틀이 정한 「받을 서류」는 고객이 몰랐다.
+//  ① 장부 받을 서류 중 받는 곳이 고객인 것(도구·세무사님 몫은 빼고)을 점검표에 더한다
+//  ② 이 장치가 더한 줄이 장부에서 빠졌고 고객이 아직 안 낸 것이면 점검표에서도 뺀다(화면에서 더한 줄·이미 낸 줄은 건드리지 않음)
+//  ③ 고객이 낸 줄은 장부 그 서류에 「고객 받음」(파일 이름·시각)으로 적는다 — 확보(확정)는 세무사님이 서류를 보고 정한다
+//  고객창구가 없는 사건(my_report_id 빈칸)은 아무것도 안 한다.
+function portalSyncCase_(caseId) {
+  const r = bgqCaseRow_(caseId);
+  if (!r) return;
+  const rid = String(r.row[r.col.my_report_id] || '').trim();
+  if (!rid) return;
+  const L0 = ledgerLoad_(caseId, true), want = {};
+  Object.keys(L0.ev || {}).forEach(function (p) {
+    const e = L0.ev[p], lb = String((e.v && e.v.label) || e.label || '').trim();
+    if (e.state === '증빙받을것' && lb && ledgerEvWhere_(lb) === '고객') want[lb.slice(0, 120)] = p;
+  });
+  const before = ((L0.portal && L0.portal.added) || []).slice();
+  let got = {}, added = [];
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = SpreadsheetApp.openById(MY_SHEET_ID).getSheetByName(MY_SHEET_CASES);
+    const data = sheet.getDataRange().getValues(), col = my_colMap_(data[0]);
+    let ri = -1;
+    for (let i = 1; i < data.length; i++) if (String(data[i][col.report_id]).trim() === rid) { ri = i; break; }
+    if (ri < 0) return;
+    let list = [], st = {};
+    try { list = JSON.parse(data[ri][col.체크리스트] || '[]'); } catch (e) { list = []; }
+    try { st = JSON.parse(data[ri][col.제출상태] || '{}'); } catch (e) { st = {}; }
+    const sent = function (x) { return !!(st[x] && st[x].submitted); };
+    const keep = list.filter(function (x) { return !(before.indexOf(x) >= 0 && !want[x] && !sent(x)); });
+    added = before.filter(function (x) { return keep.indexOf(x) >= 0; });
+    Object.keys(want).forEach(function (lb) { if (keep.indexOf(lb) < 0) { keep.push(lb); added.push(lb); } });
+    if (JSON.stringify(keep) !== JSON.stringify(list)) { sheet.getRange(ri + 1, col.체크리스트 + 1).setValue(JSON.stringify(keep)); SpreadsheetApp.flush(); }
+    keep.forEach(function (x) { if (sent(x)) got[x] = st[x]; });
+  } finally { lock.releaseLock(); }
+  // 장부에 적기 — 바뀐 것이 있을 때만
+  const L1 = L0;
+  const needMark = Object.keys(L1.ev || {}).some(function (p) { const e = L1.ev[p], lb = String((e.v && e.v.label) || e.label || '').trim().slice(0, 120); return got[lb] && !(e.고객 && e.고객.받음 && e.고객.파일 === String(got[lb].fileName || '')); });
+  if (!needMark && JSON.stringify(added.slice().sort()) === JSON.stringify(before.slice().sort())) return;
+  ledgerMutate_(caseId, function (L) {
+    L.portal = { added: added, at: caseProcNow_() };
+    Object.keys(L.ev || {}).forEach(function (p) {
+      const e = L.ev[p], lb = String((e.v && e.v.label) || e.label || '').trim().slice(0, 120), g = got[lb];
+      if (!g || (e.고객 && e.고객.받음 && e.고객.파일 === String(g.fileName || ''))) return;
+      e.고객 = { 받음: true, 파일: String(g.fileName || '').slice(0, 120), 때: String(g.uploadedAt || '').slice(0, 19) };
+      ledgerLogTo_(L, { by: '고객', what: '고객창구로 서류 받음', path: p, detail: lb.slice(0, 80) + ' — ' + e.고객.파일 + ' (확보는 세무사님이 서류를 보고 정함)' });
+    });
+  });
+}
 function bgqCaseRow_(caseId) {
   const sheet = work_getSheet_();
   const data = sheet.getDataRange().getValues();
@@ -124,7 +205,7 @@ function bgqCaseRow_(caseId) {
   for (let i = 1; i < data.length; i++) if (String(data[i][col.id]) === String(caseId)) return { col: col, row: data[i] };
   return null;
 }
-var BGQ_LABELS_ = { sms: '문자 보내기', cal_delete: '예약 일정 지우기', cal_confirm: '예약 일정 확정 색', case_calendar: '사건 달력 맞추기', improve_report: '개선 후보 보고서 다시 만들기', case_folder: '사건 폴더·고객창구 만들기', case_names: '사건 이름 맞추기(폴더·고객창구·보고서 목록)', case_std_subfolders: '신고제출 폴더 만들기', case_deleted: '지운 사건 달력·보고서 목록 정리' };
+var BGQ_LABELS_ = { sms: '문자 보내기', cal_delete: '예약 일정 지우기', cal_confirm: '예약 일정 확정 색', case_calendar: '사건 달력 맞추기', improve_report: '개선 후보 보고서 다시 만들기', case_folder: '사건 폴더·고객창구 만들기', case_names: '사건 이름 맞추기(폴더·고객창구·보고서 목록)', case_std_subfolders: '신고제출 폴더 만들기', case_deleted: '지운 사건 달력·보고서 목록 정리', portal_sync: '고객창구 점검표 맞추기', case_ledger: '새 사건 장부 첫 칸', report_notice: '발행 문서 고객 알림 문자' };
 
 // 적기 — key를 주면 같은 열쇠의 일은 하나만 남는다(같은 사건을 연달아 고쳐도 달력은 마지막 값으로 한 번). why는 실패 목록에 보일 짧은 설명.
 function bgEnqueue_(kind, args, key, why) {

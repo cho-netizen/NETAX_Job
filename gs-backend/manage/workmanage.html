@@ -461,26 +461,20 @@
       if (prefill.bookingRowIndex) { payload.bookingRowIndex = prefill.bookingRowIndex; if (prefill.bookingName) payload.bookingName = prefill.bookingName; } // [2026.10.31 정리] 예약 이름도 보내 서버가 그 줄이 맞는지 본다(예약관리 연결과 같은 장치)
       // [2026.11.03 전수조사 다시] 세무사님 "답답해서 사용하지 못하는 일이 생기면 안된다" — 예전엔 사건 줄·폴더·의뢰서 원문·고객창구를 다 만들 때까지(30초쯤) 기다렸다.
       //  이제 화면이 번호를 먼저 만들어 목록에 바로 넣고 그 사건을 연다. 서버는 줄만 쓰고 답하며(같은 번호는 한 번만), 폴더·고객창구는 서버 뒤에서(BgQueue.js case_folder).
-      payload.id = nxNewId_();
-      payload.폴더뒤로 = true;
-      var semokLbl_ = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[payload.세목]) || payload.세목 || '';
-      var tmpRow_ = { 고객명: 고객명, 납세자: payload.납세자, 세목: payload.세목, 업무유형: upType, 의뢰일: payload.의뢰일, 기준일: payload.기준일, 개요: payload.개요, 법정일: payload.법정일 || '',
-        사건명: 고객명 + (payload.납세자 && payload.납세자 !== 고객명 ? '(' + payload.납세자 + ')' : '') + ' ' + semokLbl_ + ' ' + upType, 상태: '진행', 폴더ID: '',
-        하위업무: [], 작업일지: [], 법령예규판례: [], 증빙목록: [], 세액계산결과: [], 사건개요: {}, 생성일: new Date().toISOString(), _만드는중: true };
+      // [2026.11.04 ⑩-4] 사건 만들기 길 합치기 — 예전엔 이 화면이 임시 줄·보낼 함을 따로 짰다. 이제 공통 도우미(script.html nxCaseCreateLater_)
+      //  하나로 — 의뢰메모·예약·고객관리·사건 목록·넥스가 모두 서버 입구 work_createCase(→ work_createCaseFull_: 줄·달력·장부·예약 잇기·폴더 뒤로) 하나로 간다.
       saveDone(true);
       workShowingNewForm = false;
+      var tmpRow_ = nxCaseCreateLater_(payload, { onDone: function(res){ wcAfterCreate_(res); } });
       workSelectedCaseId = payload.id;
-      nxSaveLater_('work_create_case', payload, { key: 'case_' + payload.id, label: tmpRow_.사건명 + ' 만들기', patch: [{ list: 'cases', op: 'upsert', id: payload.id, row: tmpRow_ }],
-        onDone: function(res){ wcAfterCreate_(res); },
-        onFail: function(why){ showToast('사건을 만들지 못했습니다 — ' + why + ' (화면 아래 「다시 보내기」)', 'error'); } });
-      renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(payload.id) || Object.assign({ id: payload.id }, tmpRow_));
+      renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(payload.id) || tmpRow_);
       showToast('사건을 등록했습니다 — 폴더·고객창구는 뒤에서 만듭니다.', 'success');
       function wcAfterCreate_(res){
         if (res.case && String(workSelectedCaseId) === String(res.case.id) && !workShowingNewForm && typeof wcIsTyping_ === 'function' && !wcIsTyping_()) { renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(res.case.id) || res.case); }
         // [2026.09 버그수정] 동명이인인데 전화번호가 달라 새 고객으로 등록된 경우, 서버가
         // 알려주는 주의문구를 그냥 버리지 않고 보여준다 — 실제로 같은 사람이면 고객관리에서
         // 직접 병합/정리해야 한다는 걸 바로 알 수 있게.
-        if (res.warning) showToast(res.warning, 'warning');
+        // (주의문구는 공통 도우미가 띄운다)
         if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
         if (prefill.bookingRowIndex && res.bookingLinked){
           if (typeof loadBookingList === 'function') loadBookingList();

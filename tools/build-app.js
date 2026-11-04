@@ -45,6 +45,9 @@ if (html.indexOf(LAW_MAP_SLOT) !== -1) {
   html = html.split(LAW_MAP_SLOT).join(m[1]);
 }
 
+// [2026.11.04] 공휴일 표 하나 — 조견표 1부-02에서 서버용 날짜 파일(gs-backend/HolidayDates.js)을 같이 만든다(엔진·판정이 같이 읽음).
+require('./build-holidays.js');
+
 // [2026.10.19 서버 용량] 조견표·서식 칸 해설 자료(reftables/*.json, 약 1MB)는 서버 lawsearch.html엔 빈 값으로 두고 여기서 끼운다.
 {
   const ref = require('./build-reftables.js');

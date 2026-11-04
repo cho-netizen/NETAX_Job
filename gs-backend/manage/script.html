@@ -456,7 +456,7 @@
     import_hometax_receipts: '홈택스 매출 가져오기', client_scan_case_files_for_names: '사건 파일에서 이름 찾기', client_audit_duplicates: '같은 고객 찾기',
     work_resync_all_calendars: '달력 다시 맞추기', deploy_job_start: '운영 반영', post_to_naver_blog: '네이버 블로그 올리기', post_to_google_blog: '구글 블로그 올리기',
     shorts_create_episode: '쇼츠 만들기', export_user_manual: '매뉴얼 내보내기', knh_run: '노하우 정리', knh_index: '노하우 색인', improve_report_run: '개선 보고서 만들기',
-    'case_proc:view': '사건 처리 화면 불러오기', 'case_proc:overview': '처리개요 불러오기', 'case_proc:ledger': '사실(장부) 읽기', 'case_proc:ledgerFlow': '장부 흐름 읽기',
+    'case_proc:view': '사건 처리 화면 불러오기', 'case_proc:overview': '개요 불러오기', 'case_proc:ledger': '사실(장부) 읽기', 'case_proc:ledgerFlow': '장부 흐름 읽기',
     'case_proc:scanSaved': '저장된 서류 훑기', 'case_proc:scanCands': '서류 후보 훑기', 'case_proc:readList': '읽을 서류 목록 받기', 'case_proc:readScope': '읽을 범위 저장',
     'case_proc:facts': '서류 사실 모으기', 'case_proc:calcin': '계산 칸 채우기', 'case_proc:multi': '도구 여러 개 돌리기', 'case_proc:nexPreread': '넥스 미리 읽기',
     'case_proc:ledgerCalc': '시험 계산', 'case_proc:ledgerCompare': '세목 견주기', 'case_proc:ledgerLookup': '공부 조회', 'case_proc:ledgerJudge': '판정 돌리기',
@@ -1727,8 +1727,10 @@
     if (NX_CB_.inited) return;
     var bar = document.getElementById('nxCaseBar'); if (!bar) return;
     NX_CB_.inited = true;
-    bar.querySelector('.cb-tabs').innerHTML = NX_CB_TABS_.map(function(t){ return '<button type="button" class="cb-tab nx-tab" data-cb-tab="' + t[0] + '">' + t[1] + '</button>'; }).join('');
+    // [2026.11.04 큰일 ④] 「판정」은 탭이 아니라 창 — 계산 바로 뒤에 두고 누르면 판정 창(manage/judgewin.html)
+    bar.querySelector('.cb-tabs').innerHTML = NX_CB_TABS_.map(function(t){ return '<button type="button" class="cb-tab nx-tab" data-cb-tab="' + t[0] + '">' + t[1] + '</button>' + (t[0] === 'taxcalc' ? '<button type="button" class="cb-tab nx-tab" id="cbJudge" title="비과세·감면·기한 등 판정 묶음을 골라 돌립니다">판정</button>' : ''); }).join('');
     bar.addEventListener('click', function(e){
+      if (e.target.closest('#cbJudge')) { if (typeof nxJudgeOpen_ === 'function') nxJudgeOpen_(); return; }
       var b = e.target.closest('[data-cb-tab]'); if (!b) return;
       nxCbGo_(b.getAttribute('data-cb-tab'), nxCbCurId_());
     });
@@ -1747,7 +1749,7 @@
     strip.className = 'nx-ledger-strip cb-strip';
     strip.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px;';
     strip._getCaseId = nxCbCurId_; strip._view = 'casehandling'; strip._shownId = null; strip._homeRow = bar;
-    strip.innerHTML = '<b>사건 장부</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
+    strip.innerHTML = '<b>사실(장부)</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
     bar.querySelector('.cb-strip-host').appendChild(strip);
     NX_CB_.strip = strip;
     NX_LG_.strips.push(strip);
@@ -1841,7 +1843,7 @@
     el.className = 'nx-ledger-strip';
     el.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:6px 0 4px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; background:var(--card, transparent);';
     el._getCaseId = getCaseId; el._view = fromView; el._shownId = null; el._homeRow = row;
-    el.innerHTML = '<b>사건 장부</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
+    el.innerHTML = '<b>사실(장부)</b><span class="nx-lg-body" style="color:var(--sub);">사건을 고르면 장부가 보입니다</span>';
     row.parentNode.insertBefore(el, row.nextSibling);
     NX_LG_.strips.push(el);
     if (!NX_LG_.timer) NX_LG_.timer = setInterval(nxLedgerStripTick_, 2000);
@@ -2140,7 +2142,7 @@
       reporthub: 'initReportHub', taxcalc: 'initTaxCalc', print: 'initPrintHub', reportwriter: 'initReportWriter', reports: 'initReports',
       settings: 'initSettings', dashboard: 'initDashboard' };
     // 화면 안의 핵심 기능(버튼이 부르는 함수) — 이름이 바뀌거나 빠지면 버튼이 조용히 먹통이 된다
-    var CORE_FNS_ = ['callGas', 'showView', 'goToView_', 'nxLogBug_', 'runAiAutoFillTransferBulk', 'runFolderAiExtraction',
+    var CORE_FNS_ = ['callGas', 'showView', 'goToView_', 'nxLogBug_', 'runAiAutoFillTransferBulk', 
       'calculateTransferTaxMultiJS', 'calculateGiftTaxJS', 'calculateInheritanceTaxJS', 'createNewDoc'];
     function check_(){
       try {

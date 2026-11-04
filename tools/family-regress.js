@@ -4,7 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..', 'gs-backend');
 const src = fs.readFileSync(path.join(root, 'manage/taxcalc-engine.html'), 'utf8').replace(/^\s*<script>/, '').replace(/<\/script>\s*$/, '');
-const W = {}; new Function('window', src)(W);
+// [2026.11.04 계산 엔진 하나 ③] 서버와 똑같이 — 공휴일 날짜(HolidayDates.js)를 엔진에 넘기고, 판정은 getUiCalcEngine_으로 엔진 이율 표를 읽음
+(0, eval)(fs.readFileSync(path.join(root, 'HolidayDates.js'), 'utf8'));
+const W = { NX_HOLIDAY_DATES_: NX_HOLIDAY_DATES_ }; new Function('window', src)(W);
+global.getUiCalcEngine_ = () => W;
 global.caseProcNow_ = () => '2026-11-01 12:00'; global.caseProcToday_ = () => '2026-11-01';
 (0, eval)(fs.readFileSync(path.join(root, 'FamilyMap.js'), 'utf8'));
 (0, eval)(fs.readFileSync(path.join(root, 'JudgeMore.js'), 'utf8'));
@@ -1079,5 +1082,36 @@ const fe = famAutoEstatePrior_({ id: 'cY', 고객명: '한도식' }, ii, L);
 ok(fe && fe.줄 && /그 밖 2건/.test(fe.줄[0]), '상속 장부 계산 — 지도 사전증여 가산', fe && fe.줄[0]);
 const ri = calc('calculate_inheritance_tax', ii);
 ok(ri && !ri.error, '가산 넣은 상속세 계산', ri && (ri.error || ('과세표준 ' + won(ri.과세표준) + ' · 납부 ' + won(ri.납부세액 || ri.납부할세액))));
+console.log('— 큰일 ⑦ 법인·지분 — 판정 셋이 지도 지분을 같은 값으로 —');
+const F2 = JSON.parse(JSON.stringify(F));
+F2.법인 = [{ id: 'k1', 이름: '한빛산업', 상장: false }, { id: 'k2', 이름: '도식물산' }];
+F2.지분 = [
+  { id: 's1', 사람: 'p1', 법인: '한빛산업', 비율: 60, 기준일: '2020-01-01' },
+  { id: 's2', 사람: 'p3', 법인: '한빛산업', 비율: 20, 기준일: '2020-01-01' },
+  { id: 's3', 사람: '남갑수', 법인: '한빛산업', 비율: 20, 기준일: '2020-01-01' },
+  { id: 's4', 사람: 'p3', 법인: '도식물산', 비율: 100, 기준일: '2021-01-01' }
+];
+F2.사람.forEach(function () {}); 
+F2.이전.push({ id: 't9', 종류: '증여', 날짜: '2025-01-01', 주는: 'p1', 받는: 'p3', 관계: '직계존속', 물건: '한빛산업 주식', 물건종류: '주식', 법인: '한빛산업', 지분: 20, 금액: 500000000 });
+const H0 = famHoldings_(F2, '한빛산업', '2024-12-31'), H1 = famHoldings_(F2, '한빛산업', '2026-01-01');
+const pick = (H, n) => (H.주주.filter((x) => x.이름 === n)[0] || {}).비율;
+ok(pick(H0, '한도식') === 60 && pick(H0, '한민수') === 20, '이전 전날 지분 그대로(60·20)', JSON.stringify(H0.주주));
+ok(pick(H1, '한도식') === 40 && pick(H1, '한민수') === 40 && H1.합계 === 100, '주식 증여 뒤 지분 바뀜(40·40, 합계 100)', JSON.stringify(H1.주주));
+const saveLoad = global.famLoad_; global.famLoad_ = () => F2;
+const cc = { id: 'cK', 고객명: '한민수' };
+const f1 = famCorpFill_(cc, '제2차', { 법인: '한빛산업', 성립일: '2026-03-31', 기준주주: '한민수' });
+const f2 = famCorpFill_(cc, '가족지분', { 법인: '한빛산업', 양도일: '2026-03-31', 기준주주: '한민수' });
+const f3 = famCorpFill_(cc, '특정법인', { 법인: '한빛산업', 기준일: '2026-03-31', 기준주주: '한민수' });
+const fam2 = (f1.facts.주주 || []).filter((s) => s.관계 !== '남').reduce((a, s) => a + s.주식수, 0) / 100;
+ok(fam2 === 80 && f2.facts.주주가족지분 === 80 && f3.facts.groupOwnershipRatio === 80 && f3.facts.shareholderOwnershipRatio === 40, '세 판정이 같은 가족 지분 80%(본인 40%)', [fam2, f2.facts.주주가족지분, f3.facts.groupOwnershipRatio, f3.facts.shareholderOwnershipRatio].join('·'));
+const f4 = famCorpFill_(cc, '특정법인', { 법인: '한빛산업', 기준일: '2026-03-31', groupOwnershipRatio: 55 });
+ok(f4.facts.groupOwnershipRatio === 55 && f4.채움.indexOf('groupOwnershipRatio') === -1, '칸에 넣은 값이 있으면 그 값 우선', f4.facts.groupOwnershipRatio);
+const f5 = famCorpFill_(cc, '가족지분', { 법인: '없는법인', 양도일: '2026-03-31' });
+ok(!f5.채움.length, '지도에 없는 법인은 채우지 않음', f5.채움.join(','));
+const j1 = judgeSecondaryLiability_(Object.assign({}, f1.facts, { 체납: [{ 세목: '법인세', 성립일: '2026-03-31', 부족액: 100000000 }] }));
+ok(j1 && j1.묶음, '제2차 납세의무 판정이 지도 주주로 돎', j1 && (j1.결론 || j1.판정 || JSON.stringify(j1).slice(0, 160)));
+const j2 = judgeCorpIndividualDeal_(Object.assign({}, f2.facts, { 방향: '개인→법인', 특수관계: '예', 대가: 500000000, 시가: 800000000 }));
+ok(j2 && JSON.stringify(j2).indexOf('80') !== -1, '법인거래 판정이 지도 가족 지분 80%를 씀', j2 && (j2.결론 || JSON.stringify(j2).slice(0, 160)));
+global.famLoad_ = saveLoad;
 console.log(bad ? '\n✘ ' + bad + '건 어긋남' : '\n✔ 모두 통과');
 process.exit(bad ? 1 : 0);

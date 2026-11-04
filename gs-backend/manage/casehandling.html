@@ -912,7 +912,7 @@
         payload.사건개요 = overview;
         // [2026.10.22 작업 기록부] 세무사님이 처리개요 화면에서 직접 고친 칸 — 사건 기록부에 한 줄(넥스가 이어 받을 때 봄)
         var chChanged_ = Object.keys(overview).filter(function(k){ var o = (c.사건개요 || {})[k]; return JSON.stringify(o == null ? '' : o) !== JSON.stringify(overview[k] == null ? '' : overview[k]); });
-        if (chChanged_.length) payload._log = { by: '세무사님', what: '처리개요 고침', detail: chChanged_.slice(0, 8).map(function(k){ var v = overview[k]; return k + '=' + String(typeof v === 'object' ? JSON.stringify(v) : v).slice(0, 30); }).join(', ') + (chChanged_.length > 8 ? ' 외 ' + (chChanged_.length - 8) + '칸' : '') };
+        if (chChanged_.length) payload._log = { by: '세무사님', what: '개요 고침', detail: chChanged_.slice(0, 8).map(function(k){ var v = overview[k]; return k + '=' + String(typeof v === 'object' ? JSON.stringify(v) : v).slice(0, 30); }).join(', ') + (chChanged_.length > 8 ? ' 외 ' + (chChanged_.length - 8) + '칸' : '') };
       } else {
         payload.처리대상 = document.getElementById('chEditTarget').value.trim();
       }

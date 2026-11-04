@@ -271,7 +271,7 @@
         if (!payload.newDate || !payload.newTime){ toast('새 날짜와 시간을 넣어 주세요.'); return; }
       }
       // [2026.11.03] 보낼 함(script.html nxSaveLater_) — 일정변경 말고는 화면에 먼저 적고 창을 바로 닫는다(서버는 뒤에서, 문자도 뒤에서 1분 안에).
-      //  일정변경은 달력 빈 시간을 그 자리에서 봐야 해서 지금처럼 기다린다(겹치면 바로 알려야 함).
+      //  [2026.11.04 ⑩-3] 일정변경도 아래 따로 보낼 함으로 간다(겹침은 화면이 먼저, 달력 겹침은 서버 답으로 되돌림).
       if (o.v !== '일정변경'){
         var keep = { result: b.result, status: b.status };
         if (o.v === '지우기') b.result = ''; else { b.result = o.v; if (o.v === '고객취소' || o.v === '사무소취소') b.status = '취소'; }
@@ -284,13 +284,19 @@
           redo: function(){ if (o.v === '지우기') b.result = ''; else { b.result = o.v; if (o.v === '고객취소' || o.v === '사무소취소') b.status = '취소'; } bookingRender_(); } });
         return;
       }
-      var btn = this; btn.disabled = true; btn.textContent = '저장 중…';
-      callGas('booking_set_result', payload).then(function(res){
-        btn.disabled = false; btn.textContent = '저장';
-        if (!res || res.success === false){ toast((res && res.message) || '저장 실패'); return; }
-        toast(res.message || '저장했습니다.');
-        bookingCloseModal_(); bookingAfterChange_();
-      }).catch(function(e){ btn.disabled = false; btn.textContent = '저장'; toast('오류: ' + nxErrText_(e)); });
+      // [2026.11.04 ⑩-3] 일정변경도 보낼 함으로 — 이 화면이 아는 다른 확정 예약과 같은 날·시간이면 그 자리에서 막고,
+      //  그 밖의 겹침(다른 달력 일정)은 서버가 보고 「그 시간에 이미 다른 일정」으로 돌려주면 옛 일시로 되돌려 붉은 띠로 알린다.
+      var clash = (window._bookingAll || []).filter(function(x){ return x !== b && x.status === '확정' && !x.result && String(x.reservedDate) === payload.newDate && String(x.reservedTime).slice(0, 5) === payload.newTime; })[0];
+      if (clash){ toast('그 시간엔 ' + clash.name + '님 예약이 있습니다 — 다른 시간을 골라 주세요.'); return; }
+      var old = { d: b.reservedDate, t: b.reservedTime, r: b.result };
+      var apply_ = function(){ b.reservedDate = payload.newDate; b.reservedTime = payload.newTime; b.result = ''; bookingRender_(); };
+      bookingCloseModal_(); apply_();
+      if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
+      toast(b.name + '님 예약을 ' + payload.newDate + ' ' + payload.newTime + '(으)로 옮겼습니다' + (payload.sms ? ' — 고객 문자는 1분 안에 보냅니다.' : '.'));
+      nxSaveLater_('booking_set_result', payload, { label: b.name + '님 예약 일정변경(' + payload.newDate + ' ' + payload.newTime + ')',
+        onDone: function(){ bookingQuietReload_(); },
+        onFail: function(){ b.reservedDate = old.d; b.reservedTime = old.t; b.result = old.r; bookingRender_(); },
+        redo: apply_ });
     });
   }
 

@@ -12,6 +12,10 @@
         <button type="button" id="chGasStatusBtn" class="nx-tab" title="세액계산 칸마다 값과 출처(서류·답·추정)를 표로">반영 현황표</button>
         <button type="button" id="chGasFactsBtn" class="nx-tab" title="서류에서 모은 사람·자산·계약·돈 흐름·시간 순서·법령 점검을 표로(보기만, 기록 안 남음)">판단 재료</button>
         <button type="button" id="chGasFixBtn" class="nx-tab" title="이미 정해진 세액계산 입력 칸(과세대상 구분·필요경비·사건분류 등)의 값을 고치거나 되돌리고, 고친 기록을 봅니다 — 넥스가 쓰는 것과 같은 도구">칸 고치기</button>
+        <!-- [2026.11.04 판단거리 2차 ⑨] 넥스만 쓰던 도구 셋(사실 지도·서류 다시 뒤지기·쟁점 묶음)을 세무사님도 직접 — 같은 서버 함수 -->
+        <button type="button" id="chFactMapBtn" class="nx-tab" title="서류에서 모은 사실이 세액계산 칸 어디로 갔는지, 아직 빈 칸은 무엇인지 한 장으로 — 넥스가 쓰는 것과 같은 도구">사실 지도</button>
+        <button type="button" id="chDocFindBtn" class="nx-tab" title="서류 하나를 골라 날짜·금액·낱말을 다시 찾아봅니다 — 넥스가 쓰는 것과 같은 도구">서류 다시 뒤지기</button>
+        <button type="button" id="chIssueBundleBtn" class="nx-tab" title="남은 질문 하나를 골라 그 질문에 걸린 후보 값·근거·관련 질문을 한 묶음으로 봅니다 — 넥스가 쓰는 것과 같은 도구">쟁점 묶음</button>
       </div>
       <div id="lgBody" style="margin-top:10px;"></div>
     </div>
@@ -55,7 +59,7 @@
     try { if (typeof nxLastCaseId_ !== 'undefined') nxLastCaseId_ = caseId; } catch (e) {}
     empty.style.display = 'none'; wrap.style.display = '';
     // 단추에 붙은 옛 리스너를 버리려고 단추를 새것으로 바꾼다(사건을 바꿔 고를 때마다 한 번만 붙게)
-    ['chLedgerBtn', 'chGasStatusBtn', 'chGasFactsBtn', 'chGasFixBtn'].forEach(function(id){ var b = document.getElementById(id); if (b){ var nb = b.cloneNode(true); b.parentNode.replaceChild(nb, b); } });
+    ['chLedgerBtn', 'chGasStatusBtn', 'chGasFactsBtn', 'chGasFixBtn', 'chFactMapBtn', 'chDocFindBtn', 'chIssueBundleBtn'].forEach(function(id){ var b = document.getElementById(id); if (b){ var nb = b.cloneNode(true); b.parentNode.replaceChild(nb, b); } });
     var body = document.getElementById('lgBody'); body.innerHTML = '';
     lgBindTools_(c, body);
     // 장부를 고치면 위 📒 사건 장부 띠(처리개요·세액계산과 같은 수)를 다시 읽는다
@@ -80,12 +84,75 @@
           r.rows.map(function(x){ return '<tr>' + x.slice(0, 4).map(function(v, i){ return '<td style="padding:3px 8px; border-top:1px solid var(--line);' + (i === 3 ? ' max-width:420px; overflow-x:auto;' : '') + '" title="' + esc(v) + '">' + esc(v) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></div>';
       }).catch(function(e){ body.innerHTML = '<div class="log-empty">현황표를 만들지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
+    // [2026.11.04] 넥스만 쓰던 도구 셋(사실 지도·서류 다시 뒤지기·쟁점 묶음)을 세무사님도 누르게 — 공통원칙 "넥스만 쓸 수 있는 GAS 도구가 있으면 1단계가 덜 된 것". 서버는 넥스와 같은 함수(case_proc factMap·docFind·issueBundle)
+    var lgCell_ = function(t, w){ return '<td style="padding:3px 8px; border-top:1px solid var(--line); max-width:' + (w || 260) + 'px; overflow-x:auto; white-space:nowrap;" title="' + esc(t) + '">' + esc(t) + '</td>'; };
+    var lgTbl_ = function(head, rows){ return '<div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12.5px; white-space:nowrap; margin-top:4px;"><tr>' + head.map(function(x){ return '<th style="text-align:left;padding:3px 8px;">' + esc(x) + '</th>'; }).join('') + '</tr>' + rows + '</table></div>'; };
+    var lgFail_ = function(what, r){ body.innerHTML = '<div class="log-empty">' + what + ' 못 했습니다: ' + esc((r && (r.error || r.오류)) || '응답 없음') + '</div>'; };
+    document.getElementById('chFactMapBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">사실 지도 그리는 중…</div>';
+      callGas('case_proc', { caseId: c.id, step: 'factMap', by: '세무사님' }).then(function(r){
+        if (!r || r.error || !r.ok) return lgFail_('사실 지도를 그리지', r);
+        var g = r.고리 || {}, m = r.지표 || {}, blank = r.빈칸 || [], diff = r.어긋남 || [];
+        var h = '<div style="font-size:12.5px;"><div style="display:flex; gap:14px; flex-wrap:wrap;">'
+          + '<span>빈 칸 <b>' + esc(g.빈칸 != null ? g.빈칸 : blank.length) + '</b></span><span>서류 있음 <b>' + esc(g.서류있음 || 0) + '</b></span><span>다시 뒤질 후보 <b>' + esc(g.다시뒤져후보 || 0) + '</b></span><span>여쭐 것 <b>' + esc(g.묻기로 || 0) + '</b></span>'
+          + Object.keys(m).map(function(k){ return '<span>' + esc(k.replace(/^②-\d\s*/, '')) + ' <b>' + esc(m[k]) + '</b></span>'; }).join('') + '</div>';
+        h += blank.length ? lgTbl_(['칸', '내용', '찾을 서류', '이 사건에 있는 파일'], blank.map(function(x){ return '<tr>' + lgCell_(x.칸, 180) + lgCell_(x.글, 320) + lgCell_(x.찾을서류, 200) + lgCell_(Array.isArray(x.이사건에있는파일) ? x.이사건에있는파일.join(', ') : x.이사건에있는파일, 260) + '</tr>'; }).join('')) : '<div class="log-empty">빈 칸 없음</div>';
+        if (diff.length) h += '<div style="margin-top:8px; font-weight:600;">서류끼리 어긋남 ' + diff.length + '</div><ul class="nx-list" style="margin:4px 0;">' + diff.map(function(x){ return '<li>' + esc(typeof x === 'string' ? x : JSON.stringify(x)) + '</li>'; }).join('') + '</ul>';
+        body.innerHTML = h + '</div>';
+      }).catch(function(e){ lgFail_('사실 지도를 그리지', { error: nxErrText_(e) }); });
+    });
+    document.getElementById('chDocFindBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<form id="lgDocFindForm" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12.5px;">'
+        + '<label>서류 이름 <input id="lgDfFile" type="text" style="width:24ch;" required></label>'
+        + '<label>찾을 것 <select id="lgDfWant"><option value="keyword">낱말</option><option value="date">날짜</option><option value="amount">금액</option></select></label>'
+        + '<label>낱말 <input id="lgDfKw" type="text" style="width:14ch;"></label>'
+        + '<button type="submit" class="ghost-btn">다시 뒤지기</button></form><div id="lgDfOut" style="margin-top:6px;"></div>';
+      document.getElementById('lgDocFindForm').addEventListener('submit', function(ev){
+        ev.preventDefault();
+        var out = document.getElementById('lgDfOut'), want = document.getElementById('lgDfWant').value, kw = document.getElementById('lgDfKw').value.trim();
+        if (want === 'keyword' && !kw){ showToast('찾을 낱말을 넣어 주세요', 'error'); return; }
+        out.innerHTML = '<div class="log-empty">서류를 다시 읽는 중…</div>';
+        callGas('case_proc', { caseId: c.id, step: 'docFind', by: '세무사님', file: document.getElementById('lgDfFile').value.trim(), want: want, keyword: kw }).then(function(r){
+          if (!r || r.error || r.오류 || !r.ok){ out.innerHTML = '<div class="log-empty">찾지 못했습니다: ' + esc((r && (r.error || r.오류)) || '응답 없음') + '</div>'; return; }
+          var cand = r.후보 || [];
+          out.innerHTML = '<div style="font-size:12.5px;">' + esc(r.파일 || '') + ' — 찾음 ' + esc(r.찾음 || cand.length) + (r.안내 ? ' · ' + esc(r.안내) : '') + '</div>'
+            + (cand.length ? lgTbl_(['값', '쪽', '판독', '앞뒤'], cand.map(function(x){ return '<tr>' + lgCell_(x.값, 180) + lgCell_(x.쪽, 50) + lgCell_(x.판독, 120) + lgCell_(x.앞뒤, 380) + '</tr>'; }).join('')) : '');
+        }).catch(function(e){ out.innerHTML = '<div class="log-empty">찾지 못했습니다: ' + esc(nxErrText_(e)) + '</div>'; });
+      });
+    });
+    document.getElementById('chIssueBundleBtn').addEventListener('click', function(){
+      if (!tokOk()) return;
+      body.innerHTML = '<div class="log-empty">남은 질문 읽는 중…</div>';
+      callGas('case_proc', { caseId: c.id, step: 'issueBundle', by: '세무사님' }).then(function(r){
+        if (!r || r.error || !r.ok) return lgFail_('질문 목록을 읽지', r);
+        var qs = r.질문목록 || [];
+        if (!qs.length){ body.innerHTML = '<div class="log-empty">남은 질문 없음</div>'; return; }
+        body.innerHTML = '<div style="font-size:12.5px;">질문을 누르면 그 쟁점의 후보·묶음을 보여 드립니다</div>' + lgTbl_(['질문', '묶음'], qs.map(function(q){ return '<tr class="lg-ib-row" data-id="' + esc(q.id) + '" style="cursor:pointer;" tabindex="0">' + lgCell_(q.질문, 480) + lgCell_(q.묶음있음 ? '있음' : '—', 60) + '</tr>'; }).join('')) + '<div id="lgIbOut" style="margin-top:8px;"></div>';
+        var open = function(id){
+          var out = document.getElementById('lgIbOut');
+          out.innerHTML = '<div class="log-empty">쟁점 묶는 중…</div>';
+          callGas('case_proc', { caseId: c.id, step: 'issueBundle', by: '세무사님', itemId: id }).then(function(x){
+            if (!x || x.error || !x.ok){ out.innerHTML = '<div class="log-empty">묶지 못했습니다: ' + esc((x && x.error) || '응답 없음') + '</div>'; return; }
+            var show = function(v){ return v == null || v === '' ? '—' : (typeof v === 'string' ? v : JSON.stringify(v)); };
+            var cand = Array.isArray(x.후보) ? x.후보 : [];
+            out.innerHTML = '<div style="font-size:12.5px; border-left:3px solid var(--line); padding-left:8px;"><div><b>' + esc(x.질문 || '') + '</b></div>'
+              + (x.자세히 ? '<div style="color:var(--sub);">' + esc(show(x.자세히)) + '</div>' : '')
+              + (cand.length ? lgTbl_(['후보'], cand.map(function(v){ return '<tr>' + lgCell_(show(v), 520) + '</tr>'; }).join('')) : '')
+              + '<div style="margin-top:4px;">쟁점 묶음: ' + esc(show(x.쟁점묶음)) + '</div>'
+              + (x.저비용답 ? '<div>바로 답할 길: ' + esc(show(x.저비용답)) + '</div>' : '') + '</div>';
+          }).catch(function(e){ out.innerHTML = '<div class="log-empty">묶지 못했습니다: ' + esc(nxErrText_(e)) + '</div>'; });
+        };
+        body.querySelectorAll('.lg-ib-row').forEach(function(tr){ tr.addEventListener('click', function(){ open(tr.getAttribute('data-id')); }); tr.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') open(tr.getAttribute('data-id')); }); });
+      }).catch(function(e){ lgFail_('질문 목록을 읽지', { error: nxErrText_(e) }); });
+    });
     // [2026.10.27 10-27 A] 칸 값 고치기 — 넥스 카드(caseproc_fix)·지휘 넥스(value_set target)와 같은 서버 입구(case_proc valueFix·valueUndo). 세무사님 원문 "ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다" — 그 반대도: 넥스가 쓰는 도구는 여기서 세무사님도 누른다
     // [2026.10.28] 📒 사건 장부 — 사실의 유일한 저장소(서버 CaseLedger.js, case_proc step ledger*). 넥스(채팅·지휘)와 세무사님이 같은 장부에 적는다.
     //  세무사님 원문: "확보할 수 있는 정보를 최대한 확보하고, 확보된 정보를 최대한 활용해서 사건처리를 하자는 것이고, 부족한 정보는 물어보거나 확보할 증빙으로 분류하자는 거 아닌가? 확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고"
     document.getElementById('chLedgerBtn').addEventListener('click', function(){
       if (!tokOk()) return;
-      body.innerHTML = '<div class="log-empty">사건 장부를 읽는 중…</div>';
+      body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>';
       var reload = function(){ document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
       var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + nxErrText_(e), 'error'); return null; }); };
       var STATE_KO = { 물어볼것: '❓ 물어볼 것', 증빙받을것: '📎 증빙 받을 것', 추정: '≈ 추정', 확정: '✅ 확정', 보류: '⏸ 보류', 무시: '— 무시' };
@@ -151,9 +218,10 @@
             + (chOff.length ? '<div style="margin-top:4px; color:#b23;">사슬 밖 계약서 ' + esc(chOff.length) + '건 — ' + chOff.map(function(o){ return esc(o.file) + ': ' + esc(o.why); }).join(' / ') + '</div>' : '') + '</div>';
           var evs = (fl.증빙 || []).slice().sort(function(a, b){ var o = { '증빙받을것': 0, '보류': 1, '확정': 2, '무시': 3 }; return (o[a.state] == null ? 9 : o[a.state]) - (o[b.state] == null ? 9 : o[b.state]); });
           // [2026.10.29 계획서 3판 4단계] 받는 곳 — 도구(있는 조회로 가져옴)·세무사님(등기부 열람·홈택스 등)·고객. 보이기만 합니다(고객에게 보내지 않음 — 세무사님 10-29 "고객에게 직접 요청하는 것은 아니다")
+          // [2026.11.04 ⑩-2] 받는 곳이 고객인 받을 서류는 고객창구(my.netax.kr)가 있는 사건이면 그 점검표에 뒤에서 올라가고(문자·연락은 하지 않음), 고객이 올리면 「고객 받음」이 붙는다 — 확보는 세무사님이 서류를 보고 정함
           var WHERE_KO = { 도구: '🔎 도구로 조회', 세무사님: '세무사님', 고객: '고객' };
           fh += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">확보할 증빙</b> <span style="color:var(--sub);">받을 것 ' + esc(fb0.증빙미확보 || 0) + ' · 확보 ' + esc(fb0.증빙확보 || 0) + ' — 사건개요(세목·사건분류·물건 수)·빈 칸·가설 쟁점이 요구하는 서류. 장부를 적을 때마다 다시 짜고, 근거가 사라진 GAS 항목은 뺍니다(확보한 것·세무사님이 넣은 것은 그대로). 받는 곳이 「도구로 조회」인 것은 ⑤ 도구에서 바로 가져옵니다</span>'
-            + (evs.length ? tbl(['서류', '상태', '받는 곳', '왜', '만든 이', '요청일 · 확보일'], evs.map(function(x){ var d = x.서류 || {}; var col = x.state === '증빙받을것' ? ' color:#a60;' : ''; return '<tr>' + cell(d.label || x.label, 300) + cell(x.state === '확정' ? '확보' : (ST_KO[x.state] || x.state), 70, col) + cell((WHERE_KO[x.받는곳] || x.받는곳 || '') + (x.도구확보 ? ' — 조회로 받음(' + x.도구확보 + ')' : ''), 220, x.받는곳 === '도구' ? (x.도구확보 ? ' color:#2a7;' : ' color:#0D1B3D;') : '') + cell(d.note || x.why || '', 380, ' color:var(--sub);') + cell(OWNK[x.owner] != null ? OWNK[x.owner] : x.owner, 80) + cell([d.요청일, d.확보일].filter(Boolean).join(' · '), 160, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">확보할 증빙이 아직 없습니다</div>') + '</div>';
+            + (evs.length ? tbl(['서류', '상태', '받는 곳', '왜', '만든 이', '요청일 · 확보일'], evs.map(function(x){ var d = x.서류 || {}; var col = x.state === '증빙받을것' ? ' color:#a60;' : ''; return '<tr>' + cell(d.label || x.label, 300) + cell(x.state === '확정' ? '확보' : (ST_KO[x.state] || x.state), 70, col) + cell((WHERE_KO[x.받는곳] || x.받는곳 || '') + (x.도구확보 ? ' — 조회로 받음(' + x.도구확보 + ')' : '') + (x.고객받음 && x.state !== '확정' ? ' — 고객 받음(' + (x.고객받음.파일 || '') + (x.고객받음.때 ? ' · ' + String(x.고객받음.때).slice(0, 10) : '') + ')' : ''), 220, x.받는곳 === '도구' ? (x.도구확보 ? ' color:#2a7;' : ' color:#0D1B3D;') : (x.고객받음 && x.state !== '확정' ? ' color:#2a7;' : '')) + cell(d.note || x.why || '', 380, ' color:var(--sub);') + cell(OWNK[x.owner] != null ? OWNK[x.owner] : x.owner, 80) + cell([d.요청일, d.확보일].filter(Boolean).join(' · '), 160, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">확보할 증빙이 아직 없습니다</div>') + '</div>';
           fh += '</div>';
           h += fh;
         }
@@ -409,13 +477,19 @@
           var fh = '<b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">사람</b> <span style="color:var(--sub);">' + esc((fm.사람 || []).length) + '명 — 같은 고객의 사건이 함께 씁니다</span>';
           fh += (fm.사람 || []).length ? tbl(['이름', '관계', '생년월일', '사망일', '배우자', '부모', '메모', ''], fm.사람.map(function(p){ return '<tr>' + cell(p.이름 || '', 90) + cell(p.관계 || '', 80) + cell(p.생년월일 || '', 90) + cell(p.사망일 || '', 90) + cell(nm(p.배우자), 80) + cell((Array.isArray(p.부모) ? p.부모 : String(p.부모 || '').split(/[,·]/)).map(function(x){ return nm(String(x).trim()); }).filter(Boolean).join('·'), 90) + cell(p.메모 || p.출처 || '', 200, ' color:var(--sub);') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-fm-drop="' + esc(p.id) + '">지우기</button></td></tr>'; }).join('')) : '<div class="log-empty">아직 사람이 없습니다 — 아래에서 더하거나, 이전 줄을 적으면 이름이 저절로 들어갑니다</div>';
           fh += '<div id="chFmP" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famIn('이름', '이름', 90) + famIn('관계', '관계(본인 기준)', 110) + famIn('생년월일', '생년월일', 100, '예: 1940-02-01') + famIn('사망일', '사망일', 100, '예: 2027-06-01') + famIn('배우자', '배우자 이름', 100) + famIn('부모', '부모 이름', 100, '쉼표로 여럿 — 손자녀면 꼭(세대생략 할증·자녀 수 판정에 씀)') + '<button type="button" id="chFmPSave" class="ghost-btn">사람 저장</button></div>';
+          // [2026.11.04 큰일 ⑦] 법인·지분 — 누가 어느 법인을 몇 % 갖나(기준일 현재). 제2차 납세의무·법인거래·특정법인·일감 판정이 칸이 비면 이 지분을 먼저 읽는다
+          fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">법인·지분</b> <span style="color:var(--sub);">오늘 현재 — 주식 증여·양도 이전(법인·지분% 칸)이 있으면 그날부터 바뀝니다</span></div>';
+          fh += (fm.지분현황 || []).length ? (fm.지분현황.map(function(h){ return '<div style="margin:6px 0 2px;">▪ <b>' + esc(h.법인) + '</b>' + (h.상장 === true ? ' · 상장' : h.상장 === false ? ' · 비상장' : '') + ' · 합계 ' + esc(h.합계) + '%</div>' + (h.주주.length ? tbl(['주주', '관계', '지분 %', '명의만'], h.주주.map(function(x){ return '<tr>' + cell(x.이름, 110) + cell(x.관계 || '', 80) + cell(String(x.비율), 70, ' text-align:right;') + cell(x.명의만 ? '명의만 → ' + (x.실질소유자 || '?') : '', 140, ' color:var(--sub);') + '</tr>'; }).join('')) : '<div class="log-empty">주주가 없습니다</div>') + (h.알림 || []).map(function(a){ return '<div style="margin:2px 0 0 8px; color:#a60;">' + esc(a) + '</div>'; }).join(''); }).join('')) : '<div class="log-empty">아직 법인이 없습니다</div>';
+          fh += (fm.지분 || []).length ? '<details style="margin-top:4px;"><summary style="cursor:pointer; color:var(--sub);">지분 줄 ' + fm.지분.length + '개</summary>' + tbl(['기준일', '사람', '법인', '%', '근거', ''], fm.지분.map(function(x){ return '<tr>' + cell(x.기준일 || '', 90) + cell(x.사람 || '', 100) + cell(x.법인 || '', 120) + cell(String(x.비율), 60, ' text-align:right;') + cell(x.근거 || '', 220, ' color:var(--sub);') + '<td style="padding:3px 8px; border-top:1px solid var(--line);"><button type="button" class="ghost-btn sm" data-fm-drop="' + esc(x.id) + '">지우기</button></td></tr>'; }).join('')) + '</details>' : '';
+          fh += '<div id="chFmK" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famIn('이름', '법인 이름', 130) + famIn('사업자번호', '사업자번호', 120, '예: 123-45-67890') + famSel('상장', ['아니오', '예'], '상장') + '<button type="button" id="chFmKSave" class="ghost-btn">법인 저장</button></div>';
+          fh += '<div id="chFmS" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famIn('사람', '주주 이름', 100) + famIn('법인', '법인 이름', 130) + famIn('비율', '지분 %', 70, '예: 40') + famIn('기준일', '기준일', 100, '예: 2024-12-31 — 그날 현재 지분') + famIn('근거', '근거', 200, '예: 주주명부 2024-12-31 · 주식변동상황명세서') + '<button type="button" id="chFmSSave" class="ghost-btn">지분 저장</button></div>';
           var gx = {}; (fm.합산 || []).forEach(function(g){ gx[g.id] = g; });
           fh += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">지난 이전</b> <span style="color:var(--sub);">한 줄 = 한 건. 날짜가 그 건의 「그때 법」 기준일입니다. 관계는 받는 사람 기준 주는 사람</span></div>';
           fh += (fm.이전 || []).length ? tbl(['날짜', '종류', '주는 → 받는', '관계', '물건', '금액', '그때 산출세액', '신고', '10년 합산될 지난 증여', '근거', ''], fm.이전.map(function(t){ var g = gx[t.id];
               return '<tr>' + cell(t.날짜 || '', 90) + cell(t.종류 || '', 70) + cell(nm(t.주는) + ' → ' + nm(t.받는), 150) + cell(t.관계 || '', 70) + cell(t.물건 || '', 140) + cell(famWon(t.금액), 110, ' text-align:right;') + cell(famWon(t.산출세액), 100, ' text-align:right;') + cell(t.신고 || '', 50)
                 + cell(g && g.합산될지난증여 ? famWon(g.합산될지난증여) : '', 120, ' text-align:right;') + cell(t.근거 || '', 180, ' color:var(--sub);')
                 + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + (/^(증여|부담부증여|상속|매매|재산분할)$/.test(t.종류 || '') ? '<button type="button" class="ghost-btn sm" data-fm-chain="' + esc(t.id) + '" title="이 물건을 판 양도와 이어 계산합니다(아래 칸에 양도가액·양도일)">잇기 계산</button> ' : '') + '<button type="button" class="ghost-btn sm" data-fm-drop="' + esc(t.id) + '">지우기</button></td></tr>'; }).join('')) : '<div class="log-empty">아직 지난 이전이 없습니다</div>';
-          fh += '<div id="chFmT" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famSel('종류', FAM_KINDS, '종류') + famIn('날짜', '날짜', 100, '예: 2020-06-01') + famIn('주는', '주는 사람', 90) + famIn('받는', '받는 사람', 90) + famSel('관계', FAM_RELS, '관계') + famIn('물건', '물건', 140) + famIn('금액', '금액', 110, '예: 3억 · 200000000') + famIn('산출세액', '그때 산출세액', 110) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '증여받은 물건이면 — 이월과세·우회양도 계산에 씀') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('채무인수', '인수 채무', 100, '부담부증여면 받은 사람이 떠안은 빚') + famIn('반환일', '반환일', 100, '증여 줄 — 돌려준 날. 신고기한 안이면 처음부터 증여 없던 것(금전 제외, 상증법 §4④)') + famIn('특례', '특례', 80, '가업승계·창업자금 특례 증여면 — 다른 증여와 합산 안 함·상속엔 기간 없이 가산') + famIn('적정이자율', '이자율 %', 70, '빌림 줄 — 적정이자율(비우면 4.6%)') + famIn('이자', '낸 이자', 90, '빌림 줄 — 해마다 실제 낸 이자') + famIn('시가', '시가', 110, '매매 줄 — 가족에게 싸게·비싸게 산 값이면 그때 시가(상증법 §35·소득세법 §101)') + famIn('증여재산가액', '증여재산가액', 110, '매매 줄 — 싸게 사서 과세받은 증여재산가액(나중에 팔 때 취득가액에 더함, 소득세법 시행령 §163⑩1호)') + famIn('감면세액', '감면세액', 100, '양도 줄 — 그때 받은 조특법 감면세액(5년 한도 계산)') + famIn('감면', '감면 종류', 80, '양도 줄 — 자경·대토·수용 등') + famSel('신고', ['예', '아니오', '모름'], '신고') + famIn('근거', '근거(서류·말씀)', 160) + '<button type="button" id="chFmTSave" class="ghost-btn">이전 저장</button></div>';
+          fh += '<div id="chFmT" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' + famSel('종류', FAM_KINDS, '종류') + famIn('날짜', '날짜', 100, '예: 2020-06-01') + famIn('주는', '주는 사람', 90) + famIn('받는', '받는 사람', 90) + famSel('관계', FAM_RELS, '관계') + famIn('물건', '물건', 140) + famIn('금액', '금액', 110, '예: 3억 · 200000000') + famIn('산출세액', '그때 산출세액', 110) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '증여받은 물건이면 — 이월과세·우회양도 계산에 씀') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('채무인수', '인수 채무', 100, '부담부증여면 받은 사람이 떠안은 빚') + famIn('반환일', '반환일', 100, '증여 줄 — 돌려준 날. 신고기한 안이면 처음부터 증여 없던 것(금전 제외, 상증법 §4④)') + famIn('특례', '특례', 80, '가업승계·창업자금 특례 증여면 — 다른 증여와 합산 안 함·상속엔 기간 없이 가산') + famIn('적정이자율', '이자율 %', 70, '빌림 줄 — 적정이자율(비우면 4.6%)') + famIn('이자', '낸 이자', 90, '빌림 줄 — 해마다 실제 낸 이자') + famIn('시가', '시가', 110, '매매 줄 — 가족에게 싸게·비싸게 산 값이면 그때 시가(상증법 §35·소득세법 §101)') + famIn('증여재산가액', '증여재산가액', 110, '매매 줄 — 싸게 사서 과세받은 증여재산가액(나중에 팔 때 취득가액에 더함, 소득세법 시행령 §163⑩1호)') + famIn('감면세액', '감면세액', 100, '양도 줄 — 그때 받은 조특법 감면세액(5년 한도 계산)') + famIn('감면', '감면 종류', 80, '양도 줄 — 자경·대토·수용 등') + famSel('신고', ['예', '아니오', '모름'], '신고') + famIn('근거', '근거(서류·말씀)', 160) + '' + famIn('법인', '주식이면 법인', 110, '주식 증여·양도면 그 법인 이름 — 지분이 그날부터 바뀜') + famIn('지분', '넘긴 지분 %', 90, '예: 20') + '<button type="button" id="chFmTSave" class="ghost-btn">이전 저장</button></div>';
           fh += '<div id="chFmC" style="margin-top:6px; display:none; gap:6px; flex-wrap:wrap; align-items:center;"><b id="chFmCT"></b><span id="chFmCId" style="display:none;"></span>' + famIn('양도가액', '양도가액', 110) + famIn('양도일', '양도일', 100, '예: 2027-03-01') + famIn('필요경비', '필요경비', 100) + famIn('주는이취득가액', '주는 사람 취득가액', 120, '이월과세·우회양도에 필요 — 비우면 지도 값') + famIn('주는이취득일', '주는 사람 취득일', 110, '예: 2005-05-01') + famIn('권리가액', '입주권 권리가액', 120, '입주권이면 — 관리처분계획의 종전자산 평가액') + famIn('관리처분인가일', '관리처분 인가일', 110, '입주권이면') + famIn('청산금', '낸 청산금', 100, '입주권이면') + famIn('주택연면적', '주택 연면적', 90, '겸용주택(주택+상가)이면 ㎡') + famIn('주택외연면적', '상가 연면적', 90, '겸용주택이면 ㎡') + '<button type="button" id="chFmCRun" class="ghost-btn">잇기 계산 저장</button></div>';
           var tl = fm.시간줄 || [], fut = [];
           tl.forEach(function(r){ (r.앞으로 || []).forEach(function(a){ if (a.날짜) fut.push(a); }); });
@@ -434,6 +508,8 @@
           famBox.innerHTML = fh;
           var go = function(step, payload, btn){ if (btn) btn.disabled = true; return call(Object.assign({ step: step }, payload)).then(function(res){ if (btn) btn.disabled = false; return res; }); };
           document.getElementById('chFmPSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmP')); if (!f.이름){ showToast('이름을 적어 주세요.', 'warning'); return; } go('ledgerFamPerson', { person: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
+          document.getElementById('chFmKSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmK')); if (!f.이름){ showToast('법인 이름을 적어 주세요.', 'warning'); return; } if (f.상장) f.상장 = f.상장 === '예'; go('ledgerFamCorp', { corp: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
+          document.getElementById('chFmSSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmS')); if (!f.사람 || !f.법인 || !f.비율){ showToast('주주 이름·법인·지분 %를 적어 주세요.', 'warning'); return; } go('ledgerFamShare', { share: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
           document.getElementById('chFmTSave').addEventListener('click', function(){ var f = famVals(document.getElementById('chFmT')); if (!f.종류 || !f.날짜){ showToast('종류와 날짜를 적어 주세요.', 'warning'); return; } go('ledgerFamTransfer', { transfer: f }, this).then(function(res){ if (res){ showToast(res.message || '저장했습니다.', 'success'); famLoad(); } }); });
           Array.prototype.forEach.call(famBox.querySelectorAll('button[data-fm-drop]'), function(b){ b.addEventListener('click', function(){
             if (b.getAttribute('data-sure') !== '1'){ b.setAttribute('data-sure', '1'); b.textContent = '정말 지우기'; setTimeout(function(){ b.removeAttribute('data-sure'); b.textContent = '지우기'; }, 4000); return; }

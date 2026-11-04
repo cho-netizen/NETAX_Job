@@ -298,7 +298,7 @@
       if (res.error){ toast('등록 실패: ' + res.error); return; }
       toast('등록했습니다 — 열람번호 ' + res.report_id + (res.공유설정 ? ' · ' + res.공유설정 : ''));
       var regCaseId = document.getElementById('repNewCase').value;
-      if (regCaseId) repLogToCase_(regCaseId, '[열람관리] rpt.netax.kr 열람번호 ' + res.report_id + ' 발급: ' + (document.getElementById('repNewTitle').value.trim() || '보고서') + ' (' + link + ')');
+      if (regCaseId) repLogToCase_(regCaseId, '[고객 열람] rpt.netax.kr 열람번호 ' + res.report_id + ' 발급: ' + (document.getElementById('repNewTitle').value.trim() || '보고서') + ' (' + link + ')');
       document.getElementById('repNewName').value = '';
       document.getElementById('repNewTitle').value = '';
       document.getElementById('repNewType').value = '';

@@ -356,7 +356,103 @@ function envTechCheck_() {
   var nx = Number(props.getProperty('NAVER_TOKEN_EXPIRES_AT') || 0), nrt = props.getProperty('NAVER_REFRESH_TOKEN');
   if (props.getProperty('NAVER_CLIENT_ID') && !nrt) out.push({ 수준: '주의', 항목: '네이버 블로그 갱신 토큰 없음 — 블로그 자동 발행 전에 다시 로그인 필요' });
   else if (nx && nx < Date.now() - 300 * 86400000) out.push({ 수준: '주의', 항목: '네이버 블로그 토큰이 오래됨 — 갱신 토큰도 만료됐을 수 있음(발행 실패 시 다시 로그인)' });
+  // [2026.11.04 접근권한 계획서 권장안] 열쇠 목록 전체 — 없으면 주의, 만료 30일 전이면 경고, 이상 없으면 마지막 정상 시각 기록
+  try { envKeyNightly_(props, out); } catch (e) { out.push({ 수준: '주의', 항목: '열쇠 목록 점검 실패: ' + String(e && e.message || e).slice(0, 80) }); }
   return { items: out, models: models };
+}
+
+// ---------- 4-2) 열쇠(접근권한) 관리 ----------
+// [2026.11.04] 세무사님 "권장안대로 하자"(총괄관리자\접근권한_관리_계획서_20261031.md, 요청 R2610111437)
+// 시스템이 쓰는 바깥 열쇠를 한 표로 — 넣어졌나·끝 4자리·마지막 정상·만료·상태. 값은 어떤 입구로도 돌려주지 않는다.
+// bad = 밤 감시(envTechCheck_) 항목 글에서 이 열쇠의 이상을 알아보는 낱말. sys = 시스템 전용(끝 4자리도 안 보임·화면에서 못 바꿈).
+var ENV_KEY_CATALOG_ = [
+  { k: 'ANTHROPIC_API_KEY', use: '넥스(Claude) 대화·판단', url: 'https://console.anthropic.com/settings/keys', bad: 'Anthropic 모델 목록 조회 실패', need: 1, live: 'anthropic' },
+  { k: 'GEMINI_API_KEY', use: '무료 AI 점검(제미니)', url: 'https://aistudio.google.com/app/apikey', bad: 'Gemini 모델 목록 조회 실패', live: 'gemini' },
+  { k: 'LAW_OC', use: '법령·판례 조회, 법령 감시', url: 'https://open.law.go.kr/LSO/openApi/cuAskList.do', bad: '법령 인증키\\(LAW_OC\\)', need: 1, live: 'law' },
+  { k: 'MOLIT_API_KEY', use: '아파트 실거래가 조회', url: 'https://www.data.go.kr/', bad: '실거래가 API 키\\(MOLIT_API_KEY\\)' },
+  { k: 'VWORLD_API_KEY', use: '토지대장·토지이용계획 조회', url: 'https://www.vworld.kr/dev/v4dv_apikey_s001.do', bad: 'VWORLD_API_KEY|브이월드' },
+  { k: 'BUILDING_HUB_API_KEY', use: '건축물대장 조회', url: 'https://www.data.go.kr/', bad: 'BUILDING_HUB_API_KEY' },
+  { k: 'JUSO_API_KEY', use: '도로명주소 검색', url: 'https://business.juso.go.kr/addrlink/openApi/apiReqst.do', bad: 'JUSO_API_KEY' },
+  { k: 'JUSO_DETAIL_API_KEY', use: '도로명주소 상세(동·층·호)', url: 'https://business.juso.go.kr/addrlink/openApi/apiReqst.do', bad: 'JUSO_DETAIL_API_KEY', opt: 1 },
+  { k: 'NTS_API_KEY', use: '사업자 상태 조회(국세청)', url: 'https://www.data.go.kr/', bad: 'NTS_API_KEY' },
+  { k: 'KAKAO_REST_API_KEY', use: '주소 2차 검색(카카오)', url: 'https://developers.kakao.com/console/app', bad: 'KAKAO_REST_API_KEY', opt: 1 },
+  { k: 'ECOS_API_KEY', use: '환율 조회(한국은행)', url: 'https://ecos.bok.or.kr/api/', bad: 'ECOS_API_KEY' },
+  { k: 'VISION_API_KEY', use: '사진 글자 읽기(구글 비전)', url: 'https://console.cloud.google.com/apis/credentials', bad: 'VISION_API_KEY', opt: 1 },
+  { k: 'SOLAPI_API_KEY', use: '문자 보내기(솔라피) 열쇠', url: 'https://console.solapi.com/credentials', bad: '문자 서비스\\(SOLAPI\\)' },
+  { k: 'SOLAPI_API_SECRET', use: '문자 보내기(솔라피) 비밀 열쇠', url: 'https://console.solapi.com/credentials', bad: '문자 서비스\\(SOLAPI\\)' },
+  { k: 'SOLAPI_SENDER_PHONE', use: '문자 발신번호', url: 'https://console.solapi.com/senderids', bad: '문자 서비스\\(SOLAPI\\) 열쇠·발신번호' },
+  { k: 'GH_TOKEN', use: '📥 수정 반영·✅ 승인·🗳 수정안', url: 'https://github.com/settings/personal-access-tokens', bad: '깃허브 열쇠\\(GH_TOKEN\\)', live: 'gh' },
+  { k: 'NAVER_REFRESH_TOKEN', use: '네이버 블로그 자동 발행', url: '', bad: '네이버 블로그', opt: 1, exp: 'NAVER_TOKEN_EXPIRES_AT', guess: 1, nos: 1, how: '보고서들 › 네이버 블로그 다시 로그인' },
+  { k: 'GOOGLE_BLOG_REFRESH_TOKEN', use: '구글 블로그 자동 발행', url: '', bad: '구글 블로그', opt: 1, nos: 1, how: '보고서들 › 구글 블로그 다시 로그인' },
+  { k: 'GOOGLE_BIZ_REFRESH_TOKEN', use: '구글 비즈니스 프로필', url: '', bad: '구글 비즈니스', opt: 1, nos: 1, how: 'API 접근 승인 대기' },
+  { k: 'KAKAO_WEBHOOK_KEY', use: '카카오 알림 받기 입구', url: '', bad: 'KAKAO_WEBHOOK_KEY', opt: 1, sys: 1 },
+  { k: 'IMPROVE_READ_TOKEN', use: '주간 개선 보고서 읽기(웹 루틴)', url: '', bad: 'IMPROVE_READ_TOKEN', opt: 1, sys: 1 },
+  { k: 'ADMIN_CODE', use: '관리 비밀번호', sys: 1, need: 1 },
+  { k: 'RPT_ADMIN_CODE', use: '보고서 관리 비밀번호', sys: 1, opt: 1 },
+  { k: 'API_SECRET', use: '화면 ↔ 서버 비밀 열쇠', sys: 1, need: 1 },
+  { k: 'SESSION_SIGN_KEY', use: '로그인 표 서명 열쇠', sys: 1, opt: 1 },
+  { k: 'MANAGE_APP_PASSWORD', use: 'job 로그인 비밀번호', sys: 1, need: 1 },
+  { k: 'DESK_EDIT_PASSWORD', use: '데스크 고치기 비밀번호', sys: 1, opt: 1 },
+  { k: 'CLIENT_RRN_ENC_KEY', use: '주민번호 감추기 열쇠', sys: 1, opt: 1 },
+  { k: 'PUBLIC_PAGE_KEY', use: '공개 화면 열쇠', sys: 1, opt: 1 }
+];
+// 시스템이 유지할 수 없는 접근(본인 인증) — 표에 줄로만 보인다
+var ENV_KEY_MANUAL_ = [
+  { use: '홈택스(국세청)', how: '본인 인증서 — 시스템이 유지 못 함, 세무사님이 직접 로그인' },
+  { use: '인터넷등기소', how: '본인 인증 — 시스템이 유지 못 함, 세무사님이 직접 로그인' }
+];
+
+function envKeyLastOk_(props) {
+  try { return JSON.parse((props || PropertiesService.getScriptProperties()).getProperty('KEY_LAST_OK') || '{}') || {}; } catch (e) { return {}; }
+}
+
+// 밤 감시 덧붙임 — 다른 점검이 이미 이 열쇠를 말했으면 같은 말을 두 번 하지 않는다
+function envKeyNightly_(props, out) {
+  var all = props.getProperties(), last = envKeyLastOk_(props), now = new Date().toISOString(), said = out.map(function (x) { return x.항목; }).join('\n');
+  ENV_KEY_CATALOG_.forEach(function (c) {
+    var has = !!all[c.k], hit = c.bad && new RegExp(c.bad).test(said);
+    if (!has && !c.opt && !hit && !c.sys) out.push({ 수준: c.need ? '경고' : '주의', 항목: c.use + ' 열쇠(' + c.k + ') 없음 — 설정 › 시스템 관리 › 열쇠 관리에서 넣기' });
+    if (!has && c.sys && c.need) out.push({ 수준: '경고', 항목: c.use + '(' + c.k + ') 없음 — 개발자 확인 필요' });
+    var ex = c.exp && Number(all[c.exp] || 0);
+    if (has && ex && !c.guess && ex - Date.now() < 30 * 86400000) out.push({ 수준: '경고', 항목: c.use + ' 열쇠(' + c.k + ') ' + (ex < Date.now() ? '만료됨' : '30일 안 만료(' + Utilities.formatDate(new Date(ex), 'Asia/Seoul', 'yyyy-MM-dd') + ')') + ' — 새 열쇠 넣기' });
+    if (has && !hit) last[c.k] = now;
+  });
+  props.setProperty('KEY_LAST_OK', JSON.stringify(last));
+}
+
+// 화면 표 — 값은 끝 4자리만(시스템 전용은 「넣어짐」만)
+function envKeyStatus_() {
+  var props = PropertiesService.getScriptProperties(), all = props.getProperties(), last = envKeyLastOk_(props);
+  var w = envWatchLast_(), items = (w && w.tech && w.tech.items) || [], at = (w && w.at) || '';
+  var said = items.filter(function (x) { return x.수준 === '경고' || x.수준 === '주의'; });
+  var rows = ENV_KEY_CATALOG_.map(function (c) {
+    var v = String(all[c.k] || ''), has = !!v, hit = null;
+    said.forEach(function (x) { if (!hit && c.bad && new RegExp(c.bad).test(x.항목)) hit = x; });
+    var ex = c.exp && Number(all[c.exp] || 0), exTxt = '';
+    if (ex) exTxt = Utilities.formatDate(new Date(c.guess ? ex + 300 * 86400000 : ex), 'Asia/Seoul', 'yyyy-MM-dd') + (c.guess ? ' (추정)' : '');
+    var st = !has ? (c.opt ? '안 씀' : '없음') : hit ? (hit.수준 === '경고' ? '끊김' : '주의') : (last[c.k] ? '정상' : '확인 전');
+    return { 이름: c.k, 쓰임: c.use, 넣어짐: has, 끝: has && !c.sys && !c.nos && v.length >= 8 ? v.slice(-4) : '', 마지막정상: last[c.k] || '', 만료: exTxt,
+      상태: st, 알림: hit ? hit.항목 : '', 발급처: c.url || '', 바꾸기: !c.sys && !c.nos, 방법: c.how || (c.sys ? '시스템 전용 — 개발자가 넣음' : ''), 시스템전용: !!c.sys };
+  });
+  return { success: true, rows: rows, manual: ENV_KEY_MANUAL_, 감시시각: at };
+}
+
+// 넣기·바꾸기 — 목록에 있고 바꿀 수 있는 열쇠만. 값은 돌려주지 않는다. 바로 시험할 수 있는 열쇠는 시험하고, 실패하면 옛 값으로 되돌린다.
+function envKeySet_(body) {
+  var name = String(body && body.name || ''), val = String(body && body.value || '').trim();
+  var c = ENV_KEY_CATALOG_.filter(function (x) { return x.k === name; })[0];
+  if (!c || c.sys || c.nos) return { success: false, error: '이 열쇠는 화면에서 넣을 수 없습니다.' };
+  if (!val) return { success: false, error: '빈 값은 넣지 않습니다.' };
+  if (/\s/.test(val) || val.length > 500) return { success: false, error: '열쇠 모양이 아닙니다(빈칸·너무 긺).' };
+  if (c.live === 'gh') { var g = gh_setToken_({ token: val }); return g && g.success ? { success: true, 시험: '깃허브 확인됨' } : { success: false, error: (g && g.error) || '깃허브 확인 실패' }; }
+  var props = PropertiesService.getScriptProperties(), old = props.getProperty(name), r = null, ok = true;
+  if (c.live === 'anthropic') { r = envFetch_('https://api.anthropic.com/v1/models?limit=1', { headers: { 'x-api-key': val, 'anthropic-version': '2023-06-01' } }); ok = r.code === 200; }
+  else if (c.live === 'gemini') { r = envFetch_('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=' + encodeURIComponent(val)); ok = r.code === 200; }
+  else if (c.live === 'law') { r = envFetch_('https://www.law.go.kr/DRF/lawSearch.do?OC=' + encodeURIComponent(val) + '&target=eflaw&type=XML&display=1&query=' + encodeURIComponent('소득세법')); ok = r.code === 200 && /<law/.test(r.text); }
+  if (!ok) return { success: false, error: '시험 호출이 실패해 넣지 않았습니다(응답 ' + (r && r.code) + ') — 이전 열쇠 그대로' + (old ? '' : '(없음)') };
+  props.setProperty(name, val);
+  if (c.live) { var last = envKeyLastOk_(props); last[name] = new Date().toISOString(); props.setProperty('KEY_LAST_OK', JSON.stringify(last)); }
+  return { success: true, 시험: c.live ? '시험 호출 통과' : '다음 밤 감시(새벽 4시)에서 확인' };
 }
 
 // ---------- 5) 새로 가능해진 기술 수집(능력 정찰, 매주) ----------

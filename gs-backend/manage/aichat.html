@@ -1185,13 +1185,13 @@
     if (inCase){
       var eh = document.createElement('div');
       eh.className = 'nxai-pv-sechead';
-      eh.innerHTML = '<b>📂 증빙</b><span class="t" id="nxAiEvCount" title="사건 폴더 전체의 .md가 아닌 파일 수"></span><span class="s">보기 전용 — 정리는 증빙관리에서</span>';
+      eh.innerHTML = '<b>📂 증빙</b><span class="t" id="nxAiEvCount" title="사건 폴더 전체의 .md가 아닌 파일 수"></span><span class="s">보기 전용 — 정리는 서류 탭에서</span>';
       var fold = document.createElement('button');
       fold.type = 'button'; fold.className = 'nxai-btn'; fold.id = 'nxAiEvFoldBtn';
       fold.addEventListener('click', function(){ nxAiSetEvFolded_(!nxAiEvFolded_()); });
       eh.appendChild(fold);
       var goDocs = document.createElement('button');
-      goDocs.type = 'button'; goDocs.className = 'nxai-btn'; goDocs.textContent = '증빙관리';
+      goDocs.type = 'button'; goDocs.className = 'nxai-btn'; goDocs.textContent = '서류 탭';
       goDocs.title = '지금 보는 폴더를 서류 탭에서 엽니다 — 올리기·이동·이름 정리·글자인식';
       goDocs.addEventListener('click', function(){
         if (typeof goToView_ === 'function') goToView_('docs');
@@ -1242,7 +1242,7 @@
     folders.forEach(function(f){ evList.appendChild(nxAiPvFolderRow_(f, path)); });
     files.forEach(function(f){ evList.appendChild(nxAiPvFileRow_(f, inCase ? 'evidence' : '', '')); });
     if (!folders.length && !files.length){
-      evList.insertAdjacentHTML('beforeend', '<div class="nxai-muted">' + (atCaseRoot ? '증빙이 아직 없습니다 — 증빙관리에서 올립니다.' : '빈 폴더입니다.') + '</div>');
+      evList.insertAdjacentHTML('beforeend', '<div class="nxai-muted">' + (atCaseRoot ? '증빙이 아직 없습니다 — 서류 탭에서 올립니다.' : '빈 폴더입니다.') + '</div>');
     }
   }
   // work 대화기록 → 새 job 대화로 복사(원본 파일은 그대로 둔다 — work에서도 계속 볼 수 있게).
@@ -2030,7 +2030,7 @@
       var d = document.createElement('div');
       d.className = 'nxai-usage-foot';
       d.style.color = '#7a5c14';
-      d.textContent = '💰 이 사건 AI 비용이 누적 ' + Math.round(r.won).toLocaleString('ko-KR') + '원으로 ' + NXAI_CASE_COST_ALERT_WON.toLocaleString('ko-KR') + '원을 넘었습니다 — 일은 계속합니다(사건 장부 줄 "🤖 비용 자세히"에서 내역).';
+      d.textContent = '💰 이 사건 AI 비용이 누적 ' + Math.round(r.won).toLocaleString('ko-KR') + '원으로 ' + NXAI_CASE_COST_ALERT_WON.toLocaleString('ko-KR') + '원을 넘었습니다 — 일은 계속합니다(사실(장부) 줄 "🤖 비용 자세히"에서 내역).';
       bubble.appendChild(d);
     }).catch(function(){});
   }
@@ -3427,7 +3427,7 @@
   function nxAiCaseProcTimingHtml_(st){
     var list = st.timing || [];
     if (!list.length) return '';
-    var name = { all: '한 번 호출(①②③)', basic: '사건파악', evidence: '증빙', overview: '처리개요', calc: '계산', output: '인쇄', save: '저장', draft: '검토서', status: '현황표', apply: '답 반영', cands: '후보', savePdf: '서식PDF', calcin: '계산 입력', scanCands: '사진보정', scanSaved: '사진보정', splitCands: '서류나누기', splitPages: '서류나누기', splitSaved: '서류나누기' };
+    var name = { all: '한 번 호출(①②③)', basic: '사건파악', evidence: '증빙', overview: '개요', calc: '계산', output: '인쇄', save: '저장', draft: '검토서', status: '현황표', apply: '답 반영', cands: '후보', savePdf: '서식PDF', calcin: '계산 입력', scanCands: '사진보정', scanSaved: '사진보정', splitCands: '서류나누기', splitPages: '서류나누기', splitSaved: '서류나누기' };
     var agg = {}, order = [], all = 0, sv = 0;
     list.forEach(function(x){
       var label = String(x.k).split('+').map(function(k){ return name[k] || k; }).join('+');
@@ -4676,7 +4676,7 @@
       }
       if (pairs.length) await callGas('case_proc', { caseId: st.caseId, step: 'scanSaved', pairs: pairs }).catch(function(){});
       var box = st.steps.evidence && st.steps.evidence.querySelector('.nxai-cp-lines');
-      if (box && (saved.length || skipped.length)){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = '📷 판독이 나쁜 사진 원근보정(증빙관리 스캔 도구와 같은 보정, 원본은 그대로): ' + (saved.length ? '저장 ' + saved.length + '장 — ' + saved.join(' / ') : '') + (skipped.length ? (saved.length ? ' · ' : '') + '건너뜀 ' + skipped.join(' / ') : ''); box.appendChild(ln); }
+      if (box && (saved.length || skipped.length)){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = '📷 판독이 나쁜 사진 원근보정(서류 탭 스캔 도구와 같은 보정, 원본은 그대로): ' + (saved.length ? '저장 ' + saved.length + '장 — ' + saved.join(' / ') : '') + (skipped.length ? (saved.length ? ' · ' : '') + '건너뜀 ' + skipped.join(' / ') : ''); box.appendChild(ln); }
       return saved.length;
     }
     return { run: run, correct: correct };
@@ -5698,11 +5698,11 @@
         var emptyL = tab === 'transfer' ? '양도가액·취득일·취득가액 또는 기준시가' : tab === 'gift' ? Object.keys(GIFT_AUTOCALC_REQUIRED_).filter(function(k){ return !g(GIFT_AUTOCALC_REQUIRED_[k].id); }).map(function(k){ return GIFT_AUTOCALC_REQUIRED_[k].label; }).join('·') : [!g('ihDeceasedName') && '피상속인 성명', !g('ihDeathDate') && '상속개시일', !g('ihGrossEstateGeneral') && '총상속재산가액(재산 평가)', !inheritanceHeirs.some(function(h){ return h && h.name && h.relation; }) && '상속인(성명·관계)'].filter(Boolean).join('·');
         st.calcBusy = false; st.setStep('calc', '⏸', '세액계산기에 아직 빈 칸이 있습니다(' + emptyL + ') — 위 질문에 답하면 다시 계산합니다.'); return;
       }
-      nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'gift' ? '증여는 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).' : '서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다 — [취소]하면 AI 자동채우기).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
-        if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalcOld_ === 'function') tcRunAutoCalcOld_(); } // [2026.10.21] 버튼(tcRunAutoCalc_)은 이제 "처리하자"로 가므로 예비 단계는 예전 동작을 직접
-        else st.setStep('calc', '🔄', '세액계산 화면에서 빈 칸을 채우고 [세액 계산]를 누르면 이어서 저장합니다.');
-        watch();
-      });
+      // [2026.11.04] 판단거리 5번 — 자동채우기를 할지·유료 AI로 갈지 묻지 않는다. 서류 규칙 정리(0원)로 바로 채우고, 빈 칸·특례는 세액계산 화면이 묻는다.
+      st.setStep('calc', '🔄', '서류 규칙 정리로 채우고 계산 중(0원, 빈 칸은 화면이 묻습니다)…');
+      if (typeof tcRunAutoCalcOld_ === 'function') tcRunAutoCalcOld_(); // [2026.10.21] 버튼(tcRunAutoCalc_)은 이제 "처리하자"로 가므로 예비 단계는 예전 동작을 직접
+      watch();
+
     };
     setTimeout(waitReady, 500);
   }

@@ -79,7 +79,7 @@
       h += '<div class="sa-btns"><button type="button" class="ghost-btn" data-sa-act="view">보기</button>';
       if (it.editable) h += '<button type="button" class="ghost-btn" data-sa-act="edit">보고서 탭에서 편집</button>';
       else if (it.key === 'improve') h += '<button type="button" class="ghost-btn" data-sa-act="improve">개선요구사항 적기로</button>';
-      else if (it.key === 'followup') h += '<button type="button" class="ghost-btn" data-sa-act="followup">대시보드 카드에서 고치기</button>';
+      else if (it.key === 'followup') h += '<button type="button" class="ghost-btn" data-sa-act="followup">확인조치사항 카드에서 고치기</button>';
       if (it.url) h += '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>';
       h += '</div>';
     }
@@ -177,6 +177,7 @@
       saState_.loadedAt = Date.now();
       saRender_(res);
       saAuditLoad_();
+      saKeyLoad_();
     }).catch(function(err){
       saState_.loading = false;
       box.innerHTML = '<div class="sa-warn">목록을 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div><div class="sa-tools"><button type="button" class="ghost-btn" data-sa-act="reload">새로고침</button></div>';
@@ -199,7 +200,7 @@
       + '<div class="sa-view-bar">'
       + (it.editable ? '<button type="button" class="save-btn" data-sa-v="edit">보고서 탭에서 편집</button>' : '')
       + (it.url ? '<a class="ghost-btn" href="' + saEsc_(it.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">드라이브에서 열기 ↗</a>' : '')
-      + '<span class="sa-view-note">' + (it.editable ? '편집창에서 💾 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.' : (it.key === 'improve' ? '보기 전용 — 새 요청은 🐞 카드의 ✍ 개선요구사항 적기로.' : '보기 전용 — 고치기는 대시보드 📋 확인조치사항 카드에서.')) + '</span>'
+      + '<span class="sa-view-note">' + (it.editable ? '편집창에서 💾 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.' : (it.key === 'improve' ? '보기 전용 — 새 요청은 🐞 카드의 ✍ 개선요구사항 적기로.' : '보기 전용 — 고치기는 이 화면 아래 📋 확인조치사항 카드에서.')) + '</span>'
       + '</div>'
       + '<div class="sa-view-body" id="saViewBody"><div class="settings-tool-desc" style="padding:14px;">불러오는 중…</div></div>'
       + '</div>';
@@ -231,6 +232,39 @@
   //   ① 규칙 점검(0원, 새벽 2시) ② 무료 AI 점검(제미니, 지침이 바뀐 날만 새벽 3시) ③ 🧾 유료 점검은 "세법 판단 필요" 항목만 골라 버튼으로.
   //   찾은 것을 누르면 그 파일을 줄 번호와 함께 열어 그 줄을 노랗게 보여 준다.
   var saAudit_ = { html: '', data: null, busy: false };
+  // [2026.11.04] 열쇠 관리 — 서버 key_status(값은 끝 4자리만, 시스템 전용은 「넣어짐」만), 넣기·바꾸기는 key_set(시험 뒤 저장)
+  var saKeys_ = { rows: [] };
+  function saKeyHtml_(res){
+    var rows = saKeys_.rows = (res && res.rows) || [];
+    var tone = { '끊김':'color:var(--danger,#b42318);font-weight:700', '주의':'color:var(--warn,#b54708);font-weight:700', '없음':'color:var(--danger,#b42318)', '정상':'color:var(--ok,#067647)' };
+    var h = '<div style="overflow-x:auto"><table class="list-table" style="white-space:nowrap"><thead><tr><th>쓰임</th><th>넣어짐</th><th>마지막 정상</th><th>만료</th><th>상태</th><th></th></tr></thead><tbody>';
+    rows.forEach(function(r, i){
+      var put = !r.넣어짐 ? '안 넣음' : (r.시스템전용 ? '넣어짐' : ('넣어짐 · 끝 ' + saEsc_(r.끝 || '')));
+      var link = r.발급처 ? ' <a href="' + saEsc_(r.발급처) + '" target="_blank" rel="noopener">발급처</a>' : '';
+      var btn = r.바꾸기 ? '<button type="button" class="ghost-btn btn-sm" data-sa-act="kset" data-sa-k="' + i + '">' + (r.넣어짐 ? '바꾸기' : '넣기') + '</button>' : '';
+      h += '<tr title="' + saEsc_(r.알림 || r.방법 || '') + '"><td>' + saEsc_(r.쓰임 || r.이름) + '</td><td>' + put + '</td><td>' + saEsc_(String(r.마지막정상 || '').slice(0, 10) || '—') + '</td><td>' + saEsc_(r.만료 || '—') + '</td><td style="' + (tone[r.상태] || '') + '">' + saEsc_(r.상태 || '') + (r.알림 ? ' ▪ ' + saEsc_(r.알림) : '') + '</td><td>' + btn + link + '</td></tr>';
+    });
+    ((res && res.manual) || []).forEach(function(m){ h += '<tr><td>' + saEsc_(m.use) + '</td><td colspan="5">' + saEsc_(m.how) + '</td></tr>'; });
+    h += '</tbody></table></div><div class="sa-tools" style="margin-top:6px"><button type="button" class="ghost-btn" data-sa-act="kload">새로고침</button>' + (res && res.감시시각 ? '<span class="settings-tool-desc">밤 감시 ' + saEsc_(String(res.감시시각).slice(0, 16).replace('T', ' ')) + '</span>' : '') + '</div>';
+    return h;
+  }
+  function saKeyLoad_(){
+    var b = document.getElementById('saKeyBox'); if (!b) return;
+    callGas('key_status', {}).then(function(res){
+      if (!res || res.error || !res.success){ b.innerHTML = '<div class="sa-warn">열쇠 목록을 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div>'; return; }
+      b.innerHTML = saKeyHtml_(res);
+    }).catch(function(err){ b.innerHTML = '<div class="sa-warn">열쇠 목록을 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div>'; });
+  }
+  function saKeySet_(i){
+    var r = saKeys_.rows[i]; if (!r) return;
+    nxPrompt_((r.쓰임 || r.이름) + ' 열쇠를 붙여 넣어 주세요. 먼저 시험해 보고 맞을 때만 저장합니다(화면에 다시 보이지 않습니다).' + (r.방법 ? '\n' + r.방법 : ''), '', (r.넣어짐 ? '열쇠 바꾸기' : '열쇠 넣기')).then(function(v){
+      if (v === null || v === undefined || v === false || !String(v).trim()) return;
+      callGas('key_set', { name: r.이름, value: String(v).trim() }).then(function(res){
+        if (typeof showToast === 'function') showToast(res && res.success ? '저장했습니다' : ('저장하지 않았습니다: ' + (res && res.error || '시험 실패')));
+        saKeyLoad_();
+      }).catch(function(err){ if (typeof showToast === 'function') showToast('저장하지 않았습니다: ' + (err && err.message || err)); });
+    });
+  }
   function saAuditBox_(){ return document.getElementById('saAuditBox'); }
   function saAuditSet_(html){ saAudit_.html = html; var b = saAuditBox_(); if (b) b.innerHTML = html; }
   function saAuditLoad_(){
@@ -389,6 +423,8 @@
     var act = b.getAttribute('data-sa-act');
     if (act === 'reload') { saLoad_(true); return; }
     if (act === 'newbm') { saNewBm_(); return; }
+    if (act === 'kload') { saKeyLoad_(); return; }
+    if (act === 'kset') { saKeySet_(Number(b.getAttribute('data-sa-k'))); return; }
     if (act === 'arun' || act === 'aai' || act === 'apaid') { saAuditRun_(act); return; }
     if (act === 'aline') { e.preventDefault(); saLineView_(b.getAttribute('data-sa-file'), Number(b.getAttribute('data-sa-line') || 0), b.getAttribute('data-sa-find') || ''); return; }
     var row = b.closest('[data-sa-idx]');
@@ -397,7 +433,7 @@
     if (act === 'view') saView_(it);
     else if (act === 'edit') saOpenEditor_(it.fileId);
     else if (act === 'improve') { if (typeof nxSuggestOpen_ === 'function') nxSuggestOpen_(); } // [2026.10.31] 설정의 ✍ 개선요구 적기 단추는 지움 — 작은 창으로 바로
-    else if (act === 'followup') { if (typeof goToView_ === 'function') goToView_('dashboard'); }
+    else if (act === 'followup') { var fc = document.getElementById('dashFollowCard'); if (fc && fc.getAttribute('data-sttab') === '2') fc.scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (typeof goToView_ === 'function') goToView_('dashboard'); } // [2026.11.04] 확인조치사항 카드는 11-01부터 설정 › 시스템 관리에 있음(dashMoveDevCards_)
   });
 
   // 설정 화면이 열릴 때마다(15초 안에 다시 열면 그대로) 목록을 새로 받는다 — 작성관리에서 고치고 돌아오면 수정일이 바로 맞게.

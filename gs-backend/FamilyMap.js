@@ -16,8 +16,8 @@ function famFile_(key, create) {
   if (it.hasNext()) return it.next();
   return create ? folder.createFile(name, '{}', 'application/json') : null;
 }
-function famEmpty_(key) { return { key: String(key || ''), 사람: [], 이전: [], 계획: [], log: [], at: '' }; }
-function famNorm_(o, key) { o = o || {}; o.key = String(key || o.key || ''); ['사람', '이전', '계획', 'log'].forEach(function (k) { if (!Array.isArray(o[k])) o[k] = []; }); return o; }
+function famEmpty_(key) { return { key: String(key || ''), 사람: [], 이전: [], 계획: [], 법인: [], 지분: [], log: [], at: '' }; }
+function famNorm_(o, key) { o = o || {}; o.key = String(key || o.key || ''); ['사람', '이전', '계획', '법인', '지분', 'log'].forEach(function (k) { if (!Array.isArray(o[k])) o[k] = []; }); return o; }
 var FAM_MEMO_ = {};
 function famLoad_(key, fresh) {
   const k = String(key || '');
@@ -194,7 +194,7 @@ function famApplyEstatePriors_(input, pr) {
   const sp = pr.상속인.filter(famSpecial_), h = pr.상속인.filter(function (t) { return !famSpecial_(t); }), o = pr.그밖;
   const ss = sum(sp), hs = sum(h), os = sum(o);
   if (!hs && !os && !ss) return 0;
-  if (h.length) { input.priorGiftHeirs = (input.priorGiftHeirs || []).concat(h.map(function (t) { const e = { priorGiftAmount: amt(t), priorGiftTaxableBase: famNum_(t.과세표준), priorGiftTaxPaid: famNum_(t.산출세액) }; if (t.상속분) e.actualInheritedValue = famNum_(t.상속분); return e; })); }
+  if (h.length) { input.priorGiftHeirs = (input.priorGiftHeirs || []).concat(h.map(function (t) { const e = { name: t.받는 || undefined, priorGiftAmount: amt(t), priorGiftTaxableBase: famNum_(t.과세표준), priorGiftTaxPaid: famNum_(t.산출세액) }; if (t.상속분) e.actualInheritedValue = famNum_(t.상속분); return e; })); }
   if (h.length || sp.length) input.giftToHeirsWithin10Years = (Number(input.giftToHeirsWithin10Years) || 0) + hs + ss;
   if (sp.length) input.specialGiftTaxCredit = (Number(input.specialGiftTaxCredit) || 0) + sp.reduce(function (s, t) { return s + famNum_(t.산출세액); }, 0);
   if (o.length) { input.nonHeirPriorGiftAmountTotal = (Number(input.nonHeirPriorGiftAmountTotal) || 0) + os; input.nonHeirPriorGiftTaxableBaseTotal = (Number(input.nonHeirPriorGiftTaxableBaseTotal) || 0) + o.reduce(function (s, t) { return s + famNum_(t.과세표준); }, 0); input.nonHeirPriorGiftTaxPaidTotal = (Number(input.nonHeirPriorGiftTaxPaidTotal) || 0) + o.reduce(function (s, t) { return s + famNum_(t.산출세액); }, 0); }
@@ -451,7 +451,7 @@ function famView_(c) {
   const gifts = F.이전.filter(famIsGift_).map(function (t) { const pr = famPriorGifts_(F, { date: t.날짜, donee: t.받는, donor: t.주는, relation: t.관계, amount: famGiftValue_(t), skipId: t.id }); return { id: t.id, 날짜: famYmd_(t.날짜), 누구: famName_(F, t.주는) + ' → ' + famName_(F, t.받는), 합산될지난증여: pr.합계, 건: pr.list.map(function (x) { return famYmd_(x.날짜) + ' ' + famWon_(famGiftValue_(x)); }), 알림: pr.알림 }; }).filter(function (x) { return x.합산될지난증여 || x.알림.length; });
   const gaps = [];
   F.이전.forEach(function (t) { const miss = []; if (!famYmd_(t.날짜)) miss.push('날짜'); if (!famNum_(t.금액) && t.종류 !== '그밖') miss.push('금액'); if (famIsGift_(t) && !t.관계) miss.push('관계'); if (famIsGift_(t) && (t.산출세액 === '' || t.산출세액 == null) && !/무신고/.test(t.신고 || '')) miss.push('산출세액(신고서)'); if (miss.length) gaps.push({ id: t.id, 무엇: t.종류 + ' ' + famName_(F, t.주는) + '→' + famName_(F, t.받는), 빈칸: miss }); });
-  return { ok: true, 가족: key, 사람: F.사람, 이전: F.이전.slice().sort(function (a, b) { return famYmd_(a.날짜) < famYmd_(b.날짜) ? -1 : 1; }), 시간줄: famTimeline_(F, today), 합산: gifts, 빈칸: gaps, 계획: (F.계획 || []).slice(-5), 같은고객사건: famCases_(c), 때: F.at || '', 기록: F.log.slice(-15) };
+  return { ok: true, 가족: key, 사람: F.사람, 이전: F.이전.slice().sort(function (a, b) { return famYmd_(a.날짜) < famYmd_(b.날짜) ? -1 : 1; }), 시간줄: famTimeline_(F, today), 합산: gifts, 빈칸: gaps, 계획: (F.계획 || []).slice(-5), 법인: F.법인, 지분: F.지분, 지분현황: F.법인.map(function (k) { const H = famHoldings_(F, k.이름, today); return { 법인: k.이름, 상장: k.상장, 주주: H.주주, 합계: H.합계, 알림: H.알림 }; }), 같은고객사건: famCases_(c), 때: F.at || '', 기록: F.log.slice(-15) };
 }
 function famLog_(F, by, what, detail) { F.log.push({ at: caseProcNow_(), by: String(by || '').slice(0, 6), what: what, detail: String(detail || '').slice(0, 240) }); }
 function famPersonSet_(c, input, by) {
@@ -475,7 +475,7 @@ function famTransferSet_(c, input, by) {
     let row = t.id ? F.이전.filter(function (x) { return x.id === t.id; })[0] : null;
     if (t.id && !row) return { ok: false, error: '그 이전 줄이 없음: ' + t.id };
     const isNew = !row; if (!row) { row = { id: 't' + Date.now().toString(36) + F.이전.length }; F.이전.push(row); }
-    ['종류', '날짜', '주는', '받는', '관계', '물건', '물건종류', '금액', '평가', '채무인수', '과세가액', '과세표준', '산출세액', '납부세액', '공제사용', '신고', '합산배제', '상속분', '주는이취득가액', '주는이취득일', '주는이필요경비', '특례', '특례밖금액', '특례밖과세표준', '특례밖산출세액', '특례밖공제사용', '이자', '적정이자율', '상환일', '무상', '감면세액', '감면', '시가', '증여재산가액', '특수관계', '반환일', '결정일', '사건id', '근거', '메모'].forEach(function (k) { if (t[k] !== undefined) row[k] = typeof t[k] === 'string' ? t[k].trim().slice(0, 300) : t[k]; });
+    ['종류', '날짜', '주는', '받는', '관계', '물건', '물건종류', '금액', '평가', '채무인수', '과세가액', '과세표준', '산출세액', '납부세액', '공제사용', '신고', '합산배제', '상속분', '주는이취득가액', '주는이취득일', '주는이필요경비', '특례', '특례밖금액', '특례밖과세표준', '특례밖산출세액', '특례밖공제사용', '이자', '적정이자율', '상환일', '무상', '감면세액', '감면', '시가', '증여재산가액', '특수관계', '반환일', '결정일', '법인', '지분', '사건id', '근거', '메모'].forEach(function (k) { if (t[k] !== undefined) row[k] = typeof t[k] === 'string' ? t[k].trim().slice(0, 300) : t[k]; });
     if (row.날짜) row.날짜 = famYmd_(row.날짜) || row.날짜;
     row.누가 = String(by || '').slice(0, 6); row.때 = caseProcNow_(); if (!row.근거) row.근거 = '근거 없음 — 잠정(서류로 확인할 것)';
     // 사람이 지도에 없으면 이름만으로 더한다(관계는 비움 — 넥스·세무사님이 채움)
@@ -488,11 +488,97 @@ function famTransferSet_(c, input, by) {
 function famDrop_(c, input, by) {
   const id = String(input.id || '').trim(); if (!id) return { ok: false, error: 'id(사람 p… 또는 이전 t…)가 필요합니다' };
   return famMutate_(famKeyOf_(c), function (F) {
-    const before = F.사람.length + F.이전.length;
-    F.사람 = F.사람.filter(function (x) { return x.id !== id; }); F.이전 = F.이전.filter(function (x) { return x.id !== id; });
-    if (before === F.사람.length + F.이전.length) return { ok: false, error: '그 줄이 없음: ' + id };
+    const cnt = function () { return F.사람.length + F.이전.length + F.법인.length + F.지분.length; }, before = cnt();
+    const keep = function (x) { return x.id !== id; };
+    F.사람 = F.사람.filter(keep); F.이전 = F.이전.filter(keep); F.법인 = F.법인.filter(keep); F.지분 = F.지분.filter(keep);
+    if (before === cnt()) return { ok: false, error: '그 줄이 없음: ' + id };
     famLog_(F, by, '지움', id); return { ok: true, message: '지움: ' + id };
   });
+}
+// ── [2026.11.04 큰일 ⑦] 법인·지분 — 「누가 어느 법인을 몇 % 갖나」를 한 곳에(큰일다섯_계획서_20261104 ⑦)
+//  법인 줄(이름·사업자번호·상장) + 지분 줄(사람·법인·비율%·기준일). 이전 줄(증여·양도 …)에 법인·지분(%)이 있으면
+//  그날부터 주는 사람 −, 받는 사람 +. 특정법인(§45의5)·제2차 납세의무(국기법 §39)·일감(§45의3) 판정이 먼저 읽고, 칸에 넣은 값이 있으면 그 값이 우선.
+function famCorp_(F, who) { const w = String(who || '').trim(); if (!w) return null; return F.법인.filter(function (k) { return k.id === w; })[0] || F.법인.filter(function (k) { return k.이름 === w; })[0] || F.법인.filter(function (k) { return k.사업자번호 && k.사업자번호 === w; })[0] || null; }
+function famCorpSet_(c, input, by) {
+  const k = Object.assign({}, input.corp || input.법인 || input.f || {}); if (input.id && !k.id) k.id = input.id;
+  const name = String(k.이름 || k.name || '').trim(); if (!name && !k.id) return { ok: false, error: 'corp.이름이 필요합니다' };
+  return famMutate_(famKeyOf_(c), function (F) {
+    let row = k.id ? F.법인.filter(function (x) { return x.id === k.id; })[0] : F.법인.filter(function (x) { return x.이름 === name; })[0];
+    const isNew = !row; if (!row) { row = { id: 'k' + Date.now().toString(36) + F.법인.length }; F.법인.push(row); }
+    ['이름', '사업자번호', '상장', '발행주식', '업종', '메모', '출처'].forEach(function (f) { if (k[f] !== undefined) row[f] = typeof k[f] === 'string' ? k[f].trim().slice(0, 200) : k[f]; });
+    if (name) row.이름 = name; row.누가 = String(by || '').slice(0, 6); row.때 = caseProcNow_();
+    famLog_(F, by, isNew ? '법인 더함' : '법인 고침', row.이름);
+    return { ok: true, id: row.id, 법인: row, message: (isNew ? '가족 지도에 법인 더함: ' : '법인 고침: ') + row.이름 };
+  });
+}
+function famShareSet_(c, input, by) {
+  const s = Object.assign({}, input.share || input.지분 || input.f || {}); if (input.id && !s.id) s.id = input.id;
+  if (!s.id && (!s.사람 || !s.법인)) return { ok: false, error: 'share.사람·share.법인이 필요합니다' };
+  if (s.비율 != null && s.비율 !== '' && !(famNum_(String(s.비율).replace('%', '')) >= 0 && famNum_(String(s.비율).replace('%', '')) <= 100)) return { ok: false, error: 'share.비율은 0~100(%)' };
+  return famMutate_(famKeyOf_(c), function (F) {
+    let row = s.id ? F.지분.filter(function (x) { return x.id === s.id; })[0] : null;
+    if (s.id && !row) return { ok: false, error: '그 지분 줄이 없음: ' + s.id };
+    const isNew = !row; if (!row) { row = { id: 's' + Date.now().toString(36) + F.지분.length }; F.지분.push(row); }
+    ['사람', '법인', '비율', '주식수', '기준일', '명의만', '실질소유자', '근거', '메모'].forEach(function (f) { if (s[f] !== undefined) row[f] = typeof s[f] === 'string' ? s[f].trim().slice(0, 200) : s[f]; });
+    if (row.기준일) row.기준일 = famYmd_(row.기준일) || row.기준일;
+    if (row.사람 && !famPerson_(F, row.사람) && !famCorp_(F, row.사람)) F.사람.push({ id: 'p' + Date.now().toString(36) + F.사람.length, 이름: String(row.사람).trim(), 출처: '지분 줄에서 이름만' });
+    if (row.법인 && !famCorp_(F, row.법인)) F.법인.push({ id: 'k' + Date.now().toString(36) + F.법인.length, 이름: String(row.법인).trim(), 출처: '지분 줄에서 이름만' });
+    row.누가 = String(by || '').slice(0, 6); row.때 = caseProcNow_(); if (!row.근거) row.근거 = '근거 없음 — 잠정(주주명부·주식변동상황명세서로 확인할 것)';
+    famLog_(F, by, isNew ? '지분 더함' : '지분 고침', famName_(F, row.사람) + ' ' + row.법인 + ' ' + row.비율 + '% (' + (row.기준일 || '기준일 없음') + ')');
+    return { ok: true, id: row.id, 지분: row, message: (isNew ? '가족 지도에 지분 더함: ' : '지분 고침: ') + famName_(F, row.사람) + ' ' + row.법인 + ' ' + row.비율 + '%' };
+  });
+}
+// 그날 현재 한 법인의 주주별 지분(%) — 지분 줄(기준일 ≤ 그날, 사람마다 가장 늦은 줄) + 그 뒤 이전 줄(지분 %) 반영. 순수 셈.
+function famPct_(x) { return famNum_(String(x == null ? '' : x).replace('%', '')); }
+function famHoldings_(F, corp, date) {
+  const k = famCorp_(F, corp), kname = k ? k.이름 : String(corp || ''), d = famYmd_(date) || '9999-12-31';
+  const same = function (x) { const q = famCorp_(F, x); return q ? q.이름 === kname : String(x || '').trim() === kname; };
+  const by = {}, base = {}, changes = [];
+  F.지분.filter(function (s) { return same(s.법인) && (!famYmd_(s.기준일) || famYmd_(s.기준일) <= d); }).forEach(function (s) {
+    const who = famName_(F, s.사람), sd = famYmd_(s.기준일) || '';
+    if (!base[who] || base[who].기준일 <= sd) base[who] = { 기준일: sd, 비율: famPct_(s.비율), 명의만: s.명의만, 실질소유자: s.실질소유자 };
+  });
+  Object.keys(base).forEach(function (w) { by[w] = base[w].비율; changes.push({ 날짜: base[w].기준일, 누구: w, 비율: base[w].비율, 까닭: '지분 줄' }); });
+  F.이전.filter(function (t) { return t.법인 && same(t.법인) && famPct_(t.지분) > 0 && famYmd_(t.날짜) && famYmd_(t.날짜) <= d && !(famGiftReturn_(t).없던것); })
+    .sort(function (a, b) { return famYmd_(a.날짜) < famYmd_(b.날짜) ? -1 : 1; }).forEach(function (t) {
+      const from = famName_(F, t.주는), to = famName_(F, t.받는), pc = famPct_(t.지분), td = famYmd_(t.날짜);
+      if (base[from] && base[from].기준일 >= td) return; // 지분 줄이 그 이전 뒤를 이미 적었으면 두 번 세지 않는다
+      if (from) by[from] = Math.round(((by[from] || 0) - pc) * 1e6) / 1e6;
+      if (to && !(base[to] && base[to].기준일 >= td)) by[to] = Math.round(((by[to] || 0) + pc) * 1e6) / 1e6;
+      changes.push({ 날짜: td, 누구: from + '→' + to, 비율: pc, 까닭: t.종류 });
+    });
+  const list = Object.keys(by).filter(function (w) { return by[w] > 0; }).map(function (w) { const p = famPerson_(F, w); return { 이름: w, 비율: by[w], 관계: p ? (p.관계 || '') : (famCorp_(F, w) ? '법인' : ''), 명의만: base[w] && base[w].명의만, 실질소유자: base[w] && base[w].실질소유자 }; })
+    .sort(function (a, b) { return b.비율 - a.비율; });
+  const 합계 = Math.round(list.reduce(function (a, x) { return a + x.비율; }, 0) * 1e6) / 1e6;
+  return { 법인: kname, 기준일: famYmd_(date) || '', 상장: k ? k.상장 : undefined, 주주: list, 합계: 합계, 바뀐날: changes, 알림: 합계 > 100.0001 ? ['⚠ 지분 합계가 ' + 합계 + '% — 지분 줄·이전 줄을 확인하세요'] : [] };
+}
+// 판정·계산이 읽는 모양 — 기준 사람과 그 가족(지도에 있는 사람 = 특수관계 후보)의 합계, 제2차 납세의무용 주주 이력(주식수 = % × 100)
+function famCorpFacts_(F, corp, date, base) {
+  const H = famHoldings_(F, corp, date), bn = base ? famName_(F, base) : '';
+  const family = H.주주.filter(function (x) { return famPerson_(F, x.이름); });
+  const famSum = Math.round(family.reduce(function (a, x) { return a + x.비율; }, 0) * 1e6) / 1e6;
+  const allDates = H.바뀐날.map(function (x) { return x.날짜; }).filter(Boolean).sort();
+  const hist = function (who) { // 바뀐 날마다 그 사람 지분
+    const out = []; allDates.filter(function (v, i, a) { return a.indexOf(v) === i; }).forEach(function (dd) { const h = famHoldings_(F, corp, dd).주주.filter(function (x) { return x.이름 === who; })[0]; out.push({ 날짜: dd, 주식수: Math.round((h ? h.비율 : 0) * 100) }); });
+    return out;
+  };
+  const 주주 = H.주주.map(function (x) { const o = { 이름: x.이름, 관계: x.이름 === bn ? '본인' : (famPerson_(F, x.이름) ? (x.관계 || '친족') : '남'), 주식수: Math.round(x.비율 * 100), 이력: hist(x.이름) }; if (x.명의만) { o.명의만 = true; o.실질소유자 = x.실질소유자 || ''; } return o; });
+  const me = H.주주.filter(function (x) { return x.이름 === bn; })[0];
+  return { 법인: H.법인, 기준일: H.기준일, 상장: H.상장, 발행주식: 10000, 주주: 주주, 기준주주: bn || undefined, 가족합계비율: famSum, 본인비율: me ? me.비율 : 0, 주주비율: H.주주, 합계: H.합계, 알림: H.알림, 출처: '가족 지도 지분(' + H.법인 + ', ' + (H.기준일 || '오늘') + ' 현재)' };
+}
+// 사건 c로 판정·도구 사실 채우기 — 칸에 넣은 값이 있으면 그 값 그대로(채운 칸만 「지도에서」 표시)
+function famCorpFill_(c, kind, facts) {
+  facts = facts || {}; const corp = facts.법인 || facts.법인명 || facts.corpName; if (!corp) return { facts: facts, 채움: [] };
+  let F; try { F = famLoad_(famKeyOf_(c)); } catch (e) { return { facts: facts, 채움: [] }; }
+  if (!famCorp_(F, corp) && !F.지분.some(function (s) { return String(s.법인 || '').trim() === String(corp).trim(); })) return { facts: facts, 채움: [] };
+  const date = facts.기준일 || facts.날짜 || facts.증여일 || facts.거래일 || facts.양도일 || facts.성립일 || facts.transactionDate || facts.giftDate || '';
+  const K = famCorpFacts_(F, corp, date, facts.기준주주 || facts.본인 || facts.shareholderName), out = Object.assign({}, facts), filled = [];
+  const put = function (k, v) { if ((out[k] == null || out[k] === '' || (Array.isArray(out[k]) && !out[k].length)) && v != null && v !== '') { out[k] = v; filled.push(k); } };
+  if (kind === '제2차') { put('주주', K.주주); put('발행주식', K.발행주식); if (K.상장 !== undefined) put('상장', K.상장); }
+  else if (kind === '가족지분') { put('주주가족지분', K.가족합계비율); }
+  else if (kind === '특정법인') { put('groupOwnershipRatio', K.가족합계비율); put('shareholderOwnershipRatio', K.본인비율); }
+  else if (kind === '일감') { put('shareholderOwnershipRatio', K.본인비율); }
+  return { facts: out, 채움: filled, 지도: K };
 }
 // 잇기 계산 실행 — 결과는 이 사건의 경우(안) 저장본으로(검토서가 인용)
 function famChainRun_(c, input, by) {

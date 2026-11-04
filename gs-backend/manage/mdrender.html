@@ -1017,7 +1017,9 @@ function renderTimelineBlocks(container) {
     const wrapper = document.createElement('div');
     wrapper.className = 'timeline-chart';
     lines.forEach(l => {
-      const idx = l.indexOf(':');
+      // [2026.11.04] 앞뒤 빈칸 있는 " : "를 먼저 — 날짜 칸 안의 쌍점(⚠[확인필요: 날짜]·10:30)에서 잘리지 않게(내부보고서 양식 점검 ②)
+      const sp = l.indexOf(' : ');
+      const idx = sp >= 0 ? sp + 1 : l.indexOf(':');
       const date  = l.slice(0, idx).trim();
       const label = l.slice(idx + 1).trim();
       wrapper.innerHTML += `
