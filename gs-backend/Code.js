@@ -3461,7 +3461,12 @@ const DRIVE_TOOLS = [
     description: '기업공개(코스닥상장 포함) 준비중인 주식등의 상증세법§63②1호·2호 평가액(시행령§57①②) — 평가기준일 현재 유가증권신고(또는 상장·등록신청) 직전 6개월(증여세는 3개월)부터 최초 상장·등록 전까지의 기간에 발행된 주식등은 (1)금융위원회가 정하는 기준에 따라 결정된 공모가격과 (2)§63①1호가목(또는 나목)에 따라 별도로 평가한 해당 주식등의 가액 중 큰 금액으로 평가한다. §63①1호가목 방식의 평가액은 calculate_listed_stock_value 등 다른 도구로 먼저 계산해 이 도구의 regularValuationValue에 넣어야 한다.',
     input_schema: { type: 'object', properties: {
       publicOfferingPrice: { type: 'number', description: '금융위원회가 정하는 기준에 따라 결정된 공모가격(원, 1주당).' },
-      regularValuationValue: { type: 'number', description: '§63①1호가목(상장주식 시세) 또는 그 가액이 없으면 나목(코스닥상장법인)에 따라 별도로 평가한 해당 주식등의 1주당 가액(원). calculate_listed_stock_value 등으로 먼저 계산한 값을 넣는다.' }
+      regularValuationValue: { type: 'number', description: '§63①1호가목(상장주식 시세) 또는 그 가액이 없으면 나목(코스닥상장법인)에 따라 별도로 평가한 해당 주식등의 1주당 가액(원). calculate_listed_stock_value 등으로 먼저 계산한 값을 넣는다.' },
+        valuationDate: { type: 'string', description: '[2026.11.05] 평가기준일(YYYY-MM-DD) — securitiesFilingDate와 함께 주면 §63② 기간(신고 직전 6개월·증여 3개월~상장 전) 안인지 도구가 봄.' },
+        securitiesFilingDate: { type: 'string', description: '유가증권 신고일(없으면 listingApplicationDate 상장·등록 신청일, YYYY-MM-DD).' },
+        listingApplicationDate: { type: 'string', description: '상장·등록 신청일(유가증권 신고 없이 신청만 한 경우).' },
+        listingDate: { type: 'string', description: '최초 상장(등록)일 — 평가기준일이 그 전이어야 함.' },
+        taxType: { type: 'string', enum: ['inheritance', 'gift'], description: 'gift면 직전 3개월, 아니면 6개월.' }
     }, required: ['publicOfferingPrice', 'regularValuationValue'] }
   },
   {

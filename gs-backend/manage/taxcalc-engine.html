@@ -12554,9 +12554,20 @@
     const regularValue = Number(p.regularValuationValue);
     if (!(offeringPrice >= 0)) return { error: 'publicOfferingPrice(공모가격)가 필요합니다.' };
     if (!(regularValue >= 0)) return { error: 'regularValuationValue(§63①1호가목·나목 평가액)가 필요합니다.' };
+    // [2026.11.05 모의사건 250] 시행령 §57①② — §63②는 평가기준일이 「유가증권 신고(없으면 상장·등록 신청) 직전 6개월(증여세는 3개월)부터 상장(등록) 전까지」에 들 때만.
+    //  valuationDate·securitiesFilingDate(또는 listingApplicationDate)·listingDate·taxType을 주면 그 기간인지 보고, 밖이면 일반 평가(§63①1호)로 돌려보낸다. 전에는 기간을 안 봤다.
+    const vd57_ = String(p.valuationDate || '').slice(0, 10), fd57_ = String(p.securitiesFilingDate || p.listingApplicationDate || '').slice(0, 10), ld57_ = String(p.listingDate || '').slice(0, 10);
+    let period57_ = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(vd57_) && /^\d{4}-\d{2}-\d{2}$/.test(fd57_)) {
+      const months57_ = p.taxType === 'gift' ? 3 : 6;
+      const from57_ = (function (d, m) { const y = Number(d.slice(0, 4)), mo = Number(d.slice(5, 7)) - 1 - m, dd = Number(d.slice(8, 10)); const t = new Date(Date.UTC(y, mo, 1)); const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate(); return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), Math.min(dd, last))).toISOString().slice(0, 10); })(fd57_, months57_);
+      const inWin_ = vd57_ >= from57_ && (!/^\d{4}-\d{2}-\d{2}$/.test(ld57_) || vd57_ < ld57_);
+      period57_ = { 기간_시작: from57_, 신고일: fd57_, 상장일: ld57_ || undefined, 평가기준일: vd57_, 기간안: inWin_, 근거: '시행령 §57①②(' + (p.taxType === 'gift' ? '증여세 3개월' : '상속세 6개월') + ')' };
+      if (!inWin_) return { 적용여부: false, 기간: period57_, 공모가격: offeringPrice, 일반평가액: regularValue, 평가액: regularValue, 안내: '평가기준일 ' + vd57_ + '이 유가증권 신고 직전 ' + months57_ + '개월(' + from57_ + ')부터 상장 전까지의 기간 밖이라 §63②가 아니라 §63①1호 일반 평가액(' + regularValue + '원)을 씁니다(시행령 §57①②).' };
+    }
     const value = Math.max(offeringPrice, regularValue);
     return {
-      공모가격: offeringPrice, 일반평가액: regularValue, 평가액: value,
+      적용여부: true, 기간: period57_ || undefined, 공모가격: offeringPrice, 일반평가액: regularValue, 평가액: value,
       안내: '§63②1호·2호(시행령§57①②) — 공모가격(' + offeringPrice + '원)과 §63①1호가목·나목 방식 평가액(' + regularValue + '원) 중 큰 금액인 ' + value + '원을 적용했습니다.'
     };
   };
