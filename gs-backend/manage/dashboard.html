@@ -1072,6 +1072,14 @@
       if (kes.length) html += row('<details><summary style="cursor:pointer; color:#b3261e;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
       // [2026.11.03] 뒤에서 할 일(예약 문자·달력·보고서)이 세 번 해도 안 된 것 — 세무사님이 다시 하거나 지움
+      // [2026.11.04 혼자 도는 ②③④⑤⑥] 서버가 밤·환경 감시 때 스스로 찾은 것(법령 개정 영향·기한·미수·멈춘 사건·공유 정리) — [확인]을 누르면 지워진다
+      var awIcon = { '법령 개정 영향': '📜', '기한': '⏰', '미수': '💰', '멈춘 사건': '⏸', '공유 정리': '🧹' };
+      (r.autoNotices || []).slice().reverse().forEach(function(n){
+        html += row((awIcon[n.kind] || '•') + ' <b>' + esc(n.kind) + '</b> ' + esc(n.text)
+          + '<div style="margin-top:4px; display:flex; gap:6px; align-items:center;"><span style="font-size:12px; color:var(--sub);">' + esc(String(n.at || '').slice(5)) + '</span>'
+          + (n.caseId ? '<button type="button" class="ghost-btn sm" data-dashgo="work" data-dashgo-case="' + esc(n.caseId) + '">사건 열기</button>' : '')
+          + '<button type="button" class="ghost-btn sm" data-dashaw="' + esc(n.id) + '">확인</button></div>', n.kind === '법령 개정 영향' || n.kind === '기한');
+      });
       (r.bgFailed || []).slice().reverse().forEach(function(f){
         html += row('⚠ <b style="color:#b3261e;">' + esc(f.종류) + ' 안 됨</b> ' + esc(f.무엇) + (f.받는번호 ? ' (' + esc(f.받는번호) + ')' : '')
           + '<div style="font-size:12px; color:var(--sub);">' + esc(String(f.at).slice(5)) + ' · ' + esc(f.오류 || '') + '</div>'
@@ -1109,6 +1117,20 @@
       onDone: function(){ if (wrap) wrap.remove(); },
       onFail: function(){ if (wrap) wrap.style.display = ''; if (askCard) askCard.hidden = false; },
       redo: function(){ if (wrap) wrap.style.display = 'none'; var n = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1; if (askCard && !n) askCard.hidden = true; } });
+  });
+  document.addEventListener('click', function(ev){ // [2026.11.04 혼자 도는] 알림 [확인] — 줄은 바로 감추고 서버엔 보낼 함으로
+    var b = ev.target.closest && ev.target.closest('[data-dashaw]');
+    if (!b) return;
+    ev.preventDefault();
+    var id = b.getAttribute('data-dashaw'), wrap = b.closest('div[style*="border"]');
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    if (wrap) wrap.style.display = 'none';
+    var leftVisible = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1;
+    if (askCard && !leftVisible) askCard.hidden = true;
+    nxSaveLater_('aw_notice_seen', { id: id }, { key: 'aw_' + id, label: '알림 확인',
+      onDone: function(){ if (wrap) wrap.remove(); },
+      onFail: function(){ if (wrap) wrap.style.display = ''; if (askCard) askCard.hidden = false; },
+      redo: function(){ if (wrap) wrap.style.display = 'none'; } });
   });
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('[data-dashqans]');

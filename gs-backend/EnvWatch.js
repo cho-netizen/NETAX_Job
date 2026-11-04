@@ -136,6 +136,8 @@ function envWatchLaws_(state, deadline) {
       item.새로시행 = true;
       var nh = Date.now() < deadline ? envLawArticleHashes_(oc, v.cur.mst, v.cur.ef) : null;
       if (nh) { var fl = envFlagged_(nh); item.바뀐조문 = fl.length ? fl : (st.hashes ? envDiffArticles_(st.hashes, nh) : []); item.영향함수 = envImpactedFns_(name, item.바뀐조문); }
+      // [2026.11.04 혼자 도는 ②] 바뀐 조문을 근거로 쓴 진행 사건 → 「답하실 것」·사건 알림·낮에 넥스 한 줄
+      try { if (item.바뀐조문 && item.바뀐조문.length && typeof awLawImpact_ === 'function') item.영향사건 = awLawImpact_(name, item.바뀐조문, '개정 시행(' + v.cur.ef + ')').cases; } catch (e) { item.영향사건오류 = String(e && e.message || e).slice(0, 100); }
       // 법령 정비본 갱신 대상 + 산식 보정 다시 확인할 조문(그 조문에 보정·Vision 판독이 있으면)
       item.정비본 = '갱신 대상 — PC에서 node tools/law-build.js (새 판을 더하고 옛 판은 남김)';
       item.보정재확인 = (item.바뀐조문 || []).filter(function (a) { return corr.some(function (c) { return c.법령 === name.replace(/\s/g, '') && c.조 === a.조; }); }).map(function (a) { return a.조; });
@@ -152,7 +154,7 @@ function envWatchLaws_(state, deadline) {
       var rec = knownF[f.mst];
       if (!rec && Date.now() < deadline && st.hashes) {
         var fh = envLawArticleHashes_(oc, f.mst, f.ef);
-        if (fh) { var fl2 = envFlagged_(fh), d = fl2.length ? fl2 : envDiffArticles_(st.hashes, fh); rec = { 바뀔조문: d.slice(0, 80), 바뀔조문수: d.length, 영향함수: envImpactedFns_(name, d), 처음본날: envToday_() }; }
+        if (fh) { var fl2 = envFlagged_(fh), d = fl2.length ? fl2 : envDiffArticles_(st.hashes, fh); try { if (d.length && typeof awLawImpact_ === 'function') awLawImpact_(name, d, '시행 예정(' + f.ef + ')'); } catch (e) {} rec = { 바뀔조문: d.slice(0, 80), 바뀔조문수: d.length, 영향함수: envImpactedFns_(name, d), 처음본날: envToday_() }; }
       }
       if (rec) knownF[f.mst] = rec;
       return { 시행일: f.ef, 공포일: f.prom, 공포번호: f.no, 구분: f.kind, 신규: !!(rec && rec.처음본날 === envToday_()), 바뀔조문: rec ? rec.바뀔조문 : null, 바뀔조문수: rec ? rec.바뀔조문수 : null, 영향함수: rec ? rec.영향함수 : null };

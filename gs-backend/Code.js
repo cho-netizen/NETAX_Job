@@ -5009,6 +5009,8 @@ function dispatchClientAction0_(body) {
   if (/^knh_/.test(String(body.action)) && typeof knhDispatch_ === 'function') return jsonResponse(knhDispatch_(body));
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'save_times') return jsonResponse(saveTimesRead_());
+  if (body.action === 'aw_notice_seen') return jsonResponse(awNoticeSeen_(body)); // [2026.11.04 혼자 도는] 「답하실 것」 알림 확인(지움)
+  if (body.action === 'aw_nightly_now') return jsonResponse(awNightly_()); // [2026.11.04 혼자 도는] 설정 🐞 단추 — 밤 점검을 지금 돌림(시험용)
   if (body.action === 'bg_failed_act') return jsonResponse(bgqFailedAct_(body)); // [2026.11.03] 뒤에서 할 일 실패 — 다시 하기·지우기(대시보드 「답하실 것」)
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_request_done') return jsonResponse(commRequestDone_(body)); // [2026.10.28] PC Claude가 요청을 고쳤다고 처리 내역 남기기(tools/request-done.js)
@@ -12753,11 +12755,13 @@ function sendDailyDeadlineDigest() {
   const overdue = open.filter(function (c) { return c.법정일 < todayStr; });
   const soon = open.filter(function (c) { return c.법정일 >= todayStr && c.법정일 <= in3; }).sort(function (a, b) { return String(a.법정일).localeCompare(String(b.법정일)); });
   const queued = notifyDigestTake_();
-  if (!overdue.length && !soon.length && !queued.length) return; // 알릴 게 없으면 문자 안 보냄
+  let dls = []; try { dls = typeof awDeadlineLines_ === 'function' ? awDeadlineLines_(7) : []; } catch (e) { dls = []; } // [2026.11.04 혼자 도는 ③] 판정이 셈한 기한 7일 안
+  if (!overdue.length && !soon.length && !queued.length && !dls.length) return; // 알릴 게 없으면 문자 안 보냄
 
   let msg = '[NX 아침알림 ' + todayStr.slice(5) + ']\n';
   if (soon.length) msg += '3일 안 마감(' + soon.length + '건):\n' + soon.slice(0, 5).map(function (c) { return '· ' + String(c.법정일).slice(5) + ' ' + String(c.사건명 || c.고객명 || '').slice(0, 30); }).join('\n') + '\n';
   if (overdue.length) msg += '기한 지남(' + overdue.length + '건):\n' + overdue.slice(0, 5).map(function (c) { return '· ' + String(c.법정일).slice(5) + ' ' + String(c.사건명 || c.고객명 || '').slice(0, 30); }).join('\n') + '\n';
+  if (dls.length) msg += '7일 안 기한(판정, ' + dls.length + '건):' + String.fromCharCode(10) + dls.slice(0, 6).join(String.fromCharCode(10)) + String.fromCharCode(10); // [2026.11.04 혼자 도는 ③]
   if (queued.length) msg += '그 밖에(' + queued.length + '건):\n' + queued.slice(-8).map(function (t) { return '· ' + t.slice(0, 80); }).join('\n');
 
   try {
@@ -13462,6 +13466,8 @@ function runNightlyChiefManager() {
   // 바꿨다 — 저장/발행 시점에 그 건만 즉시 반영되지만, 혹시 놓친 변경(수동 삭제 등)이 있어도
   // 매일 밤 전체를 다시 훑어 인덱스를 바로잡는 안전망.
   try { rh_rebuildReportIndexFull_(); } catch (err) { console.error('보고서 인덱스 재구성 실패: ' + err.message); }
+  // [2026.11.04 혼자 도는 ③④⑤⑥] 법정기한 모으기·미수·멈춘 사건·완료 사건 공유 정리 — AutoWatch.js, 결과는 대시보드 「답하실 것」
+  try { if (typeof awNightly_ === 'function') awNightly_(); } catch (err) { console.error('혼자 도는 점검 실패: ' + err.message); }
 }
 
 /**
@@ -15572,7 +15578,7 @@ function my_handleGetChecklistStatus(params, ctx) {
 //  업로드 자체는 이 기록이 실패해도 성공으로 둔다.
 function my_handleUploadFile(params, ctx) {
   const r = my_handleUploadFileCore_(params, ctx);
-  if (r && r.success) { try { custUploadNote_(params, ctx); } catch (e) { try { ai_logBug({ entry: { kind: 'server', where: '고객 제출 알림', message: String(e && e.message || e).slice(0, 200) } }); } catch (x) {} } }
+  if (r && r.success) { try { custUploadNote_(Object.assign({}, params, { _fileId: r._fileId }), ctx); } catch (e) { try { ai_logBug({ entry: { kind: 'server', where: '고객 제출 알림', message: String(e && e.message || e).slice(0, 200) } }); } catch (x) {} } }
   return r;
 }
 function custUploadNote_(params, ctx) {
@@ -15585,6 +15591,7 @@ function custUploadNote_(params, ctx) {
   const now = new Date(), text = '[고객 제출] ' + (item ? item + ' — ' : '') + fileName + ' (고객창구 업로드 → 제출자료 폴더)';
   // [2026.11.04 ⑩-2] 고객이 낸 줄을 장부 받을 서류에 「고객 받음」으로(뒤에서 1분 안)
   if (wc) { try { bgEnqueue_('portal_sync', { caseId: wc.id }, 'portal_sync_' + wc.id, '고객창구로 서류 받음'); } catch (e) {} }
+  try { if (typeof awPortalUploaded_ === 'function') awPortalUploaded_(wc, params._fileId); } catch (e) {} // [2026.11.04 혼자 도는 ①] 올린 파일을 바로 미리 읽기 줄·한 바퀴 줄에
   if (wc) work_updateCase({ id: wc.id, 작업일지: (Array.isArray(wc.작업일지) ? wc.작업일지 : []).concat([{ id: 'log_' + now.getTime(), date: Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd'), text: text.slice(0, 200), dueDate: '' }]) });
   // [2026.10.22] 알림 한 통로 — 고객이 서류를 보내면 바로 문자(휴대폰·워치). 여러 장을 연달아 올리면 사건당 10분에 한 번만.
   const ck = 'cust_up_sms_' + (wc ? wc.id : rid);
@@ -15632,7 +15639,7 @@ function my_handleUploadFileCore_(params, ctx) {
     const uploadFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_UPLOAD);
 
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
-    uploadFolder.createFile(blob);
+    const madeFile = uploadFolder.createFile(blob); // [2026.11.04 혼자 도는 ①] 파일 ID를 돌려줘 바로 읽기 줄에 넣는다
 
     let status = {};
     try { status = JSON.parse(ctx.row[ctx.col.제출상태] || '{}'); } catch (e) { status = {}; }
@@ -15648,7 +15655,7 @@ function my_handleUploadFileCore_(params, ctx) {
     const logSheet = ctx.ss.getSheetByName(MY_SHEET_SUB_LOG);
     logSheet.appendRow([params.report_id, fileName, checklistItem || '(기타제출)', new Date()]);
 
-    return { success: true, submission_status: status };
+    return { success: true, submission_status: status, _fileId: madeFile.getId() };
   } catch (err) {
     // [2026.09 버그수정] 사건 폴더가 드라이브에서 지워지는 등 예상 못한 오류가 나면 예전엔
     // 영어 기술 메시지가 그대로 고객 화면에 노출됐다 — 고객에게는 친절한 안내만 보여준다.
@@ -21401,6 +21408,8 @@ function work_syncCaseCalendar_(caseObj) {
         work_createAllDayEvent_(cal, '[NX] ' + label + ' — 다음할일: ' + String(entry.text || '').slice(0, 50), entry.dueDate, tag);
       }
     });
+    // [2026.11.04 혼자 도는 ③] 판정이 셈한 법정기한(사건 기록부 autoDeadlines, AutoWatch.js가 모음) — 잠정이면 표시
+    try { if (caseObj.상태 !== '완료') { const svd = caseProcLoad_(caseObj.id) || {}; (svd.autoDeadlines || []).forEach(function (d) { if (d && d.날짜 && d.날짜 !== caseObj.법정일) work_createAllDayEvent_(cal, '[NX] ' + label + ' — ' + String(d.이름 || '기한').slice(0, 40) + (d.잠정 ? '(잠정)' : ''), d.날짜, tag); }); } } catch (e) {}
     return true;
   } catch (err) {
     // 캘린더 접근 권한이 없거나 오류가 나도 사건/하위업무 저장 자체는 계속 진행돼야 함

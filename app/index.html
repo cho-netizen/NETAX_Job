@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 00:22 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 07:39 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4066,6 +4066,14 @@ function nxMdOpenWindow(title, src, opts){
       if (kes.length) html += row('<details><summary style="cursor:pointer; color:#b3261e;"><b>⚠ 카카오 상담봇 오류 ' + kes.length + '건</b>(최근 7일) — 파일 저장 실패면 고객에게 다시 받아야 합니다</summary>'
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
       // [2026.11.03] 뒤에서 할 일(예약 문자·달력·보고서)이 세 번 해도 안 된 것 — 세무사님이 다시 하거나 지움
+      // [2026.11.04 혼자 도는 ②③④⑤⑥] 서버가 밤·환경 감시 때 스스로 찾은 것(법령 개정 영향·기한·미수·멈춘 사건·공유 정리) — [확인]을 누르면 지워진다
+      var awIcon = { '법령 개정 영향': '📜', '기한': '⏰', '미수': '💰', '멈춘 사건': '⏸', '공유 정리': '🧹' };
+      (r.autoNotices || []).slice().reverse().forEach(function(n){
+        html += row((awIcon[n.kind] || '•') + ' <b>' + esc(n.kind) + '</b> ' + esc(n.text)
+          + '<div style="margin-top:4px; display:flex; gap:6px; align-items:center;"><span style="font-size:12px; color:var(--sub);">' + esc(String(n.at || '').slice(5)) + '</span>'
+          + (n.caseId ? '<button type="button" class="ghost-btn sm" data-dashgo="work" data-dashgo-case="' + esc(n.caseId) + '">사건 열기</button>' : '')
+          + '<button type="button" class="ghost-btn sm" data-dashaw="' + esc(n.id) + '">확인</button></div>', n.kind === '법령 개정 영향' || n.kind === '기한');
+      });
       (r.bgFailed || []).slice().reverse().forEach(function(f){
         html += row('⚠ <b style="color:#b3261e;">' + esc(f.종류) + ' 안 됨</b> ' + esc(f.무엇) + (f.받는번호 ? ' (' + esc(f.받는번호) + ')' : '')
           + '<div style="font-size:12px; color:var(--sub);">' + esc(String(f.at).slice(5)) + ' · ' + esc(f.오류 || '') + '</div>'
@@ -4103,6 +4111,20 @@ function nxMdOpenWindow(title, src, opts){
       onDone: function(){ if (wrap) wrap.remove(); },
       onFail: function(){ if (wrap) wrap.style.display = ''; if (askCard) askCard.hidden = false; },
       redo: function(){ if (wrap) wrap.style.display = 'none'; var n = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1; if (askCard && !n) askCard.hidden = true; } });
+  });
+  document.addEventListener('click', function(ev){ // [2026.11.04 혼자 도는] 알림 [확인] — 줄은 바로 감추고 서버엔 보낼 함으로
+    var b = ev.target.closest && ev.target.closest('[data-dashaw]');
+    if (!b) return;
+    ev.preventDefault();
+    var id = b.getAttribute('data-dashaw'), wrap = b.closest('div[style*="border"]');
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    if (wrap) wrap.style.display = 'none';
+    var leftVisible = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1;
+    if (askCard && !leftVisible) askCard.hidden = true;
+    nxSaveLater_('aw_notice_seen', { id: id }, { key: 'aw_' + id, label: '알림 확인',
+      onDone: function(){ if (wrap) wrap.remove(); },
+      onFail: function(){ if (wrap) wrap.style.display = ''; if (askCard) askCard.hidden = false; },
+      redo: function(){ if (wrap) wrap.style.display = 'none'; } });
   });
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('[data-dashqans]');
@@ -56287,6 +56309,7 @@ function rwAiApplyEdit_(id, content){
           <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">직결 전환</button>
           <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">공유 정리</button>
           <button type="button" class="ghost-btn" data-fed="reg">위원 상태</button>
+          <button type="button" class="ghost-btn" id="stBtnAwNow" title="[2026.11.04 혼자 도는 기능] 새벽 2시에 저절로 도는 점검(판정이 셈한 법정기한 모으기·미수 30일·멈춘 사건 14일·완료 사건 공유 정리)을 지금 한 번 돌립니다. 결과는 대시보드 「답하실 것」에">혼자 도는 점검 지금</button>
         </div>
         <div class="st-fed-box settings-tool-desc"></div>
         <div class="st-out-slot"></div>
@@ -56596,6 +56619,18 @@ function rwAiApplyEdit_(id, content){
     document.getElementById('stBtnOcrCount').addEventListener('click', function(){ ocrbRun_(true); });
     document.getElementById('stBtnOcrBatch').addEventListener('click', function(){ ocrbRun_(false); });
     (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (nxConfirmGate_('stOcrReread', '글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
+    // [2026.11.04 혼자 도는 기능] 밤 점검 지금 돌리기 — 서버 aw_nightly_now(AutoWatch.js awNightly_). 값·칸은 안 바꾸고 알림만 만든다
+    (function(){
+      var b = document.getElementById('stBtnAwNow'); if (!b) return;
+      b.addEventListener('click', function(){
+        bugList.textContent = '혼자 도는 점검을 돌리는 중(기한·미수·멈춘 사건·공유 정리)…';
+        callGas('aw_nightly_now', {}).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+          var lines = ['기한 표 ' + (r.기한 || 0) + '줄', '미수 알림 ' + (r.미수 || 0) + '건', '멈춘 사건 알림 ' + (r.멈춤 || 0) + '건', '공유 거둠 ' + (r.공유거둠 || 0) + '개', '걸린 시간 ' + Math.round((r.ms || 0) / 1000) + '초 · ' + (r.at || '')].concat(['기한오류', '미수오류', '멈춤오류', '공유오류'].filter(function(k){ return r[k]; }).map(function(k){ return '⚠ ' + k.replace('오류', '') + ': ' + r[k]; }));
+          bugList.innerHTML = '<div><b>혼자 도는 점검 결과</b> <span style="font-size:12px; color:var(--muted);">— 새로 찾은 것은 대시보드 「답하실 것」에 뜹니다</span></div>' + lines.map(function(l){ return '<div style="font-size:12px;">· ' + escapeHtml(l) + '</div>'; }).join('');
+        }).catch(function(err){ bugList.textContent = '점검을 돌리지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
+    })();
     // [2026.10.27 T6 4단계] 🧪 공유 정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){
       var b = document.getElementById('stBtnT6Share'); if (!b) return;
@@ -66090,7 +66125,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     moveItem: '파일 옮기기', renameItem: '이름 바꾸기', deleteItem: '파일 지우기', searchFiles: '파일 찾기', listTrash: '휴지통 받기',
     client_get_consult_logs: '상담 기록 받기', list_bookings: '예약 목록 받기', ai_conv_list: '넥스 대화 목록 받기', ai_conv_load: '넥스 대화 불러오기',
     generate_report_content: '보고서 만들기', list_all_reports: '보고서 목록 받기', create_advisory_slide_report: '자문 발표 자료 만들기',
-    t6_share_cleanup: '공유 정리', system_audit_run: '시스템 점검', sysaudit_run: '시스템 점검', sysaudit_ai_run: '무료 AI 점검', self_check_run: '자체 점검',
+    t6_share_cleanup: '공유 정리', aw_nightly_now: '혼자 도는 점검', aw_notice_seen: '알림 확인', system_audit_run: '시스템 점검', sysaudit_run: '시스템 점검', sysaudit_ai_run: '무료 AI 점검', self_check_run: '자체 점검',
     ocr_batch_run: '서류 글자 읽기', ocr_batch_trigger: '서류 글자 읽기 맡기기', tc_extract_case_docs: '서류에서 계산 칸 찾기',
     doc_parse: '서류 읽기', doc_parse_multi: '서류 여러 장 읽기', doc_parse_image: '사진 서류 읽기', doc_parse_text: '서류 글 읽기',
     lookupLandInfo: '토지 정보 조회', lookupOfficialPrice: '공시가격 조회', lookupRealPrice: '실거래가 조회', lookupExchangeRate: '환율 조회',

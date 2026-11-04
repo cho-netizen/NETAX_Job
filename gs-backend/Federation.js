@@ -618,6 +618,18 @@ function commSeamList_() {
     // [2026.10.28 읽을 대상 ①~④] 세무사님 원문 "읽을 파일을 체크하여 지정하는 방법은 어떨까?" → "그렇게 만들자." — 판정 함수 하나·체크 목록·목록만 읽기·넥스 파일 단위
     // [2026.10.28] 세무사님 원문: "ai는 포괄적으로 파일에 접근할 수 있어야 하지만 gas는 구체적으로 필요한 것만 콕 집어서 알려주어야 한다" — 넥스 읽기(어떤 파일이든)와 GAS 체크 목록은 다른 길
     // [2026.10.28] 세무사님 원문: "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록 해야 한다"
+    // [2026.11.04 혼자 도는 기능 확대 1순위] 고객창구 업로드 → 바로 읽기 줄 / 환경 감시 → 영향 사건 / 밤 점검(기한·미수·멈춘 사건·공유 정리) → 대시보드 「답하실 것」·아침 문자
+    { 길: '혼자 도는 점검(AutoWatch) → 「답하실 것」(고객창구 업로드 → 미리 읽기 줄 · 법령 개정 → 영향 사건 · 밤 2시 기한·미수·멈춘 사건·공유 정리 → 대시보드 알림·아침 문자)', fn: function () {
+      if (typeof awNoticeAdd_ !== 'function' || typeof awNoticeSeen_ !== 'function' || typeof awLawImpact_ !== 'function' || typeof awNightly_ !== 'function' || typeof awDeadlinesFromResult_ !== 'function' || typeof awPortalUploaded_ !== 'function') return '혼자 도는 점검 함수(AutoWatch.js)가 이 판에 없음';
+      if (String(runNightlyChiefManager).indexOf('awNightly_') === -1) return '새벽 2시 묶음이 혼자 도는 점검을 안 부름';
+      if (String(custUploadNote_).indexOf('awPortalUploaded_') === -1) return '고객창구 업로드가 읽기 줄에 안 넣음';
+      if (String(envWatchLaws_).indexOf('awLawImpact_') === -1) return '환경 감시가 영향 사건을 안 찾음';
+      if (String(sendDailyDeadlineDigest).indexOf('awDeadlineLines_') === -1) return '아침 문자에 판정 기한 줄이 없음';
+      if (String(commStatus_).indexOf('autoNotices') === -1) return '대시보드로 가는 알림 칸이 없음';
+      const d = awDeadlinesFromResult_({ 묶음: '시험', 신고기한: '2026-12-31', 안쪽: { 납부기한: '2027-01-31', 잠정: true }, 기한: [{ 이름: '청구', 마감: '2026-11-30' }] });
+      if (d.length !== 3 || !d.some(function (x) { return x.이름 === '납부기한' && x.잠정; })) return '판정 결과에서 기한 뽑기가 다름(' + d.length + '개)';
+      return '';
+    } },
     { 길: '서류 변동 → 넥스 미리 읽기 → 채팅 보고(미리 읽기 틱 모든 파일 감시 → 기록부 파일 지문·서류 변동 → 진행 중 사건 넥스 깨움(밤엔 미룸) → 읽음 기록·알림·채팅 한 줄)', fn: function () {
       if (typeof cpWatchCase_ !== 'function' || typeof cpWatchTick_ !== 'function' || typeof cpNexPrereadWake_ !== 'function' || typeof cpNexChatNote_ !== 'function' || typeof cpNexPrereadSwitch_ !== 'function') return '감시·미리 읽기 서버 함수가 이 판에 없음'; if (typeof cpLedgerStaleRun_ !== 'function' || typeof ledgerKbBuild_ !== 'function') return '서류 변동 → 사건 장부 바로 갱신 함수가 이 판에 없음';
       let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; }); } catch (e) { trig = true; }
@@ -883,7 +895,8 @@ function commStatus_() {
     toConfirm: ra.open.filter(function (r) { return r.status === '반영됨'; }).length, questions: commDevQuestions_(), registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_,
     routine: commRoutineLog_(), uploads: (function () { try { return typeof custUploadsRecent_ === 'function' ? custUploadsRecent_(7) : []; } catch (e) { return []; } })(), // [2026.10.22] 고객이 올린 서류(최근 7일)
     kakaoErrors: (function () { try { return kakaoErrorsRecent_(7); } catch (e) { return []; } })(), // [2026.10.22] 카카오 봇 오류(최근 7일)
-    bgFailed: (function () { try { return bgqFailedList_(); } catch (e) { return []; } })() }; // [2026.11.03] 뒤에서 할 일(문자·달력 등) 세 번 실패한 것
+    bgFailed: (function () { try { return bgqFailedList_(); } catch (e) { return []; } })(),
+    autoNotices: (function () { try { return typeof awNoticeList_ === 'function' ? awNoticeList_() : []; } catch (e) { return []; } })(), autoNightly: (function () { try { return typeof awNightlyLast_ === 'function' ? awNightlyLast_() : null; } catch (e) { return null; } })() }; // [2026.11.04 혼자 도는] 법령 개정 영향·기한·미수·멈춘 사건·공유 정리 // [2026.11.03] 뒤에서 할 일(문자·달력 등) 세 번 실패한 것
 }
 // ⑧ [2026.10.21] 고객 카톡 글 — 세무사님 결정("진행하고 다음으로 넘어가자"): 고객이 카톡으로 쓴 글이 넥스·job에 전달되지 않던 문제.
 //  카카오 봇(NETAX_Kakao, 별도 서버)은 이미 모든 수신 메시지를 사건 시트 "카카오웹훅로그" 탭에 남기고(시각·카카오ID·글·원본), 카카오ID↔접속코드는

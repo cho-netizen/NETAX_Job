@@ -2,7 +2,7 @@
 // "지금 운영 = 깃허브 main 최신"으로 알게 한다(안 하면 이미 반영된 커밋이 "반영 대기 N건"으로 보임).
 //   node tools/mark-deployed.js                 ← 끝: 기준 맞춤 + 배포 직후 점검 + 반영 기록(버전·커밋·요약)
 //   node tools/mark-deployed.js --msg "요약"     ← 반영 기록에 남길 한 줄(없으면 main 최신 커밋 제목)
-//   node tools/mark-deployed.js --start "요약"   ← [2026.10.20] clasp push 전에: job 화면에 "PC에서 올리는 중"을 띄운다
+//   node tools/mark-deployed.js --start "요약"   ← [2026.10.20] clasp push 전에: job 화면에 "PC에서 올리는 중"을 띄운다 · [2026.11.04] 그 전에 회귀 세 가지 자동(실패면 멈춤, --skip-regress)
 // [2026.10.20] 세무사님 "잘난 너만 알면 되냐? 나도 알 수 있어야지" — PC 배포도 대시보드·설정 🐞 카드의 반영 기록·진행 중 표시에 나오게.
 // 주의: 반드시 clasp deploy와 git push가 둘 다 끝난 뒤에만 실행할 것(운영과 main이 실제로 같을 때). --start는 그 전에.
 const { execSync } = require('child_process');
@@ -13,6 +13,14 @@ const post = (body) => fetch(GAS, { method: 'POST', headers: { 'Content-Type': '
 
 const start = argOf('--start');
 if (start !== null) {
+  // [2026.11.04 혼자 도는 ⑦] 올리기 전에 토큰 0 회귀 세 가지(엔진 174건 기준 판 대조·1세대1주택 판정·가족 지도)를 자동으로 돌린다 — 하나라도 ✗면 멈춘다(--skip-regress로 건너뜀, 사유를 보고에 적을 것)
+  if (process.argv.indexOf('--skip-regress') === -1) {
+    const cwd = __dirname + '/..';
+    for (const f of ['engine-regress.js', 'judge-regress.js', 'family-regress.js']) {
+      try { execSync('node tools/' + f + (f === 'engine-regress.js' ? ' --base origin/main' : ''), { cwd, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 }); console.log('회귀 통과: ' + f); } // 엔진 대조 기준은 운영 = origin/main(이 PC의 main 가지는 낡아 있음)
+      catch (e) { const out = String((e.stdout || '') + (e.stderr || '')); console.log('회귀 실패: ' + f + '\n' + out.split('\n').filter(l => /✗|바뀜|실패|Error/.test(l)).slice(0, 12).join('\n')); console.log('→ 고친 뒤 다시 돌리거나, 의도한 변화면 --skip-regress 로(보고에 사유).'); process.exit(1); }
+    }
+  }
   post({ action: 'deploy_job_pc_start', msg: start }).then(t => console.log('PC 배포 시작 알림:', t.slice(0, 200)));
 } else {
   const cwd = __dirname + '/..';

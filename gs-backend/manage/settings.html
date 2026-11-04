@@ -325,6 +325,7 @@
           <button type="button" class="ghost-btn" id="stBtnT6Direct" title="[2026.10.27 T6 3단계] ⚡가 시험 서비스(Cloud Run)를 직접 부르는 길(직결)을 켜거나 끕니다. 꺼 두면 ⚡는 지금처럼 GAS 한 번 호출로 돕니다">직결 전환</button>
           <button type="button" class="ghost-btn" id="stBtnT6Share" title="[2026.10.27 T6 4단계] 빠른 서버의 로봇 계정이 지금 볼 수 있는 사건 폴더 목록(사건처리 때만 공유 — 개요에서 사건을 열면 걸리고, 완료로 바꾸면 거둬짐)을 보이고, 완료·없는 사건에 남은 공유를 거둡니다">공유 정리</button>
           <button type="button" class="ghost-btn" data-fed="reg">위원 상태</button>
+          <button type="button" class="ghost-btn" id="stBtnAwNow" title="[2026.11.04 혼자 도는 기능] 새벽 2시에 저절로 도는 점검(판정이 셈한 법정기한 모으기·미수 30일·멈춘 사건 14일·완료 사건 공유 정리)을 지금 한 번 돌립니다. 결과는 대시보드 「답하실 것」에">혼자 도는 점검 지금</button>
         </div>
         <div class="st-fed-box settings-tool-desc"></div>
         <div class="st-out-slot"></div>
@@ -634,6 +635,18 @@
     document.getElementById('stBtnOcrCount').addEventListener('click', function(){ ocrbRun_(true); });
     document.getElementById('stBtnOcrBatch').addEventListener('click', function(){ ocrbRun_(false); });
     (function(){ var b = document.getElementById('stBtnOcrReread'); if (b) b.addEventListener('click', function(){ if (nxConfirmGate_('stOcrReread', '글자가 0자로 남은 PDF(웹 화면 Print to PDF 등)만 다시 읽습니다. 3번 읽기 고침(read3)이 반영된 뒤에 누르세요. 진행할까요?')) ocrbRun_(false, { rereadEmpty: true }); }); })();
+    // [2026.11.04 혼자 도는 기능] 밤 점검 지금 돌리기 — 서버 aw_nightly_now(AutoWatch.js awNightly_). 값·칸은 안 바꾸고 알림만 만든다
+    (function(){
+      var b = document.getElementById('stBtnAwNow'); if (!b) return;
+      b.addEventListener('click', function(){
+        bugList.textContent = '혼자 도는 점검을 돌리는 중(기한·미수·멈춘 사건·공유 정리)…';
+        callGas('aw_nightly_now', {}).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+          var lines = ['기한 표 ' + (r.기한 || 0) + '줄', '미수 알림 ' + (r.미수 || 0) + '건', '멈춘 사건 알림 ' + (r.멈춤 || 0) + '건', '공유 거둠 ' + (r.공유거둠 || 0) + '개', '걸린 시간 ' + Math.round((r.ms || 0) / 1000) + '초 · ' + (r.at || '')].concat(['기한오류', '미수오류', '멈춤오류', '공유오류'].filter(function(k){ return r[k]; }).map(function(k){ return '⚠ ' + k.replace('오류', '') + ': ' + r[k]; }));
+          bugList.innerHTML = '<div><b>혼자 도는 점검 결과</b> <span style="font-size:12px; color:var(--muted);">— 새로 찾은 것은 대시보드 「답하실 것」에 뜹니다</span></div>' + lines.map(function(l){ return '<div style="font-size:12px;">· ' + escapeHtml(l) + '</div>'; }).join('');
+        }).catch(function(err){ bugList.textContent = '점검을 돌리지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
+    })();
     // [2026.10.27 T6 4단계] 🧪 공유 정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){
       var b = document.getElementById('stBtnT6Share'); if (!b) return;

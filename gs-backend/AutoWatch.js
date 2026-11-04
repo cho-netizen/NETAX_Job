@@ -1,0 +1,203 @@
+// =========================================================
+// [2026.11.04 혼자 도는 기능 확대 1순위] 세무사님 "시스템이 꺼져 있어도 독자적으로 돌아가는 기능을 확대할 부분이 있는지 찾아보자" → "일단 1순위만 구현하자"
+//  검토서: 총괄관리자\_기록\혼자도는기능_확대_검토_20261104.html (1순위 ①~⑦, 모두 토큰 0·되돌릴 수 있음)
+//   ① 고객창구 업로드 → 올린 파일을 바로 미리 읽기 줄·한 바퀴 줄에(장부 「고객 받음」·작업일지·문자는 custUploadNote_에 이미 있었음)
+//   ② 법령 개정(환경 감시) → 그 조문을 근거로 쓴 진행 사건 찾아 「답하실 것」(awLawImpact_)
+//   ③ 판정·계산이 셈한 법정기한을 장부에 모아 달력·아침 문자에(awDeadlines…)
+//   ④ 미수 30일 넘은 수금 → 「답하실 것」(awUnpaidCheck_)
+//   ⑤ 오래 멈춘 진행 사건 → 「답하실 것」(awStaleCheck_)
+//   ⑥ 완료 사건 공유 정리를 새벽 2시 묶음에서(awNightly_가 t6ShareCleanup_ 부름)
+//   ⑦ 배포 때 엔진·판정 회귀 자동 — PC 쪽 tools/mark-deployed.js --start
+//  「답하실 것」 = 대시보드 카드(Federation.js commStatus_ autoNotices) — 세무사님이 [확인]을 누르면 지워진다. 새로 생긴 알림은 아침 문자 "그 밖에" 줄에도 한 번.
+//  모두 GAS만, AI 없음, 0원. 값·칸은 바꾸지 않는다(알리기·기록만). 사건별 넥스 미리 읽기 스위치와 무관.
+// =========================================================
+var AW_NOTICE_PROP_ = 'aw_notices', AW_DEADLINE_PROP_ = 'aw_deadlines', AW_NIGHT_PROP_ = 'aw_nightly_last';
+function awToday_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'); }
+function awDaysBetween_(a, b) { try { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); } catch (e) { return 0; } }
+function awCases_() { try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return (o && o.cases) || []; } catch (e) { return []; } }
+function awOpen_(c) { return c && String(c.상태 || '') !== '완료' && String(c.상태 || '') !== '보류' && !/시험용|가상사건/.test(String(c.사건명 || '') + String(c.개요 || '')); }
+
+// ---------- 「답하실 것」 알림 목록 ----------
+function awNoticeList_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { return []; } }
+function awNoticeAdd_(kind, text, caseId, key, toDigest) { // 같은 열쇠는 한 번만(이미 있으면 false) — 새로 생긴 것만 아침 문자 줄에
+  text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!text) return false;
+  let added = false;
+  try {
+    withLock_(5000, function () {
+      const p = PropertiesService.getScriptProperties();
+      let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
+      const k = String(key || (kind + ':' + text)).slice(0, 120);
+      if (q.some(function (x) { return x && x.key === k; })) return;
+      q.push({ id: 'aw_' + Date.now().toString(36) + Math.floor(Math.random() * 1e4), kind: String(kind || '').slice(0, 20), text: text, caseId: String(caseId || ''), key: k, at: caseProcNow_() });
+      p.setProperty(AW_NOTICE_PROP_, JSON.stringify(q.slice(-60)));
+      added = true;
+    });
+  } catch (e) {}
+  if (added && toDigest !== false) { try { notifyOwner_('normal', kind + ' — ' + text, caseId); } catch (e) {} }
+  return added;
+}
+function awNoticeSeen_(body) { // 화면 [확인]: id 하나 또는 all
+  const id = String(body && body.id || ''), all = !!(body && body.all);
+  try {
+    withLock_(5000, function () {
+      const p = PropertiesService.getScriptProperties();
+      let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
+      q = all ? [] : q.filter(function (x) { return x && x.id !== id; });
+      p.setProperty(AW_NOTICE_PROP_, JSON.stringify(q));
+    });
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  return { ok: true, left: awNoticeList_().length };
+}
+
+// ---------- ① 고객창구 업로드 → 바로 읽기 줄 ----------
+function awPortalUploaded_(wc, fileId) {
+  if (!fileId) return;
+  try { cpPrereadQueue_(fileId); } catch (e) {}
+  if (wc && wc.id) { try { cpFlowQueueAdd_(wc.id, '고객창구 업로드', 'read'); } catch (e) {} }
+}
+
+// ---------- ② 법령 개정 → 영향 받는 진행 사건 ----------
+// 장부의 판정 기록(L.judge)·자문 장부(L.adv)에 "§조"가 적혀 있는 진행 사건을 찾는다. 법령 이름이 그 앞 12자 안에 있으면 "맞음", 없으면 "잠정"(다른 법 같은 조 번호일 수 있음).
+var AW_LAW_ALIAS_ = { '소득세법': ['소득세법', '소득령', '소득세법 시행령', '소득세법시행령', '소득세법 시행규칙'], '상속세 및 증여세법': ['상증법', '상증세법', '상증령', '상속세 및 증여세법', '상속세및증여세법', '상증규칙'],
+  '조세특례제한법': ['조특법', '조특령', '조세특례제한법', '조특규칙'], '국세기본법': ['국세기본법', '국기법', '국기령', '국세기본법 시행령'], '국세징수법': ['국세징수법', '징수법', '징수령'], '국제조세조정에 관한 법률': ['국조법', '국조령', '국제조세조정'] };
+function awLawImpact_(lawName, articles, when) {
+  const arts = (articles || []).map(function (a) { return String(a && (a.조 || a) || '').trim(); }).filter(Boolean).slice(0, 40);
+  if (!arts.length) return { cases: 0 };
+  const base = String(lawName || '').replace(/\s+/g, ''), aliases = AW_LAW_ALIAS_[String(lawName || '')] || AW_LAW_ALIAS_[base] || [String(lawName || '')];
+  const esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+  const aliasRe = new RegExp('(' + aliases.map(function (a) { return esc(a.replace(/\s+/g, '')); }).join('|') + ')');
+  const res = []; const t0 = Date.now();
+  awCases_().filter(awOpen_).slice(0, 80).forEach(function (c) {
+    if (Date.now() - t0 > 120000) return;
+    let L = null; try { L = ledgerLoad_(c.id, true); } catch (e) { L = null; }
+    if (!L) return;
+    let text = ''; try { text = JSON.stringify({ j: L.judge || {}, a: L.adv || {} }); } catch (e) { text = ''; }
+    if (!text || text.indexOf('§') === -1) return;
+    const hit = [], soft = [];
+    arts.forEach(function (art) {
+      const re = new RegExp('§\\s*' + esc(art) + '(?![0-9의])', 'g'); let m;
+      while ((m = re.exec(text))) { const before = text.slice(Math.max(0, m.index - 14), m.index).replace(/\s+/g, ''); (aliasRe.test(before) ? hit : soft).push(art); if (hit.length + soft.length > 40) break; }
+    });
+    const u = function (arr) { return arr.filter(function (v, i, a) { return a.indexOf(v) === i; }); };
+    if (hit.length || soft.length) res.push({ caseId: c.id, 사건명: String(c.사건명 || c.고객명 || ''), 맞음: u(hit), 잠정: u(soft).filter(function (a) { return hit.indexOf(a) === -1; }) });
+  });
+  res.forEach(function (r) {
+    const line = '「' + lawName + '」 ' + (when || '개정') + ' — 바뀐 조문 ' + (r.맞음.length ? r.맞음.map(function (a) { return '§' + a; }).join('·') : '') + (r.잠정.length ? (r.맞음.length ? ' · 잠정 ' : '잠정 ') + r.잠정.map(function (a) { return '§' + a; }).join('·') : '')
+      + '을(를) 근거로 쓴 사건 「' + r.사건명 + '」 — 판정·자문을 다시 볼 것';
+    awNoticeAdd_('법령 개정 영향', line, r.caseId, 'law:' + base + ':' + (when || '') + ':' + r.caseId + ':' + arts.slice(0, 6).join(','));
+    try { caseProcAlert_(r.caseId, '법령 개정', line); } catch (e) {}
+    try { cpNexMomentAdd_(r.caseId, ['법령 개정: ' + line.slice(0, 160)]); } catch (e) {} // 낮에 넥스가 한 줄 — 미리 읽기 스위치가 꺼진 사건은 그쪽에서 걸러짐
+  });
+  return { cases: res.length, list: res };
+}
+
+// ---------- ③ 법정기한 모으기 → 장부(사건 기록부) · 달력 · 아침 문자 ----------
+// 판정 결과(r) 안에서 이름에 기한·마감·만료가 든 날짜(YYYY-MM-DD)를 4단계까지 훑어 모은다 — 값은 그대로, 이름은 열쇠 이름(한글)
+function awDeadlinesFromResult_(r) {
+  const out = [], seen = {};
+  const push = function (name, v, flag) { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) return; const k = name + '@' + v; if (seen[k] || out.length >= 12) return; seen[k] = 1; out.push({ 이름: String(name).slice(0, 40), 날짜: String(v), 잠정: !!flag }); };
+  const walk = function (o, depth, pname, flag, inArr) {
+    if (!o || typeof o !== 'object' || depth > 4) return;
+    if (Array.isArray(o)) { o.forEach(function (x) { if (x && typeof x === 'object') { if (x.마감 || x.기한) push(String(x.이름 || x.종류 || x.사유 || pname || '기한'), x.마감 || x.기한, flag || x.잠정); walk(x, depth + 1, pname, flag || x.잠정, true); } }); return; }
+    Object.keys(o).forEach(function (k) { const v = o[k]; if (inArr && (k === '마감' || k === '기한')) return; /* 배열 줄은 위에서 이름 붙여 넣었음 */ if (/^(기한|마감|만료|신고기한|납부기한)$|기한$|마감$|만료일?$/.test(k) && typeof v === 'string') push(k, v, flag || o.잠정); else if (v && typeof v === 'object') walk(v, depth + 1, k, flag || o.잠정, false); });
+  };
+  walk(r, 0, '', !!(r && r.잠정), false);
+  return out;
+}
+// 한 사건의 기한 = 판정 기록(L.judge[*].기한) + 사건 행 법정일. 사건 기록부 sv.autoDeadlines에 두고(바뀔 때만 씀), 바뀌면 달력을 뒤에서 다시 맞춘다
+function awDeadlinesCollect_(c) {
+  if (!c || !c.id) return [];
+  let L = null; try { L = ledgerLoad_(c.id, true); } catch (e) { L = null; }
+  const list = [], seen = {};
+  const add = function (d, src) { if (!d || !d.날짜 || seen[d.이름 + '@' + d.날짜]) return; seen[d.이름 + '@' + d.날짜] = 1; list.push({ 이름: d.이름, 날짜: d.날짜, 잠정: !!d.잠정, 출처: src }); };
+  if (L && L.judge) Object.keys(L.judge).forEach(function (k) { const j = L.judge[k]; (j && j.기한 || []).forEach(function (d) { add(d, '판정 ' + k.split('@')[0]); }); });
+  list.sort(function (a, b) { return a.날짜 < b.날짜 ? -1 : 1; });
+  try {
+    const sv0 = caseProcLoad_(c.id) || {};
+    if (JSON.stringify(sv0.autoDeadlines || []) !== JSON.stringify(list)) {
+      caseProcPatch_(c.id, function (sv) { sv.autoDeadlines = list; });
+      try { bgEnqueue_('case_calendar', { caseId: c.id }, 'cal_' + c.id, '법정기한 모음 바뀜'); } catch (e) {}
+    }
+  } catch (e) {}
+  return list;
+}
+// 밤에 전체: 진행 사건의 기한을 한 표(스크립트 속성)로 — 아침 문자·대시보드는 드라이브를 안 열고 이 표만 읽는다. 30일 안 기한은 「답하실 것」에 한 번.
+function awDeadlinesNightly_(cases) {
+  const today = awToday_(), rows = [], t0 = Date.now();
+  (cases || awCases_()).filter(awOpen_).forEach(function (c) {
+    if (Date.now() - t0 > 150000) return;
+    const ds = awDeadlinesCollect_(c).slice(); // 사본 — 사건 법정일을 기록부 목록에 섞지 않게(섞이면 밤마다 기록부를 다시 쓰게 됨)
+    if (c.법정일 && /^\d{4}-\d{2}-\d{2}$/.test(String(c.법정일))) ds.push({ 이름: '법정기한(사건)', 날짜: String(c.법정일), 잠정: false, 출처: '사건' });
+    ds.forEach(function (d) {
+      if (d.날짜 < today) return;
+      rows.push({ caseId: c.id, 사건명: String(c.사건명 || c.고객명 || '').slice(0, 30), 이름: d.이름, 날짜: d.날짜, 잠정: !!d.잠정 });
+      const left = awDaysBetween_(today, d.날짜);
+      if (left <= 30 && d.출처 !== '사건') awNoticeAdd_('기한', (left === 0 ? '오늘' : left + '일 뒤') + ' ' + d.날짜 + ' ' + d.이름 + (d.잠정 ? '(잠정)' : '') + ' — 「' + String(c.사건명 || c.고객명 || '') + '」', c.id, 'dl:' + c.id + ':' + d.이름 + '@' + d.날짜);
+    });
+  });
+  rows.sort(function (a, b) { return a.날짜 < b.날짜 ? -1 : 1; });
+  try { PropertiesService.getScriptProperties().setProperty(AW_DEADLINE_PROP_, JSON.stringify(rows.slice(0, 200))); } catch (e) {}
+  return rows;
+}
+function awDeadlineLines_(days) { // 아침 문자용: 오늘~days일 안 기한(사건 법정일은 문자 본문이 따로 세므로 뺌)
+  const today = awToday_(); let rows = []; try { rows = JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_DEADLINE_PROP_) || '[]'); } catch (e) { rows = []; }
+  return rows.filter(function (r) { return r.이름 !== '법정기한(사건)' && r.날짜 >= today && awDaysBetween_(today, r.날짜) <= (days || 7); })
+    .map(function (r) { return '· ' + r.날짜.slice(5) + ' ' + r.이름 + (r.잠정 ? '(잠정)' : '') + ' ' + r.사건명; });
+}
+
+// ---------- ④ 미수 수금 ----------
+// 청구 = 사건개요.청구액(처리개요 수금 카드) · 받음 = 상담 기록의 금액(화면 수금 셈과 같은 자료). 고객 단위로 세고, 청구 적은 사건 중 가장 늦게 고친 날부터 30일 넘으면 알림.
+function awUnpaidCheck_(cases, days) {
+  const lim = days || 30, today = awToday_();
+  let logs = []; try { logs = (client_getConsultLogs({}) || {}).logs || []; } catch (e) { logs = []; }
+  const paid = {}; logs.forEach(function (l) { const n = Number(l.금액) || 0; if (n > 0 && l.고객ID) paid[l.고객ID] = (paid[l.고객ID] || 0) + n; });
+  const bill = {};
+  (cases || awCases_()).forEach(function (c) {
+    if (!c.고객ID) return;
+    let ov = c.사건개요; if (typeof ov === 'string') { try { ov = JSON.parse(ov); } catch (e) { ov = {}; } }
+    const amt = Number(String((ov || {}).청구액 || '').replace(/[^\d]/g, '')) || 0; if (!amt) return;
+    const b = bill[c.고객ID] = bill[c.고객ID] || { 고객명: c.고객명, 청구: 0, 사건: [], 마지막: '' };
+    b.청구 += amt; b.사건.push(String(c.사건명 || '')); const d = String(c.수정일 || c.의뢰일 || '').slice(0, 10); if (d > b.마지막) b.마지막 = d;
+  });
+  const out = [];
+  Object.keys(bill).forEach(function (cid) {
+    const b = bill[cid], due = b.청구 - (paid[cid] || 0);
+    if (due <= 0 || !b.마지막 || awDaysBetween_(b.마지막, today) < lim) return;
+    out.push({ 고객ID: cid, 고객명: b.고객명, 미수: due });
+    awNoticeAdd_('미수', '「' + b.고객명 + '」 미수 ' + due.toLocaleString('ko-KR') + '원(청구 ' + b.청구.toLocaleString('ko-KR') + ' − 받음 ' + (paid[cid] || 0).toLocaleString('ko-KR') + ') — ' + b.사건.slice(0, 2).join(', ') + ', 마지막 고침 ' + b.마지막, '', 'unpaid:' + cid + ':' + due);
+  });
+  return out;
+}
+
+// ---------- ⑤ 오래 멈춘 사건 ----------
+// 마지막 움직임 = 사건 행 수정일 · 작업일지 마지막 날 · 사건 기록부(workLog·fileChanges) 마지막 시각 중 가장 늦은 것. 기본 14일(스크립트 속성 AW_STALE_DAYS로 바꿈).
+function awStaleCheck_(cases) {
+  let lim = 14; try { lim = Number(PropertiesService.getScriptProperties().getProperty('AW_STALE_DAYS')) || 14; } catch (e) {}
+  const today = awToday_(), out = [], t0 = Date.now();
+  (cases || awCases_()).filter(awOpen_).forEach(function (c) {
+    if (Date.now() - t0 > 100000) return;
+    let last = String(c.수정일 || c.의뢰일 || '').slice(0, 10);
+    (Array.isArray(c.작업일지) ? c.작업일지 : []).forEach(function (e) { const d = String(e && e.date || '').slice(0, 10); if (d > last) last = d; });
+    try { const sv = caseProcLoad_(c.id) || {}; [].concat(sv.workLog || [], sv.fileChanges || [], sv.alerts || []).forEach(function (e) { const d = String(e && e.at || '').slice(0, 10); if (d > last) last = d; }); } catch (e) {}
+    if (!last || awDaysBetween_(last, today) < lim) return;
+    let wait = 0; try { const L = ledgerLoad_(c.id, true); Object.keys((L && L.ev) || {}).forEach(function (p) { if (L.ev[p] && L.ev[p].state === '증빙받을것') wait++; }); } catch (e) {}
+    out.push({ caseId: c.id, 사건명: c.사건명, 마지막: last, 받을서류: wait });
+    awNoticeAdd_('멈춘 사건', '「' + String(c.사건명 || c.고객명 || '') + '」 ' + awDaysBetween_(last, today) + '일째 움직임 없음(마지막 ' + last + ')' + (wait ? ' — 받을 서류 ' + wait + '개 남음' : ''), c.id, 'stale:' + c.id + ':' + last);
+  });
+  return out;
+}
+
+// ---------- 새벽 2시 묶음에서 부르는 것(③④⑤⑥) ----------
+function awNightly_() {
+  const t0 = Date.now(), r = {};
+  const cases = awCases_();
+  try { r.기한 = awDeadlinesNightly_(cases).length; } catch (e) { r.기한오류 = String(e && e.message || e).slice(0, 120); }
+  try { r.미수 = awUnpaidCheck_(cases).length; } catch (e) { r.미수오류 = String(e && e.message || e).slice(0, 120); }
+  try { r.멈춤 = awStaleCheck_(cases).length; } catch (e) { r.멈춤오류 = String(e && e.message || e).slice(0, 120); }
+  try { const s = t6ShareCleanup_(); r.공유거둠 = s && s.done ? s.done.filter(function (d) { return d.unshared; }).length : 0; if (r.공유거둠) awNoticeAdd_('공유 정리', '완료 사건 폴더의 로봇 공유 ' + r.공유거둠 + '개를 거뒀습니다(밤 자동)', '', 'share:' + awToday_(), false); } catch (e) { r.공유오류 = String(e && e.message || e).slice(0, 120); }
+  r.at = caseProcNow_(); r.ms = Date.now() - t0;
+  try { PropertiesService.getScriptProperties().setProperty(AW_NIGHT_PROP_, JSON.stringify(r)); } catch (e) {}
+  return r;
+}
+function awNightlyLast_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_NIGHT_PROP_) || 'null'); } catch (e) { return null; } }
