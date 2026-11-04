@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 모의사건 중간결산 175-184</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 모의사건 중간결산 175~184 · 2026-11-05</h1>
+<p class="sub">클라우드 세션(가지 claude/gifted-clarke-hqwn4y). 11-05 새벽 속행분. 175부터는 「잇기」(묶음↔계산기↔종합판정 사이)와 「연혁」(옛 양도일로 되짚기) 점검을 섞었고, 그 결과 엔진(taxcalc-engine.html) 논리 틈이 여섯 건 나왔습니다. 새 넥스 도구·지시문 줄은 하나도 더하지 않았습니다(검문 ✓ 78개·25,224자).</p>
+<h2>1. 사건 카드</h2>
+<table><tr><th>번호·유형</th><th>놓치던 것</th><th>고친 것</th><th>검토대상</th></tr>
+<tr><td>175 특례 주택 자체 양도</td><td class="red">종합판정이 한쪽 방향 특례(상속·문화유산·이농·귀농·임대 등 11가지)를 그 집을 팔 때도 붙임</td><td class="red">엔진 종합판정에 ONE_WAY_ 가드</td><td>5</td></tr>
+<tr><td>176 가업상속공제 자산 양도 잇기</td><td>§97의2④ 양도세와 §18의2⑤ 추징 사이 ⑩ 양도세 상당액을 넥스가 손으로 셈</td><td>묶음 「가업상속자산양도」</td><td>5</td></tr>
+<tr><td>177 국외전출</td><td>10년 창 거주 연수·유예 이자 금액·환급 기한이 없음</td><td>묶음 「국외전출」</td><td>5</td></tr>
+<tr><td>178 초과배당</td><td>과소배당 비율을 손으로, 발생연도(결의일) 갈래 없음</td><td>묶음 「초과배당」</td><td>5</td></tr>
+<tr><td>179 장애인신탁</td><td>요건 한 칸·신청 기한·사후관리 날짜 예외 없음</td><td>묶음 「장애인신탁」 + 공용 jmEomM_(177·178 날짜 하루 빠름 고침)</td><td>5</td></tr>
+<tr><td>180 비거주자 상속 잇기</td><td>묶음 알림에 §14② 채무 범위 없음</td><td>「거주자」 묶음 알림 한 구절</td><td>5</td></tr>
+<tr><td>181 증여 주택 이월과세 잇기</td><td class="red">§97의2②2호 배제가 전부 비과세만 걸러 고가주택 1세대1주택을 증여자 취득가액으로 셈</td><td class="red">엔진 표지 고가주택_1세대1주택 + 판정 조건</td><td>5</td></tr>
+<tr><td>182 양도 순서 특례 잇기</td><td>신규주택 먼저 양도의 「안 됨」 이유가 1년 요건으로 엉뚱</td><td>엔진 가드 한 줄(이유만)</td><td>5</td></tr>
+<tr><td>183 합가 특례 연혁</td><td class="red">2024-11-12 전 혼인·2018-02-13 전 동거봉양 양도를 10년으로</td><td class="red">엔진 두 함수 연혁 5년 갈래</td><td>5</td></tr>
+<tr><td>184 일시적 2주택 연혁</td><td class="red">2023-01-12 전 양도의 조정→조정 1년+전입·2년을 모두 3년으로(엔진 스스로 적어 둔 틈)</td><td class="red">엔진 연혁 세 시기 + 전입 요건</td><td>5</td></tr>
+</table>
+<h2>2. 공통점</h2>
+<ul>
+<li>「잇기」 점검은 묶음 하나로는 안 보이던 틈을 드러냅니다 — 175·181은 종합판정이 「무엇을 파는가」·「어느 호로 가는가」를 안 보고 특례를 붙이던 자리, 184·183은 엔진이 「지금 조문」만 알고 옛 양도일을 모르던 자리.</li>
+<li>연혁 모드(refHistoryOn_, 세무사님 10-19 「켠다」)가 켜져 있어도 1세대1주택 특례 함수들은 연혁이 없었음 — 183·184·186·187에서 메웠고, 세율·공제 쪽(189)은 이미 표로 돌고 있었음.</li>
+<li>날짜 보조함수 버릇(「달 말일부터 n개월」)을 179에서 발견해 공용 함수로 통일 — 177·178 결과는 날짜가 운 좋게 맞았던 것.</li>
+<li>도구 설명 한 줄이 필요한 자리는 「도구 부족 — 판단거리」로만 적음(175 #3, 176 #5, 177 #5, 178 #5, 179 —, 181 #5, 182 #1, 183 #5, 184 #5).</li>
+</ul>
+<h2>3. 검토대상 합계</h2>
+<p>50건(사건마다 5). 되풀이되는 것: 개정 부칙의 적용례 원문(정비본에 부칙이 없음 — 183·184·186·187), 대통령령 번호(기억으로 적음), 넥스가 넣는 날짜 칸의 뜻(취득일이 어느 계약인지).</p>
+<h2>4. 회귀·검문·서버 크기</h2>
+<p>엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 넥스 도구 검문 ✓ · 문법 검사 ✓ · 서버 화면 파일 점검 ✓ · 조립본 app/index.html 약 10.8MB(깃허브 페이지), gs-backend(화면 빼고) 약 8.9MB.</p>
+<h2>5. 커밋 목록(가지)</h2>
+<p>fa204ad(175) 9d27a52(176) a0756bb(177) cd86099(178) eb10faa(179) c7d37c9(180) 30f92de(181) 817de45(182) b490428(183) b90a9c9(184) — 이어서 15d7ba8(185) ed89cc1(186) 48b454e(187) cce712d(188) a72cc56(189) 7d8f37e(190).</p>
+</main></body></html>
