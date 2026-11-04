@@ -2532,7 +2532,15 @@ const DRIVE_TOOLS = [
         transferStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 양도 당시 기준시가(원).' },
         // [2026.10.19 서식 감사] 시행령§97의5② — 감면소득 = 양도소득금액(장특공 뒤) × (임대 마지막 날 − 취득 당시) ÷ (양도 당시 − 취득 당시) 기준시가, 소득세법§90① 세액감면
         rentalEndStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때 필수 — 임대기간 마지막 날 기준시가(원). 결과는 감면소득비율(세액감면, 감면액은 calculate_transfer_tax_multi에서 lrRentalEndStandardPrice로 계산).' },
-        rentedUntilTransfer: { type: 'boolean', description: 'provision이 sect97_5일 때 — 양도일까지 계속 임대했으면 true(임대 마지막 날 기준시가 = 양도 당시 기준시가).' }
+        rentedUntilTransfer: { type: 'boolean', description: 'provision이 sect97_5일 때 — 양도일까지 계속 임대했으면 true(임대 마지막 날 기준시가 = 양도 당시 기준시가).' },
+        rentedHouseCount: { type: 'number', description: '[2026.11.05] sect97·sect97_2 — 임대하는 임대주택 호수(공동소유는 호수 × 지분비율). 5호 미만이면 「대통령령으로 정하는 거주자」가 아님(시행령 §97①).' },
+        rentalStartDate: { type: 'string', description: '[2026.11.05] sect97 — 임대 개시일 YYYY-MM-DD(2000.12.31. 이전이어야 함).' },
+        rentalYears: { type: 'number', description: '[2026.11.05] sect97·sect97_2 — 임대한 기간(년). 5년 미만이면 제외, rental_10yr은 10년.' },
+        acquisitionDate: { type: 'string', description: '[2026.11.05] sect97_5 — 취득일 YYYY-MM-DD(2018.12.31.까지, 계약금은 contractDepositDate).' },
+        contractDepositDate: { type: 'string', description: '[2026.11.05] sect97_5 — 매매계약 체결·계약금 납부일(2018.12.31.까지면 2019년 취득도 됨).' },
+        registrationDate: { type: 'string', description: '[2026.11.05] sect97_5 — 장기일반민간임대주택등 등록일(취득일부터 3개월 안).' },
+        continuousRentalYears: { type: 'number', description: '[2026.11.05] sect97_5 — 등록 뒤 계속 임대한 기간(년, 시행령 §97의5① 공실 6개월·수용·정비사업 기간 포함). 10년 미만이면 제외.' },
+        rentIncreaseCompliant: { type: 'boolean', description: '[2026.11.05] sect97_5 — 임대료 증액 제한(§97의3①2호) 등을 지켰는지. false면 제외.' }
       },
       required: ['provision']
     }

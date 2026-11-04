@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:31 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:33 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26495,6 +26495,36 @@ function nxMdOpenWindow(title, src, opts){
     const acquisitionPrice = Number(p.acquisitionPrice) || 0;
     const necessaryExpenses = Number(p.necessaryExpenses) || 0;
     const totalGain = transferPrice - acquisitionPrice - necessaryExpenses;
+    // [2026.11.05 모의사건 282] 조문 요건을 날짜·수로 — 전엔 감면율만 셈. §97·§97의2: 「대통령령으로 정하는 거주자」 = 임대주택 5호 이상(공동소유는 호수 × 지분, 시행령 §97①),
+    //  §97은 2000.12.31. 이전 임대 개시 + 5년 이상 임대, 주택임대신고서(개시일부터 3개월, 시행령 §97③)·감면신청서(§97④). §97의5: 2018.12.31.까지 취득(계약금 포함)·취득일부터 3개월 안 등록·
+    //  10년 이상 계속 임대(시행령 §97의5① — 공실 6개월·수용·정비사업 기간은 임대로 봄)·임대료 5% 준수(§97의3①2호).
+    const ymdL_ = function (x) { const v = String(x || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ''; };
+    const addML_ = function (d, n) { const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)) - 1 + n, day = Number(d.slice(8, 10)); const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(); return new Date(Date.UTC(y, m, Math.min(day, last))).toISOString().slice(0, 10); };
+    const reqNotes_ = [];
+    if (provision !== 'sect97_5') {
+      const cnt_ = p.rentedHouseCount != null ? Number(p.rentedHouseCount) : null;
+      if (cnt_ != null && cnt_ < 5) return { 적용여부: false, 안내: '임대주택 ' + cnt_ + '호 — 「대통령령으로 정하는 거주자」는 임대주택을 5호 이상 임대하는 거주자(시행령 §97①, 공동소유는 호수 × 지분비율)라 적용대상이 아닙니다.' };
+      const rs_ = ymdL_(p.rentalStartDate);
+      if (provision === 'sect97' && rs_ && rs_ > '2000-12-31') return { 적용여부: false, 안내: '임대 개시일 ' + rs_ + ' — §97①은 2000.12.31. 이전에 임대를 개시한 국민주택만(그 뒤 개시는 §97의2·§97의3~5 등 다른 조문을 볼 것).' };
+      const ry_ = p.rentalYears != null ? Number(p.rentalYears) : null;
+      if (ry_ != null && ry_ < 5) return { 적용여부: false, 안내: '임대기간 ' + ry_ + '년 — 5년 이상 임대한 후 양도해야 합니다(§97①·§97의2①).' };
+      if (provision === 'sect97' && p.subType === 'rental_10yr' && ry_ != null && ry_ < 10) return { 적용여부: false, 안내: '임대기간 ' + ry_ + '년 — 10년 이상 임대 면제(§97① 단서)가 아니라 5년 이상 50% 감면(subType=baseline)으로 다시 보세요.' };
+      reqNotes_.push('임대주택은 §89①3호 1세대1주택 판정에서 소유주택으로 보지 않음(§97②·§97의2②).');
+      reqNotes_.push('주택임대신고서는 임대 개시일부터 3개월 안(시행령 §97③), 감면신청서는 양도한 해 확정신고와 함께 임대사업자 등록증·임대차계약서·임차인 주민등록 자료 첨부(§97④).');
+      reqNotes_.push('감면 대상 토지는 건물 연면적의 2배 이내(§97①).');
+    } else {
+      const acq_ = ymdL_(p.acquisitionDate), ctr_ = ymdL_(p.contractDepositDate), reg_ = ymdL_(p.registrationDate);
+      if (acq_ && acq_ > '2018-12-31' && !(ctr_ && ctr_ <= '2018-12-31')) return { 적용여부: false, 안내: '취득일 ' + acq_ + ' — §97의5①1호는 2018.12.31.까지 취득(그때까지 매매계약 체결 + 계약금 납부 포함)한 매입임대주택만. 계약·계약금이 2018년 안이면 contractDepositDate를 넣을 것.' };
+      if (acq_ && reg_) {
+        const regDue_ = addML_(acq_, 3);
+        if (reg_ > regDue_) return { 적용여부: false, 안내: '등록일 ' + reg_ + '이 취득일부터 3개월(' + regDue_ + ')을 지나 §97의5①1호 요건(취득일로부터 3개월 이내 장기일반민간임대주택등 등록)에 안 맞습니다.' };
+        reqNotes_.push('취득 ' + acq_ + ' → 3개월 안 등록 기한 ' + regDue_ + ' · 등록 ' + reg_ + ' ✓');
+      }
+      const cy_ = p.continuousRentalYears != null ? Number(p.continuousRentalYears) : null;
+      if (cy_ != null && cy_ < 10) return { 적용여부: false, 안내: '등록 뒤 계속 임대 ' + cy_ + '년 — 10년 이상 계속 임대해야 합니다(§97의5①2호). 공실(퇴거일부터 다음 임차인 전입까지 6개월 안)·협의매수·수용·정비사업 기간은 임대한 것으로 봄(시행령 §97의5①).' };
+      if (p.rentIncreaseCompliant === false) return { 적용여부: false, 안내: '임대기간 중 임대료 증액 제한(§97의3①2호 — 5%) 등 요건을 지키지 않아 §97의5①3호에 안 맞습니다.' };
+      reqNotes_.push('§97의3·§97의4 과세특례와 중복 적용 불가(§97의5②) · 주택임대 신고와 과세특례 신청(③).');
+    }
 
     let rate, note;
     if (provision === 'sect97') {
@@ -26510,7 +26540,7 @@ function nxMdOpenWindow(title, src, opts){
         // 축소해 일반계산기에 넣으면 정액 기본공제(250만원)·누진세율 구조 때문에 결과가 달라지므로
         // (100% 면제는 0=0이라 무관하지만 50%는 그렇지 않다), 아래에서 별도 처리한다.
         return {
-          적용여부: true, 적용감면율: 50, 세액감면방식: true,
+          적용여부: true, 적용감면율: 50, 세액감면방식: true, 요건_안내: reqNotes_,
           전체양도차익: Math.round(totalGain),
           안내: '2000.12.31 이전 임대를 개시해 5년 이상 임대한 국민주택이므로 양도소득세의 50%를 감면합니다(§97①본문, 세액감면). 위 일반 양도세 계산기에 원래 양도차익(전체양도차익, 이 감면 미반영)을 그대로 입력해 감면 적용 전 산출세액을 구한 뒤, 그 산출세액(가산세·다른 세액공제 반영 전 본세)의 50%를 차감한 금액을 최종 납부세액으로 하세요.'
         };
@@ -26527,7 +26557,7 @@ function nxMdOpenWindow(title, src, opts){
     //  §90②의 소득 차감 방식은 조특법이 "양도소득금액에서 차감"하는 방식으로 정한 때만. 예전엔 그 자산 양도차익을 빼고 계산해, 같은 해 다른 양도소득이
     //  있으면 다른 자산의 누진세율이 낮아져 세액이 적게 나왔다(원본 인쇄 작업자 양도감면A가 62호 시험 중 발견).
     if (provision !== 'sect97_5') {
-      return { 적용여부: true, 적용감면율: rate, 세액감면방식: true, 전체양도차익: Math.round(totalGain),
+      return { 적용여부: true, 적용감면율: rate, 세액감면방식: true, 전체양도차익: Math.round(totalGain), 요건_안내: reqNotes_,
         안내: note + ' 세액감면(소득세법 §90①): 그 자산 몫 산출세액 × ' + rate + '%를 감면합니다.' };
     }
     let exemptGain;
@@ -26543,7 +26573,7 @@ function nxMdOpenWindow(title, src, opts){
         if (!(endStd > 0)) return { error: '§97의5 감면소득 계산에 임대기간 마지막 날 기준시가가 필요합니다(시행령 §97의5②) — 넣거나, 양도일까지 계속 임대했으면 "양도일까지 계속 임대"를 체크하세요.' };
         const ratio = Math.max(0, Math.min(1, (endStd - acqStd) / (trfStd - acqStd)));
         return {
-          적용여부: true, 적용감면율: 100, 세액감면방식: true, 감면소득비율: ratio, 전체양도차익: Math.round(totalGain),
+          적용여부: true, 적용감면율: 100, 세액감면방식: true, 감면소득비율: ratio, 전체양도차익: Math.round(totalGain), 요건_안내: reqNotes_,
           안내: note + ' 감면소득 = 양도소득금액(장특공 뒤) × (임대기간 마지막 날 ' + endStd + ' − 취득 당시 ' + acqStd + ') ÷ (양도 당시 ' + trfStd + ' − 취득 당시 ' + acqStd + ') = 양도소득금액의 ' + (Math.round(ratio * 10000) / 100) + '%, 감면세액은 소득세법 §90①(산출세액 × (감면소득 − 그 몫 기본공제) ÷ 과세표준) — 세액 계산(합산)이 자동 반영합니다.'
         };
       }
