@@ -11517,6 +11517,21 @@
       return { error: (taxType === 'gift' ? '증여세' : '상속세') + ' 산출세액, ' + (taxType === 'gift' ? '증여재산가액' : '상속재산가액') + ', 징수유예대상 재산가액이 필요합니다.' };
     }
     const deferredTaxAmount = Math.round(totalTaxPayable * eligiblePropertyValue / totalPropertyValue);
+    // [2026.11.05 모의사건 276] ④⑤ 담보 — 문화유산자료등·박물관자료등(증여세 포함)은 유예세액 상당 담보 필수(§71 준용), 국가지정문화유산등·천연기념물등은 담보 없이도 가능(⑤)하되
+    //  ⑥ 매년 말 보유현황명세서·⑦ 양도 7일 전 양도거래신고서 의무(안 지키면 §78⑮ 1%·20%). ⑧ 박물관자료등은 신고기한(부득이한 사유면 사유 종료일 달 말일부터 6개월)까지 전시·보존. 전엔 모두 없었음.
+    const noCollateralOk_ = taxType === 'inheritance' && (itemType === 'national_heritage' || itemType === 'natural_monument');
+    const dutyNote_ = [];
+    if (p.collateralProvided === false) {
+      if (!noCollateralOk_) return { 상태: '담보_필요', 징수유예세액: deferredTaxAmount, 납부세액: deferredTaxAmount, 안내: '유예할 세액(' + deferredTaxAmount.toLocaleString('ko-KR') + '원)에 상당하는 담보를 제공해야 징수유예를 받을 수 있습니다(§74④, §71 준용 — ' + (taxType === 'gift' ? '증여세는 §75' : itemType === 'museum_material' ? '박물관자료등' : '문화유산자료등') + '은 담보 면제(⑤) 대상이 아님). 담보 없이는 유예 없이 납부.' };
+      dutyNote_.push('담보 없이 유예(§74⑤) — 매년 말까지 보유현황명세서 제출(⑥·시행령 §76⑥, 안 내면 §78⑮1호 유예세액의 1%)·유상 양도 7일 전 양도거래신고서(⑦·시행령 §76⑦, 안 내면 §78⑮2호 20%).');
+      const td_ = String(p.plannedTransferDate || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(td_)) { const d_ = new Date(td_ + 'T00:00:00Z'); d_.setUTCDate(d_.getUTCDate() - 7); dutyNote_.push('양도 예정일 ' + td_ + ' → 양도거래신고서 제출기한 ' + d_.toISOString().slice(0, 10) + '(7일 전) [확인 필요: 7일 전 「까지」 — 쉬는 날 미룸 없음].'); }
+    }
+    if (itemType === 'museum_material' && p.exhibitedByFilingDeadline === false) {
+      const de_ = String(p.delayReasonEndDate || '').slice(0, 10);
+      const ext_ = /^\d{4}-\d{2}-\d{2}$/.test(de_) ? shiftTaxDeadline_(new Date(Date.UTC(Number(de_.slice(0, 4)), Number(de_.slice(5, 7)) + 6, 0)).toISOString().slice(0, 10)) : '';
+      return { 상태: '대상_아님', 징수유예세액: 0, 납부세액: deferredTaxAmount, 안내: '박물관자료등은 상속세 신고기한(§67)까지 등록 박물관·미술관에 전시·보존해야 징수유예 대상(§74⑧·시행령 §76⑧) — 그때까지 전시·보존하지 못하면 대상이 아닙니다. 박물관·미술관 설립이 법령·행정상 사유로 늦어지면 그 사유가 없어진 날이 속하는 달의 말일부터 6개월' + (ext_ ? '(' + ext_ + ')' : '') + '까지 — 그 안에 전시·보존하면 delayReasonEndDate를 넣고 exhibitedByFilingDeadline을 비워 다시 셈.' };
+    }
 
     const triggerEvent = p.triggerEvent;
     if (triggerEvent === 'transferred_or_withdrawn') {
@@ -11534,6 +11549,9 @@
     }
     return {
       상태: '징수유예_적용중', 징수유예세액: deferredTaxAmount, 납부세액: 0,
+      담보: p.collateralProvided === false ? '없음(§74⑤)' : (p.collateralProvided === true ? '제공(§74④)' : undefined),
+      의무: dutyNote_.length ? dutyNote_ : undefined,
+      인출사유_안내: itemType === 'museum_material' ? '즉시 징수되는 인출 사유(시행령 §76⑤): 박물관·미술관 등록 취소 / 폐관 / 등록 자료에서 제외. 분모 상속재산엔 §13 가산 증여재산 포함(시행령 §76①).' : undefined,
       안내: (taxType === 'gift' ? '시행령§77(§76①준용)' : '시행령§76①') + '에 따라 해당 재산가액에 상당하는 ' + (taxType === 'gift' ? '증여세' : '상속세') + '액(' + deferredTaxAmount + '원 = 산출세액×해당재산가액÷' + (taxType === 'gift' ? '증여재산가액' : '상속재산가액') + ')의 징수를 유예합니다. 유상양도·인출시 즉시 징수되고(사유 transferred_or_withdrawn), 상속의 경우 소유자 사망으로 재상속되면 부과가 철회됩니다(사유 reinheritance_death, 상속세만). 징수유예를 받으려면 그 세액에 상당하는 담보를 제공해야 합니다(§74④, 국가지정문화유산등·천연기념물등은 담보 면제 가능 — ⑤).'
     };
   };

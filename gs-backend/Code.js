@@ -2751,7 +2751,11 @@ const DRIVE_TOOLS = [
         totalTaxPayable: { type: 'number', description: '상속세(또는 증여세) 산출세액(원, 징수유예 적용 전 전체 세액).' },
         totalPropertyValue: { type: 'number', description: '상속재산가액(또는 증여재산가액)(원).' },
         eligiblePropertyValue: { type: 'number', description: '징수유예 대상 재산(문화유산자료등·박물관자료등·국가지정문화유산등·천연기념물등)의 가액(원).' },
-        triggerEvent: { type: 'string', enum: ['none', 'transferred_or_withdrawn', 'reinheritance_death'], description: 'none=사후관리 사유 없음(계속 유예), transferred_or_withdrawn=유상양도 또는 인출(즉시징수), reinheritance_death=소유자 사망으로 재상속(부과철회, taxType=inheritance만 해당).' }
+        triggerEvent: { type: 'string', enum: ['none', 'transferred_or_withdrawn', 'reinheritance_death'], description: 'none=사후관리 사유 없음(계속 유예), transferred_or_withdrawn=유상양도 또는 인출(즉시징수), reinheritance_death=소유자 사망으로 재상속(부과철회, taxType=inheritance만 해당).' },
+        collateralProvided: { type: 'boolean', description: '[2026.11.05] 유예세액 상당 담보를 제공했는지(§74④) — false면 국가지정문화유산등·천연기념물등(상속세)만 담보 없이 유예(⑤)하고 매년 말 보유현황·양도 7일 전 신고 의무를 안내, 그 밖엔 「담보 필요」.' },
+        plannedTransferDate: { type: 'string', description: '[2026.11.05] 담보 없이 유예받은 국가지정문화유산등·천연기념물등을 유상 양도할 예정일 YYYY-MM-DD → 양도거래신고서 기한(7일 전, §74⑦).' },
+        exhibitedByFilingDeadline: { type: 'boolean', description: '[2026.11.05] 박물관자료등 — 상속세 신고기한까지 등록 박물관·미술관에 전시·보존했는지(§74⑧). false면 대상 아님.' },
+        delayReasonEndDate: { type: 'string', description: '[2026.11.05] 박물관·미술관 설립이 법령·행정상 사유로 늦어졌으면 그 사유가 없어진 날 YYYY-MM-DD → 그달 말일부터 6개월 기한을 돌려줌(시행령 §76⑧ 단서).' }
       },
       required: ['itemType', 'totalTaxPayable', 'totalPropertyValue', 'eligiblePropertyValue']
     }
