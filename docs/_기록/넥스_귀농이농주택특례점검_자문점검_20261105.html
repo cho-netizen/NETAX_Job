@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 242 귀농·이농주택 특례</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 242 — 「농어촌주택(귀농주택·이농주택)과 일반주택의 1세대1주택 특례(소득세법 시행령 §155⑦⑨~⑫) 계산기 점검 — 귀농 요건·5년·최초 1개·이농 5년 거주·3년 사후관리」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_return_farm_house_exclusion·calculate_emigrated_farm_house_exclusion·calculate_return_farm_house_clawback)를 일곱 갈래로 돌려 §155⑦⑨⑩⑪⑫를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>서울 집을 둔 세대가 2023-04-01 수도권 밖 면 지역 귀농주택(대지 600㎡, 농지 1,000㎡ 소유, 세대 전원 이사)을 취득, 2026-05-01 서울 집 양도. 견주기: 5년 경계(2028-04-01·04-02) / 대지 661㎡·고가·일부만 이사·수도권 / 귀농 뒤 두 번째 일반주택 / 이농주택(5년 거주 여부) / 3년 영농 사후관리.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 시행령 읽기용 판)</h2>
+<ul>
+<li>§155⑦: 수도권 밖 읍(도시지역 제외)·면의 농어촌주택(1호 상속주택 — 피상속인 5년 거주, 2호 이농주택 — 이농인 취득 뒤 5년 거주, 3호 귀농주택)과 일반주택을 각 1개 둔 1세대가 일반주택을 양도하면 1주택으로 — 3호는 취득일부터 5년 안 양도만. ⑨ 이농주택 정의. ⑩ 귀농주택 요건: 취득 당시 고가주택 아님·대지 660㎡ 이내·농지 1,000㎡ 소유자(배우자)의 농지소재지 주택(농지 취득 전 1년 안 포함)·어업인·세대 전원 이사. ⑪: 귀농 뒤 최초로 양도하는 1개 일반주택만. ⑫: 귀농일부터 3년 이상 영농·거주 안 하면 비과세 취소·추징(사유 달 말일부터 2개월 안 신고·납부).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 기본 적용 / 5년 되는 날(2028-04-01) 안·다음 날 밖 / 661㎡·고가·일부 이사·수도권 모두 안 됨 / 두 번째 일반주택 안 됨 / 이농 5년 거주 있음·없음 / 3년 영농·거주면 추징 없음, 아니면 추징.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>귀농 기본 / 5년 경계 / 요건 넷 / 두 번째 일반주택</td><td>적용 / 안·밖 / 안 됨 ×4 / 안 됨</td><td>맞음(⑦3호·⑩·⑪)</td></tr>
+<tr><td>이농 5년 거주 / 사후관리</td><td>적용·안 됨 / 추징 없음·추징</td><td>맞음(⑦2호·⑨·⑫)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 239 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>⑩4호 나목(농지 취득 전 1년 안 주택 취득)·⑫ 귀농일(농지를 뒤에 취득하면 농지 취득일) 날짜 셈은 사람이 — 칸은 요건 충족 여부만</td><td>칸</td><td>중간</td></tr>
+<tr><td>2</td><td>⑦1호 상속 농어촌주택(피상속인 5년 거주)은 상속주택 특례 계산기 쪽 — 이 계산기엔 없음</td><td>다른 계산기</td><td>높음</td></tr>
+<tr><td>3</td><td>읍 지역의 「도시지역 안 제외」 판정은 사람이</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>조특법 §99의4 농어촌주택 취득자 특례(3년 보유)와의 선택은 「농어촌주택」 묶음이 가름</td><td>묶음</td><td>높음</td></tr>
+<tr><td>5</td><td>⑫ 추징 세액 산식(특례 없을 때 − 낸 세액)의 신고기한 2개월은 clawback 계산기 안내 — 날짜 계산은 손으로</td><td>안내</td><td>중간</td></tr>
+</table>
+</main></body></html>
