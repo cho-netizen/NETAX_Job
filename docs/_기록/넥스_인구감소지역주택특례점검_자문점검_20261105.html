@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 243 인구감소지역 주택 특례</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 243 — 「인구감소지역 주택 취득자 1세대1주택 특례(조특법 §71의2·시행령 §68의2) 계산기 점검 — 취득 기간·1채 보유·기준시가 한도(4억/9억 연혁)·관심지역 2025.11.28」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_population_decline_area_house_exclusion)를 여섯 갈래로 돌려 §71의2①·시행령 §68의2①과 부칙(2025.8.14 9억, 2025.11.28 관심지역)을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>1주택 세대가 2025-09-01 경북 인구감소지역 주택(기준시가 8억)을 취득한 뒤 종전주택 양도. 견주기: 2025-08-13 취득 / 수도권 접경지역(8억·3.5억) / 2024-01-03·2027-01-01 취득 / 인구감소관심지역 2025-11-27·11-28·4.5억 / 2채 보유·소재지 요건 미달.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법 읽기용 판·시행령·부칙)</h2>
+<ul>
+<li>§71의2①: 주택·입주권·분양권 1채(1개) 보유 1세대가 2024.1.4~2026.12.31 인구감소지역(1호)·수도권 밖 인구감소관심지역(2호) 주택(시행령 §68의2① — 광역시(군 제외)·종전주택과 같은 시군구 아님, 기준시가 한도)을 취득하면 1세대1주택 판정에서 그 주택을 소유주택으로 보지 않음. 한도: 4억 → 2025.8.14 이후 취득 수도권 밖 9억(수도권 접경 4억), 관심지역은 2025.11.28 이후 취득분부터 4억. ②③ 종부세 1세대1주택자 신청(9.16~9.30).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 2025-09 수도권 밖 8억 → 적용(9억 한도) / 2025-08-13이면 4억 한도 → 안 됨 / 수도권 접경 8억 안 됨·3.5억 적용 / 기간 밖 안 됨 / 관심지역 11-27 안 됨·11-28 적용·4.5억 안 됨 / 2채·소재지 미달 안 됨.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>2025-09 8억 / 2025-08-13 / 수도권 8억·3.5억</td><td>적용 / 안 됨 / 안 됨·적용</td><td>맞음(한도 연혁)</td></tr>
+<tr><td>기간 밖 / 관심지역 11-27·11-28·4.5억 / 2채·소재지</td><td>안 됨 / 안 됨·적용·안 됨 / 안 됨</td><td>맞음(①·부칙)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 239 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>인구감소지역·관심지역 지정 목록(행안부 고시)은 도구가 모름 — 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>2</td><td>「취득 전 1채」에 입주권·분양권 포함 — 세대 판정은 1세대1주택 묶음</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>§98의9 등 다른 「소유주택으로 보지 않음」 특례와 겹칠 때 순서는 「특례칸 자동 채움」(191) 그대로</td><td>묶음</td><td>중간</td></tr>
+<tr><td>4</td><td>②③ 종부세 특례(9.16~9.30 신청)는 양도세 밖 — 안내만, 지시문 잇기 없음</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>한도 연혁의 부칙 적용례(취득일 기준)는 10-20 서식 감사 그대로 — 2025.8.14 경계는 취득일로</td><td>취득일</td><td>높음</td></tr>
+</table>
+</main></body></html>
