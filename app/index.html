@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 17:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -24480,8 +24480,10 @@ function nxMdOpenWindow(title, src, opts){
       return { 적용여부: false, 안내: '봉양 대상 직계존속(배우자의 직계존속 포함)이 60세 이상이어야 하는데(시행령§155④), 요건을 충족하지 못했습니다(국민건강보험법 시행령에 따른 중증질환 요양급여 대상자는 60세 미만도 인정되니 해당되면 체크하세요).' };
     }
     const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
-    if (new Date(p.transferDate).getTime() > addYears_(p.mergeDate, 10)) {
-      return { 적용여부: false, 안내: '세대를 합친 날부터 10년 이내에 먼저 양도해야 하는데(시행령§155④), 기한을 넘겨 적용대상이 아닙니다.' };
+    // [2026.11.05 모의사건 183] 연혁 — 2018.2.13. 개정 전 양도는 종전 「5년」(합친 날부터) — [확인 필요: 부칙 적용례(양도분 기준)]. 연혁 꺼짐이면 10년.
+    const cYrs_ = (refHistoryOn_() && String(p.transferDate).slice(0, 10) < '2018-02-13') ? 5 : 10;
+    if (new Date(p.transferDate).getTime() > addYears_(p.mergeDate, cYrs_)) {
+      return { 적용여부: false, 안내: '세대를 합친 날부터 ' + cYrs_ + '년 이내에 먼저 양도해야 하는데(시행령§155④), 기한을 넘겨 적용대상이 아닙니다.' + (cYrs_ === 5 ? ' [양도일 2018-02-13 전 — 종전 5년, 부칙 적용례 확인 필요]' : '') };
     }
     return { 적용여부: true, 안내: '60세 이상 직계존속 동거봉양을 위한 합가로 2주택이 된 세대가 합친 날부터 10년 이내 먼저 양도해 시행령§155④에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
   };
@@ -24496,10 +24498,13 @@ function nxMdOpenWindow(title, src, opts){
     p = p || {};
     if (!p.marriageDate || !p.transferDate) return { error: '혼인일과 양도일이 필요합니다.' };
     const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
-    if (new Date(p.transferDate).getTime() > addYears_(p.marriageDate, 10)) {
-      return { 적용여부: false, 안내: '혼인한 날부터 10년 이내에 먼저 양도해야 하는데(시행령§155⑤), 기한을 넘겨 적용대상이 아닙니다.' };
+    // [2026.11.05 모의사건 183] 연혁 — 2024.11.12. 개정(대통령령 제34990호) 전 양도는 종전 「5년」(부칙은 양도일 기준 경과규정 — [확인 필요: 부칙 적용례 원문]). 연혁 꺼짐이면 10년.
+    const mYrs_ = (refHistoryOn_() && String(p.transferDate).slice(0, 10) < '2024-11-12') ? 5 : 10;
+    const mHist_ = mYrs_ === 5 ? ' [양도일 2024-11-12 전 — 종전 5년(대통령령 제34990호 개정 전), 부칙 적용례 확인 필요]' : '';
+    if (new Date(p.transferDate).getTime() > addYears_(p.marriageDate, mYrs_)) {
+      return { 적용여부: false, 안내: '혼인한 날부터 ' + mYrs_ + '년 이내에 먼저 양도해야 하는데(시행령§155⑤), 기한을 넘겨 적용대상이 아닙니다.' + mHist_ };
     }
-    return { 적용여부: true, 안내: '혼인으로 2주택이 된 세대가 혼인한 날부터 10년 이내 먼저 양도해 시행령§155⑤에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+    return { 적용여부: true, 안내: '혼인으로 2주택이 된 세대가 혼인한 날부터 ' + mYrs_ + '년 이내 먼저 양도해 시행령§155⑤에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' + mHist_ };
   };
 
   // 공동상속 조합원입주권·분양권의 "소유자" 우선순위 판정(시행령§156의2⑦·§156의3⑤5호) —
