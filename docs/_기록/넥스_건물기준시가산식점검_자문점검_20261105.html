@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 252 건물 기준시가</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 252 — 「건물 기준시가(상증법 §61①2호·소득세법 §99①1호 — 국세청 고시 산식) 계산기 점검 — 기준가액 × 구조·용도·위치 지수 × 잔가율(× 조정률), 1천원 절사, 세목별 조정률」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_building_standard_price)를 네 갈래로 돌려 고시 산식의 짜임(지수 곱·잔가율·1천원 미만 버림·조정률은 상속·증여만·용도 61 별도·신축연도 이후 잔가율 1)을 확인했습니다. 코드 변경은 없습니다. 2026년 고시의 숫자(㎡당 기준가액 86만, 지수·잔가율 표)는 법령 읽기용 판에 없어 표 자체를 대조하지 못했습니다(판단거리).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2015년 신축 철근콘크리트 아파트 100㎡(부속토지 공시지가 ㎡당 300만)의 2026년 양도·상속 기준시가. 견주기: 상속·증여(조정률 없음) / 용도 61 기계식주차 / 2027년 신축.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법·소득세법 읽기용 판; 고시는 도구 표)</h2>
+<ul>
+<li>상증법 §61①2호: 건물(오피스텔·상업용 제외)은 신축가격·구조·용도·위치·신축연도를 고려해 국세청장이 매년 산정·고시하는 가액. 소득세법 §99①1호나목 같은 구조. 고시 산식(도구 표): ㎡당 기준가액 × 구조지수 × 용도지수 × 위치지수(공시지가 구간) × 경과연수별 잔가율(구조 그룹·신축연도) × 조정률(상속·증여만) → 1천원 미만 버림 × 면적.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 86만 × 1.00 × 1.10 × 1.18 × 0.802 = 895,335 → 895,000 × 100㎡ = 8,950만 / 상속·증여 조정률 없음이면 같음 / 용도 61은 별도 산식 오류 안내 / 2027년 신축은 잔가율 1(안내).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법(고시 산식)</th></tr>
+<tr><td>철근콘크리트·아파트·300만·2015·100㎡ 양도 / 상속</td><td>895,000/㎡ → 8,950만 / 같음</td><td>산식·절사·세목 맞음(표 숫자는 미대조)</td></tr>
+<tr><td>용도 61 / 2027 신축</td><td>별도 산식 안내 / 잔가율 1</td><td>맞음</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 251 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>2026년 고시 숫자(기준가액 86만·구조/용도/위치 지수·잔가율·조정률 표)를 국세청 고시 원문과 대조하지 못함 — 세무사님 쪽 조견표로 확인(판단거리)</td><td>표 내장</td><td>중간</td></tr>
+<tr><td>2</td><td>매년 1월 고시 갱신 — 양도·상속일이 속한 해의 고시를 써야 하는데 도구는 2026 표만(옛 해는 안내만)</td><td>2026 표</td><td>중간</td></tr>
+<tr><td>3</td><td>오피스텔·상업용 건물(§61①3호 일괄 고시)은 이 산식이 아님 — 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>4</td><td>위치지수의 공시지가는 「양도·상속일과 가장 가까운 공시」 — 칸 설명에 있음</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>취득 당시 기준시가(환산취득가액용)는 그해 고시로 따로 — 「추계」 묶음</td><td>묶음</td><td>높음</td></tr>
+</table>
+</main></body></html>
