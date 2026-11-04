@@ -564,7 +564,7 @@
   var nxAiPvFolder = null;              // 사건 자료 칸이 보고 있는 폴더 {folderId, path}
   var nxAiConvFolderId = null;          // _AI대화기록 폴더 — 사건 없는 대화의 업로드 위치
 
-  function nxAiBlankConv_(){ return { id: null, sourceFileId: '', title: '', caseId: '', caseName: '', caseFolderId: '', casePath: null, messages: [] }; }
+  function nxAiBlankConv_(){ return { id: null, sourceFileId: '', title: '', caseId: '', caseName: '', caseFolderId: '', casePath: null, messages: [], browsed: [] }; } // browsed: [2026.11.04] 이 대화에서 열람한 계산기 분야(다음 요청에도 계산기가 열려 있게)
   function nxAiEl_(id){ return document.getElementById(id); }
   function nxAiApplyPvPos_(){
     var root = nxAiEl_('nxAi');
@@ -821,7 +821,8 @@
     var convAtSave = nxAiConv;
     return callGas('ai_conv_save', { conversation: {
       id: convAtSave.id, title: convAtSave.title, caseId: convAtSave.caseId, caseName: convAtSave.caseName,
-      caseFolderId: convAtSave.caseFolderId, casePath: convAtSave.casePath, sourceFileId: convAtSave.sourceFileId || '', messages: convAtSave.messages.slice(-NXAI_MAX_MESSAGES)
+      caseFolderId: convAtSave.caseFolderId, casePath: convAtSave.casePath, sourceFileId: convAtSave.sourceFileId || '', messages: convAtSave.messages.slice(-NXAI_MAX_MESSAGES),
+      browsed: convAtSave.browsed || [] // [2026.11.04 전용택 — 넥스 암산 원인] 열람한 계산기 분야를 대화와 함께 저장
     } }).then(function(res){
       if (!res || res.error){ nxAiToast_('대화 저장 실패: ' + (res && res.error)); return; }
       convAtSave.id = res.id;
@@ -1922,6 +1923,22 @@
       nxAiPvNavigate_({ folderId: nxAiPvFolder.folderId });
     }
 
+    // [2026.11.04 전용택 — 넥스 암산 원인] 서버가 알린 열람 분야를 대화에 기억(다음 요청에도 계산기가 열림) · 기능 부족 신고가 실제로 기록됐을 때만 📣 표 · 보고서 세액이 저장본에 없으면 붉은 표
+    actions.forEach(function(a){
+      if (!a) return;
+      if (a.type === 'calc_browsed' && a.category){
+        nxAiConv.browsed = nxAiConv.browsed || [];
+        if (nxAiConv.browsed.indexOf(a.category) === -1){ nxAiConv.browsed.push(a.category); nxAiScheduleSave_(); }
+      } else if (a.type === 'gap_reported'){
+        var g = document.createElement('div'); g.className = 'nxai-saved';
+        g.textContent = '📣 개발자에게 기능 부족 신고가 실제로 기록됐습니다' + (a.urgent ? ' (긴급)' : '') + (a.want ? ': ' + a.want : '');
+        bubbleEl.appendChild(g);
+      } else if (a.type === 'tax_unverified'){
+        var w = document.createElement('div'); w.className = 'nxai-notice';
+        w.textContent = '❌ 저장한 보고서' + (a.name ? '(' + a.name + ')' : '') + '의 세액 숫자 ' + a.count + '개가 이 사건 계산 저장본에 없습니다 — 계산 도구를 돌린 값이 아닙니다: ' + (a.nums || []).join(', ');
+        bubbleEl.appendChild(w);
+      }
+    });
     var claimed = NXAI_COMPLETION_CLAIM_RE.test(replyText || '');
     var realSignal = !!editAction || saved.length > 0
       || actions.some(function(a){ return a && (a.type === 'work_manage_changed' || a.type === 'client_manage_changed' || a.type === 'explorer_changed' || a.type === 'confirm_action' || a.type === 'ledger_changed'); }); // [2026.10.23 ㅅ13차 — 점검표 168] 실행 제안 카드를 띄운 답엔 "저장 도구 기록 없음" 경고를 붙이지 않는다(제안 방식은 세무사님이 [실행]을 눌러야 반영되는 것이 맞음)
@@ -2241,6 +2258,7 @@
       aiPanel: window.nxCover ? 'side' : nxAiMode, // 커버화면 토킹모드는 짧은 답(사이드바 규칙)
       currentPath: nxAiCurrentPath_(),
       linkedCase: nxAiConv.caseId ? { id: nxAiConv.caseId, name: nxAiConv.caseName } : null,
+      browsedCategories: (nxAiConv.browsed || []).slice(0, 10), // [2026.11.04] 이 대화에서 이미 열람한 계산기 분야 — 서버가 그 분야 계산기를 바로 연다(열람 기록은 대화 글자에 남지 않으므로)
       openFile: nxAiOpenFileContext_(),
       attachedItems: [],
       attachedTexts: []

@@ -171,7 +171,7 @@ const BASIC_TOOL_NAMES_ = new Set([
   // 아래는 계산기만큼 무겁지 않아(설명이 짧음) 굳이 분야별 탐색 대상에 안 넣고 항상 켜둠.
   'lookup_statute_article', 'lookup_real_estate_price', 'lookup_building_register', 'search_address',
   'lookup_official_price', 'lookup_land_info', 'search_address_kakao', 'lookup_business_status', 'verify_business_registration',
-  'get_building_price_index_tables', 'lookup_adjusted_area', 'judge_tax_relief',
+  'get_building_price_index_tables', 'lookup_adjusted_area', 'judge_tax_relief', 'find_judgment',
   'list_business_managers', 'load_business_manager', 'audit_business_managers', 'propose_new_business_manager',
   'browse_tax_calculators',
   // [2026.08] 예규·판례도 국가법령정보센터 API로 GAS가 직접 가져오게 추가 — AI가 웹서치로
@@ -213,9 +213,14 @@ const TAX_TOOL_TO_CATEGORY_ = (function () {
 // 분야를 모은다 — 한 번 열람한 분야는 같은 턴의 다음 라운드부터 그 분야 계산기가 실제로
 // 호출 가능해진다(반대로 다음 "턴"이 되면, 즉 최종 응답이 나가고 새 질문이 시작되면 초기화됨
 // — body.messages는 그 턴에서 새로 시작하는 배열이라 자연히 리셋된다).
-function browsedTaxCategories_(messages) {
+// [2026.11.04 전용택 사건 — 넥스 암산 원인] 화면은 대화를 저장할 때 넥스 답의 글자만 남기고 도구 호출 기록을 버린다 → 다음 요청엔 열람 기록이 없어
+//  계산기가 다시 빠졌고, 넥스는 "다음 요청부터 계산 가능"이라 약속해 놓고 도구가 없자 암산 표를 "계산기 실행값"이라 적었다(10-22·11-03 두 번).
+//  → ② 화면이 열람한 분야를 대화에 기억해 문맥(context.browsedCategories)으로 보내면 그대로 연다(같은 대화에선 다시 열람할 필요 없음)
+//  → ③ 사건이 연결된 대화는 그 사건 세목의 계산기 분야를 처음부터 연다(양도 사건 → 양도소득세 분야 — 열람 단계 없이 바로 계산)
+var BROWSE_CATS_BY_TAX_ = { transfer: ['transfer'], gift: ['gift_basic'], inheritance: ['inheritance'] };
+function browsedTaxCategories_(messages, body) {
   const cats = new Set();
-  messages.forEach(function (m) {
+  (messages || []).forEach(function (m) {
     if (m && m.role === 'assistant' && Array.isArray(m.content)) {
       m.content.forEach(function (block) {
         if (block && block.type === 'tool_use' && block.name === 'browse_tax_calculators' && block.input && block.input.category) {
@@ -224,6 +229,16 @@ function browsedTaxCategories_(messages) {
       });
     }
   });
+  const ctx = (body && body.context) || {};
+  (Array.isArray(ctx.browsedCategories) ? ctx.browsedCategories : []).forEach(function (k) { if (TAX_TOOL_CATEGORIES_[k]) cats.add(String(k)); });
+  try {
+    const cid = String((ctx.linkedCase && ctx.linkedCase.id) || '').trim();
+    if (cid && typeof job_findCase_ === 'function') {
+      const c = job_findCase_(cid);
+      const code = c && typeof ledgerTaxCode_ === 'function' ? (ledgerTaxCode_(c.세목) || String(c.세목 || '')) : String((c && c.세목) || '');
+      (BROWSE_CATS_BY_TAX_[code] || []).forEach(function (k) { cats.add(k); });
+    }
+  } catch (e) { }
   return cats;
 }
 
@@ -243,7 +258,7 @@ function toolBrowseTaxCalculators(category) {
     category: category,
     label: cat.label,
     tools: tools,
-    note: '이 분야의 계산기들은 다음 요청부터 실제로 호출할 수 있습니다(이번 응답에서 바로는 안 됨).'
+    note: '이 분야의 계산기들은 지금부터(같은 답 안의 다음 단계부터) 바로 호출할 수 있습니다 — 사용자에게 다시 말하라고 하지 말고 이어서 부르세요.'
   };
 }
 
@@ -252,7 +267,7 @@ const LATE_DESIG_PROPS_ = { designatedDueDate: { type: 'string', description: '�
 const DRIVE_TOOLS = [
   {
     name: 'browse_tax_calculators',
-    description: '세액계산기가 92개나 있어서 한 번에 다 보여주지 않는다 — 세금 계산이 필요한 질문이면 먼저 이 도구로 관련 분야를 "열람"해라. 그 분야 안의 계산기 이름·한줄설명 목록을 받는다(이번 응답에서 바로 그 계산기를 부를 수는 없고, 다음 요청부터 실제로 호출 가능해진다). 어느 분야인지 애매하면 가장 가까운 걸로 한 번 열람해보거나, 여러 분야를 순서대로 열람해도 된다 — 열람 자체는 비용이 적다.',
+    description: '세액계산기가 92개나 있어서 한 번에 다 보여주지 않는다 — 세금 계산이 필요한 질문이면 먼저 이 도구로 관련 분야를 "열람"해라. 그 분야 안의 계산기 이름·한줄설명 목록을 받는다(열람 결과를 받은 바로 다음 단계부터 같은 답 안에서 그 계산기를 부를 수 있다 — 사용자에게 「다음 요청에 하겠다」고 미루지 말 것). 어느 분야인지 애매하면 가장 가까운 걸로 한 번 열람해보거나, 여러 분야를 순서대로 열람해도 된다 — 열람 자체는 비용이 적다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -508,8 +523,13 @@ const DRIVE_TOOLS = [
   },
   // [2026.11.01 종합판정 ①] 비과세·공제·감면 종합판정 도구(엔진 judgeTaxReliefJS, 토큰 0) — 세무사님 "비과세공제감면 종합판정도구" · 화면 세액계산 「판정」과 같은 함수
   {
+    name: 'find_judgment',
+    description: '[판정 찾기 — 토큰 0] 쟁점 낱말(예: "상속 포기 배우자공제", "부담부증여 채무", "일시적 2주택 상속주택", "가업승계 요건", "명의신탁 납세의무자")로 judge_tax_relief 판정 묶음 108개 중 맞는 것을 찾아 준다 — 묶음 이름·별칭·근거 조문·넣을 사실 칸 이름. 비과세·공제·감면·시기·납세의무자·평가 방법처럼 「요건을 조문대로 가르는」 쟁점은 계산기 체크 칸에 짐작으로 넣지 말고, 먼저 이 도구로 묶음을 찾아 judge_tax_relief로 가른 뒤 그 결과의 엔진칸으로 계산기를 돌려라. 사건을 시작하면 쟁점마다 한 번씩 부르는 것이 기본이다.',
+    input_schema: { type: 'object', properties: { query: { type: 'string', description: '쟁점을 나타내는 낱말 몇 개(띄어쓰기로)' }, taxType: { type: 'string', description: '세목 힌트(양도|증여|상속|국세기본, 선택)' } }, required: ['query'] }
+  },
+  {
     name: 'judge_tax_relief',
-    description: '비과세·공제·감면 요건을 조문대로 하나씩 대조해 판정한다(묶음 「1세대1주택」·「8년자경」(조특법 §69·시행령 §66)·「농지대토」(조특법 §70·시행령 §67, 사후관리·추징 기한까지)·「상속인」(민법 §1000·§1001·§1003·§1009·§1043 — 대습·포기·동시사망 반영한 법정상속분, 상증법 §19① 배우자공제 비율은 포기 없던 것으로 따로 · §24 다음 순위 · §27 세대생략 · 포기자도 세법상 상속인 §2 4호) · 「불복기한」(세무조사 결과 통지·과세예고통지 뒤 과세전적부심사 30일, 고지 뒤 이의신청·심사·심판 90일, 결정 기다림, 행정소송 90일, 경정청구 5년·3개월 — 국세기본법 §45의2·§55·§56·§61·§65·§66·§68·§81의15, 마감이 토·일·공휴일·노동절이면 다음 날(§5①), 설·추석·대체공휴일은 facts.공휴일 목록으로)·「양도여부」(양도로 보지 않는 경우 — 공유물 분할·경계 조정 토지 교환·양도담보·신탁·환지·매매계약 해제·대금 감액, 소득세법 §88 1호·시행령 §151·§152, 양도로 보는 부분의 양도가액·취득가액·양도일을 돌려줌)·「동거주택」(상증법 §23의2)·「가업상속」(상증법 §18의2)·「법인전환」(조특법 §32 이월과세·시행령 §29)·「국외증여」(누가 어느 법으로 증여세를 내나 — 거주 수증자 상증법 §4의2①1호·비거주 수증자 국내 재산 §4의2①2호·거주자가 비거주자에게 국외 재산을 주면 증여자가 냄 국제조세조정법 §35②, 면제 §35③, 시가 국조령 §71, 외국납부세액공제 §35⑤·국조령 §72). 1세대1주택 — 소득세법 §89①3호·시행령 §152의3·§154·§155·§155의2·§155의3·§156의2·§156의3, 조특법 §71의2·§98의9·§99의4). 결과: 결론(충족/안 됨)·잠정 여부·요건별 셈표(요건·사실·근거조문·결과)·남은 것(모르는 사실)·받을 서류·고가주택/부수토지/겸용 알림. 모르는 사실은 모름으로 두고 잠정 결론을 낸다 — 사실을 지어 넣지 말 것. caseId를 주면 사건 장부(양도일·취득일·양도가액·거주기간·거주자·물건 장부)에서 사실을 모으고 취득 당시 조정대상지역은 조정대상지역 도구로 보며, 결과를 1세대1주택 칸에 GAS 값으로 넣는다(잠정이면 추정, 세무사님·넥스가 정한 값은 바꾸지 않고 알림만, write:false면 보기만). caseId 없이 사실만 주면 판정만 돌려준다. 특례 종류: 일시적2주택·상속주택·동거봉양·혼인·문화유산주택·이농주택·귀농주택·부득이수도권밖·장기임대 거주주택·장기저당담보·조합원입주권 일시적·사업기간 대체주택·상속 조합원입주권·분양권 일시적·상속 분양권·농어촌주택(조특)·미분양주택(조특)·인구감소지역주택(조특) — 입력은 그 특례 계산기(calculate_*_exclusion)의 칸 이름 그대로.',
+    description: '비과세·공제·감면 요건을 조문대로 하나씩 대조해 판정한다(묶음은 find_judgment로 먼저 찾아라 — 「1세대1주택」·「8년자경」(조특법 §69·시행령 §66)·「농지대토」(조특법 §70·시행령 §67, 사후관리·추징 기한까지)·「상속인」(민법 §1000·§1001·§1003·§1009·§1043 — 대습·포기·동시사망 반영한 법정상속분, 상증법 §19① 배우자공제 비율은 포기 없던 것으로 따로 · §24 다음 순위 · §27 세대생략 · 포기자도 세법상 상속인 §2 4호) · 「불복기한」(세무조사 결과 통지·과세예고통지 뒤 과세전적부심사 30일, 고지 뒤 이의신청·심사·심판 90일, 결정 기다림, 행정소송 90일, 경정청구 5년·3개월 — 국세기본법 §45의2·§55·§56·§61·§65·§66·§68·§81의15, 마감이 토·일·공휴일·노동절이면 다음 날(§5①), 설·추석·대체공휴일은 facts.공휴일 목록으로)·「양도여부」(양도로 보지 않는 경우 — 공유물 분할·경계 조정 토지 교환·양도담보·신탁·환지·매매계약 해제·대금 감액, 소득세법 §88 1호·시행령 §151·§152, 양도로 보는 부분의 양도가액·취득가액·양도일을 돌려줌)·「동거주택」(상증법 §23의2)·「가업상속」(상증법 §18의2)·「법인전환」(조특법 §32 이월과세·시행령 §29)·「국외증여」(누가 어느 법으로 증여세를 내나 — 거주 수증자 상증법 §4의2①1호·비거주 수증자 국내 재산 §4의2①2호·거주자가 비거주자에게 국외 재산을 주면 증여자가 냄 국제조세조정법 §35②, 면제 §35③, 시가 국조령 §71, 외국납부세액공제 §35⑤·국조령 §72). 1세대1주택 — 소득세법 §89①3호·시행령 §152의3·§154·§155·§155의2·§155의3·§156의2·§156의3, 조특법 §71의2·§98의9·§99의4). 결과: 결론(충족/안 됨)·잠정 여부·요건별 셈표(요건·사실·근거조문·결과)·남은 것(모르는 사실)·받을 서류·고가주택/부수토지/겸용 알림. 모르는 사실은 모름으로 두고 잠정 결론을 낸다 — 사실을 지어 넣지 말 것. caseId를 주면 사건 장부(양도일·취득일·양도가액·거주기간·거주자·물건 장부)에서 사실을 모으고 취득 당시 조정대상지역은 조정대상지역 도구로 보며, 결과를 1세대1주택 칸에 GAS 값으로 넣는다(잠정이면 추정, 세무사님·넥스가 정한 값은 바꾸지 않고 알림만, write:false면 보기만). caseId 없이 사실만 주면 판정만 돌려준다. 특례 종류: 일시적2주택·상속주택·동거봉양·혼인·문화유산주택·이농주택·귀농주택·부득이수도권밖·장기임대 거주주택·장기저당담보·조합원입주권 일시적·사업기간 대체주택·상속 조합원입주권·분양권 일시적·상속 분양권·농어촌주택(조특)·미분양주택(조특)·인구감소지역주택(조특) — 입력은 그 특례 계산기(calculate_*_exclusion)의 칸 이름 그대로.',
     input_schema: {
       type: 'object',
       properties: {
@@ -3591,7 +3611,9 @@ const DRIVE_TOOLS = [
       type: 'object',
       properties: {
         customerName: { type: 'string', description: '고객명(생략하면 현재 보고 있는 폴더의 고객명)' },
-        caseName: { type: 'string', description: '사건명(생략하면 현재 보고 있는 폴더의 사건명)' },
+        caseName: { type: 'string', description: '사건명 — 고객사건 폴더가 이미 있으면 그 폴더 이름을 그대로(「고객명(납세자)_세목_업무유형」 꼴, 예: 가상상속자문(윤정애)_상속_자문). 서버는 이 꼴로 사건명을 만들고 같은 이름의 폴더를 사건에 잇는다(없으면 새로 만듦) — 다른 이름을 지어내면 빈 폴더가 하나 더 생긴다' },
+        taxpayer: { type: 'string', description: '납세자(고객과 다를 때, 선택 — caseName의 괄호 안에서 읽을 수 있음)' },
+        workType: { type: 'string', enum: ['자문', '신고', '상담', '불복', '경정', '조사', '기타'], description: '업무유형(선택 — caseName 끝에서 읽을 수 있음). 자문·신고면 사건 폴더와 표준 하위폴더(보고서_외부·보고서_내부·확보자료·제출자료)가 생김' },
         taxType: { type: 'string', enum: ['transfer', 'gift', 'inheritance', 'objection', 'business'], description: 'transfer=양도, gift=증여, inheritance=상속, objection=불복, business=사업' },
         assignee: { type: 'string', description: '담당자(선택)' },
         requestDate: { type: 'string', description: '의뢰일 YYYY-MM-DD(선택)' },
@@ -4121,6 +4143,8 @@ function ai_convSave(body) {
       caseName: c.caseName || '',
       caseFolderId: c.caseFolderId || '',
       updatedAt: now,
+      // [2026.11.04 전용택 — 넥스 암산 원인] 이 대화에서 열람한 계산기 분야 — 다음 요청에도 계산기가 열려 있게 화면이 문맥으로 보낸다
+      browsed: (Array.isArray(c.browsed) ? c.browsed : []).map(String).filter(function (k, i, a) { return k && a.indexOf(k) === i; }).slice(0, 10),
       messages: c.messages.slice(-AI_CONV_MAX_MESSAGES_)
     };
     let entry = idx.list.find(function (e) { return e.id === id; });
@@ -5494,8 +5518,9 @@ function buildContextSystemPrompt(basePrompt, body) {
     // [2026.10.29 계획서 3판 5단계] 넥스는 하나 — 대화창도 사건 처리 입구와 같은 도구·같은 일하는 방식. 세무사님 원문: "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐이라고!" / "세액계산 한번만 하면 모든 사건처리가 끝나는 종점이 아니라고" / "확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고"
     // [2026.10.30 1단계 지시문 한 벌] 예전 "[사건을 맡으면 …]" 묶음은 사건이 연결된 대화에 붙는 nxCaseChatGuide_(AiLeadLive.js) 하나로 옮김 — 같은 일하는 법이 두 곳에 있으면 서로 어긋난다
     + '\n\n[사건을 맡으면] 대화를 그 사건에 연결해(🔗 사건 연결, 또는 "○○ 사건 처리하자") 일한다 — 연결된 대화에는 사건 도구와 일하는 방식이 함께 붙는다.'
+    + '\n\n[판정 먼저 — 요건은 짐작으로 체크하지 않는다] 비과세·공제·감면·특례·시기(양도일·증여일·신고기한)·납세의무자·평가 방법·상속인·세대·주택 여부처럼 「요건을 조문대로 가르는」 쟁점은 계산기 체크 칸(isOneHouse… 같은 예/아니오)에 네 판단을 넣지 않는다. 사건을 시작하면 의뢰서·말씀에 나온 쟁점마다 find_judgment로 판정 묶음(108개)을 찾아 judge_tax_relief로 가르고, 그 결과의 잠정·할일·엔진칸을 받아 계산기를 돌린다(모르는 사실은 비워 잠정으로). 판정 묶음이 없는 쟁점만 조문(lookup_statute_article)으로 직접 가르고, 그때는 report_capability_gap으로 도구가 없음을 알린다. 의뢰서에 적힌 고객 질문은 하나도 빼지 말고 답한다(답할 도구가 없으면 그 이유를 적는다). 보고서에 적는 숫자는 마지막에 돌린 계산 결과만 쓰고, 앞 단계의 다른 가정으로 나온 숫자를 섞지 않는다.'
     + '\n\n[세액은 계산 도구로만 — 암산 금지] 세액(양도세·증여세·상속세·지방소득세·가산세)을 말할 때는 네가 머릿속으로 계산한 숫자를 쓰지 않는다. 사건의 세액은 세액계산기를 돌려 저장한 계산 저장본(job_lookup caseproc의 마지막계산·계산저장본, job_propose_action calc_scenario로 만든 경우(안) 저장본)에서만 인용하고 어느 저장본인지 밝힌다. '
-    + '비과세 사건도 계산기로 세액을 끝까지 계산한 뒤 비과세를 적용한다(추징·불복 때 정확한 세액을 알아야 함). 경우를 바꿔 견주는 계산(비과세 적용 전/후, 필요경비 일부 제외, 양도세 vs 증여세 vs 상속세)은 calc_scenario로 각각 저장하고 그 숫자만 말한다. 사건이 연결된 대화에서 calculate_* 도구로 계산하면 결과가 그 사건의 경우(안) 저장본으로 저절로 남는다(결과의 저장본id를 인용). 사건 없는 단순 계산 질문은 calculate_* 도구 결과를 그대로 쓴다(네 암산 금지는 같다).';
+    + '비과세 사건도 계산기로 세액을 끝까지 계산한 뒤 비과세를 적용한다(추징·불복 때 정확한 세액을 알아야 함). 경우를 바꿔 견주는 계산(비과세 적용 전/후, 필요경비 일부 제외, 양도세 vs 증여세 vs 상속세)은 calc_scenario로 각각 저장하고 그 숫자만 말한다. 사건이 연결된 대화에서 calculate_* 도구로 계산하면 결과가 그 사건의 경우(안) 저장본으로 저절로 남는다(결과의 저장본id를 인용). 계산 도구가 도구 목록에 없거나 부르지 못했으면 숫자를 지어내지 말고 "계산 도구를 못 불러 세액은 아직 못 냈다"고 그대로 말한다(표·검토서에 "계산기 실행값"이라 적으려면 저장본 id가 있어야 한다). 세액계산기 분야를 열람(browse_tax_calculators)했으면 같은 답 안에서 바로 이어서 계산기를 부른다 — 사용자에게 "다음 요청부터 가능하다"고 미루지 않는다. 보고서를 저장하면 GAS가 세액 숫자를 저장본과 대조해 ❌를 돌려준다 — ❌가 오면 그 숫자를 저장본 숫자로 고쳐 다시 저장하고 사용자에게 사실대로 말한다. 사건 없는 단순 계산 질문은 calculate_* 도구 결과를 그대로 쓴다(네 암산 금지는 같다).';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
   if (ctx.aiPanel) staticExtra += '\n\n[업무관리자 지침 — job] 업무관리자 지침은 업무별 판단 절차·체크리스트다(예: 양도_1세대1주택_비과세, 양도_일시적2주택, 특수관계인_판정, 부과제척기간). '
     + '세법 판단·사건 검토·사건 처리 요청이면 답하기 전에 list_business_managers로 목록(이름·한 줄 설명)을 보고, 이 대화에 연결된 사건이 있으면 사건 이름·세목(양도·증여·상속 등)·업무유형(신고·경정·불복 등)에 맞는 것부터 고른다(양도 사건이면 "양도_"로 시작하는 지침과 공통 지침). '
@@ -5515,7 +5540,7 @@ function buildContextSystemPrompt(basePrompt, body) {
   // [2026.10.13] 개발자가 최근 바꾼 기능(📥 반영 때 기록, 배포 사이엔 그대로라 캐시가 깨지지 않음) — 사용자가 물으면 안내 + 기능 부족 신고 안내
   // [2026.10.16] job 화면에서만 — 같은 서버를 쓰는 work.netax.kr AI에게 job 안내·신고 지시를 하지 않는다
   if (ctx.aiPanel || ctx.currentView) try { staticExtra += commRecentChangesPrompt_(); } catch (e) {}
-  if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[기능 부족 신고] 사용자가 원하는 일을 job 도구로 할 수 없으면(도구가 없거나, 막혀 있거나, 결과가 틀리는 등) report_capability_gap 도구로 "원한 것·막힌 이유·필요한 도구"를 개발자에게 남겨라(고객 이름·번호 등은 쓰지 말 것). 그다음 사용자에게는 할 수 있는 대안을 안내하라.';
+  if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[기능 부족 신고] 사용자가 원하는 일을 job 도구로 할 수 없으면(도구가 없거나, 막혀 있거나, 결과가 틀리는 등) report_capability_gap 도구로 "원한 것·막힌 이유·필요한 도구"를 개발자에게 남겨라(고객 이름·번호 등은 쓰지 말 것). 그다음 사용자에게는 할 수 있는 대안을 안내하라. "개발자에게 신고했다"는 말은 이 도구를 실제로 부른 뒤에만 한다 — 부르면 화면에 📣 표가 뜨고, 그 표가 없으면 신고한 것이 아니다.';
   // [2026.10.20] job 화면에서만 — 실사건에서 AI가 양도세 다주택 중과 질문에 종부세 기준("공시지가 6억 이상 중과")을 근거 없이 말하고,
   //  조회 도구(search_address→lookup_official_price)가 있는데도 공시가격을 세무사님께 물었다. 세목 맥락·근거 확인·조회 먼저를 일반 규칙으로 둔다.
   if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[세법 판단 답변 원칙] (1) 대화가 특정 세목(양도·증여·상속 등)을 검토 중이면 후속 질문도 그 세목 기준으로 답하라 — 다른 세목 이야기는 사용자가 물을 때만. '
@@ -10864,6 +10889,11 @@ function isLikelyTruncatedContentToolCall_(result) {
 // [2026.10.20 보안] 세무사님 규칙 "주민번호·전화번호·계좌번호는 AI로 보낼 때 가림" — 업무 채팅(callClaude)은 사용자 글과 도구 결과
 // (read_drive_file의 서류 원문 등)를 그대로 보냈다. 사용자 쪽 글(사용자 입력·도구 결과)만 공용 가림 함수 cxMask_(CrossCheck.js)로 가린다.
 // AI가 쓴 글·그림은 그대로 둔다. 같은 글은 늘 같게 가려지므로 프롬프트 캐시는 깨지지 않는다.
+// [2026.11.04] 보내기 직전 여분 칸 떼기 — 화면·대화 파일에 저장된 메시지엔 role·content 말고 표시용 칸(preread 등)이 붙을 수 있다. 그대로 보내면 AI 회사가 "Extra inputs are not permitted"로 거절해 그 대화방 전체가 막힌다(11-04 넥스 미리 읽기 글이 붙은 대화방).
+function aiPlainMessages_(messages) {
+  return (messages || []).filter(function (m) { return m && m.role && m.content != null; }).map(function (m) { return { role: m.role, content: m.content }; });
+}
+
 function aiMaskMessages_(messages) {
   const maskBlock = function (b) {
     if (!b) return b;
@@ -10916,7 +10946,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   // 기본 도구(BASIC_TOOL_NAMES_) + 이번 턴 안에서 이미 browse_tax_calculators로 열람된
   // 분야의 계산기만 포함한다 — 모델 종류와 무관하게 동일하게 적용(Haiku도 이제 세금 계산을
   // 할 수 있다, 필요한 분야 하나만 열람하는 한 20만 토큰 한도를 넘길 일이 없음).
-  const browsedCats = browsedTaxCategories_(body.messages);
+  const browsedCats = browsedTaxCategories_(body.messages, body); // [2026.11.04] 대화가 기억한 열람 분야 + 연결된 사건 세목 분야도 연다
   const isJobPanel_ = !!(body.context && body.context.aiPanel);
   const tools = DRIVE_TOOLS.filter(function (t) {
     // [2026.10.08] job 화면(AI탭·사이드바)에서는 담당자(업무관리자) 도구를 쓰지 않는다 — job에서 없앤 기능.
@@ -11005,7 +11035,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   // 내용을 캐시로 재사용하지 못함) — 도구를 여러 번 불러야 하는 무거운 질문일수록 이 낭비가
   // 라운드 수만큼 누적된다. 매 요청의 마지막 메시지 끝에 캐시 경계를 찍어두면, 다음 라운드가
   // 왔을 때(메시지가 몇 개 더 늘어난 상태) 그 경계까지는 그대로 캐시 재사용된다.
-  let messages = withMessagesCacheBreakpoint_(trimOldToolResults_(aiMaskMessages_(body.messages.slice())));
+  let messages = withMessagesCacheBreakpoint_(trimOldToolResults_(aiMaskMessages_(aiPlainMessages_(body.messages))));
   let result = null, status = null;
   let truncationRetries = 0; // content 파라미터가 토큰한도로 잘린 걸 감지했을 때 자동 재시도 횟수(최대 2회)
   const clientActions = []; // 문서수정/관계도수정/폴더이동 요청을 모아뒀다가 이번 라운드 응답에 함께 실어보낸다.
@@ -11106,6 +11136,8 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
       if (block.name === 'browse_tax_calculators') {
         const resultObj = toolBrowseTaxCalculators(block.input && block.input.category);
+        // [2026.11.04 전용택 — 넥스 암산 원인] 열람한 분야를 화면이 대화에 기억하게 알린다(다음 요청에도 context.browsedCategories로 돌아와 계산기가 계속 열림)
+        if (resultObj && resultObj.success) clientActions.push({ type: 'calc_browsed', category: resultObj.category, label: resultObj.label });
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -11236,15 +11268,21 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
+      if (block.name === 'find_judgment') { // [2026.11.04 넥스 운영 시험] 판정 묶음 108개를 넥스가 못 찾아 계산기로 바로 가던 것 — 화면 판정 창 목록(judgeCatalog_)과 같은 목록에서 낱말로 찾아 줌(토큰 0)
+        let resultObj;
+        try { resultObj = nxFindJudgment_(block.input || {}); } catch (err) { resultObj = { ok: false, error: '판정 찾기 오류: ' + err.message }; }
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj).slice(0, 12000) };
+      }
+
       if (block.name === 'judge_tax_relief') { // [2026.11.01 종합판정 ①] 사건이 있으면 장부와 잇는 길(ledgerJudgeRun_), 없으면 엔진 판정만 — 화면 「판정」과 같은 함수
         const gi = Object.assign({}, block.input || {}); let resultObj;
         [['group', '묶음'], ['transferDate', '양도일'], ['target', '대상'], ['household', '세대'], ['items', '물건'], ['specials', '특례'], ['holdingException', '보유거주예외'], ['mutualLease', '상생임대'], ['bothCases', '경우둘']].forEach(function (m) { if (gi[m[0]] !== undefined) { gi[m[1]] = gi[m[0]]; delete gi[m[0]]; } }); // 영문 칸 → 엔진 칸
         try {
-          const cid = String(gi.caseId || '');
+          const cid = String(gi.caseId || nxCaseId_ || ''); // [2026.11.04 넥스 운영 시험] 넥스가 caseId를 안 넣어도 연결된 사건이 있으면 그 장부에 기록
           const cj = cid && typeof job_findCase_ === 'function' ? job_findCase_(cid) : null;
           if (cid && !cj) resultObj = { ok: false, error: '사건을 찾을 수 없습니다: ' + cid };
           else if (cj) { resultObj = ledgerJudgeRun_(cj, gi, '넥스'); if (resultObj && resultObj.ok && gi.write !== false) clientActions.push({ type: 'ledger_changed', caseId: cj.id, do: 'judge' }); }
-          else if (gi.group && gi.group !== '1세대1주택' && typeof JUDGE_MORE_ !== 'undefined') { const fn = JUDGE_MORE_[String(gi.group).replace(/\s/g, '')]; if (!fn) resultObj = { ok: false, error: '없는 묶음: ' + gi.group }; else { try { resultObj = { ok: true, 결과: fn(gi.facts || {}) }; } catch (eJ) { resultObj = { ok: false, error: String(eJ && eJ.message || eJ) }; } } }
+          else if (gi.묶음 && gi.묶음 !== '1세대1주택') { resultObj = judgeMoreRun_(null, Object.assign({}, gi, { write: false }), '넥스'); } // [2026.11.04 넥스 운영 시험] 사건 없이 부른 108개 묶음 — 위 매핑이 group을 지워 이 분기를 못 타고 옛 1세대1주택 엔진으로 가서 「아직 만들지 않은 묶음」 오류가 났던 것(A~D 넷 다)
           else { const eng = getUiCalcEngine_(); resultObj = typeof eng.judgeTaxReliefJS === 'function' ? eng.judgeTaxReliefJS(gi) : { error: '엔진에 판정 셈이 없습니다' }; }
         } catch (err) { resultObj = { ok: false, error: '종합판정 오류: ' + err.message }; }
         return { type: 'tool_result', tool_use_id: block.id, is_error: !!(resultObj && (resultObj.error && !resultObj.ok)), content: JSON.stringify(resultObj).slice(0, 20000) };
@@ -11252,6 +11290,8 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
       if (block.name === 'report_capability_gap') {
         const resultObj = commReportGap_(block.input || {});
+        // [2026.11.04 전용택 — 넥스 "신고해 두었다"고 말만 함] 파일 저장(file_saved)처럼 실제로 신고가 기록됐을 때만 서버가 화면에 표를 보낸다 — 넥스 말이 아니라 이 표가 근거
+        if (resultObj && resultObj.success) clientActions.push({ type: 'gap_reported', want: String((block.input || {}).userWanted || '').slice(0, 120), urgent: !!(block.input || {}).urgent });
         // [2026.10.30 1단계 신고 한 길] 사건이 연결된 대화면 사건처리 주간 점검표가 읽는 빠진 도구 기록에도 함께 남긴다(옛 지휘의 report_tool_gap 자리)
         if (nxCaseId_ && typeof caseProcAiLogGaps_ === 'function') { try { const cg = job_findCase_(nxCaseId_); const gi = block.input || {}; if (cg) caseProcAiLogGaps_(cg, [{ want: String(gi.userWanted || '').slice(0, 200), kind: '대화창 넥스 신고', tool: String(gi.neededTool || '').slice(0, 120), situation: String(gi.whyBlocked || '').slice(0, 200) }]); } catch (e) { resultObj.사건기록 = '사건처리 빠진 도구 기록 실패: ' + e.message; } }
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
@@ -12008,10 +12048,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
           try {
             const cc = job_findCase_(nxCaseId_);
             if (cc) citeRes = citeCheck_(cc, citeStripTable_(block.input.content));
+            // [2026.11.04 전용택 — 암산 검문] 조문·판례만 보던 근거 확인에 세액 숫자 대조를 붙인다 — 보고서 속 세액이 이 사건 계산 저장본에 없으면 ❌(넥스가 암산한 숫자)
+            if (cc && citeRes && !citeRes.error && typeof citeTaxFigures_ === 'function') { try { citeRes.tax = citeTaxFigures_(cc, block.input.content); } catch (e2) { citeRes.tax = null; } }
           } catch (e) { citeRes = { error: String(e && e.message || e) }; }
         }
         const r = runToolBlock_(block);
-        if (citeRes && r && !r.is_error && typeof r.content === 'string') r.content += citeRes.error ? '\n[근거 확인 실패] ' + citeRes.error : citeNexNote_(citeRes);
+        if (citeRes && r && !r.is_error && typeof r.content === 'string') r.content += citeRes.error ? '\n[근거 확인 실패] ' + citeRes.error : (citeNexNote_(citeRes) + (citeRes.tax && typeof citeTaxNote_ === 'function' ? citeTaxNote_(citeRes.tax) : ''));
+        if (citeRes && citeRes.tax && citeRes.tax.없음.length && r && !r.is_error) clientActions.push({ type: 'tax_unverified', count: citeRes.tax.없음.length, nums: citeRes.tax.없음.slice(0, 6), name: String(block.input.name || '') }); // 화면에 붉은 표
         // [2026.10.30 1단계 계산 한 길] 사건이 연결된 대화의 계산 도구 결과는 그 사건의 경우(안) 저장본으로 남기고, 저장본id를 결과 끝에 붙여 넥스가 인용하게 한다
         if (nxCaseId_ && r && !r.is_error && /^calculate_/.test(String(block.name)) && typeof r.content === 'string' && typeof nxCaseCalcToolSave_ === 'function') {
           try { const sv = nxCaseCalcToolSave_(nxCaseId_, block.name, block.input || {}, r.content); if (sv) r.content += '\n[사건 저장] ' + JSON.stringify(sv); } catch (e) { r.content += '\n[사건 저장 실패] ' + e.message; }
@@ -20473,6 +20516,21 @@ function work_ensureCaseStdSubfolders_(caseFolder, upType) {
 // 사건 폴더 안 하위폴더 하나(없으면 만듦) — 3번 신고제출 묶음·확보자료 저장이 쓴다
 function work_caseSubfolder_(caseFolder, name) { return my_getOrCreateSubfolder_(caseFolder, name); }
 
+// [2026.11.04 넥스 운영 시험 E] 이미 있는 폴더를 사건 폴더로 삼기 — 표준 하위 폴더만 갖춘다
+function work_adoptCaseFolder_(folderId, upType) {
+  try {
+    const caseFolder = DriveApp.getFolderById(folderId);
+    my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_UPLOAD);
+    my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
+    my_getOrCreateSubfolder_(caseFolder, WORK_SUBFOLDER_INTERNAL_REPORT);
+    try { work_ensureCaseStdSubfolders_(caseFolder, upType); } catch (e) { console.log('표준 하위 폴더 만들기 실패(사건 폴더는 계속): ' + e.message); }
+    return caseFolder.getId();
+  } catch (err) { return ''; }
+}
+function work_folderHasRequestFile_(folderId) {
+  try { const it = DriveApp.getFolderById(folderId).getFiles(); while (it.hasNext()) { if (/^의뢰서_/.test(it.next().getName())) return true; } } catch (e) { }
+  return false;
+}
 function work_getOrCreateCaseFolder_(사건명, upType) {
   try {
     const folderName = String(사건명 || '').trim();
@@ -20697,7 +20755,9 @@ function work_createCase0_(params) {
     //  화면 작업관리 새 사건이 이 길을 쓴다. 넥스·의뢰메모처럼 만든 뒤 바로 폴더에 파일을 넣는 길은 예전처럼 기다린다(폴더뒤로 없음)
     const reqLater_ = (params.의뢰서 && typeof params.의뢰서 === 'object') ? params.의뢰서 : null;
     const folderLater = !!params.폴더뒤로 && upType !== '상담' && (!reqLater_ || JSON.stringify(reqLater_).length < 8000); // [2026.11.03] 의뢰서 글이 크면(뒷일 적는 칸 9KB 한도) 예전처럼 바로
-    newRow[col.폴더ID] = (upType === '상담' || folderLater) ? '' : work_getOrCreateCaseFolder_(사건명, upType);
+    // [2026.11.04 넥스 운영 시험 E] 이미 있는 폴더(params.폴더ID — 넥스가 의뢰서를 읽은 그 폴더)를 주면 새 폴더를 만들지 않고 그 폴더에 표준 하위 폴더만 갖춘다(「임채원(임채원)_양도_자문」 빈 폴더가 또 생기던 것)
+    const givenFolderId_ = sanitizeDriveId_(String(params.폴더ID || '').trim());
+    newRow[col.폴더ID] = (upType === '상담' || folderLater) ? '' : givenFolderId_ ? work_adoptCaseFolder_(givenFolderId_, upType) : work_getOrCreateCaseFolder_(사건명, upType);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
 
@@ -20712,7 +20772,7 @@ function work_createCase0_(params) {
         // 후보 이름에도 똑같이 접두어를 붙여야 찾을 수 있다.
         // [2026.10.30 복합 자문] 개요(상담 메모)에 양도·증여·상속 중 둘 이상이 나오는 자문·상담 사건이면 복합 자문 의뢰서(의뢰서_복합자문)를 먼저 찾는다
         const multi_ = /자문|상담/.test(upType) && work_intakeTaxCount_(newRow[col.개요]) >= 2;
-        if (!(params.의뢰서 && typeof params.의뢰서 === 'object')) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), (multi_ ? ['복합자문'] : []).concat([semokLabel_ + upType, upType, semokLabel_]).map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }), newRow[col.개요]);
+        if (!(params.의뢰서 && typeof params.의뢰서 === 'object') && !(givenFolderId_ && work_folderHasRequestFile_(newRow[col.폴더ID]))) work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), (multi_ ? ['복합자문'] : []).concat([semokLabel_ + upType, upType, semokLabel_]).map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }), newRow[col.개요]);
       } catch (err) {
         console.log('의뢰서템플릿 적용 중 오류(사건 생성은 계속 진행): ' + err.message);
       }
@@ -22121,13 +22181,41 @@ function toolListWorkCases(status, customerName) {
 }
 
 function toolCreateWorkCase(input, contextPath) {
-  const 고객명 = String(input.customerName || (contextPath && contextPath[0]) || '').trim();
+  let 고객명 = String(input.customerName || (contextPath && contextPath[0]) || '').trim();
   const 사건명 = String(input.caseName || (contextPath && contextPath[1]) || '').trim();
   if (!고객명 || !사건명) return { error: '고객명과 사건명이 필요합니다. 사용자에게 확인해주세요.' };
-  return work_createCase({
-    고객명: 고객명, 사건명: 사건명, 세목: input.taxType,
-    담당자: input.assignee, 의뢰일: input.requestDate, 기준일: input.baseDate
+  // [2026.11.04 넥스 운영 시험] 서버는 사건명을 「고객명(납세자)_세목_업무유형」으로 스스로 만들고 그 이름의 폴더를 찾거나 새로 만든다 —
+  //  넥스가 준 caseName(이미 있는 폴더 이름)·업무유형·납세자가 안 넘어가 「윤정애(윤정애)_상속」 같은 빈 폴더가 따로 생겼다(가상사건 넷 모두).
+  //  → caseName이 「고객명(납세자)_세목_업무유형」 꼴이면 거기서 납세자·업무유형(·고객명)을 읽어 넘기고, 그 이름의 폴더가 이미 있으면 그 폴더를 사건에 잇는다.
+  let 납세자 = String(input.taxpayer || '').trim(), 업무유형 = String(input.workType || '').trim();
+  const m = 사건명.match(/^(.+?)\((.+?)\)_(양도|증여|상속|불복|사업)(?:_(자문|신고|상담|불복|경정|조사|기타))?$/);
+  if (m) { if (!input.customerName) 고객명 = m[1]; 납세자 = 납세자 || m[2]; 업무유형 = 업무유형 || m[4] || ''; }
+  let existingFolderId_ = '';
+  try { const it0 = getDefaultFolder().getFoldersByName(사건명); if (it0.hasNext()) existingFolderId_ = it0.next().getId(); } catch (e) { }
+  const r = work_createCase({
+    고객명: 고객명, 사건명: 사건명, 세목: input.taxType, 납세자: 납세자 || undefined, 업무유형: 업무유형 || undefined,
+    담당자: input.assignee, 의뢰일: input.requestDate, 기준일: input.baseDate, _by: '넥스', 폴더ID: existingFolderId_ || undefined
   });
+  if (r && r.success && r.case && existingFolderId_) { r.folderLinked = 사건명; return r; }
+  try {
+    if (r && r.success && r.case && m && String(r.case.사건명 || '') !== 사건명) {
+      // 서버가 만든 이름과 넥스가 말한 폴더 이름이 다르면(번호 접미 등) 그 이름의 폴더가 있는지 보고 있으면 거기에 잇고, 방금 만든 빈 폴더는 휴지통으로
+      const root = getDefaultFolder(); const it = root.getFoldersByName(사건명);
+      if (it.hasNext()) {
+        const want = it.next(), autoId = String(r.case.폴더ID || '');
+        if (autoId && autoId !== want.getId()) {
+          const lk = work_linkCaseFolder({ caseId: r.case.id, folderId: want.getId() });
+          if (lk && lk.success !== false) {
+            r.case.폴더ID = want.getId(); r.folderLinked = 사건명;
+            // 손으로 만든 폴더엔 표준 하위폴더가 없어 넥스 보고서가 폴더 맨 위에 떨어졌다(가상상속자문 자문보고서_상속세.md) — 서버가 만드는 폴더와 같게 갖춘다
+            try { my_getOrCreateSubfolder_(want, MY_SUBFOLDER_UPLOAD); my_getOrCreateSubfolder_(want, MY_SUBFOLDER_REPORT); my_getOrCreateSubfolder_(want, WORK_SUBFOLDER_INTERNAL_REPORT); work_ensureCaseStdSubfolders_(want, 업무유형); } catch (e) { r.subfolderWarning = e.message; }
+            try { const auto = DriveApp.getFolderById(autoId); if (!auto.getFiles().hasNext() && !auto.getFolders().hasNext()) auto.setTrashed(true); } catch (e) { }
+          }
+        }
+      }
+    }
+  } catch (e) { if (r) r.folderLinkError = e.message; }
+  return r;
 }
 
 function toolUpdateWorkCaseStatus(input, contextPath) {

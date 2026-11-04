@@ -107,6 +107,40 @@ function citeCheck_(c, text) {
   return { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 기준일: base, items: items, 수: 수 };
 }
 
+// [2026.11.04 전용택 사건 — 암산 검문] 넥스 보고서 속 세액 숫자가 이 사건의 계산 저장본(세액계산결과)에 실제로 있는 숫자인지 대조한다(GAS, 0원).
+//  사연: 넥스가 엔진을 한 번도 안 돌리고 암산한 표를 "최종 계산기 실행값"이라 적어 저장했는데, 근거 확인은 조문·판례만 봐서 ✅5로 통과했다.
+//  규칙: 세액·과세표준·공제 같은 낱말이 있는 줄의 100만 원 이상 숫자는 모두 저장본(최종세액·저장값 result·입력)에 있어야 한다. 없으면 ❌로 돌려주고 장부에 남긴다.
+var CITE_TAX_LINE_RE_ = /세액|과세표준|납부|산출|공제|감면|양도차익|지방소득세|가산세|환급/;
+function citeTaxFigures_(c, text) {
+  const pool = {};
+  const walk = function (v, depth) {
+    if (v == null || depth > 6) return;
+    if (typeof v === 'number') { if (isFinite(v) && Math.abs(v) >= 1000000) pool[String(Math.round(Math.abs(v)))] = 1; return; }
+    if (typeof v === 'string') { (v.match(/\d[\d,]{6,}/g) || []).forEach(function (s) { const n = Number(s.replace(/,/g, '')); if (isFinite(n) && n >= 1000000) pool[String(n)] = 1; }); return; }
+    if (Array.isArray(v)) { v.forEach(function (x) { walk(x, depth + 1); }); return; }
+    if (typeof v === 'object') Object.keys(v).forEach(function (k) { walk(v[k], depth + 1); });
+  };
+  const list = Array.isArray(c && c.세액계산결과) ? c.세액계산결과 : [];
+  list.forEach(function (e) { walk(e, 0); });
+  const found = [], missing = [], seen = {};
+  String(text || '').split('\n').forEach(function (line) {
+    if (!CITE_TAX_LINE_RE_.test(line)) return;
+    if (/^\s*(\||-|\*)?\s*(양도가액|취득가액|보상|면적|지분|㎡|단가)/.test(line)) return; // 가액·면적 줄은 세액이 아님(입력값은 서류 숫자)
+    (line.match(/\d{1,3}(?:,\d{3}){2,}|\d{7,}/g) || []).forEach(function (s) {
+      const n = Number(s.replace(/,/g, '')); if (!isFinite(n) || n < 1000000 || seen[n]) return; seen[n] = 1;
+      if (pool[String(n)]) found.push(s); else missing.push(s);
+    });
+  });
+  return { 저장본수: list.length, 있음: found, 없음: missing, 수: { ok: found.length, bad: missing.length } };
+}
+function citeTaxNote_(tf) {
+  if (!tf) return '';
+  if (!tf.있음.length && !tf.없음.length) return '';
+  if (!tf.없음.length) return '\n[세액 대조 — GAS 자동] 보고서의 세액 숫자 ' + tf.있음.length + '개가 모두 이 사건 계산 저장본에 있음 ✅';
+  return '\n[세액 대조 — GAS 자동] ❌ 보고서의 세액 숫자 ' + tf.없음.length + '개가 이 사건의 어느 계산 저장본에도 없음(' + (tf.저장본수 ? '저장본 ' + tf.저장본수 + '개와 대조' : '이 사건엔 계산 저장본이 하나도 없음') + '): ' + tf.없음.slice(0, 12).join(', ')
+    + ' — 이 숫자는 계산 도구를 돌린 값이 아니므로 보고서에 둘 수 없다. 지금 바로 calculate_*·case_ledger do=calc·calc_scenario로 계산해 저장본 숫자로 바꿔 다시 저장하고, 저장본 id를 보고서에 적어라. 계산 도구를 못 부르면 숫자를 지우고 "세액은 계산 도구로 아직 못 냈다"고 적어라. 사용자에게 이 ❌를 숨기지 말고 그대로 말하라.';
+}
+
 function citeSummary_(res) {
   if (!res || !res.items) return '';
   const s = res.수;
@@ -146,7 +180,8 @@ function citeLedgerMark_(c, advId, res) {
       const list = (L.adv && L.adv.reports) || [], it = list.filter(function (x) { return x && x.id === advId; })[0];
       if (!it) return { ok: false };
       it.cite = { at: res.at, 수: res.수, bad: res.items.filter(function (x) { return x.표시 === '❌'; }).map(function (x) { return x.근거 + ' — ' + x.결과; }).slice(0, 20), items: res.items.slice(0, 60) };
-      ledgerLogTo_(L, { by: 'GAS', what: '근거 확인', path: 'adv:' + it.id, detail: (it.title || '') + ' ' + citeSummary_(res) });
+      if (res.tax) it.taxCite = { at: res.at, 수: res.tax.수, 없음: res.tax.없음.slice(0, 20), 있음: res.tax.있음.slice(0, 20) }; // [2026.11.04] 세액 숫자 대조(저장본에 없는 세액)
+      ledgerLogTo_(L, { by: 'GAS', what: '근거 확인', path: 'adv:' + it.id, detail: (it.title || '') + ' ' + citeSummary_(res) + (res.tax && res.tax.없음.length ? ' · ❌ 저장본에 없는 세액 ' + res.tax.없음.length + '개(' + res.tax.없음.slice(0, 4).join(', ') + ')' : (res.tax && res.tax.있음.length ? ' · 세액 ' + res.tax.있음.length + '개 저장본과 같음' : '')) });
       return { ok: true };
     });
   } catch (e) { }

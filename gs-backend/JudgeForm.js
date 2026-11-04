@@ -149,3 +149,51 @@ function judgePrefill_(c, input) {
   });
   return { ok: true, 묶음: cat.묶음, 이름: cat.이름, 값: out, 출처: from };
 }
+
+// [2026.11.04 넥스 운영 시험] 넥스 도구 find_judgment — 쟁점 낱말로 판정 묶음을 찾아 준다(토큰 0). 화면 판정 창 「찾기」와 같은 목록(judgeCatalog_).
+//  가상사건 넷에서 넥스가 판정 묶음을 거의 안 쓰고(상속 7·증여 2·양도 0·가업승계 0) 계산기 체크 칸에 짐작으로 넣던 것 — 묶음 108개를 한 설명에 다 적어 둬도 못 찾았다.
+function nxFindJudgment_(input) {
+  var q = String((input && input.query) || '').trim();
+  if (!q) return { ok: false, error: '찾을 낱말(query)이 비었습니다' };
+  var hint = String((input && input.taxType) || '').trim();
+  // 넥스가 쓰는 말 → 묶음 이름에 쓰인 말(미국·해외 → 국외·비거주자, 딸 → 자녀 …)
+  var SYN = { 미국: '국외 비거주자', 해외: '국외 비거주자', 외국: '국외 비거주자', 송금: '국외', 이민: '비거주자 거주자', 딸: '자녀', 아들: '자녀', 손자: '손자녀', 손녀: '손자녀', 아버지: '직계존속', 어머니: '직계존속', 부모: '직계존속',
+    집: '주택', 아파트: '주택', 빌라: '주택', 오피스텔: '주택여부', 전세: '보증금 임대', 월세: '임대', 빚: '채무', 대출: '채무 담보', 보증금: '채무', 농지: '자경 농지', 논: '농지', 밭: '농지', 공장: '사업 가업', 회사: '법인 가업', 주식: '주식 비상장',
+    나눠내기: '연부연납', 분납: '연부연납', 대신내기: '물납', 기한: '신고기한 시기', 날짜: '시기', 포기: '상속포기 포기 상속인 법정상속분', 취소: '해제 반환', 무효: '해제 반환', 되돌림: '반환', 경매: '경매 공매', 압류: '체납',
+    빌려준: '대여금 무상대출', 빌린: '대여금 무상대출', 빌려: '대여금 무상대출', 돈: '금전 대여금', 전세: '보증금 부담부증여 임대', 시골집: '농어촌주택 상속주택 공동상속', 동생: '형제자매', 형: '형제자매', 누나: '형제자매', 승계: '가업', 물려: '가업 상속', 사망: '상속', 돌아가: '상속', 팔: '양도', 매도: '양도', 처분: '양도' };
+  var words = q.split(/[\s,·、]+/).map(function (w) { return w.trim(); }).filter(Boolean);
+  words = words.reduce(function (acc, w) { acc.push(w); if (SYN[w]) acc = acc.concat(SYN[w].split(' ')); return acc; }, []).filter(function (w, i, a) { return w.length >= 2 && a.indexOf(w) === i; });
+  if (!words.length) words = [q];
+  var cat = judgeCatalog_();
+  var scored = cat.map(function (c) {
+    var names = [c.묶음, c.이름].concat(c.별칭 || []).join(' ');
+    var basis = (c.근거 || []).join(' ');
+    var fields = (c.칸 || []).map(function (k) { return k && (k.이름 || k.name || String(k)); }).join(' ');
+    var s = 0, hit = 0;
+    words.forEach(function (w) {
+      var generic = /^(상속|증여|양도|세|세금|사건|때|경우|여부|판정|요건)$/.test(w); // 세목 낱말은 거의 모든 묶음에 있어 가볍게
+      var ws = 0;
+      if (names.indexOf(w) !== -1) ws = generic ? 1 : 6;
+      else if (fields.indexOf(w) !== -1) ws = generic ? 1 : 3;
+      else if (basis.indexOf(w) !== -1) ws = 1;
+      else if (w.length >= 3) { // 낱말 조각(「배우자공제」→「배우자」·「공제」, 「상속주택」→「상속」·「주택」)
+        var parts = [w.slice(0, 2), w.slice(-2), w.slice(0, 3), w.slice(-3)];
+        if (parts.some(function (p) { return p.length >= 2 && !/^(상속|증여|양도)$/.test(p) && (names.indexOf(p) !== -1); })) ws = 2;
+        else if (parts.some(function (p) { return p.length >= 2 && fields.indexOf(p) !== -1; })) ws = 1;
+      }
+      if (ws) hit++;
+      s += ws;
+    });
+    if (hit >= 2) s += 2 * (hit - 1); // 여러 낱말이 같이 맞으면 그 묶음
+    if (hint && c.무리 && c.무리.indexOf(hint.replace(/세$/, '')) !== -1) s += 1;
+    return { c: c, s: s };
+  }).filter(function (x) { return x.s > 0; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 10);
+  var out = scored.map(function (x) {
+    var c = x.c;
+    return { 묶음: c.묶음, 이름: c.이름, 별칭: (c.별칭 || []).slice(0, 6), 무리: c.무리, 근거: (c.근거 || []).slice(0, 4),
+      넣을칸: (c.칸 || []).slice(0, 14).map(function (k) { return k && k.이름 ? k.이름 + (k.종류 ? '(' + k.종류 + ')' : '') : String(k); }),
+      부르는법: c.따로창 ? 'judge_tax_relief group=「' + c.묶음 + '」(계산기 카드 물건·세대로 돎)' : 'judge_tax_relief group=「' + c.묶음 + '」 facts={넣을칸…}' };
+  });
+  return { ok: true, 찾은수: out.length, 전체묶음수: cat.length, 판정: out,
+    안내: out.length ? '맞는 묶음을 judge_tax_relief로 돌려 요건·잠정·할일·엔진칸을 받은 뒤 계산기를 돌려라. 모르는 사실 칸은 비워 두면 잠정으로 가른다.' : '맞는 묶음이 없음 — 다른 낱말로 다시 찾거나, 판정 도구가 없는 쟁점이면 report_capability_gap으로 알려라' };
+}
