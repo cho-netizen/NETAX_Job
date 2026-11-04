@@ -3334,7 +3334,11 @@ const DRIVE_TOOLS = [
         hasFixedDissolutionWithin3Years: { type: 'boolean', description: '§54④ 순자산가치 100% 적용(무조건) — 정관상 존속기한이 평가기준일부터 3년 이내로 확정된 경우.' },
         estimatedProfitPerShare: { type: 'number', description: '시행령§56② 1주당 추정이익(신용평가기관·회계법인·세무법인 둘 이상이 낸 값의 평균, 원). 넣으면 최근 3년 가중평균 대신 이 값으로 순손익가치를 셈. 일시·우발 사건(규칙§17의3①2~8호)이 있고, 신고기한까지 신고했고, 산정기준일·평가서 작성일이 신고기한 안이며, 산정기준일과 평가기준일이 같은 연도일 때만 넣을 것 — judge 「비상장평가」가 네 요건을 가림. 요건을 못 갖추면 비워 둠.' },
         isRealEstateAssetRatio80Plus: { type: 'boolean', description: '§54④단서 순자산가치 100% 적용(조건부) — 자산총액 중 부동산등 비율이 80% 이상인 경우. 가중평균값이 순자산가치보다 작을 때만 적용된다.' },
-        isStockAssetRatio80Plus: { type: 'boolean', description: '§54④단서 순자산가치 100% 적용(조건부) — 자산총액 중 주식등 비율이 80% 이상인 경우. 가중평균값이 순자산가치보다 작을 때만 적용된다.' }
+        isStockAssetRatio80Plus: { type: 'boolean', description: '§54④단서 순자산가치 100% 적용(조건부) — 자산총액 중 주식등 비율이 80% 이상인 경우. 가중평균값이 순자산가치보다 작을 때만 적용된다.' },
+        realEstateAssetRatio: { type: 'number', description: '[2026.11.05] 자산총액 중 부동산등(소득세법 §94①4호다목1)·2)) 비율(0~1 또는 %) — 주면 50% 이상(2:3)·80% 이상(④3호)을 엔진이 가름(체크 칸이 있으면 그것 우선).' },
+        stockAssetRatio: { type: 'number', description: '[2026.11.05] 자산총액 중 주식등 비율(0~1 또는 %) — 80% 이상이면 ④5호.' },
+        isQualifiedSpinoffNewCorp: { type: 'boolean', description: '[2026.11.05] 적격분할·적격물적분할로 신설된 법인이면 true — ④2호 「3년 미만」 사업기간을 분할 전 사업개시일부터 센다는 안내(2026.2.27).' },
+        otherUnlistedHoldingRatio: { type: 'number', description: '[2026.11.05] 이 법인이 보유한 다른 비상장법인 지분율(0~1 또는 %) — 10% 이하면 그 주식은 취득가액 평가 가능 안내(§54③).' }
       },
       required: ['totalIssuedShares', 'ownedShares']
     }
