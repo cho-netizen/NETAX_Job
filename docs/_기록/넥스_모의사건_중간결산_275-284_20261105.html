@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 모의사건 중간결산 275-284</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 모의사건 중간결산 275~284 · 2026-11-05</h1>
+<p class="sub">클라우드 세션(가지 claude/gifted-clarke-hqwn4y). 11-05 새벽 속행분 열두 번째 열 건. 열 건 모두에서 엔진(또는 서버 함수) 틈을 잡았습니다 — 조문의 단서·뒷문장·각 호를 칸으로 안 두던 자리가 되풀이.</p>
+<h2>1. 사건 카드</h2>
+<table><tr><th>번호·유형</th><th>놓치던 것</th><th>고친 것</th><th>검토대상</th></tr>
+<tr><td>275 공익법인 가산세 지급명세서</td><td class="red">§78⑫⑬ 유형 없음·⑤ 단서 제외</td><td class="red">엔진 + enum 1·칸 6</td><td>5</td></tr>
+<tr><td>276 문화유산 징수유예 담보·의무</td><td class="red">④⑤ 담보·⑥⑦ 의무·⑧ 전시 기한</td><td class="red">엔진 + 칸 4</td><td>5</td></tr>
+<tr><td>277 임대료 환산 토지·건물 나누기</td><td class="red">시행령 §50⑧ 세 경우 없음</td><td class="red">서버 함수·엔진 + 칸 7</td><td>5</td></tr>
+<tr><td>278 납부유예 추징 기한·재유예</td><td class="red">④ 기한·③ 정당한 사유·⑤·⑥⑦</td><td class="red">엔진 + enum 2·칸 6</td><td>5</td></tr>
+<tr><td>279 유류분 시효·경정 기한</td><td class="red">§1117 시효·경정청구 기한 글로만</td><td class="red">엔진 + 칸 2</td><td>5</td></tr>
+<tr><td>280 문화유산 주택 각 1개·양도주택</td><td class="red">「각각 1개씩」·「일반주택 양도」 안 봄</td><td class="red">엔진(화면 전용)</td><td>5</td></tr>
+<tr><td>281 혼인 합가 각자 1주택</td><td class="red">각자 1주택·무주택자 동거봉양 혼인·먼저 양도·④2호</td><td class="red">엔진(화면·묶음 전용)</td><td>5</td></tr>
+<tr><td>282 장기임대 감면 요건</td><td class="red">5호·개시일·5/10년·2018 취득·3개월 등록·10년·5%</td><td class="red">엔진 + 칸 9</td><td>5</td></tr>
+<tr><td>283 순손익 주식수 환산 여러 변동</td><td class="red">분모 설명 틀림·여러 변동 못 셈</td><td class="red">서버 함수·엔진 + 칸 2</td><td>5</td></tr>
+<tr><td>284 고시 전 기준시가 준용</td><td class="red">⑥⑦ 뒷문장(⑤ 준용) 없음 · 토지만으로 산식 돌림(보완)</td><td class="red">엔진 + 설명 (보완 커밋)</td><td>5</td></tr>
+</table>
+<h2>2. 공통점</h2>
+<ul>
+<li>조문의 「단서·뒷문장·각 호」가 계산기에 안 들어와 있던 것이 열 건 중 아홉 — 본문 산식은 맞는데 예외·제외·준용이 빠진 꼴. 사건 하나당 칸 2~9개를 더해 메움.</li>
+<li>284에서 시험 실패에도 「;」 때문에 커밋된 실수(220·244와 같은 자리)를 다시 함 — 이후 체인을 모두 &amp;&amp;로 바꾸고 보완 커밋으로 바로잡음.</li>
+<li>엔진 예외 목록(서버에서 셈하는 도구 — 임대료 환산·주식수 환산)은 Code.js 함수와 엔진 둘 다 고쳐 같은 답을 내도록 시험함.</li>
+</ul>
+<h2>3. 검토대상 합계</h2>
+<p>50건. 되풀이: 시행령·규칙 원문 미수록(§29 자본금·§69의3② 정당한 사유·시행규칙 §15 율), 「~전까지」 기한의 쉬는 날 미룸 여부, 두 번 호출 잇기(기타자산 비율 → 비상장 평가, 이월과세액 → 사후관리).</p>
+<h2>4. 회귀·검문</h2>
+<p>엔진 회귀 174건 다름 0 · 판정 20건 · 가족 지도 · 세션 시험 통과 · 넥스 도구 검문 ✓(78개·25,224자) · 서버 화면 파일 점검 ✓ · node --check(Code.js) 통과.</p>
+<h2>5. 커밋 목록(가지)</h2>
+<p>d12ee1c(275) 09cf0b2(276) c658a44(277) 40babf7(278) d9056bd(279) 2615177(280) 08e9643(281) 7d5d32f(282) 36d6dac(283) ad17ee8(284)·eca237d(보완)</p>
+</main></body></html>
