@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 179 장애인 신탁</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 179 — 「장애인이 증여받은 재산의 과세가액 불산입(상증법 §52의2) — 신탁 요건·신청·사후관리」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_disabled_person_trust_exclusion)는 한도와 사후관리 과세 가액을 세고 있었지만, 요건을 「충족 예/아니오」 한 칸으로 받아 자익 3요건·타익 계약 3조항·신청 기한·날짜 예외를 가르는 자리가 없었습니다. 판정 묶음 하나로 메웠고, 「달 말일부터 n개월」 날짜 보조함수의 틀린 버릇을 함께 고쳤습니다. 새 넥스 도구·지시문 줄은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>중증장애인 「오씨」가 2026-04-10 어머니에게서 4억을 받아 신탁업자에 자익신탁(앞서 2억 불산입 받은 적 있음). 갈래: 2028-02-01 해지 뒤 19일 만에 재가입 / 2.5개월 뒤 재가입 / 생활비 월 200만원씩 12개월 인출 / 타익신탁인데 위탁자 지위 이전 조항 없음 / 신청을 8월 5일에 함.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001·소득세법 시행령 20261001 시행판)</h2>
+<ul>
+<li>§52의2①: 장애인(소득세법 시행령 §107①)이 금전·유가증권·부동산(시행령 §45의2③)을 증여받아 본인 수익자로 신탁 — 신탁업자·이익 전부 수익자·사망 때까지(끝나면 연장). ②: 타익신탁 — 신탁업자·이익 전부 수익자(사망 뒤 잔여재산 제외)·계약에 가(잔여재산 장애인 귀속)·나(수익자 변경 금지)·다(위탁자 사망 시 지위 이전). ③: 자익 증여재산 + 타익 원본 생애 합산 5억.</li>
+<li>④: 자익신탁 사후관리 — 해지·만료(1개월 안 재가입 제외)·수익자 변경·이익의 타인 귀속·원본 감소면 시행령 ④의 날에 증여로 보아 즉시 과세. 단서: 부득이한 사유(시행령 ⑨ — 영업정지·재개발 해지 뒤 2개월 안 재가입, 운용 중 가액 감소), 중증장애인 등(⑤)의 의료비·특수교육비·생활비 월 150만원(⑥) 인출. ⑦: 인출신청서·증빙을 인출일 전후 3개월 안 신탁업자에게. ⑪: 과세 가액 — 해지·변경 전액, 귀속 비율, 감소액.</li>
+<li>⑤: 신고기한(§68① — 증여일 속한 달 말일부터 3개월)까지 신청, 타익은 최초 수익의 신고기한. ⑥: 타익은 최초 신고·신청 뒤 생략 가능.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>요건이 한 칸(meetsRequirements)이라 타익신탁 계약 조항 셋 가운데 하나가 빠진 것을 걸러 주지 못했고, 신청 기한을 넘기면 불산입 자체가 없다는 점을 알리지 않았음.</li>
+<li>해지 뒤 1개월 재가입·부득이 2개월 재가입·인출신청서 ±3개월 같은 날짜 예외가 없었고, 사유 이름을 잘못 넣으면(예: terminated) 계산기가 「부득이한 사유」로 읽어 과세 없음이 나왔음(아래 검토대상 1).</li>
+<li class="red">177·178 묶음에서 「달 말일부터 n개월」을 apAddM_(말일, n)으로 셈해 30일 달(4·6·9·11월) 증여가 31일 달에 걸리면 하루 빨랐음(4월 10일 증여 → 7월 30일). 177·178 시험 날짜는 12·10·3월이라 우연히 맞았던 것.</li>
+</ul>
+<h2>4. 고친 것 (이 컴퓨터만, 서버 올리기 전)</h2>
+<ul>
+<li class="red">JudgeMore.js에 「장애인신탁」 묶음(judgeDisabledTrust_, 별칭 자익신탁·타익신탁·§52의2) 새로 만듦: 사람·재산 → 자익 3요건 / 타익 계약 3조항 → 신청 기한(§68①·§5① 공휴일) → 계산기로 5억 한도 → 사후관리 사유별(해지 1개월·부득이 2개월·수익자 변경·이익 귀속·원본 감소와 중증 용도·월 150만원·신청서 ±3개월) → 계산기 사유 코드로 과세 가액 → 할 일(사유일 달 말일 + 3개월).</li>
+<li class="red">공용 보조함수 jmEomM_(d, n)(n개월 뒤 그 달 말일)을 두고 177(국외전출)·178(초과배당)·179가 쓰도록 바꿈 — 177·178 시험 결과는 그대로.</li>
+<li class="red">Code.js judge 묶음 enum·facts 설명·묶음 설명에 「장애인신탁」 한 줄, Federation.js 이음새 점검 한 줄.</li>
+<li>계산기(엔진)·넥스 지시문·도구 수는 그대로(검문 ✓ 78개·25,224자).</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>결과</th></tr>
+<tr><td>자익 4억·앞선 누적 2억</td><td>신청기한 2026-07-31 · 불산입 3억 · 넘는 1억은 증여세 계산기(disabledTrustAmount)로 · 사후관리 할 일</td></tr>
+<tr><td>해지 뒤 19일 만에 재가입</td><td>사유 아님 — 충족 그대로</td></tr>
+<tr><td>해지 뒤 2.5개월 재가입</td><td>해지일 전액 증여 · 신고 2028-05-31</td></tr>
+<tr><td>중증 생활비 월 200만원 × 12</td><td>150만원까지 예외, 넘는 50만원 × 12 = 600만원 과세(인출한 날마다) · 인출신청서 기간 안 제출 ✔</td></tr>
+<tr><td>타익 — 위탁자 지위 조항 없음 / 신청 8월 5일</td><td>안 됨(조항 다 ✘) / 안 됨(기한 7월 31일 넘김)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건 다름 0 · 판정 20건 모두 맞음 · 가족 지도 통과 · 174·176·177·178 시험 그대로 · 넥스 도구 검문 ✓ · 서버 화면 파일 점검 ✓</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>계산기가 enum 밖 사유 이름(terminated)을 받으면 「부득이한 사유」로 읽어 즉시 과세 없음이 나옴 — 엔진 쪽 입력 검사가 필요(이번엔 묶음이 바른 코드만 넘기도록 함, 엔진은 안 고침)</td><td>묶음이 코드 변환</td><td>높음</td></tr>
+<tr><td>2</td><td>원본 감소 과세 때 증여재산공제·10년 합산 여부는 계산기도 [확인 필요] — 묶음은 가액만 넘김</td><td>가액 → calculate_gift_tax</td><td>중간</td></tr>
+<tr><td>3</td><td>타익신탁의 사후관리(해지·수익자 변경)는 §52의2④ 조문 밖 — 요건 위반으로 보는지, 위탁자 쪽 증여가 생기는지</td><td>알림만</td><td>낮음</td></tr>
+<tr><td>4</td><td>장애인(소득령 §107①)·중증(시행령 §45의2⑤) 해당은 넥스가 증명서로 가려 예/아니오로 넣음</td><td>받은 값 그대로</td><td>높음</td></tr>
+<tr><td>5</td><td>다른 묶음들에 apAddM_(말일, n) 버릇이 더 있는지 — 176 묶음은 달 계산으로 맞게 셈, 그 밖 옛 묶음은 못 훑음</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
