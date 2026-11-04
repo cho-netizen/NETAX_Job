@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 216 증자 이익 상장 단서</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 216 — 「증자 이익의 증여(상증법 §39·시행령 §29) 계산기 — 다섯 갈래 산식·문턱과 주권상장법인등 단서(증자 후 시가와 견줌)」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_capital_increase_gift_tax)를 열 갈래로 돌려 시행령 §29②1~5호·단서를 맞췄습니다. 비상장 산식·문턱은 모두 맞았고, 주권상장법인등이면 증자 후 1주당 평가가액과 견주는 단서(저가는 적은 값, 고가는 큰 값)가 없던 것을 현물출자 계산기와 같은 칸으로 더했습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>가족 법인(증자 전 10만 주, 1주당 평가 10만)이 신주 1만 주를 5만에 발행, 아버지가 전부 포기해 아들이 실권주 1만 주 배정. 견주기: 상장법인으로 증자 후 시가 8만·12만 / 실권주 미배정(2호) 차이 5%·50% / 고가 15만 배정·상장 시가 12만 / 고가 미배정 10% / 비주주 직접 배정 고가 / 증자 전·후 모두 0 이하.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§39①1호(저가 발행): 가. 실권주 배정 나. 실권주 미배정(특수관계인 인수) 다. 비주주 직접 배정 라. 균등 초과 배정 / 2호(고가 발행) 가~라 대칭 / 3호 전환주식. ②: 소액주주 2명 이상이면 1명으로 봄. 증여일(시행령 §29①): 상장법인 주주 배정은 권리락일, 전환주식은 전환일, 그 밖은 주식대금 납입일(신주인수권증서 교부일).</li>
+<li>시행령 §29②: 1호(가·다·라목) = (증자 후 1주당 가액 − 인수가액)×실권주·신주 수, <b>단서: 주권상장법인등은 증자 후 1주당 평가가액이 산식보다 적으면 그 가액</b>. 2호(나목) = 균등 증자 기준 산식, 문턱 30% 또는 3억. 3호(고가 배정) = (인수가액 − 증자 후 가액)×실권주, <b>단서: 상장이면 평가가액이 산식보다 크면 그 가액</b>. 4호(고가 미배정) 문턱 30%·3억, 5호(비주주·초과) 문턱 없음. 단서: 증자 전·후 1주당 가액이 모두 0 이하면 이익 없음.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>비상장 산식·문턱은 모두 맞음: 저가 배정 (95,455 − 5만)×1만 = 4억 5,455만 / 2호 5% 미달·50% 과세 / 고가 배정 (15만 − 104,545)×1만 / 4호 10% 미달 / 5호 문턱 없이 과세 / 둘 다 0 이하 → 0.</li>
+<li class="red">주권상장법인등 단서가 없었다 — 상장법인이 증자 후 시가 8만인데 산식 95,455로 셈해 이익 4억 5,455만(법은 8만 → 3억). 고가도 시가 12만 &gt; 산식 104,545이면 12만을 써야 하는데 산식으로 셈했다. 현물출자(§39의3)·합병(§38) 계산기는 10월·11-02에 같은 단서를 넣었는데 증자만 빠져 있었다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateCapitalIncreaseGiftTaxJS: listedPostValuePerShare(상장 증자 후 1주당 평가가액)를 주면 저가 갈래는 산식과 적은 값, 고가 갈래는 큰 값을 쓰고 「상장시가견줌」으로 어느 값을 썼는지 돌려줌. 비우면 전과 같음.</li>
+<li class="red">gs-backend/Code.js calculate_capital_increase_gift_tax 칸 하나(listedPostValuePerShare) 설명 추가 — 도구 수·지시문 길이는 그대로(검문 ✓ 78개·25,224자). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>저가 배정 비상장</td><td>증자 후 95,455 → 이익 4억 5,455만 → 공제 5천만</td><td>맞음(1호 가목)</td></tr>
+<tr><td>상장 시가 8만 / 12만</td><td class="red">8만 → 3억 / 산식 95,455 (전엔 둘 다 95,455)</td><td>맞음(1호 단서)</td></tr>
+<tr><td>2호 차이 5% / 50%</td><td>제외 / 과세</td><td>맞음(2호 문턱)</td></tr>
+<tr><td>고가 배정 15만 / 상장 시가 12만</td><td>(15만 − 104,545)×1만 / <span class="red">12만 → 3억</span></td><td>맞음(3호·단서)</td></tr>
+<tr><td>4호 10% / 5호 / 모두 0 이하</td><td>제외 / 과세 / 0</td><td>맞음</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, node --check 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>4·5호(고가 미배정·비주주)의 증자 후 가액에 3호 나목 단서(상장 큰 값)를 같이 적용한 것 — 4·5호 산식이 「3호 나목의 가액」을 인용하므로 그 단서까지 따라온다고 읽음 [확인 필요]</td><td>큰 값</td><td>중간</td></tr>
+<tr><td>2</td><td>§39② 소액주주(시행령 §29⑤ — 1% 미만·액면 3억 미만) 2명 이상을 1명으로 보는 계산은 사람이 특수관계인 실권주 수에 반영</td><td>칸</td><td>높음</td></tr>
+<tr><td>3</td><td>증여일(권리락일·납입일·증서 교부일·전환일)은 giftDate 칸에 사람이 넣음 — 신고기한·공제 연혁은 그 날 기준</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>3호 전환주식(§39①3호)은 갈래가 없음 — 전환일 기준 교부 주식 가액 차이는 손셈 — 판단거리</td><td>—</td><td>중간</td></tr>
+<tr><td>5</td><td>상장법인 모집(§39①1호가목 괄호 — 유가증권 모집 방법 배정 제외)은 계산기 밖(사람이 가름)</td><td>—</td><td>높음</td></tr>
+</table>
+</main></body></html>

@@ -10703,10 +10703,15 @@
     if (preShares <= 0) return { error: '증자전 발행주식총수가 필요합니다.' };
 
     let giftAmount, gateApplies, gateThreshold, postValuePerShare;
+    // [2026.11.05 모의사건 216] 시행령 §29②1호가목·2호가목·3호나목 단서 — 주권상장법인등이면 증자 후 1주당 평가가액(§63 시가)과 견줘
+    //  저가 발행(1호·2호)은 산식 값보다 적으면 그 가액, 고가 발행(3호, 4·5호도 3호 나목을 씀)은 산식 값보다 크면 그 가액. 현물출자(§39의3) 계산기와 같은 칸 listedPostValuePerShare.
+    const listedPost_ = Number(p.listedPostValuePerShare) || 0;
+    const lowCase_ = caseType === 'low_allocated' || caseType === 'low_unallocated';
+    const pickPost_ = function (formula) { return listedPost_ > 0 ? (lowCase_ ? Math.min(formula, listedPost_) : Math.max(formula, listedPost_)) : formula; };
 
     if (caseType === 'low_allocated' || caseType === 'high_allocated') {
       const increasedShares = Number(p.increasedShares) || 0;
-      postValuePerShare = (preValuePerShare * preShares + issuePricePerShare * increasedShares) / (preShares + increasedShares);
+      postValuePerShare = pickPost_((preValuePerShare * preShares + issuePricePerShare * increasedShares) / (preShares + increasedShares));
       const allocatedShares = Number(p.allocatedShares) || 0;
       if (caseType === 'low_allocated') {
         giftAmount = Math.max(0, Math.round((postValuePerShare - issuePricePerShare) * allocatedShares));
@@ -10716,14 +10721,14 @@
       gateApplies = false; gateThreshold = 0;
     } else if (caseType === 'low_unallocated') {
       const equalIncreaseShares = Number(p.equalIncreaseShares) || 0;
-      postValuePerShare = (preValuePerShare * preShares + issuePricePerShare * equalIncreaseShares) / (preShares + equalIncreaseShares);
+      postValuePerShare = pickPost_((preValuePerShare * preShares + issuePricePerShare * equalIncreaseShares) / (preShares + equalIncreaseShares));
       const deemedAllocatedShares = Number(p.deemedAllocatedShares) || 0;
       giftAmount = Math.max(0, Math.round((postValuePerShare - issuePricePerShare) * deemedAllocatedShares));
       gateApplies = true;
       gateThreshold = Math.min(postValuePerShare * 0.3 * deemedAllocatedShares, Infinity);
     } else if (caseType === 'high_unallocated') {
       const increasedShares = Number(p.increasedShares) || 0;
-      postValuePerShare = (preValuePerShare * preShares + issuePricePerShare * increasedShares) / (preShares + increasedShares);
+      postValuePerShare = pickPost_((preValuePerShare * preShares + issuePricePerShare * increasedShares) / (preShares + increasedShares));
       const forfeitedShares = Number(p.forfeitedShares) || 0;
       const relatedAcquiredShares = Number(p.relatedAcquiredShares) || 0;
       const equalIncreaseTotalShares = Number(p.equalIncreaseTotalShares) || 0;
@@ -10733,7 +10738,7 @@
       gateThreshold = 0; // 3억 또는 30% 비율, 아래에서 별도 판정
     } else { // high_nonshareholder
       const increasedShares = Number(p.increasedShares) || 0;
-      postValuePerShare = (preValuePerShare * preShares + issuePricePerShare * increasedShares) / (preShares + increasedShares);
+      postValuePerShare = pickPost_((preValuePerShare * preShares + issuePricePerShare * increasedShares) / (preShares + increasedShares));
       const underAllocatedShares = Number(p.underAllocatedShares) || 0;
       const relatedAcquiredShares = Number(p.relatedAcquiredShares) || 0;
       const nonShareholderAndExcessTotalShares = Number(p.nonShareholderAndExcessTotalShares) || 0;
@@ -10797,7 +10802,7 @@
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), offshore60_(p), lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('gift', p.giftDate || p.giftReceivedDate)); // [2026.10.22 증여-11] 미납 기간 1일 율 연혁
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
-      과세대상여부: true, 증자후1주당평가액: Math.round(postValuePerShare), 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount,
+      과세대상여부: true, 증자후1주당평가액: Math.round(postValuePerShare), 상장시가견줌: listedPost_ > 0 ? { 증자후_평가가액: listedPost_, 쓴값: Math.round(postValuePerShare), 근거: lowCase_ ? '시행령 §29②1호가목·2호가목 단서(적은 값)' : '시행령 §29②3호나목 단서(큰 값)' } : undefined, 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
       과세표준: taxBase, 산출세액: calculatedTax + gsx_.amount, 세대생략가산액: gsx_.amount || undefined, 산출세액_할증전: gsx_.amount ? calculatedTax : undefined, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,

@@ -2519,6 +2519,7 @@ const DRIVE_TOOLS = [
         preShares: { type: 'number', description: '증자전 발행주식총수.' },
         issuePricePerShare: { type: 'number', description: '신주 1주당 인수가액(원).' },
         increasedShares: { type: 'number', description: 'low_allocated/high_allocated/high_unallocated/high_nonshareholder일 때 — 증자로 실제 증가한 주식수.' },
+        listedPostValuePerShare: { type: 'number', description: '주권상장법인등일 때 증자 후 1주당 평가가액(원, §63 시가) — 저가 발행은 산식 값과 적은 값, 고가 발행은 큰 값을 씀(시행령 §29② 단서). 비상장이면 비움.' },
         allocatedShares: { type: 'number', description: 'low_allocated/high_allocated일 때 — 배정받은 실권주수(또는 신주수, 균등조건 초과분 포함).' },
         equalIncreaseShares: { type: 'number', description: 'low_unallocated일 때 — 증자전 지분비율대로 균등하게 증자할 경우의 증가주식수.' },
         deemedAllocatedShares: { type: 'number', description: 'low_unallocated일 때 — 실권주총수×증자후신주인수자의지분비율×(신주인수자의특수관계인의실권주수/실권주총수)로 계산한 배정간주실권주수.' },
