@@ -3579,7 +3579,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_proportional_allocation',
-    description: '토지·건물 등을 함께 양도(취득)했는데 각 자산의 가액 구분이 불분명할 때, 소득세법시행령§166④에 따라 감정가액 또는 기준시가 비율로 안분한다. 2개 이상의 자산이 필요하다.',
+    description: '토지·건물 등을 함께 양도(취득)했는데 각 자산의 가액 구분이 불분명할 때, 소득세법 §100②·시행령 §166⑥(부가가치세법 시행령 §64① 준용 — 기준시가 비율, 하나라도 없으면 감정가액, 그것도 없으면 장부가액 비율)로 안분한다. 2개 이상의 자산이 필요하다. [2026.11.05 조문 바로잡음(전엔 §166④) · 선박 등 유형재산에 장부가액이 없으면 자산의 valuation62Value(상증법 §62① 평가액)로 안분(2026.2.27)]',
     input_schema: { type: 'object', properties: {
       method: { type: 'string', enum: ['standard_price', 'standard_price_vat', 'area', 'acq_expense_together', 'acq_expense_separate'], description: 'standard_price=양도가액만 기준시가 비율로 안분, standard_price_vat=위와 같되 건물분 부가세(10/110)를 별도 계산, area=면적 비율로 안분, acq_expense_together=양도가액 비율을 취득가액·필요경비에도 동일 적용, acq_expense_separate=취득가액은 취득시점 기준시가 비율로 별도 안분. 생략하면 standard_price.' },
       totalTransferPrice: { type: 'number', description: '전체 양도가액(원, 필수)' },
@@ -3591,6 +3591,7 @@ const DRIVE_TOOLS = [
           label: { type: 'string', description: '자산 이름(예: "토지", "건물")' },
           standardPriceTransfer: { type: 'number', description: '양도시점 기준시가 또는 감정가액(원) — method가 area가 아닐 때 필수' },
           standardPriceAcquisition: { type: 'number', description: '취득시점 기준시가(원) — method가 acq_expense_separate일 때 필수' },
+          valuation62Value: { type: 'number', description: '[2026.11.05] 선박·항공기·차량·기계장비 등 그 밖의 유형재산인데 기준시가·장부가액이 없으면 상증법 §62① 평가액(재취득가액 → 장부가액 → 시가표준액, calculate_other_tangible_property_value) — 기준시가 자리에 씀(시행령 §166⑥).' },
           area: { type: 'number', description: '면적 — method가 area일 때 필수' },
           isBuilding: { type: 'boolean', description: 'method가 standard_price_vat일 때 — 이 자산이 건물이라 부가세를 별도 계산해야 하는지' }
         } }
