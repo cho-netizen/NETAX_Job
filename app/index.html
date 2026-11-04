@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:20 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:22 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28162,6 +28162,24 @@ function nxMdOpenWindow(title, src, opts){
   // 임대료 등의 환산가액 (§61⑤, 시행령 §50) — 임대 중인 부동산은 이 환산가액과 기준시가(보충적평가액)
   // 중 큰 금액을 그 자산의 가액으로 한다. 환산율은 12%(시행규칙 §15).
   window.calculateRentalConversionValueJS = function (annualRent, deposit) {
+    // [2026.11.05 모의사건 277] 첫 인자가 객체면 Code.js toolCalculateRentalConversionValue와 같은 꼴(시행령 §50⑧ 토지·건물 나누기)로 돌려준다 — 숫자 둘이면 예전대로 합계 숫자.
+    if (annualRent && typeof annualRent === 'object') {
+      const p = annualRent;
+      const total = Math.round((Number(p.annualRent) || 0) / 0.12 + (Number(p.deposit) || 0));
+      const r = { 임대료환산가액: total, 산식: '1년간 임대료 ÷ 12%(시행규칙 §15) + 임대보증금(시행령 §50⑦)' };
+      const land = Number(p.landStandardPrice) || 0, bld = Number(p.buildingStandardPrice) || 0;
+      const mode = p.ownershipCase ? String(p.ownershipCase) : '';
+      if (mode === 'separate_contracts') {
+        const lr = Math.round((Number(p.landAnnualRent) || 0) / 0.12 + (Number(p.landDeposit) || 0)), br = Math.round((Number(p.buildingAnnualRent) || 0) / 0.12 + (Number(p.buildingDeposit) || 0));
+        r.토지_환산가액 = lr; r.건물_환산가액 = br; r.나누기_근거 = '시행령 §50⑧2호가목 — 각자 귀속 환산가액 그대로';
+        if (land > 0) r.토지_평가가액 = Math.max(land, lr); if (bld > 0) r.건물_평가가액 = Math.max(bld, br);
+      } else if (land > 0 && bld > 0) {
+        const ls = Math.round(total * land / (land + bld)), bs = total - ls;
+        r.토지_환산가액 = ls; r.건물_환산가액 = bs; r.토지_평가가액 = Math.max(land, ls); r.건물_평가가액 = Math.max(bld, bs);
+        r.나누기_근거 = mode === 'single_party' ? '시행령 §50⑧2호나목 — 전체로 보아 기준시가 비율로 나눔' : '시행령 §50⑧1호 — 기준시가 비율로 나눔';
+      }
+      return r;
+    }
     return Math.round((Number(annualRent) || 0) / 0.12 + (Number(deposit) || 0));
   };
 

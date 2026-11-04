@@ -3366,10 +3366,17 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_rental_conversion_value',
-    description: '임대 중인 부동산의 임대료 등 환산가액(상증세법§61⑤, 시행령§50, 시행규칙§15) = 연간임대료÷12% + 임대보증금. 이 값과 기준시가(보충적평가액) 중 큰 금액을 그 자산의 가액으로 한다.',
+    description: '임대 중인 부동산의 임대료 등 환산가액(상증세법§61⑤, 시행령§50⑦, 시행규칙§15) = 연간임대료÷12% + 임대보증금. 이 값과 기준시가(보충적평가액) 중 큰 금액을 그 자산의 가액으로 한다(시가가 있으면 안 씀, §60①). [2026.11.05] 토지·건물 기준시가를 주면 시행령 §50⑧대로 토지·건물에 나눠 각각 평가가액을 낸다.',
     input_schema: { type: 'object', properties: {
       annualRent: { type: 'number', description: '연간 임대료(원)' },
-      deposit: { type: 'number', description: '임대보증금(원)' }
+      deposit: { type: 'number', description: '임대보증금(원)' },
+      landStandardPrice: { type: 'number', description: '[2026.11.05] 토지 기준시가(§61①~④ 평가액, 원) — 건물 기준시가와 함께 주면 환산가액을 비율로 나눔(시행령 §50⑧1호·2호나목).' },
+      buildingStandardPrice: { type: 'number', description: '[2026.11.05] 건물 기준시가(원).' },
+      ownershipCase: { type: 'string', enum: ['same_owner', 'single_party', 'separate_contracts'], description: '[2026.11.05] same_owner=토지·건물 소유자 같음(⑧1호) / single_party=소유자가 다르고 한 사람만 제3자와 임대차 당사자(⑧2호나목 — 전체로 보아 비율 나누기) / separate_contracts=각자 제3자와 당사자(⑧2호가목 — 각자 귀속 환산가액, 아래 토지·건물 칸).' },
+      landAnnualRent: { type: 'number', description: '[2026.11.05] separate_contracts — 토지 소유자가 받는 연간 임대료(원).' },
+      landDeposit: { type: 'number', description: '[2026.11.05] separate_contracts — 토지 임대보증금(원).' },
+      buildingAnnualRent: { type: 'number', description: '[2026.11.05] separate_contracts — 건물 소유자가 받는 연간 임대료(원).' },
+      buildingDeposit: { type: 'number', description: '[2026.11.05] separate_contracts — 건물 임대보증금(원).' }
     }, required: [] }
   },
   {
@@ -8119,7 +8126,23 @@ function toolCalculateListedStockValue(p) {
 
 function toolCalculateRentalConversionValue(p) {
   p = p || {};
-  return { 임대료환산가액: Math.round((Number(p.annualRent) || 0) / 0.12 + (Number(p.deposit) || 0)) };
+  const total = Math.round((Number(p.annualRent) || 0) / 0.12 + (Number(p.deposit) || 0));
+  const r = { 임대료환산가액: total, 산식: '1년간 임대료 ÷ 12%(시행규칙 §15) + 임대보증금(시행령 §50⑦)' };
+  // [2026.11.05 모의사건 277] 시행령 §50⑧ — 토지·건물 소유현황에 따른 나누기. 전엔 합계 하나만 내서 토지·건물을 따로 평가(각각 기준시가와 견줌)할 길이 없었음.
+  //  1호 소유자 같음 / 2호나 한 사람만 임대차 당사자: 환산가액을 토지·건물 기준시가 비율로 나눔 · 2호가 각자 당사자: 각자 귀속 환산가액 그대로.
+  const land = Number(p.landStandardPrice) || 0, bld = Number(p.buildingStandardPrice) || 0;
+  const mode = p.ownershipCase ? String(p.ownershipCase) : '';
+  if (mode === 'separate_contracts') {
+    const lr = Math.round((Number(p.landAnnualRent) || 0) / 0.12 + (Number(p.landDeposit) || 0)), br = Math.round((Number(p.buildingAnnualRent) || 0) / 0.12 + (Number(p.buildingDeposit) || 0));
+    r.토지_환산가액 = lr; r.건물_환산가액 = br; r.나누기_근거 = '시행령 §50⑧2호가목 — 토지·건물 소유자가 각자 제3자와 임대차 당사자: 각자에게 귀속되는 환산가액을 그대로';
+    if (land > 0) r.토지_평가가액 = Math.max(land, lr); if (bld > 0) r.건물_평가가액 = Math.max(bld, br);
+  } else if (land > 0 && bld > 0) {
+    const ls = Math.round(total * land / (land + bld)), bs = total - ls;
+    r.토지_환산가액 = ls; r.건물_환산가액 = bs; r.토지_평가가액 = Math.max(land, ls); r.건물_평가가액 = Math.max(bld, bs);
+    r.나누기_근거 = mode === 'single_party' ? '시행령 §50⑧2호나목 — 한 사람만 제3자와 임대차 당사자: 제3자가 내는 임대료·보증금을 토지·건물 전체 것으로 보아 기준시가 비율로 나눔(둘 사이 임대차 유무와 무관)' : '시행령 §50⑧1호 — 토지·건물 소유자 같음: 환산가액을 토지·건물 기준시가 비율로 나눔';
+    r.안내 = '토지·건물을 따로 평가할 때 각각 「기준시가 vs 나눈 환산가액」 중 큰 값(§61⑤). 시가(감정·매매사례)가 있으면 §61⑤ 자체를 쓰지 않음(§60①).';
+  } else if (mode) r.안내 = '나누기를 하려면 토지·건물 기준시가(landStandardPrice·buildingStandardPrice)를 함께 넣을 것(separate_contracts면 각자의 임대료·보증금 칸).';
+  return r;
 }
 
 // 저당권·질권 등이 설정된 재산 및 임대차계약이 체결된 재산의 평가특례(상증세법§66, 시행령§63①1호) —
