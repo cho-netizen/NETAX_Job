@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 218 조직변경 이익</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 218 — 「법인 조직 변경 등에 따른 이익의 증여(상증법 §42의2·시행령 §32의2) 계산기 점검 — 지분 변동·평가액 변동 산식과 30%/3억 문턱」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_org_change_gift_tax)를 다섯 갈래로 돌려 §42의2①②·시행령 §32의2①②를 맞췄습니다(주식의 포괄적 교환 갈래는 11-02 복잡사건 53에서 손본 그대로). 모두 조문대로였고 코드 변경은 없습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>가족 법인의 사업 양수도·조직 변경으로 아들 지분이 1만 주에서 1.5만 주로(변동 후 1주당 10만, 변동 전 10만). 견주기: 1.2만 주(이익 2억) / 평가액 변동 10억→14억·12.5억 / 20억→24억.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 상증법 20260102·시행령 20261001 시행판)</h2>
+<ul>
+<li>§42의2①: 주식의 포괄적 교환·이전, 사업 양수도·교환, 조직 변경 등으로 소유지분이나 가액이 변동돼 얻은 이익(변동 전·후 재산의 평가차액)을 증여재산가액으로, 기준금액 미만 제외. ②: 특수관계 아니면 정당한 사유 없을 때만. 시행령 §32의2①: 1호 지분 변동 = (후 지분 − 전 지분) × 변동 후 1주당 가액(§28·§29·§29의2·§29의3 준용), 2호 평가액 변동 = 후 − 전. ②: 기준금액 = 변동 전 재산가액의 30%와 3억 중 적은 금액. §42의2는 합산배제 아님 → 증여재산공제·10년 합산.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — (1.5만 − 1만)×10만 = 5억 ≥ min(10억×30%, 3억) → 공제 5천만 → 산출 8천만 / 2억 &lt; 3억 제외 / 14억 − 10억 = 4억 과세 / 2.5억 제외 / 20억→24억 4억 ≥ 3억 과세. 문턱 분모는 변동 「전」 재산가액(beforePropertyValue 또는 전 주식 수 × 전 1주당 가액)으로 셈.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>지분 1만→1.5만·후 10만·전 10만</td><td>5억 → 공제 5천만 → 산출 8천만</td><td>맞음(①1호·§53)</td></tr>
+<tr><td>지분 1만→1.2만</td><td>2억 &lt; 3억 제외</td><td>맞음(②)</td></tr>
+<tr><td>평가액 10억→14억 / 12.5억 / 20억→24억</td><td>4억 과세 / 2.5억 제외 / 4억 과세</td><td>맞음(①2호·②)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 216 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>변동 후 1주당 가액(§28·§29·§29의2·§29의3 준용)은 사람이 셈해 넣음 — 합병·증자·감자·현물출자 계산기와 이어 쓰는 길은 지시문에 없음(판단거리)</td><td>칸</td><td>중간</td></tr>
+<tr><td>2</td><td>특수관계 아닌 사이의 정당한 사유(②)는 사람이 가름 — 안내만</td><td>안내</td><td>높음</td></tr>
+<tr><td>3</td><td>포괄적 교환 갈래의 「내놓은 자회사 주식 손실을 빼는지」 [확인 필요]는 복잡사건 53 그대로</td><td>두 숫자</td><td>중간</td></tr>
+<tr><td>4</td><td>증여재산공제 칸이 relationDeductionLimit — 215와 같은 칸 이름 판단거리</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>사업 양수도로 생긴 이익이 §35(저가 양수)와 겹칠 때 어느 조문이 먼저인지는 계산기 밖</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
