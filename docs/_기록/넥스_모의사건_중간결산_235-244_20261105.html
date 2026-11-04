@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 모의사건 중간결산 235-244</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 모의사건 중간결산 235~244 · 2026-11-05</h1>
+<p class="sub">클라우드 세션(가지 claude/gifted-clarke-hqwn4y). 11-05 새벽 속행분 여덟 번째 열 건. 보충적 평가(토지·영업권·특허·지상권)에서 주택 특례(거주주택·장기저당·귀농·인구감소지역)·§43①로 — 열 건 중 두 건(239·244)에서 엔진 틈, 나머지는 조문대로였습니다.</p>
+<h2>1. 사건 카드</h2>
+<table><tr><th>번호·유형</th><th>놓치던 것</th><th>고친 것</th><th>검토대상</th></tr>
+<tr><td>235 토지·주택 보충평가</td><td>없음(곱셈·고시 시점은 묶음 안내)</td><td>없음</td><td>5</td></tr>
+<tr><td>236 영업권 평가</td><td>없음(3년 가중평균 50% − 자기자본 10%, 5년 환산)</td><td>없음 — 환산 조문 §16②는 238에서 채움</td><td>5</td></tr>
+<tr><td>237 특허권 평가</td><td>없음(÷1.1ⁿ·20년·§64)</td><td>없음</td><td>5</td></tr>
+<tr><td>238 지상권·광업권 평가</td><td>없음(2%·채굴연수 환산)</td><td>없음</td><td>5</td></tr>
+<tr><td>239 증여 특례 중복 조문</td><td class="red">§43① 목록 밖 조문(§45의2 등)을 섞어도 큰 것 하나만</td><td class="red">엔진(목록 판정·알림)</td><td>5</td></tr>
+<tr><td>240 거주주택 특례</td><td>없음(거주 2년·㉑㉒㉓·직전거주주택보유주택)</td><td>없음 — 2019 「생애 한 차례」 부칙은 판단거리</td><td>5</td></tr>
+<tr><td>241 장기저당담보주택 특례</td><td>없음(60세·10년·만기 처분·합가·만기 전)</td><td>없음</td><td>5</td></tr>
+<tr><td>242 귀농·이농주택 특례</td><td>없음(요건·5년·최초 1개·3년 사후관리)</td><td>없음</td><td>5</td></tr>
+<tr><td>243 인구감소지역 주택 특례</td><td>없음(기간·한도 연혁·관심지역)</td><td>없음</td><td>5</td></tr>
+<tr><td>244 상속주택 미분할 추징 기한</td><td class="red">신고·납부기한(등기일 달 말일부터 2개월)을 글로만</td><td class="red">엔진 + 도구 칸 — 첫 커밋 Code.js 쉼표 빠짐 → 보완 커밋</td><td>5</td></tr>
+</table>
+<h2>2. 공통점</h2>
+<ul>
+<li>10월 말에 만든 주택 특례 계산기들(§155·§155의2·§156의2·§156의3·조특법 §71의2)은 조문과 맞음 — 틈은 「날짜를 글로만 안내」(244)와 「목록 밖 조문 섞임」(239)처럼 계산기 바깥 경계에서 남.</li>
+<li>작업 실수 둘(220·244 — 편집·문법 검사 실패 뒤 사슬이 이어짐)은 모두 보완 커밋으로 바로잡았고, 그 뒤 커밋 사슬은 node --check·시험 성공에만 이어지게 묶음. 넥스 도구 검문에 Code.js 문법 검사가 없는 점은 세무사님께 판단거리로 올림(244 점검서).</li>
+</ul>
+<h2>3. 검토대상 합계</h2>
+<p>50건. 되풀이: 평가 자료(기대여명·생명표·종가·공시가격 해 선택)는 사람이, 특례 요건 사실(거주·세대·농지소재지)은 묶음이 가름.</p>
+<h2>4. 회귀·검문</h2>
+<p>엔진 회귀 174건 다름 0 · 판정 20건 · 가족 지도 · 세션 시험 통과 · 넥스 도구 검문 ✓(78개·25,224자) · 서버 화면 파일 점검 ✓.</p>
+<h2>5. 커밋 목록(가지)</h2>
+<p>b941674(235) 97e6a07(236) 7ad817c(237) d9fb497(238) d1c56ab(239) c4ec08f(240) 33b6874(241) aee384d(242) 15e0d82(243) a436f7f(244)·1d2fdf9(보완)</p>
+</main></body></html>
