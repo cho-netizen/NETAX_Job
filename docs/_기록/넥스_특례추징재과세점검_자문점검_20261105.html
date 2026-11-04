@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 223 특례 추징 재과세</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 223 — 「창업자금·가업승계 특례 사후관리 추징(조특법 §30의5⑥⑦·§30의6③⑧·시행령 §27의5⑨) 계산기 점검 — 일반세율 재과세·이자상당액·신고기한」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_special_rate_gift_tax_clawback)를 네 갈래로 돌려 §30의5⑥⑦·시행령 §27의5⑨(이자: 당초 신고기한 다음 날부터 사유 발생일까지 × 1일 10만분의 22)를 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다. 재과세 세액에 신고세액공제 3%를 붙이는지는 판단거리로 남깁니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2024-03-01 창업자금 30억 특례 증여(특례세액 2.5억 납부)를 받은 아들이 2년 안 창업하지 않아 2026-06-01 추징 사유. 견주기: 2023-01-10 가업승계 100억을 2026-02-01 위반 / 관계 칸을 바깥에 넣음.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 판)</h2>
+<ul>
+<li>§30의5⑥: 창업 안 함(1호 창업자금 전액)·업종 외(2호)·4년 안 미사용(4호)·10년 안 용도 외(5호)·10년 안 폐업(6호) 등이면 그 금액에 상증법에 따라 증여세·상속세 각각 부과 + 이자상당액. ⑦: 사유 달 말일부터 3개월 안 신고·납부. 시행령 §27의5⑨: 이자 = 결정 증여세액 × (당초 신고기한 다음 날~사유 발생일) × §11의2⑩2호 율. §30의6③⑧ 가업승계도 같은 구조.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 30억 미창업: 일반 증여세 (30억 − 5천만) → 10.2억 − 신고세액공제 3,060만 = 9.894억 − 특례세액 2.5억 = 추가 7.394억, 이자 7.394억 × 22/100,000 × 700일(2024-07-02~2026-06-01; 당초 기한 2024-06-30 일요일 → 07-01, 다음 날 07-02) = 1억 1,387만, 신고기한 2026-09-30 / 가업승계(2023-01-10 증여) 이자 기산일 2023-05-03(기한 4-30 일요일 → 5-1 근로자의 날 → 5-2, 다음 날), 위반 2026-02-01 → 신고기한 2026-06-01(5-31 일요일) / 관계는 donorDoneeContext 안에 — 바깥에 넣으면 오류로 바로 알림.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>창업자금 30억 미창업(2024-03-01 → 2026-06-01)</td><td>추가 7.394억 + 이자 1억 1,387만, 기한 2026-09-30</td><td>맞음(⑥1호·⑦·시행령 ⑨)</td></tr>
+<tr><td>가업승계 100억 위반 2026-02-01</td><td>기산 2023-05-03, 기한 2026-06-01</td><td>맞음(§30의6⑧·국기법 §5)</td></tr>
+<tr><td>관계를 바깥 칸에</td><td>오류 안내</td><td>—</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 221 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>재과세 세액에 신고세액공제 3%(상증법 §69)를 붙이는 것 — 추징 신고(⑦)가 「신고기한 내 신고」인지 해석례 확인 — 판단거리</td><td>3% 뺌</td><td>중간</td></tr>
+<tr><td>2</td><td>이자 율 연혁(1일 10만분의 25 → 22, 2022.2.15 시행령 개정)은 calculate_clawback_interest 'daily'가 구간별로 — 그 전 기간이 섞이면 구간 표 확인</td><td>구간별</td><td>높음</td></tr>
+<tr><td>3</td><td>⑥6호 폐업·휴업의 정당한 사유(시행령 ⑩ — 부채 초과 폐업, 1회 2년 휴업)는 사람이 가름</td><td>—</td><td>높음</td></tr>
+<tr><td>4</td><td>창업자금 「가치증가분」(⑥5·6호, 시행령 ⑪)은 clawbackAmount에 사람이 더해 넣음</td><td>칸</td><td>중간</td></tr>
+<tr><td>5</td><td>상속 때(⑥ 「상속세를 각각 부과」·§30의5⑧ 상속재산 가산)는 상속세 계산기에서 사전증여로 — 지시문에 잇기 없음, 판단거리</td><td>—</td><td>중간</td></tr>
+</table>
+</main></body></html>
