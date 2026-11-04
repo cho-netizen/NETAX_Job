@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 262 신축주택 취득 감면</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 262 — 「신축주택 취득자 양도세 감면(조특법 §99·§99의2·§99의3) 계산기 점검 — 5년 안 전액·5년 뒤 기준시가 비례, 고가주택 배제(§99·§99의3만), §99의2 6억/85㎡」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_new_house_acquisition_reduction)를 다섯 갈래로 돌려 세 조문의 짜임(11-03 복잡사건 110에서 원문 확인된 고가주택 단서 차이 포함)을 맞췄습니다. 모두 조문대로였고 코드 변경은 없습니다(「신축주택감면」 묶음은 §99의2 판정, 이번은 계산기 세 갈래).</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2002-06-01 취득한 §99의3 신축주택(3억)을 2006년 5억 / 2026년 9억(기준시가 2억→3억→8억)에 양도. 견주기: 고가주택 / §99의2(2013년 취득) 고가·6억/85㎡ 요건.</li>
+</ul>
+<h2>2. 법 (엔진 주석·11-03 원문 확인 — 조특법 §99·§99의3은 읽기용 발췌에 없음)</h2>
+<ul>
+<li>§99(1998.5.22~1999.6.30 취득)·§99의3(2001.5.23~2003.6.30 취득): 취득일부터 5년 안 양도면 그 양도소득 전액 감면(소득금액 제외), 5년 뒤면 5년간 발생분만 — 고가주택 제외(① 단서). 시행령 산식(5년 시점 기준시가 비례, 재개발·재건축 신축주택은 종전주택 취득 당시 기준시가 분모). §99의2(2013.4.1~12.31 취득): 취득가액 6억 이하 또는 85㎡ 이하, 고가주택 단서 없음(원문).</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 5년 안 2억 전액 / 5년 뒤 6억 × (3억−2억)÷(8억−2억) = 1억 감면, 5억 과세 / 고가주택 §99의3 배제 / §99의2는 고가여도 적용(알림)·6억/85㎡ 미충족 안 됨.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>5년 안 / 5년 뒤 / 고가 §99의3 / §99의2 고가 / 6억·85㎡ 미충족</td><td>전액 / 1억 감면 / 안 됨 / 적용 / 안 됨</td><td>맞음</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 255 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>취득기간·지역 요건(§99의2③ 등)·감면신청은 도구가 안 봄 — 「신축주택감면」 묶음·사람</td><td>묶음</td><td>높음</td></tr>
+<tr><td>2</td><td>세 조문 원문이 읽기용 발췌에 없어 엔진 주석(원문 확인 기록)에 기댐</td><td>—</td><td>중간</td></tr>
+<tr><td>3</td><td>§133 감면 한도·농특세(§99의2는 농특세 비과세?)는 묶음이 — 해석례</td><td>묶음</td><td>중간</td></tr>
+<tr><td>4</td><td>재개발·재건축 신축주택의 종전주택 기준시가 분모 산식은 10-20 원문 그대로</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>과세대상 양도소득금액을 일반 계산기에 넘기는 잇기는 안내에 있음</td><td>안내</td><td>높음</td></tr>
+</table>
+</main></body></html>
