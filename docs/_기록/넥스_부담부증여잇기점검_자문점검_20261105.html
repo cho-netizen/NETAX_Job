@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 200 부담부증여 잇기</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 200 — 「부담부증여 — 묶음 → 증여세·양도세 두 계산기 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">잇기 점검. 「부담부증여」 묶음이 낸 경우(안)의 엔진칸을 증여세 계산기와 양도로 보는 부분 계산기에 그대로 넣어 숫자를 손으로 맞춰 봤습니다. 모두 시행령 §159①·상증법 §47③대로였고 코드 변경은 없습니다. 기타 필요경비를 안분하지 않는 설계(도구 설명에 명시)는 해석 대조가 필요해 판단거리로 남깁니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>「소씨」가 2026-04-10 아들에게 아파트(유사매매 10억, 2015-05-01 취득 4억)를 담보대출 3억(2022년, 금융기관 증빙)과 함께 줌. 양도비 등 필요경비 500만원.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 소득세법 20260101·시행령 20261001·상증법 20260102 시행판)</h2>
+<ul>
+<li>소득세법 §88 1호 후단: 부담부증여의 수증자 인수 채무액 부분은 양도. 시행령 §159①: 양도로 보는 부분의 취득가액 = 취득가액 × 채무액 ÷ 증여가액, 양도가액 = 양도 당시 가액 × 채무액 ÷ 증여가액(기준시가 평가면 취득가액도 기준시가). 상증법 §47①③: 채무액은 과세가액에서 빼되 배우자·직계존비속 간은 인수 사실이 객관적으로 입증될 때만.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>없음 — 묶음: 담보 채무 ✔·실제 인수 ✔·금융기관 증빙 ✔ → 경우 ① 증여세(채무 3억 뺌) + 양도로 보는 부분(양도가액 3억·취득가액 1.2억). 증여세 계산기: 과세가액 7억 − 공제 5천만 = 과표 6.5억 → 산출 1.35억 → 신고세액공제 뒤 130,950,000. 양도 부분 계산기: 채무 비율 0.3 → 취득가액 1.2억, 양도차익 3억 − 1.2억 − 500만 = 175,000,000(장특공·세율은 일반 양도세 계산기로).</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul><li>없음(점검서만). 넥스 지시문·도구 수 그대로(검문 ✓ 78개·25,224자).</li></ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>단계</th><th>도구 값</th><th>손셈</th></tr>
+<tr><td>증여세 과세가액·공제·과표</td><td>7억 · 5천만 · 6.5억</td><td>10억 − 3억 = 7억 ✓</td></tr>
+<tr><td>증여세 산출·납부</td><td>135,000,000 · 130,950,000</td><td>6.5억 × 30% − 6천만 = 1.35억, 3% 공제 ✓</td></tr>
+<tr><td>양도 부분 양도가액·취득가액</td><td>3억 · 1.2억</td><td>10억 × 0.3 · 4억 × 0.3 ✓</td></tr>
+<tr><td>양도차익</td><td>175,000,000(필요경비 500만 전액)</td><td>§159①은 취득·양도가액만 안분 — 필요경비 전액(설계)</td></tr>
+</table>
+<p class="sub">코드 변경 없음 — 회귀·검문은 199 상태 그대로.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>기타 필요경비(자본적 지출·양도비)를 채무 비율로 안분하지 않는 설계 — 해석례(집행기준·예규)에서 안분하는 쪽이 있는지 대조 필요(판단거리)</td><td>전액</td><td>중간</td></tr>
+<tr><td>2</td><td>양도 부분의 장특공·세율은 일반 계산기로 다시 넣어야 함 — 넥스가 취득일·보유기간을 증여자 기준으로 넣는지</td><td>안내</td><td>높음</td></tr>
+<tr><td>3</td><td>증여세 신고기한과 양도세 예정신고기한이 같은 날(증여일 속한 달 말일 + 3개월) — 묶음 할 일에 둘 다 있는지</td><td>묶음</td><td>높음</td></tr>
+<tr><td>4</td><td>증여자가 1세대1주택이면 양도로 보는 부분 비과세(고가 12억 초과분 제외) — 묶음의 증여자1세대1주택 칸으로 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>수증자가 10년 안 양도 시 이월과세(§97의2①)에서 유상 부분 처리는 181 검토대상 1 그대로</td><td>—</td><td>낮음</td></tr>
+</table>
+</main></body></html>
