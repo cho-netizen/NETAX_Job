@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:15 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -26111,10 +26111,22 @@ function nxMdOpenWindow(title, src, opts){
     const penaltyType = p.penaltyType;
     const validTypes = ['report_not_filed', 'stock_holding_exceeded_5pct', 'management_violation', 'director_excess',
       'stock_holding_exceeded_related', 'advertising', 'income_underused', 'dedicated_account_not_opened', 'dedicated_account_unused',
-      'disclosure_violation', 'report_not_filed_5pct', 'cultural_heritage_status_not_filed', 'cultural_heritage_transfer_not_filed'];
+      'disclosure_violation', 'report_not_filed_5pct', 'cultural_heritage_status_not_filed', 'cultural_heritage_transfer_not_filed',
+      'payment_statement_not_filed']; // [2026.11.05 모의사건 275] §78⑫⑬ 지급명세서·명의개서 명세 미제출
     if (validTypes.indexOf(penaltyType) === -1) return { error: 'penaltyType을 ' + validTypes.join('/') + ' 중에서 선택하세요.' };
 
     let penaltyAmount, note;
+    // [2026.11.05 모의사건 275] §78⑫⑬ — §82①(보험금·퇴직금 지급명세서)·③④(주식·사채 등 명의개서 내용) 미제출·누락·불분명: 해당 금액의 1천분의 2(③④는 1만분의 2),
+    //  제출기한 지난 후 1개월 안에 내면 1천분의 1(1만분의 1). 소득세·법인세에 가산해 징수하고 산출세액이 없어도 징수. 전엔 이 유형이 도구에 없었음.
+    if (penaltyType === 'payment_statement_not_filed') {
+      const amt_ = Number(p.statementAmount) || 0;
+      if (amt_ <= 0) return { error: '미제출·누락·불분명한 부분에 해당하는 금액(지급금액·명의개서 대상 금액)이 필요합니다.' };
+      const nameChg_ = p.isNameChangeStatement === true, late1m_ = p.filedWithinOneMonthLate === true;
+      const rate_ = nameChg_ ? (late1m_ ? 0.0001 : 0.0002) : (late1m_ ? 0.001 : 0.002);
+      penaltyAmount = Math.round(amt_ * rate_);
+      note = '§78' + (late1m_ ? '⑬' : '⑫') + ' — ' + (nameChg_ ? '§82③·④ 주식·출자지분·공채·사채·채권 등 명의개서·변경 내용' : '§82①·② 보험금(해약환급금·중도인출금 포함)·퇴직금 등 지급명세서') + '를 ' + (late1m_ ? '제출기한이 지난 후 1개월 이내에 제출해 ' : '제출하지 않거나 누락·불분명해 ') + '해당 금액(' + amt_.toLocaleString('ko-KR') + '원)의 ' + (nameChg_ ? (late1m_ ? '1만분의 1' : '1만분의 2') : (late1m_ ? '1천분의 1' : '1천분의 2')) + '을 소득세·법인세에 가산해 징수합니다(산출세액이 없어도 징수). 이 가산세는 공익법인이 아니라 지급자·명의개서 취급자에게 붙습니다.';
+      return { 가산세액: penaltyAmount, 적용율: rate_, 안내: note };
+    }
     if (penaltyType === 'report_not_filed') {
       // §78③ — §48⑤ 출연재산 사용계획·진도 보고서 미제출·불분명
       const baseTaxAmount = Number(p.baseTaxAmount) || 0;
@@ -26132,10 +26144,18 @@ function nxMdOpenWindow(title, src, opts){
       const revenueAndDonationAmount = Number(p.revenueAndDonationAmount) || 0;
       if (revenueAndDonationAmount <= 0) return { error: '해당 과세기간(사업연도)의 수입금액과 그 기간에 출연받은 재산가액의 합계가 필요합니다.' };
       const violationSubType = p.violationSubType;
+      // [2026.11.05 모의사건 275] §78⑤ 단서 → 시행령 §80⑨: 1호(세무확인)·2호(장부)는 §43② 각 호의 공익법인등(소규모 등)이면 제외 — 다만 2호는 §41의2⑥ 공익법인등은 제외하지 않음 / 3호(회계감사)는 §43③·④ 공익법인등이면 제외.
+      const small43_2_ = p.isSmallOrgSect43_2 === true, org41_2_6_ = p.isSect41_2_6Org === true, org43_3_4_ = p.isSect43_3or4Org === true;
+      if ((violationSubType === 'tax_confirmation' && small43_2_) || (violationSubType === 'bookkeeping' && small43_2_ && !org41_2_6_)) {
+        return { 가산세액: 0, 안내: '§78⑤ 단서·시행령 §80⑨1호 — 시행령 §43② 각 호에 해당하는 공익법인등(소규모 등)이라 ' + (violationSubType === 'tax_confirmation' ? '세무확인 보고의무' : '장부 작성·비치의무') + ' 불이행 가산세를 부과하지 않습니다' + (violationSubType === 'bookkeeping' ? '(§41의2⑥ 공익법인등이면 제외되지 않음 — isSect41_2_6Org 확인)' : '') + '.' };
+      }
+      if (violationSubType === 'audit' && org43_3_4_) {
+        return { 가산세액: 0, 안내: '§78⑤ 단서·시행령 §80⑨2호 — 시행령 §43③·④에 해당하는 공익법인등이라 회계감사 불이행 가산세를 부과하지 않습니다.' };
+      }
       let raw = Math.round(revenueAndDonationAmount * 0.0007);
       if (violationSubType === 'tax_confirmation') raw = Math.max(raw, 1000000);
       penaltyAmount = raw;
-      note = '§78⑤에 따라 (해당 과세기간·사업연도의 수입금액+그 기간에 출연받은 재산가액)×1만분의7을 상속세(증여세)로 징수합니다' + (violationSubType === 'tax_confirmation' ? '(세무확인 보고의무 불이행의 경우 계산된 금액이 100만원 미만이면 100만원으로 합니다).' : '(장부작성·비치의무 또는 회계감사의무 불이행).');
+      note = '§78⑤에 따라 (해당 과세기간·사업연도의 수입금액+그 기간에 출연받은 재산가액 — 이미 세무확인·회계감사를 이행한 분으로서 계속 직접 사용하는 분은 뺀 가액, 시행령 §80⑧)×1만분의7을 상속세(증여세)로 징수합니다' + (violationSubType === 'tax_confirmation' ? '(세무확인 보고의무 불이행의 경우 계산된 금액이 100만원 미만이면 100만원으로 합니다).' : '(장부작성·비치의무 또는 회계감사의무 불이행).');
     } else if (penaltyType === 'director_excess') {
       // §78⑥ — §48⑧ 이사 정원(5분의1, 최소5명 기준) 초과 이사·특수관계인 임직원
       const relatedExpenseAmount = Number(p.relatedExpenseAmount) || 0;
