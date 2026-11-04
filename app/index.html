@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:34 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 19:40 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -20697,12 +20697,22 @@ function nxMdOpenWindow(title, src, opts){
       }
     }
 
+    // [2026.11.05 모의사건 255] §97의9② — 사유 발생일이 속하는 달의 말일부터 2개월(증여 3개월, 상속 6개월) 안 납부. triggerDate를 주면 기한을 셈(토·일·공휴일은 국세기본법 §5①로 미룸).
+    const trD_ = String(p.triggerDate || '').slice(0, 10);
+    let trDue_ = '', trMonths_ = 0;
+    if (p.triggerType && /^\d{4}-\d{2}-\d{2}$/.test(trD_)) {
+      const isGift_ = p.triggerType === 'partial_gift' || (p.triggerType === 'full_gift_or_inheritance' && p.isInheritance !== true);
+      const isInh_ = p.triggerType === 'full_gift_or_inheritance' && p.isInheritance === true;
+      trMonths_ = isInh_ ? 6 : isGift_ ? 3 : 2;
+      trDue_ = shiftTaxDeadline_(new Date(Date.UTC(Number(trD_.slice(0, 4)), Number(trD_.slice(5, 7)) + trMonths_, 0)).toISOString().slice(0, 10));
+    }
     return {
       이연적용여부: true,
       이연세액: deferredTaxAmount,
       계산근거: isolatedTransferResult,
       사후관리_추징액: clawback,
-      안내: '이연세액은 이 현물출자 자산을 그 과세기간의 유일한 양도자산으로 가정해 계산한 양도소득 산출세액입니다.' + (clawbackNote ? ' ' + clawbackNote : '')
+      사유발생일: trD_ || undefined, 납부기한: trDue_ || undefined, 납부기한_근거: trDue_ ? '조특법 §97의9② — 사유 발생 달 말일부터 ' + trMonths_ + '개월' : undefined,
+      안내: '이연세액은 이 현물출자 자산을 그 과세기간의 유일한 양도자산으로 가정해 계산한 양도소득 산출세액입니다.' + (clawbackNote ? ' ' + clawbackNote : '') + (trDue_ ? ' 납부기한 ' + trDue_ + '(사유 ' + trD_ + ', ' + trMonths_ + '개월).' : '')
     };
   };
 

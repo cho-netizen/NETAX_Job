@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>넥스 점검 255 프로젝트 리츠 현물출자</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#f7f7f4;--card:#fff;--fg:#1d2433;--mute:#5b6475;--navy:#1f3a68;--gold:#b08a2e;--line:#dde1e8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#14171d;--card:#1c2029;--fg:#e6e8ee;--mute:#9aa3b2;--navy:#8fb0e8;--gold:#d8b45a;--line:#2e3442;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 "Noto Sans KR",system-ui,sans-serif;margin:0;padding:24px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:16px}
+h1{font-size:22px;margin:0;color:var(--navy)}h2{font-size:17px;margin:0 0 8px;color:var(--navy);border-left:4px solid var(--gold);padding-left:8px}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:6px 8px;vertical-align:top}th{background:var(--card);text-align:left}.sub{color:var(--mute)}.red{color:#c62828}
+</style></head><body><main>
+<h1>넥스 점검 255 — 「프로젝트 부동산투자회사 현물출자자 과세이연(조특법 §97의9·시행령) 계산기 — 일몰·5년·이연세액·부분 처분 비율·누적 50% 확인과 납부기한(사유 달 말일부터 2·3·6개월) 잇기」 자문점검 · 2026-11-05</h1>
+<p class="sub">계산기(calculate_project_reit_contribution_deferral)를 여섯 갈래로 돌려 §97의9①②·시행령(해당연도 처분비율·누적 50%)을 맞췄습니다. 이연·추징 금액은 맞았으나 ②의 납부기한(처분 2개월, 증여 3개월, 상속 6개월)을 내지 않아 사유 발생일 칸으로 셈하게 했습니다.</p>
+<h2>1. 사건 (시험용 가정)</h2>
+<ul>
+<li>2026-03-01 토지(취득 2015년 10억)를 프로젝트 리츠에 20억으로 현물출자. 견주기: 2029년 출자·설립 5년 뒤 / 2027-04-10 주식 30% 처분 / 누적 60%(기납부 30%분) / 20% 증여 / 전부 상속.</li>
+</ul>
+<h2>2. 법 (원문을 직접 읽음 — 조특법·시행령 읽기용 판)</h2>
+<ul>
+<li>§97의9①: 설립 신고 수리일부터 5년 안·2028.12.31까지 토지·건물을 현물출자한 양도소득세를 주식 처분 때까지 이연. ②: 1호 주식 처분·2호 리츠 해산·3호 5년 안 30% 공모 미달·4호 증여·상속이면 사유 발생 달 말일부터 2개월(증여 3개월, 상속 6개월) 안 납부. 시행령: 해당연도 주식처분비율만큼, 누적 50% 이상이면 전액(기납부 차감). ③: 공모 전 처분 등은 이자상당가산액.</li>
+</ul>
+<h2>3. 도구가 놓치던 것</h2>
+<ul>
+<li>이연세액·부분 처분 30%·누적 60% 전액 − 기납부·전부 상속 전액은 맞음.</li>
+<li class="red">납부기한을 글로만 안내 — 날짜를 내지 않았다.</li>
+</ul>
+<h2>4. 고친 것</h2>
+<ul>
+<li class="red">gs-backend/manage/taxcalc-engine.html calculateProjectReitContributionDeferralJS: triggerDate(+ isInheritance)를 주면 납부기한(2·3·6개월, 토·일·공휴일 미룸)과 근거를 냄. gs-backend/Code.js 도구 칸 둘(도구 수·지시문 길이 그대로, node --check 통과 — 첫 편집 때 쉼표 하나 빠진 것을 검사에서 잡아 고친 뒤 커밋). app/index.html 다시 만듦. 서버 반영(clasp) 안 함.</li>
+</ul>
+<h2>5. 돌려 본 결과</h2>
+<table><tr><th>경우</th><th>도구</th><th>법</th></tr>
+<tr><td>이연 / 2029년·5년 뒤</td><td>이연세액 / 안 됨</td><td>맞음(①)</td></tr>
+<tr><td>30% 처분 4-10 / 누적 60% / 20% 증여 / 전부 상속</td><td class="red">30%분·기한 6-30 / 전액 − 기납부 / 8-2(7-31 토요일) / 전액·11-1(10-31 일요일) — 전엔 기한 없음</td><td>맞음(②·시행령)</td></tr>
+</table>
+<p class="sub">엔진 회귀 174건·판정 회귀 20건·가족 회귀 모두 통과, 검문 ✓, 서버 화면 파일 점검 통과.</p>
+<h2>6. 검토대상</h2>
+<table><tr><th>#</th><th>무엇</th><th>지금 도구가 하는 것</th><th>확신</th></tr>
+<tr><td>1</td><td>③ 이자상당가산액(공모 전 처분 등)은 계산기 밖 — calculate_clawback_interest로(판단거리)</td><td>—</td><td>중간</td></tr>
+<tr><td>2</td><td>이연세액은 「그 과세기간 유일한 양도자산」 가정 — 같은 해 다른 양도가 있으면 합산 세액으로 다시</td><td>안내</td><td>높음</td></tr>
+<tr><td>3</td><td>2호 해산 단서(적격 합병)·3호 공모 미달 예외는 사람이 가름</td><td>칸</td><td>높음</td></tr>
+<tr><td>4</td><td>처분 비율은 주식 수 기준(시행령) — 금액이 아님</td><td>칸</td><td>높음</td></tr>
+<tr><td>5</td><td>법인 출자자(익금 산입)는 계산기 밖</td><td>—</td><td>높음</td></tr>
+</table>
+</main></body></html>

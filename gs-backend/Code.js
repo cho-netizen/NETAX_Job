@@ -1227,6 +1227,8 @@ const DRIVE_TOOLS = [
         triggerType: { type: 'string', enum: ['partial_sale', 'full_sale', 'partial_gift', 'full_gift_or_inheritance', 'reit_dissolved', 'undersubscribed'], description: '사후관리 사유(§97의9②) — partial_sale/full_sale=주식 일부·전부 처분, partial_gift/full_gift_or_inheritance=주식 일부·전부 증여 또는 상속, reit_dissolved=리츠 해산, undersubscribed=설립신고수리일부터 5년 이내 발행주식총수의 30% 이상을 일반청약에 제공하지 못함. 없으면 사후관리를 판정하지 않는다.' },
         cumulativeDisposalRatio: { type: 'number', description: 'triggerType이 partial_sale/partial_gift일 때 — 이 현물출자로 취득한 주식 중 지금까지(이번 처분·증여분 포함) 누적으로 처분·증여한 비율(0~1). 0.5 이상이면 잔액 전부를 추징한다(시행령⑤1호가목).' },
         thisYearDisposalRatio: { type: 'number', description: 'triggerType이 partial_sale/partial_gift이고 cumulativeDisposalRatio가 0.5 미만일 때 — 이번 과세연도에 처분·증여한 주식 수를 그 현물출자 대가로 받은 주식 수로 나눈 비율(0~1). 이연세액×이 비율만큼만 추징한다.' },
+        triggerDate: { type: 'string', description: '[2026.11.05] 사후관리 사유 발생일(YYYY-MM-DD) — 넣으면 납부기한(사유 달 말일부터 2개월, 증여 3개월, 상속 6개월, §97의9②)을 셈.' },
+        isInheritance: { type: 'boolean', description: 'triggerType이 full_gift_or_inheritance일 때 상속이면 true(6개월), 증여면 false(3개월).' },
         alreadyPaidAmount: { type: 'number', description: '이 이연세액 중 이전에 이미 납부한 금액(원, 있으면). 추징액 계산시 차감한다. 없으면 0.' }
       },
       required: ['transferPrice']
