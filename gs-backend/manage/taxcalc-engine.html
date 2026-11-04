@@ -12804,6 +12804,23 @@
   // 증자주식수)/기준시점직전주식수를, 'capital_decrease'(감자)면 (기준시점직전주식수－감자주식수)/
   // 기준시점직전주식수를 비율로 곱한다.
   window.calculateAdjustedShareCountJS = function (changeType, sharesAtHistoricalFiscalYearEnd, sharesJustBeforeChange, changedShares) {
+    // [2026.11.05 모의사건 283] 첫 인자가 객체면 Code.js toolCalculateAdjustedShareCount와 같은 꼴(changes 배열로 여러 변동 차례 곱, 분모는 직전 「사업연도 말」) — 숫자들이면 예전대로 숫자 하나.
+    if (changeType && typeof changeType === 'object') {
+      const p = changeType, hist = Number(p.sharesAtHistoricalFiscalYearEnd) || 0;
+      if (Array.isArray(p.changes) && p.changes.length) {
+        const fy = Number(p.historicalFiscalYear) || 0; let ratioAll = 1; const steps = [];
+        p.changes.forEach(function (ch) {
+          const b = Number(ch.sharesAtPriorFiscalYearEnd) || 0, n = Number(ch.changedShares) || 0, y = Number(ch.fiscalYear) || 0;
+          if (!(b > 0) || (fy && y && y <= fy)) { steps.push({ 사업연도: y || undefined, 적용: false }); return; }
+          const r = ch.changeType === 'capital_decrease' ? (b - n) / b : (b + n) / b; ratioAll *= r;
+          steps.push({ 사업연도: y || undefined, 종류: ch.changeType === 'capital_decrease' ? '감자' : '증자', 직전사업연도말: b, 변동주식수: n, 비율: Math.round(r * 10000) / 10000, 적용: true });
+        });
+        return { 환산발행주식총수: Math.round(hist * ratioAll), 환산비율: Math.round(ratioAll * 10000) / 10000, 단계: steps };
+      }
+      const b0 = Number(p.sharesJustBeforeChange); if (!(b0 > 0)) return { error: '증자·감자 직전 사업연도 말 발행주식총수가 필요합니다.' };
+      const n0 = Number(p.changedShares) || 0, r0 = p.changeType === 'capital_decrease' ? (b0 - n0) / b0 : (b0 + n0) / b0;
+      return { 환산발행주식총수: Math.round(hist * r0), 환산비율: Math.round(r0 * 10000) / 10000 };
+    }
     const base = Number(sharesJustBeforeChange);
     if (!base || base <= 0) return null;
     const changed = Number(changedShares) || 0;

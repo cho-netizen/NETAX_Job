@@ -3478,9 +3478,11 @@ const DRIVE_TOOLS = [
     input_schema: { type: 'object', properties: {
       changeType: { type: 'string', enum: ['capital_increase', 'capital_decrease'], description: 'capital_increase=증자, capital_decrease=감자' },
       sharesAtHistoricalFiscalYearEnd: { type: 'number', description: '환산 대상 과거 사업연도 말 발행주식총수' },
-      sharesJustBeforeChange: { type: 'number', description: '증자·감자 직전 발행주식총수' },
-      changedShares: { type: 'number', description: '증자 또는 감자한 주식수' }
-    }, required: ['changeType', 'sharesJustBeforeChange'] }
+      sharesJustBeforeChange: { type: 'number', description: '증자·감자 직전 「사업연도 말」 발행주식총수(시행규칙 §17의3⑤ — 증자 바로 전 시점이 아니라 그 직전 사업연도 말) [2026.11.05 바로잡음]' },
+      changedShares: { type: 'number', description: '증자 또는 감자한 주식수' },
+      changes: { type: 'array', items: { type: 'object' }, description: '[2026.11.05] 3년 안에 증자·감자가 여럿이면 [{changeType, fiscalYear(변동이 있던 사업연도), sharesAtPriorFiscalYearEnd(그 직전 사업연도 말 주식 수), changedShares}] — historicalFiscalYear 뒤의 변동만 차례로 곱한다. 주면 위 세 칸 대신 씀.' },
+      historicalFiscalYear: { type: 'number', description: '[2026.11.05] changes를 쓸 때 환산 대상 과거 사업연도(예: 2023).' }
+    }, required: [] }
   },
   {
     name: 'calculate_other_tangible_property_value',
@@ -8238,11 +8240,26 @@ function toolCalculateDividendDifference(p) {
 
 function toolCalculateAdjustedShareCount(p) {
   p = p || {};
+  // [2026.11.05 모의사건 283] 시행규칙 §17의3⑤ — 환산주식수 = 증자(감자) 전 각 사업연도 말 주식 수 × (증자 직전 「사업연도 말」 주식 수 ± 증자·감자 주식 수) ÷ 증자 직전 사업연도 말 주식 수.
+  //  분모는 증자 「직전 사업연도 말」(같은 해 앞선 증자를 반영한 직전 시점이 아님). 3년 안에 증자·감자가 여럿이면 changes 배열로 — 그 사업연도 뒤에 생긴 변동만 차례로 곱한다.
+  const hist = Number(p.sharesAtHistoricalFiscalYearEnd) || 0;
+  if (Array.isArray(p.changes) && p.changes.length) {
+    const fy = Number(p.historicalFiscalYear) || 0;
+    let ratioAll = 1; const steps = [];
+    p.changes.forEach(function (ch) {
+      const b = Number(ch.sharesAtPriorFiscalYearEnd) || 0, n = Number(ch.changedShares) || 0, y = Number(ch.fiscalYear) || 0;
+      if (!(b > 0)) { steps.push({ 변동: ch, 적용: false, 왜: '직전 사업연도 말 주식 수 없음' }); return; }
+      if (fy && y && y <= fy) { steps.push({ 사업연도: y, 적용: false, 왜: '환산 대상 사업연도(' + fy + ') 뒤의 변동만 곱함' }); return; }
+      const r = ch.changeType === 'capital_decrease' ? (b - n) / b : (b + n) / b;
+      ratioAll *= r; steps.push({ 사업연도: y || undefined, 종류: ch.changeType === 'capital_decrease' ? '감자' : '증자', 직전사업연도말: b, 변동주식수: n, 비율: Math.round(r * 10000) / 10000, 적용: true });
+    });
+    return { 환산발행주식총수: Math.round(hist * ratioAll), 환산비율: Math.round(ratioAll * 10000) / 10000, 단계: steps, 근거: '상증법 시행령 §56③ 단서·시행규칙 §17의3⑤ — 변동마다 (직전 사업연도 말 주식 수 ± 변동 주식 수) ÷ 직전 사업연도 말 주식 수를 차례로 곱함' };
+  }
   const base = Number(p.sharesJustBeforeChange);
-  if (!base || base <= 0) return { error: '증자·감자 직전 발행주식총수(sharesJustBeforeChange)가 필요합니다.' };
+  if (!base || base <= 0) return { error: '증자·감자 직전 사업연도 말 발행주식총수(sharesJustBeforeChange)가 필요합니다.' };
   const changed = Number(p.changedShares) || 0;
   const ratio = p.changeType === 'capital_decrease' ? (base - changed) / base : (base + changed) / base;
-  return { 환산발행주식총수: Math.round((Number(p.sharesAtHistoricalFiscalYearEnd) || 0) * ratio) };
+  return { 환산발행주식총수: Math.round(hist * ratio), 환산비율: Math.round(ratio * 10000) / 10000, 근거: '시행규칙 §17의3⑤ — 분모·분자의 기준은 증자(감자) 직전 「사업연도 말」 주식 수' };
 }
 
 function toolCalculateOtherTangiblePropertyValue(p) {
