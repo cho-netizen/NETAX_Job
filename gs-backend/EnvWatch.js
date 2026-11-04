@@ -421,6 +421,12 @@ function envKeyNightly_(props, out) {
 }
 
 // 화면 표 — 값은 끝 4자리만(시스템 전용은 「넣어짐」만)
+// [2026.11.04] 알림 글에 열쇠 값이 섞여 들어와도 끝 4자리만 보이게(밤 감시 기록에 이미 남은 옛 글까지)
+function envScrubKeys_(s, all) {
+  s = String(s || '');
+  ENV_KEY_CATALOG_.forEach(function (c) { var v = String(all[c.k] || ''); if (v.length >= 8) s = s.split(v).join('…' + v.slice(-4)).split(encodeURIComponent(v)).join('…' + v.slice(-4)); });
+  return s;
+}
 function envKeyStatus_() {
   var props = PropertiesService.getScriptProperties(), all = props.getProperties(), last = envKeyLastOk_(props);
   var w = envWatchLast_(), items = (w && w.tech && w.tech.items) || [], at = (w && w.at) || '';
@@ -432,7 +438,7 @@ function envKeyStatus_() {
     if (ex) exTxt = Utilities.formatDate(new Date(c.guess ? ex + 300 * 86400000 : ex), 'Asia/Seoul', 'yyyy-MM-dd') + (c.guess ? ' (추정)' : '');
     var st = !has ? (c.opt ? '안 씀' : '없음') : hit ? (hit.수준 === '경고' ? '끊김' : '주의') : (last[c.k] ? '정상' : '확인 전');
     return { 이름: c.k, 쓰임: c.use, 넣어짐: has, 끝: has && !c.sys && !c.nos && v.length >= 8 ? v.slice(-4) : '', 마지막정상: last[c.k] || '', 만료: exTxt,
-      상태: st, 알림: hit ? hit.항목 : '', 발급처: c.url || '', 바꾸기: !c.sys && !c.nos, 방법: c.how || (c.sys ? '시스템 전용 — 개발자가 넣음' : ''), 시스템전용: !!c.sys };
+      상태: st, 알림: hit ? envScrubKeys_(hit.항목, all) : '', 발급처: c.url || '', 바꾸기: !c.sys && !c.nos, 방법: c.how || (c.sys ? '시스템 전용 — 개발자가 넣음' : ''), 시스템전용: !!c.sys };
   });
   return { success: true, rows: rows, manual: ENV_KEY_MANUAL_, 감시시각: at };
 }

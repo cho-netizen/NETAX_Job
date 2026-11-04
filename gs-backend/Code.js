@@ -50559,7 +50559,7 @@ function vworldNed_(op, params) {
     const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     text = res.getContentText('UTF-8') || '';
     if (res.getResponseCode() !== 200) return { error: '브이월드 ' + op + ' 응답 ' + res.getResponseCode() + ': ' + text.slice(0, 160), raw: text.slice(0, 2000) };
-  } catch (e) { return { error: '브이월드 ' + op + ' 호출 실패: ' + (e && e.message || e) }; }
+  } catch (e) { return { error: '브이월드 ' + op + ' 호출 실패: ' + String(e && e.message || e).split(apiKey).join('…' + apiKey.slice(-4)).split(encodeURIComponent(apiKey)).join('…' + apiKey.slice(-4)) }; } // [2026.11.04] 실패 글에 주소째 열쇠가 실려 열쇠 상태 카드에 통째로 보이던 것 — 끝 4자리만
   const rows = [];
   const walk = function (v, depth) {
     if (!v || typeof v !== 'object' || depth > 8) return;

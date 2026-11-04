@@ -857,7 +857,8 @@ function commSeamCheck_() {
   var out = [];
   commSeamList_().forEach(function (s) {
     var msg = '';
-    try { msg = s.fn() || ''; } catch (e) { msg = '오류: ' + String(e && e.message || e).slice(0, 120); }
+    // [2026.11.04] 판정 묶음 이음매는 참/거짓으로 답한다 — 참은 정상, 거짓은 끊김으로 바꿔 센다(예전엔 참이 끊김·거짓이 정상으로 뒤집혀 셌음)
+    try { msg = s.fn(); if (msg === true) msg = ''; else if (msg === false) msg = '판정 결과가 기대와 다름'; else msg = msg || ''; } catch (e) { msg = '오류: ' + String(e && e.message || e).slice(0, 120); }
     out.push({ 길: s.길, ok: !msg, msg: msg });
   });
   return { ok: out.every(function (x) { return x.ok; }), 길: out, 끊김: out.filter(function (x) { return !x.ok; }) };
