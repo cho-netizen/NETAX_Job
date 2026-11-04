@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-04 20:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -28467,6 +28467,16 @@ function nxMdOpenWindow(title, src, opts){
   // 부동산취득권리 전체의 평가액이 된다(시행령§51②본문).
   window.calculateMemberRightValueJS = function (p) {
     p = p || {};
+    // [2026.11.05 모의사건 291] 시행령 §51② 뒷부분·③ — 조합원입주권 밖의 「부동산을 취득할 수 있는 권리」(분양권·건물 완성 때 취득권)와 「특정시설물을 이용할 수 있는 권리」(골프·콘도 회원권 등, 이름 불문)는
+    //  평가기준일까지 납입한 금액 + 평가기준일 현재 프리미엄 상당액. 전엔 조합원권리가액 산식만 있어 회원권·분양권을 넣을 길이 없었음(kind 없으면 예전대로 입주권).
+    const kindMr_ = p.kind ? String(p.kind) : 'union_right';
+    if (kindMr_ === 'membership' || kindMr_ === 'presale_right') {
+      const paid_ = Math.max(0, Number(p.paidInstallments) || 0), prem_ = Number(p.premium) || 0;
+      const v_ = Math.round(paid_ + prem_);
+      return { 종류: kindMr_ === 'membership' ? '특정시설물 이용권(회원권 등, 시행령 §51③)' : '부동산을 취득할 수 있는 권리(분양권 등)', 납입금액: paid_, 프리미엄상당액: prem_, 평가액: v_,
+        근거: '상증법 §61③ · 시행령 §51②' + (kindMr_ === 'membership' ? '·③' : ''),
+        안내: '평가기준일까지 납입한 금액 + 평가기준일 현재 프리미엄 상당액(§51②). 프리미엄은 같은 권리의 매매사례·시세로 잡되 시가(§60 매매사례가액 등)가 있으면 그 시가가 우선 [확인 필요]. 회원권은 명칭을 불문하고 시설을 배타적·유리하게 이용할 수 있는 단체 일원의 권리면 모두(§51③) — 프리미엄이 음수(시세가 납입금보다 낮음)면 그만큼 뺌.' };
+    }
     const formerValue = Number(p.formerLandBuildingValue) || 0;
     const expectedRevenue = Number(p.expectedRevenueAfterCompletion) || 0;
     const projectCost = Number(p.totalProjectCost) || 0;
@@ -28476,7 +28486,7 @@ function nxMdOpenWindow(title, src, opts){
     const paidInstallments = Number(p.paidInstallments) || 0;
     const premium = Number(p.premium) || 0;
     const totalValue = memberRightValue + paidInstallments + premium;
-    return { 조합원권리가액: memberRightValue, 부동산취득권리_평가액: totalValue };
+    return { 종류: '조합원입주권(시행령 §51② 괄호 — 관리처분계획 기준 조합원권리가액)', 조합원권리가액: memberRightValue, 납입금액: paidInstallments, 프리미엄상당액: premium, 부동산취득권리_평가액: totalValue, 근거: '상증법 §61③ · 시행령 §51② · 시행규칙 §16③' };
   };
 
   // 배당차액 (시행령§57③, 시행규칙§18②) — 기업공개 준비중인 주식등(거래소 상장법인이 유가증권신고

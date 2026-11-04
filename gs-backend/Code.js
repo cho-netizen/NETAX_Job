@@ -3464,15 +3464,16 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_member_right_value',
-    description: '조합원입주권 등 부동산을 취득할 수 있는 권리(재개발·재건축 조합원권리가액)의 상증세법§61③ 평가액(시행령§51②, 시행규칙§16③).',
+    description: '조합원입주권 등 부동산을 취득할 수 있는 권리(재개발·재건축 조합원권리가액)의 상증세법§61③ 평가액(시행령§51②, 시행규칙§16③). [2026.11.05] kind=membership(골프·콘도 등 특정시설물 이용권, §51③)·presale_right(분양권 등)는 납입금 + 프리미엄으로 평가 — 그때는 formerLandBuildingValue·totalFormerValue 없이 paidInstallments·premium만.',
     input_schema: { type: 'object', properties: {
-      formerLandBuildingValue: { type: 'number', description: '분양대상자(조합원)의 종전 토지·건축물 가격(원)' },
-      totalFormerValue: { type: 'number', description: '조합 전체 종전 토지 및 건축물의 총 가액(원, 필수)' },
+      kind: { type: 'string', enum: ['union_right', 'presale_right', 'membership'], description: '[2026.11.05] union_right=조합원입주권(기본, 조합원권리가액 산식) / presale_right=분양권 등 부동산 취득 권리 / membership=회원권 등 특정시설물 이용권(§51③) — 뒤 둘은 납입금 + 프리미엄.' },
+      formerLandBuildingValue: { type: 'number', description: '분양대상자(조합원)의 종전 토지·건축물 가격(원) — union_right일 때' },
+      totalFormerValue: { type: 'number', description: '조합 전체 종전 토지 및 건축물의 총 가액(원, union_right일 때 필수)' },
       expectedRevenueAfterCompletion: { type: 'number', description: '정비사업완료후 대지·건축물의 총 수입추산액(원)' },
       totalProjectCost: { type: 'number', description: '총 소요사업비(원)' },
       paidInstallments: { type: 'number', description: '평가기준일까지 납입한 계약금·중도금 등(원, 없으면 0)' },
-      premium: { type: 'number', description: '프리미엄상당액(원, 없으면 0)' }
-    }, required: ['formerLandBuildingValue', 'totalFormerValue'] }
+      premium: { type: 'number', description: '프리미엄상당액(원, 없으면 0 — 시세가 납입금보다 낮으면 음수)' }
+    }, required: [] }
   },
   {
     name: 'calculate_dividend_difference',
