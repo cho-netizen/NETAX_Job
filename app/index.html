@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-10 15:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-10 15:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -66307,6 +66307,50 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (!a.classList.contains('expanded') || nxSidePinned_()) return;
         window.nxSideAIPeekT_ = setTimeout(function(){ if (!busy() && !nxSidePinned_()) a.classList.remove('expanded'); }, 500);
       });
+    })();
+    // [2026.11.11] 세무사님 "휴대폰과 태블릿의 경우 … 밀기와 같은 제스처로 꺼내는 방법이 있나? 그 작은 영역을 손가락으로 터치하여 꺼내는 것이 어렵다" → "내가 원하는 것이 바로 그거였다"
+    // 손가락 기기에서만: 화면 왼쪽 끝(28px 안)에서 오른쪽으로 밀면 메뉴가 덮어 나타나고, 오른쪽 끝에서 왼쪽으로 밀면 넥스 창이 나타난다.
+    // 나타난 창 위에서 반대로 밀면 숨는다(고정한 창은 그대로). 가로로 50px 넘게, 세로보다 분명히 가로로(1.5배), 0.9초 안에 민 것만 — 표·목록의 가로 스크롤과 겹치지 않게 시작 자리를 가장자리로 한정.
+    // 접는 폰 커버화면(lay-cover)은 제 밀기(요약 ↔ AI 등)가 따로 있고 옆 창을 안 쓰므로 여기서는 손대지 않는다.
+    (function(){
+      var touch = false; try { touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
+      if (!touch) return;
+      var EDGE = 28, MIN = 50, sx = 0, sy = 0, st = 0, kind = '';
+      function menuEl(){ return document.getElementById('sideMenu'); }
+      function aiEl(){ return document.getElementById('sideAI'); }
+      function aiOpen(){ var a = aiEl(); return a.classList.contains('expanded') && !a.classList.contains('nxai-away'); }
+      document.addEventListener('touchstart', function(e){
+        kind = '';
+        if (window.nxCover || e.touches.length !== 1) return;
+        var t = e.touches[0], m = menuEl(), a = aiEl();
+        sx = t.clientX; sy = t.clientY; st = Date.now();
+        var inMenu = !!(e.target.closest && e.target.closest('#sideMenu')), inAI = !!(e.target.closest && e.target.closest('#sideAI'));
+        if (m.classList.contains('peek') && inMenu) kind = 'closeMenu';
+        else if (aiOpen() && !nxSidePinned_() && inAI) kind = 'closeAI';
+        else if (sx <= EDGE && !m.classList.contains('pinned') && !m.classList.contains('peek')) kind = 'openMenu';
+        else if (sx >= window.innerWidth - EDGE && !aiOpen() && !a.classList.contains('nxai-away')) kind = 'openAI';
+      }, { passive: true });
+      document.addEventListener('touchend', function(e){
+        var k = kind; kind = '';
+        if (!k) return;
+        var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+        var dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
+        if (dt > 900 || Math.abs(dx) < MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+        var m = menuEl(), a = aiEl();
+        if (k === 'openMenu' && dx > 0){
+          if (!nxSidePinned_()) a.classList.remove('expanded'); // 한 번에 하나만
+          nxSideMenuPeek_(true);
+        } else if (k === 'closeMenu' && dx < 0){
+          nxSideMenuPeek_(false);
+        } else if (k === 'openAI' && dx < 0){
+          clearTimeout(window.nxSideAIPeekT_);
+          nxSideMenuPeek_(false);
+          a.classList.add('expanded');
+        } else if (k === 'closeAI' && dx > 0){
+          clearTimeout(window.nxSideAIPeekT_);
+          a.classList.remove('expanded');
+        }
+      }, { passive: true });
     })();
     // NETAX 줄 어디를 눌러도 고정 ↔ 풀기
     document.querySelector('#sideMenu .menu-brand').addEventListener('click', function(e){
