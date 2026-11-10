@@ -22,6 +22,8 @@ function judgeFnBody_(fn) {
 }
 function judgeCatalog_() {
   if (JUDGE_CATALOG_MEMO_) return JUDGE_CATALOG_MEMO_;
+  // [2026.11.10 판정 서버] job 서버엔 판정 함수 글이 없다 — tools/build-judge.js가 미리 뽑아 둔 목록(JudgeRemote.js)을 쓴다
+  if (typeof JUDGE_CATALOG_STATIC_ !== 'undefined') { JUDGE_CATALOG_MEMO_ = JUDGE_CATALOG_STATIC_; return JUDGE_CATALOG_MEMO_; }
   var byFn = [], seen = [];
   Object.keys(JUDGE_MORE_).forEach(function (k) {
     var fn = JUDGE_MORE_[k], i = seen.indexOf(fn);

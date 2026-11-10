@@ -20,6 +20,8 @@ const TARGETS = {
   // 관리 서버 — 관리 메뉴가 화면을 열 때마다 기다리는 조회
   'gs-light': ['work_getCases', 'client_getClients', 'client_getConsultLogs', 'booking_getBookings', 'jsonResponse'],
   // 부가서비스 서버 — 폴더 보기·메모·보고서 모음·서식(템플릿) 화면의 조회(비밀값·저장이 필요 없는 것만, gs-extra/README.md)
+  // 판정 서버 — 판정 묶음 계산만(사실 받아 결과 돌려줌, 시트·장부 안 씀). 엔진은 manage/taxcalc-engine.html 사본(tools/build-judge.js)
+  'gs-judge': ['JUDGE_MORE_', 'jsonResponse'],
   'gs-extra': ['handleListFolder', 'handleGetNetaxRootPath', 'handleListCaseTemplates', 'handleGetCaseTemplateContent', 'handleListGeneralMemos', 'handleListAllReports', 'handleGetLatestTemplateReview', 'jsonResponse']
 };
 

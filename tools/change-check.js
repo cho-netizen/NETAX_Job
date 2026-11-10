@@ -87,7 +87,9 @@ if (pubAdded.length) warn.push('로그인 없이 열리는 입구가 늘어남: 
 const GS = path.join(ROOT, 'gs-backend');
 const ignore = fs.readFileSync(path.join(GS, '.claspignore'), 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
 const serverFiles = fs.readdirSync(GS).filter((f) => /\.(js|json)$/.test(f) && !ignore.includes(f) && f !== '.clasp.json')
-  .concat(fs.readdirSync(path.join(GS, 'manage')).filter((f) => /\.html$/.test(f) && !ignore.includes('manage/' + f)).map((f) => 'manage/' + f));
+  .concat(fs.readdirSync(path.join(GS, 'manage')).filter((f) => /\.html$/.test(f) && !ignore.includes('manage/' + f)).map((f) => 'manage/' + f))
+  // [2026.11.10 판정 서버] job 서버에 올라가는 판정 대리 파일(하위 폴더)도 용량에 넣는다
+  .concat(fs.existsSync(path.join(GS, 'judge-remote')) ? fs.readdirSync(path.join(GS, 'judge-remote')).filter((f) => /\.js$/.test(f)).map((f) => 'judge-remote/' + f) : []);
 const HOSTS = { 'api.anthropic.com': 'Claude(유료)', 'generativelanguage.googleapis.com': 'Gemini', 'api.openai.com': 'OpenAI(유료)' };
 let bytes = 0;
 // [2026.10.22] 바뀐 파일만 기준판을 꺼내 비교 — 파일마다 git show를 하면 20초가 넘어 올리기 전 훅(12초)에서 시간 초과로 검사가 빠졌다
@@ -136,7 +138,7 @@ const schemaKeysBad = (src) => { // properties: { 키: … } 의 맨 바깥 키�
   while ((m = re2.exec(src))) { const k = m[1] || m[2]; if (!KEY_OK.test(k)) bad.push({ key: k, at: m.index }); }
   return bad;
 };
-['gs-backend', 'gs-light', 'gs-extra'].forEach((dir) => {
+['gs-backend', 'gs-light', 'gs-extra', 'gs-judge'].forEach((dir) => {
   const D = path.join(ROOT, dir); if (!fs.existsSync(D)) return;
   fs.readdirSync(D).filter((f) => /\.js$/.test(f)).forEach((f) => {
     const src = fs.readFileSync(path.join(D, f), 'utf8');
