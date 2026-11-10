@@ -520,7 +520,7 @@ function ledgerFromGiftInh_(c, items) {
 }
 function ledgerGiftInput_(c, L, k) {
   const P = Number(k) > 0 ? 'g' + Number(k) + '.' : 'g.'; // [2026-11-10] 둘째 증여부터 g1.*·g2.*
-  const row = function (p) { const ok = function (r) { return r && (r.state === '확정' || r.state === '추정'); }; let r = L.rows[p]; if (!ok(r) && P === 'g.' && p.indexOf('g.') === 0) r = L.rows['g0.' + p.slice(2)]; return ok(r) ? r.v : ''; }; // [2026-11-10] 첫 증여를 g0.*로 적어도 받음(운영 넥스 시험에서 넥스가 g0.*로 적어 한 번 헛돎)
+  const row = function (p) { const ok = function (r) { return r && (r.state === '확정' || r.state === '추정'); }; let r = ledgerAliasRow_(L, p); if (!ok(r) && P === 'g.' && p.indexOf('g.') === 0) r = L.rows['g0.' + p.slice(2)]; return ok(r) ? r.v : ''; }; // [2026-11-10] 첫 증여를 g0.*로 적어도 받음(운영 넥스 시험에서 넥스가 g0.*로 적어 한 번 헛돎)
   const dg = function (x) { return Number(String(x == null ? '' : x).replace(/[^\d]/g, '')) || 0; };
   const amt = dg(row(P + 'giftAmount')), rel = String(row(P + 'giftRelation') || '');
   const gaps = []; if (!amt) gaps.push(P + 'giftAmount'); if (!rel) gaps.push(P + 'giftRelation');
@@ -548,8 +548,16 @@ function ledgerHeirs_(L) {
   const hs = nos.map(function (k) { const P = 'i.heir' + k + '.'; const h = { name: String(row(P + 'name') || ('상속인' + (k + 1))), relation: String(row(P + 'relation') || ''), actualInheritedValue: dg(row(P + 'inherited')) }; if (dg(row(P + 'priorGift'))) h.priorGiftAmount = dg(row(P + 'priorGift')); if (dg(row(P + 'priorGiftBase'))) h.priorGiftTaxableBase = dg(row(P + 'priorGiftBase')); return h; });
   return hs.some(function (h) { return h.actualInheritedValue > 0; }) ? hs : [];
 }
+// [2026-11-11] 장부가 모르는 칸 이름을 막기(@1385) 전에 틀린 이름으로 적혀 이미 남은 줄(예: funeralCostAmount)도 계산이 읽게 — 바른 칸이 비었을 때만
+function ledgerAliasRow_(L, p) {
+  const ok = function (r) { return r && (r.state === '확정' || r.state === '추정') && r.v !== '' && r.v != null; };
+  if (ok(L.rows[p])) return L.rows[p];
+  const ks = Object.keys(L.rows || {});
+  for (let i = 0; i < ks.length; i++) { const k = ks[i]; if (k === p || !/^([a-z][A-Za-z]+|(i|g\d*)\.[a-z][A-Za-z]+)$/.test(k)) continue; let fx; try { fx = ledgerFixPath_(k); } catch (e) { continue; } if (fx && fx.path === p && fx.note && ok(L.rows[k])) return L.rows[k]; }
+  return L.rows[p];
+}
 function ledgerInhInput_(c, L) {
-  const row = function (p) { const r = L.rows[p]; return r && (r.state === '확정' || r.state === '추정') ? r.v : ''; };
+  const row = function (p) { const r = ledgerAliasRow_(L, p); return r && (r.state === '확정' || r.state === '추정') ? r.v : ''; };
   const dg = function (x) { return Number(String(x == null ? '' : x).replace(/[^\d]/g, '')) || 0; };
   const fin = dg(row('i.financialAmount')), re = dg(row('i.realEstateAmount')), gross = fin + re;
   const gaps = []; if (!gross) gaps.push('i.financialAmount·i.realEstateAmount'); if (row('i.heirCount') === '') gaps.push('i.heirCount');
