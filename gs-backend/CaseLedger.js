@@ -546,6 +546,9 @@ function ledgerCalcRun_(c, body) {
   if (est.length) common.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (r) { return r.judged ? r.label : r.label + '(' + r.state + (r.state === '추정' ? ' ' + r.값 : '') + ')'; }).join(', ').slice(0, 300));
   if (cs.gaps.length) common.push('비어 있는 칸: ' + cs.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
   (run.notes || []).forEach(function (n) { common.push('⚠ ' + n); });
+  // [2026-11-10 검토대상 17] 같은 물건 칸 다름 — 결과 맨 앞에 알리고, 빈 쪽 칸은 물어볼 것(후보 = 다른 사람 몫 값)으로 세움(값을 몰래 채우지 않음)
+  const sameDiff = (run.diffs || []).length ? '⚠ 같은 물건을 사람마다 나눠 적었는데 칸 값이 다른 곳 ' + run.diffs.length + '군데(' + run.diffs.map(function (d) { return d.label; }).join('·') + ') — 사람마다 다른 조건으로 계산된 숫자입니다. 아래 ⚠ 줄을 보고 장부를 맞춘 뒤 다시 계산하세요' : '';
+  (run.diffs || []).forEach(function (d) { if (!d.from || d.field === 'necessaryExpenses') return; d.vals.forEach(function (v) { if (!v.empty || v.ai == null) return; try { ledgerAsk_(c.id, { path: 'a' + v.ai + '.' + d.field, question: '같은 물건(' + String(d.loc || '').slice(0, 40) + ')의 ' + d.from.name + ' 몫에는 「' + d.label + '」 값이 ' + String(d.from.t[d.field]) + '인데 ' + v.name + ' 몫은 비어 있음 — 같은 값이 맞는지', cands: [{ v: d.from.t[d.field], src: d.from.name + ' 몫 자산 a' + d.from.ai }], by: by }); } catch (e) {} }); });
   // [2026.10.30 E] 과세대상 구분이 비면 엔진은 "그 밖 자산"으로 계산한다 — 주택·분양권이면 단기세율·중과가 달라지므로 결과 맨 앞에 알린다(말없이 기본값 쓰지 않음)
   const noType = cs.gaps.filter(function (g) { return /\.assetType$/.test(g); });
   const typeWarn = noType.length ? '⚠ 과세대상 구분이 비어 「주택·분양권 아닌 그 밖 자산」으로 계산함(' + noType.join(', ') + ') — 주택이면 a0.assetType=house(분양권 presale_right)로 넣고 다시 계산해야 단기세율(1년 미만 70%·2년 미만 60%)이 맞음' : '';
@@ -560,6 +563,7 @@ function ledgerCalcRun_(c, body) {
     const lines = ['거래 ' + res.거래건수 + '건 · 비과세 ' + res.비과세건수 + '건', '합산과세표준 ' + won(res.합산과세표준), '산출세액 합계 ' + won(res.산출세액_합계), '지방소득세 ' + won(res.지방소득세), '납부세액 합계 ' + won(res.납부세액_합계)].concat(common);
     if (run.multi) lines.unshift('양도인 ' + who + ' 몫(공동양도 — 양도인마다 따로 계산, 소득세법 §2의2⑤ 각자 납세의무)');
     if (typeWarn) lines.unshift(typeWarn);
+    if (sameDiff) lines.unshift(sameDiff);
     const entry = { id: 'tc_' + t0 + (run.multi ? '_' + (k + 1) : ''), 세목: '양도소득세', 구분: isCase ? '경우(안) 장부 계산' : '장부 계산(서버)', 납세자: who, 요약: [(isCase ? '[경우(안)] ' + name : '[장부 계산] ' + (c.사건명 || c.고객명 || '')) + (run.multi ? ' — 양도인 ' + who : ''), '장부 줄 ' + cs.used.length + '개(확정·추정)'].concat(lines, [body.why ? '이유: ' + String(body.why).slice(0, 200) : '']).filter(Boolean).join('\n'), 최종세액: Number(res.납부세액_합계), 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
       저장값: Object.assign({ ledger: true, 납세자: who, 양도인번호: P.idx, inputs: { transactions: inputs }, result: { 거래건수: res.거래건수, 비과세건수: res.비과세건수, 합산과세표준: res.합산과세표준, 산출세액_합계: res.산출세액_합계, 지방소득세: res.지방소득세, 납부세액_합계: res.납부세액_합계 } }, cs.state) };
     if (isCase) entry.안 = { 이름: name + (run.multi ? ' — ' + who : ''), 세목: 'transfer', 바꾼칸: (cs.assumed || []).map(function (a) { return { 칸: a.칸, 이름: a.이름, 전: a.전, 후: a.후 }; }), 누가: by, 때: caseProcNow_(), 바탕: '사건 장부(정함+추정)', 바탕저장본id: '', 이유: String(body.why || '').slice(0, 200), 추정: est.filter(function (r) { return r.state === '추정'; }).map(function (r) { return r.label + ' ' + r.값; }).slice(0, 20) };
@@ -572,8 +576,9 @@ function ledgerCalcRun_(c, body) {
   ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: by, what: isCase ? '경우 계산 저장' : '세액계산 저장', path: saved.map(function (s) { return s.id; }).join(','), detail: (isCase ? name + ' — ' : '') + '납부세액 ' + won(totalPay) + whoTxt + ((cs.assumed || []).length ? ' · 가정 ' + cs.assumed.length + '칸' : '') + (est.length ? ' · 추정·보류 ' + est.length + '건' : '') + (cs.gaps.length ? ' · 빈 칸 ' + cs.gaps.length : '') }); });
   const nEst = est.filter(function (r) { return r.state === '추정'; }).length;
   const out = { ok: true, id: saved[0].id, 이름: isCase ? name : '', 최종세액: run.multi ? undefined : saved[0].최종세액, 요약: saved[0].요약, gaps: cs.gaps, 가정: cs.assumed || [], 추가확인: est.map(function (r) { return r.label + ' — ' + r.state + (r.ask ? ': ' + r.ask : ''); }),
-    message: (isCase ? '경우(안) 「' + name + '」 ' : '') + (run.multi ? '공동양도 양도인별 세액계산 저장 ' + saved.length + '건 — ' + saved.map(function (s) { return s.납세자 + ' 납부세액 ' + won(s.최종세액) + '(' + s.id + ')'; }).join(' / ') : '세액계산 저장(' + saved[0].id + ') — 납부세액 ' + won(saved[0].최종세액)) + (cs.gaps.length ? ' · 빈 칸 ' + cs.gaps.length + '개' : '') + (nEst ? ' · 추정 ' + nEst + '칸으로 계산' : '') };
+    message: (sameDiff ? sameDiff + ' / ' : '') + (isCase ? '경우(안) 「' + name + '」 ' : '') + (run.multi ? '공동양도 양도인별 세액계산 저장 ' + saved.length + '건 — ' + saved.map(function (s) { return s.납세자 + ' 납부세액 ' + won(s.최종세액) + '(' + s.id + ')'; }).join(' / ') : '세액계산 저장(' + saved[0].id + ') — 납부세액 ' + won(saved[0].최종세액)) + (cs.gaps.length ? ' · 빈 칸 ' + cs.gaps.length + '개' : '') + (nEst ? ' · 추정 ' + nEst + '칸으로 계산' : '') };
   if (run.multi) { out.양도인별 = saved; out.최종세액_합계 = totalPay; }
+  if ((run.diffs || []).length) out.같은물건_칸다름 = run.diffs.map(function (d) { return { 물건: d.loc, 칸: d.label, 값: d.vals.map(function (v) { return v.name + ' ' + v.v; }) }; });
   return out;
 }
 

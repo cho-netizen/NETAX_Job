@@ -48569,6 +48569,7 @@ function trcEngineInputsBySeller_(st, transferDate) {
   if (sellers.length <= 1 && !anyAlloc) return [{ idx: 0, name: String((sellers[0] || {}).name || ''), regNo: String((sellers[0] || {}).regNo || ''), inputs: base, notes: [] }];
   const notes = [];
   const shareOf = sellers.map(function (s) { return trcShareFrac_(s && s.share); });
+  const domIdx = (st.transferAssets || []).map(function (a, i) { return a && a.isOverseasAsset ? -1 : i; }).filter(function (i) { return i >= 0; }); // 엔진 입력 번호 → 장부 자산 번호(a#)
   // 몇 사람만 지분을 적었으면 남은 지분을 나머지 사람에게 똑같이(적은 지분 합이 1을 넘거나 모두 적었으면 그대로)
   const known = shareOf.filter(function (x) { return x != null; }), unk = shareOf.length - known.length;
   if (known.length && unk) { const rest = 1 - known.reduce(function (s, x) { return s + x; }, 0); if (rest > 0) shareOf.forEach(function (x, i) { if (x == null) shareOf[i] = rest / unk; }); }
@@ -48585,10 +48586,31 @@ function trcEngineInputsBySeller_(st, transferDate) {
       TRC_MONEY_SCALE_.forEach(function (f) { if (r[f] !== undefined && r[f] !== null && r[f] !== '') r[f] = Math.round((Number(r[f]) || 0) * ratio); });
       r.multiHouseCount = Number(s.multiHouseCount) || 0; r.isTransferorResident = s.isTransferorResident !== false && s.isTransferorResident !== 'false';
       r.ownershipShare = ratio;
-      return r;
+      return { r: r, ai: domIdx[k] };
     }).filter(Boolean);
-    return { idx: si, name: String(s.name || ('양도인' + (si + 1))), regNo: String(s.regNo || ''), inputs: inputs, notes: si === 0 ? notes : [] };
+    return { idx: si, name: String(s.name || ('양도인' + (si + 1))), regNo: String(s.regNo || ''), inputs: inputs.map(function (x) { return x.r; }), assetIdx: inputs.map(function (x) { return x.ai; }), notes: si === 0 ? notes : [] };
   }).filter(function (x) { return x.inputs.length; });
+}
+// [2026-11-10 검토대상 17] 같은 물건을 사람마다 따로 적었는데 칸 값이 다르면 알림 — 민경호 남매 넥스 시험에서
+//  민경희 몫 자산에 비사업용 토지 표시·측량비가 옮겨지지 않아 같은 땅인데 세액이 54,847,925원 / 39,110,500원으로 갈림(넥스는 "둘 다 반영"이라 답함).
+//  같은 물건 = 소재지(괄호 안 글·띄어쓰기 뺀 것)가 같은 자산. 견주는 칸: 아래 TRC_SAME_ASSET_FIELDS_ + 필요경비 있음/없음. 계산은 막지 않고 결과 맨 앞 ⚠ + 물어볼 것.
+var TRC_SAME_ASSET_FIELDS_ = [['isNonBusinessLand', '비사업용 토지'], ['assetType', '과세대상 구분'], ['assetKind', '자산 종류'], ['acquisitionDate', '취득일'], ['isOneHouseOneFamily', '1세대1주택'], ['isUnregisteredTransfer', '미등기'], ['transferDate', '양도일']];
+function trcSameAssetDiffs_(per) {
+  const norm = function (s) { return String(s || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+  const byLoc = {};
+  (per || []).forEach(function (P) { (P.inputs || []).forEach(function (t, k) { const loc = norm(t.assetLocation); if (!loc) return; (byLoc[loc] = byLoc[loc] || []).push({ name: P.name, t: t, ai: (P.assetIdx || [])[k] }); }); });
+  const out = [];
+  Object.keys(byLoc).forEach(function (loc) {
+    const xs = byLoc[loc]; if (xs.length < 2 || new Set(xs.map(function (x) { return x.name; })).size < 2) return;
+    const show = function (v) { return v === true ? '예' : v === false || v === '' || v == null ? '아니오·비어 있음' : String(v); };
+    TRC_SAME_ASSET_FIELDS_.forEach(function (f) {
+      const vs = xs.map(function (x) { const v = x.t[f[0]]; return v === undefined || v === null || v === '' || v === false ? '' : String(v); });
+      if (new Set(vs).size > 1) out.push({ loc: xs[0].t.assetLocation, field: f[0], label: f[1], vals: xs.map(function (x, i) { return { name: x.name, v: show(x.t[f[0]]), ai: x.ai, empty: !vs[i] }; }), from: xs[vs.findIndex(function (v) { return v; })] });
+    });
+    const ex = xs.map(function (x) { return (Number(x.t.necessaryExpenses) || 0) > 0; });
+    if (ex.some(Boolean) && !ex.every(Boolean)) out.push({ loc: xs[0].t.assetLocation, field: 'necessaryExpenses', label: '필요경비', vals: xs.map(function (x, i) { return { name: x.name, v: Number(x.t.necessaryExpenses || 0).toLocaleString('ko-KR') + '원', ai: x.ai, empty: !ex[i] }; }) });
+  });
+  return out;
 }
 // 양도인마다 엔진을 따로 돌린다 — 돌려줌 { ok, multi, per:[{idx,name,regNo,inputs,res}], notes, error }
 //  양도인 하나면 per 한 줄(예전과 같은 숫자). 하나라도 실패하면 ok=false(조용히 빼지 않음)
@@ -48600,9 +48622,11 @@ function trcRunBySeller_(st, transferDate) {
     const g = groups[i]; (g.notes || []).forEach(function (n) { notes.push(n); });
     const res = runUiEngineCalcTool_('calculate_transfer_tax_multi', { transactions: g.inputs });
     if (!res || res.error) return { ok: false, error: (groups.length > 1 ? g.name + ' — ' : '') + ((res && res.error) || '엔진 없음') };
-    per.push({ idx: g.idx, name: g.name, regNo: g.regNo, inputs: g.inputs, res: res });
+    per.push({ idx: g.idx, name: g.name, regNo: g.regNo, inputs: g.inputs, assetIdx: g.assetIdx || [], res: res });
   }
-  return { ok: true, multi: per.length > 1 || (st.transferSellers || []).length > 1, per: per, notes: notes };
+  const diffs = per.length > 1 ? trcSameAssetDiffs_(per) : [];
+  diffs.forEach(function (d) { notes.unshift('같은 물건(' + String(d.loc || '').slice(0, 40) + ')인데 사람마다 「' + d.label + '」 값이 다름: ' + d.vals.map(function (v) { return v.name + ' ' + v.v; }).join(' · ') + ' — 한쪽에 빠진 값이면 장부를 맞추고 다시 계산하세요(지금 숫자는 사람마다 다른 조건으로 계산됨)'); });
+  return { ok: true, multi: per.length > 1 || (st.transferSellers || []).length > 1, per: per, notes: notes, diffs: diffs };
 }
 
 // [2026.10.17] 상속 — 계산기 「피상속인 주소(사망 당시 주소지=납세지)」·상속인 카드 「주소」를 주민등록 등본·초본에서(이름이 정확히 같은 사람, 주소가 하나로 정해질 때만).
