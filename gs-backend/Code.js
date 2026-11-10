@@ -782,7 +782,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_transfer_tax_multi',
-    description: '같은 과세기간(연도) 안에 2건 이상 양도가 있어 확정신고를 합산해야 할 때 쓴다. 2년 이상 보유하고 특례(비과세·미등기·분양권) 없는 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용하고, 단기양도(2년 미만)·미등기양도는 특성상 합산 대상이 아니라 건별로 개별세율로 계산해서 더한다. 같은 자산군(소득세법§102① 각 호) 안에서는 어느 거래의 양도차손이든 다른 거래의 양도소득금액과 통산한다(§102②·시행령§167의2 — 단기·미등기 거래의 손실도 버리지 않음). 각 거래의 입력 필드는 calculate_transfer_tax와 동일하다(양도가액·취득가액·보유기간·1세대1주택·다주택중과·8년자경 등 전부). 거래가 1건뿐이면 이 도구 대신 calculate_transfer_tax를 쓰는 게 더 간단하다.',
+    description: '같은 과세기간(연도) 안에 2건 이상 양도가 있어 확정신고를 합산해야 할 때 쓴다. 한 사람(양도인) 몫만 넣는다 — 공동양도는 양도인마다 지분만큼 나눠 따로 부르고(각자 기본공제·세율, 소득세법 §2의2⑤ — 고가주택 판정용 wholeHouseTransferPrice는 전체 가액), 사건 장부가 있으면 case_ledger do=calc가 양도인마다 따로 계산해 저장한다. 2년 이상 보유하고 특례(비과세·미등기·분양권) 없는 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용하고, 단기양도(2년 미만)·미등기양도는 특성상 합산 대상이 아니라 건별로 개별세율로 계산해서 더한다. 같은 자산군(소득세법§102① 각 호) 안에서는 어느 거래의 양도차손이든 다른 거래의 양도소득금액과 통산한다(§102②·시행령§167의2 — 단기·미등기 거래의 손실도 버리지 않음). 각 거래의 입력 필드는 calculate_transfer_tax와 동일하다(양도가액·취득가액·보유기간·1세대1주택·다주택중과·8년자경 등 전부). 거래가 1건뿐이면 이 도구 대신 calculate_transfer_tax를 쓰는 게 더 간단하다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -842,7 +842,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_gift_tax',
-    description: '증여세를 정확히 계산한다([별지 제10호서식] 증여세과세표준신고 및 자진납부계산서 기준 — 비과세·과세가액불산입, 증여재산공제, 혼인·출산증여재산공제, 합산배제증여재산공제, 감정평가수수료공제, 재해손실공제, 누진세율, 세대생략할증, 부담부증여 채무차감, 외국납부세액공제, 신고세액공제, 이자상당액, 각종 징수유예·납부유예, 무신고·과소신고·납부지연가산세, 수증자·증여자 인적사항 포함). 창업자금·가업승계 증여세 과세특례의 세액 자체는 포함되지 않는다(해당 유예세액만 입력받는다).',
+    description: '증여세를 정확히 계산한다(수증자 한 사람이 증여자 한 사람에게 받은 한 건 — 여러 수증자·증여자는 건마다 따로 부르고, 같은 수증자가 10년 안 같은 사람(직계존속과 그 배우자는 한 사람, §47②)에게 받은 것은 prior 칸으로 합산; 장부 계산은 g1.* 칸으로 건마다 따로 저장). ([별지 제10호서식] 증여세과세표준신고 및 자진납부계산서 기준 — 비과세·과세가액불산입, 증여재산공제, 혼인·출산증여재산공제, 합산배제증여재산공제, 감정평가수수료공제, 재해손실공제, 누진세율, 세대생략할증, 부담부증여 채무차감, 외국납부세액공제, 신고세액공제, 이자상당액, 각종 징수유예·납부유예, 무신고·과소신고·납부지연가산세, 수증자·증여자 인적사항 포함). 창업자금·가업승계 증여세 과세특례의 세액 자체는 포함되지 않는다(해당 유예세액만 입력받는다).',
     input_schema: {
       type: 'object',
       properties: {
@@ -916,7 +916,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_inheritance_tax',
-    description: '상속세를 정확히 계산한다([별지 제9호서식] 상속세과세표준신고 및 자진납부계산서 기준 — 기초공제·인적공제·일괄공제 중 유리한 선택, 배우자공제 한도액 정밀공식(배우자상속재산분할기한 미준수시 5억원 제한 포함), 금융재산·동거주택·감정평가수수료·재해손실·가업상속·영농상속공제, 상속공제 종합한도, 세대생략가산액(대습상속 배제 포함), 기납부증여세액·특례증여세액·외국납부세액·단기재상속세액공제, 누진세율, 신고세액공제, 이자상당액, 영리법인 상속세 면제, 각종 징수유예·납부유예, 무신고·과소신고·납부지연가산세, 신고인·피상속인 인적사항 포함). 가업상속공제·영농상속공제는 피상속인·상속인 자격요건을 boolean 플래그로 명시 확인받아 게이트로 적용한다(하나라도 false면 공제 배제, 미입력시 요건미확인으로 표시됨 — 반드시 확인해서 입력할 것). 특례증여세액공제의 세액 산출 자체는 이 도구가 하지 않으므로 별도로 계산한 값을 입력받는다. [2026.11.02 복잡사건 49] 영리법인 유증(§3의2②): forProfitBequestAmount·forProfitShareholders를 넣으면 면제세액(시행령 §3①)·사람별 면제분 납부세액(시행령 §3② — 상속인·직계비속, 2026-01-02 뒤 상속개시분은 그 배우자들도)을 셈하고 공제 한도에서 유증가액을 뺌(§24①1호). 법인 자신은 자산수증이익으로 법인세(법인세법 §15) [확인 필요: 결손금 보전 등]. 법인 주주가 얻는 이익은 증여세 §45의5(특정법인) 대상인지 [확인 필요] — 같은 이익에 §3의2② 상속세와 겹쳐 과세하지 않는지 견줄 것.',
+    description: '상속세를 정확히 계산한다(유산 전체 한 번 — 상속인이 여럿이면 이 결과를 allocate_inheritance_tax_by_heir로 상속인별 몫을 나눈다(§3의2①, 장부 계산은 i.heir#.* 칸이 있으면 함께 나눠 저장). [별지 제9호서식] 상속세과세표준신고 및 자진납부계산서 기준 — 기초공제·인적공제·일괄공제 중 유리한 선택, 배우자공제 한도액 정밀공식(배우자상속재산분할기한 미준수시 5억원 제한 포함), 금융재산·동거주택·감정평가수수료·재해손실·가업상속·영농상속공제, 상속공제 종합한도, 세대생략가산액(대습상속 배제 포함), 기납부증여세액·특례증여세액·외국납부세액·단기재상속세액공제, 누진세율, 신고세액공제, 이자상당액, 영리법인 상속세 면제, 각종 징수유예·납부유예, 무신고·과소신고·납부지연가산세, 신고인·피상속인 인적사항 포함). 가업상속공제·영농상속공제는 피상속인·상속인 자격요건을 boolean 플래그로 명시 확인받아 게이트로 적용한다(하나라도 false면 공제 배제, 미입력시 요건미확인으로 표시됨 — 반드시 확인해서 입력할 것). 특례증여세액공제의 세액 산출 자체는 이 도구가 하지 않으므로 별도로 계산한 값을 입력받는다. [2026.11.02 복잡사건 49] 영리법인 유증(§3의2②): forProfitBequestAmount·forProfitShareholders를 넣으면 면제세액(시행령 §3①)·사람별 면제분 납부세액(시행령 §3② — 상속인·직계비속, 2026-01-02 뒤 상속개시분은 그 배우자들도)을 셈하고 공제 한도에서 유증가액을 뺌(§24①1호). 법인 자신은 자산수증이익으로 법인세(법인세법 §15) [확인 필요: 결손금 보전 등]. 법인 주주가 얻는 이익은 증여세 §45의5(특정법인) 대상인지 [확인 필요] — 같은 이익에 §3의2② 상속세와 겹쳐 과세하지 않는지 견줄 것.',
     input_schema: {
       type: 'object',
       properties: {
@@ -4359,7 +4359,7 @@ function job_lookup_(input) {
       지난지휘: last ? { 때: last.at, 방식: last.mode, 비용원: last.won, 보고: last.report || '', 판단: (last.decisions || []).slice(0, 20), 의견: (last.opinions || []).slice(0, 20), 여쭌것: (last.asks || []).slice(0, 12) } : null,
       // [2026.10.27 A·경우별] 정한 값·고침 기록·계산 저장본(기본·안) — 넥스가 "지금 칸에 무엇이 들어 있나"를 보고 caseproc_fix·calc_scenario를 쓰고, 검토서 숫자는 저장본 id로 인용한다
       고침기록: (sv.valueHist || []).slice(-15).map(function (h) { return h.at + ' ' + h.by + ' ' + (h.label || h.target) + ': ' + caseProcValueText_(h.prev ? h.prev.v : '').slice(0, 40) + ' → ' + caseProcValueText_(h.next ? h.next.v : '').slice(0, 40) + (h.undone ? ' (되돌림)' : ''); }),
-      계산저장본: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-20).map(function (e) { return { id: e.id, 세목: e.세목, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? (e.안.바꾼칸 || []).map(function (d) { return d.칸 + ' ' + d.전 + '→' + d.후; }).slice(0, 6) : undefined }; }),
+      계산저장본: (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-20).map(function (e) { return { id: e.id, 세목: e.세목, 구분: e.구분, 납세자: e.납세자 || (e.저장값 && e.저장값.납세자) || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? (e.안.바꾼칸 || []).map(function (d) { return d.칸 + ' ' + d.전 + '→' + d.후; }).slice(0, 6) : undefined }; }),
       읽을범위: sv.readScope || null, // [2026.10.27 F]
       안내: '같은 칸·같은 물음을 다시 묻지 마라 — 정한값·고침기록·마지막계산·최근처리일지에 세무사님이 정하신 값이 있으면 그 값을 쓰고 끝낸다(10-27 "이미 모두 알려줬는데"). 세무사님이 "○○ 폴더만 읽어라"·"○○ 파일은 빼라" 하시면 caseproc_scope(on/off에 파일·폴더 이름). 읽을범위는 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 둔 체크 목록이지 네 읽기 범위가 아니다 — 너는 job_lookup case_files/file_read로 사건 폴더의 어떤 파일이든(예규·검토 메모·지침·산출물) 읽는다. 읽을범위가 null이면 GAS가 읽을 파일 목록을 아직 체크하지 않은 사건 — 네가 case_files로 목록을 보고 모르는 파일은 file_read로 읽어 판단한 뒤 caseproc_scope로 GAS 체크 목록을 정하고(읽기 → 알기 → 체크), 정한 목록과 이유를 세무사님께 보고한다. 읽지 않고 체크하지 않는다. 세무사님이 직접 넣거나 결정한 값(처리일지의 [사건처리 확인] 줄·결정·정한값의 누가=세무사님)은 네가 바꾸지 말고, 서류와 어긋나 보이면 그 사실(지금 값·서류 값)만 말씀드린다. 남은 질문에 답을 넣을 때는 job_propose_action caseproc_answer{caseId, qid, target, value, label, src}(넣을칸이 있는 질문). 이미 확정돼 남은 질문에 없는 칸(과세대상 구분·필요경비·사건분류 등)은 caseproc_fix{caseId, target, value, why}(세무사님 값이면 카드 [실행]이 세무사님 확인). 서류로 네가 푼 질문·답한 질문은 caseproc_decide로 닫아라. 경우(안)별 세액은 calc_scenario로 계산기를 돌려 저장한 뒤 그 저장본 숫자만 말한다(암산 금지). 세액 숫자는 계산저장본·마지막계산에서만 말한다. 장부요약을 먼저 본다 — 남은물음(가설과다름 포함)·사건개요 가설·확보할증빙_받을것·칸값의 다른값서류가 세무사님과 상의할 거리다. 근거 서류 사실은 case_ledger do:facts(find_kind·find_file·find_value·find_to)로 찾는다(토큰 0).'
     };
@@ -4663,7 +4663,7 @@ const JOB_AI_TOOLS_ = [
   {
     name: 'case_ledger',
     description: '사건 장부에 사실을 적거나 상태를 바꾼다(바로 실행, 토큰 0). 장부 = 사건의 모든 사실(세액계산기 칸 하나 = 줄 하나: 값·출처·확신·상태·이력). 먼저 job_lookup kind=ledger로 장부를 본다. '
-      + 'do=set: 값을 적는다 — path(칸 경로: seller.name·seller.regNo·seller.address·seller.multiHouseCount / c0.date·c0.totalPrice·c0.transferCause·c0.buyer.name·c0.buyer.regNo·c0.buyer.relation / a0.assetLocation·a0.assetKind·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract(c0) / costs({acq:[{label,amount,file,date}],tr:[…]})·taxfee·사건분류·기준일 / doc:<파일 이름>.role(서류 역할)), value, kind(세무사님=세무사님이 말로 준 값 그대로 / 넥스=네가 서류로 정한 값 / 추정=추정치), file·page·quote(원문 한 줄)·why(근거). '
+      + 'do=set: 값을 적는다 — path(칸 경로: seller.name·seller.regNo·seller.address·seller.multiHouseCount / c0.date·c0.totalPrice·c0.transferCause·c0.buyer.name·c0.buyer.regNo·c0.buyer.relation / 여러 사람(공동양도·공동수증·공동상속)은 한 사건 안에서 번호로: 둘째 양도인 seller1.*(지분 seller#.share 1/2 또는 자산별 a0.sellerAllocations "0:1/2, 1:1/2")·둘째 양수인 c0.buyer1.*·둘째 증여 g1.*(수증자 g1.giftDoneeName·증여자 g1.giftDonorName)·상속인 i.heir0.name·i.heir0.relation·i.heir0.inherited(받는 재산가액) — 다른 사람 몫을 따로 사건·경우(안)로 만들지 말 것, do=calc가 사람마다 따로 계산해 각자 이름으로 저장한다 / a0.assetLocation·a0.assetKind·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract(c0) / costs({acq:[{label,amount,file,date}],tr:[…]})·taxfee·사건분류·기준일 / doc:<파일 이름>.role(서류 역할)), value, kind(세무사님=세무사님이 말로 준 값 그대로 / 넥스=네가 서류로 정한 값 / 추정=추정치), file·page·quote(원문 한 줄)·why(근거). '
       + '고르기 칸은 코드값: assetType house|other|presale_right, buyer.relation none|sibling|lineal|spouse|relative, assetKind land|building|land_building|stock|other, transferCause sale|expropriation|exchange|gift_burden|other. 세무사님이 정한 값은 바꾸지 못한다(거절되면 지금 값과 서류 값만 말씀드린다). '
       + 'do=ask: 확신이 없을 때 값 대신 물어볼 것으로 세운다 — path, question(무엇이 왜 애매한지), cands:[{v,src}](후보와 출처), needDoc(true면 증빙 받을 것). '
       + 'do=decide: path, decision(확인|보류|무시), note. do=undo: path(마지막 고침 되돌리기, 네 값만). do=calc: 장부(확정+추정)로 세액계산기를 돌려 사건에 저장하고 납부세액·빈 칸·추가 확인 사항을 돌려준다 — 세액 숫자는 여기서 받은 것만 말한다. do=import: 옛 저장소(사건처리 결정 파일)를 장부로 한 번 옮긴다(장부가 비어 있을 때). '
@@ -28358,8 +28358,9 @@ function caseProcFieldLabel_(key) {
   if (k === 'expenses' || k === 'calc:costs') return '필요경비';
   if ((m = /^calc:(.+)$/.exec(k))) {
     const p = m[1]; let mm;
-    if ((mm = /^seller\.(\w+)$/.exec(p))) return '양도인 ' + (CASEPROC_FIELD_KO_[mm[1]] || mm[1]);
-    if ((mm = /^c(\d+)\.buyer\.(\w+)$/.exec(p))) return (Number(mm[1]) ? '계약' + (Number(mm[1]) + 1) + ' ' : '') + '양수인 ' + (CASEPROC_FIELD_KO_[mm[2]] || mm[2]);
+    // [2026-11-10] 한 사건 안 여러 사람 — seller1.*·c0.buyer1.*(숫자 없으면 0번, 옛 꼴 그대로)
+    if ((mm = /^seller(\d*)\.(\w+)$/.exec(p))) return '양도인' + (Number(mm[1] || 0) ? String(Number(mm[1]) + 1) : '') + ' ' + (CASEPROC_FIELD_KO_[mm[2]] || mm[2]);
+    if ((mm = /^c(\d+)\.buyer(\d*)\.(\w+)$/.exec(p))) return (Number(mm[1]) ? '계약' + (Number(mm[1]) + 1) + ' ' : '') + '양수인' + (Number(mm[2] || 0) ? String(Number(mm[2]) + 1) : '') + ' ' + (CASEPROC_FIELD_KO_[mm[3]] || mm[3]);
     if ((mm = /^c(\d+)\.(\w+)$/.exec(p))) return (Number(mm[1]) ? '계약' + (Number(mm[1]) + 1) + ' ' : '') + (CASEPROC_FIELD_KO_[mm[2]] || mm[2]);
     if ((mm = /^a(\d+)\.(\w+)$/.exec(p))) return (Number(mm[1]) ? '자산' + (Number(mm[1]) + 1) + ' ' : '') + (CASEPROC_FIELD_KO_[mm[2]] || mm[2]);
     return CASEPROC_FIELD_KO_[p] || p;
@@ -28382,8 +28383,8 @@ function caseProcPrevValue_(c, sv, target) {
     const hit = wrap(tr[m[1]]); if (hit) return hit;
     const st = sv.trCalc && sv.trCalc.state; if (!st) return null;
     const p = m[1]; let v, mm;
-    if ((mm = /^seller\.(\w+)$/.exec(p))) v = ((st.transferSellers || [])[0] || {})[mm[1]];
-    else if ((mm = /^c(\d+)\.buyer\.(\w+)$/.exec(p))) { const ct = (st.transferContracts || [])[Number(mm[1])]; v = ct && ct.buyers && ct.buyers[0] ? ct.buyers[0][mm[2]] : undefined; }
+    if ((mm = /^seller(\d*)\.(\w+)$/.exec(p))) v = ((st.transferSellers || [])[Number(mm[1] || 0)] || {})[mm[2]];
+    else if ((mm = /^c(\d+)\.buyer(\d*)\.(\w+)$/.exec(p))) { const ct = (st.transferContracts || [])[Number(mm[1])]; const bi = Number(mm[2] || 0); v = ct && ct.buyers && ct.buyers[bi] ? ct.buyers[bi][mm[3]] : undefined; }
     else if ((mm = /^c(\d+)\.(\w+)$/.exec(p))) { const ct = (st.transferContracts || [])[Number(mm[1])]; v = ct ? ct[mm[2]] : undefined; }
     else if ((mm = /^a(\d+)\.(\w+)$/.exec(p))) { const a = (st.transferAssets || [])[Number(mm[1])]; v = a ? a[mm[2]] : undefined; }
     if (v === undefined || v === null || v === '') return null;
@@ -28501,8 +28502,8 @@ function caseProcScenarioSet_(st, p, value) {
   }
   if (p === 'taxfee') { const c0 = st.transferContracts[0]; if (!c0) return { ok: false, error: '계약이 없음' }; const prev = (c0.totalExpenseItems || []).filter(function (x) { return /신고 세무비용/.test(String(x.label || '')); }).map(function (x) { return x.amount; }); c0.totalExpenseItems = (c0.totalExpenseItems || []).filter(function (x) { return !/신고 세무비용/.test(String(x.label || '')); }); const amt = num(value); if (amt) c0.totalExpenseItems.push({ label: '양도소득세 신고 세무비용(경우 계산)', amount: amt, payDate: '' }); return { ok: true, prev: prev.length ? prev[0] : 0, next: amt }; }
   if (p === '사건분류') { const f = TRC_CLASS_FLAGS_[String(value).trim()]; if (!f && String(value).trim() !== '일반' && String(value).trim() !== '해당없음') return { ok: false, error: '사건분류 값은 ' + Object.keys(TRC_CLASS_FLAGS_).join('·') + '·일반 중 하나' }; const prev = { isOneHouseOneFamily: !!(st.transferAssets[0] || {}).isOneHouseOneFamily, multiHouseCount: (st.transferSellers[0] || {}).multiHouseCount || 0 }; st.transferAssets.forEach(function (a) { a.isOneHouseOneFamily = false; a.isNonBusinessLand = false; a.isUnregisteredTransfer = false; }); if (st.transferSellers[0]) st.transferSellers[0].multiHouseCount = 0; if (f && f.asset) st.transferAssets.forEach(function (a) { Object.assign(a, f.asset); }); if (f && f.seller) Object.assign(st.transferSellers[0] || {}, f.seller); return { ok: true, prev: prev, next: String(value).trim() }; }
-  if ((m = /^seller\.(\w+)$/.exec(p))) { const s0 = st.transferSellers[0] = st.transferSellers[0] || {}; const prev = s0[m[1]]; s0[m[1]] = cast(m[1], value); return { ok: true, prev: prev, next: s0[m[1]] }; }
-  if ((m = /^c(\d+)\.buyer\.(\w+)$/.exec(p))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return { ok: false, error: '계약 ' + m[1] + ' 없음' }; ct.buyers = ct.buyers && ct.buyers.length ? ct.buyers : [{}]; const prev = ct.buyers[0][m[2]]; ct.buyers[0][m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: ct.buyers[0][m[2]] }; }
+  if ((m = /^seller(\d*)\.(\w+)$/.exec(p))) { const si = Number(m[1] || 0); st.transferSellers = st.transferSellers || []; while (st.transferSellers.length <= si) st.transferSellers.push({}); const s0 = st.transferSellers[si]; const prev = s0[m[2]]; s0[m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: s0[m[2]] }; } // [2026-11-10] 여러 양도인·양수인
+  if ((m = /^c(\d+)\.buyer(\d*)\.(\w+)$/.exec(p))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return { ok: false, error: '계약 ' + m[1] + ' 없음' }; const bi = Number(m[2] || 0); ct.buyers = ct.buyers && ct.buyers.length ? ct.buyers : [{}]; while (ct.buyers.length <= bi) ct.buyers.push({}); const prev = ct.buyers[bi][m[3]]; ct.buyers[bi][m[3]] = cast(m[3], value); return { ok: true, prev: prev, next: ct.buyers[bi][m[3]] }; }
   if ((m = /^c(\d+)\.(\w+)$/.exec(p))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return { ok: false, error: '계약 ' + m[1] + ' 없음' }; const prev = ct[m[2]]; ct[m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: ct[m[2]] }; }
   if ((m = /^a(\d+)\.(\w+)$/.exec(p))) { const a = st.transferAssets[Number(m[1])]; if (!a) return { ok: false, error: '자산 ' + m[1] + ' 없음' }; const prev = a[m[2]]; a[m[2]] = cast(m[2], value); return { ok: true, prev: prev, next: a[m[2]] }; }
   return { ok: false, error: '모르는 칸 경로 ' + p + ' (예: a0.assetType, a0.isOneHouseOneFamily, c0.totalPrice, a0.acquisitionPrice, costs, taxfee, 사건분류, seller.multiHouseCount)' };
@@ -28554,12 +28555,24 @@ function caseProcScenario_(c, body) {
       diff.push({ 칸: p, 이름: h.이름, 전: h.전, 후: h.후 + (h.전 === h.후 ? ' (그대로)' : '') });
     });
     if (problems.length) return { ok: false, error: '바꿀 수 없는 칸: ' + problems.join(' / ') };
-    inputs = trcEngineInputs_(st, c.기준일);
-    res = runUiEngineCalcTool_('calculate_transfer_tax_multi', { transactions: inputs }) || { error: '세액계산 엔진을 부르지 못함' };
-    if (!res || res.error) return { ok: false, error: '계산 실패: ' + ((res && res.error) || '엔진 없음') };
-    slimIn = { transactions: inputs };
-    lines = ['거래 ' + res.거래건수 + '건 · 비과세 ' + res.비과세건수 + '건', '합산과세표준 ' + won(res.합산과세표준), '산출세액 합계 ' + won(res.산출세액_합계), '지방소득세 ' + won(res.지방소득세), '납부세액 합계 ' + won(res.납부세액_합계)];
-    res = { 최종: Number(res.납부세액_합계), 요약값: { 거래건수: res.거래건수, 비과세건수: res.비과세건수, 합산과세표준: res.합산과세표준, 산출세액_합계: res.산출세액_합계, 지방소득세: res.지방소득세, 납부세액_합계: res.납부세액_합계, 자산별_내역: (res.자산별_내역 || []).slice(0, 6) } };
+    // [2026-11-10 검토대상 16] 공동양도 — 양도인마다 따로 계산(양도인 하나면 예전과 같음)
+    const run = trcRunBySeller_(st, c.기준일);
+    if (!run.ok) return { ok: false, error: '계산 실패: ' + run.error };
+    const one = function (r) { return { 거래건수: r.거래건수, 비과세건수: r.비과세건수, 합산과세표준: r.합산과세표준, 산출세액_합계: r.산출세액_합계, 지방소득세: r.지방소득세, 납부세액_합계: r.납부세액_합계, 자산별_내역: (r.자산별_내역 || []).slice(0, 6) }; };
+    if (!run.multi) {
+      const r1 = run.per[0].res; inputs = run.per[0].inputs;
+      slimIn = { transactions: inputs };
+      lines = ['거래 ' + r1.거래건수 + '건 · 비과세 ' + r1.비과세건수 + '건', '합산과세표준 ' + won(r1.합산과세표준), '산출세액 합계 ' + won(r1.산출세액_합계), '지방소득세 ' + won(r1.지방소득세), '납부세액 합계 ' + won(r1.납부세액_합계)];
+      res = { 최종: Number(r1.납부세액_합계), 요약값: one(r1) };
+    } else {
+      slimIn = { 양도인별: run.per.map(function (P) { return { 납세자: P.name, 양도인번호: P.idx, transactions: P.inputs }; }) };
+      lines = ['공동양도 — 양도인마다 따로 계산(소득세법 §2의2⑤ 각자 납세의무)'];
+      run.per.forEach(function (P) { const r1 = P.res; lines.push(P.name + ': 거래 ' + r1.거래건수 + '건 · 합산과세표준 ' + won(r1.합산과세표준) + ' · 산출세액 ' + won(r1.산출세액_합계) + ' · 지방소득세 ' + won(r1.지방소득세) + ' · 납부세액 ' + won(r1.납부세액_합계)); });
+      (run.notes || []).forEach(function (n) { lines.push('⚠ ' + n); });
+      const tot = run.per.reduce(function (s, P) { return s + (Number(P.res.납부세액_합계) || 0); }, 0);
+      lines.push('양도인 합계 납부세액 ' + won(tot) + ' (각자 신고·납부 — 합계는 견주기용)');
+      res = { 최종: tot, 요약값: { 공동양도: true, 납부세액_합계: tot, 양도인별: run.per.map(function (P) { return Object.assign({ 납세자: P.name, 양도인번호: P.idx }, one(P.res)); }) } };
+    }
   } else {
     // 증여·상속 — 호출자가 준 엔진 입력(평평한 값)으로만(장부 바탕 계산은 위 ledgerCalcRun_으로)
     const base = given; baseFrom = '호출자가 준 엔진 입력';
@@ -28582,7 +28595,7 @@ function caseProcScenario_(c, body) {
   if (all.some(function (e) { return e && e.안 && e.안.이름 === name; })) name += '(' + n + ')';
   const total = res.최종;
   const summary = ['[경우(안)] ' + name + ' — ' + label, '바탕: ' + baseFrom, diff.length ? '바꾼 칸: ' + diff.map(function (d) { return (d.이름 || d.칸) + ' ' + d.전 + ' → ' + d.후; }).join(' / ') : '바꾼 칸 없음(입력 그대로)'].concat(lines, [body.why ? '이유: ' + String(body.why).slice(0, 200) : '']).filter(Boolean).join('\n');
-  const entry = { id: 'tc_' + Date.now(), 세목: label, 구분: '경우(안) 서버 계산', 요약: summary, 최종세액: Number.isFinite(total) ? total : undefined, 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
+  const entry = { id: 'tc_' + Date.now(), 세목: label, 구분: '경우(안) 서버 계산', 납세자: (res.요약값 && res.요약값.양도인별) ? res.요약값.양도인별.map(function (x) { return x.납세자; }).join('·') : String(c.납세자 || c.고객명 || ''), 요약: summary, 최종세액: Number.isFinite(total) ? total : undefined, 계산일: caseProcToday_(), 기준일스냅샷: String(c.기준일 || ''),
     안: { 이름: name, 세목: tax, 바꾼칸: diff, 누가: by, 때: caseProcNow_(), 바탕: baseFrom, 바탕저장본id: '', 이유: String(body.why || '').slice(0, 200) },
     // 저장값은 작게(시트 한 칸 한도) — 엔진에 넣은 입력과 결과 요약만. 다음 안은 이 inputs를 바탕으로 이어 바꿀 수 있다
     저장값: { scenario: true, tax: tax, inputs: slimIn, result: res.요약값 } };
@@ -28595,7 +28608,7 @@ function caseProcScenario_(c, body) {
 function caseProcCalcCite_(c, id) {
   const e = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (x) { return x && String(x.id) === String(id); })[0];
   if (!e) return null;
-  return { id: e.id, 세목: e.세목, 구분: e.구분, 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? e.안.바꾼칸 : [], 누가: e.안 ? e.안.누가 : '', 때: e.안 ? e.안.때 : '', 결과요약: e.저장값 && e.저장값.scenario ? e.저장값.result : null, 요약글: String(e.요약 || '').slice(0, 1500) };
+  return { id: e.id, 세목: e.세목, 구분: e.구분, 납세자: e.납세자 || (e.저장값 && e.저장값.납세자) || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일, 바꾼칸: e.안 ? e.안.바꾼칸 : [], 누가: e.안 ? e.안.누가 : '', 때: e.안 ? e.안.때 : '', 결과요약: e.저장값 && e.저장값.scenario ? e.저장값.result : null, 요약글: String(e.요약 || '').slice(0, 1500) };
 }
 // 중요한 순간 — GAS가 규칙으로 알아챈 것(0원). 넥스가 먼저 말을 거는 재료(sv.alerts, 화면이 넥스 알림으로 띄우고 보면 seen)
 //  세무사님 원문(10-22): "중요한 순간이 어떤 경우가 있을지 모르겠는데, 만약 그런 경우라면 AI가 먼저 말을 걸어도 되겠지." — 경우는 실제 쓰며 함께 늘린다
@@ -47720,8 +47733,8 @@ function trcApplyAns_(S, ans) {
   const st = S.state;
   const setP = function (path, v) {
     let m;
-    if ((m = /^seller\.(\w+)$/.exec(path))) { st.transferSellers[0][m[1]] = v; return true; }
-    if ((m = /^c(\d+)\.buyer\.(\w+)$/.exec(path))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return false; ct.buyers = ct.buyers && ct.buyers.length ? ct.buyers : [{}]; ct.buyers[0][m[2]] = v; return true; }
+    if ((m = /^seller(\d*)\.(\w+)$/.exec(path))) { const si = Number(m[1] || 0); while (st.transferSellers.length <= si) st.transferSellers.push({}); st.transferSellers[si][m[2]] = v; return true; } // [2026-11-10] 여러 양도인·양수인
+    if ((m = /^c(\d+)\.buyer(\d*)\.(\w+)$/.exec(path))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return false; const bi = Number(m[2] || 0); ct.buyers = ct.buyers && ct.buyers.length ? ct.buyers : [{}]; while (ct.buyers.length <= bi) ct.buyers.push({}); ct.buyers[bi][m[3]] = v; return true; }
     if ((m = /^c(\d+)\.(\w+)$/.exec(path))) { const ct = st.transferContracts[Number(m[1])]; if (!ct) return false; ct[m[2]] = m[2] === 'totalPrice' ? trcNum_(v) : v; return true; }
     if ((m = /^a(\d+)\.(\w+)$/.exec(path))) { const a = st.transferAssets[Number(m[1])]; if (!a) return false; a[m[2]] = v; return true; }
     return false;
@@ -48518,6 +48531,67 @@ function trcEngineInputs_(st, transferDate) {
       isOneHouseOneFamily: !!a.isOneHouseOneFamily, isNonBusinessLand: !!a.isNonBusinessLand, isUnregisteredTransfer: !!a.isUnregisteredTransfer, multiHouseCount: Number(s0.multiHouseCount) || 0, isTransferorResident: s0.isTransferorResident !== false,
       donorRelation: a.donorRelation && a.donorRelation !== 'none' ? a.donorRelation : '', giftReceivedDate: a.giftReceivedDate || '', doneeOwnAcquisitionPrice: Number(a.doneeOwnAcquisitionPrice) || 0 });
   });
+}
+
+// [2026-11-10 검토대상 16 — 세무사님 "2번으로 가야 한다" / "공동양도. 공동수증, 공동상속이 모두 구현되어 있는 것으로 알고 있다"]
+//  공동양도 — 계산기 화면(taxcalc.html run-transfer 공동양도인 갈래)과 같은 규칙으로 양도인마다 따로 계산할 입력을 만든다.
+//  양도세는 §47②류 동일인 합산이 없어 양도인마다 완전히 독립(각자 기본공제 250만원·자기 세율구간).
+//  자산마다 sellerAllocations [{sellerIdx, ratio}](장부 a#.sellerAllocations — 배열 또는 "0:1/2, 1:1/2" 글)로 나누고,
+//  비어 있으면 양도인 칸 seller#.share(예: 1/2)를 모든 자산에, 그것도 없으면 똑같이 나눈 잠정 지분(알림 남김).
+//  금액 칸 목록은 화면 TR_MONEY_FIELDS_TO_SCALE_와 같게 둔다(화면 목록을 고치면 여기도).
+var TRC_MONEY_SCALE_ = ['fairMarketValueForGiftCheck', 'acquisitionStandardPriceForExpense', 'comparableTransactionPrice', 'appraisalValue', 'transferStandardPriceForConversion', 'depreciationDeductedAsBusinessExpense', 'transferPrice', 'acquisitionPrice', 'necessaryExpenses', 'acquisitionStandardPrice', 'registrationStandardPrice', 'transferStandardPrice', 'downContractPriceDifference', 'rentalStartStandardPrice', 'rentalEndStandardPrice', 'rightsValue', 'settlementPaid', 'originalAssetAcquisitionPrice', 'originalNecessaryExpenses', 'originalAcquisitionStandardPrice', 'approvalDateStandardPrice', 'convertedBuildingAcquisitionValueForPenalty', 'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses', 'giftTaxPaid', 'giftTaxableValue', 'nhFiveYearMarkValue', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice', 'nhTransferStandardPrice', 'nhFormerHouseAcquisitionStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice', 'uhTransferStandardPrice', 'pensionAccountContribution', 'pensionPriorContribution', 'rpFiveYearMarkValue', 'lrRegistrationValue', 'replotmentSettlementPaid', 'replotmentTransferExpenses'];
+function trcShareFrac_(raw) {
+  const s = String(raw == null ? '' : raw).trim(); if (!s) return null;
+  const m = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(s);
+  if (m) { const den = Number(m[2]); return den ? Number(m[1]) / den : null; }
+  const pc = /^(\d+(?:\.\d+)?)\s*%$/.exec(s); if (pc) return Number(pc[1]) / 100;
+  const n = Number(s.replace(/,/g, '')); return isNaN(n) ? null : (n > 1 ? n / 100 : n);
+}
+function trcAllocList_(raw) {
+  if (Array.isArray(raw)) return raw.filter(function (x) { return x && x.sellerIdx !== undefined && x.sellerIdx !== ''; });
+  const s = String(raw || '').trim(); if (!s) return [];
+  return s.split(/[,;\s]+/).map(function (t) { const m = /^(\d+)\s*[:=]\s*(.+)$/.exec(t); return m ? { sellerIdx: m[1], ratio: m[2] } : null; }).filter(Boolean);
+}
+// 돌려줌: [{ idx, name, regNo, inputs, notes }] — 양도인이 하나뿐이고 지분 나눔이 없으면 예전 trcEngineInputs_와 똑같은 한 덩어리(바뀜 없음)
+function trcEngineInputsBySeller_(st, transferDate) {
+  const sellers = (st.transferSellers || []).length ? st.transferSellers : [{}];
+  const base = trcEngineInputs_(st, transferDate);
+  const allocs = base.map(function (t) { const al = trcAllocList_(t.sellerAllocations); delete t.sellerAllocations; return al; });
+  const anyAlloc = allocs.some(function (al) { return al.length; });
+  if (sellers.length <= 1 && !anyAlloc) return [{ idx: 0, name: String((sellers[0] || {}).name || ''), regNo: String((sellers[0] || {}).regNo || ''), inputs: base, notes: [] }];
+  const notes = [];
+  const shareOf = sellers.map(function (s) { return trcShareFrac_(s && s.share); });
+  return sellers.map(function (s, si) {
+    s = s || {};
+    const inputs = base.map(function (t, k) {
+      let ratio;
+      if (allocs[k].length) ratio = allocs[k].reduce(function (sum, al) { return String(al.sellerIdx) === String(si) ? sum + (trcShareFrac_(al.ratio) || 0) : sum; }, 0);
+      else if (shareOf[si] != null) ratio = shareOf[si];
+      else { ratio = 1 / sellers.length; if (si === 0) notes.push('자산' + (k + 1) + ' 양도인별 지분이 장부에 없어 ' + sellers.length + '명 똑같이(각 1/' + sellers.length + ') 나눈 잠정 지분으로 계산 — a' + k + '.sellerAllocations(예: 0:1/2, 1:1/2) 또는 seller#.share로 정하세요'); }
+      if (!ratio) return null;
+      const r = JSON.parse(JSON.stringify(t));
+      if (ratio < 1 && (Number(r.transferPrice) || 0) > 0) r.wholeHouseTransferPrice = Number(r.wholeHouseTransferPrice) || Number(r.transferPrice); // 고가주택 판정은 전체 가액(§89①3호·시행령 §156①) — 화면과 같음
+      TRC_MONEY_SCALE_.forEach(function (f) { if (r[f] !== undefined && r[f] !== null && r[f] !== '') r[f] = Math.round((Number(r[f]) || 0) * ratio); });
+      r.multiHouseCount = Number(s.multiHouseCount) || 0; r.isTransferorResident = s.isTransferorResident !== false && s.isTransferorResident !== 'false';
+      r.ownershipShare = ratio;
+      return r;
+    }).filter(Boolean);
+    return { idx: si, name: String(s.name || ('양도인' + (si + 1))), regNo: String(s.regNo || ''), inputs: inputs, notes: si === 0 ? notes : [] };
+  }).filter(function (x) { return x.inputs.length; });
+}
+// 양도인마다 엔진을 따로 돌린다 — 돌려줌 { ok, multi, per:[{idx,name,regNo,inputs,res}], notes, error }
+//  양도인 하나면 per 한 줄(예전과 같은 숫자). 하나라도 실패하면 ok=false(조용히 빼지 않음)
+function trcRunBySeller_(st, transferDate) {
+  const groups = trcEngineInputsBySeller_(st, transferDate);
+  if (!groups.length) return { ok: false, error: '양도인별로 나눈 자산이 없습니다(지분이 모두 0)' };
+  const per = [], notes = [];
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i]; (g.notes || []).forEach(function (n) { notes.push(n); });
+    const res = runUiEngineCalcTool_('calculate_transfer_tax_multi', { transactions: g.inputs });
+    if (!res || res.error) return { ok: false, error: (groups.length > 1 ? g.name + ' — ' : '') + ((res && res.error) || '엔진 없음') };
+    per.push({ idx: g.idx, name: g.name, regNo: g.regNo, inputs: g.inputs, res: res });
+  }
+  return { ok: true, multi: per.length > 1 || (st.transferSellers || []).length > 1, per: per, notes: notes };
 }
 
 // [2026.10.17] 상속 — 계산기 「피상속인 주소(사망 당시 주소지=납세지)」·상속인 카드 「주소」를 주민등록 등본·초본에서(이름이 정확히 같은 사람, 주소가 하나로 정해질 때만).
