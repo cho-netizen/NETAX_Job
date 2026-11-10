@@ -136,7 +136,7 @@ function ledgerNorm_(path, value) {
   if (/\.(is[A-Z]\w*)$/.test(p)) { if (typeof value === 'boolean') return { v: value }; if (/^(true|1|예|켬|yes|해당|맞)/.test(s)) return { v: true }; if (/^(false|0|아니|끔|no|비해당|없)/.test(s)) return { v: false }; return { error: ledgerLabel_(p) + '은(는) 예/아니오 칸입니다 — 받은 값: ' + s.slice(0, 30) }; }
   if (/(Price|Amount|Value|StandardPrice|Sqm|Assumed|Fee|PaidTax|DeductionUsed)$|^taxfee$/.test(p)) { const n = Number(s.replace(/[^\d]/g, '')); if (!s) return { v: '' }; if (!Number.isFinite(n)) return { error: ledgerLabel_(p) + '은(는) 금액 칸입니다 — 받은 값: ' + s.slice(0, 30) }; return { v: n }; }
   if (/(Date|^기준일)$/.test(p)) { const m = /((?:19|20)\d{2})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/.exec(s); if (!s) return { v: '' }; if (!m) return { error: ledgerLabel_(p) + '은(는) 날짜 칸(YYYY-MM-DD)입니다 — 받은 값: ' + s.slice(0, 30) }; return { v: m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) }; }
-  if (p === 'costs') {
+  if (p === 'costs' || /^a\d+\.costs$/.test(p)) { // [2026-11-10] a#.costs도 같은 모양
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
     if (!d || typeof d !== 'object') return { error: '필요경비는 {acq:[{label,amount,file,date}], tr:[…]} 모양이어야 합니다(acq=취득비용, tr=양도비용)' };
     const fix = function (l) { return (Array.isArray(l) ? l : []).map(function (x) { return { kind: x.kind ? String(x.kind).slice(0, 10) : undefined, label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount == null ? '' : x.amount).replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '').slice(0, 10) }; }).filter(function (x) { return x.amount > 0; }); };
@@ -181,7 +181,7 @@ function ledgerValueText_(path, v) {
   const en = ledgerEnumOf_(path);
   if (en && LEDGER_ENUMS_[en].ko[v]) return LEDGER_ENUMS_[en].ko[v];
   if (typeof v === 'boolean') return v ? '예' : '아니오';
-  if (path === 'costs' && typeof v === 'object') { const s = function (l) { return (l || []).reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0); }; return '취득비용 ' + s(v.acq).toLocaleString('ko-KR') + '원(' + (v.acq || []).length + '건) · 양도비용 ' + s(v.tr).toLocaleString('ko-KR') + '원(' + (v.tr || []).length + '건)'; }
+  if ((path === 'costs' || /^a\d+\.costs$/.test(path)) && typeof v === 'object') { const s = function (l) { return (l || []).reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0); }; return '취득비용 ' + s(v.acq).toLocaleString('ko-KR') + '원(' + (v.acq || []).length + '건) · 양도비용 ' + s(v.tr).toLocaleString('ko-KR') + '원(' + (v.tr || []).length + '건)'; }
   if (/(Price|Amount|Value|StandardPrice|Assumed|Fee|PaidTax|DeductionUsed|Fmv)$|^taxfee$|^relFmv$/.test(path) && /^\d+$/.test(String(v))) return Number(v).toLocaleString('ko-KR') + '원'; // 금액 칸만 "원"(면적·층·사람 수에 원이 붙던 것)
   if (typeof v === 'number') return String(v);
   // [2026.10.29] 목록·묶음 값(물건목록·가설 거래 여러 건 등)은 사람이 읽는 글로 — 화면에 기계 형식({"assetType":…})이 보이던 것.
@@ -382,7 +382,7 @@ function ledgerCalcState_(caseId, over) {
     });
   }
   const st = { transferSellers: [{}], transferContracts: [], transferAssets: [], acquisitionContracts: [] };
-  const src = {}, used = [];
+  const src = {}, used = [], assetCosts = [];
   const ct = function (i) { while (st.transferContracts.length <= i) { const k = st.transferContracts.length; st.transferContracts.push({ id: 'trc_c' + (k + 1), name: '양도계약 ' + ('0' + (k + 1)).slice(-2), date: '', totalPrice: 0, totalExpenseItems: [], externalMembers: [], buyers: [{}], transferCause: 'sale' }); } return st.transferContracts[i]; };
   const as = function (i) { while (st.transferAssets.length <= i) { const k = st.transferAssets.length; st.transferAssets.push({ id: 'trc_a' + (k + 1) + '_1', transferContractId: 'trc_c' + (k + 1), assetLocation: '', acquisitionDate: '', acquisitionPrice: '', acquisitionExpenseItems: [] }); } return st.transferAssets[i]; };
   Object.keys(L.rows).sort(ledgerPathSort_).forEach(function (p) {
@@ -393,6 +393,7 @@ function ledgerCalcState_(caseId, over) {
     else if ((m = /^c(\d+)\.buyer(\d*)\.(\w+)$/.exec(p))) { const c1 = ct(Number(m[1])), bi = Number(m[2] || 0); while (c1.buyers.length <= bi) c1.buyers.push({}); c1.buyers[bi][m[3]] = r.v; }
     else if ((m = /^c(\d+)\.(\w+)$/.exec(p))) ct(Number(m[1]))[m[2]] = r.v;
     else if ((m = /^a(\d+)\.contract$/.exec(p))) { const ci = Number(String(r.v).replace(/\D/g, '')) || 0; ct(ci); as(Number(m[1])).transferContractId = 'trc_c' + (ci + 1); }
+    else if ((m = /^a(\d+)\.costs$/.exec(p))) { if (r.v && typeof r.v === 'object') assetCosts.push({ ai: Number(m[1]), v: r.v }); } // [2026-11-10] 자산마다 필요경비(사람마다 자산을 따로 적은 공동양도) — 취득비용은 그 자산, 양도비용은 그 자산이 걸린 계약에(줄 다 읽은 뒤)
     else if ((m = /^a(\d+)\.(\w+)$/.exec(p))) as(Number(m[1]))[m[2]] = r.v;
     else if (p === 'costs') { const a0 = as(0), c0 = ct(0); a0.acquisitionExpenseItems = (r.v.acq || []).map(function (x) { return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: Number(x.amount) || 0, payDate: x.date || '' }; }); c0.totalExpenseItems = (r.v.tr || []).map(function (x) { return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: Number(x.amount) || 0, payDate: x.date || '' }; }); }
     else if (p === 'taxfee') { if (Number(r.v)) ct(0).totalExpenseItems = (ct(0).totalExpenseItems || []).concat([{ label: '양도소득세 신고 세무비용', amount: Number(r.v), payDate: '' }]); }
@@ -400,6 +401,7 @@ function ledgerCalcState_(caseId, over) {
     else return;
     src[p] = r.src; used.push(p);
   });
+  assetCosts.forEach(function (x) { const it = function (l) { return (l || []).map(function (y) { return { label: y.label + (y.file ? ' (' + y.file + ')' : ''), amount: Number(y.amount) || 0, payDate: y.date || '' }; }); }; const a = as(x.ai); a.acquisitionExpenseItems = (a.acquisitionExpenseItems || []).concat(it(x.v.acq)); const cid = a.transferContractId || ('trc_c' + (x.ai + 1)); const c = st.transferContracts.filter(function (q) { return q.id === cid; })[0] || ct(Number(String(cid).replace(/\D/g, '')) - 1 || 0); c.totalExpenseItems = (c.totalExpenseItems || []).concat(it(x.v.tr)); });
   // 계약마다 양도자산이 하나는 있어야 엔진이 돈다 — 자산 줄이 전혀 없으면 계약 수만큼 빈 자산
   st.transferContracts.forEach(function (c, i) { if (!st.transferAssets.some(function (a) { return a.transferContractId === c.id; })) as(st.transferAssets.length).transferContractId = c.id; });
   // [2026.10.30 E] 과세대상 구분이 비었어도 자산 종류 칸이 주택 모양(아파트·단독·다세대·다가구·연립·빌라)이면 주택으로 — 오피스텔은 쓰임새로 갈리므로 비워 둔다
@@ -479,7 +481,7 @@ function ledgerFromGiftInh_(c, items) {
 }
 function ledgerGiftInput_(c, L, k) {
   const P = Number(k) > 0 ? 'g' + Number(k) + '.' : 'g.'; // [2026-11-10] 둘째 증여부터 g1.*·g2.*
-  const row = function (p) { const r = L.rows[p]; return r && (r.state === '확정' || r.state === '추정') ? r.v : ''; };
+  const row = function (p) { const ok = function (r) { return r && (r.state === '확정' || r.state === '추정'); }; let r = L.rows[p]; if (!ok(r) && P === 'g.' && p.indexOf('g.') === 0) r = L.rows['g0.' + p.slice(2)]; return ok(r) ? r.v : ''; }; // [2026-11-10] 첫 증여를 g0.*로 적어도 받음(운영 넥스 시험에서 넥스가 g0.*로 적어 한 번 헛돎)
   const dg = function (x) { return Number(String(x == null ? '' : x).replace(/[^\d]/g, '')) || 0; };
   const amt = dg(row(P + 'giftAmount')), rel = String(row(P + 'giftRelation') || '');
   const gaps = []; if (!amt) gaps.push(P + 'giftAmount'); if (!rel) gaps.push(P + 'giftRelation');
@@ -518,6 +520,24 @@ function ledgerInhInput_(c, L) {
     hasSpouse: row('i.isSpouse') === true || row('i.isSpouse') === 'true', childCount: dg(row('i.childCount')), netFinancialAssets: fin,
     funeralCostAmount: dg(row('i.funeralAmount')), funeralNicheCostAmount: dg(row('i.nicheAmount')), isDecedentResident: true };
   if (pgH + pgO) { input.priorGiftedAmountIncludedInEstate = pgH + pgO; if (pgH) input.giftToHeirsWithin10Years = pgH; if (pgO) input.nonHeirPriorGiftAmountTotal = pgO; }
+  // [2026-11-10 공동상속 잇기] 상속인 줄(i.heir#.*)이 있으면 배우자 유무·자녀 수·배우자가 실제 받는 금액을 그 줄에서 — 운영 넥스 시험(박영수 상속)에서
+  //  상속인 줄을 적었는데도 배우자공제가 빠진 숫자가 나옴. 장부 칸(i.isSpouse·i.childCount)에 값이 있으면 그것이 먼저.
+  //  배우자 법정상속분은 상속인이 배우자와 자녀뿐일 때만 1.5 : 1(민법 §1009②)로 셈. 실제 받는 금액을 쓰면 분할된 것으로 보고, 분할 신고 기한 안인지는 물어볼 것으로 남김(상증법 §19②).
+  const hs = ledgerHeirs_(L);
+  if (hs.length) {
+    const isSp = function (h) { return /배우자|아내|남편|처$/.test(h.relation || ''); };
+    const isCh = function (h) { return /자녀|아들|딸|장남|차남|장녀|차녀|삼남|삼녀|직계비속/.test(h.relation || ''); };
+    const sp = hs.filter(isSp), ch = hs.filter(isCh);
+    const gi = gaps.indexOf('i.heirCount'); if (gi !== -1) gaps.splice(gi, 1);
+    if (row('i.isSpouse') === '' && sp.length) input.hasSpouse = true;
+    if (row('i.childCount') === '' && ch.length) input.childCount = ch.length;
+    if (input.hasSpouse && sp.length && sp[0].actualInheritedValue) {
+      input.spouseActualInheritedAmount = sp[0].actualInheritedValue; input.isSpousePropertyDivided = true;
+      gaps.push('i.spouseDivided(배우자 몫을 상속인 줄 값으로 분할된 것으로 봄 — 배우자상속재산 분할 신고 기한 안인지 확인)');
+      if (ch.length && sp.length + ch.length === hs.length) input.spouseLegalShareRatio = 1.5 / (1.5 + ch.length);
+      else gaps.push('i.spouseLegalShare(상속인이 배우자·자녀만이 아니라 배우자 법정상속분을 따로 넣어야 함)');
+    }
+  }
   const open = ledgerQuestions_(c.id).filter(function (q) { return /^i\./.test(q.path); });
   return { input: input, gaps: gaps.concat(open.map(function (q) { return q.path; })) };
 }
