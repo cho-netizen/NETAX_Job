@@ -198,7 +198,46 @@ function ledgerObjText_(o) {
 }
 // ── 쓰기 — 장부에 값을 적는 유일한 길 ──
 // input: { path, value, kind(세무사님|넥스|서류|규칙|추정|계산), by(기록 주체 — 생략하면 kind), file, page, quote(원문 한 줄), why, sure(확실|애매|모름), cands:[{v,src}], label, estimate(true면 추정) }
+// [2026-11-11] 장부가 모르는 칸 이름 — 운영 넥스 시험(박영수 상속)에서 넥스가 장례비를 계산기 쪽 이름(funeralCostAmount)으로 적었는데
+//  장부가 그대로 받아 두기만 해 계산에 안 들어감(장례비 빠져 상속세 1,455,000원 더). 넥스·세무사님·추정 값은 ① 아는 다른 이름이면 맞는 장부 칸으로 옮겨 적고
+//  ② 장부에 칸이 없는 계산기 이름이면 거절하며 맞는 칸을 알려 준다. GAS(서류·규칙) 쓰기는 코드가 정한 칸이라 그대로.
+var LEDGER_PATH_ALIAS_ = {
+  funeralCostAmount: 'i.funeralAmount', funeralAmount: 'i.funeralAmount', funeralNicheCostAmount: 'i.nicheAmount', nicheAmount: 'i.nicheAmount',
+  hasSpouse: 'i.isSpouse', isSpouse: 'i.isSpouse', childCount: 'i.childCount', heirCount: 'i.heirCount',
+  netFinancialAssets: 'i.financialAmount', financialAmount: 'i.financialAmount', realEstateAmount: 'i.realEstateAmount',
+  debtAmount: 'i.debtAmount', duesAmount: 'i.duesAmount', appraisalFeeAmount: 'i.appraisalFeeAmount', deceasedName: 'i.deceasedName',
+  dateOfDeath: '기준일', inheritanceDate: '기준일', transferDate: '기준일',
+  giftAmount: 'g.giftAmount', relation: 'g.giftRelation', giftRelation: 'g.giftRelation', donorName: 'g.giftDonorName', doneeName: 'g.giftDoneeName', giftDonorName: 'g.giftDonorName', giftDoneeName: 'g.giftDoneeName',
+  priorGiftAmount: 'g.giftPriorAmount', giftPriorAmount: 'g.giftPriorAmount'
+};
+var LEDGER_PATH_NO_ROW_ = {
+  taxableEstateAmount: '상속세 과세가액은 장부가 셈합니다 — 재산 i.realEstateAmount·i.financialAmount, 빚 i.debtAmount·공과금 i.duesAmount, 장례비 i.funeralAmount로 적으세요',
+  spouseActualInheritedAmount: '배우자가 실제 받는 금액은 상속인 줄 i.heir#.inherited(관계 i.heir#.relation=배우자)로 적으면 계산이 씁니다',
+  spouseLegalShareRatio: '배우자 법정상속분은 상속인 줄(i.heir#.relation·inherited)로 장부가 셈합니다(배우자·자녀뿐일 때 1.5:1)',
+  isSpousePropertyDivided: '배우자 몫 분할은 상속인 줄 i.heir#.inherited를 적으면 분할된 것으로 보고, 분할 신고 기한은 물어볼 것으로 남습니다',
+  giftDate: '증여일은 장부 「기준일」 칸에 적으세요', taxableBase: '과세표준은 계산 결과입니다 — 장부에 적지 않습니다', calculatedTax: '산출세액은 계산 결과입니다 — 장부에 적지 않습니다'
+};
+function ledgerFixPath_(path) {
+  const p = String(path || '').trim(); let m;
+  if (/^[a-z][A-Za-z]+$/.test(p) && !/^(costs|taxfee|split|relFmv|compSplit)$/.test(p)) { // 앞머리 없는 계산기 이름
+    if (LEDGER_PATH_ALIAS_[p]) return { path: LEDGER_PATH_ALIAS_[p], note: '칸 이름 ' + p + ' → ' + LEDGER_PATH_ALIAS_[p] + '로 옮겨 적음' };
+    return { error: '장부에 「' + p + '」 칸이 없습니다 — ' + (LEDGER_PATH_NO_ROW_[p] || '장부 칸 이름(seller.*·c0.*·a0.*·g.*·i.*·기준일 등, job_lookup kind=ledger로 보는 줄 이름)으로 적으세요') };
+  }
+  if ((m = /^(i|g\d*)\.([a-z][A-Za-z]+)$/.exec(p))) { // i.·g. 뒤에 계산기 이름을 붙인 꼴
+    const k = m[2], known = m[1] === 'i' ? ['financialAmount', 'realEstateAmount', 'debtAmount', 'duesAmount', 'funeralAmount', 'nicheAmount', 'heirCount', 'isSpouse', 'childCount', 'deceasedName', 'priorGiftHeirAmount', 'priorGiftOtherAmount', 'appraisalFeeAmount'] : LEDGER_GIFT_KEYS_.concat(Object.keys(LEDGER_GKO_)).concat(['deal']);
+    if (known.indexOf(k) !== -1) return { path: p };
+    const al = LEDGER_PATH_ALIAS_[k];
+    if (al && al.split('.')[0] === (m[1] === 'i' ? 'i' : 'g')) { const to = m[1] === 'i' ? al : m[1] + '.' + al.split('.')[1]; return { path: to, note: '칸 이름 ' + p + ' → ' + to + '로 옮겨 적음' }; }
+    if (LEDGER_PATH_NO_ROW_[k]) return { error: '장부에 「' + p + '」 칸이 없습니다 — ' + LEDGER_PATH_NO_ROW_[k] };
+  }
+  return { path: p };
+}
 function ledgerSet_(caseId, input) {
+  if (input && !/^(서류|규칙|계산)$/.test(String(input.kind || ''))) {
+    const fx = ledgerFixPath_(input.path);
+    if (fx.error) return { ok: false, refused: true, error: fx.error };
+    if (fx.note) input = Object.assign({}, input, { path: fx.path, why: (input.why ? input.why + ' · ' : '') + fx.note });
+  }
   const pre = ledgerSetPrep_(input);
   if (pre.error) return { ok: false, error: pre.error };
   return ledgerMutate_(caseId, function (L) { return ledgerSetInner_(L, pre); });
