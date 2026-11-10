@@ -4663,7 +4663,7 @@ const JOB_AI_TOOLS_ = [
   {
     name: 'case_ledger',
     description: '사건 장부에 사실을 적거나 상태를 바꾼다(바로 실행, 토큰 0). 장부 = 사건의 모든 사실(세액계산기 칸 하나 = 줄 하나: 값·출처·확신·상태·이력). 먼저 job_lookup kind=ledger로 장부를 본다. '
-      + 'do=set: 값을 적는다 — path(칸 경로: seller.name·seller.regNo·seller.address·seller.multiHouseCount / c0.date·c0.totalPrice·c0.transferCause·c0.buyer.name·c0.buyer.regNo·c0.buyer.relation / 여러 사람(공동양도·공동수증·공동상속)은 한 사건 안에서 번호로: 둘째 양도인 seller1.*(지분 seller#.share 1/2 또는 자산별 a0.sellerAllocations "0:1/2, 1:1/2")·둘째 양수인 c0.buyer1.*·둘째 증여 g1.*(수증자 g1.giftDoneeName·증여자 g1.giftDonorName)·상속인 i.heir0.name·i.heir0.relation·i.heir0.inherited(받는 재산가액) — 다른 사람 몫을 따로 사건·경우(안)로 만들지 말 것, do=calc가 사람마다 따로 계산해 각자 이름으로 저장한다 / a0.assetLocation·a0.assetKind·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract(c0) / costs({acq:[{label,amount,file,date}],tr:[…]})·taxfee·사건분류·기준일 / doc:<파일 이름>.role(서류 역할)), value, kind(세무사님=세무사님이 말로 준 값 그대로 / 넥스=네가 서류로 정한 값 / 추정=추정치), file·page·quote(원문 한 줄)·why(근거). '
+      + 'do=set: 값을 적는다 — path(칸 경로: seller.name·seller.regNo·seller.address·seller.multiHouseCount / c0.date·c0.totalPrice·c0.transferCause·c0.buyer.name·c0.buyer.regNo·c0.buyer.relation / 여러 사람(공동양도·공동수증·공동상속)은 한 사건 안에서 번호로: 둘째 양도인 seller1.*(한 자산을 함께 팔면 지분 seller#.share 1/2 또는 자산별 a0.sellerAllocations "0:1/2, 1:1/2" · 사람마다 자산·계약을 따로 적었으면 그 자산에 a1.seller=1(그 자산의 양도인 번호))·둘째 양수인 c0.buyer1.*·둘째 증여 g1.*(수증자 g1.giftDoneeName·증여자 g1.giftDonorName)·상속인 i.heir0.name·i.heir0.relation·i.heir0.inherited(받는 재산가액) — 다른 사람 몫을 따로 사건·경우(안)로 만들지 말 것, do=calc가 사람마다 따로 계산해 각자 이름으로 저장한다 / a0.assetLocation·a0.assetKind·a0.assetType·a0.acquisitionDate·a0.acquisitionPrice·a0.contract(c0) / costs({acq:[{label,amount,file,date}],tr:[…]})·taxfee·사건분류·기준일 / doc:<파일 이름>.role(서류 역할)), value, kind(세무사님=세무사님이 말로 준 값 그대로 / 넥스=네가 서류로 정한 값 / 추정=추정치), file·page·quote(원문 한 줄)·why(근거). '
       + '고르기 칸은 코드값: assetType house|other|presale_right, buyer.relation none|sibling|lineal|spouse|relative, assetKind land|building|land_building|stock|other, transferCause sale|expropriation|exchange|gift_burden|other. 세무사님이 정한 값은 바꾸지 못한다(거절되면 지금 값과 서류 값만 말씀드린다). '
       + 'do=ask: 확신이 없을 때 값 대신 물어볼 것으로 세운다 — path, question(무엇이 왜 애매한지), cands:[{v,src}](후보와 출처), needDoc(true면 증빙 받을 것). '
       + 'do=decide: path, decision(확인|보류|무시), note. do=undo: path(마지막 고침 되돌리기, 네 값만). do=calc: 장부(확정+추정)로 세액계산기를 돌려 사건에 저장하고 납부세액·빈 칸·추가 확인 사항을 돌려준다 — 세액 숫자는 여기서 받은 것만 말한다. do=import: 옛 저장소(사건처리 결정 파일)를 장부로 한 번 옮긴다(장부가 비어 있을 때). '
@@ -48556,11 +48556,22 @@ function trcAllocList_(raw) {
 function trcEngineInputsBySeller_(st, transferDate) {
   const sellers = (st.transferSellers || []).length ? st.transferSellers : [{}];
   const base = trcEngineInputs_(st, transferDate);
-  const allocs = base.map(function (t) { const al = trcAllocList_(t.sellerAllocations); delete t.sellerAllocations; return al; });
+  // [2026-11-10 넥스 운영 시험] 자산마다 양도인을 따로 적은 경우(a#.seller = 1 또는 seller1) — 그 자산은 그 사람 몫 전부
+  const allocs = base.map(function (t) {
+    let al = trcAllocList_(t.sellerAllocations); delete t.sellerAllocations;
+    const own = t.seller != null && t.seller !== '' ? t.seller : t.sellerIdx; delete t.seller; delete t.sellerIdx;
+    if (!al.length && own != null && own !== '') { const m = /(\d+)/.exec(String(own)); al = [{ sellerIdx: m ? String(Number(m[1])) : '0', ratio: '1' }]; al.own = true; }
+    return al;
+  });
+  // 양도인 번호를 적은 자산이 하나라도 있으면(사람마다 자산을 따로 적은 꼴) 번호·지분 없는 자산은 첫 양도인(사건 납세자) 몫 전부 — 지분(seller#.share)은 그때 쓰지 않음
+  if (allocs.some(function (al) { return al.own; })) allocs.forEach(function (al, k) { if (!al.length) allocs[k] = [{ sellerIdx: '0', ratio: '1' }]; });
   const anyAlloc = allocs.some(function (al) { return al.length; });
   if (sellers.length <= 1 && !anyAlloc) return [{ idx: 0, name: String((sellers[0] || {}).name || ''), regNo: String((sellers[0] || {}).regNo || ''), inputs: base, notes: [] }];
   const notes = [];
   const shareOf = sellers.map(function (s) { return trcShareFrac_(s && s.share); });
+  // 몇 사람만 지분을 적었으면 남은 지분을 나머지 사람에게 똑같이(적은 지분 합이 1을 넘거나 모두 적었으면 그대로)
+  const known = shareOf.filter(function (x) { return x != null; }), unk = shareOf.length - known.length;
+  if (known.length && unk) { const rest = 1 - known.reduce(function (s, x) { return s + x; }, 0); if (rest > 0) shareOf.forEach(function (x, i) { if (x == null) shareOf[i] = rest / unk; }); }
   return sellers.map(function (s, si) {
     s = s || {};
     const inputs = base.map(function (t, k) {
