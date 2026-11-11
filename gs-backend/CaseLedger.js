@@ -2215,6 +2215,8 @@ function caseFlowEvidence_(c, L, lines) {
   });
   // [2026.11.01 물건 장부] 소재지 모름 물건마다 등기부·건축물대장(물건 목록에 소재지가 적히면 다음 바퀴에 빠짐)
   try { const ow = ledgerObjEvWant_(L); Object.keys(ow).forEach(function (k) { if (!has(ow[k].label, k)) want[k] = ow[k]; }); } catch (e) { }
+  // [2026.11.11 판정 사실 잇기 가] 판정이 서류로 확인해야 한다고 남긴 요건(q:판정:… 「증빙받을것」)도 받을 서류에 — 판정을 다시 돌려 풀리면 다음 바퀴에 빠짐
+  try { const jw = ledgerJudgeEvWant_(L); Object.keys(jw).forEach(function (k) { if (!has(jw[k].label, k)) want[k] = jw[k]; }); } catch (e) { }
   let needs = [];
   if (readDone) try { needs = c.세목 === 'transfer' ? (((caseProcLoad_(c.id) || {}).needs || {}).list || []) : (typeof giNeeds_ === 'function' ? giNeeds_(c) : []); } catch (e) { needs = []; }
   needs.filter(function (n) { return n && !n.ok && !n.later && !n.prov && !(L.rows || {})[n.p]; }).forEach(function (n) { cands.push({ p: n.p, l: n.l, note: '장부 확인: 세액계산기 「' + n.l + '」 칸이 비어 있고 폴더에 그 값이 적히는 서류가 없음' }); });
@@ -2941,6 +2943,16 @@ function ledgerObjSell_(c, input, who) {
   return { ok: true, 자산: a, 넣음: res.set, 못바꿈: res.refused, 오류: res.errors, message: '물건 ' + row.id + ' → 양도 자산 ' + a + '(칸 ' + res.set + '개' + (res.refused ? ', 이미 정해진 칸 ' + res.refused + '개는 그대로' : '') + ')' };
 }
 // 받을 서류 — 소재지 모름 줄마다 등기부·건축물대장(caseFlowEvidence_가 바퀴마다 다시 짠다 — 소재지가 적히면 빠짐)
+function ledgerJudgeEvWant_(L) {
+  const out = {};
+  Object.keys((L && L.rows) || {}).forEach(function (p) {
+    if (p.indexOf('q:판정:') !== 0) return;
+    const r = L.rows[p] || {};
+    if (r.state !== '증빙받을것') return;
+    out['flow:' + p] = { label: String(r.label || p.slice(5)).slice(0, 60) + ' 확인 서류', note: '판정 요건 확인: ' + String(r.ask || '').slice(0, 160) };
+  });
+  return out;
+}
 function ledgerObjEvWant_(L) {
   const out = {}, list = (L.obj && L.obj.list) || [], nth = {};
   list.forEach(function (r) {

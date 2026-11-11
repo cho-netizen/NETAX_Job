@@ -918,6 +918,8 @@ function commSeamList_() {
       try { if (cc.indexOf("type: 'gap_reported'") === -1 || cc.indexOf("type: 'calc_browsed'") === -1) return '신고 표·열람 기억 알림이 화면으로 안 감'; } catch (e) { }
       return '';
     } },
+    // [2026.11.11 판정 사실 잇기] 판정이 모르는 요건 → 장부 물음 줄(서류면 받을 서류, 아니면 여쭐 것) → 다시 판정해 풀리면 거둠
+    { 길: '판정 → 장부 여쭐 것·받을 서류(모르는 요건) → 다시 판정해 풀리면 거둠', fn: function () { try { if (typeof judgeAskSync_ !== 'function' || typeof ledgerAskInner_ !== 'function') return '판정 물음 잇기 함수가 없음'; var L = { rows: {}, log: [] }; judgeAskSync_(L, { 묶음: '점검', 요건: [{ 이름: '거주', 결과: '?', 왜: '주민등록 초본' }, { 이름: '경작', 결과: '?', 왜: '직접 경작했는지' }] }, '', '점검'); var a = L.rows['q:판정:점검:거주'], b = L.rows['q:판정:점검:경작']; if (!a || a.state !== '증빙받을것' || !b || b.state !== '물어볼것') return '물음 줄이 기대와 다름'; judgeAskSync_(L, { 묶음: '점검', 요건: [{ 이름: '거주', 결과: '✔' }, { 이름: '경작', 결과: '?', 왜: '직접 경작했는지' }] }, '', '점검'); if (L.rows['q:판정:점검:거주'] || !L.rows['q:판정:점검:경작']) return '풀린 물음을 거두지 못함'; if (typeof ledgerJudgeEvWant_ === 'function' && Object.keys(ledgerJudgeEvWant_({ rows: { 'q:판정:점검:x': { state: '증빙받을것', label: 'x' } } })).length !== 1) return '받을 서류 목록에 안 들어감'; return ''; } catch (err) { return '오류: ' + String(err && err.message || err).slice(0, 100); } } },
   ];
   // [2026.11.10 판정 서버] 판정만 쓰는 줄은 판정 서버에 한 번에 묻는다(judge-remote/JudgeRemote.js — 직결·시험 도구엔 없음)
   return typeof jmSeamFilter_ === 'function' ? jmSeamFilter_(seamList) : seamList;

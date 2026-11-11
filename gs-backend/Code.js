@@ -529,7 +529,7 @@ const DRIVE_TOOLS = [
   // [2026.11.01 종합판정 ①] 비과세·공제·감면 종합판정 도구(엔진 judgeTaxReliefJS, 토큰 0) — 세무사님 "비과세공제감면 종합판정도구" · 화면 세액계산 「판정」과 같은 함수
   {
     name: 'find_judgment',
-    description: '[판정 찾기 — 토큰 0] 쟁점 낱말(예: "상속 포기 배우자공제", "부담부증여 채무", "일시적 2주택 상속주택", "가업승계 요건", "명의신탁 납세의무자")로 judge_tax_relief 판정 묶음 108개 중 맞는 것을 찾아 준다 — 묶음 이름·별칭·근거 조문·넣을 사실 칸 이름. 비과세·공제·감면·시기·납세의무자·평가 방법처럼 「요건을 조문대로 가르는」 쟁점은 계산기 체크 칸에 짐작으로 넣지 말고, 먼저 이 도구로 묶음을 찾아 judge_tax_relief로 가른 뒤 그 결과의 엔진칸으로 계산기를 돌려라. 사건을 시작하면 쟁점마다 한 번씩 부르는 것이 기본이다.',
+    description: '[판정 찾기 — 토큰 0] 쟁점 낱말(예: "상속 포기 배우자공제", "부담부증여 채무", "일시적 2주택 상속주택", "가업승계 요건", "명의신탁 납세의무자")로 judge_tax_relief 판정 묶음 전부(판정 창 목록과 같음) 중 맞는 것을 찾아 준다 — 묶음 이름·별칭·근거 조문·넣을 사실 칸 이름. 비과세·공제·감면·시기·납세의무자·평가 방법처럼 「요건을 조문대로 가르는」 쟁점은 계산기 체크 칸에 짐작으로 넣지 말고, 먼저 이 도구로 묶음을 찾아 judge_tax_relief로 가른 뒤 그 결과의 엔진칸으로 계산기를 돌려라. 사건을 시작하면 쟁점마다 한 번씩 부르는 것이 기본이다.',
     input_schema: { type: 'object', properties: { query: { type: 'string', description: '쟁점을 나타내는 낱말 몇 개(띄어쓰기로)' }, taxType: { type: 'string', description: '세목 힌트(양도|증여|상속|국세기본, 선택)' } }, required: ['query'] }
   },
   {
@@ -5631,7 +5631,7 @@ function buildContextSystemPrompt(basePrompt, body) {
     // [2026.10.29 계획서 3판 5단계] 넥스는 하나 — 대화창도 사건 처리 입구와 같은 도구·같은 일하는 방식. 세무사님 원문: "gas는 전체가 하나의 틀에 박힌 도구가 아니라 하나하나가 별도의 도구일 뿐이라고!" / "세액계산 한번만 하면 모든 사건처리가 끝나는 종점이 아니라고" / "확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고"
     // [2026.10.30 1단계 지시문 한 벌] 예전 "[사건을 맡으면 …]" 묶음은 사건이 연결된 대화에 붙는 nxCaseChatGuide_(AiLeadLive.js) 하나로 옮김 — 같은 일하는 법이 두 곳에 있으면 서로 어긋난다
     + '\n\n[사건을 맡으면] 대화를 그 사건에 연결해(네가 case_link do=link로 — 화면 🔗 단추와 같음, 또는 "○○ 사건 처리하자") 일한다. 사건은 납세자 한 사람 단위라 다른 납세자 일은 그 사람 사건으로 바꾼 뒤 한다 — 연결된 대화에는 사건 도구와 일하는 방식이 함께 붙는다.'
-    + '\n\n[판정 먼저 — 요건은 짐작으로 체크하지 않는다] 비과세·공제·감면·특례·시기(양도일·증여일·신고기한)·납세의무자·평가 방법·상속인·세대·주택 여부처럼 「요건을 조문대로 가르는」 쟁점은 계산기 체크 칸(isOneHouse… 같은 예/아니오)에 네 판단을 넣지 않는다. 사건을 시작하면 의뢰서·말씀에 나온 쟁점마다 find_judgment로 판정 묶음(108개)을 찾아 judge_tax_relief로 가르고, 그 결과의 잠정·할일·엔진칸을 받아 계산기를 돌린다(모르는 사실은 비워 잠정으로). 판정 묶음이 없는 쟁점만 조문(lookup_statute_article)으로 직접 가르고, 그때는 report_capability_gap으로 도구가 없음을 알린다. 의뢰서에 적힌 고객 질문은 하나도 빼지 말고 답한다(답할 도구가 없으면 그 이유를 적는다). 보고서에 적는 숫자는 마지막에 돌린 계산 결과만 쓰고, 앞 단계의 다른 가정으로 나온 숫자를 섞지 않는다.'
+    + '\n\n[판정 먼저 — 요건은 짐작으로 체크하지 않는다] 비과세·공제·감면·특례·시기(양도일·증여일·신고기한)·납세의무자·평가 방법·상속인·세대·주택 여부처럼 「요건을 조문대로 가르는」 쟁점은 계산기 체크 칸(isOneHouse… 같은 예/아니오)에 네 판단을 넣지 않는다. 사건을 시작하면 의뢰서·말씀에 나온 쟁점마다 find_judgment로 판정 묶음을 찾아 judge_tax_relief로 가르고, 그 결과의 잠정·할일·엔진칸을 받아 계산기를 돌린다(모르는 사실은 비워 잠정으로). 판정 묶음이 없는 쟁점만 조문(lookup_statute_article)으로 직접 가르고, 그때는 report_capability_gap으로 도구가 없음을 알린다. 의뢰서에 적힌 고객 질문은 하나도 빼지 말고 답한다(답할 도구가 없으면 그 이유를 적는다). 보고서에 적는 숫자는 마지막에 돌린 계산 결과만 쓰고, 앞 단계의 다른 가정으로 나온 숫자를 섞지 않는다.'
     + '\n\n[세액은 계산 도구로만 — 암산 금지] 세액(양도세·증여세·상속세·지방소득세·가산세)을 말할 때는 네가 머릿속으로 계산한 숫자를 쓰지 않는다. 사건의 세액은 세액계산기를 돌려 저장한 계산 저장본(job_lookup caseproc의 마지막계산·계산저장본, 사건 도구 calc_scenario로 만든 경우(안) 저장본)에서만 인용하고 어느 저장본인지 밝힌다. '
     + '비과세 사건도 계산기로 세액을 끝까지 계산한 뒤 비과세를 적용한다(추징·불복 때 정확한 세액을 알아야 함). 경우를 바꿔 견주는 계산(비과세 적용 전/후, 필요경비 일부 제외, 양도세 vs 증여세 vs 상속세)은 calc_scenario로 각각 저장하고 그 숫자만 말한다. 사건이 연결된 대화에서 calculate_* 도구로 계산하면 결과가 그 사건의 경우(안) 저장본으로 저절로 남는다(결과의 저장본id를 인용). 계산 도구가 도구 목록에 없거나 부르지 못했으면 숫자를 지어내지 말고 "계산 도구를 못 불러 세액은 아직 못 냈다"고 그대로 말한다(표·검토서에 "계산기 실행값"이라 적으려면 저장본 id가 있어야 한다). 세액계산기 분야를 열람(browse_tax_calculators)했으면 같은 답 안에서 바로 이어서 계산기를 부른다 — 사용자에게 "다음 요청부터 가능하다"고 미루지 않는다. 보고서를 저장하면 GAS가 세액 숫자를 저장본과 대조해 ❌를 돌려준다 — ❌가 오면 그 숫자를 저장본 숫자로 고쳐 다시 저장하고 사용자에게 사실대로 말한다. 사건 없는 단순 계산 질문은 calculate_* 도구 결과를 그대로 쓴다(네 암산 금지는 같다).';
   // [2026.10.20] job 화면 — 업무관리자 지침을 사건 세목·업무유형에 맞춰 골라 읽게(감사·제안 도구는 job에 없으므로 아래 안내 대신)
@@ -11427,7 +11427,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
-      if (block.name === 'find_judgment') { // [2026.11.04 넥스 운영 시험] 판정 묶음 108개를 넥스가 못 찾아 계산기로 바로 가던 것 — 화면 판정 창 목록(judgeCatalog_)과 같은 목록에서 낱말로 찾아 줌(토큰 0)
+      if (block.name === 'find_judgment') { // [2026.11.04 넥스 운영 시험] 판정 묶음을 넥스가 못 찾아 계산기로 바로 가던 것 — 화면 판정 창 목록(judgeCatalog_)과 같은 목록에서 낱말로 찾아 줌(토큰 0)
         let resultObj;
         try { resultObj = nxFindJudgment_(block.input || {}); } catch (err) { resultObj = { ok: false, error: '판정 찾기 오류: ' + err.message }; }
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj).slice(0, 12000) };
@@ -11441,7 +11441,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
           const cj = cid && typeof job_findCase_ === 'function' ? job_findCase_(cid) : null;
           if (cid && !cj) resultObj = { ok: false, error: '사건을 찾을 수 없습니다: ' + cid };
           else if (cj) { resultObj = ledgerJudgeRun_(cj, gi, '넥스'); if (resultObj && resultObj.ok && gi.write !== false) clientActions.push({ type: 'ledger_changed', caseId: cj.id, do: 'judge' }); }
-          else if (gi.묶음 && gi.묶음 !== '1세대1주택') { resultObj = judgeMoreRun_(null, Object.assign({}, gi, { write: false }), '넥스'); } // [2026.11.04 넥스 운영 시험] 사건 없이 부른 108개 묶음 — 위 매핑이 group을 지워 이 분기를 못 타고 옛 1세대1주택 엔진으로 가서 「아직 만들지 않은 묶음」 오류가 났던 것(A~D 넷 다)
+          else if (gi.묶음 && gi.묶음 !== '1세대1주택') { resultObj = judgeMoreRun_(null, Object.assign({}, gi, { write: false }), '넥스'); } // [2026.11.04 넥스 운영 시험] 사건 없이 부른 판정 묶음 — 위 매핑이 group을 지워 이 분기를 못 타고 옛 1세대1주택 엔진으로 가서 「아직 만들지 않은 묶음」 오류가 났던 것(A~D 넷 다)
           else { const eng = getUiCalcEngine_(); resultObj = typeof eng.judgeTaxReliefJS === 'function' ? eng.judgeTaxReliefJS(gi) : { error: '엔진에 판정 셈이 없습니다' }; }
         } catch (err) { resultObj = { ok: false, error: '종합판정 오류: ' + err.message }; }
         return { type: 'tool_result', tool_use_id: block.id, is_error: !!(resultObj && (resultObj.error && !resultObj.ok)), content: JSON.stringify(resultObj).slice(0, 20000) };

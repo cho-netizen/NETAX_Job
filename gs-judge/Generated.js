@@ -103,7 +103,11 @@ function jmWrap_(묶음, reqs, extra) {
   const no = reqs.filter(function (r) { return r.결과 === '✘'; }), unk = reqs.filter(function (r) { return r.결과 === '?'; });
   const 결론 = no.length ? '안 됨' : '충족', 잠정 = !no.length && unk.length > 0;
   const 표시 = 묶음 + ' — ' + (결론 === '충족' ? (잠정 ? '충족(잠정)' : '충족') : '안 됨') + (no.length ? ' (못 갖춤: ' + no.map(function (r) { return r.이름; }).join(', ') + ')' : '') + (unk.length ? ' (남은 것: ' + unk.map(function (r) { return r.이름; }).join(', ') + ')' : '');
-  return Object.assign({ 묶음: 묶음, 결론: 결론, 잠정: 잠정, 요건: reqs, 남은것: unk.map(function (r) { return r.이름 + (r.왜 ? ' — ' + r.왜 : ''); }), 표시: 표시, 근거: reqs.map(function (r) { return r.근거; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(' · ') }, extra || {});
+  const o = Object.assign({ 묶음: 묶음, 결론: 결론, 잠정: 잠정, 요건: reqs, 남은것: unk.map(function (r) { return r.이름 + (r.왜 ? ' — ' + r.왜 : ''); }), 표시: 표시, 근거: reqs.map(function (r) { return r.근거; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(' · ') }, extra || {});
+  // [2026.11.11 판정 도구 점검] 덧붙임(extra)에 「요건: 참/거짓」을 넣은 판정(사업양수인·법인제2차·청산인제2차·무상주)이 요건 목록을 덮어써
+  //  판정 창·넥스·장부 물음(요건 결과 「?」)이 요건을 못 보던 것 — 목록은 그대로 두고 참/거짓은 「요건충족」으로
+  if (!Array.isArray(o.요건)) { o.요건충족 = o.요건; o.요건 = reqs; }
+  return o;
 }
 
 // ① 8년 자경농지 양도소득세 감면(조특법 §69)
@@ -5619,7 +5623,7 @@ function judgeSelfForest_(p) {
   if (양도 && 양도 < '2018-01-01') notes.push('자경산지 감면은 2018-01-01 이후 양도분부터(계산기가 막음)');
   // 직접 경영 기간 — 인가일부터, 본인 + 상속 승계 − 소득 기준 넘은 해
   const 시작한계 = 취득 && 인가 ? (취득 > 인가 ? 취득 : 인가) : (인가 || '');
-  let list = p.경영 && p.경영.length ? p.경영 : (시작한계 && 양도 ? [{ 시작: 시작한계, 끝: 양도, 누가: '본인' }] : []);
+  let list = Array.isArray(p.경영) && p.경영.length ? p.경영 : (시작한계 && 양도 ? [{ 시작: 시작한계, 끝: 양도, 누가: '본인' }] : []);
   const inc = p.소득초과해 || {};
   const per = function (who) {
     let xs = jmMerge_(list.filter(function (x) { return (x.누가 || '본인') === who; }).map(function (x) { let s = jmYmd_(x.시작), e = jmYmd_(x.끝) || 양도; if (who === '본인' && 시작한계 && s < 시작한계) s = 시작한계; return { s: s, e: e }; }));
@@ -9318,7 +9322,8 @@ function judgeFamilyLoan_(p) {
   if (대출일 && 대출일 < '2016-01-01') { notes.push('대출일 ' + 대출일 + ' — 2015.12.15 개정 전 대출: 기준금액 1천만원(시행령 §31의4② 2016.2.5 신설)·특수관계 아닌 자 과세(③)·매년 새로 대출(②)은 2016년부터라 그 전 해 이익은 개정 전 §41의4 원문으로 확인 — 판단거리(2016.1.1 뒤 새로 대출받은 것으로 보는 해부터는 지금 조문)'); 잠정 = true; }
 
   // 3) 해마다 이익 — 대출받은 날 기준, 1년 넘으면 매년 새로(§41의4②)
-  const 해수 = Math.max(1, Math.ceil(개월 / 12)), 연도 = [];
+  // [2026.11.11 판정 도구 점검] 대출기간을 잘못 넣으면(예: 금액을 기간 칸에) 해마다 줄을 만드는 반복이 끝없이 돌아 서버가 멈춤 — 100년까지만
+  const 해수 = Math.max(1, Math.min(100, Math.ceil(개월 / 12))), 연도 = [];
   let 잔액 = 원금, 총과세 = 0;
   for (let k = 0; k < 해수; k++) {
     const 시작 = 대출일 ? famAddY_(대출일, k) : null;

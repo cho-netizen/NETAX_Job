@@ -22,7 +22,11 @@ function jmWrap_(묶음, reqs, extra) {
   const no = reqs.filter(function (r) { return r.결과 === '✘'; }), unk = reqs.filter(function (r) { return r.결과 === '?'; });
   const 결론 = no.length ? '안 됨' : '충족', 잠정 = !no.length && unk.length > 0;
   const 표시 = 묶음 + ' — ' + (결론 === '충족' ? (잠정 ? '충족(잠정)' : '충족') : '안 됨') + (no.length ? ' (못 갖춤: ' + no.map(function (r) { return r.이름; }).join(', ') + ')' : '') + (unk.length ? ' (남은 것: ' + unk.map(function (r) { return r.이름; }).join(', ') + ')' : '');
-  return Object.assign({ 묶음: 묶음, 결론: 결론, 잠정: 잠정, 요건: reqs, 남은것: unk.map(function (r) { return r.이름 + (r.왜 ? ' — ' + r.왜 : ''); }), 표시: 표시, 근거: reqs.map(function (r) { return r.근거; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(' · ') }, extra || {});
+  const o = Object.assign({ 묶음: 묶음, 결론: 결론, 잠정: 잠정, 요건: reqs, 남은것: unk.map(function (r) { return r.이름 + (r.왜 ? ' — ' + r.왜 : ''); }), 표시: 표시, 근거: reqs.map(function (r) { return r.근거; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join(' · ') }, extra || {});
+  // [2026.11.11 판정 도구 점검] 덧붙임(extra)에 「요건: 참/거짓」을 넣은 판정(사업양수인·법인제2차·청산인제2차·무상주)이 요건 목록을 덮어써
+  //  판정 창·넥스·장부 물음(요건 결과 「?」)이 요건을 못 보던 것 — 목록은 그대로 두고 참/거짓은 「요건충족」으로
+  if (!Array.isArray(o.요건)) { o.요건충족 = o.요건; o.요건 = reqs; }
+  return o;
 }
 
 // ① 8년 자경농지 양도소득세 감면(조특법 §69)
@@ -5498,7 +5502,7 @@ function judgeSelfForest_(p) {
   if (양도 && 양도 < '2018-01-01') notes.push('자경산지 감면은 2018-01-01 이후 양도분부터(계산기가 막음)');
   // 직접 경영 기간 — 인가일부터, 본인 + 상속 승계 − 소득 기준 넘은 해
   const 시작한계 = 취득 && 인가 ? (취득 > 인가 ? 취득 : 인가) : (인가 || '');
-  let list = p.경영 && p.경영.length ? p.경영 : (시작한계 && 양도 ? [{ 시작: 시작한계, 끝: 양도, 누가: '본인' }] : []);
+  let list = Array.isArray(p.경영) && p.경영.length ? p.경영 : (시작한계 && 양도 ? [{ 시작: 시작한계, 끝: 양도, 누가: '본인' }] : []);
   const inc = p.소득초과해 || {};
   const per = function (who) {
     let xs = jmMerge_(list.filter(function (x) { return (x.누가 || '본인') === who; }).map(function (x) { let s = jmYmd_(x.시작), e = jmYmd_(x.끝) || 양도; if (who === '본인' && 시작한계 && s < 시작한계) s = 시작한계; return { s: s, e: e }; }));
@@ -9183,7 +9187,8 @@ function judgeFamilyLoan_(p) {
   if (대출일 && 대출일 < '2016-01-01') { notes.push('대출일 ' + 대출일 + ' — 2015.12.15 개정 전 대출: 기준금액 1천만원(시행령 §31의4② 2016.2.5 신설)·특수관계 아닌 자 과세(③)·매년 새로 대출(②)은 2016년부터라 그 전 해 이익은 개정 전 §41의4 원문으로 확인 — 판단거리(2016.1.1 뒤 새로 대출받은 것으로 보는 해부터는 지금 조문)'); 잠정 = true; }
 
   // 3) 해마다 이익 — 대출받은 날 기준, 1년 넘으면 매년 새로(§41의4②)
-  const 해수 = Math.max(1, Math.ceil(개월 / 12)), 연도 = [];
+  // [2026.11.11 판정 도구 점검] 대출기간을 잘못 넣으면(예: 금액을 기간 칸에) 해마다 줄을 만드는 반복이 끝없이 돌아 서버가 멈춤 — 100년까지만
+  const 해수 = Math.max(1, Math.min(100, Math.ceil(개월 / 12))), 연도 = [];
   let 잔액 = 원금, 총과세 = 0;
   for (let k = 0; k < 해수; k++) {
     const 시작 = 대출일 ? famAddY_(대출일, k) : null;
@@ -11568,14 +11573,39 @@ function judgeOutOfScope_(r) {
 // 사건에서 부름(ledgerJudgeRun_가 1세대1주택이 아닌 묶음을 넘김) — 사실(facts)은 넥스·세무사님이 준 값, 결과는 장부 기록 + 물건 줄 판정 묶음들 + 장부 판정 칸(L.judge)
 function judgeMoreRun_(c, input, by) {
   const kind = String(input.묶음 || input.group || ''), fn = JUDGE_MORE_[kind.replace(/\s+/g, ' ').trim()] || JUDGE_MORE_[kind.replace(/\s/g, '')];
-  if (!fn) return { ok: false, error: '없는 묶음: ' + kind + ' — 1세대1주택·8년자경·농지대토·양도여부·계약해제·한정승인·특별연고자·제2차납세의무·부동산명의신탁·차명계좌·세금대납·세무조사절차·생활비교육비·증여시기·상속평가·토지건물구분·상속채무·다가구·공동상속·부동산매매업·대토보상·보상금구분·양도시기·부수토지·주택여부·필요경비·중과판정·세대판정·의제취득·정비청산·확정신고·미등기·환산가산세·부담부증여·비거주자양도·법인거래·영농상속·개발제한구역·나눠팔기·장기임대특례·제척기간·부정행위·환급가산금·납부유예·납세의무승계·부동산권리·경매·농어촌주택·대체주택·경영회생·재해손실·축사용지·신축주택감면·장기일반감면·배우자양도추정·기타자산·불복기한·상속인·거주자·동거주택·가업상속·법인전환·국외증여·공익법인사후관리·공익신탁·납부기한연장·후발적경정청구·추계·금융재산공제·징수권소멸시효·사업양수인·법인제2차납세의무·국세우선·연대납세의무·양도담보물적납세·미분양주택특례·상속외국납부·주식취득분·증여일·가업승계증여·상속추정재산·보험금과세·대여금채권·사망퇴직금·교차증여·자기주식·합병의제배당·공동명의·임대담보평가·인적공제·청산인제2차납세의무 중 하나' };
+  if (!fn) return { ok: false, error: '없는 묶음: ' + kind + ' — find_judgment(판정 찾기)로 맞는 묶음 이름을 찾을 것(지금 부를 수 있는 이름 ' + Object.keys(JUDGE_MORE_).length + '개, 판정 창 목록과 같음)' }; // [2026.11.11] 손으로 적은 묶음 목록이 새 묶음 23개를 빠뜨려 낡았던 것 — 개수만 그때그때
   let r, facts = input.facts || input.사실 || {}, mapNote = '';
   // [2026.11.04 큰일 ⑦] 법인 이름이 있으면 가족 지도 지분을 먼저 읽는다 — 칸에 넣은 값이 있으면 그 값이 우선
   if (typeof famCorpFill_ === 'function' && c && (fn === JUDGE_MORE_['제2차납세의무'] || fn === JUDGE_MORE_['법인거래'])) {
     try { const fl = famCorpFill_(c, fn === JUDGE_MORE_['제2차납세의무'] ? '제2차' : '가족지분', facts); if (fl.채움.length) { facts = fl.facts; mapNote = '가족 지도에서 채운 칸: ' + fl.채움.join('·') + ' — ' + fl.지도.출처 + ' (주주명부·주식변동상황명세서로 확인할 것)'; } } catch (e) { mapNote = '⚠ 가족 지도 지분을 읽지 못함: ' + String(e && e.message || e); }
   }
+  // [2026.11.11 판정 사실 잇기 다] 사건이 있으면 넥스가 불러도 화면 판정 창처럼 장부·지난 판정 값으로 빈 칸을 먼저 채운다(넘긴 값이 우선).
+  //  세무사님 11-11 "판정할때 필요한 데이타는 어떻게 확보하나?" → "당장 고쳐라" — 예전엔 넥스가 장부를 읽어 손으로 옮겨야 했음
+  const filled = {}, filledProv = [];
+  if (c && c.id && input.prefill !== false && typeof judgePrefill_ === 'function') {
+    try {
+      const pf = judgePrefill_(c, { 묶음: kind, objectId: input.objectId || input.물건 || '' });
+      if (pf && pf.ok && pf.답 && pf.답.length) mapNote = (mapNote ? mapNote + ' · ' : '') + '장부에 들어온 답 ' + pf.답.length + '개(이 판정이 물었던 것): ' + pf.답.map(function (x) { return x.요건 + ' → ' + String(x.답).slice(0, 40); }).join(' / ').slice(0, 400) + ' — 사실 칸에 옮겨 다시 판정할 것';
+      if (pf && pf.ok) Object.keys(pf.값 || {}).forEach(function (k) {
+        if (facts[k] != null && facts[k] !== '') return;
+        if (facts === (input.facts || input.사실)) facts = Object.assign({}, facts);
+        facts[k] = pf.값[k]; filled[k] = (pf.출처 || {})[k] || '장부';
+        if (/잠정/.test(filled[k])) filledProv.push(k);
+      });
+    } catch (e) { mapNote = (mapNote ? mapNote + ' · ' : '') + '⚠ 장부 값으로 칸을 채우지 못함: ' + String(e && e.message || e).slice(0, 100); }
+  }
   try { r = fn(facts); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  if (filledProv.length && r && !r.잠정) r.잠정 = true; // 장부에서 확정 안 된 값으로 판정했으면 결론도 잠정
   const out = { ok: true, 결과: r, 넣은사실: facts, 알림: (mapNote ? [mapNote] : []).concat(r.알림 || []) };
+  // [2026.11.11 판정 도구 점검] 엔진칸을 내면서 그 뜻(어느 계산에 어떻게 넣나)을 안 적은 판정이 14가지 — 넥스가 계산기로 넘기는 길을 늘 같이 알린다
+  const ekeys_ = r && r.엔진칸 && typeof r.엔진칸 === 'object' ? Object.keys(r.엔진칸).filter(function (k) { return r.엔진칸[k] !== undefined; }) : []; // 값 없는 칸은 넥스에게 가는 글에서도 빠짐
+  if (ekeys_.length && !r.엔진칸뜻) {
+    out.알림.push('엔진칸 ' + ekeys_.slice(0, 12).join('·') + ' — 세액 엔진 입력 이름 그대로입니다. 사건 계산(case_ledger 계산의 over — 양도는 path 「a0.칸 이름」처럼 자산 번호를 붙이고, 증여·상속은 칸 이름 그대로)이나 계산 도구 입력에 넣어 돌리고, 결론이 잠정이면 경우(안)으로 저장' + (r.잠정 ? '(지금 잠정)' : ''));
+  }
+  if (Object.keys(filled).length) {
+    out.장부에서채운칸 = filled;
+    out.알림.unshift('장부에서 채운 칸 ' + Object.keys(filled).length + '개: ' + Object.keys(filled).map(function (k) { return k + '(' + String(filled[k]).replace(/^장부 /, '') + ')'; }).join(' · ').slice(0, 400) + (filledProv.length ? ' — 확정 안 된 값이 있어 결론은 잠정' : ''));
+  }
   if (input.write === false) { out.장부 = '보기만 — 장부에 넣지 않음'; return out; }
   const who = String(by || '세무사님').slice(0, 6);
   try {
@@ -11590,6 +11620,9 @@ function judgeMoreRun_(c, input, by) {
       // [2026.11.04 판단거리 ①] 법인세·종합소득세(사업·기타·배당 소득 등)는 이 시스템 계산 범위 밖 — 판정 글에 그 몫이 나오면 장부 여쭐 것에 한 줄 세움(계산은 세무사님 값으로)
       const oos = judgeOutOfScope_(r);
       if (oos.length) { const qp = 'q:범위밖:' + r.묶음 + (oid ? '@' + oid : ''); ledgerAskInner_(L, qp, { label: '범위 밖 세금 — ' + oos.join('·'), question: '이 몫은 ' + oos.join('·') + ' — 이 도구 계산 범위 밖입니다. 세무사님 계산값을 넣어 주세요(판정: ' + r.묶음 + ')', by: 'GAS', keep: true }); out.알림.push('범위 밖 세금(' + oos.join('·') + ') — 장부 여쭐 것에 올림'); }
+      // [2026.11.11 판정 사실 잇기 가] 판정이 모르는 사실(요건 결과 「?」)은 장부 「여쭐 것」 또는 「받을 서류」로 세운다 — 판정 → 묻기·서류 요청 → 장부 → 다시 판정.
+      //  예전엔 남은 것이 판정 결과 속에만 남아 고객 질문·서류 요청으로 이어지지 않았다. 다시 돌려 풀린 요건의 물음은 거둔다(답이 들어온 줄은 그대로).
+      try { out.세운물음 = judgeAskSync_(L, r, oid, who); } catch (e) { out.알림.push('여쭐 것을 세우지 못함: ' + e.message); }
       ledgerLogTo_(L, { by: who, what: '종합판정', path: 'judge.' + r.묶음 + (oid ? '@' + oid : ''), detail: r.표시.slice(0, 200) });
     });
     out.장부 = '판정 기록 — 장부 계산(상속)이 충족이면 엔진칸을 넣고, 잠정·안 됨이면 넣지 않음' + (r.묶음 === '8년 자경농지 감면' ? ' · 양도는 계산 가정(over)으로 isEightYearFarmland를 주어 경우(안)로 견줄 것' : '');

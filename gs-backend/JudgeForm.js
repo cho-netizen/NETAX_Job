@@ -143,13 +143,22 @@ function judgePrefill_(c, input) {
     if (out[f.이름] != null || f.종류 === '목록') return;
     var key = f.이름.replace(/\s/g, ''); if (key.length < 2) return;
     var ok = function (x) { return x.r && x.r.v != null && x.r.v !== '' && typeof x.r.v !== 'object'; };
-    var hit = labels.filter(function (x) { return ok(x) && x.l === key; })[0] || labels.filter(function (x) { return ok(x) && x.l.indexOf(key) !== -1 && x.l.length <= key.length + 6; })[0];
+    // [2026.11.11 판정 사실 잇기 나] 이름 글자가 같을 때만 찾던 것 — 같은 사실의 다른 이름(잔금일·대금청산일, 양도가액·양도금액 …)과
+    //  끝말(일자·날짜 → 일)을 맞춰서도 찾는다. 같은 무리 안에서만 바꿔 읽으니 엉뚱한 칸으로 가지 않는다.
+    var keyN = judgeFieldNorm_(key), keyG = judgeFieldGroup_(keyN);
+    var hit = labels.filter(function (x) { return ok(x) && x.l === key; })[0]
+      || labels.filter(function (x) { return ok(x) && judgeFieldNorm_(x.l) === keyN; })[0]
+      || (keyG ? labels.filter(function (x) { return ok(x) && judgeFieldGroup_(judgeFieldNorm_(x.l)) === keyG; })[0] : null)
+      || labels.filter(function (x) { return ok(x) && x.l.indexOf(key) !== -1 && x.l.length <= key.length + 6; })[0];
     if (!hit) return;
     var v = hit.r.v; if (f.종류 === '예아니오' && typeof v === 'boolean') v = v ? '예' : '아니오';
     out[f.이름] = v;
     from[f.이름] = '장부 「' + hit.raw + '」' + (hit.r.state === '확정' || hit.r.state === '추정' ? '' : ' — 잠정');
   });
-  return { ok: true, 묶음: cat.묶음, 이름: cat.이름, 값: out, 출처: from };
+  // [2026.11.11 판정 사실 잇기 가] 이 판정이 세운 물음(q:판정:…)에 답이 들어왔으면 함께 돌려준다 — 넥스·세무사님이 그 답을 사실 칸에 옮겨 다시 판정
+  var qpre = 'q:판정:' + cat.이름 + (oid ? '@' + oid : '') + ':', 답 = [];
+  Object.keys(rows).forEach(function (p) { if (p.indexOf(qpre) !== 0) return; var r = rows[p] || {}; if (/^(확정|추정)$/.test(r.state) && r.v != null && r.v !== '') 답.push({ 요건: p.slice(qpre.length), 답: r.v, 상태: r.state, 물음: String(r.ask || '').slice(0, 160) }); });
+  return { ok: true, 묶음: cat.묶음, 이름: cat.이름, 값: out, 출처: from, 답: 답 };
 }
 
 // [2026.11.04 넥스 운영 시험] 넥스 도구 find_judgment — 쟁점 낱말로 판정 묶음을 찾아 준다(토큰 0). 화면 판정 창 「찾기」와 같은 목록(judgeCatalog_).
@@ -187,6 +196,9 @@ function nxFindJudgment_(input) {
       s += ws;
     });
     if (hit >= 2) s += 2 * (hit - 1); // 여러 낱말이 같이 맞으면 그 묶음
+    // [2026.11.11 판정 도구 점검] 묶음 이름·별칭 그대로를 물으면 그 묶음이 맨 앞 — 「주식 대주주」가 이름에 「주식」 든 다른 묶음 뒤로 밀리던 것
+    var exactQ = q.replace(/\s+/g, ' ');
+    if ([c.묶음, c.이름].concat(c.별칭 || []).some(function (nm) { nm = String(nm || ''); return nm === exactQ || (nm.length >= 2 && words.indexOf(nm) !== -1 && !/^(상속|증여|양도|주식|주택|토지)$/.test(nm)); })) s += 10;
     if (hint && c.무리 && c.무리.indexOf(hint.replace(/세$/, '')) !== -1) s += 1;
     return { c: c, s: s };
   }).filter(function (x) { return x.s > 0; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 10);
@@ -198,4 +210,61 @@ function nxFindJudgment_(input) {
   });
   return { ok: true, 찾은수: out.length, 전체묶음수: cat.length, 판정: out,
     안내: out.length ? '맞는 묶음을 judge_tax_relief로 돌려 요건·잠정·할일·엔진칸을 받은 뒤 계산기를 돌려라. 모르는 사실 칸은 비워 두면 잠정으로 가른다.' : '맞는 묶음이 없음 — 다른 낱말로 다시 찾거나, 판정 도구가 없는 쟁점이면 report_capability_gap으로 알려라' };
+}
+
+// ============================================================
+// [2026.11.11 판정 사실 잇기] 세무사님 11-11 "판정할때 필요한 데이타는 어떻게 확보하나?" → "당장 고쳐라"
+//  가. 판정이 모르는 사실 → 장부 「여쭐 것」·「받을 서류」(judgeAskSync_, 받을 서류 목록은 CaseLedger ledgerJudgeEvWant_)
+//  나. 장부 칸 ↔ 판정 칸 이름 맞춤을 같은 사실의 다른 이름까지(judgeFieldNorm_·judgeFieldGroup_)
+//  다. 넥스가 판정을 불러도 장부 값으로 빈 칸을 먼저 채움(JudgeMore.js judgeMoreRun_ → judgePrefill_)
+// ============================================================
+// 이름 다듬기 — 띄어쓰기·괄호 속 말 빼고, 끝말 일자·날짜·날 → 일
+function judgeFieldNorm_(s) {
+  return String(s == null ? '' : s).replace(/\([^)]*\)|（[^）]*）|\[[^\]]*\]/g, '').replace(/[\s·_\-]/g, '').replace(/(일자|날짜|년월일)$/, '일');
+}
+// 같은 사실의 다른 이름 무리 — 무리 안에서만 바꿔 읽는다(엉뚱한 칸으로 가지 않게 좁게)
+var JUDGE_FIELD_GROUPS_ = [
+  ['잔금일', '잔금청산일', '대금청산일', '잔금지급일', '잔금지급일자'],
+  ['양도일', '양도시기', '양도한날'],
+  ['취득일', '취득시기', '취득한날'],
+  ['계약일', '매매계약일', '계약체결일'],
+  ['상속개시일', '사망일', '피상속인사망일'],
+  ['증여일', '증여받은날', '증여계약일'],
+  ['양도가액', '양도금액', '매도가액', '매매가액', '실지양도가액'],
+  ['취득가액', '취득금액', '매입가액', '실지취득가액'],
+  ['등기접수일', '소유권이전등기일', '등기일'],
+  ['전입일', '전입신고일']
+];
+function judgeFieldGroup_(n) {
+  for (var i = 0; i < JUDGE_FIELD_GROUPS_.length; i++) if (JUDGE_FIELD_GROUPS_[i].map(judgeFieldNorm_).indexOf(n) !== -1) return 'g' + i;
+  return '';
+}
+// 요건 결과 「?」 → 장부 물음 줄(q:판정:<묶음>[@물건]:<요건>). 서류로 확인할 사실이면 「증빙받을것」(받을 서류), 아니면 「물어볼것」(여쭐 것).
+//  다시 돌려 풀린 요건의 물음은 거둔다 — 답이 들어온(확정·추정) 줄은 손대지 않는다.
+var JUDGE_DOC_WORDS_ = /서류|등본|초본|증명|확인서|계약서|등기|대장|명세|영수증|원부|통장|신고서|사본|자료|결정서|판결|통지서|고지서|등록증|확인원|내역/;
+function judgeAskSync_(L, r, oid, who) {
+  if (!L || !r || !r.묶음) return 0;
+  L.rows = L.rows || {};
+  var pre = 'q:판정:' + r.묶음 + (oid ? '@' + oid : '') + ':';
+  var miss = (r.요건 || []).filter(function (q) { return q && q.결과 === '?' && q.이름; });
+  var keep = {}, n = 0;
+  miss.forEach(function (q) {
+    var p = pre + String(q.이름).replace(/\s+/g, ' ').slice(0, 40);
+    keep[p] = 1;
+    var prev = L.rows[p];
+    if (prev && /^(확정|추정)$/.test(prev.state)) return; // 이미 답이 들어옴
+    var why = String(q.왜 || '').replace(/\s*\[[^\]]*\]\s*/g, ' ').trim();
+    ledgerAskInner_(L, p, {
+      label: (r.묶음 + ' — ' + q.이름).slice(0, 40),
+      question: ('판정 「' + r.묶음 + '」 요건 「' + q.이름 + '」' + (why ? ' — ' + why : '') + (q.근거 ? ' (' + q.근거 + ')' : '')).slice(0, 300),
+      needDoc: JUDGE_DOC_WORDS_.test(q.이름 + ' ' + why), by: who || '판정', keep: true
+    });
+    n++;
+  });
+  Object.keys(L.rows).forEach(function (p) {
+    if (p.indexOf(pre) !== 0 || keep[p]) return;
+    var row = L.rows[p] || {};
+    if (/^(물어볼것|증빙받을것)$/.test(row.state)) { delete L.rows[p]; if (typeof ledgerLogTo_ === 'function') ledgerLogTo_(L, { by: who || '판정', what: '물음 거둠', path: p, detail: (row.label || p) + ' — 다시 판정해 풀림' }); }
+  });
+  return n;
 }

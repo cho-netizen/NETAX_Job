@@ -16,7 +16,7 @@ if (start !== null) {
   // [2026.11.04 혼자 도는 ⑦] 올리기 전에 토큰 0 회귀 세 가지(엔진 174건 기준 판 대조·1세대1주택 판정·가족 지도)를 자동으로 돌린다 — 하나라도 ✗면 멈춘다(--skip-regress로 건너뜀, 사유를 보고에 적을 것)
   if (process.argv.indexOf('--skip-regress') === -1) {
     const cwd = __dirname + '/..';
-    for (const f of ['engine-regress.js', 'judge-regress.js', 'family-regress.js', 'judge-remote-check.js'] /* [2026.11.10] 판정 서버로 나눈 길이 원본과 같은 답인지 — 다르면 node tools/build-judge.js 뒤 gs-judge 다시 올리기 */) {
+    for (const f of ['engine-regress.js', 'judge-regress.js', 'family-regress.js', 'judge-remote-check.js', 'judge-ledger-loop-check.js', 'judge-tool-audit.js'] /* [2026.11.10] 판정 서버로 나눈 길이 원본과 같은 답인지 — 다르면 node tools/build-judge.js 뒤 gs-judge 다시 올리기 */) {
       try { execSync('node tools/' + f + (f === 'engine-regress.js' ? ' --base origin/main' : ''), { cwd, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 }); console.log('회귀 통과: ' + f); } // 엔진 대조 기준은 운영 = origin/main(이 PC의 main 가지는 낡아 있음)
       catch (e) { const out = String((e.stdout || '') + (e.stderr || '')); console.log('회귀 실패: ' + f + '\n' + out.split('\n').filter(l => /✗|바뀜|실패|Error/.test(l)).slice(0, 12).join('\n')); console.log('→ 고친 뒤 다시 돌리거나, 의도한 변화면 --skip-regress 로(보고에 사유).'); process.exit(1); }
     }

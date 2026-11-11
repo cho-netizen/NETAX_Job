@@ -34,7 +34,7 @@ let bad = [];
 if (JSON.stringify(keys) !== JSON.stringify(keysM)) bad.push('묶음 이름 목록이 다름 ' + keys.length + ' vs ' + keysM.length);
 const strip = (x) => JSON.parse(JSON.stringify(x, (k, v) => (k === '때' ? undefined : v)));
 const run = (ctx, k) => { try { return strip(vm.runInContext('judgeMoreRun_', ctx)(null, { 묶음: k, facts: {}, write: false }, '시험')); } catch (e) { return { 던짐: String(e.message) }; } };
-keys.forEach((k) => { const a = JSON.stringify(run(O, k)), b = JSON.stringify(run(M, k)); if (a !== b) bad.push('다름: ' + k + '\n   원본 ' + a.slice(0, 160) + '\n   나눔 ' + b.slice(0, 160)); });
+keys.forEach((k) => { const a = JSON.stringify(run(O, k)), b = JSON.stringify(run(M, k)); if (a !== b) { let i = 0; while (i < a.length && a[i] === b[i]) i++; bad.push('다름: ' + k + '\n   원본 …' + a.slice(Math.max(0, i - 80), i + 120) + '\n   나눔 …' + b.slice(Math.max(0, i - 80), i + 120)); }; });
 // 판정 창 목록
 const ca = JSON.stringify(vm.runInContext('judgeCatalog_()', O)), cb = JSON.stringify(vm.runInContext('judgeCatalog_()', M));
 if (ca !== cb) { const A = JSON.parse(ca), B = JSON.parse(cb); const d = A.map((x, i) => JSON.stringify(x) === JSON.stringify(B[i]) ? '' : (x.묶음 + ': ' + JSON.stringify(x).slice(0, 200) + ' ⇢ ' + JSON.stringify(B[i]).slice(0, 200))).filter(Boolean); bad.push('판정 창 목록이 다름 ' + d.length + '줄 — ' + d.slice(0, 2).join(' || ')); }
