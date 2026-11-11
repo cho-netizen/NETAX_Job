@@ -1,6 +1,6 @@
 <!-- [2026.10.19] 🤝 AI 회의 사이드바 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <style>
-  #maiPanel{ position:fixed; top:0; right:0; width:min(640px, 100vw); height:100vh; background:var(--panel, #fff); border-left:1px solid var(--line, #ddd); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:950; display:flex; flex-direction:column; font-size:13px; }
+  #maiPanel{ position:fixed; top:0; right:0; width:min(640px, 100vw); height:100vh; height:100dvh; /* [2026.11.11] 폰 주소창만큼 아래가 잘리지 않게 */ background:var(--panel, #fff); border-left:1px solid var(--line, #ddd); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:950; display:flex; flex-direction:column; font-size:13px; }
   #maiPanel .mai-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line, #ddd); }
   #maiPanel .mai-head b{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #maiPanel .mai-body{ flex:1; overflow:auto; padding:10px 12px 40px; }

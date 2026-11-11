@@ -56,6 +56,7 @@
     var changed = window.nxLayout !== st;
     window.nxLayout = st;
     ['pc', 'tablet', 'phone'].forEach(function(s){ document.body.classList.toggle('lay-' + s, s === st); });
+    if (typeof nxFontZoomApply_ === 'function') nxFontZoomApply_(); // [2026.11.11] 글자 크기 — 배치별 기본값이 있어 배치가 바뀌면 다시 맞춘다
     var cover = st === 'phone' && nxIsCoverScreen_();
     var coverChanged = !!window.nxCover !== cover;
     window.nxCover = cover;
@@ -67,6 +68,69 @@
   function nxSetLayoutOverride_(value){ nxLs_(NX_LAYOUT_KEY_, value); nxApplyLayout_(); }
   function nxApplyDark_(on){ document.documentElement.classList.toggle('nx-dark', !!on); }
   function nxSetDark_(on){ nxLs_(NX_DARK_KEY_, on ? '1' : '0'); nxApplyDark_(on); }
+  // [2026.11.11] 글자 크기(설정 › 화면) — 화면 전체 배율(퍼센트, 80~150, 5단위). 이 기기에만 저장(localStorage nx_font_zoom).
+  //  저장값이 없으면 배치별 기본값(PC 100·태블릿 115·폰 110, 접는 폰 커버화면 100). 머리글의 작은 script가 첫 그림 전에 같은 규칙으로 한 번 적용한다.
+  // [2026.11.11] 기기별 화면 — 현장 도구(폰·태블릿 메뉴 「현장」·폰 도구 시트), 폰 아래 탭 줄, 폰 메뉴 「더 보기」.
+  //  휴대폰 창구(/m/)의 도구는 같은 탭에서 연다 — 이 앱의 로그인표(sessionStorage)를 창구가 이어받아 비밀번호를 다시 묻지 않는다(m/index.html ensureLogin).
+  var NX_FIELD_URLS_ = { scan: '/m/?scan=1', sign: '/m/?sign=1', pen: '/m/?pen=1', talk: '/m/?talk=1', memo: '/m/?memo=1', visit: '/m/?visit=1', todo: '/m/?todo=1', board: '/m/?board=1' };
+  function nxFieldOpen_(kind){
+    var sheet = document.getElementById('nxFieldSheet');
+    if (kind === 'close'){ if (sheet) sheet.hidden = true; return; }
+    if (sheet) sheet.hidden = true;
+    if (kind === 'present'){ document.body.classList.toggle('nx-present'); if (typeof nxSideMenuPeek_ === 'function') nxSideMenuPeek_(false); return; }
+    if (kind === 'handmemo'){ goToView_('memo-hand'); return; }
+    if (kind === 'suggest'){ if (typeof nxSuggestOpen_ === 'function') nxSuggestOpen_(); return; }
+    if (kind === 'help'){ var h = document.getElementById('globalHelpBtn'); if (h) h.click(); return; }
+    var url = NX_FIELD_URLS_[kind]; if (!url) return;
+    if (typeof nxSideMenuPeek_ === 'function') nxSideMenuPeek_(false);
+    location.href = url;
+  }
+  function nxPhoneBarSync_(name){
+    var cur = name || (function(){ var v = document.querySelector('#centerWork > .view.active'); return v ? v.id.replace(/^view-/, '') : ''; })();
+    var key = cur; try { if (typeof nxCbIsCaseView_ === 'function' && nxCbIsCaseView_(cur)) key = 'casehandling'; } catch (e) {} // 사건 머리줄이 아직 안 만들어졌을 때도 끊기지 않게
+    document.querySelectorAll('#nxPhoneBar [data-pb]').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-pb') === key); });
+  }
+  (function(){
+    document.addEventListener('click', function(e){
+      var mi = e.target.closest && e.target.closest('.menu-item[data-view]'); if (mi) setTimeout(function(){ nxPhoneBarSync_(); }, 0); // 왼쪽 메뉴로 옮겨도 아래 탭 줄 표시 맞춤
+      var f = e.target.closest && e.target.closest('[data-field]');
+      if (f){ e.preventDefault(); e.stopPropagation(); nxFieldOpen_(f.getAttribute('data-field')); return; }
+      var pb = e.target.closest && e.target.closest('#nxPhoneBar [data-pb]');
+      if (pb){
+        var k = pb.getAttribute('data-pb'), sheet = document.getElementById('nxFieldSheet');
+        e.stopPropagation(); // 뒤의 "바깥을 누르면 덮어 나온 메뉴 숨김" 듣기가 방금 연 메뉴·시트를 바로 닫지 않게
+        if (k === 'tools'){ if (sheet) sheet.hidden = !sheet.hidden; return; }
+        if (sheet) sheet.hidden = true;
+        if (k === 'menu'){ if (typeof nxSideMenuPeek_ === 'function'){ var m = document.getElementById('sideMenu'); nxSideMenuPeek_(!m.classList.contains('peek')); } return; }
+        if (typeof nxSideMenuPeek_ === 'function') nxSideMenuPeek_(false);
+        goToView_(k);
+        return;
+      }
+      var more = e.target.closest && e.target.closest('#sideMenuMoreBtn');
+      if (more){
+        e.stopPropagation();
+        var sm = document.getElementById('sideMenu'); var on = !sm.classList.contains('show-more');
+        sm.classList.toggle('show-more', on); (more.querySelector('.mi-label') || more).textContent = on ? '간단히' : '더 보기';
+        try { localStorage.setItem('nx_menu_more', on ? '1' : '0'); } catch (er) {}
+        return;
+      }
+      var sheet2 = document.getElementById('nxFieldSheet');
+      if (sheet2 && !sheet2.hidden && !(e.target.closest && e.target.closest('#nxFieldSheet, #nxPhoneBar'))) sheet2.hidden = true;
+    }, true);
+    try { if (localStorage.getItem('nx_menu_more') === '1'){ var sm0 = document.getElementById('sideMenu'); sm0.classList.add('show-more'); var mb = document.getElementById('sideMenuMoreBtn'); if (mb) (mb.querySelector('.mi-label') || mb).textContent = '간단히'; } } catch (e) {}
+    document.addEventListener('nx-layout-change', function(){ nxPhoneBarSync_(); });
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ nxPhoneBarSync_(); }); else setTimeout(nxPhoneBarSync_, 0);
+  })();
+  var NX_FONT_KEY_ = 'nx_font_zoom';
+  function nxFontZoomSaved_(){ var v = parseInt(nxLs_(NX_FONT_KEY_), 10); return (v >= 80 && v <= 150) ? v : 0; }
+  function nxFontZoomDefault_(){ var st = window.nxLayout || nxLayoutStage_(); if (st === 'tablet') return 115; if (st === 'phone' && !window.nxCover) return 110; return 100; }
+  function nxFontZoomGet_(){ return nxFontZoomSaved_() || nxFontZoomDefault_(); }
+  function nxFontZoomApply_(){ try { document.documentElement.style.setProperty('--nx-font-zoom', String(nxFontZoomGet_() / 100)); } catch (e) {} }
+  function nxFontZoomSet_(pct){
+    if (pct === null || pct === undefined || pct === ''){ try { localStorage.removeItem(NX_FONT_KEY_); } catch (e) {} }
+    else { var v = Math.round(Number(pct) / 5) * 5; if (!(v >= 80)) v = 80; if (v > 150) v = 150; nxLs_(NX_FONT_KEY_, String(v)); }
+    nxFontZoomApply_();
+  }
   function nxIsDark_(){ return document.documentElement.classList.contains('nx-dark'); }
   (function(){
     var saved = nxLs_(NX_DARK_KEY_);
@@ -1471,6 +1535,7 @@
   // active 표시가 안 바뀌므로 같이 처리한다.
   function goToView_(name){
     showView(name);
+    if (typeof nxPhoneBarSync_ === 'function') nxPhoneBarSync_(name); // [2026.11.11] 폰 아래 탭 줄
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
       i.classList.toggle('active', i.getAttribute('data-view') === (nxCbIsCaseView_(name) && !(name === 'lawsearch' && NX_CB_.lawFree) ? 'casehandling' : name)); // [2026.11.01] 사건 화면은 모두 사건 작업공간 안의 탭
     });

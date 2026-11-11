@@ -98,6 +98,15 @@
         <option value="phone">폰 화면으로 고정</option>
       </select>
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
+      <!-- [2026.11.11] 글자 크기 — 세무사님 "태블릿에서 가독성이 떨어져서 … 폰에서도 마찬가지다". 화면 전체 배율, 이 기기에만 기억. 기본값은 기기 배치별(PC 100·태블릿 115·폰 110). -->
+      <div style="font-size:13px; margin:14px 0 6px;">글자 크기</div>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button type="button" id="settingsFontMinus" class="btn" title="글자 5% 작게" style="min-width:40px; min-height:34px; font-size:16px;">−</button>
+        <span id="settingsFontLabel" style="min-width:52px; text-align:center; font-size:14px; font-weight:700;">100%</span>
+        <button type="button" id="settingsFontPlus" class="btn" title="글자 5% 크게" style="min-width:40px; min-height:34px; font-size:16px;">＋</button>
+        <button type="button" id="settingsFontReset" class="btn" style="min-height:34px;">기본으로</button>
+      </div>
+      <div class="settings-tool-desc" id="settingsFontNow" style="margin-top:6px;"></div>
       <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·보고서 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
@@ -549,6 +558,23 @@
       now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
     }
     dark.addEventListener('change', function(){ nxSetDark_(dark.checked); });
+    // [2026.11.11] 글자 크기 — 저장·적용은 script.html nxFontZoomSet_/nxFontZoomGet_
+    (function(){
+      var minus = document.getElementById('settingsFontMinus'), plus = document.getElementById('settingsFontPlus'), reset = document.getElementById('settingsFontReset');
+      var label = document.getElementById('settingsFontLabel'), nowF = document.getElementById('settingsFontNow');
+      if (!minus || typeof nxFontZoomGet_ !== 'function') return;
+      function paint(){
+        var v = nxFontZoomGet_(), saved = nxFontZoomSaved_(), d = nxFontZoomDefault_();
+        label.textContent = v + '%';
+        nowF.textContent = saved ? ('이 기기에 저장된 값 · 기본은 ' + d + '%(' + (LABEL[window.nxLayout] || '-') + ' 화면)') : ('기본값(' + (LABEL[window.nxLayout] || '-') + ' 화면) — 바꾸면 이 기기에만 기억됩니다');
+        minus.disabled = v <= 80; plus.disabled = v >= 150;
+      }
+      minus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() - 5); paint(); });
+      plus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() + 5); paint(); });
+      reset.addEventListener('click', function(){ nxFontZoomSet_(null); paint(); toast('글자 크기를 기본값으로 되돌렸습니다(이 기기).'); });
+      document.addEventListener('nx-layout-change', paint);
+      paint();
+    })();
     // 오류 기록 카드
     var bugList = document.getElementById('stBugList');
     function loadBugs(){

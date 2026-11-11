@@ -15,6 +15,7 @@
   .lsidb-copy{ font-size:11px; padding:1px 6px; border:1px solid var(--line); border-radius:4px; background:#fff; cursor:pointer; color:var(--sub); }
   .lsidb-g > .lsidb-copy{ position:absolute; right:0; top:2px; visibility:hidden; }
   .lsidb-g:hover > .lsidb-copy{ visibility:visible; }
+  @media (pointer:coarse){ .lsidb-g > .lsidb-copy{ visibility:visible; } } /* [2026.11.11] 손가락 기기엔 호버가 없어 복사 단추가 영영 안 보였음 */
   .lsidb-box{ font-family:'D2Coding','Consolas','맑은 고딕',monospace; font-size:12px; line-height:1.35; white-space:pre; overflow-x:auto; background:#fafafa; border:1px solid var(--line); border-radius:4px; padding:6px; margin:4px 0; }
   .lsidb-img{ max-width:100%; border:1px solid var(--line); margin:4px 0; }
   .lsidb-fx{ background:#fff8e1; border-left:3px solid var(--gold); padding:2px 8px; margin:3px 0; }
