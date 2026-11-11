@@ -56,16 +56,6 @@ function caseProcAiRoute_(iss) {
   return caseProcAiTopic_([iss.iid, iss.kind, iss.target, iss.label].join(' ')).route;
 }
 
-// AI가 넣은 값을 2번 판정 기록(sv.cxAi.applied)에 — 다음 처리 때 2번 0) 단계가 세무사님 확인·수정을 보고 cxLogUserFix_로 기록에 붙인다
-function caseProcAiMarkApplied_(caseId, a) {
-  try {
-    caseProcPatch_(caseId, function (sv) {
-      sv.cxAi = sv.cxAi || { applied: {}, asked: {} }; sv.cxAi.applied = sv.cxAi.applied || {};
-      sv.cxAi.applied[a.iid] = Object.assign({ at: caseProcToday_(), kind: a.tier || '총괄', input: '' }, a);
-    });
-  } catch (e) {}
-}
-
 // ---------- ③ 빠진 도구 기록(사건 이름 없이) ----------
 function caseProcAiLogGaps_(c, gaps) {
   if (!gaps || !gaps.length) return;

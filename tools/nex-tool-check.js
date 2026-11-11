@@ -20,7 +20,7 @@ const list = (src, head) => { const i = src.indexOf(head); if (i < 0) return nul
 // ① 사건 대화 도구 수(정적으로 셈 — Code.js의 조립과 같은 식)
 const basic = list(code, 'const BASIC_TOOL_NAMES_ = new Set([');
 const caseproc = names(lead.slice(lead.indexOf('var CASEPROC_AI_TOOLS_'), lead.indexOf('\n];', lead.indexOf('var CASEPROC_AI_TOOLS_'))), /\{ name: '([a-z_0-9]+)'/g);
-const noTools = list(live, 'var CASEPROC_AI_NO_TOOLS_ = [') || [];
+const noTools = []; // [2026.11.11] 걸러 낼 옛 도구(CASEPROC_AI_NO_TOOLS_)는 정의 자체를 지워 없어짐
 const skip = list(live, 'var NX_CASE_CHAT_SKIP_ = [') || [];
 const liveFn = live.slice(live.indexOf('function caseProcAiLiveTools_()'), live.indexOf('\n}\n', live.indexOf('function caseProcAiLiveTools_()')));
 const pushed = names(liveFn, /tools\.push\(\{ name: '([a-z_0-9]+)'/g);
@@ -41,8 +41,14 @@ const promptChars = strOnly(guide).length + strOnly(stat).length;
 // ③ 없앤 도구 이름이 지시문·도구 설명에 남아 있나
 const RETIRED = ['ask_user', 'report_tool_gap', 'gas_run', 'gas_finish', 'save_draft', 'doc_view', 'docs_read', 'doc_text', 'value_set', 'tax_calc', 'caseproc_answer', 'caseproc_fix', 'caseproc_undo', 'caseproc_decide', 'caseproc_scope'];
 const propStart = code.indexOf("name: 'job_propose_action'"), propEnd = code.indexOf('input_schema:', propStart);
-const texts = [['사건 대화 지시문(nxCaseChatGuide_)', strOnly(guide)], ['대화창 고정 지시문(staticExtra)', strOnly(stat)], ['job_propose_action 설명', strOnly(code.slice(propStart, propEnd))]];
+// [2026.11.11 전면 재검토 ①] 도구 설명문도 본다 — 11-04 검문은 지시문만 봐서 case_read·doc_find·law_attach·close_question·form_needs 설명 속
+//  옛 이름(value_set·ask_user·tax_calc·gas_run)과 옛 「GAS 한 바퀴」 표현을 못 잡았다. 설명문(description 글)만 뽑아 본다(코드 주석은 역사라 안 봄).
+const descs = (src) => { const out = []; const re = /description: '((?:[^'\\]|\\.)*)'/g; let m; while ((m = re.exec(src))) out.push(m[1]); return out.join('\n'); };
+const toolDefs = lead.slice(lead.indexOf('var CASEPROC_AI_TOOLS_'), lead.indexOf('\n];', lead.indexOf('var CASEPROC_AI_TOOLS_'))) + '\n' + liveFn + '\n' + live.slice(live.indexOf('var NX_CASE_REPORT_TOOL_'), live.indexOf('\n', live.indexOf('input_schema', live.indexOf('var NX_CASE_REPORT_TOOL_'))));
+const RETIRED_PHRASES = ['GAS 한 바퀴', 'GAS로 처리']; // 10-31 걷어 낸 "한 바퀴" 묶음 길(공통원칙 1절)
+const texts = [['사건 대화 지시문(nxCaseChatGuide_)', strOnly(guide)], ['대화창 고정 지시문(staticExtra)', strOnly(stat)], ['job_propose_action 설명', strOnly(code.slice(propStart, propEnd))], ['넥스 사건 도구 설명문', descs(toolDefs)]];
 const stale = [];
+texts.forEach(([label, t]) => RETIRED_PHRASES.forEach((p) => { let i = t.indexOf(p); while (i !== -1) { stale.push(label + ': 「' + p + '」 — …' + t.slice(Math.max(0, i - 30), i + p.length + 30).replace(/\s+/g, ' ') + '…'); i = t.indexOf(p, i + 1); } }));
 texts.forEach(([label, t]) => RETIRED.forEach((n) => {
   const re = new RegExp('(^|[^_a-zA-Z0-9])' + n + '([^_a-zA-Z0-9]|$)', 'g'); let m;
   while ((m = re.exec(t))) { const ctx = t.slice(Math.max(0, m.index - 30), m.index + n.length + 30).replace(/\s+/g, ' '); if (!/없다|없어졌다|뺌|않는다|제안 길이 없다/.test(t.slice(m.index - 60, m.index + n.length + 60))) stale.push(label + ': ' + n + ' — …' + ctx + '…'); }

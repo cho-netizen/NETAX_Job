@@ -20,6 +20,14 @@ if (start !== null) {
       try { execSync('node tools/' + f + (f === 'engine-regress.js' ? ' --base origin/main' : ''), { cwd, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 }); console.log('회귀 통과: ' + f); } // 엔진 대조 기준은 운영 = origin/main(이 PC의 main 가지는 낡아 있음)
       catch (e) { const out = String((e.stdout || '') + (e.stderr || '')); console.log('회귀 실패: ' + f + '\n' + out.split('\n').filter(l => /✗|바뀜|실패|Error/.test(l)).slice(0, 12).join('\n')); console.log('→ 고친 뒤 다시 돌리거나, 의도한 변화면 --skip-regress 로(보고에 사유).'); process.exit(1); }
     }
+    // [2026.11.11 전면 재검토 ②] 관리 서버(gs-light)·부가 서버(gs-extra)·판정 서버(gs-judge) 생성 파일이 원본(gs-backend)과 같은지 — 11-11 점검에서 관리 서버 생성 파일이
+    //  10-30 판에 머물러 사건 목록의 계산 저장본 본문 길 7개가 빠져 있었다. 다시 만들어 보고 바뀌면 멈춘다(그 서버도 clasp push해야 한다는 뜻).
+    try {
+      execSync('node tools/build-light.js', { cwd, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 });
+      const changed = execSync('git status --porcelain -- gs-light/Generated.js gs-extra/Generated.js gs-judge/Generated.js', { cwd }).toString().trim();
+      if (changed) { console.log('생성 파일이 원본과 달랐음(다시 만듦):\n' + changed + '\n→ 바뀐 서버(gs-light·gs-extra·gs-judge)도 그 폴더에서 clasp push·deploy 하고, 생성 파일을 함께 커밋한 뒤 다시 돌린다.'); process.exit(1); }
+      console.log('생성 파일 같음: gs-light·gs-extra·gs-judge');
+    } catch (e) { if (e.status === 1 && /생성 파일이 원본과/.test(String(e.stdout || ''))) throw e; console.log('생성 파일 대조 실패: ' + String(e.message || e).slice(0, 200)); process.exit(1); }
   }
   post({ action: 'deploy_job_pc_start', msg: start }).then(t => console.log('PC 배포 시작 알림:', t.slice(0, 200)));
 } else {

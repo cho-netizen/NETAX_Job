@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-10 16:07 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-11 08:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -35319,69 +35319,6 @@ function renderInheritanceAssetAllocationListHtml_(){
     '</div>';
   }).join('');
 }
-// [2026.09.24 신규] 위 두 목록(증여자·상속인별 배분)의 다시그리기+입력칸 배선을 한 함수로 묶는다
-// — renderValuationAssetList 안의 [data-dafield]/[data-hafield] 배선과 완전히 같은 패턴이다.
-function refreshGiftAssetAllocationList_(){
-  const container = document.getElementById('giftAssetAllocationList');
-  if (!container) return;
-  container.innerHTML = renderGiftAssetAllocationListHtml_();
-  // [2026.10.22 변경-14] 재산에 딸린 금액 칸
-  container.querySelectorAll('[data-gafield]').forEach(function(el){
-    el.addEventListener('input', function(){
-      const assetIdx = numVal(el.closest('.taxcalc-asset').dataset.idx);
-      if (!valuationAssets[assetIdx].giftAttached) valuationAssets[assetIdx].giftAttached = {};
-      valuationAssets[assetIdx].giftAttached[el.dataset.gafield] = el.value;
-    });
-  });
-  container.querySelectorAll('[data-dafield]').forEach(function(el){
-    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
-      const assetIdx = numVal(el.closest('.taxcalc-asset').dataset.idx);
-      const allocIdx = numVal(el.closest('[data-dalloc-idx]').dataset.dallocIdx);
-      const key = el.dataset.dafield;
-      if (!Array.isArray(valuationAssets[assetIdx].donorAllocations)) valuationAssets[assetIdx].donorAllocations = [{}];
-      const alloc = valuationAssets[assetIdx].donorAllocations[allocIdx];
-      alloc[key] = el.value;
-      // [2026.09.24 신규] "증여자를 고르면 그 증여자의 기본 증여지분을 우선 채우고, 필요하면
-      // 이 자산에서만 직접 고치게" — 지분칸이 아직 비어있을 때만 기본값을 채운다(이미 이
-      // 자산에서 직접 지분을 적어놨으면 절대 덮어쓰지 않음).
-      if (key === 'donorIdx' && !alloc.ratio){
-        const donor = giftDonors[numVal(el.value)];
-        if (donor && donor.giftShareRatio){
-          alloc.ratio = donor.giftShareRatio;
-          const ratioEl = el.closest('[data-dalloc-idx]').querySelector('[data-dafield="ratio"]');
-          if (ratioEl){ ratioEl.value = donor.giftShareRatio; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl); }
-        }
-      }
-      updateDonorActualValueHints();
-      updateDoneeActualValueHints();
-    });
-  });
-}
-function refreshInheritanceAssetAllocationList_(){
-  const container = document.getElementById('inheritanceAssetAllocationList');
-  if (!container) return;
-  container.innerHTML = renderInheritanceAssetAllocationListHtml_();
-  container.querySelectorAll('[data-hafield]').forEach(function(el){
-    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
-      const assetIdx = numVal(el.closest('.taxcalc-asset').dataset.idx);
-      const allocIdx = numVal(el.closest('[data-alloc-idx]').dataset.allocIdx);
-      const key = el.dataset.hafield;
-      if (!Array.isArray(valuationAssets[assetIdx].heirAllocations)) valuationAssets[assetIdx].heirAllocations = [{}];
-      const alloc = valuationAssets[assetIdx].heirAllocations[allocIdx];
-      alloc[key] = el.value;
-      // 상속인 버전 — 위 증여자 버전과 같은 패턴, 실제상속지분을 기본값으로 우선 채운다.
-      if (key === 'heirIdx' && !alloc.ratio){
-        const heir = inheritanceHeirs[numVal(el.value)];
-        if (heir && heir.actualShareRatio){
-          alloc.ratio = heir.actualShareRatio;
-          const ratioEl = el.closest('[data-alloc-idx]').querySelector('[data-hafield="ratio"]');
-          if (ratioEl){ ratioEl.value = heir.actualShareRatio; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl); }
-        }
-      }
-      updateHeirActualValueHints();
-    });
-  });
-}
 function renderValuationAssetRow(a, idx){
   const method = a.method || 'direct';
   const value = computeValuationAssetValue(a);
@@ -40001,13 +39938,6 @@ function trRateClassCode1_(asset){
   if (years >= 1) return '15';
   return '20';
 }
-const TR_BUYER_RELATION_LABELS_ = {
-  none: '특수관계 없음(제3자)', spouse: '배우자', lineal: '직계존비속', sibling: '형제자매',
-  relative: '기타 친족', economic: '사용인 등 경제적 연관관계', control: '법인 등 경영지배관계'
-};
-function trBuyerRelationLabel_(relation){
-  return TR_BUYER_RELATION_LABELS_[relation] || '미입력';
-}
 // [2026.10.19 세액 고침] 부표1(인쇄·전자신고 41·42번)의 양도차익·장기보유특별공제·양도소득금액은 자산마다 엔진 단건 계산
 //  (calculateTransferTaxSingleJS — 여러 건 합산 계산도 같은 transferAssetCore를 쓴다) 결과를 그대로 쓴다. 예전에는 아래
 //  trLongTermDeductionRate_의 옛 표(표1 3년 10%~10년 30%, 표2 3년 24%~10년 80%)로 다시 계산해 2019년 이후 양도(표1 6~30%)·
@@ -41781,8 +41711,6 @@ function ihEfileFileName_(){
   return yyyymmdd + IH_EFILE_FORM_CODE_ + '.01';
 }
 
-
-function ihDomNum_(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; }
 
 function renderIhEfileResult_(){
   const box = document.getElementById('taxCalcIhEfileResult');
@@ -60346,16 +60274,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (box) box.classList.toggle('ev-folded', !!folded);
     var b = nxAiEl_('nxAiEvFoldBtn');
     if (b){ b.textContent = folded ? '▸ 펼치기' : '▾ 접기'; b.title = folded ? '증빙창을 펼칩니다' : '증빙창을 접고 보고서창을 넓게 씁니다'; }
-  }
-  // [2026.10.20] 근거 서류 바로 열기 — 증빙창을 펼치고(접혀 있었으면) 그 파일을 보기 칸에 연다. folderId를 주면 증빙창도 그 폴더로 옮긴다.
-  //  나중에 "AI가 근거로 든 서류를 바로 연다"에 쓸 자리 — 아직 AI 답변과는 연결하지 않았다.
-  function nxAiOpenEvidence_(f, opts){
-    opts = opts || {};
-    if (!f || !f.id) return Promise.resolve();
-    if (nxAiMode !== 'tab') nxAiGoToView_('ai');
-    nxAiSetEvFolded_(false);
-    if (opts.folderId) nxAiPvNavigate_({ folderId: opts.folderId });
-    return nxAiOpenPreview_(f, { role: nxAiIsReportFile_(f.name) ? 'report' : 'evidence' });
   }
   // 파일 한 줄(두 창이 같이 씀) — 누르면 보기 칸에 열고, 📎는 채팅에 첨부
   function nxAiPvFileRow_(f, role, tag){

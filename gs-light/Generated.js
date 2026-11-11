@@ -1,6 +1,79 @@
 // 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js
 // 조회 시작점: work_getCases, client_getClients, client_getConsultLogs, booking_getBookings, jsonResponse
-// 포함한 최상위 선언 32개 (시트 쓰기가 들어 있는 것: client_ensureSheet_, work_getSheet_)
+// 포함한 최상위 선언 42개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, client_ensureSheet_, work_getSheet_)
+
+// ============================================================
+// CaseLedger.js — 사건 장부: 사건의 모든 사실을 적는 단일 저장소 [2026.10.28 신설]
+// ------------------------------------------------------------
+// 세무사님 원문(10-28): "확보할 수 있는 정보를 최대한 확보하고, 확보된 정보를 최대한 활용해서 사건처리를 하자는 것이고,
+//   부족한 정보는 물어보거나 확보할 증빙으로 분류하자는 거 아닌가? 확인되지 않은 정보중에 추정치나 가정치를 넣어서 진행할 수도 있고 말야."
+// 세무사님 원문(10-19): "변수담당은 ai이고 상수담당은 gas라고 생각하자."
+// 세무사님 원문(10-15): 수집·반영·소통 3대 약점 → "사실 장부·칸 연결·한곳에서 묻기" 구조 — 그동안 만들지 않고 저장소 7곳(trCalc·trAns·filled·remaining·decisions·valueHist·사건개요)에
+//   땜질만 하다 10-28 김향숙 사건(물건 1건·서류 7장)이 실패("그걸 알면서도 안 만들었다고?"). 이 파일이 그 장부다.
+//
+// 구조 — 계산기 칸 하나 = 장부 한 줄. 칸 경로는 세액계산기 입력 경로 그대로(서식이 기준):
+//   seller.name · seller.regNo · seller.address · seller.multiHouseCount · seller.isTransferorResident
+//   c0.date · c0.totalPrice · c0.transferCause · c0.buyer.name · c0.buyer.regNo · c0.buyer.relation   (c1·c2… 계약이 여럿일 때)
+//   a0.assetLocation · a0.assetKind · a0.assetType · a0.assetDong · a0.assetHo · a0.assetArea · a0.acquisitionDate · a0.acquisitionPrice · a0.contract(이 자산이 걸린 계약 c0…)
+//   a0.isOneHouseOneFamily · a0.isNonBusinessLand · a0.isUnregisteredTransfer · a0.acquisitionStandardPriceForExpense · a0.transferStandardPriceForConversion …(계산기 자산 카드 칸 전부)
+//   costs({acq:[{label,amount,file,date}], tr:[…]}) · taxfee · 사건분류 · 기준일
+//   doc:<파일 이름>.role — 서류의 역할(양도계약서·취득계약서·등기부·전소유자 분양계약서·영수증·간편계산서·기타): 사건 뼈대. 넥스가 읽어 정하고, 애매하면 물어볼 것으로.
+// 줄: { v, label, src:{kind, who, file, page, quote}, sure, state, ask, cands, at, hist[] }
+//   src.kind: 세무사님 | 넥스 | 서류 | 규칙 | 추정 | 계산      sure: 확실 | 애매 | 모름
+//   state: 확정 | 추정 | 물어볼것 | 증빙받을것 | 보류 | 무시
+// 쓰는 길 하나(ledgerSet_) — 규칙:
+//   ① 세무사님이 정한 값은 아무도 덮지 않는다(넥스는 "지금 값·서류 값"만 말씀드린다). 세무사님만 바꾼다.
+//   ② 넥스가 정한 값은 세무사님·넥스만 바꾼다(서류·규칙 결과가 뒤에 와도 덮지 않는다).
+//   ③ 서류·규칙 값은 더 확실한 서류·규칙, 넥스, 세무사님이 덮는다.
+//   ④ 서류·규칙이 "애매·모름"이면 값을 정하지 않고 후보와 함께 "물어볼것"으로 선다 — 혼자 정하지 않는다(10-18 "불확실하면 소통으로 보완").
+//   ⑤ 고르기 칸(과세대상 구분·양수인 관계·자산 종류·양도 원인·주택 수·예/아니오)은 코드값만 받는다. 글은 코드로 바꾸고, 못 바꾸면 거절(10-27 긴급 "주택(주거용 오피스텔)" 글이 들어가 세액 0원).
+//   ⑥ 값이 들어오면 그 칸의 "물어볼것·증빙받을것"은 그 자리에서 풀린다(질문 목록이 따로 없으니 어긋날 수 없다).
+//   ⑦ 추정은 상태 "추정"으로 넣고 계산을 돌린다. 검토서 "추가로 확인할 사항"에 추정·증빙받을것·보류 줄이 그대로 들어간다.
+// 읽는 길 하나 — 계산기 상태(ledgerCalcState_)·질문 목록(ledgerQuestions_)·검토서 메모(ledgerReviewNotes_)·화면 표(ledgerView_)는 전부 장부에서 뽑는다.
+// 저장: 총괄관리자\_사건장부\<사건ID>.json (잠금 안에서 읽고-고치고-쓴다). 옛 저장소는 ledgerImportLegacy_로 한 번 옮겨 오고 그 뒤엔 보지 않는다.
+// ============================================================
+
+var LEDGER_FOLDER_ = '_사건장부';
+
+function ledgerFolder_() {
+  const root = getChiefManagerFolder_();
+  if (!root) throw new Error('총괄관리자 폴더가 설정되어 있지 않습니다');
+  return getOrCreateSubfolder_(root, LEDGER_FOLDER_);
+}
+
+/**
+ * 스크립트 속성에 폴더/파일 ID를 넣을 때, 구글드라이브 "링크 복사"로 얻은 전체 주소를
+ * 그대로 붙여넣어서 끝에 "?usp=drive_link" 같은 꼬리표가 같이 들어가는 실수가 흔하다
+ * (실제로 이 문제 때문에 업무관리자 폴더 연결이 계속 조용히 실패하고 있었다 — DriveApp.
+ * getFolderById()는 순수 ID만 받아들이고, 꼬리표가 붙어 있으면 그냥 오류를 내며 null로
+ * 처리돼버려서 겉으로는 "설정 안 한 것"과 똑같아 보였다). 전체 링크가 들어와도, 순수 ID만
+ * 들어와도 항상 깨끗한 ID 하나만 뽑아내서 이런 실수를 자동으로 허용한다.
+ */
+function sanitizeDriveId_(raw) {
+  if (!raw) return raw;
+  let s = String(raw).trim();
+  const m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/) || s.match(/\/d\/([a-zA-Z0-9_-]+)/) || s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return m[1];
+  return s.split('?')[0].split('#')[0].split('/')[0].trim();
+}
+
+// ===== 총괄관리자 폴더 (체크리스트·개선요구사항·점검리포트·생성파일을 여기서 다 주고받는다) =====
+const CHIEF_MANAGER_FOLDER_ID_PROPERTY = 'CHIEF_MANAGER_FOLDER_ID';
+
+function getChiefManagerFolder_() {
+  const id = sanitizeDriveId_(PropertiesService.getScriptProperties().getProperty(CHIEF_MANAGER_FOLDER_ID_PROPERTY));
+  if (!id) return null;
+  try {
+    return DriveApp.getFolderById(id);
+  } catch (err) {
+    return null;
+  }
+}
+
+function getOrCreateSubfolder_(parent, name) {
+  const iter = parent.getFoldersByName(name);
+  return iter.hasNext() ? iter.next() : parent.createFolder(name);
+}
 
 const BOOKING_SHEET_ID = '1HMMKMd0bp7kjK7Z8oSMJy2TSXFKB0EUC1XCIjSsfrmQ';
 
@@ -351,6 +424,36 @@ function work_resolveTaxpayer_(seMok, rawTaxpayer, caseOverview) {
   return taxpayer;
 }
 
+var WORK_CALC_BODY_MEMO_ = {};
+
+function work_calcBodyFile_(caseId, create) {
+  const folder = ledgerFolder_();
+  const name = String(caseId).replace(/[^\w-]/g, '_') + '.계산저장본.json';
+  const it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return create ? folder.createFile(name, '{}', 'application/json') : null;
+}
+
+function work_calcBodyRead_(caseId, fresh) {
+  const k = String(caseId || '');
+  if (!fresh && WORK_CALC_BODY_MEMO_[k]) return WORK_CALC_BODY_MEMO_[k];
+  const f = work_calcBodyFile_(caseId, false);
+  const m = f ? (JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}) : {};
+  WORK_CALC_BODY_MEMO_[k] = m;
+  return m;
+}
+
+// 칸에서 읽은 목록에 파일의 본문을 다시 붙인다 — 파일을 못 읽으면 목록만(세액·이름은 칸에 있음)
+function work_calcHydrate_(caseId, list) {
+  if (!caseId || !list.some(function (e) { return e && e.본문 === '파일'; })) return list;
+  let m;
+  try { m = work_calcBodyRead_(caseId, false); } catch (e) { console.error('계산 저장본 본문 파일을 못 읽음(목록만): ' + (e && e.message || e)); return list; }
+  return list.map(function (e) {
+    if (!e || e.본문 !== '파일' || !m[e.id]) return e;
+    const o = Object.assign({}, e, m[e.id]); delete o.본문; return o;
+  });
+}
+
 function work_readRow_(col, rowValues) {
   let subtasks = [];
   try { subtasks = JSON.parse(rowValues[col.하위업무] || '[]'); } catch (e) { subtasks = []; }
@@ -367,6 +470,7 @@ function work_readRow_(col, rowValues) {
   let taxCalcResults = [];
   try { taxCalcResults = JSON.parse(rowValues[col.세액계산결과] || '[]'); } catch (e) { taxCalcResults = []; }
   if (!Array.isArray(taxCalcResults)) taxCalcResults = [];
+  taxCalcResults = work_calcHydrate_(rowValues[col.id], taxCalcResults);
   let caseOverview = {};
   try { caseOverview = JSON.parse(rowValues[col.사건개요] || '{}'); } catch (e) { caseOverview = {}; }
   if (!caseOverview || typeof caseOverview !== 'object' || Array.isArray(caseOverview)) caseOverview = {};

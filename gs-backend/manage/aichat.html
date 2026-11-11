@@ -1102,16 +1102,6 @@
     var b = nxAiEl_('nxAiEvFoldBtn');
     if (b){ b.textContent = folded ? '▸ 펼치기' : '▾ 접기'; b.title = folded ? '증빙창을 펼칩니다' : '증빙창을 접고 보고서창을 넓게 씁니다'; }
   }
-  // [2026.10.20] 근거 서류 바로 열기 — 증빙창을 펼치고(접혀 있었으면) 그 파일을 보기 칸에 연다. folderId를 주면 증빙창도 그 폴더로 옮긴다.
-  //  나중에 "AI가 근거로 든 서류를 바로 연다"에 쓸 자리 — 아직 AI 답변과는 연결하지 않았다.
-  function nxAiOpenEvidence_(f, opts){
-    opts = opts || {};
-    if (!f || !f.id) return Promise.resolve();
-    if (nxAiMode !== 'tab') nxAiGoToView_('ai');
-    nxAiSetEvFolded_(false);
-    if (opts.folderId) nxAiPvNavigate_({ folderId: opts.folderId });
-    return nxAiOpenPreview_(f, { role: nxAiIsReportFile_(f.name) ? 'report' : 'evidence' });
-  }
   // 파일 한 줄(두 창이 같이 씀) — 누르면 보기 칸에 열고, 📎는 채팅에 첨부
   function nxAiPvFileRow_(f, role, tag){
     var row = document.createElement('div');
