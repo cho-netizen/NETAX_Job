@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>넥스 전면 재검토 2차 점검서 2026-11-12</title>
+<style>
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#1b2430;line-height:1.55;font-size:14.5px}
+h1{font-size:22px;color:#0f2a5c;border-bottom:3px solid #c9a227;padding-bottom:6px}
+h2{font-size:17px;color:#0f2a5c;margin-top:30px;border-left:5px solid #c9a227;padding-left:10px}
+h3{font-size:15px;margin:18px 0 6px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:13.5px}
+th,td{border:1px solid #cfd6e0;padding:5px 8px;vertical-align:top}
+th{background:#eef2f8;white-space:nowrap}
+td.n{white-space:nowrap}
+.ok{color:#1f7a3a;font-weight:700}.bad{color:#b3261e;font-weight:700}.mid{color:#a0621d;font-weight:700}.q{color:#5b4bb0;font-weight:700}
+code{background:#f3f5f9;padding:1px 4px;border-radius:3px;font-size:12.5px}
+.box{background:#f7f8fb;border:1px solid #dfe4ec;border-radius:6px;padding:10px 14px;margin:8px 0}
+blockquote{border-left:4px solid #c9a227;margin:8px 0;padding:4px 12px;color:#333;background:#fbf8ee}
+small{color:#555}
+</style></head><body>
+<h1>넥스 시스템 전면 재검토 — 2차 점검서(심층)</h1>
+<p><small>작성 2026-11-12 00:0x(컴퓨터 시계) · 시작 2026-11-11 23:16 · 기준 판: origin/main 9ad69f87(다른 세션의 화면 커밋 2개 포함) 위에 이번 고침 7bc1f0aa · 작업 폴더 C:\GitHub\wt-cloud · 1차 점검서: 전면재검토_점검서_20261111.html</small></p>
+<blockquote>세무사님 원문(11-11): "시스템은 완전 재검토하라고 했는데, 너무 미봉책에 그친 것으로 보인다. 내일아침까지 8시간동안 완전자동모드로 시스템을 다양한 관점에서 심도있게 재검토하여 컷푸시배포하라. 대충 버그잡으라는 정도가 아니다. 넥스시스템이 추구하는 것이 무엇인지 내가 요구하는 것이 무엇인지 등등을 깊이있게 새겨서 그렇게 제대로 되어 있는지 개선할 부분이나 기능을 추가할 것은 없는지, 넥스가 도구를 자유자재로 나를 대신하여 사용할 수 있는지 등등 제발 좀 제대로 검토하라."</blockquote>
+<div class="box"><b>한 줄 결론</b> — 넥스가 세무사님을 대신해 쓸 수 있어야 할 도구 가운데 <b>화면에만 있던 일 넷</b>(서류 정리·후속 할 일·상담 받은함·환율)에 넥스 길이 없었고, <b>장부 도구(case_ledger)의 입력 규격에 "하는 일" 8가지가 빠져</b> 지시문은 쓰라 하는데 규격은 막는 상태였다(자문 장부 적기·세목 열기·저장본 인용·근거 확인 — 자문의 뼈대). 둘 다 고쳐 올렸고, 같은 일이 재발하지 않게 검문 ⑤를 더했다. 구조적으로 더 가야 할 것 셋은 7절 계획서 거리로 적었다(세무사님 결정 전엔 만들지 않음).</div>
+
+<h2>1. 잣대 — 다시 읽은 요구사항 원문(무엇에 비춰 봤나)</h2>
+<table><tr><th>원문(세무사님)</th><th>이번 점검에서 잣대로 쓴 뜻</th></tr>
+<tr><td>"관리든 사건처리든 최상위 ai(넥스)는 나의 대리인의 자격으로 존재한다 … 넥스가 gas를 이용하여 업무를 수행하는 것이다"(공통원칙 1)</td><td>세무사님이 화면에서 하시는 모든 일을 넥스도 같은 도구로 할 수 있어야 한다 — 화면 동작 전부 ↔ 넥스 도구 전부를 1:1로 맞댄다.</td></tr>
+<tr><td>"ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다"(10-27) / 정리 "넥스 전용 도구가 있으면 1단계가 덜 된 것이고, 세무사님만 할 수 있는 화면 동작이 있으면 넥스 대행이 덜 된 것"</td><td>양방향 빈틈 — ① 화면에만 있는 일 ② 넥스에만 있는 도구.</td></tr>
+<tr><td>"한심하다. ai가 나의 대리인으로서 다양한 gas도구를 사용해야 하잖아? 그런데 왜 도무지 ai가 gas의 다양한 도구를 적절히 사용하지 못하는 것인가?"(10-29)</td><td>도구가 있어도 넥스가 못 부르는 까닭(규격·설명·지시문의 어긋남)을 기계로 대조한다.</td></tr>
+<tr><td>"문서 나누기, 여러파일을 하나의 문서로 합치기, 적절한 파일명 부여하기 등등 끝도없이 많다"(10-18)</td><td>서류 정리가 넥스 손에 있나.</td></tr>
+<tr><td>설계도(10-29) 4층·6단계·잣대 "처음 보는 자문 사례 의뢰 메모 → 보고서" · 일하는 법 7장 8절 "기한을 받을 일로 남긴다 — 다음에 부르실 때 넥스가 먼저 본다"</td><td>일하는 법이 시키는 일마다 받칠 도구가 실제로 있나.</td></tr>
+<tr><td>"당장 고치고, 나아가 재발방지대책도 강구하라"(11-04)</td><td>찾은 결함마다 기계 검문을 붙인다.</td></tr>
+</table>
+
+<h2>2. 관점① 화면 동작 ↔ 넥스 도구 — 전수 대조</h2>
+<p>대조한 것: 화면이 부르는 서버 함수 <b>170개</b>(화면 29장) + 사건처리 단계 <b>63개</b> ↔ 넥스 손의 대화창 기본 도구 42 · 사건 도구 31 · 조회 종류 15 · 제안 카드 15 · 계산 도구 116(모두 엔진 함수 있음 확인).</p>
+<h3>2-1. 세무사님은 화면에서 할 수 있는데 넥스 길이 없던 것 → 고침</h3>
+<table><tr><th>#</th><th>무엇</th><th>어디(화면)</th><th>근거 원문</th><th>고침</th></tr>
+<tr><td class="n">G1</td><td>서류 정리 — 뜻 없는 이름 바꾸기·여러 장 사진 묶음 후보·신고 제출 묶음 계획</td><td>처리개요 📂 서류 정리</td><td>10-18 "문서 나누기, 합치기, 파일명 부여"</td><td class="ok">사건 도구 <code>doc_organize</code>(rename_plan·rename_apply·scan_cands·submit_plan) — 화면과 같은 서버 함수. 나누기·묶음 PDF 저장은 화면(pdf-lib)만 되므로 계획만 돌려주고 안내. 이름 바꾸기 기록에 「누가」 남김.</td></tr>
+<tr><td class="n">G3</td><td>후속 할 일(대시보드 📋 확인조치사항) 보기·더하기</td><td>대시보드</td><td>일하는 법 8절 "받을 일로 남긴다 — 다음에 부르실 때 넥스가 먼저 본다" — 받칠 도구가 없었음</td><td class="ok"><code>job_lookup kind=followup</code>(보기) + <code>followup_note</code>(한 줄 더하기, 「[넥스]」 표시). 완료·고치기는 세무사님 화면에서.</td></tr>
+<tr><td class="n">G4</td><td>오늘 할 일 묶음(마감·지남·오늘 예약·넥스 질문 남은 사건)</td><td>대시보드</td><td>공통원칙 "넥스는 세무사님이 하시는 일을 알고 있어야"</td><td class="ok"><code>job_lookup kind=todo</code></td></tr>
+<tr><td class="n">G5</td><td>상담 받은함(사건에 안 옮긴 상담내용·녹음)</td><td>처리개요</td><td>같은 뜻</td><td class="ok"><code>job_lookup kind=consult_inbox</code>(보기만 — 옮기기는 고객 자료 이동이라 화면)</td></tr>
+<tr><td class="n">G6</td><td>환율 조회(국외자산 양도·취득가액)</td><td>세액계산</td><td>계산 도구 전부 대행</td><td class="ok">기본 도구 <code>lookup_exchange_rate</code>(한국은행, 화면과 같은 함수)</td></tr>
+</table>
+<h3>2-2. 빈틈이지만 이번에 만들지 않은 것(7절 계획서 거리)</h3>
+<table><tr><th>#</th><th>무엇</th><th>왜 못 만들었나</th></tr>
+<tr><td class="n">G2</td><td>신고서식 PDF 저장(savePdf) — 넥스가 서식 PDF를 만들 길 없음</td><td>서식은 화면(taxcalc.html, 1만 9천 줄)이 그려 PDF로 보내는 구조라 서버만으로 못 만든다 — 구조 결정 필요(10-27 "신고서식"까지 대행).</td></tr>
+<tr><td class="n">G7</td><td>조견표 판단 대기(reftable_judgment) 보기</td><td>law_decisions(AI 회의)와 다른 저장소 — 합칠지 결정 필요.</td></tr>
+<tr><td class="n">G8</td><td>자문 슬라이드 보고서 만들기</td><td>쓰임이 작음 — 세무사님이 원하시면.</td></tr>
+</table>
+<h3>2-3. 넥스에만 있고 세무사님 화면에 없는 도구(반대 방향)</h3>
+<p>사람 명단·자산 목록·계약 목록·돈 흐름·시간 순서·법령 점검은 📒 장부 「🔎 판단 재료」(10-22), 사실 지도·다시 뒤지기·쟁점 묶음은 📒 단추(11-04), 공부 조회는 📒 조회, 서식 유무는 세액인쇄 화면이 보여 준다 — <span class="ok">빈틈 없음</span>. 남는 것은 <code>facts_find</code>(조건 걸러 보기)·<code>quick_judge</code>·<code>ask_higher</code>(저가·상위 AI에 좁은 판단 맡기기)뿐이며, 세무사님은 넥스에게 직접 물으시면 되므로 화면 단추를 따로 두지 않았다(기록만).</p>
+<h3>2-4. 확인했지만 빈틈이 아닌 것</h3>
+<ul>
+<li>장부 단계(ledger*) 20개가 서버 단계 목록에 없어 보였음 → CaseLedger.js 입구(ledgerApi_)에서 받음. 절세 아이템 화면 함수 8개 → KnowHow.js에서 받음. 계산 도구 18개가 엔진에 없어 보였음 → <code>window.X = function</code> 꼴로 모두 있음.</li>
+<li>지시문이 가리키는 도구(report_capability_gap·search_tax_precedent·lookup_statute_article·browse_tax_calculators·case_link)는 모두 기본 도구 목록에 있음.</li>
+<li>화면 열기(job_open_screen)의 옛 메뉴 이름(docs·taxcalc·print·reports)은 화면 쪽이 11-01 개편 뒤 자리(사건 작업공간 탭)로 바꿔 연다 — 동작함.</li>
+</ul>
+
+<h2>3. 관점② 지시문·도구 규격 ↔ 공통원칙·일하는 법</h2>
+<table><tr><th>#</th><th>찾은 것</th><th>판정</th><th>고침</th></tr>
+<tr><td class="n">F1</td><td><b>case_ledger 입력 규격 빠짐(중대)</b> — 코드(ledgerToolRun_)는 do 31갈래를 받는데 규격(enum)은 23개. 빠진 8개: advice·advice_view·taxes·cite·check_refs·corp·share·holdings. 지시문은 그중 advice·taxes·cite·check_refs를 쓰라고 함. 속성(item·title·text·status·calc·refs·links·taxes·corp·share)과 설명도 없었음.</td><td class="bad">넥스가 자문 장부 적기·세목 열기·저장본 인용·근거 확인을 부르기 어려운 상태(모델은 규격을 따름). 원인: 11-04 뒤 코드와 화면 📒 ⑥ 자문은 늘었는데 넥스 규격을 안 고침.</td><td class="ok">규격(enum 31·속성·설명) 보강. 검문 ⑤ 신설 — 코드가 받는 do·지시문/설명이 쓰는 do·규격의 do 세 곳을 대조해 하나라도 어긋나면 🚫.</td></tr>
+<tr><td class="n">F2</td><td>상수/변수 표(CASEPROC_AI_TOOL_ROLES_)에 1차에서 지운 도구 7줄(docs_read·doc_text·value_set·tax_calc·ask_user·save_draft·report_tool_gap) 남아 있음</td><td class="mid">군더더기(1차 ③ 누락)</td><td class="ok">걷음, doc_organize 줄 더함</td></tr>
+<tr><td class="n">F3</td><td>지시문(사건 대화 10,950자) ↔ 공통원칙·일하는 법 7장 모순</td><td class="ok">못 찾음 — "정해진 순서는 없다"와 [파일 읽기] 절차(목록→읽기→체크→읽기)는 읽는 순서라 모순 아님</td><td>—</td></tr>
+<tr><td class="n">F4</td><td>일하는 법 가족법인 3절 "지방세는 범위 밖(판단하지 않고 범위 밖이라고만)" ↔ 계산 도구에 취득세·등록면허세·재산세 도구 3개가 이미 있음</td><td class="q">세무사님 결정 거리 — 범위 밖으로 정하신 뒤 지우라는 말씀은 없었음</td><td>7절 ③</td></tr>
+</table>
+
+<h2>4. 관점③ 사건 흐름 따라가기 · 관점④ 이음매·보안·혼자 도는 것 · 관점⑤ 세법·계산</h2>
+<ul>
+<li>③ PC에서 서버 함수(Code.js)를 가짜 환경으로 돌리는 틀은 없다(tools/*는 엔진·판정·가족 지도만). 새 길 넷은 코드 길 따라가기(넥스 도구 → caseProc_ 단계 → 서버 함수 → 결과·안내)로 확인했다. 실제 넥스가 부르는 모습은 운영 넥스(유료) 몫 — [세무사님 몫: 허락].</li>
+<li>④ 소통 이음매: 새 길 넷을 commSeamList_ 한 줄로 배포마다 점검(조회 종류·도구·받칠 서버 함수). 변경 점검 ⚠1(Cloud Run 인증 없이 받기 — 알려진 것, 서비스 안 ID 토큰 검증). 서버 용량 8.71MB(한도 10MB). 밤에 도는 것 14 트리거(마감 알림·총괄관리자·예약 동기화·OCR 묶음·미리 읽기·PDF 변환·상담 큐·환경 감시·AI 회의·시스템 점검·배경 큐) = 장기개발계획 5-4 셋과 맞음. 세무사님 값 보호(장부 rank)·비용 상한(1,000원/5,000원)·중요한 순간 깨우기(장부 3종) 코드 살아 있음.</li>
+<li>⑤ 세법 문장은 한 줄도 고치지 않았다(L2_taxlaw). 계산은 회귀로 확인 — 엔진 174건(운영 판 대조) 바뀜 0 · 1세대1주택 판정 20건 · 가족 지도 · 판정 서버 이음매 115줄 · 판정→여쭘→답 고리 · 판정 도구 전수 · 조견표 독립 검산 144건 다름 0.</li>
+</ul>
+
+<h2>5. 실제로 돌려 본 것 — 결과</h2>
+<table><tr><th>무엇</th><th>결과</th><th>근거</th></tr>
+<tr><td>세액 엔진 회귀 174건(운영 판과 대조)</td><td class="ok">바뀜 0 · ✗ 0</td><td>engine-regress.js --base origin/main</td></tr>
+<tr><td>1세대1주택 판정 셈 20건 / 가족 지도 / 판정 서버 이음매 115줄 / 판정 고리 / 판정 도구 전수</td><td class="ok">모두 통과</td><td>judge-regress · family-regress · judge-remote-check · judge-ledger-loop-check · judge-tool-audit</td></tr>
+<tr><td>조견표만으로 회귀 정답 독립 검산 144건</td><td class="ok">다름 0</td><td>regress-answer-audit.js</td></tr>
+<tr><td>넥스 도구 검문(도구 80·지시문 25,449자·장부 do 규격 31/코드 31)</td><td class="ok">통과(기준선 올림 — 이유 적음)</td><td>nex-tool-check.js(⑤ 새로)</td></tr>
+<tr><td>변경 점검(비밀·입구·바깥 AI·용량)</td><td class="mid">⚠1(알려진 Cloud Run 문) · 8.71MB</td><td>change-check.js</td></tr>
+<tr><td>서버 .js 문법(고친 4파일)</td><td class="ok">오류 0</td><td>new Function 컴파일</td></tr>
+<tr><td>관리·부가·판정 서버 생성 파일 = 원본</td><td class="ok">같음(다시 만들어 차이 0)</td><td>build-light.js</td></tr>
+<tr><td>공개 저장소 실명 검사</td><td class="mid">⚠5(가상사건 이름 — 1차와 같음)</td><td>check-names.js</td></tr>
+<tr><td>화면 함수 170개 ↔ 서버 처리 / 넥스 도구 162개 ↔ 실행 분기</td><td class="ok">죽은 길 0</td><td>이름 대조 스크립트</td></tr>
+</table>
+
+<h2>6. 고친 것(커밋 7bc1f0aa) — 파일·근거</h2>
+<table><tr><th>파일</th><th>무엇</th><th>원문 근거</th></tr>
+<tr><td>gs-backend/AiLead.js</td><td>doc_organize 도구 정의·실행(화면 서류 정리와 같은 단계 함수) · 상수/변수 표 지운 도구 7줄 걷음</td><td>10-18 서류 정리 원문 · 1차 ③</td></tr>
+<tr><td>gs-backend/AiLeadLive.js</td><td>case_ledger 규격(enum 8·속성·설명) · 지시문 한 줄(받을 일·서류 정리)</td><td>일하는 법 8절 · 공통원칙 1</td></tr>
+<tr><td>gs-backend/Code.js</td><td>job_lookup kind followup·todo·consult_inbox · followup_note 도구 · lookup_exchange_rate 기본 도구 · 이름 바꾸기 기록에 누가</td><td>같음</td></tr>
+<tr><td>gs-backend/Federation.js</td><td>이음매 한 줄(새 길 넷 살아 있나)</td><td>10-22 "소통점검이 보안점검처럼 항상"</td></tr>
+<tr><td>tools/nex-tool-check.js · nex-tool-baseline.json</td><td>검문 ⑤(장부 do 세 곳 대조) · 기준선 78→80·25,224→25,449(이유)</td><td>11-04 "재발방지대책"</td></tr>
+</table>
+
+<h2>7. 계획서 거리(구조) — 세무사님이 정하신 뒤에 만듦</h2>
+<h3>① 신고서식 PDF를 넥스가 만들기</h3>
+<p><b>목적</b>: 10-27 "ai는 내가 직접 작업하는 것을 완전히 대행할 수 있어야 한다"(신고서식 포함). <b>지금</b>: 서식은 화면(taxcalc.html)이 계산 결과를 서식 모양으로 그려 PDF로 서버에 보낸다(savePdf). 넥스는 forms_check(서식 유무)·form_needs(빈 칸)까지만. <b>길</b>: (가) 서식 그리기를 서버에서도 돌릴 수 있게 떼어 내기(세액인쇄 서식 전부 — 큰 일) (나) 넥스가 "서식 PDF 저장"을 세무사님 화면에 제안 카드로 띄우고 세무사님이 한 번 누르기(작은 일, 반쪽 대행) (다) 그대로 두기. <b>결정할 것</b>: 가·나·다. <b>권장</b>: (나)를 먼저(넥스가 "서식 만들 준비 끝"까지 하고 마지막 한 번만 세무사님) — 신고는 세무사님 확인이 들어가는 단계라 원칙과도 맞음.</p>
+<h3>② 받을 증빙(장부) ↔ 고객 창구 체크리스트 — 두 목록</h3>
+<p><b>지금</b>: 장부의 「증빙 받을 것」 줄(넥스·GAS가 정함)과 증빙확보 화면의 체크리스트(고객 창구 my.netax.kr에서 고객이 보는 올릴 서류 목록)가 따로 있고 잇는 코드가 없다. <b>원칙</b>: "시각적으로 중복되는 부분도 중복에 포함" · "같은 사실은 한 곳에". <b>결정할 것</b>: 장부 받을 증빙을 고객 창구 체크리스트의 원천으로 삼아 자동으로 흘려보낼지(고객에게 보이는 글이라 세무사님 확인 단계가 필요한지). <b>권장</b>: 장부 줄이 생기면 체크리스트 "제안" 상태로 보이고 세무사님이 고객에게 보일 것만 켬.</p>
+<h3>③ 지방세 계산 도구 3개(취득세·등록면허세·재산세) 처분</h3>
+<p>세무사님이 지방세를 범위 밖으로 정하셨고(10-19), 일하는 법도 "범위 밖이라고만"이라 쓰지만 대화창 계산 도구에는 셋이 남아 있다. 지울지(도구 수 3 줄고 넥스가 지방세를 계산하지 않음)·둘지(참고 계산) 결정. 권장: 둠 — 자문 비교(양도 vs 증여 총비용)에 취득세가 들어가는 경우가 실무에 있음 [확인 필요: 세무사님 실무].</p>
+
+<h2>8. 배포 상태</h2>
+<div class="box" id="deploy">올리는 중 — 아래는 올린 뒤 고쳐 적는다.</div>
+
+<h2>9. 끝내기 전 확인</h2>
+<ul>
+<li>처음부터 끝까지 따라가 본 것: 세무사님 원문(설계도·공통원칙·질책 10-27~29·지시 원문 10-18·마스터 프로필·장기개발계획·일하는 법 7장) → 화면 170 동작·63 단계 ↔ 넥스 도구 전수 대조 → 빈틈마다 서버 함수 읽고 감싸기 → 규격·지시문·코드 세 곳 대조 → 회귀 8가지·검문·변경 점검 → 커밋 → 원격 main 위로 → 올림.</li>
+<li>보지 못한 것: 넥스가 새 도구를 실제로 부르는 모습 [세무사님 몫: 유료 넥스 운영 확인 허락] · 운영 배포(clasp deploy·Cloud Run deploy) [도구로 못 함: 자동 모드 분류기가 막음 — 아침 cmd] · 다른 세션의 화면 커밋 2개(기기별 화면·글자 크기)는 내가 만든 것이 아니라 내용을 점검하지 않았음 [세무사님 몫: 그 세션 확인].</li>
+<li>원본에서 고치려던 것 말고 바뀐 것: 없음(화면 파일·엔진·세법 문장·장부 데이터 손대지 않음).</li>
+</ul>
+</body></html>
