@@ -153,7 +153,7 @@ try {
   const srv = fs.readFileSync(path.join(ROOT, "cloudrun", "server.js"), "utf8");
   if (/인증 없이|allow-unauthenticated/.test(door)) {
     if (!/verifyIdToken/.test(srv) || !/ALLOWED_EMAILS/.test(srv)) block.push("Cloud Run 문이 \"인증 없이 받기\"인데 server.js에 토큰 검증(verifyIdToken·이메일 허용 목록)이 없음 — 문을 닫거나 검증을 넣기 전엔 올리지 말 것");
-    else warn.push("Cloud Run 시험 서비스 문이 \"인증 없이 받기\"(화면 직결용) — 서비스 안 ID 토큰 검증(발급자·받는 이·이메일 허용 목록)으로 막음, 서비스 계정 권한은 가상사건 폴더만. 되돌리기: gcloud run services update netax-case-reader --no-allow-unauthenticated");
+    else warn.push("Cloud Run 시험 서비스 문이 \"인증 없이 받기\"(화면 직결용) — 서비스 안 ID 토큰 검증(발급자·받는 이·이메일 허용 목록)으로 막음, 서비스 계정 권한은 사건처리 중인 사건 폴더만(처리개요에서 열 때 걸고 완료 때 거둠). 되돌리기: gcloud run services update netax-case-reader --no-allow-unauthenticated");
   }
 } catch (e) { }
 // [2026.11.04] 넥스 도구 검문(재발 방지) — 도구 수·지시문 길이가 기준을 넘거나, 없앤 도구를 가리키거나, 같은 일에 길이 둘이면 🚫(tools/nex-tool-check.js)

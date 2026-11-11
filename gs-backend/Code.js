@@ -5106,7 +5106,6 @@ function dispatchClientAction0_(body) {
   if (body.action === 't6_direct_set') return jsonResponse(t6DirectSet_(body));
   if (body.action === 't6_share_cleanup') return jsonResponse(t6ShareCleanup_()); // [2026.10.27 T6 4단계] 완료·없는 사건의 시험 서비스 폴더 공유 거두기 — 설정 🐞 "🧪 공유 정리"(세무사님도 누름)
   if (body.action === 't6_share_status') return jsonResponse((function () { const reg = t6ShareRegistry_(null) || { folders: {} }; const ids = Object.keys(reg.folders); return { ok: true, count: ids.length, check: t6ShareCheck_(), list: ids.map(function (f) { return { 사건명: reg.folders[f].사건명 || '', at: reg.folders[f].at || '', by: reg.folders[f].by || '' }; }) }; })()); // [2026.10.27 T6 3단계] ⚡ 직결(화면→Cloud Run) 켜기/끄기 — 스크립트 속성 T6_READER_DIRECT, 설정 🐞 단추(로그인한 화면만)
-  if (body.action === 't6_ocrmem_build') return jsonResponse(t6OcrMemBuildAll_(body)); // [2026.10.27 T6 3단계] 가상사건 폴더마다 _글자기억.json(글자 기억 사본) 만들기 — 설정 🐞 단추, 세무사님도 누름(토큰 0)
   // [2026.10.30 1단계] 옛 사건 지휘 입구(case_proc_ai)는 지웠다 — 🤖 넥스로 처리·"이 사건 처리하자"는 대화창 넥스가 맡는다(세무사님 승인 "지워라")
   if (body.action === 'case_proc_ai') return jsonResponse({ ok: false, error: '옛 사건 지휘 입구는 없어졌습니다 — 화면을 새로고침해 주세요(넥스는 AI 대화창에서 사건을 맡습니다).' });
   if (body.action === 'ai_lead_weekly') return jsonResponse(caseProcAiWeekly_(body)); // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0) — 규칙 후보·길 나누기·빠진 도구·매주 숫자 // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
@@ -22662,21 +22661,6 @@ function t6OcrMemWrite_(folder) { // 사건 폴더에 _글자기억.json 쓰기(
   } else folder.createFile(T6_OCRMEM_FILE_, s, 'application/json');
   return { written: true, n: b.n, bytes: s.length };
 }
-// 가상사건 전부(사건명이 "가상"으로 시작) — 설정 🐞 단추 "🧪 _글자기억.json 만들기(가상사건)"가 부른다(action t6_ocrmem_build, 세무사님도 누름). 4분 30초 안에서 끊고 남은 수를 돌려준다
-function t6OcrMemBuildAll_(body) {
-  const started = Date.now(), DEADLINE = 200000; // 3분 20초 — 화면 callGas가 4분에 끊으므로 그 전에 next를 돌려준다(10-27 15:4x 4분 30초로 두어 화면이 먼저 끊김)
-  const all = (work_getCases({}).cases || []).filter(function (c) { return /^가상/.test(String(c.사건명 || '')) && String(c.폴더ID || '').trim(); });
-  const skip = Number(body && body.skip) || 0, done = [];
-  let i = skip;
-  for (; i < all.length; i++) {
-    if (Date.now() - started > DEADLINE) break;
-    const c = all[i]; let r;
-    try { r = t6OcrMemWrite_(DriveApp.getFolderById(c.폴더ID)); } catch (e) { r = { written: false, why: String(e && e.message || e).slice(0, 80) }; }
-    done.push({ 사건명: c.사건명, written: !!r.written, n: r.n || 0, bytes: r.bytes || 0, why: r.why || '' });
-  }
-  return { ok: true, total: all.length, from: skip, did: done.length, next: i < all.length ? i : null, done: done, sec: Math.round((Date.now() - started) / 100) / 10,
-    lines: ['가상사건 ' + all.length + '건 중 ' + (skip + 1) + '~' + i + '번째: 새로 씀 ' + done.filter(function (d) { return d.written; }).length + ' · 같은 내용 ' + done.filter(function (d) { return /같은/.test(d.why); }).length + ' · 기억 없음 ' + done.filter(function (d) { return /없음/.test(d.why); }).length + (i < all.length ? ' — 남은 ' + (all.length - i) + '건은 다시 누르면 이어서' : '')] };
-}
 // =========================================================
 // [2026.10.27 T6 3단계] 화면 직결용 입구 둘(사건처리 step) — 설계서 2절 ①④
 //  readerToken: 로그인한 job 화면에만 소유자 ID 토큰(1시간)을 내려 준다(CacheService 50분 기억). 서비스 주소·직결 켜짐(스크립트 속성 T6_READER_DIRECT)도 함께.
@@ -27297,83 +27281,6 @@ function caseProcOpenInputs_(items, decisions) {
 //  콜드 스타트: /health를 먼저 불러 깨운 시간(healthMs)과 /read 시간(runSec)을 따로 적는다 — runSecIncl = 둘의 합(콜드 포함), runSec = /read만(콜드 제외).
 var T6_READER_URL_PROP_ = 'T6_READER_URL';
 var T6_READER_URL_DEFAULT_ = 'https://netax-case-reader-721297467805.asia-northeast3.run.app'; // [2026.10.27 T6 2단계] 시험 서비스 주소 기본값(스크립트 속성이 비면 이것) — 토큰 없이는 403이라 비밀 아님. 서비스를 끄면 이 줄을 비운다
-function caseProcAllCompare_(c, body) {
-  const url = String(PropertiesService.getScriptProperties().getProperty(T6_READER_URL_PROP_) || T6_READER_URL_DEFAULT_ || '').trim().replace(/\/+$/, '');
-  if (!url) return { ok: false, step: 'allCompare', error: '시험 서비스 주소 없음 — 스크립트 속성 ' + T6_READER_URL_PROP_ + '에 Cloud Run 주소를 넣어 주세요' };
-  const t00 = Date.now();
-  const round1 = function (ms) { return Math.round(ms / 100) / 10; };
-  const row0 = JSON.parse(JSON.stringify(c)); // A를 돌리기 전 사건 행(같은 출발점)
-  const sv0 = JSON.parse(JSON.stringify(caseProcLoad_(c.id) || {}));
-  // 이 사건 서류의 글자 기억(글 ocrtxt_/ocrtxt3_·표 ocrtbl1_) — 서비스가 읽을 수 있게 담는다
-  const files = caseProcFiles_(c, { includeFiled: true }) || [];
-  const ocrMemory = {}; let memBytes = 0;
-  files.forEach(function (f) {
-    if (!f || !f.id || !f.modified) return;
-    [tcOcrKey_(f), 'ocrtbl1_' + f.id + '_' + f.modified].forEach(function (k) { const t = tcOcrStoreGet_(k); if (t !== null && t !== undefined) { ocrMemory[k] = String(t); memBytes += ocrMemory[k].length; } });
-  });
-  // (A) GAS
-  const tA = Date.now(); let A;
-  try { A = caseProcTool_(c, Object.assign({}, body, { step: 'read' })); } catch (e) { A = { ok: false, error: String(e && e.message || e) }; }
-  const gasMs = Date.now() - tA;
-  const svA = caseProcLoad_(c.id) || {}, rowA = akReadCase_(c.id) || c;
-  // (B) Cloud Run — /health 먼저(콜드 스타트 포함), 그 다음 /read
-  let token = ''; try { token = ScriptApp.getIdentityToken(); } catch (e) { return { ok: false, step: 'allCompare', error: 'ID 토큰을 못 받음(권한 openid 승인 필요): ' + (e && e.message || e), gasSec: round1(gasMs) }; }
-  const hdr = { Authorization: 'Bearer ' + token };
-  // [2026.10.23 T6 2단계] 토큰의 받는 이(aud)를 응답에 적는다 — Cloud Run이 401/403이면 이 값을 custom audience로 허용한다(IAM 설정에 필요, 토큰 자체는 적지 않음)
-  let tokenAud = ''; try { var seg_ = String(token.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/'); while (seg_.length % 4) seg_ += '='; tokenAud = String(JSON.parse(Utilities.newBlob(Utilities.base64Decode(seg_)).getDataAsString('UTF-8')).aud || ''); } catch (e) { tokenAud = '해독 실패: ' + String(e && e.message || e).slice(0, 80); }
-  const tH = Date.now(); let health = { ms: 0 };
-  try { const hr = UrlFetchApp.fetch(url + '/health', { headers: hdr, muteHttpExceptions: true }); health = { code: hr.getResponseCode(), ms: Date.now() - tH, body: String(hr.getContentText() || '').slice(0, 200) }; }
-  catch (e) { health = { error: String(e && e.message || e).slice(0, 200), ms: Date.now() - tH }; }
-  const payload = { caseId: c.id, folderId: c.폴더ID, sheetRow: row0, decisions: sv0, ocrMemory: ocrMemory, options: { skipEvidence: !!body.skipEvidence, budgetMs: 280000 } };
-  const tR = Date.now(); let B = null, httpCode = 0;
-  try {
-    const rr = UrlFetchApp.fetch(url + '/read', { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), headers: hdr, muteHttpExceptions: true });
-    httpCode = rr.getResponseCode();
-    try { B = JSON.parse(rr.getContentText()); } catch (e2) { B = { ok: false, error: '응답 해석 실패(' + httpCode + '): ' + String(rr.getContentText() || '').slice(0, 200) }; }
-  } catch (e) { B = { ok: false, error: String(e && e.message || e).slice(0, 300) }; }
-  const runMs = Date.now() - tR;
-  B = B || {};
-  // 대조 — ③ 칸(결정 파일 filled) · 질문(id) · 증빙 수
-  const fa = svA.filled || {}, fb = B.filled || (B.written && B.written.decisionFile && B.written.decisionFile.filled) || {};
-  const keys = Object.keys(fa).concat(Object.keys(fb)).filter(function (k, i, arr) { return arr.indexOf(k) === i; }).sort();
-  const mismatches = [];
-  keys.forEach(function (k) { const a = fa[k] ? String(fa[k].v) : '', b = fb[k] ? String(fb[k].v) : ''; if (a !== b) mismatches.push({ key: k, a: a, b: b, aSrc: fa[k] ? String(fa[k].src || '').slice(0, 80) : '', bSrc: fb[k] ? String(fb[k].src || '').slice(0, 80) : '' }); });
-  const qa = (A.items || []).map(function (it) { return it && it.id; }).filter(function (x) { return x && !/^file:/.test(x); }).sort();
-  const qb = (B.questions || []).map(function (q) { return q && q.id; }).filter(function (x) { return x && !/^file:/.test(x); }).sort();
-  const ea = (rowA.증빙목록 || []).length, eb = Number(B.evidenceCount || 0);
-  const nameOf = {}; files.forEach(function (f) { nameOf[f.id] = f.name; });
-  const rec = {
-    at: caseProcNow_(), caseId: c.id, 사건명: c.사건명 || '', 세목: c.세목 || '',
-    gasSec: round1(gasMs), gasTm: A._tm || null, gasOk: A.ok !== false, gasPartial: !!A.partial,
-    healthMs: health.ms, healthCode: health.code || null, healthError: health.error || null, tokenAud: tokenAud,
-    runSec: round1(runMs), runSecIncl: round1(runMs + (health.ms || 0)), runInner: B.timing || null, httpCode: httpCode, runOk: !!B.ok, runError: B.error || null, runPartial: B.partial || null,
-    engine: B.engine || '', codeVersion: B.codeVersion || '', gasVersion: String(PropertiesService.getScriptProperties().getProperty('GH_DEPLOYED_SHA') || '').slice(0, 12),
-    fieldsA: Object.keys(fa).length, fieldsB: Object.keys(fb).length, mismatches: mismatches,
-    questionsA: qa, questionsB: qb, questionsOnlyA: qa.filter(function (x) { return qb.indexOf(x) === -1; }), questionsOnlyB: qb.filter(function (x) { return qa.indexOf(x) === -1; }),
-    evidenceA: ea, evidenceB: eb, unreadFiles: (B.unreadFiles || []).map(function (id) { return nameOf[id] || id; }),
-    writes: (B.written && B.written.writes) || [], writeCount: (B.written && B.written.writeCount) || 0, gasMissing: B.gasMissing || {},
-    memKeys: Object.keys(ocrMemory).length, memBytes: memBytes, files: B.files || null, totalSec: round1(Date.now() - t00)
-  };
-  // 기록 — 총괄관리자\_가상사건\_시험서비스_비교_YYYYMMDD.json (배열에 한 줄 추가; 이 함수가 쓰는 파일은 이것뿐)
-  try {
-    const chief = getChiefManagerFolder_();
-    if (chief) {
-      const dir = getOrCreateSubfolder_(chief, '_가상사건');
-      const name = '_시험서비스_비교_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd') + '.json';
-      const it = dir.getFilesByName(name); let arr = [];
-      if (it.hasNext()) { const f = it.next(); try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8')); } catch (e) { arr = []; } if (!Array.isArray(arr)) arr = []; arr.push(rec); f.setContent(JSON.stringify(arr, null, 1)); }
-      else dir.createFile(name, JSON.stringify([rec], null, 1), 'application/json');
-      rec.saved = name;
-    } else rec.saved = '총괄관리자 폴더 없음(CHIEF_MANAGER_FOLDER_ID)';
-  } catch (e) { rec.saved = '기록 실패: ' + String(e && e.message || e).slice(0, 120); }
-  const lines = [
-    '🧪 시험 서비스 비교 — ' + (c.사건명 || c.id),
-    'GAS ①②③ ' + rec.gasSec + '초' + (A._tm ? '(' + Object.keys(A._tm).map(function (k) { return k + ' ' + A._tm[k]; }).join(' · ') + ')' : '') + ' ↔ Cloud Run /read ' + rec.runSec + '초(깨우기 포함 ' + rec.runSecIncl + '초' + (B.timing ? ', 서비스 안쪽 ' + B.timing.inner + '초 — 드라이브 읽기 ' + B.timing.drive + ' · 사건파악 ' + B.timing.basic + ' · 글자 ' + B.timing.ocr + ' · 증빙 ' + B.timing.evidence + ' · 칸 ' + B.timing.overview : '') + ')',
-    '칸 ' + rec.fieldsA + '↔' + rec.fieldsB + ' · 불일치 ' + mismatches.length + '건' + (mismatches.length ? ': ' + mismatches.map(function (m) { return m.key + '(' + (m.a || '—') + ' ↔ ' + (m.b || '—') + ')'; }).join(', ') : '') + ' · 질문 ' + qa.length + '↔' + qb.length + (rec.questionsOnlyA.length || rec.questionsOnlyB.length ? '(GAS만 ' + rec.questionsOnlyA.join(',') + ' / 서비스만 ' + rec.questionsOnlyB.join(',') + ')' : '') + ' · 증빙 ' + ea + '↔' + eb,
-    (B.error ? '서비스 오류: ' + B.error : '') + (rec.unreadFiles.length ? ' · 기억 없어 못 읽음 ' + rec.unreadFiles.length + '건' : '') + ' · 기록 ' + rec.saved
-  ].filter(Boolean);
-  return Object.assign({ ok: true, step: 'allCompare' }, rec, { lines: lines });
-}
 // [2026.10.31 묶음 해체] 세무사님 원문(10-31) "개별 gas의 도구들을 넥스가 활용하는 것이라고 했다 … gas로 처리라는 말 자체가 말도 안되는 소리다"
 //  예전 'all'(①②③④ 한 번에)을 낱개 도구 둘로 나눴다 — 'read'(📖 서류 읽기: ①사건파악 + ②서류 읽기·정리 + 장부 적기)·'fill'(칸 채우기: ①+③ + 장부 적기 + 질문 판정).
 //  다음에 무엇을 부를지는 도구가 정하지 않는다(세액계산은 계산 도구, 검토서는 작성관리 양식으로). 화면 단추·넥스 도구·직결 서비스가 같은 입구를 부른다
@@ -27509,7 +27416,6 @@ function caseProc0_(body) {
   // [2026.10.23 속도 특단조치 T1] ⚡ 때마다 미리 읽기 트리거가 있는지 확인(없으면 만듦, 0.1초) — 밤 점검·배포 기록만 기다리면 새 프로젝트·지워진 트리거에서 미리 읽기가 영영 안 돈다
   if (/^(basic|read)$/.test(String(body.step || ''))) { try { cpPrereadEnsureTrigger_(); } catch (e) {} }
   try {
-    if (body.step === 'allCompare') return caseProcAllCompare_(c, body); // [2026.10.23 T6 2단계] 같은 사건을 GAS 'all'과 Cloud Run 시험 서비스로 나란히 돌려 대조
     if (body.step === 'applyRead') return t6ApplyRead_(c, body); // [2026.10.27 T6 3단계] 화면 직결 — Cloud Run 결과(written)를 결정 파일·사건 행에 저장(쓰기는 GAS만)
     if (body.step === 'read' || body.step === 'fill') return caseProcTool_(c, body); // [2026.10.31 묶음 해체] 📖 서류 읽기 · 칸 채우기 — 낱개 도구(예전 'all' 한 번에 ①②③④는 지움)
     if (body.step === 'basic') return caseProcBasic_(c, body);

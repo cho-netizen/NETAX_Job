@@ -5,7 +5,7 @@
 
 ## 지금 상태(재배포한 사람이 아래 "문:" 줄을 고칩니다 — tools/change-check.js가 이 줄로 ⚠ 판정)
 문: 인증 없이 받기(호출자 IAM 검사 끄기, --no-invoker-iam-check) — 서비스 안에서 구글 ID 토큰 검증(발급자·받는 이·이메일 허용 목록), 2026-10-27 3단계. allUsers 권한(allow-unauthenticated)은 조직 정책(도메인 제한 공유)이 거부해 쓰지 못함
-서비스 계정: case-reader@netax-job.iam.gserviceaccount.com(뷰어) — 가상사건 폴더 40개만
+서비스 계정: case-reader@netax-job.iam.gserviceaccount.com(뷰어) — 사건처리 중인 사건 폴더만(처리개요에서 열 때 걸고 완료 때 거둠, T6 4단계)
 리전: asia-northeast3 · 메모리 1Gi · CPU 1 · 동시 1 · 시간 300초 · 최소 0대 · 최대 1대
 
 ## 입구
