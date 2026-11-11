@@ -161,6 +161,7 @@ function logNxInteraction_(entry) {
 // 규칙(키워드 추측)이 아니라 AI 스스로 분야를 찾아 들어가는 구조라, 어떤 계산이 필요한
 // 질문이든 놓치지 않으면서도(분야 목록 자체는 항상 다 보임) 한 번에 다 보여주지 않는다.
 const BASIC_TOOL_NAMES_ = new Set([
+  'lookup_exchange_rate', // [2026.11.12 2차 ①] 국외자산 양도 — 세액계산 화면 환율 조회와 같은 함수
   'list_drive_folder', 'read_drive_file', 'save_file_to_folder', 'export_to_google_doc', 'send_email',
   'register_report_to_rpt', 'manage_task_plan', 'lookup_calendar_events', 'search_emails',
   'lookup_google_tasks', 'add_google_task', 'add_log_entry',
@@ -500,6 +501,12 @@ const DRIVE_TOOLS = [
       properties: { keyword: { type: 'string', description: '검색어(지번·도로명·건물명)' } },
       required: ['keyword']
     }
+  },
+  // [2026.11.12 2차 전면 재검토 ①] 환율 — 세액계산 화면(국외자산)이 쓰는 handleLookupExchangeRate와 같은 함수(한국은행 ECOS). 넥스만 길이 없었다.
+  {
+    name: 'lookup_exchange_rate',
+    description: '날짜별 기준환율·재정환율 조회(한국은행, 토큰 0) — 국외자산 양도·취득가액을 원화로 바꿀 때. 양도가액은 대금을 받은 날, 취득가액은 지급한 날의 환율(소득세법 시행령 §178의5 — 조문은 law_lookup으로 확인). 그 날이 휴일이면 그 전 영업일 값이 돌아온다.',
+    input_schema: { type: 'object', properties: { currency: { type: 'string', description: 'USD·JPY·EUR·CNY 등 통화 코드' }, date: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['currency', 'date'] }
   },
   // [2026.10.20] 조정대상지역 이력표 조회(AdjArea.js adjAreaLookupTool_, 토큰 0) — 세무사님 "조정대상지역은 사용하려고 만든 것이니 ai가 사용하게 해야 한다"
   {
@@ -4497,6 +4504,20 @@ function job_lookup_(input) {
     return JSON.parse(cxMask_(JSON.stringify(v)));
   }
   if (kind === 'law_decisions') return typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.search || '', input.세목 || '') : { error: '이 판에 없음' };
+  // [2026.11.12 2차 전면 재검토 ①] 세무사님 화면에만 있던 셋 — 대시보드 📋 확인조치사항(Followup.js)·할 일 묶음(todoList_)·상담 받은함(Consult.js). 공통원칙 "세무사님만 할 수 있는 화면 동작이 있으면 넥스 대행이 덜 된 것"
+  if (kind === 'followup') {
+    const r = typeof followupGet_ === 'function' ? followupGet_() : { error: '이 판에 없음' };
+    if (!r || r.error) return r;
+    const q = String(input.search || '').trim();
+    const secs = (r.sections || []).map(function (s) { return { 절: s.title, 항목: (s.items || []).filter(function (x) { return !x.done && (!q || (String(x.text) + ' ' + String(x.detail || '')).indexOf(q) !== -1); }).map(function (x) { return { 줄: x.line, 글: String(x.text || '').slice(0, 300), 자세히: String(x.detail || '').slice(0, 300) }; }).slice(0, 40) }; }).filter(function (s) { return s.항목.length; });
+    return { 파일: r.file && r.file.name, 미결: r.open, 완료: r.closed, 절: secs.slice(0, 20), 안내: '이 사건·고객의 사후관리 기한·받을 일을 남기려면 followup_note(do=add, section=사건 이름 또는 「사후관리」). 완료 표시·고치기는 세무사님 화면(대시보드 📋)에서.' };
+  }
+  if (kind === 'todo') { const t = typeof todoList_ === 'function' ? todoList_() : { error: '이 판에 없음' }; return JSON.parse(cxMask_(JSON.stringify(t))); }
+  if (kind === 'consult_inbox') {
+    const r = typeof consult_inboxList_ === 'function' ? consult_inboxList_() : { error: '이 판에 없음' };
+    if (!r || r.error) return r;
+    return { 전체: r.total, 묶음: (r.items || []).slice(0, 40).map(function (x) { return { 때: x.when, 사건이름후보: x.caseName, 상담내용파일: x.mdId ? '있음' : '없음', 녹음: (x.audio || []).length }; }), 안내: '사건으로 옮기는 것은 세무사님 화면 처리개요 → 상담 받은함에서(고객 자료 이동). 어느 사건 것인지 짐작되면 세무사님께 말씀드린다.' };
+  }
   return { error: '알 수 없는 kind: ' + kind };
 }
 
@@ -4715,11 +4736,12 @@ const JOB_AI_TOOLS_ = [
       + 'caseproc=사건처리 상태(caseId 필요 — 남은 질문·넣을 칸·후보와 출처·AI 판단 값·지난 사건 지휘에서 넥스가 한 보고·판단·여쭌 것. "이 사건 처리하자" 뒤 세무사님이 질문·값·이유를 물으면 먼저 이것을 본다), '
       + 'ai_review=AI 판단이 쌓인 모습(주제별 판단 수·세무사님이 고친 비율·GAS 규칙 후보·빠진 도구), '
       + 'law_decisions=AI 회의 법령 안건(search=쟁점 낱말) — 상태 "결정"은 세무사님 결론이라 그대로 따르고, "판단 대기"·"보류"면 그 쟁점을 단정하지 말고 판단 대기 중이라고 밝힌다. 세법 판단을 답하기 전에 같은 쟁점이 있는지 먼저 본다. 사건·고객 목록 자체는 list_work_cases·list_clients를 써라. '
-      + 'case_files=사건 폴더의 모든 파일 목록(caseId 필요; 하위 폴더·산출물·보관·예규·메모까지, 폴더·크기·수정일·종류·GAS체크 표시; dir=폴더 이름, search=파일 이름 낱말로 좁히기), file_read=사건 폴더 파일 한 개의 글 읽기(caseId·file=파일 이름 또는 폴더/파일; page=쪽(예 "3" 또는 "2-4", 쪽 나눔이 있을 때), start=시작 글자 위치, find=찾을 낱말, len=길이; 글자 기억·드라이브 글자층에서, 토큰 0). 너는 세무사님 대리인이라 체크 목록과 무관하게 어떤 파일이든 읽는다 — 쟁점이 생기면 폴더의 관련예규·검토 메모·지침부터 직접 읽어라. 읽을 파일 체크 목록(caseproc_scope)은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이지 네 읽기 범위가 아니다.',
+      + 'case_files=사건 폴더의 모든 파일 목록(caseId 필요; 하위 폴더·산출물·보관·예규·메모까지, 폴더·크기·수정일·종류·GAS체크 표시; dir=폴더 이름, search=파일 이름 낱말로 좁히기), file_read=사건 폴더 파일 한 개의 글 읽기(caseId·file=파일 이름 또는 폴더/파일; page=쪽(예 "3" 또는 "2-4", 쪽 나눔이 있을 때), start=시작 글자 위치, find=찾을 낱말, len=길이; 글자 기억·드라이브 글자층에서, 토큰 0). 너는 세무사님 대리인이라 체크 목록과 무관하게 어떤 파일이든 읽는다 — 쟁점이 생기면 폴더의 관련예규·검토 메모·지침부터 직접 읽어라. 읽을 파일 체크 목록(caseproc_scope)은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이지 네 읽기 범위가 아니다. '
+      + 'followup=대시보드 📋 확인조치사항(후속 할 일 — 세무사님·Claude·넥스가 적은 미결 항목, search=낱말로 좁히기; 사후관리 기한·받을 일은 followup_note로 더한다), todo=오늘 할 일 묶음(법정일 마감·지남·오늘 예약·넥스 질문 남은 사건·고객 서류·확인 요청 수), consult_inbox=상담 받은함(사건에 아직 안 옮긴 상담내용·녹음 묶음 — 옮기기는 화면 처리개요에서).',
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read', 'booking_link_review', 'booking_case_candidates'] },
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read', 'booking_link_review', 'booking_case_candidates', 'followup', 'todo', 'consult_inbox'] }, // [2026.11.12 2차 ①] 대시보드 📋 확인조치사항(후속 할 일)·할 일·상담 받은함도 넥스가 본다
         rowIndex: { type: 'number', description: 'booking_case_candidates일 때 예약 줄 번호(bookings의 rowIndex)' },
         caseId: { type: 'string', description: 'checklist·caseproc·case_files·file_read일 때 작업관리 사건ID' },
         search: { type: 'string', description: 'consult_logs일 때 고객명, law_decisions일 때 쟁점 낱말, case_files일 때 파일 이름 낱말(선택)' },
@@ -4767,6 +4789,12 @@ const JOB_AI_TOOLS_ = [
       },
       required: ['view']
     }
+  },
+  // [2026.11.12 2차 전면 재검토 ①] 후속 할 일 적기 — 일하는 법 8절 "기한을 받을 일로 남긴다 — 다음에 부르실 때 넥스가 먼저 본다"를 받칠 도구가 없었다(대시보드 📋 확인조치사항 파일은 세무사님·Claude만 적었음). 한 줄 더하기만(되돌릴 수 있음) — 완료 표시·고치기는 세무사님 화면.
+  {
+    name: 'followup_note',
+    description: '후속 할 일 적기(토큰 0, 바로 실행) — 대시보드 📋 확인조치사항에 한 줄을 더한다(넥스가 적은 줄은 「[넥스]」로 시작해 누가 적었는지 보인다). 사후관리 기한(신고·납부·감면 신청·사후관리 끝·합산 기간 끝·이월과세 기간 끝), 받을 서류, 세무사님이 뒤에 정하실 것을 날짜와 함께. section=절 이름(사건 이름 또는 「사후관리」·「받을 서류」; 없으면 새 절). 먼저 job_lookup kind=followup으로 같은 줄이 있는지 본다.',
+    input_schema: { type: 'object', properties: { text: { type: 'string', description: '한 줄 — 무엇을·언제까지·어느 사건(날짜 YYYY-MM-DD 포함)' }, section: { type: 'string' } }, required: ['text'] }
   },
   // [2026.10.28] 사건 장부(CaseLedger.js) — 넥스가 사실을 적는 유일한 길. 세무사님이 말로 준 값은 카드 없이 바로(세무사님 대리인), 넥스가 서류로 정한 값은 근거와 함께, 모르면 물어볼 것으로.
   {
@@ -11254,6 +11282,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const text = JSON.stringify(r);
         return { type: 'tool_result', tool_use_id: block.id, content: text.length > 60000 ? text.slice(0, 60000) + '…(너무 길어 잘림 — 조건을 좁혀 다시 조회하라)' : text };
       }
+      if (block.name === 'followup_note') { // [2026.11.12 2차 ①]
+        let r; const fi = block.input || {};
+        try { const t = String(fi.text || '').replace(/\s+/g, ' ').trim().slice(0, 300); r = !t ? { error: 'text가 비었다' } : (typeof followupChange_ === 'function' ? followupChange_({ text: '[넥스] ' + t.replace(/^\[넥스\]\s*/, ''), section: String(fi.section || '사후관리').slice(0, 60) }, 'add') : { error: '이 판에 없음' }); }
+        catch (err) { r = { error: '적는 중 오류: ' + err.message }; }
+        const out = r && r.success ? { ok: true, 적음: true, 파일: r.file && r.file.name, 미결: r.open } : { ok: false, error: (r && r.error) || '못 적음' };
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) };
+      }
       // [2026.10.21] 절세 아이템 찾기·읽기(KnowHow.js) — 토큰 0, 결과에 근거·검토 상태·기준일·현행화 필요·인용 줄
       if (block.name === 'search_tax_items' || block.name === 'read_tax_item') {
         let r;
@@ -11409,6 +11444,9 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
       if (block.name === 'lookup_land_info') { // [2026.10.28 🌐]
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleLookupLandInfo(Object.assign({}, block.input || {}, { by: '넥스' }))) }; // caseId를 주면 장부 공부 사실에도(넥스가 조회)
+      }
+      if (block.name === 'lookup_exchange_rate') { // [2026.11.12 2차 ①]
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleLookupExchangeRate(block.input || {})) };
       }
       if (block.name === 'search_address_kakao') { // [2026.10.28 🌐]
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(handleSearchAddressKakao(block.input || {})) };
@@ -24066,7 +24104,7 @@ function caseProcRenameApply_(c, body) {
       if (nm === old) { done.push({ id: x.id, old: old, name: nm, same: true }); return; }
       f.setName(nm);
       const newMod = DriveApp.getFileById(x.id).getLastUpdated().getTime(), carried = tcMemCarry_(x.id, oldMod, newMod);
-      const rec = { id: x.id, old: old, name: nm, at: new Date().toISOString(), oldMod: oldMod, newMod: newMod };
+      const rec = { id: x.id, old: old, name: nm, at: new Date().toISOString(), oldMod: oldMod, newMod: newMod, by: String(body.by || '세무사님').slice(0, 6) }; // [2026.11.12 2차 ①] 넥스(doc_organize)가 바꾼 것인지 남긴다
       caseProcPatch_(c.id, function (sv) { (sv.renames = sv.renames || []).push(rec); });
       done.push({ id: x.id, old: old, name: nm, carried: carried });
     } catch (e) { errors.push({ id: x.id, why: String(e && e.message || e).slice(0, 150) }); }

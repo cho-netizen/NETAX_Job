@@ -446,6 +446,8 @@ function commSeamList_() {
   var lookupKinds = function () { var j = (typeof JOB_AI_TOOLS_ !== 'undefined' ? JOB_AI_TOOLS_ : []).filter(function (t) { return t.name === 'job_lookup'; })[0]; return (j && j.input_schema && j.input_schema.properties && j.input_schema.properties.kind && j.input_schema.properties.kind.enum) || []; };
   var need = function (have, list, where) { var miss = list.filter(function (n) { return have.indexOf(n) === -1; }); return miss.length ? where + '에 없음: ' + miss.join(', ') : ''; };
   var seamList = [
+    // [2026.11.12 2차 전면 재검토 ①] 세무사님 화면에만 있던 일에 낸 넥스 길 — 조회 종류(후속 할 일·할 일·상담 받은함)·후속 할 일 적기·환율·서류 정리
+    { 길: '넥스 → 대시보드 할 일·상담 받은함·서류 정리·환율(11-12 넥스 길)', fn: function () { var miss = need(lookupKinds(), ['followup', 'todo', 'consult_inbox'], 'job_lookup kind'); if (miss) return miss; var ct = chatTools(); if (ct.indexOf('followup_note') === -1 || ct.indexOf('lookup_exchange_rate') === -1) return '대화창 도구에 followup_note 또는 lookup_exchange_rate 없음'; if (leadTools().indexOf('doc_organize') === -1) return '사건 도구에 doc_organize 없음'; if (typeof followupChange_ !== 'function' || typeof consult_inboxList_ !== 'function' || typeof handleLookupExchangeRate !== 'function') return '받칠 서버 함수가 없음'; return ''; } },
     // 세무사님 ↔ 넥스
     { 길: '세무사님 원칙 → 넥스(공통원칙·마스터 프로필)', fn: function () { var t = getMasterProfileText_(); return !t ? '마스터 프로필을 못 읽음' : (getCommonPrinciplesText_() && t.indexOf('공통원칙') === -1 ? '공통원칙이 넥스 지시문에 안 붙음' : ''); } },
     { 길: 'GAS가 깨운 넥스(미리 읽기·중요한 순간)도 같은 원칙·최근 바뀐 기능', fn: function () { var m = getMasterProfileText_(), b = caseProcAiNexBase_(); return m && b.indexOf(m.slice(0, 200)) === -1 ? 'GAS가 깨운 넥스 지시문에 마스터 프로필이 없음' : ''; } },

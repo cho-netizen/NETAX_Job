@@ -54,6 +54,18 @@ texts.forEach(([label, t]) => RETIRED.forEach((n) => {
   while ((m = re.exec(t))) { const ctx = t.slice(Math.max(0, m.index - 30), m.index + n.length + 30).replace(/\s+/g, ' '); if (!/없다|없어졌다|뺌|않는다|제안 길이 없다/.test(t.slice(m.index - 60, m.index + n.length + 60))) stale.push(label + ': ' + n + ' — …' + ctx + '…'); }
 }));
 
+// ⑤ [2026.11.12 2차 전면 재검토] case_ledger의 do — 지시문이 시키는 것·코드가 받는 것이 입력 규격(enum)에 다 있나.
+//  11-12 점검에서 코드(ledgerToolRun_) 33갈래 중 8개(advice·advice_view·taxes·cite·check_refs·corp·share·holdings)가 enum에 없었고 지시문은 그중 넷을 쓰라고 했다 — 넥스가 자문 장부·세목 열기·근거 확인을 부르기 어려운 상태였다.
+const ledgerSrc = rd('CaseLedger.js');
+const clSeg = (() => { const i = live.indexOf("tools.push({ name: 'case_ledger'"); return i < 0 ? '' : live.slice(i, live.indexOf('tools.push({', i + 10)); })();
+const clEnum = (() => { const m = /do: \{ type: 'string', enum: \[([^\]]*)\]/.exec(clSeg); return m ? m[1].replace(/'/g, '').split(',').map((s) => s.trim()).filter(Boolean) : []; })();
+const clCode = (() => { const i = ledgerSrc.indexOf('function ledgerToolRun_('); const b = i < 0 ? '' : ledgerSrc.slice(i, ledgerSrc.indexOf('\n}\n', i)); return Array.from(new Set(names(b, /\bd === '([a-z_]+)'/g))); })();
+const clGuide = Array.from(new Set(names(guide + '\n' + clSeg, /case_ledger do=([a-z_]+)/g).concat(names(clSeg, /do=([a-z_]+)\{?/g))));
+const doMiss = [];
+clCode.filter((d) => clEnum.indexOf(d) === -1).forEach((d) => doMiss.push('코드(ledgerToolRun_)가 받는 do=' + d + '가 case_ledger 입력 규격(enum)에 없음'));
+clGuide.filter((d) => clEnum.indexOf(d) === -1).forEach((d) => doMiss.push('지시문·설명이 쓰는 do=' + d + '가 case_ledger 입력 규격(enum)에 없음'));
+clEnum.filter((d) => clCode.indexOf(d) === -1).forEach((d) => doMiss.push('규격(enum)의 do=' + d + '를 코드가 받지 않음'));
+
 // ④ 같은 일 두 길
 const dup = [];
 ['value_set', 'tax_calc', 'ask_user', 'report_tool_gap', 'save_draft', 'doc_view'].forEach((n) => { if (inChat.has(n)) dup.push(n + '이(가) 사건 대화 도구에 다시 들어옴(case_ledger·calc·report_capability_gap 한 길 원칙)'); });
@@ -70,8 +82,9 @@ else {
 }
 stale.forEach((s) => block.push('없앤 도구를 가리키는 글 — ' + s));
 dup.forEach((s) => block.push(s));
+doMiss.forEach((s) => block.push('장부 도구 규격 어긋남 — ' + s));
 
-const summary = '넥스 도구 검문 — 사건 대화 도구 ' + toolCount + '개(기준 ' + (base ? base.caseChatTools : '-') + ') · 지시문 ' + promptChars + '자(기준 ' + (base ? base.promptChars : '-') + ')';
+const summary = '넥스 도구 검문 — 사건 대화 도구 ' + toolCount + '개(기준 ' + (base ? base.caseChatTools : '-') + ') · 지시문 ' + promptChars + '자(기준 ' + (base ? base.promptChars : '-') + ') · 장부 do 규격 ' + clEnum.length + '/코드 ' + clCode.length;
 module.exports = { block, warn, summary, toolCount, promptChars, tools: Array.from(inChat).sort() };
 if (require.main === module) {
   console.log(summary);

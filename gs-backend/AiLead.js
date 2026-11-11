@@ -42,6 +42,10 @@ var CASEPROC_AI_TOOLS_ = [
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
   { name: 'public_lookup', description: '공적 조회 — 조건을 정해 다시 조회: kind=official(공시가격, priceKind land/house/apartment, year) · real(매매사례, base 평가기준일, before/after 개월, area ㎡) · building(건축물대장) · adjusted(조정대상지역 — loc + dates[{label,date,purpose}]로 날짜별 판정·근거 공고, 토큰 0). 결과 전부와 근거키(확보자료 PDF와 같은 근거).',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, kind: { type: 'string', enum: ['official', 'real', 'building', 'adjusted'] }, loc: { type: 'string' }, dates: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, date: { type: 'string' }, purpose: { type: 'string', enum: ['일반', '거주요건'] } } } }, priceKind: { type: 'string' }, year: { type: 'number' }, base: { type: 'string' }, before: { type: 'number' }, after: { type: 'number' }, area: { type: 'number' } }, required: ['caseId', 'kind', 'loc'] } },
+  // [2026.11.12 2차 전면 재검토 ①] 서류 정리 — 세무사님 화면(aichat 📂 서류 정리)에만 있던 일(10-18 원문 "문서 나누기, 여러파일을 하나의 문서로 합치기, 적절한 파일명 부여하기 등등 끝도없이 많다")을 넥스도 같은 서버 함수로.
+  //  나누기·묶음 PDF 만들기는 화면(pdf-lib)이 PDF를 다시 써야 해서 서버만으로는 못 한다 — 그 둘은 계획(보기)만 돌려주고 "화면 📂에서 저장"을 안내한다.
+  { name: 'doc_organize', description: '서류 정리(토큰 0) — do=rename_plan: 뜻 없는 이름(스캔001·IMG_… 등) 파일마다 읽은 종류·사람·날짜로 새 이름 제안(고객 폴더 안 바뀜) / do=rename_apply{items:[{id,newName}]}: 제안대로(또는 세무사님이 고친 이름대로) 이름 바꾸기 — 되돌리기 기록 남음. 세무사님이 "이름 정리해라"고 하셨거나 제안을 보여 드려 좋다고 하신 뒤에만 / do=scan_cands: 여러 장 사진으로 나뉜 서류·원근 보정이 필요한 사진 후보(합치기·보정은 화면 📂 서류 정리에서) / do=submit_plan{ids,groups?}: 고른 PDF를 홈택스 첨부 기준(한 파일 MB·개수)에 맞춰 종류별 묶음·번호 계획(합쳐 저장은 화면 📂에서). 이름 바꾸기 외에는 고객 폴더를 바꾸지 않는다.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, do: { type: 'string', enum: ['rename_plan', 'rename_apply', 'scan_cands', 'submit_plan'] }, items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, newName: { type: 'string' } } } }, ids: { type: 'array', items: { type: 'string' } }, groups: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } } } } }, required: ['caseId', 'do'] } }
 ];
 // [2026.10.19] 지침 초안(maps/작업지시AI_지침초안.md A절)을 그대로 — 블라인드 모의 3건으로 고친 판, 약 3,800자
 
@@ -216,9 +220,7 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
 // ---------- 상수(GAS)·변수(AI) 자리 — 넷째 원칙. 도구마다 안에서 GAS가 정하는 것과 AI(최상위 또는 도구 안 AI)가 정할 자리 ----------
 var CASEPROC_AI_TOOL_ROLES_ = {
   case_view: { 상수: '사건 기본·법정기한·날짜 대조', 변수: '사건파악 가설이 서로 다를 때 어느 것이 맞나' },
-  docs_read: { 상수: '글자 읽기·서류 종류 규칙·증빙목록 대조', 변수: '처음 보는 서류 종류(저가), 판독이 갈린 글자(저가)' },
   calc_fill: { 상수: '서류 규칙 값·검산·교차검증 일치·법령 정의·필요 칸 지도', 변수: '후보가 갈린 칸(어긋남)·판단 갈림길·빈 칸' },
-  doc_text: { 상수: '원문 앞뒤 줄 꺼내기', 변수: '원문을 읽고 어느 값인지 판단' },
   doc_facts: { 상수: '서류별 정리 결과', 변수: '—' },
   facts_find: { 상수: '사실 걸러 내기·사본 표시', 변수: '—(재료)' },
   owner_assets: { 상수: '납세자 명의 등기 줄·앞 권리자', 변수: '1세대1주택·상속주택·이월과세 해당(중간~고급)' },
@@ -228,13 +230,9 @@ var CASEPROC_AI_TOOL_ROLES_ = {
   people_roster: { 상수: '같은 사람 판정·명단 맞대기', 변수: '배우자 사망 여부·표기 다른 사람이 같은지(저가~중간)' },
   law_checks: { 상수: '특례 재료·보증금 합 검산', 변수: '특례 해당 판단(고급)' },
   public_lookup: { 상수: '공시가격·매매사례·건축물대장 조회', 변수: '유사사례 고르기·시가 판단(중간~고급)' },
-  value_set: { 상수: '근거 대조(서류 원문·조회 결과에 그 값이 있나)', 변수: '—(AI가 정한 값을 받음)' },
-  tax_calc: { 상수: '세액 엔진', 변수: '잠정 계산할지(최상위)' },
   form_needs: { 상수: '서식 칸 해설 색인·칸 값 유무 대조', 변수: '—(재료)' },
   forms_check: { 상수: '서식 유무·기신고서 차이', 변수: '—' },
-  ask_user: { 상수: '질문 카드 정리', 변수: '무엇을 여쭐지(최상위)' },
-  save_draft: { 상수: '저장·초안·현황표', 변수: '—' },
-  report_tool_gap: { 상수: '기록', 변수: '무엇이 모자랐나(최상위)' }
+  doc_organize: { 상수: '이름 제안(읽은 종류·사람·날짜)·사진 묶음 후보·첨부 기준 묶음 계산', 변수: '제안 이름을 받을지·어느 서류를 낼지(최상위, 세무사님 확인)' } // [2026.11.12 2차 ①]
 };
 // 도구 결과에서 "AI가 판단할 자리(변수)"를 센다 — 재현기가 그물 기록·AI 없이 끝날 수 있는지에 쓴다
 // '못 읽은 서류'는 AI 자리가 아니다 — 사진 보정·OCR은 GAS(상수) 몫이라 AI 없이 끝날 수 있는지 셀 때 빼고 따로 센다
@@ -419,6 +417,14 @@ function caseProcAiExec_(caseId, name, input) {
     else if (name === 'case_read') r = step('read', { budgetMs: 100000, by: '넥스' }); // 채팅 한 요청(약 4분) 안에 다른 도구와 함께 돌도록 100초씩 — 다 못 읽으면 more/partial, 다시 부르면 이어 감 // [2026.10.31 묶음 해체] 📖 서류 읽기 — 화면 단추와 같은 입구
     else if (name === 'calc_fill') { r = step('fill', { budgetMs: 100000, by: '넥스' }); if (r && r.items) CASEPROC_AI_LAST_ITEMS_[caseId] = r.items; if (r && !r.error && !r.case) { try { WORK_DATA_MEMO_ = null; const cf = akReadCase_(caseId); if (cf) r = Object.assign({}, r, { case: cf }); } catch (e) {} } } // [2026.10.31] 낱개 칸 채우기 입구는 사건을 돌려주지 않아 넥스 요약의 "채운 칸"이 늘 비었다(넥스 "칸이 안 채워졌다") — 채운 뒤 사건을 새로 읽어 붙인다 // 칸 채우기 — 화면 단추와 같은 입구(장부 적기·질문 판정까지)
     else if (name === 'forms_check') r = step('output');
+    else if (name === 'doc_organize') { // [2026.11.12 2차 ①] 화면 📂 서류 정리와 같은 서버 함수(caseProc_ 단계 renamePlan·renameApply·scanCands·submitPlan)
+      const d = String(input.do || '');
+      if (d === 'rename_plan') { r = step('renamePlan', { by: '넥스' }); if (r && r.items) r.items = r.items.slice(0, 60); if (r && r.ok) r.안내 = '이름을 바꾸려면 do=rename_apply items(id·newName)로 — 세무사님이 시키셨거나 제안을 보여 드린 뒤에만. 고친 이름은 되돌릴 수 있다(기록 남음).'; }
+      else if (d === 'rename_apply') { if (!Array.isArray(input.items) || !input.items.length) r = { error: 'items([{id,newName}])가 비었다 — 먼저 do=rename_plan' }; else r = step('renameApply', { items: input.items.slice(0, 60), by: '넥스' }); }
+      else if (d === 'scan_cands') { r = step('scanCands', { by: '넥스' }); if (r && r.ok) r.안내 = '사진 합치기·원근 보정은 화면 📂 서류 정리에서만 저장된다(서버는 PDF를 다시 쓰지 못함) — 세무사님께 후보를 말씀드린다.'; }
+      else if (d === 'submit_plan') { if (!Array.isArray(input.ids) || !input.ids.length) r = { error: 'ids(넣을 PDF 파일 ID, 순서대로)가 비었다 — case_files로 목록을 보고 고른다' }; else { r = step('submitPlan', { ids: input.ids.slice(0, 80), groups: Array.isArray(input.groups) ? input.groups : undefined, by: '넥스' }); if (r && r.ok) r.안내 = '합쳐서 _신고제출 폴더에 저장하는 것은 화면 📂 서류 정리 → 신고 제출 묶음에서만 된다 — 계획을 세무사님께 보여 드린다.'; } }
+      else r = { error: 'do는 rename_plan·rename_apply·scan_cands·submit_plan 중 하나' };
+    }
     else if (name === 'form_needs') r = typeof formNeeds_ === 'function' ? formNeeds_(caseId, input) : { error: '서식 도구가 이 판에 없음' }; // [2026.10.19 B-5]
     else if (name === 'doc_facts') {
       const c = akReadCase_(caseId);
