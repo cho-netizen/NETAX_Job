@@ -247,6 +247,24 @@
        사실상 못 쓰는 수준이라 "안 열린다"고 느껴졌을 것. 이 태그를 넣어야 휴대폰이 자기
        화면 너비 그대로 렌더링한다. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- [2026.11.11] 글자 크기(설정 › 화면) — 세무사님 "피씨보다 태블릿에서 가독성이 떨어져서 … 폰에서도 마찬가지다".
+       화면 글자가 px로 약 800곳 적혀 있어 단위를 바꾸는 대신 화면 전체 배율(zoom)로 키운다. 기기마다 저장(localStorage nx_font_zoom, 퍼센트).
+       저장값이 없으면 기기 배치(설정 "화면 배치 기준"과 같은 기준)로 기본값: PC 100% · 태블릿 115% · 폰 110%(접는 폰 커버화면은 100%).
+       첫 그림 전에 적용하려고 여기서 한 번 읽고, 뒤의 script.html 묶음(nxFontZoomApply_)이 배치가 바뀔 때마다 다시 맞춘다. -->
+  <script>
+  (function(){
+    try {
+      var v = parseInt(localStorage.getItem('nx_font_zoom'), 10);
+      if (!(v >= 80 && v <= 150)){
+        var o = localStorage.getItem('nx_device_override') || 'auto', w = window.innerWidth, h = window.innerHeight;
+        var st = (o === 'pc' || o === 'tablet' || o === 'phone') ? o : (w < 600 ? 'phone' : (w < 900 ? 'tablet' : 'pc'));
+        var cover = st === 'phone' && o === 'auto' && Math.max(w, h) <= 640;
+        v = st === 'tablet' ? 115 : (st === 'phone' && !cover ? 110 : 100);
+      }
+      document.documentElement.style.setProperty('--nx-font-zoom', String(v / 100));
+    } catch (e) {}
+  })();
+  </script>
   <!-- [2026.09] 이 화면(HtmlService)엔 파비콘이 아예 없어서, PWA로 "설치"하면 브라우저가
        고른 범용 아이콘이 붙었다 — netax.kr 홈페이지와 같은 남색바탕+금색 N 아이콘으로 맞춘다. -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2a41'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' font-weight='700' fill='%23c9a227' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E">
@@ -391,7 +409,10 @@
     background:var(--navy); color:var(--gold); font-size:18px; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.28); }
   body.lay-phone #nxPresentBtn{ display:none; }
   body.nx-present #sideMenu, body.nx-present #sideAI, body.nx-present #globalHelpBtn, body.nx-present #nxSuggestBtn{ display:none !important; }
-  body.nx-present #centerWork{ zoom:1.15; }
+  /* [2026.11.11] 글자 크기(설정 › 화면) — 화면 전체 배율. 고객에게 보여주기(1.15)와 곱해지지 않게, 보여주기 중엔 둘 중 큰 쪽만 되도록 나눈다. 인쇄는 100%. */
+  body{ zoom:var(--nx-font-zoom, 1); }
+  body.nx-present #centerWork{ zoom:max(1, calc(1.15 / var(--nx-font-zoom, 1))); }
+  @media print{ body{ zoom:1 !important; } }
   body.nx-present #nxPresentBtn{ right:18px; opacity:0.55; }
   /* [2026.11.01] 필기메모 떠 있는 단추(메뉴에서 뺌) */
   #nxHandMemoBtn{ position:absolute; right:168px; bottom:18px; z-index:35; width:42px; height:42px; border-radius:50%; border:none;
@@ -10252,6 +10273,7 @@ function nxMdOpenWindow(title, src, opts){
   .lsidb-copy{ font-size:11px; padding:1px 6px; border:1px solid var(--line); border-radius:4px; background:#fff; cursor:pointer; color:var(--sub); }
   .lsidb-g > .lsidb-copy{ position:absolute; right:0; top:2px; visibility:hidden; }
   .lsidb-g:hover > .lsidb-copy{ visibility:visible; }
+  @media (pointer:coarse){ .lsidb-g > .lsidb-copy{ visibility:visible; } } /* [2026.11.11] 손가락 기기엔 호버가 없어 복사 단추가 영영 안 보였음 */
   .lsidb-box{ font-family:'D2Coding','Consolas','맑은 고딕',monospace; font-size:12px; line-height:1.35; white-space:pre; overflow-x:auto; background:#fafafa; border:1px solid var(--line); border-radius:4px; padding:6px; margin:4px 0; }
   .lsidb-img{ max-width:100%; border:1px solid var(--line); margin:4px 0; }
   .lsidb-fx{ background:#fff8e1; border-left:3px solid var(--gold); padding:2px 8px; margin:3px 0; }
@@ -10602,7 +10624,7 @@ function nxMdOpenWindow(title, src, opts){
 
 <!-- [2026.10.19] 🤝 AI 회의 사이드바 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <style>
-  #maiPanel{ position:fixed; top:0; right:0; width:min(640px, 100vw); height:100vh; background:var(--panel, #fff); border-left:1px solid var(--line, #ddd); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:950; display:flex; flex-direction:column; font-size:13px; }
+  #maiPanel{ position:fixed; top:0; right:0; width:min(640px, 100vw); height:100vh; height:100dvh; /* [2026.11.11] 폰 주소창만큼 아래가 잘리지 않게 */ background:var(--panel, #fff); border-left:1px solid var(--line, #ddd); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:950; display:flex; flex-direction:column; font-size:13px; }
   #maiPanel .mai-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line, #ddd); }
   #maiPanel .mai-head b{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #maiPanel .mai-body{ flex:1; overflow:auto; padding:10px 12px 40px; }
@@ -56719,6 +56741,15 @@ function rwAiApplyEdit_(id, content){
         <option value="phone">폰 화면으로 고정</option>
       </select>
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
+      <!-- [2026.11.11] 글자 크기 — 세무사님 "태블릿에서 가독성이 떨어져서 … 폰에서도 마찬가지다". 화면 전체 배율, 이 기기에만 기억. 기본값은 기기 배치별(PC 100·태블릿 115·폰 110). -->
+      <div style="font-size:13px; margin:14px 0 6px;">글자 크기</div>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <button type="button" id="settingsFontMinus" class="btn" title="글자 5% 작게" style="min-width:40px; min-height:34px; font-size:16px;">−</button>
+        <span id="settingsFontLabel" style="min-width:52px; text-align:center; font-size:14px; font-weight:700;">100%</span>
+        <button type="button" id="settingsFontPlus" class="btn" title="글자 5% 크게" style="min-width:40px; min-height:34px; font-size:16px;">＋</button>
+        <button type="button" id="settingsFontReset" class="btn" style="min-height:34px;">기본으로</button>
+      </div>
+      <div class="settings-tool-desc" id="settingsFontNow" style="margin-top:6px;"></div>
       <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·보고서 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
@@ -57170,6 +57201,23 @@ function rwAiApplyEdit_(id, content){
       now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
     }
     dark.addEventListener('change', function(){ nxSetDark_(dark.checked); });
+    // [2026.11.11] 글자 크기 — 저장·적용은 script.html nxFontZoomSet_/nxFontZoomGet_
+    (function(){
+      var minus = document.getElementById('settingsFontMinus'), plus = document.getElementById('settingsFontPlus'), reset = document.getElementById('settingsFontReset');
+      var label = document.getElementById('settingsFontLabel'), nowF = document.getElementById('settingsFontNow');
+      if (!minus || typeof nxFontZoomGet_ !== 'function') return;
+      function paint(){
+        var v = nxFontZoomGet_(), saved = nxFontZoomSaved_(), d = nxFontZoomDefault_();
+        label.textContent = v + '%';
+        nowF.textContent = saved ? ('이 기기에 저장된 값 · 기본은 ' + d + '%(' + (LABEL[window.nxLayout] || '-') + ' 화면)') : ('기본값(' + (LABEL[window.nxLayout] || '-') + ' 화면) — 바꾸면 이 기기에만 기억됩니다');
+        minus.disabled = v <= 80; plus.disabled = v >= 150;
+      }
+      minus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() - 5); paint(); });
+      plus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() + 5); paint(); });
+      reset.addEventListener('click', function(){ nxFontZoomSet_(null); paint(); toast('글자 크기를 기본값으로 되돌렸습니다(이 기기).'); });
+      document.addEventListener('nx-layout-change', paint);
+      paint();
+    })();
     // 오류 기록 카드
     var bugList = document.getElementById('stBugList');
     function loadBugs(){
@@ -66424,6 +66472,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var changed = window.nxLayout !== st;
     window.nxLayout = st;
     ['pc', 'tablet', 'phone'].forEach(function(s){ document.body.classList.toggle('lay-' + s, s === st); });
+    if (typeof nxFontZoomApply_ === 'function') nxFontZoomApply_(); // [2026.11.11] 글자 크기 — 배치별 기본값이 있어 배치가 바뀌면 다시 맞춘다
     var cover = st === 'phone' && nxIsCoverScreen_();
     var coverChanged = !!window.nxCover !== cover;
     window.nxCover = cover;
@@ -66435,6 +66484,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxSetLayoutOverride_(value){ nxLs_(NX_LAYOUT_KEY_, value); nxApplyLayout_(); }
   function nxApplyDark_(on){ document.documentElement.classList.toggle('nx-dark', !!on); }
   function nxSetDark_(on){ nxLs_(NX_DARK_KEY_, on ? '1' : '0'); nxApplyDark_(on); }
+  // [2026.11.11] 글자 크기(설정 › 화면) — 화면 전체 배율(퍼센트, 80~150, 5단위). 이 기기에만 저장(localStorage nx_font_zoom).
+  //  저장값이 없으면 배치별 기본값(PC 100·태블릿 115·폰 110, 접는 폰 커버화면 100). 머리글의 작은 script가 첫 그림 전에 같은 규칙으로 한 번 적용한다.
+  var NX_FONT_KEY_ = 'nx_font_zoom';
+  function nxFontZoomSaved_(){ var v = parseInt(nxLs_(NX_FONT_KEY_), 10); return (v >= 80 && v <= 150) ? v : 0; }
+  function nxFontZoomDefault_(){ var st = window.nxLayout || nxLayoutStage_(); if (st === 'tablet') return 115; if (st === 'phone' && !window.nxCover) return 110; return 100; }
+  function nxFontZoomGet_(){ return nxFontZoomSaved_() || nxFontZoomDefault_(); }
+  function nxFontZoomApply_(){ try { document.documentElement.style.setProperty('--nx-font-zoom', String(nxFontZoomGet_() / 100)); } catch (e) {} }
+  function nxFontZoomSet_(pct){
+    if (pct === null || pct === undefined || pct === ''){ try { localStorage.removeItem(NX_FONT_KEY_); } catch (e) {} }
+    else { var v = Math.round(Number(pct) / 5) * 5; if (!(v >= 80)) v = 80; if (v > 150) v = 150; nxLs_(NX_FONT_KEY_, String(v)); }
+    nxFontZoomApply_();
+  }
   function nxIsDark_(){ return document.documentElement.classList.contains('nx-dark'); }
   (function(){
     var saved = nxLs_(NX_DARK_KEY_);
