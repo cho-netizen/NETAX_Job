@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:39 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -66598,6 +66598,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       m.classList.toggle('peek', !!on);
       nxSideMenuApply_();
     }
+    // [2026-11-13 4차 45] 손가락 기기(태블릿)에서 메뉴 줄을 골라 화면이 바뀌어도 펼친 메뉴가 본문 왼쪽을 덮은 채 남았다(마우스는 빼면 접히지만 손가락엔 「빼기」가 없음) — 고르면 접는다(고정한 메뉴는 그대로)
+    (function(){
+      var m = document.getElementById('sideMenu'), coarse = false;
+      try { coarse = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
+      if (!m || !coarse) return;
+      m.addEventListener('click', function(e){ var it = e.target.closest && e.target.closest('.menu-item[data-view]'); if (it && !m.classList.contains('pinned')) setTimeout(function(){ nxSideMenuPeek_(false); }, 120); });
+    })();
     function nxSideMenuSetPin_(pin){
       var m = document.getElementById('sideMenu');
       clearTimeout(window.nxSideMenuPeekT_);
@@ -68589,6 +68596,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026.11.12] 건전세정 사례로 — taxgap.html tgFromCase_(사건 요약으로 사례 초안, 고객 실명은 ○○)
     var tgBtn = document.getElementById('cbTaxGap'); if (tgBtn) tgBtn.addEventListener('click', function(){ if (typeof tgFromCase_ === 'function') tgFromCase_(NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
+    // [2026-11-13 4차 48] 찾기로 사건이 하나만 남으면 Enter로 바로 연다 — 예전엔 고르기 칸을 한 번 더 열어 골라야 했다(폰에서 특히 번거로움)
+    document.getElementById('cbFind').addEventListener('keydown', function(e){
+      if (e.key !== 'Enter' || e.isComposing) return;
+      var sel = document.getElementById('cbCaseSelect'), ids = Array.prototype.map.call(sel ? sel.options : [], function(o){ return o.value; }).filter(Boolean);
+      if (ids.length === 1){ e.preventDefault(); sel.value = ids[0]; sel.dispatchEvent(new Event('change', { bubbles: true })); this.blur(); }
+      else if (ids.length > 1) showToast('찾은 사건 ' + ids.length + '건 — 옆 칸에서 고르세요', 'info');
+    });
     document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
     // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
     var strip = document.createElement('div');
@@ -69041,6 +69055,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (r.bottom < 0 || r.top > window.innerHeight) continue;
         [[more, 1], [less, -1]].forEach(function(side){
           if (!side[0]) return;
+          // [2026-11-13 4차 50] 폰에서 탭 줄이 위 머리줄(붙어 있는 줄)에 가려졌거나 안쪽 칸 밖으로 밀려나도 화살표가 떠서 머리줄·본문 글을 덮었다 — 그 자리에 탭 줄이 실제로 보일 때만 띄운다
+          var px = side[1] > 0 ? r.right - 12 : r.left + 12, py = r.top + r.height / 2, hit = document.elementFromPoint(px, py);
+          if (!hit || !(bar.contains(hit) || (hit.classList && hit.classList.contains('nx-tabmore-arrow')))) return;
           var a = arrows_[used];
           if (!a){
             a = document.createElement('button'); a.type = 'button'; a.className = 'nx-tabmore-arrow';

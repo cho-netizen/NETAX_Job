@@ -1802,6 +1802,13 @@
     // [2026.11.12] 건전세정 사례로 — taxgap.html tgFromCase_(사건 요약으로 사례 초안, 고객 실명은 ○○)
     var tgBtn = document.getElementById('cbTaxGap'); if (tgBtn) tgBtn.addEventListener('click', function(){ if (typeof tgFromCase_ === 'function') tgFromCase_(NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
+    // [2026-11-13 4차 48] 찾기로 사건이 하나만 남으면 Enter로 바로 연다 — 예전엔 고르기 칸을 한 번 더 열어 골라야 했다(폰에서 특히 번거로움)
+    document.getElementById('cbFind').addEventListener('keydown', function(e){
+      if (e.key !== 'Enter' || e.isComposing) return;
+      var sel = document.getElementById('cbCaseSelect'), ids = Array.prototype.map.call(sel ? sel.options : [], function(o){ return o.value; }).filter(Boolean);
+      if (ids.length === 1){ e.preventDefault(); sel.value = ids[0]; sel.dispatchEvent(new Event('change', { bubbles: true })); this.blur(); }
+      else if (ids.length > 1) showToast('찾은 사건 ' + ids.length + '건 — 옆 칸에서 고르세요', 'info');
+    });
     document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
     // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
     var strip = document.createElement('div');
@@ -2254,6 +2261,9 @@
         if (r.bottom < 0 || r.top > window.innerHeight) continue;
         [[more, 1], [less, -1]].forEach(function(side){
           if (!side[0]) return;
+          // [2026-11-13 4차 50] 폰에서 탭 줄이 위 머리줄(붙어 있는 줄)에 가려졌거나 안쪽 칸 밖으로 밀려나도 화살표가 떠서 머리줄·본문 글을 덮었다 — 그 자리에 탭 줄이 실제로 보일 때만 띄운다
+          var px = side[1] > 0 ? r.right - 12 : r.left + 12, py = r.top + r.height / 2, hit = document.elementFromPoint(px, py);
+          if (!hit || !(bar.contains(hit) || (hit.classList && hit.classList.contains('nx-tabmore-arrow')))) return;
           var a = arrows_[used];
           if (!a){
             a = document.createElement('button'); a.type = 'button'; a.className = 'nx-tabmore-arrow';

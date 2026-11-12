@@ -349,6 +349,13 @@
       m.classList.toggle('peek', !!on);
       nxSideMenuApply_();
     }
+    // [2026-11-13 4차 45] 손가락 기기(태블릿)에서 메뉴 줄을 골라 화면이 바뀌어도 펼친 메뉴가 본문 왼쪽을 덮은 채 남았다(마우스는 빼면 접히지만 손가락엔 「빼기」가 없음) — 고르면 접는다(고정한 메뉴는 그대로)
+    (function(){
+      var m = document.getElementById('sideMenu'), coarse = false;
+      try { coarse = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
+      if (!m || !coarse) return;
+      m.addEventListener('click', function(e){ var it = e.target.closest && e.target.closest('.menu-item[data-view]'); if (it && !m.classList.contains('pinned')) setTimeout(function(){ nxSideMenuPeek_(false); }, 120); });
+    })();
     function nxSideMenuSetPin_(pin){
       var m = document.getElementById('sideMenu');
       clearTimeout(window.nxSideMenuPeekT_);
