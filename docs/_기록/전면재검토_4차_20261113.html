@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>전면 재검토 4차</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#666;--line:#ddd;--ok:#1a7f37;--warn:#b35900;--bad:#c62828;--chip:#f3f4f6}
+@media (prefers-color-scheme:dark){:root{--bg:#17181a;--fg:#ececec;--mut:#a0a0a0;--line:#333;--chip:#25272a}}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,"Malgun Gothic",sans-serif;margin:0;padding:16px;max-width:980px}
+h1{font-size:21px}h2{font-size:17px;margin-top:28px;border-bottom:1px solid var(--line);padding-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left}
+th{background:var(--chip)}.ok{color:var(--ok);font-weight:600}.warn{color:var(--warn);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.wrap{overflow-x:auto}code{background:var(--chip);padding:1px 4px;border-radius:4px}
+</style></head><body>
+<h1>전면 재검토 4차 — PC·태블릿·휴대폰 세 바퀴 (2026-11-12 밤 ~ 11-13 새벽)</h1>
+<p>세무사님 말씀: "아직도 맘에 들지 않는다. 다시한번 3차보다 훨씬 심도있는 검토를 해 달라" / "피씨로 한번, 태블릿으로 한번, 스마트폰으로 한번, 총 3회전 돌려서 점검하라."<br>
+잣대: 3차 가상사건 여섯(양도·증여·상속·경정·세무조사·가족법인)을 세무사님 자리(운영 job.netax.kr/app, 로그인)에서 기기 크기를 바꿔 가며 실제로 누르고, 넥스에게도 맡겨 봄. 증상 41~54(1~40은 3차 점검서).</p>
+
+<h2>1. 세 바퀴에서 본 것</h2>
+<div class="wrap"><table>
+<tr><th>번호</th><th>기기·자리</th><th>증상</th><th>지금</th></tr>
+<tr><td>41</td><td>PC 전체</td><td>서버 부를 때마다 기본 약 7초(장부 10~16초, 장부 흐름 10~23초) — 한 덩어리 서버(8.8MB)를 매번 띄우는 구조</td><td class="warn">구조 문제 — 2절</td></tr>
+<tr><td>42</td><td>PC 의뢰 메모 → 장부</td><td>메모에서 양도 금액·날짜만 뽑고 상속(예금·장례비·시가)·증여(공시·매매사례)는 못 뽑음</td><td class="ok">고침(서버, 아침 반영)</td></tr>
+<tr><td>43</td><td>태블릿 오늘 › 마감임박</td><td>표 오른쪽 「완료」 잘림, 떠 있는 단추 넷이 표를 덮음</td><td class="warn">화면 배치 — 3절 결정</td></tr>
+<tr><td>44</td><td>태블릿 메뉴</td><td>메뉴 여는 곳이 왼쪽 7px 띠(밀기 동작은 있음)</td><td class="warn">화면 배치 — 3절 결정</td></tr>
+<tr><td>45</td><td>태블릿 메뉴 고른 뒤</td><td>메뉴가 본문을 덮은 채 남음</td><td class="ok">고침(화면, 반영됨)</td></tr>
+<tr><td>46</td><td>태블릿 오늘</td><td>첫 카드 20초 넘게 불러오는 중 — 41과 같은 뿌리</td><td class="warn">41과 함께</td></tr>
+<tr><td>47</td><td>태블릿 칸 장부 표</td><td>추정 줄 단추가 표 끝에서 잘림, 단추 34개 중 17개가 손가락에 작음</td><td class="warn">화면 배치 — 3절 결정</td></tr>
+<tr><td>48</td><td>폰 사건 찾기</td><td>하나만 남아도 Enter로 안 열림</td><td class="ok">고침(화면, 반영됨)</td></tr>
+<tr><td>49</td><td>폰 상속 개요 › 기한</td><td>메모로 사망일이 섰는데 사건 기준일이 비어 신고기한이 「임시」</td><td class="ok">고침(서버, 아침 반영)</td></tr>
+<tr><td>50</td><td>폰 사실(장부) 탭 줄</td><td>좌우 화살표가 글을 덮음</td><td class="ok">고침(화면, 반영됨)</td></tr>
+<tr><td>51</td><td>폰 칸 장부 › 줄 더하기</td><td>상속세 장부 계산은 손계산과 같음(과표 5억1,200만·납부 90,792,000원). 단 「금융재산」에 보험금이 드는지 글이 없음</td><td class="ok">고침 — 「금융재산(예금·적금·보험금·주식·채권 등 금융회사 취급분 — 상증령 §19①)」(원문 대조)</td></tr>
+<tr><td>52</td><td>폰 아래 「넥스」 탭</td><td>보던 사건이 넥스에 안 이어짐</td><td class="ok">고침(화면, 반영됨)</td></tr>
+<tr><td>53</td><td>넥스(세무조사, 폰)</td><td>가산세만 보려고 근거 없는 「양도가액 15억·취득가액 5억」으로 계산을 돌려 사건 저장본 2개를 만듦</td><td class="ok">고침 — 지시문 한 줄 + 설명용 예시는 저장본에 「예시 계산 — 이 사건 값 아님」(서버, 아침 반영)</td></tr>
+<tr><td>54</td><td>넥스 진행 글</td><td>「확인하는 중…(6단계·도구 17번)·273초」 — 3차 36 고침이 운영에서 맞게 보임</td><td class="ok">확인</td></tr>
+</table></div>
+<p>그 밖에 고친 것(PC 바퀴): 판정 창이 사건 세목 묶음부터 열림 · 보고서 탭 첫 문서가 샘플이 아니라 사건 문서 · 고객 열람에 이 사건 고객 보고서를 맨 위로 · 대시보드 마감임박에서 가상사건 빼기 · 가상·모의 사건은 구글 달력에 안 올림(서버) · 공부 조회에서 지금 물건에 없는 옛 필지 사실을 따로 옮김(서버) · 장부 물음 이름에 영어 칸 이름이 보이던 것(서버) · 주택은 건축물로 조회(서버) · 카카오 주소 열쇠가 없을 때 안내(서버).</p>
+<p>넥스 실측: 세무조사(최병국) 약 6분·7단계·도구 19번 — 쟁점(조특령 §66⑭ 근로소득 3,700만 이상 해 경작기간 제외)·여쭐 것 8·소명 자료·가산세 틀·제척기간 정리는 좋았고, 결함은 53 하나.</p>
+
+<h2>2. 구조 문제 — 느림(41·46)</h2>
+<p>서버 한 덩어리(8.8MB)를 부를 때마다 약 7초가 먼저 듭니다. 화면을 고쳐서는 안 풀립니다. 이미 조회는 관리·부가 서버로 나눴고(10-17 3분할), 다음 길은 ① 자주 쓰는 읽기(오늘 카드·장부 보기)를 조회 서버로 더 옮기기 ② 장부 읽기를 직결(Cloud Run)로 돌리기 — 둘 다 새 구조라 계획서를 먼저 올려 정해 받아야 합니다(1층 5절).</p>
+
+<h2>3. 세무사님이 정하실 것 (화면 배치 — 되돌리기 어려워 먼저 여쭘)</h2>
+<div class="wrap"><table>
+<tr><th>건</th><th>권장안</th></tr>
+<tr><td>43 떠 있는 단추 넷(펜·넥스·필기·도움말)</td><td>태블릿·폰에선 한 단추로 접고 눌러서 펼치기 — 표를 덮지 않게</td></tr>
+<tr><td>44 태블릿 메뉴 여는 곳</td><td>왼쪽 위에 보이는 ☰ 단추(폰처럼), 밀기 동작은 그대로</td></tr>
+<tr><td>47 칸 장부 단추 크기·잘림</td><td>태블릿·폰에서 추정 줄 단추를 한 「⋯」 단추로 묶고 손가락 크기(44px)로</td></tr>
+</table></div>
+
+<h2>4. 반영 상태</h2>
+<ul>
+<li>화면 고침: main에 올라가 job.netax.kr/app에 반영됨(커밋 a3e60b1f·7cbfd3a8·eea8dc9e) — 운영 화면 글자 대조로 확인.</li>
+<li>서버 고침: 가지 <code>review4-20261113</code> 커밋 752b42af — 시험(세액 174·판정 20·가족·장부 고리·넥스 도구 검문·직결 불러오기 검문) 모두 통과, 서버 올리기(clasp push) 끝, 직결 이미지 752b42af 빌드 끝. 운영 반영은 세무사님 cmd 두 줄(아침).</li>
+</ul>
+</body></html>
