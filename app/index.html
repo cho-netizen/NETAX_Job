@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 11:28 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 11:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3055,7 +3055,7 @@ function nxMdOpenWindow(title, src, opts){
     <!-- [2026.10.22] 오늘 할 일 한 줄(기기 3종 2차) — 휴대폰 창구·현황판과 같은 목록(todo_list)의 건수만. 목록 자체는 아래 각 카드에 있으므로
          여기서는 되풀이하지 않고(시각적 중복 금지) 누르면 그 카드로 간다. 넥스가 묻는 질문만 다른 카드에 없어 펼쳐 보인다. -->
     <div class="card dash-cover" id="dashTodayCard" style="padding:10px 14px;">
-      <div id="dashToday" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px;"><b>급한 일</b> <span class="spinner">불러오는 중…</span></div>
+      <div id="dashToday" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px;"><span class="spinner">불러오는 중…</span></div>
       <div id="dashTodayAsks" style="font-size:12.5px;"></div>
     </div>
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
@@ -3216,28 +3216,32 @@ function nxMdOpenWindow(title, src, opts){
   function loadDashToday_(){
     callGas('todo_list', {}).then(function(t){
       var box = document.getElementById('dashToday'); if (!box) return;
-      if (!t || t.error){ box.innerHTML = '<b>급한 일</b> <span style="color:var(--sub)">불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
+      if (!t || t.error){ box.innerHTML = '<span style="color:var(--sub)">오늘 할 일을 불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
       var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; color:' + (warn ? '#b3261e' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
       // [2026.11.12 넥스 질문 정리 ④ — 세무사님 "이게 급한 일로 분류해야 하는지도 의문"] 넥스 질문 칩·사건별 ❓ 줄 걷음 — 물음은 그 사건 사실 장부 ④에서(넥스가 먼저 풀고 남은 것만)
-      var html = '<b>급한 일</b>'
+      var html = '' // [2026.11.12 밤] 세무사님 "급한일이라는 항목명을 없애자" — 칩만
         + chip((t.지남 || []).length, '기한 지남', 'dashDeadlines', true)
         + chip((t.마감 || []).length, '3일 안 마감', 'dashDeadlines')
-        + chip((t.오늘예약 || []).length, '오늘 예약', 'dashBookings')
-        + chip(t.예약결과 || 0, '예약 결과 적기', 'dashBookings', true)
-        + chip((t.고객서류 || []).length, '고객이 보낸 서류', 'dashFedStatus')
+        + chip((t.오늘예약 || []).length, '오늘 예약', 'booking:todo')
+        + chip(t.예약결과 || 0, '예약 결과 적기', 'booking:todo', true)
+        + chip((t.고객서류 || []).length, '고객이 보낸 서류', 'dashUploads')
         + chip(t.긴급요청, '🚨 긴급 요청', 'dashImproveCard', true)
         + chip(t.확인요청, '반영된 요청 확인', 'dashImproveCard')
-        + chip(t.카카오오류, '카카오 오류', 'dashFedStatus', true)
+        + chip(t.카카오오류, '카카오 오류', 'dashAskCard', true)
         + chip((t.알림대기 || []).length, '답 안 한 알림', 'dashTodayAsks');
-      dashCardShow_(box, html !== '<b>급한 일</b>'); // 급한 일이 없으면 카드째 숨김
+      dashCardShow_(box, html !== ''); // 칩이 없으면 카드째 숨김
       box.innerHTML = html;
       var asks = document.getElementById('dashTodayAsks');
       asks.innerHTML = (t.알림대기 || []).map(function(a){ return '<div style="padding-top:4px;">🔔 ' + esc(String(a.at).slice(5)) + ' ' + esc(a.text) + ' <a href="/m/?a=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">답하기</a></div>'; }).join('');
-    }).catch(function(e){ var b = document.getElementById('dashToday'); if (b) b.innerHTML = '<b>급한 일</b> <span style="color:var(--sub)">오류: ' + esc(e.message) + '</span>'; });
+    }).catch(function(e){ var b = document.getElementById('dashToday'); if (b) b.innerHTML = '<span style="color:var(--sub)">오늘 할 일 오류: ' + esc(e.message) + '</span>'; });
   }
   document.addEventListener('click', function(ev){
     var g = ev.target.closest && ev.target.closest('[data-today-go]');
-    if (g){ ev.preventDefault(); var el = document.getElementById(g.getAttribute('data-today-go')); if (el) (el.closest('.card') || el).scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (g){ ev.preventDefault(); var go = g.getAttribute('data-today-go');
+      if (/^booking:/.test(go)){ if (typeof bookingShowMode_ === 'function') bookingShowMode_(go.slice(8)); else if (typeof goToView_ === 'function') goToView_('booking'); return; } // [2026.11.12 밤] 세무사님 "오늘예약1 이라은 것을 클릭해도 아무 변화가 없네?"
+      var el = document.getElementById(go), card = el && ((el.closest && el.closest('.card')) || el);
+      if (card && card.style.display !== 'none' && !card.hidden) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return; }
     var c = ev.target.closest && ev.target.closest('[data-today-case]');
     if (c){ ev.preventDefault(); var id = c.getAttribute('data-today-case'); if (typeof nxCaseJump_ === 'function') nxCaseJump_('casehandling', id); else if (typeof goToView_ === 'function') goToView_('casehandling'); }
   });
