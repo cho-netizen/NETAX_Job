@@ -241,7 +241,8 @@ function commTrimEntries_(entries) {
   var drop = Math.max(0, done - COMM_REQ_DONE_KEEP_);
   return entries.filter(function (x) { if (x.status === '확인완료' && drop > 0) { drop--; return false; } return true; });
 }
-function commReqNorm_(s) { return String(s || '').replace(/^\s*-\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*/gm, '').replace(/\s+/g, ''); }
+// [2026-11-12] 비교 열쇠에서 머리말("🚨 긴급 — "·"(오늘)"·"(개요 · 사건: …)")을 뗀다 — 머리말이 앞 40자를 다 먹어 같은 글을 다른 요청으로 봄(11-01·11-03 요청 중복 사건)
+function commReqNorm_(s) { return String(s || '').replace(/^\s*-\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*/gm, '').replace(/^\s*(?:🚨\s*긴급\s*[—-]+\s*)?(?:\((?:[^()]|\([^()]*\)){0,160}\)\s*)?/, '').replace(/\s+/g, ''); }
 // 원장의 "- [yyyy-MM-dd HH:mm] 내용" 항목들
 function commLedgerItems_(md) {
   return String(md || '').replace(/\r\n/g, '\n').split(/\n(?=-\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\])/).map(function (b) {
@@ -250,20 +251,25 @@ function commLedgerItems_(md) {
   }).filter(function (x) { return x && x.text; });
 }
 // 상태 기록에서 빠진 원장 요청을 "접수"로 되살린다(30건 자르기로 잃은 것). 되살린 개수를 돌려준다.
-function commReconcile_(st, ledgerMd) {
+// [2026-11-12] 같은 글인지 보는 잣대 셋: ① 원장 시각(at)이 같은 요청이 이미 있음 ② 머리말 뗀 글 앞 40자가 이미 있음 ③ 원장 시각으로 만든 번호(R…)가 이미 있음.
+//  예전엔 ②만 봤고 머리말을 안 떼어 11-01·11-03 요청이 "-2" 번호로 다시 생겼다. 등록 길(Code.js processImprovementRequests)도 이제 이 함수로 더한다(isNew=true → restored 표시 없음).
+function commReconcile_(st, ledgerMd, isNew) {
   if (!st.folder) return 0;
   var md = ledgerMd != null ? ledgerMd : (readFileIfExists_(st.folder, '개선요구사항.md') || '');
   var all = st.tracking.entries.map(function (x) { return commReqNorm_(x.text); }).join('|');
-  var ids = {}; st.tracking.entries.forEach(function (x) { ids[x.id] = 1; });
+  var ids = {}, ats = {}; st.tracking.entries.forEach(function (x) { ids[x.id] = 1; ats[String(x.firstAt || x.at || '')] = 1; });
   var added = 0;
   commLedgerItems_(md).forEach(function (it) {
     if (it.at.slice(0, 10) < COMM_REQ_RESTORE_SINCE_) return;
+    if (ats[it.at]) return;
     var key = commReqNorm_(it.text).slice(0, 40);
     if (!key || all.indexOf(key) >= 0) return;
-    var base = 'R' + it.at.replace(/\D/g, '').slice(2, 12), id = base, n = 2;
-    while (ids[id]) id = base + '-' + (n++);
-    ids[id] = 1;
-    st.tracking.entries.push({ id: id, at: it.at, text: it.text.slice(0, 4000), status: '접수', urgent: /긴급|급함|급해|빨리|당장/.test(it.text), restored: true });
+    var id = 'R' + it.at.replace(/\D/g, '').slice(2, 12);
+    if (ids[id]) return;
+    ids[id] = 1; ats[it.at] = 1; all += '|' + key;
+    var e = { id: id, at: it.at, text: it.text.slice(0, 4000), status: '접수', urgent: /긴급|급함|급해|빨리|당장/.test(it.text) };
+    if (!isNew) e.restored = true;
+    st.tracking.entries.push(e);
     added++;
   });
   return added;

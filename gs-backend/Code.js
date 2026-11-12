@@ -13529,31 +13529,19 @@ function runTemplateReview_() {
 const IMPROVEMENT_TRACKING_FILE = '_개선요구사항_처리기록.json';
 
 function processImprovementRequests() {
-  const chiefFolder = getChiefManagerFolder_();
-  if (!chiefFolder) return;
-
-  const requestText = readFileIfExists_(chiefFolder, '개선요구사항.md');
+  // [2026.10.09 토큰0 전수조사] 새 요청을 날짜와 함께 기록만 하고(0원), 개선 후보 보고서가 그것을 담아 웹 Claude Code 루틴·PC Claude가 직접 고친다.
+  // [2026-11-12] 예전엔 "지난번까지 읽은 글자 수(processedLength)" 뒤를 잘라 새 요청으로 삼았다 — 원장 길이가 어긋나면 글 중간부터 잘리고(11-03 요청이
+  //  "…지를 읽음처리하고 싶은데"로 남음) 시각도 등록 시각이 돼, 원장 대조 되살리기가 같은 글을 다른 번호("-2")로 다시 만들었다.
+  //  이제 원장 항목("- [시각] 글") 단위로 읽어 시각·글·번호가 모두 새 것만 더한다(Federation.js commReconcile_, isNew=true).
+  const st = commRequestsLoad_();
+  if (!st.folder) return;
+  const requestText = readFileIfExists_(st.folder, '개선요구사항.md');
   if (!requestText || !requestText.trim()) return; // 요구사항 파일 자체가 없으면 할 일 없음
-
-  // 지난번까지 처리한 길이를 기록해뒀다가, 그보다 늘어난 부분(=새로 추가된 요구사항)만 처리한다.
-  let tracking = { processedLength: 0 };
-  const trackingRaw = readFileIfExists_(chiefFolder, IMPROVEMENT_TRACKING_FILE);
-  if (trackingRaw) {
-    try { tracking = JSON.parse(trackingRaw); } catch (e) { }
-  }
-  if (requestText.length <= (tracking.processedLength || 0)) return; // 새로 추가된 내용 없음
-
-  const newRequestText = requestText.slice(tracking.processedLength || 0).trim();
-  if (!newRequestText) return;
-
-  // [2026.10.09 토큰0 전수조사] 예전엔 새 요구사항마다 유료 AI(Sonnet)가 "고칠 방향 메모"를 썼다. 이제는 새로 적힌 부분을
-  // 날짜와 함께 기록만 하고(0원), 개선 후보 보고서가 그것을 담아 웹 Claude Code 루틴(매주 월·AI탭 🛠)이 직접 구현해 수정안(PR)으로 올린다.
-  const nowStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
-  tracking.entries = (tracking.entries || []).concat([{ at: nowStr, text: newRequestText.slice(0, 4000) }]);
-  tracking.entries = commTrimEntries_(tracking.entries); // [2026.10.20] 끝나지 않은 요청은 끝까지 남김(예전 .slice(-30)은 대기 요청까지 지웠음 — Federation.js)
-  tracking.processedLength = requestText.length;
-  writeFileOverwrite_(chiefFolder, IMPROVEMENT_TRACKING_FILE, JSON.stringify(tracking), 'application/json');
-  return { success: true, added: newRequestText.length };
+  const added = commReconcile_(st, requestText, true);
+  st.tracking.processedLength = requestText.length; // 옛 표시는 남기되 더 이상 자르는 데 쓰지 않음
+  if (added) st.tracking.entries = commTrimEntries_(st.tracking.entries); // [2026.10.20] 끝나지 않은 요청은 끝까지 남김
+  commRequestsSave_(st);
+  return { success: true, added: added };
 }
 // ✍ 개선 건의(어느 화면에서든 — 오른쪽 아래 ✍·Alt+Q·설정 🐞 카드, script.html nxSuggestOpen_) — 개선요구사항.md 끝에 덧붙이고 곧바로 기록(0원)
 // [2026.10.28] where(지금 탭 · 사건 · 세목)와 urgent를 받아 "- [시각] 🚨 긴급 — (자리) 글" 모양으로 남긴다 — 세무사님 "나중에 기재하면 실상을 제대로 적을 수가 없다".
