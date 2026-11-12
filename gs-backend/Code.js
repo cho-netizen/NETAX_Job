@@ -4807,6 +4807,15 @@ const JOB_AI_TOOLS_ = [
     description: '후속 할 일 적기(토큰 0, 바로 실행) — 대시보드 📋 확인조치사항에 한 줄을 더한다(넥스가 적은 줄은 「[넥스]」로 시작해 누가 적었는지 보인다). 사후관리 기한(신고·납부·감면 신청·사후관리 끝·합산 기간 끝·이월과세 기간 끝), 받을 서류, 세무사님이 뒤에 정하실 것을 날짜와 함께. section=절 이름(사건 이름 또는 「사후관리」·「받을 서류」; 없으면 새 절). 먼저 job_lookup kind=followup으로 같은 줄이 있는지 본다.',
     input_schema: { type: 'object', properties: { text: { type: 'string', description: '한 줄 — 무엇을·언제까지·어느 사건(날짜 YYYY-MM-DD 포함)' }, section: { type: 'string' } }, required: ['text'] }
   },
+  // [2026.11.12] 건전세정 사례 모음(TaxGap.js) — 세무사님 "세무행정시스템의 사각지대에 놓여 있어서 세금부과가 이루어지지 않은 부분에 대하여 자료를 수집". 토큰 0, 바로 실행.
+  {
+    name: 'tax_gap_case',
+    description: '건전세정 사례 모음(세무행정 사각지대 — 과세가 이루어지지 않는 거래·행위의 사례·근거·세무사님 의견, 드라이브 총괄관리자/건전세정/ md 한 장 = 사례 하나)을 보거나 적는다(토큰 0). '
+      + 'do=list: 목록(제목·분야·적은 날·적은 이·관련 사건). do=read id: 한 건 전부(절: 거래 모양·왜 과세 안 되나·근거 조문·세무사님 의견). '
+      + 'do=add: 새 사례 적기 — 제목·분야(양도|상속|증여|법인|소득|부가|기타)·절{…}; id를 주면 그 사례를 고침. 세무사님이 말로 불러 주신 사례를 적을 때 쓴다. '
+      + '고객 실명·주민번호·전화는 적지 않는다(사건에서 가져온 모양은 ○○으로). 세무사님 화면 「🧾 건전세정」 탭과 같은 파일을 본다.',
+    input_schema: { type: 'object', properties: { do: { type: 'string', enum: ['list', 'read', 'add'] }, id: { type: 'string', description: '사례 파일 id(read·고치기)' }, title: { type: 'string', description: '제목' }, field: { type: 'string', enum: ['양도', '상속', '증여', '법인', '소득', '부가', '기타'], description: '분야' }, caseName: { type: 'string', description: '관련 사건 이름 — 고객 실명 없이' }, sections: { type: 'object', description: '절 — {"거래 모양": "…", "왜 과세 안 되나": "…", "근거 조문": "…", "세무사님 의견": "…"}' } }, required: ['do'] }
+  },
   // [2026.10.28] 사건 장부(CaseLedger.js) — 넥스가 사실을 적는 유일한 길. 세무사님이 말로 준 값은 카드 없이 바로(세무사님 대리인), 넥스가 서류로 정한 값은 근거와 함께, 모르면 물어볼 것으로.
   {
     name: 'case_ledger',
@@ -5171,6 +5180,11 @@ function dispatchClientAction0_(body) {
   if (body.action === 'followup_toggle') return jsonResponse(followupChange_(body, 'toggle'));
   if (body.action === 'followup_edit') return jsonResponse(followupChange_(body, 'edit'));
   if (body.action === 'followup_add') return jsonResponse(followupChange_(body, 'add'));
+  // [2026.11.12] 건전세정 사례 모음(TaxGap.js) — 요청 R2611040743, 계획서 "모두 권장대로"
+  if (body.action === 'tax_gap_list') return jsonResponse(taxGapList_());
+  if (body.action === 'tax_gap_read') return jsonResponse(taxGapRead_(body));
+  if (body.action === 'tax_gap_save') return jsonResponse(taxGapSave_(body, '세무사님'));
+  if (body.action === 'tax_gap_from_case') return jsonResponse(taxGapFromCase_(body));
   if (body.action === 'followup_answer') return jsonResponse(followupChange_(body, 'answer')); // [2026.11.12] 세무사님 [답 적기] — 항목 아래 💬 대화 줄로 저장(세무사님 "일방통행이네, 내가 의견개진할 방법이 없는데?")
   // [2026.10.20] 설정 🧭 시스템 관리 — 시스템이 읽는 지침 파일 목록·새 업무관리자 지침(SysAdmin.js)
   if (body.action === 'sysadmin_list') return jsonResponse(sysAdminList_());
@@ -11300,6 +11314,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         catch (err) { r = { error: '적는 중 오류: ' + err.message }; }
         const out = r && r.success ? { ok: true, 적음: true, 파일: r.file && r.file.name, 미결: r.open } : { ok: false, error: (r && r.error) || '못 적음' };
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) };
+      }
+      // [2026.11.12] 건전세정 사례 모음(TaxGap.js) — 넥스가 적은 사례는 적은 이 「넥스」
+      if (block.name === 'tax_gap_case') {
+        let r;
+        try { r = taxGapTool_(block.input || {}); } catch (err) { r = { success: false, error: '건전세정 사례 처리 중 오류: ' + err.message }; }
+        if (r && r.success && String((block.input || {}).do || '') === 'add') clientActions.push({ type: 'tax_gap_changed', id: r.id || '' });
+        return { type: 'tool_result', tool_use_id: block.id, is_error: !!(r && r.error && !r.success), content: JSON.stringify(r).slice(0, 20000) };
       }
       // [2026.10.21] 절세 아이템 찾기·읽기(KnowHow.js) — 토큰 0, 결과에 근거·검토 상태·기준일·현행화 필요·인용 줄
       if (block.name === 'search_tax_items' || block.name === 'read_tax_item') {

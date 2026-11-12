@@ -131,6 +131,7 @@
         <div class="menu-group-label" data-phone-more>자료</div>
         <div class="menu-item" data-view="lawsearch" data-phone-more>⚖️ 법령·서식</div>
         <div class="menu-item" data-view="reporthub" data-phone-more>📚 보고서들</div>
+        <div class="menu-item" data-view="taxgap" data-phone-more>🧾 건전세정</div><!-- [2026.11.12] 요청 R2611040743 — 세무행정 사각지대 사례 모음(manage/taxgap.html) -->
         <div class="menu-item" data-view="manual" data-phone-more>❓ 매뉴얼</div>
 
         <div class="menu-group-label">설정</div>
@@ -151,6 +152,8 @@
           <!-- [2026.11.03] 세무사님 "구조를 변경하고 나니 종전의 작업관리탭이 사라졌네? 사건을 양도상담사건에서 불복사건으로 변경하고 싶은데 변경할 방법이 없구나"(요청 R2611012327) —
                세목·업무·상태·기한을 고치는 칸은 사건 목록(옛 작업관리)에 그대로 있는데, 사건 작업 화면에서 그리 가는 길이 없었다 → 머리줄에서 바로 그 사건을 연다 -->
           <button type="button" class="ghost-btn sm" id="cbEditCase" hidden title="세목·업무·상태·기한·고객을 고칩니다(사건 목록에서 이 사건을 엽니다)">사건 정보 고치기</button>
+          <!-- [2026.11.12] 건전세정 사례 모음(요청 R2611040743) — 이 사건의 요약(고객 실명은 ○○)으로 사례 초안을 만들어 🧾 건전세정 탭에서 연다 -->
+          <button type="button" class="ghost-btn sm" id="cbTaxGap" hidden title="이 사건을 세무행정 사각지대 사례로 보냅니다(고객 실명은 ○○으로 바뀜)">건전세정 사례로</button>
           <span class="cb-pick"><label class="cb-live"><input type="checkbox" id="cbLiveOnly" checked> 진행</label><input type="search" id="cbFind" placeholder="사건 찾기"><select id="cbCaseSelect" title="사건 바꾸기"><option value="">사건 고르기…</option></select></span>
         </div>
         <div class="cb-strip-host"></div>
@@ -240,6 +243,7 @@
       <?!= include_('manage/reports') ?>
       <?!= include_('manage/memo') ?>
       <?!= include_('manage/reporthub') ?>
+      <?!= include_('manage/taxgap') ?>
 
       <?!= include_('manage/settings') ?>
       <?!= include_('manage/sysadmin') ?>

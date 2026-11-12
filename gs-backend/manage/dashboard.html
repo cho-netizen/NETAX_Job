@@ -1197,7 +1197,7 @@
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
       // [2026.11.03] 뒤에서 할 일(예약 문자·달력·보고서)이 세 번 해도 안 된 것 — 세무사님이 다시 하거나 지움
       // [2026.11.04 혼자 도는 ②③④⑤⑥] 서버가 밤·환경 감시 때 스스로 찾은 것(법령 개정 영향·기한·미수·멈춘 사건·공유 정리) — [확인]을 누르면 지워진다
-      var awIcon = { '법령 개정 영향': '📜', '기한': '⏰', '미수': '💰', '멈춘 사건': '⏸', '공유 정리': '🧹' };
+      var awIcon = { '법령 개정 영향': '📜', '기한': '⏰', '미수': '💰', '멈춘 사건': '⏸', '공유 정리': '🧹', '열쇠': '🔑' }; // [2026.11.12] 열쇠 없음·만료 30일 전(접근권한 계획서 "대시보드에 한 줄")
       // [2026.11.12] 세무사님 "뭐가 그리 많이 올라가 있는가?" → "권장대로": 종류별로 한 줄로 접고(건수), 펼치면 줄마다 [사건 열기]·[확인]. 맨 위에 [모두 확인] 한 번으로 전부 지움
       var aws = (r.autoNotices || []).slice().reverse(), awByKind = {}, awKinds = [];
       aws.forEach(function(n){ var k = n.kind || "알림"; if (!awByKind[k]){ awByKind[k] = []; awKinds.push(k); } awByKind[k].push(n); });

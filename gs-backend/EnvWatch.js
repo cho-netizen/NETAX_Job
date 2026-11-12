@@ -411,12 +411,14 @@ function envKeyLastOk_(props) {
 // 밤 감시 덧붙임 — 다른 점검이 이미 이 열쇠를 말했으면 같은 말을 두 번 하지 않는다
 function envKeyNightly_(props, out) {
   var all = props.getProperties(), last = envKeyLastOk_(props), now = new Date().toISOString(), said = out.map(function (x) { return x.항목; }).join('\n');
+  // [2026.11.12] 접근권한 계획서(10-31) "끊기거나 만료 30일 전이면 대시보드에 한 줄" — 세무사님 "모두 권장대로": 어젯밤 점검 카드 말고도 대시보드 「답하실 것」 자동 알림(🔑 열쇠)에 한 줄(같은 열쇠는 한 번만, 문자는 안 보냄)
+  var tell = function (txt, key) { try { if (typeof awNoticeAdd_ === 'function') awNoticeAdd_('열쇠', txt, '', '열쇠:' + key, false); } catch (e) {} };
   ENV_KEY_CATALOG_.forEach(function (c) {
     var has = !!all[c.k], hit = c.bad && new RegExp(c.bad).test(said);
-    if (!has && !c.opt && !hit && !c.sys) out.push({ 수준: c.need ? '경고' : '주의', 항목: c.use + ' 열쇠(' + c.k + ') 없음 — 설정 › 시스템 관리 › 열쇠 관리에서 넣기' });
+    if (!has && !c.opt && !hit && !c.sys) { var t1 = c.use + ' 열쇠(' + c.k + ') 없음 — 설정 › 시스템 관리 › 열쇠 관리에서 넣기'; out.push({ 수준: c.need ? '경고' : '주의', 항목: t1 }); tell(t1, c.k + ':없음'); }
     if (!has && c.sys && c.need) out.push({ 수준: '경고', 항목: c.use + '(' + c.k + ') 없음 — 개발자 확인 필요' });
     var ex = c.exp && Number(all[c.exp] || 0);
-    if (has && ex && !c.guess && ex - Date.now() < 30 * 86400000) out.push({ 수준: '경고', 항목: c.use + ' 열쇠(' + c.k + ') ' + (ex < Date.now() ? '만료됨' : '30일 안 만료(' + Utilities.formatDate(new Date(ex), 'Asia/Seoul', 'yyyy-MM-dd') + ')') + ' — 새 열쇠 넣기' });
+    if (has && ex && !c.guess && ex - Date.now() < 30 * 86400000) { var t2 = c.use + ' 열쇠(' + c.k + ') ' + (ex < Date.now() ? '만료됨' : '30일 안 만료(' + Utilities.formatDate(new Date(ex), 'Asia/Seoul', 'yyyy-MM-dd') + ')') + ' — 새 열쇠 넣기'; out.push({ 수준: '경고', 항목: t2 }); tell(t2, c.k + ':만료:' + Utilities.formatDate(new Date(ex), 'Asia/Seoul', 'yyyyMMdd')); }
     if (has && !hit) last[c.k] = now;
   });
   props.setProperty('KEY_LAST_OK', JSON.stringify(last));

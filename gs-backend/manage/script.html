@@ -1110,7 +1110,8 @@
     ai: 'AI', dashboard: '오늘', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약·상담', workmanage: '사건 목록', casehandling: '개요', ledger: '사실(장부)', lawsearch: '법령·서식', clientmanage: '고객',
     collections: '수금',
     docs: '서류', taxcalc: '계산', print: '세액인쇄', taxplan: '절세', reportwriter: '보고서', reports: '고객 열람',
-    'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼'
+    'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼',
+    taxgap: '건전세정' // [2026.11.12] 요청 R2611040743
   };
   // [2026.11.01] 사건 작업공간(아래 nxCbInit_) — 로그인 게이트가 곧바로 showView를 부르므로 위 VIEW_LABELS_처럼 여기 먼저 둔다
   var NX_CB_TABS_ = [['casehandling', '개요'], ['ledger', '사실(장부)'], ['docs', '서류'], ['taxcalc', '계산'], ['taxplan', '절세'],
@@ -1450,6 +1451,7 @@
       if (name === 'reportwriter' && typeof initReportWriter === 'function') initReportWriter();
       if (name === 'reports' && typeof initReports === 'function') initReports();
       if (name === 'settings' && typeof initSettings === 'function') initSettings();
+      if (name === 'taxgap' && typeof initTaxGap === 'function') initTaxGap(); // [2026.11.12] 🧾 건전세정(taxgap.html)
       // [2026.09 버그수정] 대시보드(오늘의 현황)만 유일하게 목록에서 빠져 있어서, 로그인 직후
       // 딱 한 번만 불러와지고 그 뒤로는 하루 종일 절대 갱신되지 않았다(예약 승인 때만 예외적으로
       // dashboardLoaded를 초기화하는 코드가 있었지만 그걸로는 부족했다) — 다른 화면들처럼 이
@@ -1807,6 +1809,8 @@
     });
     document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length) nxCbLoadCases_(); });
     document.getElementById('cbEditCase').addEventListener('click', function(){ nxCaseJump_('workmanage', NX_CB_.shownId); });
+    // [2026.11.12] 건전세정 사례로 — taxgap.html tgFromCase_(사건 요약으로 사례 초안, 고객 실명은 ○○)
+    var tgBtn = document.getElementById('cbTaxGap'); if (tgBtn) tgBtn.addEventListener('click', function(){ if (typeof tgFromCase_ === 'function') tgFromCase_(NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
     document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
     // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
@@ -1885,6 +1889,7 @@
     }
     meta.innerHTML = bits.join(' · ');
     var eb = document.getElementById('cbEditCase'); if (eb) eb.hidden = !id;
+    var tgb = document.getElementById('cbTaxGap'); if (tgb) tgb.hidden = !id; // [2026.11.12] 건전세정 사례로
   }
   // 법령정보를 "자료" 메뉴(사건과 상관없이)로 열면 머리줄 없이 연다 — 작업공간의 근거 탭으로 열면 머리줄과 함께
   function nxCbSetLawFree_(free){ NX_CB_.lawFree = !!free; }

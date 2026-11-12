@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 04:30 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 05:01 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1466,6 +1466,7 @@
         <div class="menu-group-label" data-phone-more>자료</div>
         <div class="menu-item" data-view="lawsearch" data-phone-more>⚖️ 법령·서식</div>
         <div class="menu-item" data-view="reporthub" data-phone-more>📚 보고서들</div>
+        <div class="menu-item" data-view="taxgap" data-phone-more>🧾 건전세정</div><!-- [2026.11.12] 요청 R2611040743 — 세무행정 사각지대 사례 모음(manage/taxgap.html) -->
         <div class="menu-item" data-view="manual" data-phone-more>❓ 매뉴얼</div>
 
         <div class="menu-group-label">설정</div>
@@ -1486,6 +1487,8 @@
           <!-- [2026.11.03] 세무사님 "구조를 변경하고 나니 종전의 작업관리탭이 사라졌네? 사건을 양도상담사건에서 불복사건으로 변경하고 싶은데 변경할 방법이 없구나"(요청 R2611012327) —
                세목·업무·상태·기한을 고치는 칸은 사건 목록(옛 작업관리)에 그대로 있는데, 사건 작업 화면에서 그리 가는 길이 없었다 → 머리줄에서 바로 그 사건을 연다 -->
           <button type="button" class="ghost-btn sm" id="cbEditCase" hidden title="세목·업무·상태·기한·고객을 고칩니다(사건 목록에서 이 사건을 엽니다)">사건 정보 고치기</button>
+          <!-- [2026.11.12] 건전세정 사례 모음(요청 R2611040743) — 이 사건의 요약(고객 실명은 ○○)으로 사례 초안을 만들어 🧾 건전세정 탭에서 연다 -->
+          <button type="button" class="ghost-btn sm" id="cbTaxGap" hidden title="이 사건을 세무행정 사각지대 사례로 보냅니다(고객 실명은 ○○으로 바뀜)">건전세정 사례로</button>
           <span class="cb-pick"><label class="cb-live"><input type="checkbox" id="cbLiveOnly" checked> 진행</label><input type="search" id="cbFind" placeholder="사건 찾기"><select id="cbCaseSelect" title="사건 바꾸기"><option value="">사건 고르기…</option></select></span>
         </div>
         <div class="cb-strip-host"></div>
@@ -4245,7 +4248,7 @@ function nxMdOpenWindow(title, src, opts){
         + kes.slice(0, 10).map(function(k){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(k.at).slice(5)) + ' · ' + esc(k.종류) + (k.rid ? ' · 접속코드 ' + esc(k.rid) : '') + ' — ' + esc(k.내용) + '</div>'; }).join('') + '</details>', true);
       // [2026.11.03] 뒤에서 할 일(예약 문자·달력·보고서)이 세 번 해도 안 된 것 — 세무사님이 다시 하거나 지움
       // [2026.11.04 혼자 도는 ②③④⑤⑥] 서버가 밤·환경 감시 때 스스로 찾은 것(법령 개정 영향·기한·미수·멈춘 사건·공유 정리) — [확인]을 누르면 지워진다
-      var awIcon = { '법령 개정 영향': '📜', '기한': '⏰', '미수': '💰', '멈춘 사건': '⏸', '공유 정리': '🧹' };
+      var awIcon = { '법령 개정 영향': '📜', '기한': '⏰', '미수': '💰', '멈춘 사건': '⏸', '공유 정리': '🧹', '열쇠': '🔑' }; // [2026.11.12] 열쇠 없음·만료 30일 전(접근권한 계획서 "대시보드에 한 줄")
       // [2026.11.12] 세무사님 "뭐가 그리 많이 올라가 있는가?" → "권장대로": 종류별로 한 줄로 접고(건수), 펼치면 줄마다 [사건 열기]·[확인]. 맨 위에 [모두 확인] 한 번으로 전부 지움
       var aws = (r.autoNotices || []).slice().reverse(), awByKind = {}, awKinds = [];
       aws.forEach(function(n){ var k = n.kind || "알림"; if (!awByKind[k]){ awByKind[k] = []; awKinds.push(k); } awByKind[k].push(n); });
@@ -56856,6 +56859,151 @@ function rwAiApplyEdit_(id, content){
   })();
 </script>
 
+      <!-- [2026.11.12] 🧾 건전세정 — 세무행정 사각지대(과세가 이루어지지 않는 부분) 사례 모음 (요청 R2611040743, 계획서 "모두 권장대로")
+     세무사님 원문(11-04): "건전세정 이라는 탭을 만들어 보자 / 현재 세무행정시스템의 사각지대에 놓여 있어서 세금부과가 이루어지지 않은 부분에 대하여 자료를 수집하는 것을 추진하자"
+     사례 한 건 = 드라이브 총괄관리자/건전세정/ md 한 장(서버 TaxGap.js). 왼쪽 목록 · 오른쪽 한 건(보기·고치기·새 사례). 사건 작업공간 머리줄 「건전세정 사례로」와 넥스 도구 tax_gap_case가 같은 파일을 본다. -->
+<style>
+  .tg-wrap{ display:flex; gap:14px; padding:10px 14px; align-items:flex-start; flex-wrap:wrap; }
+  .tg-list{ flex:0 0 360px; max-width:100%; }
+  .tg-one{ flex:1 1 420px; min-width:0; }
+  .tg-grid-wrap{ overflow-x:auto; max-width:100%; border:1px solid var(--line); border-radius:8px; }
+  .tg-grid{ table-layout:fixed; border-collapse:collapse; font-size:12.5px; width:100%; min-width:340px; }
+  .tg-grid th, .tg-grid td{ border-bottom:1px solid var(--line); padding:5px 6px; text-align:left; vertical-align:middle; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tg-grid th{ color:var(--sub); font-weight:600; background:var(--panel); }
+  .tg-grid tr[data-tg-id]{ cursor:pointer; }
+  .tg-grid tr.on td{ background:rgba(31,111,235,0.07); }
+  .tg-field{ display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+  .tg-field label{ font-size:12px; color:var(--sub); }
+  .tg-field input, .tg-field select, .tg-field textarea{ width:100%; box-sizing:border-box; font:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:inherit; }
+  .tg-field textarea{ min-height:72px; resize:vertical; }
+  .tg-meta{ font-size:12px; color:var(--sub); margin-bottom:8px; }
+</style>
+<div class="view" id="view-taxgap">
+  <div class="view-head"><h2>🧾 건전세정</h2></div>
+  <div class="nx-help" style="margin:8px 14px 0;">세무행정이 미치지 못해 세금이 부과되지 않는 거래·행위를 사례로 모아 두는 자리입니다. 사례 한 건이 드라이브 총괄관리자 › 건전세정 폴더의 글 한 장이고, 사건 작업 머리줄 「건전세정 사례로」와 넥스도 같은 글을 봅니다. 고객 실명·주민번호는 적지 않습니다.</div>
+  <div class="tg-wrap">
+    <div class="tg-list">
+      <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+        <button type="button" class="save-btn sm" id="tgNewBtn">새 사례</button>
+        <select id="tgFieldFilter" title="분야로 거르기"><option value="">모든 분야</option></select>
+        <button type="button" class="ghost-btn sm" id="tgReloadBtn" title="목록 다시 불러오기">↻</button>
+        <a id="tgFolderLink" class="ghost-btn sm" target="_blank" rel="noopener" hidden>폴더 열기</a>
+      </div>
+      <div class="tg-grid-wrap"><table class="tg-grid"><colgroup><col style="width:190px"><col style="width:52px"><col style="width:92px"></colgroup>
+        <thead><tr><th>제목</th><th>분야</th><th>적은 날</th></tr></thead>
+        <tbody id="tgRows"><tr><td colspan="3" style="color:var(--sub);">불러오는 중…</td></tr></tbody></table></div>
+    </div>
+    <div class="tg-one" id="tgOne">
+      <div class="explorer-status" id="tgEmpty">왼쪽에서 사례를 고르거나 「새 사례」를 누르세요.</div>
+      <div id="tgForm" hidden>
+        <div class="tg-meta" id="tgMeta"></div>
+        <div class="tg-field"><label>제목</label><input type="text" id="tgTitle" maxlength="200" placeholder="예: 농지 매매 뒤 미등기 전매 — 양도 사실이 잡히지 않는 경우"></div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div class="tg-field" style="flex:0 0 140px;"><label>분야</label><select id="tgField"></select></div>
+          <div class="tg-field" style="flex:1 1 200px;"><label>관련 사건(고객 실명 없이)</label><input type="text" id="tgCase" maxlength="200"></div>
+        </div>
+        <div id="tgSections"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
+          <button type="button" class="save-btn" id="tgSaveBtn">저장</button>
+          <a id="tgOpenLink" class="ghost-btn" target="_blank" rel="noopener" hidden>드라이브에서 열기</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  // 서버는 로그인 뒤에만(10-14 원칙) — initTaxGap은 showView에서만 불린다
+  var TG_ = { items: [], fields: [], sections: [], cur: null, loaded: false };
+  function tgEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]; }); }
+  function initTaxGap(){
+    if (!TG_.loaded){
+      TG_.loaded = true;
+      document.getElementById('tgNewBtn').addEventListener('click', function(){ tgOpen_(null); });
+      document.getElementById('tgReloadBtn').addEventListener('click', function(){ tgLoad_(); });
+      document.getElementById('tgFieldFilter').addEventListener('change', function(){ tgRender_(); });
+      document.getElementById('tgSaveBtn').addEventListener('click', tgSave_);
+      document.getElementById('tgRows').addEventListener('click', function(e){
+        var tr = e.target.closest && e.target.closest('tr[data-tg-id]'); if (!tr) return;
+        tgOpen_(tr.getAttribute('data-tg-id'));
+      });
+    }
+    tgLoad_();
+  }
+  function tgLoad_(){
+    return callGas('tax_gap_list', {}).then(function(r){
+      if (!r || !r.success){ document.getElementById('tgRows').innerHTML = '<tr><td colspan="3" style="color:var(--danger,#b3261e);">' + tgEsc_((r && r.error) || '불러오지 못함') + '</td></tr>'; return; }
+      TG_.items = r.items || []; TG_.fields = r.분야들 || []; TG_.sections = r.절들 || [];
+      var fs = document.getElementById('tgFieldFilter'), keep = fs.value;
+      fs.innerHTML = '<option value="">모든 분야</option>' + TG_.fields.map(function(f){ return '<option value="' + tgEsc_(f) + '">' + tgEsc_(f) + '</option>'; }).join('');
+      fs.value = keep;
+      var fl = document.getElementById('tgFolderLink'); if (r.폴더){ fl.href = r.폴더; fl.hidden = false; }
+      tgRender_();
+    }).catch(function(err){ document.getElementById('tgRows').innerHTML = '<tr><td colspan="3" style="color:var(--danger,#b3261e);">오류: ' + tgEsc_(err && err.message || err) + '</td></tr>'; });
+  }
+  function tgRender_(){
+    var f = document.getElementById('tgFieldFilter').value, list = TG_.items.filter(function(x){ return !f || x.분야 === f; });
+    var tb = document.getElementById('tgRows');
+    if (!list.length){ tb.innerHTML = '<tr><td colspan="3" style="color:var(--sub);">사례가 없습니다 — 「새 사례」로 적거나, 사건 작업 머리줄 「건전세정 사례로」로 보내세요.</td></tr>'; return; }
+    tb.innerHTML = list.map(function(x){
+      return '<tr data-tg-id="' + tgEsc_(x.id) + '" class="' + (TG_.cur && TG_.cur.id === x.id ? 'on' : '') + '"><td title="' + tgEsc_(x.제목) + '">' + tgEsc_(x.제목) + '</td><td>' + tgEsc_(x.분야) + '</td><td title="' + tgEsc_(x.적은날 + (x.적은이 ? ' · ' + x.적은이 : '')) + '">' + tgEsc_(String(x.적은날).slice(0, 10)) + '</td></tr>';
+    }).join('');
+  }
+  function tgSectionsHtml_(sec){
+    return TG_.sections.map(function(s){ return '<div class="tg-field"><label>' + tgEsc_(s) + '</label><textarea data-tg-sec="' + tgEsc_(s) + '">' + tgEsc_((sec || {})[s] || '') + '</textarea></div>'; }).join('');
+  }
+  function tgOpen_(id){
+    var form = document.getElementById('tgForm'), empty = document.getElementById('tgEmpty');
+    var fsel = document.getElementById('tgField');
+    fsel.innerHTML = TG_.fields.map(function(f){ return '<option value="' + tgEsc_(f) + '">' + tgEsc_(f) + '</option>'; }).join('');
+    if (!id){
+      TG_.cur = { id: '' };
+      document.getElementById('tgMeta').textContent = '새 사례';
+      document.getElementById('tgTitle').value = ''; fsel.value = '기타'; document.getElementById('tgCase').value = '';
+      document.getElementById('tgSections').innerHTML = tgSectionsHtml_({});
+      document.getElementById('tgOpenLink').hidden = true;
+      empty.hidden = true; form.hidden = false; tgRender_(); document.getElementById('tgTitle').focus();
+      return;
+    }
+    callGas('tax_gap_read', { id: id }).then(function(r){
+      if (!r || !r.success){ toast((r && r.error) || '사례를 읽지 못했습니다'); return; }
+      TG_.cur = r;
+      document.getElementById('tgMeta').textContent = (r.적은날 || '') + (r.적은이 ? ' · ' + r.적은이 + ' 적음' : '') + ' · ' + (r.파일 || '');
+      document.getElementById('tgTitle').value = r.제목 || ''; fsel.value = r.분야 || '기타'; document.getElementById('tgCase').value = r.관련사건 || '';
+      document.getElementById('tgSections').innerHTML = tgSectionsHtml_(r.절 || {});
+      var ol = document.getElementById('tgOpenLink'); if (r.url){ ol.href = r.url; ol.hidden = false; } else ol.hidden = true;
+      empty.hidden = true; form.hidden = false; tgRender_();
+    }).catch(function(err){ toast('오류: ' + (err && err.message || err)); });
+  }
+  function tgSave_(){
+    var title = String(document.getElementById('tgTitle').value || '').trim();
+    if (!title){ toast('제목을 적어 주세요'); document.getElementById('tgTitle').focus(); return; }
+    var sec = {};
+    document.querySelectorAll('#tgSections textarea[data-tg-sec]').forEach(function(t){ sec[t.getAttribute('data-tg-sec')] = t.value; });
+    var body = { id: (TG_.cur && TG_.cur.id) || '', 제목: title, 분야: document.getElementById('tgField').value, 관련사건: document.getElementById('tgCase').value, 절: sec };
+    var btn = document.getElementById('tgSaveBtn'); btn.disabled = true; btn.textContent = '저장 중…';
+    callGas('tax_gap_save', body).then(function(r){
+      btn.disabled = false; btn.textContent = '저장';
+      if (!r || !r.success){ toast((r && r.error) || '저장하지 못했습니다'); return; }
+      toast('저장했습니다 — ' + r.파일);
+      tgLoad_().then(function(){ tgOpen_(r.id); });
+    }).catch(function(err){ btn.disabled = false; btn.textContent = '저장'; toast('저장 중 오류: ' + (err && err.message || err)); });
+  }
+  // 사건 작업공간 머리줄 「건전세정 사례로」 — 사건 요약으로 사례 초안을 만들고(고객 실명은 ○○) 이 탭을 연다
+  function tgFromCase_(caseId){
+    if (!caseId){ toast('사건을 먼저 골라 주세요'); return; }
+    var ask = typeof nxPrompt_ === 'function' ? nxPrompt_('이 사건에서 과세가 이루어지지 않는 부분이 무엇인지 한두 줄로 적어 주세요(비워도 됩니다 — 사례 글에서 채울 수 있음).', '', '건전세정 사례로') : Promise.resolve(window.prompt('왜 과세 안 되나(비워도 됨)', ''));
+    ask.then(function(note){
+      if (note === null) return;
+      callGas('tax_gap_from_case', { caseId: caseId, note: note || '' }).then(function(r){
+        if (!r || !r.success){ toast((r && r.error) || '사례를 만들지 못했습니다'); return; }
+        toast('건전세정 사례 초안을 만들었습니다 — ' + r.파일);
+        showView('taxgap');
+        tgLoad_().then(function(){ tgOpen_(r.id); });
+      }).catch(function(err){ toast('오류: ' + (err && err.message || err)); });
+    });
+  }
+</script>
+
 
       <style>
   /* [2026.09.19] 사건관리·고객관리·수금관리·증빙관리에 흩어져 있던 1회성 정비도구를 전부
@@ -67805,7 +67953,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     ai: 'AI', dashboard: '오늘', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약·상담', workmanage: '사건 목록', casehandling: '개요', ledger: '사실(장부)', lawsearch: '법령·서식', clientmanage: '고객',
     collections: '수금',
     docs: '서류', taxcalc: '계산', print: '세액인쇄', taxplan: '절세', reportwriter: '보고서', reports: '고객 열람',
-    'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼'
+    'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼',
+    taxgap: '건전세정' // [2026.11.12] 요청 R2611040743
   };
   // [2026.11.01] 사건 작업공간(아래 nxCbInit_) — 로그인 게이트가 곧바로 showView를 부르므로 위 VIEW_LABELS_처럼 여기 먼저 둔다
   var NX_CB_TABS_ = [['casehandling', '개요'], ['ledger', '사실(장부)'], ['docs', '서류'], ['taxcalc', '계산'], ['taxplan', '절세'],
@@ -68145,6 +68294,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (name === 'reportwriter' && typeof initReportWriter === 'function') initReportWriter();
       if (name === 'reports' && typeof initReports === 'function') initReports();
       if (name === 'settings' && typeof initSettings === 'function') initSettings();
+      if (name === 'taxgap' && typeof initTaxGap === 'function') initTaxGap(); // [2026.11.12] 🧾 건전세정(taxgap.html)
       // [2026.09 버그수정] 대시보드(오늘의 현황)만 유일하게 목록에서 빠져 있어서, 로그인 직후
       // 딱 한 번만 불러와지고 그 뒤로는 하루 종일 절대 갱신되지 않았다(예약 승인 때만 예외적으로
       // dashboardLoaded를 초기화하는 코드가 있었지만 그걸로는 부족했다) — 다른 화면들처럼 이
@@ -68502,6 +68652,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
     document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length) nxCbLoadCases_(); });
     document.getElementById('cbEditCase').addEventListener('click', function(){ nxCaseJump_('workmanage', NX_CB_.shownId); });
+    // [2026.11.12] 건전세정 사례로 — taxgap.html tgFromCase_(사건 요약으로 사례 초안, 고객 실명은 ○○)
+    var tgBtn = document.getElementById('cbTaxGap'); if (tgBtn) tgBtn.addEventListener('click', function(){ if (typeof tgFromCase_ === 'function') tgFromCase_(NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);
     document.getElementById('cbLiveOnly').addEventListener('change', nxCbFillSelect_);
     // 장부 띠는 머리줄에 하나만 — 지금 탭의 사건을 읽는다(각 화면의 띠는 작업공간 안에서는 숨김, 보이지 않는 띠는 서버를 부르지 않는다)
@@ -68580,6 +68732,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     meta.innerHTML = bits.join(' · ');
     var eb = document.getElementById('cbEditCase'); if (eb) eb.hidden = !id;
+    var tgb = document.getElementById('cbTaxGap'); if (tgb) tgb.hidden = !id; // [2026.11.12] 건전세정 사례로
   }
   // 법령정보를 "자료" 메뉴(사건과 상관없이)로 열면 머리줄 없이 연다 — 작업공간의 근거 탭으로 열면 머리줄과 함께
   function nxCbSetLawFree_(free){ NX_CB_.lawFree = !!free; }
