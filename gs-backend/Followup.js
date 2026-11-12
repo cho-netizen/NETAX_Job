@@ -12,6 +12,16 @@ var FOLLOWUP_FILE_NAMES_ = ['_확인조치사항.md', '확인조치사항.md'];
 var FOLLOWUP_ITEM_RE_ = /^- \[( |x|X)\] ?(.*)$/;
 var FOLLOWUP_HEAD_RE_ = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 var FOLLOWUP_DONE_TAIL_RE_ = /\s*\(\d{4}-\d{2}-\d{2} 완료\)$/;
+// [2026.11.12] 세무사님 "체크박스에 체크만 하도록 일방통행이네, 내가 의견개진할 방법이 없는데?" / "내가 소통을 강조하는데, 이런 꽉 막힌 소통방식을 구현한다는 것이 말이되지 않는다"
+//  항목마다 주고받는 대화 줄 — 자세한 내용 안에 "  - 💬 세무사님(날짜): …" / "  - 💬 Claude(날짜): …" / "  - 💬 넥스(날짜): …"가 차례로 쌓인다.
+//  마지막 말이 세무사님이면 Claude 차례(waiting='claude') — PC Claude 세션 시작 훅(claude-rules-hook.js)이 그 항목을 자동으로 붙여 Claude가 답·반영한다.
+var FOLLOWUP_TALK_RE_ = /^\s*- 💬 (세무사님|Claude|넥스)\((\d{4}-\d{2}-\d{2})\): (.*)$/;
+function followupTalk_(detail) {
+  var talk = [];
+  String(detail || '').split(/\r?\n/).forEach(function (ln) { var m = FOLLOWUP_TALK_RE_.exec(ln); if (m) talk.push({ who: m[1], date: m[2], text: m[3] }); });
+  var last = talk.length ? talk[talk.length - 1].who : '';
+  return { talk: talk, waiting: last === '세무사님' ? 'claude' : (last ? 'tax' : '') };
+}
 
 // ----- 글자만 다루는 부분(드라이브 없이 시험 가능 — tools 시험에서 그대로 불러 씀) -----
 function followupParse_(text) {
@@ -38,7 +48,8 @@ function followupParse_(text) {
       if (!nx.trim() || FOLLOWUP_HEAD_RE_.test(nx) || FOLLOWUP_ITEM_RE_.test(nx)) break;
       detail.push(nx);
     }
-    var it = { line: i, raw: ln, done: m[1] !== ' ', text: m[2], detail: detail.join('\n'), sec: cur.title };
+    var tk = followupTalk_(detail.join('\n'));
+    var it = { line: i, raw: ln, done: m[1] !== ' ', text: m[2], detail: detail.join('\n'), sec: cur.title, talk: tk.talk, waiting: tk.waiting };
     cur.items.push(it);
     items.push(it);
   }
@@ -59,7 +70,8 @@ function followupFindLine_(lines, raw, hint) {
 
 function followupOneLine_(s) { return String(s || '').replace(/\r?\n+/g, ' ').replace(/\s+$/, '').replace(/^\s+/, '').slice(0, 2000); }
 
-// op = { kind: 'toggle'|'edit'|'add', raw, line, done, text, section } → { text } 또는 { error }
+// op = { kind: 'toggle'|'edit'|'add'|'answer', raw, line, done, text, section, who } → { text } 또는 { error }
+//  answer: 그 항목의 자세한 내용 맨 끝에 "  - 💬 <who>(오늘): 글" 한 줄을 덧붙인다(세무사님 화면 [답 적기]·넥스 답·Claude 반영 모두 같은 길).
 function followupApply_(text, op, today) {
   var src = String(text || '');
   var eol = /\r\n/.test(src) ? '\r\n' : '\n';
@@ -80,6 +92,18 @@ function followupApply_(text, op, today) {
       if (!body) return { error: '고칠 글을 입력해 주세요.' };
     }
     lines[idx] = '- [' + (done ? 'x' : ' ') + '] ' + body;
+    return { text: lines.join(eol) };
+  }
+  if (op.kind === 'answer') {
+    var ai = followupFindLine_(lines, op.raw, Number(op.line) || 0);
+    if (ai < 0) return { error: '그 항목이 그 사이 파일에서 바뀌었거나 지워졌습니다 — 목록을 다시 불러왔으니 확인 후 다시 해 주세요.', stale: true };
+    var at2 = followupOneLine_(op.text);
+    if (!at2) return { error: '답을 입력해 주세요.' };
+    var who = String(op.who || '세무사님');
+    if (['세무사님', 'Claude', '넥스'].indexOf(who) < 0) who = '세무사님';
+    var e2 = ai + 1;
+    while (e2 < lines.length && lines[e2].trim() && !FOLLOWUP_HEAD_RE_.test(lines[e2]) && !FOLLOWUP_ITEM_RE_.test(lines[e2])) e2++;
+    lines.splice(e2, 0, '  - 💬 ' + who + '(' + today + '): ' + at2);
     return { text: lines.join(eol) };
   }
   if (op.kind === 'add') {
@@ -140,8 +164,9 @@ function followupResult_(file, text, extra) {
     title: p.title,
     headings: p.headings,
     sections: p.sections.map(function (s) {
-      return { title: s.title, items: s.items.map(function (x) { return { line: x.line, raw: x.raw, done: x.done, text: x.text, detail: x.detail }; }) };
+      return { title: s.title, items: s.items.map(function (x) { return { line: x.line, raw: x.raw, done: x.done, text: x.text, detail: x.detail, talk: x.talk, waiting: x.waiting }; }) };
     }),
+    waitingClaude: p.items.filter(function (x) { return !x.done && x.waiting === 'claude'; }).length, // 세무사님이 답하셨는데 Claude가 아직 반영·답 안 한 것
     open: p.items.filter(function (x) { return !x.done; }).length,
     closed: p.items.filter(function (x) { return x.done; }).length
   };
@@ -166,7 +191,7 @@ function followupChange_(body, kind) {
     if (!f) return followupNotFound_();
     var latest = followupReadText_(f); // 저장 직전 최신 내용 — 다른 세션이 덧붙인 줄을 살린다
     var today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
-    var r = followupApply_(latest, { kind: kind, raw: body.raw, line: body.line, done: body.done, text: body.text, section: body.section }, today);
+    var r = followupApply_(latest, { kind: kind, raw: body.raw, line: body.line, done: body.done, text: body.text, section: body.section, who: body.who }, today);
     if (r.error) return followupResult_(f, latest, { success: false, error: r.error, stale: !!r.stale });
     f.setContent(r.text);
     return followupResult_(f, r.text);

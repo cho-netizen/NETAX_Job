@@ -4509,7 +4509,7 @@ function job_lookup_(input) {
     const r = typeof followupGet_ === 'function' ? followupGet_() : { error: '이 판에 없음' };
     if (!r || r.error) return r;
     const q = String(input.search || '').trim();
-    const secs = (r.sections || []).map(function (s) { return { 절: s.title, 항목: (s.items || []).filter(function (x) { return !x.done && (!q || (String(x.text) + ' ' + String(x.detail || '')).indexOf(q) !== -1); }).map(function (x) { return { 줄: x.line, 글: String(x.text || '').slice(0, 300), 자세히: String(x.detail || '').slice(0, 300) }; }).slice(0, 40) }; }).filter(function (s) { return s.항목.length; });
+    const secs = (r.sections || []).map(function (s) { return { 절: s.title, 항목: (s.items || []).filter(function (x) { return !x.done && (!q || (String(x.text) + ' ' + String(x.detail || '')).indexOf(q) !== -1); }).map(function (x) { return { 줄: x.line, 글: String(x.text || '').slice(0, 300), 자세히: String(x.detail || '').slice(0, 300), 대화: (x.talk || []).map(function (k) { return k.who + '(' + k.date + '): ' + String(k.text).slice(0, 200); }), 차례: x.waiting === 'claude' ? 'Claude(세무사님이 답하셨고 아직 반영 안 됨)' : (x.waiting === 'tax' ? '세무사님' : '') }; }).slice(0, 40) }; }).filter(function (s) { return s.항목.length; }); // [2026.11.12] 대화 줄(💬)·차례도 넥스가 본다
     return { 파일: r.file && r.file.name, 미결: r.open, 완료: r.closed, 절: secs.slice(0, 20), 안내: '이 사건·고객의 사후관리 기한·받을 일을 남기려면 followup_note(do=add, section=사건 이름 또는 「사후관리」). 완료 표시·고치기는 세무사님 화면(대시보드 📋)에서.' };
   }
   if (kind === 'todo') { const t = typeof todoList_ === 'function' ? todoList_() : { error: '이 판에 없음' }; return JSON.parse(cxMask_(JSON.stringify(t))); }
@@ -5171,6 +5171,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'followup_toggle') return jsonResponse(followupChange_(body, 'toggle'));
   if (body.action === 'followup_edit') return jsonResponse(followupChange_(body, 'edit'));
   if (body.action === 'followup_add') return jsonResponse(followupChange_(body, 'add'));
+  if (body.action === 'followup_answer') return jsonResponse(followupChange_(body, 'answer')); // [2026.11.12] 세무사님 [답 적기] — 항목 아래 💬 대화 줄로 저장(세무사님 "일방통행이네, 내가 의견개진할 방법이 없는데?")
   // [2026.10.20] 설정 🧭 시스템 관리 — 시스템이 읽는 지침 파일 목록·새 업무관리자 지침(SysAdmin.js)
   if (body.action === 'sysadmin_list') return jsonResponse(sysAdminList_());
   if (body.action === 'sysadmin_new_bm') return jsonResponse(sysAdminNewBm_(body));

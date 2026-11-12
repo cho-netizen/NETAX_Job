@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 03:00 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 03:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3162,7 +3162,7 @@ function nxMdOpenWindow(title, src, opts){
           <a id="dashFollowOpen" href="#" target="_blank" rel="noopener" class="ghost-btn sm" style="display:none; text-decoration:none;">📄 원본 파일</a>
         </span>
       </h3>
-      <div class="nx-help">세무사님이 확인·결정하실 일 — 체크·고치기·추가가 원본 파일(_확인조치사항.md)에 바로 저장됩니다.</div>
+      <div class="nx-help">세무사님이 확인·결정하실 일 — 항목마다 [💬 답 적기]로 의견·결정을 적으면 Claude가 다음 세션에서 받아 답·반영합니다(대화 줄이 쌓임). 체크·고치기·추가도 원본 파일(확인조치사항.md)에 바로 저장됩니다.</div>
       <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <select id="dashFollowSec" style="flex:0 1 180px;" title="어느 절에 넣을지"></select>
         <input title="새 확인사항" type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
@@ -3179,6 +3179,13 @@ function nxMdOpenWindow(title, src, opts){
         #dashFollowList .fu-more{ background:none; border:none; padding:0; color:var(--gold); font-size:11.5px; font-weight:700; cursor:pointer; }
         #dashFollowList .fu-edit{ flex:0 0 auto; background:none; border:none; cursor:pointer; font-size:13px; padding:0 2px; color:var(--sub); }
         #dashFollowList .fu-done .fu-body{ color:var(--sub); text-decoration:line-through; }
+        /* [2026.11.12] 항목마다 주고받는 대화 줄(💬) — 세무사님 "체크박스에 체크만 하도록 일방통행이네, 내가 의견개진할 방법이 없는데?" */
+        #dashFollowList .fu-talk{ margin-top:5px; display:flex; flex-direction:column; gap:3px; }
+        #dashFollowList .fu-talk-line{ font-size:12.5px; line-height:1.5; padding:4px 8px; border-radius:8px; background:rgba(120,130,150,0.08); }
+        #dashFollowList .fu-talk-tax{ background:rgba(31,122,77,0.10); }
+        #dashFollowList .fu-talk-wait{ font-size:11px; color:#7a5c14; margin-top:3px; }
+        #dashFollowList .fu-answer{ flex:0 0 auto; font-size:12px; padding:2px 7px; border:1px solid var(--line); border-radius:6px; background:var(--card); cursor:pointer; color:var(--ink); white-space:nowrap; }
+        #dashFollowList .fu-answer:hover{ background:rgba(31,122,77,0.10); }
         #dashFollowList code{ font-size:12px; background:#f3f4f7; padding:0 3px; border-radius:3px; }
         #dashFollowList textarea{ width:100%; box-sizing:border-box; font:inherit; font-size:13px; }
       </style>
@@ -3906,20 +3913,37 @@ function nxMdOpenWindow(title, src, opts){
   function dashFollowKey_(it){ return String(it.text || '').replace(/\s*\(\d{4}-\d{2}-\d{2} 완료\)$/, ''); }
   function dashFollowRowHtml_(it, secLabel){
     var key = dashFollowKey_(it);
-    var long = (it.text || '').length > 70 || !!it.detail;
+    var hasDetail = !!dashFollowDetailNoTalk_(it.detail).trim();
+    var long = (it.text || '').length > 70 || hasDetail;
     var opened = !!dashFollow_.open[key];
     return '<div class="fu-row' + (it.done ? ' fu-done' : '') + '" data-fu-line="' + it.line + '">'
       + '<input type="checkbox" class="fuChk" style="margin-top:3px; flex:0 0 auto;" ' + (it.done ? 'checked' : '') + ' title="' + (it.done ? '체크 해제(다시 남은 일로)' : '끝났으면 체크') + '">'
       + '<div class="fu-body">'
       + (secLabel ? '<span style="font-size:11px; color:var(--sub);">[' + esc(secLabel) + '] </span>' : '')
       + '<div class="fuText' + (long && !opened ? ' fu-clamp' : '') + '"' + (secLabel ? ' style="display:inline;"' : '') + '>' + dashFollowMd_(dashNoLeadIcon_(it.text)) + '</div>' // [2026.10.31] 줄 맨 앞 습관적 아이콘은 떼고 보인다(원본 파일 글은 그대로)
-      + (opened && it.detail ? '<div class="fu-detail">' + dashListHtml_(it.detail, dashFollowMd_) + '</div>' : '')
+      + (opened && hasDetail ? '<div class="fu-detail">' + dashListHtml_(dashFollowDetailNoTalk_(it.detail), dashFollowMd_) + '</div>' : '')
+      + dashFollowTalkHtml_(it)
       // [2026.10.31] 세무사님 "접기/펼치기 버튼이 있는데 눌러도 아무 변화가 없는데" — 글자 수로만 붙여 두 줄 안에 다 보이는 글에도 단추가 섰다(106개 중 88개).
       //  자세한 내용이 있으면 늘, 없으면 화면에서 실제로 잘렸을 때만 보인다(dashFollowFit_).
-      + (long ? '<div' + (!it.detail && !opened ? ' class="fuFit" hidden' : '') + '><button type="button" class="fu-more fuMore">' + (opened ? '▴ 접기' : '▾ 펼치기' + (it.detail ? '(자세한 내용)' : '')) + '</button></div>' : '')
+      + (long ? '<div' + (!hasDetail && !opened ? ' class="fuFit" hidden' : '') + '><button type="button" class="fu-more fuMore">' + (opened ? '▴ 접기' : '▾ 펼치기' + (hasDetail ? '(자세한 내용)' : '')) + '</button></div>' : '')
       + '</div>'
+      + (it.done ? '' : '<button type="button" class="fu-answer fuAnswer" title="이 항목에 의견·결정을 적습니다 — Claude가 다음 세션에서 받아 답합니다">💬 답 적기</button>')
       + '<button type="button" class="fu-edit fuEdit" title="글 고치기">✏</button>'
       + '</div>';
+  }
+  // [2026.11.12] 대화 줄(💬 세무사님/Claude/넥스) — 접혀 있어도 늘 보인다. 마지막 말이 세무사님이면 "Claude 답 기다림".
+  function dashFollowTalkHtml_(it){
+    var talk = it.talk || [];
+    if (!talk.length) return '';
+    var h = '<div class="fu-talk">' + talk.map(function(k){
+      var cls = k.who === '세무사님' ? ' fu-talk-tax' : '';
+      return '<div class="fu-talk-line' + cls + '"><b>' + esc(k.who) + '</b> <span style="color:var(--sub); font-size:11px;">' + esc(k.date) + '</span> — ' + dashFollowMd_(k.text) + '</div>';
+    }).join('') + '</div>';
+    if (!it.done && it.waiting === 'claude') h += '<div class="fu-talk-wait">⏳ Claude 답 기다림 — 다음 Claude 세션이 열릴 때 자동으로 전달됩니다</div>';
+    return h;
+  }
+  function dashFollowDetailNoTalk_(detail){
+    return String(detail || '').split(/\r?\n/).filter(function(l){ return !/^\s*- 💬 (세무사님|Claude|넥스)\(/.test(l); }).join('\n');
   }
   // 펼치기 단추(자세한 내용 없는 것)는 글이 두 줄 칸에서 실제로 잘렸을 때만 — 창 폭이 바뀌면 다시 잰다
   function dashFollowFit_(){
@@ -3947,7 +3971,7 @@ function nxMdOpenWindow(title, src, opts){
     }
     box.innerHTML = html;
     dashFollowFit_();
-    document.getElementById('dashFollowCount').textContent = '남은 ' + (res.open || 0) + '건 · 끝난 ' + (res.closed || 0) + '건';
+    document.getElementById('dashFollowCount').textContent = '남은 ' + (res.open || 0) + '건 · 끝난 ' + (res.closed || 0) + '건' + (res.waitingClaude ? ' · Claude 답 기다림 ' + res.waitingClaude + '건' : '');
     var a = document.getElementById('dashFollowOpen');
     if (res.file && res.file.url){ a.href = res.file.url; a.style.display = ''; a.title = res.file.name + ' (마지막 수정 ' + (res.file.modified || '') + ')'; }
     var sel = document.getElementById('dashFollowSec');
@@ -4014,6 +4038,30 @@ function nxMdOpenWindow(title, src, opts){
         + '<button type="button" class="ghost-btn fuEditCancel sm">취소</button>'
         + '<span style="font-size:11px; color:var(--sub); align-self:center;">첫 줄만 고칩니다(자세한 내용은 📄 원본 파일에서)</span></div>';
       bodyEl.querySelector('.fuEditBox').focus();
+      return;
+    }
+    if (e.target.classList.contains('fuAnswer')){
+      if (row.querySelector('.fuAnswerBox')) return;
+      var bodyEl2 = row.querySelector('.fu-body');
+      var box = document.createElement('div');
+      box.className = 'fuAnswerWrap';
+      box.style.cssText = 'margin-top:6px;';
+      box.innerHTML = '<textarea class="fuAnswerBox" rows="3" placeholder="의견·결정을 적어 주세요 — 예: 권장대로 / 아니오, ○○로 / 이유는 …"></textarea>'
+        + '<div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">'
+        + '<button type="button" class="save-btn fuAnswerSave sm">답 저장</button>'
+        + '<button type="button" class="ghost-btn fuAnswerCancel sm">취소</button>'
+        + '<span style="font-size:11px; color:var(--sub); align-self:center;">항목 아래 「💬 세무사님(날짜)」 줄로 저장되고 Claude가 다음 세션에서 받아 답합니다</span></div>';
+      bodyEl2.appendChild(box);
+      box.querySelector('.fuAnswerBox').focus();
+      return;
+    }
+    if (e.target.classList.contains('fuAnswerCancel')){ var w0 = row.querySelector('.fuAnswerWrap'); if (w0) w0.remove(); return; }
+    if (e.target.classList.contains('fuAnswerSave')){
+      var at = row.querySelector('.fuAnswerBox').value.replace(/\s*\n\s*/g, ' ').trim();
+      if (!at){ toast('답을 적어 주세요.'); return; }
+      var ab = e.target;
+      ab.disabled = true;
+      dashFollowSave_('followup_answer', { raw: it.raw, line: it.line, text: at }, function(){ ab.disabled = false; }).then(function(res){ if (res && !res.error) toast('답을 저장했습니다 — Claude가 다음 세션에서 받습니다.'); });
       return;
     }
     if (e.target.classList.contains('fuEditCancel')){ row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone') ? it.sec : ''); return; }
@@ -4123,7 +4171,7 @@ function nxMdOpenWindow(title, src, opts){
       ask.appendChild(fc);
       var h3 = fc.querySelector('h3');
       if (h3){ h3.style.cssText = 'font-size:14px; margin:6px 0 4px;'; if (h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = 'Claude가 올린 것 — 확인조치사항 '; }
-      var help = fc.querySelector('.nx-help'); if (help) help.textContent = '결정할 것·눌러 볼 것·고객 자료 정리 — 체크·고치기·추가가 원본 파일(확인조치사항.md)에 바로 저장됩니다. Claude가 할 일은 할 일 장부에 있습니다.';
+      var help = fc.querySelector('.nx-help'); if (help) help.textContent = '결정할 것·눌러 볼 것·고객 자료 정리 — 항목마다 [💬 답 적기]로 의견·결정을 적으시면 Claude가 다음 세션에서 받아 답·반영합니다(주고받은 말이 항목 아래 쌓임). 끝난 것은 체크. Claude가 할 일은 할 일 장부에 있습니다.';
       fc.appendChild(fed); // 법령 판단 기록(접힘)
     }
     var nc = document.getElementById('dashNightlyCard');
