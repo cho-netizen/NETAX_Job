@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 02:54 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 03:00 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3092,8 +3092,8 @@ function nxMdOpenWindow(title, src, opts){
       <h3>마감임박 작업</h3>
       <div class="dash-range">
         <span class="dash-step">오늘부터 후 <button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지" type="number" id="dashDeadlineAfter" min="0" max="365" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
-        <!-- [2026.11.12] 세무사님 "대시보드-마감임박작업에 보류사건도 뜨는데, 이것을 포함할지 제외할지 선택하는 기능이 있으면 좋겠다" — 보류 포함 켬/끔, 이 브라우저에 기억(기본 포함) -->
-        <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="끄면 ⏸ 보류 사건은 이 표에서 빼고, 켜면 흐리게 함께 보입니다"><input type="checkbox" id="dashDeadlineHold" checked style="width:16px; height:16px; margin:0;"> 보류 포함</label>
+        <!-- [2026.11.12] 세무사님 "대시보드-마감임박작업에 보류사건도 뜨는데, 이것을 포함할지 제외할지 선택하는 기능이 있으면 좋겠다" — 보류 포함 켬/끔, 이 브라우저에 기억. 세무사님 "디폴트를 포함하지 않는 것으로 하자" — 기본 꺼짐 -->
+        <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="켜면 ⏸ 보류 사건도 흐리게 함께 보이고, 끄면 이 표에서 뺍니다"><input type="checkbox" id="dashDeadlineHold" style="width:16px; height:16px; margin:0;"> 보류 포함</label>
       </div>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -3338,7 +3338,7 @@ function nxMdOpenWindow(title, src, opts){
       var horizonDays = dashStepVal_('dashDeadlineAfter');
       horizon.setDate(horizon.getDate() + horizonDays);
       var horizonStr = dashYmd_(horizon);
-      // [2026.11.12] 「보류 포함」을 끄면 보류 사건은 표에서 뺀다(기본은 포함 — 보류라고 미뤄둔 사이 기한을 넘기지 않게)
+      // [2026.11.12] 「보류 포함」을 끄면 보류 사건은 표에서 뺀다(기본 꺼짐 — 세무사님 "디폴트를 포함하지 않는 것으로 하자"; 켜면 흐리게 함께)
       var includeHold = dashDeadlineHoldOn_();
       var holdHidden = 0;
       var cases = (res.cases || []).filter(function(c){
@@ -3393,15 +3393,15 @@ function nxMdOpenWindow(title, src, opts){
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashDeadlines').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
-  // [2026.11.12] 「보류 포함」 상태 — 이 브라우저에 기억(범위 칸과 같은 자리), 기본 켬
+  // [2026.11.12] 「보류 포함」 상태 — 이 브라우저에 기억(범위 칸과 같은 자리), 기본 꺼짐(켠 적이 있는 브라우저만 켬)
   function dashDeadlineHoldOn_(){
     var el = document.getElementById('dashDeadlineHold');
-    return el ? el.checked : true;
+    return el ? el.checked : false;
   }
   (function(){
     var el = document.getElementById('dashDeadlineHold');
     if (!el) return;
-    try { var saved = localStorage.getItem('nxDashRange_dashDeadlineHold'); if (saved === '0') el.checked = false; else if (saved === '1') el.checked = true; } catch (e) {}
+    try { el.checked = localStorage.getItem('nxDashRange_dashDeadlineHold') === '1'; } catch (e) {}
     el.addEventListener('change', function(){
       try { localStorage.setItem('nxDashRange_dashDeadlineHold', el.checked ? '1' : '0'); } catch (e) {}
       if (dashboardLoaded) loadDashDeadlines();
