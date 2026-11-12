@@ -367,6 +367,8 @@
       else if (r.last && !r.last.ran) parts.push('⚠ 판정 안 됨');
       if (r.pending) parts.push('🔔 제안 대기 ' + r.pending);
       sum.textContent = parts.join(' · ');
+      // [2026.11.12] 세무사님 "표시할 항목이 전혀 없으면 … 항목명도 숨겨라" — 고칠 것·제안 대기·판정 안 됨이 하나도 없으면 카드째 숨김
+      var card = sum.closest('.card'); if (card) card.style.display = (parts.length && !(parts.length === 1 && parts[0] === '고칠 것 없음')) ? '' : 'none';
     }).catch(function(e){ sum.textContent = '오류: ' + (e && e.message ? e.message : e); });
   };
   document.addEventListener('click', function(e){
