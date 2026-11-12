@@ -20,7 +20,7 @@ const cl = read(path.join(GS, 'CaseLedger.js'));
 const M = vm.createContext({ console, UrlFetchApp: { fetch: (u, o) => { const r = vm.runInContext('doPost', J)({ postData: { contents: o.payload } }); return { getContentText: () => r.s, getResponseCode: () => 200 }; } } }); M.globalThis = M;
 vm.runInContext(read(path.join(GS, 'judge-remote', 'JudgeRemote.js')), M);
 vm.runInContext(read(path.join(GS, 'JudgeForm.js')), M);
-['ledgerAskInner_', 'ledgerJudgeEvWant_', 'ledgerLabel_'].forEach((n) => vm.runInContext(chunk(cl, n), M));
+['ledgerAskInner_', 'ledgerJudgeEvWant_', 'ledgerLabel_', 'ledgerQGroup_'] /* [2026-11-13 4차] 11-12 질문 정리로 ledgerAskInner_가 ledgerQGroup_(묶음)을 부르는데 이 점검이 안 실어 「여쭐 것을 세우지 못함」으로 0줄이 됐다 — 운영 결함이 아니라 점검 틀 결함 */.forEach((n) => vm.runInContext(chunk(cl, n), M));
 vm.runInContext(chunk(read(path.join(GS, 'Code.js')), 'CASEPROC_FIELD_KO_'), M);
 try { vm.runInContext(chunk(cl, 'LEDGER_GKO_'), M); } catch (e) { M.LEDGER_GKO_ = {}; }
 const LEDGER = { rows: {}, log: [], judge: {} };
