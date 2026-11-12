@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:55 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 23:41 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -431,6 +431,25 @@
   #nxPhoneBar button.on{ color:var(--gold); font-weight:700; }
   body.lay-phone:not(.lay-cover) #centerWork > .view{ bottom:56px; }
   body.lay-phone:not(.lay-cover) #globalHelpBtn, body.lay-phone:not(.lay-cover) #nxSuggestBtn, body.lay-phone:not(.lay-cover) #nxHandMemoBtn, body.lay-phone:not(.lay-cover) #nxPresentBtn{ display:none !important; }
+  /* [2026-11-13 4차 43] 태블릿에서 오른쪽 아래 떠 있는 단추 넷(도움말·건의·보여주기·필기)이 표 끝을 덮었다 — 세무사님 "권장대로": 태블릿에선 「⋯」 한 단추로 접고, 누르면 세로로 펼친다(PC는 그대로, 폰은 원래 아래 줄 도구 시트). */
+  #nxFabMore{ display:none; }
+  body.lay-tablet:not(.lay-cover):not(.nx-present) #nxFabMore{ display:block; position:absolute; right:18px; bottom:18px; z-index:36; width:44px; height:44px; border-radius:50%; border:none; background:var(--navy); color:var(--gold); font-size:20px; font-weight:700; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.28); }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxFabMore{ background:var(--gold); color:var(--navy); }
+  body.lay-tablet:not(.nx-present):not(.nx-fab-open) #globalHelpBtn, body.lay-tablet:not(.nx-present):not(.nx-fab-open) #nxSuggestBtn, body.lay-tablet:not(.nx-present):not(.nx-fab-open) #nxHandMemoBtn, body.lay-tablet:not(.nx-present):not(.nx-fab-open) #nxPresentBtn{ display:none !important; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #globalHelpBtn{ right:18px !important; bottom:72px !important; width:44px !important; height:44px !important; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxSuggestBtn{ right:18px !important; bottom:124px !important; width:44px !important; height:44px !important; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxHandMemoBtn{ right:18px; bottom:176px; width:44px; height:44px; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxPresentBtn{ right:18px; bottom:228px; width:44px; height:44px; }
+  /* [2026-11-13 4차 44] 태블릿에서 메뉴 여는 곳이 왼쪽 끝 좁은 띠뿐이었다 — 세무사님 "권장대로": 왼쪽 위에 보이는 ☰ 단추. 띠를 단추 폭(32px)으로 넓혀 본문 글을 덮지 않게 하고, 밀기 동작은 그대로. */
+  #nxMenuHandle{ display:none; }
+  body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu:not(.expanded), body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu.peek{ width:32px; }
+  body.lay-tablet:not(.lay-cover):not(.nx-present) #nxMenuHandle{ display:flex; align-items:center; justify-content:center; position:absolute; left:0; top:0; width:32px; height:44px; z-index:51; border:none; padding:0; background:var(--navy); color:var(--gold); font-size:20px; cursor:pointer; }
+  body.lay-tablet #sideMenu.peek ~ #nxMenuHandle, body.lay-tablet #sideMenu.pinned ~ #nxMenuHandle{ display:none; }
+  /* [2026-11-13 4차 47] 칸 장부 표 조치 「⋯」(태블릿·폰) — ledger.html lgTouch */
+  .lg-act-more{ min-width:44px; min-height:44px; font-size:18px; font-weight:700; padding:0 10px; }
+  .lg-act-td .lg-act{ display:none; }
+  .lg-act-td.lg-open .lg-act{ display:flex; flex-direction:column; align-items:stretch; gap:6px; margin-top:6px; min-width:180px; white-space:normal; }
+  .lg-act-td.lg-open .lg-act .ghost-btn, .lg-act-td.lg-open .lg-act input{ min-height:44px; font-size:13px !important; width:auto !important; }
   #nxFieldSheet{ position:absolute; left:0; right:0; bottom:56px; z-index:37; background:var(--panel, #fff); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(0,0,0,.18); padding:10px 10px 12px; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
   #nxFieldSheet[hidden]{ display:none; }
   #nxFieldSheet button{ border:1px solid var(--line); background:var(--panel, #fff); color:var(--ink, #1b2a41); border-radius:10px; min-height:62px; font-size:12.5px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; padding:4px; text-align:center; word-break:keep-all; line-height:1.25; }
@@ -1480,6 +1499,9 @@
       <button type="button" class="sm-scroll" id="sideMenuUp" title="위로">▲</button>
       <button type="button" class="sm-scroll" id="sideMenuDown" title="아래로">▼</button>
     </nav>
+    <!-- [2026-11-13 4차 44] 태블릿 메뉴 여는 ☰ 단추(태블릿에서만 보임, style.html #nxMenuHandle) -->
+    <button type="button" id="nxMenuHandle" title="메뉴 열기" aria-label="메뉴 열기"
+      onclick="event.stopPropagation(); if (typeof nxSideMenuPeek_ === 'function') nxSideMenuPeek_(true);">☰</button>
 
     <main id="centerWork" tabindex="-1">
       <!-- [2026.11.01] 사건 작업공간 머리줄 — 사건 화면 여덟의 맨 위 한 줄(사건 고르기·기한·장부 띠·탭). script.html nxCbInit_ -->
@@ -8581,11 +8603,13 @@ function nxMdOpenWindow(title, src, opts){
         var GROUP_ORDER = ['서류', '서류 대조', '사건 파악', '양도인', '양도계약', '자산', '취득', '안분', '특례·비용', '증여', '상속', '자문 쟁점', '그 밖'];
         var nexRows = rows.filter(function(x){ return (x.state === '물어볼것' || x.state === '증빙받을것') && x.turn === '넥스'; });
         if (nexRows.length) h += '<div style="margin-top:8px; font-size:12.5px; color:var(--sub);">🤖 넥스가 먼저 보는 물음 ' + nexRows.length + '개 — 서류를 읽어 정하거나 닫고, 못 정한 것만 아래 「물어볼 것」으로 옵니다(사건 현황 🤖 넥스 줄에서 미리 읽기를 끄면 모두 세무사님께 옵니다).</div>';
+        // [2026-11-13 4차 47] 태블릿·폰에서 조치 단추(후보·넣기·보류·무시·확인)가 표 끝에서 잘리고 손가락에 작았다 — 세무사님 "권장대로": 조치를 칸 바로 옆 「⋯」 단추 하나로 묶고, 누르면 손가락 크기(44px)로 세로로 펼친다(PC는 그대로)
+        var lgTouch = document.body.classList.contains('lay-tablet') || document.body.classList.contains('lay-phone');
         order.forEach(function(st){
           var list = rows.filter(function(x){ return x.state === st && !((st === '물어볼것' || st === '증빙받을것') && x.turn === '넥스'); });
           if (!list.length) return;
           if (st === '물어볼것' || st === '증빙받을것') list.sort(function(a, b){ var ga = GROUP_ORDER.indexOf(a.group || '그 밖'), gb = GROUP_ORDER.indexOf(b.group || '그 밖'); return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb); });
-          h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th>' + (lgTouch ? '<th style="text-align:left;padding:2px 8px;">조치</th>' : '') + '<th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th>' + (lgTouch ? '' : '<th style="text-align:left;padding:2px 8px;">조치</th>') + '</tr>';
           var lastGroup = null;
           list.forEach(function(x){
             if ((st === '물어볼것' || st === '증빙받을것') && (x.group || '그 밖') !== lastGroup){ lastGroup = x.group || '그 밖'; h += '<tr><td colspan="6" style="padding:5px 8px 2px; border-top:1px solid var(--line); font-weight:700; background:var(--bg2, #f6f7fa);">📂 ' + esc(lastGroup) + ' <span style="font-weight:400; color:var(--sub);">' + list.filter(function(y){ return (y.group || '그 밖') === lastGroup; }).length + '</span></td></tr>'; }
@@ -8605,7 +8629,8 @@ function nxMdOpenWindow(title, src, opts){
             (x.fx || []).forEach(function(id){ var f = kbFact[id]; if (f) fxFiles[f.f] = 1; });
             var fxTxt = fxN ? '서류 ' + Object.keys(fxFiles).length + '개 · 사실 ' + fxN + '건' : (x.v === '' || x.v == null || /^(doc:|q:)/.test(x.path) || typeof x.v === 'object' || typeof x.v === 'boolean' ? '' : '없음'); // 서류 역할 줄은 서류 자체가 근거라 잇지 않음
             var fxCell = '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;' + (fkN && !fxN ? ' color:#b23; font-weight:600;' : (!fxN && fxTxt ? ' color:var(--sub);' : '')) + '">' + esc(fxTxt) + (fkN ? ' <span' + (fxN ? '' : '') + '>· 다른 값 ' + esc(fkN) + '건</span>' : '') + ((fxN || fkN) ? ' <button type="button" class="ghost-btn sm" data-lg-fx="' + esc(x.path) + '">보기</button>' : '') + '</td>';
-            h += '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + fxCell + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td></tr>';
+            var actTd = lgTouch ? '<td class="lg-act-td" style="padding:3px 6px; border-top:1px solid var(--line); vertical-align:top;"><button type="button" class="ghost-btn lg-act-more" title="이 줄에서 할 일(후보 고르기·넣기·보류·무시·확인)" aria-label="이 줄에서 할 일" onclick="this.parentNode.classList.toggle(\'lg-open\')">⋯</button><div class="lg-act">' + act + '</div></td>' : '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td>';
+            h += '<tr>' + cell(x.label || x.path, 160) + (lgTouch ? actTd : '') + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + fxCell + (lgTouch ? '' : actTd) + '</tr>';
           });
           h += '</table></div></div>';
         });
@@ -59572,6 +59597,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" id="nxHandMemoBtn" title="필기메모 — 손글씨 메모 화면" onclick="goToView_('memo-hand')">✍</button>
       <button type="button" id="nxPresentBtn" title="고객에게 보여주기 — 메뉴·넥스 칸을 숨기고 이 화면만 크게"
         onclick="document.body.classList.toggle('nx-present')">🖥</button>
+      <!-- [2026-11-13 4차 43] 태블릿에서 떠 있는 단추 넷을 접어 두는 「⋯」(태블릿에서만 보임, style.html #nxFabMore). 단추 하나를 누르거나 바깥을 누르면 다시 접힘 -->
+      <button type="button" id="nxFabMore" title="도움말·건의·필기·고객에게 보여주기 단추 펼치기" aria-label="떠 있는 단추 펼치기"
+        onclick="event.stopPropagation(); document.body.classList.toggle('nx-fab-open');">⋯</button>
+      <script>
+        document.addEventListener('click', function(e){
+          if (!document.body.classList.contains('nx-fab-open') || (e.target.closest && e.target.closest('#nxFabMore'))) return;
+          document.body.classList.remove('nx-fab-open'); // 펼친 단추를 눌렀든 바깥을 눌렀든 접음(누른 단추의 일은 그대로 이어서 됨)
+        }, true); // 잡는 단계(true) — 단추가 퍼짐을 막아도(stopPropagation) 접히게
+      </script>
       <!-- [2026.11.11] 폰 아래 탭 줄(폰 배치에서만) — 오늘·사건·넥스·도구·메뉴. script.html nxPhoneBarInit_ -->
       <nav id="nxPhoneBar" aria-label="폰 아래 줄">
         <button type="button" data-pb="dashboard"><span class="ic">📊</span>오늘</button>

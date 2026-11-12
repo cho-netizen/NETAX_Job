@@ -145,6 +145,25 @@
   #nxPhoneBar button.on{ color:var(--gold); font-weight:700; }
   body.lay-phone:not(.lay-cover) #centerWork > .view{ bottom:56px; }
   body.lay-phone:not(.lay-cover) #globalHelpBtn, body.lay-phone:not(.lay-cover) #nxSuggestBtn, body.lay-phone:not(.lay-cover) #nxHandMemoBtn, body.lay-phone:not(.lay-cover) #nxPresentBtn{ display:none !important; }
+  /* [2026-11-13 4차 43] 태블릿에서 오른쪽 아래 떠 있는 단추 넷(도움말·건의·보여주기·필기)이 표 끝을 덮었다 — 세무사님 "권장대로": 태블릿에선 「⋯」 한 단추로 접고, 누르면 세로로 펼친다(PC는 그대로, 폰은 원래 아래 줄 도구 시트). */
+  #nxFabMore{ display:none; }
+  body.lay-tablet:not(.lay-cover):not(.nx-present) #nxFabMore{ display:block; position:absolute; right:18px; bottom:18px; z-index:36; width:44px; height:44px; border-radius:50%; border:none; background:var(--navy); color:var(--gold); font-size:20px; font-weight:700; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.28); }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxFabMore{ background:var(--gold); color:var(--navy); }
+  body.lay-tablet:not(.nx-present):not(.nx-fab-open) #globalHelpBtn, body.lay-tablet:not(.nx-present):not(.nx-fab-open) #nxSuggestBtn, body.lay-tablet:not(.nx-present):not(.nx-fab-open) #nxHandMemoBtn, body.lay-tablet:not(.nx-present):not(.nx-fab-open) #nxPresentBtn{ display:none !important; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #globalHelpBtn{ right:18px !important; bottom:72px !important; width:44px !important; height:44px !important; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxSuggestBtn{ right:18px !important; bottom:124px !important; width:44px !important; height:44px !important; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxHandMemoBtn{ right:18px; bottom:176px; width:44px; height:44px; }
+  body.lay-tablet.nx-fab-open:not(.nx-present) #nxPresentBtn{ right:18px; bottom:228px; width:44px; height:44px; }
+  /* [2026-11-13 4차 44] 태블릿에서 메뉴 여는 곳이 왼쪽 끝 좁은 띠뿐이었다 — 세무사님 "권장대로": 왼쪽 위에 보이는 ☰ 단추. 띠를 단추 폭(32px)으로 넓혀 본문 글을 덮지 않게 하고, 밀기 동작은 그대로. */
+  #nxMenuHandle{ display:none; }
+  body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu:not(.expanded), body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu.peek{ width:32px; }
+  body.lay-tablet:not(.lay-cover):not(.nx-present) #nxMenuHandle{ display:flex; align-items:center; justify-content:center; position:absolute; left:0; top:0; width:32px; height:44px; z-index:51; border:none; padding:0; background:var(--navy); color:var(--gold); font-size:20px; cursor:pointer; }
+  body.lay-tablet #sideMenu.peek ~ #nxMenuHandle, body.lay-tablet #sideMenu.pinned ~ #nxMenuHandle{ display:none; }
+  /* [2026-11-13 4차 47] 칸 장부 표 조치 「⋯」(태블릿·폰) — ledger.html lgTouch */
+  .lg-act-more{ min-width:44px; min-height:44px; font-size:18px; font-weight:700; padding:0 10px; }
+  .lg-act-td .lg-act{ display:none; }
+  .lg-act-td.lg-open .lg-act{ display:flex; flex-direction:column; align-items:stretch; gap:6px; margin-top:6px; min-width:180px; white-space:normal; }
+  .lg-act-td.lg-open .lg-act .ghost-btn, .lg-act-td.lg-open .lg-act input{ min-height:44px; font-size:13px !important; width:auto !important; }
   #nxFieldSheet{ position:absolute; left:0; right:0; bottom:56px; z-index:37; background:var(--panel, #fff); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(0,0,0,.18); padding:10px 10px 12px; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
   #nxFieldSheet[hidden]{ display:none; }
   #nxFieldSheet button{ border:1px solid var(--line); background:var(--panel, #fff); color:var(--ink, #1b2a41); border-radius:10px; min-height:62px; font-size:12.5px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; padding:4px; text-align:center; word-break:keep-all; line-height:1.25; }

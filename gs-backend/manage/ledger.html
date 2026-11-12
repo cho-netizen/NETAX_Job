@@ -298,11 +298,13 @@
         var GROUP_ORDER = ['서류', '서류 대조', '사건 파악', '양도인', '양도계약', '자산', '취득', '안분', '특례·비용', '증여', '상속', '자문 쟁점', '그 밖'];
         var nexRows = rows.filter(function(x){ return (x.state === '물어볼것' || x.state === '증빙받을것') && x.turn === '넥스'; });
         if (nexRows.length) h += '<div style="margin-top:8px; font-size:12.5px; color:var(--sub);">🤖 넥스가 먼저 보는 물음 ' + nexRows.length + '개 — 서류를 읽어 정하거나 닫고, 못 정한 것만 아래 「물어볼 것」으로 옵니다(사건 현황 🤖 넥스 줄에서 미리 읽기를 끄면 모두 세무사님께 옵니다).</div>';
+        // [2026-11-13 4차 47] 태블릿·폰에서 조치 단추(후보·넣기·보류·무시·확인)가 표 끝에서 잘리고 손가락에 작았다 — 세무사님 "권장대로": 조치를 칸 바로 옆 「⋯」 단추 하나로 묶고, 누르면 손가락 크기(44px)로 세로로 펼친다(PC는 그대로)
+        var lgTouch = document.body.classList.contains('lay-tablet') || document.body.classList.contains('lay-phone');
         order.forEach(function(st){
           var list = rows.filter(function(x){ return x.state === st && !((st === '물어볼것' || st === '증빙받을것') && x.turn === '넥스'); });
           if (!list.length) return;
           if (st === '물어볼것' || st === '증빙받을것') list.sort(function(a, b){ var ga = GROUP_ORDER.indexOf(a.group || '그 밖'), gb = GROUP_ORDER.indexOf(b.group || '그 밖'); return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb); });
-          h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th>' + (lgTouch ? '<th style="text-align:left;padding:2px 8px;">조치</th>' : '') + '<th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th>' + (lgTouch ? '' : '<th style="text-align:left;padding:2px 8px;">조치</th>') + '</tr>';
           var lastGroup = null;
           list.forEach(function(x){
             if ((st === '물어볼것' || st === '증빙받을것') && (x.group || '그 밖') !== lastGroup){ lastGroup = x.group || '그 밖'; h += '<tr><td colspan="6" style="padding:5px 8px 2px; border-top:1px solid var(--line); font-weight:700; background:var(--bg2, #f6f7fa);">📂 ' + esc(lastGroup) + ' <span style="font-weight:400; color:var(--sub);">' + list.filter(function(y){ return (y.group || '그 밖') === lastGroup; }).length + '</span></td></tr>'; }
@@ -322,7 +324,8 @@
             (x.fx || []).forEach(function(id){ var f = kbFact[id]; if (f) fxFiles[f.f] = 1; });
             var fxTxt = fxN ? '서류 ' + Object.keys(fxFiles).length + '개 · 사실 ' + fxN + '건' : (x.v === '' || x.v == null || /^(doc:|q:)/.test(x.path) || typeof x.v === 'object' || typeof x.v === 'boolean' ? '' : '없음'); // 서류 역할 줄은 서류 자체가 근거라 잇지 않음
             var fxCell = '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;' + (fkN && !fxN ? ' color:#b23; font-weight:600;' : (!fxN && fxTxt ? ' color:var(--sub);' : '')) + '">' + esc(fxTxt) + (fkN ? ' <span' + (fxN ? '' : '') + '>· 다른 값 ' + esc(fkN) + '건</span>' : '') + ((fxN || fkN) ? ' <button type="button" class="ghost-btn sm" data-lg-fx="' + esc(x.path) + '">보기</button>' : '') + '</td>';
-            h += '<tr>' + cell(x.label || x.path, 160) + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + fxCell + '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td></tr>';
+            var actTd = lgTouch ? '<td class="lg-act-td" style="padding:3px 6px; border-top:1px solid var(--line); vertical-align:top;"><button type="button" class="ghost-btn lg-act-more" title="이 줄에서 할 일(후보 고르기·넣기·보류·무시·확인)" aria-label="이 줄에서 할 일" onclick="this.parentNode.classList.toggle(\'lg-open\')">⋯</button><div class="lg-act">' + act + '</div></td>' : '<td style="padding:3px 8px; border-top:1px solid var(--line); white-space:nowrap;">' + act + '</td>';
+            h += '<tr>' + cell(x.label || x.path, 160) + (lgTouch ? actTd : '') + cell(x.값 || '', 260) + cell(KIND_KO[x.kind] || x.kind || '', 70) + cell(basis, 360) + fxCell + (lgTouch ? '' : actTd) + '</tr>';
           });
           h += '</table></div></div>';
         });

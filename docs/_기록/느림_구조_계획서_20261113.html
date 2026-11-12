@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>느림 구조 계획서</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#666;--line:#ddd;--chip:#f3f4f6;--ok:#1a7f37;--warn:#b35900}
+@media (prefers-color-scheme:dark){:root{--bg:#17181a;--fg:#ececec;--mut:#a0a0a0;--line:#333;--chip:#25272a}}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 system-ui,"Malgun Gothic",sans-serif;margin:0;padding:16px;max-width:960px}
+h1{font-size:21px}h2{font-size:17px;margin-top:26px;border-bottom:1px solid var(--line);padding-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left}
+th{background:var(--chip)}.wrap{overflow-x:auto}.warn{color:var(--warn);font-weight:600}.ok{color:var(--ok);font-weight:600}
+</style></head><body>
+<h1>느림(4차 41·46) 구조 계획서 — 2026-11-13</h1>
+<p>세무사님 말씀(11-13): "나머지도 권장대로 하라" — 4차 점검서 2절 권장안은 "새 구조라 계획서를 먼저 올려 정해 받는다"였으므로, 이 계획서를 올리고 <b>정해 주시기 전엔 만들지 않습니다</b>(1층 5절).</p>
+
+<h2>1. 지금 무엇이 느린가 (4차 세 바퀴에서 잰 것)</h2>
+<div class="wrap"><table>
+<tr><th>자리</th><th>걸린 시간</th><th>어느 서버</th></tr>
+<tr><td>서버를 부르는 모든 일의 바닥</td><td>약 7초</td><td>job 서버(코드 8.79MB를 부를 때마다 읽음)</td></tr>
+<tr><td>사실(장부) 탭 열기</td><td>10~16초</td><td>job 서버</td></tr>
+<tr><td>장부 흐름(넣기·확인·계산)</td><td>10~23초</td><td>job 서버(장부 잠금 포함)</td></tr>
+<tr><td>태블릿 「오늘」 첫 카드</td><td>20초 넘게</td><td>job 서버 여러 번(사건 목록 등은 이미 관리 서버로 감)</td></tr>
+</table></div>
+<p>뿌리: 이미 10-17에 조회 넷(사건·고객·자문내역·예약 목록)은 작은 관리 서버(gs-light)로 옮겨 빨라졌는데, 그 뒤 생긴 <b>장부 보기·오늘 카드의 나머지 조회</b>는 모두 큰 job 서버로 갑니다.</p>
+
+<h2>2. 길 셋 (서로 막지 않음 — 1 → 2 → 3 차례 권장)</h2>
+<div class="wrap"><table>
+<tr><th>길</th><th>하는 일</th><th>얻는 것</th><th>위험·비용</th></tr>
+<tr><td><b>① 먼저 보여 주고 뒤에서 새로 받기</b>(화면만)</td><td>화면이 마지막으로 받은 장부·오늘 카드를 기기에 두었다가 열자마자 보여 주고, 뒤에서 서버 답이 오면 바꿔 그림. 「몇 초 전 값」 표시.</td><td>여는 순간 0초(두 번째부터). 서버·운영 변경 없음.</td><td>잠깐 옛 값이 보임 — 저장·계산 단추는 새 값이 온 뒤에만 눌리게.</td></tr>
+<tr><td><b>② 읽기 조회를 관리 서버로 더 옮기기</b></td><td>오늘 카드의 나머지 조회와 장부 보기(읽기만)를 gs-light로. 저장·잠금은 job 서버 그대로(10-17 원칙).</td><td>바닥 7초 → 관리 서버 수준(2~3초 예상, 옮긴 뒤 잼).</td><td>gs-light에 조회 함수를 복사(빌드 도구 있음), clasp 배포 한 번 더(세무사님 cmd). 장부 파일 읽기 권한(드라이브)이 관리 서버에 더 필요.</td></tr>
+<tr><td><b>③ 장부 읽기를 직결(Cloud Run)로</b></td><td>직결은 이미 장부 코드를 싣고 늘 떠 있음 — 장부 보기를 거기서 답하게.</td><td>1초 안팎 예상.</td><td>직결은 지금 사건처리 중인 폴더에만 권한(보안 설계) — 장부 읽기까지 넓히는 것은 권한 판단이 필요.</td></tr>
+</table></div>
+
+<h2>3. 정하실 것</h2>
+<ul>
+<li><b>권장안: ① 먼저, 이어서 ②.</b> ③은 직결 권한을 넓히는 일이라 ①② 뒤 잰 값을 보고 다시 여쭙니다.</li>
+<li>①에서 기기에 남기는 값은 장부·오늘 카드 글뿐(로그인 표·비밀값 없음), 로그아웃하면 지움.</li>
+</ul>
+
+<h2>4. 확인 방법</h2>
+<ul>
+<li>고치기 전·후 같은 자리(사실 탭 열기·오늘 첫 카드·장부 넣기)를 PC·태블릿·폰 크기에서 초로 재어 표로 견줌 — 처음 보는 가상사건으로.</li>
+<li>②는 10-17처럼 뒤에서 job 서버 답과 똑같은지 비교하고, 다르면 job 서버로 돌아가는 장치를 그대로 씀.</li>
+</ul>
+</body></html>

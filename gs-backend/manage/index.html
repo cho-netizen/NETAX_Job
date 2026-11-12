@@ -143,6 +143,9 @@
       <button type="button" class="sm-scroll" id="sideMenuUp" title="위로">▲</button>
       <button type="button" class="sm-scroll" id="sideMenuDown" title="아래로">▼</button>
     </nav>
+    <!-- [2026-11-13 4차 44] 태블릿 메뉴 여는 ☰ 단추(태블릿에서만 보임, style.html #nxMenuHandle) -->
+    <button type="button" id="nxMenuHandle" title="메뉴 열기" aria-label="메뉴 열기"
+      onclick="event.stopPropagation(); if (typeof nxSideMenuPeek_ === 'function') nxSideMenuPeek_(true);">☰</button>
 
     <main id="centerWork" tabindex="-1">
       <!-- [2026.11.01] 사건 작업공간 머리줄 — 사건 화면 여덟의 맨 위 한 줄(사건 고르기·기한·장부 띠·탭). script.html nxCbInit_ -->
@@ -265,6 +268,15 @@
       <button type="button" id="nxHandMemoBtn" title="필기메모 — 손글씨 메모 화면" onclick="goToView_('memo-hand')">✍</button>
       <button type="button" id="nxPresentBtn" title="고객에게 보여주기 — 메뉴·넥스 칸을 숨기고 이 화면만 크게"
         onclick="document.body.classList.toggle('nx-present')">🖥</button>
+      <!-- [2026-11-13 4차 43] 태블릿에서 떠 있는 단추 넷을 접어 두는 「⋯」(태블릿에서만 보임, style.html #nxFabMore). 단추 하나를 누르거나 바깥을 누르면 다시 접힘 -->
+      <button type="button" id="nxFabMore" title="도움말·건의·필기·고객에게 보여주기 단추 펼치기" aria-label="떠 있는 단추 펼치기"
+        onclick="event.stopPropagation(); document.body.classList.toggle('nx-fab-open');">⋯</button>
+      <script>
+        document.addEventListener('click', function(e){
+          if (!document.body.classList.contains('nx-fab-open') || (e.target.closest && e.target.closest('#nxFabMore'))) return;
+          document.body.classList.remove('nx-fab-open'); // 펼친 단추를 눌렀든 바깥을 눌렀든 접음(누른 단추의 일은 그대로 이어서 됨)
+        }, true); // 잡는 단계(true) — 단추가 퍼짐을 막아도(stopPropagation) 접히게
+      </script>
       <!-- [2026.11.11] 폰 아래 탭 줄(폰 배치에서만) — 오늘·사건·넥스·도구·메뉴. script.html nxPhoneBarInit_ -->
       <nav id="nxPhoneBar" aria-label="폰 아래 줄">
         <button type="button" data-pb="dashboard"><span class="ic">📊</span>오늘</button>
