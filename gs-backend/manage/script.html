@@ -104,6 +104,7 @@
         if (k === 'menu'){ if (typeof nxSideMenuPeek_ === 'function'){ var m = document.getElementById('sideMenu'); nxSideMenuPeek_(!m.classList.contains('peek')); } return; }
         if (typeof nxSideMenuPeek_ === 'function') nxSideMenuPeek_(false);
         goToView_(k);
+        if (k === 'ai' && typeof window.nxAiLinkShownCase_ === 'function') window.nxAiLinkShownCase_(); // [2026-11-13 4차 52] 보던 사건 잇기
         return;
       }
       var more = e.target.closest && e.target.closest('#sideMenuMoreBtn');

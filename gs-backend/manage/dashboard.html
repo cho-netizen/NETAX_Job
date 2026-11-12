@@ -309,6 +309,9 @@
       var holdHidden = 0;
       var cases = (res.cases || []).filter(function(c){
         if (!(c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr)) return false;
+        // [2026-11-13 4차 16] 가상·모의·시험 사건은 빼기(서버 밤 점검 awVirtual_과 같은 잣대 — 11-12 낮 결정 「가상 사건은 기한·알림에서 뺀다」)
+        var nm_ = String(c.사건명 || ''), cu_ = String(c.고객명 || '');
+        if (/시험용|가상사건|모의사건/.test(nm_ + String(c.개요 || '')) || /^(가상|모의|시험|테스트)/.test(nm_.trim()) || /^(가상|모의|시험|테스트)/.test(cu_.trim())) return false;
         if (!includeHold && c.상태 === '보류'){ holdHidden++; return false; }
         return true;
       });
