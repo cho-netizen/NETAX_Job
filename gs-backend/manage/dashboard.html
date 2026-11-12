@@ -44,6 +44,8 @@
       <h3>마감임박 작업</h3>
       <div class="dash-range">
         <span class="dash-step">오늘부터 후 <button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지" type="number" id="dashDeadlineAfter" min="0" max="365" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
+        <!-- [2026.11.12] 세무사님 "대시보드-마감임박작업에 보류사건도 뜨는데, 이것을 포함할지 제외할지 선택하는 기능이 있으면 좋겠다" — 보류 포함 켬/끔, 이 브라우저에 기억(기본 포함) -->
+        <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="끄면 ⏸ 보류 사건은 이 표에서 빼고, 켜면 흐리게 함께 보입니다"><input type="checkbox" id="dashDeadlineHold" checked style="width:16px; height:16px; margin:0;"> 보류 포함</label>
       </div>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -88,9 +90,10 @@
          설정 🐞 ✍로 적은 요청 중 끝나지 않은 것(접수·재오픈·반영됨)을 한 줄로 보이고, 누르면 목록(끝난 것은 접힘). 자료는 설정 🤝 📝 요청 상태와 같다(Federation.js commStatus_). -->
     <!-- [2026.11.01 화면구조 개편 ③] 세무사님 "권장안대로 하마" — 확인조치사항·야간 점검(개발자 일)은 설정 › 시스템 관리로 옮김(dashMoveDevCards_). 그 카드 맨 위에 있던
          "세무사님이 하실 일"(개발자 질문·법령 판단 결정·고객이 보낸 서류·카카오 오류)만 여기 남긴다 — 할 것이 없으면 카드째 숨김 -->
-    <div class="card dash-cover" id="dashAskCard" hidden>
+    <!-- [2026.11.12] 세무사님 "합쳐라" — 「답하실 것」(시스템이 올린 것)과 확인조치사항(Claude가 올린 것)을 이 카드 하나로. 시스템 묶음(#dashAskSys)은 알림이 없으면 숨고, 확인조치사항 묶음(#dashFollowCard)은 dashMoveDevCards_가 이 카드 안으로 옮긴다(법령 판단 기록은 그 끝에 접힘). 카드는 늘 보임. -->
+    <div class="card dash-cover" id="dashAskCard">
       <h3>답하실 것</h3>
-      <div id="dashFedStatus"></div>
+      <div id="dashAskSys" hidden><div class="nx-l3">시스템이 올린 것 <span class="nx-l-sub">법령 개정 영향·미수·멈춘 사건·개발자 질문·고객 서류 — [확인]을 누르면 지워집니다</span></div><div id="dashFedStatus"></div></div>
     </div>
     <div class="card dash-cover" id="dashImproveCard">
       <h3 style="margin-bottom:0;"><button type="button" id="dashImproveHead" style="all:unset; cursor:pointer; display:block; width:100%;">개선요구 <span id="dashImproveSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span id="dashImproveArrow" style="float:right; font-size:12px; color:var(--sub);">▾</span></button></h3>
@@ -287,14 +290,19 @@
       var horizonDays = dashStepVal_('dashDeadlineAfter');
       horizon.setDate(horizon.getDate() + horizonDays);
       var horizonStr = dashYmd_(horizon);
+      // [2026.11.12] 「보류 포함」을 끄면 보류 사건은 표에서 뺀다(기본은 포함 — 보류라고 미뤄둔 사이 기한을 넘기지 않게)
+      var includeHold = dashDeadlineHoldOn_();
+      var holdHidden = 0;
       var cases = (res.cases || []).filter(function(c){
-        return c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr;
+        if (!(c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr)) return false;
+        if (!includeHold && c.상태 === '보류'){ holdHidden++; return false; }
+        return true;
       });
       cases.sort(function(a,b){ return String(a.법정일).localeCompare(String(b.법정일)); });
       dashDeadlineCases_ = {};
       cases.forEach(function(c){ dashDeadlineCases_[c.id] = c; });
       var box = document.getElementById('dashDeadlines');
-      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + horizonDays + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
+      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + horizonDays + '일 이내 마감이 임박한 작업이 없습니다.' + (holdHidden ? ' (보류 ' + holdHidden + '건은 「보류 포함」을 켜면 보입니다)' : '') + '</div>'; return; }
       // [2026.09 버그수정] "보류" 사건도 법정일이 임박하면 "진행" 사건과 똑같이 강조되어
       // 섞여 있었다 — 마감 자체를 놓치면 안 되니 목록에서 빼지는 않되(보류라고 미뤄둔 사이
       // 진짜 기한을 넘길 수 있으므로), 한눈에 "지금 당장 볼 건 아니다"를 알 수 있게 흐리게
@@ -333,9 +341,24 @@
           '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="사건 목록으로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 사건 목록과 같음)">완료</button></td></tr>';
       });
       html += '</table></div>';
+      if (holdHidden) html += '<div class="empty-row" style="padding-top:4px;">보류 ' + holdHidden + '건은 「보류 포함」을 켜면 보입니다.</div>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashDeadlines').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
+  // [2026.11.12] 「보류 포함」 상태 — 이 브라우저에 기억(범위 칸과 같은 자리), 기본 켬
+  function dashDeadlineHoldOn_(){
+    var el = document.getElementById('dashDeadlineHold');
+    return el ? el.checked : true;
+  }
+  (function(){
+    var el = document.getElementById('dashDeadlineHold');
+    if (!el) return;
+    try { var saved = localStorage.getItem('nxDashRange_dashDeadlineHold'); if (saved === '0') el.checked = false; else if (saved === '1') el.checked = true; } catch (e) {}
+    el.addEventListener('change', function(){
+      try { localStorage.setItem('nxDashRange_dashDeadlineHold', el.checked ? '1' : '0'); } catch (e) {}
+      if (dashboardLoaded) loadDashDeadlines();
+    });
+  })();
 
   // [2026.09] 대시보드에서 마감임박 사건을 클릭하면 바로 그 사건의 처리 화면(사건처리 = 이
   // 사건의 대시보드)으로 이동한다 — 예전엔 그냥 표만 보여주고 끝이라 다시 작업관리에서
@@ -1044,13 +1067,15 @@
   //  ② 「어젯밤 점검」(settings.html stSysCheckCard — 야간 자동점검 카드의 운영 버전·점검 줄을 그 카드 머리로 옮기고 껍데기는 지움) ③ 「지침 파일」. 열쇠·바로가기는 ③ 운영·반영 탭으로.
   function dashMoveDevCards_(){
     var chk = document.getElementById('stSysCheckCard'), fed = document.getElementById('stFedCard');
-    if (!chk || !fed){ setTimeout(dashMoveDevCards_, 200); return; }
-    var fc = document.getElementById('dashFollowCard');
-    if (fc){
-      fc.classList.remove('dash-cover'); fc.setAttribute('data-sttab', '2');
-      chk.parentNode.insertBefore(fc, chk); // 어젯밤 점검 카드 앞 = 시스템 관리 탭 맨 위
-      var h3 = fc.querySelector('h3'); if (h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = '세무사님이 하실 일 ';
-      var help = fc.querySelector('.nx-help'); if (help) help.textContent = '세무사님만 하실 수 있는 일(결정할 것·눌러 볼 것·고객 자료 정리)입니다. 체크·고치기·추가가 원본 파일(확인조치사항.md)에 바로 저장됩니다. Claude가 할 일은 할 일 장부에 있습니다.';
+    if (!chk || !fed || !document.getElementById('dashAskCard')){ setTimeout(dashMoveDevCards_, 200); return; }
+    // [2026.11.12 세무사님 "합쳐라"] 확인조치사항 묶음을 대시보드 「답하실 것」 카드 안으로(설정 탭이 아니라) — 세무사님이 매일 보는 곳 한 군데에
+    var fc = document.getElementById('dashFollowCard'), ask = document.getElementById('dashAskCard');
+    if (fc && ask){
+      fc.classList.remove('card', 'dash-cover'); fc.style.marginTop = '10px';
+      ask.appendChild(fc);
+      var h3 = fc.querySelector('h3');
+      if (h3){ h3.style.cssText = 'font-size:14px; margin:6px 0 4px;'; if (h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = 'Claude가 올린 것 — 확인조치사항 '; }
+      var help = fc.querySelector('.nx-help'); if (help) help.textContent = '결정할 것·눌러 볼 것·고객 자료 정리 — 체크·고치기·추가가 원본 파일(확인조치사항.md)에 바로 저장됩니다. Claude가 할 일은 할 일 장부에 있습니다.';
       fc.appendChild(fed); // 법령 판단 기록(접힘)
     }
     var nc = document.getElementById('dashNightlyCard');
@@ -1106,7 +1131,7 @@
           + '<div style="margin-top:4px; display:flex; gap:6px;"><button type="button" class="ghost-btn sm" data-dashbg="retry" data-id="' + esc(f.id) + '">다시 하기</button><button type="button" class="ghost-btn sm" data-dashbg="dismiss" data-id="' + esc(f.id) + '">지우기</button></div>', true);
       });
       box.innerHTML = html;
-      var askCard = document.getElementById('dashAskCard'); if (askCard) askCard.hidden = !html;
+      var askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */; if (askCard) askCard.hidden = !html;
       // 법령 판단 대기 — 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만
       callGas('ai_judge_get', {}).then(function(j){
         var n = ((j && j.doc && j.doc.항목) || []).filter(function(x){ return x.결정 && x.결정.선택 === '보류'; }).length;
@@ -1128,7 +1153,7 @@
     ev.preventDefault();
     var act = b.getAttribute('data-dashbg'), wrap = b.closest('div[style*="border"]');
     // [2026.11.03 전수조사 다시] 줄은 바로 감추고 서버엔 보낼 함으로 뒤에서 — 실패하면 줄이 다시 보인다
-    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */;
     if (wrap) wrap.style.display = 'none';
     var leftVisible = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1;
     if (askCard && !leftVisible) askCard.hidden = true; // 마지막 줄이면 빈 카드를 남기지 않음(처음 그릴 때와 같은 규칙)
@@ -1139,7 +1164,7 @@
       redo: function(){ if (wrap) wrap.style.display = 'none'; var n = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1; if (askCard && !n) askCard.hidden = true; } });
   });
   function dashAwTidy_(){ // [2026.11.12] 보이는 알림 줄이 없는 종류 묶음은 감추고, 카드에 보이는 것이 하나도 없으면 카드를 감춘다
-    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */;
     if (!box) return;
     Array.prototype.forEach.call(box.querySelectorAll('[data-awkind]'), function(d){
       var alive = Array.prototype.filter.call(d.querySelectorAll('[data-awrow]'), function(x){ return x.style.display !== 'none'; }).length;
@@ -1153,7 +1178,7 @@
     var b = ev.target.closest && ev.target.closest('[data-dashawall]');
     if (!b) return;
     ev.preventDefault();
-    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */;
     var rows = box ? Array.prototype.slice.call(box.querySelectorAll('[data-awrow]')) : [];
     rows.forEach(function(x){ x.style.display = 'none'; });
     dashAwTidy_();
@@ -1167,7 +1192,7 @@
     if (!b) return;
     ev.preventDefault();
     var id = b.getAttribute('data-dashaw'), wrap = b.closest('div[style*="border"]');
-    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskCard');
+    var box = document.getElementById('dashFedStatus'), askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */;
     if (wrap) wrap.style.display = 'none';
     var leftVisible = box ? Array.prototype.filter.call(box.children, function(x){ return x.style.display !== 'none'; }).length : 1;
     if (askCard && !leftVisible) askCard.hidden = true;

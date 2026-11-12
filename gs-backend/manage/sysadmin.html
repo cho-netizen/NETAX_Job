@@ -439,7 +439,7 @@
     if (act === 'view') saView_(it);
     else if (act === 'edit') saOpenEditor_(it.fileId);
     else if (act === 'improve') { if (typeof nxSuggestOpen_ === 'function') nxSuggestOpen_(); } // [2026.10.31] 설정의 ✍ 개선요구 적기 단추는 지움 — 작은 창으로 바로
-    else if (act === 'followup') { var fc = document.getElementById('dashFollowCard'); if (fc && fc.getAttribute('data-sttab') === '2') fc.scrollIntoView({ behavior: 'smooth', block: 'start' }); else if (typeof goToView_ === 'function') goToView_('dashboard'); } // [2026.11.04] 확인조치사항 카드는 11-01부터 설정 › 시스템 관리에 있음(dashMoveDevCards_)
+    else if (act === 'followup') { if (typeof goToView_ === 'function') goToView_('dashboard'); var fc = document.getElementById('dashFollowCard'); if (fc) setTimeout(function(){ fc.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150); } // [2026.11.12] 확인조치사항은 대시보드 「답하실 것」 카드 안 // [2026.11.04] 확인조치사항 카드는 11-01부터 설정 › 시스템 관리에 있음(dashMoveDevCards_)
   });
 
   // 설정 화면이 열릴 때마다(15초 안에 다시 열면 그대로) 목록을 새로 받는다 — 작성관리에서 고치고 돌아오면 수정일이 바로 맞게.
