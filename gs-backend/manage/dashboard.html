@@ -1040,15 +1040,27 @@
   //  반영 확인·🚨 긴급 요청은 🛠 개선요구 카드가 원래 처리한다(겹쳐 보이지 않게 여기서는 뺌).
   // [2026.11.01 화면구조 개편 ③] 개발자 일 카드 둘을 설정 › 시스템 관리(탭 ②) 맨 아래로 옮긴다 — 카드 노드를 통째로 옮기므로 단추 배선(getElementById로 직접 붙임)은 그대로.
   //  불러오기도 그대로(대시보드를 열 때 함께 받음 — 대시보드가 첫 화면이라 설정을 열 때는 이미 채워져 있다)
+  // [2026.11.12] 세무사님 "설정-시스템관리가 너무 지저분하다" — 카드 7장을 셋으로: ① 「세무사님이 하실 일」(= 이 확인조치사항 카드, 맨 위 — 법령 판단 기록은 그 안에 접힘)
+  //  ② 「어젯밤 점검」(settings.html stSysCheckCard — 야간 자동점검 카드의 운영 버전·점검 줄을 그 카드 머리로 옮기고 껍데기는 지움) ③ 「지침 파일」. 열쇠·바로가기는 ③ 운영·반영 탭으로.
   function dashMoveDevCards_(){
-    var fed = document.getElementById('stFedCard');
-    if (!fed){ setTimeout(dashMoveDevCards_, 200); return; }
-    var at = fed;
-    ['dashFollowCard', 'dashNightlyCard'].forEach(function(id){
-      var c = document.getElementById(id); if (!c) return;
-      c.classList.remove('dash-cover'); c.setAttribute('data-sttab', '2');
-      at.parentNode.insertBefore(c, at.nextSibling); at = c;
-    });
+    var chk = document.getElementById('stSysCheckCard'), fed = document.getElementById('stFedCard');
+    if (!chk || !fed){ setTimeout(dashMoveDevCards_, 200); return; }
+    var fc = document.getElementById('dashFollowCard');
+    if (fc){
+      fc.classList.remove('dash-cover'); fc.setAttribute('data-sttab', '2');
+      chk.parentNode.insertBefore(fc, chk); // 어젯밤 점검 카드 앞 = 시스템 관리 탭 맨 위
+      var h3 = fc.querySelector('h3'); if (h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = '세무사님이 하실 일 ';
+      var help = fc.querySelector('.nx-help'); if (help) help.textContent = '세무사님만 하실 수 있는 일(결정할 것·눌러 볼 것·고객 자료 정리)입니다. 체크·고치기·추가가 원본 파일(확인조치사항.md)에 바로 저장됩니다. Claude가 할 일은 할 일 장부에 있습니다.';
+      fc.appendChild(fed); // 법령 판단 기록(접힘)
+    }
+    var nc = document.getElementById('dashNightlyCard');
+    if (nc){
+      var slot = document.createElement('div'); slot.id = 'stNightlySlot'; slot.style.marginBottom = '8px';
+      Array.prototype.slice.call(nc.children).forEach(function(ch){ if (ch.tagName !== 'H3') slot.appendChild(ch); });
+      var firstHelp = chk.querySelector('.nx-help');
+      chk.insertBefore(slot, firstHelp ? firstHelp.nextSibling : chk.firstChild);
+      nc.parentNode.removeChild(nc);
+    }
     var cur = '1'; try { cur = localStorage.getItem('nxSettingsTab') || '1'; } catch (e) {}
     if (typeof window.stShowTab_ === 'function') window.stShowTab_(cur);
   }

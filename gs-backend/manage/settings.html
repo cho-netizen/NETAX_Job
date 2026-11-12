@@ -18,7 +18,7 @@
 <div class="view nx-tree" id="view-settings">
   <div class="view-head"><h2>설정</h2></div>
   <!-- [2026.10.31] 세무사님 "너무 복잡해 져서 … 기능별로 구분하여 하위탭을 만들어야 하는지 검토하라" → "권장안대로": 다섯 하위 탭.
-       ① 기본 ② 시스템 관리(지침·법령 판단 대기·지침 점검) ③ 운영·반영(운영 버전·📥·🗳·🔑·↩·🩺·오류 기록·개선 후보) ④ 정비도구 ⑤ 개발자 시험(접힘) -->
+       ① 기본 ② 시스템 관리(세무사님이 하실 일·어젯밤 점검·지침 파일 — 11-12 카드 셋으로) ③ 운영·반영(운영 버전·📥·🗳·🔑·↩·🩺·오류 기록·개선 후보·열쇠·바로가기) ④ 정비도구 ⑤ 개발자 시험(접힘) -->
   <!-- [2026.10.31] 세무사님 "하위탭명에 번호를 붙인 것은 대체 이유가 뭔가?" — 탭 차례에 뜻이 없어 번호를 뗌, 모양은 공통 하위 탭(style.html .nx-tab) -->
   <div id="stTabs" class="nx-tabbar" style="padding:0 14px;">
     <button type="button" class="nx-tab" data-sttab="1">기본</button>
@@ -113,23 +113,26 @@
     <!-- [2026.10.31] 세무사님 "하위탭의 탭명이 그대로 내용에 유지되고 있어 중복" — 탭 ② 안 첫 카드 이름이 또 "시스템 관리"였다.
          하는 일대로 셋으로 나눔: 📄 지침 파일(목록·보기·편집) / 🔎 지침 점검(점검 결과·정비 판정·제안) / 법령 판단 대기.
          내용은 sysadmin.html(파일 목록·점검 결과)·knowhow.html(정비 판정·제안)이 채운다 — 두 카드 모두 .sa-scope -->
+    <!-- [2026.11.12] 세무사님 "설정-시스템관리가 너무 지저분하다 … 분류만 다시 한다는 것인가? 처리는 하지 않고?" → 확인조치사항 112건을 처리해 세무사님 몫만 남기고, 탭 ②는 카드 셋으로:
+         ① 세무사님이 하실 일(dashboard.html 확인조치사항 카드가 여기 맨 위로 옴, 법령 판단 기록은 그 안에 접힘) ② 어젯밤 점검(운영 버전·야간 점검 줄 + 규칙·AI 점검 + 지침·템플릿 정비, 묶음마다 접힘)
+         ③ 지침 파일. 열쇠 관리·바로가기(개발자 성격)는 ③ 운영·반영 탭으로. -->
+    <div class="card sa-scope" data-sttab="2" id="stSysCheckCard">
+      <h3>어젯밤 점검</h3>
+      <div class="nx-help">매일 새벽 저절로 도는 점검의 결과입니다 — 운영 버전·혼자 도는 점검, 규칙·AI 지침 점검, 지침·템플릿 정비 판정·제안. 손댈 것이 있는 묶음만 펼쳐져 있고, 나머지는 제목을 눌러 펼칩니다.</div>
+      <div class="sa-audit" id="saAuditBox"><div class="settings-tool-desc">점검 결과 불러오는 중…</div></div>
+      <div id="stKnhSlot"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">유료 AI 점검</button></div>
+      <div class="st-out-slot"></div>
+    </div>
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
       <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 보고서 탭에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
       <div id="stSysAdminBody"></div>
     </div>
-    <div class="card sa-scope" data-sttab="2" id="stKeyCard">
+    <div class="card sa-scope" data-sttab="3" id="stKeyCard">
       <h3>열쇠 관리</h3>
       <div class="nx-help">시스템이 바깥 서비스에 들어갈 때 쓰는 열쇠 목록입니다. 값은 끝 4자리까지만 보이고, 시스템 전용 열쇠는 「넣어짐」만 보입니다. 넣기·바꾸기는 먼저 시험해 보고 맞을 때만 저장합니다. 매일 밤 감시가 같은 목록을 봅니다.</div>
       <div id="saKeyBox"><div class="settings-tool-desc">열쇠 목록 불러오는 중…</div></div>
-    </div>
-    <div class="card sa-scope" data-sttab="2" id="stSysCheckCard">
-      <h3>지침 점검</h3>
-      <div class="nx-help">매일 새벽 규칙 점검(0원)·지침이 바뀐 날의 무료 AI 점검 결과와, 지침·템플릿 정비 판정·제안입니다. 제목을 눌러 펼칩니다.</div>
-      <div class="sa-audit" id="saAuditBox"><div class="settings-tool-desc">점검 결과 불러오는 중…</div></div>
-      <div id="stKnhSlot"></div>
-      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">유료 AI 점검</button></div>
-      <div class="st-out-slot"></div>
     </div>
     <div class="card" data-sttab="3" id="stBugCard">
       <h3>운영 버전·오류 기록</h3>
@@ -154,15 +157,16 @@
          회의 기록 표는 앱 전용(app-only/judgewait.html — 법령 탭 "🤝 판단 대기"와 같은 표). 서버: Federation.js. 설명: docs/ai-federation.md -->
     <!-- [2026.10.31] "🤝 AI 회의 · 개발자 소통" → "⚖️ 법령 판단 대기"(세무사님 "권장안대로"). 지운 단추: 🛠 시스템 안건(돌지 않음)·📝 요청 상태(대시보드 🛠 개선요구 카드와 같음)·
          ❓ 개발자 질문(대시보드 📋 확인조치사항 카드 맨 위에서 답함). 👥 위원 상태는 ⑤ 개발자 시험으로(10-22 "기능은 지우지 않는다") -->
-    <div class="card" data-sttab="2" id="stFedCard">
-      <h3>법령 판단 대기</h3>
-      <div class="nx-help">법령 해석이 갈리는 안건 — 회장(Claude)이 조문 원문으로 결론을 내고, 결론이 안 난 것만 세무사님께 올라옵니다.</div>
+    <!-- [2026.11.12] 카드 → 접힘 묶음. dashboard.html dashMoveDevCards_가 「세무사님이 하실 일」(확인조치사항) 카드 끝에 넣는다 — 결정할 것은 그 카드 「결정할 것」 절 한 곳에만. -->
+    <details class="kh-sec" data-sttab="2" id="stFedCard" style="margin-top:10px;">
+      <summary class="nx-l3">법령 판단 기록 — 회장(Claude) 결론·세무사님 결정</summary>
+      <div class="nx-help">법령 해석이 갈렸던 안건의 기록입니다. 새로 결정하실 것은 위 「결정할 것」 절에 올라옵니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" data-fed="law">판단 기록</button>
-        <button type="button" class="ghost-btn" data-fed="need">세무사님 결정 필요</button>
+        <button type="button" class="ghost-btn" data-fed="need">결정 필요로 남은 것</button>
       </div>
       <div class="st-fed-box settings-tool-desc" id="stFedBox">버튼을 누르면 내용이 보입니다.</div>
-    </div>
+    </details>
 <script>
   // [2026.10.31] 하위 탭 — 고른 탭은 이 기기에 기억. 도구 결과(stBugList 한 칸을 여러 도구가 같이 씀)는 누른 단추가 있는 카드의 칸으로 옮겨 보인다
   (function(){
@@ -218,8 +222,8 @@
     });
   })();
 </script>
-    <!-- [2026.11.04 ⑮] 세무사님 "권장안대로" — 개발자용(AI 요금·키) 바로가기도 시스템 관리로 -->
-    <div class="card" data-sttab="2">
+    <!-- [2026.11.04 ⑮] 세무사님 "권장안대로" — 개발자용(AI 요금·키) 바로가기도 시스템 관리로 → [2026.11.12] 운영·반영 탭으로(시스템 관리는 세무사님 할 일·점검·지침 셋만) -->
+    <div class="card" data-sttab="3">
       <h3>바로가기</h3>
       <div class="nx-help">AI 사용요금·API 키 확인용입니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">

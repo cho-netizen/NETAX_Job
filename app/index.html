@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 01:46 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 02:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4088,15 +4088,27 @@ function nxMdOpenWindow(title, src, opts){
   //  반영 확인·🚨 긴급 요청은 🛠 개선요구 카드가 원래 처리한다(겹쳐 보이지 않게 여기서는 뺌).
   // [2026.11.01 화면구조 개편 ③] 개발자 일 카드 둘을 설정 › 시스템 관리(탭 ②) 맨 아래로 옮긴다 — 카드 노드를 통째로 옮기므로 단추 배선(getElementById로 직접 붙임)은 그대로.
   //  불러오기도 그대로(대시보드를 열 때 함께 받음 — 대시보드가 첫 화면이라 설정을 열 때는 이미 채워져 있다)
+  // [2026.11.12] 세무사님 "설정-시스템관리가 너무 지저분하다" — 카드 7장을 셋으로: ① 「세무사님이 하실 일」(= 이 확인조치사항 카드, 맨 위 — 법령 판단 기록은 그 안에 접힘)
+  //  ② 「어젯밤 점검」(settings.html stSysCheckCard — 야간 자동점검 카드의 운영 버전·점검 줄을 그 카드 머리로 옮기고 껍데기는 지움) ③ 「지침 파일」. 열쇠·바로가기는 ③ 운영·반영 탭으로.
   function dashMoveDevCards_(){
-    var fed = document.getElementById('stFedCard');
-    if (!fed){ setTimeout(dashMoveDevCards_, 200); return; }
-    var at = fed;
-    ['dashFollowCard', 'dashNightlyCard'].forEach(function(id){
-      var c = document.getElementById(id); if (!c) return;
-      c.classList.remove('dash-cover'); c.setAttribute('data-sttab', '2');
-      at.parentNode.insertBefore(c, at.nextSibling); at = c;
-    });
+    var chk = document.getElementById('stSysCheckCard'), fed = document.getElementById('stFedCard');
+    if (!chk || !fed){ setTimeout(dashMoveDevCards_, 200); return; }
+    var fc = document.getElementById('dashFollowCard');
+    if (fc){
+      fc.classList.remove('dash-cover'); fc.setAttribute('data-sttab', '2');
+      chk.parentNode.insertBefore(fc, chk); // 어젯밤 점검 카드 앞 = 시스템 관리 탭 맨 위
+      var h3 = fc.querySelector('h3'); if (h3 && h3.firstChild && h3.firstChild.nodeType === 3) h3.firstChild.textContent = '세무사님이 하실 일 ';
+      var help = fc.querySelector('.nx-help'); if (help) help.textContent = '세무사님만 하실 수 있는 일(결정할 것·눌러 볼 것·고객 자료 정리)입니다. 체크·고치기·추가가 원본 파일(확인조치사항.md)에 바로 저장됩니다. Claude가 할 일은 할 일 장부에 있습니다.';
+      fc.appendChild(fed); // 법령 판단 기록(접힘)
+    }
+    var nc = document.getElementById('dashNightlyCard');
+    if (nc){
+      var slot = document.createElement('div'); slot.id = 'stNightlySlot'; slot.style.marginBottom = '8px';
+      Array.prototype.slice.call(nc.children).forEach(function(ch){ if (ch.tagName !== 'H3') slot.appendChild(ch); });
+      var firstHelp = chk.querySelector('.nx-help');
+      chk.insertBefore(slot, firstHelp ? firstHelp.nextSibling : chk.firstChild);
+      nc.parentNode.removeChild(nc);
+    }
     var cur = '1'; try { cur = localStorage.getItem('nxSettingsTab') || '1'; } catch (e) {}
     if (typeof window.stShowTab_ === 'function') window.stShowTab_(cur);
   }
@@ -15889,7 +15901,9 @@ function nxMdOpenWindow(title, src, opts){
     if (actual < 500000000) return 500000000; // 실제 상속액이 없거나 5억 미만이어도 최소 5억은 공제
     if (isDivided === false) return 500000000; // §19②③ 분할기한까지 미분할·미신고 — 최소보장액만 인정
     const limit = Number.isFinite(limitAmount) ? limitAmount : Infinity;
-    return Math.min(actual, limit, 3000000000);
+    // [2026.11.12 세무사님 결정(확인조치사항 권장안 채택)] 실제 상속액이 5억 이상인데 §19①1호 한도가 5억 아래면 — 문언(min)대로면 5억 미만을 받은 배우자(④ 5억)보다
+    //  공제가 작아지는 역전(예: 과세가액 20억·자녀 5명). 국세청 해석 재산상속46014-508(2000.4.25.)·재삼46014-1106(1997.5.6.)·국세상담 Q&A는 5억원 공제 → 5억을 바닥으로 둔다.
+    return Math.max(500000000, Math.min(actual, limit, 3000000000));
   }
 
   // 단기재상속세액공제 (상증세법 §30②) — 10년 이내 재상속 시, §30②1호 산식대로 "전의 상속세 산출세액 ×
@@ -17387,7 +17401,7 @@ function nxMdOpenWindow(title, src, opts){
       //  기본은 예전대로(표2), nonResidentTable2Excluded면 문언대로 표1(보유기간별 공제율).
       if (t.isTransferorResident === false && t.nonResidentTable2Excluded) {
         ltRate = longTermRateAt_(holdingYears, t.transferDate);
-        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '비거주자 — 출국 2년 안 1주택 비과세는 받되 장특공은 표1 ' + Math.round(ltRate * 100) + '%(소득세법 §121② 단서·시행령 §180의2①, 표2 배제 — [확인 필요])';
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '비거주자 — 출국 2년 안 1주택 비과세는 받되 장특공은 표1 ' + Math.round(ltRate * 100) + '%(소득세법 §121② 단서·시행령 §180의2①, 표2 배제 — 세무사님 11-12 결정: 표1)';
       }
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
@@ -17464,6 +17478,16 @@ function nxMdOpenWindow(title, src, opts){
       isMultiHouseSurcharge = !isOneHouse && !rentalSpecialSkipsSurcharge_ && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_
         && !t.isMultiHouseRentalExemption
         && multiSurchargeRateAt_(t.transferDate, multiHouseCount) > 0;
+      // [2026.11.12 세무사님 결정(확인조치사항 권장안 채택)] 2009.3.16.~2012.12.31. 취득한 주택은 조정대상지역 다주택 중과세율(§104⑦)을 적용하지 않는다 — 법률 제9270호 부칙 §14의
+      //  문언은 §104①4~9호(옛 번호)만 들지만, 국세청 해석 재산세제과-1422(2023.12.26.)·477(2024.4.17.)이 §104⑦ 중과도 기본세율로 봄(10억 예에서 약 1.3억 차이). 장특공은
+      //  해석대로 2018.4.1.~2022.5.9. 양도분만 배제(§95② 괄호), 그 밖의 양도분은 보유기간대로. 취득일은 실제 취득일(의제취득일 아님) — nonbizAcqWindowExempt_와 같은 창.
+      if (isMultiHouseSurcharge && nonbizAcqWindowExempt_(t.acquisitionDate)) {
+        isMultiHouseSurcharge = false;
+        const td0912_ = String(t.transferDate || '').slice(0, 10), ltOut0912_ = td0912_ >= '2018-04-01' && td0912_ <= '2022-05-09';
+        if (ltOut0912_) { ltRate = 0; isRentalSpecial = false; }
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '2009.3.16.~2012.12.31. 취득 주택(' + String(t.acquisitionDate).slice(0, 10) + ') — 조정대상지역 다주택 중과세율을 적용하지 않습니다(법률 제9270호 부칙 §14, 재산세제과-1422·477 — 세무사님 11-12 채택)'
+          + (ltOut0912_ ? '. 2018.4.1.~2022.5.9. 양도분이라 장기보유특별공제는 적용하지 않습니다(해석 1422).' : '.');
+      }
       if (isMultiHouseSurcharge && isRentalSpecial && t.rentalSpecialType === 'rental_general') {
         if (t._rental9703SurchargeNoLt) { isRentalSpecial = false; ltRate = 0; }
         else if (t._ntNoRentalLt) ltRate = 0; // [N6(나)] 특례가 없으면 중과 자산은 §95② 괄호로 장특공 없음
@@ -28857,7 +28881,9 @@ function nxMdOpenWindow(title, src, opts){
     for (let n = 1; n <= years; n++) {
       let amt = yearly_ && yearly_.length >= n ? yearly_[n - 1] : (yearly_ && yearly_.length ? yearly_[yearly_.length - 1] : annualAmount * Math.pow(1 + growth_ / 100, n - 1));
       if (n === years && lastFrac < 1 && !(yearly_ && yearly_.length >= n)) amt = amt * lastFrac;
-      const pv = amt / Math.pow(1 + RATE, n);
+      // [2026.11.12 세무사님 결정(확인조치사항 권장안 채택)] 첫 1년분은 할인하지 않는다 — 국세청 해석 서면-2019-상속증여-0012(2019.3.20.)·세금절약가이드 예시(같은 예에서
+      //  첫해부터 할인하면 20,472,487원, 해석대로면 21,086,662원 — 비율 1.03)와 아이템 증여 13의 값에 맞춤. 시행령 §62 1호 "n = 평가기준일부터의 경과연수"를 첫 회분 0으로 읽는 해석.
+      const pv = amt / Math.pow(1 + RATE, n - 1);
       presentValueSum += pv; nominal += amt;
       yearlyDetail.push({ 연차: n, 정기금액: Math.round(amt), 현재가치: Math.round(pv) });
     }
@@ -56739,7 +56765,7 @@ function rwAiApplyEdit_(id, content){
 <div class="view nx-tree" id="view-settings">
   <div class="view-head"><h2>설정</h2></div>
   <!-- [2026.10.31] 세무사님 "너무 복잡해 져서 … 기능별로 구분하여 하위탭을 만들어야 하는지 검토하라" → "권장안대로": 다섯 하위 탭.
-       ① 기본 ② 시스템 관리(지침·법령 판단 대기·지침 점검) ③ 운영·반영(운영 버전·📥·🗳·🔑·↩·🩺·오류 기록·개선 후보) ④ 정비도구 ⑤ 개발자 시험(접힘) -->
+       ① 기본 ② 시스템 관리(세무사님이 하실 일·어젯밤 점검·지침 파일 — 11-12 카드 셋으로) ③ 운영·반영(운영 버전·📥·🗳·🔑·↩·🩺·오류 기록·개선 후보·열쇠·바로가기) ④ 정비도구 ⑤ 개발자 시험(접힘) -->
   <!-- [2026.10.31] 세무사님 "하위탭명에 번호를 붙인 것은 대체 이유가 뭔가?" — 탭 차례에 뜻이 없어 번호를 뗌, 모양은 공통 하위 탭(style.html .nx-tab) -->
   <div id="stTabs" class="nx-tabbar" style="padding:0 14px;">
     <button type="button" class="nx-tab" data-sttab="1">기본</button>
@@ -56834,23 +56860,26 @@ function rwAiApplyEdit_(id, content){
     <!-- [2026.10.31] 세무사님 "하위탭의 탭명이 그대로 내용에 유지되고 있어 중복" — 탭 ② 안 첫 카드 이름이 또 "시스템 관리"였다.
          하는 일대로 셋으로 나눔: 📄 지침 파일(목록·보기·편집) / 🔎 지침 점검(점검 결과·정비 판정·제안) / 법령 판단 대기.
          내용은 sysadmin.html(파일 목록·점검 결과)·knowhow.html(정비 판정·제안)이 채운다 — 두 카드 모두 .sa-scope -->
+    <!-- [2026.11.12] 세무사님 "설정-시스템관리가 너무 지저분하다 … 분류만 다시 한다는 것인가? 처리는 하지 않고?" → 확인조치사항 112건을 처리해 세무사님 몫만 남기고, 탭 ②는 카드 셋으로:
+         ① 세무사님이 하실 일(dashboard.html 확인조치사항 카드가 여기 맨 위로 옴, 법령 판단 기록은 그 안에 접힘) ② 어젯밤 점검(운영 버전·야간 점검 줄 + 규칙·AI 점검 + 지침·템플릿 정비, 묶음마다 접힘)
+         ③ 지침 파일. 열쇠 관리·바로가기(개발자 성격)는 ③ 운영·반영 탭으로. -->
+    <div class="card sa-scope" data-sttab="2" id="stSysCheckCard">
+      <h3>어젯밤 점검</h3>
+      <div class="nx-help">매일 새벽 저절로 도는 점검의 결과입니다 — 운영 버전·혼자 도는 점검, 규칙·AI 지침 점검, 지침·템플릿 정비 판정·제안. 손댈 것이 있는 묶음만 펼쳐져 있고, 나머지는 제목을 눌러 펼칩니다.</div>
+      <div class="sa-audit" id="saAuditBox"><div class="settings-tool-desc">점검 결과 불러오는 중…</div></div>
+      <div id="stKnhSlot"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">유료 AI 점검</button></div>
+      <div class="st-out-slot"></div>
+    </div>
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
       <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 보고서 탭에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
       <div id="stSysAdminBody"></div>
     </div>
-    <div class="card sa-scope" data-sttab="2" id="stKeyCard">
+    <div class="card sa-scope" data-sttab="3" id="stKeyCard">
       <h3>열쇠 관리</h3>
       <div class="nx-help">시스템이 바깥 서비스에 들어갈 때 쓰는 열쇠 목록입니다. 값은 끝 4자리까지만 보이고, 시스템 전용 열쇠는 「넣어짐」만 보입니다. 넣기·바꾸기는 먼저 시험해 보고 맞을 때만 저장합니다. 매일 밤 감시가 같은 목록을 봅니다.</div>
       <div id="saKeyBox"><div class="settings-tool-desc">열쇠 목록 불러오는 중…</div></div>
-    </div>
-    <div class="card sa-scope" data-sttab="2" id="stSysCheckCard">
-      <h3>지침 점검</h3>
-      <div class="nx-help">매일 새벽 규칙 점검(0원)·지침이 바뀐 날의 무료 AI 점검 결과와, 지침·템플릿 정비 판정·제안입니다. 제목을 눌러 펼칩니다.</div>
-      <div class="sa-audit" id="saAuditBox"><div class="settings-tool-desc">점검 결과 불러오는 중…</div></div>
-      <div id="stKnhSlot"></div>
-      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">유료 AI 점검</button></div>
-      <div class="st-out-slot"></div>
     </div>
     <div class="card" data-sttab="3" id="stBugCard">
       <h3>운영 버전·오류 기록</h3>
@@ -56875,15 +56904,16 @@ function rwAiApplyEdit_(id, content){
          회의 기록 표는 앱 전용(app-only/judgewait.html — 법령 탭 "🤝 판단 대기"와 같은 표). 서버: Federation.js. 설명: docs/ai-federation.md -->
     <!-- [2026.10.31] "🤝 AI 회의 · 개발자 소통" → "⚖️ 법령 판단 대기"(세무사님 "권장안대로"). 지운 단추: 🛠 시스템 안건(돌지 않음)·📝 요청 상태(대시보드 🛠 개선요구 카드와 같음)·
          ❓ 개발자 질문(대시보드 📋 확인조치사항 카드 맨 위에서 답함). 👥 위원 상태는 ⑤ 개발자 시험으로(10-22 "기능은 지우지 않는다") -->
-    <div class="card" data-sttab="2" id="stFedCard">
-      <h3>법령 판단 대기</h3>
-      <div class="nx-help">법령 해석이 갈리는 안건 — 회장(Claude)이 조문 원문으로 결론을 내고, 결론이 안 난 것만 세무사님께 올라옵니다.</div>
+    <!-- [2026.11.12] 카드 → 접힘 묶음. dashboard.html dashMoveDevCards_가 「세무사님이 하실 일」(확인조치사항) 카드 끝에 넣는다 — 결정할 것은 그 카드 「결정할 것」 절 한 곳에만. -->
+    <details class="kh-sec" data-sttab="2" id="stFedCard" style="margin-top:10px;">
+      <summary class="nx-l3">법령 판단 기록 — 회장(Claude) 결론·세무사님 결정</summary>
+      <div class="nx-help">법령 해석이 갈렸던 안건의 기록입니다. 새로 결정하실 것은 위 「결정할 것」 절에 올라옵니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" data-fed="law">판단 기록</button>
-        <button type="button" class="ghost-btn" data-fed="need">세무사님 결정 필요</button>
+        <button type="button" class="ghost-btn" data-fed="need">결정 필요로 남은 것</button>
       </div>
       <div class="st-fed-box settings-tool-desc" id="stFedBox">버튼을 누르면 내용이 보입니다.</div>
-    </div>
+    </details>
 <script>
   // [2026.10.31] 하위 탭 — 고른 탭은 이 기기에 기억. 도구 결과(stBugList 한 칸을 여러 도구가 같이 씀)는 누른 단추가 있는 카드의 칸으로 옮겨 보인다
   (function(){
@@ -56939,8 +56969,8 @@ function rwAiApplyEdit_(id, content){
     });
   })();
 </script>
-    <!-- [2026.11.04 ⑮] 세무사님 "권장안대로" — 개발자용(AI 요금·키) 바로가기도 시스템 관리로 -->
-    <div class="card" data-sttab="2">
+    <!-- [2026.11.04 ⑮] 세무사님 "권장안대로" — 개발자용(AI 요금·키) 바로가기도 시스템 관리로 → [2026.11.12] 운영·반영 탭으로(시스템 관리는 세무사님 할 일·점검·지침 셋만) -->
+    <div class="card" data-sttab="3">
       <h3>바로가기</h3>
       <div class="nx-help">AI 사용요금·API 키 확인용입니다.</div>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
@@ -57853,13 +57883,13 @@ function rwAiApplyEdit_(id, content){
       (by[t] || by.keep).push([it, i]);
     });
     if (!by.always.length && !by.work.length && !by.keep.length) return '';
-    var h = '<div class="nx-l3">Claude 작업원칙</div><div class="nx-in">';
+    var h = '<details class="sa-rdet"><summary class="nx-l3">Claude 작업원칙 (' + (by.always.length + by.work.length + by.keep.length) + '개)<span class="nx-l-sub">세무사님 컴퓨터의 Claude가 읽는 규칙</span></summary><div class="nx-in">'; // [2026.11.12] 묶음 접힘
     if (by.always.length) h += '<div class="nx-l4">늘 읽음<span class="nx-l-sub">말씀하실 때마다·대화 시작 때 붙음</span></div><div class="nx-in">' + by.always.map(function(p){ return saItemHtml_(p[0], p[1]); }).join('') + '</div>';
     if (by.work.length) h += '<details class="sa-rdet"><summary class="nx-l4">작업할 때 읽음 (' + by.work.length + '개)<span class="nx-l-sub">그 작업을 하려는 순간에만 붙음</span></summary><div class="nx-in">'
       + by.work.map(function(p){ return saRuleRowHtml_(p[0], p[1]); }).join('') + '</div></details>';
     if (by.keep.length) h += '<details class="sa-rdet"><summary class="nx-l4">보관·안내 (' + by.keep.length + '개)<span class="nx-l-sub">자동으로 읽지 않음</span></summary><div class="nx-in">'
       + by.keep.map(function(p){ return saRuleRowHtml_(p[0], p[1]); }).join('') + '</div></details>';
-    return h + '</div>';
+    return h + '</div></details>';
   }
 
   // [2026.10.31] 세무사님 "업무관리지침도 정비하자" / "장황하게 나열되지 않도록 해야 한다" — 지침 93장이 큰 카드로 한 줄로 늘어섰다.
@@ -57882,7 +57912,7 @@ function rwAiApplyEdit_(id, content){
     if (!total) return '';
     var label = { common: '공통 절차·안내' };
     SA_BM_KINDS_.forEach(function(x){ label[x[0]] = x[1]; });
-    var h = '<div class="nx-l3">업무관리자 지침 (' + total + '개)</div><div class="nx-in">';
+    var h = '<details class="sa-rdet" open><summary class="nx-l3">업무관리자 지침 (' + total + '개)</summary><div class="nx-in">'; // [2026.11.12] 묶음 접힘(이것만 펼침)
     SA_BM_ORDER_.forEach(function(k){
       var list = by[k]; if (!list) return;
       h += '<details class="sa-rdet"' + (k === 'nex' ? ' open' : '') + '><summary class="nx-l4">' + saEsc_(label[k]) + ' (' + list.length + '개)</summary><div class="nx-in">'
@@ -57891,7 +57921,7 @@ function rwAiApplyEdit_(id, content){
           return saRuleRowHtml_({ title: String(it.name || '').replace(/\.md$/, ''), use: it.firstLine || '(첫 줄 비어 있음 — 첫 줄에 다루는 것을 한 줄로 적어 주세요)', exists: it.exists, editable: it.editable }, p[1]);
         }).join('') + '</div></details>';
     });
-    return h + '</div>';
+    return h + '</div></details>';
   }
 
   function saRender_(res){
@@ -57909,7 +57939,7 @@ function rwAiApplyEdit_(id, content){
       var rows = [];
       items.forEach(function(it, i){ if (it.group === g) rows.push(saItemHtml_(it, i)); });
       if (!rows.length) return;
-      html += '<div class="nx-l3">' + saEsc_(g) + '</div><div class="nx-in">' + rows.join('') + '</div>';
+      html += '<details class="sa-rdet"><summary class="nx-l3">' + saEsc_(g) + ' (' + rows.length + '개)</summary><div class="nx-in">' + rows.join('') + '</div></details>'; // [2026.11.12] 묶음 접힘
     });
     if (!items.length) html += '<div class="settings-tool-desc">표시할 파일이 없습니다.</div>';
     box.innerHTML = html;
@@ -58018,10 +58048,10 @@ function rwAiApplyEdit_(id, content){
   function saAuditSet_(html){ saAudit_.html = html; var b = saAuditBox_(); if (b) b.innerHTML = html; }
   function saAuditLoad_(){
     callGas('sysaudit_result', {}).then(function(res){
-      if (!res || res.error){ saAuditSet_('<div class="nx-l3">규칙·AI 점검 결과</div><div class="sa-warn">점검 결과를 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div>' + saAuditBtns_(null)); return; }
+      if (!res || res.error){ saAuditSet_('<details class="kh-sec" open><summary class="nx-l3">규칙·AI 점검 — ⚠ 결과를 못 불러옴</summary><div class="sa-warn">점검 결과를 불러오지 못했습니다: ' + saEsc_(res && res.error || '응답 없음') + '</div>' + saAuditBtns_(null) + '</details>'); return; }
       saAudit_.data = res;
       saAuditSet_(saAuditHtml_(res));
-    }).catch(function(err){ saAuditSet_('<div class="nx-l3">규칙·AI 점검 결과</div><div class="sa-warn">점검 결과를 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div>' + saAuditBtns_(null)); });
+    }).catch(function(err){ saAuditSet_('<details class="kh-sec" open><summary class="nx-l3">규칙·AI 점검 — ⚠ 결과를 못 불러옴</summary><div class="sa-warn">점검 결과를 불러오지 못했습니다: ' + saEsc_(err && err.message || String(err)) + '</div>' + saAuditBtns_(null) + '</details>'); });
   }
   function saAuditBtns_(r){
     var law = r && r.ai && r.ai.items ? r.ai.items.filter(function(x){ return x.세법판단필요; }).length : 0;
@@ -58033,8 +58063,14 @@ function rwAiApplyEdit_(id, content){
   }
   function saAuditHtml_(res){
     var r = res.result;
-    var h = '<div class="nx-l3">규칙·AI 점검 결과</div><div class="nx-help">규칙 점검(0원, 매일 새벽) + 무료 AI 점검(지침이 바뀐 날만)</div><div class="nx-in">';
-    if (!r){ return h + '<div class="sa-a-line sa-a-bad">⚠ 점검 안 됨 — ' + saEsc_(res.stale || '기록 없음') + '</div>' + saAuditBtns_(null) + '</div>'; }
+    // [2026.11.12] 세무사님 "지저분하다" — 요약 한 줄만 보이고 상세는 접힘(문제·어긋남이 있을 때만 펼침). 다른 묶음(제안·정비 판정)과 같은 모양(details).
+    var tt_ = r && r.ran && r.rules && r.rules.totals || null, aiN_ = r && r.ai && (r.ai.items || []).length || 0;
+    var pcN_ = r && r.ran && r.rules.pathCheck ? (r.rules.pathCheck.problems || []).length : 0;
+    var sum_ = !r ? '규칙·AI 점검 — ⚠ 기록 없음' : !r.ran ? '규칙·AI 점검 — ⚠ 점검 안 됨' : '규칙·AI 점검 ' + saEsc_(String(r.at || '').slice(5, 16)) + ' — '
+      + (tt_.problems ? '<span class="sa-a-bad">문제 ' + tt_.problems + '</span>' : '문제 0') + ' · 주의 ' + tt_.warnings + ' · [확인 필요] ' + tt_.confirm + ' · AI 어긋남 ' + aiN_ + (pcN_ ? ' · <span class="sa-a-bad">지시문↔도구 ' + pcN_ + '</span>' : '');
+    var open_ = !r || !r.ran || (tt_ && (tt_.problems || tt_.warnings)) || pcN_ || !!(res.stale);
+    var h = '<details class="kh-sec" id="saAuditDet"' + (open_ ? ' open' : '') + '><summary class="nx-l3">' + sum_ + '</summary><div class="nx-help">규칙 점검(0원, 매일 새벽) + 무료 AI 점검(지침이 바뀐 날만). [확인 필요]는 원문 없는 법(민법·법인세법·집행기준 등)이 들어오면 채우는 것 — 고칠 일이 아니라 기다릴 일.</div><div class="nx-in">';
+    if (!r){ return h +'<div class="sa-a-line sa-a-bad">⚠ 점검 안 됨 — ' + saEsc_(res.stale || '기록 없음') + '</div>' + saAuditBtns_(null) + '</div></details>'; }
     if (res.stale) h += '<div class="sa-a-line sa-a-bad">⚠ ' + saEsc_(res.stale) + '</div>';
     h += '<div class="sa-a-line">마지막 규칙 점검: <b>' + saEsc_(r.at) + '</b> (' + saEsc_(r.trigger || '') + (r.secs != null ? ', ' + r.secs + '초' : '') + ')</div>';
     if (!r.ran){
@@ -58090,7 +58126,7 @@ function rwAiApplyEdit_(id, content){
         + '<br>' + saEsc_(x.내용) + ((x.근거 || []).length ? '<span class="sa-snip" style="display:block; color:var(--sub); font-size:11.5px;">근거: ' + saEsc_(x.근거.join(' / ')) + '</span>' : '') + '</div>';
     });
     if (ai.ran && !(ai.items || []).length) h += '<div class="sa-a-line sa-a-ok">AI가 찾은 어긋남 없음</div>';
-    return h + '</div>' + saAuditBtns_(r) + '</div>';
+    return h + '</div>' + saAuditBtns_(r) + '</div></details>';
   }
   // 점검 결과의 파일 이름 → 파일 ID(마스터 프로필은 "마스터 프로필(…)" 이름으로 들어 있음)
   function saAuditFileId_(name){
@@ -58322,7 +58358,7 @@ function rwAiApplyEdit_(id, content){
     // ② 판정 요약 + 파일별 판정
     var t = (r && r.totals) || {};
     html += '<details class="kh-sec" id="khSecJudge"><summary class="nx-l3">지침·템플릿 정비 판정 — '
-      + (r ? (r.ran ? '수정 필요 ' + (t['수정 필요'] || 0) + (t.급함 != null ? '(먼저 고칠 것 ' + t.급함 + ')' : '') + ' · 폐기 후보 ' + (t['폐기 후보'] || 0) + ' · 현행 ' + (t['현행'] || 0) : '⚠ 판정 안 됨') : '아직 판정 전') + '</summary><div class="kh-in nx-in">';
+      + (r ? (r.ran ? '수정 필요 ' + (t['수정 필요'] || 0) + (t.급함 != null ? '(먼저 고칠 것 ' + t.급함 + ')' : '') + ' · 폐기 후보 ' + (t['폐기 후보'] || 0) + ' · 현행 ' + (t['현행'] || 0) + (t.보완만 ? '(그중 [확인 필요] 보완 대기 ' + t.보완만 + ' — 원문 없는 법이 들어오면)' : '') : '⚠ 판정 안 됨') : '아직 판정 전') + '</summary><div class="kh-in nx-in">';
     if (r) html += '<div class="kh-note">' + esc_(r.at) + ' 판정' + (r.secs != null ? '(' + r.secs + '초)' : '') + ' · 매일 밤 규칙으로(0원). ' + esc_(r.auditNote || '') + '</div>';
     if (r && !r.ran) html += '<div class="kh-warn">⚠ ' + esc_(r.reason || '이유 모름') + '</div>';
     ((r && r.warn) || []).forEach(function(w){ html += '<div class="kh-warn">⚠ ' + esc_(w) + '</div>'; });
@@ -58357,6 +58393,7 @@ function rwAiApplyEdit_(id, content){
           + '<div>보고서: ' + (c.보고서.length ? esc_(c.보고서.join(', ')) : (c.업무유형 === '상담' ? '<span class="kh-m">해당 없음</span>' : '<span class="kh-gap">없음</span>')) + '</div>'
           + (c.마지막정비 ? '<div class="kh-m">마지막 정비 ' + esc_(c.마지막정비) + '</div>' : '')
           + (c.빈칸.length ? '<div class="kh-gap">빈칸: ' + esc_(c.빈칸.join(' · ')) + '</div>' : '')
+          + (c.옛이름 && c.옛이름.length ? '<div class="kh-m">사건 목록의 이름(표에 없음 — 지침이 없는 업무가 아니라 이름이 다른 것): ' + esc_(c.옛이름.join(' · ')) + '</div>' : '')
           + '</div>';
       });
       html += '</div>';

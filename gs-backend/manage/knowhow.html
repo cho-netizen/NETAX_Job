@@ -122,7 +122,7 @@
     // ② 판정 요약 + 파일별 판정
     var t = (r && r.totals) || {};
     html += '<details class="kh-sec" id="khSecJudge"><summary class="nx-l3">지침·템플릿 정비 판정 — '
-      + (r ? (r.ran ? '수정 필요 ' + (t['수정 필요'] || 0) + (t.급함 != null ? '(먼저 고칠 것 ' + t.급함 + ')' : '') + ' · 폐기 후보 ' + (t['폐기 후보'] || 0) + ' · 현행 ' + (t['현행'] || 0) : '⚠ 판정 안 됨') : '아직 판정 전') + '</summary><div class="kh-in nx-in">';
+      + (r ? (r.ran ? '수정 필요 ' + (t['수정 필요'] || 0) + (t.급함 != null ? '(먼저 고칠 것 ' + t.급함 + ')' : '') + ' · 폐기 후보 ' + (t['폐기 후보'] || 0) + ' · 현행 ' + (t['현행'] || 0) + (t.보완만 ? '(그중 [확인 필요] 보완 대기 ' + t.보완만 + ' — 원문 없는 법이 들어오면)' : '') : '⚠ 판정 안 됨') : '아직 판정 전') + '</summary><div class="kh-in nx-in">';
     if (r) html += '<div class="kh-note">' + esc_(r.at) + ' 판정' + (r.secs != null ? '(' + r.secs + '초)' : '') + ' · 매일 밤 규칙으로(0원). ' + esc_(r.auditNote || '') + '</div>';
     if (r && !r.ran) html += '<div class="kh-warn">⚠ ' + esc_(r.reason || '이유 모름') + '</div>';
     ((r && r.warn) || []).forEach(function(w){ html += '<div class="kh-warn">⚠ ' + esc_(w) + '</div>'; });
@@ -157,6 +157,7 @@
           + '<div>보고서: ' + (c.보고서.length ? esc_(c.보고서.join(', ')) : (c.업무유형 === '상담' ? '<span class="kh-m">해당 없음</span>' : '<span class="kh-gap">없음</span>')) + '</div>'
           + (c.마지막정비 ? '<div class="kh-m">마지막 정비 ' + esc_(c.마지막정비) + '</div>' : '')
           + (c.빈칸.length ? '<div class="kh-gap">빈칸: ' + esc_(c.빈칸.join(' · ')) + '</div>' : '')
+          + (c.옛이름 && c.옛이름.length ? '<div class="kh-m">사건 목록의 이름(표에 없음 — 지침이 없는 업무가 아니라 이름이 다른 것): ' + esc_(c.옛이름.join(' · ')) + '</div>' : '')
           + '</div>';
       });
       html += '</div>';

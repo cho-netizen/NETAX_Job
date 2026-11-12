@@ -101,12 +101,15 @@ function knhCoverage_(input) {
         지침: guides, 핵심지침: core, 의뢰서: intakeName, 보고서: reps, 마지막정비: last.slice(0, 10), 상태: related.length ? worst : '', 빈칸: blanks });
     });
   });
-  // 사건 목록에 있는데 위 표에 없는 업무(옛 이름 등)
+  // 사건 목록에 있는데 위 표에 없는 업무(옛 이름·업무유형 빈칸 등) — [2026.11.12] 줄마다 "신규 필요"로 세지 않고 한 줄로 묶는다(옛 이름은 지침이 없는 업무가 아니라 이름이 다른 것).
+  var others = [];
   Object.keys(cnt).forEach(function (k) {
     var p = k.split('|');
     if (rows.some(function (r) { return r.세목 === p[0] && r.업무유형 === p[1]; })) return;
-    rows.push({ 세목: p[0], 업무유형: p[1], 업무: p.join(' '), 사건수: cnt[k], 최근사건: recent[k] || 0, 지침: [], 핵심지침: [], 의뢰서: null, 보고서: [], 마지막정비: '', 상태: '', 빈칸: ['표에 없는 업무 이름 — 사건 목록의 세목·업무유형 확인'] });
+    others.push({ 이름: (p[0] + ' ' + p[1]).trim() || '(세목·업무유형 없음)', 사건수: cnt[k], 최근사건: recent[k] || 0 });
   });
+  if (others.length) rows.push({ 세목: '', 업무유형: '', 업무: '그 밖(옛 이름·업무유형 빈칸) ' + others.length + '가지', 사건수: others.reduce(function (a, o) { return a + o.사건수; }, 0), 최근사건: others.reduce(function (a, o) { return a + o.최근사건; }, 0),
+    지침: [], 핵심지침: [], 의뢰서: null, 보고서: [], 마지막정비: '', 상태: '', 빈칸: [], 옛이름: others.map(function (o) { return o.이름 + '(' + o.사건수 + ')'; }) });
   // 빈칸이 있는 업무 중 사건이 많은 것부터(다음 작성 대상)
   var order = rows.filter(function (r) { return r.빈칸.length; }).sort(function (a, b) { return (b.최근사건 - a.최근사건) || (b.사건수 - a.사건수); });
   return { rows: rows, next: order.slice(0, 12).map(function (r) { return { 업무: r.업무, 사건수: r.사건수, 최근사건: r.최근사건, 빈칸: r.빈칸 }; }) };
@@ -198,7 +201,10 @@ function knhJudge_(input) {
     } else if (paraBy[f.name] === 0) tags.push('최근 40일 사본에 안 쓰임');
     if (text.replace(/\s/g, '').length < 150) add('수정', '내용이 거의 없음(' + text.replace(/\s/g, '').length + '자)');
     // 상태: 폐기 > 수정(보완 포함). 급한 정도(priority): 3 = 틀린 곳·법령 개정, 2 = 세무사님이 반복해서 고친 곳·내용 없음, 1 = [확인 필요]만, 0 = 현행 — 주간 루틴은 높은 것부터
-    var status = reasons.some(function (r) { return r.type === '폐기'; }) ? '폐기 후보' : reasons.some(function (r) { return r.type === '수정' || r.type === '보완'; }) ? '수정 필요' : '현행';
+    // [2026.11.12 세무사님 "지저분하다"] [확인 필요]만 남은 파일(보완)은 "수정 필요"가 아니다 — 원문이 없는 법(민법·법인세법·집행기준 등)이 들어와야 채울 수 있어
+    //  고칠 일이 아니라 기다릴 일. 123개가 "수정 필요"로 떠 진짜 고칠 7개를 가렸다. 현행으로 두고 꼬리표만 붙인다(개수는 totals.보완만).
+    var status = reasons.some(function (r) { return r.type === '폐기'; }) ? '폐기 후보' : reasons.some(function (r) { return r.type === '수정'; }) ? '수정 필요' : '현행';
+    if (status === '현행') reasons.filter(function (r) { return r.type === '보완'; }).forEach(function (r) { tags.push('보완 대기 — ' + r.why); });
     var pri = reasons.some(function (r) { return r.type === '수정' && /자기점검|법령 개정/.test(r.why); }) ? 3 : reasons.some(function (r) { return r.type === '수정' || r.type === '폐기'; }) ? 2 : reasons.some(function (r) { return r.type === '보완'; }) ? 1 : 0;
     out.push({ kind: f.kind, name: f.name, status: status, priority: pri, tags: tags, reasons: reasons, uses: u || { n: 0, last: '' }, modified: f.modified || '', md5: f.md5 || '', chars: text.length, fileId: f.fileId || '' });
   });
