@@ -183,6 +183,9 @@ function knhJudge_(input) {
       conf += (l.match(/\[확인 필요/g) || []).length;
     });
     if (conf) add('보완', '"[확인 필요]" ' + conf + '곳 — 원문 확인해 채울 것');
+    // [2026-11-12] [판단 대기 …] 표시는 세무사님 결정 자리 — 꼬리표로 남기고 밤 판정 뒤 확인조치사항 「결정할 것」에 올린다(knhRaiseDecisions_)
+    var pendN = (text.match(/\[판단 대기/g) || []).length;
+    if (pendN) tags.push('판단 대기 ' + pendN + '곳 — 세무사님 결정(답하실 것)');
     if (/^>\s*상태:\s*초안/m.test(text)) tags.push('검토 전 초안');
     // 4) 세무사님이 반복해서 고친 곳
     if (f.kind === '보고서' || f.kind === '의뢰서') {
@@ -437,7 +440,8 @@ function knhPaidGaps_(bmNames) {
   var since = Date.now() - 30 * 86400000;
   var words = {}; bmNames.forEach(function (n) { knhBase_(n).split(/[_\s]+/).forEach(function (w) { if (w.length >= 2) words[w] = 1; }); });
   var g = {};
-  paid.filter(function (p) { return p.kind === 'chat' && improve_parseAt_(p.at) >= since && !improve_isTestNoise_(p.q); }).forEach(function (p) {
+  // [2026-11-12] 한두 글자 잡음("ㅇ"·"네" 같은 것)은 "맞는 지침 없는 반복 질문"이 아니다 — "ㅇ" 3회가 신규 필요로 떴다
+  paid.filter(function (p) { return p.kind === 'chat' && improve_parseAt_(p.at) >= since && !improve_isTestNoise_(p.q) && String(p.q || '').replace(/[\s\d\W]/g, '').length >= 4; }).forEach(function (p) {
     var norm = String(p.q || '').replace(/\d+/g, '').replace(/\s+/g, '').slice(0, 18);
     var e = g[norm] || (g[norm] = { pattern: norm, count: 0, sample: String(p.q || '').slice(0, 60) });
     e.count++;
@@ -525,9 +529,36 @@ function knhNightly_(opts) {
   } catch (err) {
     res.ran = false; res.reason = String(err && err.message || err);
   }
+  // [2026-11-12 세무사님 "모두 처리하는 것이 우선이고, 내가 직접 처리해야 할 일이라면 <답해야할 것>처럼 관리해야"] 세무사님 결정이 필요한 것만 확인조치사항 「결정할 것」에 올린다
+  if (res.ran) { try { res.결정올림 = knhRaiseDecisions_(res); } catch (e) { (res.warn = res.warn || []).push('결정할 것 올리기 실패: ' + e.message); } }
   knhWriteJson_(KNH_RESULT_, res);
   try { PropertiesService.getScriptProperties().setProperty('KNH_LAST', JSON.stringify({ at: res.at, ran: res.ran, reason: res.reason || '', totals: res.totals || null })); } catch (e) { }
   return res;
+}
+
+// [2026-11-12] 판정 결과 중 세무사님 결정이 필요한 것 → 확인조치사항 「결정할 것」(대시보드 「답하실 것」 카드) — 같은 줄이 있으면(끝난 것 포함) 다시 올리지 않는다.
+//  올리는 것: ① [판단 대기] 표시가 남은 파일 ② 지침이 하나도 없는 업무(세목 범위를 넣을지 — 사업 세목 등). 고칠 것·폐기 후보·빈 템플릿은 Claude·주간 루틴 몫이라 올리지 않는다.
+function knhRaiseDecisions_(res) {
+  if (typeof followupGet_ !== 'function' || typeof followupChange_ !== 'function') return { skipped: '확인조치사항 함수 없음' };
+  var want = [];
+  (res.files || []).forEach(function (f) {
+    var t = (f.tags || []).filter(function (x) { return /^판단 대기 \d+곳/.test(x); })[0];
+    if (t) want.push({ key: '판단 대기|' + f.kind + '/' + f.name, text: '**' + f.kind + ' 「' + knhBase_(f.name) + '」 ' + t.replace(/ — .*$/, '') + '** — 파일 안 [판단 대기 — …] 표시가 가리키는 보고서(총괄관리자\\_기록)의 권장안을 보고 정해 주세요. 정하시면 Claude가 문장을 고치고 표시를 지웁니다.' });
+  });
+  var noGuide = {};
+  (res.coverage || []).forEach(function (c) { if (c.세목 && c.지침 && !c.지침.length && (c.빈칸 || []).indexOf('지침') !== -1) noGuide[c.세목] = (noGuide[c.세목] || 0) + (c.사건수 || 0); });
+  Object.keys(noGuide).forEach(function (s) { want.push({ key: '지침 범위|' + s, text: '**「' + s + '」 세목을 지침·계산 도구 범위에 넣을지** — 사건 목록에 ' + s + ' 사건 ' + noGuide[s] + '건이 있는데 지침이 하나도 없습니다(지침·템플릿 정비 판정 빈칸). 넣으면 Claude가 지침과 도구를 만듭니다.' }); });
+  if (!want.length) return { 올림: 0 };
+  var have = '';
+  try { var cur = followupGet_(); if (cur && cur.sections) cur.sections.forEach(function (s) { (s.items || []).forEach(function (it) { have += '\n' + String(it.text || '') + ' ' + String(it.detail || ''); }); }); } catch (e) { }
+  var added = [], skipped = 0;
+  want.forEach(function (w) {
+    var mark = w.text.slice(0, w.text.indexOf('**', 2) + 2); // 굵은 제목으로 같은 줄 판정
+    if (have.indexOf(mark.replace(/\*\*/g, '')) !== -1) { skipped++; return; }
+    var r = followupChange_({ section: '결정할 것', text: w.text }, 'add');
+    if (r && !r.error) added.push(w.key); else skipped++;
+  });
+  return { 올림: added.length, 건너뜀: skipped, 목록: added };
 }
 
 // ---------------------------------------------------------------------------------------------
