@@ -2199,9 +2199,13 @@
     var accumulated = [];
     var round = 0;
     var usageSum = { usd: 0, model: '' }; // 이번 질문에 든 유료 AI 비용(도구 라운드 합계)
+    // [2026-11-12 3차 재검토 36] 넥스가 몇 분씩 「확인하는 중…(N단계)」만 띄워 도는지 멈췄는지 알 수 없었다 — 쓴 도구 수·걸린 시간을 같이 보인다(1초마다)
+    var t0 = Date.now(), toolN = 0, stepLabel = '', tick = setInterval(function(){ if (!opts.thinkingBubble || !opts.thinkingBubble.isConnected){ clearInterval(tick); return; } if (stepLabel) opts.thinkingBubble.textContent = stepLabel + ' · ' + Math.round((Date.now() - t0) / 1000) + '초'; }, 1000);
+    var fin = function(){ clearInterval(tick); };
     var step = function(){
       var forceWrapUp = round >= ((opts.context && opts.context.linkedCase && opts.context.linkedCase.id) ? NXAI_MAX_ROUNDS_CASE : NXAI_MAX_ROUNDS);
-      opts.thinkingBubble.textContent = round === 0 ? '생각 중…' : (forceWrapUp ? '마무리하는 중…' : '🔧 확인하는 중… (' + (round + 1) + '단계)');
+      stepLabel = round === 0 ? '생각 중…' : (forceWrapUp ? '마무리하는 중…' : '🔧 확인하는 중… (' + (round + 1) + '단계 · 도구 ' + toolN + '번 씀)');
+      opts.thinkingBubble.textContent = stepLabel;
       var requestBody = JSON.stringify(Object.assign({
         _token: (typeof manageAppSessionToken_ !== 'undefined' && manageAppSessionToken_) || '',
         messages: turnMessages,
@@ -2224,7 +2228,7 @@
           });
       };
       return attempt(0).then(function(data){
-        if (data.error){ opts.onError('오류: ' + data.error); return; }
+        if (data.error){ fin(); opts.onError('오류: ' + data.error); return; }
         if (data.usage){
           usageSum.usd += (+data.usage.costUsd || 0); usageSum.model = data.usage.model || usageSum.model;
           // [2026.10.30 비용 기록] 단계마다 네 갈래(새로 읽기·처음 올려 저장·다시 읽기·쓴 글)를 더해 말풍선 비용 줄에 보인다
@@ -2236,6 +2240,7 @@
         }
         accumulated = accumulated.concat(data.clientActions || []);
         if (data.done === false){
+          toolN += (Array.isArray(data.assistantContent) ? data.assistantContent.filter(function(b){ return b && b.type === 'tool_use'; }).length : 0);
           turnMessages = turnMessages.concat([
             { role: 'assistant', content: data.assistantContent },
             { role: 'user', content: data.toolResults }
@@ -2243,10 +2248,11 @@
           round++;
           return step();
         }
-        opts.onDone(data.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', accumulated, usageSum);
+        fin(); opts.onDone(data.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', accumulated, usageSum);
       });
     };
     return step().catch(function(err){
+      fin();
       if (err && err.name === 'AbortError'){ opts.onAbort(); return; }
       opts.onError('네트워크 오류: ' + (err && err.message ? err.message : err));
     });

@@ -63,7 +63,8 @@ function splitChunks(src, file) {
 // 덩어리 글에서 이름 후보(문자열·주석을 거칠게 뺀 뒤) — 넉넉히 잡아도 해가 없다(모듈이 조금 커질 뿐). 정규식 글자는 못 가려 이름이 더 잡힐 수 있다.
 function identsOf(text) {
   const t = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1 ').replace(/`(?:\\[\s\S]|[^`\\])*`/g, ' ').replace(/"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g, ' ');
-  const out = new Set(); let m; const re = /(?<![.\w$])([A-Za-z_$][\w$]*)/g;
+  // [2026-11-12 3차 재검토 21] 펼침(...이름)은 점 뒤라도 이름이다 — 예전엔 `...LATE_DESIG_PROPS_`를 못 잡아 선언이 직결 묶음에서 빠져 직결이 500(ReferenceError)으로 죽었다
+  const out = new Set(); let m; const re = /(?<!(?:^|[^.])\.)(?<![\w$])([A-Za-z_$][\w$]*)/g;
   while ((m = re.exec(t))) out.add(m[1]);
   return out;
 }
@@ -125,3 +126,15 @@ fs.writeFileSync(OUT.replace(/\.js$/, '-report.json'), JSON.stringify(report, nu
 console.log('조립 ' + path.relative(ROOT, OUT) + ' — 덩어리 ' + picked.length + '/' + all.length + ' (' + Object.keys(fromFiles).map((f) => f + ' ' + fromFiles[f]).join(', ') + '), ' + Math.round(report.bytes / 1024) + 'KB');
 if (missing.size) console.log('선언을 못 찾은 이름(끝 _ 규칙) ' + missing.size + '개: ' + Array.from(missing).sort().join(', '));
 if (Object.keys(dup).length) console.log('같은 이름이 두 파일에: ' + Object.keys(dup).map((k) => k + '(' + dup[k].join('·') + ')').join(', '));
+
+// [2026-11-12 3차 재검토 21] 기계 검문 — 만든 묶음을 GAS 전역 흉내 없이 한 번 불러 본다. 맨 위(0열) 선언이 빠진 이름을 부르면 여기서 터진다.
+//  예전엔 `...LATE_DESIG_PROPS_`가 빠진 채로 빌드·배포돼 직결이 모든 요청에 500(ReferenceError)을 냈는데 아무도 몰랐다. 터지면 빌드를 실패로 끝내 도커 빌드가 멈추게 한다.
+{
+  const vm = require('vm');
+  const stub = new Proxy(function () {}, { get: (t, k) => (k === Symbol.toPrimitive ? () => '' : stub), apply: () => stub, construct: () => stub });
+  const ctx = { console: { log() {}, warn() {}, error() {}, info() {} } };
+  ['DriveApp', 'Drive', 'SpreadsheetApp', 'UrlFetchApp', 'ScriptApp', 'CacheService', 'PropertiesService', 'LockService', 'Session', 'Utilities', 'HtmlService', 'ContentService', 'Logger', 'MailApp', 'GmailApp', 'DocumentApp', 'XmlService'].forEach((k) => { ctx[k] = stub; });
+  vm.createContext(ctx);
+  try { vm.runInContext(head + body, ctx, { filename: path.basename(OUT) }); console.log('불러오기 검문 — 정상'); }
+  catch (e) { console.error('불러오기 검문 — 실패: ' + (e && e.message) + ' — 맨 위 선언이 묶음에서 빠졌을 수 있습니다(identsOf 이름 뽑기 확인)'); process.exitCode = 1; }
+}

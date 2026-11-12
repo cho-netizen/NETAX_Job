@@ -1308,7 +1308,7 @@
         Array.prototype.forEach.call(document.querySelectorAll('#chGasNow button[data-gas], #chNexLine button[data-gas]'), function(b){ b.addEventListener('click', function(){ var k = b.getAttribute('data-gas');
           if (k === 'seen') callGas('case_proc', { caseId: c.id, step: 'alertSeen' }).then(loadNow).catch(function(){});
           else if (k === 'nexpre'){ var off = b.getAttribute('data-off') !== '1'; b.disabled = true; callGas('case_proc', { caseId: c.id, step: 'nexPreread', off: off, by: '세무사님' }).then(function(res){ if (typeof window.nxAiToast_ === 'function') window.nxAiToast_((res && res.message) || (off ? '넥스 미리 읽기를 껐습니다.' : '넥스 미리 읽기를 켰습니다.')); loadNow(); }).catch(function(e){ b.disabled = false; alert('바꾸지 못했습니다: ' + nxErrText_(e)); }); } // [2026.10.28 감시] 사건별 스위치
-          else if (k === 'ai'){ if (typeof window.nxOpenSideAI_ === 'function') window.nxOpenSideAI_(); } // 바로 펼치면 같은 클릭의 "바깥 누르면 접기"가 곧장 접는다 — 한 박자 늦게 펼치는 공용 함수로
+          else if (k === 'ai'){ if (typeof window.nxOpenSideAI_ === 'function') window.nxOpenSideAI_(); try { if (typeof nxAiConv !== 'undefined' && nxAiConv.caseId !== c.id && !(nxAiConv.messages || []).length && typeof nxAiLinkCase_ === 'function') nxAiLinkCase_(c); } catch (e) {} } // [2026-11-12 3차 35] 보던 사건이 넥스 창에 안 이어져 「사건 연결」을 다시 골라야 했다 — 빈 대화면 이 사건을 잇는다(이미 다른 사건과 대화 중이면 그대로) // 바로 펼치면 같은 클릭의 "바깥 누르면 접기"가 곧장 접는다 — 한 박자 늦게 펼치는 공용 함수로
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
           else if ((k === 'scope' || k === 'read') && typeof goToDocsTool_ === 'function') goToDocsTool_(c, k); // [2026.10.31] 도구는 증빙확보에
         }); });

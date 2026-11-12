@@ -607,7 +607,9 @@ function ledgerCalcRun_(c, body) {
   // [2026.10.30 복합 자문] 세목을 골라 돌린다(body.tax) — 주 세목이 아니어도 함께 보는 세목이면 그 세목 장부 칸으로 계산. 안 주면 사건 주 세목
   // [2026.10.31] 사건 세목은 "양도"처럼 한글로 저장돼 있다 — 열쇠(transfer 등)로 바꿔 본다. 예전엔 세목 없이 부르면 양도 사건도 "양도·증여·상속만 합니다"로 실패했다(가상넥스도구 넥스 3번 실패)
   const tax = ledgerTaxCode_(body.tax || c.세목) || String(body.tax || c.세목 || '');
-  if (body.tax && ledgerTaxes_(c).indexOf(tax) === -1) return { ok: false, error: '이 사건의 주 세목·함께 보는 세목이 아닙니다(' + tax + ') — 먼저 case_ledger do=taxes로 함께 보는 세목에 넣으세요' };
+  // [2026-11-12 3차 재검토 34] 불복(경정청구·조사 대응)·사업 사건은 사건 세목 자체가 계산 세목이 아니다 — 원 세목(양도·증여·상속)으로 계산하게 둔다
+  const ownCalc = /^(transfer|gift|inheritance)$/.test(ledgerTaxCode_(c.세목) || String(c.세목 || ''));
+  if (body.tax && ownCalc && ledgerTaxes_(c).indexOf(tax) === -1) return { ok: false, error: '이 사건의 주 세목·함께 보는 세목이 아닙니다(' + tax + ') — 먼저 case_ledger do=taxes로 함께 보는 세목에 넣으세요' };
   if (tax === 'gift' || tax === 'inheritance') return ledgerCalcGiftInh_(c, body, tax);
   if (tax !== 'transfer') return { ok: false, error: '장부 계산은 양도·증여·상속만 합니다' };
   const by = String(body.by || '넥스').slice(0, 6);
@@ -734,6 +736,8 @@ function ledgerCalcGiftInh_(c, body, tax) {
   const 산출 = gift ? (r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액) : r.산출세액;
   const lines = ['과세표준 ' + won(r.과세표준), '산출세액 ' + won(산출), '신고세액공제 ' + won(r.신고세액공제), '납부세액 ' + won(r.납부세액)];
   if (est.length) lines.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (x) { return x.judged ? x.label : x.label + '(' + x.state + ')'; }).join(', ').slice(0, 300));
+  // [2026-11-12 3차 재검토 31] 부담부증여 — 배우자·직계존비속 간 인수 채무는 객관적으로 입증돼야 증여재산가액에서 뺀다(상증법 §47③). 입증 표시가 없으면 엔진이 빼지 않는데 결과에 말이 없어 일반증여와 같은 세액이 "틀린 값"처럼 보였다
+  if (gift && Number(b.input.debtAssumedAmount) > 0 && /^(배우자|직계존속|직계비속)$/.test(String(b.input.relation || '')) && !b.input.isDebtObjectivelyProven) lines.push('⚠ 인수 채무 ' + won(b.input.debtAssumedAmount) + '을 빼지 않고 계산함 — 배우자·직계존비속 간 부담부증여는 채무 인수가 객관적으로 입증될 때만 뺌(상증법 §47③). 입증되면 「인수 채무 객관적 입증 = 예」로 다시 계산');
   if ((b.gaps || []).length) lines.push('남은 물어볼 것·빈 칸: ' + b.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
   const all = Array.isArray(c.세액계산결과) ? c.세액계산결과 : [];
   [].push.apply(lines, famLines);
