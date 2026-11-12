@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 03:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 04:06 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3147,9 +3147,10 @@ function nxMdOpenWindow(title, src, opts){
       <h3 style="margin-bottom:0;"><button type="button" id="dashImproveHead" style="all:unset; cursor:pointer; display:block; width:100%;">개선요구 <span id="dashImproveSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span id="dashImproveArrow" style="float:right; font-size:12px; color:var(--sub);">▾</span></button></h3>
       <div id="dashImproveList" style="display:none; margin-top:8px;"></div>
     </div>
-    <!-- [2026.10.20] 📚 지침·템플릿 제안 — 주간 루틴이 만든 신규·수정 초안·폐기 제안 중 세무사님 승인 대기 수와 밤 판정 요약 한 줄. 누르면 설정 🧭 📚 제안 대기로(manage/knowhow.html). -->
+    <!-- [2026.10.20] 📚 지침·템플릿 정비 — 밤 판정(고칠 것·폐기 후보·빈칸·[확인 필요] 보완 대기)과 주간 루틴 제안 대기 수 한 줄. 누르면 설정 🧭 정비 판정으로(manage/knowhow.html).
+         [2026-11-12] 이름을 "제안"에서 "정비"로 — 세무사님 "지침템플릿제안을 클릭하면 무지많이 나오는데" → 보여 주던 것이 제안(0건)이 아니라 밤 판정 결과였다. -->
     <div class="card dash-cover" id="dashKnhCard">
-      <h3 style="margin-bottom:0;"><button type="button" id="dashKnhHead" style="all:unset; cursor:pointer; display:block; width:100%;">지침·템플릿 제안 <span id="dashKnhSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span style="float:right; font-size:12px; color:var(--sub);">›</span></button></h3>
+      <h3 style="margin-bottom:0;"><button type="button" id="dashKnhHead" style="all:unset; cursor:pointer; display:block; width:100%;">지침·템플릿 정비 <span id="dashKnhSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span style="float:right; font-size:12px; color:var(--sub);">›</span></button></h3>
     </div>
     <!-- [2026.10.31] 세무사님 "확인조치사항 … 위치를 야간자동점검상태 앞으로 옮겨라" — 할일 아래에서 야간 자동점검 바로 앞으로 -->
     <!-- [2026.10.20] 세무사님 "시스템이 띄워줘야지 내가 일일이 어떻게 파일을 찾아서 확인수정을 하겠나? … 대시보드에 할일에 포함하든 새로운 항목을 만들든 어쨌든 띄워라".
@@ -4083,7 +4084,13 @@ function nxMdOpenWindow(title, src, opts){
   }
   function dashImproveRowHtml_(x){
     var label = x.status === '접수' ? '대기' : x.status === '재오픈' ? '다시 고치는 중' : x.status === '고침' ? '고침 — 배포 대기' : x.status === '반영됨' ? '반영됨 — 확인해 주세요' : '끝남';
-    var btns = x.status !== '확인완료' ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" class="ghost-btn sm" data-impok="' + esc(x.id) + '">잘 됨 — 끝</button><button type="button" class="ghost-btn sm" data-impno="' + esc(x.id) + '" data-imptitle="' + esc(String(x.text).slice(0, 120)) + '">부족함 — 다시 요구 적기</button></div>' : '';
+    // [2026.11.12] 세무사님 "대기라면서 무슨 잘됨, 부족함 버튼이 있나?" — 단추는 상태에 맞게만: 대기 = 필요 없음(고치지 않고 닫기)·내용 보태기 /
+    //  고침·반영됨 = 잘 됨·부족함(다시 요구) / 다시 고치는 중 = 내용 보태기. 예전엔 기록이 어긋나 "대기"로 남은 것을 닫으라고 모든 상태에 잘 됨·부족함을 그렸다(그 결함은 서버 되살리기에서 고침).
+    var tt = esc(String(x.text).slice(0, 120)), btnList = [];
+    if (x.status === '접수') btnList = ['<button type="button" class="ghost-btn sm" data-impclose="' + esc(x.id) + '">필요 없음 — 닫기</button>', '<button type="button" class="ghost-btn sm" data-impnote="' + esc(x.id) + '" data-imptitle="' + tt + '">내용 보태기</button>'];
+    else if (x.status === '고침' || x.status === '반영됨') btnList = ['<button type="button" class="ghost-btn sm" data-impok="' + esc(x.id) + '">잘 됨 — 끝</button>', '<button type="button" class="ghost-btn sm" data-impno="' + esc(x.id) + '" data-imptitle="' + tt + '">부족함 — 다시 요구 적기</button>'];
+    else if (x.status === '재오픈') btnList = ['<button type="button" class="ghost-btn sm" data-impnote="' + esc(x.id) + '" data-imptitle="' + tt + '">내용 보태기</button>'];
+    var btns = btnList.length ? '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">' + btnList.join('') + '</div>' : '';
     // [2026.10.31] 세무사님 "박스나 테두리로 카드모양으로 감쌀 경우에는 색상처리를 해야 하는 것 아닌가?" — 요청 하나마다 상태 색 띠(왼쪽)와 옅은 바탕을 준다
     var col = DASH_IMPROVE_COLOR_[x.status] || 'var(--sub)', bg = DASH_IMPROVE_BG_[x.status] || 'transparent';
     return '<div style="padding:7px 10px 7px 11px; border:1px solid var(--line); border-left:4px solid ' + col + '; border-radius:8px; background:' + bg + '; margin-bottom:6px; font-size:13px; line-height:1.5; overflow-wrap:anywhere;">'
@@ -4104,7 +4111,7 @@ function nxMdOpenWindow(title, src, opts){
     var html = '<div style="margin-bottom:6px;"><button type="button" class="ghost-btn sm" data-impnew="1" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라갑니다(AI 비용 0)">개선요구사항 적기</button></div>'
       + (open.length ? open.map(dashImproveRowHtml_).join('') : '<div class="empty-row">남은 개선요구가 없습니다.</div>');
     if (done.length) html += '<details id="dashImproveDone" style="margin-top:8px;"' + (dashImprove_.doneOpen ? ' open' : '') + '><summary style="cursor:pointer; font-size:12.5px; color:var(--sub);">✔ 끝난 요청 ' + done.length + '건(최근)</summary>' + done.map(dashImproveRowHtml_).join('') + '</details>';
-    html += '<div class="nx-help">흐름: 대기 → 개발자 수정안(매주 월요일 루틴) → 승인·📥 반영 → 반영됨 → 세무사님 👍 확인. 원본 개선요구사항.md는 지우지 않고 계속 쌓입니다.</div>';
+    html += '<div class="nx-help">흐름: 대기(아직 아무도 손대지 않음 — 필요 없으면 닫기, 덧붙일 말은 내용 보태기) → 개발자가 고침(매주 월요일 루틴·PC Claude) → 반영됨(운영에 올라감 — 잘 됨 / 부족함) → 끝남. 원본 개선요구사항.md는 지우지 않고 계속 쌓입니다.</div>';
     box.innerHTML = html;
   }
   function loadDashImprove_(){
@@ -4120,19 +4127,28 @@ function nxMdOpenWindow(title, src, opts){
   }, true);
   document.getElementById('dashImproveList').addEventListener('click', function(e){
     if (e.target.closest && e.target.closest('[data-impnew]')){ if (typeof nxSuggestOpen_ === 'function') nxSuggestOpen_().then(function(r){ if (r && r.success) loadDashImprove_(); }); return; }
-    var b = e.target.closest && e.target.closest('[data-impok],[data-impno]');
+    var b = e.target.closest && e.target.closest('[data-impok],[data-impno],[data-impclose],[data-impnote]');
     if (!b) return;
-    var send = function(ok, note){
+    var send = function(ok, note, mode){
       // [2026.11.03 전수조사 다시] 그 줄은 바로 감추고 서버엔 보낼 함으로 뒤에서 — 받으면 목록을 다시 그리고, 실패하면 줄이 다시 보인다
-      var rid = b.getAttribute(ok ? 'data-impok' : 'data-impno');
+      var rid = b.getAttribute('data-impok') || b.getAttribute('data-impno') || b.getAttribute('data-impclose') || b.getAttribute('data-impnote');
       var line = b.parentNode && b.parentNode.parentNode; // 버튼 줄의 바깥 = 요청 카드 하나
       if (line) line.style.display = 'none';
-      toast(ok ? '확인 완료로 바꿨습니다.' : '다시 고쳐 달라고 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다.');
-      return nxSaveLater_('comm_request_confirm', { id: rid, ok: ok, note: note || '' }, { key: 'req_' + rid, label: ok ? '개선요구 확인' : '개선요구 다시 고쳐 달라',
+      toast(mode === 'close' ? '필요 없음으로 닫았습니다.' : ok ? '확인 완료로 바꿨습니다.' : '다시 고쳐 달라고 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다.');
+      return nxSaveLater_('comm_request_confirm', { id: rid, ok: ok, note: note || '', mode: mode || (ok ? 'ok' : 'reopen') }, { key: 'req_' + rid, label: mode === 'close' ? '개선요구 필요 없음' : ok ? '개선요구 확인' : '개선요구 다시 고쳐 달라',
         onDone: function(){ loadDashImprove_(); },
         onFail: function(){ if (line) line.style.display = ''; }, redo: function(){ if (line) line.style.display = 'none'; } });
     };
     if (b.hasAttribute('data-impok')) return send(true);
+    // [2026.11.12] 대기 요청: 필요 없음(고치지 않고 닫기 — 한 번 묻고) / 내용 보태기(건의 창에서 — 상태는 그대로, 글 끝에 보탬 줄)
+    if (b.hasAttribute('data-impclose')){
+      var askClose = typeof nxConfirm_ === 'function' ? nxConfirm_('이 요청을 고치지 않고 닫습니다(끝남으로). 계속할까요?', '필요 없음') : Promise.resolve(window.confirm('이 요청을 고치지 않고 닫습니다. 계속할까요?'));
+      return askClose.then(function(yes){ if (yes) send(false, '', 'close'); });
+    }
+    if (b.hasAttribute('data-impnote')){
+      if (typeof nxSuggestOpen_ === 'function') return nxSuggestOpen_({ noteId: b.getAttribute('data-impnote'), title: b.getAttribute('data-imptitle') || '' }).then(function(r){ if (r && r.success) loadDashImprove_(); });
+      return;
+    }
     // [2026.10.28] 다시 요구는 ✍ 건의 창(여러 줄)에서 — 저장되면 서버가 재오픈으로 바꾸고 여기 목록을 다시 그린다
     if (typeof nxSuggestOpen_ === 'function') return nxSuggestOpen_({ reopenId: b.getAttribute('data-impno'), title: b.getAttribute('data-imptitle') || '' }).then(function(r){ if (r && r.success) loadDashImprove_(); });
     var ask = typeof nxPrompt_ === 'function' ? nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '') : Promise.resolve(window.prompt('무엇이 아직 안 되는지 적어 주세요.', ''));
@@ -68718,24 +68734,27 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxSuggestOpen_(opts){
     opts = opts || {};
     var reopenId = opts.reopenId || '';
+    // [2026.11.12] opts.noteId: 대기·다시 고치는 중 요청에 "내용 보태기" — 상태는 그대로, 글 끝에 보탬 줄(세무사님 "대기라면서 무슨 잘됨, 부족함 버튼이 있나?")
+    var noteId = opts.noteId || '';
+    var special = reopenId || noteId;
     return new Promise(function(resolve){
       var old = document.getElementById('nxSuggestOverlay');
       if (old) old.remove();
-      var where = reopenId ? '' : nxSuggestContext_();
+      var where = special ? '' : nxSuggestContext_();
       var overlay = document.createElement('div');
       overlay.id = 'nxSuggestOverlay';
       overlay.className = 'modal-overlay';
       overlay.style.zIndex = '9998';
       overlay.innerHTML =
         '<div class="modal-panel" style="width:min(520px, 94vw);">' +
-          '<div class="modal-head"><span>' + (reopenId ? '↩ 다시 요구 — ' + escapeHtml(reopenId) : '✍ 개선 건의') + '</span></div>' +
+          '<div class="modal-head"><span>' + (reopenId ? '↩ 다시 요구 — ' + escapeHtml(reopenId) : noteId ? '✍ 내용 보태기 — ' + escapeHtml(noteId) : '✍ 개선 건의') + '</span></div>' +
           '<div class="modal-body">' +
-            (reopenId
+            (special
               ? '<div style="font-size:12.5px; color:var(--sub); margin-bottom:6px;">' + escapeHtml(String(opts.title || '').slice(0, 120)) + '</div>'
               : '<div style="font-size:12.5px; color:var(--sub); margin-bottom:6px;">지금 자리: ' + escapeHtml(where || '(알 수 없음)') + ' — 글과 함께 남습니다</div>') +
-            '<textarea id="nxSuggestText" rows="5" placeholder="' + (reopenId ? '무엇이 아직 부족한지, 어떻게 되어야 하는지 적어 주세요 — 이 요청이 다시 열려 개발자가 먼저 고칩니다' : '고쳤으면 하는 점, 새로 원하는 기능, 방금 겪은 불편을 그대로 적어 주세요') + '" style="width:100%; box-sizing:border-box; font-size:14px; line-height:1.5; resize:vertical;"></textarea>' +
+            '<textarea id="nxSuggestText" rows="5" placeholder="' + (reopenId ? '무엇이 아직 부족한지, 어떻게 되어야 하는지 적어 주세요 — 이 요청이 다시 열려 개발자가 먼저 고칩니다' : noteId ? '이 요청에 덧붙일 말을 적어 주세요 — 글 끝에 보탬 줄로 남고 개발자가 함께 봅니다' :'고쳤으면 하는 점, 새로 원하는 기능, 방금 겪은 불편을 그대로 적어 주세요') + '" style="width:100%; box-sizing:border-box; font-size:14px; line-height:1.5; resize:vertical;"></textarea>' +
             // [2026.10.28] 화면 캡처 첨부(Ctrl+V 붙여넣기·📎 고르기, 최대 3장) / 긴급은 사유 없이 체크만(세무사님 "입력자가 긴급여부를 판단하는 것이라면 긴급사유는 필요없다")
-            (reopenId ? '' :
+            (special ? '' :
               '<div id="nxSuggestImgs" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"></div>' +
               '<div style="display:flex; align-items:center; gap:10px; margin-top:8px; font-size:13px; flex-wrap:wrap;">' +
                 '<label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="nxSuggestUrgent"> 🚨 긴급</label>' +
@@ -68743,7 +68762,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
                 '<span style="font-size:11.5px; color:var(--sub);">캡처한 그림은 이 창에서 Ctrl+V로도 붙습니다</span>' +
                 '<input type="file" id="nxSuggestFile" accept="image/*" multiple hidden>' +
               '</div>') +
-            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">' + (reopenId ? '저장하면 이 요청이 "재오픈"으로 바뀌고 다음 개발자 실행 때 먼저 고칩니다.' : '저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 또는 AI 탭 🛠)가 수정안으로 올립니다. 🚨 긴급이면 저장 직후 처리 실행 화면을 바로 엽니다.') + ' Ctrl+Enter로도 저장.</div>' +
+            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">' + (reopenId ? '저장하면 이 요청이 "재오픈"으로 바뀌고 다음 개발자 실행 때 먼저 고칩니다.' : noteId ? '저장하면 이 요청 글 끝에 보탬 줄이 붙습니다(상태는 그대로).' :'저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 또는 AI 탭 🛠)가 수정안으로 올립니다. 🚨 긴급이면 저장 직후 처리 실행 화면을 바로 엽니다.') + ' Ctrl+Enter로도 저장.</div>' +
             '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">' +
               '<button type="button" class="save-btn" data-nx-val="ok">저장</button>' +
               '<button type="button" class="ghost-btn" data-nx-val="cancel">닫기</button>' +
@@ -68784,13 +68803,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (!text){ ta.focus(); return; }
         var urgentEl = overlay.querySelector('#nxSuggestUrgent'), urgent = !!(urgentEl && urgentEl.checked);
         okBtn.disabled = true; okBtn.textContent = '저장 중…';
-        var req = reopenId ? callGas('comm_request_confirm', { id: reopenId, ok: false, note: text }) : callGas('improve_request_add', { text: text, where: where, urgent: urgent, images: images });
+        var req = reopenId ? callGas('comm_request_confirm', { id: reopenId, ok: false, mode: 'reopen', note: text }) : noteId ? callGas('comm_request_confirm', { id: noteId, ok: false, mode: 'note', note: text }) : callGas('improve_request_add', { text: text, where: where, urgent: urgent, images: images });
         req.then(function(r){
           if (r && r.success){
-            toast(reopenId ? '↩ 다시 요구를 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다' : '✅ 건의를 적었습니다 — 개선 후보에 올라갔습니다' + (images.length ? ' (캡처 ' + images.length + '장 첨부)' : ''));
+            toast(reopenId ? '↩ 다시 요구를 남겼습니다 — 다음 개발자 실행 때 먼저 고칩니다' : noteId ? '✍ 내용을 보탰습니다' : '✅ 건의를 적었습니다 — 개선 후보에 올라갔습니다' + (images.length ? ' (캡처 ' + images.length + '장 첨부)' : ''));
             close(r);
             // 🚨 긴급 — 세무사님 "긴급을 체크하면 언제 처리하는가?": 기다리지 않도록 저장 직후 처리 실행 화면(웹 Claude Code 루틴)을 바로 연다. 열린 화면에서 "실행"을 한 번 누르면 그 자리에서 고치기 시작.
-            if (!reopenId && urgent) nxConfirm_('🚨 긴급으로 올렸습니다.\n지금 바로 처리 실행 화면(웹 Claude Code)을 열까요?\n열린 화면에서 "실행"을 한 번 누르면 바로 고치기 시작합니다.', '긴급 처리').then(function(ok){ if (ok) window.open('https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3', '_blank'); });
+            if (!special && urgent) nxConfirm_('🚨 긴급으로 올렸습니다.\n지금 바로 처리 실행 화면(웹 Claude Code)을 열까요?\n열린 화면에서 "실행"을 한 번 누르면 바로 고치기 시작합니다.', '긴급 처리').then(function(ok){ if (ok) window.open('https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3', '_blank'); });
           }
           else { okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장하지 못했습니다: ' + ((r && r.error) || '')); }
         }).catch(function(err){ okBtn.disabled = false; okBtn.textContent = '저장'; toast('저장 중 오류: ' + nxErrText_(err)); });

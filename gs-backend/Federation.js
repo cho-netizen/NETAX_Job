@@ -329,14 +329,33 @@ function commAfterDeploy_(ver, sha) {
   });
   if (hit) commRequestsSave_(st);
 }
+// [2026-11-12] 세무사님 "대기라면서 무슨 잘됨, 부족함 버튼이 있나?" — 단추를 상태별로 가른다. mode: ok(👍 끝) · reopen(↩ 다시 요구) ·
+//  close(✖ 필요 없음 — 대기 요청을 고치지 않고 닫음, 끝남으로) · note(✍ 내용 보태기 — 상태는 그대로, 글 끝에 보탬 줄과 처리 내역 한 줄). mode가 없으면 옛 ok 참/거짓대로.
 function commRequestConfirm_(body) {
-  var id = String(body && body.id || ''), ok = !!(body && body.ok), note = String(body && body.note || '').trim();
+  var id = String(body && body.id || ''), note = String(body && body.note || '').trim();
+  var mode = String(body && body.mode || '') || (body && body.ok ? 'ok' : 'reopen');
+  var ok = mode === 'ok';
   return withLock_(10000, function () {
     var st = commRequestsLoad_(), x = st.tracking.entries.filter(function (e) { return e.id === id; })[0];
     if (!x) return { error: '요청을 찾지 못했습니다.' };
+    var now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+    if (mode === 'note') {
+      if (!note) return { error: '보탤 내용을 적어 주세요.' };
+      x.text = (String(x.text || '') + '\n✍ 보탬 [' + now + '] ' + note).slice(0, 4000);
+      commHistPush_(x, '세무사님', '✍ 내용 보탬: ' + note, '', '');
+      commRequestsSave_(st);
+      return { success: true, status: x.status };
+    }
+    if (mode === 'close') {
+      x.status = '확인완료'; x.statusAt = now; x.closedWithoutFix = true;
+      commHistPush_(x, '세무사님', '✖ 필요 없음 — 고치지 않고 닫음' + (note ? ': ' + note : ''), '', '');
+      commRequestsSave_(st);
+      improveReportRebuildLater_();
+      return { success: true, status: x.status };
+    }
     if (!ok && !note) return { error: '무엇이 부족한지 적어 주세요.' };
     x.status = ok ? '확인완료' : '재오픈';
-    x.statusAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+    x.statusAt = now;
     if (!ok) { x.reopenNote = note.slice(0, 1000); x.firstAt = x.firstAt || x.at; x.at = x.statusAt; } // 재오픈은 날짜를 새로 — 다음 보고서에 다시 실린다
     commHistPush_(x, '세무사님', ok ? '👍 확인 — 끝' : '↩ 다시 요구: ' + note, '', '');
     commRequestsSave_(st);
