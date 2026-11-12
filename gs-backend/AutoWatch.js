@@ -13,6 +13,14 @@
 // =========================================================
 var AW_NOTICE_PROP_ = 'aw_notices', AW_DEADLINE_PROP_ = 'aw_deadlines', AW_NIGHT_PROP_ = 'aw_nightly_last';
 function awToday_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'); }
+// [2026.11.12] 세무사님 "<9132일째 움직임이 없음> 시스템 오류 아닌가?" — 사건 행의 수정일은 서버 안에서는 날짜 객체라 String()하면 "Wed Nov 12 2026 …"이 되고,
+//  앞 10자 "Wed Nov 12"는 연도가 없어 2001년으로 읽혀 모든 진행 사건이 9,132일째로 올라갔다. 날짜 객체·ISO 글자·요일 글자를 모두 yyyy-MM-dd로.
+function awYmd_(v) {
+  if (!v) return '';
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
+  const t = String(v).trim(); if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  const ms = Date.parse(t); return isNaN(ms) ? '' : Utilities.formatDate(new Date(ms), 'Asia/Seoul', 'yyyy-MM-dd');
+}
 function awDaysBetween_(a, b) { try { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); } catch (e) { return 0; } }
 function awCases_() { try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return (o && o.cases) || []; } catch (e) { return []; } }
 // [2026.11.12] 세무사님 "「답하실 것」에 뭐가 그리 많이 올라가 있는가?" → "권장대로" — 가상·모의·시험 사건은 알림(기한·멈춘 사건·미수)에서 뺀다.
@@ -27,7 +35,13 @@ function awNoticePrune_(cases) {
     withLock_(5000, function () {
       const p = PropertiesService.getScriptProperties();
       let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
-      const keep = q.filter(function (x) { return !(x && x.caseId) || open[x.caseId]; });
+      const bad = function (x) { // [2026.11.12] 날짜 읽기 오류로 올라간 것: 멈춘 사건 열쇠의 마지막 날짜·미수 글의 마지막 고침이 yyyy-MM-dd 꼴이 아님
+        if (!x) return true;
+        if (x.kind === '멈춘 사건') { const m = /^stale:[^:]*:(.*)$/.exec(String(x.key || '')); return !!m && !/^\d{4}-\d{2}-\d{2}$/.test(m[1]) || /\s[1-9]\d{3,}일째/.test(String(x.text || '')); }
+        if (x.kind === '미수') return /마지막 고침/.test(String(x.text || '')) && !/마지막 고침 \d{4}-\d{2}-\d{2}/.test(String(x.text || ''));
+        return false;
+      };
+      const keep = q.filter(function (x) { return !bad(x) && (!(x && x.caseId) || open[x.caseId]); });
       removed = q.length - keep.length;
       if (removed) p.setProperty(AW_NOTICE_PROP_, JSON.stringify(keep));
     });
@@ -176,7 +190,7 @@ function awUnpaidCheck_(cases, days) {
     let ov = c.사건개요; if (typeof ov === 'string') { try { ov = JSON.parse(ov); } catch (e) { ov = {}; } }
     const amt = Number(String((ov || {}).청구액 || '').replace(/[^\d]/g, '')) || 0; if (!amt) return;
     const b = bill[c.고객ID] = bill[c.고객ID] || { 고객명: c.고객명, 청구: 0, 사건: [], 마지막: '' };
-    b.청구 += amt; b.사건.push(String(c.사건명 || '')); const d = String(c.수정일 || c.의뢰일 || '').slice(0, 10); if (d > b.마지막) b.마지막 = d;
+    b.청구 += amt; b.사건.push(String(c.사건명 || '')); const d = awYmd_(c.수정일) || awYmd_(c.의뢰일); if (d > b.마지막) b.마지막 = d;
   });
   const out = [];
   Object.keys(bill).forEach(function (cid) {
@@ -195,10 +209,10 @@ function awStaleCheck_(cases) {
   const today = awToday_(), out = [], t0 = Date.now();
   (cases || awCases_()).filter(awOpen_).forEach(function (c) {
     if (Date.now() - t0 > 100000) return;
-    let last = String(c.수정일 || c.의뢰일 || '').slice(0, 10);
-    (Array.isArray(c.작업일지) ? c.작업일지 : []).forEach(function (e) { const d = String(e && e.date || '').slice(0, 10); if (d > last) last = d; });
-    try { const sv = caseProcLoad_(c.id) || {}; [].concat(sv.workLog || [], sv.fileChanges || [], sv.alerts || []).forEach(function (e) { const d = String(e && e.at || '').slice(0, 10); if (d > last) last = d; }); } catch (e) {}
-    if (!last || awDaysBetween_(last, today) < lim) return;
+    let last = awYmd_(c.수정일) || awYmd_(c.의뢰일);
+    (Array.isArray(c.작업일지) ? c.작업일지 : []).forEach(function (e) { const d = awYmd_(e && e.date); if (d > last) last = d; });
+    try { const sv = caseProcLoad_(c.id) || {}; [].concat(sv.workLog || [], sv.fileChanges || [], sv.alerts || []).forEach(function (e) { const d = awYmd_(e && e.at); if (d > last) last = d; }); } catch (e) {}
+    if (!last || last < '2020-01-01' || awDaysBetween_(last, today) < lim) return; // 2020년 전 날짜는 읽기 오류로 보고 올리지 않는다
     let wait = 0; try { const L = ledgerLoad_(c.id, true); Object.keys((L && L.ev) || {}).forEach(function (p) { if (L.ev[p] && L.ev[p].state === '증빙받을것') wait++; }); } catch (e) {}
     out.push({ caseId: c.id, 사건명: c.사건명, 마지막: last, 받을서류: wait });
     awNoticeAdd_('멈춘 사건', '「' + String(c.사건명 || c.고객명 || '') + '」 ' + awDaysBetween_(last, today) + '일째 움직임 없음(마지막 ' + last + ')' + (wait ? ' — 받을 서류 ' + wait + '개 남음' : ''), c.id, 'stale:' + c.id + ':' + last);
