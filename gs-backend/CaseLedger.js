@@ -454,6 +454,29 @@ function ledgerCalcState_(caseId, over) {
     src[p] = r.src; used.push(p);
   });
   assetCosts.forEach(function (x) { const it = function (l) { return (l || []).map(function (y) { return { label: y.label + (y.file ? ' (' + y.file + ')' : ''), amount: Number(y.amount) || 0, payDate: y.date || '' }; }); }; const a = as(x.ai); a.acquisitionExpenseItems = (a.acquisitionExpenseItems || []).concat(it(x.v.acq)); const cid = a.transferContractId || ('trc_c' + (x.ai + 1)); const c = st.transferContracts.filter(function (q) { return q.id === cid; })[0] || ct(Number(String(cid).replace(/\D/g, '')) - 1 || 0); c.totalExpenseItems = (c.totalExpenseItems || []).concat(it(x.v.tr)); });
+  // [2026-11-12 3차 ① 세무사님 "모두 권장안대로"] 개요서(사건 작업 › 개요)에 세무사님·넥스가 적은 물건 목록·양도인·사건분류를 계산 칸으로 —
+  //  예전엔 개요서 값이 장부 「사건개요 층」에만 남아, 같은 사실을 칸 장부에 다시 적어야 계산이 돌았다(3차 증상 17·20). 칸 장부에 이미 값이 있으면 그 값이 이긴다(빈 칸만 채움)
+  const ovRow = function (k) { const r = (L0.ov || {})['ov.' + k]; return r && r.state !== '가설' && r.v !== '' && r.v != null ? r : null; };
+  const fromOv = [];
+  const olist = ovRow('물건목록'), yes = function (x) { return /^(예|true|y|1)$/i.test(String(x == null ? '' : x).trim()); };
+  if (olist && Array.isArray(olist.v)) {
+    const allOne = yes((ovRow('양도계약일괄') || {}).v), tagCt = {};
+    olist.v.slice(0, 20).forEach(function (it, i) {
+      if (!it || typeof it !== 'object') return;
+      const a = as(i), put = function (k, v, lab) { if ((a[k] === '' || a[k] === undefined || a[k] === null) && v !== '' && v != null) { a[k] = v; fromOv.push('자산' + (i + 1) + ' ' + lab); src['a' + i + '.' + k] = olist.src; } };
+      put('assetType', it.assetType, '과세대상 구분'); put('assetKind', it.assetKind, '자산 종류'); put('assetLocation', it.assetLocation, '소재지');
+      put('acquisitionDate', it.취득일, '취득일');
+      const ap = Number(String(it.취득가액 == null ? '' : it.취득가액).replace(/[^\d]/g, '')); if (ap) put('acquisitionPrice', ap, '취득가액');
+      const tp = Number(String(it.양도가액 == null ? '' : it.양도가액).replace(/[^\d]/g, ''));
+      const tag = allOne ? '__all__' : String(it.양도계약구분 || '').trim();
+      let ci = i; if (tag) { if (tagCt[tag] == null) tagCt[tag] = i; ci = tagCt[tag]; }
+      const ctr = ct(ci); if (!L.rows['a' + i + '.contract']) a.transferContractId = ctr.id;
+      if (!ctr.totalPrice && tp && (!tag || tagCt[tag] === i)) { ctr.totalPrice = tp; fromOv.push('계약' + (ci + 1) + ' 양도가액'); src['c' + ci + '.totalPrice'] = olist.src; }
+      const d0 = (L.rows['기준일'] && L.rows['기준일'].v) || ''; if (!ctr.date && d0) { ctr.date = d0; fromOv.push('계약' + (ci + 1) + ' 양도일(기준일)'); }
+    });
+  }
+  const tn = ovRow('trTransferorName'); if (tn && !st.transferSellers[0].name) { st.transferSellers[0].name = String(tn.v); fromOv.push('양도인 성명'); }
+  const cls0 = ovRow('사건분류'); if (cls0 && !(L.rows['사건분류'] && L.rows['사건분류'].v)) { try { ledgerApplyClass_(st, String(cls0.v)); fromOv.push('사건분류'); } catch (e) {} }
   // 계약마다 양도자산이 하나는 있어야 엔진이 돈다 — 자산 줄이 전혀 없으면 계약 수만큼 빈 자산
   st.transferContracts.forEach(function (c, i) { if (!st.transferAssets.some(function (a) { return a.transferContractId === c.id; })) as(st.transferAssets.length).transferContractId = c.id; });
   // [2026.10.30 E] 과세대상 구분이 비었어도 자산 종류 칸이 주택 모양(아파트·단독·다세대·다가구·연립·빌라)이면 주택으로 — 오피스텔은 쓰임새로 갈리므로 비워 둔다
@@ -462,7 +485,7 @@ function ledgerCalcState_(caseId, over) {
   const gaps = [];
   st.transferAssets.forEach(function (a, i) { ['assetType', 'acquisitionDate', 'acquisitionPrice'].forEach(function (k) { if (a[k] === '' || a[k] === undefined) gaps.push('a' + i + '.' + k); }); });
   st.transferContracts.forEach(function (c, i) { ['date', 'totalPrice'].forEach(function (k) { if (!c[k]) gaps.push('c' + i + '.' + k); }); });
-  return { state: st, src: src, used: used, gaps: gaps, 기준일: (L.rows['기준일'] && L.rows['기준일'].v) || '', assumed: assumed };
+  return { state: st, src: src, used: used, gaps: gaps, 기준일: (L.rows['기준일'] && L.rows['기준일'].v) || '', assumed: assumed, fromOv: fromOv };
 }
 // 사건분류 글 → 계산기 체크(1세대1주택·비사업용·미등기·주택 수) — 서식의 체크 칸과 같다
 function ledgerApplyClass_(st, cls) {
@@ -539,7 +562,7 @@ function ledgerGiftInput_(c, L, k) {
   const gaps = []; if (!amt) gaps.push(P + 'giftAmount'); if (!rel) gaps.push(P + 'giftRelation');
   if (gaps.length) return { gaps: gaps };
   const input = { giftAmount: amt, relation: /^배우자/.test(rel) ? '배우자' : /^직계존속/.test(rel) ? '직계존속' : /^직계비속/.test(rel) ? '직계비속' : /기타\s*친족/.test(rel) ? '기타친족' : '기타', isGenerationSkip: /2촌\s*이상|조부|손자|손녀|세대\s*생략/.test(rel), giftDate: row('기준일') || c.기준일 || undefined, isDoneeResident: true };
-  if (dg(row(P + 'giftDebtAssumed'))) { input.debtAssumedAmount = dg(row(P + 'giftDebtAssumed')); input.isDebtObjectivelyProven = !/없|아니|미입증/.test(String(row(P + 'giftDebtProven') || '')); }
+  if (dg(row(P + 'giftDebtAssumed'))) { input.debtAssumedAmount = dg(row(P + 'giftDebtAssumed')); const pv = String(row(P + 'giftDebtProven') == null ? '' : row(P + 'giftDebtProven')).trim(); input.isDebtObjectivelyProven = pv !== '' && !/없|아니|미입증|false|^0$/.test(pv); } // [2026-11-12 3차 ⑤ 세무사님 "모두 권장안대로"] 입증 칸이 비면 입증 없음 — 상증법 §47③ 본문(배우자·직계존비속 간 인수 채무는 인수되지 않은 것으로 추정, 객관적으로 인정될 때만 뺌). 예전엔 빈칸을 입증된 것으로 보고 뺐다
   if (dg(row(P + 'giftPriorAmount'))) input.priorGiftAmount = dg(row(P + 'giftPriorAmount'));
   if (dg(row(P + 'giftPriorPaidTax'))) input.priorPaidTax = dg(row(P + 'giftPriorPaidTax'));
   if (dg(row(P + 'giftPriorDeductionUsed'))) input.priorRelationDeductionUsed = dg(row(P + 'giftPriorDeductionUsed'));
@@ -627,6 +650,7 @@ function ledgerCalcRun_(c, body) {
   if ((cs.assumed || []).length) common.push('이번 계산의 가정(장부 값은 그대로) ' + cs.assumed.length + '칸: ' + cs.assumed.map(function (a) { return a.이름 + ' ' + a.전 + ' → ' + a.후; }).join(', ').slice(0, 300));
   if (est.length) common.push('추가로 확인할 사항 ' + est.length + '건: ' + est.map(function (r) { return r.judged ? r.label : r.label + '(' + r.state + (r.state === '추정' ? ' ' + r.값 : '') + ')'; }).join(', ').slice(0, 300));
   if (cs.gaps.length) common.push('비어 있는 칸: ' + cs.gaps.map(ledgerLabel_).join(', ').slice(0, 200));
+  if ((cs.fromOv || []).length) common.push('개요서에 적은 값으로 채운 칸 ' + cs.fromOv.length + '개: ' + cs.fromOv.join(', ').slice(0, 200) + ' — 칸 장부에 따로 적으면 그 값이 먼저');
   (run.notes || []).forEach(function (n) { common.push('⚠ ' + n); });
   // [2026-11-10 검토대상 17] 같은 물건 칸 다름 — 결과 맨 앞에 알리고, 빈 쪽 칸은 물어볼 것(후보 = 다른 사람 몫 값)으로 세움(값을 몰래 채우지 않음)
   const sameDiff = (run.diffs || []).length ? '⚠ 같은 물건을 사람마다 나눠 적었는데 칸 값이 다른 곳 ' + run.diffs.length + '군데(' + run.diffs.map(function (d) { return d.label; }).join('·') + ') — 사람마다 다른 조건으로 계산된 숫자입니다. 아래 ⚠ 줄을 보고 장부를 맞춘 뒤 다시 계산하세요' : '';
@@ -651,7 +675,7 @@ function ledgerCalcRun_(c, body) {
     if (isCase) entry.안 = { 이름: name + (run.multi ? ' — ' + who : ''), 세목: 'transfer', 바꾼칸: (cs.assumed || []).map(function (a) { return { 칸: a.칸, 이름: a.이름, 전: a.전, 후: a.후 }; }), 누가: by, 때: caseProcNow_(), 바탕: '사건 장부(정함+추정)', 바탕저장본id: '', 이유: String(body.why || '').slice(0, 200), 추정: est.filter(function (r) { return r.state === '추정'; }).map(function (r) { return r.label + ' ' + r.값; }).slice(0, 20) };
     const up = work_updateCase({ id: c.id, 세액계산결과추가: entry /* [2026.10.30] 잠금 안 덧붙이기 — 잇단 저장이 앞 저장본을 덮지 않게 */ });
     if (!up || up.success === false) return { ok: false, error: '저장 실패' + (saved.length ? '(' + saved.map(function (s) { return s.납세자 + ' ' + s.id; }).join(', ') + '까지는 저장됨)' : '') + ': ' + ((up && up.message) || '사건 행을 못 고침') };
-    saved.push({ id: entry.id, 납세자: who, 최종세액: Number(res.납부세액_합계), 요약: lines });
+    saved.push({ id: entry.id, 납세자: who, 최종세액: Number(res.납부세액_합계), 지방: Number(res.지방소득세) || 0, 요약: lines });
   }
   const totalPay = saved.reduce(function (s, x) { return s + (x.최종세액 || 0); }, 0);
   const whoTxt = run.multi ? ' · ' + saved.map(function (s) { return s.납세자 + ' ' + won(s.최종세액) + '(' + s.id + ')'; }).join(' / ') : '';
@@ -660,6 +684,9 @@ function ledgerCalcRun_(c, body) {
   const out = { ok: true, id: saved[0].id, 이름: isCase ? name : '', 최종세액: run.multi ? undefined : saved[0].최종세액, 요약: saved[0].요약, gaps: cs.gaps, 가정: cs.assumed || [], 추가확인: est.map(function (r) { return r.label + ' — ' + r.state + (r.ask ? ': ' + r.ask : ''); }),
     message: (sameDiff ? sameDiff + ' / ' : '') + (isCase ? '경우(안) 「' + name + '」 ' : '') + (run.multi ? '공동양도 양도인별 세액계산 저장 ' + saved.length + '건 — ' + saved.map(function (s) { return s.납세자 + ' 납부세액 ' + won(s.최종세액) + '(' + s.id + ')'; }).join(' / ') : '세액계산 저장(' + saved[0].id + ') — 납부세액 ' + won(saved[0].최종세액)) + (cs.gaps.length ? ' · 빈 칸 ' + cs.gaps.length + '개' : '') + (nEst ? ' · 추정 ' + nEst + '칸으로 계산' : '') };
   if (run.multi) { out.양도인별 = saved; out.최종세액_합계 = totalPay; }
+  // [2026-11-12 3차 ② 세무사님 "모두 권장안대로"] 경정청구 — 당초 낸 양도소득세(국세)를 주면 다시 계산한 양도소득세와의 차이를 돌려받을 세액(잠정)으로 적는다. 넥스는 하던 일인데 화면엔 길이 없었다(3차 증상 34)
+  const prior = Number(String(body.priorPaidTax == null ? '' : body.priorPaidTax).replace(/[^\d]/g, ''));
+  if (prior && !run.multi) { const natl = Math.max(0, (saved[0].최종세액 || 0) - (saved[0].지방 || 0)), back = prior - natl; out.경정 = { 당초: prior, 다시계산: natl, 돌려받을세액: back }; out.요약 = [back > 0 ? '경정청구로 돌려받을 양도소득세(잠정) ' + won(back) + ' = 당초 낸 ' + won(prior) + ' − 다시 계산한 ' + won(natl) : '다시 계산한 양도소득세 ' + won(natl) + '가 당초 낸 ' + won(prior) + '보다 같거나 많음 — 돌려받을 세액 없음'] .concat(['지방소득세(다시 계산 ' + won(saved[0].지방) + ')는 따로 셈 · 장부 칸이 추정이면 잠정']).concat(out.요약 || []); }
   if ((run.diffs || []).length) out.같은물건_칸다름 = run.diffs.map(function (d) { return { 물건: d.loc, 칸: d.label, 값: d.vals.map(function (v) { return v.name + ' ' + v.v; }) }; });
   return out;
 }
@@ -2240,6 +2267,7 @@ function ledgerKrw_(s) {
   let n = 0, hit = false; const eok = /([\d,]+)억/.exec(s), cm = /억?([\d,]+)천만/.exec(s), man = /(?:억|천)?([\d,]+)만/.exec(s);
   if (eok) { n += Number(eok[1].replace(/,/g, '')) * 100000000; hit = true; }
   if (cm) { n += Number(cm[1].replace(/,/g, '')) * 10000000; hit = true; } else if (man && !/천만/.test(s)) { n += Number(man[1].replace(/,/g, '')) * 10000; hit = true; }
+  else { const ch = /억([\d,]+)천원?$/.exec(s); if (ch) { n += Number(ch[1].replace(/,/g, '')) * 10000000; hit = true; } } // [2026-11-12 3차 ①] "6억8천"(만 없이 천) = 6억 8천만 — 예전엔 6억으로만 읽었다
   return hit ? n : NaN;
 }
 function ledgerHypVsCalcInner_(L) {

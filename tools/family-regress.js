@@ -363,12 +363,12 @@ ok(xs3.양도부분 && xs3.양도부분.양도일 === '2026-07-01' && xs3.양도
 { // [2026.11.02 복잡사건 52 「변씨 연금 상속」] 정기금(§65①·시행령 §62) — 월 연금액·종료일로 잔존기간·체증형·보증기간, 사망보험금·연금보험 증여를 정기금으로
   const P = W.calculatePeriodicPaymentRightValueJS;
   const A = P({ annuityType: 'fixed_term', monthlyAmount: 2500000, valuationDate: '2026-03-10', endDate: '2036-04-25', cancellationValue: 240000000 });
-  ok(A.평가액 === 257712138 && A.잔존기간.남은_달 === 121 && A.명목합계_할인전 === 302500000 && !A.해지일시금_적용, '정기금 — 월 250만 보증 잔여 121개월: 10년 + 마지막 1개월 몫 연 3% 할인 2억 5,771만(명목 3억 250만 아님, 해지 일시금 2억 4천만보다 큼)', won(A.평가액));
+  ok(A.평가액 === 265443502 && A.잔존기간.남은_달 === 121 && A.명목합계_할인전 === 302500000 && !A.해지일시금_적용, '정기금 — 월 250만 보증 잔여 121개월: 10년 + 마지막 1개월 몫 연 3% 할인(첫해는 할인 없음 — 11-12 세무사님 권장안 채택) 2억 6,544만(명목 3억 250만 아님, 해지 일시금 2억 4천만보다 큼)', won(A.평가액));
   const B = P({ annuityType: 'lifetime', annualAmount: 12000000, annualGrowthRate: 2, lifeExpectancyYears: 15, guaranteeRemainingYears: 3, cancellationValue: 130000000 });
-  ok(B.평가액 === 163365993 && B.연도별_현재가치_내역[1].정기금액 === 12240000, '정기금 — 부부형 종신연금 연 1,200만 해마다 2% 체증, 기대여명 15년', won(B.평가액));
+  ok(B.평가액 === 168266973 && B.연도별_현재가치_내역[1].정기금액 === 12240000, '정기금 — 부부형 종신연금 연 1,200만 해마다 2% 체증, 기대여명 15년', won(B.평가액));
   const D = W.calculateDeemedInheritancePropertyJS({ itemType: 'insurance', wasPolicyholderDecedent: true, periodic: { annuityType: 'fixed_term', monthlyAmount: 2500000, valuationDate: '2026-03-10', endDate: '2036-04-25', cancellationValue: 260000000 } });
   const G = W.calculateInsuranceProceedsGiftTaxJS({ periodic: { annuityType: 'fixed_term', annualAmount: 24000000, remainingYears: 10 }, totalPremiumPaid: 200000000, premiumPaidByOthers: 140000000, relationDeductionLimit: 50000000 });
-  ok(D.간주상속재산포함액 === 260000000 && G.증여재산가액 === 143307408 && G.산출세액 === 9330740, '정기금 — 사망 뒤 연금으로 받는 보험금은 해지 일시금(더 큼) 2억 6천만 · 연금 개시로 증여된 아들 연금 10년 × 연 2,400만 평가 2억 472만 × 아버지 보험료 70% = 1억 4,331만', won(G.증여재산가액));
+  ok(D.간주상속재산포함액 === 265443502 && G.증여재산가액 === 147606630 && G.산출세액 === 9760663, '정기금 — 사망 뒤 연금으로 받는 보험금은 해지 일시금 2억 6천만과 정기금 평가 2억 6,544만(첫해 할인 없음) 중 큰 것 · 연금 개시로 증여된 아들 연금 10년 × 연 2,400만 평가 2억 1,087만(첫해 할인 없음) × 아버지 보험료 70% = 1억 4,761만', won(G.증여재산가액));
 }
 { // [2026.11.02 복잡사건 53 「피씨 주식 포괄적 교환」] 조직변경 등 이익(§42의2·시행령 §32의2·§28⑤ 준용) — 교환비율이 틀어진 포괄적 주식교환
   const O = W.calculateOrgChangeGiftTaxJS;

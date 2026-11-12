@@ -146,6 +146,11 @@ var BGQ_HANDLERS_ = {
     if (!c) return; // 그 사이 지운 사건
     const by = a.by === '넥스' ? '넥스' : '세무사님';
     ledgerFromCaseWrite_(c, { 세목: c.세목 || '', 업무유형: c.업무유형 || '', 납세자: c.납세자 || '' }, by);
+    // [2026-11-12 3차 ① 세무사님 "모두 권장안대로"] 의뢰 메모가 있으면 GAS가 가설로 읽고(값을 정하지 않음), 메모가 말한 거래·물건을 비어 있는 계산 칸에 「추정」으로 넣는다 — 정해진 칸은 안 건드리고, 서류가 오면 서류 값이 이기며 다르면 여쭘(ledgerEstimate_ 규칙 그대로). 메모만 적고도 시험 계산이 돌게
+    if (String(c.개요 || '').trim()) {
+      try { if (typeof caseProcGrasp_ === 'function') caseProcGrasp_(c); } catch (e) { console.error('의뢰 메모 가설 실패 ' + c.id + ': ' + (e && e.message || e)); }
+      try { if (typeof ledgerEstimate_ === 'function') ledgerEstimate_(c, {}, 'GAS'); } catch (e) { console.error('의뢰 메모 추정 실패 ' + c.id + ': ' + (e && e.message || e)); }
+    }
   }
 };
 

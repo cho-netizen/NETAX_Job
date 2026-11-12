@@ -363,7 +363,12 @@
             + '<input title="경우 이름" id="chLgCaseName" type="text" placeholder="경우 이름(비우면 시험 계산)" style="width:220px;"><select title="가정할 칸" id="chLgOverPath"><option value="">가정 없음</option>' + opts5 + '</select><input title="가정 값" id="chLgOverVal" type="text" placeholder="가정 값" style="width:160px;"><button type="button" id="chLgAddOver" class="ghost-btn sm" title="가정을 하나 더 얹습니다">＋ 가정</button>'
             + '<span id="chLgChainBox" style="display:none; gap:6px; align-items:center;"><select id="chLgChain" title="이어 계산할 증여 저장본"><option value="">이어 계산할 증여 없음</option>' + giftSaved.map(function(s){ return '<option value="' + esc(s.id) + '">' + esc(s.이름 + (s.최종세액 != null ? ' ' + Number(s.최종세액).toLocaleString('ko-KR') + '원' : '')) + '</option>'; }).join('') + '</select>'
             + '<label style="font-size:12px; white-space:nowrap;"><input type="checkbox" id="chLgChainHeir" checked> 받은 사람이 상속인</label><input id="chLgChainShare" type="text" placeholder="그 상속인 상속분(원)" style="width:150px;" title="증여세 공제 한도를 셈하는 데 필요합니다"></span>'
-            + '<button type="button" id="chLgTry" class="ghost-btn">계산</button></div><div id="chLgOvers" style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"></div></div>';
+            // [2026-11-12 3차 ② 세무사님 "모두 권장안대로"] 경정청구 — 당초 낸 양도소득세를 적으면 다시 계산한 세액과의 차이(돌려받을 세액)를 같이 낸다(양도 계산일 때만)
+            + '<input id="chLgPrior" type="text" placeholder="경정청구면 당초 낸 양도소득세(원)" style="width:220px;" title="적으면 다시 계산한 양도소득세와의 차이를 돌려받을 세액(잠정)으로 보여 드립니다 — 지방소득세는 빼고 적으세요">'
+            + '<button type="button" id="chLgTry" class="ghost-btn">계산</button>'
+            // [2026-11-12 3차 ②] 부담부증여는 증여세와 증여자 양도세(채무 인수분)를 함께 봐야 한다 — 절세 탭 「부담부증여 vs 단순증여」 비교가 이미 있어 그리로 바로 잇는다
+            + (lgCodes.indexOf('gift') !== -1 ? '<button type="button" id="chLgBurdenGo" class="ghost-btn" title="절세 탭의 「부담부증여 vs 단순증여」 비교를 엽니다 — 증여세와 주는 사람 양도세(채무 인수분)를 합쳐 견줍니다">부담부증여 vs 단순증여 비교</button>' : '')
+            + '</div><div id="chLgOvers" style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;"></div></div>';
           th5 += '<div style="margin-top:12px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">세목 비교</b> <span style="color:var(--sub);">같은 사실로 양도·증여·상속을 각각 계산해 나란히 — 증여는 관계를 고르면(증여재산가액을 비우면 장부 양도가액을 시가로 가정), 상속은 과세가액을 적으면 계산합니다. 결과는 안으로 저장돼 검토서가 인용합니다</span>'
             + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;"><label style="font-size:12px;">증여 관계 <select id="chCmpRel"><option value="">비교 안 함</option><option>직계비속</option><option>직계존속</option><option>배우자</option><option>기타친족</option><option>기타</option></select></label><input id="chCmpGiftAmt" type="text" placeholder="증여재산가액(비우면 장부 양도가액)" style="width:220px;">'
             + '<label style="font-size:12px;">상속 과세가액 <input id="chCmpInhAmt" type="text" placeholder="비우면 비교 안 함" style="width:150px;"></label><label style="font-size:12px;"><input type="checkbox" id="chCmpSpouse"> 배우자 있음</label><label style="font-size:12px;">자녀 수 <input id="chCmpKids" type="number" min="0" value="1" style="width:50px;"></label><button type="button" id="chCmpGo" class="ghost-btn">비교</button></div></div>';
@@ -643,6 +648,8 @@
           if (!lgAddOne()) return;
           var tx = lgTaxSel ? lgTaxSel.value : '', p5 = { step: 'ledgerCalc', name: nm, over: lgOvers.map(function(o){ return { path: o.path, value: o.value }; }) };
           if (tx) p5.tax = tx;
+          var priorEl = document.getElementById('chLgPrior'), priorV = priorEl ? String(priorEl.value || '').replace(/[^\d]/g, '') : '';
+          if (priorV && (tx || 'transfer') === 'transfer') p5.priorPaidTax = Number(priorV); // [2026-11-12 3차 ②] 경정청구 돌려받을 세액
           var chs = document.getElementById('chLgChain');
           if (tx === 'inheritance' && chs && chs.value){ p5.chainFrom = [chs.value]; p5.chainHeir = !!document.getElementById('chLgChainHeir').checked; var shv = (document.getElementById('chLgChainShare').value || '').replace(/[^\d]/g, ''); if (shv) p5.chainShare = Number(shv); }
           busy(tryB, true, '계산 중…'); if (tOut) tOut.innerHTML = '<div class="log-empty">시험 계산 중…</div>';
@@ -653,6 +660,14 @@
             showTool('🧮 ' + (res.이름 ? '경우(안) 「' + res.이름 + '」' : '시험 계산') + ' — 저장본 ' + (res.id || ''), res, (res.요약 || []).concat((res.gaps || []).length ? ['비어 있는 칸 ' + res.gaps.length + '개 — ④ 칸 장부에서 넣거나 추정으로'] : []));
             if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
           });
+        });
+        // [2026-11-12 3차 ②] 「부담부증여 vs 단순증여 비교」 — 절세 탭으로 넘어가 증여 묶음의 그 비교를 고른다(절세 화면이 그려질 때까지 최대 6초 기다림)
+        var bgGo = document.getElementById('chLgBurdenGo'); if (bgGo) bgGo.addEventListener('click', function(){
+          var tab = document.querySelector('[data-cb-tab="taxplan"]'); if (!tab){ showToast('절세 탭을 찾지 못했습니다.', 'warning'); return; }
+          tab.click(); var t0 = Date.now();
+          var pick = function(){ var g = document.querySelector('[data-tp-group="gift"]'); if (!g){ if (Date.now() - t0 < 6000) return setTimeout(pick, 300); showToast('절세 화면이 아직 안 떴습니다 — 절세 탭에서 증여 › 부담부증여 vs 단순증여를 고르세요.', 'warning'); return; }
+            if (!g.classList.contains('on')) g.click(); setTimeout(function(){ var k = document.querySelector('[data-tp-kind="burden"]'); if (k) k.click(); }, 200); };
+          setTimeout(pick, 300);
         });
         var cmpB = document.getElementById('chCmpGo'); if (cmpB) cmpB.addEventListener('click', function(){
           var rel = document.getElementById('chCmpRel').value, gAmt = (document.getElementById('chCmpGiftAmt').value || '').replace(/[^\d]/g, ''), iAmt = (document.getElementById('chCmpInhAmt').value || '').replace(/[^\d]/g, '');

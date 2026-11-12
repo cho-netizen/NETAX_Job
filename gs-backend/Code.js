@@ -19407,7 +19407,7 @@ const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 // 협의된 처리시한)로 자동계산 대상에서 빼고 사용자가 직접 입력한 값을 쓴다.
 // [2026.09.18 신규] "상담을 자문과 상담으로 세분" — 자문도 정해진 법정기한이 없는 유형이라
 // 같은 자리에 둔다(workmanage.html의 WORK_MANUAL_DEADLINE_TYPES_와 반드시 같은 값 유지).
-const WORK_MANUAL_DEADLINE_TYPES_ = ['자문', '상담', '해명자료', '세무조사', '자금출처소명'];
+const WORK_MANUAL_DEADLINE_TYPES_ = ['자문', '상담', '해명자료', '세무조사', '자금출처소명', '가족법인·가업승계']; // [2026-11-12 3차 ④] 가족법인·가업승계도 법정기한 없이 처리시한 직접
 // [2026.10.30] 위 유형은 사건의 법정일 칸에 법정 기한이 아니라 사무소가 정한 처리시한이 든다 — 넥스·GAS 글에 "법정일"로 보이면
 // 넥스가 법정 기한으로 읽는다(10-30 가상불복 시험: "사건 화면의 법정일 2026-11-05는 근거를 확인하지 못했습니다"). 화면 workDeadlineFieldLabel_과 같은 구분.
 function work_deadlineLabel_(upType) { return WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1 ? '처리시한(사무소가 정한 날 — 법정 기한 아님)' : '법정일'; }
@@ -20410,7 +20410,10 @@ var WORK_WRITE_BY_ = 'GAS';
 function work_updateCase(params) {
   const r = work_updateCase0_(params);
   if (r && r.success !== false && r.case && typeof ledgerFromCaseWrite_ === 'function') {
-    try { const lr = ledgerFromCaseWrite_(r.case, params, WORK_WRITE_BY_); if (lr && lr.refused) r.ledgerNote = '장부: 세무사님·넥스가 정한 값 ' + lr.refused + '칸은 바꾸지 않음'; } catch (e) { console.error('사건 장부 층 쓰기 실패(시트 저장은 됨): ' + (e && e.message || e)); }
+    try { const lr = ledgerFromCaseWrite_(r.case, params, WORK_WRITE_BY_); if (lr && lr.refused) r.ledgerNote = '장부: 세무사님·넥스가 정한 값 ' + lr.refused + '칸은 바꾸지 않음'; }
+    catch (e0) { console.error('사건 장부 층 쓰기 실패(시트 저장은 됨): ' + (e0 && e0.message || e0)); }
+    // [2026-11-12 3차 ①] 의뢰 메모(개요)를 고쳐 저장하면 가설·추정을 다시(뒤에서, 같은 사건은 한 번만)
+    try { if (params.개요 !== undefined && String(params.개요 || '').trim() && typeof bgEnqueue_ === 'function') bgEnqueue_('case_ledger', { caseId: r.case.id, by: WORK_WRITE_BY_ === '넥스' ? '넥스' : '세무사님' }, 'case_ledger_' + r.case.id, '의뢰 메모 고침 — 가설·추정 다시'); } catch (e1) {}
   }
   return r;
 }
@@ -48848,7 +48851,9 @@ function caseProcGrasp_(c) {
   if (who && ov[who]) add('납세자', caseProcNm_(ov[who]), '처리개요');
   if (ov.giftDonorName) add('상대방', caseProcNm_(ov.giftDonorName), '처리개요 증여자');
   if (ov.giftRelation) add('관계', ov.giftRelation, '처리개요');
-  const texts = String(c.폴더ID || '').trim() ? caseProcHypTexts_(c) : [];
+  const texts = String(c.폴더ID || '').trim() ? caseProcHypTexts_(c).slice() : [];
+  // [2026-11-12 3차 ① 세무사님 "모두 권장안대로"] 새 사건 때 적은 의뢰 메모(작업관리 「개요」 칸)도 가설 출처 글 — 예전엔 폴더의 의뢰서_*.md(빈 틀)만 읽어 메모에 적은 금액·날짜·물건이 장부 어디에도 안 갔다(3차 증상 7·10·19·30, 넥스도 경정 건에서 못 봄)
+  if (String(c.개요 || '').trim()) texts.unshift({ file: '의뢰 메모(작업관리)', text: String(c.개요).slice(0, 6000) });
   tgk('가설·출처 글 합계');
   const relRe = new RegExp('(?:^|[\\s,(·])(' + CASEPROC_REL_WORDS_ + ')\\s*[:：]?\\s+([가-힣]{2,4})(?=$|[\\s,.)·님씨])|([가-힣]{2,4})\\s*\\(\\s*(' + CASEPROC_REL_WORDS_ + ')\\s*\\)', 'g');
   const STOP = /없음|없다|없고|생존|증여|상속|양도|소유|명의|사망|부동산|아파트|주택|토지|매매|계약|세금|신고|재산|금액|지분|에게|으로|부터|까지|한테|에서|께서|중에|이고|이며|들이|들은|이랑|하고|님이|님은|명이|분이|모두|함께|각각|소유자|^(중|및|외|등)/;
@@ -48937,6 +48942,9 @@ function caseProcGraspMore_(t, c, add, file) {
   let mm, nm = 0; while ((mm = aRe.exec(txt)) && nm < 6) { add('거래', mm[1].replace(/\s+/g, '') + ' ' + mm[2].replace(/\s+/g, ''), file); nm++; }
   const aRe2 = /((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*(?:을|를|의)?\s*(증여|양도|매도|상속)/g; // 금액이 앞에 오는 말("현금 1억원 증여")
   while ((mm = aRe2.exec(txt)) && nm < 6) { add('거래', mm[2] + ' ' + mm[1].replace(/\s+/g, ''), file); nm++; }
+  // [2026-11-12 3차 ①] 의뢰 메모 말투 — "6억 8천에 매수", "14억 5천에 팔 계약"(금액 + 에 + 사고판 말). 산 말은 취득, 판 말은 양도로 적는다(가설 — 서류 확인 전)
+  const aRe3 = /((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*에\s*(매수|취득|매입|구입|샀|사서|팔|매도|양도|처분|매각)/g;
+  while ((mm = aRe3.exec(txt)) && nm < 8) { add('거래', (/^(매수|취득|매입|구입|샀|사서)/.test(mm[2]) ? '취득' : '양도') + ' ' + mm[1].replace(/\s+/g, ''), file); nm++; }
   // 요청 사항 — "요청·의뢰 내용·요청사항·문의:" 줄
   const rq = /^\s*[-*#]*\s*(?:요청\s*사항|의뢰\s*내용|요청|문의\s*(?:사항|내용)?|상담\s*내용)\s*[:：]\s*([^\n]{4,120})/m.exec(txt);
   if (rq) add('요청', rq[1].trim(), file);
