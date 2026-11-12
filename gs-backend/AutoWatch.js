@@ -32,7 +32,7 @@ function awNoticePrune_(cases) {
   const open = {}; (cases || []).forEach(function (c) { if (c && c.id && awOpen_(c)) open[c.id] = 1; });
   let removed = 0;
   try {
-    withLock_(5000, function () {
+    withLockStrict_(5000, function () {
       const p = PropertiesService.getScriptProperties();
       let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
       const bad = function (x) { // [2026.11.12] 날짜 읽기 오류로 올라간 것: 멈춘 사건 열쇠의 마지막 날짜·미수 글의 마지막 고침이 yyyy-MM-dd 꼴이 아님
@@ -56,7 +56,7 @@ function awNoticeAdd_(kind, text, caseId, key, toDigest) { // 같은 열쇠는 �
   if (!text) return false;
   let added = false;
   try {
-    withLock_(5000, function () {
+    withLockStrict_(5000, function () {
       const p = PropertiesService.getScriptProperties();
       let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
       const k = String(key || (kind + ':' + text)).slice(0, 120);
@@ -72,7 +72,7 @@ function awNoticeAdd_(kind, text, caseId, key, toDigest) { // 같은 열쇠는 �
 function awNoticeSeen_(body) { // 화면 [확인]: id 하나 또는 all
   const id = String(body && body.id || ''), all = !!(body && body.all);
   try {
-    withLock_(5000, function () {
+    withLockStrict_(5000, function () {
       const p = PropertiesService.getScriptProperties();
       let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
       q = all ? [] : q.filter(function (x) { return x && x.id !== id; });

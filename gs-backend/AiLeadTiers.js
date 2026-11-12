@@ -60,7 +60,7 @@ function caseProcAiRoute_(iss) {
 function caseProcAiLogGaps_(c, gaps) {
   if (!gaps || !gaps.length) return;
   try {
-    withLock_(5000, function () {
+    withLockStrict_(5000, function () {
       let folder = null; try { const pf = ai_paidLogFile_(), ps = pf.getParents(); folder = ps.hasNext() ? ps.next() : null; } catch (e) {}
       if (!folder) return;
       const it = folder.getFilesByName(CASEPROC_AI_GAP_LOG_), f = it.hasNext() ? it.next() : folder.createFile(CASEPROC_AI_GAP_LOG_, '[]', 'application/json');

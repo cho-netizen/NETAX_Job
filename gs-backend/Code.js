@@ -6851,6 +6851,14 @@ function withLock_(waitMs, fn) {
     lock.releaseLock();
   }
 }
+// [2026.11.12 박영랑 사건] 잠금을 못 얻으면 예외를 던지는 판 — 돌려주는 값을 보지 않고 "하고 끝" 식으로 부르는 자리용.
+//  withLock_는 잠금 실패를 { error }로 돌려주기만 해서, 결과를 안 보는 호출(뒷일 case_folder의 폴더ID 적기 등)은 실패를 "잘 끝남"으로
+//  넘겼다 — 박영랑 사건의 폴더·고객창구는 만들어졌는데 사건 줄에 폴더ID가 안 적혀 채팅창에 폴더가 뜨지 않았고 실패 목록에도 안 남음.
+function withLockStrict_(waitMs, fn) {
+  const r = withLock_(waitMs, function () { return { __ok: true, v: fn() }; });
+  if (!r || r.__ok !== true) { const why = (r && r.error) || '저장 잠금을 얻지 못했습니다.'; console.error('withLockStrict_: ' + why); throw new Error(why); }
+  return r.v;
+}
 
 // [2026.09.16 신규] 작성관리(reportwriter.html)가 문서를 저장/발행할 때만 body.reportMeta를
 // 실어 보낸다 — 이 필드가 없으면(증빙 업로드, 메모 첨부 등 이 함수의 다른 모든 호출부) 아무
@@ -13090,7 +13098,7 @@ function notifyOwner_(level, text, caseId) {
     if (r && r.success) return;
   }
   try {
-    withLock_(5000, function () {
+    withLockStrict_(5000, function () {
       const p = PropertiesService.getScriptProperties();
       let q = []; try { q = JSON.parse(p.getProperty(NOTIFY_DIGEST_PROP_) || '[]'); } catch (e) { q = []; }
       q.push(Utilities.formatDate(new Date(), 'Asia/Seoul', 'MM-dd HH:mm') + ' ' + text);
@@ -13190,7 +13198,7 @@ const NOTIFY_LOG_PROP_ = 'NX_NOTIFY_LOG';
 function notifyLog_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(NOTIFY_LOG_PROP_) || '[]'); } catch (e) { return []; } }
 function notifyLogAdd_(text, caseId) {
   const id = Utilities.getUuid().replace(/-/g, '').slice(0, 8);
-  withLock_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.unshift({ id: id, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), text: String(text).slice(0, 200), caseId: caseId || '', status: '대기' }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a.slice(0, 50))); });
+  withLockStrict_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.unshift({ id: id, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), text: String(text).slice(0, 200), caseId: caseId || '', status: '대기' }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a.slice(0, 50))); });
   return id;
 }
 function notifyGet_(id) { return notifyLog_().filter(function (x) { return x.id === String(id || ''); })[0] || null; }
@@ -13198,7 +13206,7 @@ function notifyAnswer_(body) {
   const id = String(body.id || ''), ans = ({ '확인': '확인', '보류': '보류', '나중에': '나중에' })[String(body.answer || '')];
   if (!ans) return { error: '확인·보류·나중에 중 하나를 고르세요.' };
   let item = null;
-  withLock_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.forEach(function (x) { if (x.id === id) { x.status = ans; x.answeredAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); item = x; } }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a)); });
+  withLockStrict_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.forEach(function (x) { if (x.id === id) { x.status = ans; x.answeredAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); item = x; } }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a)); });
   if (!item) return { error: '알림을 찾지 못했습니다(오래된 알림일 수 있음).' };
   if (item.caseId && ans !== '나중에') { try { workAppendLog_({ caseId: item.caseId, text: '[알림 ' + ans + '] ' + item.text }); } catch (e) {} }
   if (ans === '나중에') notifyOwner_('digest', '(나중에로 미룸) ' + item.text);
@@ -18080,7 +18088,7 @@ function rh_rebuildReportIndexFull_() {
 // 성공한다(handleUploadFile에서 try/catch로 감싸 호출).
 function rh_upsertReportIndexEntry_(entry) {
   if (!rh_indexFolder_()) return;
-  withLock_(5000, function () {
+  withLockStrict_(5000, function () {
     let list = rh_loadReportIndex_();
     if (!list) list = [];
     const idx = list.findIndex(function (x) { return x.id === entry.id; });
@@ -21535,7 +21543,14 @@ function work_linkCaseFolder(params) {
     const col = work_colMap_(data[0]);
     const found = work_findCaseRow_(sheet, col, caseId);
     if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
-    if (String(found.row[col.폴더ID] || '').trim()) return { success: false, message: '이미 폴더가 연결된 사건입니다.' };
+    if (String(found.row[col.폴더ID] || '').trim()) {
+      // [2026.11.12 박영랑 사건] 같은 폴더가 이미 이어져 있고 접속코드만 빈 줄이면 그 폴더의 고객창구를 잇는다(다른 폴더면 예전처럼 거절)
+      if (String(found.row[col.폴더ID]).trim() === folderId && !String(found.row[col.my_report_id] || '').trim()) {
+        const rid = my_reportIdByFolder_(folderId);
+        if (rid) { sheet.getRange(found.rowIndex, col.my_report_id + 1).setValue(rid); try { work_valuesDirty_(); } catch (e) {} return { success: true, folderId: folderId, my_report_id: rid, note: '접속코드만 이음' }; }
+      }
+      return { success: false, message: '이미 폴더가 연결된 사건입니다.' };
+    }
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][col.폴더ID] || '').trim() === folderId) {
         // [2026.09.16 신규] "잘못 부여된 사건명" 중복 등록(고객명·납세자가 뒤바뀌었거나 정정
@@ -21546,8 +21561,25 @@ function work_linkCaseFolder(params) {
     }
     try { DriveApp.getFolderById(folderId); } catch (err) { return { success: false, message: '폴더를 찾을 수 없습니다: ' + err.message }; }
     sheet.getRange(found.rowIndex, col.폴더ID + 1).setValue(folderId);
-    return { success: true };
+    // [2026.11.12 박영랑 사건] 그 폴더로 이미 만들어진 고객창구(접속코드)가 있으면 같이 잇는다 — 뒷일이 폴더·창구를 만들고 사건 줄만 못 적은 경우,
+    //  창구를 새로 만들지 않고 있는 것을 그대로 쓴다(둘이면 고객이 받은 접속코드가 어긋남).
+    let reportId = '';
+    if (!String(found.row[col.my_report_id] || '').trim()) {
+      reportId = my_reportIdByFolder_(folderId);
+      if (reportId) sheet.getRange(found.rowIndex, col.my_report_id + 1).setValue(reportId);
+    }
+    try { work_valuesDirty_(); } catch (e) {}
+    return { success: true, folderId: folderId, my_report_id: reportId };
   });
+}
+// 고객창구 장부에서 그 폴더ID로 등록된 접속코드 하나(없으면 '')
+function my_reportIdByFolder_(folderId) {
+  try {
+    const sheet = SpreadsheetApp.openById(MY_SHEET_ID).getSheetByName(MY_SHEET_CASES);
+    const data = sheet.getDataRange().getValues(), col = my_colMap_(data[0]);
+    for (let i = 1; i < data.length; i++) if (String(data[i][col.폴더ID] || '').trim() === folderId && String(data[i][col.report_id] || '').trim()) return String(data[i][col.report_id]).trim();
+  } catch (e) { console.log('고객창구 장부에서 폴더로 접속코드 찾기 실패: ' + e.message); }
+  return '';
 }
 
 // [2026.09.16 신규] "고객F(고객F)/고객E 피상속인(고객E)는 잘못 부여된 사건명이니까 수정된 사건명으로

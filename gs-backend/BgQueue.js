@@ -77,7 +77,8 @@ var BGQ_HANDLERS_ = {
       const my = my_handleAdminCreateCase({ admin_code: PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'), name: r.row[r.col.고객명], case_name: r.row[r.col.사건명], checklist: [], permission: '허용', folder_id: folderId });
       if (my && my.success !== false && my.report_id) reportId = my.report_id;
     }
-    withLock_(8000, function () {
+    // [2026.11.12 박영랑 사건] 잠금을 못 얻으면 예외 → 다시 시도(세 번 실패면 실패 목록). 예전 withLock_는 { error }만 돌려줘 폴더ID·접속코드가 조용히 빠졌다.
+    withLockStrict_(8000, function () {
       const sheet = work_getSheet_();
       const col = work_colMap_(sheet.getDataRange().getValues()[0]);
       const found = work_findCaseRow_(sheet, col, a.caseId);
