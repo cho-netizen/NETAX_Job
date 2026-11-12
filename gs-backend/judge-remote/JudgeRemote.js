@@ -694,7 +694,7 @@ var JUDGE_SEAM_NAMES_ = ["넥스 → 매매계약 해제 판정(양도시기 뒤
 function jmSeamFilter_(list) {
   var memo = null;
   var get = function () { if (!memo) { try { memo = { r: jmRemote_({ seams: true }) || [] }; } catch (e) { memo = { err: e.message }; } } return memo; };
-  var ver = { 길: 'job 서버 → 판정 서버(닿는지·같은 판인지)', fn: function () { var v; try { v = jmRemote_({ ver: true }); } catch (e) { return e.message; } return v === "13f584272b93" ? '' : '판정 서버 판이 다름(' + v + ' ≠ 13f584272b93) — node tools/build-judge.js 뒤 gs-judge 를 clasp push·deploy -i 로 다시 올릴 것'; } };
+  var ver = { 길: 'job 서버 → 판정 서버(닿는지·같은 판인지)', fn: function () { var v; try { v = jmRemote_({ ver: true }); } catch (e) { return e.message; } return v === "d55132698a62" ? '' : '판정 서버 판이 다름(' + v + ' ≠ d55132698a62) — node tools/build-judge.js 뒤 gs-judge 를 clasp push·deploy -i 로 다시 올릴 것'; } };
   return [ver].concat(list.map(function (s) {
     if (JUDGE_SEAM_NAMES_.indexOf(s.길) === -1) return s;
     return { 길: s.길 + ' (판정 서버)', fn: function () { var m = get(); if (m.err) return m.err; var x = m.r.filter(function (y) { return y.길 === s.길; })[0]; return x ? x.msg : '판정 서버에 이 줄이 없음(판정 서버를 다시 올릴 것)'; } };

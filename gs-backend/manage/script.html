@@ -1551,10 +1551,7 @@
   }
   function nxCoverSync_(){
     if (typeof nxCmRecDot_ === 'function') nxCmRecDot_(); // 녹음 중 표시(consultmemo.html)
-    var cur = nxCoverActiveView_();
-    document.querySelectorAll('#nxCoverBar [data-cover-view]').forEach(function(b){
-      b.classList.toggle('on', b.getAttribute('data-cover-view') === cur);
-    });
+    // [2026.11.12 전수조사] 예전 커버 화면 아래 단추 줄(nxCoverBar)은 화면에서 없어져 그 단추 표시·누르기 처리를 걷음(녹음 표시만 남김)
   }
   function nxCoverOnEnter_(cover){
     var root = document.getElementById('appRoot');
@@ -1564,13 +1561,6 @@
     }
     nxCoverSync_();
   }
-  document.addEventListener('click', function(e){
-    var b = e.target.closest && e.target.closest('#nxCoverBar [data-cover-view]');
-    if (!b) return;
-    var name = b.getAttribute('data-cover-view');
-    if (nxCoverActiveView_() !== name) goToView_(name);
-    nxCoverSync_();
-  });
 
   // [2026.10.15] 커버화면 밀기(세무사님 제안) — 위로 밀면 요약 ↔ AI, AI 화면에서 왼쪽으로 밀면 음성 ↔ 문자(aichat.html).
   // 요약은 목록을 위아래로 넘기므로, 넘길 것이 남아 있으면 넘기기를 우선하고 끝(맨 위·맨 아래)에서 더 밀 때만 바꾼다.

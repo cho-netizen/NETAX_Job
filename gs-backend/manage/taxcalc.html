@@ -363,30 +363,6 @@ function recomputeAfUnpaidDays(){
   const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
   setUnpaidDaysField_('afUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
 }
-function recomputeDfUnpaidDays(){
-  const giftDate = document.getElementById('dfGiftDate');
-  const paidDate = document.getElementById('dfPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('dfUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeCiUnpaidDays(){
-  const giftDate = document.getElementById('ciGiftDate');
-  const paidDate = document.getElementById('ciPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('ciUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeCrUnpaidDays(){
-  const giftDate = document.getElementById('crGiftDate');
-  const paidDate = document.getElementById('crPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('crUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeIcfUnpaidDays(){
-  const giftDate = document.getElementById('icfGiftDate');
-  const paidDate = document.getElementById('icfPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('icfUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
 function recomputeCbUnpaidDays(){
   const giftDate = document.getElementById('cbGiftDate');
   const paidDate = document.getElementById('cbPaidDate');
@@ -405,30 +381,6 @@ function recomputeSlUnpaidDays(){
   const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
   setUnpaidDaysField_('slUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
 }
-function recomputeFuUnpaidDays(){
-  const giftDate = document.getElementById('fuGiftDate');
-  const paidDate = document.getElementById('fuPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('fuUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeSpUnpaidDays(){
-  const giftDate = document.getElementById('spGiftDate');
-  const paidDate = document.getElementById('spPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('spUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeIpUnpaidDays(){
-  const giftDate = document.getElementById('ipGiftDate');
-  const paidDate = document.getElementById('ipPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('ipUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeTiUnpaidDays(){
-  const giftDate = document.getElementById('tiGiftDate');
-  const paidDate = document.getElementById('tiPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('tiUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
 function recomputeJmUnpaidDays(){
   const fiscalYearEnd = document.getElementById('jmFiscalYearEnd');
   const paidDate = document.getElementById('jmPaidDate');
@@ -440,24 +392,6 @@ function recomputeScUnpaidDays(){
   const paidDate = document.getElementById('scPaidDate');
   const deadline = taxCalcDeadlineFromMonthEnd_(fiscalYearEnd ? fiscalYearEnd.value : '', 3);
   setUnpaidDaysField_('scUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeMgUnpaidDays(){
-  const giftDate = document.getElementById('mgGiftDate');
-  const paidDate = document.getElementById('mgPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('mgUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputePuUnpaidDays(){
-  const giftDate = document.getElementById('puGiftDate');
-  const paidDate = document.getElementById('puPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('puUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
-}
-function recomputeOcUnpaidDays(){
-  const giftDate = document.getElementById('ocGiftDate');
-  const paidDate = document.getElementById('ocPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(giftDate ? giftDate.value : '', 3);
-  setUnpaidDaysField_('ocUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
 }
 function recomputePvUnpaidDays(){
   const giftDate = document.getElementById('pvGiftDate');
@@ -8657,22 +8591,6 @@ function renderGiftInheritanceSharedPane_(){
   const afPaidDateEl = document.getElementById('afPaidDate');
   if (afGiftDateEl) afGiftDateEl.addEventListener('input', recomputeAfUnpaidDays);
   if (afPaidDateEl) afPaidDateEl.addEventListener('input', recomputeAfUnpaidDays);
-  const dfGiftDateEl = document.getElementById('dfGiftDate');
-  const dfPaidDateEl = document.getElementById('dfPaidDate');
-  if (dfGiftDateEl) dfGiftDateEl.addEventListener('input', recomputeDfUnpaidDays);
-  if (dfPaidDateEl) dfPaidDateEl.addEventListener('input', recomputeDfUnpaidDays);
-  const ciGiftDateEl = document.getElementById('ciGiftDate');
-  const ciPaidDateEl = document.getElementById('ciPaidDate');
-  if (ciGiftDateEl) ciGiftDateEl.addEventListener('input', recomputeCiUnpaidDays);
-  if (ciPaidDateEl) ciPaidDateEl.addEventListener('input', recomputeCiUnpaidDays);
-  const crGiftDateEl = document.getElementById('crGiftDate');
-  const crPaidDateEl = document.getElementById('crPaidDate');
-  if (crGiftDateEl) crGiftDateEl.addEventListener('input', recomputeCrUnpaidDays);
-  if (crPaidDateEl) crPaidDateEl.addEventListener('input', recomputeCrUnpaidDays);
-  const icfGiftDateEl = document.getElementById('icfGiftDate');
-  const icfPaidDateEl = document.getElementById('icfPaidDate');
-  if (icfGiftDateEl) icfGiftDateEl.addEventListener('input', recomputeIcfUnpaidDays);
-  if (icfPaidDateEl) icfPaidDateEl.addEventListener('input', recomputeIcfUnpaidDays);
   const cbGiftDateEl = document.getElementById('cbGiftDate');
   const cbPaidDateEl = document.getElementById('cbPaidDate');
   if (cbGiftDateEl) cbGiftDateEl.addEventListener('input', recomputeCbUnpaidDays);
@@ -8685,22 +8603,6 @@ function renderGiftInheritanceSharedPane_(){
   const slPaidDateEl = document.getElementById('slPaidDate');
   if (slGiftDateEl) slGiftDateEl.addEventListener('input', recomputeSlUnpaidDays);
   if (slPaidDateEl) slPaidDateEl.addEventListener('input', recomputeSlUnpaidDays);
-  const fuGiftDateEl = document.getElementById('fuGiftDate');
-  const fuPaidDateEl = document.getElementById('fuPaidDate');
-  if (fuGiftDateEl) fuGiftDateEl.addEventListener('input', recomputeFuUnpaidDays);
-  if (fuPaidDateEl) fuPaidDateEl.addEventListener('input', recomputeFuUnpaidDays);
-  const spGiftDateEl = document.getElementById('spGiftDate');
-  const spPaidDateEl = document.getElementById('spPaidDate');
-  if (spGiftDateEl) spGiftDateEl.addEventListener('input', recomputeSpUnpaidDays);
-  if (spPaidDateEl) spPaidDateEl.addEventListener('input', recomputeSpUnpaidDays);
-  const ipGiftDateEl = document.getElementById('ipGiftDate');
-  const ipPaidDateEl = document.getElementById('ipPaidDate');
-  if (ipGiftDateEl) ipGiftDateEl.addEventListener('input', recomputeIpUnpaidDays);
-  if (ipPaidDateEl) ipPaidDateEl.addEventListener('input', recomputeIpUnpaidDays);
-  const tiGiftDateEl = document.getElementById('tiGiftDate');
-  const tiPaidDateEl = document.getElementById('tiPaidDate');
-  if (tiGiftDateEl) tiGiftDateEl.addEventListener('input', recomputeTiUnpaidDays);
-  if (tiPaidDateEl) tiPaidDateEl.addEventListener('input', recomputeTiUnpaidDays);
   recomputeSrGiftUnpaidDays();
   const jmFiscalYearEndEl = document.getElementById('jmFiscalYearEnd');
   const jmPaidDateEl = document.getElementById('jmPaidDate');
@@ -8710,18 +8612,6 @@ function renderGiftInheritanceSharedPane_(){
   const scPaidDateEl = document.getElementById('scPaidDate');
   if (scFiscalYearEndEl) scFiscalYearEndEl.addEventListener('input', recomputeScUnpaidDays);
   if (scPaidDateEl) scPaidDateEl.addEventListener('input', recomputeScUnpaidDays);
-  const mgGiftDateEl = document.getElementById('mgGiftDate');
-  const mgPaidDateEl = document.getElementById('mgPaidDate');
-  if (mgGiftDateEl) mgGiftDateEl.addEventListener('input', recomputeMgUnpaidDays);
-  if (mgPaidDateEl) mgPaidDateEl.addEventListener('input', recomputeMgUnpaidDays);
-  const puGiftDateEl = document.getElementById('puGiftDate');
-  const puPaidDateEl = document.getElementById('puPaidDate');
-  if (puGiftDateEl) puGiftDateEl.addEventListener('input', recomputePuUnpaidDays);
-  if (puPaidDateEl) puPaidDateEl.addEventListener('input', recomputePuUnpaidDays);
-  const ocGiftDateEl = document.getElementById('ocGiftDate');
-  const ocPaidDateEl = document.getElementById('ocPaidDate');
-  if (ocGiftDateEl) ocGiftDateEl.addEventListener('input', recomputeOcUnpaidDays);
-  if (ocPaidDateEl) ocPaidDateEl.addEventListener('input', recomputeOcUnpaidDays);
   const pvGiftDateEl = document.getElementById('pvGiftDate');
   const pvPaidDateEl = document.getElementById('pvPaidDate');
   if (pvGiftDateEl) pvGiftDateEl.addEventListener('input', recomputePvUnpaidDays);
@@ -15947,14 +15837,25 @@ function handleTaxCalcClick_(e){
     const vals = transferAssets[idx];
     const fairValue = numVal(vals.fairMarketValueForGiftCheck) || 0;
     const transferPrice = numVal(vals.transferPrice) || 0;
-    if (!fairValue || !transferPrice) return;
-    const btns3 = Array.from(document.querySelectorAll('.taxcalc-tab'));
-    const giftTab = btns3.find(function(b){ return b.textContent.trim() === '증여세'; });
-    if (giftTab) giftTab.click();
-    const fairValueEl = document.getElementById('lpFairValue');
-    const transferPriceEl = document.getElementById('lpTransferPrice');
-    if (fairValueEl){ fairValueEl.value = String(fairValue); fairValueEl.dispatchEvent(new Event('input', { bubbles: true })); }
-    if (transferPriceEl){ transferPriceEl.value = String(transferPrice); transferPriceEl.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (!fairValue || !transferPrice){ alert('양도가액과 「시가」 칸을 먼저 채워 주세요 — 두 값의 차액을 증여세 §35로 보냅니다.'); return; }
+    // [2026.11.12 전수조사 결함 2] 예전엔 증여세 탭을 연 뒤 옛 단독 계산기 칸(lpFairValue·lpTransferPrice 이름 칸)에 값을 넣었는데,
+    //  그 계산기는 09-23 증여 평가 자산 카드(평가방법 lowPriceTransfer)로 흡수돼 이름 칸이 없어졌다 → 탭만 열리고 값이 안 들어갔다.
+    //  이제 증여 평가 자산에 §35 카드를 하나 더하고(시가·실제 거래대가·특수관계 여부) 그 카드로 간다. 같은 양도 자산에서 이미 보낸 카드가 있으면 그 카드 값을 고친다.
+    const srcKey = 'transfer:' + idx;
+    let lpAsset = valuationAssets.filter(function(a){ return a && a.taxType === 'gift' && a.method === 'lowPriceTransfer' && a.lpFromTransfer === srcKey; })[0];
+    if (!lpAsset){ lpAsset = { method: 'lowPriceTransfer', taxType: 'gift', lpFromTransfer: srcKey, lpIsSpecialRelation: 'true' }; valuationAssets.push(lpAsset); }
+    lpAsset.lpFairValue = String(fairValue);
+    lpAsset.lpTransferPrice = String(transferPrice);
+    // 증여 평가 자산 카드는 「증여·상속 공통 › 재산평가」 하위 탭에 있다 — jump-to-valuation-tab과 같은 순서로 그 탭을 연다
+    document.querySelectorAll('.taxcalc-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === 'giftinheritanceshared'); });
+    giftInheritanceSharedActiveSubtab_ = 'val';
+    taxCalcGiftInheritanceSharedPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === 'val'); });
+    taxCalcGiftInheritanceSharedPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = 'none'; });
+    updateTaxCalcPaneVisibility();
+    renderValuationAssetList('giftValuationList', giftValuationAssets_());
+    const lpCards = document.querySelectorAll('#giftValuationList [data-field="lpFairValue"]');
+    const lpCard = lpCards.length ? lpCards[lpCards.length - 1] : null;
+    if (lpCard){ let up = lpCard.parentElement; while (up){ if (up.tagName === 'DETAILS') up.open = true; up = up.parentElement; } lpCard.scrollIntoView({ behavior: 'smooth', block: 'center' }); } // 값은 위 lpAsset에 이미 넣었고 renderValuationAssetList가 평가액을 다시 셈(칸에 input을 다시 쏘면 쉼표 붙은 화면 글자가 값으로 들어가 엔진이 "시가가 필요합니다"로 0원 — 시험에서 확인)
   } else if (action === 'send-settlement-to-new-transfer'){
     // 청산금 환급액(재건축·환지 공통)은 관리처분인가일(또는 환지처분공고일)에 종전자산 중 그 만큼을
     // 먼저 양도한 것으로 과세된다 — 종전 취득가액을 (환급액÷권리가액 또는 면적) 비율로 안분한다.

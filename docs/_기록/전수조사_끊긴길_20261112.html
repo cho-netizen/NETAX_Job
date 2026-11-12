@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>끊긴 길 전수조사 2026-11-12</title>
+<style>
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#1b2430;line-height:1.55;font-size:14.5px}
+h1{font-size:22px;color:#0f2a5c;border-bottom:3px solid #c9a227;padding-bottom:6px}
+h2{font-size:17px;color:#0f2a5c;margin-top:30px;border-left:5px solid #c9a227;padding-left:10px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:13.5px}
+th,td{border:1px solid #cfd6e0;padding:5px 8px;vertical-align:top}
+th{background:#eef2f8;white-space:nowrap}
+td.n{white-space:nowrap}
+.bad{color:#b3261e;font-weight:700}.mid{color:#a0621d;font-weight:700}.ok{color:#1f7a3a;font-weight:700}
+.box{background:#f7f8fb;border:1px solid #dfe4ec;border-radius:6px;padding:10px 14px;margin:8px 0}
+blockquote{border-left:4px solid #c9a227;margin:8px 0;padding:4px 12px;color:#333;background:#fbf8ee}
+small{color:#555}
+</style></head><body>
+<h1>끊긴 길 전수조사 — 눌러도 안 되는 곳·없는 것을 부르는 곳</h1>
+<p><small>작성 2026-11-12 밤(컴퓨터 시계) · 대상: job 화면 전체(조립본 app/index.html — 화면 29장·앱 전용 6장·세액 엔진) · 휴대폰 창구(m/) · 서버 넷(job·관리·부가·판정) · 고친 것 없음(점검 중엔 고치지 않음 — 목록만)</small></p>
+<blockquote>세무사님 원문(11-12): "머야. 버그투성이였어?" → "대시보드뿐만 아니라 모든 시스템을 전수조사하라"</blockquote>
+
+<div class="box"><b>한 줄 결론</b> — 기계로 일곱 갈래를 훑어 걸린 127곳을 하나씩 코드로 확인했고, 진짜 결함은 <b>셋</b>(대시보드 칩 넷은 이미 고쳐 깃허브 올리기 대기), 보이는 피해 없는 죽은 코드가 <b>둘</b>입니다. 셋 중 가장 큰 것은 세액 엔진의 상장주식 평가가 날짜별 종가를 넣으면 계산 자체가 멈추는 것으로, 엔진을 직접 돌려 확인했습니다.</div>
+
+<h2>1. 무엇을 어떻게 훑었나</h2>
+<table><tr><th>갈래</th><th>찾는 것</th><th>걸림</th><th>확인 뒤 진짜</th></tr>
+<tr><td>① 없는 칸</td><td>화면이 이름으로 찾는 칸(getElementById·#이름·칩 갈 곳)이 어디에도 만들어지지 않음</td><td class="n">51</td><td class="n">2(아래 2·5번)</td></tr>
+<tr><td>② 없는 함수(가드)</td><td>"그 함수가 있으면 부른다"로 감싼 부름인데 그 함수가 없음 → 조용히 아무 일 없음</td><td class="n">24</td><td class="n">0 — 앱 전용 화면에 있거나 지역 이름</td></tr>
+<tr><td>③ 없는 화면</td><td>goToView·메뉴 단추가 가는 화면이 없음</td><td class="n">2</td><td class="n">0 — 폰 아래 탭 「도구」「메뉴」는 따로 처리</td></tr>
+<tr><td>④ 없는 서버 요청</td><td>화면·휴대폰 창구가 부르는 요청 이름이 서버 입구에 없음</td><td class="n">13</td><td class="n">0 — 지식관리(knh_)는 머리글자로 받음, 장부 되돌리기는 표로 받음</td></tr>
+<tr><td>⑤ 받는 코드 없는 단추</td><td>단추·고르기 상자(data-action)를 받는 코드가 없음</td><td class="n">12</td><td class="n">0 — 상자마다 따로 붙은 처리기 확인</td></tr>
+<tr><td>⑥ 정의 없는 함수(가드 없음)</td><td>부르는데 정의가 없는 함수 → 누르면 오류</td><td class="n">25</td><td class="n">2(아래 1·3번) — 나머지는 주석 속 이름</td></tr>
+<tr><td>⑦ 시간 트리거</td><td>밤 점검·1분 틱 등 시간 트리거가 부르는 함수가 없음</td><td class="n">0</td><td class="n">0</td></tr>
+</table>
+
+<h2>2. 진짜 결함 — 고칠 것</h2>
+<table><tr><th>#</th><th>어디서·무엇이</th><th>세무사님 눈에 보이는 증상</th><th>원인</th><th>확인한 방법</th><th>심각</th></tr>
+<tr><td class="n">1</td><td>세액 엔진 — 상장주식 평가(날짜별 종가 평균, 상증법 §63①1호가목)<br><small>taxcalc-engine.html 12637줄 · 판정 서버 사본도 같음</small></td><td>상속·증여 상장주식에 날짜별 종가를 넣으면 평가가 오류로 멈춤(평가기준일이 평일이면 언제나)</td><td>11-05 모의사건 234 고침 때 "표 밖 해의 고정 공휴일 규칙" 함수를 부르게 넣었는데 그 함수가 어디에도 없음</td><td>엔진을 직접 불러 평가기준일 2026-03-10(화)로 돌림 → <code>nxFixedHolidayBeyondTable_ is not defined</code></td><td class="bad">높음</td></tr>
+<tr><td class="n">2</td><td>양도세 화면 「차액을 증여세 §35 계산기로 보내기」<br><small>taxcalc.html 15954줄</small></td><td>누르면 증여세 탭은 열리지만 시가·실제 거래대가가 들어가지 않아 빈 칸</td><td>받는 쪽이 예전 단독 계산기 칸(이름 붙은 칸)에서 증여 자산 카드(이름 없는 칸)로 바뀌었는데 보내는 쪽을 안 고침</td><td>코드 대조 — 받는 칸 이름이 화면 어디에도 만들어지지 않음</td><td class="bad">중간</td></tr>
+<tr><td class="n">3</td><td>넥스 창 사건 도구 단추(서류 읽기·칸 채우기 등)<br><small>aichat.html 3370줄</small></td><td>도구가 실패하면 실패 알림이 안 뜸(단추만 다시 눌리게 됨)</td><td>알림 함수 이름 오타 <code>StringnxErrText_</code>(String( 과 nxErrText_ 가 붙음)</td><td>코드 대조 — 그 이름 정의 없음</td><td class="mid">중간</td></tr>
+<tr><td class="n">4</td><td>대시보드 첫 줄 칩 넷(오늘 예약·예약 결과 적기·고객이 보낸 서류·카카오 오류)</td><td>눌러도 아무 일 없음</td><td>칩이 가리키는 카드가 옮겨지거나 좁아짐</td><td>시험 사본에서 실제 클릭</td><td class="ok">고침(커밋 b702f20f, 깃허브 올리기 대기)</td></tr>
+</table>
+
+<h2>3. 죽은 코드 — 보이는 피해 없음</h2>
+<table><tr><th>#</th><th>어디</th><th>무엇</th><th>영향</th></tr>
+<tr><td class="n">5</td><td>세액계산 화면 — 증여 특례 열한 가지(ci·cr·icf·fu·sp·ip·ti·mg·pu·oc·df)의 납부지연일수 자동 계산<br><small>taxcalc.html 368~460·8660~8725줄</small></td><td>예전 단독 계산기의 증여일·납부일 칸을 찾는 코드가 남아 있으나 그 칸들이 없음(지금은 증여 자산 카드 + 증여세 탭 공통 납부지연 칸)</td><td>아무 일도 안 함. 지금 납부지연 가산세는 증여세 탭 공통 칸으로 계산됨 — 지울지 판단</td></tr>
+<tr><td class="n">6</td><td>화면 틀 — 커버 화면 단추 줄<br><small>script.html 1555·1568줄</small></td><td>약식 대시보드↔AI 오가던 단추 줄(nxCoverBar)이 없어졌는데 처리 코드가 남음</td><td>아무 일도 안 함 — 지울지 판단</td></tr>
+</table>
+
+<h2>4. 이 조사로 못 잡는 것</h2>
+<ul>
+<li>대시보드 「오늘 예약」처럼 <b>가는 곳은 있는데 그 카드가 숨어 있어</b> 아무 일 없는 경우는 기계로 다 못 잡습니다. 이번엔 대시보드만 실제로 눌러 확인했습니다.</li>
+<li>로그인한 화면에서 모든 단추를 차례로 눌러 보는 확인은 하지 못했습니다(비밀번호를 Claude가 넣을 수 없음).</li>
+<li>값이 틀리게 계산되는 결함(세법 판단)은 이 조사 범위가 아닙니다 — 엔진 회귀 시험(174건)이 따로 봅니다.</li>
+</ul>
+</body></html>

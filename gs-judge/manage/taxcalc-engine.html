@@ -139,7 +139,9 @@
     if (actual < 500000000) return 500000000; // 실제 상속액이 없거나 5억 미만이어도 최소 5억은 공제
     if (isDivided === false) return 500000000; // §19②③ 분할기한까지 미분할·미신고 — 최소보장액만 인정
     const limit = Number.isFinite(limitAmount) ? limitAmount : Infinity;
-    return Math.min(actual, limit, 3000000000);
+    // [2026.11.12 세무사님 결정(확인조치사항 권장안 채택)] 실제 상속액이 5억 이상인데 §19①1호 한도가 5억 아래면 — 문언(min)대로면 5억 미만을 받은 배우자(④ 5억)보다
+    //  공제가 작아지는 역전(예: 과세가액 20억·자녀 5명). 국세청 해석 재산상속46014-508(2000.4.25.)·재삼46014-1106(1997.5.6.)·국세상담 Q&A는 5억원 공제 → 5억을 바닥으로 둔다.
+    return Math.max(500000000, Math.min(actual, limit, 3000000000));
   }
 
   // 단기재상속세액공제 (상증세법 §30②) — 10년 이내 재상속 시, §30②1호 산식대로 "전의 상속세 산출세액 ×
@@ -1065,6 +1067,18 @@
     if (t || D) nxHolidaySet_ = set; // 표가 아직 안 실렸으면 다음에 다시 찾음
     return set;
   }
+  // [2026.11.12 전수조사 결함 1] 공휴일 표(조견표 1부-02) 밖 해의 양력 고정 공휴일 — 11-05 모의사건 234 고침(상장주식 평가기준일 앞당기기)이
+  //  이 함수를 부르게 넣고 정의를 빠뜨려, 날짜별 종가 평균이 평일 평가기준일마다 "정의되지 않음" 오류로 멈췄다(엔진 직접 실행으로 확인).
+  //  판정 쪽 같은 목록(JudgeMore.js AP_FIXED_)과 같은 날짜 + 연혁(제헌절 07-17은 2007년까지, 한글날 10-09는 1990년까지·2013년부터 — 공휴일에 관한 규정).
+  //  설·추석·대체·임시 공휴일은 해마다 달라 표에만 있다.
+  function nxFixedHolidayBeyondTable_(ymd) {
+    const s = String(ymd || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const y = Number(s.slice(0, 4)), md = s.slice(5);
+    if (['01-01', '03-01', '05-05', '06-06', '08-15', '10-03', '12-25'].indexOf(md) !== -1) return true;
+    if (md === '10-09') return y <= 1990 || y >= 2013;
+    if (md === '07-17') return y <= 2007;
+    return false;
+  }
   function shiftTaxDeadline_(ymd) {
     let d = String(ymd || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
@@ -1637,7 +1651,7 @@
       //  기본은 예전대로(표2), nonResidentTable2Excluded면 문언대로 표1(보유기간별 공제율).
       if (t.isTransferorResident === false && t.nonResidentTable2Excluded) {
         ltRate = longTermRateAt_(holdingYears, t.transferDate);
-        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '비거주자 — 출국 2년 안 1주택 비과세는 받되 장특공은 표1 ' + Math.round(ltRate * 100) + '%(소득세법 §121② 단서·시행령 §180의2①, 표2 배제 — [확인 필요])';
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '비거주자 — 출국 2년 안 1주택 비과세는 받되 장특공은 표1 ' + Math.round(ltRate * 100) + '%(소득세법 §121② 단서·시행령 §180의2①, 표2 배제 — 세무사님 11-12 결정: 표1)';
       }
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
@@ -1714,6 +1728,16 @@
       isMultiHouseSurcharge = !isOneHouse && !rentalSpecialSkipsSurcharge_ && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_
         && !t.isMultiHouseRentalExemption
         && multiSurchargeRateAt_(t.transferDate, multiHouseCount) > 0;
+      // [2026.11.12 세무사님 결정(확인조치사항 권장안 채택)] 2009.3.16.~2012.12.31. 취득한 주택은 조정대상지역 다주택 중과세율(§104⑦)을 적용하지 않는다 — 법률 제9270호 부칙 §14의
+      //  문언은 §104①4~9호(옛 번호)만 들지만, 국세청 해석 재산세제과-1422(2023.12.26.)·477(2024.4.17.)이 §104⑦ 중과도 기본세율로 봄(10억 예에서 약 1.3억 차이). 장특공은
+      //  해석대로 2018.4.1.~2022.5.9. 양도분만 배제(§95② 괄호), 그 밖의 양도분은 보유기간대로. 취득일은 실제 취득일(의제취득일 아님) — nonbizAcqWindowExempt_와 같은 창.
+      if (isMultiHouseSurcharge && nonbizAcqWindowExempt_(t.acquisitionDate)) {
+        isMultiHouseSurcharge = false;
+        const td0912_ = String(t.transferDate || '').slice(0, 10), ltOut0912_ = td0912_ >= '2018-04-01' && td0912_ <= '2022-05-09';
+        if (ltOut0912_) { ltRate = 0; isRentalSpecial = false; }
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '2009.3.16.~2012.12.31. 취득 주택(' + String(t.acquisitionDate).slice(0, 10) + ') — 조정대상지역 다주택 중과세율을 적용하지 않습니다(법률 제9270호 부칙 §14, 재산세제과-1422·477 — 세무사님 11-12 채택)'
+          + (ltOut0912_ ? '. 2018.4.1.~2022.5.9. 양도분이라 장기보유특별공제는 적용하지 않습니다(해석 1422).' : '.');
+      }
       if (isMultiHouseSurcharge && isRentalSpecial && t.rentalSpecialType === 'rental_general') {
         if (t._rental9703SurchargeNoLt) { isRentalSpecial = false; ltRate = 0; }
         else if (t._ntNoRentalLt) ltRate = 0; // [N6(나)] 특례가 없으면 중과 자산은 §95② 괄호로 장특공 없음
@@ -13107,7 +13131,9 @@
     for (let n = 1; n <= years; n++) {
       let amt = yearly_ && yearly_.length >= n ? yearly_[n - 1] : (yearly_ && yearly_.length ? yearly_[yearly_.length - 1] : annualAmount * Math.pow(1 + growth_ / 100, n - 1));
       if (n === years && lastFrac < 1 && !(yearly_ && yearly_.length >= n)) amt = amt * lastFrac;
-      const pv = amt / Math.pow(1 + RATE, n);
+      // [2026.11.12 세무사님 결정(확인조치사항 권장안 채택)] 첫 1년분은 할인하지 않는다 — 국세청 해석 서면-2019-상속증여-0012(2019.3.20.)·세금절약가이드 예시(같은 예에서
+      //  첫해부터 할인하면 20,472,487원, 해석대로면 21,086,662원 — 비율 1.03)와 아이템 증여 13의 값에 맞춤. 시행령 §62 1호 "n = 평가기준일부터의 경과연수"를 첫 회분 0으로 읽는 해석.
+      const pv = amt / Math.pow(1 + RATE, n - 1);
       presentValueSum += pv; nominal += amt;
       yearlyDetail.push({ 연차: n, 정기금액: Math.round(amt), 현재가치: Math.round(pv) });
     }
