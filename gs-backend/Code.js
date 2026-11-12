@@ -20984,6 +20984,8 @@ function work_syncCaseCalendar_(caseObj) {
     const cal = CalendarApp.getDefaultCalendar();
     const tag = '[NX:work:' + caseObj.id + ']';
     work_deleteEventsByTag_(cal, tag);
+    // [2026-11-13 4차 39] 가상·모의·시험 사건은 달력에 올리지 않는다(11-12 낮 「가상 사건은 기한·알림에서 뺀다」와 같은 잣대 awVirtual_) — 세무사님 실제 달력에 「[NX] 가상3차… 법정기한」이 쌓였다. 이미 올라간 것은 위 줄에서 지워짐
+    if (typeof awVirtual_ === 'function' && awVirtual_(caseObj)) return true;
 
     // [2026.09] 사건명 자체가 이미 고객명을 포함하므로("홍길동_양도_신고") 따로 붙이지 않는다.
     // [2026.09 버그수정] "보류" 상태 사건도 진행 사건과 똑같은 제목으로 캘린더에 떠서 구분이
@@ -48533,7 +48535,7 @@ function cpGeo_(loc) {
       else if (k2 && k2.error) out.error += ' / 카카오 주소검색: ' + k2.error;
       else out.error += ' / 카카오 주소검색에서도 못 찾음(' + kw2 + ')';
     } catch (e2) { out.error += ' / 카카오 주소검색 실패: ' + (e2 && e2.message || e2); }
-  }
+  } else if (out && out.error) out.error += ' — 카카오 주소검색 열쇠(설정 › 열쇠 KAKAO_REST_API_KEY)가 없어 다시 찾지 못함'; // [2026-11-13 4차 12] 대안 길이 있는데 열쇠가 없어 조용히 건너뛰던 것을 드러냄
   try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
   return out;
 }
@@ -48945,6 +48947,11 @@ function caseProcGraspMore_(t, c, add, file) {
   // [2026-11-12 3차 ①] 의뢰 메모 말투 — "6억 8천에 매수", "14억 5천에 팔 계약"(금액 + 에 + 사고판 말). 산 말은 취득, 판 말은 양도로 적는다(가설 — 서류 확인 전)
   const aRe3 = /((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*에\s*(매수|취득|매입|구입|샀|사서|팔|매도|양도|처분|매각)/g;
   while ((mm = aRe3.exec(txt)) && nm < 8) { add('거래', (/^(매수|취득|매입|구입|샀|사서)/.test(mm[2]) ? '취득' : '양도') + ' ' + mm[1].replace(/\s+/g, ''), file); nm++; }
+  // [2026-11-13 4차 41] 물건 종류 — 메모에 아파트·단독주택·다세대·연립·빌라가 있으면 「주택」 가설(오피스텔은 쓰임새로 갈려 안 정함). 양도 계산이 과세대상 구분 빈칸으로 「그 밖 자산」을 쓰던 것
+  if (/아파트|단독\s*주택|다세대|다가구|연립|빌라/.test(txt)) add('물건종류', '주택', file);
+  // [2026-11-13 4차 42] 상속·증여 메모 말 — "예금 3억 4천", "장례비 1,900만원", "매매사례 14억", "공시가격 3억 1천"(가설 — 서류 확인 전, 값이 여럿이면 장부가 여쭘)
+  const aRe4 = /(예금|예적금|금융재산|금융자산|장례비|매매사례|시가|공시가격|공시지가|기준시가)\s*(?:가액|금액|합|합계|은|는|이|가|:)?\s*(?:약\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))/g;
+  while ((mm = aRe4.exec(txt)) && nm < 12) { const w = mm[1]; add('거래', (/^(예금|예적금|금융)/.test(w) ? '금융' : /^장례/.test(w) ? '장례비' : /^(매매사례|시가)/.test(w) ? '시가' : '공시') + ' ' + mm[2].replace(/\s+/g, ''), file); nm++; }
   // 요청 사항 — "요청·의뢰 내용·요청사항·문의:" 줄
   const rq = /^\s*[-*#]*\s*(?:요청\s*사항|의뢰\s*내용|요청|문의\s*(?:사항|내용)?|상담\s*내용)\s*[:：]\s*([^\n]{4,120})/m.exec(txt);
   if (rq) add('요청', rq[1].trim(), file);
@@ -50809,7 +50816,7 @@ function cpOutsidePropsFromOv_(c) {
     if (q.양도일) dates.push({ label: '양도일', date: q.양도일 });
     if (c.기준일) dates.push({ label: CASEPROC_BASE_LABEL_[c.세목] || '기준일', date: c.기준일 });
     const loc = String(q.assetLocation) + (q.assetDong && !/동\s*\d/.test(String(q.assetLocation)) ? ' ' + String(q.assetDong).replace(/동$/, '') + '동' : '') + (q.assetHo && !/\d\s*호/.test(String(q.assetLocation)) ? ' ' + String(q.assetHo).replace(/호$/, '') + '호' : '');
-    return { p: 'ovAsset:' + i, loc: loc, kind: q.assetKind === 'land' ? 'land' : q.assetKind === 'building' ? 'building' : '', area: Number(q.면적) || 0, jimok: q.assetKind === 'land' ? (q.assetSubType || '') : '', dates: dates };
+    return { p: 'ovAsset:' + i, loc: loc, kind: q.assetKind === 'land' ? 'land' : (q.assetKind === 'building' || q.assetType === 'house') ? 'building' : '', /* [2026-11-13 4차 15] 주택이면 건축물대장·주택가격도 — 아파트 단지 번지는 토지대장이 안 잡혀 건축물 조회를 건너뛰었다 */ area: Number(q.면적) || 0, jimok: q.assetKind === 'land' ? (q.assetSubType || '') : '', dates: dates };
   }).filter(Boolean);
 }
 // 직결(Cloud Run) 결과를 저장한 뒤 — 서비스는 바깥 호출을 못 하므로 GAS가 여기서 같은 묶음을 돌리고, 물건목록의 빈 칸(면적·지목)만 채운다

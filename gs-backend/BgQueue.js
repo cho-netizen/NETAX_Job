@@ -150,6 +150,14 @@ var BGQ_HANDLERS_ = {
     if (String(c.개요 || '').trim()) {
       try { if (typeof caseProcGrasp_ === 'function') caseProcGrasp_(c); } catch (e) { console.error('의뢰 메모 가설 실패 ' + c.id + ': ' + (e && e.message || e)); }
       try { if (typeof ledgerEstimate_ === 'function') ledgerEstimate_(c, {}, 'GAS'); } catch (e) { console.error('의뢰 메모 추정 실패 ' + c.id + ': ' + (e && e.message || e)); }
+      // [2026-11-13 4차 49] 사건 기준일이 비었는데 메모로 기준일(양도일·증여일·사망일)이 추정으로 섰으면 사건 기준일로도 — 비어 있으면 법정일이 「임시」로만 떠 상속세 신고기한 같은 큰 기한이 안 잡혔다.
+      //  장부엔 「추정」으로 남아 있어 서류·세무사님 값이 오면 바뀌고, 사건 기준일은 세무사님이 고치신 값이 늘 먼저(비어 있을 때만 넣음)
+      try {
+        if (!String(c.기준일 || '').trim() && typeof ledgerLoad_ === 'function') {
+          const r0 = (ledgerLoad_(c.id, true).rows || {})['기준일'];
+          if (r0 && r0.state === '추정' && /^\d{4}-\d{2}-\d{2}$/.test(String(r0.v || ''))) { const wb = WORK_WRITE_BY_; WORK_WRITE_BY_ = 'GAS'; try { work_updateCase({ id: c.id, 기준일: String(r0.v) }); } finally { WORK_WRITE_BY_ = wb; } }
+        }
+      } catch (e) { console.error('메모 기준일을 사건에 넣지 못함 ' + c.id + ': ' + (e && e.message || e)); }
     }
   }
 };

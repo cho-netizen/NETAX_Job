@@ -320,7 +320,9 @@ function ledgerAskInner_(L, path, o) {
   // 같은 질문이 이미 서 있으면 그대로(기록·이력을 불리지 않음) — 화면이 질문 목록을 저장할 때마다 다시 오기 때문
   const sameState = prev.state === (o.needDoc ? '증빙받을것' : '물어볼것');
   if (sameState && String(prev.ask || '') === String(o.question || '').slice(0, 300) && JSON.stringify((prev.cands || []).map(function (x) { return String(x.v); })) === JSON.stringify((o.cands || []).slice(0, 8).map(function (x) { return String(x.v); }))) return { ok: true, asked: true, same: true, row: ledgerRowOut_(path, prev), message: '「' + (prev.label || path) + '」 ' + prev.state + ' 그대로' };
-  const row = Object.assign({}, prev, { label: String(o.label || prev.label || ledgerLabel_(path)).slice(0, 40), state: o.needDoc ? '증빙받을것' : '물어볼것', ask: String(o.question || '').slice(0, 300), cands: (o.cands || []).slice(0, 8).map(function (x) { return { v: x.v, src: String(x.src || '').slice(0, 120) }; }), at: caseProcNow_() });
+  // [2026-11-13 4차 37·38] 장부가 모르는 칸 이름(seller.acquisition·basic.taxpayer 등)으로 물으면 이름이 영어로 화면·넥스 답에 그대로 나왔다 — 그럴 땐 질문 앞머리를 이름으로
+  let lab0 = String(o.label || prev.label || ledgerLabel_(path)); if (/[A-Za-z]{3,}/.test(lab0) && !/^(q|doc):/.test(path) && o.question) lab0 = String(o.question).replace(/\s+/g, ' ').replace(/\([^)]*\)/g, '').replace(/[—–?？].*$/, '').trim() || lab0;
+  const row = Object.assign({}, prev, { label: lab0.slice(0, 40), state: o.needDoc ? '증빙받을것' : '물어볼것', ask: String(o.question || '').slice(0, 300), cands: (o.cands || []).slice(0, 8).map(function (x) { return { v: x.v, src: String(x.src || '').slice(0, 120) }; }), at: caseProcNow_() });
   if (!row.src) row.src = { kind: '질문', who: String(o.by || '').slice(0, 6), file: '', page: '', quote: '', why: '' };
   if (!o.keep) { row.v = prev.v; }
   row.turn = o.turn || (String(o.by || '') === 'GAS' ? '넥스' : '세무사님'); row.group = o.group || prev.group || ledgerQGroup_(path); // [2026.11.12 질문 정리 ①] 차례·묶음
@@ -339,7 +341,7 @@ function ledgerAsk_(caseId, input) {
     return ledgerAskInner_(L, path, { label: input.label, question: input.question, cands: input.cands, by: input.by || '넥스', needDoc: !!input.needDoc, keep: true, turn: input.turn === '넥스' ? '넥스' : (input.turn === '세무사님' ? '세무사님' : undefined), group: input.group ? String(input.group).slice(0, 20) : undefined });
   });
   // [2026.11.12 2차 ② 계획서 ②(세무사님 "권장대로")] 받을 서류(needDoc)는 증빙목록에도 「제안」으로 — 증빙확보 화면 요청자료에 보이고, 세무사님이 「고객에게 보이기」를 누르면 고객 창구 체크리스트로(잠금 밖에서 — 사건 저장이 따로 잠금을 쓴다)
-  if (input.needDoc && r0 && r0.ok && r0.asked) { try { ledgerEvProposeFromAsk_(caseId, input.label || ledgerLabel_(path), input.question, input.by || '넥스'); } catch (e) {} }
+  if (input.needDoc && r0 && r0.ok && r0.asked) { try { ledgerEvProposeFromAsk_(caseId, (r0.row && r0.row.label) || input.label || ledgerLabel_(path), input.question, input.by || '넥스'); } catch (e) {} }
   return r0;
 }
 function ledgerEvProposeFromAsk_(caseId, label, question, by) {
@@ -2260,7 +2262,14 @@ function ledgerOvFromHypInner_(L) {
 }
 // 의뢰서 등이 말한 거래(날짜·금액)를 계산기 칸의 서류 값과 맞댄다 — 다르면 서류 값으로 계산하되(세무사님 결정 10-29 권장안 3 "서류가 이기되, 다르다는 사실을 질문으로")
 //  'chk:가설.<칸>' 줄을 보류로 세운다: 사이드바 질문 목록에 보이고(계산은 막지 않음), 검토서 "추가로 확인할 사항"에 들어간다. 같아지거나 가설이 사라지면 GAS가 세운 줄은 내린다
-var LEDGER_HYP_CALC_ = [[/^(양도|매도|매각|잔금)/, 'c0.totalPrice', 'c0.date'], [/^(취득|매수)/, 'a0.acquisitionPrice', 'a0.acquisitionDate'], [/^증여/, 'g.giftAmount', '기준일'], [/^(사망|상속개시)/, '', '기준일'], [/^(대출|채무)/, 'i.debtAmount', '']];
+// [2026-11-13 4차 42] 의뢰 메모의 상속·증여 말(예금·장례비·시가·공시)도 — 같은 말이 세목마다 다른 칸이면 줄을 여럿 두고, 쓰는 곳이 사건(주·함께 보는) 세목에 맞는 줄을 고른다
+var LEDGER_HYP_CALC_ = [[/^(양도|매도|매각|잔금)/, 'c0.totalPrice', 'c0.date'], [/^(취득|매수)/, 'a0.acquisitionPrice', 'a0.acquisitionDate'], [/^증여/, 'g.giftAmount', '기준일'], [/^(사망|상속개시)/, '', '기준일'], [/^(대출|채무)/, 'i.debtAmount', ''],
+  [/^금융/, 'i.financialAmount', ''], [/^장례/, 'i.funeralAmount', ''], [/^(시가|매매사례)/, 'i.realEstateAmount', ''], [/^(시가|매매사례|공시|기준시가)/, 'g.giftAmount', '']]; // 상속 부동산은 시가 말만(공시는 물건마다 달라 합치면 틀림), 증여는 시가·공시를 함께 띄워 여쭘(평가 방법 고르기)
+// 같은 말에 맞는 줄 중 이 사건 세목(taxes)에 맞는 줄 — 없으면 첫 줄
+function ledgerHypMapFor_(role, taxes, isDate) {
+  const ms = LEDGER_HYP_CALC_.filter(function (m) { return m[0].test(role); });
+  return ms.filter(function (m) { const p = isDate ? m[2] : m[1]; return p && (taxes || []).indexOf(ledgerPathTax_(p) || 'transfer') !== -1; })[0] || ms[0];
+}
 function ledgerKrw_(s) {
   s = String(s || '').replace(/\s+/g, '');
   const m = /^([\d,]+)원$/.exec(s); if (m) return Number(m[1].replace(/,/g, ''));
@@ -2500,7 +2509,7 @@ function ledgerLookupTargets_(c, L) {
     const i = /^a(\d+)\./.exec(p)[1], loc = val(p); if (!loc) return;
     const cRef = String(val('a' + i + '.contract') || 'c0').replace(/\D/g, '') || '0';
     const kind = String(val('a' + i + '.assetKind') || '');
-    add(loc, { p: 'a' + i, from: '장부 자산' + (Number(i) + 1) + ' 소재지(' + (rows[p].state === '추정' ? '추정' : (rows[p].src && rows[p].src.kind) || '') + ')', kind: kind === 'land' ? 'land' : /building/.test(kind) ? 'building' : '', area: Number(val('a' + i + '.assetArea')) || 0, jimok: String(val('a' + i + '.assetSubType') || ''),
+    add(loc, { p: 'a' + i, from: '장부 자산' + (Number(i) + 1) + ' 소재지(' + (rows[p].state === '추정' ? '추정' : (rows[p].src && rows[p].src.kind) || '') + ')', kind: kind === 'land' ? 'land' : (/building/.test(kind) || val('a' + i + '.assetType') === 'house') ? 'building' : '', /* [2026-11-13 4차 15] 주택이면 건축물대장도 */ area: Number(val('a' + i + '.assetArea')) || 0, jimok: String(val('a' + i + '.assetSubType') || ''),
       dates: dl(val('a' + i + '.acquisitionDate') || hd.acq, val('c' + cRef + '.date') || val('기준일') || hd.tr || c.기준일) });
   });
   try { if (typeof cpOutsidePropsFromOv_ === 'function') cpOutsidePropsFromOv_(c).forEach(function (q) { add(q.loc, { p: q.p, from: '처리개요 물건', kind: q.kind, area: q.area, jimok: q.jimok, dates: (q.dates || []).length ? q.dates : dl(hd.acq, hd.tr || c.기준일) }); }); } catch (e) {}
@@ -2548,6 +2557,20 @@ function ledgerLookup_(c, input, by) {
     rows.push(r);
   });
   ledgerPubPut_(c.id, rows, who, String(input.why || '').slice(0, 80) || (keys.length ? whatIn.join('·') + ' 조회' : '공부 조회'));
+  // [2026-11-13 4차 14] 소재지를 고치면 옛 소재지 공부 사실이 그대로 남아 물건 1건이 2필지로 셌다 — 장부 자산·처리개요 물건에서 온 필지 중 지금 목록에 없는 것은 「옛 공부」로 옮겨 둔다(지우지 않음, 넥스·사람이 지정한 필지는 그대로)
+  try {
+    const curKeys = {}; ledgerLookupTargets_(c, ledgerLoad_(c.id, true)).forEach(function (t) { curKeys[ledgerPubKey_(t.loc)] = 1; });
+    ledgerMutate_(c.id, function (L2) {
+      let moved = 0; L2.pub = L2.pub || {};
+      Object.keys(L2.pub).forEach(function (k) {
+        const pv = L2.pub[k], from = String((pv && pv.v && pv.v.from) || '');
+        if (curKeys[k] || !/^(처리개요 물건|장부 자산)/.test(from)) return;
+        L2.pubOld = L2.pubOld || {}; L2.pubOld[k] = Object.assign({}, pv, { 옮김: caseProcNow_() }); delete L2.pub[k]; moved++;
+        ledgerLogTo_(L2, { by: 'GAS', what: '옛 공부 사실 옮김', path: k, detail: (pv.label || k) + ' — 지금 물건 목록에 없는 소재지(고쳐진 것으로 봄)' });
+      });
+      return moved;
+    });
+  } catch (e) { console.error('옛 공부 사실 정리 실패 ' + c.id + ': ' + (e && e.message || e)); }
   // 장부 자산 칸이 비어 있으면 토지대장 면적·지목을 채운다(그 소재지가 장부 자산일 때, 토지만 — 서류 값·사람 값은 덮지 않음, 다르면 화면·넥스가 공부 사실과 견줌)
   const ops = [];
   rows.forEach(function (r) {
@@ -2588,8 +2611,8 @@ function ledgerEstimate_(c, input, by) {
     const put = function (p, v, src) { if (!want[p]) want[p] = { v: v, src: src, alt: [] }; else if (String(want[p].v) !== String(v) && want[p].alt.map(String).indexOf(String(v)) === -1) want[p].alt.push(v); };
     claims.filter(function (x) { return x.f === '거래'; }).forEach(function (x) {
       const sp = String(x.v).split(' '), role = sp[0], raw = sp.slice(1).join(' ');
-      const map = LEDGER_HYP_CALC_.filter(function (m) { return m[0].test(role); })[0]; if (!map) return;
-      const isDate = /^\d{4}-\d{2}-\d{2}$/.test(raw), path = isDate ? map[2] : map[1]; if (!path) return;
+      const isDate = /^\d{4}-\d{2}-\d{2}$/.test(raw), map = ledgerHypMapFor_(role, taxes, isDate); if (!map) return;
+      const path = isDate ? map[2] : map[1]; if (!path) return;
       // [2026.10.30 복합 자문] 주 세목·함께 보는 세목의 칸이면 받는다(예전엔 주 세목 칸만 받고 나머지는 버려, 양도·증여·상속이 섞인 의뢰 메모의 다른 세목 값이 장부에 안 남았다)
       if (taxes.indexOf(ledgerPathTax_(path) || c.세목) === -1) return;
       // 기준일 칸은 사건에 하나(주 세목의 기준일) — 다른 세목의 날짜(함께 보는 세목의 증여일·상속개시일)로 덮지 않는다
@@ -2599,6 +2622,7 @@ function ledgerEstimate_(c, input, by) {
       put(path, v, (x.srcs || []).join('·') + (x.by === '넥스' ? '(넥스 판단)' : ''));
     });
     if (taxes.indexOf('transfer') !== -1) {
+      if (claims.some(function (x) { return x.f === '물건종류' && x.v === '주택'; })) put('a0.assetType', 'house', '의뢰 메모 — 아파트·주택 말'); // [2026-11-13 4차 41]
       claims.filter(function (x) { return x.f === '물건'; }).slice(0, 4).forEach(function (x, i) { put('a' + i + '.assetLocation', x.v, (x.srcs || []).join('·')); });
       if (c.세목 === 'transfer' && want['c0.date'] && !want['기준일']) put('기준일', want['c0.date'].v, want['c0.date'].src);
     }

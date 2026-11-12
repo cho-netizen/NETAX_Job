@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:55 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -8611,7 +8611,7 @@ function nxMdOpenWindow(title, src, opts){
         });
         // [2026-11-12 3차 재검토 29] 줄 더하기 칸 목록이 양도 칸으로 박혀 증여·상속 사건에서 화면만으로 장부를 채울 길이 없었다 — 사건 세목대로 고른다(칸 이름은 서버 장부 규격 그대로)
         var PATHS_ADD = c.세목 === 'gift' ? [['g.giftDonorName', '증여자 성명'], ['g.giftDoneeName', '수증자 성명'], ['g.giftRelation', '증여자와의 관계(배우자·직계존속·직계비속·기타친족·기타)'], ['기준일', '기준일(증여일)'], ['g.giftAmount', '증여재산가액'], ['g.giftDebtAssumed', '인수채무액(부담부증여)'], ['g.giftDebtProven', '채무 객관적 입증(예·아니오 — 배우자·직계존비속 간은 입증돼야 뺌, 상증법 §47③)'], ['g.giftPriorAmount', '10년 내 기증여액'], ['g.giftPriorPaidTax', '기납부세액'], ['g.giftPriorDeductionUsed', '이미 쓴 증여공제'], ['g.giftAppraisalFee', '감정평가수수료'], ['g.isMarriageGift', '혼인증여(예·아니오)'], ['g.isBirthGift', '출산증여(예·아니오)']]
-          : c.세목 === 'inheritance' ? [['기준일', '기준일(상속개시일)'], ['i.realEstateAmount', '부동산 등 재산 평가액'], ['i.financialAmount', '금융재산'], ['i.debtAmount', '채무'], ['i.duesAmount', '공과금'], ['i.funeralAmount', '장례비'], ['i.nicheAmount', '봉안시설·자연장지 비용'], ['i.isSpouse', '배우자 있음(예·아니오)'], ['i.childCount', '자녀 수'], ['i.heirCount', '상속인 수'], ['i.priorGiftHeirAmount', '상속인에게 한 10년 내 증여'], ['i.priorGiftOtherAmount', '상속인 아닌 사람에게 한 5년 내 증여'], ['i.appraisalFeeAmount', '감정평가수수료']]
+          : c.세목 === 'inheritance' ? [['기준일', '기준일(상속개시일)'], ['i.realEstateAmount', '부동산 등 재산 평가액'], ['i.financialAmount', '금융재산(예금·적금·보험금·주식·채권 등 금융회사 취급분 — 상증령 §19①)'], ['i.debtAmount', '채무'], ['i.duesAmount', '공과금'], ['i.funeralAmount', '장례비'], ['i.nicheAmount', '봉안시설·자연장지 비용'], ['i.isSpouse', '배우자 있음(예·아니오)'], ['i.childCount', '자녀 수'], ['i.heirCount', '상속인 수'], ['i.priorGiftHeirAmount', '상속인에게 한 10년 내 증여'], ['i.priorGiftOtherAmount', '상속인 아닌 사람에게 한 5년 내 증여'], ['i.appraisalFeeAmount', '감정평가수수료']]
           : PATHS;
         var opts = PATHS_ADD.map(function(p){ return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + '</option>'; }).join('');
         h += '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>줄 더하기</b><select title="더할 칸" id="chLgPath">' + opts + '</select><input title="다른 칸 경로" id="chLgPathFree" type="text" placeholder="다른 칸 경로" style="width:140px;"><input title="값" id="chLgVal" type="text" placeholder="값" style="width:180px;"><label style="font-size:11.5px;"><input type="checkbox" id="chLgEst"> 추정치</label><button type="button" id="chLgAdd" class="ghost-btn">넣기</button></div>';
