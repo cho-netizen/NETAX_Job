@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>「넥스가 묻는 질문」 실상 점검 2026-11-12</title>
+<style>
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#1b2430;line-height:1.55;font-size:14.5px}
+h1{font-size:22px;color:#0f2a5c;border-bottom:3px solid #c9a227;padding-bottom:6px}
+h2{font-size:17px;color:#0f2a5c;margin-top:30px;border-left:5px solid #c9a227;padding-left:10px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:13.5px}
+th,td{border:1px solid #cfd6e0;padding:5px 8px;vertical-align:top}
+th{background:#eef2f8;white-space:nowrap}
+td.n{white-space:nowrap;text-align:right}
+.bad{color:#b3261e;font-weight:700}.mid{color:#a0621d;font-weight:700}.ok{color:#1f7a3a;font-weight:700}
+code{background:#f3f5f9;padding:1px 4px;border-radius:3px;font-size:12.5px}
+.box{background:#f7f8fb;border:1px solid #dfe4ec;border-radius:6px;padding:10px 14px;margin:8px 0}
+blockquote{border-left:4px solid #c9a227;margin:8px 0;padding:4px 12px;color:#333;background:#fbf8ee}
+small{color:#555}
+</style></head><body>
+<h1>「넥스가 묻는 질문」 실상 점검</h1>
+<p><small>작성 2026-11-12 19:21(컴퓨터 시계) · 근거: 서버 코드(Code.js·CaseLedger.js)와 드라이브 장부 파일 72개·작업관리 시트 111줄을 직접 읽음 · 고친 것 없음(7절 검토대상만)</small></p>
+<blockquote>세무사님 원문: "이 넥스가 묻는 질문을 원점에서 제대로 검토해 보자. 보다 상세하게 실상을 보고하라" / "4건이 아니라 넥스가 묻는 질문 전체가 대상이다"</blockquote>
+
+<div class="box"><b>한 줄 결론</b> — 대시보드의 「넥스가 묻는 질문 39」는 전체(실사건 104개)의 일부이고, 그 104개 중 넥스(AI)가 세운 것은 14개뿐이며 절반(52개)은 "이 서류가 무슨 서류인지 모르겠다"는 GAS의 서류 분류 질문입니다. 4건만 보인 까닭은 대시보드가 수정일을 글자로 잘못 비교해 시트 앞 12건만 보기 때문입니다(김소라 25·강문영 8·최영환 7·박영랑 5가 빠짐).</div>
+
+<h2>1. 무엇인가</h2>
+<p>사건 장부(총괄관리자 › _사건장부 › 사건ID.json)의 칸 가운데 상태가 <b>물어볼 것 · 증빙 받을 것 · 보류</b>인 것. 칸 하나가 질문 하나입니다. 값이 정해지거나 세무사님이 확인·무시로 답하면 빠집니다.</p>
+<p>답하는 길: 사건처리 화면의 남은 질문(확인·보류·무시 단추)·칸 장부(값 넣기) · 넥스 대화(넥스가 여쭙고 답을 장부에 적음) · 휴대폰 창구 알림.</p>
+
+<h2>2. 누가 세우나 — 코드로 확인한 다섯 길</h2>
+<table><tr><th>길</th><th>어디서</th><th>무엇을 세우나</th></tr>
+<tr><td>① 서류 읽기·칸 채우기(GAS)</td><td>사건처리 실행 끝에 질문 목록을 장부에 씀(Code.js 31350)</td><td>서류 종류를 규칙으로 못 정한 것, 계산기 칸을 서류에서 못 채운 것, 사건분류·기준일</td></tr>
+<tr><td>② 교차검증(GAS)</td><td>같은 실행 안(CrossCheck)</td><td>통장 줄 행선 못 정함, 시간 순서 모순, 거래 사슬 밖 서류, 기한 경과 알림</td></tr>
+<tr><td>③ 판정·계산 다시 맞추기(GAS)</td><td>같은 물건을 사람마다 나눠 적었는데 칸이 다를 때(CaseLedger.js 630)</td><td>빈 쪽 칸을 물어볼 것으로</td></tr>
+<tr><td>④ 넥스 도구</td><td>넥스가 장부에 물음을 세움(CaseLedger.js 1496)</td><td>넥스가 세무사님께 여쭐 것</td></tr>
+<tr><td>⑤ 화면 저장</td><td>사건처리 화면이 질문 목록을 저장할 때(Code.js 27613·27625)</td><td>화면이 들고 있던 목록을 장부에 맞춤</td></tr>
+</table>
+
+<h2>3. 어디에 보이나</h2>
+<ul>
+<li>사건처리 화면 — 「칸 장부」(물어볼 것·증빙 받을 것 수)와 「남은 질문」 묶음</li>
+<li>대시보드 「급한 일」 — 사건별 개수와 「사건처리 열기」</li>
+<li>넥스 도구 — 사건 상태 보기에 남은 질문 40개까지 실어 보냄</li>
+<li>휴대폰 창구·현황판 — 대시보드와 같은 목록</li>
+<li>검토서 「추가로 확인할 사항」 — 보류·추정 줄</li>
+</ul>
+
+<h2>4. 실상 — 숫자</h2>
+<table><tr><th>항목</th><th>수</th></tr>
+<tr><td>장부 파일</td><td class="n">72 <small>(시트 사건 111 중 장부 있는 사건 19)</small></td></tr>
+<tr><td>열린 질문 전체</td><td class="n"><b>254</b></td></tr>
+<tr><td>&nbsp;&nbsp;시트에 있는 실사건 몫</td><td class="n">104 <small>(진행·보류 84 · 완료 사건 20)</small></td></tr>
+<tr><td>&nbsp;&nbsp;시트에 없는 장부 53개 몫</td><td class="n">150 <small>(가상·모의·지운 사건 흔적)</small></td></tr>
+<tr><td>대시보드가 보여 준 것</td><td class="n">39 <small>(4건)</small></td></tr>
+</table>
+
+<h3>사건별 — 시트에 있는 것 가운데 열린 질문이 있는 10건</h3>
+<table><tr><th>사건</th><th>상태</th><th>수정일</th><th>열린</th><th>대시보드</th></tr>
+<tr><td>나성은(김순희)_불복_이의신청</td><td>진행</td><td>11-12</td><td class="n">32</td><td>보임</td></tr>
+<tr><td>김소라(전용택)_양도_신고</td><td>진행</td><td>11-05</td><td class="n">25</td><td class="bad">안 보임</td></tr>
+<tr><td>최동규(이지민)_양도_신고</td><td>완료</td><td>11-01</td><td class="n">15</td><td>완료라 제외</td></tr>
+<tr><td>강문영(강문영)_증여_자문</td><td>보류</td><td>11-12</td><td class="n">8</td><td class="bad">안 보임</td></tr>
+<tr><td>최영환(최영환)_양도_자문</td><td>보류</td><td>11-01</td><td class="n">7</td><td class="bad">안 보임</td></tr>
+<tr><td>박영랑(박영랑)_양도_자문</td><td>진행</td><td>11-12</td><td class="n">5</td><td class="bad">안 보임</td></tr>
+<tr><td>김영민(김영민)_양도_자문</td><td>완료</td><td>11-12</td><td class="n">5</td><td>완료라 제외</td></tr>
+<tr><td>배애란(배애란)_양도_신고</td><td class="mid">상태 빈칸</td><td>11-02</td><td class="n">3</td><td>보임</td></tr>
+<tr><td>박연경(한영자)_상속_신고</td><td>진행</td><td>11-11</td><td class="n">2</td><td>보임</td></tr>
+<tr><td>황인택(황재민)_증여_신고</td><td>진행</td><td>11-06</td><td class="n">2</td><td>보임</td></tr>
+</table>
+
+<h3>유형별 — 실사건 104개</h3>
+<table><tr><th>유형</th><th>수</th><th>보기</th></tr>
+<tr><td>서류 종류 못 정함 — "서류 종류를 규칙으로 정하지 못했습니다"</td><td class="n"><b>52</b></td><td>심사양도2006-0073.pdf · 조심-2020-전-8665.pdf · 세무조사 결과통지·사전통지 · 재결서 · 토지보상금내역 · 상속세신고서2 · 입금통장 · 등기부등본6 · 카카오톡 사진 …</td></tr>
+<tr><td>계산기 빈 칸 — 서류에서 못 채움</td><td class="n">18</td><td>양도가액 · 취득일 · 취득가액 · 소재지 · 거주연수 · 증여일 · 수증자 성명</td></tr>
+<tr><td>넥스가 세운 물음</td><td class="n">14</td><td>강문영 Q1~Q4(혼인일·배우자 재산·오피스텔 사용현황·자금원천) · 박영랑 조합원여부·전세당사자·보유주택수 · 김영민 다른 주택·계약금 증빙</td></tr>
+<tr><td>교차검증·점검 알림</td><td class="n">13</td><td>행선 못 정한 큰 거래 76줄 · 시간 순서 모순(전입 1970-08-03) · 거래 사슬 밖 등기권리증 · 법정일 지남</td></tr>
+<tr><td>판단 칸</td><td class="n">7</td><td>사건분류 · 기준일 · 오피스텔 과세대상 구분 · 가설과 서류 다름(취득일)</td></tr>
+</table>
+<p>세운 주체: <b>GAS 90 · 넥스 14</b>. 세운 날: 대부분 10-28~10-30(그때 사건처리를 돌린 뒤 답이 없음). 11월 것은 김소라(11-03~05)·박연경·황인택·박영랑·김영민·강문영 Q.</p>
+
+<h2>5. 대시보드가 4건만 보인 진짜 까닭</h2>
+<p>오늘 할 일(todo_list, Code.js 13183~13184)은 "완료 아닌 사건 중 최근 14일 안에 고친 것 12건까지"를 보려 합니다. 그런데 수정일을 시트의 날짜 값 그대로 받아 글자로 비교합니다 — <code>String(c.수정일) &gt;= '2026-10-29'</code>. 날짜 값을 글자로 바꾸면 "Thu Nov 05 2026 …"이 되어 어떤 날짜든 통과합니다(11-12 낮 "9132일째 움직임 없음"과 같은 종류의 날짜 글자 결함).</p>
+<p>그래서 실제로는 <b>완료 아닌 사건 26건을 시트 줄 순서대로 앞 12건만</b> 봅니다. 앞 12건 = 나성은·최형택·박연경·김기범·송기종·조만덕·손안임·임의선·배애란·이종혁·김희연·황인택. 이 중 열린 질문이 있는 넷이 화면의 4건과 정확히 일치합니다. 시트 뒤쪽 줄인 최영환(7)·김소라(25)·강문영(8)·박영랑(5)은 고친 지 하루~일주일인데도 영원히 안 보입니다.</p>
+
+<h2>6. 이름과 실제가 다른 점</h2>
+<ul>
+<li>「넥스가 묻는 질문」 104개 중 넥스(AI)가 세운 것은 14개. 90개는 GAS 도구(서류 읽기·교차검증·판정)가 세운 것.</li>
+<li>52개(절반)는 "이 서류가 무슨 서류인지 모르겠다". 불복 사건의 심사례·조세심판례·세무조사 통지서, 수용 사건의 재결서·보상금내역처럼 서류 종류 규칙이 없는 것들이 모두 세무사님 질문으로 쌓임.</li>
+<li>나성은(불복)에는 "[자문 — 아직 하지 않은 거래면 서류가 없는 것이 정상입니다]" 문구가 붙은 양도자산 칸 질문 6개가 있음(자문용 문구가 불복 사건에 붙음).</li>
+</ul>
+
+<h2>7. 검토대상 목록 — 고치지 않았음(세무사님 판단 뒤)</h2>
+<table><tr><th>#</th><th>위치</th><th>무엇</th><th>영향</th><th>확신</th></tr>
+<tr><td class="n">1</td><td>todo_list(Code.js 13183~13184)</td><td>수정일 날짜 값을 글자로 비교해 14일 거름이 죽고 시트 앞 12건만 봄</td><td>김소라 25·강문영 8·최영환 7·박영랑 5가 대시보드에 안 뜸</td><td class="ok">높음 — 시트 날짜 칸이 숫자형임을 확인, 앞 12건 계산이 화면 4건과 정확히 일치</td></tr>
+<tr><td class="n">2</td><td>같은 곳</td><td>12건·14일 제한 자체 — 전체 사건의 열린 질문을 보여 주지 않음(오래된 사건은 영원히 안 보임)</td><td>설계 판단 거리</td><td>사실</td></tr>
+<tr><td class="n">3</td><td>대시보드 칩 이름</td><td>「넥스가 묻는 질문」인데 90/104가 GAS가 세운 것</td><td>이름이 실제와 다름</td><td>사실</td></tr>
+<tr><td class="n">4</td><td>서류 읽기(서류 역할)</td><td>서류 종류 규칙 없음 52건이 세무사님 질문으로 쌓임(심사례·심판례·조사통지·재결서·보상금내역·입금통장·상속세신고서 등)</td><td>질문 절반이 "서류 분류"</td><td>사실 — 규칙을 더할지, 넥스가 먼저 분류하게 할지 판단 거리</td></tr>
+<tr><td class="n">5</td><td>완료 사건</td><td>최동규 15·김영민 5 — 완료 뒤에도 열린 질문이 남음</td><td>완료 처리 때 질문을 닫지 않음</td><td>사실</td></tr>
+<tr><td class="n">6</td><td>작업관리 시트 40줄 배애란</td><td>상태 칸이 빈칸</td><td>완료 아님으로 취급돼 대시보드에 뜸</td><td>사실</td></tr>
+<tr><td class="n">7</td><td>_사건장부 폴더</td><td>시트에 없는 장부 53개(열린 150) — 가상·모의·지운 사건</td><td>폴더 비대, 점검 때 섞임</td><td>사실 — 지울지는 세무사님 판단</td></tr>
+<tr><td class="n">8</td><td>나성은 장부</td><td>불복 사건에 자문용 문구·양도자산 칸 질문 6개, 전입일 1970-08-03 시간 순서 모순 3개(읽기 오류로 보임)</td><td>32개 중 9개가 헛질문 가능</td><td class="mid">중간</td></tr>
+<tr><td class="n">9</td><td>박연경 사건 폴더</td><td>「신한은행 비밀번호.pdf」가 사건 폴더에 들어 있음</td><td>보안</td><td>사실(파일 이름만 봄)</td></tr>
+<tr><td class="n">10</td><td>질문 보이는 방식</td><td>낱개 52개를 사건마다 줄줄이 — 10-22 말씀 "항목별로 그루핑해서 질문"과 다름</td><td>답하기 번거로움</td><td>사실</td></tr>
+</table>
+</body></html>

@@ -228,9 +228,24 @@ function awNightly_() {
   try { r.기한 = awDeadlinesNightly_(cases).length; } catch (e) { r.기한오류 = String(e && e.message || e).slice(0, 120); }
   try { r.미수 = awUnpaidCheck_(cases).length; } catch (e) { r.미수오류 = String(e && e.message || e).slice(0, 120); }
   try { r.멈춤 = awStaleCheck_(cases).length; } catch (e) { r.멈춤오류 = String(e && e.message || e).slice(0, 120); }
+  try { r.질문정리 = awQuestionsNightly_(cases); } catch (e) { r.질문정리오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.12 넥스 질문 정리 ②⑤]
   try { const s = t6ShareCleanup_(); r.공유거둠 = s && s.done ? s.done.filter(function (d) { return d.unshared; }).length : 0; if (r.공유거둠) awNoticeAdd_('공유 정리', '완료 사건 폴더의 로봇 공유 ' + r.공유거둠 + '개를 거뒀습니다(밤 자동)', '', 'share:' + awToday_(), false); } catch (e) { r.공유오류 = String(e && e.message || e).slice(0, 120); }
   r.at = caseProcNow_(); r.ms = Date.now() - t0;
   try { PropertiesService.getScriptProperties().setProperty(AW_NIGHT_PROP_, JSON.stringify(r)); } catch (e) {}
   return r;
+}
+// [2026.11.12 넥스 질문 정리 계획서 ②·⑤ — 세무사님 "넥스선처리를 미리읽기 틱에 얹는 것은 맞는데, 진행중인 사건만을 대상으로" / 결정 다·라 권장대로]
+//  밤마다 GAS만(0원): ① 진행 중 실사건에 넥스 차례 물음이 남아 있으면 낮 틱이 넥스를 깨우게 줄을 세운다 ② 완료 사건에 남은 열린 질문은 닫는다 ③ 사건 목록에 없는 장부 파일(가상·모의·지운 사건)은 드라이브 휴지통으로
+function awQuestionsNightly_(cases) {
+  const out = { 줄세움: 0, 완료닫음: 0, 휴지통: 0 };
+  (cases || []).forEach(function (c) {
+    try {
+      if (String(c.상태 || '') === '완료') { if (typeof ledgerNexTurnCount_ === 'function' && typeof ledgerCloseAllOpen_ === 'function') { const q = ledgerQRead_(c.id); if (q.remaining.some(function (it) { return !(q.decisions[it.id] && q.decisions[it.id].d); })) { const r = ledgerCloseAllOpen_(c.id, '사건 완료(밤 점검)', 'GAS'); out.완료닫음 += (r && r.closed) || 0; } } return; }
+      if (String(c.상태 || '') !== '진행' || awVirtual_(c)) return;
+      if (typeof ledgerNexTurnCount_ === 'function' && ledgerNexTurnCount_(c.id) > 0 && typeof cpNexQEnqueue_ === 'function') { cpNexQEnqueue_(c.id); out.줄세움++; }
+    } catch (e) {}
+  });
+  try { if (typeof ledgerOrphanTrash_ === 'function' && (cases || []).length) { const r = ledgerOrphanTrash_((cases || []).map(function (c) { return c.id; })); out.휴지통 = (r && r.trashed) || 0; if (out.휴지통) awNoticeAdd_('장부 정리', '사건 목록에 없는 장부 파일 ' + out.휴지통 + '개를 드라이브 휴지통으로 보냈습니다(가상·모의·지운 사건 — 되살릴 수 있음).', '', 'ledger_orphan_' + caseProcToday_(), true); } } catch (e) { out.휴지통오류 = String(e && e.message || e).slice(0, 80); }
+  return out;
 }
 function awNightlyLast_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_NIGHT_PROP_) || 'null'); } catch (e) { return null; } }

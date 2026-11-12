@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 05:50 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 11:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3050,12 +3050,12 @@ function nxMdOpenWindow(title, src, opts){
 </script>
 
       <div class="view" id="view-dashboard">
-  <div class="view-head"><h2>오늘의 현황</h2></div>
+  <div class="view-head"><h2>오늘</h2></div>
   <div class="view-body">
     <!-- [2026.10.22] 오늘 할 일 한 줄(기기 3종 2차) — 휴대폰 창구·현황판과 같은 목록(todo_list)의 건수만. 목록 자체는 아래 각 카드에 있으므로
          여기서는 되풀이하지 않고(시각적 중복 금지) 누르면 그 카드로 간다. 넥스가 묻는 질문만 다른 카드에 없어 펼쳐 보인다. -->
     <div class="card dash-cover" id="dashTodayCard" style="padding:10px 14px;">
-      <div id="dashToday" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px;"><b>오늘</b> <span class="spinner">불러오는 중…</span></div>
+      <div id="dashToday" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px;"><b>급한 일</b> <span class="spinner">불러오는 중…</span></div>
       <div id="dashTodayAsks" style="font-size:12.5px;"></div>
     </div>
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
@@ -3216,26 +3216,24 @@ function nxMdOpenWindow(title, src, opts){
   function loadDashToday_(){
     callGas('todo_list', {}).then(function(t){
       var box = document.getElementById('dashToday'); if (!box) return;
-      if (!t || t.error){ box.innerHTML = '<b>오늘</b> <span style="color:var(--sub)">불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
+      if (!t || t.error){ box.innerHTML = '<b>급한 일</b> <span style="color:var(--sub)">불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
       var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; color:' + (warn ? '#b3261e' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
-      var asksN = (t.넥스질문 || []).reduce(function(s, x){ return s + (x.질문수 || 0); }, 0);
-      var html = '<b>오늘</b>'
+      // [2026.11.12 넥스 질문 정리 ④ — 세무사님 "이게 급한 일로 분류해야 하는지도 의문"] 넥스 질문 칩·사건별 ❓ 줄 걷음 — 물음은 그 사건 사실 장부 ④에서(넥스가 먼저 풀고 남은 것만)
+      var html = '<b>급한 일</b>'
         + chip((t.지남 || []).length, '기한 지남', 'dashDeadlines', true)
         + chip((t.마감 || []).length, '3일 안 마감', 'dashDeadlines')
         + chip((t.오늘예약 || []).length, '오늘 예약', 'dashBookings')
         + chip(t.예약결과 || 0, '예약 결과 적기', 'dashBookings', true)
-        + chip(asksN, '넥스가 묻는 질문', 'dashTodayAsks')
         + chip((t.고객서류 || []).length, '고객이 보낸 서류', 'dashFedStatus')
         + chip(t.긴급요청, '🚨 긴급 요청', 'dashImproveCard', true)
         + chip(t.확인요청, '반영된 요청 확인', 'dashImproveCard')
         + chip(t.카카오오류, '카카오 오류', 'dashFedStatus', true)
         + chip((t.알림대기 || []).length, '답 안 한 알림', 'dashTodayAsks');
-      dashCardShow_(box, html !== '<b>오늘</b>'); // 급한 일이 없으면 카드째 숨김
+      dashCardShow_(box, html !== '<b>급한 일</b>'); // 급한 일이 없으면 카드째 숨김
       box.innerHTML = html;
       var asks = document.getElementById('dashTodayAsks');
-      asks.innerHTML = (t.넥스질문 || []).map(function(x){ return '<div style="padding-top:4px;">❓ ' + esc(x.사건) + ' — 넥스가 묻는 질문 ' + x.질문수 + '개 <a href="#" data-today-case="' + esc(x.caseId) + '">사건처리 열기</a></div>'; }).join('')
-        + (t.알림대기 || []).map(function(a){ return '<div style="padding-top:4px;">🔔 ' + esc(String(a.at).slice(5)) + ' ' + esc(a.text) + ' <a href="/m/?a=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">답하기</a></div>'; }).join('');
-    }).catch(function(e){ var b = document.getElementById('dashToday'); if (b) b.innerHTML = '<b>오늘</b> <span style="color:var(--sub)">오류: ' + esc(e.message) + '</span>'; });
+      asks.innerHTML = (t.알림대기 || []).map(function(a){ return '<div style="padding-top:4px;">🔔 ' + esc(String(a.at).slice(5)) + ' ' + esc(a.text) + ' <a href="/m/?a=' + encodeURIComponent(a.id) + '" target="_blank" rel="noopener">답하기</a></div>'; }).join('');
+    }).catch(function(e){ var b = document.getElementById('dashToday'); if (b) b.innerHTML = '<b>급한 일</b> <span style="color:var(--sub)">오류: ' + esc(e.message) + '</span>'; });
   }
   document.addEventListener('click', function(ev){
     var g = ev.target.closest && ev.target.closest('[data-today-go]');
@@ -8568,11 +8566,18 @@ function nxMdOpenWindow(title, src, opts){
         var kbFact = {}; ((kb && kb.facts) || []).forEach(function(f){ if (f.id) kbFact[f.id] = f; });
         h += '<div id="chLgFxBox" style="margin-top:6px;"></div>';
         var order = ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'];
+        // [2026.11.12 넥스 질문 정리 ③ — 세무사님 10-22 "항목별로 그루핑해서 질문하는 것이 기본"] 물어볼 것·증빙 받을 것은 세무사님 차례만 묶음(계산기 카드 순서)으로, 넥스 차례(GAS 물음을 넥스가 먼저 봄)는 수만 한 줄
+        var GROUP_ORDER = ['서류', '서류 대조', '사건 파악', '양도인', '양도계약', '자산', '취득', '안분', '특례·비용', '증여', '상속', '자문 쟁점', '그 밖'];
+        var nexRows = rows.filter(function(x){ return (x.state === '물어볼것' || x.state === '증빙받을것') && x.turn === '넥스'; });
+        if (nexRows.length) h += '<div style="margin-top:8px; font-size:12.5px; color:var(--sub);">🤖 넥스가 먼저 보는 물음 ' + nexRows.length + '개 — 서류를 읽어 정하거나 닫고, 못 정한 것만 아래 「물어볼 것」으로 옵니다(사건 현황 🤖 넥스 줄에서 미리 읽기를 끄면 모두 세무사님께 옵니다).</div>';
         order.forEach(function(st){
-          var list = rows.filter(function(x){ return x.state === st; });
+          var list = rows.filter(function(x){ return x.state === st && !((st === '물어볼것' || st === '증빙받을것') && x.turn === '넥스'); });
           if (!list.length) return;
+          if (st === '물어볼것' || st === '증빙받을것') list.sort(function(a, b){ var ga = GROUP_ORDER.indexOf(a.group || '그 밖'), gb = GROUP_ORDER.indexOf(b.group || '그 밖'); return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb); });
           h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          var lastGroup = null;
           list.forEach(function(x){
+            if ((st === '물어볼것' || st === '증빙받을것') && (x.group || '그 밖') !== lastGroup){ lastGroup = x.group || '그 밖'; h += '<tr><td colspan="6" style="padding:5px 8px 2px; border-top:1px solid var(--line); font-weight:700; background:var(--bg2, #f6f7fa);">📂 ' + esc(lastGroup) + ' <span style="font-weight:400; color:var(--sub);">' + list.filter(function(y){ return (y.group || '그 밖') === lastGroup; }).length + '</span></td></tr>'; }
             var basis = (st === '물어볼것' || st === '증빙받을것') ? (x.ask || '') : [x.file, x.quote ? '"' + x.quote + '"' : '', x.why].filter(Boolean).join(' · ');
             var act = '';
             if (st === '물어볼것' || st === '증빙받을것' || st === '추정'){
@@ -62969,10 +62974,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 사건 화면 — "GAS가 한 일" 한 줄(남은 질문을 계산기 항목별로). 답하실 때마다 다시 맞춘다
   function nxAiCpGasSayText_(st){
     var tax0 = nxAiCpTax_(st), byCard = {}, nq = 0;
-    st.items.forEach(function(it){ var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; nq++; var k = nxAiCpCard_(it, tax0).card; byCard[k] = (byCard[k] || 0) + 1; });
+    var nexN = 0; // [2026.11.12 넥스 질문 정리 ③] 넥스 차례(GAS 물음을 넥스가 먼저 봄)는 세지 않고 한 줄로
+    st.items.forEach(function(it){ var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; if (it.turn === '넥스'){ nexN++; return; } nq++; var k = it.group || nxAiCpCard_(it, tax0).card; byCard[k] = (byCard[k] || 0) + 1; });
     // [2026.10.31] 낱개 도구마다 한 일을 그대로 — 예전 한 바퀴 글("서류 n개를 읽어 칸을 채웠습니다")이 서류 읽기에도·칸 채우기(서류 0개)에도 똑같이 나왔다
     var did = st.tool === 'fill' ? '장부 값을 세액계산기 칸에 옮겼습니다.' : '서류 ' + (st.files || []).length + '개를 읽어 장부에 적었습니다.';
-    return '⚡ GAS가 한 일: ' + did + ' ' + (nq ? '여쭐 것 ' + nq + '개 — ' + Object.keys(byCard).map(function(k){ return k + ' ' + byCard[k]; }).join(' · ') + ' (아래에 항목별로)' : '여쭐 것은 없습니다.');
+    return '⚡ GAS가 한 일: ' + did + ' ' + (nq ? '여쭐 것 ' + nq + '개 — ' + Object.keys(byCard).map(function(k){ return k + ' ' + byCard[k]; }).join(' · ') + ' (아래에 항목별로)' : '여쭐 것은 없습니다.') + (nexN ? ' 넥스가 먼저 보는 물음 ' + nexN + '개(못 정한 것만 세무사님께 옵니다).' : '');
   }
   // [2026.10.31 묶음 해체] 도구가 끝나면 다음 도구는 세무사님이 고르신다 — 고정 묶음 단추 없이 낱개 단추만(승인 ① "두지 않음")
   function nxAiCpEndNoFinish_(st, msg){
@@ -63388,12 +63394,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
   function nxAiCaseProcFoot_(st){
     var foot = st.bubble.querySelector('.nxai-cp-foot');
-    var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
+    var liveAll = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
+    var nexTurn = liveAll.filter(function(it){ return it.turn === '넥스'; }).length; // [2026.11.12 넥스 질문 정리 ③] 넥스 차례는 세무사님 수에서 뺀다
+    var live = liveAll.filter(function(it){ return it.turn !== '넥스'; });
     var held = live.filter(function(it){ return /^(보류|예정)$/.test(nxAiCaseProcDec_(st, it) || ''); });
     var open = live.length - held.length;
     // [2026.10.22 묶음 ㄱ1·ㄱ5] 사건 화면 "다음 할 일"이 같은 수를 읽게(한 곳의 같은 수) — 머리 "질문 1개" ↔ 본문 "여쭐 것 없음"이 어긋나던 것(가상양도7 표 20·34·39)
     if (st.screen) window.nxCpLive_ = { caseId: st.caseId, open: open, held: held.length, running: !!st.running, at: Date.now() };
-    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + (st.paused ? ' — [확인]으로 값을 고르면 반영합니다. 다음 도구는 위 단추에서 고르세요.' : ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.')
+    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (nexTurn ? ' · 넥스가 먼저 보는 물음 ' + nexTurn + '건' : '') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + (st.paused ? ' — [확인]으로 값을 고르면 반영합니다. 다음 도구는 위 단추에서 고르세요.' : ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.')
       + (open && !st.screen ? '<br>💬 아래 입력창에 말로 답해도 됩니다: <b>"Q2 5억 2천만원 매매계약서"</b>, <b>"Q3 2024.3.5"</b>, <b>"Q4 보류"</b>, "남은 질문 보여줘"' : '') + '</div>';
     // [2026.10.31 처리개요 도구 정리 — 결정 ③ "권장안대로"] 화면에서 띄운 상자는 질문 카드를 접고 "답하실 질문 N개 → 📒 장부에서 답하기"만(답하는 문은 장부 한 곳). 폴더 만들기처럼 장부로 못 답하는 카드는 그대로 보인다
     if (st.screen && st.home){

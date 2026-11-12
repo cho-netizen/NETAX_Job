@@ -3345,10 +3345,11 @@
   // 사건 화면 — "GAS가 한 일" 한 줄(남은 질문을 계산기 항목별로). 답하실 때마다 다시 맞춘다
   function nxAiCpGasSayText_(st){
     var tax0 = nxAiCpTax_(st), byCard = {}, nq = 0;
-    st.items.forEach(function(it){ var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; nq++; var k = nxAiCpCard_(it, tax0).card; byCard[k] = (byCard[k] || 0) + 1; });
+    var nexN = 0; // [2026.11.12 넥스 질문 정리 ③] 넥스 차례(GAS 물음을 넥스가 먼저 봄)는 세지 않고 한 줄로
+    st.items.forEach(function(it){ var d0 = nxAiCaseProcDec_(st, it); if (d0 === '무시' || d0 === 'done') return; if (it.turn === '넥스'){ nexN++; return; } nq++; var k = it.group || nxAiCpCard_(it, tax0).card; byCard[k] = (byCard[k] || 0) + 1; });
     // [2026.10.31] 낱개 도구마다 한 일을 그대로 — 예전 한 바퀴 글("서류 n개를 읽어 칸을 채웠습니다")이 서류 읽기에도·칸 채우기(서류 0개)에도 똑같이 나왔다
     var did = st.tool === 'fill' ? '장부 값을 세액계산기 칸에 옮겼습니다.' : '서류 ' + (st.files || []).length + '개를 읽어 장부에 적었습니다.';
-    return '⚡ GAS가 한 일: ' + did + ' ' + (nq ? '여쭐 것 ' + nq + '개 — ' + Object.keys(byCard).map(function(k){ return k + ' ' + byCard[k]; }).join(' · ') + ' (아래에 항목별로)' : '여쭐 것은 없습니다.');
+    return '⚡ GAS가 한 일: ' + did + ' ' + (nq ? '여쭐 것 ' + nq + '개 — ' + Object.keys(byCard).map(function(k){ return k + ' ' + byCard[k]; }).join(' · ') + ' (아래에 항목별로)' : '여쭐 것은 없습니다.') + (nexN ? ' 넥스가 먼저 보는 물음 ' + nexN + '개(못 정한 것만 세무사님께 옵니다).' : '');
   }
   // [2026.10.31 묶음 해체] 도구가 끝나면 다음 도구는 세무사님이 고르신다 — 고정 묶음 단추 없이 낱개 단추만(승인 ① "두지 않음")
   function nxAiCpEndNoFinish_(st, msg){
@@ -3764,12 +3765,14 @@
   }
   function nxAiCaseProcFoot_(st){
     var foot = st.bubble.querySelector('.nxai-cp-foot');
-    var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
+    var liveAll = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
+    var nexTurn = liveAll.filter(function(it){ return it.turn === '넥스'; }).length; // [2026.11.12 넥스 질문 정리 ③] 넥스 차례는 세무사님 수에서 뺀다
+    var live = liveAll.filter(function(it){ return it.turn !== '넥스'; });
     var held = live.filter(function(it){ return /^(보류|예정)$/.test(nxAiCaseProcDec_(st, it) || ''); });
     var open = live.length - held.length;
     // [2026.10.22 묶음 ㄱ1·ㄱ5] 사건 화면 "다음 할 일"이 같은 수를 읽게(한 곳의 같은 수) — 머리 "질문 1개" ↔ 본문 "여쭐 것 없음"이 어긋나던 것(가상양도7 표 20·34·39)
     if (st.screen) window.nxCpLive_ = { caseId: st.caseId, open: open, held: held.length, running: !!st.running, at: Date.now() };
-    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + (st.paused ? ' — [확인]으로 값을 고르면 반영합니다. 다음 도구는 위 단추에서 고르세요.' : ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.')
+    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (nexTurn ? ' · 넥스가 먼저 보는 물음 ' + nexTurn + '건' : '') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + (st.paused ? ' — [확인]으로 값을 고르면 반영합니다. 다음 도구는 위 단추에서 고르세요.' : ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.')
       + (open && !st.screen ? '<br>💬 아래 입력창에 말로 답해도 됩니다: <b>"Q2 5억 2천만원 매매계약서"</b>, <b>"Q3 2024.3.5"</b>, <b>"Q4 보류"</b>, "남은 질문 보여줘"' : '') + '</div>';
     // [2026.10.31 처리개요 도구 정리 — 결정 ③ "권장안대로"] 화면에서 띄운 상자는 질문 카드를 접고 "답하실 질문 N개 → 📒 장부에서 답하기"만(답하는 문은 장부 한 곳). 폴더 만들기처럼 장부로 못 답하는 카드는 그대로 보인다
     if (st.screen && st.home){

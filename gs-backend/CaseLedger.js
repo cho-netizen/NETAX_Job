@@ -323,6 +323,7 @@ function ledgerAskInner_(L, path, o) {
   const row = Object.assign({}, prev, { label: String(o.label || prev.label || ledgerLabel_(path)).slice(0, 40), state: o.needDoc ? '증빙받을것' : '물어볼것', ask: String(o.question || '').slice(0, 300), cands: (o.cands || []).slice(0, 8).map(function (x) { return { v: x.v, src: String(x.src || '').slice(0, 120) }; }), at: caseProcNow_() });
   if (!row.src) row.src = { kind: '질문', who: String(o.by || '').slice(0, 6), file: '', page: '', quote: '', why: '' };
   if (!o.keep) { row.v = prev.v; }
+  row.turn = o.turn || (String(o.by || '') === 'GAS' ? '넥스' : '세무사님'); row.group = o.group || prev.group || ledgerQGroup_(path); // [2026.11.12 질문 정리 ①] 차례·묶음
   row.hist = (Array.isArray(prev.hist) ? prev.hist : []).concat([{ at: row.at, by: o.by || '', kind: '질문', prev: prev.state ? { v: prev.v, state: prev.state } : null, next: { state: row.state }, why: row.ask }]).slice(-30);
   L.rows[path] = row;
   ledgerLogTo_(L, { by: o.by || '', what: row.state, path: path, detail: row.label + ' — ' + row.ask.slice(0, 120) + (row.cands.length ? ' · 후보 ' + row.cands.length + '개' : '') });
@@ -335,7 +336,7 @@ function ledgerAsk_(caseId, input) {
   const r0 = ledgerMutate_(caseId, function (L) {
     const prev = L.rows[path];
     if (prev && prev.state === '확정' && prev.src && prev.src.kind === '세무사님' && input.by !== '세무사님') return { ok: false, refused: true, message: '「' + (prev.label || path) + '」은 세무사님이 정한 값입니다 — 다시 묻지 않습니다. 서류 값이 다르면 그 사실만 말씀드립니다.' };
-    return ledgerAskInner_(L, path, { label: input.label, question: input.question, cands: input.cands, by: input.by || '넥스', needDoc: !!input.needDoc, keep: true });
+    return ledgerAskInner_(L, path, { label: input.label, question: input.question, cands: input.cands, by: input.by || '넥스', needDoc: !!input.needDoc, keep: true, turn: input.turn === '넥스' ? '넥스' : (input.turn === '세무사님' ? '세무사님' : undefined), group: input.group ? String(input.group).slice(0, 20) : undefined });
   });
   // [2026.11.12 2차 ② 계획서 ②(세무사님 "권장대로")] 받을 서류(needDoc)는 증빙목록에도 「제안」으로 — 증빙확보 화면 요청자료에 보이고, 세무사님이 「고객에게 보이기」를 누르면 고객 창구 체크리스트로(잠금 밖에서 — 사건 저장이 따로 잠금을 쓴다)
   if (input.needDoc && r0 && r0.ok && r0.asked) { try { ledgerEvProposeFromAsk_(caseId, input.label || ledgerLabel_(path), input.question, input.by || '넥스'); } catch (e) {} }
@@ -388,7 +389,7 @@ function ledgerUndo_(caseId, input) {
 }
 function ledgerRowOut_(path, r) {
   r = r || {};
-  return { path: path, label: r.label && !/^[a-zA-Z]/.test(String(r.label)) ? r.label : ledgerLabel_(path), v: r.v === undefined ? '' : r.v, 값: ledgerValueText_(path, r.v), state: r.state || '', kind: r.src ? r.src.kind : '', who: r.src ? r.src.who : '', file: r.src ? r.src.file : '', quote: r.src ? r.src.quote : '', why: r.src ? r.src.why : '', sure: r.sure || '', ask: r.ask || '', cands: (r.cands || []).map(function (x) { return { v: x.v, 값: ledgerValueText_(path, x.v), src: x.src }; }), at: r.at || '', note: r.note || '', histN: (r.hist || []).length, fx: r.fx || [], fk: r.fk || [] };
+  return { path: path, label: r.label && !/^[a-zA-Z]/.test(String(r.label)) ? r.label : ledgerLabel_(path), v: r.v === undefined ? '' : r.v, 값: ledgerValueText_(path, r.v), state: r.state || '', kind: r.src ? r.src.kind : '', who: r.src ? r.src.who : '', file: r.src ? r.src.file : '', quote: r.src ? r.src.quote : '', why: r.src ? r.src.why : '', sure: r.sure || '', ask: r.ask || '', cands: (r.cands || []).map(function (x) { return { v: x.v, 값: ledgerValueText_(path, x.v), src: x.src }; }), at: r.at || '', note: r.note || '', histN: (r.hist || []).length, fx: r.fx || [], fk: r.fk || [], turn: ledgerQOpenState_(r.state) ? ledgerQTurnOf_(r, false) : '', group: r.group || ledgerQGroup_(path) };
 }
 // ── 읽기 ──
 function ledgerRows_(caseId, filter) {
@@ -929,6 +930,76 @@ function ledgerQPath_(it) {
   return p || ('q:' + String((it && it.id) || '').slice(0, 160));
 }
 function ledgerQOpenState_(s) { return /^(물어볼것|증빙받을것|보류)$/.test(String(s || '')); }
+// [2026.11.12 넥스 질문 정리 계획서 ①] 열린 칸의 「차례」와 「묶음」 — 세무사님 "GAS가 못 푼 것은 넥스에게 돌려보내고, 넥스가 판단하거나 세무사님께 묻는다"(공통원칙 10-22)
+//  · 차례: GAS가 세운 물음은 「넥스」 차례(넥스 미리 읽기 스위치를 끈 사건은 「세무사님」 — "AI 없이"), 넥스가 세우거나 넘긴 물음은 「세무사님」 차례
+//  · 묶음: 계산기 카드 순서(10-16 "세액계산기 자체가 정보 순서") — 세무사님께는 묶음 단위로 보인다(10-22 "항목별로 그루핑해서 질문")
+function ledgerQGroup_(path) {
+  const p = String(path || '');
+  if (/^doc:/.test(p)) return '서류';
+  if (/^q:(rf|cxt|evidence|basic)/.test(p)) return '서류 대조';
+  if (/^advice\./.test(p)) return '자문 쟁점';
+  if (/^(seller|household|owner)\d*\./.test(p) || /^양도인/.test(p)) return '양도인';
+  if (/^c\d+\./.test(p) || /^(기준일|사건분류)$/.test(p)) return '양도계약';
+  if (/^a\d+\.(acquisition|acq)/.test(p) || /^a\d+\.contract$/.test(p)) return '취득';
+  if (/^a\d+\.(share|apportion|ratio)/.test(p) || /안분/.test(p)) return '안분';
+  if (/^a\d+\.(oneHouse|longTerm|exempt|reduction|special|farm|resid|residence|nonBiz)/i.test(p) || /^(costs|taxfee)$/.test(p)) return '특례·비용';
+  if (/^a\d+\./.test(p)) return '자산';
+  if (/^(g|gift)\./.test(p) || /^증여/.test(p)) return '증여';
+  if (/^(ih|inh|inherit)\./.test(p) || /^상속/.test(p)) return '상속';
+  if (/^q:(nex|ov|ai)/.test(p)) return '사건 파악';
+  return '그 밖';
+}
+var LEDGER_GROUP_ORDER_ = ['서류', '서류 대조', '사건 파악', '양도인', '양도계약', '자산', '취득', '안분', '특례·비용', '증여', '상속', '자문 쟁점', '그 밖'];
+function ledgerQTurnOf_(r, nexOff) { // 저장된 차례가 없으면(옛 줄) 세운 주체로: GAS·규칙·서류 → 넥스 차례, 그 밖(넥스·세무사님) → 세무사님 차례
+  const t = r && r.turn ? String(r.turn) : (r && r.src && /^(GAS|규칙|서류)$/.test(String(r.src.who || '')) ? '넥스' : (r && r.src && r.src.kind === '질문' && !r.src.who ? '넥스' : '세무사님'));
+  return t === '넥스' && nexOff ? '세무사님' : t;
+}
+function ledgerNexOff_(caseId) { // 이 사건의 넥스 미리 읽기 스위치가 꺼져 있나(사건처리 결정 파일 nexPreread.off) — 장부 쪽에서 가볍게
+  try {
+    const k = String(caseId || '');
+    if (typeof CASEPROC_SV_MEMO_ !== 'undefined' && CASEPROC_SV_MEMO_[k]) { const o = JSON.parse(CASEPROC_SV_MEMO_[k]); return !!(o && o.nexPreread && o.nexPreread.off); }
+    if (typeof caseProcFile_ !== 'function') return false;
+    const f = caseProcFile_(k, false); if (!f) return false;
+    const o = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {};
+    return !!(o.nexPreread && o.nexPreread.off);
+  } catch (e) { return false; }
+}
+// 넥스 차례 열린 질문 수(깨우기·밤 점검이 봄 — 장부 한 번 읽음)
+function ledgerNexTurnCount_(caseId) {
+  try { const q = ledgerQRead_(caseId); return q.remaining.filter(function (it) { return it.turn === '넥스' && !(q.decisions[it.id] && q.decisions[it.id].d); }).length; } catch (e) { return 0; }
+}
+// 사건이 완료로 바뀌면 열린 질문을 모두 닫는다(결정 "무시", 근거 "사건 완료") — 계획서 ⑤·결정 다 "완료 사건에 답할 것이 남는 것은 모순"
+function ledgerCloseAllOpen_(caseId, why, by) {
+  const note = String(why || '사건 완료').slice(0, 120), who = String(by || 'GAS').slice(0, 6);
+  return ledgerMutate_(caseId, function (L) {
+    let n = 0;
+    Object.keys(L.rows).forEach(function (p) {
+      const r = L.rows[p]; if (!ledgerQOpenState_(r.state)) return;
+      const at = caseProcNow_();
+      r.qd = r.qd || {};
+      Object.keys(r.qs || {}).forEach(function (id) { if (!(r.qd[id] && /^(done|무시)$/.test(r.qd[id].d))) r.qd[id] = { d: '무시', at: at.slice(0, 10), text: String((r.qs[id] && r.qs[id].text) || '').slice(0, 200), note: note }; });
+      r.qd['ledger:' + p] = { d: '무시', at: at.slice(0, 10), text: String(r.label || p).slice(0, 200), note: note };
+      r.hist = (Array.isArray(r.hist) ? r.hist : []).concat([{ at: at, by: who, kind: '결정', prev: { state: r.state }, next: { state: '무시' }, why: note }]).slice(-30);
+      r.state = '무시'; r.note = note; r.at = at; n++;
+    });
+    if (n) ledgerLogTo_(L, { by: who, what: '결정 무시', path: '', detail: note + ' — 열린 질문 ' + n + '개 닫음' });
+    return { ok: true, closed: n };
+  });
+}
+// 사건 목록에 없는 장부 파일(가상·모의·지운 사건) → 드라이브 휴지통(되살릴 수 있음) — 계획서 결정 라(세무사님 11-12 권장대로)
+function ledgerOrphanTrash_(caseIds) {
+  const ids = {}; (caseIds || []).forEach(function (id) { ids[String(id)] = true; });
+  if (!Object.keys(ids).length) return { ok: false, why: '사건 목록이 비어 있어 건드리지 않음' };
+  const out = { ok: true, trashed: 0, names: [] };
+  const it = ledgerFolder_().getFiles();
+  while (it.hasNext()) {
+    const f = it.next(), name = String(f.getName() || '');
+    const m = /^(.+?)(\.도구|\.계산저장본)?\.json$/.exec(name); if (!m) continue;
+    if (ids[m[1]]) continue;
+    try { f.setTrashed(true); out.trashed++; if (out.names.length < 60) out.names.push(name); } catch (e) {}
+  }
+  return out;
+}
 // 이 질문이 세운 물음을 거둘 때 돌아갈 상태 — 질문 전에 값이 정해져 있었으면 그 값·상태로
 function ledgerQBack_(r) {
   const h = Array.isArray(r.hist) ? r.hist : [];
@@ -1093,6 +1164,12 @@ function ledgerDocUse_(c, fileRows) {
 // 쓰기 — rem: 질문 목록(순서대로; undefined면 질문은 그대로), dec: 질문 결정 지도 {질문id:{d,at,text,note}}(undefined면 결정은 그대로)
 //  o.partial: 이번 목록이 질문 전부가 아님(가벼운 다시 맞추기 — 사건파악·메모 질문을 다시 만들지 않음) → 목록에 없다고 떼지 않는다
 function ledgerQWrite_(caseId, rem, dec, o) {
+  const res = ledgerQWrite0_(caseId, rem, dec, o);
+  // [2026.11.12 질문 정리 ②] GAS가 새 물음을 세웠으면(넥스 차례) 미리 읽기 틱이 넥스를 깨우게 줄을 선다(진행 사건만 — 깨우기 쪽에서 가림)
+  try { if (res && res.asked && typeof cpNexQEnqueue_ === 'function') cpNexQEnqueue_(caseId); } catch (e) {}
+  return res;
+}
+function ledgerQWrite0_(caseId, rem, dec, o) {
   o = o || {};
   const san = typeof caseProcQSan_ === 'function' ? caseProcQSan_ : function (x) { return JSON.parse(JSON.stringify(x)); };
   return ledgerMutate_(caseId, function (L) {
@@ -1129,7 +1206,8 @@ function ledgerQWrite_(caseId, rem, dec, o) {
           ledgerAskInner_(L, path, { label: lab, question: String(it.text || ''), cands: cands, by: 'GAS', needDoc: /증빙\s*(받|요청)|서류를\s*(넣|받)/.test(String(it.text || '')) && !cands.length, keep: true });
           L.rows[path].qAsk = true; out.asked++;
         }
-        const row = L.rows[path] || (L.rows[path] = { label: ledgerLabel_(path), v: '', state: '물어볼것', src: { kind: '질문', who: 'GAS' }, at: caseProcNow_() });
+        const row = L.rows[path] || (L.rows[path] = { label: ledgerLabel_(path), v: '', state: '물어볼것', src: { kind: '질문', who: 'GAS' }, at: caseProcNow_(), turn: '넥스', group: ledgerQGroup_(path) });
+        if (!row.group) row.group = ledgerQGroup_(path); // [2026.11.12 질문 정리 ①]
         row.qs = row.qs || {}; const q = san(it); q._n = want[id].n; row.qs[id] = q; out.attached++;
       });
     }
@@ -1169,6 +1247,7 @@ function ledgerQWrite_(caseId, rem, dec, o) {
 // 읽기 — 열린 질문 목록(옛 remaining 모양, 질문 순서대로)과 질문 결정 지도(옛 decisions 모양). 닫힌 질문(칸 값이 정해짐)은 결정 'done'으로 보인다
 function ledgerQRead_(caseId) {
   const L = ledgerLoad_(caseId), items = [], dec = {};
+  const nexOff = ledgerNexOff_(caseId); // [2026.11.12 질문 정리 ①] 스위치 끈 사건은 모두 세무사님 차례
   Object.keys(L.rows).forEach(function (p) {
     const r = L.rows[p];
     Object.keys(r.qd || {}).forEach(function (id) { dec[id] = r.qd[id]; });
@@ -1176,7 +1255,7 @@ function ledgerQRead_(caseId) {
       const it = r.qs[id], qd = r.qd && r.qd[id];
       if (qd && (qd.d === 'done' || qd.d === '무시')) return;
       if (!ledgerQOpenState_(r.state) && !(qd && /^(보류|예정)$/.test(qd.d))) { dec[id] = { d: r.state === '무시' ? '무시' : 'done', at: String(r.at || '').slice(0, 10), text: String(it.text || '').slice(0, 200), note: '장부 ' + (r.label || p) + ' ' + r.state }; return; }
-      items.push(it);
+      items.push(Object.assign({}, it, { turn: ledgerQTurnOf_(r, nexOff), group: r.group || ledgerQGroup_(p), path: p }));
     });
     // GAS 질문이 붙지 않은 물음(서류 역할·서류 모순·넥스가 세운 물음)도 질문 목록에 — 세무사님이 AI 없이 GAS 화면만 쓰셔도 같은 물음을 보고 답한다(답은 장부 그 칸으로)
     if (!/^q:/.test(p) && ledgerQOpenState_(r.state) && !(r.qs && Object.keys(r.qs).some(function (id) { return !(r.qd && r.qd[id] && /^(done|무시)$/.test(r.qd[id].d)); }))) {
@@ -1186,6 +1265,7 @@ function ledgerQRead_(caseId) {
       const it = { id: id, step: 'ledger', kind: r.state === '증빙받을것' ? 'missing' : 'judge', text: String((r.label || p) + ' — ' + (r.ask || '값을 정해 주세요')).slice(0, 300),
         ask: { mode: opts || en ? 'options' : 'choose', target: id, label: r.label || p, cands: (r.cands || []).map(function (x) { return { v: String(x.v), label: '', src: String(x.src || '') }; }), options: opts || (en ? LEDGER_ENUMS_[en].codes.map(function (k) { return { label: LEDGER_ENUMS_[en].ko[k], value: k }; }) : undefined), withInput: !opts && !en } };
       it._n = /^doc:/.test(p) ? -1000 : -1;
+      it.turn = ledgerQTurnOf_(r, nexOff); it.group = r.group || ledgerQGroup_(p); it.path = p; // [2026.11.12 질문 정리 ①]
       if (r.qd && r.qd[id] && /^(보류|예정)$/.test(r.qd[id].d)) dec[id] = r.qd[id];
       items.push(it);
     }
@@ -1214,6 +1294,7 @@ function ledgerOverlayState_(caseId, state) {
 // ── 화면·넥스용 한 묶음 ──
 function ledgerView_(c) {
   const rows = ledgerRows_(c.id), L = ledgerLoad_(c.id);
+  if (ledgerNexOff_(c.id)) rows.forEach(function (r) { if (r.turn) r.turn = '세무사님'; }); // [2026.11.12 질문 정리 ①]
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 세목: e.세목 || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
@@ -1421,7 +1502,7 @@ function ledgerToolRun_(input, by) {
     else r = ledgerSet_(c.id, { path: input.path, value: input.value, kind: g.kind, by: who, file: g.kind === '넥스' ? input.file : '', page: input.page, quote: input.quote, why: [input.why, g.provisional || !input.file ? g.why : ''].filter(Boolean).join(' · '), label: input.label, cands: input.cands });
   }
   else if (d === 'set') r = ledgerSet_(c.id, { path: input.path, value: input.value, kind: kind, by: who, file: input.file, page: input.page, quote: input.quote, why: input.why, label: input.label, cands: input.cands });
-  else if (d === 'ask') r = ledgerAsk_(c.id, { path: input.path, label: input.label, question: input.question || input.why, cands: input.cands, needDoc: !!input.needDoc, by: who });
+  else if (d === 'ask') r = ledgerAsk_(c.id, { path: input.path, label: input.label, question: input.question || input.why, cands: input.cands, needDoc: !!input.needDoc, by: who, group: input.group, turn: who === '넥스' ? '세무사님' : undefined }); // [2026.11.12 질문 정리 ②] 넥스가 넘기면 세무사님 차례·묶음
   else if (d === 'decide') r = ledgerDecide_(c.id, { path: input.path, decision: input.decision, note: input.note || input.why, by: who });
   else if (d === 'undo') r = ledgerUndo_(c.id, { path: input.path, by: who });
   else if (d === 'calc') r = ledgerCalcRun_(c, { by: who, name: input.name, over: input.over, why: input.why, chainFrom: input.chainFrom, chainHeir: input.chainHeir, chainShare: input.chainShare, tax: input.tax ? ledgerTaxCode_(input.tax) || String(input.tax) : '' });

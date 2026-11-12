@@ -294,11 +294,18 @@
         var kbFact = {}; ((kb && kb.facts) || []).forEach(function(f){ if (f.id) kbFact[f.id] = f; });
         h += '<div id="chLgFxBox" style="margin-top:6px;"></div>';
         var order = ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'];
+        // [2026.11.12 넥스 질문 정리 ③ — 세무사님 10-22 "항목별로 그루핑해서 질문하는 것이 기본"] 물어볼 것·증빙 받을 것은 세무사님 차례만 묶음(계산기 카드 순서)으로, 넥스 차례(GAS 물음을 넥스가 먼저 봄)는 수만 한 줄
+        var GROUP_ORDER = ['서류', '서류 대조', '사건 파악', '양도인', '양도계약', '자산', '취득', '안분', '특례·비용', '증여', '상속', '자문 쟁점', '그 밖'];
+        var nexRows = rows.filter(function(x){ return (x.state === '물어볼것' || x.state === '증빙받을것') && x.turn === '넥스'; });
+        if (nexRows.length) h += '<div style="margin-top:8px; font-size:12.5px; color:var(--sub);">🤖 넥스가 먼저 보는 물음 ' + nexRows.length + '개 — 서류를 읽어 정하거나 닫고, 못 정한 것만 아래 「물어볼 것」으로 옵니다(사건 현황 🤖 넥스 줄에서 미리 읽기를 끄면 모두 세무사님께 옵니다).</div>';
         order.forEach(function(st){
-          var list = rows.filter(function(x){ return x.state === st; });
+          var list = rows.filter(function(x){ return x.state === st && !((st === '물어볼것' || st === '증빙받을것') && x.turn === '넥스'); });
           if (!list.length) return;
+          if (st === '물어볼것' || st === '증빙받을것') list.sort(function(a, b){ var ga = GROUP_ORDER.indexOf(a.group || '그 밖'), gb = GROUP_ORDER.indexOf(b.group || '그 밖'); return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb); });
           h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th><th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th><th style="text-align:left;padding:2px 8px;">조치</th></tr>';
+          var lastGroup = null;
           list.forEach(function(x){
+            if ((st === '물어볼것' || st === '증빙받을것') && (x.group || '그 밖') !== lastGroup){ lastGroup = x.group || '그 밖'; h += '<tr><td colspan="6" style="padding:5px 8px 2px; border-top:1px solid var(--line); font-weight:700; background:var(--bg2, #f6f7fa);">📂 ' + esc(lastGroup) + ' <span style="font-weight:400; color:var(--sub);">' + list.filter(function(y){ return (y.group || '그 밖') === lastGroup; }).length + '</span></td></tr>'; }
             var basis = (st === '물어볼것' || st === '증빙받을것') ? (x.ask || '') : [x.file, x.quote ? '"' + x.quote + '"' : '', x.why].filter(Boolean).join(' · ');
             var act = '';
             if (st === '물어볼것' || st === '증빙받을것' || st === '추정'){

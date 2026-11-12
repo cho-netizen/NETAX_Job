@@ -664,7 +664,6 @@
     var html = sec('⏰ 기한 지남', (t.지남 || []).map(function (c) { return row('<span style="color:#ff8a8a">' + esc(String(c.법정일).slice(5)) + '</span> ' + esc(c.사건)); }))
       + sec('📅 3일 안 마감', (t.마감 || []).map(function (c) { return row(esc(String(c.법정일).slice(5)) + ' ' + esc(c.사건)); }))
       + sec('👥 오늘 예약', (t.오늘예약 || []).map(function (b) { return row(esc(b.시각 || '') + ' ' + esc(b.이름) + (b.사건 ? ' · ' + esc(b.사건) : '')); }))
-      + sec('❓ 넥스가 묻는 질문', (t.넥스질문 || []).map(function (q) { return row(esc(q.사건) + ' — ' + q.질문수 + '개'); }))
       + sec('📥 고객이 보낸 서류(3일)', (t.고객서류 || []).map(function (u) { return row(esc(String(u.at).slice(5)) + ' ' + esc(u.경로 || '') + ' · ' + esc(u.사건 || u.rid || '') + ' — ' + esc(u.파일 || '')); }))
       + sec('🔔 답 안 한 알림', (t.알림대기 || []).map(function (a) { return row(esc(String(a.at).slice(5)) + ' ' + esc(a.text) + ' <a href="/m/?a=' + encodeURIComponent(a.id) + '">답하기</a>'); }));
     var extra = [t.긴급요청 ? '🚨 긴급 요청 ' + t.긴급요청 + '건' : '', t.확인요청 ? '반영된 요청 확인 ' + t.확인요청 + '건' : '', t.카카오오류 ? '⚠ 카카오 오류 ' + t.카카오오류 + '건' : ''].filter(Boolean);

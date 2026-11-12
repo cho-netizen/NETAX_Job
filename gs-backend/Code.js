@@ -13178,15 +13178,9 @@ function todoList_() {
     // [2026.10.30 예약 결과 관리] 날짜가 지났는데 결과를 안 적은 확정 예약 + 밤 점검이 찾은 연결 후보가 있는 예약(사건에 안 이은 것)
     out.예약결과 = ((o && o.bookings) || []).filter(function (b) { return b.status === '확정' && !b.caseId && ((!b.result && b.reservedDate && b.reservedDate < today) || (b.linkCandidates && b.linkCandidates.length)); }).length;
   } catch (e) {}
-  // 넥스가 묻는 질문(사건처리 남은 질문 중 아직 답 없는 것) — 최근 14일 안에 고친 진행 사건만(사건마다 드라이브 파일을 읽으므로 많이 안 봄)
-  try {
-    const since = Utilities.formatDate(new Date(Date.now() - 14 * 86400000), tz, 'yyyy-MM-dd');
-    open.filter(function (c) { return String(c.수정일 || '') >= since; }).slice(0, 12).forEach(function (c) {
-      const sv = caseProcLoad_(c.id); if (!sv) return;
-      const dec = sv.decisions || {}, n = (sv.remaining || []).filter(function (it) { return !(dec[it.id] && dec[it.id].d); }).length;
-      if (n) out.넥스질문.push({ caseId: c.id, 사건: String(c.사건명 || c.고객명 || ''), 질문수: n });
-    });
-  } catch (e) {}
+  // [2026.11.12 넥스 질문 정리 계획서 ④ — 세무사님 "날짜제한을 둔 자체가 바보짓이고, 이게 급한 일로 분류해야 하는지도 의문"] 넥스 질문은 급한 일이 아니다 —
+  //  장부 열린 칸은 GAS가 못 푼 것을 넥스가 먼저 보고(cpNexQuestionWake_), 남은 것만 그 사건 안(사실 장부 ④ 물어볼 것)에서 묶음으로 여쭙는다. 여기(대시보드·휴대폰 창구·현황판)에는 싣지 않는다.
+  //  (예전엔 수정일 날짜 값을 글자로 비교해 14일 거름이 죽어 시트 앞 12건만 보였다 — 실상 점검서 20261112)
   try { out.고객서류 = custUploadsRecent_(3).slice(0, 10); } catch (e) {}
   try { const ra = commRequestsAll_(); out.확인요청 = ra.open.filter(function (r) { return r.status === '반영됨'; }).length; out.긴급요청 = ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length; } catch (e) {}
   try { out.카카오오류 = kakaoErrorsRecent_(3).length; } catch (e) {}
@@ -20622,6 +20616,7 @@ function work_updateCase0_(params) {
     // 그대로 복구한다 — 단, 복구 시점에 기준일 등도 같이 바꿔서 recalc가 새로 일어났다면
     // 그 새 계산값이 우선(사용자가 그 요청에서 다른 것도 같이 바꾼 거라 더 최신 정보).
     if (params.상태 === '완료' && !wasCompleted) {
+      try { if (typeof ledgerCloseAllOpen_ === 'function') ledgerCloseAllOpen_(id, '사건 완료', '세무사님'); } catch (e) {} // [2026.11.12 질문 정리 ⑤ — 결정 다] 완료 사건에 답할 것이 남지 않게
       row[col.완료전법정일] = row[col.법정일];
       // [2026.09.16 버그수정] "시스템 개통 전에 이미 끝난 사건을 지금 완료 처리했더니 완료일이
       // 오늘(개통일 무렵) 날짜로 찍혀버린다"는 지적 — 예전엔 무조건 오늘 날짜로만 덮어써서,
@@ -23087,6 +23082,79 @@ function cpNexChatNote_(c, text, tag) {
     return { ok: !!(r && r.success), id: r && r.id };
   } catch (e) { return { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
 }
+// [2026.11.12 넥스 질문 정리 계획서 ②] 넥스 선처리 — GAS가 세운 물음(넥스 차례)을 넥스가 먼저 푼다. 세무사님 원문 "넥스선처리를 미리읽기 틱에 얹는 것은 맞는데, 진행중인 사건만을 대상으로 해야 한다"
+//  · 줄 서기: ledgerQWrite_가 새 물음을 세우면 cpNexQEnqueue_, 밤 점검(awQuestionsNightly_)이 진행 사건을 훑어 다시 세움
+//  · 틱마다 한 사건, 상태 「진행」·가상 아님·스위치 켬·AI 지휘 켬·낮(22~07시 밖)일 때만. 도구: case_files·file_read·case_ledger(set/ask)·close_question·questions_done
+//  · 넥스가 못 정한 것은 case_ledger do=ask(group 붙여)로 세무사님 차례로 넘긴다 — 세무사님께는 사실 장부 ④ 물어볼 것에 묶음으로 보인다
+var CP_NEXQ_PENDING_ = 'cp_nexq_pending';
+function cpNexQEnqueue_(caseId) {
+  const id = String(caseId || ''); if (!id) return;
+  const props = PropertiesService.getScriptProperties();
+  let q = []; try { q = JSON.parse(props.getProperty(CP_NEXQ_PENDING_) || '[]'); } catch (e) { q = []; }
+  if (q.indexOf(id) === -1) { q.push(id); props.setProperty(CP_NEXQ_PENDING_, JSON.stringify(q.slice(-60))); }
+}
+function cpNexQuestionRun_(started, DEADLINE) {
+  if (Date.now() - started > DEADLINE - 150000) return ''; // 넥스 한 바퀴(최대 2분)가 들어갈 시간이 남아야
+  if (cpWatchNight_()) return '';
+  const props = PropertiesService.getScriptProperties();
+  let q = []; try { q = JSON.parse(props.getProperty(CP_NEXQ_PENDING_) || '[]'); } catch (e) { q = []; }
+  if (!q.length) return '';
+  const id = q.shift();
+  if (q.length) props.setProperty(CP_NEXQ_PENDING_, JSON.stringify(q)); else props.deleteProperty(CP_NEXQ_PENDING_);
+  const c = akReadCase_(id); if (!c) return String(id).slice(0, 8) + ': 사건 없음';
+  let r = null; try { r = cpNexQuestionWake_(c, {}); } catch (e) { r = { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
+  return String(c.사건명 || c.id) + ': ' + (r.skipped || r.error || ('물음 ' + r.asked + '개 → 닫음 ' + r.closed + ' · 적음 ' + r.set + ' · 세무사님께 ' + r.handed + ' · ' + r.won + '원'));
+}
+function cpNexQuestionWake_(c, opt) {
+  opt = opt || {};
+  const t0 = Date.now();
+  if (!opt.force && String(c.상태 || '') !== '진행') return { ok: true, skipped: '진행 중 사건이 아님(' + (c.상태 || '상태 없음') + ')' };
+  if (typeof awVirtual_ === 'function' && awVirtual_(c)) return { ok: true, skipped: '가상·모의 사건' };
+  const sv = caseProcLoad_(c.id) || {};
+  if (sv.nexPreread && sv.nexPreread.off) return { ok: true, skipped: '이 사건은 넥스 미리 읽기 끔 — 물음은 세무사님 차례' };
+  try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, skipped: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)' }; } catch (e) {}
+  const dec0 = sv.decisions || {};
+  const pend = (sv.remaining || []).filter(function (it) { return it.turn === '넥스' && !(dec0[it.id] && dec0[it.id].d); }).slice(0, 30);
+  if (!pend.length) return { ok: true, skipped: '넥스 차례 물음 없음' };
+  const ctx = { lastItems: caseProcAiSlimItems_(pend), lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 };
+  const tools = caseProcAiLiveTools_().filter(function (t) { return /^(case_files|file_read|case_ledger|close_question)$/.test(t.name); });
+  tools.push({ name: 'questions_done', description: '물음 풀기 끝 — closed(닫은 질문 수)·set(장부에 적은 칸 수)·handed(세무사님께 넘긴 묶음 수)·line(세무사님께 드릴 한 줄, 넘긴 것이 있을 때만, 쉬운 말)', input_schema: { type: 'object', properties: { closed: { type: 'integer' }, set: { type: 'integer' }, handed: { type: 'integer' }, line: { type: 'string' } } } });
+  const system = caseProcAiNexBase_() + '\n\n[넥스 물음 풀기 — GAS 도구가 서류를 읽고 못 정한 것(넥스 차례)을 네가 먼저 본다(세무사님이 부르신 것이 아님)]\n'
+    + '- 할 일: 아래 물음마다 ① 서류 역할(doc:…role)이면 그 파일을 file_read로 읽고 무슨 서류인지 정해 case_ledger do=set path=그 칸 value=역할 이름(' + LEDGER_DOC_ROLES_.join('·') + ' 중 하나, 어디에도 안 맞으면 "기타") file=그 파일 quote=근거 문구로 적는다 ② 계산기 칸이면 폴더 서류(case_files → file_read)에서 값을 찾아 case_ledger do=set(file·page·quote 필수)으로 적는다 ③ 적어서 풀린 물음·서류끼리 모순 등 네가 판단해 풀 수 있는 물음은 close_question(itemIds, decision done, note 근거 한 줄)으로 닫는다.\n'
+    + '- 서류로도 못 정하는 것(세무사님 말씀이 있어야 하는 것·고객에게 받아야 하는 서류)만 case_ledger do=ask path=그 칸 label question group(같은 항목끼리 한 묶음 이름: 서류·양도인·양도계약·자산·취득·안분·특례·비용·증여·상속·자문 쟁점) needDoc(서류를 받아야 하면 true)으로 세무사님 차례로 넘긴다 — 낱개로 흩뿌리지 말고 같은 항목은 한 물음에 묶어 쓴다.\n'
+    + '- 세무사님이 정한 값은 바꾸지 않는다. 추측으로 값을 적지 않는다(근거 문구 없으면 적지 말고 넘긴다). 모든 글은 한국어, 개인정보(주민번호 뒷자리·계좌)는 적지 않는다.\n'
+    + '- 끝나면 questions_done으로 마친다(닫은 수·적은 수·넘긴 묶음 수·세무사님께 한 줄).';
+  const first = '사건: ' + String(c.사건명 || c.고객명 || '') + ' (' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ')\n넥스 차례 물음(' + pend.length + '개):\n' + pend.map(function (it, i) { return (i + 1) + '. [' + (it.group || '') + '] ' + it.id + ' | 칸 ' + (it.path || '') + ' | ' + caseProcAiCut_(it.text, 220); }).join('\n');
+  let messages = [{ role: 'user', content: caseProcAiMask_(first) }], won = 0, rounds = 0, done = null, calls = [], err = '';
+  for (; rounds < 14; rounds++) {
+    if (Date.now() - t0 > 120000) { err = '시간이 모자라 멈춤(다음 틱에 이어서)'; cpNexQEnqueue_(c.id); break; }
+    const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, system, tools, caseProcAiCacheMark_(messages), 3000, 'low', { kind: '넥스 물음 풀기', caseId: c.id, caseName: c.사건명 || '', step: rounds + 1, q: '물음 ' + pend.length + '개' });
+    if (r.error) { err = r.error; break; }
+    won += r.won || 0;
+    const content = r.json.content || [], uses = content.filter(function (b) { return b.type === 'tool_use'; });
+    if (!uses.length) { done = done || { closed: 0, set: 0, handed: 0, line: '', note: caseProcAiText_(r.json) }; break; }
+    const results = [];
+    uses.forEach(function (u) {
+      calls.push(u.name);
+      if (u.name === 'questions_done') { done = u.input || {}; results.push({ type: 'tool_result', tool_use_id: u.id, content: '{"ok":true}' }); return; }
+      let out; try { out = caseProcAiLiveExec_(c.id, u.name, u.input || {}, ctx); } catch (e) { out = { text: JSON.stringify({ 오류: String(e && e.message || e) }) }; }
+      results.push({ type: 'tool_result', tool_use_id: u.id, content: String(out.text || '').slice(0, 9000) });
+    });
+    messages = messages.concat([{ role: 'assistant', content: content }, { role: 'user', content: results }]);
+    if (done) break;
+  }
+  const now = caseProcNow_();
+  const cnt = function (name) { return calls.filter(function (x) { return x === name; }).length; };
+  const res = { ok: !err, error: err || undefined, asked: pend.length, closed: Number(done && done.closed) || cnt('close_question'), set: Number(done && done.set) || 0, handed: Number(done && done.handed) || 0, won: Math.round(won * 10) / 10, rounds: rounds, calls: calls, _ms: Date.now() - t0 };
+  caseProcPatch_(c.id, function (sv2) {
+    sv2.nexPreread = sv2.nexPreread || {};
+    sv2.nexPreread.qwakes = (sv2.nexPreread.qwakes || []).concat([{ at: now, asked: pend.length, closed: res.closed, set: res.set, handed: res.handed, won: res.won, calls: calls.slice(0, 40), err: err || '' }]).slice(-20);
+    caseProcLogTo_(sv2, { by: '넥스', what: '물음 풀기', detail: '넥스 차례 ' + pend.length + '개 — 닫음 ' + res.closed + ' · 적음 ' + res.set + ' · 세무사님께 넘김 ' + res.handed + (err ? ' · ' + err : '') });
+    if (done && done.line) caseProcAlertTo_(sv2, '넥스 물음 풀기', String(done.line));
+  });
+  if (done && done.line) { try { cpNexChatNote_(c, String(done.line), '넥스 물음 풀기'); } catch (e) {} }
+  return res;
+}
 // ③ 넥스 깨우기 — 변동(🆕/✏)이 있고 진행 중 사건이고 스위치가 켜져 있을 때. 밤(22~07시)이면 미루었다가 아침 첫 틱에. 도구는 case_files·file_read·preread_done 셋뿐(칸은 못 바꿈)
 function cpNexPrereadWake_(c, opt) {
   opt = opt || {};
@@ -23303,6 +23371,7 @@ function cpWatchTick_(touched, started, DEADLINE) {
     if (w.ledger) { out.ledger = (out.ledger || 0) + 1; out.lines.push(String(c.사건명 || c.id) + ': 장부 ' + (w.ledger.deferred ? '갱신 미룸(시간)' : w.ledger.ok ? '바로 갱신 — 서류 사실 ' + ((w.ledger.sum && w.ledger.sum.사실) || 0) + '건' : '갱신 못 함')); }
     if (cpWatchPending_(caseProcLoad_(c.id) || {}).length) wake(c);
   });
+  try { const qw = cpNexQuestionRun_(started, DEADLINE); if (qw) { out.lines.push('넥스 질문 풀기 ' + qw); out.nexq = (out.nexq || 0) + 1; } } catch (e) { out.lines.push('넥스 질문 풀기 실패: ' + String(e && e.message || e).slice(0, 80)); } // [2026.11.12 질문 정리 ②]
   try { cpFlowQueueRun_(started, DEADLINE).forEach(function (s) { out.lines.push('장부 적기 ' + s); out.flow = (out.flow || 0) + 1; }); } catch (e) { out.lines.push('장부 적기 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 계획서 2단계]
   try { cpNexMomentRun_(started, DEADLINE).forEach(function (s) { out.lines.push('중요한 순간 ' + s); out.moment = (out.moment || 0) + 1; }); } catch (e) { out.lines.push('중요한 순간 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 넥스 4] 밤엔 줄에 둠
   return out;
@@ -31347,6 +31416,7 @@ function caseProcOverview_(c, body) {
   // [2026.10.28 시정 2단계] GAS가 낸 질문은 화면이 저장해 주기를 기다리지 않고 이 자리에서 장부 질문 줄로(세목 가리지 않음 — 넥스 지휘·점검처럼 화면 없이 도는 길에서도 질문이 남는다).
   //  가벼운 다시 맞추기·시간 넘김이면 사건파악·메모 질문을 다시 만들지 않았으므로 "이번 목록에 없다"고 떼지 않는다(partial)
   try { if (r && r.ok && /^(gift|inheritance)$/.test(c.세목) && typeof ledgerFromGiftInh_ === 'function') { const cNow = (typeof cxReadCase_ === 'function' ? cxReadCase_(c.id) : null) || r.case || c; ledgerFromGiftInh_(cNow, r.items || []); } } catch (e) { console.error('장부(증여·상속) 반영 실패: ' + (e && e.message || e)); }
+  try { if (r && r.ok && typeof ledgerQGroup_ === 'function') { const offQ = typeof ledgerNexOff_ === 'function' && ledgerNexOff_(c.id); (r.items || []).forEach(function (it) { if (it && it.id && !it.error) { it.turn = offQ ? '세무사님' : '넥스'; it.group = ledgerQGroup_(ledgerQPath_(it)); } }); } } catch (e) {} // [2026.11.12 질문 정리 ①] GAS 질문은 넥스 차례(스위치 끈 사건은 세무사님 차례)
   try { if (r && r.ok) ledgerQWrite_(c.id, (r.items || []).filter(function (it) { return it && it.id && !it.error; }).slice(0, 80).map(caseProcQSan_), undefined, { partial: light || late }); } catch (e) { console.error('장부 질문 쓰기 실패: ' + (e && e.message || e)); if (r && r.lines) r.lines.push('⚠ 질문을 사건 장부에 적지 못함: ' + (e && e.message || e)); }
   try {
     if (r && r.lines) {
