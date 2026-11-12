@@ -13170,13 +13170,18 @@ function todoList_() {
   });
   try {
     const r = booking_getBookings(); const o = r && r.getContent ? JSON.parse(r.getContent()) : r;
-    ((o && o.bookings) || []).filter(function (b) { return b.reservedDate === today && !/거절|취소/.test(String(b.status || '')); }).forEach(function (b) {
+    // [2026.11.12 밤] 세무사님 "오늘예약 1이라고 되어있어 클릭하니까 처리할 예약이 없다고 하네. 처리할 예약도 없는데 거기에 왜 띄우나?" —
+    //  예전엔 오늘 날짜 예약을 거절·취소만 빼고 다 셌다(이미 상담완료·노쇼·사건접수한 예약까지). 이제 예약·상담 「처리할 것」과 같은 잣대(booking.html bookingKindRaw_):
+    //  신청 상태이거나, 확정인데 결과(상담완료·노쇼)도 사건 잇기도 안 한 것만.
+    ((o && o.bookings) || []).filter(function (b) { return b.reservedDate === today && (b.status === '신청' || (b.status === '확정' && !b.caseId && !b.result)); }).forEach(function (b) {
       const c = b.caseId ? open.filter(function (x) { return x.id === b.caseId; })[0] : null;
       out.오늘예약.push({ 시각: b.reservedTime, 이름: String(b.name || ''), caseId: b.caseId || '', 사건: c ? String(c.사건명 || '') : '' });
     });
     out.오늘예약.sort(function (a, b) { return String(a.시각).localeCompare(String(b.시각)); });
     // [2026.10.30 예약 결과 관리] 날짜가 지났는데 결과를 안 적은 확정 예약 + 밤 점검이 찾은 연결 후보가 있는 예약(사건에 안 이은 것)
-    out.예약결과 = ((o && o.bookings) || []).filter(function (b) { return b.status === '확정' && !b.caseId && ((!b.result && b.reservedDate && b.reservedDate < today) || (b.linkCandidates && b.linkCandidates.length)); }).length;
+    // [2026.11.12 밤] 예약·상담 화면처럼 2주 넘게 지난 것은 「지난 기록」(BOOKING_STALE_DAYS_ 14) — 대시보드도 세지 않는다(누르면 「처리할 것」에 없다고 나오던 어긋남)
+    const bkStale = Utilities.formatDate(new Date(Date.now() - 14 * 86400000), tz, 'yyyy-MM-dd');
+    out.예약결과 = ((o && o.bookings) || []).filter(function (b) { return b.status === '확정' && !b.caseId && !(b.reservedDate && b.reservedDate < bkStale) && ((!b.result && b.reservedDate && b.reservedDate < today) || (b.linkCandidates && b.linkCandidates.length)); }).length;
   } catch (e) {}
   // [2026.11.12 넥스 질문 정리 계획서 ④ — 세무사님 "날짜제한을 둔 자체가 바보짓이고, 이게 급한 일로 분류해야 하는지도 의문"] 넥스 질문은 급한 일이 아니다 —
   //  장부 열린 칸은 GAS가 못 푼 것을 넥스가 먼저 보고(cpNexQuestionWake_), 남은 것만 그 사건 안(사실 장부 ④ 물어볼 것)에서 묶음으로 여쭙는다. 여기(대시보드·휴대폰 창구·현황판)에는 싣지 않는다.
