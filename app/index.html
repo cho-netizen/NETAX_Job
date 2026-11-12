@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 14:51 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:05 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57105,7 +57105,7 @@ function rwAiApplyEdit_(id, content){
         <button type="button" class="ghost-btn" id="stBtnBugClear">기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSaveTimes" title="저장할 때마다 걸린 시간 — 서버 안에서 걸린 시간(최근 6시간)과 이 기기에서 잰 왕복 시간(최근 100건), 뒤에서 할 일 남은 수">저장 걸린 시간</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">자가점검</button>
-        <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">개선 후보</button>
+        <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 웹 Claude Code(매주 월요일 아침 자동, 급하면 오늘 화면 🛠 개선요구 카드의 🚨 긴급)">개선 후보</button>
         <button type="button" class="ghost-btn" id="stBtnGhPrs" title="주간 루틴(웹 Claude Code)이 깃허브에 올린 수정안을 여기서 보고 ✅ 승인·반영 또는 ✖ 반려합니다 — 깃허브 사이트에 가지 않아도 됩니다">수정안</button>
         <button type="button" class="ghost-btn" id="stBtnGhToken" title="승인·반려에 필요한 깃허브 열쇠(저장소 NETAX_Job 하나만, Contents·Pull requests 쓰기)를 넣습니다. 비워서 저장하면 지웁니다">깃허브 열쇠</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">수정 반영</button>
@@ -57736,7 +57736,7 @@ function rwAiApplyEdit_(id, content){
         if (!r){ bugList.textContent = '보고서를 받지 못했습니다.'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.candidateCount ? '🛠 개선 후보 ' + r.candidateCount + '건' : '✅ 개선할 거리 없음') + '</b> · ' + escapeHtml(r.period + ' · ' + r.generatedAt) + '</div>'
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
-          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 🗳 승인 대기 수정안에서 ✅ 승인·반영</div>';
+          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치기는 웹 Claude Code가 매주 월요일 아침 자동(급하면 오늘 화면 🛠 개선요구 카드에서 🚨 긴급으로 적기) → 🗳 승인 대기 수정안에서 ✅ 승인·반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     // [2026.10.09 토큰0] 🧾 지침 점검 — 밤에는 "지침 바뀜"만 표시하고, 유료 AI 점검은 이 버튼으로만
@@ -59177,7 +59177,7 @@ function rwAiApplyEdit_(id, content){
             <li><b>고치는 흐름</b>: 매주 웹 Claude Code 루틴이 영향을 분석해 엔진·자가점검 사례·문단 라이브러리 수정안(PR)을 올립니다. 막힌 기능 목록(docs/blocked-capabilities.md)과 새 기술을 대조해 대안도 제안합니다. 세무사님이 🐞 카드 🗳 승인 대기 수정안에서 ✅ 승인·반영하시면 반영됩니다.</li>
           </ul>
         </li>
-        <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 오늘 화면 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로, 또는 AI 탭 🛠 버튼 → 열린 화면에서 "지금 실행"을 누르면 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안이 올라오면 오늘 화면 "야간 자동작업"에 <b>🗳 승인 대기 N건</b>으로 뜹니다. 🐞 카드의 <b>🗳 승인 대기 수정안</b>에서 설명·바뀐 파일을 보시고 <b>✅ 승인·반영</b>을 누르면 깃허브에 합친 뒤 이어서 📥 수정 반영까지 해서 job이 새 버전으로 바뀝니다(깃허브 사이트에 가지 않아도 됨). 마음에 안 들면 <b>✖ 반려</b> — 적어 주신 사유를 다음 루틴이 읽고 다르게 고칩니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
+        <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 오늘 화면 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로(급하면 오늘 화면 🛠 개선요구 카드에서 🚨 긴급으로 적으면 저장 직후 실행 화면이 열림) 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안이 올라오면 오늘 화면 "야간 자동작업"에 <b>🗳 승인 대기 N건</b>으로 뜹니다. 🐞 카드의 <b>🗳 승인 대기 수정안</b>에서 설명·바뀐 파일을 보시고 <b>✅ 승인·반영</b>을 누르면 깃허브에 합친 뒤 이어서 📥 수정 반영까지 해서 job이 새 버전으로 바뀝니다(깃허브 사이트에 가지 않아도 됨). 마음에 안 들면 <b>✖ 반려</b> — 적어 주신 사유를 다음 루틴이 읽고 다르게 고칩니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
         <li><b>🔑 깃허브 열쇠(처음 한 번)</b>: 승인·반려에는 깃허브 쓰기 열쇠가 필요합니다. 깃허브(github.com) 로그인 → 오른쪽 위 사진 → Settings → 맨 아래 Developer settings → Personal access tokens → Fine-grained tokens → Generate new token → Repository access에서 <b>NETAX_Job 하나만</b> 고르고, Permissions에서 <b>Contents</b>·<b>Pull requests</b>를 "Read and write"로 → 만든 열쇠(github_pat_…)를 복사해 🐞 카드 <b>🔑 깃허브 열쇠</b>에 붙여 넣습니다. 기한이 지나면 같은 방법으로 새로 만들어 넣으면 됩니다.</li>
         <li><b>법령 판단 대기(2026.10.31 정리)</b>: 설정 → ② 시스템 관리 → <b>법령 판단 대기</b> 카드. 법령 해석이 갈리는 안건마다 회장(Claude)이 조문 원문으로 결론을 내고, 결론이 안 난 것만 세무사님께 올라옵니다. ① <b>⚖️ 판단 기록</b> — 안건마다 근거(법제처 실재 ✔/⚠)·결론·결정(근거(법령) 탭 "판단 대기"와 같은 표). ② <b>🙋 세무사님 결정 필요</b> — 회장이 결론을 못 낸 안건만(오늘 화면 📋 확인조치사항 카드 ⚖️ 줄에도 건수가 보입니다). 개선요구사항 상태는 오늘 화면 🛠 개선요구 카드, 개발자 질문은 📋 확인조치사항 카드 맨 위에서 답합니다. AI 위원 연결 상태는 설정 ⑤ 개발자 시험에 있습니다.</li>
         <li><b>🩹 자가치유 장치(2026.10.14, 모두 AI 비용 0)</b>: ① <b>계산 자가점검</b> — 매일 밤 양도·증여·상속 51개 사례(법조문으로 손계산한 정답, 근거 조문 포함)를 계산엔진에 돌려 하나라도 어긋나면 개선 후보에 🩺로 올립니다. ② <b>서류 정리 회귀시험</b> — 서류 종류별 표본 35건을 밤마다 8건씩, 일주일에 한 바퀴 다시 정리해 예전과 다르게 읽으면 🧾로 올립니다(고객 금액은 저장하지 않고 "숫자 묶음의 지문"만 비교). ③ <b>고친 값 = 학습 신호</b> — 세액계산 자동채우기(규칙·AI)가 넣은 값을 세무사님이 고치면 "어느 화면·어느 칸을 고쳤는지"만 기록하고, 같은 칸이 반복되면 ✏️로 올립니다. ④ <b>배포 직후 자동 점검</b> — 📥 수정 반영 직후 사건·고객·예약 목록, 계산엔진, 서류 정리 견본을 바로 돌려 보고, 이상하면 🐞 카드와 개선 후보에 🚨로 알립니다. ⑤ <b>↩ 되돌리기</b> — 반영 뒤 job이 이상하면 🐞 카드의 <b>↩ 되돌리기</b>로 바로 앞 버전으로 돌아갑니다(주소 그대로, 되돌린 뒤 자동 점검). 다시 최신으로는 📥 수정 반영. ⑥ <b>화면 배선 점검</b> — job을 열면 하루 한 번, 메뉴마다 화면과 버튼 기능이 제대로 연결돼 있는지 확인해 빠진 것을 오류 기록에 남깁니다. 올라온 후보는 매주 웹 Claude Code가 고쳐 수정안으로 올립니다.</li>
@@ -59651,7 +59651,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" class="nxai-tool" id="nxAiAttachBtn" title="파일 첨부 (사건 자료 또는 내 컴퓨터)">📎</button>
       <button type="button" class="nxai-tool" id="nxAiPasteBtn" title="클립보드 내용을 입력창에 붙여넣기 (외부조회 사이트에서 복사한 값을 바로 가져올 때)">📋</button>
       <button type="button" class="nxai-tool" id="nxAiStrategyBtn" title="🧠 전략 검토 — 연결된 사건을 최고급 AI가 경우의 수별로 비교하고 더 나은 대안을 제시합니다(세액은 계산엔진으로 계산, 실행 전 예상 비용 확인)">🧠</button>
-      <button type="button" class="nxai-tool" id="nxAiImproveBtn" title="🛠 개선 후보 처리 — 웹 Claude Code가 job에 쌓인 오류·유료 질문·자가점검을 보고 고친 뒤 깃허브에 수정안을 올립니다(열리는 화면에서 '지금 실행'). 매주 월요일 아침엔 자동. 수정안 승인(Merge) 후 설정 🐞 카드의 📥 수정 반영">🛠</button>
       <button type="button" class="nxai-tool" id="nxAiClearBtn" title="입력창 비우기">✕</button>
       <select id="nxAiGemTurns" class="nxai-model" title="🔮·⚖로 제미니에게 물어볼 때 직전 대화를 몇 개(턴) 같이 보낼지 (0=입력창 내용만)">
         <option value="0">0턴</option><option value="1">1턴</option><option value="2">2턴</option><option value="3">3턴</option><option value="4">4턴</option><option value="5">5턴</option>
@@ -66094,8 +66093,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiGemBtn').addEventListener('click', function(){ nxAiAskGemManual_(); });
     nxAiEl_('nxAiBothBtn').addEventListener('click', nxAiAskBoth_);
     nxAiEl_('nxAiStrategyBtn').addEventListener('click', nxAiStrategyReview_);
-    // [2026.10.09] 웹 Claude Code 루틴 "job 개선 후보 처리"(claude.ai) — 고친 코드는 깃허브 PR로 올라오고, 승인 후 📥로 반영
-    nxAiEl_('nxAiImproveBtn').addEventListener('click', function(){ window.open('https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3', '_blank'); });
+    // [2026.11.12] 채팅창 🛠 개선 후보 처리 단추는 뺐다 — 대시보드 🛠 개선요구 카드(🚨 긴급)·월요일 자동 루틴과 중복(세무사님 "지우자")
     nxAiEl_('nxAiClearBtn').addEventListener('click', function(){ var i = nxAiEl_('nxAiInput'); i.value = ''; i.style.height = 'auto'; i.focus(); });
     (function(){
       var sel = nxAiEl_('nxAiGemTurns');
@@ -68903,7 +68901,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
                 '<span style="font-size:11.5px; color:var(--sub);">캡처한 그림은 이 창에서 Ctrl+V로도 붙습니다</span>' +
                 '<input type="file" id="nxSuggestFile" accept="image/*" multiple hidden>' +
               '</div>') +
-            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">' + (reopenId ? '저장하면 이 요청이 "재오픈"으로 바뀌고 다음 개발자 실행 때 먼저 고칩니다.' : noteId ? '저장하면 이 요청 글 끝에 보탬 줄이 붙습니다(상태는 그대로).' :'저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 또는 AI 탭 🛠)가 수정안으로 올립니다. 🚨 긴급이면 저장 직후 처리 실행 화면을 바로 엽니다.') + ' Ctrl+Enter로도 저장.</div>' +
+            '<div style="font-size:12px; color:var(--sub); margin-top:6px;">' + (reopenId ? '저장하면 이 요청이 "재오픈"으로 바뀌고 다음 개발자 실행 때 먼저 고칩니다.' : noteId ? '저장하면 이 요청 글 끝에 보탬 줄이 붙습니다(상태는 그대로).' :'저장하면 개선 후보에 올라가고, 웹 Claude Code(매주 월요일 아침 자동)가 수정안으로 올립니다. 🚨 긴급이면 저장 직후 처리 실행 화면을 바로 엽니다.') + ' Ctrl+Enter로도 저장.</div>' +
             '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">' +
               '<button type="button" class="save-btn" data-nx-val="ok">저장</button>' +
               '<button type="button" class="ghost-btn" data-nx-val="cancel">닫기</button>' +
