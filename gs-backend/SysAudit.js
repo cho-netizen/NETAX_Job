@@ -77,7 +77,13 @@ function sysAuditRules_(input) {
     }
 
     // [확인 필요] 개수·날짜(머리의 "작성 YYYY-MM-DD", 없으면 파일 수정일)
-    var confirmCount = (text.match(/\[확인 필요/g) || []).length;
+    // [2026-11-12] 머리 안내 줄("> 읽는 법: … 원문이 없는 세법 문장은 [확인 필요]다")과 표시 자체를 설명하는 문장은 표시가 아니다 — 지침 82개가 한 곳씩 헛세어 "확인 필요 467건"으로 떴다(세무사님 "이것은 검토하여 처리하지 않나?"). 판정기(KnowHow.js knhJudge_)와 같은 규칙.
+    var confirmCount = 0;
+    text.split(/\r?\n/).forEach(function (l, li) {
+      if (li < 14 && /^\s*>/.test(l)) return;
+      if (/\[확인 필요\]\s*(표시|다\.|로 둔|로 둡|라고|라는)/.test(l)) return;
+      confirmCount += (l.match(/\[확인 필요/g) || []).length;
+    });
     var wroteAt = (text.match(/작성\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || String(f.modified || '').slice(0, 10);
 
     lines.forEach(function (raw, i) {
