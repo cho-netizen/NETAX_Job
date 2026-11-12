@@ -175,7 +175,13 @@ function knhJudge_(input) {
     cur.이유.filter(function (r) { return !/^인용 조문 개정/.test(r); }).forEach(function (r) { add('수정', '현행화 필요 — ' + r); });
     if (cur.필요) tags.push('현행화 필요');
     // 3) 아직 확인 못 한 곳·검토 전 초안
-    var conf = (text.match(/\[확인 필요/g) || []).length;
+    // [2026-11-12] 머리의 "> 읽는 법: … 원문이 없는 세법 문장은 [확인 필요]다" 같은 설명 줄은 표시가 아니다 — 82개 파일이 한 곳씩 헛세어 "수정 필요"로 떴다
+    var conf = 0;
+    text.split(/\r?\n/).forEach(function (l, i) {
+      if (i < 14 && /^\s*>/.test(l)) return;                        // 머리 안내 줄(작성·기준일·읽는 법)
+      if (/\[확인 필요\]\s*(표시|다\.|로 둔|로 둡|라고|라는)/.test(l)) return; // 표시 자체를 설명하는 문장
+      conf += (l.match(/\[확인 필요/g) || []).length;
+    });
     if (conf) add('보완', '"[확인 필요]" ' + conf + '곳 — 원문 확인해 채울 것');
     if (/^>\s*상태:\s*초안/m.test(text)) tags.push('검토 전 초안');
     // 4) 세무사님이 반복해서 고친 곳
@@ -192,7 +198,9 @@ function knhJudge_(input) {
     }
     // 5) 폐기 후보 — 대체됨·안 쓰임·스스로 폐기 표시
     if (/^>\s*상태:\s*(폐기|대체)/m.test(text) || /이\s*(지침|템플릿)은\s*[^\n]{0,40}(으로|로)\s*대체/.test(text)) add('폐기', '본문에 폐기·대체 표시가 있음');
-    if (f.kind === '의뢰서' && input.intakeReachable && !input.intakeReachable[base]) add('폐기', '새 사건에 자동으로 들어가는 업무가 없음 — 더 구체적인 의뢰서가 먼저 쓰이거나(상담은 폴더 없음) 이름이 규칙과 다름');
+    // [2026-11-12] 새 사건에 자동으로 들어가지 않는 의뢰서(의뢰서_불복·의뢰서_기한후신고처럼 세목·업무유형 표에 없는 업무)는 넥스·세무사님이 직접 고르는 의뢰서다 —
+    //  "폐기 후보"가 아니라 꼬리표만(11건이 폐기 후보로 떠 세무사님 "왜 하나씩 처리하지 못하나"). 정말 안 쓰이면 아래 90일 규칙이 따로 잡는다.
+    if (f.kind === '의뢰서' && input.intakeReachable && !input.intakeReachable[base]) tags.push('새 사건에 자동으로 들어가는 업무 없음 — 직접 고르는 의뢰서');
     if (f.kind === '보고서' && KNH_REPORT_LABELS_.indexOf(base) === -1) add('폐기', '작성관리 문서 종류에 없는 이름이라 불러지지 않음(이름을 문서 종류와 같게 하거나 폐기)');
     var u = input.uses && input.uses[f.kind + '/' + base];
     if (f.kind !== '문단') {
@@ -200,16 +208,38 @@ function knhJudge_(input) {
       else if (!(u && u.n)) tags.push(useDays ? '셈 ' + useDays + '일째 — 아직 0회' : '쓰임 셈 시작 전');
     } else if (paraBy[f.name] === 0) tags.push('최근 40일 사본에 안 쓰임');
     if (text.replace(/\s/g, '').length < 150) add('수정', '내용이 거의 없음(' + text.replace(/\s/g, '').length + '자)');
-    // 상태: 폐기 > 수정(보완 포함). 급한 정도(priority): 3 = 틀린 곳·법령 개정, 2 = 세무사님이 반복해서 고친 곳·내용 없음, 1 = [확인 필요]만, 0 = 현행 — 주간 루틴은 높은 것부터
-    // [2026.11.12 세무사님 "지저분하다"] [확인 필요]만 남은 파일(보완)은 "수정 필요"가 아니다 — 원문이 없는 법(민법·법인세법·집행기준 등)이 들어와야 채울 수 있어
-    //  고칠 일이 아니라 기다릴 일. 123개가 "수정 필요"로 떠 진짜 고칠 7개를 가렸다. 현행으로 두고 꼬리표만 붙인다(개수는 totals.보완만).
-    var status = reasons.some(function (r) { return r.type === '폐기'; }) ? '폐기 후보' : reasons.some(function (r) { return r.type === '수정'; }) ? '수정 필요' : '현행';
-    if (status === '현행') reasons.filter(function (r) { return r.type === '보완'; }).forEach(function (r) { tags.push('보완 대기 — ' + r.why); });
-    var pri = reasons.some(function (r) { return r.type === '수정' && /자기점검|법령 개정/.test(r.why); }) ? 3 : reasons.some(function (r) { return r.type === '수정' || r.type === '폐기'; }) ? 2 : reasons.some(function (r) { return r.type === '보완'; }) ? 1 : 0;
-    out.push({ kind: f.kind, name: f.name, status: status, priority: pri, tags: tags, reasons: reasons, uses: u || { n: 0, last: '' }, modified: f.modified || '', md5: f.md5 || '', chars: text.length, fileId: f.fileId || '' });
+    // 상태·급한 정도는 knhStatusOf_(아래) — 화면 결정(바꾸지 않음)과 같은 함수
+    // [2026-11-12] 세무사님이 화면에서 "바꾸지 않음(사유)"로 정한 파일(_판정결정기록.json) — 그때의 md5와 같으면 수정·폐기 이유를 내리고 현행으로(파일이 바뀌면 결정은 무효)
+    var dec = input.judgeDecisions && input.judgeDecisions[f.kind + '/' + f.name];
+    var st = knhStatusOf_(reasons, tags, dec && dec.md5 === (f.md5 || '') ? dec : null);
+    out.push({ kind: f.kind, name: f.name, status: st.status, priority: st.priority, tags: st.tags, reasons: st.reasons, uses: u || { n: 0, last: '' }, modified: f.modified || '', md5: f.md5 || '', chars: text.length, fileId: f.fileId || '' });
   });
   out.sort(function (a, b) { return b.priority - a.priority || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : a.name < b.name ? -1 : 1); });
   return out;
+}
+
+// 이유 → 상태·급한 정도(순수). 상태: 폐기 > 수정(보완 포함) > 현행. 급한 정도: 3 = 틀린 곳·법령 개정, 2 = 반복 수정·내용 없음·폐기, 1 = [확인 필요]만, 0 = 현행.
+// [2026.11.12 세무사님 "지저분하다"] [확인 필요]만 남은 파일(보완)은 "수정 필요"가 아니다 — 원문이 없는 법(민법·법인세법·집행기준 등)이 들어와야 채울 수 있어
+//  고칠 일이 아니라 기다릴 일. 123개가 "수정 필요"로 떠 진짜 고칠 7개를 가렸다. 현행으로 두고 꼬리표만 붙인다(개수는 totals.보완만).
+// decision(세무사님 "바꾸지 않음" 결정)이 있으면 수정·폐기 이유를 참고 꼬리표로 내린다 — 화면 결정(knhJudgeDecide_)과 밤 판정(knhJudge_)이 같은 함수를 쓴다.
+function knhStatusOf_(reasons, tags, decision) {
+  reasons = (reasons || []).slice(); tags = (tags || []).slice();
+  if (decision && decision.결정 === '바꾸지 않음') {
+    var dropped = reasons.filter(function (r) { return r.type === '수정' || r.type === '폐기'; });
+    if (dropped.length) {
+      reasons = reasons.filter(function (r) { return r.type !== '수정' && r.type !== '폐기'; });
+      tags.push('세무사님 결정 ' + String(decision.at || '').slice(0, 10) + ': 바꾸지 않음 — ' + (decision.사유 || '') + ' (내린 이유: ' + dropped.map(function (r) { return r.why; }).join(' / ').slice(0, 160) + ')');
+    }
+  }
+  var status = reasons.some(function (r) { return r.type === '폐기'; }) ? '폐기 후보' : reasons.some(function (r) { return r.type === '수정'; }) ? '수정 필요' : '현행';
+  if (status === '현행' && !tags.some(function (t) { return /^보완 대기/.test(t); })) reasons.filter(function (r) { return r.type === '보완'; }).forEach(function (r) { tags.push('보완 대기 — ' + r.why); });
+  var pri = reasons.some(function (r) { return r.type === '수정' && /자기점검|법령 개정/.test(r.why); }) ? 3 : reasons.some(function (r) { return r.type === '수정' || r.type === '폐기'; }) ? 2 : reasons.some(function (r) { return r.type === '보완'; }) ? 1 : 0;
+  return { status: status, priority: pri, reasons: reasons, tags: tags };
+}
+function knhTotals_(judged, newNeededLen) {
+  var totals = { 파일: judged.length, 현행: 0, '수정 필요': 0, '폐기 후보': 0, 신규필요: newNeededLen || 0, 급함: 0, 보완만: 0 };
+  judged.forEach(function (j) { totals[j.status]++; if (j.priority >= 2 && j.status === '수정 필요') totals.급함++; if (j.priority === 1) totals.보완만++; });
+  return totals;
 }
 
 // 저장소 gs-backend/knowhow/_index.txt — 탭 구분: id 종류 작업 대상 제안파일 기준MD5 이유
@@ -423,7 +453,7 @@ function knhAuditTemplates_(tplAll, bmNames) {
   if (typeof sysAuditRules_ !== 'function' || typeof sysAuditToolNames_ !== 'function') return null;
   var r = sysAuditRules_({
     files: tplAll.map(function (t) { return { name: t.kind + '/' + t.name, role: 'tpl', text: t.text, modified: t.modified, hash: t.md5 }; }),
-    toolNames: sysAuditToolNames_(), bmNames: bmNames,
+    toolNames: (sysAuditToolNames_() || {}).names || [], bmNames: bmNames, // [2026-11-12] sysAuditToolNames_는 { names, toolCount }를 돌려준다 — 배열로 넘겨 "forEach is not a function"으로 템플릿 점검이 통째로 빠지던 것
     law: typeof sysAuditLaw_ === 'function' ? sysAuditLaw_ : null,
     resolvePath: typeof sysAuditPathResolver_ === 'function' ? sysAuditPathResolver_() : null
   });
@@ -477,7 +507,8 @@ function knhNightly_(opts) {
     var reach = {};
     Object.keys(KNH_UPTYPES_).forEach(function (s) { KNH_UPTYPES_[s].forEach(function (up) { var p = knhPickIntake_(s, up, files.의뢰서.map(function (f) { return f.name; })); if (p) reach[p] = (reach[p] ? reach[p] + ', ' : '') + (s === '불복' ? up : s + ' ' + up); }); });
     var confirms = knhLawConfirmMap_((knhReadJson_(KNH_LAW_CONFIRM_, { items: [] }) || {}).items); // [2026.10.22] 개정 확인 결론(절세 아이템과 같은 기록)
-    var judged = knhJudge_({ files: all, audit: Object.keys(audit).length ? audit : null, lawChanges: lawChanges, confirms: confirms, uses: uses.uses, useSince: uses.since, today: today, intakeReachable: reach, corrections: corrections, tplStats: tplStats });
+    var jdec = {}; knhJudgeDecisions_().items.forEach(function (d) { jdec[d.종류 + '/' + d.파일] = d; }); // [2026-11-12] 세무사님 "바꾸지 않음" 결정
+    var judged = knhJudge_({ files: all, audit: Object.keys(audit).length ? audit : null, lawChanges: lawChanges, confirms: confirms, uses: uses.uses, useSince: uses.since, today: today, intakeReachable: reach, corrections: corrections, tplStats: tplStats, judgeDecisions: jdec });
     var stBy = {}; judged.forEach(function (j) { stBy[j.kind + '/' + knhBase_(j.name)] = j.status; });
     var withSt = function (k) { return files[k].map(function (f) { return { name: f.name, modified: f.modified, status: stBy[k + '/' + knhBase_(f.name)] }; }); };
     var cov = knhCoverage_({ cases: cr.rows, bm: withSt('지침'), tpl: { 보고서: withSt('보고서'), 의뢰서: withSt('의뢰서') }, today: today });
@@ -488,8 +519,7 @@ function knhNightly_(opts) {
     knhWriteJson_(KNH_STATE_, state);
     var newNeeded = cov.next.map(function (r) { return { 업무: r.업무, 빈칸: r.빈칸, 사건수: r.사건수 }; });
     material.paidGaps.forEach(function (g) { newNeeded.push({ 업무: '반복 질문 "' + g.sample.slice(0, 30) + '…"(' + g.count + '회)', 빈칸: ['맞는 지침 없음'], 사건수: 0 }); });
-    var totals = { 파일: judged.length, 현행: 0, '수정 필요': 0, '폐기 후보': 0, 신규필요: newNeeded.length, 급함: 0, 보완만: 0 };
-    judged.forEach(function (j) { totals[j.status]++; if (j.priority >= 2 && j.status === '수정 필요') totals.급함++; if (j.priority === 1) totals.보완만++; });
+    var totals = knhTotals_(judged, newNeeded.length);
     res = { at: res.at, ran: true, secs: Math.round((Date.now() - started) / 1000), warn: res.warn, auditNote: auditNote, totals: totals,
       files: judged, coverage: cov.rows, newNeeded: newNeeded, material: material, lawChanges: lawChanges.slice(-80), usesSince: uses.since };
   } catch (err) {
@@ -504,6 +534,51 @@ function knhNightly_(opts) {
 // 제안 — 원장(_제안목록.json) + 드라이브 "_제안함"(AI 도구 propose_new_business_manager가 직접 넣은 것도 함께)
 // ---------------------------------------------------------------------------------------------
 function knhLedger_() { var l = knhReadJson_(KNH_LEDGER_, { items: [] }); l.items = l.items || []; return l; }
+// [2026-11-12] 판정 결정 기록(_판정결정기록.json) — 세무사님 "대시보드 지침템플릿제안을 클릭하면 무지많이 나오는데, 왜 이것을 하나씩 검토하여 처리하지 못하나?"
+//  제안 대기에만 채택·반려 단추가 있고 판정(수정 필요·폐기 후보)엔 보기 단추뿐이어서 처리할 길이 없었다. 판정 줄마다 "바꾸지 않음(사유)" / "폐기로 옮기기"를 둔다.
+//  바꾸지 않음: 그때 md5로 기록 — 파일이 바뀌면 결정은 저절로 풀린다(밤 판정이 다시 본다). 폐기: 제안 폐기와 같이 「_폐기」로 옮긴다(지우지 않음).
+var KNH_JUDGE_DEC_ = '_판정결정기록.json';
+function knhJudgeDecisions_() { var d = knhReadJson_(KNH_JUDGE_DEC_, { items: [] }); d.items = d.items || []; return d; }
+function knhJudgeDecide_(body) {
+  var kind = String(body && body.kind || ''), name = String(body && body.name || ''), md5 = String(body && body.md5 || ''), decision = String(body && body.decision || ''), reason = String(body && body.reason || '').trim().slice(0, 500);
+  if (KNH_KINDS_.indexOf(kind) === -1 || !name || ['keep', 'retire'].indexOf(decision) === -1) return { error: '무엇을 할지 알 수 없습니다.' };
+  if (decision === 'keep' && !reason) return { error: '바꾸지 않는 사유를 한 줄 적어 주세요 — 판정 줄에 남고 주간 루틴이 읽습니다.' };
+  return withLock_(15000, function () {
+    var at = knhNow_(), folder = knhFolder_(kind);
+    if (!folder) return { error: kind + ' 폴더를 찾지 못했습니다.' };
+    var cur = knhFindFile_(folder, name), result = '';
+    if (decision === 'retire') {
+      if (!cur) return { error: '폐기할 「' + name + '」이 이미 없습니다.' };
+      var bin = knhSub_(folder, KNH_RETIRE_, true);
+      if (knhFindFile_(bin, name)) cur.setName(knhBase_(name) + '_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd') + (name.match(/\.(md|txt)$/i) || ['.md'])[0]);
+      cur.moveTo(bin);
+      knhIdxTouch_(folder);
+      result = '「' + name + '」을 같은 폴더 「_폐기」로 옮겼습니다(지우지 않음 — 드라이브에서 다시 옮기면 되살아남).';
+    } else {
+      if (cur) { var curMd5 = knhMd5_(cur.getBlob().getDataAsString('UTF-8')); if (md5 && curMd5 !== md5) return { error: '판정 뒤 파일이 바뀌었습니다 — "지금 다시 판정"을 누른 뒤 결정해 주세요.' }; md5 = curMd5; }
+      result = '「' + name + '」은 바꾸지 않기로 기록했습니다 — 파일이 바뀌면 다시 판정합니다.';
+    }
+    var jd = knhJudgeDecisions_();
+    jd.items = jd.items.filter(function (x) { return !(x.종류 === kind && x.파일 === name); });
+    jd.items.push({ 종류: kind, 파일: name, md5: md5, 결정: decision === 'keep' ? '바꾸지 않음' : '폐기', 사유: reason, at: at });
+    if (jd.items.length > 1000) jd.items = jd.items.slice(-1000);
+    knhWriteJson_(KNH_JUDGE_DEC_, jd);
+    // 지금 판정 결과에 바로 반영(다시 판정하지 않아도 화면이 맞게 보이도록)
+    var r = knhReadJson_(KNH_RESULT_, null);
+    if (r && r.files) {
+      if (decision === 'retire') r.files = r.files.filter(function (f) { return !(f.kind === kind && f.name === name); });
+      else r.files.forEach(function (f) { if (f.kind === kind && f.name === name) { var s = knhStatusOf_(f.reasons, f.tags, { 결정: '바꾸지 않음', 사유: reason, at: at }); f.status = s.status; f.priority = s.priority; f.reasons = s.reasons; f.tags = s.tags; } });
+      r.totals = knhTotals_(r.files, (r.newNeeded || []).length);
+      knhWriteJson_(KNH_RESULT_, r);
+      try { PropertiesService.getScriptProperties().setProperty('KNH_LAST', JSON.stringify({ at: r.at, ran: r.ran, reason: r.reason || '', totals: r.totals })); } catch (e) { }
+    }
+    var dec = knhDecisions_();
+    dec.items.push({ id: 'J-' + at.replace(/\D/g, ''), 종류: kind, 작업: decision === 'keep' ? '판정' : '폐기', 대상: name, 결정: decision === 'keep' ? '바꾸지 않음' : '폐기', 사유: reason, at: at });
+    if (dec.items.length > 500) dec.items = dec.items.slice(-500);
+    knhWriteJson_(KNH_DECISIONS_, dec);
+    return { success: true, message: result };
+  });
+}
 function knhDecisions_() { var d = knhReadJson_(KNH_DECISIONS_, { items: [] }); d.items = d.items || []; return d; }
 
 function knhProposals_() {
@@ -688,6 +763,7 @@ function knhDispatch_(body) {
       return { success: true, proposal: knhProposalDetail_(p) };
     }
     if (a === 'knh_decide') return knhDecide_(body);
+    if (a === 'knh_judge_decide') return knhJudgeDecide_(body); // [2026-11-12] 판정 줄 결정(바꾸지 않음·폐기)
     if (a === 'knh_run') return { success: true, result: knhNightly_({ trigger: '화면' }) };
     if (a === 'knh_index') return knhIdxForScreen_(body);
     return { error: '모르는 동작: ' + a };
