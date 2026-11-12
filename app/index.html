@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 15:48 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -50593,7 +50593,7 @@ let docs = loadDocs();
 // 처음 불러온 시점의 내용을 "손대기 전" 기준으로 기억(rwHasUnsavedDriveChanges_ 참고). 이전 세션에서 이미 기준이 저장돼 있으면 그대로 둔다.
 docs.forEach(function(d){ if (d.rwBaseline_ === undefined) d.rwBaseline_ = d.md || ''; });
 let selectedId = localStorage.getItem(SELECTED_KEY);
-if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id : null;
+if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? (docs.find(d => !/^sample-/.test(String(d.id))) || docs[0]).id : null; /* [2026-11-13 4차 25] 처음 고르는 문서는 샘플 말고 이 사건 문서부터 */
 
 // ---------- 새 문서를 "처음 저장(저장 버튼 클릭)할 때" 특정 드라이브 폴더 안에 자동으로 만들어
 // 넣기 위한 대기 상태. [2026.09 이식] 원래는 URL 쿼리스트링 ?saveFolderId=...&saveFileName=...으로
@@ -50635,7 +50635,7 @@ async function hydrateDocsFromIdb_(){
       if (!rwLoadingFileId_ && JSON.stringify(idbDocs) !== JSON.stringify(docs)) {
         docs = idbDocs;
         docs.forEach(function(d){ if (d.rwBaseline_ === undefined) d.rwBaseline_ = d.md || ''; }); // 손대기 전 기준(rwHasUnsavedDriveChanges_)
-        if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id : null;
+        if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? (docs.find(d => !/^sample-/.test(String(d.id))) || docs[0]).id : null; /* [2026-11-13 4차 25] 처음 고르는 문서는 샘플 말고 이 사건 문서부터 */
         refreshDocSelect();
         loadSelectedIntoEditor();
         render();
@@ -51483,7 +51483,7 @@ async function deleteCurrentDoc(){
     : '"' + d.name + '" 문서를 삭제할까요?\n아직 드라이브에 저장한 적 없는 문서라, 지금 지우면 내용이 정말로 사라지고 되돌릴 수 없습니다.';
   if (!(await nxConfirm_(confirmMsg))) return;
   docs = docs.filter(x => x.id !== d.id);
-  selectedId = docs.length ? docs[0].id : null;
+  selectedId = docs.length ? (docs.find(d => !/^sample-/.test(String(d.id))) || docs[0]).id : null; /* [2026-11-13 4차 25] 처음 고르는 문서는 샘플 말고 이 사건 문서부터 */
   const saved = await persist();
   refreshDocSelect();
   loadSelectedIntoEditor();
@@ -53578,7 +53578,15 @@ function rwAiApplyEdit_(id, content){
       window._reportListCache = list;
       if (!list.length){ box.innerHTML = '<div class="empty-row">등록된 보고서가 없습니다.</div>'; return; }
       list.sort(function(a, b){ return String(b.issued).localeCompare(String(a.issued)); });
-      var html = '<table class="list-table" style="width:auto;"><tr><th>고객명</th><th>명칭</th><th>열람번호</th><th>발급일</th><th>만료일</th>' +
+      // [2026-11-13 4차 27] 사건 작업공간에서 열면 그 사건 고객의 보고서를 맨 위로 — 예전엔 모든 고객 목록만 떠 이 사건 것이 있는지 찾아야 했다
+      var curNm = '', curHtml = '';
+      try { var cid = typeof nxCbCurId_ === 'function' ? nxCbCurId_() : ''; var cc = cid && typeof NX_CB_ !== 'undefined' ? (NX_CB_.cases || []).filter(function(x){ return x && x.id === cid; })[0] : null; curNm = cc ? String(cc.고객명 || '').trim() : ''; } catch (e) { curNm = ''; }
+      if (curNm){
+        var mine = list.filter(function(r){ return String(r.name || '').trim() === curNm; });
+        list = mine.concat(list.filter(function(r){ return String(r.name || '').trim() !== curNm; }));
+        curHtml = '<div class="empty-row" style="text-align:left; padding:4px 0 8px;">이 사건 고객 「' + esc_(curNm) + '」 보고서 ' + mine.length + '건' + (mine.length ? ' — 맨 위' : ' — 아직 없음(위 「새 보고서 등록」에서 발급)') + '</div>';
+      }
+      var html = curHtml + '<table class="list-table" style="width:auto;"><tr><th>고객명</th><th>명칭</th><th>열람번호</th><th>발급일</th><th>만료일</th>' +
         '<th>열람</th><th>처리</th></tr>';
       list.forEach(function(r){
         var expiredBadge = r.is_expired ? ' <span style="color:var(--danger);">(만료)</span>' : '';
@@ -59280,6 +59288,17 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxJudgeOpen_(){
     var id = typeof nxCbCurId_ === 'function' ? nxCbCurId_() : '';
     if (!id){ showToast('먼저 위에서 사건을 골라 주세요', 'warn'); return; }
+    // [2026-11-13 4차 26] 판정 창이 늘 「전체」 170여 묶음으로 열려 이 사건에 맞는 판정을 찾아야 했다 — 사건이 바뀌면 그 사건 세목에 맞는 묶음을 먼저(양도 주택 → 주택, 양도 토지 → 토지, 증여·상속 → 상속증여). 고르신 묶음은 그 사건 안에서 그대로
+    if (NX_JW_.autoFor !== id){
+      NX_JW_.autoFor = id;
+      try {
+        var cc = (typeof NX_CB_ !== 'undefined' ? (NX_CB_.cases || []) : []).filter(function(x){ return x && x.id === id; })[0] || {};
+        var ovl = (cc.사건개요 && Array.isArray(cc.사건개요.물건목록)) ? cc.사건개요.물건목록 : [];
+        var tp = ovl.length ? String(ovl[0].assetType || '') : '';
+        var g0 = cc.세목 === 'gift' || cc.세목 === 'inheritance' ? '상속증여' : cc.세목 === 'transfer' ? (tp === 'house' ? '주택' : tp === 'other' ? '토지' : '') : '';
+        NX_JW_.group = NX_JW_GROUPS_.indexOf(g0) !== -1 ? g0 : '';
+      } catch (e) {}
+    }
     NX_JW_.caseId = id;
     var old = document.getElementById('nxJudgeOverlay'); if (old) old.remove();
     var ov = document.createElement('div');

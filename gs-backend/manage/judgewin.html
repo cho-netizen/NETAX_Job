@@ -56,6 +56,17 @@
   function nxJudgeOpen_(){
     var id = typeof nxCbCurId_ === 'function' ? nxCbCurId_() : '';
     if (!id){ showToast('먼저 위에서 사건을 골라 주세요', 'warn'); return; }
+    // [2026-11-13 4차 26] 판정 창이 늘 「전체」 170여 묶음으로 열려 이 사건에 맞는 판정을 찾아야 했다 — 사건이 바뀌면 그 사건 세목에 맞는 묶음을 먼저(양도 주택 → 주택, 양도 토지 → 토지, 증여·상속 → 상속증여). 고르신 묶음은 그 사건 안에서 그대로
+    if (NX_JW_.autoFor !== id){
+      NX_JW_.autoFor = id;
+      try {
+        var cc = (typeof NX_CB_ !== 'undefined' ? (NX_CB_.cases || []) : []).filter(function(x){ return x && x.id === id; })[0] || {};
+        var ovl = (cc.사건개요 && Array.isArray(cc.사건개요.물건목록)) ? cc.사건개요.물건목록 : [];
+        var tp = ovl.length ? String(ovl[0].assetType || '') : '';
+        var g0 = cc.세목 === 'gift' || cc.세목 === 'inheritance' ? '상속증여' : cc.세목 === 'transfer' ? (tp === 'house' ? '주택' : tp === 'other' ? '토지' : '') : '';
+        NX_JW_.group = NX_JW_GROUPS_.indexOf(g0) !== -1 ? g0 : '';
+      } catch (e) {}
+    }
     NX_JW_.caseId = id;
     var old = document.getElementById('nxJudgeOverlay'); if (old) old.remove();
     var ov = document.createElement('div');

@@ -168,7 +168,15 @@
       window._reportListCache = list;
       if (!list.length){ box.innerHTML = '<div class="empty-row">등록된 보고서가 없습니다.</div>'; return; }
       list.sort(function(a, b){ return String(b.issued).localeCompare(String(a.issued)); });
-      var html = '<table class="list-table" style="width:auto;"><tr><th>고객명</th><th>명칭</th><th>열람번호</th><th>발급일</th><th>만료일</th>' +
+      // [2026-11-13 4차 27] 사건 작업공간에서 열면 그 사건 고객의 보고서를 맨 위로 — 예전엔 모든 고객 목록만 떠 이 사건 것이 있는지 찾아야 했다
+      var curNm = '', curHtml = '';
+      try { var cid = typeof nxCbCurId_ === 'function' ? nxCbCurId_() : ''; var cc = cid && typeof NX_CB_ !== 'undefined' ? (NX_CB_.cases || []).filter(function(x){ return x && x.id === cid; })[0] : null; curNm = cc ? String(cc.고객명 || '').trim() : ''; } catch (e) { curNm = ''; }
+      if (curNm){
+        var mine = list.filter(function(r){ return String(r.name || '').trim() === curNm; });
+        list = mine.concat(list.filter(function(r){ return String(r.name || '').trim() !== curNm; }));
+        curHtml = '<div class="empty-row" style="text-align:left; padding:4px 0 8px;">이 사건 고객 「' + esc_(curNm) + '」 보고서 ' + mine.length + '건' + (mine.length ? ' — 맨 위' : ' — 아직 없음(위 「새 보고서 등록」에서 발급)') + '</div>';
+      }
+      var html = curHtml + '<table class="list-table" style="width:auto;"><tr><th>고객명</th><th>명칭</th><th>열람번호</th><th>발급일</th><th>만료일</th>' +
         '<th>열람</th><th>처리</th></tr>';
       list.forEach(function(r){
         var expiredBadge = r.is_expired ? ' <span style="color:var(--danger);">(만료)</span>' : '';

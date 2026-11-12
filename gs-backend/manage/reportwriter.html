@@ -520,7 +520,7 @@ let docs = loadDocs();
 // 처음 불러온 시점의 내용을 "손대기 전" 기준으로 기억(rwHasUnsavedDriveChanges_ 참고). 이전 세션에서 이미 기준이 저장돼 있으면 그대로 둔다.
 docs.forEach(function(d){ if (d.rwBaseline_ === undefined) d.rwBaseline_ = d.md || ''; });
 let selectedId = localStorage.getItem(SELECTED_KEY);
-if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id : null;
+if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? (docs.find(d => !/^sample-/.test(String(d.id))) || docs[0]).id : null; /* [2026-11-13 4차 25] 처음 고르는 문서는 샘플 말고 이 사건 문서부터 */
 
 // ---------- 새 문서를 "처음 저장(저장 버튼 클릭)할 때" 특정 드라이브 폴더 안에 자동으로 만들어
 // 넣기 위한 대기 상태. [2026.09 이식] 원래는 URL 쿼리스트링 ?saveFolderId=...&saveFileName=...으로
@@ -562,7 +562,7 @@ async function hydrateDocsFromIdb_(){
       if (!rwLoadingFileId_ && JSON.stringify(idbDocs) !== JSON.stringify(docs)) {
         docs = idbDocs;
         docs.forEach(function(d){ if (d.rwBaseline_ === undefined) d.rwBaseline_ = d.md || ''; }); // 손대기 전 기준(rwHasUnsavedDriveChanges_)
-        if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id : null;
+        if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? (docs.find(d => !/^sample-/.test(String(d.id))) || docs[0]).id : null; /* [2026-11-13 4차 25] 처음 고르는 문서는 샘플 말고 이 사건 문서부터 */
         refreshDocSelect();
         loadSelectedIntoEditor();
         render();
@@ -1410,7 +1410,7 @@ async function deleteCurrentDoc(){
     : '"' + d.name + '" 문서를 삭제할까요?\n아직 드라이브에 저장한 적 없는 문서라, 지금 지우면 내용이 정말로 사라지고 되돌릴 수 없습니다.';
   if (!(await nxConfirm_(confirmMsg))) return;
   docs = docs.filter(x => x.id !== d.id);
-  selectedId = docs.length ? docs[0].id : null;
+  selectedId = docs.length ? (docs.find(d => !/^sample-/.test(String(d.id))) || docs[0]).id : null; /* [2026-11-13 4차 25] 처음 고르는 문서는 샘플 말고 이 사건 문서부터 */
   const saved = await persist();
   refreshDocSelect();
   loadSelectedIntoEditor();
