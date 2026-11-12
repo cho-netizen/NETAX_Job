@@ -1757,6 +1757,14 @@
     cancelBtn.addEventListener('click', function(){ finish('취소했습니다(실행하지 않음).', false); });
     runBtn.addEventListener('click', function(){
       // 화면 안에서 처리하는 제안(서버 호출 아님)
+      // [2026.11.12 2차 ② 계획서 ①] 서식 PDF — 사건처리 상자(서식 대조 → PDF)를 카드 아래에 띄운다. 서버 호출은 그 상자가 세무사님 이름으로 한다
+      if (a.gasAction === 'client:printPdf'){
+        if (typeof nxAiCaseProcRun_ !== 'function'){ finish('서식 도구를 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', false); return; }
+        var pb = document.createElement('div'); pb.className = 'nxai-cp-screen'; pb.style.marginTop = '6px'; card.appendChild(pb);
+        nxAiCaseProcRun_(pb, (a.payload && a.payload.caseId) || a.caseId, { gasOnly: true, tool: 'output' });
+        finish('서식 PDF 만들기를 시작했습니다 — 아래 상자에서 진행을 보세요(세액계산 화면이 잠시 열렸다 돌아옵니다).', true);
+        return;
+      }
       if (a.gasAction === 'client:memoSave'){
         if (typeof openSaveDialog === 'function'){ openSaveDialog((a.payload && a.payload.content) || '', null); finish('메모 저장 창을 열었습니다 — 저장 위치를 골라 저장하세요.', true); }
         else finish('메모 저장 창을 열 수 없습니다.', false);
@@ -2936,7 +2944,7 @@
   function nxAiCaseProcRun_(bubble, caseId, opts){
     var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink), gasOnly: !!(opts && opts.gasOnly), screen: !!(opts && opts.screen), force: !!(opts && opts.force), said: (opts && opts.said) || null, tool: (opts && opts.tool === 'fill') ? 'fill' : 'read', home: (opts && opts.home) || '' }; // [2026.10.31 처리개요 도구 정리] home: 이 상자를 띄운 화면(docs 증빙확보 · taxcalc 세액계산) — 그 화면에 머문다 // screen: 사건 화면 GAS 도구 칸(AI 창 밖) · [2026.10.31] tool: 이번에 누른 낱개 도구
     NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
-    bubble.innerHTML = '<div class="nxai-local-badge">' + (st.tool === 'fill' ? '칸 채우기' : '서류 읽기') + ' · GAS 도구(AI 없이 0원) — 하신 일은 사건 기록부에 남습니다</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-talk"></div><details class="nxai-cp-log"><summary class="nxai-cp-logsum">GAS 도구가 하는 일 — 시작하는 중</summary><div class="nxai-cp-steps"></div></details><div class="nxai-cp-foot"></div><div class="nxai-cp-tools"></div>';
+    bubble.innerHTML = '<div class="nxai-local-badge">' + (st.tool === 'fill' ? '칸 채우기' : st.tool === 'output' ? '서식 PDF' : '서류 읽기') + ' · GAS 도구(AI 없이 0원) — 하신 일은 사건 기록부에 남습니다</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-talk"></div><details class="nxai-cp-log"><summary class="nxai-cp-logsum">GAS 도구가 하는 일 — 시작하는 중</summary><div class="nxai-cp-steps"></div></details><div class="nxai-cp-foot"></div><div class="nxai-cp-tools"></div>';
     var stepsEl = bubble.querySelector('.nxai-cp-steps');
     NXAI_CP_STEPS_.forEach(function(s){
       var row = document.createElement('div');
@@ -3027,6 +3035,8 @@
     //  다시 읽는 반복 바퀴는 없다(세무사님 "읽은 걸 다시 읽는 것이 대조작업이냐?", "단 한번의 처리로 끝나야 하잖아?"). 도구 안은 AI 없이(noAi).
     st.gasRun = function(){
       if (st.gasDone) return Promise.resolve(st.gasDone);
+      // [2026.11.12 2차 ② 계획서 ①] 서식 PDF 도구 — 사건 기본만 읽고 바로 서식 대조(output) → 서식 PDF가 없으면 doStep 처리기가 nxAiCaseProcPdfRun_을 띄운다('서식 대조' 단추와 같은 길)
+      if (st.tool === 'output') return st.doStep('basic').then(function(b){ if (!b || (b && b.blocked)) throw new Error('사건 기본을 읽지 못했습니다'); st.pdfTried = false; return st.doStep('output'); }).then(function(){ st.gasDone = { ok: true }; return st.gasDone; });
       // [2026.10.28 읽을 대상 ②] ⚡를 처음 누를 때 기록부에 읽을 파일 목록이 없으면 체크 목록이 저절로 열린다(단추 뒤에 숨기지 않음) — [이 목록으로 읽기] 뒤에 읽기 시작. 넥스가 부른 gas_run(st.screen 아님)은 관문 없이(넥스는 목록이 없으면 case_files/file_read로 폴더를 직접 읽고 판단해 set_read_scope로 정한다 — 10-28 세무사님 "ai가 체크를 하려면 뭘 알아야")
       if (st.screen && !st.listGate){
         st.listGate = true;
@@ -3199,9 +3209,9 @@
       .then(function(){
         st.by = '세무사님'; window.nxWorkBy_ = null;
         if (st.blocked) { st.running = false; return; } // 증빙 폴더 없음
-        return nxAiCpEndNoFinish_(st, st.tool === 'fill' ? '칸 채우기를 마쳤습니다. 질문에 답하시고, 필요한 도구를 아래에서 고르세요.' : '서류를 읽어 장부에 적었습니다. 이어서 쓸 도구를 아래에서 고르세요.');
+        return nxAiCpEndNoFinish_(st, st.tool === 'fill' ? '칸 채우기를 마쳤습니다. 질문에 답하시고, 필요한 도구를 아래에서 고르세요.' : st.tool === 'output' ? '서식 대조를 마쳤습니다 — 서식 PDF가 아직 없으면 위 「서식 대조」 줄에서 만들고 있습니다(끝나면 보고서_내부에 파일 이름이 보입니다).' : '서류를 읽어 장부에 적었습니다. 이어서 쓸 도구를 아래에서 고르세요.');
       })
-      .catch(function(err){ st.running = false; st.setStep(st.tool === 'fill' ? 'overview' : 'evidence', '❌', String(err && err.message || err)); });
+      .catch(function(err){ st.running = false; st.setStep(st.tool === 'fill' ? 'overview' : st.tool === 'output' ? 'output' : 'evidence', '❌', String(err && err.message || err)); });
   }
   // [2026.10.22] 계산을 막는 질문 — 아직 답하지 않은 계산 입력 칸과 꼭 정할 판단(증여 내용·필요경비·사건분류·상속 채무). 자동 계산을 멈추는 기준과 같다
   function nxAiCpOpenInputs_(st){

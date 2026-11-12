@@ -753,12 +753,13 @@
       var sub = (!got && submissionStatus) ? submissionStatus[entry.label || ''] : null;
       row.innerHTML =
         '<div class="log-date" style="color:' + (got ? 'var(--navy)' : 'var(--sub)') + ';">' + escapeHtml(entry.status || '') + '</div>' +
-        '<div class="log-text"><b>' + escapeHtml(entry.label || '') + '</b>' +
+        '<div class="log-text"><b>' + escapeHtml(entry.label || '') + '</b>' + (entry.제안 ? ' <span style="color:#7a5c14; font-size:11.5px; font-weight:700;" title="장부·규칙이 올린 제안 — 아직 고객 창구에는 안 보임">제안(' + escapeHtml(entry.제안) + ')</span>' : '') +
         (entry.note ? '<br><span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(entry.note) + '</span>' : '') +
         (sub && sub.submitted ? '<br><span style="color:#7a5c14; font-size:12.5px; font-weight:600;">📤 고객이 이미 제출함(' + escapeHtml(sub.fileName || '') + (sub.uploadedAt ? ', ' + escapeHtml(String(sub.uploadedAt).slice(0, 10)) : '') + ') — 확인 후 확보완료로 표시하세요</span>' : '') +
         '</div>' +
         (source !== 'auto' ? '<button type="button" class="ghost-btn docsEvToggleBtn sm">' + (got ? '미확보로' : '확보완료') + '</button>' : '') +
         (source === 'requested' ? '<button type="button" class="ghost-btn docsEvRenameBtn sm">이름변경</button>' : '') +
+        (source === 'requested' && entry.제안 && c.my_report_id ? '<button type="button" class="ghost-btn docsEvShowBtn sm" title="고객 창구(my.netax.kr) 체크리스트에 올립니다">고객에게 보이기</button>' : '') + // [2026.11.12 계획서 ②]
         '<span class="log-del" title="삭제">✕</span>';
       if (source !== 'auto'){
         row.querySelector('.docsEvToggleBtn').addEventListener('click', function(){
@@ -771,7 +772,7 @@
           // [2026.09 버그수정] 요청자료를 회계사가 여기서 확보완료/미확보로 바꾸면, 고객이
           // my.netax.kr에서 보는 체크리스트에도 같이 반영한다 — 안 그러면 회계사가 직접
           // 구한 자료도 고객 화면엔 계속 "미제출"로 남아 고객이 괜히 또 챙겨 올릴 수 있다.
-          if (source === 'requested' && c.my_report_id && entry.label){
+          if (source === 'requested' && c.my_report_id && entry.label && !entry.제안){
             callGas('admin_set_checklist_status', { report_id: c.my_report_id, item: entry.label, submitted: nowGot }).catch(function(){});
           }
         });
@@ -780,6 +781,18 @@
       // 새로 추가하는 수밖에 없었는데, 그러면 고객이 이미 올린 파일의 제출상태(옛 이름으로
       // 연결됨)와 연결이 끊겨 "이미 제출함" 안내가 조용히 사라졌다 — 제출상태까지 같이
       // 옮겨주는 이름변경을 추가한다.
+      // [2026.11.12 계획서 ②] 제안 줄을 고객 창구 체크리스트에 올리고 제안 표시를 뗀다
+      var showBtn = row.querySelector('.docsEvShowBtn');
+      if (showBtn){
+        showBtn.addEventListener('click', function(){
+          showBtn.disabled = true; showBtn.textContent = '올리는 중…';
+          callGas('admin_add_checklist_item', { report_id: c.my_report_id, item: entry.label }).then(function(r){
+            if (r && r.success === false){ showToast(r.message || '고객 창구에 올리지 못했습니다', 'error'); showBtn.disabled = false; showBtn.textContent = '고객에게 보이기'; return; }
+            var newList = (c.증빙목록 || []).map(function(e){ if (e.id !== entry.id) return e; var x = Object.assign({}, e); delete x.제안; delete x.제안때; x.고객표시일 = nxLocalDateStr_(); return x; });
+            docsSaveEvidence_(c, newList); showToast('「' + (entry.label || '') + '」을 고객 창구 체크리스트에 올렸습니다.', 'success');
+          }).catch(function(e){ showToast('고객 창구에 올리지 못했습니다: ' + nxErrText_(e), 'error'); showBtn.disabled = false; showBtn.textContent = '고객에게 보이기'; });
+        });
+      }
       if (source === 'requested'){
         row.querySelector('.docsEvRenameBtn').addEventListener('click', function(){
           nxPrompt_('새 자료명을 입력하세요.', entry.label || '').then(function(newLabel){
@@ -804,7 +817,7 @@
         docsSaveEvidence_(c, newList);
         // [2026.09 버그수정] 요청자료를 지워도 my.netax.kr 쪽 체크리스트엔 지저분한 옛 항목이
         // 그대로 남아있었다 — 같이 지운다.
-        if (source === 'requested' && c.my_report_id && entry.label){
+        if (source === 'requested' && c.my_report_id && entry.label && !entry.제안){
           callGas('admin_remove_checklist_item', { report_id: c.my_report_id, item: entry.label }).catch(function(){});
         }
         });

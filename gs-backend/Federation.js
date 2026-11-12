@@ -447,6 +447,7 @@ function commSeamList_() {
   var need = function (have, list, where) { var miss = list.filter(function (n) { return have.indexOf(n) === -1; }); return miss.length ? where + '에 없음: ' + miss.join(', ') : ''; };
   var seamList = [
     // [2026.11.12 2차 전면 재검토 ①] 세무사님 화면에만 있던 일에 낸 넥스 길 — 조회 종류(후속 할 일·할 일·상담 받은함)·후속 할 일 적기·환율·서류 정리
+    { 길: '넥스 서식 PDF 제안 카드 → 화면(client:printPdf) · 장부 받을 서류 → 증빙목록 제안(11-12 계획서 ①②)', fn: function () { var p = typeof JOB_PROPOSE_ACTIONS_ !== 'undefined' ? JOB_PROPOSE_ACTIONS_.print_pdf : null; if (!p || p.gas !== 'client:printPdf') return '제안 종류 print_pdf 없음'; if (typeof ledgerEvProposeFromAsk_ !== 'function') return '장부 질문 → 증빙목록 제안 함수 없음'; return ''; } },
     { 길: '넥스 → 대시보드 할 일·상담 받은함·서류 정리·환율(11-12 넥스 길)', fn: function () { var miss = need(lookupKinds(), ['followup', 'todo', 'consult_inbox'], 'job_lookup kind'); if (miss) return miss; var ct = chatTools(); if (ct.indexOf('followup_note') === -1 || ct.indexOf('lookup_exchange_rate') === -1) return '대화창 도구에 followup_note 또는 lookup_exchange_rate 없음'; if (leadTools().indexOf('doc_organize') === -1) return '사건 도구에 doc_organize 없음'; if (typeof followupChange_ !== 'function' || typeof consult_inboxList_ !== 'function' || typeof handleLookupExchangeRate !== 'function') return '받칠 서버 함수가 없음'; return ''; } },
     // 세무사님 ↔ 넥스
     { 길: '세무사님 원칙 → 넥스(공통원칙·마스터 프로필)', fn: function () { var t = getMasterProfileText_(); return !t ? '마스터 프로필을 못 읽음' : (getCommonPrinciplesText_() && t.indexOf('공통원칙') === -1 ? '공통원칙이 넥스 지시문에 안 붙음' : ''); } },

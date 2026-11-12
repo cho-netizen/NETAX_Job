@@ -332,11 +332,23 @@ function ledgerAskInner_(L, path, o) {
 function ledgerAsk_(caseId, input) {
   input = input || {};
   const path = String(input.path || '').trim(); if (!path) return { ok: false, error: '칸 경로(path)가 필요합니다' };
-  return ledgerMutate_(caseId, function (L) {
+  const r0 = ledgerMutate_(caseId, function (L) {
     const prev = L.rows[path];
     if (prev && prev.state === '확정' && prev.src && prev.src.kind === '세무사님' && input.by !== '세무사님') return { ok: false, refused: true, message: '「' + (prev.label || path) + '」은 세무사님이 정한 값입니다 — 다시 묻지 않습니다. 서류 값이 다르면 그 사실만 말씀드립니다.' };
     return ledgerAskInner_(L, path, { label: input.label, question: input.question, cands: input.cands, by: input.by || '넥스', needDoc: !!input.needDoc, keep: true });
   });
+  // [2026.11.12 2차 ② 계획서 ②(세무사님 "권장대로")] 받을 서류(needDoc)는 증빙목록에도 「제안」으로 — 증빙확보 화면 요청자료에 보이고, 세무사님이 「고객에게 보이기」를 누르면 고객 창구 체크리스트로(잠금 밖에서 — 사건 저장이 따로 잠금을 쓴다)
+  if (input.needDoc && r0 && r0.ok && r0.asked) { try { ledgerEvProposeFromAsk_(caseId, input.label || ledgerLabel_(path), input.question, input.by || '넥스'); } catch (e) {} }
+  return r0;
+}
+function ledgerEvProposeFromAsk_(caseId, label, question, by) {
+  const c = typeof job_findCase_ === 'function' ? job_findCase_(caseId) : null; if (!c) return null;
+  const lab = String(label || '').replace(/\s+/g, ' ').trim().slice(0, 160); if (!lab) return null;
+  const list = Array.isArray(c.증빙목록) ? c.증빙목록.slice() : [];
+  if (list.some(function (e) { return e && e.source === 'requested' && String(e.label || '').replace(/\s+/g, ' ').trim() === lab; })) return null;
+  list.push({ id: 'ev_' + Date.now() + '_q', source: 'requested', label: lab, note: '장부 질문에서 — ' + String(question || '').slice(0, 120), status: '미확보', 요청일: caseProcToday_(), 제안: String(by || '넥스').slice(0, 6), 제안때: caseProcNow_() });
+  const wb = (typeof WORK_WRITE_BY_ !== 'undefined') ? WORK_WRITE_BY_ : 'GAS';
+  try { WORK_WRITE_BY_ = '장부'; return work_updateCase({ id: c.id, 증빙목록: list }); } finally { WORK_WRITE_BY_ = wb; }
 }
 // 보류·무시·확인(값 그대로 확정) — 세무사님·넥스의 결정
 function ledgerDecide_(caseId, input) {

@@ -4594,6 +4594,8 @@ const JOB_PROPOSE_ACTIONS_ = {
   client_sms: { gas: 'client_send_sms', label: '고객에게 문자 발송', required: ['고객ID', 'message'] },
   portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
   checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
+  // [2026.11.12 2차 ② 계획서 ①(세무사님 "권장대로")] 신고서식 PDF — 서식은 화면이 그려 PDF로 만드는 구조라 넥스가 서버에서 못 만든다. 넥스가 계산·대조까지 끝내고 카드를 띄우면 세무사님 [실행] 한 번에 화면이 세액계산 화면을 열어 필수 서식 PDF를 보고서_내부에 저장(사건처리 상자 '서식 대조'와 같은 길)
+  print_pdf: { gas: 'client:printPdf', label: '신고서식 PDF를 사건 폴더(보고서_내부)에 저장', required: ['caseId'] },
   case_update: { gas: 'work_update_case', label: '사건 정보 수정', required: ['id'] },
   // 메모 저장은 job 메모 화면의 "저장 위치 고르기" 창을 여는 것(어느 고객·사건 메모로 둘지는 사람이 고름)
   memo_save: { gas: 'client:memoSave', label: '메모로 저장', required: ['content'] },
@@ -4635,6 +4637,14 @@ function job_buildProposal_(input) {
     const c = job_findCase_(params.caseId);
     if (!c || !c.my_report_id) return { error: '이 사건은 고객창구에 연결되지 않아 체크리스트가 없습니다.' };
     payload = { report_id: c.my_report_id, item: params.item, submitted: params.submitted !== false };
+  }
+  // [2026.11.12 2차 ② 계획서 ①] 서식 PDF — 저장된 계산이 있어야 제안이 선다(카드 글은 서버가 만든다)
+  if (input.action === 'print_pdf') {
+    const c = job_findCase_(params.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
+    let last = null; try { last = caseProcLastCalc_(c).last; } catch (e) { last = null; }
+    if (!last) return { error: '저장된 세액계산 결과가 없습니다 — 먼저 case_ledger do=calc(또는 calc_scenario)로 계산을 저장한 뒤 제안하라.' };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + String(c.세목 || '') + ' 필수 신고서식을 저장된 계산 결과(' + String(last.계산일 || '').slice(0, 10) + ')로 PDF로 만들어 사건 폴더 보고서_내부에 저장합니다. 실행하면 세액계산 화면이 잠시 열렸다 돌아옵니다.', gasAction: spec.gas, payload: { caseId: c.id }, kind: 'print_pdf', caseId: c.id } };
   }
   // [2026.10.21 넥스 하나로] 세무사님이 채팅으로 한 답을 사건처리 질문의 칸에 — 사이드바 [확인]·말 답과 같은 반영 경로(caseProcApply_), 답 기록엔 "넥스 대화"
   //  카드 설명은 서버가 만든다(AI가 쓴 요약이 아님). 넣을 칸(target)은 job_lookup caseproc의 저장된 질문에 있는 것만
@@ -4763,6 +4773,7 @@ const JOB_AI_TOOLS_ = [
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
       + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
+      + 'print_pdf{caseId}(저장된 세액계산 결과로 필수 신고서식 PDF를 사건 폴더 보고서_내부에 저장 — 서식은 화면이 만들므로 세무사님이 [실행]을 눌러야 하고 세액계산 화면이 잠시 열린다. 먼저 case_ledger do=calc 또는 calc_scenario로 계산을 저장하고 forms_check로 빈 칸이 없는지 본 뒤 제안하라) / '
       + '(장부·질문·계산·읽을 목록은 제안 길이 없다 — 사건 도구 case_ledger·calc_scenario·set_read_scope로 바로 한다)',
     input_schema: {
       type: 'object',
@@ -6325,7 +6336,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
     arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
     if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
     out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
-    if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
+    // [2026.11.12 바로잡음] 예전 '조회만'(지방세) 경고를 뺌 — 세무사님 11-12 "함께 다뤄야한다"; 정비본 색인의 범위 표시는 다음 law-build 때 '정비'로 바뀐다
     if (stale) {
       var ch = stale.낡은글.바뀐조 || [], no = +stale.공포번호;
       out.판주의 = stale.시행일 + ' 시행판(제' + no + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판(' + ver.판 + ') 글을 씀'
@@ -19601,7 +19612,7 @@ function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, asse
   }
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   return expandedLabels.map(function (entry, i) {
-    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: entry.label, slotKey: entry.slotKey, fromClassification: entry.fromClassification, note: '', status: '미확보', 요청일: today };
+    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: entry.label, slotKey: entry.slotKey, fromClassification: entry.fromClassification, note: '', status: '미확보', 요청일: today, 제안: '규칙' }; // [2026.11.12 계획서 ②] 세무사님이 「고객에게 보이기」를 누른 것만 고객 창구로
   });
 }
 
