@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 03:28 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 03:32 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3655,12 +3655,15 @@ function nxMdOpenWindow(title, src, opts){
         prevDate = datePart;
         var nowrap = 'white-space:nowrap; overflow:hidden;';
         var ellipsis = nowrap + ' text-overflow:ellipsis;';
+        // [2026.11.12] 세무사님 "해당메일을 클릭하면 그 메일이 열리도록" — 체크박스 칸 말고 날짜·보낸사람·제목 칸을 누르면
+        //  지메일에서 그 메일(스레드)이 새 탭으로 열린다(data-open에 스레드 id).
+        var open = ' class="dash-email-open" data-open="' + esc(m.id || '') + '" style="cursor:pointer; ';
         html += '<tr>'
           + '<td><input type="checkbox" class="dash-email-read-cb" aria-label="이 메일 고르기" data-id="' + esc(m.id || '') + '"></td>'
-          + '<td style="' + nowrap + '">' + dateCell + '</td>'
-          + '<td style="' + nowrap + '">' + esc(timePart) + '</td>'
-          + '<td style="' + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
-          + '<td style="' + ellipsis + '" title="' + esc(m.제목) + '">' + esc(m.제목) + '</td>'
+          + '<td' + open + nowrap + '">' + dateCell + '</td>'
+          + '<td' + open + nowrap + '">' + esc(timePart) + '</td>'
+          + '<td' + open + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
+          + '<td' + open + ellipsis + '" title="' + esc(m.제목) + ' — 누르면 지메일에서 열림">' + esc(m.제목) + '</td>'
           + '</tr>';
       });
       html += '</table></div>';
@@ -3684,6 +3687,12 @@ function nxMdOpenWindow(title, src, opts){
   }
   document.getElementById('dashEmails').addEventListener('change', function(e){
     if (e.target.closest('.dash-email-read-cb')) dashEmailSelSync_();
+  });
+  // [2026.11.12] 메일 줄(체크박스 제외)을 누르면 지메일에서 그 메일을 새 탭으로 연다.
+  document.getElementById('dashEmails').addEventListener('click', function(e){
+    var td = e.target.closest('.dash-email-open');
+    if (!td || !td.getAttribute('data-open')) return;
+    window.open('https://mail.google.com/mail/#all/' + encodeURIComponent(td.getAttribute('data-open')), '_blank', 'noopener');
   });
   document.getElementById('dashEmailsSelAll').addEventListener('click', function(){
     var cbs = dashEmailCbs_();
