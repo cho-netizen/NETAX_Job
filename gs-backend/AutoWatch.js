@@ -15,7 +15,25 @@ var AW_NOTICE_PROP_ = 'aw_notices', AW_DEADLINE_PROP_ = 'aw_deadlines', AW_NIGHT
 function awToday_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'); }
 function awDaysBetween_(a, b) { try { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); } catch (e) { return 0; } }
 function awCases_() { try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return (o && o.cases) || []; } catch (e) { return []; } }
-function awOpen_(c) { return c && String(c.상태 || '') !== '완료' && String(c.상태 || '') !== '보류' && !/시험용|가상사건/.test(String(c.사건명 || '') + String(c.개요 || '')); }
+// [2026.11.12] 세무사님 "「답하실 것」에 뭐가 그리 많이 올라가 있는가?" → "권장대로" — 가상·모의·시험 사건은 알림(기한·멈춘 사건·미수)에서 뺀다.
+//  예전 /시험용|가상사건/ 은 「가상양도12」·「가상증여9」·「가상상속자문(○○○)_상속_자문」·「모의…」 같은 실제 이름을 못 걸러 진행 사건 전부가 「멈춘 사건」 한 줄씩 올라갔다.
+function awVirtual_(c) { const n = String(c && c.사건명 || ''), g = String(c && c.고객명 || ''), o = String(c && c.개요 || ''); return /시험용|가상사건|모의사건/.test(n + o) || /^(가상|모의|시험|테스트)/.test(n.trim()) || /^(가상|모의|시험|테스트)/.test(g.trim()); }
+function awOpen_(c) { return c && String(c.상태 || '') !== '완료' && String(c.상태 || '') !== '보류' && !awVirtual_(c); }
+// 밤 점검 첫머리: 사건이 달린 알림 중 그 사건이 이제 진행 사건이 아니면(완료·보류·가상·지워짐) 지운다 — 쌓인 것은 세무사님이 줄마다 [확인]을 누르지 않아도 정리되게
+function awNoticePrune_(cases) {
+  const open = {}; (cases || []).forEach(function (c) { if (c && c.id && awOpen_(c)) open[c.id] = 1; });
+  let removed = 0;
+  try {
+    withLock_(5000, function () {
+      const p = PropertiesService.getScriptProperties();
+      let q = []; try { q = JSON.parse(p.getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { q = []; }
+      const keep = q.filter(function (x) { return !(x && x.caseId) || open[x.caseId]; });
+      removed = q.length - keep.length;
+      if (removed) p.setProperty(AW_NOTICE_PROP_, JSON.stringify(keep));
+    });
+  } catch (e) {}
+  return removed;
+}
 
 // ---------- 「답하실 것」 알림 목록 ----------
 function awNoticeList_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_NOTICE_PROP_) || '[]'); } catch (e) { return []; } }
@@ -154,7 +172,7 @@ function awUnpaidCheck_(cases, days) {
   const paid = {}; logs.forEach(function (l) { const n = Number(l.금액) || 0; if (n > 0 && l.고객ID) paid[l.고객ID] = (paid[l.고객ID] || 0) + n; });
   const bill = {};
   (cases || awCases_()).forEach(function (c) {
-    if (!c.고객ID) return;
+    if (!c.고객ID || awVirtual_(c)) return; // [2026.11.12] 가상·모의 사건의 청구액은 미수가 아니다
     let ov = c.사건개요; if (typeof ov === 'string') { try { ov = JSON.parse(ov); } catch (e) { ov = {}; } }
     const amt = Number(String((ov || {}).청구액 || '').replace(/[^\d]/g, '')) || 0; if (!amt) return;
     const b = bill[c.고객ID] = bill[c.고객ID] || { 고객명: c.고객명, 청구: 0, 사건: [], 마지막: '' };
@@ -192,6 +210,7 @@ function awStaleCheck_(cases) {
 function awNightly_() {
   const t0 = Date.now(), r = {};
   const cases = awCases_();
+  try { r.정리 = awNoticePrune_(cases); } catch (e) { r.정리오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.12] 진행 사건이 아닌 사건의 묵은 알림부터 지움
   try { r.기한 = awDeadlinesNightly_(cases).length; } catch (e) { r.기한오류 = String(e && e.message || e).slice(0, 120); }
   try { r.미수 = awUnpaidCheck_(cases).length; } catch (e) { r.미수오류 = String(e && e.message || e).slice(0, 120); }
   try { r.멈춤 = awStaleCheck_(cases).length; } catch (e) { r.멈춤오류 = String(e && e.message || e).slice(0, 120); }
