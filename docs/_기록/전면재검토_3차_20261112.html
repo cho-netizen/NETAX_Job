@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>전면 재검토 3차 점검서</title>
+<style>
+:root{--bg:#fff;--fg:#1b2430;--line:#cfd6e0;--head:#eef2f8;--accent:#0f2a5c;--gold:#c9a227;--box:#f7f8fb}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15181d;--fg:#e4e8ee;--line:#3a4250;--head:#222a36;--accent:#9fc0ff;--gold:#d6b44a;--box:#1d222a}}
+body{background:var(--bg);color:var(--fg);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;line-height:1.55;font-size:14.5px}
+h1{font-size:22px;color:var(--accent);border-bottom:3px solid var(--gold);padding-bottom:6px}
+h2{font-size:17px;color:var(--accent);margin-top:28px;border-left:5px solid var(--gold);padding-left:10px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:13.5px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:5px 8px;vertical-align:top}
+th{background:var(--head);white-space:nowrap}
+.box{background:var(--box);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:8px 0}
+.ok{color:#1f7a3a;font-weight:700}.bad{color:#b3261e;font-weight:700}.q{color:#7b5bd0;font-weight:700}
+</style></head><body>
+<h1>전면 재검토 3차 — 세무사님 자리에서 실제로 눌러 본 점검서</h1>
+<p>작성 2026-11-12 23:2x(컴퓨터 시계) · 시작 22:2x · 기준 운영 @1409 → 고침 커밋 8e360985</p>
+<div class="box"><b>세무사님 원문(11-12)</b> — "그 세션 작업이 완료되면 명예회복할 기회를 줄테니까 시스템을 전면 재검토하라" / "지금 단추 버튼 얘기가 아니잖아. 그건 빙산의 일각이고 모든 것을 심도있게 검토하랬더니" / "제대로 해라. 쓸데없이 토큰과 시간만 낭비하지 말고."</div>
+
+<h2>1. 한 일</h2>
+<table><tr><th>길</th><th>무엇으로</th><th>결과</th></tr>
+<tr><td>AI 없이(화면만)</td><td>가상3차 사건 여섯을 사건 목록에서 새로 만들고, 양도 한 건은 개요 → 장부 → 공부 조회 → 칸 넣기 → 장부 계산 → 판정·보고서·고객 열람까지, 증여는 일반·부담부 경우 계산까지 실제 클릭으로</td><td>증상 37개(아래 2절)</td></tr>
+<tr><td>넥스에게 맡김</td><td>증여(서민재) "이 사건 처리해 달라" 한 번 · 경정청구(윤소희) 한 번</td><td>증여: 약 10분 · 7단계 · 2,421원 — 4경우 계산·§47③ 입증 쟁점·부담부 양도분 아버지 양도세 잠정 계산·받을 서류 5종. 화면으로는 못 하던 일을 넥스는 함</td></tr>
+</table>
+
+<h2>2. 증상을 원인 종류로 묶음</h2>
+<table><tr><th>종류</th><th>증상 번호·모습</th><th>원인(코드에서 본 것)</th><th>이번에</th></tr>
+<tr><td><b>가. 직결 고장</b></td><td>21 · 폴더에 서류가 들어오면 「직결 안 됨(500: LATE_DESIG_PROPS_ is not defined)」</td><td>직결 묶음 만들기(tools/build-reader.js)가 펼침 <code>...이름</code>을 이름으로 못 잡아 선언이 묶음에서 빠짐 → 직결이 모든 요청에서 터짐. 지역에서 옛 묶음 불러 보기로 같은 오류 확인</td><td class="ok">고침 + 빌드 때 묶음 불러 보기 검문(터지면 빌드 멈춤)</td></tr>
+<tr><td><b>나. 세무사님이 화면에 적은 것이 계산·장부에 안 감</b></td><td>7 · 10 · 17 · 19 · 20 · 24 · 30 — 개요서에 양도가액·취득가액·소재지를 적어도 장부 계산이 「양도계약 줄 없음」, 진행메모에 적은 의뢰 내용은 가설 0</td><td>개요서 값은 장부의 「사건개요 층」에만 들어가고 계산이 읽는 칸 층(c0·a0·g·i)엔 기준일만 건너감. 가설은 사건 폴더 의뢰서_*.md(빈 틀)만 읽고 진행메모는 안 읽음</td><td class="q">구조 — 정하실 것 ①</td></tr>
+<tr><td><b>다. 화면 도구가 넥스보다 좁음(1단계 미완)</b></td><td>29 증여·상속 칸 목록 없음 · 31 부담부 채무 입증 칸 없음 · 32 부담부 양도분(증여자 양도세) 길 없음 · 34 불복 사건 계산 거절 · 경정청구 환급액 도구 없음</td><td>장부 화면 칸 목록이 양도로 박힘 · 가정 목록에 입증 칸 없음 · 한 거래 두 세목(증여+양도) 묶음 계산이 넥스 계산기 입력에만 있음 · 불복 사건은 원 세목 연결 없음</td><td><span class="ok">29·31·34 고침</span> · <span class="q">32·환급액은 정하실 것 ②</span></td></tr>
+<tr><td><b>라. 다시 그리기·상태</b></td><td>13 개요 저장 뒤 장부가 옛 값 · 18·33 계산 결과 상자가 사라지고 단추 오류 · 23 줄 하나 넣을 때마다 장부 통째로 다시 읽기 · 26 판정 탭이 전체 창을 띄워 다른 탭을 덮음</td><td>장부 화면이 한 덩어리로 다시 그려져 결과·상태가 날아감</td><td><span class="ok">18·33 고침</span> · 13·23·26 남음(③)</td></tr>
+<tr><td><b>마. 느림</b></td><td>1 사건 목록 띠 30초 · 8 장부 탭 15초+ · 24 장부 계산 약 100초 · 36 넥스 한 번 10분</td><td>장부 한 번 읽기마다 서버 왕복 15~25초 · 계산 저장 1분 넘음</td><td><span class="ok">36 진행 글에 도구 수·초</span> · 속도는 ③</td></tr>
+<tr><td><b>바. 업무 자리 없음</b></td><td>28 새 사건에 「세무조사」는 불복 아래 숨고 「가족법인·가업승계」는 세목도 업무도 없음 · 25 보고서 탭 첫 화면이 남의 불복 샘플 · 27 고객 열람이 사건과 무관한 전체 목록</td><td>세목 다섯(양도·증여·상속·불복·사업)에 세무사님 업무 여섯이 안 맞음</td><td class="q">정하실 것 ④</td></tr>
+<tr><td><b>사. 공부 조회</b></td><td>12 주소검색 실패 시 대안 없음 · 14 소재지 고치면 옛 필지가 남아 1건이 2필지 · 15 주택인데 건축물대장·공동주택가격 조회를 안 함</td><td>도로명 주소검색 하나에만 기댐 · 필지 목록이 덮어쓰지 않고 쌓임</td><td>남음(③)</td></tr>
+<tr><td><b>아. 글</b></td><td>3 사건 카드 이름 없음 · 5 새 사건 직후 「장부를 읽지 못했습니다」 등 고장처럼 보임 · 11 「넣은 이 기록 없음」 · 18 오류 글에 코드 이름 · 34·37 영어(objection·acquisition)</td><td>—</td><td><span class="ok">34 고침</span> · 나머지 ③</td></tr>
+<tr><td><b>자. 사소</b></td><td>16 가상사건이 대시보드 마감임박에 · 22 값 칸 Enter 안 먹음 · 35 넥스 창이 보던 사건을 안 이음</td><td>—</td><td><span class="ok">22·35 고침</span> · 16 ③</td></tr>
+</table>
+
+<h2>3. 세법 [확인 필요] — 고치지 않고 올림</h2>
+<table><tr><th>위치</th><th>무엇</th><th>근거 원문</th></tr>
+<tr><td>CaseLedger.js ledgerGiftInput_ (장부 증여 칸)</td><td>장부 「입증된 채무」 칸이 비어 있으면 인수 채무를 <b>입증된 것으로 보고</b> 뺀다. 시험 계산 가정 길은 반대로 빈칸 = 입증 없음.</td><td>상증법 §47③ "배우자 간 또는 직계존비속 간의 부담부증여 … 그 채무액은 수증자에게 인수되지 아니한 것으로 추정한다. 다만 … 객관적으로 인정되는 것인 경우에는 그러하지 아니하다." — 빈칸이면 빼지 않는 쪽이 조문의 추정과 맞아 보임 [확인 필요]</td></tr>
+<tr><td>tools/family-regress.js 정기금 3건</td><td>오늘 낮 「정기금 첫해 할인 없음」(세무사님 권장안 채택)으로 엔진을 바꾼 뒤 시험 기대값이 옛 값 그대로라 ✘ 3건 — 이번 고침과 무관</td><td>상증법 시행령 §62 [확인 필요 — 기대값만 새 결론으로 다시 셈]</td></tr>
+</table>
+
+<h2>4. 정하실 것(권장안)</h2>
+<table><tr><th>#</th><th>무엇</th><th>권장</th></tr>
+<tr><td>①</td><td>개요서에 적은 물건·금액·날짜와 장부 계산 칸을 <b>한 저장소</b>로 — 지금은 같은 사실을 두 곳에 따로 적어야 계산이 돎(10-16 "처리개요는 요약" 원칙과도 부딪힘)</td><td>개요서 물건 칸은 장부 칸(c0·a0)을 그대로 보여 주고 고치는 창으로 바꿈. 진행메모·의뢰 메모는 GAS 가설 읽기에 넣음(서류 확인 전이라 「가설·추정」으로)</td></tr>
+<tr><td>②</td><td>한 거래 두 세목(부담부증여 = 증여세+증여자 양도세)과 경정청구 환급액(기신고 세액 − 다시 계산한 세액)을 화면 도구로</td><td>장부 「도구」에 두 단추 — 넥스가 이미 쓰는 계산기 입력을 화면에서도 그대로</td></tr>
+<tr><td>③</td><td>라·마·사·아·자의 남은 것(장부 다시 그리기·속도·공부 조회·글)</td><td>①②와 한 묶음 계획서로</td></tr>
+<tr><td>④</td><td>새 사건 세목·업무에 세무조사·가족법인 자리</td><td>업무유형에 「세무조사」를 세목과 따로, 세목에 「가족법인·가업승계」 추가</td></tr>
+</table>
+</body></html>
