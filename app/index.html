@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 04:06 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 04:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3164,10 +3164,12 @@ function nxMdOpenWindow(title, src, opts){
         </span>
       </h3>
       <div class="nx-help">세무사님이 확인·결정하실 일 — 항목을 누르면 답 칸이 열립니다 — 의견·결정·"해 봤다"를 적으시면 Claude가 다음 세션에서 받아 답·반영하고, 끝난 항목은 Claude가 ✔로 넘깁니다(주고받은 말이 항목 아래 쌓임).</div>
-      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+      <!-- [2026.11.12] 세무사님 "사용자편의성이라는 단어를 모르나?" — 새 항목 적는 칸은 쓰실 일이 드물어 접어 둠 -->
+      <details style="margin-bottom:8px;"><summary style="cursor:pointer; font-size:12px; color:var(--sub);">＋ 새 항목 직접 적기</summary>
+      <div style="display:flex; gap:6px; margin:6px 0 2px; flex-wrap:wrap; align-items:center;">
         <select id="dashFollowSec" style="flex:0 1 180px;" title="어느 절에 넣을지"></select>
         <input title="새 확인사항" type="text" id="dashFollowNew" placeholder="새 확인사항 입력 후 Enter" style="flex:1; min-width:160px;">
-      </div>
+      </div></details>
       <div id="dashFollowList"><div class="spinner">불러오는 중…</div></div>
       <style>
         /* [2026.10.31] 세무사님 "하위항목에 대한 표시가 제대로 되지 않고 있다" — 절 제목은 3단계 묶음(.nx-l3), 자세한 내용·야간 점검 줄은 ▪ 글머리 목록(.nx-li, 스타일 공통) */
@@ -3902,7 +3904,7 @@ function nxMdOpenWindow(title, src, opts){
 
   // [2026.10.20] 📋 확인조치사항 — 원본 파일(0 NETAX/_확인조치사항.md)을 서버(Followup.js)가 읽어 절별로 준다.
   // 체크·고치기·추가는 서버가 저장 직전 최신 파일에서 그 줄만 바꾸고, 바뀐 뒤의 목록을 다시 돌려준다(그대로 다시 그림).
-  var dashFollow_ = { items: {}, open: {}, doneOpen: false, answeredOpen: false, sec: '' };
+  var dashFollow_ = { items: {}, open: {}, doneOpen: false, answeredOpen: false, sec: '', draft: {} }; // draft: 답 칸을 닫아도 쓰던 글을 남긴다(항목 글 기준)
   function dashFollowMd_(s){
     return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
   }
@@ -4042,30 +4044,56 @@ function nxMdOpenWindow(title, src, opts){
     }
     if (e.target.closest('.fuAnswerWrap')){ /* 답 칸 안 — 아래 저장·취소 처리로 */ }
     else if (!it.done){
-      if (row.querySelector('.fuAnswerBox')) return;
+      // [2026.11.12] 세무사님 "사용자편의성이라는 단어를 모르나?" — 한 번 누르면 자세한 내용까지 펼치고 답 칸(쓰던 글 복원), 다시 누르면 닫힘(글은 남음), Enter로 저장.
+      var openWrap = row.querySelector('.fuAnswerWrap');
+      if (openWrap){ openWrap.remove(); return; }
+      var key2 = dashFollowKey_(it);
+      if (!dashFollow_.open[key2] && (dashFollowDetailNoTalk_(it.detail).trim() || (it.text || '').length > 70)){
+        dashFollow_.open[key2] = true;
+        row.outerHTML = dashFollowRowHtml_(it, row.closest('#dashFollowDone, #dashFollowAnswered') ? it.sec : '');
+        row = document.querySelector('#dashFollowList .fu-row[data-fu-line="' + it.line + '"]');
+        if (!row) return;
+      }
       var bodyEl2 = row.querySelector('.fu-body');
       var box = document.createElement('div');
       box.className = 'fuAnswerWrap';
       box.style.cssText = 'margin-top:6px;';
-      box.innerHTML = '<textarea class="fuAnswerBox" rows="3" placeholder="의견·결정을 적어 주세요 — 예: 권장대로 / 아니오, ○○로 / 이유는 …"></textarea>'
-        + '<div style="display:flex; gap:6px; margin-top:4px; flex-wrap:wrap;">'
-        + '<button type="button" class="save-btn fuAnswerSave sm">답 저장</button>'
-        + '<button type="button" class="ghost-btn fuAnswerCancel sm">취소</button>'
-        + '<span style="font-size:11px; color:var(--sub); align-self:center;">항목 아래 「💬 세무사님(날짜)」 줄로 저장되고 Claude가 다음 세션에서 받아 답합니다</span></div>';
+      box.innerHTML = '<textarea class="fuAnswerBox" rows="2" placeholder="의견·결정·해 봤다 — 적고 Enter(줄바꿈은 Shift+Enter)"></textarea>'
+        + '<div style="display:flex; gap:8px; margin-top:3px; align-items:center;">'
+        + '<button type="button" class="save-btn fuAnswerSave sm">저장</button>'
+        + '<span style="font-size:11px; color:var(--sub);">Claude가 다음 세션에서 받아 답합니다 · 항목을 다시 누르면 닫힘</span></div>';
       bodyEl2.appendChild(box);
-      box.querySelector('.fuAnswerBox').focus();
+      var ta = box.querySelector('.fuAnswerBox');
+      ta.value = dashFollow_.draft[key2] || '';
+      ta.focus();
       return;
     }
     else return;
-    if (e.target.classList.contains('fuAnswerCancel')){ var w0 = row.querySelector('.fuAnswerWrap'); if (w0) w0.remove(); return; }
-    if (e.target.classList.contains('fuAnswerSave')){
-      var at = row.querySelector('.fuAnswerBox').value.replace(/\s*\n\s*/g, ' ').trim();
-      if (!at){ toast('답을 적어 주세요.'); return; }
-      var ab = e.target;
-      ab.disabled = true;
-      dashFollowSave_('followup_answer', { raw: it.raw, line: it.line, text: at }, function(){ ab.disabled = false; }).then(function(res){ if (res && !res.error) toast('답을 저장했습니다 — Claude가 다음 세션에서 받습니다.'); });
-      return;
-    }
+    if (e.target.classList.contains('fuAnswerSave')){ dashFollowAnswerSave_(row, it); return; }
+  });
+  function dashFollowAnswerSave_(row, it){
+    var ta = row.querySelector('.fuAnswerBox'); if (!ta) return;
+    var at = ta.value.replace(/\s*\n\s*/g, ' ').trim();
+    if (!at){ toast('답을 적어 주세요.'); ta.focus(); return; }
+    var key = dashFollowKey_(it);
+    var btn = row.querySelector('.fuAnswerSave');
+    ta.disabled = true; if (btn) btn.disabled = true;
+    var name = dashNoLeadIcon_(String(it.text || '').replace(/\*\*/g, '')).slice(0, 28);
+    dashFollowSave_('followup_answer', { raw: it.raw, line: it.line, text: at }, function(){ ta.disabled = false; if (btn) btn.disabled = false; })
+      .then(function(res){ if (res && !res.error){ delete dashFollow_.draft[key]; toast('「' + name + '」 답 저장됨 — Claude가 다음 세션에서 받습니다.'); } });
+  }
+  // 답 칸: 글은 항목별로 남겨 두고(닫았다 열어도 그대로), Enter는 저장·Shift+Enter는 줄바꿈
+  document.getElementById('dashFollowList').addEventListener('input', function(e){
+    if (!e.target.classList.contains('fuAnswerBox')) return;
+    var row = e.target.closest('.fu-row[data-fu-line]'); var it = row && dashFollow_.items[row.getAttribute('data-fu-line')];
+    if (it) dashFollow_.draft[dashFollowKey_(it)] = e.target.value;
+  });
+  document.getElementById('dashFollowList').addEventListener('keydown', function(e){
+    if (!e.target.classList.contains('fuAnswerBox')) return;
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    var row = e.target.closest('.fu-row[data-fu-line]'); var it = row && dashFollow_.items[row.getAttribute('data-fu-line')];
+    if (it) dashFollowAnswerSave_(row, it);
   });
 
   // [2026.10.20] 🛠 개선요구 — 끝나지 않은 요청 전부(오래된 순)·며칠째. 반영됨은 👍 잘 됨 / ↩ 다시 고쳐 주세요(설정 📝 요청 상태와 같은 서버 함수).
