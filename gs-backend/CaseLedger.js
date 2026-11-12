@@ -1606,7 +1606,7 @@ function ledgerApi_(c, body) {
   switch (body.step) {
     case 'ledger': return ledgerView_(c);
     case 'ledgerAsk': return ledgerAsk_(c.id, Object.assign({}, body, { by: body.by || who }));
-    case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who, name: body.name, over: body.over, why: body.why, chainFrom: body.chainFrom, chainHeir: body.chainHeir, chainShare: body.chainShare, tax: body.tax ? ledgerTaxCode_(body.tax) || String(body.tax) : '' });
+    case 'ledgerCalc': return ledgerCalcRun_(c, { by: body.by || who, name: body.name, over: body.over, why: body.why, chainFrom: body.chainFrom, chainHeir: body.chainHeir, chainShare: body.chainShare, priorPaidTax: body.priorPaidTax /* [2026-11-12 3차 ②] 경정청구 당초 낸 세액 — 예전엔 이 입구가 넘기지 않아 돌려받을 세액 줄이 안 나왔다 */, tax: body.tax ? ledgerTaxCode_(body.tax) || String(body.tax) : '' });
     case 'ledgerTaxes': return ledgerTaxesSet_(c, body, body.by || who); // [2026.10.30 복합 자문] 📒 ⑥ 함께 보는 세목 — 넥스 case_ledger do=taxes와 같은 함수
     case 'ledgerLookup': return ledgerLookup_(c, body, body.by || who); // [2026.10.29 계획서 3판] 📒 ⑤ 도구 — 넥스 case_ledger와 같은 함수
     case 'ledgerEstimate': return ledgerEstimate_(c, body, body.by || who);
