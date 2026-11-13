@@ -503,6 +503,8 @@
   /* [2026.10.29] 세무사님 "날짜를 키우거나 줄이는 버튼이 너무 작아서 제어를 할 수가 없다" — 대시보드 범위 칸(일정 전/후 며칠·마감임박 후 며칠·
      수금 전 며칠·메일 건수)은 숫자칸 속 작은 화살표 대신 양옆에 큰 − / + 단추를 둔다(손가락으로도 누를 수 있는 크기). */
   .dash-range{ display:flex; gap:6px 10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; font-size:12.5px; color:var(--sub); }
+  /* [2026-11-13] 세무사님 "자 이렇게 간소화한 이유가 있다. 이 날짜지정을 항목명 옆으로 올려라" — 일정·마감임박·최근수금·착신메일의 범위 줄을 카드 제목(h3) 안 제목 글자 옆으로(카드마다 한 줄 줄임) */
+  .card > h3 > .dash-range-h{ display:inline-flex; margin:0 0 0 8px; vertical-align:middle; font-size:12.5px; font-weight:400; }
   .dash-step{ display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
   .dash-step button{ width:30px; height:30px; padding:0; font-size:18px; font-weight:700; line-height:1; cursor:pointer; border-radius:6px;
     border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); font-family:inherit; touch-action:manipulation; user-select:none; }
