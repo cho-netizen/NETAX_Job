@@ -168,6 +168,8 @@
       //  누르는 순간 그 줄을 고쳐 그리고(단추는 막지 않음 — 이어서 누를 수 있음), 같은 사건 장부는 차례로 뒤에서 보내며, 실패하면 화면 아래 「다시 보내기」.
       //  서버 답이 오면 서버 줄로 바꾸고, 보낼 것이 다 끝났을 때만 장부 전체를 한 번 새로 읽는다(여러 창에서 동시에 처리해도 창마다 기다리지 않음).
       var lgLast = null, lgPend = 0;
+      // 보이는 것(칸·상태·값·주인)이 같으면 다시 그리지 않는다 — 서버 답이 와서 다시 그리면 펼쳐 둔 「⋯」이 손 밑에서 닫혔다(11-13 운영)
+      var lgSig = function(rows){ return (rows || []).map(function(x){ return x ? [x.path, x.state, x.값, x.kind].join('|') : ''; }).join('\n'); };
       var lgPatch = function(row){
         if (!row || !row.path || !lgLast || !Array.isArray(lgLast.줄)) return false;
         var r2 = JSON.parse(JSON.stringify(lgLast)), i = -1;
@@ -176,6 +178,7 @@
         r2.요약 = Object.assign({}, r2.요약 || {}, { 전체: r2.줄.length }); r2.상태별 = {};
         ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'].forEach(function(k){ r2.요약[k] = 0; r2.상태별[k] = []; });
         r2.줄.forEach(function(x){ if (!x) return; r2.요약[x.state] = (r2.요약[x.state] || 0) + 1; (r2.상태별[x.state] || (r2.상태별[x.state] = [])).push(x); });
+        if (lgSig(r2.줄) === lgSig(lgLast.줄)) { lgLast = r2; return true; }
         lgPaint(r2); return true;
       };
       var lgBar = function(text){ var old = body.querySelector(':scope > .nx-stale-bar'); if (old) old.remove(); if (!text) return; var bar = document.createElement('div'); bar.className = 'nx-stale-bar'; bar.textContent = text; body.insertBefore(bar, body.firstChild); };
@@ -184,6 +187,7 @@
         callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
           if (lgPend > 0) return;
           if (r && r.ok && window.nxLocalCache_) window.nxLocalCache_.set(lgKey, r);
+          if (r && r.ok && lgLast && lgSig(r.줄) === lgSig(lgLast.줄)) { lgLast = r; return; }
           lgPaint(r);
         }).catch(function(){});
         if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
