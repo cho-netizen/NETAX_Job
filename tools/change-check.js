@@ -159,6 +159,13 @@ try {
 // [2026.11.04] 넥스 도구 검문(재발 방지) — 도구 수·지시문 길이가 기준을 넘거나, 없앤 도구를 가리키거나, 같은 일에 길이 둘이면 🚫(tools/nex-tool-check.js)
 try { const nx = require('./nex-tool-check.js'); nx.block.forEach((b) => block.push('넥스 도구 검문: ' + b)); nx.warn.forEach((w) => warn.push('넥스 도구 검문: ' + w)); } catch (e) { warn.push('넥스 도구 검문을 못 돌림: ' + e.message); }
 if (bytes > 9800000) warn.push('서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB — 10MB 한도 근처(큰 자료는 화면 쪽으로)');
+// [2026-11-13 크기 지킴이] job 서버는 부를 때마다 코드 전체를 싣는다 — 크기가 곧 바닥 시간(11-13 실측: 0.05MB 1.4초 · 1.7MB 2.8초 · 8.8MB 7.5초 넘음,
+//  10-17엔 3MB에 3~5초). 지난 속도 검토들이 서버 안 일만 줄이는 사이 코드가 3배로 늘어 바닥이 두 배가 됐다. 기준(tools/server-size-baseline.json)보다
+//  0.1MB 넘게 커지면 🚫 — 늘려야 하면 기준 파일에 까닭과 함께 숫자를 올린다(자주 안 쓰는 큰 자료는 화면·관리 서버·필요할 때만 읽는 파일로).
+try {
+  const sb = JSON.parse(fs.readFileSync(path.join(__dirname, 'server-size-baseline.json'), 'utf8'));
+  if (bytes > sb.bytes + 100000) block.push('job 서버 크기 ' + (bytes / 1e6).toFixed(2) + 'MB — 기준 ' + (sb.bytes / 1e6).toFixed(2) + 'MB보다 ' + ((bytes - sb.bytes) / 1e6).toFixed(2) + 'MB 커짐(크면 부를 때마다 느려짐). 줄이거나 tools/server-size-baseline.json에 까닭과 함께 기준을 올릴 것');
+} catch (e) { warn.push('서버 크기 기준을 못 읽음: ' + e.message); }
 
 const out = ['변경 점검(올리기 전) — 기준 ' + base + ', 새로 더한 줄 ' + rows.length + '개, 서버 용량 ' + (bytes / 1e6).toFixed(2) + 'MB'];
 if (block.length) out.push('🚫 막음 ' + block.length + '건 — 지우기 전엔 올리지 말 것\n- ' + Array.from(new Set(block)).join('\n- '));
