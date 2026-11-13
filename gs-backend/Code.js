@@ -23299,7 +23299,9 @@ function cpFirstPassScan_(started, DEADLINE) {
   cases.forEach(function (c) {
     if (Date.now() - started > DEADLINE - 90000) return;
     try {
-      const sv = caseProcLoad_(c.id) || {}; if (sv.firstPass && sv.firstPass.queued) return;
+      // 첫 바퀴를 끝까지 돌았으면(done) 다시 세우지 않고, 줄에 선 지 2시간 안이면 기다린다(그 뒤에도 칸이 0이면 다시 세움 — 칸 채우기가 안 돈 11-13 결함 같은 것)
+      const sv = caseProcLoad_(c.id) || {}; const fp0 = sv.firstPass || {};
+      if (fp0.done) return; if (fp0.queued && (Date.now() - new Date(String(fp0.queued).replace(' ', 'T') + ':00+09:00').getTime()) < 7200000) return;
       if (cpLedgerHasCalc_(ledgerLoad_(c.id))) return;
       const it = DriveApp.getFolderById(c.폴더ID).getFiles(); let n = 0; while (it.hasNext() && n < 2) { const f = it.next(); if (!/^_/.test(f.getName())) n++; }
       if (!n) { const sub = DriveApp.getFolderById(c.폴더ID).getFolders(); while (sub.hasNext() && !n) { const fi = sub.next().getFiles(); if (fi.hasNext()) n++; } }
@@ -23311,9 +23313,10 @@ function cpFirstPassScan_(started, DEADLINE) {
   });
   return put.length ? put.length + '건 줄 세움: ' + put.join(', ') : '';
 }
+// [2026.11.13 5차 가·나 바로잡음] kind 'fill'(칸 채우기)이 'ledger'로 바뀌어 한 번도 돌지 않았다 — 'fill'은 그대로 둔다
 function cpFlowQueueAdd_(caseId, why, kind) {
   if (!caseId || (typeof AK_IN_SANDBOX_ !== 'undefined' && AK_IN_SANDBOX_)) return;
-  try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_FLOW_QUEUE_) || '[]'); } catch (e) { q = []; } const had = q.filter(function (x) { return x && x.id === String(caseId) && x.kind === 'read'; }).length; q = q.filter(function (x) { return x && x.id !== caseId; }); q.push({ id: String(caseId), why: String(why || '').slice(0, 60), at: caseProcNow_(), kind: (kind === 'read' || had) ? 'read' : 'ledger' }); props.setProperty(CP_FLOW_QUEUE_, JSON.stringify(q.slice(-50))); } catch (e) {}
+  try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_FLOW_QUEUE_) || '[]'); } catch (e) { q = []; } const had = q.filter(function (x) { return x && x.id === String(caseId) && x.kind === 'read'; }).length; q = q.filter(function (x) { return x && x.id !== caseId; }); q.push({ id: String(caseId), why: String(why || '').slice(0, 60), at: caseProcNow_(), kind: (kind === 'read' || had) ? 'read' : kind === 'fill' ? 'fill' : 'ledger' }); props.setProperty(CP_FLOW_QUEUE_, JSON.stringify(q.slice(-50))); } catch (e) {}
 }
 function cpFlowQueueRun_(started, DEADLINE) {
   const props = PropertiesService.getScriptProperties(), done = [];
