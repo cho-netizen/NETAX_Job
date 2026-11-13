@@ -786,7 +786,7 @@
       nxAiRenderConversation_();
       nxAiRenderConvList_();
       nxAiRefreshCaseUi_();
-      if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
+      return nxAiPvSyncCase_(); // [2026.11.13] 자료 칸은 늘 이 대화의 사건으로(기록의 폴더 번호가 비어 있어도)
     });
   }
 
@@ -799,6 +799,7 @@
       nxAiRenderConversation_();
       nxAiRenderConvList_();
       nxAiRefreshCaseUi_();
+      nxAiPvSyncCase_(); // [2026.11.13] 사건 없는 새 대화면 자료 칸도 비운다
       nxAiEl_('nxAiInput').focus();
     });
   }
@@ -951,11 +952,34 @@
     nxAiConv.caseName = c.사건명 || c.고객명 || '';
     nxAiConv.caseFolderId = c.폴더ID || '';
     nxAiConv.casePath = null;
-    nxAiPvDropOtherCase_();
     nxAiRefreshCaseUi_();
-    if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
-    else nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">이 사건은 아직 드라이브 폴더가 없습니다(사건 목록에서 사건 폴더를 만들면 연결됩니다).</div>';
+    nxAiPvSyncCase_(c);
     if (nxAiConv.messages.length) nxAiScheduleSave_();
+  }
+  // [2026.11.13 세무사님 "우측에 사건자료는 아직도 직전 사건이 나오냐?"] 대화가 바뀌면 우측 「사건 자료」 칸은 무조건 지금 대화의 사건으로 다시 그린다.
+  //  대화 기록에 복사돼 있는 폴더 번호는 믿지 않고 사건 줄에서 다시 읽는다(11-12 저녁 폴더 없던 때 저장된 대화는 폴더 번호가 빈칸 — 그래서 칸을 안 그리고 직전 사건 자료가 남았다).
+  //  사건이 없는 대화면 빈 칸, 폴더 없는 사건이면 "폴더 없음" 글. 다른 사건에서 연 미리보기도 함께 닫는다.
+  function nxAiPvSyncCase_(c){
+    nxAiPvDropOtherCase_();
+    var box = nxAiEl_('nxAiPvFiles');
+    if (!nxAiConv.caseId){ nxAiPvRenderEmpty_(); return Promise.resolve(); }
+    var convAt = nxAiConv;
+    var casesP = function(fresh){ return (!fresh && nxAiCaseCache) ? Promise.resolve(nxAiCaseCache) : callGas('work_get_cases', {}).then(function(res){ nxAiCaseCache = (res && res.cases) || []; return nxAiCaseCache; }); };
+    var pick = function(cases){ return (cases || []).filter(function(x){ return x && x.id === convAt.caseId; })[0] || null; };
+    var rowP = (c && c.id === convAt.caseId && c.폴더ID) ? Promise.resolve(c) : casesP(false).then(function(cases){ var r = pick(cases); return (r && r.폴더ID) ? r : casesP(true).then(pick); }); // 목록이 낡아 폴더가 비어 보이면 한 번 새로 받는다
+    box.innerHTML = '<div class="nxai-muted">불러오는 중…</div>';
+    return rowP.then(function(row){
+      if (nxAiConv !== convAt) return; // 그 사이 다른 대화로 바뀜
+      var fid = (row && row.폴더ID) || nxAiConv.caseFolderId || '';
+      if (fid && nxAiConv.caseFolderId !== fid){ nxAiConv.caseFolderId = fid; nxAiConv.casePath = null; if (nxAiConv.messages.length) nxAiScheduleSave_(); } // 기록의 빈 폴더 번호를 사건 줄 값으로 바로잡아 저장
+      if (fid) return nxAiPvNavigate_({ folderId: fid });
+      nxAiPvFolder = null;
+      box.innerHTML = '<div class="nxai-muted">이 사건은 아직 드라이브 폴더가 없습니다(사건 목록에서 사건 폴더를 만들면 연결됩니다).</div>';
+    }).catch(function(){
+      if (nxAiConv !== convAt) return;
+      if (nxAiConv.caseFolderId) return nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
+      nxAiPvFolder = null; box.innerHTML = '<div class="nxai-muted">사건 폴더를 확인하지 못했습니다 — 다시 열어 주세요.</div>';
+    });
   }
   function nxAiRefreshCaseUi_(){
     var chip = nxAiEl_('nxAiCaseChip');
@@ -970,8 +994,12 @@
   //  · 다른 사건(또는 사건 없는) 대화를 하던 중이면 → 그 사건의 가장 최근 대화로 바꾸고, 없으면 그 사건의 새 대화
   //    (하던 대화는 목록에 저장돼 있다). 답변을 받는 중에는 바꾸지 않는다.
   function nxAiScreenCaseId_(){
+    // [2026.11.13 세무사님 "사건목록에서 처리한 사건을 클릭하면 … 왜 채팅은 가져오지 않는가?"] 왼쪽 메뉴의 불은 사건 화면이면 늘 「사건 작업」에 켜져 있어,
+    //  사건 목록을 보고 있어도 "사건 작업 화면"으로 읽고 거기서 고른 사건(없음)을 찾았다 — 그래서 사건 목록에서 사건을 눌러도 넥스 창이 따라가지 않았다.
+    //  실제로 떠 있는 화면(가운데 .view.active)을 먼저 본다.
+    var shownView = document.querySelector('#centerWork > .view.active');
     var act = document.querySelector('.menu-item.active[data-view]');
-    var v = act ? act.getAttribute('data-view') : '';
+    var v = shownView ? shownView.id.replace(/^view-/, '') : (act ? act.getAttribute('data-view') : '');
     try {
       // [2026.11.01 화면구조 개편 ①] 사건 작업공간 안에선 왼쪽 메뉴가 늘 "사건 작업공간"이라, 실제로 열린 탭(장부·서류·계산…)의 사건을 머리줄과 같은 길로 읽는다
       if (typeof window.nxCbCurId_ === 'function' && document.body.classList.contains('cb-on')) return window.nxCbCurId_() || '';
@@ -1010,20 +1038,22 @@
       return nxAiSwitchToCase_(c).then(function(msg){ if (msg) nxAiToast_('이 화면의 ' + msg); });
     }).catch(function(){ nxAiLastSyncedScreenCase_ = ''; }).then(function(){ nxAiSyncBusy_ = false; });
   }
-  // 대화를 사건 c로 옮긴다 — 빈 대화면 그대로 연결, 아니면 그 사건의 가장 최근 대화, 없으면 그 사건의 새 대화(하던 대화는 목록에 저장돼 있음).
+  // 대화를 사건 c로 옮긴다 — 그 사건의 가장 최근 대화가 있으면 그것을 열고(지금 대화가 비어 있어도), 없으면 빈 대화는 그대로 연결·하던 대화는 저장해 두고 새 대화.
   // 다 바뀐 뒤 알림 글(앞에 "이 화면의 " 등을 붙여 씀)을 돌려준다. 이미 그 사건이면 ''.
+  // [2026.11.13 세무사님 "사건목록에서 사건을 클릭하면 … 왜 채팅은 가져오지 않는가?"] 예전엔 빈 대화면 사건만 잇고 그 사건의 지난 대화를 열지 않아, 채팅 목록에서 따로 눌러야 했다.
   function nxAiSwitchToCase_(c){
     var caseId = c.id, name = c.사건명 || c.고객명 || '';
     if (nxAiConv.caseId === caseId) return Promise.resolve('');
-    if (!nxAiConv.messages.length){ nxAiLinkCase_(c); return Promise.resolve('사건(' + name + ')으로 대화를 연결했습니다.'); }
     var listP = nxAiConvList.length ? Promise.resolve() : nxAiLoadConvListOnly_();
     return listP.then(function(){
       var mine = nxAiConvList.filter(function(x){ return x.caseId === caseId; }).sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
-      if (mine) return Promise.resolve(nxAiOpenConv_(mine.id)).then(function(){ return '사건(' + name + ') 대화로 바꿨습니다 — 하던 대화는 목록에 있습니다.'; });
+      var hadTalk = !!nxAiConv.messages.length;
+      if (mine) return Promise.resolve(nxAiOpenConv_(mine.id)).then(function(){ return '사건(' + name + ') 대화를 이어 열었습니다' + (hadTalk ? ' — 하던 대화는 목록에 있습니다.' : '.'); });
+      if (!hadTalk){ nxAiLinkCase_(c); return '사건(' + name + ')으로 대화를 연결했습니다.'; }
       return nxAiFlushSave_().then(function(){
         nxAiConv = Object.assign(nxAiBlankConv_(), { caseId: c.id, caseName: name, caseFolderId: c.폴더ID || '' });
         nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiRefreshCaseUi_();
-        if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
+        nxAiPvSyncCase_(c);
         return '사건(' + name + ')으로 새 대화를 시작했습니다 — 하던 대화는 목록에 있습니다.';
       });
     });
@@ -1326,7 +1356,7 @@
     nxAiConv = Object.assign(nxAiBlankConv_(), conv);
     nxAiRenderConversation_();
     nxAiRefreshCaseUi_();
-    if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
+    nxAiPvSyncCase_(); // [2026.11.13]
   }
 
   // 대화 목록만 다시 받는다(work 검색은 다시 하지 않음).
