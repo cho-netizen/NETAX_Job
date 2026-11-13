@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>저장 느림 계획서</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#666;--line:#ddd;--chip:#f3f4f6;--ok:#1a7f37;--warn:#b35900}
+@media (prefers-color-scheme:dark){:root{--bg:#17181a;--fg:#ececec;--mut:#a0a0a0;--line:#333;--chip:#25272a}}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 system-ui,"Malgun Gothic",sans-serif;margin:0;padding:16px;max-width:960px}
+h1{font-size:21px}h2{font-size:17px;margin-top:26px;border-bottom:1px solid var(--line);padding-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left}
+th{background:var(--chip)}.wrap{overflow-x:auto}.warn{color:var(--warn);font-weight:600}.ok{color:var(--ok);font-weight:600}
+</style></head><body>
+<h1>저장·계산 느림 계획서 (2026-11-13)</h1>
+<p>세무사님 말씀(11-13): "권장대로" — 남은 일 「저장·계산의 느림은 구조 변경이라 계획서를 먼저 올려 정해 받음」. <b>정해 주시기 전엔 만들지 않습니다</b>(1층 5절).</p>
+
+<h2>1. 지금 (운영에서 잰 것)</h2>
+<div class="wrap"><table>
+<tr><th>일</th><th>걸린 시간</th><th>그중 job 서버 여는 데</th></tr>
+<tr><td>장부 「확인」 한 번(가상 시험 사건)</td><td>13~16초</td><td>약 7.5초(코드 7.2MB를 매번 실음)</td></tr>
+<tr><td>사건 저장</td><td>화면은 바로(뒤에서 보냄 — 10월에 「화면 먼저」로 바꿈)</td><td>—</td></tr>
+</table></div>
+<p>읽기(오늘 할 일·장부 보기·장부 띠)는 11-13에 관리 서버로 옮겨 절반으로 줄었습니다. <b>쓰기는 잠금이 프로젝트마다 따로라 한 서버에서만</b> 해야 해서 옮기지 않았습니다.</p>
+
+<h2>2. 딸린 코드 크기(쓰기)</h2>
+<div class="wrap"><table>
+<tr><th>쓰기</th><th>딸린 코드</th></tr>
+<tr><td>장부 값 넣기·결정·되돌리기</td><td>798개 함수 · 1.65MB</td></tr>
+<tr><td>사건 저장</td><td>783개 · 1.63MB</td></tr>
+<tr><td>장부로 세액계산</td><td>850개 · 2.50MB</td></tr>
+<tr><td>넥스 대화 한 번(도구 정의 포함)</td><td class="warn">2,788개 · 6.89MB(거의 전부)</td></tr>
+</table></div>
+
+<h2>3. 길 셋</h2>
+<div class="wrap"><table>
+<tr><th>길</th><th>하는 일</th><th>얻는 것</th><th>위험·비용</th></tr>
+<tr><td><b>가. 화면 먼저(권장)</b></td><td>장부 「확인·보류·무시·값 넣기·되돌리기」를 누르는 순간 화면에 고친 값을 그리고(「저장 중」 표시), 서버는 뒤에서 보냄 — 사건 저장(10월)과 같은 장치(nxSaveLater_: 같은 사건은 차례로, 실패하면 화면 아래 「다시 보내기」). 서버 답이 오면 서버 값으로 바꿈.</td><td>누르는 순간 0초(지금 13~16초). 서버 변경 없음.</td><td>서버가 거절하는 경우(예: 넥스·서류가 정한 값이라 못 바꿈) 잠깐 보였다 되돌아감 — 그때 까닭을 알림. 화면 파일만.</td></tr>
+<tr><td>나. 쓰기 서버 하나</td><td>장부·사건 쓰기(1.65MB)를 작은 서버로 옮기고 job 서버·넥스는 그 서버를 불러 씀(잠금이 한 곳).</td><td>쓰기 한 번 약 3초(판정 서버 크기와 비슷).</td><td>넥스 도구가 쓰기마다 바깥 호출(+2~3초) → 넥스 한 바퀴가 느려짐. 서버 둘을 늘 같은 판으로 배포. 큰 구조 변경.</td></tr>
+<tr><td>다. job 서버 덜어내기</td><td>밤 점검·정답지 시험·관리 도구 등 드문 일(예: 점검·감시·정답지 약 0.5MB)을 다른 서버로.</td><td>모든 호출 바닥이 조금(약 0.5초) 줄어듦.</td><td>넥스 도구 정의(약 0.8MB)·사건처리 본체는 못 덜어 효과가 작음.</td></tr>
+</table></div>
+
+<h2>4. 정하실 것 — 권장안</h2>
+<ul>
+<li><b>가(화면 먼저)를 먼저</b> — 사건 저장에 이미 쓰는 같은 장치를 장부에도 씀, 서버 변경 없음.</li>
+<li>나·다는 가를 쓰신 뒤에도 느리다고 하시면 다시 여쭘(넥스가 느려지는 값이 있음).</li>
+</ul>
+
+<h2>5. 확인 방법</h2>
+<ul>
+<li>가상 시험 사건을 새로 만들어 장부 「확인」·값 넣기·되돌리기를 실제로 누르고, 화면이 바뀌는 데 걸린 시간과 서버 저장 뒤 같은 값인지 재고, 시험 사건은 지움.</li>
+<li>서버가 거절하는 경우(넥스가 정한 값 고치기)를 일부러 만들어 되돌아가며 까닭이 뜨는지.</li>
+</ul>
+</body></html>
