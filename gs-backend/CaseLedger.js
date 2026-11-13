@@ -42,7 +42,23 @@ var LEDGER_ENUMS_ = {
   'buyer.relation': { codes: ['none', 'sibling', 'lineal', 'spouse', 'relative'], ko: { none: '특수관계 없음', sibling: '형제자매', lineal: '직계존비속', spouse: '배우자', relative: '기타 친족' } },
   transferCause: { codes: ['sale', 'expropriation', 'exchange', 'gift_burden', 'other'], ko: { sale: '매매', expropriation: '수용', exchange: '교환', gift_burden: '부담부증여', other: '기타' } }
 };
-var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '등기부', '전소유자 분양계약서', '분양권 매매계약서', '영수증', '간편계산서', '신고서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
+// [2026.11.13 5차 다] 넥스가 고를 수 있는 역할이 열둘뿐이라 수용재결서·보상금 내역·건축물대장 같은 흔한 서류를 「기타」로 확정했다(실사건 9건) — 실사건에서 나온 종류를 더함
+var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
+// [2026.11.13 5차 다] 파일 이름(없으면 첫머리)이 말하는 서류 종류 — 글자 판정이 이와 어긋나면 확정하지 않고 묻는다(건축물대장→「등기부」, 수용재결서→「토지대장」으로 확정되던 것)
+//  [이름 낱말, 판정 이름에 있어야 맞는 낱말, 이 종류의 이름]. 위에서 먼저 걸리는 것이 이긴다(수용재결서 안의 「토지」보다 「재결」이 먼저)
+var LEDGER_DOC_NAMED_ = [
+  [/재결서|수용\s*재결/, /재결/, '수용재결서'], [/보상\s*금?\s*협의|손실\s*보상.*협의|협의서/, /협의/, '손실보상 협의서'], [/수용\s*사실|수용\s*확인서/, /수용/, '수용사실 확인서'],
+  [/보상\s*금\s*(내역|영수)/, /보상/, '보상금 내역·영수증'], [/입금\s*(의뢰|청구|통장)|입금통장|거래\s*내역|통장/, /통장|입금|거래|이체|은행/, '입금·통장 내역'],
+  [/건축물\s*대장/, /건축물|대장/, '건축물대장'], [/토지\s*대장|임야\s*대장/, /토지\s*대장|임야|대장/, '토지대장'], [/중개\s*대상물|확인\s*설명서/, /중개|설명서/, '중개대상물 확인설명서'],
+  [/등기\s*신청서|이전\s*등기\s*신청|등기\s*필/, /신청|등기필|등기완료/, '등기신청서·등기필증'], [/취득세/, /취득세/, '취득세 영수증'], [/사망\s*진단|기본\s*사항|기본\s*증명|제적/, /사망|기본|제적/, '사망 서류'],
+  [/재산\s*조회|회보서/, /재산|회보|조회/, '재산조회 회보서'], [/감정\s*평가서/, /감정/, '감정평가서'], [/증여\s*계약/, /증여/, '증여계약서']
+];
+function ledgerDocNamed_(name, head) {
+  const nm = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, ''), hd = String(head || '').replace(/\s+/g, ' ').slice(0, 60);
+  for (let i = 0; i < LEDGER_DOC_NAMED_.length; i++) if (LEDGER_DOC_NAMED_[i][0].test(nm)) return { kind: LEDGER_DOC_NAMED_[i][2], ok: LEDGER_DOC_NAMED_[i][1], from: '파일 이름' };
+  if (/^[0-9_\-\s()]+$/.test(nm) || nm.length < 3) for (let i = 0; i < LEDGER_DOC_NAMED_.length; i++) if (LEDGER_DOC_NAMED_[i][0].test(hd)) return { kind: LEDGER_DOC_NAMED_[i][2], ok: LEDGER_DOC_NAMED_[i][1], from: '첫머리 제목' };
+  return null;
+}
 
 function ledgerFolder_() {
   const root = getChiefManagerFolder_();
@@ -910,7 +926,7 @@ function ledgerFromGas_(c, S) {
 // 서류 → 역할 → 칸. GAS 증빙 읽기가 본 모든 서류의 역할을 장부 줄(doc:<파일>.role)로 — 종류를 정한 서류는 규칙 값, 못 정한 서류(글자는 읽음·글자를 못 읽음)는 "이 서류가 무엇인지" 물어볼 것.
 //  종류를 못 정한 서류를 조용히 버리지 않는다(10-15 "파일을 말없이 건너뛰지 않는다"). 넥스가 맡은 사건이면 넥스가 그 파일을 먼저 읽어 역할을 정하고 사실을 적는다.
 function ledgerDocRoles_(c, docs, unknown) {
-  const ops = [], seen = {};
+  const ops = [], seen = {}, reopen = [];
   const unk = {}; (unknown || []).forEach(function (f) { if (f && f.name) unk[f.name] = true; });
   (docs || []).forEach(function (f) {
     if (!f || !f.name || seen[f.name]) return; seen[f.name] = true;
@@ -931,6 +947,7 @@ function ledgerDocRoles_(c, docs, unknown) {
     }
     let label = f.p && (f.p.l || f.p.t) ? String(f.p.l || f.p.t) : '';
     if (!label) return;
+    if (/\+/.test(label)) label = label.split('+').map(function (x) { return x.trim(); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).join('+'); // [2026.11.13 5차 다] 「매매계약서+신고필증+매매계약서+신고필증」처럼 겹친 이름
     // [2026.10.30 D] 매매계약서는 이 사건 납세자가 매도인인지 매수인인지(계약서에 적힌 당사자 — 서식 기재 방식)로 양도계약서·취득계약서를 가른다.
     //  예전엔 "매매계약서"로만 붙어 받을 증빙 계산이 양도 계약서를 취득 쪽 "폴더에 있음"으로 셌다. 판정은 양도 사실 정리와 같은 함수(tcRoleInText_ — 서명란 당사자 → 본문, 파일 이름)
     if (/매매\s*계약/.test(label) || (f.p && f.p.t === 'contract')) {
@@ -945,12 +962,45 @@ function ledgerDocRoles_(c, docs, unknown) {
         }
       } catch (e) { }
     }
+    // [2026.11.13 5차 다] 파일 이름이 다른 종류를 말하면 확정하지 않고 묻는다(넥스가 먼저 그 파일을 읽어 정함 — 넥스 차례)
+    const named = ledgerDocNamed_(f.name, f.p && f.p.head);
+    if (named && !named.ok.test(label) && label.indexOf(named.kind) === -1) {
+      ops.push({ ask: true, path: path, label: '서류 역할 — ' + String(f.name).slice(0, 30), by: 'GAS', question: '「' + f.name + '」은 ' + named.from + '에 「' + named.kind + '」라고 되어 있는데 글자 판정은 「' + label + '」로 나왔습니다 — 어느 서류인지 정해 주세요(이 서류의 값은 역할이 정해진 뒤 칸으로 갑니다)',
+        cands: [{ v: named.kind, src: named.from }, { v: label, src: '글자 판정' }] });
+      reopen.push({ path: path, named: named, label: label, name: f.name });
+      return;
+    }
     ops.push({ path: path, value: label, kind: '규칙', by: 'GAS', file: String(f.name).slice(0, 80), quote: '서류 규칙 판별', sure: '확실' });
   });
+  // 넥스가 「기타」로 확정한 서류도 이름이 종류를 말하면 다시 연다(넥스 값은 GAS 물음이 덮지 못하는 급이라 따로)
+  (docs || []).forEach(function (f) { if (!f || !f.name) return; const nmd = ledgerDocNamed_(f.name, f.p && f.p.head); if (nmd) reopen.push({ path: 'doc:' + String(f.name).slice(0, 80) + '.role', named: nmd, label: '', name: f.name, other: true }); });
+  if (reopen.length) { try { ledgerMutate_(c.id, function (L) { reopen.forEach(function (x) { const r0 = L.rows[x.path]; if (!r0 || r0.state !== '확정' || !r0.src || r0.src.kind !== '넥스' || String(r0.v) !== '기타') return; ledgerAskInner_(L, x.path, { label: '서류 역할 — ' + String(x.name).slice(0, 30), question: '「' + x.name + '」은 ' + x.named.from + '에 「' + x.named.kind + '」라고 되어 있는데 넥스가 「기타」로 정했습니다 — 어느 서류인지 정해 주세요', cands: [{ v: x.named.kind, src: x.named.from }], by: 'GAS' }); ledgerLogTo_(L, { by: 'GAS', what: '서류 역할 다시 엶', path: x.path, detail: '넥스 「기타」 — 이름은 「' + x.named.kind + '」' }); }); }); } catch (e) {} }
   if (!ops.length) return { ok: true, set: 0, asked: 0 };
   const r = ledgerBatch_(c.id, ops);
   ledgerMutate_(c.id, function (L) { ledgerLogTo_(L, { by: 'GAS', what: '서류 역할', detail: '정함 ' + r.set + '개 · 못 정함(물어볼 것) ' + r.asked + '개' }); });
   return r;
+}
+// [2026.11.13 5차 라] 폴더에 없는 파일의 서류 줄(doc:<이름>.role·.use) — 이름이 바뀐 파일은 새 이름 줄로 옮기고, 없어진 파일은 걷는다(물음이면 닫음).
+//  세무사님이 정한 줄은 걷지 않고 「폴더에 없음」만 붙인다. 폴더 목록이 비어 오면(드라이브 끊김) 아무것도 하지 않는다
+function ledgerDocGone_(caseId, files, moved) {
+  // 이름 맞대기는 확장자·띄어쓰기를 빼고 한다(장부엔 「등기부등본1」, 폴더엔 「등기부등본1.pdf」로 적힌 실사건이 있다 — 실사건)
+  //  한 파일을 나눠 읽은 조각(「… (묶음 1-2).pdf」)은 원래 파일이 있으면 있는 것으로 본다
+  const key = function (x) { return String(x || '').slice(0, 80).replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\s*\(묶음\s*\d+\s*-\s*\d+\)\s*$/, '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\s+/g, ''); };
+  const names = {}; (files || []).forEach(function (f) { if (f && f.name) { names[String(f.name).slice(0, 80)] = true; names[key(f.name)] = true; } });
+  if (!Object.keys(names).length) return { ok: true, n: 0 };
+  const ren = {}; (moved || []).forEach(function (x) { if (x && x.from && x.name) ren[String(x.from).split('/').pop().slice(0, 80)] = String(x.name).slice(0, 80); });
+  return ledgerMutate_(caseId, function (L) {
+    let n = 0;
+    Object.keys(L.rows).forEach(function (p) {
+      const m = /^doc:(.+)\.(role|use)$/.exec(p); if (!m || names[m[1]] || names[key(m[1])]) return;
+      if (/^(의뢰서|관련법령|양도계약서|취득계약서)$/.test(m[1])) return; // 파일 이름이 아닌 역할 줄(예: doc:양도계약서.role — 계약 대조 물음)
+      const r = L.rows[p], to = ren[m[1]];
+      if (to && names[to] && !L.rows['doc:' + to + '.' + m[2]]) { L.rows['doc:' + to + '.' + m[2]] = r; delete L.rows[p]; n++; ledgerLogTo_(L, { by: 'GAS', what: '서류 줄 옮김', path: p, detail: '이름 바뀜 → ' + to }); return; }
+      if (r && r.src && r.src.kind === '세무사님') { if (!r.gone) { r.gone = true; n++; } return; }
+      delete L.rows[p]; n++; ledgerLogTo_(L, { by: 'GAS', what: '서류 줄 걷음', path: p, detail: '폴더에 없는 파일(옮겼거나 지움) — ' + (r && r.state || '') });
+    });
+    return { ok: true, n: n };
+  });
 }
 // ── 질문 = 장부 줄 [2026.10.28 시정 2단계 — 질문 목록 단일화] ──
 // 예전: GAS가 낸 질문은 화면이 받아 서버에 "남은 질문(remaining)"으로 저장해야만 남았고(화면 없이 도는 길 — 넥스 지휘·점검 — 에선 질문이 사라짐),
@@ -1528,6 +1578,10 @@ function ledgerToolRun_(input, by) {
     let r1; try { r1 = ledgerSet_(c.id, { path: input.path, value: input.value, kind: '추정', by: who, file: input.file, page: input.page, quote: input.quote, why: ['세무사님 전용 칸 — 잠정(세무사님 답으로만 확정)', input.why].filter(Boolean).join(' · '), label: input.label, cands: input.cands }); } catch (e) { r1 = { ok: false, error: String(e && e.message || e) }; }
     let r2 = null; try { r2 = ledgerAsk_(c.id, { path: input.path, label: input.label, question: '세무사님 답으로만 정하는 칸 — 넥스 잠정값 ' + String(input.value).slice(0, 60) + (input.why ? ' (근거: ' + String(input.why).slice(0, 120) + ')' : ''), cands: Array.isArray(input.cands) && input.cands.length ? input.cands : [{ v: input.value, src: String(input.file || input.why || '넥스 정황').slice(0, 80) }], needDoc: false, by: who }); } catch (e) { r2 = null; }
     r = r1 && r1.ok ? Object.assign({}, r1, { 반영: '잠정으로 적고 여쭐 것으로 세움 — 이 칸(특수관계·시가·감정가·사전증여)은 세무사님 답으로만 확정된다', 질문: r2 && r2.ok ? '세움' : '못 세움' }) : r1;
+  }
+  else if (d === 'set' && kind !== '세무사님' && /^doc:.+\.role$/.test(String(input.path || '')) && String(input.value || '').trim() === '기타' && ledgerDocNamed_(String(input.path).replace(/^doc:|\.role$/g, ''), '')) { // [2026.11.13 5차 다]
+    const nk = ledgerDocNamed_(String(input.path).replace(/^doc:|\.role$/g, ''), '');
+    r = { ok: false, refused: true, error: '넣지 않음 — 파일 이름이 「' + nk.kind + '」인데 「기타」로 정하지 않는다. 읽은 대로 역할(' + LEDGER_DOC_ROLES_.join('·') + ')을 적거나, 정말 모르면 do=ask로 세무사님께' };
   }
   else if (d === 'set' && kind !== '세무사님') { // [2026.10.31 세 길 합치기 3] 넥스 값은 한 문(ledgerNexGate_)을 지난다
     const g = ledgerNexGate_(c, input.value, ledgerNexSetBasis_(input), input.path);

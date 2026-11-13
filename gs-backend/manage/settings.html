@@ -1017,13 +1017,14 @@
         if (djWatch.starting){ djWatch.starting = false; djTick_(); }
       });
     }
-    function loadDeployInfo_(){
-      callGas('deploy_job_status', {}).then(function(st){
+    function loadDeployInfo_(soft){
+      // [2026.11.13 5차 사] 앱을 열 때(soft)는 10분 안에 받은 배포 상태면 서버를 부르지 않는다 — 설정을 안 열어도 열 때마다 16~34초씩 job 서버를 붙잡았다
+      (soft && window.nxCacheRecent_ ? nxCacheRecent_('deploy_job_status', {}, '', 600000) : callGas('deploy_job_status', {})).then(function(st){
         djRenderInfo_(st);
         if (st && st.active && st.job && !djWatch){ djFollow_(st.job); } // 다른 곳(PC·다른 창)에서 시작한 반영도 따라간다
       }).catch(function(){ if (djInfoBox) djInfoBox.textContent = '운영 버전을 확인하지 못했습니다.'; });
     }
-    loadDeployInfo_();
+    loadDeployInfo_(true);
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){
       if (!chk) return '';
@@ -1031,9 +1032,9 @@
       return '<div style="margin-top:6px;"><div class="nx-l4" style="margin:4px 0 3px;' + (chk.ok ? '' : ' color:#b3261e;') + '">' + (chk.ok ? '배포 직후 점검 정상' : '배포 직후 점검 이상 ' + bad.length + '건') + '<span class="nx-l-sub">' + escapeHtml(chk.at || '') + '</span></div>'
         + (bad.length ? bad.map(function(x){ return '<div class="nx-li" style="padding-top:1px; padding-bottom:1px;">' + escapeHtml(x.name) + ' — ' + escapeHtml(x.msg) + '</div>'; }).join('') + '<div class="nx-li-go">→ 이상하면 ↩ 되돌리기를 누르세요.</div>' : '') + '</div>';
     }
-    callGas('deploy_check_last', {}).then(function(r){
+    (window.nxCacheRecent_ ? nxCacheRecent_('deploy_check_last', {}, '', 1800000) : callGas('deploy_check_last', {})).then(function(r){ // [2026.11.13 5차 사] 30분 안에 받은 값이면 서버를 부르지 않음
       var chk = r && r.last;
-      if (chk && !chk.ok && bugList) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
+      if (chk && !chk.ok && bugList && bugList.innerHTML.indexOf('배포 직후 점검') === -1) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
     }).catch(function(){});
     document.getElementById('stBtnRollback').addEventListener('click', function(){
       if (djBusy_()) return;

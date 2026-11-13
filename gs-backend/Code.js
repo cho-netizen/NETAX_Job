@@ -5784,7 +5784,8 @@ function buildContextSystemPrompt(basePrompt, body) {
           + ' 고칠 때는 apply_document_edit의 edits(바꿀 부분만)를 써라 — '
           + '이 경우에 한해 위의 "content 생략 금지" 규칙은 적용되지 않는다(edits를 쓰면 content는 비워둔다). 문서를 거의 새로 쓸 때만 content를 쓴다. '
           + (inRw_ ? '사용자에게는 "답변 아래 [📝 편집창에 적용하기]를 누르면 편집창에 들어가고, 되돌리려면 [↩ 적용 전으로]를 누르면 된다"고 안내하라.'
-            : '사용자에게는 "미리보기 칸의 [이 수정안으로 저장]을 누르면 반영된다"고 안내하라.');
+            : (nxDocAutoSave_(body) ? '화면이 바로 저장한다 — 고친 것만 말하라.'
+              : '사용자에게는 "미리보기 칸의 [이 수정안으로 저장]을 누르면 반영된다"고 안내하라.'));
       }
       dynamicExtra += '\n\n[중요] 지금 편집기에 열려 있는 바로 이 문서를 고치거나, 이 문서를 바탕으로 새로 정리해달라는 요청이면 — save_file_to_folder로 조용히 덮어쓰지 말고 반드시 apply_document_edit 도구를 사용하라(도구 설명 참고). save_file_to_folder를 쓰면 사용자가 "편집기에 적용하기" 버튼을 못 받아서 편집기 화면이 갱신 안 된 채로 남는다. 완전히 다른 새 파일을 만드는 경우(지금 열려있는 문서와 무관한 별도 파일)에만 save_file_to_folder를 써라. 문서 수정을 요청한 게 아니라면 둘 다 쓰지 마라.';
     } else if (ctx.openFile.mimeType && (ctx.openFile.mimeType.indexOf('image/') === 0 || ctx.openFile.mimeType === 'application/pdf')) {
@@ -11386,7 +11387,9 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
           : ((body.context && Array.isArray(body.context.currentPath)) ? body.context.currentPath : []);
         // [2026.10.30 운영 시험(가상조사대응)] 사건이 연결된 대화에서 넥스가 path를 사건 폴더 기준(["보고서_내부"])으로 주면 드라이브 맨 위에서 찾다 실패했고,
         //  path 없이 다시 저장하자 보고서가 드라이브 맨 위에 떨어졌다 — 사건 대화의 저장은 사건 폴더 기준으로 푼다(없는 하위 폴더면 저장하지 않고 알린다).
-        const saveOpts = { aiTool: true, openFileId: (body.context && body.context.openFile && body.context.openFile.id) || '', overwriteReviewMemo: input.overwrite === true };
+        const docAuto = nxDocAutoSave_(body); // [2026.11.13 5차 마] 세무사님이 "반영하라·수정하라"면 열린 문서도 바로 저장(직전 판은 _이전판)
+        const saveOpts = { aiTool: true, openFileId: docAuto ? '' : ((body.context && body.context.openFile && body.context.openFile.id) || ''), overwriteReviewMemo: input.overwrite === true };
+        if (docAuto && body.context && body.context.openFile && body.context.openFile.id) clientActions.push({ type: 'preview_reload', fileId: body.context.openFile.id });
         if (nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
           const cf = nxCaseSaveFolder_(nxCaseId_, input.path);
           if (cf && cf.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: cf.error }) };
@@ -12203,11 +12206,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
           if (problems.length) {
             return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '수정안을 적용하지 않았습니다. 다음 항목을 고쳐 edits 전체를 다시 보내세요: ' + problems.join(' / ') };
           }
-          clientActions.push({ type: 'edit_document', content: text });
-          return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'prepared', 적용한_수정: input.edits.length + '곳', note: '사용자 화면에 수정안이 표시되었습니다. 실제 저장은 사용자가 버튼을 눌러야 이루어집니다.' }) };
+          const auto1 = nxDocAutoSave_(body);
+          clientActions.push({ type: 'edit_document', content: text, autoSave: auto1 });
+          return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(auto1 ? { status: 'saving', 적용한_수정: input.edits.length + '곳', note: '세무사님이 반영하라고 하셔서 화면이 이 수정을 바로 저장한다(직전 내용은 화면 「되돌리기」로 되돌림). 세무사님께 「저장 단추를 눌러 달라」고 하지 마라.' } : { status: 'prepared', 적용한_수정: input.edits.length + '곳', note: '사용자 화면에 수정안이 표시되었습니다. 실제 저장은 사용자가 버튼을 눌러야 이루어집니다.' }) };
         }
-        clientActions.push({ type: 'edit_document', content: input.content || '' });
-        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'prepared', note: '사용자 화면에 적용 버튼과 함께 제시되었습니다. 실제 반영은 사용자가 버튼을 눌러야 이루어집니다.' }) };
+        const auto2 = nxDocAutoSave_(body);
+        clientActions.push({ type: 'edit_document', content: input.content || '', autoSave: auto2 });
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(auto2 ? { status: 'saving', note: '세무사님이 반영하라고 하셔서 화면이 바로 저장한다(직전 내용은 화면 「되돌리기」로 되돌림). 세무사님께 「저장 단추를 눌러 달라」고 하지 마라.' } : { status: 'prepared', note: '사용자 화면에 적용 버튼과 함께 제시되었습니다. 실제 반영은 사용자가 버튼을 눌러야 이루어집니다.' }) };
       }
 
       if (block.name === 'apply_diagram_edit') {
@@ -23048,6 +23053,8 @@ function cpWatchCase_(c, opt) {
     }
   });
   if (changes.length) caseProcHypTextsForget_(c.id); // [2026.10.28 속도 B] 메모·의뢰서가 바뀌었을 수 있다
+  // [2026.11.13 5차 라] 폴더에 없는 파일의 장부 줄 — 실사건 장부에 옮기거나 이름이 바뀐 파일 셋의 줄이 남아 넥스가 "파일이 없어 못 읽음"을 세무사님께 넘겼다
+  try { if (files.length && typeof ledgerDocGone_ === 'function') { const gn = ledgerDocGone_(c.id, files, changes.filter(function (x) { return x.kind === '옮김'; })); if (gn && gn.n && String(c.상태 || '') !== '완료') cpFlowQueueAdd_(c.id, '폴더에 없는 파일 줄 ' + gn.n + '개 정리 — 지금 이름으로 다시 읽기', 'read'); } } catch (e) {}
   // [2026.10.29] 세무사님 "사건폴더내 파일이 변경된 사실을 인지했을때 바로 업데이트하는 것으로 당장 수정하라" — 변동을 알아챈 그 자리에서 사건 장부(파일 장부·서류 사실·맞대기·칸↔사실 잇기·후보)를
   //  다시 모은다(GAS만, 0원 — 새 글자인식은 하지 않고 기억에 있는 글자로. 아직 못 읽은 새 파일은 파일 장부에 "못읽음"으로 서고, 서류 미리 읽기가 읽은 뒤 그 틱에서 다시 모음).
   //  처음 대조(first)는 지문만 남긴다. 시간 한도 안에 못 하면 미뤄 두고 다음 틱 첫머리에(cpLedgerStaleRun_)
@@ -23123,9 +23130,19 @@ function cpNexChatNote_(c, text, tag) {
 //  · 줄 서기: ledgerQWrite_가 새 물음을 세우면 cpNexQEnqueue_, 밤 점검(awQuestionsNightly_)이 진행 사건을 훑어 다시 세움
 //  · 틱마다 한 사건, 상태 「진행」·가상 아님·스위치 켬·AI 지휘 켬·낮(22~07시 밖)일 때만. 도구: case_files·file_read·case_ledger(set/ask)·close_question·questions_done
 //  · 넥스가 못 정한 것은 case_ledger do=ask(group 붙여)로 세무사님 차례로 넘긴다 — 세무사님께는 사실 장부 ④ 물어볼 것에 묶음으로 보인다
-var CP_NEXQ_PENDING_ = 'cp_nexq_pending';
+// [2026.11.13 5차 마] 열린 문서 바로 저장 — 세무사님 말씀(마지막 말)이 "반영·수정·고쳐·작성·저장·업데이트·합치·넣어·삽입·추가·바꿔"면 화면이 수정안을 바로 저장한다
+//  (실사건 11-06 "저장되지 않았다", 넥스가 「[이 수정안으로 저장]을 눌러 주세요」를 10번 넘게 말함). "수정안만·보여만·저장하지 마"면 예전처럼 수정안만. 세무사님 11-13 "당장 수정하라"(5차 정하실 것 ① 권장안)
+function nxDocAutoSave_(body) {
+  const ms = (body && Array.isArray(body.messages)) ? body.messages : [];
+  let t = '';
+  for (let i = ms.length - 1; i >= 0; i--) { const m = ms[i]; if (!m || m.role !== 'user') continue; const c = m.content; t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter(function (b) { return b && b.type === 'text'; }).map(function (b) { return b.text; }).join(' ') : ''; if (t) break; }
+  t = String(t || '').slice(0, 600);
+  if (!t || /수정안만|보여\s*(만|줘|주라|달라)|미리\s*보기만|저장\s*(하지|말)|저장은\s*내가/.test(t)) return false;
+  return /반영|수정|고쳐|고치|작성|저장|업데이트|갱신|합치|합쳐|넣어|삽입|추가|바꿔|바꾸|정리|보완/.test(t);
+}
+var CP_NEXQ_PENDING_ = 'cp_nexq_pending', CP_NEXQ_SUPPRESS_ = false;
 function cpNexQEnqueue_(caseId) {
-  const id = String(caseId || ''); if (!id) return;
+  const id = String(caseId || ''); if (!id || CP_NEXQ_SUPPRESS_) return;
   const props = PropertiesService.getScriptProperties();
   let q = []; try { q = JSON.parse(props.getProperty(CP_NEXQ_PENDING_) || '[]'); } catch (e) { q = []; }
   if (q.indexOf(id) === -1) { q.push(id); props.setProperty(CP_NEXQ_PENDING_, JSON.stringify(q.slice(-60))); }
@@ -23269,6 +23286,31 @@ function cpLedgerStaleRun_(started, DEADLINE) {
 //  칸 채우기·계산은 저절로 하지 않는다(세무사님 10-31 승인 ③ "하지 않음" — 계산 화면은 장부에서 바로 읽음). GAS만, AI 없음, 0원. 이미 그 뒤에 돈 바퀴가 있으면(장부 L.flow.at이 더 나중) 건너뛴다. 틱은 시간 한도가 있어
 //  남은 시간이 2분 반 넘을 때만 한 사건씩. 밤에도 돈다(넥스를 깨우지 않으므로)
 var CP_FLOW_QUEUE_ = 'cp_flow_queue', CP_FLOW_RUNNING_ = 'cp_flow_running';
+// [2026.11.13 5차 가] 첫 바퀴 — 미리 읽기는 "방금 바뀐 파일"만 보아, 장부가 생기기 전부터 폴더에 있던 서류는 아무도 읽지 않았다
+//  (진행 실사건 12건 중 실사건 30개·실사건 15개·실사건·실사건 서류가 장부 0줄). 한 시간에 한 번, 진행 중인 실사건 가운데
+//  장부에 계산 칸이 하나도 없고 폴더에 서류가 있고 첫 바퀴를 돈 적 없는 사건을 장부 적기 줄(서류 읽기 → 칸 채우기, GAS만·0원)에 넣는다.
+//  세무사님이 정하신 값은 장부 주인 규칙(세무사님 > 넥스 > 서류·규칙)이 그대로 지킨다
+function cpLedgerHasCalc_(L) { return Object.keys((L && L.rows) || {}).some(function (p) { const r = L.rows[p]; return !/^(doc:|q:|기준일$)/.test(p) && r && r.v !== '' && r.v != null; }); }
+function cpFirstPassScan_(started, DEADLINE) {
+  if (Date.now() - started > DEADLINE - 120000) return '';
+  const cache = CacheService.getScriptCache(); if (cache.get('cp_firstpass_scan')) return ''; cache.put('cp_firstpass_scan', '1', 3600);
+  const cases = (typeof awCases_ === 'function' ? awCases_() : []).filter(function (c) { return String(c.상태 || '') === '진행' && !(typeof awVirtual_ === 'function' && awVirtual_(c)) && String(c.폴더ID || '').trim(); });
+  const put = [];
+  cases.forEach(function (c) {
+    if (Date.now() - started > DEADLINE - 90000) return;
+    try {
+      const sv = caseProcLoad_(c.id) || {}; if (sv.firstPass && sv.firstPass.queued) return;
+      if (cpLedgerHasCalc_(ledgerLoad_(c.id))) return;
+      const it = DriveApp.getFolderById(c.폴더ID).getFiles(); let n = 0; while (it.hasNext() && n < 2) { const f = it.next(); if (!/^_/.test(f.getName())) n++; }
+      if (!n) { const sub = DriveApp.getFolderById(c.폴더ID).getFolders(); while (sub.hasNext() && !n) { const fi = sub.next().getFiles(); if (fi.hasNext()) n++; } }
+      if (!n) return;
+      cpFlowQueueAdd_(c.id, '첫 바퀴 — 폴더 서류가 장부에 한 번도 안 들어옴', 'read');
+      caseProcPatch_(c.id, function (s2) { s2.firstPass = { queued: caseProcNow_() }; caseProcLogTo_(s2, { by: 'GAS', what: '첫 바퀴 줄 섬', detail: '폴더 서류를 읽어 장부 칸으로(넥스 없이)' }); });
+      put.push(String(c.사건명 || c.id).slice(0, 20));
+    } catch (e) {}
+  });
+  return put.length ? put.length + '건 줄 세움: ' + put.join(', ') : '';
+}
 function cpFlowQueueAdd_(caseId, why, kind) {
   if (!caseId || (typeof AK_IN_SANDBOX_ !== 'undefined' && AK_IN_SANDBOX_)) return;
   try { const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_FLOW_QUEUE_) || '[]'); } catch (e) { q = []; } const had = q.filter(function (x) { return x && x.id === String(caseId) && x.kind === 'read'; }).length; q = q.filter(function (x) { return x && x.id !== caseId; }); q.push({ id: String(caseId), why: String(why || '').slice(0, 60), at: caseProcNow_(), kind: (kind === 'read' || had) ? 'read' : 'ledger' }); props.setProperty(CP_FLOW_QUEUE_, JSON.stringify(q.slice(-50))); } catch (e) {}
@@ -23289,6 +23331,7 @@ function cpFlowQueueRun_(started, DEADLINE) {
     let r = null;
     try {
       if (item.kind === 'read') {
+        CP_NEXQ_SUPPRESS_ = /^첫 바퀴/.test(String(item.why || '')); // [2026.11.13 5차 가] 첫 바퀴는 넥스(유료)를 깨우지 않는다 — finally에서 풂
         const budget = Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000));
         // [2026.11.05 미리 읽기 직결] 직결이 켜져 있으면 먼저 직결로(서류 읽기 + 장부 적기까지 서비스가 하고 저장은 t6ApplyRead_) — 못 쓰면 지금처럼 GAS 서류 읽기 도구
         let d = null;
@@ -23296,11 +23339,21 @@ function cpFlowQueueRun_(started, DEADLINE) {
         if (d && d.ok) r = { ok: true, direct: true, more: d.more, sec: d.timing ? d.timing.total : null };
         else r = caseProcTimed_({ caseId: item.id, step: 'read', budgetMs: Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000)), noAi: true, by: 'GAS', flowWhy: item.why + (d ? ' · 직결 안 됨(' + d.why + ')' : '') });
       }
+      else if (item.kind === 'fill') { // [2026.11.13 5차 가·나] 칸 채우기(GAS만) — 첫 바퀴의 넥스 깨우기는 막는다(세무사님께 "넥스 없이 0원"으로 말씀드린 바퀴)
+        CP_NEXQ_SUPPRESS_ = /^첫 바퀴/.test(String(item.why || ''));
+        try { r = caseProcTimed_({ caseId: item.id, step: 'fill', budgetMs: Math.max(60000, Math.min(200000, DEADLINE - (Date.now() - started) - 40000)), noAi: true, by: 'GAS', flowWhy: item.why }); }
+        finally { CP_NEXQ_SUPPRESS_ = false; }
+      }
       else { const c0 = akReadCase_(item.id); r = c0 ? { ok: true, flow: caseFlowRound_(c0, item.why, []) } : { ok: false, error: '사건 없음' }; }
     }
     catch (e) { r = { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
-    finally { props.deleteProperty(CP_FLOW_RUNNING_); }
-    if (r && (r.more || r.partial)) cpFlowQueueAdd_(item.id, item.why + '(이어서)', 'read'); // 서류 읽기가 길어 다 못 돌았으면 다음 틱에 이어서
+    finally { props.deleteProperty(CP_FLOW_RUNNING_); CP_NEXQ_SUPPRESS_ = false; }
+    if (r && (r.more || r.partial)) cpFlowQueueAdd_(item.id, item.why + '(이어서)', item.kind === 'fill' ? 'fill' : 'read'); // 서류 읽기가 길어 다 못 돌았으면 다음 틱에 이어서
+    // [2026.11.13 5차 가·나] 서류 읽기가 끝나면 같은 줄에서 칸 채우기(GAS, 0원)를 이어 돈다 — 세무사님 11-13 "당장 수정하라"(5차 점검서 나: "서류 종류가 정해지면 그 세목의 칸 채우기를
+    //  같은 자리에서 이어 돌린다")로 10-31 ③ "칸 채우기는 저절로 하지 않음"을 바꿈. 계산(세액)은 여전히 저절로 하지 않는다(계산 화면이 장부에서 바로 읽음).
+    //  예전엔 서류만 읽고 칸으로 보내지 않아 상속·증여 실사건 셋(실사건·실사건·실사건)이 서류 종류만 25~28줄, 계산 칸 0줄이었다
+    else if (r && !r.error && item.kind === 'read') cpFlowQueueAdd_(item.id, item.why + ' → 칸 채우기', 'fill');
+    else if (r && !r.error && item.kind === 'fill') { try { caseProcPatch_(item.id, function (sv) { sv.firstPass = Object.assign({}, sv.firstPass || {}, { at: caseProcNow_(), done: true, why: String(item.why || '').slice(0, 80) }); }); } catch (e) {} }
     done.push(item.id + ': ' + (r && r.error ? '실패 ' + r.error : r && r.direct ? ('직결로 읽음' + (r.sec != null ? ' ' + r.sec + '초' : '') + (r.more ? ' · 이어서 다음 틱' : '')) : r && r.flow ? (r.flow.diff.length ? r.flow.diff.join(' · ') : '바뀐 것 없음') : '바퀴 미완(' + ((r && (r.more || r.partial)) ? '다음 틱' : '') + ')'));
   }
   return done;
@@ -23310,7 +23363,7 @@ function cpFlowQueueRun_(started, DEADLINE) {
 //  만약 그런 경우라면 AI가 먼저 말을 걸어도 되겠지." / 공통원칙 1 "중요한 순간인지는 GAS가 규칙으로 알아채고(0원), 그때만 넥스를 부른다". 밤(22~07시)엔 줄에 둔 채 아침에
 var CP_NEX_MOMENT_ = 'cp_nex_moment';
 function cpNexMomentAdd_(caseId, items) {
-  if (!caseId || !items || !items.length || (typeof AK_IN_SANDBOX_ !== 'undefined' && AK_IN_SANDBOX_)) return;
+  if (!caseId || !items || !items.length || CP_NEXQ_SUPPRESS_ ||(typeof AK_IN_SANDBOX_ !== 'undefined' && AK_IN_SANDBOX_)) return;
   try {
     const props = PropertiesService.getScriptProperties(); let q = []; try { q = JSON.parse(props.getProperty(CP_NEX_MOMENT_) || '[]'); } catch (e) { q = []; }
     const old = q.filter(function (x) { return x && x.id === caseId; })[0];
@@ -23409,6 +23462,7 @@ function cpWatchTick_(touched, started, DEADLINE) {
     if (cpWatchPending_(caseProcLoad_(c.id) || {}).length) wake(c);
   });
   try { const qw = cpNexQuestionRun_(started, DEADLINE); if (qw) { out.lines.push('넥스 질문 풀기 ' + qw); out.nexq = (out.nexq || 0) + 1; } } catch (e) { out.lines.push('넥스 질문 풀기 실패: ' + String(e && e.message || e).slice(0, 80)); } // [2026.11.12 질문 정리 ②]
+  try { const fp = cpFirstPassScan_(started, DEADLINE); if (fp) out.lines.push('첫 바퀴 ' + fp); } catch (e) { out.lines.push('첫 바퀴 찾기 실패: ' + String(e && e.message || e).slice(0, 80)); } // [2026.11.13 5차 가]
   try { cpFlowQueueRun_(started, DEADLINE).forEach(function (s) { out.lines.push('장부 적기 ' + s); out.flow = (out.flow || 0) + 1; }); } catch (e) { out.lines.push('장부 적기 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 계획서 2단계]
   try { cpNexMomentRun_(started, DEADLINE).forEach(function (s) { out.lines.push('중요한 순간 ' + s); out.moment = (out.moment || 0) + 1; }); } catch (e) { out.lines.push('중요한 순간 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 넥스 4] 밤엔 줄에 둠
   return out;
@@ -27239,10 +27293,12 @@ function tc_ruleTransferFactsRaw_(body) {
   bankInc.trDateCands.forEach(function (x) { if (!trDateCands.some(function (q) { return q.v === x.v; })) trDateCands.push(x); }); // [2026.10.17] 통장으로 확인한 실제 대금청산일
   txs.forEach(function (t) { (t.transferDateConflict || []).forEach(function (x) { if (!trDateCands.some(function (q) { return q.v === x.v; })) trDateCands.push(x); }); }); // 상충 판단 3 — 잔금일이 갈린 거래의 후보
   // [2026.10.17 2차 새 서류] 토지등 수용사실 확인서 — 양도일 후보(보상금 수령일·등기 접수일 중 빠른 날)와 사업인정 고시일(수용 감면 2년 요건·비사업용 토지 판정 기준)
+  // [2026.11.13 5차 라] 한 사건 여러 사람(11-05) — 공동 양도인(장부 seller1.name…)도 이 사건 사람으로 대조한다(실사건: 실사건 확인서에 「양도자가 사건 납세자와 다름 ⚠」)
+  var certNames = names.slice(); try { var Lsn = typeof ledgerLoad_ === 'function' ? ledgerLoad_(caseId) : null; Object.keys((Lsn && Lsn.rows) || {}).forEach(function (p) { if (/^seller\d*\.name$/.test(p) && Lsn.rows[p].v) certNames.push(String(Lsn.rows[p].v).replace(/\s+/g, '')); }); } catch (e) {}
   comps.filter(function (x) { return x.cert; }).forEach(function (x) {
     if (x.cert.양도일 && !trDateCands.some(function (q) { return q.v === x.cert.양도일; })) trDateCands.push({ v: x.cert.양도일, src: (x.cert.label || '토지등 수용사실 확인서') + '(' + x.file + ') — ' + x.cert.양도일근거 });
     evidence.push((x.cert.label ? x.cert.label.replace(/^토지수용위원회 /, '') : '수용사실 확인서') + ': ' + x.file + ' — ' + (x.project || '공익사업') + (x.cert.고시일 ? ', 사업인정 고시일 ' + x.cert.고시일 + (x.cert.고시번호 ? '(' + x.cert.고시번호 + ')' : '') : '') + ', 총 보상액 ' + x.total.toLocaleString('ko-KR') + '원' + (x.cert.현금 ? '(전액 현금보상)' : '') + (x.rows ? ' = 필지 ' + x.rows.length + '줄 합 검산 일치' : ' — ⚠ 필지 합 검산 안 됨') + (x.cert.양도일 ? ', 양도일 후보 ' + x.cert.양도일 : '')
-      + (x.cert.양도자 && names.some(function (n0) { return /[가-힣]{2}/.test(n0); }) && !tcNameIn_(x.cert.양도자, names) ? ' — ⚠ 확인서의 양도자(' + x.cert.양도자 + ')가 사건 납세자와 다름' : ''));
+      + (x.cert.양도자 && certNames.some(function (n0) { return /[가-힣]{2}/.test(n0); }) && !tcNameIn_(x.cert.양도자, certNames) ? ' — ⚠ 확인서의 양도자(' + x.cert.양도자 + ')가 사건 양도인(공동 양도인 포함)과 다름' : ''));
   });
   // [2026.10.18 정밀분석 3차 고객Z] 당초 신고 계산근거 — 수정신고는 양도시기가 당초 그대로라 그 양도일을 1번 후보로, 취득일·고시일·당초 보상가는 서류끼리 대조해 근거로 남긴다
   var priorCalc = priorCalcs[0] || null;
@@ -47471,7 +47527,9 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     { mode: 'choose', target: 'calc:seller.regNo', input: 'text', label: '양도인 주민등록번호', cands: rf.parties.regNoCheck.seller.map(function (x) { return { v: x.v, src: x.src }; }) });
   // 2) 양도계약 카드 — 양도일·양도가액·양수인 관계
   const dConf = txs.some(function (t) { return t.transferDateConflict; });
-  if (!c.기준일 && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) q('ov:기준일:none', dConf ? 'judge' : 'missing', dConf ? '양도일 — 계약서 잔금일과 실거래 신고필증 잔금지급일이 서로 달라 자동으로 정하지 않았습니다(잔금일 변경 또는 글자인식 오류). 양도일은 실제 잔금일과 등기접수일 중 빠른 날(소득세법 §98)이고, 보유기간(장기보유특별공제·단기 세율)과 신고기한이 이 날로 정해집니다 — 실제로 잔금을 받은 날 쪽 후보를 고르세요' + (txs.some(function (t) { return (t.transferDateConflict || []).some(function (x) { return /등기접수일/.test(x.src); }); }) ? '(후보마다 등기접수일과 견준 결과를 적었습니다).' : '.')
+  // [2026.11.13 5차 라] 장부 계약 양도일(c0.date)에 값이 이미 있으면(넥스·세무사님 잠정 포함) 같은 사실을 두 번째 물음으로 세우지 않는다 — 실사건: c0.date 2026-09-09(받을 증빙)와 「양도일 비어 있음」 물음이 따로 있었다
+  let c0d = ''; try { const Lc = ledgerLoad_(c.id); c0d = Lc && Lc.rows && Lc.rows['c0.date'] ? String(Lc.rows['c0.date'].v || '') : ''; } catch (e) {}
+  if (!c.기준일 && !c0d && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) q('ov:기준일:none', dConf ? 'judge' : 'missing', dConf ? '양도일 — 계약서 잔금일과 실거래 신고필증 잔금지급일이 서로 달라 자동으로 정하지 않았습니다(잔금일 변경 또는 글자인식 오류). 양도일은 실제 잔금일과 등기접수일 중 빠른 날(소득세법 §98)이고, 보유기간(장기보유특별공제·단기 세율)과 신고기한이 이 날로 정해집니다 — 실제로 잔금을 받은 날 쪽 후보를 고르세요' + (txs.some(function (t) { return (t.transferDateConflict || []).some(function (x) { return /등기접수일/.test(x.src); }); }) ? '(후보마다 등기접수일과 견준 결과를 적었습니다).' : '.')
     : (rf && (rf.trDateCands || []).some(function (x) { return x.prior; })) ? '양도일 — 경정·수정신고 사건이라 양도시기는 당초 신고 그대로입니다(국세기본법 §45). 당초 신고 계산근거의 양도일을 1번 후보로, 다른 서류의 날짜를 함께 보여드립니다 — 맞는 날을 고르세요' + (rf.comps && rf.comps.length ? '(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호).' : '(잔금일·등기접수일 중 빠른 날, §98).') // [2026.10.18 정밀분석 3차 고객Z]
     : (rf && (rf.comps || []).length ? '양도일(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호)' : '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)') + '을 서류에서 정하지 못했습니다 — 신고기한(양도일이 속한 달 말일부터 2개월)·보유기간(장기보유특별공제·단기 세율)이 이 날로 정해져 계산 전 필수입니다. 매도 계약서 잔금일·신고필증 잔금지급일·등기부 양도 등기 접수일을 찾지 못했으니 그 서류를 폴더에 넣거나 날짜를 직접 넣어 주세요.', { mode: 'base', cands: (rf && rf.trDateCands || []).length ? rf.trDateCands : undefined });
   st.transferContracts.forEach(function (ct, k) {

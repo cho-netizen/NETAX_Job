@@ -1230,7 +1230,7 @@
       box.innerHTML = html;
       var askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */; if (askCard) askCard.hidden = !html;
       // 법령 판단 대기 — 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만
-      callGas('ai_judge_get', {}).then(function(j){
+      nxCacheRecent_('ai_judge_get', {}, '', 1800000).then(function(j){ // [2026.11.13 5차 사] 30분 안에 받은 값이면 서버를 부르지 않음
         var n = ((j && j.doc && j.doc.항목) || []).filter(function(x){ return x.결정 && x.결정.선택 === '보류'; }).length;
         if (n && askCard) askCard.hidden = false;
         if (n) box.insertAdjacentHTML('afterbegin', row('⚖️ <b style="color:#b3261e;">법령 판단 대기 — 세무사님 결정 필요 ' + n + '건</b> <a href="#" data-dashgo="settings" data-dashgo-card="stFedCard">설정 → 시스템 관리 → 법령 판단 대기</a>', true));
@@ -1317,10 +1317,11 @@
   });
   // [2026.10.20] "운영 @1185 · 오늘 18:52 반영 · 점검 정상" — 반영이 진행 중이면 단계·경과 시간(📥·✅·↩·PC clasp 모두, Code.js deployJobStatus_).
   //  진행 중일 때만 10초마다 다시 본다. 누르면 설정 🐞 카드(운영 버전·최근 반영 내역)로.
-  var dashDeployTimer = null;
+  var dashDeployTimer = null, dashDeployLive = false;
   function loadDashDeployLine_(){
     clearTimeout(dashDeployTimer);
-    callGas('deploy_job_status', {}).then(function(st){
+    // [2026.11.13 5차 사] 배포 상태는 10분 안에 받은 값이면 서버를 부르지 않는다(반영이 진행 중일 때만 10초마다 새로)
+    (dashDeployLive ? callGas('deploy_job_status', {}) : nxCacheRecent_('deploy_job_status', {}, '', 600000)).then(function(st){
       var el = document.getElementById('dashDeployLine');
       if (!el || !st || !st.success) return;
       var h0 = (st.history || [])[0], live = st.live, chk = st.check, j = st.job;
@@ -1337,6 +1338,7 @@
       else if (st.stale && j) parts.push('<span style="color:#b3261e;">⚠ 끝나지 않은 반영 기록이 있음</span>');
       else if (j && j.done && j.stage === 'failed' && st.now - (j.finishedAt || 0) < 86400000) parts.push('<span style="color:#b3261e;">❌ 최근 반영 실패</span>');
       el.innerHTML = parts.join(' · ');
+      dashDeployLive = !!st.active; clearTimeout(dashDeployTimer);
       if (st.active) dashDeployTimer = setTimeout(loadDashDeployLine_, 10000);
     }).catch(function(){ var el = document.getElementById('dashDeployLine'); if (el) el.textContent = '운영 버전을 확인하지 못했습니다.'; });
   }
@@ -1346,7 +1348,7 @@
     setTimeout(function(){ var c = document.getElementById('stBugCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
   });
   function loadDashNightlyStatus_(){
-    nxCacheFirst_('getNightlyStatus', {}, 'dashNightlyStatus').then(function(res){ // [2026-11-13 느림 ①]
+    nxCacheRecent_('getNightlyStatus', {}, 'dashNightlyStatus', 1800000).then(function(res){ // [2026-11-13 느림 ①] · [5차 사] 밤 점검 상태는 30분 안에 받은 값이면 서버를 부르지 않음
       var box = document.getElementById('dashNightlyStatus');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.items || [];

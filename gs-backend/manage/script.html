@@ -49,6 +49,14 @@
       }
     };
   };
+  // [2026.11.13 5차 사] 자주 안 바뀌는 상태(배포 상태·밤 점검·판정 대기)는 이 기기에 받은 지 maxAgeMs 안이면 서버를 아예 부르지 않는다 —
+  //  대시보드를 열 때마다 배포 상태 16~34초·밤 점검 13~34초가 job 서버를 붙잡아 전체 표시가 17~37초였다(오류 기록 65건, 11-05~11-13)
+  window.nxCacheRecent_ = function(action, payload, where, maxAgeMs){
+    var key = 'gas_' + action + (payload && Object.keys(payload).length ? '_' + JSON.stringify(payload) : '');
+    var old = window.nxLocalCache_.get(key);
+    if (old && Date.now() - (old.t || 0) < (maxAgeMs || 600000)) return { then: function(fn){ try { return Promise.resolve(fn(old.r, { stale: false, cached: true, t: old.t })); } catch (e) { return Promise.reject(e); } } };
+    return window.nxCacheFirst_(action, payload, where);
+  };
   window.nxStaleClear_ = function(box){ if (!box) return; box.classList.remove('nx-stale'); var b = box.querySelector(':scope > .nx-stale-bar'); if (b) b.remove(); };
   var NX_LAYOUT_KEY_ = 'nx_device_override', NX_DARK_KEY_ = 'nx_dark_mode';
   function nxLs_(key, val){
@@ -1534,7 +1542,7 @@
     var kind = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? '태블릿' : /Mobi|iPhone|Android/i.test(ua) ? '휴대폰' : 'PC';
     return (window.nxCover ? '휴대폰 말하기' : kind) + '(이름 없는 기기)';
   }
-  var nxPlaceTimer_ = null;
+  var nxPlaceTimer_ = null, nxPlaceLast_ = { sig: '', t: 0 };
   function nxPlaceSaveSoon_(){
     clearTimeout(nxPlaceTimer_);
     nxPlaceTimer_ = setTimeout(function(){
@@ -1544,6 +1552,11 @@
       var act = document.querySelector('.view.active'), view = act ? act.id.replace(/^view-/, '') : '';
       var caseId = ''; try { caseId = typeof nxScreenCaseIdOf_ === 'function' ? nxScreenCaseIdOf_(view) : ''; } catch (e) {}
       var conv = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id && (view === 'ai' || window.nxCover)) ? nxAiConv : null; // 넥스 대화 화면·말하기 모드일 때만 대화 이어 열기
+      // [2026.11.13 5차 사] 보던 곳 저장은 job 서버 쓰기(5~9초, 저장 잠금)라 같은 곳이면 다시 보내지 않고, 다른 곳이어도 1분에 한 번만 — 화면을 옮길 때마다 붙잡던 것
+      var sig = view + '|' + caseId + '|' + (conv ? conv.id : ''), nowT = Date.now();
+      if (sig === nxPlaceLast_.sig) return;
+      if (nowT - nxPlaceLast_.t < 60000) { clearTimeout(nxPlaceTimer_); nxPlaceTimer_ = setTimeout(nxPlaceSaveSoon_, 60000 - (nowT - nxPlaceLast_.t) + 500); return; }
+      nxPlaceLast_ = { sig: sig, t: nowT };
       callGas('place_save', { view: view, label: (window._currentViewLabel || view) + (conv && view === 'ai' ? ' — ' + String(conv.title || '').slice(0, 40) : ''), caseId: caseId,
         convId: conv ? conv.id : '', device: nxDeviceId_() + '|' + nxDeviceLabel_() }).catch(function(){});
     }, 4000);

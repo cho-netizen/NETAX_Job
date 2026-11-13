@@ -123,9 +123,14 @@ function citeTaxFigures_(c, text) {
   const list = Array.isArray(c && c.세액계산결과) ? c.세액계산결과 : [];
   list.forEach(function (e) { walk(e, 0); });
   const found = [], missing = [], seen = {};
+  let factSec = false; // [2026.11.13 5차 아] 「사실관계·확인된 사실·서류·증빙」 절 안의 숫자는 서류에서 읽은 값이지 이 사건 세액이 아니다
   String(text || '').split('\n').forEach(function (line) {
+    const hm = /^\s*#{1,6}\s*(.+)$/.exec(line); if (hm) { factSec = /사실|서류|증빙|자료|현황|경위|개요/.test(hm[1]) && !/세액|계산|결론|비교|안/.test(hm[1]); return; }
     if (!CITE_TAX_LINE_RE_.test(line)) return;
+    if (factSec) return;
     if (/^\s*(\||-|\*)?\s*(양도가액|취득가액|보상|면적|지분|㎡|단가)/.test(line)) return; // 가액·면적 줄은 세액이 아님(입력값은 서류 숫자)
+    // [2026.11.13 5차 아] 다른 세금(취득세·등록세·재산세·종부세)의 과세표준·납부액, 서류 이름이 붙은 줄은 이 사건 계산 저장본과 대조하지 않는다(실사건 자문 11-12: 취득세 과세표준을 세액으로 오인해 ❌)
+    if (/취득세|등록\s*세|등록면허세|재산세|종합부동산세|종부세|공시|기준시가|신고서상|납부확인서|영수증|고지서/.test(line) && !/양도소득세\s*(산출|결정|납부|액)|증여세\s*(산출|결정|납부|액)|상속세\s*(산출|결정|납부|액)|산출세액|결정세액|납부할\s*세액/.test(line)) return;
     (line.match(/\d{1,3}(?:,\d{3}){2,}|\d{7,}/g) || []).forEach(function (s) {
       const n = Number(s.replace(/,/g, '')); if (!isFinite(n) || n < 1000000 || seen[n]) return; seen[n] = 1;
       if (pool[String(n)]) found.push(s); else missing.push(s);

@@ -951,6 +951,7 @@
     nxAiConv.caseName = c.사건명 || c.고객명 || '';
     nxAiConv.caseFolderId = c.폴더ID || '';
     nxAiConv.casePath = null;
+    nxAiPvDropOtherCase_();
     nxAiRefreshCaseUi_();
     if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
     else nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">이 사건은 아직 드라이브 폴더가 없습니다(사건 목록에서 사건 폴더를 만들면 연결됩니다).</div>';
@@ -1054,6 +1055,15 @@
     nxAiEl_('nxAi').classList.remove('pv-collapsed');
     nxAiLs_('nxAiPvHidden', '0');
     nxAiPhoneTab_('files');
+  }
+  // [2026.11.13 5차 바] 다른 사건에서 연 미리보기 파일은 사건을 바꾸면 닫는다 — 실사건(11-02) 넥스가 화면에 남아 있던 다른 사건의 「거래내역서.pdf」를 이 사건 자료로 읽음("그건 다른 사건자료이다")
+  function nxAiPvDropOtherCase_(){
+    if (!nxAiPreviewFile) return;
+    var cur = (nxAiConv && nxAiConv.caseId) || '';
+    if (String(nxAiPreviewFile.caseId || '') === String(cur)) return;
+    nxAiPreviewFile = null; nxAiPreviewText = null;
+    try { nxAiPvHideProposal_(); } catch (e) {}
+    try { var pc = nxAiEl_('nxAiPvContent'); if (pc) pc.innerHTML = '<div class="nxai-muted">사건이 바뀌어 미리보기를 닫았습니다.</div>'; } catch (e) {}
   }
   function nxAiPvRenderEmpty_(){
     nxAiPvFolder = null;
@@ -1375,7 +1385,7 @@
       if (f.url) window.open(f.url, '_blank', 'noopener'); else window.open(nxAiDrivePreviewUrl_(f), '_blank', 'noopener');
       return Promise.resolve();
     }
-    nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : '') };
+    nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : ''), caseId: (nxAiConv && nxAiConv.caseId) || '' }; // caseId: [2026.11.13 5차 바] 어느 사건에서 연 파일인지
     nxAiPreviewText = null;
     nxAiPvHideProposal_();
     nxAiPvShowTab_('view');
@@ -1922,6 +1932,31 @@
         rwPrev = null;
         nxAiToast_('편집창을 적용 전 내용으로 되돌렸습니다.');
       });
+    } else if (editAction && editAction.autoSave && editTargetFile){
+      // [2026.11.13 5차 마] 세무사님이 "반영하라·수정하라"고 하셨으면 바로 저장 — 직전 내용은 「되돌리기」 한 번(실사건 11-06 "저장되지 않았다")
+      var aNote = document.createElement('div');
+      aNote.className = 'nxai-notice';
+      aNote.textContent = '💾 「' + (editTargetFile.name || '문서') + '」 저장 중…';
+      bubbleEl.appendChild(aNote);
+      var aPrev = null;
+      var aOpen = (nxAiPreviewFile && nxAiPreviewFile.id === editTargetFile.id && nxAiPreviewText !== null) ? Promise.resolve() : nxAiOpenPreview_(editTargetFile);
+      Promise.resolve(aOpen).then(function(){
+        var ta = nxAiEl_('nxAiPvText');
+        if (!ta && nxAiPreviewText !== null){ nxAiPvTextMode_(true); ta = nxAiEl_('nxAiPvText'); }
+        if (!ta){ aNote.textContent = '⚠️ 이 파일은 미리보기에서 바로 고칠 수 없는 형식이라 저장하지 못했습니다.'; return false; }
+        aPrev = (nxAiPreviewText !== null) ? nxAiPreviewText : ta.value;
+        ta.value = editAction.content || '';
+        return nxAiPvSave_();
+      }).then(function(ok){
+        if (ok === true){ aNote.textContent = '✅ 「' + (editTargetFile.name || '문서') + '」에 바로 저장했습니다 — 직전 내용으로 돌리려면 아래 「↩ 되돌리기」.'; }
+        else if (ok === false && aNote.textContent.indexOf('⚠️') !== 0){ aNote.textContent = '⚠️ 저장하지 못했습니다 — 미리보기 칸의 [저장]을 눌러 주세요.'; }
+      });
+      addLink('↩ 되돌리기', function(){
+        if (aPrev === null){ nxAiToast_('되돌릴 직전 내용이 없습니다.'); return; }
+        var go = (nxAiPreviewFile && nxAiPreviewFile.id === editTargetFile.id) ? Promise.resolve() : nxAiOpenPreview_(editTargetFile);
+        Promise.resolve(go).then(function(){ var ta = nxAiEl_('nxAiPvText'); if (!ta){ nxAiPvTextMode_(true); ta = nxAiEl_('nxAiPvText'); } if (!ta) return false; ta.value = aPrev; return nxAiPvSave_(); })
+          .then(function(ok){ if (ok === true){ aPrev = null; aNote.textContent = '↩ 직전 내용으로 되돌려 저장했습니다.'; } });
+      });
     } else if (editAction){
       var notice = document.createElement('div');
       notice.className = 'nxai-notice';
@@ -1931,6 +1966,10 @@
       if (editTargetFile) nxAiShowProposal_(editTargetFile, editAction.content || '');
     }
 
+    // [2026.11.13 5차 마] 넥스가 열린 문서를 바로 저장했으면(직전 판은 _이전판) 미리보기를 새 내용으로 다시 연다
+    actions.filter(function(a){ return a && a.type === 'preview_reload'; }).forEach(function(a){
+      if (nxAiPreviewFile && nxAiPreviewFile.id === a.fileId){ var pf = nxAiPreviewFile; nxAiPreviewText = null; try { nxAiOpenPreview_(pf); } catch (e) {} }
+    });
     // 서버가 실제 파일쓰기 성공을 확인했을 때만 오는 신호 — AI 말과 무관한 확인 배지
     var saved = actions.filter(function(a){ return a && a.type === 'file_saved'; });
     saved.forEach(function(a){
@@ -2177,6 +2216,7 @@
   // AI가 아는 "지금 열린 문서" — AI탭은 보기 칸, 사이드바로 작성관리를 보고 있으면 그 편집창(work report-writer의 편집기 연동과 같은 자리).
   // where: 'preview'(AI탭 보기 칸) | 'reportwriter'(작성관리 편집창) — 수정안을 어디에 띄울지 정한다.
   function nxAiOpenFileContext_(){
+    nxAiPvDropOtherCase_(); // [2026.11.13 5차 바] 대화를 바꿔 사건이 달라졌어도 다른 사건 파일은 넥스에게 보내지 않는다
     if (nxAiMode !== 'tab'){
       var rwActive = document.getElementById('view-reportwriter') && document.getElementById('view-reportwriter').classList.contains('active');
       if (rwActive && typeof rwAiOpenDoc_ === 'function'){

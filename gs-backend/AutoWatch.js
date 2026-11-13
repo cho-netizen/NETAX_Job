@@ -220,6 +220,47 @@ function awStaleCheck_(cases) {
   return out;
 }
 
+// [2026.11.13 5차 검문 — 세무사님 "제발 제대로 사용할 수 있게 해 달라"] 실사건 장부 건강표 — 5차 점검의 일곱 가지는 모두 "실사건에서 조용히 비어 있는 것"이라
+//  세무사님이 넥스를 불러 보시기 전엔 아무도 몰랐다. 밤마다(GAS만, 0원) 진행 중 실사건마다 센다: 폴더 서류 수 · 장부 서류 줄 · 계산 칸 · 「기타」나 이름과 어긋난 종류 · 폴더에 없는 파일 줄.
+//  고칠 수 있는 것은 그 자리에서 고친다(없는 파일 줄 걷기·계산 칸 0이면 첫 바퀴 다시 줄 세우기). 이틀 밤 잇달아 계산 칸이 0이면 아침 「답하실 것」에 한 줄(무엇이 막혔는지).
+var AW_HEALTH_PROP_ = 'aw_ledger_health';
+function awLedgerHealth_(cases) {
+  const t0 = Date.now(), rows = [];
+  let prev = {}; try { prev = JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_HEALTH_PROP_) || '{}').byId || {}; } catch (e) { prev = {}; }
+  const byId = {};
+  (cases || []).forEach(function (c) {
+    if (Date.now() - t0 > 240000) return;
+    if (String(c.상태 || '') !== '진행' || awVirtual_(c) || !String(c.폴더ID || '').trim()) return;
+    const h = { 사건: String(c.사건명 || '').slice(0, 30), 서류: 0, 서류줄: 0, 칸: 0, 어긋남: 0, 걷음: 0, 고침: [] };
+    try {
+      const files = (typeof cpWatchFiles_ === 'function' ? cpWatchFiles_(c) : []).filter(function (f) { return !/\.(md|json|txt)$/i.test(f.name || '') || !/^(의뢰서|관련법령)/.test(f.name || ''); });
+      h.서류 = files.length;
+      if (files.length && typeof ledgerDocGone_ === 'function') { const g = ledgerDocGone_(c.id, files, []); h.걷음 = (g && g.n) || 0; if (h.걷음) { h.고침.push('없는 파일 줄 ' + h.걷음 + '개 걷음'); cpFlowQueueAdd_(c.id, '밤 점검 — 없는 파일 줄 정리 뒤 다시 읽기', 'read'); } }
+      const L = ledgerLoad_(c.id, true) || {};
+      Object.keys(L.rows || {}).forEach(function (p) {
+        const r = L.rows[p];
+        if (/^doc:.+\.role$/.test(p)) {
+          h.서류줄++;
+          const nm = p.slice(4, -5), nk = typeof ledgerDocNamed_ === 'function' ? ledgerDocNamed_(nm, '') : null;
+          if (r && r.state === '확정' && nk && (String(r.v) === '기타' || (!nk.ok.test(String(r.v)) && String(r.v).indexOf(nk.kind) === -1))) h.어긋남++;
+        } else if (!/^(doc:|q:|기준일$)/.test(p) && r && r.v !== '' && r.v != null) h.칸++;
+      });
+      if (h.서류 && !h.칸) {
+        caseProcPatch_(c.id, function (sv) { if (sv.firstPass) delete sv.firstPass.queued; });
+        cpFlowQueueAdd_(c.id, '첫 바퀴 — 밤 점검: 서류 ' + h.서류 + '개인데 계산 칸 0', 'read');
+        h.고침.push('첫 바퀴 다시 줄 세움');
+        const was = prev[c.id];
+        if (was && was.서류 && !was.칸) awNoticeAdd_('장부 비어 있음', '「' + h.사건 + '」 폴더 서류 ' + h.서류 + '개인데 이틀 밤째 장부 계산 칸이 0 — 서류 읽기가 막혔을 수 있음(설정 🐞 카드·사건 장부 기록에서 까닭 확인)', c.id, 'health0_' + c.id + '_' + caseProcNow_().slice(0, 10), true);
+      }
+      if (h.어긋남) h.고침.push('종류 어긋남 ' + h.어긋남 + '개(다음 서류 읽기에서 묻기로)');
+    } catch (e) { h.오류 = String(e && e.message || e).slice(0, 80); }
+    byId[c.id] = { 서류: h.서류, 칸: h.칸 };
+    rows.push(h);
+  });
+  const out = { at: caseProcNow_(), ms: Date.now() - t0, 사건: rows.length, 빨강: rows.filter(function (h) { return h.서류 && !h.칸; }).length, rows: rows, byId: byId };
+  try { PropertiesService.getScriptProperties().setProperty(AW_HEALTH_PROP_, JSON.stringify(out).slice(0, 8500)); } catch (e) {}
+  return { 사건: out.사건, 빨강: out.빨강, 걷음: rows.reduce(function (t, h) { return t + h.걷음; }, 0), 어긋남: rows.reduce(function (t, h) { return t + h.어긋남; }, 0) };
+}
 // ---------- 새벽 2시 묶음에서 부르는 것(③④⑤⑥) ----------
 function awNightly_() {
   const t0 = Date.now(), r = {};
@@ -229,6 +270,7 @@ function awNightly_() {
   try { r.미수 = awUnpaidCheck_(cases).length; } catch (e) { r.미수오류 = String(e && e.message || e).slice(0, 120); }
   try { r.멈춤 = awStaleCheck_(cases).length; } catch (e) { r.멈춤오류 = String(e && e.message || e).slice(0, 120); }
   try { r.질문정리 = awQuestionsNightly_(cases); } catch (e) { r.질문정리오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.12 넥스 질문 정리 ②⑤]
+  try { r.장부건강 = awLedgerHealth_(cases); } catch (e) { r.장부건강오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.13 5차 검문]
   try { const s = t6ShareCleanup_(); r.공유거둠 = s && s.done ? s.done.filter(function (d) { return d.unshared; }).length : 0; if (r.공유거둠) awNoticeAdd_('공유 정리', '완료 사건 폴더의 로봇 공유 ' + r.공유거둠 + '개를 거뒀습니다(밤 자동)', '', 'share:' + awToday_(), false); } catch (e) { r.공유오류 = String(e && e.message || e).slice(0, 120); }
   r.at = caseProcNow_(); r.ms = Date.now() - t0;
   try { PropertiesService.getScriptProperties().setProperty(AW_NIGHT_PROP_, JSON.stringify(r)); } catch (e) {}

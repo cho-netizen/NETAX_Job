@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 03:37 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 06:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4321,7 +4321,7 @@ function nxMdOpenWindow(title, src, opts){
       box.innerHTML = html;
       var askCard = document.getElementById('dashAskSys') /* [2026.11.12] 시스템 묶음만 숨김 */; if (askCard) askCard.hidden = !html;
       // 법령 판단 대기 — 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만
-      callGas('ai_judge_get', {}).then(function(j){
+      nxCacheRecent_('ai_judge_get', {}, '', 1800000).then(function(j){ // [2026.11.13 5차 사] 30분 안에 받은 값이면 서버를 부르지 않음
         var n = ((j && j.doc && j.doc.항목) || []).filter(function(x){ return x.결정 && x.결정.선택 === '보류'; }).length;
         if (n && askCard) askCard.hidden = false;
         if (n) box.insertAdjacentHTML('afterbegin', row('⚖️ <b style="color:#b3261e;">법령 판단 대기 — 세무사님 결정 필요 ' + n + '건</b> <a href="#" data-dashgo="settings" data-dashgo-card="stFedCard">설정 → 시스템 관리 → 법령 판단 대기</a>', true));
@@ -4408,10 +4408,11 @@ function nxMdOpenWindow(title, src, opts){
   });
   // [2026.10.20] "운영 @1185 · 오늘 18:52 반영 · 점검 정상" — 반영이 진행 중이면 단계·경과 시간(📥·✅·↩·PC clasp 모두, Code.js deployJobStatus_).
   //  진행 중일 때만 10초마다 다시 본다. 누르면 설정 🐞 카드(운영 버전·최근 반영 내역)로.
-  var dashDeployTimer = null;
+  var dashDeployTimer = null, dashDeployLive = false;
   function loadDashDeployLine_(){
     clearTimeout(dashDeployTimer);
-    callGas('deploy_job_status', {}).then(function(st){
+    // [2026.11.13 5차 사] 배포 상태는 10분 안에 받은 값이면 서버를 부르지 않는다(반영이 진행 중일 때만 10초마다 새로)
+    (dashDeployLive ? callGas('deploy_job_status', {}) : nxCacheRecent_('deploy_job_status', {}, '', 600000)).then(function(st){
       var el = document.getElementById('dashDeployLine');
       if (!el || !st || !st.success) return;
       var h0 = (st.history || [])[0], live = st.live, chk = st.check, j = st.job;
@@ -4428,6 +4429,7 @@ function nxMdOpenWindow(title, src, opts){
       else if (st.stale && j) parts.push('<span style="color:#b3261e;">⚠ 끝나지 않은 반영 기록이 있음</span>');
       else if (j && j.done && j.stage === 'failed' && st.now - (j.finishedAt || 0) < 86400000) parts.push('<span style="color:#b3261e;">❌ 최근 반영 실패</span>');
       el.innerHTML = parts.join(' · ');
+      dashDeployLive = !!st.active; clearTimeout(dashDeployTimer);
       if (st.active) dashDeployTimer = setTimeout(loadDashDeployLine_, 10000);
     }).catch(function(){ var el = document.getElementById('dashDeployLine'); if (el) el.textContent = '운영 버전을 확인하지 못했습니다.'; });
   }
@@ -4437,7 +4439,7 @@ function nxMdOpenWindow(title, src, opts){
     setTimeout(function(){ var c = document.getElementById('stBugCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
   });
   function loadDashNightlyStatus_(){
-    nxCacheFirst_('getNightlyStatus', {}, 'dashNightlyStatus').then(function(res){ // [2026-11-13 느림 ①]
+    nxCacheRecent_('getNightlyStatus', {}, 'dashNightlyStatus', 1800000).then(function(res){ // [2026-11-13 느림 ①] · [5차 사] 밤 점검 상태는 30분 안에 받은 값이면 서버를 부르지 않음
       var box = document.getElementById('dashNightlyStatus');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.items || [];
@@ -58100,13 +58102,14 @@ function rwAiApplyEdit_(id, content){
         if (djWatch.starting){ djWatch.starting = false; djTick_(); }
       });
     }
-    function loadDeployInfo_(){
-      callGas('deploy_job_status', {}).then(function(st){
+    function loadDeployInfo_(soft){
+      // [2026.11.13 5차 사] 앱을 열 때(soft)는 10분 안에 받은 배포 상태면 서버를 부르지 않는다 — 설정을 안 열어도 열 때마다 16~34초씩 job 서버를 붙잡았다
+      (soft && window.nxCacheRecent_ ? nxCacheRecent_('deploy_job_status', {}, '', 600000) : callGas('deploy_job_status', {})).then(function(st){
         djRenderInfo_(st);
         if (st && st.active && st.job && !djWatch){ djFollow_(st.job); } // 다른 곳(PC·다른 창)에서 시작한 반영도 따라간다
       }).catch(function(){ if (djInfoBox) djInfoBox.textContent = '운영 버전을 확인하지 못했습니다.'; });
     }
-    loadDeployInfo_();
+    loadDeployInfo_(true);
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){
       if (!chk) return '';
@@ -58114,9 +58117,9 @@ function rwAiApplyEdit_(id, content){
       return '<div style="margin-top:6px;"><div class="nx-l4" style="margin:4px 0 3px;' + (chk.ok ? '' : ' color:#b3261e;') + '">' + (chk.ok ? '배포 직후 점검 정상' : '배포 직후 점검 이상 ' + bad.length + '건') + '<span class="nx-l-sub">' + escapeHtml(chk.at || '') + '</span></div>'
         + (bad.length ? bad.map(function(x){ return '<div class="nx-li" style="padding-top:1px; padding-bottom:1px;">' + escapeHtml(x.name) + ' — ' + escapeHtml(x.msg) + '</div>'; }).join('') + '<div class="nx-li-go">→ 이상하면 ↩ 되돌리기를 누르세요.</div>' : '') + '</div>';
     }
-    callGas('deploy_check_last', {}).then(function(r){
+    (window.nxCacheRecent_ ? nxCacheRecent_('deploy_check_last', {}, '', 1800000) : callGas('deploy_check_last', {})).then(function(r){ // [2026.11.13 5차 사] 30분 안에 받은 값이면 서버를 부르지 않음
       var chk = r && r.last;
-      if (chk && !chk.ok && bugList) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
+      if (chk && !chk.ok && bugList && bugList.innerHTML.indexOf('배포 직후 점검') === -1) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
     }).catch(function(){});
     document.getElementById('stBtnRollback').addEventListener('click', function(){
       if (djBusy_()) return;
@@ -60692,6 +60695,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiConv.caseName = c.사건명 || c.고객명 || '';
     nxAiConv.caseFolderId = c.폴더ID || '';
     nxAiConv.casePath = null;
+    nxAiPvDropOtherCase_();
     nxAiRefreshCaseUi_();
     if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
     else nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">이 사건은 아직 드라이브 폴더가 없습니다(사건 목록에서 사건 폴더를 만들면 연결됩니다).</div>';
@@ -60795,6 +60799,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAi').classList.remove('pv-collapsed');
     nxAiLs_('nxAiPvHidden', '0');
     nxAiPhoneTab_('files');
+  }
+  // [2026.11.13 5차 바] 다른 사건에서 연 미리보기 파일은 사건을 바꾸면 닫는다 — 실사건(11-02) 넥스가 화면에 남아 있던 다른 사건의 「거래내역서.pdf」를 이 사건 자료로 읽음("그건 다른 사건자료이다")
+  function nxAiPvDropOtherCase_(){
+    if (!nxAiPreviewFile) return;
+    var cur = (nxAiConv && nxAiConv.caseId) || '';
+    if (String(nxAiPreviewFile.caseId || '') === String(cur)) return;
+    nxAiPreviewFile = null; nxAiPreviewText = null;
+    try { nxAiPvHideProposal_(); } catch (e) {}
+    try { var pc = nxAiEl_('nxAiPvContent'); if (pc) pc.innerHTML = '<div class="nxai-muted">사건이 바뀌어 미리보기를 닫았습니다.</div>'; } catch (e) {}
   }
   function nxAiPvRenderEmpty_(){
     nxAiPvFolder = null;
@@ -61116,7 +61129,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (f.url) window.open(f.url, '_blank', 'noopener'); else window.open(nxAiDrivePreviewUrl_(f), '_blank', 'noopener');
       return Promise.resolve();
     }
-    nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : '') };
+    nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : ''), caseId: (nxAiConv && nxAiConv.caseId) || '' }; // caseId: [2026.11.13 5차 바] 어느 사건에서 연 파일인지
     nxAiPreviewText = null;
     nxAiPvHideProposal_();
     nxAiPvShowTab_('view');
@@ -61663,6 +61676,31 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         rwPrev = null;
         nxAiToast_('편집창을 적용 전 내용으로 되돌렸습니다.');
       });
+    } else if (editAction && editAction.autoSave && editTargetFile){
+      // [2026.11.13 5차 마] 세무사님이 "반영하라·수정하라"고 하셨으면 바로 저장 — 직전 내용은 「되돌리기」 한 번(실사건 11-06 "저장되지 않았다")
+      var aNote = document.createElement('div');
+      aNote.className = 'nxai-notice';
+      aNote.textContent = '💾 「' + (editTargetFile.name || '문서') + '」 저장 중…';
+      bubbleEl.appendChild(aNote);
+      var aPrev = null;
+      var aOpen = (nxAiPreviewFile && nxAiPreviewFile.id === editTargetFile.id && nxAiPreviewText !== null) ? Promise.resolve() : nxAiOpenPreview_(editTargetFile);
+      Promise.resolve(aOpen).then(function(){
+        var ta = nxAiEl_('nxAiPvText');
+        if (!ta && nxAiPreviewText !== null){ nxAiPvTextMode_(true); ta = nxAiEl_('nxAiPvText'); }
+        if (!ta){ aNote.textContent = '⚠️ 이 파일은 미리보기에서 바로 고칠 수 없는 형식이라 저장하지 못했습니다.'; return false; }
+        aPrev = (nxAiPreviewText !== null) ? nxAiPreviewText : ta.value;
+        ta.value = editAction.content || '';
+        return nxAiPvSave_();
+      }).then(function(ok){
+        if (ok === true){ aNote.textContent = '✅ 「' + (editTargetFile.name || '문서') + '」에 바로 저장했습니다 — 직전 내용으로 돌리려면 아래 「↩ 되돌리기」.'; }
+        else if (ok === false && aNote.textContent.indexOf('⚠️') !== 0){ aNote.textContent = '⚠️ 저장하지 못했습니다 — 미리보기 칸의 [저장]을 눌러 주세요.'; }
+      });
+      addLink('↩ 되돌리기', function(){
+        if (aPrev === null){ nxAiToast_('되돌릴 직전 내용이 없습니다.'); return; }
+        var go = (nxAiPreviewFile && nxAiPreviewFile.id === editTargetFile.id) ? Promise.resolve() : nxAiOpenPreview_(editTargetFile);
+        Promise.resolve(go).then(function(){ var ta = nxAiEl_('nxAiPvText'); if (!ta){ nxAiPvTextMode_(true); ta = nxAiEl_('nxAiPvText'); } if (!ta) return false; ta.value = aPrev; return nxAiPvSave_(); })
+          .then(function(ok){ if (ok === true){ aPrev = null; aNote.textContent = '↩ 직전 내용으로 되돌려 저장했습니다.'; } });
+      });
     } else if (editAction){
       var notice = document.createElement('div');
       notice.className = 'nxai-notice';
@@ -61672,6 +61710,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (editTargetFile) nxAiShowProposal_(editTargetFile, editAction.content || '');
     }
 
+    // [2026.11.13 5차 마] 넥스가 열린 문서를 바로 저장했으면(직전 판은 _이전판) 미리보기를 새 내용으로 다시 연다
+    actions.filter(function(a){ return a && a.type === 'preview_reload'; }).forEach(function(a){
+      if (nxAiPreviewFile && nxAiPreviewFile.id === a.fileId){ var pf = nxAiPreviewFile; nxAiPreviewText = null; try { nxAiOpenPreview_(pf); } catch (e) {} }
+    });
     // 서버가 실제 파일쓰기 성공을 확인했을 때만 오는 신호 — AI 말과 무관한 확인 배지
     var saved = actions.filter(function(a){ return a && a.type === 'file_saved'; });
     saved.forEach(function(a){
@@ -61918,6 +61960,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // AI가 아는 "지금 열린 문서" — AI탭은 보기 칸, 사이드바로 작성관리를 보고 있으면 그 편집창(work report-writer의 편집기 연동과 같은 자리).
   // where: 'preview'(AI탭 보기 칸) | 'reportwriter'(작성관리 편집창) — 수정안을 어디에 띄울지 정한다.
   function nxAiOpenFileContext_(){
+    nxAiPvDropOtherCase_(); // [2026.11.13 5차 바] 대화를 바꿔 사건이 달라졌어도 다른 사건 파일은 넥스에게 보내지 않는다
     if (nxAiMode !== 'tab'){
       var rwActive = document.getElementById('view-reportwriter') && document.getElementById('view-reportwriter').classList.contains('active');
       if (rwActive && typeof rwAiOpenDoc_ === 'function'){
@@ -67046,6 +67089,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
     };
   };
+  // [2026.11.13 5차 사] 자주 안 바뀌는 상태(배포 상태·밤 점검·판정 대기)는 이 기기에 받은 지 maxAgeMs 안이면 서버를 아예 부르지 않는다 —
+  //  대시보드를 열 때마다 배포 상태 16~34초·밤 점검 13~34초가 job 서버를 붙잡아 전체 표시가 17~37초였다(오류 기록 65건, 11-05~11-13)
+  window.nxCacheRecent_ = function(action, payload, where, maxAgeMs){
+    var key = 'gas_' + action + (payload && Object.keys(payload).length ? '_' + JSON.stringify(payload) : '');
+    var old = window.nxLocalCache_.get(key);
+    if (old && Date.now() - (old.t || 0) < (maxAgeMs || 600000)) return { then: function(fn){ try { return Promise.resolve(fn(old.r, { stale: false, cached: true, t: old.t })); } catch (e) { return Promise.reject(e); } } };
+    return window.nxCacheFirst_(action, payload, where);
+  };
   window.nxStaleClear_ = function(box){ if (!box) return; box.classList.remove('nx-stale'); var b = box.querySelector(':scope > .nx-stale-bar'); if (b) b.remove(); };
   var NX_LAYOUT_KEY_ = 'nx_device_override', NX_DARK_KEY_ = 'nx_dark_mode';
   function nxLs_(key, val){
@@ -68531,7 +68582,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var kind = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? '태블릿' : /Mobi|iPhone|Android/i.test(ua) ? '휴대폰' : 'PC';
     return (window.nxCover ? '휴대폰 말하기' : kind) + '(이름 없는 기기)';
   }
-  var nxPlaceTimer_ = null;
+  var nxPlaceTimer_ = null, nxPlaceLast_ = { sig: '', t: 0 };
   function nxPlaceSaveSoon_(){
     clearTimeout(nxPlaceTimer_);
     nxPlaceTimer_ = setTimeout(function(){
@@ -68541,6 +68592,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var act = document.querySelector('.view.active'), view = act ? act.id.replace(/^view-/, '') : '';
       var caseId = ''; try { caseId = typeof nxScreenCaseIdOf_ === 'function' ? nxScreenCaseIdOf_(view) : ''; } catch (e) {}
       var conv = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id && (view === 'ai' || window.nxCover)) ? nxAiConv : null; // 넥스 대화 화면·말하기 모드일 때만 대화 이어 열기
+      // [2026.11.13 5차 사] 보던 곳 저장은 job 서버 쓰기(5~9초, 저장 잠금)라 같은 곳이면 다시 보내지 않고, 다른 곳이어도 1분에 한 번만 — 화면을 옮길 때마다 붙잡던 것
+      var sig = view + '|' + caseId + '|' + (conv ? conv.id : ''), nowT = Date.now();
+      if (sig === nxPlaceLast_.sig) return;
+      if (nowT - nxPlaceLast_.t < 60000) { clearTimeout(nxPlaceTimer_); nxPlaceTimer_ = setTimeout(nxPlaceSaveSoon_, 60000 - (nowT - nxPlaceLast_.t) + 500); return; }
+      nxPlaceLast_ = { sig: sig, t: nowT };
       callGas('place_save', { view: view, label: (window._currentViewLabel || view) + (conv && view === 'ai' ? ' — ' + String(conv.title || '').slice(0, 40) : ''), caseId: caseId,
         convId: conv ? conv.id : '', device: nxDeviceId_() + '|' + nxDeviceLabel_() }).catch(function(){});
     }, 4000);

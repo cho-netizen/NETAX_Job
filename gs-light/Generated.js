@@ -52,7 +52,8 @@ var LEDGER_ENUMS_ = {
   transferCause: { codes: ['sale', 'expropriation', 'exchange', 'gift_burden', 'other'], ko: { sale: '매매', expropriation: '수용', exchange: '교환', gift_burden: '부담부증여', other: '기타' } }
 };
 
-var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '등기부', '전소유자 분양계약서', '분양권 매매계약서', '영수증', '간편계산서', '신고서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
+// [2026.11.13 5차 다] 넥스가 고를 수 있는 역할이 열둘뿐이라 수용재결서·보상금 내역·건축물대장 같은 흔한 서류를 「기타」로 확정했다(실사건 9건) — 실사건에서 나온 종류를 더함
+var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
 
 function ledgerFolder_() {
   const root = getChiefManagerFolder_();
@@ -2012,14 +2013,10 @@ function tcOcrStoreSet_(key, text) {
 
 var OCRB_TRANSIENT_RE_ = /rate limit|too many|Rate Limit|Backend Error|Internal Error|서버 오류|Service invoked too many|timed out|시간 초과|Bad Gateway|Service Unavailable|503|500 /;
 
-// [2026.11.12 넥스 질문 정리 계획서 ②] 넥스 선처리 — GAS가 세운 물음(넥스 차례)을 넥스가 먼저 푼다. 세무사님 원문 "넥스선처리를 미리읽기 틱에 얹는 것은 맞는데, 진행중인 사건만을 대상으로 해야 한다"
-//  · 줄 서기: ledgerQWrite_가 새 물음을 세우면 cpNexQEnqueue_, 밤 점검(awQuestionsNightly_)이 진행 사건을 훑어 다시 세움
-//  · 틱마다 한 사건, 상태 「진행」·가상 아님·스위치 켬·AI 지휘 켬·낮(22~07시 밖)일 때만. 도구: case_files·file_read·case_ledger(set/ask)·close_question·questions_done
-//  · 넥스가 못 정한 것은 case_ledger do=ask(group 붙여)로 세무사님 차례로 넘긴다 — 세무사님께는 사실 장부 ④ 물어볼 것에 묶음으로 보인다
-var CP_NEXQ_PENDING_ = 'cp_nexq_pending';
+var CP_NEXQ_PENDING_ = 'cp_nexq_pending', CP_NEXQ_SUPPRESS_ = false;
 
 function cpNexQEnqueue_(caseId) {
-  const id = String(caseId || ''); if (!id) return;
+  const id = String(caseId || ''); if (!id || CP_NEXQ_SUPPRESS_) return;
   const props = lightProps_();
   let q = []; try { q = JSON.parse(props.getProperty(CP_NEXQ_PENDING_) || '[]'); } catch (e) { q = []; }
   if (q.indexOf(id) === -1) { q.push(id); props.setProperty(CP_NEXQ_PENDING_, JSON.stringify(q.slice(-60))); }
