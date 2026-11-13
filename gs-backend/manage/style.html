@@ -1121,7 +1121,8 @@
   input.nx-find{ width:96px; flex:0 0 auto; min-width:0; transition:width .15s; }
   input.nx-find:focus, input.nx-find:not(:placeholder-shown){ width:190px; }
   /* [2026.11.01] 대시보드 반응형 — 세무사님 "불필요하게 화면을 많이 사용해도 안되고 … 반응형으로 화면크기나 비율에 따라 적절히 표현": 넓은 화면은 카드를 두세 줄로 나란히, 좁으면 한 줄 */
-  #view-dashboard .view-body{ column-width:440px; column-gap:14px; }
+  /* [2026-11-13] 세무사님 "일정한 너비가 되면 3열을 위한 것인지 오른쪽이 여백이 보인다 … 2열로 폭을 넓게 사용하도록 변경해야 한다" — 열은 최대 2(한 칸 최소 440px, 그보다 좁으면 1열) */
+  #view-dashboard .view-body{ columns:440px 2; column-gap:14px; }
   #view-dashboard .view-body > .card{ break-inside:avoid; display:inline-block; width:100%; box-sizing:border-box; margin:0 0 14px; }
   #view-dashboard #dashTodayCard{ column-span:all; display:block; } /* 카드 높이가 제각각이라 칸 나눔(위에서 아래로 채움)으로 빈 틈 없이 */
   @media (max-width:560px){ #view-dashboard .view-body{ column-count:1; } }
