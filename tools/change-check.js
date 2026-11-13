@@ -145,6 +145,17 @@ const schemaKeysBad = (src) => { // properties: { 키: … } 의 맨 바깥 키�
     schemaKeysBad(src).forEach((b) => block.push('AI 도구 입력 칸 이름 「' + b.key + '」이 영문·숫자·_.- 가 아님(Claude가 도구 목록 전체를 거부함) — ' + dir + '/' + f + ':' + src.slice(0, b.at).split('\n').length));
   });
 });
+// 🚫 [2026.11.13 5차 재점검 H] 관리 서버(장부 보기·오늘 할 일을 대신 답함)·판정 서버는 job 서버 원본을 빌드 도구로 옮겨 만든다 — 원본을 고치고 다시 만들지 않으면
+//  그 서버가 옛 코드로 답한다(판정 서버는 배포 뒤 판 대조가 있지만 관리 서버는 없었음). 지금 원본으로 다시 만들어 보고 달라지면 막는다(다시 만든 파일은 남겨 둠 — 함께 올리면 통과)
+try {
+  const cp = require('child_process');
+  [['gs-light/Generated.js', 'tools/build-light.js', '관리 서버'], ['gs-judge/Generated.js', 'tools/build-judge.js', '판정 서버']].forEach(([f, b, nm]) => {
+    const p = path.join(ROOT, f); if (!fs.existsSync(p) || !fs.existsSync(path.join(ROOT, b))) return;
+    const before = fs.readFileSync(p, 'utf8');
+    cp.execFileSync(process.execPath, [path.join(ROOT, b)], { cwd: ROOT, stdio: 'ignore', timeout: 120000 });
+    if (fs.readFileSync(p, 'utf8') !== before) block.push(nm + ' 생성 파일(' + f + ')이 지금 원본과 다름 — 방금 ' + b + '로 다시 만들어 두었으니 그 파일까지 함께 올리고(clasp push) 다시 검문');
+  });
+} catch (e) { warn.push('관리·판정 서버 생성 파일 대조를 못 함: ' + String(e && e.message || e).slice(0, 120)); }
 // ⚠ [2026.10.27 T6 3단계] Cloud Run 시험 서비스의 문 — 표시 파일 cloudrun/README.md의 "문:" 줄로 판정(gcloud 없이도 되게; 재배포한 사람이 그 줄을 고친다).
 //  "인증 없이 받기"면 ⚠(서비스 안 토큰 검증이 있어야 함 — server.js에 verifyIdToken이 없으면 🚫). IAM 문이면 조용히 통과.
 try {

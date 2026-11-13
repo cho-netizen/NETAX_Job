@@ -18,6 +18,9 @@
     set: function(key, r){
       try {
         var s = JSON.stringify({ t: Date.now(), r: r }); if (s.length > 400000) return;
+        // [2026.11.13 5차 재점검 D] 기기에는 주민등록번호 뒷자리를 남기지 않는다(장부에 주민번호 칸 값이 있는 실사건 2건) — 「900101-1******」로 가려 남기고, 새 값을 서버에서 받으면 원래대로 그린다
+        //  숫자로 적힌 13자리(저장 시각 밀리초 등)는 건드리지 않는다 — 하이픈 있는 꼴과 따옴표 안의 13자리 글자 값만
+        s = s.replace(/(\d{6})\s*-\s*([1-8])\d{6}(?!\d)/g, '$1-$2******').replace(/"(\d{6})([1-8])\d{6}"/g, '"$1-$2******"');
         localStorage.setItem(NX_LC_PREFIX_ + key, s);
         var keys = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf(NX_LC_PREFIX_) === 0) keys.push(k); }
         if (keys.length > 20) keys.map(function(k){ var t = 0; try { t = JSON.parse(localStorage.getItem(k)).t || 0; } catch (e) {} return { k: k, t: t }; })

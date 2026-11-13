@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 08:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 08:14 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -8505,7 +8505,6 @@ function nxMdOpenWindow(title, src, opts){
       var lgKey = 'ledger_' + c.id, lgNoCache = !!window.nxLgNoCache_; window.nxLgNoCache_ = false;
       // [2026-11-13 3차 계획 6절 1번] 줄 하나를 넣어도 장부 전체를 다시 읽어(관리 서버로 약 6초, 그 전 15~25초) 화면이 「읽는 중」으로 비던 것 —
       //  서버가 돌려준 그 줄(row)만 바로 고쳐 그리고(단추는 막고 「전체 새로 받는 중」 띠), 전체 장부는 뒤에서 받아 다시 그린다. 줄을 못 받으면 예전처럼 다시 읽음.
-      var lgLast = null;
       // [2026-11-13 저장 느림 — 세무사님 "원인을 제대로 분석해서 더이상 속도문제가 대두되지 않도록"] 장부 쓰기(값 넣기·확인·보류·무시·되돌리기)는 job 서버를 여는 데만
       //  7.5초가 들어(코드 7.2MB를 매번 실음 — 빈 호출 6.8~11.6초 실측) 누를 때마다 13~16초를 기다렸다. 사건 저장(10월)과 같은 「화면 먼저」 장치(nxSaveLater_)에 태운다:
       //  누르는 순간 그 줄을 고쳐 그리고(단추는 막지 않음 — 이어서 누를 수 있음), 같은 사건 장부는 차례로 뒤에서 보내며, 실패하면 화면 아래 「다시 보내기」.
@@ -9084,10 +9083,11 @@ function nxMdOpenWindow(title, src, opts){
           }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + nxErrText_(e), 'error'); });
         });
       };
-      var lgOld = (!lgNoCache && window.nxLocalCache_) ? window.nxLocalCache_.get(lgKey) : null, lgFresh = false;
+      // [2026.11.13 5차 재점검 B] 여기 있던 참·거짓 표시 「lgFresh」가 위의 장부 새로 읽기 함수 lgFresh를 덮어, 저장 뒤 전체 새로 읽기·장부 띠·사건 화면 새로 그리기가 매번 빠졌다 — 쓰는 곳 없는 표시라 지움
+      var lgOld = (!lgNoCache && window.nxLocalCache_) ? window.nxLocalCache_.get(lgKey) : null;
       if (lgOld) { try { lgPaint(lgOld.r); if (typeof nxStaleMark_ === 'function') nxStaleMark_(body, lgOld.t); } catch (e) { body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>'; } }
       callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
-        lgFresh = true; if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
+        if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
         if (r && r.ok && window.nxLocalCache_) window.nxLocalCache_.set(lgKey, r);
         lgPaint(r);
       }).catch(function(e){ if (typeof nxStaleClear_ === 'function') nxStaleClear_(body); body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
@@ -66917,7 +66917,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026-11-13 4차 45] 손가락 기기(태블릿)에서 메뉴 줄을 골라 화면이 바뀌어도 펼친 메뉴가 본문 왼쪽을 덮은 채 남았다(마우스는 빼면 접히지만 손가락엔 「빼기」가 없음) — 고르면 접는다(고정한 메뉴는 그대로)
     (function(){
       var m = document.getElementById('sideMenu'), coarse = false;
-      try { coarse = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
+      try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {} // [2026.11.13 5차 재점검 K] 터치 되는 노트북 PC(주로 마우스)에서는 접지 않음 — 손가락이 주된 기기만
       if (!m || !coarse) return;
       m.addEventListener('click', function(e){ var it = e.target.closest && e.target.closest('.menu-item[data-view]'); if (it && !m.classList.contains('pinned')) setTimeout(function(){ nxSideMenuPeek_(false); }, 120); });
     })();
@@ -67128,6 +67128,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     set: function(key, r){
       try {
         var s = JSON.stringify({ t: Date.now(), r: r }); if (s.length > 400000) return;
+        // [2026.11.13 5차 재점검 D] 기기에는 주민등록번호 뒷자리를 남기지 않는다(장부에 주민번호 칸 값이 있는 실사건 2건) — 「900101-1******」로 가려 남기고, 새 값을 서버에서 받으면 원래대로 그린다
+        //  숫자로 적힌 13자리(저장 시각 밀리초 등)는 건드리지 않는다 — 하이픈 있는 꼴과 따옴표 안의 13자리 글자 값만
+        s = s.replace(/(\d{6})\s*-\s*([1-8])\d{6}(?!\d)/g, '$1-$2******').replace(/"(\d{6})([1-8])\d{6}"/g, '"$1-$2******"');
         localStorage.setItem(NX_LC_PREFIX_ + key, s);
         var keys = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf(NX_LC_PREFIX_) === 0) keys.push(k); }
         if (keys.length > 20) keys.map(function(k){ var t = 0; try { t = JSON.parse(localStorage.getItem(k)).t || 0; } catch (e) {} return { k: k, t: t }; })

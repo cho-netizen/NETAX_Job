@@ -224,17 +224,25 @@ function awStaleCheck_(cases) {
 //  세무사님이 넥스를 불러 보시기 전엔 아무도 몰랐다. 밤마다(GAS만, 0원) 진행 중 실사건마다 센다: 폴더 서류 수 · 장부 서류 줄 · 계산 칸 · 「기타」나 이름과 어긋난 종류 · 폴더에 없는 파일 줄.
 //  고칠 수 있는 것은 그 자리에서 고친다(없는 파일 줄 걷기·계산 칸 0이면 첫 바퀴 다시 줄 세우기). 이틀 밤 잇달아 계산 칸이 0이면 아침 「답하실 것」에 한 줄(무엇이 막혔는지).
 var AW_HEALTH_PROP_ = 'aw_ledger_health';
-function awLedgerHealth_(cases) {
+// [2026.11.13 5차 재점검 C] 밤 점검 묶음 전체(awNightly_)가 구글 실행 한도 6분 안에 끝나게 — 묶음이 시작한 때(startedAt)부터 5분이 지나면 남은 사건은 다음 밤으로
+// [2026.11.13 5차 재점검 G] 서류 수는 서류·사진만 센다(검토서 같은 산출물·의뢰서·시스템 파일 빼고). 양도·증여·상속은 계산 칸, 그 밖(불복·조사·자문 등)은 서류 줄로 잰다
+function awLedgerHealth_(cases, startedAt) {
   const t0 = Date.now(), rows = [];
+  // 새벽 2시 큰 묶음(runNightlyChiefManager)이 시작한 때가 있으면 그것, 없으면(🐞 단추로 지금 돌림) 이 묶음 시작 — 그때부터 5분 20초가 지나면 멈춤(6분 한도 전)
+  const T0 = (typeof NX_NIGHT_T0_ === 'number' && NX_NIGHT_T0_) ? NX_NIGHT_T0_ : (Number(startedAt) || t0);
+  if (Date.now() - T0 > 290000) return { 사건: 0, 빨강: 0, 걷음: 0, 어긋남: 0, 건너뜀: '밤 묶음 시간이 모자라 다음 밤에' };
   let prev = {}; try { prev = JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_HEALTH_PROP_) || '{}').byId || {}; } catch (e) { prev = {}; }
-  const byId = {};
-  (cases || []).forEach(function (c) {
-    if (Date.now() - t0 > 240000) return;
+  const byId = Object.assign({}, prev); // 이번 밤에 못 본 사건은 지난 결과를 그대로 둔다
+  // 지난번에 본 지 오래된 사건부터(못 본 사건이 먼저) — 시간이 모자라 멈춰도 밤마다 돌아가며 모두 본다
+  const order = (cases || []).slice().sort(function (a, b) { return String((prev[a.id] && prev[a.id].at) || '').localeCompare(String((prev[b.id] && prev[b.id].at) || '')); });
+  order.forEach(function (c) {
+    if (Date.now() - T0 > 320000) return;
     if (String(c.상태 || '') !== '진행' || awVirtual_(c) || !String(c.폴더ID || '').trim()) return;
     const h = { 사건: String(c.사건명 || '').slice(0, 30), 서류: 0, 서류줄: 0, 칸: 0, 어긋남: 0, 걷음: 0, 고침: [] };
     try {
-      const files = (typeof cpWatchFiles_ === 'function' ? cpWatchFiles_(c) : []).filter(function (f) { return !/\.(md|json|txt)$/i.test(f.name || '') || !/^(의뢰서|관련법령)/.test(f.name || ''); });
-      h.서류 = files.length;
+      const files = typeof cpWatchFiles_ === 'function' ? cpWatchFiles_(c) : []; // 잘림 표시(truncated)를 그대로 넘긴다 — 거르면 표시가 사라진다(A)
+      h.서류 = files.filter(function (f) { return f && (f.kind === 'doc' || f.kind === 'image'); }).length;
+      if (files.truncated) h.고침.push('폴더 파일이 많아 목록이 잘림 — 없는 파일 줄은 걷지 않음');
       if (files.length && typeof ledgerDocGone_ === 'function') { const g = ledgerDocGone_(c.id, files, []); h.걷음 = (g && g.n) || 0; if (h.걷음) { h.고침.push('없는 파일 줄 ' + h.걷음 + '개 걷음'); cpFlowQueueAdd_(c.id, '밤 점검 — 없는 파일 줄 정리 뒤 다시 읽기', 'read'); } }
       const L = ledgerLoad_(c.id, true) || {};
       Object.keys(L.rows || {}).forEach(function (p) {
@@ -245,20 +253,24 @@ function awLedgerHealth_(cases) {
           if (r && r.state === '확정' && nk && (String(r.v) === '기타' || (!nk.ok.test(String(r.v)) && String(r.v).indexOf(nk.kind) === -1))) h.어긋남++;
         } else if (!/^(doc:|q:|기준일$)/.test(p) && r && r.v !== '' && r.v != null) h.칸++;
       });
-      if (h.서류 && !h.칸) {
+      const taxCase = /^(transfer|gift|inheritance)$/.test(String(c.세목 || '')); // 계산 칸이 있는 세목만 계산 칸으로 잰다(G)
+      h.잣대 = taxCase ? '계산 칸' : '서류 줄';
+      if (h.서류 && (taxCase ? !h.칸 : !h.서류줄)) {
         caseProcPatch_(c.id, function (sv) { if (sv.firstPass) delete sv.firstPass.queued; });
         cpFlowQueueAdd_(c.id, '첫 바퀴 — 밤 점검: 서류 ' + h.서류 + '개인데 계산 칸 0', 'read');
         h.고침.push('첫 바퀴 다시 줄 세움');
         const was = prev[c.id];
-        if (was && was.서류 && !was.칸) awNoticeAdd_('장부 비어 있음', '「' + h.사건 + '」 폴더 서류 ' + h.서류 + '개인데 이틀 밤째 장부 계산 칸이 0 — 서류 읽기가 막혔을 수 있음(설정 🐞 카드·사건 장부 기록에서 까닭 확인)', c.id, 'health0_' + c.id + '_' + caseProcNow_().slice(0, 10), true);
+        if (was && was.빨강) awNoticeAdd_('장부 비어 있음', '「' + h.사건 + '」 폴더 서류 ' + h.서류 + '개인데 이틀 밤째 장부 ' + h.잣대 + '이 0 — 서류 읽기가 막혔을 수 있음(설정 🐞 카드·사건 장부 기록에서 까닭 확인)', c.id, 'health0_' + c.id + '_' + caseProcNow_().slice(0, 10), true);
+        h.빨강 = true;
       }
       if (h.어긋남) h.고침.push('종류 어긋남 ' + h.어긋남 + '개(다음 서류 읽기에서 묻기로)');
     } catch (e) { h.오류 = String(e && e.message || e).slice(0, 80); }
-    byId[c.id] = { 서류: h.서류, 칸: h.칸 };
+    byId[c.id] = { 서류: h.서류, 칸: h.칸, 빨강: !!h.빨강, at: caseProcNow_() };
     rows.push(h);
   });
-  const out = { at: caseProcNow_(), ms: Date.now() - t0, 사건: rows.length, 빨강: rows.filter(function (h) { return h.서류 && !h.칸; }).length, rows: rows, byId: byId };
-  try { PropertiesService.getScriptProperties().setProperty(AW_HEALTH_PROP_, JSON.stringify(out).slice(0, 8500)); } catch (e) {}
+  const out = { at: caseProcNow_(), ms: Date.now() - t0, 사건: rows.length, 빨강: rows.filter(function (h) { return !!h.빨강; }).length, rows: rows, byId: byId };
+  // 글자를 중간에서 자르면 다음 밤에 못 읽는다(이틀째 알림이 영영 안 뜸) — 길면 사건별 줄(rows)부터 덜어 낸다
+  try { let s = JSON.stringify(out); if (s.length > 8500) { out.rows = rows.map(function (h) { return { 사건: h.사건, 서류: h.서류, 칸: h.칸, 빨강: !!h.빨강 }; }); s = JSON.stringify(out); } if (s.length > 8500) { delete out.rows; s = JSON.stringify(out); } if (s.length <= 9000) PropertiesService.getScriptProperties().setProperty(AW_HEALTH_PROP_, s); } catch (e) {}
   return { 사건: out.사건, 빨강: out.빨강, 걷음: rows.reduce(function (t, h) { return t + h.걷음; }, 0), 어긋남: rows.reduce(function (t, h) { return t + h.어긋남; }, 0) };
 }
 // ---------- 새벽 2시 묶음에서 부르는 것(③④⑤⑥) ----------
@@ -270,9 +282,12 @@ function awNightly_() {
   try { r.미수 = awUnpaidCheck_(cases).length; } catch (e) { r.미수오류 = String(e && e.message || e).slice(0, 120); }
   try { r.멈춤 = awStaleCheck_(cases).length; } catch (e) { r.멈춤오류 = String(e && e.message || e).slice(0, 120); }
   try { r.질문정리 = awQuestionsNightly_(cases); } catch (e) { r.질문정리오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.12 넥스 질문 정리 ②⑤]
-  try { r.장부건강 = awLedgerHealth_(cases); } catch (e) { r.장부건강오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.13 5차 검문]
   try { const s = t6ShareCleanup_(); r.공유거둠 = s && s.done ? s.done.filter(function (d) { return d.unshared; }).length : 0; if (r.공유거둠) awNoticeAdd_('공유 정리', '완료 사건 폴더의 로봇 공유 ' + r.공유거둠 + '개를 거뒀습니다(밤 자동)', '', 'share:' + awToday_(), false); } catch (e) { r.공유오류 = String(e && e.message || e).slice(0, 120); }
+  // [2026.11.13 5차 재점검 C] 장부 건강표는 맨 뒤, 그 앞까지의 기록을 먼저 남긴다 — 건강표가 길어져 6분 한도에 걸려도 앞 단계 기록·공유 정리는 빠지지 않게
   r.at = caseProcNow_(); r.ms = Date.now() - t0;
+  try { PropertiesService.getScriptProperties().setProperty(AW_NIGHT_PROP_, JSON.stringify(r)); } catch (e) {}
+  try { r.장부건강 = awLedgerHealth_(cases, t0); } catch (e) { r.장부건강오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.13 5차 검문]
+  r.ms = Date.now() - t0;
   try { PropertiesService.getScriptProperties().setProperty(AW_NIGHT_PROP_, JSON.stringify(r)); } catch (e) {}
   return r;
 }

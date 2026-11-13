@@ -162,7 +162,6 @@
       var lgKey = 'ledger_' + c.id, lgNoCache = !!window.nxLgNoCache_; window.nxLgNoCache_ = false;
       // [2026-11-13 3차 계획 6절 1번] 줄 하나를 넣어도 장부 전체를 다시 읽어(관리 서버로 약 6초, 그 전 15~25초) 화면이 「읽는 중」으로 비던 것 —
       //  서버가 돌려준 그 줄(row)만 바로 고쳐 그리고(단추는 막고 「전체 새로 받는 중」 띠), 전체 장부는 뒤에서 받아 다시 그린다. 줄을 못 받으면 예전처럼 다시 읽음.
-      var lgLast = null;
       // [2026-11-13 저장 느림 — 세무사님 "원인을 제대로 분석해서 더이상 속도문제가 대두되지 않도록"] 장부 쓰기(값 넣기·확인·보류·무시·되돌리기)는 job 서버를 여는 데만
       //  7.5초가 들어(코드 7.2MB를 매번 실음 — 빈 호출 6.8~11.6초 실측) 누를 때마다 13~16초를 기다렸다. 사건 저장(10월)과 같은 「화면 먼저」 장치(nxSaveLater_)에 태운다:
       //  누르는 순간 그 줄을 고쳐 그리고(단추는 막지 않음 — 이어서 누를 수 있음), 같은 사건 장부는 차례로 뒤에서 보내며, 실패하면 화면 아래 「다시 보내기」.
@@ -741,10 +740,11 @@
           }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + nxErrText_(e), 'error'); });
         });
       };
-      var lgOld = (!lgNoCache && window.nxLocalCache_) ? window.nxLocalCache_.get(lgKey) : null, lgFresh = false;
+      // [2026.11.13 5차 재점검 B] 여기 있던 참·거짓 표시 「lgFresh」가 위의 장부 새로 읽기 함수 lgFresh를 덮어, 저장 뒤 전체 새로 읽기·장부 띠·사건 화면 새로 그리기가 매번 빠졌다 — 쓰는 곳 없는 표시라 지움
+      var lgOld = (!lgNoCache && window.nxLocalCache_) ? window.nxLocalCache_.get(lgKey) : null;
       if (lgOld) { try { lgPaint(lgOld.r); if (typeof nxStaleMark_ === 'function') nxStaleMark_(body, lgOld.t); } catch (e) { body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>'; } }
       callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
-        lgFresh = true; if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
+        if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
         if (r && r.ok && window.nxLocalCache_) window.nxLocalCache_.set(lgKey, r);
         lgPaint(r);
       }).catch(function(e){ if (typeof nxStaleClear_ === 'function') nxStaleClear_(body); body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });

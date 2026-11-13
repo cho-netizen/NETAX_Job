@@ -986,6 +986,8 @@ function ledgerDocGone_(caseId, files, moved) {
   // 이름 맞대기는 확장자·띄어쓰기를 빼고 한다(장부엔 「등기부등본1」, 폴더엔 「등기부등본1.pdf」로 적힌 실사건이 있다 — 실사건)
   //  한 파일을 나눠 읽은 조각(「… (묶음 1-2).pdf」)은 원래 파일이 있으면 있는 것으로 본다
   const key = function (x) { return String(x || '').slice(0, 80).replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\s*\(묶음\s*\d+\s*-\s*\d+\)\s*$/, '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\s+/g, ''); };
+  // [2026.11.13 5차 재점검 A] 폴더 목록이 잘렸으면(400개·6단계 넘음) 없는 파일을 가릴 수 없다 — 아무것도 걷지 않는다
+  if (!files || files.truncated) return { ok: true, n: 0, skipped: '폴더 목록이 잘림(파일이 너무 많음)' };
   const names = {}; (files || []).forEach(function (f) { if (f && f.name) { names[String(f.name).slice(0, 80)] = true; names[key(f.name)] = true; } });
   if (!Object.keys(names).length) return { ok: true, n: 0 };
   const ren = {}; (moved || []).forEach(function (x) { if (x && x.from && x.name) ren[String(x.from).split('/').pop().slice(0, 80)] = String(x.name).slice(0, 80); });

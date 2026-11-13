@@ -4256,8 +4256,16 @@ function ai_convSave(body) {
     // [2026.11.13 PC 여러 창 ④] 화면은 대화 전체를 통째로 저장한다 — 같은 대화를 두 창(기기)에서 이어 가면 나중 쪽이 앞 쪽 말을 덮어 지웠다.
     //  화면이 "마지막으로 불러오거나 저장한 시각"(baseUpdatedAt)을 보내면, 그 뒤 다른 곳이 저장했는지 보고 덮어쓰지 않는다(화면은 다시 불러오기 단추).
     //  시각을 안 보내는 옛 화면·시각이 비어 있는 대화는 예전처럼 저장한다.
-    if (prevEntry && typeof c.baseUpdatedAt === 'string' && c.baseUpdatedAt && prevEntry.updatedAt && c.baseUpdatedAt !== String(prevEntry.updatedAt)) {
-      return { error: '다른 창에서 이 대화가 이어졌습니다 — 다시 불러온 뒤 보내 주세요.', conflict: true, updatedAt: prevEntry.updatedAt };
+    // [2026.11.13 5차 재점검 E] 넥스 미리 읽기·물음 풀기 글(뒤 일, body.bg)도 같은 대화에 저장해 시각이 바뀌어, 다른 창을 연 적이 없는데 막혔다.
+    //  세무사님 쪽 마지막 저장 시각(userUpdatedAt)을 따로 두고: 화면 기준 시각이 그것과 같으면 그 뒤에 붙은 것은 뒤 일 글뿐 — 막지 않고 그 글을 화면 대화 끝에 합쳐 저장한다(글을 잃지 않음)
+    const userAt0 = prevEntry ? String(prevEntry.userUpdatedAt || prevEntry.updatedAt || '') : '';
+    if (!body.bg && prevEntry && typeof c.baseUpdatedAt === 'string' && c.baseUpdatedAt && prevEntry.updatedAt && c.baseUpdatedAt !== String(prevEntry.updatedAt)) {
+      if (c.baseUpdatedAt !== userAt0) return { error: '다른 창에서 이 대화가 이어졌습니다 — 다시 불러온 뒤 보내 주세요.', conflict: true, updatedAt: prevEntry.updatedAt };
+      try {
+        const old = prevEntry.fileId ? JSON.parse(DriveApp.getFileById(prevEntry.fileId).getBlob().getDataAsString('UTF-8')) : null;
+        const have = {}; c.messages.forEach(function (m) { if (m && typeof m.content === 'string') have[m.content] = 1; });
+        ((old && old.messages) || []).forEach(function (m) { if (m && m.preread && typeof m.content === 'string' && !have[m.content]) c.messages.push(m); });
+      } catch (e) {}
     }
     const conv = {
       id: id,
@@ -4284,7 +4292,8 @@ function ai_convSave(body) {
       // 파일이 지워졌거나 접근 불가하면 새로 만든다(목록과 실제 파일이 어긋난 경우 자동 복구)
       fileId = folder.createFile(id + '.json', text, 'application/json').getId();
     }
-    const meta = { id: id, sourceFileId: conv.sourceFileId, sourceSyncedAt: conv.sourceSyncedAt, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId };
+    const meta = { id: id, sourceFileId: conv.sourceFileId, sourceSyncedAt: conv.sourceSyncedAt, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId,
+      userUpdatedAt: body.bg ? (userAt0 || now) : now }; // [2026.11.13 5차 재점검 E] 뒤 일 글은 세무사님 쪽 저장 시각을 바꾸지 않는다
     if (conv.caseId && typeof caseProcHypTextsForget_ === 'function') caseProcHypTextsForget_(conv.caseId); // [2026.10.28 속도 B] 대화가 바뀌면 가설 출처 글 기억을 지운다
     if (entry) Object.assign(entry, meta); else idx.list.push(meta);
     ai_convWriteIndex_(folder, idx, idx.list);
@@ -5112,7 +5121,7 @@ function dispatchClientAction0_(body) {
   // [2026.10.08] job AI탭 대화 저장소(ai_conv* 위 설명 참고)
   if (body.action === 'ai_conv_list') return jsonResponse(ai_convList());
   if (body.action === 'ai_conv_load') return jsonResponse(ai_convLoad(body));
-  if (body.action === 'ai_conv_save') return jsonResponse(ai_convSave(body));
+  if (body.action === 'ai_conv_save') return jsonResponse(ai_convSave(Object.assign({}, body, { bg: false }))); // [2026.11.13 5차 재점검 E] 화면 저장은 늘 세무사님 쪽(뒤 일 표시는 서버 안에서만)
   if (body.action === 'ai_conv_rename') return jsonResponse(ai_convRename(body));
   if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
   if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
@@ -13724,7 +13733,9 @@ function generateDailyBriefing_() {
 /**
  * 새벽 트리거가 실제로 부르는 진입함수 — 점검, 개선요구사항 처리 등을 순서대로 실행한다([2026.10.20] 오늘의 요약 생성은 중단).
  */
+var NX_NIGHT_T0_ = 0; // [2026.11.13 5차 재점검 C] 새벽 2시 묶음이 시작한 때 — 맨 끝 단계(장부 건강표)가 구글 실행 한도 6분 안에서만 돌게
 function runNightlyChiefManager() {
+  NX_NIGHT_T0_ = Date.now();
   try { runNightlySystemAudit(); } catch (err) { console.error('야간 점검 실패: ' + err.message); }
   try { processImprovementRequests(); } catch (err) { console.error('개선요구사항 처리 실패: ' + err.message); }
   // [2026.10.09] 템플릿 점검(Sonnet)은 야간 자동 실행을 멈추고 "템플릿다듬기" 화면 버튼으로만 돈다 —
@@ -23028,7 +23039,11 @@ function cpWatchCaseOf_(folderId) { // 사건 폴더 ID → 사건 행
   return cases.filter(function (c) { return String(c.폴더ID || '').trim() === fid; })[0] || null;
 }
 function cpWatchFiles_(c) { // 감시 대상 — 사건 폴더의 모든 파일(시스템 파일 _글자기억.json·"_"로 시작하는 파일만 뺌). GAS 체크 목록·폴더 판정은 여기에 안 걸린다
-  return (caseProcNexAllFiles_(c) || []).filter(function (f) { return f && f.id && f.kind !== 'system' && !/^_/.test(String(f.name || '')); });
+  const all = caseProcNexAllFiles_(c) || [];
+  const out = all.filter(function (f) { return f && f.id && f.kind !== 'system' && !/^_/.test(String(f.name || '')); });
+  // [2026.11.13 5차 재점검 A] 목록은 400개·6단계까지만 담긴다(caseProcFiles_) — 잘렸다는 표시를 넘겨야 「없는 파일 줄 걷기」가 잘린 파일을 없는 것으로 보지 않는다(실사건 한 곳이 529개)
+  if (all.truncated) out.truncated = true;
+  return out;
 }
 // ① 파일 지문 대조 — 기록부 fileFp { 파일ID: {n 이름, d 폴더, s 크기, m 수정시각} }. 처음이면 지문만 찍고 변동으로 치지 않는다(사건 등록 때 이미 있던 서류는 "새 서류"가 아님)
 function cpWatchCase_(c, opt) {
@@ -23073,7 +23088,7 @@ function cpWatchCase_(c, opt) {
     else {
       const what = '폴더 변동 — ' + changes.slice(0, 3).map(function (x) { return x.kind + ' ' + x.name; }).join(', ') + (changes.length > 3 ? ' 외 ' + (changes.length - 3) + '개' : '');
       try { ledger = ledgerKbBuild_(c, { what: '폴더 변동으로 다시 모음', why: what, fresh: true }); } catch (e) { ledger = { ok: false, error: String(e && e.message || e).slice(0, 120) }; cpLedgerStaleAdd_(c.id); }
-      cpFlowQueueAdd_(c.id, what.slice(0, 60), 'read'); // [2026.10.31] 바뀐 파일을 📖 서류 읽기 도구로 읽고 장부에 적기까지(칸 채우기·계산은 안 함) — 틱이 이어서 돈다
+      if (String(c.상태 || '') !== '완료') cpFlowQueueAdd_(c.id, what.slice(0, 60), 'read'); // [2026.11.13 5차 재점검 I] 완료 사건은 다시 읽지 않음(직결 길과 같게) · [2026.10.31] 바뀐 파일을 📖 서류 읽기 도구로 읽고 장부에 적기까지(칸 채우기·계산은 안 함) — 틱이 이어서 돈다
       try { if (ledger && ledger.ok) caseProcPatch_(c.id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '사건 장부 바로 갱신', detail: (what + ' → 서류 사실 ' + ((ledger.sum && ledger.sum.사실) || 0) + '건 · 맞댄 묶음 ' + ((ledger.sum && ledger.sum.묶음) || 0) + ' (' + ledger.초 + '초)').slice(0, 240) }); }); } catch (e) {}
     }
   }
@@ -23126,7 +23141,7 @@ function cpNexChatNote_(c, text, tag) {
     if (mine) { try { conv = JSON.parse(DriveApp.getFileById(mine.fileId).getBlob().getDataAsString('UTF-8')) || null; } catch (e) { conv = null; } }
     if (!conv || !Array.isArray(conv.messages)) conv = { title: '넥스 미리 읽기 — ' + String(c.사건명 || c.고객명 || '').slice(0, 30), caseId: c.id, caseName: c.사건명 || '', caseFolderId: c.폴더ID || '', messages: [] };
     conv.messages.push({ role: 'assistant', content: '🤖 ' + (tag || '넥스 미리 읽기') + '(' + caseProcNow_() + ') — ' + String(text).slice(0, 1200), preread: true });
-    const r = ai_convSave({ conversation: conv });
+    const r = ai_convSave({ conversation: conv, bg: true }); // [2026.11.13 5차 재점검 E] 뒤 일 글 — 세무사님 창을 「다른 창에서 이어졌습니다」로 막지 않게
     return { ok: !!(r && r.success), id: r && r.id };
   } catch (e) { return { ok: false, error: String(e && e.message || e).slice(0, 120) }; }
 }
@@ -23142,6 +23157,8 @@ function nxDocAutoSave_(body) {
   for (let i = ms.length - 1; i >= 0; i--) { const m = ms[i]; if (!m || m.role !== 'user') continue; const c = m.content; t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter(function (b) { return b && b.type === 'text'; }).map(function (b) { return b.text; }).join(' ') : ''; if (t) break; }
   t = String(t || '').slice(0, 600);
   if (!t || /수정안만|보여\s*(만|줘|주라|달라)|미리\s*보기만|저장\s*(하지|말)|저장은\s*내가/.test(t)) return false;
+  // [2026.11.13 5차 재점검 F] 물음 문장("어떻게 수정하면 좋을까?")이면 여쭤 보신 것 — 바로 저장하지 않고 수정안만
+  if (/[?？]\s*$|(까|나요|가요|는지|을지|ㄹ지|인가|일까|할까|될까|좋을까|맞나|맞는가|없나|있나|되나)\s*[.!]?\s*$/.test(t.trim())) return false;
   return /반영|수정|고쳐|고치|작성|저장|업데이트|갱신|합치|합쳐|넣어|삽입|추가|바꿔|바꾸|정리|보완/.test(t);
 }
 var CP_NEXQ_PENDING_ = 'cp_nexq_pending', CP_NEXQ_SUPPRESS_ = false;
@@ -23306,7 +23323,9 @@ function cpFirstPassScan_(started, DEADLINE) {
       // 첫 바퀴를 끝까지 돌았으면(done) 다시 세우지 않고, 줄에 선 지 2시간 안이면 기다린다(그 뒤에도 칸이 0이면 다시 세움 — 칸 채우기가 안 돈 11-13 결함 같은 것)
       const sv = caseProcLoad_(c.id) || {}; const fp0 = sv.firstPass || {};
       if (fp0.done) return; if (fp0.queued && (Date.now() - new Date(String(fp0.queued).replace(' ', 'T') + ':00+09:00').getTime()) < 7200000) return;
-      if (cpLedgerHasCalc_(ledgerLoad_(c.id))) return;
+      const L0 = ledgerLoad_(c.id);
+      // [2026.11.13 5차 재점검 G] 양도·증여·상속은 계산 칸, 그 밖(불복·조사 등)은 서류 줄이 있으면 첫 바퀴를 돈 것으로 본다 — 밤 장부 건강표와 같은 잣대
+      if (/^(transfer|gift|inheritance)$/.test(String(c.세목 || '')) ? cpLedgerHasCalc_(L0) : Object.keys((L0 && L0.rows) || {}).some(function (p) { return /^doc:.+\.role$/.test(p); })) return;
       const it = DriveApp.getFolderById(c.폴더ID).getFiles(); let n = 0; while (it.hasNext() && n < 2) { const f = it.next(); if (!/^_/.test(f.getName())) n++; }
       if (!n) { const sub = DriveApp.getFolderById(c.폴더ID).getFolders(); while (sub.hasNext() && !n) { const fi = sub.next().getFiles(); if (fi.hasNext()) n++; } }
       if (!n) return;
@@ -23359,7 +23378,7 @@ function cpFlowQueueRun_(started, DEADLINE) {
     // [2026.11.13 5차 가·나] 서류 읽기가 끝나면 같은 줄에서 칸 채우기(GAS, 0원)를 이어 돈다 — 세무사님 11-13 "당장 수정하라"(5차 점검서 나: "서류 종류가 정해지면 그 세목의 칸 채우기를
     //  같은 자리에서 이어 돌린다")로 10-31 ③ "칸 채우기는 저절로 하지 않음"을 바꿈. 계산(세액)은 여전히 저절로 하지 않는다(계산 화면이 장부에서 바로 읽음).
     //  예전엔 서류만 읽고 칸으로 보내지 않아 상속·증여 실사건 셋(실사건·실사건·실사건)이 서류 종류만 25~28줄, 계산 칸 0줄이었다
-    else if (r && !r.error && item.kind === 'read') cpFlowQueueAdd_(item.id, item.why + ' → 칸 채우기', 'fill');
+    else if (r && !r.error && item.kind === 'read') { let st0 = ''; try { const cs = akReadCase_(item.id); st0 = cs ? String(cs.상태 || '') : ''; } catch (e) {} if (st0 !== '완료') cpFlowQueueAdd_(item.id, item.why + ' → 칸 채우기', 'fill'); } // [2026.11.13 5차 재점검 I] 완료 사건은 칸 채우기를 이어 돌지 않음
     else if (r && !r.error && item.kind === 'fill') { try { caseProcPatch_(item.id, function (sv) { sv.firstPass = Object.assign({}, sv.firstPass || {}, { at: caseProcNow_(), done: true, why: String(item.why || '').slice(0, 80) }); }); } catch (e) {} }
     done.push(item.id + ': ' + (r && r.error ? '실패 ' + r.error : r && r.direct ? ('직결로 읽음' + (r.sec != null ? ' ' + r.sec + '초' : '') + (r.more ? ' · 이어서 다음 틱' : '')) : r && r.flow ? (r.flow.diff.length ? r.flow.diff.join(' · ') : '바뀐 것 없음') : '바퀴 미완(' + ((r && (r.more || r.partial)) ? '다음 틱' : '') + ')'));
   }
