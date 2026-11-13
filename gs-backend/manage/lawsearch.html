@@ -46,7 +46,7 @@
       <!--@@APP_ONLY:lawdb-card@@-->
       <!--@@APP_ONLY:judgewait@@-->
       <div class="card">
-        <h3 style="margin-top:0;">조문으로 찾아보기</h3>
+        <h3>조문으로 찾아보기</h3>
         <div class="nx-help">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
           <label for="lsiArtLaw" class="nx-vlabel">법령</label><select id="lsiArtLaw" aria-label="법령 고르기"></select>
@@ -923,7 +923,7 @@
     var box = document.getElementById('lsiFormMapBox');
     if (!box){ lsiRenderForms_(); box = document.getElementById('lsiFormMapBox'); }
     if (!fm || !box) return;
-    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">칸 해설 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
+    box.innerHTML = '<div class="card"><h3>칸 해설 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
       '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(formNo) + (fm.서식판 ? ' · 서식판 ' + lsiEsc_(fm.서식판) : '') + ' · 상태: <b>' + lsiEsc_(lsiState_(formNo, fm)) + '</b>(세무사님 확인 전에는 계산·판정에 쓰지 않습니다)' +
       (fm.출처 || []).map(function(o){ return ' · <a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join('') + '</div>' +
       (fm.설명 ? '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(fm.설명) + '</div>' : '') +
@@ -1184,7 +1184,7 @@
     if (!box) return;
     if (!t){ box.innerHTML = '<div class="card lsi-note">' + lsiEsc_(no) + ' 조견표는 아직 없습니다.</div>'; return; }
     var tbl = function(head, rows){ return rows.length ? '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr>' + head.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' : '<div class="lsi-note">없음</div>'; };
-    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span></h3>' +
+    box.innerHTML = '<div class="card"><h3>' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span></h3>' +
       lsiReviewBarHtml_(t.번호, t) +
       '<div class="lsi-note" style="margin-bottom:8px;">' + lsiEsc_(t.무엇 || '') + '<br>기준이 되는 날: ' + lsiEsc_(t.기준일 || '') + ' · 갱신: ' + lsiEsc_(t.갱신 || '') +
       '<br>근거 법령: ' + lsiArtLinks_(t.근거법령) + (t.근거서식 && t.근거서식.length ? '<br>근거 서식: ' + lsiFormCellLinks_(t.근거서식, t.근거법령) : '') +

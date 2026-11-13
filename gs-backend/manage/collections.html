@@ -59,7 +59,7 @@
       <div id="colStats"></div>
     </div>
     <div class="card">
-      <h3>수금 내역<span id="colSummary" class="h-act" style="font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
+      <h3>수금 내역<span id="colSummary" class="h-act h-text"></span></h3>
       <div id="colList"><div class="spinner">불러오는 중…</div></div>
     </div>
   </div>
@@ -249,7 +249,8 @@
     // "애초에 이 화면이 아는 다운자료가 0건인지" vs "있는데 화면에 안 뜨는지"를 바로 구분한다.
     var totalDownloadCount = colLogsCache_.filter(function(l){ return l.승인번호; }).length;
     summaryEl.textContent = activeLogs.filter(function(l){ return Number(l.금액) || 0; }).length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
-    summaryEl.title = '전체 다운자료(승인번호 있는 기록) ' + totalDownloadCount + '건 — 필터와 상관없이 센 수'; // [2026.10.31] 점검용 숫자는 줄에서 빼 마우스를 올리면 보이게
+    // [2026.10.31] 점검용 숫자는 줄에서 빼 마우스를 올리면 보이게 · [2026-11-14] 좁은 화면에서 제목 줄에 다 안 들어가면 … 으로 줄어드므로(제목 줄 틀 .h-text) 요약 글 전체도 함께
+    summaryEl.title = summaryEl.textContent + '\n전체 다운자료(승인번호 있는 기록) ' + totalDownloadCount + '건 — 필터와 상관없이 센 수';
     colList.innerHTML = '';
     // [2026.11.01 화면구조 개편 ④] 금액 없는 기록(문자 발송·메모 — 수금이 아님)은 목록 맨 아래 접힌 묶음으로(검토서 2절 11번). 합계는 원래부터 금액만 더함
     var noAmt = logs.filter(function(l){ return !(Number(l.금액) || 0) && !l.중복정리; });

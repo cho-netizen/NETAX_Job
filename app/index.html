@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 15:04 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 15:23 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -608,7 +608,17 @@
      ③ 줄 안 단추·칸 높이는 보통 칸 높이(--ctl-h) 하나. 새 제목 줄도 이 틀만 쓴다(자리마다 높이·여백·float을 직접 적지 않는다). */
   .view .card > h3{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; min-height:calc(var(--ctl-h) + 10px); } /* 단추가 없는 제목 줄도 같은 높이(카드마다 제목 띠 높이가 달라 보이지 않게) — 상자 크기에 아래 여백 8px·밑줄 2px이 들어가므로 +10px */
   .view .card > h3 > .h-act{ margin-left:auto; display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; font-weight:400; }
+  /* 오른쪽 묶음이 글(요약 숫자 등)일 때 — 줄을 넘기지 않고 남는 폭만큼만, 넘치면 … (마우스를 올리면 전체 — 넣는 코드가 title을 함께 적는다) */
+  .view .card > h3 > .h-text{ display:block; flex:1 1 0; min-width:0; text-align:right; /* 0에서 시작해 남는 폭을 채움 — 줄바꿈 대신 … */ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12.5px; font-weight:600; color:var(--sub); }
   .view .card > h3 .ghost-btn, .view .card > h3 .btn, .view .card > h3 .save-btn, .view .card > h3 select{ height:var(--ctl-h) !important; }
+  /* ④ 세무사님 "줄넘김되지 않도록 폭을 줄여라" / "버튼폭을 줄이면 된다" — 제목 줄 안 단추 폭만 줄임(높이·간격은 그대로).
+     ± 너비 30→24px, 작은 단추 양옆 안쪽 여백 9→6px(휴대폰 폭 착신메일 줄이 11px 넘쳐 오른쪽 묶음이 둘째 줄로 내려갔음) */
+  .view .card > h3 .dash-step button{ width:24px; }
+  .view .card > h3 .ghost-btn.sm{ padding-left:6px !important; padding-right:6px !important; }
+  /* ⑤ "나머지는 권장대로" — 제목 줄 색: 연한 하늘색 띠(단추의 연한 금색과 겹치지 않게 — 세무사님 "버튼색과 같지 않나?"), 밑줄은 띠 아래 가는 선 하나.
+     카드 첫 줄이면 띠를 카드 위·양옆 끝까지 깐다(제목 줄 폭이 줄지 않게). 상자 높이에 위아래 여백 8px·밑줄 1px이 들어가므로 최소 높이 +17px */
+  .view .card > h3{ background:#e8f0fa; border-bottom:1px solid #cddbee; padding:8px 10px; border-radius:8px; min-height:calc(var(--ctl-h) + 17px); }
+  .view .card > h3:first-child{ margin:-16px -16px 12px; padding:8px 16px; border-radius:11px 11px 0 0; }
   /* 카드 안 h4는 3단계 묶음과 같은 모양(10-31 "설정탭뿐이 아니라 모든 탭에서 마찬가지다") */
   .view .card h4{ display:block; margin:18px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); line-height:1.45; }
   .view .card h4:first-child{ margin-top:4px; }
@@ -1351,6 +1361,7 @@
   body.lay-cover #view-dashboard .view-body{ padding:0 8px 8px; }
   body.lay-cover #view-dashboard .card{ padding:10px 12px; margin-bottom:8px; font-size:15px; }
   body.lay-cover #view-dashboard .card h3{ font-size:16px; margin:0 0 6px; }
+  body.lay-cover #view-dashboard .card > h3:first-child{ margin:-10px -12px 6px; padding:6px 12px; } /* 표지 배치는 카드 안 여백이 10·12px — 제목 띠를 그만큼만 끝까지 */
   body.lay-cover #view-dashboard .card h3 a,
   body.lay-cover #view-dashboard .card > div:has(> #dashCalRangeBefore){ display:none !important; }
 
@@ -5971,7 +5982,7 @@ function nxMdOpenWindow(title, src, opts){
     renderWorkCaseList();
     prefill = prefill || {};
     workCaseDetail.innerHTML =
-      '<h3 style="margin-top:0;">새 사건 등록</h3>' +
+      '<h3>새 사건 등록</h3>' +
       (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
       (prefill.고객ID ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">고객에서 시작 — 저장하면 고객의 그 고객에 바로 연결됩니다.</div>' : '') +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
@@ -9244,7 +9255,7 @@ function nxMdOpenWindow(title, src, opts){
   <div class="view-body">
     <div id="lsiPane-law">
             <div class="card" id="lsiDbCard">
-        <h3 style="margin-top:0;">법령 원문 (법령 정비본)</h3>
+        <h3>법령 원문 (법령 정비본)</h3>
         <div class="nx-help" style="margin-bottom:8px;">법제처 원문을 법령정보 모양으로 봅니다. 조문 전체나 항 하나를 [복사]로 그대로 인용할 수 있고, 판(시행일)을 고르면 그때 법령을 봅니다. 그림 산식은 글로 옮긴 것(세무사님 타이핑·판독)이나 법제처 글자상자로 보여 줍니다.</div>
         <div id="lsiDbBar" class="lsidb-bar"><button type="button" class="btn" id="lsiDbOpen">원문 열기</button></div>
         <div id="lsiDbBody"></div>
@@ -9252,7 +9263,7 @@ function nxMdOpenWindow(title, src, opts){
 
       <!-- [2026.10.19] ⚖️ 법령정보 → 📜 법령 탭 "🤝 판단 대기" 카드 — 앱에만(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <div class="card" id="jwCard">
-  <h3 style="margin-top:0;">법령 판단 대기</h3>
+  <h3>법령 판단 대기</h3>
   <div class="nx-help" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점(⚖️ 법령 안건)입니다. 위원(Gemini API)이 같은 질문지(쟁점·선택지·서식 칸 해설·조문 원문)에 답하고, 근거가 법제처에 실제로 있는지(✔/⚠) 확인한 뒤 회장(Claude)이 결론을 냅니다. 결론이 안 난 것(🙋 결정 필요)만 세무사님이 고릅니다. 엔진은 자동으로 고치지 않습니다.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
     <button type="button" class="ghost-btn" id="jwLoad">판단 대기</button>
@@ -9389,7 +9400,7 @@ function nxMdOpenWindow(title, src, opts){
 </script>
 
       <div class="card">
-        <h3 style="margin-top:0;">조문으로 찾아보기</h3>
+        <h3>조문으로 찾아보기</h3>
         <div class="nx-help">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
           <label for="lsiArtLaw" class="nx-vlabel">법령</label><select id="lsiArtLaw" aria-label="법령 고르기"></select>
@@ -10266,7 +10277,7 @@ function nxMdOpenWindow(title, src, opts){
     var box = document.getElementById('lsiFormMapBox');
     if (!box){ lsiRenderForms_(); box = document.getElementById('lsiFormMapBox'); }
     if (!fm || !box) return;
-    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">칸 해설 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
+    box.innerHTML = '<div class="card"><h3>칸 해설 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
       '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(formNo) + (fm.서식판 ? ' · 서식판 ' + lsiEsc_(fm.서식판) : '') + ' · 상태: <b>' + lsiEsc_(lsiState_(formNo, fm)) + '</b>(세무사님 확인 전에는 계산·판정에 쓰지 않습니다)' +
       (fm.출처 || []).map(function(o){ return ' · <a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join('') + '</div>' +
       (fm.설명 ? '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(fm.설명) + '</div>' : '') +
@@ -10527,7 +10538,7 @@ function nxMdOpenWindow(title, src, opts){
     if (!box) return;
     if (!t){ box.innerHTML = '<div class="card lsi-note">' + lsiEsc_(no) + ' 조견표는 아직 없습니다.</div>'; return; }
     var tbl = function(head, rows){ return rows.length ? '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr>' + head.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' : '<div class="lsi-note">없음</div>'; };
-    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span></h3>' +
+    box.innerHTML = '<div class="card"><h3>' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span></h3>' +
       lsiReviewBarHtml_(t.번호, t) +
       '<div class="lsi-note" style="margin-bottom:8px;">' + lsiEsc_(t.무엇 || '') + '<br>기준이 되는 날: ' + lsiEsc_(t.기준일 || '') + ' · 갱신: ' + lsiEsc_(t.갱신 || '') +
       '<br>근거 법령: ' + lsiArtLinks_(t.근거법령) + (t.근거서식 && t.근거서식.length ? '<br>근거 서식: ' + lsiFormCellLinks_(t.근거서식, t.근거법령) : '') +
@@ -11549,7 +11560,7 @@ function nxMdOpenWindow(title, src, opts){
     selectedClientId = null;
     renderClientList();
     clientDetail.innerHTML =
-      '<h3 style="margin-top:0;">새 고객 등록</h3>' +
+      '<h3>새 고객 등록</h3>' +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:380px;">' +
       '<label>성명 *<br><input type="text" id="ccNewName" size="10" placeholder="고객 성명"></label>' +
       '<label>전화번호<br><input type="text" id="ccNewPhone" size="14" placeholder="(선택)"></label>' +
@@ -12484,7 +12495,7 @@ function nxMdOpenWindow(title, src, opts){
       <div id="colStats"></div>
     </div>
     <div class="card">
-      <h3>수금 내역<span id="colSummary" class="h-act" style="font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
+      <h3>수금 내역<span id="colSummary" class="h-act h-text"></span></h3>
       <div id="colList"><div class="spinner">불러오는 중…</div></div>
     </div>
   </div>
@@ -12674,7 +12685,8 @@ function nxMdOpenWindow(title, src, opts){
     // "애초에 이 화면이 아는 다운자료가 0건인지" vs "있는데 화면에 안 뜨는지"를 바로 구분한다.
     var totalDownloadCount = colLogsCache_.filter(function(l){ return l.승인번호; }).length;
     summaryEl.textContent = activeLogs.filter(function(l){ return Number(l.금액) || 0; }).length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
-    summaryEl.title = '전체 다운자료(승인번호 있는 기록) ' + totalDownloadCount + '건 — 필터와 상관없이 센 수'; // [2026.10.31] 점검용 숫자는 줄에서 빼 마우스를 올리면 보이게
+    // [2026.10.31] 점검용 숫자는 줄에서 빼 마우스를 올리면 보이게 · [2026-11-14] 좁은 화면에서 제목 줄에 다 안 들어가면 … 으로 줄어드므로(제목 줄 틀 .h-text) 요약 글 전체도 함께
+    summaryEl.title = summaryEl.textContent + '\n전체 다운자료(승인번호 있는 기록) ' + totalDownloadCount + '건 — 필터와 상관없이 센 수';
     colList.innerHTML = '';
     // [2026.11.01 화면구조 개편 ④] 금액 없는 기록(문자 발송·메모 — 수금이 아님)은 목록 맨 아래 접힌 묶음으로(검토서 2절 11번). 합계는 원래부터 금액만 더함
     var noAmt = logs.filter(function(l){ return !(Number(l.금액) || 0) && !l.중복정리; });
