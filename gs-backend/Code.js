@@ -13160,8 +13160,10 @@ function workAppendLog_(body) {
 }
 // ④ 오늘 할 일 — 대시보드 맨 위·휴대폰 창구·현황판이 같은 목록을 본다
 function todoList_() {
+  // [2026-11-13 느림 ②(나)] 세무사님 "권장대로" — 할 일 조회가 12~16초(서버 바닥 약 6.6초 제외 약 6초). 부분마다 걸린 시간을 _ms에 남겨 어디서 드는지 잰다(화면은 _ms를 안 씀)
+  const _t0 = Date.now(), _ms = {}; let _tp = _t0; const _lap = function (k) { const n = Date.now(); _ms[k] = n - _tp; _tp = n; };
   const tz = 'Asia/Seoul', today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), in3 = Utilities.formatDate(new Date(Date.now() + 3 * 86400000), tz, 'yyyy-MM-dd');
-  let cases = []; try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; cases = (o && o.cases) || []; } catch (e) { cases = []; }
+  let cases = []; try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; cases = (o && o.cases) || []; } catch (e) { cases = []; } _lap('사건목록');
   const open = cases.filter(function (c) { return c.상태 !== '완료'; });
   const pick = function (c) { return { caseId: c.id, 사건: String(c.사건명 || c.고객명 || ''), 법정일: String(c.법정일 || '') }; };
   const out = { at: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), 마감: [], 지남: [], 오늘예약: [], 넥스질문: [], 고객서류: [], 확인요청: 0, 긴급요청: 0, 카카오오류: 0, 알림대기: [] };
@@ -13186,10 +13188,13 @@ function todoList_() {
   // [2026.11.12 넥스 질문 정리 계획서 ④ — 세무사님 "날짜제한을 둔 자체가 바보짓이고, 이게 급한 일로 분류해야 하는지도 의문"] 넥스 질문은 급한 일이 아니다 —
   //  장부 열린 칸은 GAS가 못 푼 것을 넥스가 먼저 보고(cpNexQuestionWake_), 남은 것만 그 사건 안(사실 장부 ④ 물어볼 것)에서 묶음으로 여쭙는다. 여기(대시보드·휴대폰 창구·현황판)에는 싣지 않는다.
   //  (예전엔 수정일 날짜 값을 글자로 비교해 14일 거름이 죽어 시트 앞 12건만 보였다 — 실상 점검서 20261112)
-  try { out.고객서류 = custUploadsRecent_(3).slice(0, 10); } catch (e) {}
+  _lap('예약');
+  try { out.고객서류 = custUploadsRecent_(3).slice(0, 10); } catch (e) {} _lap('고객서류');
   try { const ra = commRequestsAll_(); out.확인요청 = ra.open.filter(function (r) { return r.status === '반영됨'; }).length; out.긴급요청 = ra.open.filter(function (r) { return r.urgent && /접수|재오픈/.test(r.status); }).length; } catch (e) {}
-  try { out.카카오오류 = kakaoErrorsRecent_(3).length; } catch (e) {}
+  _lap('개선요구');
+  try { out.카카오오류 = kakaoErrorsRecent_(3).length; } catch (e) {} _lap('카카오');
   try { out.알림대기 = notifyLog_().filter(function (x) { return x.status === '대기' && !/^넥스 긴급 신고/.test(String(x.text || '')); }).slice(0, 10); } catch (e) {} // [2026.10.31] 넥스 기능 부족 신고는 개선요구 🚨(긴급 요청 칩)과 겹쳐 뺌
+  _lap('알림'); _ms.합계 = Date.now() - _t0; out._ms = _ms;
   return out;
 }
 // ⑤ 알림에서 바로 답하기 — 급한 알림 문자 끝에 job.netax.kr/m/?a=번호, 누르면 확인/보류/나중에
