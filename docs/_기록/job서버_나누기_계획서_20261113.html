@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>job 서버 나누기 계획서</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mut:#666;--line:#ddd;--chip:#f3f4f6;--ok:#1a7f37;--warn:#b35900}
+@media (prefers-color-scheme:dark){:root{--bg:#17181a;--fg:#ececec;--mut:#a0a0a0;--line:#333;--chip:#25272a}}
+body{background:var(--bg);color:var(--fg);font:15px/1.65 system-ui,"Malgun Gothic",sans-serif;margin:0;padding:16px;max-width:960px}
+h1{font-size:21px}h2{font-size:17px;margin-top:26px;border-bottom:1px solid var(--line);padding-bottom:4px}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid var(--line);padding:5px 7px;vertical-align:top;text-align:left}
+th{background:var(--chip)}.wrap{overflow-x:auto}.warn{color:var(--warn);font-weight:600}.ok{color:var(--ok);font-weight:600}
+</style></head><body>
+<h1>job 서버 나누기 계획서 — 자주 쓰는 읽기를 작은 서버로 (2026-11-13)</h1>
+<p>세무사님 말씀(11-13): "권장대로" — 느림 계획서 3-2절 권장안 "job 서버를 둘로 나누는 계획서를 따로 올림". <b>이 계획서를 정해 주시기 전엔 만들지 않습니다</b>(1층 5절).</p>
+
+<h2>1. 왜 — 잰 것</h2>
+<div class="wrap"><table>
+<tr><th>서버</th><th>코드 크기</th><th>여는 데만(빈 호출 4번)</th></tr>
+<tr><td>관리 서버(gs-light)</td><td>0.05MB</td><td class="ok">1.2~1.6초</td></tr>
+<tr><td>판정 서버(gs-judge)</td><td>1.7MB</td><td>2.2~3.3초</td></tr>
+<tr><td>job 서버</td><td>7.2MB(+엔진 1.5MB)</td><td class="warn">6.8~11.6초</td></tr>
+</table></div>
+<p>여는 시간이 코드 크기에 거의 비례합니다. 「오늘 할 일」은 서버 안 일 3.7~5.5초 + 여는 데 7.5~8.4초, 장부 보기는 일 4.4초 + 여는 데 7.5초(느림 계획서 3-2절).</p>
+
+<h2>2. 무엇을 옮기나 — 읽기 여섯(딸린 코드 0.20MB)</h2>
+<p>build-light 도구와 같은 규칙(시작 함수에서 부르는 함수를 따라가기)으로 재었습니다.</p>
+<div class="wrap"><table>
+<tr><th>읽기</th><th>부르는 화면</th><th>딸린 함수·크기</th></tr>
+<tr><td>오늘 할 일</td><td>「오늘」 첫 카드</td><td>46개 · 0.04MB</td></tr>
+<tr><td>장부 보기</td><td>사실(장부) 탭</td><td>133개 · 0.14MB</td></tr>
+<tr><td>장부 띠</td><td>사건 화면마다 맨 위</td><td>46개 · 0.04MB</td></tr>
+<tr><td>대시보드 상태(개선요구·고객 서류·카카오 등)</td><td>「오늘」</td><td>45개 · 0.03MB</td></tr>
+<tr><td>사건 목록 · 예약 목록</td><td>거의 모든 화면(이미 관리 서버)</td><td>—</td></tr>
+<tr><td><b>합계(겹침 빼고)</b></td><td></td><td><b>200개 · 0.20MB(전체 7.1MB의 3%)</b></td></tr>
+</table></div>
+<p>예상: 이 여섯은 여는 데 1.5초 안팎 + 일 시간. 장부 보기 약 12초 → 약 6초, 오늘 할 일 약 12초 → 약 5~6초(① 지난 값 먼저와 합치면 여는 순간 보이고 새 값도 빨리 옴). 옮긴 뒤 실제로 잽니다.</p>
+
+<h2>3. 어떻게 — 새 서버를 만들지 않고 관리 서버에 더함</h2>
+<ul>
+<li>관리 서버(gs-light)에 이미 있는 장치를 그대로 씀: 로그인 확인(job 서버 표 검사), 12초 넘거나 오류면 같은 요청을 job 서버로, 화면을 열 때마다 뒤에서 job 서버 답과 같은지 비교해 다르면 그 서버를 끄고 오류 기록(10-17 장치).</li>
+<li>코드는 손으로 옮기지 않음: build-light가 job 서버 원본에서 함수를 자동으로 복사(원본은 하나 그대로).</li>
+<li>저장·계산·넥스·밤 점검·서류 읽기는 job 서버 그대로. job 서버 코드는 그대로 둠(줄이지 않음) — 자주 부르는 읽기만 작은 서버로 비켜 감.</li>
+</ul>
+
+<h2>4. 걸림돌과 처리(코드에서 센 것)</h2>
+<div class="wrap"><table>
+<tr><th>걸림돌</th><th>내용</th><th>처리(권장)</th></tr>
+<tr><td>job 서버 안 저장칸(스크립트 속성) 12종을 읽음 — 프로젝트마다 따로라 관리 서버에선 빈 값</td><td>고정 값: 총괄관리자 폴더 ID·AI 비용 시트 ID<br>늘 바뀌는 값: 알림 기록·최근 변경·개선 답·뒷일 실패·넥스 질문 대기·AI 상태 등 10종</td><td>고정 값은 관리 서버 속성에 한 번 옮겨 적음. 늘 바뀌는 값은 <b>job 서버가 바꿀 때마다 드라이브 시스템 파일 하나(_속성거울.json)에도 같이 적고</b>, 관리 서버는 그 파일을 읽음</td></tr>
+<tr><td>읽는 길 안의 쓰기 4곳</td><td>사건 시트 머리줄 맞추기 · 개선요구 맞추기 저장 · 넥스 질문 줄 세우기 · 파일 덮어쓰기</td><td>관리 서버 판에선 쓰지 않고 읽기만(쓰기는 job 서버가 저장·밤 점검 때 하던 대로)</td></tr>
+<tr><td>잠금 4·캐시 5</td><td>잠금은 쓰기 쪽에서만 씀</td><td>읽기 판에선 잠금 없이 읽음(드라이브 파일은 통째로 바뀌어 반쯤 쓴 것을 읽지 않음), 캐시는 관리 서버 자기 것</td></tr>
+<tr><td>권한</td><td>관리 서버는 지금 시트 읽기만</td><td>드라이브 읽기 권한을 더함 — 편집기에서 한 번 승인 [세무사님 몫: 클릭 한 번]</td></tr>
+</table></div>
+
+<h2>5. 순서</h2>
+<ol>
+<li>job 서버: 늘 바뀌는 저장칸 10종을 바꿀 때 거울 파일에도 적기(읽는 쪽은 아직 그대로) — 배포 [세무사님 몫: cmd]</li>
+<li>build-light 넓히기: 읽기 여섯을 시작 함수로, 속성 읽기는 거울 파일로, 쓰기 4곳은 끔 — 나누기 전·뒤 같은 답인지 시험 도구로(판정 서버 때 judge-remote-check처럼)</li>
+<li>관리 서버: 권한 승인·배포 [세무사님 몫: 클릭·cmd]</li>
+<li>화면: 관리 서버에 묻는 목록에 넷 더하기(장부 보기·장부 띠·오늘 할 일·대시보드 상태) — 비교 장치는 켠 채로</li>
+<li>잼: 같은 자리(오늘 첫 카드·사실 탭·장부 띠) 전·후 초를 PC·태블릿·폰 크기에서, 비교 장치 「다른 답」 0건인지 하루 동안</li>
+</ol>
+
+<h2>6. 정하실 것</h2>
+<ul>
+<li><b>늘 바뀌는 저장칸 처리 — 권장안: 거울 파일</b>(job 서버가 바꿀 때 같이 적음). 다른 길: 그 값을 쓰는 「알림 대기」·「넥스 질문 대기」 같은 줄만 job 서버에 따로 물음(오늘 카드가 두 번 부름 — 느린 쪽이 남음).</li>
+<li>관리 서버에 드라이브 읽기 권한을 더하는 것(장부·개선요구 파일을 읽어야 함).</li>
+</ul>
+</body></html>
