@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 15:23 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 15:35 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3463,8 +3463,10 @@ function nxMdOpenWindow(title, src, opts){
       // 규칙대로 고객명을 포함하고 있으니, 고객명을 별도 열로 또 보여줄 필요가 없다. 열을
       // 없애고 그만큼 확보된 폭은 사건명 열에 몰아준다.
       // [2026.10.31] 세무사님 "마감임박작업에서 사건명필드가 데이타길이에 비해 너무 넓다" — 370→200px(사건명 규칙 글자 길이에 맞춤, 넘치면 … + 마우스 올리면 전체).
-      // [2026-11-13] 세무사님 "표도 카드폭에 맞춰서 늘려라"(대시보드 2열로 카드가 넓어짐) — width:auto → 100%. 칸 너비는 위 비율 그대로 함께 늘어난다(사건명만 몰아 넓히지 않음 — 10-31 말씀). 최근수금 표도 같게
-      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:100%; min-width:520px;"><colgroup>'
+      // [2026-11-14] 세무사님 "폭이 늘어날때 표도 늘리라고 했는데, 그렇다고 필드를 무작정 늘리면 어떻하나? 스크롤되는 표만 늘려야지" → 11-13에 width:100%로 칸을 비율대로 넓혔던 것을 되돌림.
+      //  칸 너비는 고정(화면 규칙: 자료 표 칸 너비 고정·줄바꿈 없음·넘치면 가로 스크롤), 표 폭은 칸 합만큼(width:auto). 감싼 가로 스크롤 상자가 카드 폭을 따라 넓어지므로
+      //  좁을 땐 밀어 보고 넓어지면 가려졌던 칸이 그만큼 더 보인다 — 칸 자체는 늘지 않는다. 최근수금 표도 같게. 최소 폭 = 칸 합(128+200+90+64+62=544, 예전 520은 11-12 법정일 칸을 넓힐 때 안 맞춰 좁은 화면에서 칸이 줄어들었음)
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:544px;"><colgroup>'
         // [2026.11.12 요청 R2611040754] 세무사님 "날짜 다음에 요일을 넣어주면 좋겠고, 타이틀명 "업무유형"을 "유형"으로 줄이자" — 법정일 열 104→128px(요일 3글자), 머리글 "유형"
         + '<col style="width:128px"><col style="width:200px"><col style="width:90px"><col style="width:64px"><col style="width:62px">'
         + '</colgroup><tr><th' + thNowrap + '>법정일</th><th' + thNowrap + '>사건명</th><th' + thNowrap + '>유형</th><th' + thNowrap + '>상태</th><th' + thNowrap + '></th></tr>';
@@ -3630,7 +3632,7 @@ function nxMdOpenWindow(title, src, opts){
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
       var thNowrap2 = ' style="' + ellipsis + '"';
-      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:100%; min-width:436px;"><colgroup>'
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:436px;"><colgroup>'
         + '<col style="width:92px"><col style="width:84px"><col style="width:100px"><col style="width:160px">'
         + '</colgroup><tr><th' + thNowrap2 + '>날짜</th><th' + thNowrap2 + '>고객명</th><th' + thNowrap2 + '>금액</th><th' + thNowrap2 + '>수취증빙</th></tr>';
       // [2026.09.16 버그수정] 캘린더·메일 카드와 같은 원칙 — 윗행과 날짜가 같으면 비워서 보여준다.
