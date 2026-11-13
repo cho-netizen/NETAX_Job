@@ -51,7 +51,10 @@
     // Code.js의 조회 함수가 바뀌었는데 작은 서버를 안 올렸어도 이 비교가 잡아 job 서버로 돌아간다 — 끄지 말 것.
     var SIDE_SERVERS = [
       { name: '관리 서버', url: 'https://script.google.com/macros/s/AKfycbxnruhEVQURJupt1eM7K8Iyn_EDDwSJ6mcmdvQhGqxF7rxB1VLxZkxJMi5jAYuj8e9woQ/exec',
-        actions: { work_get_cases: 1, client_get_clients: 1, client_get_consult_logs: 1, list_bookings: 1 } },
+        actions: { work_get_cases: 1, client_get_clients: 1, client_get_consult_logs: 1, list_bookings: 1,
+          // [2026-11-13 job 서버 나누기] 세무사님 "권장대로"(docs/_기록/job서버_나누기_계획서_20261113.html) — 관리 서버가 읽기 전용으로 대신 답함(운영 견주기: 사건 셋 같은 답,
+          //  장부 보기 12.4→6.1초·장부 띠 12.6→6.7초·오늘 할 일 12~16→8.1초). 쓸 일이 생기면 관리 서버가 「__fallback」으로 돌려주고 여기서 job 서버로 다시 묻는다.
+          todo_list: 1, case_proc: function(payload){ return !!payload && (payload.step === 'ledger' || payload.step === 'ledgerFlow'); } } },
       { name: '부가서비스 서버', url: 'https://script.google.com/macros/s/AKfycbxZhdrTsjYg5NaX1lg3YnLozI0d3pGcLmXVVfZTC52qkmIhMSiujgfwo3IoxXO-6SPB/exec',
         actions: { listFolder: 1, getNetaxRootPath: 1, listCaseTemplates: 1, getCaseTemplateContent: 1, listGeneralMemos: 1, get_latest_template_review: 1,
           list_all_reports: function(payload){ return !(payload && payload.forceRebuild); } } } // 다시 만들기는 목록 파일을 고쳐 써서 job 서버로
@@ -90,9 +93,11 @@
       sv.shadowDone[action] = true;
       // [2026.11.03] 견주기는 하루 한 번만(화면을 열 때마다 조회를 두 번 하던 것 — 저장 기다림 전수조사)
       try { var dk = 'nxShadowDay_' + sv.name + '_' + action, today = new Date().toISOString().slice(0, 10); if (localStorage.getItem(dk) === today) return; localStorage.setItem(dk, today); } catch (e) {}
-      var a = JSON.stringify(sideResult);
+      // [2026-11-13] 걸린 시간 칸(_ms)은 두 서버가 늘 달라 빼고 견준다(오늘 할 일·장부 답에 들어 있음)
+      var noMs = function(k, v){ return k === '_ms' ? undefined : v; };
+      var a = JSON.stringify(sideResult, noMs);
       send([{ fn: item.fn, args: item.args, resolve: function(mainResult){
-        var b = JSON.stringify(mainResult);
+        var b = JSON.stringify(mainResult, noMs);
         if (a !== b){
           sv.off = true;
           sideLog(sv, action + ' 결과가 job 서버와 다름 — 이 화면에서는 ' + sv.name + '를 끔', sv.name + ' ' + a.length + '자 / job ' + b.length + '자, 처음 다른 곳: ' + (function(){ for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return i + ' [' + a.slice(Math.max(0, i - 40), i + 40) + '] vs [' + b.slice(Math.max(0, i - 40), i + 40) + ']'; return '길이만 다름'; })());
@@ -106,6 +111,8 @@
         if (sv){
           var item = { fn: fnName, args: args, resolve: resolve, reject: reject };
           viaSide(sv, item).then(function(r){ sv.fails = 0; resolve(r); shadowCheck(sv, item, r); }, function(err){
+            // [2026-11-13] 「__fallback」 = 고장이 아니라 쓸 일이 있어 job 서버로 넘김(옛 기록 옮기기 등) — 실패로 세지 않고 조용히 job 서버로
+            if (err && /^__fallback/.test(String(err.message || ''))) { send([item]); return; }
             // 두 번 연달아 실패하면 이 화면에서는 그 서버를 끈다(설치 전·장애 중에 매번 헛걸음하지 않게)
             if (++sv.fails >= 2) sv.off = true;
             sideLog(sv, args[0] + ' 실패 → job 서버로', err && err.message);
