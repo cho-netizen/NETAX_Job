@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 14:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 14:22 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -803,10 +803,10 @@
     border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); font-family:inherit; touch-action:manipulation; user-select:none; }
   .dash-step button:hover{ background:rgba(200,162,68,0.22); }
   .dash-step button:active{ background:rgba(200,162,68,0.32); }
-  /* [2026-11-13] 세무사님 "일정, 마감임박작업, 최근수금내역, 안읽은메일 에서 지정하는 날짜 입력칸이 쓸데없이 너무 넓은거 같은데?" — 46px → 숫자 세 자리(365)가 들어가는 만큼(2.6em ≈ 36px),
-     수금은 네 자리(3650)라 3.2em. em이라 글자 크기 설정(기기별)을 따라 같이 커진다. ± 단추는 손가락 크기(30px) 그대로(10-29 "작은 화살표로는 조절이 안 됨") */
-  .dash-step input{ width:2.6em; height:30px; box-sizing:border-box; text-align:center; font-size:14px; font-weight:600; padding:0 2px; -moz-appearance:textfield; }
-  #dashPayBefore{ width:3.2em; }
+  /* [2026-11-13] 세무사님 "일정, 마감임박작업, 최근수금내역, 안읽은메일 에서 지정하는 날짜 입력칸이 쓸데없이 너무 넓은거 같은데?" → "숫자는 2자리 숫자면 충분하다"
+     — 46px → 두 자리(99)가 들어가는 만큼 2em(≈28px). 날짜 범위 최댓값도 99로(dashboard.html, 저장된 값은 불러올 때 99로 맞춰짐 — dashStepVal_).
+     em이라 글자 크기 설정(기기별)을 따라 같이 커진다. ± 단추는 손가락 크기(30px) 그대로(10-29 "작은 화살표로는 조절이 안 됨") */
+  .dash-step input{ width:2em; height:30px; box-sizing:border-box; text-align:center; font-size:14px; font-weight:600; padding:0 2px; -moz-appearance:textfield; }
   .dash-step input::-webkit-outer-spin-button, .dash-step input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   /* border:none이면 .ghost-btn/.btn(둘 다 1px 테두리)과 border-box 계산이 달라져 미세하게
      낮이가 어긋난다 — 안 보이는 투명 테두리를 같은 두께로 둬서 셋 다 같은 박스모델을 쓴다. */
@@ -3146,16 +3146,18 @@ function nxMdOpenWindow(title, src, opts){
         <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
       </h3>
       <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
+      <!-- [2026-11-13] 세무사님 "일정에서 날짜지정할때 앞에 붙어있는 <오늘>이라는 말은 삭제하자. 다른 항목처럼 <날짜, 시간, 내용>이라는 타이틀을 붙이자" — 「오늘 전」→「전」, 표 머리글은 loadDashCalendar_ -->
       <div class="dash-range">
-        <span class="dash-step">오늘 전 <button type="button" data-step-for="dashCalRangeBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘 전 며칠" type="number" id="dashCalRangeBefore" min="0" max="365" value="0"><button type="button" data-step-for="dashCalRangeBefore" data-step="1" title="하루 늘리기">+</button> 일</span>
-        <span class="dash-step">~ 후 <button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘 후 며칠" type="number" id="dashCalRangeAfter" min="0" max="365" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button> 일</span>
+        <span class="dash-step">전 <button type="button" data-step-for="dashCalRangeBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘 전 며칠" type="number" id="dashCalRangeBefore" min="0" max="99" value="0"><button type="button" data-step-for="dashCalRangeBefore" data-step="1" title="하루 늘리기">+</button> 일</span>
+        <span class="dash-step">~ 후 <button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘 후 며칠" type="number" id="dashCalRangeAfter" min="0" max="99" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button> 일</span>
       </div>
       <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card dash-cover">
       <h3>마감임박 작업</h3>
+      <!-- [2026-11-13] 세무사님 "마감임박작업에서도 <오늘부터 후>를 삭제하고, 하단에 <보류11건> 이후의 안내문도 삭제하자" — 안내문은 loadDashDeadlines -->
       <div class="dash-range">
-        <span class="dash-step">오늘부터 후 <button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지" type="number" id="dashDeadlineAfter" min="0" max="365" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
+        <span class="dash-step"><button type="button" data-step-for="dashDeadlineAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지" type="number" id="dashDeadlineAfter" min="0" max="99" value="14"><button type="button" data-step-for="dashDeadlineAfter" data-step="1" title="하루 늘리기">+</button> 일 안에 법정기한</span>
         <!-- [2026.11.12] 세무사님 "대시보드-마감임박작업에 보류사건도 뜨는데, 이것을 포함할지 제외할지 선택하는 기능이 있으면 좋겠다" — 보류 포함 켬/끔, 이 브라우저에 기억. 세무사님 "디폴트를 포함하지 않는 것으로 하자" — 기본 꺼짐 -->
         <label style="display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;" title="켜면 ⏸ 보류 사건도 흐리게 함께 보이고, 끄면 이 표에서 뺍니다"><input type="checkbox" id="dashDeadlineHold" style="width:16px; height:16px; margin:0;"> 보류 포함</label>
       </div>
@@ -3171,11 +3173,12 @@ function nxMdOpenWindow(title, src, opts){
       <div id="dashUploads"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card">
-      <h3>최근 수금내역
+      <!-- [2026-11-13] 세무사님 "<최근 수금내역>을 <최근수금>으로 고치고, 역시 <오늘부터 전>이라는 문구도 삭제하자" -->
+      <h3>최근수금
         <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">확인</button>
       </h3>
       <div class="dash-range">
-        <span class="dash-step">오늘부터 전 <button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 전까지" type="number" id="dashPayBefore" min="0" max="3650" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button> 일 수금</span>
+        <span class="dash-step"><button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 전까지" type="number" id="dashPayBefore" min="0" max="99" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button> 일 수금</span>
       </div>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -3183,8 +3186,9 @@ function nxMdOpenWindow(title, src, opts){
          "메일 왔어?", "할일 뭐있어"로 매번 자유롭게 물어보던 것들이, 신규 관리 앱에는 화면을
          켜면 바로 보이는 곳이 없어져서 매번 AI사이드바에 다시 물어야 했다 — 종전처럼 대시보드
          진입 시 바로 보이도록 카드 3개를 추가한다. -->
+    <!-- [2026-11-13] 세무사님 "<안읽은 메일>을 <착신메일>로 바꾸고, 역시 <최근>이라는 문구와 <통(최대 30통)>이라는 문구도 없애자. 역시 타이틀(일자, 시간, 발신자, 제목)을 붙여주자" — 머리글은 loadDashEmails_ -->
     <div class="card">
-      <h3>안읽은 메일
+      <h3>착신메일
         <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
         <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
         <!-- [2026.11.03] 세무사님 "전체선택버튼으로 선택한 다음에 일부체크해제 하고 나서 나머지를 읽음처리하고 싶은데 그런 기능이 없다"(요청 R2611031216) —
@@ -3193,7 +3197,7 @@ function nxMdOpenWindow(title, src, opts){
         <button type="button" id="dashEmailsSelAll" class="ghost-btn sm" style="float:right; margin-right:6px;">전체 선택</button>
       </h3>
       <div class="dash-range">
-        <span class="dash-step">최근 <button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input title="몇 통" type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button> 통 (최대 30통)</span>
+        <span class="dash-step"><button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input title="몇 통까지 보일지(최대 30통)" type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button></span>
       </div>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -3432,7 +3436,7 @@ function nxMdOpenWindow(title, src, opts){
       cases.forEach(function(c){ dashDeadlineCases_[c.id] = c; });
       var box = document.getElementById('dashDeadlines');
       dashCardShow_(box, cases.length > 0 || holdHidden > 0); // 보류만 숨어 있으면 「보류 포함」을 켤 수 있게 카드는 남김
-      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + horizonDays + '일 이내 마감이 임박한 작업이 없습니다.' + (holdHidden ? ' (보류 ' + holdHidden + '건은 「보류 포함」을 켜면 보입니다)' : '') + '</div>'; return; }
+      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + horizonDays + '일 이내 마감이 임박한 작업이 없습니다.' + (holdHidden ? ' (보류 ' + holdHidden + '건)' : '') + '</div>'; return; } // [2026-11-13] 「보류 N건」 뒤 안내문 걷음(세무사님)
       // [2026.09 버그수정] "보류" 사건도 법정일이 임박하면 "진행" 사건과 똑같이 강조되어
       // 섞여 있었다 — 마감 자체를 놓치면 안 되니 목록에서 빼지는 않되(보류라고 미뤄둔 사이
       // 진짜 기한을 넘길 수 있으므로), 한눈에 "지금 당장 볼 건 아니다"를 알 수 있게 흐리게
@@ -3472,7 +3476,7 @@ function nxMdOpenWindow(title, src, opts){
           '<td style="' + nowrap + '"><button type="button" class="ghost-btn sm" data-dash-done="' + esc(c.id) + '" title="사건 목록으로 가지 않고 이 자리에서 완료로 바꿉니다(완료 전 점검·완료일 입력은 사건 목록과 같음)">완료</button></td></tr>';
       });
       html += '</table></div>';
-      if (holdHidden) html += '<div class="empty-row" style="padding-top:4px;">보류 ' + holdHidden + '건은 「보류 포함」을 켜면 보입니다.</div>';
+      if (holdHidden) html += '<div class="empty-row" style="padding-top:4px;">보류 ' + holdHidden + '건</div>'; // [2026-11-13] 세무사님 "<보류11건> 이후의 안내문도 삭제하자"
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashDeadlines').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
@@ -3685,7 +3689,8 @@ function nxMdOpenWindow(title, src, opts){
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
       var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:300px;"><colgroup>'
         + '<col style="width:116px"><col style="width:54px"><col>'
-        + '</colgroup>';
+        // [2026-11-13] 세무사님 "다른 항목처럼 <날짜, 시간, 내용>이라는 타이틀을 붙이자" — 마감임박 작업 표와 같은 머리글 줄
+        + '</colgroup><tr><th style="' + ellipsis + '">날짜</th><th style="' + ellipsis + '">시간</th><th style="' + ellipsis + '">내용</th></tr>';
       var prevDate = null;
       // [2026.09.16] 세무사님 지적 — 전/후 범위를 넓히면 과거·오늘·미래 일정이 한 표에
       // 섞여 나오는데, 오늘 일정이 어느 것인지 구분이 안 됐다. 오늘 날짜인 행만 굵게+남색으로
@@ -3727,7 +3732,8 @@ function nxMdOpenWindow(title, src, opts){
       // 폭을 전부 쓰되 ellipsis로 잘라 보여준다(줄바꿈 없이).
       var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:380px;"><colgroup>'
         + '<col style="width:26px"><col style="width:76px"><col style="width:46px"><col style="width:92px"><col>'
-        + '</colgroup>';
+        // [2026-11-13] 세무사님 "타이틀(일자, 시간, 발신자, 제목)을 붙여주자" — 첫 칸(고르기 네모)은 머리글 비움
+        + '</colgroup><tr><th></th><th style="white-space:nowrap; overflow:hidden;">일자</th><th style="white-space:nowrap; overflow:hidden;">시간</th><th style="white-space:nowrap; overflow:hidden;">발신자</th><th style="white-space:nowrap; overflow:hidden;">제목</th></tr>';
       var prevDate = null;
       items.forEach(function(m){
         var datePart = String(m.받은날짜).slice(0, 10);
@@ -59067,7 +59073,7 @@ function rwAiApplyEdit_(id, content){
         <li><b>할일 제목·마감일을 고치려면</b>: 제목 글자를 누르면 그 자리에서 입력칸으로 바뀝니다 → 고친 뒤 저장을 누릅니다.</li>
         <li><b>할일을 지우려면</b>: 그 항목 오른쪽의 ✕를 누릅니다.</li>
         <li><b>마감이 임박한 사건을 바로 처리하려면</b>: "⏰ 마감임박 작업" 표에서 그 줄을 누릅니다 → 그 사건의 개요 화면으로 이동합니다(빨간 글씨는 이미 기한이 지난 사건입니다). 이미 끝난 사건은 줄 끝 <b>✓ 완료</b> 단추로 그 자리에서 완료 처리합니다(개요의 📅 기한·하위업무 카드에도 <b>✓ 사건 완료</b> 단추가 있습니다).</li>
-        <li><b>안 읽은 메일을 읽음 처리하려면</b>: "📧 안읽은 메일" 목록에서 그 메일 앞 체크박스를 누릅니다.</li>
+        <li><b>안 읽은 메일을 읽음 처리하려면</b>: 「착신메일」 목록에서 그 메일 앞 체크박스를 누릅니다.</li>
         <li><b>어젯밤 자동점검이 잘 됐는지 확인하려면</b>: 설정 → ② 시스템 관리 → "야간 자동점검 상태" 카드를 봅니다(2026.11.01 오늘 화면에서 옮김 — 확인조치사항 카드도 같은 자리) — ✅면 정상, ⚠면 그날 밤 자동작업이 실패한 것이니 Apps Script 실행기록을 확인해야 합니다.</li>
       </ul>
     </section>
