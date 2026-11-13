@@ -15,12 +15,17 @@
       </h3>
       <!-- [2026.09.16 버그수정] 실사용 지적 — 날짜칸이 항상 보여서 마감일 없는 대부분의
            할일에도 매번 빈 칸이 따라다녔다. 날짜가 필요할 때만 "일정" 버튼으로 펼치게 한다. -->
-      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
-        <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
-        <input type="date" id="dashNewTaskDue" style="display:none;">
-        <label for="dashNewTaskTitle" class="nx-vlabel">새 할일</label><input title="새 할일" type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
-      </div>
       <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
+      <!-- [2026-11-13] 세무사님 "저장할 방법이 사라졌다" → "처음부터 입력란을 두는 건 초딩수준이다. 처음에는 할일목록 맨아래에 추가버튼만 두어라.
+           그랬다가 추가버튼을 누르면 일정버튼과 입력란과 저장버튼을 보여주는 것으로 하자" — 예전엔 목록 위에 Enter만 받는 칸이 늘 펼쳐져 있었다.
+           「추가」를 다시 누르면 닫힘(쓰던 글은 버림). 저장은 양식 제출 한 길(Enter도 같은 길 — 화면 규칙: Enter 제출은 keydown 말고 form submit) -->
+      <button type="button" id="dashNewTaskOpen" class="ghost-btn sm" style="margin-top:6px;" aria-expanded="false" title="새 할일 적기">＋ 추가</button>
+      <form id="dashNewTaskForm" style="display:none; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+        <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
+        <input type="date" id="dashNewTaskDue" title="마감일" style="display:none;">
+        <input title="새 할일" aria-label="새 할일" type="text" id="dashNewTaskTitle" placeholder="새 할일" style="flex:1; min-width:100px;">
+        <button type="submit" id="dashNewTaskSave" class="save-btn" title="적은 할일을 구글 할일에 넣습니다">저장</button>
+      </form>
       <!-- [2026.10.18 탭연결 16번] 구글 할일과 작업관리 하위업무가 서로 다른 목록이라 한쪽만 보게 됐다 — 같은 카드에서 사건 하위업무(완료 전)도 함께 본다 -->
       <div class="nx-l3">사건 하위업무<span class="nx-l-sub">마감 7일 안·지난 것</span></div>
       <div class="nx-help">체크·추가는 사건 목록이나 개요에서 합니다.</div>
@@ -783,12 +788,12 @@
     if (!title) return;
     var payload = { title: title };
     if (dueEl.value) payload.dueDate = dueEl.value;
-    // 줄은 바로 목록 맨 위에 보이고 입력칸은 곧바로 비워 다음 할일을 이어 쓸 수 있게 — 서버 번호가 오면 목록을 다시 받는다
+    // 줄은 바로 목록 맨 위에 보이고 적는 칸은 닫아 처음 모양(「추가」 단추만)으로 — 서버 번호가 오면 목록을 다시 받는다
     var tmp = { id: 'tmp' + Date.now().toString(36), 제목: title + ' (넣는 중…)', 마감일: payload.dueDate || '' };
     dashTasksCache_ = [tmp].concat(dashTasksCache_); dashTasksDraw_();
-    titleEl.value = ''; dueEl.value = '';
-    dueEl.style.display = 'none'; // 다음 할일은 다시 "일정" 버튼을 눌러야 나오게 초기화
-    var dropTmp = function(){ dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== tmp.id; }); dashTasksDraw_(); if (!titleEl.value) titleEl.value = title; };
+    dashNewTaskShow_(false);
+    // 실패하면 적던 글을 되살려 칸을 다시 연다(다시 적지 않아도 되게)
+    var dropTmp = function(){ dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== tmp.id; }); dashTasksDraw_(); dashNewTaskShow_(true); if (!titleEl.value) titleEl.value = title; if (payload.dueDate && !dueEl.value){ dueEl.value = payload.dueDate; dueEl.style.display = 'inline-block'; } };
     callGas('add_google_task', payload).then(function(res){
       if (res.error){ dropTmp(); toast('추가 실패: ' + res.error); return; }
       loadDashTasks_();
@@ -800,10 +805,27 @@
     dueEl.style.display = showing ? 'none' : 'inline-block';
     if (showing) dueEl.value = ''; else dueEl.focus();
   });
-  // [2026.09 버그수정] 로그인 화면과 같은 원인(e.key가 일부 환경에서 Enter로 안 잡힘) — keyCode도 같이 확인.
-  document.getElementById('dashNewTaskTitle').addEventListener('keydown', function(e){
-    if (e.key !== 'Enter' && e.keyCode !== 13) return;
+  // [2026-11-13] 「추가」로 여닫기 — 닫을 때는 쓰던 글·날짜를 비우고 「일정」 칸도 접는다(다시 열면 깨끗한 칸)
+  function dashNewTaskShow_(open){
+    var form = document.getElementById('dashNewTaskForm'), btn = document.getElementById('dashNewTaskOpen');
+    var titleEl = document.getElementById('dashNewTaskTitle'), dueEl = document.getElementById('dashNewTaskDue');
+    form.style.display = open ? 'flex' : 'none';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (!open){ titleEl.value = ''; dueEl.value = ''; dueEl.style.display = 'none'; }
+    else titleEl.focus();
+  }
+  document.getElementById('dashNewTaskOpen').addEventListener('click', function(){
+    dashNewTaskShow_(document.getElementById('dashNewTaskForm').style.display === 'none');
+  });
+  // 저장 단추·Enter 모두 양식 제출 한 길로(예전 keydown Enter는 한글 입력 중 첫 Enter를 놓쳤음)
+  document.getElementById('dashNewTaskForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var t = document.getElementById('dashNewTaskTitle');
+    if (!t.value.trim()){ toast('할일 내용을 적어 주세요.'); t.focus(); return; }
     dashAddTask_();
+  });
+  document.getElementById('dashNewTaskForm').addEventListener('keydown', function(e){
+    if (e.key === 'Escape') dashNewTaskShow_(false);
   });
 
   document.getElementById('dashTasks').addEventListener('click', function(e){
