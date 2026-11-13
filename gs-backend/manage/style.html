@@ -204,6 +204,10 @@
   #nxCaseBar .cb-name{ font-size:var(--fs-title); color:var(--navy); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
   #nxCaseBar .cb-meta{ font-size:var(--fs-sub); color:var(--sub); white-space:nowrap; }
   #nxCaseBar .cb-due-near{ color:var(--danger); font-weight:700; }
+  /* [2026.11.13 PC 여러 창 ③] 같은 사건을 다른 창이 열고 있을 때 위에 뜨는 띠 */
+  .nx-win-band{ position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:9000; max-width:min(92vw,720px); display:flex; gap:10px; align-items:center; padding:7px 12px; border-radius:0 0 10px 10px; background:#7a4b00; color:#fff; font-size:13px; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+  .nx-win-band[hidden]{ display:none; }
+  .nx-win-band button{ flex:none; border:1px solid rgba(255,255,255,.6); background:transparent; color:#fff; border-radius:6px; padding:3px 9px; cursor:pointer; font-size:12px; }
   #nxCaseBar .cb-pick{ margin-left:auto; display:flex; gap:6px; align-items:center; min-width:0; }
   #nxCaseBar .cb-live{ font-size:var(--fs-sub); color:var(--sub); white-space:nowrap; display:flex; align-items:center; gap:3px; }
   #nxCaseBar #cbFind{ width:110px; height:30px; border:1px solid var(--line); border-radius:6px; padding:0 8px; font-size:var(--fs-sub); background:#f7f8fa; }

@@ -606,6 +606,8 @@
     //  이 기기에 잠시 맡겨 두고 이 화면을 연다. 여기서 받아 넥스 대화에 그림을 붙이고 물을 말을 채워 둔다(보내기는 세무사님이).
     try {
       var pen = JSON.parse(localStorage.getItem('nxPenPending') || 'null');
+      // [2026.11.13 PC 여러 창 ⑤] 보류함 그림에 사건 이름이 있고 이 창의 넥스 대화가 다른 사건이면 가져가지 않는다(그 사건 창·새 창이 가져감)
+      if (pen && pen.dataUrl && pen.caseName && nxAiConv && nxAiConv.caseName && nxAiConv.caseName !== pen.caseName) pen = null;
       if (pen && pen.dataUrl){
         localStorage.removeItem('nxPenPending');
         setTimeout(function(){
@@ -811,7 +813,14 @@
     clearTimeout(nxAiSaveTimer); nxAiSaveTimer = null;
     return nxAiSaveNow_();
   }
+  // [2026.11.13 ④] 저장은 한 번에 하나씩 줄 세운다 — 앞 저장이 끝나기 전에 다음 저장이 나가면 기준 시각이 옛것이라 같은 창인데 "다른 창"으로 오판한다
+  var nxAiSaveQ_ = Promise.resolve();
   function nxAiSaveNow_(){
+    var p = nxAiSaveQ_.then(function(){ return nxAiSaveOnce_(); }).catch(function(){});
+    nxAiSaveQ_ = p;
+    return p;
+  }
+  function nxAiSaveOnce_(){
     if (!nxAiConv.messages.length) return Promise.resolve();
     if (!nxAiConv.title){
       var first = nxAiConv.messages.filter(function(m){ return m.role === 'user' && typeof m.content === 'string'; })[0];
@@ -821,10 +830,21 @@
     return callGas('ai_conv_save', { conversation: {
       id: convAtSave.id, title: convAtSave.title, caseId: convAtSave.caseId, caseName: convAtSave.caseName,
       caseFolderId: convAtSave.caseFolderId, casePath: convAtSave.casePath, sourceFileId: convAtSave.sourceFileId || '', messages: convAtSave.messages.slice(-NXAI_MAX_MESSAGES),
-      browsed: convAtSave.browsed || [] // [2026.11.04 전용택 — 넥스 암산 원인] 열람한 계산기 분야를 대화와 함께 저장
+      browsed: convAtSave.browsed || [], // [2026.11.04 전용택 — 넥스 암산 원인] 열람한 계산기 분야를 대화와 함께 저장
+      baseUpdatedAt: convAtSave.updatedAt || '' // [2026.11.13 PC 여러 창 ④] 이 창이 마지막으로 불러오거나 저장한 시각 — 서버가 그 뒤 다른 창이 저장했으면 덮어쓰지 않는다
     } }).then(function(res){
+      if (res && res.conflict){
+        // 다른 창·기기가 같은 대화를 이어 갔다 — 이 창 것으로 덮지 않고, 다시 불러올 단추를 대화 끝에 둔다(안내만 하고 누를 것이 없으면 안 됨)
+        var warn = nxAiAppendBubble_('assistant', '⚠ 이 대화가 다른 창에서 이어졌습니다. 지금 창의 마지막 말은 저장되지 않았습니다 — 다시 불러온 뒤 보내 주세요. ');
+        var rb = document.createElement('button'); rb.type = 'button'; rb.className = 'nxai-btn'; rb.textContent = '다시 불러오기';
+        rb.addEventListener('click', function(){ if (convAtSave.id) nxAiOpenConv_(convAtSave.id); });
+        warn.appendChild(rb);
+        nxAiToast_('다른 창에서 이어진 대화 — 덮어쓰지 않았습니다.');
+        return;
+      }
       if (!res || res.error){ nxAiToast_('대화 저장 실패: ' + (res && res.error)); return; }
       convAtSave.id = res.id;
+      convAtSave.updatedAt = res.updatedAt; // [2026.11.13 ④] 다음 저장의 기준 시각
       var existing = nxAiConvList.find(function(c){ return c.id === res.id; });
       var meta = { id: res.id, sourceFileId: convAtSave.sourceFileId || '', title: convAtSave.title, caseId: convAtSave.caseId, caseName: convAtSave.caseName, caseFolderId: convAtSave.caseFolderId, updatedAt: res.updatedAt, count: convAtSave.messages.length };
       if (existing) Object.assign(existing, meta); else nxAiConvList.unshift(meta);
@@ -2192,6 +2212,12 @@
     btn.classList.toggle('stop', busy);
     nxAiEl_('nxAiInput').disabled = busy;
   }
+  // [2026.11.13 PC 여러 창 ①] 넥스의 도구 고리는 서버가 아니라 이 창 안에서 돈다 — 답을 만드는 중에 창을 닫으면 중간에 멎고 끊긴 기록도 남지 않는다.
+  //  창을 여러 개 띄워 사건을 나란히 보면 "끝난 줄 알고" 닫기 쉬우므로, 닫기 전에 브라우저가 한 번 묻게 한다(세무사님 11-13 "권장대로").
+  window.addEventListener('beforeunload', function(e){
+    var sendBtn = nxAiEl_('nxAiSend');
+    if (nxAiAbort || (sendBtn && sendBtn.classList.contains('stop'))){ e.preventDefault(); e.returnValue = '넥스가 아직 답을 만드는 중입니다 — 지금 닫으면 중간에 멎습니다.'; }
+  });
 
   function nxAiRunTurn_(initialMessages, opts){
     var turnMessages = initialMessages.slice();
