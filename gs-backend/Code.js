@@ -4253,6 +4253,12 @@ function ai_convSave(body) {
     const id = c.id || ('c' + Date.now() + Math.random().toString(36).slice(2, 6));
     const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
     const prevEntry = idx.list.find(function (e) { return e.id === id; });
+    // [2026.11.13 PC 여러 창 ④] 화면은 대화 전체를 통째로 저장한다 — 같은 대화를 두 창(기기)에서 이어 가면 나중 쪽이 앞 쪽 말을 덮어 지웠다.
+    //  화면이 "마지막으로 불러오거나 저장한 시각"(baseUpdatedAt)을 보내면, 그 뒤 다른 곳이 저장했는지 보고 덮어쓰지 않는다(화면은 다시 불러오기 단추).
+    //  시각을 안 보내는 옛 화면·시각이 비어 있는 대화는 예전처럼 저장한다.
+    if (prevEntry && typeof c.baseUpdatedAt === 'string' && c.baseUpdatedAt && prevEntry.updatedAt && c.baseUpdatedAt !== String(prevEntry.updatedAt)) {
+      return { error: '다른 창에서 이 대화가 이어졌습니다 — 다시 불러온 뒤 보내 주세요.', conflict: true, updatedAt: prevEntry.updatedAt };
+    }
     const conv = {
       id: id,
       // work 대화기록에서 불러온 대화면 원본 파일ID — 목록에서 그 work 항목을 다시 보여주지 않는 데 쓴다.

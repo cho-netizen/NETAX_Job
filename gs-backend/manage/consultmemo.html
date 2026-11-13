@@ -263,7 +263,7 @@
           if (r && r.missing !== undefined){ i = r.missing; return sendPart(0); }
           throw new Error((r && r.error) || '응답 없음');
         }
-        try { localStorage.setItem('nxConsultJob', JSON.stringify({ id: meta.id, caseName: meta.caseName })); } catch (e) {}
+        try { localStorage.setItem('nxConsultJob', JSON.stringify({ id: meta.id, caseName: meta.caseName, caseId: meta.caseId || '' })); } catch (e) {} // [2026.11.13 ⑤] 어느 사건 것인지 함께
         nxCmClearDb_();
         nxCmWatch_(meta.id, meta.caseName);
       }).catch(function(err){

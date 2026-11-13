@@ -1935,6 +1935,56 @@
     var eb = document.getElementById('cbEditCase'); if (eb) eb.hidden = !id;
     var tgb = document.getElementById('cbTaxGap'); if (tgb) tgb.hidden = !id; // [2026.11.12] 건전세정 사례로
   }
+  // ============================================================
+  // [2026.11.13 PC 여러 창 ②③] 세무사님 "피씨에서 새창으로 여러사건을 처리하는 것에 집중" → "권장대로 하자"
+  //  ② 창 제목에 지금 사건 이름 — 작업표시줄·Alt+Tab에서 어느 창이 어느 사건인지 보이게(모든 창이 "NETAX 관리"였다).
+  //  ③ 같은 사건을 다른 창이 열고 있으면 위에 띠 — 같은 넥스 대화를 두 창에서 이어 가면 나중 저장이 앞 말을 덮기 때문.
+  //  서버 호출 없음: 창마다 2초에 한 번 브라우저 저장(localStorage 'nxOpenWins')에 "내 창·사건·시각"을 적고 서로 읽는다. 7초 넘게 조용한 창은 닫힌 것으로 본다.
+  // ============================================================
+  var NX_WIN_ = { id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), title0: document.title || 'NETAX 관리', band: null, mute: '' };
+  function nxWinCurCase_(){
+    var id = '';
+    try {
+      var v = nxCbActiveView_();
+      id = (nxCbIsCaseView_(v) ? (nxCbCaseOf_(v) || '') : '') || (document.body.classList.contains('cb-on') ? (NX_CB_.shownId || '') : '');
+    } catch (e) { id = ''; }
+    var c = id ? NX_CB_.cases.filter(function(x){ return x.id === id; })[0] : null;
+    return { id: id, name: c ? String(c.사건명 || c.고객명 || '') : '' };
+  }
+  function nxWinSync_(){
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    var cur = tok ? nxWinCurCase_() : { id: '', name: '' };
+    if (!nxWait_.title0){ // 기다림 알림이 제목을 잠시 바꿔 둔 동안은 건드리지 않는다(돌아올 때 그쪽이 되돌림)
+      var t = (cur.name ? cur.name + ' · ' : '') + NX_WIN_.title0;
+      if (document.title !== t) document.title = t;
+    }
+    var all = {}; try { all = JSON.parse(localStorage.getItem('nxOpenWins') || '{}') || {}; } catch (e) { all = {}; }
+    var now = Date.now(), other = null;
+    Object.keys(all).forEach(function(k){
+      var w = all[k];
+      if (k === NX_WIN_.id) return;
+      if (!w || now - (w.at || 0) > 7000){ delete all[k]; return; }
+      if (cur.id && w.caseId === cur.id) other = w;
+    });
+    all[NX_WIN_.id] = { caseId: cur.id, name: cur.name, at: now };
+    try { localStorage.setItem('nxOpenWins', JSON.stringify(all)); } catch (e) {}
+    nxWinBand_(other ? (cur.name || '이 사건') : '', cur.id);
+  }
+  function nxWinBand_(name, caseId){
+    var b = NX_WIN_.band;
+    if (!name || NX_WIN_.mute === caseId){ if (b) b.hidden = true; return; }
+    if (!b){
+      b = document.createElement('div'); b.id = 'nxWinBand'; b.className = 'nx-win-band';
+      b.innerHTML = '<span></span><button type="button">알겠습니다</button>';
+      b.querySelector('button').addEventListener('click', function(){ NX_WIN_.mute = b.getAttribute('data-case') || ''; b.hidden = true; }); // 이 사건에 대해선 다시 띄우지 않음(다른 사건이면 다시 뜸)
+      document.body.appendChild(b); NX_WIN_.band = b;
+    }
+    b.setAttribute('data-case', caseId || '');
+    b.querySelector('span').textContent = '「' + name + '」 사건이 다른 창에서도 열려 있습니다 — 같은 넥스 대화를 두 창에서 이어 가면 나중에 저장한 쪽만 남습니다.';
+    b.hidden = false;
+  }
+  window.addEventListener('beforeunload', function(){ try { var all = JSON.parse(localStorage.getItem('nxOpenWins') || '{}') || {}; delete all[NX_WIN_.id]; localStorage.setItem('nxOpenWins', JSON.stringify(all)); } catch (e) {} });
+  setInterval(nxWinSync_, 2000);
   // 법령정보를 "자료" 메뉴(사건과 상관없이)로 열면 머리줄 없이 연다 — 작업공간의 근거 탭으로 열면 머리줄과 함께
   function nxCbSetLawFree_(free){ NX_CB_.lawFree = !!free; }
 
