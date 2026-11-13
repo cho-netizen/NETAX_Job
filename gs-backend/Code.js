@@ -13167,6 +13167,7 @@ function workAppendLog_(body) {
 // ④ 오늘 할 일 — 대시보드 맨 위·휴대폰 창구·현황판이 같은 목록을 본다
 function todoList_() {
   // [2026-11-13 느림 ②(나)] 세무사님 "권장대로" — 할 일 조회가 12~16초(서버 바닥 약 6.6초 제외 약 6초). 부분마다 걸린 시간을 _ms에 남겨 어디서 드는지 잰다(화면은 _ms를 안 씀)
+  nxPropsMirrorEnsure_(); // [2026-11-13] 관리 서버가 거울을 못 찾아 넘겨 왔을 수 있음 — 6시간에 한 번 적어 둠
   const _t0 = Date.now(), _ms = {}; let _tp = _t0; const _lap = function (k) { const n = Date.now(); _ms[k] = n - _tp; _tp = n; };
   const tz = 'Asia/Seoul', today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), in3 = Utilities.formatDate(new Date(Date.now() + 3 * 86400000), tz, 'yyyy-MM-dd');
   let cases = []; try { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; cases = (o && o.cases) || []; } catch (e) { cases = []; } _lap('사건목록');
@@ -13205,10 +13206,24 @@ function todoList_() {
 }
 // ⑤ 알림에서 바로 답하기 — 급한 알림 문자 끝에 job.netax.kr/m/?a=번호, 누르면 확인/보류/나중에
 const NOTIFY_LOG_PROP_ = 'NX_NOTIFY_LOG';
+// [2026-11-13 job 서버 나누기] 세무사님 "권장대로"(docs/_기록/job서버_나누기_계획서_20261113.html) — 관리 서버(gs-light)가 오늘 할 일·장부를 대신 읽을 때
+//  job 서버의 스크립트 속성을 볼 수 없어서, 그 길이 읽는 넷(알림 기록·총괄관리자 폴더·업무관리자 폴더·AI 비용 시트 — 비밀 열쇠 없음)을 총괄관리자 폴더의 _속성거울.json에 적어 둔다.
+//  알림 기록이 바뀔 때마다(notifyLogAdd_·notifyAnswer_) 다시 적고, 오늘 할 일을 job 서버가 답할 때 6시간에 한 번 확인한다(관리 서버가 거울을 못 찾으면 job 서버로 넘기므로 저절로 채워짐).
+function nxPropsMirrorWrite_() {
+  try {
+    const p = PropertiesService.getScriptProperties(), props = {};
+    ['NX_NOTIFY_LOG', 'CHIEF_MANAGER_FOLDER_ID', 'BUSINESS_MANAGER_FOLDER_ID', 'AI_COST_SHEET_ID'].forEach(function (k) { const v = p.getProperty(k); if (v != null) props[k] = v; });
+    const root = getChiefManagerFolder_(); if (!root) return;
+    writeFileOverwrite_(root, '_속성거울.json', JSON.stringify({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), props: props }), 'application/json');
+    CacheService.getScriptCache().put('nx_props_mirror_ok', '1', 21600);
+  } catch (e) { console.log('속성 거울 적기 실패: ' + (e && e.message || e)); }
+}
+function nxPropsMirrorEnsure_() { try { if (CacheService.getScriptCache().get('nx_props_mirror_ok')) return; } catch (e) {} nxPropsMirrorWrite_(); }
 function notifyLog_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(NOTIFY_LOG_PROP_) || '[]'); } catch (e) { return []; } }
 function notifyLogAdd_(text, caseId) {
   const id = Utilities.getUuid().replace(/-/g, '').slice(0, 8);
   withLockStrict_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.unshift({ id: id, at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), text: String(text).slice(0, 200), caseId: caseId || '', status: '대기' }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a.slice(0, 50))); });
+  nxPropsMirrorWrite_(); // [2026-11-13] 관리 서버 거울
   return id;
 }
 function notifyGet_(id) { return notifyLog_().filter(function (x) { return x.id === String(id || ''); })[0] || null; }
@@ -13218,6 +13233,7 @@ function notifyAnswer_(body) {
   let item = null;
   withLockStrict_(5000, function () { const p = PropertiesService.getScriptProperties(), a = notifyLog_(); a.forEach(function (x) { if (x.id === id) { x.status = ans; x.answeredAt = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'); item = x; } }); p.setProperty(NOTIFY_LOG_PROP_, JSON.stringify(a)); });
   if (!item) return { error: '알림을 찾지 못했습니다(오래된 알림일 수 있음).' };
+  nxPropsMirrorWrite_(); // [2026-11-13] 관리 서버 거울
   if (item.caseId && ans !== '나중에') { try { workAppendLog_({ caseId: item.caseId, text: '[알림 ' + ans + '] ' + item.text }); } catch (e) {} }
   if (ans === '나중에') notifyOwner_('digest', '(나중에로 미룸) ' + item.text);
   return { success: true, status: ans };

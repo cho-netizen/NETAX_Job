@@ -1,0 +1,14 @@
+// ===== [2026-11-13 job 서버 나누기] 관리 서버는 읽기만 — tools/build-light.js가 Generated.js 맨 뒤에 붙인다(같은 이름은 뒤의 것이 이김) =====
+// 읽는 길 안에서 쓰기가 필요해지면(옛 기록 옮기기·장부 고치기·잠금·폴더 만들기) 여기서는 하지 않고 NX_LIGHT_WRITE 오류를 낸다.
+// Light.js가 이 오류를 「job 서버로 넘김」으로 돌려주고, 화면(gasbridge)은 같은 요청을 job 서버로 다시 보낸다 — 쓰기는 언제나 job 서버 한 곳(잠금도 한 곳).
+function nxLightWrite_(what) { throw new Error('NX_LIGHT_WRITE ' + what); }
+function withLock_() { nxLightWrite_('잠금'); }
+function withLockStrict_() { nxLightWrite_('잠금'); }
+function ledgerMutate_() { nxLightWrite_('장부 고치기'); }
+function writeFileOverwrite_() { nxLightWrite_('파일 덮어쓰기'); }
+function commRequestsSave_() { nxLightWrite_('개선요구 저장'); }
+function cpNexQEnqueue_() { nxLightWrite_('넥스 질문 줄'); }
+function getOrCreateSubfolder_(parent, name) { const it = parent.getFoldersByName(name); if (it.hasNext()) return it.next(); nxLightWrite_('폴더 만들기'); }
+function caseProcQMigrate_(caseId, o, f) { if (!caseProcQHasLegacy_(o)) return o; nxLightWrite_('옛 기록 옮기기'); }
+function nxPropsMirrorEnsure_() {} // 거울은 job 서버만 적는다
+function nxPropsMirrorWrite_() {}

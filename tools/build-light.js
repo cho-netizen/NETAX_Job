@@ -18,7 +18,9 @@ const SRC = path.join(ROOT, 'gs-backend');
 // 대상 서버별 시작 함수(각 폴더 Light.js의 LIGHT_ACTIONS_가 부르는 함수와 같아야 함)
 const TARGETS = {
   // 관리 서버 — 관리 메뉴가 화면을 열 때마다 기다리는 조회
-  'gs-light': ['work_getCases', 'client_getClients', 'client_getConsultLogs', 'booking_getBookings', 'jsonResponse'],
+  // [2026-11-13 job 서버 나누기] 오늘 할 일·장부 보기·장부 띠도 여기서(docs/_기록/job서버_나누기_계획서_20261113.html) — 쓰기는 하지 않는다(아래 LIGHT_READONLY_)
+  'gs-light': ['work_getCases', 'client_getClients', 'client_getConsultLogs', 'booking_getBookings', 'jsonResponse',
+    'todoList_', 'ledgerView_', 'ledgerFlowBrief_', 'work_findCaseRow_', 'work_values_', 'caseProcRouteTax_', 'CP_SHEET_MEMO_ON_'],
   // 부가서비스 서버 — 폴더 보기·메모·보고서 모음·서식(템플릿) 화면의 조회(비밀값·저장이 필요 없는 것만, gs-extra/README.md)
   // 판정 서버 — 판정 묶음 계산만(사실 받아 결과 돌려줌, 시트·장부 안 씀). 엔진은 manage/taxcalc-engine.html 사본(tools/build-judge.js)
   'gs-judge': ['JUDGE_MORE_', 'jsonResponse'],
@@ -132,7 +134,14 @@ function build(target, ENTRIES, opts) {
     try { new vm.Script(c.lines.join('\n'), { filename: c.file + ':' + c.name }); }
     catch (err) { throw new Error('덩어리 경계 오류 — ' + c.file + ' ' + c.name + ': ' + err.message); }
   });
-  const body = picked.map(function (c) { return c.lines.join('\n').replace(/\s+$/, ''); }).join('\n\n');
+  let body = picked.map(function (c) { return c.lines.join('\n').replace(/\s+$/, ''); }).join('\n\n');
+  // [2026-11-13 job 서버 나누기] 관리 서버는 읽기만 — ① 스크립트 속성은 job 서버 것을 볼 수 없으니 job 서버가 적어 두는 거울 파일로(Light.js lightProps_)
+  //  ② 읽는 길 안의 쓰기(장부 고치기·잠금·파일 덮어쓰기·폴더 만들기·옛 기록 옮기기)는 같은 이름 함수를 맨 뒤에 다시 적어 「쓰지 않고 job 서버로 넘김」 오류로 바꾼다
+  //     (한 파일 안에서 같은 이름 함수는 뒤의 것이 이긴다). 드라이브 권한도 읽기 전용이라 빠뜨린 쓰기가 있어도 구글이 막고 화면은 job 서버로 다시 묻는다.
+  if (target === 'gs-light') {
+    body = body.replace(/PropertiesService\.getScriptProperties\(\)/g, 'lightProps_()');
+    body += '\n\n' + fs.readFileSync(path.join(ROOT, target, 'readonly-overrides.txt'), 'utf8').replace(/\s+$/, '');
+  }
   const writes = picked.filter(function (c) { return /\.(setValue|setValues|appendRow|deleteRow|insertSheet|createFolder|setTrashed)\(/.test(c.lines.join('\n')); }).map(function (c) { return c.name; });
   
   const header = '// 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js\n' +

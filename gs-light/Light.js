@@ -17,8 +17,53 @@ var LIGHT_ACTIONS_ = {
   work_get_cases: function (body) { return work_getCases(body); },
   client_get_clients: function (body) { return client_getClients(body); },
   client_get_consult_logs: function (body) { return client_getConsultLogs(body); },
-  list_bookings: function (body) { return JSON.parse(booking_getBookings().getContent()); }
+  list_bookings: function (body) { return JSON.parse(booking_getBookings().getContent()); },
+  // [2026-11-13 job 서버 나누기] 세무사님 "권장대로"(docs/_기록/job서버_나누기_계획서_20261113.html) — job 서버를 여는 데만 7.5~8.4초라,
+  //  자주 부르는 읽기 셋을 여기서도 답한다. 쓰기는 하지 않는다(readonly-overrides.txt) — 쓸 일이 생기면 「job 서버로 넘김」.
+  todo_list: function (body) { return todoList_(); },
+  case_proc: function (body) { return light_caseProcLedgerRead_(body); }
 };
+var LIGHT_FALLBACK_ACTIONS_ = { todo_list: 1, case_proc: 1 };
+// job 서버 caseProc0_ → ledgerApi_와 같은 순서(사건 줄 찾기 → 처리 세목 바꾸기 → 장부 보기/띠)로 같은 답을 낸다. 다른 단계는 받지 않는다.
+function light_caseProcLedgerRead_(body) {
+  const t0 = Date.now();
+  if (!body || (body.step !== 'ledger' && body.step !== 'ledgerFlow')) throw new Error('NX_LIGHT_WRITE 장부 보기·띠만 받음');
+  const caseId = String(body.caseId || '').trim();
+  if (!caseId) return { error: '사건이 필요합니다.' };
+  CP_SHEET_MEMO_ON_ = true; WORK_DATA_MEMO_ = null;
+  const sheet = work_getSheet_();
+  const col = work_colMap_(work_values_(sheet)[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return { error: '사건을 찾지 못했습니다.' };
+  const c = work_readRow_(col, found.row);
+  try { const rt = caseProcRouteTax_(c); if (rt) { c._세목작업관리 = c.세목; c.세목 = rt; } } catch (e) {}
+  const r = body.step === 'ledgerFlow' ? ledgerFlowBrief_(c) : ledgerView_(c);
+  if (r && typeof r === 'object' && !Array.isArray(r)) r._ms = Date.now() - t0;
+  return r;
+}
+// job 서버의 스크립트 속성은 이 프로젝트에서 보이지 않는다 — job 서버가 바꿀 때마다 적어 두는 거울 파일(_속성거울.json, Code.js nxPropsMirrorWrite_)을 읽는다.
+// 거울에 없는 이름은 빈 값. 쓰기는 하지 않는다. 거울 파일을 못 찾으면 「job 서버로 넘김」(job 서버가 그때 거울을 새로 적음).
+var LIGHT_PROPS_MEMO_ = null;
+function lightProps_() {
+  if (!LIGHT_PROPS_MEMO_) {
+    const cache = CacheService.getScriptCache();
+    let id = cache.get('nx_props_mirror_id');
+    let f = null;
+    if (id) { try { f = DriveApp.getFileById(id); } catch (e) { f = null; } }
+    if (!f) { const it = DriveApp.getFilesByName('_속성거울.json'); if (!it.hasNext()) throw new Error('NX_LIGHT_WRITE 거울 파일 없음'); f = it.next(); cache.put('nx_props_mirror_id', f.getId(), 21600); }
+    let o = {}; try { o = JSON.parse(f.getBlob().getDataAsString()) || {}; } catch (e) { throw new Error('NX_LIGHT_WRITE 거울 파일 읽기 실패'); }
+    LIGHT_PROPS_MEMO_ = o.props || {};
+  }
+  const P = LIGHT_PROPS_MEMO_;
+  return {
+    getProperty: function (k) { return Object.prototype.hasOwnProperty.call(P, k) ? P[k] : null; },
+    getProperties: function () { return Object.assign({}, P); },
+    getKeys: function () { return Object.keys(P); },
+    setProperty: function () { nxLightWrite_('속성 쓰기'); },
+    setProperties: function () { nxLightWrite_('속성 쓰기'); },
+    deleteProperty: function () { nxLightWrite_('속성 지우기'); }
+  };
+}
 
 function doGet(e) {
   // 편집기에서 doGet을 한 번 실행하면(e 없음) 구글 권한 승인 창이 뜬다 — 처음 설치할 때 한 번만.
@@ -48,7 +93,12 @@ function light_dispatch_(req) {
     // job 서버는 결과를 JSON 글자로 바꿨다가 다시 읽어 돌려준다(날짜가 글자가 됨) — 똑같이 맞춘다.
     return { __result: JSON.parse(JSON.stringify(run(body))) };
   } catch (err) {
-    return { error: '관리 서버 처리 중 오류: ' + (err && err.message ? err.message : err) };
+    const msg = String(err && err.message ? err.message : err);
+    // [2026-11-13] 읽기만 하는 이 서버가 쓸 일을 만났거나(옛 기록 옮기기 등) 드라이브 읽기 전용 권한에 막힘 — 고장이 아니라 「job 서버로 넘김」.
+    //  화면(gasbridge)은 __fallback으로 시작하는 오류를 실패로 세지 않고(두 번 실패 시 끄기에 안 셈) 같은 요청을 job 서버로 보낸다.
+    //  11-13에 더한 읽기(오늘 할 일·장부)는 어떤 오류든 넘김 — 여기서 못 쓰는 고급 서비스(서류 읽기 등)를 드물게 건드려도 job 서버가 답한다.
+    if (LIGHT_FALLBACK_ACTIONS_[action] || /NX_LIGHT_WRITE|읽기 전용|permission|권한|Access denied|insufficient/i.test(msg)) return { error: '__fallback ' + msg.slice(0, 200) };
+    return { error: '관리 서버 처리 중 오류: ' + msg };
   }
 }
 
