@@ -2147,7 +2147,7 @@ function ledgerFlowAdoptInner_(L, c, skip) {
   Object.keys(ov).forEach(function (k) {
     if (ledgerOvOwned_(k)) return;
     const f = filled[k], kd = f && f.src ? (typeof ledgerGiftKind_ === 'function' ? ledgerGiftKind_(f.src) : '서류') : '세무사님';
-    put(k, ov[k], kd === '서류' ? '서류' : kd, f && f.src ? String(f.src).slice(0, 120) : '옮겨 옴(작업관리 사건개요 — 넣은 이 기록 없음)');
+    put(k, ov[k], kd === '서류' ? '서류' : kd, f && f.src ? String(f.src).slice(0, 120) : '옮겨 옴(작업관리 사건개요 — 누가 넣었는지 기록 없음)');
   });
   LEDGER_OV_SHEET_KEYS_.forEach(function (k) { put(k, String(c[k] || '').trim(), '세무사님', '옮겨 옴(작업관리)'); });
   if (String(c.처리방향 || '').trim() && !L.dir['dir.처리방향']) ledgerLayerSetInner_(L, 'dir', { path: 'dir.처리방향', value: String(c.처리방향).trim(), kind: '세무사님', by: '세무사님', label: '처리방향', quote: '옮겨 옴(작업관리)' });

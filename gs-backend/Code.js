@@ -269,7 +269,7 @@ function toolBrowseTaxCalculators(category) {
 const LATE_DESIG_PROPS_ = { designatedDueDate: { type: 'string', description: '지정납부기한 날짜(YYYY-MM-DD, 고지 후 체납일 때). paidDate와 함께 주면 monthsAfterDesignatedDueDate 대신 날짜로 계산' }, paidDate: { type: 'string', description: '실제 납부일(YYYY-MM-DD)' } };
 const DRIVE_TOOLS = [
   // [2026.11.04 한 길 → 2026.11.12 바로잡음] 세무사님 "전용택사건과 김기영사건을 한 곳에서 처리하지 못하는 것인가?" — 11-05 「한 사건 여러 사람」 뒤로 공동양도·공동수증·공동상속은 한 사건 안에서 번호로 적고 사람마다 따로 계산한다. 옛 줄 "사건은 납세자 한 사람 단위"는 새 구조와 어긋나 걷음(11-12 전용택 재처리 전 점검)
-  { name: 'case_link', description: '대화를 사건에 잇기·바꾸기·풀기(바로 실행, 토큰 0 — 화면 🔗 사건 연결 단추와 같은 일). do=list{search}: 작업관리 사건 목록(id·사건명·고객명·세목·상태; search로 이름 좁히기) / do=link{caseId 또는 search}: 이 대화를 그 사건에 잇는다 — 그 뒤 같은 답 안에서 사건 도구(장부·판정·계산 저장·보고서 저장)가 그 사건으로 간다 / do=unlink: 연결 풀기. 같은 거래의 여러 사람(공동양도인·공동수증자·공동상속인)은 사건을 바꾸지 말고 지금 사건 장부에 번호로 적어(둘째 양도인 seller1.* 등, case_ledger 설명) 사람마다 따로 계산한다 — 사건을 바꾸는 것은 다른 거래·다른 의뢰일 때만(없으면 create_work_case로 만든 뒤 link).',
+  { name: 'case_link', description: '대화를 사건에 잇기·바꾸기·풀기(바로 실행, 토큰 0 — 화면 🔗 사건 연결 단추와 같은 일). do=list{search}: 작업관리 사건 목록(id·사건명·고객명·세목·상태; search로 이름 좁히기) / do=link{caseId 또는 search}: 이 대화를 그 사건에 잇는다 — 그 뒤 같은 답 안에서 사건 도구(장부·판정·계산 저장·보고서 저장)가 그 사건으로 간다 / do=unlink: 연결 풀기. 같은 거래의 여러 사람(공동양도인·공동수증자·공동상속인)은 사건을 바꾸지 말고 지금 사건 장부에 번호로 적어(둘째 양도인 seller1.* 등, 장부 도구 설명) 사람마다 따로 계산한다 — 사건을 바꾸는 것은 다른 거래·다른 의뢰일 때만(없으면 create_work_case로 만든 뒤 link).',
     input_schema: { type: 'object', properties: { do: { type: 'string', enum: ['list', 'link', 'unlink'] }, caseId: { type: 'string' }, search: { type: 'string' } }, required: ['do'] } },
   {
     name: 'browse_tax_calculators',
