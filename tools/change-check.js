@@ -153,7 +153,8 @@ try {
     const p = path.join(ROOT, f); if (!fs.existsSync(p) || !fs.existsSync(path.join(ROOT, b))) return;
     const before = fs.readFileSync(p, 'utf8');
     cp.execFileSync(process.execPath, [path.join(ROOT, b)], { cwd: ROOT, stdio: 'ignore', timeout: 120000 });
-    if (fs.readFileSync(p, 'utf8') !== before) block.push(nm + ' 생성 파일(' + f + ')이 지금 원본과 다름 — 방금 ' + b + '로 다시 만들어 두었으니 그 파일까지 함께 올리고(clasp push) 다시 검문');
+    const noCr = (s) => s.replace(/\r/g, ''); // [2026.11.13] 줄끝(CRLF·LF)만 다른 것은 같은 파일 — 윈도 저장소(줄끝 바꿈)에서 늘 막히던 헛경고
+    if (noCr(fs.readFileSync(p, 'utf8')) !== noCr(before)) block.push(nm + ' 생성 파일(' + f + ')이 지금 원본과 다름 — 방금 ' + b + '로 다시 만들어 두었으니 그 파일까지 함께 올리고(clasp push) 다시 검문');
   });
 } catch (e) { warn.push('관리·판정 서버 생성 파일 대조를 못 함: ' + String(e && e.message || e).slice(0, 120)); }
 // ⚠ [2026.10.27 T6 3단계] Cloud Run 시험 서비스의 문 — 표시 파일 cloudrun/README.md의 "문:" 줄로 판정(gcloud 없이도 되게; 재배포한 사람이 그 줄을 고친다).
