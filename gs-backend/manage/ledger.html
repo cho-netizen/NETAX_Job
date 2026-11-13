@@ -168,6 +168,10 @@
         var r2 = JSON.parse(JSON.stringify(lgLast)), i = -1;
         r2.줄.forEach(function(x, k){ if (x && x.path === res.row.path) i = k; });
         if (i >= 0) r2.줄[i] = Object.assign({}, r2.줄[i], res.row); else r2.줄.push(res.row);
+        // 맨 위 「추정 n · 확정 n」 세는 줄도 고친 줄로 다시 셈(11-13 운영: 먼저 그린 화면에 옛 숫자가 남았음)
+        r2.요약 = Object.assign({}, r2.요약 || {}, { 전체: r2.줄.length }); r2.상태별 = {};
+        ['물어볼것', '증빙받을것', '추정', '확정', '보류', '무시'].forEach(function(k){ r2.요약[k] = 0; r2.상태별[k] = []; });
+        r2.줄.forEach(function(x){ if (!x) return; r2.요약[x.state] = (r2.요약[x.state] || 0) + 1; (r2.상태별[x.state] || (r2.상태별[x.state] = [])).push(x); });
         lgPaint(r2);
         if (typeof nxStaleMark_ === 'function') { nxStaleMark_(body, Date.now()); var bar = body.querySelector('.nx-stale-bar'); if (bar) bar.textContent = '⏳ 고친 줄을 먼저 보여 드립니다 — 장부 전체를 새로 받는 중(받으면 바로 바뀌고 단추가 풀립니다)'; }
         callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){

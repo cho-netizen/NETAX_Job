@@ -405,7 +405,7 @@
       사건명: (payload.고객명 || '') + (payload.납세자 && payload.납세자 !== payload.고객명 ? '(' + payload.납세자 + ')' : '') + ' ' + semokLbl + ' ' + (payload.업무유형 || ''), 상태: '진행', 폴더ID: '',
       하위업무: [], 작업일지: [], 법령예규판례: [], 증빙목록: [], 세액계산결과: [], 사건개요: (payload.사건개요 && typeof payload.사건개요 === 'object') ? payload.사건개요 : {}, 생성일: new Date().toISOString(), _만드는중: true };
     nxSaveLater_('work_create_case', payload, { key: 'case_' + payload.id, label: opt.label || (tmp.사건명 + ' 만들기'), patch: [{ list: 'cases', op: 'upsert', id: payload.id, row: tmp }],
-      onDone: function(res){ if (res && res.warning) toast(res.warning); if (opt.onDone) opt.onDone(res); },
+      onDone: function(res){ if (res && res.warning) toast(res.warning); if (typeof NX_CB_ !== 'undefined') { NX_CB_.cases.push(tmp); NX_CB_.loadedAt = 0; if (typeof nxCbFillSelect_ === 'function') nxCbFillSelect_(); } /* [2026-11-13] 새 사건이 위 사건 칸 목록에 새로 고침 전엔 안 나오던 것 */ if (opt.onDone) opt.onDone(res); },
       onFail: function(why){ toast('사건을 만들지 못했습니다 — ' + why + ' (화면 아래 「다시 보내기」)'); if (opt.onFail) opt.onFail(why); }, redo: opt.redo });
     return tmp;
   }
@@ -1813,7 +1813,7 @@
     NX_CB_.loading = true;
     callGas('work_get_cases', {}).then(function(res){
       NX_CB_.loading = false;
-      NX_CB_.cases = (res && res.cases) || [];
+      NX_CB_.cases = (res && res.cases) || []; NX_CB_.loadedAt = Date.now();
       nxCbFillSelect_();
       NX_CB_.shownId = null; nxCbSync_();
     }).catch(function(){ NX_CB_.loading = false; });
@@ -1848,7 +1848,7 @@
       nxLastCaseId_ = id;
       nxCbGo_(nxCbViewOf_(v), id, true);
     });
-    document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length) nxCbLoadCases_(); });
+    document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length || !NX_CB_.loadedAt || Date.now() - NX_CB_.loadedAt > 60000) nxCbLoadCases_(); }); // [2026-11-13] 1분 넘은 목록은 열 때 새로 받음(다른 화면·창에서 만든 사건)
     document.getElementById('cbEditCase').addEventListener('click', function(){ nxCaseJump_('workmanage', NX_CB_.shownId); });
     // [2026.11.12] 건전세정 사례로 — taxgap.html tgFromCase_(사건 요약으로 사례 초안, 고객 실명은 ○○)
     var tgBtn = document.getElementById('cbTaxGap'); if (tgBtn) tgBtn.addEventListener('click', function(){ if (typeof tgFromCase_ === 'function') tgFromCase_(NX_CB_.shownId); });
@@ -2043,6 +2043,8 @@
   function nxLedgerStripRender_(el, id, r){
     var b = el.querySelector('.nx-lg-body'); if (!b) return;
     // [2026-11-13 3차 5] 새 사건은 화면에 먼저 생기고 서버 줄·폴더는 뒤에서 만들어져, 그 사이 「장부를 읽지 못했습니다 — 사건을 찾지 못했습니다」가 고장처럼 보였다 — 만드는 중으로 알리고 10초 뒤 다시 읽음
+    // 빈 답(서버가 아직 사건 줄을 못 봤거나 다시 묻는 중)도 고장 글 대신 다시 읽기 — 11-13 운영에서 새 사건 13초쯤 「장부를 읽지 못했습니다」만 떴다가 곧 정상
+    if (!r || (!r.ok && !r.error)) { b.textContent = '장부를 다시 읽는 중…'; setTimeout(function(){ if (typeof window.nxLedgerStripRefresh_ === 'function') window.nxLedgerStripRefresh_(id); }, 10000); return; }
     if (r && !r.ok && /사건을 찾지 못했습니다/.test(String(r.error || ''))) { b.textContent = '새 사건을 서버에 만드는 중입니다(폴더·장부 준비) — 잠시 뒤 저절로 다시 읽습니다'; setTimeout(function(){ if (typeof window.nxLedgerStripRefresh_ === 'function') window.nxLedgerStripRefresh_(id); }, 10000); return; }
     if (!r || !r.ok || !r.흐름) { b.innerHTML = '장부를 읽지 못했습니다' + (r && r.error ? ' — ' + nxLgEsc_(r.error) : ''); return; }
     var f = r.흐름, d = f.띠 || {}, last = f.마지막;
