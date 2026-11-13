@@ -94,10 +94,12 @@
       // [2026.11.03] 견주기는 하루 한 번만(화면을 열 때마다 조회를 두 번 하던 것 — 저장 기다림 전수조사)
       try { var dk = 'nxShadowDay_' + sv.name + '_' + action, today = new Date().toISOString().slice(0, 10); if (localStorage.getItem(dk) === today) return; localStorage.setItem(dk, today); } catch (e) {}
       // [2026-11-13] 걸린 시간 칸(_ms)은 두 서버가 늘 달라 빼고 견준다(오늘 할 일·장부 답에 들어 있음)
+      //  맨 위 「센 시각」(at, 분 단위)도 뺀다 — 관리 서버 답 뒤 job 서버에 다시 묻는 사이(약 12초)에 분이 바뀌면 같은 답을 다르다고 보고 꺼 버렸다(11-13 운영)
       var noMs = function(k, v){ return k === '_ms' ? undefined : v; };
-      var a = JSON.stringify(sideResult, noMs);
+      var strip = function(o){ if (o && typeof o === 'object' && !Array.isArray(o)) { o = Object.assign({}, o); delete o.at; } return JSON.stringify(o, noMs); };
+      var a = strip(sideResult);
       send([{ fn: item.fn, args: item.args, resolve: function(mainResult){
-        var b = JSON.stringify(mainResult, noMs);
+        var b = strip(mainResult);
         if (a !== b){
           sv.off = true;
           sideLog(sv, action + ' 결과가 job 서버와 다름 — 이 화면에서는 ' + sv.name + '를 끔', sv.name + ' ' + a.length + '자 / job ' + b.length + '자, 처음 다른 곳: ' + (function(){ for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return i + ' [' + a.slice(Math.max(0, i - 40), i + 40) + '] vs [' + b.slice(Math.max(0, i - 40), i + 40) + ']'; return '길이만 다름'; })());
