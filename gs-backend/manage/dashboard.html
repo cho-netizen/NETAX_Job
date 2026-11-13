@@ -10,22 +10,22 @@
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
          바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
     <div class="card dash-cover">
-      <h3>할일
-        <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
-      </h3>
-      <!-- [2026.09.16 버그수정] 실사용 지적 — 날짜칸이 항상 보여서 마감일 없는 대부분의
-           할일에도 매번 빈 칸이 따라다녔다. 날짜가 필요할 때만 "일정" 버튼으로 펼치게 한다. -->
-      <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
       <!-- [2026-11-13] 세무사님 "저장할 방법이 사라졌다" → "처음부터 입력란을 두는 건 초딩수준이다. 처음에는 할일목록 맨아래에 추가버튼만 두어라.
            그랬다가 추가버튼을 누르면 일정버튼과 입력란과 저장버튼을 보여주는 것으로 하자" — 예전엔 목록 위에 Enter만 받는 칸이 늘 펼쳐져 있었다.
-           「추가」를 다시 누르면 닫힘(쓰던 글은 버림). 저장은 양식 제출 한 길(Enter도 같은 길 — 화면 규칙: Enter 제출은 keydown 말고 form submit) -->
-      <button type="button" id="dashNewTaskOpen" class="ghost-btn sm" style="margin-top:6px;" aria-expanded="false" title="새 할일 적기">＋ 추가</button>
-      <form id="dashNewTaskForm" style="display:none; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+           → 이어서 "추가버튼의 위치를 <할일>항목명 옆으로 올리면 1줄을 줄일 수 있지 않은가?" — 「＋ 추가」는 제목 옆, 여는 칸은 제목 바로 아래(목록 위).
+           「추가」를 다시 누르거나 Esc면 닫힘(쓰던 글은 버림). 저장은 양식 제출 한 길(Enter도 같은 길 — 화면 규칙: Enter 제출은 keydown 말고 form submit).
+           [2026.09.16] 날짜칸은 마감일이 필요할 때만 "일정" 버튼으로 펼친다(늘 보이던 빈 날짜칸 실사용 지적). -->
+      <h3>할일
+        <button type="button" id="dashNewTaskOpen" class="ghost-btn sm" style="margin-left:6px; vertical-align:middle;" aria-expanded="false" title="새 할일 적기">＋ 추가</button>
+        <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
+      </h3>
+      <form id="dashNewTaskForm" style="display:none; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
         <input type="date" id="dashNewTaskDue" title="마감일" style="display:none;">
         <input title="새 할일" aria-label="새 할일" type="text" id="dashNewTaskTitle" placeholder="새 할일" style="flex:1; min-width:100px;">
         <button type="submit" id="dashNewTaskSave" class="save-btn" title="적은 할일을 구글 할일에 넣습니다">저장</button>
       </form>
+      <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
       <!-- [2026.10.18 탭연결 16번] 구글 할일과 작업관리 하위업무가 서로 다른 목록이라 한쪽만 보게 됐다 — 같은 카드에서 사건 하위업무(완료 전)도 함께 본다 -->
       <div class="nx-l3">사건 하위업무<span class="nx-l-sub">마감 7일 안·지난 것</span></div>
       <div class="nx-help">체크·추가는 사건 목록이나 개요에서 합니다.</div>
