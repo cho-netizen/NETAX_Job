@@ -851,7 +851,18 @@
       nxAiConvList.sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
       nxAiRenderConvList_();
       nxAiRefreshTitle_();
-    }).catch(function(err){ nxAiToast_('대화 저장 중 오류: ' + nxErrText_(err)); });
+    }).catch(function(err){
+      // [2026.11.13 ④ 운영 확인에서 고침] 서버가 error로 돌려주는 답은 callGas가 거부(reject)로 넘기므로 "다른 창" 답도 여기로 온다 — 말로 가려 다시 불러오기 단추를 둔다
+      if (/다른 창에서 이 대화가 이어졌습니다/.test(nxErrText_(err))){
+        var warn = nxAiAppendBubble_('assistant', '⚠ 이 대화가 다른 창에서 이어졌습니다. 지금 창의 마지막 말은 저장되지 않았습니다 — 다시 불러온 뒤 보내 주세요. ');
+        var rb = document.createElement('button'); rb.type = 'button'; rb.className = 'nxai-btn'; rb.textContent = '다시 불러오기';
+        rb.addEventListener('click', function(){ if (convAtSave.id) nxAiOpenConv_(convAtSave.id); });
+        warn.appendChild(rb);
+        nxAiToast_('다른 창에서 이어진 대화 — 덮어쓰지 않았습니다.');
+        return;
+      }
+      nxAiToast_('대화 저장 중 오류: ' + nxErrText_(err));
+    });
   }
   document.addEventListener('visibilitychange', function(){ if (document.hidden) nxAiFlushSave_(); });
 

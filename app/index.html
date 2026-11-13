@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 01:43 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 02:02 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -491,7 +491,7 @@
   #nxCaseBar .cb-meta{ font-size:var(--fs-sub); color:var(--sub); white-space:nowrap; }
   #nxCaseBar .cb-due-near{ color:var(--danger); font-weight:700; }
   /* [2026.11.13 PC 여러 창 ③] 같은 사건을 다른 창이 열고 있을 때 위에 뜨는 띠 */
-  .nx-win-band{ position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:9000; max-width:min(92vw,720px); display:flex; gap:10px; align-items:center; padding:7px 12px; border-radius:0 0 10px 10px; background:#7a4b00; color:#fff; font-size:13px; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+  .nx-win-band{ position:fixed; bottom:14px; left:14px; z-index:9000; max-width:min(80vw,640px); display:flex; gap:10px; align-items:center; padding:7px 12px; border-radius:10px; /* 아래 왼쪽 — 머리줄(사건 이름·단추)을 가리지 않게(운영 확인에서 옮김) */ background:#7a4b00; color:#fff; font-size:13px; box-shadow:0 2px 8px rgba(0,0,0,.35); }
   .nx-win-band[hidden]{ display:none; }
   .nx-win-band button{ flex:none; border:1px solid rgba(255,255,255,.6); background:transparent; color:#fff; border-radius:6px; padding:3px 9px; cursor:pointer; font-size:12px; }
   #nxCaseBar .cb-pick{ margin-left:auto; display:flex; gap:6px; align-items:center; min-width:0; }
@@ -60526,7 +60526,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiConvList.sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
       nxAiRenderConvList_();
       nxAiRefreshTitle_();
-    }).catch(function(err){ nxAiToast_('대화 저장 중 오류: ' + nxErrText_(err)); });
+    }).catch(function(err){
+      // [2026.11.13 ④ 운영 확인에서 고침] 서버가 error로 돌려주는 답은 callGas가 거부(reject)로 넘기므로 "다른 창" 답도 여기로 온다 — 말로 가려 다시 불러오기 단추를 둔다
+      if (/다른 창에서 이 대화가 이어졌습니다/.test(nxErrText_(err))){
+        var warn = nxAiAppendBubble_('assistant', '⚠ 이 대화가 다른 창에서 이어졌습니다. 지금 창의 마지막 말은 저장되지 않았습니다 — 다시 불러온 뒤 보내 주세요. ');
+        var rb = document.createElement('button'); rb.type = 'button'; rb.className = 'nxai-btn'; rb.textContent = '다시 불러오기';
+        rb.addEventListener('click', function(){ if (convAtSave.id) nxAiOpenConv_(convAtSave.id); });
+        warn.appendChild(rb);
+        nxAiToast_('다른 창에서 이어진 대화 — 덮어쓰지 않았습니다.');
+        return;
+      }
+      nxAiToast_('대화 저장 중 오류: ' + nxErrText_(err));
+    });
   }
   document.addEventListener('visibilitychange', function(){ if (document.hidden) nxAiFlushSave_(); });
 
