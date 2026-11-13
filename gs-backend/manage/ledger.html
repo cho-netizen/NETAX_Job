@@ -153,12 +153,14 @@
     document.getElementById('chLedgerBtn').addEventListener('click', function(){
       if (!tokOk()) return;
       body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>';
-      var reload = function(){ document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
+      var reload = function(){ window.nxLgNoCache_ = true; document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
       var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + nxErrText_(e), 'error'); return null; }); };
       var STATE_KO = { 물어볼것: '❓ 물어볼 것', 증빙받을것: '📎 증빙 받을 것', 추정: '≈ 추정', 확정: '✅ 확정', 보류: '⏸ 보류', 무시: '— 무시' };
       var KIND_KO = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: '규칙', 추정: '추정', 계산: '계산' };
       var PATHS = [['seller.name', '양도인 성명'], ['seller.regNo', '양도인 주민등록번호'], ['seller.address', '양도인 주소'], ['seller.multiHouseCount', '보유 주택 수'], ['c0.date', '양도일'], ['c0.totalPrice', '양도가액'], ['c0.transferCause', '양도 원인(sale 매매 · expropriation 수용 · exchange 교환)'], ['c0.buyer.name', '양수인 성명'], ['c0.buyer.regNo', '양수인 주민등록번호'], ['c0.buyer.relation', '양수인 관계(none 없음 · sibling 형제자매 · lineal 직계 · spouse 배우자 · relative 친족)'], ['a0.assetLocation', '소재지'], ['a0.assetKind', '자산 종류(land 토지 · building 건물 · land_building 토지+건물)'], ['a0.assetType', '과세대상 구분(house 주택 · other 그 외 · presale_right 분양권)'], ['a0.acquisitionDate', '취득일'], ['a0.acquisitionPrice', '취득가액'], ['costs', '필요경비(예: 취득세 3,583,600원, 중개수수료 2,090,000원 — 서버가 항목으로 풂)'], ['taxfee', '신고 세무비용'], ['사건분류', '사건분류'], ['기준일', '기준일(양도일)']];
-      callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+      // [2026-11-13 느림 ①] 장부 읽기가 10~16초 — 이 기기에 남긴 지난 장부로 먼저 그리고(단추 막음·「몇 초 전 값」), 새 장부가 오면 다시 그린다. 고친 직후 다시 읽을 땐(reload) 지난 값을 쓰지 않는다
+      var lgKey = 'ledger_' + c.id, lgNoCache = !!window.nxLgNoCache_; window.nxLgNoCache_ = false;
+      var lgPaint = function(r){
         if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
         var rows = r.줄 || [], sum = r.요약 || {};
         var h = '<div style="font-size:12.5px;">';
@@ -686,7 +688,14 @@
             if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
           }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + nxErrText_(e), 'error'); });
         });
-      }).catch(function(e){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+      };
+      var lgOld = (!lgNoCache && window.nxLocalCache_) ? window.nxLocalCache_.get(lgKey) : null, lgFresh = false;
+      if (lgOld) { try { lgPaint(lgOld.r); if (typeof nxStaleMark_ === 'function') nxStaleMark_(body, lgOld.t); } catch (e) { body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>'; } }
+      callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+        lgFresh = true; if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
+        if (r && r.ok && window.nxLocalCache_) window.nxLocalCache_.set(lgKey, r);
+        lgPaint(r);
+      }).catch(function(e){ if (typeof nxStaleClear_ === 'function') nxStaleClear_(body); body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     document.getElementById('chGasFixBtn').addEventListener('click', function(){
       if (!tokOk()) return;

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-12 23:41 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 00:02 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -446,8 +446,11 @@
   body.lay-tablet:not(.lay-cover):not(.nx-present) #nxMenuHandle{ display:flex; align-items:center; justify-content:center; position:absolute; left:0; top:0; width:32px; height:44px; z-index:51; border:none; padding:0; background:var(--navy); color:var(--gold); font-size:20px; cursor:pointer; }
   body.lay-tablet #sideMenu.peek ~ #nxMenuHandle, body.lay-tablet #sideMenu.pinned ~ #nxMenuHandle{ display:none; }
   /* [2026-11-13 4차 47] 칸 장부 표 조치 「⋯」(태블릿·폰) — ledger.html lgTouch */
-  .lg-act-more{ min-width:44px; min-height:44px; font-size:18px; font-weight:700; padding:0 10px; }
+  .lg-act-td .lg-act-more{ min-width:44px !important; min-height:44px !important; font-size:18px; font-weight:700; padding:0 10px; }
   .lg-act-td .lg-act{ display:none; }
+  /* [2026-11-13 느림 ①] 옛 값으로 먼저 그린 동안 — 단추·입력 막고 띠 (script.html nxStaleMark_) */
+  .nx-stale button, .nx-stale input, .nx-stale select, .nx-stale textarea{ pointer-events:none; opacity:.55; }
+  .nx-stale-bar{ margin:0 0 8px; padding:6px 10px; border-radius:6px; background:rgba(200,162,68,.14); border:1px solid rgba(200,162,68,.55); font-size:12.5px; color:var(--ink, #333); }
   .lg-act-td.lg-open .lg-act{ display:flex; flex-direction:column; align-items:stretch; gap:6px; margin-top:6px; min-width:180px; white-space:normal; }
   .lg-act-td.lg-open .lg-act .ghost-btn, .lg-act-td.lg-open .lg-act input{ min-height:44px; font-size:13px !important; width:auto !important; }
   #nxFieldSheet{ position:absolute; left:0; right:0; bottom:56px; z-index:37; background:var(--panel, #fff); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(0,0,0,.18); padding:10px 10px 12px; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
@@ -3238,7 +3241,7 @@ function nxMdOpenWindow(title, src, opts){
   var dashboardLoaded = false;
   // [2026.10.22] 오늘 할 일 한 줄 — 건수 칩, 누르면 해당 카드로(같은 내용을 두 번 보이지 않게)
   function loadDashToday_(){
-    callGas('todo_list', {}).then(function(t){
+    nxCacheFirst_('todo_list', {}, 'dashToday').then(function(t){ // [2026-11-13 느림 ①] 지난 값 먼저(script.html nxCacheFirst_)
       var box = document.getElementById('dashToday'); if (!box) return;
       if (!t || t.error){ box.innerHTML = '<span style="color:var(--sub)">오늘 할 일을 불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
       var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; color:' + (warn ? '#b3261e' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
@@ -3538,7 +3541,7 @@ function nxMdOpenWindow(title, src, opts){
   });
 
   function loadDashBookings(){
-    callGas('list_bookings', {}).then(function(res){
+    nxCacheFirst_('list_bookings', {}, 'dashBookings').then(function(res){ // [2026-11-13 느림 ①]
       // [2026.10.18 탭연결 4번] 줄을 누르면 예약관리의 그 신청으로 간다(승인·사건 시작은 거기서) — 시트 줄번호는 예약관리와 같은 규칙(순서+2)
       var all = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; });
       // [2026.11.01] 예약관리와 같은 잣대(bookingKind_) — 2주 넘게 지난 신청·확정은 「지난 기록」이라 여기서도 안 센다
@@ -3563,7 +3566,7 @@ function nxMdOpenWindow(title, src, opts){
   }
 
   function loadDashPayments(){
-    callGas('client_get_consult_logs', {}).then(function(res){
+    nxCacheFirst_('client_get_consult_logs', {}, 'dashPayments').then(function(res){ // [2026-11-13 느림 ①]
       // [2026.10.29] 예전엔 날짜와 상관없이 최근 8건 — 이제 "오늘부터 전 며칠" 안의 수금만(서버가 최신순으로 줌)
       var payDays = dashStepVal_('dashPayBefore');
       var since = new Date(); since.setDate(since.getDate() - payDays);
@@ -3844,7 +3847,7 @@ function nxMdOpenWindow(title, src, opts){
         redo: function(){ if (after) dashTasksCache_ = dashTasksCache_.map(function(x){ return x.id === taskId ? Object.assign({}, x, after) : x; }); else dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== taskId; }); dashTasksDraw_(); } });
   }
   function loadDashTasks_(){
-    callGas('get_google_tasks', {}).then(function(res){
+    nxCacheFirst_('get_google_tasks', {}, 'dashTasks').then(function(res){ // [2026-11-13 느림 ①]
       var box = document.getElementById('dashTasks');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       dashTasksCache_ = res.할일 || [];
@@ -4040,7 +4043,8 @@ function nxMdOpenWindow(title, src, opts){
     sel.innerHTML = heads.map(function(h){ return '<option value="' + esc(h) + '"' + (h === dashFollow_.sec ? ' selected' : '') + '>' + esc(h === '기타' && (res.headings || []).indexOf('기타') < 0 ? '기타(새 절)' : h) + '</option>'; }).join('');
   }
   function loadDashFollow_(){
-    callGas('followup_get', {}).then(dashFollowRender_).catch(function(e){
+    nxCacheFirst_('followup_get', {}, 'dashFollowList').then(dashFollowRender_).catch( // [2026-11-13 느림 ①]
+      function(e){
       var box = document.getElementById('dashFollowList');
       if (box) box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>';
     });
@@ -4418,7 +4422,7 @@ function nxMdOpenWindow(title, src, opts){
     setTimeout(function(){ var c = document.getElementById('stBugCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
   });
   function loadDashNightlyStatus_(){
-    callGas('getNightlyStatus', {}).then(function(res){
+    nxCacheFirst_('getNightlyStatus', {}, 'dashNightlyStatus').then(function(res){ // [2026-11-13 느림 ①]
       var box = document.getElementById('dashNightlyStatus');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.items || [];
@@ -8458,12 +8462,14 @@ function nxMdOpenWindow(title, src, opts){
     document.getElementById('chLedgerBtn').addEventListener('click', function(){
       if (!tokOk()) return;
       body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>';
-      var reload = function(){ document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
+      var reload = function(){ window.nxLgNoCache_ = true; document.getElementById('chLedgerBtn').click(); if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_(); };
       var call = function(payload, okMsg){ return callGas('case_proc', Object.assign({ caseId: c.id, by: '세무사님' }, payload)).then(function(res){ if (!res || res.error || res.ok === false){ showToast((res && (res.error || res.message)) || '하지 못했습니다.', 'error'); return null; } showToast(res.message || okMsg || '했습니다.', 'success'); return res; }).catch(function(e){ showToast('오류: ' + nxErrText_(e), 'error'); return null; }); };
       var STATE_KO = { 물어볼것: '❓ 물어볼 것', 증빙받을것: '📎 증빙 받을 것', 추정: '≈ 추정', 확정: '✅ 확정', 보류: '⏸ 보류', 무시: '— 무시' };
       var KIND_KO = { 세무사님: '세무사님', 넥스: '넥스', 서류: '서류', 규칙: '규칙', 추정: '추정', 계산: '계산' };
       var PATHS = [['seller.name', '양도인 성명'], ['seller.regNo', '양도인 주민등록번호'], ['seller.address', '양도인 주소'], ['seller.multiHouseCount', '보유 주택 수'], ['c0.date', '양도일'], ['c0.totalPrice', '양도가액'], ['c0.transferCause', '양도 원인(sale 매매 · expropriation 수용 · exchange 교환)'], ['c0.buyer.name', '양수인 성명'], ['c0.buyer.regNo', '양수인 주민등록번호'], ['c0.buyer.relation', '양수인 관계(none 없음 · sibling 형제자매 · lineal 직계 · spouse 배우자 · relative 친족)'], ['a0.assetLocation', '소재지'], ['a0.assetKind', '자산 종류(land 토지 · building 건물 · land_building 토지+건물)'], ['a0.assetType', '과세대상 구분(house 주택 · other 그 외 · presale_right 분양권)'], ['a0.acquisitionDate', '취득일'], ['a0.acquisitionPrice', '취득가액'], ['costs', '필요경비(예: 취득세 3,583,600원, 중개수수료 2,090,000원 — 서버가 항목으로 풂)'], ['taxfee', '신고 세무비용'], ['사건분류', '사건분류'], ['기준일', '기준일(양도일)']];
-      callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+      // [2026-11-13 느림 ①] 장부 읽기가 10~16초 — 이 기기에 남긴 지난 장부로 먼저 그리고(단추 막음·「몇 초 전 값」), 새 장부가 오면 다시 그린다. 고친 직후 다시 읽을 땐(reload) 지난 값을 쓰지 않는다
+      var lgKey = 'ledger_' + c.id, lgNoCache = !!window.nxLgNoCache_; window.nxLgNoCache_ = false;
+      var lgPaint = function(r){
         if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
         var rows = r.줄 || [], sum = r.요약 || {};
         var h = '<div style="font-size:12.5px;">';
@@ -8991,7 +8997,14 @@ function nxMdOpenWindow(title, src, opts){
             if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
           }).catch(function(e){ busy(cmpB, false, '⚖ 비교'); showToast('오류: ' + nxErrText_(e), 'error'); });
         });
-      }).catch(function(e){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
+      };
+      var lgOld = (!lgNoCache && window.nxLocalCache_) ? window.nxLocalCache_.get(lgKey) : null, lgFresh = false;
+      if (lgOld) { try { lgPaint(lgOld.r); if (typeof nxStaleMark_ === 'function') nxStaleMark_(body, lgOld.t); } catch (e) { body.innerHTML = '<div class="log-empty">사실(장부)를 읽는 중…</div>'; } }
+      callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+        lgFresh = true; if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
+        if (r && r.ok && window.nxLocalCache_) window.nxLocalCache_.set(lgKey, r);
+        lgPaint(r);
+      }).catch(function(e){ if (typeof nxStaleClear_ === 'function') nxStaleClear_(body); body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc(e && e.message || e) + '</div>'; });
     });
     document.getElementById('chGasFixBtn').addEventListener('click', function(){
       if (!tokOk()) return;
@@ -57060,6 +57073,7 @@ function rwAiApplyEdit_(id, content){
         callGas('sess_revoke_all', {}).then(function(r){
           nxFp_.disable();
           try{ sessionStorage.removeItem('nxManageSessionToken'); localStorage.removeItem('nxMobileToken'); localStorage.removeItem('nxWatchTok'); }catch(e){}
+          if (window.nxLocalCache_) window.nxLocalCache_.clear(); // [2026-11-13 느림 ①] 이 기기에 남긴 읽기 결과도 지움
           alert((r && r.message) || '로그아웃했습니다.'); location.reload();
         }).catch(function(e){ toast('로그아웃하지 못했습니다: ' + nxErrText_(e)); });
       });
@@ -66861,6 +66875,47 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 하거나 한 단계로 고정한다. 각 화면의 반응형 규칙은 화면 폭(@media) 대신 body의 lay-phone/
   // lay-tablet/lay-pc 클래스와 window.nxLayout을 따른다(style.html·reportwriter.html·aichat.html).
   // ============================================================
+  // [2026-11-13 느림 ①] 세무사님 "느림은 권장대로 하라"(계획서 docs/_기록/느림_구조_계획서_20261113.html) — 서버를 부를 때마다 7~16초 걸리는 읽기(장부·오늘 카드)를
+  // 이 기기에 마지막으로 받은 값으로 먼저 그리고, 뒤에서 새 값이 오면 바꿔 그린다. 기기에 남기는 것은 그 읽기 결과뿐(로그인 표·비밀값 없음),
+  // 최근 20개만·한 건 400KB까지, 모든 기기 로그아웃(설정)하면 지운다. 옛 값을 보이는 동안은 화면이 단추를 막고 「몇 초 전 값」을 띄운다(nxStaleMark_).
+  var NX_LC_PREFIX_ = 'nx_lc_';
+  window.nxLocalCache_ = {
+    get: function(key){ try { var v = JSON.parse(localStorage.getItem(NX_LC_PREFIX_ + key) || 'null'); return v && v.r ? v : null; } catch (e) { return null; } },
+    set: function(key, r){
+      try {
+        var s = JSON.stringify({ t: Date.now(), r: r }); if (s.length > 400000) return;
+        localStorage.setItem(NX_LC_PREFIX_ + key, s);
+        var keys = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf(NX_LC_PREFIX_) === 0) keys.push(k); }
+        if (keys.length > 20) keys.map(function(k){ var t = 0; try { t = JSON.parse(localStorage.getItem(k)).t || 0; } catch (e) {} return { k: k, t: t }; })
+          .sort(function(a, b){ return a.t - b.t; }).slice(0, keys.length - 20).forEach(function(x){ localStorage.removeItem(x.k); });
+      } catch (e) {}
+    },
+    clear: function(){ try { var ks = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf(NX_LC_PREFIX_) === 0) ks.push(k); } ks.forEach(function(k){ localStorage.removeItem(k); }); } catch (e) {} }
+  };
+  // 옛 값 표시 — box 안 단추·입력을 막고 맨 위에 「n분 전 값 · 새로 받는 중」 띠. 새 값으로 다시 그리면(box.innerHTML 교체) 저절로 풀린다.
+  window.nxStaleMark_ = function(box, t){
+    if (!box) return;
+    var sec = Math.max(0, Math.round((Date.now() - (t || 0)) / 1000));
+    var ago = sec < 60 ? sec + '초' : sec < 3600 ? Math.round(sec / 60) + '분' : sec < 86400 ? Math.round(sec / 3600) + '시간' : Math.round(sec / 86400) + '일';
+    box.classList.add('nx-stale');
+    var bar = document.createElement('div'); bar.className = 'nx-stale-bar'; bar.textContent = '⏳ ' + ago + ' 전에 받은 값입니다 — 새 값을 받는 중(받으면 바로 바뀌고 단추가 풀립니다)';
+    box.insertBefore(bar, box.firstChild);
+  };
+  // 읽기 전용 서버 조회를 「지난 값 먼저 → 새 값」으로: .then(fn)의 fn이 지난 값이 있으면 먼저 한 번(둘째 인자 {stale:true, t}), 새 값으로 또 한 번 불린다.
+  // where(화면 칸)를 주면 그 칸 맨 위에 「지난 값」 띠를 지난 값을 쓰는 동안만 둔다. 새 값이 오류면 기억하지 않는다.
+  window.nxCacheFirst_ = function(action, payload, where){
+    var key = 'gas_' + action + (payload && Object.keys(payload).length ? '_' + JSON.stringify(payload) : '');
+    var p = callGas(action, payload || {});
+    return {
+      then: function(fn){
+        var old = window.nxLocalCache_.get(key), host = where ? document.getElementById(where) : null;
+        if (old) { try { fn(old.r, { stale: true, t: old.t }); if (host) { nxStaleClear_(host); nxStaleMark_(host, old.t); } } catch (e) {} }
+        return p.then(function(r){ if (host) nxStaleClear_(host); if (r && !r.error) window.nxLocalCache_.set(key, r); return fn(r, { stale: false }); },
+                      function(e){ if (host) nxStaleClear_(host); throw e; });
+      }
+    };
+  };
+  window.nxStaleClear_ = function(box){ if (!box) return; box.classList.remove('nx-stale'); var b = box.querySelector(':scope > .nx-stale-bar'); if (b) b.remove(); };
   var NX_LAYOUT_KEY_ = 'nx_device_override', NX_DARK_KEY_ = 'nx_dark_mode';
   function nxLs_(key, val){
     try{ if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); }catch(e){}

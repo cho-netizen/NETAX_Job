@@ -61,6 +61,7 @@
         callGas('sess_revoke_all', {}).then(function(r){
           nxFp_.disable();
           try{ sessionStorage.removeItem('nxManageSessionToken'); localStorage.removeItem('nxMobileToken'); localStorage.removeItem('nxWatchTok'); }catch(e){}
+          if (window.nxLocalCache_) window.nxLocalCache_.clear(); // [2026-11-13 느림 ①] 이 기기에 남긴 읽기 결과도 지움
           alert((r && r.message) || '로그아웃했습니다.'); location.reload();
         }).catch(function(e){ toast('로그아웃하지 못했습니다: ' + nxErrText_(e)); });
       });

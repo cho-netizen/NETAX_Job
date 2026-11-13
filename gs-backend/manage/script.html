@@ -9,6 +9,47 @@
   // 하거나 한 단계로 고정한다. 각 화면의 반응형 규칙은 화면 폭(@media) 대신 body의 lay-phone/
   // lay-tablet/lay-pc 클래스와 window.nxLayout을 따른다(style.html·reportwriter.html·aichat.html).
   // ============================================================
+  // [2026-11-13 느림 ①] 세무사님 "느림은 권장대로 하라"(계획서 docs/_기록/느림_구조_계획서_20261113.html) — 서버를 부를 때마다 7~16초 걸리는 읽기(장부·오늘 카드)를
+  // 이 기기에 마지막으로 받은 값으로 먼저 그리고, 뒤에서 새 값이 오면 바꿔 그린다. 기기에 남기는 것은 그 읽기 결과뿐(로그인 표·비밀값 없음),
+  // 최근 20개만·한 건 400KB까지, 모든 기기 로그아웃(설정)하면 지운다. 옛 값을 보이는 동안은 화면이 단추를 막고 「몇 초 전 값」을 띄운다(nxStaleMark_).
+  var NX_LC_PREFIX_ = 'nx_lc_';
+  window.nxLocalCache_ = {
+    get: function(key){ try { var v = JSON.parse(localStorage.getItem(NX_LC_PREFIX_ + key) || 'null'); return v && v.r ? v : null; } catch (e) { return null; } },
+    set: function(key, r){
+      try {
+        var s = JSON.stringify({ t: Date.now(), r: r }); if (s.length > 400000) return;
+        localStorage.setItem(NX_LC_PREFIX_ + key, s);
+        var keys = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf(NX_LC_PREFIX_) === 0) keys.push(k); }
+        if (keys.length > 20) keys.map(function(k){ var t = 0; try { t = JSON.parse(localStorage.getItem(k)).t || 0; } catch (e) {} return { k: k, t: t }; })
+          .sort(function(a, b){ return a.t - b.t; }).slice(0, keys.length - 20).forEach(function(x){ localStorage.removeItem(x.k); });
+      } catch (e) {}
+    },
+    clear: function(){ try { var ks = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf(NX_LC_PREFIX_) === 0) ks.push(k); } ks.forEach(function(k){ localStorage.removeItem(k); }); } catch (e) {} }
+  };
+  // 옛 값 표시 — box 안 단추·입력을 막고 맨 위에 「n분 전 값 · 새로 받는 중」 띠. 새 값으로 다시 그리면(box.innerHTML 교체) 저절로 풀린다.
+  window.nxStaleMark_ = function(box, t){
+    if (!box) return;
+    var sec = Math.max(0, Math.round((Date.now() - (t || 0)) / 1000));
+    var ago = sec < 60 ? sec + '초' : sec < 3600 ? Math.round(sec / 60) + '분' : sec < 86400 ? Math.round(sec / 3600) + '시간' : Math.round(sec / 86400) + '일';
+    box.classList.add('nx-stale');
+    var bar = document.createElement('div'); bar.className = 'nx-stale-bar'; bar.textContent = '⏳ ' + ago + ' 전에 받은 값입니다 — 새 값을 받는 중(받으면 바로 바뀌고 단추가 풀립니다)';
+    box.insertBefore(bar, box.firstChild);
+  };
+  // 읽기 전용 서버 조회를 「지난 값 먼저 → 새 값」으로: .then(fn)의 fn이 지난 값이 있으면 먼저 한 번(둘째 인자 {stale:true, t}), 새 값으로 또 한 번 불린다.
+  // where(화면 칸)를 주면 그 칸 맨 위에 「지난 값」 띠를 지난 값을 쓰는 동안만 둔다. 새 값이 오류면 기억하지 않는다.
+  window.nxCacheFirst_ = function(action, payload, where){
+    var key = 'gas_' + action + (payload && Object.keys(payload).length ? '_' + JSON.stringify(payload) : '');
+    var p = callGas(action, payload || {});
+    return {
+      then: function(fn){
+        var old = window.nxLocalCache_.get(key), host = where ? document.getElementById(where) : null;
+        if (old) { try { fn(old.r, { stale: true, t: old.t }); if (host) { nxStaleClear_(host); nxStaleMark_(host, old.t); } } catch (e) {} }
+        return p.then(function(r){ if (host) nxStaleClear_(host); if (r && !r.error) window.nxLocalCache_.set(key, r); return fn(r, { stale: false }); },
+                      function(e){ if (host) nxStaleClear_(host); throw e; });
+      }
+    };
+  };
+  window.nxStaleClear_ = function(box){ if (!box) return; box.classList.remove('nx-stale'); var b = box.querySelector(':scope > .nx-stale-bar'); if (b) b.remove(); };
   var NX_LAYOUT_KEY_ = 'nx_device_override', NX_DARK_KEY_ = 'nx_dark_mode';
   function nxLs_(key, val){
     try{ if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); }catch(e){}

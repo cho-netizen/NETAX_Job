@@ -163,7 +163,7 @@
   var dashboardLoaded = false;
   // [2026.10.22] 오늘 할 일 한 줄 — 건수 칩, 누르면 해당 카드로(같은 내용을 두 번 보이지 않게)
   function loadDashToday_(){
-    callGas('todo_list', {}).then(function(t){
+    nxCacheFirst_('todo_list', {}, 'dashToday').then(function(t){ // [2026-11-13 느림 ①] 지난 값 먼저(script.html nxCacheFirst_)
       var box = document.getElementById('dashToday'); if (!box) return;
       if (!t || t.error){ box.innerHTML = '<span style="color:var(--sub)">오늘 할 일을 불러오지 못했습니다' + (t && t.error ? ': ' + esc(t.error) : '') + '</span>'; return; }
       var chip = function(n, label, target, warn){ if (!n) return ''; return '<a href="#" data-today-go="' + target + '" style="padding:2px 9px; border-radius:12px; text-decoration:none; border:1px solid ' + (warn ? '#b3261e' : 'var(--line)') + '; color:' + (warn ? '#b3261e' : 'inherit') + ';">' + label + ' <b>' + n + '</b></a>'; };
@@ -463,7 +463,7 @@
   });
 
   function loadDashBookings(){
-    callGas('list_bookings', {}).then(function(res){
+    nxCacheFirst_('list_bookings', {}, 'dashBookings').then(function(res){ // [2026-11-13 느림 ①]
       // [2026.10.18 탭연결 4번] 줄을 누르면 예약관리의 그 신청으로 간다(승인·사건 시작은 거기서) — 시트 줄번호는 예약관리와 같은 규칙(순서+2)
       var all = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; });
       // [2026.11.01] 예약관리와 같은 잣대(bookingKind_) — 2주 넘게 지난 신청·확정은 「지난 기록」이라 여기서도 안 센다
@@ -488,7 +488,7 @@
   }
 
   function loadDashPayments(){
-    callGas('client_get_consult_logs', {}).then(function(res){
+    nxCacheFirst_('client_get_consult_logs', {}, 'dashPayments').then(function(res){ // [2026-11-13 느림 ①]
       // [2026.10.29] 예전엔 날짜와 상관없이 최근 8건 — 이제 "오늘부터 전 며칠" 안의 수금만(서버가 최신순으로 줌)
       var payDays = dashStepVal_('dashPayBefore');
       var since = new Date(); since.setDate(since.getDate() - payDays);
@@ -769,7 +769,7 @@
         redo: function(){ if (after) dashTasksCache_ = dashTasksCache_.map(function(x){ return x.id === taskId ? Object.assign({}, x, after) : x; }); else dashTasksCache_ = dashTasksCache_.filter(function(x){ return x.id !== taskId; }); dashTasksDraw_(); } });
   }
   function loadDashTasks_(){
-    callGas('get_google_tasks', {}).then(function(res){
+    nxCacheFirst_('get_google_tasks', {}, 'dashTasks').then(function(res){ // [2026-11-13 느림 ①]
       var box = document.getElementById('dashTasks');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       dashTasksCache_ = res.할일 || [];
@@ -965,7 +965,8 @@
     sel.innerHTML = heads.map(function(h){ return '<option value="' + esc(h) + '"' + (h === dashFollow_.sec ? ' selected' : '') + '>' + esc(h === '기타' && (res.headings || []).indexOf('기타') < 0 ? '기타(새 절)' : h) + '</option>'; }).join('');
   }
   function loadDashFollow_(){
-    callGas('followup_get', {}).then(dashFollowRender_).catch(function(e){
+    nxCacheFirst_('followup_get', {}, 'dashFollowList').then(dashFollowRender_).catch( // [2026-11-13 느림 ①]
+      function(e){
       var box = document.getElementById('dashFollowList');
       if (box) box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>';
     });
@@ -1343,7 +1344,7 @@
     setTimeout(function(){ var c = document.getElementById('stBugCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
   });
   function loadDashNightlyStatus_(){
-    callGas('getNightlyStatus', {}).then(function(res){
+    nxCacheFirst_('getNightlyStatus', {}, 'dashNightlyStatus').then(function(res){ // [2026-11-13 느림 ①]
       var box = document.getElementById('dashNightlyStatus');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.items || [];

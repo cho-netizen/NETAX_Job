@@ -160,8 +160,11 @@
   body.lay-tablet:not(.lay-cover):not(.nx-present) #nxMenuHandle{ display:flex; align-items:center; justify-content:center; position:absolute; left:0; top:0; width:32px; height:44px; z-index:51; border:none; padding:0; background:var(--navy); color:var(--gold); font-size:20px; cursor:pointer; }
   body.lay-tablet #sideMenu.peek ~ #nxMenuHandle, body.lay-tablet #sideMenu.pinned ~ #nxMenuHandle{ display:none; }
   /* [2026-11-13 4차 47] 칸 장부 표 조치 「⋯」(태블릿·폰) — ledger.html lgTouch */
-  .lg-act-more{ min-width:44px; min-height:44px; font-size:18px; font-weight:700; padding:0 10px; }
+  .lg-act-td .lg-act-more{ min-width:44px !important; min-height:44px !important; font-size:18px; font-weight:700; padding:0 10px; }
   .lg-act-td .lg-act{ display:none; }
+  /* [2026-11-13 느림 ①] 옛 값으로 먼저 그린 동안 — 단추·입력 막고 띠 (script.html nxStaleMark_) */
+  .nx-stale button, .nx-stale input, .nx-stale select, .nx-stale textarea{ pointer-events:none; opacity:.55; }
+  .nx-stale-bar{ margin:0 0 8px; padding:6px 10px; border-radius:6px; background:rgba(200,162,68,.14); border:1px solid rgba(200,162,68,.55); font-size:12.5px; color:var(--ink, #333); }
   .lg-act-td.lg-open .lg-act{ display:flex; flex-direction:column; align-items:stretch; gap:6px; margin-top:6px; min-width:180px; white-space:normal; }
   .lg-act-td.lg-open .lg-act .ghost-btn, .lg-act-td.lg-open .lg-act input{ min-height:44px; font-size:13px !important; width:auto !important; }
   #nxFieldSheet{ position:absolute; left:0; right:0; bottom:56px; z-index:37; background:var(--panel, #fff); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(0,0,0,.18); padding:10px 10px 12px; display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
