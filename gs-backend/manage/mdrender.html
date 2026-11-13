@@ -1530,11 +1530,24 @@ async function nxMdRender(out, src, opts){
   return { ok: true };
 }
 // .md를 보고서 모양 완성본으로 새 창에 연다(AI탭 ↗ 새 창 등). src: 글 또는 글을 돌려주는 함수(프라미스 가능).
-// 팝업 차단을 피하려고 창은 누르는 순간 먼저 열고, 다 그린 뒤 완성본을 써 넣는다.
+// 팝업 차단을 피하려고 창은 누르는 순간 먼저 열고, 다 그린 뒤 완성본을 보낸다.
+// [2026.11.13] 세무사님 "보고서(md)를 볼때 <새창>버튼이 있는데, 그 버튼을 누르면 새창이 열리면서 백지가 나온다" — 가짜서버로 돌려 본 진짜 원인:
+//  화면 밖에서 그리려고 칸에 준 position:fixed; left:-12000px 스타일이 완성본(outerHTML)에 그대로 복사돼, 새 창에서도 글이 화면 밖 12,000px 왼쪽에
+//  그려졌다(세로 스크롤만 있는 백지). 완성본을 만들기 직전에 그 스타일을 걷는다. 아울러 새 창에 글을 직접 써 넣던 길(document.write)은 설치형 앱 창·
+//  브라우저 정책에서 조용히 실패할 수 있어, 작성관리 「↗」와 같이 완성본을 파일 주소(Blob)로 만들어 새 창을 그 주소로 보내는 방식으로 바꿨다.
 function nxMdOpenWindow(title, src, opts){
   const w = window.open('', '_blank');
   if (!w) { if (typeof toast === 'function') toast('팝업이 막혀 새 창을 열지 못했습니다 — 주소창 오른쪽의 팝업 허용을 눌러 주세요.'); return; }
-  try { w.document.write('<!DOCTYPE html><meta charset="utf-8"><title>' + nxMdEsc_(title) + '</title><p style="font-family:sans-serif; padding:24px; color:#555;">보고서 모양으로 그리는 중…</p>'); } catch (e) {}
+  const urls = [];
+  const send = function(html){
+    try {
+      const u = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+      urls.push(u);
+      w.location.href = u;
+    } catch (e) { try { w.document.open(); w.document.write(html); w.document.close(); } catch (e2) {} }
+  };
+  const note = function(text, color){ return '<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>' + nxMdEsc_(title) + '</title></head><body><p style="font-family:sans-serif; padding:24px; color:' + color + ';">' + nxMdEsc_(text) + '</p></body></html>'; };
+  send(note('보고서 모양으로 그리는 중…', '#555'));
   opts = Object.assign({ theme: nxMdThemeForName(title), rich: true, outline: false }, opts || {}); // 보기용 — 개요번호 제목 변환 끔
   const box = document.createElement('div');
   box.style.cssText = 'position:fixed; left:-12000px; top:0; width:820px;'; // 화면 밖에서 그린다(Mermaid·차트 크기 계산에 실제 칸이 필요)
@@ -1542,9 +1555,9 @@ function nxMdOpenWindow(title, src, opts){
   Promise.resolve().then(() => (typeof src === 'function' ? src() : src))
     .then(text => nxMdRender(box, text, opts))
     .then(() => new Promise(r => setTimeout(r, box.querySelector('canvas') ? 900 : 0))) // 차트가 다 그려진 뒤 그림으로 굽는다
-    .then(() => { const html = nxMdStandaloneHtml(box, title, opts); w.document.open(); w.document.write(html); w.document.close(); })
-    .catch(err => { try { w.document.body.innerHTML = '<p style="color:#a33; font-family:sans-serif; padding:24px;">' + nxMdEsc_('보고서를 열지 못했습니다: ' + (err && err.message ? err.message : err)) + '</p>'; } catch (e) {} })
-    .finally(() => box.remove());
+    .then(() => { box.style.cssText = ''; send(nxMdStandaloneHtml(box, title, opts)); }) // [2026.11.13 백지의 진짜 원인] 화면 밖에 두려고 준 left:-12000px가 완성본에 그대로 복사돼 새 창 글이 화면 밖에 그려졌다 — 완성본을 만들기 직전에 걷는다
+    .catch(err => { send(note('보고서를 열지 못했습니다: ' + (err && err.message ? err.message : err), '#a33')); })
+    .finally(() => { box.remove(); setTimeout(() => urls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} }), 30000); }); // 새 창이 파일을 다 받아간 뒤 임시 주소 정리
 }
 // 조문 팝업은 어느 화면 위에서도 보이도록 body 바로 아래로 옮긴다
 (function(){ const m = document.getElementById('statuteModal'); if (m && m.parentNode !== document.body && document.body) document.body.appendChild(m); })();

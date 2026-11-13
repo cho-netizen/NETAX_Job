@@ -799,6 +799,7 @@ async function rwLoadFileById_(fileId, loadOpts){
       doc.folderId = data.internalFolderId || doc.folderId;
       doc.reportFolderId = data.reportFolderId || doc.reportFolderId;
     }
+    if (data.folderId) doc.folderId = data.folderId; // [2026.11.13] 이 파일이 든 폴더(.html 발행본도) — PDF를 원본과 같은 폴더에 저장
   } else {
     let docType = rwGuessDocTypeFromFilename_(name);
     // [2026.10.20] 설정 🧭 시스템 관리에서 연 지침 파일(마스터 프로필 등)은 보고서가 아니라 문서유형을 묻지 않는다(기본 모양)
@@ -814,6 +815,7 @@ async function rwLoadFileById_(fileId, loadOpts){
       if (data.internalFolderId) doc.folderId = data.internalFolderId;
       if (data.reportFolderId) doc.reportFolderId = data.reportFolderId;
     }
+    if (data.folderId) doc.folderId = data.folderId; // [2026.11.13] 이 파일이 든 폴더(.html 발행본도) — PDF를 원본과 같은 폴더에 저장
     docs.push(doc);
   }
   selectedId = docId;
@@ -2318,6 +2320,7 @@ async function saveToDrive(){
       d.id = newDocId;
       selectedId = newDocId;
       if (d.format !== 'html' && pendingPublishFolderId) d.reportFolderId = pendingPublishFolderId;
+      d.folderId = pendingSaveFolderId; // [2026.11.13] 처음 저장한 폴더 = PDF를 저장할 "원본과 같은 폴더"
       pendingSaveFolderId = null;
       pendingSaveFolderName = null;
       pendingPublishFolderId = null;
@@ -2738,12 +2741,37 @@ async function downloadAsPdf(){
       heightLeft -= pageHeight;
     }
 
-    const d = getSelected();
-    pdf.save((d ? d.name : '문서') + '.pdf');
-    showToast('PDF로 저장했습니다.', 'success');
+    await rwSavePdf_(pdf, getSelected(), 'PDF');
   }catch(err){
     showToast('PDF 생성 실패: ' + nxErrText_(err), 'error');
   }
+}
+
+// [2026.11.13] 만든 PDF를 어디에 두나 — 세무사님 "신고용 검토조서를 pdf로 다운로드하여 신고서에 첨부하려고 하는데 … 각 보고서의 용도에 맞게 내부보고서든
+//  외부보고서든 해당 사건내의 폴더로 지정되어야 할 것 아닌가?" / "일단 인쇄할 원본문서와 같은 폴더에 저장되도록 해야하지 않나?"
+//  → 원본 문서(.md 내부 문서 → 보고서_내부, .html 발행본 → 보고서)가 든 드라이브 폴더(d.folderId)에 「원본이름.pdf」로 올린다. 같은 이름이 이미 있으면
+//  그 파일을 새 내용으로 바꾼다(파일이 둘로 늘지 않게). 예전엔 브라우저 내려받기(PC 폴더)로만 떨어뜨렸는데, 그 폴더가 깨져 있으면 브라우저가
+//  "폴더를 찾을 수 없음"을 내고 사건 폴더엔 아무것도 남지 않았다. 드라이브에 저장된 적 없는 문서(사건 폴더 없음)만 예전처럼 PC로 내려받는다.
+async function rwSavePdf_(pdf, d, label){
+  const base = String((d && (d.driveBaseName_ || d.name)) || '문서').replace(/\.(md|html?|htm|pdf)$/i, '');
+  const fileName = base + '.pdf';
+  const folderId = d && d.folderId;
+  if (!folderId) {
+    pdf.save(fileName);
+    showToast(label + '를 PC로 내려받았습니다 — 이 문서는 아직 사건 폴더에 저장된 적이 없어 드라이브에는 두지 못했습니다(💾로 먼저 저장하면 다음부터 원본과 같은 폴더에 PDF가 저장됩니다).', 'info');
+    return;
+  }
+  showToast(label + '를 원본 문서와 같은 폴더에 저장하는 중…', 'info');
+  const bytes = new Uint8Array(pdf.output('arraybuffer'));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  const res = await callGas('uploadFile', { name: fileName, folderId: folderId, base64Data: btoa(bin), mimeType: 'application/pdf', replaceSameName: true, noPreread: true });
+  if (!res || res.error) throw new Error((res && res.error) || 'PDF를 드라이브에 올리지 못했습니다');
+  const c = rwGetSelectedCase_();
+  try { if (c && sessionStorage.getItem('nxManageSessionToken')) callGas('case_proc', { caseId: c.id, step: 'log', by: window.nxWorkBy_ || '세무사님', what: 'PDF 저장', detail: fileName + (res.updated ? ' (같은 이름 갱신)' : '') + ' — ' + label + ' · 파일 ' + res.id }); } catch (e) {}
+  showToast('「' + fileName + '」을(를) 원본 문서와 같은 폴더에 ' + (res.updated ? '다시 ' : '') + '저장했습니다.', 'success');
+  // 사건 문서 목록(작성관리 콤보)에 방금 생긴 PDF가 바로 보이게
+  try { const cs = document.getElementById('rwCaseSelect'); if (cs && cs.value && typeof rwRenderCaseReports_ === 'function') rwRenderCaseReports_(cs.value); } catch (e) {}
 }
 
 // [2026.10.30] 인쇄용 PDF(보기용과 따로) — 세무사님 원문: "형식은 다르더라도 인쇄는 제대로 되어야 하는데 여백이 하나도 없게 인쇄가 되었었다 …
@@ -2867,8 +2895,7 @@ async function downloadAsPrintPdf(){
       if (headImg) pdf.addImage(headImg, 'PNG', M.left, M.top - 1 - headHmm, CW, headHmm);
       if (headImg || pages > 1) { pdf.setFontSize(9); pdf.setTextColor(120); pdf.text('- ' + (i + 1) + ' -', PW / 2, PH - 12, { align: 'center' }); }
     }
-    pdf.save((d.name || '문서') + '.pdf');
-    showToast('인쇄용 PDF로 저장했습니다(A4 여백).', 'success');
+    await rwSavePdf_(pdf, d, '인쇄용 PDF(A4 여백)');
   } catch (err) {
     showToast('PDF 생성 실패: ' + nxErrText_(err), 'error');
   } finally {

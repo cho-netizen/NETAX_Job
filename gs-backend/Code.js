@@ -6683,6 +6683,8 @@ function handleReadFile(body) {
 
     const content = file.getBlob().getDataAsString('UTF-8');
     const result = { name: file.getName(), mimeType: mimeType, content: content, kind: 'text' };
+    // [2026.11.13] 이 파일이 든 폴더 ID — 작성관리가 PDF를 "인쇄할 원본 문서와 같은 폴더"에 저장할 때 쓴다(.md·.html 모두). 세무사님 "일단 인쇄할 원본문서와 같은 폴더에 저장되도록 해야하지 않나?"
+    try { const pp = file.getParents(); if (pp.hasNext()) result.folderId = pp.next().getId(); } catch (e) {}
     // [2026.09] 작성관리(report-writer)는 이제 "내부보고서" 폴더에 .md(편집용 원본)를 두고,
     // 고객에게 발행하면 그 완성본(.html)을 같은 사건의 "보고서" 폴더(고객이 my.netax.kr에서
     // 보는 곳)에 별도로 만든다 — 두 파일이 같은 폴더가 아니라 사건 폴더 밑 서로 다른
@@ -6947,10 +6949,12 @@ function handleUploadFile(body) {
     const bytes = Utilities.base64Decode(body.base64Data);
     const blob = Utilities.newBlob(bytes, mimeType, body.name);
     // [2026.10.23 속도 ㅅ5차 — 가상양도12] replaceSameName: 같은 이름 파일이 그 폴더에 있으면 새로 만들지 않고 그 파일을 갱신(관련법령·검토서처럼 "사건에 하나"인 문서 — 겹쳐 돌면 (1)·(2)가 생기던 것)
+    // [2026.11.13] 글자가 아닌 파일(PDF 등)은 setContent로 갱신하면 깨진다 — 드라이브 고급 서비스로 내용을 통째로 바꾼다(파일 ID·주소는 그대로).
+    if (body.replaceSameName && !/^text\/|json$|xml$|javascript$/.test(mimeType)) { try { const ex = folder.getFilesByName(String(body.name)); if (ex.hasNext()) { const f0 = ex.next(); Drive.Files.update({}, f0.getId(), blob); return { id: f0.getId(), name: f0.getName(), url: f0.getUrl(), updated: true }; } } catch (e) { return { error: '같은 이름 파일 갱신 중 오류: ' + e.message }; } }
     if (body.replaceSameName) { try { const ex = folder.getFilesByName(String(body.name)); if (ex.hasNext()) { const f0 = ex.next(); f0.setContent(Utilities.newBlob(bytes).getDataAsString('UTF-8')); return { id: f0.getId(), name: f0.getName(), url: f0.getUrl(), updated: true }; } } catch (e) {} }
     const file = folder.createFile(blob);
     rh_maybeUpdateReportIndexForUpload_(body, file);
-    { cpPrereadQueue_(file.getId()); try { cpPrereadEnsureTrigger_(); } catch (e) {} } // [2026.10.28 감시] 모든 파일(PDF·사진은 미리 읽기, 나머지는 서류 변동 감시) // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다 · [T1] 트리거가 없으면 이때 만든다(밤 점검·배포 기록만 기다리지 않음)
+    if (!body.noPreread) { cpPrereadQueue_(file.getId()); try { cpPrereadEnsureTrigger_(); } catch (e) {} } // [2026.11.13] noPreread: 우리가 만든 보고서 PDF는 서류가 아니라 미리 읽기 줄에 넣지 않는다 // [2026.10.28 감시] 모든 파일(PDF·사진은 미리 읽기, 나머지는 서류 변동 감시) // [2026.10.23 속도 S4] 📥로 넣은 서류는 다음 1분 틱이 먼저 미리 읽는다 · [T1] 트리거가 없으면 이때 만든다(밤 점검·배포 기록만 기다리지 않음)
     return { id: file.getId(), name: file.getName(), url: file.getUrl() };
   } catch (err) {
     return { error: '파일 업로드 중 오류: ' + err.message };
