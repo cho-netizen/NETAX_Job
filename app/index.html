@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 14:52 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-13 15:04 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -602,6 +602,13 @@
      → 3 묶음(.nx-l3, 왼쪽 굵은 띠·아이콘 없음) → 4 작은 묶음(.nx-l4) → 그 아래 줄은 .nx-in 안에서 한 번 더 들여쓴다(가는 세로줄).
      접히는 단계는 ▸(접힘)/▾(펼침) 표시. 아이콘은 실행 단추(👁 보기 등)에만. */
   .view .card > h3{ font-size:16px; padding-bottom:8px; border-bottom:2px solid var(--line); margin:0 0 12px; }
+  /* [2026-11-14] 카드 제목 줄 공용 틀 — 세무사님 "도무지 아무생각없이 일하는 것 같다. 코딩의 기본은 알고 있나?" → (원인: 제목 줄에 띄워 붙이기·가운데·글자 기준선이 섞이고
+     단추 높이를 자리마다 따로 정함) → "맞다. 제발 코딩의 기본부터 지켜라".
+     ① 한 줄 가로 정렬·세로 가운데 맞춤(줄 안 모든 것이 같은 가운데 선) ② 오른쪽에 붙일 것은 .h-act 묶음 하나로(float 쓰지 않음 — 상담신청 화면이 쓰던 방식)
+     ③ 줄 안 단추·칸 높이는 보통 칸 높이(--ctl-h) 하나. 새 제목 줄도 이 틀만 쓴다(자리마다 높이·여백·float을 직접 적지 않는다). */
+  .view .card > h3{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; min-height:calc(var(--ctl-h) + 10px); } /* 단추가 없는 제목 줄도 같은 높이(카드마다 제목 띠 높이가 달라 보이지 않게) — 상자 크기에 아래 여백 8px·밑줄 2px이 들어가므로 +10px */
+  .view .card > h3 > .h-act{ margin-left:auto; display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; font-weight:400; }
+  .view .card > h3 .ghost-btn, .view .card > h3 .btn, .view .card > h3 .save-btn, .view .card > h3 select{ height:var(--ctl-h) !important; }
   /* 카드 안 h4는 3단계 묶음과 같은 모양(10-31 "설정탭뿐이 아니라 모든 탭에서 마찬가지다") */
   .view .card h4{ display:block; margin:18px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); line-height:1.45; }
   .view .card h4:first-child{ margin-top:4px; }
@@ -799,16 +806,16 @@
      수금 전 며칠·메일 건수)은 숫자칸 속 작은 화살표 대신 양옆에 큰 − / + 단추를 둔다(손가락으로도 누를 수 있는 크기). */
   .dash-range{ display:flex; gap:6px 10px; margin-bottom:8px; flex-wrap:wrap; align-items:center; font-size:12.5px; color:var(--sub); }
   /* [2026-11-13] 세무사님 "자 이렇게 간소화한 이유가 있다. 이 날짜지정을 항목명 옆으로 올려라" — 일정·마감임박·최근수금·착신메일의 범위 줄을 카드 제목(h3) 안 제목 글자 옆으로(카드마다 한 줄 줄임) */
-  .card > h3 > .dash-range-h{ display:inline-flex; margin:0 0 0 8px; vertical-align:middle; font-size:12.5px; font-weight:400; }
+  .card > h3 > .dash-range-h{ display:inline-flex; margin:0; font-size:12.5px; font-weight:400; } /* 간격·세로 맞춤은 제목 줄 공용 틀(.view .card > h3)이 맡음 */
   .dash-step{ display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
-  .dash-step button{ width:30px; height:30px; padding:0; font-size:18px; font-weight:700; line-height:1; cursor:pointer; border-radius:6px;
+  .dash-step button{ width:var(--ctl-h); height:var(--ctl-h); box-sizing:border-box; padding:0; font-size:18px; font-weight:700; line-height:1; cursor:pointer; border-radius:6px;
     border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); font-family:inherit; touch-action:manipulation; user-select:none; }
   .dash-step button:hover{ background:rgba(200,162,68,0.22); }
   .dash-step button:active{ background:rgba(200,162,68,0.32); }
   /* [2026-11-13] 세무사님 "일정, 마감임박작업, 최근수금내역, 안읽은메일 에서 지정하는 날짜 입력칸이 쓸데없이 너무 넓은거 같은데?" → "숫자는 2자리 숫자면 충분하다"
      — 46px → 두 자리(99)가 들어가는 만큼 2em(≈28px). 날짜 범위 최댓값도 99로(dashboard.html, 저장된 값은 불러올 때 99로 맞춰짐 — dashStepVal_).
      em이라 글자 크기 설정(기기별)을 따라 같이 커진다. ± 단추는 손가락 크기(30px) 그대로(10-29 "작은 화살표로는 조절이 안 됨") */
-  .dash-step input{ width:2em; height:30px; box-sizing:border-box; text-align:center; font-size:14px; font-weight:600; padding:0 2px; -moz-appearance:textfield; }
+  .dash-step input{ width:2em; height:var(--ctl-h); box-sizing:border-box; text-align:center; font-size:14px; font-weight:600; padding:0 2px; -moz-appearance:textfield; }
   .dash-step input::-webkit-outer-spin-button, .dash-step input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   /* border:none이면 .ghost-btn/.btn(둘 다 1px 테두리)과 border-box 계산이 달라져 미세하게
      낮이가 어긋난다 — 안 보이는 투명 테두리를 같은 두께로 둬서 셋 다 같은 박스모델을 쓴다. */
@@ -3126,8 +3133,8 @@ function nxMdOpenWindow(title, src, opts){
            「추가」를 다시 누르거나 Esc면 닫힘(쓰던 글은 버림). 저장은 양식 제출 한 길(Enter도 같은 길 — 화면 규칙: Enter 제출은 keydown 말고 form submit).
            [2026.09.16] 날짜칸은 마감일이 필요할 때만 "일정" 버튼으로 펼친다(늘 보이던 빈 날짜칸 실사용 지적). -->
       <h3>할일
-        <button type="button" id="dashNewTaskOpen" class="ghost-btn sm" style="margin-left:6px; vertical-align:middle;" aria-expanded="false" title="새 할일 적기">＋ 추가</button>
-        <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
+        <button type="button" id="dashNewTaskOpen" class="ghost-btn sm" aria-expanded="false" title="새 할일 적기">＋ 추가</button>
+        <span class="h-act"><a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn sm" style="text-decoration:none;">열기</a></span>
       </h3>
       <form id="dashNewTaskForm" style="display:none; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
         <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">일정</button>
@@ -3146,7 +3153,7 @@ function nxMdOpenWindow(title, src, opts){
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
     <div class="card dash-cover">
       <h3>일정<span class="dash-range dash-range-h">        <span class="dash-step"><button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지의 일정" type="number" id="dashCalRangeAfter" min="0" max="99" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button></span>      </span>
-        <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
+        <span class="h-act"><a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="text-decoration:none;">열기</a></span>
       </h3>
       <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
       <!-- [2026-11-13] 세무사님 "일정에서 날짜지정할때 앞에 붙어있는 <오늘>이라는 말은 삭제하자. 다른 항목처럼 <날짜, 시간, 내용>이라는 타이틀을 붙이자" — 「오늘 전」→「전」, 표 머리글은 loadDashCalendar_ -->
@@ -3171,7 +3178,7 @@ function nxMdOpenWindow(title, src, opts){
     <div class="card">
       <!-- [2026-11-13] 세무사님 "<최근 수금내역>을 <최근수금>으로 고치고, 역시 <오늘부터 전>이라는 문구도 삭제하자" -->
       <h3>최근수금<span class="dash-range dash-range-h">        <span class="dash-step"><button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 전까지의 수금" type="number" id="dashPayBefore" min="0" max="99" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button></span><!-- [2026-11-13] 세무사님 "최근수금에서도 날짜 옆에 <수금>이라는 문구를 삭제하자" -->      </span>
-        <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">확인</button>
+        <span class="h-act"><button type="button" id="dashScanReceiptsBtn" class="ghost-btn sm" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다">확인</button></span>
       </h3>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -3182,14 +3189,13 @@ function nxMdOpenWindow(title, src, opts){
     <!-- [2026-11-13] 세무사님 "<안읽은 메일>을 <착신메일>로 바꾸고, 역시 <최근>이라는 문구와 <통(최대 30통)>이라는 문구도 없애자. 역시 타이틀(일자, 시간, 발신자, 제목)을 붙여주자" — 머리글은 loadDashEmails_ -->
     <div class="card">
       <h3>착신메일<span class="dash-range dash-range-h">        <span class="dash-step"><button type="button" data-step-for="dashEmailCount" data-step="-1" title="한 통 줄이기">−</button><input title="몇 통까지 보일지(최대 30통)" type="number" id="dashEmailCount" min="1" max="30" value="8"><button type="button" data-step-for="dashEmailCount" data-step="1" title="한 통 늘리기">+</button></span>      </span>
-        <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="float:right; text-decoration:none;">열기</a>
         <!-- [2026.10.20] 세무사님 "안읽은 메일을 읽음표시하기 위한 전체선택기능이 없구나" — 한 통씩 체크만 되던 것에 전체 읽음 추가 -->
         <!-- [2026.11.03] 세무사님 "전체선택버튼으로 선택한 다음에 일부체크해제 하고 나서 나머지를 읽음처리하고 싶은데 그런 기능이 없다"(요청 R2611031216) —
              체크는 고르기만 하고(바로 읽음 처리 안 함), 「전체 선택」으로 다 고른 뒤 빼고 싶은 것만 풀고 「읽음 처리」로 고른 것만 처리 -->
         <!-- [2026-11-13] 세무사님 "버튼명 <전체선택>을 <전체>로 <읽음처리>를 <읽음>으로 변경하자" → "착신메일이 버튼이 많아서 겹치거나 행넘김이 될 수 있다면,
              처음에는 전체버튼만 주었다가 전체를 클릭하거나 건별로 클릭하게 되면 그 버튼을 읽음버튼으로 변경하면 된다" — 단추 하나:
              고른 것 없음 = 「전체」(누르면 다 고름) / 하나라도 고름 = 「읽음」(누르면 고른 것만 읽음 처리). 다 풀면 다시 「전체」(dashEmailSelSync_) -->
-        <button type="button" id="dashEmailsSelAll" class="ghost-btn sm" style="float:right; margin-right:6px;" title="메일을 모두 고릅니다">전체</button>
+        <span class="h-act"><button type="button" id="dashEmailsSelAll" class="ghost-btn sm" title="메일을 모두 고릅니다">전체</button><a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn sm" style="text-decoration:none;">열기</a></span>
       </h3>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -3216,7 +3222,7 @@ function nxMdOpenWindow(title, src, opts){
          할일 카드는 이미 구글 할일 + 사건 하위업무 두 목록이라, 절(제목)별로 묶이고 글이 긴 이 목록까지 넣으면 한 카드가 너무 길고 출처가 섞여 보인다. -->
     <div class="card dash-cover" id="dashFollowCard">
       <h3>확인조치사항 <span id="dashFollowCount" style="font-size:12px; font-weight:600; color:var(--sub);"></span>
-        <span style="float:right; display:flex; gap:6px;">
+        <span class="h-act">
           <button type="button" id="dashFollowReload" class="ghost-btn sm" title="파일을 다시 읽습니다">🔄</button>
           <a id="dashFollowOpen" href="#" target="_blank" rel="noopener" class="ghost-btn sm" style="display:none; text-decoration:none;">📄 원본 파일</a>
         </span>
@@ -5056,8 +5062,8 @@ function nxMdOpenWindow(title, src, opts){
       <!-- [2026.10.30 예약 결과 관리] 세무사님 "이 목록이 언제까지 누적되는지? … 예약확정후 취소하거나 노쇼가 있을 수 있고, 방문상담하여 사건접수로
            이어질 수도 있는데, 그런 사항이 관리가 되지 않는다" → 목록을 처리할 것·지난 기록·전체로 나누고(기록은 지우지 않음), 확정 뒤 결과 적기·사건 연결·연결 확인. -->
       <!-- [2026.10.31] 실행 단추(연결 확인·직권등록)는 제목 줄 오른쪽에 함께, 보기 바꾸기(처리할 것·지난 기록·전체)는 공통 하위 탭 — 세무사님 "직권등록버튼만 우측에 동떨어져 있구나" -->
-      <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">상담신청 목록
-        <span style="margin-left:auto; display:flex; flex-wrap:wrap; gap:6px; font-weight:normal;">
+      <h3>상담신청 목록
+        <span class="h-act">
           <button type="button" id="bkLinkReview" class="ghost-btn sm" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약·상담의 사건 시작을 거치지 않고 만든 사건)">연결 확인</button>
           <button type="button" id="bkAdminToggle" class="ghost-btn sm">+ 직권등록</button>
         </span>
@@ -12467,7 +12473,7 @@ function nxMdOpenWindow(title, src, opts){
     </div>
     <!-- [2026.10.31] 세무사님 "기간별통계 기능을 그냥 버튼으로 만들어 버튼줄에 배치(기간 설정을 유지하면서)" — 위 단추로 열고 닫는다. 고른 단위(월·분기·반기·연)는 닫았다 열어도 그대로 -->
     <div class="card" id="colStatsCard" style="display:none;">
-      <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">기간별 통계
+      <h3>기간별 통계
         <select id="colStatPeriod" style="font-size:12.5px; font-weight:normal;">
           <option value="month" selected>월별</option>
           <option value="quarter">분기별</option>
@@ -12478,7 +12484,7 @@ function nxMdOpenWindow(title, src, opts){
       <div id="colStats"></div>
     </div>
     <div class="card">
-      <h3>수금 내역<span id="colSummary" style="float:right; font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
+      <h3>수금 내역<span id="colSummary" class="h-act" style="font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
       <div id="colList"><div class="spinner">불러오는 중…</div></div>
     </div>
   </div>

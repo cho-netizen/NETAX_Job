@@ -48,7 +48,7 @@
     </div>
     <!-- [2026.10.31] 세무사님 "기간별통계 기능을 그냥 버튼으로 만들어 버튼줄에 배치(기간 설정을 유지하면서)" — 위 단추로 열고 닫는다. 고른 단위(월·분기·반기·연)는 닫았다 열어도 그대로 -->
     <div class="card" id="colStatsCard" style="display:none;">
-      <h3 style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">기간별 통계
+      <h3>기간별 통계
         <select id="colStatPeriod" style="font-size:12.5px; font-weight:normal;">
           <option value="month" selected>월별</option>
           <option value="quarter">분기별</option>
@@ -59,7 +59,7 @@
       <div id="colStats"></div>
     </div>
     <div class="card">
-      <h3>수금 내역<span id="colSummary" style="float:right; font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
+      <h3>수금 내역<span id="colSummary" class="h-act" style="font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
       <div id="colList"><div class="spinner">불러오는 중…</div></div>
     </div>
   </div>
