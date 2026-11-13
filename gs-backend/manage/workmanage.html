@@ -300,6 +300,9 @@
       // [2026.10.31] 세무사님 "카드모양으로 감쌀 경우에는 색상처리를 해야" — 사건 카드마다 상태 색 띠(기한 지남 빨강·진행 남색·보류 회색·완료 초록, style.html)
       row.className = 'log-entry ' + (overdue ? 'st-over' : c.상태 === '완료' ? 'st-done' : c.상태 === '보류' ? 'st-hold' : 'st-go');
       row.style.cursor = 'pointer';
+      // [2026-11-13 3차 3] 사건 카드가 화면 읽기·자동 점검에 이름 없는 단추로 잡혔다 — 사건명·기한·상태를 이름으로
+      row.setAttribute('role', 'button'); row.setAttribute('tabindex', '0');
+      row.setAttribute('aria-label', String(c.사건명 || c.고객명 || '사건') + ' — ' + (c.법정일 ? '기한 ' + c.법정일 : '기한 없음') + ' · ' + String(c.상태 || ''));
       if (c.id === workSelectedCaseId) row.style.outline = '2px solid var(--navy)';
       var noDeadlineText = workDeadlineFieldLabel_(c.업무유형) === '처리시한' ? '시한없음' : '기한없음';
       var dateStyle = c.상태 === '완료' ? ' style="color:var(--sub);"' : '';

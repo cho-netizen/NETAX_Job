@@ -160,7 +160,27 @@
       var PATHS = [['seller.name', '양도인 성명'], ['seller.regNo', '양도인 주민등록번호'], ['seller.address', '양도인 주소'], ['seller.multiHouseCount', '보유 주택 수'], ['c0.date', '양도일'], ['c0.totalPrice', '양도가액'], ['c0.transferCause', '양도 원인(sale 매매 · expropriation 수용 · exchange 교환)'], ['c0.buyer.name', '양수인 성명'], ['c0.buyer.regNo', '양수인 주민등록번호'], ['c0.buyer.relation', '양수인 관계(none 없음 · sibling 형제자매 · lineal 직계 · spouse 배우자 · relative 친족)'], ['a0.assetLocation', '소재지'], ['a0.assetKind', '자산 종류(land 토지 · building 건물 · land_building 토지+건물)'], ['a0.assetType', '과세대상 구분(house 주택 · other 그 외 · presale_right 분양권)'], ['a0.acquisitionDate', '취득일'], ['a0.acquisitionPrice', '취득가액'], ['costs', '필요경비(예: 취득세 3,583,600원, 중개수수료 2,090,000원 — 서버가 항목으로 풂)'], ['taxfee', '신고 세무비용'], ['사건분류', '사건분류'], ['기준일', '기준일(양도일)']];
       // [2026-11-13 느림 ①] 장부 읽기가 10~16초 — 이 기기에 남긴 지난 장부로 먼저 그리고(단추 막음·「몇 초 전 값」), 새 장부가 오면 다시 그린다. 고친 직후 다시 읽을 땐(reload) 지난 값을 쓰지 않는다
       var lgKey = 'ledger_' + c.id, lgNoCache = !!window.nxLgNoCache_; window.nxLgNoCache_ = false;
+      // [2026-11-13 3차 계획 6절 1번] 줄 하나를 넣어도 장부 전체를 다시 읽어(관리 서버로 약 6초, 그 전 15~25초) 화면이 「읽는 중」으로 비던 것 —
+      //  서버가 돌려준 그 줄(row)만 바로 고쳐 그리고(단추는 막고 「전체 새로 받는 중」 띠), 전체 장부는 뒤에서 받아 다시 그린다. 줄을 못 받으면 예전처럼 다시 읽음.
+      var lgLast = null;
+      var lgQuick = function(res){
+        if (!res || !res.row || !res.row.path || !lgLast || !Array.isArray(lgLast.줄)) { reload(); return; }
+        var r2 = JSON.parse(JSON.stringify(lgLast)), i = -1;
+        r2.줄.forEach(function(x, k){ if (x && x.path === res.row.path) i = k; });
+        if (i >= 0) r2.줄[i] = Object.assign({}, r2.줄[i], res.row); else r2.줄.push(res.row);
+        lgPaint(r2);
+        if (typeof nxStaleMark_ === 'function') { nxStaleMark_(body, Date.now()); var bar = body.querySelector('.nx-stale-bar'); if (bar) bar.textContent = '⏳ 고친 줄을 먼저 보여 드립니다 — 장부 전체를 새로 받는 중(받으면 바로 바뀌고 단추가 풀립니다)'; }
+        callGas('case_proc', { caseId: c.id, step: 'ledger' }).then(function(r){
+          if (typeof nxStaleClear_ === 'function') nxStaleClear_(body);
+          if (r && r.ok && window.nxLocalCache_) window.nxLocalCache_.set(lgKey, r);
+          lgPaint(r);
+        }).catch(function(){ reload(); });
+        if (typeof window.chGasReloadNow_ === 'function') window.chGasReloadNow_();
+        if (typeof window.nxLedgerStripRefresh_ === 'function') window.nxLedgerStripRefresh_(c.id);
+      };
       var lgPaint = function(r){
+        if (r && r.ok && Array.isArray(r.줄)) lgLast = r;
+        if (r && /사건을 찾지 못했습니다/.test(String(r.error || ''))){ body.innerHTML = '<div class="log-empty">새 사건을 서버에 만드는 중입니다(폴더·장부 준비) — 잠시 뒤 [장부]를 다시 누르세요</div>'; return; } // [2026-11-13 3차 5]
         if (!r || r.error || !r.ok){ body.innerHTML = '<div class="log-empty">장부를 읽지 못했습니다: ' + esc((r && r.error) || '응답 없음') + '</div>'; return; }
         var rows = r.줄 || [], sum = r.요약 || {};
         var h = '<div style="font-size:12.5px;">';
@@ -574,12 +594,12 @@
         }); });
         var kbBtn = document.getElementById('chLgKbBuild');
         if (kbBtn) kbBtn.addEventListener('click', function(){ kbBtn.disabled = true; kbBtn.textContent = '모으는 중…(1~2분)'; call({ step: 'ledgerKbBuild' }).then(function(res){ kbBtn.disabled = false; kbBtn.textContent = '서류 사실 다시 모으기'; if (res) reload(); }); });
-        var setVal = function(path, v, est){ if (!v){ showToast('값을 적어 주세요.', 'warning'); return; } call({ step: 'ledgerSet', path: path, value: v, kind: est ? '추정' : '세무사님', estimate: !!est }).then(function(res){ if (res) reload(); }); };
+        var setVal = function(path, v, est){ if (!v){ showToast('값을 적어 주세요.', 'warning'); return; } call({ step: 'ledgerSet', path: path, value: v, kind: est ? '추정' : '세무사님', estimate: !!est }).then(function(res){ if (res) lgQuick(res); }); };
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-pick]'), function(b){ b.addEventListener('click', function(){ setVal(b.getAttribute('data-lg-pick'), b.getAttribute('data-lg-v'), false); }); });
         Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-set]'), function(b){ b.addEventListener('click', function(){ var p = b.getAttribute('data-lg-set'), inp = body.querySelector('input[data-lg-in="' + p.replace(/"/g, '\\"') + '"]'); setVal(p, inp ? inp.value.trim() : '', false); }); });
         Array.prototype.forEach.call(body.querySelectorAll('input[data-lg-in]'), function(inp){ inp.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); setVal(inp.getAttribute('data-lg-in'), inp.value.trim(), false); } }); });
-        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-dec]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerDecide', path: b.getAttribute('data-lg-path'), decision: b.getAttribute('data-lg-dec') }).then(function(res){ if (res) reload(); }); }); });
-        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-undo]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerUndo', path: b.getAttribute('data-lg-undo') }).then(function(res){ if (res) reload(); }); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-dec]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerDecide', path: b.getAttribute('data-lg-path'), decision: b.getAttribute('data-lg-dec') }).then(function(res){ if (res) lgQuick(res); }); }); });
+        Array.prototype.forEach.call(body.querySelectorAll('button[data-lg-undo]'), function(b){ b.addEventListener('click', function(){ call({ step: 'ledgerUndo', path: b.getAttribute('data-lg-undo') }).then(function(res){ if (res) lgQuick(res); }); }); });
         var lgValEl = document.getElementById('chLgVal'); if (lgValEl) lgValEl.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.isComposing){ e.preventDefault(); document.getElementById('chLgAdd').click(); } }); // [2026-11-12 3차 22] 값 칸 Enter가 아무 일도 안 하던 것
         document.getElementById('chLgAdd').addEventListener('click', function(){ var p = (document.getElementById('chLgPathFree').value || '').trim() || document.getElementById('chLgPath').value; setVal(p, document.getElementById('chLgVal').value.trim(), document.getElementById('chLgEst').checked); });
         document.getElementById('chLgCalc').addEventListener('click', function(){

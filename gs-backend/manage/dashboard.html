@@ -1110,7 +1110,9 @@
     box.innerHTML = html;
   }
   function loadDashImprove_(){
-    dashComm_().then(dashImproveRender_).catch(function(e){ var s = document.getElementById('dashImproveSum'); if (s) s.textContent = '오류: ' + (e && e.message ? e.message : e); });
+    // [2026-11-13 느림] 대시보드 상태(개선요구 등)는 job 서버 속성 여덟 가지(AI 사용량 등 수시로 바뀜)를 읽어 관리 서버로 못 옮김 — 대신 지난 값을 먼저 그리고 새 값으로 바꿈(nxCacheFirst_와 같은 기억 칸)
+    try { var old = window.nxLocalCache_ && window.nxLocalCache_.get('gas_comm_status'); if (old && old.r) { dashImproveRender_(old.r); var hb = document.getElementById('dashImproveList'); if (hb && typeof nxStaleMark_ === 'function') nxStaleMark_(hb, old.t); } } catch (e) {}
+    dashComm_().then(function(r){ var hb = document.getElementById('dashImproveList'); if (hb && typeof nxStaleClear_ === 'function') nxStaleClear_(hb); if (r && !r.error && window.nxLocalCache_) window.nxLocalCache_.set('gas_comm_status', r); dashImproveRender_(r); }).catch(function(e){ var s = document.getElementById('dashImproveSum'); if (s) s.textContent = '오류: ' + (e && e.message ? e.message : e); });
   }
   document.getElementById('dashImproveHead').addEventListener('click', function(){
     dashImprove_.open = !dashImprove_.open;

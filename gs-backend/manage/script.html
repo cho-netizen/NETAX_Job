@@ -390,7 +390,7 @@
     if (typeof row.사건개요 === 'string') { try { row.사건개요 = JSON.parse(row.사건개요); } catch (e) {} }
     var local = Object.assign({}, base, row);
     nxSaveLater_('work_update_case', payload, { key: 'case_' + id, label: opt.label || ((base.사건명 || '사건') + ' 저장'), patch: [{ list: 'cases', op: 'upsert', id: id, row: row }],
-      onDone: function(res){ if (res && res.warning) toast(res.warning); if (opt.onDone) opt.onDone(res); },
+      onDone: function(res){ if (res && res.warning) toast(res.warning); if (typeof window.nxLedgerStripRefresh_ === 'function') window.nxLedgerStripRefresh_(id); /* [2026-11-13 3차 23] 개요·사건 저장이 서버에 닿으면 맨 위 장부 띠를 새로 읽음(예전엔 2분 기억값이 남음) */ if (opt.onDone) opt.onDone(res); },
       onFail: function(why){ if (opt.onFail) opt.onFail(why); }, redo: opt.redo });
     return Promise.resolve({ success: true, queued: true, case: local });
   }
@@ -529,7 +529,9 @@
     if (/lock|잠금|바쁩니다|busy/i.test(m)) return '다른 작업이 저장 중입니다 — 몇 초 뒤 다시 눌러 주세요';
     if (/too many times|quota|Bandwidth|한도/i.test(m)) return '구글 사용 한도를 넘었습니다 — 잠시(길면 내일) 뒤 다시 하세요';
     if (!m) return '까닭을 알 수 없습니다 — 다시 눌러 보고, 또 나오면 ✍ 개선 건의로 알려 주세요';
-    if (!/[가-힣]/.test(m)) return '서버가 처리하지 못했습니다(' + m.slice(0, 60) + ') — 다시 눌러 보고, 또 나오면 ✍ 개선 건의로 알려 주세요';
+    // [2026-11-13 3차 18] 오류 글에 코드 이름(함수 이름·영어 오류 문장)이 그대로 보이던 것 — 화면엔 쉬운 말만, 원문은 콘솔·오류 기록에만
+    if (!/[가-힣]/.test(m)) { try { console.warn('서버 오류 원문: ' + m); } catch (e) {} return '서버가 처리하지 못했습니다 — 다시 눌러 보고, 또 나오면 ✍ 개선 건의로 알려 주세요'; }
+    m = m.replace(/\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*\b/g, '').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
     return /세요|십시오|주십/.test(m) ? m : m + ' — 다시 해 보고, 또 나오면 ✍ 개선 건의로 알려 주세요';
   }
 
@@ -920,6 +922,8 @@
         if (el.hasAttribute('tabindex')) return;
         el.setAttribute('tabindex', '0');
         if (!el.hasAttribute('role') && !/^(TD|TR)$/.test(el.tagName)) el.setAttribute('role', 'button');
+        // [2026-11-13 3차 3] 이렇게 단추가 된 줄(사건 카드·목록 줄)이 이름 없는 단추로 읽혔다 — 보이는 글을 이름으로(이미 이름이 있으면 그대로)
+        if (!el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby')) { var nm = String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (nm) el.setAttribute('aria-label', nm); }
       });
     }
     function tabs_(root){
@@ -2038,6 +2042,8 @@
   window.nxLedgerStripRefresh_ = function(id){ if (id) delete NX_LG_.cache[id]; NX_LG_.strips.forEach(function(s){ if (!id || s._shownId === id) s._shownId = null; }); nxLedgerStripTick_(); };
   function nxLedgerStripRender_(el, id, r){
     var b = el.querySelector('.nx-lg-body'); if (!b) return;
+    // [2026-11-13 3차 5] 새 사건은 화면에 먼저 생기고 서버 줄·폴더는 뒤에서 만들어져, 그 사이 「장부를 읽지 못했습니다 — 사건을 찾지 못했습니다」가 고장처럼 보였다 — 만드는 중으로 알리고 10초 뒤 다시 읽음
+    if (r && !r.ok && /사건을 찾지 못했습니다/.test(String(r.error || ''))) { b.textContent = '새 사건을 서버에 만드는 중입니다(폴더·장부 준비) — 잠시 뒤 저절로 다시 읽습니다'; setTimeout(function(){ if (typeof window.nxLedgerStripRefresh_ === 'function') window.nxLedgerStripRefresh_(id); }, 10000); return; }
     if (!r || !r.ok || !r.흐름) { b.innerHTML = '장부를 읽지 못했습니다' + (r && r.error ? ' — ' + nxLgEsc_(r.error) : ''); return; }
     var f = r.흐름, d = f.띠 || {}, last = f.마지막;
     var red = function(n, t){ return n ? '<span style="color:#b23; font-weight:600;">' + t + '</span>' : t; };
