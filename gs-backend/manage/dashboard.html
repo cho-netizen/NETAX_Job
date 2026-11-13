@@ -707,12 +707,13 @@
     // 텍스트 바로 옆이 아니라 카드 맨 오른쪽 끝까지 밀려나 보였다 — 인라인으로 flex:1을
     // flex:0 1 auto로 덮어써서 내용 길이만큼만 차지하게 한다(삭제 버튼이 바로 옆에 붙음).
     return '<div class="log-entry" data-task-id="' + esc(t.id) + '" style="align-items:flex-start;">'
-      + '<div style="flex:0 0 auto; padding-top:2px;"><input type="checkbox" class="dashTaskDone" ' + (done ? 'checked' : '') + '></div>'
+      // [2026-11-14] 세무사님 "엑스버튼을 완료버튼 옆으로 옮기자" — 완료(체크)·삭제(✕)를 줄 맨 앞에 나란히(제목 길이 따라 ✕ 자리가 움직이지 않게).
+      + '<div style="flex:0 0 auto; display:flex; align-items:center; gap:2px;"><input type="checkbox" class="dashTaskDone" title="완료" ' + (done ? 'checked' : '') + '>'
+      + '<button type="button" class="log-del dashTaskDel" title="삭제">✕</button></div>'
       + '<div class="log-text" style="flex:0 1 auto; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 8px;" title="눌러서 수정">'
       + '<span style="' + (done ? 'text-decoration:line-through; color:var(--sub);' : '') + '">' + esc(t.제목) + '</span>'
       + (t.마감일 ? '<span style="font-size:11px; white-space:nowrap; ' + (overdue ? 'color:#b3261e; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
       + '</div>'
-      + '<button type="button" class="log-del dashTaskDel" title="삭제">✕</button>'
       + '</div>';
   }
   // [2026.10.18 탭연결 16번] 진행 중 사건의 완료 전 하위업무 — 마감일 있는 것 먼저(가까운 순), 최대 12개. 줄을 누르면 그 사건 작업관리.
