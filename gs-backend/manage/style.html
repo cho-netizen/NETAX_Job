@@ -749,10 +749,17 @@
 
   /* [2026.09 신규] 서식 빠른삽입 툴바 + 마크다운 도움말 — reportwriter.html(작성관리)의
      #mdHelpBar/floating-panel과 같은 모양으로 맞춘 것(일치시키기), id/클래스는 memo 전용. */
-  #memoMdHelpBar{ display:flex; flex-wrap:wrap; align-items:center; gap:2px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; }
-  #memoMdHelpBar button{ background:#dde3ee; border:1px solid #8b93a3; color:#1c2333; box-shadow:0 1px 2px rgba(20,25,40,0.10);
-    font-size:12.5px; font-weight:700; padding:3px 9px; border-radius:4px; font-family:inherit; cursor:pointer; }
-  #memoMdHelpBar button:hover{ background:#c7d0e0; border-color:#5b6b8c; }
+  /* [2026.11.14] 세무사님 "편집버튼의 크기를 일치시키고 간격이 아예 없는데 조금 띄우자" / "손 편집메뉴도 글 편집메뉴와 배치방법을 일치시키자"
+     — 글 편집 줄(#memoMdHelpBar)·손 편집 줄(.note-tb) 같은 모양: 연한 바탕 줄, 단추 30×30 한 크기, 사이 5px, 왼쪽 고치는 도구 …… 오른쪽 보기 도구 */
+  #memoMdHelpBar, .note-tb{ display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; box-sizing:border-box; }
+  #memoMdHelpBar button, .note-tb-btn{ background:#dde3ee; border:1px solid #8b93a3; color:#1c2333; box-shadow:0 1px 2px rgba(20,25,40,0.10);
+    font-size:12.5px; font-weight:700; width:30px; height:30px; padding:0; border-radius:4px; font-family:inherit; cursor:pointer;
+    flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; line-height:1; }
+  #memoMdHelpBar button:hover, .note-tb-btn:hover{ background:#c7d0e0; border-color:#5b6b8c; }
+  @media (max-width:480px){ /* 폰: 같은 크기·같은 간격은 그대로, 조금만 작게 — 30px·5px면 글 편집 줄이 세 줄로 늘어남(예전 두 줄) */
+    #memoMdHelpBar, .note-tb{ gap:4px; padding:5px 6px; }
+    #memoMdHelpBar button, .note-tb-btn{ width:28px !important; height:28px !important; }
+  }
   #memoMdHelpBar #memoBtnMdHelp{ font-weight:400; }
 
   #memoFindReplaceBar{ display:flex; align-items:center; gap:5px; padding:6px 8px; background:#eef0f4; border-bottom:1px solid var(--line); flex-shrink:0; }
@@ -779,12 +786,39 @@
   .memo-floating-panel-body p.memo-help-section{ font-weight:700; color:var(--navy); margin:16px 0 6px; }
   .memo-floating-panel-body p.memo-help-section:first-child{ margin-top:0; }
 
-  .note-tb{ display:flex; align-items:center; gap:5px; min-height:52px; box-sizing:border-box; padding:6px 22px; background:var(--navy); flex-shrink:0; flex-wrap:wrap; }
-  .note-tb-btn{ flex:0 0 auto; width:30px; height:30px; border:none; border-radius:6px; background:rgba(255,255,255,0.14);
-    color:#fff; font-size:15px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
-  .note-tb-btn:hover{ background:rgba(255,255,255,0.24); }
-  .note-tb-save{ background:#0D1B3D; }
-  .note-tb-page{ color:#fff; font-size:12px; padding:0 4px; }
+  /* 손 편집 줄은 위 글 편집 줄과 같은 규칙(짙은 남색 바탕·흰 단추였던 것을 걷음) — 여기는 손 줄에만 있는 것 */
+  .note-tb-page{ color:#666; font-size:11.5px; min-width:32px; text-align:center; flex:0 0 auto; }
+  .note-tb-right{ display:flex; align-items:center; gap:inherit; margin-left:auto; flex:0 0 auto; }
+  /* [2026.11.15 손 메모 도구] 묶음 단추 — 오른쪽 아래 작은 ▾(누르면 목록), 쥔 도구의 묶음은 눌린 모양 */
+  .note-grp{ position:relative; }
+  .note-grp::after{ content:''; position:absolute; right:2px; bottom:2px; border-left:3px solid transparent; border-right:3px solid transparent; border-top:4px solid currentColor; opacity:.55; pointer-events:none; }
+  .note-tb-btn.on{ background:#0D1B3D; color:#fff; border-color:#0D1B3D; }
+  .note-tb-btn.on:hover{ background:#22325a; }
+  .note-color-dot{ width:16px; height:16px; border-radius:50%; border:1px solid #8b93a3; display:inline-block; box-sizing:border-box; }
+  .note-width-bar{ width:16px; height:3px; background:#1c2333; border-radius:2px; display:inline-block; }
+  .note-pop{ position:fixed; z-index:700; flex-direction:column; gap:6px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18); max-width:calc(100vw - 16px); box-sizing:border-box; }
+  .note-pop-row{ display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .note-pop-row:empty{ display:none; }
+  .note-pop-title{ font-size:11.5px; color:var(--sub); min-width:52px; }
+  .note-pop-btn{ font-family:inherit; font-size:12.5px; font-weight:600; padding:5px 9px; border:1px solid #8b93a3; border-radius:5px; background:#dde3ee; color:#1c2333; cursor:pointer; white-space:nowrap; line-height:1.2; }
+  .note-pop-btn:hover{ background:#c7d0e0; }
+  .note-pop-btn.on{ background:#0D1B3D; color:#fff; border-color:#0D1B3D; }
+  .note-swatch{ width:24px; height:24px; border-radius:50%; border:1px solid #8b93a3; cursor:pointer; padding:0; flex:0 0 auto; }
+  .note-swatch.on{ outline:2px solid #0D1B3D; outline-offset:2px; }
+  .note-pop-range{ width:180px; }
+  /* 놓기 전 조각(선택한 조각·사진·글자 상자) — 끌어 옮기기, 오른쪽 아래 점으로 크기, 위 작은 줄 ⧉ 복사 · 🗑 지우기 · ✓ 놓기 */
+  #noteFloatLayer{ position:absolute; inset:0; pointer-events:none; }
+  .note-float{ position:absolute; pointer-events:auto; outline:1.5px dashed #1e5bd8; box-sizing:border-box; touch-action:none; }
+  .note-float-img{ width:100%; height:100%; display:block; cursor:move; touch-action:none; user-select:none; -webkit-user-drag:none; }
+  .note-float-ta{ width:100%; height:100%; box-sizing:border-box; border:none; background:rgba(255,255,255,0.6); resize:none; overflow:hidden; padding:4px; margin:0;
+    font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif; outline:none; }
+  .note-float-bar{ position:absolute; left:0; top:-31px; display:flex; gap:3px; }
+  .note-float-bar.below{ top:auto; bottom:-31px; }
+  .note-float-bar button{ width:26px; height:26px; border:1px solid #8b93a3; border-radius:4px; background:#fff; cursor:pointer; font-size:13px; padding:0; touch-action:none; }
+  .note-float-bar button:hover{ background:#eef2fa; }
+  .note-float-resize{ position:absolute; right:-7px; bottom:-7px; width:14px; height:14px; background:#1e5bd8; border:2px solid #fff; border-radius:50%; cursor:nwse-resize; touch-action:none; box-sizing:border-box; }
+  #noteCanvasWrap.note-bg-dot{ background-image:radial-gradient(#b8c3d6 1.2px, transparent 1.4px); background-size:20px 20px; }
   #noteCanvasWrap{ flex:1; position:relative; background:#fff; overflow:hidden; touch-action:none; }
   #noteCanvasWrap.note-zoomed{ overflow:auto; }
   #noteCanvasWrap.note-bg-ruled{ background-image: repeating-linear-gradient(to bottom, transparent, transparent 27px, #cfd8e8 28px); }
@@ -800,8 +834,25 @@
 
   /* [2026.11.14 메모 한 창] 글·손글씨 두 칸(탭) — 같은 자리에서 하나만 보임(JS memoSetTab_). 옛 사건개요 초안·의뢰서 작성 전환 칸은 걷음 */
   .memo-pane{ display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
-  #memoTabBar{ display:flex; gap:4px; } #memoTabBar .nx-tab{ padding:7px 14px; }
-  #memoTplSelect{ max-width:180px; }
+  /* [2026.11.14 한 줄 관리 메뉴] 세무사님 "관리메뉴를 한 줄로" — [글/손] 찾기 새 메모 양식 ◧ …… [저장]. 꺾이지 않게(nowrap), 좁으면 찾기 칸만 줄어듦 */
+  #memoTopBar{ flex-wrap:nowrap; gap:6px; padding:6px 10px; }
+  #memoTopBar .memo-search-wrap{ flex:0 1 auto; min-width:0; }
+  #memoTopBar input.nx-find{ max-width:100%; }
+  @media (max-width:480px){ /* 폰: 찾기 칸 자리를 벌려 주려고 사이·단추 옆 여백만 줄임(글자 크기는 그대로). 찾기 칸은 눌러도 넓어지지 않음 — 목록은 아래로 넓게 뜸 */
+    #memoTopBar{ gap:4px; padding:6px; }
+    #memoTopBar .ghost-btn, #memoTopBar .save-btn{ padding-left:8px !important; padding-right:8px !important; }
+    #memoTopBar #memoTplSelect, #memoTopBar .memo-view-btn{ padding-left:7px !important; padding-right:7px !important; }
+    #memoTopBar input.nx-find, #memoTopBar input.nx-find:focus, #memoTopBar input.nx-find:not(:placeholder-shown){ width:96px; }
+    #memoTopBar .memo-search-dropdown{ min-width:240px; max-width:calc(100vw - 90px); } /* 찾기 칸이 왼쪽에서 약 66px — 목록 오른쪽 끝이 화면에 붙지 않게 */
+  }
+  #memoTopBar .memo-search-dropdown{ right:auto; width:max-content; min-width:280px; max-width:min(420px, calc(100vw - 24px)); }
+  .memo-mode-btn{ font-family:inherit; font-size:13px; font-weight:700; color:var(--navy); background:#fff; border:1.5px solid var(--navy); border-radius:6px;
+    height:var(--ctl-h); min-width:36px; padding:0 8px; cursor:pointer; flex:none; }
+  .memo-mode-btn:hover{ background:#eef2fa; }
+  #memoTopBar .ghost-btn, #memoTopBar .save-btn, #memoTplSelect{ flex:none; }
+  #memoTplSelect{ cursor:pointer; -webkit-appearance:none; appearance:none; background-image:none !important; padding:0 10px !important; text-align:center; } /* 세무사님 "왜 기호가 잔뜩 붙어 있는가? 모두 지워서 너비를 줄이자" — 열기 화살표도 지워 「양식」 두 글자 폭 */
+  .memo-view-btn{ font-size:15px !important; padding-left:10px !important; padding-right:10px !important; }
+  .memo-tag-chips{ display:flex; gap:6px; flex-wrap:wrap; padding:8px 10px; border-bottom:1px solid var(--line); background:#fafbfc; }
   .memo-gen-folders{ display:flex; flex-direction:column; gap:2px; max-height:40vh; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:4px; }
   .memo-gen-folder{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--ink); }
   .memo-gen-folder:hover{ background:#f1f4f9; } .memo-gen-folder.on{ background:#e7ecf6; font-weight:600; }

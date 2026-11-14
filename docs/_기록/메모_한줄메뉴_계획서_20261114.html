@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>메모 한 줄 메뉴 계획서</title>
+<style>
+:root{--ink:#1b2230;--sub:#5b6575;--line:#d9dee7;--navy:#0D1B3D;--gold:#9a6b00;--ok:#1d7a3a;--bad:#b3261e;--bg:#ffffff;--soft:#f4f6fa}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ink:#e6e9ef;--sub:#a3acbb;--line:#3a4252;--navy:#9db4ff;--gold:#e0b347;--ok:#5fd08a;--bad:#ff8a80;--bg:#161a22;--soft:#1f2430}}
+:root[data-theme="dark"]{--ink:#e6e9ef;--sub:#a3acbb;--line:#3a4252;--navy:#9db4ff;--gold:#e0b347;--ok:#5fd08a;--bad:#ff8a80;--bg:#161a22;--soft:#1f2430}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 "Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+main{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 6px} h2{font-size:17px;margin:28px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line);color:var(--navy)}
+.meta{color:var(--sub);font-size:13px} .quote{background:var(--soft);border-left:3px solid var(--gold);padding:8px 12px;margin:8px 0;font-size:14px}
+.tbl{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13.5px;margin:6px 0} th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left} th{background:var(--soft)}
+.need{color:var(--gold);font-weight:bold} .ok{color:var(--ok);font-weight:bold}
+.mock{border:1px solid var(--line);border-radius:8px;background:var(--soft);font-size:13px;margin:8px 0;overflow:hidden}
+.mock .cap{font-size:12px;color:var(--sub);padding:4px 10px;border-bottom:1px solid var(--line)}
+.mock .bar{display:flex;gap:4px;align-items:center;padding:6px 8px;white-space:nowrap}
+.mock .ed{display:flex;gap:4px;align-items:center;padding:4px 8px;white-space:nowrap;border-top:1px solid var(--line);background:var(--bg);overflow:hidden}
+.mock .b{border:1px solid var(--line);border-radius:6px;padding:2px 7px;background:var(--bg);flex:none}
+.mock .ed .b{border-color:transparent;background:transparent}
+.mock .p{border-color:var(--navy);color:var(--navy);font-weight:bold}
+.mock .in{border:1px solid var(--line);border-radius:6px;padding:2px 8px;background:var(--bg);color:var(--sub);width:130px;flex:0 1 130px;min-width:70px;overflow:hidden}
+.mock .sp{flex:1}
+.mock .tag{font-size:12px;color:var(--sub);padding:2px 10px;border-top:1px dashed var(--line);background:var(--bg)}
+.mock .area{border-top:1px dashed var(--line);padding:14px 10px;color:var(--sub);background:var(--bg)}
+.narrow{max-width:375px}
+ol li,ul li{margin:3px 0}
+</style></head><body><main>
+<h1>메모 한 줄 메뉴 계획서</h1>
+<div class="meta">2026-11-14 · 쓸개 · 둘째 판 · <span class="ok">확정(11-14 세무사님 "권장대로 하자" — ㉠㉡ 권장안)</span> → 세무사님 "만들라" — 만듦(커밋·배포 전) · 가짜 서버 시험 사본으로 PC(1280·1024)·태블릿(768)·폰(375) 폭 실제 클릭 확인 · 만들며 더한 것: 폰 폭에선 찾기 칸 안내 글을 「찾기」로, 고른 뒤에도 양식 상자는 「양식」으로 돌아옴(불러온 양식은 마우스 올리면) · 가지 claude/booking-btn-tidy</div>
+
+<h2>1. 목적</h2>
+<div class="quote">세무사님 원문(11-14): "자. 그렇게 해서 메뉴표시줄 1줄에 모두 넣는 것으로 계획서를 만들라" → "관리메뉴를 한 줄로 하라는 것이다. 편집메뉴는 기존대로 두라"</div>
+<p>앞서 검토하신 네 가지(글/손 단추 하나 · 저장 단추 합치기 · 「양식」 기호 지우기 · 「보기」를 작성관리 기호로)를 반영하고, 지금 두 줄로 나뉜 <b>관리 단추를 한 줄</b>로 모읍니다. 서식 단추 줄(글)과 펜 도구 줄(손글씨) 같은 <b>편집 메뉴는 지금 그대로</b> 둡니다.</p>
+<p class="meta">첫째 판은 「모두」를 편집 메뉴까지로 넓혀 읽어 서식·펜 도구 줄까지 한 줄에 넣었습니다 — 이 판에서 바로잡았습니다.</p>
+
+<h2>2. 지금 모양 (시험 사본에서 잰 숫자, 화면 폭 1280)</h2>
+<div class="tbl"><table>
+<tr><th>줄</th><th>들어 있는 것</th><th>높이</th><th>이번에</th></tr>
+<tr><td>제목</td><td>「메모」</td><td>52px</td><td>그대로</td></tr>
+<tr><td>관리 ①</td><td>⌨ 글 · ✍ 손글씨 ……… 📂 사건에 넣기 · 💾 일반메모로 저장</td><td>44px</td><td rowspan="2"><b>한 줄로</b></td></tr>
+<tr><td>관리 ②(글일 때)</td><td>일반메모 찾기(칸, 944px까지 늘어남) · + 새 메모 · 양식 ▾(156px) · 👁 보기</td><td>44px</td></tr>
+<tr><td>태그 줄</td><td>#태그 칩(일반메모에 태그가 있을 때만)</td><td>0~30px</td><td>정할 것 ㉡</td></tr>
+<tr><td>편집(글)</td><td># * U 🎨 ≡ ☑ ▦ ◇ ¹ ― ……… 🔍 − 100% ＋ ⛶ ❓</td><td>36px</td><td>그대로</td></tr>
+<tr><td>편집(손글씨)</td><td>✏️ 색 굵기 ↩ ↪ 🗑 📎 ▦ 🔍 ◀ 1/1 ▶</td><td>52px</td><td>그대로</td></tr>
+</table></div>
+
+<h2>3. 바꾼 뒤 모양</h2>
+<div class="mock">
+  <div class="cap">글 쓰는 중</div>
+  <div class="bar">
+    <span class="b p" title="누르면 손글씨로">글</span>
+    <span class="in">일반메모 찾기</span><span class="b">새 메모</span><span class="b">양식</span><span class="b" title="쓰는 중 — 누르면 보기">◧</span>
+    <span class="sp"></span>
+    <span class="b p">저장</span>
+  </div>
+  <div class="ed"><span class="b">#</span><span class="b">*</span><span class="b" style="text-decoration:underline">U</span><span class="b">🎨</span><span class="b">≡</span><span class="b">☑</span><span class="b">▦</span><span class="b">◇</span><span class="b">¹</span><span class="b">―</span><span class="sp"></span><span class="b">🔍</span><span class="b">−</span><span class="b">100%</span><span class="b">＋</span><span class="b">⛶</span><span class="b">❓</span></div>
+  <div class="area">적는 칸 (관리 줄 하나가 줄어든 만큼 길어짐)</div>
+</div>
+
+<div class="mock">
+  <div class="cap">손글씨 쓰는 중 — 관리 줄엔 [손]·[저장]만(찾기·새 메모·양식·보기는 글에서만 쓰는 것이라 지금처럼 글일 때만)</div>
+  <div class="bar"><span class="b p" title="누르면 글로">손</span><span class="sp"></span><span class="b p">저장</span></div>
+  <div class="ed"><span class="b">✏️</span><span class="b">색</span><span class="b">굵기</span><span class="b">↩</span><span class="b">↪</span><span class="b">🗑</span><span class="b">📎</span><span class="b">▦</span><span class="b">🔍</span><span class="b">◀</span><span class="b">1/1</span><span class="b">▶</span></div>
+  <div class="area">그림판</div>
+</div>
+
+<div class="mock narrow">
+  <div class="cap">폰(375) — 관리 줄은 찾기 칸만 줄어들어 한 줄에 들어감</div>
+  <div class="bar"><span class="b p">글</span><span class="in" style="width:80px;flex-basis:80px">일반메모 찾기</span><span class="b">새 메모</span><span class="b">양식</span><span class="b">◧</span><span class="sp"></span><span class="b p">저장</span></div>
+  <div class="ed"><span class="b">#</span><span class="b">*</span><span class="b">U</span><span class="b">🎨</span><span class="b">≡</span><span class="b">☑</span><span class="b">▦</span><span class="b">◇</span><span class="b">¹</span><span class="b">―</span><span class="b">…</span></div>
+  <div class="cap" style="border-top:1px solid var(--line);border-bottom:none">편집 줄은 지금 폰에서 보이는 그대로</div>
+</div>
+
+<h2>4. 관리 단추마다 바뀌는 것</h2>
+<div class="tbl"><table>
+<tr><th>단추</th><th>지금</th><th>바꾼 뒤</th></tr>
+<tr><td>글/손</td><td>탭 둘 「⌨ 글」「✍ 손글씨」</td><td>단추 하나 — 지금 쪽 한 글자만 <b>[글]</b> ↔ <b>[손]</b>. 누르면 다른 쪽으로. 아이콘·「~로」·제목 표시 없음(앞서 정하신 대로)</td></tr>
+<tr><td>저장</td><td>「📂 사건에 넣기」「💾 일반메모로 저장」 둘</td><td><b>[저장]</b> 하나 → 정할 것 ㉠</td></tr>
+<tr><td>양식</td><td>「양식 ▾」 156px, 목록 글에 괄호 표시</td><td>닫혔을 때 「양식」 두 글자 폭만큼, ▾·괄호 표시 지움(앞서 정하신 대로)</td></tr>
+<tr><td>보기</td><td>「👁 보기」</td><td>작성관리 창보기와 같은 기호만 — 쓰는 중 <b>◧</b> ↔ 보기 중 <b>◨</b>, 풀이는 마우스 올리면(앞서 정하신 대로)</td></tr>
+<tr><td>새 메모</td><td>「+ 새 메모」</td><td>「새 메모」(+ 지움, 직권등록과 같은 기준)</td></tr>
+<tr><td>찾기 칸</td><td>줄 폭을 다 차지(944px)</td><td>정해진 폭(약 160px), 좁은 화면에선 줄어듦. 누르면 아래로 목록(그대로)</td></tr>
+</table></div>
+
+<h2>5. 폭 — 한 줄에 들어가나</h2>
+<ul>
+<li>글일 때 관리 줄 단추 합계(사이 간격 포함) 약 <b>440px</b> — PC·태블릿은 넉넉함.</li>
+<li>폰(375)은 찾기 칸을 약 80px까지 줄이면 들어감(약 350px). 만든 뒤 시험 사본에서 숫자로 확인.</li>
+<li>손글씨일 때는 [손]·[저장] 둘뿐.</li>
+</ul>
+
+<h2>6. 정하실 것 — <span class="ok">권장으로 정함(11-14)</span></h2>
+<div class="tbl"><table>
+<tr><th></th><th>무엇</th><th>권장</th><th>다른 길</th></tr>
+<tr><td>㉠</td><td>저장 하나로 합칠 때</td><td><b>[저장] → 「사건에 넣기 / 일반메모로」 고르기.</b> 단 찾기로 불러온 일반메모를 고치는 중이면 고르기 없이 곧바로 그 메모의 저장 창. 고른 뒤 창은 지금 것 그대로(사건 고르기 창 · 폴더 펼침 창)</td><td>(나) 「사건/일반」 바꿈 단추 + [저장] — 관리 줄에 단추가 하나 더 듦</td></tr>
+<tr><td>㉡</td><td>태그 칩 줄(관리 쪽 — 찾기 목록을 거르는 일)</td><td><b>찾기 칸을 누르면 펼쳐지는 목록 맨 위로</b>(따로 줄 없음)</td><td>지금처럼 따로 한 줄(태그 있을 때만)</td></tr>
+</table></div>
+
+<h2>7. 만드는 순서 (확정 뒤)</h2>
+<ol>
+<li>메모 화면 원본(memo.html) — 관리 두 줄을 한 줄로, 관리 단추 다섯 가지 바꿈, 저장 고르기, (㉡에 따라) 태그 칩 자리. 편집 줄 둘은 손대지 않음</li>
+<li>모양(style.html) — 관리 한 줄·찾기 칸 폭</li>
+<li>옛 이름표 잇기 그대로 확인(떠 있는 ✍ · 폰 현장 도구 · 넥스 → [손]으로 열림)</li>
+<li>사용 설명서(manual.html) 메모 절 글 고침</li>
+<li>화면 다시 조립 → 가짜 서버 시험 사본</li>
+</ol>
+
+<h2>8. 확인 방법</h2>
+<ul>
+<li>가짜 서버 시험 사본에서 PC(1280)·태블릿(768·1024)·폰(375) 폭으로 실제 클릭·입력: [글]↔[손] 오가기(쓰던 글·그림 그대로) · 찾기·태그 칩 거르기 · 양식 불러오기 · ◧↔◨ · [저장] → 사건에 넣기 끝까지 / 일반메모로 폴더 골라 끝까지 · 불러온 일반메모 고쳐 저장</li>
+<li>숫자: 관리 줄이 폭마다 한 줄인지(getBoundingClientRect 높이), 편집 줄 두 개는 바꾸기 전과 높이·단추 수가 같은지</li>
+<li>떠 있는 ✍로 들어가면 [손]으로 열리는지</li>
+<li>화면만 바뀜 — 서버는 그대로(서버 고침 없음)</li>
+</ul>
+</main></body></html>
