@@ -6715,7 +6715,7 @@ function handleReadFile(body) {
         if (parents.hasNext()) {
           const internalFolder = parents.next();
           result.internalFolderId = internalFolder.getId();
-          // [2026.11.14 보고서 한 폴더] 원본·발행본·PDF가 같은 「보고서」 폴더에 있다 — 발행본 짝도 같은 폴더에서 찾고, 발행할 곳도 같은 폴더
+          // [2026.11.14] 원본·발행본·PDF 모두 같은 「보고서」 폴더
           result.reportFolderId = internalFolder.getId();
           const sameHtml = internalFolder.getFilesByName(baseName + '.html');
           if (sameHtml.hasNext()) result.publishedHtmlFileId = sameHtml.next().getId();
@@ -6962,8 +6962,8 @@ function handleUploadFile(body) {
   } catch (err) {
     return { error: err.message };
   }
-  // [2026.11.14 보고서 정식 이름] 보고서 탭이 새 보고서를 저장·발행할 때 이름은 서버가 마지막에 정한다(넥스 저장과 같은 함수 — reportCanonName_).
-  //  발행본은 외부보고서 정식 이름의 .html이어야 고객 창구에 보인다(폴더가 「보고서」 하나라 이름이 막는다) — 아니면 올리지 않고 알린다.
+  // [2026.11.14] 보고서 탭 저장·발행 이름도 서버가 정함(reportCanonName_)
+  //  발행본은 외부보고서 정식 이름 .html이어야 고객 창구에 보임 — 아니면 거절
   if (body.reportMeta && typeof reportCanonName_ === 'function') {
     const rk = body.reportMeta.docType ? reportKindOf_(body.reportMeta.docType) : null;
     if (rk) { const cn = reportCanonName_({ kind: rk.code, name: body.name, detail: body.reportMeta.detail }); if (cn.error) return { error: cn.error }; body.name = cn.name; }
@@ -11420,7 +11420,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const docAuto = nxDocAutoSave_(body); // [2026.11.13 5차 마] 세무사님이 "반영하라·수정하라"면 열린 문서도 바로 저장(직전 판은 _이전판)
         const saveOpts = { aiTool: true, openFileId: docAuto ? '' : ((body.context && body.context.openFile && body.context.openFile.id) || ''), overwriteReviewMemo: input.overwrite === true };
         if (docAuto && body.context && body.context.openFile && body.context.openFile.id) clientActions.push({ type: 'preview_reload', fileId: body.context.openFile.id });
-        // [2026.11.14 보고서 정식 이름·자리] 사건 대화에서 보고서면 보고서 탭과 같은 함수로 정식 이름·「보고서」 폴더(nxCaseReportTarget_ → reportSaveTarget_)
+        // [2026.11.14] 사건 대화의 보고서는 정식 이름·「보고서」로(nxCaseReportTarget_)
         let nxRep = null;
         if (nxCaseId_ && isJobPanel_ && typeof nxCaseReportTarget_ === 'function') {
           nxRep = nxCaseReportTarget_(nxCaseId_, input, false);
@@ -16012,7 +16012,7 @@ function my_handleGetReportList(params, ctx) {
   try {
     const caseFolder = DriveApp.getFolderById(folderId);
     const reports = [];
-    // [2026.11.14 보고서 한 폴더] 폴더가 「보고서」 하나로 합쳐져 내부보고서(종합·개별검토서)도 같은 폴더에 있다 — 고객에게는 외부보고서 정식 이름의 .html만 보인다(reportIsCustomerVisible_)
+// [2026.11.14] 「보고서」 하나 — 고객에게는 외부보고서 정식 이름 .html만
     my_reportFoldersForCustomer_(caseFolder).forEach(function (reportFolder) {
       const files = reportFolder.getFiles();
       while (files.hasNext()) {
@@ -16404,7 +16404,7 @@ function my_handleAdminSetChecklistStatus(params) {
   }
 }
 
-// [2026.11.14 보고서 한 폴더] 고객 창구가 볼 보고서 폴더 — 「보고서」(합치기 전이면 「보고서_내부」와 같은 폴더)와, 합치기 전 「보고서_외부」가 남아 있으면 그것도
+// [2026.11.14] 고객 창구가 볼 보고서 폴더(「보고서」 + 남은 옛 「보고서_외부」)
 function my_reportFoldersForCustomer_(caseFolder) {
   const out = [], seen = {};
   const add = function (f) { if (f && !seen[f.getId()]) { seen[f.getId()] = 1; out.push(f); } };
@@ -16414,7 +16414,7 @@ function my_reportFoldersForCustomer_(caseFolder) {
   return out;
 }
 function my_getOrCreateSubfolder_(parentFolder, name) {
-  // [2026.11.14 보고서 한 폴더] 「보고서」는 합치기 전 「보고서_내부」(합치기 때 이름만 바뀌는 같은 폴더)를 먼저 알아본다 — 합치기 전에 새 「보고서」가 따로 생기지 않게
+// [2026.11.14] 「보고서」는 합치기 전 「보고서_내부」(같은 폴더)를 먼저 찾는다
   if (name === REPORT_FOLDER_NAME_ && typeof reportFolderOf_ === 'function') return reportFolderOf_(parentFolder, true);
   const found = parentFolder.getFoldersByName(name);
   if (found.hasNext()) return found.next();
@@ -18050,12 +18050,11 @@ function rh_guessReportTypeLabelFromName_(base) {
   return found;
 }
 // [2026.11.14 보고서 정식 이름·한 폴더 — 쌓인 파일 정리] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록" / "보고서폴더로 합치자" / "권장대로 하라"
-//  9-17 대정비(이름만 바꾸고 자리는 그대로·되돌리기 기록 없음)를 넓혔다: 미리 보기(옛 이름 → 새 이름 · 옛 자리 → 「보고서」 · 종류·세부명칭은 화면에서 고침
-//  · 고객 창구에 새로 보이게 되는 것 표시) → 세무사님 승인 → 고른 줄만 적용 → 되돌리기 기록(총괄관리자/_기록/보고서이름정리_옮긴목록_*.json)·되돌리기.
+//  미리 보기 → 세무사님 승인 → 고른 줄만 적용 → 옮긴 목록·되돌리기
+//  (옮긴 목록: 총괄관리자/_기록/보고서이름정리_옮긴목록_*.json)
 //  같은 사건에 같은 새 이름이 둘 이상이면 자동으로 정하지 않는다(9-17 "내용이 다르면 사람이 직접 세부명칭을 정해야 한다").
 //  이름 바꾸기·옮기기는 모두 서버가 드라이브에 직접 한다(파일·폴더 ID 그대로). 영구 삭제는 하지 않는다(빈 옛 폴더는 휴지통).
-// [2026.11.14] 세무사님 "그러니까 임시파일이라고 하는 거 잖아" → "그렇게 고쳐라": 「_이전판」은 다음 저장 때 바뀌는 임시 보관함(바로 앞 판 하나)이라,
-//  오래 둘 옛 초안은 「보고서/_보관」에 따로 둔다(서버가 덮어쓰거나 지우지 않음).
+// [2026.11.14] 옛 초안은 「보고서/_보관」(「_이전판」은 다음 저장 때 바뀌는 임시 보관함)
 var REPORT_KEEP_FOLDER_ = '_보관';
 var RPT_CLEAN_SKIP_DIR_RE_ = /^(_이전판|_보관|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일|_신고제출)$/;
 var RPT_CLEAN_NOT_REPORT_RE_ = /번역본|계약서|위임장|협의서|합의서|체크리스트|대화기록|네이버블로그|블로그|민원안내|상담사례|정부24|국세법령정보시스템|^관련법령_|^의뢰서|_신고서식|감사보고서|권원조사보고서/;
@@ -18071,8 +18070,7 @@ function rptCleanSuggest_(base, c) {
   detail = reportCleanDetail_(detail.replace(/[\s_]+/g, '_'), null, drop);
   return { kind: kind, detail: detail, guessed: !g.kind };
 }
-// [2026.11.14] 다른 사건의 폴더(사건 폴더 안에 든 다른 사건 폴더)는 건너뛴다 — 송호식(최은진) 「…_증여_신고」 폴더가 「…__과세자료」 사건 폴더 안에 있어
-//  같은 파일이 두 사건에 잡히고, 먼저 처리된 줄이 남의 사건 「보고서」로 옮긴 일이 있었다(되돌려 바로잡음).
+// [2026.11.14] 사건 폴더 안의 다른 사건 폴더는 건너뜀(송호식 사건에서 남의 사건으로 옮긴 일)
 function rptCleanWalk_(folder, rel, out, depth, otherCaseFolders) {
   const fi = folder.getFiles();
   while (fi.hasNext()) { const f = fi.next(); if (f.isTrashed()) continue; out.push({ f: f, rel: rel, folder: folder }); }
@@ -18158,7 +18156,7 @@ function rptCleanLogSave_(kind, items) {
   } catch (e) { return ''; }
 }
 function rptCleanMoveTo_(file, toFolder) { const ps = file.getParents(); const from = ps.hasNext() ? ps.next() : null; if (!from || from.getId() !== toFolder.getId()) file.moveTo(toFolder); return from ? from.getId() : ''; }
-// 폴더 합치기 — 사건마다 「보고서_내부」를 「보고서」로 이름만 바꾸고(폴더 ID 그대로), 「보고서_외부」의 파일을 그 안으로 옮긴 뒤 빈 「보고서_외부」는 휴지통
+// 폴더 합치기 — 보고서_내부→보고서(ID 그대로), 보고서_외부 파일 옮기고 빈 폴더 휴지통
 function work_applyReportFolderMerge(params) {
   params = params || {};
   const only = Array.isArray(params.caseIds) ? params.caseIds.map(String) : null;
@@ -18204,7 +18202,7 @@ function work_applyReportFilenameCleanup(params) {
   return withLock_(60000, function () {
     const log = [], results = [];
     const caseFolderCache = {};
-    // [2026.11.14] 사건 폴더 안에 든 다른 사건 폴더의 파일을 바깥 사건 「보고서」로 옮기지 않게 — 모든 사건 폴더 ID
+    // 다른 사건 폴더 안 파일은 옮기지 않게 — 모든 사건 폴더 ID
     const caseFolderIds = {};
     (function () { const sh = work_getSheet_(); const d = sh.getDataRange().getValues(); const cm = work_colMap_(d[0]); for (let j = 1; j < d.length; j++) { const fid = String(d[j][cm.폴더ID] || '').trim(); if (fid) caseFolderIds[fid] = 1; } })();
     rows.forEach(function (r) {
@@ -18238,7 +18236,7 @@ function work_applyReportFilenameCleanup(params) {
     return { success: true, applied: results.filter(function (x) { return x.ok; }).length, failed: results.filter(function (x) { return x.error; }).length, results: results, logFileId: logId };
   });
 }
-// 되돌리기 — 기록 파일 하나(logFileId, 없으면 가장 최근)를 거꾸로: 파일은 옛 이름·옛 폴더로, 합친 폴더는 옛 이름으로(휴지통 폴더는 꺼냄). itemFileIds를 주면 그 파일만
+// 되돌리기 — 기록 파일(logFileId, 없으면 최근) 거꾸로. itemFileIds면 그 파일만
 function work_undoReportCleanup(params) {
   params = params || {};
   return withLock_(60000, function () {
@@ -20264,9 +20262,9 @@ function work_getCases(params) {
 const WORK_SUBFOLDER_INTERNAL_REPORT = '보고서';
 // =========================================================
 // [2026.11.14 보고서 정식 이름·자리 — 한 곳] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록 해야 한다. 넥스가 이름을 잘 못 부여 한 것이다" /
-//  "보고서의 내부와 외부구분을 모르고 있나?" / "보고서별로 용도를 확실히 알고 있다면 폴더를 구분하지 말고 보고서폴더로 합치자" / "권장대로 하라"(계획서 docs/_기록/보고서이름_정리_계획서_20261114.html)
-//  예전엔 이름 규칙이 보고서 탭 저장 단추(reportwriter.html saveToDrive) 안에만 있어, 같은 일을 하는 넥스 저장은 아무 이름으로 사건 폴더 맨 위에 떨어졌다.
-//  종류 → 정식 이름(<보고서명칭_세부명칭>, 9-17 "세부명칭은 필요한 경우에만") → 자리(「보고서」) → 고객에게 보여도 되나(외부보고서 .html만)를
+//  (결정 원문: docs/_기록/보고서이름_정리_계획서_20261114.html)
+//  예전엔 규칙이 보고서 탭 저장에만 있어 넥스 저장은 아무 이름으로 저장됐다.
+//  종류 → 정식 이름 → 자리(「보고서」) → 고객 공개(외부보고서 .html만)를 한 곳에서.
 //  정하는 곳은 여기 하나다 — 보고서 탭·넥스 저장 두 길·고객 창구·밤 갱신이 모두 이 함수들을 거친다.
 const REPORT_FOLDER_NAME_ = '보고서';
 const REPORT_FOLDER_OLD_NAMES_ = ['보고서_내부', '보고서_외부']; // 합치기 전 이름 — 찾을 때만 쓴다
@@ -21970,7 +21968,7 @@ function work_getCaseSubfolders(params) {
     // 기능(writeMemoEntry_)이 만드는 "OOO사건.md" 등은 내부보고서/보고서 하위폴더가 아니라
     // 이 루트에 바로 생기는데, 지금까지 문서작성 화면이 이 루트를 전혀 훑지 않아서 이미
     // 존재하는 그 파일들을 열 방법이 없었다(rwRenderCaseReports_에서 이 값으로 루트도 같이 조회).
-    // [2026.11.14] 보고서 종류표(정식 이름·내부/외부)를 같이 내려 화면 이름표가 서버 표 하나를 따른다 — 서버 호출이 늘지 않게 이 조회에 싣는다
+    // [2026.11.14] 보고서 종류표를 같이 내림(화면 이름표가 서버 표를 따름)
     return { success: true, internalFolderId: internalFolder.getId(), reportFolderId: reportFolder.getId(), caseFolderId: folderId, reportKinds: REPORT_KINDS_ };
   } catch (err) {
     return { error: '폴더 조회 중 오류: ' + err.message };
