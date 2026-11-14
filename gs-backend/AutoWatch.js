@@ -308,17 +308,8 @@ function awQuestionsNightly_(cases) {
 }
 function awNightlyLast_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_NIGHT_PROP_) || 'null'); } catch (e) { return null; } }
 
-// =========================================================
-// [2026.11.14 밤 내부검토서 갱신] 세무사님 원문: "내가 검토서를 만들라고 한 사건만 검토서가 생성되고, 생성된 검토서 중 수정할 사항이 있는 경우에
-//  야간작업에서 업데이트하는 것으로 하자" / "보류사건은 아예 제외하라" / "보고서종류도 일단 내부검토서로 국한하자" /
-//  "자동 업데이트는 컴퓨터가 꺼져 있고, 야간에만 한다" / "나머지는 권장대로 한다"  — 계획서 docs/_기록/밤_내부검토서_갱신_계획서_20261114.html
-//  · 대상: 상태 「진행」인 실사건(보류·완료·가상 제외)의 「보고서」 폴더에 있는 내부 검토서(종합검토서·개별검토서_쟁점) 전부 — 따로 목록을 두지 않는다
-//    (11-14 "무슨 목록에 넣고 빼고 하냐? 원칙대로 하라" — 검토서는 세무사님이 만들라고 하셔야 생기므로 있으면 대상)
-//  · 때: 01~05시, job 화면이 30분 넘게 서버를 부르지 않았을 때(= 컴퓨터가 꺼져 있음으로 봄 — 화면이 10분마다 흔적을 보냄)
-//  · 바뀐 것 찾기는 GAS(0원) — 없으면 넥스를 부르지 않는다. 있으면 사건마다 넥스가 한 번 파악하고 그 사건 검토서를 이어서 고친다
-//  · 고칠 때: 같은 파일 갱신(직전 판 「_이전판」), 세무사님이 쓰신 문단은 그대로(달라 보이면 그 뒤에 밤 갱신 메모), 세액은 계산 저장본 숫자만
-//  · 아침: 고친 것만 「답하실 것」에. 고칠 것이 없으면 알림 없이 기록만(설정 카드에서 봄)
-// =========================================================
+// [2026.11.14 밤 내부검토서 갱신] 진행 실사건 「보고서」의 내부 검토서를 컴퓨터가 꺼진 밤(01~05시)에 바뀐 것이 있을 때만 넥스가 고친다
+//  (세무사님 원문·규칙: docs/_기록/밤_내부검토서_갱신_계획서_20261114.html)
 var NR_STATE_PROP_ = 'nr_state', NR_USE_PROP_ = 'nx_last_use';
 var NR_IDLE_MIN_ = 30, NR_START_H_ = 1, NR_END_H_ = 5, NR_REPORT_END_H_ = 8;
 var NR_REVIEW_RE_ = /^(종합검토서|개별검토서_.+)\.(md|txt)$/;
@@ -328,7 +319,7 @@ function nrHour_() { return Number(Utilities.formatDate(new Date(), 'Asia/Seoul'
 function nrMarkUse_() {
   try { const ch = CacheService.getScriptCache(); if (ch.get('nr_use_mark')) return; ch.put('nr_use_mark', '1', 300); PropertiesService.getScriptProperties().setProperty(NR_USE_PROP_, String(Date.now())); } catch (e) {}
 }
-// [2026.11.14] 기록 시각은 분까지('14:43')라 검토서 저장(14:43:22) 바로 뒤 같은 분 기록이 빠졌다 — 그 분 안이면 바뀐 것으로 본다(넥스 기록은 밤 갱신 자신의 것일 수 있어 다음 분부터)
+// [2026.11.14] 기록 시각은 분까지라 저장과 같은 분 기록도 바뀐 것으로(넥스 기록은 다음 분부터)
 function nrAfter_(at, since) { const t = nrTs_(at); return t > 0 && t + 60000 > since; }
 function nrTs_(s) { // 'yyyy-MM-dd HH:mm'(한국 시각) → ms
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
@@ -368,8 +359,7 @@ function nrNexWroteHook_(fileId) {
     nrSnapWrite_(file, now, human.filter(function (p) { return nowSet[p]; }));
   } catch (e) {}
 }
-// [2026.11.14] 세무사님 "무슨 목록에 넣고 빼고 하냐? 원칙대로 하라" — 대상은 따로 장부를 두지 않고 사실로 정한다:
-//  진행 실사건(보류·완료·가상 제외)의 「보고서」 폴더에 있는 내부 검토서(종합검토서·개별검토서_쟁점) — 검토서는 세무사님이 만들라고 하셔야 생긴다
+// [2026.11.14] 대상 = 진행 실사건(보류·완료·가상 제외) 「보고서」의 내부 검토서 전부 — 따로 목록 없음(세무사님 "원칙대로 하라")
 function nrCaseReviews_(c) {
   const out = []; if (!c || !String(c.폴더ID || '').trim()) return out;
   let root; try { root = DriveApp.getFolderById(String(c.폴더ID).trim()); } catch (e) { return out; }
