@@ -633,6 +633,13 @@ function commSeamList_() {
     // [2026.10.28] 세무사님 "캘린더에서 일정색상을 변경하면 예약관리에서 따로 승인을 하지 않아도 승인되도록" — 10분 트리거가 손 설치뿐이라 빠져 있어도 아무도 몰랐음. 없으면 걸고, 못 걸면 ⚠
     { 길: '상담신청 → 캘린더(색 바꾸면 자동 승인, 10분 트리거)', fn: function () { if (typeof booking_ensureCalendarSyncTrigger_ !== 'function') return '자동 승인 트리거 장치가 이 판에 없음'; try { return booking_ensureCalendarSyncTrigger_() === 'installed' ? '트리거가 없어 이번에 걺(이전엔 빠져 있었음)' : ''; } catch (e) { return '트리거를 걸지 못함: ' + (e.message || e); } } },
     { 길: '휴대폰 창구 녹음 → 상담 녹음(받아쓰기·요약 → 사건)', fn: function () { return typeof consult_finish_ === 'function' && typeof consult_chunk_ === 'function' ? '' : '상담 녹음 서버 길이 이 판에 없음'; } },
+    // [2026.11.14 메모 한 창 ㉥] 세무사님 "권장대로 하자" — 상담 내용은 사건마다 그 사건 의뢰서 파일 하나에(화면 「메모」 사건에 넣기 · 상담 녹음 요약이 같은 모양으로 맨 앞에 쌓임) → GAS·넥스가 의뢰서를 사건파악용으로 읽음
+    { 길: '상담 녹음 요약 → 그 사건 의뢰서 파일 맨 앞 상담기록(녹음 끝 · 보관함에서 옮길 때) → GAS 가설·넥스 첫 응답', fn: function () {
+      if (typeof consult_prependToRequest_ !== 'function' || typeof consult_mdSummary_ !== 'function') return '녹음 요약을 의뢰서 파일에 쌓는 함수가 이 판에 없음';
+      if (typeof caseProcIsIntakeMemo_ === 'function' && !caseProcIsIntakeMemo_({ name: '의뢰서_상담_시험.md', dir: '' })) return '「의뢰서_상담_고객명.md」가 사건파악용(의뢰서)으로 읽히지 않음';
+      const ms = consult_mdSummary_('# 상담내용 — 시험\n\n- 상담 일시: 2026-11-14 10:00\n- 녹음 길이: 약 3분\n\n## 핵심 요약\n가\n\n---\n\n## 녹취록 전문\n\n나\n');
+      return ms.when === '2026-11-14 10:00' && /핵심 요약/.test(ms.summary) && ms.summary.indexOf('녹취록') === -1 ? '' : '녹음 요약 뽑기가 어긋남: ' + JSON.stringify(ms).slice(0, 120);
+    } },
     // 기기 3종 2차(2026-10-22) — 세무사님 ↔ 시스템(휴대폰·태블릿·워치)
     { 길: '오늘 할 일(대시보드·휴대폰 창구·현황판)', fn: function () { var t = todoList_(); return t && Array.isArray(t.마감) ? '' : '오늘 할 일을 못 만듦'; } },
     { 길: '알림 문자 → 바로 답하기(확인·보류·나중에)', fn: function () { return typeof notifyAnswer_ === 'function' && Array.isArray(notifyLog_()) ? '' : '알림 답하기가 이 판에 없음'; } },

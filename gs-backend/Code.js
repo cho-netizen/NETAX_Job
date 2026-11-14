@@ -4850,7 +4850,7 @@ const JOB_AI_TOOLS_ = [
       type: 'object',
       properties: {
         view: { type: 'string', enum: ['dashboard', 'booking', 'workmanage', 'clientmanage', 'collections', 'casehandling', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter', 'reports', 'memo-text', 'reporthub'],
-          description: 'dashboard=대시보드, booking=예약관리, workmanage=작업관리, clientmanage=고객관리, collections=수금관리, casehandling=처리개요, lawsearch=법령조회, docs=증빙확보(사건 폴더), taxcalc=세액계산, print=세액인쇄, reportwriter=문서작성, reports=열람관리, memo-text=일반메모, reporthub=보고서 모음' },
+          description: 'dashboard=대시보드, booking=예약관리, workmanage=작업관리, clientmanage=고객관리, collections=수금관리, casehandling=처리개요, lawsearch=법령조회, docs=증빙확보(사건 폴더), taxcalc=세액계산, print=세액인쇄, reportwriter=문서작성, reports=열람관리, memo-text=메모(글·손글씨 탭 — 상담 내용 사건에 넣기·일반메모), reporthub=보고서 모음' }, // [2026.11.14 메모 한 창]
         caseId: { type: 'string', description: '작업관리 사건ID(선택) — 사건이 있는 화면은 그 사건을 골라서 연다' },
         clientId: { type: 'string', description: 'clientmanage일 때 고객ID(선택)' },
         then: { type: 'string', enum: ['autocalc'], description: 'view=taxcalc이고 caseId가 있을 때만: autocalc=세액계산 화면의 [자동계산] 버튼과 같은 동작(사건 폴더 증빙을 읽어 입력칸을 채우고, 확정 못 한 항목은 화면이 사용자에게 묻고, 계산)까지 실행' },

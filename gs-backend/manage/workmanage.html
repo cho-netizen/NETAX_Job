@@ -549,7 +549,8 @@
       '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
       '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate"></label></div>' +
       '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline"></label>' +
-      '<label>진행메모<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="어떻게 처리할 계획인지">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
+      // [2026.11.14 메모 한 창 ㉤] 「진행메모」 → 「의뢰 요약」 — 서버·넥스가 이 칸을 의뢰 내용(의뢰 메모·의뢰개요)으로 읽고, 예약의 「의뢰 내용」도 이 칸으로 들어온다. 처리 계획·결과는 작업일지로
+      '<label>의뢰 요약<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="고객이 의뢰한 내용(한두 줄)">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
       '<button type="button" id="wcNewSave" class="save-btn">저장</button>' +
       '<button type="button" id="wcNewCancel" class="ghost-btn">취소</button>' +
@@ -740,14 +741,33 @@
       (workMyPortalBadgeText_(c) ? ' <span class="nx-fl">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
       '<div style="margin-bottom:14px;">' +
-      '<label id="wcEditOverviewLabel" style="font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px;">' + (c.상태 === '완료' ? '처리내용' : '진행메모') + '</label>' +
-      '<textarea id="wcEditOverview" placeholder="' + (c.상태 === '완료' ? '실제로 어떻게 처리했는지' : '진행하면서 남길 메모') + '" style="width:100%; max-width:600px; min-height:60px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.개요 || '') + '</textarea>' +
+      // [2026.11.14 ㉤] 「진행메모/처리내용」 → 「의뢰 요약」(서버·넥스가 의뢰 내용으로 읽는 칸). 처리 계획·결과는 아래 「작업일지에 적기」로(이미 적힌 글은 그대로)
+      '<label id="wcEditOverviewLabel" style="font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px;">의뢰 요약</label>' +
+      '<textarea id="wcEditOverview" placeholder="고객이 의뢰한 내용(한두 줄) — 처리 계획·처리 결과는 작업일지에" style="width:100%; max-width:600px; min-height:60px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.개요 || '') + '</textarea>' +
+      '<div><button type="button" id="wcEditToLog" class="ghost-btn" title="처리 계획·처리 결과를 이 사건 작업일지에 한 줄로 적습니다(처리개요 작업일지 카드와 같은 곳)">📓 작업일지에 적기 <span style="color:var(--sub);">(' + (c.작업일지 || []).length + '건)</span></button></div>' +
       '</div>' +
       '<div id="wcAddRootToggle" style="font-size:12.5px; color:var(--sub); margin-bottom:8px; cursor:pointer; width:fit-content;" title="눌러서 새 하위업무 추가">➕ 하위업무 ' + prog.done + ' / ' + prog.total + '</div>' +
       '<div id="wcNewRootFormWrap" style="display:none; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>' +
       '<div id="wcTree"></div>';
 
     renderWorkTree(c.하위업무 || [], document.getElementById('wcTree'), c.id, 0);
+    // [2026.11.14 ㉤] 「작업일지에 적기」 — 처리개요 작업일지 카드와 같은 한 줄 모양(id·date·text·dueDate)으로 이 사건 작업일지 끝에 더한다
+    document.getElementById('wcEditToLog').addEventListener('click', function(){
+      var btnLog = this;
+      nxPrompt_('작업일지에 적을 내용(처리 계획·처리 결과 등):').then(function(text){
+        text = String(text || '').trim();
+        if (!text) return;
+        var entry = { id: 'log_' + Date.now(), date: nxLocalDateStr_(), text: text, dueDate: '' };
+        btnLog.disabled = true;
+        nxCaseSave_({ id: c.id, 작업일지: (c.작업일지 || []).concat([entry]), 기대수정일: c.수정일 }).then(function(res){
+          if (res && res.conflict){ toast(res.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다 — 새로 불러온 뒤 다시 적어 주세요.'); if (typeof loadWorkCases === 'function') loadWorkCases(); return; }
+          if (res && res.success === false){ toast('작업일지 저장 실패: ' + (res.message || '')); return; }
+          if (res && res.case) Object.assign(c, res.case); else c.작업일지 = (c.작업일지 || []).concat([entry]);
+          btnLog.innerHTML = '📓 작업일지에 적기 <span style="color:var(--sub);">(' + (c.작업일지 || []).length + '건)</span>';
+          toast('작업일지에 적었습니다.');
+        }).catch(function(err){ toast('작업일지 저장 중 오류: ' + nxErrText_(err)); }).finally(function(){ btnLog.disabled = false; });
+      });
+    });
     if (typeof enhanceDateInputs === 'function') enhanceDateInputs(workCaseDetail);
 
     // [2026.10.31] 세무사님 "이사건다른화면 콤보가 있는데, 처리개요버튼이 있는 것은 기능중복" / "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" — "처리" 단추를 빼고 "↪ 이 사건 다른 화면"(처리개요 포함)을 사건 고르는 칸 바로 뒤에

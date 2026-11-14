@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>메모 한 창 계획서</title>
+<style>
+:root{--ink:#1b2230;--sub:#5b6575;--line:#d9dee7;--navy:#0D1B3D;--gold:#9a6b00;--ok:#1d7a3a;--bad:#b3261e;--bg:#ffffff;--soft:#f4f6fa}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ink:#e6e9ef;--sub:#a3acbb;--line:#3a4252;--navy:#9db4ff;--gold:#e0b347;--ok:#5fd08a;--bad:#ff8a80;--bg:#161a22;--soft:#1f2430}}
+:root[data-theme="dark"]{--ink:#e6e9ef;--sub:#a3acbb;--line:#3a4252;--navy:#9db4ff;--gold:#e0b347;--ok:#5fd08a;--bad:#ff8a80;--bg:#161a22;--soft:#1f2430}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 "Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+main{max-width:900px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 6px} h2{font-size:17px;margin:28px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line);color:var(--navy)} h3{font-size:15px;margin:16px 0 6px}
+.meta{color:var(--sub);font-size:13px} .quote{background:var(--soft);border-left:3px solid var(--gold);padding:8px 12px;margin:8px 0;font-size:14px}
+.tbl{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13.5px;margin:6px 0} th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left} th{background:var(--soft)}
+.need{color:var(--gold);font-weight:bold} .ok{color:var(--ok);font-weight:bold} .bad{color:var(--bad);font-weight:bold}
+.mock{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--soft);font-size:13.5px;margin:6px 0}
+.mock .bar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;align-items:center} .mock .b{border:1px solid var(--line);border-radius:6px;padding:2px 10px;background:var(--bg)} .mock .p{border-color:var(--navy);color:var(--navy);font-weight:bold}
+.mock .tab{border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;padding:3px 14px;background:var(--bg)} .mock .tab.on{border-color:var(--navy);color:var(--navy);font-weight:bold}
+.mock .area{border:1px dashed var(--line);border-radius:6px;padding:10px;color:var(--sub);background:var(--bg)}
+.mock .sp{flex:1}
+ol li,ul li{margin:3px 0}
+</style></head><body><main>
+<h1>메모 한 창 계획서</h1>
+<div class="meta">2026-11-14 · 쓸개 · 넷째 판 · <span class="ok">확정(11-14 세무사님 "권장대로 하자")</span> — 만듦(가지 claude/booking-btn-tidy, 커밋·배포 전) · 가짜 서버 화면 시험·녹음 서버 단독 시험 12 통과</div>
+
+<h2>1. 목적</h2>
+<div class="quote">세무사님(11-14): "기능이 너무 많아서 복잡한 것인가? 헷갈린다" → "하나로 합치는 계획서를 만들어라" → (노트북) "걷어내지 말고 폴더만 잘 보여주면 된다" → (이웃 길) "이것도 함께 정비하자" → "권장대로 하자. 필기메모에서 빠져나오는 방법이 없나?" → "전에는 일반메모와 필기메모간에 상호 전환을 하였었잖아" → <b>"메뉴구조를 바꾸다 보니 이렇게 된 것 같은데, &lt;의뢰 메모&gt; 탭을 &lt;메모&gt;로 변경하고, 일반메모와 필기메모를 하나의 창으로 전환하는 방법은 없나?"</b> → "계획서를 고쳐라"</div>
+<ul>
+<li><b>메모는 한 창.</b> 메뉴 「📝 메모」 하나로 들어가, 창 안에서 글·손글씨를 바꿔 쓴다.</li>
+<li><b>상담 내용은 어디서 적든 사건마다 한 곳에 모인다</b> — 그 사건의 의뢰서 파일. 사건과 상관없는 것만 일반메모로.</li>
+</ul>
+
+<h2>2. 지금 모습과 원인 (코드·드라이브에서 직접 확인)</h2>
+<div class="tbl"><table>
+<tr><th>적는 곳</th><th>화면 이름</th><th>남는 곳</th><th>누가 읽나</th><th>쓰인 흔적</th></tr>
+<tr><td>의뢰 메모 💾 저장 — 고객명 넣음</td><td>(이름 없음, 「+메모」)</td><td>사건 폴더 「고객명사건.md」에 「## 상담기록(시각)」으로 이어 붙임</td><td>GAS 사건파악이 메모 글로 읽어 가설</td><td>사건 폴더마다 흩어져 세지 않음 [확인 필요]</td></tr>
+<tr><td>의뢰 메모 💾 저장 — 고객명 비움</td><td>일반메모</td><td>「0 NETAX/일반메모」(노트북 = 하위 폴더)</td><td>없음</td><td>파일 1개, 하위 폴더 0개</td></tr>
+<tr><td>의뢰 메모 📋 사건</td><td>사건메모 / 사건개요</td><td>사건개요 칸, 초안은 「사건개요초안」 폴더</td><td>장부·넥스</td><td class="bad">초안 0개</td></tr>
+<tr><td>의뢰 메모 🗂 의뢰</td><td>의뢰서 작성</td><td>사건 폴더 「의뢰서_양식_고객명.md」 + 글에서 뽑은 값을 사건개요(가설)에 + 기준일</td><td>넥스·GAS가 늘 읽음(증빙 아님, 10-28 결정). 넥스 첫 응답엔 앞 300자</td><td>양식 27개(모두 .md 글)</td></tr>
+<tr><td>필기메모(떠 있는 ✍ 단추로만 들어감)</td><td>필기메모</td><td>손글씨 PDF — 의뢰 메모와 같은 저장 창(고객명 넣으면 사건 폴더, 비우면 일반메모)</td><td>GAS가 글자인식된 메모 사진으로</td><td>—</td></tr>
+<tr><td>작업관리 새 사건·사건 고치기</td><td><b>진행메모</b>("어떻게 처리할 계획인지")</td><td>사건 줄 「개요」 칸. 예약의 「상황(의뢰 내용)」도 사건 시작 때 이 칸으로</td><td>서버는 "의뢰 메모(작업관리)"로 읽어 가설, 넥스엔 "의뢰개요"</td><td>[확인 필요 — 시트라 로그인 뒤 셈]</td></tr>
+<tr><td>상담 녹음</td><td>상담 녹음</td><td>「상담내용_날짜_시각.md」(요약+녹취 전문) + 원본 음성, 사건 폴더 또는 「_상담녹음보관함」, 작업일지 한 줄</td><td>GAS 메모 글</td><td>—</td></tr>
+</table></div>
+<p class="need">바로잡음: 고객관리 「상담기록」은 상담 메모 칸이 아니라 수금(금액·수취증빙)·넥스 문자 발송 기록 표라 이번 정비에서 손대지 않는다.</p>
+<p><b>원인</b> — 11-01 화면 개편(커밋 3599c415)에서 메뉴의 「📝 일반메모」「✍ 필기메모」 두 줄 중 필기메모를 빼 떠 있는 ✍ 단추로 옮기고, 일반메모 화면 이름을 「의뢰 메모」로 바꿨다. 그 뒤</p>
+<ul>
+<li>필기메모에서 나가는 길이 PC 왼쪽 6px 띠·태블릿 ☰뿐이고, 예전의 「일반메모 ↔ 필기메모」 오가기가 없어졌다(PC 크기·태블릿 크기 시험 사본에서 직접 확인).</li>
+<li>「의뢰 메모」라는 이름 아래에 고객 메모·일반메모·사건개요·의뢰서 네 갈래가 단추 전환으로 섞였다 — 📋·🗂를 누르면 단추가 숨고 이름이 「📝 텍스트 메모로」로 바뀜, 한쪽을 켠 채 다른 쪽을 누르면 이름이 「사건메모」「의뢰서 작성」으로 바뀜(memo.html 2157·2176줄), 저장 단추 하나가 고객명 유무로 두 갈래, 「저장 위치 (최상위) · + 노트북」 줄이 일반메모일 때만 쓰이는데 늘 떠 있고 고를 폴더도 보이지 않음.</li>
+<li>사건 하나의 상담 내용이 「고객명사건.md」·「의뢰서_….md」·사건 줄 「진행메모」·「상담내용_….md」로 흩어지고, 같은 칸을 화면은 「진행메모」, 서버는 「의뢰 메모」, 넥스는 「의뢰개요」로 부른다.</li>
+</ul>
+
+<h2>3. 합친 모습</h2>
+<p><b>원칙</b>: 사건마다 「상담 내용」 파일 하나 = 그 사건의 「의뢰서_….md」. 어디서 적든 사건에 넣으면 이 파일 맨 앞에 「## 상담기록(날짜 시각 · 어디서)」으로 쌓인다(최신이 앞 — 넥스 첫 응답 앞부분에 걸림). 손글씨 PDF·녹음 원본 같은 원본 파일은 사건 폴더에 그대로 두고 상담기록에 파일 이름을 적어 잇는다.</p>
+
+<h3>3-1. 「메모」 한 창 — 글·손글씨 탭</h3>
+<div class="mock">
+  <div style="font-weight:bold;margin-bottom:6px;">📝 메모</div>
+  <div class="bar"><span class="tab on">⌨ 글</span><span class="tab">✍ 손글씨</span><span class="sp"></span><span class="b p">사건에 넣기</span><span class="b">일반메모로 저장</span></div>
+  <div class="bar" style="font-size:12.5px;color:var(--sub)">(글 탭일 때) <span class="b">+ 새 메모</span><span class="b">양식 ▾</span><span class="b">👁 보기</span><span class="b">메모 찾기</span> · 꾸밈 도구·찾기/바꾸기·전체화면</div>
+  <div class="bar" style="font-size:12.5px;color:var(--sub)">(손글씨 탭일 때) <span class="b">✏ 펜·색·굵기</span><span class="b">↩ ↪</span><span class="b">🗑</span><span class="b">📎 배경</span><span class="b">▦ 무늬</span><span class="b">🔍</span><span class="b">◀ 1/1 ▶</span></div>
+  <div class="area">적는 칸(글 탭) / 그림판(손글씨 탭)</div>
+</div>
+<ul>
+<li><b>메뉴</b>: 「📝 의뢰 메모」 → <b>「📝 메모」</b>. 메뉴 한 줄로 들어가며 처음엔 글 탭.</li>
+<li><b>탭 바꾸기</b>: 같은 창 안에서 바뀐다(다른 화면으로 넘어가지 않음). 바꾸는 동안 적던 글·그리던 그림은 그대로 남는다.</li>
+<li><b>저장 단추 둘은 두 탭 공통</b> — 「사건에 넣기」「일반메모로 저장」(3-2·3-3). 글 탭이면 글을, 손글씨 탭이면 그림(PDF)을 넣는다.</li>
+<li><b>떠 있는 ✍ 단추</b>: 어느 화면에서나 「메모」 창을 <b>손글씨 탭으로</b> 연다(㉦). 폰 현장 도구 「필기메모」·넥스의 "필기메모 열어 줘"도 같은 곳.</li>
+<li><b>옛 이름 잇기</b>: 화면 이름표 「memo-text」「memo-hand」를 넥스 화면 목록·사용 설명서·폰 도구 시트가 부르므로, 옛 이름으로 불러도 새 창의 해당 탭이 열리게 잇는다.</li>
+</ul>
+
+<h3>3-2. 「사건에 넣기」</h3>
+<ul>
+<li>창 하나에서 <b>새 사건 등록</b> 또는 <b>기존 사건 고르기</b>.</li>
+<li>새 사건: 지금 🗂 의뢰 길 그대로 — 사건 등록 + 「의뢰서_…md」(양식을 불러왔으면 「의뢰서_양식_고객명.md」, 아니면 「의뢰서_상담_고객명.md」) + 글에서 뽑은 이름·날짜·금액·소재지를 사건개요(가설)에 + 기준일. 손글씨면 PDF를 사건 폴더에 넣고 의뢰서 파일엔 「상담기록(시각 · 손글씨) — 파일 이름」.</li>
+<li>기존 사건: 그 사건 의뢰서 파일 맨 앞에 상담기록으로 쌓는다(없으면 「의뢰서_상담_고객명.md」를 새로). 뽑은 값은 빈 칸만 가설로 채우고 세무사님이 넣은 값은 바꾸지 않는다(공통원칙 1절).</li>
+<li>넣은 뒤엔 지금처럼 「개요로 가기 · 증빙 넣기」 띠.</li>
+</ul>
+
+<h3>3-3. 「일반메모로 저장」</h3>
+<ul>
+<li>사건과 무관한 메모만. 고객명을 묻지 않는다. 글은 .md, 손글씨는 PDF.</li>
+<li>저장 창에서 폴더를 펼쳐 놓고 고른다(㉣ 정함): 폴더마다 메모 수·최근 메모 이름 2~3개, 「+ 새 폴더」는 고른 폴더 안에. 이름은 「노트북」 대신 「폴더」.</li>
+</ul>
+<div class="mock">
+  <div style="font-weight:bold;margin-bottom:6px;">일반메모로 저장 <span style="font-weight:normal;color:var(--sub);font-size:12px;">(그림 — 폴더 이름·개수는 예시, 지금 실제 하위 폴더는 0개)</span></div>
+  <div>파일 이름 <span class="b">세법공부_1114</span></div>
+  <div style="margin:6px 0 2px;">어느 폴더에?</div>
+  <div class="area" style="color:var(--ink)">● <b>일반메모</b> (메모 1개 — 추가 확장기능)<br>○ 📁 세법공부 (메모 3개 — 부담부증여 정리 · 8년 자경 …)<br>○ 📁 사무실 (메모 0개)<br><span class="b">+ 새 폴더</span></div>
+</div>
+
+<h3>3-4. 글 탭에서 걷는 것</h3>
+<ul>
+<li>📋 사건(세목별 칸 입력·초안·「사건개요초안」 폴더 쓰기) — 빈 「사건개요초안」 폴더는 그대로 둠(㉡).</li>
+<li>🗂 의뢰 전환 칸 — 양식은 「양식 ▾」로 같은 칸에 불러온다.</li>
+<li>저장 창의 고객명 칸, 단추 숨기기·이름 바뀌기, 늘 떠 있던 「저장 위치」 줄. 메모 찾기 목록의 「📁폴더 › 메모」 표시와 #태그는 그대로.</li>
+</ul>
+
+<h3>3-5. 작업관리 「진행메모」 칸 (㉤)</h3>
+<ul>
+<li>이름을 「의뢰 요약」으로, 안내를 "고객이 의뢰한 내용(한두 줄)"로 — 서버·넥스가 이미 이 칸을 의뢰 내용으로 읽고 예약의 「의뢰 내용」도 이 칸으로 들어온다.</li>
+<li>처리 계획·처리 결과는 사건의 작업일지(이미 있는 칸)에 — 칸 아래 「작업일지에 적기」 단추. 이미 적힌 글은 그대로.</li>
+</ul>
+
+<h3>3-6. 상담 녹음 (㉥)</h3>
+<ul>
+<li>녹음이 사건에 붙을 때(사건을 골라 녹음 / 보관함에서 사건으로 옮김) 요약을 그 사건 의뢰서 파일 맨 앞에 「상담기록(시각 · 녹음)」으로 쌓고, 녹취 전문·원본 음성 파일 이름을 적어 잇는다. 「상담내용_….md」·원본 음성·작업일지 한 줄은 그대로.</li>
+<li>이것만 서버 고침(Consult.js 두 곳) — 서버 배포 필요.</li>
+</ul>
+
+<h2>4. 바뀌지 않는 것</h2>
+<ul>
+<li>사건 등록 입구(의뢰서 글·사건개요를 한 번에 받는 것), 의뢰서 양식 폴더, 넥스·GAS·장부가 읽는 방식(의뢰서는 증빙 아닌 사건파악용).</li>
+<li>손글씨 도구와 PDF로 저장하는 방식(글자로 바꾸지 않음).</li>
+<li>넥스가 대화에서 "메모로 저장"할 때 여는 저장 창(aichat.html 1864·6101줄) — 3-2·3-3의 같은 갈래로 이어진다.</li>
+<li>이미 있는 「고객명사건.md」·「상담내용_….md」·사건개요 값·진행메모 글 — 옮기거나 지우지 않는다(GAS가 지금처럼 가설로 읽음).</li>
+<li>고객관리 「상담기록」 표(수금·문자 발송 기록)와 수금 화면.</li>
+</ul>
+
+<h2>5. 정하실 것</h2>
+<div class="tbl"><table>
+<tr><th>#</th><th>무엇</th><th>권장안</th><th>다른 길</th></tr>
+<tr><td>㉠</td><td>사건으로 넘긴 상담 내용을 어디에 쌓나</td><td class="ok">권장대로(11-14 "권장대로 하자") — 그 사건 「의뢰서_….md」 한 파일, 최신이 앞</td><td>지금처럼 「고객명사건.md」에 따로</td></tr>
+<tr><td>㉡</td><td>📋 사건(세목별 칸 입력)</td><td class="ok">권장대로 — 걷음</td><td>「사건에 넣기」 창 안 "칸 확인" 단계로 남김</td></tr>
+<tr><td>㉢</td><td>이웃 길도 함께 정비</td><td class="ok">정함("이것도 함께 정비하자")</td><td>—</td></tr>
+<tr><td>㉣</td><td>노트북(일반메모 하위 폴더)</td><td class="ok">정함("걷어내지 말고 폴더만 잘 보여주면 된다") — 저장 창에서 폴더 펼침, 이름 「폴더」</td><td>—</td></tr>
+<tr><td>㉤</td><td>작업관리 「진행메모」</td><td class="ok">권장대로 — 「의뢰 요약」으로, 처리 계획·결과는 작업일지로(화면만)</td><td>「진행메모」로 두고 서버가 가설로 안 읽게(서버 고침)</td></tr>
+<tr><td>㉥</td><td>녹음 요약도 의뢰서 파일에</td><td class="ok">권장대로 — 쌓음(서버 두 곳)</td><td>지금처럼 따로</td></tr>
+<tr><td>㉦</td><td>떠 있는 ✍ 단추</td><td class="ok">권장대로(11-14) — <b>남김</b> — 어느 화면에서나 「메모」를 손글씨 탭으로 엶(급히 손으로 적을 때 한 번에)</td><td>걷음 — 메뉴 「메모」로 들어가 탭을 바꿔야 함</td></tr>
+</table></div>
+<p class="ok">모두 정함(11-14 "권장대로 하자").</p>
+
+<h2>6. 순서 (확정 뒤)</h2>
+<ol>
+<li>「메모」 한 창(memo.html·index.html 메뉴·script.html 화면 이름표) — 글·손글씨 탭, 공통 저장 단추 둘, 옛 이름 잇기, 떠 있는 ✍ 단추.</li>
+<li>글 탭 정리(3-4)·「사건에 넣기」(3-2)·「일반메모로 저장」 폴더 펼침(3-3).</li>
+<li>넥스 저장 창·넥스 화면 이름표 잇기(aichat.html).</li>
+<li>작업관리 「의뢰 요약」·「작업일지에 적기」(workmanage.html).</li>
+<li>상담 녹음 서버 두 곳(Consult.js) + 소통 이음매 점검 줄(Federation.js).</li>
+<li>사용 설명서(manual.html) 메모·작업관리·상담 녹음 절, 폰 현장 도구 시트 이름.</li>
+<li>화면 조립 → 시험 → 커밋·배포는 지시 뒤(서버 고침이 있어 서버 배포·직결 재빌드 포함).</li>
+</ol>
+
+<h2>7. 확인 방법</h2>
+<ul>
+<li>서버를 막은 시험 사본에서 PC·태블릿·폰 크기로 실제 클릭·타이핑·그리기:
+  <ul>
+  <li>메뉴 「메모」 → 글 탭 → 손글씨 탭 → 다시 글 탭: 적던 글·그린 그림이 그대로인지(그림판은 숨겨진 채 크기를 다시 재면 비워질 수 있어 꼭 본다).</li>
+  <li>떠 있는 ✍ → 손글씨 탭으로 열리는지, 옛 이름(memo-text·memo-hand)으로 불러도 해당 탭이 열리는지.</li>
+  <li>양식 불러오기 → 사건에 넣기(새 사건: 보내는 값에 의뢰서 글·사건개요·기준일) / 기존 사건(의뢰서 파일 맨 앞에 상담기록) / 손글씨 사건에 넣기(PDF + 한 줄) / 일반메모 저장(고객명 안 묻고 폴더 펼침·새 폴더) / 넥스 저장 창 / 작업관리 「의뢰 요약」·「작업일지에 적기」 / 어떤 순서로 눌러도 단추 이름이 그대로인지.</li>
+  </ul></li>
+<li>서버 녹음 두 곳은 단독 시험(가짜 사건·가짜 의뢰서 파일)으로 쌓이는 글 확인.</li>
+<li>운영에서 처음 보는 가상사건 하나로 처음부터 끝까지: 메모 등록 → 같은 사건에 글 한 번 더 → 손글씨 넣기 → 녹음 보관함에서 옮기기 → 의뢰서 파일 하나에 최신순 → 넥스가 첫 응답에서 최근 상담을 보는지 → 가상 사건·고객·폴더 지움 [세무사님 몫: 로그인].</li>
+</ul>
+</main></body></html>

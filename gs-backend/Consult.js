@@ -252,6 +252,14 @@ function consult_work_(job, t0) {
           (job.inInbox ? ' (사건 폴더가 없어 보관함 「' + CONSULT_INBOX_FOLDER_ + '」에 저장 — 처리개요 📝 메모의 「🎙 보관함 녹음 가져오기」로 이 사건에 옮길 수 있음)' : '') +
           (job.mdUrl ? ' ' + job.mdUrl : ''));
       } catch (e) { console.log('상담녹음 작업일지 기록 실패: ' + e.message); }
+      // [2026.11.14 메모 한 창 ㉥] 사건 폴더에 바로 저장된 녹음이면 요약을 그 사건 의뢰서 파일 맨 앞에도(보관함 녹음은 사건으로 옮길 때 consult_inboxMove_가)
+      if (!job.inInbox) {
+        try {
+          let cust = '';
+          try { const sh = work_getSheet_(); const cl = work_colMap_(sh.getDataRange().getValues()[0]); const fr = work_findCaseRow_(sh, cl, job.caseId); if (fr) cust = String(fr.row[cl.고객명] || ''); } catch (e2) { }
+          consult_prependToRequest_(folder, cust, Utilities.formatDate(new Date(job.startedAt), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), sum.text, '상담내용_' + job.stamp + '.md');
+        } catch (e) { console.log('상담녹음 의뢰서 파일 쌓기 실패: ' + e.message); }
+      }
     }
     try { ai_logPaid_({ entry: { kind: 'consult', model: CONSULT_MODEL_, usd: job.usd, q: '상담 음성메모 — ' + (job.caseName || '사건 없음') + ' ' + Math.round(job.durationSec / 60) + '분' } }); } catch (e) { }
     return false;
@@ -387,6 +395,33 @@ function consult_logToCase_(caseId, text) {
   return up;
 }
 
+// [2026.11.14 메모 한 창 ㉥] 녹음 요약을 그 사건 의뢰서 파일(사건 폴더 바로 아래 의뢰서_….md, 여럿이면 가장 최근에 고친 것) 맨 앞에
+//  「## 상담기록(시각 · 녹음)」으로 쌓는다 — 상담 내용을 사건마다 한 파일로(화면 「메모」의 「사건에 넣기」와 같은 모양, 최신이 앞).
+//  녹취 전문·원본 음성은 지금처럼 「상담내용_….md」·「상담녹음」 폴더에 그대로 두고 이름만 적어 잇는다. 의뢰서 파일이 없으면 「의뢰서_상담_고객명.md」를 새로.
+function consult_prependToRequest_(caseFolder, customerName, when, summary, mdName) {
+  let target = null, tUpd = 0;
+  const it = caseFolder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (/^의뢰서_.*\.md$/i.test(f.getName())) { const u = f.getLastUpdated().getTime(); if (!target || u > tUpd) { target = f; tUpd = u; } }
+  }
+  const body = String(summary || '').trim().replace(/^(#{1,2}) /gm, '### '); // 요약 안 제목은 한 단계 낮춰 상담기록 아래로
+  const entry = '## 상담기록 (' + when + ' · 녹음)\n\n' + (body || '(요약 없음)') + '\n\n- 녹취 전문: ' + mdName + ' (이 사건 폴더) · 원본 음성: 상담녹음 폴더\n';
+  if (target) { target.setContent(entry + '\n---\n\n' + target.getBlob().getDataAsString('UTF-8')); return target.getName(); }
+  const name = '의뢰서_상담_' + String(customerName || '').trim() + '.md';
+  caseFolder.createFile(Utilities.newBlob(entry, 'text/markdown', name));
+  return name;
+}
+// 「상담내용_….md」 글에서 요약 부분(녹취록 전문 앞)과 상담 일시를 뽑는다
+function consult_mdSummary_(md) {
+  const s = String(md || '');
+  const cut = s.indexOf('\n---\n\n## 녹취록 전문');
+  const head = cut >= 0 ? s.slice(0, cut) : s;
+  const when = (/상담 일시:\s*([^\n]+)/.exec(head) || [])[1] || '';
+  const sum = head.replace(/^# 상담내용 — [^\n]*\n+/, '').replace(/^- (상담 일시|녹음 길이|원본 음성|정리):[^\n]*\n?/gm, '').trim();
+  return { when: when.trim(), summary: sum };
+}
+
 function consult_inboxFolder_() { return my_getOrCreateSubfolder_(getDefaultFolder(), CONSULT_INBOX_FOLDER_); }
 
 // 보관함 목록 — 상담내용_날짜_시각.md와 같은 시각의 원본 음성(상담녹음/상담녹음_날짜_시각.*)을 한 묶음으로
@@ -435,7 +470,11 @@ function consult_inboxMove_(body) {
   stamps.forEach(function (st) {
     if (!/^\d{8}_\d{4}$/.test(st)) return;
     const md = inbox.getFilesByName('상담내용_' + st + '.md');
-    while (md.hasNext()) { md.next().moveTo(caseFolder); moved++; names.push('상담내용_' + st + '.md'); }
+    while (md.hasNext()) {
+      const mf = md.next(); mf.moveTo(caseFolder); moved++; names.push('상담내용_' + st + '.md');
+      // [2026.11.14 ㉥] 옮긴 녹음의 요약을 그 사건 의뢰서 파일 맨 앞에 상담기록으로
+      try { const ms = consult_mdSummary_(mf.getBlob().getDataAsString('UTF-8')); consult_prependToRequest_(caseFolder, String(found.row[col.고객명] || ''), ms.when || st, ms.summary, mf.getName()); } catch (e) { console.log('상담녹음 의뢰서 파일 쌓기 실패: ' + e.message); }
+    }
     const af = inbox.getFoldersByName('상담녹음');
     if (af.hasNext()) {
       const ai = af.next().getFiles();

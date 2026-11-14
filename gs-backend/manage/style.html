@@ -244,7 +244,7 @@
   .view{ position:absolute; inset:0; overflow-y:auto; display:none; }
   .view.active{ display:block; }
   #view-workmanage.active, #view-clientmanage.active, #view-docs.active,
-  #view-memo-text.active, #view-memo-hand.active, #view-taxcalc.active, #view-reporthub.active{ display:flex; flex-direction:column; overflow:hidden; }
+  #view-memo-text.active, #view-taxcalc.active, #view-reporthub.active{ display:flex; flex-direction:column; overflow:hidden; }
 
   /* [2026.09 신규] 보고서 모음 화면 */
   /* [2026.10.31] 모아보기·템플릿다듬기·글감만들기·쇼츠 탭 모양은 공통 하위 탭(.nx-tab) */
@@ -796,19 +796,17 @@
   #noteBgCanvas{ pointer-events:none; }
 
   #memoSaveStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
-  #memoSaveStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,360px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
+  #memoSaveStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,420px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
 
-  /* [2026.09] 메모의 "사건개요 초안" 모드 — #memoText와 같은 위치에서 토글되는 패널이라
-     같은 flex:1 규칙을 준다. 기본은 숨김(JS가 memoBtnOverview 클릭 시 display:block으로 전환). */
-  #memoOvPanel{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px; background:#fff; }
-  #memoOvApplyStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
-  #memoOvApplyStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,360px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
+  /* [2026.11.14 메모 한 창] 글·손글씨 두 칸(탭) — 같은 자리에서 하나만 보임(JS memoSetTab_). 옛 사건개요 초안·의뢰서 작성 전환 칸은 걷음 */
+  .memo-pane{ display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+  #memoTabBar{ display:flex; gap:4px; } #memoTabBar .nx-tab{ padding:7px 14px; }
+  #memoTplSelect{ max-width:180px; }
+  .memo-gen-folders{ display:flex; flex-direction:column; gap:2px; max-height:40vh; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:4px; }
+  .memo-gen-folder{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--ink); }
+  .memo-gen-folder:hover{ background:#f1f4f9; } .memo-gen-folder.on{ background:#e7ecf6; font-weight:600; }
+  .memo-gen-meta{ color:var(--sub); font-size:11.5px; font-weight:400; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-  /* [2026.09 신규] 메모의 "의뢰서 작성" 모드 — 사건개요 초안 모드(#memoOvPanel)와 같은 자리에서
-     토글되는 세 번째 패널. work.netax.kr 메모장에 있던 "일반메모/사건개시템플릿" 콤보박스를
-     이 시스템 방식(폴더ID 기반, 새 사건 등록과 즉시 연결)으로 다시 만든 것. */
-  #memoReqPanel{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px; background:#fff; flex-direction:column; gap:10px; }
-  #memoReqTextarea{ flex:1; min-height:300px; width:100%; box-sizing:border-box; font-family:Consolas,monospace; font-size:12.5px; line-height:1.6; padding:10px; border:1px solid var(--line); border-radius:8px; resize:vertical; }
   #memoReqApplyStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
   #memoReqApplyStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,380px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
 

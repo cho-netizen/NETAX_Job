@@ -421,7 +421,7 @@
   function nxCaseCreateLater_(payload, opt){
     opt = opt || {};
     payload.id = payload.id || nxNewId_();
-    payload.폴더뒤로 = true;
+    payload.폴더뒤로 = !opt.folderNow; // [2026.11.14] opt.folderNow — 만든 뒤 바로 폴더에 파일을 넣을 길(메모 손글씨 PDF)은 서버가 폴더를 만든 뒤 답하게
     var semokLbl = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[payload.세목]) || payload.세목 || '';
     var tmp = { id: payload.id, 고객명: payload.고객명 || '', 납세자: payload.납세자 || '', 세목: payload.세목 || '', 업무유형: payload.업무유형 || '', 의뢰일: payload.의뢰일 || '', 기준일: payload.기준일 || '', 개요: payload.개요 || '', 법정일: payload.법정일 || '',
       사건명: (payload.고객명 || '') + (payload.납세자 && payload.납세자 !== payload.고객명 ? '(' + payload.납세자 + ')' : '') + ' ' + semokLbl + ' ' + (payload.업무유형 || ''), 상태: '진행', 폴더ID: '',
@@ -1178,7 +1178,7 @@
     ai: 'AI', dashboard: '오늘', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약·상담', workmanage: '사건 목록', casehandling: '개요', ledger: '사실(장부)', lawsearch: '법령·서식', clientmanage: '고객',
     collections: '수금',
     docs: '서류', taxcalc: '계산', print: '세액인쇄', taxplan: '절세', reportwriter: '보고서', reports: '고객 열람',
-    'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼',
+    'memo-text': '메모', 'memo-hand': '메모(손글씨)', reporthub: '보고서들', settings: '설정', manual: '매뉴얼',
     taxgap: '건전세정' // [2026.11.12] 요청 R2611040743
   };
   // [2026.11.01] 사건 작업공간(아래 nxCbInit_) — 로그인 게이트가 곧바로 showView를 부르므로 위 VIEW_LABELS_처럼 여기 먼저 둔다
@@ -1474,6 +1474,7 @@
   }
 
   function showView(name){
+    if (name === 'memo-hand'){ window.nxMemoWantTab_ = 'hand'; name = 'memo-text'; } // [2026.11.14 메모 한 창] 옛 「필기메모」 화면 이름 → 「메모」 창 손글씨 탭
     // [2026.09 신규] 작성관리(보고서)를 보고 있다가 드라이브에 저장하지 않은 내용을 남긴 채
     // 다른 메뉴로 넘어가려 하면 한 번 확인한다 — rwHasUnsavedDriveChanges_()는
     // reportwriter.html이 정의해두며, 그 화면이 아직 한 번도 안 열렸으면 없을 수 있어 존재
@@ -1493,6 +1494,7 @@
       if (target) target.classList.add('active');
       nxCbOnView_(name); // [2026.11.01] 사건 작업공간 머리줄
       window._currentViewLabel = VIEW_LABELS_[name] || name;
+      if (name === 'memo-text' && typeof memoSetTab_ === 'function'){ memoSetTab_(window.nxMemoWantTab_ || ''); window.nxMemoWantTab_ = ''; } // 글·손글씨 탭(떠 있는 ✍·폰 도구·넥스는 손글씨 탭으로)
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
       nxCoverSync_();
@@ -1511,7 +1513,6 @@
       if (name === 'collections' && typeof initCollections === 'function') initCollections();
       if (name === 'docs' && typeof initDocs === 'function') initDocs();
       if (name === 'memo-text' && typeof initMemoText === 'function') initMemoText();
-      if (name === 'memo-hand' && typeof initMemoHand === 'function') initMemoHand();
       if (name === 'reporthub' && typeof initReportHub === 'function') initReportHub();
       if (name === 'taxcalc' && typeof initTaxCalc === 'function') initTaxCalc();
       if (name === 'print' && typeof initPrintHub === 'function') initPrintHub();
@@ -1594,6 +1595,7 @@
   // 상세의 "이 사건 처리하기" 버튼 → 사건처리 화면으로 이동). showView만 부르면 좌측 메뉴의
   // active 표시가 안 바뀌므로 같이 처리한다.
   function goToView_(name){
+    if (name === 'memo-hand'){ window.nxMemoWantTab_ = 'hand'; name = 'memo-text'; } // [2026.11.14 메모 한 창] 메뉴 불도 「메모」에
     showView(name);
     if (typeof nxPhoneBarSync_ === 'function') nxPhoneBarSync_(name); // [2026.11.11] 폰 아래 탭 줄
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
@@ -2157,7 +2159,7 @@
     casehandling: 'help-casehandling', ledger: 'help-ledger', lawsearch: 'help-lawsearch', clientmanage: 'help-clientmanage',
     collections: 'help-collections',
     docs: 'help-docs', taxcalc: 'help-taxcalc', taxplan: 'help-taxplan', reportwriter: 'help-reportwriter', reports: 'help-reports',
-    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-hand', settings: 'help-settings', reporthub: 'help-reporthub', ai: 'help-aisidebar', manual: 'help-toc'
+    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-text', settings: 'help-settings', reporthub: 'help-reporthub', ai: 'help-aisidebar', manual: 'help-toc'
   };
   function goToHelp_(sectionId){
     goToView_('manual');
@@ -2320,7 +2322,8 @@
   // 빠진 것이 있으면 오류 기록에 남긴다(→ 개선 후보 보고서 → 주간 루틴이 고침). 서버 호출은 문제가 있을 때 한 번뿐, 토큰 0.
   (function(){
     var INIT_BY_VIEW_ = { booking: 'initBooking', workmanage: 'initWorkManage', casehandling: 'initCaseHandling', lawsearch: 'initLawSearch',
-      clientmanage: 'initClientManage', collections: 'initCollections', docs: 'initDocs', 'memo-text': 'initMemoText', 'memo-hand': 'initMemoHand',
+      clientmanage: 'initClientManage', collections: 'initCollections', docs: 'initDocs', 'memo-text': 'initMemoText', // [2026.11.14] 손글씨(initMemoHand)는 「메모」 창 안의 탭이라 따로 화면 틀이 없음
+
       reporthub: 'initReportHub', taxcalc: 'initTaxCalc', print: 'initPrintHub', reportwriter: 'initReportWriter', reports: 'initReports',
       settings: 'initSettings', dashboard: 'initDashboard' };
     // 화면 안의 핵심 기능(버튼이 부르는 함수) — 이름이 바뀌거나 빠지면 버튼이 조용히 먹통이 된다

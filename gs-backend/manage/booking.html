@@ -10,8 +10,8 @@
       <!-- [2026.10.31] 실행 단추(연결 확인·직권등록)는 제목 줄 오른쪽에 함께, 보기 바꾸기(처리할 것·지난 기록·전체)는 공통 하위 탭 — 세무사님 "직권등록버튼만 우측에 동떨어져 있구나" -->
       <h3>상담신청 목록
         <span class="h-act">
-          <button type="button" id="bkLinkReview" class="ghost-btn sm" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약·상담의 사건 시작을 거치지 않고 만든 사건)">연결 확인</button>
-          <button type="button" id="bkAdminToggle" class="ghost-btn sm">+ 직권등록</button>
+          <!-- [2026.11.14] 「연결 확인」 걷음(목록 「사건 연결 (후보 ○)」와 중복) · 「+」 뗌 — 세무사님 "중복이면 없애라 … 직권등록버튼에 +는 없애라 버튼이 지저분하다" -->
+          <button type="button" id="bkAdminToggle" class="ghost-btn sm">직권등록</button>
         </span>
       </h3>
       <div id="bkModeBar" class="nx-tabbar" style="margin:8px 0 0;">
@@ -300,7 +300,7 @@
     });
   }
 
-  // ---- 예약 ↔ 사건 짝 한 줄(기존 사건 연결·연결 확인·사건 등록 뒤 묻기 세 곳이 같은 모양) ----
+  // ---- 예약 ↔ 사건 짝 한 줄(기존 사건 연결·사건 등록 뒤 묻기 두 곳이 같은 모양) ----
   window._bkPairs = {};
   function bookingPairHtml_(key, p, mainHtml, allowDismiss){
     window._bkPairs[key] = p;
@@ -375,27 +375,8 @@
     }).catch(function(e){ var body = document.getElementById('bkModalBody'); if (body) body.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
   }
 
-  // ---- 연결 확인(전체) — 사건에 안 이은 확정 예약 ↔ 같은 고객의 사건 짝. 지금까지 쌓인 것 한 번 정리에도 쓴다 ----
-  document.getElementById('bkLinkReview').addEventListener('click', function(){
-    window._bkPairs = {};
-    var ov = bookingOpenModal_('연결 확인 — 사건에 안 이은 확정 예약', '<div class="spinner">예약과 사건을 맞대 보는 중…</div>', 600);
-    bookingWirePairs_(ov);
-    callGas('booking_link_review', {}).then(function(res){
-      var body = document.getElementById('bkModalBody'); if (!body) return;
-      if (!res || res.success === false){ body.innerHTML = '<div class="empty-row">' + esc((res && res.message) || '불러오지 못했습니다') + '</div>'; return; }
-      var h = '<div style="font-size:12.5px; color:var(--sub);">예약일이 지났거나 상담완료로 적은 확정 예약 중, 같은 전화번호·같은 이름으로 만든 사건이 있는 것입니다(예약일 30일 전 ~ 180일 뒤에 만든 사건). 같은 건이면 "연결", 아니면 "같은 건 아님"을 눌러 주세요. 저절로 바꾸는 것은 없습니다.</div>';
-      if (res.결과적기필요) h += '<div style="font-size:13px; color:#b3261e; margin-top:6px;">🟠 날짜가 지났는데 결과를 안 적은 예약 ' + res.결과적기필요 + '건 — 목록 "처리할 것"에서 결과 적기</div>';
-      if (!(res.items || []).length) h += '<div class="empty-row" style="padding:10px 0;">이을 후보가 있는 예약이 없습니다.</div>';
-      (res.items || []).forEach(function(it, i){
-        h += '<div style="margin-top:10px; font-weight:700; font-size:13.5px;">' + esc(it.reservedDate) + ' ' + esc(it.reservedTime) + ' · ' + esc(it.name) + (it.phone ? ' · ' + esc(it.phone) : '') + (it.result ? ' · ' + esc(it.result) : '') + '</div>';
-        (it.candidates || []).forEach(function(c, j){
-          h += bookingPairHtml_('v' + i + '_' + j, { rowIndex: it.rowIndex, caseId: c.caseId, 사건명: c.사건명, bookingName: it.name, 근거: c.근거, 강함: c.강함 },
-            '「' + esc(c.사건명 || '') + '」 <span style="color:var(--sub); font-size:12px;">만든 날 ' + esc(c.생성일 || '-') + '</span>', true);
-        });
-      });
-      body.innerHTML = h;
-    }).catch(function(e){ var body = document.getElementById('bkModalBody'); if (body) body.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
-  });
+  // [2026.11.14] 「연결 확인」(전체 짝 모아 보기) 단추 걷음 — 세무사님 "중복이면 없애라": 밤 점검이 같은 짝을 찾아 두면
+  //   목록 「처리할 것」에 그 예약이 올라오고 줄의 「사건 연결 (후보 ○)」가 진하게 뜬다(같은 사실이 두 곳). 줄 단추는 누를 때마다 새로 찾는다.
 
   // ---- 사건 등록 뒤 묻기 — 작업관리·고객관리·사건메모·의뢰메모 어디서 사건을 만들었든, 서버가 돌려준 예약 후보를 보여 드린다 ----
   //  (예약관리 "사건 시작"으로 만든 사건은 서버가 이미 이었으므로 후보가 오지 않는다)
@@ -408,7 +389,7 @@
       h += bookingPairHtml_('a' + i, { rowIndex: c.rowIndex, caseId: res.case.id, 사건명: res.case.사건명, bookingName: c.name, 근거: c.근거, 강함: c.강함 },
         esc(c.reservedDate) + ' ' + esc(c.reservedTime) + ' · <b>' + esc(c.name) + '</b>' + (c.phone ? ' · ' + esc(c.phone) : '') + (c.result ? ' · ' + esc(c.result) : ''), true);
     });
-    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약·상담 "연결 확인"에서 다시 볼 수 있음)</button></div>';
+    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약·상담 목록 그 줄의 「사건 연결」에서 다시 볼 수 있음)</button></div>';
     var ov = bookingOpenModal_('이 사건과 같은 건일 수 있는 예약', h, 560);
     bookingWirePairs_(ov, function(){ setTimeout(bookingCloseModal_, 1200); });
   }

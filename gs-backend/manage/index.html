@@ -109,7 +109,7 @@
 
         <div class="menu-group-label" data-phone-more>접수</div>
         <div class="menu-item" data-view="booking" data-phone-more>📅 예약·상담</div>
-        <div class="menu-item" data-view="memo-text" data-phone-more>📝 의뢰 메모</div>
+        <div class="menu-item" data-view="memo-text" data-phone-more>📝 메모</div><!-- [2026.11.14] 세무사님 "<의뢰 메모> 탭을 <메모>로 변경하고, 일반메모와 필기메모를 하나의 창으로" — 글·손글씨 탭 -->
 
         <div class="menu-group-label">사건</div>
         <div class="menu-item" data-view="workmanage">📌 사건 목록</div>
@@ -265,7 +265,7 @@
       <!-- [2026.10.22] 고객에게 보여주기(기기 3종 검토 C-3, 태블릿) — 왼쪽 메뉴·넥스 칸·도움말을 숨기고 가운데 화면만 크게.
            세무사님 "권장순서대로 하고…" — 가장 작게 먼저: 지금 화면(세액 비교·절세 방안 등)을 그대로 크게 보여 줄 뿐, 내용은 바꾸지 않는다. -->
       <!-- [2026.11.01] 필기메모 — 메뉴에서 빼고 어느 화면에서나 띄우는 단추로(개편안 ③) -->
-      <button type="button" id="nxHandMemoBtn" title="필기메모 — 손글씨 메모 화면" onclick="goToView_('memo-hand')">✍</button>
+      <button type="button" id="nxHandMemoBtn" title="메모 — 손글씨로 적기(메모 창 손글씨 탭)" onclick="goToView_('memo-hand')">✍</button>
       <button type="button" id="nxPresentBtn" title="고객에게 보여주기 — 메뉴·넥스 칸을 숨기고 이 화면만 크게"
         onclick="document.body.classList.toggle('nx-present')">🖥</button>
       <!-- [2026-11-13 4차 43] 태블릿에서 떠 있는 단추 넷을 접어 두는 「⋯」(태블릿에서만 보임, style.html #nxFabMore). 단추 하나를 누르거나 바깥을 누르면 다시 접힘 -->
@@ -294,7 +294,7 @@
         <button type="button" data-field="sign"><span class="ic">✍</span>서명 받기</button>
         <button type="button" data-field="pen"><span class="ic">🖊</span>펜 표시</button>
         <button type="button" data-field="todo"><span class="ic">📋</span>오늘 할 일</button>
-        <button type="button" data-field="handmemo"><span class="ic">✍</span>필기메모</button>
+        <button type="button" data-field="handmemo"><span class="ic">✍</span>손글씨 메모</button>
         <button type="button" data-field="suggest"><span class="ic">💬</span>개선 건의</button>
         <button type="button" data-field="help"><span class="ic">❓</span>이 화면 도움말</button>
       </div>

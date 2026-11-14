@@ -442,7 +442,7 @@
             var T = A.세목 || {}, codes = T.코드 || [], main = codes[0] || '', LB = { transfer: '양도', gift: '증여', inheritance: '상속' };
             th6 += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><b>세목</b><span>주 세목 ' + esc(T.주 || LB[main] || main || '—') + '</span><span style="color:var(--sub);">함께 보는 세목</span>'
               + ['transfer', 'gift', 'inheritance'].filter(function(t){ return t !== main; }).map(function(t){ return '<label style="white-space:nowrap;"><input type="checkbox" data-adv-tax="' + t + '"' + (codes.indexOf(t) > 0 ? ' checked' : '') + '> ' + LB[t] + '</label>'; }).join('')
-              + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 메모 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
+              + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 요약 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
               + (T.누가 ? '<span style="color:var(--sub);">(' + esc(T.누가) + (T.때 ? ' · ' + esc(T.때) : '') + ')</span>' : '') + '</div>';
             var Q = A.문의현황 || {};
             if (Q.수) th6 += '<div style="margin-top:4px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.자료기다림 || []).length ? ' · <span style="color:var(--gold, #a8862e);" title="결론을 가르는 사실이 아직 없어 넥스가 질문·받을 서류·가정별 시험 계산까지 해 둔 문의">자료 기다림 ' + esc(Q.자료기다림.length) + '</span>' : '') + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';

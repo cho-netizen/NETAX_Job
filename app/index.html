@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 09:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 12:39 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -539,7 +539,7 @@
   .view{ position:absolute; inset:0; overflow-y:auto; display:none; }
   .view.active{ display:block; }
   #view-workmanage.active, #view-clientmanage.active, #view-docs.active,
-  #view-memo-text.active, #view-memo-hand.active, #view-taxcalc.active, #view-reporthub.active{ display:flex; flex-direction:column; overflow:hidden; }
+  #view-memo-text.active, #view-taxcalc.active, #view-reporthub.active{ display:flex; flex-direction:column; overflow:hidden; }
 
   /* [2026.09 신규] 보고서 모음 화면 */
   /* [2026.10.31] 모아보기·템플릿다듬기·글감만들기·쇼츠 탭 모양은 공통 하위 탭(.nx-tab) */
@@ -1091,19 +1091,17 @@
   #noteBgCanvas{ pointer-events:none; }
 
   #memoSaveStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
-  #memoSaveStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,360px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
+  #memoSaveStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,420px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
 
-  /* [2026.09] 메모의 "사건개요 초안" 모드 — #memoText와 같은 위치에서 토글되는 패널이라
-     같은 flex:1 규칙을 준다. 기본은 숨김(JS가 memoBtnOverview 클릭 시 display:block으로 전환). */
-  #memoOvPanel{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px; background:#fff; }
-  #memoOvApplyStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
-  #memoOvApplyStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,360px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
+  /* [2026.11.14 메모 한 창] 글·손글씨 두 칸(탭) — 같은 자리에서 하나만 보임(JS memoSetTab_). 옛 사건개요 초안·의뢰서 작성 전환 칸은 걷음 */
+  .memo-pane{ display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+  #memoTabBar{ display:flex; gap:4px; } #memoTabBar .nx-tab{ padding:7px 14px; }
+  #memoTplSelect{ max-width:180px; }
+  .memo-gen-folders{ display:flex; flex-direction:column; gap:2px; max-height:40vh; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:4px; }
+  .memo-gen-folder{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--ink); }
+  .memo-gen-folder:hover{ background:#f1f4f9; } .memo-gen-folder.on{ background:#e7ecf6; font-weight:600; }
+  .memo-gen-meta{ color:var(--sub); font-size:11.5px; font-weight:400; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-  /* [2026.09 신규] 메모의 "의뢰서 작성" 모드 — 사건개요 초안 모드(#memoOvPanel)와 같은 자리에서
-     토글되는 세 번째 패널. work.netax.kr 메모장에 있던 "일반메모/사건개시템플릿" 콤보박스를
-     이 시스템 방식(폴더ID 기반, 새 사건 등록과 즉시 연결)으로 다시 만든 것. */
-  #memoReqPanel{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px; background:#fff; flex-direction:column; gap:10px; }
-  #memoReqTextarea{ flex:1; min-height:300px; width:100%; box-sizing:border-box; font-family:Consolas,monospace; font-size:12.5px; line-height:1.6; padding:10px; border:1px solid var(--line); border-radius:8px; resize:vertical; }
   #memoReqApplyStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
   #memoReqApplyStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,380px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
 
@@ -1544,7 +1542,7 @@
 
         <div class="menu-group-label" data-phone-more>접수</div>
         <div class="menu-item" data-view="booking" data-phone-more>📅 예약·상담</div>
-        <div class="menu-item" data-view="memo-text" data-phone-more>📝 의뢰 메모</div>
+        <div class="menu-item" data-view="memo-text" data-phone-more>📝 메모</div><!-- [2026.11.14] 세무사님 "<의뢰 메모> 탭을 <메모>로 변경하고, 일반메모와 필기메모를 하나의 창으로" — 글·손글씨 탭 -->
 
         <div class="menu-group-label">사건</div>
         <div class="menu-item" data-view="workmanage">📌 사건 목록</div>
@@ -5120,8 +5118,8 @@ function nxMdOpenWindow(title, src, opts){
       <!-- [2026.10.31] 실행 단추(연결 확인·직권등록)는 제목 줄 오른쪽에 함께, 보기 바꾸기(처리할 것·지난 기록·전체)는 공통 하위 탭 — 세무사님 "직권등록버튼만 우측에 동떨어져 있구나" -->
       <h3>상담신청 목록
         <span class="h-act">
-          <button type="button" id="bkLinkReview" class="ghost-btn sm" title="사건에 안 이은 확정 예약과 같은 고객의 사건 짝을 찾아 보여 줍니다(예약·상담의 사건 시작을 거치지 않고 만든 사건)">연결 확인</button>
-          <button type="button" id="bkAdminToggle" class="ghost-btn sm">+ 직권등록</button>
+          <!-- [2026.11.14] 「연결 확인」 걷음(목록 「사건 연결 (후보 ○)」와 중복) · 「+」 뗌 — 세무사님 "중복이면 없애라 … 직권등록버튼에 +는 없애라 버튼이 지저분하다" -->
+          <button type="button" id="bkAdminToggle" class="ghost-btn sm">직권등록</button>
         </span>
       </h3>
       <div id="bkModeBar" class="nx-tabbar" style="margin:8px 0 0;">
@@ -5410,7 +5408,7 @@ function nxMdOpenWindow(title, src, opts){
     });
   }
 
-  // ---- 예약 ↔ 사건 짝 한 줄(기존 사건 연결·연결 확인·사건 등록 뒤 묻기 세 곳이 같은 모양) ----
+  // ---- 예약 ↔ 사건 짝 한 줄(기존 사건 연결·사건 등록 뒤 묻기 두 곳이 같은 모양) ----
   window._bkPairs = {};
   function bookingPairHtml_(key, p, mainHtml, allowDismiss){
     window._bkPairs[key] = p;
@@ -5485,27 +5483,8 @@ function nxMdOpenWindow(title, src, opts){
     }).catch(function(e){ var body = document.getElementById('bkModalBody'); if (body) body.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
   }
 
-  // ---- 연결 확인(전체) — 사건에 안 이은 확정 예약 ↔ 같은 고객의 사건 짝. 지금까지 쌓인 것 한 번 정리에도 쓴다 ----
-  document.getElementById('bkLinkReview').addEventListener('click', function(){
-    window._bkPairs = {};
-    var ov = bookingOpenModal_('연결 확인 — 사건에 안 이은 확정 예약', '<div class="spinner">예약과 사건을 맞대 보는 중…</div>', 600);
-    bookingWirePairs_(ov);
-    callGas('booking_link_review', {}).then(function(res){
-      var body = document.getElementById('bkModalBody'); if (!body) return;
-      if (!res || res.success === false){ body.innerHTML = '<div class="empty-row">' + esc((res && res.message) || '불러오지 못했습니다') + '</div>'; return; }
-      var h = '<div style="font-size:12.5px; color:var(--sub);">예약일이 지났거나 상담완료로 적은 확정 예약 중, 같은 전화번호·같은 이름으로 만든 사건이 있는 것입니다(예약일 30일 전 ~ 180일 뒤에 만든 사건). 같은 건이면 "연결", 아니면 "같은 건 아님"을 눌러 주세요. 저절로 바꾸는 것은 없습니다.</div>';
-      if (res.결과적기필요) h += '<div style="font-size:13px; color:#b3261e; margin-top:6px;">🟠 날짜가 지났는데 결과를 안 적은 예약 ' + res.결과적기필요 + '건 — 목록 "처리할 것"에서 결과 적기</div>';
-      if (!(res.items || []).length) h += '<div class="empty-row" style="padding:10px 0;">이을 후보가 있는 예약이 없습니다.</div>';
-      (res.items || []).forEach(function(it, i){
-        h += '<div style="margin-top:10px; font-weight:700; font-size:13.5px;">' + esc(it.reservedDate) + ' ' + esc(it.reservedTime) + ' · ' + esc(it.name) + (it.phone ? ' · ' + esc(it.phone) : '') + (it.result ? ' · ' + esc(it.result) : '') + '</div>';
-        (it.candidates || []).forEach(function(c, j){
-          h += bookingPairHtml_('v' + i + '_' + j, { rowIndex: it.rowIndex, caseId: c.caseId, 사건명: c.사건명, bookingName: it.name, 근거: c.근거, 강함: c.강함 },
-            '「' + esc(c.사건명 || '') + '」 <span style="color:var(--sub); font-size:12px;">만든 날 ' + esc(c.생성일 || '-') + '</span>', true);
-        });
-      });
-      body.innerHTML = h;
-    }).catch(function(e){ var body = document.getElementById('bkModalBody'); if (body) body.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
-  });
+  // [2026.11.14] 「연결 확인」(전체 짝 모아 보기) 단추 걷음 — 세무사님 "중복이면 없애라": 밤 점검이 같은 짝을 찾아 두면
+  //   목록 「처리할 것」에 그 예약이 올라오고 줄의 「사건 연결 (후보 ○)」가 진하게 뜬다(같은 사실이 두 곳). 줄 단추는 누를 때마다 새로 찾는다.
 
   // ---- 사건 등록 뒤 묻기 — 작업관리·고객관리·사건메모·의뢰메모 어디서 사건을 만들었든, 서버가 돌려준 예약 후보를 보여 드린다 ----
   //  (예약관리 "사건 시작"으로 만든 사건은 서버가 이미 이었으므로 후보가 오지 않는다)
@@ -5518,7 +5497,7 @@ function nxMdOpenWindow(title, src, opts){
       h += bookingPairHtml_('a' + i, { rowIndex: c.rowIndex, caseId: res.case.id, 사건명: res.case.사건명, bookingName: c.name, 근거: c.근거, 강함: c.강함 },
         esc(c.reservedDate) + ' ' + esc(c.reservedTime) + ' · <b>' + esc(c.name) + '</b>' + (c.phone ? ' · ' + esc(c.phone) : '') + (c.result ? ' · ' + esc(c.result) : ''), true);
     });
-    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약·상담 "연결 확인"에서 다시 볼 수 있음)</button></div>';
+    h += '<div style="margin-top:10px;"><button type="button" class="ghost-btn" data-bk-close="1">나중에(예약·상담 목록 그 줄의 「사건 연결」에서 다시 볼 수 있음)</button></div>';
     var ov = bookingOpenModal_('이 사건과 같은 건일 수 있는 예약', h, 560);
     bookingWirePairs_(ov, function(){ setTimeout(bookingCloseModal_, 1200); });
   }
@@ -6228,7 +6207,8 @@ function nxMdOpenWindow(title, src, opts){
       '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
       '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate"></label></div>' +
       '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline"></label>' +
-      '<label>진행메모<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="어떻게 처리할 계획인지">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
+      // [2026.11.14 메모 한 창 ㉤] 「진행메모」 → 「의뢰 요약」 — 서버·넥스가 이 칸을 의뢰 내용(의뢰 메모·의뢰개요)으로 읽고, 예약의 「의뢰 내용」도 이 칸으로 들어온다. 처리 계획·결과는 작업일지로
+      '<label>의뢰 요약<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="고객이 의뢰한 내용(한두 줄)">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
       '<button type="button" id="wcNewSave" class="save-btn">저장</button>' +
       '<button type="button" id="wcNewCancel" class="ghost-btn">취소</button>' +
@@ -6419,14 +6399,33 @@ function nxMdOpenWindow(title, src, opts){
       (workMyPortalBadgeText_(c) ? ' <span class="nx-fl">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
       '<div style="margin-bottom:14px;">' +
-      '<label id="wcEditOverviewLabel" style="font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px;">' + (c.상태 === '완료' ? '처리내용' : '진행메모') + '</label>' +
-      '<textarea id="wcEditOverview" placeholder="' + (c.상태 === '완료' ? '실제로 어떻게 처리했는지' : '진행하면서 남길 메모') + '" style="width:100%; max-width:600px; min-height:60px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.개요 || '') + '</textarea>' +
+      // [2026.11.14 ㉤] 「진행메모/처리내용」 → 「의뢰 요약」(서버·넥스가 의뢰 내용으로 읽는 칸). 처리 계획·결과는 아래 「작업일지에 적기」로(이미 적힌 글은 그대로)
+      '<label id="wcEditOverviewLabel" style="font-size:12.5px; color:var(--sub); display:block; margin-bottom:4px;">의뢰 요약</label>' +
+      '<textarea id="wcEditOverview" placeholder="고객이 의뢰한 내용(한두 줄) — 처리 계획·처리 결과는 작업일지에" style="width:100%; max-width:600px; min-height:60px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.개요 || '') + '</textarea>' +
+      '<div><button type="button" id="wcEditToLog" class="ghost-btn" title="처리 계획·처리 결과를 이 사건 작업일지에 한 줄로 적습니다(처리개요 작업일지 카드와 같은 곳)">📓 작업일지에 적기 <span style="color:var(--sub);">(' + (c.작업일지 || []).length + '건)</span></button></div>' +
       '</div>' +
       '<div id="wcAddRootToggle" style="font-size:12.5px; color:var(--sub); margin-bottom:8px; cursor:pointer; width:fit-content;" title="눌러서 새 하위업무 추가">➕ 하위업무 ' + prog.done + ' / ' + prog.total + '</div>' +
       '<div id="wcNewRootFormWrap" style="display:none; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>' +
       '<div id="wcTree"></div>';
 
     renderWorkTree(c.하위업무 || [], document.getElementById('wcTree'), c.id, 0);
+    // [2026.11.14 ㉤] 「작업일지에 적기」 — 처리개요 작업일지 카드와 같은 한 줄 모양(id·date·text·dueDate)으로 이 사건 작업일지 끝에 더한다
+    document.getElementById('wcEditToLog').addEventListener('click', function(){
+      var btnLog = this;
+      nxPrompt_('작업일지에 적을 내용(처리 계획·처리 결과 등):').then(function(text){
+        text = String(text || '').trim();
+        if (!text) return;
+        var entry = { id: 'log_' + Date.now(), date: nxLocalDateStr_(), text: text, dueDate: '' };
+        btnLog.disabled = true;
+        nxCaseSave_({ id: c.id, 작업일지: (c.작업일지 || []).concat([entry]), 기대수정일: c.수정일 }).then(function(res){
+          if (res && res.conflict){ toast(res.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다 — 새로 불러온 뒤 다시 적어 주세요.'); if (typeof loadWorkCases === 'function') loadWorkCases(); return; }
+          if (res && res.success === false){ toast('작업일지 저장 실패: ' + (res.message || '')); return; }
+          if (res && res.case) Object.assign(c, res.case); else c.작업일지 = (c.작업일지 || []).concat([entry]);
+          btnLog.innerHTML = '📓 작업일지에 적기 <span style="color:var(--sub);">(' + (c.작업일지 || []).length + '건)</span>';
+          toast('작업일지에 적었습니다.');
+        }).catch(function(err){ toast('작업일지 저장 중 오류: ' + nxErrText_(err)); }).finally(function(){ btnLog.disabled = false; });
+      });
+    });
     if (typeof enhanceDateInputs === 'function') enhanceDateInputs(workCaseDetail);
 
     // [2026.10.31] 세무사님 "이사건다른화면 콤보가 있는데, 처리개요버튼이 있는 것은 기능중복" / "사건콤보와 굳이 떼어 놓을 필요가 없어 보인다" — "처리" 단추를 빼고 "↪ 이 사건 다른 화면"(처리개요 포함)을 사건 고르는 칸 바로 뒤에
@@ -8255,7 +8254,7 @@ function nxMdOpenWindow(title, src, opts){
     if (!c.폴더ID){
       // [2026.10.18 탭연결 1번] 막다른 문구 대신 할 일을 알려준다 — 메모·증빙확보 버튼을 누르면 업무유형을 물어 폴더를 만든다
       el.textContent = (String(c.업무유형 || '') === '상담')
-        ? '상담 사건이라 아직 사건 폴더가 없습니다 — 메모·증빙을 올리려면 「의뢰 메모」나 「서류」 탭를 눌러 업무유형(신고·자문)을 정하세요.'
+        ? '상담 사건이라 아직 사건 폴더가 없습니다 — 메모·증빙을 올리려면 「메모」나 「서류」 탭을 눌러 업무유형(신고·자문)을 정하세요.'
         : '이 사건은 Drive 폴더가 없어 메모를 확인할 수 없습니다.';
     } else {
       callGas('listFolder', { folderId: c.폴더ID }).then(function(res){
@@ -9068,7 +9067,7 @@ function nxMdOpenWindow(title, src, opts){
             var T = A.세목 || {}, codes = T.코드 || [], main = codes[0] || '', LB = { transfer: '양도', gift: '증여', inheritance: '상속' };
             th6 += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;"><b>세목</b><span>주 세목 ' + esc(T.주 || LB[main] || main || '—') + '</span><span style="color:var(--sub);">함께 보는 세목</span>'
               + ['transfer', 'gift', 'inheritance'].filter(function(t){ return t !== main; }).map(function(t){ return '<label style="white-space:nowrap;"><input type="checkbox" data-adv-tax="' + t + '"' + (codes.indexOf(t) > 0 ? ' checked' : '') + '> ' + LB[t] + '</label>'; }).join('')
-              + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 메모 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
+              + '<button type="button" id="chAdvTaxSave" class="ghost-btn" title="이 세목의 칸도 장부·의뢰 요약 추정·받을 증빙·장부 계산에 넣습니다">저장</button>'
               + (T.누가 ? '<span style="color:var(--sub);">(' + esc(T.누가) + (T.때 ? ' · ' + esc(T.때) : '') + ')</span>' : '') + '</div>';
             var Q = A.문의현황 || {};
             if (Q.수) th6 += '<div style="margin-top:4px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">문의 답 현황</b> 문의 ' + esc(Q.수) + ' · 답함 ' + esc(Q.답함) + ' · 보류 ' + esc(Q.보류) + ((Q.자료기다림 || []).length ? ' · <span style="color:var(--gold, #a8862e);" title="결론을 가르는 사실이 아직 없어 넥스가 질문·받을 서류·가정별 시험 계산까지 해 둔 문의">자료 기다림 ' + esc(Q.자료기다림.length) + '</span>' : '') + ((Q.답안함 || []).length ? ' · <span style="color:#b23;">답 안 함 ' + esc(Q.답안함.length) + ': ' + esc(Q.답안함.join(', ')) + '</span>' : ' · 모두 답함·보류') + '</div>';
@@ -54196,29 +54195,36 @@ function rwAiApplyEdit_(id, content){
   });
 </script>
 
-      <div class="view" id="view-memo-text">
-  <div class="view-head"><h2>의뢰 메모</h2></div>
+      <!-- [2026.11.14 메모 한 창] 세무사님 "<의뢰 메모> 탭을 <메모>로 변경하고, 일반메모와 필기메모를 하나의 창으로 전환하는 방법은 없나?" → "권장대로 하자"
+     (계획서 docs/_기록/의뢰메모_하나로_계획서_20261114.html). 11-01 화면 개편 때 필기메모를 메뉴에서 빼 떠 있는 ✍ 단추로만 들어가게 하면서
+     예전 메뉴의 「일반메모 ↔ 필기메모」 오가기가 없어졌고, 「의뢰 메모」 안에 고객 메모·일반메모·사건개요·의뢰서 네 갈래가 단추 전환으로 섞였다.
+     → 「메모」 한 창 안에서 ⌨ 글 / ✍ 손글씨 탭으로 바꿔 쓰고, 저장 단추는 두 탭 공통 둘(「사건에 넣기」「일반메모로 저장」).
+     옛 화면 이름 'memo-hand'(떠 있는 ✍·폰 현장 도구·넥스)는 script.html goToView_/showView가 이 창의 손글씨 탭으로 잇는다. -->
+<div class="view" id="view-memo-text">
+  <div class="view-head"><h2>메모</h2></div>
+  <div class="memo-toolbar tb-row" id="memoTopBar">
+    <div class="nx-tabbar" id="memoTabBar" style="margin:0; border-bottom:none;">
+      <button type="button" class="nx-tab active" data-memo-tab="text" title="글로 적기">⌨ 글</button>
+      <button type="button" class="nx-tab" data-memo-tab="hand" title="손글씨로 적기">✍ 손글씨</button>
+    </div>
+    <span style="flex:1"></span>
+    <button type="button" id="memoBtnToCase" class="save-btn" title="새 사건으로 등록하거나 이미 있는 사건을 골라, 적은 내용을 그 사건의 의뢰서 파일에 넣습니다"><span class="btn-ic">📂</span><span class="btn-tx"> 사건에 넣기</span></button>
+    <button type="button" id="memoBtnSave" class="ghost-btn" title="사건과 상관없는 메모를 일반메모 폴더에 저장합니다"><span class="btn-ic">💾</span><span class="btn-tx"> 일반메모로 저장</span></button>
+  </div>
+  <div id="memoTextPane" class="memo-pane">
   <div class="memo-toolbar tb-row">
     <div class="memo-search-wrap">
-      <input type="text" id="memoSearch" class="nx-find" placeholder="메모 찾기" title="저장된 일반메모 찾아 열기" autocomplete="off">
+      <input type="text" id="memoSearch" class="nx-find" placeholder="일반메모 찾기" title="저장된 일반메모 찾아 열기" autocomplete="off">
       <div class="memo-search-dropdown" id="memoSearchDropdown"></div>
     </div>
-    <button type="button" id="memoBtnNew" class="ghost-btn"><span class="btn-ic">+</span><span class="btn-tx">메모</span></button>
-    <button type="button" id="memoBtnSave" class="save-btn"><span class="btn-ic">💾</span><span class="btn-tx"> 저장</span></button>
+    <button type="button" id="memoBtnNew" class="ghost-btn"><span class="btn-ic">+</span><span class="btn-tx"> 새 메모</span></button>
+    <select id="memoTplSelect" title="의뢰서 양식을 이 칸에 불러옵니다"><option value="">양식 ▾</option></select>
     <button type="button" id="memoBtnPreview" class="ghost-btn"><span class="btn-ic">👁</span><span class="btn-tx"> 보기</span></button>
-    <button type="button" id="memoBtnOverview" class="ghost-btn"><span class="btn-ic">📋</span><span class="btn-tx"> 사건</span></button>
-    <button type="button" id="memoBtnRequest" class="ghost-btn"><span class="btn-ic">🗂</span><span class="btn-tx"> 의뢰</span></button>
   </div>
-  <!-- [2026.09 신규] 노트북(하위 폴더)·태그 — 조플린 가져오기를 염두에 두고, 노트북은 드라이브
-       하위폴더 그대로, 태그는 별도 저장 없이 매번 내용에서 뽑아낸다(프론트매터 tags: 목록 또는
-       본문의 #태그). 새 메모는 여기서 고른 노트북에 저장되고, 검색·태그필터는 전체 노트북을
-       가리지 않고 한꺼번에(전역으로) 찾는다 — 노트북이 늘어난다고 검색 범위가 좁아지면
-       지금(전부 한 폴더)보다 오히려 불편해지므로. -->
-  <div class="memo-toolbar tb-row" style="border-top:none; background:#fff;">
-    <span style="font-size:12px; color:var(--sub); flex-shrink:0;">저장 위치</span>
-    <select id="memoNotebookSelect"></select>
-    <button type="button" id="memoNotebookAddBtn" class="ghost-btn"><span class="btn-tx">+ 노트북</span></button>
-    <div id="memoTagChips" style="display:flex; gap:6px; flex-wrap:wrap; margin-left:6px;"></div>
+  <!-- [2026.09 신규] 태그 — 별도 저장 없이 매번 내용에서 뽑아낸다(프론트매터 tags: 목록 또는 본문의 #태그). 찾기·태그 고르기는 일반메모 전체(모든 폴더)에서.
+       [2026.11.14] 늘 떠 있던 「저장 위치 · + 노트북」은 「일반메모로 저장」 창 안으로(폴더를 펼쳐 보고 고름), 이 줄은 태그가 있을 때만 -->
+  <div class="memo-toolbar tb-row" id="memoTagRow" style="border-top:none; background:#fff; display:none;">
+    <div id="memoTagChips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
   </div>
   <!-- [2026.09 신규] 서식 빠른삽입 툴바 + 마크다운 문법 도움말 — reportwriter.html(작성관리)의
        #mdHelpBar/#mdHelpModal과 같은 방식(떠다니는 도움말 패널)이지만, 같은 페이지에 두 화면이
@@ -54255,7 +54261,7 @@ function rwAiApplyEdit_(id, content){
     <button type="button" id="memoReplaceOne" title="현재 항목만 바꾸기">바꾸기</button>
     <button type="button" id="memoReplaceAllBtn" title="전체 바꾸기">모두 바꾸기</button>
   </div>
-  <textarea id="memoText" placeholder="통화하면서 바로 타이핑하세요… (마크다운 지원: # 제목, - [ ] 체크리스트, #태그)"></textarea>
+  <textarea id="memoText" placeholder="통화하면서 바로 타이핑하세요… 「양식 ▾」로 의뢰서 양식을 불러와 채워도 됩니다 (마크다운 지원: # 제목, - [ ] 체크리스트, #태그)"></textarea>
   <div id="memoMdHelpModal" class="memo-floating-panel">
     <div id="memoMdHelpDragHandle" class="memo-floating-panel-handle">
       마크다운 문법 도움말
@@ -54266,54 +54272,12 @@ function rwAiApplyEdit_(id, content){
   <!-- [2026.09 신규] 마크다운 미리보기 — memoBtnPreview로 #memoText와 토글. 체크리스트(- [ ])는
        미리보기 안에서 클릭으로 바로 켜고 끌 수 있다(renderMemoPreview_/체크박스 change 참고). -->
   <div id="memoPreview"></div>
-
-  <!-- [2026.09] "사건개요 초안" 모드 — 전화 받으면서 바로 세목별 구조화 항목(casehandling.html의
-       CH_CASE_OVERVIEW_FIELDS_를 읽기 전용으로 재사용)에 입력하고, 나중에 특정 사건을 골라 그
-       값을 그 사건의 사건개요서(사건개요 JSON 컬럼)에 그대로 반영하는 기능. 기존 자유텍스트
-       메모(#memoText)와는 완전히 별개 모드 — memoBtnOverview 클릭으로 서로 토글된다. -->
-  <div id="memoOvPanel">
-    <div id="memoOvSemokPick">
-      <label style="font-size:12px; color:var(--sub); display:block; margin-bottom:6px;">세목을 선택하세요</label>
-      <select id="memoOvSemokSelect">
-        <option value="">세목 선택</option>
-        <option value="transfer">양도소득세</option>
-        <option value="gift">증여세</option>
-        <option value="inheritance">상속세</option>
-      </select>
-    </div>
-    <div id="memoOvFormWrap" style="display:none;">
-      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-        <div id="memoOvSemokLabel" style="font-size:12.5px; font-weight:700; color:var(--navy);"></div>
-        <div class="tb-row" style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button type="button" id="memoOvChangeSemokBtn" class="ghost-btn">세목 변경</button>
-          <button type="button" id="memoOvSaveBtn" class="ghost-btn"><span class="btn-ic">💾</span><span class="btn-tx"> 초안 저장</span></button>
-          <button type="button" id="memoOvApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 이 사건에 적용</span></button>
-        </div>
-      </div>
-      <div id="memoOvFields" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 12px; max-width:760px; margin-bottom:20px;"></div>
-      <div class="nx-l3" style="margin-top:0;">저장된 초안</div>
-      <div id="memoOvDraftList"></div>
-    </div>
+  <!-- [2026.11.14] 📋 사건(세목별 칸 입력·사건개요 초안 — 초안 0개)과 🗂 의뢰(의뢰서 작성 전환 칸)는 걷음 — 양식은 「양식 ▾」로 이 칸에 불러오고,
+       글에서 뽑은 이름·날짜·금액·소재지는 「사건에 넣기」가 사건개요(가설)로 넣는다(10-22 세무사님 결정 6) -->
   </div>
 
-  <!-- [2026.09 신규] 의뢰서 작성 — work.netax.kr 메모장의 "일반메모/사건개시템플릿" 콤보박스를
-       다시 만든 것. 템플릿을 먼저 고르고, 화면에서 바로 채워 넣은 뒤, 새 사건으로 등록하거나
-       이미 있는 사건에 저장한다(자동 세목매칭 저장과 별개로, 언제든 원하는 템플릿을 골라
-       원하는 사건에 직접 붙일 수 있다). -->
-  <div id="memoReqPanel">
-    <div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-      <label style="font-size:12px; color:var(--sub);">의뢰서 템플릿:</label>
-      <select id="memoReqTemplateSelect"><option value="">불러오는 중…</option></select>
-      <span style="margin-left:auto; font-size:11.5px; color:var(--sub);" id="memoReqNonTextNote"></span>
-      <button type="button" id="memoReqApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 사건에 저장</span></button>
-    </div>
-    <textarea id="memoReqTextarea" placeholder="템플릿을 고르면 여기 내용이 채워집니다 — 통화하면서 바로 채워 넣으세요." disabled></textarea>
-  </div>
-</div>
-
-<div class="view" id="view-memo-hand">
+  <div id="memoHandPane" class="memo-pane" style="display:none;">
   <div class="note-tb">
-    <span style="color:#fff; font-weight:700; font-size:19px; margin-right:8px; white-space:nowrap;">필기메모</span>
     <button type="button" id="btnNoteToolMode" class="note-tb-btn" title="펜">✏️</button>
     <input type="color" id="notePenColor" value="#1a1a2e" title="색상" style="width:28px; height:28px; padding:0; border:none; border-radius:6px;">
     <input type="range" id="notePenSize" min="1" max="10" value="3" title="굵기" style="width:60px;">
@@ -54327,7 +54291,6 @@ function rwAiApplyEdit_(id, content){
     <button type="button" id="btnNotePrevPage" class="note-tb-btn" title="이전 페이지">◀</button>
     <span id="notePageIndicator" class="note-tb-page">1/1</span>
     <button type="button" id="btnNoteNextPage" class="note-tb-btn" title="다음 페이지">▶</button>
-    <button type="button" id="btnNoteSave" class="note-tb-btn note-tb-save" title="저장(고객 폴더에 PDF로 저장)">💾</button>
   </div>
   <div id="noteCanvasWrap">
     <div id="noteZoomInner">
@@ -54335,52 +54298,35 @@ function rwAiApplyEdit_(id, content){
       <canvas id="noteCanvas"></canvas>
     </div>
   </div>
+  </div>
 </div>
 
+<!-- [2026.11.14] 「일반메모로 저장」 — 사건과 상관없는 메모만. 고객명을 묻지 않고, 폴더(예전 이름 노트북)를 펼쳐 보고 고른다
+     (세무사님 "걷어내지 말고 폴더만 잘 보여주면 된다"). 사건 상담 내용은 「사건에 넣기」로. -->
 <div id="memoSaveStep">
   <div class="box">
-    <div id="memoSaveStepTitle" style="font-weight:700; color:var(--navy); font-size:14px;">고객명을 입력하세요</div>
-    <div id="memoSaveStepDesc" style="font-size:11.5px; color:var(--sub);">이미 있는 사건 폴더(예: "홍길동 양도")가 있으면 그 사건파일에 이어서 저장되고, 없으면 고객명만으로 새 폴더가 만들어집니다. <b>비워두고 저장하면</b> 일반메모로 분류되어 파일명을 따로 입력받습니다.</div>
-    <input title="예: 김철수" type="text" id="memoFolderInput" placeholder="고객명(비우면 일반메모)">
+    <div style="font-weight:700; color:var(--navy); font-size:14px;">일반메모로 저장</div>
+    <div id="memoSaveStepDesc" style="font-size:11.5px; color:var(--sub);">사건과 상관없는 메모를 「0 NETAX/일반메모」에 저장합니다. 사건 상담 내용은 「사건에 넣기」로 넣으세요.</div>
+    <form id="memoGenForm" style="margin:0;"><label style="font-size:12px; color:var(--sub);">파일 이름<br><input type="text" id="memoGenNameInput" style="width:100%; box-sizing:border-box;" placeholder="예: 세법공부_1114"></label></form>
+    <div style="font-size:12px; color:var(--sub);">어느 폴더에?</div>
+    <div id="memoGenFolderList" class="memo-gen-folders"></div>
+    <div><button type="button" id="memoGenAddFolder" class="ghost-btn">+ 새 폴더</button></div>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" id="memoSaveCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoSaveConfirm" class="save-btn">저장</button>
+      <button type="button" id="memoSaveCancel" class="ghost-btn">취소</button>
     </div>
   </div>
 </div>
 
-<!-- [2026.09] 사건개요 초안을 기존 사건에 적용할 때 어느 사건인지 고르는 다이얼로그 —
-     memoOvApplyBtn 클릭으로 열리며, 지금 선택된 세목과 같은 세목의 사건만 나열한다. -->
-<div id="memoOvApplyStep">
-  <div class="box" style="width:min(440px, 92vw); position:relative;">
-    <span class="modal-close" id="memoOvApplyClose" title="닫기" style="position:absolute; top:10px; right:10px; color:var(--sub); background:var(--panel);">✕</span>
-    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">사건에 반영(새로 등록 또는 기존 사건에 적용)</div>
-    <div style="font-size:11.5px; color:var(--sub);">사건을 만들면서 지금 작성한 사건개요를 바로 반영합니다.</div>
-    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoOvNewCustomer" size="10" placeholder="필수"></label>
-    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoOvNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
-    <select title="업무유형" id="memoOvNewUptype" style="box-sizing:border-box;"></select>
-    <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoOvNewRequestDate" style=" box-sizing:border-box;"></label>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" id="memoOvApplyCancel" class="ghost-btn">취소</button>
-      <button type="button" id="memoOvNewCaseConfirm" class="save-btn">등록하고 반영</button>
-    </div>
-    <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 사건 목록에 등록된 사건에 적용</div>
-    <select id="memoOvApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건 선택</option></select>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" id="memoOvApplyConfirm" class="save-btn">기존 사건에 적용</button>
-    </div>
-  </div>
-</div>
-
-<!-- [2026.09 신규] 의뢰서 작성 — 고른 템플릿을 어느 사건에 저장할지 고르는 다이얼로그.
-     memoReqApplyBtn 클릭으로 열리며, 위 사건개요 다이얼로그와 같은 구조(새로 등록 / 기존
-     사건에 저장)를 쓰되 세목은 여기서 직접 고른다(템플릿 선택과 세목은 서로 독립적이라
-     자동으로 정해줄 수 없음 — 예: "불복.md"는 세목만 정해지고 업무유형은 여기서 고른다). -->
+<!-- [2026.11.14] 「사건에 넣기」 — 글·손글씨·넥스 대화 모두 이 창 하나. 새 사건 등록 또는 기존 사건 고르기.
+     적은 내용은 그 사건의 의뢰서 파일(의뢰서_….md) 맨 앞에 「## 상담기록(시각 · 어디서)」으로 쌓인다(최신이 앞 — 넥스 첫 응답 앞부분에 걸림).
+     (옛 「의뢰서를 사건에 저장」 창을 넓힌 것 — 세목은 여기서 고른다: 양식 이름으로 짐작해 미리 채우되 강제 아님) -->
 <div id="memoReqApplyStep">
   <div class="box" style="width:min(440px, 92vw); position:relative;">
     <span class="modal-close" id="memoReqApplyClose" title="닫기" style="position:absolute; top:10px; right:10px; color:var(--sub); background:var(--panel);">✕</span>
-    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">의뢰서를 사건에 저장(새로 등록 또는 기존 사건에 저장)</div>
-    <div style="font-size:11.5px; color:var(--sub);">지금 작성한 의뢰서 내용을 그 사건의 폴더에 파일로 저장합니다.</div>
+    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">사건에 넣기</div>
+    <div id="memoReqApplyDesc" style="font-size:11.5px; color:var(--sub);">새 사건으로 등록하거나 이미 있는 사건을 고르면, 적은 내용을 그 사건의 의뢰서 파일 맨 앞에 상담기록으로 쌓습니다.</div>
+    <div style="font-weight:700; color:var(--navy); font-size:13px;">새 사건으로 등록</div>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">고객명(의뢰인) *<br><input type="text" id="memoReqNewCustomer" size="10" placeholder="필수"></label>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">납세자<br><input type="text" id="memoReqNewTaxpayer" size="10" placeholder="의뢰인과 다른 경우만"></label>
     <select title="세목" id="memoReqNewSemok" style="box-sizing:border-box;">
@@ -54390,16 +54336,16 @@ function rwAiApplyEdit_(id, content){
       <option value="objection">불복</option>
       <option value="business">사업</option>
     </select>
-    <select id="memoReqNewUptype" style="box-sizing:border-box;"></select>
+    <select title="업무유형" id="memoReqNewUptype" style="box-sizing:border-box;"></select>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoReqNewRequestDate" style="width:150px; box-sizing:border-box;"></label><!-- [2026.10.22 묶음 ㅁ3] 95px이면 "2026-10-2"로 잘림(가상양도7 표 6) -->
     <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" id="memoReqNewCaseConfirm" class="save-btn">등록하고 넣기</button>
       <button type="button" id="memoReqApplyCancel" class="ghost-btn">취소</button>
-      <button type="button" id="memoReqNewCaseConfirm" class="save-btn">등록하고 저장</button>
     </div>
-    <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 사건 목록에 등록된 사건에 저장</div>
+    <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 있는 사건에 넣기</div>
     <select id="memoReqApplyCaseSelect" style="box-sizing:border-box;"><option value="">사건 선택</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" id="memoReqApplyConfirm" class="save-btn">기존 사건에 저장</button>
+      <button type="button" id="memoReqApplyConfirm" class="save-btn">이 사건에 넣기</button>
     </div>
   </div>
 </div>
@@ -54437,193 +54383,13 @@ function rwAiApplyEdit_(id, content){
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — work_generateUniqueCaseName_(Code.js)이
-  // 만드는 실제 사건 폴더명은 "고객명(동명이인 구분 숫자)_세목_업무유형"인데, 이 매칭은
-  // "고객명(숫자)" 뒤에 공백이나 끝만 허용해서 사건 폴더를 전혀 못 찾았다 — 이미 사건이 있는
-  // 고객과 통화하며 메모를 저장하면, 그 사건 폴더를 놔두고 이름만 같은 새 폴더가 따로 만들어져
-  // 메모가 실제 사건 자료와 분리된 채 조용히 엉뚱한 곳에 저장되고 있었다. "_"도 경계문자로
-  // 인정해서 사건 폴더를 같은 고객으로 인식하게 한다(뒤에 여러 개 걸리면 기존처럼 목록에서
-  // 정확한 폴더를 고르게 한다).
-  function findCustomerFolderMatches_(folders, customerName){
-    var nameEscaped = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // [2026.10.18 탭연결 10번] 지금 사건 폴더 이름은 "고객명(납세자)_세목_업무유형"이라 고객명 바로 뒤가 괄호다 — "("도 경계로 인정한다
-    var re = new RegExp('^' + nameEscaped + '(\\d*)(?:\\s|_|\\(|$)');
-    var matches = [];
-    folders.forEach(function(f){
-      var m = f.name.match(re);
-      if (m) matches.push({ name: f.name, serial: m[1] ? parseInt(m[1], 10) : 1 });
-    });
-    return matches;
-  }
+  // [2026.11.14 메모 한 창] 옛 저장 창(고객명을 넣으면 사건 폴더 「고객명사건.md」, 비우면 일반메모)을 걷고 두 갈래로 —
+  //  「사건에 넣기」(아래 의뢰서 스크립트 memoOpenCaseDialog_: 그 사건 의뢰서 파일 맨 앞에 상담기록) / 「일반메모로 저장」(폴더를 펼쳐 보고 고름).
+  //  사건 폴더를 고객 이름으로 맞춰 찾던 옛 길(findCustomerFolderMatches_·writeMemoEntry_·saveAsCustomerMemo_ 등)은 함께 걷음 — 사건은 사건 목록에서 고른다.
+  //  이미 있는 「고객명사건.md」 파일은 그대로 둔다(GAS가 사건 폴더 메모 글로 계속 읽음).
 
-  function writeMemoEntry_(basePath, targetFolderName, content, extraFile, fileName){
-    var targetPath = basePath.concat([targetFolderName]);
-    fileName = fileName || (targetFolderName + '사건.md');
-    return callGas('listFolder', { path: targetPath }).then(function(folderListing){
-      var existingFile = (folderListing.files || []).filter(function(f){ return f.name === fileName; })[0];
-      var entry = '## 상담기록 (' + formatMemoTimestamp_() + ')\n\n' + content.trim() + '\n';
-      var p;
-      if (existingFile){
-        p = callGas('readFile', { fileId: existingFile.id }).then(function(fileData){
-          var prevContent = (fileData && !fileData.error && typeof fileData.content === 'string') ? fileData.content : '';
-          var newContent = (prevContent.trim() ? prevContent.trim() + '\n\n---\n\n' : '') + entry;
-          return callGas('uploadFile', { fileId: existingFile.id, name: fileName, mimeType: 'text/markdown', base64Data: utf8ToBase64(newContent) });
-        });
-      } else {
-        p = callGas('uploadFile', { path: targetPath, name: fileName, mimeType: 'text/markdown', base64Data: utf8ToBase64(entry) });
-      }
-      return p.then(function(res){
-        if (res.error) throw new Error(res.error);
-        if (extraFile){
-          return callGas('uploadFile', { path: targetPath, name: extraFile.name, mimeType: extraFile.mimeType, base64Data: extraFile.base64Data }).then(function(res2){
-            if (res2 && res2.error) toast('본문은 저장됐지만 첨부(' + extraFile.name + ') 저장은 실패했습니다: ' + res2.error);
-          });
-        }
-      }).then(function(){
-        toast('"' + targetFolderName + '" 폴더에 저장했습니다.');
-        if (typeof docsNavigate === 'function' && docsPath.join('/') === targetPath.join('/')) docsNavigate(docsPath);
-        if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
-      });
-    });
-  }
-
-  // [2026.10.18 탭연결 10번] 사건 폴더ID로 바로 저장(이어쓰기 포함) — writeMemoEntry_의 폴더ID판. 처리개요 📝 메모 카드가
-  // 사건 폴더 바로 안의 .md를 세므로, 여기 저장한 메모는 그 사건 화면에 바로 보인다.
-  function writeMemoEntryToFolder_(folderId, label, content, extraFile, fileName){
-    return callGas('listFolder', { folderId: folderId }).then(function(folderListing){
-      if (folderListing && folderListing.error) throw new Error(folderListing.error);
-      var existingFile = (folderListing.files || []).filter(function(f){ return f.name === fileName; })[0];
-      var entry = '## 상담기록 (' + formatMemoTimestamp_() + ')\n\n' + content.trim() + '\n';
-      var p = existingFile
-        ? callGas('readFile', { fileId: existingFile.id }).then(function(fileData){
-            var prevContent = (fileData && !fileData.error && typeof fileData.content === 'string') ? fileData.content : '';
-            var newContent = (prevContent.trim() ? prevContent.trim() + '\n\n---\n\n' : '') + entry;
-            return callGas('uploadFile', { fileId: existingFile.id, name: fileName, mimeType: 'text/markdown', base64Data: utf8ToBase64(newContent) });
-          })
-        : callGas('uploadFile', { folderId: folderId, name: fileName, mimeType: 'text/markdown', base64Data: utf8ToBase64(entry) });
-      return p.then(function(res){
-        if (res.error) throw new Error(res.error);
-        if (extraFile){
-          return callGas('uploadFile', { folderId: folderId, name: extraFile.name, mimeType: extraFile.mimeType, base64Data: extraFile.base64Data }).then(function(res2){
-            if (res2 && res2.error) toast('본문은 저장됐지만 첨부(' + extraFile.name + ') 저장은 실패했습니다: ' + res2.error);
-          });
-        }
-      }).then(function(){
-        toast('"' + label + '" 사건 폴더에 저장했습니다.');
-        if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
-      });
-    });
-  }
-
-  // [2026.10.18 탭연결 10번] 메모를 "고객명"으로 저장할 때 폴더 이름 맞추기보다 먼저 그 고객의 실제 사건(작업관리)을 찾는다 —
-  // 폴더 이름 규칙이 바뀌면서 사건 폴더를 못 찾고 고객사건 맨 위에 "고객명"만으로 된 새 폴더(어느 사건에도 안 붙음)를 만들던 문제.
-  //  · 그 고객의 사건이 1건이고 폴더가 있으면 → 바로 그 사건 폴더에 저장
-  //  · 여러 건이면 → 어느 사건인지 고르게(진행 중 사건 먼저)
-  //  · 폴더 없는 상담 사건만 있으면 → 업무유형을 물어 폴더를 만든 뒤 저장(탭연결 1번과 같은 도우미)
-  //  · 사건이 하나도 없으면(또는 "사건 말고 고객 이름 폴더"를 고르면) → 예전 방식(폴더 이름으로 찾기)
-  // 돌려주는 값: 처리했으면 Promise<true|false>, 예전 방식으로 넘기면 null.
-  function memoSaveToCustomerCase_(content, customerName, extraFile, fileName){
-    var norm_ = function(s){ return String(s || '').replace(/\s+/g, ''); };
-    return callGas('work_get_cases', {}).then(function(res){
-      var cases = ((res && res.cases) || []).filter(function(c){ return norm_(c.고객명) === norm_(customerName); });
-      if (!cases.length) return null;
-      cases.sort(function(a, b){
-        var da = a.상태 === '완료' ? 1 : 0, db = b.상태 === '완료' ? 1 : 0;
-        if (da !== db) return da - db;
-        return String(b.수정일 || '').localeCompare(String(a.수정일 || ''));
-      });
-      var pick = (cases.length === 1 && cases[0].폴더ID) ? Promise.resolve(cases[0]) : nxDialog_({
-        title: '어느 사건 메모인가요?',
-        stack: true,
-        message: '"' + customerName + '" 고객의 사건이 ' + cases.length + '건 있습니다. 메모를 넣을 사건을 고르세요.' +
-          (cases.some(function(c){ return !c.폴더ID; }) ? '\n(폴더 없는 상담 사건을 고르면 업무유형을 물어 폴더를 만듭니다)' : ''),
-        buttons: cases.slice(0, 8).map(function(c){
-          return { label: (c.사건명 || c.고객명) + (c.상태 === '완료' ? ' (완료)' : '') + (c.폴더ID ? '' : ' (상담·폴더 없음)'), value: c, className: 'btn' };
-        }).concat([
-          { label: '사건 말고 고객 이름 폴더에', value: 'legacy', className: 'ghost-btn' },
-          { label: '취소', value: false, className: 'ghost-btn', isCancel: true, primary: true }
-        ])
-      });
-      return pick.then(function(c){
-        if (c === 'legacy') return null;
-        if (!c) return false;
-        return nxEnsureCaseFolder_(c, '메모를').then(function(cc){
-          if (!cc || !cc.폴더ID) return false;
-          return writeMemoEntryToFolder_(cc.폴더ID, cc.사건명 || customerName, content, extraFile, fileName).then(function(){ return true; });
-        });
-      });
-    });
-  }
-
-  function saveAsCustomerMemo_(content, customerName, extraFile){
-    // [2026.09 버그수정] 예전엔 파일명을 묻지도 않고 항상 "고객명+사건.md"로 조용히 저장해서,
-    // 세무사님이 저장한 파일을 못 찾는 일이 있었다(정확히는 있었지만 어떤 이름인지 몰랐던 것).
-    // 일반메모(saveAsGeneralMemo_)와 같은 방식으로 파일명을 직접 입력받는다 — 기본값은 기존과
-    // 같은 "고객명사건"이라, 그냥 확인만 누르면 예전과 똑같이(이어쓰기 포함) 동작한다.
-    return nxPrompt_('저장할 파일명을 입력하세요(기존 파일과 같은 이름이면 그 파일에 이어서 저장됩니다):', customerName + '사건').then(function(fileNameRaw){
-      if (!fileNameRaw || !fileNameRaw.trim()) return false;
-      var fileName = fileNameRaw.trim();
-      if (!/\.md$/i.test(fileName)) fileName += '.md';
-
-      return memoSaveToCustomerCase_(content, customerName, extraFile, fileName).then(function(handled){
-        if (handled !== null) return handled;
-        return memoSaveToCustomerFolderLegacy_(content, customerName, extraFile, fileName);
-      });
-    });
-  }
-
-  // 사건이 없는 고객(또는 "사건 말고 고객 이름 폴더"를 고른 경우) — 예전 방식 그대로: 고객사건 폴더 바로 아래에서 이름으로 찾는다
-  function memoSaveToCustomerFolderLegacy_(content, customerName, extraFile, fileName){
-    {
-      return getCustomerRootPath_().then(function(basePath){
-        return callGas('listFolder', { path: basePath }).then(function(listing){
-          var matches = findCustomerFolderMatches_(listing.folders || [], customerName);
-          if (matches.length === 1){
-            var only = matches[0];
-            // [2026.10.09 수정] 세무사님 지적 — "당연히 중복일 때 확인해야 하는데 왜 묻나". 예전엔 그 이름의 폴더가 하나만 있어도
-            // (= 같은 고객에게 두 번째 메모를 남기는 평범한 경우) 매번 "같은 고객이 맞습니까?"를 물었다. 실제로 헷갈릴 수 있는 건
-            // 고객관리에 같은 이름이 2명 이상(동명이인)일 때뿐이므로, 그때만 묻고 아니면 바로 그 폴더에 이어서 저장한다.
-            var norm_ = function(s){ return String(s || '').replace(/\s+/g, ''); };
-            var askNeeded = callGas('client_get_clients', {}).then(function(res){
-              var same = (res && res.clients || []).filter(function(cl){ return norm_(cl.성명) === norm_(customerName); }).length;
-              return same >= 2;
-            }).catch(function(){ return true; }); // 고객 목록을 못 읽으면 안전하게 묻는다
-            return askNeeded.then(function(needAsk){
-              return needAsk
-                ? nxConfirm_('고객 명단에 "' + customerName + '" 이름이 여러 명 있습니다(동명이인).\n기존 "' + only.name + '" 폴더의 고객이 맞습니까?\n\n"취소"를 누르면 다른 사람으로 보고 번호를 붙인 새 폴더를 만듭니다.')
-                : true;
-            }).then(function(same){
-              if (same){
-                return writeMemoEntry_(basePath, only.name, content, extraFile, fileName).then(function(){ return true; });
-              }
-              var newName = customerName + (only.serial + 1);
-              return callGas('createFolder', { path: basePath, name: newName }).then(function(created){
-                if (created.error) throw new Error(created.error);
-                return writeMemoEntry_(basePath, newName, content, extraFile, fileName).then(function(){ return true; });
-              });
-            });
-          } else if (matches.length > 1){
-            return nxPrompt_('"' + customerName + '"로 시작하는 폴더가 여러 개 있습니다. 저장할 정확한 폴더명을 입력하세요\n(동명이인 등 목록에 없는 새 사람이면, 새 이름을 그대로 입력하세요):\n' + matches.map(function(m){ return m.name; }).join('\n')).then(function(choice){
-              if (!choice || !choice.trim()) return false;
-              var chosen = choice.trim();
-              var already = (listing.folders || []).some(function(f){ return f.name === chosen; });
-              var p = already ? Promise.resolve() : callGas('createFolder', { path: basePath, name: chosen }).then(function(created){ if (created.error) throw new Error(created.error); });
-              return p.then(function(){ return writeMemoEntry_(basePath, chosen, content, extraFile, fileName); }).then(function(){ return true; });
-            });
-          } else {
-            return callGas('createFolder', { path: basePath, name: customerName }).then(function(created){
-              if (created.error) throw new Error(created.error);
-              return writeMemoEntry_(basePath, customerName, content, extraFile, fileName).then(function(){ return true; });
-            });
-          }
-        });
-      });
-    }
-  }
-
-  // [2026.09 신규] "일반메모" 폴더부터 현재 선택된 노트북(currentNotebookPath)까지, 없는
-  // 단계는 순서대로 만들어가며 최종 경로를 돌려준다 — 기존엔 "일반메모" 한 단계만 이렇게
-  // 확인했는데, 노트북(하위폴더)이 생기면서 N단계로 일반화한 것.
+  // [2026.09 신규] "일반메모" 폴더부터 현재 선택된 폴더(currentNotebookPath — 예전 이름 노트북)까지, 없는
+  // 단계는 순서대로 만들어가며 최종 경로를 돌려준다.
   function ensureNotebookFullPath_(){
     return generalMemoParentPath_().then(function(parentPath){
       var segments = ['일반메모'].concat(currentNotebookPath);
@@ -54641,58 +54407,113 @@ function rwAiApplyEdit_(id, content){
     });
   }
 
-  function saveAsGeneralMemo_(content, extraFile){
-    return nxPrompt_('일반메모로 저장합니다. 파일명을 입력하세요:').then(function(fileNameRaw){
-      if (!fileNameRaw || !fileNameRaw.trim()) return false;
-      var fileName = fileNameRaw.trim();
-      if (!/\.md$/i.test(fileName)) fileName += '.md';
-
-      return ensureNotebookFullPath_().then(function(targetPath){
-        return callGas('uploadFile', { path: targetPath, name: fileName, mimeType: 'text/markdown', base64Data: utf8ToBase64(content.trim() + '\n') }).then(function(res){
-          if (res.error) throw new Error(res.error);
-          if (extraFile){
-            return callGas('uploadFile', { path: targetPath, name: extraFile.name, mimeType: extraFile.mimeType, base64Data: extraFile.base64Data }).then(function(res2){
-              if (res2 && res2.error) toast('본문은 저장됐지만 첨부(' + extraFile.name + ') 저장은 실패했습니다: ' + res2.error);
-            });
-          }
-        }).then(function(){
-          toast('일반메모로 "' + fileName + '"에 저장했습니다.');
-          if (typeof refreshGeneralMemoList === 'function') refreshGeneralMemoList();
-          return true;
+  // 일반메모로 저장 — 글은 「이름.md」, 손글씨는 「이름.pdf」(넥스 대화 글도 .md)
+  function saveAsGeneralMemo_(content, extraFile, fileName){
+    var base = String(fileName || '').trim().replace(/\.(md|pdf)$/i, '').replace(/[\\\/:*?"<>|]/g, '_');
+    if (!base) return Promise.resolve(false);
+    var folderLabel = notebookLabel_(currentNotebookPath);
+    return ensureNotebookFullPath_().then(function(targetPath){
+      var hasText = !!(content && String(content).trim());
+      var p = hasText ? callGas('uploadFile', { path: targetPath, name: base + '.md', mimeType: 'text/markdown', base64Data: utf8ToBase64(String(content).trim() + '\n') }) : Promise.resolve({});
+      return p.then(function(res){
+        if (res && res.error) throw new Error(res.error);
+        if (!extraFile) return;
+        var exName = /\.pdf$/i.test(extraFile.name) ? base + '.pdf' : base + '_' + extraFile.name;
+        return callGas('uploadFile', { path: targetPath, name: exName, mimeType: extraFile.mimeType, base64Data: extraFile.base64Data }).then(function(res2){
+          if (res2 && res2.error) throw new Error((hasText ? '글은 저장됐지만 ' : '') + '파일(' + exName + ') 저장 실패: ' + res2.error);
         });
+      }).then(function(){
+        toast('「' + folderLabel + '」에 「' + base + '」(으)로 저장했습니다.');
+        refreshGeneralMemoList();
+        return true;
       });
     });
   }
 
   var memoSaveStep = document.getElementById('memoSaveStep');
-  var memoSaveStepTitle = document.getElementById('memoSaveStepTitle');
-  var memoSaveStepDesc = document.getElementById('memoSaveStepDesc');
-  var memoFolderInput = document.getElementById('memoFolderInput');
-  var SAVE_STEP_LABELS_DEFAULT_ = {
-    title: '고객명을 입력하세요',
-    desc: '이미 있는 사건 폴더(예: "홍길동 양도")가 있으면 그 사건파일에 이어서 저장되고, 없으면 고객명만으로 새 폴더가 만들어집니다. <b>비워두고 저장하면</b> 일반메모로 분류되어 파일명을 따로 입력받습니다.',
-    placeholder: '고객명(비우면 일반메모)'
-  };
-  function openSaveDialog(content, onDone, extraFile){
-    pendingSaveContent = content;
-    pendingSaveOnDone = onDone || null;
-    pendingSaveExtraFile = extraFile || null;
-    var L = SAVE_STEP_LABELS_DEFAULT_;
-    memoSaveStepTitle.textContent = L.title;
-    memoSaveStepDesc.innerHTML = L.desc;
-    memoFolderInput.placeholder = L.placeholder;
-    memoFolderInput.value = '';
+  var memoGenNameInput = document.getElementById('memoGenNameInput');
+  var memoGenFolderListEl = document.getElementById('memoGenFolderList');
+  function memoStamp_(){
+    var d = new Date(); var pad = function(n){ return String(n).padStart(2, '0'); };
+    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes());
+  }
+  function memoGenDefaultName_(content, extraFile){
+    if (extraFile && !(content && String(content).trim())) return '손글씨_' + memoStamp_();
+    var first = '';
+    String(content || '').split(/\r?\n/).some(function(l){ var t = l.replace(/^[\s#>*\-]+/, '').replace(/\[[ xX]\]\s*/, '').trim(); if (t){ first = t; return true; } return false; });
+    first = first.slice(0, 30).replace(/[\\\/:*?"<>|]/g, '').trim();
+    return first || ('메모_' + memoStamp_());
+  }
+  // 폴더(예전 이름 노트북)를 펼쳐 보이고 고른다 — 폴더마다 메모 수와 최근 메모 이름(세무사님 "폴더만 잘 보여주면 된다")
+  function renderGenFolderList_(){
+    if (!memoGenFolderListEl) return;
+    var paths = [[]].concat(allNotebooks || []);
+    var curKey = currentNotebookPath.join('/');
+    if (!paths.some(function(p){ return p.join('/') === curKey; })) paths.push(currentNotebookPath.slice()); // 방금 만든 폴더(목록이 아직 안 받아졌을 때)
+    paths.sort(function(a, b){ return a.join('/').localeCompare(b.join('/'), 'ko'); });
+    memoGenFolderListEl.innerHTML = paths.map(function(p){
+      var key = p.join('/');
+      var mine = comboEntries.filter(function(en){ return (en.notebookPath || []).join('/') === key; });
+      mine.sort(function(a, b){ return ((b.file && b.file.modifiedDate) || 0) - ((a.file && a.file.modifiedDate) || 0); });
+      var names = mine.slice(0, 3).map(function(en){ return String(en.file.name || '').replace(/\.md$/i, ''); });
+      var on = key === curKey;
+      return '<label class="memo-gen-folder' + (on ? ' on' : '') + '" style="padding-left:' + (8 + p.length * 18) + 'px;">' +
+        '<input type="radio" name="memoGenFolder" value="' + escapeHtml(key) + '"' + (on ? ' checked' : '') + '> ' +
+        (p.length ? '📁 ' + escapeHtml(p[p.length - 1]) : '<b>일반메모</b>') +
+        ' <span class="memo-gen-meta">(메모 ' + mine.length + '개' + (names.length ? ' — ' + escapeHtml(names.join(' · ')) : '') + ')</span></label>';
+    }).join('');
+  }
+  memoGenFolderListEl.addEventListener('change', function(e){
+    if (e.target && e.target.name === 'memoGenFolder'){ currentNotebookPath = e.target.value ? e.target.value.split('/') : []; renderGenFolderList_(); }
+  });
+  // 「+ 새 폴더」 — 고른 폴더 안에 만든다(옛 「+ 노트북」 단추와 같은 일)
+  document.getElementById('memoGenAddFolder').addEventListener('click', function(){
+    nxPrompt_('새 폴더 이름을 입력하세요 (「' + notebookLabel_(currentNotebookPath) + '」 안에 만듭니다):').then(function(nameRaw){
+      if (!nameRaw || !nameRaw.trim()) return;
+      var name = nameRaw.trim().replace(/[\\\/:*?"<>|]/g, '_');
+      var newPath = currentNotebookPath.concat([name]);
+      var keep = currentNotebookPath;
+      currentNotebookPath = newPath;
+      ensureNotebookFullPath_().then(function(){
+        toast('폴더 「' + notebookLabel_(newPath) + '」을(를) 만들었습니다.');
+        renderGenFolderList_();
+        return refreshGeneralMemoList();
+      }).then(function(){ renderGenFolderList_(); }).catch(function(err){
+        currentNotebookPath = keep; renderGenFolderList_();
+        toast('폴더를 만들지 못했습니다: ' + nxErrText_(err));
+      });
+    });
+  });
+  // 「일반메모로 저장」 창 열기 — ctx = { content, extraFile, onDone }
+  function memoOpenGeneralSave_(ctx){
+    pendingSaveContent = ctx.content || '';
+    pendingSaveOnDone = ctx.onDone || null;
+    pendingSaveExtraFile = ctx.extraFile || null;
+    memoGenNameInput.value = memoGenDefaultName_(pendingSaveContent, pendingSaveExtraFile);
+    renderGenFolderList_();
     memoSaveStep.style.display = 'flex';
-    setTimeout(function(){ memoFolderInput.focus(); }, 50);
+    setTimeout(function(){ memoGenNameInput.focus(); memoGenNameInput.select(); }, 50);
+    refreshGeneralMemoList().then(function(){ renderGenFolderList_(); });
+  }
+  // 넥스 대화(aichat.html)·옛 부르는 곳이 쓰는 입구 — 이제는 「사건에 넣기 / 일반메모로 저장」을 먼저 고른다
+  function openSaveDialog(content, onDone, extraFile, origin){
+    nxDialog_({ title: '메모 저장', message: '어디에 넣을까요?\n· 사건에 넣기 — 그 사건의 의뢰서 파일 맨 앞에 상담기록으로\n· 일반메모로 저장 — 사건과 상관없는 메모',
+      buttons: [
+        { label: '사건에 넣기', value: 'case', className: 'save-btn', primary: true },
+        { label: '일반메모로 저장', value: 'gen', className: 'ghost-btn' },
+        { label: '취소', value: false, className: 'ghost-btn', isCancel: true }
+      ] }).then(function(v){
+      if (v === 'case' && typeof memoOpenCaseDialog_ === 'function') memoOpenCaseDialog_({ content: content || '', extraFile: extraFile || null, origin: origin || '넥스 대화', onDone: onDone || null });
+      else if (v === 'gen') memoOpenGeneralSave_({ content: content || '', extraFile: extraFile || null, onDone: onDone || null });
+    });
   }
   document.getElementById('memoSaveCancel').addEventListener('click', function(){ memoSaveStep.style.display = 'none'; });
   document.getElementById('memoSaveConfirm').addEventListener('click', function(){
-    var customerName = memoFolderInput.value.trim();
+    var name = memoGenNameInput.value.trim();
+    if (!name){ toast('파일 이름을 적어 주세요.'); memoGenNameInput.focus(); return; }
     var btn = document.getElementById('memoSaveConfirm');
     btn.disabled = true; btn.textContent = '저장 중…';
-    var p = customerName ? saveAsCustomerMemo_(pendingSaveContent, customerName, pendingSaveExtraFile)
-                          : saveAsGeneralMemo_(pendingSaveContent, pendingSaveExtraFile);
-    p.then(function(saved){
+    saveAsGeneralMemo_(pendingSaveContent, pendingSaveExtraFile, name).then(function(saved){
       if (saved){
         memoSaveStep.style.display = 'none';
         if (pendingSaveOnDone) pendingSaveOnDone();
@@ -54703,6 +54524,7 @@ function rwAiApplyEdit_(id, content){
       btn.disabled = false; btn.textContent = '저장';
     });
   });
+  document.getElementById('memoGenForm').addEventListener('submit', function(e){ e.preventDefault(); document.getElementById('memoSaveConfirm').click(); }); // Enter = 저장(<form> 제출로 — 한글 입력 중 Enter도 안전)
 
   // ============================================================
   // 일반메모
@@ -54720,6 +54542,7 @@ function rwAiApplyEdit_(id, content){
   var activeTagFilter = null;
 
   function initMemoText(){
+    if (typeof memoEnsureTemplates_ === 'function') memoEnsureTemplates_(); // [2026.11.14] 「양식 ▾」 목록(처음 한 번)
     if (memoTextLoaded) return;
     memoTextLoaded = true;
     refreshGeneralMemoList();
@@ -54762,16 +54585,12 @@ function rwAiApplyEdit_(id, content){
   }
 
   function notebookLabel_(pathArr){
-    return (pathArr && pathArr.length) ? pathArr.join(' › ') : '(최상위)';
+    return ['일반메모'].concat(pathArr || []).join(' › '); // [2026.11.14] 「(최상위)」 대신 실제 폴더 이름
   }
 
+  // [2026.11.14] 늘 떠 있던 「저장 위치」 고르기 상자는 걷음 — 폴더는 「일반메모로 저장」 창에서 펼쳐 보고 고른다(열려 있으면 다시 그림)
   function renderNotebookSelect_(){
-    var sel = document.getElementById('memoNotebookSelect');
-    var options = [[]].concat(allNotebooks);
-    sel.innerHTML = options.map(function(p){
-      return '<option value="' + p.join('/').replace(/"/g, '&quot;') + '">' + notebookLabel_(p) + '</option>';
-    }).join('');
-    sel.value = currentNotebookPath.join('/');
+    if (memoSaveStep && memoSaveStep.style.display === 'flex') renderGenFolderList_();
   }
 
   function renderTagChips_(){
@@ -54779,6 +54598,7 @@ function rwAiApplyEdit_(id, content){
     var allTags = [];
     comboEntries.forEach(function(en){ en.tags.forEach(function(t){ if (allTags.indexOf(t) === -1) allTags.push(t); }); });
     allTags.sort(function(a, b){ return a.localeCompare(b, 'ko'); });
+    var tagRow = document.getElementById('memoTagRow'); if (tagRow) tagRow.style.display = allTags.length ? '' : 'none'; // 태그가 있을 때만 줄을 보임
     wrap.innerHTML = '';
     allTags.forEach(function(t){
       var chip = document.createElement('span');
@@ -54892,7 +54712,7 @@ function rwAiApplyEdit_(id, content){
     // 이 메모를 계속 고쳐 쓰는 동안 새로 캡처하는 메모도 자연스럽게 같은 자리에 쌓이게.
     currentNotebookPath = entry.notebookPath || [];
     renderNotebookSelect_();
-    toast('"' + entry.file.name + '"을(를) 불러왔습니다. 수정 후 저장하면 이 파일에 덮어씁니다.');
+    toast('"' + entry.file.name + '"을(를) 불러왔습니다. 고친 뒤 「일반메모로 저장」을 누르면 이 파일에 덮어씁니다.');
   }
 
   document.getElementById('memoBtnNew').addEventListener('click', function(){
@@ -54900,6 +54720,8 @@ function rwAiApplyEdit_(id, content){
       exitMemoPreview_();
       memoText.value = '';
       editingGeneralMemoFile = null;
+      if (typeof memoReqSelectedTemplate_ !== 'undefined') memoReqSelectedTemplate_ = null; // [2026.11.14] 불러온 양식도 비움
+      var tplSel_ = document.getElementById('memoTplSelect'); if (tplSel_) tplSel_.value = '';
       memoSearch.value = '';
       memoSearchDropdown.style.display = 'none';
       memoText.focus();
@@ -54926,11 +54748,7 @@ function rwAiApplyEdit_(id, content){
       .finally(function(){ btn.disabled = false; });
   }
 
-  document.getElementById('memoBtnSave').addEventListener('click', function(){
-    if (editingGeneralMemoFile){ saveOverExistingGeneralMemo_(); return; }
-    if (!memoText.value.trim()){ toast('입력한 내용이 없습니다.'); return; }
-    openSaveDialog(memoText.value.trim(), function(){ memoText.value = ''; });
-  });
+  // [2026.11.14] 「일반메모로 저장」·「사건에 넣기」 단추는 글·손글씨 두 탭 공통 — 아래 의뢰서 스크립트의 메모 탭 묶음에서 건다
 
   // ============================================================
   // 마크다운 미리보기 + 체크리스트 토글
@@ -55075,38 +54893,7 @@ function rwAiApplyEdit_(id, content){
     memoPreviewEl.style.display = memoPreviewOn ? 'block' : 'none';
   });
 
-  // ============================================================
-  // 노트북(하위 폴더) 선택·생성
-  // ============================================================
-  document.getElementById('memoNotebookSelect').addEventListener('change', function(e){
-    currentNotebookPath = e.target.value ? e.target.value.split('/') : [];
-  });
-  document.getElementById('memoNotebookAddBtn').addEventListener('click', function(){
-    nxPrompt_('새 노트북 이름을 입력하세요' + (currentNotebookPath.length ? ' ("' + notebookLabel_(currentNotebookPath) + '" 안에 만들어집니다):' : ':')).then(function(nameRaw){
-      if (!nameRaw || !nameRaw.trim()) return;
-      var name = nameRaw.trim();
-      var newPath = currentNotebookPath.concat([name]);
-      var basePathPromise = generalMemoParentPath_().then(function(parentPath){
-        var segments = ['일반메모'].concat(newPath);
-        var chain = Promise.resolve(parentPath);
-        segments.forEach(function(seg){
-          chain = chain.then(function(pathSoFar){
-            return callGas('listFolder', { path: pathSoFar }).then(function(listing){
-              var exists = (listing.folders || []).some(function(f){ return f.name === seg; });
-              var p = exists ? Promise.resolve() : callGas('createFolder', { path: pathSoFar, name: seg }).then(function(created){ if (created.error) throw new Error(created.error); });
-              return p.then(function(){ return pathSoFar.concat([seg]); });
-            });
-          });
-        });
-        return chain;
-      });
-      basePathPromise.then(function(){
-        currentNotebookPath = newPath;
-        toast('노트북 "' + notebookLabel_(newPath) + '"을(를) 만들었습니다.');
-        return refreshGeneralMemoList();
-      }).catch(function(err){ toast('노트북 생성 실패: ' + nxErrText_(err)); });
-    });
-  });
+  // [2026.11.14] 옛 「저장 위치」 고르기·「+ 노트북」 단추는 걷음 — 「일반메모로 저장」 창의 폴더 펼침·「+ 새 폴더」(위 memoGenAddFolder)로
 
   // ============================================================
   // 서식 빠른삽입 + 마크다운 문법 도움말 (reportwriter.html의 #mdHelpBar/#mdHelpModal과
@@ -55494,405 +55281,7 @@ function rwAiApplyEdit_(id, content){
   });
 </script>
 
-<script>
-  // ============================================================
-  // 사건개요 초안 — casehandling.html의 "사건개요서" 구조화 입력을 전화 받는 순간부터 쓸 수
-  // 있게, 메모장 안에서 세목별 폼으로 미리 채워뒀다가 나중에 실제 사건을 골라 그대로 반영한다.
-  // casehandling.html(CH_CASE_OVERVIEW_FIELDS_/CH_ASSET_TYPE_OPTIONS_/CH_ASSET_KIND_OPTIONS_)과
-  // workmanage.html(WORK_BASE_DATE_LABELS_)의 전역 상수는 읽기 전용으로만 참조하고, 이 파일은
-  // 절대 건드리지 않는다 — 같은 페이지에 이식되어 전역으로 공유되므로(index.html이
-  // include_로 모든 화면을 한 페이지에 이어붙임) 별도 로드 없이 그냥 참조 가능하다.
-  // 모든 DOM id는 memoOv 접두사를 써서 casehandling.html의 chOv 계열과 절대 겹치지 않는다
-  // (사건처리 화면과 이 화면이 같은 DOM에 동시에 존재하기 때문).
-  // ============================================================
-
-  // casehandling.html의 chBuildTransferAssetBlockHtml_/chBuildLocationFieldsHtml_이 그리는
-  // "물건수·자산종류·유형·소재지·동·호" 커스텀 블록과 데이터 키를 맞춘 것 — 단, 여기선 전화
-  // 받으며 빠르게 입력하는 용도라 주소검색 버튼·동호 조건부표시 같은 상호작용 없이 전부 평범한
-  // select/text로 단순화한다(사용자 요청). assetType(자산종류)은 양도소득세 전용 개념이라
-  // transfer에만 있다.
-  var MEMO_OVERVIEW_EXTRA_FIELDS_ = {
-    transfer: [
-      { key: '물건수', label: '물건 수', type: 'number' },
-      { key: 'assetType', label: '자산종류(대표 물건)', type: 'select' },
-      { key: 'assetKind', label: '유형', type: 'select' },
-      { key: 'assetLocation', label: '소재지', type: 'text' },
-      { key: 'assetDong', label: '동', type: 'text' },
-      { key: 'assetHo', label: '호', type: 'text' }
-    ],
-    gift: [
-      { key: '물건수', label: '물건 수', type: 'number' },
-      { key: 'assetKind', label: '유형', type: 'select' },
-      { key: 'assetLocation', label: '소재지', type: 'text' },
-      { key: 'assetDong', label: '동', type: 'text' },
-      { key: 'assetHo', label: '호', type: 'text' }
-    ],
-    inheritance: [
-      { key: '물건수', label: '물건 수', type: 'number' },
-      { key: 'assetKind', label: '유형', type: 'select' },
-      { key: 'assetLocation', label: '소재지', type: 'text' },
-      { key: 'assetDong', label: '동', type: 'text' },
-      { key: 'assetHo', label: '호', type: 'text' }
-    ]
-  };
-  var MEMO_OVERVIEW_SEMOK_LABELS_ = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' };
-
-  var memoOvPanelEl = document.getElementById('memoOvPanel');
-  var memoOvSemokPickEl = document.getElementById('memoOvSemokPick');
-  var memoOvFormWrapEl = document.getElementById('memoOvFormWrap');
-  var memoOvFieldsEl = document.getElementById('memoOvFields');
-  var memoOvSemokSelectEl = document.getElementById('memoOvSemokSelect');
-  var memoOvApplyStepEl = document.getElementById('memoOvApplyStep');
-  var memoOvActive_ = false;
-  var memoOvInited_ = false;
-  var memoOvCurrentSemok_ = '';
-  var memoOvCurrentDraftName_ = null;
-  // [2026.09] 이 초안이 "사건개요초안" 폴더의 어느 실제 파일에서 왔는지(불러왔거나 방금
-  // 저장한 경우) 기억해둔다 — 이 초안을 사건에 적용(등록/기존사건 반영)하면 그 파일을
-  // 지워서, 이미 처리한 초안이 계속 목록에 남아 쌓이는 걸 막는다.
-  var memoOvCurrentDraftFileId_ = null;
-  var memoOvDrafts_ = [];
-  var memoOvApplyCases_ = [];
-
-  // 세목별 입력요소 하나를 그린다 — casehandling.html의 chRenderOverviewFieldInput_과 같은
-  // 구조(select/textarea/그 외 input)이되, selectOptions는 문자열 배열(CH_CASE_OVERVIEW_FIELDS_
-  // 방식)과 {value,label} 객체 배열(CH_ASSET_TYPE_OPTIONS_/CH_ASSET_KIND_OPTIONS_ 방식) 둘 다 받는다.
-  function memoOvRenderField_(key, label, type, value, selectOptions){
-    var common = 'id="memoOv_' + key + '" data-key="' + key + '" style="width:100%; box-sizing:border-box;"';
-    var v = escapeHtml(value || '');
-    var inputHtml;
-    if (type === 'select'){
-      inputHtml = '<select ' + common + '><option value="">선택</option>' +
-        (selectOptions || []).map(function(opt){
-          var isObj = opt && typeof opt === 'object';
-          var optValue = isObj ? opt.value : opt;
-          var optLabel = isObj ? opt.label : (opt || '(선택 안 함)');
-          if (optValue === '') return ''; // 빈 옵션은 위의 공통 "선택" 하나로 충분
-          return '<option value="' + escapeHtml(optValue) + '"' + (String(optValue) === String(value || '') ? ' selected' : '') + '>' + escapeHtml(optLabel) + '</option>';
-        }).join('') + '</select>';
-    } else if (type === 'textarea'){
-      inputHtml = '<textarea ' + common + ' style="width:100%; min-height:44px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + v + '</textarea>';
-    } else if (type === 'money'){
-      // casehandling.html의 chFormatMoney_/chOnMoneyInput_/chUnformatMoney_를 그대로 재사용
-      // (같은 페이지에 로드되어 전역으로 접근 가능) — 콤마 표시 방식을 두 화면이 똑같이 쓴다.
-      var formatted = (typeof chFormatMoney_ === 'function') ? chFormatMoney_(value) : v;
-      inputHtml = '<input type="text" inputmode="numeric" placeholder="원" ' + common + ' value="' + escapeHtml(formatted) + '" oninput="chOnMoneyInput_(this)">';
-    } else {
-      inputHtml = '<input type="' + type + '" ' + common + ' value="' + v + '">';
-    }
-    return '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">' + escapeHtml(label) + '</label>' + inputHtml + '</div>';
-  }
-
-  function memoOvBuildFormHtml_(semok, data){
-    data = data || {};
-    var html = '';
-    (MEMO_OVERVIEW_EXTRA_FIELDS_[semok] || []).forEach(function(f){
-      var opts = f.key === 'assetType' ? CH_ASSET_TYPE_OPTIONS_ : (f.key === 'assetKind' ? CH_ASSET_KIND_OPTIONS_ : null);
-      html += memoOvRenderField_(f.key, f.label, f.type, data[f.key], opts);
-    });
-    var baseDateLabel = (typeof WORK_BASE_DATE_LABELS_ !== 'undefined' && WORK_BASE_DATE_LABELS_[semok]) || '기준일';
-    html += memoOvRenderField_('_baseDate', baseDateLabel, 'date', data._baseDate, null);
-    (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){
-      // [2026.09 버그수정] 사건분류 필드는 casehandling.html이 서버 목록(dynamicClassification,
-      // chCaseClassificationOptions_)으로 바뀌면서 여기 f.options가 통째로 사라져(undefined),
-      // 이 화면의 사건분류 드롭다운이 완전히 빈 채로 뜨고 있었다 — "기존 사건에 적용"하면
-      // 빈 값이 그대로 덮어써 이미 지정해둔 사건분류가 조용히 지워지는 실제 데이터 유실
-      // 버그였다. casehandling.html과 똑같은 방식(전역 chCaseClassificationOptions_ +
-      // CH_CLASSIFICATION_DEFAULT_LABEL_)으로 옵션을 만든다.
-      var opts = f.dynamicClassification
-        ? [(typeof CH_CLASSIFICATION_DEFAULT_LABEL_ !== 'undefined' && CH_CLASSIFICATION_DEFAULT_LABEL_[semok]) || '일반'].concat((typeof chCaseClassificationOptions_ !== 'undefined' && chCaseClassificationOptions_[semok]) || [])
-        : f.options;
-      html += memoOvRenderField_(f.key, f.label, f.type, data[f.key], opts);
-    });
-    return html;
-  }
-  // [2026.09 버그수정] 위 사건분류 옵션의 출처(chCaseClassificationOptions_)는 casehandling.html
-  // (처리개요) 화면을 이번 세션에 한 번이라도 열어야 채워진다 — 메모 화면만 단독으로 먼저
-  // 열면 여전히 빈 목록이 될 수 있어, 여기서도 독자적으로 한 번 받아온다(이미 받아왔으면
-  // 다시 부르지 않음). 폼을 먼저 그려서 사용자가 바로 다른 칸에 입력할 수 있게 하고, 목록이
-  // 도착하면 그 사이 입력한 값을 보존한 채로 사건분류 select만 실제로 채워 다시 그린다.
-  var memoOvClassificationOptionsLoaded_ = typeof chCaseClassificationOptions_ !== 'undefined' && Object.keys(chCaseClassificationOptions_ || {}).length > 0;
-  function memoOvEnsureClassificationOptions_(){
-    if (memoOvClassificationOptionsLoaded_) return Promise.resolve();
-    return callGas('work_get_cases', {}).then(function(res){
-      if (res && res.evidenceClassificationOptions) chCaseClassificationOptions_ = res.evidenceClassificationOptions;
-      memoOvClassificationOptionsLoaded_ = true;
-    }).catch(function(){});
-  }
-
-  function memoOvCollectData_(semok){
-    var data = {};
-    (MEMO_OVERVIEW_EXTRA_FIELDS_[semok] || []).forEach(function(f){
-      var el = document.getElementById('memoOv_' + f.key);
-      if (el) data[f.key] = el.value.trim();
-    });
-    var baseEl = document.getElementById('memoOv__baseDate');
-    data._baseDate = baseEl ? baseEl.value.trim() : '';
-    (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){
-      var el = document.getElementById('memoOv_' + f.key);
-      if (!el) return;
-      data[f.key] = (f.type === 'money' && typeof chUnformatMoney_ === 'function') ? chUnformatMoney_(el.value) : el.value.trim();
-    });
-    return data;
-  }
-
-  // casehandling.html의 chSaveTarget 클릭 핸들러가 사건개요를 만드는 방식과 정확히 같은
-  // 키 이름·구조로 맞춘다(CH_CASE_OVERVIEW_FIELDS_ 선언적 필드값 + 물건수/assetType/assetKind/
-  // assetLocation/assetDong/assetHo/assetDongList) — 기준일(_baseDate)은 사건개요 안이 아니라
-  // work_update_case의 별도 최상위 파라미터 "기준일"로 간다(양도일=사건의 기준일과 완전히
-  // 같은 값이라는 casehandling.html 주석과 동일한 원칙).
-  function memoOvBuildOverviewPayload_(semok, data){
-    var overview = {};
-    (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){ overview[f.key] = data[f.key] || ''; });
-    overview.물건수 = data.물건수 || '';
-    overview.assetType = data.assetType || '';
-    overview.assetKind = data.assetKind || '';
-    overview.assetLocation = data.assetLocation || '';
-    overview.assetDong = data.assetDong || '';
-    overview.assetHo = data.assetHo || '';
-    overview.assetDongList = [];
-    return overview;
-  }
-
-  function memoOvOnSemokChange_(data){
-    memoOvCurrentSemok_ = data.세목;
-    memoOvSemokSelectEl.value = data.세목;
-    memoOvSemokPickEl.style.display = 'none';
-    memoOvFormWrapEl.style.display = 'block';
-    document.getElementById('memoOvSemokLabel').textContent = '📋 ' + (MEMO_OVERVIEW_SEMOK_LABELS_[data.세목] || data.세목) + ' 사건메모';
-    memoOvFieldsEl.innerHTML = memoOvBuildFormHtml_(data.세목, data);
-    memoOvEnsureClassificationOptions_().then(function(){
-      memoOvFieldsEl.innerHTML = memoOvBuildFormHtml_(data.세목, memoOvCollectData_(data.세목));
-    });
-  }
-
-  memoOvSemokSelectEl.addEventListener('change', function(){
-    if (!this.value) return;
-    memoOvCurrentDraftName_ = null;
-    memoOvCurrentDraftFileId_ = null;
-    memoOvOnSemokChange_({ 세목: this.value });
-  });
-
-  document.getElementById('memoOvChangeSemokBtn').addEventListener('click', function(){
-    nxConfirm_('세목을 변경하면 지금 입력한 내용이 사라집니다. 계속할까요?').then(function(ok){
-      if (!ok) return;
-      memoOvCurrentSemok_ = '';
-      memoOvCurrentDraftName_ = null;
-      memoOvCurrentDraftFileId_ = null;
-      memoOvFormWrapEl.style.display = 'none';
-      memoOvSemokPickEl.style.display = 'block';
-      memoOvSemokSelectEl.value = '';
-    });
-  });
-
-  // ---- 초안 저장 (Drive "사건개요초안" 폴더에 JSON으로) ----
-  function memoOvDraftParentPath_(){
-    return generalMemoParentPath_(); // "0 NETAX" 루트 — 일반메모 폴더와 같은 기준점
-  }
-  function memoOvEnsureDraftFolder_(){
-    return memoOvDraftParentPath_().then(function(parentPath){
-      return callGas('listFolder', { path: parentPath }).then(function(listing){
-        var has = (listing.folders || []).some(function(f){ return f.name === '사건개요초안'; });
-        var p = has ? Promise.resolve() : callGas('createFolder', { path: parentPath, name: '사건개요초안' }).then(function(created){
-          if (created.error) throw new Error(created.error);
-        });
-        return p.then(function(){ return parentPath.concat(['사건개요초안']); });
-      });
-    });
-  }
-
-  document.getElementById('memoOvSaveBtn').addEventListener('click', function(){
-    if (!memoOvCurrentSemok_){ toast('세목을 먼저 선택하세요.'); return; }
-    var data = memoOvCollectData_(memoOvCurrentSemok_);
-    data.세목 = memoOvCurrentSemok_;
-    nxPrompt_('이 초안의 이름을 입력하세요(예: 홍길동 상담)', memoOvCurrentDraftName_ || '').then(function(nameRaw){
-      if (!nameRaw || !nameRaw.trim()) return;
-      var name = nameRaw.trim();
-      var fileName = /\.json$/i.test(name) ? name : name + '.json';
-      var btn = document.getElementById('memoOvSaveBtn');
-      btn.disabled = true;
-      memoOvEnsureDraftFolder_().then(function(path){
-        return callGas('uploadFile', { path: path, name: fileName, mimeType: 'application/json', base64Data: utf8ToBase64(JSON.stringify(data, null, 2)) });
-      }).then(function(res){
-        if (res.error) throw new Error(res.error);
-        memoOvCurrentDraftName_ = fileName.replace(/\.json$/i, '');
-        memoOvCurrentDraftFileId_ = res.id || null;
-        toast('"' + memoOvCurrentDraftName_ + '" 초안을 저장했습니다.');
-        return memoOvRefreshDraftList_();
-      }).catch(function(err){
-        toast('저장 중 오류: ' + nxErrText_(err));
-      }).finally(function(){ btn.disabled = false; });
-    });
-  });
-
-  // ---- 초안 목록/불러오기 ----
-  function memoOvRefreshDraftList_(){
-    var listEl = document.getElementById('memoOvDraftList');
-    if (listEl) listEl.innerHTML = '<div class="log-empty">불러오는 중…</div>';
-    return memoOvEnsureDraftFolder_().then(function(path){
-      return callGas('listFolder', { path: path });
-    }).then(function(listing){
-      memoOvDrafts_ = (listing.files || []).filter(function(f){ return /\.json$/i.test(f.name); });
-      memoOvRenderDraftList_();
-    }).catch(function(){
-      memoOvDrafts_ = [];
-      memoOvRenderDraftList_();
-    });
-  }
-  function memoOvRenderDraftList_(){
-    var listEl = document.getElementById('memoOvDraftList');
-    if (!listEl) return;
-    if (!memoOvDrafts_.length){ listEl.innerHTML = '<div class="log-empty">저장된 초안이 없습니다.</div>'; return; }
-    listEl.innerHTML = memoOvDrafts_.map(function(f, idx){
-      return '<div class="log-entry memoOvDraftRow" data-idx="' + idx + '" style="cursor:pointer; margin-bottom:6px;"><div class="log-text">📋 ' + escapeHtml(f.name.replace(/\.json$/i, '')) + '</div></div>';
-    }).join('');
-    Array.prototype.forEach.call(listEl.querySelectorAll('.memoOvDraftRow'), function(row){
-      row.addEventListener('click', function(){ memoOvLoadDraft_(memoOvDrafts_[Number(row.getAttribute('data-idx'))]); });
-    });
-  }
-  function memoOvLoadDraft_(file){
-    callGas('readFile', { fileId: file.id }).then(function(res){
-      if (res.error) throw new Error(res.error);
-      var data;
-      try { data = JSON.parse(res.content); } catch (e) { throw new Error('초안 파일 형식이 올바르지 않습니다.'); }
-      if (!data || !data.세목){ throw new Error('초안에 세목 정보가 없습니다.'); }
-      memoOvCurrentDraftName_ = file.name.replace(/\.json$/i, '');
-      memoOvCurrentDraftFileId_ = file.id;
-      memoOvOnSemokChange_(data);
-      toast('"' + memoOvCurrentDraftName_ + '" 초안을 불러왔습니다.');
-    }).catch(function(err){ toast('불러오기 실패: ' + nxErrText_(err)); });
-  }
-
-  function memoOvInit_(){
-    if (memoOvInited_) return;
-    memoOvInited_ = true;
-    memoOvRefreshDraftList_();
-  }
-
-  // ---- 사건개요 초안 모드 진입/이탈 (기존 자유텍스트 메모와 토글) ----
-  document.getElementById('memoBtnOverview').addEventListener('click', function(){
-    memoOvActive_ = !memoOvActive_;
-    if (memoOvActive_) exitMemoPreview_();
-    memoText.style.display = memoOvActive_ ? 'none' : '';
-    memoOvPanelEl.style.display = memoOvActive_ ? 'block' : 'none';
-    document.querySelector('.memo-search-wrap').style.display = memoOvActive_ ? 'none' : '';
-    document.getElementById('memoBtnNew').style.display = memoOvActive_ ? 'none' : '';
-    document.getElementById('memoBtnSave').style.display = memoOvActive_ ? 'none' : '';
-    document.getElementById('memoBtnPreview').style.display = memoOvActive_ ? 'none' : '';
-    this.textContent = memoOvActive_ ? '📝 텍스트 메모로' : '📋 사건메모';
-    if (memoOvActive_) memoOvInit_();
-  });
-
-  // ---- "사건에 반영" — 기본은 "새 사건으로 등록"(전화 받으며 초안부터 썼으니 작업관리에
-  // 아직 사건이 없는 게 보통), 이미 작업관리에 등록해둔 사건이 있으면 아래쪽 "기존 사건에
-  // 적용"도 그대로 쓸 수 있다. 두 경로 다 사건 목록 조회 없이 다이얼로그부터 열고, 새 사건
-  // 경로는 등록(work_create_case) 직후 바로 사건개요 반영(work_update_case)까지 한 번에
-  // 이어서 처리해 "작업관리에 먼저 만들고 여기 와서 또 적용"하는 이원화된 절차를 없앤다.
-  document.getElementById('memoOvApplyBtn').addEventListener('click', function(){
-    if (!memoOvCurrentSemok_){ toast('세목을 먼저 선택하세요.'); return; }
-    memoOvApplyCases_ = [];
-    document.getElementById('memoOvNewCustomer').value = '';
-    document.getElementById('memoOvNewTaxpayer').value = '';
-    document.getElementById('memoOvNewRequestDate').value = nxLocalDateStr_();
-    var uptypeSel = document.getElementById('memoOvNewUptype');
-    var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '자문', '상담'];
-    uptypeSel.innerHTML = uptypeOptions.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
-    var applySel = document.getElementById('memoOvApplyCaseSelect');
-    applySel.innerHTML = '<option value="">사건 선택</option>';
-    callGas('work_get_cases', {}).then(function(res){
-      var cases = (res.cases || []).filter(function(c){ return c.세목 === memoOvCurrentSemok_; });
-      memoOvApplyCases_ = cases;
-      applySel.innerHTML += cases.map(function(c, idx){
-        return '<option value="' + idx + '">' + escapeHtml(c.사건명 || '') + '</option>';
-      }).join('');
-    }).catch(function(){});
-    memoOvApplyStepEl.style.display = 'flex';
-  });
-  document.getElementById('memoOvApplyCancel').addEventListener('click', function(){ memoOvApplyStepEl.style.display = 'none'; });
-  document.getElementById('memoOvApplyClose').addEventListener('click', function(){ memoOvApplyStepEl.style.display = 'none'; });
-
-  // [2026.09 버그수정] 초안을 사건에 반영(신규등록/기존사건적용)하고 나면, 원본 초안 파일을
-  // "사건개요초안" 폴더에서 지운다 — 안 그러면 이미 처리한 초안이 목록에 계속 남아 쌓이고,
-  // 나중에 "이거 처리했던가?" 헷갈리게 된다. 지울 파일이 없으면(저장한 적 없는 새 입력)
-  // 조용히 넘어간다.
-  function memoOvDeleteAppliedDraft_(){
-    if (!memoOvCurrentDraftFileId_) return Promise.resolve();
-    var fileId = memoOvCurrentDraftFileId_;
-    memoOvCurrentDraftFileId_ = null;
-    memoOvCurrentDraftName_ = null;
-    return callGas('deleteItem', { id: fileId }).then(function(){
-      return memoOvRefreshDraftList_();
-    }).catch(function(){ /* 초안 삭제 실패는 무시 — 사건 반영 자체는 이미 끝났으므로 */ });
-  }
-
-  document.getElementById('memoOvNewCaseConfirm').addEventListener('click', function(){
-    var 고객명 = document.getElementById('memoOvNewCustomer').value.trim();
-    if (!고객명){ toast('고객명을 입력해주세요.'); return; }
-    var data = memoOvCollectData_(memoOvCurrentSemok_);
-    // [2026.09] 작업관리 "납세자"와 사건개요서의 납세의무자 이름 필드가 반드시 같아야 하므로
-    // (casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_와 같은 원칙), 사건개요 초안에 그
-    // 필드가 채워져 있으면 그 값을 납세자로 쓴다.
-    var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[memoOvCurrentSemok_] : null;
-    var 납세자 = (taxpayerField_ && data[taxpayerField_]) ? data[taxpayerField_] : document.getElementById('memoOvNewTaxpayer').value.trim();
-    var createPayload = {
-      고객명: 고객명,
-      납세자: 납세자,
-      세목: memoOvCurrentSemok_,
-      업무유형: document.getElementById('memoOvNewUptype').value,
-      의뢰일: document.getElementById('memoOvNewRequestDate').value,
-      기준일: data._baseDate || ''
-    };
-    var btn = document.getElementById('memoOvNewCaseConfirm');
-    btn.disabled = true;
-    // [2026.11.03 전수조사 다시] 화면 먼저 — 사건개요는 등록과 한 번에 보내고(서버 work_createCase가 받아 씀), 폴더·고객창구는 서버 뒤에서
-    createPayload.사건개요 = memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data);
-    var tmpCase_ = nxCaseCreateLater_(createPayload, { onDone: function(res){ if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); } }); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
-    toast('"' + tmpCase_.사건명 + '" 사건을 등록하고 사건개요를 반영했습니다 — 폴더는 뒤에서 만듭니다.');
-    memoOvApplyStepEl.style.display = 'none';
-    memoOvDeleteAppliedDraft_();
-    btn.disabled = false;
-  });
-
-  document.getElementById('memoOvApplyConfirm').addEventListener('click', function(){
-    var sel = document.getElementById('memoOvApplyCaseSelect');
-    if (!sel.value){ toast('적용할 사건을 선택해주세요.'); return; }
-    var c = memoOvApplyCases_[Number(sel.value)];
-    if (!c) return;
-    var proceedApplyOverview_ = function(){
-    var data = memoOvCollectData_(memoOvCurrentSemok_);
-    // [2026.09 버그수정] 실사용 감사 지적 — 메모 초안은 물건목록(여러 필지) 개념이 없어서,
-    // 이 draft를 그대로 overview 전체로 치환하면 사건처리 화면에서 이미 등록해둔 물건목록이
-    // 통째로 사라졌다. 기존 사건개요 위에 이 draft의 필드만 얹어(병합) 저장한다.
-    // [2026.09 버그수정] 실사용 감사 지적 — 사건개요를 통째로 읽어서 병합한 뒤 다시 저장하는
-    // 이 화면만 유독 동시편집 낙관적 잠금(기대수정일)이 빠져 있었다 — 이 모달을 열어두고
-    // 입력하는 동안 다른 화면에서 같은 사건의 사건개요를 먼저 저장하면 그 변경을 경고 없이
-    // 덮어쓸 수 있었다.
-    var payload = { id: c.id, 사건개요: Object.assign({}, c.사건개요 || {}, memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data)), 기대수정일: c.수정일 };
-    if (data._baseDate) payload.기준일 = data._baseDate;
-    var taxpayerFieldApply_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[memoOvCurrentSemok_] : null;
-    if (taxpayerFieldApply_ && data[taxpayerFieldApply_]) payload.납세자 = data[taxpayerFieldApply_];
-    var btn = document.getElementById('memoOvApplyConfirm');
-    btn.disabled = true;
-    nxCaseSave_(payload).then(function(res){
-      if (res.conflict){ toast(res.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 다시 시도해주세요.'); return; }
-      if (res.success === false){ toast(res.message || '적용 실패'); return; }
-      toast('"' + (c.사건명 || '') + '" 사건에 반영했습니다.');
-      memoOvApplyStepEl.style.display = 'none';
-      if (typeof loadWorkCases === 'function') loadWorkCases();
-      memoOvDeleteAppliedDraft_();
-    }).catch(function(err){
-      toast('적용 중 오류: ' + nxErrText_(err));
-    }).finally(function(){ btn.disabled = false; });
-    };
-    if (c.사건개요 && Object.keys(c.사건개요).length){
-      nxConfirm_('"' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 덮어쓸까요?').then(function(ok){
-        if (ok) proceedApplyOverview_();
-      });
-    } else {
-      proceedApplyOverview_();
-    }
-  });
-</script>
+<!-- [2026.11.14] 사건개요 초안(📋 사건) 모드 걷음 — 계획서 ㉡(초안 0개, 같은 칸은 「사건에 넣기」가 글에서 뽑아 가설로) -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>
@@ -55921,7 +55310,6 @@ function rwAiApplyEdit_(id, content){
     var btnNotePrevPage = document.getElementById('btnNotePrevPage');
     var btnNoteNextPage = document.getElementById('btnNoteNextPage');
     var notePageIndicator = document.getElementById('notePageIndicator');
-    var btnNoteSave = document.getElementById('btnNoteSave');
 
     var TOOL_MODES = ['pen', 'highlight', 'eraser', 'select', 'line', 'rect'];
     var TOOL_MODE_ICON = { pen: '✏️', highlight: '🖍', eraser: '🧹', select: '✂️', line: '📏', rect: '▭' };
@@ -56171,10 +55559,17 @@ function rwAiApplyEdit_(id, content){
       }
     }
     window.initMemoHand = initMemoHand;
+    // [2026.11.14 메모 한 창] 손글씨 탭이 보일 때만 크기를 다시 잰다 — 숨은(글 탭) 채로 재면 그림판 폭이 0이 되어 그린 것이 지워진다
+    function memoHandVisible_(){ return noteCanvasWrap.clientWidth > 0 && noteCanvasWrap.clientHeight > 0; }
     window.addEventListener('resize', function(){
-      var view = document.getElementById('view-memo-hand');
-      if (view && view.classList.contains('active')) resizeCanvasToWrap();
+      if (memoHandVisible_()) resizeCanvasToWrap();
     });
+    // 손글씨 탭으로 돌아왔을 때 — 숨어 있던 사이 창 크기가 바뀌었으면 그린 것을 지키며 맞춘다
+    window.memoHandFit_ = function(){
+      if (!memoHandVisible_()) return;
+      var dpr = window.devicePixelRatio || 1;
+      if (noteCanvas.width !== Math.max(1, Math.round(noteCanvasWrap.clientWidth * dpr)) || noteCanvas.height !== Math.max(1, Math.round(noteCanvasWrap.clientHeight * dpr))) resizeCanvasToWrap();
+    };
 
     function flattenPage(inkDataUrl, bgDataUrl, w, h){
       return new Promise(function(resolve){
@@ -56199,44 +55594,36 @@ function rwAiApplyEdit_(id, content){
       });
     }
 
-    btnNoteSave.addEventListener('click', async function(){
-      btnNoteSave.disabled = true; btnNoteSave.textContent = '⏳';
-      try{
-        saveCurrentPageSnapshot();
-        var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
-        var pageIndexesToInclude = [];
-        for (var i = 0; i < notePages.length; i++){
-          var hasInk = notePages[i] && notePages[i].length > 100;
-          var hasBg = !!notePageBackgrounds[i];
-          if (hasInk || hasBg) pageIndexesToInclude.push(i);
-        }
-        if (!pageIndexesToInclude.length){ toast('작성된 내용이 없습니다.'); return; }
-
-        var outDoc = await PDFLib.PDFDocument.create();
-        for (var idx of pageIndexesToInclude){
-          var flatDataUrl = await flattenPage(notePages[idx], notePageBackgrounds[idx], w, h);
-          var base64Png = flatDataUrl.split(',')[1];
-          var pngBytes = Uint8Array.from(atob(base64Png), function(c){ return c.charCodeAt(0); });
-          var embedded = await outDoc.embedPng(pngBytes);
-          var page = outDoc.addPage([embedded.width, embedded.height]);
-          page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
-        }
-        var pdfBytes = await outDoc.save();
-        var base64Pdf = uint8ToBase64(pdfBytes);
-        var pdfName = '필기메모_' + new Date().toISOString().slice(0,16).replace(/[-:T]/g, '') + '.pdf';
-
-        btnNoteSave.textContent = '💾';
-        openSaveDialog('(필기메모 — 첨부된 PDF 참고)', function(){
-          notePages = ['']; notePageBackgrounds = [null]; noteCurrentPageIndex = 0;
-          noteInited = false;
-          initMemoHand();
-        }, { name: pdfName, mimeType: 'application/pdf', base64Data: base64Pdf });
-      }catch(err){
-        toast('저장 준비 중 오류: ' + nxErrText_(err));
-      }finally{
-        btnNoteSave.disabled = false; btnNoteSave.textContent = '💾';
+    // [2026.11.14 메모 한 창] 손글씨의 💾 단추는 걷고, 창 위 공통 단추(「사건에 넣기」「일반메모로 저장」)가 이 두 함수를 부른다
+    //  memoHandBuildPdf_ — 그린 쪽들을 PDF 하나로(그린 것이 없으면 null) / memoHandReset_ — 넣은 뒤 그림판 비우기
+    window.memoHandBuildPdf_ = async function(){
+      saveCurrentPageSnapshot();
+      var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
+      var pageIndexesToInclude = [];
+      for (var i = 0; i < notePages.length; i++){
+        var hasInk = notePages[i] && notePages[i].length > 100;
+        var hasBg = !!notePageBackgrounds[i];
+        if (hasInk || hasBg) pageIndexesToInclude.push(i);
       }
-    });
+      if (!pageIndexesToInclude.length) return null;
+      var outDoc = await PDFLib.PDFDocument.create();
+      for (var idx of pageIndexesToInclude){
+        var flatDataUrl = await flattenPage(notePages[idx], notePageBackgrounds[idx], w, h);
+        var base64Png = flatDataUrl.split(',')[1];
+        var pngBytes = Uint8Array.from(atob(base64Png), function(c){ return c.charCodeAt(0); });
+        var embedded = await outDoc.embedPng(pngBytes);
+        var page = outDoc.addPage([embedded.width, embedded.height]);
+        page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+      }
+      var pdfBytes = await outDoc.save();
+      var pdfName = '필기메모_' + new Date().toISOString().slice(0,16).replace(/[-:T]/g, '') + '.pdf';
+      return { name: pdfName, mimeType: 'application/pdf', base64Data: uint8ToBase64(pdfBytes) };
+    };
+    window.memoHandReset_ = function(){
+      notePages = ['']; notePageBackgrounds = [null]; noteCurrentPageIndex = 0;
+      noteInited = false;
+      initMemoHand();
+    };
   })();
 </script>
 
@@ -56250,12 +55637,10 @@ function rwAiApplyEdit_(id, content){
   // 붙일 수 있다. 저장 파일명은 "템플릿명_고객명"으로 만들어(자동으로 이미 들어간 빈 템플릿과
   // 이름이 겹쳐 덮어써지지 않도록) 별도 파일로 남긴다.
   // ============================================================
-  var memoReqPanelEl = document.getElementById('memoReqPanel');
-  var memoReqTemplateSelectEl = document.getElementById('memoReqTemplateSelect');
-  var memoReqTextareaEl = document.getElementById('memoReqTextarea');
-  var memoReqNonTextNoteEl = document.getElementById('memoReqNonTextNote');
+  // [2026.11.14 메모 한 창] 의뢰서 작성 전환 칸(memoReqPanel·전용 글칸)은 걷고, 양식은 「양식 ▾」(memoTplSelect)로 메모 칸에 불러온다.
+  //  「사건에 넣기」 창은 글·손글씨·넥스 대화가 함께 쓴다(아래 memoOpenCaseDialog_).
+  var memoReqTemplateSelectEl = document.getElementById('memoTplSelect');
   var memoReqApplyStepEl = document.getElementById('memoReqApplyStep');
-  var memoReqActive_ = false;
   var memoReqInited_ = false;
   var memoReqTemplates_ = []; // listCaseTemplates 결과 그대로 보관
   var memoReqSelectedTemplate_ = null;
@@ -56285,25 +55670,29 @@ function rwAiApplyEdit_(id, content){
     return null;
   }
 
+  // [2026.11.14 메모 한 창] 양식 목록은 「양식 ▾」 고르기 상자로 — 고르면 그 양식 글을 메모 칸에 불러온다(따로 칸이 바뀌지 않음).
+  //  글로 불러올 수 있는 양식(.md 등)만 보인다(지금 양식 27개 모두 글).
   function memoReqLoadTemplates_(){
-    memoReqTemplateSelectEl.innerHTML = '<option value="">불러오는 중…</option>';
+    memoReqTemplateSelectEl.innerHTML = '<option value="">양식 ▾ (불러오는 중…)</option>';
     callGas('listCaseTemplates', {}).then(function(res){
-      if (res.error){ memoReqTemplateSelectEl.innerHTML = '<option value="">' + escapeHtml(res.error) + '</option>'; return; }
-      memoReqTemplates_ = res.templates || [];
+      if (res.error){ memoReqTemplateSelectEl.innerHTML = '<option value="">양식 ▾ (' + escapeHtml(res.error) + ')</option>'; return; }
+      memoReqTemplates_ = (res.templates || []).filter(function(t){ return t.isText; });
       if (!memoReqTemplates_.length){
-        memoReqTemplateSelectEl.innerHTML = '<option value="">파일 없음</option>';
+        memoReqTemplateSelectEl.innerHTML = '<option value="">양식 ▾ (양식 없음)</option>';
         return;
       }
       // [2026.10.22 묶음 ㅁ4] 자주 쓰는 신고 3개(양도·상속·증여)를 맨 위에 — 목록 27개 가나다순에 섞여 찾기 어려웠다(가상양도7 표 4)
       var memoReqTplRank_ = function(n){ n = String(n || ''); return /양도\s*신고/.test(n) ? 0 : /상속\s*신고/.test(n) ? 1 : /증여\s*신고/.test(n) ? 2 : 9; };
       var memoReqTplSorted_ = memoReqTemplates_.slice().sort(function(a, b){ return (memoReqTplRank_(a.name) - memoReqTplRank_(b.name)) || String(a.name).localeCompare(String(b.name), 'ko'); });
-      memoReqTemplateSelectEl.innerHTML = '<option value="">템플릿 선택</option>' +
-        memoReqTplSorted_.map(function(t){ return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('');
+      memoReqTemplateSelectEl.innerHTML = '<option value="">양식 ▾</option>' +
+        memoReqTplSorted_.map(function(t){ return '<option value="' + t.id + '">' + escapeHtml(String(t.name).replace(/^의뢰서_/, '')) + '</option>'; }).join('');
+      if (memoReqSelectedTemplate_) memoReqTemplateSelectEl.value = memoReqSelectedTemplate_.id;
     }).catch(function(err){
-      memoReqTemplateSelectEl.innerHTML = '<option value="">불러오지 못함</option>';
-      toast('템플릿 목록을 불러오지 못했습니다: ' + nxErrText_(err));
+      memoReqTemplateSelectEl.innerHTML = '<option value="">양식 ▾ (불러오지 못함)</option>';
+      toast('양식 목록을 불러오지 못했습니다: ' + nxErrText_(err));
     });
   }
+  window.memoEnsureTemplates_ = function(){ if (!memoReqInited_){ memoReqInited_ = true; memoReqLoadTemplates_(); } };
 
   // [2026.09.17 신규] "증여신고" 등 옛 이름 그대로인 템플릿 파일에 "의뢰서_" 접두어를 일괄로
   // 붙인다 — 이름변경뿐이라 파괴적이지 않으므로 dry-run 없이 바로 실행하고 결과만 보여준다
@@ -56318,76 +55707,106 @@ function rwAiApplyEdit_(id, content){
       nxAlert_('오류: ' + nxErrText_(err), '템플릿 이름정리');
     });
   };
+  // ---- 「양식 ▾」 — 고른 의뢰서 양식을 메모 칸에 불러온다(글이 있으면 뒤에 붙일지 묻는다) ----
   memoReqTemplateSelectEl.addEventListener('change', function(){
-    var tpl = memoReqTemplates_.filter(function(t){ return t.id === memoReqTemplateSelectEl.value; })[0];
-    memoReqSelectedTemplate_ = tpl || null;
-    if (!tpl){
-      memoReqTextareaEl.value = '';
-      memoReqTextareaEl.disabled = true;
-      memoReqNonTextNoteEl.textContent = '';
-      return;
+    var sel = memoReqTemplateSelectEl;
+    var tpl = memoReqTemplates_.filter(function(t){ return t.id === sel.value; })[0];
+    var backTo_ = function(){ sel.value = memoReqSelectedTemplate_ ? memoReqSelectedTemplate_.id : ''; };
+    if (!tpl){ backTo_(); return; }
+    var load_ = function(append){
+      exitMemoPreview_();
+      var prev = memoText.value;
+      var lead = append ? prev.replace(/\s+$/, '') + '\n\n' : '';
+      memoText.value = lead + '(양식 불러오는 중…)';
+      memoText.disabled = true;
+      callGas('getCaseTemplateContent', { fileId: tpl.id }).then(function(res){
+        if (res.error){ toast(res.error); memoText.value = prev; backTo_(); return; }
+        memoText.value = lead + (res.content || '');
+        memoReqSelectedTemplate_ = tpl;
+        memoText.focus();
+      }).catch(function(err){
+        toast('양식을 불러오지 못했습니다: ' + nxErrText_(err));
+        memoText.value = prev; backTo_();
+      }).finally(function(){ memoText.disabled = false; });
+    };
+    if (memoText.value.trim()){
+      nxConfirm_('지금 적은 글 뒤에 「' + String(tpl.name).replace(/^의뢰서_/, '') + '」 양식을 붙일까요?\n(취소하면 그대로 둡니다)').then(function(ok){ if (ok) load_(true); else backTo_(); });
+    } else {
+      load_(false);
     }
-    if (!tpl.isText){
-      memoReqTextareaEl.value = '';
-      memoReqTextareaEl.disabled = true;
-      memoReqNonTextNoteEl.textContent = '이 형식(' + tpl.ext + ')은 미리보기 없이 사건 폴더에 그대로 복사됩니다.';
-      return;
+  });
+
+  // ---- 「메모」 한 창 — ⌨ 글 / ✍ 손글씨 탭 (세무사님 11-14 "일반메모와 필기메모를 하나의 창으로 전환") ----
+  //  탭을 바꿔도 적던 글·그리던 그림은 그대로(손글씨 그림판은 숨은 동안 크기를 다시 재지 않는다 — memoHandFit_)
+  var memoTab_ = 'text';
+  function memoSetTab_(t){
+    if (t === 'text' || t === 'hand') memoTab_ = t;
+    var hand = memoTab_ === 'hand';
+    document.getElementById('memoTextPane').style.display = hand ? 'none' : '';
+    document.getElementById('memoHandPane').style.display = hand ? '' : 'none';
+    document.querySelectorAll('#memoTabBar [data-memo-tab]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-memo-tab') === memoTab_); });
+    if (hand){
+      if (typeof initMemoHand === 'function') initMemoHand();
+      requestAnimationFrame(function(){ if (window.memoHandFit_) window.memoHandFit_(); });
     }
-    memoReqNonTextNoteEl.textContent = '';
-    memoReqTextareaEl.disabled = false;
-    memoReqTextareaEl.value = '불러오는 중…';
-    callGas('getCaseTemplateContent', { fileId: tpl.id }).then(function(res){
-      if (res.error){ toast(res.error); memoReqTextareaEl.value = ''; return; }
-      memoReqTextareaEl.value = res.content || '';
+    window._currentViewLabel = hand ? '메모(손글씨)' : '메모';
+  }
+  window.memoSetTab_ = memoSetTab_;
+  window.memoCurrentTab_ = function(){ return memoTab_; };
+  document.getElementById('memoTabBar').addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-memo-tab]');
+    if (b) memoSetTab_(b.getAttribute('data-memo-tab'));
+  });
+
+  // ---- 두 탭 공통 단추 — 「사건에 넣기」「일반메모로 저장」 ----
+  function memoHandPdfThen_(btn, next){
+    btn.disabled = true;
+    Promise.resolve(window.memoHandBuildPdf_ ? window.memoHandBuildPdf_() : null).then(function(pdf){
+      if (!pdf){ toast('그린 것이 없습니다.'); return; }
+      next(pdf);
     }).catch(function(err){
-      toast('템플릿 내용을 불러오지 못했습니다: ' + nxErrText_(err));
-      memoReqTextareaEl.value = '';
-    });
+      toast('손글씨를 PDF로 만들지 못했습니다: ' + nxErrText_(err));
+    }).finally(function(){ btn.disabled = false; });
+  }
+  var memoHandResetCb_ = function(){ if (window.memoHandReset_) window.memoHandReset_(); };
+  document.getElementById('memoBtnToCase').addEventListener('click', function(){
+    if (memoTab_ === 'hand'){
+      memoHandPdfThen_(this, function(pdf){ memoOpenCaseDialog_({ content: '', extraFile: pdf, origin: '손글씨', onDone: memoHandResetCb_ }); });
+      return;
+    }
+    var content = memoText.value.trim();
+    if (!content){ toast('적은 내용이 없습니다.'); return; }
+    memoOpenCaseDialog_({ content: content, origin: '메모', template: memoReqSelectedTemplate_ });
+  });
+  document.getElementById('memoBtnSave').addEventListener('click', function(){
+    if (memoTab_ === 'hand'){
+      memoHandPdfThen_(this, function(pdf){ memoOpenGeneralSave_({ content: '', extraFile: pdf, onDone: memoHandResetCb_ }); });
+      return;
+    }
+    if (editingGeneralMemoFile){ saveOverExistingGeneralMemo_(); return; }
+    if (!memoText.value.trim()){ toast('적은 내용이 없습니다.'); return; }
+    memoOpenGeneralSave_({ content: memoText.value.trim(), onDone: function(){
+      memoText.value = ''; memoReqSelectedTemplate_ = null; memoReqTemplateSelectEl.value = '';
+    } });
   });
 
-  // ---- 텍스트메모/사건메모/의뢰서작성 3-way 토글 ----
-  document.getElementById('memoBtnRequest').addEventListener('click', function(){
-    memoReqActive_ = !memoReqActive_;
-    if (memoReqActive_ && memoOvActive_){
-      // 사건메모 모드가 켜져 있으면 먼저 끈다(memoOv 쪽 토글 버튼 텍스트도 원상복구).
-      memoOvActive_ = false;
-      memoOvPanelEl.style.display = 'none';
-      document.getElementById('memoBtnOverview').textContent = '사건메모';
-    }
-    if (memoReqActive_) exitMemoPreview_();
-    memoText.style.display = memoReqActive_ ? 'none' : '';
-    memoReqPanelEl.style.display = memoReqActive_ ? 'flex' : 'none';
-    document.querySelector('.memo-search-wrap').style.display = memoReqActive_ ? 'none' : '';
-    document.getElementById('memoBtnNew').style.display = memoReqActive_ ? 'none' : '';
-    document.getElementById('memoBtnSave').style.display = memoReqActive_ ? 'none' : '';
-    document.getElementById('memoBtnOverview').style.display = memoReqActive_ ? 'none' : '';
-    document.getElementById('memoBtnPreview').style.display = memoReqActive_ ? 'none' : '';
-    this.textContent = memoReqActive_ ? '📝 텍스트 메모로' : '🗂 의뢰서 작성';
-    if (memoReqActive_ && !memoReqInited_){ memoReqInited_ = true; memoReqLoadTemplates_(); }
-  });
-  // [2026.09] 사건메모 모드를 켤 때도 반대로 의뢰서 모드를 꺼준다(원본 memoBtnOverview
-  // 리스너는 그대로 두고, 이 리스너를 추가로 하나 더 건다 — 서로 독립된 파일 걱정 없이 안전).
-  document.getElementById('memoBtnOverview').addEventListener('click', function(){
-    if (memoReqActive_){
-      memoReqActive_ = false;
-      memoReqPanelEl.style.display = 'none';
-      document.getElementById('memoBtnRequest').textContent = '의뢰서 작성';
-      document.getElementById('memoBtnRequest').style.display = '';
-    }
-  });
-
-  document.getElementById('memoReqApplyBtn').addEventListener('click', function(){
-    if (!memoReqSelectedTemplate_){ toast('템플릿을 먼저 선택하세요.'); return; }
+  // ---- 「사건에 넣기」 창 열기 — ctx = { content, extraFile(손글씨 PDF), origin('메모'|'손글씨'|'넥스 대화'), template, onDone } ----
+  var memoCaseCtx_ = null;
+  function memoOpenCaseDialog_(ctx){
+    memoCaseCtx_ = ctx || {};
     document.getElementById('memoReqNewCustomer').value = '';
     document.getElementById('memoReqNewTaxpayer').value = '';
     document.getElementById('memoReqNewRequestDate').value = nxLocalDateStr_();
+    document.getElementById('memoReqApplyDesc').textContent = memoCaseCtx_.extraFile
+      ? '손글씨 PDF를 그 사건 폴더에 넣고, 그 사건 의뢰서 파일 맨 앞에 상담기록 한 줄을 쌓습니다.'
+      : '새 사건으로 등록하거나 이미 있는 사건을 고르면, 적은 내용을 그 사건의 의뢰서 파일 맨 앞에 상담기록으로 쌓습니다.';
     var semokSel = document.getElementById('memoReqNewSemok');
     var uptypeSel = document.getElementById('memoReqNewUptype');
     function refreshUptypeOptions(){
       var options = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[semokSel.value]) || ['신고', '자문', '상담'];
       uptypeSel.innerHTML = options.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
     }
-    var guess = memoReqGuessSemokUptype_(memoReqSelectedTemplate_.name);
+    var guess = memoCaseCtx_.template ? memoReqGuessSemokUptype_(memoCaseCtx_.template.name) : null; // 양식 이름으로 세목·업무유형 짐작(강제 아님)
     semokSel.value = guess ? guess.semok : 'transfer';
     semokSel.onchange = refreshUptypeOptions;
     refreshUptypeOptions();
@@ -56401,21 +55820,11 @@ function rwAiApplyEdit_(id, content){
     }).catch(function(){ applySel.innerHTML = '<option value="">불러오지 못함</option>'; });
 
     memoReqApplyStepEl.style.display = 'flex';
-  });
+    setTimeout(function(){ document.getElementById('memoReqNewCustomer').focus(); }, 50);
+  }
+  window.memoOpenCaseDialog_ = memoOpenCaseDialog_;
   document.getElementById('memoReqApplyCancel').addEventListener('click', function(){ memoReqApplyStepEl.style.display = 'none'; });
   document.getElementById('memoReqApplyClose').addEventListener('click', function(){ memoReqApplyStepEl.style.display = 'none'; });
-
-  // 실제 저장 실행 — folderId만 알면 새 사건이든 기존 사건이든 똑같이 처리한다.
-  function memoReqSaveToFolder_(folderId, 고객명){
-    var tpl = memoReqSelectedTemplate_;
-    var ext = tpl.ext || '.md';
-    var baseName = tpl.name + '_' + (고객명 || '').trim();
-    // [2026.10.21] 글 템플릿도 templateFileId를 함께 보낸다 — 서버가 사본 첫머리에 "바탕 템플릿: 이름 · 판 수정일" 한 줄을 붙인다
-    var payload = { folderId: folderId, fileName: baseName + ext, templateFileId: tpl.id };
-    if (tpl.isText) payload.editedContent = memoReqTextareaEl.value;
-    return callGas('saveCaseFromTemplate', payload);
-  }
-
   // [2026.09 신규] "겹치는 부분이 많을수록 좋다"는 요청 — 의뢰서 본문에서 이름 몇 개와
   // 상담메모만 기계적으로(정규식으로) 뽑아 사건개요에 자동 반영한다. 양도가액·취득일 같은
   // 숫자·물건 정보는 사건개요의 단일 필드가 아니라 여러 개 담는 "물건목록"에 들어가고,
@@ -56499,15 +55908,44 @@ function rwAiApplyEdit_(id, content){
       b2.addEventListener('click', function(){ if (typeof nxAiOpenJobView_ === 'function') nxAiOpenJobView_('docs', c.id); else if (typeof goToView_ === 'function') goToView_('docs'); });
       var b3 = document.createElement('button'); b3.type = 'button'; b3.className = 'ghost-btn'; b3.textContent = '닫기'; b3.addEventListener('click', function(){ bar.remove(); });
       bar.appendChild(b1); bar.appendChild(b2); bar.appendChild(b3);
-      memoReqTextareaEl.insertAdjacentElement('beforebegin', bar);
+      document.getElementById('memoTopBar').insertAdjacentElement('afterend', bar); // [2026.11.14] 메모 창 단추 줄 바로 아래(글·손글씨 어느 탭이든 보임)
       bar.scrollIntoView({ block: 'nearest' });
     } catch (e) {}
   }
+  // ---- 상담기록 한 덩이 — 의뢰서 파일 맨 앞에 쌓는 글 ----
+  function memoCaseEntry_(ctx){
+    var body = String((ctx && ctx.content) || '').trim();
+    var lines = ['## 상담기록 (' + formatMemoTimestamp_() + ' · ' + ((ctx && ctx.origin) || '메모') + ')', ''];
+    if (body) lines.push(body);
+    if (ctx && ctx.extraFile) lines.push((body ? '\n' : '') + '- 손글씨: ' + ctx.extraFile.name + ' (이 사건 폴더)');
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n') + '\n';
+  }
+  // 의뢰 요약(작업관리 사건 줄 「개요」 칸 — 서버·넥스가 의뢰 메모로 읽는 칸) 한 줄:
+  //  양식의 「가장 궁금한 점」 → 「## 상담 메모」 첫 줄 → 제목·양식 칸(- 이름: 값)이 아닌 첫 글 줄 순
+  function memoSummaryLine_(content){
+    var src = String(content || '');
+    var pick = '';
+    var m1 = src.match(/^\s*-\s*가장\s*궁금한\s*점[^:：\n]*[:：][ \t]*(\S[^\n]*)$/m);
+    if (m1) pick = m1[1].trim();
+    if (!pick){ var m2 = src.match(/##\s*상담\s*메모\s*\n+\s*-?\s*(\S[^\n]*)/); if (m2) pick = m2[1].trim(); }
+    if (!pick) src.split(/\r?\n/).some(function(l){
+      var t = l.trim();
+      if (!t || /^[#>|]/.test(t) || /^-\s*[^:：]+[:：]/.test(t) || /^---+$/.test(t)) return false;
+      pick = t.replace(/^[-*]\s*(\[[ xX]\]\s*)?/, ''); return true;
+    });
+    return pick.slice(0, 200);
+  }
+
+  // 「사건에 넣기」 — 새 사건 등록
   document.getElementById('memoReqNewCaseConfirm').addEventListener('click', function(){
+    var ctx = memoCaseCtx_ || {};
     var 고객명 = document.getElementById('memoReqNewCustomer').value.trim();
     if (!고객명){ toast('고객명을 입력해주세요.'); return; }
     var semok = document.getElementById('memoReqNewSemok').value;
-    var overview = memoReqExtractOverview_(semok, memoReqTextareaEl.value);
+    var uptype = document.getElementById('memoReqNewUptype').value;
+    if (ctx.extraFile && uptype === '상담'){ toast('상담 사건은 사건 폴더가 없어 손글씨 PDF를 넣을 수 없습니다 — 업무유형을 신고·자문 등으로 골라 주세요.'); return; }
+    var content = String(ctx.content || '');
+    var overview = content ? memoReqExtractOverview_(semok, content) : null;
     var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[semok] : null;
     var 납세자입력 = document.getElementById('memoReqNewTaxpayer').value.trim();
     var 납세자 = 납세자입력 || ((taxpayerField_ && overview && overview[taxpayerField_]) ? overview[taxpayerField_] : '');
@@ -56515,63 +55953,106 @@ function rwAiApplyEdit_(id, content){
       고객명: 고객명,
       납세자: 납세자,
       세목: semok,
-      업무유형: document.getElementById('memoReqNewUptype').value,
+      업무유형: uptype,
       의뢰일: document.getElementById('memoReqNewRequestDate').value
     };
-    if (memoReqBaseDate_) createPayload.기준일 = memoReqBaseDate_; // [2026.10.22 묶음 ㅁ2] 의뢰서의 양도일·증여일·상속개시일을 기준일로 — 법정일이 "오늘+7일" 임시값 대신 처음부터 진짜 기한(서류로 다시 확인됨)
-    var btn = document.getElementById('memoReqNewCaseConfirm');
-    // [2026.10.22 묶음 ㅁ3] 단추를 누른 뒤 60초 동안 아무 표시가 없어 또 누르기 쉬웠다(가상양도7 표 6·7) — 단추 글로 단계를 보이고, 끝나면 "등록됨 — 처리개요로 가기/증빙 넣기" 띠를 띄운다
-    var btnText0 = btn.textContent; var stage = function(t){ btn.textContent = t; };
-    btn.disabled = true; stage('사건 등록·의뢰서 저장 중…');
-    // [2026.10.23 속도 ㅅ4차] 서버 세 번(등록 → 의뢰서 저장 → 사건개요)을 한 번으로 — 의뢰서 글과 사건개요를 등록 호출에 같이 보낸다(등록 46초 중 왕복 2번·시트 다시 읽기 2번을 뺌)
-    var tpl0 = memoReqSelectedTemplate_;
-    if (tpl0){ createPayload.의뢰서 = { fileName: tpl0.name + '_' + 고객명 + (tpl0.ext || '.md'), templateFileId: tpl0.id }; if (tpl0.isText) createPayload.의뢰서.editedContent = memoReqTextareaEl.value; }
+    if (content && memoReqBaseDate_) createPayload.기준일 = memoReqBaseDate_; // [2026.10.22 묶음 ㅁ2] 의뢰서의 양도일·증여일·상속개시일을 기준일로
+    var tpl = ctx.template || null;
+    if (uptype === '상담'){
+      // [2026.11.14] 상담 사건은 사건 폴더를 만들지 않아(work_createCase — 폴더ID 빈 값) 의뢰서 파일이 생기지 않는다 —
+      //  예전엔 의뢰서 글이 소리 없이 빠졌다. 적은 글을 사건 줄 「의뢰 요약」(개요) 칸에 통째로 넣는다(서버·넥스가 의뢰 메모로 읽는 칸).
+      createPayload.개요 = (content || memoCaseEntry_(ctx)).slice(0, 6000);
+    } else {
+      // [2026.10.23 속도 ㅅ4차] 의뢰서 글과 사건개요를 등록 호출에 같이 보낸다(서버 한 번)
+      createPayload.의뢰서 = { fileName: (tpl ? tpl.name : '의뢰서_상담') + '_' + 고객명 + '.md', editedContent: tpl ? content : memoCaseEntry_(ctx) }; // 양식으로 쓴 글은 그대로 의뢰서 본문, 그 밖은 상담기록 한 덩이
+      if (tpl) createPayload.의뢰서.templateFileId = tpl.id; // [2026.10.21] 서버가 첫머리에 "바탕 템플릿: 이름 · 판 수정일" 한 줄
+      var sum = memoSummaryLine_(content);
+      if (sum) createPayload.개요 = sum;
+    }
     if (overview) createPayload.사건개요 = overview;
-    // [2026.11.03 전수조사 다시] 화면 먼저 — 사건은 목록에 바로, 폴더·의뢰서 저장·고객창구는 서버 뒤에서(예전엔 30초쯤 기다림)
-    var tmpCase_ = nxCaseCreateLater_(createPayload, { onDone: function(res){ if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); } }); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
-    toast('"' + tmpCase_.사건명 + '" 사건을 등록했습니다' + (overview ? '(사건개요도 같이 채움)' : '') + ' — 폴더·의뢰서는 뒤에서 저장합니다.');
+    // 손글씨는 PDF를 바로 넣을 폴더가 있어야 해서 폴더를 뒤로 미루지 않는다(folderNow — 서버가 폴더를 만든 뒤 답함)
+    var tmpCase_ = nxCaseCreateLater_(createPayload, { folderNow: !!ctx.extraFile, onDone: function(res){
+      if (typeof bookingAskLinkAfterCreate_ === 'function') bookingAskLinkAfterCreate_(res); // [2026.10.30] 같은 고객의 확정 예약이 있으면 이을지 여쭘
+      if (!ctx.extraFile){ if (ctx.onDone) ctx.onDone(); return; }
+      var fid = res && res.case && res.case.폴더ID;
+      if (!fid){ toast('사건은 만들었지만 폴더가 없어 손글씨 PDF를 넣지 못했습니다 — 손글씨는 그대로 있으니 「사건에 넣기」로 그 사건을 골라 다시 넣어 주세요.'); return; }
+      callGas('uploadFile', { folderId: fid, name: ctx.extraFile.name, mimeType: ctx.extraFile.mimeType, base64Data: ctx.extraFile.base64Data }).then(function(up){
+        if (up && up.error) throw new Error(up.error);
+        toast('손글씨 PDF를 「' + (res.case.사건명 || 고객명) + '」 사건 폴더에 넣었습니다.');
+        if (ctx.onDone) ctx.onDone();
+      }).catch(function(err){ toast('손글씨 PDF를 넣지 못했습니다(손글씨는 그대로 있음): ' + nxErrText_(err)); });
+    } });
+    toast('"' + tmpCase_.사건명 + '" 사건을 등록했습니다' + (overview ? '(사건개요도 같이 채움)' : '') + (uptype === '상담' ? ' — 상담 사건이라 적은 글은 「의뢰 요약」 칸에 넣었습니다.' : ' — 폴더·의뢰서는 뒤에서 저장합니다.'));
     memoReqApplyStepEl.style.display = 'none';
     memoReqShowRegisteredBar_(tmpCase_);
-    btn.disabled = false; stage(btnText0);
   });
 
+  // 기존 사건에 넣기 — 그 사건 의뢰서 파일(없으면 「의뢰서_상담_고객명.md」 새로) 맨 앞에 상담기록을 쌓고,
+  //  글에서 뽑은 값은 사건개요의 빈 칸만 가설로 채운다(세무사님이 넣은 값은 바꾸지 않음 — 공통원칙 1절)
+  function memoAppendToCase_(c, ctx){
+    return nxEnsureCaseFolder_(c, '상담 내용을').then(function(cc){
+      if (!cc || !cc.폴더ID) return null;
+      var entry = memoCaseEntry_(ctx);
+      return callGas('listFolder', { folderId: cc.폴더ID }).then(function(listing){
+        if (listing && listing.error) throw new Error(listing.error);
+        var reqs = (listing.files || []).filter(function(f){ return /^의뢰서_.*\.md$/i.test(f.name); });
+        reqs.sort(function(a, b){ return String(b.modifiedDate || '').localeCompare(String(a.modifiedDate || '')); }); // 여럿이면 가장 최근에 고친 것
+        var target = reqs[0];
+        var write = target
+          ? callGas('readFile', { fileId: target.id }).then(function(fd){
+              if (!fd || fd.error || typeof fd.content !== 'string') throw new Error((fd && fd.error) || '의뢰서 파일을 읽지 못했습니다');
+              return callGas('uploadFile', { fileId: target.id, name: target.name, mimeType: 'text/markdown', base64Data: utf8ToBase64(entry + '\n---\n\n' + fd.content) });
+            })
+          : callGas('uploadFile', { folderId: cc.폴더ID, name: '의뢰서_상담_' + (cc.고객명 || c.고객명 || '') + '.md', mimeType: 'text/markdown', base64Data: utf8ToBase64(entry) });
+        return write.then(function(res){
+          if (res && res.error) throw new Error(res.error);
+          if (!ctx.extraFile) return;
+          return callGas('uploadFile', { folderId: cc.폴더ID, name: ctx.extraFile.name, mimeType: ctx.extraFile.mimeType, base64Data: ctx.extraFile.base64Data }).then(function(r2){
+            if (r2 && r2.error) throw new Error('상담기록은 넣었지만 손글씨 PDF를 넣지 못했습니다: ' + r2.error);
+          });
+        }).then(function(){ return { case: cc, file: target ? target.name : ('의뢰서_상담_' + (cc.고객명 || c.고객명 || '') + '.md') }; });
+      });
+    }).then(function(r){
+      if (!r) return null;
+      var content = String(ctx.content || '');
+      var overview = content ? memoReqExtractOverview_(r.case.세목, content) : null;
+      var cur = r.case.사건개요 || {};
+      var add = {};
+      if (overview) Object.keys(overview).forEach(function(k){
+        var v = cur[k];
+        var empty = v == null || v === '' || (Array.isArray(v) && !v.length);
+        if (empty) add[k] = overview[k];
+      });
+      var payload = { id: r.case.id, 기대수정일: r.case.수정일 };
+      var changed = false;
+      if (Object.keys(add).length){ payload.사건개요 = Object.assign({}, cur, add); changed = true; }
+      var sum = memoSummaryLine_(content);
+      if (sum && !String(r.case.개요 || '').trim()){ payload.개요 = sum; changed = true; }
+      if (!changed) return r;
+      return nxCaseSave_(payload).then(function(res2){
+        if (res2 && res2.conflict) r.note = '그 사이 다른 곳에서 이 사건이 바뀌어 사건개요 빈 칸은 채우지 못했습니다';
+        else if (res2 && res2.success === false) r.note = '사건개요 빈 칸 채우기 실패: ' + (res2.message || '');
+        else { r.filled = Object.keys(add).length; if (typeof loadWorkCases === 'function') loadWorkCases(); }
+        return r;
+      });
+    });
+  }
   document.getElementById('memoReqApplyConfirm').addEventListener('click', function(){
     var sel = document.getElementById('memoReqApplyCaseSelect');
-    if (!sel.value){ toast('저장할 사건을 선택해주세요.'); return; }
+    if (!sel.value){ toast('넣을 사건을 선택해주세요.'); return; }
     var c = memoReqAllCases_.filter(function(x){ return x.id === sel.value; })[0];
     if (!c) return;
-    var overview = memoReqExtractOverview_(c.세목, memoReqTextareaEl.value);
-    var proceedApplyRequest_ = function(overview){
+    var ctx = memoCaseCtx_ || {};
     var btn = document.getElementById('memoReqApplyConfirm');
-    btn.disabled = true;
-    memoReqSaveToFolder_(c.폴더ID, c.고객명).then(function(saveRes){
-      if (saveRes.error){ toast('저장 실패: ' + saveRes.error); return; }
-      if (!overview){
-        toast('"' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장했습니다.');
-        memoReqApplyStepEl.style.display = 'none';
-        return;
-      }
-      var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[c.세목] : null;
-      var payload = { id: c.id, 사건개요: Object.assign({}, c.사건개요 || {}, overview), 기대수정일: c.수정일 };
-      if (taxpayerField_ && overview[taxpayerField_]) payload.납세자 = overview[taxpayerField_];
-      return nxCaseSave_(payload).then(function(res2){
-        if (res2.conflict){ toast(res2.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 파일은 저장됐지만 사건개요는 반영 못 했습니다.'); return; }
-        if (res2.success === false){ toast('파일은 저장됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
-        toast('"' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장하고 사건개요도 채웠습니다.');
-        memoReqApplyStepEl.style.display = 'none';
-        if (typeof loadWorkCases === 'function') loadWorkCases();
-      });
+    btn.disabled = true; btn.textContent = '넣는 중…';
+    memoAppendToCase_(c, ctx).then(function(r){
+      if (!r) return;
+      memoReqApplyStepEl.style.display = 'none';
+      toast('「' + (c.사건명 || '') + '」 사건의 「' + r.file + '」 맨 앞에 상담기록을 넣었습니다' + (r.filled ? '(사건개요 빈 칸 ' + r.filled + '개도 채움)' : '') + (r.note ? ' — ' + r.note : '') + '.');
+      if (ctx.onDone) ctx.onDone();
     }).catch(function(err){
-      toast('저장 중 오류: ' + nxErrText_(err));
-    }).finally(function(){ btn.disabled = false; });
-    };
-    if (overview && c.사건개요 && Object.keys(c.사건개요).length){
-      nxConfirm_('"' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 의뢰서에서 뽑은 이름·메모로 덮어쓸까요?').then(function(ok){
-        proceedApplyRequest_(ok ? overview : null);
-      });
-    } else {
-      proceedApplyRequest_(overview);
-    }
+      toast('넣는 중 오류: ' + nxErrText_(err));
+    }).finally(function(){ btn.disabled = false; btn.textContent = '이 사건에 넣기'; });
   });
 </script>
 
@@ -57837,7 +57318,7 @@ function rwAiApplyEdit_(id, content){
     </div>
     <!-- [2026.11.01] 의뢰 메모 화면 도구줄에 있던 한 번 쓰고 마는 「템플릿 이름정리」를 보고서들 정비 단추처럼 여기로 옮김 -->
     <div class="card" data-sttab="4">
-      <h3>의뢰 메모</h3>
+      <h3>메모(의뢰서 양식)</h3>
       <div class="settings-tools-group">
         <div class="settings-tool-item">
           <button type="button" class="ghost-btn" id="stBtnMemoTplNameFix">템플릿 이름</button>
@@ -59425,8 +58906,7 @@ function rwAiApplyEdit_(id, content){
         <li><a href="#help-taxplan">절세</a></li>
         <li><a href="#help-reportwriter">보고서</a></li>
         <li><a href="#help-reports">고객 열람</a></li>
-        <li><a href="#help-memo-text">의뢰 메모</a></li>
-        <li><a href="#help-memo-hand">필기메모</a></li>
+        <li><a href="#help-memo-text">메모(글·손글씨)</a></li>
         <li><a href="#help-reporthub">보고서들</a></li>
         <li><a href="#help-sidemenu">☰ 왼쪽 메뉴 쓰는 법</a></li>
         <li><a href="#help-aisidebar">🤖 AI 도우미</a></li>
@@ -59458,7 +58938,7 @@ function rwAiApplyEdit_(id, content){
       <p>홈페이지로 들어온 상담 신청을 확인하고, 확정된 예약을 실제 사건으로 전환하는 화면입니다.</p>
       <ul>
         <li><b>홈페이지로 들어온 신청을 처리하려면</b>: 목록에서 "신청" 상태인 줄을 찾아 <b>승인</b> 또는 <b>거절</b>을 누릅니다.</li>
-        <li><b>전화 등으로 받은 예약을 세무사님이 직접 등록하려면</b>: ① "+ 직권등록"을 누릅니다 → ② 이름·연락처·상담유형·희망일시·상황을 입력합니다 → ③ 저장합니다.</li>
+        <li><b>전화 등으로 받은 예약을 세무사님이 직접 등록하려면</b>: ① "직권등록"을 누릅니다 → ② 이름·연락처·상담유형·희망일시·상황을 입력합니다 → ③ 저장합니다.</li>
         <li><b>확정된 예약을 실제 사건으로 만들려면</b>: 그 줄의 <b>🗂 사건 시작</b>을 누릅니다 → 사건 목록의 "새 사건 등록" 화면으로 이동하며 이름·상황이 자동으로 채워집니다 → 나머지 항목을 확인하고 저장합니다.</li>
         <li><b>이미 사건과 연결된 예약을 다시 보려면</b>: <b>🔗 사건 연결됨</b> 배지를 누릅니다 → 개요로 이동합니다.</li>
         <li><b>예약을 취소하려면</b>: 그 줄의 <b>예약 취소</b>를 누릅니다(연결된 캘린더 일정도 같이 지워집니다).</li>
@@ -59655,27 +59135,17 @@ function rwAiApplyEdit_(id, content){
       </ul>
     </section>
 
+    <!-- [2026.11.14 메모 한 창] 「의뢰 메모」·「필기메모」 두 절을 「메모」 한 절로(글·손글씨 탭) -->
     <section class="card" id="help-memo-text">
-      <h3>의뢰 메모</h3>
-      <p>전화 통화 중 바로 받아적는 메모장입니다.</p>
+      <h3 id="help-memo-hand">메모</h3>
+      <p>전화 통화 중 바로 적는 메모장입니다. 한 창 안에서 <b>⌨ 글</b>과 <b>✍ 손글씨</b> 탭을 바꿔 가며 씁니다(바꿔도 적던 글·그림은 그대로). 오른쪽 아래 떠 있는 ✍ 단추를 누르면 어느 화면에서나 손글씨 탭으로 열립니다.</p>
       <ul>
-        <li><b>통화하면서 바로 적으려면</b>: 입력창에 그냥 타이핑합니다.</li>
-        <li><b>메모를 저장하려면</b>: 💾를 누르고 고객명을 입력합니다(그 고객의 사건 폴더가 이미 있으면 그 안에 저장되고, 비워두면 의뢰 메모로 저장됩니다).</li>
-        <li><b>저장된 메모를 다시 찾으려면</b>: 🔍(검색)을 사용합니다.</li>
-        <li><b>상담 내용을 사건개요로 바로 반영하려면</b>: "📋 사건메모" 모드로 바꾼 뒤 세목을 고르고 항목을 채웁니다 → 새 사건 등록 또는 기존 사건에 적용합니다.</li>
-        <li><b>의뢰서를 작성하려면</b>: "🗂 의뢰서 작성" 모드로 바꾼 뒤 템플릿을 고르고 내용을 채웁니다 → 새 사건 또는 기존 사건 폴더에 저장합니다.</li>
-      </ul>
-    </section>
-
-    <section class="card" id="help-memo-hand">
-      <h3>필기메모</h3>
-      <p>손글씨로 바로 적는 메모장입니다.</p>
-      <ul>
-        <li><b>손글씨로 적으려면</b>: ✏️(펜)을 고르고 화면에 바로 씁니다.</li>
-        <li><b>색이나 굵기를 바꾸려면</b>: 위쪽 색상·굵기 선택을 사용합니다.</li>
-        <li><b>잘못 쓴 걸 되돌리려면</b>: ↩(되돌리기) / ↪(다시실행)을 누릅니다.</li>
-        <li><b>페이지를 넘기거나 추가하려면</b>: ◀▶를 사용합니다.</li>
-        <li><b>저장하려면</b>: 💾를 누릅니다(고객 폴더에 PDF로 저장됩니다).</li>
+        <li><b>통화하면서 바로 적으려면</b>: 글 탭 입력창에 그냥 타이핑합니다.</li>
+        <li><b>의뢰서 양식대로 적으려면</b>: 「양식 ▾」에서 양식을 고르면 그 칸에 불러옵니다(이미 적은 글이 있으면 뒤에 붙일지 묻습니다).</li>
+        <li><b>손글씨로 적으려면</b>: 손글씨 탭에서 ✏️(펜)을 고르고 화면에 바로 씁니다 — 색·굵기, ↩/↪(되돌리기·다시실행), ◀▶(쪽 넘기기·추가).</li>
+        <li><b>상담 내용을 사건으로 넘기려면</b>: 「사건에 넣기」 → 새 사건으로 등록하거나 이미 있는 사건을 고릅니다. 적은 내용은 그 사건의 의뢰서 파일 맨 앞에 「상담기록(날짜 시각)」으로 쌓이고, 글 속 이름·날짜·금액·소재지는 사건개요의 빈 칸에 가설로 들어갑니다(이미 넣으신 값은 바꾸지 않음). 손글씨는 PDF로 그 사건 폴더에 들어갑니다. 상담 녹음 요약도 같은 의뢰서 파일에 쌓입니다.</li>
+        <li><b>사건과 상관없는 메모는</b>: 「일반메모로 저장」 → 파일 이름을 적고, 펼쳐 보이는 폴더(메모 수·최근 메모 이름) 중에서 고릅니다. 「+ 새 폴더」로 고른 폴더 안에 폴더를 만듭니다.</li>
+        <li><b>저장된 일반메모를 다시 찾으려면</b>: 「일반메모 찾기」 칸에 낱말을 적습니다(모든 폴더에서 찾음, #태그로 좁히기).</li>
       </ul>
     </section>
 
@@ -59719,7 +59189,7 @@ function rwAiApplyEdit_(id, content){
             <li>"예약 보여줘" · "○○(고객) 수금 내역" · "○○ 사건 체크리스트" · "마감 임박 사건" · "진행 중 사건 몇 건"</li>
             <li>"오늘 할 일" · "○○ 연락처(주소)" · "○○ 사건 진행상황" · "○○ 수금 얼마 받았어?"</li>
             <li>"○○ 사건 양도세(증여세·상속세) 자동계산 해줘"</li>
-            <li>"이번 달(지난달·올해·작년·이번 주·오늘) 수금 얼마" — 고객 이름 없이 기간별 수금 합계 · "내일(다음 주) 예약" · "메모(필기메모·설정·사용설명서) 열어줘"</li>
+            <li>"이번 달(지난달·올해·작년·이번 주·오늘) 수금 얼마" — 고객 이름 없이 기간별 수금 합계 · "내일(다음 주) 예약" · "메모(손글씨 메모·설정·사용설명서) 열어줘"</li>
             <li>"미수금"·"못 받은 돈" — job은 받을 금액(약정 보수)을 기록하지 않아 계산할 수 없다는 안내가 바로 나옵니다(유료 AI로 보내지 않음)</li>
           </ul>
           "왜·검토·분석·판단·전략·얼마" 같은 말이 들어간 질문, 긴 질문, 첨부가 있는 질문은 AI가 답합니다. 사건이 여러 개 걸리면 고를 수 있는 버튼이 나옵니다.</li>
@@ -60151,7 +59621,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <!-- [2026.10.22] 고객에게 보여주기(기기 3종 검토 C-3, 태블릿) — 왼쪽 메뉴·넥스 칸·도움말을 숨기고 가운데 화면만 크게.
            세무사님 "권장순서대로 하고…" — 가장 작게 먼저: 지금 화면(세액 비교·절세 방안 등)을 그대로 크게 보여 줄 뿐, 내용은 바꾸지 않는다. -->
       <!-- [2026.11.01] 필기메모 — 메뉴에서 빼고 어느 화면에서나 띄우는 단추로(개편안 ③) -->
-      <button type="button" id="nxHandMemoBtn" title="필기메모 — 손글씨 메모 화면" onclick="goToView_('memo-hand')">✍</button>
+      <button type="button" id="nxHandMemoBtn" title="메모 — 손글씨로 적기(메모 창 손글씨 탭)" onclick="goToView_('memo-hand')">✍</button>
       <button type="button" id="nxPresentBtn" title="고객에게 보여주기 — 메뉴·넥스 칸을 숨기고 이 화면만 크게"
         onclick="document.body.classList.toggle('nx-present')">🖥</button>
       <!-- [2026-11-13 4차 43] 태블릿에서 떠 있는 단추 넷을 접어 두는 「⋯」(태블릿에서만 보임, style.html #nxFabMore). 단추 하나를 누르거나 바깥을 누르면 다시 접힘 -->
@@ -60180,7 +59650,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         <button type="button" data-field="sign"><span class="ic">✍</span>서명 받기</button>
         <button type="button" data-field="pen"><span class="ic">🖊</span>펜 표시</button>
         <button type="button" data-field="todo"><span class="ic">📋</span>오늘 할 일</button>
-        <button type="button" data-field="handmemo"><span class="ic">✍</span>필기메모</button>
+        <button type="button" data-field="handmemo"><span class="ic">✍</span>손글씨 메모</button>
         <button type="button" data-field="suggest"><span class="ic">💬</span>개선 건의</button>
         <button type="button" data-field="help"><span class="ic">❓</span>이 화면 도움말</button>
       </div>
@@ -61948,7 +61418,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // ============================================================
   var NXAI_VIEW_LABELS_ = { dashboard: '오늘', booking: '예약·상담', workmanage: '사건 목록', clientmanage: '고객', collections: '수금',
     casehandling: '개요', ledger: '사실(장부)', lawsearch: '법령·서식', docs: '서류', taxcalc: '계산', print: '세액인쇄', taxplan: '절세', reportwriter: '보고서',
-    reports: '고객 열람', 'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼' };
+    reports: '고객 열람', 'memo-text': '메모', 'memo-hand': '메모(손글씨)', reporthub: '보고서들', settings: '설정', manual: '매뉴얼' };
   // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
   function nxAiOpenJobView_(view, caseId, clientId, then, taxTab){
     var side = nxAiEl_('sideAI');
@@ -67984,7 +67454,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxCaseCreateLater_(payload, opt){
     opt = opt || {};
     payload.id = payload.id || nxNewId_();
-    payload.폴더뒤로 = true;
+    payload.폴더뒤로 = !opt.folderNow; // [2026.11.14] opt.folderNow — 만든 뒤 바로 폴더에 파일을 넣을 길(메모 손글씨 PDF)은 서버가 폴더를 만든 뒤 답하게
     var semokLbl = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[payload.세목]) || payload.세목 || '';
     var tmp = { id: payload.id, 고객명: payload.고객명 || '', 납세자: payload.납세자 || '', 세목: payload.세목 || '', 업무유형: payload.업무유형 || '', 의뢰일: payload.의뢰일 || '', 기준일: payload.기준일 || '', 개요: payload.개요 || '', 법정일: payload.법정일 || '',
       사건명: (payload.고객명 || '') + (payload.납세자 && payload.납세자 !== payload.고객명 ? '(' + payload.납세자 + ')' : '') + ' ' + semokLbl + ' ' + (payload.업무유형 || ''), 상태: '진행', 폴더ID: '',
@@ -68741,7 +68211,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     ai: 'AI', dashboard: '오늘', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약·상담', workmanage: '사건 목록', casehandling: '개요', ledger: '사실(장부)', lawsearch: '법령·서식', clientmanage: '고객',
     collections: '수금',
     docs: '서류', taxcalc: '계산', print: '세액인쇄', taxplan: '절세', reportwriter: '보고서', reports: '고객 열람',
-    'memo-text': '의뢰 메모', 'memo-hand': '필기메모', reporthub: '보고서들', settings: '설정', manual: '매뉴얼',
+    'memo-text': '메모', 'memo-hand': '메모(손글씨)', reporthub: '보고서들', settings: '설정', manual: '매뉴얼',
     taxgap: '건전세정' // [2026.11.12] 요청 R2611040743
   };
   // [2026.11.01] 사건 작업공간(아래 nxCbInit_) — 로그인 게이트가 곧바로 showView를 부르므로 위 VIEW_LABELS_처럼 여기 먼저 둔다
@@ -69037,6 +68507,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
 
   function showView(name){
+    if (name === 'memo-hand'){ window.nxMemoWantTab_ = 'hand'; name = 'memo-text'; } // [2026.11.14 메모 한 창] 옛 「필기메모」 화면 이름 → 「메모」 창 손글씨 탭
     // [2026.09 신규] 작성관리(보고서)를 보고 있다가 드라이브에 저장하지 않은 내용을 남긴 채
     // 다른 메뉴로 넘어가려 하면 한 번 확인한다 — rwHasUnsavedDriveChanges_()는
     // reportwriter.html이 정의해두며, 그 화면이 아직 한 번도 안 열렸으면 없을 수 있어 존재
@@ -69056,6 +68527,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (target) target.classList.add('active');
       nxCbOnView_(name); // [2026.11.01] 사건 작업공간 머리줄
       window._currentViewLabel = VIEW_LABELS_[name] || name;
+      if (name === 'memo-text' && typeof memoSetTab_ === 'function'){ memoSetTab_(window.nxMemoWantTab_ || ''); window.nxMemoWantTab_ = ''; } // 글·손글씨 탭(떠 있는 ✍·폰 도구·넥스는 손글씨 탭으로)
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
       nxCoverSync_();
@@ -69074,7 +68546,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (name === 'collections' && typeof initCollections === 'function') initCollections();
       if (name === 'docs' && typeof initDocs === 'function') initDocs();
       if (name === 'memo-text' && typeof initMemoText === 'function') initMemoText();
-      if (name === 'memo-hand' && typeof initMemoHand === 'function') initMemoHand();
       if (name === 'reporthub' && typeof initReportHub === 'function') initReportHub();
       if (name === 'taxcalc' && typeof initTaxCalc === 'function') initTaxCalc();
       if (name === 'print' && typeof initPrintHub === 'function') initPrintHub();
@@ -69157,6 +68628,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 상세의 "이 사건 처리하기" 버튼 → 사건처리 화면으로 이동). showView만 부르면 좌측 메뉴의
   // active 표시가 안 바뀌므로 같이 처리한다.
   function goToView_(name){
+    if (name === 'memo-hand'){ window.nxMemoWantTab_ = 'hand'; name = 'memo-text'; } // [2026.11.14 메모 한 창] 메뉴 불도 「메모」에
     showView(name);
     if (typeof nxPhoneBarSync_ === 'function') nxPhoneBarSync_(name); // [2026.11.11] 폰 아래 탭 줄
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
@@ -69720,7 +69192,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     casehandling: 'help-casehandling', ledger: 'help-ledger', lawsearch: 'help-lawsearch', clientmanage: 'help-clientmanage',
     collections: 'help-collections',
     docs: 'help-docs', taxcalc: 'help-taxcalc', taxplan: 'help-taxplan', reportwriter: 'help-reportwriter', reports: 'help-reports',
-    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-hand', settings: 'help-settings', reporthub: 'help-reporthub', ai: 'help-aisidebar', manual: 'help-toc'
+    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-text', settings: 'help-settings', reporthub: 'help-reporthub', ai: 'help-aisidebar', manual: 'help-toc'
   };
   function goToHelp_(sectionId){
     goToView_('manual');
@@ -69883,7 +69355,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 빠진 것이 있으면 오류 기록에 남긴다(→ 개선 후보 보고서 → 주간 루틴이 고침). 서버 호출은 문제가 있을 때 한 번뿐, 토큰 0.
   (function(){
     var INIT_BY_VIEW_ = { booking: 'initBooking', workmanage: 'initWorkManage', casehandling: 'initCaseHandling', lawsearch: 'initLawSearch',
-      clientmanage: 'initClientManage', collections: 'initCollections', docs: 'initDocs', 'memo-text': 'initMemoText', 'memo-hand': 'initMemoHand',
+      clientmanage: 'initClientManage', collections: 'initCollections', docs: 'initDocs', 'memo-text': 'initMemoText', // [2026.11.14] 손글씨(initMemoHand)는 「메모」 창 안의 탭이라 따로 화면 틀이 없음
+
       reporthub: 'initReportHub', taxcalc: 'initTaxCalc', print: 'initPrintHub', reportwriter: 'initReportWriter', reports: 'initReports',
       settings: 'initSettings', dashboard: 'initDashboard' };
     // 화면 안의 핵심 기능(버튼이 부르는 함수) — 이름이 바뀌거나 빠지면 버튼이 조용히 먹통이 된다
