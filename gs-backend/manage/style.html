@@ -627,6 +627,23 @@
   .manage-split-detail{ flex:1; overflow-y:auto; padding:16px; box-sizing:border-box; }
   /* [2026.11.01] 휴대폰 폭: 명단|상세 나란히면 상세가 100px 남짓으로 짓눌림 → 명단 위(높이 30%)·상세 아래로 쌓음(고객·작업관리 공통) */
   @media (max-width:700px){ .manage-split{ flex-direction:column; } .manage-split-list, #clientSplitList{ width:auto; flex:0 0 auto; max-height:30vh; border-right:none; border-bottom:1px solid var(--line); } .manage-split-detail{ padding:12px; } }
+  /* [2026-11-14] 세 가지 보기(사건 목록·고객 — workmanage.html nxSplitViews_) — 세무사님 "목록만 보이거나 카드만 보이는 3가지가 모두 필요" / "좁은화면에서만 구현하라는 것이 아니다"
+     목록만: 목록이 화면 전체(넓으면 여러 칸으로 나란히, 좁으면 한 칸) · 카드만: 카드가 화면 전체 + 맨 위 ◀ 이전·n / 전체·다음 ▶·☰ 목록으로 · 같이: 예전 그대로 */
+  .ms-modes{ display:inline-flex; gap:2px; margin-left:auto; }
+  .ms-modes [aria-pressed="true"]{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  .manage-split.ms-mode-list > .manage-split-list, .manage-split.ms-mode-list > #clientSplitList{ width:auto; min-width:0; flex:1 1 auto; max-height:none; border-right:none; border-bottom:none; }
+  .manage-split.ms-mode-list > .manage-split-detail{ display:none; }
+  .manage-split.ms-mode-list .log-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); align-content:start; }
+  .manage-split.ms-mode-card > .manage-split-list{ display:none; }
+  .ms-nav{ display:none; }
+  .manage-split.ms-mode-card .ms-nav{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; position:sticky; top:-16px; z-index:3; margin:-16px -16px 12px; padding:8px 16px; background:#f9fafb; border-bottom:1px solid var(--line); }
+  .ms-nav .ms-pos{ min-width:56px; text-align:center; font-variant-numeric:tabular-nums; color:var(--sub); font-size:13px; }
+  .ms-nav .ms-tolist{ margin-left:auto; }
+  @media (max-width:700px){
+    .ms-modes .ms-lbl{ display:none; } /* 좁으면 그림 글자만(이름은 마우스·화면 읽기용 이름표에) */
+    .ms-modes .ghost-btn.sm{ padding-left:6px !important; padding-right:6px !important; min-width:0; } /* 폰 폭에서 찾기 칸 옆 한 줄에 들어가게(도구 줄이 세 줄로 늘지 않게) */
+    .manage-split.ms-mode-card .ms-nav{ top:-12px; margin:-12px -12px 10px; padding:6px 12px; }
+  }
   input[type=text], input[type=date], input[type=password], input[type=tel], select, textarea{
     font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:#fff; }
   input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
