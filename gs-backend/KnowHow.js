@@ -375,9 +375,10 @@ function knhCaseMaterial_(cr, state, tplFiles, deadline) {
     if (Date.now() > deadline) return;
     var item = { 업무: (KNH_SEMOK_[r.세목] || r.세목) + ' ' + r.업무유형, 완료: r.수정일, 문서: [] };
     try {
-      var it = DriveApp.getFolderById(r.폴더ID).getFoldersByName(typeof WORK_SUBFOLDER_INTERNAL_REPORT !== 'undefined' ? WORK_SUBFOLDER_INTERNAL_REPORT : '보고서_내부');
-      if (it.hasNext()) {
-        var fi = it.next().getFiles(), n = 0;
+      // [2026.11.14 보고서 한 폴더] 「보고서」(합치기 전이면 「보고서_내부」) — Code.js reportFolderOf_. 내부·외부 원본 .md가 같은 폴더에 있다
+      var rfo = typeof reportFolderOf_ === 'function' ? reportFolderOf_(DriveApp.getFolderById(r.폴더ID), false) : (function () { var it0 = DriveApp.getFolderById(r.폴더ID).getFoldersByName(typeof WORK_SUBFOLDER_INTERNAL_REPORT !== 'undefined' ? WORK_SUBFOLDER_INTERNAL_REPORT : '보고서'); return it0.hasNext() ? it0.next() : null; })();
+      if (rfo) {
+        var fi = rfo.getFiles(), n = 0;
         while (fi.hasNext() && n < 3) {
           var f = fi.next();
           if (!/\.md$/i.test(f.getName())) continue;

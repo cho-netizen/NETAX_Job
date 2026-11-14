@@ -3351,7 +3351,7 @@
       .then(function(){
         st.by = '세무사님'; window.nxWorkBy_ = null;
         if (st.blocked) { st.running = false; return; } // 증빙 폴더 없음
-        return nxAiCpEndNoFinish_(st, st.tool === 'fill' ? '칸 채우기를 마쳤습니다. 질문에 답하시고, 필요한 도구를 아래에서 고르세요.' : st.tool === 'output' ? '서식 대조를 마쳤습니다 — 서식 PDF가 아직 없으면 위 「서식 대조」 줄에서 만들고 있습니다(끝나면 보고서_내부에 파일 이름이 보입니다).' : '서류를 읽어 장부에 적었습니다. 이어서 쓸 도구를 아래에서 고르세요.');
+        return nxAiCpEndNoFinish_(st, st.tool === 'fill' ? '칸 채우기를 마쳤습니다. 질문에 답하시고, 필요한 도구를 아래에서 고르세요.' : st.tool === 'output' ? '서식 대조를 마쳤습니다 — 서식 PDF가 아직 없으면 위 「서식 대조」 줄에서 만들고 있습니다(끝나면 보고서 폴더에 파일 이름이 보입니다).' : '서류를 읽어 장부에 적었습니다. 이어서 쓸 도구를 아래에서 고르세요.');
       })
       .catch(function(err){ st.running = false; st.setStep(st.tool === 'fill' ? 'overview' : st.tool === 'output' ? 'output' : 'evidence', '❌', String(err && err.message || err)); });
   }
@@ -3632,7 +3632,7 @@
         return '<tr><td>' + (ico[r.st] || '?') + '</td><td>' + nxAiEsc_((r.dir ? r.dir + '/' : '') + r.n) + '</td><td>' + nxAiEsc_([r.kind, r.why].filter(Boolean).join(' — ') || r.st) + '</td><td>' + (unused ? '<span class="nxai-warn">안 나옴</span>' : nxAiEsc_(r.use || '')) + '</td></tr>';
       }).join('') + '</table></details>';
   }
-  // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서_내부)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
+  // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
   function nxAiCaseProcSavePdf_(st, tab){
     var tMk0 = Date.now(); // [2026.10.23 ㅅ15차] 화면에서 원본 모양을 만드는 데 든 시간 — 서버 기록부 줄에 같이 남긴다(어디서 끊기는지 보이게)
     try {
@@ -3674,7 +3674,7 @@
     } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
   }
   // 저장된 계산 결과로 세액인쇄 필수 서식 PDF 만들기 — 서식은 세액계산 화면이 그 사건의 저장 결과를 불러와야 생기므로(tcRestoreToolResults_)
-  // 그 사건으로 세액계산 화면을 열고 서식이 준비되면 PDF로 사건 폴더(보고서_내부)에 저장한다.
+  // 그 사건으로 세액계산 화면을 열고 서식이 준비되면 PDF로 사건 폴더(보고서)에 저장한다.
   function nxAiCaseProcPdfRun_(st){
     var tab = st.case && st.case.세목;
     if (st.calcBusy || !CASEPROC_CALC_TABS_[tab] || typeof goToTaxCalc_ !== 'function') return;
@@ -3694,7 +3694,7 @@
       nxAiCaseProcSavePdf_(st, tab).then(function(pr){
         if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
         st.pdfRunning = false;
-        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' + nxAiCpTimeTxt_(pr._t) : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서)' + nxAiCpTimeTxt_(pr._t) : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
         if (st.screen && !st.home && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} } // [2026.10.22 묶음 ㄱ4] 사건 화면으로 돌아옴
         if (pr && pr.ok && !st.finishing) nxAiCaseProcStatus_(st); // [2026.10.23 속도 ㅅ4차] 마무리(finishAll) 중이면 ⑦은 거기서 한 번만(현황표 장부가 1분 — 두 번 돌지 않게)
       });
@@ -5833,7 +5833,7 @@
                 // 뒤에서: 서식 PDF → (마무리 중이 아니면 ④⑤ 다시 조회). 마무리(finishAll)는 st.pdfBg가 끝난 뒤 ⑤⑥⑦을 뒤에서 잇는다
                 st.pdfBg = nxAiCaseProcSavePdf_(st, tab).then(function(pr){
                   var ln = document.createElement('div'); ln.className = 'nxai-cp-line';
-                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' + (pr.recovered ? ' — 응답 대신 서버 현황으로 확인' : '') + nxAiCpTimeTxt_(pr._t) : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' + (pr.recovered ? ' — 응답 대신 서버 현황으로 확인' : '') + nxAiCpTimeTxt_(pr._t) : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
                   st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln);
                   st.setStep('calc', pr && pr.ok ? '✅' : '⚠', '세액 ' + (taxTxt || '저장 끝') + ' — ' + tm + (pr && pr.ok ? ' · 서식 PDF 저장 끝' : ' · 서식 PDF 실패'));
                   return st.finishing ? pr : nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ return pr; });
