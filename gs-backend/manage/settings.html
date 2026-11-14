@@ -108,13 +108,6 @@
         <button type="button" id="settingsFontReset" class="btn" style="min-height:34px;">기본으로</button>
       </div>
       <div class="settings-tool-desc" id="settingsFontNow" style="margin-top:6px;"></div>
-      <!-- [2026.11.13] 이 기기 이름 — 세무사님 "이 기기의 이름을 굳이 거기(이어 열기 띠)다가 보여주어야 하나?" → 이름 바꾸기는 여기서만. 다른 기기의 「○○에서 보던 화면」 띠에 이 이름이 보인다. 이 기기에만 기억. -->
-      <div style="font-size:13px; margin:14px 0 6px;">이 기기 이름</div>
-      <form id="settingsDeviceNameForm" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <input type="text" id="settingsDeviceName" maxlength="20" placeholder="예: 사무실 PC, 집 노트북, 갤럭시탭" style="font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; min-width:200px;">
-        <button type="submit" class="btn" style="min-height:34px;">저장</button>
-      </form>
-      <div class="settings-tool-desc" id="settingsDeviceNameNow" style="margin-top:6px;"></div>
       <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·보고서 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
@@ -585,22 +578,6 @@
       plus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() + 5); paint(); });
       reset.addEventListener('click', function(){ nxFontZoomSet_(null); paint(); toast('글자 크기를 기본값으로 되돌렸습니다(이 기기).'); });
       document.addEventListener('nx-layout-change', paint);
-      paint();
-    })();
-    // [2026.11.13] 이 기기 이름 — 이어 열기 띠(script.html nxPlaceOffer_)가 쓰는 localStorage nxDeviceName과 같은 칸
-    (function(){
-      var form = document.getElementById('settingsDeviceNameForm'), inp = document.getElementById('settingsDeviceName'), nowD = document.getElementById('settingsDeviceNameNow');
-      if (!form || typeof nxDeviceName_ !== 'function') return;
-      function paint(){
-        var n = nxDeviceName_(); inp.value = n;
-        nowD.textContent = n ? ('이 기기는 「' + n + '」 — 다른 기기의 「' + n + '에서 보던 화면」 띠에 이렇게 보입니다') : '아직 이름이 없습니다 — 다른 기기에는 「PC(이름 없는 기기)」처럼 보입니다';
-      }
-      form.addEventListener('submit', function(e){
-        e.preventDefault();
-        var v = String(inp.value || '').trim().slice(0, 20);
-        try { if (v) localStorage.setItem('nxDeviceName', v); else localStorage.removeItem('nxDeviceName'); } catch (er) {}
-        paint(); toast(v ? '이 기기 이름을 「' + v + '」로 정했습니다.' : '이 기기 이름을 지웠습니다.');
-      });
       paint();
     })();
     // 오류 기록 카드

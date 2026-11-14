@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 03:51 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 04:11 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57354,13 +57354,6 @@ function rwAiApplyEdit_(id, content){
         <button type="button" id="settingsFontReset" class="btn" style="min-height:34px;">기본으로</button>
       </div>
       <div class="settings-tool-desc" id="settingsFontNow" style="margin-top:6px;"></div>
-      <!-- [2026.11.13] 이 기기 이름 — 세무사님 "이 기기의 이름을 굳이 거기(이어 열기 띠)다가 보여주어야 하나?" → 이름 바꾸기는 여기서만. 다른 기기의 「○○에서 보던 화면」 띠에 이 이름이 보인다. 이 기기에만 기억. -->
-      <div style="font-size:13px; margin:14px 0 6px;">이 기기 이름</div>
-      <form id="settingsDeviceNameForm" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <input type="text" id="settingsDeviceName" maxlength="20" placeholder="예: 사무실 PC, 집 노트북, 갤럭시탭" style="font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; min-width:200px;">
-        <button type="submit" class="btn" style="min-height:34px;">저장</button>
-      </form>
-      <div class="settings-tool-desc" id="settingsDeviceNameNow" style="margin-top:6px;"></div>
       <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·보고서 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
@@ -57831,22 +57824,6 @@ function rwAiApplyEdit_(id, content){
       plus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() + 5); paint(); });
       reset.addEventListener('click', function(){ nxFontZoomSet_(null); paint(); toast('글자 크기를 기본값으로 되돌렸습니다(이 기기).'); });
       document.addEventListener('nx-layout-change', paint);
-      paint();
-    })();
-    // [2026.11.13] 이 기기 이름 — 이어 열기 띠(script.html nxPlaceOffer_)가 쓰는 localStorage nxDeviceName과 같은 칸
-    (function(){
-      var form = document.getElementById('settingsDeviceNameForm'), inp = document.getElementById('settingsDeviceName'), nowD = document.getElementById('settingsDeviceNameNow');
-      if (!form || typeof nxDeviceName_ !== 'function') return;
-      function paint(){
-        var n = nxDeviceName_(); inp.value = n;
-        nowD.textContent = n ? ('이 기기는 「' + n + '」 — 다른 기기의 「' + n + '에서 보던 화면」 띠에 이렇게 보입니다') : '아직 이름이 없습니다 — 다른 기기에는 「PC(이름 없는 기기)」처럼 보입니다';
-      }
-      form.addEventListener('submit', function(e){
-        e.preventDefault();
-        var v = String(inp.value || '').trim().slice(0, 20);
-        try { if (v) localStorage.setItem('nxDeviceName', v); else localStorage.removeItem('nxDeviceName'); } catch (er) {}
-        paint(); toast(v ? '이 기기 이름을 「' + v + '」로 정했습니다.' : '이 기기 이름을 지웠습니다.');
-      });
       paint();
     })();
     // 오류 기록 카드
@@ -68790,29 +68767,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
   }
 
-  // [2026.10.22] 이어 보기(기기 3종 2차 #10) — 마지막으로 보던 화면·사건·넥스 대화를 서버에 기억(기기 이름과 함께).
-  //  다른 기기에서 앱을 열면 대시보드 위에 "○○(휴대폰)에서 보던 「…」 이어 열기" 띠. 워치로 물은 긴 답도 같은 넥스 대화라 휴대폰에서 이어 본다.
-  function nxDeviceId_(){
-    var id = null; try { id = localStorage.getItem('nxDeviceId'); } catch (e) {}
-    if (!id){ id = 'd' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('nxDeviceId', id); } catch (e) {} }
-    return id;
-  }
-  // [2026.10.31] 세무사님 "태블릿에서 본 적 없는데 무슨 말인가?" → "권장안대로": 화면 너비로 기기를 짐작하던 것(좁힌 PC 창·Claude 시험 창도 '태블릿')을
-  //  기기마다 한 번 붙인 이름으로. 이름이 없으면 기기 종류(브라우저가 알려 주는 것)로만 짐작하고, 띠에서 바로 이름을 붙일 수 있다.
-  function nxDeviceName_(){ try { return localStorage.getItem('nxDeviceName') || ''; } catch (e) { return ''; } }
-  function nxDeviceLabel_(){
-    var n = nxDeviceName_(); if (n) return n;
-    var ua = navigator.userAgent || '';
-    var kind = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? '태블릿' : /Mobi|iPhone|Android/i.test(ua) ? '휴대폰' : 'PC';
-    return (window.nxCover ? '휴대폰 말하기' : kind) + '(이름 없는 기기)';
-  }
+  // [2026.10.22] 이어 보기(기기 3종 2차 #10) — 마지막으로 보던 화면·사건·넥스 대화를 서버에 기억. 앱을 열면 대시보드 위에 "n분 전에 보던 「…」 이어 열기" 띠.
+  //  워치로 물은 긴 답도 같은 넥스 대화라 휴대폰에서 이어 본다.
+  // [2026.11.14] 기기 이름 걷음 — 세무사님 "이미 이 기기 이름 정하기로 <Gram>이라고 정했으면, Gram대신 이 기기 라고 해야 하는 것이고, 이 기기 이름 정하기 단추는 안 보여야" → "걷어내라".
+  //  웹 화면은 기기를 알 수 없다(이름은 그 브라우저 저장칸에만 남아 시크릿 창·Claude 미리보기 창·다른 브라우저에선 사라짐). 이어 열기에 기기 이름은 필요 없으므로 띠·단추·설정 칸을 모두 걷었다.
+  //  Claude 미리보기 창은 브라우저가 스스로 밝히는 표시(「Claude/판번호」)로 가려 보던 곳을 남기지 않는다 — 예전엔 기기 이름이 「Claude…」일 때만 걸렀다.
+  function nxIsClaudePreview_(){ return /\bClaude\/\d/.test(navigator.userAgent || ''); }
   var nxPlaceTimer_ = null, nxPlaceLast_ = { sig: '', t: 0 };
   function nxPlaceSaveSoon_(){
     clearTimeout(nxPlaceTimer_);
     nxPlaceTimer_ = setTimeout(function(){
       var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
       if (!tok) return; // 로그인 전엔 서버를 부르지 않는다(10-14 장애)
-      if (/^Claude/.test(nxDeviceName_())) return; // [2026.11.13] Claude 미리보기 창(기기 이름 「Claude …」)이 본 흔적은 남기지 않는다 — 세무사님 화면에 "이름 없는 기기에서 보던" 띠가 떴음
+      if (nxIsClaudePreview_()) return; // [2026.11.13] Claude 미리보기 창이 본 흔적은 남기지 않는다(11-14 기기 이름 대신 브라우저 표시로)
       var act = document.querySelector('.view.active'), view = act ? act.id.replace(/^view-/, '') : '';
       var caseId = ''; try { caseId = typeof nxScreenCaseIdOf_ === 'function' ? nxScreenCaseIdOf_(view) : ''; } catch (e) {}
       var conv = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id && (view === 'ai' || window.nxCover)) ? nxAiConv : null; // 넥스 대화 화면·말하기 모드일 때만 대화 이어 열기
@@ -68822,33 +68789,23 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (nowT - nxPlaceLast_.t < 60000) { clearTimeout(nxPlaceTimer_); nxPlaceTimer_ = setTimeout(nxPlaceSaveSoon_, 60000 - (nowT - nxPlaceLast_.t) + 500); return; }
       nxPlaceLast_ = { sig: sig, t: nowT };
       callGas('place_save', { view: view, label: (window._currentViewLabel || view) + (conv && view === 'ai' ? ' — ' + String(conv.title || '').slice(0, 40) : ''), caseId: caseId,
-        convId: conv ? conv.id : '', device: nxDeviceId_() + '|' + nxDeviceLabel_() }).catch(function(){});
+        convId: conv ? conv.id : '' }).catch(function(){});
     }, 4000);
   }
   function nxPlaceOffer_(){
     callGas('place_get', {}).then(function(r){
       var p = r && r.place; if (!p || !p.at || Date.now() - p.at > 12 * 3600000) return;
-      // [2026.11.13] 세무사님 "기기를 오가지 않더라도 필요한 기능으로 보이는데?" → 같은 기기에서 앱을 다시 열어도 띄운다(기기 이름 글자 없이).
-      //  보던 곳이 대시보드면 이어 갈 데가 없어 띄우지 않고, Claude 미리보기 창의 흔적도 띄우지 않는다.
-      var parts = String(p.device || '').split('|'), same = parts[0] === nxDeviceId_();
-      if (!p.view || p.view === 'dashboard' || /^Claude/.test(parts[1] || '')) return;
+      // [2026.11.13] 세무사님 "기기를 오가지 않더라도 필요한 기능으로 보이는데?" → 같은 기기에서 앱을 다시 열어도 띄운다.
+      //  보던 곳이 대시보드면 이어 갈 데가 없어 띄우지 않고, 11-14 전에 남은 Claude 미리보기 창 흔적(기기 칸 「…|Claude…」)도 띄우지 않는다.
+      if (!p.view || p.view === 'dashboard' || /\|Claude/.test(String(p.device || ''))) return;
       var dash = document.getElementById('view-dashboard'); if (!dash || document.getElementById('nxPlaceBar')) return;
       var bar = document.createElement('div'); bar.id = 'nxPlaceBar';
       bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px;';
       var mins = Math.max(1, Math.round((Date.now() - p.at) / 60000));
-      bar.innerHTML = '<span>' + (same ? '' : escapeHtml(parts[1] || '다른 기기') + '에서 ') + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
-        + '<button type="button" class="save-btn sm" data-place="go">이어 열기</button><button type="button" class="ghost-btn sm" data-place="x">닫기</button>'
-        // [2026.11.13] 세무사님 "이 기기의 이름을 굳이 거기다가 보여주어야 하나?" → 이름이 아직 없는 기기에서만 「정하기」, 바꾸기는 설정 › 화면.
-        + (nxDeviceName_() ? '' : '<button type="button" class="ghost-btn sm" data-place="name" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">이 기기 이름 정하기</button>');
+      bar.innerHTML = '<span>' + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
+        + '<button type="button" class="save-btn sm" data-place="go">이어 열기</button><button type="button" class="ghost-btn sm" data-place="x">닫기</button>';
       bar.addEventListener('click', function(e){
         var b = e.target.closest('[data-place]'); if (!b) return;
-        if (b.getAttribute('data-place') === 'name'){
-          nxPrompt_('이 기기의 이름을 적어 주세요(예: 사무실 PC, 집 노트북, 갤럭시탭).', nxDeviceName_()).then(function(v){
-            v = String(v || '').trim().slice(0, 20); if (!v) return;
-            try { localStorage.setItem('nxDeviceName', v); } catch (er) {}
-            b.remove(); toast('이 기기 이름을 「' + v + '」로 정했습니다. 바꾸려면 설정 › 화면.'); // [2026.11.13] 정한 뒤엔 단추를 띠에 두지 않는다
-          }); return;
-        }
         bar.remove();
         if (b.getAttribute('data-place') !== 'go') return;
         if (p.convId && typeof nxAiOpenConv_ === 'function'){ goToView_('ai'); setTimeout(function(){ nxAiOpenConv_(p.convId); }, 300); return; }
