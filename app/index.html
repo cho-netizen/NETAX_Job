@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 09:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 12:58 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1393,6 +1393,11 @@
   /* 탭 버튼 없음 — 밀기로만 바꾼다. 녹음 중 다른 화면에 있으면 오른쪽 위에 작은 빨간 표시(누르면 녹음 화면) */
   #nxCmRecBadge{ position:fixed; top:6px; right:8px; z-index:70; border:none; border-radius:14px; background:#b3261e; color:#fff; font-size:13px; font-weight:700; padding:4px 10px; cursor:pointer; }
   #nxCmRecBadge[hidden]{ display:none; }
+  /* [2026.11.14] 말하기 모드에서 원래 화면으로 — 이 창에서 말하기를 켰을 때만(body.nx-talk-exit, script.html nxApplyLayout_) */
+  #nxTalkExitBtn{ display:none; }
+  /* 오른쪽 위 — 왼쪽 위는 요약 제목·넥스 화면의 🔊/📝 표시 자리. 녹음 중 표시(#nxCmRecBadge)는 그 아래로 내린다 */
+  body.nx-talk-exit #nxCmRecBadge{ top:46px; }
+  body.nx-talk-exit #nxTalkExitBtn{ display:block; position:fixed; top:6px; right:8px; z-index:70; border:none; border-radius:14px; background:var(--navy); color:var(--gold); font-size:13px; font-weight:700; padding:6px 12px; min-height:32px; cursor:pointer; box-shadow:0 1px 6px rgba(0,0,0,.25); }
   body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn, body.lay-cover #nxSuggestBtn{ display:none !important; }
   body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
   body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }
@@ -67315,6 +67320,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
   <!-- [2026.10.16] 커버화면은 탭 버튼 없이 밀기로만 화면을 바꾼다(세무사님) — 녹음 중일 때만 작은 표시(누르면 녹음 화면) -->
   <button type="button" id="nxCmRecBadge" hidden>● 녹음 중</button>
+  <!-- [2026.11.14] 말하기 모드에서 원래 화면으로(이 창에서 말하기를 켰을 때만 보임 — 워치·커버화면엔 안 보임). script.html nxTalkExit_ -->
+  <button type="button" id="nxTalkExitBtn" onclick="nxTalkExit_()">↩ 원래 화면으로</button>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -67649,7 +67656,22 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026.10.22] 세무사님 "권장순서대로 하고…"(기기 3종 검토 D-3) — 워치·휴대폰 바로가기 "넥스에게 말하기"(/m/?talk=1 → /app/?talk=1)는
     //  기기 크기와 상관없이 말하기 모드로 연다(그 창이 열려 있는 동안). 갤럭시워치(기종 SM-R…·SM-L…)도 말하기 모드.
     try { if (/[?&]talk=1/.test(location.search)) sessionStorage.setItem('nxForceTalk', '1'); } catch (e) {}
-    try { if (sessionStorage.getItem('nxForceTalk') === '1') return true; } catch (e) {}
+    if (nxTalkForced_()) return true;
+    return nxCoverNatural_();
+  }
+  // [2026.11.14] 세무사님 "고쳐야 한다" — 태블릿·폰 메뉴의 「넥스에게 말하기」를 누르면 그 창이 말하기 모드에 갇히고 돌아오는 길이 없었다
+  //  (창을 닫아야만 풀림). 말하기 모드를 이 창에서 켠 것(nxTalkForced_)과 기기가 원래 작은 화면인 것(nxCoverNatural_ — 워치·접는 폰 커버화면)을
+  //  나눠, 켠 것일 때만 「↩ 원래 화면으로」 단추(index.html #nxTalkExitBtn)를 보이고 누르면 끈다(nxTalkExit_). 워치·커버화면은 예전 그대로.
+  function nxTalkForced_(){ try { return sessionStorage.getItem('nxForceTalk') === '1'; } catch (e) { return false; } }
+  function nxTalkExit_(){
+    try { sessionStorage.removeItem('nxForceTalk'); } catch (e) {}
+    try { // 주소의 talk=1을 지운다 — 남겨 두면 다음 판정에서 다시 켜진다
+      var q = location.search.replace(/([?&])talk=1(&|$)/, function(m, a, b){ return b ? a : ''; }).replace(/[?&]$/, '');
+      history.replaceState(history.state, '', location.pathname + q + location.hash);
+    } catch (e) {}
+    nxApplyLayout_();
+  }
+  function nxCoverNatural_(){
     if (window.nxDeviceModel && /^SM-[RL]\d/i.test(window.nxDeviceModel)) return true;
     var o = nxLayoutOverride_();
     if (o === 'pc' || o === 'tablet') return false; // 설정에서 PC·태블릿으로 고정하면 커버화면 안 씀('폰' 고정은 씀)
@@ -67676,6 +67698,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var coverChanged = !!window.nxCover !== cover;
     window.nxCover = cover;
     document.body.classList.toggle('lay-cover', cover);
+    document.body.classList.toggle('nx-talk-exit', cover && nxTalkForced_() && !nxCoverNatural_()); // [2026.11.14] 「↩ 원래 화면으로」 단추
     if (coverChanged && typeof nxCoverOnEnter_ === 'function') try{ nxCoverOnEnter_(cover); }catch(e){}
     if (coverChanged){ try{ document.dispatchEvent(new CustomEvent('nx-cover-change', { detail: cover })); }catch(e){} }
     if (changed){ try{ document.dispatchEvent(new CustomEvent('nx-layout-change', { detail: st })); }catch(e){} }

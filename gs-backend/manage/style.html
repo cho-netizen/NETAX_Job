@@ -1098,6 +1098,11 @@
   /* 탭 버튼 없음 — 밀기로만 바꾼다. 녹음 중 다른 화면에 있으면 오른쪽 위에 작은 빨간 표시(누르면 녹음 화면) */
   #nxCmRecBadge{ position:fixed; top:6px; right:8px; z-index:70; border:none; border-radius:14px; background:#b3261e; color:#fff; font-size:13px; font-weight:700; padding:4px 10px; cursor:pointer; }
   #nxCmRecBadge[hidden]{ display:none; }
+  /* [2026.11.14] 말하기 모드에서 원래 화면으로 — 이 창에서 말하기를 켰을 때만(body.nx-talk-exit, script.html nxApplyLayout_) */
+  #nxTalkExitBtn{ display:none; }
+  /* 오른쪽 위 — 왼쪽 위는 요약 제목·넥스 화면의 🔊/📝 표시 자리. 녹음 중 표시(#nxCmRecBadge)는 그 아래로 내린다 */
+  body.nx-talk-exit #nxCmRecBadge{ top:46px; }
+  body.nx-talk-exit #nxTalkExitBtn{ display:block; position:fixed; top:6px; right:8px; z-index:70; border:none; border-radius:14px; background:var(--navy); color:var(--gold); font-size:13px; font-weight:700; padding:6px 12px; min-height:32px; cursor:pointer; box-shadow:0 1px 6px rgba(0,0,0,.25); }
   body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn, body.lay-cover #nxSuggestBtn{ display:none !important; }
   body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
   body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }
