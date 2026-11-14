@@ -5235,7 +5235,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_judge_save') return jsonResponse(aiJudgeSave_(body));
   if (body.action === 'ai_ask_slots') return jsonResponse(aiAskSlots_(body));
   if (body.action === 'ai_cross_check') return jsonResponse(aiCrossCheck_(body));
-  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); try { cpPrereadEnsureTrigger_(); } catch (e) {} let chk = null; try { chk = deploySmoke_().last; } catch (e) {} let rec = null; try { rec = deployRecordPc_(body, chk); } catch (e) {} return jsonResponse({ success: true, check: chk, recorded: rec }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
+  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); try { cpPrereadEnsureTrigger_(); } catch (e) {} try { if (typeof nrEnsureTrigger_ === 'function') nrEnsureTrigger_(); } catch (e) {} /* [2026.11.14] 밤 검토서 갱신 틱도 배포 기록 때 건다(새벽 2시 밤 점검만 기다리면 첫날 1~2시가 빠짐) */ let chk = null; try { chk = deploySmoke_().last; } catch (e) {} let rec = null; try { rec = deployRecordPc_(body, chk); } catch (e) {} return jsonResponse({ success: true, check: chk, recorded: rec }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_pr_list') return jsonResponse(gh_prList_(!!body.fresh)); // [2026.10.20] 승인 대기 수정안
   if (body.action === 'gh_pr_merge') return jsonResponse(gh_prMerge_(body));
   if (body.action === 'gh_pr_close') return jsonResponse(gh_prClose_(body));

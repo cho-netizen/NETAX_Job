@@ -684,7 +684,7 @@ function commSeamList_() {
     { 길: '밤 내부검토서 갱신(job 쓰는 흔적 → 01~05시 30분 틱 → 바뀐 것 찾기 0원 → 넥스가 고칠 곳만 고침·세무사님 문단 그대로·세액은 계산 저장본만 → 사건 기록·채팅 한 줄·답하실 것)', fn: function () {
       if (typeof nrNightTick !== 'function' || typeof nrReviewCase_ !== 'function' || typeof nrApplyEdits_ !== 'function' || typeof nrMarkUse_ !== 'function' || typeof nrNexWroteHook_ !== 'function') return '밤 검토서 갱신 서버 함수가 이 판에 없음';
       let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'nrNightTick'; }); } catch (e) { trig = true; }
-      if (!trig) return '밤 검토서 갱신 틱 트리거가 없음(nrEnsureTrigger_ — 밤 점검이나 설정 카드를 열면 걸림)';
+      if (!trig) return '밤 검토서 갱신 틱 트리거가 없음(nrEnsureTrigger_ — 배포 기록·밤 점검·설정 카드를 열면 걸림)';
       const nex = '# 종합검토서\n\n## 결론\n\n가능.\n\n## 확인\n\n취득일 확인.', cur = nex + '\n\n세무사님 메모 문단.';
       const prot = nrProtected_(cur, { text: nex, prot: [] });
       if (prot.length !== 1) return '세무사님 문단 가려내기가 다름(' + prot.length + ')';
