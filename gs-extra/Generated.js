@@ -1,6 +1,6 @@
 // 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js
 // 조회 시작점: handleListFolder, handleGetNetaxRootPath, handleListCaseTemplates, handleGetCaseTemplateContent, handleListGeneralMemos, handleListAllReports, handleGetLatestTemplateReview, jsonResponse
-// 포함한 최상위 선언 52개 (시트 쓰기가 들어 있는 것: ai_convFolder_, getOrCreateSubfolder_, work_getSheet_)
+// 포함한 최상위 선언 54개 (시트 쓰기가 들어 있는 것: ai_convFolder_, getOrCreateSubfolder_, work_getSheet_)
 
 // [2026.08] 예전엔 여기(서버)에 도구 왕복 루프 상한(MAX_TOOL_LOOPS)과 Apps Script 실행시간
 // 상한(약 6분)에 대비한 시간 예산(TOOL_LOOP_TIME_BUDGET_MS)이 있었다. 이제 루프 자체를 클라이언트
@@ -356,8 +356,6 @@ function writeFileOverwrite_(folder, name, content, mimeType) {
   return folder.createFile(Utilities.newBlob(content, mimeType || 'text/plain', name));
 }
 
-const MY_SUBFOLDER_REPORT = '보고서_외부'; // [2026.09.16 변경] 예전 이름 '보고서' → 개명(WORK_SUBFOLDER_INTERNAL_REPORT 주석 참고)
-
 // ============================================================
 // [2026.09 신규] "보고서 모음" 화면 — 모아보기 / 템플릿다듬기 / 글감만들기
 // ============================================================
@@ -441,7 +439,7 @@ function rh_collectReportFilesInFolder_(folder, out, caseId, 고객명, 사건�
     out.push({
       id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
       modifiedDate: f.getLastUpdated().getTime(), caseId: caseId, 고객명: 고객명, 사건명: 사건명,
-      kind: folderName, published: (folderName === MY_SUBFOLDER_REPORT)
+      kind: folderName, published: reportIsCustomerVisible_(f.getName()) // [2026.11.14 보고서 한 폴더] 폴더 이름이 아니라 외부보고서 .html인가로
     });
   }
   const subIter = folder.getFolders();
@@ -578,6 +576,35 @@ function work_colMap_(headers) {
   const map = {};
   WORK_HEADERS.forEach(function (name) { map[name] = headers.indexOf(name); });
   return map;
+}
+
+const REPORT_KINDS_ = [
+  { code: 'review', label: '종합검토서', use: '내부', detail: '선택' },
+  { code: 'review_specific', label: '개별검토서', use: '내부', detail: '필수' },
+  { code: 'advisory', label: '자문보고서', use: '외부', detail: '선택' },
+  { code: 'filing', label: '신고보고서', use: '외부', detail: '선택' },
+  { code: 'progress', label: '진행보고서', use: '외부', detail: '선택' },
+  { code: 'summary', label: '요약보고서', use: '외부', detail: '선택' },
+  { code: 'reference', label: '검토조서', use: '외부', detail: '선택' },
+  { code: 'appeal_petition', label: '불복청구서', use: '외부', detail: '선택' },
+  { code: 'translation', label: '번역서', use: '외부', detail: '선택' }
+];
+
+// 종류 찾기 — 코드('review')·명칭('종합검토서')·파일 이름('개별검토서_자경감면.md') 무엇을 줘도 된다. 파일 이름은 정식 이름일 때만 알아본다.
+function reportKindOf_(x) {
+  const s = String(x || '').trim(); if (!s) return null;
+  const byCode = REPORT_KINDS_.filter(function (k) { return k.code === s || k.label === s; })[0];
+  if (byCode) return byCode;
+  const base = s.replace(/\.(md|html?|htm|txt|pdf|gdoc|docx)$/i, '');
+  return REPORT_KINDS_.filter(function (k) { return base === k.label || base.indexOf(k.label + '_') === 0; })[0] || null;
+}
+
+// 고객 창구에 보여도 되나 — 외부보고서 정식 이름의 .html 발행본만(종합·개별검토서는 .html이 있어도 안 보임)
+function reportIsCustomerVisible_(name) {
+  const n = String(name || '');
+  if (!/\.html?$/i.test(n)) return false;
+  const k = reportKindOf_(n);
+  return !!(k && k.use === '외부');
 }
 
 function jsonResponse(obj) {

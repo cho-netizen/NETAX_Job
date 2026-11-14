@@ -418,7 +418,7 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
 var NX_CASE_CHAT_SKIP_ = ['case_ledger', 'list_business_managers', 'load_business_manager', 'search_tax_items', 'read_tax_item']; // [2026.11.11] 옛 도구 이름(ask_user·value_set·tax_calc·doc_view·doc_text·save_draft·report_tool_gap)은 정의 자체를 지워 여기서 뺌
 // [2026.10.30 1단계 보고서 한 길] ✍문서작성 탭의 서버 기능 다섯 가지를 넥스도 쓰게 — 공통원칙 "세무사님만 할 수 있는 화면 동작이 있으면 넥스 대행이 덜 된 것"
 //  (쟁점 문단 라이브러리·적용 조문 원문 부록·사건 서류 값·보고서 틀·슬라이드 자문보고서). 화면과 같은 서버 함수를 부른다(토큰 0)
-var NX_CASE_REPORT_TOOL_ = { name: 'report_parts', description: '보고서 재료(토큰 0, 보고서 탭과 같은 기능): do=template(label: 보고서 틀 이름 — 자문보고서·종합검토서·개별검토서·불복청구서·요약보고서·진행보고서·검토조서·신고보고서·번역서) 틀 본문 / do=paragraphs 쟁점 문단 라이브러리 목록(세무사님이 다듬은 표준 문단 — 맞는 문단을 가져다 빈칸만 채운다) / do=statutes(laws:[{lawName, articleNo}]) 적용 조문 원문 부록 / do=docfacts 사건 서류 정리 값(문단 빈칸용) / do=slides 슬라이드 자문보고서 틀을 사건 폴더에 만듦 / do=reviewnotes 장부의 추정·받을 증빙·보류 줄과 보류·받을 예정 질문(종합검토서 "확인 필요 사항"에 옮길 것 — 세무사님 보고서 탭 새 종합검토서와 같은 입구). 보고서 본문은 save_file_to_folder로 사건 폴더에 .md로 저장하면(path는 사건 폴더 기준 — 고객용 path ["보고서_외부"], 내부 검토 ["보고서_내부"]; 어디에 저장됐는지는 결과의 folderPath 그대로 말한다) 자문 장부 보고서 칸에 저절로 적힌다. 쓰기 전에 job_lookup kind=reports(search)로 사무소 기존 보고서 1~2개를 본보기로 읽는다.',
+var NX_CASE_REPORT_TOOL_ = { name: 'report_parts', description: '보고서 재료(토큰 0, 보고서 탭과 같은 기능): do=template(label: 보고서 틀 이름 — 자문보고서·종합검토서·개별검토서·불복청구서·요약보고서·진행보고서·검토조서·신고보고서·번역서) 틀 본문 / do=paragraphs 쟁점 문단 라이브러리 목록(세무사님이 다듬은 표준 문단 — 맞는 문단을 가져다 빈칸만 채운다) / do=statutes(laws:[{lawName, articleNo}]) 적용 조문 원문 부록 / do=docfacts 사건 서류 정리 값(문단 빈칸용) / do=slides 슬라이드 자문보고서 틀을 사건 폴더에 만듦 / do=reviewnotes 장부의 추정·받을 증빙·보류 줄과 보류·받을 예정 질문(종합검토서 "확인 필요 사항"에 옮길 것 — 세무사님 보고서 탭 새 종합검토서와 같은 입구). 보고서 본문은 save_file_to_folder로 .md로 저장하면 (정식 이름·자리 — 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록": 보고서는 reportKind(종류)·reportDetail(세부명칭)을 주면 GAS가 정식 이름 <보고서명칭_세부명칭>(사건명·고객명·날짜 넣지 않음)으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(세부명칭 필수, 사무소 안 문서), 외부보고서=자문보고서·신고보고서·진행보고서·요약보고서·검토조서·불복청구서·번역서(고객·세무서에 내는 문서 — 고객 창구에는 발행한 .html만 보인다). 다른 이름을 주면 GAS가 정식 이름으로 바꿔 저장하고 알려 준다. 어디에 무슨 이름으로 저장됐는지는 결과의 name·folderPath 그대로 말한다) 자문 장부 보고서 칸에 저절로 적힌다. 쓰기 전에 job_lookup kind=reports(search)로 사무소 기존 보고서 1~2개를 본보기로 읽는다.',
   input_schema: { type: 'object', properties: { do: { type: 'string', enum: ['template', 'paragraphs', 'statutes', 'docfacts', 'reviewnotes', 'slides'] }, label: { type: 'string' }, laws: { type: 'array', items: { type: 'object', properties: { lawName: { type: 'string' }, articleNo: { type: 'string' } } } } }, required: ['do'] } };
 function nxCaseReportParts_(caseId, input) {
   const d = String((input && input.do) || '');
@@ -449,6 +449,37 @@ function nxCaseChatToolRun_(caseId, name, input) {
 //  예전엔 드라이브 맨 위부터 찾아 ["보고서_내부"]가 실패했고, 넥스가 path 없이 다시 저장하자 보고서가 드라이브 맨 위에 떨어졌는데 넥스는 "사건 폴더 아래"라고 보고했다.
 //  맨 위부터 준 경로(…/사건폴더/보고서_내부)도 사건 폴더 이름 뒤만 쓴다. 없는 하위 폴더면 저장하지 않고 오류로 알린다(엉뚱한 곳에 떨어지지 않게).
 //  돌려줌: {folder, label} / {error} / null(사건 폴더를 못 찾음 — 예전 방식대로)
+// [2026.11.14 보고서 정식 이름·자리] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록 해야 한다. 넥스가 이름을 잘 못 부여 한 것이다" / "보고서폴더로 합치자"
+//  넥스가 사건 대화에서 저장하는 글이 보고서면(reportKind를 줬거나 이름이 보고서처럼 보이면) 보고서 탭과 같은 함수(reportSaveTarget_)로 정식 이름·「보고서」 폴더를 정한다.
+//  종류를 이름으로 가릴 수 없으면 저장하지 않고 종류를 달라고 돌려준다. 넥스가 준 옛 이름 파일이 이미 있으면 새로 만들지 않고 그 파일을 정식 이름으로 바꿔(파일 ID 그대로) 갱신하게 한다.
+//  돌려줌: null(보고서 아님 — 예전대로) / {error} / {folder, label, name, note}
+function nxCaseReportTarget_(caseId, input, isDoc) {
+  input = input || {};
+  const given = String((isDoc ? input.title : input.name) || '').trim();
+  const kindIn = String(input.reportKind || '').trim();
+  const g = reportGuessKindFromName_(given);
+  if (!kindIn && !g.reportish) return null;
+  if (!isDoc && given && !/\.(md|txt)$/i.test(given) && !kindIn) return null;
+  const kind = kindIn || (g.kind && g.kind.code) || '';
+  if (!kind || !reportKindOf_(kind)) return { error: '「' + given + '」은 보고서로 보이는데 종류를 가릴 수 없어 저장하지 않았다 — reportKind에 다음 중 하나를 넣어 다시 저장하라: ' + REPORT_KINDS_.map(function (k) { return k.label + '(' + k.use + ')'; }).join('·') + '. 내부보고서는 사무소 안 문서, 외부보고서는 고객·세무서에 내는 문서다. 개별검토서는 reportDetail(쟁점을 짧게)도 준다.' };
+  const t = reportSaveTarget_(caseId, { kind: kind, detail: input.reportDetail, name: isDoc ? '' : given, ext: isDoc ? '' : undefined });
+  if (t.error) return { error: t.error + (t.needDetail ? ' — reportDetail에 쟁점을 짧게 넣어 다시 저장하라(예: 자경감면).' : '') };
+  let name = isDoc ? t.base : t.name, renamedOld = '';
+  // 옛 이름으로 이미 저장된 그 파일(보고서 폴더 또는 사건 폴더 맨 위)을 정식 이름으로 바꿔 「보고서」로 옮긴다 — 같은 파일이 갱신되게(지침 5절 "옛 이름도 같은 검토서로 본다")
+  if (!isDoc && given && given !== name) {
+    try {
+      if (!t.folder.getFilesByName(name).hasNext()) {
+        [t.folder, t.caseFolder].some(function (fd) {
+          const it = fd.getFilesByName(given);
+          while (it.hasNext()) { const f = it.next(); if (f.isTrashed()) continue; f.setName(name); if (fd.getId() !== t.folder.getId()) f.moveTo(t.folder); renamedOld = given; return true; }
+          return false;
+        });
+      }
+    } catch (e) { renamedOld = ''; }
+  }
+  const note = (given && given !== name ? '정식 이름 규칙에 따라 「' + name + '」로 저장했다(넥스가 준 이름: 「' + given + '」' + (renamedOld ? ' — 그 이름의 기존 파일을 정식 이름으로 바꿔 갱신' : '') + ').' : '정식 이름 「' + name + '」로 저장했다.') + ' 자리: 사건 폴더 「' + REPORT_FOLDER_NAME_ + '」(' + t.kind.use + '보고서' + (t.kind.use === '외부' ? ' — 고객 창구에는 발행한 .html만 보인다' : ' — 고객에게 보이지 않는다') + ').';
+  return { folder: t.folder, label: [t.caseFolder.getName(), REPORT_FOLDER_NAME_], name: name, note: note, kind: t.kind };
+}
 function nxCaseSaveFolder_(caseId, pathIn) {
   let root = null;
   try { const cr = job_findCase_(caseId); if (cr && String(cr.폴더ID || '').trim()) root = DriveApp.getFolderById(String(cr.폴더ID).trim()); } catch (e) { root = null; }
@@ -459,8 +490,10 @@ function nxCaseSaveFolder_(caseId, pathIn) {
   if (at >= 0) rel = rel.slice(at + 1);
   let f = root;
   for (let i = 0; i < rel.length; i++) {
+    // [2026.11.14 보고서 한 폴더] 옛 path 「보고서_내부」·「보고서_외부」·「보고서」는 모두 「보고서」 폴더(합치기 전이면 「보고서_내부」)로 읽는다
+    if (f === root && typeof reportIsReportDirName_ === 'function' && reportIsReportDirName_(rel[i])) { f = reportFolderOf_(root, true); rel[i] = REPORT_FOLDER_NAME_; continue; }
     const it = f.getFoldersByName(rel[i]);
-    if (!it.hasNext()) return { error: '사건 폴더 「' + caseName + '」 안에 「' + rel.slice(0, i + 1).join(' / ') + '」 폴더가 없어 저장하지 않았다. 사건 대화에서 path는 사건 폴더 기준이다(예: ["보고서_내부"], ["보고서_외부"]) — 사건 폴더 바로 아래면 path를 비워라.' };
+    if (!it.hasNext()) return { error: '사건 폴더 「' + caseName + '」 안에 「' + rel.slice(0, i + 1).join(' / ') + '」 폴더가 없어 저장하지 않았다. 사건 대화에서 path는 사건 폴더 기준이다(예: ["보고서"]) — 사건 폴더 바로 아래면 path를 비워라. 보고서는 path 대신 reportKind를 주면 「보고서」에 정식 이름으로 저장된다.' };
     f = it.next();
   }
   return { folder: f, label: [caseName].concat(rel) };
@@ -522,9 +555,9 @@ function nxCaseChatGuide_(caseId) {
     + '- [복합 자문 — 의뢰인 문의가 여러 세목에 걸쳐 여러 개일 때] ① 맨 먼저 의뢰서·의뢰개요(사건 장부 요약)·세무사님 말씀에 있는 문의를 하나도 빼지 않고 하나씩 case_ledger do=advice item=문의로 적는다(title=물으신 것을 원문대로 한 줄, no=물으신 순서, tax=그 문의의 세목 — 둘에 걸치면 둘 다). 문의를 합치거나 바꿔 쓰지 않는다. ② 문의에 나온 세목이 주 세목 말고도 있으면 case_ledger do=taxes(taxes=그 세목들, why=어느 문의 때문인지)로 함께 보는 세목을 정한다 — 그래야 그 세목의 칸·의뢰 메모 추정·받을 증빙·장부 계산(do=calc tax=…)이 열린다. 세무사님이 정하신 목록이면 바꾸지 않는다. ③ 계산 도구는 필요한 세목 분야를 모두 연다(browse_tax_calculators를 세목마다). ④ 쟁점에도 tax를 붙인다. ⑤ 업무가 여럿 섞이면(예: 양도+상속+가족법인) load_business_manager로 그 업무마다 지침을 모두 읽는다. ⑥ 보고서는 자문보고서 틀의 "문의사항별 답변" 절에 문의 번호마다 결론 한두 줄과 "쟁점 ○ 참조"만 쓰고, 풀이는 쟁점별 검토에만 둔다. ⑦ 보고서를 저장하면 저장 결과에 "문의 답 현황"이 붙는다 — 답한 문의는 do=advice item=문의 id status=답함(answer=답 요지)으로, 자료가 없어 답을 못 낸 문의는 status=보류(text=까닭·필요한 자료)로, 결론을 가르는 사실을 기다리는 문의는 status=자료 기다림(text=갈림길·질문·받을 서류)으로 적는다. 답 안 함이 남은 채 끝내지 않는다.\n'
     // [2026.11.14 세무사님 "내가 검토서를 만들라고 한 사건만 검토서가 생성되고, 생성된 검토서 중 수정할 사항이 있는 경우에 야간작업에서 업데이트하는 것으로 하자"]
     + '- [내부 검토서] 종합검토서·개별검토서_쟁점은 세무사님이 "검토서를 만들라"고 하신 사건에서만 새로 만든다(판단은 채팅·자문 장부에). 있는 검토서는 판단이 바뀌면 고친다.\n'
-    + '- 보고서(세무사님 "기존 보고서 모음을 참고하라"): ① job_lookup kind=reports(search에 세목·종류 낱말)로 사무소 기존 보고서 중 같은 세목·같은 종류 1~2개를 골라 read_drive_file로 읽고 구성·어조·깊이를 본보기로 삼는다(고객 이름·숫자는 옮기지 않는다) ② report_parts do=template로 틀(자문보고서·종합검토서·개별검토서·불복청구서 등)을, do=paragraphs로 세무사님이 다듬은 쟁점 문단을, do=statutes로 적용 조문 원문 부록을 가져온다 ③ 세액·비교표는 저장본에서만 인용하고(case_ledger do=cite로 입력·결과 확인) 어느 저장본인지 적는다 — 암산 금지. 계산 도구를 못 불렀으면 숫자를 지어내지 말고 "세액은 계산 도구로 아직 못 냈다"고 적는다. 보고서를 저장하면 GAS가 세액 숫자를 저장본과 대조해 ❌를 돌려준다 — ❌가 오면 저장본 숫자로 고쳐 다시 저장한다 ④ 잠정치는 "잠정"과 근거, 확인할 것·받을 서류를 보고서에 그대로 밝힌다 ⑤ save_file_to_folder로 사건 폴더에 .md로 저장(path는 사건 폴더 기준 — 고객용 ["보고서_외부"], 내부 검토 ["보고서_내부"]; 저장 위치는 결과의 folderPath 그대로 보고) — 자문 장부 보고서 칸에 저절로 적히니, 인용한 저장본은 do=advice item=보고서 id calc로 잇는다.\n'
+    + '- 보고서(세무사님 "기존 보고서 모음을 참고하라"): ① job_lookup kind=reports(search에 세목·종류 낱말)로 사무소 기존 보고서 중 같은 세목·같은 종류 1~2개를 골라 read_drive_file로 읽고 구성·어조·깊이를 본보기로 삼는다(고객 이름·숫자는 옮기지 않는다) ② report_parts do=template로 틀(자문보고서·종합검토서·개별검토서·불복청구서 등)을, do=paragraphs로 세무사님이 다듬은 쟁점 문단을, do=statutes로 적용 조문 원문 부록을 가져온다 ③ 세액·비교표는 저장본에서만 인용하고(case_ledger do=cite로 입력·결과 확인) 어느 저장본인지 적는다 — 암산 금지. 계산 도구를 못 불렀으면 숫자를 지어내지 말고 "세액은 계산 도구로 아직 못 냈다"고 적는다. 보고서를 저장하면 GAS가 세액 숫자를 저장본과 대조해 ❌를 돌려준다 — ❌가 오면 저장본 숫자로 고쳐 다시 저장한다 ④ 잠정치는 "잠정"과 근거, 확인할 것·받을 서류를 보고서에 그대로 밝힌다 ⑤ save_file_to_folder로 .md 저장 — reportKind·reportDetail(세부명칭)을 주면 GAS가 정식 이름으로 「보고서」에 둔다(결과 name·folderPath대로 보고) — 자문 장부 보고서 칸에 저절로 적히니, 인용한 저장본은 do=advice item=보고서 id calc로 잇는다.\n'
     // [2026.10.30] 세무서 제출용 검토조서 — 세무사님 "ai에게 분명히 신고에 첨부할 보고서를 작성하자고 했는데 내부검토보고서 형식으로 작성을 했더라구. 세무서에 신고 참고로 작성하는 것은 달라야 하거든"
-    + '- [검토조서 — 세무서에 신고와 함께 내는 문서] 세무사님이 신고에 첨부할·세무서에 낼 보고서를 말씀하시면 그것은 검토조서다(종합검토서·개별검토서·자문보고서 모양으로 쓰지 않는다). ① report_parts do=template label="검토조서"로 틀을 받아 틀 첫머리 작성 안내(세무사님 원문 결정)를 그대로 따른다 — 사무소 기존 보고서는 본보기로 삼지 않는다(세무서 제출 본보기가 아니다) ② 틀의 "양도/증여/상속 시작~끝" 중 사건 세목 하나, "정리용/쟁점용 시작~끝" 중 하나만 남기고 그 표시 줄은 지운다: 쟁점 없이 신고 내용 정리면 정리용, 쟁점(비과세·감면·공제 요건 등)을 근거와 함께 설명하면 쟁점용 ③ 큰 제목 "검토조서", 아래 부제 "- ○○○ ○○세 신고 관련 참고사항 -", 수신 없음, 공문 개조식(~함·~임), 번호는 적지 않고 목록 단계(- / 두 칸 들여 - / 네 칸 들여 -)로 ④ 틀은 가장 복잡한 경우를 다 넣은 풀버전이다 — 이 사건에 해당하는 줄만 채우고 나머지는 아래 단계 줄까지 줄째 지운다("(…이면)·(있으면)" 줄은 해당하면 괄호 머리를 지우고 채움, 해당 없으면 지움, 양도는 "자산" 묶음을 자산마다 하나씩·"합산"은 늘 남김). 틀에 적힌 조문도 이 사건에 맞는지 원문으로 확인. 금액은 계산기 저장본에서만 인용하고 금액마다 산출근거·세부 내역, 공과금·채무 등 여러 건은 건마다 한 줄, 해당 없으면 "없음" ⑤ 반대 해석례는 절대 언급하지 않는다(구별 단락도 없음). 목차·위험도·대안 비교·종전 자문 경위·고객 사정·문의처·잠정치를 넣지 않는다. 사실관계·금액은 사건 폴더 서류에서 확인한 것만 쓴다 — 상담 메모·말씀은 서류가 아니므로 서류로 확인되지 않은 칸은 짐작으로 채우지 말고 [확인 필요]로 둔다. 잠정치·[확인 필요]가 하나라도 남으면 저장하지 말고 받을 서류·확인할 것을 항목별로 묶어 세무사님께 여쭌다 ⑥ 서명은 작성일과 "이음세무컨설팅 세무사 조종호" 한 줄 ⑦ 저장: save_file_to_folder path ["보고서_외부"], 이름 "검토조서.md"(정리용) 또는 "검토조서_쟁점이름.md"(쟁점용, 고객명 넣지 않음). 같은 이름이 이미 있으면 덮어쓰지 않고 다른 쟁점 이름으로 — 세무사님이 그 검토조서를 고치라고 하셨을 때만 overwrite:true ⑧ PDF는 세무사님이 ✍ 문서작성 내려받기 "인쇄용 PDF(A4 여백·쪽마다 머리글)"로 만드신다고 알린다(보기용 PDF는 여백 없음).\n'
+    + '- [검토조서 — 세무서에 신고와 함께 내는 문서] 세무사님이 신고에 첨부할·세무서에 낼 보고서를 말씀하시면 그것은 검토조서다(종합검토서·개별검토서·자문보고서 모양으로 쓰지 않는다). ① report_parts do=template label="검토조서"로 틀을 받아 틀 첫머리 작성 안내(세무사님 원문 결정)를 그대로 따른다 — 사무소 기존 보고서는 본보기로 삼지 않는다(세무서 제출 본보기가 아니다) ② 틀의 "양도/증여/상속 시작~끝" 중 사건 세목 하나, "정리용/쟁점용 시작~끝" 중 하나만 남기고 그 표시 줄은 지운다: 쟁점 없이 신고 내용 정리면 정리용, 쟁점(비과세·감면·공제 요건 등)을 근거와 함께 설명하면 쟁점용 ③ 큰 제목 "검토조서", 아래 부제 "- ○○○ ○○세 신고 관련 참고사항 -", 수신 없음, 공문 개조식(~함·~임), 번호는 적지 않고 목록 단계(- / 두 칸 들여 - / 네 칸 들여 -)로 ④ 틀은 가장 복잡한 경우를 다 넣은 풀버전이다 — 이 사건에 해당하는 줄만 채우고 나머지는 아래 단계 줄까지 줄째 지운다("(…이면)·(있으면)" 줄은 해당하면 괄호 머리를 지우고 채움, 해당 없으면 지움, 양도는 "자산" 묶음을 자산마다 하나씩·"합산"은 늘 남김). 틀에 적힌 조문도 이 사건에 맞는지 원문으로 확인. 금액은 계산기 저장본에서만 인용하고 금액마다 산출근거·세부 내역, 공과금·채무 등 여러 건은 건마다 한 줄, 해당 없으면 "없음" ⑤ 반대 해석례는 절대 언급하지 않는다(구별 단락도 없음). 목차·위험도·대안 비교·종전 자문 경위·고객 사정·문의처·잠정치를 넣지 않는다. 사실관계·금액은 사건 폴더 서류에서 확인한 것만 쓴다 — 상담 메모·말씀은 서류가 아니므로 서류로 확인되지 않은 칸은 짐작으로 채우지 말고 [확인 필요]로 둔다. 잠정치·[확인 필요]가 하나라도 남으면 저장하지 말고 받을 서류·확인할 것을 항목별로 묶어 세무사님께 여쭌다 ⑥ 서명은 작성일과 "이음세무컨설팅 세무사 조종호" 한 줄 ⑦ 저장: save_file_to_folder reportKind "검토조서" — 정리용은 「검토조서.md」, 쟁점용은 reportDetail에 쟁점 이름(고객명 넣지 않음). 같은 이름이 이미 있으면 덮어쓰지 않고 다른 쟁점 이름으로 — 세무사님이 그 검토조서를 고치라고 하셨을 때만 overwrite:true ⑧ PDF는 세무사님이 ✍ 문서작성 내려받기 "인쇄용 PDF(A4 여백·쪽마다 머리글)"로 만드신다고 알린다(보기용 PDF는 여백 없음).\n'
     // [2026.10.30 1단계] 옛 사건 지휘 지시문을 지우며 옮겨 온 규칙(원문은 각 줄의 날짜 결정)
     + '- [맡긴 범위] 세무사님은 사건을 전체로·일부만 맡기시거나 직접 처리하신다("내가 넥스에게 전체를 맡길때도 있고 부분적으로 맡길때도 있고 아예 맡기지 않고 직접 처리할 때도 있는 것을 모두 감안하라"). 말씀이 범위를 정하면(예: "취득가액만 봐줘") 그 범위만 하고 나머지는 "맡기지 않으셔서 두었음"으로 적는다. 범위 말씀이 없으면 전체를 맡긴 것으로 본다. 세무사님이 직접 넣거나 정한 값은 바꾸지 않는다 — 어긋나 보이면 여쭌다.\n'
     + '- [파일 읽기] 너는 대리인이라 사건 폴더의 어떤 파일이든 폭넓게 읽는다(case_files로 폴더 파일 목록 보기, file_read로 글 — 체크가 꺼진 파일·산출물·보관 폴더·예규·메모도). 목록 표시 🆕 새 / ✏ 바뀜 / ✓ 전에 읽음(시각) — ✓는 다시 읽지 않는다. GAS가 읽을 파일은 사건마다 체크 목록이 정한다: 체크 목록은 GAS(서류 읽기·칸 채우기·직결)가 읽을 파일을 콕 집어 주는 것이고 너의 읽기를 막지 않는다. 순서: case_files로 폴더 파일 목록 보기 → 모르는 파일은 file_read → 이 사건에 필요한지 판단 → set_read_scope로 GAS에게 체크 목록 지정 → (한꺼번에 읽힐 것이 있으면) case_read.\n'

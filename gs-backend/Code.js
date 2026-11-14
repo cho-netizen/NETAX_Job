@@ -320,12 +320,14 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'save_file_to_folder',
-    description: '드라이브에 실제로 파일을 만들거나 저장한다. 사용자가 "이거 파일로 저장해줘", "보고서 만들어줘", "이 폴더에 저장해줘"처럼 결과물을 실제 파일로 남겨달라고 요청하면, 채팅 답변 텍스트로만 주지 말고 반드시 이 도구를 써서 실제 파일을 만들어라. path를 생략하면 사용자가 지금 화면에서 보고 있는 폴더에 저장된다. 같은 폴더에 이미 같은 이름의 파일이 있으면 그 파일을 갱신한다(직전 판은 같은 폴더 "_이전판"에 자동 보관) — 같은 사건의 같은 문서(검토서·보고서 등)를 고칠 때는 이름에 날짜·판 번호를 붙이지 말고 기존 파일과 똑같은 이름으로 저장하라. 단 지금 화면에 열려 있는 문서는 이 도구로 저장되지 않으니 apply_document_edit를 써라. 마크다운(.md)·일반 텍스트(.txt) 등 텍스트 기반 파일만 만들 수 있다(오피스 문서·PDF 등 바이너리 파일은 못 만듦). "워드처럼 받고 싶다", "구글독스로 내보내줘"처럼 서식 있는 문서를 원하면 이 도구 대신 export_to_google_doc을 써라 — 둘 중 뭘 원하는지 애매하면 사용자에게 물어봐라.',
+    description: '드라이브에 실제로 파일을 만들거나 저장한다. 사용자가 "이거 파일로 저장해줘", "보고서 만들어줘", "이 폴더에 저장해줘"처럼 결과물을 실제 파일로 남겨달라고 요청하면, 채팅 답변 텍스트로만 주지 말고 반드시 이 도구를 써서 실제 파일을 만들어라. path를 생략하면 사용자가 지금 화면에서 보고 있는 폴더에 저장된다. 사건이 연결된 대화에서 보고서를 저장할 때는 reportKind(종류)·reportDetail(세부명칭)을 준다 — GAS가 정식 이름 <보고서명칭_세부명칭>.md(사건명·고객명·날짜 넣지 않음)으로 사건 폴더 「보고서」에 저장하고, 다른 이름을 주면 정식 이름으로 바꿔 저장한다(세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록"). 같은 폴더에 이미 같은 이름의 파일이 있으면 그 파일을 갱신한다(직전 판은 같은 폴더 "_이전판"에 자동 보관) — 같은 사건의 같은 문서(검토서·보고서 등)를 고칠 때는 이름에 날짜·판 번호를 붙이지 말고 기존 파일과 똑같은 이름으로 저장하라. 단 지금 화면에 열려 있는 문서는 이 도구로 저장되지 않으니 apply_document_edit를 써라. 마크다운(.md)·일반 텍스트(.txt) 등 텍스트 기반 파일만 만들 수 있다(오피스 문서·PDF 등 바이너리 파일은 못 만듦). "워드처럼 받고 싶다", "구글독스로 내보내줘"처럼 서식 있는 문서를 원하면 이 도구 대신 export_to_google_doc을 써라 — 둘 중 뭘 원하는지 애매하면 사용자에게 물어봐라.',
     input_schema: {
       type: 'object',
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더에 저장된다.' },
-        name: { type: 'string', description: '파일 이름(확장자 포함, 예: "검토보고서.md")' },
+        name: { type: 'string', description: '파일 이름(확장자 포함). 보고서는 정식 이름(예: "종합검토서.md", "개별검토서_자경감면.md", "자문보고서.md") — reportKind를 주면 GAS가 맞춰 준다' },
+        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
+        reportDetail: { type: 'string', description: '보고서 세부명칭(쟁점을 짧게, 예: 자경감면) — 개별검토서는 꼭, 다른 종류는 같은 종류가 둘 이상일 때만. 사건명·고객명·날짜는 넣지 않는다.' },
         content: { type: 'string', description: '파일에 저장할 내용 전체(마크다운 또는 일반 텍스트). 일부만 주지 말고 완성된 전체 내용을 줘야 한다.' },
         overwrite: { type: 'boolean', description: '세무서 제출용 검토조서(검토조서.md·검토조서_쟁점.md)를 같은 이름으로 갱신할 때만 true — 세무사님이 그 검토조서를 고치라고 하셨을 때만. 그 밖의 파일에는 쓰지 않는다.' }
       },
@@ -334,12 +336,14 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'export_to_google_doc',
-    description: '마크다운/텍스트 내용을 실제 구글독스 파일로 만든다(제목·부제목·굵게·목록 서식 적용됨). 사용자가 "구글독스로 내보내줘", "워드처럼 받고 싶다", "독스로 만들어줘"처럼 요청하면 이 도구를 써라. path를 생략하면 지금 사용자가 보고 있는 폴더에 저장된다. save_file_to_folder(마크다운 원문 텍스트 파일)와는 결과물이 다르니, 어느 쪽을 원하는지 애매하면 사용자에게 물어봐라.',
+    description: '마크다운/텍스트 내용을 실제 구글독스 파일로 만든다(제목·부제목·굵게·목록 서식 적용됨). 사용자가 "구글독스로 내보내줘", "워드처럼 받고 싶다", "독스로 만들어줘"처럼 요청하면 이 도구를 써라. path를 생략하면 지금 사용자가 보고 있는 폴더에 저장된다. save_file_to_folder(마크다운 원문 텍스트 파일)와는 결과물이 다르니, 어느 쪽을 원하는지 애매하면 사용자에게 물어봐라. 사건이 연결된 대화에서 보고서면 reportKind·reportDetail을 준다 — 제목이 정식 이름이 되고 사건 폴더 「보고서」에 저장된다.',
     input_schema: {
       type: 'object',
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더.' },
-        title: { type: 'string', description: '문서 제목' },
+        title: { type: 'string', description: '문서 제목(보고서면 reportKind에 따라 GAS가 정식 이름으로 맞춘다)' },
+        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
+        reportDetail: { type: 'string', description: '보고서 세부명칭(쟁점을 짧게, 예: 자경감면) — 개별검토서는 꼭, 다른 종류는 같은 종류가 둘 이상일 때만. 사건명·고객명·날짜는 넣지 않는다.' },
         content: { type: 'string', description: '마크다운 형식 내용 전체(# 제목, ## 소제목, **굵게**, - 목록 지원)' }
       },
       required: ['title', 'content']
@@ -3734,7 +3738,7 @@ const DRIVE_TOOLS = [
         customerName: { type: 'string', description: '고객명(생략하면 현재 보고 있는 폴더의 고객명)' },
         caseName: { type: 'string', description: '사건명 — 고객사건 폴더가 이미 있으면 그 폴더 이름을 그대로(「고객명(납세자)_세목_업무유형」 꼴, 예: 가상상속자문(윤정애)_상속_자문). 서버는 이 꼴로 사건명을 만들고 같은 이름의 폴더를 사건에 잇는다(없으면 새로 만듦) — 다른 이름을 지어내면 빈 폴더가 하나 더 생긴다' },
         taxpayer: { type: 'string', description: '납세자(고객과 다를 때, 선택 — caseName의 괄호 안에서 읽을 수 있음)' },
-        workType: { type: 'string', enum: ['자문', '신고', '상담', '불복', '경정', '조사', '기타'], description: '업무유형(선택 — caseName 끝에서 읽을 수 있음). 자문·신고면 사건 폴더와 표준 하위폴더(보고서_외부·보고서_내부·확보자료·제출자료)가 생김' },
+        workType: { type: 'string', enum: ['자문', '신고', '상담', '불복', '경정', '조사', '기타'], description: '업무유형(선택 — caseName 끝에서 읽을 수 있음). 자문·신고면 사건 폴더와 표준 하위폴더(보고서·확보자료·제출자료)가 생김' },
         taxType: { type: 'string', enum: ['transfer', 'gift', 'inheritance', 'objection', 'business'], description: 'transfer=양도, gift=증여, inheritance=상속, objection=불복, business=사업' },
         assignee: { type: 'string', description: '담당자(선택)' },
         requestDate: { type: 'string', description: '의뢰일 YYYY-MM-DD(선택)' },
@@ -4610,7 +4614,7 @@ const JOB_PROPOSE_ACTIONS_ = {
   portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
   checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
   // [2026.11.12 2차 ② 계획서 ①(세무사님 "권장대로")] 신고서식 PDF — 서식은 화면이 그려 PDF로 만드는 구조라 넥스가 서버에서 못 만든다. 넥스가 계산·대조까지 끝내고 카드를 띄우면 세무사님 [실행] 한 번에 화면이 세액계산 화면을 열어 필수 서식 PDF를 보고서_내부에 저장(사건처리 상자 '서식 대조'와 같은 길)
-  print_pdf: { gas: 'client:printPdf', label: '신고서식 PDF를 사건 폴더(보고서_내부)에 저장', required: ['caseId'] },
+  print_pdf: { gas: 'client:printPdf', label: '신고서식 PDF를 사건 폴더(보고서)에 저장', required: ['caseId'] },
   case_update: { gas: 'work_update_case', label: '사건 정보 수정', required: ['id'] },
   // 메모 저장은 job 메모 화면의 "저장 위치 고르기" 창을 여는 것(어느 고객·사건 메모로 둘지는 사람이 고름)
   memo_save: { gas: 'client:memoSave', label: '메모로 저장', required: ['content'] },
@@ -4659,7 +4663,7 @@ function job_buildProposal_(input) {
     if (!c) return { error: '사건을 찾을 수 없습니다: ' + params.caseId };
     let last = null; try { last = caseProcLastCalc_(c).last; } catch (e) { last = null; }
     if (!last) return { error: '저장된 세액계산 결과가 없습니다 — 먼저 case_ledger do=calc(또는 calc_scenario)로 계산을 저장한 뒤 제안하라.' };
-    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + String(c.세목 || '') + ' 필수 신고서식을 저장된 계산 결과(' + String(last.계산일 || '').slice(0, 10) + ')로 PDF로 만들어 사건 폴더 보고서_내부에 저장합니다. 실행하면 세액계산 화면이 잠시 열렸다 돌아옵니다.', gasAction: spec.gas, payload: { caseId: c.id }, kind: 'print_pdf', caseId: c.id } };
+    return { action: { type: 'confirm_action', label: spec.label, summary: (c.사건명 || c.고객명 || '') + ' — ' + String(c.세목 || '') + ' 필수 신고서식을 저장된 계산 결과(' + String(last.계산일 || '').slice(0, 10) + ')로 PDF로 만들어 사건 폴더 보고서에 저장합니다. 실행하면 세액계산 화면이 잠시 열렸다 돌아옵니다.', gasAction: spec.gas, payload: { caseId: c.id }, kind: 'print_pdf', caseId: c.id } };
   }
   // [2026.10.21 넥스 하나로] 세무사님이 채팅으로 한 답을 사건처리 질문의 칸에 — 사이드바 [확인]·말 답과 같은 반영 경로(caseProcApply_), 답 기록엔 "넥스 대화"
   //  카드 설명은 서버가 만든다(AI가 쓴 요약이 아님). 넣을 칸(target)은 job_lookup caseproc의 저장된 질문에 있는 것만
@@ -4788,7 +4792,7 @@ const JOB_AI_TOOLS_ = [
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
       + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
-      + 'print_pdf{caseId}(저장된 세액계산 결과로 필수 신고서식 PDF를 사건 폴더 보고서_내부에 저장 — 서식은 화면이 만들므로 세무사님이 [실행]을 눌러야 하고 세액계산 화면이 잠시 열린다. 먼저 case_ledger do=calc 또는 calc_scenario로 계산을 저장하고 forms_check로 빈 칸이 없는지 본 뒤 제안하라) / '
+      + 'print_pdf{caseId}(저장된 세액계산 결과로 필수 신고서식 PDF를 사건 폴더 보고서에 저장 — 서식은 화면이 만들므로 세무사님이 [실행]을 눌러야 하고 세액계산 화면이 잠시 열린다. 먼저 case_ledger do=calc 또는 calc_scenario로 계산을 저장하고 forms_check로 빈 칸이 없는지 본 뒤 제안하라) / '
       + '(장부·질문·계산·읽을 목록은 제안 길이 없다 — 사건 도구 case_ledger·calc_scenario·set_read_scope로 바로 한다)',
     input_schema: {
       type: 'object',
@@ -5113,7 +5117,7 @@ function dispatchClientAction0_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids', 'work_plan_std_subfolders', 'work_apply_std_subfolders'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'work_apply_report_folder_merge', 'work_undo_report_cleanup', 'migrate_report_template_names', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids', 'work_plan_std_subfolders', 'work_apply_std_subfolders'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -6711,14 +6715,15 @@ function handleReadFile(body) {
         if (parents.hasNext()) {
           const internalFolder = parents.next();
           result.internalFolderId = internalFolder.getId();
-          const caseParents = internalFolder.getParents();
-          if (caseParents.hasNext()) {
-            const reportFolders = caseParents.next().getFoldersByName(MY_SUBFOLDER_REPORT);
-            if (reportFolders.hasNext()) {
-              const reportFolder = reportFolders.next();
-              result.reportFolderId = reportFolder.getId();
-              const published = reportFolder.getFilesByName(baseName + '.html');
-              if (published.hasNext()) result.publishedHtmlFileId = published.next().getId();
+          // [2026.11.14 보고서 한 폴더] 원본·발행본·PDF가 같은 「보고서」 폴더에 있다 — 발행본 짝도 같은 폴더에서 찾고, 발행할 곳도 같은 폴더
+          result.reportFolderId = internalFolder.getId();
+          const sameHtml = internalFolder.getFilesByName(baseName + '.html');
+          if (sameHtml.hasNext()) result.publishedHtmlFileId = sameHtml.next().getId();
+          else {
+            const caseParents = internalFolder.getParents();
+            if (caseParents.hasNext()) {
+              const oldOut = caseParents.next().getFoldersByName(REPORT_FOLDER_OLD_NAMES_[1]); // 합치기 전 「보고서_외부」에 남은 발행본
+              if (oldOut.hasNext()) { const published = oldOut.next().getFilesByName(baseName + '.html'); if (published.hasNext()) result.publishedHtmlFileId = published.next().getId(); }
             }
           }
         }
@@ -6893,8 +6898,8 @@ function rh_maybeUpdateReportIndexForUpload_(body, file) {
       id: file.getId(), name: file.getName(), mimeType: file.getMimeType(),
       modifiedDate: Date.now(),
       caseId: body.reportMeta.caseId, 고객명: body.reportMeta.고객명, 사건명: body.reportMeta.사건명,
-      kind: body.reportMeta.published ? MY_SUBFOLDER_REPORT : WORK_SUBFOLDER_INTERNAL_REPORT,
-      published: !!body.reportMeta.published
+      kind: REPORT_FOLDER_NAME_, // [2026.11.14] 폴더는 「보고서」 하나 — 발행 여부는 이름(외부보고서)+.html로
+      published: !!body.reportMeta.published && reportIsCustomerVisible_(file.getName())
     });
     // [2026.11.04 화면정비 ⑦] 발행이면 고객 알림 문자(뒤에서, 같은 문서는 한 번)
     if (body.reportMeta.published && body.reportMeta.caseId && typeof bgEnqueue_ === 'function') bgEnqueue_('report_notice', { caseId: String(body.reportMeta.caseId), fileId: file.getId() }, 'report_notice_' + file.getId(), '발행 문서 고객 알림 · ' + String(body.reportMeta.사건명 || '').slice(0, 40));
@@ -6956,6 +6961,13 @@ function handleUploadFile(body) {
     folder = body.folderId ? DriveApp.getFolderById(body.folderId) : resolveFolderByPath(body.path);
   } catch (err) {
     return { error: err.message };
+  }
+  // [2026.11.14 보고서 정식 이름] 보고서 탭이 새 보고서를 저장·발행할 때 이름은 서버가 마지막에 정한다(넥스 저장과 같은 함수 — reportCanonName_).
+  //  발행본은 외부보고서 정식 이름의 .html이어야 고객 창구에 보인다(폴더가 「보고서」 하나라 이름이 막는다) — 아니면 올리지 않고 알린다.
+  if (body.reportMeta && typeof reportCanonName_ === 'function') {
+    const rk = body.reportMeta.docType ? reportKindOf_(body.reportMeta.docType) : null;
+    if (rk) { const cn = reportCanonName_({ kind: rk.code, name: body.name, detail: body.reportMeta.detail }); if (cn.error) return { error: cn.error }; body.name = cn.name; }
+    if (body.reportMeta.published && !reportIsCustomerVisible_(body.name)) return { error: '「' + body.name + '」은 외부보고서(자문·신고·진행·요약보고서·검토조서·불복청구서·번역서) 정식 이름의 발행본이 아니라 고객 창구에 보이지 않습니다 — 정식 이름으로 저장한 뒤 발행해 주세요.' };
   }
 
   try {
@@ -11408,13 +11420,21 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const docAuto = nxDocAutoSave_(body); // [2026.11.13 5차 마] 세무사님이 "반영하라·수정하라"면 열린 문서도 바로 저장(직전 판은 _이전판)
         const saveOpts = { aiTool: true, openFileId: docAuto ? '' : ((body.context && body.context.openFile && body.context.openFile.id) || ''), overwriteReviewMemo: input.overwrite === true };
         if (docAuto && body.context && body.context.openFile && body.context.openFile.id) clientActions.push({ type: 'preview_reload', fileId: body.context.openFile.id });
-        if (nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
+        // [2026.11.14 보고서 정식 이름·자리] 사건 대화에서 보고서면 보고서 탭과 같은 함수로 정식 이름·「보고서」 폴더(nxCaseReportTarget_ → reportSaveTarget_)
+        let nxRep = null;
+        if (nxCaseId_ && isJobPanel_ && typeof nxCaseReportTarget_ === 'function') {
+          nxRep = nxCaseReportTarget_(nxCaseId_, input, false);
+          if (nxRep && nxRep.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: nxRep.error }) };
+          if (nxRep) { saveOpts.folder = nxRep.folder; saveOpts.folderLabel = nxRep.label; }
+        }
+        if (!nxRep && nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
           const cf = nxCaseSaveFolder_(nxCaseId_, input.path);
           if (cf && cf.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: cf.error }) };
           if (cf && cf.folder) { saveOpts.folder = cf.folder; saveOpts.folderLabel = cf.label; }
         }
         // [2026.10.20 보안→갱신] 같은 이름 글 파일은 직전 판을 "_이전판"에 두고 갱신, 덮어쓰면 안 되는 파일만 새 이름, 화면에 열린 문서는 거절(apply_document_edit로)
-        const resultObj = toolSaveFileToFolder(targetPath, input.name, input.content, saveOpts);
+        const resultObj = toolSaveFileToFolder(targetPath, nxRep ? nxRep.name : input.name, input.content, saveOpts);
+        if (nxRep && resultObj && !resultObj.error) resultObj.reportNote = nxRep.note;
         // [2026.10.27 10-27 D-2] 지금 편집기·보기 칸에 열린 문서를 이 도구로 저장하려 하면 거절만 하지 않고(16:47 오류기록) 그 글을 수정안(edit_document)으로 돌린다 —
         //  저장 길을 하나로: 열린 문서면 화면이 [이 수정안으로 저장]·[편집창에 적용하기] 버튼을 띄우고 세무사님이 저장한다
         if (resultObj && resultObj.error && /열려 있는 문서/.test(String(resultObj.error)) && typeof input.content === 'string' && input.content.trim()) {
@@ -11436,13 +11456,19 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const targetPath = (Array.isArray(input.path) && input.path.length) ? input.path
           : ((body.context && Array.isArray(body.context.currentPath)) ? body.context.currentPath : []);
         // [2026.10.30] 사건 대화에서는 save_file_to_folder와 같이 사건 폴더 기준으로 푼다(nxCaseSaveFolder_)
-        let expOpts = null;
-        if (nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
+        let expOpts = null, nxRepD = null;
+        if (nxCaseId_ && isJobPanel_ && typeof nxCaseReportTarget_ === 'function') { // [2026.11.14] 보고서면 정식 이름·「보고서」
+          nxRepD = nxCaseReportTarget_(nxCaseId_, input, true);
+          if (nxRepD && nxRepD.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: nxRepD.error }) };
+          if (nxRepD) expOpts = { folder: nxRepD.folder };
+        }
+        if (!nxRepD && nxCaseId_ && isJobPanel_ && typeof nxCaseSaveFolder_ === 'function') {
           const cf = nxCaseSaveFolder_(nxCaseId_, input.path);
           if (cf && cf.error) return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: cf.error }) };
           if (cf && cf.folder) expOpts = { folder: cf.folder };
         }
-        const resultObj = toolExportToGoogleDoc(targetPath, input.title, input.content, expOpts);
+        const resultObj = toolExportToGoogleDoc(targetPath, nxRepD ? nxRepD.name : input.title, input.content, expOpts);
+        if (nxRepD && resultObj && !resultObj.error) resultObj.reportNote = nxRepD.note;
         if (resultObj && !resultObj.error) {
           clientActions.push({ type: 'explorer_changed', path: targetPath });
           clientActions.push({ type: 'file_saved', name: resultObj.name, url: resultObj.url, updated: resultObj.updated });
@@ -12333,7 +12359,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
               let before = {}; try { before = ledgerAdvList_(ledgerLoad_(cr.id)); } catch (e) { before = {}; }
               const same = (before.보고서 || []).filter(function (x) { return x && x.file && x.file === fileKey; })[0];
               const ar = same ? ledgerAdvPut_(cr, { item: '보고서', id: same.id, file: fileKey, why: '넥스가 다시 저장(save_file_to_folder)' }, '넥스')
-                : ledgerAdvPut_(cr, { item: '보고서', title: String(bi.name || '문서').slice(0, 120), file: fileKey, status: '초안', why: '넥스가 저장(save_file_to_folder)' }, '넥스');
+                : ledgerAdvPut_(cr, { item: '보고서', title: String(so.name || bi.name || '문서').slice(0, 120), file: fileKey, status: '초안', why: '넥스가 저장(save_file_to_folder)' }, '넥스');
               if (ar && ar.ok && citeRes && !citeRes.error && typeof citeLedgerMark_ === 'function') citeLedgerMark_(cr, ar.id, citeRes); // [2026.10.30] 근거 확인 결과를 보고서 칸에(📒 ⑥ 자문)
               let now = {}; try { now = ledgerAdvList_(ledgerLoad_(cr.id)); } catch (e) { now = before; }
               const cnt = ['쟁점', '대안', '근거', '위험', '권고'].map(function (k) { return k + ' ' + ((now[k] || []).length); }).join(' · ');
@@ -15762,7 +15788,7 @@ const MY_SHEET_CASES = 'Cases';
 const MY_SHEET_SUB_LOG = 'SubmissionLog';
 const MY_ROOT_FOLDER_ID = '1y1Wf0Dra6RQ0Nm5HA2Rm_DYwPl9LpiYc';
 const MY_SUBFOLDER_UPLOAD = '제출자료';
-const MY_SUBFOLDER_REPORT = '보고서_외부'; // [2026.09.16 변경] 예전 이름 '보고서' → 개명(WORK_SUBFOLDER_INTERNAL_REPORT 주석 참고)
+const MY_SUBFOLDER_REPORT = '보고서'; // [2026.09.16] '보고서' → '보고서_외부' 개명 → [2026.11.14] 세무사님 "보고서폴더로 합치자" — 「보고서」 하나로 합침. 고객 창구는 이 폴더에서 외부보고서 .html만 본다(reportIsCustomerVisible_)
 const MY_REPORT_ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MY_REPORT_ID_LENGTH = 4;
 
@@ -15985,17 +16011,15 @@ function my_handleGetReportList(params, ctx) {
   // 기술 메시지가 그대로 고객 화면에 노출됐다 — 고객에게는 친절한 안내만 보여준다.
   try {
     const caseFolder = DriveApp.getFolderById(folderId);
-    const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
-
     const reports = [];
-    const files = reportFolder.getFiles();
-    while (files.hasNext()) {
-      const f = files.next();
-      const name = f.getName().toLowerCase();
-      if (name.endsWith('.html') || name.endsWith('.htm')) {
-        reports.push({ id: f.getId(), name: f.getName(), updated: f.getLastUpdated().toISOString() });
+    // [2026.11.14 보고서 한 폴더] 폴더가 「보고서」 하나로 합쳐져 내부보고서(종합·개별검토서)도 같은 폴더에 있다 — 고객에게는 외부보고서 정식 이름의 .html만 보인다(reportIsCustomerVisible_)
+    my_reportFoldersForCustomer_(caseFolder).forEach(function (reportFolder) {
+      const files = reportFolder.getFiles();
+      while (files.hasNext()) {
+        const f = files.next();
+        if (reportIsCustomerVisible_(f.getName()) && !f.isTrashed()) reports.push({ id: f.getId(), name: f.getName(), updated: f.getLastUpdated().toISOString() });
       }
-    }
+    });
     reports.sort(function (a, b) { return new Date(b.updated) - new Date(a.updated); });
     return { success: true, reports: reports };
   } catch (err) {
@@ -16011,13 +16035,12 @@ function my_handleGetReportFile(params, ctx) {
 
   try {
     const caseFolder = DriveApp.getFolderById(folderId);
-    const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
-
     let belongs = false;
-    const files = reportFolder.getFiles();
-    while (files.hasNext()) {
-      if (files.next().getId() === fileId) { belongs = true; break; }
-    }
+    my_reportFoldersForCustomer_(caseFolder).forEach(function (reportFolder) {
+      if (belongs) return;
+      const files = reportFolder.getFiles();
+      while (files.hasNext()) { const f = files.next(); if (f.getId() === fileId) { belongs = reportIsCustomerVisible_(f.getName()); break; } } // [2026.11.14] 외부보고서 .html만
+    });
     if (!belongs) return { success: false, message: '이 케이스에 속한 보고서가 아닙니다.' };
 
     const file = DriveApp.getFileById(fileId);
@@ -16381,7 +16404,18 @@ function my_handleAdminSetChecklistStatus(params) {
   }
 }
 
+// [2026.11.14 보고서 한 폴더] 고객 창구가 볼 보고서 폴더 — 「보고서」(합치기 전이면 「보고서_내부」와 같은 폴더)와, 합치기 전 「보고서_외부」가 남아 있으면 그것도
+function my_reportFoldersForCustomer_(caseFolder) {
+  const out = [], seen = {};
+  const add = function (f) { if (f && !seen[f.getId()]) { seen[f.getId()] = 1; out.push(f); } };
+  add(reportFolderOf_(caseFolder, false));
+  const it = caseFolder.getFoldersByName(REPORT_FOLDER_OLD_NAMES_[1]); if (it.hasNext()) add(it.next());
+  if (!out.length) add(reportFolderOf_(caseFolder, true));
+  return out;
+}
 function my_getOrCreateSubfolder_(parentFolder, name) {
+  // [2026.11.14 보고서 한 폴더] 「보고서」는 합치기 전 「보고서_내부」(합치기 때 이름만 바뀌는 같은 폴더)를 먼저 알아본다 — 합치기 전에 새 「보고서」가 따로 생기지 않게
+  if (name === REPORT_FOLDER_NAME_ && typeof reportFolderOf_ === 'function') return reportFolderOf_(parentFolder, true);
   const found = parentFolder.getFoldersByName(name);
   if (found.hasNext()) return found.next();
   return parentFolder.createFolder(name);
@@ -17971,7 +18005,7 @@ function rh_collectReportFilesInFolder_(folder, out, caseId, 고객명, 사건�
     out.push({
       id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
       modifiedDate: f.getLastUpdated().getTime(), caseId: caseId, 고객명: 고객명, 사건명: 사건명,
-      kind: folderName, published: (folderName === MY_SUBFOLDER_REPORT)
+      kind: folderName, published: reportIsCustomerVisible_(f.getName()) // [2026.11.14 보고서 한 폴더] 폴더 이름이 아니라 외부보고서 .html인가로
     });
   }
   const subIter = folder.getFolders();
@@ -18015,82 +18049,209 @@ function rh_guessReportTypeLabelFromName_(base) {
   });
   return found;
 }
-function work_planReportFilenameCleanup_() {
+// [2026.11.14 보고서 정식 이름·한 폴더 — 쌓인 파일 정리] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록" / "보고서폴더로 합치자" / "권장대로 하라"
+//  9-17 대정비(이름만 바꾸고 자리는 그대로·되돌리기 기록 없음)를 넓혔다: 미리 보기(옛 이름 → 새 이름 · 옛 자리 → 「보고서」 · 종류·세부명칭은 화면에서 고침
+//  · 고객 창구에 새로 보이게 되는 것 표시) → 세무사님 승인 → 고른 줄만 적용 → 되돌리기 기록(총괄관리자/_기록/보고서이름정리_옮긴목록_*.json)·되돌리기.
+//  같은 사건에 같은 새 이름이 둘 이상이면 자동으로 정하지 않는다(9-17 "내용이 다르면 사람이 직접 세부명칭을 정해야 한다").
+//  이름 바꾸기·옮기기는 모두 서버가 드라이브에 직접 한다(파일·폴더 ID 그대로). 영구 삭제는 하지 않는다(빈 옛 폴더는 휴지통).
+// [2026.11.14] 세무사님 "그러니까 임시파일이라고 하는 거 잖아" → "그렇게 고쳐라": 「_이전판」은 다음 저장 때 바뀌는 임시 보관함(바로 앞 판 하나)이라,
+//  오래 둘 옛 초안은 「보고서/_보관」에 따로 둔다(서버가 덮어쓰거나 지우지 않음).
+var REPORT_KEEP_FOLDER_ = '_보관';
+var RPT_CLEAN_SKIP_DIR_RE_ = /^(_이전판|_보관|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일|_신고제출)$/;
+var RPT_CLEAN_NOT_REPORT_RE_ = /번역본|계약서|위임장|협의서|합의서|체크리스트|대화기록|네이버블로그|블로그|민원안내|상담사례|정부24|국세법령정보시스템|^관련법령_|^의뢰서|_신고서식|감사보고서|권원조사보고서/;
+function rptCleanSuggest_(base, c) {
+  const g = reportGuessKindFromName_(base);
+  let kind = g.kind ? g.kind.code : '';
+  if (!kind && /고객|안내/.test(base)) kind = 'advisory';
+  if (!kind && /검토|메모|진단/.test(base)) kind = 'review_specific';
+  let detail = base;
+  if (g.kind) detail = detail.replace(new RegExp('^.*?' + g.kind.label), '');
+  detail = detail.replace(/(내부)?(세무)?검토\s*(보고서|메모|서)?|보고서|고객\s*(제공)?용|\((고객|내부)[^)]*\)|버전\s*\d+|양도소득세|증여세|상속세|_검토$/g, ' ');
+  const drop = [c.고객명, c.납세자].concat(String(c.사건명 || '').split(/[_()（）\s]+/)).filter(function (x) { return String(x || '').trim().length >= 2 && !/^(양도|증여|상속|신고|자문|상담|불복|경정|조사|기타|사업)$/.test(String(x).trim()); });
+  detail = reportCleanDetail_(detail.replace(/[\s_]+/g, '_'), null, drop);
+  return { kind: kind, detail: detail, guessed: !g.kind };
+}
+function rptCleanWalk_(folder, rel, out, depth) {
+  const fi = folder.getFiles();
+  while (fi.hasNext()) { const f = fi.next(); if (f.isTrashed()) continue; out.push({ f: f, rel: rel, folder: folder }); }
+  if (depth > 6) return;
+  const di = folder.getFolders();
+  while (di.hasNext()) {
+    const sf = di.next(); const n = sf.getName();
+    if (RPT_CLEAN_SKIP_DIR_RE_.test(n) || (typeof caseIsFiledReturnFolder_ === 'function' && caseIsFiledReturnFolder_(n))) continue;
+    rptCleanWalk_(sf, rel ? rel + '/' + n : n, out, depth + 1);
+  }
+}
+// 미리 보기 — 사건 목록의 사건마다(폴더ID 있는 것). from부터 시간 안에서만 보고 다음 시작점을 돌려준다
+function work_planReportFilenameCleanup_(opts) {
+  opts = opts || {};
+  const t0 = Date.now(), LIMIT = 270000;
   const sheet = work_getSheet_();
   const data = sheet.getDataRange().getValues();
   const col = work_colMap_(data[0]);
-  const renamePlan = [], collisions = [], unclear = [];
-
-  for (let i = 1; i < data.length; i++) {
-    const caseId = data[i][col.id];
-    const folderId = data[i][col.폴더ID];
-    if (!caseId || !folderId) continue;
-    let caseFolder;
-    try { caseFolder = DriveApp.getFolderById(folderId); } catch (err) { continue; }
-    const 사건명 = String(data[i][col.사건명] || '').trim();
-    const 고객명 = String(data[i][col.고객명] || '').trim();
-    const files = [];
-    rh_collectAllCandidateFilesInFolder_(caseFolder, files);
-
-    const proposalsByName = {};
-    files.forEach(function (f) {
-      const extMatch = f.name.match(/\.[a-zA-Z0-9]+$/);
-      const ext = extMatch ? extMatch[0] : '';
-      const base = ext ? f.name.slice(0, -ext.length) : f.name;
-
-      if (rh_isIntakeLikeFile_(f.name)) {
-        const newName = RW_INTAKE_CANONICAL_NAME_ + ext;
-        if (f.name === newName) return;
-        if (!proposalsByName[newName]) proposalsByName[newName] = [];
-        proposalsByName[newName].push({ fileId: f.id, oldName: f.name });
-        return;
-      }
-      // [2026.09.17 신규] 이미 <종합검토서> 또는 <개별검토서_세부명칭> 규칙을 따르는 파일은
-      // 자동추정 맵에 없어 "판단불가"로 잘못 걸릴 뻔했다 — 이미 규칙에 맞으면 건드리지 않는다.
-      if (base === '종합검토서' || /^개별검토서_.+/.test(base)) return;
-      let label = rh_guessReportTypeLabelFromName_(base);
-      if (!label) {
-        try {
-          const content = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
-          const guessed = rw_guessDocTypeFromContent_(content);
-          if (guessed) label = RW_DOCTYPE_FILENAME_LABELS_BY_CODE_[guessed];
-        } catch (err) { /* 읽기 실패 — 아래에서 판단불가로 처리 */ }
-      }
-      if (!label) {
-        unclear.push({ caseId: caseId, 고객명: 고객명, 사건명: 사건명, fileId: f.id, oldName: f.name });
-        return;
-      }
-      const newName2 = label + ext;
-      if (f.name === newName2) return;
-      if (!proposalsByName[newName2]) proposalsByName[newName2] = [];
-      proposalsByName[newName2].push({ fileId: f.id, oldName: f.name });
+  const rows = [], folders = [];
+  let i = Math.max(1, Number(opts.from) || 1), next = 0, scanned = 0;
+  const seenFolder = {};
+  for (; i < data.length; i++) {
+    if (Date.now() - t0 > LIMIT) { next = i; break; }
+    const caseId = data[i][col.id], folderId = String(data[i][col.폴더ID] || '').trim();
+    if (!caseId || !folderId || seenFolder[folderId]) continue;
+    seenFolder[folderId] = 1;
+    let caseFolder; try { caseFolder = DriveApp.getFolderById(folderId); if (caseFolder.isTrashed()) continue; } catch (e) { continue; }
+    scanned++;
+    const c = { id: caseId, 고객명: String(data[i][col.고객명] || '').trim(), 납세자: col.납세자 !== undefined ? String(data[i][col.납세자] || '').trim() : '', 사건명: String(data[i][col.사건명] || '').trim(), 상태: col.상태 !== undefined ? String(data[i][col.상태] || '') : '' };
+    // 폴더 합치기 상태
+    const st = { caseId: caseId, 고객명: c.고객명, 사건명: c.사건명 };
+    ['보고서'].concat(REPORT_FOLDER_OLD_NAMES_).forEach(function (n) { const it = caseFolder.getFoldersByName(n); if (it.hasNext()) { const fd = it.next(); let k = 0; const ff = fd.getFiles(); while (ff.hasNext()) { if (!ff.next().isTrashed()) k++; } st[n] = k; } });
+    st.needMerge = st['보고서_외부'] !== undefined || (st['보고서_내부'] !== undefined && st['보고서'] !== undefined) || (st['보고서'] === undefined && st['보고서_내부'] !== undefined);
+    if (st.needMerge) folders.push(st);
+    // 파일
+    const all = []; rptCleanWalk_(caseFolder, '', all, 0);
+    const inReport = function (rel) { return reportIsReportDirName_(rel); };
+    const byDirBase = {};
+    all.forEach(function (x) {
+      const n = x.f.getName(), mime = x.f.getMimeType();
+      const isGdoc = mime === 'application/vnd.google-apps.document';
+      if (!/\.(md|html?|docx)$/i.test(n) && !isGdoc) return;
+      if (typeof rh_isIntakeLikeFile_ === 'function' && rh_isIntakeLikeFile_(n)) return;
+      const extM = n.match(/\.(md|html?|docx)$/i); const ext = extM ? extM[0] : ''; const base = ext ? n.slice(0, -ext.length) : n;
+      if (RPT_CLEAN_NOT_REPORT_RE_.test(n) || RPT_CLEAN_NOT_REPORT_RE_.test(x.rel)) return;
+      const draft = /종합검토서_초안/.test(base);
+      const canon = reportKindOf_(base);
+      if (!draft && !canon && !reportGuessKindFromName_(base).reportish) return;
+      if (canon && !draft && inReport(x.rel)) return; // 이름·자리 맞음(옛 두 폴더도 합치기로 「보고서」가 된다)
+      const r = { caseId: caseId, 고객명: c.고객명, 사건명: c.사건명, fileId: x.f.getId(), oldName: n, oldDir: x.rel || '(사건 폴더 맨 위)', ext: ext, base: base };
+      if (draft) { r.why = '옛 초안'; r.kind = 'review'; r.newName = n; r.target = REPORT_KEEP_FOLDER_; }
+      else if (canon) { r.why = '자리만'; r.kind = canon.code; r.newName = n; r.target = '보고서'; }
+      else { const sg = rptCleanSuggest_(base, c); r.why = '이름'; r.kind = sg.kind; r.detail = sg.detail; r.check = true; const cn = sg.kind ? reportCanonName_({ kind: sg.kind, detail: sg.detail, ext: ext || '.md' }) : null; r.newName = cn && cn.ok ? (isGdoc ? cn.base : cn.name) : ''; r.target = '보고서'; }
+      r.customerVisible = r.target === '보고서' && reportIsCustomerVisible_(r.newName) && !(x.folder.getName() === REPORT_FOLDER_OLD_NAMES_[1] && /\.html?$/i.test(n));
+      const key = x.rel + '|' + base; (byDirBase[key] = byDirBase[key] || []).push(r);
+      rows.push(r);
     });
-
-    Object.keys(proposalsByName).forEach(function (newName3) {
-      const arr = proposalsByName[newName3];
-      if (arr.length === 1) {
-        renamePlan.push({ caseId: caseId, 고객명: 고객명, 사건명: 사건명, fileId: arr[0].fileId, oldName: arr[0].oldName, newName: newName3 });
-      } else {
-        collisions.push({ caseId: caseId, 고객명: 고객명, 사건명: 사건명, proposedName: newName3, files: arr });
-      }
-    });
+    // 원본 .md와 발행본 .html 짝 — 같은 자리·같은 이름이면 짝으로 같이 바꾼다
+    Object.keys(byDirBase).forEach(function (k) { const g = byDirBase[k]; if (g.length > 1) { const md = g.filter(function (r) { return /\.md$/i.test(r.oldName); })[0] || g[0]; g.forEach(function (r) { if (r !== md) r.pairOf = md.fileId; }); } });
   }
-  return { renamePlan: renamePlan, collisions: collisions, unclear: unclear };
+  if (!next && i >= data.length) next = 0;
+  // 같은 사건에서 같은 새 이름이 둘 이상 — 세부명칭을 여쭌다
+  const byNew = {};
+  rows.forEach(function (r) { if (r.newName && r.target === '보고서') { const k = r.caseId + '|' + r.newName; (byNew[k] = byNew[k] || []).push(r); } });
+  Object.keys(byNew).forEach(function (k) { if (byNew[k].length > 1) byNew[k].forEach(function (r) { r.collide = true; }); });
+  rows.forEach(function (r, ix) { r.rowId = 'r' + ix; });
+  return { rows: rows, folders: folders, scanned: scanned, next: next, kinds: REPORT_KINDS_ };
 }
 function work_reportFilenameCleanupAction_(body) {
-  const plan = work_planReportFilenameCleanup_();
-  return { success: true, dryRun: true, renamePlan: plan.renamePlan, collisions: plan.collisions, unclear: plan.unclear };
+  const plan = work_planReportFilenameCleanup_(body || {});
+  return Object.assign({ success: true, dryRun: true }, plan);
 }
+// 되돌리기 기록 — 총괄관리자/_기록/보고서이름정리_옮긴목록_yyyyMMdd_HHmmss.json
+function rptCleanLogSave_(kind, items) {
+  try {
+    const chief = getChiefManagerFolder_(); if (!chief) return '';
+    const dir = getOrCreateSubfolder_(chief, '_기록');
+    const name = '보고서이름정리_옮긴목록_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd_HHmmss') + '.json';
+    const f = dir.createFile(Utilities.newBlob(JSON.stringify({ kind: kind, at: new Date().toISOString(), items: items }, null, 1), 'application/json', name));
+    return f.getId();
+  } catch (e) { return ''; }
+}
+function rptCleanMoveTo_(file, toFolder) { const ps = file.getParents(); const from = ps.hasNext() ? ps.next() : null; if (!from || from.getId() !== toFolder.getId()) file.moveTo(toFolder); return from ? from.getId() : ''; }
+// 폴더 합치기 — 사건마다 「보고서_내부」를 「보고서」로 이름만 바꾸고(폴더 ID 그대로), 「보고서_외부」의 파일을 그 안으로 옮긴 뒤 빈 「보고서_외부」는 휴지통
+function work_applyReportFolderMerge(params) {
+  params = params || {};
+  const only = Array.isArray(params.caseIds) ? params.caseIds.map(String) : null;
+  const t0 = Date.now();
+  const sheet = work_getSheet_(); const data = sheet.getDataRange().getValues(); const col = work_colMap_(data[0]);
+  const log = [], errs = []; let merged = 0, next = 0; const seen = {};
+  for (let i = Math.max(1, Number(params.from) || 1); i < data.length; i++) {
+    if (Date.now() - t0 > 270000) { next = i; break; }
+    const caseId = String(data[i][col.id] || ''), folderId = String(data[i][col.폴더ID] || '').trim();
+    if (!caseId || !folderId || seen[folderId] || (only && only.indexOf(caseId) === -1)) continue;
+    seen[folderId] = 1;
+    let cf; try { cf = DriveApp.getFolderById(folderId); if (cf.isTrashed()) continue; } catch (e) { continue; }
+    try {
+      const get = function (n) { const it = cf.getFoldersByName(n); return it.hasNext() ? it.next() : null; };
+      let rep = get(REPORT_FOLDER_NAME_); const inn = get(REPORT_FOLDER_OLD_NAMES_[0]); const out = get(REPORT_FOLDER_OLD_NAMES_[1]);
+      if (!rep && !inn && !out) continue;
+      if (!rep && inn) { inn.setName(REPORT_FOLDER_NAME_); rep = inn; log.push({ t: 'folderRename', caseId: caseId, folderId: inn.getId(), from: REPORT_FOLDER_OLD_NAMES_[0], to: REPORT_FOLDER_NAME_ }); }
+      [rep && inn && rep.getId() !== inn.getId() ? inn : null, out].forEach(function (old) {
+        if (!old) return;
+        if (!rep) { old.setName(REPORT_FOLDER_NAME_); rep = old; log.push({ t: 'folderRename', caseId: caseId, folderId: old.getId(), from: REPORT_FOLDER_OLD_NAMES_[1], to: REPORT_FOLDER_NAME_ }); return; }
+        const fs = old.getFiles();
+        while (fs.hasNext()) {
+          const f = fs.next(); if (f.isTrashed()) continue;
+          if (rep.getFilesByName(f.getName()).hasNext()) { errs.push(c0(caseId) + ' — 「' + f.getName() + '」이 「보고서」에 이미 있어 옮기지 않음(옛 폴더에 남김)'); continue; }
+          f.moveTo(rep); log.push({ t: 'fileMove', caseId: caseId, fileId: f.getId(), fromFolderId: old.getId(), toFolderId: rep.getId(), name: f.getName() });
+        }
+        const subs = old.getFolders();
+        while (subs.hasNext()) { const sf = subs.next(); if (rep.getFoldersByName(sf.getName()).hasNext()) { errs.push(c0(caseId) + ' — 하위 폴더 「' + sf.getName() + '」이 「보고서」에 이미 있어 옮기지 않음'); continue; } sf.moveTo(rep); log.push({ t: 'folderMove', caseId: caseId, folderId: sf.getId(), fromFolderId: old.getId(), toFolderId: rep.getId(), name: sf.getName() }); }
+        if (!old.getFiles().hasNext() && !old.getFolders().hasNext()) { old.setTrashed(true); log.push({ t: 'folderTrash', caseId: caseId, folderId: old.getId(), name: old.getName() }); }
+      });
+      merged++;
+    } catch (e) { errs.push(c0(caseId) + ' — ' + e.message); }
+  }
+  function c0(id) { return '사건 ' + id; }
+  const logId = log.length ? rptCleanLogSave_('folderMerge', log) : '';
+  return { success: true, merged: merged, moved: log.filter(function (x) { return x.t === 'fileMove'; }).length, errors: errs, logFileId: logId, next: next };
+}
+// 파일 정리 적용 — 화면에서 고른 줄만(rows: [{rowId, caseId, fileId, newName, target('보고서'|'_보관'), pairs:[{fileId,newName}]}])
 function work_applyReportFilenameCleanup(params) {
+  params = params || {};
+  const rows = Array.isArray(params.rows) ? params.rows : null;
+  if (!rows) return { success: false, message: '고른 줄이 없습니다 — 미리 보기에서 고르고 적용해 주세요(2026-11-14부터 전체 자동 적용은 하지 않습니다).' };
   return withLock_(60000, function () {
-    const plan = work_planReportFilenameCleanup_();
-    const fileIds = Array.isArray(params.fileIds) ? params.fileIds : null;
-    let applied = 0, failed = 0;
-    plan.renamePlan.forEach(function (item) {
-      if (fileIds && fileIds.indexOf(item.fileId) === -1) return;
-      try { DriveApp.getFileById(item.fileId).setName(item.newName); applied++; } catch (err) { failed++; }
+    const log = [], results = [];
+    const caseFolderCache = {};
+    rows.forEach(function (r) {
+      const out = { rowId: r.rowId, fileId: r.fileId };
+      try {
+        const c = job_findCase_(String(r.caseId || '')); if (!c || !c.폴더ID) throw new Error('사건 폴더를 찾지 못함');
+        const cf = caseFolderCache[c.폴더ID] || (caseFolderCache[c.폴더ID] = DriveApp.getFolderById(String(c.폴더ID)));
+        const f = DriveApp.getFileById(String(r.fileId));
+        // 그 사건 폴더 안의 파일인지(어느 깊이든)
+        let p = f.getParents().hasNext() ? f.getParents().next() : null, inCase = false, guard = 0;
+        while (p && guard++ < 10) { if (p.getId() === cf.getId()) { inCase = true; break; } const pp = p.getParents(); p = pp.hasNext() ? pp.next() : null; }
+        if (!inCase) throw new Error('이 사건 폴더의 파일이 아님');
+        const rep = reportFolderOf_(cf, true);
+        const keep = r.target === REPORT_KEEP_FOLDER_ || r.target === '_이전판'; // 옛 화면 값(_이전판)도 오래 둘 「_보관」으로
+        const dest = keep ? getOrCreateSubfolder_(rep, REPORT_KEEP_FOLDER_) : rep;
+        const newName = String(r.newName || '').trim() || f.getName();
+        if (!keep) { const ok = reportKindOf_(newName.replace(/\.(md|html?|docx)$/i, '')); if (!ok) throw new Error('「' + newName + '」은 정식 이름이 아님 — 종류·세부명칭을 고르세요'); }
+        const same = dest.getFilesByName(newName); while (same.hasNext()) { const s = same.next(); if (s.getId() !== f.getId() && !s.isTrashed()) throw new Error('「' + newName + '」이 이미 있음 — 다른 세부명칭을 넣으세요'); }
+        const oldName = f.getName();
+        const fromId = rptCleanMoveTo_(f, dest);
+        if (oldName !== newName) f.setName(newName);
+        log.push({ t: 'file', caseId: c.id, fileId: f.getId(), oldName: oldName, newName: newName, fromFolderId: fromId, toFolderId: dest.getId() });
+        try { if (typeof rh_upsertReportIndexEntry_ === 'function' && /\.(md|html?)$/i.test(newName)) rh_upsertReportIndexEntry_({ id: f.getId(), name: newName, mimeType: f.getMimeType(), modifiedDate: Date.now(), caseId: c.id, 고객명: c.고객명, 사건명: c.사건명, kind: REPORT_FOLDER_NAME_, published: reportIsCustomerVisible_(newName) }); } catch (e) {}
+        out.ok = true; out.newName = newName;
+      } catch (e) { out.error = e.message; }
+      results.push(out);
     });
-    return { success: true, applied: applied, failed: failed };
+    const logId = log.length ? rptCleanLogSave_('fileCleanup', log) : '';
+    return { success: true, applied: results.filter(function (x) { return x.ok; }).length, failed: results.filter(function (x) { return x.error; }).length, results: results, logFileId: logId };
+  });
+}
+// 되돌리기 — 기록 파일 하나(logFileId, 없으면 가장 최근)를 거꾸로: 파일은 옛 이름·옛 폴더로, 합친 폴더는 옛 이름으로(휴지통 폴더는 꺼냄). itemFileIds를 주면 그 파일만
+function work_undoReportCleanup(params) {
+  params = params || {};
+  return withLock_(60000, function () {
+    let logFile = null;
+    if (params.logFileId) logFile = DriveApp.getFileById(String(params.logFileId));
+    else { const chief = getChiefManagerFolder_(); const dir = chief && getOrCreateSubfolder_(chief, '_기록'); const it = dir ? dir.searchFiles("title contains '보고서이름정리_옮긴목록_' and trashed = false") : null; let best = null; while (it && it.hasNext()) { const f = it.next(); if (!best || f.getLastUpdated() > best.getLastUpdated()) best = f; } logFile = best; }
+    if (!logFile) return { success: false, message: '되돌릴 기록이 없습니다.' };
+    const j = JSON.parse(logFile.getBlob().getDataAsString('UTF-8'));
+    const only = Array.isArray(params.itemFileIds) ? params.itemFileIds.map(String) : null;
+    let undone = 0; const errs = [];
+    (j.items || []).slice().reverse().forEach(function (x) {
+      if (only && only.indexOf(String(x.fileId || x.folderId)) === -1) return;
+      try {
+        if (x.t === 'file') { const f = DriveApp.getFileById(x.fileId); if (x.fromFolderId) rptCleanMoveTo_(f, DriveApp.getFolderById(x.fromFolderId)); f.setName(x.oldName); }
+        else if (x.t === 'fileMove') { DriveApp.getFileById(x.fileId).moveTo(DriveApp.getFolderById(x.fromFolderId)); }
+        else if (x.t === 'folderMove') { DriveApp.getFolderById(x.folderId).moveTo(DriveApp.getFolderById(x.fromFolderId)); }
+        else if (x.t === 'folderTrash') { DriveApp.getFolderById(x.folderId).setTrashed(false); }
+        else if (x.t === 'folderRename') { DriveApp.getFolderById(x.folderId).setName(x.from); }
+        undone++;
+      } catch (e) { errs.push((x.name || x.oldName || x.fileId || x.folderId) + ' — ' + e.message); }
+    });
+    return { success: true, undone: undone, errors: errs, logName: logFile.getName() };
   });
 }
 
@@ -18248,6 +18409,8 @@ function migrateReportFoldersAndFilenames_() {
   const col = work_colMap_(data[0]);
   const log = [];
   let foldersRenamed = 0, filesRenamed = 0, filesUnclear = 0;
+  // [2026.11.14] 폴더를 「보고서」 하나로 합친 뒤라 이 1회성 개명('보고서' → 외부 폴더)을 다시 돌리면 거꾸로 된다 — 막는다
+  if (WORK_SUBFOLDER_INTERNAL_REPORT === MY_SUBFOLDER_REPORT) return { success: false, message: '보고서 폴더를 하나로 합친 뒤라 이 옛 개명은 쓰지 않습니다(2026-11-14).' };
   const RENAME_PAIRS = [['내부보고서', WORK_SUBFOLDER_INTERNAL_REPORT], ['보고서', MY_SUBFOLDER_REPORT]];
   for (let i = 1; i < data.length; i++) {
     const caseId = data[i][col.id];
@@ -20086,7 +20249,111 @@ function work_getCases(params) {
 // [2026.09.16 변경] 세무사님 지시로 "내부보고서"/"보고서" → "보고서_내부"/"보고서_외부"로
 // 개명(가나다 정렬에서도 "보고서_내부"/"보고서_외부"가 나란히 붙어 더 명확함). 기존에 이미
 // 만들어져 있던 폴더들은 migrateReportFoldersAndFilenames_로 일괄 개명했다.
-const WORK_SUBFOLDER_INTERNAL_REPORT = '보고서_내부';
+// [2026.11.14 보고서 한 폴더] 세무사님 "보고서별로 용도를 확실히 알고 있다면 폴더를 구분하지 말고 보고서폴더로 합치자" —
+//  두 폴더를 「보고서」 하나로 합쳤다. 내부·외부는 폴더가 아니라 보고서 종류(파일 이름)로 가린다(아래 REPORT_KINDS_).
+//  두 상수 이름은 그대로 두고(부르는 곳이 많음) 값만 같게 했다. 합치기 전 「보고서_내부」는 my_getOrCreateSubfolder_가 「보고서」로 알아본다.
+const WORK_SUBFOLDER_INTERNAL_REPORT = '보고서';
+// =========================================================
+// [2026.11.14 보고서 정식 이름·자리 — 한 곳] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록 해야 한다. 넥스가 이름을 잘 못 부여 한 것이다" /
+//  "보고서의 내부와 외부구분을 모르고 있나?" / "보고서별로 용도를 확실히 알고 있다면 폴더를 구분하지 말고 보고서폴더로 합치자" / "권장대로 하라"(계획서 docs/_기록/보고서이름_정리_계획서_20261114.html)
+//  예전엔 이름 규칙이 보고서 탭 저장 단추(reportwriter.html saveToDrive) 안에만 있어, 같은 일을 하는 넥스 저장은 아무 이름으로 사건 폴더 맨 위에 떨어졌다.
+//  종류 → 정식 이름(<보고서명칭_세부명칭>, 9-17 "세부명칭은 필요한 경우에만") → 자리(「보고서」) → 고객에게 보여도 되나(외부보고서 .html만)를
+//  정하는 곳은 여기 하나다 — 보고서 탭·넥스 저장 두 길·고객 창구·밤 갱신이 모두 이 함수들을 거친다.
+const REPORT_FOLDER_NAME_ = '보고서';
+const REPORT_FOLDER_OLD_NAMES_ = ['보고서_내부', '보고서_외부']; // 합치기 전 이름 — 찾을 때만 쓴다
+const REPORT_KINDS_ = [
+  { code: 'review', label: '종합검토서', use: '내부', detail: '선택' },
+  { code: 'review_specific', label: '개별검토서', use: '내부', detail: '필수' },
+  { code: 'advisory', label: '자문보고서', use: '외부', detail: '선택' },
+  { code: 'filing', label: '신고보고서', use: '외부', detail: '선택' },
+  { code: 'progress', label: '진행보고서', use: '외부', detail: '선택' },
+  { code: 'summary', label: '요약보고서', use: '외부', detail: '선택' },
+  { code: 'reference', label: '검토조서', use: '외부', detail: '선택' },
+  { code: 'appeal_petition', label: '불복청구서', use: '외부', detail: '선택' },
+  { code: 'translation', label: '번역서', use: '외부', detail: '선택' }
+];
+// 종류 찾기 — 코드('review')·명칭('종합검토서')·파일 이름('개별검토서_자경감면.md') 무엇을 줘도 된다. 파일 이름은 정식 이름일 때만 알아본다.
+function reportKindOf_(x) {
+  const s = String(x || '').trim(); if (!s) return null;
+  const byCode = REPORT_KINDS_.filter(function (k) { return k.code === s || k.label === s; })[0];
+  if (byCode) return byCode;
+  const base = s.replace(/\.(md|html?|htm|txt|pdf|gdoc|docx)$/i, '');
+  return REPORT_KINDS_.filter(function (k) { return base === k.label || base.indexOf(k.label + '_') === 0; })[0] || null;
+}
+// 정식 이름이 아닌 이름에서 종류를 짐작 — 명칭 낱말이 하나로만 가려질 때만(애매하면 null, 보고서처럼 보이면 reportish)
+function reportGuessKindFromName_(name) {
+  const base = String(name || '').replace(/\.(md|html?|htm|txt|pdf|gdoc|docx)$/i, '');
+  const exact = reportKindOf_(base); if (exact) return { kind: exact, reportish: true };
+  const hits = [];
+  const add = function (code) { if (hits.indexOf(code) === -1) hits.push(code); };
+  if (/종합\s*검토/.test(base)) add('review');
+  if (/개별\s*검토/.test(base)) add('review_specific');
+  if (/자문\s*보고서/.test(base)) add('advisory');
+  if (/신고\s*보고서/.test(base)) add('filing');
+  if (/진행\s*보고서/.test(base)) add('progress');
+  if (/요약\s*보고서/.test(base)) add('summary');
+  if (/검토\s*조서/.test(base)) add('reference');
+  if (/(불복|심판|심사|이의신청)\s*청구서|청구취지/.test(base)) add('appeal_petition');
+  if (/번역서/.test(base)) add('translation');
+  const reportish = hits.length > 0 || /(검토|보고서|자문|의견서|청구서)/.test(base);
+  return { kind: hits.length === 1 ? reportKindOf_(hits[0]) : null, reportish: reportish };
+}
+// 세부명칭 다듬기 — 사건명·고객명은 폴더가 이미 말해 주므로 뺀다(9-17), 파일 이름에 못 쓰는 글자·날짜 꼬리표를 뺀다
+function reportCleanDetail_(detail, kind, dropNames) {
+  let d = String(detail || '').trim();
+  if (kind) { d = d.replace(new RegExp('^' + kind.label + '[_\\s]*'), ''); }
+  (Array.isArray(dropNames) ? dropNames : []).forEach(function (n) { n = String(n || '').trim(); if (n.length >= 2) d = d.split(n).join(''); });
+  d = d.replace(/[\\\/:*?"<>|]/g, ' ').replace(/_?(20\d{2}[-.]?\d{2}[-.]?\d{2}|\d{8}|\d{4}_\d{4})$/, '').replace(/\s+/g, ' ').replace(/^[_\s]+|[_\s]+$/g, '').replace(/_{2,}/g, '_');
+  return d.slice(0, 60);
+}
+// 정식 이름 — spec { kind(코드·명칭), detail(세부명칭), name(넘겨받은 이름 — 이미 같은 종류의 정식 이름이면 그대로), ext('.md' 기본), dropNames }
+//  돌려줌 { ok, name, base, kind, changed } / { error, needKind | needDetail }
+function reportCanonName_(spec) {
+  spec = spec || {};
+  const kind = reportKindOf_(spec.kind);
+  if (!kind) return { error: '보고서 종류를 알 수 없다 — 다음 중 하나를 고른다: ' + REPORT_KINDS_.map(function (k) { return k.label; }).join('·'), needKind: true };
+  const given = String(spec.name || '').trim();
+  const extM = given.match(/\.(md|html?|htm|txt)$/i);
+  const ext = spec.ext || (extM ? extM[0] : '.md');
+  const givenBase = extM ? given.slice(0, -extM[0].length) : given;
+  let detail = String(spec.detail || '').trim();
+  if (!detail && givenBase) {
+    const gk = reportKindOf_(givenBase);
+    if (gk && gk.code === kind.code) detail = givenBase.slice(kind.label.length).replace(/^_/, '');
+  }
+  detail = reportCleanDetail_(detail, kind, spec.dropNames);
+  if (kind.detail === '필수' && !detail) return { error: kind.label + '는 세부명칭(쟁점을 짧게, 예: ' + kind.label + '_자경감면)이 있어야 한다', needDetail: true, kind: kind };
+  const base = kind.label + (detail ? '_' + detail : '');
+  return { ok: true, name: base + ext, base: base, kind: kind, changed: (base + ext) !== given };
+}
+// 고객 창구에 보여도 되나 — 외부보고서 정식 이름의 .html 발행본만(종합·개별검토서는 .html이 있어도 안 보임)
+function reportIsCustomerVisible_(name) {
+  const n = String(name || '');
+  if (!/\.html?$/i.test(n)) return false;
+  const k = reportKindOf_(n);
+  return !!(k && k.use === '외부');
+}
+// 사건 폴더의 「보고서」 폴더 — 없으면 합치기 전 「보고서_내부」(합치기 때 이름만 바뀌는 같은 폴더)를 쓰고, 그것도 없으면 create일 때만 만든다
+function reportFolderOf_(caseFolder, create) {
+  if (!caseFolder) return null;
+  let it = caseFolder.getFoldersByName(REPORT_FOLDER_NAME_); if (it.hasNext()) return it.next();
+  it = caseFolder.getFoldersByName(REPORT_FOLDER_OLD_NAMES_[0]); if (it.hasNext()) return it.next();
+  return create ? caseFolder.createFolder(REPORT_FOLDER_NAME_) : null;
+}
+// 보고서가 들어갈 수 있는 폴더 이름인가(합치기 전 이름 포함) — 폴더 판정·자기 파일 판정이 쓴다
+function reportIsReportDirName_(name) { const n = String(name || ''); return n === REPORT_FOLDER_NAME_ || REPORT_FOLDER_OLD_NAMES_.indexOf(n) !== -1; }
+// 저장 자리·이름 한 번에 — 보고서 탭(handleUploadFile)·넥스 저장(nxCaseReportTarget_)·밤 갱신이 부른다
+//  caseRef: 사건 id 또는 사건 줄({폴더ID, 고객명, 사건명}). spec은 reportCanonName_과 같다.
+//  돌려줌 { ok, folder, name, kind, changed } / { error, ... }
+function reportSaveTarget_(caseRef, spec) {
+  const c = (caseRef && typeof caseRef === 'object') ? caseRef : (typeof job_findCase_ === 'function' ? job_findCase_(String(caseRef || '')) : null);
+  if (!c || !String(c.폴더ID || '').trim()) return { error: '사건 폴더를 찾지 못했다' };
+  let caseFolder; try { caseFolder = DriveApp.getFolderById(String(c.폴더ID).trim()); } catch (e) { return { error: '사건 폴더를 열지 못했다: ' + e.message }; }
+  const drop = [c.고객명, c.납세자, c.사건명].concat(String(c.사건명 || '').split(/[_()（）\s]+/)).filter(function (x) { return String(x || '').trim().length >= 2 && !reportKindOf_(x) && !/^(양도|증여|상속|신고|자문|상담|불복|경정|조사|기타|사업)$/.test(String(x).trim()); });
+  const cn = reportCanonName_(Object.assign({}, spec, { dropNames: drop }));
+  if (!cn.ok) return cn;
+  return { ok: true, folder: reportFolderOf_(caseFolder, true), caseFolder: caseFolder, name: cn.name, base: cn.base, kind: cn.kind, changed: cn.changed };
+}
 // [2026.10.19 세무사님 지시] "문서별 pdf파일을 기본으로 하고 신고를 위한 파일은 <신고제출>이라는 폴더에 따로 복사해서 홈택스첨부기준에
 // 맞춰 제출" · "신고사건의 경우 <신고제출>폴더를 만들도록 … 그리고 <확보자료>폴더도 만들어라. 거기에 시스템이 확보하는 매매실례가,
 // 공동주택가격, 개별주택가격, 개별공시지가, 건물기준시가 등의 확보자료를 넣도록 하자."
@@ -21136,6 +21403,8 @@ function work_doPost(body) {
     case 'work_backfill_receipt_case_links': return work_backfillReceiptCaseLinksAction_(body);
     case 'work_plan_report_filename_cleanup': return work_reportFilenameCleanupAction_(body);
     case 'work_apply_report_filename_cleanup': return work_applyReportFilenameCleanup(body);
+    case 'work_apply_report_folder_merge': return work_applyReportFolderMerge(body); // [2026.11.14] 보고서 두 폴더 → 「보고서」 하나
+    case 'work_undo_report_cleanup': return work_undoReportCleanup(body); // [2026.11.14] 정리·합치기 되돌리기
     case 'migrate_report_template_names': return handleMigrateReportTemplateNames_(body);
     case 'work_resync_all_calendars': return work_resyncAllCalendars();
     case 'work_apply_receipt_only_case_cleanup': return work_applyReceiptOnlyCaseCleanup(body);
@@ -21692,7 +21961,8 @@ function work_getCaseSubfolders(params) {
     // 기능(writeMemoEntry_)이 만드는 "OOO사건.md" 등은 내부보고서/보고서 하위폴더가 아니라
     // 이 루트에 바로 생기는데, 지금까지 문서작성 화면이 이 루트를 전혀 훑지 않아서 이미
     // 존재하는 그 파일들을 열 방법이 없었다(rwRenderCaseReports_에서 이 값으로 루트도 같이 조회).
-    return { success: true, internalFolderId: internalFolder.getId(), reportFolderId: reportFolder.getId(), caseFolderId: folderId };
+    // [2026.11.14] 보고서 종류표(정식 이름·내부/외부)를 같이 내려 화면 이름표가 서버 표 하나를 따른다 — 서버 호출이 늘지 않게 이 조회에 싣는다
+    return { success: true, internalFolderId: internalFolder.getId(), reportFolderId: reportFolder.getId(), caseFolderId: folderId, reportKinds: REPORT_KINDS_ };
   } catch (err) {
     return { error: '폴더 조회 중 오류: ' + err.message };
   }
@@ -28352,7 +28622,7 @@ function caseProcNexView_(c, opt) {
       const known = {}; sv.readFiles.list.forEach(function (f) { known[f.id] = f.m; });
       const now = caseProcFiles_(c) || [];
       // [2026.10.22 시험가동] 시스템이 만든 파일(보고서_내부의 종합검토서 초안·관련법령·신고서식 PDF)은 "새로 들어온 서류"가 아니다 — 세지 않는다(예전엔 검토서를 쓸 때마다 "다시 읽기"를 권함)
-      const own = function (f) { return f.id === sv.draftFileId || String(f.dir || '').indexOf(WORK_SUBFOLDER_INTERNAL_REPORT) !== -1 || /종합검토서|^관련법령_|_신고서식\.pdf$/.test(String(f.name || '')); };
+      const own = function (f) { return f.id === sv.draftFileId || String(f.dir || '').split('/').some(reportIsReportDirName_) || /종합검토서|^관련법령_|_신고서식\.pdf$/.test(String(f.name || '')); };
       out.새서류 = now.filter(function (f) { return !own(f) && (!(f.id in known) || (known[f.id] && f.modified && String(f.modified) !== known[f.id])); }).slice(0, 30).map(function (f) { return f.name; });
     } catch (e) { out.새서류 = '(폴더를 보지 못함: ' + String(e && e.message || e).slice(0, 60) + ')'; }
   }
@@ -28428,8 +28698,8 @@ function caseProcReviewNotes_(c) {
 function caseProcReviewDoc_(c) {
   try {
     if (!c || !c.폴더ID) return null;
-    const it = DriveApp.getFolderById(c.폴더ID).getFoldersByName(WORK_SUBFOLDER_INTERNAL_REPORT); if (!it.hasNext()) return null;
-    const fs = it.next().getFiles(); let best = null;
+    const rf = reportFolderOf_(DriveApp.getFolderById(c.폴더ID), false); if (!rf) return null; // [2026.11.14] 「보고서」 한 폴더(합치기 전 「보고서_내부」)
+    const fs = rf.getFiles(); let best = null;
     while (fs.hasNext()) { const f = fs.next(); const n = f.getName(); if (!/종합검토서/.test(n) || /초안/.test(n) || f.isTrashed()) continue; const t = f.getLastUpdated().getTime(); if (!best || t > best.t) best = { 파일: f.getId(), 이름: n, t: t }; }
     return best ? { 파일: best.파일, 이름: best.이름, 때: Utilities.formatDate(new Date(best.t), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') } : null;
   } catch (e) { return null; }
@@ -28450,7 +28720,7 @@ function caseProcFiles_(c, opt) {
 //  파일: 이미지는 전부 기본 꺼짐(10-27 결정 — PDF로 바꾼 뒤 읽음), 시스템·임시·산출물(검토서·서식 PDF) 꺼짐, 의뢰서·관련법령은 사건파악 전용(체크 대상 아님).
 //  체크 목록(겹2)의 기본 체크가 곧 이 판정 결과다 — 목록이 없는 사건도 이 판정 결과만 읽는다(전체가 아님).
 // =========================================================
-var CASEPROC_SKIP_DIR_RE_ = /^(보고서_내부|보고서_외부|_이전판|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/;
+var CASEPROC_SKIP_DIR_RE_ = /^(보고서|보고서_내부|보고서_외부|_이전판|_보관|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/;
 var CASEPROC_IMAGE_RE_ = /\.(jpe?g|png|gif|bmp|heic|heif|webp|tiff?)$/i;
 function caseProcFolderRule_(name, c, opt) {
   const n = String(name || '').trim(), inc = !!(opt && opt.includeFiled);
@@ -36209,7 +36479,7 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
   caseProcPatch_(c.id, function (sv) { sv.ihSummary = { assets: f.assets.length, valued: f.assets.filter(function (a) { return a.value; }).length, financial: f.financialValue !== null && !f.financialDiff, funeral: !!f.funeral.value, gross: f.grossEstate, debts: f.debtsConfirmed ? 'ok' : ((f.debts || []).length ? 'cand' : 'none') }; });
   return f;
 }
-// 세액인쇄 서식 PDF 저장 — 화면(세액인쇄)이 만든 서식 HTML을 PDF로 바꿔 사건 폴더 보고서_내부에 저장(같은 이름이면 바꿔 씀)
+// 세액인쇄 서식 PDF 저장 — 화면(세액인쇄)이 만든 서식 HTML을 PDF로 바꿔 사건 폴더 보고서(옛 보고서_내부)에 저장(같은 이름이면 바꿔 씀)
 function caseProcSavePdf_(c, body) {
   const html = String(body.html || '');
   // [2026.10.23 A9] 화면이 원본 모양 모듈로 만든 PDF(base64)를 그대로 받는 길 — 상속·증여 필수 서식(원본 모양만 있음)을 사건처리가 저장할 수 있게. html이 오면 예전처럼 html→PDF 변환
@@ -36218,7 +36488,7 @@ function caseProcSavePdf_(c, body) {
   if (pdfB64 && pdfB64.length > 12000000) return { ok: false, error: '서식 PDF가 너무 큽니다(8MB 초과).' };
   const tP = {}, tpk = function (k, t) { tP[k] = Math.round((Date.now() - t) / 100) / 10; }; let tp0 = Date.now(); // [2026.10.23 속도 ㅅ4차] ⑤ 서버 안쪽 시간 — 화면 🖨 줄에
   const sub = work_getCaseSubfolders({ caseId: c.id });
-  if (!sub || !sub.internalFolderId) return { ok: false, error: '사건 폴더(보고서_내부)를 찾지 못했습니다.' };
+  if (!sub || !sub.internalFolderId) return { ok: false, error: '사건 폴더(보고서)를 찾지 못했습니다.' };
   const folder = DriveApp.getFolderById(sub.internalFolderId);
   const name = String(c.사건명 || c.고객명 || '사건').replace(/[\\/:*?"<>|]/g, '_') + '_' + String(body.title || '신고서식').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) + '.pdf';
   const old = folder.getFilesByName(name);

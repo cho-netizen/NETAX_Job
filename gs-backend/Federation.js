@@ -471,6 +471,21 @@ function commSeamList_() {
   var lookupKinds = function () { var j = (typeof JOB_AI_TOOLS_ !== 'undefined' ? JOB_AI_TOOLS_ : []).filter(function (t) { return t.name === 'job_lookup'; })[0]; return (j && j.input_schema && j.input_schema.properties && j.input_schema.properties.kind && j.input_schema.properties.kind.enum) || []; };
   var need = function (have, list, where) { var miss = list.filter(function (n) { return have.indexOf(n) === -1; }); return miss.length ? where + '에 없음: ' + miss.join(', ') : ''; };
   var seamList = [
+    // [2026.11.14 보고서 정식 이름·한 폴더] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록" / "보고서폴더로 합치자" — 보고서 탭·넥스 저장 두 길·고객 창구·밤 갱신이 같은 함수(Code.js reportSaveTarget_)를 거친다
+    { 길: '보고서 정식 이름·「보고서」 한 폴더(보고서 탭 uploadFile · 넥스 save_file_to_folder/export_to_google_doc → nxCaseReportTarget_ · 고객 창구 외부보고서 .html만)', fn: function () {
+      if (typeof reportCanonName_ !== 'function' || typeof reportSaveTarget_ !== 'function' || typeof reportIsCustomerVisible_ !== 'function') return '정식 이름 함수가 이 판에 없음';
+      if (typeof nxCaseReportTarget_ !== 'function') return '넥스 저장이 정식 이름 함수를 거치지 않음';
+      const a = reportCanonName_({ kind: '개별검토서', detail: '자경감면' }); if (!a.ok || a.name !== '개별검토서_자경감면.md') return '개별검토서 이름이 다름: ' + (a.name || a.error);
+      const b = reportCanonName_({ kind: 'advisory', name: '검토보고서.md' }); if (!b.ok || b.name !== '자문보고서.md') return '자문보고서 이름이 다름: ' + (b.name || b.error);
+      if (!reportCanonName_({ kind: 'review_specific' }).needDetail) return '세부명칭 없는 개별검토서를 받아 줌';
+      const c = reportCanonName_({ kind: 'review', detail: '김소라 20261114', dropNames: ['김소라'] }); if (!c.ok || c.name !== '종합검토서.md') return '사건명·날짜가 이름에 남음: ' + c.name;
+      if (reportIsCustomerVisible_('종합검토서.html') || reportIsCustomerVisible_('개별검토서_비과세.html') || reportIsCustomerVisible_('자문보고서.md')) return '내부보고서·원본이 고객 창구에 보임';
+      if (!reportIsCustomerVisible_('자문보고서.html') || !reportIsCustomerVisible_('검토조서_양도.html')) return '외부보고서 발행본이 고객 창구에 안 보임';
+      if (WORK_SUBFOLDER_INTERNAL_REPORT !== REPORT_FOLDER_NAME_ || MY_SUBFOLDER_REPORT !== REPORT_FOLDER_NAME_) return '보고서 폴더가 하나가 아님';
+      const sv = (typeof DRIVE_TOOLS !== 'undefined' ? DRIVE_TOOLS : []).filter(function (t) { return t.name === 'save_file_to_folder'; })[0];
+      if (!sv || !sv.input_schema.properties.reportKind) return '넥스 저장 도구에 reportKind 칸이 없음';
+      return '';
+    } },
     // [2026.11.12 2차 전면 재검토 ①] 세무사님 화면에만 있던 일에 낸 넥스 길 — 조회 종류(후속 할 일·할 일·상담 받은함)·후속 할 일 적기·환율·서류 정리
     { 길: '넥스 서식 PDF 제안 카드 → 화면(client:printPdf) · 장부 받을 서류 → 증빙목록 제안(11-12 계획서 ①②)', fn: function () { var p = typeof JOB_PROPOSE_ACTIONS_ !== 'undefined' ? JOB_PROPOSE_ACTIONS_.print_pdf : null; if (!p || p.gas !== 'client:printPdf') return '제안 종류 print_pdf 없음'; if (typeof ledgerEvProposeFromAsk_ !== 'function') return '장부 질문 → 증빙목록 제안 함수 없음'; return ''; } },
     { 길: '넥스 → 대시보드 할 일·상담 받은함·서류 정리·환율(11-12 넥스 길)', fn: function () { var miss = need(lookupKinds(), ['followup', 'todo', 'consult_inbox'], 'job_lookup kind'); if (miss) return miss; var ct = chatTools(); if (ct.indexOf('followup_note') === -1 || ct.indexOf('lookup_exchange_rate') === -1) return '대화창 도구에 followup_note 또는 lookup_exchange_rate 없음'; if (leadTools().indexOf('doc_organize') === -1) return '사건 도구에 doc_organize 없음'; if (typeof followupChange_ !== 'function' || typeof consult_inboxList_ !== 'function' || typeof handleLookupExchangeRate !== 'function') return '받칠 서버 함수가 없음'; return ''; } },
@@ -701,7 +716,7 @@ function commSeamList_() {
     { 길: '읽을 파일 체크 목록(화면 📂·⚡ 첫 실행 → step readList/readScope list) · 폴더·파일 판정 하나(⚡·미리 읽기·글자 기억·직결) · 넥스 set_read_scope on/off', fn: function () {
       if (typeof caseProcFolderRule_ !== 'function' || typeof caseProcFileRule_ !== 'function') return '폴더·파일 판정 함수가 이 판에 없음';
       if (typeof caseProcReadList_ !== 'function' || typeof caseProcReadListSave_ !== 'function' || typeof caseProcNewFiles_ !== 'function') return '체크 목록 서버 함수가 이 판에 없음';
-      try { if (caseProcFolderRule_('보고서_내부', null, {}).kind !== 'skip' || caseProcFolderRule_('제출자료', null, {}).kind !== 'input') return '폴더 판정이 다름'; const fr = caseProcFileRule_({ name: '사진.jpg', mimeType: 'image/jpeg' }, null, 'input'); if (fr.on || fr.kind !== 'image') return '이미지가 기본 체크됨(10-27 결정 위반)'; if (!caseProcFileRule_({ name: '매매계약서.pdf', mimeType: 'application/pdf' }, null, 'input').on) return 'PDF가 기본 꺼짐'; } catch (e) { return '판정 실행 실패: ' + (e && e.message || e); }
+      try { if (caseProcFolderRule_('보고서', null, {}).kind !== 'skip' || caseProcFolderRule_('보고서_내부', null, {}).kind !== 'skip' || caseProcFolderRule_('제출자료', null, {}).kind !== 'input') return '폴더 판정이 다름'; const fr = caseProcFileRule_({ name: '사진.jpg', mimeType: 'image/jpeg' }, null, 'input'); if (fr.on || fr.kind !== 'image') return '이미지가 기본 체크됨(10-27 결정 위반)'; if (!caseProcFileRule_({ name: '매매계약서.pdf', mimeType: 'application/pdf' }, null, 'input').on) return 'PDF가 기본 꺼짐'; } catch (e) { return '판정 실행 실패: ' + (e && e.message || e); }
       if (typeof CP_PREREAD_SKIP_DIR_ !== 'undefined') return '미리 읽기가 별도 폴더 규칙을 아직 씀';
       const st = (typeof caseProcAiLiveTools_ === 'function' ? caseProcAiLiveTools_() : []).filter(function (t) { return t.name === 'set_read_scope'; })[0];
       if (!st || !st.input_schema.properties.on || !st.input_schema.properties.off) return '지휘 넥스 set_read_scope에 파일 단위(on/off)가 없음';

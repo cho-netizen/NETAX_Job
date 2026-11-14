@@ -391,7 +391,7 @@ function nrCandidates_(cases) {
     if (!c || String(c.상태 || '') !== '진행' || awVirtual_(c) || !String(c.폴더ID || '').trim()) return;
     let root; try { root = DriveApp.getFolderById(String(c.폴더ID).trim()); } catch (e) { return; }
     const scan = function (folder, where) { const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (NR_REVIEW_RE_.test(f.getName())) out.push({ caseId: c.id, case: String(c.사건명 || c.고객명 || ''), fileId: f.getId(), name: f.getName(), where: where, at: Utilities.formatDate(f.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') }); } };
-    ['보고서', '보고서_내부'].forEach(function (n) { const it = root.getFoldersByName(n); if (it.hasNext()) scan(it.next(), n); });
+    [(typeof REPORT_FOLDER_NAME_ !== 'undefined' ? REPORT_FOLDER_NAME_ : '보고서')].concat(typeof REPORT_FOLDER_OLD_NAMES_ !== 'undefined' ? REPORT_FOLDER_OLD_NAMES_.slice(0, 1) : ['보고서_내부']).forEach(function (n) { const it = root.getFoldersByName(n); if (it.hasNext()) scan(it.next(), n); });
     scan(root, '사건 폴더');
   });
   return out;

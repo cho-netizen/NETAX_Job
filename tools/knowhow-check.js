@@ -67,13 +67,14 @@ for (const n of fs.existsSync(CASES) ? fs.readdirSync(CASES) : []) {
   if (semok !== '불복' && !up) up = '자문';
   if (semok === '불복' && !up) up = '이의신청';
   const ft = new MFolder(n, null);
-  const rd = path.join(p, '보고서_내부');
-  if (fs.existsSync(rd)) loadDir(rd, new MFolder('보고서_내부', ft));
+  // [2026.11.14] 보고서 폴더는 「보고서」 하나(합치기 전 사건은 「보고서_내부」) — 시험에서는 둘 다 「보고서」로 싣는다
+  const rd = ['보고서', '보고서_내부'].map(x => path.join(p, x)).filter(x => fs.existsSync(x))[0];
+  if (rd) loadDir(rd, new MFolder('보고서', ft));
   caseRows.push({ id: 'c' + caseRows.length, 세목: SEMOK[semok], 업무유형: up, 상태: '진행', 수정일: fs.statSync(p).mtime.toISOString().slice(0, 10), 폴더ID: ft.id, 고객명: m[1], 납세자: m[2] });
   caseNames.push(m[1], m[2]);
 }
-// 완료 사건 3건(보고서_내부에 .md가 있는 것) — 재료 모으기 시험
-const withReports = caseRows.filter(r => { const f = byId[r.폴더ID]; const s = f.folders.find(x => x.name === '보고서_내부'); return s && s.files.length; });
+// 완료 사건 3건(보고서 폴더에 .md가 있는 것) — 재료 모으기 시험
+const withReports = caseRows.filter(r => { const f = byId[r.폴더ID]; const s = f.folders.find(x => x.name === '보고서'); return s && s.files.length; });
 withReports.slice(0, 3).forEach(r => { r.상태 = '완료'; r.수정일 = new Date().toISOString().slice(0, 10); });
 
 // ---------- GAS 흉내 ----------
@@ -90,7 +91,7 @@ const ctx = {
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] == null ? null : props[k], setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: k => { delete props[k]; } }) },
   DriveApp: { getFileById: id => { if (!byId[id] || !(byId[id] instanceof MFile)) throw new Error('없는 파일 ' + id); return byId[id]; }, getFolderById: id => { if (!byId[id]) throw new Error('없는 폴더'); return byId[id]; } },
   UrlFetchApp: { fetch: u => resp(u), fetchAll: rs => rs.map(r => resp(r.url)) },
-  GH_REPO_: 'test/repo', WORK_SUBFOLDER_INTERNAL_REPORT: '보고서_내부',
+  GH_REPO_: 'test/repo', WORK_SUBFOLDER_INTERNAL_REPORT: '보고서',
   getChiefManagerFolder_: () => chief, getBusinessManagerFolder_: () => bm, getReportTemplateFolder_: () => repF, getCaseTemplateFolder_: () => casF,
   getNetaxRootFolder_: () => root,
   getOrCreateSubfolder_: (p, n) => p.folders.find(f => f.name === n) || p.createFolder(n),

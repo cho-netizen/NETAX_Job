@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 00:55 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 04:35 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -50547,7 +50547,7 @@ document.addEventListener('click', function(e){ var x = e.target.closest && e.ta
   <label for="docSelect" class="nx-vlabel">문서</label><select id="docSelect"></select>
   <input type="file" id="fileInput" accept=".md,.txt,.html,.htm" multiple style="display:none;">
   <button id="btnReloadFromDrive" class="iconbtn" title="드라이브에 저장된 최신 내용으로 다시 불러오기 (fileId로 연 문서일 때만 동작)">🔄</button>
-  <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본(.md, 내부보고서 폴더)에 바로 저장">💾</button>
+  <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본(.md, 사건의 보고서 폴더)에 바로 저장">💾</button>
   <button id="btnPublish" class="iconbtn" title="지금 화면의 완성본을 고객포털(my.netax.kr) 보고서함에 발행">📤</button>
   <button id="btnLawRel" class="iconbtn" title="📑 관련법령 만들기 — 이 사건 검토서·보고서·세액계산·첨부에 쓰인 조문을 사건 기준일 판으로 모두 발췌해 내부보고서 폴더에 관련법령_사건명.md로 저장(토큰 0)">📑</button>
 
@@ -52552,7 +52552,8 @@ async function saveToDrive(){
     // [2026.09.16 신규] "보고서 모음"이 이제 매번 드라이브를 새로 훑지 않고 미리 만들어둔
     // 인덱스만 읽으므로, 저장하는 이 순간 그 인덱스에도 바로 반영되도록 사건 정보를 같이 보낸다.
     var rwIdxCase_ = rwGetSelectedCase_();
-    if (rwIdxCase_) body.reportMeta = { caseId: rwIdxCase_.id, 고객명: rwIdxCase_.고객명, 사건명: rwIdxCase_.사건명, published: false };
+    // [2026.11.14 보고서 정식 이름] 종류를 같이 보내 서버가 마지막에 정식 이름을 정한다(넥스 저장과 같은 함수 — Code.js reportCanonName_)
+    if (rwIdxCase_) body.reportMeta = { caseId: rwIdxCase_.id, 고객명: rwIdxCase_.고객명, 사건명: rwIdxCase_.사건명, published: false, docType: d.docType || '' };
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
     // [2026.10.20] 시스템 지침 파일(설정 🧭 시스템 관리)은 서버가 직전 판을 같은 폴더 _이전판에 보관한다(SysAdmin.js)
@@ -52998,7 +52999,7 @@ async function downloadAsPdf(){
 
 // [2026.11.13] 만든 PDF를 어디에 두나 — 세무사님 "신고용 검토조서를 pdf로 다운로드하여 신고서에 첨부하려고 하는데 … 각 보고서의 용도에 맞게 내부보고서든
 //  외부보고서든 해당 사건내의 폴더로 지정되어야 할 것 아닌가?" / "일단 인쇄할 원본문서와 같은 폴더에 저장되도록 해야하지 않나?"
-//  → 원본 문서(.md 내부 문서 → 보고서_내부, .html 발행본 → 보고서)가 든 드라이브 폴더(d.folderId)에 「원본이름.pdf」로 올린다. 같은 이름이 이미 있으면
+//  → 원본 문서(.md·.html 발행본 모두 — 11-14부터 사건의 「보고서」 한 폴더)가 든 드라이브 폴더(d.folderId)에 「원본이름.pdf」로 올린다. 같은 이름이 이미 있으면
 //  그 파일을 새 내용으로 바꾼다(파일이 둘로 늘지 않게). 예전엔 브라우저 내려받기(PC 폴더)로만 떨어뜨렸는데, 그 폴더가 깨져 있으면 브라우저가
 //  "폴더를 찾을 수 없음"을 내고 사건 폴더엔 아무것도 남지 않았다. 드라이브에 저장된 적 없는 문서(사건 폴더 없음)만 예전처럼 PC로 내려받는다.
 async function rwSavePdf_(pdf, d, label){
@@ -53293,6 +53294,8 @@ function rwRenderCaseReports_(caseId){
       return;
     }
     if (sub.error){ box.textContent = sub.error; return; }
+    // [2026.11.14] 보고서 이름표는 서버 종류표 하나를 따른다(Code.js REPORT_KINDS_ — 넥스 저장·고객 창구와 같은 표)
+    if (Array.isArray(sub.reportKinds)) sub.reportKinds.forEach(function(k){ if (k && k.code && k.label) RW_DOC_TYPE_FILENAME_LABELS_[k.code] = k.label; });
     return Promise.all([
       callGas('listFolder', { folderId: sub.internalFolderId }),
       callGas('listFolder', { folderId: sub.reportFolderId }),
@@ -56533,83 +56536,149 @@ function rwAiApplyEdit_(id, content){
       });
     };
 
-    // [2026.09.17 신규] "보고서 모음 정비" — (1) 의뢰내용류 파일을 <사건의뢰서>로 통일(이미
-    // rh_isReportFile_에서 노출 자체는 제외됨), (2) 나머지 보고서 파일명에서 사건명을 떼고
-    // 시스템 고유 명칭(검토서/자문보고서/.../번역서)만 남긴다. 같은 사건에 같은 새 이름으로
-    // 겹치는 경우(원래는 있을 수 없다는 전제)는 자동 판단하지 않고 "확인 필요"로만 보여준다 —
-    // 세무사님 지시: 내용이 다르면 사람이 직접 세부명칭을 정해야 한다.
+    // [2026.09.17 신규] "보고서 모음 정비" → [2026.11.14 넓힘] 세무사님 "모든 보고서는 보고서명 정식 명명규칙에 따르도록" / "보고서폴더로 합치자" / "권장대로 하라"
+    //  ① 폴더 합치기: 사건마다 「보고서_내부」를 「보고서」로 이름만 바꾸고 「보고서_외부」 파일을 그 안으로(폴더 ID 그대로, 빈 옛 폴더는 휴지통)
+    //  ② 파일 정리: 미리 보기(옛 이름 → 새 이름 · 옛 자리 → 「보고서」) — 종류·세부명칭은 줄마다 고치고, 고른 줄만 적용. 고객 창구에 새로 보이게 되는 줄은 표시.
+    //  같은 사건에 같은 새 이름이 둘 이상이면 고르지 않은 채로 둔다(9-17 "내용이 다르면 사람이 직접 세부명칭을 정해야 한다"). 적용·합치기마다 옮긴 목록을 남기고 되돌릴 수 있다.
     function rhOpenFilenameCleanupModal_(){
       var overlay = document.createElement('div');
       overlay.className = 'modal-overlay';
       overlay.style.display = 'flex';
       overlay.innerHTML =
-        '<div class="modal-panel" style="width:min(820px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-          '<div class="modal-head"><span>파일명 정비</span><span class="modal-close" title="닫기" role="button" id="rhfcClose">✕</span></div>' +
+        '<div class="modal-panel" style="width:min(1180px, 97vw); max-height:90vh; display:flex; flex-direction:column;">' +
+          '<div class="modal-head"><span>보고서 이름·폴더 정리</span><span class="modal-close" title="닫기" role="button" id="rhfcClose">✕</span></div>' +
           '<div class="modal-body" style="overflow-y:auto;">' +
-            '<div id="rhfcBody">확인 중… (파일이 많으면 시간이 걸릴 수 있습니다)</div>' +
+            '<div id="rhfcBody">확인 중… (사건 폴더를 모두 훑어 1~4분 걸립니다)</div>' +
           '</div>' +
         '</div>';
       document.body.appendChild(overlay);
       function close(){ overlay.remove(); }
       overlay.querySelector('#rhfcClose').onclick = close;
       overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
-
-      function render(res){
-        var body = overlay.querySelector('#rhfcBody');
-        var html = '';
-        if (res.renamePlan.length){
-          var rows = res.renamePlan.map(function(it){
-            return '<tr><td style="padding:4px 8px;">' + esc(it.고객명) + '</td>' +
-              '<td style="padding:4px 8px;">' + esc(it.사건명) + '</td>' +
-              '<td style="padding:4px 8px; color:#b23;">' + esc(it.oldName) + '</td>' +
-              '<td style="padding:4px 8px; color:#0D1B3D;">' + esc(it.newName) + '</td></tr>';
-          }).join('');
-          html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">자동으로 이름을 바꿀 수 있는 파일 ' + res.renamePlan.length + '건입니다.</div>' +
-            '<div style="overflow-x:auto; max-height:260px; overflow-y:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 파일명</th><th style="padding:4px 8px;">새 파일명</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-            '<button type="button" id="rhfcApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + res.renamePlan.length + '건 일괄 적용(되돌리기 어려움)</button>';
+      var body = overlay.querySelector('#rhfcBody');
+      var all = { rows: [], folders: [], kinds: [], scanned: 0 };
+      var TD = 'padding:4px 6px; white-space:nowrap; overflow-x:auto; max-width:0;';
+      function kindOf(code){ return all.kinds.filter(function(k){ return k.code === code; })[0] || null; }
+      function newNameOf(r){
+        if (r.target === '_보관') return r.oldName;
+        var k = kindOf(r.kind); if (!k) return '';
+        var d = String(r.detail == null ? '' : r.detail).trim().replace(/[\\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ');
+        if (r.why === '자리만') return r.oldName;
+        if (k.detail === '필수' && !d) return '';
+        var ext = r.ext || ''; return k.label + (d ? '_' + d : '') + ext;
+      }
+      function recompute(){
+        var byMd = {}; all.rows.forEach(function(r){ if (!r.pairOf) byMd[r.fileId] = r; });
+        all.rows.forEach(function(r){
+          if (r.pairOf && byMd[r.pairOf]){ var m = byMd[r.pairOf]; r.kind = m.kind; r.detail = m.detail; r.target = m.target; r.pick = m.pick; }
+          r.newName = newNameOf(r);
+          var k = kindOf(r.kind);
+          r.customerVisible = r.target === '보고서' && /\.html?$/i.test(r.newName) && !!k && k.use === '외부';
+        });
+        var seen = {}; all.rows.forEach(function(r){ r.collide = false; if (r.newName && r.target === '보고서' && r.pick){ var key = r.caseId + '|' + r.newName; (seen[key] = seen[key] || []).push(r); } });
+        Object.keys(seen).forEach(function(k){ if (seen[k].length > 1) seen[k].forEach(function(r){ r.collide = true; }); });
+      }
+      function render(){
+        recompute();
+        var fCount = all.folders.length, picked = all.rows.filter(function(r){ return r.pick && r.newName && !r.collide; }).length;
+        var kindOpts = function(sel){ return '<option value="">— 종류 —</option>' + all.kinds.map(function(k){ return '<option value="' + esc(k.code) + '"' + (k.code === sel ? ' selected' : '') + '>' + esc(k.label) + '(' + esc(k.use) + ')</option>'; }).join(''); };
+        var html = '<div class="taxcalc-result-note" style="margin-bottom:8px;">사건 폴더 ' + all.scanned + '곳을 훑었습니다. 보고서는 사건 폴더 안 「보고서」 한 폴더에, 정식 이름 &lt;보고서명칭_세부명칭&gt;으로 둡니다. 내부보고서(종합·개별검토서)는 고객에게 안 보이고, 외부보고서는 발행본(.html)만 고객 창구에 보입니다.</div>';
+        html += '<div style="display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin:6px 0 12px;">' +
+          '<b>① 폴더 합치기</b><span>합칠 사건 ' + fCount + '곳(「보고서_내부」 → 「보고서」 이름만 바꿈, 「보고서_외부」 파일은 그 안으로)</span>' +
+          (fCount ? '<button type="button" class="btn" id="rhfcMergeBtn">폴더 합치기</button>' : '<span class="ok">합칠 폴더 없음</span>') +
+          '<button type="button" class="ghost-btn sm" id="rhfcUndoBtn" title="가장 최근 합치기·정리 한 번을 거꾸로 돌립니다">최근 정리 되돌리기</button></div>';
+        html += '<div style="margin:4px 0 6px;"><b>② 파일 정리</b> ' + all.rows.length + '줄 — 고른 줄 ' + picked + '개. 「확인」 표시 줄은 종류·세부명칭을 살펴 주세요. 「겹침」은 같은 사건에 같은 새 이름이 둘 이상인 줄(세부명칭을 달리 넣거나 하나는 「_보관」으로). 옛 초안은 「보고서/_보관」에 오래 둡니다(「_이전판」은 다음 저장 때 바뀌는 바로 앞 판 자리라 쓰지 않음).</div>';
+        if (all.rows.length){
+          html += '<div style="overflow-x:auto; max-height:52vh; overflow-y:auto;"><table style="table-layout:fixed; width:1290px; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--card,#fff);">' +
+            '<th style="width:34px;"></th><th style="width:150px;">사건</th><th style="width:170px;">옛 자리</th><th style="width:250px;">옛 이름</th><th style="width:62px;">까닭</th><th style="width:150px;">종류</th><th style="width:150px;">세부명칭</th><th style="width:200px;">새 이름</th><th style="width:96px;">자리</th><th style="width:28px;"></th></tr></thead><tbody>' +
+            all.rows.map(function(r){
+              var flag = [];
+              if (r.collide) flag.push('<span style="color:#b42318;">겹침</span>');
+              if (r.check) flag.push('<span style="color:#b35900;">확인</span>');
+              if (r.customerVisible && r.oldDir !== '보고서_외부') flag.push('<span style="color:#1a56b3;" title="옮기면 고객 창구(my.netax.kr)에 새로 보입니다">고객 창구에 보이게 됨</span>');
+              var lock = !!r.pairOf;
+              return '<tr data-row="' + esc(r.rowId) + '" style="border-bottom:1px solid var(--line);">' +
+                '<td style="' + TD + '"><input type="checkbox" data-k="pick"' + (r.pick ? ' checked' : '') + (lock ? ' disabled title="원본 .md 줄을 따라갑니다"' : '') + '></td>' +
+                '<td style="' + TD + '" title="' + esc(r.사건명) + '">' + esc(r.고객명 || r.사건명) + '</td>' +
+                '<td style="' + TD + '" title="' + esc(r.oldDir) + '">' + esc(r.oldDir) + '</td>' +
+                '<td style="' + TD + 'color:#b23;" title="' + esc(r.oldName) + '">' + esc(r.oldName) + '</td>' +
+                '<td style="' + TD + '">' + esc(r.why) + '</td>' +
+                '<td style="' + TD + '">' + (r.why === '이름' && !lock ? '<select data-k="kind" style="width:100%;">' + kindOpts(r.kind) + '</select>' : esc((kindOf(r.kind) || {}).label || '')) + '</td>' +
+                '<td style="' + TD + '">' + (r.why === '이름' && !lock ? '<input data-k="detail" style="width:100%;" value="' + esc(r.detail || '') + '">' : '') + '</td>' +
+                '<td style="' + TD + 'color:#0D1B3D;" title="' + esc(r.newName || '') + '">' + (r.newName ? esc(r.newName) : '<span style="color:#b42318;">종류·세부명칭 필요</span>') + '</td>' +
+                '<td style="' + TD + '">' + (lock ? esc(r.target) : '<select data-k="target" style="width:100%;"><option value="보고서"' + (r.target === '보고서' ? ' selected' : '') + '>보고서</option><option value="_보관"' + (r.target === '_보관' ? ' selected' : '') + '>_보관(오래 둠)</option></select>') + '</td>' +
+                '<td style="' + TD + '">' + flag.join(' ') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+          html += '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0;">' + (all.next ? '<button type="button" class="ghost-btn" id="rhfcMoreBtn">나머지 사건 더 훑기</button>' : '') +
+            '<button type="button" class="btn danger" id="rhfcApplyBtn"' + (picked ? '' : ' disabled') + '>고른 ' + picked + '줄 적용(옮긴 목록을 남겨 되돌릴 수 있음)</button></div>';
         } else {
-          html += '<div class="log-empty">자동으로 정리할 파일이 없습니다.</div>';
-        }
-        if (res.collisions.length){
-          html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.collisions.length + '건은 같은 사건 안에 같은 유형 보고서가 여러 개 있어(원래는 있을 수 없는 경우) 자동으로 이름을 못 바꿉니다 — 정말 같은 문서인지, 내용이 다르다면 파일명 뒤에 어떤 세부명칭을 붙일지 직접 확인해주세요(서류 탭에서 각 파일을 열어보고 이름을 바꿀 수 있습니다).</div>';
-          html += res.collisions.map(function(c){
-            var fnames = c.files.map(function(f){ return '<li>' + esc(f.oldName) + '</li>'; }).join('');
-            return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
-              '<b>' + esc(c.고객명) + '</b> · ' + esc(c.사건명) + ' → 제안된 이름 <b>' + esc(c.proposedName) + '</b>' +
-              '<ul style="margin:6px 0 0 18px;">' + fnames + '</ul></div>';
-          }).join('');
-        }
-        if (res.unclear.length){
-          html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.unclear.length + '건은 문서유형을 자동으로 못 알아내 이름을 못 바꿨습니다 — 직접 확인해주세요.</div>';
-          var urows = res.unclear.map(function(it){
-            return '<tr><td style="padding:4px 8px;">' + esc(it.고객명) + '</td><td style="padding:4px 8px;">' + esc(it.사건명) + '</td><td style="padding:4px 8px;">' + esc(it.oldName) + '</td></tr>';
-          }).join('');
-          html += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">파일명</th></tr></thead><tbody>' + urows + '</tbody></table></div>';
+          html += '<div class="log-empty">정리할 보고서 파일이 없습니다.</div>' + (all.next ? '<button type="button" class="ghost-btn" id="rhfcMoreBtn">나머지 사건 더 훑기</button>' : '');
         }
         body.innerHTML = html;
-        var applyBtn = body.querySelector('#rhfcApplyBtn');
-        if (applyBtn) applyBtn.addEventListener('click', function(){
-          nxConfirm_(res.renamePlan.length + '건의 파일명을 일괄 변경합니다. 계속할까요?').then(function(ok){
-            if (!ok) return;
-            body.innerHTML = '적용 중… (시간이 걸릴 수 있습니다)';
-            callGas('work_apply_report_filename_cleanup', {}).then(function(res2){
-              if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
-              body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 적용했습니다' + (res2.failed ? ' (' + res2.failed + '건 실패)' : '') + '.</div>';
-              showToast(res2.applied + '건의 파일명을 정비했습니다.', 'success');
-              rhLoadFiles_();
-            }).catch(function(err){
-              body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-            });
+        body.querySelectorAll('tr[data-row]').forEach(function(tr){
+          var r = all.rows.filter(function(x){ return x.rowId === tr.getAttribute('data-row'); })[0]; if (!r) return;
+          tr.querySelectorAll('[data-k]').forEach(function(el){
+            var k = el.getAttribute('data-k');
+            el.addEventListener('change', function(){ if (k === 'pick') r.pick = el.checked; else { r[k] = el.value; if (k !== 'target' && r.why === '이름') r.pick = true; } render(); });
           });
         });
+        var mb = body.querySelector('#rhfcMergeBtn'); if (mb) mb.addEventListener('click', doMerge);
+        var ub = body.querySelector('#rhfcUndoBtn'); if (ub) ub.addEventListener('click', doUndo);
+        var more = body.querySelector('#rhfcMoreBtn'); if (more) more.addEventListener('click', function(){ load(all.next); });
+        var ab = body.querySelector('#rhfcApplyBtn'); if (ab) ab.addEventListener('click', doApply);
       }
-
-      callGas('work_plan_report_filename_cleanup', {}).then(function(res){
-        if (res.success === false){ overlay.querySelector('#rhfcBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
-        render(res);
-      }).catch(function(err){
-        overlay.querySelector('#rhfcBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
-      });
+      function load(from){
+        if (from) body.insertAdjacentHTML('afterbegin', '<div class="taxcalc-result-note">나머지 사건을 훑는 중…</div>');
+        callGas('work_plan_report_filename_cleanup', { from: from || 0 }).then(function(res){
+          if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + esc(res.message || '조회 실패') + '</div>'; return; }
+          all.kinds = res.kinds || all.kinds; all.scanned += res.scanned || 0; all.next = res.next || 0;
+          all.folders = all.folders.concat(res.folders || []);
+          var base = all.rows.length;
+          (res.rows || []).forEach(function(r, i){ r.rowId = 'r' + (base + i); r.pick = !r.collide && !!r.newName && !r.check; all.rows.push(r); });
+          // 짝(.html)은 원본 줄의 rowId가 아니라 fileId로 잇는다
+          render();
+        }).catch(function(err){ body.innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + esc(nxErrText_(err)) + '</div>'; });
+      }
+      function doMerge(){
+        nxConfirm_('사건 ' + all.folders.length + '곳의 보고서 폴더를 「보고서」 하나로 합칩니다(「보고서_내부」는 이름만 바뀌고, 「보고서_외부」 파일은 그 안으로 옮깁니다). 옮긴 목록을 남겨 되돌릴 수 있습니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '폴더를 합치는 중…';
+          callGas('work_apply_report_folder_merge', {}).then(function(r){
+            if (r.success === false){ body.innerHTML = '<div class="taxcalc-error">' + esc(r.message || '실패') + '</div>'; return; }
+            showToast('보고서 폴더 ' + r.merged + '곳 합침 · 파일 ' + r.moved + '개 옮김' + (r.errors && r.errors.length ? ' · 남긴 것 ' + r.errors.length : ''), r.errors && r.errors.length ? 'info' : 'success');
+            all = { rows: [], folders: [], kinds: all.kinds, scanned: 0 }; load(0);
+          }).catch(function(err){ body.innerHTML = '<div class="taxcalc-error">합치기 중 오류: ' + esc(nxErrText_(err)) + '</div>'; });
+        });
+      }
+      function doUndo(){
+        nxConfirm_('가장 최근의 합치기·정리 한 번을 거꾸로 돌립니다(옛 이름·옛 자리로). 계속할까요?').then(function(ok){
+          if (!ok) return;
+          callGas('work_undo_report_cleanup', {}).then(function(r){
+            if (r.success === false){ nxAlert_(r.message || '되돌리지 못했습니다.', '되돌리기'); return; }
+            showToast('되돌렸습니다: ' + r.undone + '건' + (r.errors && r.errors.length ? ' · 못 한 것 ' + r.errors.length : ''), 'success');
+            all = { rows: [], folders: [], kinds: all.kinds, scanned: 0 }; load(0);
+          }).catch(function(err){ nxAlert_('되돌리기 중 오류: ' + nxErrText_(err), '되돌리기'); });
+        });
+      }
+      function doApply(){
+        recompute();
+        var pickMd = {}; all.rows.forEach(function(r){ if (!r.pairOf && r.pick) pickMd[r.fileId] = 1; });
+        var send = all.rows.filter(function(r){ return (r.pairOf ? pickMd[r.pairOf] : r.pick) && r.newName && !r.collide; }).map(function(r){ return { rowId: r.rowId, caseId: r.caseId, fileId: r.fileId, newName: r.newName, target: r.target }; });
+        if (!send.length) return;
+        nxConfirm_(send.length + '개 파일의 이름·자리를 바꿉니다. 옮긴 목록을 남겨 되돌릴 수 있습니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중…';
+          callGas('work_apply_report_filename_cleanup', { rows: send }).then(function(res2){
+            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + esc(res2.message || '적용 실패') + '</div>'; return; }
+            var fails = (res2.results || []).filter(function(x){ return x.error; });
+            showToast(res2.applied + '개 정리' + (fails.length ? ' · 못 한 것 ' + fails.length : ''), fails.length ? 'info' : 'success');
+            if (fails.length) nxAlert_(fails.map(function(x){ var r = all.rows.filter(function(y){ return y.rowId === x.rowId; })[0]; return (r ? r.oldName : x.fileId) + ' — ' + x.error; }).join('\n'), '못 한 것');
+            if (typeof rhLoadFiles_ === 'function') rhLoadFiles_();
+            all = { rows: [], folders: [], kinds: all.kinds, scanned: 0 }; load(0);
+          }).catch(function(err){ body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + esc(nxErrText_(err)) + '</div>'; });
+        });
+      }
+      load(0);
     }
     window.rhOpenFilenameCleanupModal_ = rhOpenFilenameCleanupModal_; // 설정 › 정비도구에서 부름
     // [2026.09.17 신규] "보고서템플릿도 바꾸거나 없는 것은 새로 만들어서 일치시켜라" — 옛
@@ -57285,13 +57354,6 @@ function rwAiApplyEdit_(id, content){
         <button type="button" id="settingsFontReset" class="btn" style="min-height:34px;">기본으로</button>
       </div>
       <div class="settings-tool-desc" id="settingsFontNow" style="margin-top:6px;"></div>
-      <!-- [2026.11.13] 이 기기 이름 — 세무사님 "이 기기의 이름을 굳이 거기(이어 열기 띠)다가 보여주어야 하나?" → 이름 바꾸기는 여기서만. 다른 기기의 「○○에서 보던 화면」 띠에 이 이름이 보인다. 이 기기에만 기억. -->
-      <div style="font-size:13px; margin:14px 0 6px;">이 기기 이름</div>
-      <form id="settingsDeviceNameForm" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <input type="text" id="settingsDeviceName" maxlength="20" placeholder="예: 사무실 PC, 집 노트북, 갤럭시탭" style="font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; min-width:200px;">
-        <button type="submit" class="btn" style="min-height:34px;">저장</button>
-      </form>
-      <div class="settings-tool-desc" id="settingsDeviceNameNow" style="margin-top:6px;"></div>
       <div class="nx-help">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·보고서 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
     <!-- [2026.10.20] 🧭 시스템 관리 — 내용은 manage/sysadmin.html이 채운다(자리만 여기) -->
@@ -57489,8 +57551,8 @@ function rwAiApplyEdit_(id, content){
       <h3>보고서들</h3>
       <div class="settings-tools-group">
         <div class="settings-tool-item">
-          <button type="button" class="ghost-btn" id="stBtnRhFilenameCleanup">파일명 정비</button>
-          <div class="nx-help">의뢰내용류 파일 이름을 「사건의뢰서」로 통일하고, 나머지 보고서 파일 이름에서 사건명을 떼어 정리합니다. 바꿀 목록을 먼저 보여 드리고, 누르셔야 바꿉니다.</div>
+          <button type="button" class="ghost-btn" id="stBtnRhFilenameCleanup">보고서 이름·폴더 정리</button>
+          <div class="nx-help">보고서를 정식 이름(&lt;보고서명칭_세부명칭&gt;)으로 바꾸고 사건의 「보고서」 폴더 하나로 모읍니다(옛 「보고서_내부」·「보고서_외부」 합치기 포함). 바꿀 목록을 먼저 보여 드리고, 고르신 줄만 바꾸며, 옮긴 목록을 남겨 되돌릴 수 있습니다.</div>
         </div>
         <div class="settings-tool-item">
           <button type="button" class="ghost-btn" id="stBtnRhTemplateNameFix">템플릿 이름</button>
@@ -57769,22 +57831,6 @@ function rwAiApplyEdit_(id, content){
       plus.addEventListener('click', function(){ nxFontZoomSet_(nxFontZoomGet_() + 5); paint(); });
       reset.addEventListener('click', function(){ nxFontZoomSet_(null); paint(); toast('글자 크기를 기본값으로 되돌렸습니다(이 기기).'); });
       document.addEventListener('nx-layout-change', paint);
-      paint();
-    })();
-    // [2026.11.13] 이 기기 이름 — 이어 열기 띠(script.html nxPlaceOffer_)가 쓰는 localStorage nxDeviceName과 같은 칸
-    (function(){
-      var form = document.getElementById('settingsDeviceNameForm'), inp = document.getElementById('settingsDeviceName'), nowD = document.getElementById('settingsDeviceNameNow');
-      if (!form || typeof nxDeviceName_ !== 'function') return;
-      function paint(){
-        var n = nxDeviceName_(); inp.value = n;
-        nowD.textContent = n ? ('이 기기는 「' + n + '」 — 다른 기기의 「' + n + '에서 보던 화면」 띠에 이렇게 보입니다') : '아직 이름이 없습니다 — 다른 기기에는 「PC(이름 없는 기기)」처럼 보입니다';
-      }
-      form.addEventListener('submit', function(e){
-        e.preventDefault();
-        var v = String(inp.value || '').trim().slice(0, 20);
-        try { if (v) localStorage.setItem('nxDeviceName', v); else localStorage.removeItem('nxDeviceName'); } catch (er) {}
-        paint(); toast(v ? '이 기기 이름을 「' + v + '」로 정했습니다.' : '이 기기 이름을 지웠습니다.');
-      });
       paint();
     })();
     // 오류 기록 카드
@@ -63244,7 +63290,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       .then(function(){
         st.by = '세무사님'; window.nxWorkBy_ = null;
         if (st.blocked) { st.running = false; return; } // 증빙 폴더 없음
-        return nxAiCpEndNoFinish_(st, st.tool === 'fill' ? '칸 채우기를 마쳤습니다. 질문에 답하시고, 필요한 도구를 아래에서 고르세요.' : st.tool === 'output' ? '서식 대조를 마쳤습니다 — 서식 PDF가 아직 없으면 위 「서식 대조」 줄에서 만들고 있습니다(끝나면 보고서_내부에 파일 이름이 보입니다).' : '서류를 읽어 장부에 적었습니다. 이어서 쓸 도구를 아래에서 고르세요.');
+        return nxAiCpEndNoFinish_(st, st.tool === 'fill' ? '칸 채우기를 마쳤습니다. 질문에 답하시고, 필요한 도구를 아래에서 고르세요.' : st.tool === 'output' ? '서식 대조를 마쳤습니다 — 서식 PDF가 아직 없으면 위 「서식 대조」 줄에서 만들고 있습니다(끝나면 보고서 폴더에 파일 이름이 보입니다).' : '서류를 읽어 장부에 적었습니다. 이어서 쓸 도구를 아래에서 고르세요.');
       })
       .catch(function(err){ st.running = false; st.setStep(st.tool === 'fill' ? 'overview' : st.tool === 'output' ? 'output' : 'evidence', '❌', String(err && err.message || err)); });
   }
@@ -63525,7 +63571,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         return '<tr><td>' + (ico[r.st] || '?') + '</td><td>' + nxAiEsc_((r.dir ? r.dir + '/' : '') + r.n) + '</td><td>' + nxAiEsc_([r.kind, r.why].filter(Boolean).join(' — ') || r.st) + '</td><td>' + (unused ? '<span class="nxai-warn">안 나옴</span>' : nxAiEsc_(r.use || '')) + '</td></tr>';
       }).join('') + '</table></details>';
   }
-  // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서_내부)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
+  // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
   function nxAiCaseProcSavePdf_(st, tab){
     var tMk0 = Date.now(); // [2026.10.23 ㅅ15차] 화면에서 원본 모양을 만드는 데 든 시간 — 서버 기록부 줄에 같이 남긴다(어디서 끊기는지 보이게)
     try {
@@ -63567,7 +63613,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
   }
   // 저장된 계산 결과로 세액인쇄 필수 서식 PDF 만들기 — 서식은 세액계산 화면이 그 사건의 저장 결과를 불러와야 생기므로(tcRestoreToolResults_)
-  // 그 사건으로 세액계산 화면을 열고 서식이 준비되면 PDF로 사건 폴더(보고서_내부)에 저장한다.
+  // 그 사건으로 세액계산 화면을 열고 서식이 준비되면 PDF로 사건 폴더(보고서)에 저장한다.
   function nxAiCaseProcPdfRun_(st){
     var tab = st.case && st.case.세목;
     if (st.calcBusy || !CASEPROC_CALC_TABS_[tab] || typeof goToTaxCalc_ !== 'function') return;
@@ -63587,7 +63633,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiCaseProcSavePdf_(st, tab).then(function(pr){
         if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
         st.pdfRunning = false;
-        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' + nxAiCpTimeTxt_(pr._t) : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서)' + nxAiCpTimeTxt_(pr._t) : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
         if (st.screen && !st.home && typeof goToCaseHandling_ === 'function'){ try { goToCaseHandling_(st.caseId); } catch (e) {} } // [2026.10.22 묶음 ㄱ4] 사건 화면으로 돌아옴
         if (pr && pr.ok && !st.finishing) nxAiCaseProcStatus_(st); // [2026.10.23 속도 ㅅ4차] 마무리(finishAll) 중이면 ⑦은 거기서 한 번만(현황표 장부가 1분 — 두 번 돌지 않게)
       });
@@ -65726,7 +65772,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
                 // 뒤에서: 서식 PDF → (마무리 중이 아니면 ④⑤ 다시 조회). 마무리(finishAll)는 st.pdfBg가 끝난 뒤 ⑤⑥⑦을 뒤에서 잇는다
                 st.pdfBg = nxAiCaseProcSavePdf_(st, tab).then(function(pr){
                   var ln = document.createElement('div'); ln.className = 'nxai-cp-line';
-                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' + (pr.recovered ? ' — 응답 대신 서버 현황으로 확인' : '') + nxAiCpTimeTxt_(pr._t) : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서' + (pr.forms ? ', 서식 ' + pr.forms + '개' : '') + ')' + (pr.recovered ? ' — 응답 대신 서버 현황으로 확인' : '') + nxAiCpTimeTxt_(pr._t) : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
                   st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln);
                   st.setStep('calc', pr && pr.ok ? '✅' : '⚠', '세액 ' + (taxTxt || '저장 끝') + ' — ' + tm + (pr && pr.ok ? ' · 서식 PDF 저장 끝' : ' · 서식 PDF 실패'));
                   return st.finishing ? pr : nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ return pr; });
@@ -68789,29 +68835,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
   }
 
-  // [2026.10.22] 이어 보기(기기 3종 2차 #10) — 마지막으로 보던 화면·사건·넥스 대화를 서버에 기억(기기 이름과 함께).
-  //  다른 기기에서 앱을 열면 대시보드 위에 "○○(휴대폰)에서 보던 「…」 이어 열기" 띠. 워치로 물은 긴 답도 같은 넥스 대화라 휴대폰에서 이어 본다.
-  function nxDeviceId_(){
-    var id = null; try { id = localStorage.getItem('nxDeviceId'); } catch (e) {}
-    if (!id){ id = 'd' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('nxDeviceId', id); } catch (e) {} }
-    return id;
-  }
-  // [2026.10.31] 세무사님 "태블릿에서 본 적 없는데 무슨 말인가?" → "권장안대로": 화면 너비로 기기를 짐작하던 것(좁힌 PC 창·Claude 시험 창도 '태블릿')을
-  //  기기마다 한 번 붙인 이름으로. 이름이 없으면 기기 종류(브라우저가 알려 주는 것)로만 짐작하고, 띠에서 바로 이름을 붙일 수 있다.
-  function nxDeviceName_(){ try { return localStorage.getItem('nxDeviceName') || ''; } catch (e) { return ''; } }
-  function nxDeviceLabel_(){
-    var n = nxDeviceName_(); if (n) return n;
-    var ua = navigator.userAgent || '';
-    var kind = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? '태블릿' : /Mobi|iPhone|Android/i.test(ua) ? '휴대폰' : 'PC';
-    return (window.nxCover ? '휴대폰 말하기' : kind) + '(이름 없는 기기)';
-  }
+  // [2026.10.22] 이어 보기(기기 3종 2차 #10) — 마지막으로 보던 화면·사건·넥스 대화를 서버에 기억. 앱을 열면 대시보드 위에 "n분 전에 보던 「…」 이어 열기" 띠.
+  //  워치로 물은 긴 답도 같은 넥스 대화라 휴대폰에서 이어 본다.
+  // [2026.11.14] 기기 이름 걷음 — 세무사님 "이미 이 기기 이름 정하기로 <Gram>이라고 정했으면, Gram대신 이 기기 라고 해야 하는 것이고, 이 기기 이름 정하기 단추는 안 보여야" → "걷어내라".
+  //  웹 화면은 기기를 알 수 없다(이름은 그 브라우저 저장칸에만 남아 시크릿 창·Claude 미리보기 창·다른 브라우저에선 사라짐). 이어 열기에 기기 이름은 필요 없으므로 띠·단추·설정 칸을 모두 걷었다.
+  //  Claude 미리보기 창은 브라우저가 스스로 밝히는 표시(「Claude/판번호」)로 가려 보던 곳을 남기지 않는다 — 예전엔 기기 이름이 「Claude…」일 때만 걸렀다.
+  function nxIsClaudePreview_(){ return /\bClaude\/\d/.test(navigator.userAgent || ''); }
   var nxPlaceTimer_ = null, nxPlaceLast_ = { sig: '', t: 0 };
   function nxPlaceSaveSoon_(){
     clearTimeout(nxPlaceTimer_);
     nxPlaceTimer_ = setTimeout(function(){
       var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
       if (!tok) return; // 로그인 전엔 서버를 부르지 않는다(10-14 장애)
-      if (/^Claude/.test(nxDeviceName_())) return; // [2026.11.13] Claude 미리보기 창(기기 이름 「Claude …」)이 본 흔적은 남기지 않는다 — 세무사님 화면에 "이름 없는 기기에서 보던" 띠가 떴음
+      if (nxIsClaudePreview_()) return; // [2026.11.13] Claude 미리보기 창이 본 흔적은 남기지 않는다(11-14 기기 이름 대신 브라우저 표시로)
       var act = document.querySelector('.view.active'), view = act ? act.id.replace(/^view-/, '') : '';
       var caseId = ''; try { caseId = typeof nxScreenCaseIdOf_ === 'function' ? nxScreenCaseIdOf_(view) : ''; } catch (e) {}
       var conv = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id && (view === 'ai' || window.nxCover)) ? nxAiConv : null; // 넥스 대화 화면·말하기 모드일 때만 대화 이어 열기
@@ -68821,33 +68857,23 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (nowT - nxPlaceLast_.t < 60000) { clearTimeout(nxPlaceTimer_); nxPlaceTimer_ = setTimeout(nxPlaceSaveSoon_, 60000 - (nowT - nxPlaceLast_.t) + 500); return; }
       nxPlaceLast_ = { sig: sig, t: nowT };
       callGas('place_save', { view: view, label: (window._currentViewLabel || view) + (conv && view === 'ai' ? ' — ' + String(conv.title || '').slice(0, 40) : ''), caseId: caseId,
-        convId: conv ? conv.id : '', device: nxDeviceId_() + '|' + nxDeviceLabel_() }).catch(function(){});
+        convId: conv ? conv.id : '' }).catch(function(){});
     }, 4000);
   }
   function nxPlaceOffer_(){
     callGas('place_get', {}).then(function(r){
       var p = r && r.place; if (!p || !p.at || Date.now() - p.at > 12 * 3600000) return;
-      // [2026.11.13] 세무사님 "기기를 오가지 않더라도 필요한 기능으로 보이는데?" → 같은 기기에서 앱을 다시 열어도 띄운다(기기 이름 글자 없이).
-      //  보던 곳이 대시보드면 이어 갈 데가 없어 띄우지 않고, Claude 미리보기 창의 흔적도 띄우지 않는다.
-      var parts = String(p.device || '').split('|'), same = parts[0] === nxDeviceId_();
-      if (!p.view || p.view === 'dashboard' || /^Claude/.test(parts[1] || '')) return;
+      // [2026.11.13] 세무사님 "기기를 오가지 않더라도 필요한 기능으로 보이는데?" → 같은 기기에서 앱을 다시 열어도 띄운다.
+      //  보던 곳이 대시보드면 이어 갈 데가 없어 띄우지 않고, 11-14 전에 남은 Claude 미리보기 창 흔적(기기 칸 「…|Claude…」)도 띄우지 않는다.
+      if (!p.view || p.view === 'dashboard' || /\|Claude/.test(String(p.device || ''))) return;
       var dash = document.getElementById('view-dashboard'); if (!dash || document.getElementById('nxPlaceBar')) return;
       var bar = document.createElement('div'); bar.id = 'nxPlaceBar';
       bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px;';
       var mins = Math.max(1, Math.round((Date.now() - p.at) / 60000));
-      bar.innerHTML = '<span>' + (same ? '' : escapeHtml(parts[1] || '다른 기기') + '에서 ') + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
-        + '<button type="button" class="save-btn sm" data-place="go">이어 열기</button><button type="button" class="ghost-btn sm" data-place="x">닫기</button>'
-        // [2026.11.13] 세무사님 "이 기기의 이름을 굳이 거기다가 보여주어야 하나?" → 이름이 아직 없는 기기에서만 「정하기」, 바꾸기는 설정 › 화면.
-        + (nxDeviceName_() ? '' : '<button type="button" class="ghost-btn sm" data-place="name" title="이 기기에 이름을 붙이면 다른 기기에서 「○○에서 보던 화면」으로 정확히 보입니다">이 기기 이름 정하기</button>');
+      bar.innerHTML = '<span>' + (mins < 60 ? mins + '분' : Math.round(mins / 60) + '시간') + ' 전에 보던 「<b>' + escapeHtml(p.label || p.view) + '</b>」</span>'
+        + '<button type="button" class="save-btn sm" data-place="go">이어 열기</button><button type="button" class="ghost-btn sm" data-place="x">닫기</button>';
       bar.addEventListener('click', function(e){
         var b = e.target.closest('[data-place]'); if (!b) return;
-        if (b.getAttribute('data-place') === 'name'){
-          nxPrompt_('이 기기의 이름을 적어 주세요(예: 사무실 PC, 집 노트북, 갤럭시탭).', nxDeviceName_()).then(function(v){
-            v = String(v || '').trim().slice(0, 20); if (!v) return;
-            try { localStorage.setItem('nxDeviceName', v); } catch (er) {}
-            b.remove(); toast('이 기기 이름을 「' + v + '」로 정했습니다. 바꾸려면 설정 › 화면.'); // [2026.11.13] 정한 뒤엔 단추를 띠에 두지 않는다
-          }); return;
-        }
         bar.remove();
         if (b.getAttribute('data-place') !== 'go') return;
         if (p.convId && typeof nxAiOpenConv_ === 'function'){ goToView_('ai'); setTimeout(function(){ nxAiOpenConv_(p.convId); }, 300); return; }
