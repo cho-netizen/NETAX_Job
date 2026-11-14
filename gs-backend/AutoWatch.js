@@ -328,6 +328,8 @@ function nrHour_() { return Number(Utilities.formatDate(new Date(), 'Asia/Seoul'
 function nrMarkUse_() {
   try { const ch = CacheService.getScriptCache(); if (ch.get('nr_use_mark')) return; ch.put('nr_use_mark', '1', 300); PropertiesService.getScriptProperties().setProperty(NR_USE_PROP_, String(Date.now())); } catch (e) {}
 }
+// [2026.11.14] 기록 시각은 분까지('14:43')라 검토서 저장(14:43:22) 바로 뒤 같은 분 기록이 빠졌다 — 그 분 안이면 바뀐 것으로 본다(넥스 기록은 밤 갱신 자신의 것일 수 있어 다음 분부터)
+function nrAfter_(at, since) { const t = nrTs_(at); return t > 0 && t + 60000 > since; }
 function nrTs_(s) { // 'yyyy-MM-dd HH:mm'(한국 시각) → ms
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
   return m ? (Date.parse(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00+09:00') || 0) : 0;
@@ -404,13 +406,13 @@ function nrChanges_(c, fileIds, since) {
   (Array.isArray(sv.fileChanges) ? sv.fileChanges : []).forEach(function (x) {
     if (!x || fileIds.indexOf(x.id) !== -1 || x.by === '넥스' || !/^(새|바뀜|없어짐)$/.test(String(x.kind || ''))) return;
     if (/^_/.test(String(x.name || '')) || /(^|\/)_/.test(String(x.dir || ''))) return;
-    if (nrTs_(x.at) > since) add('서류 ' + x.kind + ': ' + (x.dir ? x.dir + '/' : '') + x.name);
+    if (nrAfter_(x.at, since)) add('서류 ' + x.kind + ': ' + (x.dir ? x.dir + '/' : '') + x.name);
   });
   let L = null; try { L = ledgerLoad_(c.id, true); } catch (e) { L = null; }
-  ((L && L.log) || []).forEach(function (e) { if (e && /^(세무사님|넥스|고객)$/.test(String(e.by || '')) && nrTs_(e.at) > since && e.what !== '밤 검토서 갱신') add('사건 장부(' + e.by + '): ' + e.what + (e.path ? ' — ' + e.path : '') + (e.detail ? ' — ' + String(e.detail).slice(0, 60) : '')); });
+  ((L && L.log) || []).forEach(function (e) { if (e && /^(세무사님|넥스|고객)$/.test(String(e.by || '')) && (e.by === '넥스' ? nrTs_(e.at) > since : nrAfter_(e.at, since)) && e.what !== '밤 검토서 갱신') add('사건 장부(' + e.by + '): ' + e.what + (e.path ? ' — ' + e.path : '') + (e.detail ? ' — ' + String(e.detail).slice(0, 60) : '')); });
   (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).forEach(function (x) { const m = /^tc_(\d{12,})/.exec(String(x && x.id || '')); if (m && Number(m[1]) > since) add('계산 저장본 새로: ' + [x.세목, x.구분, x.안이름 || x.name].filter(Boolean).join(' ')); });
   const due = awYmd_(c.법정일); if (due) { const t = Date.parse(due + 'T00:00:00+09:00'); if (t > since && t <= Date.now()) add('법정기한 지남: ' + due); }
-  awNoticeList_().forEach(function (n) { if (n && n.caseId === c.id && /법령/.test(String(n.kind || '')) && nrTs_(n.at) > since) add('법령 개정 알림: ' + String(n.text || '').slice(0, 80)); });
+  awNoticeList_().forEach(function (n) { if (n && n.caseId === c.id && /법령/.test(String(n.kind || '')) && nrAfter_(n.at, since)) add('법령 개정 알림: ' + String(n.text || '').slice(0, 80)); });
   return out.slice(0, 40);
 }
 // ── 고치기 — 찾아 바꾸기(한 곳만) → 세무사님 문단이 그대로인지 → 새로 넣은 세액 숫자가 계산 저장본에 있는지
@@ -442,7 +444,7 @@ function nrReviewCase_(c, fileIds, deadlineAt) {
     let f = null; try { f = DriveApp.getFileById(id); if (f.isTrashed()) f = null; } catch (e) { f = null; }
     if (!f) return;
     const sv = caseProcLoad_(c.id) || {}, last = (sv.nightReview && sv.nightReview[id]) || {};
-    const since = Math.max(f.getLastUpdated().getTime(), nrTs_(last.at));
+    const since = Math.max(f.getLastUpdated().getTime(), Number(last.ms) || nrTs_(last.at));
     const text = f.getBlob().getDataAsString('UTF-8');
     files.push({ id: id, file: f, name: f.getName(), since: since, text: text, prot: nrProtected_(text, nrSnapRead_(f)) });
   });
@@ -523,7 +525,7 @@ function nrReviewCase_(c, fileIds, deadlineAt) {
   const saved = files.filter(function (x) { return result[x.id] && result[x.id].saved; });
   caseProcPatch_(c.id, function (sv) {
     sv.nightReview = sv.nightReview || {};
-    files.forEach(function (x) { if (result[x.id]) sv.nightReview[x.id] = { at: now, name: x.name, saved: !!result[x.id].saved, summary: result[x.id].summary || result[x.id].keep || '', won: won }; });
+    files.forEach(function (x) { if (result[x.id]) sv.nightReview[x.id] = { at: now, ms: Date.now(), name: x.name, saved: !!result[x.id].saved, summary: result[x.id].summary || result[x.id].keep || '', won: won }; });
     caseProcLogTo_(sv, { by: '넥스', what: '밤 검토서 갱신', detail: (saved.length ? '고침 ' + saved.map(function (x) { return x.name + '(' + result[x.id].summary + ')'; }).join(' · ') : '고칠 것 없음') + ' · 바뀐 것 ' + ch.length + '개 · ' + won + '원' + (err ? ' · ' + err : '') });
   });
   const line = saved.map(function (x) { return x.name + ' — ' + result[x.id].summary; }).join(' / ');
