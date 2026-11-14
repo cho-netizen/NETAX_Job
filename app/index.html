@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 15:51 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 16:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -455,6 +455,9 @@
   body.lay-tablet.nx-fab-open:not(.nx-present) #nxSuggestBtn{ right:18px !important; bottom:124px !important; width:44px !important; height:44px !important; }
   body.lay-tablet.nx-fab-open:not(.nx-present) #nxHandMemoBtn{ right:18px; bottom:176px; width:44px; height:44px; }
   body.lay-tablet.nx-fab-open:not(.nx-present) #nxPresentBtn{ right:18px; bottom:228px; width:44px; height:44px; }
+  /* [2026.11.15] 메모 창 안에서는 떠 있는 ✍ 숨김(창 안 [글/손]과 같은 일) — 태블릿 「⋯」 펼침에서는 그 자리를 다음 단추가 채움 */
+  body.nx-in-memo #nxHandMemoBtn{ display:none !important; }
+  body.lay-tablet.nx-fab-open.nx-in-memo:not(.nx-present) #nxPresentBtn{ bottom:176px; }
   /* [2026-11-13 4차 44] 태블릿에서 메뉴 여는 곳이 왼쪽 끝 좁은 띠뿐이었다 — 세무사님 "권장대로": 왼쪽 위에 보이는 ☰ 단추. 띠를 단추 폭(32px)으로 넓혀 본문 글을 덮지 않게 하고, 밀기 동작은 그대로. */
   #nxMenuHandle{ display:none; }
   body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu:not(.expanded), body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu.peek{ width:32px; }
@@ -69809,6 +69812,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (target) target.classList.add('active');
       nxCbOnView_(name); // [2026.11.01] 사건 작업공간 머리줄
       window._currentViewLabel = VIEW_LABELS_[name] || name;
+      document.body.classList.toggle('nx-in-memo', name === 'memo-text'); // [2026.11.15] 메모 창 안에서는 떠 있는 ✍(손글씨 메모)를 숨김 — 창 안 [글/손]과 겹침(세무사님 "메모탭에서 메모버튼이 떠 있으면 어떻하나?")
       if (name === 'memo-text' && typeof memoSetTab_ === 'function'){ memoSetTab_(window.nxMemoWantTab_ || ''); window.nxMemoWantTab_ = ''; } // 글·손글씨 탭(떠 있는 ✍·폰 도구·넥스는 손글씨 탭으로)
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
