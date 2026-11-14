@@ -18065,7 +18065,9 @@ function rptCleanSuggest_(base, c) {
   detail = reportCleanDetail_(detail.replace(/[\s_]+/g, '_'), null, drop);
   return { kind: kind, detail: detail, guessed: !g.kind };
 }
-function rptCleanWalk_(folder, rel, out, depth) {
+// [2026.11.14] 다른 사건의 폴더(사건 폴더 안에 든 다른 사건 폴더)는 건너뛴다 — 송호식(최은진) 「…_증여_신고」 폴더가 「…__과세자료」 사건 폴더 안에 있어
+//  같은 파일이 두 사건에 잡히고, 먼저 처리된 줄이 남의 사건 「보고서」로 옮긴 일이 있었다(되돌려 바로잡음).
+function rptCleanWalk_(folder, rel, out, depth, otherCaseFolders) {
   const fi = folder.getFiles();
   while (fi.hasNext()) { const f = fi.next(); if (f.isTrashed()) continue; out.push({ f: f, rel: rel, folder: folder }); }
   if (depth > 6) return;
@@ -18073,7 +18075,8 @@ function rptCleanWalk_(folder, rel, out, depth) {
   while (di.hasNext()) {
     const sf = di.next(); const n = sf.getName();
     if (RPT_CLEAN_SKIP_DIR_RE_.test(n) || (typeof caseIsFiledReturnFolder_ === 'function' && caseIsFiledReturnFolder_(n))) continue;
-    rptCleanWalk_(sf, rel ? rel + '/' + n : n, out, depth + 1);
+    if (otherCaseFolders && otherCaseFolders[sf.getId()]) continue;
+    rptCleanWalk_(sf, rel ? rel + '/' + n : n, out, depth + 1, otherCaseFolders);
   }
 }
 // 미리 보기 — 사건 목록의 사건마다(폴더ID 있는 것). from부터 시간 안에서만 보고 다음 시작점을 돌려준다
@@ -18086,6 +18089,7 @@ function work_planReportFilenameCleanup_(opts) {
   const rows = [], folders = [];
   let i = Math.max(1, Number(opts.from) || 1), next = 0, scanned = 0;
   const seenFolder = {};
+  const caseFolderIds = {}; for (let j = 1; j < data.length; j++) { const fid = String(data[j][col.폴더ID] || '').trim(); if (fid) caseFolderIds[fid] = 1; }
   for (; i < data.length; i++) {
     if (Date.now() - t0 > LIMIT) { next = i; break; }
     const caseId = data[i][col.id], folderId = String(data[i][col.폴더ID] || '').trim();
@@ -18100,7 +18104,7 @@ function work_planReportFilenameCleanup_(opts) {
     st.needMerge = st['보고서_외부'] !== undefined || (st['보고서_내부'] !== undefined && st['보고서'] !== undefined) || (st['보고서'] === undefined && st['보고서_내부'] !== undefined);
     if (st.needMerge) folders.push(st);
     // 파일
-    const all = []; rptCleanWalk_(caseFolder, '', all, 0);
+    const all = []; rptCleanWalk_(caseFolder, '', all, 0, caseFolderIds);
     const inReport = function (rel) { return reportIsReportDirName_(rel); };
     const byDirBase = {};
     all.forEach(function (x) {
@@ -18194,6 +18198,9 @@ function work_applyReportFilenameCleanup(params) {
   return withLock_(60000, function () {
     const log = [], results = [];
     const caseFolderCache = {};
+    // [2026.11.14] 사건 폴더 안에 든 다른 사건 폴더의 파일을 바깥 사건 「보고서」로 옮기지 않게 — 모든 사건 폴더 ID
+    const caseFolderIds = {};
+    (function () { const sh = work_getSheet_(); const d = sh.getDataRange().getValues(); const cm = work_colMap_(d[0]); for (let j = 1; j < d.length; j++) { const fid = String(d[j][cm.폴더ID] || '').trim(); if (fid) caseFolderIds[fid] = 1; } })();
     rows.forEach(function (r) {
       const out = { rowId: r.rowId, fileId: r.fileId };
       try {
@@ -18202,7 +18209,9 @@ function work_applyReportFilenameCleanup(params) {
         const f = DriveApp.getFileById(String(r.fileId));
         // 그 사건 폴더 안의 파일인지(어느 깊이든)
         let p = f.getParents().hasNext() ? f.getParents().next() : null, inCase = false, guard = 0;
-        while (p && guard++ < 10) { if (p.getId() === cf.getId()) { inCase = true; break; } const pp = p.getParents(); p = pp.hasNext() ? pp.next() : null; }
+        let otherCase = false;
+        while (p && guard++ < 10) { if (p.getId() === cf.getId()) { inCase = true; break; } if (caseFolderIds[p.getId()]) { otherCase = true; break; } const pp = p.getParents(); p = pp.hasNext() ? pp.next() : null; }
+        if (otherCase) throw new Error('다른 사건 폴더 안의 파일 — 그 사건 줄로 정리하세요');
         if (!inCase) throw new Error('이 사건 폴더의 파일이 아님');
         const rep = reportFolderOf_(cf, true);
         const keep = r.target === REPORT_KEEP_FOLDER_ || r.target === '_이전판'; // 옛 화면 값(_이전판)도 오래 둘 「_보관」으로
