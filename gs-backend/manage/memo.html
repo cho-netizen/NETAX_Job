@@ -87,7 +87,8 @@
     <button type="button" id="btnNoteBgImage" class="note-tb-btn" title="배경 이미지">📎</button>
     <input type="file" id="noteBgFileInput" accept="image/*" style="display:none;">
     <button type="button" id="btnNoteBgPattern" class="note-tb-btn" title="배경 무늬">▦</button>
-    <button type="button" id="btnNoteZoom" class="note-tb-btn" title="확대">🔍</button>
+    <!-- [2026.11.14] 글 편집 줄과 같은 배치 — 왼쪽 고치는 도구 …… 오른쪽 보기 도구(확대·쪽 넘기기). 좁아서 줄이 꺾여도 보기 도구는 오른쪽에(margin-left:auto) -->
+    <button type="button" id="btnNoteZoom" class="note-tb-btn" style="margin-left:auto;" title="확대">🔍</button>
     <button type="button" id="btnNotePrevPage" class="note-tb-btn" title="이전 페이지">◀</button>
     <span id="notePageIndicator" class="note-tb-page">1/1</span>
     <button type="button" id="btnNoteNextPage" class="note-tb-btn" title="다음 페이지">▶</button>

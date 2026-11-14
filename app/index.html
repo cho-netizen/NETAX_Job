@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 14:41 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 14:59 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1044,10 +1044,17 @@
 
   /* [2026.09 신규] 서식 빠른삽입 툴바 + 마크다운 도움말 — reportwriter.html(작성관리)의
      #mdHelpBar/floating-panel과 같은 모양으로 맞춘 것(일치시키기), id/클래스는 memo 전용. */
-  #memoMdHelpBar{ display:flex; flex-wrap:wrap; align-items:center; gap:2px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; }
-  #memoMdHelpBar button{ background:#dde3ee; border:1px solid #8b93a3; color:#1c2333; box-shadow:0 1px 2px rgba(20,25,40,0.10);
-    font-size:12.5px; font-weight:700; padding:3px 9px; border-radius:4px; font-family:inherit; cursor:pointer; }
-  #memoMdHelpBar button:hover{ background:#c7d0e0; border-color:#5b6b8c; }
+  /* [2026.11.14] 세무사님 "편집버튼의 크기를 일치시키고 간격이 아예 없는데 조금 띄우자" / "손 편집메뉴도 글 편집메뉴와 배치방법을 일치시키자"
+     — 글 편집 줄(#memoMdHelpBar)·손 편집 줄(.note-tb) 같은 모양: 연한 바탕 줄, 단추 30×30 한 크기, 사이 5px, 왼쪽 고치는 도구 …… 오른쪽 보기 도구 */
+  #memoMdHelpBar, .note-tb{ display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; box-sizing:border-box; }
+  #memoMdHelpBar button, .note-tb-btn{ background:#dde3ee; border:1px solid #8b93a3; color:#1c2333; box-shadow:0 1px 2px rgba(20,25,40,0.10);
+    font-size:12.5px; font-weight:700; width:30px; height:30px; padding:0; border-radius:4px; font-family:inherit; cursor:pointer;
+    flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; line-height:1; }
+  #memoMdHelpBar button:hover, .note-tb-btn:hover{ background:#c7d0e0; border-color:#5b6b8c; }
+  @media (max-width:480px){ /* 폰: 같은 크기·같은 간격은 그대로, 조금만 작게 — 30px·5px면 글 편집 줄이 세 줄로 늘어남(예전 두 줄) */
+    #memoMdHelpBar, .note-tb{ gap:4px; padding:5px 6px; }
+    #memoMdHelpBar button, .note-tb-btn, .note-tb #notePenColor{ width:28px !important; height:28px !important; }
+  }
   #memoMdHelpBar #memoBtnMdHelp{ font-weight:400; }
 
   #memoFindReplaceBar{ display:flex; align-items:center; gap:5px; padding:6px 8px; background:#eef0f4; border-bottom:1px solid var(--line); flex-shrink:0; }
@@ -1074,12 +1081,10 @@
   .memo-floating-panel-body p.memo-help-section{ font-weight:700; color:var(--navy); margin:16px 0 6px; }
   .memo-floating-panel-body p.memo-help-section:first-child{ margin-top:0; }
 
-  .note-tb{ display:flex; align-items:center; gap:5px; min-height:52px; box-sizing:border-box; padding:6px 22px; background:var(--navy); flex-shrink:0; flex-wrap:wrap; }
-  .note-tb-btn{ flex:0 0 auto; width:30px; height:30px; border:none; border-radius:6px; background:rgba(255,255,255,0.14);
-    color:#fff; font-size:15px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
-  .note-tb-btn:hover{ background:rgba(255,255,255,0.24); }
-  .note-tb-save{ background:#0D1B3D; }
-  .note-tb-page{ color:#fff; font-size:12px; padding:0 4px; }
+  /* 손 편집 줄은 위 글 편집 줄과 같은 규칙(짙은 남색 바탕·흰 단추였던 것을 걷음) — 여기는 손 줄에만 있는 것 */
+  .note-tb #notePenColor{ width:30px !important; height:30px !important; padding:2px !important; border:1px solid #8b93a3 !important; border-radius:4px !important; background:#fff; box-sizing:border-box; cursor:pointer; flex:0 0 auto; }
+  .note-tb #notePenSize{ flex:0 0 auto; }
+  .note-tb-page{ color:#666; font-size:11.5px; min-width:32px; text-align:center; flex:0 0 auto; }
   #noteCanvasWrap{ flex:1; position:relative; background:#fff; overflow:hidden; touch-action:none; }
   #noteCanvasWrap.note-zoomed{ overflow:auto; }
   #noteCanvasWrap.note-bg-ruled{ background-image: repeating-linear-gradient(to bottom, transparent, transparent 27px, #cfd8e8 28px); }
@@ -54306,7 +54311,8 @@ function rwAiApplyEdit_(id, content){
     <button type="button" id="btnNoteBgImage" class="note-tb-btn" title="배경 이미지">📎</button>
     <input type="file" id="noteBgFileInput" accept="image/*" style="display:none;">
     <button type="button" id="btnNoteBgPattern" class="note-tb-btn" title="배경 무늬">▦</button>
-    <button type="button" id="btnNoteZoom" class="note-tb-btn" title="확대">🔍</button>
+    <!-- [2026.11.14] 글 편집 줄과 같은 배치 — 왼쪽 고치는 도구 …… 오른쪽 보기 도구(확대·쪽 넘기기). 좁아서 줄이 꺾여도 보기 도구는 오른쪽에(margin-left:auto) -->
+    <button type="button" id="btnNoteZoom" class="note-tb-btn" style="margin-left:auto;" title="확대">🔍</button>
     <button type="button" id="btnNotePrevPage" class="note-tb-btn" title="이전 페이지">◀</button>
     <span id="notePageIndicator" class="note-tb-page">1/1</span>
     <button type="button" id="btnNoteNextPage" class="note-tb-btn" title="다음 페이지">▶</button>
