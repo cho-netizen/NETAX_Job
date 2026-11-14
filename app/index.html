@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 07:46 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 09:09 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -414,7 +414,13 @@
   /* [2026.11.01] 오른쪽 아래 떠 있는 단추(넥스·펜·메모·?)가 화면 맨 아래 내용(처리개요 「저장」 등)을 가리던 것 — 화면마다 끝까지 내려도 단추 위로 올라오게 아래 여백을 둔다.
      통째로 스크롤하는 화면은 화면 자체에, 칸이 나뉜 화면은 오른쪽 아래 끝에 닿는 스크롤 칸에. */
   #centerWork > .view{ padding-bottom:72px; }
-  #view-ai, #view-workmanage, #view-clientmanage, #view-docs, #view-taxcalc, #view-reportwriter, #view-memo-text, #view-memo-hand, #view-reporthub{ padding-bottom:0; }
+  /* [2026-11-14] 이 줄이 위 「#centerWork > .view」(더 센 규칙)에 져서 아홉 화면 모두 맨 아래 72px 빈칸이 남아 있었다 — 같은 세기로 앞에 #centerWork > 를 붙임(세무사님 "일곱화면도 고치고 커밋하라") */
+  #centerWork > #view-ai, #centerWork > #view-workmanage, #centerWork > #view-clientmanage, #centerWork > #view-docs, #centerWork > #view-taxcalc, #centerWork > #view-reportwriter, #centerWork > #view-memo-text, #centerWork > #view-reporthub{ padding-bottom:0; }
+  /*  화면 아래 빈칸을 걷은 대신, 떠 있는 단추 밑에 오는 굴리는 칸·쓰는 칸 안쪽에 72px — 끝까지 굴리거나 써도 단추 위로 올라온다.
+      문서작성 미리보기·보고서 파일 목록은 위 줄의 72px가 그 화면 자체 규칙에 져서 0이었다(화면 아래 빈칸이 대신 막아 주던 것) — 두 아이디로 세게. 넥스 사건자료 목록·글 메모 쓰는 칸은 새로.
+      손글씨 메모는 쓰는 판이 화면 끝까지 그려지는 그림판이라, 빈칸을 걷으면 단추가 판 위에 올라와 펜이 단추를 누를 수 있다 — 그 화면만 예전처럼 아래 72px를 둔다. */
+  #centerWork #previewPane, #centerWork #nxAiPvFiles, #centerWork #memoText{ padding-bottom:72px; }
+  #centerWork #rhFileListWrap{ padding-bottom:72px !important; } /* 보고서 파일 목록은 칸에 직접 적힌 여백(padding:0 4px)이 있어 그것을 이기려고 */
   #view-workmanage .manage-split-detail, #clientDetailCol, #docsList, #view-taxcalc .taxcalc-body, #previewPane, #rhFileListWrap{ padding-bottom:72px; }
   #nxPresentBtn{ position:absolute; right:68px; bottom:18px; z-index:35; width:42px; height:42px; border-radius:50%; border:none;
     background:var(--navy); color:var(--gold); font-size:18px; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.28); }
@@ -934,6 +940,17 @@
   .manage-split.ms-mode-card .ms-nav{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; position:sticky; top:-16px; z-index:3; margin:-16px -16px 12px; padding:8px 16px; background:#f9fafb; border-bottom:1px solid var(--line); }
   .ms-nav .ms-pos{ min-width:56px; text-align:center; font-variant-numeric:tabular-nums; color:var(--sub); font-size:13px; }
   .ms-nav .ms-tolist{ margin-left:auto; }
+  /* [2026-11-14] 세무사님 "목록아래에 카드를 배치할때 구분선이 없어서 도무지 분간이 되지 않던데" → (가) "카드는 내용만큼, 남는 높이는 목록이"
+     같이 보기: 목록과 카드 사이에 또렷한 띠(넓으면 세로, 좁으면 가로). 좁으면 카드는 내용 높이만큼(창보다 길면 목록 150px만 남기고 카드 안에서 굴림), 나머지 높이는 모두 목록 */
+  .manage-split:not(.ms-mode-list):not(.ms-mode-card) > .manage-split-list{ border-right:6px solid rgba(13,27,61,0.22); }
+  @media (max-width:700px){
+    .manage-split:not(.ms-mode-list):not(.ms-mode-card) > .manage-split-list,
+    .manage-split:not(.ms-mode-list):not(.ms-mode-card) > #clientSplitList{ flex:0 1 auto; min-height:0; max-height:none; border-right:none; border-bottom:6px solid rgba(13,27,61,0.22); }
+    #view-workmanage .manage-split:not(.ms-mode-list):not(.ms-mode-card) > .manage-split-detail,
+    #view-clientmanage .manage-split:not(.ms-mode-list):not(.ms-mode-card) > .manage-split-detail{ flex:0 0 auto; max-height:calc(100% - 150px); }
+  }
+  /* 폰(아래 탭 줄)에는 오른쪽 아래 떠 있는 단추가 없다 — 카드 아래 단추 피할 여백 72px를 걷는다(좁은 PC 창은 단추가 있어 그대로) */
+  body.lay-phone #view-workmanage .manage-split-detail, body.lay-phone #clientDetailCol{ padding-bottom:12px; }
   @media (max-width:700px){
     .ms-modes .ms-lbl{ display:none; } /* 좁으면 그림 글자만(이름은 마우스·화면 읽기용 이름표에) */
     .ms-modes .ghost-btn.sm{ padding-left:6px !important; padding-right:6px !important; min-width:0; } /* 폰 폭에서 찾기 칸 옆 한 줄에 들어가게(도구 줄이 세 줄로 늘지 않게) */
@@ -5766,10 +5783,91 @@ function nxMdOpenWindow(title, src, opts){
     });
     setMode(stored_(), false);
     return {
-      picked: function(){ if (mode === 'list') setMode('card', false); detailCol.scrollTop = 0; refresh(); },
+      picked: function(){
+        if (mode === 'list') setMode('card', false);
+        detailCol.scrollTop = 0; refresh();
+        // 같이 보기에서 다른 화면·◀ ▶로 연 줄이 목록 밖에 있으면 목록을 그 줄까지 굴려 보이게(목록 칸 안에서만)
+        var cur = String(cfg.selectedId() == null ? '' : cfg.selectedId());
+        var row = cur && listBox.querySelector('[data-ms-id="' + cur.replace(/"/g, '') + '"]');
+        var box = listBox.closest('.manage-split-list');
+        if (row && box && mode === 'both') { var rb = row.getBoundingClientRect(), bb = box.getBoundingClientRect(); if (rb.top < bb.top || rb.bottom > bb.bottom) box.scrollTop += (rb.top - bb.top) - 8; }
+      },
       refresh: refresh
     };
   }
+
+  // [2026-11-14 전수조사 고침] 카드의 「저장 안 한 값」 — 칸 이름을 손으로 고르지 않고 카드(container) 안의 모든 입력칸을 본다(사건·고객 공통).
+  //  · 칸마다 기준값: clean() 때(그렸을 때·저장했을 때·버리고 넘어갈 때) 그 자리의 값, 나중에 펼쳐진 칸(수금 추가·+ 의뢰인·새 하위업무 등)은 나타난 때의 값.
+  //    그래서 코드가 처음 채운 값(기본 날짜 등)은 「고침」이 아니고, 세무사님이 쓰거나 「오늘」처럼 단추로 바꾼 값만 「고침」이다.
+  //  · opt.skip: 고치는 즉시 저장되는 칸·화면 이동 칸(빼야 「저장했는데 또 묻는」 헛물음이 없다)
+  //  · opt.extra(): 입력칸이 아닌 값(고객 추가 연락처 목록처럼 단추로 넣고 빼는 것)을 글자로 — 카드 「저장」에 실려 가므로 카드 값으로 본다
+  //  · opt.pending: 카드 「저장」에 실려 가지 않고 자기 「추가」 단추로만 들어가는 칸 묶음(새 하위업무·세부항목·수금 추가·+ 의뢰인 입력).
+  //    카드를 저장해도 이 칸들의 기준값은 그대로 둔다(저장했다고 쓰다 만 글을 「저장됨」으로 치지 않게) — parts()가 둘을 갈라 알려 준다
+  function nxDirtyTracker_(container, opt){
+    opt = opt || {};
+    var base = new WeakMap(), extraBase = null;
+    function val_(el){ return (el.type === 'checkbox' || el.type === 'radio') ? String(el.checked) : String(el.value); }
+    function controls_(root){ return root.querySelectorAll ? root.querySelectorAll('input, textarea, select') : []; }
+    function isPending_(el){ return !!(opt.pending && el.closest && el.closest(opt.pending)); }
+    function take_(root, force){
+      if (root.nodeType === 1 && /^(INPUT|TEXTAREA|SELECT)$/.test(root.tagName) && (force || !base.has(root))) base.set(root, val_(root));
+      Array.prototype.forEach.call(controls_(root), function(el){ if (force || !base.has(el)) base.set(el, val_(el)); });
+    }
+    if (window.MutationObserver) new MutationObserver(function(muts){
+      muts.forEach(function(m){ Array.prototype.forEach.call(m.addedNodes, function(n){ if (n.nodeType === 1) take_(n, false); }); });
+    }).observe(container, { childList: true, subtree: true });
+    // keepPending: 카드를 저장했을 때 — 「추가」 칸은 기준값을 그대로 둔다
+    function clean(keepPending){
+      var old = base;
+      base = new WeakMap();
+      Array.prototype.forEach.call(controls_(container), function(el){ base.set(el, (keepPending && isPending_(el) && old.has(el)) ? old.get(el) : val_(el)); });
+      extraBase = opt.extra ? opt.extra() : null;
+    }
+    function parts(){
+      var r = { card: false, pending: false };
+      if (opt.extra && extraBase !== null && opt.extra() !== extraBase) r.card = true;
+      Array.prototype.forEach.call(controls_(container), function(el){
+        if (opt.skip && el.matches && el.matches(opt.skip)) return;
+        if (el.type === 'button' || el.type === 'submit' || el.type === 'hidden') return;
+        if (base.has(el) && val_(el) !== base.get(el)) { if (isPending_(el)) r.pending = true; else r.card = true; }
+      });
+      return r;
+    }
+    function dirty(){ var r = parts(); return r.card || r.pending; }
+    clean(false);
+    return { clean: clean, dirty: dirty, parts: parts };
+  }
+  // 카드를 갈아끼우기 전에 묻기(사건·고객 공통) — g: { parts(), clean(), isNew(), save(), noun, pendingNames }.
+  //  카드 값을 고쳤으면 「저장하고 넘어가기 / 저장 안 하고 넘어가기 / 머무르기」, 「추가」를 안 누른 칸만 남았으면 「버리고 넘어가기 / 머무르기」.
+  //  저장이 막히면(이름 빈칸 등) 넘어가지 않는다. 저장 뒤에도 「추가」 안 누른 칸이 남아 있으면 한 번 더 묻는다
+  function nxLeaveGuard_(g, go){
+    var r = g.parts();
+    if (!r.card && !r.pending) { go(); return; }
+    var isNew = g.isNew();
+    var msg, buttons;
+    if (r.card && !isNew) {
+      msg = '이 ' + g.noun + ' 카드에 고치거나 적고 저장하지 않은 내용이 있습니다.' + (r.pending ? '\n(' + g.pendingNames + '에 쓰고 「추가」를 누르지 않은 것도 있습니다 — 저장해도 그것은 들어가지 않습니다.)' : '');
+      buttons = [{ label: '저장하고 넘어가기', value: 'save', className: 'save-btn', primary: true }, { label: '저장 안 하고 넘어가기', value: 'drop', className: 'ghost-btn' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true }];
+    } else {
+      msg = isNew ? '새 ' + g.noun + ' 등록 칸에 적은 내용이 아직 저장되지 않았습니다.' : g.pendingNames + '에 쓰고 「추가」를 누르지 않은 내용이 있습니다.';
+      buttons = [{ label: '버리고 넘어가기', value: 'drop', className: 'btn danger' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true, primary: true }];
+    }
+    nxDialog_({ title: '저장 안 한 내용', message: msg, buttons: buttons, stack: true /* 단추 셋이 좁은 창 폭을 넘지 않게 세로로 */ }).then(function(v){
+      if (v === 'drop') { g.clean(false); go(); return; }
+      if (v === 'save') {
+        g.save();
+        var r2 = g.parts();
+        if (r2.card) return; // 저장이 막힘 — 그 자리에 둔다
+        if (r2.pending) { nxLeaveGuard_(g, go); return; } // 「추가」 안 누른 칸은 따로 한 번 더
+        go();
+      }
+    });
+  }
+  // 창을 닫거나 새로고침할 때도 — 사건·고객 카드에 저장 안 한 값이 있으면 브라우저가 묻게
+  window.addEventListener('beforeunload', function(e){
+    var d = (typeof wcHasUnsaved_ === 'function' && wcHasUnsaved_()) || (typeof clHasUnsaved_ === 'function' && clHasUnsaved_());
+    if (d) { e.preventDefault(); e.returnValue = ''; }
+  });
 
   // [2026.09] 취득세는 독립된 세목으로 따로 관리하지 않는다 — 매매(양도)·증여·상속 등
   // 기본 3세목 처리 과정에서 특수관계자간 거래 등과 함께 다뤄지는 성격이라, 사건 자체를
@@ -5959,7 +6057,7 @@ function nxMdOpenWindow(title, src, opts){
       renderWorkCaseList();
       if (workSelectedCaseId){
         var still = workCases.filter(function(c){ return c.id === workSelectedCaseId; })[0];
-        if (still) { renderWorkCaseDetail(still); return; }
+        if (still) { if (!wcIsTyping_() && !wcHasUnsaved_()) renderWorkCaseDetail(still); return; } // [2026-11-14 전수조사] 고친 값이 있으면 덮지 않는다
       }
       if (!workShowingNewForm){
         workCaseDetail.innerHTML = '<div class="explorer-status">목록에서 사건을 고르거나 "+ 새 사건"을 눌러주세요.</div>';
@@ -5974,7 +6072,7 @@ function nxMdOpenWindow(title, src, opts){
       renderWorkCaseList();
       if (workSelectedCaseId){
         var still2 = workCases.filter(function(c){ return c.id === workSelectedCaseId; })[0];
-        if (still2) renderWorkCaseDetail(still2);
+        if (still2 && !wcIsTyping_() && !wcHasUnsaved_()) renderWorkCaseDetail(still2); // [2026-11-14 전수조사] 쓰는 중·고친 값이 있으면 덮지 않는다
       }
     }).catch(function(){});
   }
@@ -6093,36 +6191,25 @@ function nxMdOpenWindow(title, src, opts){
       if (wcViews_) wcViews_.picked();
     });
   }
-  // 카드 칸(고객·납세자·세목·업무·의뢰일·기준일·법정일·진행메모, 새 사건 칸)의 지금 값 — 그렸을 때·저장했을 때 값과 다르면 「저장 안 한 값」. 하위업무는 고치는 즉시 저장되므로 뺀다
-  var WC_FORM_IDS_ = ['wcEditCustomerName', 'wcEditTaxpayer', 'wcEditSemok', 'wcEditUptype', 'wcEditRequestDate', 'wcEditBaseDate', 'wcEditManualDeadline', 'wcEditOverview',
-    'wcNewCustomer', 'wcNewTaxpayer', 'wcNewSemok', 'wcNewUptype', 'wcNewRequestDate', 'wcNewBaseDate', 'wcNewManualDeadline', 'wcNewOverview'];
-  var wcCleanSig_ = null;
-  function wcFormSig_(){ return WC_FORM_IDS_.map(function(id){ var el = document.getElementById(id); return el ? el.value : '\u0000'; }).join('\u0001'); }
-  function wcHasUnsaved_(){
-    if (!document.getElementById('wcEditCustomerName') && !document.getElementById('wcNewCustomer')) return false;
-    return wcCleanSig_ !== null && wcFormSig_() !== wcCleanSig_;
-  }
+  // [2026-11-14 전수조사 고침] 세무사님 "당연히 그렇게 해야지 혹시라도 그런 것이 또 있는지 전수조사하라" / "너무 황당한 것을 간과한단 말야"
+  //  처음엔 칸 이름을 손으로 골라 보아서, 고객 「추가 연락처」 목록·쓰다 만 「+ 의뢰인」·「수금 추가」·「새 하위업무」·「세부항목」 칸이 빠졌다.
+  //  이제 카드 안의 모든 칸을 본다(nxDirtyTracker_) — 그렸을 때·저장했을 때·나중에 펼쳐진 때의 값을 칸마다 기억해 지금 값과 견준다. 고치는 즉시 저장되는 칸(상태·하위업무 줄)과 화면 이동 칸만 뺀다.
+  var wcDirty_ = nxDirtyTracker_(workCaseDetail, { skip: '#wcEditStatus, .wcNodeStatus, .wcNodeTitle, .wcNodeDue, .nx-case-jump, .nx-case-jump *', pending: '#wcNewRootFormWrap, .wcChildFormWrap' });
+  function wcHasUnsaved_(){ return wcDirty_.dirty(); }
   function wcLeaveGuard_(go){
-    if (!wcHasUnsaved_()) { go(); return; }
-    var isNew = !!document.getElementById('wcNewCustomer');
-    var buttons = isNew
-      ? [{ label: '버리고 넘어가기', value: 'drop', className: 'btn danger' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true, primary: true }]
-      : [{ label: '저장하고 넘어가기', value: 'save', className: 'save-btn', primary: true }, { label: '저장 안 하고 넘어가기', value: 'drop', className: 'ghost-btn' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true }];
-    nxDialog_({ title: '저장 안 한 내용', message: isNew ? '새 사건 등록 칸에 적은 내용이 아직 저장되지 않았습니다.' : '이 사건 카드에 고치고 저장하지 않은 내용이 있습니다.', buttons: buttons, stack: true /* 단추 셋이 좁은 창 폭을 넘지 않게 세로로 */ }).then(function(v){
-      if (v === 'drop') { go(); return; }
-      if (v === 'save') {
-        var sb = document.getElementById('wcSaveCase');
-        if (sb) sb.click();
-        if (!wcHasUnsaved_()) go(); // 저장이 막히면(고객명 빈칸 등) 넘어가지 않고 그 자리에 둔다
-      }
-    });
+    nxLeaveGuard_({ parts: wcDirty_.parts, clean: wcDirty_.clean, pendingNames: '「새 하위업무」·「세부항목」 칸', isNew: function(){ return !!document.getElementById('wcNewCustomer'); },
+      save: function(){ var sb = document.getElementById('wcSaveCase'); if (sb) sb.click(); }, noun: '사건' }, go);
   }
 
   // [2026.09] "사건명이 애매하다"는 지적에 따라 이 폼엔 사건명 입력칸이 없다 — 서버
   // (work_createCase)가 "고객명(납세자) 세목 업무유형"으로 자동 생성한다(work_generateUniqueCaseName_,
   // 같은 조합이 이미 있으면 뒤에 " 2" 등을 붙임). 필요하면 나중에 사건 상세(편집) 화면에서
   // 직접 고칠 수 있다.
-  function renderNewCaseForm(prefill){
+  function renderNewCaseForm(prefill){ // [2026-11-14 전수조사] 부르는 곳(예약·고객·이 화면)이 어디든 고치던 카드부터 묻는다
+    if (prefill && prefill.target) prefill = undefined; // 단추 누름(이벤트)이 그대로 넘어온 경우
+    wcLeaveGuard_(function(){ renderNewCaseForm_(prefill); });
+  }
+  function renderNewCaseForm_(prefill){
     workShowingNewForm = true;
     workSelectedCaseId = null;
     renderWorkCaseList();
@@ -6255,7 +6342,7 @@ function nxMdOpenWindow(title, src, opts){
       renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(payload.id) || tmpRow_);
       showToast('사건을 등록했습니다 — 폴더·고객창구는 뒤에서 만듭니다.', 'success');
       function wcAfterCreate_(res){
-        if (res.case && String(workSelectedCaseId) === String(res.case.id) && !workShowingNewForm && typeof wcIsTyping_ === 'function' && !wcIsTyping_()) { renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(res.case.id) || res.case); }
+        if (res.case && String(workSelectedCaseId) === String(res.case.id) && !workShowingNewForm && typeof wcIsTyping_ === 'function' && !wcIsTyping_() && !wcHasUnsaved_()) { renderWorkCaseList(); renderWorkCaseDetail(nxFindCase_(res.case.id) || res.case); }
         // [2026.09 버그수정] 동명이인인데 전화번호가 달라 새 고객으로 등록된 경우, 서버가
         // 알려주는 주의문구를 그냥 버리지 않고 보여준다 — 실제로 같은 사람이면 고객관리에서
         // 직접 병합/정리해야 한다는 걸 바로 알 수 있게.
@@ -6286,7 +6373,7 @@ function nxMdOpenWindow(title, src, opts){
         }
       }
     });
-    wcCleanSig_ = wcFormSig_(); // [2026-11-14] 새 사건 칸 — 처음 값(예약·고객에서 넘어온 값 포함)이 기준
+    wcDirty_.clean(); // [2026-11-14] 새 사건 칸 — 처음 값(예약·고객에서 넘어온 값 포함)이 기준
     if (wcViews_) wcViews_.picked(); // 목록만 보기에서 「+ 새 사건」이면 칸이 보이게 카드로
   }
 
@@ -6471,13 +6558,13 @@ function nxMdOpenWindow(title, src, opts){
           var cur = nxFindCase_(res.case.id); if (cur && cur !== c) Object.assign(c, cur); else Object.assign(c, res.case);
           if (String(workSelectedCaseId) !== String(c.id)) { renderWorkCaseList(); return; }
           // [2026.10.09] 입력 중이면 상세는 다시 그리지 않는다(쓰던 글이 지워지지 않게) — 목록만
-          if (wcIsTyping_()) renderWorkCaseList(); else { renderWorkCaseList(); renderWorkCaseDetail(c); }
+          if (wcIsTyping_() || wcHasUnsaved_()) renderWorkCaseList(); else { renderWorkCaseList(); renderWorkCaseDetail(c); } // [2026-11-14 전수조사] 저장 뒤 또 고친 값이 있으면 덮지 않는다
         },
-        onFail: function(why){ if (/먼저 저장|충돌/.test(String(why))) { var cur = nxFindCase_(c.id); if (cur && String(workSelectedCaseId) === String(c.id) && !wcIsTyping_()) { renderWorkCaseList(); renderWorkCaseDetail(cur); } } } });
+        onFail: function(why){ if (/먼저 저장|충돌/.test(String(why))) { var cur = nxFindCase_(c.id); if (cur && String(workSelectedCaseId) === String(c.id) && !wcIsTyping_() && !wcHasUnsaved_()) { renderWorkCaseList(); renderWorkCaseDetail(cur); } } } });
       Object.keys(payload).forEach(function(k){ if (k !== '기대수정일' && k.charAt(0) !== '_') c[k] = payload[k]; });
       if (!silent) showToast('저장했습니다.', 'success');
       renderWorkCaseList();
-      wcCleanSig_ = wcFormSig_(); // [2026-11-14] 저장한 값이 새 기준
+      wcDirty_.clean(true); // [2026-11-14] 저장한 값이 새 기준(「추가」 안 누른 하위업무 칸은 그대로 봄)
     }
     document.getElementById('wcSaveCase').addEventListener('click', function(){ saveCaseNow_(false); });
     // [2026.09 버그수정] 증빙이 하나도 안 갖춰지고 보고서도 전혀 발행되지 않은 채로 "완료"로
@@ -6520,7 +6607,7 @@ function nxMdOpenWindow(title, src, opts){
         renderWorkCaseList(); workCaseDetail.innerHTML = '<div class="explorer-status">목록에서 사건을 고르거나 "+ 새 사건"을 눌러주세요.</div>';
       });
     });
-    wcCleanSig_ = wcFormSig_(); // [2026-11-14] 그린 값이 기준 — 고치면 넘길 때 여쭌다
+    wcDirty_.clean(); // [2026-11-14] 그린 값이 기준 — 고치면 넘길 때 여쭌다
   }
 
 
@@ -6686,11 +6773,15 @@ function nxMdOpenWindow(title, src, opts){
   var workJumpWidenFilter_ = false;
   function goToWorkManage_(caseId){
     if (typeof goToView_ === 'function') goToView_('workmanage');
-    workShowingNewForm = false;
-    workSelectedCaseId = caseId;
-    workJumpWidenFilter_ = !!caseId;
-    loadWorkCases();
-    if (caseId && wcViews_) wcViews_.picked(); // [2026-11-14] 다른 화면에서 사건을 찾아왔으면 목록만 보기여도 그 카드가 보이게
+    // [2026-11-14 전수조사] 다른 화면(대시보드·처리개요·수금·고객·넥스 창·사건 바꾸기)에서 와도 고치던 카드를 묻지 않고 갈아끼우지 않는다. 같은 사건이면 그대로 보여 준다
+    if (caseId && String(caseId) === String(workSelectedCaseId) && !workShowingNewForm && wcHasUnsaved_()) { if (wcViews_) wcViews_.picked(); return; }
+    wcLeaveGuard_(function(){
+      workShowingNewForm = false;
+      workSelectedCaseId = caseId;
+      workJumpWidenFilter_ = !!caseId;
+      loadWorkCases();
+      if (caseId && wcViews_) wcViews_.picked(); // [2026-11-14] 다른 화면에서 사건을 찾아왔으면 목록만 보기여도 그 카드가 보이게
+    });
   }
 
   // [2026.09 버그수정] 하위업무 추가/수정/삭제 후 이 함수(카드 전체 재구성)를 썼더니, 그 사이
@@ -6778,7 +6869,7 @@ function nxMdOpenWindow(title, src, opts){
       redo: function(){ if (removed && list){ var k = list.indexOf(removed); if (k >= 0){ list.splice(k, 1); applySubtaskUpdate_(existing); } } } });
   }
 
-  document.getElementById('btnWorkCaseNew').addEventListener('click', function(){ wcLeaveGuard_(function(){ renderNewCaseForm(); }); }); // [2026-11-14] 쓰던 카드 값을 잃지 않게 먼저 여쭘
+  document.getElementById('btnWorkCaseNew').addEventListener('click', function(){ renderNewCaseForm(); }); // [2026-11-14] 묻기는 renderNewCaseForm 안에서
   wcViews_ = nxSplitViews_({ key: 'work', viewId: 'view-workmanage', noun: '사건', selectedId: function(){ return workSelectedCaseId; }, open: wcOpenCase_ });
   workCaseFilterStatus.addEventListener('change', renderWorkCaseList);
   workCaseSearchInput.addEventListener('input', renderWorkCaseList);
@@ -11544,7 +11635,7 @@ function nxMdOpenWindow(title, src, opts){
     if (i >= 0) clients[i] = Object.assign({}, clients[i], row); else { clients.unshift(Object.assign({}, row)); i = 0; }
     renderClientList(); updateClientNameOptions_();
     if (selectedClientId === row.id){
-      var mainHasUnsavedEdits_ = !isNew && clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
+      var mainHasUnsavedEdits_ = !isNew && ((clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_) || clHasUnsaved_()); // [2026-11-14 전수조사] 카드 전체 견줌 더함
       if (!mainHasUnsavedEdits_) renderClientDetail(clients[i]);
     }
   }
@@ -11580,7 +11671,7 @@ function nxMdOpenWindow(title, src, opts){
             // loadClients()가 불려서, 메인 패널에 입력 중이던(저장 안 한) 내용이 그때마다
             // 서버 최신값으로 덮어써져 사라졌다. 메인 패널에 저장 안 한 수정이 있으면 이번
             // 재렌더링은 건너뛴다(왼쪽 목록 텍스트만 최신화되고, 메인 패널 입력값은 보존됨).
-            var mainHasUnsavedEdits_ = clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
+            var mainHasUnsavedEdits_ = (clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_) || clHasUnsaved_(); // [2026-11-14 전수조사] 카드 전체 견줌 더함
             if (!mainHasUnsavedEdits_) renderClientDetail(still);
             return;
           }
@@ -11658,28 +11749,14 @@ function nxMdOpenWindow(title, src, opts){
       if (clViews_) clViews_.picked();
     });
   }
-  // 고객 카드 칸(성명·전화·구분·주소·주민번호·메모, 새 고객 칸)의 지금 값 — 그렸을 때·저장했을 때 값과 다르면 「저장 안 한 값」(빠른보기 창은 따로라 보지 않는다)
-  var CL_FORM_IDS_ = ['ccEditName', 'ccEditPhone', 'ccEditType', 'ccEditAddr', 'ccEditRrn', 'ccEditMemo', 'ccNewName', 'ccNewPhone', 'ccNewType', 'ccNewAddr', 'ccNewRrn', 'ccNewMemo'];
-  var clCleanSig_ = null;
-  function clFormSig_(){ return CL_FORM_IDS_.map(function(id){ var el = clientDetail.querySelector('#' + id); return el ? el.value : '\u0000'; }).join('\u0001'); }
-  function clHasUnsaved_(){
-    if (!clientDetail.querySelector('#ccEditName') && !clientDetail.querySelector('#ccNewName')) return false;
-    return clCleanSig_ !== null && clFormSig_() !== clCleanSig_;
-  }
+  // [2026-11-14 전수조사 고침] 세무사님 "당연히 그렇게 해야지 혹시라도 그런 것이 또 있는지 전수조사하라" — 처음엔 칸 이름을 손으로 골라 「추가 연락처」 목록·쓰다 만 「+ 의뢰인」·「수금 추가」가 빠졌다.
+  //  이제 카드 안 모든 칸 + 추가 연락처 목록을 본다(workmanage.html nxDirtyTracker_). 「+ 의뢰인」 입력·「수금 추가」는 카드 저장에 실려 가지 않는 칸이라 따로 알린다(빠른보기 창은 따로라 보지 않는다)
+  var clDirty_ = nxDirtyTracker_(clientDetail, { pending: '[id$="Extra-form"], #ccNewPaymentFormWrap',
+    extra: function(){ var l = clientDetail.querySelector('#ccEditExtra-list') || clientDetail.querySelector('#ccNewExtra-list'); return JSON.stringify(l && l._contacts ? l._contacts : null); } });
+  function clHasUnsaved_(){ return clDirty_.dirty(); }
   function clLeaveGuard_(go){
-    if (!clHasUnsaved_()) { go(); return; }
-    var isNew = !!clientDetail.querySelector('#ccNewName');
-    var buttons = isNew
-      ? [{ label: '버리고 넘어가기', value: 'drop', className: 'btn danger' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true, primary: true }]
-      : [{ label: '저장하고 넘어가기', value: 'save', className: 'save-btn', primary: true }, { label: '저장 안 하고 넘어가기', value: 'drop', className: 'ghost-btn' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true }];
-    nxDialog_({ title: '저장 안 한 내용', message: isNew ? '새 고객 등록 칸에 적은 내용이 아직 저장되지 않았습니다.' : '이 고객 카드에 고치고 저장하지 않은 내용이 있습니다.', buttons: buttons, stack: true /* 단추 셋이 좁은 창 폭을 넘지 않게 세로로 */ }).then(function(v){
-      if (v === 'drop') { go(); return; }
-      if (v === 'save') {
-        var sb = clientDetail.querySelector('#ccSaveClient');
-        if (sb) sb.click();
-        if (!clHasUnsaved_()) go(); // 저장이 막히면(성명 빈칸) 넘어가지 않고 그 자리에 둔다
-      }
-    });
+    nxLeaveGuard_({ parts: clDirty_.parts, clean: clDirty_.clean, pendingNames: '「+ 의뢰인」·「수금 추가」 칸', isNew: function(){ return !!clientDetail.querySelector('#ccNewName'); },
+      save: function(){ var sb = clientDetail.querySelector('#ccSaveClient'); if (sb) sb.click(); }, noun: '고객' }, go);
   }
 
   // [2026.09.16 재설계] 세무사님 지적 — "추가연락처를 전화번호만 입력하면 어떡하나, 이름도
@@ -11823,7 +11900,7 @@ function nxMdOpenWindow(title, src, opts){
       selectedClientId = newPayload.id;
       ccLocalUpsert_(newRow, true);
     });
-    clCleanSig_ = clFormSig_(); // [2026-11-14] 새 고객 칸 — 빈 칸이 기준
+    clDirty_.clean(); // [2026-11-14] 새 고객 칸 — 빈 칸이 기준
     if (clViews_) clViews_.picked(); // 목록만 보기에서 「+ 새 고객」이면 칸이 보이게 카드로
   }
 
@@ -11912,7 +11989,7 @@ function nxMdOpenWindow(title, src, opts){
         onFail: function(){ ccLocalUpsert_(before, false); }, redo: function(){ ccLocalUpsert_(Object.assign({}, before, upRow), false); } });
       Object.assign(c, upRow);
       showToast('저장했습니다.', 'success');
-      if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clCleanSig_ = clFormSig_(); } // [2026-11-14] 저장한 값이 새 기준
+      if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clDirty_.clean(true); } // [2026-11-14] 저장한 값이 새 기준(「추가」 안 누른 칸은 그대로 봄)
       else quickViewSnapshot_ = quickViewCurrentSignature_(container);
       ccLocalUpsert_(upRow, false);
     });
@@ -11996,7 +12073,7 @@ function nxMdOpenWindow(title, src, opts){
     loadClientPayments_(c, container);
     loadClientFlow_(c, container);
 
-    if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clCleanSig_ = clFormSig_(); } // [2026-11-14] 그린 값이 기준
+    if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clDirty_.clean(); } // [2026-11-14] 그린 값이 기준
   }
 
   // [2026.09.18 신규] "현금영수증 파일을 보내줘야 하는데 보낼 방법이 없다" — 고객관리에서
@@ -12310,10 +12387,14 @@ function nxMdOpenWindow(title, src, opts){
   // (casehandling.html의 goToCaseHandling_과 같은 패턴).
   function goToClientManage_(clientId){
     if (typeof goToView_ === 'function') goToView_('clientmanage');
-    clientShowingNewForm = false;
-    selectedClientId = clientId;
-    loadClients();
-    if (clientId && clViews_) clViews_.picked(); // [2026-11-14] 다른 화면에서 고객을 찾아왔으면 목록만 보기여도 그 카드가 보이게
+    // [2026-11-14 전수조사] 다른 화면(수금·넥스 창)에서 와도 고치던 고객 카드를 묻지 않고 갈아끼우지 않는다. 같은 고객이면 그대로 보여 준다
+    if (clientId && String(clientId) === String(selectedClientId) && !clientShowingNewForm && clHasUnsaved_()) { if (clViews_) clViews_.picked(); return; }
+    clLeaveGuard_(function(){
+      clientShowingNewForm = false;
+      selectedClientId = clientId;
+      loadClients();
+      if (clientId && clViews_) clViews_.picked(); // [2026-11-14] 다른 화면에서 고객을 찾아왔으면 목록만 보기여도 그 카드가 보이게
+    });
   }
 
   document.getElementById('btnClientNew').addEventListener('click', function(){ clLeaveGuard_(function(){ renderNewClientForm(); }); }); // [2026-11-14] 쓰던 카드 값을 잃지 않게 먼저 여쭘

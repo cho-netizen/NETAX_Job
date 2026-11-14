@@ -78,7 +78,7 @@
     if (i >= 0) clients[i] = Object.assign({}, clients[i], row); else { clients.unshift(Object.assign({}, row)); i = 0; }
     renderClientList(); updateClientNameOptions_();
     if (selectedClientId === row.id){
-      var mainHasUnsavedEdits_ = !isNew && clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
+      var mainHasUnsavedEdits_ = !isNew && ((clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_) || clHasUnsaved_()); // [2026-11-14 전수조사] 카드 전체 견줌 더함
       if (!mainHasUnsavedEdits_) renderClientDetail(clients[i]);
     }
   }
@@ -114,7 +114,7 @@
             // loadClients()가 불려서, 메인 패널에 입력 중이던(저장 안 한) 내용이 그때마다
             // 서버 최신값으로 덮어써져 사라졌다. 메인 패널에 저장 안 한 수정이 있으면 이번
             // 재렌더링은 건너뛴다(왼쪽 목록 텍스트만 최신화되고, 메인 패널 입력값은 보존됨).
-            var mainHasUnsavedEdits_ = clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
+            var mainHasUnsavedEdits_ = (clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_) || clHasUnsaved_(); // [2026-11-14 전수조사] 카드 전체 견줌 더함
             if (!mainHasUnsavedEdits_) renderClientDetail(still);
             return;
           }
@@ -192,28 +192,14 @@
       if (clViews_) clViews_.picked();
     });
   }
-  // 고객 카드 칸(성명·전화·구분·주소·주민번호·메모, 새 고객 칸)의 지금 값 — 그렸을 때·저장했을 때 값과 다르면 「저장 안 한 값」(빠른보기 창은 따로라 보지 않는다)
-  var CL_FORM_IDS_ = ['ccEditName', 'ccEditPhone', 'ccEditType', 'ccEditAddr', 'ccEditRrn', 'ccEditMemo', 'ccNewName', 'ccNewPhone', 'ccNewType', 'ccNewAddr', 'ccNewRrn', 'ccNewMemo'];
-  var clCleanSig_ = null;
-  function clFormSig_(){ return CL_FORM_IDS_.map(function(id){ var el = clientDetail.querySelector('#' + id); return el ? el.value : '\u0000'; }).join('\u0001'); }
-  function clHasUnsaved_(){
-    if (!clientDetail.querySelector('#ccEditName') && !clientDetail.querySelector('#ccNewName')) return false;
-    return clCleanSig_ !== null && clFormSig_() !== clCleanSig_;
-  }
+  // [2026-11-14 전수조사 고침] 세무사님 "당연히 그렇게 해야지 혹시라도 그런 것이 또 있는지 전수조사하라" — 처음엔 칸 이름을 손으로 골라 「추가 연락처」 목록·쓰다 만 「+ 의뢰인」·「수금 추가」가 빠졌다.
+  //  이제 카드 안 모든 칸 + 추가 연락처 목록을 본다(workmanage.html nxDirtyTracker_). 「+ 의뢰인」 입력·「수금 추가」는 카드 저장에 실려 가지 않는 칸이라 따로 알린다(빠른보기 창은 따로라 보지 않는다)
+  var clDirty_ = nxDirtyTracker_(clientDetail, { pending: '[id$="Extra-form"], #ccNewPaymentFormWrap',
+    extra: function(){ var l = clientDetail.querySelector('#ccEditExtra-list') || clientDetail.querySelector('#ccNewExtra-list'); return JSON.stringify(l && l._contacts ? l._contacts : null); } });
+  function clHasUnsaved_(){ return clDirty_.dirty(); }
   function clLeaveGuard_(go){
-    if (!clHasUnsaved_()) { go(); return; }
-    var isNew = !!clientDetail.querySelector('#ccNewName');
-    var buttons = isNew
-      ? [{ label: '버리고 넘어가기', value: 'drop', className: 'btn danger' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true, primary: true }]
-      : [{ label: '저장하고 넘어가기', value: 'save', className: 'save-btn', primary: true }, { label: '저장 안 하고 넘어가기', value: 'drop', className: 'ghost-btn' }, { label: '머무르기', value: null, className: 'ghost-btn', isCancel: true }];
-    nxDialog_({ title: '저장 안 한 내용', message: isNew ? '새 고객 등록 칸에 적은 내용이 아직 저장되지 않았습니다.' : '이 고객 카드에 고치고 저장하지 않은 내용이 있습니다.', buttons: buttons, stack: true /* 단추 셋이 좁은 창 폭을 넘지 않게 세로로 */ }).then(function(v){
-      if (v === 'drop') { go(); return; }
-      if (v === 'save') {
-        var sb = clientDetail.querySelector('#ccSaveClient');
-        if (sb) sb.click();
-        if (!clHasUnsaved_()) go(); // 저장이 막히면(성명 빈칸) 넘어가지 않고 그 자리에 둔다
-      }
-    });
+    nxLeaveGuard_({ parts: clDirty_.parts, clean: clDirty_.clean, pendingNames: '「+ 의뢰인」·「수금 추가」 칸', isNew: function(){ return !!clientDetail.querySelector('#ccNewName'); },
+      save: function(){ var sb = clientDetail.querySelector('#ccSaveClient'); if (sb) sb.click(); }, noun: '고객' }, go);
   }
 
   // [2026.09.16 재설계] 세무사님 지적 — "추가연락처를 전화번호만 입력하면 어떡하나, 이름도
@@ -357,7 +343,7 @@
       selectedClientId = newPayload.id;
       ccLocalUpsert_(newRow, true);
     });
-    clCleanSig_ = clFormSig_(); // [2026-11-14] 새 고객 칸 — 빈 칸이 기준
+    clDirty_.clean(); // [2026-11-14] 새 고객 칸 — 빈 칸이 기준
     if (clViews_) clViews_.picked(); // 목록만 보기에서 「+ 새 고객」이면 칸이 보이게 카드로
   }
 
@@ -446,7 +432,7 @@
         onFail: function(){ ccLocalUpsert_(before, false); }, redo: function(){ ccLocalUpsert_(Object.assign({}, before, upRow), false); } });
       Object.assign(c, upRow);
       showToast('저장했습니다.', 'success');
-      if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clCleanSig_ = clFormSig_(); } // [2026-11-14] 저장한 값이 새 기준
+      if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clDirty_.clean(true); } // [2026-11-14] 저장한 값이 새 기준(「추가」 안 누른 칸은 그대로 봄)
       else quickViewSnapshot_ = quickViewCurrentSignature_(container);
       ccLocalUpsert_(upRow, false);
     });
@@ -530,7 +516,7 @@
     loadClientPayments_(c, container);
     loadClientFlow_(c, container);
 
-    if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clCleanSig_ = clFormSig_(); } // [2026-11-14] 그린 값이 기준
+    if (container === clientDetail) { clientMainPanelBaseline_ = quickViewCurrentSignature_(container); clDirty_.clean(); } // [2026-11-14] 그린 값이 기준
   }
 
   // [2026.09.18 신규] "현금영수증 파일을 보내줘야 하는데 보낼 방법이 없다" — 고객관리에서
@@ -844,10 +830,14 @@
   // (casehandling.html의 goToCaseHandling_과 같은 패턴).
   function goToClientManage_(clientId){
     if (typeof goToView_ === 'function') goToView_('clientmanage');
-    clientShowingNewForm = false;
-    selectedClientId = clientId;
-    loadClients();
-    if (clientId && clViews_) clViews_.picked(); // [2026-11-14] 다른 화면에서 고객을 찾아왔으면 목록만 보기여도 그 카드가 보이게
+    // [2026-11-14 전수조사] 다른 화면(수금·넥스 창)에서 와도 고치던 고객 카드를 묻지 않고 갈아끼우지 않는다. 같은 고객이면 그대로 보여 준다
+    if (clientId && String(clientId) === String(selectedClientId) && !clientShowingNewForm && clHasUnsaved_()) { if (clViews_) clViews_.picked(); return; }
+    clLeaveGuard_(function(){
+      clientShowingNewForm = false;
+      selectedClientId = clientId;
+      loadClients();
+      if (clientId && clViews_) clViews_.picked(); // [2026-11-14] 다른 화면에서 고객을 찾아왔으면 목록만 보기여도 그 카드가 보이게
+    });
   }
 
   document.getElementById('btnClientNew').addEventListener('click', function(){ clLeaveGuard_(function(){ renderNewClientForm(); }); }); // [2026-11-14] 쓰던 카드 값을 잃지 않게 먼저 여쭘
