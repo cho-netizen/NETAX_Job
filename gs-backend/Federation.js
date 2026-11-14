@@ -665,13 +665,27 @@ function commSeamList_() {
       if (d.length !== 3 || !d.some(function (x) { return x.이름 === '납부기한' && x.잠정; })) return '판정 결과에서 기한 뽑기가 다름(' + d.length + '개)';
       return '';
     } },
-    { 길: '서류 변동 → 넥스 미리 읽기 → 채팅 보고(미리 읽기 틱 모든 파일 감시 → 기록부 파일 지문·서류 변동 → 진행 중 사건 넥스 깨움(밤엔 미룸) → 읽음 기록·알림·채팅 한 줄)', fn: function () {
+    // [2026.11.14 밤 내부검토서 갱신] 세무사님 "생성된 검토서 중 수정할 사항이 있는 경우에 야간작업에서 업데이트" — 화면 흔적 → 밤 틱 → 바뀐 것(GAS) → 넥스 고침(세무사님 문단 지킴) → 사건 기록·채팅 한 줄·「답하실 것」
+    { 길: '밤 내부검토서 갱신(job 쓰는 흔적 → 01~05시 30분 틱 → 바뀐 것 찾기 0원 → 넥스가 고칠 곳만 고침·세무사님 문단 그대로·세액은 계산 저장본만 → 사건 기록·채팅 한 줄·답하실 것)', fn: function () {
+      if (typeof nrNightTick !== 'function' || typeof nrReviewCase_ !== 'function' || typeof nrApplyEdits_ !== 'function' || typeof nrMarkUse_ !== 'function' || typeof nrNexWroteHook_ !== 'function') return '밤 검토서 갱신 서버 함수가 이 판에 없음';
+      let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'nrNightTick'; }); } catch (e) { trig = true; }
+      if (!trig) return '밤 검토서 갱신 틱 트리거가 없음(nrEnsureTrigger_ — 밤 점검이나 설정 카드를 열면 걸림)';
+      const nex = '# 종합검토서\n\n## 결론\n\n가능.\n\n## 확인\n\n취득일 확인.', cur = nex + '\n\n세무사님 메모 문단.';
+      const prot = nrProtected_(cur, { text: nex, prot: [] });
+      if (prot.length !== 1) return '세무사님 문단 가려내기가 다름(' + prot.length + ')';
+      if (nrApplyEdits_(cur, [{ find: '세무사님 메모 문단.', replace: '바꿈.' }], prot).error === undefined) return '세무사님 문단을 바꾸는 고침을 막지 못함';
+      if (nrApplyEdits_(cur, [{ find: '가능.', replace: '가능(밤 갱신).' }], prot).error) return '넥스 문단 고침이 막힘';
+      return '';
+    } },
+    { 길: '서류 변동 → 넥스 미리 읽기 → 채팅 보고(미리 읽기 틱 모든 파일 감시 → 기록부 파일 지문·서류 변동 → 진행 중 사건 넥스 깨움(밤에도 — 11-14 제한 없앰) → 읽음 기록·알림·채팅 한 줄)', fn: function () {
       if (typeof cpWatchCase_ !== 'function' || typeof cpWatchTick_ !== 'function' || typeof cpNexPrereadWake_ !== 'function' || typeof cpNexChatNote_ !== 'function' || typeof cpNexPrereadSwitch_ !== 'function') return '감시·미리 읽기 서버 함수가 이 판에 없음'; if (typeof cpLedgerStaleRun_ !== 'function' || typeof ledgerKbBuild_ !== 'function') return '서류 변동 → 사건 장부 바로 갱신 함수가 이 판에 없음';
       let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpPrereadTick'; }); } catch (e) { trig = true; }
       if (!trig) return '미리 읽기 틱 트리거가 없음(cpPrereadEnsureTrigger_)';
       const txt = typeof nxCaseChatGuide_ === 'function' ? nxCaseChatGuide_('점검') : '';
       if (txt.indexOf('✓ 전에 읽음') === -1) return '지휘 지시문에 미리 읽기 표시(🆕/✏/✓) 설명이 없음';
-      if (typeof cpWatchNight_ !== 'function' || cpWatchNight_(new Date(2026, 0, 1, 23, 0)) !== true || cpWatchNight_(new Date(2026, 0, 1, 9, 0)) !== false) return '밤 시간 판정(22~07시)이 다름';
+      // [2026.11.14 세무사님 "깨우는 제한을 없애라"] 넥스 깨우기(미리 읽기·물음 풀기·중요한 순간)에 밤 미루기가 다시 들어오면 끊김으로 본다
+      const nightGate = [cpNexPrereadWake_, typeof cpNexQuestionRun_ === 'function' ? cpNexQuestionRun_ : null, typeof cpNexMomentRun_ === 'function' ? cpNexMomentRun_ : null].filter(function (f) { return f && /cpWatchNight_\s*\(/.test(String(f)); });
+      if (nightGate.length) return '넥스 깨우기에 밤 미루기가 다시 들어 있음(11-14 세무사님 "깨우는 제한을 없애라")';
       return '';
     } },
     { 길: '넥스 폭넓은 파일 읽기(지휘 case_files/file_read · 대화창 job_lookup case_files/file_read — 체크 목록과 무관, 어떤 파일이든, 토큰 0)', fn: function () {

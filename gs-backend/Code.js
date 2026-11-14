@@ -5214,6 +5214,11 @@ function dispatchClientAction0_(body) {
   if (body.action === 'save_times') return jsonResponse(saveTimesRead_());
   if (body.action === 'aw_notice_seen') return jsonResponse(awNoticeSeen_(body)); // [2026.11.04 혼자 도는] 「답하실 것」 알림 확인(지움)
   if (body.action === 'aw_nightly_now') return jsonResponse(awNightly_()); // [2026.11.04 혼자 도는] 설정 🐞 단추 — 밤 점검을 지금 돌림(시험용)
+  // [2026.11.14 밤 내부검토서 갱신] 쓰는 흔적(화면 10분마다) · 설정 › 시스템 관리 카드(목록·고르기·한 사건 지금 돌려 보기)
+  if (body.action === 'nx_ping') return jsonResponse({ ok: true });
+  if (body.action === 'nr_status') { nrEnsureTrigger_(); return jsonResponse(nrStatus_()); }
+  if (body.action === 'nr_set') return jsonResponse(nrSet_(body.caseId, body.fileId, !!body.on, '세무사님'));
+  if (body.action === 'nr_run_case') { const c = akReadCase_(String(body.caseId || '')); if (!c) return jsonResponse({ ok: false, error: '사건을 찾지 못함' }); const ids = nrList_().filter(function (x) { return x && x.caseId === c.id; }).map(function (x) { return x.fileId; }); return jsonResponse(ids.length ? Object.assign({ ok: true }, nrReviewCase_(c, ids, Date.now() + 300000)) : { ok: false, error: '이 사건은 밤 갱신 목록에 검토서가 없음' }); }
   if (body.action === 'bg_failed_act') return jsonResponse(bgqFailedAct_(body)); // [2026.11.03] 뒤에서 할 일 실패 — 다시 하기·지우기(대시보드 「답하실 것」)
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_request_done') return jsonResponse(commRequestDone_(body)); // [2026.10.28] PC Claude가 요청을 고쳤다고 처리 내역 남기기(tools/request-done.js)
@@ -12315,7 +12320,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         }
         // [2026.10.30 비용 — "권하는 안대로"] 넥스가 저장한 그 판은 넥스 미리 읽기가 다시 읽지 않게 표시(cpNexWroteMark_)
         if (nxCaseId_ && r && !r.is_error && /^(save_file_to_folder|export_to_google_doc)$/.test(block.name) && typeof cpNexWroteMark_ === 'function') {
-          try { let so2 = {}; try { so2 = JSON.parse(String(r.content || '{}').split('\n')[0]); } catch (e) { so2 = {}; } if (so2 && !so2.error && (so2.id || so2.fileId)) cpNexWroteMark_(nxCaseId_, so2.id || so2.fileId); } catch (e) {}
+          try { let so2 = {}; try { so2 = JSON.parse(String(r.content || '{}').split('\n')[0]); } catch (e) { so2 = {}; } if (so2 && !so2.error && (so2.id || so2.fileId)) { cpNexWroteMark_(nxCaseId_, so2.id || so2.fileId); if (so2.updated === false && typeof nrSet_ === 'function' && typeof NR_REVIEW_RE_ !== 'undefined' && NR_REVIEW_RE_.test(String(so2.name || ''))) nrSet_(nxCaseId_, so2.id || so2.fileId, true, '넥스(세무사님 지시)'); } } catch (e) {} // [2026.11.14] 세무사님 지시로 새로 만든 내부 검토서는 밤 갱신 목록에
         }
         // [2026.10.30 2단계 보고서 한 길] 사건이 연결된 대화에서 넥스가 문서를 저장하면 자문 장부 보고서 칸에 적는다(어느 파일인지·언제) — 인용한 저장본은 넥스가 do=advice로 잇는다
         if (nxCaseId_ && r && !r.is_error && block.name === 'save_file_to_folder' && typeof ledgerAdvPut_ === 'function') {
@@ -14268,6 +14273,7 @@ function manageApp_call(action, payload, sessionToken) {
   if (!manageApp_verifySessionToken_(sessionToken)) {
     return { error: 'AUTH_REQUIRED' };
   }
+  try { if (typeof nrMarkUse_ === 'function') nrMarkUse_(); } catch (e) {} // [2026.11.14 밤 검토서 갱신] job 화면을 쓰는 흔적(30분 넘게 없으면 "컴퓨터 꺼짐"으로 봄)
   const body = Object.assign({}, payload || {}, { action: action });
   if (action === 'admin_list' && body.module === 'my') {
     body.admin_code = PropertiesService.getScriptProperties().getProperty('ADMIN_CODE');
@@ -23114,6 +23120,7 @@ function cpNexWroteMark_(caseId, fileId) {
       sv.nexRead = sv.nexRead || {}; sv.nexRead[id] = { at: caseProcNow_(), m: m, name: name, sum: '넥스가 저장한 파일(미리 읽기 안 함)' };
       (Array.isArray(sv.fileChanges) ? sv.fileChanges : []).forEach(function (x) { if (x.id === id && Math.abs((Number(x.m) || 0) - m) < 5000) x.nexSeen = true; });
     });
+    try { if (typeof nrNexWroteHook_ === 'function') nrNexWroteHook_(id); } catch (e) {} // [2026.11.14] 밤 갱신 목록의 검토서면 넥스가 쓴 판(사본)을 새로 — 세무사님 문단은 지킬 문단으로 넘김
   } catch (e) { console.log('넥스 저장 파일 표시 실패: ' + (e && e.message || e)); }
 }
 function cpNexWroteSame_(sv, f) { const w = sv && sv.nexWrote && sv.nexWrote[f.id]; return !!(w && Math.abs((Number(f.modified) || 0) - (Number(w.m) || 0)) < 5000); }
@@ -23170,7 +23177,7 @@ function cpNexQEnqueue_(caseId) {
 }
 function cpNexQuestionRun_(started, DEADLINE) {
   if (Date.now() - started > DEADLINE - 150000) return ''; // 넥스 한 바퀴(최대 2분)가 들어갈 시간이 남아야
-  if (cpWatchNight_()) return '';
+  // [2026.11.14 세무사님 "깨우는 제한을 없애라"] 밤(22~07시)에도 넥스를 깨운다 — 예전 "밤엔 미룸"은 Claude 권장안(10-28)이었고 필요성이 약했다
   const props = PropertiesService.getScriptProperties();
   let q = []; try { q = JSON.parse(props.getProperty(CP_NEXQ_PENDING_) || '[]'); } catch (e) { q = []; }
   if (!q.length) return '';
@@ -23239,7 +23246,7 @@ function cpNexPrereadWake_(c, opt) {
   if (sv.nexPreread && sv.nexPreread.off) return { ok: true, skipped: '이 사건은 넥스 미리 읽기 끔' };
   if (!opt.force && String(c.상태 || '') !== '진행') return { ok: true, skipped: '진행 중 사건이 아님(' + (c.상태 || '상태 없음') + ') — GAS 감시만' };
   try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, skipped: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)' }; } catch (e) {}
-  if (!opt.force && cpWatchNight_()) { cpWatchDefer_(c.id); return { ok: true, deferred: true, skipped: '밤(22~07시) — 아침 첫 틱에 깨움' }; }
+  // [2026.11.14 세무사님 "깨우는 제한을 없애라"] 밤에도 바로 깨운다(예전: 22~07시면 아침 첫 틱으로 미룸)
   const ctx = { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 };
   const tools = caseProcAiLiveTools_().filter(function (t) { return t.name === 'case_files' || t.name === 'file_read'; });
   tools.push({ name: 'preread_done', description: '미리 읽기 끝 — 읽은 파일마다 한 줄 요약, 사건에 영향이 있어 보이는지(impact), 영향이 있으면 세무사님께 드릴 한 줄(line — 예 "새 매매계약서가 들어와 읽었습니다. 양도가액이 5억 2천으로 보여 지금 값(5억)과 다릅니다. 반영할까요?"). 계산기 칸은 바꾸지 않는다.', input_schema: { type: 'object', properties: { read: { type: 'array', items: { type: 'object', properties: { file: { type: 'string' }, summary: { type: 'string' } }, required: ['file'] } }, impact: { type: 'boolean' }, line: { type: 'string' } }, required: ['read', 'impact'] } });
@@ -23399,7 +23406,7 @@ function cpNexMomentAdd_(caseId, items) {
   } catch (e) {}
 }
 function cpNexMomentRun_(started, DEADLINE) {
-  const done = []; if (cpWatchNight_()) return done;
+  const done = []; // [2026.11.14 세무사님 "깨우는 제한을 없애라"] 밤에도 깨운다
   const props = PropertiesService.getScriptProperties();
   for (let guard = 0; guard < 2; guard++) {
     if (Date.now() - started > DEADLINE - 120000) break;
@@ -23476,7 +23483,7 @@ function cpWatchTick_(touched, started, DEADLINE) {
     out.lines.push(String(c.사건명 || c.id) + ': ' + (r.skipped || r.error || ('읽음 ' + r.read + '/' + r.files + (r.impact ? ' · 보고' : '') + ' · ' + r.won + '원')));
   };
   try { cpLedgerStaleRun_(started, DEADLINE).forEach(function (s) { out.lines.push('장부 갱신 ' + s); }); } catch (e) {} // [2026.10.29] 미뤄 둔 사건 장부 갱신부터(밤에도 — GAS만, 0원)
-  if (!cpWatchNight_()) { let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.length) { props.deleteProperty(CP_WATCH_PENDING_); q.forEach(function (id) { if (touched[id]) return; const c = akReadCase_(id); if (c) wake(c); }); } }
+  { let q = []; try { q = JSON.parse(props.getProperty(CP_WATCH_PENDING_) || '[]'); } catch (e) { q = []; } if (q.length) { /* [2026.11.14] 예전 밤에 미뤄 둔 줄이 남아 있으면 지금 깨운다(밤 제한 없앰) */ props.deleteProperty(CP_WATCH_PENDING_); q.forEach(function (id) { if (touched[id]) return; const c = akReadCase_(id); if (c) wake(c); }); } }
   Object.keys(touched).forEach(function (fid) {
     if (Date.now() - started > DEADLINE) return;
     const c = cpWatchCaseOf_(fid); if (!c) return;
