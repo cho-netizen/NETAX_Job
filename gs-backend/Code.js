@@ -5221,8 +5221,7 @@ function dispatchClientAction0_(body) {
   // [2026.11.14 밤 내부검토서 갱신] 쓰는 흔적(화면 10분마다) · 설정 › 시스템 관리 카드(목록·고르기·한 사건 지금 돌려 보기)
   if (body.action === 'nx_ping') return jsonResponse({ ok: true });
   if (body.action === 'nr_status') { nrEnsureTrigger_(); return jsonResponse(nrStatus_()); }
-  if (body.action === 'nr_set') return jsonResponse(nrSet_(body.caseId, body.fileId, !!body.on, '세무사님'));
-  if (body.action === 'nr_run_case') { const c = akReadCase_(String(body.caseId || '')); if (!c) return jsonResponse({ ok: false, error: '사건을 찾지 못함' }); const ids = nrList_().filter(function (x) { return x && x.caseId === c.id; }).map(function (x) { return x.fileId; }); return jsonResponse(ids.length ? Object.assign({ ok: true }, nrReviewCase_(c, ids, Date.now() + 300000)) : { ok: false, error: '이 사건은 밤 갱신 목록에 검토서가 없음' }); }
+  if (body.action === 'nr_run_case') { const c = akReadCase_(String(body.caseId || '')); if (!c) return jsonResponse({ ok: false, error: '사건을 찾지 못함' }); const ids = nrCaseReviews_(c).map(function (x) { return x.fileId; }); return jsonResponse(ids.length ? Object.assign({ ok: true }, nrReviewCase_(c, ids, Date.now() + 300000)) : { ok: false, error: '이 사건 「보고서」 폴더에 내부 검토서가 없음' }); }
   if (body.action === 'bg_failed_act') return jsonResponse(bgqFailedAct_(body)); // [2026.11.03] 뒤에서 할 일 실패 — 다시 하기·지우기(대시보드 「답하실 것」)
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_request_done') return jsonResponse(commRequestDone_(body)); // [2026.10.28] PC Claude가 요청을 고쳤다고 처리 내역 남기기(tools/request-done.js)
@@ -6347,7 +6346,9 @@ function lawGo_(oc, q, jo) { // q=법령명이면 판 목록(하루 기억), q=[
   if (s) return JSON.parse(s);
   var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true });
   if (r.getResponseCode() !== 200) return { error: '법제처 응답 오류(' + r.getResponseCode() + ')' };
-  var root = XmlService.parse(r.getContentText('UTF-8')).getRootElement();
+  // [2026.11.14] 법제처가 XML 대신 웹 페이지(HTML)를 주면 파싱 예외가 위로 올라가 정비본에서 이미 찾은 조문까지 버렸다 — 오류 값으로 돌려준다
+  var body = r.getContentText('UTF-8'), root;
+  try { root = XmlService.parse(body).getRootElement(); } catch (e) { var tt = (body.match(/<title[^>]*>([^<]*)/i) || [])[1]; return { error: '법제처 응답을 읽지 못함(XML이 아님' + (tt ? ': ' + String(tt).trim().slice(0, 60) : '') + ')' }; }
   if (!ck) { var jm = root.getChild('조문'); return (jm ? jm.getChildren('조문단위') : []).filter(function (x) { return x.getChildText('조문여부') === '조문'; }).map(lawUnit_); }
   var ls = root.getChildren('law'); if (!ls.length) return { error: '"' + q + '"으로 검색된 법령이 없습니다(정식 법령명 확인).' };
   var nm = ls[0].getChildText('법령명한글'), v = { 이름: nm, 판: ls.filter(function (x) { return x.getChildText('법령명한글') === nm; }).map(function (x) {
@@ -6390,6 +6391,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   if (oc) { // 법제처: 개정 확인, 또는 정비본에 없는 법령·판
     var vs = lawGo_(oc, ent ? ent.이름 : lawName), ps = vs.판 || [], cur = ps.filter(function (p) { return p.cur; })[0];
     if (vs.error && !arts) return vs;
+    if (vs.error && arts) out.개정확인 = '법제처에 개정 여부를 묻지 못함 — 정비본 조문을 그대로 씀(' + vs.error + ')';
     var pick = day ? ps.filter(function (p) { return p.ef <= day; }).sort(function (a, b) { return b.ef.localeCompare(a.ef); })[0] : cur;
     if (!arts && pick) { arts = lawGo_(oc, [pick.mst, pick.ef], jo); out = { 법령명: vs.이름, 시행일자: pick.ef, 출처: '법제처 ' + pick.ef + ' 시행판(정비본에 없음)' }; }
     else if (arts && !day && cur && ent) {
@@ -12346,7 +12348,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         }
         // [2026.10.30 비용 — "권하는 안대로"] 넥스가 저장한 그 판은 넥스 미리 읽기가 다시 읽지 않게 표시(cpNexWroteMark_)
         if (nxCaseId_ && r && !r.is_error && /^(save_file_to_folder|export_to_google_doc)$/.test(block.name) && typeof cpNexWroteMark_ === 'function') {
-          try { let so2 = {}; try { so2 = JSON.parse(String(r.content || '{}').split('\n')[0]); } catch (e) { so2 = {}; } if (so2 && !so2.error && (so2.id || so2.fileId)) { cpNexWroteMark_(nxCaseId_, so2.id || so2.fileId); if (so2.updated === false && typeof nrSet_ === 'function' && typeof NR_REVIEW_RE_ !== 'undefined' && NR_REVIEW_RE_.test(String(so2.name || ''))) nrSet_(nxCaseId_, so2.id || so2.fileId, true, '넥스(세무사님 지시)'); } } catch (e) {} // [2026.11.14] 세무사님 지시로 새로 만든 내부 검토서는 밤 갱신 목록에
+          try { let so2 = {}; try { so2 = JSON.parse(String(r.content || '{}').split('\n')[0]); } catch (e) { so2 = {}; } if (so2 && !so2.error && (so2.id || so2.fileId)) { cpNexWroteMark_(nxCaseId_, so2.id || so2.fileId); } } catch (e) {}
         }
         // [2026.10.30 2단계 보고서 한 길] 사건이 연결된 대화에서 넥스가 문서를 저장하면 자문 장부 보고서 칸에 적는다(어느 파일인지·언제) — 인용한 저장본은 넥스가 do=advice로 잇는다
         if (nxCaseId_ && r && !r.is_error && block.name === 'save_file_to_folder' && typeof ledgerAdvPut_ === 'function') {
@@ -18070,7 +18072,7 @@ function rptCleanSuggest_(base, c) {
   detail = reportCleanDetail_(detail.replace(/[\s_]+/g, '_'), null, drop);
   return { kind: kind, detail: detail, guessed: !g.kind };
 }
-// [2026.11.14] 사건 폴더 안의 다른 사건 폴더는 건너뜀(송호식 사건에서 남의 사건으로 옮긴 일)
+// [2026.11.14] 사건 폴더 안의 다른 사건 폴더는 건너뜀(11-14 한 사건 폴더 안에 든 다른 사건 폴더로 잘못 옮긴 일)
 function rptCleanWalk_(folder, rel, out, depth, otherCaseFolders) {
   const fi = folder.getFiles();
   while (fi.hasNext()) { const f = fi.next(); if (f.isTrashed()) continue; out.push({ f: f, rel: rel, folder: folder }); }
@@ -23397,7 +23399,7 @@ function cpNexWroteMark_(caseId, fileId) {
       sv.nexRead = sv.nexRead || {}; sv.nexRead[id] = { at: caseProcNow_(), m: m, name: name, sum: '넥스가 저장한 파일(미리 읽기 안 함)' };
       (Array.isArray(sv.fileChanges) ? sv.fileChanges : []).forEach(function (x) { if (x.id === id && Math.abs((Number(x.m) || 0) - m) < 5000) x.nexSeen = true; });
     });
-    try { if (typeof nrNexWroteHook_ === 'function') nrNexWroteHook_(id); } catch (e) {} // [2026.11.14] 밤 갱신 목록의 검토서면 넥스가 쓴 판(사본)을 새로 — 세무사님 문단은 지킬 문단으로 넘김
+    try { if (typeof nrNexWroteHook_ === 'function') nrNexWroteHook_(id); } catch (e) {} // [2026.11.14] 내부 검토서면 넥스가 쓴 판(사본)을 새로 — 세무사님 문단은 지킬 문단으로 넘김
   } catch (e) { console.log('넥스 저장 파일 표시 실패: ' + (e && e.message || e)); }
 }
 function cpNexWroteSame_(sv, f) { const w = sv && sv.nexWrote && sv.nexWrote[f.id]; return !!(w && Math.abs((Number(f.modified) || 0) - (Number(w.m) || 0)) < 5000); }

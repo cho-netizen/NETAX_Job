@@ -687,7 +687,7 @@ function commSeamList_() {
       if (!trig) return '밤 검토서 갱신 틱 트리거가 없음(nrEnsureTrigger_ — 배포 기록·밤 점검·설정 카드를 열면 걸림)';
       const nex = '# 종합검토서\n\n## 결론\n\n가능.\n\n## 확인\n\n취득일 확인.', cur = nex + '\n\n세무사님 메모 문단.';
       const prot = nrProtected_(cur, { text: nex, prot: [] });
-      if (prot.length !== 1) return '세무사님 문단 가려내기가 다름(' + prot.length + ')';
+      if (prot.length !== 1) return '세무사님 문단 가려내기가 다름(' + prot.length + ')'; if (nrProtected_(cur, null).length) return '넥스판 사본이 없는 검토서를 세무사님 글로 잡음(넥스가 쓴 글로 봐야 함)';
       if (nrApplyEdits_(cur, [{ find: '세무사님 메모 문단.', replace: '바꿈.' }], prot).error === undefined) return '세무사님 문단을 바꾸는 고침을 막지 못함';
       if (nrApplyEdits_(cur, [{ find: '가능.', replace: '가능(밤 갱신).' }], prot).error) return '넥스 문단 고침이 막힘';
       return '';

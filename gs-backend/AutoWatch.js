@@ -312,14 +312,14 @@ function awNightlyLast_() { try { return JSON.parse(PropertiesService.getScriptP
 // [2026.11.14 밤 내부검토서 갱신] 세무사님 원문: "내가 검토서를 만들라고 한 사건만 검토서가 생성되고, 생성된 검토서 중 수정할 사항이 있는 경우에
 //  야간작업에서 업데이트하는 것으로 하자" / "보류사건은 아예 제외하라" / "보고서종류도 일단 내부검토서로 국한하자" /
 //  "자동 업데이트는 컴퓨터가 꺼져 있고, 야간에만 한다" / "나머지는 권장대로 한다"  — 계획서 docs/_기록/밤_내부검토서_갱신_계획서_20261114.html
-//  · 대상: 밤 갱신 목록(nr_review_list)에 오른 내부 검토서(종합검토서·개별검토서_쟁점) 중 상태 「진행」인 실사건 것만(보류·완료·가상 제외)
-//    목록에 오르는 길: 세무사님 지시로 넥스가 새로 만든 검토서(넥스 저장 직후 자동) · 설정 › 시스템 관리 카드에서 세무사님이 고른 기존 검토서
+//  · 대상: 상태 「진행」인 실사건(보류·완료·가상 제외)의 「보고서」 폴더에 있는 내부 검토서(종합검토서·개별검토서_쟁점) 전부 — 따로 목록을 두지 않는다
+//    (11-14 "무슨 목록에 넣고 빼고 하냐? 원칙대로 하라" — 검토서는 세무사님이 만들라고 하셔야 생기므로 있으면 대상)
 //  · 때: 01~05시, job 화면이 30분 넘게 서버를 부르지 않았을 때(= 컴퓨터가 꺼져 있음으로 봄 — 화면이 10분마다 흔적을 보냄)
 //  · 바뀐 것 찾기는 GAS(0원) — 없으면 넥스를 부르지 않는다. 있으면 사건마다 넥스가 한 번 파악하고 그 사건 검토서를 이어서 고친다
 //  · 고칠 때: 같은 파일 갱신(직전 판 「_이전판」), 세무사님이 쓰신 문단은 그대로(달라 보이면 그 뒤에 밤 갱신 메모), 세액은 계산 저장본 숫자만
 //  · 아침: 고친 것만 「답하실 것」에. 고칠 것이 없으면 알림 없이 기록만(설정 카드에서 봄)
 // =========================================================
-var NR_LIST_PROP_ = 'nr_review_list', NR_STATE_PROP_ = 'nr_state', NR_USE_PROP_ = 'nx_last_use';
+var NR_STATE_PROP_ = 'nr_state', NR_USE_PROP_ = 'nx_last_use';
 var NR_IDLE_MIN_ = 30, NR_START_H_ = 1, NR_END_H_ = 5, NR_REPORT_END_H_ = 8;
 var NR_REVIEW_RE_ = /^(종합검토서|개별검토서_.+)\.(md|txt)$/;
 var NR_READ_TOOLS_ = /^(case_status|ledger_read|case_files|file_read|fact_map|doc_find|law_lookup|law_search|case_ledger)$/;
@@ -334,7 +334,6 @@ function nrTs_(s) { // 'yyyy-MM-dd HH:mm'(한국 시각) → ms
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
   return m ? (Date.parse(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00+09:00') || 0) : 0;
 }
-function nrList_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(NR_LIST_PROP_) || '[]') || []; } catch (e) { return []; } }
 // ── 넥스가 쓴 판(사본) — 「_이전판/_넥스판_이름.json」 {text, prot:[세무사님 문단]} — "_"로 시작해 미리 읽기·감시에서 빠진다
 function nrParas_(t) { return String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(Boolean); }
 function nrSnapFolder_(file) { const p = file.getParents(); return p.hasNext() ? my_getOrCreateSubfolder_(p.next(), '_이전판') : null; }
@@ -349,19 +348,19 @@ function nrSnapWrite_(file, text, prot) {
     return true;
   } catch (e) { return false; }
 }
-// 세무사님(사람) 문단 = 지금 글 중 넥스가 쓴 판에 없는 문단 + 전에 세무사님 문단으로 잡힌 것(아직 남아 있는 것). 사본이 없으면 전부 지킨다
+// 세무사님(사람) 문단 = 지금 글 중 넥스가 쓴 판에 없는 문단 + 전에 세무사님 문단으로 잡힌 것(아직 남아 있는 것). 사본이 없으면 넥스가 쓴 글로 본다(검토서는 세무사님 지시로 넥스가 만든다 — 11-14)
 function nrProtected_(cur, snap) {
   const now = nrParas_(cur);
-  if (!snap) return now;
+  if (!snap) return [];
   const nx = {}; nrParas_(snap.text).forEach(function (p) { nx[p] = 1; });
   const keep = {}; (snap.prot || []).forEach(function (p) { keep[p] = 1; });
   return now.filter(function (p) { return !nx[p] || keep[p]; });
 }
-// 넥스가 낮에 검토서를 저장한 직후(cpNexWroteMark_) — 밤 갱신 목록에 있는 파일이면 사본을 새로 쓴다(그 사이 세무사님이 고치신 문단은 지킬 문단으로 넘김)
+// 넥스가 검토서를 저장한 직후(cpNexWroteMark_) — 내부 검토서면 넥스가 쓴 판 사본을 새로 쓴다(그 사이 세무사님이 고치신 문단은 지킬 문단으로 넘김)
 function nrNexWroteHook_(fileId) {
   try {
-    if (!nrList_().some(function (x) { return x && x.fileId === fileId; })) return;
-    const file = DriveApp.getFileById(fileId), now = file.getBlob().getDataAsString('UTF-8');
+    const file = DriveApp.getFileById(fileId); if (!NR_REVIEW_RE_.test(file.getName())) return;
+    const now = file.getBlob().getDataAsString('UTF-8');
     const old = nrSnapRead_(file);
     let pre = null; try { const bk = nrSnapFolder_(file).getFilesByName(file.getName()); if (bk.hasNext()) pre = bk.next().getBlob().getDataAsString('UTF-8'); } catch (e) { pre = null; }
     const human = pre != null ? nrProtected_(pre, old) : (old ? old.prot : []);
@@ -369,33 +368,19 @@ function nrNexWroteHook_(fileId) {
     nrSnapWrite_(file, now, human.filter(function (p) { return nowSet[p]; }));
   } catch (e) {}
 }
-// 목록 올리기·내리기 — 올릴 때 지금 글을 넥스가 고칠 수 있는 글로 잡는다(고르신 뒤 세무사님이 고치신 문단부터 지킴)
-function nrSet_(caseId, fileId, on, by) {
-  caseId = String(caseId || ''); fileId = String(fileId || '');
-  if (!caseId || !fileId) return { ok: false, error: '사건·파일이 없음' };
-  let file = null; try { file = DriveApp.getFileById(fileId); } catch (e) { return { ok: false, error: '파일을 찾지 못함' }; }
-  if (on && !NR_REVIEW_RE_.test(file.getName())) return { ok: false, error: '내부 검토서(종합검토서·개별검토서_쟁점)만 올릴 수 있음: ' + file.getName() };
-  const out = withLockStrict_(5000, function () {
-    const p = PropertiesService.getScriptProperties();
-    const a = nrList_().filter(function (x) { return x && x.fileId !== fileId; });
-    if (on) a.push({ caseId: caseId, fileId: fileId, name: file.getName(), at: caseProcNow_(), by: String(by || '세무사님') });
-    p.setProperty(NR_LIST_PROP_, JSON.stringify(a.slice(-200)));
-    return { ok: true, on: !!on, n: a.length };
-  });
-  if (on && !nrSnapRead_(file)) nrSnapWrite_(file, file.getBlob().getDataAsString('UTF-8'), []);
-  try { caseProcPatch_(caseId, function (sv) { caseProcLogTo_(sv, { by: String(by || '세무사님'), what: '밤 검토서 갱신 ' + (on ? '켬' : '끔'), detail: file.getName() }); }); } catch (e) {}
+// [2026.11.14] 세무사님 "무슨 목록에 넣고 빼고 하냐? 원칙대로 하라" — 대상은 따로 장부를 두지 않고 사실로 정한다:
+//  진행 실사건(보류·완료·가상 제외)의 「보고서」 폴더에 있는 내부 검토서(종합검토서·개별검토서_쟁점) — 검토서는 세무사님이 만들라고 하셔야 생긴다
+function nrCaseReviews_(c) {
+  const out = []; if (!c || !String(c.폴더ID || '').trim()) return out;
+  let root; try { root = DriveApp.getFolderById(String(c.폴더ID).trim()); } catch (e) { return out; }
+  const it0 = root.getFoldersByName(typeof REPORT_FOLDER_NAME_ !== 'undefined' ? REPORT_FOLDER_NAME_ : '보고서'); if (!it0.hasNext()) return out;
+  const it = it0.next().getFiles();
+  while (it.hasNext()) { const f = it.next(); if (NR_REVIEW_RE_.test(f.getName())) out.push({ caseId: c.id, case: String(c.사건명 || c.고객명 || ''), 상태: String(c.상태 || ''), fileId: f.getId(), name: f.getName(), at: Utilities.formatDate(f.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') }); }
   return out;
 }
-// 진행 실사건의 내부 검토서 찾기(「보고서」 → 「보고서_내부」 → 사건 폴더 맨 위) — 설정 카드의 고르기 목록
-function nrCandidates_(cases) {
+function nrTargets_(cases) {
   const out = [];
-  (cases || awCases_()).forEach(function (c) {
-    if (!c || String(c.상태 || '') !== '진행' || awVirtual_(c) || !String(c.폴더ID || '').trim()) return;
-    let root; try { root = DriveApp.getFolderById(String(c.폴더ID).trim()); } catch (e) { return; }
-    const scan = function (folder, where) { const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (NR_REVIEW_RE_.test(f.getName())) out.push({ caseId: c.id, case: String(c.사건명 || c.고객명 || ''), fileId: f.getId(), name: f.getName(), where: where, at: Utilities.formatDate(f.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') }); } };
-    [(typeof REPORT_FOLDER_NAME_ !== 'undefined' ? REPORT_FOLDER_NAME_ : '보고서')].concat(typeof REPORT_FOLDER_OLD_NAMES_ !== 'undefined' ? REPORT_FOLDER_OLD_NAMES_.slice(0, 1) : ['보고서_내부']).forEach(function (n) { const it = root.getFoldersByName(n); if (it.hasNext()) scan(it.next(), n); });
-    scan(root, '사건 폴더');
-  });
+  (cases || awCases_()).forEach(function (c) { if (c && String(c.상태 || '') === '진행' && !awVirtual_(c)) nrCaseReviews_(c).forEach(function (x) { out.push(x); }); });
   return out;
 }
 // ── 바뀐 것 찾기(GAS, 0원) — 검토서를 마지막으로 고친 뒤로
@@ -549,8 +534,7 @@ function nrTick_(h, opt) {
   const lastUse = Number(props.getProperty(NR_USE_PROP_) || 0);
   if (!opt.force && lastUse && Date.now() - lastUse < NR_IDLE_MIN_ * 60000) { st.waits = (st.waits || 0) + 1; st.lastWait = caseProcNow_(); save(); return st; }
   if (!st.queue) {
-    const map = {}; awCases_().forEach(function (c) { if (c && c.id) map[c.id] = c; });
-    const by = {}; nrList_().forEach(function (x) { const c = x && map[x.caseId]; if (c && String(c.상태 || '') === '진행' && !awVirtual_(c)) (by[x.caseId] = by[x.caseId] || []).push(x.fileId); });
+    const by = {}; nrTargets_().forEach(function (x) { (by[x.caseId] = by[x.caseId] || []).push(x.fileId); });
     st.queue = Object.keys(by).map(function (k) { return { caseId: k, fileIds: by[k] }; });
     save();
   }
@@ -573,15 +557,14 @@ function nrReport_(st) {
   if (saved.length || errs.length || left) awNoticeAdd_('밤 검토서 갱신', '고친 사건 ' + saved.length + '건' + (errs.length ? ' · 멈춤 ' + errs.length + '건(' + errs.map(function (d) { return d.name; }).join(', ').slice(0, 80) + ')' : '') + (left ? ' · 못 본 사건 ' + left + '건(05시 넘음)' : '') + ' · 넥스 비용 ' + won + '원', '', 'nr:' + st.date, true);
 }
 function nrEnsureTrigger_() {
+  try { PropertiesService.getScriptProperties().deleteProperty('nr_review_list'); } catch (e) {} // [2026.11.14] 걷어 낸 목록 장부 흔적
   try { const has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'nrNightTick'; }); if (!has) ScriptApp.newTrigger('nrNightTick').timeBased().everyMinutes(30).create(); return true; } catch (e) { return false; }
 }
-// 설정 › 시스템 관리 카드 — 목록·고를 수 있는 검토서·지난 밤 결과
+// 설정 › 시스템 관리 카드 — 밤 갱신 대상(진행 실사건의 내부 검토서)·지난 밤 결과
 function nrStatus_() {
-  const cases = awCases_(), map = {}; cases.forEach(function (c) { if (c && c.id) map[c.id] = c; });
-  const list = nrList_().map(function (x) { const c = map[x.caseId]; const sv = caseProcLoad_(x.caseId) || {}; const nr = (sv.nightReview && sv.nightReview[x.fileId]) || null; return { caseId: x.caseId, case: c ? String(c.사건명 || c.고객명 || '') : '(사건 없음)', 상태: c ? String(c.상태 || '') : '', fileId: x.fileId, name: x.name, at: x.at, by: x.by, last: nr }; });
-  const on = {}; list.forEach(function (x) { on[x.fileId] = 1; });
+  const list = nrTargets_().map(function (x) { const sv = caseProcLoad_(x.caseId) || {}; x.last = (sv.nightReview && sv.nightReview[x.fileId]) || null; return x; });
   let st = null; try { st = JSON.parse(PropertiesService.getScriptProperties().getProperty(NR_STATE_PROP_) || 'null'); } catch (e) { st = null; }
   const lastUse = Number(PropertiesService.getScriptProperties().getProperty(NR_USE_PROP_) || 0);
   let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'nrNightTick'; }); } catch (e) { trig = false; }
-  return { ok: true, list: list, candidates: nrCandidates_(cases).filter(function (x) { return !on[x.fileId]; }), state: st, lastUse: lastUse ? Utilities.formatDate(new Date(lastUse), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '', trigger: trig };
+  return { ok: true, list: list, state: st, lastUse: lastUse ? Utilities.formatDate(new Date(lastUse), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '', trigger: trig };
 }
