@@ -67,7 +67,8 @@
     </div>
     <div class="nxai-attachbar" id="nxAiAttachBar"></div>
     <div class="nxai-input-row">
-      <textarea id="nxAiInput" rows="1" placeholder="메시지 입력" title="Enter 전송 · Shift+Enter 줄바꿈 · 이미지 붙여넣기 가능"></textarea>
+      <div class="nxai-cmdpop" id="nxAiCmdPop" hidden role="listbox" aria-label="명령 목록"></div>
+      <textarea id="nxAiInput" rows="1" placeholder="메시지 입력 · / 명령" title="Enter 전송 · Shift+Enter 줄바꿈 · 이미지 붙여넣기 가능 · 「/」를 치면 명령 목록"></textarea>
       <button type="button" id="nxAiSend" class="nxai-send" title="보내기">➤</button>
     </div>
     <div class="nxai-tools">
@@ -336,7 +337,23 @@
   .nxai-chip{ display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; border-radius:999px; background:rgba(127,127,127,.15); max-width:220px; }
   .nxai-chip span.n{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nxai-chip .x{ cursor:pointer; opacity:.7; }
-  .nxai-input-row{ display:flex; gap:6px; align-items:flex-end; padding:8px 10px 4px; flex-shrink:0; }
+  .nxai-input-row{ display:flex; gap:6px; align-items:flex-end; padding:8px 10px 4px; flex-shrink:0; position:relative; }
+  /* [2026.11.15] 넥스 대화창 명령 — 입력칸에 「/」를 치면 바로 위에 뜨는 명령 목록 */
+  .nxai-cmdpop{ position:absolute; left:10px; right:10px; bottom:100%; margin-bottom:2px; max-height:min(45vh, 340px); overflow-y:auto; background:#fff; border:1px solid var(--line); border-radius:9px; box-shadow:0 -4px 16px rgba(13,27,61,.14); z-index:30; padding:4px; font-size:13px; }
+  .nxai-cmdpop[hidden]{ display:none; }
+  .nxai-cmdpop .hd{ font-size:11.5px; color:#6b7385; padding:3px 8px 4px; }
+  .nxai-cmdpop .it{ display:flex; gap:8px; align-items:baseline; padding:6px 8px; border-radius:6px; cursor:pointer; }
+  .nxai-cmdpop .it.on, .nxai-cmdpop .it:hover{ background:#fbf3df; }
+  .nxai-cmdpop .it b{ white-space:nowrap; color:var(--navy); }
+  .nxai-cmdpop .it span{ color:#5b6575; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+  .nxai-cmdpop .it i{ font-style:normal; font-size:11px; white-space:nowrap; color:#1d7a3a; }
+  .nxai-cmdpop .it i.nex{ color:#9a6b00; }
+  html.nx-dark .nxai-cmdpop{ background:#1c2433; border-color:#2e384c; }
+  html.nx-dark .nxai-cmdpop .it.on, html.nx-dark .nxai-cmdpop .it:hover{ background:#2a2618; }
+  html.nx-dark .nxai-cmdpop .it b{ color:#e3e8f0; } html.nx-dark .nxai-cmdpop .it span, html.nx-dark .nxai-cmdpop .hd{ color:#a3acbb; }
+  .nxai-cmdnote{ margin-top:4px; font-size:11.5px; color:#6b7385; }
+  .nxai-cmdnote summary{ cursor:pointer; }
+  .nxai-cmdnote div{ white-space:pre-wrap; margin-top:3px; }
   .nxai-input-row textarea{ flex:1; resize:none; border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:var(--nxai-font); max-height:160px; line-height:1.5; min-width:0; }
   .nxai-input-row textarea:focus{ outline:none; border-color:var(--gold); }
   .nxai-send{ flex-shrink:0; border:none; border-radius:9px; background:var(--gold); color:var(--navy); width:38px; height:38px; font-size:15px; cursor:pointer; }
@@ -1758,7 +1775,7 @@
   // ============================================================
   var NXAI_VIEW_LABELS_ = { dashboard: '오늘', booking: '예약·상담', workmanage: '사건 목록', clientmanage: '고객', collections: '수금',
     casehandling: '개요', ledger: '사실(장부)', lawsearch: '법령·서식', docs: '서류', taxcalc: '계산', print: '세액인쇄', taxplan: '절세', reportwriter: '보고서',
-    reports: '고객 열람', 'memo-text': '메모', 'memo-hand': '메모(손글씨)', reporthub: '보고서들', settings: '설정', manual: '매뉴얼' };
+    reports: '고객 열람', 'memo-text': '메모', 'memo-hand': '메모(손글씨)', reporthub: '보고서들', settings: '설정', manual: '매뉴얼', taxgap: '건전세정' };
   // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
   function nxAiOpenJobView_(view, caseId, clientId, then, taxTab){
     var side = nxAiEl_('sideAI');
@@ -2437,7 +2454,11 @@
     [/세액\s*인쇄|인쇄\s*서식|전자\s*신고\s*파일/, 'print'], [/세액\s*계산/, 'taxcalc'], [/문서\s*작성/, 'reportwriter'],
     [/작업\s*관리/, 'workmanage'], [/고객\s*관리/, 'clientmanage'], [/예약\s*관리/, 'booking'], [/수금\s*관리/, 'collections'],
     [/대시\s*보드/, 'dashboard'], [/열람\s*관리/, 'reports'], [/일반\s*메모|^메모\s*(장|화면|창)?\s*(열어|열기|보여|띄워|가자|가\s*줘|이동|켜)/, 'memo-text'], [/필기\s*메모/, 'memo-hand'], [/보고서\s*모음/, 'reporthub'],
-    [/^설정\s*(화면|창)?\s*(열어|열기|보여|띄워|가자|가\s*줘|이동|켜)/, 'settings'], [/사용자\s*메뉴얼|사용\s*설명서|매뉴얼|메뉴얼/, 'manual']
+    [/^설정\s*(화면|창)?\s*(열어|열기|보여|띄워|가자|가\s*줘|이동|켜)/, 'settings'], [/사용자\s*메뉴얼|사용\s*설명서|매뉴얼|메뉴얼/, 'manual'],
+    // [2026.11.15 명령 계획서 2절] 지금 메뉴 이름으로도 — 옛 이름(작업 관리·고객 관리·대시보드…)만 알아들어 "사건 목록 열어"가 넥스로 갔다
+    [/사건\s*목록/, 'workmanage'], [/^고객\s*(화면|목록|창)?\s*(열어|열기|보여|띄워|가자|가\s*줘|이동|켜)/, 'clientmanage'], [/예약\s*[·.]?\s*상담|예약\s*(화면|창)/, 'booking'],
+    [/오늘\s*(화면|탭|창)/, 'dashboard'], [/고객\s*열람/, 'reports'], [/보고서들/, 'reporthub'], [/사실\s*\(?\s*장부|장부\s*(화면|탭|창)/, 'ledger'],
+    [/절세\s*(화면|탭|창|플랜)/, 'taxplan'], [/건전\s*세정/, 'taxgap'], [/법령\s*[·.]?\s*서식/, 'lawsearch'], [/사건\s*작업|개요\s*(화면|탭|창)/, 'casehandling']
   ];
   var NXAI_LOCAL_OPEN_RE_ = /(열어|열기|보여|띄워|가자|가\s*줘|이동|켜\s*줘|들어가)/;
   var NXAI_LOCAL_JUDGE_RE_ = /(왜|어떻게|어떤|검토|분석|판단|의견|전략|가능(한|할|해|성)|될까|되나|맞나|맞는지|해석|비교|추천|설명|이유|위험|요약|정리해|작성해|써\s*줘|만들어|고쳐|수정해|얼마|세액은|절세|신고\s*해야)/;
@@ -2482,7 +2503,8 @@
   // 문장 속 사건 찾기 — 사건명·고객명·납세자명이 들어 있는 사건. 세목 단어가 있으면 그것으로 좁히고,
   // 진행 중인 사건을 우선한다. 결과: { list: [후보…] } (0개면 못 찾음, 2개 이상이면 고르게 함)
   var NXAI_TAX_WORD_ = { 양도: 'transfer', 증여: 'gift', 상속: 'inheritance' };
-  function nxAiFindCases_(text){
+  function nxAiFindCases_(text){ return nxAiFindCasesTop_(text); }
+  function nxAiFindCasesTop_(text){
     return callGas('work_get_cases', {}).then(function(res){
       if (!res || !Array.isArray(res.cases)) throw new Error('사건 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
       var t = nxAiNorm_(text);
@@ -2546,6 +2568,8 @@
   // 실행 — 성공하면 { md: 화면에 보일 내용, note: 대화기록에 남길 한 줄, choices: [{label, run}] }, 못 하면 null(→ AI로)
   function nxAiRunLocal_(intent, text){
     var VIEW_LABEL = function(v){ return NXAI_VIEW_LABELS_[v] || v; };
+    // [2026.11.15 명령] 명령이 사건을 이미 정해 왔으면(사건 대화·목록에서 고름) 문장에서 다시 찾지 않는다
+    var nxAiFindCases_ = function(t){ return intent.caseObj ? Promise.resolve({ list: [intent.caseObj] }) : nxAiFindCasesTop_(t); };
     var pickCase = function(found, onOne, what){
       if (found.list.length === 1) return onOne(found.list[0]);
       if (!found.list.length) return null;
@@ -2553,7 +2577,7 @@
         choices: found.list.slice(0, 8).map(function(c){ return { label: (c.사건명 || c.고객명) + (c.상태 === '완료' ? ' (완료)' : ''), run: function(){ return onOne(c); } }; }) };
     };
     if (intent.kind === 'open'){
-      var needsCase = ['casehandling', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter', 'workmanage'].indexOf(intent.view) !== -1;
+      var needsCase = ['casehandling', 'ledger', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter', 'workmanage'].indexOf(intent.view) !== -1;
       if (!needsCase){ nxAiOpenJobView_(intent.view); return Promise.resolve({ md: VIEW_LABEL(intent.view) + ' 화면을 열었습니다.', note: '[⚡바로 처리] ' + VIEW_LABEL(intent.view) + ' 화면 열기' }); }
       return nxAiFindCases_(text).then(function(found){
         if (!found.list.length){ nxAiOpenJobView_(intent.view); return { md: VIEW_LABEL(intent.view) + ' 화면을 열었습니다(문장에서 사건을 찾지 못해 사건은 화면에서 골라 주세요).', note: '[⚡바로 처리] ' + VIEW_LABEL(intent.view) + ' 열기' }; }
@@ -2697,12 +2721,60 @@
           note: '[⚡바로 처리] 마감 임박 ' + due.length + '건(기한 지남 ' + over.length + '건)' };
       });
     }
+    // [2026.11.15 명령] 새 0원 일 네 가지 — 넥스 대화 기록(11월)에서 넥스(유료)가 답하던 저장·폴더·장부 확인과 사건 바꾸기
+    if (intent.kind === 'savecheck' || intent.kind === 'folder' || intent.kind === 'ledgerOpen'){
+      var what = { savecheck: '저장 확인', folder: '폴더 연결', ledgerOpen: '확인할 것' }[intent.kind];
+      return nxAiFindCases_(text).then(function(found){
+        if (!found.list.length) return null;
+        return pickCase(found, function(k){
+          var nm = k.사건명 || k.고객명 || '';
+          if (intent.kind === 'savecheck') return callGas('nx_cmd_save_check', { caseId: k.id }).then(function(r){
+            if (!r || r.success === false) throw new Error((r && (r.message || r.error)) || '저장 확인을 받지 못했습니다.');
+            if (!r.linked) return { md: '**' + nm + '** — 사건 폴더가 연결되어 있지 않아 저장된 파일을 볼 수 없습니다.', note: '[⚡명령] ' + nm + ' 저장 확인 — 폴더 없음', choices: [{ label: '폴더 연결 확인', run: function(){ return nxAiRunLocal_({ kind: 'folder', caseObj: k }, nm); } }] };
+            var md = '**' + nm + '** — 최근 고친 문서 ' + r.files.length + '개' + (r.total ? '(폴더 안 파일 ' + r.total + '개 중)' : '') + '\n\n'
+              + nxAiMdTable_(['고친 때', '파일', '자리'], r.files.map(function(f){ return [f.at, f.name, f.where]; }))
+              + (r.dups && r.dups.length ? '\n\n**같은 이름 파일 ' + r.dups.length + '가지** — 하나만 남길지 확인해 주세요\n' + r.dups.map(function(d){ return '- ' + d.name + ' — ' + d.곳.join(' / '); }).join('\n') : '\n\n같은 이름으로 두 번 저장된 파일은 없습니다.');
+            return { md: md, note: '[⚡명령] ' + nm + ' 저장 확인 — 최근 ' + r.files.length + '개, 같은 이름 ' + ((r.dups || []).length) + '가지',
+              choices: [{ label: '서류 화면에서 열기', run: function(){ nxAiOpenJobView_('docs', k.id); return null; } },
+                { label: '넥스에게 다시 저장시키기', run: function(){ if (!nxAiAbort) nxAiSendAI_('방금 쓴 문서가 저장되지 않았다. 다시 저장하고, 저장된 파일 이름과 자리를 알려 달라.', { noGem: true }); return null; } }] };
+          });
+          if (intent.kind === 'folder') return callGas('nx_cmd_folder_check', { caseId: k.id }).then(function(r){
+            if (!r || r.success === false) throw new Error((r && (r.message || r.error)) || '폴더 연결을 확인하지 못했습니다.');
+            var fix = { label: '폴더 만들기·다시 잇기', run: function(){ return callGas('ensure_case_folder', { id: k.id }).then(function(x){ if (x && x.success === false) throw new Error(x.message || '폴더를 잇지 못했습니다.'); nxAiCaseCache = null; return nxAiRunLocal_({ kind: 'folder', caseObj: Object.assign({}, k, { 폴더ID: (x && (x.folderId || x.폴더ID)) || k.폴더ID }) }, nm); }); } };
+            if (!r.linked) return { md: '**' + nm + '** — 사건 폴더가 **연결되어 있지 않습니다.** 아래 단추로 만들거나 다시 이을 수 있습니다.', note: '[⚡명령] ' + nm + ' 폴더 없음', choices: [fix] };
+            // 사건 줄에 적힌 폴더가 지워졌거나 휴지통이면 「만들기·잇기」는 그 번호를 그대로 둔다(work_ensureCaseFolder) — 사건 목록에서 폴더를 다시 정하시게
+            if (r.broken || r.trashed) return { md: '**' + nm + '** — 사건 줄에 폴더가 적혀 있지만 **열리지 않습니다**' + (r.trashed ? '(휴지통에 있음)' : '') + (r.message ? ' — ' + r.message : '') + '. 사건 목록에서 이 사건의 폴더를 다시 정해 주세요.', note: '[⚡명령] ' + nm + ' 폴더 열리지 않음', choices: [{ label: '사건 목록에서 열기', run: function(){ nxAiOpenJobView_('workmanage', k.id); return null; } }] };
+            return { md: '**' + nm + '** — 사건 폴더가 정상으로 연결되어 있습니다.\n\n' + nxAiMdTable_(['항목', '내용'], [['폴더', r.name], ['파일', r.files + '개'], ['하위 폴더', r.folders + '개' + (r.subs && r.subs.length ? ' (' + r.subs.join(', ') + ')' : '')]])
+              + (nxAiConv.caseId === k.id ? '' : '\n\n지금 대화는 이 사건에 연결되어 있지 않습니다 — 오른쪽 사건 자료가 다른 사건이면 「이 사건 대화로」를 눌러 주세요.'),
+              note: '[⚡명령] ' + nm + ' 폴더 정상 — 파일 ' + r.files + '개',
+              choices: [{ label: '서류 화면에서 열기', run: function(){ nxAiOpenJobView_('docs', k.id); return null; } }].concat(nxAiConv.caseId === k.id ? [] : [{ label: '이 사건 대화로', run: function(){ return nxAiSwitchToCase_(k).then(function(m){ if (m) nxAiToast_(m); return null; }); } }]) };
+          });
+          return callGas('case_proc', { caseId: k.id, step: 'ledger' }).then(function(r){
+            if (!r || r.ok === false || r.error) throw new Error((r && (r.error || r.message)) || '장부를 받지 못했습니다.');
+            var by = r.상태별 || {};
+            var line = function(x){ return '- ' + (x.label || x.path) + (x.값 || x.v ? ' — ' + String(x.값 || x.v).slice(0, 60) : '') + (x.ask ? ' · ' + String(x.ask).slice(0, 80) : ''); };
+            var sec = function(title, arr){ arr = arr || []; return '**' + title + ' ' + arr.length + '**' + (arr.length ? '\n' + arr.slice(0, 15).map(line).join('\n') + (arr.length > 15 ? '\n- …외 ' + (arr.length - 15) + '개(장부에서)' : '') : ''); };
+            var md = '**' + nm + '** 장부에서\n\n' + sec('물어볼 것', by['물어볼것']) + '\n\n' + sec('받을 증빙', by['증빙받을것']) + '\n\n' + sec('잠정(추정) 값', by['추정']);
+            return { md: md, note: '[⚡명령] ' + nm + ' 확인할 것 — 물어볼 것 ' + (by['물어볼것'] || []).length + ', 받을 증빙 ' + (by['증빙받을것'] || []).length + ', 잠정 ' + (by['추정'] || []).length,
+              choices: [{ label: '장부 열기', run: function(){ nxAiOpenJobView_('ledger', k.id); return null; } }] };
+          });
+        }, what);
+      });
+    }
+    if (intent.kind === 'switch'){
+      return nxAiFindCases_(text).then(function(found){
+        if (!found.list.length) return null;
+        return pickCase(found, function(k){
+          return nxAiSwitchToCase_(k).then(function(m){ return { md: m || ('이미 **' + (k.사건명 || k.고객명) + '** 사건 대화입니다.'), note: '[⚡명령] 사건 대화로 — ' + (k.사건명 || '') }; });
+        }, '사건 대화로');
+      });
+    }
     return Promise.resolve(null);
   }
 
   // 바로 처리 결과를 말풍선에 그린다(⚡ 표시 + 후보 고르기 버튼 + AI에게 묻기 버튼).
   function nxAiRenderLocal_(bubble, res, text){
-    bubble.innerHTML = '<div class="nxai-local-badge">⚡ 바로 처리 · AI 미사용(토큰 0)</div><div class="nxai-md">' + nxAiMd_(res.md) + '</div>';
+    bubble.innerHTML = '<div class="nxai-local-badge">' + nxAiEsc_(res.badge || bubble._nxBadge || '⚡ 바로 처리 · AI 미사용(토큰 0)') + '</div><div class="nxai-md">' + nxAiMd_(res.md) + '</div>';
     var links = document.createElement('div');
     links.className = 'nxai-links';
     (res.choices || []).forEach(function(ch){
@@ -2726,6 +2798,365 @@
       var body = String(res.md || '');
       bubble._nxMsgRef.content = (res.note || '[⚡바로 처리]') + '\n' + (body.length > 3000 ? body.slice(0, 3000) + '\n…(이하 생략)' : body);
     }
+  }
+
+  // ============================================================
+  // [2026.11.15] 넥스 대화창 명령 — 슬래시 명령(/수금)·약속어(「명령 수금」)·바로 처리 말 표현(「수금 해라」)이 함께 보는 명령표 한 장
+  //  세무사님(11-14·15): "슬래시 명령기능을 이용하자" / "토킹에서는 사용할 수 없으니 바로처리 명령도 필요해 보인다" /
+  //  "추가삭제는 일단 설정탭에 만들어라" / "아하 2가지 방법을 모두 사용한다?" / "해라, 하라, 해줘 등등 모두 마찬가지로 취급해야" / "이렇게 구현해 보자"
+  //  계획서 docs/_기록/슬래시명령_계획서_20261114.html. 기본 명령은 아래 표(Claude가 고침), 세무사님이 설정에서 고친 칸·새 명령·약속어는
+  //  서버 파일(_AI대화기록\_넥스명령표.json — 서버 nxcmd_*). GAS 명령(0원)은 지금 바로 처리 처리기(nxAiRunLocal_)가 그대로 하고,
+  //  넥스 명령은 순서 글(문맥 cmdHint — 서버가 넥스 지시문에 붙임)을 붙여 같은 넥스에게 보낸다. 새 처리 길은 만들지 않는다.
+  // ============================================================
+  //  run: GAS 명령은 바로 처리 일 종류(nxAiRunLocal_ intent.kind), 넥스 명령은 'nex', 대화창 일은 'help'·'nexdirect'·'registry'·'proc'
+  //  need: 'case'(사건) · 'client'(고객 이름 — 사건 대화면 그 사건 고객) · 'view'(화면) · ''(없음)
+  var NXAI_CMD_BASE_ = [
+    { id: 'help', name: '도움', alias: ['명령', '목록'], says: ['명령 목록', '명령 도움', '뭐 시킬 수 있'], kind: 'ui', run: 'help', need: '', desc: '명령 목록과 쓰는 법' },
+    { id: 'savecheck', name: '저장확인', alias: ['저장'], says: ['저장 확인', '저장됐나', '저장 됐나', '저장되었는지', '저장되지 않았', '저장이 안 됐', '저장이 안됐', '파일이 두 개', '파일이 두개', '열리지 않는다', '열리지 않아'], kind: 'gas', run: 'savecheck', need: 'case', desc: '사건 폴더에서 최근 고친 문서·같은 이름 두 번 저장된 파일' },
+    { id: 'folder', name: '폴더', alias: ['폴더연결'], says: ['폴더 연결', '폴더가 연결', '폴더가 왜', '사건자료가 안', '사건 자료가 안', '자료가 뜨지 않'], kind: 'gas', run: 'folder', need: 'case', desc: '사건 폴더 연결 상태 — 끊겼으면 다시 잇기' },
+    { id: 'todo', name: '확인할것', alias: ['확인', '장부현황'], says: ['확인할 것', '확인이 필요한', '확인할 사항', '받을 증빙', '확보할 증빙', '장부 현황'], kind: 'gas', run: 'ledgerOpen', need: 'case', desc: '장부의 물어볼 것·받을 증빙·잠정 값' },
+    { id: 'case', name: '사건', alias: ['사건대화'], says: ['사건으로 바꿔', '사건으로 옮겨', '사건 대화로'], kind: 'gas', run: 'switch', need: 'case', desc: '그 사건 대화로 옮기기' },
+    { id: 'open', name: '열기', alias: ['화면'], says: [], kind: 'gas', run: 'open', need: 'view', desc: 'job 화면 열기(사건 목록·장부·계산·세액인쇄·절세·보고서 …)' },
+    { id: 'today', name: '오늘', alias: [], says: ['오늘 할 일', '오늘 예약', '오늘 마감', '오늘 업무'], kind: 'gas', run: 'today', need: '', desc: '오늘 할 일·예약·마감' },
+    { id: 'bookings', name: '예약', alias: [], says: ['예약 보여', '예약 목록', '예약 현황', '예약 대기'], kind: 'gas', run: 'bookings', need: '', desc: '예약 목록(승인 대기·앞으로 확정)' },
+    { id: 'logs', name: '수금', alias: ['입금', '상담기록'], says: ['수금 내역', '수금 기록', '입금 내역', '상담 기록'], kind: 'gas', run: 'logs', need: 'client', desc: '고객 수금·상담 기록과 합계' },
+    { id: 'checklist', name: '체크리스트', alias: ['제출현황', '증빙현황'], says: ['제출 현황', '증빙 현황'], kind: 'gas', run: 'checklist', need: 'case', desc: '고객 창구 증빙 제출 현황' },
+    { id: 'contact', name: '연락처', alias: ['전화번호', '고객정보'], says: ['연락처', '전화번호', '휴대폰 번호', '고객 정보'], kind: 'gas', run: 'client_info', need: 'client', desc: '고객 연락처·주소·관련 사건' },
+    { id: 'status', name: '상태', alias: ['진행상황'], says: ['진행 상황', '진행 상태', '사건 상태'], kind: 'gas', run: 'case_status', need: 'case', desc: '사건 진행 상태·최근 작업일지' },
+    { id: 'deadline', name: '마감', alias: ['기한'], says: ['마감 임박', '기한 지난', '마감 보여'], kind: 'gas', run: 'deadlines', need: '', desc: '마감 임박·기한 지난 사건' },
+    { id: 'active', name: '진행', alias: ['진행사건'], says: ['진행 중 사건', '진행중 사건'], kind: 'gas', run: 'active', need: '', desc: '진행 중 사건 목록' },
+    { id: 'autocalc', name: '자동계산', alias: [], says: ['자동계산', '자동 계산'], kind: 'gas', run: 'autocalc', need: 'case', desc: '계산기 자동계산 시작(증빙 읽기 → 칸 채우기 → 계산)' },
+    { id: 'registry', name: '서류정리', alias: [], says: [], kind: 'gas', run: 'registry', need: '', desc: '첨부한 등기부·통장 등을 무료 글자 읽기·규칙으로 정리' },
+    { id: 'proc', name: '처리', alias: ['사건처리'], says: [], kind: 'nex', run: 'proc', need: 'case', desc: '「이 사건 처리하자」 — 도구로 단계별 점검, 판단할 자리만 넥스' },
+    { id: 'review', name: '검토서', alias: ['검토'], says: ['검토서 작성', '검토서를 작성', '검토서 수정', '검토서를 수정', '검토서 업데이트', '검토서를 업데이트', '검토서 최종', '검토서에 반영', '검토메모를 업데이트', '검토메모 업데이트'], kind: 'nex', run: 'nex', need: 'case', desc: '내부 검토서 쓰기·고치기',
+      steps: '① 이 사건 「보고서」 폴더에 같은 종류의 내부 검토서(종합검토서·개별검토서·검토메모)가 있으면 새로 만들지 말고 그 파일을 고친다 — 없을 때만 업무관리지침 5절의 정식 이름으로 새로 만든다. ② 세무사님이 직접 고친 문단은 그대로 둔다. ③ 세액은 계산기 저장본을 인용한다(암산 금지 — 저장본이 없으면 계산기를 돌려 저장한 뒤 인용). ④ 확인 안 된 값은 근거와 산식을 밝힌 잠정치로 쓰고 「추가로 확인할 사항」에 둔다(세무사님이 가정하라고 하신 것은 가정으로 확정하고 다시 묻지 않는다). ⑤ 저장한 뒤 파일 이름과 고친 곳만 채팅에 짧게.' },
+    { id: 'report', name: '보고서', alias: ['외부보고서'], says: ['고객에게 제공할 보고서', '고객용 보고서', '보고서를 작성', '보고서 작성', '보고서를 수정', '보고서 수정'], kind: 'nex', run: 'nex', need: 'case', desc: '고객에게 드릴 외부 보고서 쓰기·고치기',
+      steps: '① 이 사건 내부 검토서(최종본)를 근거로 고객에게 드릴 외부 보고서를 정식 이름(외부보고서_○○)으로 「보고서」 폴더에 쓴다 — 이미 있으면 그 파일을 고친다. ② 내부 판단·반대 근거(반대 예규 등)·검토 과정은 넣지 않고 결론·근거 조문·권고·고객이 할 일만. ③ 세액은 계산기 저장본 숫자 그대로. ④ 저장한 뒤 파일 이름만 채팅에.' },
+    { id: 'filing', name: '조서', alias: ['검토조서'], says: ['제출할 조서', '조서를 작성', '조서 작성', '검토조서 작성', '검토조서를 작성'], kind: 'nex', run: 'nex', need: 'case', desc: '세무서 신고에 첨부할 검토조서',
+      steps: '① 세무서 신고에 첨부할 검토조서를 업무관리지침의 검토조서 양식대로 개조식으로 쓴다(사실·적용 조문·계산 근거만, 내부 쟁점 서술·반대 근거 없이). ② 세액은 계산기 저장본. ③ 이미 있으면 그 파일을 고치고, 없으면 정식 이름으로 「보고서」 폴더에 저장. ④ 채팅에는 파일 이름만.' },
+    { id: 'calc', name: '계산', alias: ['세액계산'], says: ['계산기 돌려', '계산기로 돌려', '계산기를 돌려', '세액계산 돌려', '세액계산기 돌려', '세액계산기를 돌려'], kind: 'nex', run: 'nex', need: 'case', desc: '지금 장부로 계산기를 돌려 경우별 저장',
+      steps: '① 지금 장부(확정·잠정·세무사님 가정)로 계산기를 돌려 저장한다 — 암산 금지. ② 세무사님이 말씀하신 조건(경우·안)이 있으면 안마다 따로 돌려 각각 저장하고, 기본값(세무사님 값)은 덮지 않는다. ③ 잠정으로 넣은 값과 근거를 함께 보이고 받을 증빙을 장부에 남긴다. ④ 채팅에는 안별 최종세액 표만.' },
+    { id: 'advice', name: '자문', alias: ['종합자문'], says: ['종합자문으로', '종합자문을'], kind: 'nex', run: 'nex', need: 'case', desc: '종합자문 순서로 쟁점 지도·여쭐 것·받을 서류·가정 계산',
+      steps: 'load_business_manager로 넥스_일하는법_종합자문을 먼저 읽고 그 순서(문의 쪼개기 → 갈림길 판정 → 사실 지도 → 문의 사이 연결 → 경우(안) → 권고)대로 한다. 의뢰 글뿐이면 쟁점 지도·여쭐 것·받을 서류·가정 계산까지 채운다.' },
+    { id: 'compare', name: '비교', alias: ['견주기'], says: ['세목 비교', '안별로 비교', '안별 비교', '안별로 견줘'], kind: 'nex', run: 'nex', need: 'case', desc: '세목·안별로 계산기를 돌려 저장하고 견주기',
+      steps: '견줄 안을 정한다(세목 비교면 양도·증여·상속, 아니면 세무사님이 말씀하신 A·B·C안). 안마다 계산기를 돌려 각각 저장한 뒤 총부담(관련 세목·지방소득세·취득세 포함)을 표로 견준다. 기본값은 덮지 않는다. 결론과 차이 금액만 채팅에, 자세한 것은 검토서에.' },
+    { id: 'cont', name: '이어서', alias: ['계속'], says: ['이어서 말해', '이어서 해', '이어서 작성', '계속 작성', '작성하던 보고서 계속', '작성하던 검토서 계속'], kind: 'nex', run: 'nex', need: '', desc: '끊긴 답·쓰던 파일 이어 쓰기',
+      steps: '바로 앞 네 답이나 쓰던 파일이 끊겼다. 앞 답의 끝에서 이어 마저 쓴다(처음부터 다시 쓰지 않는다). 파일이면 그 파일에 이어 저장한다.' },
+    { id: 'nex', name: '넥스', alias: [], says: [], kind: 'nex', run: 'nexdirect', need: '', desc: '바로 처리 짐작 없이 뒤의 말을 그대로 넥스에게' }
+  ];
+  var NXAI_CMD_KIND_ID_ = { open: 'open', today: 'today', bookings: 'bookings', logs: 'logs', checklist: 'checklist', client_info: 'contact', case_status: 'status', deadlines: 'deadline', active: 'active', autocalc: 'autocalc', caseproc: 'proc' };
+  var NXAI_CMD_PREFIX_DEFAULT_ = ['명령', '명령어'];
+  // 음성 인식이 「명령」을 잘못 적는 꼴 — 약속어가 「명령」일 때만 함께 받는다
+  var NXAI_CMD_PREFIX_HEARD_ = { '명령': ['명녕', '멍령', '명영', '명령요'] };
+  // 「○○ 해라」의 끝말 — 세무사님(11-15) "해라, 하라, 해줘 등등 모두 마찬가지로 취급해야" (띄어쓰기 없이 견줌, 긴 것부터)
+  var NXAI_CMD_ENDINGS_ = ['해주십시오', '해주세요', '해주라', '해줘요', '해줘', '해라', '하라', '하자', '합시다', '해봐', '해보자', '하세요', '보여줘', '보여주라', '보여', '알려줘', '알려주라', '알려', '열어줘', '열어', '띄워줘', '띄워', '주세요', '줘', '해', '좀'];
+  var nxAiCmdUser_ = null;  // 서버에서 받은 세무사님 판(prefixes·overrides·custom·updatedAt)
+  var nxAiCmdLoading_ = null;
+  function nxAiCmdNorm_(s){ return String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase(); }
+  function nxAiCmdLoad_(force){
+    if (!force && nxAiCmdUser_) return Promise.resolve(nxAiCmdUser_);
+    if (!force){ try { var c = JSON.parse(localStorage.getItem('nxCmdTable_v1') || 'null'); if (c && !nxAiCmdUser_) nxAiCmdUser_ = c; } catch (e) {} }
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return Promise.resolve(nxAiCmdUser_); // 로그인 전에는 서버를 부르지 않는다(10-14 로그인 창 사고)
+    if (nxAiCmdLoading_) return nxAiCmdLoading_;
+    nxAiCmdLoading_ = callGas('nx_cmd_get', {}).then(function(r){
+      nxAiCmdLoading_ = null;
+      if (r && r.success){ nxAiCmdUser_ = r.data || { prefixes: null, overrides: {}, custom: [], updatedAt: '' }; nxAiCmdLoadErr_ = ''; try { localStorage.setItem('nxCmdTable_v1', JSON.stringify(nxAiCmdUser_)); } catch (e) {} }
+      else nxAiCmdLoadErr_ = (r && r.message) || '명령표를 읽지 못했습니다';
+      return nxAiCmdUser_;
+    }).catch(function(e){ nxAiCmdLoading_ = null; nxAiCmdLoadErr_ = (e && e.message) || String(e); return nxAiCmdUser_; });
+    return nxAiCmdLoading_;
+  }
+  var nxAiCmdLoadErr_ = '';
+  // 기본 명령 + 세무사님이 고친 칸 + 새로 만든 명령 → 지금 쓰는 표(끈 명령 포함, on으로 가림)
+  function nxAiCmdTable_(){
+    var u = nxAiCmdUser_ || {}, ov = u.overrides || {};
+    var base = NXAI_CMD_BASE_.map(function(b){
+      var o = ov[b.id] || {};
+      var c = Object.assign({}, b, { base: true, on: o.on !== false });
+      ['name', 'desc', 'steps'].forEach(function(k){ if (typeof o[k] === 'string' && o[k].trim()) c[k] = o[k].trim(); });
+      ['alias', 'says'].forEach(function(k){ if (Array.isArray(o[k])) c[k] = o[k].slice(); });
+      return c;
+    });
+    var custom = (Array.isArray(u.custom) ? u.custom : []).filter(function(x){ return x && x.id && x.name; }).map(function(x){
+      return { id: String(x.id), name: String(x.name), alias: Array.isArray(x.alias) ? x.alias : [], says: Array.isArray(x.says) ? x.says : [], kind: x.kind === 'gas' ? 'gas' : 'nex',
+        run: x.kind === 'gas' ? String(x.run || '') : 'nex', need: String(x.need || ''), desc: String(x.desc || ''), steps: String(x.steps || ''), view: x.view || '', base: false, on: x.on !== false };
+    });
+    return base.concat(custom);
+  }
+  function nxAiCmdOn_(){ return nxAiCmdTable_().filter(function(c){ return c.on; }); }
+  function nxAiCmdPrefixes_(){
+    var u = nxAiCmdUser_ || {};
+    var p = Array.isArray(u.prefixes) && u.prefixes.length ? u.prefixes : NXAI_CMD_PREFIX_DEFAULT_;
+    var all = [];
+    p.forEach(function(x){ x = nxAiCmdNorm_(x); if (x && all.indexOf(x) === -1) all.push(x); (NXAI_CMD_PREFIX_HEARD_[x] || []).forEach(function(h){ if (all.indexOf(h) === -1) all.push(h); }); });
+    return all.sort(function(a, b){ return b.length - a.length; }); // 「명령어」가 「명령」보다 먼저
+  }
+  function nxAiCmdById_(id){ return nxAiCmdTable_().filter(function(c){ return c.id === id; })[0] || null; }
+  function nxAiCmdFind_(word){
+    var w = nxAiCmdNorm_(word).replace(/^\//, '');
+    if (!w) return null;
+    var on = nxAiCmdOn_();
+    return on.filter(function(c){ return nxAiCmdNorm_(c.name) === w; })[0] || on.filter(function(c){ return (c.alias || []).some(function(a){ return nxAiCmdNorm_(a) === w; }); })[0] || null;
+  }
+  // 「/수금 홍길동」·「명령 수금 홍길동」 → { cmd, args, via, word } · 명령이 아니면 null · 약속어·/는 있는데 없는 이름이면 { cmd:null, word }
+  function nxAiCmdParse_(text){
+    var t = String(text || '').trim();
+    var via = '', rest = '';
+    if (/^\//.test(t)){ via = 'slash'; rest = t.slice(1).trim(); }
+    else {
+      var lead = t.replace(/^[\s,.]+/, '');
+      var pres = nxAiCmdPrefixes_();
+      for (var i = 0; i < pres.length; i++){
+        // 띄어쓰기는 무시하되 약속어 바로 뒤에 글이 붙은 평소 말(「명령을 내려」)은 빼려고, 약속어 뒤는 빈칸·쉼표·끝이어야 한다
+        var m = new RegExp('^' + pres[i].split('').join('\\s*') + '(?:[\\s,.:]+|$)').exec(lead);
+        if (m){ via = 'prefix'; rest = lead.slice(m[0].length).trim(); break; }
+      }
+      if (!via) return null;
+    }
+    if (!rest) return { cmd: nxAiCmdById_('help'), args: '', via: via, word: '' };
+    var on = nxAiCmdOn_(), nr = nxAiCmdNorm_(rest), best = null, bestLen = 0;
+    on.forEach(function(c){ [c.name].concat(c.alias || []).forEach(function(nm){ var n = nxAiCmdNorm_(nm); if (n && nr.indexOf(n) === 0 && n.length > bestLen){ best = c; bestLen = n.length; } }); });
+    if (!best) return { cmd: null, args: rest, via: via, word: rest.split(/\s+/)[0] };
+    // 이름 뒤 글 = 받는 값(띄어쓰기를 무시하고 이름 글자 수만큼 건너뜀) — 끝말(해라·해 줘…)은 떼어 낸다
+    var k = 0, cut = 0;
+    for (var j = 0; j < rest.length && k < bestLen; j++){ if (!/\s/.test(rest[j])) k++; cut = j + 1; }
+    return { cmd: best, args: nxAiCmdStripEnding_(rest.slice(cut)).trim(), via: via, word: rest.slice(0, cut) };
+  }
+  function nxAiCmdStripEnding_(s){
+    var t = String(s || '').replace(/[\s.!?~]+$/, '');
+    var n = t.replace(/\s+/g, '');
+    for (var i = 0; i < NXAI_CMD_ENDINGS_.length; i++){
+      var e = NXAI_CMD_ENDINGS_[i];
+      if (n.length > e.length - 1 && n.slice(-e.length) === e){
+        // 원문에서 끝말 글자 수만큼(빈칸 빼고) 뒤에서 잘라 낸다
+        var k = 0, j = t.length;
+        while (j > 0 && k < e.length){ j--; if (!/\s/.test(t[j])) k++; }
+        return t.slice(0, j);
+      }
+    }
+    return t;
+  }
+  // 바로 처리 짐작 — ① 「명령 이름 + 끝말」(저장확인 해라·수금 홍길동 보여 줘) ② 명령표의 말로 하는 표현.
+  //  GAS 명령은 지금 바로 처리와 같은 안전 규칙(60자 넘으면·판단 낱말이 있으면 짐작 안 함 — 맞춘 표현 안의 낱말은 빼고 봄),
+  //  넥스 명령은 어차피 넥스로 가므로 순서 글만 붙인다(계획서 ㉨).
+  function nxAiCmdGuess_(text){
+    var t = String(text || '').trim();
+    if (!t || /^\//.test(t)) return null;
+    var n = nxAiCmdNorm_(t).replace(/[.!?~]+$/, '');
+    var on = nxAiCmdOn_().filter(function(c){ return c.run !== 'help' && c.run !== 'nexdirect' && c.run !== 'registry' && c.run !== 'proc'; });
+    // 판단 낱말(지금 바로 처리 규칙) + 바꾸는 말 — 「연락처를 바꿔 줘」처럼 고치라는 말을 0원 조회가 가로채지 않게
+    var judge = function(s){ return NXAI_LOCAL_JUDGE_RE_.test(s) || /(바꿔|변경|수정|등록|추가|저장해|보내|문자|삭제|지워|넣어|입력|기록해|고쳐|반영)/.test(s); };
+    // ① 이름 + 끝말 — 다른 이름(별칭)은 빼고 이름만(「확인해 줘」가 /확인할것으로 가지 않게). 평소 말과 겹치는 이름(사건·진행·오늘·열기)도 뺀다(「진행해」는 긍정)
+    for (var i = 0; i < on.length; i++){
+      var c = on[i], names = ['case', 'active', 'today', 'open'].indexOf(c.id) !== -1 ? [] : [c.name];
+      for (var j = 0; j < names.length; j++){
+        var nm = nxAiCmdNorm_(names[j]);
+        if (!nm || n.indexOf(nm) !== 0) continue;
+        var tail = n.slice(nm.length), hasEnd = false;
+        for (var e = 0; e < NXAI_CMD_ENDINGS_.length; e++){ if (tail.slice(-NXAI_CMD_ENDINGS_[e].length) === NXAI_CMD_ENDINGS_[e]){ hasEnd = true; tail = tail.slice(0, -NXAI_CMD_ENDINGS_[e].length); break; } }
+        if (!hasEnd && tail) continue;
+        if (tail.length > 20) continue;
+        if (c.kind === 'gas' && (t.length > 60 || judge(tail))) continue;
+        return { cmd: c, args: nxAiCmdParse_('/' + t).args || '', via: 'guess' };
+      }
+    }
+    // ② 말로 하는 표현 — 가장 긴 표현이 맞은 명령
+    var best = null, bestLen = 0, bestSay = '';
+    on.forEach(function(c){ (c.says || []).forEach(function(s){ var ns = nxAiCmdNorm_(s); if (ns && ns.length > bestLen && n.indexOf(ns) !== -1){ best = c; bestLen = ns.length; bestSay = ns; } }); });
+    if (!best) return null;
+    if (best.kind === 'gas'){
+      if (t.length > 60) return null;
+      if (judge(n.replace(bestSay, ''))) return null;
+    }
+    return { cmd: best, args: t, via: 'guess' };
+  }
+  // 넥스가 바로 앞에 묻거나 제안했고 세무사님이 짧게 「ㅇ·ㅇㅋ·네·진행」 — 세무사님(10-29) "한글로 ㅇ이나 영어의 o이나 모두 동그라미이면 앞으로 긍정으로 받아들여라"
+  var NXAI_CMD_AFF_RE_ = /^(ㅇ+|ㅇㅋ|ㅇㅇ|o|ok|okay|오케이|네|넵|넹|예|응|좋아|좋다|진행|진행해|진행하라|진행해라|진행해줘|그래|그렇게\s*(하라|해라|해|하자|해\s*줘|해\s*주라))[\s.!~]*$/i;
+  function nxAiCmdIsAff_(text){
+    if (!NXAI_CMD_AFF_RE_.test(String(text || '').trim())) return false;
+    var ms = (nxAiConv.messages || []).filter(function(m){ return typeof m.content === 'string' && m.content.trim(); });
+    var last = ms[ms.length - 1];
+    if (!last || last.role !== 'assistant' || /^\[⚡/.test(last.content)) return false;
+    var tail = last.content.trim().slice(-300);
+    return /\?\s*$/.test(tail) || /(할까요|하시겠|드릴까요|진행할까|어떻게 할|괜찮을까|여쭙|맞습니까|맞나요|정해 주세요|골라 주세요|확인해 주세요|알려 주세요|말씀해 주세요)/.test(tail);
+  }
+  function nxAiCmdUse_(c, via){
+    if (!c) return;
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (tok) callGas('nx_cmd_use', { id: c.id, via: via || '', kind: c.kind === 'gas' ? 'gas' : (c.kind === 'ui' ? 'ui' : 'nex') }).catch(function(){});
+  }
+  function nxAiCmdHelpMd_(){
+    var on = nxAiCmdOn_(), pres = (Array.isArray((nxAiCmdUser_ || {}).prefixes) && nxAiCmdUser_.prefixes.length ? nxAiCmdUser_.prefixes : NXAI_CMD_PREFIX_DEFAULT_);
+    // 좁은 옆 창에서 읽기 쉽게 표 대신 줄(작업원칙 2층 화면 — 좁은 사이드바 답)
+    var line = function(c){ return '- **/' + c.name + '** ' + c.desc + ((c.alias || []).length ? ' (또는 ' + c.alias.map(function(a){ return '/' + a; }).join(' ') + ')' : ''); };
+    return '**쓰는 법** — 채팅: `/` 를 치면 목록 · 말하기: 앞에 「' + pres.join('」·「') + '」(예: 「' + pres[0] + ' 수금 홍길동」) · 평소 말: 「저장확인 해라」처럼 이름 + 해라·하라·해 줘(짧고 판단 낱말이 없을 때만)\n\n'
+      + '**0원 명령**\n' + on.filter(function(c){ return c.kind !== 'nex'; }).map(line).join('\n')
+      + '\n\n**넥스 명령(유료)**\n' + on.filter(function(c){ return c.kind === 'nex'; }).map(line).join('\n')
+      + '\n\n더하기·빼기·이름 바꾸기는 설정 › 기본 › 넥스 명령에서.';
+  }
+  // 받는 값 정하기 — 사건: 이름을 적으셨으면 그 이름, 사건 대화면 그 사건, 아니면 진행 사건 목록에서 고르기
+  function nxAiCmdCaseFor_(args){
+    var getCases = nxAiCaseCache ? Promise.resolve(nxAiCaseCache) : callGas('work_get_cases', {}).then(function(res){ nxAiCaseCache = (res && res.cases) || []; return nxAiCaseCache; });
+    return getCases.then(function(cases){
+      var a = String(args || '').trim();
+      if (a){
+        var t = nxAiNorm_(a);
+        var hits = cases.filter(function(c){ return [c.사건명, c.고객명, c.납세자].some(function(n){ n = nxAiNorm_(n); return n.length >= 2 && t.indexOf(n) !== -1; }); });
+        if (hits.length > 1){ var open = hits.filter(function(c){ return c.상태 !== '완료'; }); if (open.length) hits = open; }
+        if (hits.length) return { list: hits, named: true };
+      }
+      if (nxAiConv.caseId){ var cur = cases.filter(function(c){ return c.id === nxAiConv.caseId; })[0]; if (cur) return { list: [cur], named: false }; }
+      var show = typeof nxShowTest_ === 'function' && nxShowTest_();
+      var isTest = typeof nxIsTestName_ === 'function' ? nxIsTestName_ : function(){ return false; };
+      return { list: cases.filter(function(c){ return c.상태 === '진행' && (show || !isTest(c.사건명)); }).slice(0, 15), named: false, pick: true };
+    });
+  }
+  // 명령 실행 — 들어온 길(via: slash·prefix·guess)과 상관없이 같은 일
+  function nxAiCmdRun_(c, args, via, raw){
+    var input = nxAiEl_('nxAiInput');
+    nxAiCmdUse_(c, via);
+    var badge = (c.kind === 'gas' || c.kind === 'ui') ? '⚡ 명령 /' + c.name + ' · AI 미사용(토큰 0)' : '🤖 넥스 명령 /' + c.name + ' · 사건을 고르면 넥스에게 보냅니다';
+    // 대화창 안에서 끝나는 0원 일 — 말풍선 둘(세무사님 말·결과)
+    var local = function(runner){
+      input.value = ''; input.style.height = 'auto';
+      nxAiCmdPopHide_();
+      nxAiPhoneTab_('chat');
+      var userMsg = { role: 'user', content: raw };
+      nxAiConv.messages.push(userMsg);
+      var ub = nxAiAppendBubble_('user', raw); ub._nxMsgRef = userMsg;
+      var bubble = nxAiAppendBubble_('assistant', '⚡ 처리 중…');
+      var aiMsg = { role: 'assistant', content: '[⚡명령 /' + c.name + ']' };
+      bubble._nxMsgRef = aiMsg; bubble._nxBadge = badge;
+      return Promise.resolve().then(runner).then(function(res){
+        if (!res) res = { md: '대상을 정하지 못했습니다 — 사건(또는 고객) 이름을 함께 적어 주세요. 예: `/' + c.name + ' 홍길동`', note: '[⚡명령 /' + c.name + '] 대상 못 정함' };
+        res.badge = badge;
+        nxAiConv.messages.push(aiMsg);
+        nxAiRenderLocal_(bubble, res, args || raw);
+        nxAiCountFree_('local');
+        nxAiScheduleSave_();
+      }).catch(function(err){
+        bubble.textContent = '명령 /' + c.name + ' 처리 중 오류: ' + (err && err.message ? err.message : err);
+        var i = nxAiConv.messages.indexOf(userMsg); if (i !== -1) nxAiConv.messages.splice(i, 1);
+        if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '명령 /' + c.name, message: String(err && err.message || err), detail: raw });
+      });
+    };
+    var pickThen = function(found, what, fn){
+      if (found.list.length === 1) return fn(found.list[0]);
+      if (!found.list.length) return { md: '진행 중인 사건이 없습니다 — 사건 이름을 함께 적어 주세요. 예: `/' + c.name + ' 홍길동`', note: '[⚡명령 /' + c.name + '] 사건 없음' };
+      return { md: (found.named ? '이름이 맞는 사건이 ' + found.list.length + '건입니다. ' : '') + '어느 사건인지 골라 주세요(' + what + ').', note: '[⚡명령 /' + c.name + '] 사건 고르기',
+        choices: found.list.slice(0, 12).map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ return fn(k); } }; }) };
+    };
+    if (c.run === 'help') return local(function(){ return { md: c.md || nxAiCmdHelpMd_(), note: '[⚡명령 /도움] 명령 목록' }; });
+    if (c.run === 'nexdirect'){
+      if (!args){ nxAiToast_('넥스에게 할 말을 /' + c.name + ' 뒤에 적어 주세요.'); return; }
+      input.value = ''; nxAiCmdPopHide_();
+      return nxAiSendAI_(args, { displayText: raw });
+    }
+    if (c.run === 'registry'){
+      var regFiles = nxAiPendingFiles.filter(function(a){ return a.type !== 'folder' && (/pdf|image|spreadsheet|excel|csv/.test(a.mimeType || '') || /\.(pdf|png|jpe?g|xlsx|xls|csv)$/i.test(a.name || '')); });
+      if (!regFiles.length) return local(function(){ return { md: '정리할 서류가 첨부되어 있지 않습니다 — 📎로 등기부·통장 등을 붙인 뒤 `/서류정리`를 보내 주세요.', note: '[⚡명령 /서류정리] 첨부 없음' }; });
+      input.value = ''; input.style.height = 'auto'; nxAiCmdPopHide_();
+      nxAiPendingFiles = nxAiPendingFiles.filter(function(a){ return regFiles.indexOf(a) === -1; }); nxAiRenderAttachBar_();
+      return nxAiRunRegistry_(regFiles, args || '서류 정리');
+    }
+    if (c.run === 'proc'){
+      input.value = ''; nxAiCmdPopHide_();
+      return nxAiCmdCaseFor_(args).then(function(found){
+        if (found.list.length === 1 && !found.pick) return nxAiCaseProc_((found.list[0].사건명 || '이') + ' 사건 처리하자' + (args && !found.named ? ' ' + args : ''), found.list[0].id);
+        return local(function(){ return pickThen(found, '사건 처리', function(k){ setTimeout(function(){ nxAiCaseProc_((k.사건명 || '') + ' 사건 처리하자', k.id); }, 0); return { md: '**' + (k.사건명 || k.고객명) + '** 사건 처리를 시작합니다.', note: '[명령 /처리] ' + (k.사건명 || '') }; }); });
+      });
+    }
+    if (c.kind === 'nex'){
+      // 넥스 명령 — 같은 넥스에게, 순서 글은 문맥으로(세무사님 말과 섞지 않음). 사건이 필요한데 대화가 사건에 안 이어져 있으면 먼저 그 사건 대화로
+      var send = function(){
+        var said = args || ('이 사건 ' + c.desc);
+        input.value = ''; nxAiCmdPopHide_();
+        return nxAiSendAI_(said, { noGem: true, displayText: raw, cmdHint: { name: c.name, steps: c.steps || c.desc, via: via } });
+      };
+      if (c.need !== 'case' || nxAiConv.caseId) return send();
+      return nxAiCmdCaseFor_(args).then(function(found){
+        if (found.list.length === 1 && found.named) return nxAiSwitchToCase_(found.list[0]).then(function(m){ if (m) nxAiToast_(m); return send(); });
+        if (!found.list.length) return send(); // 사건이 없으면 일반 대화로 넥스에게(넥스가 되묻는다)
+        return local(function(){ return pickThen(found, '/' + c.name, function(k){ return nxAiSwitchToCase_(k).then(function(m){ if (m) nxAiToast_(m); setTimeout(send, 0); return null; }); }); });
+      });
+    }
+    // GAS 명령(0원)
+    if (c.run === 'open'){
+      return local(function(){
+        var a = String(args || '').trim(), view = '';
+        if (a){
+          for (var i = 0; i < NXAI_LOCAL_VIEWS_.length && !view; i++) if (NXAI_LOCAL_VIEWS_[i][0].test(a)) view = NXAI_LOCAL_VIEWS_[i][1];
+          if (!view){ var na = nxAiCmdNorm_(a); Object.keys(NXAI_VIEW_LABELS_).forEach(function(v){ var l = nxAiCmdNorm_(NXAI_VIEW_LABELS_[v]).replace(/\(.*\)/, ''); if (!view && l && na.indexOf(l) !== -1) view = v; }); }
+        }
+        if (!view && c.view) view = c.view;
+        if (!view) return { md: '어느 화면을 열까요?', note: '[⚡명령 /열기] 화면 고르기', choices: Object.keys(NXAI_VIEW_LABELS_).filter(function(v){ return v !== 'memo-hand'; }).map(function(v){ return { label: NXAI_VIEW_LABELS_[v], run: function(){ return nxAiRunLocal_({ kind: 'open', view: v, caseObj: null }, NXAI_VIEW_LABELS_[v] + ' ' + (nxAiConv.caseName || '')); } }; }) };
+        var rest = a || '';
+        if (nxAiConv.caseId && !rest.replace(NXAI_VIEW_LABELS_[view] || '', '').trim()){ return nxAiCmdCaseFor_('').then(function(f){ return nxAiRunLocal_({ kind: 'open', view: view, caseObj: f.list.length === 1 && !f.pick ? f.list[0] : null }, rest); }); }
+        return nxAiRunLocal_({ kind: 'open', view: view }, rest);
+      });
+    }
+    if (c.need === 'client'){
+      return local(function(){
+        if (args) return nxAiRunLocal_({ kind: c.run }, args);
+        return nxAiCmdCaseFor_('').then(function(found){
+          if (found.list.length === 1 && !found.pick) return nxAiRunLocal_({ kind: c.run }, found.list[0].고객명 || found.list[0].납세자 || found.list[0].사건명 || '');
+          return { md: '어느 고객인지 이름을 함께 적어 주세요. 예: `/' + c.name + ' 홍길동`', note: '[⚡명령 /' + c.name + '] 고객 이름 없음' };
+        });
+      });
+    }
+    if (c.need === 'case'){
+      return local(function(){
+        return nxAiCmdCaseFor_(args).then(function(found){
+          return pickThen(found, '/' + c.name, function(k){ return nxAiRunLocal_({ kind: c.run, caseObj: k, tab: '' }, args || k.사건명 || ''); });
+        });
+      });
+    }
+    return local(function(){ return nxAiRunLocal_({ kind: c.run }, args || raw); });
+  }
+  // 입력칸 목록 — 「/」로 시작하고 첫 빈칸 전이면 뜬다
+  var nxAiCmdPopSel_ = 0, nxAiCmdPopItems_ = [];
+  function nxAiCmdPopHide_(){ var p = nxAiEl_('nxAiCmdPop'); if (p){ p.hidden = true; p.innerHTML = ''; } nxAiCmdPopItems_ = []; }
+  function nxAiCmdPopOpen_(){ var p = nxAiEl_('nxAiCmdPop'); return !!(p && !p.hidden && nxAiCmdPopItems_.length); }
+  function nxAiCmdPopRender_(){
+    var p = nxAiEl_('nxAiCmdPop'), input = nxAiEl_('nxAiInput');
+    if (!p || !input) return;
+    var v = input.value;
+    var m = /^\/(\S*)$/.exec(v);
+    if (!m){ nxAiCmdPopHide_(); return; }
+    var q = nxAiCmdNorm_(m[1]);
+    var on = nxAiCmdOn_();
+    var score = function(c){ var names = [c.name].concat(c.alias || []).map(nxAiCmdNorm_); if (!q) return 1; if (names.some(function(n){ return n.indexOf(q) === 0; })) return 3; if (names.some(function(n){ return n.indexOf(q) !== -1; })) return 2; return nxAiCmdNorm_(c.desc).indexOf(q) !== -1 ? 1 : 0; };
+    var items = on.map(function(c){ return { c: c, s: score(c) }; }).filter(function(x){ return x.s > 0; }).sort(function(a, b){ return b.s - a.s; }).map(function(x){ return x.c; });
+    nxAiCmdPopItems_ = items;
+    if (!items.length){ p.innerHTML = '<div class="hd">맞는 명령이 없습니다 — Enter를 누르면 명령 목록을 보여 드립니다</div>'; p.hidden = false; return; }
+    if (nxAiCmdPopSel_ >= items.length) nxAiCmdPopSel_ = 0;
+    p.innerHTML = '<div class="hd">명령 — ↑↓ 옮기기 · Enter·Tab 고르기 · Esc 닫기</div>' + items.map(function(c, i){
+      return '<div class="it' + (i === nxAiCmdPopSel_ ? ' on' : '') + '" role="option" data-i="' + i + '"><b>/' + nxAiEsc_(c.name) + '</b><span>' + nxAiEsc_(c.desc) + '</span><i class="' + (c.kind === 'nex' ? 'nex' : '') + '">' + (c.kind === 'nex' ? '넥스' : '0원') + '</i></div>';
+    }).join('');
+    p.hidden = false;
+    var on1 = p.querySelector('.it.on'); if (on1 && on1.scrollIntoView) on1.scrollIntoView({ block: 'nearest' });
+  }
+  function nxAiCmdPopPick_(i){
+    var c = nxAiCmdPopItems_[i];
+    var input = nxAiEl_('nxAiInput');
+    if (!c || !input) return;
+    nxAiCmdPopHide_();
+    input.value = '/' + c.name + ' ';
+    input.focus();
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+    // 받는 값이 없는 0원 명령, 또는 사건 대화에서 사건이 필요한 0원 명령은 고르면 바로 보낸다. 넥스 명령은 덧붙일 말을 적으시게 둔다.
+    var ready = (c.kind === 'gas' || c.kind === 'ui') && (c.need === '' || (c.need === 'case' && nxAiConv.caseId)) && c.run !== 'registry';
+    if (ready) setTimeout(function(){ nxAiSend_(); }, 0);
+  }
+  // 입력칸 키 — 목록이 열려 있으면 ↑↓·Enter·Tab·Esc를 목록이 먼저 받는다(true = 받음)
+  function nxAiCmdPopKey_(e){
+    if (!nxAiCmdPopOpen_()) return false;
+    var k = e.key;
+    if (k === 'ArrowDown' || k === 'ArrowUp'){ e.preventDefault(); var n = nxAiCmdPopItems_.length; nxAiCmdPopSel_ = (nxAiCmdPopSel_ + (k === 'ArrowDown' ? 1 : n - 1)) % n; nxAiCmdPopRender_(); return true; }
+    if (k === 'Enter' || e.keyCode === 13 || k === 'Tab'){ if (e.shiftKey && k !== 'Tab') return false; e.preventDefault(); nxAiCmdPopPick_(nxAiCmdPopSel_); return true; }
+    if (k === 'Escape'){ e.preventDefault(); nxAiCmdPopHide_(); return true; }
+    return false;
   }
 
   // [2026.10.10] 서류 자동 정리 — 서버(doc_parse)가 구글 무료 OCR로 읽고 규칙으로 정리한다(AI 미사용).
@@ -5900,6 +6331,14 @@
     var text = input.value.trim();
     if (!text) return;
     if (nxAiAbort){ nxAiToast_('넥스가 앞 말씀에 아직 답하는 중입니다 — 끝난 뒤(또는 ⏹로 멈춘 뒤) 다시 보내 주세요. 보내려던 글은 입력창에 그대로 있습니다.'); return; } // [2026.10.23 ㅅ12차 — 점검표 142] 조용히 버리지 않고 이유를 보인다
+    // [2026.11.15 명령] ① 「/수금」·「명령 수금」 — 짐작 없이 명령표에서 확정. 없는 이름이면 넥스로 보내지 않고 목록을 보인다(계획서 3-3 1·2번)
+    nxAiCmdPopHide_();
+    var cmdP = nxAiCmdParse_(text);
+    if (cmdP){
+      if (cmdP.cmd) return nxAiCmdRun_(cmdP.cmd, cmdP.args, cmdP.via, text);
+      var helpC = nxAiCmdById_('help') || NXAI_CMD_BASE_[0];
+      return nxAiCmdRun_(Object.assign({}, helpC, { md: '「' + (cmdP.via === 'slash' ? '/' : '') + cmdP.word + '」은 없는 명령입니다 — 아래 목록에서 골라 주세요(넥스에게 그냥 말씀하시려면 「/」나 약속어 없이 쓰시면 됩니다).\n\n' + nxAiCmdHelpMd_() }), '', cmdP.via, text);
+    }
     // [2026.10.10] "등기부/서류 정리·요약·표로" + 첨부 PDF → 무료 OCR+규칙으로 정리(토큰 0). 판단("위험한지 검토")은 그 결과를 보고 AI에게.
     if (NXAI_REGISTRY_CMD_RE_.test(text) && !/(검토|분석|판단|위험|전략|의견)/.test(text)){
       var regFiles = nxAiPendingFiles.filter(function(a){ return a.type !== 'folder' && (/pdf|image|spreadsheet|excel|csv/.test(a.mimeType || '') || /\.(pdf|png|jpe?g|xlsx|xls|csv)$/i.test(a.name || '')); });
@@ -5914,13 +6353,26 @@
     // [2026.10.15 1단계 ③] 사건처리 질문에 말로 답하기(토큰 0) — 질문을 부른 말이면 여기서 반영하고, 아니면 평소대로
     var cpSt = nxAiCaseProcForReply_();
     if (cpSt && !/처리\s*(하자|합시다|해\s*줘|해\s*주세요)/.test(text)){ try { if (nxAiCaseProcReply_(cpSt, text)) return; } catch (e) { if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '사건처리 말로 답하기', message: String(e && e.message || e), detail: text }); } }
+    var cpWait = !!(cpSt && (cpSt.waiting || cpSt.paused));
+    // [2026.11.15 명령] ② 넥스가 바로 앞에 묻거나 제안했는데 「ㅇ·ㅇㅋ·네·진행」 — 그대로 진행하라는 뜻으로 넥스에게(다시 묻지 않게)
+    if (nxAiCmdIsAff_(text)) return nxAiSendAI_(text, Object.assign({ noGem: true, cmdHint: { name: '그대로 진행', via: 'aff', steps: '짧은 긍정(ㅇ·ㅇㅋ·o·네·진행 등)은 「네, 그대로 진행하라」는 뜻이다(세무사님 10-29 "한글로 ㅇ이나 영어의 o이나 모두 동그라미이면 앞으로 긍정으로 받아들여라"). 바로 앞에 네가 묻거나 제안한 것을 그대로 진행하고, 같은 것을 다시 묻지 마라.' } }, cpWait ? { cpHint: nxAiCpHint_(cpSt, [text]) } : {}));
     var intent = nxAiDetectLocal_(text);
+    // [2026.11.15 명령] 설정에서 끈 명령이면 그 바로 처리도 하지 않는다(같은 명령표 한 장)
+    if (intent && NXAI_CMD_KIND_ID_[intent.kind]){ var offC = nxAiCmdById_(NXAI_CMD_KIND_ID_[intent.kind]); if (offC && !offC.on) intent = null; }
     // [2026.10.31 장부 5-3 덜 고친 것] 60자 넘는 글은 위 판별이 아예 안 봐서, "○○ 사건 처리하자"를 길게 쓰시면 연결된 다른 사건으로 넥스가 일했다 —
     //  글 길이와 상관없이 사건 이름을 적어 맡기신 말이면 사건 맡기기로(사건을 찾아 바꾸고 말씀 전체를 그대로 넥스에게)
     if (!intent && nxAiExplicitCaseName_(text)) intent = { kind: 'caseproc' };
+    // [2026.11.15 명령] ③ 명령표로 짐작 — 「저장확인 해라」·「보고서가 저장되지 않았다」·「검토서를 수정하라」. 넥스 명령은 순서 글만 붙여 같은 넥스에게,
+    //  0원 명령은 넥스가 묻는 중이면 짐작하지 않는다(질문에 대한 답을 조회가 가로채지 않게)
+    if (!intent){
+      var g = nxAiCmdGuess_(text);
+      if (g && g.cmd && g.cmd.kind === 'nex'){ nxAiCmdUse_(g.cmd, 'guess'); return nxAiSendAI_(text, Object.assign({ noGem: true, cmdHint: { name: g.cmd.name, steps: g.cmd.steps || g.cmd.desc, via: 'guess' } }, cpWait ? { cpHint: nxAiCpHint_(cpSt, [text]) } : {})); }
+      if (g && g.cmd && !cpWait) return nxAiCmdRun_(g.cmd, g.args, 'guess', text);
+    }
     // [2026.10.23 ㅅ12차 — 점검표 142] 넥스가 묻는 중·단추 대기 중에 온 말을 GAS 규칙이 못 알아들으면 넥스(AI)에게 열린 질문 목록과 함께 넘긴다(무료 제미니는 거치지 않음 — 사건 답은 제미니 몫이 아니고, 150초 기다리는 동안 보내기가 잠겼다)
-    if (!intent && cpSt && (cpSt.waiting || cpSt.paused)) return nxAiSendAI_(text, { noGem: true, cpHint: nxAiCpHint_(cpSt, [text]) });
+    if (!intent && cpWait) return nxAiSendAI_(text, { noGem: true, cpHint: nxAiCpHint_(cpSt, [text]) });
     if (!intent) return nxAiSendAI_();
+    if (NXAI_CMD_KIND_ID_[intent.kind]) nxAiCmdUse_(nxAiCmdById_(NXAI_CMD_KIND_ID_[intent.kind]), 'guess');
     if (intent.kind === 'caseproc') return nxAiCaseProc_(text);
     input.value = ''; input.style.height = 'auto';
     nxAiPhoneTab_('chat');
@@ -5962,6 +6414,14 @@
     var note = files.map(function(a){ return (a.type === 'folder' ? ' 📁' : ' 📎') + a.name; }).join('') + images.map(function(){ return ' 🖼️'; }).join('');
     nxAiPhoneTab_('chat');
     var userBubble = nxAiAppendBubble_('user', (opts.displayText || text) + note);
+    // [2026.11.15 명령] 넥스 명령이면 붙인 순서 글을 세무사님 말 아래 접힌 회색 줄로(세무사님 말과 섞지 않음 — 공통원칙 1절)
+    if (opts.cmdHint && opts.cmdHint.via !== 'aff'){
+      try {
+        var cn = document.createElement('details'); cn.className = 'nxai-cmdnote';
+        cn.innerHTML = '<summary>🤖 넥스 명령 /' + nxAiEsc_(opts.cmdHint.name) + (opts.cmdHint.via === 'guess' ? ' (말씀을 명령으로 알아들음)' : '') + ' — 붙인 순서 보기</summary><div>' + nxAiEsc_(opts.cmdHint.steps || '') + '</div>';
+        userBubble.appendChild(cn);
+      } catch (e) {}
+    }
     input.value = ''; input.style.height = 'auto';
     nxAiPendingFiles = []; nxAiPendingImages = []; nxAiRenderAttachBar_();
 
@@ -6031,7 +6491,7 @@
       return nxAiRunTurn_(requestMessages, {
         thinkingBubble: thinking,
         signal: nxAiAbort.signal,
-        context: nxAiBuildContext_(Object.assign({ openFile: openFileCtx, attachedItems: files }, opts.cpHint ? { cpHint: opts.cpHint } : {})), // [2026.10.23 ㅅ12차] 사건처리 열린 질문 목록(넥스가 "어느 질문에 어떤 답"으로 풀게)
+        context: nxAiBuildContext_(Object.assign({ openFile: openFileCtx, attachedItems: files }, opts.cpHint ? { cpHint: opts.cpHint } : {}, opts.cmdHint ? { cmdHint: opts.cmdHint } : {})), // [2026.11.15 명령] 넥스 명령의 순서 글(서버가 지시문에 붙임) // [2026.10.23 ㅅ12차] 사건처리 열린 질문 목록(넥스가 "어느 질문에 어떤 답"으로 풀게)
         settingsPayload: opts.settings || nxAiBuildSettingsPayload_(text),
         onDone: function(reply, actions, usage){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
@@ -6523,17 +6983,30 @@
     input.addEventListener('keydown', function(e){
       if (e.key === 'Shift') shiftHeld = true;
       if (e.isComposing || e.keyCode === 229) return;
+      if (nxAiCmdPopKey_(e)) return; // [2026.11.15 명령] 「/」 목록이 열려 있으면 ↑↓·Enter·Tab·Esc는 목록이 먼저
       if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey){ e.preventDefault(); nxAiSend_(); }
     });
     input.addEventListener('keyup', function(e){ if (e.key === 'Shift') shiftHeld = false; });
     // 태블릿 가상자판 — Enter가 keydown으로 안 잡히고 줄바꿈 입력만 오는 경우(work와 같은 보강)
     input.addEventListener('beforeinput', function(e){
-      if (e.inputType === 'insertLineBreak' && !shiftHeld){ e.preventDefault(); nxAiSend_(); }
+      if (e.inputType === 'insertLineBreak' && !shiftHeld){ e.preventDefault(); if (nxAiCmdPopOpen_()) nxAiCmdPopPick_(nxAiCmdPopSel_); else nxAiSend_(); }
     });
     input.addEventListener('input', function(){
       input.style.height = 'auto';
       input.style.height = Math.min(160, input.scrollHeight) + 'px';
+      // [2026.11.15 명령] 「/」로 시작하면 명령 목록(명령표는 로그인 뒤 한 번 받아 둠)
+      if (/^\//.test(input.value)){ if (!nxAiCmdUser_) nxAiCmdLoad_().then(function(){ nxAiCmdPopRender_(); }); nxAiCmdPopSel_ = 0; nxAiCmdPopRender_(); }
+      else if (nxAiCmdPopOpen_() || !nxAiEl_('nxAiCmdPop').hidden) nxAiCmdPopHide_();
     });
+    // 목록 누르기(마우스·손가락) — 입력칸이 초점을 잃기 전에 고르게 mousedown
+    nxAiEl_('nxAiCmdPop').addEventListener('mousedown', function(e){
+      var it = e.target.closest && e.target.closest('.it');
+      if (!it) return;
+      e.preventDefault();
+      nxAiCmdPopPick_(Number(it.getAttribute('data-i')) || 0);
+    });
+    input.addEventListener('blur', function(){ setTimeout(function(){ if (document.activeElement !== input) nxAiCmdPopHide_(); }, 150); });
+    input.addEventListener('focus', function(){ if (!nxAiCmdUser_) nxAiCmdLoad_(); }); // 로그인 표가 없으면 서버를 부르지 않는다(nxAiCmdLoad_ 안에서 확인)
     // 이미지 붙여넣기 → 바로 첨부
     input.addEventListener('paste', function(e){
       var items = (e.clipboardData && e.clipboardData.items) || [];

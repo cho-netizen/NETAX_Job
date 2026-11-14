@@ -5170,6 +5170,14 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_conv_unify') return jsonResponse(ai_convUnify(body));
   if (body.action === 'ai_conv_archive') return jsonResponse(ai_convArchive(body));
   if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
+  // [2026.11.15] 넥스 대화창 명령표(슬래시·약속어·바로 처리 말 표현) — 위 nxcmd_* 설명 참고
+  if (body.action === 'nx_cmd_get') return jsonResponse(nxcmd_get());
+  if (body.action === 'nx_cmd_save') return jsonResponse(nxcmd_save(body));
+  if (body.action === 'nx_cmd_use') return jsonResponse(nxcmd_use(body));
+  if (body.action === 'nx_cmd_stats') return jsonResponse(nxcmd_stats());
+  if (body.action === 'nx_cmd_prefix_count') return jsonResponse(nxcmd_prefixCount(body));
+  if (body.action === 'nx_cmd_folder_check') return jsonResponse(nxcmd_folderCheck(body));
+  if (body.action === 'nx_cmd_save_check') return jsonResponse(nxcmd_saveCheck(body));
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
   if (body.action === 'ai_voice_brief') return jsonResponse(ai_voiceBrief_(body)); // 커버화면 토킹모드 음성 답변(핵심만 최대 축약)
   // 커버화면 상담 음성메모(Consult.js) — 녹음 조각 받기 / 합쳐 저장·받아쓰기 예약 / 진행 상황
@@ -5821,6 +5829,13 @@ function buildContextSystemPrompt(basePrompt, body) {
       + ' 어느 질문의 답인지 알 수 없거나 값이 불분명하면 그 질문의 Q번호를 들어 되물어라. 넣을칸이 없는 질문(메모형)은 답을 대화로만 받는다. "마무리해"는 답을 넣은 뒤 세액계산·검토서를 만들라는 뜻이다(화면이 이어서 한다).'
       + '\n열린 질문:' + h.open.map(function (q) { return '\n- Q' + q.q + ' ' + String(q.label || '') + ' (qid: ' + q.qid + ', target: ' + (q.target || '없음') + ', 종류: ' + (q.mode || '') + (q.input ? '/' + q.input : '') + (q.choices && q.choices.length ? ', 선택지·후보: ' + q.choices.join(' | ') : '') + ')'; }).join('')
       + (Array.isArray(h.unparsed) && h.unparsed.length ? '\n못 알아들은 말: ' + h.unparsed.map(function (s) { return '"' + String(s).slice(0, 120) + '"'; }).join(' / ') : '');
+  }
+  // [2026.11.15] 넥스 대화창 명령(/검토서·「명령 검토서」·「검토서 해라」 등) — 세무사님이 명령으로 시키신 일의 작업 순서. 원칙(마스터 프로필·공통원칙)이 먼저다
+  if (ctx.cmdHint && ctx.cmdHint.name) {
+    const ch = ctx.cmdHint;
+    dynamicExtra += '\n\n[세무사님 명령 /' + String(ch.name).slice(0, 20) + '] 세무사님이 대화창 명령으로 시키신 일이다(' + (ch.via === 'guess' ? '말씀을 명령으로 알아들음 — 말씀의 뜻이 아래 순서와 다르면 말씀을 따른다' : '명령을 직접 고르심') + ').'
+      + ' 아래는 이 명령의 작업 순서다. 마스터 프로필·공통원칙과 어긋나면 원칙을 따른다. 채팅에는 한 일과 결과의 개요만 쓰고 자세한 것은 파일에 남긴다.'
+      + '\n순서: ' + String(ch.steps || '').slice(0, 2000);
   }
 
   if (ctx.openFile && ctx.openFile.name) {
@@ -12742,6 +12757,153 @@ function ai_logPaid_(body) {
   } catch (err) {
     return { success: false, message: err.message };
   }
+}
+
+// ============================================================
+// [2026.11.15] 넥스 대화창 명령 — 슬래시 명령(/)·약속어(「명령 ○○」)·바로 처리 말 표현이 함께 보는 명령표 한 장
+//  세무사님(11-14·15): "슬래시 명령기능을 이용하자" / "토킹에서는 사용할 수 없으니 바로처리 명령도 필요해 보인다" /
+//  "추가삭제는 일단 설정탭에 만들어라" / "이렇게 구현해 보자" — 계획서 docs/_기록/슬래시명령_계획서_20261114.html
+//  기본 명령은 화면 코드(aichat.html NXAI_CMD_BASE_)에 있고, 이 파일에는 세무사님이 고친 칸·새로 만든 명령·약속어만 둔다
+//  (Claude가 기본판을 고쳐도 세무사님이 고친 것은 그대로 남게). 0원 확인 두 가지(저장 확인·폴더 연결)도 여기 — 넥스를 부르지 않는다.
+// ============================================================
+const NXCMD_FILE_NAME_ = '_넥스명령표.json';
+const NXCMD_USE_FILE_NAME_ = '_넥스명령쓰임.json';
+function nxcmdFile_(name, create) {
+  const folder = ai_convFolder_();
+  const it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return create ? folder.createFile(name, name === NXCMD_FILE_NAME_ ? '{}' : '[]', 'application/json') : null;
+}
+function nxcmd_get() {
+  try {
+    const f = nxcmdFile_(NXCMD_FILE_NAME_, false);
+    if (!f) return { success: true, data: null, updatedAt: '' };
+    let d;
+    try { d = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}'); } catch (e) { return { success: false, message: '명령표 파일(' + NXCMD_FILE_NAME_ + ')을 읽지 못했습니다: ' + e.message }; }
+    return { success: true, data: d, updatedAt: String((d && d.updatedAt) || '') };
+  } catch (e) { return { success: false, message: e.message }; }
+}
+// 저장 — 다른 기기가 그사이 저장했으면(판 시각이 다르면) 덮지 않고 알린다. 앞 판은 _이전판 폴더에 남긴다.
+function nxcmd_save(body) {
+  const data = body && body.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { success: false, message: '저장할 명령표가 없습니다.' };
+  const r = withLock_(10000, function () {
+    const f = nxcmdFile_(NXCMD_FILE_NAME_, true);
+    let cur = {};
+    try { cur = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { cur = {}; }
+    const base = String((body && body.baseUpdatedAt) || '');
+    if (String(cur.updatedAt || '') && base !== String(cur.updatedAt || '')) return { success: false, conflict: true, message: '다른 기기에서 명령표가 바뀌었습니다 — 다시 불러온 뒤 고쳐 주세요.', updatedAt: String(cur.updatedAt || '') };
+    if (cur.updatedAt) { try { const arc = my_getOrCreateSubfolder_(ai_convFolder_(), '_이전판'); arc.createFile('_넥스명령표_' + String(cur.updatedAt).replace(/[^\d]/g, '') + '.json', JSON.stringify(cur), 'application/json'); } catch (e) { } }
+    const out = {
+      v: 1,
+      prefixes: (Array.isArray(data.prefixes) ? data.prefixes : []).map(function (x) { return String(x || '').replace(/\s+/g, '').slice(0, 10); }).filter(Boolean).slice(0, 10),
+      overrides: (data.overrides && typeof data.overrides === 'object' && !Array.isArray(data.overrides)) ? data.overrides : {},
+      custom: (Array.isArray(data.custom) ? data.custom : []).slice(0, 100),
+      updatedAt: Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ss.SSS")
+    };
+    const text = JSON.stringify(out);
+    if (text.length > 200000) return { success: false, message: '명령표가 너무 큽니다(20만 자 초과).' };
+    f.setContent(text);
+    return { success: true, data: out, updatedAt: out.updatedAt };
+  });
+  return r && r.error ? { success: false, message: r.error } : r;
+}
+// 쓰임 한 줄 — 명령 번호·들어온 길(slash/prefix/guess)·종류(gas/nex). 기록 실패는 일을 막지 않는다.
+function nxcmd_use(body) {
+  const id = String((body && body.id) || '').slice(0, 40);
+  if (!id) return { success: false, message: '명령 번호가 없습니다.' };
+  const r = withLock_(5000, function () {
+    const f = nxcmdFile_(NXCMD_USE_FILE_NAME_, true);
+    let arr = [];
+    try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { arr = []; }
+    if (!Array.isArray(arr)) arr = [];
+    arr.push({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), id: id, via: String(body.via || '').slice(0, 10), kind: String(body.kind || '').slice(0, 6) });
+    f.setContent(JSON.stringify(arr.slice(-3000)));
+    return { success: true };
+  });
+  return r && r.error ? { success: false, message: r.error } : r;
+}
+// 설정 「넥스 명령」 묶음 — 명령마다 쓴 횟수·마지막 날, 넥스로 자주 간 말(더할 만한 후보)
+function nxcmd_stats() {
+  const use = {};
+  try {
+    const f = nxcmdFile_(NXCMD_USE_FILE_NAME_, false);
+    const arr = f ? JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]') : [];
+    (Array.isArray(arr) ? arr : []).forEach(function (x) { if (!x || !x.id) return; const u = use[x.id] || (use[x.id] = { n: 0, last: '' }); u.n++; if (String(x.at) > u.last) u.last = String(x.at); });
+  } catch (e) { }
+  const groups = {};
+  try {
+    const paid = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]');
+    (Array.isArray(paid) ? paid : []).forEach(function (p) {
+      if (!p || p.kind !== 'chat') return;
+      const q = String(p.q || '').trim();
+      const key = q.replace(/[\s.,!?~·:;'"()\[\]<>]/g, '').slice(0, 14);
+      if (key.length < 4) return;
+      const g = groups[key] || (groups[key] = { 말: q.slice(0, 60), 번: 0, 마지막: '' });
+      g.번++; if (String(p.at) > g.마지막) g.마지막 = String(p.at);
+    });
+  } catch (e) { }
+  const cands = Object.keys(groups).map(function (k) { return groups[k]; }).filter(function (g) { return g.번 >= 2; }).sort(function (a, b) { return b.번 - a.번; }).slice(0, 12);
+  return { success: true, use: use, cands: cands };
+}
+// 약속어를 넣기 전 — 지난 넥스 대화에서 세무사님 말이 그 낱말로 시작한 수(평소 말과 부딪히는지). 파일 하나씩 차례로 읽는다.
+function nxcmd_prefixCount(body) {
+  const word = String((body && body.word) || '').replace(/\s+/g, '');
+  if (!word) return { success: false, message: '낱말이 없습니다.' };
+  const t0 = Date.now(), folder = ai_convFolder_(), it = folder.getFiles();
+  let files = 0, msgs = 0, hits = 0, cut = false;
+  const ex = [];
+  while (it.hasNext()) {
+    if (Date.now() - t0 > 25000) { cut = true; break; }
+    const f = it.next();
+    if (!/^c\d.*\.json$/.test(f.getName())) continue;
+    files++;
+    let c; try { c = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}'); } catch (e) { continue; }
+    (c.messages || []).forEach(function (m) {
+      if (!m || m.role !== 'user' || typeof m.content !== 'string') return;
+      msgs++;
+      if (m.content.replace(/^\s+/, '').replace(/\s+/g, '').indexOf(word) === 0) { hits++; if (ex.length < 3) ex.push(m.content.slice(0, 50)); }
+    });
+  }
+  return { success: true, word: word, files: files, msgs: msgs, hits: hits, examples: ex, cut: cut };
+}
+// /폴더 — 사건 폴더 연결 상태(넥스 불필요)
+function nxcmd_folderCheck(body) {
+  const c = job_findCase_(String((body && body.caseId) || ''));
+  if (!c) return { success: false, message: '사건을 찾지 못했습니다.' };
+  const out = { success: true, 사건: c.사건명 || c.고객명 || '', folderId: String(c.폴더ID || '').trim() };
+  if (!out.folderId) { out.linked = false; return out; }
+  try {
+    const fd = DriveApp.getFolderById(out.folderId);
+    out.linked = true; out.name = fd.getName(); out.url = fd.getUrl(); out.trashed = fd.isTrashed();
+    let nf = 0, nd = 0; const fi = fd.getFiles(); while (fi.hasNext() && nf < 500) { fi.next(); nf++; } const di = fd.getFolders(); const subs = []; while (di.hasNext() && nd < 100) { const s = di.next(); nd++; if (subs.length < 12) subs.push(s.getName()); }
+    out.files = nf; out.folders = nd; out.subs = subs;
+  } catch (e) { out.linked = true; out.broken = true; out.message = e.message; }
+  return out;
+}
+// /저장확인 — 사건 폴더(두 단계 아래까지, "_" 폴더는 빼고)에서 최근 고친 문서와 같은 이름이 둘 이상인 파일
+function nxcmd_saveCheck(body) {
+  const c = job_findCase_(String((body && body.caseId) || ''));
+  if (!c) return { success: false, message: '사건을 찾지 못했습니다.' };
+  const fid = String(c.폴더ID || '').trim();
+  if (!fid) return { success: true, 사건: c.사건명 || '', linked: false, files: [], dups: [] };
+  let root; try { root = DriveApp.getFolderById(fid); } catch (e) { return { success: false, message: '사건 폴더를 열지 못했습니다: ' + e.message }; }
+  const all = [], t0 = Date.now();
+  const walk = function (fd, path, depth) {
+    const fi = fd.getFiles();
+    while (fi.hasNext() && all.length < 800) { const f = fi.next(); all.push({ id: f.getId(), name: f.getName(), where: path || '(사건 폴더)', t: f.getLastUpdated().getTime(), url: f.getUrl() }); }
+    if (depth >= 2 || Date.now() - t0 > 20000) return;
+    const di = fd.getFolders();
+    while (di.hasNext()) { const s = di.next(); const n = s.getName(); if (/^_/.test(n)) continue; walk(s, path ? path + '/' + n : n, depth + 1); }
+  };
+  walk(root, '', 0);
+  const docs = all.filter(function (f) { return /\.(md|html?|txt|pdf|docx?|hwpx?)$/i.test(f.name) || !/\.[a-z0-9]{2,5}$/i.test(f.name); });
+  docs.sort(function (a, b) { return b.t - a.t; });
+  const fmt = function (t) { return Utilities.formatDate(new Date(t), 'Asia/Seoul', 'MM-dd HH:mm'); };
+  const byName = {};
+  all.forEach(function (f) { const k = f.name.toLowerCase(); (byName[k] || (byName[k] = [])).push(f); });
+  const dups = Object.keys(byName).filter(function (k) { return byName[k].length > 1; }).map(function (k) { return { name: byName[k][0].name, 곳: byName[k].map(function (f) { return f.where + ' ' + fmt(f.t); }) }; }).slice(0, 20);
+  return { success: true, 사건: c.사건명 || c.고객명 || '', linked: true, files: docs.slice(0, 12).map(function (f) { return { id: f.id, name: f.name, where: f.where, at: fmt(f.t), url: f.url }; }), dups: dups, total: all.length };
 }
 
 // ============================================================
