@@ -4350,7 +4350,7 @@ function ai_convUnify(body) {
   const works = cid ? (ai_workHistories({}).workHistories || []).filter(function (w) { return w.caseId === cid; }).sort(function (a, b) { return String(a.updatedAt).localeCompare(String(b.updatedAt)); }) : [];
   if (mine.length + works.length < 2) { if (works.length) { const r = ai_convImportWork({ fileId: works[0].fileId, caseId: cid, caseName: body.caseName, caseFolderId: body.caseFolderId }); return r.error ? r : { success: true, id: r.conversation.id }; } return { success: true, id: mine.length ? mine[0].id : '' }; }
   let msgs = [], ids = [], tgt = mine.length ? ai_convLoad({ id: mine[mine.length - 1].id }).conversation : null;
-  const seg = function (title, at, m) { if (!m.length) return; if (msgs.length) msgs.push({ role: 'assistant', content: '— 앞의 「' + title + '」(' + String(at).slice(0, 10) + ') 대화를 이어 붙였습니다 —', divider: true }); msgs = msgs.concat(m); };
+  const seg = function (title, at, m) { if (!m.length) return; if (msgs.length) msgs.push({ role: 'assistant', content: '— 여기부터 「' + title + '」(' + String(at).slice(0, 10) + ') 대화 —', divider: true }); msgs = msgs.concat(m); };
   works.forEach(function (w) { seg('work 대화', w.updatedAt, ai_readWorkHistory_(w.fileId).msgs); ids.push(w.fileId); });
   mine.forEach(function (e) { const cv = ai_convLoad({ id: e.id }).conversation; if (!cv) return; seg(cv.title || '대화', e.updatedAt, ai_convArchive({ id: e.id }).messages.concat(cv.messages || [])); (e.sourceFileIds || []).concat(e.sourceFileId ? [e.sourceFileId] : []).forEach(function (s) { ids.push(s); }); });
   if (tgt) { const ta = folder.getFilesByName(tgt.id + '_지난말.json'); if (ta.hasNext()) ta.next().setTrashed(true); } // 이어 붙인 글에 이미 들어 있음
