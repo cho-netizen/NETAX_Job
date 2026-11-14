@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>손 메모 도구 계획서</title>
+<style>
+:root{--ink:#1b2230;--sub:#5b6575;--line:#d9dee7;--navy:#0D1B3D;--gold:#9a6b00;--ok:#1d7a3a;--bad:#b3261e;--bg:#ffffff;--soft:#f4f6fa;--new:#e7f4ea}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ink:#e6e9ef;--sub:#a3acbb;--line:#3a4252;--navy:#9db4ff;--gold:#e0b347;--ok:#5fd08a;--bad:#ff8a80;--bg:#161a22;--soft:#1f2430;--new:#1f3326}}
+:root[data-theme="dark"]{--ink:#e6e9ef;--sub:#a3acbb;--line:#3a4252;--navy:#9db4ff;--gold:#e0b347;--ok:#5fd08a;--bad:#ff8a80;--bg:#161a22;--soft:#1f2430;--new:#1f3326}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 "Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+main{max-width:940px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 6px} h2{font-size:17px;margin:28px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line);color:var(--navy)}
+.meta{color:var(--sub);font-size:13px} .quote{background:var(--soft);border-left:3px solid var(--gold);padding:8px 12px;margin:8px 0;font-size:14px}
+.tbl{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:13.5px;margin:6px 0} th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left} th{background:var(--soft)}
+.need{color:var(--gold);font-weight:bold} .ok{color:var(--ok);font-weight:bold}
+.n{background:var(--new);border-radius:4px;padding:0 4px;font-weight:bold;color:var(--ok);font-size:12px}
+.mock{border:1px solid var(--line);border-radius:8px;background:var(--soft);font-size:13px;margin:8px 0;overflow:hidden}
+.mock .cap{font-size:12px;color:var(--sub);padding:4px 10px;border-bottom:1px solid var(--line)}
+.mock .bar{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:6px 8px}
+.mock .b{border:1px solid #8b93a3;border-radius:4px;background:#dde3ee;color:#1c2333;min-width:30px;height:30px;padding:0 4px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+.mock .b.on{background:#0D1B3D;color:#fff;border-color:#0D1B3D}
+.mock .b small{font-size:9px;margin-left:1px;opacity:.7}
+.mock .sep{width:1px;height:22px;background:var(--line);margin:0 2px}
+.mock .pop{margin:0 8px 8px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:6px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;width:max-content;max-width:calc(100% - 16px);box-shadow:0 6px 16px rgba(0,0,0,.12)}
+.mock .pop .t{font-size:12px;color:var(--sub);margin-right:4px}
+.mock .dot{width:20px;height:20px;border-radius:50%;border:1px solid #8b93a3;display:inline-block}
+.mock .area{border-top:1px dashed var(--line);padding:14px 10px;color:var(--sub);background:var(--bg)}
+ol li,ul li{margin:3px 0}
+</style></head><body><main>
+<h1>손 메모 도구 계획서</h1>
+<div class="meta">2026-11-15 · 쓸개 · 첫째 판 · <span class="ok">확정(11-15 세무사님 "준비되면 모두 구현하고 커밋푸시배포까지 하라" — ㉠㉡㉢ 권장안)</span> — 만듦 · 만들며 더한 것: 묶음 단추는 ▾ 대신 쥔 단추를 한 번 더 눌러도 목록(단추 크기를 모두 같게 두려고 ▾는 단추 안 오른쪽 아래), 좁은 화면에서 보기 도구는 한 덩어리로 오른쪽, 반듯하게의 곧은 선 판정을 손 떨림에 맞게 조금 너그럽게 · 가지 claude/booking-btn-tidy</div>
+
+<h2>1. 목적</h2>
+<div class="quote">세무사님 원문(11-15): "손 메모에 편집도구가 부족해 보인다" → "숨은도구를 모두 꺼내지 말고 유형별로 묶어서 꺼내고, 없는 도구는 모두 추가하면서 역시 유형별로 묶어 보자"</div>
+<p>지금 손 메모의 도구 여섯 가지는 ✏️ 단추 하나에 숨어 있어 누를 때마다 다음 도구로 넘어갑니다. 이것을 <b>종류별 묶음 단추</b>로 꺼내고, 없는 도구를 더해 같은 묶음에 넣습니다. 편집 줄 모양(연한 바탕·단추 한 크기·왼쪽 고치는 도구 …… 오른쪽 보기 도구)은 어제 정하신 그대로 둡니다.</p>
+
+<h2>2. 지금 있는 것 (화면 코드에서 확인)</h2>
+<div class="tbl"><table>
+<tr><th>단추</th><th>하는 일</th><th>문제</th></tr>
+<tr><td>✏️ 하나</td><td>펜 → 형광펜 → 지우개 → 영역 지우기 → 직선 → 사각형 (누를 때마다 다음)</td><td>여섯 도구가 숨어 있음, 지금 무엇을 쥐었는지 단추 모양으로만 앎</td></tr>
+<tr><td>색 칸 · 굵기 막대</td><td>색 직접 고르기 · 굵기 1~10</td><td>자주 쓰는 색·굵기를 한 번에 못 고름</td></tr>
+<tr><td>↩ ↪ · 🗑</td><td>되돌리기·다시(쪽마다 30번) · 쪽 전체 지우기</td><td>—</td></tr>
+<tr><td>📎 · ▦</td><td>배경 사진 · 배경 무늬(없음→줄→모눈, 누를 때마다)</td><td>무늬도 숨어 있음</td></tr>
+<tr><td>🔍 · ◀ 1/1 ▶</td><td>확대(1→1.5→2배, 누를 때마다) · 쪽 넘기기(마지막 쪽에서 ▶ = 새 쪽)</td><td>쪽 지우기 없음</td></tr>
+</table></div>
+<p class="meta">그림판은 「쪽마다 그림 한 장」 방식입니다. 그은 선을 하나씩 따로 기억하지 않습니다. 펜은 누르는 힘에 따라 굵기가 조금 바뀝니다. 저장하면 쪽마다 그림을 PDF로 묶습니다.</p>
+
+<h2>3. 바꾼 뒤 모양</h2>
+<div class="mock">
+  <div class="cap">손 편집 줄 — 묶음 단추 하나에 그 묶음의 지금 도구가 보이고, ▾ 쪽을 누르면 아래로 그 묶음 목록이 펼쳐짐(<span class="n">새</span> = 새로 더하는 것)</div>
+  <div class="bar">
+    <span class="b on">✏️<small>▾</small></span><span class="b">🧽<small>▾</small></span><span class="b">▭<small>▾</small></span><span class="b">⬚<small>▾</small></span><span class="b">T<small>▾</small></span>
+    <span class="sep"></span>
+    <span class="b"><span class="dot" style="background:#1a1a2e"></span><small>▾</small></span><span class="b">━<small>▾</small></span>
+    <span class="sep"></span>
+    <span class="b">↩</span><span class="b">↪</span>
+    <span style="flex:1"></span>
+    <span class="b">▦<small>▾</small></span><span class="b">🔍<small>▾</small></span><span class="b">◀</span><span style="font-size:11.5px;color:#666">1/1</span><span class="b">▶</span><span class="b">📄<small>▾</small></span>
+  </div>
+  <div class="pop"><span class="t">쓰기</span><span class="b on">✏️ 펜</span><span class="b">🖍 형광펜</span><span class="b">🖌 붓펜 <span class="n">새</span></span></div>
+  <div class="pop"><span class="t">색</span><span class="dot" style="background:#1a1a2e"></span><span class="dot" style="background:#b3261e"></span><span class="dot" style="background:#1e5bd8"></span><span class="dot" style="background:#1d7a3a"></span><span class="dot" style="background:#e08a00"></span><span class="dot" style="background:#7b3fb3"></span><span class="dot" style="background:#7a7a7a"></span><span class="dot" style="background:#ffffff"></span><span class="b">직접</span> <span class="n">새</span></div>
+  <div class="area">그림판</div>
+</div>
+
+<h2>4. 묶음과 도구 (있는 것 + 더할 것)</h2>
+<div class="tbl"><table>
+<tr><th>묶음 단추</th><th>안에 든 도구</th></tr>
+<tr><td><b>쓰기</b> ✏️</td><td>펜 · 형광펜 · <span class="n">새</span> 붓펜(누르는 힘에 따라 굵기가 크게 바뀜)</td></tr>
+<tr><td><b>지우기</b> 🧽</td><td>지우개 · 영역 지우기(네모로 끌어 지움) · <span class="n">새</span> 지우개 크기(작게·보통·크게) · 쪽 전체 지우기(지금 🗑을 이리로)</td></tr>
+<tr><td><b>도형</b> ▭</td><td>직선 · 사각형 · <span class="n">새</span> 화살표 · <span class="n">새</span> 원 · <span class="n">새</span> 삼각형 · <span class="n">새</span> 반듯하게(펜으로 그린 선·도형을 끝에서 잠깐 멈추면 반듯하게 고쳐 줌)</td></tr>
+<tr><td><b>선택</b> ⬚ <span class="n">새</span></td><td>네모 선택 · 올가미 선택(손으로 둘러 고르기) → 고른 것을 옮기기 · 크기 바꾸기 · 복사 · 지우기</td></tr>
+<tr><td><b>넣기</b> T <span class="n">새</span></td><td>글자 상자(자판으로 친 글을 그림판에 놓기) · 사진 넣기(그림 위에 놓고 옮기기·크기 바꾸기) · 오늘 날짜·시각 찍기</td></tr>
+<tr><td><b>색</b> ●</td><td>직접 고르기(지금 색 칸) · <span class="n">새</span> 자주 쓰는 색 8개 · <span class="n">새</span> 최근에 쓴 색 4개</td></tr>
+<tr><td><b>굵기</b> ━</td><td>굵기 막대(지금 것) · <span class="n">새</span> 가늘게·보통·굵게 세 가지 바로 고르기</td></tr>
+<tr><td>↩ ↪</td><td>되돌리기·다시 — 자주 쓰므로 묶지 않고 그대로</td></tr>
+<tr><td><b>배경</b> ▦ (오른쪽)</td><td>없음 · 줄 · 모눈 · <span class="n">새</span> 점 · 배경 사진(지금 📎을 이리로) · <span class="n">새</span> 배경 사진 걷기</td></tr>
+<tr><td><b>확대</b> 🔍 (오른쪽)</td><td>1배 · 1.5배 · 2배 바로 고르기(지금은 누를 때마다 다음)</td></tr>
+<tr><td><b>쪽</b> ◀ 1/1 ▶ 📄 (오른쪽)</td><td>쪽 넘기기(그대로) · <span class="n">새</span> 📄 묶음: 새 쪽 넣기 · 이 쪽 지우기 · 이 쪽 복사</td></tr>
+</table></div>
+<p>줄에 놓인 것: 지금 12개(색 칸·굵기 막대·쪽 번호 포함) → 바꾼 뒤 15개. 도구는 여섯 가지에서 서른 가지 가까이로 늘지만, 줄에는 묶음 단추만 보입니다.</p>
+
+<h2>5. 정하실 것</h2>
+<div class="tbl"><table>
+<tr><th></th><th>무엇</th><th>권장</th><th>다른 길</th></tr>
+<tr><td>㉠</td><td>묶음 단추를 누르면</td><td><b>단추 몸을 누르면 그 묶음에서 마지막에 쓴 도구를 바로 쥠, 오른쪽 ▾를 누르면 목록을 펼침</b> — 같은 도구를 다시 쓸 때 한 번에 됨</td><td>누를 때마다 목록을 펼침(늘 두 번 누름)</td></tr>
+<tr><td>㉡</td><td>「한 획 통째로 지우기」 지우개</td><td><b>이번에는 넣지 않음.</b> 지금 그림판은 그은 선을 따로 기억하지 않는 「그림 한 장」 방식이라, 한 획을 골라 지우려면 그림판 바탕을 통째로 바꿔야 함(저장·되돌리기·쪽 넘기기를 다시 짜야 함). 대신 지우개 크기·영역 지우기·올가미 선택 후 지우기로</td><td>그림판을 「선 하나하나 기억」 방식으로 바꾸고 넣기 — 일이 크고 지금 저장된 손글씨와 방식이 달라짐</td></tr>
+<tr><td>㉢</td><td>글자 상자·사진을 넣은 뒤</td><td><b>놓기 전까지는 옮기기·고치기·크기 바꾸기, 「놓기」(또는 다른 도구를 쥐면) 뒤에는 그림에 붙음</b> — ㉡과 같은 까닭</td><td>나중에도 다시 고칠 수 있게 — ㉡의 바탕 바꾸기가 먼저 필요</td></tr>
+</table></div>
+
+<h2>6. 만드는 순서 (확정 뒤)</h2>
+<ol>
+<li>손 편집 줄 원본(memo.html) — 묶음 단추·펼침 목록 틀, 있는 도구 여섯·배경·확대를 묶음으로 옮김(하는 일 그대로)</li>
+<li>색·굵기 묶음(자주 쓰는 색·최근 색·세 굵기)</li>
+<li>더할 도구 — 붓펜·지우개 크기·화살표·원·삼각형·반듯하게·네모/올가미 선택(옮기기·크기·복사·지우기)·글자 상자·사진 넣기·날짜 찍기·점 배경·배경 걷기·쪽 지우기/복사</li>
+<li>모양(style.html) — 묶음 단추 ▾·펼침 목록·쥔 도구 눌린 모양, 폰에서 목록이 화면 안에</li>
+<li>사용 설명서 손글씨 줄 고침</li>
+<li>화면 다시 조립 → 가짜 서버 시험 사본</li>
+</ol>
+
+<h2>7. 확인 방법</h2>
+<ul>
+<li>가짜 서버 사본에서 PC(1280)·태블릿(768·1024)·폰(375)으로, 도구마다 실제로 끌어 그리고 → 되돌리기 → 다시 → 쪽 넘겼다 돌아와도 남는지 → [저장] → 「일반메모로」로 PDF가 만들어지는지(넣은 글자·사진·도형이 PDF에 보이는지)</li>
+<li>묶음 단추: 몸 누르면 마지막 도구, ▾ 누르면 목록, 목록 밖을 누르면 닫힘, 쥔 도구가 눌린 모양</li>
+<li>폰 폭에서 손 편집 줄이 지금처럼 두 줄 안, 펼친 목록이 화면 밖으로 나가지 않는지(숫자로)</li>
+<li>떠 있는 ✍로 들어와 바로 쓰기, 글↔손 오가도 그림이 그대로</li>
+<li>화면만 바뀜 — 서버 고침 없음</li>
+</ul>
+</main></body></html>

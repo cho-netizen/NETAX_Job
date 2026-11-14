@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 14:59 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 15:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1053,7 +1053,7 @@
   #memoMdHelpBar button:hover, .note-tb-btn:hover{ background:#c7d0e0; border-color:#5b6b8c; }
   @media (max-width:480px){ /* 폰: 같은 크기·같은 간격은 그대로, 조금만 작게 — 30px·5px면 글 편집 줄이 세 줄로 늘어남(예전 두 줄) */
     #memoMdHelpBar, .note-tb{ gap:4px; padding:5px 6px; }
-    #memoMdHelpBar button, .note-tb-btn, .note-tb #notePenColor{ width:28px !important; height:28px !important; }
+    #memoMdHelpBar button, .note-tb-btn{ width:28px !important; height:28px !important; }
   }
   #memoMdHelpBar #memoBtnMdHelp{ font-weight:400; }
 
@@ -1082,9 +1082,38 @@
   .memo-floating-panel-body p.memo-help-section:first-child{ margin-top:0; }
 
   /* 손 편집 줄은 위 글 편집 줄과 같은 규칙(짙은 남색 바탕·흰 단추였던 것을 걷음) — 여기는 손 줄에만 있는 것 */
-  .note-tb #notePenColor{ width:30px !important; height:30px !important; padding:2px !important; border:1px solid #8b93a3 !important; border-radius:4px !important; background:#fff; box-sizing:border-box; cursor:pointer; flex:0 0 auto; }
-  .note-tb #notePenSize{ flex:0 0 auto; }
   .note-tb-page{ color:#666; font-size:11.5px; min-width:32px; text-align:center; flex:0 0 auto; }
+  .note-tb-right{ display:flex; align-items:center; gap:inherit; margin-left:auto; flex:0 0 auto; }
+  /* [2026.11.15 손 메모 도구] 묶음 단추 — 오른쪽 아래 작은 ▾(누르면 목록), 쥔 도구의 묶음은 눌린 모양 */
+  .note-grp{ position:relative; }
+  .note-grp::after{ content:''; position:absolute; right:2px; bottom:2px; border-left:3px solid transparent; border-right:3px solid transparent; border-top:4px solid currentColor; opacity:.55; pointer-events:none; }
+  .note-tb-btn.on{ background:#0D1B3D; color:#fff; border-color:#0D1B3D; }
+  .note-tb-btn.on:hover{ background:#22325a; }
+  .note-color-dot{ width:16px; height:16px; border-radius:50%; border:1px solid #8b93a3; display:inline-block; box-sizing:border-box; }
+  .note-width-bar{ width:16px; height:3px; background:#1c2333; border-radius:2px; display:inline-block; }
+  .note-pop{ position:fixed; z-index:700; flex-direction:column; gap:6px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18); max-width:calc(100vw - 16px); box-sizing:border-box; }
+  .note-pop-row{ display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .note-pop-row:empty{ display:none; }
+  .note-pop-title{ font-size:11.5px; color:var(--sub); min-width:52px; }
+  .note-pop-btn{ font-family:inherit; font-size:12.5px; font-weight:600; padding:5px 9px; border:1px solid #8b93a3; border-radius:5px; background:#dde3ee; color:#1c2333; cursor:pointer; white-space:nowrap; line-height:1.2; }
+  .note-pop-btn:hover{ background:#c7d0e0; }
+  .note-pop-btn.on{ background:#0D1B3D; color:#fff; border-color:#0D1B3D; }
+  .note-swatch{ width:24px; height:24px; border-radius:50%; border:1px solid #8b93a3; cursor:pointer; padding:0; flex:0 0 auto; }
+  .note-swatch.on{ outline:2px solid #0D1B3D; outline-offset:2px; }
+  .note-pop-range{ width:180px; }
+  /* 놓기 전 조각(선택한 조각·사진·글자 상자) — 끌어 옮기기, 오른쪽 아래 점으로 크기, 위 작은 줄 ⧉ 복사 · 🗑 지우기 · ✓ 놓기 */
+  #noteFloatLayer{ position:absolute; inset:0; pointer-events:none; }
+  .note-float{ position:absolute; pointer-events:auto; outline:1.5px dashed #1e5bd8; box-sizing:border-box; touch-action:none; }
+  .note-float-img{ width:100%; height:100%; display:block; cursor:move; touch-action:none; user-select:none; -webkit-user-drag:none; }
+  .note-float-ta{ width:100%; height:100%; box-sizing:border-box; border:none; background:rgba(255,255,255,0.6); resize:none; overflow:hidden; padding:4px; margin:0;
+    font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif; outline:none; }
+  .note-float-bar{ position:absolute; left:0; top:-31px; display:flex; gap:3px; }
+  .note-float-bar.below{ top:auto; bottom:-31px; }
+  .note-float-bar button{ width:26px; height:26px; border:1px solid #8b93a3; border-radius:4px; background:#fff; cursor:pointer; font-size:13px; padding:0; touch-action:none; }
+  .note-float-bar button:hover{ background:#eef2fa; }
+  .note-float-resize{ position:absolute; right:-7px; bottom:-7px; width:14px; height:14px; background:#1e5bd8; border:2px solid #fff; border-radius:50%; cursor:nwse-resize; touch-action:none; box-sizing:border-box; }
+  #noteCanvasWrap.note-bg-dot{ background-image:radial-gradient(#b8c3d6 1.2px, transparent 1.4px); background-size:20px 20px; }
   #noteCanvasWrap{ flex:1; position:relative; background:#fff; overflow:hidden; touch-action:none; }
   #noteCanvasWrap.note-zoomed{ overflow:auto; }
   #noteCanvasWrap.note-bg-ruled{ background-image: repeating-linear-gradient(to bottom, transparent, transparent 27px, #cfd8e8 28px); }
@@ -54301,26 +54330,38 @@ function rwAiApplyEdit_(id, content){
   </div>
 
   <div id="memoHandPane" class="memo-pane" style="display:none;">
-  <div class="note-tb">
-    <button type="button" id="btnNoteToolMode" class="note-tb-btn" title="펜">✏️</button>
-    <input type="color" id="notePenColor" value="#1a1a2e" title="색상" style="width:28px; height:28px; padding:0; border:none; border-radius:6px;">
-    <input type="range" id="notePenSize" min="1" max="10" value="3" title="굵기" style="width:60px;">
+  <!-- [2026.11.15 손 메모 도구] 세무사님 "숨은도구를 모두 꺼내지 말고 유형별로 묶어서 꺼내고, 없는 도구는 모두 추가하면서 역시 유형별로 묶어 보자"
+       → "준비되면 모두 구현하고 커밋푸시배포까지 하라" (계획서 docs/_기록/손메모_도구_계획서_20261115.html, 정할 것 ㉠㉡㉢ 권장안).
+       묶음 단추(.note-grp): 몸을 누르면 그 묶음에서 마지막에 쓴 도구를 쥠 · 오른쪽 아래 ▾ 자리를 누르거나 쥔 묶음을 한 번 더 누르면 목록(#notePop).
+       왼쪽 고치는 도구(쓰기·지우기·도형·선택·넣기·색·굵기·↩↪) …… 오른쪽 보기 도구(배경·확대·쪽). 단추는 글 편집 줄과 같은 한 크기. -->
+  <div class="note-tb" id="noteTb">
+    <button type="button" class="note-tb-btn note-grp" data-grp="write" title="쓰기">✏️</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="erase" title="지우기">🧽</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="shape" title="도형">╱</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="select" title="선택">⬚</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="insert" title="넣기">T</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="color" title="색"><span class="note-color-dot" id="noteColorDot"></span></button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="width" title="굵기"><span class="note-width-bar" id="noteWidthBar"></span></button>
     <button type="button" id="btnNoteUndo" class="note-tb-btn" title="되돌리기">↩</button>
     <button type="button" id="btnNoteRedo" class="note-tb-btn" title="다시실행">↪</button>
-    <button type="button" id="btnNoteClear" class="note-tb-btn" title="전체지우기">🗑</button>
-    <button type="button" id="btnNoteBgImage" class="note-tb-btn" title="배경 이미지">📎</button>
-    <input type="file" id="noteBgFileInput" accept="image/*" style="display:none;">
-    <button type="button" id="btnNoteBgPattern" class="note-tb-btn" title="배경 무늬">▦</button>
-    <!-- [2026.11.14] 글 편집 줄과 같은 배치 — 왼쪽 고치는 도구 …… 오른쪽 보기 도구(확대·쪽 넘기기). 좁아서 줄이 꺾여도 보기 도구는 오른쪽에(margin-left:auto) -->
-    <button type="button" id="btnNoteZoom" class="note-tb-btn" style="margin-left:auto;" title="확대">🔍</button>
-    <button type="button" id="btnNotePrevPage" class="note-tb-btn" title="이전 페이지">◀</button>
+    <span class="note-tb-right"><!-- 보기 도구 한 덩어리 — 좁아서 꺾여도 함께 오른쪽 -->
+    <button type="button" class="note-tb-btn note-grp" data-grp="bg" title="배경">▦</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="zoom" title="확대">🔍</button>
+    <button type="button" id="btnNotePrevPage" class="note-tb-btn" title="이전 쪽">◀</button>
     <span id="notePageIndicator" class="note-tb-page">1/1</span>
-    <button type="button" id="btnNoteNextPage" class="note-tb-btn" title="다음 페이지">▶</button>
+    <button type="button" id="btnNoteNextPage" class="note-tb-btn" title="다음 쪽(마지막 쪽에서는 새 쪽)">▶</button>
+    <button type="button" class="note-tb-btn note-grp" data-grp="page" title="쪽 — 넣기·복사·지우기">📄</button>
+    </span>
+    <input type="color" id="notePenColor" value="#1a1a2e" tabindex="-1" aria-hidden="true" style="position:absolute; width:0; height:0; opacity:0; pointer-events:none; border:0; padding:0;">
+    <input type="file" id="noteBgFileInput" accept="image/*" style="display:none;">
+    <input type="file" id="noteImgFileInput" accept="image/*" style="display:none;">
   </div>
+  <div id="notePop" class="note-pop" style="display:none;"></div>
   <div id="noteCanvasWrap">
     <div id="noteZoomInner">
       <canvas id="noteBgCanvas"></canvas>
       <canvas id="noteCanvas"></canvas>
+      <div id="noteFloatLayer"></div>
     </div>
   </div>
   </div>
@@ -55348,40 +55389,72 @@ function rwAiApplyEdit_(id, content){
   // 필기 페이지를 그대로 PDF로 묶어 고객 폴더(또는 일반메모)에 저장한다.
   // ============================================================
   (function(){
+    // [2026.11.15 손 메모 도구] 숨은 도구 여섯을 묶음 단추로 꺼내고 없는 도구를 더함(계획서 docs/_기록/손메모_도구_계획서_20261115.html).
+    //  그림판은 예전대로 「쪽마다 그림 한 장」(선을 하나씩 기억하지 않음) — 그래서 한 획 지우개는 넣지 않았고(㉡),
+    //  글자 상자·사진·선택한 조각은 「놓기」 전까지만 옮기기·크기 바꾸기가 되고 놓으면 그림에 붙는다(㉢).
     var noteCanvasWrap = document.getElementById('noteCanvasWrap');
     var noteZoomInner = document.getElementById('noteZoomInner');
     var noteBgCanvas = document.getElementById('noteBgCanvas');
     var bgCtx = noteBgCanvas.getContext('2d');
     var noteCanvas = document.getElementById('noteCanvas');
     var ctx = noteCanvas.getContext('2d');
+    var noteFloatLayer = document.getElementById('noteFloatLayer');
+    var notePop = document.getElementById('notePop');
     var notePenColor = document.getElementById('notePenColor');
-    var notePenSize = document.getElementById('notePenSize');
-    var btnNoteToolMode = document.getElementById('btnNoteToolMode');
+    var noteBgFileInput = document.getElementById('noteBgFileInput');
+    var noteImgFileInput = document.getElementById('noteImgFileInput');
     var btnNoteUndo = document.getElementById('btnNoteUndo');
     var btnNoteRedo = document.getElementById('btnNoteRedo');
-    var btnNoteClear = document.getElementById('btnNoteClear');
-    var btnNoteBgImage = document.getElementById('btnNoteBgImage');
-    var noteBgFileInput = document.getElementById('noteBgFileInput');
-    var btnNoteBgPattern = document.getElementById('btnNoteBgPattern');
-    var btnNoteZoom = document.getElementById('btnNoteZoom');
     var btnNotePrevPage = document.getElementById('btnNotePrevPage');
     var btnNoteNextPage = document.getElementById('btnNoteNextPage');
     var notePageIndicator = document.getElementById('notePageIndicator');
+    var noteColorDot = document.getElementById('noteColorDot');
+    var noteWidthBar = document.getElementById('noteWidthBar');
+    function grpBtn(g){ return document.querySelector('#noteTb .note-grp[data-grp="' + g + '"]'); }
 
-    var TOOL_MODES = ['pen', 'highlight', 'eraser', 'select', 'line', 'rect'];
-    var TOOL_MODE_ICON = { pen: '✏️', highlight: '🖍', eraser: '🧹', select: '✂️', line: '📏', rect: '▭' };
-    var TOOL_MODE_LABEL = { pen: '펜', highlight: '형광펜', eraser: '지우개', select: '영역삭제', line: '직선', rect: '사각형' };
-    var toolModeIndex = 0, toolMode = TOOL_MODES[0];
+    // ---- 도구와 묶음 ----
+    var TOOLS = {
+      pen:       { grp: 'write',  icon: '✏️', label: '펜' },
+      highlight: { grp: 'write',  icon: '🖍', label: '형광펜' },
+      brush:     { grp: 'write',  icon: '🖌', label: '붓펜' },
+      eraser:    { grp: 'erase',  icon: '🧽', label: '지우개' },
+      areaErase: { grp: 'erase',  icon: '⬛', label: '영역 지우기' },
+      line:      { grp: 'shape',  icon: '╱', label: '직선' },
+      arrow:     { grp: 'shape',  icon: '↗', label: '화살표' },
+      rect:      { grp: 'shape',  icon: '▭', label: '사각형' },
+      ellipse:   { grp: 'shape',  icon: '◯', label: '원' },
+      triangle:  { grp: 'shape',  icon: '△', label: '삼각형' },
+      selRect:   { grp: 'select', icon: '⬚', label: '네모 선택' },
+      selLasso:  { grp: 'select', icon: '➰', label: '올가미 선택' },
+      text:      { grp: 'insert', icon: 'T', label: '글자 상자' }
+    };
+    var GROUP_LABEL = { write: '쓰기', erase: '지우기', shape: '도형', select: '선택', insert: '넣기', color: '색', width: '굵기', bg: '배경', zoom: '확대', page: '쪽' };
+    var TOOL_GROUPS = { write: ['pen', 'highlight', 'brush'], erase: ['eraser', 'areaErase'], shape: ['line', 'arrow', 'rect', 'ellipse', 'triangle'], select: ['selRect', 'selLasso'], insert: ['text'] };
+    var lastInGroup = { write: 'pen', erase: 'eraser', shape: 'line', select: 'selRect', insert: 'text' };
+    var SHAPE_TOOLS = { line: 1, arrow: 1, rect: 1, ellipse: 1, triangle: 1 };
+    var FREE_TOOLS = { pen: 1, highlight: 1, brush: 1, eraser: 1 };
+    var PRESET_COLORS = ['#1a1a2e', '#b3261e', '#1e5bd8', '#1d7a3a', '#e08a00', '#7b3fb3', '#7a7a7a', '#ffffff'];
+    var WIDTH_PRESETS = [{ v: 2, label: '가늘게' }, { v: 4, label: '보통' }, { v: 7, label: '굵게' }];
+    var ERASER_SIZES = [{ v: 8, label: '작게' }, { v: 18, label: '보통' }, { v: 36, label: '크게' }];
 
-    var drawing = false, lastX = 0, lastY = 0;
+    var toolMode = 'pen';
+    var penColor = '#1a1a2e', penSize = 3, eraserSize = 18;
+    var recentColors = [];
+    var snapOn = false;
+    try { snapOn = localStorage.getItem('nxNoteSnap') === '1'; } catch (e) {}
+
+    var drawing = false, lastX = 0, lastY = 0, lastT = 0;
     var lastPenTime = 0, PALM_REJECT_WINDOW_MS = 600;
     var undoStack = [], redoStack = [];
     var shapeSnapshotImageData = null, shapeStartPoint = null, shapeCurrentPoint = null;
+    var strokePoints = [], strokeBaseImage = null, holdTimer = null, strokeSnapped = false;
 
     var notePages = [''], notePageBackgrounds = [null], noteCurrentPageIndex = 0;
     var bgPatternMode = 'none', zoomLevel = 1;
     var noteInited = false;
+    var floatObj = null; // 놓기 전인 조각(선택한 조각·사진·글자 상자)
 
+    function dprNow(){ return window.devicePixelRatio || 1; }
     function updatePageIndicator(){ notePageIndicator.textContent = (noteCurrentPageIndex + 1) + '/' + notePages.length; }
     function saveCurrentPageSnapshot(){ notePages[noteCurrentPageIndex] = noteCanvas.toDataURL('image/png'); }
 
@@ -55394,24 +55467,32 @@ function rwAiApplyEdit_(id, content){
         img.src = bg;
       }
     }
-    function loadPage(index){
-      saveCurrentPageSnapshot();
+    function drawInkFromUrl_(url){
+      var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
+      ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.clearRect(0, 0, noteCanvas.width, noteCanvas.height);
+      ctx.restore();
+      if (url && url.length > 100){
+        var img = new Image();
+        img.onload = function(){ ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.drawImage(img, 0, 0, w, h); ctx.restore(); };
+        img.src = url;
+      }
+    }
+    function showPage_(index){ // 저장 없이 그 쪽을 그린다(쪽 지우기·복사 뒤)
       noteCurrentPageIndex = index;
       undoStack = []; redoStack = [];
-      var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
-      ctx.clearRect(0, 0, noteCanvas.width, noteCanvas.height);
-      var saved = notePages[noteCurrentPageIndex];
-      if (saved && saved.length > 100){
-        var img = new Image();
-        img.onload = function(){ ctx.drawImage(img, 0, 0, w, h); };
-        img.src = saved;
-      }
+      drawInkFromUrl_(notePages[noteCurrentPageIndex]);
       renderCurrentBackground();
       updatePageIndicator();
     }
+    function loadPage(index){
+      commitFloat_();
+      saveCurrentPageSnapshot();
+      showPage_(index);
+    }
     function resizeCanvasToWrap(){
       var prevInk = noteCanvas.toDataURL ? noteCanvas.toDataURL('image/png') : null;
-      var dpr = window.devicePixelRatio || 1;
+      var dpr = dprNow();
       var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
       noteCanvas.width = Math.max(1, Math.round(w * dpr));
       noteCanvas.height = Math.max(1, Math.round(h * dpr));
@@ -55426,122 +55507,561 @@ function rwAiApplyEdit_(id, content){
       noteBgCanvas.height = Math.max(1, Math.round(h * dpr));
       bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       renderCurrentBackground();
+      placeFloat_();
     }
+    // 그림판 단위(확대 1배 기준 CSS px) ↔ 화면 좌표
+    function unitsPerClientPx_(){ var r = noteCanvas.getBoundingClientRect(); return r.width ? (noteCanvasWrap.clientWidth / r.width) : 1; }
+    function innerPxPerUnit_(){ return noteCanvasWrap.clientWidth ? (noteZoomInner.offsetWidth / noteCanvasWrap.clientWidth) : 1; }
     function getPoint(e){
       var rect = noteCanvas.getBoundingClientRect();
-      var scaleX = rect.width ? (noteCanvasWrap.clientWidth / rect.width) : 1;
-      return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleX, pressure: (e.pressure && e.pressure > 0) ? e.pressure : 0.5 };
+      var s = unitsPerClientPx_();
+      return { x: (e.clientX - rect.left) * s, y: (e.clientY - rect.top) * s, pressure: (e.pressure && e.pressure > 0) ? e.pressure : 0.5 };
     }
     function pushUndoSnapshot(){
       undoStack.push(noteCanvas.toDataURL('image/png'));
       if (undoStack.length > 30) undoStack.shift();
       redoStack = [];
     }
-    function applyStrokeStyle(pressure){
-      var baseSize = Number(notePenSize.value) || 3;
+    function applyStrokeStyle(pressure, speed){
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.setLineDash([]);
       if (toolMode === 'eraser'){
-        ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1; ctx.lineWidth = baseSize * 3;
+        ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1; ctx.lineWidth = eraserSize;
       } else if (toolMode === 'highlight'){
-        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.35; ctx.strokeStyle = notePenColor.value; ctx.lineWidth = baseSize * 4;
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.35; ctx.strokeStyle = penColor; ctx.lineWidth = penSize * 4;
+      } else if (toolMode === 'brush'){
+        // 붓펜 — 누르는 힘(펜)이 크게, 마우스·손가락은 빨리 그을수록 가늘게
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.strokeStyle = penColor;
+        var f = (pressure && pressure !== 0.5) ? (0.25 + pressure * 1.9) : Math.max(0.35, Math.min(1.8, 1.8 - (speed || 0) * 0.9));
+        ctx.lineWidth = Math.max(0.8, penSize * 1.6 * f);
+      } else if (SHAPE_TOOLS[toolMode]){
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.strokeStyle = penColor; ctx.lineWidth = Math.max(1, penSize);
       } else {
-        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.strokeStyle = notePenColor.value;
-        ctx.lineWidth = Math.max(0.8, baseSize * (0.4 + (pressure || 0.5)));
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.strokeStyle = penColor;
+        ctx.lineWidth = Math.max(0.8, penSize * (0.4 + (pressure || 0.5)));
       }
     }
+    function drawShape_(kind, a, b){
+      ctx.beginPath();
+      if (kind === 'line' || kind === 'arrow'){
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+        if (kind === 'arrow'){
+          var ang = Math.atan2(b.y - a.y, b.x - a.x), hl = Math.max(10, ctx.lineWidth * 4);
+          ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - hl * Math.cos(ang - Math.PI / 7), b.y - hl * Math.sin(ang - Math.PI / 7));
+          ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - hl * Math.cos(ang + Math.PI / 7), b.y - hl * Math.sin(ang + Math.PI / 7));
+        }
+      } else if (kind === 'rect'){
+        ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+      } else if (kind === 'ellipse'){
+        ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
+      } else if (kind === 'triangle'){
+        var l = Math.min(a.x, b.x), r = Math.max(a.x, b.x), t = Math.min(a.y, b.y), btm = Math.max(a.y, b.y);
+        ctx.moveTo((l + r) / 2, t); ctx.lineTo(r, btm); ctx.lineTo(l, btm); ctx.closePath();
+      }
+      ctx.stroke();
+    }
+    function drawDashed_(fn){
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.setLineDash([6, 4]); ctx.strokeStyle = '#b3261e'; ctx.lineWidth = 1.5; ctx.fillStyle = 'rgba(225, 29, 72, 0.08)';
+      fn(); ctx.restore();
+    }
 
+    // ---- 반듯하게: 펜으로 긋다가 끝에서 잠깐 멈추면 직선·네모·원으로 ----
+    function trySnap_(){
+      if (!drawing || strokeSnapped || !strokeBaseImage || strokePoints.length < 4) return;
+      var pts = strokePoints, s = pts[0], e = pts[pts.length - 1], len = 0;
+      var minX = s.x, maxX = s.x, minY = s.y, maxY = s.y;
+      for (var i = 1; i < pts.length; i++){
+        len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        minX = Math.min(minX, pts[i].x); maxX = Math.max(maxX, pts[i].x); minY = Math.min(minY, pts[i].y); maxY = Math.max(maxY, pts[i].y);
+      }
+      if (len < 20) return;
+      var chord = Math.hypot(e.x - s.x, e.y - s.y), bw = maxX - minX, bh = maxY - minY;
+      var kind = null;
+      if (chord / len > 0.88) kind = 'line'; // 손 떨림(좌우 흔들림)이 있어도 곧게 — 0.9는 조금만 흔들려도 안 됐음(시험)
+      else if (chord < 0.25 * Math.max(bw, bh) && bw > 15 && bh > 15){
+        var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, rx = bw / 2, ry = bh / 2, eErr = 0, rErr = 0;
+        pts.forEach(function(p){
+          var nx = (p.x - cx) / rx, ny = (p.y - cy) / ry;
+          eErr += Math.abs(Math.sqrt(nx * nx + ny * ny) - 1);
+          rErr += Math.abs(Math.max(Math.abs(nx), Math.abs(ny)) - 1);
+        });
+        kind = eErr <= rErr ? 'ellipse' : 'rect';
+      }
+      if (!kind) return;
+      ctx.putImageData(strokeBaseImage, 0, 0);
+      var keep = toolMode; toolMode = 'line'; applyStrokeStyle(0.5); toolMode = keep;
+      if (kind === 'line') drawShape_('line', s, e);
+      else drawShape_(kind, { x: minX, y: minY }, { x: maxX, y: maxY });
+      strokeSnapped = true;
+      toast(kind === 'line' ? '반듯한 선으로 고쳤습니다' : (kind === 'rect' ? '네모로 고쳤습니다' : '원으로 고쳤습니다'));
+    }
+
+    // ---- 놓기 전 조각(선택한 조각·사진·글자 상자) ----
+    function makeFloat_(kind, x, y, w, h, opts){
+      commitFloat_();
+      var el = document.createElement('div');
+      el.className = 'note-float' + (kind === 'text' ? ' note-float-text' : '');
+      var body;
+      if (kind === 'text'){
+        body = document.createElement('textarea');
+        body.className = 'note-float-ta';
+        body.value = opts.text || '';
+        body.placeholder = '글자를 적으세요';
+        body.style.color = opts.color;
+        body.spellcheck = false;
+      } else {
+        body = opts.source; // canvas 또는 img
+        body.className = 'note-float-img';
+        body.draggable = false;
+      }
+      el.appendChild(body);
+      var bar = document.createElement('div');
+      bar.className = 'note-float-bar';
+      bar.innerHTML = (kind === 'text' ? '<button type="button" data-act="move" title="끌어서 옮기기">✥</button>' : '') +
+        (kind !== 'text' ? '<button type="button" data-act="copy" title="복사 — 지금 자리에 하나 놓고 옆에 하나 더">⧉</button>' : '') +
+        '<button type="button" data-act="del" title="지우기">🗑</button><button type="button" data-act="ok" title="놓기 — 그림에 붙임">✓</button>';
+      el.appendChild(bar);
+      var handle = document.createElement('div');
+      handle.className = 'note-float-resize'; handle.title = '끌어서 크기 바꾸기';
+      el.appendChild(handle);
+      noteFloatLayer.appendChild(el);
+      floatObj = { kind: kind, el: el, body: body, x: x, y: y, w: w, h: h, fontPx: opts.fontPx || 18, color: opts.color || penColor, fromSel: !!opts.fromSel, ratio: (w && h) ? w / h : 1 };
+      placeFloat_();
+      bar.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+      bar.addEventListener('click', function(e){
+        var b = e.target.closest('button'); if (!b) return;
+        var act = b.getAttribute('data-act');
+        if (act === 'ok') commitFloat_();
+        else if (act === 'del') discardFloat_();
+        else if (act === 'copy') copyFloat_();
+      });
+      var moveStart = function(e){
+        if (!floatObj || floatObj.el !== el) return;
+        e.preventDefault(); e.stopPropagation();
+        var sx = e.clientX, sy = e.clientY, ox = floatObj.x, oy = floatObj.y, k = unitsPerClientPx_();
+        var mv = function(ev){ floatObj.x = ox + (ev.clientX - sx) * k; floatObj.y = oy + (ev.clientY - sy) * k; placeFloat_(); };
+        var up = function(){ document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); };
+        document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+      };
+      if (kind === 'text'){
+        bar.querySelector('[data-act="move"]').addEventListener('pointerdown', moveStart);
+        body.addEventListener('input', function(){ fitTextFloat_(); });
+        setTimeout(function(){ try { body.focus(); } catch (e) {} }, 0);
+      } else {
+        body.addEventListener('pointerdown', moveStart);
+      }
+      handle.addEventListener('pointerdown', function(e){
+        if (!floatObj || floatObj.el !== el) return;
+        e.preventDefault(); e.stopPropagation();
+        var sx = e.clientX, sy = e.clientY, ow = floatObj.w, oh = floatObj.h, k = unitsPerClientPx_();
+        var mv = function(ev){
+          var nw = Math.max(20, ow + (ev.clientX - sx) * k);
+          if (floatObj.kind === 'text'){ floatObj.w = nw; fitTextFloat_(); }
+          else { floatObj.w = nw; floatObj.h = Math.max(10, nw / floatObj.ratio); }
+          placeFloat_();
+        };
+        var up = function(){ document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); };
+        document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+      });
+      if (kind === 'text') fitTextFloat_();
+      return floatObj;
+    }
+    function placeFloat_(){
+      if (!floatObj) return;
+      var k = innerPxPerUnit_(), el = floatObj.el;
+      el.style.left = (floatObj.x * k) + 'px'; el.style.top = (floatObj.y * k) + 'px';
+      el.style.width = (floatObj.w * k) + 'px'; el.style.height = (floatObj.h * k) + 'px';
+      if (floatObj.kind === 'text'){ floatObj.body.style.fontSize = (floatObj.fontPx * k) + 'px'; floatObj.body.style.lineHeight = '1.3'; }
+      var fbar = el.querySelector('.note-float-bar'); if (fbar) fbar.classList.toggle('below', floatObj.y * k < 34); // 맨 위에 붙으면 작은 줄을 아래로
+    }
+    function wrapTextLines_(text, maxW){
+      ctx.save(); ctx.font = floatObj.fontPx + 'px "Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+      var out = [];
+      String(text).split('\n').forEach(function(para){
+        if (!para){ out.push(''); return; }
+        var line = '';
+        for (var i = 0; i < para.length; i++){
+          var t = line + para[i];
+          if (line && ctx.measureText(t).width > maxW){ out.push(line); line = para[i]; } else line = t;
+        }
+        out.push(line);
+      });
+      ctx.restore();
+      return out;
+    }
+    function fitTextFloat_(){
+      if (!floatObj || floatObj.kind !== 'text') return;
+      var lines = wrapTextLines_(floatObj.body.value || ' ', floatObj.w - 8);
+      floatObj.h = Math.max(floatObj.fontPx * 1.3 + 8, lines.length * floatObj.fontPx * 1.3 + 8);
+      placeFloat_();
+    }
+    function drawFloatOnCanvas_(){
+      var f = floatObj;
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.setLineDash([]);
+      if (f.kind === 'text'){
+        var lines = wrapTextLines_(f.body.value, f.w - 8);
+        ctx.font = f.fontPx + 'px "Malgun Gothic","Apple SD Gothic Neo",sans-serif';
+        ctx.fillStyle = f.color; ctx.textBaseline = 'top';
+        lines.forEach(function(ln, i){ ctx.fillText(ln, f.x + 4, f.y + 4 + i * f.fontPx * 1.3); });
+      } else {
+        ctx.drawImage(f.body, f.x, f.y, f.w, f.h);
+      }
+      ctx.restore();
+    }
+    function commitFloat_(){
+      if (!floatObj) return;
+      var f = floatObj;
+      var empty = f.kind === 'text' && !String(f.body.value || '').trim();
+      if (!empty){
+        if (!f.fromSel) pushUndoSnapshot();
+        drawFloatOnCanvas_();
+      }
+      f.el.remove(); floatObj = null;
+    }
+    function discardFloat_(){
+      if (!floatObj) return;
+      floatObj.el.remove(); floatObj = null;
+    }
+    function copyFloat_(){
+      if (!floatObj || floatObj.kind === 'text') return;
+      if (!floatObj.fromSel) pushUndoSnapshot();
+      drawFloatOnCanvas_();
+      floatObj.fromSel = true; // 이 조작의 되돌리기 자리는 이미 잡힘
+      floatObj.x += 20; floatObj.y += 20; placeFloat_();
+      toast('지금 자리에 하나 놓고, 옆에 하나 더 들었습니다');
+    }
+    function selectionToFloat_(rect, lassoPts){
+      var dpr = dprNow();
+      var bx = Math.max(0, Math.floor(rect.x)), by = Math.max(0, Math.floor(rect.y));
+      var bw = Math.min(noteCanvasWrap.clientWidth - bx, Math.ceil(rect.w)), bh = Math.min(noteCanvasWrap.clientHeight - by, Math.ceil(rect.h));
+      if (bw < 3 || bh < 3) return false;
+      var c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bw * dpr)); c.height = Math.max(1, Math.round(bh * dpr));
+      var cc = c.getContext('2d');
+      if (lassoPts){
+        cc.beginPath();
+        lassoPts.forEach(function(p, i){ var px = (p.x - bx) * dpr, py = (p.y - by) * dpr; if (i) cc.lineTo(px, py); else cc.moveTo(px, py); });
+        cc.closePath(); cc.clip();
+      }
+      cc.drawImage(noteCanvas, -bx * dpr, -by * dpr);
+      ctx.save();
+      if (lassoPts){
+        ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1;
+        ctx.beginPath(); lassoPts.forEach(function(p, i){ if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); }); ctx.closePath(); ctx.fill();
+      } else {
+        ctx.clearRect(bx, by, bw, bh);
+      }
+      ctx.restore();
+      makeFloat_('img', bx, by, bw, bh, { source: c, fromSel: true });
+      return true;
+    }
+
+    // ---- 그리기 ----
     noteCanvas.addEventListener('pointerdown', function(e){
       if (e.pointerType === 'touch' && (Date.now() - lastPenTime) < PALM_REJECT_WINDOW_MS) return;
       if (e.pointerType === 'pen') lastPenTime = Date.now();
+      closePop_();
+      var p = getPoint(e);
+      if (floatObj){ commitFloat_(); if (toolMode !== 'text') return; } // 놓기 전 조각이 있으면 그림판을 누르는 것 = 놓기
+      if (toolMode === 'text'){
+        makeFloat_('text', p.x, p.y, Math.max(120, Math.min(320, noteCanvasWrap.clientWidth - p.x - 10)), 30, { text: '', color: penColor, fontPx: 12 + penSize * 2 });
+        return;
+      }
       drawing = true;
       noteCanvas.setPointerCapture(e.pointerId);
-      var p = getPoint(e);
-      if (toolMode === 'line' || toolMode === 'rect' || toolMode === 'select'){
+      if (SHAPE_TOOLS[toolMode] || toolMode === 'areaErase' || toolMode === 'selRect' || toolMode === 'selLasso'){
         pushUndoSnapshot();
         shapeSnapshotImageData = ctx.getImageData(0, 0, noteCanvas.width, noteCanvas.height);
         shapeStartPoint = p; shapeCurrentPoint = p;
+        strokePoints = [p];
         return;
       }
       pushUndoSnapshot();
-      lastX = p.x; lastY = p.y;
+      lastX = p.x; lastY = p.y; lastT = performance.now();
+      strokePoints = [p]; strokeSnapped = false;
+      strokeBaseImage = (snapOn && toolMode !== 'eraser') ? ctx.getImageData(0, 0, noteCanvas.width, noteCanvas.height) : null;
     });
     noteCanvas.addEventListener('pointermove', function(e){
       if (!drawing) return;
       if (e.pointerType === 'touch' && (Date.now() - lastPenTime) < PALM_REJECT_WINDOW_MS) return;
       var p = getPoint(e);
-      if (toolMode === 'select'){
+      if (toolMode === 'areaErase' || toolMode === 'selRect'){
         if (!shapeSnapshotImageData) return;
         shapeCurrentPoint = p;
         ctx.putImageData(shapeSnapshotImageData, 0, 0);
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-        ctx.setLineDash([6, 4]); ctx.strokeStyle = '#b3261e'; ctx.lineWidth = 1.5;
-        var rx = shapeStartPoint.x, ry = shapeStartPoint.y, rw = p.x - shapeStartPoint.x, rh = p.y - shapeStartPoint.y;
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.fillStyle = 'rgba(225, 29, 72, 0.1)'; ctx.fillRect(rx, ry, rw, rh);
-        ctx.restore();
+        drawDashed_(function(){
+          var rx = shapeStartPoint.x, ry = shapeStartPoint.y, rw = p.x - rx, rh = p.y - ry;
+          ctx.strokeRect(rx, ry, rw, rh); ctx.fillRect(rx, ry, rw, rh);
+        });
         return;
       }
-      if (toolMode === 'line' || toolMode === 'rect'){
+      if (toolMode === 'selLasso'){
         if (!shapeSnapshotImageData) return;
+        strokePoints.push(p);
         ctx.putImageData(shapeSnapshotImageData, 0, 0);
-        applyStrokeStyle(p.pressure);
-        ctx.beginPath();
-        if (toolMode === 'line'){ ctx.moveTo(shapeStartPoint.x, shapeStartPoint.y); ctx.lineTo(p.x, p.y); }
-        else { ctx.rect(shapeStartPoint.x, shapeStartPoint.y, p.x - shapeStartPoint.x, p.y - shapeStartPoint.y); }
-        ctx.stroke();
+        drawDashed_(function(){
+          ctx.beginPath(); strokePoints.forEach(function(q, i){ if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); });
+          ctx.closePath(); ctx.stroke(); ctx.fill();
+        });
         return;
       }
-      applyStrokeStyle(p.pressure);
+      if (SHAPE_TOOLS[toolMode]){
+        if (!shapeSnapshotImageData) return;
+        shapeCurrentPoint = p;
+        ctx.putImageData(shapeSnapshotImageData, 0, 0);
+        applyStrokeStyle(0.5);
+        drawShape_(toolMode, shapeStartPoint, p);
+        return;
+      }
+      if (strokeSnapped) return;
+      var now = performance.now(), dist = Math.hypot(p.x - lastX, p.y - lastY);
+      var speed = dist / Math.max(1, now - lastT);
+      applyStrokeStyle(p.pressure, speed);
       ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
-      lastX = p.x; lastY = p.y;
+      lastX = p.x; lastY = p.y; lastT = now;
+      strokePoints.push(p);
+      if (strokeBaseImage){
+        clearTimeout(holdTimer);
+        holdTimer = setTimeout(trySnap_, 600);
+      }
     });
     function endStroke(){
-      if (toolMode === 'select' && shapeSnapshotImageData && shapeStartPoint && shapeCurrentPoint){
+      if (!drawing) return;
+      clearTimeout(holdTimer);
+      var a = shapeStartPoint, b = shapeCurrentPoint;
+      if ((toolMode === 'areaErase' || toolMode === 'selRect') && shapeSnapshotImageData && a && b){
         ctx.putImageData(shapeSnapshotImageData, 0, 0);
-        var x = Math.min(shapeStartPoint.x, shapeCurrentPoint.x), y = Math.min(shapeStartPoint.y, shapeCurrentPoint.y);
-        var w = Math.abs(shapeCurrentPoint.x - shapeStartPoint.x), h = Math.abs(shapeCurrentPoint.y - shapeStartPoint.y);
-        if (w > 2 && h > 2) ctx.clearRect(x, y, w, h);
+        var x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+        if (w > 2 && h > 2){
+          if (toolMode === 'areaErase') ctx.clearRect(x, y, w, h);
+          else selectionToFloat_({ x: x, y: y, w: w, h: h });
+        } else undoStack.pop();
+      } else if (toolMode === 'selLasso' && shapeSnapshotImageData){
+        ctx.putImageData(shapeSnapshotImageData, 0, 0);
+        var pts = strokePoints, ok = false;
+        if (pts.length >= 3){
+          var minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
+          pts.forEach(function(q){ minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x); minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y); });
+          ok = selectionToFloat_({ x: minX, y: minY, w: maxX - minX, h: maxY - minY }, pts);
+        }
+        if (!ok) undoStack.pop();
       }
       drawing = false; shapeSnapshotImageData = null; shapeStartPoint = null; shapeCurrentPoint = null;
-      ctx.globalAlpha = 1;
+      strokePoints = []; strokeBaseImage = null; strokeSnapped = false;
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
     noteCanvas.addEventListener('pointerup', endStroke);
     noteCanvas.addEventListener('pointercancel', endStroke);
-    noteCanvas.addEventListener('pointerleave', endStroke);
+    noteCanvas.addEventListener('pointerleave', function(e){ if (!noteCanvas.hasPointerCapture || !noteCanvas.hasPointerCapture(e.pointerId)) endStroke(); });
 
-    btnNoteToolMode.addEventListener('click', function(){
-      toolModeIndex = (toolModeIndex + 1) % TOOL_MODES.length;
-      toolMode = TOOL_MODES[toolModeIndex];
-      btnNoteToolMode.textContent = TOOL_MODE_ICON[toolMode];
-      btnNoteToolMode.title = TOOL_MODE_LABEL[toolMode];
-    });
-    btnNoteUndo.addEventListener('click', function(){
-      if (!undoStack.length){ toast('더 되돌릴 내용이 없습니다.'); return; }
-      redoStack.push(noteCanvas.toDataURL('image/png'));
-      var prev = undoStack.pop();
-      var img = new Image();
-      var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
-      img.onload = function(){ ctx.clearRect(0, 0, noteCanvas.width, noteCanvas.height); ctx.drawImage(img, 0, 0, w, h); };
-      img.src = prev;
-    });
-    btnNoteRedo.addEventListener('click', function(){
-      if (!redoStack.length){ toast('다시 실행할 내용이 없습니다.'); return; }
-      undoStack.push(noteCanvas.toDataURL('image/png'));
-      var next = redoStack.pop();
-      var img = new Image();
-      var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
-      img.onload = function(){ ctx.clearRect(0, 0, noteCanvas.width, noteCanvas.height); ctx.drawImage(img, 0, 0, w, h); };
-      img.src = next;
-    });
-    btnNoteClear.addEventListener('click', function(){
-      nxConfirm_('지금 페이지에 쓴 메모를 지웁니다. 계속할까요?').then(function(ok){
-        if (!ok) return;
-        pushUndoSnapshot();
-        ctx.clearRect(0, 0, noteCanvas.width, noteCanvas.height);
+    // ---- 도구 고르기·묶음 단추 ----
+    function setTool_(t){
+      if (!TOOLS[t]) return;
+      if (t !== toolMode) commitFloat_();
+      toolMode = t;
+      lastInGroup[TOOLS[t].grp] = t;
+      refreshToolbar_();
+    }
+    function refreshToolbar_(){
+      Object.keys(TOOL_GROUPS).forEach(function(g){
+        var b = grpBtn(g); if (!b) return;
+        var t = lastInGroup[g];
+        b.textContent = TOOLS[t].icon;
+        b.classList.toggle('on', TOOLS[toolMode].grp === g);
+        b.title = GROUP_LABEL[g] + ' — ' + TOOLS[t].label + ' (▾ 또는 한 번 더 누르면 ' + TOOL_GROUPS[g].map(function(x){ return TOOLS[x].label; }).join('·') + (g === 'insert' ? '·사진·날짜' : '') + ')';
+      });
+      noteColorDot.style.background = penColor;
+      noteWidthBar.style.height = Math.max(1, Math.min(8, Math.round(penSize))) + 'px';
+      var bgB = grpBtn('bg'); if (bgB) bgB.textContent = { none: '▦', ruled: '≡', grid: '⊞', dot: '⁘' }[bgPatternMode] || '▦';
+      var zB = grpBtn('zoom'); if (zB) zB.title = '확대 — 지금 ' + zoomLevel + '배';
+      noteCanvas.style.cursor = toolMode === 'text' ? 'text' : 'crosshair';
+    }
+    var popGroup_ = null;
+    function closePop_(){ notePop.style.display = 'none'; notePop.innerHTML = ''; popGroup_ = null; }
+    function popBtn_(label, on, fn, title){
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'note-pop-btn' + (on ? ' on' : '');
+      b.textContent = label; if (title) b.title = title;
+      b.addEventListener('click', function(e){ e.stopPropagation(); fn(); });
+      return b;
+    }
+    function popRow_(title){
+      var r = document.createElement('div'); r.className = 'note-pop-row';
+      if (title){ var t = document.createElement('span'); t.className = 'note-pop-title'; t.textContent = title; r.appendChild(t); }
+      notePop.appendChild(r); return r;
+    }
+    function swatch_(color, on){
+      var s = document.createElement('button'); s.type = 'button'; s.className = 'note-swatch' + (on ? ' on' : '');
+      s.style.background = color; s.title = color;
+      s.addEventListener('click', function(e){ e.stopPropagation(); setColor_(color); closePop_(); });
+      return s;
+    }
+    function setColor_(c){
+      penColor = c; notePenColor.value = c;
+      recentColors = [c].concat(recentColors.filter(function(x){ return x !== c; })).slice(0, 4);
+      if (floatObj && floatObj.kind === 'text'){ floatObj.color = c; floatObj.body.style.color = c; }
+      if (!FREE_TOOLS[toolMode] && !SHAPE_TOOLS[toolMode] && toolMode !== 'text') setTool_('pen');
+      else if (toolMode === 'eraser') setTool_('pen');
+      refreshToolbar_();
+    }
+    function openPop_(g, anchor){
+      closePop_(); popGroup_ = g;
+      if (TOOL_GROUPS[g]){
+        var row = popRow_(GROUP_LABEL[g]);
+        TOOL_GROUPS[g].forEach(function(t){ row.appendChild(popBtn_(TOOLS[t].icon + ' ' + TOOLS[t].label, toolMode === t, function(){ setTool_(t); closePop_(); })); });
+      }
+      if (g === 'erase'){
+        var r2 = popRow_('지우개 크기');
+        ERASER_SIZES.forEach(function(s){ r2.appendChild(popBtn_(s.label, eraserSize === s.v, function(){ eraserSize = s.v; setTool_('eraser'); closePop_(); })); });
+        var r3 = popRow_('');
+        r3.appendChild(popBtn_('🗑 이 쪽 전체 지우기', false, function(){
+          closePop_();
+          nxConfirm_('지금 쪽에 쓴 메모를 모두 지웁니다. 계속할까요?').then(function(ok){
+            if (!ok) return;
+            discardFloat_(); pushUndoSnapshot(); ctx.clearRect(0, 0, noteCanvas.width, noteCanvas.height);
+          });
+        }));
+      } else if (g === 'shape'){
+        var r4 = popRow_('');
+        r4.appendChild(popBtn_((snapOn ? '☑' : '☐') + ' 반듯하게 — 펜으로 긋다가 끝에서 잠깐 멈추면 직선·네모·원으로', snapOn, function(){
+          snapOn = !snapOn; try { localStorage.setItem('nxNoteSnap', snapOn ? '1' : '0'); } catch (e) {}
+          toast(snapOn ? '반듯하게 켬 — 펜으로 긋다가 끝에서 잠깐 멈추세요' : '반듯하게 끔');
+          closePop_();
+        }));
+      } else if (g === 'insert'){
+        var r5 = popRow_('');
+        r5.appendChild(popBtn_('🖼 사진 넣기', false, function(){ closePop_(); noteImgFileInput.click(); }));
+        r5.appendChild(popBtn_('🕒 오늘 날짜·시각', false, function(){ closePop_(); insertStamp_(); }));
+      } else if (g === 'color'){
+        var rc = popRow_('색');
+        PRESET_COLORS.forEach(function(c){ rc.appendChild(swatch_(c, c === penColor)); });
+        rc.appendChild(popBtn_('직접', false, function(){ closePop_(); notePenColor.click(); }, '색을 직접 고르기'));
+        if (recentColors.length){
+          var rr = popRow_('최근');
+          recentColors.forEach(function(c){ rr.appendChild(swatch_(c, c === penColor)); });
+        }
+      } else if (g === 'width'){
+        var rw = popRow_('굵기');
+        WIDTH_PRESETS.forEach(function(s){ rw.appendChild(popBtn_(s.label, penSize === s.v, function(){ penSize = s.v; refreshToolbar_(); closePop_(); })); });
+        var rs = popRow_('');
+        var range = document.createElement('input'); range.type = 'range'; range.min = 1; range.max = 10; range.value = penSize; range.title = '굵기 ' + penSize;
+        range.className = 'note-pop-range';
+        range.addEventListener('input', function(){ penSize = Number(range.value) || 3; range.title = '굵기 ' + penSize; refreshToolbar_(); });
+        rs.appendChild(range);
+      } else if (g === 'bg'){
+        var rb = popRow_('무늬');
+        [['none', '없음'], ['ruled', '줄'], ['grid', '모눈'], ['dot', '점']].forEach(function(m){
+          rb.appendChild(popBtn_(m[1], bgPatternMode === m[0], function(){ setBgPattern_(m[0]); closePop_(); }));
+        });
+        var rp = popRow_('사진');
+        rp.appendChild(popBtn_('📎 배경 사진 넣기', false, function(){ closePop_(); noteBgFileInput.click(); }));
+        if (notePageBackgrounds[noteCurrentPageIndex]){
+          rp.appendChild(popBtn_('배경 사진 걷기', false, function(){
+            notePageBackgrounds[noteCurrentPageIndex] = null; renderCurrentBackground(); closePop_(); toast('배경 사진을 걷었습니다');
+          }));
+        }
+      } else if (g === 'zoom'){
+        var rz = popRow_('확대');
+        [1, 1.5, 2].forEach(function(z){ rz.appendChild(popBtn_(z + '배', zoomLevel === z, function(){ setZoom_(z); closePop_(); })); });
+      } else if (g === 'page'){
+        var rpg = popRow_('쪽');
+        rpg.appendChild(popBtn_('＋ 새 쪽 넣기', false, function(){ closePop_(); insertPage_(false); }, '지금 쪽 뒤에 빈 쪽'));
+        rpg.appendChild(popBtn_('⧉ 이 쪽 복사', false, function(){ closePop_(); insertPage_(true); }, '지금 쪽을 뒤에 하나 더'));
+        rpg.appendChild(popBtn_('🗑 이 쪽 지우기', false, function(){ closePop_(); deletePage_(); }));
+      }
+      notePop.style.display = 'flex';
+      var r = anchor.getBoundingClientRect();
+      var pw = notePop.offsetWidth;
+      var left = Math.max(8, Math.min(r.left, window.innerWidth - pw - 8));
+      notePop.style.left = left + 'px';
+      notePop.style.top = (r.bottom + 4) + 'px';
+    }
+    document.querySelectorAll('#noteTb .note-grp').forEach(function(b){
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        var g = b.getAttribute('data-grp');
+        if (popGroup_ === g){ closePop_(); return; }
+        var r = b.getBoundingClientRect();
+        var onCaret = e.detail !== 0 && (e.clientX - r.left) > r.width - 11 && (e.clientY - r.top) > r.height - 13;
+        if (TOOL_GROUPS[g]){
+          var active = TOOLS[toolMode].grp === g;
+          if (onCaret || active){ openPop_(g, b); return; }
+          setTool_(lastInGroup[g]); closePop_();
+        } else {
+          openPop_(g, b);
+        }
       });
     });
+    document.addEventListener('pointerdown', function(e){
+      if (!popGroup_) return;
+      if (notePop.contains(e.target) || (e.target.closest && e.target.closest('#noteTb .note-grp'))) return;
+      closePop_();
+    });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && popGroup_) closePop_(); });
+    notePenColor.addEventListener('input', function(){ setColor_(notePenColor.value); });
 
-    btnNoteBgImage.addEventListener('click', function(){ noteBgFileInput.click(); });
+    function setBgPattern_(m){
+      bgPatternMode = m;
+      noteCanvasWrap.classList.remove('note-bg-ruled', 'note-bg-grid', 'note-bg-dot');
+      if (m !== 'none') noteCanvasWrap.classList.add('note-bg-' + m);
+      refreshToolbar_();
+    }
+    function setZoom_(z){
+      zoomLevel = z;
+      noteZoomInner.style.transform = 'scale(' + zoomLevel + ')';
+      noteZoomInner.style.width = (100 / zoomLevel) + '%';
+      noteZoomInner.style.height = (100 / zoomLevel) + '%';
+      noteCanvasWrap.classList.toggle('note-zoomed', zoomLevel > 1);
+      noteCanvas.style.touchAction = zoomLevel > 1 ? 'pan-x pan-y' : 'none';
+      if (zoomLevel > 1) toast('확대됨 — 손가락으로는 화면만 이동됩니다.');
+      placeFloat_(); refreshToolbar_();
+    }
+    function insertPage_(copy){
+      commitFloat_();
+      saveCurrentPageSnapshot();
+      var at = noteCurrentPageIndex + 1;
+      notePages.splice(at, 0, copy ? notePages[noteCurrentPageIndex] : '');
+      notePageBackgrounds.splice(at, 0, copy ? notePageBackgrounds[noteCurrentPageIndex] : null);
+      showPage_(at);
+      toast(copy ? '이 쪽을 복사해 뒤에 넣었습니다' : '새 쪽을 넣었습니다');
+    }
+    function deletePage_(){
+      nxConfirm_('지금 쪽(' + (noteCurrentPageIndex + 1) + '쪽)을 지웁니다. 되돌릴 수 없습니다. 계속할까요?').then(function(ok){
+        if (!ok) return;
+        discardFloat_();
+        if (notePages.length <= 1){
+          notePages = ['']; notePageBackgrounds = [null]; showPage_(0); return;
+        }
+        notePages.splice(noteCurrentPageIndex, 1); notePageBackgrounds.splice(noteCurrentPageIndex, 1);
+        showPage_(Math.min(noteCurrentPageIndex, notePages.length - 1));
+        toast('쪽을 지웠습니다');
+      });
+    }
+    function insertStamp_(){
+      var d = new Date(), pad = function(n){ return (n < 10 ? '0' : '') + n; };
+      var s = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      setTool_('text');
+      makeFloat_('text', 20, 20, 200, 30, { text: s, color: penColor, fontPx: 12 + penSize * 2 });
+    }
+
+    btnNoteUndo.addEventListener('click', function(){
+      if (floatObj){
+        var fromSel = floatObj.fromSel;
+        discardFloat_();
+        if (!fromSel) return; // 놓기 전 글자·사진은 지우기만(그림은 그대로)
+      }
+      if (!undoStack.length){ toast('더 되돌릴 내용이 없습니다.'); return; }
+      redoStack.push(noteCanvas.toDataURL('image/png'));
+      drawInkFromUrl_(undoStack.pop());
+    });
+    btnNoteRedo.addEventListener('click', function(){
+      commitFloat_();
+      if (!redoStack.length){ toast('다시 실행할 내용이 없습니다.'); return; }
+      undoStack.push(noteCanvas.toDataURL('image/png'));
+      drawInkFromUrl_(redoStack.pop());
+    });
+
     noteBgFileInput.addEventListener('change', function(e){
       var file = e.target.files[0];
       if (!file) return;
@@ -55554,25 +56074,23 @@ function rwAiApplyEdit_(id, content){
       reader.readAsDataURL(file);
       noteBgFileInput.value = '';
     });
-
-    btnNoteBgPattern.addEventListener('click', function(){
-      var modes = ['none', 'ruled', 'grid'];
-      bgPatternMode = modes[(modes.indexOf(bgPatternMode) + 1) % modes.length];
-      noteCanvasWrap.classList.remove('note-bg-ruled', 'note-bg-grid');
-      if (bgPatternMode === 'ruled') noteCanvasWrap.classList.add('note-bg-ruled');
-      if (bgPatternMode === 'grid') noteCanvasWrap.classList.add('note-bg-grid');
-      btnNoteBgPattern.textContent = { none: '▦', ruled: '≡', grid: '⊞' }[bgPatternMode];
-    });
-
-    btnNoteZoom.addEventListener('click', function(){
-      var levels = [1, 1.5, 2];
-      zoomLevel = levels[(levels.indexOf(zoomLevel) + 1) % levels.length];
-      noteZoomInner.style.transform = 'scale(' + zoomLevel + ')';
-      noteZoomInner.style.width = (100 / zoomLevel) + '%';
-      noteZoomInner.style.height = (100 / zoomLevel) + '%';
-      noteCanvasWrap.classList.toggle('note-zoomed', zoomLevel > 1);
-      noteCanvas.style.touchAction = zoomLevel > 1 ? 'pan-x pan-y' : 'none';
-      if (zoomLevel > 1) toast('확대됨 — 손가락으로는 화면만 이동됩니다.');
+    noteImgFileInput.addEventListener('change', function(e){
+      var file = e.target.files[0];
+      noteImgFileInput.value = '';
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var W = noteCanvasWrap.clientWidth, H = noteCanvasWrap.clientHeight;
+          var sc = Math.min(1, (W * 0.6) / img.naturalWidth, (H * 0.6) / img.naturalHeight);
+          var w = Math.max(20, img.naturalWidth * sc), h = Math.max(20, img.naturalHeight * sc);
+          makeFloat_('img', (W - w) / 2, Math.max(10, (H - h) / 3), w, h, { source: img });
+          toast('사진을 끌어 옮기고, 오른쪽 아래를 끌어 크기를 바꾼 뒤 ✓(놓기)를 누르세요');
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
     });
 
     btnNotePrevPage.addEventListener('click', function(){
@@ -55582,23 +56100,20 @@ function rwAiApplyEdit_(id, content){
     btnNoteNextPage.addEventListener('click', function(){
       if (noteCurrentPageIndex < notePages.length - 1){ loadPage(noteCurrentPageIndex + 1); }
       else {
+        commitFloat_();
         saveCurrentPageSnapshot();
         notePages.push(''); notePageBackgrounds.push(null);
-        loadPage(notePages.length - 1);
+        showPage_(notePages.length - 1);
       }
     });
 
     function resetUi(){
-      toolModeIndex = 0; toolMode = TOOL_MODES[0];
-      btnNoteToolMode.textContent = TOOL_MODE_ICON[toolMode];
-      zoomLevel = 1;
-      noteZoomInner.style.transform = 'scale(1)'; noteZoomInner.style.width = '100%'; noteZoomInner.style.height = '100%';
-      noteCanvasWrap.classList.remove('note-zoomed');
-      noteCanvas.style.touchAction = 'none';
-      btnNoteZoom.textContent = '🔍';
-      bgPatternMode = 'none';
-      noteCanvasWrap.classList.remove('note-bg-ruled', 'note-bg-grid');
-      btnNoteBgPattern.textContent = '▦';
+      discardFloat_(); closePop_();
+      toolMode = 'pen';
+      lastInGroup = { write: 'pen', erase: 'eraser', shape: 'line', select: 'selRect', insert: 'text' };
+      setZoom_(1);
+      setBgPattern_('none');
+      refreshToolbar_();
     }
 
     function initMemoHand(){
@@ -55620,17 +56135,20 @@ function rwAiApplyEdit_(id, content){
     function memoHandVisible_(){ return noteCanvasWrap.clientWidth > 0 && noteCanvasWrap.clientHeight > 0; }
     window.addEventListener('resize', function(){
       if (memoHandVisible_()) resizeCanvasToWrap();
+      if (popGroup_) closePop_();
     });
     // 손글씨 탭으로 돌아왔을 때 — 숨어 있던 사이 창 크기가 바뀌었으면 그린 것을 지키며 맞춘다
     window.memoHandFit_ = function(){
       if (!memoHandVisible_()) return;
-      var dpr = window.devicePixelRatio || 1;
+      var dpr = dprNow();
       if (noteCanvas.width !== Math.max(1, Math.round(noteCanvasWrap.clientWidth * dpr)) || noteCanvas.height !== Math.max(1, Math.round(noteCanvasWrap.clientHeight * dpr))) resizeCanvasToWrap();
     };
+    // 글 탭으로 바꿀 때 — 펼친 목록은 닫고, 놓기 전 조각은 그림에 붙인다
+    window.memoHandLeave_ = function(){ closePop_(); commitFloat_(); };
 
     function flattenPage(inkDataUrl, bgDataUrl, w, h){
       return new Promise(function(resolve){
-        var dpr = window.devicePixelRatio || 1;
+        var dpr = dprNow();
         var off = document.createElement('canvas');
         off.width = Math.max(1, Math.round(w * dpr)); off.height = Math.max(1, Math.round(h * dpr));
         var octx = off.getContext('2d');
@@ -55651,9 +56169,10 @@ function rwAiApplyEdit_(id, content){
       });
     }
 
-    // [2026.11.14 메모 한 창] 손글씨의 💾 단추는 걷고, 창 위 공통 단추(「사건에 넣기」「일반메모로 저장」)가 이 두 함수를 부른다
+    // [2026.11.14 메모 한 창] 손글씨의 💾 단추는 걷고, 창 위 공통 단추(「저장」)가 이 두 함수를 부른다
     //  memoHandBuildPdf_ — 그린 쪽들을 PDF 하나로(그린 것이 없으면 null) / memoHandReset_ — 넣은 뒤 그림판 비우기
     window.memoHandBuildPdf_ = async function(){
+      commitFloat_(); closePop_();
       saveCurrentPageSnapshot();
       var w = noteCanvasWrap.clientWidth, h = noteCanvasWrap.clientHeight;
       var pageIndexesToInclude = [];
@@ -55681,6 +56200,7 @@ function rwAiApplyEdit_(id, content){
       noteInited = false;
       initMemoHand();
     };
+    refreshToolbar_();
   })();
 </script>
 
@@ -55811,6 +56331,7 @@ function rwAiApplyEdit_(id, content){
     }
     document.querySelectorAll('#memoTopBar .memo-text-only').forEach(function(el){ el.style.display = hand ? 'none' : ''; });
     if (hand){ var dd_ = document.getElementById('memoSearchDropdown'); if (dd_) dd_.style.display = 'none'; }
+    if (!hand && window.memoHandLeave_) window.memoHandLeave_(); // [2026.11.15] 글로 바꿀 때 손 메모의 펼친 목록 닫고 놓기 전 조각은 그림에 붙임
     if (hand){
       if (typeof initMemoHand === 'function') initMemoHand();
       requestAnimationFrame(function(){ if (window.memoHandFit_) window.memoHandFit_(); });
@@ -59218,7 +59739,7 @@ function rwAiApplyEdit_(id, content){
       <ul>
         <li><b>통화하면서 바로 적으려면</b>: 입력창에 그냥 타이핑합니다. 서식을 입힌 모양은 ◧ 단추(작성관리 창보기와 같은 기호)로 봅니다 — 누르면 ◨(미리보기), 다시 누르면 ◧(편집창).</li>
         <li><b>의뢰서 양식대로 적으려면</b>: 「양식」에서 양식을 고르면 그 칸에 불러옵니다(이미 적은 글이 있으면 뒤에 붙일지 묻습니다).</li>
-        <li><b>손글씨로 적으려면</b>: [손]으로 바꾸고 ✏️(펜)을 고르고 화면에 바로 씁니다 — 색·굵기, ↩/↪(되돌리기·다시실행), ◀▶(쪽 넘기기·추가).</li>
+        <li><b>손글씨로 적으려면</b>: [손]으로 바꾸고 화면에 바로 씁니다. 도구는 종류별 묶음 단추에 들어 있습니다 — 단추를 누르면 그 묶음에서 마지막에 쓴 도구를 쥐고, 오른쪽 아래 ▾를 누르거나 쥔 단추를 한 번 더 누르면 목록이 펼쳐집니다.<ul><li>왼쪽(고치는 도구): <b>쓰기</b>(펜·형광펜·붓펜) · <b>지우기</b>(지우개·영역 지우기·지우개 크기·이 쪽 전체 지우기) · <b>도형</b>(직선·화살표·사각형·원·삼각형, 「반듯하게」를 켜면 펜으로 긋다가 끝에서 잠깐 멈출 때 곧은 선·네모·원으로) · <b>선택</b>(네모·올가미로 골라 끌어 옮기기, 오른쪽 아래 점으로 크기, ⧉ 복사·🗑 지우기·✓ 놓기) · <b>넣기</b>(글자 상자·사진·오늘 날짜·시각) · <b>색</b>(자주 쓰는 색 8개·최근 색·직접) · <b>굵기</b>(가늘게·보통·굵게·막대) · ↩/↪(되돌리기·다시실행).</li><li>오른쪽(보기 도구): <b>배경</b>(없음·줄·모눈·점, 배경 사진 넣기·걷기) · <b>확대</b>(1·1.5·2배) · ◀ 1/1 ▶(쪽 넘기기, 마지막 쪽에서 ▶는 새 쪽) · <b>쪽</b>(새 쪽 넣기·이 쪽 복사·이 쪽 지우기).</li><li>글자 상자·사진·고른 조각은 ✓(놓기)를 누르거나 그림판의 다른 곳을 누르면 그림에 붙습니다 — 붙은 뒤에는 글자를 고칠 수 없고(선택 도구로 골라 옮기기·지우기는 됨), ↩로 되돌립니다.</li></ul></li>
         <li><b>상담 내용을 사건으로 넘기려면</b>: 「저장」 → 「사건에 넣기」 → 새 사건으로 등록하거나 이미 있는 사건을 고릅니다. 적은 내용은 그 사건의 의뢰서 파일 맨 앞에 「상담기록(날짜 시각)」으로 쌓이고, 글 속 이름·날짜·금액·소재지는 사건개요의 빈 칸에 가설로 들어갑니다(이미 넣으신 값은 바꾸지 않음). 손글씨는 PDF로 그 사건 폴더에 들어갑니다. 상담 녹음 요약도 같은 의뢰서 파일에 쌓입니다.</li>
         <li><b>사건과 상관없는 메모는</b>: 「저장」 → 「일반메모로」 → 파일 이름을 적고, 펼쳐 보이는 폴더(메모 수·최근 메모 이름) 중에서 고릅니다. 「+ 새 폴더」로 고른 폴더 안에 폴더를 만듭니다.</li>
         <li><b>저장된 일반메모를 다시 찾으려면</b>: 「일반메모 찾기」 칸을 누르거나 낱말을 적습니다(모든 폴더에서 찾음). 목록 맨 위의 #태그를 누르면 그 태그가 달린 메모만 보이고, 다시 누르면 풀립니다. 불러온 메모를 고친 뒤 「저장」을 누르면 묻지 않고 그 메모에 덮어씁니다.</li>
