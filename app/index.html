@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 04:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 04:35 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57371,6 +57371,13 @@ function rwAiApplyEdit_(id, content){
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;"><button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일 전체를 유료 AI(Sonnet)가 점검합니다 — 매일 새벽 규칙 점검(0원)·무료 AI 점검(바뀐 날만) 결과는 위 점검 결과에">유료 AI 점검</button></div>
       <div class="st-out-slot"></div>
     </div>
+    <!-- [2026.11.14 밤 내부검토서 갱신] 세무사님 "생성된 검토서 중 수정할 사항이 있는 경우에 야간작업에서 업데이트" — 어느 검토서를 넣을지 고르고 지난 밤 결과를 본다 -->
+    <div class="card" data-sttab="2" id="stNightReviewCard">
+      <h3>🌙 밤 검토서 갱신</h3>
+      <div class="nx-help">밤(01~05시)에 job을 30분 넘게 쓰지 않으면, 넥스가 아래 목록의 내부 검토서 중 고칠 것이 있는 것만 고칩니다. 바뀐 것이 없으면 넥스를 부르지 않습니다(0원). 세무사님이 쓰신 문단은 그대로 둡니다.</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;"><button type="button" class="ghost-btn" id="stBtnNightReview">목록·지난 밤 결과 보기</button></div>
+      <div id="stNightReviewOut" style="margin-top:8px;"></div>
+    </div>
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
       <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 보고서 탭에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
@@ -57923,6 +57930,56 @@ function rwAiApplyEdit_(id, content){
           bugList.innerHTML = '<div><b>혼자 도는 점검 결과</b> <span style="font-size:12px; color:var(--muted);">— 새로 찾은 것은 대시보드 「답하실 것」에 뜹니다</span></div>' + lines.map(function(l){ return '<div style="font-size:12px;">· ' + escapeHtml(l) + '</div>'; }).join('');
         }).catch(function(err){ bugList.textContent = '점검을 돌리지 못했습니다: ' + (err && err.message ? err.message : err); });
       });
+    })();
+    // [2026.11.14 밤 내부검토서 갱신] 세무사님 "생성된 검토서 중 수정할 사항이 있는 경우에 야간작업에서 업데이트" / "나머지는 권장대로"(기존 검토서는 목록을 보여 드리고 고르신 것만)
+    //  서버 nr_status(목록·고를 수 있는 검토서·지난 밤) / nr_set(넣기·빼기) / nr_run_case(한 사건 지금 돌려 보기 — 넥스 비용 듦)
+    (function(){
+      var b = document.getElementById('stBtnNightReview'); if (!b) return;
+      var out = document.getElementById('stNightReviewOut'); if (!out) return;
+      var E = function(s){ return escapeHtml(String(s == null ? '' : s)); };
+      var draw = function(){
+        out.textContent = '🌙 밤 검토서 갱신 목록을 불러오는 중…';
+        callGas('nr_status', {}).then(function(r){
+          if (!r || r.ok === false) throw new Error((r && r.error) || '응답 없음');
+          var st = r.state || {}, done = st.done || [];
+          var row = function(x, on){
+            var last = x.last ? ' · 지난 밤 ' + E(x.last.at) + ' ' + (x.last.saved ? '고침 — ' : '그대로 — ') + E(x.last.summary || '') : '';
+            return '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12.5px; margin:3px 0;">'
+              + '<span style="min-width:0; flex:1;">' + E(x.case) + ' · <b>' + E(x.name) + '</b>' + (x.where ? ' <span style="color:var(--muted);">(' + E(x.where) + ', ' + E(x.at) + ')</span>' : '') + (on && x.상태 && x.상태 !== '진행' ? ' <span style="color:#b00;">상태 ' + E(x.상태) + ' — 밤에 보지 않음</span>' : '') + '<span style="color:var(--muted);">' + last + '</span></span>'
+              + '<button type="button" class="ghost-btn sm" data-nr-set="' + (on ? '0' : '1') + '" data-case="' + E(x.caseId) + '" data-file="' + E(x.fileId) + '">' + (on ? '빼기' : '넣기') + '</button>'
+              + (on ? '<button type="button" class="ghost-btn sm" data-nr-run="' + E(x.caseId) + '" title="밤을 기다리지 않고 이 사건을 지금 한 번 돌립니다(바뀐 것이 있으면 넥스 비용이 듭니다)">지금 돌려 보기</button>' : '')
+              + '</div>';
+          };
+          out.innerHTML = '<div style="font-size:12px; color:var(--muted); margin:2px 0 6px;">마지막으로 쓰신 흔적 ' + E(r.lastUse || '없음') + ' · 밤 예약 ' + (r.trigger ? '걸림' : '<span style="color:#b00;">안 걸림</span>') + (st.date ? ' · ' + E(st.date) + ' 밤: 본 사건 ' + done.length + '건, 고친 사건 ' + done.filter(function(d){ return d.saved; }).length + '건' + (st.waits ? ', 쓰시는 중이라 미룬 횟수 ' + st.waits : '') : '') + '</div>'
+            + '<div style="font-weight:bold; font-size:12.5px;">밤 갱신에 넣은 검토서 ' + (r.list || []).length + '개</div>'
+            + '<div style="border:1px solid var(--line); border-radius:6px; padding:4px 8px; margin:3px 0 8px; max-height:220px; overflow:auto;">' + ((r.list || []).map(function(x){ return row(x, true); }).join('') || '<div style="font-size:12px;">없음 — 넥스가 세무사님 지시로 새로 만든 검토서는 저절로 들어옵니다</div>') + '</div>'
+            + '<div style="font-weight:bold; font-size:12.5px;">넣을 수 있는 검토서(진행 사건) ' + (r.candidates || []).length + '개 <span style="font-weight:normal; color:var(--muted);">— 넣는 순간의 글은 넥스가 고칠 수 있는 글로 잡고, 그 뒤 세무사님이 고치신 문단부터 지킵니다</span></div>'
+            + '<div style="border:1px solid var(--line); border-radius:6px; padding:4px 8px; margin:3px 0; max-height:220px; overflow:auto;">' + ((r.candidates || []).map(function(x){ return row(x, false); }).join('') || '<div style="font-size:12px;">없음</div>') + '</div>';
+          out.querySelectorAll('[data-nr-set]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              btn.disabled = true;
+              callGas('nr_set', { caseId: btn.getAttribute('data-case'), fileId: btn.getAttribute('data-file'), on: btn.getAttribute('data-nr-set') === '1' }).then(function(s){
+                if (!s || s.ok === false) throw new Error((s && s.error) || '응답 없음');
+                draw();
+              }).catch(function(err){ btn.disabled = false; showToast('바꾸지 못했습니다: ' + (err && err.message ? err.message : err), 'error'); });
+            });
+          });
+          out.querySelectorAll('[data-nr-run]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              nxConfirm_('이 사건의 밤 갱신을 지금 한 번 돌립니다. 바뀐 것이 있으면 넥스(AI) 비용이 듭니다. 돌릴까요?').then(function(ok){
+                if (!ok) return;
+                btn.disabled = true; btn.textContent = '돌리는 중…';
+                callGas('nr_run_case', { caseId: btn.getAttribute('data-nr-run') }).then(function(x){
+                  if (!x || x.ok === false) throw new Error((x && x.error) || '응답 없음');
+                  showToast(x.skipped ? '그대로 — ' + x.skipped : ('고친 검토서 ' + (x.saved || 0) + '개' + (x.line ? ': ' + x.line : '') + ' · ' + (x.won || 0) + '원' + (x.error ? ' · ' + x.error : '')), 'info');
+                  draw();
+                }).catch(function(err){ btn.disabled = false; btn.textContent = '지금 돌려 보기'; showToast('돌리지 못했습니다: ' + (err && err.message ? err.message : err), 'error'); });
+              });
+            });
+          });
+        }).catch(function(err){ out.textContent = '밤 검토서 갱신 목록을 불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
+      };
+      b.addEventListener('click', draw);
     })();
     // [2026.10.27 T6 4단계] 🧪 공유 정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){
@@ -67484,6 +67541,17 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   //  화면을 옮길 때마다 사건 목록을 다시 받았다(운영 기록 319번). 이제 사건·고객 목록에 닿을 수 있는 저장만 지운다. 빠뜨린 저장이 있어도 기억은 1분이면 저절로 새로 받는다.
   var CALLGAS_LIST_WRITE_RE_ = /^(work_|client_|case_|booking_|link_booking|taxpayer_|approve|reject|saveCase|ensure_case|ledger_|family_|createFolder|moveItem|renameItem|deleteItem|restoreItem)/;
   function callGasTouchesLists_(action){ return CALLGAS_LIST_WRITE_RE_.test(action) && !CALLGAS_READONLY_RE_.test(action); }
+  // [2026.11.14 밤 내부검토서 갱신] 세무사님 "자동 업데이트는 컴퓨터가 꺼져 있고, 야간에만 한다" — job이 켜져 있는 동안 10분마다 서버에 흔적을 남긴다.
+  //  서버는 30분 넘게 흔적이 없을 때만 밤 갱신을 돌린다(서버가 전원을 직접 볼 수 없어서). 로그인 표가 있을 때만 부르고, 실패하면 1시간 쉰다(로그인 창을 되풀이해 띄우지 않게)
+  (function(){
+    var pause = 0;
+    setInterval(function(){
+      if (Date.now() < pause) return;
+      var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+      if (!tok || typeof callGasRaw_ !== 'function') return;
+      callGasRaw_('nx_ping', {}).then(function(r){ if (!r || r.error) pause = Date.now() + 3600000; }, function(){ pause = Date.now() + 3600000; });
+    }, 600000);
+  })();
   function callGas(action, payload){
     var isPlain = !payload || Object.keys(payload).length === 0;
     if (CALLGAS_SHARED_READS_[action] && isPlain){
@@ -67805,7 +67873,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     moveItem: '파일 옮기기', renameItem: '이름 바꾸기', deleteItem: '파일 지우기', searchFiles: '파일 찾기', listTrash: '휴지통 받기',
     client_get_consult_logs: '상담 기록 받기', list_bookings: '예약 목록 받기', ai_conv_list: '넥스 대화 목록 받기', ai_conv_load: '넥스 대화 불러오기',
     generate_report_content: '보고서 만들기', list_all_reports: '보고서 목록 받기', create_advisory_slide_report: '자문 발표 자료 만들기',
-    t6_share_cleanup: '공유 정리', aw_nightly_now: '혼자 도는 점검', aw_notice_seen: '알림 확인', system_audit_run: '시스템 점검', sysaudit_run: '시스템 점검', sysaudit_ai_run: '무료 AI 점검', self_check_run: '자체 점검',
+    t6_share_cleanup: '공유 정리', aw_nightly_now: '혼자 도는 점검', nr_status: '밤 검토서 갱신 목록 받기', nr_set: '밤 검토서 갱신 넣기·빼기', nr_run_case: '밤 검토서 갱신 돌려 보기', nx_ping: '쓰는 흔적 보내기', aw_notice_seen: '알림 확인', system_audit_run: '시스템 점검', sysaudit_run: '시스템 점검', sysaudit_ai_run: '무료 AI 점검', self_check_run: '자체 점검',
     ocr_batch_run: '서류 글자 읽기', ocr_batch_trigger: '서류 글자 읽기 맡기기', tc_extract_case_docs: '서류에서 계산 칸 찾기',
     doc_parse: '서류 읽기', doc_parse_multi: '서류 여러 장 읽기', doc_parse_image: '사진 서류 읽기', doc_parse_text: '서류 글 읽기',
     lookupLandInfo: '토지 정보 조회', lookupOfficialPrice: '공시가격 조회', lookupRealPrice: '실거래가 조회', lookupExchangeRate: '환율 조회',

@@ -277,6 +277,7 @@ function awLedgerHealth_(cases, startedAt) {
 function awNightly_() {
   const t0 = Date.now(), r = {};
   const cases = awCases_();
+  try { r.밤검토서예약 = nrEnsureTrigger_(); } catch (e) {} // [2026.11.14] 밤 내부검토서 갱신 틱(30분마다, 01~05시만 일함)
   try { r.정리 = awNoticePrune_(cases); } catch (e) { r.정리오류 = String(e && e.message || e).slice(0, 120); } // [2026.11.12] 진행 사건이 아닌 사건의 묵은 알림부터 지움
   try { r.기한 = awDeadlinesNightly_(cases).length; } catch (e) { r.기한오류 = String(e && e.message || e).slice(0, 120); }
   try { r.미수 = awUnpaidCheck_(cases).length; } catch (e) { r.미수오류 = String(e && e.message || e).slice(0, 120); }
@@ -306,3 +307,279 @@ function awQuestionsNightly_(cases) {
   return out;
 }
 function awNightlyLast_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(AW_NIGHT_PROP_) || 'null'); } catch (e) { return null; } }
+
+// =========================================================
+// [2026.11.14 밤 내부검토서 갱신] 세무사님 원문: "내가 검토서를 만들라고 한 사건만 검토서가 생성되고, 생성된 검토서 중 수정할 사항이 있는 경우에
+//  야간작업에서 업데이트하는 것으로 하자" / "보류사건은 아예 제외하라" / "보고서종류도 일단 내부검토서로 국한하자" /
+//  "자동 업데이트는 컴퓨터가 꺼져 있고, 야간에만 한다" / "나머지는 권장대로 한다"  — 계획서 docs/_기록/밤_내부검토서_갱신_계획서_20261114.html
+//  · 대상: 밤 갱신 목록(nr_review_list)에 오른 내부 검토서(종합검토서·개별검토서_쟁점) 중 상태 「진행」인 실사건 것만(보류·완료·가상 제외)
+//    목록에 오르는 길: 세무사님 지시로 넥스가 새로 만든 검토서(넥스 저장 직후 자동) · 설정 › 시스템 관리 카드에서 세무사님이 고른 기존 검토서
+//  · 때: 01~05시, job 화면이 30분 넘게 서버를 부르지 않았을 때(= 컴퓨터가 꺼져 있음으로 봄 — 화면이 10분마다 흔적을 보냄)
+//  · 바뀐 것 찾기는 GAS(0원) — 없으면 넥스를 부르지 않는다. 있으면 사건마다 넥스가 한 번 파악하고 그 사건 검토서를 이어서 고친다
+//  · 고칠 때: 같은 파일 갱신(직전 판 「_이전판」), 세무사님이 쓰신 문단은 그대로(달라 보이면 그 뒤에 밤 갱신 메모), 세액은 계산 저장본 숫자만
+//  · 아침: 고친 것만 「답하실 것」에. 고칠 것이 없으면 알림 없이 기록만(설정 카드에서 봄)
+// =========================================================
+var NR_LIST_PROP_ = 'nr_review_list', NR_STATE_PROP_ = 'nr_state', NR_USE_PROP_ = 'nx_last_use';
+var NR_IDLE_MIN_ = 30, NR_START_H_ = 1, NR_END_H_ = 5, NR_REPORT_END_H_ = 8;
+var NR_REVIEW_RE_ = /^(종합검토서|개별검토서_.+)\.(md|txt)$/;
+var NR_READ_TOOLS_ = /^(case_status|ledger_read|case_files|file_read|fact_map|doc_find|law_lookup|law_search|case_ledger)$/;
+function nrHour_() { return Number(Utilities.formatDate(new Date(), 'Asia/Seoul', 'H')); }
+// job 화면이 서버를 부를 때마다(manageApp_call) — 5분에 한 번만 속성에 적는다(속성 쓰기 한도)
+function nrMarkUse_() {
+  try { const ch = CacheService.getScriptCache(); if (ch.get('nr_use_mark')) return; ch.put('nr_use_mark', '1', 300); PropertiesService.getScriptProperties().setProperty(NR_USE_PROP_, String(Date.now())); } catch (e) {}
+}
+function nrTs_(s) { // 'yyyy-MM-dd HH:mm'(한국 시각) → ms
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
+  return m ? (Date.parse(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00+09:00') || 0) : 0;
+}
+function nrList_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty(NR_LIST_PROP_) || '[]') || []; } catch (e) { return []; } }
+// ── 넥스가 쓴 판(사본) — 「_이전판/_넥스판_이름.json」 {text, prot:[세무사님 문단]} — "_"로 시작해 미리 읽기·감시에서 빠진다
+function nrParas_(t) { return String(t || '').replace(/\r/g, '').split(/\n\s*\n/).map(function (s) { return s.replace(/\s+/g, ' ').trim(); }).filter(Boolean); }
+function nrSnapFolder_(file) { const p = file.getParents(); return p.hasNext() ? my_getOrCreateSubfolder_(p.next(), '_이전판') : null; }
+function nrSnapRead_(file) {
+  try { const f = nrSnapFolder_(file); if (!f) return null; const it = f.getFilesByName('_넥스판_' + file.getName() + '.json'); if (!it.hasNext()) return null; const o = JSON.parse(it.next().getBlob().getDataAsString('UTF-8')); return o && typeof o.text === 'string' ? { text: o.text, prot: Array.isArray(o.prot) ? o.prot : [] } : null; } catch (e) { return null; }
+}
+function nrSnapWrite_(file, text, prot) {
+  try {
+    const f = nrSnapFolder_(file); if (!f) return false;
+    const n = '_넥스판_' + file.getName() + '.json', s = JSON.stringify({ v: 1, at: caseProcNow_(), text: String(text || ''), prot: prot || [] });
+    const it = f.getFilesByName(n); if (it.hasNext()) it.next().setContent(s); else f.createFile(Utilities.newBlob(s, 'application/json', n));
+    return true;
+  } catch (e) { return false; }
+}
+// 세무사님(사람) 문단 = 지금 글 중 넥스가 쓴 판에 없는 문단 + 전에 세무사님 문단으로 잡힌 것(아직 남아 있는 것). 사본이 없으면 전부 지킨다
+function nrProtected_(cur, snap) {
+  const now = nrParas_(cur);
+  if (!snap) return now;
+  const nx = {}; nrParas_(snap.text).forEach(function (p) { nx[p] = 1; });
+  const keep = {}; (snap.prot || []).forEach(function (p) { keep[p] = 1; });
+  return now.filter(function (p) { return !nx[p] || keep[p]; });
+}
+// 넥스가 낮에 검토서를 저장한 직후(cpNexWroteMark_) — 밤 갱신 목록에 있는 파일이면 사본을 새로 쓴다(그 사이 세무사님이 고치신 문단은 지킬 문단으로 넘김)
+function nrNexWroteHook_(fileId) {
+  try {
+    if (!nrList_().some(function (x) { return x && x.fileId === fileId; })) return;
+    const file = DriveApp.getFileById(fileId), now = file.getBlob().getDataAsString('UTF-8');
+    const old = nrSnapRead_(file);
+    let pre = null; try { const bk = nrSnapFolder_(file).getFilesByName(file.getName()); if (bk.hasNext()) pre = bk.next().getBlob().getDataAsString('UTF-8'); } catch (e) { pre = null; }
+    const human = pre != null ? nrProtected_(pre, old) : (old ? old.prot : []);
+    const nowSet = {}; nrParas_(now).forEach(function (p) { nowSet[p] = 1; });
+    nrSnapWrite_(file, now, human.filter(function (p) { return nowSet[p]; }));
+  } catch (e) {}
+}
+// 목록 올리기·내리기 — 올릴 때 지금 글을 넥스가 고칠 수 있는 글로 잡는다(고르신 뒤 세무사님이 고치신 문단부터 지킴)
+function nrSet_(caseId, fileId, on, by) {
+  caseId = String(caseId || ''); fileId = String(fileId || '');
+  if (!caseId || !fileId) return { ok: false, error: '사건·파일이 없음' };
+  let file = null; try { file = DriveApp.getFileById(fileId); } catch (e) { return { ok: false, error: '파일을 찾지 못함' }; }
+  if (on && !NR_REVIEW_RE_.test(file.getName())) return { ok: false, error: '내부 검토서(종합검토서·개별검토서_쟁점)만 올릴 수 있음: ' + file.getName() };
+  const out = withLockStrict_(5000, function () {
+    const p = PropertiesService.getScriptProperties();
+    const a = nrList_().filter(function (x) { return x && x.fileId !== fileId; });
+    if (on) a.push({ caseId: caseId, fileId: fileId, name: file.getName(), at: caseProcNow_(), by: String(by || '세무사님') });
+    p.setProperty(NR_LIST_PROP_, JSON.stringify(a.slice(-200)));
+    return { ok: true, on: !!on, n: a.length };
+  });
+  if (on && !nrSnapRead_(file)) nrSnapWrite_(file, file.getBlob().getDataAsString('UTF-8'), []);
+  try { caseProcPatch_(caseId, function (sv) { caseProcLogTo_(sv, { by: String(by || '세무사님'), what: '밤 검토서 갱신 ' + (on ? '켬' : '끔'), detail: file.getName() }); }); } catch (e) {}
+  return out;
+}
+// 진행 실사건의 내부 검토서 찾기(「보고서」 → 「보고서_내부」 → 사건 폴더 맨 위) — 설정 카드의 고르기 목록
+function nrCandidates_(cases) {
+  const out = [];
+  (cases || awCases_()).forEach(function (c) {
+    if (!c || String(c.상태 || '') !== '진행' || awVirtual_(c) || !String(c.폴더ID || '').trim()) return;
+    let root; try { root = DriveApp.getFolderById(String(c.폴더ID).trim()); } catch (e) { return; }
+    const scan = function (folder, where) { const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (NR_REVIEW_RE_.test(f.getName())) out.push({ caseId: c.id, case: String(c.사건명 || c.고객명 || ''), fileId: f.getId(), name: f.getName(), where: where, at: Utilities.formatDate(f.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') }); } };
+    [(typeof REPORT_FOLDER_NAME_ !== 'undefined' ? REPORT_FOLDER_NAME_ : '보고서')].concat(typeof REPORT_FOLDER_OLD_NAMES_ !== 'undefined' ? REPORT_FOLDER_OLD_NAMES_.slice(0, 1) : ['보고서_내부']).forEach(function (n) { const it = root.getFoldersByName(n); if (it.hasNext()) scan(it.next(), n); });
+    scan(root, '사건 폴더');
+  });
+  return out;
+}
+// ── 바뀐 것 찾기(GAS, 0원) — 검토서를 마지막으로 고친 뒤로
+function nrChanges_(c, fileIds, since) {
+  const out = [], seen = {};
+  const add = function (s) { s = String(s).slice(0, 140); if (!seen[s]) { seen[s] = 1; out.push(s); } };
+  const sv = caseProcLoad_(c.id) || {};
+  (Array.isArray(sv.fileChanges) ? sv.fileChanges : []).forEach(function (x) {
+    if (!x || fileIds.indexOf(x.id) !== -1 || x.by === '넥스' || !/^(새|바뀜|없어짐)$/.test(String(x.kind || ''))) return;
+    if (/^_/.test(String(x.name || '')) || /(^|\/)_/.test(String(x.dir || ''))) return;
+    if (nrTs_(x.at) > since) add('서류 ' + x.kind + ': ' + (x.dir ? x.dir + '/' : '') + x.name);
+  });
+  let L = null; try { L = ledgerLoad_(c.id, true); } catch (e) { L = null; }
+  ((L && L.log) || []).forEach(function (e) { if (e && /^(세무사님|넥스|고객)$/.test(String(e.by || '')) && nrTs_(e.at) > since && e.what !== '밤 검토서 갱신') add('사건 장부(' + e.by + '): ' + e.what + (e.path ? ' — ' + e.path : '') + (e.detail ? ' — ' + String(e.detail).slice(0, 60) : '')); });
+  (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).forEach(function (x) { const m = /^tc_(\d{12,})/.exec(String(x && x.id || '')); if (m && Number(m[1]) > since) add('계산 저장본 새로: ' + [x.세목, x.구분, x.안이름 || x.name].filter(Boolean).join(' ')); });
+  const due = awYmd_(c.법정일); if (due) { const t = Date.parse(due + 'T00:00:00+09:00'); if (t > since && t <= Date.now()) add('법정기한 지남: ' + due); }
+  awNoticeList_().forEach(function (n) { if (n && n.caseId === c.id && /법령/.test(String(n.kind || '')) && nrTs_(n.at) > since) add('법령 개정 알림: ' + String(n.text || '').slice(0, 80)); });
+  return out.slice(0, 40);
+}
+// ── 고치기 — 찾아 바꾸기(한 곳만) → 세무사님 문단이 그대로인지 → 새로 넣은 세액 숫자가 계산 저장본에 있는지
+function nrApplyEdits_(text, edits, prot) {
+  let t = String(text || '');
+  for (let i = 0; i < (edits || []).length; i++) {
+    const e = edits[i] || {}, f = String(e.find || '');
+    if (!f) return { error: (i + 1) + '번째 고침: 찾을 글이 비었음' };
+    const at = t.indexOf(f);
+    if (at < 0) return { error: (i + 1) + '번째 고침: 검토서에서 못 찾음 — 「' + f.slice(0, 60) + '」(지금 글을 그대로 옮겨 적어라)' };
+    if (t.indexOf(f, at + 1) !== -1) return { error: (i + 1) + '번째 고침: 같은 글이 두 곳 이상 — 앞뒤를 더 붙여 한 곳만 가리켜라' };
+    t = t.slice(0, at) + String(e.replace == null ? '' : e.replace) + t.slice(at + f.length);
+  }
+  const have = {}; nrParas_(t).forEach(function (p) { have[p] = 1; });
+  const lost = (prot || []).filter(function (p) { return !have[p]; });
+  if (lost.length) return { error: '세무사님이 쓰신 문단은 한 글자도 바꾸거나 지우지 않는다 — 바뀐 문단 ' + lost.length + '개: 「' + lost[0].slice(0, 80) + '」 … 달라 보이면 그 문단 바로 뒤에 빈 줄을 두고 「> 🌙 밤 갱신 메모(날짜): …」 한 줄을 덧붙여라', lost: lost };
+  return { text: t };
+}
+function nrNewTaxNums_(c, before, after) {
+  if (typeof citeTaxFigures_ !== 'function') return [];
+  let a = [], b = []; try { a = citeTaxFigures_(c, before).없음 || []; b = citeTaxFigures_(c, after).없음 || []; } catch (e) { return []; }
+  const had = {}; a.forEach(function (s) { had[String(s).replace(/,/g, '')] = 1; });
+  return b.filter(function (s) { return !had[String(s).replace(/,/g, '')]; });
+}
+// ── 한 사건 — 넥스가 한 번 파악하고 그 사건의 밤 갱신 검토서를 이어서 본다
+function nrReviewCase_(c, fileIds, deadlineAt) {
+  const t0 = Date.now(), files = [];
+  fileIds.forEach(function (id) {
+    let f = null; try { f = DriveApp.getFileById(id); if (f.isTrashed()) f = null; } catch (e) { f = null; }
+    if (!f) return;
+    const sv = caseProcLoad_(c.id) || {}, last = (sv.nightReview && sv.nightReview[id]) || {};
+    const since = Math.max(f.getLastUpdated().getTime(), nrTs_(last.at));
+    const text = f.getBlob().getDataAsString('UTF-8');
+    files.push({ id: id, file: f, name: f.getName(), since: since, text: text, prot: nrProtected_(text, nrSnapRead_(f)) });
+  });
+  if (!files.length) return { skipped: '검토서 파일이 없음(지워졌거나 휴지통)' };
+  const since = Math.min.apply(null, files.map(function (x) { return x.since; }));
+  const ch = nrChanges_(c, fileIds, since);
+  if (!ch.length) return { skipped: '바뀐 것 없음', files: files.map(function (x) { return x.name; }) };
+  try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { skipped: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)' }; } catch (e) {}
+  const ctx = { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 };
+  const tools = caseProcAiLiveTools_().filter(function (t) { return NR_READ_TOOLS_.test(t.name); }).map(function (t) { const x = Object.assign({}, t); delete x.cache_control; return x; });
+  tools.push({ name: 'review_edit', description: '검토서 고치기(저장까지) — fileId의 검토서에서 find(지금 글 그대로, 한 곳만 가리킬 만큼)를 replace로 바꾼다. 여러 곳이면 edits에 차례로. summary=바뀐 결론·사실 한 줄(쉬운 말). 세무사님 문단을 건드리거나 계산 저장본에 없는 세액 숫자를 새로 넣으면 저장하지 않고 이유를 돌려준다.',
+    input_schema: { type: 'object', properties: { fileId: { type: 'string' }, edits: { type: 'array', items: { type: 'object', properties: { find: { type: 'string' }, replace: { type: 'string' } }, required: ['find', 'replace'] } }, summary: { type: 'string' } }, required: ['fileId', 'edits', 'summary'] } });
+  tools.push({ name: 'review_keep', description: '고칠 것 없음 — fileId 검토서는 바뀐 것을 보고도 고칠 곳이 없다(reason 한 줄). 신고·청구를 이미 냈거나 처리방향이 정해져 결론을 바꾸지 않는 경우도 여기에(reason에 그 사정).',
+    input_schema: { type: 'object', properties: { fileId: { type: 'string' }, reason: { type: 'string' } }, required: ['fileId', 'reason'] } });
+  const today = caseProcToday_();
+  const system = caseProcAiNexBase_() + '\n\n[밤 내부검토서 갱신 — 세무사님이 만들라고 하신 내부 검토서를 밤에 살핀다(세무사님이 부르신 대화가 아님)]\n'
+    + '- 할 일: 아래 [바뀐 것]이 검토서의 결론·사실관계·쟁점 검토·확인 필요 사항을 바꾸는지 본다. 필요하면 읽기 도구로 서류·장부·조문을 확인한다. 바뀌는 곳만 review_edit로 고치고, 고칠 곳이 없으면 review_keep. 검토서마다 둘 중 하나로 반드시 끝낸다.\n'
+    + '- 고치는 법(지침 사건처리내용_정리절차 5절): 새로 갈아엎지 않는다. 전 결론과 지금 결론이 어떻게 달라졌는지 보이게 이어서 다듬는다 — 바뀐 자리에 「(' + today + ' 밤 갱신: 전 ○○ → 지금 △△, 근거 파일·조문)」를 남긴다.\n'
+    + '- [세무사님 문단]은 세무사님이 직접 쓰신 글이다 — 한 글자도 바꾸거나 지우지 않는다. 달라 보이면 그 문단 바로 뒤에 빈 줄을 두고 「> 🌙 밤 갱신 메모(' + today + '): …」 한 줄만 덧붙인다.\n'
+    + '- 세액은 이 사건 계산 저장본에 있는 숫자만 옮긴다. 계산을 새로 해야 할 일이면 숫자를 쓰지 말고 「확인 필요 — 세액 다시 계산」으로 적는다(밤에는 계산 저장본을 만들지 않는다). 암산 금지.\n'
+    + '- 사건 장부·계산기 칸은 바꾸지 않는다. 세무사님 판단이 필요한 것은 case_ledger do=ask(group 붙여)로만 넘긴다(do=set 등 다른 쓰기는 안 됨).\n'
+    + '- 작업관리 처리방향이 정해져 있으면(아래 표시) 결론 문장은 바꾸지 말고 「결정과 달라질 수 있음」을 메모로만 남긴다. 신고·청구를 이미 낸 사건이면(case_status 작업일지로 확인) 고치지 말고 review_keep(reason에 "신고 뒤 — 수정신고·경정청구 검토 필요 여부")로 끝낸다.\n'
+    + '- 모든 글은 한국어. 개인정보(주민번호 뒷자리·계좌)는 적지 않는다. 지어내지 않는다(근거 없으면 [확인 필요]).';
+  const first = '사건: ' + String(c.사건명 || c.고객명 || '') + ' (' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ' · 상태 ' + (c.상태 || '') + ')\n'
+    + '처리방향: ' + (String(c.처리방향 || '').trim() || '(정해지지 않음)') + '\n'
+    + '[바뀐 것 — 검토서를 마지막으로 고친 뒤, GAS가 찾음]\n' + ch.map(function (s, i) { return (i + 1) + '. ' + s; }).join('\n') + '\n\n'
+    + files.map(function (x) { return '===== 검토서 「' + x.name + '」 (fileId: ' + x.id + ') =====\n' + x.text.slice(0, 40000) + (x.text.length > 40000 ? '\n…(뒤 생략)' : '') + '\n\n[세무사님 문단 ' + x.prot.length + '개 — 바꾸지 말 것]\n' + x.prot.slice(0, 60).map(function (p) { return '· ' + p.slice(0, 200); }).join('\n'); }).join('\n\n');
+  let messages = [{ role: 'user', content: caseProcAiMask_(first) }], won = 0, rounds = 0, calls = [], err = '';
+  const result = {}; // fileId → {saved, summary, keep}
+  const pending = function () { return files.filter(function (x) { return !result[x.id]; }).length; };
+  for (; rounds < 14 && pending(); rounds++) {
+    if (Date.now() > deadlineAt - 60000) { err = '시간이 모자라 멈춤(다음 밤에 이어서)'; break; }
+    const r = caseProcAiCall_(CASEPROC_AI_HIGH_MODEL_, system, tools, caseProcAiCacheMark_(messages), 6000, 'medium', { kind: '넥스 밤 검토서 갱신', caseId: c.id, caseName: c.사건명 || '', step: rounds + 1, q: '바뀐 것 ' + ch.length + '개' });
+    if (r.error) { err = r.error; break; }
+    won += r.won || 0;
+    const content = r.json.content || [], uses = content.filter(function (b) { return b.type === 'tool_use'; });
+    if (!uses.length) { err = err || '넥스가 고치기·그대로 두기 중 하나로 끝내지 않음'; break; }
+    const results = [];
+    uses.forEach(function (u) {
+      calls.push(u.name);
+      const inp = u.input || {};
+      let out = '';
+      if (u.name === 'review_edit' || u.name === 'review_keep') {
+        const x = files.filter(function (y) { return y.id === String(inp.fileId || ''); })[0];
+        if (!x) out = JSON.stringify({ 오류: '그 fileId의 검토서가 이번 목록에 없음' });
+        else if (u.name === 'review_keep') { result[x.id] = { keep: String(inp.reason || '').slice(0, 200) }; out = '{"ok":true}'; }
+        else {
+          const ap = nrApplyEdits_(x.text, inp.edits || [], x.prot);
+          const bad = ap.error ? [] : nrNewTaxNums_(c, x.text, ap.text);
+          if (ap.error) out = JSON.stringify({ 저장안함: ap.error });
+          else if (bad.length) out = JSON.stringify({ 저장안함: '계산 저장본에 없는 세액 숫자를 새로 넣었다: ' + bad.slice(0, 5).join(', ') + ' — 숫자를 빼고 「확인 필요 — 세액 다시 계산」으로' });
+          else {
+            try {
+              const parent = x.file.getParents().next();
+              aiSaveBackupPrev_(parent, x.file);
+              x.file.setContent(ap.text);
+              const keep = {}; nrParas_(ap.text).forEach(function (p) { keep[p] = 1; });
+              nrSnapWrite_(x.file, ap.text, x.prot.filter(function (p) { return keep[p]; }));
+              try { cpNexWroteMark_(c.id, x.id); } catch (e) {}
+              x.text = ap.text;
+              result[x.id] = { saved: true, summary: String(inp.summary || '').slice(0, 200) };
+              out = JSON.stringify({ ok: true, 저장: x.name, 안내: '같은 파일을 갱신했고 직전 판은 「_이전판」에 있다' });
+            } catch (e) { out = JSON.stringify({ 오류: '저장 실패: ' + String(e && e.message || e).slice(0, 120) }); }
+          }
+        }
+      } else if (u.name === 'case_ledger' && String(inp.do || '') !== 'ask') {
+        out = JSON.stringify({ 오류: '밤 갱신에서는 장부에 적지 않는다 — 세무사님께 넘길 것만 do=ask로' });
+      } else {
+        let ex; try { ex = caseProcAiLiveExec_(c.id, u.name, inp, ctx); } catch (e) { ex = { text: JSON.stringify({ 오류: String(e && e.message || e) }) }; }
+        out = String((ex && ex.text) || '');
+      }
+      results.push({ type: 'tool_result', tool_use_id: u.id, content: out.slice(0, 9000) });
+    });
+    messages = messages.concat([{ role: 'assistant', content: content }, { role: 'user', content: results }]);
+  }
+  won = Math.round((won + (ctx.subWon || 0)) * 10) / 10;
+  const now = caseProcNow_();
+  const saved = files.filter(function (x) { return result[x.id] && result[x.id].saved; });
+  caseProcPatch_(c.id, function (sv) {
+    sv.nightReview = sv.nightReview || {};
+    files.forEach(function (x) { if (result[x.id]) sv.nightReview[x.id] = { at: now, name: x.name, saved: !!result[x.id].saved, summary: result[x.id].summary || result[x.id].keep || '', won: won }; });
+    caseProcLogTo_(sv, { by: '넥스', what: '밤 검토서 갱신', detail: (saved.length ? '고침 ' + saved.map(function (x) { return x.name + '(' + result[x.id].summary + ')'; }).join(' · ') : '고칠 것 없음') + ' · 바뀐 것 ' + ch.length + '개 · ' + won + '원' + (err ? ' · ' + err : '') });
+  });
+  const line = saved.map(function (x) { return x.name + ' — ' + result[x.id].summary; }).join(' / ');
+  if (saved.length) { try { cpNexChatNote_(c, '밤에 내부 검토서를 고쳤습니다: ' + line + ' (직전 판은 「_이전판」)', '밤 검토서 갱신'); } catch (e) {} }
+  return { saved: saved.length, line: line, keep: files.filter(function (x) { return result[x.id] && result[x.id].keep; }).map(function (x) { return x.name + ' — ' + result[x.id].keep; }), changes: ch.length, won: won, rounds: rounds, calls: calls, error: err || undefined, ms: Date.now() - t0 };
+}
+// ── 밤 틱(30분마다) — 01~05시 일하고, 05~08시 사이 첫 틱에 아침 보고
+function nrNightTick() { // 시간 트리거가 부르는 이름(끝에 _ 없음)
+  const h = nrHour_(); if (h < NR_START_H_ || h >= NR_REPORT_END_H_) return;
+  const ch = CacheService.getScriptCache(); try { if (ch.get('nr_run')) return; ch.put('nr_run', '1', 330); } catch (e) {}
+  try { nrTick_(h, {}); } finally { try { ch.remove('nr_run'); } catch (e) {} }
+}
+function nrTick_(h, opt) {
+  opt = opt || {};
+  const started = Date.now(), DEADLINE = 300000, props = PropertiesService.getScriptProperties(), today = awToday_();
+  let st = {}; try { st = JSON.parse(props.getProperty(NR_STATE_PROP_) || '{}') || {}; } catch (e) { st = {}; }
+  if (st.date !== today) st = { date: today, queue: null, done: [], waits: 0, reported: false };
+  const save = function () { try { props.setProperty(NR_STATE_PROP_, JSON.stringify(st).slice(0, 8500)); } catch (e) {} };
+  if (h >= NR_END_H_ && !opt.force) { if (!st.reported) { nrReport_(st); st.reported = true; save(); } return st; }
+  if (st.reported && !opt.force) return st;
+  const lastUse = Number(props.getProperty(NR_USE_PROP_) || 0);
+  if (!opt.force && lastUse && Date.now() - lastUse < NR_IDLE_MIN_ * 60000) { st.waits = (st.waits || 0) + 1; st.lastWait = caseProcNow_(); save(); return st; }
+  if (!st.queue) {
+    const map = {}; awCases_().forEach(function (c) { if (c && c.id) map[c.id] = c; });
+    const by = {}; nrList_().forEach(function (x) { const c = x && map[x.caseId]; if (c && String(c.상태 || '') === '진행' && !awVirtual_(c)) (by[x.caseId] = by[x.caseId] || []).push(x.fileId); });
+    st.queue = Object.keys(by).map(function (k) { return { caseId: k, fileIds: by[k] }; });
+    save();
+  }
+  while (st.queue.length && Date.now() - started < DEADLINE - 200000) {
+    const it = st.queue.shift(); save();
+    const c = akReadCase_(it.caseId);
+    let r; try { r = c ? nrReviewCase_(c, it.fileIds, started + DEADLINE - 15000) : { skipped: '사건 없음' }; } catch (e) { r = { error: String(e && e.message || e).slice(0, 160) }; }
+    st.done.push({ caseId: it.caseId, name: c ? String(c.사건명 || c.고객명 || '') : '', saved: r.saved || 0, line: String(r.line || '').slice(0, 300), keep: (r.keep || []).slice(0, 3), skipped: r.skipped || '', error: r.error || '', won: r.won || 0 });
+    save();
+  }
+  if (!st.queue.length && !st.reported && !opt.force) { nrReport_(st); st.reported = true; save(); }
+  return st;
+}
+function nrReport_(st) {
+  const done = st.done || [], saved = done.filter(function (d) { return d.saved; });
+  const won = Math.round(done.reduce(function (s, d) { return s + (Number(d.won) || 0); }, 0));
+  if (!st.queue && st.waits) { awNoticeAdd_('밤 검토서 갱신', '밤새 job 화면이 켜져 있어 내부 검토서 갱신을 건너뛰었습니다(01~05시 내내 30분 안에 쓰신 흔적).', '', 'nr:' + st.date, true); return; }
+  saved.forEach(function (d) { awNoticeAdd_('밤 검토서 갱신', d.name + ' — ' + d.line + (d.won ? ' (' + d.won + '원)' : ''), d.caseId, 'nr:' + st.date + ':' + d.caseId, false); });
+  const left = (st.queue || []).length, errs = done.filter(function (d) { return d.error; });
+  if (saved.length || errs.length || left) awNoticeAdd_('밤 검토서 갱신', '고친 사건 ' + saved.length + '건' + (errs.length ? ' · 멈춤 ' + errs.length + '건(' + errs.map(function (d) { return d.name; }).join(', ').slice(0, 80) + ')' : '') + (left ? ' · 못 본 사건 ' + left + '건(05시 넘음)' : '') + ' · 넥스 비용 ' + won + '원', '', 'nr:' + st.date, true);
+}
+function nrEnsureTrigger_() {
+  try { const has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'nrNightTick'; }); if (!has) ScriptApp.newTrigger('nrNightTick').timeBased().everyMinutes(30).create(); return true; } catch (e) { return false; }
+}
+// 설정 › 시스템 관리 카드 — 목록·고를 수 있는 검토서·지난 밤 결과
+function nrStatus_() {
+  const cases = awCases_(), map = {}; cases.forEach(function (c) { if (c && c.id) map[c.id] = c; });
+  const list = nrList_().map(function (x) { const c = map[x.caseId]; const sv = caseProcLoad_(x.caseId) || {}; const nr = (sv.nightReview && sv.nightReview[x.fileId]) || null; return { caseId: x.caseId, case: c ? String(c.사건명 || c.고객명 || '') : '(사건 없음)', 상태: c ? String(c.상태 || '') : '', fileId: x.fileId, name: x.name, at: x.at, by: x.by, last: nr }; });
+  const on = {}; list.forEach(function (x) { on[x.fileId] = 1; });
+  let st = null; try { st = JSON.parse(PropertiesService.getScriptProperties().getProperty(NR_STATE_PROP_) || 'null'); } catch (e) { st = null; }
+  const lastUse = Number(PropertiesService.getScriptProperties().getProperty(NR_USE_PROP_) || 0);
+  let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'nrNightTick'; }); } catch (e) { trig = false; }
+  return { ok: true, list: list, candidates: nrCandidates_(cases).filter(function (x) { return !on[x.fileId]; }), state: st, lastUse: lastUse ? Utilities.formatDate(new Date(lastUse), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '', trigger: trig };
+}
