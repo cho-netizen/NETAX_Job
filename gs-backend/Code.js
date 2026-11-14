@@ -18048,7 +18048,10 @@ function rh_guessReportTypeLabelFromName_(base) {
 //  · 고객 창구에 새로 보이게 되는 것 표시) → 세무사님 승인 → 고른 줄만 적용 → 되돌리기 기록(총괄관리자/_기록/보고서이름정리_옮긴목록_*.json)·되돌리기.
 //  같은 사건에 같은 새 이름이 둘 이상이면 자동으로 정하지 않는다(9-17 "내용이 다르면 사람이 직접 세부명칭을 정해야 한다").
 //  이름 바꾸기·옮기기는 모두 서버가 드라이브에 직접 한다(파일·폴더 ID 그대로). 영구 삭제는 하지 않는다(빈 옛 폴더는 휴지통).
-var RPT_CLEAN_SKIP_DIR_RE_ = /^(_이전판|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일|_신고제출)$/;
+// [2026.11.14] 세무사님 "그러니까 임시파일이라고 하는 거 잖아" → "그렇게 고쳐라": 「_이전판」은 다음 저장 때 바뀌는 임시 보관함(바로 앞 판 하나)이라,
+//  오래 둘 옛 초안은 「보고서/_보관」에 따로 둔다(서버가 덮어쓰거나 지우지 않음).
+var REPORT_KEEP_FOLDER_ = '_보관';
+var RPT_CLEAN_SKIP_DIR_RE_ = /^(_이전판|_보관|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일|_신고제출)$/;
 var RPT_CLEAN_NOT_REPORT_RE_ = /번역본|계약서|위임장|협의서|합의서|체크리스트|대화기록|네이버블로그|블로그|민원안내|상담사례|정부24|국세법령정보시스템|^관련법령_|^의뢰서|_신고서식|감사보고서|권원조사보고서/;
 function rptCleanSuggest_(base, c) {
   const g = reportGuessKindFromName_(base);
@@ -18112,7 +18115,7 @@ function work_planReportFilenameCleanup_(opts) {
       if (!draft && !canon && !reportGuessKindFromName_(base).reportish) return;
       if (canon && !draft && inReport(x.rel)) return; // 이름·자리 맞음(옛 두 폴더도 합치기로 「보고서」가 된다)
       const r = { caseId: caseId, 고객명: c.고객명, 사건명: c.사건명, fileId: x.f.getId(), oldName: n, oldDir: x.rel || '(사건 폴더 맨 위)', ext: ext, base: base };
-      if (draft) { r.why = '옛 초안'; r.kind = 'review'; r.newName = n; r.target = '_이전판'; }
+      if (draft) { r.why = '옛 초안'; r.kind = 'review'; r.newName = n; r.target = REPORT_KEEP_FOLDER_; }
       else if (canon) { r.why = '자리만'; r.kind = canon.code; r.newName = n; r.target = '보고서'; }
       else { const sg = rptCleanSuggest_(base, c); r.why = '이름'; r.kind = sg.kind; r.detail = sg.detail; r.check = true; const cn = sg.kind ? reportCanonName_({ kind: sg.kind, detail: sg.detail, ext: ext || '.md' }) : null; r.newName = cn && cn.ok ? (isGdoc ? cn.base : cn.name) : ''; r.target = '보고서'; }
       r.customerVisible = r.target === '보고서' && reportIsCustomerVisible_(r.newName) && !(x.folder.getName() === REPORT_FOLDER_OLD_NAMES_[1] && /\.html?$/i.test(n));
@@ -18183,7 +18186,7 @@ function work_applyReportFolderMerge(params) {
   const logId = log.length ? rptCleanLogSave_('folderMerge', log) : '';
   return { success: true, merged: merged, moved: log.filter(function (x) { return x.t === 'fileMove'; }).length, errors: errs, logFileId: logId, next: next };
 }
-// 파일 정리 적용 — 화면에서 고른 줄만(rows: [{rowId, caseId, fileId, newName, target('보고서'|'_이전판'), pairs:[{fileId,newName}]}])
+// 파일 정리 적용 — 화면에서 고른 줄만(rows: [{rowId, caseId, fileId, newName, target('보고서'|'_보관'), pairs:[{fileId,newName}]}])
 function work_applyReportFilenameCleanup(params) {
   params = params || {};
   const rows = Array.isArray(params.rows) ? params.rows : null;
@@ -18202,9 +18205,10 @@ function work_applyReportFilenameCleanup(params) {
         while (p && guard++ < 10) { if (p.getId() === cf.getId()) { inCase = true; break; } const pp = p.getParents(); p = pp.hasNext() ? pp.next() : null; }
         if (!inCase) throw new Error('이 사건 폴더의 파일이 아님');
         const rep = reportFolderOf_(cf, true);
-        const dest = r.target === '_이전판' ? getOrCreateSubfolder_(rep, '_이전판') : rep;
+        const keep = r.target === REPORT_KEEP_FOLDER_ || r.target === '_이전판'; // 옛 화면 값(_이전판)도 오래 둘 「_보관」으로
+        const dest = keep ? getOrCreateSubfolder_(rep, REPORT_KEEP_FOLDER_) : rep;
         const newName = String(r.newName || '').trim() || f.getName();
-        if (r.target !== '_이전판') { const ok = reportKindOf_(newName.replace(/\.(md|html?|docx)$/i, '')); if (!ok) throw new Error('「' + newName + '」은 정식 이름이 아님 — 종류·세부명칭을 고르세요'); }
+        if (!keep) { const ok = reportKindOf_(newName.replace(/\.(md|html?|docx)$/i, '')); if (!ok) throw new Error('「' + newName + '」은 정식 이름이 아님 — 종류·세부명칭을 고르세요'); }
         const same = dest.getFilesByName(newName); while (same.hasNext()) { const s = same.next(); if (s.getId() !== f.getId() && !s.isTrashed()) throw new Error('「' + newName + '」이 이미 있음 — 다른 세부명칭을 넣으세요'); }
         const oldName = f.getName();
         const fromId = rptCleanMoveTo_(f, dest);
@@ -28709,7 +28713,7 @@ function caseProcFiles_(c, opt) {
 //  파일: 이미지는 전부 기본 꺼짐(10-27 결정 — PDF로 바꾼 뒤 읽음), 시스템·임시·산출물(검토서·서식 PDF) 꺼짐, 의뢰서·관련법령은 사건파악 전용(체크 대상 아님).
 //  체크 목록(겹2)의 기본 체크가 곧 이 판정 결과다 — 목록이 없는 사건도 이 판정 결과만 읽는다(전체가 아님).
 // =========================================================
-var CASEPROC_SKIP_DIR_RE_ = /^(보고서|보고서_내부|보고서_외부|_이전판|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/;
+var CASEPROC_SKIP_DIR_RE_ = /^(보고서|보고서_내부|보고서_외부|_이전판|_보관|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/;
 var CASEPROC_IMAGE_RE_ = /\.(jpe?g|png|gif|bmp|heic|heif|webp|tiff?)$/i;
 function caseProcFolderRule_(name, c, opt) {
   const n = String(name || '').trim(), inc = !!(opt && opt.includeFiled);

@@ -10,7 +10,7 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const TEXT_RE = /^(text\/|application\/json|application\/x-?markdown)/;
 const MAX_FILES = 400, MAX_DEPTH = 6, MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const OCRMEM_FILE = "_글자기억.json"; // Code.js T6_OCRMEM_FILE_와 같은 이름
-const SKIP_DIR_RE = /^(보고서|보고서_내부|보고서_외부|_이전판|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/; // [2026.10.28] Code.js CASEPROC_SKIP_DIR_RE_와 같게 유지(tools/check-skipdir-sync — 아래 module.exports로 내보내 시험이 대조)
+const SKIP_DIR_RE = /^(보고서|보고서_내부|보고서_외부|_이전판|_보관|이전버전|_원본사진|_글자인식기억|_사건처리점검|_도구|도구|_휴대폰받은파일)$/; // [2026.10.28] Code.js CASEPROC_SKIP_DIR_RE_와 같게 유지(tools/check-skipdir-sync — 아래 module.exports로 내보내 시험이 대조)
 
 let driveClient = null;
 async function drive() {

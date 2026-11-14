@@ -245,7 +245,7 @@
       var TD = 'padding:4px 6px; white-space:nowrap; overflow-x:auto; max-width:0;';
       function kindOf(code){ return all.kinds.filter(function(k){ return k.code === code; })[0] || null; }
       function newNameOf(r){
-        if (r.target === '_이전판') return r.oldName;
+        if (r.target === '_보관') return r.oldName;
         var k = kindOf(r.kind); if (!k) return '';
         var d = String(r.detail == null ? '' : r.detail).trim().replace(/[\\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ');
         if (r.why === '자리만') return r.oldName;
@@ -272,7 +272,7 @@
           '<b>① 폴더 합치기</b><span>합칠 사건 ' + fCount + '곳(「보고서_내부」 → 「보고서」 이름만 바꿈, 「보고서_외부」 파일은 그 안으로)</span>' +
           (fCount ? '<button type="button" class="btn" id="rhfcMergeBtn">폴더 합치기</button>' : '<span class="ok">합칠 폴더 없음</span>') +
           '<button type="button" class="ghost-btn sm" id="rhfcUndoBtn" title="가장 최근 합치기·정리 한 번을 거꾸로 돌립니다">최근 정리 되돌리기</button></div>';
-        html += '<div style="margin:4px 0 6px;"><b>② 파일 정리</b> ' + all.rows.length + '줄 — 고른 줄 ' + picked + '개. 「확인」 표시 줄은 종류·세부명칭을 살펴 주세요. 「겹침」은 같은 사건에 같은 새 이름이 둘 이상인 줄(세부명칭을 달리 넣거나 하나는 「_이전판」으로).</div>';
+        html += '<div style="margin:4px 0 6px;"><b>② 파일 정리</b> ' + all.rows.length + '줄 — 고른 줄 ' + picked + '개. 「확인」 표시 줄은 종류·세부명칭을 살펴 주세요. 「겹침」은 같은 사건에 같은 새 이름이 둘 이상인 줄(세부명칭을 달리 넣거나 하나는 「_보관」으로). 옛 초안은 「보고서/_보관」에 오래 둡니다(「_이전판」은 다음 저장 때 바뀌는 바로 앞 판 자리라 쓰지 않음).</div>';
         if (all.rows.length){
           html += '<div style="overflow-x:auto; max-height:52vh; overflow-y:auto;"><table style="table-layout:fixed; width:1290px; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--card,#fff);">' +
             '<th style="width:34px;"></th><th style="width:150px;">사건</th><th style="width:170px;">옛 자리</th><th style="width:250px;">옛 이름</th><th style="width:62px;">까닭</th><th style="width:150px;">종류</th><th style="width:150px;">세부명칭</th><th style="width:200px;">새 이름</th><th style="width:96px;">자리</th><th style="width:28px;"></th></tr></thead><tbody>' +
@@ -291,7 +291,7 @@
                 '<td style="' + TD + '">' + (r.why === '이름' && !lock ? '<select data-k="kind" style="width:100%;">' + kindOpts(r.kind) + '</select>' : esc((kindOf(r.kind) || {}).label || '')) + '</td>' +
                 '<td style="' + TD + '">' + (r.why === '이름' && !lock ? '<input data-k="detail" style="width:100%;" value="' + esc(r.detail || '') + '">' : '') + '</td>' +
                 '<td style="' + TD + 'color:#0D1B3D;" title="' + esc(r.newName || '') + '">' + (r.newName ? esc(r.newName) : '<span style="color:#b42318;">종류·세부명칭 필요</span>') + '</td>' +
-                '<td style="' + TD + '">' + (lock ? esc(r.target) : '<select data-k="target" style="width:100%;"><option value="보고서"' + (r.target === '보고서' ? ' selected' : '') + '>보고서</option><option value="_이전판"' + (r.target === '_이전판' ? ' selected' : '') + '>_이전판(보관)</option></select>') + '</td>' +
+                '<td style="' + TD + '">' + (lock ? esc(r.target) : '<select data-k="target" style="width:100%;"><option value="보고서"' + (r.target === '보고서' ? ' selected' : '') + '>보고서</option><option value="_보관"' + (r.target === '_보관' ? ' selected' : '') + '>_보관(오래 둠)</option></select>') + '</td>' +
                 '<td style="' + TD + '">' + flag.join(' ') + '</td></tr>';
             }).join('') + '</tbody></table></div>';
           html += '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0;">' + (all.next ? '<button type="button" class="ghost-btn" id="rhfcMoreBtn">나머지 사건 더 훑기</button>' : '') +
