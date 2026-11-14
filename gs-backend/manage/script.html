@@ -86,7 +86,22 @@
     // [2026.10.22] 세무사님 "권장순서대로 하고…"(기기 3종 검토 D-3) — 워치·휴대폰 바로가기 "넥스에게 말하기"(/m/?talk=1 → /app/?talk=1)는
     //  기기 크기와 상관없이 말하기 모드로 연다(그 창이 열려 있는 동안). 갤럭시워치(기종 SM-R…·SM-L…)도 말하기 모드.
     try { if (/[?&]talk=1/.test(location.search)) sessionStorage.setItem('nxForceTalk', '1'); } catch (e) {}
-    try { if (sessionStorage.getItem('nxForceTalk') === '1') return true; } catch (e) {}
+    if (nxTalkForced_()) return true;
+    return nxCoverNatural_();
+  }
+  // [2026.11.14] 세무사님 "고쳐야 한다" — 태블릿·폰 메뉴의 「넥스에게 말하기」를 누르면 그 창이 말하기 모드에 갇히고 돌아오는 길이 없었다
+  //  (창을 닫아야만 풀림). 말하기 모드를 이 창에서 켠 것(nxTalkForced_)과 기기가 원래 작은 화면인 것(nxCoverNatural_ — 워치·접는 폰 커버화면)을
+  //  나눠, 켠 것일 때만 「↩ 원래 화면으로」 단추(index.html #nxTalkExitBtn)를 보이고 누르면 끈다(nxTalkExit_). 워치·커버화면은 예전 그대로.
+  function nxTalkForced_(){ try { return sessionStorage.getItem('nxForceTalk') === '1'; } catch (e) { return false; } }
+  function nxTalkExit_(){
+    try { sessionStorage.removeItem('nxForceTalk'); } catch (e) {}
+    try { // 주소의 talk=1을 지운다 — 남겨 두면 다음 판정에서 다시 켜진다
+      var q = location.search.replace(/([?&])talk=1(&|$)/, function(m, a, b){ return b ? a : ''; }).replace(/[?&]$/, '');
+      history.replaceState(history.state, '', location.pathname + q + location.hash);
+    } catch (e) {}
+    nxApplyLayout_();
+  }
+  function nxCoverNatural_(){
     if (window.nxDeviceModel && /^SM-[RL]\d/i.test(window.nxDeviceModel)) return true;
     var o = nxLayoutOverride_();
     if (o === 'pc' || o === 'tablet') return false; // 설정에서 PC·태블릿으로 고정하면 커버화면 안 씀('폰' 고정은 씀)
@@ -113,6 +128,7 @@
     var coverChanged = !!window.nxCover !== cover;
     window.nxCover = cover;
     document.body.classList.toggle('lay-cover', cover);
+    document.body.classList.toggle('nx-talk-exit', cover && nxTalkForced_() && !nxCoverNatural_()); // [2026.11.14] 「↩ 원래 화면으로」 단추
     if (coverChanged && typeof nxCoverOnEnter_ === 'function') try{ nxCoverOnEnter_(cover); }catch(e){}
     if (coverChanged){ try{ document.dispatchEvent(new CustomEvent('nx-cover-change', { detail: cover })); }catch(e){} }
     if (changed){ try{ document.dispatchEvent(new CustomEvent('nx-layout-change', { detail: st })); }catch(e){} }

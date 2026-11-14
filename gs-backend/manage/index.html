@@ -309,6 +309,8 @@
 
   <!-- [2026.10.16] 커버화면은 탭 버튼 없이 밀기로만 화면을 바꾼다(세무사님) — 녹음 중일 때만 작은 표시(누르면 녹음 화면) -->
   <button type="button" id="nxCmRecBadge" hidden>● 녹음 중</button>
+  <!-- [2026.11.14] 말하기 모드에서 원래 화면으로(이 창에서 말하기를 켰을 때만 보임 — 워치·커버화면엔 안 보임). script.html nxTalkExit_ -->
+  <button type="button" id="nxTalkExitBtn" onclick="nxTalkExit_()">↩ 원래 화면으로</button>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
