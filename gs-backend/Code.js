@@ -4108,7 +4108,7 @@ function ai_workHistories(body) {
   }
   const imported = {};
   const convs = ai_convReadIndex_(ai_convFolder_()).list;
-  convs.forEach(function (c) { if (c.sourceFileId) imported[c.sourceFileId] = true; });
+  convs.forEach(function (c) { if (c.sourceFileId) imported[c.sourceFileId] = true; (c.sourceFileIds || []).forEach(function (s) { imported[s] = true; }); });
   // 이미 불러온 대화 중 work 원본이 그 뒤 더 바뀐 것 — 화면에 "work 새 내용" 표시를 띄운다.
   const rawById = {};
   raw.forEach(function (w) { rawById[w.fileId] = w; });
@@ -4288,6 +4288,13 @@ function ai_convSave(body) {
     };
     let entry = idx.list.find(function (e) { return e.id === id; });
     let fileId = entry && entry.fileId;
+    // [2026.11.14 사건마다 대화 하나] 200개를 넘어 앞에서 밀려난 말은 지우지 않고 「id_지난말.json」에 쌓는다
+    try {
+      const k = function (m) { return m && (m.role + '|' + (typeof m.content === 'string' ? m.content : JSON.stringify(m.content))); };
+      let drop = c.messages.length > AI_CONV_MAX_MESSAGES_ ? c.messages.slice(0, c.messages.length - AI_CONV_MAX_MESSAGES_) : [];
+      if (!drop.length && fileId && conv.messages.length) { const old = JSON.parse(DriveApp.getFileById(fileId).getBlob().getDataAsString('UTF-8')).messages || [], h = k(conv.messages[0]); let i = 0; while (i < old.length && k(old[i]) !== h) i++; if (i < old.length) drop = old.slice(0, i).concat(drop); }
+      if (drop.length) conv.archived = ai_convArchiveAdd_(folder, id, drop); else if (prevEntry) conv.archived = prevEntry.archived || 0;
+    } catch (e) {}
     const text = JSON.stringify(conv);
     try {
       if (fileId) DriveApp.getFileById(fileId).setContent(text);
@@ -4296,7 +4303,7 @@ function ai_convSave(body) {
       // 파일이 지워졌거나 접근 불가하면 새로 만든다(목록과 실제 파일이 어긋난 경우 자동 복구)
       fileId = folder.createFile(id + '.json', text, 'application/json').getId();
     }
-    const meta = { id: id, sourceFileId: conv.sourceFileId, sourceSyncedAt: conv.sourceSyncedAt, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId,
+    const meta = { id: id, sourceFileId: conv.sourceFileId, sourceSyncedAt: conv.sourceSyncedAt, sourceFileIds: c.sourceFileIds || (prevEntry && prevEntry.sourceFileIds) || [], archived: conv.archived || 0, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId,
       userUpdatedAt: body.bg ? (userAt0 || now) : now }; // [2026.11.13 5차 재점검 E] 뒤 일 글은 세무사님 쪽 저장 시각을 바꾸지 않는다
     if (conv.caseId && typeof caseProcHypTextsForget_ === 'function') caseProcHypTextsForget_(conv.caseId); // [2026.10.28 속도 B] 대화가 바뀌면 가설 출처 글 기억을 지운다
     if (entry) Object.assign(entry, meta); else idx.list.push(meta);
@@ -4324,6 +4331,38 @@ function ai_convRename(body) {
   });
 }
 
+function ai_convArchiveAdd_(folder, id, msgs) {
+  const n = id + '_지난말.json', it = folder.getFilesByName(n), f = it.hasNext() ? it.next() : null;
+  let a = []; try { a = f ? JSON.parse(f.getBlob().getDataAsString('UTF-8')) || [] : []; } catch (e) { a = []; }
+  a = a.concat(msgs); const t = JSON.stringify(a);
+  if (f) f.setContent(t); else folder.createFile(n, t, 'application/json');
+  return a.length;
+}
+function ai_convArchive(body) {
+  const it = ai_convFolder_().getFilesByName(String(body.id || '') + '_지난말.json');
+  try { return { success: true, messages: it.hasNext() ? JSON.parse(it.next().getBlob().getDataAsString('UTF-8')) : [] }; } catch (e) { return { error: e.message }; }
+}
+// [2026.11.14 세무사님 "사건에 연결되면 당연히 그 사건의 대화가 연결되는 것" / work 기록 중 진행 사건은 가져와야] 한 사건(caseId ''면 일반)의 대화를
+//  하나로: 아직 안 가져온 work 기록 + 그 사건 대화들을 오래된 순으로 이어 붙여 가장 최근 대화에 넣고, 나머지 대화 파일은 「_이전판」으로 옮긴다
+function ai_convUnify(body) {
+  const cid = String(body.caseId || ''), folder = ai_convFolder_();
+  const mine = ai_convReadIndex_(folder).list.filter(function (e) { return String(e.caseId || '') === cid; }).sort(function (a, b) { return String(a.updatedAt).localeCompare(String(b.updatedAt)); });
+  const works = cid ? (ai_workHistories({}).workHistories || []).filter(function (w) { return w.caseId === cid; }).sort(function (a, b) { return String(a.updatedAt).localeCompare(String(b.updatedAt)); }) : [];
+  if (mine.length + works.length < 2) { if (works.length) { const r = ai_convImportWork({ fileId: works[0].fileId, caseId: cid, caseName: body.caseName, caseFolderId: body.caseFolderId }); return r.error ? r : { success: true, id: r.conversation.id }; } return { success: true, id: mine.length ? mine[0].id : '' }; }
+  let msgs = [], ids = [], tgt = mine.length ? ai_convLoad({ id: mine[mine.length - 1].id }).conversation : null;
+  const seg = function (title, at, m) { if (!m.length) return; if (msgs.length) msgs.push({ role: 'assistant', content: '— 여기부터 「' + title + '」(' + String(at).slice(0, 10) + ') 대화 —', divider: true }); msgs = msgs.concat(m); };
+  works.forEach(function (w) { seg('work 대화', w.updatedAt, ai_readWorkHistory_(w.fileId).msgs); ids.push(w.fileId); });
+  mine.forEach(function (e) { const cv = ai_convLoad({ id: e.id }).conversation; if (!cv) return; seg(cv.title || '대화', e.updatedAt, ai_convArchive({ id: e.id }).messages.concat(cv.messages || [])); (e.sourceFileIds || []).concat(e.sourceFileId ? [e.sourceFileId] : []).forEach(function (s) { ids.push(s); }); });
+  if (tgt) { const ta = folder.getFilesByName(tgt.id + '_지난말.json'); if (ta.hasNext()) ta.next().setTrashed(true); } // 이어 붙인 글에 이미 들어 있음
+  if (!tgt) tgt = { title: 'work 대화 — ' + (body.caseName || ''), caseId: cid, caseName: body.caseName || '', caseFolderId: body.caseFolderId || '' };
+  const saved = ai_convSave({ conversation: Object.assign({}, tgt, { messages: msgs, sourceFileId: '', sourceFileIds: ids, baseUpdatedAt: '' }) });
+  if (saved.error) return saved;
+  try { const old = ai_convFolder_(), arc = my_getOrCreateSubfolder_(old, '_이전판');
+    mine.forEach(function (e) { if (e.id === saved.id) return; try { DriveApp.getFileById(e.fileId).moveTo(arc); const z = old.getFilesByName(e.id + '_지난말.json'); if (z.hasNext()) z.next().moveTo(arc); } catch (x) {} });
+    withLock_(10000, function () { const i2 = ai_convReadIndex_(old); ai_convWriteIndex_(old, i2, i2.list.filter(function (e) { return e.id === saved.id || String(e.caseId || '') !== cid; })); });
+  } catch (e) {}
+  return { success: true, id: saved.id, merged: mine.length + works.length };
+}
 // 휴지통으로 보낸다(드라이브 휴지통에서 30일간 복구 가능 — 영구삭제 아님).
 function ai_convDelete(body) {
   if (!body.id) return { error: '대화 id가 없습니다.' };
@@ -5128,6 +5167,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_conv_save') return jsonResponse(ai_convSave(Object.assign({}, body, { bg: false }))); // [2026.11.13 5차 재점검 E] 화면 저장은 늘 세무사님 쪽(뒤 일 표시는 서버 안에서만)
   if (body.action === 'ai_conv_rename') return jsonResponse(ai_convRename(body));
   if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
+  if (body.action === 'ai_conv_unify') return jsonResponse(ai_convUnify(body));
+  if (body.action === 'ai_conv_archive') return jsonResponse(ai_convArchive(body));
   if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
   if (body.action === 'ai_voice_brief') return jsonResponse(ai_voiceBrief_(body)); // 커버화면 토킹모드 음성 답변(핵심만 최대 축약)

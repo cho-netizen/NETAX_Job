@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 09:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-14 09:10 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -60224,7 +60224,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     <div class="nxai-list-head">
       <b>대화</b>
       <span class="nxai-spacer"></span>
-      <button type="button" class="nxai-btn primary" id="nxAiNewBtn" title="새 대화 시작">+ 새 대화</button>
       <button type="button" class="nxai-icon dark nxai-fold" id="nxAiListHide" title="대화 목록 숨기기">«</button>
     </div>
     <input type="search" id="nxAiListSearch" class="nxai-list-search" placeholder="대화·사건 검색">
@@ -60243,7 +60242,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" class="nxai-case-chip" id="nxAiCaseChip" title="이 대화에 사건 연결/변경">사건 연결</button>
       <button type="button" class="nxai-btn" id="nxAiSyncWork" hidden title="이 대화를 불러온 뒤 work에서 대화가 더 쌓였습니다 — 추가된 부분만 끝에 붙입니다">work 새 내용 이어붙이기</button>
       <span class="nxai-spacer"></span>
-      <button type="button" class="nxai-icon" id="nxAiNewBtnSide" title="새 대화">＋</button>
       <button type="button" class="nxai-icon" id="nxAiFontDown" title="글자 작게">가-</button>
       <button type="button" class="nxai-icon" id="nxAiFontUp" title="글자 크게">가+</button>
       <!-- [2026.11.01] 세무사님 "그렇게 하자" — 넥스는 늘 오른쪽 곁 창, 크게 볼 땐 「크게」, 크게 연 화면에선 「작게」로 보던 화면에 돌아감(메뉴 줄 없앰) -->
@@ -60342,10 +60340,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 <!-- 사건 선택 -->
 <div class="nxai-overlay" id="nxAiCaseOverlay" hidden>
   <div class="nxai-modal">
-    <div class="nxai-modal-head"><b>이 대화에 연결할 사건</b><span class="nxai-spacer"></span><button type="button" class="nxai-icon dark" id="nxAiCaseClose" title="닫기">✕</button></div>
+    <div class="nxai-modal-head"><b>넥스 대화 — 사건 고르기</b><span class="nxai-spacer"></span><button type="button" class="nxai-icon dark" id="nxAiCaseClose" title="닫기">✕</button></div>
     <input type="search" id="nxAiCaseSearch" class="nxai-list-search" placeholder="고객명·사건명 검색">
     <div class="nxai-case-list" id="nxAiCaseList"><div class="nxai-muted">불러오는 중…</div></div>
-    <div class="nxai-modal-foot"><button type="button" class="nxai-btn" id="nxAiCaseUnlink">연결 해제</button></div>
+    <div class="nxai-modal-foot"><button type="button" class="nxai-btn" id="nxAiCaseUnlink" title="사건 없는 일반 대화로">일반 대화로</button></div>
   </div>
 </div>
 
@@ -60630,7 +60628,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-size{ border:1px solid currentColor; background:none; color:inherit; border-radius:6px; padding:2px 8px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; opacity:.85; }
   .nxai-size:hover{ opacity:1; }
   .nxai.mode-side #nxAiToSide, .nxai.mode-side #nxAiHide{ display:none; }
-  .nxai.mode-tab #nxAiPin, .nxai.mode-tab #nxAiCollapse, .nxai.mode-tab #nxAiOpenTab, .nxai.mode-tab #nxAiNewBtnSide, .nxai.mode-tab .nxai-resize{ display:none; }
+  .nxai.mode-tab #nxAiPin, .nxai.mode-tab #nxAiCollapse, .nxai.mode-tab #nxAiOpenTab, .nxai.mode-tab .nxai-resize{ display:none; }
+  .nxai-msg.nxai-divider{ align-self:center; background:none; border:0; color:var(--muted, #888); font-size:12px; padding:2px 6px; max-width:100%; text-align:center; }
+  .nxai-msg.nxai-arch{ opacity:.75; } .nxai-btn.nxai-more{ align-self:center; margin:4px auto; display:block; } .nxai-old-work summary{ cursor:pointer; padding:6px 8px; }
   .nxai.mode-tab .nxai-body{ padding:18px 22px; }
   /* [2026.11.03] 세무사님 "창이 충분히 넓을 때 창을 모두 사용하지 않는다. 질문 답변 모두 창너비의 90%를 사용하여 줄 수를 줄였으면"(요청 R2611021757) — 답 880px 상한·질문 88% → 둘 다 90% */
   .nxai.mode-tab .nxai-msg.ai{ max-width:90%; }
@@ -60895,69 +60895,57 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return (d.getMonth() + 1) + '/' + d.getDate();
   }
 
-  // job 대화와 work 대화기록(아직 안 불러온 것)을 한 목록에 최근 순으로 섞어 보여준다.
-  // work 항목은 누르면 그 자리에서 job 대화로 불러온다(원본 파일은 그대로 둠).
+  // [2026.11.14 사건마다 대화 하나] 목록은 사건마다 한 줄 + 일반 대화 한 줄. 아직 안 가져온 work 기록이 있는 사건도 그 사건 한 줄로(누르면 이어 붙여 엶).
+  //  사건에 안 딸린 옛 work 기록(0_NX_0 등)은 맨 아래 「지난 work 기록」 접힌 칸 — 누르면 읽기만(미리보기).
   function nxAiRenderConvList_(){
     var body = nxAiEl_('nxAiListBody');
     if (!body) return;
     var q = (nxAiEl_('nxAiListSearch').value || '').trim();
-    var items = nxAiConvList.map(function(c){ return { kind: 'job', c: c, at: c.updatedAt || '' }; })
-      .concat(nxAiWorkList.map(function(w){ return { kind: 'work', w: w, at: w.updatedAt || '' }; }));
-    items = items.filter(function(it){
-      if (!q) return true;
-      var hay = it.kind === 'job' ? [it.c.title, it.c.caseName].join(' ') : [it.w.caseName, it.w.folderName].join(' ');
-      return hay.indexOf(q) !== -1;
+    var seen = {}, items = [], old = [];
+    nxAiConvList.forEach(function(c){ var k = c.caseId || ''; if (seen[k]) return; seen[k] = 1; items.push({ c: c, at: c.updatedAt || '' }); });
+    nxAiWorkList.forEach(function(w){
+      if (w.caseId && !w.notCase){ if (!seen[w.caseId]){ seen[w.caseId] = 1; items.push({ c: { id: '', caseId: w.caseId, caseName: w.caseName || w.folderName, title: 'work 대화', updatedAt: w.updatedAt }, at: w.updatedAt || '', work: true }); } }
+      else old.push(w);
     });
-    // [2026.11.01 화면구조 개편 ④] 시험 대화(제목·사건 이름이 「가상」으로 시작)는 기본으로 숨김 — 지금 열린 대화는 늘 보임
-    var isTestIt = function(it){ var t = typeof nxIsTestName_ === 'function' ? nxIsTestName_ : function(){ return false; }; return it.kind === 'job' ? (t(it.c.title) || t(it.c.caseName)) : (t(it.w.caseName) || t(it.w.folderName)); };
-    var testN = items.filter(isTestIt).length;
-    if (typeof nxTestToggleSync_ === 'function') nxTestToggleSync_('ai', testN);
-    if (!(typeof nxShowTest_ === 'function' && nxShowTest_())) items = items.filter(function(it){ return !isTestIt(it) || (it.kind === 'job' && it.c.id === nxAiConv.id); });
-    items.sort(function(a, b){ return String(b.at).localeCompare(String(a.at)); });
+    if (!seen['']) items.push({ c: { id: '', caseId: '', caseName: '', title: '일반 대화' }, at: '' });
+    var hay = function(it){ return [it.c.title, it.c.caseName].join(' '); };
+    if (q){ items = items.filter(function(it){ return hay(it).indexOf(q) !== -1; }); old = old.filter(function(w){ return [w.caseName, w.folderName].join(' ').indexOf(q) !== -1; }); }
+    // [2026.11.01 화면구조 개편 ④] 시험 대화(「가상」으로 시작)는 기본으로 숨김 — 지금 열린 대화는 늘 보임
+    var t = typeof nxIsTestName_ === 'function' ? nxIsTestName_ : function(){ return false; };
+    var isTest = function(it){ return t(it.c.title) || t(it.c.caseName); };
+    if (typeof nxTestToggleSync_ === 'function') nxTestToggleSync_('ai', items.filter(isTest).length);
+    if (!(typeof nxShowTest_ === 'function' && nxShowTest_())) items = items.filter(function(it){ return !isTest(it) || (it.c.caseId || '') === (nxAiConv.caseId || ''); });
+    items.sort(function(a, b){ return (a.c.caseId ? 1 : 0) - (b.c.caseId ? 1 : 0) || String(b.at).localeCompare(String(a.at)); }); // 일반 대화가 맨 위
     if (nxAiListState === 'loading' && !nxAiConvList.length){ body.innerHTML = '<div class="nxai-muted">대화 목록을 불러오는 중…</div>'; return; }
     if (nxAiListState === 'error' && !nxAiConvList.length){
       body.innerHTML = '<div class="nxai-muted">대화 목록을 불러오지 못했습니다. <a href="#" id="nxAiListRetry">다시 시도</a></div>';
       nxAiEl_('nxAiListRetry').addEventListener('click', function(e){ e.preventDefault(); nxAiLoadConvList_(true); });
       return;
     }
-    if (!items.length){
-      body.innerHTML = '<div class="nxai-muted">' + (q ? '검색 결과가 없습니다.' : (nxAiWorkLoading ? 'work에서 하던 대화를 찾는 중…' : '아직 저장된 대화가 없습니다. 대화창에서 바로 시작하세요.')) + '</div>';
-      return;
-    }
     body.innerHTML = '';
     items.forEach(function(it){
-      var row = document.createElement('div');
-      if (it.kind === 'job'){
-        var c = it.c;
-        row.className = 'nxai-conv' + (c.id === nxAiConv.id ? ' on' : '');
-        row._convId = c.id;
-        row.innerHTML = '<span class="t">' + (nxAiWorkUpdated[c.id] ? '<span class="nxai-badge new" title="불러온 뒤 work에서 대화가 더 쌓였습니다">work 새 내용</span>' : '') + nxAiEsc_(c.title || '새 대화') + '</span>'
-          + '<span class="m">' + (c.caseName ? '<span>🔗 ' + nxAiEsc_(c.caseName) + '</span>' : '<span>일반</span>')
-          + '<span>' + nxAiEsc_(nxAiFmtTime_(c.updatedAt)) + '</span></span>';
-        row.addEventListener('click', function(){ nxAiOpenConv_(c.id); });
-        row.addEventListener('contextmenu', function(e){
-          e.preventDefault();
-          nxAiShowMenu_(e.clientX, e.clientY, [
-            { label: '✏️ 제목 바꾸기', action: function(){ nxAiRenameConv_(c.id, c.title); } },
-            { label: '🗑 대화 삭제(휴지통)', action: function(){ nxAiDeleteConv_(c.id); } }
-          ]);
-        });
-      } else {
-        var w = it.w;
-        row.className = 'nxai-conv work';
-        row.title = 'work.netax.kr에서 하던 대화 — 누르면 불러와서 이어갑니다(원본은 그대로 둡니다)';
-        // [2026.10.20] 사건이 아닌 폴더(0_NX_0 등 — 서버 work_nonCaseReason_ 판정, w.notCase)의 대화는 사건 연결 없이 "일반"으로 불러온다.
-        row.innerHTML = '<span class="t"><span class="nxai-badge">work</span>' + nxAiEsc_(w.caseName || w.folderName) + '</span>'
-          + '<span class="m">' + (w.notCase ? '<span title="' + nxAiEsc_(w.notCase) + '">일반(사건 아님)</span>' : '') + '<span>' + nxAiEsc_(nxAiFmtTime_(w.updatedAt)) + '</span><span>' + w.sizeKb + 'KB</span></span>';
-        row.addEventListener('click', function(){
-          nxAiImportWorkHistory_({ id: w.fileId, name: '_대화기록.json' }, w.notCase ? { caseId: '', caseName: '', caseFolderId: '', folderName: w.folderName } : {
-            caseId: w.caseId, caseName: w.caseName || w.folderName, caseFolderId: w.folderId
-          });
-        });
-      }
+      var c = it.c, row = document.createElement('div');
+      row.className = 'nxai-conv' + ((c.caseId || '') === (nxAiConv.caseId || '') ? ' on' : '');
+      row.innerHTML = '<span class="t">' + (it.work ? '<span class="nxai-badge" title="work에서 하던 대화 — 누르면 이 사건 대화에 이어 붙여 엽니다">work</span>' : '') + nxAiEsc_(c.caseId ? (c.caseName || '사건') : '💬 일반 대화') + '</span>'
+        + '<span class="m"><span>' + nxAiEsc_(c.caseId ? (c.title || '') : '사건 없는 대화') + '</span><span>' + nxAiEsc_(nxAiFmtTime_(c.updatedAt)) + '</span></span>';
+      row.addEventListener('click', function(){ nxAiPickCase_(c.caseId ? { id: c.caseId, 사건명: c.caseName } : null); });
+      if (c.id) row.addEventListener('contextmenu', function(e){
+        e.preventDefault();
+        nxAiShowMenu_(e.clientX, e.clientY, [{ label: '✏️ 제목 바꾸기', action: function(){ nxAiRenameConv_(c.id, c.title); } }, { label: '🗑 대화 삭제(휴지통)', action: function(){ nxAiDeleteConv_(c.id); } }]);
+      });
       body.appendChild(row);
     });
-    if (nxAiWorkLoading) body.insertAdjacentHTML('beforeend', '<div class="nxai-muted">work에서 하던 대화를 찾는 중…</div>');
+    if (old.length){
+      var det = document.createElement('details'); det.className = 'nxai-old-work';
+      det.innerHTML = '<summary class="nxai-muted">지난 work 기록 ' + old.length + '개 — 사건에 안 딸린 옛 대화(읽기만)</summary>';
+      old.forEach(function(w){
+        var r = document.createElement('div'); r.className = 'nxai-conv work';
+        r.innerHTML = '<span class="t"><span class="nxai-badge">work</span>' + nxAiEsc_(w.caseName || w.folderName) + '</span><span class="m"><span>' + nxAiEsc_(nxAiFmtTime_(w.updatedAt)) + '</span><span>' + w.sizeKb + 'KB</span></span>';
+        r.addEventListener('click', function(){ nxAiOpenPreview_({ id: w.fileId, name: '_대화기록.json', mimeType: 'application/json' }); });
+        det.appendChild(r);
+      });
+      body.appendChild(det);
+    }
   }
 
   function nxAiOpenConv_(id){
@@ -60982,19 +60970,53 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
   }
 
-  function nxAiNewConv_(){
-    if (nxAiAbort){ nxAiToast_('답변을 받는 중입니다 — 끝난 뒤에 시작해주세요.'); return; }
-    nxAiLeaveOk_().then(function(ok){
-      if (!ok) return;
-      // 지금 대화에 사건이 연결돼 있으면 새 대화도 같은 사건으로 시작한다(같은 사건 안에서 주제만 바꾸는 경우가 대부분).
-      var keepCase = nxAiConv.caseId ? { caseId: nxAiConv.caseId, caseName: nxAiConv.caseName, caseFolderId: nxAiConv.caseFolderId, casePath: nxAiConv.casePath } : {};
-      nxAiConv = Object.assign(nxAiBlankConv_(), keepCase);
-      nxAiRenderConversation_();
-      nxAiRenderConvList_();
-      nxAiRefreshCaseUi_();
-      nxAiPvSyncCase_(); // [2026.11.13] 사건 없는 새 대화면 자료 칸도 비운다
-      nxAiEl_('nxAiInput').focus();
-    });
+  // [2026.11.14 세무사님 "단일사건에 연결하거나 끊기거나로 딱 2가지로 구분하자 … 사건에 연결되면 당연히 그 사건의 대화가 연결되는 것이고,
+  //  사건에 연결이 끊기면 일반대화창으로 연결되어야" — 계획서 docs/_기록/사건연결_대화_계획서_20261114.html]
+  //  넥스 대화는 사건마다 하나 + 사건 없는 일반 대화 하나. 「새 대화」는 없다. caseId ''이면 일반 대화.
+  //  그 사건 대화가 둘 이상이거나 아직 안 가져온 work 기록이 있으면 서버(ai_conv_unify)가 오래된 순으로 이어 붙여 하나로 만든다.
+  var nxAiGoBusy_ = false;
+  function nxAiCaseRow_(caseId){
+    if (!caseId) return Promise.resolve(null);
+    var find = function(list){ return (list || []).filter(function(x){ return x && x.id === caseId; })[0] || null; };
+    var hit = find(nxAiCaseCache);
+    return hit ? Promise.resolve(hit) : callGas('work_get_cases', {}).then(function(res){ nxAiCaseCache = (res && res.cases) || []; return find(nxAiCaseCache); });
+  }
+  function nxAiGoConv_(caseId, c){
+    caseId = caseId || '';
+    if ((nxAiConv.caseId || '') === caseId && (nxAiConv.id || nxAiConv.messages.length || nxAiConv._resolved)) return Promise.resolve(true); // 빈 대화면 그 사건(일반) 대화가 이미 있는지 한 번 찾아본다
+    if (nxAiAbort || nxAiGoBusy_) return Promise.resolve(false);
+    nxAiGoBusy_ = true;
+    var rowP = caseId && !c ? nxAiCaseRow_(caseId) : Promise.resolve(c || null);
+    return nxAiLeaveOk_().then(function(ok){
+      if (!ok) return false;
+      return Promise.all([rowP, nxAiListState === 'ok' ? null : nxAiLoadConvListOnly_()]).then(function(r){
+        var row = r[0] || {};
+        var name = row.사건명 || row.고객명 || '', folder = row.폴더ID || '';
+        var mine = nxAiConvList.filter(function(x){ return (x.caseId || '') === caseId; });
+        var works = caseId ? nxAiWorkList.filter(function(w){ return w.caseId === caseId; }) : [];
+        if (nxAiListState === 'idle') nxAiLoadConvList_(true); // work 기록 목록은 뒤에서(드라이브 검색이 느림) — 다음에 열 때 이어 붙임
+        var idP = (mine.length > 1 || works.length)
+          ? callGas('ai_conv_unify', { caseId: caseId, caseName: name, caseFolderId: folder }).then(function(u){
+              if (!u || u.error) throw new Error((u && u.error) || '대화를 하나로 잇지 못함');
+              nxAiWorkList = nxAiWorkList.filter(function(w){ return w.caseId !== caseId; });
+              return nxAiLoadConvListOnly_().then(function(){ return u.id; });
+            })
+          : Promise.resolve(mine.length ? mine[0].id : '');
+        return idP.then(function(id){
+          if (id) return Promise.resolve(nxAiOpenConv_(id)).then(function(x){ return x !== false; });
+          nxAiConv = Object.assign(nxAiBlankConv_(), caseId ? { caseId: caseId, caseName: name, caseFolderId: folder } : {}, { _resolved: true });
+          nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiRefreshCaseUi_(); nxAiPvSyncCase_(row.id ? row : undefined);
+          return true;
+        });
+      });
+    }).then(function(x){ nxAiGoBusy_ = false; return x; }, function(e){ nxAiGoBusy_ = false; nxAiToast_('넥스 대화를 열지 못했습니다: ' + nxErrText_(e)); return false; });
+  }
+  // 사건 고르기(🔗 표시·대화 목록) — 옆 창이면 그 사건 화면(개요)으로 가서 화면·대화가 같은 사건을 보게, 넓은 넥스 화면이면 대화만 바꾼다
+  function nxAiPickCase_(c){
+    nxAiEl_('nxAiCaseOverlay').hidden = true;
+    if (c && nxAiMode === 'side' && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id);
+    if (!c && nxAiMode === 'side' && typeof goToView_ === 'function') goToView_('dashboard');
+    return nxAiGoConv_(c ? c.id : '', c || null);
   }
 
   function nxAiScheduleSave_(){
@@ -61104,7 +61126,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       // [2026.11.03 전수조사 다시] 목록에서 바로 빼고 서버엔 보낼 함으로 뒤에서 — 실패하면 목록에 되살린다
       var before = nxAiConvList.slice();
       nxAiConvList = nxAiConvList.filter(function(c){ return c.id !== id; });
-      if (nxAiConv.id === id){ nxAiConv = nxAiBlankConv_(); nxAiRenderConversation_(); nxAiRefreshCaseUi_(); }
+      if (nxAiConv.id === id){ nxAiConv = Object.assign(nxAiBlankConv_(), { caseId: nxAiConv.caseId, caseName: nxAiConv.caseName, caseFolderId: nxAiConv.caseFolderId, _resolved: true }); nxAiRenderConversation_(); nxAiRefreshCaseUi_(); } // [2026.11.14] 지운 뒤에도 같은 사건(일반) 대화 자리
       nxAiRenderConvList_();
       nxSaveLater_('ai_conv_delete', { id: id }, { key: 'aiconv_' + id, label: '대화 삭제', onFail: function(){ nxAiConvList = before; nxAiRenderConvList_(); },
         redo: function(){ nxAiConvList = nxAiConvList.filter(function(c){ return c.id !== id; }); nxAiRenderConvList_(); } });
@@ -61153,25 +61175,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var who = c.고객명 || c.납세자 || '', nm = c.사건명 || '';
       var label = !nm ? (who || '(이름 없음)') : (who && nm.indexOf(who) === -1 ? who + ' · ' + nm : nm);
       row.innerHTML = '<span>' + nxAiEsc_(label) + '</span><span class="s">' + nxAiEsc_(c.상태 || '') + '</span>';
-      row.addEventListener('click', function(){ nxAiLinkCase_(c); });
+      row.addEventListener('click', function(){ nxAiPickCase_(c); });
       listEl.appendChild(row);
     });
-  }
-  function nxAiLinkCase_(c){
-    nxAiEl_('nxAiCaseOverlay').hidden = true;
-    if (!c){
-      nxAiConv.caseId = ''; nxAiConv.caseName = ''; nxAiConv.caseFolderId = ''; nxAiConv.casePath = null;
-      nxAiRefreshCaseUi_(); nxAiPvRenderEmpty_();
-      if (nxAiConv.messages.length) nxAiScheduleSave_();
-      return;
-    }
-    nxAiConv.caseId = c.id;
-    nxAiConv.caseName = c.사건명 || c.고객명 || '';
-    nxAiConv.caseFolderId = c.폴더ID || '';
-    nxAiConv.casePath = null;
-    nxAiRefreshCaseUi_();
-    nxAiPvSyncCase_(c);
-    if (nxAiConv.messages.length) nxAiScheduleSave_();
   }
   // [2026.11.13 세무사님 "우측에 사건자료는 아직도 직전 사건이 나오냐?"] 대화가 바뀌면 우측 「사건 자료」 칸은 무조건 지금 대화의 사건으로 다시 그린다.
   //  대화 기록에 복사돼 있는 폴더 번호는 믿지 않고 사건 줄에서 다시 읽는다(11-12 저녁 폴더 없던 때 저장된 대화는 폴더 번호가 빈칸 — 그래서 칸을 안 그리고 직전 사건 자료가 남았다).
@@ -61200,7 +61206,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
   function nxAiRefreshCaseUi_(){
     var chip = nxAiEl_('nxAiCaseChip');
-    chip.textContent = nxAiConv.caseName ? ('🔗 ' + nxAiConv.caseName) : '🔗 사건 연결';
+    chip.textContent = nxAiConv.caseId ? ('🔗 ' + (nxAiConv.caseName || '사건')) : '💬 일반 대화'; // [2026.11.14] 지금 대화가 어느 사건 대화인지(없으면 일반) — 누르면 사건 고르기
     chip.classList.toggle('linked', !!nxAiConv.caseName);
     nxAiRefreshTitle_();
   }
@@ -61234,47 +61240,29 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return '';
   }
   var nxAiSyncBusy_ = false, nxAiLastSyncedScreenCase_ = '';
+  // [2026.11.14 세무사님 "1번은 권장대로"] 넥스 대화는 화면을 따라간다 — 화면이 잡은 사건이 있으면 그 사건 대화, 없으면(대시보드·고객·예약·수금·설정) 일반 대화.
+  //  옆 창을 접어 두어도 맞춰 둔다. 넓은 넥스 화면(mode tab)은 들어오기 직전 대화 그대로(세무사님 "좁은 넥스탭에서 넓은 넥스탭으로 가면 당연히 사건연결 정보가 이어져야").
+  //  예외: 넥스가 답하는 중·사건 처리가 도는 중·고르실 단추가 떠 있는 동안은 바꾸지 않고, 끝난 뒤 다음 확인 때 맞춘다.
+  function nxAiWaitingPick_(){
+    var last = Array.prototype.slice.call(document.querySelectorAll('#nxAiBody .nxai-msg')).pop();
+    return !!(last && last.querySelectorAll('.nxai-links .nxai-btn').length > 1 && !last._nxPicked);
+  }
   function nxAiSyncToScreenCase_(){
-    if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiAbort) return;
-    // [2026.10.14] "이 사건 처리하자"가 도는 동안엔 따라가지 않는다 — 처리가 세액계산 화면을 그 사건으로 열면 대화가 다른(옛) 대화로 바뀌어 진행 중 말풍선이 사라졌다(실사용)
+    if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiGoBusy_ || nxAiAbort) return;
     if (typeof nxAiCaseProcBusy_ === 'function' && nxAiCaseProcBusy_()) return;
-    // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다 — job을 열 때 사이드바·마지막 사건이 복원되며 로그인 전에 서버를 불러
-    // "로그인이 만료되었습니다"가 로그인 창을 덮었다(2026-10-14 실사용)
+    // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다(로그인 창을 덮던 사고)
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok) return;
-    var side = nxAiEl_('sideAI');
-    if (!side || !side.classList.contains('expanded')) return;
-    var caseId = nxAiScreenCaseId_();
-    if (!caseId || caseId === nxAiConv.caseId || caseId === nxAiLastSyncedScreenCase_) return;
+    var caseId = nxAiScreenCaseId_() || '';
+    if ((caseId === (nxAiConv.caseId || '') && (nxAiConv.id || nxAiConv.messages.length || nxAiConv._resolved)) || nxAiWaitingPick_()) return;
     nxAiSyncBusy_ = true;
-    nxAiLastSyncedScreenCase_ = caseId;
-    var casesP = nxAiCaseCache ? Promise.resolve(nxAiCaseCache) : callGas('work_get_cases', {}).then(function(res){ nxAiCaseCache = (res && res.cases) || []; return nxAiCaseCache; });
-    casesP.then(function(cases){
-      var c = cases.filter(function(x){ return x.id === caseId; })[0];
-      if (!c){ nxAiCaseCache = null; nxAiLastSyncedScreenCase_ = ''; return; } // 방금 만든 사건 등 목록이 낡았으면 다음 확인 때 새로 받는다
-      return nxAiSwitchToCase_(c).then(function(msg){ if (msg) nxAiToast_('이 화면의 ' + msg); });
-    }).catch(function(){ nxAiLastSyncedScreenCase_ = ''; }).then(function(){ nxAiSyncBusy_ = false; });
+    nxAiGoConv_(caseId).catch(function(){}).then(function(){ nxAiSyncBusy_ = false; });
   }
-  // 대화를 사건 c로 옮긴다 — 그 사건의 가장 최근 대화가 있으면 그것을 열고(지금 대화가 비어 있어도), 없으면 빈 대화는 그대로 연결·하던 대화는 저장해 두고 새 대화.
-  // 다 바뀐 뒤 알림 글(앞에 "이 화면의 " 등을 붙여 씀)을 돌려준다. 이미 그 사건이면 ''.
-  // [2026.11.13 세무사님 "사건목록에서 사건을 클릭하면 … 왜 채팅은 가져오지 않는가?"] 예전엔 빈 대화면 사건만 잇고 그 사건의 지난 대화를 열지 않아, 채팅 목록에서 따로 눌러야 했다.
+  // 다른 화면(처리개요 넥스 단추·사건 작업공간)이 부르던 이름 — 그 사건의 하나뿐인 대화로 간다
   function nxAiSwitchToCase_(c){
-    var caseId = c.id, name = c.사건명 || c.고객명 || '';
-    if (nxAiConv.caseId === caseId) return Promise.resolve('');
-    var listP = nxAiConvList.length ? Promise.resolve() : nxAiLoadConvListOnly_();
-    return listP.then(function(){
-      var mine = nxAiConvList.filter(function(x){ return x.caseId === caseId; }).sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
-      var hadTalk = !!nxAiConv.messages.length;
-      if (mine) return Promise.resolve(nxAiOpenConv_(mine.id)).then(function(r){ if (r === false){ nxAiLastSyncedScreenCase_ = ''; return ''; } return '사건(' + name + ') 대화를 이어 열었습니다' + (hadTalk ? ' — 하던 대화는 목록에 있습니다.' : '.'); });
-      if (!hadTalk){ nxAiLinkCase_(c); return '사건(' + name + ')으로 대화를 연결했습니다.'; }
-      return nxAiLeaveOk_().then(function(ok){
-        if (!ok) return ''; // [2026.11.13 저녁 사고] 저장 안 된 대화는 두고 가지 않음
-        nxAiConv = Object.assign(nxAiBlankConv_(), { caseId: c.id, caseName: name, caseFolderId: c.폴더ID || '' });
-        nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiRefreshCaseUi_();
-        nxAiPvSyncCase_(c);
-        return '사건(' + name + ')으로 새 대화를 시작했습니다 — 하던 대화는 목록에 있습니다.';
-      });
-    });
+    var name = (c && (c.사건명 || c.고객명)) || '';
+    if (!c || nxAiConv.caseId === c.id) return Promise.resolve('');
+    return nxAiGoConv_(c.id, c).then(function(ok){ return ok ? '사건(' + name + ') 대화를 열었습니다.' : ''; });
   }
   // [2026.10.20] 증빙관리에서 사건 폴더의 .md(검토서·보고서)를 누르면 — 그 사건을 연결한 AI 탭 작업대로 와서 그 문서를 보고서 모양으로 연다.
   // caseId가 없거나(사건을 못 찾음) 답변을 받는 중이면 대화는 그대로 두고 문서만 연다.
@@ -61503,12 +61491,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     evList.appendChild(crumb);
     // work.netax.kr이 사건 폴더에 남긴 대화기록(_대화기록.json)이 있으면 job 대화로 불러와 이어갈 수 있게 한다.
     var workHistory = (res.files || []).find(function(f){ return f.name === '_대화기록.json'; });
-    if (workHistory && atCaseRoot){
+    if (workHistory && atCaseRoot && nxAiConv.caseId && nxAiWorkList.some(function(w){ return w.fileId === workHistory.id; })){ // [2026.11.14] 아직 안 가져온 것만
       var imp = document.createElement('button');
       imp.type = 'button';
       imp.className = 'nxai-btn';
       imp.style.margin = '0 4px 8px';
-      imp.textContent = 'work에서 하던 이 사건 대화 불러오기';
+      imp.textContent = 'work에서 하던 이 사건 대화 이어 붙이기';
       imp.addEventListener('click', function(){ nxAiImportWorkHistory_(workHistory); });
       evList.appendChild(imp);
     }
@@ -61530,27 +61518,21 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // ai_convSyncWork 참고). 시스템이 안정되면 이 묶음과 대화 목록의 work 항목 표시를 걷어내면 된다.
   // ============================================================
   // caseInfo 생략 시 지금 대화에 연결된 사건을 쓴다(사건 자료 칸의 불러오기 버튼). 대화 목록의 work 항목은 그 파일의 사건 정보를 넘긴다.
-  function nxAiImportWorkHistory_(file, caseInfo){
-    if (nxAiAbort){ nxAiToast_('답변을 받는 중입니다 — 끝난 뒤에 해주세요.'); return; }
-    var ci = caseInfo || { caseId: nxAiConv.caseId, caseName: nxAiConv.caseName, caseFolderId: nxAiConv.caseFolderId };
-    var loadingEl = nxAiAppendBubble_('assistant', 'work 대화를 불러오는 중…');
+  // [2026.11.14 사건마다 대화 하나] work 기록은 따로 대화를 만들지 않고 이 사건 대화 앞에 오래된 순으로 이어 붙인다(서버 ai_conv_unify)
+  function nxAiImportWorkHistory_(){
+    if (nxAiAbort || !nxAiConv.caseId) return;
+    var cid = nxAiConv.caseId, nm = nxAiConv.caseName, fd = nxAiConv.caseFolderId;
+    var loadingEl = nxAiAppendBubble_('assistant', 'work 대화를 이 사건 대화에 이어 붙이는 중…');
     nxAiLeaveOk_().then(function(ok){
-      if (!ok) return null; // [2026.11.13 저녁 사고] 저장 안 된 대화는 두고 가지 않음
-      return callGas('ai_conv_import_work', { fileId: file.id, caseId: ci.caseId || '', caseName: ci.caseName || '', caseFolderId: ci.caseFolderId || '', folderName: ci.folderName || '' });
-    }).then(function(res){
-      loadingEl.remove();
-      if (res === null) return;
-      if (!res || res.error){ nxAiToast_('work 대화를 불러오지 못했습니다: ' + (res && res.error)); return; }
-      nxAiAdoptConversation_(res.conversation);
-      nxAiWorkList = nxAiWorkList.filter(function(w){ return w.fileId !== file.id; });
-      nxAiLoadConvListOnly_();
-      nxAiToast_('work 대화 ' + nxAiConv.messages.length + '개 메시지를 불러왔습니다. 이어서 질문하면 됩니다.');
-    }).catch(function(err){
-      loadingEl.remove();
-      nxAiToast_('work 대화를 불러오지 못했습니다: ' + nxErrText_(err));
-    });
+      if (!ok) return null;
+      return callGas('ai_conv_unify', { caseId: cid, caseName: nm, caseFolderId: fd }).then(function(u){
+        if (!u || u.error) throw new Error((u && u.error) || '응답 없음');
+        nxAiWorkList = nxAiWorkList.filter(function(w){ return w.caseId !== cid; });
+        return nxAiLoadConvListOnly_().then(function(){ nxAiConv = nxAiBlankConv_(); return nxAiOpenConv_(u.id); });
+      });
+    }).then(function(r){ loadingEl.remove(); if (r !== null) nxAiToast_('work에서 하던 대화를 이 사건 대화 앞에 이어 붙였습니다.'); })
+      .catch(function(err){ loadingEl.remove(); nxAiToast_('work 대화를 잇지 못했습니다: ' + nxErrText_(err)); });
   }
-
   // 불러온 뒤 work에서 더 쌓인 대화를 이어붙인다.
   function nxAiSyncWork_(){
     if (nxAiAbort || !nxAiConv.id) return;
@@ -61888,16 +61870,29 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiScrollBottom_(true);
     return div;
   }
+  // [2026.11.14 세무사님 "3번은 권장대로"] 사건마다 대화가 하나라 길어진다 — 화면엔 최근 40개만 펼치고 앞은 「앞 대화 보기」로 접는다.
+  //  200개를 넘어 서버 보관함(지난말)으로 간 말은 「보관된 더 오래된 말 보기」로 읽기만. 넥스에게는 지금처럼 최근 60개.
+  var NXAI_SHOW_RECENT_ = 40;
   function nxAiRenderConversation_(){
     var body = nxAiEl_('nxAiBody');
-    Array.prototype.slice.call(body.querySelectorAll('.nxai-msg, .nxai-history-hint')).forEach(function(n){ n.remove(); });
-    nxAiEl_('nxAiEmpty').hidden = nxAiConv.messages.length > 0;
-    nxAiConv.messages.forEach(function(m){
+    Array.prototype.slice.call(body.querySelectorAll('.nxai-msg, .nxai-history-hint, .nxai-more')).forEach(function(n){ n.remove(); });
+    var msgs = nxAiConv.messages, from = nxAiConv._showAll ? 0 : Math.max(0, msgs.length - NXAI_SHOW_RECENT_);
+    nxAiEl_('nxAiEmpty').hidden = msgs.length > 0;
+    var more = function(label, fn){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn nxai-more'; b.textContent = label; b.addEventListener('click', fn); body.appendChild(b); };
+    if (from > 0) more('앞 대화 ' + from + '개 보기', function(){ nxAiConv._showAll = true; nxAiRenderConversation_(); });
+    else if (nxAiConv.id && nxAiConv.archived > 0 && !nxAiConv._arch) more('보관된 더 오래된 말 ' + nxAiConv.archived + '개 보기', function(){
+      var conv = nxAiConv; this.disabled = true; this.textContent = '불러오는 중…';
+      callGas('ai_conv_archive', { id: conv.id }).then(function(r){ conv._arch = (r && r.messages) || []; if (nxAiConv === conv) nxAiRenderConversation_(); }).catch(function(e){ nxAiToast_('보관된 말을 불러오지 못했습니다: ' + nxErrText_(e)); });
+    });
+    var draw = function(m, ref){
       var text = typeof m.content === 'string' ? m.content : '';
       var el = nxAiAppendBubble_(m.role === 'assistant' ? 'assistant' : 'user', text);
-      if (m.role === 'assistant'){ el.innerHTML = '<div class="nxai-md">' + nxAiMd_(text) + '</div>'; }
-      el._nxMsgRef = m;
-    });
+      if (m.divider){ el.className = 'nxai-msg nxai-divider'; el.textContent = text; }
+      else if (m.role === 'assistant'){ el.innerHTML = '<div class="nxai-md">' + nxAiMd_(text) + '</div>'; }
+      if (ref) el._nxMsgRef = m; else el.classList.add('nxai-arch');
+    };
+    if (from === 0 && nxAiConv._arch) nxAiConv._arch.forEach(function(m){ draw(m, false); });
+    msgs.slice(from).forEach(function(m){ draw(m, true); });
     nxAiRefreshTitle_();
     nxAiScrollBottom_(true);
   }
@@ -62251,7 +62246,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         g.textContent = '📣 개발자에게 기능 부족 신고가 실제로 기록됐습니다' + (a.urgent ? ' (긴급)' : '') + (a.want ? ': ' + a.want : '');
         bubbleEl.appendChild(g);
       } else if (a.type === 'case_link'){ // [2026.11.04 한 길] 넥스가 case_link로 대화의 사건을 잇거나 바꿈 — 🔗 단추와 같은 처리
-        if (a.case && a.case.id) nxAiLinkCase_({ id: a.case.id, 사건명: a.case.사건명 || '', 고객명: a.case.고객명 || '', 폴더ID: a.case.폴더ID || '' }); else nxAiLinkCase_(null);
+        nxAiPendingMove_ = a.case && a.case.id ? { caseId: a.case.id, c: { id: a.case.id, 사건명: a.case.사건명 || '', 고객명: a.case.고객명 || '', 폴더ID: a.case.폴더ID || '' } } : { caseId: '', c: null }; // [2026.11.14] 답이 끝나면 그 사건 대화로 옮김(nxAiMoveTurn_)
       } else if (a.type === 'tax_unverified'){
         var w = document.createElement('div'); w.className = 'nxai-notice';
         w.textContent = '❌ 저장한 보고서' + (a.name ? '(' + a.name + ')' : '') + '의 세액 숫자 ' + a.count + '개가 이 사건 계산 저장본에 없습니다 — 계산 도구를 돌린 값이 아닙니다: ' + (a.nums || []).join(', ');
@@ -62512,6 +62507,27 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     btn.title = busy ? '중지' : '보내기';
     btn.classList.toggle('stop', busy);
     nxAiEl_('nxAiInput').disabled = busy;
+    if (!busy && nxAiPendingMove_){ var mv = nxAiPendingMove_; nxAiPendingMove_ = null; setTimeout(function(){ nxAiMoveTurn_(mv); }, 50); }
+  }
+  // [2026.11.14] 넥스가 답하는 중에 case_link로 사건을 잇거나 바꾸면(서버 도구는 그 순간부터 그 사건으로 일함), 답이 끝난 뒤 이번 말씀과 답을
+  //  그 사건의 하나뿐인 대화로 옮기고 지금 대화엔 한 줄만 남긴다 — 사건 대화가 일반 대화로 바뀌거나 섞이지 않게
+  var nxAiPendingMove_ = null;
+  function nxAiMoveTurn_(mv){
+    var from = nxAiConv, msgs = from.messages, k = msgs.length - 1;
+    while (k >= 0 && !(msgs[k].role === 'user' && !(Array.isArray(msgs[k].content) && msgs[k].content.some(function(b){ return b && b.type === 'tool_result'; })))) k--;
+    if (k < 0 || (from.caseId || '') === (mv.caseId || '')) return;
+    var turn = msgs.splice(k);
+    var nm = mv.c ? (mv.c.사건명 || mv.c.고객명 || '') : '일반';
+    msgs.push({ role: 'assistant', content: '→ 이 말씀과 넥스 답은 「' + nm + '」 ' + (mv.caseId ? '사건 ' : '') + '대화로 옮겼습니다.', divider: true });
+    nxAiRenderConversation_(); nxAiScheduleSave_();
+    nxAiSyncBusy_ = true;
+    if (nxAiMode === 'side'){ if (mv.caseId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(mv.caseId); else if (!mv.caseId && typeof goToView_ === 'function') goToView_('dashboard'); }
+    nxAiGoConv_(mv.caseId, mv.c).then(function(ok){
+      nxAiSyncBusy_ = false;
+      if (!ok){ Array.prototype.push.apply(from.messages, turn); nxAiToast_('넥스가 이은 사건 대화를 열지 못해 이번 답은 이 대화에 두었습니다.'); return; }
+      Array.prototype.push.apply(nxAiConv.messages, turn);
+      nxAiRenderConversation_(); nxAiScheduleSave_();
+    });
   }
   // [2026.11.13 PC 여러 창 ①] 넥스의 도구 고리는 서버가 아니라 이 창 안에서 돈다 — 답을 만드는 중에 창을 닫으면 중간에 멎고 끊긴 기록도 남지 않는다.
   //  창을 여러 개 띄워 사건을 나란히 보면 "끝난 줄 알고" 닫기 쉬우므로, 닫기 전에 브라우저가 한 번 묻게 한다(세무사님 11-13 "권장대로").
@@ -62883,6 +62899,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'nxai-btn'; b.textContent = ch.label;
       b.addEventListener('click', function(){
+        bubble._nxPicked = true; // [2026.11.14] 고르셨으면 화면 따라가기를 다시 한다
         Promise.resolve(ch.run()).then(function(r2){ if (r2) nxAiRenderLocal_(bubble, r2, text); });
       });
       links.appendChild(b);
@@ -63149,12 +63166,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       return casesP.then(function(list){
         var full = (list || []).filter(function(k){ return k.id === c.id; })[0] || c;
         var send = function(){ nxAiSendAI_(text, { noGem: true }); };
-        if (nxAiConv.caseId === full.id) return send();
-        // [2026.10.30 C] 이름을 적어 연결된 사건과 다른 사건으로 갈 때는 바꿨다는 것을 보인다(말없이 바꾸지 않음)
-        var sw = c.named && nxAiConv.caseId ? function(){ nxAiRenderLocal_(nxAiAppendBubble_('assistant', ''), { md: '「' + (full.사건명 || full.고객명) + '」 사건으로 바꿈 — 말씀에 적으신 「' + c.named + '」 사건으로 맡습니다.', note: '[🤖 사건 맡기] 연결 사건 바꿈' }, text); } : function(){};
-        if (!nxAiConv.messages.length){ nxAiLinkCase_(full); sw(); return send(); }
-        // 다른 사건 대화를 하던 중이면 그 대화는 저장해 두고 이 사건의 새 대화로
-        return nxAiLeaveOk_().then(function(ok){ if (!ok) return; nxAiConv = nxAiBlankConv_(); nxAiRenderConversation_(); nxAiRenderConvList_(); nxAiLinkCase_(full); sw(); send(); }); // [2026.11.13 저녁 사고] 저장 안 된 대화는 두고 가지 않음
+        if ((nxAiConv.caseId || '') === full.id) return send();
+        // [2026.11.14] 일반 대화·다른 사건 대화에서 사건을 맡기시면 그 사건의 하나뿐인 대화로 옮겨 가서 받는다(지금 대화엔 옮겼다는 한 줄만) — 옆 창이면 화면도 그 사건 개요로
+        var nm = full.사건명 || full.고객명 || '';
+        nxAiConv.messages.push({ role: 'assistant', content: '→ 「' + nm + '」 사건 대화로 옮겨 이어 갑니다: ' + String(text).slice(0, 80), divider: true });
+        nxAiRenderConversation_(); nxAiScheduleSave_();
+        nxAiSyncBusy_ = true;
+        if (nxAiMode === 'side' && typeof goToCaseHandling_ === 'function') goToCaseHandling_(full.id);
+        return nxAiGoConv_(full.id, full).then(function(ok){ nxAiSyncBusy_ = false; if (ok) send(); else nxAiToast_('「' + nm + '」 사건 대화를 열지 못해 보내지 않았습니다 — 다시 말씀해 주세요.'); });
       });
     };
     nxAiPhoneTab_('chat');
@@ -63167,7 +63186,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ go(k); return null; } }; }) }, text);
         return;
       }
-      if (!c){ nxAiToast_('맡길 사건이 연결돼 있지 않습니다 — 위쪽 🔗 사건 연결로 사건을 고르거나 "홍길동 사건 처리하자"처럼 이름을 넣어 주세요.'); return; }
+      if (!c){ // [2026.11.14] 일반 대화에서 이름 없이 "이 사건" — 말없이 정하지 않고 되묻는다
+        return casesP.then(function(list){
+          var open = (list || []).filter(function(k){ return k.상태 === '진행' && !(typeof nxIsTestName_ === 'function' && nxIsTestName_(k.사건명 || k.고객명)); }).slice(0, 8);
+          nxAiRenderLocal_(nxAiAppendBubble_('assistant', ''), { md: '어느 사건을 말씀하시는지 골라 주세요 — 지금은 사건 없는 일반 대화입니다(이름을 넣어 "홍길동 사건 처리하자"처럼 말씀하셔도 됩니다).', note: '[🤖 사건 맡기] 이름 없는 사건 — 고르기 대기',
+            choices: open.map(function(k){ return { label: k.사건명 || k.고객명, run: function(){ go(k); return null; } }; }) }, text);
+        });
+      }
       return go(c);
     }).catch(function(err){ nxAiToast_('사건을 찾지 못했습니다: ' + nxErrText_(err)); });
   }
@@ -63338,8 +63363,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           if (!st.case) st.decisions = res.decisions || {}; // 다시 처리할 때는 화면에서 방금 정한 결정을 지키고(저장은 따로 감)
           st.case = res.case;
           bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(res.case.사건명 || res.case.고객명 || '') + '</b>' + (res.lastRun ? ' <span class="nxai-muted">· 지난 처리 ' + nxAiEsc_(res.lastRun) + '</span>' : '');
-          // 이름으로 찾았거나 화면 사건으로 처리할 때, 지금 대화가 아직 어느 사건에도 연결돼 있지 않으면 그 사건에 연결(자료 탭·🔗 표시)
-          if (res.case && typeof nxAiLinkCase_ === 'function' && (!nxAiConv.caseId || (st.relink && nxAiConv.caseId !== res.case.id))) nxAiLinkCase_(res.case);
         }
         if (key === 'evidence' && res.readOnly){ st.setStep(key, '🔄', (res.lines || [])[0] || '글자 읽기 끝'); return res; } // 읽기만 — 나누기·보정 뒤 대조
         if (key === 'evidence' && res.files) st.files = res.files;
@@ -66743,7 +66766,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiShowMenu_(e.clientX, e.clientY, items);
     });
 
-    nxAiEl_('nxAiNewBtn').addEventListener('click', nxAiNewConv_);
     nxAiEl_('nxAiSyncWork').addEventListener('click', function(e){ e.stopPropagation(); nxAiSyncWork_(); });
     // 대화 목록 접기/펼치기 — 이 기기에 기억
     var LIST_HIDDEN_KEY = 'nxAiListHidden';
@@ -66796,12 +66818,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       window.addEventListener('resize', refit);
       document.addEventListener('nx-layout-change', refit);
     })();
-    nxAiEl_('nxAiNewBtnSide').addEventListener('click', function(e){ e.stopPropagation(); nxAiNewConv_(); });
     nxAiEl_('nxAiListSearch').addEventListener('input', nxAiRenderConvList_);
     nxAiEl_('nxAiTitle').addEventListener('click', function(){ nxAiRenameConv_(nxAiConv.id, nxAiConv.title); });
     nxAiEl_('nxAiCaseChip').addEventListener('click', nxAiOpenCasePicker_);
     nxAiEl_('nxAiCaseClose').addEventListener('click', function(){ nxAiEl_('nxAiCaseOverlay').hidden = true; });
-    nxAiEl_('nxAiCaseUnlink').addEventListener('click', function(){ nxAiLinkCase_(null); });
+    nxAiEl_('nxAiCaseUnlink').addEventListener('click', function(){ nxAiPickCase_(null); });
     nxAiEl_('nxAiCaseSearch').addEventListener('input', nxAiRenderCasePicker_);
     nxAiEl_('nxAiCaseOverlay').addEventListener('click', function(e){ if (e.target.id === 'nxAiCaseOverlay') e.target.hidden = true; });
 
@@ -66970,15 +66991,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           var saved = parseInt(nxAiLs_(WIDTH_KEY), 10);
           if (saved) side.style.setProperty('--ai-w', Math.min(Math.max(saved, MIN_W), maxW()) + 'px'); // [2026.11.01] 폭은 덮어 나올 때·고정일 때 같이 쓰는 값(--ai-w)으로
           // [2026.10.13] 펼칠 때 그 화면의 사건으로 맞추고, 펼쳐져 있는 동안 화면 사건이 바뀌면 따라간다(1.5초마다 가볍게 확인)
-          nxAiLastSyncedScreenCase_ = '';
           nxAiSyncToScreenCase_();
-          if (!caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500);
-        } else {
-          if (caseWatch_){ clearInterval(caseWatch_); caseWatch_ = null; }
         }
       }).observe(side, { attributes: true, attributeFilter: ['class'] });
       // [2026.10.16] 📌 고정으로 처음부터 펼쳐져 있으면 위 감시가 펼침을 못 보므로 여기서 사건 따라가기를 시작한다(점검 중 사이드바가 화면 사건을 안 따라감)
-      if (side.classList.contains('expanded') && !caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500);
+      if (!caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500); // [2026.11.14] 옆 창을 접어 두어도 화면 따라 대화를 맞춘다
       handle.addEventListener('pointerdown', function(e){
         if (nxAiMode !== 'side') return;
         e.preventDefault(); e.stopPropagation();
