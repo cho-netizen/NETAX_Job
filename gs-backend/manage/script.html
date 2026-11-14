@@ -1510,6 +1510,7 @@
       if (target) target.classList.add('active');
       nxCbOnView_(name); // [2026.11.01] 사건 작업공간 머리줄
       window._currentViewLabel = VIEW_LABELS_[name] || name;
+      document.body.classList.toggle('nx-in-memo', name === 'memo-text'); // [2026.11.15] 메모 창 안에서는 떠 있는 ✍(손글씨 메모)를 숨김 — 창 안 [글/손]과 겹침(세무사님 "메모탭에서 메모버튼이 떠 있으면 어떻하나?")
       if (name === 'memo-text' && typeof memoSetTab_ === 'function'){ memoSetTab_(window.nxMemoWantTab_ || ''); window.nxMemoWantTab_ = ''; } // 글·손글씨 탭(떠 있는 ✍·폰 도구·넥스는 손글씨 탭으로)
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);

@@ -160,6 +160,9 @@
   body.lay-tablet.nx-fab-open:not(.nx-present) #nxSuggestBtn{ right:18px !important; bottom:124px !important; width:44px !important; height:44px !important; }
   body.lay-tablet.nx-fab-open:not(.nx-present) #nxHandMemoBtn{ right:18px; bottom:176px; width:44px; height:44px; }
   body.lay-tablet.nx-fab-open:not(.nx-present) #nxPresentBtn{ right:18px; bottom:228px; width:44px; height:44px; }
+  /* [2026.11.15] 메모 창 안에서는 떠 있는 ✍ 숨김(창 안 [글/손]과 같은 일) — 태블릿 「⋯」 펼침에서는 그 자리를 다음 단추가 채움 */
+  body.nx-in-memo #nxHandMemoBtn{ display:none !important; }
+  body.lay-tablet.nx-fab-open.nx-in-memo:not(.nx-present) #nxPresentBtn{ bottom:176px; }
   /* [2026-11-13 4차 44] 태블릿에서 메뉴 여는 곳이 왼쪽 끝 좁은 띠뿐이었다 — 세무사님 "권장대로": 왼쪽 위에 보이는 ☰ 단추. 띠를 단추 폭(32px)으로 넓혀 본문 글을 덮지 않게 하고, 밀기 동작은 그대로. */
   #nxMenuHandle{ display:none; }
   body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu:not(.expanded), body.lay-tablet:not(.lay-cover):not(.nx-present) #sideMenu.peek{ width:32px; }
