@@ -203,6 +203,8 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
     if (!t.trim()) return { ok: false, why: '근거 서류의 글자가 없음(아직 못 읽음)' };
     const flat = t.replace(/\s+/g, '');
     // 판단형(보기 고르기) 값은 서류에 그대로 안 나온다 — 근거 문구(quote)를 주면 그 문구가 원문에 있는지로 대조한다
+    // [2026-11-16 주간 개선] 4자 미만 문구는 대조하지 않는다(짧은 낱말은 아무 글에서나 맞음) — 예전엔 「원문에 없음·지어낸 근거」로만 거절해 넥스가 같은 2자 문구(「임야」)로 12번 다시 냈다. 무엇을 고칠지 알려 준다
+    if (basis.quote && String(basis.quote).replace(/\s+/g, '').length < 4) return { ok: false, file: f.name, why: '근거 문구 「' + String(basis.quote).trim().slice(0, 10) + '」가 4자 미만이라 대조하지 않음(짧은 낱말은 다른 글 속에서도 맞아 근거가 못 됨) — 원문에서 그 낱말이 든 앞뒤 문구를 4자 이상 그대로 quote로 붙여 다시' };
     if (basis.quote) { const q = String(basis.quote).replace(/\s+/g, ''); return q.length >= 4 && flat.indexOf(q) !== -1 ? { ok: true, why: '근거 서류 원문에 그 문구', file: f.name } : { ok: false, why: '근거 서류 원문에 그 문구가 없음 — 지어낸 근거일 수 있어 넣지 않음' }; }
     // [2026.10.22] 숫자 없는 짧은 값(Y·N·예·일반 — 4글자 미만)은 원문 글자 맞추기로 받지 않는다 — "Y"가 "PROPERTY" 안에서 맞아 근거 없이 통과하던 구멍(모의시험에서 발견).
     //  이런 판단 값은 위의 quote(원문 문구)로만 통과한다. 금액·날짜·이름·주소처럼 서류에 그대로 나오는 값은 그대로 원문 대조
