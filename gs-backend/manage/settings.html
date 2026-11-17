@@ -1230,7 +1230,10 @@
         if (st && st.active && st.job && !djWatch){ djFollow_(st.job); } // 다른 곳(PC·다른 창)에서 시작한 반영도 따라간다
       }).catch(function(){ if (djInfoBox) djInfoBox.textContent = '운영 버전을 확인하지 못했습니다.'; });
     }
-    loadDeployInfo_(true);
+    // [2026-11-17 로그인 되풀이] 로그인한 뒤에 부른다 — 화면을 열자마자(로그인 전) 부르면 서버가 늦게 「로그인 필요」로 답할 때
+    //  그사이 받은 새 로그인 표를 화면이 만료로 읽고 지웠다(11-17 오전 워치 열쇠 자동 로그인 되풀이)
+    var nxAfterLoginOr_ = function(fn){ if (typeof window.nxWhenLoggedIn_ === 'function') window.nxWhenLoggedIn_(fn); else fn(); };
+    nxAfterLoginOr_(function(){ loadDeployInfo_(true); });
     // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
     function deployCheckHtml_(chk){
       if (!chk) return '';
@@ -1238,10 +1241,12 @@
       return '<div style="margin-top:6px;"><div class="nx-l4" style="margin:4px 0 3px;' + (chk.ok ? '' : ' color:#b3261e;') + '">' + (chk.ok ? '배포 직후 점검 정상' : '배포 직후 점검 이상 ' + bad.length + '건') + '<span class="nx-l-sub">' + escapeHtml(chk.at || '') + '</span></div>'
         + (bad.length ? bad.map(function(x){ return '<div class="nx-li" style="padding-top:1px; padding-bottom:1px;">' + escapeHtml(x.name) + ' — ' + escapeHtml(x.msg) + '</div>'; }).join('') + '<div class="nx-li-go">→ 이상하면 ↩ 되돌리기를 누르세요.</div>' : '') + '</div>';
     }
-    (window.nxCacheRecent_ ? nxCacheRecent_('deploy_check_last', {}, '', 1800000) : callGas('deploy_check_last', {})).then(function(r){ // [2026.11.13 5차 사] 30분 안에 받은 값이면 서버를 부르지 않음
-      var chk = r && r.last;
-      if (chk && !chk.ok && bugList && bugList.innerHTML.indexOf('배포 직후 점검') === -1) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
-    }).catch(function(){});
+    nxAfterLoginOr_(function(){ // [2026-11-17] 로그인 뒤에(위와 같은 까닭)
+      (window.nxCacheRecent_ ? nxCacheRecent_('deploy_check_last', {}, '', 1800000) : callGas('deploy_check_last', {})).then(function(r){ // [2026.11.13 5차 사] 30분 안에 받은 값이면 서버를 부르지 않음
+        var chk = r && r.last;
+        if (chk && !chk.ok && bugList && bugList.innerHTML.indexOf('배포 직후 점검') === -1) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
+      }).catch(function(){});
+    });
     document.getElementById('stBtnRollback').addEventListener('click', function(){
       if (djBusy_()) return;
       nxConfirm_('↩ 바로 앞 버전으로 되돌릴까요?\n\njob 주소는 그대로이고, 1분쯤 뒤 이전 화면·기능으로 돌아갑니다. 되돌린 뒤 자동으로 점검합니다. 다시 최신으로 올리려면 📥 수정 반영을 누르면 됩니다.').then(function(ok){
