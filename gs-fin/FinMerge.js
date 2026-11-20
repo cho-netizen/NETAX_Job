@@ -237,7 +237,9 @@ function finParseSheet_(rows, ctx) {
 function finParseText_(text, ctx) {
   var t = String(text || '');
   if (!t.trim()) return { fail: '글자를 읽지 못함(흐린 사진·그림만)' };
+  // [2026.11.20] docBankStmtParse_는 { type, label, result: { 은행·계좌번호·거래… }, md }로 돌려준다 — 거래는 result 안에 있다
   var r = null; try { r = docBankStmtParse_(t); } catch (e) { r = null; }
+  if (r && r.result) r = r.result;
   if (!r || !r.거래 || !r.거래.length) {
     var pb = null; try { pb = docPassbookParse_(t); } catch (e) { pb = null; }
     if (pb) return { fail: '통장 사본 — 글자인식이 표를 섞어 거래 줄과 금액을 짝짓지 못함(원본 확인)' };
@@ -245,18 +247,28 @@ function finParseText_(text, ctx) {
   }
   var accts = {}; (t.match(/계\s*좌\s*번\s*호\s*[:：]?\s*\[?\s*\d[\d-]{7,20}\d/g) || []).forEach(function (x) { accts[finAcctDigits_(x)] = 1; });
   var meta = finMeta_(t.slice(0, 3000), ctx.fileName);
-  var block = {
-    기관: finOrgNorm_(r.은행 || meta.기관 || ''), 계좌: r.계좌번호 || meta.계좌 || '', 끝4: finAcctDigits_(r.계좌번호 || meta.계좌).slice(-4), 예금주: r.예금주 || meta.예금주 || '',
-    서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0,
-    rows: r.거래.map(function (g, i) {
+  // [2026.11.20] 사진용 「잔액 사슬」로 짝지은 줄은 글자 순서로 금액·잔액을 맞춘 것이라 줄마다 맞음 표시가 원본과 같다는 보증이 아니다
+  //  (11-20 운영 시험: 기업은행 PDF가 이 길로 날짜가 뒤섞인 채 줄마다 맞음으로 나옴) — 검산을 비워 두고 원본 확인으로 올린다
+  var chain = /잔액 사슬/.test(String(r.서식 || ''));
+  var mk = function (list) {
+    return list.map(function (g, i) {
       var dir = g.입금 === true ? 'i' : g.입금 === false ? 'o' : '?';
       return { d: String(g.날짜 || ''), t: String(g.시각 || ''), 입금: dir === 'i' ? g.금액 : 0, 출금: dir === 'o' ? g.금액 : 0, 금액: g.금액, dir: dir, 잔액: g.잔액 == null ? null : g.잔액,
         std: { 내용: String(g.내용 || '').trim(), 거래구분: String(g.구분 || '').trim(), 메모: String(g.적요 || '').trim(), 원본: '' },
-        검산: g.잔액검산 === true ? true : g.잔액검산 === false ? false : null, 왜: dir === '?' ? '입금·출금을 정하지 못함' : g.잔액검산 === false ? '앞 줄 잔액과 맞지 않음' : '', 줄: i + 1, raw: [] };
-    })
+        검산: chain ? null : g.잔액검산 === true ? true : g.잔액검산 === false ? false : null,
+        왜: dir === '?' ? '입금·출금을 정하지 못함' : chain ? '사진 글자로 짝지음 — 원본 확인' : g.잔액검산 === false ? '앞 줄 잔액과 맞지 않음' : '', 줄: g.줄 || i + 1, raw: [] };
+    });
   };
-  var out = { blocks: [block] };
-  if (Object.keys(accts).length > 1) out.note = '한 파일에 계좌번호가 ' + Object.keys(accts).length + '개 보임 — 첫 계좌로 모았으니 원본 확인';
+  // 한 파일 여러 계좌(통장 정리가 줄마다 g.계좌를 붙인 경우) — 계좌마다 덩어리를 나눈다
+  var groups = {}, order = [];
+  r.거래.forEach(function (g, i) { g.줄 = i + 1; var k = g.계좌 || r.계좌번호 || meta.계좌 || ''; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(g); });
+  var blocks = order.map(function (k) {
+    return { 기관: finOrgNorm_(r.은행 || meta.기관 || ''), 계좌: k, 끝4: finAcctDigits_(k).slice(-4), 예금주: r.예금주 || meta.예금주 || '',
+      서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: mk(groups[k]) };
+  });
+  var out = { blocks: blocks };
+  if (!r.거래.some(function (g) { return g.계좌; }) && Object.keys(accts).length > blocks.length) out.note = '한 파일에 계좌번호가 ' + Object.keys(accts).length + '개 보임 — ' + blocks.length + '개 계좌로만 나눴으니 원본 확인';
+  if (chain) out.note = (out.note ? out.note + ' / ' : '') + '사진·화면 글자로 금액·잔액을 짝지음 — 줄마다 원본 확인';
   (r.경고 || []).forEach(function (w) { out.note = (out.note ? out.note + ' / ' : '') + w; });
   return out;
 }

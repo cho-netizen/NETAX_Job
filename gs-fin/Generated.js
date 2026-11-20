@@ -1,6 +1,6 @@
 // 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js
 // 조회 시작점: bankParseRows_, bankReadFile_, bankFindHeader_, bankCell_, bankHdrKey_, bankDecodeBlob_, bankHtmlRows_, BANK_COL_, tc_docText_, docBankStmtParse_, docPassbookParse_, tcZipName_, tcInflateRaw_, tcTmpMeta_, work_getSheet_, work_colMap_, work_values_, work_findCaseRow_, work_readRow_, getBusinessManagerFolder_, jsonResponse, WORK_SHEET_ID
-// 포함한 최상위 선언 95개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, work_getSheet_, ocrFileText_, tcOcrStoreFolder_, tcOcrBlob_, tcBlobText_, tcPptxText_, tc_docText_, bankReadFile_)
+// 포함한 최상위 선언 96개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, work_getSheet_, ocrFileText_, tcOcrStoreFolder_, tcOcrBlob_, tcBlobText_, tcPptxText_, tc_docText_, bankReadFile_)
 
 // ============================================================
 // CaseLedger.js — 사건 장부: 사건의 모든 사실을 적는 단일 저장소 [2026.10.28 신설]
@@ -1565,6 +1565,86 @@ function docBankStmtTableRows_(t, r) {
   return true;
 }
 
+// ②-2 [2026.11.20] 「구분 + 거래금액 한 칸 + 잔액」 명세표 — 입금·출금이 금액 한 칸이고 줄마다 「입금/출금(지급)」 낱말로 가른다
+//  기업은행 계좌별거래명세표: "거래일 시간 구분 거래금액 잔액 거래점 …" → 줄 "2017-05-24 10:01:43 입금 100,000,000 100,001,774 불광역 …"
+//  우체국 금융거래명세조회: "거래일자 거래시간 거래금액(원) 거래후잔액(원) 구분 …" → 줄 "2016-08-08 07:55:56 180,890 553,570 입금 999300 …"
+//  ② 출력물 규칙은 입금·출금 칸 이름을 찾아 이 모양을 못 탔고, 사진용 잔액 사슬로 넘어가 날짜·금액·잔액을 엉뚱하게 짝지었다
+//  (11-20 상속 사건 은행 PDF 금융거래 합치기 운영 시험 — 기업은행 441줄이 날짜가 뒤섞인 채 검산 맞음으로 나옴).
+//  줄마다 날짜 → 시각 → [낱말 숫자 숫자] 또는 [숫자 숫자 낱말]만 받는다(머리 「출력 일시」·「조회기간」 날짜는 낱말이 없어 빠짐).
+//  한 파일에 계좌가 여럿이면(우체국은 계좌마다 머리글) 줄마다 그 앞 「계좌번호」를 g.계좌로 붙이고, 검산은 같은 계좌끼리만 잇는다.
+function docBankStmtKindAmtRows_(t, r) {
+  // 「지급취 소」처럼 글자가 갈린 취소 줄(우체국 체크카드 승인 취소 — 돈이 되돌아옴)도 한 낱말로
+  var flat = t.replace(/\s+/g, ' ').replace(/(입금|출금|지급)\s*취\s*소/g, '$1취소');
+  var am = /거\s*래\s*금\s*액/.exec(flat); if (!am) return false;
+  var hseg = flat.slice(Math.max(0, am.index - 80), am.index + 120);
+  if (!/구\s*분/.test(hseg) || !/잔\s*액/.test(hseg) || !/거\s*래\s*일/.test(hseg)) return false;
+  var accts = [], ar = /계\s*좌\s*번\s*호\s*[:：]?\s*\[?\s*(\d[\d-]{7,20}\d)/g, a;
+  while ((a = ar.exec(flat))) accts.push({ at: a.index, no: a[1] });
+  // 글자인식이 「계좌번호」 낱말을 번호 뒤로 밀어낸 머리글("계좌별거래명세표 285-039996-02-011 구계좌번호 …")도 계좌 경계로
+  var ar2 = /명\s*세\s*(?:표|조\s*회)\s+(\d{2,6}-\d{2,8}-\d{2,8}(?:-\d{1,6})?)/g;
+  while ((a = ar2.exec(flat))) if (!accts.some(function (q) { return Math.abs(q.at - a.index) < 200 && q.no === a[1]; })) accts.push({ at: a.index, no: a[1] });
+  accts.sort(function (p, q) { return p.at - q.at; });
+  var NUM = /^-?(?:\d{1,3}(?:,\d{3})+|\d+)$/, KIND = /^(입금|출금|지급)(취소)?$/, TIME = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+  // 낱말 차례로 훑는다 — 줄 앞에 날짜가 붙은 모양(날짜 시각 …)과, 글자인식이 쪽마다 날짜를 줄에서 떼어 그 쪽 끝에 한 덩어리로 모은 모양
+  //  (기업은행 PDF를 서버 글자인식으로 읽으면 "10:11:42 입금 0 0 …" 줄들 뒤에 "2017-04-19 0 2017-04-20 0 …"이 온다) 둘 다.
+  //  뒤 모양은 쪽마다 날짜 수가 날짜 없는 줄 수와 같을 때만 차례로 짝짓고, 다르면 그 쪽 줄은 넣지 않는다(잔액 검산이 짝을 다시 확인).
+  var DATE = /((?:19|20)\d{2})[.\-\/](\d{2})[.\-\/](\d{2})/, from = Math.max(0, am.index - 80), tks = [], tr = /\S+/g, y;
+  while ((y = tr.exec(flat))) if (y.index >= from) tks.push({ s: y[0], at: y.index });
+  var sOf = function (j) { return (tks[j] || {}).s || ''; };
+  var rowAt = function (j) {
+    var k = j, tm = '';
+    if (TIME.test(sOf(k))) { tm = sOf(k); k++; }
+    var w0 = sOf(k), w1 = sOf(k + 1), w2 = sOf(k + 2);
+    if (KIND.test(w0) && NUM.test(w1) && NUM.test(w2)) return { tm: tm, kind: w0, amt: w1, bal: w2, next: k + 3 };
+    if (NUM.test(w0) && NUM.test(w1) && KIND.test(w2)) return { tm: tm, kind: w2, amt: w0, bal: w1, next: k + 3 };
+    return null;
+  };
+  var rows = [], pend = [], run = [], badPage = 0, lost = 0;
+  var flushRun = function () {
+    if (run.length && pend.length) { if (run.length === pend.length) pend.forEach(function (p, j) { p.d = run[j]; }); else { badPage++; lost += pend.length; } pend = []; }
+    run = [];
+  };
+  for (var i = 0; i < tks.length; i++) {
+    var s = tks[i].s, dm = DATE.exec(s);
+    if (/^거래일/.test(s)) { flushRun(); continue; }
+    if (dm && TIME.test(sOf(i + 1))) {
+      var rw = rowAt(i + 1);
+      if (rw) { flushRun(); rw.d = dm[1] + '-' + dm[2] + '-' + dm[3]; rw.start = i; rw.at = tks[i].at; rows.push(rw); i = rw.next - 1; continue; }
+    }
+    // 머리글 날짜(조회기간 "가 ~ 나", 출력 일시 "날짜 시각")는 쪽 날짜 덩어리에 넣지 않는다 — 다음 계좌 머리글이 앞 쪽 날짜 뒤에 붙어 온다
+    if (dm) { if (pend.length && sOf(i - 1) !== '~' && sOf(i + 1) !== '~' && !TIME.test(sOf(i + 1))) run.push(dm[1] + '-' + dm[2] + '-' + dm[3]); continue; }
+    if (TIME.test(s)) {
+      var rt = rowAt(i);
+      if (rt) { if (run.length) flushRun(); rt.d = ''; rt.start = i; rt.at = tks[i].at; rows.push(rt); pend.push(rt); i = rt.next - 1; continue; }
+    }
+  }
+  flushRun();
+  if (pend.length) lost += pend.length;
+  var n0 = r.거래.length, used = {};
+  rows.forEach(function (rw, idx) {
+    if (!rw.d) return;
+    var end = idx + 1 < rows.length ? rows[idx + 1].start : Math.min(tks.length, rw.next + 30);
+    var rest = tks.slice(rw.next, end).map(function (q) { return q.s; })
+      .filter(function (q) { return /[가-힣A-Za-z]/.test(q) && !/^[*\\]+$/.test(q) && !DATE.test(q) && !/^거래일/.test(q); }).join(' ').slice(0, 80);
+    var v = Number(rw.amt.replace(/,/g, '')), b = Number(rw.bal.replace(/,/g, ''));
+    // 잔액이 느는 쪽: 입금, 지급·출금 취소 / 주는 쪽: 출금·지급, 입금 취소
+    var up = (rw.kind === '입금') !== /취소$/.test(rw.kind);
+    var len = r.거래.length;
+    docBankStmtRow_(r, rw.d, rw.tm, rw.kind, rest, '', up ? 0 : v, up ? v : 0, b);
+    if (r.거래.length > len && accts.length) {
+      var ac = ''; accts.forEach(function (q) { if (q.at < rw.at) ac = q.no; });
+      r.거래[r.거래.length - 1].계좌 = ac || accts[0].no; used[ac || accts[0].no] = 1;
+    }
+  });
+  if (r.거래.length - n0 < 3) { r.거래.length = n0; return false; }
+  if (lost) r.경고.push('날짜와 짝짓지 못한 거래 줄 ' + lost + '개(쪽 ' + badPage + '곳 날짜 수가 줄 수와 다름) — 그 줄은 빼고 정리함(원문 확인)');
+  var nAc = Object.keys(used).length;
+  if (nAc > 1) r.경고.push('한 파일에 계좌 ' + nAc + '개 — 줄마다 그 앞 계좌번호로 나눔');
+  else if (nAc === 1 && !r.계좌번호) r.계좌번호 = Object.keys(used)[0];
+  r.서식 = '구분·거래금액 명세표';
+  return true;
+}
+
 // ③ 앱 거래내역조회 화면 — 날짜 줄 → 시각 줄(거래 시작) → 적요 → ±금액원 → 잔액원
 function docBankStmtAppRows_(t, r) {
   if (!/거\s*래\s*내\s*역/.test(t)) return false;
@@ -1597,6 +1677,7 @@ function docBankStmtCheck_(r) {
   var g = r.거래, n = g.length;
   var fit = function (prev, cur) {
     if (!prev || !cur || prev.잔액 == null || cur.잔액 == null || cur.짝확인필요) return null;
+    if (prev.계좌 !== cur.계좌) return null; // [2026.11.20] 한 파일 여러 계좌(②-2) — 다른 계좌 줄끼리는 잇지 않는다
     var dlt = cur.잔액 - prev.잔액;
     if (cur.입금 === true) return dlt === cur.금액 ? 'in' : false;
     if (cur.입금 === false) return dlt === -cur.금액 ? 'out' : false;
@@ -1624,7 +1705,8 @@ function docBankStmtParse_(text) {
   var r = { 종류: '통장 거래내역', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [], 통장목록: true, 서식: '' };
   var m = BANK_STMT_NAME_RE_.exec(t.slice(0, 2000)); if (m) r.은행 = m[1] + m[2];
   m = /계\s*좌\s*번\s*호\s*[:：]?\s*\[?\s*(\d[\d-]{7,20}\d)/.exec(t); if (m) r.계좌번호 = m[1];
-  m = /(?:고\s*객\s*명|예\s*금\s*주(?:\s*성\s*명)?)\s*[:：]?\s*([가-힣]{2,5})/.exec(t); if (m) r.예금주 = m[1];
+  // [2026.11.20] "예금주 명 김기철"(기업은행 명세표) — 「명」을 건너뛰지 못해 표 머리 "상대 예금주 비고"의 「비고」를 예금주로 읽었다
+  m = /(?:고\s*객\s*명|예\s*금\s*주(?:\s*(?:성\s*)?명)?)\s*[:：]?\s*(?!비고|구분|명\s)([가-힣]{2,5})/.exec(t); if (m) r.예금주 = m[1];
   // [2026.10.17 통장 사진·앱 캡처] ④ 잔액 사슬 — 머리글·시각 줄 모양이 없는 화면(시각이 "14:05"뿐인 거래내역조회, 칸이 섞인 사진)
   // [2026.10.18 3차 수정 K] 잔액 사슬만으로 통장이라 보는 문턱을 좁힌다 — 숫자 칸이 많은 다른 서식에서도 "앞 숫자 ± 숫자 = 뒤 숫자"가 우연히 3번 이어진다.
   //  고객A 「부동산임대공급가액명세서」(머리 "수 입 금 액"의 '입금'에 걸려 보증금·월임대료·이자 칸이 가짜 거래 3줄·가짜 국민은행 계좌로),
@@ -1638,7 +1720,7 @@ function docBankStmtParse_(text) {
     var ch = null; try { ch = docBankChainRows_(t, { book: false }); } catch (e) { ch = null; }
     return ch && ch.rows.length >= 3 && ch.rows.every(function (g) { return g.날짜; }) ? ch : null;
   };
-  if (!docBankStmtDelimRows_(t, r) && !docBankStmtTableRows_(t, r) && !docBankStmtAppRows_(t, r)) {
+  if (!docBankStmtDelimRows_(t, r) && !docBankStmtTableRows_(t, r) && !docBankStmtKindAmtRows_(t, r) && !docBankStmtAppRows_(t, r)) {
     var ch4 = chainOf(); if (!ch4) return null;
     r.거래 = ch4.rows; r.서식 = '사진·화면(잔액 사슬)';
   }
