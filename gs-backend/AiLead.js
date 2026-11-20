@@ -45,7 +45,10 @@ var CASEPROC_AI_TOOLS_ = [
   // [2026.11.12 2차 전면 재검토 ①] 서류 정리 — 세무사님 화면(aichat 📂 서류 정리)에만 있던 일(10-18 원문 "문서 나누기, 여러파일을 하나의 문서로 합치기, 적절한 파일명 부여하기 등등 끝도없이 많다")을 넥스도 같은 서버 함수로.
   //  나누기·묶음 PDF 만들기는 화면(pdf-lib)이 PDF를 다시 써야 해서 서버만으로는 못 한다 — 그 둘은 계획(보기)만 돌려주고 "화면 📂에서 저장"을 안내한다.
   { name: 'doc_organize', description: '서류 정리(토큰 0) — do=rename_plan: 뜻 없는 이름(스캔001·IMG_… 등) 파일마다 읽은 종류·사람·날짜로 새 이름 제안(고객 폴더 안 바뀜) / do=rename_apply{items:[{id,newName}]}: 제안대로(또는 세무사님이 고친 이름대로) 이름 바꾸기 — 되돌리기 기록 남음. 세무사님이 "이름 정리해라"고 하셨거나 제안을 보여 드려 좋다고 하신 뒤에만 / do=scan_cands: 여러 장 사진으로 나뉜 서류·원근 보정이 필요한 사진 후보(합치기·보정은 화면 📂 서류 정리에서) / do=submit_plan{ids,groups?}: 고른 PDF를 홈택스 첨부 기준(한 파일 MB·개수)에 맞춰 종류별 묶음·번호 계획(합쳐 저장은 화면 📂에서). 이름 바꾸기 외에는 고객 폴더를 바꾸지 않는다.',
-    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, do: { type: 'string', enum: ['rename_plan', 'rename_apply', 'scan_cands', 'submit_plan'] }, items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, newName: { type: 'string' } } } }, ids: { type: 'array', items: { type: 'string' } }, groups: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } } } } }, required: ['caseId', 'do'] } }
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, do: { type: 'string', enum: ['rename_plan', 'rename_apply', 'scan_cands', 'submit_plan'] }, items: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, newName: { type: 'string' } } } }, ids: { type: 'array', items: { type: 'string' } }, groups: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } } } } }, required: ['caseId', 'do'] } },
+  // [2026.11.20] 금융거래 원시파일 한 파일로 합치기(1단계) — 세무사님 화면 💰 금융거래 합치기와 같은 서버(gs-fin)·같은 함수(FinProxy.js). 계획서 docs/_기록/금융거래_10년검토_계획서_20261120.html
+  { name: 'bank_merge', description: '금융거래 원시파일 한 파일로 합치기(토큰 0) — 사건 폴더의 은행 거래내역 원시파일(엑셀·PDF·사진·압축)을 은행 서식표로 칸을 맞춰 사건 폴더의 구글 시트 하나(「금융거래_통합_…」 — 탭: 계좌 목록·거래·겹쳐서 한 번만 센 줄·확인할 것·칸 대응표·계좌별 원본)로 합친다. 같은 계좌의 같은 거래는 한 번만, 잔액 검산 ⚠·암호·못 읽은 파일·처음 보는 서식은 「확인할 것」 탭에. do=list: 파일 목록·기본 체크 / do=run{fileIds?}: 합치기(more면 다시 부르면 이어 감). CSV(세무사님 변환본)·사건 맨 위 합본은 읽지 않는다. 조건에 맞는 거래 뽑기(2단계)는 이 도구에 없다 — 합친 시트를 file_read로 읽는다.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, do: { type: 'string', enum: ['list', 'run'] }, fileIds: { type: 'array', items: { type: 'string' } } }, required: ['caseId'] } },
 ];
 // [2026.10.19] 지침 초안(maps/작업지시AI_지침초안.md A절)을 그대로 — 블라인드 모의 3건으로 고친 판, 약 3,800자
 
@@ -232,7 +235,8 @@ var CASEPROC_AI_TOOL_ROLES_ = {
   public_lookup: { 상수: '공시가격·매매사례·건축물대장 조회', 변수: '유사사례 고르기·시가 판단(중간~고급)' },
   form_needs: { 상수: '서식 칸 해설 색인·칸 값 유무 대조', 변수: '—(재료)' },
   forms_check: { 상수: '서식 유무·기신고서 차이', 변수: '—' },
-  doc_organize: { 상수: '이름 제안(읽은 종류·사람·날짜)·사진 묶음 후보·첨부 기준 묶음 계산', 변수: '제안 이름을 받을지·어느 서류를 낼지(최상위, 세무사님 확인)' } // [2026.11.12 2차 ①]
+  doc_organize: { 상수: '이름 제안(읽은 종류·사람·날짜)·사진 묶음 후보·첨부 기준 묶음 계산', 변수: '제안 이름을 받을지·어느 서류를 낼지(최상위, 세무사님 확인)' }, // [2026.11.12 2차 ①]
+  bank_merge: { 상수: '서식 알아보기·칸 맞춤·같은 거래 한 번만·잔액 검산·시트 쓰기', 변수: '처음 보는 서식의 칸 짝(세무사님 확인)·빠진 원시파일 고르기' },
 };
 // 도구 결과에서 "AI가 판단할 자리(변수)"를 센다 — 재현기가 그물 기록·AI 없이 끝날 수 있는지에 쓴다
 // '못 읽은 서류'는 AI 자리가 아니다 — 사진 보정·OCR은 GAS(상수) 몫이라 AI 없이 끝날 수 있는지 셀 때 빼고 따로 센다
@@ -425,6 +429,7 @@ function caseProcAiExec_(caseId, name, input) {
       else if (d === 'submit_plan') { if (!Array.isArray(input.ids) || !input.ids.length) r = { error: 'ids(넣을 PDF 파일 ID, 순서대로)가 비었다 — case_files로 목록을 보고 고른다' }; else { r = step('submitPlan', { ids: input.ids.slice(0, 80), groups: Array.isArray(input.groups) ? input.groups : undefined, by: '넥스' }); if (r && r.ok) r.안내 = '합쳐서 _신고제출 폴더에 저장하는 것은 화면 📂 서류 정리 → 신고 제출 묶음에서만 된다 — 계획을 세무사님께 보여 드린다.'; } }
       else r = { error: 'do는 rename_plan·rename_apply·scan_cands·submit_plan 중 하나' };
     }
+    else if (name === 'bank_merge') r = typeof finProxyNex_ === 'function' ? finProxyNex_(caseId, input) : { error: '금융거래 합치기 길이 이 판에 없음' }; // [2026.11.20] 화면 💰과 같은 서버
     else if (name === 'form_needs') r = typeof formNeeds_ === 'function' ? formNeeds_(caseId, input) : { error: '서식 도구가 이 판에 없음' }; // [2026.10.19 B-5]
     else if (name === 'doc_facts') {
       const c = akReadCase_(caseId);

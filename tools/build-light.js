@@ -24,6 +24,10 @@ const TARGETS = {
   // 부가서비스 서버 — 폴더 보기·메모·보고서 모음·서식(템플릿) 화면의 조회(비밀값·저장이 필요 없는 것만, gs-extra/README.md)
   // 판정 서버 — 판정 묶음 계산만(사실 받아 결과 돌려줌, 시트·장부 안 씀). 엔진은 manage/taxcalc-engine.html 사본(tools/build-judge.js)
   'gs-judge': ['JUDGE_MORE_', 'jsonResponse'],
+  // [2026.11.20] 금융거래 합치기 서버 — 은행 원시파일을 한 구글 시트로(gs-fin/Fin.js·FinMerge.js·FinRun.js·FinCrypt.js가 쓰는 gs-backend 함수만)
+  'gs-fin': ['bankParseRows_', 'bankReadFile_', 'bankFindHeader_', 'bankCell_', 'bankHdrKey_', 'bankDecodeBlob_', 'bankHtmlRows_', 'BANK_COL_',
+    'tc_docText_', 'docBankStmtParse_', 'docPassbookParse_', 'tcZipName_', 'tcInflateRaw_', 'tcTmpMeta_',
+    'work_getSheet_', 'work_colMap_', 'work_values_', 'work_findCaseRow_', 'work_readRow_', 'getBusinessManagerFolder_', 'jsonResponse', 'WORK_SHEET_ID'],
   'gs-extra': ['handleListFolder', 'handleGetNetaxRootPath', 'handleListCaseTemplates', 'handleGetCaseTemplateContent', 'handleListGeneralMemos', 'handleListAllReports', 'handleGetLatestTemplateReview', 'jsonResponse']
 };
 
