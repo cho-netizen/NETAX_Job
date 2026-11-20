@@ -7,6 +7,7 @@
 // ============================================================
 var FIN_SKIP_DIR_RE_ = /^(보고서|보고서_내부|보고서_외부|_.*|이전버전|도구|양도코리아)$/;
 var FIN_SUGGEST_RE_ = /거래|통장|계좌|은행|농협|축협|국민|신한|우리|하나|기업|우체국|새마을|신협|수협|증권|예금|적금|입출|KB|NH|IBK|SC/i;
+var FIN_SOFT_NOT_RE_ = /장례|화장|병원|진료|수납|계약서|등기|대장|초본|등본|가족관계|거래\s*명세서|세금계산서|납부서|고지서/;
 var FIN_NOT_TX_RE_ = /잔액\s*증명|잔고\s*증명|재산\s*조회|회보서|조회서|상속인\s*(금융|내역)|보험\s*증권|영수증|비밀번호|공제\s*신고서|실거래가|협회|분할\s*협의서|금융재산\s*목록|위임장|신분증/;
 
 function finCase_(caseId) {
@@ -41,6 +42,8 @@ function finSuggest_(f) {
   if (!ext) return { on: false, why: '' };
   if (!f.dir && FIN_SHEET_EXT_RE_.test(n)) return { on: false, why: '사건 맨 위 엑셀 — 세무사님 합본으로 보여 기본 끔(원시파일이면 켜 주세요)' };
   if (FIN_NOT_TX_RE_.test(n)) return { on: false, why: '거래내역이 아닌 서류로 보임' };
+  // [2026.11.21] 이름에 「거래」가 들어가도 은행 거래내역이 아닌 서류(장례식장 거래명세서·병원비·계약서·등기·대장·초본) — 읽어 보고 거래내역일 때만 넣는다(아니면 「확인할 것」에 안 올림)
+  if (FIN_SOFT_NOT_RE_.test(n)) return { on: false, why: '' };
   if (FIN_SUGGEST_RE_.test(n) || FIN_SUGGEST_RE_.test(f.dir)) return { on: true, why: '' };
   return { on: false, why: '' };
 }
