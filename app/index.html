@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-20 13:34 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-20 17:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57712,9 +57712,9 @@ function rwAiApplyEdit_(id, content){
   function fmShow(r){
     var h = '<div class="fm-row"><b class="fm-ok">합친 시트:</b> <a href="' + esc(r.시트.url) + '" target="_blank" rel="noopener">' + esc(r.시트.name) + '</a>'
       + ' <span class="fm-sub">· 계좌 ' + (r.계좌 || []).length + '개 · 거래 ' + won(r.거래줄) + '줄 · 겹쳐서 한 번만 센 줄 ' + won(r.겹친줄) + ' · 확인할 것 ' + won(r.확인수) + '</span></div>';
-    h += '<div class="fm-grid-wrap" style="max-height:30vh"><table class="fm-grid" style="min-width:820px"><colgroup><col style="width:70px"><col style="width:150px"><col style="width:70px"><col style="width:170px"><col style="width:60px"><col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:60px"></colgroup>'
-      + '<thead><tr><th>기관</th><th>계좌</th><th>예금주</th><th>자료 기간</th><th>줄</th><th>입금 합계</th><th>출금 합계</th><th>끝 잔액</th><th>검산 ⚠</th></tr></thead><tbody>'
-      + (r.계좌 || []).map(function(a){ return '<tr><td>' + esc(a.기관) + '</td><td>' + esc(a.계좌) + '</td><td>' + esc(a.예금주) + '</td><td>' + esc(a.기간) + '</td><td class="num">' + won(a.줄) + '</td><td class="num">' + won(a.입금합계) + '</td><td class="num">' + won(a.출금합계) + '</td><td class="num">' + won(a.끝잔액) + '</td><td class="num' + (a.검산틀림 ? ' fm-warn' : '') + '">' + (a.검산틀림 || '') + '</td></tr>'; }).join('')
+    h += '<div class="fm-grid-wrap" style="max-height:30vh"><table class="fm-grid" style="min-width:1040px"><colgroup><col style="width:70px"><col style="width:150px"><col style="width:70px"><col style="width:170px"><col style="width:60px"><col style="width:110px"><col style="width:110px"><col style="width:110px"><col style="width:60px"><col style="width:220px"></colgroup>'
+      + '<thead><tr><th>기관</th><th>계좌</th><th>예금주</th><th>자료 기간</th><th>줄</th><th>입금 합계</th><th>출금 합계</th><th>끝 잔액</th><th>검산 ⚠</th><th>참고</th></tr></thead><tbody>'
+      + (r.계좌 || []).map(function(a){ return '<tr><td>' + esc(a.기관) + '</td><td>' + esc(a.계좌) + '</td><td>' + esc(a.예금주) + '</td><td>' + esc(a.기간) + '</td><td class="num">' + won(a.줄) + '</td><td class="num">' + won(a.입금합계) + '</td><td class="num">' + won(a.출금합계) + '</td><td class="num">' + won(a.끝잔액) + '</td><td class="num' + (a.검산틀림 ? ' fm-warn' : '') + '">' + (a.검산틀림 || '') + '</td><td class="fm-sub" title="' + esc(a.참고 || '') + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(a.참고 || '') + '</td></tr>'; }).join('')
       + '</tbody></table></div>';
     if ((r.확인 || []).length) h += '<div class="fm-row fm-sub">확인할 것(앞 ' + Math.min(12, r.확인.length) + '개 — 전부는 시트 「확인할 것」 탭): ' + r.확인.slice(0, 12).map(function(c){ return '<span class="fm-warn">[' + esc(c.종류) + ']</span> ' + esc(c.파일) + ' — ' + esc(String(c.내용).slice(0, 80)); }).join(' / ') + '</div>';
     FM.newFormats = r.새서식 || [];
