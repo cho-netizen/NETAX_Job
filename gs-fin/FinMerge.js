@@ -237,10 +237,7 @@ function finParseSheet_(rows, ctx) {
 function finParseText_(text, ctx) {
   var t = String(text || '');
   if (!t.trim()) return { fail: '글자를 읽지 못함(흐린 사진·그림만)' };
-  // [2026.11.20] docBankStmtParse_는 { type, label, result: { 은행·계좌번호·거래… }, md }로 돌려준다 — 거래는 result 안에 있다
-  //  (11-20 운영 첫 시험: 김희정 사건 우체국·기업은행 PDF가 겉 껍데기만 보고 「거래 줄을 찾지 못함」으로 빠졌던 것)
   var r = null; try { r = docBankStmtParse_(t); } catch (e) { r = null; }
-  if (r && r.result) r = r.result;
   if (!r || !r.거래 || !r.거래.length) {
     var pb = null; try { pb = docPassbookParse_(t); } catch (e) { pb = null; }
     if (pb) return { fail: '통장 사본 — 글자인식이 표를 섞어 거래 줄과 금액을 짝짓지 못함(원본 확인)' };
