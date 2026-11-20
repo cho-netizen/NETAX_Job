@@ -95,6 +95,9 @@ function finAutoPick_(files) {
     if (s.on) out.push({ f: f, quiet: false });
     else if (!s.why && (FIN_SHEET_EXT_RE_.test(f.name) || FIN_PDF_RE_.test(f.name) || FIN_IMG_RE_.test(f.name) || FIN_ZIP_RE_.test(f.name))) out.push({ f: f, quiet: true });
   });
+  // 읽는 차례: 이름에 은행 낱말이 있는 것 → 엑셀·압축 → 작은 PDF·사진(글자인식이 빠른 것)부터 — 거래내역이 먼저 합쳐지게(11-20 운영: 박연경 사건 41개를 폴더 차례로 읽느라 은행 엑셀이 10번째)
+  var rank = function (p) { return p.quiet ? (FIN_SHEET_EXT_RE_.test(p.f.name) || FIN_ZIP_RE_.test(p.f.name) ? 1 : 2) : 0; };
+  out.sort(function (a, b) { return rank(a) - rank(b) || (rank(a) === 2 ? (a.f.size || 0) - (b.f.size || 0) : 0); });
   return out;
 }
 function finQuietKeep_(r) {
@@ -107,6 +110,13 @@ function finQuietKeep_(r) {
 }
 function finHasBank_(r) { return !!r && ((r.blocks || []).length > 0 || (r.inner || []).some(finHasBank_) || r.status === 'locked' || r.status === 'fail'); }
 function finMergeAuto_(body) {
+  // 같은 사건을 두 번이 겹쳐 읽지 않게(부르는 쪽이 60초에 끊겨도 이쪽은 끝까지 돈다 — 그사이 다음 틱이 다시 부를 수 있음)
+  var C = CacheService.getScriptCache(), lk = 'fin_auto_' + finHash32_(String(body.caseId || ''));
+  if (C.get(lk)) return { ok: true, done: false, more: true, busy: true };
+  C.put(lk, '1', 420);
+  try { return finMergeAutoRun_(body); } finally { C.remove(lk); }
+}
+function finMergeAutoRun_(body) {
   var t0 = Date.now(), budget = Math.max(15000, Math.min(Number(body.budgetMs) || 25000, 280000));
   var c = finCase_(body.caseId), folder = DriveApp.getFolderById(c.폴더ID), pw = finPwGet_(body.caseId);
   var picks = finAutoPick_(finFolderFiles_(folder)), sig = finSig_(pw);
@@ -116,12 +126,18 @@ function finMergeAuto_(body) {
   var keyOf = function (f) { return f.id + '_' + f.modified + '_' + sig; };
   var keep = {}; picks.forEach(function (p) { keep[keyOf(p.f)] = 1; });
   Object.keys(st.s.parsed).forEach(function (k) { if (!keep[k]) delete st.s.parsed[k]; });
+  // 앞 번에 읽다가 끊긴 파일(구글 한 번 실행 6분 한도 — 큰 스캔 PDF·사진 많은 압축) — 같은 파일에서 매번 걸리지 않게 「못 읽음」으로 적고 넘어간다
+  if (st.s.trying && !st.s.parsed[st.s.trying.k] && keep[st.s.trying.k] && Date.now() - Number(st.s.trying.at || 0) > 6.5 * 60000) {
+    st.s.parsed[st.s.trying.k] = { file: { id: st.s.trying.id, name: st.s.trying.name }, path: st.s.trying.path, status: 'fail', why: '읽는 데 너무 오래 걸려 건너뜀(구글 한 번 실행 6분 넘음) — 파일을 나눠 넣어 주세요', blocks: [], newFormats: [], notes: [] };
+  }
   var done = 0;
   for (var i = 0; i < picks.length; i++) {
     var f = picks[i].f, k = keyOf(f);
     if (st.s.parsed[k]) { done++; continue; }
     if (Date.now() - t0 > budget) break;
+    st.s.trying = { k: k, id: f.id, name: f.name, path: f.path, at: Date.now() }; finStateSave_(folder, st);
     st.s.parsed[k] = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0); done++;
+    delete st.s.trying;
     finStateSave_(folder, st);
   }
   if (done < picks.length) return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length };

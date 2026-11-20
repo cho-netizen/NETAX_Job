@@ -46,19 +46,23 @@ function finAutoRun_(started, DEADLINE) {
     finAutoQueue_(cases.filter(finAutoIsCase_).map(function (c) { return c.id; }));
     P.setProperty(FIN_AUTO_SWEEP_, String(Date.now()));
   }
-  if (Date.now() - started > DEADLINE - 70000) return ''; // 한 번 부르기(최대 약 60초)가 들어갈 시간이 없으면 다음 틱
-  var q = finAutoQueue_(); if (!q.length) return '';
-  var id = q[0], r = null;
-  try { r = finProxyCall_('fin_merge_auto', { caseId: id, budgetMs: 25000 }); } catch (e) { r = { error: String(e && e.message || e).slice(0, 120) }; }
-  var q2 = finAutoQueue_().filter(function (x) { return x !== id; });
-  if (r && r.more) q2.push(id); // 다 못 읽음 — 줄 끝에 다시(다른 사건도 차례가 오게)
-  P.setProperty(FIN_AUTO_Q_, JSON.stringify(q2));
-  if (!r || r.error) return '금융거래 합치기 ' + id + ' 실패: ' + String(r && r.error || '응답 없음').slice(0, 80);
-  if (r.nochange || r.empty) return '';
-  if (r.more) return '금융거래 합치기 ' + id + ' 읽는 중 ' + r.읽음 + '/' + r.전체;
-  var line = '자동으로 합침 — ' + (r.시트 && r.시트.name || '시트') + ' · 계좌 ' + r.계좌수 + ' · 거래 ' + r.거래줄 + '줄' + (r.확인수 ? ' · 확인할 것 ' + r.확인수 : '');
-  try { caseProcPatch_(id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '금융거래 합치기', detail: line + (r.시트 && r.시트.url ? ' ' + r.시트.url : '') }); }); } catch (e) {}
-  return '금융거래 ' + id + ': ' + line;
+  // 남은 시간에 한 번 부르기(최대 약 60초)가 들어가면 부른다 — 한 틱에 세 번까지(처음 합칠 때 사건마다 파일이 수십 개라 한 번씩이면 한 시간 걸림)
+  var lines = [];
+  for (var n = 0; n < 3 && Date.now() - started < DEADLINE - 70000; n++) {
+    var q = finAutoQueue_(); if (!q.length) break;
+    var id = q[0], r = null;
+    try { r = finProxyCall_('fin_merge_auto', { caseId: id, budgetMs: 25000 }); } catch (e) { r = { error: String(e && e.message || e).slice(0, 120), more: /timeout|시간|Timeout/i.test(String(e && e.message || e)) }; }
+    var q2 = finAutoQueue_().filter(function (x) { return x !== id; });
+    if (r && r.more) q2.push(id); // 다 못 읽음 — 줄 끝에 다시(다른 사건도 차례가 오게)
+    P.setProperty(FIN_AUTO_Q_, JSON.stringify(q2));
+    if (!r || r.error) { lines.push('금융거래 합치기 ' + id + ' 실패: ' + String(r && r.error || '응답 없음').slice(0, 80)); continue; }
+    if (r.nochange || r.empty) continue;
+    if (r.more) { lines.push('금융거래 합치기 ' + id + ' 읽는 중 ' + r.읽음 + '/' + r.전체); continue; }
+    var line = '자동으로 합침 — ' + (r.시트 && r.시트.name || '시트') + ' · 계좌 ' + r.계좌수 + ' · 거래 ' + r.거래줄 + '줄' + (r.확인수 ? ' · 확인할 것 ' + r.확인수 : '');
+    try { caseProcPatch_(id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '금융거래 합치기', detail: line + (r.시트 && r.시트.url ? ' ' + r.시트.url : '') }); }); } catch (e) {}
+    lines.push('금융거래 ' + id + ': ' + line);
+  }
+  return lines.join(' / ');
 }
 
 // ---------- 넥스 도구 bank_merge — 자동으로 합친 결과 읽기(명령 없음) ----------
