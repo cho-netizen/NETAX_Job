@@ -266,8 +266,16 @@ function finParseText_(text, ctx) {
     return { 기관: finOrgNorm_(r.은행 || meta.기관 || ''), 계좌: k, 끝4: finAcctDigits_(k).slice(-4), 예금주: r.예금주 || meta.예금주 || '',
       서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: mk(groups[k]) };
   });
+  // 금액 있는 거래가 없는 계좌(0원 이자결산만 — 통장 정리 r.무거래계좌) — 엑셀의 「조회 기간 거래 없음」 계좌처럼 목록에 남기고 잔액을 알린다
+  var zeroNote = [];
+  (r.무거래계좌 || []).forEach(function (z) {
+    blocks.push({ 기관: finOrgNorm_(r.은행 || meta.기관 || ''), 계좌: z.계좌, 끝4: finAcctDigits_(z.계좌).slice(-4), 예금주: r.예금주 || meta.예금주 || '',
+      서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: [] });
+    zeroNote.push('계좌 ' + z.계좌 + ' — 금액 있는 거래 없음(0원 줄만), 잔액 ' + Number(z.잔액).toLocaleString('ko-KR') + '원(' + z.날짜 + ')');
+  });
   var out = { blocks: blocks };
-  if (!r.거래.some(function (g) { return g.계좌; }) && Object.keys(accts).length > blocks.length) out.note = '한 파일에 계좌번호가 ' + Object.keys(accts).length + '개 보임 — ' + blocks.length + '개 계좌로만 나눴으니 원본 확인';
+  if (zeroNote.length) out.note = zeroNote.join(' / ');
+  if (!r.거래.some(function (g) { return g.계좌; }) && Object.keys(accts).length > blocks.length) out.note = (out.note ? out.note + ' / ' : '') + '한 파일에 계좌번호가 ' + Object.keys(accts).length + '개 보임 — ' + blocks.length + '개 계좌로만 나눴으니 원본 확인';
   if (chain) out.note = (out.note ? out.note + ' / ' : '') + '사진·화면 글자로 금액·잔액을 짝지음 — 줄마다 원본 확인';
   (r.경고 || []).forEach(function (w) { out.note = (out.note ? out.note + ' / ' : '') + w; });
   return out;

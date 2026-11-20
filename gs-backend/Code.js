@@ -41470,22 +41470,24 @@ function docBankStmtKindAmtRows_(t, r) {
   }
   flushRun();
   if (pend.length) lost += pend.length;
-  var n0 = r.거래.length, used = {};
+  var n0 = r.거래.length, used = {}, zeroOnly = {};
   rows.forEach(function (rw, idx) {
     if (!rw.d) return;
     var end = idx + 1 < rows.length ? rows[idx + 1].start : Math.min(tks.length, rw.next + 30);
+    for (var e2 = rw.next; e2 < end; e2++) if (/^(거래일|계좌별|금융거래|조회기간)/.test(tks[e2].s)) { end = e2; break; } // 쪽 머리글·다음 계좌 머리글 앞에서 끊음
     var rest = tks.slice(rw.next, end).map(function (q) { return q.s; })
       .filter(function (q) { return /[가-힣A-Za-z]/.test(q) && !/^[*\\]+$/.test(q) && !DATE.test(q) && !/^거래일/.test(q); }).join(' ').slice(0, 80);
     var v = Number(rw.amt.replace(/,/g, '')), b = Number(rw.bal.replace(/,/g, ''));
     // 잔액이 느는 쪽: 입금, 지급·출금 취소 / 주는 쪽: 출금·지급, 입금 취소
     var up = (rw.kind === '입금') !== /취소$/.test(rw.kind);
-    var len = r.거래.length;
+    var len = r.거래.length, ac = '';
+    if (accts.length) { accts.forEach(function (q) { if (q.at < rw.at) ac = q.no; }); ac = ac || accts[0].no; }
     docBankStmtRow_(r, rw.d, rw.tm, rw.kind, rest, '', up ? 0 : v, up ? v : 0, b);
-    if (r.거래.length > len && accts.length) {
-      var ac = ''; accts.forEach(function (q) { if (q.at < rw.at) ac = q.no; });
-      r.거래[r.거래.length - 1].계좌 = ac || accts[0].no; used[ac || accts[0].no] = 1;
-    }
+    if (r.거래.length > len && ac) { r.거래[r.거래.length - 1].계좌 = ac; used[ac] = 1; }
+    else if (ac) zeroOnly[ac] = { 잔액: b, 날짜: rw.d }; // 금액 0원 줄(이자 0원 결산 등)만 — 줄은 넣지 않지만 잔액은 남긴다
   });
+  // 금액 있는 거래가 하나도 없는 계좌(0원 이자결산만) — 계좌가 있고 잔액이 얼마인지는 남긴다(상속재산 잔액)
+  r.무거래계좌 = Object.keys(zeroOnly).filter(function (k) { return !used[k]; }).map(function (k) { return { 계좌: k, 잔액: zeroOnly[k].잔액, 날짜: zeroOnly[k].날짜 }; });
   if (r.거래.length - n0 < 3) { r.거래.length = n0; return false; }
   if (lost) r.경고.push('날짜와 짝짓지 못한 거래 줄 ' + lost + '개(쪽 ' + badPage + '곳 날짜 수가 줄 수와 다름) — 그 줄은 빼고 정리함(원문 확인)');
   var nAc = Object.keys(used).length;
