@@ -22,7 +22,7 @@ var FIN_T_HDR_BAL_RE_ = /잔\s*액|잔\s*고|남은\s*금액/;
 var FIN_T_HDR_AMT_RE_ = /금\s*액|입\s*금|출\s*금|찾으신|맡기신|지\s*급/;
 var FIN_T_META_RE_ = /조회\s*기간|출력\s*일[자시]|작성\s*일[자시]|조회\s*일[자시]|인쇄\s*일[자시]|기준\s*일|실명\s*번호|발급\s*일|발행\s*(?:시간|일)|신규\s*일자|거래\s*시간\s*[:：]|고\s*객\s*명\s*[:：]|예\s*금\s*주\s*[:：]/;
 var FIN_T_FOOT_RE_ = /^(※|발급|발행|취급자|지점|전화|KB|페이지|\(인\)|증명|위와|은행장|본\s*증명)/;
-var FIN_T_END_RE_ = /이하\s*여백|출력이\s*끝났|위와\s*같이|본\s*문서는|확인합니다|증명합니다/;
+var FIN_T_END_RE_ = /이하\s*여백|출력이\s*끝났|위와\s*같이|본\s*문서|확인합니다|증명합니다/;
 var FIN_T_LEAD_COL_RE_ = /^(거래\s*구분|구분|순번|번호|No\.?|종류|거래\s*종류)$/;
 var FIN_T_HDR_ANY_RE_ = /(일자|일시|시각|시간|금액|잔액|구분|적요|내용|번호|점|은행|성명|이자|합계|사무소|업무|메모|비고)$/;
 var FIN_T_NONE_RE_ = /거래\s*내역이?\s*(?:없습니다|없음|존재하지)|조회\s*(?:된|한)?\s*(?:거래|내역|결과)가?이?\s*없|해당\s*기간(?:에|의)?\s*거래(?:내역)?(?:이|가)?\s*없/;
@@ -93,7 +93,7 @@ function finTextRows_(text, ctx) {
     if (isMeta) { metaLines.push(line); return; }
     // 표 끝 — 「이하 여백」·「출력이 끝났습니다」·「위와 같이 … 확인합니다」 뒤는 다음 쪽 거래 줄(금액 있는 날짜 줄)이 나올 때까지 꼬리
     if (FIN_T_END_RE_.test(line)) { tailMode = true; metaLines.push(line); return; }
-    if (tailMode) { if (hasRow && toks.some(function (x) { return FIN_T_NUM_RE_.test(x); })) tailMode = false; else { metaLines.push(line); return; } }
+    if (tailMode) { if (hasRow && (toks.length <= 2 || toks.filter(function (x) { return FIN_T_NUM_RE_.test(x); }).length >= 2)) tailMode = false; else { metaLines.push(line); return; } }
     if (!hasRow) {
       // 날짜 없는 줄 — 첫 거래 줄 앞이면 머리글 조각일 수 있어 그대로 두고, 뒤에서는 숫자 없는 쪽 꼬리(발급·취급자)·쪽 번호만 걷는다
       var nums = toks.filter(function (x) { return FIN_T_NUM_RE_.test(x); }).length;

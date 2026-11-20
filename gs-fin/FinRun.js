@@ -88,7 +88,7 @@ function finStateSave_(folder, st) {
 //  이름에 금융 낱말이 없는 파일(신수호 사건 「신재억님.xls」처럼)은 읽어 보고 잔액이 이어지는 거래(3줄 이상·8할 검산 맞음, 사진용 잔액 사슬 아님)일 때만 넣고,
 //  아니면 조용히 뺀다(사망진단서·영수증 PDF를 「거래내역 아님」으로 늘어놓지 않음). 고를 파일·수정 시각·서식표·암호가 그대로면 다시 읽지 않는다(지문).
 // [2026.11.21] 읽기 규칙 판 — 바꾸면 진행 중 사건의 파일을 새 규칙으로 다시 읽는다(PDF·사진 글자는 글자 기억을 다시 써서 빠름)
-var FIN_READ_VER_ = '2026-11-21c';
+var FIN_READ_VER_ = '2026-11-21d';
 function finSig_(pw) { return finHash32_(JSON.stringify(finFormats_().map(function (x) { return [x.id, x.머리글, x.짝]; })) + '|' + (pw ? finHash32_(pw) : '') + '|' + FIN_READ_VER_); }
 function finAutoPick_(files) {
   var out = [];
@@ -106,10 +106,14 @@ function finQuietKeep_(r) {
   if (!r) return null;
   if (r.inner) { var inn = r.inner.map(finQuietKeep_).filter(Boolean); return inn.length ? Object.assign({}, r, { inner: inn, notes: [] }) : null; }
   if (r.status !== 'ok') return null;
-  var strong = function (b) { return !/잔액 사슬/.test(String(b.서식 || '')) && b.rows.length >= 3 && b.rows.filter(function (x) { return x.검산 === true; }).length >= b.rows.length * 0.8; };
-  if (!(r.blocks || []).some(strong)) return null;
-  return Object.assign({}, r, { blocks: r.blocks.filter(function (b) { return strong(b) || !b.rows.length; }) });
+  // 거래내역으로 믿을 만한 덩어리 — 잔액 사슬이 아니고, 앞 줄이 있는 줄의 8할 넘게 잔액이 맞음(줄이 1~2개인 정기예금 신규·해지 명세 포함, 계좌번호가 있을 때). 「조회 기간 거래 없음」 계좌도
+  var strong = function (b) { var n = b.rows.length, ok = b.rows.filter(function (x) { return x.검산 === true || (x.검산 === null && x.왜); }).length; return !/잔액 사슬/.test(String(b.서식 || '')) && (n >= 3 ? ok >= n * 0.8 : n >= 1 && finAcctDigits_(b.계좌).length >= 8 && ok >= n - 1); };
+  var zeroOk = function (b) { return !b.rows.length && b.거래없음 && finAcctDigits_(b.계좌).length >= 8; };
+  if (!(r.blocks || []).some(function (b) { return strong(b) || zeroOk(b); })) return null;
+  return Object.assign({}, r, { blocks: r.blocks.filter(function (b) { return strong(b) || zeroOk(b); }) });
 }
+var FIN_TRANSIENT_RE_ = /rate limit|Rate Limit|too many times|Service invoked too many|temporarily|일시적|Timeout|timed out|Internal error|서버 오류가 발생|Bandwidth quota|quota exceeded|Address unavailable|503|backendError/i;
+function finTransient_(r) { return !!r && ((r.status === 'fail' && FIN_TRANSIENT_RE_.test(String(r.why || ''))) || (r.notes || []).some(function (w) { return FIN_TRANSIENT_RE_.test(String(w)); }) || (r.inner || []).some(finTransient_)); }
 function finHasBank_(r) { return !!r && ((r.blocks || []).length > 0 || (r.inner || []).some(finHasBank_) || r.status === 'locked' || r.status === 'fail'); }
 function finMergeAuto_(body) {
   // 같은 사건을 두 번이 겹쳐 읽지 않게(부르는 쪽이 60초에 끊겨도 이쪽은 끝까지 돈다 — 그사이 다음 틱이 다시 부를 수 있음)
@@ -141,7 +145,10 @@ function finMergeAutoRun_(body) {
     if (st.s.parsed[k]) { done++; continue; }
     if (Date.now() - t0 > budget) break;
     st.s.trying = { k: k, id: f.id, name: f.name, path: f.path, at: Date.now() }; finStateSave_(folder, st);
-    st.s.parsed[k] = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0); done++; readNow++;
+    var rr = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0);
+    // [2026.11.21] 구글 요청 한도·잠깐 끊김(「User rate limit exceeded」 등)은 그 파일의 결과로 남기지 않는다 — 다음 번에 다시 읽음(11-21 운영: 다시 읽기가 몰려 한도에 걸림)
+    if (finTransient_(rr)) { delete st.s.trying; finStateSave_(folder, st); return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length, 쉼: '구글 요청 한도 — 다음 번에 이어서' }; }
+    st.s.parsed[k] = rr; done++; readNow++;
     if (permFail(st.s.parsed[k])) st.s.parsed[k].at = Date.now();
     delete st.s.trying;
     finStateSave_(folder, st);
@@ -168,7 +175,7 @@ function finLastOf_(sheet, merged, by) {
 // ---------- 합치기 ----------
 var FIN_REL_ = { '엑셀': 3, 'PDF': 2, '사진(글자인식)': 1 };
 // 합치기 규칙 판 — 바꾸면 진행 중 사건이 파일을 다시 읽지 않고 저절로 다시 합쳐진다(자동 지문에 들어감)
-var FIN_MERGE_VER_ = '2026-11-21a';
+var FIN_MERGE_VER_ = '2026-11-21b';
 // [2026.11.20] 예금·적금 계좌는 이자를 잔액에 넣지 않고 바로 내준다(신협 「141:이자지급」·「150:제세금」 출금, 잔액 그대로) — 은행 자료가 원래
 //  「앞 잔액 − 출금 = 잔액」으로 맞지 않는 줄이라 잔액 검산 ⚠(틀림)로 세지 않는다(11-20 운영: 이애정 사건 신협 정기예금 24계좌가 ⚠로 「확인할 것」 50개)
 function finPassThrough_(b) {
@@ -299,7 +306,7 @@ function finMergeAll_(results) {
 }
 function finFileUrl_(file) { return file && file.id ? 'https://drive.google.com/file/d/' + file.id + '/view' : ''; }
 function finAcctSummary_(a) {
-  var r = a.rows, first = r[0], last = r[r.length - 1], sum = function (k) { return r.reduce(function (s, x) { return s + (Number(x.g[k]) || 0); }, 0); };
+  var r = a.rows, first = r[0], last = r[r.length - 1], sum = function (k) { return Math.round(r.reduce(function (s, x) { return s + (Number(x.g[k]) || 0); }, 0) * 100) / 100; };
   return { 기관: a.기관 || '', 계좌: a.계좌 || (a.끝4 ? '…' + a.끝4 : ''), 예금주: a.예금주 || '', 기간: first ? first.g.d + ' ~ ' + last.g.d : '조회 기간 거래 없음', 줄: r.length,
     처음잔액: first && first.g.잔액 != null ? first.g.잔액 - (first.g.입금 || 0) + (first.g.출금 || 0) : null, 끝잔액: last && last.g.잔액 != null ? last.g.잔액 : null,
     입금합계: sum('입금'), 출금합계: sum('출금'), 검산틀림: r.filter(function (x) { return x.g.검산 === false; }).length, 파일: a.files, 서식: a.서식, 참고: (a.참고 || []).join(' · ') };

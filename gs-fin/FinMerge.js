@@ -242,7 +242,7 @@ function finParseText_(text, ctx) {
   var t = String(text || '');
   if (!t.trim()) return { fail: '글자를 읽지 못함(흐린 사진·그림만)' };
   // [2026.11.21] 사무소가 여러 계좌를 모아 만든 표를 찍은 것(맨 앞 칸이 「금융기관·계좌번호」 — 엑셀 합본과 같은 잣대, 세무사님 11-20 "내가 합쳐서 작업한 파일은 지금 검토대상이 아니잖아")
-  if (/^\s*(?:금\s*융\s*기\S{0,2}|은\s*행\s*명?|기\s*관\s*명?)\s+계\s*좌\s*번\s*호/m.test(t.slice(0, 400))) return { skip: '사무소가 모아 만든 표로 보임(맨 앞 칸 「금융기관·계좌번호」) — 원시파일만 합침' };
+  if (/^\s*(?:금\s*융\s*기\S{0,2}|은\s*행\s*명?|기\s*관\s*명?)\s+계\s*좌\s*번\s*호[\s\S]{0,60}거\s*래\s*일/m.test(t.slice(0, 600))) return { skip: '사무소가 모아 만든 표로 보임(맨 앞 칸 「금융기관·계좌번호」) — 원시파일만 합침' };
   // [2026.11.20] docBankStmtParse_는 { type, label, result: { 은행·계좌번호·거래… }, md }로 돌려준다 — 거래는 result 안에 있다
   var r = null; try { r = docBankStmtParse_(t); } catch (e) { r = null; }
   if (r && r.result) r = r.result;
