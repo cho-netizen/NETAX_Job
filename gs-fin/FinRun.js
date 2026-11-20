@@ -87,7 +87,9 @@ function finStateSave_(folder, st) {
 //  고를 파일: 이름으로 끈 것(CSV·이 도구 시트·사건 맨 위 엑셀·거래내역 아닌 이름)만 빼고 엑셀·PDF·사진·압축 모두.
 //  이름에 금융 낱말이 없는 파일(신수호 사건 「신재억님.xls」처럼)은 읽어 보고 잔액이 이어지는 거래(3줄 이상·8할 검산 맞음, 사진용 잔액 사슬 아님)일 때만 넣고,
 //  아니면 조용히 뺀다(사망진단서·영수증 PDF를 「거래내역 아님」으로 늘어놓지 않음). 고를 파일·수정 시각·서식표·암호가 그대로면 다시 읽지 않는다(지문).
-function finSig_(pw) { return finHash32_(JSON.stringify(finFormats_().map(function (x) { return [x.id, x.머리글, x.짝]; })) + '|' + (pw ? finHash32_(pw) : '')); }
+// [2026.11.21] 읽기 규칙 판 — 바꾸면 진행 중 사건의 파일을 새 규칙으로 다시 읽는다(PDF·사진 글자는 글자 기억을 다시 써서 빠름)
+var FIN_READ_VER_ = '2026-11-21c';
+function finSig_(pw) { return finHash32_(JSON.stringify(finFormats_().map(function (x) { return [x.id, x.머리글, x.짝]; })) + '|' + (pw ? finHash32_(pw) : '') + '|' + FIN_READ_VER_); }
 function finAutoPick_(files) {
   var out = [];
   files.forEach(function (f) {
@@ -166,7 +168,7 @@ function finLastOf_(sheet, merged, by) {
 // ---------- 합치기 ----------
 var FIN_REL_ = { '엑셀': 3, 'PDF': 2, '사진(글자인식)': 1 };
 // 합치기 규칙 판 — 바꾸면 진행 중 사건이 파일을 다시 읽지 않고 저절로 다시 합쳐진다(자동 지문에 들어감)
-var FIN_MERGE_VER_ = '2026-11-20b';
+var FIN_MERGE_VER_ = '2026-11-21a';
 // [2026.11.20] 예금·적금 계좌는 이자를 잔액에 넣지 않고 바로 내준다(신협 「141:이자지급」·「150:제세금」 출금, 잔액 그대로) — 은행 자료가 원래
 //  「앞 잔액 − 출금 = 잔액」으로 맞지 않는 줄이라 잔액 검산 ⚠(틀림)로 세지 않는다(11-20 운영: 이애정 사건 신협 정기예금 24계좌가 ⚠로 「확인할 것」 50개)
 function finPassThrough_(b) {
@@ -176,13 +178,60 @@ function finPassThrough_(b) {
     if ((p && p.잔액 === r.잔액) || (n && n.잔액 === r.잔액)) { r.검산 = null; r.왜 = '이자·세금을 잔액에 넣지 않고 바로 내줌(예금·적금) — 잔액 그대로'; }
   });
 }
+// [2026.11.21] 덩어리(한 파일 한 계좌)마다 잔액 검산을 다시 — 읽은 규칙과 따로, 은행 자료 그대로의 줄을 틀림으로 세지 않게
+//  ① 파일 차례가 최근 것부터면 거꾸로 따라간다(잔액이 이어지는 쪽) ② 같은 날·같은 시각 줄은 잔액이 이어지는 차례로 바꿔 본다(6줄까지)
+//  ③ 금액 0원 줄은 방향을 따지지 않음 ④ 잔액이 그대로인 금액 줄(정기예금 이자·세금 바로 내줌, 출금취소 되돌림)은 「잔액 그대로」 ⑤ 방향 모름 줄은 잔액 변화로 정함
+//  (11-21 운영: 이애정 사건 신협 정기예금 — 「141:이자지급」·「출금취소」 줄이 ⚠로, 「220:결산이자」 0원 줄이 「입출 모름」으로 나왔다)
+function finVerify_(b) {
+  var R = b.rows || []; if (R.length < 2 || /잔액 사슬|사진/.test(String(b.서식 || ''))) return;
+  if (R.some(function (g) { return /사진 글자로 짝지음/.test(g.왜 || ''); })) return;
+  var eq = function (u, v) { return Math.abs(u - v) < 0.005; };
+  var sgn = function (g) { return g.dir === 'i' ? 1 : g.dir === 'o' ? -1 : 0; };
+  var fits = function (P, g) { if (P == null || g.잔액 == null) return 0; var d = g.잔액 - P; if (g.금액 === 0) return eq(d, 0) ? 2 : 0; if (sgn(g) ? eq(d, sgn(g) * g.금액) : eq(Math.abs(d), g.금액)) return 2; return eq(d, 0) ? 1 : 0; };
+  var score = function (list) { var s = 0; for (var i = 1; i < list.length; i++) s += fits(list[i - 1].잔액, list[i]) === 2 ? 1 : 0; return s; };
+  var seq = R.slice(), rev = R.slice().reverse();
+  if (score(rev) > score(seq)) seq = rev;
+  // 같은 날·시각 무리 안 차례
+  var key = function (g) { return g.d + ' ' + (g.t || ''); };
+  for (var i = 0; i < seq.length; ) {
+    var j = i; while (j + 1 < seq.length && key(seq[j + 1]) === key(seq[i])) j++;
+    var n = j - i + 1;
+    if (n >= 2 && n <= 6) {
+      var P0 = i > 0 ? seq[i - 1].잔액 : null, grp = seq.slice(i, j + 1), best = grp, bestS = -1;
+      var nextG = seq[j + 1];
+      var perm = function (arr, done) {
+        if (!arr.length) {
+          var s = 0, P = P0; done.forEach(function (g) { s += fits(P, g) === 2 ? 1 : 0; P = g.잔액; }); if (nextG) s += fits(P, nextG) === 2 ? 1 : 0;
+          if (s > bestS) { bestS = s; best = done.slice(); } return;
+        }
+        arr.forEach(function (g, k) { perm(arr.slice(0, k).concat(arr.slice(k + 1)), done.concat([g])); });
+      };
+      perm(grp, []);
+      for (var q = 0; q < n; q++) seq[i + q] = best[q];
+    }
+    i = j + 1;
+  }
+  seq.forEach(function (g, k) {
+    g.순 = k;
+    if (k === 0) { if (g.dir === '?' && g.금액 === 0) g.dir = 'i'; return; }
+    var P = seq[k - 1].잔액, f = fits(P, g);
+    if (g.금액 === 0 && g.dir === '?') g.dir = 'i';
+    if (g.dir === '?' && f === 2 && g.잔액 != null && P != null) g.dir = g.잔액 > P ? 'i' : 'o';
+    if (f === 2) { if (g.검산 === false || g.검산 === null && !g.왜) { g.검산 = true; g.왜 = ''; } }
+    else if (f === 1) { if (g.검산 !== true) { g.왜 = /그대로|신탁/.test(g.왜 || '') ? g.왜 : '잔액 그대로인 금액 줄(예금 이자·세금 바로 내줌, 출금취소 되돌림 등 — 은행 자료 그대로)'; g.검산 = null; } }
+    else if (g.검산 === true) { g.검산 = false; g.왜 = '앞 줄 잔액과 맞지 않음'; }
+    // 해지·만기 줄 — 원금에 마지막 이자를 얹어 내주고 잔액 0(이자가 잔액 칸에 따로 안 들어옴). 은행 자료 그대로(11-21: 신협 출자금 「원금+이자」 83,425 ← 잔액 83,410)
+    if (g.검산 === false && g.dir === 'o' && g.잔액 === 0 && P != null && g.금액 > P && g.금액 - P <= Math.max(P * 0.1, 10000)
+      && /해지|해약|만기|원금|이자|종결|폐쇄|청산/.test(JSON.stringify(g.std || {}) + ' ' + (g.raw || []).join(' '))) { g.검산 = null; g.왜 = '해지·만기 — 원금에 마지막 이자를 얹어 내주고 잔액 0(은행 자료 그대로, 이자 ' + Math.round((g.금액 - P) * 100) / 100 + ')'; }
+  });
+}
 function finMergeAll_(results) {
   var blocks = [], files = [], checks = [], newFormats = {}, order = 0;
   var flat = function (r) {
     if (!r) return;
     if (r.inner) { if (r.notes && r.notes.length) checks.push({ 종류: r.status === 'locked' ? '암호' : '확인', 파일: r.path, 내용: r.notes.join(' / '), url: finFileUrl_(r.file) }); r.inner.forEach(flat); return; }
     var n = 0;
-    (r.blocks || []).forEach(function (b) { finPassThrough_(b); b.src = { id: r.file && r.file.id, name: r.path, url: finFileUrl_(r.file), o: order++ }; n += b.rows.length; blocks.push(b); });
+    (r.blocks || []).forEach(function (b) { finPassThrough_(b); finVerify_(b); b.src = { id: r.file && r.file.id, name: r.path, url: finFileUrl_(r.file), o: order++ }; n += b.rows.length; blocks.push(b); });
     files.push({ path: r.path, kind: r.kind, status: r.status, why: r.why, rows: n });
     if (r.status === 'locked') checks.push({ 종류: '암호', 파일: r.path, 내용: r.why, url: finFileUrl_(r.file) });
     else if (r.status === 'fail') checks.push({ 종류: '못 읽음', 파일: r.path, 내용: r.why, url: finFileUrl_(r.file) });
@@ -210,6 +259,7 @@ function finMergeAll_(results) {
     if (!a.기관 && b.기관) a.기관 = b.기관; if (!a.예금주 && b.예금주) a.예금주 = b.예금주;
     if (a.files.indexOf(b.src.name) === -1) a.files.push(b.src.name);
     if (a.서식.indexOf(b.서식) === -1) a.서식.push(b.서식);
+    if (b.참고 && (a.참고 || (a.참고 = [])).indexOf(b.참고) === -1) a.참고.push(b.참고);
     if (b.머리글.length) a.원본.push({ src: b.src, 시트: b.시트, 머리글: b.머리글, rows: b.rows.map(function (g) { return [g.줄].concat(g.raw); }) });
     var mine = {};
     b.rows.forEach(function (g) {
@@ -228,7 +278,7 @@ function finMergeAll_(results) {
   });
   accts.forEach(function (a, i) { a.n = i; a.label = (a.기관 || '기관 모름') + ' ' + (a.계좌 || (a.끝4 ? '…' + a.끝4 : '계좌번호 모름')); });
   var byTime = function (p, q) { return p.g.d < q.g.d ? -1 : p.g.d > q.g.d ? 1 : (p.g.t || '') < (q.g.t || '') ? -1 : (p.g.t || '') > (q.g.t || '') ? 1 : 0; };
-  accts.forEach(function (a) { a.rows.sort(function (p, q) { return byTime(p, q) || p.src.o - q.src.o || (p.g.줄 || 0) - (q.g.줄 || 0); }); });
+  accts.forEach(function (a) { a.rows.sort(function (p, q) { return byTime(p, q) || p.src.o - q.src.o || (p.g.순 != null && q.g.순 != null ? p.g.순 - q.g.순 : (p.g.줄 || 0) - (q.g.줄 || 0)); }); });
   rows.sort(function (p, q) { return byTime(p, q) || p.a.n - q.a.n || p.src.o - q.src.o || (p.g.줄 || 0) - (q.g.줄 || 0); });
   accts.forEach(function (a) {
     var bad = a.rows.filter(function (r) { return r.g.검산 === false; }).length, unk = a.rows.filter(function (r) { return r.g.dir === '?'; }).length, diff = a.rows.filter(function (r) { return r.diff; }).length;
@@ -237,14 +287,22 @@ function finMergeAll_(results) {
     if (diff) checks.push({ 종류: '출처끼리 다름', 파일: a.label, 내용: diff + '줄 — 같은 거래인데 다른 파일의 잔액이 다름(거래 탭 「같은 거래 다른 파일」 칸)' });
     if (!a.dg && !a.끝4) checks.push({ 종류: '계좌번호 모름', 파일: a.label, 내용: '계좌번호를 찾지 못한 파일 — ' + a.files.join(', ') });
   });
-  return { accts: accts, rows: rows, dups: dups, checks: checks, files: files, newFormats: Object.keys(newFormats).map(function (k) { return newFormats[k]; }) };
+  // 같은 파일이 두 압축(또는 압축과 폴더)에 들어 있으면 「확인할 것」은 한 번만 — 다른 자리는 뒤에 적는다(11-21 운영: 이애정 사건 압축 둘이 같은 PDF 12개)
+  var ck = {}, checks2 = [];
+  checks.forEach(function (c) {
+    var base = String(c.파일 || '').split(/›|\//).pop().trim(), k = c.종류 + '|' + base + '|' + c.내용;
+    if (ck[k]) { if (ck[k].also.indexOf(c.파일) === -1) ck[k].also.push(c.파일); return; }
+    ck[k] = { c: c, also: [] }; checks2.push(c);
+  });
+  checks2.forEach(function (c) { var o = ck[c.종류 + '|' + String(c.파일 || '').split(/›|\//).pop().trim() + '|' + c.내용]; if (o && o.also.length) c.내용 += ' (같은 파일이 ' + o.also.length + '곳 더 있음: ' + o.also.slice(0, 3).join(', ') + ')'; });
+  return { accts: accts, rows: rows, dups: dups, checks: checks2, files: files, newFormats: Object.keys(newFormats).map(function (k) { return newFormats[k]; }) };
 }
 function finFileUrl_(file) { return file && file.id ? 'https://drive.google.com/file/d/' + file.id + '/view' : ''; }
 function finAcctSummary_(a) {
   var r = a.rows, first = r[0], last = r[r.length - 1], sum = function (k) { return r.reduce(function (s, x) { return s + (Number(x.g[k]) || 0); }, 0); };
   return { 기관: a.기관 || '', 계좌: a.계좌 || (a.끝4 ? '…' + a.끝4 : ''), 예금주: a.예금주 || '', 기간: first ? first.g.d + ' ~ ' + last.g.d : '조회 기간 거래 없음', 줄: r.length,
     처음잔액: first && first.g.잔액 != null ? first.g.잔액 - (first.g.입금 || 0) + (first.g.출금 || 0) : null, 끝잔액: last && last.g.잔액 != null ? last.g.잔액 : null,
-    입금합계: sum('입금'), 출금합계: sum('출금'), 검산틀림: r.filter(function (x) { return x.g.검산 === false; }).length, 파일: a.files, 서식: a.서식 };
+    입금합계: sum('입금'), 출금합계: sum('출금'), 검산틀림: r.filter(function (x) { return x.g.검산 === false; }).length, 파일: a.files, 서식: a.서식, 참고: (a.참고 || []).join(' · ') };
 }
 
 // ---------- 구글 시트 쓰기 ----------
@@ -269,13 +327,13 @@ function finWriteSheet_(folder, taxpayer, m) {
     return sh;
   };
   var A = m.accts.map(finAcctSummary_);
-  tab('계좌 목록', ['기관', '계좌', '예금주', '자료 기간', '거래 줄', '처음 잔액', '끝 잔액', '입금 합계', '출금 합계', '잔액 검산 ⚠', '원본 파일', '서식'],
-    A.map(function (a) { return [a.기관, a.계좌, a.예금주, a.기간, a.줄, a.처음잔액, a.끝잔액, a.입금합계, a.출금합계, a.검산틀림 || '', a.파일.join(' · '), a.서식.join(' · ')]; }), { text: [1], money: [5, 6, 7, 8] });
+  tab('계좌 목록', ['기관', '계좌', '예금주', '자료 기간', '거래 줄', '처음 잔액', '끝 잔액', '입금 합계', '출금 합계', '잔액 검산 ⚠', '참고', '원본 파일', '서식'],
+    A.map(function (a) { return [a.기관, a.계좌, a.예금주, a.기간, a.줄, a.처음잔액, a.끝잔액, a.입금합계, a.출금합계, a.검산틀림 || '', a.참고 || '', a.파일.join(' · '), a.서식.join(' · ')]; }), { text: [1], money: [5, 6, 7, 8] });
   tab('거래', FIN_LEDGER_HDR_, m.rows.map(function (r) {
     var g = r.g, s = g.std || {};
     return [g.d, g.t || '', r.a.기관 || '', r.a.계좌 || (r.a.끝4 ? '…' + r.a.끝4 : ''), r.a.예금주 || '', g.dir === 'i' ? g.금액 : '', g.dir === 'o' ? g.금액 : '', g.잔액 == null ? '' : g.잔액,
       s.내용 || '', s.상대 || '', s.상대은행 || '', s.상대계좌 || '', s.거래구분 || '', s.거래점 || '', s.메모 || '',
-      (g.dir === '?' ? '방향 모름 금액: ' + g.금액 + (s.원본 ? ' · ' : '') : '') + (s.원본 || ''), r.how, g.검산 === true ? '✅' : g.검산 === false ? '⚠ ' + (g.왜 || '') : '—',
+      (g.dir === '?' ? '방향 모름 금액: ' + g.금액 + (s.원본 ? ' · ' : '') : '') + (s.원본 || ''), r.how, g.검산 === true ? '✅' : g.검산 === false ? '⚠ ' + (g.왜 || '') : g.왜 ? '－ ' + g.왜 : '—',
       finLink_(r.src.url, r.src.name), (r.시트 ? r.시트 + ' ' : '') + (g.줄 ? g.줄 + '줄' : ''), r.also.join(' · ') + (r.diff ? ' ⚠ ' + r.diff : ''), r.서식];
   }), { text: [0, 1, 3, 11], money: [5, 6, 7] });
   tab('겹쳐서 한 번만 센 줄', ['원본 파일', '원본 줄', '거래일자', '기관·계좌', '금액', '방향', '남긴 줄의 파일'], m.dups.map(function (d) {
@@ -306,4 +364,21 @@ function finWriteSheet_(folder, taxpayer, m) {
   ss.deleteSheet(keepSh);
   ss.setActiveSheet(ss.getSheetByName('계좌 목록'));
   return { name: name, url: ss.getUrl(), id: ss.getId() };
+}
+
+// [2026.11.21] 서식 점검용 글자 보기 — { fileId, inner(압축 안 파일 이름 일부), from, len } → { 이름, 길이, 글자 }
+function finTextOf_(b) {
+  var f = DriveApp.getFileById(String(b.fileId || '')), name = f.getName(), from = Math.max(0, Number(b.from) || 0), len = Math.min(Number(b.len) || 90000, 90000);
+  var text = '', got = name;
+  if (b.inner) {
+    var z = finUnzip_(finU8_(f.getBlob().getBytes()), b.caseId ? finPwGet_(b.caseId) : '');
+    var hit = z.files.filter(function (x) { return x.name.indexOf(String(b.inner)) !== -1; })[0];
+    if (!hit) return { error: '압축 안에 그 이름이 없음', 목록: z.files.map(function (x) { return x.name; }) };
+    got = hit.name;
+    var mime = FIN_PDF_RE_.test(hit.name) ? 'application/pdf' : (/png$/i.test(hit.name) ? 'image/png' : 'image/jpeg');
+    text = finTmpText_(hit.name.split('/').pop(), hit.bytes, mime);
+  } else {
+    text = tc_docText_({ id: f.getId(), name: name, mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() }) || '';
+  }
+  return { ok: true, 이름: got, 길이: text.length, 글자: text.slice(from, from + len) };
 }

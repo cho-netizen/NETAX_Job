@@ -20,6 +20,8 @@ var FIN_ACTIONS_ = {
   fin_merge_auto: function (b) { return finMergeAuto_(b); },
   fin_pw_set: function (b) { var r = finPwSet_(b); if (r && r.ok && b.caseId) { try { r.합침 = finMergeAuto_({ caseId: b.caseId, budgetMs: 240000 }); } catch (e) { r.합침 = { error: String(e.message || e) }; } } return r; },
   fin_formats_get: function (b) { return finFormatsGet_(); },
+  // [2026.11.21] 서식 점검용 — 서버가 PDF·사진(압축 안 포함)에서 읽어 낸 글자를 그대로 돌려준다(읽기만, 고치지 않음). 개발자가 처음 보는 서식을 맞추는 데 쓴다
+  fin_text: function (b) { return finTextOf_(b); },
   fin_formats_save: function (b) { var r = finFormatsSave_(b); if (r && !r.error && b.caseId) { try { r.합침 = finMergeAuto_({ caseId: b.caseId, budgetMs: 240000 }); } catch (e) { r.합침 = { error: String(e.message || e) }; } } return r; }
 };
 

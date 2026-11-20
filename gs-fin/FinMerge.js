@@ -39,6 +39,10 @@ var FIN_FORMATS_BUILTIN_ = [
   { id: '국민_창구_본인금융거래', 기관: '국민', 제목: '본인금융거래',
     머리글: ['거래일자', '상태', '거래구분', '거래금액', '표면잔액', '적요(의뢰인등)', '취급점', '기산일자', '처리시각', '이체상대계좌번호', '은행명'],
     짝: { '거래일자': '거래일자', '상태': '입출구분', '거래구분': '거래구분', '거래금액': '금액', '표면잔액': '잔액', '적요(의뢰인등)': '내용', '취급점': '거래점', '처리시각': '거래시간', '이체상대계좌번호': '상대계좌', '은행명': '상대은행' } },
+  // [2026.11.21] 신협 「입출금거래내역」(최근 거래부터) — 11-21 이애정 사건 26계좌에서 처음 봄. 짐작한 짝을 원본과 맞대 고쳐 등록(거래종류 「141:이자지급」을 거래구분으로)
+  { id: '신협_입출금거래내역', 기관: '신협', 제목: '입출금거래내역',
+    머리글: ['순번', '거래일자', '거래시각', '입출구분', '현금대체구분', '거래종류', '입금금액', '출금금액', '거래후잔액', '수표번호', '상대은행', '상대계좌관리점', '상대계좌관리점명', '상대계좌번호', '상대계좌예금주', '취급은행', '취급은행지점', '취급조합', '적요'],
+    짝: { '거래일자': '거래일자', '거래시각': '거래시간', '입출구분': '입출구분', '현금대체구분': '메모', '거래종류': '거래구분', '입금금액': '입금', '출금금액': '출금', '거래후잔액': '잔액', '상대은행': '상대은행', '상대계좌번호': '상대계좌', '상대계좌예금주': '상대', '취급은행지점': '거래점', '적요': '내용' } },
   { id: '신한_거래내역', 기관: '신한', 제목: '',
     머리글: ['거래일', '구분', '거래금액', '거래후잔액', '거래메모', '키', '기번', '점', '비고', '연동은행', '연동계좌번호', 'cms번호'],
     짝: { '거래일': '거래일자', '구분': '입출구분', '거래금액': '금액', '거래후잔액': '잔액', '거래메모': '내용', '점': '거래점', '비고': '메모', '연동은행': '상대은행', '연동계좌번호': '상대계좌' } }
@@ -237,9 +241,31 @@ function finParseSheet_(rows, ctx) {
 function finParseText_(text, ctx) {
   var t = String(text || '');
   if (!t.trim()) return { fail: '글자를 읽지 못함(흐린 사진·그림만)' };
+  // [2026.11.21] 사무소가 여러 계좌를 모아 만든 표를 찍은 것(맨 앞 칸이 「금융기관·계좌번호」 — 엑셀 합본과 같은 잣대, 세무사님 11-20 "내가 합쳐서 작업한 파일은 지금 검토대상이 아니잖아")
+  if (/^\s*(?:금\s*융\s*기\S{0,2}|은\s*행\s*명?|기\s*관\s*명?)\s+계\s*좌\s*번\s*호/m.test(t.slice(0, 400))) return { skip: '사무소가 모아 만든 표로 보임(맨 앞 칸 「금융기관·계좌번호」) — 원시파일만 합침' };
   // [2026.11.20] docBankStmtParse_는 { type, label, result: { 은행·계좌번호·거래… }, md }로 돌려준다 — 거래는 result 안에 있다
   var r = null; try { r = docBankStmtParse_(t); } catch (e) { r = null; }
   if (r && r.result) r = r.result;
+  // [2026.11.21] 은행이 만든 PDF는 글자 줄이 원본 차례 그대로 — 머리글 차례대로 줄을 읽는 규칙(FinText.js)이 더 많은 줄을 검산까지 맞게 읽으면 그것으로
+  //  (11-21 운영: 국민 「본인금융거래」 종합통장 PDF — 잔액 사슬이 510줄만 원본 확인으로 짝지었던 것을 2,484줄·검산 맞음으로)
+  var tr = null; try { tr = finTextRows_(t, ctx); } catch (e) { tr = null; }
+  if (tr && tr.버림) tr = null;
+  var rN = r && r.거래 ? r.거래.length : 0, rOkN = rN && r.검산 ? Number(r.검산.맞음) || 0 : 0, rChain = rN && /잔액 사슬/.test(String(r.서식 || ''));
+  if (tr && (tr.거래.length || tr.거래없음)) {
+    // 바꾸는 조건 — 옛 규칙이 못 읽었거나 사진용 잔액 사슬이었거나, 새 규칙이 줄·맞은 줄이 같거나 많고 틀림·입출 모름 줄이 같거나 적을 때만
+    var tOkN = tr.검산 ? tr.검산.맞음 : 0, tBad = tr.나쁨 || 0;
+    var rBad = rN ? r.거래.filter(function (g) { return g.잔액검산 === false || g.입금 == null; }).length : 0;
+    var rAcc = rN ? Object.keys(r.거래.reduce(function (o, g) { o[g.계좌 || r.계좌번호 || ''] = 1; return o; }, {})).length : 0;
+    if (!rN || rChain || (tr.거래.length >= rN && tOkN >= rOkN && tBad <= rBad && (tr.계좌수 || 1) >= rAcc)) r = tr;
+  }
+  // 칸이 따로 읽힌 스캔(날짜 덩어리·금액 덩어리) — 위 두 규칙이 못 읽었거나 사진용 잔액 사슬뿐일 때만
+  if (!r || !r.거래 || !r.거래.length || /잔액 사슬/.test(String(r.서식 || ''))) { var cr = null; try { cr = finColRows_(t); } catch (e) { cr = null; } if (cr) r = cr; }
+  if (r && r.거래없음 && !r.거래.length) {
+    var per = /조회\s*기간\s*[:：]?\s*([\d.\/\-년월일\s]+?)\s*[~∼]\s*([\d.\/\-년월일]+)/.exec(t);
+    return { blocks: (r.무거래계좌 || []).map(function (z) {
+      return { 기관: finOrgNorm_(r.은행 || ''), 계좌: z.계좌, 끝4: finAcctDigits_(z.계좌).slice(-4), 예금주: r.예금주 || '', 서식: 'PDF·사진 거래 없음', 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: [], 거래없음: true, 기간: per ? per[1].trim() + ' ~ ' + per[2].trim() : '' };
+    }) };
+  }
   if (!r || !r.거래 || !r.거래.length) {
     var pb = null; try { pb = docPassbookParse_(t); } catch (e) { pb = null; }
     if (pb) return { fail: '통장 사본 — 글자인식이 표를 섞어 거래 줄과 금액을 짝짓지 못함(원본 확인)' };
@@ -254,9 +280,9 @@ function finParseText_(text, ctx) {
     return list.map(function (g, i) {
       var dir = g.입금 === true ? 'i' : g.입금 === false ? 'o' : '?';
       return { d: String(g.날짜 || ''), t: String(g.시각 || ''), 입금: dir === 'i' ? g.금액 : 0, 출금: dir === 'o' ? g.금액 : 0, 금액: g.금액, dir: dir, 잔액: g.잔액 == null ? null : g.잔액,
-        std: { 내용: String(g.내용 || '').trim(), 거래구분: String(g.구분 || '').trim(), 메모: String(g.적요 || '').trim(), 원본: '' },
-        검산: chain ? null : g.잔액검산 === true ? true : g.잔액검산 === false ? false : null,
-        왜: dir === '?' ? '입금·출금을 정하지 못함' : chain ? '사진 글자로 짝지음 — 원본 확인' : g.잔액검산 === false ? '앞 줄 잔액과 맞지 않음' : '', 줄: g.줄 || i + 1, raw: [] };
+        std: { 내용: String(g.내용 || '').trim(), 거래구분: String(g.구분 || '').trim(), 메모: (String(g.적요 || '').trim() + (g.통화 ? ' 통화 ' + g.통화 : '')).trim(), 상대계좌: String(g.상대계좌 || ''), 상대은행: String(g.상대은행 || ''), 원본: String(g.원본 || '') },
+        검산: chain ? null : g.잔액검산 === true ? true : g.잔액검산 === false ? false : null, 통화: g.통화 || '',
+        왜: dir === '?' ? '입금·출금을 정하지 못함' : chain ? '사진 글자로 짝지음 — 원본 확인' : g.왜 ? g.왜 : g.잔액검산 === false ? '앞 줄 잔액과 맞지 않음' : '', 줄: g.줄 || i + 1, raw: [] };
     });
   };
   // 한 파일 여러 계좌(통장 정리가 줄마다 g.계좌를 붙인 경우) — 계좌마다 덩어리를 나눈다
@@ -267,17 +293,22 @@ function finParseText_(text, ctx) {
       서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: mk(groups[k]) };
   });
   // 금액 있는 거래가 없는 계좌(0원 이자결산만 — 통장 정리 r.무거래계좌) — 엑셀의 「조회 기간 거래 없음」 계좌처럼 목록에 남기고 잔액을 알린다
-  var zeroNote = [];
+  // [2026.11.21] 계좌 목록 「참고」 칸에만 적는다(확인할 것이 아님 — 은행 자료 그대로)
   (r.무거래계좌 || []).forEach(function (z) {
     blocks.push({ 기관: finOrgNorm_(r.은행 || meta.기관 || ''), 계좌: z.계좌, 끝4: finAcctDigits_(z.계좌).slice(-4), 예금주: r.예금주 || meta.예금주 || '',
-      서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: [] });
-    zeroNote.push('계좌 ' + z.계좌 + ' — 금액 있는 거래 없음(0원 줄만), 잔액 ' + Number(z.잔액).toLocaleString('ko-KR') + '원(' + z.날짜 + ')');
+      서식: 'PDF·사진 ' + (r.서식 || '거래내역'), 읽은방법: ctx.how, 시트: '', 머리글: [], 머리줄: 0, rows: [], 거래없음: true,
+      참고: z.잔액 == null ? '조회 기간 거래 없음' : '금액 있는 거래 없음(0원 줄만) · 끝 잔액 ' + Number(z.잔액).toLocaleString('ko-KR') + '원(' + z.날짜 + ')' });
+  });
+  blocks.forEach(function (b) {
+    var cur = (b.rows || []).map(function (x) { return x.통화; }).filter(String)[0];
+    if (cur) b.참고 = '외화 계좌 — 금액·잔액 단위 ' + cur;
+    if (r.상품 && /신탁|펀드|연금저축|ELS|DLS|ISA|수익증권/.test(r.상품)) b.참고 = (b.참고 ? b.참고 + ' · ' : '') + r.상품 + ' — 잔액은 원금(평가액)';
   });
   var out = { blocks: blocks };
-  if (zeroNote.length) out.note = zeroNote.join(' / ');
   if (!r.거래.some(function (g) { return g.계좌; }) && Object.keys(accts).length > blocks.length) out.note = (out.note ? out.note + ' / ' : '') + '한 파일에 계좌번호가 ' + Object.keys(accts).length + '개 보임 — ' + blocks.length + '개 계좌로만 나눴으니 원본 확인';
   if (chain) out.note = (out.note ? out.note + ' / ' : '') + '사진·화면 글자로 금액·잔액을 짝지음 — 줄마다 원본 확인';
-  (r.경고 || []).forEach(function (w) { out.note = (out.note ? out.note + ' / ' : '') + w; });
+  // 알림 글(한 파일 여러 계좌를 앞 계좌번호로 나눔 등)은 계좌 목록 「참고」로, 원본을 봐야 하는 것만 「확인할 것」으로
+  (r.경고 || []).forEach(function (w) { if (/한 파일에 계좌 \d+개 — 줄마다/.test(w)) { blocks.forEach(function (b) { b.참고 = (b.참고 ? b.참고 + ' · ' : '') + '한 파일 여러 계좌 — 줄마다 그 앞 계좌번호로 나눔'; }); return; } out.note = (out.note ? out.note + ' / ' : '') + w; });
   return out;
 }
 
@@ -301,7 +332,25 @@ function finTmpText_(name, u8, mime) {
   try { return tc_docText_({ id: f.id, name: name, mimeType: mime, modified: Date.parse(f.modifiedTime) || Date.now() }) || ''; }
   finally { try { DriveApp.getFileById(f.id).setTrashed(true); } catch (e) {} }
 }
-var FIN_SHEET_EXT_RE_ = /\.(xlsx|xlsm|xls|htm|html)$/i, FIN_PDF_RE_ = /\.pdf$/i, FIN_IMG_RE_ = /\.(jpe?g|png|heic|heif|bmp|gif|tiff?|webp)$/i, FIN_ZIP_RE_ = /\.zip$/i;
+// [2026.11.21] 압축 안 PDF·사진 글자 — 파일 내용(MD5)으로 영구 글자 기억(tcOcrStore)에 둔다. 같은 파일이 두 압축에 있거나 읽기 규칙 판이 바뀌어 다시 읽을 때
+//  글자인식을 되풀이하지 않는다(11-21 운영: 이애정 사건 압축 둘에 같은 국민 PDF 12개 — 1.5MB PDF 하나에 1분 남짓)
+function finInnerText_(name, u8, mime) {
+  var key = '';
+  try { key = 'ocrfin_' + Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, finSigned_(u8)).map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('') + '_' + u8.length; } catch (e) { key = ''; }
+  if (key) { var hit = tcOcrStoreGet_(key); if (hit !== null && hit !== '') return hit; }
+  var t = finTmpText_(name, u8, mime);
+  if (key && t && String(t).trim()) tcOcrStorePut_(key, t);
+  return t;
+}
+var FIN_SHEET_EXT_RE_ =/\.(xlsx|xlsm|xls|htm|html)$/i, FIN_PDF_RE_ = /\.pdf$/i, FIN_IMG_RE_ = /\.(jpe?g|png|heic|heif|bmp|gif|tiff?|webp)$/i, FIN_ZIP_RE_ = /\.zip$/i;
+// 보안메일 html인가 — 비밀번호(확인번호) 입력칸이 있고 표가 없음
+function finSecureHtml_(u8) {
+  var n = Math.min(u8.length, 400000), s = '';
+  for (var i = 0; i < n; i++) s += String.fromCharCode(u8[i]);
+  if (!/type\s*=\s*["']?password/i.test(s) || /<table[\s>]/i.test(s.replace(/<script[\s\S]*?<\/script>/gi, '')) && /<td[\s>]/i.test(s.replace(/<script[\s\S]*?<\/script>/gi, ''))) return null;
+  var txt = ''; try { txt = bankDecodeBlob_(Utilities.newBlob(finSigned_(u8))); } catch (e) { txt = ''; }
+  return { card: /카드/.test(txt) };
+}
 // 파일(드라이브 파일 또는 압축 안 파일) → 결과 { file, path, kind, status:'ok'|'skip'|'locked'|'fail'|'notbank', why, blocks, newFormats, notes }
 function finReadOne_(src, pw, depth) {
   var name = src.name, res = { file: src.file || { id: src.id, name: name }, path: src.path || name, status: 'ok', why: '', blocks: [], newFormats: [], notes: [] };
@@ -335,6 +384,12 @@ function finReadOne_(src, pw, depth) {
       try { plain = finOfficeDecrypt_(bytes, pw); } catch (e) { res.status = 'locked'; res.why = String(e.message || e); return res; }
       res.kind = '엑셀(암호 풀어 읽음)';
       finTmpSheet_(name.replace(/\.\w+$/, '') + '.xlsx', plain).forEach(function (s) { take(finParseSheet_(s.rows, { fileName: name, sheet: s.sheet }), s.sheet); });
+    } else if (/\.html?$/i.test(name) && finSecureHtml_(bytes)) {
+      // [2026.11.21] 보안메일(확인번호를 넣어야 내용이 보이는 html — 카드사·은행 안내 메일). 내용이 암호로 감춰져 있어 읽을 수 없다(11-21 운영: 김희연 사건 신한카드 메일)
+      var sh = finSecureHtml_(bytes);
+      res.status = 'locked'; res.kind = '보안메일';
+      res.why = '보안메일(확인번호를 넣어야 열리는 html' + (sh.card ? ' — 카드 이용대금 안내로 보임, 통장 거래내역 아님' : '') + ') — 브라우저에서 열어 확인번호(보통 생년월일)를 넣은 뒤 PDF로 저장해 넣어 주세요';
+      return res;
     } else if (FIN_SHEET_EXT_RE_.test(name) || src.mimeType === MimeType.GOOGLE_SHEETS || (finCfbIs_(bytes))) {
       if (src.mimeType === MimeType.GOOGLE_SHEETS && name.indexOf(FIN_OUT_PREFIX_) === 0) { res.status = 'skip'; res.why = '이 도구가 만든 시트'; return res; }
       res.kind = '엑셀';
@@ -350,7 +405,7 @@ function finReadOne_(src, pw, depth) {
       var pdf = FIN_PDF_RE_.test(name);
       res.kind = pdf ? 'PDF' : '사진';
       var mime = pdf ? 'application/pdf' : (/png$/i.test(name) ? 'image/png' : 'image/jpeg');
-      var text = src.id && !src.bytes ? tc_docText_({ id: src.id, name: name, mimeType: src.mimeType || mime, modified: src.modified }) : finTmpText_(name, bytes, mime);
+      var text = src.id && !src.bytes ? tc_docText_({ id: src.id, name: name, mimeType: src.mimeType || mime, modified: src.modified }) : finInnerText_(name, bytes, mime);
       take(finParseText_(text, { fileName: name, how: pdf ? 'PDF' : '사진(글자인식)' }));
     } else { res.status = 'notbank'; res.why = '거래내역 파일 모양이 아님'; return res; }
     if (!res.blocks.length) {
