@@ -269,6 +269,10 @@ function finTextRows_(text, ctx) {
         if (hasPrev) { if (inf.f === 1) chk = true; else if (inf.f > 0) why = '잔액 그대로인 금액 줄(예금 이자·세금 바로 내줌 등 — 은행 자료 그대로)'; else { chk = false; why = '앞 줄 잔액과 맞지 않음'; } }
         // 신탁·펀드·연금저축 — 잔액 칸이 원금(평가액)이라 지급액만큼 줄지 않는다. 잔액이 낱말 쪽으로 움직였으면 은행 자료 그대로
         if (chk === false && trust && r.word && ((r.word === 'o' && c.b < prevB) || (r.word === 'i' && c.b > prevB))) { chk = null; why = '신탁·펀드 계좌 — 잔액이 원금(평가액)이라 금액만큼 바뀌지 않음(은행 자료 그대로)'; }
+        // 마지막 줄이 남은 잔액 전부에 마지막 이자를 얹어 내준 해지 — 잔액 칸이 비어 다른 숫자가 읽힘(11-21: 박연경 신한 「지급 4,020,051」 ← 잔액 4,019,879, 잔액 칸 「37」은 점 번호)
+        if (chk === false && i === L.length - 1 && r.word !== 'i' && prevB > 0 && c.a > prevB && c.a - prevB <= Math.max(prevB * 0.05, 100000)) {
+          why = '마지막 줄 — 남은 잔액 전부와 이자 ' + Math.round((c.a - prevB) * 100) / 100 + '원을 내준 해지로 보아 잔액 0(원본 잔액 칸은 「' + c.b + '」로 읽힘 — 원본 확인)'; chk = null; dir = 'o'; B = 0; I[i].B = 0;
+        }
       }
       if (hasPrev && (chk === true || (chk === null && why))) allFit++;
       var used = {}; used[r.nums[c.ai].k] = 1; if (c.bi >= 0) used[r.nums[c.bi].k] = 1;

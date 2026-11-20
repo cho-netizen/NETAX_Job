@@ -91,7 +91,7 @@ function finStateSave_(folder, st) {
 //  이름에 금융 낱말이 없는 파일(신수호 사건 「신재억님.xls」처럼)은 읽어 보고 잔액이 이어지는 거래(3줄 이상·8할 검산 맞음, 사진용 잔액 사슬 아님)일 때만 넣고,
 //  아니면 조용히 뺀다(사망진단서·영수증 PDF를 「거래내역 아님」으로 늘어놓지 않음). 고를 파일·수정 시각·서식표·암호가 그대로면 다시 읽지 않는다(지문).
 // [2026.11.21] 읽기 규칙 판 — 바꾸면 진행 중 사건의 파일을 새 규칙으로 다시 읽는다(PDF·사진 글자는 글자 기억을 다시 써서 빠름)
-var FIN_READ_VER_ = '2026-11-21d';
+var FIN_READ_VER_ = '2026-11-21e';
 function finSig_(pw) { return finHash32_(JSON.stringify(finFormats_().map(function (x) { return [x.id, x.머리글, x.짝]; })) + '|' + (pw ? finHash32_(pw) : '') + '|' + FIN_READ_VER_); }
 function finAutoPick_(files) {
   var out = [];
