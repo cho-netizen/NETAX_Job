@@ -6,7 +6,7 @@
 // 넥스는 여기서 job 서버 로그인 표를 새로 받아 같은 서버·같은 함수를 부른다(넥스 전용 길 없음 — 공통원칙 1절).
 // 구글 바깥 호출은 한 번 60초 한도라 45초씩 나눠 부르고, 이 도구 한 번에 약 2분 30초까지 이어 부른다(다 못 하면 more — 다시 부르면 이어 감).
 // ============================================================
-var FIN_SERVER_URL_ = ''; // 금융거래 서버 배포 주소(gs-fin/README.md) — 첫 배포 뒤 적는다
+var FIN_SERVER_URL_ = 'https://script.google.com/macros/s/AKfycbwMeYiBmiU72rPISMEMOX8r3hAJPLMcPrVili0MfnCK0LJ_G9sNYnMNLJym4rjUR5vPag/exec'; // 금융거래 서버 배포 주소(gs-fin/README.md)
 
 function finProxyCall_(action, payload) {
   if (!FIN_SERVER_URL_) return { error: '금융거래 서버가 아직 올라가지 않았습니다(배포 주소 없음) — 화면 💰 금융거래 합치기도 같은 서버를 씁니다.' };

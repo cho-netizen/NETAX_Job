@@ -26,8 +26,8 @@ CSV(세무사님 변환본)·사건 맨 위 합본·사무소가 손본 파일�
 ## 고쳤을 때
 `node tools/build-light.js gs-fin` → `cd gs-fin` → `clasp push -f` → `clasp deploy -i <배포 ID> -d "깃허브 <커밋>"`
 
-- scriptId: (첫 배포 뒤 적음)
-- 배포 ID: (첫 배포 뒤 적음)
+- scriptId: 106rq0YGihyR2452Qpx6ykqYWyIcG17SOo_e5CzxRy-0oxqeeOWGa2Irw
+- 배포 ID: AKfycbwMeYiBmiU72rPISMEMOX8r3hAJPLMcPrVili0MfnCK0LJ_G9sNYnMNLJym4rjUR5vPag (11-20 @1 clasp 첫 배포)
 
 ## 시험(11-20, 로컬 흉내 — 구글 서버 아님)
 고객사건 상속 사건 원시 엑셀 59개(+압축 안 26개)를 이 컴퓨터 엑셀로 읽기 전용 사본에서 값만 뽑아 합치기 본체를 돌림:
