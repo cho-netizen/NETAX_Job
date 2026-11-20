@@ -25,7 +25,8 @@ var FIN_ACTIONS_ = {
 
 function doGet(e) {
   // 편집기에서 doGet을 한 번 실행하면(e 없음) 구글 권한 승인 창이 뜬다 — 처음 설치할 때 한 번만.
-  if (!e) { SpreadsheetApp.openById(WORK_SHEET_ID).getName(); DriveApp.getRootFolder().getName(); Drive.Files.list({ pageSize: 1 }); UrlFetchApp.fetch(FIN_MAIN_URL_ + '?ping=1', { muteHttpExceptions: true }); return; }
+  // [2026.11.20] 구글 문서 권한 더함 — 글자인식 결과를 구글 문서로 열어 읽는 글자 읽기(tc_docText_)가 쓴다(압축 안 PDF·글자인식 기억이 없는 새 PDF)
+  if (!e) { SpreadsheetApp.openById(WORK_SHEET_ID).getName(); DriveApp.getRootFolder().getName(); Drive.Files.list({ pageSize: 1 }); DocumentApp.getActiveDocument(); UrlFetchApp.fetch(FIN_MAIN_URL_ + '?ping=1', { muteHttpExceptions: true }); return; }
   return jsonResponse({ status: 'ok', server: 'job-fin', version: FIN_VERSION_ });
 }
 

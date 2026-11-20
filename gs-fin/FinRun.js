@@ -56,7 +56,7 @@ function finPwSet_(body) {
 function finMergeList_(body) {
   var c = finCase_(body.caseId), folder = DriveApp.getFolderById(c.폴더ID), files = finFolderFiles_(folder), st = finStateLoad_(folder);
   var pw = finPwGet_(body.caseId), sig = finSig_(pw), picks = {}; finAutoPick_(files).forEach(function (p) { picks[p.f.id] = p; });
-  var fp = finHash32_(Object.keys(picks).map(function (id) { var p = picks[id]; return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig);
+  var fp = finHash32_(Object.keys(picks).map(function (id) { var p = picks[id]; return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig + '|' + FIN_MERGE_VER_);
   var last = st.s.last || null;
   return { ok: true, 사건: { id: c.id || body.caseId, 폴더: folder.getName() }, 암호있음: !!pw,
     지난결과: last ? Object.assign({}, last, { at: last.at ? Utilities.formatDate(new Date(last.at), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '' }) : null,
@@ -120,7 +120,7 @@ function finMergeAutoRun_(body) {
   var t0 = Date.now(), budget = Math.max(15000, Math.min(Number(body.budgetMs) || 25000, 280000));
   var c = finCase_(body.caseId), folder = DriveApp.getFolderById(c.폴더ID), pw = finPwGet_(body.caseId);
   var picks = finAutoPick_(finFolderFiles_(folder)), sig = finSig_(pw);
-  var fp = finHash32_(picks.map(function (p) { return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig);
+  var fp = finHash32_(picks.map(function (p) { return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig + '|' + FIN_MERGE_VER_);
   var st = finStateLoad_(folder);
   if (st.s.autoFp === fp && !body.force) return { ok: true, done: true, nochange: true };
   var keyOf = function (f) { return f.id + '_' + f.modified + '_' + sig; };
@@ -130,6 +130,9 @@ function finMergeAutoRun_(body) {
   if (st.s.trying && !st.s.parsed[st.s.trying.k] && keep[st.s.trying.k] && Date.now() - Number(st.s.trying.at || 0) > 6.5 * 60000) {
     st.s.parsed[st.s.trying.k] = { file: { id: st.s.trying.id, name: st.s.trying.name }, path: st.s.trying.path, status: 'fail', why: '읽는 데 너무 오래 걸려 건너뜀(구글 한 번 실행 6분 넘음) — 파일을 나눠 넣어 주세요', blocks: [], newFormats: [], notes: [] };
   }
+  // 권한이 없어 못 읽은 파일(구글 문서 권한 — 세무사님이 편집기에서 승인하시면 풀림)은 한 시간마다 다시 읽어 본다
+  var permFail = function (r) { return !!r && ((/permission|권한/i.test(String(r.why || '')) && r.status === 'fail') || (r.inner || []).some(permFail)); };
+  Object.keys(st.s.parsed).forEach(function (k) { var r = st.s.parsed[k]; if (permFail(r) && Date.now() - Number(r.at || 0) > 3600000) delete st.s.parsed[k]; });
   var done = 0;
   for (var i = 0; i < picks.length; i++) {
     var f = picks[i].f, k = keyOf(f);
@@ -137,6 +140,7 @@ function finMergeAutoRun_(body) {
     if (Date.now() - t0 > budget) break;
     st.s.trying = { k: k, id: f.id, name: f.name, path: f.path, at: Date.now() }; finStateSave_(folder, st);
     st.s.parsed[k] = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0); done++;
+    if (permFail(st.s.parsed[k])) st.s.parsed[k].at = Date.now();
     delete st.s.trying;
     finStateSave_(folder, st);
   }
@@ -159,13 +163,24 @@ function finLastOf_(sheet, merged, by) {
 
 // ---------- 합치기 ----------
 var FIN_REL_ = { '엑셀': 3, 'PDF': 2, '사진(글자인식)': 1 };
+// 합치기 규칙 판 — 바꾸면 진행 중 사건이 파일을 다시 읽지 않고 저절로 다시 합쳐진다(자동 지문에 들어감)
+var FIN_MERGE_VER_ = '2026-11-20b';
+// [2026.11.20] 예금·적금 계좌는 이자를 잔액에 넣지 않고 바로 내준다(신협 「141:이자지급」·「150:제세금」 출금, 잔액 그대로) — 은행 자료가 원래
+//  「앞 잔액 − 출금 = 잔액」으로 맞지 않는 줄이라 잔액 검산 ⚠(틀림)로 세지 않는다(11-20 운영: 이애정 사건 신협 정기예금 24계좌가 ⚠로 「확인할 것」 50개)
+function finPassThrough_(b) {
+  (b.rows || []).forEach(function (r, i) {
+    if (r.검산 !== false || r.dir !== 'o' || !/이자|세금|제세|원천/.test((r.raw || []).join(' ') + ' ' + JSON.stringify(r.std || {}))) return;
+    var p = b.rows[i - 1], n = b.rows[i + 1];
+    if ((p && p.잔액 === r.잔액) || (n && n.잔액 === r.잔액)) { r.검산 = null; r.왜 = '이자·세금을 잔액에 넣지 않고 바로 내줌(예금·적금) — 잔액 그대로'; }
+  });
+}
 function finMergeAll_(results) {
   var blocks = [], files = [], checks = [], newFormats = {}, order = 0;
   var flat = function (r) {
     if (!r) return;
     if (r.inner) { if (r.notes && r.notes.length) checks.push({ 종류: r.status === 'locked' ? '암호' : '확인', 파일: r.path, 내용: r.notes.join(' / '), url: finFileUrl_(r.file) }); r.inner.forEach(flat); return; }
     var n = 0;
-    (r.blocks || []).forEach(function (b) { b.src = { id: r.file && r.file.id, name: r.path, url: finFileUrl_(r.file), o: order++ }; n += b.rows.length; blocks.push(b); });
+    (r.blocks || []).forEach(function (b) { finPassThrough_(b); b.src = { id: r.file && r.file.id, name: r.path, url: finFileUrl_(r.file), o: order++ }; n += b.rows.length; blocks.push(b); });
     files.push({ path: r.path, kind: r.kind, status: r.status, why: r.why, rows: n });
     if (r.status === 'locked') checks.push({ 종류: '암호', 파일: r.path, 내용: r.why, url: finFileUrl_(r.file) });
     else if (r.status === 'fail') checks.push({ 종류: '못 읽음', 파일: r.path, 내용: r.why, url: finFileUrl_(r.file) });
