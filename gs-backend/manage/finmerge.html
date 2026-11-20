@@ -1,8 +1,9 @@
-<!-- [2026.11.20] 💰 금융거래 합치기(1단계) — 세무사님 11-20 「권장대로 하자」(docs/_기록/금융거래_10년검토_계획서_20261120.html)
+<!-- [2026.11.20] 💰 금융거래(1단계 결과 보기) — 세무사님 11-20 「권장대로 하자」(docs/_기록/금융거래_10년검토_계획서_20261120.html)
      세무사님 원문: "1단계로 의뢰인으로 부터 받은 다양한 금융기관의 거래내역을 하나의 파일로 합치는 것" / "일단 1단계만 하자"
-     사건 머리줄 「💰 금융거래 합치기」(상속 사건) → 이 창. 사건 폴더의 은행 원시파일(엑셀·PDF·사진·압축)을 골라 금융거래 서버(gs-fin)가
-     사건 폴더의 구글 시트 「금융거래_통합_…」 하나로 합친다. 넥스 도구 bank_merge도 같은 서버·같은 함수(공통원칙 1절 — 넥스 전용 길 없음).
-     CSV(세무사님 변환본)·사건 맨 위 합본은 기본 꺼짐. 서버는 한 번에 4분 30초까지 읽고, 다 될 때까지 이 창이 다시 부른다. -->
+     세무사님 11-20 "1단계 금융거래내역을 분석할 수 있는 준비상태로 만드는 것은 그냥 자동으로 gas가 하는 것이지 따로 명령하는 것이 아니다" → "맞다 고쳐라"
+     합치기는 job 서버 1분 틱이 저절로 한다(진행 중 상속 사건 폴더가 바뀌면 바로, 30분마다 전부 — gs-backend/FinProxy.js). 이 창은 명령 없이
+     합친 결과(시트·계좌·확인할 것)·파일마다 다룬 것을 보여 주고, 세무사님만 정할 수 있는 것(사건 암호·처음 보는 서식의 칸 짝)을 받는다 —
+     정하면 금융거래 서버가 그 사건을 바로 다시 합친다. 넥스 도구 bank_merge도 같은 결과를 읽는다. -->
 <style>
   .fm-back[hidden], .fm-back [hidden]{ display:none !important; } /* 아래 display 규칙이 hidden을 덮어쓰지 않게(11-20 시험에서 창이 처음부터 떠 있고 닫기가 안 먹던 것) */
   .fm-back{ position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:9000; display:flex; align-items:flex-start; justify-content:center; padding:4vh 10px; overflow:auto; }
@@ -29,10 +30,10 @@
 <div class="fm-back" id="fmBack" hidden>
   <div class="fm-box" role="dialog" aria-modal="true" aria-labelledby="fmTitle">
     <div class="fm-head">
-      <h3 id="fmTitle">💰 금융거래 합치기</h3>
+      <h3 id="fmTitle">💰 금융거래</h3>
       <button type="button" class="ghost-btn sm" id="fmClose">닫기</button>
     </div>
-    <div class="fm-tabs"><button type="button" class="on" data-fm-tab="merge">합치기</button><button type="button" data-fm-tab="fmt">은행 서식표</button></div>
+    <div class="fm-tabs"><button type="button" class="on" data-fm-tab="merge">합친 결과</button><button type="button" data-fm-tab="fmt">은행 서식표</button></div>
     <div id="fmMerge">
       <div class="fm-row fm-sub" id="fmCaseLine"></div>
       <div class="fm-row">
@@ -41,16 +42,11 @@
         <button type="button" class="ghost-btn sm" id="fmPwSave">적어 두기</button>
         <span class="fm-sub" id="fmPwState"></span>
       </div>
-      <div class="fm-grid-wrap"><table class="fm-grid" id="fmFiles"><colgroup><col style="width:34px"><col><col style="width:80px"><col style="width:240px"></colgroup>
-        <thead><tr><th></th><th>파일(사건 폴더 안 자리)</th><th>크기</th><th>기본으로 끈 까닭</th></tr></thead><tbody></tbody></table></div>
-      <div class="fm-row">
-        <span class="fm-sub" id="fmPicked"></span>
-        <span style="flex:1"></span>
-        <label class="fm-sub"><input type="checkbox" id="fmRestart"> 읽은 기억 버리고 처음부터</label>
-        <button type="button" class="save-btn sm" id="fmRun">합치기</button>
-      </div>
-      <div class="fm-row" id="fmProg" hidden><div class="fm-bar"><i id="fmBarIn"></i></div><span class="fm-sub" id="fmProgTxt"></span></div>
+      <div class="fm-row" id="fmProg" hidden><span class="fm-sub" id="fmProgTxt"></span></div>
       <div id="fmResult"></div>
+      <details style="margin-top:8px"><summary class="fm-sub">사건 폴더 파일마다 다룬 것</summary>
+      <div class="fm-grid-wrap" style="margin-top:6px"><table class="fm-grid" id="fmFiles"><colgroup><col><col style="width:80px"><col style="width:260px"></colgroup>
+        <thead><tr><th>파일(사건 폴더 안 자리)</th><th>크기</th><th>다룬 것</th></tr></thead><tbody></tbody></table></div></details>
     </div>
     <div id="fmFmt" hidden>
       <div class="fm-row fm-sub">은행이 내려주는 서식마다 원본 칸 → 장부 칸 짝입니다. 한 번 정해 두면 다음 사건부터 묻지 않습니다. 「첫 판」은 11-20 고객사건 폴더 조사로 넣은 것이고, 고쳐 저장하면 서식표 파일(업무관리자)에 남습니다.</div>
@@ -90,7 +86,7 @@
   function fmOpen(caseId, caseName, tab){
     FM.caseId = caseId || ''; FM.newFormats = [];
     $('fmBack').hidden = false; $('fmResult').innerHTML = ''; $('fmProg').hidden = true;
-    $('fmTitle').textContent = '💰 금융거래 합치기' + (caseName ? ' — ' + caseName : '');
+    $('fmTitle').textContent = '💰 금융거래' + (caseName ? ' — ' + caseName : '');
     fmTab(tab || (caseId ? 'merge' : 'fmt'));
     if (caseId) fmLoadFiles();
   }
@@ -100,43 +96,28 @@
     if (t === 'fmt') fmLoadFormats();
   }
   function fmLoadFiles(){
-    var tb = $('fmFiles').querySelector('tbody'); tb.innerHTML = '<tr><td colspan="4" class="fm-sub">사건 폴더 파일을 읽는 중…</td></tr>';
-    fmCall('fin_merge_list', { caseId: FM.caseId }, 90000).then(function(r){
+    var tb = $('fmFiles').querySelector('tbody'); tb.innerHTML = '<tr><td colspan="3" class="fm-sub">사건 폴더 파일을 읽는 중…</td></tr>';
+    $('fmResult').innerHTML = '<div class="fm-sub">합친 결과를 읽는 중…</div>';
+    return fmCall('fin_merge_list', { caseId: FM.caseId }, 90000).then(function(r){
       FM.files = r.파일 || [];
-      $('fmCaseLine').innerHTML = '폴더 「' + esc(r.사건 && r.사건.폴더) + '」 · 파일 ' + FM.files.length + '개' + (r.지난결과 ? ' · 지난 결과 <a href="' + esc(r.지난결과.url) + '" target="_blank" rel="noopener">' + esc(r.지난결과.name) + '</a>(' + esc(r.지난결과.at) + ')' : '');
+      var L = r.지난결과;
+      $('fmCaseLine').innerHTML = '폴더 「' + esc(r.사건 && r.사건.폴더) + '」 · 파일 ' + FM.files.length + '개 · '
+        + (r.최신 ? '<span class="fm-ok">최신</span>' + (L ? ' — ' + esc(L.at) + ' ' + esc(L.by === '자동' ? '저절로 합침' : '합침') : '') : '<span class="fm-warn">폴더·서식표·암호가 바뀌어 곧 저절로 다시 합칩니다(1분 안팎)</span>');
       $('fmPwState').textContent = r.암호있음 ? '적어 둔 암호 있음' : '';
       fmDrawFiles();
-    }, function(err){ tb.innerHTML = '<tr><td colspan="4" class="fm-warn">' + esc(err.message) + '</td></tr>'; });
+      if (L) fmShow({ 시트: { url: L.url, name: L.name }, 계좌: L.계좌, 거래줄: L.rows, 겹친줄: L.겹친줄, 확인: L.확인, 확인수: L.확인수, 새서식: L.새서식 });
+      else $('fmResult').innerHTML = '<div class="fm-sub">' + (r.최신 ? '이 사건 폴더에서 은행 거래내역 원시파일을 찾지 못했습니다(엑셀·PDF·사진·압축을 사건 폴더에 넣으면 저절로 합칩니다).' : '아직 합치지 않았습니다 — 곧 저절로 합칩니다.') + '</div>';
+    }, function(err){ tb.innerHTML = '<tr><td colspan="3" class="fm-warn">' + esc(err.message) + '</td></tr>'; $('fmResult').innerHTML = ''; });
   }
   function fmDrawFiles(){
     var tb = $('fmFiles').querySelector('tbody');
     var sz = function(n){ return n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
-    tb.innerHTML = FM.files.map(function(f, i){
-      return '<tr><td><input type="checkbox" data-fm-i="' + i + '"' + (f.on ? ' checked' : '') + '></td><td title="' + esc(f.path) + '">' + esc(f.path) + '</td><td>' + sz(f.size || 0) + '</td><td class="fm-sub" title="' + esc(f.why) + '">' + esc(f.why || '') + '</td></tr>';
-    }).join('') || '<tr><td colspan="4" class="fm-sub">파일이 없습니다.</td></tr>';
-    Array.prototype.forEach.call(tb.querySelectorAll('input[data-fm-i]'), function(cb){ cb.checked = !!FM.files[Number(cb.getAttribute('data-fm-i'))].on; });
-    fmPickedLine();
+    tb.innerHTML = FM.files.map(function(f){
+      return '<tr><td title="' + esc(f.path) + '">' + esc(f.path) + '</td><td>' + sz(f.size || 0) + '</td><td class="' + (f.다룸 === '합침' ? 'fm-ok' : 'fm-sub') + '" title="' + esc(f.다룸) + '">' + esc(f.다룸 || '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" class="fm-sub">파일이 없습니다.</td></tr>';
   }
-  function fmPickedLine(){ $('fmPicked').textContent = '고른 파일 ' + FM.files.filter(function(f){ return f.on; }).length + '개'; }
-  function fmRun(){
-    if (FM.busy) return;
-    var ids = FM.files.filter(function(f){ return f.on; }).map(function(f){ return f.id; });
-    if (!ids.length){ fmToast('합칠 파일을 골라 주세요', 'warn'); return; }
-    FM.busy = true; $('fmRun').disabled = true; $('fmResult').innerHTML = ''; $('fmProg').hidden = false;
-    var restart = $('fmRestart').checked, t0 = Date.now();
-    var step = function(){
-      $('fmProgTxt').textContent = '읽는 중…';
-      fmCall('fin_merge_run', { caseId: FM.caseId, fileIds: ids, restart: restart, budgetMs: 270000 }, 340000).then(function(r){
-        restart = false;
-        var pct = r.done ? 100 : Math.round(100 * (r.읽음 || 0) / Math.max(1, r.전체 || 1));
-        $('fmBarIn').style.width = pct + '%';
-        $('fmProgTxt').textContent = r.done ? '다 됨 · ' + Math.round((Date.now() - t0) / 1000) + '초' : '파일 ' + r.읽음 + ' / ' + r.전체 + (r.남은일 ? ' · ' + r.남은일 : '') + ' — 이어서 읽는 중';
-        if (!r.done) { step(); return; }
-        FM.busy = false; $('fmRun').disabled = false; fmShow(r);
-      }, function(err){ FM.busy = false; $('fmRun').disabled = false; $('fmProgTxt').innerHTML = '<span class="fm-warn">' + esc(err.message) + '</span> — 다시 누르면 읽은 파일은 건너뛰고 이어 갑니다'; });
-    };
-    step();
-  }
+  // 세무사님이 정한 것(암호·서식)을 저장하면 금융거래 서버가 그 사건을 바로 다시 합친다 — 그동안 알림 한 줄, 끝나면 결과를 다시 읽음
+  function fmBusy(on, msg){ FM.busy = on; $('fmProg').hidden = !on; $('fmProgTxt').textContent = msg || ''; }
   function fmShow(r){
     var h = '<div class="fm-row"><b class="fm-ok">합친 시트:</b> <a href="' + esc(r.시트.url) + '" target="_blank" rel="noopener">' + esc(r.시트.name) + '</a>'
       + ' <span class="fm-sub">· 계좌 ' + (r.계좌 || []).length + '개 · 거래 ' + won(r.거래줄) + '줄 · 겹쳐서 한 번만 센 줄 ' + won(r.겹친줄) + ' · 확인할 것 ' + won(r.확인수) + '</span></div>';
@@ -157,7 +138,7 @@
       return '<div class="fm-nf" data-fm-nf="' + k + '"><div class="fm-row"><b>처음 보는 서식</b> <span class="fm-sub">예: ' + esc(nf.예파일) + '</span> · 이름 <input type="text" data-fm-nfid value="' + esc((nf.기관 || '은행') + '_' + nf.key) + '" style="width:200px"> 기관 <input type="text" data-fm-nforg value="' + esc(nf.기관 || '') + '" style="width:80px"></div>'
         + '<div class="fm-grid-wrap" style="max-height:24vh"><table class="fm-grid" style="min-width:420px"><thead><tr><th>원본 칸</th><th>장부 칸(짐작 — 고쳐 주세요)</th></tr></thead><tbody>'
         + nf.머리글.map(function(h){ return '<tr><td>' + esc(h) + '</td><td><select data-fm-h="' + esc(h) + '">' + fmOpts(nf.짝[h] || '') + '</select></td></tr>'; }).join('')
-        + '</tbody></table></div><div class="fm-row"><span style="flex:1"></span><button type="button" class="save-btn sm" data-fm-nfsave="' + k + '">이 짝으로 서식표에 등록하고 다시 합치기</button></div></div>';
+        + '</tbody></table></div><div class="fm-row"><span style="flex:1"></span><button type="button" class="save-btn sm" data-fm-nfsave="' + k + '">이 짝으로 서식표에 등록</button></div></div>';
     }).join('');
   }
   function fmOpts(cur){ return '<option value="">원본 칸(그대로 모음)</option>' + FM_TARGETS.map(function(t){ return '<option' + (t === cur ? ' selected' : '') + '>' + t + '</option>'; }).join(''); }
@@ -176,8 +157,8 @@
   }
   function fmCollect(box){ var m = {}; Array.prototype.forEach.call(box.querySelectorAll('select[data-fm-h]'), function(s){ if (s.value) m[s.getAttribute('data-fm-h')] = s.value; }); return m; }
   // 저장은 서식표 파일에 둘 것만(첫 판과 같은 것은 빼고 — 첫 판을 고친 것·새 서식만)
-  function fmSaveFormats(list){
-    return fmCall('fin_formats_save', { formats: list }, 60000).then(function(r){ fmToast('서식표 저장 — ' + r.서식수 + '가지', 'success'); return r; });
+  function fmSaveFormats(list, caseId){
+    return fmCall('fin_formats_save', { formats: list, caseId: caseId || '' }, caseId ? 300000 : 60000).then(function(r){ fmToast('서식표 저장 — ' + r.서식수 + '가지', 'success'); return r; });
   }
   function fmFormatsToSave(){
     return FM.formats.map(function(fm, k){ var box = document.querySelector('[data-fm-f="' + k + '"]'); var m = box ? fmCollect(box) : fm.짝; var changed = JSON.stringify(m) !== JSON.stringify(fm.짝); return (fm.출처 !== '첫 판' || changed) ? { id: fm.id, 기관: fm.기관, 제목: fm.제목, 머리글: fm.머리글, 짝: m } : null; }).filter(Boolean);
@@ -185,11 +166,11 @@
   document.addEventListener('click', function(e){
     var t = e.target;
     if (!t || !t.closest) return;
-    if (t.id === 'fmClose' || t.id === 'fmBack') { if (FM.busy && !confirm('합치는 중입니다. 창을 닫아도 서버는 지금 묶음까지 읽고, 다시 열어 합치기를 누르면 이어 갑니다. 닫을까요?')) return; $('fmBack').hidden = true; return; }
+    if (t.id === 'fmClose' || t.id === 'fmBack') { $('fmBack').hidden = true; return; } // 다시 합치기는 서버가 하므로 창을 닫아도 그대로 이어 감
     var tb = t.closest('[data-fm-tab]'); if (tb) { fmTab(tb.getAttribute('data-fm-tab')); return; }
-    if (t.id === 'fmRun') { fmRun(); return; }
     if (t.id === 'fmPwSave') {
-      fmCall('fin_pw_set', { caseId: FM.caseId, pw: $('fmPw').value }, 60000).then(function(r){ $('fmPw').value = ''; $('fmPwState').textContent = r.암호있음 ? '적어 둔 암호 있음' : '암호 지움'; fmToast(r.암호있음 ? '사건 암호를 적어 두었습니다(시트·기록엔 남지 않음)' : '사건 암호를 지웠습니다', 'success'); }, function(err){ fmToast(err.message, 'error'); });
+      fmBusy(true, '암호를 적어 두고 이 사건을 다시 합치는 중…');
+      fmCall('fin_pw_set', { caseId: FM.caseId, pw: $('fmPw').value }, 300000).then(function(r){ $('fmPw').value = ''; fmBusy(false); $('fmPwState').textContent = r.암호있음 ? '적어 둔 암호 있음' : '암호 지움'; fmToast(r.암호있음 ? '사건 암호를 적어 두었습니다(시트·기록엔 남지 않음)' : '사건 암호를 지웠습니다', 'success'); fmLoadFiles(); }, function(err){ fmBusy(false); fmToast(err.message, 'error'); });
       return;
     }
     if (t.id === 'fmFmtSave') { fmSaveFormats(fmFormatsToSave()).then(fmLoadFormats, function(err){ fmToast(err.message, 'error'); }); return; }
@@ -198,14 +179,10 @@
       var box = document.querySelector('[data-fm-nf="' + ns + '"]'), nf = FM.newFormats[Number(ns)];
       var item = { id: box.querySelector('[data-fm-nfid]').value.trim(), 기관: box.querySelector('[data-fm-nforg]').value.trim(), 제목: '', 머리글: nf.머리글, 짝: fmCollect(box) };
       t.disabled = true;
-      fmLoadFormats().then(function(){ return fmSaveFormats(fmFormatsToSave().filter(function(x){ return x.id !== item.id; }).concat([item])); })
-        .then(function(){ fmTab('merge'); fmRun(); }, function(err){ t.disabled = false; fmToast(err.message, 'error'); });
+      fmBusy(true, '서식표에 등록하고 이 사건을 다시 합치는 중…');
+      fmLoadFormats().then(function(){ return fmSaveFormats(fmFormatsToSave().filter(function(x){ return x.id !== item.id; }).concat([item]), FM.caseId); })
+        .then(function(){ fmBusy(false); fmTab('merge'); fmLoadFiles(); }, function(err){ fmBusy(false); t.disabled = false; fmToast(err.message, 'error'); });
     }
-  });
-  document.addEventListener('change', function(e){
-    var cb = e.target; if (!cb || !cb.getAttribute) return;
-    var i = cb.getAttribute('data-fm-i'); if (i == null) return;
-    FM.files[Number(i)].on = cb.checked; fmPickedLine();
   });
   window.nxFinMergeOpen_ = fmOpen;
 })();

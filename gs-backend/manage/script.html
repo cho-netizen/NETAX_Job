@@ -1923,7 +1923,7 @@
     document.getElementById('cbCaseSelect').addEventListener('focus', function(){ if (!NX_CB_.cases.length || !NX_CB_.loadedAt || Date.now() - NX_CB_.loadedAt > 60000) nxCbLoadCases_(); }); // [2026-11-13] 1분 넘은 목록은 열 때 새로 받음(다른 화면·창에서 만든 사건)
     document.getElementById('cbEditCase').addEventListener('click', function(){ nxCaseJump_('workmanage', NX_CB_.shownId); });
     // [2026.11.12] 건전세정 사례로 — taxgap.html tgFromCase_(사건 요약으로 사례 초안, 고객 실명은 ○○)
-    // [2026.11.20] 💰 금융거래 합치기 — finmerge.html nxFinMergeOpen_(사건 폴더 원시파일 → 한 구글 시트)
+    // [2026.11.20] 💰 금융거래 — finmerge.html nxFinMergeOpen_(저절로 합친 결과 보기 — 합치기는 1분 틱이 함)
     var fmBtn = document.getElementById('cbFinMerge'); if (fmBtn) fmBtn.addEventListener('click', function(){ var c = NX_CB_.cases.filter(function(x){ return x.id === NX_CB_.shownId; })[0]; if (typeof nxFinMergeOpen_ === 'function') nxFinMergeOpen_(NX_CB_.shownId, c ? (c.사건명 || c.고객명 || '') : ''); });
     var tgBtn = document.getElementById('cbTaxGap'); if (tgBtn) tgBtn.addEventListener('click', function(){ if (typeof tgFromCase_ === 'function') tgFromCase_(NX_CB_.shownId); });
     document.getElementById('cbFind').addEventListener('input', nxCbFillSelect_);

@@ -23973,12 +23973,14 @@ function cpWatchTick_(touched, started, DEADLINE) {
     let w = null; try { w = cpWatchCase_(c, { deadlineAt: started + DEADLINE - 60000 }); } catch (e) { w = null; } // 장부 갱신은 남은 시간이 1분 넘을 때만(모자라면 다음 틱)
     if (!w || !w.ok) return;
     out.changes += (w.changes || []).length;
+    if ((w.changes || []).length) try { if (typeof finAutoNote_ === 'function') finAutoNote_(c); } catch (e) {} // [2026.11.20] 상속 사건 금융거래 합치기는 저절로(FinProxy.js)
     if (w.ledger) { out.ledger = (out.ledger || 0) + 1; out.lines.push(String(c.사건명 || c.id) + ': 장부 ' + (w.ledger.deferred ? '갱신 미룸(시간)' : w.ledger.ok ? '바로 갱신 — 서류 사실 ' + ((w.ledger.sum && w.ledger.sum.사실) || 0) + '건' : '갱신 못 함')); }
     if (cpWatchPending_(caseProcLoad_(c.id) || {}).length) wake(c);
   });
   try { const qw = cpNexQuestionRun_(started, DEADLINE); if (qw) { out.lines.push('넥스 질문 풀기 ' + qw); out.nexq = (out.nexq || 0) + 1; } } catch (e) { out.lines.push('넥스 질문 풀기 실패: ' + String(e && e.message || e).slice(0, 80)); } // [2026.11.12 질문 정리 ②]
   try { const fp = cpFirstPassScan_(started, DEADLINE); if (fp) out.lines.push('첫 바퀴 ' + fp); } catch (e) { out.lines.push('첫 바퀴 찾기 실패: ' + String(e && e.message || e).slice(0, 80)); } // [2026.11.13 5차 가]
   try { cpFlowQueueRun_(started, DEADLINE).forEach(function (s) { out.lines.push('장부 적기 ' + s); out.flow = (out.flow || 0) + 1; }); } catch (e) { out.lines.push('장부 적기 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 계획서 2단계]
+  try { if (typeof finAutoRun_ === 'function') { const fa = finAutoRun_(started, DEADLINE); if (fa) out.lines.push(fa); } } catch (e) { out.lines.push('금융거래 합치기 실패: ' + String(e && e.message || e).slice(0, 80)); } // [2026.11.20] 1단계 저절로
   try { cpNexMomentRun_(started, DEADLINE).forEach(function (s) { out.lines.push('중요한 순간 ' + s); out.moment = (out.moment || 0) + 1; }); } catch (e) { out.lines.push('중요한 순간 실패: ' + String(e && e.message || e).slice(0, 100)); } // [2026.10.29 넥스 4] 밤엔 줄에 둠
   return out;
 }

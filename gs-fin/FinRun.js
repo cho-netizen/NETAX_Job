@@ -52,13 +52,20 @@ function finPwSet_(body) {
   if (pw) P.setProperty(finPwKey_(id), pw.slice(0, 100)); else P.deleteProperty(finPwKey_(id));
   return { ok: true, 암호있음: !!pw };
 }
+// 💰 창(결과 보기)·넥스 도구 — 자동으로 합친 결과와 파일마다 어떻게 다뤘는지(읽음·읽어 보고 거래내역이면 넣음·안 읽음 까닭). 합치라는 명령은 없다
 function finMergeList_(body) {
-  var c = finCase_(body.caseId), folder = DriveApp.getFolderById(c.폴더ID), files = finFolderFiles_(folder);
-  var last = null, it = folder.getFiles();
-  while (it.hasNext()) { var f = it.next(); if (f.getMimeType() === MimeType.GOOGLE_SHEETS && f.getName().indexOf(FIN_OUT_PREFIX_) === 0 && (!last || f.getLastUpdated() > last.at)) last = { name: f.getName(), url: f.getUrl(), at: f.getLastUpdated() }; }
-  return { ok: true, 사건: { id: c.id || body.caseId, 폴더: folder.getName() }, 암호있음: !!finPwGet_(body.caseId),
-    지난결과: last ? { name: last.name, url: last.url, at: Utilities.formatDate(last.at, 'Asia/Seoul', 'yyyy-MM-dd HH:mm') } : null,
-    파일: files.map(function (f) { var s = finSuggest_(f); return { id: f.id, name: f.name, path: f.path, size: f.size, on: s.on, why: s.why }; }) };
+  var c = finCase_(body.caseId), folder = DriveApp.getFolderById(c.폴더ID), files = finFolderFiles_(folder), st = finStateLoad_(folder);
+  var pw = finPwGet_(body.caseId), sig = finSig_(pw), picks = {}; finAutoPick_(files).forEach(function (p) { picks[p.f.id] = p; });
+  var fp = finHash32_(Object.keys(picks).map(function (id) { var p = picks[id]; return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig);
+  var last = st.s.last || null;
+  return { ok: true, 사건: { id: c.id || body.caseId, 폴더: folder.getName() }, 암호있음: !!pw,
+    지난결과: last ? Object.assign({}, last, { at: last.at ? Utilities.formatDate(new Date(last.at), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '' }) : null,
+    최신: st.s.autoFp === fp, // 폴더·서식표·암호가 지난 결과 뒤로 그대로인가(아니면 틱이 곧 다시 합침)
+    파일: files.map(function (f) {
+      var p = picks[f.id], s = finSuggest_(f), r = p ? st.s.parsed[f.id + '_' + f.modified + '_' + sig] : null;
+      var 다룸 = !p ? (s.why || '읽지 않음(거래내역 파일 모양 아님)') : !r ? '읽을 차례' : r.status === 'ok' ? (p.quiet && !finQuietKeep_(r) ? '읽어 봄 — 거래내역 아님' : '합침') : (p.quiet ? '읽어 봄 — 거래내역 아님' : ({ skip: '건너뜀', locked: '암호', fail: '못 읽음', notbank: '거래내역 아님' }[r.status] || r.status) + (r.why ? ' — ' + r.why : ''));
+      return { id: f.id, name: f.name, path: f.path, size: f.size, 다룸: 다룸 };
+    }) };
 }
 
 // ---------- 진행 파일 ----------
@@ -75,38 +82,63 @@ function finStateSave_(folder, st) {
   if (st.file) st.file.setContent(txt); else st.file = folder.createFile(FIN_STATE_FILE_, txt, 'application/json');
 }
 
-// ---------- 한 번 부르기 — 정한 시간까지 읽고, 다 읽었으면 합쳐 시트에 씀 ----------
-function finMergeRun_(body) {
-  var t0 = Date.now(), budget = Math.max(15000, Math.min(Number(body.budgetMs) || 270000, 300000));
+// ---------- 자동 합치기 — 세무사님 11-20 "1단계 금융거래내역을 분석할 수 있는 준비상태로 만드는 것은 그냥 자동으로 gas가 하는 것이지 따로 명령하는 것이 아니다" ----------
+//  job 서버 1분 미리 읽기 틱이 진행 중 상속 사건(폴더 변동을 알아챈 사건 + 30분마다 전부)을 하나씩 여기로 보낸다(FinProxy.js finAutoRun_).
+//  고를 파일: 이름으로 끈 것(CSV·이 도구 시트·사건 맨 위 엑셀·거래내역 아닌 이름)만 빼고 엑셀·PDF·사진·압축 모두.
+//  이름에 금융 낱말이 없는 파일(신수호 사건 「신재억님.xls」처럼)은 읽어 보고 잔액이 이어지는 거래(3줄 이상·8할 검산 맞음, 사진용 잔액 사슬 아님)일 때만 넣고,
+//  아니면 조용히 뺀다(사망진단서·영수증 PDF를 「거래내역 아님」으로 늘어놓지 않음). 고를 파일·수정 시각·서식표·암호가 그대로면 다시 읽지 않는다(지문).
+function finSig_(pw) { return finHash32_(JSON.stringify(finFormats_().map(function (x) { return [x.id, x.머리글, x.짝]; })) + '|' + (pw ? finHash32_(pw) : '')); }
+function finAutoPick_(files) {
+  var out = [];
+  files.forEach(function (f) {
+    var s = finSuggest_(f);
+    if (s.on) out.push({ f: f, quiet: false });
+    else if (!s.why && (FIN_SHEET_EXT_RE_.test(f.name) || FIN_PDF_RE_.test(f.name) || FIN_IMG_RE_.test(f.name) || FIN_ZIP_RE_.test(f.name))) out.push({ f: f, quiet: true });
+  });
+  return out;
+}
+function finQuietKeep_(r) {
+  if (!r) return null;
+  if (r.inner) { var inn = r.inner.map(finQuietKeep_).filter(Boolean); return inn.length ? Object.assign({}, r, { inner: inn, notes: [] }) : null; }
+  if (r.status !== 'ok') return null;
+  var strong = function (b) { return !/잔액 사슬/.test(String(b.서식 || '')) && b.rows.length >= 3 && b.rows.filter(function (x) { return x.검산 === true; }).length >= b.rows.length * 0.8; };
+  if (!(r.blocks || []).some(strong)) return null;
+  return Object.assign({}, r, { blocks: r.blocks.filter(function (b) { return strong(b) || !b.rows.length; }) });
+}
+function finHasBank_(r) { return !!r && ((r.blocks || []).length > 0 || (r.inner || []).some(finHasBank_) || r.status === 'locked' || r.status === 'fail'); }
+function finMergeAuto_(body) {
+  var t0 = Date.now(), budget = Math.max(15000, Math.min(Number(body.budgetMs) || 25000, 280000));
   var c = finCase_(body.caseId), folder = DriveApp.getFolderById(c.폴더ID), pw = finPwGet_(body.caseId);
-  var all = finFolderFiles_(folder), byId = {}; all.forEach(function (f) { byId[f.id] = f; });
-  var ids = Array.isArray(body.fileIds) && body.fileIds.length ? body.fileIds.filter(function (id) { return byId[id]; }) : all.filter(function (f) { return finSuggest_(f).on; }).map(function (f) { return f.id; });
-  if (!ids.length) return { error: '합칠 파일이 없습니다(골라 주세요).' };
+  var picks = finAutoPick_(finFolderFiles_(folder)), sig = finSig_(pw);
+  var fp = finHash32_(picks.map(function (p) { return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig);
   var st = finStateLoad_(folder);
-  if (body.restart) st.s.parsed = {};
-  var sig = finHash32_(JSON.stringify(finFormats_().map(function (x) { return [x.id, x.머리글, x.짝]; })) + '|' + (pw ? finHash32_(pw) : ''));
+  if (st.s.autoFp === fp && !body.force) return { ok: true, done: true, nochange: true };
   var keyOf = function (f) { return f.id + '_' + f.modified + '_' + sig; };
-  var keep = {}; ids.forEach(function (id) { keep[keyOf(byId[id])] = 1; });
-  Object.keys(st.s.parsed).forEach(function (k) { if (!keep[k]) delete st.s.parsed[k]; }); // 고르지 않았거나 바뀐 파일의 옛 기억은 버림
+  var keep = {}; picks.forEach(function (p) { keep[keyOf(p.f)] = 1; });
+  Object.keys(st.s.parsed).forEach(function (k) { if (!keep[k]) delete st.s.parsed[k]; });
   var done = 0;
-  for (var i = 0; i < ids.length; i++) {
-    var f = byId[ids[i]], k = keyOf(f);
+  for (var i = 0; i < picks.length; i++) {
+    var f = picks[i].f, k = keyOf(f);
     if (st.s.parsed[k]) { done++; continue; }
     if (Date.now() - t0 > budget) break;
-    var r = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0);
-    st.s.parsed[k] = r; done++;
-    finStateSave_(folder, st); // 한 파일마다 적어 둠(6분 한도로 끊겨도 읽은 것은 남음)
+    st.s.parsed[k] = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0); done++;
+    finStateSave_(folder, st);
   }
-  if (done < ids.length) return { ok: true, done: false, 읽음: done, 전체: ids.length, 걸림ms: Date.now() - t0 };
-  if (Date.now() - t0 > budget - 45000 && !body.writeNow) { finStateSave_(folder, st); return { ok: true, done: false, 읽음: done, 전체: ids.length, 남은일: '시트 쓰기', 걸림ms: Date.now() - t0 }; }
-  var results = ids.map(function (id) { return st.s.parsed[keyOf(byId[id])]; });
+  if (done < picks.length) return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length };
+  var results = picks.map(function (p) { var r = st.s.parsed[keyOf(p.f)]; return p.quiet ? finQuietKeep_(r) : r; }).filter(Boolean);
+  if (!results.some(finHasBank_)) { st.s.autoFp = fp; finStateSave_(folder, st); return { ok: true, done: true, empty: true, 전체: picks.length }; }
+  if (Date.now() - t0 > Math.max(35000, budget - 30000)) { finStateSave_(folder, st); return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length, 남은일: '시트 쓰기' }; } // 시트 쓰기는 다음 번에(부르는 쪽 1분 한도)
   var merged = finMergeAll_(results);
   var sheet = finWriteSheet_(folder, finTaxpayer_(folder.getName(), c), merged);
-  st.s.last = { at: new Date().toISOString(), url: sheet.url, rows: merged.rows.length, accounts: merged.accts.length };
+  st.s.last = finLastOf_(sheet, merged, '자동');
+  st.s.autoFp = fp;
   finStateSave_(folder, st);
-  return { ok: true, done: true, 시트: sheet, 계좌: merged.accts.map(finAcctSummary_), 거래줄: merged.rows.length, 겹친줄: merged.dups.length,
-    확인: merged.checks.slice(0, 200), 확인수: merged.checks.length, 새서식: merged.newFormats,
-    파일: merged.files.map(function (x) { return { name: x.path, kind: x.kind || '', status: x.status, why: x.why || '', 줄: x.rows }; }), 걸림ms: Date.now() - t0 };
+  return { ok: true, done: true, 시트: sheet, 계좌수: merged.accts.length, 거래줄: merged.rows.length, 확인수: merged.checks.length, 새서식: merged.newFormats.length };
+}
+// 지난 결과 — 💰 창(결과 보기)·넥스 도구가 진행 파일에서 그대로 읽는다
+function finLastOf_(sheet, merged, by) {
+  return { at: new Date().toISOString(), by: by, url: sheet.url, name: sheet.name, rows: merged.rows.length, accounts: merged.accts.length, 겹친줄: merged.dups.length,
+    계좌: merged.accts.map(finAcctSummary_), 확인: merged.checks.slice(0, 200), 확인수: merged.checks.length, 새서식: merged.newFormats };
 }
 
 // ---------- 합치기 ----------

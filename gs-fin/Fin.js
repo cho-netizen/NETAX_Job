@@ -16,10 +16,11 @@ var FIN_MAIN_URL_ = 'https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T
 var FIN_VERSION_ = '2026-11-20a';
 var FIN_ACTIONS_ = {
   fin_merge_list: function (b) { return finMergeList_(b); },
-  fin_merge_run: function (b) { return finMergeRun_(b); },
-  fin_pw_set: function (b) { return finPwSet_(b); },
+  // [2026.11.20] 합치기는 명령이 아니라 자동(세무사님 "따로 명령하는 것이 아니다") — job 서버 1분 틱이 부른다. 암호·서식표가 바뀌면 그 사건을 바로 다시 합친다
+  fin_merge_auto: function (b) { return finMergeAuto_(b); },
+  fin_pw_set: function (b) { var r = finPwSet_(b); if (r && r.ok && b.caseId) { try { r.합침 = finMergeAuto_({ caseId: b.caseId, budgetMs: 240000 }); } catch (e) { r.합침 = { error: String(e.message || e) }; } } return r; },
   fin_formats_get: function (b) { return finFormatsGet_(); },
-  fin_formats_save: function (b) { return finFormatsSave_(b); }
+  fin_formats_save: function (b) { var r = finFormatsSave_(b); if (r && !r.error && b.caseId) { try { r.합침 = finMergeAuto_({ caseId: b.caseId, budgetMs: 240000 }); } catch (e) { r.합침 = { error: String(e.message || e) }; } } return r; }
 };
 
 function doGet(e) {
