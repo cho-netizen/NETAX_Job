@@ -133,13 +133,13 @@ function finMergeAutoRun_(body) {
   // 권한이 없어 못 읽은 파일(구글 문서 권한 — 세무사님이 편집기에서 승인하시면 풀림)은 한 시간마다 다시 읽어 본다
   var permFail = function (r) { return !!r && ((/permission|권한/i.test(String(r.why || '')) && r.status === 'fail') || (r.inner || []).some(permFail)); };
   Object.keys(st.s.parsed).forEach(function (k) { var r = st.s.parsed[k]; if (permFail(r) && Date.now() - Number(r.at || 0) > 3600000) delete st.s.parsed[k]; });
-  var done = 0;
+  var done = 0, readNow = 0;
   for (var i = 0; i < picks.length; i++) {
     var f = picks[i].f, k = keyOf(f);
     if (st.s.parsed[k]) { done++; continue; }
     if (Date.now() - t0 > budget) break;
     st.s.trying = { k: k, id: f.id, name: f.name, path: f.path, at: Date.now() }; finStateSave_(folder, st);
-    st.s.parsed[k] = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0); done++;
+    st.s.parsed[k] = finReadOne_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified, path: f.path }, pw, 0); done++; readNow++;
     if (permFail(st.s.parsed[k])) st.s.parsed[k].at = Date.now();
     delete st.s.trying;
     finStateSave_(folder, st);
@@ -147,7 +147,9 @@ function finMergeAutoRun_(body) {
   if (done < picks.length) return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length };
   var results = picks.map(function (p) { var r = st.s.parsed[keyOf(p.f)]; return p.quiet ? finQuietKeep_(r) : r; }).filter(Boolean);
   if (!results.some(finHasBank_)) { st.s.autoFp = fp; finStateSave_(folder, st); return { ok: true, done: true, empty: true, 전체: picks.length }; }
-  if (Date.now() - t0 > Math.max(35000, budget - 30000)) { finStateSave_(folder, st); return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length, 남은일: '시트 쓰기' }; } // 시트 쓰기는 다음 번에(부르는 쪽 1분 한도)
+  // 이번에 새로 읽은 파일이 있고 시간이 많이 갔으면 시트 쓰기는 다음 번에(부르는 쪽 1분 한도). 새로 읽은 것이 없으면 미루지 않는다 —
+  //  진행 기록이 커서 불러오기만 35초를 넘는 사건(11-20 운영: 이애정 압축 3개)이 「시트 쓰기는 다음 번에」를 끝없이 되풀이했다. 부르는 쪽이 60초에 끊겨도 이쪽은 끝까지 쓴다
+  if (readNow && Date.now() - t0 > Math.max(35000, budget - 30000)) { finStateSave_(folder, st); return { ok: true, done: false, more: true, 읽음: done, 전체: picks.length, 남은일: '시트 쓰기' }; }
   var merged = finMergeAll_(results);
   var sheet = finWriteSheet_(folder, finTaxpayer_(folder.getName(), c), merged);
   st.s.last = finLastOf_(sheet, merged, '자동');
