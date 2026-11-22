@@ -1,6 +1,6 @@
 // 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js
 // 조회 시작점: work_getCases, client_getClients, client_getConsultLogs, booking_getBookings, jsonResponse, todoList_, ledgerView_, ledgerFlowBrief_, work_findCaseRow_, work_values_, caseProcRouteTax_, CP_SHEET_MEMO_ON_
-// 포함한 최상위 선언 266개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, client_ensureSheet_, work_getSheet_, ocrFileText_, tcOcrStoreFolder_, tcOcrBlob_, tcBlobText_, tcPptxText_, tc_docText_)
+// 포함한 최상위 선언 267개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, client_ensureSheet_, work_getSheet_, ocrFileText_, tcOcrStoreFolder_, tcOcrBlob_, tcBlobText_, tcPptxText_, tc_docText_)
 
 // ============================================================
 // CaseLedger.js — 사건 장부: 사건의 모든 사실을 적는 단일 저장소 [2026.10.28 신설]
@@ -90,10 +90,33 @@ function ledgerLoad_(caseId, fresh) {
   } catch (e) { return ledgerEmpty_(caseId); }
 }
 
+// [2026.11.22 주간 개선] 쓰기 전 읽기는 엄하게 — 장부 파일이 있는데 못 읽으면(구글 드라이브 일시 오류·글이 깨짐) 빈 장부로 보고 덮어쓰지 않는다.
+//  예전엔 ledgerLoad_가 읽기 오류를 빈 장부로 삼켜, 그 위에 칸 몇 개만 적어 저장하면 함께 보는 세목·물건 목록·자문 장부가 통째로 사라질 수 있었다(긴급 요청 11-16).
+//  한 번 쉬었다 다시 읽고, 그래도 못 읽으면 이번 쓰기를 멈추고 오류를 돌려준다(장부는 그대로).
+function ledgerLoadForWrite_(caseId) {
+  const k = String(caseId || '');
+  let lastErr = null;
+  for (let t = 0; t < 2; t++) {
+    let f = null;
+    try { f = ledgerFile_(caseId, false); } catch (e) { lastErr = e; f = undefined; }
+    if (f === null) return ledgerEmpty_(caseId); // 파일이 정말 없음 — 새 장부
+    if (f) {
+      try {
+        const txt = f.getBlob().getDataAsString('UTF-8');
+        const o = JSON.parse(txt || '{}') || {};
+        o.caseId = k; o.rows = o.rows || {}; o.log = Array.isArray(o.log) ? o.log : [];
+        return o;
+      } catch (e) { lastErr = e; }
+    }
+    if (t === 0) Utilities.sleep(1500);
+  }
+  throw new Error('장부 파일을 읽지 못해 이번 저장을 멈췄습니다(빈 장부로 덮어쓰지 않음) — 잠시 뒤 다시 해 주세요: ' + String(lastErr && lastErr.message || lastErr || '').slice(0, 120));
+}
+
 // 잠금 안에서 읽고-고치고-쓴다(동시에 도는 넥스·화면이 서로 덮지 않게). mutate(L)가 돌려준 값을 그대로 돌려준다
 function ledgerMutate_(caseId, mutate) {
   return withLock_(15000, function () {
-    const L = ledgerLoad_(caseId, true);
+    const L = ledgerLoadForWrite_(caseId);
     ledgerKbAdopt_(caseId, L);
     const out = mutate(L);
     ledgerKbRelink_(L);
