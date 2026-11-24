@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-24c';
+var FIN_RV_VER_ = '2026-11-24d';
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '피상속인 본인', '그 밖'];
@@ -233,7 +233,8 @@ function finRvAnalyze_(R, U, opt) {
   });
 
   // ④ 관련인 — 보관된 표(세무사님·가족 지도·후보) + 세무사님이 거래 칸에 적으신 상대
-  var rels = (U.rel || []).map(function (x) { return Object.assign({}, x, { 별칭: (x.별칭 || []).slice(), 계좌: (x.계좌 || []).slice() }); });
+  var rels = (U.rel || []).filter(function (x) { return !(x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && finRvNameLike_(x.이름, B.피상속인)); }) // [2026.11.24] 앞 판이 후보로 넣은 피상속인 본인 이름은 거둠(세무사님이 갈래를 고르신 것은 그대로)
+    .map(function (x) { return Object.assign({}, x, { 별칭: (x.별칭 || []).slice(), 계좌: (x.계좌 || []).slice() }); });
   var relBy = function (name) { var n = finRvNorm_(name); return rels.filter(function (x) { return finRvNorm_(x.이름) === n; })[0] || null; };
   var lane = function (x) { return x ? (x.갈래 || x.짐작 || '') : ''; };
   R.forEach(function (r) {
