@@ -178,7 +178,7 @@ function finLastOf_(sheet, merged, by) {
 // ---------- 합치기 ----------
 var FIN_REL_ = { '엑셀': 3, 'PDF': 2, '사진(글자인식)': 1 };
 // 합치기 규칙 판 — 바꾸면 진행 중 사건이 파일을 다시 읽지 않고 저절로 다시 합쳐진다(자동 지문에 들어감)
-var FIN_MERGE_VER_ = '2026-11-21c';
+var FIN_MERGE_VER_ = '2026-11-24a';
 // [2026.11.20] 예금·적금 계좌는 이자를 잔액에 넣지 않고 바로 내준다(신협 「141:이자지급」·「150:제세금」 출금, 잔액 그대로) — 은행 자료가 원래
 //  「앞 잔액 − 출금 = 잔액」으로 맞지 않는 줄이라 잔액 검산 ⚠(틀림)로 세지 않는다(11-20 운영: 이애정 사건 신협 정기예금 24계좌가 ⚠로 「확인할 것」 50개)
 function finPassThrough_(b) {
@@ -200,7 +200,13 @@ function finVerify_(b) {
   var fits = function (P, g) { if (P == null || g.잔액 == null) return 0; var d = g.잔액 - P; if (g.금액 === 0) return eq(d, 0) ? 2 : 0; if (sgn(g) ? eq(d, sgn(g) * g.금액) : eq(Math.abs(d), g.금액)) return 2; return eq(d, 0) ? 1 : 0; };
   var score = function (list) { var s = 0; for (var i = 1; i < list.length; i++) s += fits(list[i - 1].잔액, list[i]) === 2 ? 1 : 0; return s; };
   var seq = R.slice(), rev = R.slice().reverse();
-  if (score(rev) > score(seq)) seq = rev;
+  // 점수가 같으면 날짜가 앞으로 가는 쪽(11-24: 신협 정기예금 4줄 — 최근 것부터 적힌 파일에서 차례를 못 정해 해지 「원금」 줄이 맨 뒤로 갔다)
+  //  날짜가 거꾸로 적힌 파일은 점수와 상관없이 거꾸로 — 잔액은 시간 차례로만 이어진다(최근 것부터 따라가면 「0원 → 신규 1천만」이 맞는 것처럼 보였다)
+  var sr = score(rev), ss = score(seq);
+  if (R[0].d > R[R.length - 1].d || R[0].d === R[R.length - 1].d && sr > ss) seq = rev;
+  // 해지·만기 줄(원금에 마지막 이자를 얹어 내주고 잔액 0) — 차례를 정할 때 「반쯤 맞음」으로 본다
+  var closeLike = function (P, g) { return P != null && g.dir === 'o' && g.잔액 === 0 && g.금액 > P && g.금액 - P <= Math.max(P * 0.1, 10000) && /해지|해약|만기|원금|이자|종결|폐쇄|청산/.test(JSON.stringify(g.std || {}) + ' ' + (g.raw || []).join(' ')); };
+  var fitsX = function (P, g) { var f = fits(P, g); return f === 2 ? 2 : closeLike(P, g) ? 1.5 : f; };
   // 같은 날·시각 무리 안 차례
   var key = function (g) { return g.d + ' ' + (g.t || ''); };
   for (var i = 0; i < seq.length; ) {
@@ -211,7 +217,7 @@ function finVerify_(b) {
       var nextG = seq[j + 1];
       var perm = function (arr, done) {
         if (!arr.length) {
-          var s = 0, P = P0; done.forEach(function (g) { s += fits(P, g) === 2 ? 1 : 0; P = g.잔액; }); if (nextG) s += fits(P, nextG) === 2 ? 1 : 0;
+          var s = 0, P = P0; done.forEach(function (g) { s += fitsX(P, g); P = g.잔액; }); if (nextG) s += fitsX(P, nextG);
           if (s > bestS) { bestS = s; best = done.slice(); } return;
         }
         arr.forEach(function (g, k) { perm(arr.slice(0, k).concat(arr.slice(k + 1)), done.concat([g])); });
@@ -221,22 +227,40 @@ function finVerify_(b) {
     }
     i = j + 1;
   }
+  // 같은 시각 여러 줄이 모두 같은 잔액이고, 그중 몇 줄 금액 합이 앞 잔액과의 차이와 같으면 한 번에 나눠 낸 것(11-24: 신협 정기예금 1,500만 해지를 원금 500만·1,000만 두 줄로, 잔액은 두 줄 다 0)
+  for (var gi = 0; gi < seq.length; ) {
+    var gj = gi; while (gj + 1 < seq.length && key(seq[gj + 1]) === key(seq[gi])) gj++;
+    var G = seq.slice(gi, gj + 1), PB = gi > 0 ? seq[gi - 1].잔액 : null;
+    if (G.length >= 2 && G.length <= 8 && PB != null && G.every(function (g) { return g.잔액 != null && eq(g.잔액, G[0].잔액); }) && !eq(PB, G[0].잔액)) {
+      var need = G[0].잔액 - PB, hit = null;
+      for (var mask = 1; mask < (1 << G.length) && !hit; mask++) {
+        var pick = G.filter(function (g, x) { return mask & (1 << x); }); if (pick.length < 2) continue;
+        var sum = pick.reduce(function (s, g) { return s + (g.dir === 'i' ? g.금액 : g.dir === 'o' ? -g.금액 : NaN); }, 0);
+        if (eq(sum, need)) hit = pick;
+      }
+      if (hit) hit.forEach(function (g) { g._grp = hit.length; });
+    }
+    gi = gj + 1;
+  }
   seq.forEach(function (g, k) {
     g.순 = k;
     if (k === 0) { if (g.dir === '?' && g.금액 === 0) g.dir = 'i'; return; }
     var P = seq[k - 1].잔액, f = fits(P, g);
     if (g.금액 === 0 && g.dir === '?') g.dir = 'i';
     if (g.dir === '?' && f === 2 && g.잔액 != null && P != null) g.dir = g.잔액 > P ? 'i' : 'o';
-    if (f === 2) { if (g.검산 === false || g.검산 === null && !g.왜) { g.검산 = true; g.왜 = ''; } }
-    else if (f === 1) { if (g.검산 !== true) { g.왜 = /그대로|신탁/.test(g.왜 || '') ? g.왜 : '잔액 그대로인 금액 줄(예금 이자·세금 바로 내줌, 출금취소 되돌림 등 — 은행 자료 그대로)'; g.검산 = null; } }
+    // [2026.11.24] 표시는 이 차례로 다시 매긴다 — 읽을 때(파일 차례) 붙은 ✅·「잔액 그대로」가 같은 시각 다른 줄에 남아 있었다
+    //  (11-24 운영 확인: 이애정 신협 해지 날 「제세금합계 17,640」 줄에 ✅, 「원금 30,000,000 → 0」 줄에 「잔액 그대로」 — 24줄)
+    if (f === 2) { if (g.검산 !== true) g.왜 = ''; g.검산 = true; }
+    else if (f === 1) { g.왜 = /그대로|신탁/.test(g.왜 || '') ? g.왜 : '잔액 그대로인 금액 줄(예금 이자·세금 바로 내줌, 출금취소 되돌림 등 — 은행 자료 그대로)'; g.검산 = null; }
     else if (g.검산 === true) { g.검산 = false; g.왜 = '앞 줄 잔액과 맞지 않음'; }
     // 마지막 줄 잔액 칸이 비었고, 남은 잔액 전부에 이자를 얹어 내준 해지(11-21: 박연경 신한 엑셀 「출금 4,020,051」 ← 잔액 4,019,879, 잔액 칸 빈칸)
     if (g.검산 === false && k === seq.length - 1 && g.잔액 == null && g.dir === 'o' && P != null && P > 0 && g.금액 >= P && g.금액 - P <= Math.max(P * 0.05, 100000)) {
       g.잔액 = 0; g.검산 = null; g.왜 = '마지막 줄 — 남은 잔액 전부와 이자 ' + Math.round((g.금액 - P) * 100) / 100 + '원을 내준 해지로 보아 잔액 0(원본 잔액 칸 비어 있음 — 원본 확인)';
     }
     // 해지·만기 줄 — 원금에 마지막 이자를 얹어 내주고 잔액 0(이자가 잔액 칸에 따로 안 들어옴). 은행 자료 그대로(11-21: 신협 출자금 「원금+이자」 83,425 ← 잔액 83,410)
-    if (g.검산 === false && g.dir === 'o' && g.잔액 === 0 && P != null && g.금액 > P && g.금액 - P <= Math.max(P * 0.1, 10000)
-      && /해지|해약|만기|원금|이자|종결|폐쇄|청산/.test(JSON.stringify(g.std || {}) + ' ' + (g.raw || []).join(' '))) { g.검산 = null; g.왜 = '해지·만기 — 원금에 마지막 이자를 얹어 내주고 잔액 0(은행 자료 그대로, 이자 ' + Math.round((g.금액 - P) * 100) / 100 + ')'; }
+    if (g._grp && f !== 2) { g.검산 = null; g.왜 = '같은 시각 ' + g._grp + '줄로 나눠 낸 것 — 합계로 잔액이 맞음(은행 자료 그대로)'; }
+    if (g._grp) delete g._grp;
+    if (f === 0 && g.검산 !== true && closeLike(P, g)) { g.검산 = null; g.왜 = '해지·만기 — 원금에 마지막 이자를 얹어 내주고 잔액 0(은행 자료 그대로, 이자 ' + Math.round((g.금액 - P) * 100) / 100 + ')'; }
   });
 }
 function finMergeAll_(results) {
@@ -293,7 +317,8 @@ function finMergeAll_(results) {
   accts.forEach(function (a, i) { a.n = i; a.label = (a.기관 || '기관 모름') + ' ' + (a.계좌 || (a.끝4 ? '…' + a.끝4 : '계좌번호 모름')); });
   var byTime = function (p, q) { return p.g.d < q.g.d ? -1 : p.g.d > q.g.d ? 1 : (p.g.t || '') < (q.g.t || '') ? -1 : (p.g.t || '') > (q.g.t || '') ? 1 : 0; };
   accts.forEach(function (a) { a.rows.sort(function (p, q) { return byTime(p, q) || p.src.o - q.src.o || (p.g.순 != null && q.g.순 != null ? p.g.순 - q.g.순 : (p.g.줄 || 0) - (q.g.줄 || 0)); }); });
-  rows.sort(function (p, q) { return byTime(p, q) || p.a.n - q.a.n || p.src.o - q.src.o || (p.g.줄 || 0) - (q.g.줄 || 0); });
+  // 「거래」 탭도 계좌 안과 같은 차례(잔액이 이어지는 차례 순) — 같은 시각 줄이 파일 차례로 놓여 잔액이 끊겨 보이던 것(11-24)
+  rows.sort(function (p, q) { return byTime(p, q) || p.a.n - q.a.n || p.src.o - q.src.o || (p.g.순 != null && q.g.순 != null ? p.g.순 - q.g.순 : (p.g.줄 || 0) - (q.g.줄 || 0)); });
   accts.forEach(function (a) {
     var bad = a.rows.filter(function (r) { return r.g.검산 === false; }).length, unk = a.rows.filter(function (r) { return r.g.dir === '?'; }).length, diff = a.rows.filter(function (r) { return r.diff; }).length;
     if (bad) checks.push({ 종류: '잔액 검산 ⚠', 파일: a.label, 내용: bad + '줄 — 거래 탭 「검산」 칸 ⚠ 줄을 원본과 맞대 주세요' });
@@ -316,11 +341,11 @@ function finAcctSummary_(a) {
   var r = a.rows, first = r[0], last = r[r.length - 1], sum = function (k) { return Math.round(r.reduce(function (s, x) { return s + (Number(x.g[k]) || 0); }, 0) * 100) / 100; };
   return { 기관: a.기관 || '', 계좌: a.계좌 || (a.끝4 ? '…' + a.끝4 : ''), 예금주: a.예금주 || '', 기간: first ? first.g.d + ' ~ ' + last.g.d : '조회 기간 거래 없음', 줄: r.length,
     처음잔액: first && first.g.잔액 != null ? first.g.잔액 - (first.g.입금 || 0) + (first.g.출금 || 0) : null, 끝잔액: last && last.g.잔액 != null ? last.g.잔액 : null,
-    입금합계: sum('입금'), 출금합계: sum('출금'), 검산틀림: r.filter(function (x) { return x.g.검산 === false; }).length, 파일: a.files, 서식: a.서식, 참고: (a.참고 || []).join(' · ') };
+    입금합계: sum('입금'), 출금합계: sum('출금'), 검산틀림: r.filter(function (x) { return x.g.검산 === false; }).length, 통화: (r.filter(function (x) { return x.g.통화; })[0] || { g: {} }).g.통화 || '', 파일: a.files, 서식: a.서식, 참고: (a.참고 || []).join(' · ') };
 }
 
 // ---------- 구글 시트 쓰기 ----------
-var FIN_LEDGER_HDR_ = ['거래일자', '거래시간', '기관', '계좌', '예금주', '입금', '출금', '잔액', '내용', '상대', '상대은행', '상대계좌', '거래구분', '거래점', '메모', '원본 칸', '읽은 방법', '검산', '원본 파일', '원본 줄', '같은 거래 다른 파일', '서식'];
+var FIN_LEDGER_HDR_ = ['거래일자', '거래시간', '기관', '계좌', '예금주', '입금', '출금', '잔액', '통화', '내용', '상대', '상대은행', '상대계좌', '거래구분', '거래점', '메모', '원본 칸', '읽은 방법', '검산', '원본 파일', '원본 줄', '같은 거래 다른 파일', '서식'];
 function finLink_(url, label) { label = String(label || '').replace(/"/g, '\'').slice(0, 200); return url ? '=HYPERLINK("' + url + '","' + label + '")' : label; }
 function finWriteSheet_(folder, taxpayer, m) {
   var today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd'), name = FIN_OUT_PREFIX_ + taxpayer + '_' + today, ss = null;
@@ -336,20 +361,23 @@ function finWriteSheet_(folder, taxpayer, m) {
     (opts && opts.text || []).forEach(function (ci) { sh.getRange(1, ci + 1, vals.length, 1).setNumberFormat('@'); });
     for (var s = 0; s < vals.length; s += 4000) sh.getRange(s + 1, 1, Math.min(4000, vals.length - s), w).setValues(vals.slice(s, s + 4000));
     (opts && opts.money || []).forEach(function (ci) { sh.getRange(2, ci + 1, Math.max(1, vals.length - 1), 1).setNumberFormat('#,##0'); });
+    // [2026.11.24] 외화 줄은 센트까지 보이게(11-24 운영 확인: USD 57,671.42 · 잔액 57,671.82가 57,671 · 57,672로 보여 잔액이 1 어긋나 보였다)
+    var dec = (opts && opts.dec || []).filter(function (i) { return i < data.length; });
+    for (var di = 0; di < dec.length; di += 500) sh.getRangeList(dec.slice(di, di + 500).reduce(function (acc, i) { return acc.concat((opts.money || []).map(function (ci) { return sh.getRange(i + 2, ci + 1).getA1Notation(); })); }, [])).setNumberFormat('#,##0.00');
     sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7');
     sh.setFrozenRows(1);
     return sh;
   };
   var A = m.accts.map(finAcctSummary_);
-  tab('계좌 목록', ['기관', '계좌', '예금주', '자료 기간', '거래 줄', '처음 잔액', '끝 잔액', '입금 합계', '출금 합계', '잔액 검산 ⚠', '참고', '원본 파일', '서식'],
-    A.map(function (a) { return [a.기관, a.계좌, a.예금주, a.기간, a.줄, a.처음잔액, a.끝잔액, a.입금합계, a.출금합계, a.검산틀림 || '', a.참고 || '', a.파일.join(' · '), a.서식.join(' · ')]; }), { text: [1], money: [5, 6, 7, 8] });
+  tab('계좌 목록', ['기관', '계좌', '예금주', '통화', '자료 기간', '거래 줄', '처음 잔액', '끝 잔액', '입금 합계', '출금 합계', '잔액 검산 ⚠', '참고', '원본 파일', '서식'],
+    A.map(function (a) { return [a.기관, a.계좌, a.예금주, a.통화 || '원', a.기간, a.줄, a.처음잔액, a.끝잔액, a.입금합계, a.출금합계, a.검산틀림 || '', a.참고 || '', a.파일.join(' · '), a.서식.join(' · ')]; }), { text: [1, 3], money: [6, 7, 8, 9], dec: A.map(function (a, i) { return a.통화 ? i : -1; }).filter(function (i) { return i >= 0; }) });
   tab('거래', FIN_LEDGER_HDR_, m.rows.map(function (r) {
     var g = r.g, s = g.std || {};
-    return [g.d, g.t || '', r.a.기관 || '', r.a.계좌 || (r.a.끝4 ? '…' + r.a.끝4 : ''), r.a.예금주 || '', g.dir === 'i' ? g.금액 : '', g.dir === 'o' ? g.금액 : '', g.잔액 == null ? '' : g.잔액,
+    return [g.d, g.t || '', r.a.기관 || '', r.a.계좌 || (r.a.끝4 ? '…' + r.a.끝4 : ''), r.a.예금주 || '', g.dir === 'i' ? g.금액 : '', g.dir === 'o' ? g.금액 : '', g.잔액 == null ? '' : g.잔액, g.통화 || '원',
       s.내용 || '', s.상대 || '', s.상대은행 || '', s.상대계좌 || '', s.거래구분 || '', s.거래점 || '', s.메모 || '',
       (g.dir === '?' ? '방향 모름 금액: ' + g.금액 + (s.원본 ? ' · ' : '') : '') + (s.원본 || ''), r.how, g.검산 === true ? '✅' : g.검산 === false ? '⚠ ' + (g.왜 || '') : g.왜 ? '－ ' + g.왜 : '—',
       finLink_(r.src.url, r.src.name), (r.시트 ? r.시트 + ' ' : '') + (g.줄 ? g.줄 + '줄' : ''), r.also.join(' · ') + (r.diff ? ' ⚠ ' + r.diff : ''), r.서식];
-  }), { text: [0, 1, 3, 11], money: [5, 6, 7] });
+  }), { text: [0, 1, 3, 8, 12], money: [5, 6, 7], dec: m.rows.map(function (r, i) { return r.g.통화 ? i : -1; }).filter(function (i) { return i >= 0; }) });
   tab('겹쳐서 한 번만 센 줄', ['원본 파일', '원본 줄', '거래일자', '기관·계좌', '금액', '방향', '남긴 줄의 파일'], m.dups.map(function (d) {
     return [finLink_(d.src.url, d.src.name), (d.시트 ? d.시트 + ' ' : '') + (d.줄 ? d.줄 + '줄' : ''), d.g.d, d.a.label, d.g.금액, d.g.dir === 'i' ? '입금' : d.g.dir === 'o' ? '출금' : '모름', d.keptSrc.name];
   }), { text: [2], money: [4] });
