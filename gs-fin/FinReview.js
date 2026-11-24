@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-24a';
+var FIN_RV_VER_ = '2026-11-24b';
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '피상속인 본인', '그 밖'];
@@ -132,7 +132,9 @@ function finRvBefore_(r, B, years) {
 // ---------- 성격 후보(낱말) ----------
 function finRvNatureWord_(r, txt) {
   var o = r.out > 0, i = r.in > 0, s = txt;
+  if (/대출|대부금|융자|마이너스|상환원금|상환이자|원리금상환/.test(s)) return o ? '대출 상환·이자' : '대출받은 돈';
   if (/해지|만기|중도해지/.test(s)) return '해지·만기';
+  if (o && /납부출금|자동납부|지로|CMS출금/.test(s)) return '공과금·관리비';
   if (i && /이자|결산|이익분배/.test(s)) return '이자 수입';
   if (i && /연금|급여|월급|상여|기초노령|기초연금|보수|수당|휴가비|성과급|퇴직금/.test(s)) return '연금·급여 수입';
   if (o && /국민연금|건강보험|건보|장기요양/.test(s)) return '공과금·관리비';
@@ -168,7 +170,8 @@ function finRvAnalyze_(R, U, opt) {
     r.own = accts[r.acct].own; r.krw = finRvKrw_(r); r.dir = r.in > 0 ? 'i' : r.out > 0 ? 'o' : ''; r.amt = r.in > 0 ? r.in : r.out;
     r.tx = finRvTexts_(r); r.tx.forEach(function (x) { x.gen = finRvGeneric_(x.n); });
     r.tok = []; [r.상대, r.내용, r.메모].forEach(function (s) { finRvTokens_(s).forEach(function (w) { if (r.tok.indexOf(w) === -1) r.tok.push(w); }); });
-    r.best = finRvParty_(r); r.txt = r.tx.map(function (x) { return x.raw; }).join(' ');
+    // 성격 짐작 글에는 거래구분 칸도 넣는다(「납부출금」·「대출」처럼 구분 칸에만 있는 말 — 11-24 운영: 본인 이름 자동납부를 다른 계좌로 봄)
+    r.best = finRvParty_(r); r.txt = r.tx.map(function (x) { return x.raw; }).concat([String(r.구분 || '')]).join(' ');
     r.cdg = String(r.상대계좌 || '').replace(/[^\d*]/g, '');
   });
   var order = R.map(function (r, i) { return i; }).sort(function (p, q) { var a = R[p], b = R[q]; return a.d < b.d ? -1 : a.d > b.d ? 1 : (a.t || '') < (b.t || '') ? -1 : (a.t || '') > (b.t || '') ? 1 : p - q; });
@@ -204,8 +207,8 @@ function finRvAnalyze_(R, U, opt) {
   });
   // 세무사님이 「안에서 옮김」으로 정하신 줄은 짝이 없어도 안에서 옮김
   // 짝 줄은 못 찾았지만 상대 계좌가 피상속인의 다른 계좌(이 시트에 있음)인 줄도 안에서 옮김
-  var ownDg = acctList.filter(function (a) { return a.own && String(a.dg || '').replace(/D/g, '').length >= 8; });
-  R.forEach(function (r) { if (!r.pair && r.own && r.krw && r.cdg.replace(/D/g, '').length >= 8 && !(urow(r).성격 && !/안에서 옮김/.test(urow(r).성격))) { var to = ownDg.filter(function (a) { return a.acct !== r.acct && finRvAcctLike_(a.dg, r.cdg); })[0]; if (to) { r.innerTo = to.acct; r.pairWhy = '상대 계좌가 피상속인 ' + to.acct + '(짝 줄 못 찾음)'; } } });
+  var ownDg = acctList.filter(function (a) { return a.own && String(a.dg || '').replace(/\D/g, '').length >= 8; });
+  R.forEach(function (r) { if (!r.pair && r.own && r.krw && r.cdg.replace(/\D/g, '').length >= 8 && !(urow(r).성격 && !/안에서 옮김/.test(urow(r).성격))) { var to = ownDg.filter(function (a) { return a.acct !== r.acct && finRvAcctLike_(a.dg, r.cdg); })[0]; if (to) { r.innerTo = to.acct; r.pairWhy = '상대 계좌가 피상속인 ' + to.acct + '(짝 줄 못 찾음)'; } } });
   R.forEach(function (r) { r.inner = !!r.pair || !!r.innerTo || /^안에서 옮김/.test(urow(r).성격 || ''); if (/^바깥/.test(urow(r).성격 || '')) r.inner = false; });
   // 짝이 없는데 피상속인 본인 이름으로 오간 줄 — 자료가 없는 피상속인 다른 계좌(관련인이 아님)
   //  · 「예금신규·예금추가입금·적금」처럼 피상속인 상품으로 간 줄도 같음(11-24 시험: 실사건 세무사님 「본인계좌 대체」 줄)
@@ -213,7 +216,7 @@ function finRvAnalyze_(R, U, opt) {
   R.forEach(function (r) {
     var mine = !r.inner && r.own && !urow(r).상대;
     // 본인 이름 낱말이 따로 있을 때만(「국세+본인 이름」·「본인 이름+경기군포」처럼 세금·공과금을 본인 이름으로 낸 줄은 본인 계좌가 아님 — 11-24 시험)
-    r.self = mine && ((P.length >= 2 && r.tok.indexOf(P) !== -1 && !/세금|공과금|병원|카드|보험료/.test(finRvNatureWord_(r, r.txt))) || /예금신규|예금추가|정기예금신규|적금신규|적금납입|신탁신규|펀드매수|청약저축/.test(r.txt.replace(/\s+/g, '')));
+    r.self = mine && ((P.length >= 2 && r.tok.indexOf(P) !== -1 && !/세금|공과금|병원|카드|보험|대출/.test(finRvNatureWord_(r, r.txt))) || /예금신규|예금추가|정기예금신규|적금신규|적금납입|신탁신규|펀드매수|청약저축/.test(r.txt.replace(/\s+/g, '')));
     r.selfMaybe = mine && !r.self && !r.tok.length && r.amt >= T.큰돈 && (r.cdg.replace(/\D/g, '').length >= 10 || /^\d{10,}$/.test(finRvNorm_(r.내용)) || /^\d{10,}$/.test(finRvNorm_(r.상대)));
   });
 
@@ -368,9 +371,9 @@ function finRvAnalyze_(R, U, opt) {
   R.forEach(function (r) {
     if (!r.own || !r.krw || r.inner) return;
     if (r.selfMaybe) gAdd('A2', r, { 짚을것: '계좌번호만 찍힌 큰돈 — 피상속인 다른 예금·적금인지', 까닭: '이름 없이 계좌번호로 오간 큰돈은 대개 본인 예금·적금(신규·만기) — 그 계좌가 피상속인 것이면 자료가 빠진 것이고, 아니면 받은 사람을 밝혀야 한다', 무엇: '계좌 ' + (r.상대계좌 || r.내용 || r.상대) + ' — 누구 명의인지·거래내역' });
-    else if (r.self) gAdd('A2', r, { 짚을것: '피상속인 다른 계좌·상품으로 오갔는데 그 자료가 없음', 까닭: '피상속인 다른 계좌(또는 상품)가 있다는 뜻 — 그 계좌는 과세관청이 조회로 본다', 무엇: '피상속인 ' + ((/d/.test(r.상대은행 || '') ? '' : (r.상대은행 || '')) + ' ' + (r.상대계좌 || '')).trim() + ' 계좌 거래내역' });
+    else if (r.self) gAdd('A2', r, { 짚을것: '피상속인 다른 계좌·상품으로 오갔는데 그 자료가 없음', 까닭: '피상속인 다른 계좌(또는 상품)가 있다는 뜻 — 그 계좌는 과세관청이 조회로 본다', 무엇: (function () { var w = ((/\d/.test(r.상대은행 || '') ? '' : (r.상대은행 || '')) + ' ' + (r.상대계좌 || '')).trim(); return '피상속인 다른 계좌·상품 거래내역 — ' + (w || '통장에 「' + (r.내용 || r.상대 || '').trim() + '」로 찍힌 것(어느 계좌인지 확인)'); })() });
     else if (r.out >= T.큰돈 && /증권|투자|정기예금|적금|신탁|펀드|CMA|청약|채권|ISA/i.test(r.txt) && !/카드/.test(r.txt)) gAdd('A2', r, { 짚을것: '금융상품으로 간 돈 — 그 상품 자료 없음', 까닭: '증권·예금·보험 상품은 상속재산이거나 그 해지금이 다시 어디로 갔는지 본다', 무엇: (r.best ? r.best.raw : '') + ' 상품 내역(잔고·해지)' });
-    if (r.out > 0 && /해지|만기/.test(r.txt) && r.bal === 0) gAdd('A4', r, { 짚을것: '해지금이 간 곳이 보이지 않음', 까닭: '해지·만기 돈의 도착지를 본다', 무엇: '' });
+    if (r.out > 0 && /해지|만기/.test(r.txt) && r.bal === 0 && !/이자|세금|제세|세액/.test(String(r.내용 || '') + String(r.상대 || ''))) gAdd('A4', r, { 짚을것: '해지금이 간 곳이 보이지 않음', 까닭: '해지·만기 돈의 도착지를 본다', 무엇: '' });
   });
   Object.keys(gA).forEach(function (k) {
     var g = gA[k], L = g.rows, sum = L.reduce(function (s, r) { return s + r.amt; }, 0), who = L[0].best ? L[0].best.raw : (L[0].상대계좌 || '');
