@@ -64,6 +64,7 @@ function finMergeList_(body) {
   return { ok: true, 사건: { id: c.id || body.caseId, 폴더: folder.getName() }, 암호있음: !!pw,
     지난결과: last ? Object.assign({}, last, { at: last.at ? Utilities.formatDate(new Date(last.at), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '' }) : null,
     최신: st.s.autoFp === fp, // 폴더·서식표·암호가 지난 결과 뒤로 그대로인가(아니면 틱이 곧 다시 합침)
+    검토: (function () { try { return finRvSummaryOf_(folder); } catch (e) { return null; } })(), // [2026.11.24] 2단계 요약(사전증여·추정상속 선제 검토)
     파일: files.map(function (f) {
       var p = picks[f.id], s = finSuggest_(f), r = p ? st.s.parsed[f.id + '_' + f.modified + '_' + sig] : null;
       var 다룸 = !p ? (s.why || '읽지 않음(거래내역 파일 모양 아님)') : !r ? '읽을 차례' : r.status === 'ok' ? (p.quiet && !finQuietKeep_(r) ? '읽어 봄 — 거래내역 아님' : '합침') : (p.quiet ? '읽어 봄 — 거래내역 아님' : ({ skip: '건너뜀', locked: '암호', fail: '못 읽음', notbank: '거래내역 아님' }[r.status] || r.status) + (r.why ? ' — ' + r.why : ''));
@@ -131,7 +132,7 @@ function finMergeAutoRun_(body) {
   var picks = finAutoPick_(finFolderFiles_(folder)), sig = finSig_(pw);
   var fp = finHash32_(picks.map(function (p) { return p.f.id + '_' + p.f.modified + (p.quiet ? 'q' : ''); }).sort().join('|') + '|' + sig + '|' + FIN_MERGE_VER_);
   var st = finStateLoad_(folder);
-  if (st.s.autoFp === fp && !body.force) return { ok: true, done: true, nochange: true };
+  if (st.s.autoFp === fp && !body.force) return { ok: true, done: true, nochange: true, 검토: finRvSafe_(c, folder, st, {}) }; // [2026.11.24] 1단계가 그대로여도 2단계(세무사님 칸·규칙 판·엑셀·가족 지도)는 본다
   var keyOf = function (f) { return f.id + '_' + f.modified + '_' + sig; };
   var keep = {}; picks.forEach(function (p) { keep[keyOf(p.f)] = 1; });
   Object.keys(st.s.parsed).forEach(function (k) { if (!keep[k]) delete st.s.parsed[k]; });
@@ -167,7 +168,8 @@ function finMergeAutoRun_(body) {
   st.s.last = finLastOf_(sheet, merged, '자동');
   st.s.autoFp = fp;
   finStateSave_(folder, st);
-  return { ok: true, done: true, 시트: sheet, 계좌수: merged.accts.length, 거래줄: merged.rows.length, 확인수: merged.checks.length, 새서식: merged.newFormats.length };
+  var rv = finRvSafe_(c, folder, st, { force: true }); // [2026.11.24] 2단계 — 1단계가 시트를 새로 썼으니 2단계 칸·탭을 다시(보관된 세무사님 칸을 되살림)
+  return { ok: true, done: true, 검토: rv, 시트: sheet, 계좌수: merged.accts.length, 거래줄: merged.rows.length, 확인수: merged.checks.length, 새서식: merged.newFormats.length };
 }
 // 지난 결과 — 💰 창(결과 보기)·넥스 도구가 진행 파일에서 그대로 읽는다
 function finLastOf_(sheet, merged, by) {
@@ -352,6 +354,8 @@ function finWriteSheet_(folder, taxpayer, m) {
   var it = folder.getFilesByType(MimeType.GOOGLE_SHEETS);
   while (it.hasNext()) { var f = it.next(); if (f.getName().indexOf(FIN_OUT_PREFIX_ + taxpayer + '_') === 0) { ss = SpreadsheetApp.openById(f.getId()); if (f.getName() !== name) f.setName(name); break; } }
   if (!ss) { ss = SpreadsheetApp.create(name); DriveApp.getFileById(ss.getId()).moveTo(folder); }
+  // [2026.11.24] 2단계 세무사님 칸(✎)·관련인·묶음·짚을 곳 상태를 지우기 전에 보관 파일로 거둔다 — 거두다 실패하면 다시 쓰지 않는다(적으신 것을 잃지 않게)
+  if (ss.getSheetByName('거래')) { var RS = finRvLoad_(folder); if (finRvHarvest_(ss, RS.U)) finRvSave_(folder, RS); }
   var keepSh = ss.getSheets()[0]; keepSh.setName('_' + Date.now());
   ss.getSheets().slice(1).forEach(function (sh) { ss.deleteSheet(sh); });
   var tab = function (title, hdr, data, opts) {

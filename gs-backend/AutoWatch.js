@@ -313,7 +313,7 @@ function awNightlyLast_() { try { return JSON.parse(PropertiesService.getScriptP
 var NR_STATE_PROP_ = 'nr_state', NR_USE_PROP_ = 'nx_last_use';
 var NR_IDLE_MIN_ = 30, NR_START_H_ = 1, NR_END_H_ = 5, NR_REPORT_END_H_ = 8;
 var NR_REVIEW_RE_ = /^(종합검토서|개별검토서_.+)\.(md|txt)$/;
-var NR_READ_TOOLS_ = /^(case_status|ledger_read|case_files|file_read|fact_map|doc_find|law_lookup|law_search|case_ledger)$/;
+var NR_READ_TOOLS_ = /^(case_status|ledger_read|case_files|file_read|fact_map|doc_find|law_lookup|law_search|case_ledger|bank_merge)$/; // [2026.11.24] bank_merge — 금융거래 2단계 검토를 개별검토서_금융거래에 다시 인용
 function nrHour_() { return Number(Utilities.formatDate(new Date(), 'Asia/Seoul', 'H')); }
 // job 화면이 서버를 부를 때마다(manageApp_call) — 5분에 한 번만 속성에 적는다(속성 쓰기 한도)
 function nrMarkUse_() {

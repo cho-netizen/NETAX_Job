@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-20 17:03 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-24 08:47 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57696,7 +57696,7 @@ function rwAiApplyEdit_(id, content){
         + (r.최신 ? '<span class="fm-ok">최신</span>' + (L ? ' — ' + esc(L.at) + ' ' + esc(L.by === '자동' ? '저절로 합침' : '합침') : '') : '<span class="fm-warn">폴더·서식표·암호가 바뀌어 곧 저절로 다시 합칩니다(1분 안팎)</span>');
       $('fmPwState').textContent = r.암호있음 ? '적어 둔 암호 있음' : '';
       fmDrawFiles();
-      if (L) fmShow({ 시트: { url: L.url, name: L.name }, 계좌: L.계좌, 거래줄: L.rows, 겹친줄: L.겹친줄, 확인: L.확인, 확인수: L.확인수, 새서식: L.새서식 });
+      if (L) fmShow({ 시트: { url: L.url, name: L.name }, 계좌: L.계좌, 거래줄: L.rows, 겹친줄: L.겹친줄, 확인: L.확인, 확인수: L.확인수, 새서식: L.새서식, 검토: r.검토 });
       else $('fmResult').innerHTML = '<div class="fm-sub">' + (r.최신 ? '이 사건 폴더에서 은행 거래내역 원시파일을 찾지 못했습니다(엑셀·PDF·사진·압축을 사건 폴더에 넣으면 저절로 합칩니다).' : '아직 합치지 않았습니다 — 곧 저절로 합칩니다.') + '</div>';
     }, function(err){ tb.innerHTML = '<tr><td colspan="3" class="fm-warn">' + esc(err.message) + '</td></tr>'; $('fmResult').innerHTML = ''; });
   }
@@ -57717,10 +57717,21 @@ function rwAiApplyEdit_(id, content){
       + (r.계좌 || []).map(function(a){ return '<tr><td>' + esc(a.기관) + '</td><td>' + esc(a.계좌) + '</td><td>' + esc(a.예금주) + '</td><td>' + esc(a.기간) + '</td><td class="num">' + won(a.줄) + '</td><td class="num">' + won(a.입금합계) + '</td><td class="num">' + won(a.출금합계) + '</td><td class="num">' + won(a.끝잔액) + '</td><td class="num' + (a.검산틀림 ? ' fm-warn' : '') + '">' + (a.검산틀림 || '') + '</td><td class="fm-sub" title="' + esc(a.참고 || '') + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(a.참고 || '') + '</td></tr>'; }).join('')
       + '</tbody></table></div>';
     if ((r.확인 || []).length) h += '<div class="fm-row fm-sub">확인할 것(앞 ' + Math.min(12, r.확인.length) + '개 — 전부는 시트 「확인할 것」 탭): ' + r.확인.slice(0, 12).map(function(c){ return '<span class="fm-warn">[' + esc(c.종류) + ']</span> ' + esc(c.파일) + ' — ' + esc(String(c.내용).slice(0, 80)); }).join(' / ') + '</div>';
+    h += fmReview(r.검토);
     FM.newFormats = r.새서식 || [];
     if (FM.newFormats.length) h += '<div id="fmNfHost"></div>';
     $('fmResult').innerHTML = h;
     if (FM.newFormats.length) fmDrawNewFormats();
+  }
+  // [2026.11.24] 2단계 — 사전증여·추정상속 선제 검토 요약(docs/_기록/금융거래_2단계_분석_계획서_20261124.html). 판단·소명은 시트의 ✎ 칸에서(이 창은 보기만)
+  function fmReview(v){
+    if (!v) return '<div class="fm-row fm-sub" style="margin-top:8px">2단계(사전증여·추정상속 검토)는 다음 틱에 저절로 셈합니다.</div>';
+    var z = v.짚을곳 || {}, h = '<div style="margin-top:10px;border-top:1px solid var(--line,#ddd);padding-top:8px"><div class="fm-row"><b>2단계 — 과세관청이 볼 것을 먼저 추림</b> <span class="fm-sub">' + esc(v.at || '') + ' · 상속개시일 ' + esc(v.상속개시일 || '없음 — 시트 「사건 기준」 탭에 적어 주세요') + '</span></div>';
+    h += '<div class="fm-row fm-sub">짚을 곳 — A 자료 빈틈 ' + won(z.A) + ' · B 추정상속 ' + won(z.B) + ' · C 사전증여 ' + won(z.C) + ' · D 큰돈 출처·행방 ' + won(z.D) + ' · 남은 것 ' + won(z.남은것) + ' · 받을 자료 ' + won(v.받을자료) + ' · 관련인 확정 ' + won((v.관련인 || {}).확정) + '/후보 ' + won((v.관련인 || {}).후보) + '</div>';
+    (v.추정상속 || []).forEach(function(s){ h += '<div class="fm-row fm-sub">추정상속(§15) ' + esc(s.기간) + ' 안 — 순인출 ' + won(s.순인출) + '원 · ' + (s.기준넘음 ? '<span class="fm-warn">기준 넘음</span>' : '기준 안 넘음') + ' · 소명 ' + won(s.소명액) + ' · 미소명 ' + won(s.미소명) + ' · 추정액 ' + won(s.추정액) + '원</div>'; });
+    (v.사전증여 || []).slice(0, 8).forEach(function(s){ h += '<div class="fm-row fm-sub">사전증여(§13) ' + esc(s.관련인) + '(' + esc(s.갈래) + ', ' + esc(s.합산기간) + ') — 나감 ' + won(s.나감) + ' · 들어옴 ' + won(s.들어옴) + ' · 순액 ' + won(s.순액) + '원</div>'; });
+    if ((v.큰것 || []).length) h += '<div class="fm-sub" style="margin:4px 0">짚을 곳 큰 것부터(전부는 시트 「짚을 곳」 탭):<ol style="margin:2px 0 0 18px;padding:0">' + v.큰것.slice(0, 8).map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></div>';
+    return h + '<div class="fm-row fm-sub">판단·소명액·관련인 갈래는 시트의 노란 칸(✎)에 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
   }
   // 처음 보는 서식 — 짐작한 짝을 보여 드리고 한 번 정해 받아 서식표에 더한다(다음 사건부터 묻지 않음)
   function fmDrawNewFormats(){

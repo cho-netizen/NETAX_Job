@@ -56,6 +56,8 @@ function finAutoRun_(started, DEADLINE) {
     if (r && r.more) q2.push(id); // 다 못 읽음 — 줄 끝에 다시(다른 사건도 차례가 오게)
     P.setProperty(FIN_AUTO_Q_, JSON.stringify(q2));
     if (!r || r.error) { lines.push('금융거래 합치기 ' + id + ' 실패: ' + String(r && r.error || '응답 없음').slice(0, 80)); continue; }
+    var rvl = finReviewLine_(r.검토); // [2026.11.24] 2단계(사전증여·추정상속 선제 검토)가 바뀌었으면 사건 기록부에 한 줄 — 밤 내부검토서 갱신이 이 줄·시트 변동을 보고 검토서를 고친다
+    if (rvl) { if (!(r.검토 && r.검토.error)) try { caseProcPatch_(id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '금융거래 2단계 검토', detail: rvl }); }); } catch (e) {} lines.push('금융거래 ' + id + ': ' + rvl); } // 실패는 틱 줄에만(사건 기록부에 매분 쌓이지 않게)
     if (r.nochange || r.empty) continue;
     if (r.more) { lines.push('금융거래 합치기 ' + id + ' 읽는 중 ' + r.읽음 + '/' + r.전체); continue; }
     var line = '자동으로 합침 — ' + (r.시트 && r.시트.name || '시트') + ' · 계좌 ' + r.계좌수 + ' · 거래 ' + r.거래줄 + '줄' + (r.확인수 ? ' · 확인할 것 ' + r.확인수 : '');
@@ -63,6 +65,16 @@ function finAutoRun_(started, DEADLINE) {
     lines.push('금융거래 ' + id + ': ' + line);
   }
   return lines.join(' / ');
+}
+
+// 2단계 결과(금융거래 서버 finRvRun_) → 기록 한 줄. 바뀐 것이 없거나 실패면 ''(실패는 줄로 남김)
+function finReviewLine_(rv) {
+  if (!rv) return '';
+  if (rv.error) return String(rv.error).slice(0, 160);
+  if (!rv.changed || !rv.요약) return '';
+  var v = rv.요약, z = v.짚을곳 || {}, won = function (n) { return Math.round(Number(n) || 0).toLocaleString('ko-KR'); };
+  return '2단계 검토 바뀜 — 짚을 곳 A' + (z.A || 0) + '·B' + (z.B || 0) + '·C' + (z.C || 0) + '·D' + (z.D || 0) + '(남은 ' + (z.남은것 || 0) + ')'
+    + (v.상속개시일 ? ' · ' + (v.추정상속 || []).map(function (s) { return '추정상속 ' + s.기간 + ' 순인출 ' + won(s.순인출) + (s.기준넘음 ? '(기준 넘음, 추정액 ' + won(s.추정액) + ')' : ''); }).join(' · ') : ' · 상속개시일 없음');
 }
 
 // ---------- 넥스 도구 bank_merge — 자동으로 합친 결과 읽기(명령 없음) ----------
@@ -74,6 +86,7 @@ function finProxyNex_(caseId, input) {
   var off = L.파일.filter(function (f) { return f.다룸 !== '합침' && !/^읽지 않음|^이 도구가 만든/.test(f.다룸); }).slice(0, 40).map(function (f) { return f.path + ' — ' + f.다룸; });
   if (!last) return { ok: true, 결과없음: true, 안내: L.최신 ? '이 사건 폴더에는 은행 거래내역 원시파일이 없습니다.' : '금융거래 합치기가 아직 돌지 않았습니다 — 1분 틱이 곧 저절로 합칩니다(명령 없음).', 파일: off };
   return { ok: true, 시트: { name: last.name, url: last.url }, 합친때: last.at, 최신: L.최신, 거래줄: last.rows, 겹친줄: last.겹친줄, 계좌: last.계좌, 확인수: last.확인수,
+    검토: L.검토 || null, // [2026.11.24] 2단계 요약 — 짚을 곳(A 자료 빈틈·B 추정상속·C 사전증여·D 큰돈) 수·큰 것부터·§15 1년/2년·§13 관련인별. 줄마다는 시트 탭 「짚을 곳」·「추정상속(§15)」·「사전증여(§13)」
     확인: (last.확인 || []).slice(0, 30), 새서식: last.새서식, 합친파일: used.slice(0, 60), 안넣은파일: off,
-    안내: (L.최신 ? '' : '폴더·서식표·암호가 바뀌어 곧 저절로 다시 합칩니다. ') + '거래를 볼 때는 시트(file_read)를 읽는다. 처음 보는 서식·암호는 세무사님이 💰 창에서 정한다.' };
+    안내: (L.최신 ? '' : '폴더·서식표·암호가 바뀌어 곧 저절로 다시 합칩니다. ') + '거래를 볼 때는 시트(file_read)를 읽는다. 처음 보는 서식·암호는 세무사님이 💰 창에서 정한다. 2단계(검토)는 GAS가 후보·합계만 낸 것 — 증여·대여·소명·특수관계 판단은 세무사님 칸(✎)의 값만 사실로 쓰고, 비어 있으면 [확인 필요]로 둔다.' };
 }
