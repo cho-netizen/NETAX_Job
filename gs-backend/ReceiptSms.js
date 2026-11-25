@@ -204,8 +204,25 @@ function receiptSms_savePhone_(name, clientId, phone) {
   return r ? r.msg : '';
 }
 
+// 시험 보내기 — 세무사님 "내 휴대폰으로 시험 한통 보내라"(11-25). 받는 번호는 서버가 정한다(세무사님 알림 번호 NX_REMINDER_PHONE,
+//  없으면 예약 알림 번호) — 고객에게는 갈 수 없다. 글 앞에 [시험]을 붙이고, 수금·고객관리·상담 기록·보냄 표시는 하나도 남기지 않는다
+//  (실제 고객 영수증으로 시험해도 그 고객 기록에 세무사님 번호가 들어가지 않게).
+function receiptSms_sendTest_(body) {
+  const to = String(PropertiesService.getScriptProperties().getProperty('NX_REMINDER_PHONE') || BOOKING_OWNER_PHONE || '').replace(/[^0-9]/g, '');
+  const text = '[시험] ' + String(body.text || '').trim();
+  const jpg = String(body.jpgBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
+  if (!/^01[016789]\d{7,8}$/.test(to)) return { success: false, message: '세무사님 알림 번호가 없습니다.' };
+  if (!jpg) return { success: false, message: '영수증 그림이 없습니다.' };
+  if (Math.floor(jpg.length * 3 / 4) > RSMS_MAX_IMAGE_BYTES_) return { success: false, message: '영수증 그림이 200KB를 넘습니다.' };
+  try { receiptSms_checkFile_(String(body.fileId || ''), receiptSms_folderIds_()); } catch (err) { return { success: false, message: err.message }; }
+  try { receiptSms_sendMms_(to, text.slice(0, 1000), jpg); }
+  catch (err) { smsFailLog_('현금영수증 사진 문자(시험)', err.message); return { success: false, message: '문자를 보내지 못했습니다: ' + err.message }; }
+  return { success: true, test: true, to: to.slice(0, 3) + '-****-' + to.slice(-4) };
+}
+
 // ③ 보내기 — 사진 문자 → (성공하면) 수금 기록·보냄 표시·상담 기록
 function receiptSms_send_(body) {
+  if (body.test) return receiptSms_sendTest_(body);
   const fileId = String(body.fileId || '').trim();
   const phone = String(body.phone || '').replace(/[^0-9]/g, '');
   const text = String(body.text || '').trim();
