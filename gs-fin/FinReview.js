@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25b';
+var FIN_RV_VER_ = '2026-11-25c';
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '피상속인 본인', '그 밖'];
@@ -235,8 +235,16 @@ function finRvAnalyze_(R, U, opt) {
   });
 
   // ④ 관련인 — 보관된 표(세무사님·가족 지도·후보) + 세무사님이 거래 칸에 적으신 상대
-  var rels = (U.rel || []).filter(function (x) { return !(x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && finRvNameLike_(x.이름, B.피상속인)); }) // [2026.11.24] 앞 판이 후보로 넣은 피상속인 본인 이름은 거둠(세무사님이 갈래를 고르신 것은 그대로)
-    .map(function (x) { return Object.assign({}, x, { 별칭: (x.별칭 || []).slice(), 계좌: (x.계좌 || []).slice() }); });
+  // [2026.11.25] 세무사님이 손대지 않은 「자주 오간 상대(GAS)」 후보는 셈마다 자료에서 새로 만든다 — 앞 판 후보를 들고 가면 한 셈에 200개씩
+  //  더 붙어 셈마다 늘었음(11-25 운영 시험: 9,808줄 사건이 둘째 셈에 974줄을 더 맞춤). 계좌번호 칸만 GAS가 적어 둔 것과 다르면 아래에서 되살림.
+  //  (앞 판이 후보로 넣은 피상속인 본인 이름은 되살리지 않음 — 11-24)
+  var gasUntouched = function (x) { return x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && !x.상속인 && !x.관계 && !(x.별칭 || []).length && !x.사업자번호 && !x.거래계약; };
+  var gasSetAside = [];
+  var rels = (U.rel || []).filter(function (x) {
+    if (x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && finRvNameLike_(x.이름, B.피상속인)) return false;
+    if (gasUntouched(x)) { gasSetAside.push(x); return false; }
+    return true;
+  }).map(function (x) { return Object.assign({}, x, { 별칭: (x.별칭 || []).slice(), 계좌: (x.계좌 || []).slice() }); });
   var relBy = function (name) { var n = finRvNorm_(name); return rels.filter(function (x) { return finRvNorm_(x.이름) === n; })[0] || null; };
   var lane = function (x) { return x ? (x.갈래 || x.짐작 || '') : ''; };
   R.forEach(function (r) {
@@ -271,8 +279,17 @@ function finRvAnalyze_(R, U, opt) {
       else if (t.some(function (s) { return s.n === nm; }) || tk.indexOf(nm) !== -1) hit = { sure: 3, how: '이름 같음' };
       else if (nm.length >= 2 && ng.some(function (s) { return (nm.length >= 3 && s.n.indexOf(nm) !== -1) || (nm.length === 2 && s.n.indexOf(nm) === 0); }) || tk.some(function (w) { return w.length >= 3 && nm.indexOf(w) === 0; })) hit = { sure: 1, how: '글자 일부(잘림·덧붙음)' };
       else if (/^[가-힣]{3}$/.test(nm) && tk.some(function (w) { return w === nm.slice(1); })) hit = { sure: 1, how: '성 빠짐' };
-      if (hit && (!bestM || hit.sure > bestM.sure || (hit.sure === bestM.sure && nm.length > bestM.x._nm.length))) bestM = { x: x, sure: hit.sure, how: hit.how };
+      // 같은 확실함·같은 길이면 목록 차례가 아니라 정해진 잣대로(11-25 운영: 「식비 쿠팡」 한 줄이 셈마다 쿠팡↔식비로 바뀜 — 첫 셈은 계산 차례, 다음 셈은 시트 탭 차례라서)
+      // ① 세무사님이 갈래를 고르신 대상자 ② 긴 이름 ③ 통장 글자에서 먼저 나온 이름 ④ 이름 글자 차례
+      if (hit) {
+        var pos = (function () { var p = finRvNorm_(r.txt || '').indexOf(nm); return p < 0 ? 1e9 : p; })();
+        var key = [hit.sure, x.갈래 ? 1 : 0, nm.length, -pos];
+        var better = !bestM;
+        if (!better) { for (var ki = 0; ki < key.length; ki++) { if (key[ki] !== bestM.key[ki]) { better = key[ki] > bestM.key[ki]; break; } if (ki === key.length - 1) better = nm < bestM.x._nm; } }
+        if (better) bestM = { x: x, sure: hit.sure, how: hit.how, key: key };
+      }
     });
+    if (bestM) delete bestM.key;
     return bestM;
   };
   R.forEach(function (r) { r.m = match(r); });
@@ -299,6 +316,15 @@ function finRvAnalyze_(R, U, opt) {
     if (finRvNameLike_(w, B.피상속인)) return; // [2026.11.24] 피상속인 본인 이름(「○○○ 납부출금」처럼 은행이 예금주 이름을 적은 자동납부)은 관련인 후보가 아님
     var guess = /카드|보험|생명|화재|손해|증권|투자|은행|금고|신협|저축|캐피탈|공제|적금|예금|펀드|신탁|뱅크|페이/.test(w) ? '금융기관·보험' : /병원|의원|요양|약국|치과|한의|메디|의료/.test(w) ? '병원·요양' : /세무서|구청|시청|군청|국세|지방세|한전|전기|가스|수도|관리비|통신|KT|SKT|LGU|건강보험|국민연금|지로/.test(w) ? '공과금·세금' : /급여|보수|수당|휴가비|성과급|퇴직|연금/.test(w) ? '그 밖 거래처' : '';
     rels.push({ 이름: w, 갈래: '', 짐작: guess, 상속인: '', 관계: '', 별칭: [], 계좌: Object.keys(g.dg).slice(0, 5), 출처: '자주 오간 상대(GAS)', 상태: '후보 — 갈래를 골라 주세요' });
+    newCand++;
+  });
+  // 셈 머리에서 거둔 후보 가운데 세무사님이 계좌번호를 적으신 것(GAS가 이번에 적을 계좌와 다름)은 되살림
+  gasSetAside.forEach(function (x) {
+    var g = grp[x.이름] || grp[finRvNorm_(x.이름)], own = relBy(x.이름);
+    var extra = (x.계좌 || []).filter(function (a) { return !(g && g.dg[a]) && !(own && (own.계좌 || []).indexOf(a) !== -1); });
+    if (!extra.length) return;
+    if (own) { extra.forEach(function (a) { own.계좌.push(a); }); }
+    else rels.push(Object.assign({}, x, { 별칭: [], 계좌: (x.계좌 || []).slice() }));
     newCand++;
   });
   if (newCand) { prep(); R.forEach(function (r) { if (!r.party && r.own && !r.inner) { var m = match(r); if (m) { r.m = m; r.party = m.x; } } }); }
