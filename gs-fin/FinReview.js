@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25i';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
+var FIN_RV_VER_ = '2026-11-25j';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90, 경조한번: 1000000 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
@@ -652,7 +652,8 @@ function finRvHarvest_(ss, U) {
   if (rel && rel.getLastRow() > 1) {
     var RV = rel.getDataRange().getValues(), RI = finRvHdrIdx_(RV[0]), cur = {};
     U.rel.forEach(function (x) { cur[finRvNorm_(x.이름)] = x; });
-    var g = function (r, h) { return RI[h] === undefined ? undefined : String(r[RI[h]] == null ? '' : r[RI[h]]).trim(); };
+    // 11-25 GAS가 채우는 칸(이름·상호·통장 글자·계좌번호·관련 거래·계약)은 ✎를 뗐음 — 옛 이름(✎) 시트도 읽음
+    var g = function (r, h) { if (RI[h] === undefined) { var h2 = /✎$/.test(h) ? h.replace(/\s*✎$/, '') : h + ' ✎'; if (RI[h2] !== undefined) h = h2; } return RI[h] === undefined ? undefined : String(r[RI[h]] == null ? '' : r[RI[h]]).trim(); };
     var keep = [];
     RV.slice(1).forEach(function (r) {
       var name = g(r, '이름·상호 ✎'); if (!name) return;
@@ -739,7 +740,7 @@ function finRvTab_(ss, title, hdr, data, o) {
   // 머리 색 — 거래 탭과 같은 뜻: 세무사님 칸(✎) 노랑 · GAS 답안·근거 파랑(FinRun.js FIN_HDR_CLR_)
   hdr.forEach(function (h, i) {
     if (/✎$/.test(h)) { sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.입력); sh.getRange(2, i + 1, Math.max(1, vals.length - 1), 1).setBackground('#fffbea'); }
-    else if (/\(GAS\)$|^답안 근거$/.test(h)) sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.분석);
+    else if (/\(GAS\)$|^답안 근거$/.test(h) || (o.gas || []).indexOf(h) !== -1) sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.분석);   // o.gas: GAS가 채우고 고칠 수도 있는 칸 — 노랑 아님(11-25 "이름상호는 왜 노란색인가?")
   });
   (o.lists || []).forEach(function (L) { var rule = SpreadsheetApp.newDataValidation().requireValueInList(L.list, true).setAllowInvalid(true).build(); sh.getRange(2, L.col + 1, Math.max(1, vals.length - 1) + 200, 1).setDataValidation(rule); });
   if (o.note) sh.getRange(1, 1).setNote(o.note);
