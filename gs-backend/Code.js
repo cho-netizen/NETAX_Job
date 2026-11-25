@@ -4650,6 +4650,8 @@ const JOB_PROPOSE_ACTIONS_ = {
   booking_result: { gas: 'booking_set_result', label: '예약 결과 적기(상담완료·노쇼·취소·일정변경 — 문자는 sms:true일 때만)', required: ['rowIndex', 'expectName', 'result'] },
   booking_dismiss_candidate: { gas: 'booking_dismiss_candidate', label: '예약의 연결 후보에서 이 사건 빼기(같은 건 아님)', required: ['rowIndex', 'caseId'] },
   client_sms: { gas: 'client_send_sms', label: '고객에게 문자 발송', required: ['고객ID', 'message'] },
+  // [2026-11-25] 현금영수증 사진 문자 — 그림은 화면이 PDF에서 만들므로 [실행]은 미리 보기 창을 연다(보내기는 세무사님이 그 창에서). receiptsms.html·ReceiptSms.js
+  receipt_sms: { gas: 'client:receiptSms', label: '현금영수증 사진 문자 창 열기(보내기는 세무사님이 미리 보기에서)', required: [] },
   portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
   checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
   // [2026.11.12 2차 ② 계획서 ①(세무사님 "권장대로")] 신고서식 PDF — 서식은 화면이 그려 PDF로 만드는 구조라 넥스가 서버에서 못 만든다. 넥스가 계산·대조까지 끝내고 카드를 띄우면 세무사님 [실행] 한 번에 화면이 세액계산 화면을 열어 필수 서식 PDF를 보고서_내부에 저장(사건처리 상자 '서식 대조'와 같은 길)
@@ -4830,6 +4832,7 @@ const JOB_AI_TOOLS_ = [
       + 'client_sms{고객ID,message,caseId(선택: 이 문자가 걸린 사건 — 사건 처리일지에도 남음)}(고객ID는 list_clients로 확인; 보낸 문자는 상담 기록에 남고, 세무사님이 카드에서 글을 고쳐 보낼 수 있다) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
+      + 'receipt_sms{fileId(선택),고객명(선택)}(「1 상담사건」 폴더의 현금영수증 PDF를 고객에게 사진 문자로 보내는 창 — fileId를 주면 그 영수증 미리 보기로 바로 열림. 보내는 순간 수금관리에 적히고 받는 번호는 고객관리에 남는다. 단순 상담 고객에게 영수증을 보내 달라시면 이것) / '
       + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
       + 'print_pdf{caseId}(저장된 세액계산 결과로 필수 신고서식 PDF를 사건 폴더 보고서에 저장 — 서식은 화면이 만들므로 세무사님이 [실행]을 눌러야 하고 세액계산 화면이 잠시 열린다. 먼저 case_ledger do=calc 또는 calc_scenario로 계산을 저장하고 forms_check로 빈 칸이 없는지 본 뒤 제안하라) / '
       + '(장부·질문·계산·읽을 목록은 제안 길이 없다 — 사건 도구 case_ledger·calc_scenario·set_read_scope로 바로 한다)',
@@ -5495,6 +5498,10 @@ function dispatchClientAction0_(body) {
   }
   if (body.action === 'listGeneralMemos') {
     return jsonResponse(handleListGeneralMemos(body));
+  }
+  // [2026-11-25] 현금영수증 사진 문자(ReceiptSms.js) — 「1 상담사건」 영수증 목록·준비·보내기
+  if (body.action === 'receipt_sms_list' || body.action === 'receipt_sms_prepare' || body.action === 'receipt_sms_send') {
+    return jsonResponse(receiptSms_doPost_(body));
   }
   if (body.action === 'scan_cash_receipts') {
     return jsonResponse(handleScanCashReceipts(body));
@@ -17898,11 +17905,25 @@ function runCashReceiptScan_() {
   Object.keys(groups).forEach(function (key) {
     const group = groups[key];
     const primary = group[0];
-    let succeeded = false;
     try {
       // 드라이브 복사(OCR) 호출이 짧은 시간에 몰리면 "User rate limit exceeded"가 난다 — 파일 사이 간격을 둔다.
       Utilities.sleep(1500);
       const extracted = extractReceiptAmountViaOCR_(primary.file.id);
+      receipt_logGroup_(group, extracted, result);
+    } catch (err) {
+      result.errors.push(primary.file.name + ': ' + err.message);
+    }
+  });
+
+  return result;
+}
+
+// [2026-11-25] 세무사님 "현금영수증을 발급하여 폴더에 저장하고 나서 문자메시지를 보내주어야 하는데, 수금관리에는 바로 보이지 않잖아?" —
+// 영수증 한 묶음(같은 이름의 PDF·그림)을 수금에 적는 부분을 위 훑기에서 떼어 냈다. 밤 2시·대시보드 「확인」 훑기와
+// 영수증 사진 문자 보내기(ReceiptSms.js)가 같은 판정·같은 「기록함」 표시로 적으므로, 어느 쪽이 먼저 적어도 다른 쪽은 다시 세지 않는다.
+// 돌려주는 값: 'added'(수금에 적음) · 'not_office'(다른 사업자 발행) · 'unknown'(발행처를 못 읽음)
+function receipt_logGroup_(group, extracted, result) {
+  const primary = group[0];
       // [2026-11-19] 세무사님 "○○○ 상속세 신고사건에서 감정평가수수료 현금영수증이 우리사업장의 수금관리에 인식이 되어
       // 있네. 이런 문제가 생기지 않도록 수정하라" — 사건 폴더에는 고객이 남(감정평가법인·법무사 등)에게 낸 비용의 현금영수증
       // (공제·필요경비 증빙)도 들어 있는데, 파일 이름에 「현금영수증」만 있으면 발행처를 보지 않고 수금으로 기록했다
@@ -17918,7 +17939,7 @@ function runCashReceiptScan_() {
         group.forEach(function (item) {
           try { Drive.Files.update({ appProperties: { netax_receipt_logged: extracted.issuer === 'other' ? 'not_office' : 'unknown' } }, item.file.id); } catch (err) { /* 표시 실패하면 다음에 다시 읽을 뿐 */ }
         });
-        return;
+        return extracted.issuer === 'other' ? 'not_office' : 'unknown';
       }
       if (!extracted.confident) result.needCheck++;
       // [2026.09.17 버그수정] "현금영수증이 고객에만 연결되다니 말이 안 된다 — 사건에 먼저
@@ -17938,18 +17959,10 @@ function runCashReceiptScan_() {
       });
       result.added++;
       if (primary.caseInfo.noCase) { result.noCase++; if (result.noCaseNames.indexOf(primary.caseInfo.고객명) === -1) result.noCaseNames.push(primary.caseInfo.고객명); }
-      succeeded = true;
-    } catch (err) {
-      result.errors.push(primary.file.name + ': ' + err.message);
-    }
-    if (succeeded) {
       group.forEach(function (item) {
         try { Drive.Files.update({ appProperties: { netax_receipt_logged: 'true' } }, item.file.id); } catch (err) { /* 표시 실패해도 치명적이지 않음 */ }
       });
-    }
-  });
-
-  return result;
+      return 'added';
 }
 
 // [2026.09 신규] 대시보드의 "지금 확인" 버튼에서 호출 — 스캔을 즉시 실행하고 결과를 그대로

@@ -1877,6 +1877,13 @@
         finish('서식 PDF 만들기를 시작했습니다 — 아래 상자에서 진행을 보세요(세액계산 화면이 잠시 열렸다 돌아옵니다).', true);
         return;
       }
+      // [2026-11-25] 현금영수증 사진 문자 — 영수증 그림은 화면이 PDF에서 만들므로 넥스는 창만 연다(보내기는 세무사님이 미리 보기에서 누름)
+      if (a.gasAction === 'client:receiptSms'){
+        if (typeof nxReceiptSmsOpen_ !== 'function'){ finish('영수증 문자 창을 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', false); return; }
+        nxReceiptSmsOpen_(a.payload || {});
+        finish('영수증 문자 창을 열었습니다 — 미리 보기를 보시고 [보내기]를 누르세요.', true);
+        return;
+      }
       if (a.gasAction === 'client:memoSave'){
         if (typeof openSaveDialog === 'function'){ openSaveDialog((a.payload && a.payload.content) || '', null); finish('메모 저장 창을 열었습니다 — 저장 위치를 골라 저장하세요.', true); }
         else finish('메모 저장 창을 열 수 없습니다.', false);

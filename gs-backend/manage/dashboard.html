@@ -61,7 +61,8 @@
     <div class="card">
       <!-- [2026-11-13] 세무사님 "<최근 수금내역>을 <최근수금>으로 고치고, 역시 <오늘부터 전>이라는 문구도 삭제하자" -->
       <h3>최근수금<span class="dash-range dash-range-h">        <span class="dash-step"><button type="button" data-step-for="dashPayBefore" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 전까지의 수금" type="number" id="dashPayBefore" min="0" max="99" value="30"><button type="button" data-step-for="dashPayBefore" data-step="1" title="하루 늘리기">+</button></span><!-- [2026-11-13] 세무사님 "최근수금에서도 날짜 옆에 <수금>이라는 문구를 삭제하자" -->      </span>
-        <span class="h-act"><button type="button" id="dashScanReceiptsBtn" class="ghost-btn sm" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다">확인</button></span>
+        <!-- [2026-11-25] 📱 영수증 문자 — 「1 상담사건」 영수증을 사진 문자로 보내고 바로 수금에 적는다(receiptsms.html) -->
+        <span class="h-act"><button type="button" class="ghost-btn sm" onclick="nxReceiptSmsOpen_()" title="「1 상담사건」 폴더의 현금영수증을 고객 휴대폰에 사진 문자로 보내고, 보내는 순간 수금에 적습니다">📱 영수증 문자</button> <button type="button" id="dashScanReceiptsBtn" class="ghost-btn sm" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다">확인</button></span>
       </h3>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>

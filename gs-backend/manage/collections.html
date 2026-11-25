@@ -23,6 +23,8 @@
     </span>
     <span style="display:inline-flex; gap:6px; margin-left:auto; flex-wrap:wrap;">
       <button type="button" id="btnColNew" class="save-btn">+ 수금</button>
+      <!-- [2026-11-25] 📱 영수증 문자(receiptsms.html) — 저장한 바로 그때 보낼 수 있게 수금 줄이 아니라 폴더의 영수증 파일에서 시작한다 -->
+      <button type="button" class="ghost-btn" onclick="nxReceiptSmsOpen_()" title="「1 상담사건」 폴더의 현금영수증을 고객 휴대폰에 사진 문자로 보내고, 보내는 순간 수금에 적습니다">📱 영수증 문자</button>
       <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더에 내려받아 둔 홈택스 매출내역 엑셀을 읽어, 아직 목록에 없는 현금영수증만 수금 내역에 더합니다(밤에도 한 번 자동으로 돕니다)">홈택스 매출내역</button>
       <button type="button" id="btnColStats" class="ghost-btn" title="지금 걸린 조건(고객명·기간·미연결·종류) 그대로 월별·분기별·반기별·연도별 합계를 봅니다">기간별 통계</button>
     </span>
