@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-24 08:47 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-24 15:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57730,8 +57730,12 @@ function rwAiApplyEdit_(id, content){
     h += '<div class="fm-row fm-sub">짚을 곳 — A 자료 빈틈 ' + won(z.A) + ' · B 추정상속 ' + won(z.B) + ' · C 사전증여 ' + won(z.C) + ' · D 큰돈 출처·행방 ' + won(z.D) + ' · 남은 것 ' + won(z.남은것) + ' · 받을 자료 ' + won(v.받을자료) + ' · 관련인 확정 ' + won((v.관련인 || {}).확정) + '/후보 ' + won((v.관련인 || {}).후보) + '</div>';
     (v.추정상속 || []).forEach(function(s){ h += '<div class="fm-row fm-sub">추정상속(§15) ' + esc(s.기간) + ' 안 — 순인출 ' + won(s.순인출) + '원 · ' + (s.기준넘음 ? '<span class="fm-warn">기준 넘음</span>' : '기준 안 넘음') + ' · 소명 ' + won(s.소명액) + ' · 미소명 ' + won(s.미소명) + ' · 추정액 ' + won(s.추정액) + '원</div>'; });
     (v.사전증여 || []).slice(0, 8).forEach(function(s){ h += '<div class="fm-row fm-sub">사전증여(§13) ' + esc(s.관련인) + '(' + esc(s.갈래) + ', ' + esc(s.합산기간) + ') — 나감 ' + won(s.나감) + ' · 들어옴 ' + won(s.들어옴) + ' · 순액 ' + won(s.순액) + '원</div>'; });
+    // [2026.11.25] 3단계 — 증감분석·분석대상자·보고서
+    var tg = v.분석대상자 || null; if (tg) h += '<div class="fm-row fm-sub">분석대상자 — ① 상속인·특수관계자 ' + won(tg.상속인특수관계자) + ' · ② 주요 거래대상자 ' + won(tg.주요거래대상자) + ' · ③ 살펴볼 ' + won(tg.살펴볼) + ' (시트 「분석대상자」 탭)</div>';
+    if ((v.크게줄어든구간 || []).length) h += '<div class="fm-row fm-sub">예금이 크게 줄어든 구간 — ' + v.크게줄어든구간.map(esc).join(' · ') + ' (시트 「증감분석」 탭)</div>';
+    if (v.보고서 && v.보고서.url) h += '<div class="fm-row fm-sub">보고서 — <a href="' + esc(v.보고서.url) + '" target="_blank" rel="noopener">' + esc(v.보고서.name) + '</a> (GAS 칸은 저절로 · 의견은 그 아래에)</div>';
     if ((v.큰것 || []).length) h += '<div class="fm-sub" style="margin:4px 0">짚을 곳 큰 것부터(전부는 시트 「짚을 곳」 탭):<ol style="margin:2px 0 0 18px;padding:0">' + v.큰것.slice(0, 8).map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></div>';
-    return h + '<div class="fm-row fm-sub">판단·소명액·관련인 갈래는 시트의 노란 칸(✎)에 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
+    return h + '<div class="fm-row fm-sub">판단·소명액·분석대상자 갈래는 시트의 노란 칸(✎)에 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
   }
   // 처음 보는 서식 — 짐작한 짝을 보여 드리고 한 번 정해 받아 서식표에 더한다(다음 사건부터 묻지 않음)
   function fmDrawNewFormats(){
