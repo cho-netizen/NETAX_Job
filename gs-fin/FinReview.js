@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25c';
+var FIN_RV_VER_ = '2026-11-25d';
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '피상속인 본인', '그 밖'];
@@ -235,16 +235,8 @@ function finRvAnalyze_(R, U, opt) {
   });
 
   // ④ 관련인 — 보관된 표(세무사님·가족 지도·후보) + 세무사님이 거래 칸에 적으신 상대
-  // [2026.11.25] 세무사님이 손대지 않은 「자주 오간 상대(GAS)」 후보는 셈마다 자료에서 새로 만든다 — 앞 판 후보를 들고 가면 한 셈에 200개씩
-  //  더 붙어 셈마다 늘었음(11-25 운영 시험: 9,808줄 사건이 둘째 셈에 974줄을 더 맞춤). 계좌번호 칸만 GAS가 적어 둔 것과 다르면 아래에서 되살림.
-  //  (앞 판이 후보로 넣은 피상속인 본인 이름은 되살리지 않음 — 11-24)
-  var gasUntouched = function (x) { return x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && !x.상속인 && !x.관계 && !(x.별칭 || []).length && !x.사업자번호 && !x.거래계약; };
-  var gasSetAside = [];
-  var rels = (U.rel || []).filter(function (x) {
-    if (x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && finRvNameLike_(x.이름, B.피상속인)) return false;
-    if (gasUntouched(x)) { gasSetAside.push(x); return false; }
-    return true;
-  }).map(function (x) { return Object.assign({}, x, { 별칭: (x.별칭 || []).slice(), 계좌: (x.계좌 || []).slice() }); });
+  var rels = (U.rel || []).filter(function (x) { return !(x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && finRvNameLike_(x.이름, B.피상속인)); }) // [2026.11.24] 앞 판이 후보로 넣은 피상속인 본인 이름은 거둠(세무사님이 갈래를 고르신 것은 그대로)
+    .map(function (x) { return Object.assign({}, x, { 별칭: (x.별칭 || []).slice(), 계좌: (x.계좌 || []).slice() }); });
   var relBy = function (name) { var n = finRvNorm_(name); return rels.filter(function (x) { return finRvNorm_(x.이름) === n; })[0] || null; };
   var lane = function (x) { return x ? (x.갈래 || x.짐작 || '') : ''; };
   R.forEach(function (r) {
@@ -292,25 +284,35 @@ function finRvAnalyze_(R, U, opt) {
     if (bestM) delete bestM.key;
     return bestM;
   };
-  R.forEach(function (r) { r.m = match(r); });
-  // 같은 상대 계좌로 오간 다른 줄을 세무사님이 정하셨으면 그 상대가 후보
+  // 줄 짝 맞추기 한 바퀴(이름 → 세무사님이 정하신 같은 계좌 → 세무사님 칸 → 계약서 금액·날짜) — 후보를 더하면 처음부터 다시 돈다
   var byAcctUser = {};
   R.forEach(function (r) { var u = urow(r), dg = String(r.상대계좌 || '').replace(/[^\d]/g, ''); if (u.상대 && dg.length >= 8) byAcctUser[dg] = u.상대; });
-  R.forEach(function (r) { var dg = String(r.상대계좌 || '').replace(/[^\d]/g, ''); if (!r.m && r.own && !r.inner && dg.length >= 8 && byAcctUser[dg]) { var x = relBy(byAcctUser[dg]); if (x) r.m = { x: x, sure: 1, how: '같은 상대 계좌의 다른 줄을 정하심' }; } });
-  // 최종 상대 = 세무사님 칸 > GAS 맞춤
-  R.forEach(function (r) { var u = urow(r); r.party = u.상대 ? relBy(u.상대) : r.m ? r.m.x : null; r.partyUser = !!u.상대; });
-  // [2026.11.25] 계약서(임대차·매매)에서 찾은 대상자 — 상대 글자로 못 맞춘 줄을 계약 금액·날짜로
-  var byContract = finTgContractMatch_(R, rels);
+  var byContract = 0;
+  var matchAll = function () {
+    R.forEach(function (r) { r.m = match(r); });
+    // 같은 상대 계좌로 오간 다른 줄을 세무사님이 정하셨으면 그 상대가 후보
+    R.forEach(function (r) { var dg = String(r.상대계좌 || '').replace(/[^\d]/g, ''); if (!r.m && r.own && !r.inner && dg.length >= 8 && byAcctUser[dg]) { var x = relBy(byAcctUser[dg]); if (x) r.m = { x: x, sure: 1, how: '같은 상대 계좌의 다른 줄을 정하심' }; } });
+    // 최종 상대 = 세무사님 칸 > GAS 맞춤
+    R.forEach(function (r) { var u = urow(r); r.party = u.상대 ? relBy(u.상대) : r.m ? r.m.x : null; r.partyUser = !!u.상대; });
+    // [2026.11.25] 계약서(임대차·매매)에서 찾은 대상자 — 상대 글자로 못 맞춘 줄을 계약 금액·날짜로
+    byContract = finTgContractMatch_(R, rels);
+  };
+  matchAll();
 
   // ⑤ 자주 오간 상대 — 관련인 표에 없는 글자를 모아 후보로(세무사님은 갈래만 고르심)
   var grp = {};
   R.forEach(function (r) {
-    if (!r.own || r.inner || r.self || r.party || !r.best || !r.krw) return;
+    // 글자 일부만 맞은 GAS 짐작 대상자(계약서 글자인식이 이름 끝에 글자를 덧붙인 것 등)의 줄도 센다 — 통장 글자 그대로의 이름이 후보가 되어 다시 맞출 때 이김(11-25 운영)
+    //  세무사님이 갈래를 고르셨거나 가족 지도로 들어온 대상자·세무사님 칸으로 정하신 줄은 그대로
+    var weak = r.party && !r.partyUser && r.m && r.m.x === r.party && r.m.sure < 3 && /글자 일부|성 빠짐/.test(r.m.how || '') && !r.party.갈래 && !FIN_RV_FAMILY_.test(r.party.짐작 || '') && /^계약서/.test(r.party.출처 || '');
+    if (!r.own || r.inner || r.self || (r.party && !weak) || !r.best || !r.krw) return;
     var g = grp[r.best.n] || (grp[r.best.n] = { raw: r.best.raw, n: 0, sum: 0, dg: {} });
     g.n++; g.sum += r.amt; var dg = String(r.상대계좌 || ''); if (acctOne(dg)) g.dg[dg] = 1;
   });
   var newCand = 0;
-  Object.keys(grp).filter(function (k) { return grp[k].n >= T.자주횟수 || grp[k].sum >= T.자주합계; }).sort(function (a, b) { return grp[b].sum - grp[a].sum; }).slice(0, 200).forEach(function (k) {
+  // [2026.11.25] 「자주 오간 상대」 후보는 모두 합쳐 200개까지 — 앞 판 후보도 센다(예전엔 셈마다 200개씩 더 붙어 셈마다 늘었음: 11-25 운영, 9,808줄 사건)
+  var gasHave = rels.filter(function (x) { return x.출처 === '자주 오간 상대(GAS)'; }).length;
+  Object.keys(grp).filter(function (k) { return grp[k].n >= T.자주횟수 || grp[k].sum >= T.자주합계; }).sort(function (a, b) { return grp[b].sum - grp[a].sum || (a < b ? -1 : a > b ? 1 : 0); }).filter(function (k) { return !relBy(grp[k].raw) && !finRvNameLike_(grp[k].raw, B.피상속인); }).slice(0, Math.max(0, 200 - gasHave)).forEach(function (k) {
     if (relBy(grp[k].raw)) return;
     var g = grp[k], w = g.raw;
     if (finRvNameLike_(w, B.피상속인)) return; // [2026.11.24] 피상속인 본인 이름(「○○○ 납부출금」처럼 은행이 예금주 이름을 적은 자동납부)은 관련인 후보가 아님
@@ -318,16 +320,8 @@ function finRvAnalyze_(R, U, opt) {
     rels.push({ 이름: w, 갈래: '', 짐작: guess, 상속인: '', 관계: '', 별칭: [], 계좌: Object.keys(g.dg).slice(0, 5), 출처: '자주 오간 상대(GAS)', 상태: '후보 — 갈래를 골라 주세요' });
     newCand++;
   });
-  // 셈 머리에서 거둔 후보 가운데 세무사님이 계좌번호를 적으신 것(GAS가 이번에 적을 계좌와 다름)은 되살림
-  gasSetAside.forEach(function (x) {
-    var g = grp[x.이름] || grp[finRvNorm_(x.이름)], own = relBy(x.이름);
-    var extra = (x.계좌 || []).filter(function (a) { return !(g && g.dg[a]) && !(own && (own.계좌 || []).indexOf(a) !== -1); });
-    if (!extra.length) return;
-    if (own) { extra.forEach(function (a) { own.계좌.push(a); }); }
-    else rels.push(Object.assign({}, x, { 별칭: [], 계좌: (x.계좌 || []).slice() }));
-    newCand++;
-  });
-  if (newCand) { prep(); R.forEach(function (r) { if (!r.party && r.own && !r.inner) { var m = match(r); if (m) { r.m = m; r.party = m.x; } } }); }
+  // 후보를 더했으면 짝 맞추기를 처음부터 다시 — 새 후보와 이름이 꼭 같은 줄이 글자 일부만 맞은 다른 대상자에게 가 있지 않게(다음 셈과 결과가 같도록)
+  if (newCand) { prep(); matchAll(); }
   // [2026.11.25] 다른 사건에서 배운 갈래(상호·기관) — 세무사님 갈래·가족 지도 짐작이 없는 대상자만
   var learnUsed = { lanes: [], natures: 0, natureRows: [], flags: 0 };
   finLnApplyLanes_(rels, opt.learn); learnUsed.lanes = rels.filter(function (x) { return x.짐작배움 && !x.갈래; }).map(function (x) { return x.이름 + '→' + x.짐작; });
