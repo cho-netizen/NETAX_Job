@@ -536,8 +536,12 @@
           : (res.added ? res.added + '건 새로 기록했습니다.' : '새로 인식된 현금영수증이 없습니다.');
         // [2026.10.29] 상담 사건 없이 "1 상담사건" 폴더에 저장한 영수증은 고객에만 연결해 기록한다(사건 미연결) — 그 사실을 바로 알린다
         if (res.noCase) msg += ' 그중 ' + res.noCase + '건(' + (res.noCaseNames || []).join(', ') + ')은 사건 미연결로 기록했습니다 — 수금 화면에서 "사건 미연결"을 눌러 사건을 연결할 수 있습니다.';
+        // [2026-11-19] 감정평가법인·법무사 등 다른 사업자가 발행한 영수증(고객 비용 증빙)은 수금으로 넣지 않는다 — 넣지 않은 것을 알린다
+        if (res.movedOut) msg += ' 예전에 수금으로 잘못 들어간 다른 사업자 영수증 ' + res.movedOut + '줄을 수금 기록에서 빼 보관 시트(ConsultLog_빼낸줄)로 옮겼습니다.';
+        var nOff = (res.notOffice || []).length;
+        if (nOff) msg += ' 이 사무소 발행이 아닌 영수증 ' + nOff + '건은 수금에 넣지 않았습니다(' + res.notOffice.slice(0, 3).map(function(x){ return x.고객명 + ' ' + x.파일 + ' — ' + x.까닭; }).join(' / ') + (nOff > 3 ? ' 외 ' + (nOff - 3) + '건' : '') + ').';
         toast(msg);
-        if (res.added) loadDashPayments();
+        if (res.added || res.movedOut) loadDashPayments();
       }).catch(function(e){
         toast('확인 실패: ' + nxErrText_(e));
       }).finally(function(){

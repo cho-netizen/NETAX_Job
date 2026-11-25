@@ -17817,8 +17817,51 @@ function findConsultNoCaseInfo_(fileId, fileName, consultFolderId) {
 // [2026.10.09] AI(Sonnet) 대신 구글 드라이브 무료 OCR + 규칙 판독(parseReceiptText_)으로 바꿨다 — 비용 0원.
 // 실제 영수증 64장 시험: 56장 검산 일치로 확정, Sonnet이 읽었던 18장과 전부 같음(Haiku가 틀린 32,354,500원도 맞춤),
 // 확정 못한 5장은 금액을 비우고 "금액 확인 필요"로 기록(틀린 숫자를 넣지 않음). 세무사님 원칙: 시스템 루틴은 토큰 0.
+// [2026-11-19] 위 고침 전에 이미 수금으로 잘못 들어간 줄 — 수금 기록 131줄을 영수증 원본과 하나씩 맞대어 찾은
+// 이 사무소 발행이 아닌 11줄(합 53,444,000원). 세무사님 "고치고 커밋푸시배포하라". 지우지 않고 「ConsultLog_빼낸줄」
+// 시트로 옮긴다(되돌릴 때는 그 줄을 ConsultLog로 다시 붙이면 된다). 한 번만 돈다(스크립트 속성으로 표시).
+const RECEIPT_NOT_OFFICE_LOG_IDS_20261119_ = {
+  '7f23e978-e989-4996-82ba-6011a2e828ca': '상속 사건 — 정안감정평가법인 386-88-00464 감정평가수수료 900,000',
+  'b49b0d53-47fd-43dd-9a03-c410b5f4a2da': '사건 ㄱ — 감정평가 604-88-01041 935,000',
+  'f1c79c71-6cfb-4c60-afc9-400a571925bd': '사건 ㄱ — 감정평가 604-88-01041 935,000(같은 파일 두 번째 줄)',
+  '76d7881f-c0a3-411b-8297-a42e79da1adb': '수용 사건 — 법무법인 고구려 664-87-00519 수용재결 1차 32,354,500',
+  '3f852271-d8dc-4d48-b02c-2a9a16da330d': '수용 사건 — 법무법인 고구려 664-87-00519 수용재결 2차 108,200',
+  'd44f9df9-6657-4b1c-914d-38743ab067b1': '수용 사건 — 법무법인 고구려 664-87-00519 이의재결 1차 16,726,000',
+  'f68ec865-07cd-418f-a1eb-e56aa6d3f8af': '수용 사건 — 법무법인 고구려 664-87-00519 이의재결 2차 1,243,300',
+  '2b311ebd-8fb3-47fa-bd09-03c3bfe7e739': '사건 ㄴ — 삼선법무사사무소 662-17-00562 취득 법무사비용 242,000',
+  '3d752a5f-d4b2-4b56-b0c2-c28d0e436c52': '사건 ㄷ — 영수증이 아닌 손글씨 메모 사진(금액 없음)',
+  'd5e26dac-6eee-4737-890b-7ca04ce2eb66': '가상양도4 — 시험 사건 중개수수료 영수증(금액 없음)',
+  '4925f7a0-f3c3-4ff9-9c60-71b24aa382d5': '가상양도3 — 시험 사건 중개수수료 영수증(금액 없음)'
+};
+function client_moveOutNotOfficeReceiptLogs_20261119_() {
+  const KEY = 'receipt_not_office_moved_20261119';
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(KEY)) return 0;
+  return withLockStrict_(15000, function () {
+    if (props.getProperty(KEY)) return 0;
+    const sheets = client_getSheets_();
+    const data = sheets.log.getDataRange().getValues();
+    const col = client_colMap_(data[0], CONSULT_HEADERS);
+    const out = client_ensureSheet_(sheets.ss, 'ConsultLog_빼낸줄', data[0].concat(['뺀 까닭', '뺀 날']));
+    const now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+    const rows = [];
+    for (let i = 1; i < data.length; i++) {
+      const why = RECEIPT_NOT_OFFICE_LOG_IDS_20261119_[String(data[i][col.id] || '').trim()];
+      if (why) rows.push({ i: i, why: why });
+    }
+    // 보관 시트에 먼저 다 적은 뒤 원래 줄을 아래에서부터 지운다 — 중간에 멈춰도 줄을 잃지 않는다
+    rows.forEach(function (r) { out.appendRow(data[r.i].concat(['이 사무소 발행이 아닌 영수증 — ' + r.why, now])); });
+    SpreadsheetApp.flush();
+    rows.slice().reverse().forEach(function (r) { sheets.log.deleteRow(r.i + 1); });
+    SpreadsheetApp.flush();
+    props.setProperty(KEY, now + ' ' + rows.length + '줄');
+    return rows.length;
+  });
+}
+
 function runCashReceiptScan_() {
-  const result = { scanned: 0, added: 0, skipped: 0, needCheck: 0, noCase: 0, noCaseNames: [], errors: [] };
+  const result = { scanned: 0, added: 0, skipped: 0, needCheck: 0, noCase: 0, noCaseNames: [], notOffice: [], movedOut: 0, errors: [] };
+  try { result.movedOut = client_moveOutNotOfficeReceiptLogs_20261119_() || 0; } catch (err) { result.errors.push('잘못 든 수금 줄 옮기기 실패: ' + err.message); }
   let consultFolderId = '';
   try { const cf = getConsultSharedFolder_(); if (cf) consultFolderId = cf.getId(); } catch (err) { /* 못 찾으면 사건 없는 상담 영수증만 못 잡는다 */ }
 
@@ -17842,7 +17885,8 @@ function runCashReceiptScan_() {
   // 하나의 거래로 보고 한 번만 기록한다.
   const groups = {};
   files.forEach(function (f) {
-    if (f.appProperties && f.appProperties.netax_receipt_logged === 'true') { result.skipped++; return; }
+    // 'true' = 수금으로 기록함, 'not_office' = 다른 사업자 발행, 'unknown' = 발행처를 못 읽음 — 어느 것이든 다시 읽지 않는다
+    if (f.appProperties && f.appProperties.netax_receipt_logged) { result.skipped++; return; }
     const caseInfo = findCaseForFile_(f.id) || findConsultNoCaseInfo_(f.id, f.name, consultFolderId);
     if (!caseInfo) { result.skipped++; return; } // 사건 폴더·상담사건 폴더 밖의 파일이면 건너뜀
     const baseName = f.name.replace(/\.[^.]+$/, '');
@@ -17859,6 +17903,23 @@ function runCashReceiptScan_() {
       // 드라이브 복사(OCR) 호출이 짧은 시간에 몰리면 "User rate limit exceeded"가 난다 — 파일 사이 간격을 둔다.
       Utilities.sleep(1500);
       const extracted = extractReceiptAmountViaOCR_(primary.file.id);
+      // [2026-11-19] 세무사님 "○○○ 상속세 신고사건에서 감정평가수수료 현금영수증이 우리사업장의 수금관리에 인식이 되어
+      // 있네. 이런 문제가 생기지 않도록 수정하라" — 사건 폴더에는 고객이 남(감정평가법인·법무사 등)에게 낸 비용의 현금영수증
+      // (공제·필요경비 증빙)도 들어 있는데, 파일 이름에 「현금영수증」만 있으면 발행처를 보지 않고 수금으로 기록했다
+      // (감정평가 900,000원·감정평가 두 줄·법무법인 4건·법무사·메모 사진 등 10줄).
+      // 수금은 이 사무소(이음 세무컨설팅 112-36-31504)가 발행한 영수증만이다 — 가맹점(공급자)이 이 사무소로 확인될 때만
+      // 기록하고, 다른 사업자이거나 발행처를 못 읽으면 기록하지 않고 결과에 알린다. 이 사무소 발행분은 홈택스 매출내역
+      // 가져오기(아래)로도 빠짐없이 들어오므로, 사진이 흐려 못 읽은 이 사무소 영수증도 수금에서 빠지지 않는다.
+      if (extracted.issuer !== 'office') {
+        const why = extracted.issuer === 'other'
+          ? '다른 사업자 발행' + (extracted.issuerName ? '(' + extracted.issuerName + ')' : '') + (extracted.issuerBiz ? ' ' + extracted.issuerBiz : '')
+          : '발행처를 읽지 못함';
+        result.notOffice.push({ 파일: primary.file.name, 고객명: primary.caseInfo.고객명, 까닭: why });
+        group.forEach(function (item) {
+          try { Drive.Files.update({ appProperties: { netax_receipt_logged: extracted.issuer === 'other' ? 'not_office' : 'unknown' } }, item.file.id); } catch (err) { /* 표시 실패하면 다음에 다시 읽을 뿐 */ }
+        });
+        return;
+      }
       if (!extracted.confident) result.needCheck++;
       // [2026.09.17 버그수정] "현금영수증이 고객에만 연결되다니 말이 안 된다 — 사건에 먼저
       // 연결되고 나서 고객에 연결되어야 한다" — findCaseForFile_가 파일의 부모 폴더를 거슬러
@@ -22486,8 +22547,34 @@ function parseReceiptText_(text) {
   }
   return { amount: null, date: date, confident: false, how: '금액 확정 못함 — 확인 필요' };
 }
+// [2026-11-19] 영수증을 누가 발행했나(가맹점·공급자) — 'office'(이 사무소) / 'other'(다른 사업자) / 'unknown'(못 읽음).
+// 수금 자동 인식은 'office'일 때만 기록한다(runCashReceiptScan_). 사업자번호는 가맹점 칸 것을 본다:
+//  · 홈택스 현금영수증 — "가맹점 정보" 뒤(앞쪽 "발급수단번호"에 사업자 지출증빙이면 구매자 번호가 찍힐 수 있다)
+//  · 카드단말기 전표(KICC 등)·국세청 ARS 영수증 — 맨 위 가맹점(공급자) 줄이 첫 사업자번호
+// 상호는 사업자번호를 못 읽었을 때만 보조로 쓴다(OCR이 번호를 깨뜨린 경우).
+function receiptIssuer_(text) {
+  const t = String(text || '');
+  const bizRe = /(\d{3})\s*-\s*(\d{2})\s*-\s*(\d{5})/;
+  const k = t.search(/가\s*맹\s*점\s*정\s*보/);
+  const seg = k >= 0 ? t.slice(k) : t;
+  const m = bizRe.exec(seg) || (k >= 0 ? bizRe.exec(t) : null);
+  const biz = m ? m[1] + '-' + m[2] + '-' + m[3] : '';
+  const nm = /상\s*호\s*(?:\(\s*법\s*인\s*명\s*\))?\s*[:：]?\s*([^\n|:：]{2,30})/.exec(seg);
+  // 상호 뒤에 붙어 읽힌 옆 칸 이름(성명·대표자명 등)은 떼고, 값 자리에 칸 이름만 읽힌 것은 버린다
+  let name = nm ? nm[1].split(/\s*(?:성\s*명|대\s*표\s*자?\s*명?|사\s*업\s*자|등\s*록\s*번\s*호|주\s*소|연\s*락\s*처|전\s*화)/)[0].trim() : '';
+  if (/^(?:사\s*업\s*자\s*번\s*호|대\s*표\s*자\s*명|성\s*명|주\s*소|연\s*락\s*처)?$/.test(name)) name = '';
+  const officeName = /이\s*음\s*세\s*무\s*컨\s*설\s*팅/.test(seg);
+  if (biz) return { issuer: biz === RC_OFFICE_BIZ_ ? 'office' : 'other', issuerBiz: biz, issuerName: name };
+  if (officeName) return { issuer: 'office', issuerBiz: '', issuerName: name };
+  if (name) return { issuer: 'other', issuerBiz: '', issuerName: name };
+  return { issuer: 'unknown', issuerBiz: '', issuerName: '' };
+}
 function extractReceiptAmountViaOCR_(fileId) {
-  return parseReceiptText_(ocrFileText_(fileId));
+  const text = ocrFileText_(fileId);
+  const r = parseReceiptText_(text);
+  const who = receiptIssuer_(text);
+  r.issuer = who.issuer; r.issuerBiz = who.issuerBiz; r.issuerName = who.issuerName;
+  return r;
 }
 
 // [2026.10.09] 서류 OCR 글자에서 특정인의 전화번호·주소·주민등록번호를 규칙으로 찾는다(AI 비용 0원).
