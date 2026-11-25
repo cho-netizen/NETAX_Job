@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25j';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
+var FIN_RV_VER_ = '2026-11-25k';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90, 경조한번: 1000000 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
@@ -326,6 +326,7 @@ function finRvAnalyze_(R, U, opt) {
     g.n++; g.sum += r.amt; var dg = String(r.상대계좌 || ''); if (acctOne(dg)) g.dg[dg] = 1;
     if (/FBS출금|CMS|체크|가맹|간편결제|페이/.test(rt)) g.pay++; // 가맹점 결제(쿠팡·편의점 등) — 일상 결제처
   });
+  rels.forEach(function (x) { if (x.출처 === '자주 오간 상대(GAS)' && !x.갈래 && !x.짐작) { var gs = finRvNameGuess_(x.이름); if (gs) x.짐작 = gs; } });
   var newCand = 0;
   // [2026.11.25] 「자주 오간 상대」 후보는 모두 합쳐 200개까지 — 앞 판 후보도 센다(예전엔 셈마다 200개씩 더 붙어 셈마다 늘었음: 11-25 운영, 9,808줄 사건)
   var gasHave = rels.filter(function (x) { return x.출처 === '자주 오간 상대(GAS)'; }).length;
@@ -333,7 +334,7 @@ function finRvAnalyze_(R, U, opt) {
     if (relBy(grp[k].raw)) return;
     var g = grp[k], w = g.raw;
     if (finRvNameLike_(w, B.피상속인)) return; // [2026.11.24] 피상속인 본인 이름(「○○○ 납부출금」처럼 은행이 예금주 이름을 적은 자동납부)은 관련인 후보가 아님
-    var guess = g.pay * 2 >= g.n ? '생활 결제처' : /카드|보험|생명|화재|손해|증권|투자|은행|금고|신협|저축|캐피탈|공제|적금|예금|펀드|신탁|뱅크|페이/.test(w) ? '금융기관·보험' : /병원|의원|요양|약국|치과|한의|메디|의료/.test(w) ? '병원·요양' : /세무서|구청|시청|군청|국세|지방세|한전|전기|가스|수도|관리비|통신|KT|SKT|LGU|건강보험|국민연금|지로/.test(w) ? '공과금·세금' : /급여|보수|수당|휴가비|성과급|퇴직|연금/.test(w) ? '그 밖 거래처' : '';
+    var guess = g.pay * 2 >= g.n ? '생활 결제처' : finRvNameGuess_(w);
     rels.push({ 이름: w, 갈래: '', 짐작: guess, 관계: '', 별칭: [], 계좌: Object.keys(g.dg).slice(0, 5), 출처: '자주 오간 상대(GAS)', 상태: '후보 — 갈래를 골라 주세요' });
     newCand++;
   });
@@ -721,6 +722,12 @@ function finRvRead_(ss) {
   return { sh: sh, V: V, I: I, R: R };
 }
 
+// 「자주 오간 상대」 이름 글자만으로 갈래 짐작 — 금융·병원·공과금·급여(예전 그대로) + 종교·단체 이름, 사람·상호가 아닌 쓰임 글자(「간병비」·「식비」)
+//  [2026.11.25] 쓰임 글자·단체를 「누구인지 모름」으로 여쭙지 않게(세무사님 11-25 "아무렇게나 만들지 말고")
+function finRvNameGuess_(w) {
+  w = String(w || '');
+  return /카드|보험|생명|화재|손해|증권|투자|은행|금고|신협|저축|캐피탈|공제|적금|예금|펀드|신탁|뱅크|페이/.test(w) ? '금융기관·보험' : /병원|의원|요양|약국|치과|한의|메디|의료/.test(w) ? '병원·요양' : /세무서|구청|시청|군청|국세|지방세|한전|전기|가스|수도|관리비|통신|KT|SKT|LGU|건강보험|국민연금|지로/.test(w) ? '공과금·세금' : /급여|보수|수당|휴가비|성과급|퇴직|연금/.test(w) ? '그 밖 거래처' : /교회|성당|사찰|선교|교구|수녀원|불교|교당/.test(w) ? '그 밖 거래처' : /^[가-힣]{1,4}(비|료|값)$/.test(w) || /자산|입금|출금|이체|해지|결산/.test(w) ? '그 밖' : '';   // 쓰임 글자·거래 글자(글자인식 찌꺼기 「3. 자산입」 등)
+}
 // ---------- 시트 쓰기 ----------
 function finRvTab_(ss, title, hdr, data, o) {
   o = o || {};
@@ -737,11 +744,12 @@ function finRvTab_(ss, title, hdr, data, o) {
   for (var s = 0; s < vals.length; s += 4000) sh.getRange(s + 1, 1, Math.min(4000, vals.length - s), w).setValues(vals.slice(s, s + 4000));
   (o.money || []).forEach(function (ci) { sh.getRange(2, ci + 1, Math.max(1, vals.length - 1), 1).setNumberFormat('#,##0'); });
   sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7').setHorizontalAlignment('center');   // 머리줄 가운데(세무사님 11-25 "필드명은 중앙정렬하라")
-  // 머리 색 — 거래 탭과 같은 뜻: 세무사님 칸(✎) 노랑 · GAS 답안·근거 파랑(FinRun.js FIN_HDR_CLR_)
-  hdr.forEach(function (h, i) {
-    if (/✎$/.test(h)) { sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.입력); sh.getRange(2, i + 1, Math.max(1, vals.length - 1), 1).setBackground('#fffbea'); }
-    else if (/\(GAS\)$|^답안 근거$/.test(h) || (o.gas || []).indexOf(h) !== -1) sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.분석);   // o.gas: GAS가 채우고 고칠 수도 있는 칸 — 노랑 아님(11-25 "이름상호는 왜 노란색인가?")
-  });
+  // [2026.11.25] 색은 두 겹(세무사님 11-25 "내가 입력할 것과 아닌 것을 명확하게 구분해 줘야지")
+  //  · 머리줄: 세무사님 칸(✎) 노랑 · 열쇠 초록 · 그 밖은 모두 GAS가 쓴 칸 파랑
+  //  · 바탕: 지금 적으셔야 할 칸(o.need — 「여쭐 것」에 오른 칸)만 노랑. 나머지 ✎ 칸은 흰 바탕 — 비워 두시면 GAS 답안대로 셈
+  hdr.forEach(function (h, i) { sh.getRange(1, i + 1).setBackground(/✎$/.test(h) ? FIN_HDR_CLR_.입력 : h === '열쇠' ? FIN_HDR_CLR_.관리 : FIN_HDR_CLR_.분석); });
+  var need = (o.need || []).filter(function (p) { return p[0] >= 0 && p[0] < vals.length - 1 && p[1] >= 0 && p[1] < w; });
+  for (var q = 0; q < need.length; q += 500) sh.getRangeList(need.slice(q, q + 500).map(function (p) { return sh.getRange(p[0] + 2, p[1] + 1).getA1Notation(); })).setBackground(FIN_HDR_CLR_.입력);
   (o.lists || []).forEach(function (L) { var rule = SpreadsheetApp.newDataValidation().requireValueInList(L.list, true).setAllowInvalid(true).build(); sh.getRange(2, L.col + 1, Math.max(1, vals.length - 1) + 200, 1).setDataValidation(rule); });
   if (o.note) sh.getRange(1, 1).setNote(o.note);
   sh.setFrozenRows(1);
@@ -797,8 +805,9 @@ function finRvWrite_(ss, A, U, ctx) {
     });
   }
   // 머리·바탕색·고르기 목록(처음 한 번이면 충분하지만 1단계가 다시 쓰면 새로)
-  //  [2026.11.25] 머리줄은 원본·관리·분석 세 가지 색(finLedgerHdrPaint_) — ✎ 칸은 적는 자리라 줄 바탕만 연한 노랑
-  FIN_RV_USER_COLS_.forEach(function (h) { if (nRow) sh.getRange(2, I[h] + 1, nRow, 1).setBackground('#fffbea'); });
+  //  [2026.11.25] 머리줄은 원본·관리·분석·입력 네 가지 색(finLedgerHdrPaint_). ✎ 칸 바탕은 흰색 — 거래 줄마다 꼭 적으실 것은 없고
+  //  (적으셔야 할 판단은 「여쭐 것」·짚을 곳 상태 ✎로 모음), 예전에 칠한 연한 노랑은 지움(세무사님 11-25 "내가 입력할 것과 아닌 것을 명확하게")
+  FIN_RV_USER_COLS_.forEach(function (h) { if (nRow) sh.getRange(2, I[h] + 1, nRow, 1).setBackground(null); });
   sh.getRange(1, I['전체 잔액'] + 1).setNote('피상속인 원화 계좌 잔액의 합(그 순간 계좌마다 마지막 잔액). 본인 계좌끼리 옮긴 돈은 그대로 — 바깥과 오간 돈만 전체 잔액을 바꾼다.');
   sh.getRange(1, I['상대 ✎'] + 1).setNote('세무사님 칸(✎) — 적으시면 GAS 후보를 덮습니다. 「분석대상자」 탭의 이름을 고르거나 새 이름을 적으시면 관련인 표에 생깁니다. GAS는 이 칸을 덮어쓰지 않습니다.');
   finLedgerHdrPaint_(sh, hdr);
@@ -809,15 +818,14 @@ function finRvWrite_(ss, A, U, ctx) {
     if (names.length) sh.getRange(2, I['상대 ✎'] + 1, nRow, 1).setDataValidation(vr(names));
   }
 
-  // [2026.11.25] 여쭐 것 — 세금이 달라지는 것만 한 곳에(답안·근거와 함께). 답은 「정하시는 곳」의 ✎ 칸에 적으시면 다음 셈에 반영
-  finRvTab_(ss, '여쭐 것', ['무엇', '답안(GAS)', '근거', '정하시는 곳', '열쇠'], (A.asks || []).map(function (q) { return [q.무엇, q.답안 || '', q.근거 || '', q.곳, q.열쇠]; }),
-    { text: [4], note: 'GAS가 서류·통장에서 답안을 먼저 냈습니다. 맞으면 그대로 두셔도 답안대로 셈하고, 틀리면 「정하시는 곳」의 노란 칸(✎)에 적으십시오. 세금이 달라지는 것만 여기에 모읍니다.' });
+  var needLog = A._needLog = {}; // 탭마다 노랗게 칠한(적으셔야 할) 칸 수 — 맨 끝 「여쭐 것」 머리 줄에 셈
 
   // 짚을 곳 — 상태 답안(GAS)은 노란 칸이 비었을 때 쓰는 값(세무사님 판단으로 세지 않음)
   var F = A.flags;
+  var needF = []; F.forEach(function (f, i) { if (f._ask) needF.push([i, 11]); }); needLog['짚을 곳'] = needF.length;
   finRvTab_(ss, '짚을 곳', ['갈래', '번호', '짚을 것', '날짜', '금액', '상대', '까닭(과세관청이 보는 점)', '준비할 것', '줄 수', '상태 답안(GAS)', '답안 근거', '상태 ✎', '메모 ✎', '열쇠', '중요도', '배움'],
     F.map(function (f) { return [f.갈래, f.번호, f.짚을것, f.날짜 || '', f.금액 == null ? '' : f.금액, f.상대 || '', f.까닭 || '', f.준비 || '', (f.rows || []).length || '', f.상태답안 || '', f.답안근거 || '', f.상태 || '', f.메모 || '', f.id, f.중요도 || '', f.배움 || '']; }),
-    { text: [3, 13], money: [4], lists: [{ col: 11, list: FIN_RV_STATE_ }], note: '과세관청이 이 사건에서 짚을 곳을 먼저 추린 목록(GAS, 0원). 상태 답안(GAS)이 맞으면 그대로 두시고, 틀리면 상태·메모(✎)에 적으십시오 — 다시 셈해도 남습니다. 거래 탭 「짚임」 칸에 같은 번호가 붙습니다.' });
+    { text: [3, 13], money: [4], lists: [{ col: 11, list: FIN_RV_STATE_ }], need: needF, note: '과세관청이 이 사건에서 짚을 곳을 먼저 추린 목록(GAS, 0원). 바탕이 노란 상태 ✎ 칸만 적으십시오(「여쭐 것」에 오른 곳). 그 밖은 상태 답안(GAS)이 맞으면 비워 두시고, 틀릴 때만 상태·메모(✎)에 적으십시오 — 다시 셈해도 남습니다. 거래 탭 「짚임」 칸에 같은 번호가 붙습니다.' });
 
   // 추정상속(§15)
   var B = A.B, s15rows = [];
@@ -860,15 +868,16 @@ function finRvWrite_(ss, A, U, ctx) {
   finTgWrite_(ss, A, U);
 
   // 묶음
+  var needB = []; A.bundles.forEach(function (b, i) { if (b._ask) needB.push([i, 11]); }); needLog['묶음'] = needB.length;
   finRvTab_(ss, '묶음', ['묶음 이름', '상대', '나감', '들어옴', '순액(나감−들어옴)', '첫 날', '끝 날', '줄', '출처', '판단 답안(GAS)', '답안 근거', '판단 ✎', '메모 ✎'],
     A.bundles.map(function (b) { return [b.이름, b.상대, b.나감, b.들어옴, b.순액, b.첫, b.끝, b.줄, b.세무사님 ? '세무사님 칸' : 'GAS 후보(같은 상대와 오간 돈)', b.판단답안 || '', b.답안근거 || '', b.판단, b.메모]; }),
-    { text: [5, 6], money: [2, 3, 4], lists: [{ col: 11, list: FIN_RV_JUDGE_ }], note: '같은 일에서 나온 줄을 한 건으로. 판단 답안(GAS)이 맞으면 그대로 두시고, 틀리면 판단 ✎에 적으십시오. 거래 탭 「묶음 ✎」에 이름을 적으시면 그 묶음이 생깁니다. 짚을 대상은 순액입니다.' });
+    { text: [5, 6], money: [2, 3, 4], lists: [{ col: 11, list: FIN_RV_JUDGE_ }], need: needB, note: '같은 일에서 나온 줄을 한 건으로. 바탕이 노란 판단 ✎ 칸만 적으십시오(「여쭐 것」에 오른 곳). 그 밖은 판단 답안(GAS)이 맞으면 비워 두시고, 틀릴 때만 판단 ✎에 적으십시오. 거래 탭 「묶음 ✎」에 이름을 적으시면 그 묶음이 생깁니다. 짚을 대상은 순액입니다.' });
 
   // 받을 자료 — 요청 답안(GAS)
   var W = []; F.forEach(function (f) { if (f.want) W.push({ id: f.id, f: f }); });
   finRvTab_(ss, '받을 자료', ['무엇', '왜', '짚을 곳', '요청 답안(GAS)', '답안 근거', '요청 ✎', '메모 ✎', '열쇠'],
     W.map(function (w) { var s = U.wants[w.id] || {}; return [w.f.want.무엇, w.f.want.왜, w.f.번호, w.f.요청답안 || '', w.f.요청근거 || '', s.요청 || '', s.메모 || '', w.id]; }),
-    { text: [7], lists: [{ col: 5, list: ['요청함', '요청 안 함', '받음'] }], note: '납세자가 내지 않았지만 과세관청이 볼 수 있는 자료(짚을 곳 A). 요청 답안(GAS)이 맞으면 그대로 두시고, 다르면 요청 ✎에 적으십시오.' });
+    { text: [7], lists: [{ col: 5, list: ['요청함', '요청 안 함', '받음'] }], note: '납세자가 내지 않았지만 과세관청이 볼 수 있는 자료(짚을 곳 A). 적으실 것은 없습니다 — 요청 답안(GAS)대로 두시고, 요청하지 않거나 받으셨을 때만 요청 ✎에 적으십시오.' });
 
   // 배운 것(FinLearn.js)
   finLnWrite_(ss, A, ctx.learn);
@@ -890,7 +899,8 @@ function finRvWrite_(ss, A, U, ctx) {
     ['사회통념한도', b0.사회통념한도 || '', B.T.사회통념한도 || '(정하지 않음 — 사람별·해마다 합계만 보임)', '한 사람에게 한 해 생계비·가족비 합계가 이 금액을 넘으면 짚을 곳 C8로(상증법 §46 5호 「사회통념상 인정되는」 — 법에 정한 금액 없음)'],
     ['보고서저절로', b0.보고서저절로 || '', /^(아니오|아니요|끔)$/.test(String(b0.보고서저절로 || '').trim()) ? '아니오' : '예', '「아니오」면 보고서/개별검토서_금융거래.md를 저절로 만들거나 고치지 않음(GAS 칸만 고치고 세무사님·넥스 문단은 안 건드림)']
   ];
-  finRvTab_(ss, '사건 기준', ['항목', '값 ✎', '지금 쓰는 값', '설명', '열쇠'], baseRows.map(function (r) { return [r[0], r[1], r[2], r[3], r[0]]; }), { text: [1, 2, 4], note: '값 ✎ 칸에 적으시면 다음 셈부터 그 값으로. 비우시면 기본값.' });
+  var needC = A._askD ? [[1, 1]] : []; needLog['사건 기준'] = needC.length;
+  finRvTab_(ss, '사건 기준', ['항목', '값 ✎', '지금 쓰는 값', '설명', '열쇠'], baseRows.map(function (r) { return [r[0], r[1], r[2], r[3], r[0]]; }), { text: [1, 2, 4], need: needC, note: '바탕이 노란 값 ✎ 칸만 적으십시오(「여쭐 것」에 오른 곳). 그 밖은 비워 두시면 「지금 쓰는 값」대로 셈하고, 바꾸실 때만 적으십시오.' });
 
   // 엑셀 판단 가져오기
   var xr = [];
@@ -899,6 +909,12 @@ function finRvWrite_(ss, A, U, ctx) {
   });
   FIN_RV_OLD_TABS_.forEach(function (n) { var o = ss.getSheetByName(n); if (o) try { ss.deleteSheet(o); } catch (e) {} });
   finRvTab_(ss, '엑셀 판단 가져오기', ['파일', '시트', '칸 이름', '채운 줄', '예시 값', '뜻 ✎', '짐작', '가져온 줄', '열쇠'], xr, { text: [1, 2, 8], lists: [{ col: 5, list: FIN_RV_MEAN_ }], note: '세무사님이 엑셀에서 하신 판단을 읽기만 해서 가져옵니다(엑셀 파일은 고치지 않음). 칸마다 뜻을 한 번 골라 주시면, 거래 열쇠(계좌·날짜·금액)로 맞춰 거래 탭 ✎ 칸의 빈 곳에 넣습니다. 파일이 바뀌면 다시 읽습니다.' });
+  // [2026.11.25] 여쭐 것 — 세금이 달라지는 것만 한 곳에(답안·근거와 함께). 맨 위 줄에 노랗게 칠한 칸 수(탭별) — 노란 바탕 칸 = 여기 오른 것
+  var nAll = 0, parts = []; Object.keys(needLog).forEach(function (k) { if (needLog[k]) { nAll += needLog[k]; parts.push(k + ' ' + needLog[k]); } });
+  var askRows = (A.asks || []).map(function (q) { return [q.무엇, q.답안 || '', q.근거 || '', q.곳, q.열쇠]; });
+  askRows.unshift([(A.asks || []).length ? '■ 적으실 것 ' + (A.asks || []).length + '가지 — 바탕이 노란 칸 ' + nAll + '곳(' + parts.join(' · ') + ')' : '■ 적으실 것 없음 — 모든 칸에 GAS 답안이 있습니다(틀린 곳만 그 칸에 고쳐 적으시면 됨)', '', '', '', '']);
+  finRvTab_(ss, '여쭐 것', ['무엇', '답안(GAS)', '근거', '정하시는 곳', '열쇠'], askRows,
+    { text: [4], note: '세무사님이 적으셔야 할 것은 이 표에 오른 것뿐입니다. 정하시는 곳의 바탕이 노란 칸에 적으십시오(GAS 답안이 맞으면 그 답안을 그대로 적으셔도 됨). 바탕이 흰 노란 머리(✎) 칸은 GAS 답안이 틀릴 때만 고쳐 적는 칸입니다.' });
   finRvOrderTabs_(ss);
 }
 // 2단계 탭을 「거래」 바로 뒤에 분석 차례대로(차례가 이미 맞으면 건드리지 않음)
