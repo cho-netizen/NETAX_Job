@@ -49,6 +49,9 @@ var CASEPROC_AI_TOOLS_ = [
   // [2026.11.20] 금융거래 원시파일 한 파일로 합치기(1단계) — 세무사님 화면 💰 금융거래 합치기와 같은 서버(gs-fin)·같은 함수(FinProxy.js). 계획서 docs/_기록/금융거래_10년검토_계획서_20261120.html
   { name: 'bank_merge', description: '금융거래 합친 결과 읽기(토큰 0) — 상속 사건 폴더의 은행 거래내역 원시파일(엑셀·PDF·사진·압축)은 GAS가 1분 틱에서 저절로 사건 폴더의 구글 시트 하나(「금융거래_통합_…」 — 탭: 계좌 목록·거래·겹쳐서 한 번만 센 줄·확인할 것·칸 대응표·계좌별 원본)로 합쳐 둔다(합치라는 명령은 없다 — 세무사님 11-20). 이 도구는 그 결과를 읽는다: 시트 주소·합친 때·계좌마다 기간·줄·입출금 합계·끝 잔액, 확인할 것(잔액 검산 ⚠·암호·못 읽은 파일·처음 보는 서식), 합친 파일·안 넣은 파일과 까닭. 최신=false면 곧 다시 합쳐짐. 거래를 하나하나 볼 때는 시트를 file_read로 읽는다. 2단계(11-24): GAS가 같은 시트에 사전증여·추정상속 선제 검토를 저절로 더한다 — 거래 탭 전체 잔액·안에서 옮김·상대(관련인)·성격 후보·짚임 칸, 탭 「짚을 곳」(A 자료 빈틈·B 추정상속 §15·C 사전증여 §13·D 큰돈 출처·행방)·「추정상속(§15)」·「사전증여(§13)」·「묶음」·「받을 자료」·「사건 기준」, [2026.11.25] 분석 차례대로 「증감분석」(전체 예금이 언제 얼마나 줄었나·크게 줄어든 구간 D3)·「분석대상자」(① 상속인·특수관계자 ② 주요 거래대상자 — 세입자·매수인 등, 사건 폴더 계약서에서 찾은 이름 포함 ③ 살펴볼 사람 ④ 일상 거래처)·「대상자별 거래」·「배운 것」(다른 사건에서 세무사님 판단으로 배운 짐작). 보고서: 사건 폴더 「보고서/개별검토서_금융거래.md」의 GAS 표시 사이 칸은 GAS가 저절로 채우고, 그 아래 「세무사님·넥스 의견」에 판단·소명 방향을 쓴다(GAS 칸은 고치지 않는다). 결과의 검토 칸이 그 요약. 노란 ✎ 칸(상대·성격·묶음·소명액·관련인 갈래·묶음 판단)은 세무사님 판단 — 그 값만 사실로 쓰고, GAS 후보(맞춘 까닭·짐작)는 후보로만 인용한다. 개별검토서_금융거래 검토서는 이 숫자를 인용해 쓴다.',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
+  // [2026.11.25] 넥스가 금융 시트에 쓰는 길 — 세무사님이 넥스를 부르셨을 때만(밤·자동 넥스는 못 씀). 계획서 총괄관리자_기록금융거래_답안먼저_계획서_20261125.html D절
+  { name: 'bank_note', description: '금융거래 분석에 넥스 짐작 보태기(토큰 0, 세무사님이 넥스를 부르셨을 때만) — 먼저 bank_merge로 검토 요약(검토.성격모름·검토.여쭐것)을 읽고, 사건 폴더의 지난 보고서(보고서 폴더 전부)·서류를 읽은 뒤 쓴다. natures:[{text(검토.성격모름의 글자 그대로), nature(예: 카드 캐시백·생활비 결제·헌금·용돈(가족에게)·대여·차입 상환)}] → GAS가 못 정한 줄에만 「(넥스)」로. people:[{name, lane(상속인·상속인 아닌 가족·친척·세입자·그 밖 거래처 …), heir(예/아니오), relation, basis(근거)}] → GAS 답안·세무사님 값이 빈 사람만. notes:[{key(거래 탭 열쇠 칸), note}] → 거래 탭 「넥스 의견」 칸. 쓴 뒤 그 사건 분석을 바로 다시 셈한다. 세무사님 칸(✎)·GAS 답안은 바꾸지 않는다.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' }, natures: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, nature: { type: 'string' } } } }, people: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, lane: { type: 'string' }, heir: { type: 'string' }, relation: { type: 'string' }, basis: { type: 'string' } } } }, notes: { type: 'array', items: { type: 'object', properties: { key: { type: 'string' }, note: { type: 'string' } } } } }, required: ['caseId'] } },
 ];
 // [2026.10.19] 지침 초안(maps/작업지시AI_지침초안.md A절)을 그대로 — 블라인드 모의 3건으로 고친 판, 약 3,800자
 
@@ -236,6 +239,7 @@ var CASEPROC_AI_TOOL_ROLES_ = {
   form_needs: { 상수: '서식 칸 해설 색인·칸 값 유무 대조', 변수: '—(재료)' },
   forms_check: { 상수: '서식 유무·기신고서 차이', 변수: '—' },
   doc_organize: { 상수: '이름 제안(읽은 종류·사람·날짜)·사진 묶음 후보·첨부 기준 묶음 계산', 변수: '제안 이름을 받을지·어느 서류를 낼지(최상위, 세무사님 확인)' }, // [2026.11.12 2차 ①]
+  bank_note: { 상수: '넥스 값 저장·그 사건 분석 다시 셈', 변수: '통장 글자의 뜻·대상자 짐작·줄마다 의견(넥스, 세무사님이 부르실 때만)' }, // [2026.11.25]
   bank_merge: { 상수: '저절로 합치기(서식 알아보기·칸 맞춤·같은 거래 한 번만·잔액 검산·시트 쓰기)·2단계 추려내기(전체 잔액·안에서 옮김·관련인 맞추기·짚을 곳 A~D·§15·§13 셈)·3단계(증감분석·분석대상자·계약서 대상자·자체 학습·보고서 GAS 칸)·결과 읽기', 변수: '짚을 곳을 읽어 검토서·질의서 쓰기·세무사님께 물을 것 묶기(판단은 세무사님 ✎ 칸)·처음 보는 서식은 세무사님 확인' },
 };
 // 도구 결과에서 "AI가 판단할 자리(변수)"를 센다 — 재현기가 그물 기록·AI 없이 끝날 수 있는지에 쓴다
@@ -429,7 +433,8 @@ function caseProcAiExec_(caseId, name, input) {
       else if (d === 'submit_plan') { if (!Array.isArray(input.ids) || !input.ids.length) r = { error: 'ids(넣을 PDF 파일 ID, 순서대로)가 비었다 — case_files로 목록을 보고 고른다' }; else { r = step('submitPlan', { ids: input.ids.slice(0, 80), groups: Array.isArray(input.groups) ? input.groups : undefined, by: '넥스' }); if (r && r.ok) r.안내 = '합쳐서 _신고제출 폴더에 저장하는 것은 화면 📂 서류 정리 → 신고 제출 묶음에서만 된다 — 계획을 세무사님께 보여 드린다.'; } }
       else r = { error: 'do는 rename_plan·rename_apply·scan_cands·submit_plan 중 하나' };
     }
-    else if (name === 'bank_merge') r = typeof finProxyNex_ === 'function' ? finProxyNex_(caseId, input) : { error: '금융거래 합치기 길이 이 판에 없음' }; // [2026.11.20] 화면 💰과 같은 서버
+    else if (name === 'bank_merge') r = typeof finProxyNex_ === 'function' ? finProxyNex_(caseId, input) : { error: '금융거래 합치기 길이 이 판에 없음' };
+    else if (name === 'bank_note') r = typeof finProxyNexNote_ === 'function' ? finProxyNexNote_(caseId, input) : { error: '금융거래 넥스 쓰기 길이 이 판에 없음' }; // [2026.11.25] 세무사님이 부르신 넥스만 // [2026.11.20] 화면 💰과 같은 서버
     else if (name === 'form_needs') r = typeof formNeeds_ === 'function' ? formNeeds_(caseId, input) : { error: '서식 도구가 이 판에 없음' }; // [2026.10.19 B-5]
     else if (name === 'doc_facts') {
       const c = akReadCase_(caseId);

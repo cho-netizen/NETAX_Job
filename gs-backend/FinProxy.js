@@ -77,6 +77,16 @@ function finReviewLine_(rv) {
     + (v.상속개시일 ? ' · ' + (v.추정상속 || []).map(function (s) { return '추정상속 ' + s.기간 + ' 순인출 ' + won(s.순인출) + (s.기준넘음 ? '(기준 넘음, 추정액 ' + won(s.추정액) + ')' : ''); }).join(' · ') : ' · 상속개시일 없음');
 }
 
+// ---------- [2026.11.25] 넥스 도구 bank_note — 넥스가 쓰는 길(세무사님이 넥스를 부르실 때만 — 밤·자동 넥스 도구 목록 NR_READ_TOOLS_에 없음) ----------
+//  세무사님 11-25 "내가 부를 때만 읽게 하라" · 계획서 총괄관리자_기록금융거래_답안먼저_계획서_20261125.html D절
+function finProxyNexNote_(caseId, input) {
+  input = input || {};
+  var arr = function (v, n) { return Array.isArray(v) ? v.slice(0, n) : []; }; // 도구 입력 칸 이름은 영문(Claude 도구 규격) → 금융거래 서버는 우리말 칸
+  var body = { caseId: caseId, 성격: arr(input.natures, 500).map(function (x) { return { 글자: x && x.text, 성격: x && x.nature }; }), 대상자: arr(input.people, 200).map(function (x) { return { 이름: x && x.name, 갈래: x && x.lane, 상속인: x && x.heir, 관계: x && x.relation, 근거: x && x.basis }; }), 의견: arr(input.notes, 500).map(function (x) { return { 열쇠: x && x.key, 의견: x && x.note }; }) };
+  if (!body.성격.length && !body.대상자.length && !body.의견.length) return { error: 'natures·people·notes 중 하나는 있어야 한다' };
+  return finProxyCall_('fin_nex_note', body);
+}
+
 // ---------- 넥스 도구 bank_merge — 자동으로 합친 결과 읽기(명령 없음) ----------
 function finProxyNex_(caseId, input) {
   var L = finProxyCall_('fin_merge_list', { caseId: caseId });
@@ -88,5 +98,5 @@ function finProxyNex_(caseId, input) {
   return { ok: true, 시트: { name: last.name, url: last.url }, 합친때: last.at, 최신: L.최신, 거래줄: last.rows, 겹친줄: last.겹친줄, 계좌: last.계좌, 확인수: last.확인수,
     검토: L.검토 || null, // [2026.11.24] 2단계 요약 — 짚을 곳(A 자료 빈틈·B 추정상속·C 사전증여·D 큰돈) 수·큰 것부터·§15 1년/2년·§13 관련인별. 줄마다는 시트 탭 「짚을 곳」·「추정상속(§15)」·「사전증여(§13)」
     확인: (last.확인 || []).slice(0, 30), 새서식: last.새서식, 합친파일: used.slice(0, 60), 안넣은파일: off,
-    안내: (L.최신 ? '' : '폴더·서식표·암호가 바뀌어 곧 저절로 다시 합칩니다. ') + '거래를 볼 때는 시트(file_read)를 읽는다. 처음 보는 서식·암호는 세무사님이 💰 창에서 정한다. 2단계(검토)는 GAS가 후보·합계만 낸 것 — 증여·대여·소명·특수관계 판단은 세무사님 칸(✎)의 값만 사실로 쓰고, 비어 있으면 [확인 필요]로 둔다.' };
+    안내: (L.최신 ? '' : '폴더·서식표·암호가 바뀌어 곧 저절로 다시 합칩니다. ') + '거래를 볼 때는 시트(file_read)를 읽는다. 처음 보는 서식·암호는 세무사님이 💰 창에서 정한다. 2단계(검토)는 GAS가 서류(사망진단서·가족관계증명서·등기부·차용증·의뢰 메모·지난 보고서)와 통장으로 낸 답안 — 증여·대여·소명·특수관계 판단은 세무사님 칸(✎)의 값만 사실로 쓰고, 비어 있으면 GAS 답안은 짐작으로만 쓴다. 넥스가 보탤 때(세무사님이 부르신 때만): 먼저 사건 폴더의 지난 보고서(보고서 폴더 전부)와 서류를 읽고, 검토.성격모름(통장 글자 종류)의 뜻·답안 없는 대상자·줄마다 의견을 bank_note로 적는다.' };
 }

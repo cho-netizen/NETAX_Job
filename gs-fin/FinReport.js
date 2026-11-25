@@ -30,10 +30,18 @@ function finRpBlock_(A, U, sheetUrl) {
   s.push('## 1. 검토 자료');
   s.push('- 피상속인 ' + (B.피상속인 || '[확인 필요]') + ' · 상속개시일 ' + (B.D ? B.D + (B.D짐작 ? '(「' + B.D짐작 + '」에서 짐작 — [확인 필요])' : '') : '[확인 필요 — 시트 「사건 기준」 탭]'));
   s.push('- 합친 거래 ' + A.R.length + '줄 · 계좌 ' + A.accts.length + '개(피상속인 ' + own.length + '개) · 기간 ' + dmin + ' ~ ' + dmax + ' · 잔액 검산 끊김 ' + A.breaks + '곳');
+  // [2026.11.25] 사건 서류에서 읽은 기본 사실(FinDocs.js) — 상속인·빌려준 돈·부동산·보험금(모두 짐작, 근거 서류와 함께)
+  var heirs = A.rels.filter(function (x) { return x.갈래 === '상속인' || (!x.갈래 && x.짐작 === '상속인'); });
+  s.push('- 상속인 ' + (heirs.length ? heirs.map(function (x) { return x.이름 + (x.관계 || x.관계짐작 ? '(' + (x.관계 || x.관계짐작) + ')' : '') + (x.갈래 ? '' : ' — 짐작'); }).join(' · ') + (U.heirsGuess ? ' (' + U.heirsGuess.from + ')' : '') : '[확인 필요 — 가족관계증명서가 사건 폴더에 없음]'));
+  (U.loans || []).forEach(function (l) { s.push('- 빌려준 돈: ' + l.대여인 + ' → ' + l.차용인 + (l.금액 ? ' ' + finRvWon_(l.금액) + '원' : '') + ' (' + String(l.근거).slice(0, 60) + ')'); });
+  ((U.facts || {}).부동산 || []).forEach(function (p) { s.push('- 부동산 ' + p.종류 + ': ' + p.부동산 + ' · ' + p.날짜 + ' · ' + p.원인 + (p.금액 ? ' ' + finRvWon_(p.금액) + '원' : '') + ((p.상대 || []).length ? ' · 상대 ' + p.상대.join('·') : '') + ' (' + p.근거 + ')'); });
+  ((U.facts || {}).보험금 || []).forEach(function (p) { s.push('- 보험금 ' + finRvWon_(p.금액) + '원 (' + p.근거 + ')'); });
   if (sheetUrl) s.push('- 분석 시트: ' + sheetUrl);
   var aFlags = A.flags.filter(function (f) { return f.번호.charAt(0) === 'A'; });
   s.push('- 자료 빈틈(과세관청은 조회로 볼 수 있는 자료) ' + aFlags.length + '곳' + (aFlags.length ? ':' : ''));
   aFlags.slice(0, 15).forEach(function (f) { s.push('  - ' + f.번호 + ' ' + f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : '') + (f.상태 ? ' — ' + f.상태 : '')); });
+  s.push('');
+  if ((A.asks || []).length) { s.push(''); s.push('### 여쭐 것(세금이 달라지는 것 — GAS 답안과 근거)'); s.push(finRpTable_(['무엇', '답안', '근거', '정하시는 곳'], A.asks.map(function (q) { return [q.무엇, q.답안 || '', String(q.근거 || '').slice(0, 120), q.곳]; }))); }
   s.push('');
   s.push('## 2. 증감분석(전체 예금 잔액)');
   if (C.segs.length) s.push(finRpTable_(['구간', '시작 잔액', '끝 잔액', '실제 증감', '경상 수입', '경상 지출', '쓰임 안 보이는 유출', '관련인으로'], C.segs.map(function (f) { var g = finTgRegular_(f); return [f.k, finRpMoney_(f.시작), finRpMoney_(f.끝), finRpMoney_((f.끝 || 0) - (f.시작 || 0) - (f.자료시작 || 0)), finRpMoney_(g.경상수입), finRpMoney_(g.경상지출), finRpMoney_(g.설명필요), finRpMoney_(g.관련인으로)]; })));
@@ -43,9 +51,9 @@ function finRpBlock_(A, U, sheetUrl) {
   s.push('');
   s.push('## 3. 분석대상자');
   var TG = (A.targets || []).filter(function (t) { return t.구분 < 3; });
-  s.push(finRpTable_(['구분', '이름', '갈래', '§13 기간', '기간 안 나감', '기간 안 들어옴', '순액', '짚을 곳'], TG.slice(0, 40).map(function (t) {
+  s.push(finRpTable_(['구분', '이름', '갈래', '관계', '§13 기간', '기간 안 나감', '기간 안 들어옴', '순액', '짚을 곳'], TG.slice(0, 40).map(function (t) {
     var x = t.x, n = A.flags.filter(function (f) { return f.상대 === x.이름; }).length;
-    return [FIN_TG_GROUPS_[t.구분].slice(0, 1), x.이름, x.갈래 || (x.짐작 ? x.짐작 + ' (짐작)' : '모름'), B.D ? t.yrs + '년' : '전체', finRpMoney_(t.기간나감), finRpMoney_(t.기간들어옴), finRpMoney_(t.기간순액), n || ''];
+    return [FIN_TG_GROUPS_[t.구분].slice(0, 1), x.이름, x.갈래 || (x.짐작 ? x.짐작 + ' (짐작)' : '모름'), x.관계 || x.관계짐작 || '', B.D ? t.yrs + '년' : '전체', finRpMoney_(t.기간나감), finRpMoney_(t.기간들어옴), finRpMoney_(t.기간순액), n || ''];
   })));
   if (TG.length > 40) s.push('- 그 밖 ' + (TG.length - 40) + '명 — 시트 「분석대상자」 탭');
   s.push('');
@@ -59,9 +67,9 @@ function finRpBlock_(A, U, sheetUrl) {
   else s.push(finRpTable_(['관련인', '갈래', '합산 기간', '나감', '들어옴', '순액'], A.s13.map(function (x) { return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액)]; })));
   s.push('');
   s.push('## 6. 짚을 곳(남은 것, 중요도 순)');
-  var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || ''); }).slice().sort(function (a, b) { return (b.중요도 || 0) - (a.중요도 || 0); });
+  var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || f.상태답안 || ''); /* 세무사님 칸이 비면 GAS 답안대로 */ }).slice().sort(function (a, b) { return (b.중요도 || 0) - (a.중요도 || 0); });
   s.push('- A 자료 빈틈 ' + sum.짚을곳.A + ' · B 추정상속 ' + sum.짚을곳.B + ' · C 사전증여 ' + sum.짚을곳.C + ' · D 큰돈 ' + sum.짚을곳.D + ' · 남은 것 ' + sum.짚을곳.남은것);
-  s.push(finRpTable_(['번호', '짚을 것', '날짜', '금액', '상대', '상태', '배움'], open.slice(0, 30).map(function (f) { return [f.번호, f.짚을것, f.날짜 || '', finRpMoney_(f.금액), f.상대 || '', f.상태 || '확인 전', f.배움 || '']; })));
+  s.push(finRpTable_(['번호', '짚을 것', '날짜', '금액', '상대', '상태', '배움'], open.slice(0, 30).map(function (f) { return [f.번호, f.짚을것, f.날짜 || '', finRpMoney_(f.금액), f.상대 || '', f.상태 || (f.상태답안 ? f.상태답안 + '(GAS 답안)' : '확인 전'), f.배움 || '']; })));
   if (open.length > 30) s.push('- 그 밖 ' + (open.length - 30) + '곳 — 시트 「짚을 곳」 탭');
   s.push('');
   s.push('## 7. 받을 자료');

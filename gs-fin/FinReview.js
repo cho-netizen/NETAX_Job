@@ -14,10 +14,10 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25d';
+var FIN_RV_VER_ = '2026-11-25f';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90 };
-var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '피상속인 본인', '그 밖'];
+var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
 var FIN_RV_FAMILY_ = /^(상속인|상속인 아닌 가족·친척|특수관계 법인)$/;
 var FIN_RV_NOT_PARTY_ = /^(금융기관·보험|병원·요양|공과금·세금|피상속인 본인)$/;
 var FIN_RV_NATURES_ = ['안에서 옮김', '바깥 — 안에서 옮김 아님', '대여', '대여 회수', '차입', '차입 상환', '이자 지급', '이자 수입', '월세', '보증금 받음', '보증금 돌려줌', '매각대금', '취득대금', '생활비·부양', '병원비', '세금', '공과금·관리비', '카드대금', '보험료', '보험금', '연금·급여 수입', '현금 인출', '현금 입금', '수표', '해지·만기', '사전증여 의심', '자기 돈 왕복', '용도 모름'];
@@ -31,7 +31,7 @@ var FIN_RV_USER_KEY_ = { '상대 ✎': '상대', '성격 ✎': '성격', '묶음
 var FIN_RV_NEX_COL_ = '넥스 의견', FIN_RV_KEY_COL_ = '열쇠';
 // 2단계 탭(1단계 탭 「거래」 바로 뒤에 이 차례로)
 // [2026.11.25] 분석 차례대로 — 증감분석 → 분석대상자 → 대상자별 거래 → 판정(짚을 곳·§15·§13) → 받을 자료 → 배운 것 → 기준(옛 「흐름」·「관련인」은 앞 둘로 바뀜)
-var FIN_RV_TABS_ = ['증감분석', '분석대상자', '대상자별 거래', '짚을 곳', '추정상속(§15)', '사전증여(§13)', '묶음', '받을 자료', '배운 것', '사건 기준', '엑셀 판단 가져오기'];
+var FIN_RV_TABS_ = ['여쭐 것', '증감분석', '분석대상자', '대상자별 거래', '짚을 곳', '추정상속(§15)', '사전증여(§13)', '묶음', '받을 자료', '배운 것', '사건 기준', '엑셀 판단 가져오기'];
 var FIN_RV_OLD_TABS_ = ['흐름', '관련인'];
 
 // ---------- 글자 다듬기·맞추기(순수) ----------
@@ -109,8 +109,8 @@ function finRvKrw_(r) { return !r.cur || r.cur === '원' || r.cur === 'KRW'; }
 // ---------- 사건 기준 ----------
 function finRvBase_(U, taxpayer) {
   var b = U.base || {}, num = function (k) { var v = finRvNum_(b[k]); return v != null && v > 0 ? v : FIN_RV_DEF_[k]; };
-  // 상속개시일 — 세무사님 값 > 사건 폴더 의뢰서·메모 글에서 짐작한 값(U.guess — 「(추정)」이라 적힌 것도 짐작으로 표시)
-  var D = finRvYmd_(b.상속개시일) || finRvYmd_((U.guess || {}).D), tm = /^(\d{1,2}):(\d{2})/.exec(String(b.상속개시시각 || ''));
+  // 상속개시일 — 세무사님 값 > 사건 서류에서 짐작한 값(U.guess — FinDocs.js: 사망진단서 → 기본증명서 → 초본 → 분할협의서 → 넥스 보고서 → 의뢰 메모)
+  var D = finRvYmd_(b.상속개시일) || finRvYmd_((U.guess || {}).D), tm = /^(\d{1,2}):(\d{2})/.exec(String(b.상속개시시각 || (!finRvYmd_(b.상속개시일) && U.guess ? U.guess.T : '') || ''));
   return { 피상속인: String(b.피상속인 || taxpayer || '').trim(), D: D, D짐작: !finRvYmd_(b.상속개시일) && !!D ? (U.guess || {}).from : '', Dt: tm ? ('0' + tm[1]).slice(-2) + ':' + tm[2] : '',
     T: { 큰돈: num('큰돈'), 현금쪼갬합계: num('현금쪼갬합계'), 현금쪼갬일: num('현금쪼갬일'), 자주횟수: num('자주횟수'), 자주합계: num('자주합계'), 목록기준: num('목록기준'), 직전일: num('직전일') } };
 }
@@ -140,9 +140,19 @@ function finRvNatureWord_(r, txt) {
   if (i && /이자|결산|이익분배/.test(s)) return '이자 수입';
   if (i && /연금|급여|월급|상여|기초노령|기초연금|보수|수당|휴가비|성과급|퇴직금/.test(s)) return '연금·급여 수입';
   if (o && /국민연금|건강보험|건보|장기요양/.test(s)) return '공과금·관리비';
+  // [2026.11.25] 다섯 사건 통장 글자를 전부 훑어 빠진 낱말을 채움(세무사님 11-25 "캐시백의 성격을 모르는가?") — 은행·카드사가 붙이는 일반 글자만
+  if (i && /캐시백|캐쉬백|포인트|마일리지|환급/.test(s)) return '카드 캐시백·환급';
+  if (i && /승인취소|취소처|출금정정|체크취소|결제취소/.test(s)) return '카드 결제 취소(되돌려 받음)';
+  if (o && /FBS출금|체크카드|간편결제|페이결제|쿠페이|네이버페이|카카오페이|삼성페이/.test(s)) return '카드·간편결제(생활비)';
   if (o && /카드/.test(s)) return '카드대금';
-  if (/보험|생명|화재|손해|공제회/.test(s)) return o ? '보험료' : '보험금';
-  if (o && /국세|지방세|세무서|구청|시청|군청|재산세|소득세|부가세|양도세|상속세|증여세|위택스|홈택스|지로|관세|취득세|등록세/.test(s)) return '세금';
+  if (/보험|생명|화재|손해|손보|생보|공제회|라이프/.test(s)) return o ? '보험료' : '보험금';
+  if (o && /국세|지방세|세무서|구청|시청|군청|재산세|소득세|부가세|양도세|상속세|증여세|위택스|홈택스|지로|관세|취득세|등록세|제세금|전체납부/.test(s)) return '세금';
+  if (o && /예금결산|결산/.test(s)) return '예금 결산(이자 세금)';
+  if (o && /적금|청약|펀드|신탁|ISA/.test(s)) return '적금·예금 넣음(본인 다른 상품)';
+  if (o && /헌금|십일조|교회|성당|사찰|선교|기부|후원/.test(s)) return '헌금·기부(생활비)';
+  if (o && /교육비|학원|등록금|수업료|학비/.test(s)) return '교육비(생활비)';
+  if (o && /용돈/.test(s)) return '용돈(가족에게)';
+  if (i && /출장비|여비|수당/.test(s)) return '연금·급여 수입';
   if (o && /전기|한전|가스|수도|관리비|통신|KT|SKT|LGU|유플러스|아파트|케이블|인터넷요금|휴대폰|핸드폰/.test(s)) return '공과금·관리비';
   if (o && /병원|의원|요양|약국|치과|한의|메디|의료|간병|장례|상조/.test(s)) return '병원비';
   if (/수표/.test(s)) return '수표';
@@ -306,8 +316,12 @@ function finRvAnalyze_(R, U, opt) {
     //  세무사님이 갈래를 고르셨거나 가족 지도로 들어온 대상자·세무사님 칸으로 정하신 줄은 그대로
     var weak = r.party && !r.partyUser && r.m && r.m.x === r.party && r.m.sure < 3 && /글자 일부|성 빠짐/.test(r.m.how || '') && !r.party.갈래 && !FIN_RV_FAMILY_.test(r.party.짐작 || '') && /^계약서/.test(r.party.출처 || '');
     if (!r.own || r.inner || r.self || (r.party && !weak) || !r.best || !r.krw) return;
-    var g = grp[r.best.n] || (grp[r.best.n] = { raw: r.best.raw, n: 0, sum: 0, dg: {} });
+    // [2026.11.25] 카드사가 붙인 거래 이름(「○○카드캐시백」·승인취소)은 사람·상호가 아님 — 후보로 세우지 않음(세무사님 11-25)
+    var rt = [r.상대, r.내용, r.구분, r.메모].join(' ');
+    if (/캐시백|캐쉬백|포인트|마일리지|승인취소|취소처|출금정정|체크취소/.test(rt)) return;
+    var g = grp[r.best.n] || (grp[r.best.n] = { raw: r.best.raw, n: 0, sum: 0, dg: {}, pay: 0 });
     g.n++; g.sum += r.amt; var dg = String(r.상대계좌 || ''); if (acctOne(dg)) g.dg[dg] = 1;
+    if (/FBS출금|CMS|체크|가맹|간편결제|페이/.test(rt)) g.pay++; // 가맹점 결제(쿠팡·편의점 등) — 일상 결제처
   });
   var newCand = 0;
   // [2026.11.25] 「자주 오간 상대」 후보는 모두 합쳐 200개까지 — 앞 판 후보도 센다(예전엔 셈마다 200개씩 더 붙어 셈마다 늘었음: 11-25 운영, 9,808줄 사건)
@@ -316,7 +330,7 @@ function finRvAnalyze_(R, U, opt) {
     if (relBy(grp[k].raw)) return;
     var g = grp[k], w = g.raw;
     if (finRvNameLike_(w, B.피상속인)) return; // [2026.11.24] 피상속인 본인 이름(「○○○ 납부출금」처럼 은행이 예금주 이름을 적은 자동납부)은 관련인 후보가 아님
-    var guess = /카드|보험|생명|화재|손해|증권|투자|은행|금고|신협|저축|캐피탈|공제|적금|예금|펀드|신탁|뱅크|페이/.test(w) ? '금융기관·보험' : /병원|의원|요양|약국|치과|한의|메디|의료/.test(w) ? '병원·요양' : /세무서|구청|시청|군청|국세|지방세|한전|전기|가스|수도|관리비|통신|KT|SKT|LGU|건강보험|국민연금|지로/.test(w) ? '공과금·세금' : /급여|보수|수당|휴가비|성과급|퇴직|연금/.test(w) ? '그 밖 거래처' : '';
+    var guess = g.pay * 2 >= g.n ? '생활 결제처' : /카드|보험|생명|화재|손해|증권|투자|은행|금고|신협|저축|캐피탈|공제|적금|예금|펀드|신탁|뱅크|페이/.test(w) ? '금융기관·보험' : /병원|의원|요양|약국|치과|한의|메디|의료/.test(w) ? '병원·요양' : /세무서|구청|시청|군청|국세|지방세|한전|전기|가스|수도|관리비|통신|KT|SKT|LGU|건강보험|국민연금|지로/.test(w) ? '공과금·세금' : /급여|보수|수당|휴가비|성과급|퇴직|연금/.test(w) ? '그 밖 거래처' : '';
     rels.push({ 이름: w, 갈래: '', 짐작: guess, 상속인: '', 관계: '', 별칭: [], 계좌: Object.keys(g.dg).slice(0, 5), 출처: '자주 오간 상대(GAS)', 상태: '후보 — 갈래를 골라 주세요' });
     newCand++;
   });
@@ -352,6 +366,12 @@ function finRvAnalyze_(R, U, opt) {
     r.nature = h.성격; r.natureLearn = true; learnUsed.natures++;
     var w = (r.best ? r.best.raw : '') + '→' + h.성격; if (learnUsed.natureRows.indexOf(w) === -1) learnUsed.natureRows.push(w);
   });
+  // [2026.11.25] 넥스가 읽은 통장 글자의 뜻 — GAS·배움으로도 성격을 못 정한 줄만(「(넥스)」 표시, 세무사님 판단으로 세지 않음). 세무사님이 부르실 때만 넥스가 씀
+  var NX = (U.nex || {}).natures || {};
+  if (Object.keys(NX).length) R.forEach(function (r) {
+    if (r.inner || (r.nature && !/용도 모름|되풀이/.test(r.nature))) return;
+    var v = NX[finRvNatureKey_(r)]; if (v) r.nature = String(v).slice(0, 30) + ' (넥스)';
+  });
 
   // ⑦ 묶음 — 세무사님 칸 > GAS 후보(같은 상대와 나가고 들어온 돈이 둘 다 있으면 한 건)
   var both = {};
@@ -383,10 +403,11 @@ function finRvAnalyze_(R, U, opt) {
     else if (/매각|보증금|보험금|해지|만기/.test(n) || /매수인/.test(l)) g = r.in > 0 ? '다른 자산·처분' : (/보증금/.test(n) ? '보증금' : '다른 자산·취득');
     else if (/이자 수입|연금/.test(n)) g = '이자·연금';
     else if (/현금|수표/.test(n)) g = '현금·수표';
-    else if (/세금|공과금|병원|카드|보험료/.test(n) || /공과금|병원|금융기관/.test(l)) g = '생활비·공과금·카드';
+    else if (/적금·예금 넣음/.test(n)) g = '본인 다른 계좌(자료 없음)'; // [2026.11.25] 본인 적금·청약 등 — 그 상품 자료가 있어야 행방이 닫힘
+    else if (/세금|공과금|병원|카드|보험료|생활비/.test(n) || /공과금|병원|금융기관|생활 결제처/.test(l)) g = '생활비·공과금·카드';
     else if (/^(세입자|임대인|매도인|공사·용역 업체|그 밖 거래처)$/.test(l) || /월세/.test(n)) g = '거래처·임대';
     else g = '그 밖';
-    r.flow = (r.in > 0 ? '들어옴 · ' : '나감 · ') + g; r.lane = g;
+    r.flow = g; r.lane = g;   // [2026.11.25] 「들어옴·나감」 글은 뺌 — 출금 줄은 빨간 글자로 보임(세무사님 11-25)
   });
 
   // ⑨ 짚을 곳 A~D
@@ -545,12 +566,16 @@ function finRvAnalyze_(R, U, opt) {
   drops.forEach(function (d) { if (d.설명필요 + d.관련인으로 >= T.큰돈) fl('D3', d.시작, { 갈래: 'D 큰돈 출처·행방', 짚을것: '예금이 크게 줄어든 구간 — ' + finRvWon_(d.줄어듦) + '원(' + d.날수 + '일)', 날짜: d.시작 + ' ~ ' + d.끝, 금액: d.설명필요 + d.관련인으로, 상대: d.큰상대.slice(0, 3).join(' · '), 까닭: '쓰임 안 보이는 유출 ' + finRvWon_(d.설명필요) + '원 · 관련인으로 ' + finRvWon_(d.관련인으로) + '원 — 과세관청은 예금 잔액이 크게 줄어든 때부터 본다', 준비: '그 구간 큰 줄의 쓰임·받은 사람', rows: d.rows }); });
   // ③ 분석대상자(네 갈래)·C7
   var targets = finTgTargets_(R, rels, B, T, lane, fl, function () { return flags; });
+  // [2026.11.25] 서류로 정하지 못한 기본 사실(상속개시일·상속인·회보서 계좌) → 받을 자료(FinDocs.js)
+  finDocFlags_(fl, B, U, rels, acctList);
   // 짚을 곳 중요도(금액 × 배운 성적)
   flags.forEach(function (f) { var r0 = (f.rows || [])[0]; f.성격열쇠 = r0 ? (r0.nature || '') : ''; var sc = finLnScore_(f, opt.learn); f.중요도 = sc.점수; f.배움 = sc.배움; if (sc.배움) learnUsed.flags++; });
   var order2 = { A: 0, B: 1, C: 2, D: 3 };
   flags.sort(function (a, b) { return order2[a.번호.charAt(0)] - order2[b.번호.charAt(0)] || (b.중요도 || 0) - (a.중요도 || 0) || a.번호.localeCompare(b.번호); });
-  return { B: B, R: R, order: order, accts: acctList, rels: rels, bundles: bList, flags: flags, s15: s15, s13: s13, years: years, months: months, starts: starts, breaks: breaks, learned: learned, newCand: newCand,
+  var res = { B: B, R: R, order: order, accts: acctList, rels: rels, bundles: bList, flags: flags, s15: s15, s13: s13, years: years, months: months, starts: starts, breaks: breaks, learned: learned, newCand: newCand,
     change: { segs: segs, quarters: quarters, drops: drops }, targets: targets, learnUsed: learnUsed, byContract: byContract, s15d: s15d };
+  finAnsAll_(res, U); // [2026.11.25] 노란 칸 답안·여쭐 것(FinDocs.js)
+  return res;
 }
 
 // ---------- 보관 파일 ----------
@@ -582,6 +607,7 @@ function finRvHarvest_(ss, U) {
         var k = keys[n]; if (!k) return; var o = U.rows[k] || {}, before = JSON.stringify(o);
         have.forEach(function (h) {
           var f = h === FIN_RV_NEX_COL_ ? '넥스' : FIN_RV_USER_KEY_[h], v = r[I[h]];
+          if (f === '넥스' && (U.nexPend || {})[k]) return; // [2026.11.25] 넥스가 방금 적어 아직 시트에 안 쓴 의견 — 빈 칸으로 지우지 않음
           if (f === '소명액') v = finRvNum_(v) == null ? String(v || '').trim() : String(finRvNum_(v));
           // 엑셀에서 옮겨 넣은 값이 그대로면 세무사님이 고치신 것이 아님(엑셀이 바뀌면 따라 바뀜)
           if (o._x && o._x[f] !== undefined && String(v == null ? '' : v).trim() === o._x[f]) return;
@@ -650,10 +676,14 @@ function finRvRead_(ss) {
   var sh = ss.getSheetByName('거래'); if (!sh || sh.getLastRow() < 2) return null;
   var V = sh.getDataRange().getValues(), I = finRvHdrIdx_(V[0]);
   var g = function (r, h) { var i = I[h]; return i === undefined ? '' : r[i]; };
-  var keys = finRvKeys_(V.slice(1).map(function (r) { return finRvRowKey_(r, I); }));
+  // [2026.11.25] 거래일자·시간은 보이는 모양만 줄였다(yy-mm-dd · hh:mm) — 열쇠 칸(은행 자료 그대로 날짜·시각)이 있으면 열쇠와 날짜·시각을 거기서 읽는다
+  var kc = I[FIN_RV_KEY_COL_], kv = kc === undefined ? [] : V.slice(1).map(function (r) { return String(r[kc] || '').trim(); });
+  var useKey = kv.length && kv.every(function (k) { return k.split('|').length >= 6; });
+  var keys = useKey ? kv : finRvKeys_(V.slice(1).map(function (r) { return finRvRowKey_(r, I); }));
   var R = V.slice(1).map(function (r, n) {
-    var acct = String(g(r, '계좌') || ''), d = finRvYmd_(g(r, '거래일자') instanceof Date ? Utilities.formatDate(g(r, '거래일자'), 'Asia/Seoul', 'yyyy-MM-dd') : g(r, '거래일자'));
-    return { i: n, k: keys[n], d: d, t: String(g(r, '거래시간') || ''), acct: String(g(r, '기관') || '') + ' ' + acct, dg: acct, org: String(g(r, '기관') || ''), holder: String(g(r, '예금주') || ''),
+    var kp = useKey ? keys[n].split('|') : null;
+    var acct = String(g(r, '계좌') || ''), d = finRvYmd_(kp ? kp[1] : g(r, '거래일자') instanceof Date ? Utilities.formatDate(g(r, '거래일자'), 'Asia/Seoul', 'yyyy-MM-dd') : g(r, '거래일자'));
+    return { i: n, k: keys[n], d: d, t: kp ? kp[2] : String(g(r, '거래시간') || ''), acct: String(g(r, '기관') || '') + ' ' + acct, dg: acct, org: String(g(r, '기관') || ''), holder: String(g(r, '예금주') || ''),
       in: finRvNum_(g(r, '입금')) || 0, out: finRvNum_(g(r, '출금')) || 0, bal: finRvNum_(g(r, '잔액')), cur: String(g(r, '통화') || '원'),
       내용: String(g(r, '내용') || ''), 상대: String(g(r, '상대') || ''), 상대은행: String(g(r, '상대은행') || ''), 상대계좌: String(g(r, '상대계좌') || ''), 구분: String(g(r, '거래구분') || ''), 메모: String(g(r, '메모') || ''), 검산: String(g(r, '검산') || '') };
   }).filter(function (r) { return r.d; });
@@ -675,8 +705,12 @@ function finRvTab_(ss, title, hdr, data, o) {
   (o.text || []).forEach(function (ci) { sh.getRange(1, ci + 1, vals.length, 1).setNumberFormat('@'); });
   for (var s = 0; s < vals.length; s += 4000) sh.getRange(s + 1, 1, Math.min(4000, vals.length - s), w).setValues(vals.slice(s, s + 4000));
   (o.money || []).forEach(function (ci) { sh.getRange(2, ci + 1, Math.max(1, vals.length - 1), 1).setNumberFormat('#,##0'); });
-  sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7');
-  hdr.forEach(function (h, i) { if (/✎$/.test(h)) { sh.getRange(1, i + 1).setBackground('#ffe8a3'); sh.getRange(2, i + 1, Math.max(1, vals.length - 1), 1).setBackground('#fffbea'); } });
+  sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7').setHorizontalAlignment('center');   // 머리줄 가운데(세무사님 11-25 "필드명은 중앙정렬하라")
+  // 머리 색 — 거래 탭과 같은 뜻: 세무사님 칸(✎) 노랑 · GAS 답안·근거 파랑(FinRun.js FIN_HDR_CLR_)
+  hdr.forEach(function (h, i) {
+    if (/✎$/.test(h)) { sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.입력); sh.getRange(2, i + 1, Math.max(1, vals.length - 1), 1).setBackground('#fffbea'); }
+    else if (/\(GAS\)$|^답안 근거$/.test(h)) sh.getRange(1, i + 1).setBackground(FIN_HDR_CLR_.분석);
+  });
   (o.lists || []).forEach(function (L) { var rule = SpreadsheetApp.newDataValidation().requireValueInList(L.list, true).setAllowInvalid(true).build(); sh.getRange(2, L.col + 1, Math.max(1, vals.length - 1) + 200, 1).setDataValidation(rule); });
   if (o.note) sh.getRange(1, 1).setNote(o.note);
   sh.setFrozenRows(1);
@@ -732,11 +766,11 @@ function finRvWrite_(ss, A, U, ctx) {
     });
   }
   // 머리·바탕색·고르기 목록(처음 한 번이면 충분하지만 1단계가 다시 쓰면 새로)
-  FIN_RV_GAS_COLS_.concat([FIN_RV_KEY_COL_]).forEach(function (h) { sh.getRange(1, I[h] + 1).setBackground('#dfe8f5').setFontWeight('bold'); });
-  FIN_RV_USER_COLS_.forEach(function (h) { sh.getRange(1, I[h] + 1).setBackground('#ffe8a3').setFontWeight('bold'); if (nRow) sh.getRange(2, I[h] + 1, nRow, 1).setBackground('#fffbea'); });
-  sh.getRange(1, I[FIN_RV_NEX_COL_] + 1).setBackground('#e8f5e9').setFontWeight('bold');
+  //  [2026.11.25] 머리줄은 원본·관리·분석 세 가지 색(finLedgerHdrPaint_) — ✎ 칸은 적는 자리라 줄 바탕만 연한 노랑
+  FIN_RV_USER_COLS_.forEach(function (h) { if (nRow) sh.getRange(2, I[h] + 1, nRow, 1).setBackground('#fffbea'); });
   sh.getRange(1, I['전체 잔액'] + 1).setNote('피상속인 원화 계좌 잔액의 합(그 순간 계좌마다 마지막 잔액). 본인 계좌끼리 옮긴 돈은 그대로 — 바깥과 오간 돈만 전체 잔액을 바꾼다.');
   sh.getRange(1, I['상대 ✎'] + 1).setNote('세무사님 칸(✎) — 적으시면 GAS 후보를 덮습니다. 「분석대상자」 탭의 이름을 고르거나 새 이름을 적으시면 관련인 표에 생깁니다. GAS는 이 칸을 덮어쓰지 않습니다.');
+  finLedgerHdrPaint_(sh, hdr);
   if (nRow) {
     var vr = function (list) { return SpreadsheetApp.newDataValidation().requireValueInList(list, true).setAllowInvalid(true).build(); };
     sh.getRange(2, I['성격 ✎'] + 1, nRow, 1).setDataValidation(vr(FIN_RV_NATURES_));
@@ -744,11 +778,15 @@ function finRvWrite_(ss, A, U, ctx) {
     if (names.length) sh.getRange(2, I['상대 ✎'] + 1, nRow, 1).setDataValidation(vr(names));
   }
 
-  // 짚을 곳
+  // [2026.11.25] 여쭐 것 — 세금이 달라지는 것만 한 곳에(답안·근거와 함께). 답은 「정하시는 곳」의 ✎ 칸에 적으시면 다음 셈에 반영
+  finRvTab_(ss, '여쭐 것', ['무엇', '답안(GAS)', '근거', '정하시는 곳', '열쇠'], (A.asks || []).map(function (q) { return [q.무엇, q.답안 || '', q.근거 || '', q.곳, q.열쇠]; }),
+    { text: [4], note: 'GAS가 서류·통장에서 답안을 먼저 냈습니다. 맞으면 그대로 두셔도 답안대로 셈하고, 틀리면 「정하시는 곳」의 노란 칸(✎)에 적으십시오. 세금이 달라지는 것만 여기에 모읍니다.' });
+
+  // 짚을 곳 — 상태 답안(GAS)은 노란 칸이 비었을 때 쓰는 값(세무사님 판단으로 세지 않음)
   var F = A.flags;
-  finRvTab_(ss, '짚을 곳', ['갈래', '번호', '짚을 것', '날짜', '금액', '상대', '까닭(과세관청이 보는 점)', '준비할 것', '줄 수', '상태 ✎', '메모 ✎', '열쇠', '중요도', '배움'],
-    F.map(function (f) { return [f.갈래, f.번호, f.짚을것, f.날짜 || '', f.금액 == null ? '' : f.금액, f.상대 || '', f.까닭 || '', f.준비 || '', (f.rows || []).length || '', f.상태 || '', f.메모 || '', f.id, f.중요도 || '', f.배움 || '']; }),
-    { text: [3, 11], money: [4], lists: [{ col: 9, list: FIN_RV_STATE_ }], note: '과세관청이 이 사건에서 짚을 곳을 먼저 추린 목록(GAS, 0원). 상태·메모(✎)는 세무사님 칸 — 다시 셈해도 남습니다. 거래 탭 「짚임」 칸에 같은 번호가 붙습니다.' });
+  finRvTab_(ss, '짚을 곳', ['갈래', '번호', '짚을 것', '날짜', '금액', '상대', '까닭(과세관청이 보는 점)', '준비할 것', '줄 수', '상태 답안(GAS)', '답안 근거', '상태 ✎', '메모 ✎', '열쇠', '중요도', '배움'],
+    F.map(function (f) { return [f.갈래, f.번호, f.짚을것, f.날짜 || '', f.금액 == null ? '' : f.금액, f.상대 || '', f.까닭 || '', f.준비 || '', (f.rows || []).length || '', f.상태답안 || '', f.답안근거 || '', f.상태 || '', f.메모 || '', f.id, f.중요도 || '', f.배움 || '']; }),
+    { text: [3, 13], money: [4], lists: [{ col: 11, list: FIN_RV_STATE_ }], note: '과세관청이 이 사건에서 짚을 곳을 먼저 추린 목록(GAS, 0원). 상태 답안(GAS)이 맞으면 그대로 두시고, 틀리면 상태·메모(✎)에 적으십시오 — 다시 셈해도 남습니다. 거래 탭 「짚임」 칸에 같은 번호가 붙습니다.' });
 
   // 추정상속(§15)
   var B = A.B, s15rows = [];
@@ -790,15 +828,15 @@ function finRvWrite_(ss, A, U, ctx) {
   finTgWrite_(ss, A, U);
 
   // 묶음
-  finRvTab_(ss, '묶음', ['묶음 이름', '상대', '나감', '들어옴', '순액(나감−들어옴)', '첫 날', '끝 날', '줄', '출처', '판단 ✎', '메모 ✎'],
-    A.bundles.map(function (b) { return [b.이름, b.상대, b.나감, b.들어옴, b.순액, b.첫, b.끝, b.줄, b.세무사님 ? '세무사님 칸' : 'GAS 후보(같은 상대와 오간 돈)', b.판단, b.메모]; }),
-    { text: [5, 6], money: [2, 3, 4], lists: [{ col: 9, list: FIN_RV_JUDGE_ }], note: '같은 일에서 나온 줄을 한 건으로. 거래 탭 「묶음 ✎」에 이름을 적으시면 그 묶음이 생깁니다. 짚을 대상은 순액입니다.' });
+  finRvTab_(ss, '묶음', ['묶음 이름', '상대', '나감', '들어옴', '순액(나감−들어옴)', '첫 날', '끝 날', '줄', '출처', '판단 답안(GAS)', '답안 근거', '판단 ✎', '메모 ✎'],
+    A.bundles.map(function (b) { return [b.이름, b.상대, b.나감, b.들어옴, b.순액, b.첫, b.끝, b.줄, b.세무사님 ? '세무사님 칸' : 'GAS 후보(같은 상대와 오간 돈)', b.판단답안 || '', b.답안근거 || '', b.판단, b.메모]; }),
+    { text: [5, 6], money: [2, 3, 4], lists: [{ col: 11, list: FIN_RV_JUDGE_ }], note: '같은 일에서 나온 줄을 한 건으로. 판단 답안(GAS)이 맞으면 그대로 두시고, 틀리면 판단 ✎에 적으십시오. 거래 탭 「묶음 ✎」에 이름을 적으시면 그 묶음이 생깁니다. 짚을 대상은 순액입니다.' });
 
-  // 받을 자료
+  // 받을 자료 — 요청 답안(GAS)
   var W = []; F.forEach(function (f) { if (f.want) W.push({ id: f.id, f: f }); });
-  finRvTab_(ss, '받을 자료', ['무엇', '왜', '짚을 곳', '요청 ✎', '메모 ✎', '열쇠'],
-    W.map(function (w) { var s = U.wants[w.id] || {}; return [w.f.want.무엇, w.f.want.왜 + (w.f.want.고를것 && !s.요청 ? ' — 요청할지 골라 주세요' : ''), w.f.번호, s.요청 || '', s.메모 || '', w.id]; }),
-    { text: [5], lists: [{ col: 3, list: ['요청함', '요청 안 함', '받음'] }], note: '납세자가 내지 않았지만 과세관청이 볼 수 있는 자료(짚을 곳 A). 요청할지는 세무사님이 고르십니다.' });
+  finRvTab_(ss, '받을 자료', ['무엇', '왜', '짚을 곳', '요청 답안(GAS)', '답안 근거', '요청 ✎', '메모 ✎', '열쇠'],
+    W.map(function (w) { var s = U.wants[w.id] || {}; return [w.f.want.무엇, w.f.want.왜, w.f.번호, w.f.요청답안 || '', w.f.요청근거 || '', s.요청 || '', s.메모 || '', w.id]; }),
+    { text: [7], lists: [{ col: 5, list: ['요청함', '요청 안 함', '받음'] }], note: '납세자가 내지 않았지만 과세관청이 볼 수 있는 자료(짚을 곳 A). 요청 답안(GAS)이 맞으면 그대로 두시고, 다르면 요청 ✎에 적으십시오.' });
 
   // 배운 것(FinLearn.js)
   finLnWrite_(ss, A, ctx.learn);
@@ -935,9 +973,11 @@ function finRvRun_(c, folder, st, opt) {
   var xChanged = finRvExcelScan_(folder, U, budgetAt);
   if (!U.relShown) U.relShown = U.rel.map(function (x) { return x.이름; }); // 옛 판 보관(시트에 보인 이름 기록 없음) — 지금 있는 이름이 시트에 보인 것
   var famChanged = false; try { famChanged = finRvFamily_(c, U); } catch (e) {}
-  try { var gD = finRvGuessD_(folder); if (JSON.stringify(gD || null) !== JSON.stringify(U.guess || null)) { U.guess = gD; famChanged = true; } } catch (e) {}
-  // [2026.11.25] 사건 폴더 계약서(임대차·매매)에서 주요 거래대상자 · 다른 사건에서 배운 것(자체 학습)
   var decedent = String((U.base || {}).피상속인 || '').trim() || finTaxpayer_(folder.getName(), c);
+  // [2026.11.25] 사건 서류(사망진단서·가족관계증명서·초본·분할협의서·차용증·의뢰 메모·넥스 보고서) → 상속개시일·상속인 짐작·관계·빌려준 돈(FinDocs.js)
+  //  계약서 짐작보다 먼저 — 가족으로 정해진 사람은 계약서 서명란 짐작이 덮지 않는다(finTgContractRels_가 가족 짐작은 건드리지 않음)
+  try { if (finDocsScan_(folder, U, budgetAt)) famChanged = true; if (finDocsApply_(U, decedent)) famChanged = true; } catch (e) {}
+  // [2026.11.25] 사건 폴더 계약서(임대차·매매)에서 주요 거래대상자 · 다른 사건에서 배운 것(자체 학습)
   try { if (finTgContracts_(folder, U, budgetAt)) famChanged = true; if (finTgContractRels_(U, decedent)) famChanged = true; } catch (e) {}
   var LN = null; try { LN = finLnLoad_().agg; } catch (e) { LN = null; }
   var lnHash = LN ? finHash32_(JSON.stringify([LN.lanes, LN.natures, LN.codes, LN.flags])) : '';
@@ -958,7 +998,7 @@ function finRvRun_(c, folder, st, opt) {
     var w = finRvWrite_(ss, A, U, { X: X, learn: LN });
     if (w && w.moved) { finRvSave_(folder, S); return { ok: true, retry: true, 까닭: '읽는 사이 거래 탭 줄 차례가 바뀜 — 다음 번에 다시' }; }
     SpreadsheetApp.flush();
-    wrote = true;
+    wrote = true; delete U.nexPend; // 넥스 의견이 시트에 들어감
   }
   var prevSum = U.sum ? JSON.stringify(U.sum) : '';
   U.ver = FIN_RV_VER_; U.sheetId = id; U.outHash = outHash; U.sum = sum; U.at = new Date().toISOString();
@@ -972,7 +1012,7 @@ function finRvRun_(c, folder, st, opt) {
 }
 function finRvSummary_(A) {
   var cnt = {}; A.flags.forEach(function (f) { var g = f.번호.charAt(0); cnt[g] = (cnt[g] || 0) + 1; });
-  var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || ''); });
+  var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || f.상태답안 || ''); /* 세무사님 칸이 비면 GAS 답안대로 */ });
   return {
     상속개시일: A.B.D || '', 피상속인: A.B.피상속인,
     추정상속: A.s15.map(function (s) { return { 기간: s.y + '년', 순인출: s.순, 기준넘음: s.넘음, 소명액: s.소명, 미소명: s.미소명, 추정액: s.추정 }; }),
@@ -984,9 +1024,21 @@ function finRvSummary_(A) {
     전체잔액끝: (function () { var t = null; A.order.forEach(function (ix) { if (A.R[ix].total != null) t = A.R[ix].total; }); return t; })(),
     잔액끊김: A.breaks,
     분석대상자: (function () { var o = { 상속인특수관계자: 0, 주요거래대상자: 0, 살펴볼: 0 }; (A.targets || []).forEach(function (t) { if (t.구분 === 0) o.상속인특수관계자++; else if (t.구분 === 1) o.주요거래대상자++; else if (t.구분 === 2) o.살펴볼++; }); return o; })(),
-    크게줄어든구간: ((A.change || {}).drops || []).map(function (d) { return d.시작 + '~' + d.끝 + ' ' + finRvWon_(d.줄어듦) + '원'; }).slice(0, 5)
+    크게줄어든구간: ((A.change || {}).drops || []).map(function (d) { return d.시작 + '~' + d.끝 + ' ' + finRvWon_(d.줄어듦) + '원'; }).slice(0, 5),
+    // [2026.11.25] 넥스가 읽을 것(부르실 때) — GAS가 성격을 못 정한 통장 글자 종류(많은 순 150) · 여쭐 것
+    성격모름: (function () {
+      var o = {}; A.R.forEach(function (r) {
+        if (!r.own || !r.krw || r.inner || (r.nature && !/용도 모름|되풀이/.test(r.nature))) return;
+        var k = finRvNatureKey_(r); if (!k) return; var e = o[k] || (o[k] = { 글자: finRvNatureText_(r), 줄: 0, 입금: 0, 출금: 0 }); e.줄++; e.입금 += r.in || 0; e.출금 += r.out || 0;
+      });
+      return Object.keys(o).map(function (k) { return o[k]; }).sort(function (a, b) { return b.줄 - a.줄 || (b.입금 + b.출금) - (a.입금 + a.출금); }).slice(0, 150);
+    })(),
+    여쭐것: (A.asks || []).map(function (q) { return q.무엇 + ' — 답안: ' + (q.답안 || '') + ' (' + (q.근거 || '').slice(0, 80) + ')'; }).slice(0, 20)
   };
 }
+// 통장 글자 종류(넥스에게 보이는 글 · 넥스가 돌려준 뜻을 거는 열쇠) — 내용·상대·메모
+function finRvNatureText_(r) { return [r.내용, r.상대, r.메모].map(function (s) { return String(s || '').trim(); }).filter(String).join(' / ').slice(0, 80); }
+function finRvNatureKey_(r) { return finRvNorm_(finRvNatureText_(r)).replace(/\d{4,}/g, '#'); }
 // 1단계 자동이 부르는 입구 — 2단계가 실패해도 1단계 결과는 그대로(실패는 결과에 적어 틱 기록으로)
 function finRvSafe_(c, folder, st, opt) {
   try { return finRvRun_(c, folder, st, opt); }
@@ -997,19 +1049,9 @@ function finRvSummaryOf_(folder) {
   var U = finRvLoad_(folder).U; if (!U.sum) return null;
   return Object.assign({}, U.sum, { at: U.at ? Utilities.formatDate(new Date(U.at), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '', 판: U.ver || '', 보고서: U.rpFile ? { name: '보고서/' + (U.rpName || FIN_RP_NAME_), url: 'https://drive.google.com/file/d/' + U.rpFile + '/view' } : null });
 }
-// 상속개시일 짐작 — 사건 폴더 맨 위 글 파일(의뢰서·메모 .md/.txt)의 「상속개시일 : 2026.5.15」·「사망일자: …」(세무사님 값이 있으면 쓰지 않음)
-//  (11-24 확인: 실사건 의뢰 메모 .txt "상속개시일 : 2026.5.15일(추정)" · 다른 네 사건 의뢰서는 칸이 비어 있음)
+// 글 속 「상속개시일 : 2026.5.15」·「사망일자: …」 — 의뢰 메모·넥스 보고서에서 짐작할 때(FinDocs.js가 씀, 서류보다 뒤 차례)
+//  [2026.11.25] 옛 finRvGuessD_(맨 위 글 파일만 봄)는 FinDocs.js finDocsScan_·finDocsApply_로 흡수해 걷음
 function finRvGuessDText_(t) {
   var m = /(상속\s*개시일|사망\s*일자?|사망일)\s*[:：]?\s*(\d{4})\s*[.\-년\/]\s*(\d{1,2})\s*[.\-월\/]\s*(\d{1,2})/.exec(String(t || ''));
   return m ? m[2] + '-' + ('0' + m[3]).slice(-2) + '-' + ('0' + m[4]).slice(-2) : '';
-}
-function finRvGuessD_(folder) {
-  var it = folder.getFiles(), n = 0;
-  while (it.hasNext() && n < 40) {
-    var f = it.next(), name = f.getName(); n++;
-    if (!/\.(md|txt)$/i.test(name) || /^_/.test(name) || f.getSize() > 200000) continue;
-    var t = ''; try { t = f.getBlob().getDataAsString('UTF-8'); } catch (e) { continue; }
-    var d = finRvGuessDText_(t); if (d) return { D: d, from: name };
-  }
-  return null;
 }

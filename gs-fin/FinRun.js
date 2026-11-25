@@ -180,7 +180,7 @@ function finLastOf_(sheet, merged, by) {
 // ---------- 합치기 ----------
 var FIN_REL_ = { '엑셀': 3, 'PDF': 2, '사진(글자인식)': 1 };
 // 합치기 규칙 판 — 바꾸면 진행 중 사건이 파일을 다시 읽지 않고 저절로 다시 합쳐진다(자동 지문에 들어감)
-var FIN_MERGE_VER_ = '2026-11-24a';
+var FIN_MERGE_VER_ = '2026-11-25a';   // 11-25 거래 탭 모양(날짜·시간·예금주·열쇠·색)이 바뀌어 다시 씀
 // [2026.11.20] 예금·적금 계좌는 이자를 잔액에 넣지 않고 바로 내준다(신협 「141:이자지급」·「150:제세금」 출금, 잔액 그대로) — 은행 자료가 원래
 //  「앞 잔액 − 출금 = 잔액」으로 맞지 않는 줄이라 잔액 검산 ⚠(틀림)로 세지 않는다(11-20 운영: ○○ 사건 신협 정기예금 24계좌가 ⚠로 「확인할 것」 50개)
 function finPassThrough_(b) {
@@ -347,7 +347,72 @@ function finAcctSummary_(a) {
 }
 
 // ---------- 구글 시트 쓰기 ----------
-var FIN_LEDGER_HDR_ = ['거래일자', '거래시간', '기관', '계좌', '예금주', '입금', '출금', '잔액', '통화', '내용', '상대', '상대은행', '상대계좌', '거래구분', '거래점', '메모', '원본 칸', '읽은 방법', '검산', '원본 파일', '원본 줄', '같은 거래 다른 파일', '서식'];
+// [2026.11.25] 예금주 칸 걷음 — 피상속인 계좌만 받는 것이 원칙(세무사님 11-25 "피상속인 이외의 계좌는 들어오지 않는 것을 원칙으로 하고, 여기 필드명은 없애자"). 계좌 목록 탭의 예금주는 남김
+var FIN_LEDGER_HDR_ = ['거래일자', '거래시간', '기관', '계좌', '입금', '출금', '잔액', '통화', '내용', '상대', '상대은행', '상대계좌', '거래구분', '거래점', '메모', '원본 칸', '읽은 방법', '검산', '원본 파일', '원본 줄', '같은 거래 다른 파일', '서식'];
+// [2026.11.25] 거래 탭 머리줄 색 세 가지 — 원본(은행 자료에 적힌 값)·관리(GAS가 붙인 출처·검산 칸)·분석(2단계 칸·✎·넥스 의견)
+//  (세무사님 11-25 "필드명을 원본필드와 관리필드와 분석필드의 색상을 구분해야 보기 좋겠다") — 칸 이름으로 가르므로 칸을 옮기셔도 그대로
+//  분석 칸 가운데 세무사님이 적으시는 ✎ 칸은 노랑(세무사님 11-25 "분석필드에서 내가 입력할 칸은 다른 색상으로 구분하라")
+var FIN_HDR_CLR_ = { 원본: '#e3e5e8', 관리: '#cce6c2', 분석: '#c3daf5', 입력: '#ffd966' };
+var FIN_LEDGER_MGMT_ = ['읽은 방법', '검산', '원본 파일', '원본 줄', '같은 거래 다른 파일', '서식', '열쇠'];
+var FIN_HDR_NOTE_ = { 원본: '원본 칸(회색) — 은행 자료에 적힌 값', 관리: '관리 칸(초록) — GAS가 붙인 출처·검산·대조 칸', 분석: '분석 칸(파랑) — 2단계 GAS 분석·넥스 의견', 입력: '입력 칸(노랑 ✎) — 세무사님이 적으시는 칸, GAS가 덮어쓰지 않음' };
+function finLedgerHdrGroup_(h) {
+  h = String(h || '');
+  if (FIN_LEDGER_MGMT_.indexOf(h) >= 0) return '관리';
+  if (/✎$/.test(h)) return '입력';
+  if (h === '넥스 의견' || (typeof FIN_RV_GAS_COLS_ !== 'undefined' && FIN_RV_GAS_COLS_.indexOf(h) >= 0)) return '분석';
+  return '원본';
+}
+function finLedgerHdrPaint_(sh, hdr) {
+  var seen = {};
+  sh.getRange(1, 1, 1, hdr.length).setFontWeight('bold').setHorizontalAlignment('center').setBackgrounds([hdr.map(function (h) { return FIN_HDR_CLR_[finLedgerHdrGroup_(h)]; })]);
+  // 묶음마다 맨 앞 칸에 풀이 메모(이미 메모가 있는 칸은 그 앞에 한 줄 얹음)
+  hdr.forEach(function (h, i) {
+    var g = finLedgerHdrGroup_(h); if (seen[g]) return; seen[g] = 1;
+    var cell = sh.getRange(1, i + 1), cur = String(cell.getNote() || '');
+    if (cur.indexOf(FIN_HDR_NOTE_[g]) !== 0) cell.setNote(FIN_HDR_NOTE_[g] + (cur ? '\n' + cur.replace(/^(원본|관리|분석|입력) 칸\([^)]*\) — [^\n]*\n?/, '') : ''));
+  });
+  finLedgerOutRule_(sh, hdr);
+}
+// [2026.11.25] 출금 줄은 글자를 빨강으로(세무사님 11-25 "출금데이타를 다른색상으로 표시하여 가독성을 높이면 좋겠다") —
+//  조건부 서식 한 줄(출금 칸 > 0)이라 줄이 몇 개든 가볍고, 다시 써도 규칙 하나만 남는다. ✎ 칸은 적으시는 글이라 그대로.
+var FIN_OUT_FONT_ = '#c62828';
+function finLedgerOutRule_(sh, hdr) {
+  var oc = hdr.indexOf('출금'); if (oc < 0) return;
+  var col = sh.getRange(1, oc + 1).getA1Notation().replace(/\d+$/, ''), f = '=$' + col + '2>0', n = Math.max(1, sh.getMaxRows() - 1);
+  var ranges = [], s = -1;
+  for (var i = 0; i <= hdr.length; i++) {
+    var take = i < hdr.length && !/✎$/.test(String(hdr[i]));
+    if (take && s < 0) s = i;
+    if (!take && s >= 0) { ranges.push(sh.getRange(2, s + 1, n, i - s)); s = -1; }
+  }
+  var keep = sh.getConditionalFormatRules().filter(function (r) {
+    var c = r.getBooleanCondition(); if (!c) return true;
+    return !(c.getCriteriaType() === SpreadsheetApp.BooleanCriteria.CUSTOM_FORMULA && /^=\$[A-Z]+2>0$/.test(String(c.getCriteriaValues()[0])));   // 지난번 GAS가 건 출금 규칙만 걷음
+  });
+  keep.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(f).setFontColor(FIN_OUT_FONT_).setRanges(ranges).build());
+  sh.setConditionalFormatRules(keep);
+}
+// 보이는 모양 — 거래일자 yy-mm-dd · 거래시간 hh:mm(못 알아보는 모양은 그대로)
+function finYmdShort_(d) { var m = /^(\d{2})?(\d{2})-(\d{2})-(\d{2})$/.exec(String(d || '').trim()); return m ? m[2] + '-' + m[3] + '-' + m[4] : String(d || ''); }
+function finHmShort_(t) {
+  var s = String(t || '').trim(), m = /^(\d{1,2}):(\d{2})/.exec(s) || /^(\d{2})(\d{2})(\d{2})?$/.exec(s);
+  return m ? ('0' + m[1]).slice(-2) + ':' + m[2] : s;
+}
+// 거래 탭 줄(머리 = FIN_LEDGER_HDR_ + 열쇠)
+// [2026.11.25] 거래일자는 yy-mm-dd, 거래시간은 hh:mm으로 보임(세무사님 11-25 "거래일자를 yy-mm-dd형식으로 거래시간을 hh:mm형식으로 지정하자").
+//  줄 열쇠(세무사님 ✎ 칸을 이어 붙이는 열쇠)는 은행 자료 그대로의 날짜·시각(초까지)으로 「열쇠」 칸에 따로 두어, 보이는 모양을 줄여도 짝·차례·적으신 칸이 그대로다.
+function finLedgerRows_(m) {
+  var ledger = m.rows.map(function (r) {
+    var g = r.g, s = g.std || {};
+    return [g.d, g.t || '', r.a.기관 || '', r.a.계좌 || (r.a.끝4 ? '…' + r.a.끝4 : ''), g.dir === 'i' ? g.금액 : '', g.dir === 'o' ? g.금액 : '', g.잔액 == null ? '' : g.잔액, g.통화 || '원',
+      s.내용 || '', s.상대 || '', s.상대은행 || '', s.상대계좌 || '', s.거래구분 || '', s.거래점 || '', s.메모 || '',
+      (g.dir === '?' ? '방향 모름 금액: ' + g.금액 + (s.원본 ? ' · ' : '') : '') + (s.원본 || ''), r.how, g.검산 === true ? '✅' : g.검산 === false ? '⚠ ' + (g.왜 || '') : g.왜 ? '－ ' + g.왜 : '—',
+      finLink_(r.src.url, r.src.name), (r.시트 ? r.시트 + ' ' : '') + (g.줄 ? g.줄 + '줄' : ''), r.also.join(' · ') + (r.diff ? ' ⚠ ' + r.diff : ''), r.서식];
+  });
+  var LI = finRvHdrIdx_(FIN_LEDGER_HDR_), lkeys = finRvKeys_(ledger.map(function (row) { return finRvRowKey_(row, LI); }));
+  ledger.forEach(function (row, i) { row[0] = finYmdShort_(row[0]); row[1] = finHmShort_(row[1]); row.push(lkeys[i]); });
+  return ledger;
+}
 function finLink_(url, label) { label = String(label || '').replace(/"/g, '\'').slice(0, 200); return url ? '=HYPERLINK("' + url + '","' + label + '")' : label; }
 function finWriteSheet_(folder, taxpayer, m) {
   var today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd'), name = FIN_OUT_PREFIX_ + taxpayer + '_' + today, ss = null;
@@ -368,22 +433,17 @@ function finWriteSheet_(folder, taxpayer, m) {
     // [2026.11.24] 외화 줄은 센트까지 보이게(11-24 운영 확인: USD 57,671.42 · 잔액 57,671.82가 57,671 · 57,672로 보여 잔액이 1 어긋나 보였다)
     var dec = (opts && opts.dec || []).filter(function (i) { return i < data.length; });
     for (var di = 0; di < dec.length; di += 500) sh.getRangeList(dec.slice(di, di + 500).reduce(function (acc, i) { return acc.concat((opts.money || []).map(function (ci) { return sh.getRange(i + 2, ci + 1).getA1Notation(); })); }, [])).setNumberFormat('#,##0.00');
-    sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7');
+    sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7').setHorizontalAlignment('center');   // 머리줄 가운데(세무사님 11-25 "필드명은 중앙정렬하라")
+    if (title === '거래') finLedgerHdrPaint_(sh, hdr);
     sh.setFrozenRows(1);
     return sh;
   };
   var A = m.accts.map(finAcctSummary_);
   tab('계좌 목록', ['기관', '계좌', '예금주', '통화', '자료 기간', '거래 줄', '처음 잔액', '끝 잔액', '입금 합계', '출금 합계', '잔액 검산 ⚠', '참고', '원본 파일', '서식'],
     A.map(function (a) { return [a.기관, a.계좌, a.예금주, a.통화 || '원', a.기간, a.줄, a.처음잔액, a.끝잔액, a.입금합계, a.출금합계, a.검산틀림 || '', a.참고 || '', a.파일.join(' · '), a.서식.join(' · ')]; }), { text: [1, 3], money: [6, 7, 8, 9], dec: A.map(function (a, i) { return a.통화 ? i : -1; }).filter(function (i) { return i >= 0; }) });
-  tab('거래', FIN_LEDGER_HDR_, m.rows.map(function (r) {
-    var g = r.g, s = g.std || {};
-    return [g.d, g.t || '', r.a.기관 || '', r.a.계좌 || (r.a.끝4 ? '…' + r.a.끝4 : ''), r.a.예금주 || '', g.dir === 'i' ? g.금액 : '', g.dir === 'o' ? g.금액 : '', g.잔액 == null ? '' : g.잔액, g.통화 || '원',
-      s.내용 || '', s.상대 || '', s.상대은행 || '', s.상대계좌 || '', s.거래구분 || '', s.거래점 || '', s.메모 || '',
-      (g.dir === '?' ? '방향 모름 금액: ' + g.금액 + (s.원본 ? ' · ' : '') : '') + (s.원본 || ''), r.how, g.검산 === true ? '✅' : g.검산 === false ? '⚠ ' + (g.왜 || '') : g.왜 ? '－ ' + g.왜 : '—',
-      finLink_(r.src.url, r.src.name), (r.시트 ? r.시트 + ' ' : '') + (g.줄 ? g.줄 + '줄' : ''), r.also.join(' · ') + (r.diff ? ' ⚠ ' + r.diff : ''), r.서식];
-  }), { text: [0, 1, 3, 8, 12], money: [5, 6, 7], dec: m.rows.map(function (r, i) { return r.g.통화 ? i : -1; }).filter(function (i) { return i >= 0; }) });
+  tab('거래', FIN_LEDGER_HDR_.concat([FIN_RV_KEY_COL_]), finLedgerRows_(m), { text: [0, 1, 3, 7, 11, FIN_LEDGER_HDR_.length], money: [4, 5, 6], dec: m.rows.map(function (r, i) { return r.g.통화 ? i : -1; }).filter(function (i) { return i >= 0; }) });
   tab('겹쳐서 한 번만 센 줄', ['원본 파일', '원본 줄', '거래일자', '기관·계좌', '금액', '방향', '남긴 줄의 파일'], m.dups.map(function (d) {
-    return [finLink_(d.src.url, d.src.name), (d.시트 ? d.시트 + ' ' : '') + (d.줄 ? d.줄 + '줄' : ''), d.g.d, d.a.label, d.g.금액, d.g.dir === 'i' ? '입금' : d.g.dir === 'o' ? '출금' : '모름', d.keptSrc.name];
+    return [finLink_(d.src.url, d.src.name), (d.시트 ? d.시트 + ' ' : '') + (d.줄 ? d.줄 + '줄' : ''), finYmdShort_(d.g.d), d.a.label, d.g.금액, d.g.dir === 'i' ? '입금' : d.g.dir === 'o' ? '출금' : '모름', d.keptSrc.name];
   }), { text: [2], money: [4] });
   tab('확인할 것', ['종류', '파일·계좌', '내용'], m.checks.map(function (c) { return [c.종류, c.url ? finLink_(c.url, c.파일) : c.파일, c.내용]; }));
   var mapRows = [], seen = {};
