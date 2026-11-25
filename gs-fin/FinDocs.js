@@ -326,23 +326,32 @@ function finAnsAll_(A, U) {
     else if (big && Math.abs(b.순액) <= big * 0.1) { b.판단답안 = '자기 돈 왕복'; b.답안근거 = '나감·들어옴이 거의 같음'; }
     else { b.판단답안 = '모름'; b.답안근거 = '근거 서류를 찾지 못함'; }
   });
-  // 분석대상자 상태
-  A.rels.forEach(function (x) { x.답안상태 = x.갈래 ? '확정(세무사님)' : x.짐작 ? '답안(GAS) — 틀리면 ✎' : '답안 없음'; });
-  // 여쭐 것 — 세금이 달라지는 것만
+  // 여쭐 것 — 세금이 달라지는 것만. 여기 오른 것의 그 칸(_ask)만 시트 바탕을 노랗게(세무사님 11-25 "내가 입력할 것과 아닌 것을 명확하게 구분해 줘야지")
   var asks = [], base = U.base || {};
+  A.rels.forEach(function (x) { x._ask = ''; }); A.bundles.forEach(function (b) { b._ask = false; }); A.flags.forEach(function (f) { f._ask = false; }); A._askD = false;
   if (!finRvYmd_(base.상속개시일)) {
+    if (!U.guess || (U.guess.다른날 || []).length) A._askD = true;
     if (!U.guess) asks.push({ 무엇: '상속개시일', 답안: '(서류 없음)', 근거: '사망진단서·기본증명서·초본이 사건 폴더에 없음 — 받을 자료', 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D' });
     else if ((U.guess.다른날 || []).length) asks.push({ 무엇: '상속개시일(서류끼리 다름)', 답안: U.guess.D + (U.guess.T ? ' ' + U.guess.T : ''), 근거: U.guess.from + ' / 다른 날: ' + U.guess.다른날.join('; '), 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D2' });
   }
   if (U.heirsGuess && !A.rels.some(function (x) { return x.갈래 === '상속인'; })) {
     var say = U.heirSay && U.heirsGuess.이름.join('') !== U.heirSay.이름 ? ' / ' + U.heirSay.from + ': 「' + U.heirSay.글 + '」(상속포기 등 확인)' : '';
-    asks.push({ 무엇: '상속인 확정', 답안: U.heirsGuess.이름.join(' · '), 근거: U.heirsGuess.from + say, 곳: '분석대상자 탭 「갈래」(짐작이 틀리면 「갈래 ✎」)', 열쇠: 'ask:heirs' });
+    asks.push({ 무엇: '상속인 확정', 답안: U.heirsGuess.이름.join(' · '), 근거: U.heirsGuess.from + say, 곳: '분석대상자 탭 「갈래 ✎」(바탕이 노란 줄 — 맞으면 「상속인」, 아니면 맞는 갈래)', 열쇠: 'ask:heirs' });
+    A.rels.forEach(function (x) { if (!x.갈래 && x.짐작 === '상속인') x._ask = 'heir'; });
   }
+  // 큰돈이 오갔는데 누구인지 모르는 상대(③) — 가족·친척·특수관계면 §13 합산이 달라짐
+  (A.targets || []).forEach(function (t) {
+    var x = t.x; if (t.구분 !== 2 || !x || x.갈래 || x.짐작 || (t.기간나감 || 0) < T.큰돈) return;
+    x._ask = 'who';
+    asks.push({ 무엇: x.이름 + ' — 누구인지(가족·친척·특수관계면 사전증여 합산, ' + (B.D ? t.yrs + '년' : '전체') + ' 안 나감 ' + finRvWon_(t.기간나감) + '원)', 답안: '(모름)', 근거: '서류·통장 글자로 관계를 찾지 못함 · ' + (x.출처 || ''), 곳: '분석대상자 탭 「갈래 ✎」(바탕이 노란 줄)', 열쇠: 'ask:who:' + finRvNorm_(x.이름) });
+  });
   A.bundles.forEach(function (b) {
     var x = byName[finRvNorm_(b.상대 || '')];
-    if (!b.판단 && x && FIN_RV_FAMILY_.test(lane(x)) && Math.abs(b.순액) >= T.큰돈) asks.push({ 무엇: b.이름 + (b.순액 > 0 ? ' — 대여인지 증여인지(순액 ' : ' — 무슨 돈인지(빌린 돈·갚은 돈·받은 돈, 순액 ') + finRvWon_(b.순액) + '원)', 답안: b.판단답안, 근거: b.답안근거, 곳: '묶음 탭 「판단 ✎」', 열쇠: 'ask:b:' + b.이름 });
+    if (!b.판단 && x && FIN_RV_FAMILY_.test(lane(x)) && Math.abs(b.순액) >= T.큰돈 && (b._ask = true)) asks.push({ 무엇: b.이름 + (b.순액 > 0 ? ' — 대여인지 증여인지(순액 ' : ' — 무슨 돈인지(빌린 돈·갚은 돈·받은 돈, 순액 ') + finRvWon_(b.순액) + '원)', 답안: b.판단답안, 근거: b.답안근거, 곳: '묶음 탭 「판단 ✎」', 열쇠: 'ask:b:' + b.이름 });
   });
-  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전') asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」 · 거래 탭 「소명액 ✎」', 열쇠: 'ask:' + f.id }); });
+  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 일부만 소명되면 거래 탭 「소명액 ✎」도)', 열쇠: 'ask:' + f.id }); });
+  // 분석대상자 상태 — 적으셔야 할 줄 · 답안 있는 줄 · 묻지 않는 줄을 글로도 가름
+  A.rels.forEach(function (x) { x.답안상태 = x.갈래 ? '확정(세무사님)' : x._ask ? '적으셔야 함 — 여쭐 것' : x.짐작 ? '답안(GAS) — 맞으면 안 적으셔도 됨' : '모름 — 큰돈 아님, 안 적으셔도 됨'; });
   A.asks = asks;
 }
 
