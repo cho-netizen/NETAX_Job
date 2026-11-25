@@ -349,7 +349,7 @@ function finAnsAll_(A, U) {
     var x = byName[finRvNorm_(b.상대 || '')];
     if (!b.판단 && x && FIN_RV_FAMILY_.test(lane(x)) && Math.abs(b.순액) >= T.큰돈 && (b._ask = true)) asks.push({ 무엇: b.이름 + (b.순액 > 0 ? ' — 대여인지 증여인지(순액 ' : ' — 무슨 돈인지(빌린 돈·갚은 돈·받은 돈, 순액 ') + finRvWon_(b.순액) + '원)', 답안: b.판단답안, 근거: b.답안근거, 곳: '묶음 탭 「판단 ✎」', 열쇠: 'ask:b:' + b.이름 });
   });
-  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 일부만 소명되면 거래 탭 「소명액 ✎」도)', 열쇠: 'ask:' + f.id }); });
+  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 자동소명 밖에 더 소명되면 거래 탭 「추가소명액 ✎」도)', 열쇠: 'ask:' + f.id }); });
   // 분석대상자 상태 — 적으셔야 할 줄 · 답안 있는 줄 · 묻지 않는 줄을 글로도 가름
   A.rels.forEach(function (x) { x.답안상태 = x.갈래 ? '확정(세무사님)' : x._ask ? '적으셔야 함 — 여쭐 것' : x.짐작 ? '답안(GAS) — 맞으면 안 적으셔도 됨' : '모름 — 큰돈 아님, 안 적으셔도 됨'; });
   A.asks = asks;

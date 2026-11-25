@@ -77,8 +77,11 @@ function finRpBlock_(A, U, sheetUrl) {
   if (!B.D) s.push('- 상속개시일이 없어 셈하지 않음 [확인 필요]');
   else {
     // [2026.11.25] 세무사님 「순인출 전에 총인출과 입금액 란」 — 순인출 = 총인출 − 입금액(재예입)
-    s.push(finRpTable_(['기간', '총인출', '입금액(재예입)', '순인출', '기준', '기준 넘음', '소명액(세무사님 칸)', '미소명', '추정액'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.인출), finRpMoney_(x.재예입), finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpRed_(finRpMoney_(x.추정))]; })));
+    s.push(finRpTable_(['기간', '총인출', '입금액(재예입)', '순인출', '기준', '기준 넘음', '자동소명액', '추가소명액', '소명액 합계', '미소명', '추정액'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.인출), finRpMoney_(x.재예입), finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.자동), finRpMoney_(x.추가), finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpRed_(finRpMoney_(x.추정))]; })));
     s.push('- 순인출 = 총인출(피상속인 계좌에서 나간 돈) − 입금액(재예입: 나간 돈이 피상속인 다른 계좌로 다시 들어온 것)');
+    // [2026.11.25] 자동소명(GAS)·추가소명(세무사님)·합계 — 미소명 = 순인출 − 소명액 합계
+    var s2 = A.s15[1] || A.s15[0];
+    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. 추가소명액은 거래 탭 「추가소명액 ✎」 합계(세무사님), 미소명 = 순인출 − 소명액 합계'); }
   }
   (A.s15d || []).forEach(function (d) { s.push('- 부담한 채무(§15① 2호) ' + d.y + '년 안 — 통장에 대출로 들어온 돈 ' + finRvWon_(d.채무) + '원 · 기준 ' + finRvWon_(d.기준) + '원 ' + (d.넘음 ? '넘음(용도 소명 필요)' : '안 넘음')); });
   s.push('');
