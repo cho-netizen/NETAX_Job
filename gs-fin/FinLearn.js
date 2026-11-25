@@ -28,7 +28,7 @@ function finLnCollect_(A, U) {
   });
   var urow = function (r) { var o = (U.rows || {})[r.k]; if (!o) return {}; var m = Object.assign({}, o._x || {}); Object.keys(o).forEach(function (k) { if (k !== '_x' && o[k]) m[k] = o[k]; }); return m; };
   A.R.forEach(function (r) {
-    var n = urow(r).성격; if (!n || FIN_LN_SKIP_NATURE_.test(n) || !r.best || finLnPersonLike_(r.best.raw)) return;
+    var n = urow(r).성격 || (r.natWord ? r.nature : ''); if (!n || FIN_LN_SKIP_NATURE_.test(n) || !r.best || finLnPersonLike_(r.best.raw)) return;
     var k = finLnKey_(r.best.n); if (k.length < 2) return; k += '|' + r.dir;
     var o = natures[k] || (natures[k] = {}); o[n] = (o[n] || 0) + 1;
   });

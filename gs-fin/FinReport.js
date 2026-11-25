@@ -81,7 +81,9 @@ function finRpBlock_(A, U, sheetUrl) {
     s.push('- ① 총인출 = 피상속인 계좌에서 나간 돈 · ② 입금액(재예입) = 나간 돈이 피상속인 다른 계좌로 다시 들어온 것(시행령 §11①2호) · ⑨ 차감액·⑩ 추정액은 시행령 §11④');
     // [2026.11.25] 자동소명(GAS)·추가소명(세무사님)·합계 — 미소명 = 순인출 − 소명액 합계
     var s2 = A.s15[1] || A.s15[0];
-    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. ⑥ 추가소명액은 거래 탭 「추가소명액 ✎」 합계(세무사님)'); }
+    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. 거래 탭 「소명 ✎」 한 칸 — ⑤ 자동소명액은 GAS 글(자동 ·)이 그대로인 출금, ⑥ 추가소명액은 세무사님이 적으신 출금, 「아님」이면 뺌');
+      var ad = (s2.추가별 || []).slice().sort(function (a, b) { return b.인정 - a.인정; });
+      if (ad.length) { s.push(''); s.push('⑥ 추가소명 내역(' + s2.y + '년 안, 큰 순)'); s.push(finRpTable_(['날짜', '상대', '출금', '소명 인정', '추가소명 내용(세무사님)'], ad.slice(0, 30).map(function (z) { return [z.d, z.상대, finRpMoney_(z.out), finRpMoney_(z.인정), z.내용]; }))); if (ad.length > 30) s.push('- 그 밖 ' + (ad.length - 30) + '줄 — 시트 「추정상속(§15)」 탭'); } }
   }
   (A.s15d || []).forEach(function (d) { s.push('- 부담한 채무(§15① 2호) ' + d.y + '년 안 — 통장에 대출로 들어온 돈 ' + finRvWon_(d.채무) + '원 · 기준 ' + finRvWon_(d.기준) + '원 ' + (d.넘음 ? '넘음(용도 소명 필요)' : '안 넘음')); });
   s.push('');
