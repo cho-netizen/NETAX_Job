@@ -222,7 +222,7 @@ function finDocsApply_(U, decedent) {
   var have = {}; U.rel.forEach(function (x) { have[finRvNorm_(x.이름)] = x; });
   var upsert = function (name, f) {
     var x = have[finRvNorm_(name)];
-    if (!x) { x = { 이름: name, 갈래: '', 짐작: '', 상속인: '', 관계: '', 별칭: [], 계좌: [], 출처: f.출처, 상태: '' }; U.rel.push(x); have[finRvNorm_(name)] = x; changed = true; }
+    if (!x) { x = { 이름: name, 갈래: '', 짐작: '', 관계: '', 별칭: [], 계좌: [], 출처: f.출처, 상태: '' }; U.rel.push(x); have[finRvNorm_(name)] = x; changed = true; }
     Object.keys(f).forEach(function (k) {
       if (k === '출처') { if (String(x.출처 || '').indexOf(f.출처) === -1) { x.출처 = f.출처 + (x.출처 ? ' · ' + x.출처 : ''); changed = true; } return; }
       if (String(x[k] || '') !== String(f[k])) { x[k] = f[k]; changed = true; }
@@ -234,7 +234,7 @@ function finDocsApply_(U, decedent) {
     var heirs = (kids.length ? kids : par).concat(sp).map(function (p) { return p.이름; });
     fam.forEach(function (p) {
       var heir = heirs.indexOf(p.이름) !== -1;
-      upsert(p.이름, { 짐작: heir ? '상속인' : '상속인 아닌 가족·친척', 상속인짐작: heir ? '예' : '아니오' + (p.사망 ? '(사망)' : ''), 관계짐작: p.관계 + (p.사망 ? '(사망)' : ''), 출처: famFrom });
+      upsert(p.이름, { 짐작: heir ? '상속인' : '상속인 아닌 가족·친척', 관계짐작: p.관계 + (p.사망 ? '(사망)' : ''), 출처: famFrom });
     });
     U.heirsGuess = { 이름: heirs, from: famFrom };
   } else U.heirsGuess = null;
@@ -246,7 +246,7 @@ function finDocsApply_(U, decedent) {
     var x = have[finRvNorm_(p.이름)], famSet = !!famNames[finRvNorm_(p.이름)];
     var lane = p.관계 === '세입자' ? '세입자' : /(아들|딸|자녀)$/.test(p.관계) ? '상속인' : FIN_DOC_KIN_RE_.test(p.관계) ? '상속인 아닌 가족·친척' : '';
     var f = { 출처: p.from };
-    if (!famSet) { if (lane) f.짐작 = lane; if (lane === '상속인') f.상속인짐작 = '예'; else if (lane) f.상속인짐작 = '아니오'; }
+    if (!famSet) { if (lane) f.짐작 = lane; }
     if (p.관계 && (!x || !x.관계짐작 || !famSet)) f.관계짐작 = p.관계;
     upsert(p.이름, f);
   });
@@ -260,7 +260,7 @@ function finDocsApply_(U, decedent) {
   prop.forEach(function (p) {
     (p.상대 || []).forEach(function (w) {
       var x = have[finRvNorm_(w)], lane2 = p.종류 === '처분' ? '매수인' : '매도인', f = { 출처: p.근거, 관계짐작: '부동산 ' + (p.종류 === '처분' ? '산 사람' : '판 사람') + '(' + p.부동산.slice(0, 24) + ' ' + p.날짜 + (p.금액 ? ' · ' + finRvWon_(p.금액) + '원' : '') + ')' };
-      if (!x || !FIN_RV_FAMILY_.test(x.짐작 || '')) { f.짐작 = lane2; f.상속인짐작 = '아니오'; }
+      if (!x || !FIN_RV_FAMILY_.test(x.짐작 || '')) { f.짐작 = lane2; }
       upsert(w, f);
     });
   });
@@ -336,7 +336,7 @@ function finAnsAll_(A, U) {
   }
   if (U.heirsGuess && !A.rels.some(function (x) { return x.갈래 === '상속인'; })) {
     var say = U.heirSay && U.heirsGuess.이름.join('') !== U.heirSay.이름 ? ' / ' + U.heirSay.from + ': 「' + U.heirSay.글 + '」(상속포기 등 확인)' : '';
-    asks.push({ 무엇: '상속인 확정', 답안: U.heirsGuess.이름.join(' · '), 근거: U.heirsGuess.from + say, 곳: '분석대상자 탭 「갈래 ✎」·「상속인인가 ✎」', 열쇠: 'ask:heirs' });
+    asks.push({ 무엇: '상속인 확정', 답안: U.heirsGuess.이름.join(' · '), 근거: U.heirsGuess.from + say, 곳: '분석대상자 탭 「갈래」(짐작이 틀리면 「갈래 ✎」)', 열쇠: 'ask:heirs' });
   }
   A.bundles.forEach(function (b) {
     var x = byName[finRvNorm_(b.상대 || '')];
@@ -362,11 +362,11 @@ function finNexNote_(b) {
   (Array.isArray(b.대상자) ? b.대상자 : []).slice(0, 200).forEach(function (p) {
     var name = String(p && p.이름 || '').trim(); if (!name) return;
     var x = have[finRvNorm_(name)];
-    if (!x) { x = { 이름: name, 갈래: '', 짐작: '', 상속인: '', 관계: '', 별칭: [], 계좌: [], 출처: '넥스(세무사님 확인 전)', 상태: '' }; U.rel.push(x); have[finRvNorm_(name)] = x; }
+    if (!x) { x = { 이름: name, 갈래: '', 짐작: '', 관계: '', 별칭: [], 계좌: [], 출처: '넥스(세무사님 확인 전)', 상태: '' }; U.rel.push(x); have[finRvNorm_(name)] = x; }
     var put = function (k, v) { v = String(v || '').trim(); if (v && !x[k]) { x[k] = v.slice(0, 40); return true; } return false; };
     var did = false;
     if (!x.갈래) did = put('짐작', p.갈래) || did;
-    did = put('상속인짐작', p.상속인) || did; did = put('관계짐작', p.관계) || did;
+    did = put('관계짐작', p.관계) || did;
     if (did) { if (String(x.출처 || '').indexOf('넥스') === -1) x.출처 = (x.출처 ? x.출처 + ' · ' : '') + '넥스' + (p.근거 ? '(' + String(p.근거).slice(0, 60) + ')' : ''); n.대상자++; }
     else n.안씀.push(name + ' — 이미 답안·세무사님 값이 있음');
   });

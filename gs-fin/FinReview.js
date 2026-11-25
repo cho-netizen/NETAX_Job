@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25h';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
+var FIN_RV_VER_ = '2026-11-25i';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90, 경조한번: 1000000 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
@@ -254,7 +254,7 @@ function finRvAnalyze_(R, U, opt) {
   var lane = function (x) { return x ? (x.갈래 || x.짐작 || '') : ''; };
   R.forEach(function (r) {
     var u = urow(r); if (!u.상대 || relBy(u.상대)) return;
-    rels.push({ 이름: String(u.상대).trim(), 갈래: '', 짐작: '', 상속인: '', 관계: '', 별칭: [], 계좌: [], 출처: '세무사님이 거래 칸에 적으심', 상태: '갈래를 골라 주세요' });
+    rels.push({ 이름: String(u.상대).trim(), 갈래: '', 짐작: '', 관계: '', 별칭: [], 계좌: [], 출처: '세무사님이 거래 칸에 적으심', 상태: '갈래를 골라 주세요' });
   });
   // 세무사님이 정하신 줄에서 별칭·계좌를 배움(같은 글자·같은 계좌가 다른 줄에서도 그 사람으로 맞춰지게)
   //  상대 계좌번호는 그 번호로 오간 줄의 상대 글자가 하나뿐일 때만 배운다 — 결제대행·카드 번호처럼 여러 가맹점이 같은 번호로 찍히는 것을 사람 계좌로 착각하지 않게
@@ -334,7 +334,7 @@ function finRvAnalyze_(R, U, opt) {
     var g = grp[k], w = g.raw;
     if (finRvNameLike_(w, B.피상속인)) return; // [2026.11.24] 피상속인 본인 이름(「○○○ 납부출금」처럼 은행이 예금주 이름을 적은 자동납부)은 관련인 후보가 아님
     var guess = g.pay * 2 >= g.n ? '생활 결제처' : /카드|보험|생명|화재|손해|증권|투자|은행|금고|신협|저축|캐피탈|공제|적금|예금|펀드|신탁|뱅크|페이/.test(w) ? '금융기관·보험' : /병원|의원|요양|약국|치과|한의|메디|의료/.test(w) ? '병원·요양' : /세무서|구청|시청|군청|국세|지방세|한전|전기|가스|수도|관리비|통신|KT|SKT|LGU|건강보험|국민연금|지로/.test(w) ? '공과금·세금' : /급여|보수|수당|휴가비|성과급|퇴직|연금/.test(w) ? '그 밖 거래처' : '';
-    rels.push({ 이름: w, 갈래: '', 짐작: guess, 상속인: '', 관계: '', 별칭: [], 계좌: Object.keys(g.dg).slice(0, 5), 출처: '자주 오간 상대(GAS)', 상태: '후보 — 갈래를 골라 주세요' });
+    rels.push({ 이름: w, 갈래: '', 짐작: guess, 관계: '', 별칭: [], 계좌: Object.keys(g.dg).slice(0, 5), 출처: '자주 오간 상대(GAS)', 상태: '후보 — 갈래를 골라 주세요' });
     newCand++;
   });
   // 후보를 더했으면 짝 맞추기를 처음부터 다시 — 새 후보와 이름이 꼭 같은 줄이 글자 일부만 맞은 다른 대상자에게 가 있지 않게(다음 셈과 결과가 같도록)
@@ -658,11 +658,11 @@ function finRvHarvest_(ss, U) {
       var name = g(r, '이름·상호 ✎'); if (!name) return;
       var x = cur[finRvNorm_(name)] || { 이름: name, 별칭: [], 계좌: [], 출처: '세무사님이 표에 더하심' };
       var set = function (k, v) { if (v === undefined) return; if (JSON.stringify(x[k] == null ? '' : x[k]) !== JSON.stringify(v)) { x[k] = v; changed = true; } };
-      set('이름', name); set('갈래', g(r, '갈래 ✎')); set('상속인', g(r, '상속인인가 ✎')); set('관계', g(r, '관계 ✎'));
+      set('이름', name); set('갈래', g(r, '갈래 ✎')); set('관계', g(r, '관계 ✎'));
       var al = g(r, '통장에 찍히는 글자 ✎'); if (al !== undefined) set('별칭', al ? al.split(/\s*[·,]\s*/).filter(String) : []);
       var ac = g(r, '계좌번호 ✎'); if (ac !== undefined) set('계좌', ac ? ac.split(/\s*[·,]\s*/).filter(String) : []);
       var ct = g(r, '관련 거래·계약 ✎'); if (ct !== undefined && x.계약글 && ct === x.계약글) ct = x.거래계약 || ''; // 계약서에서 GAS가 보인 글 그대로면 세무사님 값 아님
-      set('사업자번호', g(r, '사업자번호 ✎')); set('거래계약', ct);
+      set('거래계약', ct);
       if (x.갈래 && /후보|골라/.test(String(x.상태 || ''))) x.상태 = '확정';
       if (!cur[finRvNorm_(name)]) changed = true;
       keep.push(x); cur[finRvNorm_(name)] = null;
@@ -984,12 +984,12 @@ function finRvFamily_(c, U) {
   (F && F.사람 || []).forEach(function (p) {
     var n = String(p.이름 || '').trim(); if (!n || have[finRvNorm_(n)]) return;
     var heir = p.상속인 === true || /^(예|true|상속인)$/.test(String(p.상속인 || ''));
-    U.rel.push({ 이름: n, 갈래: '', 짐작: heir ? '상속인' : '상속인 아닌 가족·친척', 상속인: '', 관계: String(p.관계 || ''), 별칭: [], 계좌: [], 출처: '가족 지도(세무사님 확인 전)', 상태: '후보 — 갈래를 골라 주세요' });
+    U.rel.push({ 이름: n, 갈래: '', 짐작: heir ? '상속인' : '상속인 아닌 가족·친척', 관계: String(p.관계 || ''), 별칭: [], 계좌: [], 출처: '가족 지도(세무사님 확인 전)', 상태: '후보 — 갈래를 골라 주세요' });
     changed = true;
   });
   (F && F.법인 || []).forEach(function (k) {
     var n = String(k.이름 || '').trim(); if (!n || have[finRvNorm_(n)]) return;
-    U.rel.push({ 이름: n, 갈래: '', 짐작: '특수관계 법인', 상속인: '', 관계: '', 별칭: [], 계좌: [], 사업자번호: String(k.사업자번호 || ''), 출처: '가족 지도 법인(세무사님 확인 전)', 상태: '후보 — 갈래를 골라 주세요' });
+    U.rel.push({ 이름: n, 갈래: '', 짐작: '특수관계 법인', 관계: '', 별칭: [], 계좌: [], 사업자번호: String(k.사업자번호 || ''), 출처: '가족 지도 법인(세무사님 확인 전)', 상태: '후보 — 갈래를 골라 주세요' });
     changed = true;
   });
   return changed;

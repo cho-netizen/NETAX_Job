@@ -82,7 +82,7 @@ function finReviewLine_(rv) {
 function finProxyNexNote_(caseId, input) {
   input = input || {};
   var arr = function (v, n) { return Array.isArray(v) ? v.slice(0, n) : []; }; // 도구 입력 칸 이름은 영문(Claude 도구 규격) → 금융거래 서버는 우리말 칸
-  var body = { caseId: caseId, 성격: arr(input.natures, 500).map(function (x) { return { 글자: x && x.text, 성격: x && x.nature }; }), 대상자: arr(input.people, 200).map(function (x) { return { 이름: x && x.name, 갈래: x && x.lane, 상속인: x && x.heir, 관계: x && x.relation, 근거: x && x.basis }; }), 의견: arr(input.notes, 500).map(function (x) { return { 열쇠: x && x.key, 의견: x && x.note }; }) };
+  var body = { caseId: caseId, 성격: arr(input.natures, 500).map(function (x) { return { 글자: x && x.text, 성격: x && x.nature }; }), 대상자: arr(input.people, 200).map(function (x) { return { 이름: x && x.name, 갈래: x && x.lane, 관계: x && x.relation, 근거: x && x.basis }; }), 의견: arr(input.notes, 500).map(function (x) { return { 열쇠: x && x.key, 의견: x && x.note }; }) };
   if (!body.성격.length && !body.대상자.length && !body.의견.length) return { error: 'natures·people·notes 중 하나는 있어야 한다' };
   return finProxyCall_('fin_nex_note', body);
 }
