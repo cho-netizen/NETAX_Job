@@ -77,11 +77,11 @@ function finRpBlock_(A, U, sheetUrl) {
   if (!B.D) s.push('- 상속개시일이 없어 셈하지 않음 [확인 필요]');
   else {
     // [2026.11.25] 세무사님 「순인출 전에 총인출과 입금액 란」 — 순인출 = 총인출 − 입금액(재예입)
-    s.push(finRpTable_(['기간', '총인출', '입금액(재예입)', '순인출', '기준', '기준 넘음', '자동소명액', '추가소명액', '소명액 합계', '미소명', '추정액'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.인출), finRpMoney_(x.재예입), finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.자동), finRpMoney_(x.추가), finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpRed_(finRpMoney_(x.추정))]; })));
-    s.push('- 순인출 = 총인출(피상속인 계좌에서 나간 돈) − 입금액(재예입: 나간 돈이 피상속인 다른 계좌로 다시 들어온 것)');
+    s.push(finRpTable_(['기간', '① 총인출', '② 입금액(재예입)', '③ 순인출<br>①−②', '④ 기준<br>1년 2억·2년 5억', '기준 넘음<br>③ ≥ ④', '⑤ 자동소명액', '⑥ 추가소명액', '⑦ 소명액 합계<br>⑤+⑥', '⑧ 미소명<br>③−⑦', '⑨ 차감액<br>min(③×20%, 2억)', '⑩ 추정액<br>③≥④이고 ⑧≥⑨이면 ⑧−⑨'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.인출), finRpMoney_(x.재예입), finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.자동), finRpMoney_(x.추가), finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpMoney_(x.차감), finRpRed_(finRpMoney_(x.추정))]; })));
+    s.push('- ① 총인출 = 피상속인 계좌에서 나간 돈 · ② 입금액(재예입) = 나간 돈이 피상속인 다른 계좌로 다시 들어온 것(시행령 §11①2호) · ⑨ 차감액·⑩ 추정액은 시행령 §11④');
     // [2026.11.25] 자동소명(GAS)·추가소명(세무사님)·합계 — 미소명 = 순인출 − 소명액 합계
     var s2 = A.s15[1] || A.s15[0];
-    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. 추가소명액은 거래 탭 「추가소명액 ✎」 합계(세무사님), 미소명 = 순인출 − 소명액 합계'); }
+    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. ⑥ 추가소명액은 거래 탭 「추가소명액 ✎」 합계(세무사님)'); }
   }
   (A.s15d || []).forEach(function (d) { s.push('- 부담한 채무(§15① 2호) ' + d.y + '년 안 — 통장에 대출로 들어온 돈 ' + finRvWon_(d.채무) + '원 · 기준 ' + finRvWon_(d.기준) + '원 ' + (d.넘음 ? '넘음(용도 소명 필요)' : '안 넘음')); });
   s.push('');
@@ -92,7 +92,7 @@ function finRpBlock_(A, U, sheetUrl) {
   if (!A.s13.length) s.push('- 분석대상자에 상속인·가족·특수관계 법인이 아직 정해지지 않음 [확인 필요 — 시트 「분석대상자」 탭 갈래 ✎]');
   else {
     // [2026.11.25] 세무사님 「나머지 순액 다음에 증여재산공제와 증여세과세표준 란」 — 공제는 관계로 짐작(상증법 §53), 과세표준 = 나머지 순액 − 공제(§55① 4호)
-    s.push(finRpTable_(['관련인', '갈래', '관계', '합산 기간', '나감', '들어옴', '순액', '그 가운데 생계비·가족비·경조비', '나머지 순액', '증여재산공제(§53)', '증여세 과세표준(§55)'], A.s13.map(function (x) {
+    s.push(finRpTable_(['관련인', '갈래', '관계', '합산 기간', '① 나감', '② 들어옴', '③ 순액<br>①−②', '④ 그 가운데 생계비·가족비·경조비', '⑤ 나머지 순액<br>③−④', '⑥ 증여재산공제(§53)', '⑦ 증여세 과세표준(§55)<br>⑤−⑥(0 아래는 0)'], A.s13.map(function (x) {
       var rest = x.순액 - (x.사회통념 || 0), g = finRpGiftDed_(x.x), base = g.amt == null ? '' : finRpRed_(finRpMoney_(Math.max(0, rest - g.amt)));
       return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.x.관계 || x.x.관계짐작 || '', x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액), finRpMoney_(x.사회통념 || ''), finRpMoney_(rest), g.amt == null ? '' : finRpMoney_(g.amt), base]; // 공제 근거는 「관계」 칸으로 알 수 있어 숫자만(세무사님 11-25)
     })));
