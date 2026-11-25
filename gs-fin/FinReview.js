@@ -14,7 +14,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25k';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
+var FIN_RV_VER_ = '2026-11-25l';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90, 경조한번: 1000000 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
@@ -753,6 +753,7 @@ function finRvTab_(ss, title, hdr, data, o) {
   (o.lists || []).forEach(function (L) { var rule = SpreadsheetApp.newDataValidation().requireValueInList(L.list, true).setAllowInvalid(true).build(); sh.getRange(2, L.col + 1, Math.max(1, vals.length - 1) + 200, 1).setDataValidation(rule); });
   if (o.note) sh.getRange(1, 1).setNote(o.note);
   sh.setFrozenRows(1);
+  finSheetFitCols_(sh, w);   // 칸 너비 = 데이터 길이(긴 칸은 줄임, FinRun.js)
   return sh;
 }
 function finRvWrite_(ss, A, U, ctx) {
@@ -818,6 +819,7 @@ function finRvWrite_(ss, A, U, ctx) {
     if (names.length) sh.getRange(2, I['상대 ✎'] + 1, nRow, 1).setDataValidation(vr(names));
   }
 
+  finSheetFitCols_(sh, hdr.length);   // 거래 탭 — 2단계 칸을 쓴 뒤 칸 너비를 다시 맞춤
   var needLog = A._needLog = {}; // 탭마다 노랗게 칠한(적으셔야 할) 칸 수 — 맨 끝 「여쭐 것」 머리 줄에 셈
 
   // 짚을 곳 — 상태 답안(GAS)은 노란 칸이 비었을 때 쓰는 값(세무사님 판단으로 세지 않음)
