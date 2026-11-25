@@ -14,14 +14,14 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-25f';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
+var FIN_RV_VER_ = '2026-11-25h';   // 11-25 서류 읽기·답안·여쭐 것·성격 낱말
 var FIN_RV_FILE_ = '_금융거래_검토.json';
-var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90 };
+var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90, 경조한번: 1000000 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
 var FIN_RV_FAMILY_ = /^(상속인|상속인 아닌 가족·친척|특수관계 법인)$/;
 var FIN_RV_NOT_PARTY_ = /^(금융기관·보험|병원·요양|공과금·세금|피상속인 본인)$/;
-var FIN_RV_NATURES_ = ['안에서 옮김', '바깥 — 안에서 옮김 아님', '대여', '대여 회수', '차입', '차입 상환', '이자 지급', '이자 수입', '월세', '보증금 받음', '보증금 돌려줌', '매각대금', '취득대금', '생활비·부양', '병원비', '세금', '공과금·관리비', '카드대금', '보험료', '보험금', '연금·급여 수입', '현금 인출', '현금 입금', '수표', '해지·만기', '사전증여 의심', '자기 돈 왕복', '용도 모름'];
-var FIN_RV_JUDGE_ = ['대여(채권 남음)', '사전증여', '생활비·부양', '자기 돈 왕복', '정상 거래', '미소명', '모름'];
+var FIN_RV_NATURES_ = ['안에서 옮김', '바깥 — 안에서 옮김 아님', '대여', '대여 회수', '차입', '차입 상환', '이자 지급', '이자 수입', '월세', '보증금 받음', '보증금 돌려줌', '매각대금', '취득대금', '생계비', '가족비', '경조비', '종교활동비', '병원비', '세금', '공과금·관리비', '카드대금', '보험료', '보험금', '연금·급여 수입', '현금 인출', '현금 입금', '수표', '해지·만기', '사전증여 의심', '자기 돈 왕복', '용도 모름'];
+var FIN_RV_JUDGE_ = ['대여(채권 남음)', '사전증여', '생계비', '가족비', '경조비', '종교활동비', '자기 돈 왕복', '정상 거래', '미소명', '모름'];
 var FIN_RV_STATE_ = ['확인 전', '물음 보냄', '답 받음', '소명 됨', '소명 안 됨', '해당 없음'];
 var FIN_RV_MEAN_ = ['상대', '성격', '묶음', '소명액', '메모', '가져오지 않음'];
 // 거래 탭에 2단계가 더하는 칸 — GAS 칸 / 세무사님 칸(✎) / 넥스 칸
@@ -112,7 +112,7 @@ function finRvBase_(U, taxpayer) {
   // 상속개시일 — 세무사님 값 > 사건 서류에서 짐작한 값(U.guess — FinDocs.js: 사망진단서 → 기본증명서 → 초본 → 분할협의서 → 넥스 보고서 → 의뢰 메모)
   var D = finRvYmd_(b.상속개시일) || finRvYmd_((U.guess || {}).D), tm = /^(\d{1,2}):(\d{2})/.exec(String(b.상속개시시각 || (!finRvYmd_(b.상속개시일) && U.guess ? U.guess.T : '') || ''));
   return { 피상속인: String(b.피상속인 || taxpayer || '').trim(), D: D, D짐작: !finRvYmd_(b.상속개시일) && !!D ? (U.guess || {}).from : '', Dt: tm ? ('0' + tm[1]).slice(-2) + ':' + tm[2] : '',
-    T: { 큰돈: num('큰돈'), 현금쪼갬합계: num('현금쪼갬합계'), 현금쪼갬일: num('현금쪼갬일'), 자주횟수: num('자주횟수'), 자주합계: num('자주합계'), 목록기준: num('목록기준'), 직전일: num('직전일') } };
+    T: { 큰돈: num('큰돈'), 현금쪼갬합계: num('현금쪼갬합계'), 현금쪼갬일: num('현금쪼갬일'), 자주횟수: num('자주횟수'), 자주합계: num('자주합계'), 목록기준: num('목록기준'), 직전일: num('직전일'), 경조한번: num('경조한번'), 사회통념한도: finRvNum_(b.사회통념한도) > 0 ? finRvNum_(b.사회통념한도) : 0 } };
 }
 function finRvPeriod_(r, B) {
   if (!B.D) return '';
@@ -149,7 +149,10 @@ function finRvNatureWord_(r, txt) {
   if (o && /국세|지방세|세무서|구청|시청|군청|재산세|소득세|부가세|양도세|상속세|증여세|위택스|홈택스|지로|관세|취득세|등록세|제세금|전체납부/.test(s)) return '세금';
   if (o && /예금결산|결산/.test(s)) return '예금 결산(이자 세금)';
   if (o && /적금|청약|펀드|신탁|ISA/.test(s)) return '적금·예금 넣음(본인 다른 상품)';
-  if (o && /헌금|십일조|교회|성당|사찰|선교|기부|후원/.test(s)) return '헌금·기부(생활비)';
+  // [2026.11.25] 종교활동비·경조비(세무사님 11-25 "교회 등 단체에 지급하는 종교활동비" / "거래처나 각종 지인들에게 지급하는 경조비") — 받는 사람이 가족이면 뒤에서 가족비로 바뀜
+  if (o && /헌금|십일조|교회|성당|사찰|선교|예배|감사헌|건축헌|절s*시주|불전/.test(s)) return '종교활동비';
+  if (o && /축의|부의|조의|근조|화환|경조|결혼|축하|돌잔치|회갑|칠순|팔순|생일|명절/.test(s)) return '경조비';
+  if (o && /기부|후원/.test(s)) return '기부·후원';
   if (o && /교육비|학원|등록금|수업료|학비/.test(s)) return '교육비(생활비)';
   if (o && /용돈/.test(s)) return '용돈(가족에게)';
   if (i && /출장비|여비|수당/.test(s)) return '연금·급여 수입';
@@ -372,6 +375,26 @@ function finRvAnalyze_(R, U, opt) {
     if (r.inner || (r.nature && !/용도 모름|되풀이/.test(r.nature))) return;
     var v = NX[finRvNatureKey_(r)]; if (v) r.nature = String(v).slice(0, 30) + ' (넥스)';
   });
+  // [2026.11.25] 생계비·가족비(세무사님 11-25 "생계를 함께하는 자에게 지급하는 생계비와 … 가족이나 친지에게 지급하는 가족비 … 사회통념상 인정할 수 있는 금액은
+  //  증여로 보지 않는다" — 상증법 §46 5호·시행령 §35④). 받는 사람이 가족(분석대상자 갈래·짐작)이거나 통장 글자에 가족 부르는 말
+  //  (「큰자부생일축하」·「○○이교육비」)이 있고 쓰임(교육비·생일·용돈·병원비 …)이 보이면: 피상속인과 같은 세대면 생계비, 따로 살면 가족비.
+  //  가족 부르는 말로 알아본 받는 사람은 가족·친척 짐작으로(세무사님 갈래가 먼저). 세무사님 성격 ✎이 있으면 건드리지 않음
+  var HH = {}; ((U.household || {}).이름 || []).forEach(function (n) { HH[finRvNorm_(n)] = 1; });
+  var KIN_RE = /(자부|며느리|사위|손자|손녀|손주|외손|조카|큰아들|작은아들|큰딸|작은딸|형수|제수|올케|매형|매제|처남|처제|시누이)/;
+  var KID_RE = /^[가-힣]{1,2}이(교육비|과외비|학원비|학비|등록금|생일|어린이날|선물|가방|용돈|보조금|침대|입학|졸업|돌)/;
+  var USE_RE = /(교육비|과외|학원|학비|등록금|생일|어린이날|선물|가방|용돈|보조금|생활비|병원|치료|약값|입학|졸업|돌잔치|축하|명절|세뱃돈)/;
+  R.forEach(function (r) {
+    if (!r.own || !r.krw || r.inner || r.self || !(r.out > 0) || urow(r).성격) return;
+    if (/^종교활동비/.test(r.nature || '')) return;
+    var txt = [r.내용, r.메모].join(' '), x = r.party, l = lane(x), famX = x && /^(상속인|상속인 아닌 가족·친척)$/.test(l);
+    var cue = KIN_RE.exec(txt) || KID_RE.exec(finRvNorm_(r.내용 || '')), use = USE_RE.exec(txt);
+    if ((famX || cue) && (use || cue || /용돈|교육비|병원비|경조비/.test(r.nature || ''))) {
+      r.nature = (x && HH[finRvNorm_(x.이름)] ? '생계비' : '가족비') + '(' + (use ? use[1] : cue[1] || '가족') + ')';
+      if (cue && x && !x.갈래 && !famX) { x.짐작 = '상속인 아닌 가족·친척'; if (String(x.출처 || '').indexOf('통장 글자') === -1) x.출처 = (x.출처 ? x.출처 + ' · ' : '') + '통장 글자(가족 부르는 말)'; }
+      // 관계 짐작 — 부르는 말(자부·사위·손자 …)이 있으면 그것을, 없으면 「○○이 교육비」 글자로(앞 것이 이김)
+      if (cue && x && !x.갈래 && (!x.관계짐작 || /^가족 짐작 — 통장 글자/.test(x.관계짐작))) { var kin = KIN_RE.exec(txt); var nr = kin ? kin[1] + (kin[1] === '자부' ? '(며느리)' : '') + ' 짐작 — 통장 글자 「' + String(r.내용 || '').trim().slice(0, 20) + '」' : '가족 짐작 — 통장 글자 「' + String(r.내용 || '').trim().slice(0, 20) + '」'; if (kin || !x.관계짐작) x.관계짐작 = nr; }
+    } else if (/^경조비/.test(r.nature || '') && r.out > T.경조한번) r.nature = '';
+  });
 
   // ⑦ 묶음 — 세무사님 칸 > GAS 후보(같은 상대와 나가고 들어온 돈이 둘 다 있으면 한 건)
   var both = {};
@@ -388,7 +411,7 @@ function finRvAnalyze_(R, U, opt) {
     if (r.out > 0) b.나감 += r.out; if (r.in > 0) b.들어옴 += r.in; if (r.d < b.첫) b.첫 = r.d; if (r.d > b.끝) b.끝 = r.d; b.줄++;
     if (urow(r).묶음) b.세무사님 = true; if (!b.상대 && r.party) b.상대 = r.party.이름;
   });
-  bList.forEach(function (b) { var s = (U.bundles || {})[b.이름] || {}; b.순액 = b.나감 - b.들어옴; b.판단 = s.판단 || ''; b.메모 = s.메모 || ''; });
+  bList.forEach(function (b) { var s = (U.bundles || {})[b.이름] || {}; b.순액 = b.나감 - b.들어옴; b.판단 = s.판단 === '생활비·부양' ? '가족비' : (s.판단 || ''); /* [2026.11.25] 옛 「생활비·부양」은 가족비로(세무사님 「권장대로」) */ b.메모 = s.메모 || ''; });
 
   // ⑧ 기간·흐름 갈래
   R.forEach(function (r) {
@@ -399,6 +422,8 @@ function finRvAnalyze_(R, U, opt) {
     var l = lane(r.party), n = urow(r).성격 || r.nature || '';
     var g;
     if (r.self) g = '본인 다른 계좌(자료 없음)';
+    else if (/^(생계비|가족비)/.test(n)) g = '생계·가족비'; // [2026.11.25] 사회통념 범위면 증여 아님(§46 5호) — 관련인보다 먼저
+    else if (/^(경조비|종교활동비|기부)/.test(n)) g = '경조·종교';
     else if (FIN_RV_FAMILY_.test(l)) g = '관련인';
     else if (/매각|보증금|보험금|해지|만기/.test(n) || /매수인/.test(l)) g = r.in > 0 ? '다른 자산·처분' : (/보증금/.test(n) ? '보증금' : '다른 자산·취득');
     else if (/이자 수입|연금/.test(n)) g = '이자·연금';
@@ -447,7 +472,12 @@ function finRvAnalyze_(R, U, opt) {
     var inWin = L.filter(function (r) { return finRvBefore_(r, B, yrs); });
     var by = {}; L.forEach(function (r) { var y = r.d.slice(0, 4), o = by[y] || (by[y] = { 나감: 0, 들어옴: 0, 줄: 0 }); o.나감 += r.out || 0; o.들어옴 += r.in || 0; o.줄++; });
     var outW = inWin.reduce(function (s, r) { return s + (r.out || 0); }, 0), inW = inWin.reduce(function (s, r) { return s + (r.in || 0); }, 0);
-    s13.push({ x: x, heir: heir, yrs: yrs, by: by, 나감: outW, 들어옴: inW, 순액: outW - inW, 줄: inWin.length, 확정: !!x.갈래, rows: L });
+    // [2026.11.25] 그 가운데 생계비·가족비·경조비(사회통념 범위면 증여 아님 — §46 5호·시행령 §35④) — 해마다 합계도
+    var isNorm = function (r) { return r.out > 0 && /^(생계비|가족비|경조비)/.test(urow(r).성격 || r.nature || ''); };
+    var normW = inWin.filter(isNorm).reduce(function (s, r) { return s + r.out; }, 0), normBy = {};
+    L.filter(isNorm).forEach(function (r) { var y = r.d.slice(0, 4); normBy[y] = (normBy[y] || 0) + r.out; });
+    s13.push({ x: x, heir: heir, yrs: yrs, by: by, 나감: outW, 들어옴: inW, 순액: outW - inW, 줄: inWin.length, 확정: !!x.갈래, rows: L, 사회통념: normW, 사회통념해마다: normBy });
+    if (T.사회통념한도) Object.keys(normBy).forEach(function (y) { if (normBy[y] > T.사회통념한도) fl('C8', 'norm:' + x.이름 + ':' + y, { 갈래: 'C 사전증여(§13)', 짚을것: x.이름 + ' ' + y + '년 생계비·가족비·경조비 ' + finRvWon_(normBy[y]) + '원 — 정하신 사회통념 한도(' + finRvWon_(T.사회통념한도) + '원) 넘음', 날짜: y, 금액: normBy[y], 상대: x.이름, 까닭: '넘는 몫은 사회통념상 인정되는 생활비·교육비로 보기 어려울 수 있다(§46 5호)', 준비: '그 해 쓰임(교육비 영수증·생활 사정)', rows: L.filter(function (r) { return isNorm(r) && r.d.slice(0, 4) === y; }) }); });
     if (!L.length) return;
     if (outW >= T.큰돈) fl('A3', 'rel:' + x.이름, { 갈래: 'A 자료 빈틈', 짚을것: x.이름 + '(' + lane(x) + ') 쪽 계좌 자료', 날짜: '', 금액: outW, 상대: x.이름, 까닭: '도착한 쪽(관련인 계좌)은 납세자가 내지 않지만 조사에서 볼 수 있다[확인 필요 — 조회 근거 조문]', 준비: x.이름 + ' 계좌의 받은 날 전후 내역·쓰임', want: { 무엇: x.이름 + ' 계좌 — 피상속인에게서 받은 날 전후 내역·쓰임', 왜: yrs + '년 안 ' + finRvWon_(outW) + '원 받음', 고를것: true } });
     fl('C1', 'rel:' + x.이름, { 갈래: 'C 사전증여(§13)', 짚을것: x.이름 + '(' + lane(x) + (x.갈래 ? '' : ' — 짐작') + ')에게 간 돈 — ' + yrs + '년 안', 날짜: inWin.length ? inWin[0].d + ' ~ ' + inWin[inWin.length - 1].d : '', 금액: outW, 상대: x.이름, 까닭: '나감 ' + finRvWon_(outW) + ' · 들어옴 ' + finRvWon_(inW) + ' · 순액 ' + finRvWon_(outW - inW) + '원(' + inWin.length + '줄) — 증여·대여·생활비 판단', 준비: '차용증·이자·상환 내역, 생활비라면 쓰임', rows: inWin });
@@ -535,7 +565,7 @@ function finRvAnalyze_(R, U, opt) {
     var 인출 = W.reduce(function (s, r) { return s + (r.out || 0); }, 0), 재예입 = W.filter(function (r) { return r.inner && r.in > 0; }).reduce(function (s, r) { return s + r.in; }, 0);
     // 소명액 = 세무사님 칸 합계. 세무사님이 「안에서 옮김」으로 정하신 줄인데 짝 자료가 없는 것(본인 다른 예금 등)은 소명액을 안 적으셨으면 그 금액을 소명으로 셈
     var 순 = 인출 - 재예입, 소명 = W.filter(function (r) { return r.out > 0; }).reduce(function (s, r) { var v = finRvNum_(urow(r).소명액); if (v == null && r.inner && !r.pair) v = r.out; return s + (v || 0); }, 0);
-    var 참고 = W.filter(function (r) { return !r.inner && r.out > 0 && /세금|공과금|병원|카드|보험료/.test(urow(r).성격 || r.nature || ''); }).reduce(function (s, r) { return s + r.out; }, 0);
+    var 참고 = W.filter(function (r) { return !r.inner && r.out > 0 && /세금|공과금|병원|카드|보험료|생계비|가족비|경조비|종교활동비/.test(urow(r).성격 || r.nature || ''); }).reduce(function (s, r) { return s + r.out; }, 0);
     var 기준 = y === 1 ? 200000000 : 500000000, 미소명 = Math.max(0, 순 - 소명), 차감 = Math.min(순 * 0.2, 200000000);
     return { y: y, 인출: 인출, 재예입: 재예입, 순: 순, 기준: 기준, 넘음: 순 >= 기준, 소명: 소명, 참고: 참고, 미소명: 미소명, 차감: Math.round(차감), 추정: 순 >= 기준 && 미소명 >= 차감 ? Math.round(미소명 - 차감) : 0, 줄: W.length };
   });
@@ -797,7 +827,7 @@ function finRvWrite_(ss, A, U, ctx) {
     s15rows.push(['② 같은 기간 다시 예입된 돈 — 피상속인 다른 계좌에서 옮겨 온 것(안에서 옮김)', s.재예입, '시행령 §11①2호: 그 통장에서 인출한 돈이 다시 들어온 것만 뺌']);
     s15rows.push(['③ 순인출 ① − ②', s.순, '']);
     s15rows.push(['④ 기준 ' + finRvWon_(s.기준) + '원 넘었나', s.넘음 ? '넘음' : '안 넘음', '상증법 §15① 1호 — 현금·예금·유가증권 종류']);
-    s15rows.push(['⑤ 소명액(세무사님 칸 합계)', s.소명, '참고: 성격 후보가 세금·공과금·병원·카드·보험료인 출금 ' + finRvWon_(s.참고) + '원(증빙을 붙이시면 소명 후보)']);
+    s15rows.push(['⑤ 소명액(세무사님 칸 합계)', s.소명, '참고: 성격 후보가 세금·공과금·병원·카드·보험료·생계비·가족비·경조비·종교활동비인 출금 ' + finRvWon_(s.참고) + '원(증빙을 붙이시면 소명 후보)']);
     s15rows.push(['⑥ 미소명액 ③ − ⑤', s.미소명, '']);
     s15rows.push(['⑦ 차감가액 min(③ × 20%, 2억원)', s.차감, '시행령 §11④']);
     s15rows.push(['⑧ 추정액(⑥ ≥ ⑦ 이면 ⑥ − ⑦)', s.추정, s.넘음 ? '' : '기준을 넘지 않아 추정 대상 아님']);
@@ -819,6 +849,7 @@ function finRvWrite_(ss, A, U, ctx) {
   if (!A.s13.length) t13.push(['분석대상자에 상속인·가족·특수관계 법인이 아직 없음 — 「분석대상자」 탭에서 갈래를 골라 주시면 셈합니다', '', '', '', '', '', '', '']);
   A.s13.forEach(function (s) {
     t13.push([s.x.이름, lane(s.x) + (s.확정 ? '' : '(짐작)'), s.yrs + '년', '합산 기간 안 합계', s.나감, s.들어옴, s.순액, s.줄]);
+    if (s.사회통념) t13.push(['', '', '', ' 그 가운데 생계비·가족비·경조비(§46 5호 — 사회통념 범위면 증여 아님)', s.사회통념, '', s.순액 - s.사회통념, '나머지 순액']);
     Object.keys(s.by).sort().forEach(function (y) { var o = s.by[y]; t13.push(['', '', '', y + '년', o.나감, o.들어옴, o.나감 - o.들어옴, o.줄]); });
     A.bundles.filter(function (b) { return b.상대 === s.x.이름; }).forEach(function (b) { t13.push(['', '', '', '묶음: ' + b.이름 + (b.판단 ? ' — ' + b.판단 : ' — 판단 전'), b.나감, b.들어옴, b.순액, b.줄]); });
   });
@@ -854,6 +885,8 @@ function finRvWrite_(ss, A, U, ctx) {
     ['자주합계', b0.자주합계 || '', B.T.자주합계, '관련인 후보로 올릴 오간 합계(원)'],
     ['목록기준', b0.목록기준 || '', B.T.목록기준, '§15 줄별 목록에 한 줄씩 보일 금액(원)'],
     ['직전일', b0.직전일 || '', B.T.직전일, '사망 직전 몰린 인출로 볼 날 수'],
+    ['경조한번', b0.경조한번 || '', B.T.경조한번, '가족 아닌 사람에게 나간 축의·부의 등을 경조비로 볼 한 번 금액(원) — 넘으면 경조비로 보지 않음'],
+    ['사회통념한도', b0.사회통념한도 || '', B.T.사회통념한도 || '(정하지 않음 — 사람별·해마다 합계만 보임)', '한 사람에게 한 해 생계비·가족비 합계가 이 금액을 넘으면 짚을 곳 C8로(상증법 §46 5호 「사회통념상 인정되는」 — 법에 정한 금액 없음)'],
     ['보고서저절로', b0.보고서저절로 || '', /^(아니오|아니요|끔)$/.test(String(b0.보고서저절로 || '').trim()) ? '아니오' : '예', '「아니오」면 보고서/개별검토서_금융거래.md를 저절로 만들거나 고치지 않음(GAS 칸만 고치고 세무사님·넥스 문단은 안 건드림)']
   ];
   finRvTab_(ss, '사건 기준', ['항목', '값 ✎', '지금 쓰는 값', '설명', '열쇠'], baseRows.map(function (r) { return [r[0], r[1], r[2], r[3], r[0]]; }), { text: [1, 2, 4], note: '값 ✎ 칸에 적으시면 다음 셈부터 그 값으로. 비우시면 기본값.' });

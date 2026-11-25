@@ -56,7 +56,7 @@ function finTgDrops_(R, order, T) {
 // 경상 수지(해마다) — 경상 수입(이자·연금·임대) / 경상 지출(생활비·공과금·카드) / 쓰임이 안 보이는 유출
 function finTgRegular_(f) {
   var i = f.들어옴 || {}, o = f.나감 || {};
-  var inc = (i['이자·연금'] || 0) + (i['거래처·임대'] || 0), exp = o['생활비·공과금·카드'] || 0;
+  var inc = (i['이자·연금'] || 0) + (i['거래처·임대'] || 0), exp = (o['생활비·공과금·카드'] || 0) + (o['생계·가족비'] || 0) + (o['경조·종교'] || 0); // [2026.11.25] 생계비·가족비·경조비·종교활동비도 경상 지출
   var odd = FIN_TG_UNEXPLAINED_.reduce(function (s, k) { return s + (o[k] || 0); }, 0), rel = o['관련인'] || 0;
   return { 경상수입: inc, 경상지출: exp, 설명필요: odd, 관련인으로: rel };
 }

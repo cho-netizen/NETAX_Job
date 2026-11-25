@@ -7,7 +7,7 @@
 //  · 정하는 것은 모두 「짐작」 — 근거 파일 이름을 함께 남기고, 세무사님 칸(✎)이 있으면 그 값이 먼저다.
 //  · 차례(앞이 먼저): 사망진단서·시체검안서 → 기본증명서 → 주민등록초본 「사망신고말소」 → 상속재산분할협의서 → 넥스 보고서 → 의뢰 메모(추정)
 // ============================================================
-var FIN_DOC_VER_ = '2026-11-25a';
+var FIN_DOC_VER_ = '2026-11-25b';
 // 읽지 않을 서류(값을 찾을 일이 없는 것 — 읽는 시간을 아낌). 이름만으로 거르고, 남는 서류는 글로 무엇인지 알아본다
 //  (세무사님 11-25 "금융정보를 분석하려면 해당사건의 모든 정보를 최대한 파악해야" — 등기부(부동산 취득·처분)·재산조회회보서(피상속인 금융 계좌 목록)·보험금 지급증명서도 읽음)
 var FIN_DOC_SKIP_RE_ = /(거래내역|금융거래|통장|입출금|등기필|건축물대장|토지이용|매매실례가|실거래|공시지가|감정평가|영수증|취득세|법무사|장례|안치|명세|이택스|확정일자|평가기준|고액출금|세액|계산기|비밀번호|병원비|매매계약|전세계약|임대차|월세|유형자산)/;
@@ -92,6 +92,12 @@ function finDocParse_(text, fname) {
     while ((im = ir.exec(t)) && ins.length < 20) { var v = Number(im[2].replace(/,/g, '')); if (v >= 100000 && v < 1e11 && ins.indexOf(v) === -1) ins.push(v); } // 1천억 넘는 것은 날짜·번호 숫자
     if (ins.length) { out.종류.push('보험금 지급증명서'); out.보험금 = ins; }
   }
+  // [2026.11.25] 주민등록표 등본 — 같은 세대 사람(생계비·가족비를 가르는 근거, 세무사님 「권장대로」 ㉠)
+  if (/주\s*민\s*등\s*록\s*표/.test(t) && /등\s*본/.test(t) && !/초\s*본/.test(t)) {
+    var hh = [], hr = /(세대주|본인|배우자|처|남편|자녀|자|손자|손녀|손|며느리|자부|사위|모|부|동거인)\s+([가-힣]{2,4})/g, hm;
+    while ((hm = hr.exec(t)) && hh.length < 20) { var hn = finDocName_(hm[2]); if (hn && hh.indexOf(hn) === -1) hh.push(hn); }
+    if (hh.length) { out.종류.push('주민등록표 등본'); out.세대 = hh; }
+  }
   // 금전소비대차계약서·차용증 — 대여인·차용인·금액
   if (/(금전\s*소비\s*대차|차\s*용\s*증)/.test(t)) {
     var L = /대\s*여\s*인\s*:?\s*([가-힣]{2,4})[\s\S]{0,80}?차\s*용\s*인\s*:?\s*([가-힣]{2,4})/.exec(t);
@@ -106,11 +112,12 @@ function finDocParse_(text, fname) {
 
 // 의뢰 메모 글 → 사람(관계)·「상속인은 ○○ 1인」·차입
 function finDocMemoParse_(text) {
-  var out = { 사람: [], 상속인말: null, 차입: [] }, seen = {};
+  var out = { 사람: [], 상속인말: null, 차입: [], 동거: [] }, seen = {};
   var add = function (n, rel, line) { n = finDocName_(String(n || '').replace(/씨$/, '')); if (!n) return; if (seen[n]) { if (!seen[n].관계 && rel) seen[n].관계 = rel; return; } seen[n] = { 이름: n, 관계: rel, 글: String(line || '').trim().slice(0, 80) }; out.사람.push(seen[n]); };
   String(text || '').split(/\r?\n/).forEach(function (line) {
     var m;
     if ((m = /([가-힣]{2,4})의\s*배우자는\s*([가-힣]{2,4})/.exec(line))) add(m[2], m[1] + '의 배우자', line);
+    if ((m = /([가-힣]{2,4})(?:씨)?(?:은|는|이|가|와|과)\s*[^.\n]{0,20}(같이\s*살|함께\s*살|같이\s*거주|함께\s*거주|동거|모시고)/.exec(line))) { var hn0 = finDocName_(m[1]); if (hn0 && out.동거.indexOf(hn0) === -1) out.동거.push(hn0); }
     if ((m = /상속인은\s*([가-힣]{2,4})\s*1\s*인/.exec(line))) out.상속인말 = { 이름: m[1], 글: line.trim().slice(0, 80) };
     if ((m = /((?:[가-힣]{2,4}\s*,\s*)+[가-힣]{2,4}|[가-힣]{2,4})\s*(?:씨)?(?:은|는|이|가)\s*세입자/.exec(line))) m[1].split(/\s*,\s*/).forEach(function (n) { add(n, '세입자', line); });
     if ((m = /([가-힣]{2,4})(?:씨)?(?:은|는)\s*([\d,]+)\s*(백만원|만원|원)을?\s*차입/.exec(line))) {
@@ -172,7 +179,7 @@ function finDocsScan_(folder, U, budgetAt) {
 
 // 훑은 것 → 상속개시일 짐작(U.guess)·가족·메모 사람(U.rel 짐작)·빌려준 돈(U.loans). 세무사님 칸은 건드리지 않음
 function finDocsApply_(U, decedent) {
-  var D = U.docs || {}, cands = [], fam = null, famFrom = '', memoP = [], heirSay = null, loans = [], prop = [], listed = [], insur = [];
+  var D = U.docs || {}, cands = [], fam = null, famFrom = '', memoP = [], heirSay = null, loans = [], prop = [], listed = [], insur = [], house = [];
   var near = function (a) { return !a || finTgNameNear_(a, decedent); };
   Object.keys(D).forEach(function (id) {
     if (id === '_v') return; var o = D[id];
@@ -195,11 +202,13 @@ function finDocsApply_(U, decedent) {
       }
       (o.p.계좌 || []).forEach(function (a) { listed.push({ 기관: a.기관, 계좌: a.계좌, 근거: '재산조회회보서 「' + o.이름 + '」' }); });
       (o.p.보험금 || []).forEach(function (v) { insur.push({ 금액: v, 근거: '보험금 지급증명서 「' + o.이름 + '」' }); });
+      if (o.p.세대 && o.p.세대.some(function (w) { return finTgNameNear_(w, decedent); })) o.p.세대.forEach(function (w) { if (!finTgNameNear_(w, decedent)) house.push({ 이름: w, 근거: '주민등록표 등본 「' + o.이름 + '」' }); });
     }
     var kind = o.보고서 ? (o.지난판 ? '지난 보고서' : '넥스 보고서') : '의뢰 메모';
     if (o.메모) {
       o.메모.사람.forEach(function (p) { memoP.push(Object.assign({ from: kind + ' 「' + o.이름 + '」' }, p)); });
       if (o.메모.상속인말 && (!heirSay || !o.보고서)) heirSay = Object.assign({ from: kind + ' 「' + o.이름 + '」' }, o.메모.상속인말);
+      (o.메모.동거 || []).forEach(function (w) { house.push({ 이름: w, 근거: kind + ' 「' + o.이름 + '」' }); });
       o.메모.차입.forEach(function (l) { loans.push({ 대여인: decedent, 차용인: l.차용인, 금액: l.금액, 근거: kind + ' 「' + o.이름 + '」: ' + l.글 }); });
     }
     if (o.D) cands.push({ D: o.D, T: o.Dt || '', how: kind, from: kind + ' 「' + o.이름 + '」', r: o.보고서 ? (o.지난판 ? 7 : 5) : 6 });
@@ -230,8 +239,11 @@ function finDocsApply_(U, decedent) {
     U.heirsGuess = { 이름: heirs, from: famFrom };
   } else U.heirsGuess = null;
   // 의뢰 메모의 사람 — 가족관계증명서로 정해진 사람은 관계만 보탬
+  //  [2026.11.25 운영 확인] 가족관계증명서에 있는 사람은 메모·보고서 글이 갈래·관계를 덮지 않음(출처 글 순서가 아니라 증명서 명단으로 가름 —
+  //  운영에서 지난 보고서의 「…세입자」 글이 출처 앞에 붙어 자녀를 세입자로 덮었음)
+  var famNames = {}; (fam || []).forEach(function (q) { famNames[finRvNorm_(q.이름)] = 1; });
   memoP.forEach(function (p) {
-    var x = have[finRvNorm_(p.이름)], famSet = x && /^가족관계증명서/.test(x.출처 || '');
+    var x = have[finRvNorm_(p.이름)], famSet = !!famNames[finRvNorm_(p.이름)];
     var lane = p.관계 === '세입자' ? '세입자' : /(아들|딸|자녀)$/.test(p.관계) ? '상속인' : FIN_DOC_KIN_RE_.test(p.관계) ? '상속인 아닌 가족·친척' : '';
     var f = { 출처: p.from };
     if (!famSet) { if (lane) f.짐작 = lane; if (lane === '상속인') f.상속인짐작 = '예'; else if (lane) f.상속인짐작 = '아니오'; }
@@ -239,6 +251,7 @@ function finDocsApply_(U, decedent) {
     upsert(p.이름, f);
   });
   U.heirSay = heirSay;
+  var seenL = {}; loans = loans.filter(function (l) { var k = finRvNorm_(l.대여인) + '|' + finRvNorm_(l.차용인) + '|' + (l.금액 || ''); if (seenL[k]) return false; seenL[k] = 1; return true; }); // 같은 차용증 사본 여럿은 한 번만
   if (JSON.stringify(loans) !== JSON.stringify(U.loans || [])) { U.loans = loans; changed = true; }
   // 같은 등기(여러 사본)는 한 번만
   var seenP = {}; prop = prop.filter(function (p) { var k = p.종류 + p.날짜 + (p.금액 || ''); if (seenP[k]) return false; seenP[k] = 1; return true; });
@@ -251,6 +264,9 @@ function finDocsApply_(U, decedent) {
       upsert(w, f);
     });
   });
+  var seenH = {}; house = house.filter(function (h) { var k = finRvNorm_(h.이름); if (seenH[k]) return false; seenH[k] = 1; return true; });
+  var hhObj = house.length ? { 이름: house.map(function (h) { return h.이름; }), 근거: house.map(function (h) { return h.이름 + ' — ' + h.근거; }) } : null;
+  if (JSON.stringify(hhObj) !== JSON.stringify(U.household || null)) { U.household = hhObj; changed = true; }
   var facts = { 부동산: prop, 회보계좌: listed, 보험금: insur };
   if (JSON.stringify(facts) !== JSON.stringify(U.facts || null)) { U.facts = facts; changed = true; }
   return changed;
@@ -283,6 +299,9 @@ function finAnsAll_(A, U) {
   var near = function (a, b, pct) { return a && b && Math.abs(a - b) <= Math.max(1000, b * pct); };
   var propOf = function (r) { return ((U.facts || {}).부동산 || []).filter(function (p) { return p.금액 && near(r.amt, p.금액, 0.05) && Math.abs(finRvDays_(p.날짜, r.d)) <= 150 && ((p.종류 === '처분') === (r.in > 0)); })[0] || null; };
   var insOf = function (r) { return r.in > 0 ? ((U.facts || {}).보험금 || []).filter(function (p) { return near(r.amt, p.금액, 0.001); })[0] || null : null; };
+  var NORM_RE = /^(생계비|가족비|경조비|종교활동비)/, natOf = function (r) { var o = (U.rows || {})[r.k] || {}; return o.성격 || r.nature || ''; };
+  var normSum = function (rows) { return rows.filter(function (r) { return r.out > 0 && NORM_RE.test(natOf(r)); }).reduce(function (s, r) { return s + r.out; }, 0); };
+  var normShare = function (rows) { var all = rows.reduce(function (s, r) { return s + (r.out || 0); }, 0); return all ? normSum(rows) / all : 0; };
   // 짚을 곳 상태
   A.flags.forEach(function (f) {
     var x = f.상대 ? byName[finRvNorm_(f.상대)] : null, L = x ? loanOf(x.이름) : null, ans = '확인 전', why = '';
@@ -290,10 +309,12 @@ function finAnsAll_(A, U) {
     rows.some(function (r) { pr = propOf(r); ins = insOf(r); return pr || ins; });
     if (/^A/.test(f.번호)) { ans = '확인 전'; why = '받을 자료 — 요청해 받으면 「답 받음」'; }
     else if (L) { ans = '소명 됨'; why = '대여(채권 — 상속재산에 넣음): ' + L.근거; }
+    else if (normShare(rows) >= 0.95) { ans = '해당 없음'; why = '생계비·가족비·경조비·종교활동비 ' + finRvWon_(normSum(rows)) + '원 — 사회통념 범위면 증여 아님(상증법 §46 5호·시행령 §35④)' + (T.사회통념한도 ? '' : ', 한도는 사건 기준 탭 「사회통념한도」'); }
     else if (x && FIN_ANS_DEAL_.test(lane(x))) { ans = '해당 없음'; why = lane(x) + '(' + (x.출처 || '') + ') — 보증금·대금으로 보임'; }
     else if (pr) { ans = '해당 없음'; why = '부동산 ' + pr.종류 + ' ' + pr.날짜 + ' ' + finRvWon_(pr.금액) + '원(' + pr.근거 + ')'; }
     else if (ins) { ans = '해당 없음'; why = '보험금 ' + finRvWon_(ins.금액) + '원(' + ins.근거 + ')'; }
     else why = /^B/.test(f.번호) ? '쓰임을 밝혀야 함(소명 판단)' : '근거 서류를 찾지 못함';
+    var ns = normSum(rows); if (ans === '확인 전' && ns > 0) why = (why === '근거 서류를 찾지 못함' ? '' : why + ' · ') + '그 가운데 생계비·가족비·경조비·종교활동비 ' + finRvWon_(ns) + '원은 사회통념 범위면 증여 아님(§46 5호) — 나머지 ' + finRvWon_(Math.max(0, rows.reduce(function (s, r) { return s + (r.out || 0); }, 0) - ns)) + '원 쓰임 확인';
     f.상태답안 = ans; f.답안근거 = why;
     if (f.want) { f.요청답안 = '요청함'; f.요청근거 = '과세관청이 볼 수 있는 자료 — 사건 폴더에 없음'; }
   });

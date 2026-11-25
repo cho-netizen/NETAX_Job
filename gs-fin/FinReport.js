@@ -63,8 +63,11 @@ function finRpBlock_(A, U, sheetUrl) {
   (A.s15d || []).forEach(function (d) { s.push('- 부담한 채무(§15① 2호) ' + d.y + '년 안 — 통장에 대출로 들어온 돈 ' + finRvWon_(d.채무) + '원 · 기준 ' + finRvWon_(d.기준) + '원 ' + (d.넘음 ? '넘음(용도 소명 필요)' : '안 넘음')); });
   s.push('');
   s.push('## 5. 사전증여재산(상증법 §13)');
+  // [2026.11.25] 생계비·가족비·경조비·종교활동비 — 사회통념 범위면 증여 아님(상증법 §46 5호·시행령 §35④). 한도는 법에 없어 세무사님이 정하심
+  var cat = {}; A.R.forEach(function (r) { if (!r.own || r.inner || !(r.out > 0)) return; var m = /^(생계비|가족비|경조비|종교활동비)/.exec(((U.rows || {})[r.k] || {}).성격 || r.nature || ''); if (m) cat[m[1]] = (cat[m[1]] || 0) + r.out; });
+  if (Object.keys(cat).length) s.push('- 쓰임이 보이는 돈(사회통념 범위면 증여 아님 — §46 5호·시행령 §35④): ' + ['생계비', '가족비', '경조비', '종교활동비'].filter(function (k) { return cat[k]; }).map(function (k) { return k + ' ' + finRvWon_(cat[k]) + '원'; }).join(' · ') + (B.T.사회통념한도 ? ' · 한 사람 한 해 한도 ' + finRvWon_(B.T.사회통념한도) + '원(넘는 것은 짚을 곳 C8)' : ' · 한도는 정하지 않음(시트 「사건 기준」 사회통념한도)'));
   if (!A.s13.length) s.push('- 분석대상자에 상속인·가족·특수관계 법인이 아직 정해지지 않음 [확인 필요 — 시트 「분석대상자」 탭 갈래 ✎]');
-  else s.push(finRpTable_(['관련인', '갈래', '합산 기간', '나감', '들어옴', '순액'], A.s13.map(function (x) { return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액)]; })));
+  else s.push(finRpTable_(['관련인', '갈래', '합산 기간', '나감', '들어옴', '순액', '그 가운데 생계비·가족비·경조비', '나머지 순액'], A.s13.map(function (x) { return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액), finRpMoney_(x.사회통념 || ''), finRpMoney_(x.순액 - (x.사회통념 || 0))]; })));
   s.push('');
   s.push('## 6. 짚을 곳(남은 것, 중요도 순)');
   var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || f.상태답안 || ''); /* 세무사님 칸이 비면 GAS 답안대로 */ }).slice().sort(function (a, b) { return (b.중요도 || 0) - (a.중요도 || 0); });
