@@ -639,6 +639,15 @@ function commSeamList_() {
     { 길: '장부 받을 서류 ↔ 고객창구 점검표(올림·고객 받음)', fn: function () { if (typeof portalSyncCase_ !== 'function' || !BGQ_HANDLERS_.portal_sync) return '고객창구 점검표 맞추기가 이 판에 없음'; if (String(ledgerFromCaseWrite_).indexOf('portal_sync') === -1) return '받을 서류가 바뀌어도 고객창구에 안 올라감'; if (String(custUploadNote_).indexOf('portal_sync') === -1) return '고객이 올려도 장부에 「고객 받음」이 안 붙음'; return ''; } },
     { 길: '사건 만들기 길 하나(예약·고객·사건 목록·의뢰메모·넥스 → 줄·달력·장부·폴더)', fn: function () { if (!BGQ_HANDLERS_.case_ledger) return '새 사건 장부 첫 칸 뒷일이 이 판에 없음'; if (String(work_createCase).indexOf('work_createCaseFull_') === -1) return '사건 만들기 입구가 관문을 안 지남'; if (String(work_createCaseFull_).indexOf('case_ledger') === -1) return '새 사건이 장부에 안 닿음'; if (String(toolCreateWorkCase).indexOf('work_createCase') === -1) return '넥스 사건 만들기가 다른 길'; return ''; } },
     { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
+    // [2026-11-25] 세무사님 「1 상담사건」 영수증 → 고객 휴대폰 사진 문자 → 수금관리(밤 훑기와 같은 기록 함수라 두 번 세지 않음) · 넥스 receipt_sms 카드는 창만 엶
+    { 길: '현금영수증 사진 문자(1 상담사건 → 고객 휴대폰·수금 바로 기록, 넥스 카드 receipt_sms)', fn: function () {
+      if (typeof receiptSms_doPost_ !== 'function') return 'ReceiptSms.js가 이 판에 없음(clasp push 필요)';
+      if (typeof receipt_logGroup_ !== 'function') return '수금 기록 함수(receipt_logGroup_)가 없음';
+      if (String(runCashReceiptScan_).indexOf('receipt_logGroup_') === -1) return '밤 훑기가 같은 수금 기록 함수를 쓰지 않음(두 번 셀 수 있음)';
+      if (typeof JOB_PROPOSE_ACTIONS_ === 'undefined' || !JOB_PROPOSE_ACTIONS_.receipt_sms) return '넥스 제안 길에 receipt_sms 없음';
+      const p = PropertiesService.getScriptProperties();
+      return (p.getProperty('SOLAPI_API_KEY') && p.getProperty('SOLAPI_SENDER_PHONE')) ? '' : '솔라피 열쇠·발신번호 없음';
+    } },
     { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
     // [2026.10.28] 세무사님 "캘린더에서 일정색상을 변경하면 예약관리에서 따로 승인을 하지 않아도 승인되도록" — 10분 트리거가 손 설치뿐이라 빠져 있어도 아무도 몰랐음. 없으면 걸고, 못 걸면 ⚠
     { 길: '상담신청 → 캘린더(색 바꾸면 자동 승인, 10분 트리거)', fn: function () { if (typeof booking_ensureCalendarSyncTrigger_ !== 'function') return '자동 승인 트리거 장치가 이 판에 없음'; try { return booking_ensureCalendarSyncTrigger_() === 'installed' ? '트리거가 없어 이번에 걺(이전엔 빠져 있었음)' : ''; } catch (e) { return '트리거를 걸지 못함: ' + (e.message || e); } } },
