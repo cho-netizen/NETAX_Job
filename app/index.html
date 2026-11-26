@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 03:36 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 04:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -50886,13 +50886,13 @@ document.addEventListener('click', function(e){ var x = e.target.closest && e.ta
   <button id="btnLayoutToggle" class="iconbtn" title="창보기: 클릭할 때마다 편집창→모아보기→미리보기 순으로 전환 (모아보기 상태에서 더블클릭하면 스크롤 동기화 켜기/끄기)">◫</button>
   <button id="btnNewWindow" class="iconbtn" title="완성된 문서만 새 창(탭)에서 보기 (편집 도구 없이)">↗</button>
   <div id="downloadWrap" style="position:relative; display:inline-flex;">
-    <button id="btnDownload" class="iconbtn" title="다운로드 (DOC・HTML・Print)">⬇</button>
+    <button id="btnDownload" class="iconbtn" title="파일로 저장 — DOC·HTML·PDF는 원본 문서와 같은 사건 「보고서」 폴더에 저장합니다">⬇</button>
     <div id="downloadPopup" class="popupMenu">
-      <button id="dlDoc">DOC로 다운로드</button>
-      <button id="dlHtml">HTML로 다운로드</button>
+      <button id="dlDoc" title="원본 문서와 같은 폴더에 「원본이름.doc」로 저장">DOC로 저장</button>
+      <button id="dlHtml" title="HTML 완성본 — 「보고서」 폴더에 두면 고객 발행본으로 읽혀, 고객 발행 또는 다른 폴더 고르기를 여쭙니다">HTML로 저장</button>
       <button id="dlPdf" title="화면에 보이는 그대로 PDF 파일로 바로 저장(인쇄 대화상자 없이) — 여백 없이, 링크로 화면에서 볼 때용">보기용 PDF(여백 없음)</button>
       <button id="dlPrintPdf" title="세무서 제출·인쇄용 — A4 여백(위 30·좌우 25·아래 25mm)을 두고, 글줄이 잘리지 않게 쪽을 나눠 PDF로 바로 저장">인쇄용 PDF(A4 여백)</button>
-      <button id="dlPrint">인쇄 / PDF</button>
+      <button id="dlPrint" title="종이로 인쇄(브라우저 인쇄 창) — 여기서 「PDF로 저장」을 고르면 브라우저가 PC 폴더를 묻습니다. 사건 폴더에 PDF로 남기려면 위 「인쇄용 PDF」를 쓰세요">종이 인쇄</button>
     </div>
   </div>
   <span id="saveState"></span>
@@ -51080,7 +51080,7 @@ async function saveDocs(docs){
 
   if (!idbOk) {
     showToast(
-      '저장 공간이 가득 차서 저장하지 못했습니다. 문서함에서 큰 문서(이미지 포함)를 정리하거나, 이 문서를 HTML로 다운로드해 백업한 뒤 삭제해주세요.',
+      '저장 공간이 가득 차서 저장하지 못했습니다. 문서함에서 큰 문서(이미지 포함)를 정리하거나, 이 문서를 HTML로 저장해(드라이브) 백업한 뒤 삭제해주세요.',
       'error'
     );
   }
@@ -52747,7 +52747,7 @@ function rwLeftMarksOk_(what){
 
 document.getElementById('dlDoc').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
-  if (!rwLeftMarksOk_('내려받기')) return;
+  if (!rwLeftMarksOk_('파일로 저장')) return;
   downloadAsDoc();
 });
 document.getElementById('dlPrint').addEventListener('click', () => {
@@ -53253,7 +53253,7 @@ function buildStandaloneHtml(includeBackButton){
   return nxMdStandaloneHtml(document.getElementById('renderOut'), d ? d.name : '문서', { backButton: !!includeBackButton });
 }
 
-function downloadAsDoc(){
+async function downloadAsDoc(){
   if (!getSelected()) return;
   const theme = currentTheme();
   const clone = document.getElementById('renderOut').cloneNode(true);
@@ -53321,23 +53321,49 @@ function downloadAsDoc(){
     + 'h3{font-size:12.5pt; font-weight:bold;}'
     + '</style>'
     + '</head><body><div class="WordSection1">' + bodyHtml + '</div></body></html>';
-  const blob = new Blob(['\ufeff', docHtml], {type:'application/msword;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = theme.filename.replace(/\.md$/, '.doc');
-  a.click();
-  URL.revokeObjectURL(url);
+  // [2026.11.26] \uc138\ubb34\uc0ac\ub2d8 "\uc65c \ud574\ub2f9\uc0ac\uac74 \ubcf4\uace0\uc11c\ud3f4\ub354\uc5d0 \uc800\uc7a5\ud558\uc9c0 \uc54a\uace0 \uc800\uc7a5\ud560 \ud3f4\ub354\ub97c \ubb3b\uace0 \uc788\ub098?" \u2192 "\ubaa8\ub450 \ubcf4\uace0\uc11c \uc6d0\ubcf8\ud3f4\ub354\uc5d0 \uc800\uc7a5\ud558\ub3c4\ub85d \ud558\uc790"
+  //  \uc608\uc804\uc5d4 \ube0c\ub77c\uc6b0\uc800 \ub0b4\ub824\ubc1b\uae30(PC \ud3f4\ub354\ub97c \ubb3b\ub294 \ucc3d)\ub85c\ub9cc \ub5a8\uc5b4\ub728\ub838\ub2e4 \u2014 \uc774\uc81c PDF\uc640 \uac19\uc774 \uc6d0\ubcf8 \ubb38\uc11c\uac00 \ub4e0 \ub4dc\ub77c\uc774\ube0c \ud3f4\ub354\uc5d0 \u300c\uc6d0\ubcf8\uc774\ub984.doc\u300d\ub85c \ub454\ub2e4.
+  try {
+    await rwSaveToFolder_({ d: getSelected(), ext: 'doc', mimeType: 'application/msword', base64Data: utf8ToBase64_('\ufeff' + docHtml), label: 'DOC' });
+  } catch (err) {
+    showToast('DOC \uc800\uc7a5 \uc2e4\ud328: ' + nxErrText_(err), 'error');
+  }
 }
 
-function downloadAsHtml(){
-  if (!getSelected()) return;
+// [2026.11.26] HTML \uc644\uc131\ubcf8\ub3c4 \uc6d0\ubcf8\uacfc \uac19\uc740 \ud3f4\ub354\uc5d0 \u2014 \ub2e8, \uc0ac\uac74 \u300c\ubcf4\uace0\uc11c\u300d \ud3f4\ub354\uc5d0 \u300c\uc6d0\ubcf8\uc774\ub984.html\u300d\uc774 \uc0dd\uae30\uba74 \uadf8\uac83\uc774 \uace7 \uace0\uac1d \ubc1c\ud589\ubcf8\uc73c\ub85c \uc77d\ud78c\ub2e4
+//  (\uc678\ubd80\ubcf4\uace0\uc11c\ub294 \uace0\uac1d \ucc3d\uad6c\uc5d0 \ubcf4\uc774\uace0, \ucc98\ub9ac\uac1c\uc694\u00b7\ubb38\uc11c \uc0c1\uc790\uc5d0 \u300c\ud83d\udce4 \ubc1c\ud589\ub428\u300d\uc73c\ub85c \ub72c\ub2e4 \u2014 Code.js reportIsCustomerVisible_\u00b7rwRenderCaseReports_).
+//  \uadf8\ub798\uc11c \ubcf4\uace0\uc11c \ud3f4\ub354\uc77c \ub54c\ub9cc \uae4c\ub2ed\uc744 \uc54c\ub824 \ub4dc\ub9ac\uace0 \u300c\uace0\uac1d\uc5d0\uac8c \ubc1c\ud589\u300d \ub610\ub294 \ub2e4\ub978 \ud3f4\ub354 \uace0\ub974\uae30\ub97c \uc5ec\ucb4c\ub2e4(\uc138\ubb34\uc0ac\ub2d8 "\uad73\uc774 \ub2e4\ub978 \ud3f4\ub354\uc5d0 \uc800\uc7a5\ud560 \ud544\uc694\uac00 \uc788\ub294
+//  \ud30c\uc77c\uc774\ub77c\uba74 \uc548\ub0b4\ub97c \ud574\uc11c \ud3f4\ub354\ub97c \uc9c0\uc815\ud558\ub3c4\ub85d").
+async function downloadAsHtml(){
+  const d = getSelected();
+  if (!d) return;
   const html = buildStandaloneHtml();
-  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = currentTheme().filename.replace(/\.md$/, '.html');
-  a.click();
-  URL.revokeObjectURL(url);
+  try {
+    let folder = await rwTargetFolder_(d, 'HTML');
+    if (!folder) return;
+    if (await rwIsReportFolder_(folder)) {
+      const canPublish = d.docType !== 'review' && d.docType !== 'review_specific' && d.format !== 'html';
+      const buttons = [];
+      if (canPublish) buttons.push({ label: '\ud83d\udce4 \uace0\uac1d\uc5d0\uac8c \ubc1c\ud589', value: 'publish', className: 'save-btn', primary: true });
+      buttons.push({ label: '\ub2e4\ub978 \ud3f4\ub354 \uace0\ub974\uae30', value: 'pick', className: canPublish ? 'ghost-btn' : 'save-btn', primary: !canPublish });
+      buttons.push({ label: '\ucde8\uc18c', value: null, className: 'ghost-btn', isCancel: true });
+      const ans = await nxDialog_({
+        title: 'HTML \uc800\uc7a5\ud560 \uacf3',
+        message: 'HTML \uc644\uc131\ubcf8\uc744 \uc6d0\ubcf8\uacfc \uac19\uc740 \u300c\ubcf4\uace0\uc11c\u300d \ud3f4\ub354\uc5d0 \uac19\uc740 \uc774\ub984\uc73c\ub85c \ub450\uba74 \uc2dc\uc2a4\ud15c\uc774 \uadf8\uac83\uc744 \uace0\uac1d \ubc1c\ud589\ubcf8\uc73c\ub85c \uc77d\uc2b5\ub2c8\ub2e4'
+          + (canPublish ? ' \u2014 \uc678\ubd80\ubcf4\uace0\uc11c\ub77c \uace0\uac1d \ucc3d\uad6c(my.netax.kr) \ubcf4\uace0\uc11c\ud568\uc5d0 \ubc14\ub85c \ubcf4\uc785\ub2c8\ub2e4.' : ' \u2014 \ucc98\ub9ac\uac1c\uc694\u00b7\ubb38\uc11c \uc0c1\uc790\uc5d0 \u300c\ud83d\udce4 \ubc1c\ud589\ub428\u300d\uc73c\ub85c \uc798\ubabb \ubcf4\uc785\ub2c8\ub2e4.')
+          + '\n\n' + (canPublish ? '\u00b7 \uace0\uac1d\uc5d0\uac8c \ubcf4\ub0bc \uac83\uc774\uba74 \u300c\ud83d\udce4 \uace0\uac1d\uc5d0\uac8c \ubc1c\ud589\u300d(\ub36e\uc5b4\uc4f0\uae30 \uc804 \uc774\uc804 \ud310\uc744 \ubcf4\uad00\ud569\ub2c8\ub2e4)\n' : '')
+          + '\u00b7 \ub530\ub85c \ubcf4\uad00\ud560 \uac83\uc774\uba74 \u300c\ub2e4\ub978 \ud3f4\ub354 \uace0\ub974\uae30\u300d\ub85c \uc0ac\uac74 \ud3f4\ub354 \uc548\uc758 \ub2e4\ub978 \ud3f4\ub354\ub97c \uace8\ub77c \uc8fc\uc138\uc694(\u300c\ubcf4\uace0\uc11c\u300d \ud3f4\ub354\ub294 \uace0\ub97c \uc218 \uc5c6\uc2b5\ub2c8\ub2e4).',
+        buttons: buttons
+      });
+      if (ans === 'publish') { publishToCustomer(); return; }
+      if (ans !== 'pick') return;
+      folder = await rwPickDriveFolder_({ title: 'HTML \uc800\uc7a5\ud560 \ud3f4\ub354 \uace0\ub974\uae30', startId: (rwActiveCaseSubfolders_ && rwActiveCaseSubfolders_.caseFolderId) || '', refuseReport: true });
+      if (!folder) return;
+    }
+    await rwSaveToFolder_({ d: d, ext: 'html', mimeType: 'text/html', base64Data: utf8ToBase64_(html), label: 'HTML', folder: folder });
+  } catch (err) {
+    showToast('HTML \uc800\uc7a5 \uc2e4\ud328: ' + nxErrText_(err), 'error');
+  }
 }
 
 // html2canvas로 미리보기 화면을 그대로 캡처한 뒤, jsPDF로 A4 여러 장에 나눠 담아 파일로
@@ -53386,27 +53412,164 @@ async function downloadAsPdf(){
 //  외부보고서든 해당 사건내의 폴더로 지정되어야 할 것 아닌가?" / "일단 인쇄할 원본문서와 같은 폴더에 저장되도록 해야하지 않나?"
 //  → 원본 문서(.md·.html 발행본 모두 — 11-14부터 사건의 「보고서」 한 폴더)가 든 드라이브 폴더(d.folderId)에 「원본이름.pdf」로 올린다. 같은 이름이 이미 있으면
 //  그 파일을 새 내용으로 바꾼다(파일이 둘로 늘지 않게). 예전엔 브라우저 내려받기(PC 폴더)로만 떨어뜨렸는데, 그 폴더가 깨져 있으면 브라우저가
-//  "폴더를 찾을 수 없음"을 내고 사건 폴더엔 아무것도 남지 않았다. 드라이브에 저장된 적 없는 문서(사건 폴더 없음)만 예전처럼 PC로 내려받는다.
-async function rwSavePdf_(pdf, d, label){
-  const base = String((d && (d.driveBaseName_ || d.name)) || '문서').replace(/\.(md|html?|htm|pdf)$/i, '');
-  const fileName = base + '.pdf';
-  const folderId = d && d.folderId;
-  if (!folderId) {
-    pdf.save(fileName);
-    showToast(label + '를 PC로 내려받았습니다 — 이 문서는 아직 사건 폴더에 저장된 적이 없어 드라이브에는 두지 못했습니다(💾로 먼저 저장하면 다음부터 원본과 같은 폴더에 PDF가 저장됩니다).', 'info');
-    return;
-  }
-  showToast(label + '를 원본 문서와 같은 폴더에 저장하는 중…', 'info');
-  const bytes = new Uint8Array(pdf.output('arraybuffer'));
+//  "폴더를 찾을 수 없음"을 내고 사건 폴더엔 아무것도 남지 않았다.
+// [2026.11.26] 세무사님 "모두 보고서 원본폴더에 저장하도록 하자. 굳이 다른 폴더에 저장할 필요가 있는 파일이라면 안내를 해서 폴더를 지정하도록 하던가"
+//  → PDF·DOC·HTML 모두 한 길(rwSaveToFolder_). 원본 폴더를 모르는 문서(사건을 고르지 않고 만든 저장 전 문서)는 PC 내려받기 대신
+//  까닭을 알려 드리고 드라이브 폴더를 고르게 한다(rwPickDriveFolder_). 브라우저가 PC 폴더를 묻는 내려받기는 이제 없다.
+const RW_REPORT_FOLDER_NAMES_ = ['보고서', '보고서_내부', '보고서_외부']; // Code.js REPORT_FOLDER_NAME_·REPORT_FOLDER_OLD_NAMES_와 같은 이름
+function rwArrayBufferToBase64_(buf){
+  const bytes = new Uint8Array(buf);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  const res = await callGas('uploadFile', { name: fileName, folderId: folderId, base64Data: btoa(bin), mimeType: 'application/pdf', replaceSameName: true, noPreread: true });
-  if (!res || res.error) throw new Error((res && res.error) || 'PDF를 드라이브에 올리지 못했습니다');
+  return btoa(bin);
+}
+// 이 문서의 원본 폴더 — 드라이브에서 연 문서는 그 파일이 든 폴더, 사건에서 ＋로 만든 저장 전 문서는 그 사건 「보고서」 폴더
+function rwOriginFolderId_(d){
+  if (!d) return '';
+  if (d.folderId) return d.folderId;
+  if (d.id === selectedId && pendingSaveFolderId) return pendingSaveFolderId;
+  if (rwActiveCaseSubfolders_ && d.caseId && d.caseId === rwActiveCaseSubfolders_.caseId) return rwActiveCaseSubfolders_.internalFolderId || '';
+  return '';
+}
+// 저장할 폴더 { id, picked } — 원본 폴더가 없으면 까닭을 알려 드리고 고르게 한다(취소하면 null)
+async function rwTargetFolder_(d, label){
+  const id = rwOriginFolderId_(d);
+  if (id) return { id: id, picked: false };
+  const ok = await nxDialog_({
+    title: label + ' 저장할 곳',
+    message: '이 문서는 아직 사건 폴더에 연결되지 않았습니다(사건을 고르지 않고 만든 저장 전 문서) — 원본 폴더가 없어 ' + label + '를 둘 곳을 정하지 못했습니다.\n\n'
+      + '· 사건 문서라면 위 사건 칸에서 사건을 고른 상태에서 ＋로 만들어 💾로 저장하시면, 원본과 같은 그 사건 「보고서」 폴더에 저장됩니다.\n'
+      + '· 지금 바로 두실 곳이 있으면 「폴더 고르기」로 드라이브 폴더를 골라 주세요.',
+    buttons: [
+      { label: '폴더 고르기', value: true, className: 'save-btn', primary: true },
+      { label: '취소', value: false, className: 'ghost-btn', isCancel: true }
+    ]
+  });
+  if (!ok) return null;
+  return await rwPickDriveFolder_({ title: label + ' 저장할 폴더 고르기' });
+}
+// 사건 「보고서」 폴더인가 — 그 폴더에 원본과 같은 이름의 .html을 두면 고객 발행본으로 읽힌다
+async function rwIsReportFolder_(folder){
+  if (!folder || !folder.id) return false;
+  const a = rwActiveCaseSubfolders_;
+  if (a && (folder.id === a.internalFolderId || folder.id === a.reportFolderId)) return true;
+  let name = folder.name;
+  if (!name) {
+    try { const r = await callGas('listFolder', { folderId: folder.id }); const p = (r && r.path) || []; name = p.length ? p[p.length - 1] : ''; } catch (e) { name = ''; }
+  }
+  return RW_REPORT_FOLDER_NAMES_.indexOf(String(name || '')) !== -1;
+}
+// 드라이브 폴더 고르기 창 — opts { title, startId(없으면 기본 폴더), refuseReport(「보고서」 폴더는 못 고르게) } → { id, name, picked:true } 또는 null
+function rwPickDriveFolder_(opts){
+  opts = opts || {};
+  return new Promise(function(resolve){
+    const old = document.getElementById('rwFolderPickOverlay');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'rwFolderPickOverlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '9999';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(480px, 94vw);">' +
+        '<div class="modal-head"><span>' + escapeHtml(opts.title || '폴더 고르기') + '</span></div>' +
+        '<div class="modal-body">' +
+          '<div id="rwFpPath" style="font-size:12.5px; color:var(--sub); margin-bottom:6px; word-break:break-all;"></div>' +
+          '<div style="display:flex; gap:6px; margin-bottom:6px;">' +
+            '<button type="button" class="ghost-btn sm" id="rwFpUp">⬆ 위 폴더</button>' +
+            '<button type="button" class="ghost-btn sm" id="rwFpNew">＋ 새 폴더</button>' +
+          '</div>' +
+          '<div id="rwFpList" style="border:1px solid var(--line, #ddd); border-radius:6px; height:240px; overflow:auto; padding:4px;"></div>' +
+          '<div id="rwFpNote" style="font-size:12.5px; color:#b3261e; min-height:18px; margin-top:6px;"></div>' +
+          '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">' +
+            '<button type="button" class="save-btn" id="rwFpOk">이 폴더에 저장</button>' +
+            '<button type="button" class="ghost-btn" id="rwFpCancel">취소</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    const $ = function(id){ return overlay.querySelector('#' + id); };
+    const stack = [];
+    let cur = null; // { id, name, path }
+    let done = false;
+    const finish = function(val){
+      if (done) return;
+      done = true;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      resolve(val);
+    };
+    // 새 폴더 이름 묻는 창(nxPrompt_)이 떠 있는 동안의 Esc는 그 창 몫 — 이 창까지 닫지 않는다
+    const onKey = function(e){ if (e.key === 'Escape' && !document.getElementById('nxDialogOverlay')) { e.preventDefault(); e.stopPropagation(); finish(null); } };
+    document.addEventListener('keydown', onKey, true);
+    const setOk = function(on){ $('rwFpOk').disabled = !on; $('rwFpOk').style.opacity = on ? '' : '0.4'; };
+    const show = function(folderId){
+      $('rwFpList').textContent = '불러오는 중…';
+      $('rwFpNote').textContent = '';
+      setOk(false);
+      callGas('listFolder', folderId ? { folderId: folderId } : {}).then(function(r){
+        if (done) return;
+        if (!r || r.error) { $('rwFpList').textContent = (r && r.error) || '폴더를 열지 못했습니다'; return; }
+        const path = Array.isArray(r.path) ? r.path : [];
+        cur = { id: r.folderId || folderId, name: path.length ? path[path.length - 1] : '', path: path };
+        $('rwFpPath').textContent = '지금 폴더: ' + (path.length ? path.join(' › ') : '(기본 폴더)');
+        $('rwFpUp').disabled = !stack.length;
+        const list = $('rwFpList');
+        list.innerHTML = '';
+        const folders = r.folders || [];
+        if (!folders.length) { const e0 = document.createElement('div'); e0.style.cssText = 'color:var(--sub); font-size:12.5px; padding:6px;'; e0.textContent = '안에 폴더가 없습니다 — 이 폴더에 저장하거나 「＋ 새 폴더」로 만드세요.'; list.appendChild(e0); }
+        folders.forEach(function(f){
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'ghost-btn';
+          b.style.cssText = 'display:block; width:100%; text-align:left; margin:2px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+          b.textContent = '📁 ' + f.name;
+          b.title = f.name + ' — 눌러서 안으로';
+          b.addEventListener('click', function(){ stack.push(cur.id); show(f.id); });
+          list.appendChild(b);
+        });
+        const isReport = RW_REPORT_FOLDER_NAMES_.indexOf(cur.name) !== -1;
+        if (opts.refuseReport && isReport) { $('rwFpNote').textContent = '「' + cur.name + '」 폴더에 두면 고객 발행본으로 읽혀 고를 수 없습니다 — 다른 폴더를 골라 주세요.'; return; }
+        setOk(true);
+      }).catch(function(err){ if (!done) $('rwFpList').textContent = '폴더를 열지 못했습니다: ' + nxErrText_(err); });
+    };
+    $('rwFpUp').addEventListener('click', function(){ if (stack.length) show(stack.pop()); });
+    $('rwFpNew').addEventListener('click', async function(){
+      if (!cur) return;
+      const nm = await nxPrompt_('「' + (cur.name || '기본 폴더') + '」 안에 만들 새 폴더 이름', '');
+      if (!nm || !nm.trim()) return;
+      try {
+        const r = await callGas('createFolder', { path: cur.path, name: nm.trim() });
+        if (!r || r.error) throw new Error((r && r.error) || '폴더를 만들지 못했습니다');
+        stack.push(cur.id);
+        show(r.id);
+      } catch (err) { $('rwFpNote').textContent = '새 폴더를 만들지 못했습니다: ' + nxErrText_(err); }
+    });
+    $('rwFpOk').addEventListener('click', function(){ if (cur) finish({ id: cur.id, name: cur.name, picked: true }); });
+    $('rwFpCancel').addEventListener('click', function(){ finish(null); });
+    show(opts.startId || '');
+  });
+}
+// 원본 폴더(또는 고른 폴더)에 「원본이름.확장자」로 — 같은 이름이 있으면 그 파일을 새 내용으로 바꾼다(파일이 둘로 늘지 않게)
+// o = { d, ext, mimeType, base64Data, label, folder(없으면 원본 폴더) }
+async function rwSaveToFolder_(o){
+  const d = o.d;
+  const folder = o.folder || await rwTargetFolder_(d, o.label);
+  if (!folder) { showToast(o.label + ' 저장을 그만두었습니다.', 'info'); return null; }
+  const base = String((d && (d.driveBaseName_ || d.name)) || '문서').replace(/\.(md|html?|htm|pdf|docx?)$/i, '');
+  const fileName = base + '.' + o.ext;
+  const where = folder.picked ? '고른 폴더' + (folder.name ? ' 「' + folder.name + '」' : '') : '원본 문서와 같은 폴더';
+  showToast(o.label + '를 ' + where + '에 저장하는 중…', 'info');
+  const res = await callGas('uploadFile', { name: fileName, folderId: folder.id, base64Data: o.base64Data, mimeType: o.mimeType, replaceSameName: true, noPreread: true });
+  if (!res || res.error) throw new Error((res && res.error) || o.label + '를 드라이브에 올리지 못했습니다');
   const c = rwGetSelectedCase_();
-  try { if (c && sessionStorage.getItem('nxManageSessionToken')) callGas('case_proc', { caseId: c.id, step: 'log', by: window.nxWorkBy_ || '세무사님', what: 'PDF 저장', detail: fileName + (res.updated ? ' (같은 이름 갱신)' : '') + ' — ' + label + ' · 파일 ' + res.id }); } catch (e) {}
-  showToast('「' + fileName + '」을(를) 원본 문서와 같은 폴더에 ' + (res.updated ? '다시 ' : '') + '저장했습니다.', 'success');
-  // 사건 문서 목록(작성관리 콤보)에 방금 생긴 PDF가 바로 보이게
+  try { if (c && sessionStorage.getItem('nxManageSessionToken')) callGas('case_proc', { caseId: c.id, step: 'log', by: window.nxWorkBy_ || '세무사님', what: o.label + ' 저장', detail: fileName + (res.updated ? ' (같은 이름 갱신)' : '') + ' — ' + where + ' · 파일 ' + res.id }); } catch (e) {}
+  showToast('「' + fileName + '」을(를) ' + where + '에 ' + (res.updated ? '다시 ' : '') + '저장했습니다.', 'success');
+  // 사건 문서 목록(작성관리 콤보)에 방금 생긴 파일이 바로 보이게
   try { const cs = document.getElementById('rwCaseSelect'); if (cs && cs.value && typeof rwRenderCaseReports_ === 'function') rwRenderCaseReports_(cs.value); } catch (e) {}
+  return res;
+}
+async function rwSavePdf_(pdf, d, label){
+  return rwSaveToFolder_({ d: d, ext: 'pdf', mimeType: 'application/pdf', base64Data: rwArrayBufferToBase64_(pdf.output('arraybuffer')), label: label });
 }
 
 // [2026.10.30] 인쇄용 PDF(보기용과 따로) — 세무사님 원문: "형식은 다르더라도 인쇄는 제대로 되어야 하는데 여백이 하나도 없게 인쇄가 되었었다 …
@@ -53560,17 +53723,17 @@ function openInNewWindow(){
 document.getElementById('btnNewWindow').addEventListener('click', openInNewWindow);
 document.getElementById('dlHtml').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
-  if (!rwLeftMarksOk_('내려받기')) return;
+  if (!rwLeftMarksOk_('파일로 저장')) return;
   downloadAsHtml();
 });
 document.getElementById('dlPdf').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
-  if (!rwLeftMarksOk_('내려받기')) return;
+  if (!rwLeftMarksOk_('파일로 저장')) return;
   downloadAsPdf();
 });
 document.getElementById('dlPrintPdf').addEventListener('click', () => {
   document.getElementById('downloadPopup').classList.remove('show');
-  if (!rwLeftMarksOk_('내려받기')) return;
+  if (!rwLeftMarksOk_('파일로 저장')) return;
   downloadAsPrintPdf();
 });
 
@@ -53712,6 +53875,7 @@ function rwRenderCaseReports_(caseId){
         caseId: caseId,
         internalFolderId: sub.internalFolderId,
         reportFolderId: sub.reportFolderId,
+        caseFolderId: sub.caseFolderId || '', // [2026.11.26] HTML을 「보고서」 밖에 둘 때 폴더 고르기 창이 이 사건 폴더에서 시작
         saveFileName: String(c.사건명 || '').trim()
       };
 
@@ -60442,13 +60606,13 @@ function rwAiApplyEdit_(id, content){
 
     <section class="card" id="help-reportwriter">
       <h3>보고서</h3>
-      <p>자문보고서·신고보고서·검토서 등을 작성해 고객에게 발행하거나 다운로드하는 화면입니다.</p>
+      <p>자문보고서·신고보고서·검토서 등을 작성해 고객에게 발행하거나 DOC·HTML·PDF 파일로 사건 폴더에 저장하는 화면입니다.</p>
       <ul>
         <li><b>새 문서를 만들려면</b>: ① ＋를 누릅니다 → ② 문서 종류(검토서/자문보고서/신고보고서 등)를 고릅니다 → 사건이 선택돼 있으면 고객명 등이 자동으로 채워집니다.</li>
         <li><b>작성한 내용을 저장하려면</b>: 💾를 누릅니다.</li>
         <li><b>고객에게 전달하려면</b>: 먼저 💾로 저장한 뒤 📤(발행)을 누릅니다 — my.netax.kr 고객포털에 올라갑니다.</li>
         <li><b>자문보고서를 슬라이드(파워포인트)로도 만들려면</b> <i>(지금은 자문보고서만 가능, 시험 단계)</i>: ① 먼저 💾로 저장합니다 → ② 🖥 버튼을 누릅니다 → ③ 새로 뜨는 링크로 슬라이드를 확인합니다 → ④ 파워포인트로 받고 싶으면 그 슬라이드 화면에서 "파일 > 다운로드 > Microsoft PowerPoint"를 누릅니다.</li>
-        <li><b>파일로 내려받으려면</b>: ⬇을 누르고 DOC·HTML·PDF·인쇄 중 고릅니다.</li>
+        <li><b>파일로 저장하려면</b>: ⬇을 누르고 DOC·HTML·보기용 PDF·인쇄용 PDF 중 고릅니다 — 원본 문서와 같은 사건 「보고서」 폴더에 「원본이름.확장자」로 저장됩니다(같은 이름이 있으면 새 내용으로 바뀜). HTML은 「보고서」 폴더에 두면 고객 발행본으로 읽혀, 📤 발행 또는 다른 폴더 고르기를 여쭙니다. 사건에 연결되지 않은 새 문서는 저장할 폴더를 고르게 합니다. 「종이 인쇄」는 브라우저 인쇄 창입니다(여기서 PDF로 저장하면 PC 폴더를 묻습니다 — 사건 폴더에 남기려면 「인쇄용 PDF」).</li>
       </ul>
     </section>
 
