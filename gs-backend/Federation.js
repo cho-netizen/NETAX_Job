@@ -654,6 +654,7 @@ function commSeamList_() {
       if (String(cpPrereadTick).indexOf('receiptSms_trackTick_') === -1) return '1분 틱이 도착 결과를 묻지 않음';
       if (String(receiptSms_send_).indexOf('receiptSms_trackAdd_') === -1 || String(receiptSms_sendMms_).indexOf('receiptSms_parseIds_') === -1) return '보낼 때 메시지 번호를 남기지 않음';
       if (typeof awNoticeAdd_ !== 'function') return '실패 알림 길(awNoticeAdd_)이 없음';
+      if (String(dispatchClientAction0_).indexOf("'receipt_sms_status'") === -1) return '서버 입구가 도착 결과 묻기(receipt_sms_status)를 받지 않음 — 창이 결과를 못 받음';
       const wait = receiptSms_trackRead_().filter(function (t) { return t.state === 'wait' && Date.now() - t.at > 10 * 60000; }).length;
       const last = Number(PropertiesService.getScriptProperties().getProperty(RSMS_TICK_LAST_PROP_) || 0);
       return wait && Date.now() - last > 10 * 60000 ? '「확인 중」 문자 ' + wait + '통인데 1분 틱이 10분 넘게 묻지 않음' : '';
