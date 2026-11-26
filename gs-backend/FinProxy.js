@@ -56,6 +56,7 @@ function finAutoRun_(started, DEADLINE) {
     if (r && r.more) q2.push(id); // 다 못 읽음 — 줄 끝에 다시(다른 사건도 차례가 오게)
     P.setProperty(FIN_AUTO_Q_, JSON.stringify(q2));
     if (!r || r.error) { lines.push('금융거래 합치기 ' + id + ' 실패: ' + String(r && r.error || '응답 없음').slice(0, 80)); continue; }
+    if (r.검토 && r.검토.요약) finAskSave_(id, r.검토.요약, r.시트); // [2026.11.27] 개요 「지금 할 일」에 금융거래 정하실 것 수
     var rvl = finReviewLine_(r.검토); // [2026.11.24] 2단계(사전증여·추정상속 선제 검토)가 바뀌었으면 사건 기록부에 한 줄 — 밤 내부검토서 갱신이 이 줄·시트 변동을 보고 검토서를 고친다
     if (rvl) { if (!(r.검토 && r.검토.error)) try { caseProcPatch_(id, function (sv) { caseProcLogTo_(sv, { by: 'GAS', what: '금융거래 2단계 검토', detail: rvl }); }); } catch (e) {} lines.push('금융거래 ' + id + ': ' + rvl); } // 실패는 틱 줄에만(사건 기록부에 매분 쌓이지 않게)
     if (r.nochange || r.empty) continue;
@@ -66,6 +67,18 @@ function finAutoRun_(started, DEADLINE) {
   }
   return lines.join(' / ');
 }
+
+// [2026.11.27] 금융거래 「정하실 것」 수를 사건마다 적어 둠 — 사건 개요 「지금 할 일」에서 금융거래 창을 열지 않아도 보이게
+//  (세무사님 11-27 「어디에 어떻게 노란필드가 있고, 우선순위는 어떻게 되는지에 대한 설명도 없고 … 이것을 대체 어떻게 사용하라는 것인가?」 — 사건을 열면 할 일이 먼저 보여야 함)
+function finAskSave_(id, sum, sheet) {
+  try {
+    var L = (sum && sum.여쭐것목록) || [], o = { n: L.length, nex: 0, gas: 0, 빈칸: 0, at: new Date().toISOString() };
+    L.forEach(function (q) { if (q.누가 === 'nex') o.nex++; else if (q.누가 === 'gas') o.gas++; else o.빈칸++; });
+    if (sheet && sheet.url) o.url = sheet.url;
+    PropertiesService.getScriptProperties().setProperty('fin_ask_' + id, JSON.stringify(o));
+  } catch (e) {}
+}
+function finAskSummaryFor_(id) { try { var v = PropertiesService.getScriptProperties().getProperty('fin_ask_' + id); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
 
 // 2단계 결과(금융거래 서버 finRvRun_) → 기록 한 줄. 바뀐 것이 없거나 실패면 ''(실패는 줄로 남김)
 function finReviewLine_(rv) {
