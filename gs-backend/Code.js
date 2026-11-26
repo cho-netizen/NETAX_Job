@@ -5500,7 +5500,7 @@ function dispatchClientAction0_(body) {
     return jsonResponse(handleListGeneralMemos(body));
   }
   // [2026-11-25] 현금영수증 사진 문자(ReceiptSms.js) — 「1 상담사건」 영수증 목록·준비·보내기
-  if (body.action === 'receipt_sms_list' || body.action === 'receipt_sms_prepare' || body.action === 'receipt_sms_send') {
+  if (body.action === 'receipt_sms_list' || body.action === 'receipt_sms_prepare' || body.action === 'receipt_sms_send' || body.action === 'receipt_sms_status') { // [2026-11-26] status = 도착 결과(ReceiptSmsTrack.js)
     return jsonResponse(receiptSms_doPost_(body));
   }
   if (body.action === 'scan_cash_receipts') {
@@ -24146,6 +24146,7 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
   try { if (runCache.get('cp_preread_run')) return; runCache.put('cp_preread_run', String(Date.now()), 300); } catch (e) {}
   const lock = { releaseLock: function () { try { runCache.remove('cp_preread_run'); } catch (e) {} } };
   try { if (typeof bgqDrain_ === 'function') bgqDrain_(20000); } catch (e) {} // 뒤에서 할 일(달력·문자 등)도 이 1분 틱에서 함께 처리 — 트리거를 못 걸었을 때의 안전망
+  try { if (typeof receiptSms_trackTick_ === 'function') receiptSms_trackTick_(20000); } catch (e) { try { console.log('[영수증 문자 도착 확인] 오류: ' + (e && e.message || e)); } catch (e2) {} } // [2026-11-26] 영수증 사진 문자 도착 결과 묻기 — 「확인 중」이 없으면 속성 한 번 읽고 끝
   const started = Date.now(), DEADLINE = 270000, props = PropertiesService.getScriptProperties();
   let read = 0, seen = 0, names = [], memFolders = {}, memWrote = 0, touched = {}, watch = null, health = null; // [2026.10.28 감시] touched = 이번 틱에 파일이 바뀐 사건 폴더
   try {

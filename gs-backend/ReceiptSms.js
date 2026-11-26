@@ -21,6 +21,7 @@ function receiptSms_doPost_(body) {
     case 'receipt_sms_list': return receiptSms_list_();
     case 'receipt_sms_prepare': return receiptSms_prepare_(body);
     case 'receipt_sms_send': return receiptSms_send_(body);
+    case 'receipt_sms_status': return receiptSms_status_(body); // [2026-11-26] 도착 결과(ReceiptSmsTrack.js)
   }
   return { success: false, message: '알 수 없는 작업' };
 }
@@ -65,6 +66,7 @@ function receiptSms_list_() {
       id: f.id, name: f.name, 고객명: m ? m[1].trim() : '',
       저장: receiptSms_when_(f.createdTime || f.modifiedTime),
       보냄: ap[RSMS_SENT_PROP_] || '',
+      결과: ap[RSMS_SENT_PROP_] ? receiptSms_resView_(ap[RSMS_RES_PROP_]) : null, // [2026-11-26] 도착·실패·확인 중(예전에 보낸 것은 null)
       수금: ap.netax_receipt_logged === 'true' ? '기록함' : (ap.netax_receipt_logged ? '이 사무소 발행 아님' : '')
     };
   });
@@ -163,6 +165,7 @@ function receiptSms_sendMms_(to, text, jpgBase64) {
     muteHttpExceptions: true
   });
   if (res.getResponseCode() >= 300) throw new Error('보내기 실패(' + res.getResponseCode() + '): ' + res.getContentText().slice(0, 300));
+  return receiptSms_parseIds_(res.getContentText()); // [2026-11-26] 메시지 번호(도착 확인에 씀 — 예전엔 답을 버렸다)
 }
 
 // 보낸 번호를 고객관리에 남긴다 — 이미 있으면 그대로, 전화번호 칸이 비었으면 거기, 다른 번호가 있으면 「추가연락처」에 더한다.
@@ -214,10 +217,14 @@ function receiptSms_sendTest_(body) {
   if (!/^01[016789]\d{7,8}$/.test(to)) return { success: false, message: '세무사님 알림 번호가 없습니다.' };
   if (!jpg) return { success: false, message: '영수증 그림이 없습니다.' };
   if (Math.floor(jpg.length * 3 / 4) > RSMS_MAX_IMAGE_BYTES_) return { success: false, message: '영수증 그림이 200KB를 넘습니다.' };
-  try { receiptSms_checkFile_(String(body.fileId || ''), receiptSms_folderIds_()); } catch (err) { return { success: false, message: err.message }; }
-  try { receiptSms_sendMms_(to, text.slice(0, 1000), jpg); }
+  let tf;
+  try { tf = receiptSms_checkFile_(String(body.fileId || ''), receiptSms_folderIds_()); } catch (err) { return { success: false, message: err.message }; }
+  let ids;
+  try { ids = receiptSms_sendMms_(to, text.slice(0, 1000), jpg); }
   catch (err) { smsFailLog_('현금영수증 사진 문자(시험)', err.message); return { success: false, message: '문자를 보내지 못했습니다: ' + err.message }; }
-  return { success: true, test: true, to: to.slice(0, 3) + '-****-' + to.slice(-4) };
+  let track = null; // [2026-11-26] 시험도 도착 결과를 보낸 창에(파일·기록·알림은 안 남김)
+  try { track = receiptSms_trackAdd_(ids, { name: tf.name, test: true }); } catch (e) { console.error('영수증 문자(시험): 따라가기 실패 ' + e.message); }
+  return { success: true, test: true, to: to.slice(0, 3) + '-****-' + to.slice(-4), trackId: track ? track.id : '', 결과: track ? receiptSms_view_(track) : null };
 }
 
 // ③ 보내기 — 사진 문자 → (성공하면) 수금 기록·보냄 표시·상담 기록
@@ -237,8 +244,9 @@ function receiptSms_send_(body) {
   try { ids = receiptSms_folderIds_(); f = receiptSms_checkFile_(fileId, ids); } catch (err) { return { success: false, message: err.message }; }
   const ci = receiptSms_caseInfo_(f, ids);
 
+  let sent;
   try {
-    receiptSms_sendMms_(phone, text.slice(0, 1000), jpg);
+    sent = receiptSms_sendMms_(phone, text.slice(0, 1000), jpg);
   } catch (err) {
     smsFailLog_('현금영수증 사진 문자', err.message);
     return { success: false, message: '문자를 보내지 못했습니다: ' + err.message };
@@ -250,6 +258,9 @@ function receiptSms_send_(body) {
     const props = {}; props[RSMS_SENT_PROP_] = now;
     Drive.Files.update({ appProperties: props }, f.id);
   } catch (e) { out.notes.push('보냄 표시를 붙이지 못함'); }
+  // [2026-11-26] 도착 확인 — 1분 틱이 솔라피에 결과를 묻는다(ReceiptSmsTrack.js)
+  try { const tr = receiptSms_trackAdd_(sent, { fileId: f.id, name: f.name, clientId: ci.고객ID || '', caseId: ci.caseId || '' }); out.trackId = tr.id; out.결과 = receiptSms_view_(tr); }
+  catch (e) { out.notes.push('도착 확인을 걸지 못함: ' + e.message); }
 
   // 수금 — 이미 적은 영수증(밤 훑기·전에 보냄)이면 다시 적지 않는다. 같은 폴더의 같은 이름 그림도 한 묶음으로 표시.
   try {

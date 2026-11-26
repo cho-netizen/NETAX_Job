@@ -20,6 +20,11 @@
   .rs-item .rs-when{ flex:0 0 auto; color:var(--sub, #666); font-size:12px; }
   .rs-tag{ flex:0 0 auto; font-size:11px; border-radius:4px; padding:1px 5px; background:#e8f2ff; color:#1a5fb4; }
   .rs-tag.gray{ background:#eee; color:#666; }
+  .rs-tag.wait{ background:#fff4e0; color:#8a5a00; } /* [2026-11-26] 도착 확인 — 확인 중·도착·실패 */
+  .rs-tag.ok{ background:#e6f4ea; color:#1e7a34; }
+  .rs-tag.bad{ background:#fde7e7; color:#b3261e; }
+  .rs-done{ font-size:13.5px; line-height:1.6; }
+  .rs-done .rs-tag{ font-size:12.5px; padding:2px 8px; }
   .rs-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; font-size:13px; }
   .rs-row label{ color:var(--sub, #666); flex:0 0 4.5em; }
   .rs-img{ display:block; max-width:100%; max-height:46vh; margin:6px auto 8px; border:1px solid var(--line, #ddd); border-radius:6px; background:#fff; }
@@ -49,12 +54,13 @@
   var RS = { files: [], cur: null, jpg: '', busy: false };
 
   function say(msg){ if (typeof toast === 'function') toast(msg); }
-  function close(){ if (RS.busy) return; $('rsBack').hidden = true; RS.cur = null; RS.jpg = ''; }
+  function close(){ if (RS.busy) return; stopPoll(); $('rsBack').hidden = true; RS.cur = null; RS.jpg = ''; }
   $('rsClose').addEventListener('click', close);
   $('rsBack').addEventListener('click', function(e){ if (e.target === $('rsBack')) close(); });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !$('rsBack').hidden) close(); });
 
   function showList(){
+    stopPoll();
     $('rsTitle').textContent = '📱 영수증 문자 — 보낼 영수증 고르기';
     $('rsBody').innerHTML = '<div class="rs-sub" style="margin-bottom:6px;">「1 상담사건」 폴더의 현금영수증(최근 저장한 것부터)</div><div class="rs-list" id="rsList"><div class="spinner">불러오는 중…</div></div>' +
       '<div class="rs-foot"><span class="rs-sub" style="margin-right:auto;">방금 저장한 파일이 안 보이면 잠시 뒤 다시 찾기</span><button type="button" class="ghost-btn" id="rsReload">다시 찾기</button></div>';
@@ -71,13 +77,23 @@
       box.innerHTML = RS.files.map(function(f, i){
         return '<div class="rs-item" data-i="' + i + '" role="button">' +
           '<b>' + esc(f.고객명 || '(이름 없음)') + '</b><span class="rs-file" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' +
-          (f.보냄 ? '<span class="rs-tag gray" title="' + esc(f.보냄) + '에 보냄">보냄 ' + esc(String(f.보냄).slice(5, 10)) + '</span>' : '') +
+          sentTag(f) +
           '<span class="rs-when">' + esc(f.저장) + '</span></div>';
       }).join('');
       box.querySelectorAll('.rs-item').forEach(function(el){
         el.addEventListener('click', function(){ prepare(RS.files[Number(el.dataset.i)]); });
       });
     }).catch(function(e){ box.innerHTML = '<div class="log-empty">목록을 읽지 못했습니다: ' + esc(typeof nxErrText_ === 'function' ? nxErrText_(e) : e.message) + '</div>'; });
+  }
+
+  // [2026-11-26] 세무사님 "도착 결과를 확인할 수 있게 하자" — 목록 표시: 확인 중 → 도착/실패(마우스 올리면 까닭). 예전에 보낸 것은 「보냄」 그대로
+  var RES_CLS = { wait: 'wait', ok: 'ok', fail: 'bad', unknown: 'gray' };
+  function sentTag(f){
+    if (!f.보냄) return '';
+    var v = f.결과, day = String(f.보냄).slice(5, 10);
+    if (!v) return '<span class="rs-tag gray" title="' + esc(f.보냄) + '에 보냄">보냄 ' + esc(day) + '</span>';
+    var short = v.state === 'ok' ? '도착 ' + day : v.state === 'fail' ? '도착 실패' : v.state === 'unknown' ? '결과 모름' : '확인 중';
+    return '<span class="rs-tag ' + (RES_CLS[v.state] || 'gray') + '" title="' + esc(f.보냄 + '에 보냄 · ' + v.label) + '">' + esc(short) + '</span>';
   }
 
   // PDF 첫 쪽 → 빈 여백을 잘라 낸 JPG(200KB 안)
@@ -178,7 +194,7 @@
       else if (res.수금 === 'not_office' || res.수금 === 'unknown') msg += ' 이 사무소 발행으로 읽히지 않아 수금관리엔 적지 않았습니다.';
       if (res.notes && res.notes.length) msg += ' ' + res.notes.join(' · ');
       say(msg);
-      $('rsBack').hidden = true;
+      showDone(msg, res);
       if (res.수금 === 'added'){
         try { if (typeof loadDashPayments === 'function') loadDashPayments(); } catch (e) {}
         try { if (typeof loadCollections_ === 'function') loadCollections_(); } catch (e) {}
@@ -187,6 +203,46 @@
       RS.busy = false; btn.disabled = false; btn.textContent = '보내기';
       say('보내지 못했습니다: ' + (typeof nxErrText_ === 'function' ? nxErrText_(e) : e.message));
     });
+  }
+
+  // [2026-11-26] 보낸 뒤 — 창을 닫지 않고 결과 칸을 두어, 열어 두는 동안 도착 결과를 묻는다(15초마다, 5분까지).
+  //  닫아도 서버 1분 틱이 계속 물어 목록·상담 기록에 남기고, 실패면 「답하실 것」·아침 알림에 올린다.
+  function showDone(msg, res){
+    var v = res.결과 || { state: 'unknown', label: '도착 확인을 걸지 못했습니다' };
+    $('rsTitle').textContent = '📱 영수증 문자 — 보냈습니다';
+    $('rsBody').innerHTML = '<div class="rs-done"><div>' + esc(msg) + '</div>' +
+      '<div class="rs-row" style="margin-top:10px;"><label>도착</label><span id="rsRes"></span></div>' +
+      '<div class="rs-sub" id="rsResSub"></div></div>' +
+      '<div class="rs-foot"><button type="button" class="ghost-btn" id="rsDoneList">목록으로</button><button type="button" class="save-btn" id="rsDoneClose">닫기</button></div>';
+    $('rsDoneList').addEventListener('click', function(){ stopPoll(); showList(); });
+    $('rsDoneClose').addEventListener('click', function(){ stopPoll(); close(); });
+    paintRes(v);
+    if (v.state === 'wait' && res.trackId) startPoll(res.trackId);
+  }
+  function paintRes(v){
+    var el = $('rsRes'), sub = $('rsResSub'); if (!el) return;
+    el.className = 'rs-tag ' + (RES_CLS[v.state] || 'gray'); el.textContent = v.label;
+    sub.textContent = v.state === 'wait' ? '창을 열어 두면 결과가 나오는 대로 여기 바뀌어 보입니다. 닫아도 넥스가 1분마다 확인해 목록과 상담 기록에 남깁니다.'
+      : v.state === 'fail' ? '도착하지 못했습니다 — 「답하실 것」과 아침 알림에도 올렸습니다. 번호를 확인해 목록에서 다시 보낼 수 있습니다.'
+      : v.state === 'ok' ? '' : '솔라피가 결과를 아직 확정하지 않았습니다 — 넥스가 계속 확인해 목록에 남깁니다.';
+  }
+  function stopPoll(){ if (RS.poll){ clearTimeout(RS.poll.t); RS.poll = null; } }
+  function startPoll(id){
+    stopPoll();
+    var p = RS.poll = { id: id, n: 0, t: 0 };
+    var tick = function(){
+      if (RS.poll !== p || $('rsBack').hidden || !$('rsRes')) return stopPoll();
+      var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+      if (!tok) return stopPoll(); // 로그인 표 없으면 서버를 부르지 않는다
+      callGas('receipt_sms_status', { ids: [id] }).then(function(r){
+        if (RS.poll !== p) return;
+        var v = r && r.items && r.items[id];
+        if (v){ paintRes(v); if (v.state !== 'wait') return stopPoll(); }
+        if (++p.n >= 20){ var s = $('rsResSub'); if (s) s.textContent = '5분 동안 결과가 오지 않았습니다 — 넥스가 계속 확인해 목록과 상담 기록에 남깁니다.'; return stopPoll(); }
+        p.t = setTimeout(tick, 15000);
+      }).catch(function(){ if (RS.poll === p && ++p.n < 20) p.t = setTimeout(tick, 15000); });
+    };
+    p.t = setTimeout(tick, 16000);
   }
 
   // opt.fileId가 있으면(넥스 카드) 그 영수증의 미리 보기로 바로 간다
