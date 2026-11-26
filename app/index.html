@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 03:04 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 03:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -51179,9 +51179,56 @@ const RW_DOC_TYPE_FILENAME_LABELS_ = {
 // "그렇게 다 늘어놓지 말고 이미 있는 문서콤보에 띄워달라, 최근작업문서 기능은 필요없다"고
 // 요청해서 이 콤보 자체의 표시 대상을 바꾼 것. rwCaseFileOptions_가 비어있으면(사건 미선택)
 // 기존 방식(이 브라우저의 문서함) 그대로 동작한다.
+// [2026.11.25] 세무사님 "개별사건의 보고서탭에서 콤보박스에 당해사건보고서만 떠야지 왜 엉뚱한 보고서들이 뜨는 거지?" → "권장대로 고쳐라"
+//  사건을 고른 동안에는 그 사건 문서만: 드라이브의 이 사건 문서 + 이 사건에서 ＋로 만들고 아직 저장 안 한 문서(caseId 꼬리표).
+//  예전엔 이 브라우저에서 한 번이라도 연 문서(다른 사건 보고서·견본)가 「그 밖의 문서」로 다 따라 나왔고, 사건 문서가 0개면 그것만 떴다.
+//  브라우저 문서함(docs)은 지우지 않는다 — 사건을 안 골랐을 때 예전처럼 다 보인다.
+function rwCurCaseId_(){ var s = document.getElementById('rwCaseSelect'); return s ? String(s.value || '') : ''; }
+function rwDocVisibleForCase_(d, caseId){
+  if (!d) return false;
+  if (!caseId) return true;
+  if (rwCaseFileOptions_.some(function(o){ return 'drive-' + o.fileId === d.id; })) return true; // 드라이브 목록에 있는 이 사건 문서
+  return d.caseId === caseId;  // 이 사건에서 만든 저장 전 문서 · 이 사건에서 연 그 밖의 파일(처리개요 등에서 바로 연 것)
+}
 function refreshDocSelect(){
   const sel = document.getElementById('docSelect');
   sel.innerHTML = '';
+  const caseIdNow = rwCurCaseId_();
+  if (caseIdNow){
+    const caseGroup = document.createElement('optgroup');
+    caseGroup.label = '이 사건의 문서';
+    rwCaseFileOptions_.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = 'case:' + o.fileId;
+      opt.textContent = o.icon + ' ' + o.name;
+      opt.title = o.title || '';
+      if (selectedId === 'drive-' + o.fileId) opt.selected = true;
+      caseGroup.appendChild(opt);
+    });
+    docs.filter(d => d.caseId === caseIdNow && !rwCaseFileOptions_.some(o => 'drive-' + o.fileId === d.id)).forEach(d => {
+      const isDrive = String(d.id || '').indexOf('drive-') === 0;
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = isDrive ? '📄 ' + d.name : '🆕 ' + d.name + ' (저장 전)';
+      opt.title = isDrive ? '이 사건에서 연 파일' : '이 사건에서 새로 만든 문서 — 아직 드라이브에 저장하지 않았습니다';
+      if (d.id === selectedId) opt.selected = true;
+      caseGroup.appendChild(opt);
+    });
+    const hasAny = caseGroup.children.length > 0;
+    if (hasAny) sel.appendChild(caseGroup);
+    else {
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '이 사건 문서 없음 — ＋로 새로 만드세요'; opt.disabled = true; opt.selected = true;
+      sel.appendChild(opt);
+    }
+    const curOk = rwDocVisibleForCase_(getSelected(), caseIdNow);
+    document.getElementById('btnDocMinus').disabled = !hasAny || !curOk;
+    document.getElementById('btnRender').disabled = !curOk;
+    document.getElementById('btnDownload').disabled = !curOk;
+    document.getElementById('btnNewWindow').disabled = !curOk;
+    document.getElementById('mdInput').disabled = !curOk;
+    return;
+  }
   const hasCaseFiles = rwCaseFileOptions_.length > 0;
   if (hasCaseFiles){
     const caseGroup = document.createElement('optgroup');
@@ -51299,6 +51346,7 @@ function showLoadErrorInEditor(fileId, message){
     format: 'md',
     md: '# 파일을 불러오지 못했습니다\n\n**오류 내용**\n\n```\n' + message + '\n```\n\n- fileId: `' + fileId + '`\n- 이 파일에 접근 권한이 있는 계정으로 로그인되어 있는지\n- 브라우저 개발자도구(F12) → Console 탭에서 자세한 오류를 확인해보세요.\n'
   };
+  if (rwCurCaseId_()) errorDoc.caseId = rwCurCaseId_(); // [2026.11.25] 사건 문서 상자에서 이 줄이 보이게
   const idx = docs.findIndex(d => d.id === docId);
   if (idx >= 0) docs[idx] = errorDoc; else docs.push(errorDoc);
   selectedId = docId;
@@ -51368,7 +51416,10 @@ async function rwLoadFileById_(fileId, loadOpts){
 
   const docId = 'drive-' + fileId;
   let doc = docs.find(d => d.id === docId);
+  // [2026.11.25] 어느 사건 문서인지 꼬리표 — 사건을 고른 동안 문서 상자에 그 사건 문서만 보이게(refreshDocSelect)
+  const rwTagCase_ = (loadOpts && loadOpts.caseId) || (rwCaseFileOptions_.some(o => o.fileId === fileId) ? rwCurCaseId_() : '');
   if (doc) {
+    if (rwTagCase_) doc.caseId = rwTagCase_;
     doc.name = name;
     doc.md = content;
     doc.rwDriveSaved_ = content; // 드라이브에서 방금 불러온 내용 = 이미 저장된 상태로 취급
@@ -51386,6 +51437,7 @@ async function rwLoadFileById_(fileId, loadOpts){
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
     doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content, rwDriveSaved_: content };
     if (docType) doc.docType = docType;
+    if (rwTagCase_) doc.caseId = rwTagCase_;
     // [2026.09] .md(원본, "내부보고서" 폴더)를 열었을 때, 그 폴더ID(doc.folderId — 다음
     // 저장 때 같은 곳에 덮어쓰기 위함)와, 이미 고객에게 발행된 짝 .html이 있으면 그 파일ID
     // (doc.htmlFileId)·그 .html이 들어갈 "보고서" 폴더ID(doc.reportFolderId)를 같이 알아둔다.
@@ -51402,6 +51454,7 @@ async function rwLoadFileById_(fileId, loadOpts){
   refreshDocSelect();
   loadSelectedIntoEditor();
   rwLoadingFileId_ = null;
+  render(); // [2026.11.25] 보기 칸도 새로 그린다 — 예전엔 편집 칸만 바뀌고 보기 칸에 앞 문서(다른 사건 보고서)가 그대로 남았다
   return true;
 }
 
@@ -51435,6 +51488,7 @@ function addFilesFromInput(fileList){
           md: content,
           rwBaseline_: content
         };
+        if (rwCurCaseId_()) newDoc.caseId = rwCurCaseId_(); // [2026.11.25] 사건을 고른 채 불러온 파일 — 그 사건 문서 상자에 보이게
         docs.push(newDoc);
         if (firstNewId === null) firstNewId = newDoc.id;
       } catch (err) {
@@ -51914,6 +51968,7 @@ async function createNewDoc(kind){
   const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType, rwBaseline_: mdContent };
+  if (c && c.id) newDoc.caseId = c.id; // [2026.11.25] 이 사건에서 만든 문서 — 저장 전에도 이 사건 문서 상자에 보임
   docs.push(newDoc);
   selectedId = newDoc.id;
   const saved = await persist();
@@ -53614,7 +53669,11 @@ function rwRenderCaseReports_(caseId){
   if (!c){ box.innerHTML = ''; rwCaseFileOptions_ = []; rwActiveCaseSubfolders_ = null; refreshDocSelect(); return; }
   box.textContent = '불러오는 중…';
   rwActiveCaseSubfolders_ = null; // 조회 끝날 때까지는 엉뚱한 사건에 연결되지 않도록 비워둔다
+  // [2026.11.25] 앞 사건 문서 목록도 같이 비운다 — 예전엔 새 목록이 올 때까지 앞 사건 문서가 이 사건 문서처럼 남았다
+  rwCaseFileOptions_ = [];
+  refreshDocSelect();
   callGas('get_case_subfolders', { caseId: caseId }).then(function(sub){
+    if (rwCurCaseId_() !== caseId) return; // 그사이 다른 사건을 골랐으면 늦게 온 답은 버린다
     // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건 — 막다른 오류 대신 업무유형을 정해 폴더를 만드는 버튼을 준다(script.html nxEnsureCaseFolder_)
     if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
       box.innerHTML = '<span>' + escapeHtml(sub.error) + '</span> <button type="button" class="ghost-btn" id="rwMakeCaseFolderBtn">업무유형 정하고 폴더 만들기</button>';
@@ -53634,6 +53693,7 @@ function rwRenderCaseReports_(caseId){
       // 바로 생기는데, 지금까지는 아예 조회하지 않아서 이미 있는 그 파일을 열 방법이 없었다.
       sub.caseFolderId ? callGas('listFolder', { folderId: sub.caseFolderId }) : Promise.resolve({ files: [] })
     ]).then(function(results){
+      if (rwCurCaseId_() !== caseId) return; // 그사이 다른 사건을 골랐으면 늦게 온 목록은 버린다
       var internalRes = results[0], reportRes = results[1], rootRes = results[2];
       if (internalRes.error){ box.textContent = internalRes.error; return; }
       var internalFiles = internalRes.files || [];
@@ -53682,10 +53742,19 @@ function rwRenderCaseReports_(caseId){
       refreshDocSelect();
       // [2026.10.22 묶음 ㅁ7] 사건을 고르면 그 사건 문서(종합검토서 초안이 있으면 그것)를 바로 연다 — 예전엔 목록만 바꾸고 에디터엔 직전 문서(샘플 청구취지서)가 남았다(가상양도7 표 43·44)
       try {
-        var curIsCase = typeof selectedId === 'string' && selectedId.indexOf('drive-') === 0 && options.some(function(o){ return 'drive-' + o.fileId === selectedId; });
-        if (!curIsCase && options.length){
-          var pick = options.filter(function(o){ return /종합검토서/.test(o.name); })[0] || options[0];
-          rwLoadFileById_(pick.fileId);
+        // [2026.11.25] 지금 열린 문서가 이 사건 것이 아니면(다른 사건 보고서·견본) 이 사건 문서를 열고, 이 사건 문서가 없으면 편집 칸을 비운다
+        //  — 처리개요 등에서 파일을 바로 여는 중(rwLoadingFileId_)이면 그 파일이 이 사건 꼬리표를 달고 열리므로 건드리지 않는다
+        var curIsCase = rwDocVisibleForCase_(getSelected(), caseId);
+        if (!curIsCase && !rwLoadingFileId_){
+          if (options.length){
+            var pick = options.filter(function(o){ return /종합검토서/.test(o.name); })[0] || options[0];
+            rwLoadFileById_(pick.fileId);
+          } else {
+            selectedId = null;
+            loadSelectedIntoEditor();
+            render();
+            refreshDocSelect();
+          }
         }
       } catch (e) {}
     });
@@ -53702,7 +53771,7 @@ function goToReportWriter_(caseId, opts){
   opts = opts || {};
   var shouldCreateNew = false;
   if (opts.fileId) {
-    rwLoadFileById_(opts.fileId, opts);
+    rwLoadFileById_(opts.fileId, caseId ? Object.assign({}, opts, { caseId: caseId }) : opts);
   } else if (opts.saveFolderId) {
     pendingSaveFolderId = opts.saveFolderId;
     pendingSaveFolderName = opts.saveFileName || null;
@@ -61044,7 +61113,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" class="nxai-pv-tab nx-tab sub" data-pv="view" id="nxAiPvTabView">미리보기</button>
       <span class="nxai-spacer"></span>
       <button type="button" class="nxai-icon dark" id="nxAiPvPosBtn" title="미리보기 위치">A</button>
+      <!-- [2026.11.25] 떠 있는 단추 넷(도움말·건의·손글씨 메모·보여주기)이 미리보기 칸 아래쪽(시트 탭 줄)을 가렸다 — 세무사님 "뜬버튼이 시트를 가린다" → "권장대로 하라":
+           미리보기 칸이 보이는 동안은 넷을 숨기고(body.nx-pv-fab) 이 「⋯」 하나로 모음. 누르면 넷이 차림표로 펼쳐지고, 고르면 원래 단추 일을 그대로 함 -->
+      <button type="button" class="nxai-icon dark" id="nxAiPvFab" title="도움말·개선 건의·손글씨 메모·고객에게 보여주기" aria-haspopup="true" aria-expanded="false">⋯</button>
       <button type="button" class="nxai-icon dark nxai-fold" id="nxAiPvToggle" title="미리보기 칸 숨기기">»</button>
+      <div class="nxai-pv-fabmenu" id="nxAiPvFabMenu" role="menu" hidden>
+        <button type="button" role="menuitem" data-fab="globalHelpBtn">❓ 이 화면 도움말</button>
+        <button type="button" role="menuitem" data-fab="nxSuggestBtn">💬 개선 건의 적기</button>
+        <button type="button" role="menuitem" data-fab="nxHandMemoBtn">✍ 손글씨 메모</button>
+        <button type="button" role="menuitem" data-fab="nxPresentBtn">🖥 고객에게 보여주기</button>
+      </div>
     </div>
     <div class="nxai-pv-files" id="nxAiPvFiles"><div class="nxai-muted">사건을 연결하면 그 사건 폴더의 자료가 여기 보입니다.</div></div>
     <div class="nxai-pv-view" id="nxAiPvView" hidden>
@@ -61332,7 +61410,17 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   #nxAiPvPosBtn.fixed{ background:var(--navy); color:#fff; border-color:var(--navy); }
   html.nx-dark #nxAiPvPosBtn{ border-color:#2e384c; }
   html.nx-dark #nxAiPvPosBtn.fixed{ background:var(--gold); color:var(--navy); border-color:var(--gold); }
-  .nxai-pv-head{ display:flex; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid var(--line); }
+  .nxai-pv-head{ display:flex; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid var(--line); position:relative; }
+  /* [2026.11.25] 미리보기 칸이 보이는 동안 떠 있는 단추 넷을 숨기고 머리줄 「⋯」 차림표로(세무사님 "뜬버튼이 시트를 가린다" → "권장대로 하라") — 고객에게 보여주기 중엔 원래 단추 그대로(풀 길이 있어야 함) */
+  #nxAiPvFab{ display:none; font-size:15px; font-weight:700; min-width:22px; text-align:center; }
+  body.nx-pv-fab:not(.nx-present) #nxAiPvFab{ display:inline-block; }
+  body.nx-pv-fab:not(.nx-present) #globalHelpBtn, body.nx-pv-fab:not(.nx-present) #nxSuggestBtn, body.nx-pv-fab:not(.nx-present) #nxHandMemoBtn, body.nx-pv-fab:not(.nx-present) #nxPresentBtn, body.nx-pv-fab:not(.nx-present) #nxFabMore{ display:none !important; }
+  .nxai-pv-fabmenu{ position:absolute; right:8px; top:100%; z-index:1001; display:flex; flex-direction:column; min-width:176px; padding:4px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.18); }
+  .nxai-pv-fabmenu[hidden]{ display:none; }
+  .nxai-pv-fabmenu button{ text-align:left; padding:7px 10px; border:none; background:none; border-radius:6px; font-size:13px; cursor:pointer; color:inherit; white-space:nowrap; }
+  .nxai-pv-fabmenu button:hover, .nxai-pv-fabmenu button:focus-visible{ background:#eef2f7; }
+  html.nx-dark .nxai-pv-fabmenu{ background:#141a26; border-color:#273042; }
+  html.nx-dark .nxai-pv-fabmenu button:hover, html.nx-dark .nxai-pv-fabmenu button:focus-visible{ background:#1f2838; }
   /* [2026.10.31] 사건 자료·미리보기 탭 모양은 공통 하위 탭(style.html .nx-tab) */
   .nxai-pv-files{ flex:1; overflow-y:auto; padding:8px; min-height:0; }
   /* [2026.10.20] 사건 작업대 — 위 칸 산출물 / 아래 칸 증빙(각자 스크롤) */
@@ -68172,6 +68260,30 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
     document.addEventListener('nx-layout-change', nxAiApplyPvPos_);
     nxAiApplyPvPos_();
+    // [2026.11.25] 미리보기 칸이 보이는 동안(넓이·높이가 있을 때 — 넥스 탭이 아니거나 칸을 접으면 0) 떠 있는 단추 넷을 숨기고 머리줄 「⋯」로 모음.
+    //  폰은 떠 있는 단추가 원래 없고(아래 탭 줄) 칸이 화면을 다 쓰므로 빼고. 크기 바뀜 감시(ResizeObserver)라 탭·접기·위치 바꿈을 모두 따라감.
+    (function(){
+      var pv = nxAiEl_('nxAiPreview'), fab = nxAiEl_('nxAiPvFab'), menu = nxAiEl_('nxAiPvFabMenu');
+      if (!pv || !fab || !menu) return;
+      var close = function(){ menu.hidden = true; fab.setAttribute('aria-expanded', 'false'); };
+      var upd = function(){
+        var on = pv.offsetWidth > 0 && pv.offsetHeight > 0 && !document.body.classList.contains('lay-phone');
+        document.body.classList.toggle('nx-pv-fab', on);
+        if (!on) close();
+      };
+      if (window.ResizeObserver) new ResizeObserver(upd).observe(pv);
+      window.addEventListener('resize', upd);
+      document.addEventListener('nx-layout-change', upd);
+      upd();
+      fab.addEventListener('click', function(e){ e.stopPropagation(); var open = menu.hidden; menu.hidden = !open; fab.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+      menu.addEventListener('click', function(e){
+        var b = e.target.closest && e.target.closest('button[data-fab]'); if (!b) return;
+        e.stopPropagation(); close();
+        var orig = document.getElementById(b.getAttribute('data-fab')); if (orig) orig.click(); // 원래 단추의 일을 그대로
+      });
+      document.addEventListener('click', function(e){ if (!menu.hidden && !(e.target.closest && e.target.closest('#nxAiPvFabMenu, #nxAiPvFab'))) close(); });
+      document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !menu.hidden) close(); });
+    })();
     // 폰 탭 전환
     Array.prototype.forEach.call(document.querySelectorAll('#nxAiPhoneTabs button'), function(b){
       b.addEventListener('click', function(){ nxAiPhoneTab_(b.getAttribute('data-ph')); });

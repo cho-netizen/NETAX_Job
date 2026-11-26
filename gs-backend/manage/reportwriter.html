@@ -600,9 +600,56 @@ const RW_DOC_TYPE_FILENAME_LABELS_ = {
 // "그렇게 다 늘어놓지 말고 이미 있는 문서콤보에 띄워달라, 최근작업문서 기능은 필요없다"고
 // 요청해서 이 콤보 자체의 표시 대상을 바꾼 것. rwCaseFileOptions_가 비어있으면(사건 미선택)
 // 기존 방식(이 브라우저의 문서함) 그대로 동작한다.
+// [2026.11.25] 세무사님 "개별사건의 보고서탭에서 콤보박스에 당해사건보고서만 떠야지 왜 엉뚱한 보고서들이 뜨는 거지?" → "권장대로 고쳐라"
+//  사건을 고른 동안에는 그 사건 문서만: 드라이브의 이 사건 문서 + 이 사건에서 ＋로 만들고 아직 저장 안 한 문서(caseId 꼬리표).
+//  예전엔 이 브라우저에서 한 번이라도 연 문서(다른 사건 보고서·견본)가 「그 밖의 문서」로 다 따라 나왔고, 사건 문서가 0개면 그것만 떴다.
+//  브라우저 문서함(docs)은 지우지 않는다 — 사건을 안 골랐을 때 예전처럼 다 보인다.
+function rwCurCaseId_(){ var s = document.getElementById('rwCaseSelect'); return s ? String(s.value || '') : ''; }
+function rwDocVisibleForCase_(d, caseId){
+  if (!d) return false;
+  if (!caseId) return true;
+  if (rwCaseFileOptions_.some(function(o){ return 'drive-' + o.fileId === d.id; })) return true; // 드라이브 목록에 있는 이 사건 문서
+  return d.caseId === caseId;  // 이 사건에서 만든 저장 전 문서 · 이 사건에서 연 그 밖의 파일(처리개요 등에서 바로 연 것)
+}
 function refreshDocSelect(){
   const sel = document.getElementById('docSelect');
   sel.innerHTML = '';
+  const caseIdNow = rwCurCaseId_();
+  if (caseIdNow){
+    const caseGroup = document.createElement('optgroup');
+    caseGroup.label = '이 사건의 문서';
+    rwCaseFileOptions_.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = 'case:' + o.fileId;
+      opt.textContent = o.icon + ' ' + o.name;
+      opt.title = o.title || '';
+      if (selectedId === 'drive-' + o.fileId) opt.selected = true;
+      caseGroup.appendChild(opt);
+    });
+    docs.filter(d => d.caseId === caseIdNow && !rwCaseFileOptions_.some(o => 'drive-' + o.fileId === d.id)).forEach(d => {
+      const isDrive = String(d.id || '').indexOf('drive-') === 0;
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = isDrive ? '📄 ' + d.name : '🆕 ' + d.name + ' (저장 전)';
+      opt.title = isDrive ? '이 사건에서 연 파일' : '이 사건에서 새로 만든 문서 — 아직 드라이브에 저장하지 않았습니다';
+      if (d.id === selectedId) opt.selected = true;
+      caseGroup.appendChild(opt);
+    });
+    const hasAny = caseGroup.children.length > 0;
+    if (hasAny) sel.appendChild(caseGroup);
+    else {
+      const opt = document.createElement('option');
+      opt.value = ''; opt.textContent = '이 사건 문서 없음 — ＋로 새로 만드세요'; opt.disabled = true; opt.selected = true;
+      sel.appendChild(opt);
+    }
+    const curOk = rwDocVisibleForCase_(getSelected(), caseIdNow);
+    document.getElementById('btnDocMinus').disabled = !hasAny || !curOk;
+    document.getElementById('btnRender').disabled = !curOk;
+    document.getElementById('btnDownload').disabled = !curOk;
+    document.getElementById('btnNewWindow').disabled = !curOk;
+    document.getElementById('mdInput').disabled = !curOk;
+    return;
+  }
   const hasCaseFiles = rwCaseFileOptions_.length > 0;
   if (hasCaseFiles){
     const caseGroup = document.createElement('optgroup');
@@ -720,6 +767,7 @@ function showLoadErrorInEditor(fileId, message){
     format: 'md',
     md: '# 파일을 불러오지 못했습니다\n\n**오류 내용**\n\n```\n' + message + '\n```\n\n- fileId: `' + fileId + '`\n- 이 파일에 접근 권한이 있는 계정으로 로그인되어 있는지\n- 브라우저 개발자도구(F12) → Console 탭에서 자세한 오류를 확인해보세요.\n'
   };
+  if (rwCurCaseId_()) errorDoc.caseId = rwCurCaseId_(); // [2026.11.25] 사건 문서 상자에서 이 줄이 보이게
   const idx = docs.findIndex(d => d.id === docId);
   if (idx >= 0) docs[idx] = errorDoc; else docs.push(errorDoc);
   selectedId = docId;
@@ -789,7 +837,10 @@ async function rwLoadFileById_(fileId, loadOpts){
 
   const docId = 'drive-' + fileId;
   let doc = docs.find(d => d.id === docId);
+  // [2026.11.25] 어느 사건 문서인지 꼬리표 — 사건을 고른 동안 문서 상자에 그 사건 문서만 보이게(refreshDocSelect)
+  const rwTagCase_ = (loadOpts && loadOpts.caseId) || (rwCaseFileOptions_.some(o => o.fileId === fileId) ? rwCurCaseId_() : '');
   if (doc) {
+    if (rwTagCase_) doc.caseId = rwTagCase_;
     doc.name = name;
     doc.md = content;
     doc.rwDriveSaved_ = content; // 드라이브에서 방금 불러온 내용 = 이미 저장된 상태로 취급
@@ -807,6 +858,7 @@ async function rwLoadFileById_(fileId, loadOpts){
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
     doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content, rwDriveSaved_: content };
     if (docType) doc.docType = docType;
+    if (rwTagCase_) doc.caseId = rwTagCase_;
     // [2026.09] .md(원본, "내부보고서" 폴더)를 열었을 때, 그 폴더ID(doc.folderId — 다음
     // 저장 때 같은 곳에 덮어쓰기 위함)와, 이미 고객에게 발행된 짝 .html이 있으면 그 파일ID
     // (doc.htmlFileId)·그 .html이 들어갈 "보고서" 폴더ID(doc.reportFolderId)를 같이 알아둔다.
@@ -823,6 +875,7 @@ async function rwLoadFileById_(fileId, loadOpts){
   refreshDocSelect();
   loadSelectedIntoEditor();
   rwLoadingFileId_ = null;
+  render(); // [2026.11.25] 보기 칸도 새로 그린다 — 예전엔 편집 칸만 바뀌고 보기 칸에 앞 문서(다른 사건 보고서)가 그대로 남았다
   return true;
 }
 
@@ -856,6 +909,7 @@ function addFilesFromInput(fileList){
           md: content,
           rwBaseline_: content
         };
+        if (rwCurCaseId_()) newDoc.caseId = rwCurCaseId_(); // [2026.11.25] 사건을 고른 채 불러온 파일 — 그 사건 문서 상자에 보이게
         docs.push(newDoc);
         if (firstNewId === null) firstNewId = newDoc.id;
       } catch (err) {
@@ -1335,6 +1389,7 @@ async function createNewDoc(kind){
   const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType, rwBaseline_: mdContent };
+  if (c && c.id) newDoc.caseId = c.id; // [2026.11.25] 이 사건에서 만든 문서 — 저장 전에도 이 사건 문서 상자에 보임
   docs.push(newDoc);
   selectedId = newDoc.id;
   const saved = await persist();
@@ -3035,7 +3090,11 @@ function rwRenderCaseReports_(caseId){
   if (!c){ box.innerHTML = ''; rwCaseFileOptions_ = []; rwActiveCaseSubfolders_ = null; refreshDocSelect(); return; }
   box.textContent = '불러오는 중…';
   rwActiveCaseSubfolders_ = null; // 조회 끝날 때까지는 엉뚱한 사건에 연결되지 않도록 비워둔다
+  // [2026.11.25] 앞 사건 문서 목록도 같이 비운다 — 예전엔 새 목록이 올 때까지 앞 사건 문서가 이 사건 문서처럼 남았다
+  rwCaseFileOptions_ = [];
+  refreshDocSelect();
   callGas('get_case_subfolders', { caseId: caseId }).then(function(sub){
+    if (rwCurCaseId_() !== caseId) return; // 그사이 다른 사건을 골랐으면 늦게 온 답은 버린다
     // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건 — 막다른 오류 대신 업무유형을 정해 폴더를 만드는 버튼을 준다(script.html nxEnsureCaseFolder_)
     if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
       box.innerHTML = '<span>' + escapeHtml(sub.error) + '</span> <button type="button" class="ghost-btn" id="rwMakeCaseFolderBtn">업무유형 정하고 폴더 만들기</button>';
@@ -3055,6 +3114,7 @@ function rwRenderCaseReports_(caseId){
       // 바로 생기는데, 지금까지는 아예 조회하지 않아서 이미 있는 그 파일을 열 방법이 없었다.
       sub.caseFolderId ? callGas('listFolder', { folderId: sub.caseFolderId }) : Promise.resolve({ files: [] })
     ]).then(function(results){
+      if (rwCurCaseId_() !== caseId) return; // 그사이 다른 사건을 골랐으면 늦게 온 목록은 버린다
       var internalRes = results[0], reportRes = results[1], rootRes = results[2];
       if (internalRes.error){ box.textContent = internalRes.error; return; }
       var internalFiles = internalRes.files || [];
@@ -3103,10 +3163,19 @@ function rwRenderCaseReports_(caseId){
       refreshDocSelect();
       // [2026.10.22 묶음 ㅁ7] 사건을 고르면 그 사건 문서(종합검토서 초안이 있으면 그것)를 바로 연다 — 예전엔 목록만 바꾸고 에디터엔 직전 문서(샘플 청구취지서)가 남았다(가상양도7 표 43·44)
       try {
-        var curIsCase = typeof selectedId === 'string' && selectedId.indexOf('drive-') === 0 && options.some(function(o){ return 'drive-' + o.fileId === selectedId; });
-        if (!curIsCase && options.length){
-          var pick = options.filter(function(o){ return /종합검토서/.test(o.name); })[0] || options[0];
-          rwLoadFileById_(pick.fileId);
+        // [2026.11.25] 지금 열린 문서가 이 사건 것이 아니면(다른 사건 보고서·견본) 이 사건 문서를 열고, 이 사건 문서가 없으면 편집 칸을 비운다
+        //  — 처리개요 등에서 파일을 바로 여는 중(rwLoadingFileId_)이면 그 파일이 이 사건 꼬리표를 달고 열리므로 건드리지 않는다
+        var curIsCase = rwDocVisibleForCase_(getSelected(), caseId);
+        if (!curIsCase && !rwLoadingFileId_){
+          if (options.length){
+            var pick = options.filter(function(o){ return /종합검토서/.test(o.name); })[0] || options[0];
+            rwLoadFileById_(pick.fileId);
+          } else {
+            selectedId = null;
+            loadSelectedIntoEditor();
+            render();
+            refreshDocSelect();
+          }
         }
       } catch (e) {}
     });
@@ -3123,7 +3192,7 @@ function goToReportWriter_(caseId, opts){
   opts = opts || {};
   var shouldCreateNew = false;
   if (opts.fileId) {
-    rwLoadFileById_(opts.fileId, opts);
+    rwLoadFileById_(opts.fileId, caseId ? Object.assign({}, opts, { caseId: caseId }) : opts);
   } else if (opts.saveFolderId) {
     pendingSaveFolderId = opts.saveFolderId;
     pendingSaveFolderName = opts.saveFileName || null;

@@ -16,10 +16,26 @@ var FIN_RP_S_ = '<!-- GAS:금융거래 시작 — 이 사이는 GAS가 금융거
 var FIN_RP_E_ = '<!-- GAS:금융거래 끝 -->';
 
 function finRpMoney_(n) { return n == null || n === '' ? '' : finRvWon_(n); }
+// [2026.11.25] 세무사님 「추정상속재산이나 증여세과세표준으로 도출된 금액은 적색으로 굵게」 — 보고서 보기(작성관리)에서 빨간 굵은 글자
+function finRpRed_(t) { return t === '' || t == null ? '' : '<b style="color:#c00">' + t + '</b>'; }
 function finRpCell_(s) { return String(s == null ? '' : s).replace(/\|/g, '/').replace(/\n/g, ' '); }
 function finRpTable_(hdr, rows) {
   if (!rows.length) return '(없음)\n';
-  return '| ' + hdr.join(' | ') + ' |\n|' + hdr.map(function () { return '---'; }).join('|') + '|\n' + rows.map(function (r) { return '| ' + r.map(finRpCell_).join(' | ') + ' |'; }).join('\n') + '\n';
+  // [2026.11.25] 세무사님 「표속에서 숫자필드는 적절한 우측여백을 두고 우측정렬」 — 값이 모두 숫자(빨간 굵은 숫자 포함)인 칸은 오른쪽 정렬(---:).
+  //  보고서 보기의 개별검토서 틀(doc-memo)은 칸 안쪽 여백 2mm라 오른쪽 테두리에서 그만큼 떨어진다
+  var num = hdr.map(function (h, i) { var any = false; return rows.every(function (r) { var v = String(r[i] == null ? '' : r[i]).replace(/<[^>]*>/g, '').trim(); if (!v) return true; any = true; return /^-?[\d,]+(\.\d+)?$/.test(v); }) && any; });
+  return '| ' + hdr.join(' | ') + ' |\n|' + num.map(function (n) { return n ? '---:' : '---'; }).join('|') + '|\n' + rows.map(function (r) { return '| ' + r.map(finRpCell_).join(' | ') + ' |'; }).join('\n') + '\n';
+}
+
+// [2026.11.25] 증여재산공제 짐작 — 받은 사람(관련인)과 피상속인(증여자)의 관계로(상증법 §53, 관계는 세무사님 ✎ 칸이 먼저)
+function finRpGiftDed_(x) {
+  var r = String(x.관계 || x.관계짐작 || ''), lane = x.갈래 || x.짐작 || '';
+  if (lane === '특수관계 법인') return { amt: null, why: '법인 — 증여세 아님' };
+  if (/의 배우자|자부|며느리|사위|동생|형|누나|언니|오빠|조카|형제|자매|삼촌|이모|고모|숙부|백부|외숙/.test(r)) return { amt: 10000000, why: '기타친족 §53 4호' };
+  if (/배우자/.test(r)) return /사망/.test(r) ? { amt: null, why: '사망한 배우자' } : { amt: 600000000, why: '배우자 §53 1호' };
+  if (/자녀|아들|딸|손자|손녀/.test(r)) return { amt: 50000000, why: '직계존속에게서 §53 2호' };
+  if (/^(부|모)$|부친|모친|아버지|어머니|엄마|아빠/.test(r)) return { amt: 50000000, why: '직계비속에게서 §53 3호' };
+  return { amt: null, why: '관계 확인 필요' };
 }
 
 // GAS 칸 글(순수) — 같은 분석이면 같은 글(시각 없음 — 바뀐 것이 없으면 파일을 다시 쓰지 않게)
@@ -59,7 +75,16 @@ function finRpBlock_(A, U, sheetUrl) {
   s.push('');
   s.push('## 4. 추정상속재산(상증법 §15)');
   if (!B.D) s.push('- 상속개시일이 없어 셈하지 않음 [확인 필요]');
-  else s.push(finRpTable_(['기간', '순인출', '기준', '기준 넘음', '소명액(세무사님 칸)', '미소명', '추정액'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpMoney_(x.추정)]; })));
+  else {
+    // [2026.11.25] 세무사님 「순인출 전에 총인출과 입금액 란」 — 순인출 = 총인출 − 입금액(재예입)
+    s.push(finRpTable_(['기간', '① 총인출', '② 입금액(재예입)', '③ 순인출<br>①−②', '④ 기준<br>1년 2억·2년 5억', '기준 넘음<br>③ ≥ ④', '⑤ 자동소명액', '⑥ 추가소명액', '⑦ 소명액 합계<br>⑤+⑥', '⑧ 미소명<br>③−⑦', '⑨ 차감액<br>min(③×20%, 2억)', '⑩ 추정액<br>③≥④이고 ⑧≥⑨이면 ⑧−⑨'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.인출), finRpMoney_(x.재예입), finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.자동), finRpMoney_(x.추가), finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpMoney_(x.차감), finRpRed_(finRpMoney_(x.추정))]; })));
+    s.push('- ① 총인출 = 피상속인 계좌에서 나간 돈 · ② 입금액(재예입) = 나간 돈이 피상속인 다른 계좌로 다시 들어온 것(시행령 §11①2호) · ⑨ 차감액·⑩ 추정액은 시행령 §11④');
+    // [2026.11.25] 자동소명(GAS)·추가소명(세무사님)·합계 — 미소명 = 순인출 − 소명액 합계
+    var s2 = A.s15[1] || A.s15[0];
+    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. 거래 탭 「소명 ✎」 한 칸 — ⑤ 자동소명액은 GAS 글(자동 ·)이 그대로인 출금, ⑥ 추가소명액은 세무사님이 적으신 출금, 「아님」이면 뺌');
+      var ad = (s2.추가별 || []).slice().sort(function (a, b) { return b.인정 - a.인정; });
+      if (ad.length) { s.push(''); s.push('⑥ 추가소명 내역(' + s2.y + '년 안, 큰 순)'); s.push(finRpTable_(['날짜', '상대', '출금', '소명 인정', '추가소명 내용(세무사님)'], ad.slice(0, 30).map(function (z) { return [z.d, z.상대, finRpMoney_(z.out), finRpMoney_(z.인정), z.내용]; }))); if (ad.length > 30) s.push('- 그 밖 ' + (ad.length - 30) + '줄 — 시트 「추정상속(§15)」 탭'); } }
+  }
   (A.s15d || []).forEach(function (d) { s.push('- 부담한 채무(§15① 2호) ' + d.y + '년 안 — 통장에 대출로 들어온 돈 ' + finRvWon_(d.채무) + '원 · 기준 ' + finRvWon_(d.기준) + '원 ' + (d.넘음 ? '넘음(용도 소명 필요)' : '안 넘음')); });
   s.push('');
   s.push('## 5. 사전증여재산(상증법 §13)');
@@ -67,7 +92,14 @@ function finRpBlock_(A, U, sheetUrl) {
   var cat = {}; A.R.forEach(function (r) { if (!r.own || r.inner || !(r.out > 0)) return; var m = /^(생계비|가족비|경조비|종교활동비)/.exec(((U.rows || {})[r.k] || {}).성격 || r.nature || ''); if (m) cat[m[1]] = (cat[m[1]] || 0) + r.out; });
   if (Object.keys(cat).length) s.push('- 쓰임이 보이는 돈(사회통념 범위면 증여 아님 — §46 5호·시행령 §35④): ' + ['생계비', '가족비', '경조비', '종교활동비'].filter(function (k) { return cat[k]; }).map(function (k) { return k + ' ' + finRvWon_(cat[k]) + '원'; }).join(' · ') + (B.T.사회통념한도 ? ' · 한 사람 한 해 한도 ' + finRvWon_(B.T.사회통념한도) + '원(넘는 것은 짚을 곳 C8)' : ' · 한도는 정하지 않음(시트 「사건 기준」 사회통념한도)'));
   if (!A.s13.length) s.push('- 분석대상자에 상속인·가족·특수관계 법인이 아직 정해지지 않음 [확인 필요 — 시트 「분석대상자」 탭 갈래 ✎]');
-  else s.push(finRpTable_(['관련인', '갈래', '합산 기간', '나감', '들어옴', '순액', '그 가운데 생계비·가족비·경조비', '나머지 순액'], A.s13.map(function (x) { return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액), finRpMoney_(x.사회통념 || ''), finRpMoney_(x.순액 - (x.사회통념 || 0))]; })));
+  else {
+    // [2026.11.25] 세무사님 「나머지 순액 다음에 증여재산공제와 증여세과세표준 란」 — 공제는 관계로 짐작(상증법 §53), 과세표준 = 나머지 순액 − 공제(§55① 4호)
+    s.push(finRpTable_(['관련인', '갈래', '관계', '합산 기간', '① 나감', '② 들어옴', '③ 순액<br>①−②', '④ 그 가운데 생계비·가족비·경조비', '⑤ 나머지 순액<br>③−④', '⑥ 증여재산공제(§53)', '⑦ 증여세 과세표준(§55)<br>⑤−⑥(0 아래는 0)'], A.s13.map(function (x) {
+      var rest = x.순액 - (x.사회통념 || 0), g = finRpGiftDed_(x.x), base = g.amt == null ? '' : finRpRed_(finRpMoney_(Math.max(0, rest - g.amt)));
+      return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.x.관계 || x.x.관계짐작 || '', x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액), finRpMoney_(x.사회통념 || ''), finRpMoney_(rest), g.amt == null ? '' : finRpMoney_(g.amt), base]; // 공제 근거는 「관계」 칸으로 알 수 있어 숫자만(세무사님 11-25)
+    })));
+    s.push('- 증여재산공제·과세표준은 잠정 — ① 나머지 순액을 증여재산가액으로 본 셈(증여인지는 세무사님 판단) ② 받은 사람이 거주자이고, 같은 갈래 증여자(예: 다른 부모)에게서 10년 안에 공제받은 것이 없다고 봄(§53 각 호 외 부분) ③ 미성년 자녀는 2천만원(§53 2호 단서) ④ 혼인·출산 공제(§53의2)·감정평가수수료(§55①)는 넣지 않음 ⑤ 과세표준 50만원 미만이면 증여세를 부과하지 않음(§55②) ⑥ 공제는 관계로 — 배우자 6억(§53 1호)·자녀·손자녀 5천만(2호)·부모 5천만(3호)·며느리·사위·형제·조카 등 1천만(4호), 관계를 모르거나 사망한 배우자·법인은 두 칸을 비움');
+  }
   s.push('');
   s.push('## 6. 짚을 곳(남은 것, 중요도 순)');
   var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || f.상태답안 || ''); /* 세무사님 칸이 비면 GAS 답안대로 */ }).slice().sort(function (a, b) { return (b.중요도 || 0) - (a.중요도 || 0); });

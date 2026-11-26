@@ -238,6 +238,9 @@ function finDocsApply_(U, decedent) {
     });
     U.heirsGuess = { 이름: heirs, from: famFrom };
   } else U.heirsGuess = null;
+  // [2026.11.26] 사건 폴더 이름의 고객(「고객명(피상속인)」의 앞) — 상속세 사건의 고객(신고인)은 대개 상속인. 가족관계증명서가 없을 때만 짐작
+  //  (실사건: 증명서가 없어 고객에게 간 돈 약 2억 2천만원이 관련인으로 잡히지 않았음)
+  if (!fam && U.clientName && !finTgNameNear_(U.clientName, decedent)) { var cx = have[finRvNorm_(U.clientName)]; if (!cx || (!cx.갈래 && !cx.짐작)) upsert(U.clientName, { 짐작: '상속인', 관계짐작: '사건 고객(신고인) 짐작', 출처: '사건 폴더 이름의 고객 — 상속세 신고인은 대개 상속인(가족관계증명서로 확인)' }); }
   // 의뢰 메모의 사람 — 가족관계증명서로 정해진 사람은 관계만 보탬
   //  [2026.11.25 운영 확인] 가족관계증명서에 있는 사람은 메모·보고서 글이 갈래·관계를 덮지 않음(출처 글 순서가 아니라 증명서 명단으로 가름 —
   //  운영에서 지난 보고서의 「…세입자」 글이 출처 앞에 붙어 자녀를 세입자로 덮었음)
@@ -349,7 +352,7 @@ function finAnsAll_(A, U) {
     var x = byName[finRvNorm_(b.상대 || '')];
     if (!b.판단 && x && FIN_RV_FAMILY_.test(lane(x)) && Math.abs(b.순액) >= T.큰돈 && (b._ask = true)) asks.push({ 무엇: b.이름 + (b.순액 > 0 ? ' — 대여인지 증여인지(순액 ' : ' — 무슨 돈인지(빌린 돈·갚은 돈·받은 돈, 순액 ') + finRvWon_(b.순액) + '원)', 답안: b.판단답안, 근거: b.답안근거, 곳: '묶음 탭 「판단 ✎」', 열쇠: 'ask:b:' + b.이름 });
   });
-  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 일부만 소명되면 거래 탭 「소명액 ✎」도)', 열쇠: 'ask:' + f.id }); });
+  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 자동소명 밖에 더 소명되면 거래 탭 「소명 ✎」에 무엇으로 소명되는지)', 열쇠: 'ask:' + f.id }); });
   // 분석대상자 상태 — 적으셔야 할 줄 · 답안 있는 줄 · 묻지 않는 줄을 글로도 가름
   A.rels.forEach(function (x) { x.답안상태 = x.갈래 ? '확정(세무사님)' : x._ask ? '적으셔야 함 — 여쭐 것' : x.짐작 ? '답안(GAS) — 맞으면 안 적으셔도 됨' : '모름 — 큰돈 아님, 안 적으셔도 됨'; });
   A.asks = asks;

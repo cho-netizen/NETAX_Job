@@ -114,7 +114,16 @@
       <button type="button" class="nxai-pv-tab nx-tab sub" data-pv="view" id="nxAiPvTabView">미리보기</button>
       <span class="nxai-spacer"></span>
       <button type="button" class="nxai-icon dark" id="nxAiPvPosBtn" title="미리보기 위치">A</button>
+      <!-- [2026.11.25] 떠 있는 단추 넷(도움말·건의·손글씨 메모·보여주기)이 미리보기 칸 아래쪽(시트 탭 줄)을 가렸다 — 세무사님 "뜬버튼이 시트를 가린다" → "권장대로 하라":
+           미리보기 칸이 보이는 동안은 넷을 숨기고(body.nx-pv-fab) 이 「⋯」 하나로 모음. 누르면 넷이 차림표로 펼쳐지고, 고르면 원래 단추 일을 그대로 함 -->
+      <button type="button" class="nxai-icon dark" id="nxAiPvFab" title="도움말·개선 건의·손글씨 메모·고객에게 보여주기" aria-haspopup="true" aria-expanded="false">⋯</button>
       <button type="button" class="nxai-icon dark nxai-fold" id="nxAiPvToggle" title="미리보기 칸 숨기기">»</button>
+      <div class="nxai-pv-fabmenu" id="nxAiPvFabMenu" role="menu" hidden>
+        <button type="button" role="menuitem" data-fab="globalHelpBtn">❓ 이 화면 도움말</button>
+        <button type="button" role="menuitem" data-fab="nxSuggestBtn">💬 개선 건의 적기</button>
+        <button type="button" role="menuitem" data-fab="nxHandMemoBtn">✍ 손글씨 메모</button>
+        <button type="button" role="menuitem" data-fab="nxPresentBtn">🖥 고객에게 보여주기</button>
+      </div>
     </div>
     <div class="nxai-pv-files" id="nxAiPvFiles"><div class="nxai-muted">사건을 연결하면 그 사건 폴더의 자료가 여기 보입니다.</div></div>
     <div class="nxai-pv-view" id="nxAiPvView" hidden>
@@ -402,7 +411,17 @@
   #nxAiPvPosBtn.fixed{ background:var(--navy); color:#fff; border-color:var(--navy); }
   html.nx-dark #nxAiPvPosBtn{ border-color:#2e384c; }
   html.nx-dark #nxAiPvPosBtn.fixed{ background:var(--gold); color:var(--navy); border-color:var(--gold); }
-  .nxai-pv-head{ display:flex; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid var(--line); }
+  .nxai-pv-head{ display:flex; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid var(--line); position:relative; }
+  /* [2026.11.25] 미리보기 칸이 보이는 동안 떠 있는 단추 넷을 숨기고 머리줄 「⋯」 차림표로(세무사님 "뜬버튼이 시트를 가린다" → "권장대로 하라") — 고객에게 보여주기 중엔 원래 단추 그대로(풀 길이 있어야 함) */
+  #nxAiPvFab{ display:none; font-size:15px; font-weight:700; min-width:22px; text-align:center; }
+  body.nx-pv-fab:not(.nx-present) #nxAiPvFab{ display:inline-block; }
+  body.nx-pv-fab:not(.nx-present) #globalHelpBtn, body.nx-pv-fab:not(.nx-present) #nxSuggestBtn, body.nx-pv-fab:not(.nx-present) #nxHandMemoBtn, body.nx-pv-fab:not(.nx-present) #nxPresentBtn, body.nx-pv-fab:not(.nx-present) #nxFabMore{ display:none !important; }
+  .nxai-pv-fabmenu{ position:absolute; right:8px; top:100%; z-index:1001; display:flex; flex-direction:column; min-width:176px; padding:4px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.18); }
+  .nxai-pv-fabmenu[hidden]{ display:none; }
+  .nxai-pv-fabmenu button{ text-align:left; padding:7px 10px; border:none; background:none; border-radius:6px; font-size:13px; cursor:pointer; color:inherit; white-space:nowrap; }
+  .nxai-pv-fabmenu button:hover, .nxai-pv-fabmenu button:focus-visible{ background:#eef2f7; }
+  html.nx-dark .nxai-pv-fabmenu{ background:#141a26; border-color:#273042; }
+  html.nx-dark .nxai-pv-fabmenu button:hover, html.nx-dark .nxai-pv-fabmenu button:focus-visible{ background:#1f2838; }
   /* [2026.10.31] 사건 자료·미리보기 탭 모양은 공통 하위 탭(style.html .nx-tab) */
   .nxai-pv-files{ flex:1; overflow-y:auto; padding:8px; min-height:0; }
   /* [2026.10.20] 사건 작업대 — 위 칸 산출물 / 아래 칸 증빙(각자 스크롤) */
@@ -7242,6 +7261,30 @@
     });
     document.addEventListener('nx-layout-change', nxAiApplyPvPos_);
     nxAiApplyPvPos_();
+    // [2026.11.25] 미리보기 칸이 보이는 동안(넓이·높이가 있을 때 — 넥스 탭이 아니거나 칸을 접으면 0) 떠 있는 단추 넷을 숨기고 머리줄 「⋯」로 모음.
+    //  폰은 떠 있는 단추가 원래 없고(아래 탭 줄) 칸이 화면을 다 쓰므로 빼고. 크기 바뀜 감시(ResizeObserver)라 탭·접기·위치 바꿈을 모두 따라감.
+    (function(){
+      var pv = nxAiEl_('nxAiPreview'), fab = nxAiEl_('nxAiPvFab'), menu = nxAiEl_('nxAiPvFabMenu');
+      if (!pv || !fab || !menu) return;
+      var close = function(){ menu.hidden = true; fab.setAttribute('aria-expanded', 'false'); };
+      var upd = function(){
+        var on = pv.offsetWidth > 0 && pv.offsetHeight > 0 && !document.body.classList.contains('lay-phone');
+        document.body.classList.toggle('nx-pv-fab', on);
+        if (!on) close();
+      };
+      if (window.ResizeObserver) new ResizeObserver(upd).observe(pv);
+      window.addEventListener('resize', upd);
+      document.addEventListener('nx-layout-change', upd);
+      upd();
+      fab.addEventListener('click', function(e){ e.stopPropagation(); var open = menu.hidden; menu.hidden = !open; fab.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+      menu.addEventListener('click', function(e){
+        var b = e.target.closest && e.target.closest('button[data-fab]'); if (!b) return;
+        e.stopPropagation(); close();
+        var orig = document.getElementById(b.getAttribute('data-fab')); if (orig) orig.click(); // 원래 단추의 일을 그대로
+      });
+      document.addEventListener('click', function(e){ if (!menu.hidden && !(e.target.closest && e.target.closest('#nxAiPvFabMenu, #nxAiPvFab'))) close(); });
+      document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !menu.hidden) close(); });
+    })();
     // 폰 탭 전환
     Array.prototype.forEach.call(document.querySelectorAll('#nxAiPhoneTabs button'), function(b){
       b.addEventListener('click', function(){ nxAiPhoneTab_(b.getAttribute('data-ph')); });

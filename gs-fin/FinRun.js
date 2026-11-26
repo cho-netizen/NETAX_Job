@@ -180,7 +180,7 @@ function finLastOf_(sheet, merged, by) {
 // ---------- 합치기 ----------
 var FIN_REL_ = { '엑셀': 3, 'PDF': 2, '사진(글자인식)': 1 };
 // 합치기 규칙 판 — 바꾸면 진행 중 사건이 파일을 다시 읽지 않고 저절로 다시 합쳐진다(자동 지문에 들어감)
-var FIN_MERGE_VER_ = '2026-11-25a';   // 11-25 거래 탭 모양(날짜·시간·예금주·열쇠·색)이 바뀌어 다시 씀
+var FIN_MERGE_VER_ = '2026-11-25e';   // 11-25 거래 탭 모양(날짜·시간·예금주·열쇠·색) · 칸 너비 맞춤(b)으로 다시 씀
 // [2026.11.20] 예금·적금 계좌는 이자를 잔액에 넣지 않고 바로 내준다(신협 「141:이자지급」·「150:제세금」 출금, 잔액 그대로) — 은행 자료가 원래
 //  「앞 잔액 − 출금 = 잔액」으로 맞지 않는 줄이라 잔액 검산 ⚠(틀림)로 세지 않는다(11-20 운영: ○○ 사건 신협 정기예금 24계좌가 ⚠로 「확인할 것」 50개)
 function finPassThrough_(b) {
@@ -359,8 +359,20 @@ function finLedgerHdrGroup_(h) {
   h = String(h || '');
   if (FIN_LEDGER_MGMT_.indexOf(h) >= 0) return '관리';
   if (/✎$/.test(h)) return '입력';
-  if (h === '넥스 의견' || (typeof FIN_RV_GAS_COLS_ !== 'undefined' && FIN_RV_GAS_COLS_.indexOf(h) >= 0)) return '분석';
+  if (h === '넥스 의견' || (typeof FIN_RV_GAS_COLS_ !== 'undefined' && FIN_RV_GAS_COLS_.indexOf(h) >= 0) || (typeof FIN_RV_SM_COLS_ !== 'undefined' && FIN_RV_SM_COLS_.indexOf(h) >= 0)) return '분석';
   return '원본';
+}
+// [2026.11.25] 칸 너비를 데이터 길이에 맞춤 — 너무 긴 칸은 줄임(세무사님 11-25 "필드길이를 데이타길이에 자동맞춤되어야 하는 것 아닌가? 물론 너무 긴 것은 줄여야겠지만")
+//  구글 시트 「열 크기 맞춤」(머리 글자 포함) 뒤 넓은 칸은 FIN_COL_MAX_px로 자르고(넘친 글은 칸 안에서 잘림 — 칸을 누르면 다 보임), 너무 좁은 칸은 FIN_COL_MIN_px로
+var FIN_COL_MAX_ = 300, FIN_COL_MIN_ = 44;
+function finSheetFitCols_(sh, w) {
+  if (!sh || !w) return;
+  try { SpreadsheetApp.flush(); sh.autoResizeColumns(1, w); } catch (e) { return; }
+  for (var c = 1; c <= w; c++) {
+    var cw = sh.getColumnWidth(c);
+    if (cw > FIN_COL_MAX_) { sh.setColumnWidth(c, FIN_COL_MAX_); try { sh.getRange(1, c, sh.getMaxRows(), 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP); } catch (e) {} }
+    else if (cw < FIN_COL_MIN_) sh.setColumnWidth(c, FIN_COL_MIN_);
+  }
 }
 function finLedgerHdrPaint_(sh, hdr) {
   var seen = {};
@@ -436,6 +448,7 @@ function finWriteSheet_(folder, taxpayer, m) {
     sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7').setHorizontalAlignment('center');   // 머리줄 가운데(세무사님 11-25 "필드명은 중앙정렬하라")
     if (title === '거래') finLedgerHdrPaint_(sh, hdr);
     sh.setFrozenRows(1);
+    finSheetFitCols_(sh, w);
     return sh;
   };
   var A = m.accts.map(finAcctSummary_);
