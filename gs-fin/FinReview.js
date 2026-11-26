@@ -1257,7 +1257,8 @@ function finRvRun_(c, folder, st, opt) {
   var sum = finRvSummary_(A);
   var outHash = finHash32_(JSON.stringify(sum) + '|' + JSON.stringify(A.R.map(function (r) { return [r.k, r.total, r.period, r.flow, r.m ? r.m.x.이름 + r.m.sure : '', r.nature, r.bundleGas, (r.flags || []).join(' ')]; })) + '|' + JSON.stringify(U.rel) + '|' + JSON.stringify(A.flags.map(function (f) { return [f.id, f.금액, f.상태, f.메모]; })) + JSON.stringify(U.wants) + JSON.stringify(U.base) + JSON.stringify(Object.keys(U.excel).map(function (k) { return [k, U.excel[k].mean, U.excel[k].got]; })) + JSON.stringify(A.bundles) + JSON.stringify(A.flags.map(function (f) { return [f.중요도, f.배움]; })) + JSON.stringify((A.change.drops || []).map(function (d) { return [d.시작, d.끝, d.설명필요, d.관련인으로]; })) + JSON.stringify(A.learnUsed) + (LN ? LN.사건수 : 0) + '|' + JSON.stringify(U.nexV || {}) + JSON.stringify(U.natWords || {}) + finHash32_(JSON.stringify(U.rows || {})) + JSON.stringify((A.asks || []).map(function (q) { return [q.열쇠, q.답안, q.누가]; })) + JSON.stringify((A.filedCmp || []).map(function (c) { return c.slice(0, 5); })) + JSON.stringify((A.fdDesig || []).map(function (d) { return d.r ? d.r.k : ''; })));
   var wrote = false;
-  if (opt.force || outHash !== U.outHash || U.sheetId !== id) {
+  // [2026.11.27] 규칙 판이 바뀌면 셈 결과가 같아도 시트를 다시 쓴다(시트 모양·쓰는 법만 바뀐 판이 들어가게 — 11-27 쓰는 법 판에서 찾음)
+  if (opt.force || outHash !== U.outHash || U.sheetId !== id || U.ver !== FIN_RV_VER_) {
     var w = finRvWrite_(ss, A, U, { X: X, learn: LN });
     if (w && w.moved) { finRvSave_(folder, S); return { ok: true, retry: true, 까닭: '읽는 사이 거래 탭 줄 차례가 바뀜 — 다음 번에 다시' }; }
     SpreadsheetApp.flush();
