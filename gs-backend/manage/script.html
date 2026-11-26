@@ -1919,6 +1919,16 @@
     });
     document.getElementById('cbCaseSelect').addEventListener('change', function(){
       var id = this.value; if (!id) return;
+      // [2026.11.27] 전수 점검(갈래 G 「저장되지 않아 잃음」) — 지금 화면에 저장 안 한 입력이 있으면(세액계산 등, window.nxCaseLeaveChecks_에 등록) 사건을 바꾸기 전에 여쭌다
+      var selEl = this, prev = nxCbCurId_(), warn = (window.nxCaseLeaveChecks_ || []).map(function(k){ try { return k.msg(); } catch (e) { return ''; } }).filter(Boolean);
+      if (warn.length && prev && prev !== id){
+        selEl.value = prev;
+        nxConfirm_(warn.join('\n') + '\n다른 사건으로 바꾸면 그 입력은 사라집니다. 바꿀까요?', '저장하지 않은 입력').then(function(ok){
+          if (!ok) return; (window.nxCaseLeaveChecks_ || []).forEach(function(k){ try { k.drop(); } catch (e) {} });
+          selEl.value = id; selEl.dispatchEvent(new Event('change'));
+        });
+        return;
+      }
       var v = nxCbActiveView_(); if (!nxCbIsCaseView_(v)) v = 'casehandling';
       nxLastCaseId_ = id;
       nxCbGo_(nxCbViewOf_(v), id, true);

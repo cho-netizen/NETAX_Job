@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 16:43 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 16:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -47778,6 +47778,12 @@ function initTaxCalc(){
 // ============================================================
 var tcCases = [];
 var tcSelectedId = null;
+// [2026.11.27] 전수 점검(갈래 G 「저장되지 않아 잃음」) — 세무사님이 칸에 직접 치신 뒤 「이 사건에 저장」 전이면 표시(손으로 친 것만, 코드가 채운 값은 아님).
+//  사건을 바꾸거나 창을 닫을 때 여쭌다. 저장하면 지움.
+window.tcDirty_ = false;
+document.addEventListener('input', function(e){ if (!e.isTrusted || !e.target || !e.target.closest) return; if (!e.target.closest('#view-taxcalc') || e.target.closest('#tcCaseSelect, #tcScenarioName, #tcFillBox')) return; window.tcDirty_ = true; }, true);
+window.addEventListener('beforeunload', function(e){ if (window.tcDirty_){ e.preventDefault(); e.returnValue = ''; } });
+(window.nxCaseLeaveChecks_ = window.nxCaseLeaveChecks_ || []).push({ msg: function(){ return window.tcDirty_ ? '세액계산에 「이 사건에 저장」하지 않은 입력이 있습니다.' : ''; }, drop: function(){ window.tcDirty_ = false; } }); // 위쪽 사건 칸으로 바꿀 때(script.html)
 var tcCurrentCase = null;
 var TC_TAB_LABELS_ = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세', acquisition: '취득세' };
 var TC_RESULT_BOX_IDS_ = { transfer: 'taxCalcTransferResult', gift: 'taxCalcGiftResult', inheritance: 'taxCalcInheritanceResult', acquisition: 'taxCalcAcquisitionResult' };
@@ -48418,6 +48424,15 @@ function renderTcCaseBar_(){
   (function(){ var fb = document.getElementById('tcFillBox'); if (fb && window.tcFillKeep_ && window.tcFillKeep_.caseId !== tcSelectedId){ fb.style.display = 'none'; fb.innerHTML = ''; window.tcFillKeep_ = null; } })();
   if (window.tcPendingFill_ && window.tcPendingFill_ === tcSelectedId && tcCurrentCase){ window.tcPendingFill_ = null; setTimeout(tcGasFill_, 300); }
   document.getElementById('tcCaseSelect').addEventListener('change', function(){
+    // [2026.11.27] 전수 점검(갈래 G 「저장되지 않아 잃음」) — 저장 안 한 입력이 있는데 사건을 바꾸면 칸을 새 사건 값으로 지워 버렸다(묻지 않고). 먼저 여쭌다
+    var selEl = this, want = this.value || null;
+    if (window.tcDirty_ && want !== tcSelectedId){
+      selEl.value = tcSelectedId || '';
+      nxConfirm_('세액계산에 「이 사건에 저장」하지 않은 입력이 있습니다. 다른 사건으로 바꾸면 그 입력은 사라집니다. 바꿀까요?', '저장하지 않은 입력').then(function(ok){
+        if (!ok) return; window.tcDirty_ = false; selEl.value = want || ''; selEl.dispatchEvent(new Event('change'));
+      });
+      return;
+    }
     tcSelectedId = this.value || null;
     tcCurrentCase = tcSelectedId ? tcCases.filter(function(c){ return c.id === tcSelectedId; })[0] : null;
     renderTcCaseBar_();
@@ -48804,7 +48819,7 @@ function tcSaveToolResult_(toolKey){
   };
   const newList = (tcCurrentCase.세액계산결과 || []).concat([entry]);
   tcSaveList_(newList, tcSaveLog_(entry)).then(function(ok){
-    if (ok) showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — ' + won(totalNum) : '') + '.', 'success');
+    if (ok) { window.tcDirty_ = false; showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — ' + won(totalNum) : '') + '.', 'success'); }
   });
 }
 // 사건을 선택(또는 다시 열람)할 때, 세액계산결과 배열 안에 도구키가 붙은 저장 항목이 있으면
@@ -48956,6 +48971,7 @@ function tcSaveCurrentResult_(opts){
   tcSaveList_(newList, saveLog_).then(function(ok){
     window.tcLastSaveDoneAt_ = Date.now(); // [2026.10.23 특단 반응 잣대] 사건처리 ④가 "저장 끝"을 고정 5초 대신 이 신호로 안다
     if (ok) {
+      window.tcDirty_ = false;
       showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — 납부세액 ' + won(totalNum) : '') + '.', 'success');
       // [2026.11.01 사실 입력 한 곳] 경우(안)은 견주어 보려고 바꾼 값이라 사건 사실(처리개요·장부)을 덮어쓰지 않는다 — 기본 저장만 2026-09 요청대로 처리개요를 고친다
       if (!opts.scenario) { tcSyncOverviewAmounts_(tab); tcLedgerDiffCheck_(tab); }
@@ -71074,6 +71090,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
     document.getElementById('cbCaseSelect').addEventListener('change', function(){
       var id = this.value; if (!id) return;
+      // [2026.11.27] 전수 점검(갈래 G 「저장되지 않아 잃음」) — 지금 화면에 저장 안 한 입력이 있으면(세액계산 등, window.nxCaseLeaveChecks_에 등록) 사건을 바꾸기 전에 여쭌다
+      var selEl = this, prev = nxCbCurId_(), warn = (window.nxCaseLeaveChecks_ || []).map(function(k){ try { return k.msg(); } catch (e) { return ''; } }).filter(Boolean);
+      if (warn.length && prev && prev !== id){
+        selEl.value = prev;
+        nxConfirm_(warn.join('\n') + '\n다른 사건으로 바꾸면 그 입력은 사라집니다. 바꿀까요?', '저장하지 않은 입력').then(function(ok){
+          if (!ok) return; (window.nxCaseLeaveChecks_ || []).forEach(function(k){ try { k.drop(); } catch (e) {} });
+          selEl.value = id; selEl.dispatchEvent(new Event('change'));
+        });
+        return;
+      }
       var v = nxCbActiveView_(); if (!nxCbIsCaseView_(v)) v = 'casehandling';
       nxLastCaseId_ = id;
       nxCbGo_(nxCbViewOf_(v), id, true);
