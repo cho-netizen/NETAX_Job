@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 13:36 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 15:53 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57893,7 +57893,10 @@ function rwAiApplyEdit_(id, content){
     </div>
     <div class="fm-tabs"><button type="button" class="on" data-fm-tab="merge">합친 결과</button><button type="button" data-fm-tab="fmt">은행 서식표</button></div>
     <div id="fmMerge">
-      <div class="fm-row fm-sub" id="fmCaseLine"></div>
+      <!-- [2026.11.26] 첫 줄 끝 「지금 다시 셈」 — 세무사님 「그렇게 만들고 커푸배하라」(이 사건 하나만 곧바로, GAS만 0원) -->
+      <div class="fm-row fm-sub" style="align-items:center;gap:8px"><span id="fmCaseLine" style="flex:1"></span><button type="button" class="ghost-btn sm" id="fmNow" title="30분마다 저절로 셈하는 것을 기다리지 않고 이 사건 하나만 지금 다시 합치고 다시 셈합니다(넥스를 쓰지 않아 0원)">지금 다시 셈</button></div>
+      <!-- [2026.11.26] 세무사님이 하실 일 한 줄 — 창을 열자마자 보이게(세무사님 「아주 꽁꽁 숨겨놨구나」 → 「고치고 커푸배」). 정하실 것·넥스로 채우기·처음 보는 서식 -->
+      <div class="fm-row" id="fmTodo" hidden style="align-items:center;gap:8px;flex-wrap:wrap"></div>
       <div class="fm-row">
         <span>사건 암호(암호 걸린 은행 엑셀·압축)</span>
         <input type="password" id="fmPw" autocomplete="off" placeholder="없으면 비워 둠" style="width:160px">
@@ -57961,7 +57964,7 @@ function rwAiApplyEdit_(id, content){
   }
   function fmLoadFiles(){
     var tb = $('fmFiles').querySelector('tbody'); tb.innerHTML = '<tr><td colspan="3" class="fm-sub">사건 폴더 파일을 읽는 중…</td></tr>';
-    $('fmResult').innerHTML = '<div class="fm-sub">합친 결과를 읽는 중…</div>';
+    $('fmResult').innerHTML = '<div class="fm-sub">합친 결과를 읽는 중…</div>'; $('fmTodo').hidden = true; // 다른 사건의 「하실 일」이 남지 않게
     return fmCall('fin_merge_list', { caseId: FM.caseId }, 90000).then(function(r){
       FM.files = r.파일 || [];
       var L = r.지난결과;
@@ -57995,6 +57998,18 @@ function rwAiApplyEdit_(id, content){
     if (FM.newFormats.length) h += '<div id="fmNfHost"></div>';
     $('fmResult').innerHTML = h;
     if (FM.newFormats.length) fmDrawNewFormats();
+    fmTodoDraw(r.검토, FM.newFormats.length);
+  }
+  // [2026.11.26] 맨 위 「하실 일」 줄 — 정하실 것(시트 「여쭐 것」 탭) 수·누가 답했나 + 🤖 넥스로 채우기(세무사님이 누르실 때만 넥스가 보라로 적음) + 처음 보는 서식으로 가기
+  function fmTodoDraw(v, nNew){
+    var box = $('fmTodo'), ql = (v && v.여쭐것목록) || [], h = '';
+    if (ql.length) {
+      var qn = ql.filter(function(q){ return q.누가 === 'nex'; }).length, qg = ql.filter(function(q){ return q.누가 === 'gas'; }).length;
+      h += '<b title="시트 「여쭐 것」 탭">정하실 것 ' + won(ql.length) + '곳</b> <span class="fm-sub">(넥스 답 ' + won(qn) + ' · GAS 답 ' + won(qg) + ' · 빈칸 ' + won(ql.length - qn - qg) + ')</span>'
+        + '<button type="button" class="ghost-btn sm" id="fmNexFill" title="넥스가 「여쭐 것」을 차례대로 채웁니다(보라 「넥스 · 」, 확정 전 잠정 · 넥스 비용이 듭니다)">🤖 넥스로 채우기</button>';
+    }
+    if (nNew) h += (h ? '<span class="fm-sub">·</span>' : '') + '<button type="button" class="ghost-btn sm fm-warn" id="fmGoNf" title="아래로 가서 칸 짝을 정해 서식표에 등록하면 그 사건을 다시 합칩니다">처음 보는 서식 ' + won(nNew) + '가지 정하기 ›</button>';
+    box.innerHTML = h; box.hidden = !h;
   }
   // [2026.11.24] 2단계 — 사전증여·추정상속 선제 검토 요약(docs/_기록/금융거래_2단계_분석_계획서_20261124.html). 판단·소명은 시트의 ✎ 칸에서(이 창은 보기만)
   function fmReview(v){
@@ -58010,10 +58025,8 @@ function rwAiApplyEdit_(id, content){
     if ((v.크게줄어든구간 || []).length) h += '<div class="fm-row fm-sub">예금이 크게 줄어든 구간 — ' + v.크게줄어든구간.map(esc).join(' · ') + ' (시트 「증감분석」 탭)</div>';
     if (v.보고서 && v.보고서.url) h += '<div class="fm-row fm-sub">보고서 — <a href="' + esc(v.보고서.url) + '" target="_blank" rel="noopener">' + esc(v.보고서.name) + '</a> (GAS 칸은 저절로 · 의견은 그 아래에)</div>';
     if ((v.큰것 || []).length) h += '<div class="fm-sub" style="margin:4px 0">짚을 곳 큰 것부터(전부는 시트 「짚을 곳」 탭):<ol style="margin:2px 0 0 18px;padding:0">' + v.큰것.slice(0, 8).map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></div>';
-    // [2026.11.26] 여쭐 것 — 정하실 것 수(누가 답했나)·넥스로 채우기(세무사님이 누르실 때만 넥스가 답을 보라로 적음)
-    var ql = v.여쭐것목록 || [], qn = ql.filter(function(q){ return q.누가 === 'nex'; }).length, qg = ql.filter(function(q){ return q.누가 === 'gas'; }).length;
-    h += '<div class="fm-row" style="margin-top:6px;align-items:center;gap:8px"><b>정하실 것(시트 「여쭐 것」 탭) ' + won(ql.length) + '곳</b> <span class="fm-sub">넥스 답 ' + won(qn) + ' · GAS 답 ' + won(qg) + ' · 빈칸 ' + won(ql.length - qn - qg) + '</span><span style="flex:1"></span><button type="button" class="ghost-btn sm" id="fmNexFill"' + (ql.length ? '' : ' disabled') + '>🤖 넥스로 채우기</button></div>';
-    return h + '<div class="fm-row fm-sub">칸 하나에 셋이 적습니다 — 파랑 「GAS · 」 = GAS 답, 보라 「넥스 · 」 = 넥스 답, 검정 = 세무사님(확정). 답이 맞으면 「여쭐 것」 탭 「확정」 네모, 틀리면 그 칸에 고쳐 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
+    // [2026.11.26] 여쭐 것(정하실 것 수·넥스로 채우기)은 창 맨 위 「하실 일」 줄로 옮김(fmTodoDraw)
+    return h +'<div class="fm-row fm-sub">칸 하나에 셋이 적습니다 — 파랑 「GAS · 」 = GAS 답, 보라 「넥스 · 」 = 넥스 답, 검정 = 세무사님(확정). 답이 맞으면 「여쭐 것」 탭 「확정」 네모, 틀리면 그 칸에 고쳐 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
   }
   // 처음 보는 서식 — 짐작한 짝을 보여 드리고 한 번 정해 받아 서식표에 더한다(다음 사건부터 묻지 않음)
   function fmDrawNewFormats(){
@@ -58056,6 +58069,24 @@ function rwAiApplyEdit_(id, content){
       fmBusy(true, '암호를 적어 두고 이 사건을 다시 합치는 중…');
       fmCall('fin_pw_set', { caseId: FM.caseId, pw: $('fmPw').value }, 300000).then(function(r){ $('fmPw').value = ''; fmBusy(false); $('fmPwState').textContent = r.암호있음 ? '적어 둔 암호 있음' : '암호 지움'; fmToast(r.암호있음 ? '사건 암호를 적어 두었습니다(시트·기록엔 남지 않음)' : '사건 암호를 지웠습니다', 'success'); fmLoadFiles(); }, function(err){ fmBusy(false); fmToast(err.message, 'error'); });
       return;
+    }
+    if (t.id === 'fmGoNf') { var nfh = $('fmNfHost'); if (nfh) nfh.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    if (t.id === 'fmNow') { // [2026.11.26] 지금 다시 셈 — 다 못 읽었거나(큰 파일) 1분 틱이 같은 사건을 돌리는 중이면 기다렸다 이어서(최대 8번)
+      if (FM.busy || !FM.caseId) return;
+      t.disabled = true; fmBusy(true, '이 사건을 지금 다시 합치고 다시 셈하는 중…(GAS만, 0원)');
+      var round = 0, end = function(msg, kind){ t.disabled = false; fmBusy(false); if (msg) fmToast(msg, kind || 'success'); fmLoadFiles(); };
+      var go = function(){
+        round++;
+        fmCall('fin_merge_now', { caseId: FM.caseId }, 300000).then(function(r){
+          r = r || {};
+          if (r.more && round < 8) { fmBusy(true, r.busy ? '저절로 셈하는 중이라 끝나기를 기다리는 중…' : '파일 읽는 중 ' + won(r.읽음) + '/' + won(r.전체) + ' — 이어서 셈합니다'); setTimeout(go, r.busy ? 20000 : 500); return; }
+          if (r.more) { end('아직 다 읽지 못했습니다 — 저절로 이어서 셈합니다', 'warning'); return; }
+          var rv = r.검토 || {};
+          if (rv.error) { end('합치기는 끝났으나 ' + rv.error, 'error'); return; }
+          end(r.empty ? '은행 거래내역 원시파일이 없습니다' : (r.nochange && (rv.nochange || rv.wrote === false) ?'다시 셈했습니다 — 바뀐 것 없음(최신)' : '다시 셈했습니다 — 시트·보고서를 새로 썼습니다'));
+        }, function(err){ end(err.message, 'error'); });
+      };
+      go(); return;
     }
     if (t.id === 'fmFmtSave') { fmSaveFormats(fmFormatsToSave()).then(fmLoadFormats, function(err){ fmToast(err.message, 'error'); }); return; }
     var ns = t.getAttribute && t.getAttribute('data-fm-nfsave');
