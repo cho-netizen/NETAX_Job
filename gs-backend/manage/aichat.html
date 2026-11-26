@@ -1307,8 +1307,9 @@
       goDocs.type = 'button'; goDocs.className = 'nxai-btn'; goDocs.textContent = '서류 탭';
       goDocs.title = '지금 보는 폴더를 서류 탭에서 엽니다 — 올리기·이동·이름 정리·글자인식';
       goDocs.addEventListener('click', function(){
+        // [2026.11.26] 폴더 열기를 화면 옮기기보다 먼저 — 서류 화면에 앞서 보던 다른 사건이 남아 머리줄·넥스 대화가 그리로 넘어가지 않게(docs.html docsExpectCase_)
+        if (typeof docsNavigateById_ === 'function') docsNavigateById_(res.folderId, (nxAiConv && nxAiConv.caseId) || null);
         if (typeof goToView_ === 'function') goToView_('docs');
-        if (typeof docsNavigateById_ === 'function') docsNavigateById_(res.folderId);
       });
       eh.appendChild(goDocs);
       ev.appendChild(eh);
@@ -1828,8 +1829,8 @@
           // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건이면 업무유형을 물어 폴더를 만든 뒤 연다(script.html nxOpenCaseDocs_)
           if (c && !c.폴더ID && typeof nxOpenCaseDocs_ === 'function'){ nxOpenCaseDocs_(c); openSide(); return; }
           if (typeof docsLoaded !== 'undefined') docsLoaded = true; // initDocs의 기본위치 이동과 겹치지 않게(처리개요 화면과 같은 처리)
+          if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID, c.id); // [2026.11.26] 폴더 열기를 먼저(위와 같은 까닭)
           goToView_('docs');
-          if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);
           openSide();
         });
         return;
