@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 14:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 16:21 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -63456,8 +63456,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
   }
 
-  function nxAiBuildSettingsPayload_(text){
+  function nxAiBuildSettingsPayload_(text, isCmd){
     var resolved = nxAiSettings.model === 'auto' ? nxAiPickAutoModel_(text) : { model: nxAiSettings.model, effort: nxAiSettings.effort };
+    if (isCmd && nxAiSettings.model === 'auto' && resolved.model === 'claude-haiku-5-5') resolved = { model: 'claude-sonnet-5-5', effort: 'high' }; // 넥스 명령은 하이쿠로 내리지 않음(위 줄 설명)
     if (nxAiSettings.model === 'auto'){ nxAiLastAutoModel = resolved.model; nxAiRefreshModelUi_(); }
     var p = { model: resolved.model, effort: resolved.effort };
     if (nxAiSettings.temperature !== null && nxAiSettings.temperature !== undefined) p.temperature = nxAiSettings.temperature;
@@ -64074,7 +64075,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     { id: 'cont', name: '이어서', alias: ['계속'], says: ['이어서 말해', '이어서 해', '이어서 작성', '계속 작성', '작성하던 보고서 계속', '작성하던 검토서 계속'], kind: 'nex', run: 'nex', need: '', desc: '끊긴 답·쓰던 파일 이어 쓰기',
       steps: '바로 앞 네 답이나 쓰던 파일이 끊겼다. 앞 답의 끝에서 이어 마저 쓴다(처음부터 다시 쓰지 않는다). 파일이면 그 파일에 이어 저장한다.' },
     // [2026.11.26] 금융거래 시트 「여쭐 것」을 넥스가 차례대로 채움(세무사님 11-26 「권장대로 하자」 — 계획서 총괄관리자/_기록/금융거래_누가적었나_계획서_20261126.html 4절)
-    { id: 'finans', name: '금융답', alias: ['금융여쭐것'], says: ['금융거래 여쭐 것 채워', '금융 여쭐 것 채워', '여쭐 것 채워', '짚을 곳만 채워', '성격 모름 글자만 채워', '분석대상자만 채워'], kind: 'nex', run: 'nex', need: 'case', desc: '금융거래 시트 「여쭐 것」을 넥스가 차례대로 채움(보라 「넥스 · 」, 세무사님 확정 전 잠정)',
+    { id: 'finans', name: '금융답', alias: ['금융여쭐것'], says: ['금융거래 여쭐 것 채워', '금융 여쭐 것 채워', '여쭐 것 채워', '짚을 곳만 채워', '성격 모름 글자만 채워', '분석대상자만 채워', '확인결정할 사항을 보완', '정하실 것 채워', '노란 칸 채워', '넥스로 채워'],
+      // [2026.11.27] 세무사님 「넥스에게 말로 시키는 것을 보완하라」 — 표현이 똑같지 않아도(「금융거래_통합 파일에서 확인결정할 사항을 네가 보완하라」 등) 세 낱말 묶음이 다 들어 있으면 이 명령(기본 명령에만 있는 짐작 — 설정의 says와 별개)
+      pats: [/(금융|통장|계좌|거래\s*내역|통합\s*(파일|시트))/, /(여쭐|확인\s*[·,]?\s*결정|확인할|결정할|정할|정하실|노란\s*칸|빈\s*칸|짚을|판단할|모르는\s*것|넥스로\s*채우)/, /(채워|채우|보완|메워|정해|답해|답을\s*(달|적|넣)|적어|결정해|처리해|해결해|넣어|마저)/],
+      kind: 'nex', run: 'nex', need: 'case', desc: '금융거래 시트 「여쭐 것」을 넥스가 차례대로 채움(보라 「넥스 · 」, 세무사님 확정 전 잠정)',
       steps: '① bank_merge로 이 사건 금융거래 검토 요약을 읽는다(검토.여쭐것목록: 열쇠·무엇·지금답·누가·근거·곳). ② 사건 폴더의 지난 보고서(보고서 폴더 전부)와 서류(가족관계증명서·사망진단서·기본증명서·계약서·차용증·의뢰 메모)를 읽는다. ③ 여쭐것목록을 위에서부터 차례대로 따라가 항목마다 답과 근거(서류·글)를 정해 bank_note answers[{key: 열쇠, value, basis}]로 한꺼번에 적는다 — 세무사님 말씀 뒤에 탭 이름(짚을 곳·성격 모름 글자·분석대상자·묶음·사건 기준)이 있으면 그 탭 항목만. ④ 근거를 못 찾은 항목은 적지 말고 묶어서 세무사님께 여쭌다. ⑤ 끝나면 채팅에 「여쭐 것 ○곳 중 ○곳 적음(보라, 잠정) · 넥스도 모르는 것 ○곳」 한 줄과, 확정은 시트 「여쭐 것」 탭 「확정」 네모라고 알린다. 상속인·특수관계(갈래)는 넥스 답도 잠정이고 세무사님 확정으로만 정해진다. 세무사님 값(검정)은 바꾸지 않는다.' },
     { id: 'nex', name: '넥스', alias: [], says: [], kind: 'nex', run: 'nexdirect', need: '', desc: '바로 처리 짐작 없이 뒤의 말을 그대로 넥스에게' }
   ];
@@ -64198,6 +64202,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // ② 말로 하는 표현 — 가장 긴 표현이 맞은 명령
     var best = null, bestLen = 0, bestSay = '';
     on.forEach(function(c){ (c.says || []).forEach(function(s){ var ns = nxAiCmdNorm_(s); if (ns && ns.length > bestLen && n.indexOf(ns) !== -1){ best = c; bestLen = ns.length; bestSay = ns; } }); });
+    // ③ [2026.11.27] 낱말 묶음 짐작(넥스 명령만, 기본 명령의 pats) — 표현을 그대로 외우지 않으셔도 뜻이 맞으면(세무사님 「넥스에게 말로 시키는 것을 보완하라」)
+    if (!best){
+      var byPat = on.filter(function(c){ return c.kind === 'nex' && Array.isArray(c.pats) && c.pats.length && c.pats.every(function(r){ return r.test(t); }); })[0];
+      if (byPat) return { cmd: byPat, args: t, via: 'guess' };
+    }
     if (!best) return null;
     if (best.kind === 'gas'){
       if (t.length > 60) return null;
@@ -67733,7 +67742,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         thinkingBubble: thinking,
         signal: nxAiAbort.signal,
         context: nxAiBuildContext_(Object.assign({ openFile: openFileCtx, attachedItems: files }, opts.cpHint ? { cpHint: opts.cpHint } : {}, opts.cmdHint ? { cmdHint: opts.cmdHint } : {})), // [2026.11.15 명령] 넥스 명령의 순서 글(서버가 지시문에 붙임) // [2026.10.23 ㅅ12차] 사건처리 열린 질문 목록(넥스가 "어느 질문에 어떤 답"으로 풀게)
-        settingsPayload: opts.settings || nxAiBuildSettingsPayload_(text),
+        // [2026.11.27] 넥스 명령(/금융답 등 — 서류 읽고 판단해 적는 일)은 자동 모델이어도 하이쿠로 내리지 않는다(사건 대화 기본과 같은 소넷). 시험에서 사건 연결 전 말로 시킨 /금융답이 하이쿠로 간 것을 찾음
+        settingsPayload: opts.settings || nxAiBuildSettingsPayload_(text, !!opts.cmdHint),
         onDone: function(reply, actions, usage){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
           nxAiUsageFooter_(thinking, usage);

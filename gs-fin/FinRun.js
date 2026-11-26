@@ -352,9 +352,10 @@ var FIN_LEDGER_HDR_ = ['거래일자', '거래시간', '기관', '계좌', '입�
 // [2026.11.25] 거래 탭 머리줄 색 세 가지 — 원본(은행 자료에 적힌 값)·관리(GAS가 붙인 출처·검산 칸)·분석(2단계 칸·✎·넥스 의견)
 //  (세무사님 11-25 "필드명을 원본필드와 관리필드와 분석필드의 색상을 구분해야 보기 좋겠다") — 칸 이름으로 가르므로 칸을 옮기셔도 그대로
 //  분석 칸 가운데 세무사님이 적으시는 ✎ 칸은 노랑(세무사님 11-25 "분석필드에서 내가 입력할 칸은 다른 색상으로 구분하라")
-var FIN_HDR_CLR_ = { 원본: '#e3e5e8', 관리: '#cce6c2', 분석: '#c3daf5', 입력: '#ffd966' };
+// [2026.11.27] 노랑은 「지금 적으셔야 할 칸」(바탕) 한 뜻만 — 세무사님 11-27 「노란필드가 산재해 있는데 … 정신이 하나도 없다」. ✎ 칸 머리줄은 분석 칸과 같은 파랑(✎ 글자로 고쳐 적을 수 있는 칸임을 보임)
+var FIN_HDR_CLR_ = { 원본: '#e3e5e8', 관리: '#cce6c2', 분석: '#c3daf5', 입력: '#ffd966', 입력머리: '#c3daf5' };
 var FIN_LEDGER_MGMT_ = ['읽은 방법', '검산', '원본 파일', '원본 줄', '같은 거래 다른 파일', '서식', '열쇠'];
-var FIN_HDR_NOTE_ = { 원본: '원본 칸(회색) — 은행 자료에 적힌 값', 관리: '관리 칸(초록) — GAS가 붙인 출처·검산·대조 칸', 분석: '분석 칸(파랑) — 2단계 GAS 분석·넥스 의견', 입력: '입력 칸(노랑 ✎) — 칸 하나에 셋이 적음: 파랑 「GAS · …」 = GAS 답, 보라 「넥스 · …」 = 넥스 답, 검정 = 세무사님(확정, 아무도 덮지 않음). 정하실 것은 「여쭐 것」 탭에 모았고 그 칸만 바탕을 노랗게 칠함' };
+var FIN_HDR_NOTE_ = { 원본: '원본 칸(회색) — 은행 자료에 적힌 값', 관리: '관리 칸(초록) — GAS가 붙인 출처·검산·대조 칸', 분석: '분석 칸(파랑) — 2단계 GAS 분석·넥스 의견', 입력: '✎ 칸(머리 파랑) — 고쳐 적을 수 있는 칸. 노란 바탕은 지금 적으셔야 할 칸뿐(「여쭐 것」 탭에 오른 칸)이고, 나머지는 적지 않으셔도 됩니다. 칸 하나에 셋이 적음: 파랑 「GAS · …」 = GAS 답, 보라 「넥스 · …」 = 넥스 답, 검정 = 세무사님(확정, 아무도 덮지 않음). 정하실 것은 「여쭐 것」 탭에 모았고 그 칸만 바탕을 노랗게 칠함' };
 function finLedgerHdrGroup_(h) {
   h = String(h || '');
   if (FIN_LEDGER_MGMT_.indexOf(h) >= 0) return '관리';
@@ -376,7 +377,7 @@ function finSheetFitCols_(sh, w) {
 }
 function finLedgerHdrPaint_(sh, hdr) {
   var seen = {};
-  sh.getRange(1, 1, 1, hdr.length).setFontWeight('bold').setHorizontalAlignment('center').setBackgrounds([hdr.map(function (h) { return FIN_HDR_CLR_[finLedgerHdrGroup_(h)]; })]);
+  sh.getRange(1, 1, 1, hdr.length).setFontWeight('bold').setHorizontalAlignment('center').setBackgrounds([hdr.map(function (h) { var g = finLedgerHdrGroup_(h); return FIN_HDR_CLR_[g === '입력' ? '입력머리' : g]; })]);
   // 묶음마다 맨 앞 칸에 풀이 메모(이미 메모가 있는 칸은 그 앞에 한 줄 얹음)
   hdr.forEach(function (h, i) {
     var g = finLedgerHdrGroup_(h); if (seen[g]) return; seen[g] = 1;

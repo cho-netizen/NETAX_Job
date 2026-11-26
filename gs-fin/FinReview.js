@@ -15,7 +15,7 @@
 //  · 언제: 1분 틱(job 서버 FinProxy.js → fin_merge_auto)이 1단계를 본 뒤 여기로 — 시트를 세무사님이 고치셨거나(파일 수정 시각),
 //    1단계가 다시 썼거나, 이 규칙 판(FIN_RV_VER_)·가족 지도가 바뀌었을 때만 다시 셈. 셈 결과가 같으면 시트를 다시 쓰지 않는다.
 // ============================================================
-var FIN_RV_VER_ = '2026-11-26c';   // 11-26 조사 사건 — 신고서·조사청 서류와 맞대기(짚을 곳 E·F, 「신고와 맞대기」·「조사청 제출용」 탭 — FinFiled.js). 앞 판 b: 칸 하나·여쭐 것 확정·넥스 답
+var FIN_RV_VER_ = '2026-11-27a';   // 11-27 시트 쓰는 법 — 「여쭐 것」 맨 앞·쓰는 법 줄·차례 번호·탭 색(정하실 곳 노랑·결과 파랑·GAS 관리 회색)·✎ 머리 노랑 걷음 / 이전: 11-26 조사 사건 — 신고서·조사청 서류와 맞대기(짚을 곳 E·F, 「신고와 맞대기」·「조사청 제출용」 탭 — FinFiled.js). 앞 판 b: 칸 하나·여쭐 것 확정·넥스 답
 var FIN_RV_FILE_ = '_금융거래_검토.json';
 var FIN_RV_DEF_ = { 큰돈: 10000000, 현금쪼갬합계: 10000000, 현금쪼갬일: 3, 자주횟수: 3, 자주합계: 10000000, 목록기준: 1000000, 직전일: 90, 경조한번: 1000000 };
 var FIN_RV_LANES_ = ['상속인', '상속인 아닌 가족·친척', '특수관계 법인', '세입자', '임대인', '매수인', '매도인', '공사·용역 업체', '그 밖 거래처', '금융기관·보험', '병원·요양', '공과금·세금', '생활 결제처', '피상속인 본인', '그 밖'];
@@ -850,7 +850,7 @@ function finRvNameGuess_(w) {
 function finRvTab_(ss, title, hdr, data, o) {
   o = o || {};
   var sh = ss.getSheetByName(title);
-  if (sh) { sh.clear(); try { sh.getDataRange().clearDataValidations(); } catch (e) {} }
+  if (sh) { try { sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart(); } catch (e) {} sh.clear(); try { sh.getDataRange().clearDataValidations(); } catch (e) {} }
   else {
     var ref = ss.getSheetByName('거래'), at = ref ? ref.getIndex() : ss.getSheets().length;
     var before = FIN_RV_TABS_.slice(0, FIN_RV_TABS_.indexOf(title)).filter(function (t) { return ss.getSheetByName(t); }).map(function (t) { return ss.getSheetByName(t).getIndex(); });
@@ -863,9 +863,9 @@ function finRvTab_(ss, title, hdr, data, o) {
   (o.money || []).forEach(function (ci) { sh.getRange(2, ci + 1, Math.max(1, vals.length - 1), 1).setNumberFormat('#,##0'); });
   sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#eef2f7').setHorizontalAlignment('center');   // 머리줄 가운데(세무사님 11-25 "필드명은 중앙정렬하라")
   // [2026.11.25] 색은 두 겹(세무사님 11-25 "내가 입력할 것과 아닌 것을 명확하게 구분해 줘야지")
-  //  · 머리줄: 세무사님 칸(✎) 노랑 · 열쇠 초록 · 그 밖은 모두 GAS가 쓴 칸 파랑
+  //  · 머리줄: 열쇠 초록 · 그 밖(✎ 칸 포함)은 파랑 — [2026.11.27] ✎ 머리 노랑 걷음(노랑은 적으실 칸 바탕 한 뜻만)
   //  · 바탕: 지금 적으셔야 할 칸(o.need — 「여쭐 것」에 오른 칸)만 노랑. 나머지 ✎ 칸은 흰 바탕 — 비워 두시면 GAS 답안대로 셈
-  hdr.forEach(function (h, i) { sh.getRange(1, i + 1).setBackground(/✎$/.test(h) ? FIN_HDR_CLR_.입력 : h === '열쇠' ? FIN_HDR_CLR_.관리 : FIN_HDR_CLR_.분석); });
+  hdr.forEach(function (h, i) { sh.getRange(1, i + 1).setBackground(/✎$/.test(h) ? FIN_HDR_CLR_.입력머리 : h === '열쇠' ? FIN_HDR_CLR_.관리 : FIN_HDR_CLR_.분석); });
   var need = (o.need || []).filter(function (p) { return p[0] >= 0 && p[0] < vals.length - 1 && p[1] >= 0 && p[1] < w; });
   for (var q = 0; q < need.length; q += 500) sh.getRangeList(need.slice(q, q + 500).map(function (p) { return sh.getRange(p[0] + 2, p[1] + 1).getA1Notation(); })).setBackground(FIN_HDR_CLR_.입력);
   (o.lists || []).forEach(function (L) { var rule = SpreadsheetApp.newDataValidation().requireValueInList(L.list, true).setAllowInvalid(true).build(); sh.getRange(2, L.col + 1, Math.max(1, vals.length - 1) + 200, 1).setDataValidation(rule); });
@@ -1095,26 +1095,39 @@ function finRvWrite_(ss, A, U, ctx) {
   var nAll = 0, parts = []; Object.keys(needLog).forEach(function (k) { if (needLog[k]) { nAll += needLog[k]; parts.push(k + ' ' + needLog[k]); } });
   var AS = A.asks || [], cnt = { nex: 0, gas: 0, '': 0 }; AS.forEach(function (q) { cnt[q.누가 || ''] = (cnt[q.누가 || ''] || 0) + 1; });
   var WHO_KO = { nex: '넥스', gas: 'GAS', '': '빈칸' };
-  var qWho = [''], checks = [], links = [];
+  // [2026.11.27] 쓰는 법을 마우스 풍선(메모)이 아니라 눈에 보이는 줄로 — 세무사님 11-27 「어디에 어떻게 노란필드가 있고, 우선순위는 어떻게 되는지에 대한 설명도 없고」
+  //  줄 차례 = 결론을 크게 가르는 차례(상속개시일·상속인 → 사람 → 묶음 → 짚을 곳 → 통장 글자, FinDocs.js asks), 줄 앞에 번호
+  var qWho = ['', ''], checks = [], links = [];
   var askRows = AS.map(function (q, i) {
-    var rw = i + 3; qWho.push(q.누가 || '');
+    var rw = i + 4; qWho.push(q.누가 || '');
     if (q.답안 && !/^\(/.test(q.답안)) checks.push(rw);
     var p = pos[q.열쇠] || (q.열쇠 === 'ask:heirs' ? A._posHeir : null), tsh = p ? ss.getSheetByName(p[0]) : null;
     if (tsh) links.push({ row: rw, col: 5, f: '=HYPERLINK("#gid=' + tsh.getSheetId() + '&range=' + tsh.getRange(p[1], p[2]).getA1Notation() + '","가기 ›")' });
-    return [q.무엇, q.답안 || '', WHO_KO[q.누가 || ''], q.근거 || '', false, '', q.열쇠];
+    return [(i + 1) + '. ' + q.무엇, q.답안 || '', WHO_KO[q.누가 || ''], q.근거 || '', false, '', q.열쇠];
   });
+  askRows.unshift(['쓰는 법 — ① 이 탭만 위에서부터 차례대로 보십시오(번호 = 결론을 크게 가르는 차례). ② 「지금 답」이 맞으면 「확정」 네모에 체크. ③ 틀리면 「가기 ›」를 눌러 그 칸(바탕이 노란 칸)에 고쳐 적기. ④ 노란 바탕이 아닌 칸과 다른 탭은 근거를 보는 곳입니다 — 적으실 필요 없습니다. ⑤ 넥스에게 먼저 채우게 하시려면 사건 넥스 대화창에 「금융거래 여쭐 것 채워라」라고 말씀하십시오. 「지금 답」 글자색: 보라 = 넥스 답 · 파랑 = GAS 답 · 검정 = 세무사님.', '', '', '', '', '', '']);
   askRows.unshift([AS.length ? '■ 정하실 것 ' + AS.length + '곳 — 넥스 답 ' + cnt.nex + ' · GAS 답 ' + cnt.gas + ' · 빈칸 ' + cnt[''] + ' (바탕이 노란 칸 ' + nAll + '곳: ' + parts.join(' · ') + ')' : '■ 정하실 것 없음 — 모든 칸에 답이 있습니다(틀린 곳만 그 칸에 고쳐 적으시면 됨)', '', '', '', '', '', '']);
-  finRvTab_(ss, '여쭐 것', ['무엇', '지금 답', '누가', '근거', '확정', '가기', '열쇠'], askRows,
+  var qsh = finRvTab_(ss, '여쭐 것', ['무엇', '지금 답', '누가', '근거', '확정', '가기', '열쇠'], askRows,
     { text: [6], who: [{ col: 1, whos: qWho }], checkCol: 4, checks: checks, links: links, note: '세무사님이 정하실 것은 이 표에 오른 것뿐입니다. 「지금 답」이 맞으면 「확정」 네모에 체크하십시오(1~2분 안에 그 칸이 검정 — 세무사님 값으로 바뀌고 이 표에서 빠집니다). 틀리면 「가기 ›」를 눌러 그 칸(바탕이 노란 칸)에 고쳐 적으십시오. 「지금 답」 글자색: 보라 = 넥스 답, 파랑 = GAS 답, 빈칸 = 답 없음. 넥스에게 채우게 하시려면 사건 넥스 대화창에서 「금융거래 여쭐 것 채워라」 또는 /금융답(💰 창 「🤖 넥스로 채우기」).' });
+  // 맨 위 두 줄(정하실 것 수·쓰는 법)은 칸을 합쳐 줄바꿈 — 좁은 칸에 잘려 안 보이지 않게
+  if (qsh) try { [2, 3].forEach(function (rw) { qsh.getRange(rw, 1, 1, 6).merge().setWrap(true).setVerticalAlignment('top'); }); qsh.getRange(2, 1).setFontWeight('bold'); qsh.getRange(3, 1).setBackground('#fff8e1'); qsh.setRowHeight(3, 66); } catch (e) {}
   finRvOrderTabs_(ss);
 }
-// 2단계 탭을 「거래」 바로 뒤에 분석 차례대로(차례가 이미 맞으면 건드리지 않음)
+// [2026.11.27] 탭 차례·색 — 세무사님 11-27 「거래, 성격모름글자, 분석대상자, 짚을곳, 받을자료, 묶음, 엑셀판단가져오기 등의 시트에 노란필드가 산재해 있는데 … 도무지 뭐가 어떻게 돌아가는지 정신이 하나도 없다」
+//  ① 「여쭐 것」(정하실 곳 한 장)을 맨 앞 — 열면 여기부터, 탭 노랑 ② 결과 탭(근거 보기)은 파랑, 분석 차례대로 ③ GAS가 쓰는 관리 탭은 회색으로 맨 뒤
+var FIN_TAB_LOOK_ = ['계좌 목록', '거래', '신고와 맞대기', '조사청 제출용', '증감분석', '짚을 곳', '추정상속(§15)', '사전증여(§13)', '분석대상자', '대상자별 거래', '묶음', '받을 자료'];
+var FIN_TAB_GAS_ = ['성격 모름 글자', '사건 기준', '확인할 것', '겹쳐서 한 번만 센 줄', '칸 대응표', '배운 것', '엑셀 판단 가져오기'];
 function finRvOrderTabs_(ss) {
-  var ref = ss.getSheetByName('거래'); if (!ref) return;
-  var list = FIN_RV_TABS_.map(function (n) { return ss.getSheetByName(n); }).filter(Boolean), at = ref.getIndex();
-  if (list.every(function (sh, i) { return sh.getIndex() === at + 1 + i; })) return;
-  list.forEach(function (sh, i) { ss.setActiveSheet(sh); ss.moveActiveSheet(at + 1 + i); });
-  try { ss.setActiveSheet(list[0]); } catch (e) {}
+  var q = ss.getSheetByName('여쭐 것'); if (!q) return;
+  var all = ss.getSheets(), names = all.map(function (sh) { return sh.getName(); });
+  var want = ['여쭐 것'].concat(FIN_TAB_LOOK_.filter(function (n) { return names.indexOf(n) >= 0; }));
+  var gas = FIN_TAB_GAS_.filter(function (n) { return names.indexOf(n) >= 0; });
+  var rest = names.filter(function (n) { return want.indexOf(n) < 0 && gas.indexOf(n) < 0; }); // 계좌별 원본 등 — 회색 앞
+  var order = want.concat(rest, gas);
+  var color = function (n) { return n === '여쭐 것' ? '#ffd966' : want.indexOf(n) >= 0 ? '#6fa8dc' : '#b7b7b7'; };
+  order.forEach(function (n) { var sh = ss.getSheetByName(n); if (!sh) return; try { if (sh.getTabColor() !== color(n)) sh.setTabColor(color(n)); } catch (e) {} });
+  if (!order.every(function (n, i) { return names[i] === n; })) order.forEach(function (n, i) { var sh = ss.getSheetByName(n); if (sh && sh.getIndex() !== i + 1) { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); } });
+  try { ss.setActiveSheet(q); } catch (e) {}
 }
 
 // ---------- 엑셀 판단 가져오기(세무사님 작업 파일 — 읽기만) ----------
