@@ -460,11 +460,11 @@
           // [2026.09 버그수정] 폴더ID(한 번 만들어지면 안 바뀜)로 직접 연다 — 사건명(=폴더명)만
           // 보고 경로를 다시 만들면, 나중에 고객명 등이 바뀌어 사건명이 달라진 사건은 실제
           // Drive 폴더(이름은 그대로)를 못 찾는다. 폴더ID가 없는 옛날 사건만 이름으로 대체한다.
-          if (c.폴더ID) { docsNavigateById_(c.폴더ID); return; }
+          if (c.폴더ID) { docsNavigateById_(c.폴더ID, c.id); return; }
           // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건 — 업무유형을 물어 폴더를 만든 뒤 연다(취소하면 고르기 칸을 비운다)
           if (String(c.업무유형 || '') === '상담' && typeof nxEnsureCaseFolder_ === 'function'){
             nxEnsureCaseFolder_(c).then(function(cc){
-              if (cc && cc.폴더ID) docsNavigateById_(cc.폴더ID);
+              if (cc && cc.폴더ID) docsNavigateById_(cc.폴더ID, cc.id);
               else sel.value = docsSelectedCaseId_ || '';
             });
             return;
@@ -495,11 +495,14 @@
   // 이름 매칭으로 대체한다.
   function docsSyncSelectedCase_(){
     var sel = document.getElementById('docsCaseSelect');
+    var pathAtCall = docsPath; // [2026.11.26] 그사이 다른 폴더로 옮겼으면 늦게 온 앞 폴더 답으로 사건을 덮지 않는다
     getCustomerRootPath_().then(function(basePath){
+      if (docsPath !== pathAtCall) return;
       var rel = docsPath.slice(basePath.length); // 고객사건 루트 밑으로 몇 단계 들어왔는지
       if (rel.length < 1 || rel.length > 2){ docsSelectedCaseId_ = null; if (sel) sel.value = ''; docsCaseToolsSync_(); return; }
       var currentFolderId = (rel.length === 1 && docsCurrentListing) ? docsCurrentListing.folderId : null;
       docsGetAllCases_().then(function(cases){
+        if (docsPath !== pathAtCall) return;
         var c = currentFolderId
           ? cases.filter(function(x){ return x.폴더ID && x.폴더ID === currentFolderId; })[0]
           : null;
@@ -551,7 +554,30 @@
     if (typeof nxOpenCaseDocs_ === 'function') nxOpenCaseDocs_(c); else if (typeof nxCaseJump_ === 'function') nxCaseJump_('docs', c.id);
   }
 
+  // [2026.11.26] 세무사님 "왜 서류탭을 클릭하여 옮길때 사건연결이 끊기나?" — 폴더를 여는 동안(서버 답을 기다리는 몇 초)
+  //  docsSelectedCaseId_에 앞서 보던 다른 사건이 그대로 남아, 사건 작업공간 머리줄·넥스 대화가 그 사건으로 넘어갔다가 돌아왔다.
+  //  여는 순간 「이제 열 사건」을 먼저 정해 둔다 — 부르는 쪽이 사건을 알면 그것, 모르면 이미 받아 둔 사건 목록에서 폴더ID·이름으로 찾고,
+  //  못 찾으면 비운다(비우면 머리줄은 보던 사건을 그대로 둔다). 폴더 목록이 오면 docsSyncSelectedCase_가 실제 폴더로 다시 맞춘다.
+  function docsExpectCase_(folderId, caseId, path){
+    var id = caseId || null;
+    var lists = [docsAllCasesCache_ || [], (typeof NX_CB_ !== 'undefined' && NX_CB_ && NX_CB_.cases) || []];
+    if (!id && folderId){
+      lists.forEach(function(l){ if (!id){ var c = l.filter(function(x){ return x && x.폴더ID && x.폴더ID === folderId; })[0]; if (c) id = c.id; } });
+    }
+    if (!id && path && typeof _customerRootPathCache !== 'undefined' && _customerRootPathCache){
+      var base = _customerRootPathCache, same = path.length > base.length;
+      for (var i = 0; same && i < base.length; i++) if (path[i] !== base[i]) same = false;
+      var rel = same ? path.slice(base.length) : [];
+      if (rel.length >= 1 && rel.length <= 2){
+        lists.forEach(function(l){ if (!id){ var c = l.filter(function(x){ return x && String(x.사건명 || '').trim() === rel[0]; })[0]; if (c) id = c.id; } });
+      }
+    }
+    docsSelectedCaseId_ = id;
+    var sel = document.getElementById('docsCaseSelect'); if (sel) sel.value = id || '';
+  }
+
   function docsNavigate(path){
+    docsExpectCase_(null, null, path);
     docsPath = path;
     docsSelectedIds = {};
     updateDocsSelectionBar_();
@@ -573,7 +599,8 @@
   // 그대로인데 DB의 사건명만 새 값으로 바뀜) 새 이름으로는 그 폴더를 절대 못 찾는다. 사건의
   // 폴더ID(c.폴더ID, 한 번 만들어지면 절대 안 바뀜)를 이미 알고 있을 때는 이름과 무관하게
   // 이 함수로 직접 열 것.
-  function docsNavigateById_(folderId){
+  function docsNavigateById_(folderId, caseId){
+    docsExpectCase_(folderId, caseId);
     docsSelectedIds = {};
     updateDocsSelectionBar_();
     var listEl = document.getElementById('docsList');
