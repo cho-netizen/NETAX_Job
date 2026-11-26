@@ -5500,7 +5500,7 @@ function dispatchClientAction0_(body) {
     return jsonResponse(handleListGeneralMemos(body));
   }
   // [2026-11-25] 현금영수증 사진 문자(ReceiptSms.js) — 「1 상담사건」 영수증 목록·준비·보내기
-  if (body.action === 'receipt_sms_list' || body.action === 'receipt_sms_prepare' || body.action === 'receipt_sms_send') {
+  if (body.action === 'receipt_sms_list' || body.action === 'receipt_sms_prepare' || body.action === 'receipt_sms_send' || body.action === 'receipt_sms_status') { // [2026-11-26] status = 도착 결과(ReceiptSmsTrack.js)
     return jsonResponse(receiptSms_doPost_(body));
   }
   if (body.action === 'scan_cash_receipts') {
