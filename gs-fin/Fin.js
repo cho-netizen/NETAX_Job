@@ -19,6 +19,8 @@ var FIN_ACTIONS_ = {
   // [2026.11.20] 합치기는 명령이 아니라 자동(세무사님 "따로 명령하는 것이 아니다") — job 서버 1분 틱이 부른다. 암호·서식표가 바뀌면 그 사건을 바로 다시 합친다
   fin_merge_auto: function (b) { return finMergeAuto_(b); },
   fin_pw_set: function (b) { var r = finPwSet_(b); if (r && r.ok && b.caseId) { try { r.합침 = finMergeAuto_({ caseId: b.caseId, budgetMs: 240000 }); } catch (e) { r.합침 = { error: String(e.message || e) }; } } return r; },
+  // [2026.11.26] 「지금 다시 셈」 — 세무사님 「그렇게 만들고 커푸배하라」(조사 사건을 고치는 동안 30분 틱을 기다리지 않게). 그 사건 하나만, 1분 틱과 같은 길(GAS만, 0원)
+  fin_merge_now: function (b) { if (!b || !b.caseId) return { error: '사건이 정해지지 않았습니다.' }; return finMergeAuto_({ caseId: b.caseId, budgetMs: 240000 }); },
   fin_formats_get: function (b) { return finFormatsGet_(); },
   // [2026.11.25] 넥스가 쓰는 길 — 세무사님이 넥스를 부르실 때만(job 서버 넥스 도구 bank_note). 통장 글자 뜻·대상자 짐작·넥스 의견 → 다시 셈(FinDocs.js)
   fin_nex_note: function (b) { return finNexNote_(b); },

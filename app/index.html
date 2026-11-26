@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 11:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 13:34 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57866,7 +57866,8 @@ function rwAiApplyEdit_(id, content){
     </div>
     <div class="fm-tabs"><button type="button" class="on" data-fm-tab="merge">합친 결과</button><button type="button" data-fm-tab="fmt">은행 서식표</button></div>
     <div id="fmMerge">
-      <div class="fm-row fm-sub" id="fmCaseLine"></div>
+      <!-- [2026.11.26] 첫 줄 끝 「지금 다시 셈」 — 세무사님 「그렇게 만들고 커푸배하라」(이 사건 하나만 곧바로, GAS만 0원) -->
+      <div class="fm-row fm-sub" style="align-items:center;gap:8px"><span id="fmCaseLine" style="flex:1"></span><button type="button" class="ghost-btn sm" id="fmNow" title="30분마다 저절로 셈하는 것을 기다리지 않고 이 사건 하나만 지금 다시 합치고 다시 셈합니다(넥스를 쓰지 않아 0원)">지금 다시 셈</button></div>
       <div class="fm-row">
         <span>사건 암호(암호 걸린 은행 엑셀·압축)</span>
         <input type="password" id="fmPw" autocomplete="off" placeholder="없으면 비워 둠" style="width:160px">
@@ -58029,6 +58030,23 @@ function rwAiApplyEdit_(id, content){
       fmBusy(true, '암호를 적어 두고 이 사건을 다시 합치는 중…');
       fmCall('fin_pw_set', { caseId: FM.caseId, pw: $('fmPw').value }, 300000).then(function(r){ $('fmPw').value = ''; fmBusy(false); $('fmPwState').textContent = r.암호있음 ? '적어 둔 암호 있음' : '암호 지움'; fmToast(r.암호있음 ? '사건 암호를 적어 두었습니다(시트·기록엔 남지 않음)' : '사건 암호를 지웠습니다', 'success'); fmLoadFiles(); }, function(err){ fmBusy(false); fmToast(err.message, 'error'); });
       return;
+    }
+    if (t.id === 'fmNow') { // [2026.11.26] 지금 다시 셈 — 다 못 읽었거나(큰 파일) 1분 틱이 같은 사건을 돌리는 중이면 기다렸다 이어서(최대 8번)
+      if (FM.busy || !FM.caseId) return;
+      t.disabled = true; fmBusy(true, '이 사건을 지금 다시 합치고 다시 셈하는 중…(GAS만, 0원)');
+      var round = 0, end = function(msg, kind){ t.disabled = false; fmBusy(false); if (msg) fmToast(msg, kind || 'success'); fmLoadFiles(); };
+      var go = function(){
+        round++;
+        fmCall('fin_merge_now', { caseId: FM.caseId }, 300000).then(function(r){
+          r = r || {};
+          if (r.more && round < 8) { fmBusy(true, r.busy ? '저절로 셈하는 중이라 끝나기를 기다리는 중…' : '파일 읽는 중 ' + won(r.읽음) + '/' + won(r.전체) + ' — 이어서 셈합니다'); setTimeout(go, r.busy ? 20000 : 500); return; }
+          if (r.more) { end('아직 다 읽지 못했습니다 — 저절로 이어서 셈합니다', 'warning'); return; }
+          var rv = r.검토 || {};
+          if (rv.error) { end('합치기는 끝났으나 ' + rv.error, 'error'); return; }
+          end(r.empty ? '은행 거래내역 원시파일이 없습니다' : (r.nochange && (rv.nochange || rv.wrote === false) ?'다시 셈했습니다 — 바뀐 것 없음(최신)' : '다시 셈했습니다 — 시트·보고서를 새로 썼습니다'));
+        }, function(err){ end(err.message, 'error'); });
+      };
+      go(); return;
     }
     if (t.id === 'fmFmtSave') { fmSaveFormats(fmFormatsToSave()).then(fmLoadFormats, function(err){ fmToast(err.message, 'error'); }); return; }
     var ns = t.getAttribute && t.getAttribute('data-fm-nfsave');
