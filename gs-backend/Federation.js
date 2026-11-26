@@ -648,6 +648,16 @@ function commSeamList_() {
       const p = PropertiesService.getScriptProperties();
       return (p.getProperty('SOLAPI_API_KEY') && p.getProperty('SOLAPI_SENDER_PHONE')) ? '' : '솔라피 열쇠·발신번호 없음';
     } },
+    // [2026-11-26] 세무사님 "도착 결과를 확인할 수 있게 하자" — 보낸 메시지 번호 → 1분 틱이 솔라피에 결과 묻기 → 영수증 목록·상담 기록·실패는 「답하실 것」+아침 묶음
+    { 길: '영수증 문자 도착 확인(1분 틱 → 솔라피 결과 → 목록·상담 기록·실패 알림)', fn: function () {
+      if (typeof receiptSms_trackTick_ !== 'function') return 'ReceiptSmsTrack.js가 이 판에 없음(clasp push 필요)';
+      if (String(cpPrereadTick).indexOf('receiptSms_trackTick_') === -1) return '1분 틱이 도착 결과를 묻지 않음';
+      if (String(receiptSms_send_).indexOf('receiptSms_trackAdd_') === -1 || String(receiptSms_sendMms_).indexOf('receiptSms_parseIds_') === -1) return '보낼 때 메시지 번호를 남기지 않음';
+      if (typeof awNoticeAdd_ !== 'function') return '실패 알림 길(awNoticeAdd_)이 없음';
+      const wait = receiptSms_trackRead_().filter(function (t) { return t.state === 'wait' && Date.now() - t.at > 10 * 60000; }).length;
+      const last = Number(PropertiesService.getScriptProperties().getProperty(RSMS_TICK_LAST_PROP_) || 0);
+      return wait && Date.now() - last > 10 * 60000 ? '「확인 중」 문자 ' + wait + '통인데 1분 틱이 10분 넘게 묻지 않음' : '';
+    } },
     { 길: '급한 일 → 세무사님 휴대폰·워치 문자, 보통 → 아침 알림', fn: function () { try { ensureDailyReminderTrigger_(); } catch (e) {} return typeof notifyOwner_ !== 'function' ? '알림 통로가 이 판에 없음' : ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'sendDailyDeadlineDigest'; }) ? '' : '아침 알림 트리거가 없음(밤 작업이 다음에 걺)'; } },
     // [2026.10.28] 세무사님 "캘린더에서 일정색상을 변경하면 예약관리에서 따로 승인을 하지 않아도 승인되도록" — 10분 트리거가 손 설치뿐이라 빠져 있어도 아무도 몰랐음. 없으면 걸고, 못 걸면 ⚠
     { 길: '상담신청 → 캘린더(색 바꾸면 자동 승인, 10분 트리거)', fn: function () { if (typeof booking_ensureCalendarSyncTrigger_ !== 'function') return '자동 승인 트리거 장치가 이 판에 없음'; try { return booking_ensureCalendarSyncTrigger_() === 'installed' ? '트리거가 없어 이번에 걺(이전엔 빠져 있었음)' : ''; } catch (e) { return '트리거를 걸지 못함: ' + (e.message || e); } } },
