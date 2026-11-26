@@ -400,12 +400,16 @@ function finReadOne_(src, pw, depth) {
         if (/<table|<tr/i.test(head)) { var tx = bankDecodeBlob_(Utilities.newBlob(finSigned_(bytes))); sheets = [{ sheet: 'html', rows: bankHtmlRows_(tx) }]; }
         else sheets = finTmpSheet_(name, bytes);
       }
-      sheets.forEach(function (s) { take(finParseSheet_(s.rows, { fileName: name, sheet: s.sheet }), s.sheet); });
+      // [2026.11.26] 조사관 지정 거래 표(사용처·근거서류 칸) — 은행 거래내역이 아님(같은 거래를 두 번 세지 않게, FinFiled.js가 따로 읽음)
+      sheets.forEach(function (s) { if (finFdParseDesig_([s]).줄.length) { res.desig = true; return; } take(finParseSheet_(s.rows, { fileName: name, sheet: s.sheet }), s.sheet); });
+      if (res.desig && !res.blocks.length) { res.status = 'notbank'; res.why = '조사관 지정 거래 표 — 거래내역 아님(금융 분석 「조사청 제출용」에서 씀)'; return res; }
     } else if (FIN_PDF_RE_.test(name) || FIN_IMG_RE_.test(name)) {
       var pdf = FIN_PDF_RE_.test(name);
       res.kind = pdf ? 'PDF' : '사진';
       var mime = pdf ? 'application/pdf' : (/png$/i.test(name) ? 'image/png' : 'image/jpeg');
       var text = src.id && !src.bytes ? tc_docText_({ id: src.id, name: name, mimeType: src.mimeType || mime, modified: src.modified }) : finInnerText_(name, bytes, mime);
+      // [2026.11.26] 상속세 신고서·조사청 안내·이미 낸 소명·상담자료는 거래내역이 아님(11-26 실제 조사 사건: 신고서 숫자로 가짜 거래 3줄)
+      var fk0 = finFdKind_(text); if (fk0) { res.status = 'notbank'; res.why = fk0 + ' — 거래내역 아님(금융 분석 서류 읽기에서 씀)'; return res; }
       take(finParseText_(text, { fileName: name, how: pdf ? 'PDF' : '사진(글자인식)' }));
     } else { res.status = 'notbank'; res.why = '거래내역 파일 모양이 아님'; return res; }
     if (!res.blocks.length) {

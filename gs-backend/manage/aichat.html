@@ -2868,6 +2868,9 @@
       steps: '견줄 안을 정한다(세목 비교면 양도·증여·상속, 아니면 세무사님이 말씀하신 A·B·C안). 안마다 계산기를 돌려 각각 저장한 뒤 총부담(관련 세목·지방소득세·취득세 포함)을 표로 견준다. 기본값은 덮지 않는다. 결론과 차이 금액만 채팅에, 자세한 것은 검토서에.' },
     { id: 'cont', name: '이어서', alias: ['계속'], says: ['이어서 말해', '이어서 해', '이어서 작성', '계속 작성', '작성하던 보고서 계속', '작성하던 검토서 계속'], kind: 'nex', run: 'nex', need: '', desc: '끊긴 답·쓰던 파일 이어 쓰기',
       steps: '바로 앞 네 답이나 쓰던 파일이 끊겼다. 앞 답의 끝에서 이어 마저 쓴다(처음부터 다시 쓰지 않는다). 파일이면 그 파일에 이어 저장한다.' },
+    // [2026.11.26] 금융거래 시트 「여쭐 것」을 넥스가 차례대로 채움(세무사님 11-26 「권장대로 하자」 — 계획서 총괄관리자/_기록/금융거래_누가적었나_계획서_20261126.html 4절)
+    { id: 'finans', name: '금융답', alias: ['금융여쭐것'], says: ['금융거래 여쭐 것 채워', '금융 여쭐 것 채워', '여쭐 것 채워', '짚을 곳만 채워', '성격 모름 글자만 채워', '분석대상자만 채워'], kind: 'nex', run: 'nex', need: 'case', desc: '금융거래 시트 「여쭐 것」을 넥스가 차례대로 채움(보라 「넥스 · 」, 세무사님 확정 전 잠정)',
+      steps: '① bank_merge로 이 사건 금융거래 검토 요약을 읽는다(검토.여쭐것목록: 열쇠·무엇·지금답·누가·근거·곳). ② 사건 폴더의 지난 보고서(보고서 폴더 전부)와 서류(가족관계증명서·사망진단서·기본증명서·계약서·차용증·의뢰 메모)를 읽는다. ③ 여쭐것목록을 위에서부터 차례대로 따라가 항목마다 답과 근거(서류·글)를 정해 bank_note answers[{key: 열쇠, value, basis}]로 한꺼번에 적는다 — 세무사님 말씀 뒤에 탭 이름(짚을 곳·성격 모름 글자·분석대상자·묶음·사건 기준)이 있으면 그 탭 항목만. ④ 근거를 못 찾은 항목은 적지 말고 묶어서 세무사님께 여쭌다. ⑤ 끝나면 채팅에 「여쭐 것 ○곳 중 ○곳 적음(보라, 잠정) · 넥스도 모르는 것 ○곳」 한 줄과, 확정은 시트 「여쭐 것」 탭 「확정」 네모라고 알린다. 상속인·특수관계(갈래)는 넥스 답도 잠정이고 세무사님 확정으로만 정해진다. 세무사님 값(검정)은 바꾸지 않는다.' },
     { id: 'nex', name: '넥스', alias: [], says: [], kind: 'nex', run: 'nexdirect', need: '', desc: '바로 처리 짐작 없이 뒤의 말을 그대로 넥스에게' }
   ];
   var NXAI_CMD_KIND_ID_ = { open: 'open', today: 'today', bookings: 'bookings', logs: 'logs', checklist: 'checklist', client_info: 'contact', case_status: 'status', deadlines: 'deadline', active: 'active', autocalc: 'autocalc', caseproc: 'proc' };
@@ -6352,6 +6355,13 @@
     setTimeout(waitReady, 500);
   }
 
+  // [2026.11.26] 다른 화면(💰 금융거래 창 「🤖 넥스로 채우기」)이 넥스에게 명령을 보내는 입구 — 옆 창을 펼치고 입력창에 넣어 보냄(세무사님이 누르신 때만)
+  window.nxAiAskCmd_ = function(text){
+    var side = nxAiEl_('sideAI'); if (side) side.classList.add('expanded');
+    var input = nxAiEl_('nxAiInput'); if (!input) return false;
+    if (nxAiAbort){ nxAiToast_('넥스가 앞 말씀에 아직 답하는 중입니다 — 끝난 뒤 다시 눌러 주세요.'); return false; }
+    input.value = String(text || ''); nxAiSend_(); return true;
+  };
   function nxAiSend_(){
     var input = nxAiEl_('nxAiInput');
     var text = input.value.trim();

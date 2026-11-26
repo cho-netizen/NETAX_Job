@@ -43,12 +43,15 @@ function finRpBlock_(A, U, sheetUrl) {
   var B = A.B, s = [], sum = finRvSummary_(A), C = A.change || { segs: [], drops: [], quarters: [] };
   var own = A.accts.filter(function (a) { return a.own; }), dmin = '', dmax = '';
   A.R.forEach(function (r) { if (!dmin || r.d < dmin) dmin = r.d; if (!dmax || r.d > dmax) dmax = r.d; });
+  // [2026.11.26] 조사 사건이면 「조사청이 짚은 것·소명 현황」·「신고와 맞대기」를 맨 앞에(계획서 5절), 그 밖 사건은 신고서가 있으면 맨 뒤에(FinFiled.js)
+  var fdS = finFdReport_(A, U), fdTop = !!fdS && finFdAuditCase_(U);
+  if (fdTop) s.push(fdS);
   s.push('## 1. 검토 자료');
   s.push('- 피상속인 ' + (B.피상속인 || '[확인 필요]') + ' · 상속개시일 ' + (B.D ? B.D + (B.D짐작 ? '(「' + B.D짐작 + '」에서 짐작 — [확인 필요])' : '') : '[확인 필요 — 시트 「사건 기준」 탭]'));
   s.push('- 합친 거래 ' + A.R.length + '줄 · 계좌 ' + A.accts.length + '개(피상속인 ' + own.length + '개) · 기간 ' + dmin + ' ~ ' + dmax + ' · 잔액 검산 끊김 ' + A.breaks + '곳');
   // [2026.11.25] 사건 서류에서 읽은 기본 사실(FinDocs.js) — 상속인·빌려준 돈·부동산·보험금(모두 짐작, 근거 서류와 함께)
   var heirs = A.rels.filter(function (x) { return x.갈래 === '상속인' || (!x.갈래 && x.짐작 === '상속인'); });
-  s.push('- 상속인 ' + (heirs.length ? heirs.map(function (x) { return x.이름 + (x.관계 || x.관계짐작 ? '(' + (x.관계 || x.관계짐작) + ')' : '') + (x.갈래 ? '' : ' — 짐작'); }).join(' · ') + (U.heirsGuess ? ' (' + U.heirsGuess.from + ')' : '') : '[확인 필요 — 가족관계증명서가 사건 폴더에 없음]'));
+  s.push('- 상속인 ' + (heirs.length ? heirs.map(function (x) { return x.이름 + (x.관계 || x.관계짐작 ? '(' + (x.관계 || x.관계짐작) + ')' : '') + (x.갈래 ? '' : x._넥스갈래 ? ' — 넥스 답(잠정)' : ' — GAS 짐작(잠정)'); }).join(' · ') + (U.heirsGuess ? ' (' + U.heirsGuess.from + ')' : '') : '[확인 필요 — 가족관계증명서가 사건 폴더에 없음]'));
   (U.loans || []).forEach(function (l) { s.push('- 빌려준 돈: ' + l.대여인 + ' → ' + l.차용인 + (l.금액 ? ' ' + finRvWon_(l.금액) + '원' : '') + ' (' + String(l.근거).slice(0, 60) + ')'); });
   ((U.facts || {}).부동산 || []).forEach(function (p) { s.push('- 부동산 ' + p.종류 + ': ' + p.부동산 + ' · ' + p.날짜 + ' · ' + p.원인 + (p.금액 ? ' ' + finRvWon_(p.금액) + '원' : '') + ((p.상대 || []).length ? ' · 상대 ' + p.상대.join('·') : '') + ' (' + p.근거 + ')'); });
   ((U.facts || {}).보험금 || []).forEach(function (p) { s.push('- 보험금 ' + finRvWon_(p.금액) + '원 (' + p.근거 + ')'); });
@@ -57,7 +60,7 @@ function finRpBlock_(A, U, sheetUrl) {
   s.push('- 자료 빈틈(과세관청은 조회로 볼 수 있는 자료) ' + aFlags.length + '곳' + (aFlags.length ? ':' : ''));
   aFlags.slice(0, 15).forEach(function (f) { s.push('  - ' + f.번호 + ' ' + f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : '') + (f.상태 ? ' — ' + f.상태 : '')); });
   s.push('');
-  if ((A.asks || []).length) { s.push(''); s.push('### 여쭐 것(세금이 달라지는 것 — GAS 답안과 근거)'); s.push(finRpTable_(['무엇', '답안', '근거', '정하시는 곳'], A.asks.map(function (q) { return [q.무엇, q.답안 || '', String(q.근거 || '').slice(0, 120), q.곳]; }))); }
+  if ((A.asks || []).length) { s.push(''); s.push('### 여쭐 것(세금이 달라지는 것 — 확정 전 지금 답과 근거)'); s.push(finRpTable_(['무엇', '지금 답', '누가', '근거', '정하시는 곳'], A.asks.map(function (q) { return [q.무엇, q.답안 || '', q.누가 === 'nex' ? '넥스' : q.누가 === 'gas' ? 'GAS' : '없음', String(q.근거 || '').slice(0, 120), q.곳]; }))); }
   s.push('');
   s.push('## 2. 증감분석(전체 예금 잔액)');
   if (C.segs.length) s.push(finRpTable_(['구간', '시작 잔액', '끝 잔액', '실제 증감', '경상 수입', '경상 지출', '쓰임 안 보이는 유출', '관련인으로'], C.segs.map(function (f) { var g = finTgRegular_(f); return [f.k, finRpMoney_(f.시작), finRpMoney_(f.끝), finRpMoney_((f.끝 || 0) - (f.시작 || 0) - (f.자료시작 || 0)), finRpMoney_(g.경상수입), finRpMoney_(g.경상지출), finRpMoney_(g.설명필요), finRpMoney_(g.관련인으로)]; })));
@@ -69,7 +72,7 @@ function finRpBlock_(A, U, sheetUrl) {
   var TG = (A.targets || []).filter(function (t) { return t.구분 < 3; });
   s.push(finRpTable_(['구분', '이름', '갈래', '관계', '§13 기간', '기간 안 나감', '기간 안 들어옴', '순액', '짚을 곳'], TG.slice(0, 40).map(function (t) {
     var x = t.x, n = A.flags.filter(function (f) { return f.상대 === x.이름; }).length;
-    return [FIN_TG_GROUPS_[t.구분].slice(0, 1), x.이름, x.갈래 || (x.짐작 ? x.짐작 + ' (짐작)' : '모름'), x.관계 || x.관계짐작 || '', B.D ? t.yrs + '년' : '전체', finRpMoney_(t.기간나감), finRpMoney_(t.기간들어옴), finRpMoney_(t.기간순액), n || ''];
+    return [FIN_TG_GROUPS_[t.구분].slice(0, 1), x.이름, x.갈래 || (x.짐작 ? x.짐작 + (x._넥스갈래 ? ' (넥스, 잠정)' : ' (GAS, 잠정)') : '모름'), x.관계 || x.관계짐작 || '', B.D ? t.yrs + '년' : '전체', finRpMoney_(t.기간나감), finRpMoney_(t.기간들어옴), finRpMoney_(t.기간순액), n || ''];
   })));
   if (TG.length > 40) s.push('- 그 밖 ' + (TG.length - 40) + '명 — 시트 「분석대상자」 탭');
   s.push('');
@@ -78,12 +81,14 @@ function finRpBlock_(A, U, sheetUrl) {
   else {
     // [2026.11.25] 세무사님 「순인출 전에 총인출과 입금액 란」 — 순인출 = 총인출 − 입금액(재예입)
     s.push(finRpTable_(['기간', '① 총인출', '② 입금액(재예입)', '③ 순인출<br>①−②', '④ 기준<br>1년 2억·2년 5억', '기준 넘음<br>③ ≥ ④', '⑤ 자동소명액', '⑥ 추가소명액', '⑦ 소명액 합계<br>⑤+⑥', '⑧ 미소명<br>③−⑦', '⑨ 차감액<br>min(③×20%, 2억)', '⑩ 추정액<br>③≥④이고 ⑧≥⑨이면 ⑧−⑨'], A.s15.map(function (x) { return [x.y + '년 안', finRpMoney_(x.인출), finRpMoney_(x.재예입), finRpMoney_(x.순), finRpMoney_(x.기준), x.넘음 ? '넘음' : '안 넘음', finRpMoney_(x.자동), finRpMoney_(x.추가), finRpMoney_(x.소명), finRpMoney_(x.미소명), finRpMoney_(x.차감), finRpRed_(finRpMoney_(x.추정))]; })));
+    var qa = A.asks || [], qn = qa.filter(function (q) { return q.누가 === 'nex'; }).length, qg = qa.filter(function (q) { return q.누가 === 'gas'; }).length;
+    if (qa.length) s.push('- <b>잠정</b> — 세무사님이 확정하지 않은 여쭐 것 ' + qa.length + '곳(넥스 답 ' + qn + ' · GAS 답 ' + qg + ' · 답 없음 ' + (qa.length - qn - qg) + ')이 이 셈에 들어 있습니다. 시트 「여쭐 것」 탭에서 확정하시면 확정 숫자가 됩니다.');
     s.push('- ① 총인출 = 피상속인 계좌에서 나간 돈 · ② 입금액(재예입) = 나간 돈이 피상속인 다른 계좌로 다시 들어온 것(시행령 §11①2호) · ⑨ 차감액·⑩ 추정액은 시행령 §11④');
     // [2026.11.25] 자동소명(GAS)·추가소명(세무사님)·합계 — 미소명 = 순인출 − 소명액 합계
     var s2 = A.s15[1] || A.s15[0];
-    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. 거래 탭 「소명 ✎」 한 칸 — ⑤ 자동소명액은 GAS 글(자동 ·)이 그대로인 출금, ⑥ 추가소명액은 세무사님이 적으신 출금, 「아님」이면 뺌');
+    if (s2) { var ks = Object.keys(s2.자동별 || {}).sort(function (a, b) { return s2.자동별[b] - s2.자동별[a]; }); s.push('- 자동소명액(GAS) — 통장에서 상대·용도가 보이는 출금(시행령 §11②의 반대)' + (ks.length ? ', ' + s2.y + '년 안: ' + ks.slice(0, 6).map(function (k) { return k + ' ' + finRvWon_(s2.자동별[k]) + '원'; }).join(' · ') : '') + '. 현금 인출·계좌번호만·상대 모름은 자동소명 없음. 거래 탭 「소명 ✎」 한 칸 — ⑤ 자동소명액은 파란 GAS 글(GAS · )이 그대로인 출금, ⑥ 추가소명액은 세무사님(검정)·넥스(보라, 잠정)가 적은 출금, 「아님」이면 뺌');
       var ad = (s2.추가별 || []).slice().sort(function (a, b) { return b.인정 - a.인정; });
-      if (ad.length) { s.push(''); s.push('⑥ 추가소명 내역(' + s2.y + '년 안, 큰 순)'); s.push(finRpTable_(['날짜', '상대', '출금', '소명 인정', '추가소명 내용(세무사님)'], ad.slice(0, 30).map(function (z) { return [z.d, z.상대, finRpMoney_(z.out), finRpMoney_(z.인정), z.내용]; }))); if (ad.length > 30) s.push('- 그 밖 ' + (ad.length - 30) + '줄 — 시트 「추정상속(§15)」 탭'); } }
+      if (ad.length) { s.push(''); s.push('⑥ 추가소명 내역(' + s2.y + '년 안, 큰 순)'); s.push(finRpTable_(['날짜', '상대', '출금', '소명 인정', '추가소명 내용(「넥스 · 」는 넥스 답, 잠정)'], ad.slice(0, 30).map(function (z) { return [z.d, z.상대, finRpMoney_(z.out), finRpMoney_(z.인정), z.내용]; }))); if (ad.length > 30) s.push('- 그 밖 ' + (ad.length - 30) + '줄 — 시트 「추정상속(§15)」 탭'); } }
   }
   (A.s15d || []).forEach(function (d) { s.push('- 부담한 채무(§15① 2호) ' + d.y + '년 안 — 통장에 대출로 들어온 돈 ' + finRvWon_(d.채무) + '원 · 기준 ' + finRvWon_(d.기준) + '원 ' + (d.넘음 ? '넘음(용도 소명 필요)' : '안 넘음')); });
   s.push('');
@@ -96,15 +101,15 @@ function finRpBlock_(A, U, sheetUrl) {
     // [2026.11.25] 세무사님 「나머지 순액 다음에 증여재산공제와 증여세과세표준 란」 — 공제는 관계로 짐작(상증법 §53), 과세표준 = 나머지 순액 − 공제(§55① 4호)
     s.push(finRpTable_(['관련인', '갈래', '관계', '합산 기간', '① 나감', '② 들어옴', '③ 순액<br>①−②', '④ 그 가운데 생계비·가족비·경조비', '⑤ 나머지 순액<br>③−④', '⑥ 증여재산공제(§53)', '⑦ 증여세 과세표준(§55)<br>⑤−⑥(0 아래는 0)'], A.s13.map(function (x) {
       var rest = x.순액 - (x.사회통념 || 0), g = finRpGiftDed_(x.x), base = g.amt == null ? '' : finRpRed_(finRpMoney_(Math.max(0, rest - g.amt)));
-      return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : ' (짐작)'), x.x.관계 || x.x.관계짐작 || '', x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액), finRpMoney_(x.사회통념 || ''), finRpMoney_(rest), g.amt == null ? '' : finRpMoney_(g.amt), base]; // 공제 근거는 「관계」 칸으로 알 수 있어 숫자만(세무사님 11-25)
+      return [x.x.이름, (x.x.갈래 || x.x.짐작 || '') + (x.확정 ? '' : x.x._넥스갈래 ? ' (넥스, 잠정)' : ' (GAS, 잠정)'), x.x.관계 || x.x.관계짐작 || '', x.yrs + '년', finRpMoney_(x.나감), finRpMoney_(x.들어옴), finRpMoney_(x.순액), finRpMoney_(x.사회통념 || ''), finRpMoney_(rest), g.amt == null ? '' : finRpMoney_(g.amt), base]; // 공제 근거는 「관계」 칸으로 알 수 있어 숫자만(세무사님 11-25)
     })));
     s.push('- 증여재산공제·과세표준은 잠정 — ① 나머지 순액을 증여재산가액으로 본 셈(증여인지는 세무사님 판단) ② 받은 사람이 거주자이고, 같은 갈래 증여자(예: 다른 부모)에게서 10년 안에 공제받은 것이 없다고 봄(§53 각 호 외 부분) ③ 미성년 자녀는 2천만원(§53 2호 단서) ④ 혼인·출산 공제(§53의2)·감정평가수수료(§55①)는 넣지 않음 ⑤ 과세표준 50만원 미만이면 증여세를 부과하지 않음(§55②) ⑥ 공제는 관계로 — 배우자 6억(§53 1호)·자녀·손자녀 5천만(2호)·부모 5천만(3호)·며느리·사위·형제·조카 등 1천만(4호), 관계를 모르거나 사망한 배우자·법인은 두 칸을 비움');
   }
   s.push('');
   s.push('## 6. 짚을 곳(남은 것, 중요도 순)');
-  var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || f.상태답안 || ''); /* 세무사님 칸이 비면 GAS 답안대로 */ }).slice().sort(function (a, b) { return (b.중요도 || 0) - (a.중요도 || 0); });
-  s.push('- A 자료 빈틈 ' + sum.짚을곳.A + ' · B 추정상속 ' + sum.짚을곳.B + ' · C 사전증여 ' + sum.짚을곳.C + ' · D 큰돈 ' + sum.짚을곳.D + ' · 남은 것 ' + sum.짚을곳.남은것);
-  s.push(finRpTable_(['번호', '짚을 것', '날짜', '금액', '상대', '상태', '배움'], open.slice(0, 30).map(function (f) { return [f.번호, f.짚을것, f.날짜 || '', finRpMoney_(f.금액), f.상대 || '', f.상태 || (f.상태답안 ? f.상태답안 + '(GAS 답안)' : '확인 전'), f.배움 || '']; })));
+  var open = A.flags.filter(function (f) { return !/소명 됨|해당 없음/.test(f.상태 || f.상태넥스 || f.상태답안 || ''); /* 세무사님 칸이 비면 GAS 답안대로 */ }).slice().sort(function (a, b) { return (b.중요도 || 0) - (a.중요도 || 0); });
+  s.push((sum.짚을곳.F ? 'F 조사청이 묻는 곳 ' + sum.짚을곳.F + ' · ' : '') + (sum.짚을곳.E ? 'E 신고와 다른 곳 ' + sum.짚을곳.E + ' · ' : '') + '- A 자료 빈틈 ' + sum.짚을곳.A + ' · B 추정상속 ' + sum.짚을곳.B + ' · C 사전증여 ' + sum.짚을곳.C + ' · D 큰돈 ' + sum.짚을곳.D + ' · 남은 것 ' + sum.짚을곳.남은것);
+  s.push(finRpTable_(['번호', '짚을 것', '날짜', '금액', '상대', '상태', '배움'], open.slice(0, 30).map(function (f) { return [f.번호, f.짚을것, f.날짜 || '', finRpMoney_(f.금액), f.상대 || '', f.상태 || (f.상태넥스 ? f.상태넥스 + '(넥스 답)' : f.상태답안 ? f.상태답안 + '(GAS 답)' : '확인 전'), f.배움 || '']; })));
   if (open.length > 30) s.push('- 그 밖 ' + (open.length - 30) + '곳 — 시트 「짚을 곳」 탭');
   s.push('');
   s.push('## 7. 받을 자료');
@@ -114,9 +119,11 @@ function finRpBlock_(A, U, sheetUrl) {
   s.push('');
   s.push('## 8. 판단 반영 현황');
   var judged = Object.keys(U.rows || {}).filter(function (k) { var o = U.rows[k]; return o && Object.keys(o).some(function (z) { return z !== '_x' && o[z]; }); }).length;
+  var nxN = Object.keys(U.nexV || {}).length; if (nxN) s.push('- 넥스 답(보라, 잠정) ' + nxN + '곳 — 세무사님 값이 있는 칸에서는 쓰지 않음');
   s.push('- 세무사님이 정하신 거래 ' + judged + '줄 · 갈래를 고르신 대상자 ' + A.rels.filter(function (x) { return x.갈래; }).length + '명 · 상태를 고르신 짚을 곳 ' + A.flags.filter(function (f) { return f.상태; }).length + '곳');
   var lu = A.learnUsed || {}; if (lu.lanes && (lu.lanes.length || lu.natures || lu.flags)) s.push('- 다른 사건에서 배운 짐작: 갈래 ' + lu.lanes.length + '곳 · 성격 ' + lu.natures + '줄 · 짚을 곳 표시 ' + lu.flags + '곳(시트 「배운 것」 탭)');
   s.push('- 판단(증여·대여·소명·특수관계·상속인)은 세무사님 — 위 숫자는 GAS가 통장 자료로 셈한 것이고 짐작에는 「짐작」 표시.');
+  if (fdS && !fdTop) { s.push(''); s.push(fdS); }
   return s.join('\n');
 }
 

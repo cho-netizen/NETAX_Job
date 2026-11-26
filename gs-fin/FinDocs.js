@@ -7,7 +7,7 @@
 //  · 정하는 것은 모두 「짐작」 — 근거 파일 이름을 함께 남기고, 세무사님 칸(✎)이 있으면 그 값이 먼저다.
 //  · 차례(앞이 먼저): 사망진단서·시체검안서 → 기본증명서 → 주민등록초본 「사망신고말소」 → 상속재산분할협의서 → 넥스 보고서 → 의뢰 메모(추정)
 // ============================================================
-var FIN_DOC_VER_ = '2026-11-25b';
+var FIN_DOC_VER_ = '2026-11-26a';   // 11-26 조사 사건 서류(신고서·조사청 안내·이미 낸 소명·지정 거래 표) 갈래 — FinFiled.js
 // 읽지 않을 서류(값을 찾을 일이 없는 것 — 읽는 시간을 아낌). 이름만으로 거르고, 남는 서류는 글로 무엇인지 알아본다
 //  (세무사님 11-25 "금융정보를 분석하려면 해당사건의 모든 정보를 최대한 파악해야" — 등기부(부동산 취득·처분)·재산조회회보서(피상속인 금융 계좌 목록)·보험금 지급증명서도 읽음)
 var FIN_DOC_SKIP_RE_ = /(거래내역|금융거래|통장|입출금|등기필|건축물대장|토지이용|매매실례가|실거래|공시지가|감정평가|영수증|취득세|법무사|장례|안치|명세|이택스|확정일자|평가기준|고액출금|세액|계산기|비밀번호|병원비|매매계약|전세계약|임대차|월세|유형자산)/;
@@ -26,7 +26,11 @@ function finDocName_(s) { s = String(s || '').trim(); return /^[가-힣]{2,4}$/.
 // 서류 한 장의 글 → 알아본 것
 function finDocParse_(text, fname) {
   var t = String(text || '').replace(/\s+/g, ' '), out = { 종류: [], 사망: [], 가족: null, 대여: [] };
-  var DT = /(19\d{2}|20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?)?/;
+  // [2026.11.26] 조사 사건 서류 갈래(FinFiled.js) — 조사청 안내·이미 낸 소명·상담자료는 증명서·회보서로 읽지 않는다
+  //  (11-26 실제 조사 사건: 1차 소명자료를 재산조회회보서로 읽어 상속인·거래상대방 계좌 8개를 피상속인 계좌로 적었음). 신고서 묶음은 증명서가 함께 묶였을 수 있어 그대로 읽되 회보서로는 안 봄
+  var fk = finFdKind_(t);
+  if (fk) { out.종류.push(fk); out.조사 = { kind: fk }; if (fk !== '상속세 신고서') return out; }
+  var DT =/(19\d{2}|20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?)?/;
   // ① 사망진단서·시체검안서 — 「사망일시」 뒤 가까운 날짜(칸 번호·장소 글이 사이에 낄 수 있음)
   if (/사\s*망\s*진\s*단\s*서|시\s*체\s*검\s*안\s*서/.test(t)) {
     out.종류.push('사망진단서·시체검안서');
@@ -81,7 +85,7 @@ function finDocParse_(text, fname) {
     if (reg.length) { out.종류.push('등기부'); out.등기 = { 부동산: head.trim().slice(0, 50), 차례: reg }; }
   }
   // 재산조회회보서(금융) — 피상속인 이름으로 된 금융 계좌 목록(기관·계좌번호). 거래내역을 받지 못한 계좌를 찾는 데 씀
-  if (/재산\s*조회|조회\s*회보/.test(t) && /(은행|금융|증권|생명|화재|보험|농협|신협|새마을|우체국|저축)/.test(t)) {
+  if (!fk && /재산\s*조회|조회\s*회보/.test(t) && /(은행|금융|증권|생명|화재|보험|농협|신협|새마을|우체국|저축)/.test(t)) {
     var acc = [], ar = /((?:[가-힣]{1,6}(?:은행|증권|생명|화재|보험|금고|농협|신협|우체국|저축은행|투자증권)))[^\d]{0,30}?(\d{2,6}(?:-\d{1,7}){1,4}|\d{10,16})/g, am;
     while ((am = ar.exec(t)) && acc.length < 300) acc.push({ 기관: am[1], 계좌: am[2] });
     if (acc.length) { out.종류.push('재산조회회보서'); out.계좌 = acc; }
@@ -140,7 +144,10 @@ function finDocMemoParse_(text) {
 function finDocsScan_(folder, U, budgetAt) {
   var files = []; try { files = finFolderFiles_(folder); } catch (e) { return false; }
   var memo = files.filter(function (f) { return /\.(txt|md)$/i.test(f.name) && !/^_/.test(f.name) && f.size < 200000; }); // 하위 폴더 메모까지(예: 양도/0 ○○ 양도 사건.txt)
-  var docs = files.filter(function (f) { return /\.(pdf|jpe?g|png|hwp)$/i.test(f.name) && !/^_|^~\$/.test(f.name) && !FIN_DOC_SKIP_RE_.test(f.name); }).slice(0, 60);
+  // [2026.11.26] 신고서·소명·통지 등 조사 사건 서류는 이름에 「명세」·「세액」이 있어도 읽음(FIN_FD_KEEP_RE_)
+  var docs = files.filter(function (f) { return /\.(pdf|jpe?g|png|hwp)$/i.test(f.name) && !/^_|^~\$/.test(f.name) && (!FIN_DOC_SKIP_RE_.test(f.name) || FIN_FD_KEEP_RE_.test(f.name)); }).slice(0, 60);
+  // 조사관 지정 거래 표(엑셀) — 이름으로 고르고 머리줄(사용처·근거)로 다시 가름
+  var sheetsX = files.filter(function (f) { return /\.(xlsx|xlsm|xls)$/i.test(f.name) && !/^~\$/.test(f.name) && FIN_FD_DESIG_NAME_RE_.test(f.name); }).slice(0, 10);
   U.docs = U.docs || {}; if (U.docs._v !== FIN_DOC_VER_) U.docs = { _v: FIN_DOC_VER_ };
   var changed = false, live = { _v: 1 }, newOcr = 0;
   memo.forEach(function (f) {
@@ -154,7 +161,14 @@ function finDocsScan_(folder, U, budgetAt) {
     var text = '', prev = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = newOcr >= 2;
     try { text = tc_docText_({ id: f.id, name: f.name, mimeType: f.mimeType, modified: f.modified }) || ''; } catch (e) { text = ''; } finally { TC_NO_NEW_OCR_ = prev; }
     if (!text) { if (newOcr < 2) newOcr++; return; } // 글자 기억이 생기면 다음 번에
-    U.docs[f.id] = { mod: f.modified, 이름: f.name, 경로: f.path, p: finDocParse_(text, f.name) }; changed = true;
+    var p = finDocParse_(text, f.name); finFdDocExtra_(p, text, f);
+    U.docs[f.id] = { mod: f.modified, 이름: f.name, 경로: f.path, p: p }; changed = true;
+  });
+  sheetsX.forEach(function (f) {
+    live[f.id] = 1; var o = U.docs[f.id]; if (o && o.mod === f.modified) return;
+    if (Date.now() > budgetAt) return;
+    var d = { 줄: [] }; try { d = finFdParseDesig_(bankReadFile_(f.id).sheets); } catch (e) { return; }
+    U.docs[f.id] = { mod: f.modified, 이름: f.name, 경로: f.path, p: d.줄.length ? { 종류: ['조사청 지정 거래 표'], 사망: [], 가족: null, 대여: [], 조사: { kind: '조사청 지정 거래 표', 지정: d } } : { 종류: [], 사망: [], 가족: null, 대여: [] } }; changed = true;
   });
   // 그 전에 작성된 보고서 모두(세무사님 11-25 "그 전에 작성된 보고서까지 모두 읽어야 한다") — 보고서 폴더와 그 안 _이전판·_보관,
   //  사건 폴더의 _이전판(.md·.txt). 금융거래 검토서는 GAS가 쓴 것이라 뺌. 지난 판은 지금 판보다 뒤 차례
@@ -213,6 +227,9 @@ function finDocsApply_(U, decedent) {
     }
     if (o.D) cands.push({ D: o.D, T: o.Dt || '', how: kind, from: kind + ' 「' + o.이름 + '」', r: o.보고서 ? (o.지난판 ? 7 : 5) : 6 });
   });
+  // [2026.11.26] 조사 사건 — 이미 낸 신고서·조사청 안내·이미 낸 소명·지정 거래 표를 모음(FinFiled.js). 신고서의 상속개시일은 분할협의서 다음 차례
+  var fdChanged = finFdCollect_(U), FD = U.filed;
+  if (FD && FD.D) cands.push({ D: FD.D, T: '', how: '상속세 신고서', from: '상속세 신고서 「' + FD.from + '」', r: 4.5 });
   // 상속개시일 — 앞선 근거. 서로 다른 날이 있으면 어긋남으로(여쭐 것)
   cands.sort(function (a, b) { return a.r - b.r || (a.D < b.D ? -1 : 1); });
   var g = cands[0] ? { D: cands[0].D, T: cands[0].T || (cands.filter(function (c) { return c.D === cands[0].D && c.T; })[0] || {}).T || '', from: cands[0].from,
@@ -237,10 +254,16 @@ function finDocsApply_(U, decedent) {
       upsert(p.이름, { 짐작: heir ? '상속인' : '상속인 아닌 가족·친척', 관계짐작: p.관계 + (p.사망 ? '(사망)' : ''), 출처: famFrom });
     });
     U.heirsGuess = { 이름: heirs, from: famFrom };
+  } else if (FD && (FD.상속인 || []).length) {
+    // [2026.11.26] 가족관계증명서가 없으면 이미 낸 신고서 부표 2의 상속인(조사 사건 — 11-26 실제 사건: 상속인 셋 중 한 사람만 알고 있었음)
+    var fdFrom = '상속세 신고서 부표 2 「' + FD.from + '」';
+    FD.상속인.forEach(function (h) { upsert(h.이름, { 짐작: '상속인', 관계짐작: (h.관계 === '자' ? '자녀' : /^(처|남편|배우자)$/.test(h.관계) ? '배우자' : h.관계) + '(신고서 — 법정 ' + h.법정지분 + ')', 출처: fdFrom }); });
+    U.heirsGuess = { 이름: FD.상속인.map(function (h) { return h.이름; }), from: fdFrom };
   } else U.heirsGuess = null;
+  if (fdChanged) changed = true;
   // [2026.11.26] 사건 폴더 이름의 고객(「고객명(피상속인)」의 앞) — 상속세 사건의 고객(신고인)은 대개 상속인. 가족관계증명서가 없을 때만 짐작
   //  (실사건: 증명서가 없어 고객에게 간 돈 약 2억 2천만원이 관련인으로 잡히지 않았음)
-  if (!fam && U.clientName && !finTgNameNear_(U.clientName, decedent)) { var cx = have[finRvNorm_(U.clientName)]; if (!cx || (!cx.갈래 && !cx.짐작)) upsert(U.clientName, { 짐작: '상속인', 관계짐작: '사건 고객(신고인) 짐작', 출처: '사건 폴더 이름의 고객 — 상속세 신고인은 대개 상속인(가족관계증명서로 확인)' }); }
+  if (!fam && !U.heirsGuess && U.clientName && !finTgNameNear_(U.clientName, decedent)) { var cx = have[finRvNorm_(U.clientName)]; if (!cx || (!cx.갈래 && !cx.짐작)) upsert(U.clientName, { 짐작: '상속인', 관계짐작: '사건 고객(신고인) 짐작', 출처: '사건 폴더 이름의 고객 — 상속세 신고인은 대개 상속인(가족관계증명서로 확인)' }); }
   // 의뢰 메모의 사람 — 가족관계증명서로 정해진 사람은 관계만 보탬
   //  [2026.11.25 운영 확인] 가족관계증명서에 있는 사람은 메모·보고서 글이 갈래·관계를 덮지 않음(출처 글 순서가 아니라 증명서 명단으로 가름 —
   //  운영에서 지난 보고서의 「…세입자」 글이 출처 앞에 붙어 자녀를 세입자로 덮었음)
@@ -310,7 +333,9 @@ function finAnsAll_(A, U) {
     var x = f.상대 ? byName[finRvNorm_(f.상대)] : null, L = x ? loanOf(x.이름) : null, ans = '확인 전', why = '';
     var rows = f.rows || [], pr = null, ins = null;
     rows.some(function (r) { pr = propOf(r); ins = insOf(r); return pr || ins; });
-    if (/^A/.test(f.번호)) { ans = '확인 전'; why = '받을 자료 — 요청해 받으면 「답 받음」'; }
+    // [2026.11.26] E(신고와 다른 곳)·F(조사청이 묻는 곳) — 이미 낸 소명이 있으면 「소명 냄(○차)」·뒤 안내가 다시 물으면 「다시 요청됨」(FinFiled.js)
+    if (/^[EF]/.test(f.번호)) { ans = f.fdState || '확인 전'; why = f.fdState ? '이미 낸 소명에 같은 날짜·금액이 있음' + (f.fdFrom ? ' — 「' + f.fdFrom + '」' : '') + (/다시/.test(f.fdState) ? ' · 뒤 안내가 다시 물음' : '') : /^E/.test(f.번호) ? '신고와 통장이 다름 — 까닭을 밝혀야 함' : '조사청이 묻는 곳 — 사용처·근거'; }
+    else if (/^A/.test(f.번호)) { ans = '확인 전'; why = '받을 자료 — 요청해 받으면 「답 받음」'; }
     else if (L) { ans = '소명 됨'; why = '대여(채권 — 상속재산에 넣음): ' + L.근거; }
     else if (normShare(rows) >= 0.95) { ans = '해당 없음'; why = '생계비·가족비·경조비·종교활동비 ' + finRvWon_(normSum(rows)) + '원 — 사회통념 범위면 증여 아님(상증법 §46 5호·시행령 §35④)' + (T.사회통념한도 ? '' : ', 한도는 사건 기준 탭 「사회통념한도」'); }
     else if (x && FIN_ANS_DEAL_.test(lane(x))) { ans = '해당 없음'; why = lane(x) + '(' + (x.출처 || '') + ') — 보증금·대금으로 보임'; }
@@ -331,64 +356,107 @@ function finAnsAll_(A, U) {
   });
   // 여쭐 것 — 세금이 달라지는 것만. 여기 오른 것의 그 칸(_ask)만 시트 바탕을 노랗게(세무사님 11-25 "내가 입력할 것과 아닌 것을 명확하게 구분해 줘야지")
   var asks = [], base = U.base || {};
+  // [2026.11.26] 칸 하나 — 여쭐 것마다 「지금 답」(세무사님 값이 없을 때 넥스 > GAS)·「누가」(nex·gas·빈칸)·넥스 답 열쇠(nk — 넥스가 이 열쇠로 적음)
   A.rels.forEach(function (x) { x._ask = ''; }); A.bundles.forEach(function (b) { b._ask = false; }); A.flags.forEach(function (f) { f._ask = false; }); A._askD = false;
   if (!finRvYmd_(base.상속개시일)) {
-    if (!U.guess || (U.guess.다른날 || []).length) A._askD = true;
-    if (!U.guess) asks.push({ 무엇: '상속개시일', 답안: '(서류 없음)', 근거: '사망진단서·기본증명서·초본이 사건 폴더에 없음 — 받을 자료', 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D' });
-    else if ((U.guess.다른날 || []).length) asks.push({ 무엇: '상속개시일(서류끼리 다름)', 답안: U.guess.D + (U.guess.T ? ' ' + U.guess.T : ''), 근거: U.guess.from + ' / 다른 날: ' + U.guess.다른날.join('; '), 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D2' });
+    var dNex = B.D누가 === 'nex', dAns = B.D ? B.D + (B.Dt ? ' ' + B.Dt : '') : '';
+    if (!U.guess || (U.guess.다른날 || []).length || dNex) A._askD = true;
+    if (dNex) asks.push({ 무엇: '상속개시일', 답안: dAns, 누가: 'nex', 근거: B.D짐작 + (U.guess ? ' / 서류: ' + U.guess.D + ' ' + (U.guess.from || '') : ''), 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D', nk: 'base:상속개시일' });
+    else if (!U.guess) asks.push({ 무엇: '상속개시일', 답안: '', 누가: '', 근거: '사망진단서·기본증명서·초본이 사건 폴더에 없음 — 받을 자료', 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D', nk: 'base:상속개시일' });
+    else if ((U.guess.다른날 || []).length) asks.push({ 무엇: '상속개시일(서류끼리 다름)', 답안: U.guess.D + (U.guess.T ? ' ' + U.guess.T : ''), 누가: 'gas', 근거: U.guess.from + ' / 다른 날: ' + U.guess.다른날.join('; '), 곳: '사건 기준 탭 「값 ✎」', 열쇠: 'ask:D', nk: 'base:상속개시일' });
   }
   if (U.heirsGuess && !A.rels.some(function (x) { return x.갈래 === '상속인'; })) {
     var say = U.heirSay && U.heirsGuess.이름.join('') !== U.heirSay.이름 ? ' / ' + U.heirSay.from + ': 「' + U.heirSay.글 + '」(상속포기 등 확인)' : '';
-    asks.push({ 무엇: '상속인 확정', 답안: U.heirsGuess.이름.join(' · '), 근거: U.heirsGuess.from + say, 곳: '분석대상자 탭 「갈래 ✎」(바탕이 노란 줄 — 맞으면 「상속인」, 아니면 맞는 갈래)', 열쇠: 'ask:heirs' });
-    A.rels.forEach(function (x) { if (!x.갈래 && x.짐작 === '상속인') x._ask = 'heir'; });
+    var hs = A.rels.filter(function (x) { return !x.갈래 && x.짐작 === '상속인'; }), hNex = hs.some(function (x) { return x._넥스갈래; });
+    hs.forEach(function (x) { x._ask = 'heir'; });
+    // 넥스가 상속인 아니라고 본 사람(서류 짐작에는 있음)도 이 줄에서 보임
+    var out = U.heirsGuess.이름.filter(function (n) { var x = byName[finRvNorm_(n)]; return x && x._넥스갈래 && x.짐작 !== '상속인'; });
+    asks.push({ 무엇: '상속인 확정', 답안: hs.map(function (x) { return x.이름; }).join(' · '), 누가: hNex || out.length ? 'nex' : 'gas', 근거: U.heirsGuess.from + say + (out.length ? ' / 넥스: 상속인 아님 — ' + out.join(' · ') : ''), 곳: '분석대상자 탭 「갈래 ✎」(바탕이 노란 줄 — 맞으면 「상속인」, 아니면 맞는 갈래)', 열쇠: 'ask:heirs', nk: 'rel:(이름):갈래' });
   }
-  // 큰돈이 오갔는데 누구인지 모르는 상대(③) — 가족·친척·특수관계면 §13 합산이 달라짐
+  // 큰돈이 오갔는데 누구인지 모르는 상대(③) — 가족·친척·특수관계면 §13 합산이 달라짐. 넥스가 답한 사람도 세무사님이 확정하실 때까지 남김
   (A.targets || []).forEach(function (t) {
-    var x = t.x; if (t.구분 !== 2 || !x || x.갈래 || x.짐작 || (t.기간나감 || 0) < T.큰돈) return;
+    var x = t.x; if (!x || x.갈래 || (t.기간나감 || 0) < T.큰돈) return;
+    if (!(t.구분 === 2 && !x.짐작) && !x._넥스갈래) return;
+    if (x._ask) return;
     x._ask = 'who';
-    asks.push({ 무엇: x.이름 + ' — 누구인지(가족·친척·특수관계면 사전증여 합산, ' + (B.D ? t.yrs + '년' : '전체') + ' 안 나감 ' + finRvWon_(t.기간나감) + '원)', 답안: '(모름)', 근거: '서류·통장 글자로 관계를 찾지 못함 · ' + (x.출처 || ''), 곳: '분석대상자 탭 「갈래 ✎」(바탕이 노란 줄)', 열쇠: 'ask:who:' + finRvNorm_(x.이름) });
+    asks.push({ 무엇: x.이름 + ' — 누구인지(가족·친척·특수관계면 사전증여 합산, ' + (B.D ? t.yrs + '년' : '전체') + ' 안 나감 ' + finRvWon_(t.기간나감) + '원)', 답안: x._넥스갈래 ? x.짐작 : '', 누가: x._넥스갈래 ? 'nex' : '', 근거: x._넥스갈래 ? x._넥스갈래 : '서류·통장 글자로 관계를 찾지 못함 · ' + (x.출처 || ''), 곳: '분석대상자 탭 「갈래 ✎」(바탕이 노란 줄)', 열쇠: 'ask:who:' + finRvNorm_(x.이름), nk: 'rel:' + finRvNorm_(x.이름) + ':갈래' });
   });
   A.bundles.forEach(function (b) {
     var x = byName[finRvNorm_(b.상대 || '')];
-    if (!b.판단 && x && FIN_RV_FAMILY_.test(lane(x)) && Math.abs(b.순액) >= T.큰돈 && (b._ask = true)) asks.push({ 무엇: b.이름 + (b.순액 > 0 ? ' — 대여인지 증여인지(순액 ' : ' — 무슨 돈인지(빌린 돈·갚은 돈·받은 돈, 순액 ') + finRvWon_(b.순액) + '원)', 답안: b.판단답안, 근거: b.답안근거, 곳: '묶음 탭 「판단 ✎」', 열쇠: 'ask:b:' + b.이름 });
+    if (!b.판단 && x && FIN_RV_FAMILY_.test(lane(x)) && Math.abs(b.순액) >= T.큰돈 && (b._ask = true)) asks.push({ 무엇: b.이름 + (b.순액 > 0 ? ' — 대여인지 증여인지(순액 ' : ' — 무슨 돈인지(빌린 돈·갚은 돈·받은 돈, 순액 ') + finRvWon_(b.순액) + '원)', 답안: b.판단넥스 || b.판단답안, 누가: b.판단넥스 ? 'nex' : b.판단답안 ? 'gas' : '', 근거: b.판단넥스 ? b.판단넥스근거 : b.답안근거, 곳: '묶음 탭 「판단 ✎」', 열쇠: 'ask:b:' + b.이름, nk: 'bundle:' + b.이름 });
   });
-  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태답안, 근거: f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 자동소명 밖에 더 소명되면 거래 탭 「소명 ✎」에 무엇으로 소명되는지)', 열쇠: 'ask:' + f.id }); });
+  // [2026.11.26] 조사청이 묻는 곳(F)·신고와 다른 곳(E — 받을 자료인 E2 빼고)도 여쭐 것에(소명을 이미 냈고 다시 묻지 않은 곳은 빼고)
+  A.flags.forEach(function (f) { if (/^F|^E[13-8]/.test(f.번호) && !f.상태 && !/^소명 냄/.test(f.상태답안 || '') && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 && /^F/.test(f.번호) ? '' : f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태넥스 || f.상태답안, 누가: f.상태넥스 ? 'nex' : 'gas', 근거: f.상태넥스 ? f.상태넥스근거 : (f.까닭 || '').slice(0, 160), 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 사용처는 거래 탭 그 줄 「소명 ✎」, 근거서류는 「메모 ✎」)', 열쇠: 'ask:' + f.id, nk: 'flag:' + f.id }); });
+  A.flags.forEach(function (f) { if (/^B/.test(f.번호) && !f.상태 && f.상태답안 === '확인 전' && (f._ask = true)) asks.push({ 무엇: f.짚을것 + (f.금액 ? ' · ' + finRvWon_(f.금액) + '원' : ''), 답안: f.상태넥스 || f.상태답안, 누가: f.상태넥스 ? 'nex' : 'gas', 근거: f.상태넥스 ? f.상태넥스근거 : f.까닭 || '', 곳: '짚을 곳 탭 「상태 ✎」(바탕이 노란 줄 — 자동소명 밖에 더 소명되면 거래 탭 「소명 ✎」에 무엇으로 소명되는지)', 열쇠: 'ask:' + f.id, nk: 'flag:' + f.id }); });
+  // [2026.11.26] ㉡ 성격 모름 글자 — 2년 안 나간 돈이 사건 기준 「큰돈」 이상인 글자(세무사님 글자째 성격이 없을 때)
+  (A.unknown || []).forEach(function (u) {
+    if (u.user || u.who || u.out2 < T.큰돈) return; // 사람에게 간 돈은 「누구인지」 여쭐 것으로
+    u._ask = true;
+    asks.push({ 무엇: '통장 글자 「' + u.k + '」의 성격 — 2년 안 ' + finRvWon_(u.out2) + '원(' + u.n + '줄)', 답안: u.nex || '', 누가: u.nex ? 'nex' : '', 근거: u.nex ? u.nexWhy || '넥스' : '예: ' + u.ex, 곳: '성격 모름 글자 탭 「성격 ✎」(바탕이 노란 줄)', 열쇠: 'ask:nw:' + u.k, nk: 'nw:' + u.k });
+  });
   // 분석대상자 상태 — 적으셔야 할 줄 · 답안 있는 줄 · 묻지 않는 줄을 글로도 가름
-  A.rels.forEach(function (x) { x.답안상태 = x.갈래 ? '확정(세무사님)' : x._ask ? '적으셔야 함 — 여쭐 것' : x.짐작 ? '답안(GAS) — 맞으면 안 적으셔도 됨' : '모름 — 큰돈 아님, 안 적으셔도 됨'; });
+  A.rels.forEach(function (x) { x.답안상태 = x.갈래 ? '확정(세무사님)' : x._ask ? '적으셔야 함 — 여쭐 것' : x._넥스갈래 ? '넥스 답 — 맞으면 안 적으셔도 됨' : x.짐작 ? 'GAS 답 — 맞으면 안 적으셔도 됨' : '모름 — 큰돈 아님, 안 적으셔도 됨'; });
   A.asks = asks;
 }
 
 // ============================================================
 // [2026.11.25] 넥스가 쓰는 길(계획서 D) — 세무사님이 넥스를 부르실 때만(밤·자동 넥스는 이 도구를 못 씀: job 서버 NR_READ_TOOLS_에 없음)
-//  ① 성격: 통장 글자 종류의 뜻 → GAS가 못 정한 줄에만 「(넥스)」로  ② 대상자: 답안이 빈 사람만 짐작으로(세무사님 값·GAS 답안은 안 바꿈)
+//  [2026.11.26] 칸 하나 — 넥스 답은 U.nexV(「여쭐 것」 열쇠 차례대로 · 칸 열쇠), 시트 그 칸에 보라 「넥스 · 」(세무사님 값이 있으면 안 보이고 안 셈)
+//  ① 성격: 통장 글자 종류의 뜻 → GAS가 못 정한 줄에만  ② 대상자: 갈래·관계를 넥스 답으로
 //  ③ 의견: 거래 줄 「넥스 의견」 칸. 쓴 뒤 그 사건 2단계를 바로 다시 셈해 시트·보고서에 반영
 // ============================================================
 function finNexNote_(b) {
   var c = finCase_(b.caseId), folder = DriveApp.getFolderById(c.폴더ID), S = finRvLoad_(folder), U = S.U;
-  U.nex = U.nex || { natures: {} }; var n = { 성격: 0, 대상자: 0, 의견: 0, 안씀: [] };
+  U.nex = U.nex || { natures: {} }; U.nexV = U.nexV || {};
+  var n = { 답: 0, 성격: 0, 대상자: 0, 의견: 0, 지움: 0, 안씀: [] }, at = new Date().toISOString();
+  // [2026.11.26] 넥스 답은 U.nexV 한 곳에(칸에 보라 「넥스 · 」로 보임 — 세무사님 값이 있으면 보이지 않고 셈에도 안 씀). 빈 값이면 그 넥스 답을 거둠
+  var putV = function (key, v, why, name) {
+    v = String(v == null ? '' : v).trim().slice(0, 300); if (!key) return false;
+    if (!v) { if (U.nexV[key]) { delete U.nexV[key]; n.지움++; return true; } return false; }
+    var o = U.nexV[key]; if (o && o.v === v && (o.why || '') === String(why || '').slice(0, 200)) return false;
+    U.nexV[key] = { v: v, why: String(why || '').slice(0, 200), at: at }; if (name) U.nexV[key].이름 = String(name).slice(0, 40); return true;
+  };
+  var heirGuess = ((U.heirsGuess || {}).이름 || []);
+  // ① 여쭐 것 차례대로 — 열쇠는 「여쭐 것」 탭 열쇠(ask:…) 또는 칸 열쇠(row:줄열쇠:성격|소명|메모 · rel:이름:갈래|관계 · flag:짚을곳 · bundle:묶음 · want:받을자료 · base:상속개시일 · nw:글자)
+  (Array.isArray(b.답) ? b.답 : []).slice(0, 500).forEach(function (a) {
+    var key = String(a && a.열쇠 || '').trim(), v = a && a.값, why = a && a.근거, m;
+    if (!key) return;
+    if (key === 'ask:D' || key === 'ask:D2') key = 'base:상속개시일';
+    else if (key === 'ask:heirs') { // 값 = 상속인 이름들(「 · 」로) — 서류 짐작에 있는데 값에 없는 사람은 상속인 아님으로
+      var names = String(v || '').split(/\s*[·,]\s*/).map(function (s) { return s.trim(); }).filter(String), nn = names.map(finRvNorm_);
+      names.forEach(function (nm) { if (putV('rel:' + finRvNorm_(nm) + ':갈래', '상속인', why, nm)) n.답++; });
+      heirGuess.forEach(function (nm) { if (nn.indexOf(finRvNorm_(nm)) === -1 && putV('rel:' + finRvNorm_(nm) + ':갈래', '상속인 아닌 가족·친척', (why ? why + ' — ' : '') + '넥스: 상속인 아님', nm)) n.답++; });
+      return;
+    }
+    else if ((m = /^ask:who:(.+)$/.exec(key))) key = 'rel:' + m[1] + ':갈래';
+    else if ((m = /^ask:b:(.+)$/.exec(key))) key = 'bundle:' + m[1];
+    else if ((m = /^ask:nw:(.+)$/.exec(key))) key = 'nw:' + m[1];
+    else if ((m = /^ask:(.+)$/.exec(key))) key = 'flag:' + m[1];
+    if (!/^(row:.+:(성격|소명|메모)|rel:.+:(갈래|관계)|flag:.+|bundle:.+|want:.+|base:상속개시일|nw:.+)$/.test(key)) { n.안씀.push(key + ' — 모르는 열쇠'); return; }
+    if (putV(key, v, why)) n.답++;
+  });
+  // ② (옛 방식) 통장 글자 뜻 · 대상자 · 줄 의견 — 그대로 받음
   (Array.isArray(b.성격) ? b.성격 : []).slice(0, 500).forEach(function (x) {
     var k = finRvNorm_(String(x && x.글자 || '')).replace(/\d{4,}/g, '#'), v = String(x && x.성격 || '').trim().slice(0, 30);
     if (!k || !v) return; if (U.nex.natures[k] !== v) { U.nex.natures[k] = v; n.성격++; }
   });
-  var have = {}; (U.rel || []).forEach(function (x) { have[finRvNorm_(x.이름)] = x; });
   (Array.isArray(b.대상자) ? b.대상자 : []).slice(0, 200).forEach(function (p) {
     var name = String(p && p.이름 || '').trim(); if (!name) return;
-    var x = have[finRvNorm_(name)];
-    if (!x) { x = { 이름: name, 갈래: '', 짐작: '', 관계: '', 별칭: [], 계좌: [], 출처: '넥스(세무사님 확인 전)', 상태: '' }; U.rel.push(x); have[finRvNorm_(name)] = x; }
-    var put = function (k, v) { v = String(v || '').trim(); if (v && !x[k]) { x[k] = v.slice(0, 40); return true; } return false; };
     var did = false;
-    if (!x.갈래) did = put('짐작', p.갈래) || did;
-    did = put('관계짐작', p.관계) || did;
-    if (did) { if (String(x.출처 || '').indexOf('넥스') === -1) x.출처 = (x.출처 ? x.출처 + ' · ' : '') + '넥스' + (p.근거 ? '(' + String(p.근거).slice(0, 60) + ')' : ''); n.대상자++; }
-    else n.안씀.push(name + ' — 이미 답안·세무사님 값이 있음');
+    if (p.갈래) did = putV('rel:' + finRvNorm_(name) + ':갈래', p.갈래, p.근거, name) || did;
+    if (p.관계) did = putV('rel:' + finRvNorm_(name) + ':관계', p.관계, p.근거, name) || did;
+    if (did) n.대상자++;
   });
   (Array.isArray(b.의견) ? b.의견 : []).slice(0, 500).forEach(function (o) {
     var k = String(o && o.열쇠 || '').trim(), v = String(o && o.의견 || '').trim().slice(0, 300); if (!k || !v) return;
     var row = U.rows[k] || {}; if (row.넥스 !== v) { row.넥스 = v; U.rows[k] = row; (U.nexPend = U.nexPend || {})[k] = 1; n.의견++; }
   });
-  U.nex.at = new Date().toISOString();
+  U.nex.at = at;
   finRvSave_(folder, S);
   var st = finStateLoad_(folder), rr = null;
   try { rr = finRvRun_(c, folder, st, { force: true, budgetMs: 200000 }); } catch (e) { rr = { error: String(e && e.message || e).slice(0, 160) }; }
-  return { ok: true, 적음: n, 다시셈: rr && rr.ok ? (rr.retry ? '다음 번에(줄 차례가 바뀜)' : '시트·보고서에 반영') : (rr && (rr.skip || rr.error)) || '', 안내: '넥스 값은 「(넥스)」·「넥스」 출처로 보이고 세무사님 판단으로 세지 않습니다(✎ 칸이 먼저).' };
+  var asks = ((finRvLoad_(folder).U.sum || {}).여쭐것목록 || []);
+  return { ok: true, 적음: n, 다시셈: rr && rr.ok ? (rr.retry ? '다음 번에(줄 차례가 바뀜)' : '시트·보고서에 반영') : (rr && (rr.skip || rr.error)) || '',
+    남은여쭐것: { 모두: asks.length, 넥스답: asks.filter(function (q) { return q.누가 === 'nex'; }).length, 빈칸: asks.filter(function (q) { return !q.누가; }).length },
+    안내: '넥스 답은 시트 그 칸에 보라 「넥스 · 」로 보이고 잠정으로 셈합니다. 세무사님 값(검정)이 있으면 넥스 답은 보이지도 셈하지도 않습니다. 세무사님이 「여쭐 것」 탭에서 「확정」 체크하시거나 고쳐 적으시면 확정됩니다.' };
 }

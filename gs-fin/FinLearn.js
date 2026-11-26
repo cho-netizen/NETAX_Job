@@ -64,7 +64,7 @@ function finLnAgg_(cases) {
 function finLnApplyLanes_(rels, L) {
   if (!L || !L.lanes) return 0; var n = 0;
   rels.forEach(function (x) {
-    if (x.갈래 || (x.짐작 && !x.짐작배움 && !/^(금융기관·보험|병원·요양|공과금·세금|생활 결제처|그 밖 거래처)$/.test(x.짐작))) return;
+    if (x.갈래 || x._넥스갈래 || (x.짐작 && !x.짐작배움 && !/^(금융기관·보험|병원·요양|공과금·세금|생활 결제처|그 밖 거래처)$/.test(x.짐작))) return;
     if (finLnPersonLike_(x.이름)) return;
     var h = L.lanes[finLnKey_(x.이름)]; if (!h) return;
     if (x.짐작 !== h.갈래 || !x.짐작배움) { x.짐작 = h.갈래; x.짐작배움 = true; n++; }

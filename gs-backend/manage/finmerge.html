@@ -83,6 +83,12 @@
       }, function(err){ clearTimeout(timer); throw err; });
   }
   function fmToast(msg, kind){ if (typeof showToast === 'function') showToast(msg, kind || 'info'); }
+  // [2026.11.26] 「🤖 넥스로 채우기」 — 넥스 대화창에 /금융답을 보냄(이 사건 대화). 넥스 창이 없는 화면이면 알림만
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest ? e.target.closest('#fmNexFill') : null; if (!b) return;
+    if (typeof window.nxAiAskCmd_ !== 'function'){ fmToast('넥스 대화창을 찾지 못했습니다 — 사건 화면의 넥스 대화창에서 「/금융답」을 보내 주세요.', 'error'); return; }
+    if (window.nxAiAskCmd_('/금융답')) fmToast('넥스에게 「여쭐 것」 채우기를 맡겼습니다 — 오른쪽 넥스 대화창에서 진행이 보입니다.');
+  });
   function fmOpen(caseId, caseName, tab){
     FM.caseId = caseId || ''; FM.newFormats = [];
     $('fmBack').hidden = false; $('fmResult').innerHTML = ''; $('fmProg').hidden = true;
@@ -136,6 +142,8 @@
   function fmReview(v){
     if (!v) return '<div class="fm-row fm-sub" style="margin-top:8px">2단계(사전증여·추정상속 검토)는 다음 틱에 저절로 셈합니다.</div>';
     var z = v.짚을곳 || {}, h = '<div style="margin-top:10px;border-top:1px solid var(--line,#ddd);padding-top:8px"><div class="fm-row"><b>2단계 — 과세관청이 볼 것을 먼저 추림</b> <span class="fm-sub">' + esc(v.at || '') + ' · 상속개시일 ' + esc(v.상속개시일 || '없음 — 시트 「사건 기준」 탭에 적어 주세요') + '</span></div>';
+    // [2026.11.26] 조사 사건 — 조사청이 묻는 곳(F)·신고와 다른 곳(E)을 앞에(시트 「조사청 제출용」·「신고와 맞대기」 탭)
+    if (z.F || z.E || v.조사청) h += '<div class="fm-row fm-sub"><b>조사 사건</b> — F 조사청이 묻는 곳 ' + won(z.F) + ' · E 신고와 다른 곳 ' + won(z.E) + (v.조사청 ? ' · 조사관 지정 거래 ' + won(v.조사청.지정거래) + '줄 중 거래에서 찾음 ' + won(v.조사청.찾음) + '줄(시트 「조사청 제출용」 탭)' : '') + ((v.신고맞대기 || []).length ? ' · 신고와 맞대기 ' + won(v.신고맞대기.length) + '줄(시트 「신고와 맞대기」 탭)' : '') + '</div>';
     h += '<div class="fm-row fm-sub">짚을 곳 — A 자료 빈틈 ' + won(z.A) + ' · B 추정상속 ' + won(z.B) + ' · C 사전증여 ' + won(z.C) + ' · D 큰돈 출처·행방 ' + won(z.D) + ' · 남은 것 ' + won(z.남은것) + ' · 받을 자료 ' + won(v.받을자료) + ' · 관련인 확정 ' + won((v.관련인 || {}).확정) + '/후보 ' + won((v.관련인 || {}).후보) + '</div>';
     (v.추정상속 || []).forEach(function(s){ h += '<div class="fm-row fm-sub">추정상속(§15) ' + esc(s.기간) + ' 안 — 순인출 ' + won(s.순인출) + '원 · ' + (s.기준넘음 ? '<span class="fm-warn">기준 넘음</span>' : '기준 안 넘음') + ' · 소명 ' + won(s.소명액) + ' · 미소명 ' + won(s.미소명) + ' · 추정액 ' + won(s.추정액) + '원</div>'; });
     (v.사전증여 || []).slice(0, 8).forEach(function(s){ h += '<div class="fm-row fm-sub">사전증여(§13) ' + esc(s.관련인) + '(' + esc(s.갈래) + ', ' + esc(s.합산기간) + ') — 나감 ' + won(s.나감) + ' · 들어옴 ' + won(s.들어옴) + ' · 순액 ' + won(s.순액) + '원</div>'; });
@@ -144,7 +152,10 @@
     if ((v.크게줄어든구간 || []).length) h += '<div class="fm-row fm-sub">예금이 크게 줄어든 구간 — ' + v.크게줄어든구간.map(esc).join(' · ') + ' (시트 「증감분석」 탭)</div>';
     if (v.보고서 && v.보고서.url) h += '<div class="fm-row fm-sub">보고서 — <a href="' + esc(v.보고서.url) + '" target="_blank" rel="noopener">' + esc(v.보고서.name) + '</a> (GAS 칸은 저절로 · 의견은 그 아래에)</div>';
     if ((v.큰것 || []).length) h += '<div class="fm-sub" style="margin:4px 0">짚을 곳 큰 것부터(전부는 시트 「짚을 곳」 탭):<ol style="margin:2px 0 0 18px;padding:0">' + v.큰것.slice(0, 8).map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ol></div>';
-    return h + '<div class="fm-row fm-sub">판단·소명액·분석대상자 갈래는 시트의 노란 칸(✎)에 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
+    // [2026.11.26] 여쭐 것 — 정하실 것 수(누가 답했나)·넥스로 채우기(세무사님이 누르실 때만 넥스가 답을 보라로 적음)
+    var ql = v.여쭐것목록 || [], qn = ql.filter(function(q){ return q.누가 === 'nex'; }).length, qg = ql.filter(function(q){ return q.누가 === 'gas'; }).length;
+    h += '<div class="fm-row" style="margin-top:6px;align-items:center;gap:8px"><b>정하실 것(시트 「여쭐 것」 탭) ' + won(ql.length) + '곳</b> <span class="fm-sub">넥스 답 ' + won(qn) + ' · GAS 답 ' + won(qg) + ' · 빈칸 ' + won(ql.length - qn - qg) + '</span><span style="flex:1"></span><button type="button" class="ghost-btn sm" id="fmNexFill"' + (ql.length ? '' : ' disabled') + '>🤖 넥스로 채우기</button></div>';
+    return h + '<div class="fm-row fm-sub">칸 하나에 셋이 적습니다 — 파랑 「GAS · 」 = GAS 답, 보라 「넥스 · 」 = 넥스 답, 검정 = 세무사님(확정). 답이 맞으면 「여쭐 것」 탭 「확정」 네모, 틀리면 그 칸에 고쳐 적으시면 1~2분 안에 다시 셈합니다(다시 합쳐도 지워지지 않음).</div></div>';
   }
   // 처음 보는 서식 — 짐작한 짝을 보여 드리고 한 번 정해 받아 서식표에 더한다(다음 사건부터 묻지 않음)
   function fmDrawNewFormats(){
