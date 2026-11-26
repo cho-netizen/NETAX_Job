@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 16:23 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-26 16:41 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -71647,6 +71647,37 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     new MutationObserver(function(){ if (!t_) t_ = setTimeout(function(){ t_ = 0; scan_(); }, 60); }).observe(document.body, { childList: true, subtree: true });
     scan_();
     window.nxHelpScan_ = scan_;
+  })();
+  // [2026.11.27] 손가락 기기에서 마우스 풍선(title) 설명 보기 — 세무사님 11-27 「시스템 전체를 사용자 관점에서 전수 점검해라」
+  //  점검에서 찾음: 화면 설명 170곳(25자 넘는 것)이 마우스를 올려야만 뜨는 풍선에만 있어 태블릿·폰에서는 볼 길이 없었다.
+  //  손가락 기기에서만 — 단추·칸을 0.55초 꾹 누르고 있으면 그 설명을 작은 글상자로 보이고, 그때 손을 떼도 단추는 눌리지 않는다(짧게 누르면 예전 그대로).
+  (function(){
+    var touch = false; try { touch = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+    if (!touch) return;
+    var timer = 0, sx = 0, sy = 0, shown = false, box = null;
+    function hide(){ if (box) box.style.display = 'none'; }
+    function show(text, x, y){
+      if (!box){ box = document.createElement('div'); box.className = 'nx-tip-bubble'; box.setAttribute('role', 'tooltip');
+        box.style.cssText = 'position:fixed;z-index:99999;max-width:min(320px,86vw);padding:8px 10px;border-radius:8px;background:#263238;color:#fff;font-size:13px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none;white-space:normal;';
+        document.body.appendChild(box); }
+      box.textContent = text; box.style.display = 'block';
+      var w = box.offsetWidth, h = box.offsetHeight, left = Math.max(8, Math.min(x - w / 2, window.innerWidth - w - 8)), top = y - h - 18;
+      if (top < 8) top = y + 22;
+      box.style.left = left + 'px'; box.style.top = top + 'px';
+      clearTimeout(box._t); box._t = setTimeout(hide, 5000);
+    }
+    document.addEventListener('touchstart', function(e){
+      hide(); shown = false; clearTimeout(timer);
+      if (e.touches.length !== 1) return;
+      var el = e.target && e.target.closest ? e.target.closest('[title]') : null;
+      var text = el ? String(el.getAttribute('title') || '').trim() : '';
+      if (!text || text.length < 8 || /^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+      var t = e.touches[0]; sx = t.clientX; sy = t.clientY;
+      timer = setTimeout(function(){ shown = true; show(text, sx, sy); }, 550);
+    }, { passive: true });
+    document.addEventListener('touchmove', function(e){ var t = e.touches[0]; if (t && (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10)) clearTimeout(timer); }, { passive: true });
+    document.addEventListener('touchend', function(e){ clearTimeout(timer); if (shown){ shown = false; if (e.cancelable) e.preventDefault(); } }, { passive: false });
+    document.addEventListener('contextmenu', function(e){ if (shown) e.preventDefault(); });
   })();
 </script>
 
