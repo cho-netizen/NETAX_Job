@@ -116,6 +116,13 @@ var BGQ_HANDLERS_ = {
     work_deleteCaseCalendarEvents_(a.caseId);
     const idx = rh_loadReportIndex_();
     if (idx) { const kept = idx.filter(function (x) { return x.caseId !== a.caseId; }); if (kept.length !== idx.length) rh_saveReportIndex_(kept); }
+    // [2026.11.27 플립 보완 G4] 시험용 가상사건을 지우면 그 사건의 넥스 대화도 휴지통으로(30일 안에 되살릴 수 있음) —
+    //  11-13에 가상사건·고객·폴더만 지우고 대화는 남겨, 대화 목록에 지운 가상사건 대화가 수십 개 쌓이고 사건 없는 대화 자리에 10-23 시험 대화가 남았다.
+    //  실제 고객 사건 대화는 사건을 지워도 그대로 둔다(기록).
+    if (/^가상/.test(String(a.caseName || ''))) {
+      (ai_convReadIndex_(ai_convFolder_()).list || []).filter(function (e) { return String(e.caseId || '') === String(a.caseId); })
+        .forEach(function (e) { try { ai_convDelete({ id: e.id }); } catch (x) {} });
+    }
   },
   // [2026.11.04 큰일 다섯 ⑩-2] 장부 「받을 서류」 ↔ 고객창구 점검표 맞추기
   portal_sync: function (a) { portalSyncCase_(a.caseId); },
@@ -219,7 +226,7 @@ function bgqCaseRow_(caseId) {
   for (let i = 1; i < data.length; i++) if (String(data[i][col.id]) === String(caseId)) return { col: col, row: data[i] };
   return null;
 }
-var BGQ_LABELS_ = { sms: '문자 보내기', cal_delete: '예약 일정 지우기', cal_confirm: '예약 일정 확정 색', case_calendar: '사건 달력 맞추기', improve_report: '개선 후보 보고서 다시 만들기', case_folder: '사건 폴더·고객창구 만들기', case_names: '사건 이름 맞추기(폴더·고객창구·보고서 목록)', case_std_subfolders: '신고제출 폴더 만들기', case_deleted: '지운 사건 달력·보고서 목록 정리', portal_sync: '고객창구 점검표 맞추기', case_ledger: '새 사건 장부 첫 칸', report_notice: '발행 문서 고객 알림 문자' };
+var BGQ_LABELS_ = { sms: '문자 보내기', cal_delete: '예약 일정 지우기', cal_confirm: '예약 일정 확정 색', case_calendar: '사건 달력 맞추기', improve_report: '개선 후보 보고서 다시 만들기', case_folder: '사건 폴더·고객창구 만들기', case_names: '사건 이름 맞추기(폴더·고객창구·보고서 목록)', case_std_subfolders: '신고제출 폴더 만들기', case_deleted: '지운 사건 달력·보고서 목록 정리(가상사건은 넥스 대화도)', portal_sync: '고객창구 점검표 맞추기', case_ledger: '새 사건 장부 첫 칸', report_notice: '발행 문서 고객 알림 문자' };
 
 // 적기 — key를 주면 같은 열쇠의 일은 하나만 남는다(같은 사건을 연달아 고쳐도 달력은 마지막 값으로 한 번). why는 실패 목록에 보일 짧은 설명.
 function bgEnqueue_(kind, args, key, why) {

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 02:29 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 03:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4749,20 +4749,26 @@ function nxMdOpenWindow(title, src, opts){
       return { c: c, score: score };
     }).filter(function(x){ return x.score >= 4; }).sort(function(a, b){ return b.score - a.score; }).slice(0, 3).map(function(x){ return x.c; });
   }
-  function nxCmCaseBtn_(c){
-    return '<button type="button" class="cm-btn" data-cm-case="' + nxCmEsc_(c.id) + '">' + nxCmEsc_(c.name || c.client) + '<small>' + nxCmEsc_(c.client + (c.status ? ' · ' + c.status : '')) + '</small></button>';
+  function nxCmCaseBtn_(c, cls){
+    return '<button type="button" class="cm-btn' + (cls ? ' ' + cls : '') + '" data-cm-case="' + nxCmEsc_(c.id) + '" data-cm-name="' + nxCmEsc_(c.name || c.client || '') + '">' + nxCmEsc_(c.label || c.name || c.client) + '<small>' + nxCmEsc_(c.client + (c.status ? ' · ' + c.status : '')) + '</small></button>';
   }
+  // [2026.11.27 플립 보완 G3] 지금 넥스 대화의 사건(커버화면 맨 위 띠)이 있으면 맨 위 큰 단추 한 번으로 그 사건 녹음을 시작한다(이름 말하기·고르기 없이).
+  //  누르기 전에는 녹음하지 않는다 — 밀기만으로 마이크가 켜지지 않게. 사건이 없으면 「사건 없이 녹음」을 맨 위로, 이 휴대폰에서 최근 연 사건도 단추로.
   function nxCmRenderPick_(list, note){
     nxCm_.st = 'pick';
     nxCmEl_('cmCase').textContent = '';
-    var linked = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) ? { id: nxAiConv.caseId, name: nxAiConv.caseName || '', client: '연결된 사건', status: '' } : null;
-    var shown = list || [];
-    if (!list && linked) shown = [linked];
+    var linked = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) ? { id: nxAiConv.caseId, name: nxAiConv.caseName || '', client: '지금 넥스 대화 사건', status: '' } : null;
+    var recent = (!list && typeof nxCoverRecent_ === 'function') ? nxCoverRecent_().filter(function(r){ return !linked || r.id !== linked.id; }).slice(0, 3)
+      .map(function(r){ return { id: r.id, name: r.name, client: '최근 연 사건', status: '' }; }) : [];
+    var noCase = '<button type="button" class="cm-btn' + (linked ? '' : ' gold big') + '" id="cmNoCase">사건 없이 녹음<small>보관함에 저장, 나중에 사건으로 옮김</small></button>';
     nxCmEl_('cmBody').innerHTML =
-      '<button type="button" class="cm-btn gold big" id="cmSay">고객 이름 말하기</button>' +
+      (linked && !list ? nxCmCaseBtn_(Object.assign({}, linked, { label: '🎙 ' + (typeof nxCoverCaseLabel_ === 'function' ? nxCoverCaseLabel_(linked.name) : linked.name) + ' 녹음 시작' }), 'gold big') : '') +
+      (linked || list ? '' : noCase) +
+      '<button type="button" class="cm-btn" id="cmSay">' + (linked ? '다른 고객 이름 말하기' : '고객 이름 말하기') + '</button>' +
       (note ? '<div class="cm-msg">' + note + '</div>' : '') +
-      shown.map(nxCmCaseBtn_).join('') +
-      '<button type="button" class="cm-btn" id="cmNoCase">사건 없이 녹음<small>보관함에 저장, 나중에 사건으로 옮김</small></button>';
+      (list || []).map(function(c){ return nxCmCaseBtn_(c); }).join('') +
+      recent.map(function(c){ return nxCmCaseBtn_(c); }).join('') +
+      (linked || list ? noCase : '');
   }
   function nxCmSay_(){
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -4978,7 +4984,9 @@ function nxMdOpenWindow(title, src, opts){
     if (id === 'cmSay') return nxCmSay_();
     if (cid){
       var c = (nxCm_.cases || []).filter(function(x){ return String(x.id) === cid; })[0];
-      var name = c ? (c.name || c.client) : (typeof nxAiConv !== 'undefined' && nxAiConv && String(nxAiConv.caseId) === cid ? nxAiConv.caseName : '');
+      var name = c ? (c.name || c.client) : (t.getAttribute('data-cm-name') || (typeof nxAiConv !== 'undefined' && nxAiConv && String(nxAiConv.caseId) === cid ? nxAiConv.caseName : ''));
+      // [2026.11.27 플립 보완 G3] 녹음할 사건을 고르면 넥스 대화도 그 사건으로(맨 위 띠) — 녹음 뒤 위로 밀면 그 사건을 넥스에게 물을 수 있게
+      if (typeof nxCoverCaseSet_ === 'function' && window.nxCover && !(typeof nxAiConv !== 'undefined' && nxAiConv && String(nxAiConv.caseId) === cid)) try { nxCoverCaseSet_(cid); } catch (er) {}
       return nxCmStart_(cid, name);
     }
     if (id === 'cmNoCase') return nxCmStart_('', '');
@@ -5035,8 +5043,10 @@ function nxMdOpenWindow(title, src, opts){
   .cc-sub{ font-size:13px; color:#c9d2e6; }
   .cc-msg{ font-size:14px; color:#c9d2e6; line-height:1.5; }
   .cc-case{ display:flex; gap:8px; align-items:stretch; background:rgba(255,255,255,0.06); border-radius:12px; padding:8px 10px; }
-  .cc-case .info{ flex:1; min-width:0; font-size:15px; }
-  .cc-case .info small{ display:block; font-size:13px; color:#c9d2e6; }
+  .cc-case .info{ flex:1; min-width:0; font-size:15px; border:none; background:transparent; color:#fff; text-align:left; padding:0; cursor:pointer; font-weight:600; }
+  .cc-case .info small{ display:block; font-size:13px; color:#c9d2e6; font-weight:400; }
+  .cc-case .info small.lk{ color:var(--gold-light); font-size:12.5px; }
+  .cc-case.on{ outline:2px solid var(--gold); background:rgba(201,162,39,0.18); }
   .cc-case .rec{ flex-shrink:0; width:52px; border:none; border-radius:10px; background:#b3261e; color:#fff; font-size:22px; cursor:pointer; }
   .cc-dday{ color:#ffb4b4; font-weight:700; }
   .cc-sum{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
@@ -5067,13 +5077,36 @@ function nxMdOpenWindow(title, src, opts){
       return { c: c, score: score };
     }).filter(function(x){ return x && x.score >= 4; }).sort(function(a, b){ return b.score - a.score; }).slice(0, 3).map(function(x){ return x.c; });
   }
+  function nxCcClientBtn_(c, why){
+    return '<button type="button" class="cc-btn" data-cc-client="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.성명) + '<small>' + nxCcEsc_([why, c.구분, c.전화번호].filter(Boolean).join(' · ')) + '</small></button>';
+  }
+  // [2026.11.27 플립 보완 G3] 이름을 말하기 전에 뻔한 후보부터 — 지금 넥스 대화의 사건 고객, 이 휴대폰에서 최근 연 사건 고객, 오늘 예약 고객.
+  function nxCcClientOf_(k){
+    if (!k) return null;
+    var nm = String(k.고객명 || '').replace(/\s+/g, '');
+    return (nxCc_.clients || []).filter(function(c){ return (k.고객ID && String(c.id) === String(k.고객ID)) || (nm && String(c.성명 || '').replace(/\s+/g, '') === nm); })[0] || null;
+  }
+  function nxCcQuick_(){
+    var out = [], seen = {};
+    var add = function(c, why){ if (c && !seen[c.id]){ seen[c.id] = 1; out.push({ c: c, why: why }); } };
+    var caseById = function(id){ return (nxCc_.cases || []).filter(function(k){ return String(k.id) === String(id); })[0]; };
+    var curId = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+    if (curId) add(nxCcClientOf_(caseById(curId)), '지금 넥스 대화 사건');
+    (typeof nxCoverRecent_ === 'function' ? nxCoverRecent_() : []).forEach(function(r){ add(nxCcClientOf_(caseById(r.id)), '최근 연 사건'); });
+    var today = (function(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
+    (nxCc_.bookings || []).filter(function(b){ return b && String(b.reservedDate || '').slice(0, 10) === today && b.status !== '거절' && b.status !== '취소'; }).forEach(function(b){
+      var nm = String(b.name || '').replace(/\s+/g, '');
+      add((nxCc_.clients || []).filter(function(c){ return nm && String(c.성명 || '').replace(/\s+/g, '') === nm; })[0], '오늘 ' + (b.reservedTime || '') + ' 예약');
+    });
+    return out.slice(0, 4);
+  }
   function nxCcPick_(list, note){
     nxCc_.cur = null;
-    nxCcBody_('<button type="button" class="cc-btn gold big" id="ccSay">고객 이름 말하기</button>' +
+    var quick = list ? [] : nxCcQuick_();
+    nxCcBody_((quick.length ? quick.map(function(q){ return nxCcClientBtn_(q.c, q.why); }).join('') : '') +
+      '<button type="button" class="cc-btn gold big" id="ccSay">' + (quick.length ? '다른 고객 이름 말하기' : '고객 이름 말하기') + '</button>' +
       (note ? '<div class="cc-msg">' + note + '</div>' : '') +
-      (list || []).map(function(c){
-        return '<button type="button" class="cc-btn" data-cc-client="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.성명) + '<small>' + nxCcEsc_([c.구분, c.전화번호].filter(Boolean).join(' · ')) + '</small></button>';
-      }).join(''));
+      (list || []).map(function(c){ return nxCcClientBtn_(c, ''); }).join(''));
   }
   function nxCcSay_(){
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -5112,9 +5145,14 @@ function nxMdOpenWindow(title, src, opts){
       .map(function(p){ return String(p || '').trim(); }).filter(Boolean);
     var html = '<div><div class="cc-name">' + nxCcEsc_(client.성명) + '</div><div class="cc-sub">' + nxCcEsc_([client.구분, client.주소].filter(Boolean).join(' · ')) + '</div></div>';
     html += phones.length ? phones.map(function(p){ return '<a class="cc-btn green" href="tel:' + nxCcEsc_(p.replace(/[^0-9+]/g, '')) + '">📞 ' + nxCcEsc_(p) + '</a>'; }).join('') : '<div class="cc-msg">등록된 전화번호가 없습니다.</div>';
+    // [2026.11.27 플립 보완 G3] 사건 줄을 누르면 넥스 대화가 그 사건으로 이어진다(커버화면 맨 위 띠에 보임) — 그 뒤 위로 밀면 그 사건을 넥스에게, 아래로 밀면 그 사건 녹음
+    var curCase = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+    nxCc_.shownCase = curCase;
     html += cases.length ? cases.slice(0, 5).map(function(c){
       var dd = c.상태 !== '완료' ? nxCcDday_(c.법정일) : '';
-      return '<div class="cc-case"><div class="info">' + nxCcEsc_(c.사건명) + '<small>' + nxCcEsc_(c.상태 || '') + (dd ? ' · <span class="cc-dday">법정일 ' + dd + '</span>' : '') + '</small></div>' +
+      var on = String(c.id) === String(curCase);
+      return '<div class="cc-case' + (on ? ' on' : '') + '"><button type="button" class="info" data-cc-link="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.사건명) + '<small>' + nxCcEsc_(c.상태 || '') + (dd ? ' · <span class="cc-dday">법정일 ' + dd + '</span>' : '') + '</small>' +
+        '<small class="lk">' + (on ? '🔗 지금 넥스 대화가 이 사건' : '누르면 넥스 대화를 이 사건으로') + '</small></button>' +
         (c.폴더ID ? '<button type="button" class="rec" data-cc-rec="' + nxCcEsc_(c.id) + '" aria-label="이 사건 상담 녹음">🎙</button>' : '') + '</div>';
     }).join('') : '<div class="cc-msg">연결된 사건이 없습니다.</div>';
     html += '<div id="ccSums"><div class="cc-msg">최근 상담내용 찾는 중…</div></div>';
@@ -5151,9 +5189,15 @@ function nxMdOpenWindow(title, src, opts){
   }
 
   function nxCcOpen_(){
-    if (nxCc_.cur){ return; } // 보던 고객 카드 그대로
+    if (nxCc_.cur){ // 보던 고객 카드 그대로 — 그사이 넥스 대화 사건이 바뀌었으면 표시만 새로
+      var nowCase = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+      if (nowCase !== nxCc_.shownCase) nxCcShow_(nxCc_.cur);
+      return;
+    }
     nxCcPick_();
-    nxCcLoad_().catch(function(){}); // 미리 불러 두기 — 이름을 말하는 동안 받아 둠
+    // 미리 불러 두기 — 이름을 말하는 동안 받아 둠. 다 받으면 뻔한 후보(지금·최근 사건 고객·오늘 예약)를 위에 보인다
+    var pb = nxCc_.bookings ? Promise.resolve() : callGas('list_bookings', {}).then(function(r){ nxCc_.bookings = (r && r.bookings) || []; }, function(){ nxCc_.bookings = []; });
+    Promise.all([nxCcLoad_(), pb]).then(function(){ if (!nxCc_.cur && !(nxCcEl_('ccBody') || {}).querySelector('[data-cc-client]')) nxCcPick_(); }).catch(function(){});
   }
 
   document.addEventListener('click', function(e){
@@ -5163,6 +5207,12 @@ function nxMdOpenWindow(title, src, opts){
     if (t.id === 'ccAgain') return nxCcPick_();
     var cid = t.getAttribute('data-cc-client');
     if (cid){ var c = (nxCc_.clients || []).filter(function(x){ return String(x.id) === cid; })[0]; if (c) nxCcShow_(c); return; }
+    var lid = t.getAttribute('data-cc-link');
+    if (lid){
+      var row = (nxCc_.cases || []).filter(function(x){ return String(x.id) === lid; })[0];
+      if (typeof nxCoverCaseSet_ === 'function') Promise.resolve(nxCoverCaseSet_(lid, row)).then(function(){ if (nxCc_.cur) nxCcShow_(nxCc_.cur); });
+      return;
+    }
     var rid = t.getAttribute('data-cc-rec');
     if (rid){
       var k = (nxCc_.cases || []).filter(function(x){ return String(x.id) === rid; })[0];
@@ -61572,7 +61622,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     padding:10px 12px; box-sizing:border-box; background:var(--navy); color:#fff; }
   /* 음성/문자는 탭 없이 왼쪽으로 밀어 바꾼다 — 지금 방식은 말하기 버튼 왼쪽 위 작은 아이콘으로만 */
   .nxai-talk-mic{ position:relative; }
-  .nxai-talk-md{ position:absolute; top:8px; left:10px; font-size:18px; opacity:.85; }
+  /* [2026.11.27 플립 보완 G2] 지금 답 방식은 글자로 늘 보인다(예전 작은 🔊/📝 아이콘) */
+  .nxai-talk-md{ position:absolute; bottom:10px; left:10px; font-size:14px; font-weight:700; padding:2px 9px; border-radius:12px; background:rgba(13,27,61,.14); }
+  .nxai-talk-md.text{ background:#fff3c4; color:#7a4b00; outline:2px solid #e0a800; }
   .nxai-talk-q{ align-self:stretch; font-size:14px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
   .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:17px; line-height:1.55; white-space:pre-wrap; }
   .nxai-talk-a:empty{ display:none; }
@@ -62427,6 +62479,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     chip.textContent = nxAiConv.caseId ? ('🔗 ' + (nxAiConv.caseName || '사건')) : '💬 일반 대화'; // [2026.11.14] 지금 대화가 어느 사건 대화인지(없으면 일반) — 누르면 사건 고르기
     chip.classList.toggle('linked', !!nxAiConv.caseName);
     nxAiRefreshTitle_();
+    if (typeof nxCoverBandSync_ === 'function') try { nxCoverBandSync_(); } catch (e) {} // [2026.11.27 플립 보완 G3] 커버화면 맨 위 「지금 사건」 띠
   }
 
   // [2026.10.13] 사건 화면의 사이드바는 그 화면의 사건을 자동으로 따라간다 — "A사건 화면에서 사이드바를 열고
@@ -62467,6 +62520,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
   function nxAiSyncToScreenCase_(){
     if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiGoBusy_ || nxAiAbort) return;
+    // [2026.11.27 플립 보완 G3] 접는 폰 커버화면은 화면(요약·고객 카드)에 사건이 없어 여기서 늘 관리 대화로 되돌렸다 —
+    //  커버화면의 넥스 대화는 맨 위 「지금 사건」 띠(고객 카드 사건 누르기·말로 「○○ 사건」·띠 누르기)로만 바뀐다(script.html nxCoverBandSync_)
+    if (window.nxCover) return;
     if (typeof nxAiCaseProcBusy_ === 'function' && nxAiCaseProcBusy_()) return;
     // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다(로그인 창을 덮던 사고)
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
@@ -63992,9 +64048,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return p.then(function(s){
       if (s.status === 'done'){
         nxAiJobReg_(conv.id, null);
-        return nxAiJobCall_('nexjob_ack', { id: jobId }).catch(function(){ return null; }).then(function(a){
-          opts.onDone(s.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', s.actions || [], s.usage || null, { jobId: jobId, appended: !!(a && a.appended) });
-        });
+        // [2026.11.27 플립 보완 G5] 답을 받자마자 그린다 — 예전엔 「받았다」 알리기(서버 한 번 더 왕복, 실측 약 5~10초)를 기다린 뒤에 그려
+        //  말하기 화면이 그만큼 늦게 읽었다(11-27 10:42 「말로 대답하라」: 서버 끝 10:42:42 → 받았다 10:42:52). 서버가 이미 대화에 넣었는지(appended)는
+        //  답 상태(s.appended)에 함께 오므로 알리기는 뒤에서 보낸다(서버는 1분 안에 안 받아 간 답만 대화에 넣으므로 그사이 겹칠 일 없음).
+        var reply = s.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.';
+        nxAiJobCall_('nexjob_ack', { id: jobId }).catch(function(){ return null; });
+        opts.onDone(reply, s.actions || [], s.usage || null, { jobId: jobId, appended: !!s.appended });
+        return;
       }
       var why = s.status === 'stopped' ? '멈췄습니다' : ('일하다 멈췄습니다: ' + (s.error || '알 수 없는 오류'));
       nxAiJobReg_(conv.id, null);
@@ -64017,6 +64077,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return Object.assign({
       currentView: nxAiCurrentViewLabel_(),
       aiPanel: window.nxCover ? 'side' : nxAiMode, // 커버화면 토킹모드는 짧은 답(사이드바 규칙)
+      voiceTalk: !!(window.nxCover && typeof nxAiTalkMode_ === 'function' && nxAiTalkMode_() === 'voice'), // [2026.11.27 플립 보완 G5] 첫 단락을 소리로 읽을 결론으로(Code.js [소리 답])
       currentPath: nxAiCurrentPath_(),
       linkedCase: nxAiConv.caseId ? { id: nxAiConv.caseId, name: nxAiConv.caseName } : null,
       browsedCategories: (nxAiConv.browsed || []).slice(0, 10), // [2026.11.04] 이 대화에서 이미 열람한 계산기 분야 — 서버가 그 분야 계산기를 바로 연다(열람 기록은 대화 글자에 남지 않으므로)
@@ -68938,15 +68999,44 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   var nxAiTalk_ = { state: 'idle', rec: null, watch: null, seq: 0 };
   // 답변 방식 — 'voice'(핵심만 한두 문장으로 줄여 소리로) / 'text'(글자 답을 화면에, 읽지 않음). 이 기기에 기억.
   function nxAiTalkMode_(){ return nxAiLs_('nxAiTalkMode') === 'text' ? 'text' : 'voice'; }
+  // [2026.11.27 플립 보완 G2] 지금 방식을 작은 아이콘(🔊/📝) 대신 글자로 늘 보인다 — 왼쪽 밀기로 말 없이 글 답으로 바뀌어
+  //  「말로 대답하라」 해도 글로만 답하던 일(11-27). 밀기는 그대로 두고 바뀔 때 화면 가운데 큰 글자 + 소리로 알린다.
   function nxAiTalkSyncMode_(){
     var m = nxAiTalkMode_();
-    var md = nxAiEl_('nxAiTalkMd'); if (md) md.textContent = m === 'text' ? '📝' : '🔊';
+    var md = nxAiEl_('nxAiTalkMd'); if (md){ md.textContent = m === 'text' ? '📝 글로 답함' : '🔊 소리로 답함'; md.classList.toggle('text', m === 'text'); }
   }
-  // 좌우로 밀기(script.html 커버화면 밀기)·표시 누르기로 음성 ↔ 문자 바꾸기
-  function nxAiTalkToggleMode_(){
-    nxAiLs_('nxAiTalkMode', nxAiTalkMode_() === 'text' ? 'voice' : 'text');
+  // 바뀐 방식을 알린다 — 큰 글자(script.html nxCoverFlash_)와 짧은 소리(글 답으로 바꿀 때도 「글로 답합니다」 한 마디는 소리로)
+  function nxAiTalkSayShort_(text){
+    try {
+      if (!window.speechSynthesis) return;
+      nxAiTalkStopRec_();
+      var u = new SpeechSynthesisUtterance(text); u.lang = 'ko-KR'; u.rate = 1.1;
+      var ko = (speechSynthesis.getVoices() || []).filter(function(v){ return /^ko/i.test(v.lang); })[0]; if (ko) u.voice = ko;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  function nxAiTalkSetMode_(mode, quiet){
+    nxAiLs_('nxAiTalkMode', mode === 'text' ? 'text' : 'voice');
     nxAiTalkSyncMode_();
-    if (nxAiTalk_.state === 'speak' && nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (e) {} }
+    if (nxAiTalk_.state === 'speak' && mode === 'text'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (e) {} }
+    if (quiet) return;
+    var label = mode === 'text' ? '📝 글로 답합니다' : '🔊 소리로 답합니다';
+    if (typeof nxCoverFlash_ === 'function') nxCoverFlash_(label);
+    nxAiTalkSayShort_(mode === 'text' ? '글로 답합니다' : '소리로 답합니다');
+  }
+  // 좌우로 밀기(script.html 커버화면 밀기)로 음성 ↔ 문자 바꾸기
+  function nxAiTalkToggleMode_(){ nxAiTalkSetMode_(nxAiTalkMode_() === 'text' ? 'voice' : 'text'); }
+  // [2026.11.27 플립 보완 G2·G3] 말로 하는 짧은 지시는 넥스에게 보내지 않고 화면이 바로 처리(0원) —
+  //  「말로 대답해」·「글로 보여줘」(답 방식), 「관리로」·「사건 풀어」(사건 → 관리), 「다시 사건으로」(방금 사건으로).
+  //  짧은 말(15자 안쪽)만 — 긴 질문 속 낱말은 넥스에게 그대로 간다.
+  function nxAiTalkLocalCmd_(text){
+    var s = String(text || '').replace(/[\s.,!?~]+/g, ' ').trim();
+    if (!s || s.length > 15) return false;
+    if (/^(말로|소리로|음성으로)\s*(대답|답|말|읽|해|들려)/.test(s)){ nxAiTalkSetMode_('voice'); return '소리로 답합니다'; }
+    if (/^(글로|문자로|글자로|화면으로)\s*(대답|답|보여|해|써)/.test(s)){ nxAiTalkSetMode_('text'); return '글로 답합니다'; }
+    if (/^(관리로|관리 ?대화|일반 ?대화|사건 ?(연결 ?)?풀어|사건에서 나가)/.test(s) && typeof nxCoverCaseLeave_ === 'function'){ nxCoverCaseLeave_(); return true; }
+    if (/^(다시 ?사건|사건으로 ?돌아|방금 ?사건)/.test(s) && typeof nxCoverCaseBack_ === 'function'){ nxCoverCaseBack_(); return true; }
+    return false;
   }
   function nxAiTalkSet_(state, status){
     nxAiTalk_.state = state;
@@ -69089,12 +69179,30 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiTalkBeat_.tick = setInterval(nxAiTalkTick_, 4000);
   }
   function nxAiTalkBeat_off_(){ clearInterval(nxAiTalkBeat_.dots); clearInterval(nxAiTalkBeat_.tick); nxAiTalkBeat_.dots = nxAiTalkBeat_.tick = null; }
+  // [2026.11.27 플립 보완 G5] 읽을 답 글 — 말풍선 글자에는 끝에 「🤖 모델 · 약 1원」 비용 줄이 붙어 짧은 답이면 그것까지 읽었다.
+  //  대화에 들어간 넥스 답 글을 쓰고, 없으면 말풍선 글자에서 비용 줄을 떼어 쓴다.
+  function nxAiTalkStripFoot_(t){ return String(t || '').replace(/\s*🤖[^\n]*\(\$[\d.]+\)\s*$/, '').replace(/\s*🤖[^\n]*약\s*[\d,]+원[^\n]*$/, '').trim(); }
+  function nxAiTalkReplyText_(aiCountBefore, fallback){
+    var ms = (nxAiConv && nxAiConv.messages) || [], seen = 0, last = '';
+    ms.forEach(function(m){
+      if (!m || m.role !== 'assistant' || m.divider) return;
+      var c = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.filter(function(b){ return b && b.type === 'text'; }).map(function(b){ return b.text; }).join('\n') : '');
+      if (!String(c).trim()) return;
+      seen++; last = c;
+    });
+    return (seen > aiCountBefore && last) ? String(last).trim() : nxAiTalkStripFoot_(fallback);
+  }
+  function nxAiTalkAiCount_(){ return ((nxAiConv && nxAiConv.messages) || []).filter(function(m){ return m && m.role === 'assistant' && !m.divider && (typeof m.content === 'string' ? m.content.trim() : Array.isArray(m.content)); }).length; }
   function nxAiTalkAsk_(text){
     nxAiEl_('nxAiTalkQ').textContent = text;
     nxAiEl_('nxAiTalkA').textContent = '';
+    // [2026.11.27 플립 보완 G2·G3] 답 방식·사건 드나들기 짧은 지시는 화면이 바로(넥스에게 안 보냄)
+    var lc = nxAiTalkLocalCmd_(text);
+    if (lc){ nxAiTalkSet_('idle', typeof lc === 'string' ? lc : ''); return; }
     nxAiTalkSet_('busy');
     var body = nxAiEl_('nxAiBody');
     var before = body.querySelectorAll('.nxai-msg.ai').length;
+    var aiBefore = nxAiTalkAiCount_();
     // 음성 요약이 대화 흐름을 알도록 직전 대화 몇 개(글자만)를 챙겨 둔다
     var prev = (nxAiConv.messages || []).filter(function(m){ return typeof m.content === 'string' && m.content.trim(); })
       .slice(-4).map(function(m){ return { role: m.role, text: m.content.slice(0, 300) }; });
@@ -69109,13 +69217,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var bubbles = body.querySelectorAll('.nxai-msg.ai');
       var b = bubbles.length > before ? bubbles[bubbles.length - 1] : null;
       var t = b ? (b.innerText || b.textContent || '').trim() : '';
-      if (b) nxAiEl_('nxAiTalkA').textContent = t;
+      if (b) nxAiEl_('nxAiTalkA').textContent = nxAiTalkStripFoot_(t);
       var pending = !b || nxAiAbort || /처리 중…$|생각 중|^…$/.test(t);
       if (!pending && t === lastText) stableTicks++; else stableTicks = 0;
       lastText = t;
       if (stableTicks >= 3){
         clearInterval(nxAiTalk_.watch);
-        if (mySeq === nxAiTalk_.seq) nxAiTalkAnswer_(text, t, prev, mySeq);
+        if (mySeq === nxAiTalk_.seq) nxAiTalkAnswer_(text, nxAiTalkReplyText_(aiBefore, t), prev, mySeq);
       } else if (Date.now() - started > 180000){
         clearInterval(nxAiTalk_.watch);
         nxAiTalkSet_('idle', '답이 너무 오래 걸립니다 — 화면을 펼쳐 확인해 주세요.');
@@ -69124,10 +69232,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
   // 답이 다 나왔을 때 — 문자 답이면 화면에만, 음성 답이면 서버(ai_voice_brief)가 핵심만 한두 문장으로 줄인 것을 읽는다.
   // 이미 아주 짧은 답(70자 이하·한 줄)은 줄이지 않고 그대로 읽는다(비용 0). 줄이기 실패하면 첫 문장만 읽는다.
+  // [2026.11.27 플립 보완 G5] 소리 답일 때 넥스는 첫 단락을 소리로 읽을 결론(80자 안쪽)으로 쓴다(Code.js [소리 답]) —
+  //  그 첫 단락이 140자 안쪽이면 줄이기 호출 없이 바로 읽는다(예전엔 답 뒤에 넥스를 한 번 더 불러 약 5~10초 더 걸림). 길면 예전처럼 줄여 읽는다.
   function nxAiTalkAnswer_(question, answer, prev, seq){
+    // ⚡ 바로 처리 답은 앞에 「[⚡바로 처리] …」 기록 머리가 붙는다 — 읽을 때는 뗀다(화면엔 말풍선 글 그대로)
+    answer = String(answer || '').replace(/^\s*\[[^\]\n]*바로 처리\]\s*/, '');
     if (nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); return; }
     var plain = nxAiTalkSpeechText_(answer);
     if (plain.length <= 70 && answer.trim().indexOf('\n') === -1) return nxAiTalkSpeak_(plain);
+    var lead = nxAiTalkSpeechText_(String(answer).trim().split(/\n\s*\n/)[0]);
+    if (lead && lead.length <= 140) return nxAiTalkSpeak_(lead);
     nxAiTalkSet_('busy', '핵심만 줄이는 중…');
     callGas('ai_voice_brief', { question: question, answer: answer, prev: prev }).then(function(res){
       if (seq !== nxAiTalk_.seq || nxAiTalk_.state !== 'busy') return;
@@ -71188,6 +71302,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var sc = view ? scroller_(e.target, view) : null;
       edgeTop = !sc || sc.scrollTop <= 1;
       edgeBottom = !sc || sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2;
+      // [2026.11.27 플립 보완 G1] 화면 아래 끝(방향 글자 「↑ 밀면 …」 자리)에서 밀어 올리거나 위 끝(띠 바로 밑)에서 끌어내리면
+      //  목록이 남아 있어도 바로 넘어간다 — 요약을 끝까지 내려야만 넘어가는 줄 몰라 위로 밀어도 목록만 넘어가던 것
+      if (sy > window.innerHeight - 56) edgeBottom = true;
+      if (sy < 36 + 56) edgeTop = true;
     }, { passive: true });
     document.addEventListener('touchend', function(e){
       if (!on || !window.nxCover) return;
@@ -71218,6 +71336,239 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         nxCoverSync_();
       }
     }, { passive: true });
+  })();
+
+  // ============================================================
+  // [2026.11.27 플립 보완 — 총괄관리자/_기록/플립_커버화면_보완_계획서_20261127.html, 세무사님 「권장대로 하자」]
+  //  세무사님 「밀기 기능들을 무조건 줄일 것이 아니라 제대로 사용하도록 보완하는 것이 중요하다」 /
+  //  「개별사건에 연결되었을 때는 현재 어느 사건에 연결되었는지 알 수 있어야 한다. 그리고 대화를 사건에서 관리로 빠져 나오고 다시 사건으로 들어가는 것이 수월해야 한다」.
+  //  밀기 네 방향(10-15 「탭버튼을 없애겠다는 강력한 의지」)은 그대로 두고 —
+  //  G1 어디로 밀면 무엇인지 가장자리에 얇은 글자로(누르는 단추 아님), 밀기 시작하면 그 방향 글자가 손가락을 따라 커지고 「놓으면 넘어감」.
+  //  G3 「지금 사건」 띠 — 네 화면 맨 위에 넥스 대화가 이어진 사건(없으면 「💬 관리」). 한 번 누르면 사건 → 관리 / 관리 → 방금 사건,
+  //     길게 누르면 최근 사건 큰 단추. 사건이 바뀌면 큰 글자(+소리 답일 때 소리)로 알림. 11-14 「사건 연결 또는 일반 둘뿐」 그대로(넥스 대화 = 띠).
+  // ============================================================
+  var NX_COVER_RECENT_KEY_ = 'nx_cover_recent';
+  function nxCoverRecent_(){ try { var a = JSON.parse(localStorage.getItem(NX_COVER_RECENT_KEY_) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function nxCoverRecentPush_(id, name){
+    if (!id) return;
+    var a = nxCoverRecent_().filter(function(x){ return x && x.id !== id; });
+    a.unshift({ id: id, name: name || '' });
+    try { localStorage.setItem(NX_COVER_RECENT_KEY_, JSON.stringify(a.slice(0, 6))); } catch (e) {}
+  }
+  // 사건명 「홍길동(홍길동)_양도_신고」 → 「홍길동(홍길동) 양도」(띠·알림에 쓸 짧은 이름)
+  function nxCoverCaseLabel_(name){
+    var p = String(name || '').split('_').filter(Boolean);
+    return p.length ? (p[0] + (p[1] ? ' ' + p[1] : '')) : '사건';
+  }
+  (function(){
+    var css = document.createElement('style');
+    css.textContent =
+      '#nxCoverBand,#nxCoverFlash,#nxCoverRecentSheet,.nx-cv-hint{display:none}' +
+      'body.lay-cover #centerWork > .view{top:36px}' + /* 화면들은 #centerWork 안에 꽉 차게(inset:0) 떠 있어 띠 높이만큼 내린다 */
+      'body.lay-cover #nxCoverBand{display:flex;align-items:center;gap:6px;position:fixed;top:0;left:0;right:0;height:36px;z-index:65;padding:0 10px;box-sizing:border-box;' +
+        'font-size:15px;font-weight:700;border:none;border-bottom:2px solid rgba(0,0,0,.15);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;text-align:left}' +
+      'body.lay-cover #nxCoverBand.case{background:#c9a227;color:#0D1B3D}' +
+      'body.lay-cover #nxCoverBand.mgmt{background:#2b3550;color:#fff}' +
+      '#nxCoverBand .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#nxCoverBand .act{flex-shrink:0;font-size:12.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.22)}' +
+      '#nxCoverBand.case .act{background:rgba(13,27,61,.14)}' +
+      'body.lay-cover #nxCmRecBadge{top:42px}' +
+      'body.lay-cover.nx-talk-exit #nxTalkExitBtn{top:42px}' +
+      'body.lay-cover.nx-talk-exit #nxCmRecBadge{top:80px}' +
+      'body.lay-cover .nx-cv-hint{display:block;position:fixed;z-index:60;pointer-events:none;font-size:12px;font-weight:700;color:#fff;background:rgba(13,27,61,.62);' +
+        'padding:2px 8px;border-radius:10px;opacity:.45;transition:opacity .25s,transform .12s;white-space:nowrap}' +
+      'body.lay-cover.nx-cv-touch .nx-cv-hint{opacity:.9}' + /* 평소엔 옅게(글을 가리지 않게), 손가락을 대면 또렷하게 */
+      'body.lay-cover .nx-cv-hint[hidden]{display:none}' +
+      '.nx-cv-hint.up{bottom:6px;left:50%;transform:translateX(-50%)}' +
+      '.nx-cv-hint.down{top:40px;left:50%;transform:translateX(-50%)}' +
+      '.nx-cv-hint.right{left:0;top:50%;transform:translateY(-50%);border-radius:0 10px 10px 0;transform-origin:left center}' +
+      '.nx-cv-hint.left{right:0;top:50%;transform:translateY(-50%);border-radius:10px 0 0 10px;transform-origin:right center}' +
+      'body.lay-cover.nx-cv-intro .nx-cv-hint{font-size:16px;opacity:1;background:rgba(201,162,39,.95);color:#0D1B3D}' +
+      'body.lay-cover .nx-cv-hint.ready{background:#c9a227;color:#0D1B3D;opacity:1}' +
+      'body.lay-cover #nxCoverFlash{display:flex;position:fixed;inset:0;z-index:80;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .3s}' +
+      'body.lay-cover #nxCoverFlash.on{opacity:1;transition:none}' + /* 뜰 때는 곧바로(흐려지며 사라지기만) */
+      '#nxCoverFlash b{background:rgba(13,27,61,.94);color:#fff;font-size:22px;font-weight:800;padding:18px 22px;border-radius:18px;max-width:86%;text-align:center;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.35)}' +
+      'body.lay-cover #nxCoverRecentSheet:not([hidden]){display:flex;position:fixed;inset:0;z-index:75;background:rgba(13,27,61,.97);color:#fff;flex-direction:column;gap:8px;padding:12px;box-sizing:border-box;overflow-y:auto}' +
+      '#nxCoverRecentSheet .t{font-size:16px;font-weight:700;margin-bottom:2px}' +
+      '#nxCoverRecentSheet button{border:none;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:17px;font-weight:700;min-height:52px;padding:8px 12px;text-align:left;cursor:pointer}' +
+      '#nxCoverRecentSheet button.mg{background:#2b3550}' +
+      '#nxCoverRecentSheet button.cl{background:transparent;border:1px solid rgba(255,255,255,.35);text-align:center;font-size:15px}';
+    document.head.appendChild(css);
+    var band = document.createElement('button');
+    band.type = 'button'; band.id = 'nxCoverBand'; band.className = 'mgmt';
+    band.innerHTML = '<span class="nm">💬 관리</span><span class="act"></span>';
+    var flash = document.createElement('div'); flash.id = 'nxCoverFlash'; flash.innerHTML = '<b></b>';
+    var sheet = document.createElement('div'); sheet.id = 'nxCoverRecentSheet'; sheet.hidden = true;
+    var hints = {};
+    ['up', 'down', 'left', 'right'].forEach(function(d){ var h = document.createElement('div'); h.className = 'nx-cv-hint ' + d; h.hidden = true; hints[d] = h; });
+    function mount(){
+      if (band.isConnected) return;
+      document.body.appendChild(band); document.body.appendChild(flash); document.body.appendChild(sheet);
+      Object.keys(hints).forEach(function(d){ document.body.appendChild(hints[d]); });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+
+    // ---- 큰 글자 알림(소리/글 바꿈·사건 바꿈) ----
+    var flashT = null;
+    window.nxCoverFlash_ = function(text){
+      mount();
+      flash.querySelector('b').textContent = text;
+      flash.classList.add('on');
+      clearTimeout(flashT); flashT = setTimeout(function(){ flash.classList.remove('on'); }, 1500);
+    };
+
+    // ---- G1 방향 표시 — 지금 화면에서 실제로 갈 수 있는 쪽만(아래 밀기 처리와 같은 표) ----
+    var MOVES_ = {
+      dashboard:  { up: '↑ 밀면 넥스 말하기', down: '↓ 밀면 상담 녹음', right: '고객 →' },
+      ai:         { up: '↑ 밀면 요약', down: '↓ 밀면 상담 녹음', right: '고객 →', left: '← 소리/글' },
+      consult:    { up: '↑ 밀면 돌아가기', right: '고객 →' },
+      clientcard: { up: '↑ 밀면 넥스 말하기', down: '↓ 밀면 상담 녹음', left: '← 돌아가기' }
+    };
+    var shownView = '';
+    window.nxCoverHints_ = function(){
+      mount();
+      var view = window.nxCover ? nxCoverActiveView_() : '';
+      var m = MOVES_[view] || {};
+      Object.keys(hints).forEach(function(d){ var h = hints[d]; h.textContent = m[d] || ''; h.hidden = !m[d]; h.classList.remove('ready'); h.style.transform = ''; });
+      shownView = view;
+    };
+    function intro(){
+      if (!window.nxCover) return;
+      document.body.classList.add('nx-cv-intro');
+      setTimeout(function(){ document.body.classList.remove('nx-cv-intro'); }, 2000);
+    }
+    // 밀기 따라오기 — 손가락이 가는 쪽 글자가 커지고, 넘어갈 만큼 밀면 금색(놓으면 넘어감)
+    var sx = 0, sy = 0, tracking = false, atTop = true, atBottom = true;
+    var BASE_ = { up: 'translateX(-50%)', down: 'translateX(-50%)', left: 'translateY(-50%)', right: 'translateY(-50%)' };
+    document.addEventListener('touchstart', function(e){
+      tracking = !!window.nxCover && e.touches.length === 1 && !!(e.target.closest && e.target.closest('#centerWork'));
+      if (!tracking) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      // 위 밀기 처리와 같은 조건 — 요약·고객 카드는 넘길 목록이 남았으면 넘기기가 먼저(그때는 글자를 키우지 않음)
+      atTop = atBottom = true;
+      var v = document.querySelector('#centerWork > .view.active');
+      for (var n = e.target; v && n && n !== v.parentNode; n = n.parentNode){
+        if (n.nodeType !== 1) continue;
+        var oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 2){ atTop = n.scrollTop <= 1; atBottom = n.scrollTop + n.clientHeight >= n.scrollHeight - 2; break; }
+      }
+      if (sy > window.innerHeight - 56) atBottom = true; // 아래 끝·위 끝에서 밀면 바로 넘어감(위 밀기 처리와 같음)
+      if (sy < 36 + 56) atTop = true;
+      document.body.classList.add('nx-cv-touch');
+    }, { passive: true });
+    document.addEventListener('touchmove', function(e){
+      if (!tracking || !window.nxCover || e.touches.length !== 1) return;
+      var dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+      var dir = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'up' : 'down') : (dx < 0 ? 'left' : 'right');
+      var dist = Math.max(Math.abs(dx), Math.abs(dy));
+      var view = nxCoverActiveView_();
+      var blocked = (view !== 'ai' && view !== 'consult') && ((dir === 'up' && !atBottom) || (dir === 'down' && !atTop));
+      Object.keys(hints).forEach(function(d){
+        var h = hints[d]; if (h.hidden) return;
+        if (d !== dir || dist < 12 || blocked){ h.classList.remove('ready'); h.style.transform = BASE_[d]; return; }
+        var k = 1 + Math.min(dist / 60, 1) * 0.5;
+        h.style.transform = BASE_[d] + ' scale(' + k.toFixed(2) + ')';
+        h.classList.toggle('ready', dist > 60);
+      });
+    }, { passive: true });
+    function endTrack(){ tracking = false; document.body.classList.remove('nx-cv-touch'); setTimeout(function(){ if (window.nxCoverHints_) nxCoverHints_(); }, 30); }
+    document.addEventListener('touchend', endTrack, { passive: true });
+    document.addEventListener('touchcancel', endTrack, { passive: true });
+
+    // ---- G3 지금 사건 띠 ----
+    var lastCaseId = null, lastAnnounced = null;
+    window.nxCoverBandSync_ = function(){
+      mount();
+      var conv = (typeof nxAiConv !== 'undefined' && nxAiConv) || {};
+      var cid = conv.caseId || '', cname = conv.caseName || '';
+      if (cid) nxCoverRecentPush_(cid, cname);
+      var nm = band.querySelector('.nm'), act = band.querySelector('.act');
+      if (cid){
+        band.className = 'case';
+        nm.textContent = '🔗 ' + nxCoverCaseLabel_(cname);
+        act.textContent = '관리로';
+        band.title = '지금 넥스 대화: ' + cname + ' — 누르면 관리 대화로, 길게 누르면 최근 사건';
+      } else {
+        var back = nxCoverRecent_()[0];
+        band.className = 'mgmt';
+        nm.textContent = '💬 관리';
+        act.textContent = back ? '↩ 방금 사건: ' + nxCoverCaseLabel_(back.name) : '사건 고르기';
+        band.title = '지금 넥스 대화: 관리(사건 없음) — 누르면 방금 사건으로, 길게 누르면 최근 사건';
+      }
+      // 사건이 바뀌면 알린다(처음 그릴 때는 조용히) — 소리 답이면 소리로도
+      if (lastCaseId !== null && cid !== lastCaseId && window.nxCover && lastAnnounced !== cid){
+        var msg = cid ? nxCoverCaseLabel_(cname) + ' 사건 대화입니다' : '관리 대화입니다';
+        // 말하기 화면에 남은 앞 대화의 물음·답을 지우고 듣기를 멈춘다(앞 사건 답이 새 대화 답처럼 보이지 않게)
+        try {
+          if (typeof nxAiTalk_ !== 'undefined' && nxAiTalk_.state === 'listen' && typeof nxAiTalkStopRec_ === 'function'){ nxAiTalkStopRec_(); nxAiTalkSet_('idle'); }
+          var tq = document.getElementById('nxAiTalkQ'), ta = document.getElementById('nxAiTalkA');
+          if (tq) tq.textContent = ''; if (ta) ta.textContent = '';
+          // 지금 보고 있는 녹음 고르기·고객 카드도 새 지금 사건으로 다시 그린다(녹음 중·올리는 중이면 건드리지 않음)
+          var vw = nxCoverActiveView_();
+          if (vw === 'consult' && typeof nxCm_ !== 'undefined' && nxCm_.st === 'pick' && typeof nxCmRenderPick_ === 'function') nxCmRenderPick_();
+          if (vw === 'clientcard' && typeof nxCc_ !== 'undefined' && nxCc_.cur && typeof nxCcShow_ === 'function') nxCcShow_(nxCc_.cur);
+        } catch (e) {}
+        window.nxCoverFlash_((cid ? '🔗 ' : '💬 ') + msg);
+        if (typeof nxAiTalkMode_ === 'function' && nxAiTalkMode_() === 'voice' && typeof nxAiTalkSayShort_ === 'function'
+          && !(typeof nxAiTalk_ !== 'undefined' && (nxAiTalk_.state === 'listen' || nxAiTalk_.state === 'speak'))) nxAiTalkSayShort_(msg);
+        lastAnnounced = cid;
+      }
+      lastCaseId = cid;
+    };
+    function busy(){ return typeof nxAiAbort !== 'undefined' && nxAiAbort; }
+    window.nxCoverCaseSet_ = function(id, row){
+      if (!id || typeof nxAiGoConv_ !== 'function') return Promise.resolve(false);
+      if (busy()){ window.nxCoverFlash_('넥스가 답하는 중입니다 — 끝난 뒤에 바꿉니다'); return Promise.resolve(false); }
+      return nxAiGoConv_(id, row || null);
+    };
+    window.nxCoverCaseLeave_ = function(){
+      if (typeof nxAiGoConv_ !== 'function') return;
+      if (busy()){ window.nxCoverFlash_('넥스가 답하는 중입니다 — 끝난 뒤에 바꿉니다'); return; }
+      if (!((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId){ window.nxCoverFlash_('💬 지금 관리 대화입니다'); return; }
+      nxAiGoConv_('');
+    };
+    window.nxCoverCaseBack_ = function(){
+      var cur = ((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId || '';
+      var back = nxCoverRecent_().filter(function(x){ return x.id !== cur; })[0];
+      if (!back){ openSheet(); return; }
+      window.nxCoverCaseSet_(back.id);
+    };
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function openSheet(){
+      var cur = ((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId || '';
+      var rec = nxCoverRecent_().filter(function(x){ return x.id !== cur; }).slice(0, 3);
+      sheet.innerHTML = '<div class="t">넥스 대화 고르기</div>' +
+        rec.map(function(x){ return '<button type="button" data-cv-case="' + esc(x.id) + '">🔗 ' + esc(nxCoverCaseLabel_(x.name)) + '</button>'; }).join('') +
+        (rec.length ? '' : '<div style="font-size:14px;color:#c9d2e6;">' + (cur ? '다른 최근 사건이 없습니다' : '최근 사건이 없습니다') + ' — 오른쪽으로 밀어 고객 카드에서 사건을 누르거나, 넥스에게 「○○ 사건」이라고 말씀하세요.</div>') +
+        (cur ? '<button type="button" class="mg" data-cv-case="">💬 관리 대화로</button>' : '') +
+        '<button type="button" class="cl" data-cv-close="1">닫기</button>';
+      sheet.hidden = false;
+    }
+    sheet.addEventListener('click', function(e){
+      var b = e.target.closest && e.target.closest('button'); if (!b) return;
+      sheet.hidden = true;
+      if (b.hasAttribute('data-cv-close')) return;
+      var id = b.getAttribute('data-cv-case');
+      if (id) window.nxCoverCaseSet_(id); else window.nxCoverCaseLeave_();
+    });
+    // 한 번 누르기 = 드나들기, 길게(0.55초) 누르기 = 최근 사건
+    var pressT = null, longDone = false;
+    band.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    band.addEventListener('pointerdown', function(){ longDone = false; clearTimeout(pressT); pressT = setTimeout(function(){ longDone = true; openSheet(); }, 550); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){ band.addEventListener(ev, function(){ clearTimeout(pressT); }); });
+    band.addEventListener('click', function(){
+      if (longDone){ longDone = false; return; }
+      var cur = ((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId || '';
+      if (cur) window.nxCoverCaseLeave_(); else window.nxCoverCaseBack_();
+    });
+
+    // 커버화면에 들어오거나 화면이 바뀌면 표시를 맞춘다
+    document.addEventListener('nx-cover-change', function(e){
+      if (!window.nxCover){ sheet.hidden = true; return; }
+      nxCoverHints_(); nxCoverBandSync_(); intro();
+    });
+    setInterval(function(){ if (window.nxCover && nxCoverActiveView_() !== shownView) nxCoverHints_(); }, 600);
+    setTimeout(function(){ if (window.nxCover){ nxCoverHints_(); nxCoverBandSync_(); intro(); } }, 0);
   })();
 
   // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
