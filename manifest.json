@@ -18,5 +18,46 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "file_handlers": [
+    {
+      "action": "https://job.netax.kr/app/",
+      "accept": {
+        "application/pdf": [
+          ".pdf"
+        ],
+        "image/jpeg": [
+          ".jpg",
+          ".jpeg"
+        ],
+        "image/png": [
+          ".png"
+        ],
+        "application/zip": [
+          ".zip"
+        ],
+        "application/x-hwp": [
+          ".hwp"
+        ],
+        "application/hwp+zip": [
+          ".hwpx"
+        ],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+          ".xlsx"
+        ],
+        "application/vnd.ms-excel": [
+          ".xls"
+        ],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+          ".docx"
+        ],
+        "application/msword": [
+          ".doc"
+        ]
+      }
+    }
+  ],
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
 }

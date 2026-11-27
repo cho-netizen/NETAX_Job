@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 02:29 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 04:16 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1664,6 +1664,703 @@
       <!-- [2026.10.08] AI탭 — aichat.html의 AI 화면(#nxAi)이 이 메뉴를 열면 여기로, 다른 메뉴에선 오른쪽 사이드바로 옮겨간다 -->
       <div class="view" id="view-ai"><div id="nxAiTabHost"></div></div>
       <!-- [2026.10.20] 공용 보고서 렌더러 — 작성관리·증빙확보·AI탭이 쓴다. 작성관리가 이 파일의 상수·함수를 쓰므로 먼저 둔다 -->
+      <!-- [2026-11-27] 한 보기 창 — 넥스시스템 밖(드라이브 새 탭·한컴독스·탐색기·압축 프로그램·지메일)으로 나가지 않고 파일을 보고·풀고·내려받는다.
+     근거: 세무사님 11-27 「넥스시스템만으로도 완전한 독립적인 업무처리가 가능하도록 시스템을 개선하고 …」 → 계획서
+     총괄관리자/_기록/넥스_독립업무처리_기기별_전수검사_계획서_20261127.html(A 보기·B 압축·C 파일 다루기·D 메일·6단계 밖으로 나간 횟수) → 「권장대로 하자」.
+     · 서류 화면·넥스 창·사건처리·보고서 허브의 「파일보기」·「원문 열기」가 모두 nxFV.open 하나를 부른다(화면마다 따로 놀던 보기 창을 하나로).
+     · PDF = pdf.js(이미 서류 화면이 쓰는 3.11.174) · 한글 = rhwp(MIT, 11-27 실제 한글 파일로 hwp.js와 견줌 — HWPX까지 모양 그대로) · 압축 = zip.js(BSD)
+     · 워드·파워포인트·녹음·동영상은 구글 드라이브 미리보기를 이 창 「안」에(새 탭 아님). 구글 문서·시트 「고치기」만 구글 창으로(구글이 다른 창 안에 못 넣게 막음 — 감수).
+     · 넥스 카드 file_view·zip_unzip·mail_attach_save와 같은 서버 입구(Standalone.js). -->
+<style>
+  .nxfv-ov{ position:fixed; inset:0; z-index:9500; background:rgba(8,18,38,.72); display:flex; align-items:center; justify-content:center; }
+  .nxfv-panel{ background:var(--panel, #fff); color:var(--ink, #111); width:96%; max-width:1180px; height:94%; max-height:1400px; /* vw·vh는 기기별 글자 크기(zoom)에서 넘쳐 % */ border-radius:10px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.4); }
+  body.lay-phone .nxfv-panel{ width:100%; max-width:none; height:100%; max-height:none; border-radius:0; }
+  .nxfv-head{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line, #ddd); background:var(--bg-soft, #f4f6fa); }
+  .nxfv-title{ flex:1 1 200px; min-width:120px; font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .nxfv-tools{ display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+  .nxfv-btn{ min-width:32px; height:30px; padding:0 8px; border:1px solid var(--line, #ccd); border-radius:6px; background:var(--panel, #fff); color:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .nxfv-btn:hover{ background:var(--hover, #eef3ff); }
+  .nxfv-btn[disabled]{ opacity:.4; cursor:default; }
+  .nxfv-btn.pri{ background:var(--navy, #0D1B3D); color:#fff; border-color:transparent; }
+  .nxfv-sep{ width:1px; height:22px; background:var(--line, #ccd); margin:0 2px; }
+  .nxfv-info{ font-size:12px; color:var(--muted, #667); white-space:nowrap; }
+  .nxfv-body{ flex:1; overflow:auto; position:relative; background:var(--viewer-bg, #e7eaf0); -webkit-overflow-scrolling:touch; }
+  .nxfv-body.plain{ background:var(--panel, #fff); }
+  .nxfv-page{ margin:10px auto; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.25); position:relative; }
+  .nxfv-page canvas, .nxfv-page svg, .nxfv-page img{ display:block; width:100%; height:auto; }
+  .nxfv-page.hit{ outline:3px solid #f0a000; }
+  .nxfv-img{ display:block; margin:10px auto; max-width:none; transform-origin:center center; }
+  .nxfv-frame{ width:100%; height:100%; border:0; display:block; background:#fff; }
+  .nxfv-msg{ padding:24px; font-size:14px; line-height:1.6; }
+  .nxfv-pre{ white-space:pre-wrap; padding:16px 20px; font-size:13.5px; line-height:1.6; margin:0; background:#fff; color:#111; }
+  .nxfv-tbl{ border-collapse:collapse; font-size:12.5px; background:#fff; margin:8px; }
+  .nxfv-tbl td, .nxfv-tbl th{ border:1px solid #cfd5df; padding:2px 6px; white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis; color:#111; }
+  .nxfv-tbl th{ background:#eef1f6; position:sticky; top:0; z-index:1; }
+  .nxfv-tbl td.ed{ background:#fff8d6; }
+  .nxfv-tbl td[contenteditable="true"]:focus{ outline:2px solid #4a7fd6; }
+  .nxfv-zip{ width:100%; border-collapse:collapse; font-size:13px; background:var(--panel, #fff); }
+  .nxfv-zip td, .nxfv-zip th{ border-bottom:1px solid var(--line, #e3e6ec); padding:6px 8px; text-align:left; white-space:nowrap; }
+  .nxfv-zip td.nm{ white-space:normal; word-break:break-all; }
+  .nxfv-zip tr.clk:hover{ background:var(--hover, #eef3ff); cursor:pointer; }
+  .nxfv-note{ font-size:12px; color:var(--muted, #667); padding:6px 10px; }
+  .nxfv-find{ height:28px; width:140px; padding:0 6px; border:1px solid var(--line, #ccd); border-radius:6px; }
+  .nxfv-mail{ padding:10px 14px; }
+  .nxfv-mail .msg{ border:1px solid var(--line, #e3e6ec); border-radius:8px; margin:0 0 10px; background:var(--panel, #fff); }
+  .nxfv-mail .mh{ padding:6px 10px; font-size:12.5px; color:var(--muted, #556); border-bottom:1px solid var(--line, #e3e6ec); display:flex; flex-wrap:wrap; gap:4px 12px; }
+  .nxfv-mail .mb{ padding:10px; white-space:pre-wrap; font-size:13.5px; line-height:1.55; max-height:46vh; overflow:auto; }
+  .nxfv-mail .ma{ padding:6px 10px; border-top:1px dashed var(--line, #e3e6ec); font-size:13px; }
+  .nxfv-mail .ma label{ display:inline-flex; align-items:center; gap:4px; margin:2px 10px 2px 0; }
+  .nxfv-dropzone{ outline:3px dashed #4a7fd6 !important; outline-offset:-6px; background:rgba(74,127,214,.06) !important; }
+</style>
+<script>
+(function(){
+  var FV = window.nxFV = window.nxFV || {};
+  var PDF_MAX_ = 15 * 1024 * 1024; // 서버 readFileBinary 한도와 같음
+  var ZIPJS_ = 'https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.52/dist/zip-full.min.js';
+  var RHWP_ = 'https://cdn.jsdelivr.net/npm/@rhwp/core@0.9.1/rhwp.js';
+  var RHWP_WASM_ = 'https://cdn.jsdelivr.net/npm/@rhwp/core@0.9.1/rhwp_bg.wasm';
+  function esc(s){ return typeof escapeHtml === 'function' ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function say(m, t){ if (typeof toast === 'function') toast(m, t); }
+  function fsize(n){ if (typeof formatFileSize === 'function') return formatFileSize(n); n = Number(n) || 0; return n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
+  FV.dev = function(){ var b = document.body.classList; if (b.contains('lay-phone') || b.contains('lay-cover')) return '폰'; if (b.contains('lay-tablet')) return '태블릿'; return innerWidth < 600 ? '폰' : 'PC'; };
+
+  // ---------- 종류 가르기 ----------
+  FV.kindOf = function(f){
+    var n = String(f.name || '').toLowerCase(), mt = String(f.mimeType || '').toLowerCase();
+    if (/\.(hwpx|docx|xlsx|pptx)$/.test(n)) { /* 겉은 zip이지만 문서 */ }
+    else if (/\.zip$/.test(n) || /(^|\/)(x-)?zip(-compressed)?$/.test(mt)) return 'zip';
+    if (/\.(7z|rar|alz|egg|tar|gz|tgz|bz2|xz)$/.test(n)) return 'archive';
+    if (mt === 'application/pdf' || /\.pdf$/.test(n)) return 'pdf';
+    if (/\.(hwp|hwpx)$/.test(n) || mt.indexOf('hwp') !== -1) return 'hwp';
+    if (mt === 'application/vnd.google-apps.spreadsheet') return 'gsheet';
+    if (mt === 'application/vnd.google-apps.document' || mt === 'application/vnd.google-apps.presentation') return 'gdoc';
+    if (/\.(xlsx|xls|xlsm)$/.test(n) || mt === 'application/vnd.ms-excel' || mt.indexOf('spreadsheetml') !== -1) return 'excel';
+    if (/\.(heic|heif|tif|tiff)$/.test(n)) return 'drive'; // 브라우저가 못 그리는 사진 — 드라이브 미리보기
+    if (mt.indexOf('image/') === 0 || /\.(jpe?g|png|gif|bmp|webp)$/.test(n)) return 'image';
+    if (/\.(md|txt|json|csv|tsv|html?|xml|log)$/.test(n) || mt.indexOf('text/') === 0) return 'text';
+    if (mt.indexOf('audio/') === 0 || mt.indexOf('video/') === 0 || /\.(mp3|m4a|wav|aac|ogg|mp4|mov|webm|avi)$/.test(n)) return 'media';
+    return 'drive'; // 워드·파워포인트·그 밖 — 드라이브 미리보기를 창 안에
+  };
+
+  // ---------- 파일 내용 받기 ----------
+  var binCache_ = [];
+  FV.readBin = function(f){
+    var hit = binCache_.filter(function(x){ return x.id === f.id; })[0];
+    if (hit) return Promise.resolve(hit.bytes);
+    return callGas('readFileBinary', { fileId: f.id }).then(function(res){
+      if (!res || res.error) throw new Error((res && res.error) || '파일을 받지 못했습니다');
+      var bin = atob(res.base64), u = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      if (!f.mimeType && res.mimeType) f.mimeType = res.mimeType;
+      binCache_.unshift({ id: f.id, bytes: u }); if (binCache_.length > 4) binCache_.pop();
+      return u;
+    });
+  };
+  function bytesToB64_(u){ var s = ''; for (var i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+  FV.bytesToB64 = bytesToB64_;
+  function loadScript_(src, globalName){
+    if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
+    return new Promise(function(ok, no){
+      var s = document.createElement('script'); s.src = src; s.async = true;
+      s.onload = function(){ ok(globalName ? window[globalName] : true); };
+      s.onerror = function(){ no(new Error('도구를 불러오지 못했습니다(인터넷 연결 확인): ' + src.split('/').slice(-3, -1).join('/'))); };
+      document.head.appendChild(s);
+    });
+  }
+  function zipjs_(){ return loadScript_(ZIPJS_, 'zip').then(function(z){ try { z.configure({ useWebWorkers: false }); } catch (e) {} return z; }); }
+  var rhwpP_ = null;
+  function rhwp_(){
+    if (rhwpP_) return rhwpP_;
+    if (!globalThis.measureTextWidth){ var cx = null; globalThis.measureTextWidth = function(font, text){ if (!cx) cx = document.createElement('canvas').getContext('2d'); cx.font = font; return cx.measureText(text).width; }; }
+    rhwpP_ = import(RHWP_).then(function(m){ return m.default({ module_or_path: RHWP_WASM_ }).then(function(){ return m; }); }).catch(function(e){ rhwpP_ = null; throw e; });
+    return rhwpP_;
+  }
+
+  // ---------- 밖으로 나간 횟수 세기(6단계) ----------
+  //  바깥 주소로 새 창을 열 때마다 「무엇을 하려고·어느 기기」를 서버에 센다(주소·파일 이름은 안 보냄). 로그인 전에는 안 부른다(로그인 창 사고 10-14).
+  function extCat_(u){
+    var h = u.hostname, p = u.pathname;
+    if (/drive\.google\.com$/.test(h)) return /\/folders\//.test(p) ? '드라이브 폴더' : (/uc$|export=download/.test(p + u.search) ? '큰 파일 내려받기' : '드라이브 파일 보기');
+    if (/docs\.google\.com$/.test(h)) return /\/edit/.test(p) ? '구글 문서·시트 고치기' : '구글 문서 보기';
+    if (/mail\.google\.com$/.test(h)) return '지메일';
+    if (/calendar\.google\.com$/.test(h)) return '구글 달력';
+    if (/tasks\.google\.com$/.test(h)) return '구글 할 일';
+    if (/law\.go\.kr$/.test(h)) return '법령 원문(법제처)';
+    if (/nts\.go\.kr$/.test(h)) return '국세청';
+    if (/hometax\.go\.kr$/.test(h)) return '홈택스';
+    if (/wetax\.go\.kr$/.test(h)) return '위택스';
+    if (/hancomdocs\.com$/.test(h)) return '한컴독스';
+    if (/naver\.com$/.test(h)) return '네이버';
+    if (/eum\.go\.kr$/.test(h)) return '토지이음';
+    return '그 밖 사이트';
+  }
+  FV.logOut = function(url){
+    try {
+      var u = new URL(url, location.href);
+      if (!/^https?:$/.test(u.protocol) || u.hostname === location.hostname || /(^|\.)netax\.kr$/.test(u.hostname) || /googleusercontent\.com$|script\.google\.com$/.test(u.hostname)) return;
+      if (!sessionStorage.getItem('nxManageSessionToken')) return;
+      callGas('sf_ext_log', { cat: extCat_(u), dev: FV.dev(), host: u.hostname }).catch(function(){});
+    } catch (e) {}
+  };
+  // 드라이브 파일·폴더 주소는 바깥으로 나가지 않고 안에서 연다(A5 — 화면마다 따로 박힌 「원문 열기」·「📂 폴더 열기」 링크를 한 곳에서 붙잡는다).
+  //  파일 → 한 보기 창(nxFV.openById) / 폴더 → 서류 화면에서 그 폴더. 구글 문서 「고치기」(/edit)·큰 파일 내려받기(uc)는 그대로 바깥.
+  function driveInside_(url){
+    var m = /^https:\/\/drive\.google\.com\/file\/d\/([\w-]{10,})\/(view|preview)/.exec(url || '');
+    if (m){ FV.openById(m[1]); return true; }
+    var g = /^https:\/\/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([\w-]{10,})/.exec(url || '');
+    if (g && typeof docsNavigateById_ === 'function' && typeof showView === 'function'){ closeCur_(); showView('docs'); docsNavigateById_(g[1]); return true; }
+    return false;
+  }
+  if (!window.__nxfvOpenWrapped){
+    window.__nxfvOpenWrapped = true;
+    var origOpen = window.open;
+    window.open = function(url){
+      if (url && typeof url === 'string'){ if (driveInside_(url)) return null; FV.logOut(url); }
+      return origOpen.apply(window, arguments);
+    };
+    document.addEventListener('click', function(e){
+      var a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a || a.hasAttribute('download')) return;
+      if (a.target === '_blank' || e.ctrlKey || e.metaKey){
+        if (!e.shiftKey && driveInside_(a.href)){ e.preventDefault(); e.stopPropagation(); return; }
+        FV.logOut(a.href);
+      }
+    }, true);
+  }
+  // 이름·종류를 모를 때(링크·넥스 카드) — 파일을 한 번 받아 종류를 알아내 연다(받은 내용은 그대로 보기에 씀)
+  FV.openById = function(id, name){
+    if (name){ FV.open({ id: id, name: name }); return; }
+    say('파일을 여는 중…');
+    callGas('readFileBinary', { fileId: id }).then(function(res){
+      if (!res || res.error){ FV.open({ id: id, name: '파일', mimeType: '' }); return; } // 15MB 넘음 등 — 드라이브 미리보기를 창 안에
+      var bin = atob(res.base64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      binCache_.unshift({ id: id, bytes: u }); if (binCache_.length > 4) binCache_.pop();
+      FV.open({ id: id, name: res.name || '파일', mimeType: res.mimeType || '', sizeBytes: u.length });
+    }).catch(function(){ FV.open({ id: id, name: '파일', mimeType: '' }); });
+  };
+
+  // ---------- 창 틀 ----------
+  var cur_ = null; // { f, opts, el, body, tools, info, cleanup:[] }
+  function closeCur_(){
+    if (!cur_) return;
+    (cur_.cleanup || []).forEach(function(fn){ try { fn(); } catch (e) {} });
+    cur_.el.remove(); cur_ = null;
+    document.removeEventListener('keydown', onKey_, true);
+  }
+  FV.close = closeCur_;
+  function onKey_(e){
+    if (!cur_) return;
+    var t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) && e.key !== 'Escape') return;
+    if (document.getElementById('nxDialogOverlay')) return; // 물음 창이 떠 있으면 그 창이 먼저
+    if (e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); if (cur_.back) cur_.back(); else closeCur_(); }
+    else if (e.key === 'ArrowRight' && cur_.next){ e.preventDefault(); cur_.next(); }
+    else if (e.key === 'ArrowLeft' && cur_.prev){ e.preventDefault(); cur_.prev(); }
+  }
+  function btn_(label, title, fn, cls){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxfv-btn' + (cls ? ' ' + cls : ''); b.textContent = label; if (title) b.title = title; b.addEventListener('click', function(e){ e.stopPropagation(); fn(b); }); return b; }
+  function sep_(){ var s = document.createElement('span'); s.className = 'nxfv-sep'; return s; }
+  function frame_(title){
+    closeCur_();
+    var ov = document.createElement('div'); ov.className = 'nxfv-ov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', title);
+    ov.innerHTML = '<div class="nxfv-panel"><div class="nxfv-head"><div class="nxfv-title"></div><span class="nxfv-info"></span><div class="nxfv-tools"></div></div><div class="nxfv-body"></div></div>';
+    ov.querySelector('.nxfv-title').textContent = title; ov.querySelector('.nxfv-title').title = title;
+    ov.addEventListener('mousedown', function(e){ if (e.target === ov) ov.__downOut = true; });
+    ov.addEventListener('click', function(e){ if (e.target === ov && ov.__downOut) closeCur_(); ov.__downOut = false; });
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', onKey_, true);
+    cur_ = { el: ov, body: ov.querySelector('.nxfv-body'), tools: ov.querySelector('.nxfv-tools'), info: ov.querySelector('.nxfv-info'), cleanup: [] };
+    return cur_;
+  }
+  function addClose_(c){ c.tools.appendChild(btn_('✕', '닫기(Esc)', closeCur_)); }
+  function addT_(c, el){ if (c.endMark && c.endMark.parentNode === c.tools) c.tools.insertBefore(el, c.endMark); else c.tools.appendChild(el); return el; }
+
+  // ---------- 열기 ----------
+  // f: {id, name, mimeType, url, sizeBytes, folderId?}  opts: {siblings:[파일...], folderId, from}
+  FV.open = function(f, opts){
+    opts = opts || {};
+    if (!f || !f.id){ say('열 파일이 없습니다.'); return; }
+    var kind = FV.kindOf(f);
+    // 글·보고서·구글시트는 서류 화면의 원래 보기 창(글 고치기·보고서 모양)이 맡는다
+    if ((kind === 'text' || kind === 'gsheet') && typeof docsOpenFileViewer_ === 'function' && !opts.noDelegate){ docsOpenFileViewer_(f, { fromFV: true, inPlace: !!opts.inPlace }); return; }
+    var c = frame_(f.name || '파일');
+    c.f = f; c.opts = opts;
+    var sib = (opts.siblings || []).filter(function(x){ return x && x.id; });
+    var at = sib.map(function(x){ return x.id; }).indexOf(f.id);
+    if (sib.length > 1 && at !== -1){
+      c.prev = at > 0 ? function(){ FV.open(sib[at - 1], opts); } : null;
+      c.next = at < sib.length - 1 ? function(){ FV.open(sib[at + 1], opts); } : null;
+      var pb = btn_('◀', '앞 파일(←)', function(){ if (c.prev) c.prev(); }); pb.disabled = !c.prev;
+      var nb = btn_('▶', '다음 파일(→)', function(){ if (c.next) c.next(); }); nb.disabled = !c.next;
+      addT_(c, pb); addT_(c, nb);
+      var cnt = document.createElement('span'); cnt.className = 'nxfv-info'; cnt.textContent = (at + 1) + '/' + sib.length; addT_(c, cnt);
+      addT_(c, sep_());
+      // 손가락으로 옆으로 밀면 앞·뒤 파일
+      var sx = null;
+      c.body.addEventListener('touchstart', function(e){ if (e.touches.length === 1) sx = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }; }, { passive: true });
+      c.body.addEventListener('touchend', function(e){ if (!sx) return; var d = e.changedTouches[0], dx = d.clientX - sx.x, dy = d.clientY - sx.y; if (Date.now() - sx.t < 600 && Math.abs(dx) > 80 && Math.abs(dy) < 50 && c.zoom === 1){ if (dx < 0 && c.next) c.next(); else if (dx > 0 && c.prev) c.prev(); } sx = null; }, { passive: true });
+    }
+    c.zoom = 1;
+    var r = ({ pdf: viewPdf_, image: viewImage_, hwp: viewHwp_, excel: viewExcel_, zip: viewZip_, archive: viewArchive_, gdoc: viewGoogle_, gsheet: viewGoogle_, media: viewDrive_, drive: viewDrive_ })[kind] || viewDrive_;
+    // 끝 단추(⬇·✕)를 먼저 놓고, 종류별 단추는 그 앞(endMark)에 끼운다 — 늦게 붙는 PDF 단추도 ✕ 뒤로 밀리지 않게
+    c.endMark = sep_(); c.tools.appendChild(c.endMark);
+    if (kind !== 'gdoc' && kind !== 'gsheet') c.tools.appendChild(btn_('⬇', '이 기기로 내려받기', function(){ FV.download(f); }));
+    addClose_(c);
+    r(c, f);
+  };
+
+  // ---------- PDF ----------
+  function viewPdf_(c, f, bytesIn){
+    if (!bytesIn && f.sizeBytes && f.sizeBytes > PDF_MAX_){ viewDrive_(c, f, '큰 PDF(' + fsize(f.sizeBytes) + ')라 드라이브 미리보기로 보입니다 — 이 창 안에서 그대로 봅니다.'); return; }
+    if (typeof pdfjsLib === 'undefined'){ viewDrive_(c, f, 'PDF 그리기 도구를 불러오지 못해 드라이브 미리보기로 보입니다.'); return; }
+    c.body.innerHTML = '<div class="nxfv-msg">PDF를 여는 중…</div>';
+    var rot = 0, pages = [], doc = null, hits = [], hitAt = -1;
+    var get = bytesIn ? Promise.resolve(bytesIn) : FV.readBin(f);
+    get.then(function(bytes){
+      c.bytes = bytes;
+      return pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+    }).then(function(d){
+      doc = d; c.body.innerHTML = '';
+      var wrap = document.createElement('div'); wrap.style.padding = '2px 8px 20px'; c.body.appendChild(wrap);
+      var io = new IntersectionObserver(function(ents){ ents.forEach(function(en){ if (en.isIntersecting) draw(en.target.__n); }); }, { root: c.body, rootMargin: '600px 0px' });
+      c.cleanup.push(function(){ io.disconnect(); try { doc.destroy(); } catch (e) {} });
+      var firstVp = null;
+      function baseW(){ return Math.min(c.body.clientWidth - 24, 1000); }
+      function layout(){
+        pages.forEach(function(p){ var vp = p.vp1 || firstVp; var w = baseW() * c.zoom, h = w * (rot % 180 ? vp.width / vp.height : vp.height / vp.width); p.el.style.width = w + 'px'; p.el.style.height = h + 'px'; p.done = 0; p.el.innerHTML = ''; });
+        pages.forEach(function(p){ var r = p.el.getBoundingClientRect(), b = c.body.getBoundingClientRect(); if (r.bottom > b.top - 600 && r.top < b.bottom + 600) draw(p.n); });
+      }
+      function draw(n){
+        var p = pages[n - 1]; if (!p || p.done === c.zoom * 1000 + rot) return; p.done = c.zoom * 1000 + rot;
+        doc.getPage(n).then(function(pg){
+          p.vp1 = pg.getViewport({ scale: 1 });
+          var w = baseW() * c.zoom, s = w / (rot % 180 ? p.vp1.height : p.vp1.width), dpr = Math.min(window.devicePixelRatio || 1, 2);
+          var vp = pg.getViewport({ scale: s * dpr, rotation: rot });
+          var cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+          p.el.style.height = (vp.height / dpr) + 'px';
+          return pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise.then(function(){ p.el.innerHTML = ''; p.el.appendChild(cv); });
+        }).catch(function(){ p.done = 0; });
+      }
+      doc.getPage(1).then(function(pg){
+        firstVp = pg.getViewport({ scale: 1 });
+        for (var i = 1; i <= doc.numPages; i++){ var el = document.createElement('div'); el.className = 'nxfv-page'; el.__n = i; wrap.appendChild(el); pages.push({ n: i, el: el, done: 0 }); io.observe(el); }
+        layout();
+      });
+      var info = function(){ var b = c.body.getBoundingClientRect(), n = 1; pages.forEach(function(p){ var r = p.el.getBoundingClientRect(); if (r.top < b.top + b.height / 3) n = p.n; }); c.info.textContent = n + '/' + doc.numPages + '쪽'; };
+      c.body.addEventListener('scroll', info, { passive: true }); setTimeout(info, 300);
+      var tools = c.tools;
+      addT_(c, btn_('−', '작게', function(){ c.zoom = Math.max(0.4, c.zoom / 1.25); layout(); }));
+      addT_(c, btn_('＋', '크게', function(){ c.zoom = Math.min(4, c.zoom * 1.25); layout(); }));
+      addT_(c, btn_('⟳', '돌리기', function(){ rot = (rot + 90) % 360; layout(); }));
+      addT_(c, sep_());
+      var find = document.createElement('input'); find.className = 'nxfv-find'; find.placeholder = '글자 찾기'; find.title = '이 PDF에서 글자 찾기(Enter)';
+      addT_(c, find);
+      var hitInfo = document.createElement('span'); hitInfo.className = 'nxfv-info';
+      var go = function(d){
+        if (!hits.length) return; hitAt = (hitAt + d + hits.length) % hits.length;
+        pages.forEach(function(p){ p.el.classList.remove('hit'); }); var p = pages[hits[hitAt] - 1]; p.el.classList.add('hit'); p.el.scrollIntoView({ block: 'start' });
+        hitInfo.textContent = (hitAt + 1) + '/' + hits.length + '곳(' + hits[hitAt] + '쪽)';
+      };
+      find.addEventListener('keydown', function(e){
+        if (e.key !== 'Enter') return; e.preventDefault();
+        var q = find.value.replace(/\s+/g, ''); if (!q){ hits = []; hitInfo.textContent = ''; return; }
+        hitInfo.textContent = '찾는 중…'; hits = []; hitAt = -1;
+        var seq = Promise.resolve();
+        for (var i = 1; i <= doc.numPages; i++) (function(n){ seq = seq.then(function(){ return doc.getPage(n).then(function(pg){ return pg.getTextContent(); }).then(function(tc){ var t = tc.items.map(function(x){ return x.str; }).join('').replace(/\s+/g, ''); if (t.indexOf(q) !== -1) hits.push(n); }); }); })(i);
+        seq.then(function(){ if (!hits.length){ hitInfo.textContent = '없음(글자가 그림인 쪽은 못 찾음)'; return; } go(1); });
+      });
+      addT_(c, btn_('▲', '앞 찾은 곳', function(){ go(-1); })); addT_(c, btn_('▼', '다음 찾은 곳', function(){ go(1); }));
+      addT_(c, hitInfo);
+      addT_(c, sep_());
+      addT_(c, btn_('🖨', FV.dev() === 'PC' ? '인쇄' : '인쇄(이 기기에서 인쇄가 어려우면 PDF로 저장해 공유)', function(){ FV.printBytes(c.bytes, f.name, 'application/pdf'); }));
+      if (!bytesIn && typeof openExistingFileInPdfManager === 'function') addT_(c, btn_('📑 PDF관리', '쪽 나누기·합치기·돌리기·서명(PDF관리로)', function(){ closeCur_(); openExistingFileInPdfManager(f); }));
+      var ro = new ResizeObserver(function(){ clearTimeout(c.__rz); c.__rz = setTimeout(layout, 200); }); ro.observe(c.body); c.cleanup.push(function(){ ro.disconnect(); });
+    }).catch(function(e){ viewDrive_(c, f, 'PDF를 이 창에서 그리지 못했습니다(' + esc(e.message || e) + ') — 드라이브 미리보기로 보입니다.'); });
+  }
+
+  // ---------- 사진 ----------
+  function viewImage_(c, f, bytesIn){
+    c.body.innerHTML = '<div class="nxfv-msg">사진을 여는 중…</div>';
+    var rot = 0;
+    (bytesIn ? Promise.resolve(bytesIn) : FV.readBin(f)).then(function(bytes){
+      c.bytes = bytes;
+      var url = URL.createObjectURL(new Blob([bytes], { type: f.mimeType || 'image/jpeg' })); c.cleanup.push(function(){ URL.revokeObjectURL(url); });
+      c.body.innerHTML = ''; var img = new Image(); img.className = 'nxfv-img'; img.alt = f.name || ''; img.src = url; c.body.appendChild(img);
+      function fit(){ var bw = c.body.clientWidth - 20, bh = c.body.clientHeight - 20, iw = rot % 180 ? img.naturalHeight : img.naturalWidth, ih = rot % 180 ? img.naturalWidth : img.naturalHeight; if (!iw) return; var s = Math.min(bw / iw, bh / ih, 1) * c.zoom; img.style.width = (img.naturalWidth * s) + 'px'; img.style.transform = 'rotate(' + rot + 'deg)'; img.style.margin = (rot % 180 ? Math.abs(img.naturalWidth - img.naturalHeight) * s / 2 : 10) + 'px auto'; }
+      img.onload = fit;
+      addT_(c, btn_('−', '작게', function(){ c.zoom = Math.max(0.2, c.zoom / 1.25); fit(); }));
+      addT_(c, btn_('＋', '크게', function(){ c.zoom = Math.min(6, c.zoom * 1.25); fit(); }));
+      addT_(c, btn_('⟳', '돌리기(보기만 — 파일은 그대로)', function(){ rot = (rot + 90) % 360; fit(); }));
+      addT_(c, btn_('🖨', '인쇄', function(){ FV.printBytes(bytes, f.name, f.mimeType || 'image/jpeg'); }));
+      if (!bytesIn && typeof openExistingFileInScan === 'function') addT_(c, btn_('📷 스캔', '펴기·자르기·PDF로(스캔으로)', function(){ closeCur_(); openExistingFileInScan(f); }));
+      var ro = new ResizeObserver(fit); ro.observe(c.body); c.cleanup.push(function(){ ro.disconnect(); });
+    }).catch(function(e){ viewDrive_(c, f, '사진을 받지 못해 드라이브 미리보기로 보입니다(' + esc(e.message || e) + ').'); });
+  }
+
+  // ---------- 한글(HWP·HWPX) ----------
+  function viewHwp_(c, f, bytesIn){
+    c.body.innerHTML = '<div class="nxfv-msg">한글 문서를 여는 중… (처음 한 번은 한글 그리기 도구를 받느라 몇 초 걸립니다)</div>';
+    var get = bytesIn ? Promise.resolve(bytesIn) : FV.readBin(f);
+    Promise.all([get, rhwp_()]).then(function(r){
+      var bytes = r[0], m = r[1]; c.bytes = bytes;
+      var doc = new m.HwpDocument(bytes), n = doc.pageCount();
+      c.body.innerHTML = ''; var wrap = document.createElement('div'); wrap.style.padding = '2px 8px 20px'; c.body.appendChild(wrap);
+      var els = [];
+      for (var i = 0; i < n; i++){ var el = document.createElement('div'); el.className = 'nxfv-page'; el.innerHTML = doc.renderPageSvg(i); wrap.appendChild(el); els.push(el); }
+      try { doc.free && doc.free(); } catch (e) {}
+      var fit = function(){ var w = Math.min(c.body.clientWidth - 24, 900) * c.zoom; els.forEach(function(el){ el.style.width = w + 'px'; }); };
+      fit(); c.info.textContent = n + '쪽';
+      addT_(c, btn_('−', '작게', function(){ c.zoom = Math.max(0.4, c.zoom / 1.25); fit(); }));
+      addT_(c, btn_('＋', '크게', function(){ c.zoom = Math.min(4, c.zoom * 1.25); fit(); }));
+      addT_(c, btn_('🖨', '인쇄(보이는 모양 그대로)', function(){ FV.printHtml(f.name, wrap.innerHTML); }));
+      if (!bytesIn) addT_(c, btn_('글자만', '모양이 깨져 보이면 글자만 보기', function(){ hwpText_(c, f); }));
+      var ro = new ResizeObserver(fit); ro.observe(c.body); c.cleanup.push(function(){ ro.disconnect(); });
+    }).catch(function(e){
+      if (bytesIn){ c.body.innerHTML = '<div class="nxfv-msg">이 한글 문서를 그리지 못했습니다: ' + esc(e.message || e) + '</div>'; return; }
+      hwpText_(c, f, '모양 그대로 그리지 못해(' + esc(e.message || e) + ') 글자만 보입니다.');
+    });
+  }
+  function hwpText_(c, f, note){
+    c.body.className = 'nxfv-body plain'; c.body.innerHTML = '<div class="nxfv-msg">글자를 꺼내는 중…</div>';
+    callGas('readFile', { fileId: f.id }).then(function(res){
+      if (!res || res.error){ c.body.innerHTML = '<div class="nxfv-msg">' + esc((res && res.error) || '글자를 꺼내지 못했습니다') + '</div>'; return; }
+      c.body.innerHTML = (note ? '<div class="nxfv-note">' + note + '</div>' : '') + '<pre class="nxfv-pre"></pre>';
+      c.body.querySelector('pre').textContent = res.content || '';
+    });
+  }
+
+  // ---------- 엑셀 — 보기 + 칸 고쳐 사본으로 저장 ----------
+  function viewExcel_(c, f, bytesIn){
+    if (typeof XLSX === 'undefined'){ viewDrive_(c, f, '엑셀 도구를 불러오지 못해 드라이브 미리보기로 보입니다.'); return; }
+    c.body.className = 'nxfv-body plain'; c.body.innerHTML = '<div class="nxfv-msg">엑셀을 여는 중…</div>';
+    (bytesIn ? Promise.resolve(bytesIn) : FV.readBin(f)).then(function(bytes){
+      var wb = XLSX.read(bytes, { type: 'array', cellFormula: true, cellStyles: true });
+      var edits = {}; // 시트|주소 → 값
+      var sel = document.createElement('select'); sel.className = 'nxfv-btn'; sel.title = '시트 고르기';
+      wb.SheetNames.forEach(function(nm){ var o = document.createElement('option'); o.value = nm; o.textContent = nm; sel.appendChild(o); });
+      if (wb.SheetNames.length > 1) addT_(c, sel);
+      var save = btn_('💾 고친 칸 사본으로', '고친 칸을 넣은 사본을 같은 폴더에 「이름_고침_날짜.xlsx」로 저장(원본은 그대로)', function(){ saveCopy(); }, 'pri');
+      save.disabled = true; if (!bytesIn) addT_(c, save);
+      function render(nm){
+        var ws = wb.Sheets[nm]; if (!ws || !ws['!ref']){ c.body.innerHTML = '<div class="nxfv-msg">빈 시트입니다.</div>'; return; }
+        var rg = XLSX.utils.decode_range(ws['!ref']), maxR = Math.min(rg.e.r, rg.s.r + 1999), maxC = Math.min(rg.e.c, rg.s.c + 59);
+        var h = '<div class="nxfv-note">칸을 눌러 고칠 수 있습니다' + (bytesIn ? '(압축 안 파일은 보기만)' : ' — 저장은 사본으로만(서식 색·굵기는 사본에서 빠질 수 있음, 원본은 그대로)') + (rg.e.r > maxR || rg.e.c > maxC ? ' · 큰 표라 앞 2,000줄·60칸까지만 보입니다' : '') + '</div><table class="nxfv-tbl"><tr><th></th>';
+        for (var cc = rg.s.c; cc <= maxC; cc++) h += '<th>' + XLSX.utils.encode_col(cc) + '</th>';
+        h += '</tr>';
+        for (var rr = rg.s.r; rr <= maxR; rr++){
+          h += '<tr><th>' + (rr + 1) + '</th>';
+          for (var c2 = rg.s.c; c2 <= maxC; c2++){
+            var ad = XLSX.utils.encode_cell({ r: rr, c: c2 }), cell = ws[ad], k = nm + '|' + ad;
+            var v = edits[k] != null ? edits[k] : (cell ? (cell.w != null ? cell.w : (cell.v != null ? cell.v : '')) : '');
+            h += '<td data-a="' + ad + '"' + (bytesIn ? '' : ' contenteditable="true"') + (edits[k] != null ? ' class="ed"' : '') + (cell && cell.f ? ' title="수식: =' + esc(cell.f) + '"' : '') + '>' + esc(v) + '</td>';
+          }
+          h += '</tr>';
+        }
+        c.body.innerHTML = h + '</table>';
+        c.body.querySelectorAll('td[contenteditable]').forEach(function(td){
+          var before = td.textContent;
+          td.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); td.blur(); } });
+          td.addEventListener('blur', function(){ if (td.textContent !== before){ edits[nm + '|' + td.dataset.a] = td.textContent; td.classList.add('ed'); before = td.textContent; save.disabled = false; c.info.textContent = '고친 칸 ' + Object.keys(edits).length; } });
+        });
+      }
+      function saveCopy(){
+        var folderId = c.opts.folderId || f.folderId;
+        Object.keys(edits).forEach(function(k){
+          var p = k.split('|'), ws = wb.Sheets[p[0]], v = edits[k], num = String(v).replace(/,/g, '').trim();
+          ws[p[1]] = /^-?\d+(\.\d+)?$/.test(num) ? { t: 'n', v: Number(num) } : { t: 's', v: v };
+          var rg = XLSX.utils.decode_range(ws['!ref'] || 'A1'), cc = XLSX.utils.decode_cell(p[1]);
+          rg.e.r = Math.max(rg.e.r, cc.r); rg.e.c = Math.max(rg.e.c, cc.c); ws['!ref'] = XLSX.utils.encode_range(rg);
+        });
+        var d = new Date(), ymd = String(d.getFullYear()).slice(2) + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+        var name = String(f.name).replace(/\.(xlsx|xls|xlsm)$/i, '') + '_고침_' + ymd + '.xlsx';
+        var b64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+        if (!folderId){ FV.saveBlob(new Blob([Uint8Array.from(atob(b64), function(ch){ return ch.charCodeAt(0); })]), name); say('폴더를 몰라 이 기기로 내려받았습니다: ' + name); return; }
+        save.disabled = true; save.textContent = '저장하는 중…';
+        callGas('uploadFile', { folderId: folderId, name: name, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base64Data: b64, replaceSameName: true }).then(function(res){
+          save.textContent = '💾 고친 칸 사본으로';
+          if (!res || res.error){ save.disabled = false; say('저장하지 못했습니다: ' + ((res && res.error) || '')); return; }
+          say('같은 폴더에 「' + name + '」로 저장했습니다(원본은 그대로).'); if (typeof docsReloadQuiet_ === 'function') docsReloadQuiet_();
+        });
+      }
+      sel.onchange = function(){ render(sel.value); };
+      render(wb.SheetNames[0]);
+    }).catch(function(e){ viewDrive_(c, f, '엑셀을 열지 못해 드라이브 미리보기로 보입니다(' + esc(e.message || e) + ').'); });
+  }
+
+  // ---------- 구글 문서·시트 / 드라이브 미리보기(창 안) ----------
+  function viewGoogle_(c, f){
+    var mt = String(f.mimeType || ''), base = mt.indexOf('spreadsheet') !== -1 ? 'spreadsheets' : (mt.indexOf('presentation') !== -1 ? 'presentation' : 'document');
+    c.body.innerHTML = '<iframe class="nxfv-frame" src="https://docs.google.com/' + base + '/d/' + encodeURIComponent(f.id) + '/preview"></iframe>';
+    var a = document.createElement('a'); a.className = 'nxfv-btn'; a.href = 'https://docs.google.com/' + base + '/d/' + encodeURIComponent(f.id) + '/edit'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = '↗ 구글에서 고치기'; a.title = '고치기는 구글 창에서만 됩니다(구글이 다른 창 안에 넣지 못하게 막음)'; a.style.textDecoration = 'none'; a.style.lineHeight = '28px';
+    addT_(c, a);
+  }
+  function viewDrive_(c, f, note){
+    c.body.className = 'nxfv-body';
+    c.body.innerHTML = (note ? '<div class="nxfv-note">' + note + '</div>' : '') + '<iframe class="nxfv-frame" style="height:' + (note ? 'calc(100% - 30px)' : '100%') + '" allow="autoplay" src="https://drive.google.com/file/d/' + encodeURIComponent(f.id) + '/preview"></iframe>';
+  }
+
+  // ---------- 압축(zip) ----------
+  //  화면에서 안 목록·비밀번호·안 파일 바로 보기(zip.js) / 풀기는 비밀번호 없으면 서버(sf_unzip_to_folder — 서류 읽기와 같은 「압축풀기_이름」), 비밀번호면 화면이 풀어 올림.
+  function viewZip_(c, f){
+    c.body.className = 'nxfv-body plain';
+    if (f.sizeBytes && f.sizeBytes > PDF_MAX_){ zipServerOnly_(c, f, '큰 압축(' + fsize(f.sizeBytes) + ')이라 안 목록은 못 보고, 서버에서 바로 풉니다.'); return; }
+    c.body.innerHTML = '<div class="nxfv-msg">압축 안 목록을 읽는 중…</div>';
+    var pw = null;
+    Promise.all([FV.readBin(f), zipjs_()]).then(function(r){
+      var bytes = r[0], z = r[1];
+      var reader = new z.ZipReader(new z.Uint8ArrayReader(bytes), { filenameEncoding: 'euc-kr' });
+      c.cleanup.push(function(){ try { reader.close(); } catch (e) {} });
+      return reader.getEntries().then(function(ents){
+        ents = ents.filter(function(e){ var leaf = e.filename.split('/').pop(); return !e.directory && leaf && !/^__MACOSX\//.test(e.filename) && !/^\./.test(leaf); });
+        var enc = ents.some(function(e){ return e.encrypted; });
+        c.info.textContent = '안 파일 ' + ents.length + '개' + (enc ? ' · 🔒 비밀번호' : '');
+        var h = '<div class="nxfv-note">파일 이름을 누르면 풀지 않고 바로 봅니다. 풀면 같은 폴더의 「압축풀기_' + esc(String(f.name).replace(/\.zip$/i, '')) + '」에 들어가고, 서류 읽기도 그 파일을 읽습니다.</div>';
+        h += '<table class="nxfv-zip"><tr><th><input type="checkbox" class="all" checked title="모두 고르기"></th><th>이름</th><th>크기</th><th></th></tr>';
+        ents.forEach(function(e, i){ h += '<tr class="clk" data-i="' + i + '"><td><input type="checkbox" class="one" checked></td><td class="nm">' + esc(e.filename) + '</td><td>' + fsize(e.uncompressedSize) + '</td><td>' + (e.encrypted ? '🔒' : '') + '</td></tr>'; });
+        c.body.innerHTML = h + '</table>';
+        var all = c.body.querySelector('.all');
+        all.addEventListener('change', function(){ c.body.querySelectorAll('.one').forEach(function(x){ x.checked = all.checked; }); });
+        c.body.querySelectorAll('tr.clk').forEach(function(tr){
+          tr.querySelector('.one').addEventListener('click', function(e){ e.stopPropagation(); });
+          tr.addEventListener('click', function(e){ if (e.target.classList.contains('one')) return; peek(ents[Number(tr.dataset.i)]); });
+        });
+        function needPw(e){ if (!e.encrypted || pw) return Promise.resolve(pw); return nxPrompt_('비밀번호가 걸린 압축입니다. 비밀번호를 넣어 주세요.\n(넣은 비밀번호는 저장하지 않습니다)', '', '압축 비밀번호').then(function(v){ if (v == null) throw new Error('취소'); pw = v; return pw; }); }
+        function dataOf(e){ return needPw(e).then(function(p){ return e.getData(new z.Uint8ArrayWriter(), p ? { password: p } : {}); }).catch(function(err){ if (/password|비밀번호|Invalid/i.test(String(err && err.message))) { pw = null; throw new Error('비밀번호가 맞지 않습니다'); } throw err; }); }
+        function peek(e){
+          var leaf = e.filename.split('/').pop();
+          dataOf(e).then(function(u){
+            var back = cur_; // 안 파일 보기 → Esc·◀ 목록이면 압축 목록으로 돌아온다
+            FV.viewBytes({ name: leaf, mimeType: '' }, u, { onBack: function(){ FV.open(f, c.opts); } });
+          }).catch(function(err){ if (err.message !== '취소') say('열지 못했습니다: ' + err.message); });
+        }
+        function chosen(){ var out = []; c.body.querySelectorAll('tr.clk').forEach(function(tr){ if (tr.querySelector('.one').checked) out.push(ents[Number(tr.dataset.i)]); }); return out; }
+        var go = btn_('🗜 고른 것 풀기', '고른 안 파일을 같은 폴더 「압축풀기_이름」에 풉니다', function(b){
+          var pick = chosen(); if (!pick.length){ say('풀 파일을 고르세요.'); return; }
+          b.disabled = true; b.textContent = '푸는 중…';
+          var fin = function(msg){ b.disabled = false; b.textContent = '🗜 고른 것 풀기'; say(msg); if (typeof docsReloadQuiet_ === 'function') docsReloadQuiet_(); };
+          if (!pick.some(function(e){ return e.encrypted; })){
+            callGas('sf_unzip_to_folder', { fileId: f.id, names: pick.map(function(e){ return e.filename.split('/').pop(); }) }).then(function(res){
+              if (!res || res.error){ fin('풀지 못했습니다: ' + ((res && res.error) || '')); return; }
+              fin('「' + res.folderName + '」에 ' + res.done.length + '개 풀었습니다' + (res.skipped.length ? '(이미 있는 ' + res.skipped.length + '개 건너뜀)' : '') + (res.fail.length ? ' · 못 푼 것 ' + res.fail.length : ''));
+            });
+            return;
+          }
+          // 비밀번호 압축 — 화면이 풀어 한 파일씩 올린다(폴더는 서버가 같은 이름으로 만듦)
+          callGas('sf_unzip_to_folder', { fileId: f.id, onlyFolder: true }).then(function(res){
+            if (!res || res.error || !res.folderId) throw new Error((res && res.error) || '폴더를 만들지 못했습니다');
+            var done = 0, seq = Promise.resolve();
+            pick.forEach(function(e){ seq = seq.then(function(){ return dataOf(e).then(function(u){ var leaf = e.filename.split('/').pop(); b.textContent = '올리는 중 ' + (done + 1) + '/' + pick.length; return callGas('uploadFile', { folderId: res.folderId, name: leaf, mimeType: 'application/octet-stream', base64Data: bytesToB64_(u) }); }).then(function(up){ if (up && !up.error) done++; }); }); });
+            return seq.then(function(){ fin('「' + res.folderName + '」에 ' + done + '개 풀었습니다(비밀번호 압축).'); });
+          }).catch(function(err){ fin(err.message === '취소' ? '취소했습니다.' : '풀지 못했습니다: ' + err.message); });
+        }, 'pri');
+        addT_(c, go);
+      });
+    }).catch(function(e){ zipServerOnly_(c, f, '화면에서 압축을 읽지 못했습니다(' + esc(e.message || e) + ') — 서버에서 바로 풉니다.'); });
+  }
+  function zipServerOnly_(c, f, note){
+    c.body.innerHTML = '<div class="nxfv-msg">' + note + '<br><br><button type="button" class="nxfv-btn pri">🗜 전부 풀기(같은 폴더 「압축풀기_' + esc(String(f.name).replace(/\.zip$/i, '')) + '」)</button></div>';
+    c.body.querySelector('button').addEventListener('click', function(){
+      var b = this; b.disabled = true; b.textContent = '푸는 중…(큰 압축은 1분 넘게 걸릴 수 있음)';
+      callGas('sf_unzip_to_folder', { fileId: f.id }).then(function(res){
+        if (!res || res.error){ b.disabled = false; b.textContent = '다시 풀기'; say('풀지 못했습니다: ' + ((res && res.error) || '')); return; }
+        b.textContent = '다 풀었습니다';
+        c.body.querySelector('.nxfv-msg').insertAdjacentHTML('beforeend', '<div style="margin-top:10px">「' + esc(res.folderName) + '」에 ' + res.done.length + '개' + (res.skipped.length ? ' · 이미 있는 ' + res.skipped.length + '개 건너뜀' : '') + (res.fail.length ? ' · 못 푼 것: ' + esc(res.fail.join(', ')) : '') + (res.encNote ? '<br>🔒 ' + esc(res.encNote) + ' — 비밀번호 압축은 15MB 아래로 나눠 받으면 이 창에서 비밀번호를 넣어 풉니다.' : '') + '</div>');
+        if (typeof docsReloadQuiet_ === 'function') docsReloadQuiet_();
+      });
+    });
+  }
+  function viewArchive_(c, f){
+    var ext = (String(f.name).split('.').pop() || '').toUpperCase();
+    c.body.className = 'nxfv-body plain';
+    c.body.innerHTML = '<div class="nxfv-msg">이 압축 형식(' + esc(ext) + ')은 아직 넥스시스템에서 못 엽니다.<br>지금은 ⬇ 내려받아 이 기기의 압축 프로그램으로 풀어 주세요.<br><br>' +
+      '<span class="nxfv-info">이 형식이 들어온 횟수는 대시보드 「밖으로 나간 일」에 세어 두었다가, 늘면 넥스시스템에 붙입니다.</span></div>';
+    // 6단계 — 못 여는 형식도 「밖으로 나간 일」로 센다(zip만 먼저 만든 계획서 ㉡의 다음 차례를 실제 쓰임으로 정함)
+    try { if (sessionStorage.getItem('nxManageSessionToken')) callGas('sf_ext_log', { cat: '못 여는 압축(' + ext + ')', dev: FV.dev(), host: '' }).catch(function(){}); } catch (e) {}
+  }
+
+  // ---------- 바이트로 바로 보기(압축 안 파일·메일 첨부) ----------
+  FV.viewBytes = function(f, bytes, opts){
+    opts = opts || {};
+    var c = frame_(f.name || '파일'); c.f = f; c.opts = opts; c.zoom = 1;
+    if (opts.onBack){ c.back = function(){ opts.onBack(); }; addT_(c, btn_('◀ 목록', '앞 목록으로(Esc)', function(){ opts.onBack(); })); addT_(c, sep_()); }
+    if (!f.mimeType){ var x = String(f.name).split('.').pop().toLowerCase(); f.mimeType = ({ pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp' })[x] || ''; }
+    var kind = FV.kindOf(f);
+    c.endMark = sep_(); c.tools.appendChild(c.endMark);
+    c.tools.appendChild(btn_('⬇', '이 기기로 내려받기', function(){ FV.saveBlob(new Blob([bytes], { type: f.mimeType || 'application/octet-stream' }), f.name); }));
+    addClose_(c);
+    if (kind === 'pdf') viewPdf_(c, f, bytes);
+    else if (kind === 'image') viewImage_(c, f, bytes);
+    else if (kind === 'hwp') viewHwp_(c, f, bytes);
+    else if (kind === 'excel') viewExcel_(c, f, bytes);
+    else if (kind === 'text'){ c.body.className = 'nxfv-body plain'; var t = ''; try { t = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { try { t = new TextDecoder('euc-kr').decode(bytes); } catch (e2) { t = ''; } } c.body.innerHTML = '<pre class="nxfv-pre"></pre>'; c.body.querySelector('pre').textContent = t; }
+    else { c.body.className = 'nxfv-body plain'; c.body.innerHTML = '<div class="nxfv-msg">이 형식은 이 창에서 바로 못 봅니다 — 폴더에 풀거나 넣은 뒤 그 파일을 누르면 드라이브 미리보기로 이 창 안에서 봅니다. 또는 ⬇ 내려받기.</div>'; }
+    return c;
+  };
+
+  // ---------- 내려받기·인쇄·사본·묶기 ----------
+  FV.saveBlob = function(blob, name){
+    var url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name || '파일'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
+  };
+  FV.download = function(f){
+    if (f.sizeBytes && f.sizeBytes > PDF_MAX_){ window.open('https://drive.google.com/uc?export=download&id=' + encodeURIComponent(f.id), '_blank', 'noopener'); return; }
+    say('「' + f.name + '」 내려받는 중…');
+    FV.readBin(f).then(function(u){ FV.saveBlob(new Blob([u], { type: f.mimeType || 'application/octet-stream' }), f.name); })
+      .catch(function(e){ if (/너무 큽니다|15MB/.test(e.message)) window.open('https://drive.google.com/uc?export=download&id=' + encodeURIComponent(f.id), '_blank', 'noopener'); else say('내려받지 못했습니다: ' + e.message); });
+  };
+  FV.printBytes = function(bytes, name, mime){
+    var blob = new Blob([bytes], { type: mime });
+    if (FV.dev() !== 'PC'){
+      try { var file = new File([blob], name || '문서', { type: mime }); if (navigator.canShare && navigator.canShare({ files: [file] })){ navigator.share({ files: [file], title: name }).catch(function(){}); return; } } catch (e) {}
+    }
+    var url = URL.createObjectURL(blob), ifr = document.createElement('iframe');
+    ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;';
+    ifr.src = url; document.body.appendChild(ifr);
+    ifr.onload = function(){ setTimeout(function(){ try { ifr.contentWindow.focus(); ifr.contentWindow.print(); } catch (e) { window.open(url, '_blank'); } }, 300); };
+    setTimeout(function(){ ifr.remove(); URL.revokeObjectURL(url); }, 120000);
+  };
+  FV.printHtml = function(title, html){
+    var ifr = document.createElement('iframe'); ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;'; document.body.appendChild(ifr);
+    var d = ifr.contentDocument; d.open(); d.write('<!doctype html><meta charset="utf-8"><title>' + esc(title) + '</title><style>@page{margin:0} body{margin:0} .nxfv-page{page-break-after:always;width:100%!important} svg{width:100%;height:auto}</style>' + html); d.close();
+    setTimeout(function(){ try { ifr.contentWindow.focus(); ifr.contentWindow.print(); } catch (e) {} setTimeout(function(){ ifr.remove(); }, 60000); }, 400);
+  };
+  FV.copy = function(f){
+    return callGas('sf_copy_item', { id: f.id }).then(function(res){
+      if (!res || res.error){ say('사본을 만들지 못했습니다: ' + ((res && res.error) || '')); return null; }
+      say('「' + res.name + '」을(를) 만들었습니다.'); return res;
+    });
+  };
+  // 여러 파일 → zip 하나(내려받기 또는 폴더에 넣기). 15MB 넘는 파일은 빼고 알린다.
+  FV.zipFiles = function(files, zipName, toFolderId){
+    files = (files || []).filter(function(x){ return x && x.id; });
+    if (!files.length){ say('묶을 파일을 고르세요.'); return Promise.resolve(); }
+    var big = files.filter(function(x){ return x.sizeBytes && x.sizeBytes > PDF_MAX_; }); files = files.filter(function(x){ return big.indexOf(x) === -1; });
+    say('파일 ' + files.length + '개를 묶는 중…');
+    return zipjs_().then(function(z){
+      var w = new z.ZipWriter(new z.BlobWriter('application/zip'), { useWebWorkers: false }), used = {}, seq = Promise.resolve(), n = 0;
+      files.forEach(function(f){ seq = seq.then(function(){ return FV.readBin(f).then(function(u){ var nm = f.name; var k = 2; while (used[nm]){ nm = f.name.replace(/(\.[^.]+)?$/, '(' + k + ')$1'); k++; } used[nm] = 1; n++; return w.add(nm, new z.Uint8ArrayReader(u)); }).catch(function(){ }); }); });
+      return seq.then(function(){ return w.close(); }).then(function(blob){
+        var name = zipName || ('묶음_' + new Date().toISOString().slice(2, 16).replace(/[-:T]/g, '') + '.zip');
+        var tail = big.length ? ' · 15MB 넘는 ' + big.length + '개는 빠짐(그 파일은 하나씩 ⬇)' : '';
+        if (!toFolderId){ FV.saveBlob(blob, name); say(n + '개를 「' + name + '」로 묶어 내려받았습니다' + tail); return; }
+        return blob.arrayBuffer().then(function(ab){ return callGas('uploadFile', { folderId: toFolderId, name: name, mimeType: 'application/zip', base64Data: bytesToB64_(new Uint8Array(ab)), noPreread: true }); }).then(function(res){
+          if (!res || res.error){ say('묶음을 폴더에 넣지 못했습니다: ' + ((res && res.error) || '')); return; }
+          say(n + '개를 「' + name + '」로 묶어 이 폴더에 넣었습니다' + tail); if (typeof docsReloadQuiet_ === 'function') docsReloadQuiet_();
+        });
+      });
+    }).catch(function(e){ say('묶지 못했습니다: ' + e.message); });
+  };
+
+  // ---------- 메일 — 본문·첨부를 이 창에서, 첨부는 사건 폴더로(D1) ----------
+  FV.openMail = function(threadId, subject){
+    var c = frame_(subject || '메일'); c.body.className = 'nxfv-body plain'; c.body.innerHTML = '<div class="nxfv-msg">메일을 읽는 중…</div>';
+    var gm = document.createElement('a'); gm.className = 'nxfv-btn'; gm.href = 'https://mail.google.com/mail/#all/' + encodeURIComponent(threadId); gm.target = '_blank'; gm.rel = 'noopener'; gm.textContent = '↗ 지메일(답장)'; gm.title = '답장 쓰기는 지메일에서'; gm.style.textDecoration = 'none'; gm.style.lineHeight = '28px';
+    addT_(c, gm); addClose_(c);
+    callGas('sf_mail_get', { threadId: threadId }).then(function(res){
+      if (!res || res.error){ c.body.innerHTML = '<div class="nxfv-msg">' + esc((res && res.error) || '메일을 읽지 못했습니다') + '</div>'; return; }
+      if (res.subject){ var tt = c.el.querySelector('.nxfv-title'); tt.textContent = res.subject; tt.title = res.subject; }
+      var h = '<div class="nxfv-mail">';
+      res.messages.forEach(function(m, mi){
+        h += '<div class="msg" data-mi="' + mi + '"><div class="mh"><b>' + esc(m.from) + '</b><span>' + esc(m.date) + '</span><span>받는 이: ' + esc(m.to) + '</span></div><div class="mb"></div>';
+        if (m.attachments.length){
+          h += '<div class="ma">📎 첨부 ' + m.attachments.length + '개: ';
+          m.attachments.forEach(function(a){ h += '<label><input type="checkbox" class="att" data-mi="' + mi + '" data-i="' + a.i + '" checked>' + esc(a.name) + ' <span class="nxfv-info">' + fsize(a.size) + '</span></label>'; });
+          h += '</div>';
+        }
+        h += '</div>';
+      });
+      var hasAtt = res.messages.some(function(m){ return m.attachments.length; });
+      if (hasAtt){
+        h += '<div class="msg" style="padding:10px"><b>고른 첨부를 사건 폴더에 넣기</b><div class="nxfv-note" style="padding:4px 0">' + (res.suggest.length ? '보낸 사람으로 찾은 사건을 먼저 골라 두었습니다(확정 아님 — 다르면 바꾸세요).' : '보낸 사람과 맞는 고객을 못 찾았습니다 — 사건을 골라 주세요.') + '</div>' +
+          '<select class="nxfv-btn caseSel" style="max-width:100%;min-width:240px"><option value="">사건 고르기…</option>' + res.suggest.map(function(s, i){ return '<option value="' + esc(s.caseId) + '"' + (i === 0 ? ' selected' : '') + '>' + esc(s.사건명) + ' — ' + esc(s.why) + '</option>'; }).join('') + '<option value="__all">다른 사건 목록 불러오기…</option></select> ' +
+          '<button type="button" class="nxfv-btn pri putBtn">사건에 넣기</button><span class="nxfv-info putInfo" style="margin-left:6px"></span></div>';
+      }
+      c.body.innerHTML = h + '</div>';
+      res.messages.forEach(function(m, mi){ c.body.querySelector('.msg[data-mi="' + mi + '"] .mb').textContent = m.body + (m.cut ? '\n…(긴 메일이라 뒷부분 생략 — 지메일에서 전체)' : ''); });
+      var sel = c.body.querySelector('.caseSel');
+      if (sel) sel.addEventListener('change', function(){
+        if (sel.value !== '__all') return;
+        sel.disabled = true;
+        callGas('work_get_cases', {}).then(function(r){
+          sel.disabled = false; var cases = (r && r.cases) || [];
+          sel.innerHTML = '<option value="">사건 고르기…</option>' + cases.filter(function(k){ return k.폴더ID && !/완료|종결|취소/.test(k.상태 || ''); }).map(function(k){ return '<option value="' + esc(k.id) + '">' + esc(k.사건명) + (k.상태 ? ' (' + esc(k.상태) + ')' : '') + '</option>'; }).join('');
+        });
+      });
+      var put = c.body.querySelector('.putBtn');
+      if (put) put.addEventListener('click', function(){
+        var caseId = sel.value; if (!caseId || caseId === '__all'){ say('넣을 사건을 고르세요.'); return; }
+        var byMsg = {}; c.body.querySelectorAll('.att:checked').forEach(function(x){ (byMsg[x.dataset.mi] = byMsg[x.dataset.mi] || []).push(Number(x.dataset.i)); });
+        var keys = Object.keys(byMsg); if (!keys.length){ say('넣을 첨부를 고르세요.'); return; }
+        put.disabled = true; var info = c.body.querySelector('.putInfo'); info.textContent = '넣는 중…';
+        var saved = 0, skipped = 0, seq = Promise.resolve();
+        keys.forEach(function(mi){ seq = seq.then(function(){ return callGas('sf_mail_save', { messageId: res.messages[mi].id, indexes: byMsg[mi], caseId: caseId }).then(function(r){ if (r && !r.error){ saved += r.saved.length; skipped += r.skipped.length; } else throw new Error((r && r.error) || ''); }); }); });
+        seq.then(function(){ put.disabled = false; info.textContent = saved + '개 넣음' + (skipped ? '(이미 있는 ' + skipped + '개 건너뜀)' : '') + ' — 서류 읽기가 이어서 읽습니다.'; say('첨부 ' + saved + '개를 사건 폴더에 넣었습니다.'); })
+          .catch(function(e){ put.disabled = false; info.textContent = '못 넣음: ' + e.message; });
+      });
+    });
+  };
+
+  // ---------- PC 탐색기 「연결 프로그램 → NETAX 관리」로 보낸 파일(D2, manifest.json file_handlers) ----------
+  //  윈도 크롬·엣지 102판부터 설치한 앱이 파일을 받는다. 로그인 뒤에 「보기만 / 사건 폴더에 넣기」를 고르게 한다.
+  FV.receiveLocal = function(files){
+    files = (files || []).filter(Boolean); if (!files.length) return;
+    var tries = 0;
+    (function wait(){
+      if (!sessionStorage.getItem('nxManageSessionToken') || typeof callGas !== 'function'){ if (++tries < 150) setTimeout(wait, 2000); return; }
+      var c = frame_('PC에서 넥스로 보낸 파일 ' + files.length + '개'); c.body.className = 'nxfv-body plain';
+      var h = '<div class="nxfv-msg"><table class="nxfv-zip">' + files.map(function(f, i){ return '<tr class="clk" data-i="' + i + '"><td class="nm">' + esc(f.name) + '</td><td>' + fsize(f.size) + '</td><td><button type="button" class="nxfv-btn see">👁 보기</button></td></tr>'; }).join('') + '</table>' +
+        '<div style="margin-top:14px">넣을 사건: <select class="nxfv-btn caseSel" style="min-width:240px;max-width:100%"><option value="">사건 목록 불러오는 중…</option></select> <button type="button" class="nxfv-btn pri putBtn">사건 폴더에 넣기</button> <span class="nxfv-info putInfo"></span></div></div>';
+      c.body.innerHTML = h; addClose_(c);
+      c.body.querySelectorAll('.see').forEach(function(b){ b.addEventListener('click', function(){ var f = files[Number(b.closest('tr').dataset.i)]; f.arrayBuffer().then(function(ab){ FV.viewBytes({ name: f.name, mimeType: f.type || '' }, new Uint8Array(ab), { onBack: function(){ FV.receiveLocal(files); } }); }); }); });
+      var sel = c.body.querySelector('.caseSel'), cur = (typeof docsSelectedCaseId_ !== 'undefined' && docsSelectedCaseId_) || (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+      callGas('work_get_cases', {}).then(function(r){
+        var cases = ((r && r.cases) || []).filter(function(k){ return k.폴더ID && !/완료|종결|취소/.test(k.상태 || ''); });
+        sel.innerHTML = '<option value="">사건 고르기…</option>' + cases.map(function(k){ return '<option value="' + esc(k.폴더ID) + '"' + (k.id === cur ? ' selected' : '') + '>' + esc(k.사건명) + '</option>'; }).join('');
+      });
+      c.body.querySelector('.putBtn').addEventListener('click', function(){
+        var fid = sel.value; if (!fid){ say('넣을 사건을 고르세요.'); return; }
+        var b = this; b.disabled = true; c.body.querySelector('.putInfo').textContent = '올리는 중…';
+        FV.uploadFiles(files, { folderId: fid }).then(function(r){ b.disabled = false; c.body.querySelector('.putInfo').textContent = r.ok + '개 넣음' + (r.bad.length ? ' · 못 넣음 ' + r.bad.length : '') + ' — 서류 읽기가 이어서 읽습니다.'; });
+      });
+    })();
+  };
+  if ('launchQueue' in window){
+    try { window.launchQueue.setConsumer(function(p){ if (!p || !p.files || !p.files.length) return; Promise.all(p.files.map(function(h){ return h.getFile(); })).then(FV.receiveLocal).catch(function(){}); }); } catch (e) {}
+  }
+
+  // ---------- 끌어다 놓기 올리기(C1) — 어떤 칸이든 붙일 수 있게 ----------
+  //  getTarget(): {folderId 또는 path} 를 돌려줌. onDone(): 다 올린 뒤 목록 다시 그리기.
+  FV.attachDrop = function(el, getTarget, onDone){
+    if (!el || el.__nxfvDrop) return; el.__nxfvDrop = true;
+    var depth = 0;
+    var isFiles = function(e){ var t = e.dataTransfer && e.dataTransfer.types; return t && Array.prototype.indexOf.call(t, 'Files') !== -1; };
+    el.addEventListener('dragenter', function(e){ if (!isFiles(e)) return; e.preventDefault(); depth++; el.classList.add('nxfv-dropzone'); });
+    el.addEventListener('dragover', function(e){ if (!isFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    el.addEventListener('dragleave', function(e){ if (!isFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) el.classList.remove('nxfv-dropzone'); });
+    el.addEventListener('drop', function(e){
+      if (!isFiles(e)) return; e.preventDefault(); depth = 0; el.classList.remove('nxfv-dropzone');
+      var files = Array.prototype.slice.call(e.dataTransfer.files || []);
+      if (!files.length) return;
+      var tgt = getTarget && getTarget(); if (!tgt){ say('올릴 폴더를 먼저 여세요.'); return; }
+      FV.uploadFiles(files, tgt).then(function(){ if (onDone) onDone(); });
+    });
+  };
+  FV.uploadFiles = function(files, tgt){
+    var ok = 0, bad = [], seq = Promise.resolve();
+    say('파일 ' + files.length + '개를 올리는 중…');
+    files.forEach(function(file){
+      seq = seq.then(function(){
+        if (file.size > 40 * 1024 * 1024){ bad.push(file.name + '(40MB 넘음)'); return; }
+        return file.arrayBuffer().then(function(ab){
+          var body = { name: file.name, mimeType: file.type || 'application/octet-stream', base64Data: bytesToB64_(new Uint8Array(ab)) };
+          if (tgt.folderId) body.folderId = tgt.folderId; else body.path = tgt.path;
+          return callGas('uploadFile', body);
+        }).then(function(res){ if (res && !res.error) ok++; else bad.push(file.name); }).catch(function(){ bad.push(file.name); });
+      });
+    });
+    return seq.then(function(){ say(ok + '개 올렸습니다' + (bad.length ? ' · 못 올림: ' + bad.join(', ') : '') + '.'); return { ok: ok, bad: bad }; });
+  };
+})();
+</script>
+
       <!-- ============================================================
      [2026.10.20] 공용 보고서 렌더러 — 세무사님 "랜더러를 연결만 하지 말고 흡수하라".
      마크다운(.md)을 보고서 모양으로 그리는 기능 전부를 job의 공용 부품 하나로 모았다. 원래 작성관리(reportwriter.html,
@@ -3267,8 +3964,19 @@ function nxMdOpenWindow(title, src, opts){
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
     <div class="card dash-cover">
       <h3>일정<span class="dash-range dash-range-h">        <span class="dash-step"><button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지의 일정" type="number" id="dashCalRangeAfter" min="0" max="99" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button></span>      </span>
+        <button type="button" id="dashNewEvOpen" class="ghost-btn sm" aria-expanded="false" title="새 일정 넣기">＋ 추가</button>
         <span class="h-act"><a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="text-decoration:none;">열기</a></span>
       </h3>
+      <!-- [2026-11-27 독립 업무처리 E1] 일정 넣기·고치기·지우기를 대시보드에서(구글 달력으로 나가지 않게). 할일 「＋ 추가」와 같은 모양 — 줄을 누르면 고치기 -->
+      <form id="dashNewEvForm" style="display:none; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+        <input type="hidden" id="dashEvId">
+        <input type="date" id="dashEvDate" title="날짜" aria-label="날짜">
+        <input type="time" id="dashEvStart" title="시작(비우면 종일)" aria-label="시작 시각">
+        <input type="time" id="dashEvEnd" title="끝(비우면 1시간)" aria-label="끝 시각">
+        <input type="text" id="dashEvTitle" placeholder="내용" title="일정 내용" aria-label="일정 내용" style="flex:1; min-width:120px;">
+        <button type="submit" id="dashEvSave" class="save-btn" title="구글 달력에 넣습니다">저장</button>
+        <button type="button" id="dashEvDel" class="btn danger sm" style="display:none;" title="이 일정을 지웁니다">지우기</button>
+      </form>
       <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
       <!-- [2026-11-13] 세무사님 "일정에서 날짜지정할때 앞에 붙어있는 <오늘>이라는 말은 삭제하자. 다른 항목처럼 <날짜, 시간, 내용>이라는 타이틀을 붙이자" — 「오늘 전」→「전」, 표 머리글은 loadDashCalendar_ -->
       <!-- [2026-11-13] 세무사님 "일정에서 오늘이전은 없애자" — 「전 [ ] 일」 칸 걷음, 조회는 늘 오늘부터(dashCalRangeDates_). 남은 칸은 다른 카드처럼 숫자칸만.
@@ -3382,6 +4090,11 @@ function nxMdOpenWindow(title, src, opts){
       <div id="dashRoutineLine" style="font-size:12.5px; padding:4px 0 6px; border-bottom:1px solid var(--line);"></div>
       <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026-11-27 독립 업무처리 6단계] 넥스시스템 밖으로 나간 횟수(최근 7일, 많은 순) — 많은 것부터 다시 안으로 들인다. 센 것이 없으면 카드째 숨김(11-12 원칙) -->
+    <div class="card" id="dashExtCard" style="display:none;">
+      <h3>밖으로 나간 일<span class="nx-l-sub" style="font-weight:400; font-size:12px; margin-left:6px;">최근 7일 · 많은 순</span></h3>
+      <div id="dashExtList" style="font-size:12.5px;"></div>
+    </div>
     <!-- [2026.10.31] 세무사님 "권장안대로" — "🤝 새 기능·개발자 소통·AI 회의" 카드 없앰: 세무사님이 하실 일(개발자 질문·법령 판단 대기 결정·고객 서류·카카오 오류)은
          📋 확인조치사항 카드 맨 위로, 주간 개발자 실행·최근 바뀐 기능은 🌙 카드 운영 버전 줄 아래 한두 줄로, 반영 확인·긴급 요청은 🛠 개선요구 카드(원래 거기서 처리) -->
     <!-- [2026.10.20] "📋 사건 경과·마감 현황" 카드 제거 — 세무사님 "사건경과 마감현황도 실제 내용과 다른데"·"중복이면 정리하자".
@@ -3433,6 +4146,7 @@ function nxMdOpenWindow(title, src, opts){
     loadDashToday_();
     loadDashDeadlines();
     loadDashBookings();
+    loadDashExt_();
     loadDashUploads_();
     loadDashPayments();
     loadDashCalendar_();
@@ -3804,8 +4518,9 @@ function nxMdOpenWindow(title, src, opts){
       var box = document.getElementById('dashCalendar');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.일정 || [];
-      dashCardShow_(box, items.length > 0);
-      if (!items.length){ box.innerHTML = ''; return; }
+      // [2026-11-27] 「＋ 추가」 입력이 생겨 일정이 없어도 카드를 남긴다(11-12 원칙: 새 항목을 적는 칸이 있는 카드는 남김)
+      dashCardShow_(box, true);
+      if (!items.length){ box.innerHTML = '<div class="empty-row">이 기간 일정이 없습니다.</div>'; return; }
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
       // [2026-11-14] 세무사님 "칸 고정하라" — 일정 표도 다른 자료 표처럼 칸 너비 고정(내용 칸이 남는 폭을 다 받던 것 → 260px, 넘치면 … + 마우스를 올리면 전체).
@@ -3826,7 +4541,7 @@ function nxMdOpenWindow(title, src, opts){
         prevDate = datePart;
         var isToday = datePart === todayStr;
         var todayStyle = isToday ? ' color:var(--navy); font-weight:700;' : '';
-        html += '<tr><td style="' + nowrap + todayStyle + '">' + dateCell + '</td><td style="' + nowrap + todayStyle + '">' + esc(timePart) + '</td><td style="' + ellipsis + todayStyle + '" title="' + esc(ev.제목) + '">' + esc(ev.제목) + '</td></tr>';
+        html += '<tr class="dash-ev-row" style="cursor:pointer;" data-id="' + esc(ev.id || '') + '" data-date="' + esc(datePart) + '" data-start="' + (ev.종일일정 ? '' : esc(String(ev.시작).slice(11, 16))) + '" data-end="' + (ev.종일일정 ? '' : esc(String(ev.종료 || '').slice(11, 16))) + '" data-title="' + esc(ev.제목) + '"><td style="' + nowrap + todayStyle + '">' + dateCell + '</td><td style="' + nowrap + todayStyle + '">' + esc(timePart) + '</td><td style="' + ellipsis + todayStyle + '" title="' + esc(ev.제목) + ' — 누르면 고치기">' + esc(ev.제목) + '</td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -3874,7 +4589,7 @@ function nxMdOpenWindow(title, src, opts){
           + '<td' + open + nowrap + '">' + dateCell + '</td>'
           + '<td' + open + nowrap + '">' + esc(timePart) + '</td>'
           + '<td' + open + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
-          + '<td' + open + ellipsis + '" title="' + esc(m.제목) + ' — 누르면 지메일에서 열림">' + esc(m.제목) + '</td>'
+          + '<td' + open + ellipsis + '" title="' + esc(m.제목) + ' — 누르면 본문·첨부를 이 화면에서 봅니다">' + esc(m.제목) + '</td>'
           + '</tr>';
       });
       html += '</table></div>';
@@ -3901,10 +4616,74 @@ function nxMdOpenWindow(title, src, opts){
     if (e.target.closest('.dash-email-read-cb')) dashEmailSelSync_();
   });
   // [2026.11.12] 메일 줄(체크박스 제외)을 누르면 지메일에서 그 메일을 새 탭으로 연다.
+  // → [2026-11-27 독립 업무처리 D1] 넥스시스템 안 메일 창(본문·첨부·첨부를 사건 폴더에 넣기 — fileview.html nxFV.openMail). 답장만 그 창의 「↗ 지메일」
   document.getElementById('dashEmails').addEventListener('click', function(e){
     var td = e.target.closest('.dash-email-open');
     if (!td || !td.getAttribute('data-open')) return;
+    if (typeof nxFV !== 'undefined'){ nxFV.openMail(td.getAttribute('data-open'), ''); return; }
     window.open('https://mail.google.com/mail/#all/' + encodeURIComponent(td.getAttribute('data-open')), '_blank', 'noopener');
+  });
+
+  // [2026-11-27 독립 업무처리 6단계] 밖으로 나간 횟수 — fileview.html이 바깥 주소로 나갈 때마다 센 것(Standalone.js sf_ext_stats)
+  function loadDashExt_(){
+    callGas('sf_ext_stats', { days: 7 }).then(function(res){
+      var card = document.getElementById('dashExtCard'), box = document.getElementById('dashExtList');
+      if (!res || res.error || !res.total){ card.style.display = 'none'; return; }
+      card.style.display = '';
+      box.innerHTML = '<div style="padding:2px 0 6px; color:var(--sub);">모두 ' + res.total + '번' + (res.firstDay && res.firstDay > res.since ? ' (' + esc(res.firstDay) + '부터 셈)' : '') + '</div>' +
+        res.rows.slice(0, 8).map(function(r){
+          var dev = Object.keys(r.dev).map(function(k){ return k + ' ' + r.dev[k]; }).join(' · ');
+          return '<div style="display:flex; gap:8px; padding:3px 0; border-top:1px solid var(--line);"><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(r.cat) + '</span><b>' + r.n + '</b><span style="color:var(--sub); white-space:nowrap;">' + esc(dev) + '</span></div>';
+        }).join('');
+    }).catch(function(){});
+  }
+
+  // [2026-11-27 독립 업무처리 E1] 일정 넣기·고치기·지우기(Standalone.js sf_cal_*) — 할일 「＋ 추가」와 같은 차례(누르면 열림·다시 누르거나 Esc면 닫힘·저장은 양식 제출 한 길)
+  function dashEvShow_(on, ev){
+    var f = document.getElementById('dashNewEvForm'), b = document.getElementById('dashNewEvOpen');
+    f.style.display = on ? 'flex' : 'none'; b.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (!on) return;
+    ev = ev || {};
+    document.getElementById('dashEvId').value = ev.id || '';
+    document.getElementById('dashEvDate').value = ev.date || dashYmd_(new Date());
+    document.getElementById('dashEvStart').value = ev.start || '';
+    document.getElementById('dashEvEnd').value = ev.end || '';
+    document.getElementById('dashEvTitle').value = ev.title || '';
+    document.getElementById('dashEvDel').style.display = ev.id ? '' : 'none';
+    document.getElementById('dashEvSave').textContent = ev.id ? '고치기' : '저장';
+    document.getElementById('dashEvTitle').focus();
+  }
+  document.getElementById('dashNewEvOpen').addEventListener('click', function(){
+    var f = document.getElementById('dashNewEvForm');
+    dashEvShow_(f.style.display === 'none' || !!document.getElementById('dashEvId').value);
+  });
+  document.getElementById('dashNewEvForm').addEventListener('keydown', function(e){ if (e.key === 'Escape') dashEvShow_(false); });
+  document.getElementById('dashNewEvForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var id = document.getElementById('dashEvId').value, t = document.getElementById('dashEvTitle');
+    if (!t.value.trim()){ toast('일정 내용을 적어 주세요.'); t.focus(); return; }
+    var body = { id: id, title: t.value.trim(), date: document.getElementById('dashEvDate').value, start: document.getElementById('dashEvStart').value, end: document.getElementById('dashEvEnd').value };
+    body.allDay = !body.start;
+    var sv = document.getElementById('dashEvSave'); sv.disabled = true;
+    callGas(id ? 'sf_cal_update' : 'sf_cal_add', body).then(function(res){
+      sv.disabled = false;
+      if (!res || res.error){ toast((res && res.error) || '일정을 저장하지 못했습니다.'); return; }
+      toast(id ? '일정을 고쳤습니다.' : '일정을 넣었습니다.'); dashEvShow_(false); loadDashCalendar_();
+    }).catch(function(){ sv.disabled = false; toast('일정을 저장하지 못했습니다 — 다시 눌러 주세요.'); });
+  });
+  document.getElementById('dashEvDel').addEventListener('click', function(){
+    var id = document.getElementById('dashEvId').value; if (!id) return;
+    nxConfirm_('「' + document.getElementById('dashEvTitle').value + '」 일정을 지울까요?', '일정 지우기').then(function(ok){
+      if (!ok) return;
+      callGas('sf_cal_delete', { id: id }).then(function(res){
+        if (!res || res.error){ toast((res && res.error) || '지우지 못했습니다.'); return; }
+        toast('일정을 지웠습니다.'); dashEvShow_(false); loadDashCalendar_();
+      });
+    });
+  });
+  document.getElementById('dashCalendar').addEventListener('click', function(e){
+    var tr = e.target.closest('.dash-ev-row'); if (!tr || !tr.dataset.id) return;
+    dashEvShow_(true, { id: tr.dataset.id, date: tr.dataset.date, start: tr.dataset.start, end: tr.dataset.end, title: tr.dataset.title });
   });
   // [2026-11-13] 단추 하나 — 고른 것이 없으면 다 고르고, 하나라도 골랐으면 고른 것을 읽음 처리
   document.getElementById('dashEmailsSelAll').addEventListener('click', function(){
@@ -13430,6 +14209,19 @@ function nxMdOpenWindow(title, src, opts){
      "⋮" 버튼 + 우클릭(데스크톱)/길게 눌러도 되는 컨텍스트 메뉴로 대체한다. */
   .docs-row .docs-kebab{ flex-shrink:0; padding:2px 6px; border-radius:4px; color:var(--sub); cursor:pointer; }
   .docs-row .docs-kebab:hover{ background:#e5e7eb; color:var(--ink); }
+  /* [2026-11-27 독립 업무처리 A8] 작은 그림 보기 — 탐색기 큰 아이콘처럼 칸으로 늘어놓는다(폴더 줄은 위에 그대로) */
+  .docs-list.docs-thumb{ display:flex; flex-wrap:wrap; align-content:flex-start; gap:8px; padding:8px; }
+  .docs-list.docs-thumb .docs-row[data-type="folder"]{ flex:1 1 100%; }
+  .docs-list.docs-thumb .docs-row[data-type="file"]{ width:150px; flex-direction:column; align-items:stretch; gap:4px; padding:6px; border:1px solid var(--line); position:relative; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docsSelectChk{ position:absolute; left:6px; top:6px; z-index:1; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-kebab{ position:absolute; right:4px; top:4px; background:rgba(255,255,255,.85); }
+  .docs-list.docs-thumb .docs-thumbimg{ width:100%; height:110px; object-fit:contain; background:#f1f3f7; border-radius:4px; margin-top:18px; }
+  .docs-list.docs-thumb .docs-thumbph{ display:flex; align-items:center; justify-content:center; font-size:40px; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] > .docs-icon{ display:none; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-icon{ width:auto; text-align:left; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-name{ white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:12px; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-meta{ font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.lay-phone .docs-list.docs-thumb .docs-row[data-type="file"]{ width:calc(50% - 4px); }
   .docs-ctx-menu{ position:fixed; z-index:400; background:var(--panel); border:1px solid var(--line); border-radius:8px;
     box-shadow:0 8px 24px rgba(0,0,0,0.18); min-width:150px; padding:4px; font-size:13px; }
   .docs-ctx-menu-item{ padding:8px 12px; border-radius:6px; cursor:pointer; white-space:nowrap; }
@@ -13469,6 +14261,11 @@ function nxMdOpenWindow(title, src, opts){
     <input type="file" id="docsUploadInput" multiple style="display:none;">
     <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
     <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
+    <!-- [2026-11-27 독립 업무처리 A8] 탐색기 큰 아이콘처럼 작은 그림으로 훑기·정렬(이 기기에 기억) -->
+    <select id="docsSortSel" title="정렬" aria-label="정렬" style="margin-left:auto;">
+      <option value="name">이름순</option><option value="new">최근 고친 순</option><option value="old">오래된 순</option><option value="big">큰 파일 순</option><option value="kind">종류순</option>
+    </select>
+    <button type="button" id="docsBtnThumb" class="ghost-btn" title="작은 그림으로 보기 ↔ 목록으로 보기" aria-pressed="false"><span class="btn-ic">🖼</span><span class="btn-tx"> 그림</span></button>
   </div>
   <div id="docsToolBox" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:8px 14px; overflow-y:auto; max-height:55vh; background:var(--panel);"></div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
@@ -13481,6 +14278,9 @@ function nxMdOpenWindow(title, src, opts){
     <button type="button" id="docsBtnRenameSelected" class="ghost-btn sm"><span class="btn-ic">✏️</span><span class="btn-tx"> 이름변경</span></button>
     <button type="button" id="docsBtnShareSelected" class="ghost-btn sm"><span class="btn-ic">🔗</span><span class="btn-tx"> 공유</span></button>
     <button type="button" id="docsBtnMoveSelected" class="ghost-btn sm"><span class="btn-ic">📂</span><span class="btn-tx"> 이동</span></button>
+    <!-- [2026-11-27 독립 업무처리 C3·C4·B4] 고른 파일 내려받기(여럿이면 zip 하나)·묶어 압축해 이 폴더에 넣기 -->
+    <button type="button" id="docsBtnDownloadSelected" class="ghost-btn sm" title="고른 파일을 이 기기로 내려받습니다(여럿이면 zip 하나로)"><span class="btn-ic">⬇</span><span class="btn-tx"> 내려받기</span></button>
+    <button type="button" id="docsBtnZipSelected" class="ghost-btn sm" title="고른 파일을 zip 하나로 묶어 이 폴더에 넣습니다(고객·세무서 제출용)"><span class="btn-ic">🗜</span><span class="btn-tx"> 묶어 압축</span></button>
     <button type="button" id="docsBtnDeleteSelected" class="btn danger sm"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
     <button type="button" id="docsBtnClearSelection" class="ghost-btn sm" style="margin-left:auto;">선택 해제</button>
   </div>
@@ -14451,6 +15251,19 @@ function nxMdOpenWindow(title, src, opts){
     var data = docsCurrentListing;
     var folders = data.folders || [], files = data.files || [];
     if (!folders.length && !files.length){ listEl.innerHTML = '<div class="log-empty">빈 폴더입니다.</div>'; return; }
+    // [2026-11-27 독립 업무처리 A8] 정렬·작은 그림 보기(이 기기에 기억) — 보기 창의 앞·뒤 파일도 이 차례를 따른다
+    var sortBy = docsSortGet_(), thumb = docsThumbGet_();
+    var tOf = function(f){ var t = Date.parse(f.modifiedIso || '') || Date.parse(String(f.modifiedDate || '').replace(/\./g, '-')) || 0; return t; };
+    var extOf = function(f){ return (String(f.name).split('.').pop() || '').toLowerCase(); };
+    files = files.slice().sort(function(a, b){
+      if (sortBy === 'new') return tOf(b) - tOf(a) || String(a.name).localeCompare(b.name, 'ko');
+      if (sortBy === 'old') return tOf(a) - tOf(b) || String(a.name).localeCompare(b.name, 'ko');
+      if (sortBy === 'big') return (b.sizeBytes || 0) - (a.sizeBytes || 0);
+      if (sortBy === 'kind') return extOf(a).localeCompare(extOf(b)) || String(a.name).localeCompare(b.name, 'ko');
+      return String(a.name).localeCompare(b.name, 'ko', { numeric: true });
+    });
+    if (data.files) data.files = files; // 보기 창 ◀▶ 차례가 목록 차례와 같게
+    listEl.classList.toggle('docs-thumb', !!thumb);
     var html = '';
     folders.forEach(function(f){
       // [2026.09 이식] 폴더도 체크해서 선택바(이름변경·공유·삭제·이동)를 쓸 수 있게 한다
@@ -14466,6 +15279,9 @@ function nxMdOpenWindow(title, src, opts){
       // "PDF관리로 열기", 이미지는 "스캔으로 열기" 아이콘을 추가로 보여준다.
       html += '<div class="docs-row" data-type="file" data-id="' + escapeHtml(f.id) + '" data-url="' + escapeHtml(f.url || '') + '" data-name="' + escapeHtml(f.name) + '" data-mime="' + escapeHtml(f.mimeType || '') + '">' +
         '<input type="checkbox" class="docsSelectChk" style="margin-right:6px;"' + (docsSelectedIds[f.id] ? ' checked' : '') + '>' +
+        (thumb ? (/^image\/|pdf/.test(f.mimeType || '')
+          ? '<img class="docs-thumbimg" loading="lazy" alt="" src="https://drive.google.com/thumbnail?id=' + encodeURIComponent(f.id) + '&sz=w240" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\'"><span class="docs-thumbimg docs-thumbph" style="display:none">' + docsIconFor(f.mimeType, f.name) + '</span>'
+          : '<span class="docs-thumbimg docs-thumbph">' + docsIconFor(f.mimeType, f.name) + '</span>') : '') +
         '<span class="docs-icon">' + docsIconFor(f.mimeType, f.name) + '</span><span class="docs-name">' + escapeHtml(f.name) + '</span>' +
         '<span class="docs-meta">' + escapeHtml(f.modifiedDate || '') + (f.sizeBytes ? ' · ' + formatFileSize(f.sizeBytes) : '') + '</span>' +
         '<span class="docs-kebab" data-act="ctx" title="더보기">⋮</span>' +
@@ -14582,6 +15398,15 @@ function nxMdOpenWindow(title, src, opts){
   }
   function docsOpenFileViewer_(f, opts){
     opts = opts || {};
+    // [2026-11-27 독립 업무처리 A1·A2·A4] PDF·사진·한글·워드·엑셀·압축·녹음은 한 보기 창(fileview.html nxFV)이 넥스시스템 안에서 연다
+    //  — 예전엔 PDF·사진·워드가 드라이브 새 탭, 한글은 내려받기·한컴독스 안내였다. 글·보고서·구글시트만 아래 원래 창(글 고치기·보고서 모양).
+    if (!opts.fromFV && typeof nxFV !== 'undefined'){
+      var fvKind = nxFV.kindOf(f);
+      if (fvKind !== 'text' && fvKind !== 'gsheet'){
+        nxFV.open(f, { siblings: (docsCurrentListing && docsCurrentListing.files) || [], folderId: (docsCurrentListing && docsCurrentListing.folderId) || f.folderId || '' });
+        return;
+      }
+    }
     if (!opts.inPlace && /\.md$/i.test(f.name || '') && typeof nxAiOpenCaseDoc_ === 'function'){
       docsCaseOfCurrentFolder_().then(function(caseId){
         if (caseId){ nxAiOpenCaseDoc_(caseId, f); return; }
@@ -14765,8 +15590,11 @@ function nxMdOpenWindow(title, src, opts){
     // 화면 오른쪽/아래로 넘치면 반대쪽으로 붙인다.
     var vw = window.innerWidth, vh = window.innerHeight;
     var w = el.offsetWidth || 160, h = el.offsetHeight || 120;
-    el.style.left = Math.min(x, vw - w - 8) + 'px';
-    el.style.top = Math.min(y, vh - h - 8) + 'px';
+    // [2026-11-27 독립 업무처리 — 태블릿·폰 시험에서 찾음] 기기별 글자 크기(body zoom 110~115%)에서는 left·top이 배율만큼 커져
+    //  오른쪽 끝 ⋮ 메뉴가 화면 밖으로 나갔다 — 화면 좌표를 배율로 나눠 넣는다
+    var z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    el.style.left = Math.max(4, Math.min(x, vw - w * z - 8) / z) + 'px';
+    el.style.top = Math.max(4, Math.min(y, vh - h * z - 8) / z) + 'px';
   }
 
   function docsShowCtxMenu_(x, y, items){
@@ -14831,6 +15659,14 @@ function nxMdOpenWindow(title, src, opts){
       var fileObj = (docsCurrentListing.files || []).filter(function(x){ return x.id === id; })[0];
       if (fileObj) openExistingFileInScan(fileObj);
     } });
+    // [2026-11-27 독립 업무처리 B1·C2·C3] 압축 풀기·사본·내려받기 — 탐색기·압축 프로그램으로 나가지 않게
+    var fileOf = function(){ return (docsCurrentListing.files || []).filter(function(x){ return x.id === id; })[0]; };
+    if (type === 'file' && typeof nxFV !== 'undefined'){
+      var fo0 = fileOf();
+      if (fo0 && nxFV.kindOf(fo0) === 'zip') items.push({ label: '🗜 압축 열기·풀기', onClick: function(){ var fo = fileOf(); if (fo) docsOpenFileViewer_(fo); } });
+      items.push({ label: '⬇ 내려받기', onClick: function(){ var fo = fileOf(); if (fo) nxFV.download(fo); } });
+      items.push({ label: '📄 사본 만들기', onClick: function(){ var fo = fileOf(); if (fo) nxFV.copy(fo).then(function(r){ if (r) docsReloadQuiet_(); }); } });
+    }
     if (items.length) items.push({ sep: true });
     items.push({ label: '✏️ 이름변경', onClick: function(){
       nxPrompt_('새 이름을 입력하세요:', label).then(function(newName){
@@ -14920,6 +15756,24 @@ function nxMdOpenWindow(title, src, opts){
       } catch (e) {}
       if (copied) toast('"' + label + '" 공유 링크를 복사했습니다(링크가 있는 모든 사용자·보기 가능).');
       else nxPrompt_('아래 링크가 복사되도록 공유설정을 바꿨습니다(직접 복사해주세요):', url);
+      // [2026-11-27 독립 업무처리 C5] 링크를 카톡·메일로 따로 옮기지 않게 — 사건이 골라져 있으면 그 고객에게 바로 문자(보낼 글은 고쳐서 보냄)
+      // 사건 작업 화면 안의 서류 탭은 위 사건 칸(docsSelectedCaseId_)이 비어 있을 수 있어, 지금 폴더로 사건을 찾는다(docsCaseOfCurrentFolder_)
+      if (copied && typeof nxDialog_ === 'function') docsCaseOfCurrentFolder_().then(function(curCaseId){
+        if (!curCaseId) return;
+        nxDialog_({ title: '공유 링크', message: '「' + label + '」 링크를 복사했습니다.\n이 사건 고객에게 문자로 보낼까요?', buttons: [
+          { label: '고객에게 문자', value: 'sms', className: 'save-btn', primary: true }, { label: '닫기', value: false, className: 'ghost-btn', isCancel: true }
+        ] }).then(function(v){
+          if (v !== 'sms') return;
+          callGas('work_get_cases', {}).then(function(r){
+            var k = ((r && r.cases) || []).filter(function(x){ return x.id === curCaseId; })[0];
+            if (!k || !k.고객ID){ toast('이 사건에 이어진 고객을 찾지 못했습니다 — 고객관리에서 보내 주세요.'); return; }
+            nxPrompt_('보낼 문자(고쳐서 보낼 수 있습니다):', '[이음세무컨설팅] 「' + label + '」 자료 링크입니다: ' + url, '고객에게 문자').then(function(msg){
+              if (!msg || !msg.trim()) return;
+              callGas('client_send_sms', { 고객ID: k.고객ID, message: msg.trim(), caseId: k.id }).then(function(s){ toast(s && s.success !== false ? '문자를 보냈습니다(상담 기록에 남음).' : '문자를 보내지 못했습니다: ' + ((s && s.message) || '')); });
+            });
+          });
+        });
+      });
     });
   }
 
@@ -15073,6 +15927,24 @@ function nxMdOpenWindow(title, src, opts){
     // 이름변경은 한 번에 하나에만 의미가 있다.
     document.getElementById('docsBtnRenameSelected').style.display = (ids.length === 1) ? '' : 'none';
   }
+
+  // [2026-11-27 독립 업무처리 A8·C1·C3·C4] 정렬·작은 그림(이 기기 기억) / 고른 파일 내려받기·묶어 압축 / 끌어다 놓아 올리기
+  function docsSortGet_(){ try { return localStorage.getItem('nxDocsSort') || 'name'; } catch (e) { return 'name'; } }
+  function docsThumbGet_(){ try { return localStorage.getItem('nxDocsThumb') === '1'; } catch (e) { return false; } }
+  (function(){
+    var sel = document.getElementById('docsSortSel'), tb = document.getElementById('docsBtnThumb');
+    if (sel){ sel.value = docsSortGet_(); sel.addEventListener('change', function(){ try { localStorage.setItem('nxDocsSort', sel.value); } catch (e) {} if (docsCurrentListing) renderDocsList(); }); }
+    if (tb){ var sync = function(){ var on = docsThumbGet_(); tb.setAttribute('aria-pressed', on ? 'true' : 'false'); tb.classList.toggle('active', on); tb.querySelector('.btn-tx').textContent = on ? ' 목록' : ' 그림'; };
+      sync(); tb.addEventListener('click', function(){ try { localStorage.setItem('nxDocsThumb', docsThumbGet_() ? '0' : '1'); } catch (e) {} sync(); if (docsCurrentListing) renderDocsList(); }); }
+    var dl = document.getElementById('docsBtnDownloadSelected'), zb = document.getElementById('docsBtnZipSelected');
+    var filesOnly = function(){ var fs = docsSelectedFileObjs_(); if (Object.keys(docsSelectedIds).length > fs.length) toast('폴더는 빼고 파일만 다룹니다(폴더는 그 안을 열어 고르세요).'); return fs; };
+    if (dl) dl.addEventListener('click', function(){ if (typeof nxFV === 'undefined') return; var fs = filesOnly(); if (!fs.length) return; if (fs.length === 1) nxFV.download(fs[0]); else nxFV.zipFiles(fs, (docsPath[docsPath.length - 1] || '서류') + '_' + fs.length + '개.zip'); });
+    if (zb) zb.addEventListener('click', function(){ if (typeof nxFV === 'undefined') return; var fs = filesOnly(); if (!fs.length) return;
+      var def = (docsPath[docsPath.length - 1] || '서류') + '_묶음.zip';
+      nxPrompt_('묶은 압축 파일 이름(이 폴더에 넣습니다):', def, '묶어 압축').then(function(nm){ if (!nm) return; nm = nm.trim(); if (!/\.zip$/i.test(nm)) nm += '.zip'; nxFV.zipFiles(fs, nm, docsCurrentListing && docsCurrentListing.folderId); }); });
+    var list = document.getElementById('docsList');
+    if (list && typeof nxFV !== 'undefined') nxFV.attachDrop(list.parentElement || list, function(){ return docsCurrentListing && docsCurrentListing.folderId ? { folderId: docsCurrentListing.folderId } : (docsPath ? { path: docsPath } : null); }, function(){ docsReloadQuiet_(); });
+  })();
 
   function docsSelectedFileObjs_(){
     var ids = Object.keys(docsSelectedIds);
@@ -62832,10 +63704,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         });
         return Promise.resolve();
       }
-      // 사이드바에서는 미리보기 칸이 없으므로 새 창으로 연다.
+      // 사이드바에서는 미리보기 칸이 없으므로 — [2026-11-27 독립 업무처리 A5] 새 탭(드라이브) 대신 넥스시스템 안 보기 창으로 연다
+      if (typeof nxFV !== 'undefined'){ nxFV.open(f, {}); return Promise.resolve(); }
       if (f.url) window.open(f.url, '_blank', 'noopener'); else window.open(nxAiDrivePreviewUrl_(f), '_blank', 'noopener');
       return Promise.resolve();
     }
+    // [2026-11-27 독립 업무처리 A3·B1] 미리보기 칸의 드라이브 틀이 못 보이는 한글·압축은 한 보기 창으로(한글 모양 그대로·압축 안 목록·풀기)
+    if (typeof nxFV !== 'undefined' && /^(hwp|zip|archive)$/.test(nxFV.kindOf(f))){ nxFV.open(f, {}); return Promise.resolve(); }
     nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : ''), caseId: (nxAiConv && nxAiConv.caseId) || '' }; // caseId: [2026.11.13 5차 바] 어느 사건에서 연 파일인지
     nxAiPreviewText = null;
     nxAiPvHideProposal_();
@@ -63321,6 +64196,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (typeof nxReceiptSmsOpen_ !== 'function'){ finish('영수증 문자 창을 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', false); return; }
         nxReceiptSmsOpen_(a.payload || {});
         finish('영수증 문자 창을 열었습니다 — 미리 보기를 보시고 [보내기]를 누르세요.', true);
+        return;
+      }
+      // [2026-11-27 독립 업무처리] 넥스 카드 file_view — 파일을 넥스시스템 안 보기 창으로(서류 화면 「파일보기」와 같은 창)
+      if (a.gasAction === 'client:fileView'){
+        var fvp = a.payload || {};
+        if (typeof nxFV === 'undefined' || !fvp.fileId){ finish('보기 창을 열 수 없습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', false); return; }
+        nxFV.openById(fvp.fileId, fvp.name || '');
+        finish('파일을 보기 창으로 열었습니다.', true);
         return;
       }
       if (a.gasAction === 'client:memoSave'){
@@ -68747,6 +69630,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiShowMenu_(r.left, r.top - 90, items);
     });
     nxAiEl_('nxAiFileInput').addEventListener('change', function(e){ nxAiUploadLocalFiles_(e.target.files); e.target.value = ''; });
+    // [2026-11-27 독립 업무처리 C1] PC 파일을 대화 칸에 끌어다 놓으면 📎 「내 컴퓨터에서 올리기」와 같은 길(사건이 이어져 있으면 사건 폴더에 저장)
+    (function(){
+      var zone = nxAiEl_('nxAiBody'); if (!zone || zone.__nxDrop) return; zone.__nxDrop = true;
+      var depth = 0, isF = function(e){ var t = e.dataTransfer && e.dataTransfer.types; return t && Array.prototype.indexOf.call(t, 'Files') !== -1; };
+      zone.addEventListener('dragenter', function(e){ if (!isF(e)) return; e.preventDefault(); depth++; zone.classList.add('nxfv-dropzone'); });
+      zone.addEventListener('dragover', function(e){ if (!isF(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      zone.addEventListener('dragleave', function(e){ if (!isF(e)) return; depth = Math.max(0, depth - 1); if (!depth) zone.classList.remove('nxfv-dropzone'); });
+      zone.addEventListener('drop', function(e){ if (!isF(e)) return; e.preventDefault(); depth = 0; zone.classList.remove('nxfv-dropzone'); if (e.dataTransfer.files && e.dataTransfer.files.length) nxAiUploadLocalFiles_(e.dataTransfer.files); });
+    })();
     nxAiEl_('nxAiCaptureBtn').addEventListener('click', nxAiCapture_);
     // [2026.10.10] 🎤 — 구글 틀 안이라 마이크가 막혀 있어 NX 커넥터 도우미 창이 대신 듣는다(휴대폰은 키보드 음성입력)
     nxAiEl_('nxAiVoiceBtn').addEventListener('click', function(){

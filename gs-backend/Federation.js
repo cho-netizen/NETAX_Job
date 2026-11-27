@@ -659,6 +659,15 @@ function commSeamList_() {
       const p = PropertiesService.getScriptProperties();
       return (p.getProperty('SOLAPI_API_KEY') && p.getProperty('SOLAPI_SENDER_PHONE')) ? '' : '솔라피 열쇠·발신번호 없음';
     } },
+    // [2026-11-27] 세무사님 「넥스시스템만으로도 완전한 독립적인 업무처리」 — 보기 창·압축·메일 첨부·달력이 화면과 넥스에 같은 입구로
+    { 길: '넥스 독립 업무처리(메일 첨부 → 사건 폴더·압축 풀기·파일 보기 창 — 넥스 카드 mail_attach_save·zip_unzip·file_view, 조회 mail_read)', fn: function () {
+      if (typeof sf_dispatch_ !== 'function') return 'Standalone.js가 이 판에 없음(clasp push 필요)';
+      if (String(dispatchClientAction0_).indexOf('SF_ACTIONS_') === -1) return '서버 입구가 sf_ 묶음을 받지 않음';
+      if (typeof JOB_PROPOSE_ACTIONS_ === 'undefined' || !JOB_PROPOSE_ACTIONS_.mail_attach_save || !JOB_PROPOSE_ACTIONS_.zip_unzip || !JOB_PROPOSE_ACTIONS_.file_view) return '넥스 제안 길에 mail_attach_save·zip_unzip·file_view 중 빠진 것';
+      if (String(job_lookup_).indexOf("'mail_read'") === -1) return '넥스 조회에 mail_read 없음';
+      if (typeof tcUnzip_ !== 'function') return '압축 풀기 함수(tcUnzip_)가 없음(서류 읽기와 같은 함수여야 함)';
+      return '';
+    } },
     // [2026-11-26] 세무사님 "도착 결과를 확인할 수 있게 하자" — 보낸 메시지 번호 → 1분 틱이 솔라피에 결과 묻기 → 영수증 목록·상담 기록·실패는 「답하실 것」+아침 묶음
     { 길: '영수증 문자 도착 확인(1분 틱 → 솔라피 결과 → 목록·상담 기록·실패 알림)', fn: function () {
       if (typeof receiptSms_trackTick_ !== 'function') return 'ReceiptSmsTrack.js가 이 판에 없음(clasp push 필요)';

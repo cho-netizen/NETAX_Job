@@ -36,8 +36,19 @@
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
     <div class="card dash-cover">
       <h3>일정<span class="dash-range dash-range-h">        <span class="dash-step"><button type="button" data-step-for="dashCalRangeAfter" data-step="-1" title="하루 줄이기">−</button><input title="오늘부터 며칠 뒤까지의 일정" type="number" id="dashCalRangeAfter" min="0" max="99" value="7"><button type="button" data-step-for="dashCalRangeAfter" data-step="1" title="하루 늘리기">+</button></span>      </span>
+        <button type="button" id="dashNewEvOpen" class="ghost-btn sm" aria-expanded="false" title="새 일정 넣기">＋ 추가</button>
         <span class="h-act"><a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn sm" style="text-decoration:none;">열기</a></span>
       </h3>
+      <!-- [2026-11-27 독립 업무처리 E1] 일정 넣기·고치기·지우기를 대시보드에서(구글 달력으로 나가지 않게). 할일 「＋ 추가」와 같은 모양 — 줄을 누르면 고치기 -->
+      <form id="dashNewEvForm" style="display:none; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+        <input type="hidden" id="dashEvId">
+        <input type="date" id="dashEvDate" title="날짜" aria-label="날짜">
+        <input type="time" id="dashEvStart" title="시작(비우면 종일)" aria-label="시작 시각">
+        <input type="time" id="dashEvEnd" title="끝(비우면 1시간)" aria-label="끝 시각">
+        <input type="text" id="dashEvTitle" placeholder="내용" title="일정 내용" aria-label="일정 내용" style="flex:1; min-width:120px;">
+        <button type="submit" id="dashEvSave" class="save-btn" title="구글 달력에 넣습니다">저장</button>
+        <button type="button" id="dashEvDel" class="btn danger sm" style="display:none;" title="이 일정을 지웁니다">지우기</button>
+      </form>
       <!-- [2026.10.29] 범위 칸을 큰 − / + 단추로(작은 화살표로는 조절이 안 됨) — 아래 dashStepInit_이 단추·저장·다시 불러오기를 맡는다 -->
       <!-- [2026-11-13] 세무사님 "일정에서 날짜지정할때 앞에 붙어있는 <오늘>이라는 말은 삭제하자. 다른 항목처럼 <날짜, 시간, 내용>이라는 타이틀을 붙이자" — 「오늘 전」→「전」, 표 머리글은 loadDashCalendar_ -->
       <!-- [2026-11-13] 세무사님 "일정에서 오늘이전은 없애자" — 「전 [ ] 일」 칸 걷음, 조회는 늘 오늘부터(dashCalRangeDates_). 남은 칸은 다른 카드처럼 숫자칸만.
@@ -151,6 +162,11 @@
       <div id="dashRoutineLine" style="font-size:12.5px; padding:4px 0 6px; border-bottom:1px solid var(--line);"></div>
       <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026-11-27 독립 업무처리 6단계] 넥스시스템 밖으로 나간 횟수(최근 7일, 많은 순) — 많은 것부터 다시 안으로 들인다. 센 것이 없으면 카드째 숨김(11-12 원칙) -->
+    <div class="card" id="dashExtCard" style="display:none;">
+      <h3>밖으로 나간 일<span class="nx-l-sub" style="font-weight:400; font-size:12px; margin-left:6px;">최근 7일 · 많은 순</span></h3>
+      <div id="dashExtList" style="font-size:12.5px;"></div>
+    </div>
     <!-- [2026.10.31] 세무사님 "권장안대로" — "🤝 새 기능·개발자 소통·AI 회의" 카드 없앰: 세무사님이 하실 일(개발자 질문·법령 판단 대기 결정·고객 서류·카카오 오류)은
          📋 확인조치사항 카드 맨 위로, 주간 개발자 실행·최근 바뀐 기능은 🌙 카드 운영 버전 줄 아래 한두 줄로, 반영 확인·긴급 요청은 🛠 개선요구 카드(원래 거기서 처리) -->
     <!-- [2026.10.20] "📋 사건 경과·마감 현황" 카드 제거 — 세무사님 "사건경과 마감현황도 실제 내용과 다른데"·"중복이면 정리하자".
@@ -202,6 +218,7 @@
     loadDashToday_();
     loadDashDeadlines();
     loadDashBookings();
+    loadDashExt_();
     loadDashUploads_();
     loadDashPayments();
     loadDashCalendar_();
@@ -573,8 +590,9 @@
       var box = document.getElementById('dashCalendar');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.일정 || [];
-      dashCardShow_(box, items.length > 0);
-      if (!items.length){ box.innerHTML = ''; return; }
+      // [2026-11-27] 「＋ 추가」 입력이 생겨 일정이 없어도 카드를 남긴다(11-12 원칙: 새 항목을 적는 칸이 있는 카드는 남김)
+      dashCardShow_(box, true);
+      if (!items.length){ box.innerHTML = '<div class="empty-row">이 기간 일정이 없습니다.</div>'; return; }
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
       // [2026-11-14] 세무사님 "칸 고정하라" — 일정 표도 다른 자료 표처럼 칸 너비 고정(내용 칸이 남는 폭을 다 받던 것 → 260px, 넘치면 … + 마우스를 올리면 전체).
@@ -595,7 +613,7 @@
         prevDate = datePart;
         var isToday = datePart === todayStr;
         var todayStyle = isToday ? ' color:var(--navy); font-weight:700;' : '';
-        html += '<tr><td style="' + nowrap + todayStyle + '">' + dateCell + '</td><td style="' + nowrap + todayStyle + '">' + esc(timePart) + '</td><td style="' + ellipsis + todayStyle + '" title="' + esc(ev.제목) + '">' + esc(ev.제목) + '</td></tr>';
+        html += '<tr class="dash-ev-row" style="cursor:pointer;" data-id="' + esc(ev.id || '') + '" data-date="' + esc(datePart) + '" data-start="' + (ev.종일일정 ? '' : esc(String(ev.시작).slice(11, 16))) + '" data-end="' + (ev.종일일정 ? '' : esc(String(ev.종료 || '').slice(11, 16))) + '" data-title="' + esc(ev.제목) + '"><td style="' + nowrap + todayStyle + '">' + dateCell + '</td><td style="' + nowrap + todayStyle + '">' + esc(timePart) + '</td><td style="' + ellipsis + todayStyle + '" title="' + esc(ev.제목) + ' — 누르면 고치기">' + esc(ev.제목) + '</td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
@@ -643,7 +661,7 @@
           + '<td' + open + nowrap + '">' + dateCell + '</td>'
           + '<td' + open + nowrap + '">' + esc(timePart) + '</td>'
           + '<td' + open + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
-          + '<td' + open + ellipsis + '" title="' + esc(m.제목) + ' — 누르면 지메일에서 열림">' + esc(m.제목) + '</td>'
+          + '<td' + open + ellipsis + '" title="' + esc(m.제목) + ' — 누르면 본문·첨부를 이 화면에서 봅니다">' + esc(m.제목) + '</td>'
           + '</tr>';
       });
       html += '</table></div>';
@@ -670,10 +688,74 @@
     if (e.target.closest('.dash-email-read-cb')) dashEmailSelSync_();
   });
   // [2026.11.12] 메일 줄(체크박스 제외)을 누르면 지메일에서 그 메일을 새 탭으로 연다.
+  // → [2026-11-27 독립 업무처리 D1] 넥스시스템 안 메일 창(본문·첨부·첨부를 사건 폴더에 넣기 — fileview.html nxFV.openMail). 답장만 그 창의 「↗ 지메일」
   document.getElementById('dashEmails').addEventListener('click', function(e){
     var td = e.target.closest('.dash-email-open');
     if (!td || !td.getAttribute('data-open')) return;
+    if (typeof nxFV !== 'undefined'){ nxFV.openMail(td.getAttribute('data-open'), ''); return; }
     window.open('https://mail.google.com/mail/#all/' + encodeURIComponent(td.getAttribute('data-open')), '_blank', 'noopener');
+  });
+
+  // [2026-11-27 독립 업무처리 6단계] 밖으로 나간 횟수 — fileview.html이 바깥 주소로 나갈 때마다 센 것(Standalone.js sf_ext_stats)
+  function loadDashExt_(){
+    callGas('sf_ext_stats', { days: 7 }).then(function(res){
+      var card = document.getElementById('dashExtCard'), box = document.getElementById('dashExtList');
+      if (!res || res.error || !res.total){ card.style.display = 'none'; return; }
+      card.style.display = '';
+      box.innerHTML = '<div style="padding:2px 0 6px; color:var(--sub);">모두 ' + res.total + '번' + (res.firstDay && res.firstDay > res.since ? ' (' + esc(res.firstDay) + '부터 셈)' : '') + '</div>' +
+        res.rows.slice(0, 8).map(function(r){
+          var dev = Object.keys(r.dev).map(function(k){ return k + ' ' + r.dev[k]; }).join(' · ');
+          return '<div style="display:flex; gap:8px; padding:3px 0; border-top:1px solid var(--line);"><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(r.cat) + '</span><b>' + r.n + '</b><span style="color:var(--sub); white-space:nowrap;">' + esc(dev) + '</span></div>';
+        }).join('');
+    }).catch(function(){});
+  }
+
+  // [2026-11-27 독립 업무처리 E1] 일정 넣기·고치기·지우기(Standalone.js sf_cal_*) — 할일 「＋ 추가」와 같은 차례(누르면 열림·다시 누르거나 Esc면 닫힘·저장은 양식 제출 한 길)
+  function dashEvShow_(on, ev){
+    var f = document.getElementById('dashNewEvForm'), b = document.getElementById('dashNewEvOpen');
+    f.style.display = on ? 'flex' : 'none'; b.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (!on) return;
+    ev = ev || {};
+    document.getElementById('dashEvId').value = ev.id || '';
+    document.getElementById('dashEvDate').value = ev.date || dashYmd_(new Date());
+    document.getElementById('dashEvStart').value = ev.start || '';
+    document.getElementById('dashEvEnd').value = ev.end || '';
+    document.getElementById('dashEvTitle').value = ev.title || '';
+    document.getElementById('dashEvDel').style.display = ev.id ? '' : 'none';
+    document.getElementById('dashEvSave').textContent = ev.id ? '고치기' : '저장';
+    document.getElementById('dashEvTitle').focus();
+  }
+  document.getElementById('dashNewEvOpen').addEventListener('click', function(){
+    var f = document.getElementById('dashNewEvForm');
+    dashEvShow_(f.style.display === 'none' || !!document.getElementById('dashEvId').value);
+  });
+  document.getElementById('dashNewEvForm').addEventListener('keydown', function(e){ if (e.key === 'Escape') dashEvShow_(false); });
+  document.getElementById('dashNewEvForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var id = document.getElementById('dashEvId').value, t = document.getElementById('dashEvTitle');
+    if (!t.value.trim()){ toast('일정 내용을 적어 주세요.'); t.focus(); return; }
+    var body = { id: id, title: t.value.trim(), date: document.getElementById('dashEvDate').value, start: document.getElementById('dashEvStart').value, end: document.getElementById('dashEvEnd').value };
+    body.allDay = !body.start;
+    var sv = document.getElementById('dashEvSave'); sv.disabled = true;
+    callGas(id ? 'sf_cal_update' : 'sf_cal_add', body).then(function(res){
+      sv.disabled = false;
+      if (!res || res.error){ toast((res && res.error) || '일정을 저장하지 못했습니다.'); return; }
+      toast(id ? '일정을 고쳤습니다.' : '일정을 넣었습니다.'); dashEvShow_(false); loadDashCalendar_();
+    }).catch(function(){ sv.disabled = false; toast('일정을 저장하지 못했습니다 — 다시 눌러 주세요.'); });
+  });
+  document.getElementById('dashEvDel').addEventListener('click', function(){
+    var id = document.getElementById('dashEvId').value; if (!id) return;
+    nxConfirm_('「' + document.getElementById('dashEvTitle').value + '」 일정을 지울까요?', '일정 지우기').then(function(ok){
+      if (!ok) return;
+      callGas('sf_cal_delete', { id: id }).then(function(res){
+        if (!res || res.error){ toast((res && res.error) || '지우지 못했습니다.'); return; }
+        toast('일정을 지웠습니다.'); dashEvShow_(false); loadDashCalendar_();
+      });
+    });
+  });
+  document.getElementById('dashCalendar').addEventListener('click', function(e){
+    var tr = e.target.closest('.dash-ev-row'); if (!tr || !tr.dataset.id) return;
+    dashEvShow_(true, { id: tr.dataset.id, date: tr.dataset.date, start: tr.dataset.start, end: tr.dataset.end, title: tr.dataset.title });
   });
   // [2026-11-13] 단추 하나 — 고른 것이 없으면 다 고르고, 하나라도 골랐으면 고른 것을 읽음 처리
   document.getElementById('dashEmailsSelAll').addEventListener('click', function(){

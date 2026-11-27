@@ -4563,6 +4563,13 @@ function job_lookup_(input) {
   }
   if (kind === 'law_decisions') return typeof aiJudgeForNex_ === 'function' ? aiJudgeForNex_(input.search || '', input.세목 || '') : { error: '이 판에 없음' };
   // [2026.11.12 2차 전면 재검토 ①] 세무사님 화면에만 있던 셋 — 대시보드 📋 확인조치사항(Followup.js)·할 일 묶음(todoList_)·상담 받은함(Consult.js). 공통원칙 "세무사님만 할 수 있는 화면 동작이 있으면 넥스 대행이 덜 된 것"
+  // [2026-11-27 독립 업무처리 D1] 메일 본문·첨부 목록·보낸 사람으로 찾은 사건 후보 — 화면 대시보드 메일 보기 창과 같은 함수(sfMailGet_)
+  if (kind === 'mail_read') {
+    if (!input.threadId) return { error: 'threadId가 필요합니다 — search_emails 결과의 id' };
+    const r = typeof sfMailGet_ === 'function' ? sfMailGet_({ threadId: input.threadId }) : { error: '이 판에 없음' };
+    if (r && r.ok) r.안내 = '첨부를 사건 폴더에 넣으려면 job_propose_action{action:mail_attach_save, params:{messageId, indexes, caseId}} — 세무사님이 [실행]을 누른다. 사건 후보(suggest)는 보낸 사람 이름·메일 주소로 찾은 것이라 확정이 아니다.';
+    return r;
+  }
   if (kind === 'followup') {
     const r = typeof followupGet_ === 'function' ? followupGet_() : { error: '이 판에 없음' };
     if (!r || r.error) return r;
@@ -4652,6 +4659,10 @@ const JOB_PROPOSE_ACTIONS_ = {
   client_sms: { gas: 'client_send_sms', label: '고객에게 문자 발송', required: ['고객ID', 'message'] },
   // [2026-11-25] 현금영수증 사진 문자 — 그림은 화면이 PDF에서 만들므로 [실행]은 미리 보기 창을 연다(보내기는 세무사님이 그 창에서). receiptsms.html·ReceiptSms.js
   receipt_sms: { gas: 'client:receiptSms', label: '현금영수증 사진 문자 창 열기(보내기는 세무사님이 미리 보기에서)', required: [] },
+  // [2026-11-27 독립 업무처리] 화면 도구와 같은 입구 — 메일 첨부를 사건 폴더에·압축을 같은 폴더 「압축풀기_이름」에·파일을 시스템 안 보기 창으로(Standalone.js·fileview.html)
+  mail_attach_save: { gas: 'sf_mail_save', label: '메일 첨부를 사건 폴더에 넣기', required: ['messageId'] },
+  zip_unzip: { gas: 'sf_unzip_to_folder', label: '압축(zip)을 같은 폴더 「압축풀기_이름」에 풀기', required: ['fileId'] },
+  file_view: { gas: 'client:fileView', label: '파일을 넥스시스템 안 보기 창으로 열기', required: ['fileId'] },
   portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
   checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
   // [2026.11.12 2차 ② 계획서 ①(세무사님 "권장대로")] 신고서식 PDF — 서식은 화면이 그려 PDF로 만드는 구조라 넥스가 서버에서 못 만든다. 넥스가 계산·대조까지 끝내고 카드를 띄우면 세무사님 [실행] 한 번에 화면이 세액계산 화면을 열어 필수 서식 PDF를 보고서_내부에 저장(사건처리 상자 '서식 대조'와 같은 길)
@@ -4811,8 +4822,9 @@ const JOB_AI_TOOLS_ = [
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read', 'booking_link_review', 'booking_case_candidates', 'followup', 'todo', 'consult_inbox'] }, // [2026.11.12 2차 ①] 대시보드 📋 확인조치사항(후속 할 일)·할 일·상담 받은함도 넥스가 본다
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log', 'caseproc', 'ledger', 'ai_review', 'law_decisions', 'case_files', 'file_read', 'booking_link_review', 'booking_case_candidates', 'followup', 'todo', 'consult_inbox', 'mail_read'] }, // [2026-11-27] mail_read = 메일 한 묶음 본문·첨부·맞는 사건 후보(threadId — 받은 메일 목록은 search_emails) // [2026.11.12 2차 ①] 대시보드 📋 확인조치사항(후속 할 일)·할 일·상담 받은함도 넥스가 본다
         rowIndex: { type: 'number', description: 'booking_case_candidates일 때 예약 줄 번호(bookings의 rowIndex)' },
+        threadId: { type: 'string', description: 'mail_read일 때 메일 묶음 id(search_emails 결과의 id) — 본문·첨부 목록·보낸 사람으로 찾은 사건 후보를 돌려준다' },
         caseId: { type: 'string', description: 'checklist·caseproc·case_files·file_read일 때 작업관리 사건ID' },
         search: { type: 'string', description: 'consult_logs일 때 고객명, law_decisions일 때 쟁점 낱말, case_files일 때 파일 이름 낱말(선택)' },
         dir: { type: 'string', description: 'case_files일 때 폴더 이름으로 좁히기(선택)' },
@@ -4833,7 +4845,10 @@ const JOB_AI_TOOLS_ = [
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
       + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
       + 'receipt_sms{fileId(선택),고객명(선택)}(「1 상담사건」 폴더의 현금영수증 PDF를 고객에게 사진 문자로 보내는 창 — fileId를 주면 그 영수증 미리 보기로 바로 열림. 보내는 순간 수금관리에 적히고 받는 번호는 고객관리에 남는다. 단순 상담 고객에게 영수증을 보내 달라시면 이것) / '
-      + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
+      + 'mail_attach_save{messageId, indexes(선택: 첨부 번호 목록, 없으면 전부), caseId 또는 folderId}(메일 첨부를 사건 폴더에 넣음 — messageId·첨부 번호·맞는 사건 후보는 job_lookup kind=mail_read로 먼저 본다) / '
+      + 'zip_unzip{fileId, names(선택: 풀 안 파일 이름들)}(사건 폴더의 zip을 같은 폴더 「압축풀기_이름」에 풂 — 서류 읽기도 그 폴더를 읽는다. 비밀번호 압축은 세무사님이 보기 창에서 비밀번호를 넣어 푼다) / '
+      + 'file_view{fileId, name(선택)}(파일을 넥스시스템 안 보기 창으로 엶 — PDF·사진·한글·워드·엑셀·압축·녹음. 세무사님께 "열어 보여 줘"라고 들으면 쓴다) / '
+      + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) /receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기) / '
       + 'print_pdf{caseId}(저장된 세액계산 결과로 필수 신고서식 PDF를 사건 폴더 보고서에 저장 — 서식은 화면이 만들므로 세무사님이 [실행]을 눌러야 하고 세액계산 화면이 잠시 열린다. 먼저 case_ledger do=calc 또는 calc_scenario로 계산을 저장하고 forms_check로 빈 칸이 없는지 본 뒤 제안하라) / '
       + '(장부·질문·계산·읽을 목록은 제안 길이 없다 — 사건 도구 case_ledger·calc_scenario·set_read_scope로 바로 한다)',
     input_schema: {
@@ -5045,7 +5060,7 @@ function getClientActionTools_(ctx) {
 // 기억하지 않는다(저장했는데 옛날 값이 보이는 짜증을 만들지 않기 위해).
 const DISPATCH_SHORT_CACHE_ = { getNightlyStatus: 1800, getGlobalLog: 120, search_emails: 90, get_calendar_events: 90 };
 // 이 작업들이 성공하면 위 기억을 지운다(예약 승인·취소 → 캘린더가 바뀜, 메일 읽음 표시 → 안읽은 메일 목록이 바뀜)
-const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], booking_set_result: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'], env_watch_run: ['getNightlyStatus'] };
+const DISPATCH_SHORT_CACHE_BUST_ = { sf_cal_add: ['get_calendar_events'], sf_cal_update: ['get_calendar_events'], sf_cal_delete: ['get_calendar_events'], approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], booking_set_result: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'], env_watch_run: ['getNightlyStatus'] };
 // [2026.11.03] 저장마다 걸린 시간 기록(세무사님 "권장안대로 하자" — 저장 기다림 전수조사 ⑧). 조회로 보이는 이름은 빼고, 서버 안에서 걸린 시간만
 //  캐시에 최근 150건(6시간). 설정 › 시스템 관리 「저장 걸린 시간」이 읽는다(save_times). 화면 쪽 왕복 시간은 화면이 따로 적는다.
 function saveTimeNote_(action, ms) {
@@ -5510,6 +5525,10 @@ function dispatchClientAction0_(body) {
   // [2026-11-25] 현금영수증 사진 문자(ReceiptSms.js) — 「1 상담사건」 영수증 목록·준비·보내기
   if (body.action === 'receipt_sms_list' || body.action === 'receipt_sms_prepare' || body.action === 'receipt_sms_send' || body.action === 'receipt_sms_status') { // [2026-11-26] status = 도착 결과(ReceiptSmsTrack.js)
     return jsonResponse(receiptSms_doPost_(body));
+  }
+  // [2026-11-27] 넥스 독립 업무처리(Standalone.js) — 사본·큰 압축 풀기·메일 본문/첨부·달력 넣기·밖으로 나간 횟수. 로그인 표가 있어야 닿는 길만
+  if (typeof SF_ACTIONS_ !== 'undefined' && SF_ACTIONS_.indexOf(body.action) !== -1) {
+    return jsonResponse(sf_dispatch_(body));
   }
   if (body.action === 'scan_cash_receipts') {
     return jsonResponse(handleScanCashReceipts(body));
@@ -6746,10 +6765,13 @@ function handleReadFile(body) {
   const lowerName = (file.getName() || '').toLowerCase();
 
   if (lowerName.endsWith('.hwp') || lowerName.endsWith('.hwpx') || mimeType.indexOf('hwp') !== -1) {
-    return {
-      error: '한글(HWP/HWPX) 파일은 구글이 자체 변환을 지원하지 않아 읽을 수 없습니다. ' +
-        '한글 프로그램이나 뷰어에서 "다른 이름으로 저장 → PDF"로 변환한 뒤 그 PDF를 다시 올려주세요.'
-    };
+    // [2026-11-27 독립 업무처리 A3] 서류 읽기(tc_docText_)는 10-18부터 한글을 직접 읽는데 이 입구만 "못 읽음"이라 했다 — 같은 함수로 글자를 돌려준다
+    //  (보기 창은 화면에서 모양 그대로 그리고, 그리지 못할 때 이 글자로 보인다)
+    try {
+      const t = lowerName.endsWith('.hwpx') ? tcHwpxText_(fileId) : tcHwpText_(fileId);
+      if (t && String(t).trim()) return { name: file.getName(), mimeType: mimeType, content: String(t), kind: 'text', hwpText: true };
+    } catch (e) { }
+    return { error: '이 한글 파일에서 글자를 꺼내지 못했습니다(암호·손상 또는 그림만 든 문서).' };
   }
 
   try {
@@ -9722,6 +9744,7 @@ function toolLookupCalendarEvents(startDate, endDate) {
     const events = cal.getEvents(start, end);
     const items = events.map(function (ev) {
       return {
+        id: ev.getId(), // [2026-11-27 독립 업무처리 E1] 대시보드에서 고치기·지우기(sf_cal_update/delete)
         제목: ev.getTitle(),
         시작: Utilities.formatDate(ev.getStartTime(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'),
         종료: Utilities.formatDate(ev.getEndTime(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'),

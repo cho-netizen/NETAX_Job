@@ -16,6 +16,19 @@
      "⋮" 버튼 + 우클릭(데스크톱)/길게 눌러도 되는 컨텍스트 메뉴로 대체한다. */
   .docs-row .docs-kebab{ flex-shrink:0; padding:2px 6px; border-radius:4px; color:var(--sub); cursor:pointer; }
   .docs-row .docs-kebab:hover{ background:#e5e7eb; color:var(--ink); }
+  /* [2026-11-27 독립 업무처리 A8] 작은 그림 보기 — 탐색기 큰 아이콘처럼 칸으로 늘어놓는다(폴더 줄은 위에 그대로) */
+  .docs-list.docs-thumb{ display:flex; flex-wrap:wrap; align-content:flex-start; gap:8px; padding:8px; }
+  .docs-list.docs-thumb .docs-row[data-type="folder"]{ flex:1 1 100%; }
+  .docs-list.docs-thumb .docs-row[data-type="file"]{ width:150px; flex-direction:column; align-items:stretch; gap:4px; padding:6px; border:1px solid var(--line); position:relative; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docsSelectChk{ position:absolute; left:6px; top:6px; z-index:1; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-kebab{ position:absolute; right:4px; top:4px; background:rgba(255,255,255,.85); }
+  .docs-list.docs-thumb .docs-thumbimg{ width:100%; height:110px; object-fit:contain; background:#f1f3f7; border-radius:4px; margin-top:18px; }
+  .docs-list.docs-thumb .docs-thumbph{ display:flex; align-items:center; justify-content:center; font-size:40px; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] > .docs-icon{ display:none; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-icon{ width:auto; text-align:left; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-name{ white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:12px; }
+  .docs-list.docs-thumb .docs-row[data-type="file"] .docs-meta{ font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.lay-phone .docs-list.docs-thumb .docs-row[data-type="file"]{ width:calc(50% - 4px); }
   .docs-ctx-menu{ position:fixed; z-index:400; background:var(--panel); border:1px solid var(--line); border-radius:8px;
     box-shadow:0 8px 24px rgba(0,0,0,0.18); min-width:150px; padding:4px; font-size:13px; }
   .docs-ctx-menu-item{ padding:8px 12px; border-radius:6px; cursor:pointer; white-space:nowrap; }
@@ -55,6 +68,11 @@
     <input type="file" id="docsUploadInput" multiple style="display:none;">
     <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
     <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
+    <!-- [2026-11-27 독립 업무처리 A8] 탐색기 큰 아이콘처럼 작은 그림으로 훑기·정렬(이 기기에 기억) -->
+    <select id="docsSortSel" title="정렬" aria-label="정렬" style="margin-left:auto;">
+      <option value="name">이름순</option><option value="new">최근 고친 순</option><option value="old">오래된 순</option><option value="big">큰 파일 순</option><option value="kind">종류순</option>
+    </select>
+    <button type="button" id="docsBtnThumb" class="ghost-btn" title="작은 그림으로 보기 ↔ 목록으로 보기" aria-pressed="false"><span class="btn-ic">🖼</span><span class="btn-tx"> 그림</span></button>
   </div>
   <div id="docsToolBox" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:8px 14px; overflow-y:auto; max-height:55vh; background:var(--panel);"></div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
@@ -67,6 +85,9 @@
     <button type="button" id="docsBtnRenameSelected" class="ghost-btn sm"><span class="btn-ic">✏️</span><span class="btn-tx"> 이름변경</span></button>
     <button type="button" id="docsBtnShareSelected" class="ghost-btn sm"><span class="btn-ic">🔗</span><span class="btn-tx"> 공유</span></button>
     <button type="button" id="docsBtnMoveSelected" class="ghost-btn sm"><span class="btn-ic">📂</span><span class="btn-tx"> 이동</span></button>
+    <!-- [2026-11-27 독립 업무처리 C3·C4·B4] 고른 파일 내려받기(여럿이면 zip 하나)·묶어 압축해 이 폴더에 넣기 -->
+    <button type="button" id="docsBtnDownloadSelected" class="ghost-btn sm" title="고른 파일을 이 기기로 내려받습니다(여럿이면 zip 하나로)"><span class="btn-ic">⬇</span><span class="btn-tx"> 내려받기</span></button>
+    <button type="button" id="docsBtnZipSelected" class="ghost-btn sm" title="고른 파일을 zip 하나로 묶어 이 폴더에 넣습니다(고객·세무서 제출용)"><span class="btn-ic">🗜</span><span class="btn-tx"> 묶어 압축</span></button>
     <button type="button" id="docsBtnDeleteSelected" class="btn danger sm"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
     <button type="button" id="docsBtnClearSelection" class="ghost-btn sm" style="margin-left:auto;">선택 해제</button>
   </div>
@@ -1037,6 +1058,19 @@
     var data = docsCurrentListing;
     var folders = data.folders || [], files = data.files || [];
     if (!folders.length && !files.length){ listEl.innerHTML = '<div class="log-empty">빈 폴더입니다.</div>'; return; }
+    // [2026-11-27 독립 업무처리 A8] 정렬·작은 그림 보기(이 기기에 기억) — 보기 창의 앞·뒤 파일도 이 차례를 따른다
+    var sortBy = docsSortGet_(), thumb = docsThumbGet_();
+    var tOf = function(f){ var t = Date.parse(f.modifiedIso || '') || Date.parse(String(f.modifiedDate || '').replace(/\./g, '-')) || 0; return t; };
+    var extOf = function(f){ return (String(f.name).split('.').pop() || '').toLowerCase(); };
+    files = files.slice().sort(function(a, b){
+      if (sortBy === 'new') return tOf(b) - tOf(a) || String(a.name).localeCompare(b.name, 'ko');
+      if (sortBy === 'old') return tOf(a) - tOf(b) || String(a.name).localeCompare(b.name, 'ko');
+      if (sortBy === 'big') return (b.sizeBytes || 0) - (a.sizeBytes || 0);
+      if (sortBy === 'kind') return extOf(a).localeCompare(extOf(b)) || String(a.name).localeCompare(b.name, 'ko');
+      return String(a.name).localeCompare(b.name, 'ko', { numeric: true });
+    });
+    if (data.files) data.files = files; // 보기 창 ◀▶ 차례가 목록 차례와 같게
+    listEl.classList.toggle('docs-thumb', !!thumb);
     var html = '';
     folders.forEach(function(f){
       // [2026.09 이식] 폴더도 체크해서 선택바(이름변경·공유·삭제·이동)를 쓸 수 있게 한다
@@ -1052,6 +1086,9 @@
       // "PDF관리로 열기", 이미지는 "스캔으로 열기" 아이콘을 추가로 보여준다.
       html += '<div class="docs-row" data-type="file" data-id="' + escapeHtml(f.id) + '" data-url="' + escapeHtml(f.url || '') + '" data-name="' + escapeHtml(f.name) + '" data-mime="' + escapeHtml(f.mimeType || '') + '">' +
         '<input type="checkbox" class="docsSelectChk" style="margin-right:6px;"' + (docsSelectedIds[f.id] ? ' checked' : '') + '>' +
+        (thumb ? (/^image\/|pdf/.test(f.mimeType || '')
+          ? '<img class="docs-thumbimg" loading="lazy" alt="" src="https://drive.google.com/thumbnail?id=' + encodeURIComponent(f.id) + '&sz=w240" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\'"><span class="docs-thumbimg docs-thumbph" style="display:none">' + docsIconFor(f.mimeType, f.name) + '</span>'
+          : '<span class="docs-thumbimg docs-thumbph">' + docsIconFor(f.mimeType, f.name) + '</span>') : '') +
         '<span class="docs-icon">' + docsIconFor(f.mimeType, f.name) + '</span><span class="docs-name">' + escapeHtml(f.name) + '</span>' +
         '<span class="docs-meta">' + escapeHtml(f.modifiedDate || '') + (f.sizeBytes ? ' · ' + formatFileSize(f.sizeBytes) : '') + '</span>' +
         '<span class="docs-kebab" data-act="ctx" title="더보기">⋮</span>' +
@@ -1168,6 +1205,15 @@
   }
   function docsOpenFileViewer_(f, opts){
     opts = opts || {};
+    // [2026-11-27 독립 업무처리 A1·A2·A4] PDF·사진·한글·워드·엑셀·압축·녹음은 한 보기 창(fileview.html nxFV)이 넥스시스템 안에서 연다
+    //  — 예전엔 PDF·사진·워드가 드라이브 새 탭, 한글은 내려받기·한컴독스 안내였다. 글·보고서·구글시트만 아래 원래 창(글 고치기·보고서 모양).
+    if (!opts.fromFV && typeof nxFV !== 'undefined'){
+      var fvKind = nxFV.kindOf(f);
+      if (fvKind !== 'text' && fvKind !== 'gsheet'){
+        nxFV.open(f, { siblings: (docsCurrentListing && docsCurrentListing.files) || [], folderId: (docsCurrentListing && docsCurrentListing.folderId) || f.folderId || '' });
+        return;
+      }
+    }
     if (!opts.inPlace && /\.md$/i.test(f.name || '') && typeof nxAiOpenCaseDoc_ === 'function'){
       docsCaseOfCurrentFolder_().then(function(caseId){
         if (caseId){ nxAiOpenCaseDoc_(caseId, f); return; }
@@ -1351,8 +1397,11 @@
     // 화면 오른쪽/아래로 넘치면 반대쪽으로 붙인다.
     var vw = window.innerWidth, vh = window.innerHeight;
     var w = el.offsetWidth || 160, h = el.offsetHeight || 120;
-    el.style.left = Math.min(x, vw - w - 8) + 'px';
-    el.style.top = Math.min(y, vh - h - 8) + 'px';
+    // [2026-11-27 독립 업무처리 — 태블릿·폰 시험에서 찾음] 기기별 글자 크기(body zoom 110~115%)에서는 left·top이 배율만큼 커져
+    //  오른쪽 끝 ⋮ 메뉴가 화면 밖으로 나갔다 — 화면 좌표를 배율로 나눠 넣는다
+    var z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    el.style.left = Math.max(4, Math.min(x, vw - w * z - 8) / z) + 'px';
+    el.style.top = Math.max(4, Math.min(y, vh - h * z - 8) / z) + 'px';
   }
 
   function docsShowCtxMenu_(x, y, items){
@@ -1417,6 +1466,14 @@
       var fileObj = (docsCurrentListing.files || []).filter(function(x){ return x.id === id; })[0];
       if (fileObj) openExistingFileInScan(fileObj);
     } });
+    // [2026-11-27 독립 업무처리 B1·C2·C3] 압축 풀기·사본·내려받기 — 탐색기·압축 프로그램으로 나가지 않게
+    var fileOf = function(){ return (docsCurrentListing.files || []).filter(function(x){ return x.id === id; })[0]; };
+    if (type === 'file' && typeof nxFV !== 'undefined'){
+      var fo0 = fileOf();
+      if (fo0 && nxFV.kindOf(fo0) === 'zip') items.push({ label: '🗜 압축 열기·풀기', onClick: function(){ var fo = fileOf(); if (fo) docsOpenFileViewer_(fo); } });
+      items.push({ label: '⬇ 내려받기', onClick: function(){ var fo = fileOf(); if (fo) nxFV.download(fo); } });
+      items.push({ label: '📄 사본 만들기', onClick: function(){ var fo = fileOf(); if (fo) nxFV.copy(fo).then(function(r){ if (r) docsReloadQuiet_(); }); } });
+    }
     if (items.length) items.push({ sep: true });
     items.push({ label: '✏️ 이름변경', onClick: function(){
       nxPrompt_('새 이름을 입력하세요:', label).then(function(newName){
@@ -1506,6 +1563,24 @@
       } catch (e) {}
       if (copied) toast('"' + label + '" 공유 링크를 복사했습니다(링크가 있는 모든 사용자·보기 가능).');
       else nxPrompt_('아래 링크가 복사되도록 공유설정을 바꿨습니다(직접 복사해주세요):', url);
+      // [2026-11-27 독립 업무처리 C5] 링크를 카톡·메일로 따로 옮기지 않게 — 사건이 골라져 있으면 그 고객에게 바로 문자(보낼 글은 고쳐서 보냄)
+      // 사건 작업 화면 안의 서류 탭은 위 사건 칸(docsSelectedCaseId_)이 비어 있을 수 있어, 지금 폴더로 사건을 찾는다(docsCaseOfCurrentFolder_)
+      if (copied && typeof nxDialog_ === 'function') docsCaseOfCurrentFolder_().then(function(curCaseId){
+        if (!curCaseId) return;
+        nxDialog_({ title: '공유 링크', message: '「' + label + '」 링크를 복사했습니다.\n이 사건 고객에게 문자로 보낼까요?', buttons: [
+          { label: '고객에게 문자', value: 'sms', className: 'save-btn', primary: true }, { label: '닫기', value: false, className: 'ghost-btn', isCancel: true }
+        ] }).then(function(v){
+          if (v !== 'sms') return;
+          callGas('work_get_cases', {}).then(function(r){
+            var k = ((r && r.cases) || []).filter(function(x){ return x.id === curCaseId; })[0];
+            if (!k || !k.고객ID){ toast('이 사건에 이어진 고객을 찾지 못했습니다 — 고객관리에서 보내 주세요.'); return; }
+            nxPrompt_('보낼 문자(고쳐서 보낼 수 있습니다):', '[이음세무컨설팅] 「' + label + '」 자료 링크입니다: ' + url, '고객에게 문자').then(function(msg){
+              if (!msg || !msg.trim()) return;
+              callGas('client_send_sms', { 고객ID: k.고객ID, message: msg.trim(), caseId: k.id }).then(function(s){ toast(s && s.success !== false ? '문자를 보냈습니다(상담 기록에 남음).' : '문자를 보내지 못했습니다: ' + ((s && s.message) || '')); });
+            });
+          });
+        });
+      });
     });
   }
 
@@ -1659,6 +1734,24 @@
     // 이름변경은 한 번에 하나에만 의미가 있다.
     document.getElementById('docsBtnRenameSelected').style.display = (ids.length === 1) ? '' : 'none';
   }
+
+  // [2026-11-27 독립 업무처리 A8·C1·C3·C4] 정렬·작은 그림(이 기기 기억) / 고른 파일 내려받기·묶어 압축 / 끌어다 놓아 올리기
+  function docsSortGet_(){ try { return localStorage.getItem('nxDocsSort') || 'name'; } catch (e) { return 'name'; } }
+  function docsThumbGet_(){ try { return localStorage.getItem('nxDocsThumb') === '1'; } catch (e) { return false; } }
+  (function(){
+    var sel = document.getElementById('docsSortSel'), tb = document.getElementById('docsBtnThumb');
+    if (sel){ sel.value = docsSortGet_(); sel.addEventListener('change', function(){ try { localStorage.setItem('nxDocsSort', sel.value); } catch (e) {} if (docsCurrentListing) renderDocsList(); }); }
+    if (tb){ var sync = function(){ var on = docsThumbGet_(); tb.setAttribute('aria-pressed', on ? 'true' : 'false'); tb.classList.toggle('active', on); tb.querySelector('.btn-tx').textContent = on ? ' 목록' : ' 그림'; };
+      sync(); tb.addEventListener('click', function(){ try { localStorage.setItem('nxDocsThumb', docsThumbGet_() ? '0' : '1'); } catch (e) {} sync(); if (docsCurrentListing) renderDocsList(); }); }
+    var dl = document.getElementById('docsBtnDownloadSelected'), zb = document.getElementById('docsBtnZipSelected');
+    var filesOnly = function(){ var fs = docsSelectedFileObjs_(); if (Object.keys(docsSelectedIds).length > fs.length) toast('폴더는 빼고 파일만 다룹니다(폴더는 그 안을 열어 고르세요).'); return fs; };
+    if (dl) dl.addEventListener('click', function(){ if (typeof nxFV === 'undefined') return; var fs = filesOnly(); if (!fs.length) return; if (fs.length === 1) nxFV.download(fs[0]); else nxFV.zipFiles(fs, (docsPath[docsPath.length - 1] || '서류') + '_' + fs.length + '개.zip'); });
+    if (zb) zb.addEventListener('click', function(){ if (typeof nxFV === 'undefined') return; var fs = filesOnly(); if (!fs.length) return;
+      var def = (docsPath[docsPath.length - 1] || '서류') + '_묶음.zip';
+      nxPrompt_('묶은 압축 파일 이름(이 폴더에 넣습니다):', def, '묶어 압축').then(function(nm){ if (!nm) return; nm = nm.trim(); if (!/\.zip$/i.test(nm)) nm += '.zip'; nxFV.zipFiles(fs, nm, docsCurrentListing && docsCurrentListing.folderId); }); });
+    var list = document.getElementById('docsList');
+    if (list && typeof nxFV !== 'undefined') nxFV.attachDrop(list.parentElement || list, function(){ return docsCurrentListing && docsCurrentListing.folderId ? { folderId: docsCurrentListing.folderId } : (docsPath ? { path: docsPath } : null); }, function(){ docsReloadQuiet_(); });
+  })();
 
   function docsSelectedFileObjs_(){
     var ids = Object.keys(docsSelectedIds);

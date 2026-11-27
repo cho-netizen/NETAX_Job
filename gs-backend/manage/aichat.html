@@ -1486,10 +1486,13 @@
         });
         return Promise.resolve();
       }
-      // 사이드바에서는 미리보기 칸이 없으므로 새 창으로 연다.
+      // 사이드바에서는 미리보기 칸이 없으므로 — [2026-11-27 독립 업무처리 A5] 새 탭(드라이브) 대신 넥스시스템 안 보기 창으로 연다
+      if (typeof nxFV !== 'undefined'){ nxFV.open(f, {}); return Promise.resolve(); }
       if (f.url) window.open(f.url, '_blank', 'noopener'); else window.open(nxAiDrivePreviewUrl_(f), '_blank', 'noopener');
       return Promise.resolve();
     }
+    // [2026-11-27 독립 업무처리 A3·B1] 미리보기 칸의 드라이브 틀이 못 보이는 한글·압축은 한 보기 창으로(한글 모양 그대로·압축 안 목록·풀기)
+    if (typeof nxFV !== 'undefined' && /^(hwp|zip|archive)$/.test(nxFV.kindOf(f))){ nxFV.open(f, {}); return Promise.resolve(); }
     nxAiPreviewFile = { id: f.id, name: f.name, mimeType: f.mimeType || '', url: f.url || ('https://drive.google.com/file/d/' + f.id + '/view'), role: opts.role || (nxAiIsReportFile_(f.name) ? 'report' : ''), caseId: (nxAiConv && nxAiConv.caseId) || '' }; // caseId: [2026.11.13 5차 바] 어느 사건에서 연 파일인지
     nxAiPreviewText = null;
     nxAiPvHideProposal_();
@@ -1975,6 +1978,14 @@
         if (typeof nxReceiptSmsOpen_ !== 'function'){ finish('영수증 문자 창을 불러오지 못했습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', false); return; }
         nxReceiptSmsOpen_(a.payload || {});
         finish('영수증 문자 창을 열었습니다 — 미리 보기를 보시고 [보내기]를 누르세요.', true);
+        return;
+      }
+      // [2026-11-27 독립 업무처리] 넥스 카드 file_view — 파일을 넥스시스템 안 보기 창으로(서류 화면 「파일보기」와 같은 창)
+      if (a.gasAction === 'client:fileView'){
+        var fvp = a.payload || {};
+        if (typeof nxFV === 'undefined' || !fvp.fileId){ finish('보기 창을 열 수 없습니다 — 화면을 새로고침한 뒤 다시 눌러 주세요.', false); return; }
+        nxFV.openById(fvp.fileId, fvp.name || '');
+        finish('파일을 보기 창으로 열었습니다.', true);
         return;
       }
       if (a.gasAction === 'client:memoSave'){
@@ -7401,6 +7412,15 @@
       nxAiShowMenu_(r.left, r.top - 90, items);
     });
     nxAiEl_('nxAiFileInput').addEventListener('change', function(e){ nxAiUploadLocalFiles_(e.target.files); e.target.value = ''; });
+    // [2026-11-27 독립 업무처리 C1] PC 파일을 대화 칸에 끌어다 놓으면 📎 「내 컴퓨터에서 올리기」와 같은 길(사건이 이어져 있으면 사건 폴더에 저장)
+    (function(){
+      var zone = nxAiEl_('nxAiBody'); if (!zone || zone.__nxDrop) return; zone.__nxDrop = true;
+      var depth = 0, isF = function(e){ var t = e.dataTransfer && e.dataTransfer.types; return t && Array.prototype.indexOf.call(t, 'Files') !== -1; };
+      zone.addEventListener('dragenter', function(e){ if (!isF(e)) return; e.preventDefault(); depth++; zone.classList.add('nxfv-dropzone'); });
+      zone.addEventListener('dragover', function(e){ if (!isF(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      zone.addEventListener('dragleave', function(e){ if (!isF(e)) return; depth = Math.max(0, depth - 1); if (!depth) zone.classList.remove('nxfv-dropzone'); });
+      zone.addEventListener('drop', function(e){ if (!isF(e)) return; e.preventDefault(); depth = 0; zone.classList.remove('nxfv-dropzone'); if (e.dataTransfer.files && e.dataTransfer.files.length) nxAiUploadLocalFiles_(e.dataTransfer.files); });
+    })();
     nxAiEl_('nxAiCaptureBtn').addEventListener('click', nxAiCapture_);
     // [2026.10.10] 🎤 — 구글 틀 안이라 마이크가 막혀 있어 NX 커넥터 도우미 창이 대신 듣는다(휴대폰은 키보드 음성입력)
     nxAiEl_('nxAiVoiceBtn').addEventListener('click', function(){
