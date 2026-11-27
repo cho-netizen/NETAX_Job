@@ -14723,7 +14723,8 @@ function booking_getBookings() {
       statuses: data[i][4],
       situation: data[i][5],
       reservedDate: data[i][6] ? Utilities.formatDate(new Date(data[i][6]), 'Asia/Seoul', 'yyyy-MM-dd') : '',
-      reservedTime: data[i][7] ? Utilities.formatDate(new Date(data[i][7]), 'Asia/Seoul', 'HH:mm') : '',
+      // [2026.11.27 사용자 관점 점검] 칸이 글자("10:00")로 들어 있으면 new Date가 깨져 화면에 「NaN:NaN」 — 글자 시각은 그대로
+      reservedTime: data[i][7] ? (/^\d{1,2}:\d{2}/.test(String(data[i][7])) ? String(data[i][7]).slice(0, 5) : Utilities.formatDate(new Date(data[i][7]), 'Asia/Seoul', 'HH:mm')) : '',
       source: data[i][8],
       status: data[i][9],
       approvedDate: data[i][10],
@@ -18261,6 +18262,9 @@ function rh_isIntakeLikeFile_(name) {
   const n = String(name || '');
   if (RW_INTAKE_FILENAME_PATTERN_.test(n)) return true;
   const base = n.replace(/\.[a-zA-Z0-9]+$/, '');
+  // [2026.11.27 사용자 관점 점검] 사건 의뢰서는 「의뢰서_」+세목·업무로 만들어진다 — 의뢰서템플릿 폴더에 같은 이름 틀이 없는 조합
+  //  (상속·양도 세무조사, 사업 가족법인·가업승계, 불복 자금출처소명 …)도 보고서 「모아보기」에 초안으로 섞이지 않게
+  if (base.indexOf(CASE_TEMPLATE_NAME_PREFIX_) === 0) return true;
   if (base === RW_INTAKE_CANONICAL_NAME_) return true;
   return !!rh_getIntakeTemplateBaseNames_()[base];
 }

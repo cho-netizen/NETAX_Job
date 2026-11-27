@@ -155,7 +155,7 @@
   }
   // [2026.11.24] 2단계 — 사전증여·추정상속 선제 검토 요약(docs/_기록/금융거래_2단계_분석_계획서_20261124.html). 판단·소명은 시트의 ✎ 칸에서(이 창은 보기만)
   function fmReview(v){
-    if (!v) return '<div class="fm-row fm-sub" style="margin-top:8px">2단계(사전증여·추정상속 검토)는 다음 틱에 저절로 셈합니다.</div>';
+    if (!v) return '<div class="fm-row fm-sub" style="margin-top:8px">2단계(사전증여·추정상속 검토)는 30분 안에 저절로 셈합니다(급하면 위 「지금 다시 셈」).</div>';
     var z = v.짚을곳 || {}, h = '<div style="margin-top:10px;border-top:1px solid var(--line,#ddd);padding-top:8px"><div class="fm-row"><b>2단계 — 과세관청이 볼 것을 먼저 추림</b> <span class="fm-sub">' + esc(v.at || '') + ' · 상속개시일 ' + esc(v.상속개시일 || '없음 — 시트 「사건 기준」 탭에 적어 주세요') + '</span></div>';
     // [2026.11.26] 조사 사건 — 조사청이 묻는 곳(F)·신고와 다른 곳(E)을 앞에(시트 「조사청 제출용」·「신고와 맞대기」 탭)
     if (z.F || z.E || v.조사청) h += '<div class="fm-row fm-sub"><b>조사 사건</b> — F 조사청이 묻는 곳 ' + won(z.F) + ' · E 신고와 다른 곳 ' + won(z.E) + (v.조사청 ? ' · 조사관 지정 거래 ' + won(v.조사청.지정거래) + '줄 중 거래에서 찾음 ' + won(v.조사청.찾음) + '줄(시트 「조사청 제출용」 탭)' : '') + ((v.신고맞대기 || []).length ? ' · 신고와 맞대기 ' + won(v.신고맞대기.length) + '줄(시트 「신고와 맞대기」 탭)' : '') + '</div>';

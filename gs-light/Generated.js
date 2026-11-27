@@ -1404,7 +1404,8 @@ function booking_getBookings() {
       statuses: data[i][4],
       situation: data[i][5],
       reservedDate: data[i][6] ? Utilities.formatDate(new Date(data[i][6]), 'Asia/Seoul', 'yyyy-MM-dd') : '',
-      reservedTime: data[i][7] ? Utilities.formatDate(new Date(data[i][7]), 'Asia/Seoul', 'HH:mm') : '',
+      // [2026.11.27 사용자 관점 점검] 칸이 글자("10:00")로 들어 있으면 new Date가 깨져 화면에 「NaN:NaN」 — 글자 시각은 그대로
+      reservedTime: data[i][7] ? (/^\d{1,2}:\d{2}/.test(String(data[i][7])) ? String(data[i][7]).slice(0, 5) : Utilities.formatDate(new Date(data[i][7]), 'Asia/Seoul', 'HH:mm')) : '',
       source: data[i][8],
       status: data[i][9],
       approvedDate: data[i][10],

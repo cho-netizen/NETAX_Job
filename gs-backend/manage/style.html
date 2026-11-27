@@ -190,6 +190,10 @@
   /* [2026.11.01] 사건 작업공간 머리줄(script.html nxCbInit_) — 사건 화면 여덟 위에 한 줄, 화면은 그 아래부터 */
   #nxCaseBar{ position:absolute; top:0; left:0; right:0; z-index:30; background:var(--panel); border-bottom:1px solid var(--line); padding:8px 16px 0; }
   #nxCaseBar[hidden]{ display:none; }
+  /* [2026.11.27 사용자 관점 전수 점검 2차] 숨김 표시(hidden)는 어느 모양 규칙보다 먼저 — 단추·카드 모양(display:flex 등)이 hidden을 덮어써
+     숨긴 단추가 보이던 갈래(상속 아닌 사건의 「💰 금융거래」·건전세정 「폴더 열기」, 앞서 금융·영수증 문자·카드·넥스 창을 창마다 따로 땜질함)를 한 줄로 막는다 */
+  [hidden]{ display:none !important; }
+  .modal-head .ghost-btn{ color:#fff; background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.35); } /* 남색 머리줄 위 단추가 남색 글자로 안 보이던 것 */
   .card[hidden], .ch-empty-line[hidden]{ display:none !important; } /* [2026.11.01] 빈 카드 숨김(처리개요 빈 카드·대시보드 답하실 것) — .card 자체 display가 hidden을 이기지 않게 */
   /* [2026.11.01] 입력칸은 자료 길이만큼 — 세무사님 "입력란을 데이터 입력길이 이내로 설정하는 것도 선호한다" / "불필요하게 화면을 잡아먹는 것을 나는 너무너무 싫어한다"
      금액(숫자) 12글자 · 날짜 10글자 · 한 줄 글 칸은 420까지(긴 글은 여러 줄 칸). 줄을 꽉 채우던 칸도 이 폭에서 멈춘다 */
@@ -347,6 +351,7 @@
   .nx-l3{ display:block; margin:18px 0 8px; padding:1px 0 1px 9px; border-left:4px solid var(--navy); font-size:14px; font-weight:700; color:var(--navy); line-height:1.45; }
   .nx-l4{ display:block; margin:10px 0 5px; font-size:13px; font-weight:700; color:var(--ink); line-height:1.45; }
   div.nx-l4{ padding-left:14px; } /* 접히지 않는 4단계도 접히는 것(▸ 자리)과 글자 줄을 맞춘다 */
+  .nx-l3, .nx-l4{ word-break:keep-all; } /* [2026.11.27] 좁은 화면에서 제목이 「사건 하위업 / 무」처럼 낱말 가운데서 끊기던 것 */
   .nx-l3 .nx-l-sub, .nx-l4 .nx-l-sub{ font-size:12px; font-weight:400; color:var(--sub); margin-left:6px; }
   details > summary.nx-l3, details > summary.nx-l4{ cursor:pointer; list-style:none; }
   details > summary.nx-l3::-webkit-details-marker, details > summary.nx-l4::-webkit-details-marker{ display:none; }

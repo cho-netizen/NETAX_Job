@@ -160,7 +160,11 @@
     if (typeof nxTestToggleSync_ === 'function') nxTestToggleSync_('client', testN);
     var shownList = clients.filter(function(c){ return showTest || !nxIsTestName_(c.성명); });
     if (!shownList.length){ clientList.innerHTML = '<div class="log-empty">시험 자료만 있습니다 — 위 「시험 자료」를 체크하면 보입니다.</div>'; return; }
+    // [2026.11.27 사용자 관점 점검] 같은 이름 고객이 둘 이상이면 이름·전화만으로는 가를 수 없음 — 그 줄에만 주소 앞부분(시·구)을 옅게
+    var nameN_ = {}; shownList.forEach(function(c){ var k = String(c.성명 || '').trim(); nameN_[k] = (nameN_[k] || 0) + 1; });
+    var addrShort_ = function(a){ a = String(a || '').trim(); if (!a) return '주소 없음'; return a.split(/\s+/).slice(0, 2).join(' ').replace(/특별시|광역시|특별자치시/, ''); };
     shownList.sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko', { numeric: true }); }).forEach(function(c){
+      var dupTag_ = nameN_[String(c.성명 || '').trim()] > 1 ? '<span style="color:var(--sub); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:0 1 auto;">' + escapeHtml(addrShort_(c.주소)) + '</span>' : '';
       var row = document.createElement('div');
       row.className = 'log-entry';
       row.style.cursor = 'pointer';
@@ -171,8 +175,9 @@
       // [2026.11.01 화면 정비] 세무사님 "깔끔·가독성, 낭비되는 공간 없이" — 한 줄을 낮추고, 구분은 보통이 아닐 때만 색 꼬리표로(줄마다 되풀이되던 「· 보통」 뺌), 전화는 오른쪽 옅게
       var tierCol = { 로얄: '#a07a1c', 우수: '#0D1B3D', 영세: '#7a8396' }[c.구분] || '';
       row.innerHTML =
-        '<div class="log-text" style="display:flex; align-items:center; gap:6px; min-width:0;"><b style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(c.성명 || '') + '</b>' +
+        '<div class="log-text" style="display:flex; align-items:center; gap:6px; min-width:0;"><b style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;' + (dupTag_ ? ' flex-shrink:0;' : '') + '">' + escapeHtml(c.성명 || '') + '</b>' + // 같은 이름 줄은 이름이 먼저(주소 꼬리가 줄어듦)
         (tierCol ? '<span style="font-size:11px; font-weight:700; color:' + tierCol + '; border:1px solid ' + tierCol + '; border-radius:8px; padding:0 6px; line-height:16px;">' + escapeHtml(c.구분) + '</span>' : '') +
+        dupTag_ +
         (c.전화번호 ? '<span style="margin-left:auto; color:var(--sub); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums;">' + escapeHtml(c.전화번호) + '</span>' : '') +
         '</div>';
       row.setAttribute('data-ms-id', String(c.id)); // [2026-11-14] 카드만 보기의 ◀ ▶ 넘기는 순서 = 이 목록 순서
@@ -612,7 +617,7 @@
       });
       (r[2].logs || []).forEach(function(p){
         var amt = Number(p.금액) || 0;
-        rows.push({ d: String(p.날짜 || '').slice(0, 10), k: amt ? '수금' : '기록', t: amt ? (amt.toLocaleString('ko-KR') + '원' + (p.수취증빙 ? ' · ' + p.수취증빙 : '')) : (p.수취증빙 || p.비고 || p.메모 || '금액 없는 기록'), s: '' });
+        rows.push({ d: String(p.날짜 || '').slice(0, 10), k: amt ? '수금' : '기록', t: amt ? (amt.toLocaleString('ko-KR') + '원' + (p.수취증빙 ? ' · ' + p.수취증빙 : '')) : (([p.유형, p.내용].filter(Boolean).join(' · ')) || p.수취증빙 || p.비고 || p.메모 || '금액 없는 기록'), s: '' }); // [2026.11.27] 적은 내용(「내용」 칸)을 보이게 — 예전엔 없는 칸만 읽어 늘 「금액 없는 기록」
       });
       rows = rows.filter(function(x){ return x.d; });
       rows.sort(function(a, b){ return b.d.localeCompare(a.d); });
@@ -779,7 +784,8 @@
   }
 
   function renderPaymentRowView_(row, c, pay, container, cases){
-    var amountText = pay.금액 ? Number(pay.금액).toLocaleString('ko-KR') + '원' : '';
+    // [2026.11.27 사용자 관점 점검] 금액 없는 기록(상담·문자·전화)은 날짜만 있는 빈 줄로 보였음 — 그 기록의 유형·내용을 흐린 글자로
+    var amountText = pay.금액 ? Number(pay.금액).toLocaleString('ko-KR') + '원' : ([pay.유형, pay.내용].filter(Boolean).join(' · ') || '금액 없는 기록');
     var caseName = ccCaseName_(cases, pay.사건ID);
     row.innerHTML =
       '<div class="log-date">' + escapeHtml(fmtDateShort_(pay.날짜)) + '</div>' +
