@@ -1742,11 +1742,58 @@
       if (m.divider){ el.className = 'nxai-msg nxai-divider'; el.textContent = text; }
       else if (m.role === 'assistant'){ el.innerHTML = '<div class="nxai-md">' + nxAiMd_(text) + '</div>'; }
       if (ref) el._nxMsgRef = m; else el.classList.add('nxai-arch');
+      // [2026.11.27 넥스 일감] 화면이 없는 사이 멈춘 일감을 서버가 대화에 적어 둔 줄 — 그 자리에서 「이어서 하기」
+      if (ref && m.nxJob && m.nxJobState && m.nxJobState !== 'done' && !m._nxResumed){
+        var rb = document.createElement('button'); rb.type = 'button'; rb.className = 'nxai-btn'; rb.textContent = '↻ 이어서 하기';
+        rb.title = '멈춘 단계부터 이어 갑니다 — 이미 끝난 단계는 다시 하지 않습니다';
+        rb.addEventListener('click', function(){
+          if (nxAiAbort){ nxAiToast_('넥스가 다른 말씀에 답하는 중입니다 — 끝난 뒤 다시 눌러 주세요.'); return; }
+          m._nxResumed = true; rb.remove();
+          nxAiJobWatch_(m.nxJob, nxAiConv, nxAiAppendBubble_('assistant', '이어 가는 중…'), true);
+        });
+        el.appendChild(rb);
+      }
     };
     if (from === 0 && nxAiConv._arch) nxAiConv._arch.forEach(function(m){ draw(m, false); });
     msgs.slice(from).forEach(function(m){ draw(m, true); });
     nxAiRefreshTitle_();
     nxAiScrollBottom_(true);
+    nxAiJobResumeWatch_();
+  }
+  // [2026.11.27 넥스 일감] 이 기기에서 넥스에게 맡긴 일이 아직 안 끝난 대화를 다시 열면(창을 닫았다 엶·화면 꺼졌다 켬) 그 진행을 이어 보인다
+  var nxAiJobWatching_ = {};
+  function nxAiJobResumeWatch_(){
+    if (typeof manageAppSessionToken_ === 'undefined' || !manageAppSessionToken_) return; // 로그인 전에는 서버를 부르지 않는다(10-14)
+    var conv = nxAiConv, rec = nxAiJobRegGet_(conv && conv.id);
+    if (!rec || !rec.id || nxAiAbort || nxAiJobWatching_[rec.id]) return;
+    if (Date.now() - (rec.at || 0) > 2 * 86400000){ nxAiJobReg_(conv.id, null); return; }
+    nxAiJobWatch_(rec.id, conv, nxAiAppendBubble_('assistant', '넥스가 이 대화에서 맡은 일을 이어 보는 중…'), false);
+  }
+  function nxAiJobWatch_(jobId, conv, bubble, resumeFirst){
+    if (nxAiJobWatching_[jobId] || nxAiAbort) return;
+    nxAiJobWatching_[jobId] = true;
+    nxAiAbort = new AbortController(); nxAiSetBusy_(true);
+    var opts = {
+      conv: conv, thinkingBubble: bubble, signal: nxAiAbort.signal,
+      onDone: function(reply, actions, usage){
+        nxAiRenderReply_(bubble, reply, actions, null);
+        nxAiUsageFooter_(bubble, usage);
+        // 서버가 이미 대화에 넣었으면(그 줄에 같은 일감 번호) 다시 넣지 않음 — 글이 같다고 같은 답으로 보지 않는다(시험에서 찾음: 앞 답과 글이 같으면 안 넣던 것)
+        var have = conv.messages.some(function(m){ return m && m.nxJob === jobId && m.role === 'assistant'; });
+        if (!have){ var aiMsg = { role: 'assistant', content: reply, nxJob: jobId }; conv.messages.push(aiMsg); bubble._nxMsgRef = aiMsg; if (conv === nxAiConv) nxAiScheduleSave_(); else nxAiSaveOnceFor_(conv); }
+      },
+      onError: function(msg, resume){ nxAiJobErrorUi_(bubble, msg, resume); },
+      onAbort: function(){ bubble.textContent = '⏹ 중단됨'; }
+    };
+    if (resumeFirst) nxAiJobReg_(conv.id, { id: jobId, at: Date.now() });
+    var p = resumeFirst
+      ? nxAiJobCall_('nexjob_resume', { id: jobId }, opts.signal).then(function(r){ if (r && r.error && !r.status) throw new Error(r.error); return nxAiJobDrive_(jobId, null, opts); })
+      : nxAiJobDrive_(jobId, null, opts);
+    return nxAiJobFinish_(p, jobId, conv, opts).catch(function(err){
+      if (err && err.name === 'AbortError'){ nxAiJobCall_('nexjob_stop', { id: jobId }).catch(function(){}); nxAiJobReg_(conv.id, null); opts.onAbort(); return; }
+      if (/찾지 못했습니다/.test(String(err && err.message))) nxAiJobReg_(conv.id, null);
+      opts.onError('오류: ' + (err && err.message ? err.message : err));
+    }).then(function(){ delete nxAiJobWatching_[jobId]; nxAiAbort = null; nxAiSetBusy_(false); });
   }
 
   // AI 답변의 마크다운(굵게·제목·목록·표·코드)을 화면용으로 바꾼다. 먼저 전부 이스케이프한 뒤
@@ -2389,74 +2436,148 @@
       nxAiRenderConversation_(); nxAiScheduleSave_();
     });
   }
-  // [2026.11.13 PC 여러 창 ①] 넥스의 도구 고리는 서버가 아니라 이 창 안에서 돈다 — 답을 만드는 중에 창을 닫으면 중간에 멎고 끊긴 기록도 남지 않는다.
-  //  창을 여러 개 띄워 사건을 나란히 보면 "끝난 줄 알고" 닫기 쉬우므로, 닫기 전에 브라우저가 한 번 묻게 한다(세무사님 11-13 "권장대로").
-  window.addEventListener('beforeunload', function(e){
-    var sendBtn = nxAiEl_('nxAiSend');
-    if (nxAiAbort || (sendBtn && sendBtn.classList.contains('stop'))){ e.preventDefault(); e.returnValue = '넥스가 아직 답을 만드는 중입니다 — 지금 닫으면 중간에 멎습니다.'; }
-  });
+  // [2026.11.13 PC 여러 창 ①] 예전엔 넥스의 도구 고리가 이 창 안에서 돌아 창을 닫으면 멎었다 — 닫기 전에 묻게 했었다.
+  // [2026.11.27 넥스 일감] 이제 넥스 일은 서버가 붙잡고 끝까지 한다(창을 닫아도·화면을 꺼도·노트북을 덮어도 이어 감, 답은 대화에 들어감) — 닫기 경고는 걷는다.
 
-  function nxAiRunTurn_(initialMessages, opts){
-    var turnMessages = initialMessages.slice();
-    var accumulated = [];
-    var round = 0;
-    var usageSum = { usd: 0, model: '' }; // 이번 질문에 든 유료 AI 비용(도구 라운드 합계)
-    // [2026-11-12 3차 재검토 36] 넥스가 몇 분씩 「확인하는 중…(N단계)」만 띄워 도는지 멈췄는지 알 수 없었다 — 쓴 도구 수·걸린 시간을 같이 보인다(1초마다)
-    var t0 = Date.now(), toolN = 0, stepLabel = '', tick = setInterval(function(){ if (!opts.thinkingBubble || !opts.thinkingBubble.isConnected){ clearInterval(tick); return; } if (stepLabel) opts.thinkingBubble.textContent = stepLabel + ' · ' + Math.round((Date.now() - t0) / 1000) + '초'; }, 1000);
-    var fin = function(){ clearInterval(tick); };
-    var step = function(){
-      var forceWrapUp = round >= ((opts.context && opts.context.linkedCase && opts.context.linkedCase.id) ? NXAI_MAX_ROUNDS_CASE : NXAI_MAX_ROUNDS);
-      stepLabel = round === 0 ? '생각 중…' : (forceWrapUp ? '마무리하는 중…' : '🔧 확인하는 중… (' + (round + 1) + '단계 · 도구 ' + toolN + '번 씀)');
-      opts.thinkingBubble.textContent = stepLabel;
-      var requestBody = JSON.stringify(Object.assign({
-        _token: (typeof manageAppSessionToken_ !== 'undefined' && manageAppSessionToken_) || '',
-        messages: turnMessages,
-        context: opts.context,
-        autoRef: true,
-        forceWrapUp: forceWrapUp,
-        costMeta: { round: round + 1, convId: (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.id) || '' } // [2026.10.30 비용 기록] 서버 비용 기록 시트의 단계·대화 번호
-      }, opts.settingsPayload));
-      var attempt = function(n){
-        return fetch(NXAI_GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: opts.signal, body: requestBody })
-          .then(function(res){ return res.json(); })
-          .catch(function(err){
-            if (err && err.name === 'AbortError') throw err;
-            // 요청이 서버에 닿기 전에 끊긴 순수 네트워크 오류만 1회 재시도(중복 과금 위험 없음 — work와 같은 판단)
-            if (n === 0){
-              opts.thinkingBubble.textContent = '네트워크가 불안정해서 다시 시도하는 중…';
-              return new Promise(function(r){ setTimeout(r, 1500); }).then(function(){ return attempt(1); });
-            }
-            throw err;
-          });
-      };
-      return attempt(0).then(function(data){
-        if (data.error){ fin(); opts.onError('오류: ' + data.error); return; }
-        if (data.usage){
-          usageSum.usd += (+data.usage.costUsd || 0); usageSum.model = data.usage.model || usageSum.model;
-          // [2026.10.30 비용 기록] 단계마다 네 갈래(새로 읽기·처음 올려 저장·다시 읽기·쓴 글)를 더해 말풍선 비용 줄에 보인다
-          usageSum.rounds = (usageSum.rounds || 0) + 1;
-          var up = data.usage.parts || null;
-          if (up){ usageSum.parts = usageSum.parts || { in: 0, cw: 0, cr: 0, out: 0, etc: 0 }; ['in', 'cw', 'cr', 'out', 'etc'].forEach(function(k){ usageSum.parts[k] += (+up[k] || 0); }); }
-          usageSum.tIn = (usageSum.tIn || 0) + (+data.usage.inputTokens || 0); usageSum.tCw = (usageSum.tCw || 0) + (+data.usage.cacheWriteTokens || 0);
-          usageSum.tCr = (usageSum.tCr || 0) + (+data.usage.cacheReadTokens || 0); usageSum.tOut = (usageSum.tOut || 0) + (+data.usage.outputTokens || 0);
+  // ============================================================
+  // [2026.11.27 넥스 일감] 세무사님 「스마트폰에서 넥스에게 일 시키고 계속 화면만 지켜보는 사람이 어디 있겠나?」
+  //  / 「이것은 휴대폰과 태블릿 만의 문제가 아니다. 노트북이나 pc에서도 마찬가지 아닌가?」 — 모든 기기 한 길.
+  //  화면은 일감(질문·화면 상태·설정)을 서버에 맡기고(nexjob_start) 진행을 묻기만 한다. 서버(NexJob.js)가 단계를 이어 돌리고 단계마다 저장한다.
+  //  통신이 끊기거나 화면이 쉬었다 깨어나도 같은 일감 번호로 다시 묻는다(멈추지 않음). 화면이 사라지면 1분 틱이 이어 가고 답을 대화에 넣는다.
+  //  이 기기에서 연 대화에 아직 도는 일감이 있으면(창을 닫았다 다시 열었을 때) 그 진행을 이어 보여 준다(nxAiJobWatchConv_).
+  // ============================================================
+  var NXAI_JOB_KEY_ = 'nxai_jobs_v1';
+  function nxAiJobReg_(convId, rec){
+    if (!convId) return;
+    try { var m = JSON.parse(localStorage.getItem(NXAI_JOB_KEY_) || '{}'); if (rec) m[convId] = rec; else delete m[convId]; localStorage.setItem(NXAI_JOB_KEY_, JSON.stringify(m)); } catch (e) {}
+  }
+  function nxAiJobRegGet_(convId){ try { return convId ? (JSON.parse(localStorage.getItem(NXAI_JOB_KEY_) || '{}')[convId] || null) : null; } catch (e) { return null; } }
+  function nxAiJobCall_(action, payload, signal){
+    return fetch(NXAI_GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: signal,
+      body: JSON.stringify(Object.assign({ _token: (typeof manageAppSessionToken_ !== 'undefined' && manageAppSessionToken_) || '', action: action }, payload)) })
+      .then(function(res){ return res.json(); });
+  }
+  // 기다리기 — 화면이 다시 보이면(휴대폰 켬·노트북 엶) 곧바로 깨어 다시 묻는다
+  function nxAiJobSleep_(ms, signal){
+    return new Promise(function(resolve){
+      var done = false, fin = function(){ if (done) return; done = true; clearTimeout(t); document.removeEventListener('visibilitychange', vis); resolve(); };
+      var vis = function(){ if (!document.hidden) fin(); };
+      var t = setTimeout(fin, ms);
+      document.addEventListener('visibilitychange', vis);
+      if (signal) signal.addEventListener('abort', fin);
+    });
+  }
+  function nxAiJobLabel_(s){
+    if (!s) return '생각 중…';
+    var won = s.usage && s.usage.usd ? ' · 지금까지 ' + nxAiWon_(s.usage.usd) : '';
+    if (!s.round) return '생각 중…' + won;
+    return '🔧 확인하는 중… (' + (s.round + 1) + '단계 · 도구 ' + (s.toolN || 0) + '번 씀)' + won;
+  }
+  // 일감 하나를 끝(답·멈춤)까지 따라간다 — start가 있으면 먼저 맡기고, 없으면 이미 맡긴 일감을 이어 본다
+  function nxAiJobDrive_(jobId, start, opts){
+    var t0 = Date.now(), last = null, netFail = 0, needStart = !!start, bubble = opts.thinkingBubble;
+    var note = '';
+    var show = function(){ if (bubble && bubble.isConnected) bubble.textContent = nxAiJobLabel_(last) + ' · ' + Math.round((Date.now() - t0) / 1000) + '초' + note; };
+    var tick = setInterval(function(){ if (!bubble || !bubble.isConnected){ clearInterval(tick); return; } show(); }, 1000);
+    // 한 묶음(서버가 길게 붙잡는 요청)을 기다리는 동안에도 몇 단계째인지 보이게 — 작은 진행 묻기
+    var pending = false, peek = setInterval(function(){
+      if (!pending || document.hidden) return;
+      nxAiJobCall_('nexjob_poll', { id: jobId }).then(function(s){ if (s && s.status) { last = s; show(); } }).catch(function(){});
+    }, 5000);
+    var stopAll = function(){ clearInterval(tick); clearInterval(peek); };
+    var loop = function(){
+      if (opts.signal && opts.signal.aborted) return Promise.reject({ name: 'AbortError' });
+      pending = true;
+      var req = needStart ? nxAiJobCall_('nexjob_start', start, opts.signal) : nxAiJobCall_('nexjob_run', { id: jobId }, opts.signal);
+      return req.then(function(s){
+        pending = false;
+        netFail = 0; note = '';
+        if (!s) return nxAiJobSleep_(3000, opts.signal).then(loop);
+        if (s.missing){ if (start){ needStart = true; return loop(); } throw new Error('그 일감을 서버에서 찾지 못했습니다'); }
+        if (s.error && !s.status){
+          if (/다른 저장 작업|잠시 후|일감을 열지 못했습니다/.test(s.error)){ note = ' · 서버가 바빠 잠시 뒤 다시'; return nxAiJobSleep_(3000, opts.signal).then(loop); } // 잠깐 막힘 — 다시
+          throw new Error(s.error); // 로그인 만료 등 — 일감을 맡기지도 못함
         }
-        accumulated = accumulated.concat(data.clientActions || []);
-        if (data.done === false){
-          toolN += (Array.isArray(data.assistantContent) ? data.assistantContent.filter(function(b){ return b && b.type === 'tool_use'; }).length : 0);
-          turnMessages = turnMessages.concat([
-            { role: 'assistant', content: data.assistantContent },
-            { role: 'user', content: data.toolResults }
-          ]);
-          round++;
-          return step();
-        }
-        fin(); opts.onDone(data.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', accumulated, usageSum);
+        needStart = false;
+        last = s; show();
+        if (s.status === 'run') return s.busy ? nxAiJobSleep_(4000, opts.signal).then(loop) : loop(); // 다른 실행(1분 틱 등)이 돌리는 중이면 잠깐 뒤 다시
+        return s; // done · error · stopped
+      }, function(err){
+        pending = false;
+        if (err && err.name === 'AbortError') throw err;
+        // 통신이 끊김(화면 꺼짐·노트북 덮음·이동 중) — 서버는 계속 일한다. 기다렸다 같은 일감 번호로 다시 묻는다(포기하지 않음)
+        netFail++;
+        note = ' · 통신이 끊겨 다시 잇는 중(서버는 계속 일합니다)';
+        show();
+        return nxAiJobSleep_(Math.min(30000, 2000 * netFail), opts.signal).then(function(){
+          if (needStart) return nxAiJobCall_('nexjob_poll', { id: jobId }).then(function(p){ if (p && !p.missing) needStart = false; return loop(); }, function(){ return loop(); });
+          return loop();
+        });
       });
     };
-    return step().catch(function(err){
-      fin();
-      if (err && err.name === 'AbortError'){ opts.onAbort(); return; }
-      opts.onError('네트워크 오류: ' + (err && err.message ? err.message : err));
+    return loop().then(function(s){ stopAll(); return s; }, function(e){ stopAll(); throw e; });
+  }
+
+  function nxAiRunTurn_(initialMessages, opts){
+    var conv = opts.conv || nxAiConv;
+    var jobId = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    var maxRounds = (opts.context && opts.context.linkedCase && opts.context.linkedCase.id) ? NXAI_MAX_ROUNDS_CASE : NXAI_MAX_ROUNDS;
+    var q = '';
+    for (var k = initialMessages.length - 1; k >= 0; k--){ var mk = initialMessages[k]; if (mk && mk.role === 'user'){ q = typeof mk.content === 'string' ? mk.content : (Array.isArray(mk.content) ? mk.content.filter(function(b){ return b && b.type === 'text'; }).map(function(b){ return b.text; }).join(' ') : ''); break; } }
+    if (opts.thinkingBubble) opts.thinkingBubble.textContent = '넥스에게 맡기는 중…';
+    // 대화 번호가 있어야 서버가 답을 대화에 넣을 수 있다 — 새 대화면 먼저 저장(질문도 이때 서버에 남음)
+    var idP = conv.id ? Promise.resolve() : nxAiSaveOnceFor_(conv);
+    if (conv.id && conv === nxAiConv) nxAiScheduleSave_(); // 질문을 곧바로 서버에 남긴다(어디서 끊겨도 질문은 남음)
+    return Promise.resolve(idP).then(function(){
+      var start = Object.assign({ jobId: jobId, convId: conv.id || '', q: q.slice(0, 2000), kind: opts.paidKind || 'chat', maxRounds: maxRounds,
+        messages: initialMessages, context: opts.context, autoRef: true }, opts.settingsPayload);
+      nxAiJobReg_(conv.id, { id: jobId, at: Date.now(), q: q.slice(0, 80) });
+      return nxAiJobFinish_(nxAiJobDrive_(jobId, start, opts), jobId, conv, opts);
+    }).catch(function(err){
+      if (err && err.name === 'AbortError'){ nxAiJobCall_('nexjob_stop', { id: jobId }).catch(function(){}); nxAiJobReg_(conv.id, null); opts.onAbort(); return; }
+      opts.onError('오류: ' + (err && err.message ? err.message : err));
+    });
+  }
+  // 멈춤 말풍선 — 까닭 + 「↻ 이어서 하기」(누르면 같은 말풍선에서 멈춘 단계부터 다시)
+  function nxAiJobErrorUi_(bubble, msg, resume){
+    if (!bubble) return;
+    bubble.textContent = msg;
+    if (typeof resume !== 'function') return;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn'; b.style.marginLeft = '6px';
+    b.textContent = '↻ 이어서 하기';
+    b.title = '멈춘 단계부터 이어 갑니다 — 이미 끝난 단계는 다시 하지 않습니다';
+    b.addEventListener('click', function(){
+      if (nxAiAbort){ nxAiToast_('넥스가 다른 말씀에 답하는 중입니다 — 끝난 뒤 다시 눌러 주세요.'); return; }
+      nxAiAbort = new AbortController(); nxAiSetBusy_(true);
+      bubble.textContent = '이어 가는 중…';
+      Promise.resolve(resume({ thinkingBubble: bubble, signal: nxAiAbort.signal })).then(function(){ nxAiAbort = null; nxAiSetBusy_(false); }, function(){ nxAiAbort = null; nxAiSetBusy_(false); });
+    });
+    bubble.appendChild(document.createElement('br'));
+    bubble.appendChild(b);
+  }
+  // 끝 처리 — 답이면 받았다고 알리고(서버가 대화에 따로 넣지 않게) 화면에 그린다. 멈춤이면 질문·한 일은 남겨 두고 「이어서 하기」
+  function nxAiJobFinish_(p, jobId, conv, opts){
+    return p.then(function(s){
+      if (s.status === 'done'){
+        nxAiJobReg_(conv.id, null);
+        return nxAiJobCall_('nexjob_ack', { id: jobId }).catch(function(){ return null; }).then(function(a){
+          opts.onDone(s.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', s.actions || [], s.usage || null, { jobId: jobId, appended: !!(a && a.appended) });
+        });
+      }
+      var why = s.status === 'stopped' ? '멈췄습니다' : ('일하다 멈췄습니다: ' + (s.error || '알 수 없는 오류'));
+      nxAiJobReg_(conv.id, null);
+      opts.onError('⚠ 넥스가 ' + why + ' — 지금까지 ' + (s.round || 0) + '단계·도구 ' + (s.toolN || 0) + '번. 질문과 한 일은 서버에 남아 있습니다.', function(o2){
+        // 이어서 하기 — 같은 일감을 멈춘 단계부터(이미 끝난 단계는 다시 안 돎)
+        var o = Object.assign({}, opts, o2 || {});
+        nxAiJobReg_(conv.id, { id: jobId, at: Date.now() });
+        return nxAiJobFinish_(nxAiJobCall_('nexjob_resume', { id: jobId }, o.signal).then(function(r){
+          if (r && r.error && !r.status) throw new Error(r.error);
+          return nxAiJobDrive_(jobId, null, o);
+        }), jobId, conv, o).catch(function(err){
+          if (err && err.name === 'AbortError'){ nxAiJobCall_('nexjob_stop', { id: jobId }).catch(function(){}); o.onAbort(); return; }
+          o.onError('오류: ' + (err && err.message ? err.message : err));
+        });
+      }, s);
     });
   }
 
@@ -6540,26 +6661,28 @@
       if (extra.length) requestMessages[requestMessages.length - 1] = { role: 'user', content: [{ type: 'text', text: text }].concat(extra) };
       var convAtSend = nxAiConv;
       return nxAiRunTurn_(requestMessages, {
+        conv: convAtSend, paidKind: opts.settings ? 'strategy' : 'chat', // [2026.11.27 넥스 일감] 서버가 이 대화에 답을 넣고, 쓴 돈을 유료 질문 기록에 적는다
         thinkingBubble: thinking,
         signal: nxAiAbort.signal,
         context: nxAiBuildContext_(Object.assign({ openFile: openFileCtx, attachedItems: files }, opts.cpHint ? { cpHint: opts.cpHint } : {}, opts.cmdHint ? { cmdHint: opts.cmdHint } : {})), // [2026.11.15 명령] 넥스 명령의 순서 글(서버가 지시문에 붙임) // [2026.10.23 ㅅ12차] 사건처리 열린 질문 목록(넥스가 "어느 질문에 어떤 답"으로 풀게)
         // [2026.11.27] 넥스 명령(/금융답 등 — 서류 읽고 판단해 적는 일)은 자동 모델이어도 하이쿠로 내리지 않는다(사건 대화 기본과 같은 소넷). 시험에서 사건 연결 전 말로 시킨 /금융답이 하이쿠로 간 것을 찾음
         settingsPayload: opts.settings || nxAiBuildSettingsPayload_(text, !!opts.cmdHint),
-        onDone: function(reply, actions, usage){
+        onDone: function(reply, actions, usage, meta){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
           nxAiUsageFooter_(thinking, usage);
           if (usage && usage.usd && convAtSend && convAtSend.caseId) nxAiCaseCostAlert_(thinking, convAtSend.caseId); // [2026.10.30 비용] 사건당 5,000원 넘으면 알림만
-          // 유료로 간 질문을 기록 — 반복되는 단순 요청을 찾아 ⚡바로 처리로 옮기는 근거(⚙ AI 설정에서 확인)
-          if (usage && usage.usd) callGas('ai_log_paid', { entry: { kind: opts.settings ? 'strategy' : 'chat', model: usage.model, usd: usage.usd, q: opts.displayText || text } }).catch(function(){});
+          // [2026.11.27 넥스 일감] 유료 질문 기록은 이제 서버가 적는다(멈춘 차례도 쓴 만큼) — 화면에서 또 적지 않음
           if (gemFail) thinking.insertAdjacentHTML('afterbegin', '<div class="nxai-local-badge" style="color:#7a5c14;background:#fff3e0">🔮 제미니 실패(' + nxAiEsc_(gemFail) + ') → 유료 AI 답변</div>');
           var aiMsg = { role: 'assistant', content: reply };
+          if (meta && meta.jobId) aiMsg.nxJob = meta.jobId; // 서버가 넣은 줄과 같은 답임을 알게(두 번 들어가지 않게)
           convAtSend.messages.push(aiMsg);
           thinking._nxMsgRef = aiMsg;
-          if (convAtSend === nxAiConv) nxAiScheduleSave_();
+          if (convAtSend === nxAiConv) nxAiScheduleSave_(); else nxAiSaveOnceFor_(convAtSend);
         },
-        onError: function(msg){
-          thinking.textContent = msg;
-          var i = convAtSend.messages.indexOf(userMsg); if (i !== -1) convAtSend.messages.splice(i, 1);
+        // [2026.11.27 넥스 일감] 멈춰도 질문은 지우지 않는다(예전엔 질문까지 지워 무엇을 시켰는지도 안 남았다) — 「이어서 하기」로 멈춘 단계부터
+        onError: function(msg, resume){
+          nxAiJobErrorUi_(thinking, msg, resume);
+          if (convAtSend === nxAiConv) nxAiScheduleSave_();
           if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'ai', where: 'AI 대화(' + nxAiMode + ')', message: msg, detail: '질문: ' + text.slice(0, 300) });
         },
         onAbort: function(){
@@ -6628,6 +6751,7 @@
       var convAtSend = nxAiConv;
       nxAiAbort = new AbortController(); nxAiSetBusy_(true);
       nxAiRunTurn_(nxAiTrimForRequest_(nxAiConv.messages), {
+        conv: convAtSend, // [2026.11.27 넥스 일감]
         thinkingBubble: thinking, signal: nxAiAbort.signal,
         context: nxAiBuildContext_({ openFile: openFileCtx }),
         settingsPayload: nxAiBuildSettingsPayload_(lastUser),
@@ -6635,9 +6759,9 @@
           nxAiRenderReply_(thinking, reply, actions, editTarget);
           var aiMsg = { role: 'assistant', content: reply };
           convAtSend.messages.push(aiMsg); thinking._nxMsgRef = aiMsg;
-          if (convAtSend === nxAiConv) nxAiScheduleSave_();
+          if (convAtSend === nxAiConv) nxAiScheduleSave_(); else nxAiSaveOnceFor_(convAtSend);
         },
-        onError: function(m){ thinking.textContent = m; },
+        onError: function(m, resume){ nxAiJobErrorUi_(thinking, m, resume); },
         onAbort: function(){ thinking.textContent = '⏹ 중단됨'; }
       }).then(function(){ nxAiAbort = null; nxAiSetBusy_(false); });
     });
