@@ -817,7 +817,16 @@ function sysAuditFeatureList_() {
       if (typeof fn === 'function') others[r.fn + '(실행 중 코드)'] = String(fn);
       else snap.warn.push('넘겨받는 함수 ' + r.fn + '을(를) 서버에서 못 찾음 — ' + r.prefix + ' 입구는 세지 못함');
     });
-    snap.server = sysAuditServerActions_(code, others);
+    // [2026-11-27] 이름 목록을 다른 서버 파일에 두고 Code.js는 「목록.indexOf(body.action)」만 부르는 입구(예: Standalone.js SF_ACTIONS_)는
+    //   Code.js 글자에 목록이 없어 「화면은 부르는데 서버에 없음」으로 잘못 셌다(@1458 헛경고) — 실행 중 서버의 그 목록을 직접 읽는다.
+    var extra = [], lre = /\b([A-Z][A-Z0-9_]*ACTIONS_?)\.indexOf\(\s*(?:body\.)?action\s*\)/g, lm;
+    while ((lm = lre.exec(code))) {
+      if (new RegExp('\\b(?:const|var|let)\\s+' + lm[1] + '\\s*=').test(code)) continue;
+      var arr = G[lm[1]];
+      if (Array.isArray(arr)) extra = extra.concat(arr.filter(function (x) { return typeof x === 'string'; }));
+      else snap.warn.push('이름 목록 ' + lm[1] + '을(를) 서버에서 못 찾음 — 그 입구는 세지 못함');
+    }
+    snap.server = sysAuditServerActions_(code, others, extra);
   } catch (e) { snap.warn.push('서버 동작 목록을 못 읽음: ' + e.message); }
   return snap;
 }
@@ -834,9 +843,10 @@ function sysAuditScreenActions_(html) {
   return Object.keys(o).sort();
 }
 // others = { 파일이름: 글 } — 접두어 입구가 넘기는 함수가 정의된 파일에서 「=== '접두어…'」로 받는 이름을 더한다(그 함수가 없는 파일은 안 봄)
-function sysAuditServerActions_(code, others) {
+function sysAuditServerActions_(code, others, extra) {
   var o = {}, m, re = /\baction\s*===\s*['"]([A-Za-z0-9_]+)['"]/g;
   while ((m = re.exec(String(code)))) o[m[1]] = 1;
+  (extra || []).forEach(function (x) { o[x] = 1; }); // [2026-11-27] 다른 파일에 둔 이름 목록(위 스냅샷이 실행 중 서버에서 읽어 넘김)
   // [2026.10.21] 이름 목록 배열로 받는 입구(예: WORK_ACTIONS.indexOf(body.action) !== -1 → 작업관리 처리)도 센다 — 전엔 빠져 고객관리·작업관리 등 48개를 "서버에 없음"으로 셌다
   var arrRe = /\b(?:const|var|let)\s+([A-Z][A-Z0-9_]*ACTIONS_?)\s*=\s*\[([^\]]*)\]/g, am;
   while ((am = arrRe.exec(String(code)))) {
