@@ -4627,9 +4627,9 @@
         var row = st.steps[k], itemsBox = row && (row._items || (row.querySelector && row.querySelector('.nxai-cp-items')));
         if (itemsBox) itemsBox.style.display = live.some(function(it){ return it.step === k && it.ask && it.ask.mode === 'folder'; }) ? '' : 'none';
       });
-      foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '답하실 질문 <b>' + open + '개</b> — 사실(장부) 탭 ④ 물어볼 것에서 답하세요(AI 창에서 넥스에게 말로 답해도 같은 장부에 적힙니다)' : '답하실 질문 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + '</div>';
+      foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '답하실 질문 <b>' + open + '개</b> — 사실(장부) 탭 「칸 장부」의 ❓ 물어볼 것에서 답하세요(AI 창에서 넥스에게 말로 답해도 같은 장부에 적힙니다)' : '답하실 질문 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + '</div>';
       var toLg = document.createElement('button'); toLg.type = 'button'; toLg.className = 'nxai-btn'; toLg.textContent = '장부에서 답하기 ›';
-      toLg.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(st.caseId); });
+      toLg.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(st.caseId, { ask: true }); }); // [2026-11-27 F9] 물어볼 것으로 바로
       if (open) foot.appendChild(toLg);
     }
     var again = document.createElement('button');

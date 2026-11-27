@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 00:56 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 01:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -8749,6 +8749,8 @@ function nxMdOpenWindow(title, src, opts){
   }
   // 다른 화면(처리개요 [📒 장부 열기]·옆 패널·↪ 이 사건 다른 화면·세액계산 칸 채우기 상자)에서 그 사건을 고른 채 연다
   function goToLedger_(caseId, opts){
+    // [2026-11-27 목적점검 3차 F9] opts.ask — 「질문 N」·「장부에서 답하기」로 들어오면 칸 장부 탭을 열고 물어볼 것으로 내려간다(예전엔 마지막에 보던 탭 — 보통 ⓪ 사건 흐름 — 이 열려 물음이 안 보였다)
+    if (opts && opts.ask){ try { sessionStorage.setItem('chLgTab', 'rows'); } catch (e) {} window.__lgScrollAsk_ = true; }
     if (typeof goToView_ === 'function') goToView_('ledger');
     Promise.resolve(initLedger()).then(function(){
       var sel = document.getElementById('lgCaseSelect'); if (sel) sel.value = caseId || '';
@@ -8937,7 +8939,7 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.11.01] 세무사님 "장부아래 탭명에 현황까지 붙여놓아서 너-무 길다" — 탭엔 이름과 손볼 것 숫자(있을 때만)만, 현황 전체는 탭 줄 밑 한 줄(지금 탭)·말풍선으로
         var lgTb = function(key, name, n, detail){ return '<button type="button" class="nx-tab" data-lg-tab="' + key + '" data-lg-detail="' + esc(detail) + '" title="' + esc(name + ' — ' + detail) + '">' + esc(name) + (n ? ' <span class="nx-n warn">' + esc(n) + '</span>' : '') + '</button>'; };
         h += '<div style="margin-top:8px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">'
-          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 「이 사건 처리하자」(개요)를 돌리거나 오른쪽 단추를 누르세요') + ' · 칸과 서류 사실은 한 장부(사건 폴더에 파일이 들어오거나 바뀌면 그때 바로 다시 모음)</span>'
+          + '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"><b>장부가 한 일</b><span style="color:var(--sub);">' + (kb && kb.at ? '서류 사실 모은 때 ' + esc(kb.at) + (kb.prevAt ? ' · 그 전 ' + esc(kb.prevAt) : '') : '아직 서류 사실을 모은 적이 없습니다 — 📖 서류 읽기를 마치면 같이 모입니다(시간이 모자라면 1분 안에 뒤에서). 지금 모으려면 오른쪽 단추를 누르세요') + ' · 칸과 서류 사실은 한 장부(사건 폴더에 파일이 들어오거나 바뀌면 그때 바로 다시 모음)</span>'
           + '<button type="button" id="chLgKbBuild" class="ghost-btn" title="칸 값은 건드리지 않고, 사건 폴더 서류를 다시 훑어 파일 장부·서류 사실·서류끼리 맞대기를 지금 서류로 다시 만듭니다(계산기 칸으로 간 길은 다음 개요 때 갱신)">서류 사실 다시 모으기</button></div>'
           + '<div class="nx-tabbar sub" style="margin:6px 0 0;">'
           + (fl ? lgTb('flow', '사건 흐름', fb0.질문, '가설 ' + (fb0.가설 || 0) + ' → 사건개요(정함 ' + (fb0.개요확정 || 0) + ' · 가설 ' + (fb0.개요가설 || 0) + (fb0.개요다름 ? ' · 가설과 다름 ' + fb0.개요다름 : '') + ') → 확보할 증빙(확보 ' + (fb0.증빙확보 || 0) + ' / 받을 것 ' + (fb0.증빙미확보 || 0) + ') → 서류 사실 ' + (fb0.서류사실 || 0) + ' → 칸 ' + (fb0.칸값 || 0) + '(서류와 이음 ' + (fb0.칸이음 || 0) + ') → 질문 ' + (fb0.질문 || 0)) : '')
@@ -9054,14 +9056,17 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.11.12 넥스 질문 정리 ③ — 세무사님 10-22 "항목별로 그루핑해서 질문하는 것이 기본"] 물어볼 것·증빙 받을 것은 세무사님 차례만 묶음(계산기 카드 순서)으로, 넥스 차례(GAS 물음을 넥스가 먼저 봄)는 수만 한 줄
         var GROUP_ORDER = ['서류', '서류 대조', '사건 파악', '양도인', '양도계약', '자산', '취득', '안분', '특례·비용', '증여', '상속', '자문 쟁점', '그 밖'];
         var nexRows = rows.filter(function(x){ return (x.state === '물어볼것' || x.state === '증빙받을것') && x.turn === '넥스'; });
-        if (nexRows.length) h += '<div style="margin-top:8px; font-size:12.5px; color:var(--sub);">🤖 넥스가 먼저 보는 물음 ' + nexRows.length + '개 — 서류를 읽어 정하거나 닫고, 못 정한 것만 아래 「물어볼 것」으로 옵니다(사건 현황 🤖 넥스 줄에서 미리 읽기를 끄면 모두 세무사님께 옵니다).</div>';
+        // [2026-11-27 목적점검 3차 F7] 넥스 차례 물음도 표로 보이고 여기서 바로 답할 수 있게(예전엔 수만 한 줄 — 넥스를 안 쓰시면 답할 곳이 없었다. 공통원칙 1절 「AI 없이 내가 직접 작업하는 것에 불편함이 없도록」).
+        //  세무사님 차례 묶음 아래에 따로 둔다 — 넥스가 먼저 풀 수도 있지만 기다리실 필요는 없다
+        var lgSecs = order.map(function(st){ return { st: st, list: rows.filter(function(x){ return x.state === st && !((st === '물어볼것' || st === '증빙받을것') && x.turn === '넥스'); }) }; });
+        if (nexRows.length) lgSecs.splice(2, 0, { st: '물어볼것', list: nexRows, title: '🤖 넥스가 먼저 보는 물음 ' + nexRows.length + ' — 넥스가 서류를 읽어 정하거나 닫기도 하지만, 기다리지 않고 여기서 바로 답하셔도 됩니다' });
         // [2026-11-13 4차 47] 태블릿·폰에서 조치 단추(후보·넣기·보류·무시·확인)가 표 끝에서 잘리고 손가락에 작았다 — 세무사님 "권장대로": 조치를 칸 바로 옆 「⋯」 단추 하나로 묶고, 누르면 손가락 크기(44px)로 세로로 펼친다(PC는 그대로)
         var lgTouch = document.body.classList.contains('lay-tablet') || document.body.classList.contains('lay-phone');
-        order.forEach(function(st){
-          var list = rows.filter(function(x){ return x.state === st && !((st === '물어볼것' || st === '증빙받을것') && x.turn === '넥스'); });
+        lgSecs.forEach(function(sec){
+          var st = sec.st, list = sec.list;
           if (!list.length) return;
           if (st === '물어볼것' || st === '증빙받을것') list.sort(function(a, b){ var ga = GROUP_ORDER.indexOf(a.group || '그 밖'), gb = GROUP_ORDER.indexOf(b.group || '그 밖'); return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb); });
-          h += '<div style="margin-top:8px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(STATE_KO[st]) + ' ' + list.length + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th>' + (lgTouch ? '<th style="text-align:left;padding:2px 8px;">조치</th>' : '') + '<th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th>' + (lgTouch ? '' : '<th style="text-align:left;padding:2px 8px;">조치</th>') + '</tr>';
+          h += '<div style="margin-top:8px;"' + (st === '물어볼것' && !sec.title ? ' id="chLgAskSec"' : '') + '><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">' + esc(sec.title || (STATE_KO[st] + ' ' + list.length)) + '</b><div style="overflow-x:auto;"><table style="border-collapse:collapse; font-size:12px; white-space:nowrap; margin-top:3px;"><tr><th style="text-align:left;padding:2px 8px;">칸</th>' + (lgTouch ? '<th style="text-align:left;padding:2px 8px;">조치</th>' : '') + '<th style="text-align:left;padding:2px 8px;">값</th><th style="text-align:left;padding:2px 8px;">주인</th><th style="text-align:left;padding:2px 8px;">근거·질문</th><th style="text-align:left;padding:2px 8px;" title="장부가 모은 서류 사실 중 이 칸 값과 같은 값을 말한 것(같은 장부 안에서 쓸 때마다 다시 이음)">이 값을 말한 서류</th>' + (lgTouch ? '' : '<th style="text-align:left;padding:2px 8px;">조치</th>') + '</tr>';
           var lastGroup = null;
           list.forEach(function(x){
             if ((st === '물어볼것' || st === '증빙받을것') && (x.group || '그 밖') !== lastGroup){ lastGroup = x.group || '그 밖'; h += '<tr><td colspan="6" style="padding:5px 8px 2px; border-top:1px solid var(--line); font-weight:700; background:var(--bg2, #f6f7fa);">📂 ' + esc(lastGroup) + ' <span style="font-weight:400; color:var(--sub);">' + list.filter(function(y){ return (y.group || '그 밖') === lastGroup; }).length + '</span></td></tr>'; }
@@ -9226,6 +9231,7 @@ function nxMdOpenWindow(title, src, opts){
         var tab0 = 'flow'; try { tab0 = sessionStorage.getItem('chLgTab') || 'flow'; } catch (e) {} // [2026.10.29] 처음엔 ⓪ 사건 흐름부터
         if (!body.querySelector('[data-lg-sec="' + tab0 + '"]')) tab0 = 'rows';
         showSec(tab0);
+        if (window.__lgScrollAsk_){ window.__lgScrollAsk_ = false; showSec('rows'); var askEl = document.getElementById('chLgAskSec') || body.querySelector('[data-lg-sec="rows"]'); if (askEl && askEl.scrollIntoView) setTimeout(function(){ askEl.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 50); } // [F9]
         // [2026.11.01 물건 장부] 고치기 → 아래 칸에 채움 · 저장(새 줄이거나 고친 줄) · 지우기 · 양도 자산으로
         var obForm = document.getElementById('chObForm');
         if (obForm){
@@ -60624,7 +60630,7 @@ function rwAiApplyEdit_(id, content){
       <p>사건의 모든 사실을 칸마다 값·주인(세무사님/넥스/서류)·상태(확정/추정/물어볼 것/증빙 받을 것/보류)로 한 장부에 모은 화면입니다. 넥스도 같은 장부를 씁니다.</p>
       <ul>
         <li><b>사건을 열려면</b>: 위에서 사건을 고르거나, 다른 화면의 장부 띠에서 [장부 ›]을 누릅니다.</li>
-        <li><b>질문에 답하려면</b>: [장부] 탭의 ④ 물어볼 것에서 후보를 고르거나 값을 넣습니다 — 질문에 답하는 곳은 여기 한 곳입니다(AI 창에서 넥스에게 말로 답해도 같은 장부에 적힙니다).</li>
+        <li><b>질문에 답하려면</b>: [장부] 탭 「칸 장부」의 ❓ 물어볼 것에서(머리 띠의 빨간 「질문 N」을 누르면 바로 갑니다) 후보를 고르거나 값을 넣습니다 — 질문에 답하는 곳은 여기 한 곳입니다(AI 창에서 넥스에게 말로 답해도 같은 장부에 적힙니다).</li>
         <li><b>칸마다 출처를 보려면</b>: [반영 현황표] 탭을 누릅니다.</li>
         <li><b>서류에서 모은 사람·자산·계약·돈 흐름·시간 순서를 보려면</b>: [판단 재료] 탭을 누릅니다(표로 보이고, 보기만 해서는 기록이 남지 않습니다).</li>
         <li><b>정해진 계산기 칸 값을 고치거나 되돌리려면</b>: [칸 고치기] 탭을 누릅니다.</li>
@@ -65967,9 +65973,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var row = st.steps[k], itemsBox = row && (row._items || (row.querySelector && row.querySelector('.nxai-cp-items')));
         if (itemsBox) itemsBox.style.display = live.some(function(it){ return it.step === k && it.ask && it.ask.mode === 'folder'; }) ? '' : 'none';
       });
-      foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '답하실 질문 <b>' + open + '개</b> — 사실(장부) 탭 ④ 물어볼 것에서 답하세요(AI 창에서 넥스에게 말로 답해도 같은 장부에 적힙니다)' : '답하실 질문 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + '</div>';
+      foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '답하실 질문 <b>' + open + '개</b> — 사실(장부) 탭 「칸 장부」의 ❓ 물어볼 것에서 답하세요(AI 창에서 넥스에게 말로 답해도 같은 장부에 적힙니다)' : '답하실 질문 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + '</div>';
       var toLg = document.createElement('button'); toLg.type = 'button'; toLg.className = 'nxai-btn'; toLg.textContent = '장부에서 답하기 ›';
-      toLg.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(st.caseId); });
+      toLg.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(st.caseId, { ask: true }); }); // [2026-11-27 F9] 물어볼 것으로 바로
       if (open) foot.appendChild(toLg);
     }
     var again = document.createElement('button');
@@ -71617,7 +71623,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var parts = [];
     var add = function(n, t, warn){ if (n) parts.push(warn ? red(1, t + ' ' + n) : t + ' ' + n); };
     add(d.가설, '가설'); add(d.개요확정, '개요 정함'); add(d.개요가설, '개요 가설'); add(d.개요다름, '가설과 다름', 1);
-    add(d.증빙확보, '증빙 확보'); add(d.증빙미확보, '받을 것', 1); add(d.서류사실, '서류 사실'); add(d.칸값, '칸'); add(d.칸이음, '서류와 이은 칸'); add(d.질문, '질문', 1);
+    add(d.증빙확보, '증빙 확보'); add(d.증빙미확보, '받을 것', 1); add(d.서류사실, '서류 사실'); add(d.칸값, '칸'); add(d.칸이음, '서류와 이은 칸'); if (d.질문) parts.push('<a href="#" class="nx-lg-q" title="장부 칸 장부 탭의 물어볼 것으로 — 여기서 답합니다" style="color:#b23; font-weight:600; text-decoration:underline;">질문 ' + d.질문 + '</a>'); // [2026-11-27 목적점검 3차 F9] 누르면 장부 물어볼 것으로(예전엔 누를 수 없는 빨간 글자)
     if (d.사슬물건) parts.push('거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '')); // [2026.10.29 거래 사슬]
     add(d.공부, '공부 조회(필지)'); add(d.추정, '추정 칸'); // [2026.10.29 계획서 3판]
     b.innerHTML = (parts.length ? parts.join(' · ') : '<span style="color:var(--sub);">장부가 아직 비어 있습니다</span>')
@@ -71628,6 +71634,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       + ' <button type="button" class="ghost-btn nx-lg-re sm" title="장부를 다시 읽기">↻</button>';
     var ob = b.querySelector('.nx-lg-open'); if (ob) ob.addEventListener('click', function(){ nxLedgerPanelOpen_(el._view, id); });
     var sb = b.querySelector('.nx-lg-screen'); if (sb) sb.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(id); });
+    var qb = b.querySelector('.nx-lg-q'); if (qb) qb.addEventListener('click', function(e){ e.preventDefault(); if (typeof goToLedger_ === 'function') goToLedger_(id, { ask: true }); }); // [F9]
     var cb = b.querySelector('.nx-lg-cost'); if (cb) cb.addEventListener('click', function(){ nxAiCostPanelOpen_(id, r.사건 || ''); });
     b.querySelector('.nx-lg-re').addEventListener('click', function(){ delete NX_LG_.cache[id]; el._shownId = null; nxLedgerStripTick_(); });
   }
@@ -71681,7 +71688,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var ST = { '가설': '가설(서류 확인 전)', '확정': '정함', '추정': '추정', '물어볼것': '물어볼 것', '증빙받을것': '받을 것', '보류': '보류', '무시': '무시' };
       h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">마지막 장부 적기</b> <span style="color:var(--sub);">' + (last ? e(last.at) + (last.why ? ' · ' + e(last.why) : '') + ' → ' + e((last.diff || []).join(' · ') || '바뀐 것 없음') : '아직 없음') + '</span></div>';
       var q = r.물음 || [];
-      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 사실(장부) 탭 ④ 물어볼 것에서(또는 AI 창에서 넥스에게 말로)</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 사실(장부) 탭 「칸 장부」의 ❓ 물어볼 것에서(또는 AI 창에서 넥스에게 말로)</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var ov = f.사건개요 || [];
       h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">사건개요</b>' + (ov.length ? tbl(['칸', '값', '상태', '가설과'], ov.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label, 150) + cell(x.값, 260, g ? ' color:#a60;' : '') + cell(ST[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(x.hypNote || '', 220, x.hypNote ? ' color:#b23;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       // [2026.10.29 거래 사슬] 물건마다 계약서·등기 고리 — 사슬 밖 계약서는 빨갛게

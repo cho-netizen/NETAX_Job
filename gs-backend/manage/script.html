@@ -2142,7 +2142,7 @@
     var parts = [];
     var add = function(n, t, warn){ if (n) parts.push(warn ? red(1, t + ' ' + n) : t + ' ' + n); };
     add(d.가설, '가설'); add(d.개요확정, '개요 정함'); add(d.개요가설, '개요 가설'); add(d.개요다름, '가설과 다름', 1);
-    add(d.증빙확보, '증빙 확보'); add(d.증빙미확보, '받을 것', 1); add(d.서류사실, '서류 사실'); add(d.칸값, '칸'); add(d.칸이음, '서류와 이은 칸'); add(d.질문, '질문', 1);
+    add(d.증빙확보, '증빙 확보'); add(d.증빙미확보, '받을 것', 1); add(d.서류사실, '서류 사실'); add(d.칸값, '칸'); add(d.칸이음, '서류와 이은 칸'); if (d.질문) parts.push('<a href="#" class="nx-lg-q" title="장부 칸 장부 탭의 물어볼 것으로 — 여기서 답합니다" style="color:#b23; font-weight:600; text-decoration:underline;">질문 ' + d.질문 + '</a>'); // [2026-11-27 목적점검 3차 F9] 누르면 장부 물어볼 것으로(예전엔 누를 수 없는 빨간 글자)
     if (d.사슬물건) parts.push('거래 사슬 ' + d.사슬물건 + '물건' + (d.사슬밖 ? ' ' + red(1, '사슬 밖 계약서 ' + d.사슬밖) : '')); // [2026.10.29 거래 사슬]
     add(d.공부, '공부 조회(필지)'); add(d.추정, '추정 칸'); // [2026.10.29 계획서 3판]
     b.innerHTML = (parts.length ? parts.join(' · ') : '<span style="color:var(--sub);">장부가 아직 비어 있습니다</span>')
@@ -2153,6 +2153,7 @@
       + ' <button type="button" class="ghost-btn nx-lg-re sm" title="장부를 다시 읽기">↻</button>';
     var ob = b.querySelector('.nx-lg-open'); if (ob) ob.addEventListener('click', function(){ nxLedgerPanelOpen_(el._view, id); });
     var sb = b.querySelector('.nx-lg-screen'); if (sb) sb.addEventListener('click', function(){ if (typeof goToLedger_ === 'function') goToLedger_(id); });
+    var qb = b.querySelector('.nx-lg-q'); if (qb) qb.addEventListener('click', function(e){ e.preventDefault(); if (typeof goToLedger_ === 'function') goToLedger_(id, { ask: true }); }); // [F9]
     var cb = b.querySelector('.nx-lg-cost'); if (cb) cb.addEventListener('click', function(){ nxAiCostPanelOpen_(id, r.사건 || ''); });
     b.querySelector('.nx-lg-re').addEventListener('click', function(){ delete NX_LG_.cache[id]; el._shownId = null; nxLedgerStripTick_(); });
   }
@@ -2206,7 +2207,7 @@
       var ST = { '가설': '가설(서류 확인 전)', '확정': '정함', '추정': '추정', '물어볼것': '물어볼 것', '증빙받을것': '받을 것', '보류': '보류', '무시': '무시' };
       h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">마지막 장부 적기</b> <span style="color:var(--sub);">' + (last ? e(last.at) + (last.why ? ' · ' + e(last.why) : '') + ' → ' + e((last.diff || []).join(' · ') || '바뀐 것 없음') : '아직 없음') + '</span></div>';
       var q = r.물음 || [];
-      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 사실(장부) 탭 ④ 물어볼 것에서(또는 AI 창에서 넥스에게 말로)</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
+      h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">남은 물음 ' + q.length + '</b> <span style="color:var(--sub);">답은 사실(장부) 탭 「칸 장부」의 ❓ 물어볼 것에서(또는 AI 창에서 넥스에게 말로)</span>' + (q.length ? tbl(['칸', '상태', '물음'], q.map(function(x){ return '<tr>' + cell(x.label, 160) + cell(ST[x.state] || x.state, 70, x.state === '보류' ? '' : ' color:#b23;') + cell(x.ask, 380) + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       var ov = f.사건개요 || [];
       h += '<div style="margin-top:10px;"><b class="nx-l3" style="display:inline-block; margin:6px 6px 4px 0;">사건개요</b>' + (ov.length ? tbl(['칸', '값', '상태', '가설과'], ov.map(function(x){ var g = x.state === '가설'; return '<tr>' + cell(x.label, 150) + cell(x.값, 260, g ? ' color:#a60;' : '') + cell(ST[x.state] || x.state, 110, g ? ' color:#a60;' : '') + cell(x.hypNote || '', 220, x.hypNote ? ' color:#b23;' : '') + '</tr>'; }).join('')) : '<div class="log-empty">없음</div>') + '</div>';
       // [2026.10.29 거래 사슬] 물건마다 계약서·등기 고리 — 사슬 밖 계약서는 빨갛게

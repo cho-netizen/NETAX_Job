@@ -28222,7 +28222,16 @@ function caseProcTool_(c, body) {
     if (ev.error) { out.ok = false; out.error = ev.error; return finish('② 실패'); }
   }
   // 서류 읽기 도구는 여기까지 — 장부 적기(가설 채택·사건개요·받을 증빙·새 필지·중요한 순간, 0원)만 하고 끝. 칸 채우기·계산은 부른 쪽이 정한다
-  if (MODE === 'read') { const ln = (ev && (ev.lines = ev.lines || [])) || (basic.lines = basic.lines || []); flowNow(ln); return finish(); }
+  if (MODE === 'read') {
+    const ln = (ev && (ev.lines = ev.lines || [])) || (basic.lines = basic.lines || []); flowNow(ln);
+    // [2026-11-27 목적점검 3차 F8] 서류를 읽었으면 장부 바탕(파일 장부·서류 사실·서류끼리 맞대기)도 이 자리에서 — 예전엔 교차검증(③ 칸 채우기 안)·폴더 감시·[서류 사실 다시 모으기]에서만 모아,
+    //  방금 서류 6장을 읽었는데 장부 맨 위가 「아직 서류 사실을 모은 적이 없습니다」였다. 시간이 모자라면 다음 1분 틱에 모은다(칸 값은 바꾸지 않음, 0원)
+    if (ev && typeof ledgerKbBuild_ === 'function') {
+      if (left() > 45000) { try { const kb = ledgerKbBuild_(fresh(), { what: '서류 읽기', why: '📖 서류 읽기 끝', fresh: true }); ln.push('📒 장부 바탕: ' + ((kb && kb.message) || '다시 모음')); } catch (e) { try { cpLedgerStaleAdd_(c.id); } catch (e2) {} ln.push('⚠ 장부 바탕(서류 사실)을 모으지 못해 1분 뒤 다시 모읍니다: ' + String(e && e.message || e).slice(0, 80)); } }
+      else { try { cpLedgerStaleAdd_(c.id); } catch (e) {} ln.push('⏱ 장부 바탕(서류 사실)은 시간이 모자라 1분 뒤 뒤에서 모읍니다'); }
+    }
+    return finish();
+  }
   if (left() < 45000) { out.partial = true; out.next = MODE; return finish('시간 부족 — 칸 채우기를 다음 호출에서'); }
   // ③ 칸 채우기(기준일이 ②에서 정해졌을 수 있어 사건을 새로 읽는다)
   const c3 = fresh();
@@ -32136,6 +32145,7 @@ function caseProcOverview_(c, body) {
     // [small0 — 세무사님 결정 (가)] 증여 10년 합산은 큰 질문 그대로(계산 막음 그대로) — 답하기 전 '확인 전' 표시와 신고서 출력 전 알림만
     if (cc.세목 === 'gift' && !String(((cc.사건개요 || {}).giftPriorAmount) == null ? '' : (cc.사건개요 || {}).giftPriorAmount).trim()) r.lines.push('⏳ 확인 전 칸 1개 — 10년 내 같은 증여자 증여 합산(답하기 전 계산하면 0원 — 합산할 증여가 있으면 세율 구간·공제가 달라지는 큰 질문, 신고서 출력 전에 다시 알림)'); } catch (e) {} }
   const late = Date.now() - t0 > 270000;
+  if (late) { try { cpLedgerStaleAdd_(c.id); } catch (e) {} } // [2026-11-27 목적점검 3차 F8] 교차검증을 건너뛰면 장부 바탕(서류 사실)도 안 남으므로 다음 틱에 모으게 줄 세움
   if (late && r && r.lines) r.lines.push('⏱ 칸 채우기에 ' + Math.round((Date.now() - t0) / 1000) + '초가 걸려 메모 후보·교차검증 정리는 이번 바퀴에서 건너뜀 — 「🔄 처음부터 다시 처리」 때 이어서 함(서류 글자는 기억에 있어 다음엔 빠름)');
   tt = Date.now();
   if (!late && !light) { try { caseProcMemoCands_(c, r); } catch (e) {} }
@@ -32153,7 +32163,7 @@ function caseProcOverview_(c, body) {
   // [2026.10.28 시정 2단계] GAS가 낸 질문은 화면이 저장해 주기를 기다리지 않고 이 자리에서 장부 질문 줄로(세목 가리지 않음 — 넥스 지휘·점검처럼 화면 없이 도는 길에서도 질문이 남는다).
   //  가벼운 다시 맞추기·시간 넘김이면 사건파악·메모 질문을 다시 만들지 않았으므로 "이번 목록에 없다"고 떼지 않는다(partial)
   try { if (r && r.ok && /^(gift|inheritance)$/.test(c.세목) && typeof ledgerFromGiftInh_ === 'function') { const cNow = (typeof cxReadCase_ === 'function' ? cxReadCase_(c.id) : null) || r.case || c; ledgerFromGiftInh_(cNow, r.items || []); } } catch (e) { console.error('장부(증여·상속) 반영 실패: ' + (e && e.message || e)); }
-  try { if (r && r.ok && typeof ledgerQGroup_ === 'function') { const offQ = typeof ledgerNexOff_ === 'function' && ledgerNexOff_(c.id); (r.items || []).forEach(function (it) { if (it && it.id && !it.error) { it.turn = offQ ? '세무사님' : '넥스'; it.group = ledgerQGroup_(ledgerQPath_(it)); } }); } } catch (e) {} // [2026.11.12 질문 정리 ①] GAS 질문은 넥스 차례(스위치 끈 사건은 세무사님 차례)
+  try { if (r && r.ok && typeof ledgerQGroup_ === 'function') { const offQ = typeof ledgerNexSkip_ === 'function' ? !!ledgerNexSkip_(c.id, c) : (typeof ledgerNexOff_ === 'function' && ledgerNexOff_(c.id)); /* [2026-11-27 F7] 넥스가 깨지 않는 사건(가상·진행 아님·AI 꺼짐)도 세무사님 차례 */ (r.items || []).forEach(function (it) { if (it && it.id && !it.error) { it.turn = offQ ? '세무사님' : '넥스'; it.group = ledgerQGroup_(ledgerQPath_(it)); } }); } } catch (e) {} // [2026.11.12 질문 정리 ①] GAS 질문은 넥스 차례(스위치 끈 사건은 세무사님 차례)
   try { if (r && r.ok) ledgerQWrite_(c.id, (r.items || []).filter(function (it) { return it && it.id && !it.error; }).slice(0, 80).map(caseProcQSan_), undefined, { partial: light || late }); } catch (e) { console.error('장부 질문 쓰기 실패: ' + (e && e.message || e)); if (r && r.lines) r.lines.push('⚠ 질문을 사건 장부에 적지 못함: ' + (e && e.message || e)); }
   try {
     if (r && r.lines) {
@@ -32881,6 +32891,7 @@ function caseProcDocTax_(c) {
 //  [2026.10.18] 작업관리 칸에 그런 말이 없어도 폴더 서류(경정청구서·수정신고 안내·당초신고 하위폴더·세무조사 통지·소명요구)가 있으면 같다
 function caseProcIsAmend_(c) {
   if (/경정|수정\s*신고|불복|심판|이의\s*신청|심사\s*청구/.test(String((c && c.업무유형) || '') + ' ' + String((c && c.사건명) || ''))) return true;
+  if (/^(세무\s*)?조사/.test(String((c && c.업무유형) || '').trim())) return true; // [2026-11-27 목적점검 3차] 업무유형이 세무조사인데 조사 통지서가 아직 안 읽히면 당초 신고서가 「발생문서 — 입력에서 뺌」으로 빠졌다(아래 서류 신호 s.audit와 같은 뜻)
   const s = caseProcDocSignals_(c);
   return !!(s.amend.length || s.audit.length);
 }
@@ -46486,7 +46497,8 @@ function docDealDetect_(text) {
   if (/중\s*개\s*보\s*수/.test(t) && /(영\s*수\s*증|TOTAL|합\s*계)/.test(t) && !/계\s*약\s*서/.test(head)) return [{ type: 'brokerdesc', text: t }];
   if (/거\s*래\s*예\s*정\s*금\s*액|중개\s*보수\s*등에\s*관한\s*사항|중개\s*대상물\s*확인/.test(t) && /중\s*개\s*보\s*수/.test(t)) return [{ type: 'brokerdesc', text: t }];
   if (!saleHead && /부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증/.test(t) && /거\s*래\s*가\s*격|계\s*약\s*체\s*결\s*일/.test(t)) return [{ type: 'dealreport', text: t }];
-  if ((saleHead || /(매\s*매|공\s*급|분\s*양)\s*계\s*약\s*서|부동산\s*매매\s*계약/.test(t)) && /(매\s*도\s*인|매\s*수\s*인|공급\s*받는\s*자|분양\s*받는\s*자|매\s*도\s*자)/.test(t) && ctMoneyList_(t.replace(/\s+/g, ' ')).length) return [{ type: 'contract', text: t }];
+  // [2026-11-27 목적점검 3차 F4] 분양계약서 표준 당사자 칸 「분양자·수분양자」도 — 제목 뒤에 괄호·꺾쇠가 붙으면(「아파트 분양계약서(101동 1001호)」「[분양계약서]」) 제목 판별(ctSplit_)을 못 지나 여기로 오는데, 당사자 칸 이름이 없어 「종류 미정」이 됐다
+  if ((saleHead || /(매\s*매|공\s*급|분\s*양)\s*계\s*약\s*서|부동산\s*매매\s*계약/.test(t)) && /(매\s*도\s*인|매\s*수\s*인|공급\s*받는\s*자|분양\s*받는\s*자|수?\s*분\s*양\s*자|매\s*도\s*자)/.test(t) && ctMoneyList_(t.replace(/\s+/g, ' ')).length) return [{ type: 'contract', text: t }];
   // [2026.10.17] 조합원(토지등소유자) 공급계약서 — 당사자 칸 이름이 "조합·조합원"이라 위 조건에 안 걸렸다(고객AB: 분양가·권리가·분담금 표)
   if (/(공\s*급|분\s*양)\s*계\s*약\s*서/.test(head) && /분\s*담\s*금/.test(t) && /권\s*리\s*(?:가|금\s*액)/.test(t) && /\d{1,3}(?:,\d{3}){2,}/.test(t)) return [{ type: 'contract', text: t }];
   return [];
@@ -49749,20 +49761,31 @@ function caseProcGraspMore_(t, c, add, file) {
   // 날짜는 원인 낱말 바로 곁(사이 6자 이내)만 — "양도가액 …, 취득 2015년"처럼 멀리 있는 날짜를 다른 원인에 붙이지 않는다. "원인 날짜"·"날짜 원인" 두 차례 모두
   const ROLE = '양도|매도|매각|잔금|취득|매수|증여|상속\\s*개시|사망', DATE = '((?:19|20)\\d{2})\\s*[.\\-/년]\\s*(\\d{1,2})\\s*[.\\-/월]\\s*(\\d{1,2})\\s*[.일]?';
   const seenD = {}; let nd = 0;
-  [[new RegExp('(' + ROLE + ')\\s*(?:일자|일|시기)?\\s*[:：은는(]?\\s{0,2}' + DATE, 'g'), 1, 2], [new RegExp(DATE + '\\s*(?:에|자로|자)?\\s*(' + ROLE + ')', 'g'), 4, 1]].forEach(function (d) {
+  // [2026-11-27 목적점검 3차 F2] 원인 낱말과 날짜 사이는 한 줄 안에서만(\s → [^\S\n]) — "…12억에 매수\n2026.11.22 판교로 이사"의 이사일을 「매수 2026-11-22」로 붙였다(새 집 이사일이 취득일 가설이 됨)
+  [[new RegExp('(' + ROLE + ')[^\\S\\n]*(?:일자|일|시기)?[^\\S\\n]*[:：은는(]?[^\\S\\n]{0,2}' + DATE, 'g'), 1, 2], [new RegExp(DATE + '[^\\S\\n]*(?:에|자로|자)?[^\\S\\n]*(' + ROLE + ')', 'g'), 4, 1]].forEach(function (d) {
     let dm; while ((dm = d[0].exec(txt)) && nd < 6) { const ymd = dm[d[2]] + '-' + ('0' + dm[d[2] + 1]).slice(-2) + '-' + ('0' + dm[d[2] + 2]).slice(-2); if (seenD[ymd]) continue; seenD[ymd] = 1; add('거래', dm[d[1]].replace(/\s+/g, '') + ' ' + ymd, file); nd++; }
   });
-  const aRe = /(양도|매도|매매|취득|매수|증여|상속\s*재산|채무|대출|보상)\s*(?:가액|금액|대금|가|액|금)?\s*[:：은는이가]?\s*(?:약\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))/g;
+  // [2026-11-27 목적점검 3차 F2] 메모의 분양·입주·전입·이사·거주 시기 — 1세대1주택·일시적 2주택 판단의 갈림길 사실인데 원인 낱말에 없어 버려졌다(「2016년 분양」「2019년 입주」「11월 22일 이사」).
+  //  사건개요(ov.거래)에만 남긴다 — 계산 칸 길(LEDGER_HYP_CALC_)에 걸리지 않는 낱말이라 취득일·양도일 칸을 추정으로 채우지 않는다(분양 계약일 ≠ 취득일, 이사일 ≠ 취득일). 연도만·연월만도 그대로(YYYY·YYYY-MM)
+  { const LIFE = '분양(?!권)|입주(?!권)|전입|(?<!대표)이사(?!장|회|진|님|들)|거주(?!자|지)', DT = '((?:19|20)\\d{2})(?:[^\\S\\n]*[.\\-/년][^\\S\\n]*(\\d{1,2})(?:[^\\S\\n]*[.\\-/월][^\\S\\n]*(\\d{1,2}))?)?[^\\S\\n]*[.일월년]?';
+    const ymdOf = function (y, m, dd) { return y + (m ? '-' + ('0' + m).slice(-2) + (dd ? '-' + ('0' + dd).slice(-2) : '') : ''); };
+    const seenL = {}; let nl = 0;
+    [[new RegExp('(' + LIFE + ')[^\\S\\n]*(?:일자|일|시기)?[^\\S\\n]*[:：은는(]?[^\\S\\n]{0,2}' + DT, 'g'), 1, 2], [new RegExp(DT + '[^\\S\\n]*(?:에|부터|자로|자)?[^\\n\\d]{0,16}?(' + LIFE + ')', 'g'), 4, 1]].forEach(function (d) {
+      let dm; while ((dm = d[0].exec(txt)) && nl < 6) { const role = dm[d[1]].replace(/\s+/g, ''), k = role + ' ' + ymdOf(dm[d[2]], dm[d[2] + 1], dm[d[2] + 2]); if (seenL[k]) continue; seenL[k] = 1; add('거래', k, file); nl++; }
+    });
+  }
+  // [2026-11-27 목적점검 3차 F2] 소수점 억("분양가 6.2억", "1.5억에 매수")도 금액으로 — 예전엔 소수점에서 끊겨 버려졌다. 분양가(분양권 아님)도 금액 원인 낱말에
+  const aRe = /(양도|매도|매매|취득|매수|증여|상속\s*재산|채무|대출|보상|분양(?!권))\s*(?:가액|금액|대금|가|액|금)?\s*[:：은는이가]?\s*(?:약\s*)?((?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))/g;
   let mm, nm = 0; while ((mm = aRe.exec(txt)) && nm < 6) { add('거래', mm[1].replace(/\s+/g, '') + ' ' + mm[2].replace(/\s+/g, ''), file); nm++; }
-  const aRe2 = /((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*(?:을|를|의)?\s*(증여|양도|매도|상속)/g; // 금액이 앞에 오는 말("현금 1억원 증여")
+  const aRe2 = /((?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*(?:을|를|의)?\s*(증여|양도|매도|상속)/g; // 금액이 앞에 오는 말("현금 1억원 증여")
   while ((mm = aRe2.exec(txt)) && nm < 6) { add('거래', mm[2] + ' ' + mm[1].replace(/\s+/g, ''), file); nm++; }
   // [2026-11-12 3차 ①] 의뢰 메모 말투 — "6억 8천에 매수", "14억 5천에 팔 계약"(금액 + 에 + 사고판 말). 산 말은 취득, 판 말은 양도로 적는다(가설 — 서류 확인 전)
-  const aRe3 = /((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*에\s*(매수|취득|매입|구입|샀|사서|팔|매도|양도|처분|매각)/g;
+  const aRe3 = /((?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))\s*에\s*(매수|취득|매입|구입|샀|사서|팔|매도|양도|처분|매각)/g;
   while ((mm = aRe3.exec(txt)) && nm < 8) { add('거래', (/^(매수|취득|매입|구입|샀|사서)/.test(mm[2]) ? '취득' : '양도') + ' ' + mm[1].replace(/\s+/g, ''), file); nm++; }
   // [2026-11-13 4차 41] 물건 종류 — 메모에 아파트·단독주택·다세대·연립·빌라가 있으면 「주택」 가설(오피스텔은 쓰임새로 갈려 안 정함). 양도 계산이 과세대상 구분 빈칸으로 「그 밖 자산」을 쓰던 것
   if (/아파트|단독\s*주택|다세대|다가구|연립|빌라/.test(txt)) add('물건종류', '주택', file);
   // [2026-11-13 4차 42] 상속·증여 메모 말 — "예금 3억 4천", "장례비 1,900만원", "매매사례 14억", "공시가격 3억 1천"(가설 — 서류 확인 전, 값이 여럿이면 장부가 여쭘)
-  const aRe4 = /(예금|예적금|금융재산|금융자산|장례비|매매사례|시가|공시가격|공시지가|기준시가)\s*(?:가액|금액|합|합계|은|는|이|가|:)?\s*(?:약\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))/g;
+  const aRe4 = /(예금|예적금|금융재산|금융자산|장례비|매매사례|시가|공시가격|공시지가|기준시가)\s*(?:가액|금액|합|합계|은|는|이|가|:)?\s*(?:약\s*)?((?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(?:억\s*(?:\d[\d,]*\s*(?:천\s*)?(?:만\s*)?)?원?|만\s*원|천\s*만\s*원|원))/g;
   while ((mm = aRe4.exec(txt)) && nm < 12) { const w = mm[1]; add('거래', (/^(예금|예적금|금융)/.test(w) ? '금융' : /^장례/.test(w) ? '장례비' : /^(매매사례|시가)/.test(w) ? '시가' : '공시') + ' ' + mm[2].replace(/\s+/g, ''), file); nm++; }
   // 요청 사항 — "요청·의뢰 내용·요청사항·문의:" 줄
   const rq = /^\s*[-*#]*\s*(?:요청\s*사항|의뢰\s*내용|요청|문의\s*(?:사항|내용)?|상담\s*내용)\s*[:：]\s*([^\n]{4,120})/m.exec(txt);
