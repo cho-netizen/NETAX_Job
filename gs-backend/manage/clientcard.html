@@ -27,8 +27,10 @@
   .cc-sub{ font-size:13px; color:#c9d2e6; }
   .cc-msg{ font-size:14px; color:#c9d2e6; line-height:1.5; }
   .cc-case{ display:flex; gap:8px; align-items:stretch; background:rgba(255,255,255,0.06); border-radius:12px; padding:8px 10px; }
-  .cc-case .info{ flex:1; min-width:0; font-size:15px; }
-  .cc-case .info small{ display:block; font-size:13px; color:#c9d2e6; }
+  .cc-case .info{ flex:1; min-width:0; font-size:15px; border:none; background:transparent; color:#fff; text-align:left; padding:0; cursor:pointer; font-weight:600; }
+  .cc-case .info small{ display:block; font-size:13px; color:#c9d2e6; font-weight:400; }
+  .cc-case .info small.lk{ color:var(--gold-light); font-size:12.5px; }
+  .cc-case.on{ outline:2px solid var(--gold); background:rgba(201,162,39,0.18); }
   .cc-case .rec{ flex-shrink:0; width:52px; border:none; border-radius:10px; background:#b3261e; color:#fff; font-size:22px; cursor:pointer; }
   .cc-dday{ color:#ffb4b4; font-weight:700; }
   .cc-sum{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
@@ -59,13 +61,36 @@
       return { c: c, score: score };
     }).filter(function(x){ return x && x.score >= 4; }).sort(function(a, b){ return b.score - a.score; }).slice(0, 3).map(function(x){ return x.c; });
   }
+  function nxCcClientBtn_(c, why){
+    return '<button type="button" class="cc-btn" data-cc-client="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.성명) + '<small>' + nxCcEsc_([why, c.구분, c.전화번호].filter(Boolean).join(' · ')) + '</small></button>';
+  }
+  // [2026.11.27 플립 보완 G3] 이름을 말하기 전에 뻔한 후보부터 — 지금 넥스 대화의 사건 고객, 이 휴대폰에서 최근 연 사건 고객, 오늘 예약 고객.
+  function nxCcClientOf_(k){
+    if (!k) return null;
+    var nm = String(k.고객명 || '').replace(/\s+/g, '');
+    return (nxCc_.clients || []).filter(function(c){ return (k.고객ID && String(c.id) === String(k.고객ID)) || (nm && String(c.성명 || '').replace(/\s+/g, '') === nm); })[0] || null;
+  }
+  function nxCcQuick_(){
+    var out = [], seen = {};
+    var add = function(c, why){ if (c && !seen[c.id]){ seen[c.id] = 1; out.push({ c: c, why: why }); } };
+    var caseById = function(id){ return (nxCc_.cases || []).filter(function(k){ return String(k.id) === String(id); })[0]; };
+    var curId = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+    if (curId) add(nxCcClientOf_(caseById(curId)), '지금 넥스 대화 사건');
+    (typeof nxCoverRecent_ === 'function' ? nxCoverRecent_() : []).forEach(function(r){ add(nxCcClientOf_(caseById(r.id)), '최근 연 사건'); });
+    var today = (function(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); })();
+    (nxCc_.bookings || []).filter(function(b){ return b && String(b.reservedDate || '').slice(0, 10) === today && b.status !== '거절' && b.status !== '취소'; }).forEach(function(b){
+      var nm = String(b.name || '').replace(/\s+/g, '');
+      add((nxCc_.clients || []).filter(function(c){ return nm && String(c.성명 || '').replace(/\s+/g, '') === nm; })[0], '오늘 ' + (b.reservedTime || '') + ' 예약');
+    });
+    return out.slice(0, 4);
+  }
   function nxCcPick_(list, note){
     nxCc_.cur = null;
-    nxCcBody_('<button type="button" class="cc-btn gold big" id="ccSay">고객 이름 말하기</button>' +
+    var quick = list ? [] : nxCcQuick_();
+    nxCcBody_((quick.length ? quick.map(function(q){ return nxCcClientBtn_(q.c, q.why); }).join('') : '') +
+      '<button type="button" class="cc-btn gold big" id="ccSay">' + (quick.length ? '다른 고객 이름 말하기' : '고객 이름 말하기') + '</button>' +
       (note ? '<div class="cc-msg">' + note + '</div>' : '') +
-      (list || []).map(function(c){
-        return '<button type="button" class="cc-btn" data-cc-client="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.성명) + '<small>' + nxCcEsc_([c.구분, c.전화번호].filter(Boolean).join(' · ')) + '</small></button>';
-      }).join(''));
+      (list || []).map(function(c){ return nxCcClientBtn_(c, ''); }).join(''));
   }
   function nxCcSay_(){
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -104,9 +129,14 @@
       .map(function(p){ return String(p || '').trim(); }).filter(Boolean);
     var html = '<div><div class="cc-name">' + nxCcEsc_(client.성명) + '</div><div class="cc-sub">' + nxCcEsc_([client.구분, client.주소].filter(Boolean).join(' · ')) + '</div></div>';
     html += phones.length ? phones.map(function(p){ return '<a class="cc-btn green" href="tel:' + nxCcEsc_(p.replace(/[^0-9+]/g, '')) + '">📞 ' + nxCcEsc_(p) + '</a>'; }).join('') : '<div class="cc-msg">등록된 전화번호가 없습니다.</div>';
+    // [2026.11.27 플립 보완 G3] 사건 줄을 누르면 넥스 대화가 그 사건으로 이어진다(커버화면 맨 위 띠에 보임) — 그 뒤 위로 밀면 그 사건을 넥스에게, 아래로 밀면 그 사건 녹음
+    var curCase = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+    nxCc_.shownCase = curCase;
     html += cases.length ? cases.slice(0, 5).map(function(c){
       var dd = c.상태 !== '완료' ? nxCcDday_(c.법정일) : '';
-      return '<div class="cc-case"><div class="info">' + nxCcEsc_(c.사건명) + '<small>' + nxCcEsc_(c.상태 || '') + (dd ? ' · <span class="cc-dday">법정일 ' + dd + '</span>' : '') + '</small></div>' +
+      var on = String(c.id) === String(curCase);
+      return '<div class="cc-case' + (on ? ' on' : '') + '"><button type="button" class="info" data-cc-link="' + nxCcEsc_(c.id) + '">' + nxCcEsc_(c.사건명) + '<small>' + nxCcEsc_(c.상태 || '') + (dd ? ' · <span class="cc-dday">법정일 ' + dd + '</span>' : '') + '</small>' +
+        '<small class="lk">' + (on ? '🔗 지금 넥스 대화가 이 사건' : '누르면 넥스 대화를 이 사건으로') + '</small></button>' +
         (c.폴더ID ? '<button type="button" class="rec" data-cc-rec="' + nxCcEsc_(c.id) + '" aria-label="이 사건 상담 녹음">🎙</button>' : '') + '</div>';
     }).join('') : '<div class="cc-msg">연결된 사건이 없습니다.</div>';
     html += '<div id="ccSums"><div class="cc-msg">최근 상담내용 찾는 중…</div></div>';
@@ -143,9 +173,15 @@
   }
 
   function nxCcOpen_(){
-    if (nxCc_.cur){ return; } // 보던 고객 카드 그대로
+    if (nxCc_.cur){ // 보던 고객 카드 그대로 — 그사이 넥스 대화 사건이 바뀌었으면 표시만 새로
+      var nowCase = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) || '';
+      if (nowCase !== nxCc_.shownCase) nxCcShow_(nxCc_.cur);
+      return;
+    }
     nxCcPick_();
-    nxCcLoad_().catch(function(){}); // 미리 불러 두기 — 이름을 말하는 동안 받아 둠
+    // 미리 불러 두기 — 이름을 말하는 동안 받아 둠. 다 받으면 뻔한 후보(지금·최근 사건 고객·오늘 예약)를 위에 보인다
+    var pb = nxCc_.bookings ? Promise.resolve() : callGas('list_bookings', {}).then(function(r){ nxCc_.bookings = (r && r.bookings) || []; }, function(){ nxCc_.bookings = []; });
+    Promise.all([nxCcLoad_(), pb]).then(function(){ if (!nxCc_.cur && !(nxCcEl_('ccBody') || {}).querySelector('[data-cc-client]')) nxCcPick_(); }).catch(function(){});
   }
 
   document.addEventListener('click', function(e){
@@ -155,6 +191,12 @@
     if (t.id === 'ccAgain') return nxCcPick_();
     var cid = t.getAttribute('data-cc-client');
     if (cid){ var c = (nxCc_.clients || []).filter(function(x){ return String(x.id) === cid; })[0]; if (c) nxCcShow_(c); return; }
+    var lid = t.getAttribute('data-cc-link');
+    if (lid){
+      var row = (nxCc_.cases || []).filter(function(x){ return String(x.id) === lid; })[0];
+      if (typeof nxCoverCaseSet_ === 'function') Promise.resolve(nxCoverCaseSet_(lid, row)).then(function(){ if (nxCc_.cur) nxCcShow_(nxCc_.cur); });
+      return;
+    }
     var rid = t.getAttribute('data-cc-rec');
     if (rid){
       var k = (nxCc_.cases || []).filter(function(x){ return String(x.id) === rid; })[0];

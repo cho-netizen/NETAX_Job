@@ -5855,6 +5855,12 @@ function buildContextSystemPrompt(basePrompt, body) {
       dynamicExtra += '\n[답변 스타일] 이건 화면 옆 좁은 사이드바 대화다 — 물어본 것에만 짧고 간결하게 답하라. ' +
         '개수·여부를 물었으면 숫자·결론부터 말하고, 표·전체 목록·추가 분석·안 물어본 주의사항은 사용자가 더 요청하기 전엔 먼저 나열하지 마라.';
     }
+    // [2026.11.27 플립 보완 G5] 접는 폰 커버화면 말하기(소리 답) — 세무사님 10-15 "음성답변모드에서는 … 대화기조에 맞는 핵심요약만 최대축약으로".
+    //  화면이 답의 첫 단락을 바로 소리로 읽는다(예전엔 답을 받은 뒤 넥스를 한 번 더 불러 줄였음 — 그만큼 늦었다).
+    if (ctx.voiceTalk) {
+      dynamicExtra += '\n[소리 답] 사용자는 접는 폰 바깥 화면에서 말로 묻고 답을 소리로 듣는다. 첫 단락은 소리로 읽을 결론만 한두 문장(80자 안쪽, 표·기호·목록·괄호 설명 없이 말하듯)으로 쓰고, '
+        + '꼭 필요한 자세한 내용만 빈 줄 뒤에 이어 써라(그 부분은 화면에 글로만 남는다).';
+    }
   }
   if (ctx.aiPanel) {
     dynamicExtra += '\n[job 기능] 예약·상담/수금 기록·증빙 체크리스트·메모·처리일지·보고서 목록은 job_lookup으로 조회하고, 예약 승인·거절·문자 발송·체크리스트 표시·사건정보 수정은 job_propose_action으로 "제안"만 하라(사용자가 [실행]을 눌러야 실행됨). 화면을 보여줄 때는 job_open_screen.';
@@ -21446,7 +21452,7 @@ function work_deleteCase(params) {
     } catch (err) {
       console.log('사건 삭제 시 수금 기록 정리 실패: ' + err.message);
     }
-    bgEnqueue_('case_deleted', { caseId: String(params.id) }, 'case_del_' + params.id, '지운 사건 ' + deletedCaseName.slice(0, 40) + ' 달력·보고서 목록 정리'); // [2026.11.03] 달력 일정 지우기·보고서 목록 걷기는 뒤에서
+    bgEnqueue_('case_deleted', { caseId: String(params.id), caseName: deletedCaseName.slice(0, 120) }, 'case_del_' + params.id, '지운 사건 ' + deletedCaseName.slice(0, 40) + ' 달력·보고서 목록 정리'); // [2026.11.03] 달력 일정 지우기·보고서 목록 걷기는 뒤에서
     // [2026.09 버그수정] 예약에서 시작된 사건을 지워도 그 예약의 연결사건ID가 안 지워져서,
     // 예약목록엔 죽은 사건을 가리키는 "🔗 사건 연결됨" 버튼이 영원히 남고, 눌러도 조용히
     // 아무 반응이 없었다(사건을 못 찾아서). 사건 삭제 시 연결된 예약이 있으면 링크를 풀어서

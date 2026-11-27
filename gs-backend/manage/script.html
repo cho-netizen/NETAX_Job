@@ -1707,6 +1707,10 @@
       var sc = view ? scroller_(e.target, view) : null;
       edgeTop = !sc || sc.scrollTop <= 1;
       edgeBottom = !sc || sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2;
+      // [2026.11.27 플립 보완 G1] 화면 아래 끝(방향 글자 「↑ 밀면 …」 자리)에서 밀어 올리거나 위 끝(띠 바로 밑)에서 끌어내리면
+      //  목록이 남아 있어도 바로 넘어간다 — 요약을 끝까지 내려야만 넘어가는 줄 몰라 위로 밀어도 목록만 넘어가던 것
+      if (sy > window.innerHeight - 56) edgeBottom = true;
+      if (sy < 36 + 56) edgeTop = true;
     }, { passive: true });
     document.addEventListener('touchend', function(e){
       if (!on || !window.nxCover) return;
@@ -1737,6 +1741,239 @@
         nxCoverSync_();
       }
     }, { passive: true });
+  })();
+
+  // ============================================================
+  // [2026.11.27 플립 보완 — 총괄관리자/_기록/플립_커버화면_보완_계획서_20261127.html, 세무사님 「권장대로 하자」]
+  //  세무사님 「밀기 기능들을 무조건 줄일 것이 아니라 제대로 사용하도록 보완하는 것이 중요하다」 /
+  //  「개별사건에 연결되었을 때는 현재 어느 사건에 연결되었는지 알 수 있어야 한다. 그리고 대화를 사건에서 관리로 빠져 나오고 다시 사건으로 들어가는 것이 수월해야 한다」.
+  //  밀기 네 방향(10-15 「탭버튼을 없애겠다는 강력한 의지」)은 그대로 두고 —
+  //  G1 어디로 밀면 무엇인지 가장자리에 얇은 글자로(누르는 단추 아님), 밀기 시작하면 그 방향 글자가 손가락을 따라 커지고 「놓으면 넘어감」.
+  //  G3 「지금 사건」 띠 — 네 화면 맨 위에 넥스 대화가 이어진 사건(없으면 「💬 관리」). 한 번 누르면 사건 → 관리 / 관리 → 방금 사건,
+  //     길게 누르면 최근 사건 큰 단추. 사건이 바뀌면 큰 글자(+소리 답일 때 소리)로 알림. 11-14 「사건 연결 또는 일반 둘뿐」 그대로(넥스 대화 = 띠).
+  // ============================================================
+  var NX_COVER_RECENT_KEY_ = 'nx_cover_recent';
+  function nxCoverRecent_(){ try { var a = JSON.parse(localStorage.getItem(NX_COVER_RECENT_KEY_) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function nxCoverRecentPush_(id, name){
+    if (!id) return;
+    var a = nxCoverRecent_().filter(function(x){ return x && x.id !== id; });
+    a.unshift({ id: id, name: name || '' });
+    try { localStorage.setItem(NX_COVER_RECENT_KEY_, JSON.stringify(a.slice(0, 6))); } catch (e) {}
+  }
+  // 사건명 「홍길동(홍길동)_양도_신고」 → 「홍길동(홍길동) 양도」(띠·알림에 쓸 짧은 이름)
+  function nxCoverCaseLabel_(name){
+    var p = String(name || '').split('_').filter(Boolean);
+    return p.length ? (p[0] + (p[1] ? ' ' + p[1] : '')) : '사건';
+  }
+  (function(){
+    var css = document.createElement('style');
+    css.textContent =
+      '#nxCoverBand,#nxCoverFlash,#nxCoverRecentSheet,.nx-cv-hint{display:none}' +
+      'body.lay-cover #centerWork > .view{top:36px}' + /* 화면들은 #centerWork 안에 꽉 차게(inset:0) 떠 있어 띠 높이만큼 내린다 */
+      'body.lay-cover #nxCoverBand{display:flex;align-items:center;gap:6px;position:fixed;top:0;left:0;right:0;height:36px;z-index:65;padding:0 10px;box-sizing:border-box;' +
+        'font-size:15px;font-weight:700;border:none;border-bottom:2px solid rgba(0,0,0,.15);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;text-align:left}' +
+      'body.lay-cover #nxCoverBand.case{background:#c9a227;color:#0D1B3D}' +
+      'body.lay-cover #nxCoverBand.mgmt{background:#2b3550;color:#fff}' +
+      '#nxCoverBand .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '#nxCoverBand .act{flex-shrink:0;font-size:12.5px;font-weight:700;padding:3px 8px;border-radius:10px;background:rgba(255,255,255,.22)}' +
+      '#nxCoverBand.case .act{background:rgba(13,27,61,.14)}' +
+      'body.lay-cover #nxCmRecBadge{top:42px}' +
+      'body.lay-cover.nx-talk-exit #nxTalkExitBtn{top:42px}' +
+      'body.lay-cover.nx-talk-exit #nxCmRecBadge{top:80px}' +
+      'body.lay-cover .nx-cv-hint{display:block;position:fixed;z-index:60;pointer-events:none;font-size:12px;font-weight:700;color:#fff;background:rgba(13,27,61,.62);' +
+        'padding:2px 8px;border-radius:10px;opacity:.45;transition:opacity .25s,transform .12s;white-space:nowrap}' +
+      'body.lay-cover.nx-cv-touch .nx-cv-hint{opacity:.9}' + /* 평소엔 옅게(글을 가리지 않게), 손가락을 대면 또렷하게 */
+      'body.lay-cover .nx-cv-hint[hidden]{display:none}' +
+      '.nx-cv-hint.up{bottom:6px;left:50%;transform:translateX(-50%)}' +
+      '.nx-cv-hint.down{top:40px;left:50%;transform:translateX(-50%)}' +
+      '.nx-cv-hint.right{left:0;top:50%;transform:translateY(-50%);border-radius:0 10px 10px 0;transform-origin:left center}' +
+      '.nx-cv-hint.left{right:0;top:50%;transform:translateY(-50%);border-radius:10px 0 0 10px;transform-origin:right center}' +
+      'body.lay-cover.nx-cv-intro .nx-cv-hint{font-size:16px;opacity:1;background:rgba(201,162,39,.95);color:#0D1B3D}' +
+      'body.lay-cover .nx-cv-hint.ready{background:#c9a227;color:#0D1B3D;opacity:1}' +
+      'body.lay-cover #nxCoverFlash{display:flex;position:fixed;inset:0;z-index:80;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .3s}' +
+      'body.lay-cover #nxCoverFlash.on{opacity:1;transition:none}' + /* 뜰 때는 곧바로(흐려지며 사라지기만) */
+      '#nxCoverFlash b{background:rgba(13,27,61,.94);color:#fff;font-size:22px;font-weight:800;padding:18px 22px;border-radius:18px;max-width:86%;text-align:center;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.35)}' +
+      'body.lay-cover #nxCoverRecentSheet:not([hidden]){display:flex;position:fixed;inset:0;z-index:75;background:rgba(13,27,61,.97);color:#fff;flex-direction:column;gap:8px;padding:12px;box-sizing:border-box;overflow-y:auto}' +
+      '#nxCoverRecentSheet .t{font-size:16px;font-weight:700;margin-bottom:2px}' +
+      '#nxCoverRecentSheet button{border:none;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:17px;font-weight:700;min-height:52px;padding:8px 12px;text-align:left;cursor:pointer}' +
+      '#nxCoverRecentSheet button.mg{background:#2b3550}' +
+      '#nxCoverRecentSheet button.cl{background:transparent;border:1px solid rgba(255,255,255,.35);text-align:center;font-size:15px}';
+    document.head.appendChild(css);
+    var band = document.createElement('button');
+    band.type = 'button'; band.id = 'nxCoverBand'; band.className = 'mgmt';
+    band.innerHTML = '<span class="nm">💬 관리</span><span class="act"></span>';
+    var flash = document.createElement('div'); flash.id = 'nxCoverFlash'; flash.innerHTML = '<b></b>';
+    var sheet = document.createElement('div'); sheet.id = 'nxCoverRecentSheet'; sheet.hidden = true;
+    var hints = {};
+    ['up', 'down', 'left', 'right'].forEach(function(d){ var h = document.createElement('div'); h.className = 'nx-cv-hint ' + d; h.hidden = true; hints[d] = h; });
+    function mount(){
+      if (band.isConnected) return;
+      document.body.appendChild(band); document.body.appendChild(flash); document.body.appendChild(sheet);
+      Object.keys(hints).forEach(function(d){ document.body.appendChild(hints[d]); });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+
+    // ---- 큰 글자 알림(소리/글 바꿈·사건 바꿈) ----
+    var flashT = null;
+    window.nxCoverFlash_ = function(text){
+      mount();
+      flash.querySelector('b').textContent = text;
+      flash.classList.add('on');
+      clearTimeout(flashT); flashT = setTimeout(function(){ flash.classList.remove('on'); }, 1500);
+    };
+
+    // ---- G1 방향 표시 — 지금 화면에서 실제로 갈 수 있는 쪽만(아래 밀기 처리와 같은 표) ----
+    var MOVES_ = {
+      dashboard:  { up: '↑ 밀면 넥스 말하기', down: '↓ 밀면 상담 녹음', right: '고객 →' },
+      ai:         { up: '↑ 밀면 요약', down: '↓ 밀면 상담 녹음', right: '고객 →', left: '← 소리/글' },
+      consult:    { up: '↑ 밀면 돌아가기', right: '고객 →' },
+      clientcard: { up: '↑ 밀면 넥스 말하기', down: '↓ 밀면 상담 녹음', left: '← 돌아가기' }
+    };
+    var shownView = '';
+    window.nxCoverHints_ = function(){
+      mount();
+      var view = window.nxCover ? nxCoverActiveView_() : '';
+      var m = MOVES_[view] || {};
+      Object.keys(hints).forEach(function(d){ var h = hints[d]; h.textContent = m[d] || ''; h.hidden = !m[d]; h.classList.remove('ready'); h.style.transform = ''; });
+      shownView = view;
+    };
+    function intro(){
+      if (!window.nxCover) return;
+      document.body.classList.add('nx-cv-intro');
+      setTimeout(function(){ document.body.classList.remove('nx-cv-intro'); }, 2000);
+    }
+    // 밀기 따라오기 — 손가락이 가는 쪽 글자가 커지고, 넘어갈 만큼 밀면 금색(놓으면 넘어감)
+    var sx = 0, sy = 0, tracking = false, atTop = true, atBottom = true;
+    var BASE_ = { up: 'translateX(-50%)', down: 'translateX(-50%)', left: 'translateY(-50%)', right: 'translateY(-50%)' };
+    document.addEventListener('touchstart', function(e){
+      tracking = !!window.nxCover && e.touches.length === 1 && !!(e.target.closest && e.target.closest('#centerWork'));
+      if (!tracking) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+      // 위 밀기 처리와 같은 조건 — 요약·고객 카드는 넘길 목록이 남았으면 넘기기가 먼저(그때는 글자를 키우지 않음)
+      atTop = atBottom = true;
+      var v = document.querySelector('#centerWork > .view.active');
+      for (var n = e.target; v && n && n !== v.parentNode; n = n.parentNode){
+        if (n.nodeType !== 1) continue;
+        var oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 2){ atTop = n.scrollTop <= 1; atBottom = n.scrollTop + n.clientHeight >= n.scrollHeight - 2; break; }
+      }
+      if (sy > window.innerHeight - 56) atBottom = true; // 아래 끝·위 끝에서 밀면 바로 넘어감(위 밀기 처리와 같음)
+      if (sy < 36 + 56) atTop = true;
+      document.body.classList.add('nx-cv-touch');
+    }, { passive: true });
+    document.addEventListener('touchmove', function(e){
+      if (!tracking || !window.nxCover || e.touches.length !== 1) return;
+      var dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy;
+      var dir = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'up' : 'down') : (dx < 0 ? 'left' : 'right');
+      var dist = Math.max(Math.abs(dx), Math.abs(dy));
+      var view = nxCoverActiveView_();
+      var blocked = (view !== 'ai' && view !== 'consult') && ((dir === 'up' && !atBottom) || (dir === 'down' && !atTop));
+      Object.keys(hints).forEach(function(d){
+        var h = hints[d]; if (h.hidden) return;
+        if (d !== dir || dist < 12 || blocked){ h.classList.remove('ready'); h.style.transform = BASE_[d]; return; }
+        var k = 1 + Math.min(dist / 60, 1) * 0.5;
+        h.style.transform = BASE_[d] + ' scale(' + k.toFixed(2) + ')';
+        h.classList.toggle('ready', dist > 60);
+      });
+    }, { passive: true });
+    function endTrack(){ tracking = false; document.body.classList.remove('nx-cv-touch'); setTimeout(function(){ if (window.nxCoverHints_) nxCoverHints_(); }, 30); }
+    document.addEventListener('touchend', endTrack, { passive: true });
+    document.addEventListener('touchcancel', endTrack, { passive: true });
+
+    // ---- G3 지금 사건 띠 ----
+    var lastCaseId = null, lastAnnounced = null;
+    window.nxCoverBandSync_ = function(){
+      mount();
+      var conv = (typeof nxAiConv !== 'undefined' && nxAiConv) || {};
+      var cid = conv.caseId || '', cname = conv.caseName || '';
+      if (cid) nxCoverRecentPush_(cid, cname);
+      var nm = band.querySelector('.nm'), act = band.querySelector('.act');
+      if (cid){
+        band.className = 'case';
+        nm.textContent = '🔗 ' + nxCoverCaseLabel_(cname);
+        act.textContent = '관리로';
+        band.title = '지금 넥스 대화: ' + cname + ' — 누르면 관리 대화로, 길게 누르면 최근 사건';
+      } else {
+        var back = nxCoverRecent_()[0];
+        band.className = 'mgmt';
+        nm.textContent = '💬 관리';
+        act.textContent = back ? '↩ 방금 사건: ' + nxCoverCaseLabel_(back.name) : '사건 고르기';
+        band.title = '지금 넥스 대화: 관리(사건 없음) — 누르면 방금 사건으로, 길게 누르면 최근 사건';
+      }
+      // 사건이 바뀌면 알린다(처음 그릴 때는 조용히) — 소리 답이면 소리로도
+      if (lastCaseId !== null && cid !== lastCaseId && window.nxCover && lastAnnounced !== cid){
+        var msg = cid ? nxCoverCaseLabel_(cname) + ' 사건 대화입니다' : '관리 대화입니다';
+        // 말하기 화면에 남은 앞 대화의 물음·답을 지우고 듣기를 멈춘다(앞 사건 답이 새 대화 답처럼 보이지 않게)
+        try {
+          if (typeof nxAiTalk_ !== 'undefined' && nxAiTalk_.state === 'listen' && typeof nxAiTalkStopRec_ === 'function'){ nxAiTalkStopRec_(); nxAiTalkSet_('idle'); }
+          var tq = document.getElementById('nxAiTalkQ'), ta = document.getElementById('nxAiTalkA');
+          if (tq) tq.textContent = ''; if (ta) ta.textContent = '';
+          // 지금 보고 있는 녹음 고르기·고객 카드도 새 지금 사건으로 다시 그린다(녹음 중·올리는 중이면 건드리지 않음)
+          var vw = nxCoverActiveView_();
+          if (vw === 'consult' && typeof nxCm_ !== 'undefined' && nxCm_.st === 'pick' && typeof nxCmRenderPick_ === 'function') nxCmRenderPick_();
+          if (vw === 'clientcard' && typeof nxCc_ !== 'undefined' && nxCc_.cur && typeof nxCcShow_ === 'function') nxCcShow_(nxCc_.cur);
+        } catch (e) {}
+        window.nxCoverFlash_((cid ? '🔗 ' : '💬 ') + msg);
+        if (typeof nxAiTalkMode_ === 'function' && nxAiTalkMode_() === 'voice' && typeof nxAiTalkSayShort_ === 'function'
+          && !(typeof nxAiTalk_ !== 'undefined' && (nxAiTalk_.state === 'listen' || nxAiTalk_.state === 'speak'))) nxAiTalkSayShort_(msg);
+        lastAnnounced = cid;
+      }
+      lastCaseId = cid;
+    };
+    function busy(){ return typeof nxAiAbort !== 'undefined' && nxAiAbort; }
+    window.nxCoverCaseSet_ = function(id, row){
+      if (!id || typeof nxAiGoConv_ !== 'function') return Promise.resolve(false);
+      if (busy()){ window.nxCoverFlash_('넥스가 답하는 중입니다 — 끝난 뒤에 바꿉니다'); return Promise.resolve(false); }
+      return nxAiGoConv_(id, row || null);
+    };
+    window.nxCoverCaseLeave_ = function(){
+      if (typeof nxAiGoConv_ !== 'function') return;
+      if (busy()){ window.nxCoverFlash_('넥스가 답하는 중입니다 — 끝난 뒤에 바꿉니다'); return; }
+      if (!((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId){ window.nxCoverFlash_('💬 지금 관리 대화입니다'); return; }
+      nxAiGoConv_('');
+    };
+    window.nxCoverCaseBack_ = function(){
+      var cur = ((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId || '';
+      var back = nxCoverRecent_().filter(function(x){ return x.id !== cur; })[0];
+      if (!back){ openSheet(); return; }
+      window.nxCoverCaseSet_(back.id);
+    };
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function openSheet(){
+      var cur = ((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId || '';
+      var rec = nxCoverRecent_().filter(function(x){ return x.id !== cur; }).slice(0, 3);
+      sheet.innerHTML = '<div class="t">넥스 대화 고르기</div>' +
+        rec.map(function(x){ return '<button type="button" data-cv-case="' + esc(x.id) + '">🔗 ' + esc(nxCoverCaseLabel_(x.name)) + '</button>'; }).join('') +
+        (rec.length ? '' : '<div style="font-size:14px;color:#c9d2e6;">' + (cur ? '다른 최근 사건이 없습니다' : '최근 사건이 없습니다') + ' — 오른쪽으로 밀어 고객 카드에서 사건을 누르거나, 넥스에게 「○○ 사건」이라고 말씀하세요.</div>') +
+        (cur ? '<button type="button" class="mg" data-cv-case="">💬 관리 대화로</button>' : '') +
+        '<button type="button" class="cl" data-cv-close="1">닫기</button>';
+      sheet.hidden = false;
+    }
+    sheet.addEventListener('click', function(e){
+      var b = e.target.closest && e.target.closest('button'); if (!b) return;
+      sheet.hidden = true;
+      if (b.hasAttribute('data-cv-close')) return;
+      var id = b.getAttribute('data-cv-case');
+      if (id) window.nxCoverCaseSet_(id); else window.nxCoverCaseLeave_();
+    });
+    // 한 번 누르기 = 드나들기, 길게(0.55초) 누르기 = 최근 사건
+    var pressT = null, longDone = false;
+    band.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    band.addEventListener('pointerdown', function(){ longDone = false; clearTimeout(pressT); pressT = setTimeout(function(){ longDone = true; openSheet(); }, 550); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){ band.addEventListener(ev, function(){ clearTimeout(pressT); }); });
+    band.addEventListener('click', function(){
+      if (longDone){ longDone = false; return; }
+      var cur = ((typeof nxAiConv !== 'undefined' && nxAiConv) || {}).caseId || '';
+      if (cur) window.nxCoverCaseLeave_(); else window.nxCoverCaseBack_();
+    });
+
+    // 커버화면에 들어오거나 화면이 바뀌면 표시를 맞춘다
+    document.addEventListener('nx-cover-change', function(e){
+      if (!window.nxCover){ sheet.hidden = true; return; }
+      nxCoverHints_(); nxCoverBandSync_(); intro();
+    });
+    setInterval(function(){ if (window.nxCover && nxCoverActiveView_() !== shownView) nxCoverHints_(); }, 600);
+    setTimeout(function(){ if (window.nxCover){ nxCoverHints_(); nxCoverBandSync_(); intro(); } }, 0);
   })();
 
   // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
