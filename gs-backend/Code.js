@@ -4268,7 +4268,7 @@ function ai_convSave(body) {
       try {
         const old = prevEntry.fileId ? JSON.parse(DriveApp.getFileById(prevEntry.fileId).getBlob().getDataAsString('UTF-8')) : null;
         const have = {}; c.messages.forEach(function (m) { if (m && typeof m.content === 'string') have[m.content] = 1; });
-        ((old && old.messages) || []).forEach(function (m) { if (m && m.preread && typeof m.content === 'string' && !have[m.content]) c.messages.push(m); });
+        ((old && old.messages) || []).forEach(function (m) { if (m && (m.preread || m.nxJob) && typeof m.content === 'string' && !have[m.content]) c.messages.push(m); }); // [2026.11.27] 넥스 일감이 넣은 질문·답(nxJob)도 같이 합침
       } catch (e) {}
     }
     const conv = {
@@ -5203,6 +5203,14 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
   if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
+  // [2026.11.27 넥스 일감] 넥스 대화 — 화면은 맡기고 묻기만, 단계는 서버가 끝까지(NexJob.js)
+  if (body.action === 'nexjob_start') return jsonResponse(nxJob_start_(body));
+  if (body.action === 'nexjob_run') return jsonResponse(nxJob_run_(body.id, 'screen', NXJOB_CHUNK_MS_));
+  if (body.action === 'nexjob_poll') return jsonResponse(nxJob_poll_(body.id));
+  if (body.action === 'nexjob_stop') return jsonResponse(nxJob_stop_(body.id));
+  if (body.action === 'nexjob_resume') return jsonResponse(nxJob_resume_(body.id));
+  if (body.action === 'nexjob_ack') return jsonResponse(nxJob_ack_(body.id));
+  if (body.action === 'nexjob_list') return jsonResponse(nxJob_listForConv_(body.convId));
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
   if (body.action === 'env_watch_run') return jsonResponse(runEnvWatch_({ weekly: !!body.weekly, budgetMs: 240000 })); // 환경 감시 수동 실행(토큰 0)
   if (body.action === 'env_watch_get') return jsonResponse(envWatchLast_() || { empty: true });
@@ -5640,9 +5648,19 @@ function doPost(e) {
     const dispatched = dispatchClientAction_(body);
     if (dispatched) return dispatched;
 
+    return jsonResponse(nxChatRound_(body));
+  } catch (err) {
+    return jsonResponse({ error: '서버 처리 중 오류: ' + err.message });
+  }
+}
+
+// [2026.11.27 넥스 일감] 넥스 대화 한 단계(AI 한 번 + 도구 실행) — 예전엔 doPost 안에만 있었다.
+//  화면이 단계를 하나씩 부르던 길(옛 화면)과 서버가 일감으로 단계를 이어 돌리는 길(NexJob.js)이 같은 함수를 쓴다.
+function nxChatRound_(body) {
+  try {
     const messages = body.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
-      return jsonResponse({ error: '메시지가 비어 있습니다.' });
+      return { error: '메시지가 비어 있습니다.' };
     }
 
     let model = body.model;
@@ -5674,13 +5692,13 @@ function doPost(e) {
     let result;
     if (cfg.provider === 'gemini') {
       // [2026.10.19 보안] 대화에는 사건·고객 자료가 실린다 — 무료 키로는 보내지 않는다(geminiClientDataAllowed_ 설명 참고)
-      if (!geminiClientDataAllowed_()) return jsonResponse({ error: GEMINI_CLIENT_BLOCK_MSG_ + ' Claude 모델을 골라 주세요.' });
+      if (!geminiClientDataAllowed_()) return { error: GEMINI_CLIENT_BLOCK_MSG_ + ' Claude 모델을 골라 주세요.' };
       const geminiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-      if (!geminiKey) return jsonResponse({ error: 'GEMINI_API_KEY가 스크립트 속성에 설정되어 있지 않습니다.' });
+      if (!geminiKey) return { error: 'GEMINI_API_KEY가 스크립트 속성에 설정되어 있지 않습니다.' };
       result = callGemini(body, model, cfg, effort, maxTokens, systemPrompt, geminiKey);
     } else {
       const claudeKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-      if (!claudeKey) return jsonResponse({ error: 'ANTHROPIC_API_KEY가 스크립트 속성에 설정되어 있지 않습니다.' });
+      if (!claudeKey) return { error: 'ANTHROPIC_API_KEY가 스크립트 속성에 설정되어 있지 않습니다.' };
       result = callClaude(body, model, cfg, effort, maxTokens, systemPrompt, claudeKey);
     }
 
@@ -5695,9 +5713,9 @@ function doPost(e) {
       durationMs: Date.now() - requestStartTime
     });
 
-    return jsonResponse(result);
+    return result;
   } catch (err) {
-    return jsonResponse({ error: '서버 처리 중 오류: ' + err.message });
+    return { error: '서버 처리 중 오류: ' + err.message };
   }
 }
 
@@ -24147,7 +24165,10 @@ function cpPrereadTick() { // 시간 트리거가 부르는 이름(끝에 _ 없�
   const lock = { releaseLock: function () { try { runCache.remove('cp_preread_run'); } catch (e) {} } };
   try { if (typeof bgqDrain_ === 'function') bgqDrain_(20000); } catch (e) {} // 뒤에서 할 일(달력·문자 등)도 이 1분 틱에서 함께 처리 — 트리거를 못 걸었을 때의 안전망
   try { if (typeof receiptSms_trackTick_ === 'function') receiptSms_trackTick_(20000); } catch (e) { try { console.log('[영수증 문자 도착 확인] 오류: ' + (e && e.message || e)); } catch (e2) {} } // [2026-11-26] 영수증 사진 문자 도착 결과 묻기 — 「확인 중」이 없으면 속성 한 번 읽고 끝
-  const started = Date.now(), DEADLINE = 270000, props = PropertiesService.getScriptProperties();
+  // [2026.11.27 넥스 일감] 화면이 다음 묶음을 부르지 못한(화면 꺼짐·창 닫음·통신 끊김) 넥스 일을 이어 돌리고, 화면이 안 받아 간 답은 대화에 넣는다 — 일감이 없으면 속성 한 번 읽고 끝
+  const nxJobT0 = Date.now();
+  try { if (typeof nxJob_tick_ === 'function') nxJob_tick_(120000); } catch (e) { try { console.log('[넥스 일감] 오류: ' + (e && e.message || e)); } catch (e2) {} }
+  const started = Date.now(), DEADLINE = Math.max(20000, 270000 - (started - nxJobT0)), props = PropertiesService.getScriptProperties(); // 넥스 일감이 쓴 시간만큼 이 틱의 나머지 일을 줄임(한 실행 6분 안)
   let read = 0, seen = 0, names = [], memFolders = {}, memWrote = 0, touched = {}, watch = null, health = null; // [2026.10.28 감시] touched = 이번 틱에 파일이 바뀐 사건 폴더
   try {
     const root = getDefaultFolder(); if (!root) return;

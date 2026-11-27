@@ -641,6 +641,15 @@ function commSeamList_() {
     { 길: '장부 받을 서류 ↔ 고객창구 점검표(올림·고객 받음)', fn: function () { if (typeof portalSyncCase_ !== 'function' || !BGQ_HANDLERS_.portal_sync) return '고객창구 점검표 맞추기가 이 판에 없음'; if (String(ledgerFromCaseWrite_).indexOf('portal_sync') === -1) return '받을 서류가 바뀌어도 고객창구에 안 올라감'; if (String(custUploadNote_).indexOf('portal_sync') === -1) return '고객이 올려도 장부에 「고객 받음」이 안 붙음'; return ''; } },
     { 길: '사건 만들기 길 하나(예약·고객·사건 목록·의뢰메모·넥스 → 줄·달력·장부·폴더)', fn: function () { if (!BGQ_HANDLERS_.case_ledger) return '새 사건 장부 첫 칸 뒷일이 이 판에 없음'; if (String(work_createCase).indexOf('work_createCaseFull_') === -1) return '사건 만들기 입구가 관문을 안 지남'; if (String(work_createCaseFull_).indexOf('case_ledger') === -1) return '새 사건이 장부에 안 닿음'; if (String(toolCreateWorkCase).indexOf('work_createCase') === -1) return '넥스 사건 만들기가 다른 길'; return ''; } },
     { 길: '문자 발송 실패 → 오류 기록(🐞)', fn: function () { return typeof smsFailLog_ === 'function' ? '' : '문자 실패 기록이 이 판에 없음'; } },
+    // [2026.11.27 넥스 일감] 세무사님 「스마트폰에서 넥스에게 일 시키고 계속 화면만 지켜보는 사람이 어디 있겠나?」 — 넥스 단계는 서버가 붙잡고 끝까지(화면은 맡기고 묻기만), 화면이 없으면 1분 틱이 이어 감
+    { 길: '넥스 일감(화면 nexjob_start/run/poll → 서버 nxChatRound_ 단계마다 저장 → 1분 틱 nxJob_tick_ → 대화에 답 넣기)', fn: function () {
+      if (typeof nxJob_start_ !== 'function' || typeof nxJob_tick_ !== 'function') return 'NexJob.js가 이 판에 없음(clasp push 필요)';
+      if (typeof nxChatRound_ !== 'function') return '넥스 한 단계 함수(nxChatRound_)가 없음';
+      if (String(dispatchClientAction0_).indexOf('nexjob_start') === -1 || String(dispatchClientAction0_).indexOf('nexjob_poll') === -1) return '서버 입구에 넥스 일감 동작이 없음';
+      if (String(cpPrereadTick).indexOf('nxJob_tick_') === -1) return '1분 틱이 넥스 일감을 이어 돌리지 않음(화면이 꺼지면 멈춤)';
+      if (String(ai_convSave).indexOf('m.nxJob') === -1) return '대화 저장이 넥스 일감 답을 합치지 않음(화면 저장이 덮어 지울 수 있음)';
+      return '';
+    } },
     // [2026-11-25] 세무사님 「1 상담사건」 영수증 → 고객 휴대폰 사진 문자 → 수금관리(밤 훑기와 같은 기록 함수라 두 번 세지 않음) · 넥스 receipt_sms 카드는 창만 엶
     { 길: '현금영수증 사진 문자(1 상담사건 → 고객 휴대폰·수금 바로 기록, 넥스 카드 receipt_sms)', fn: function () {
       if (typeof receiptSms_doPost_ !== 'function') return 'ReceiptSms.js가 이 판에 없음(clasp push 필요)';
