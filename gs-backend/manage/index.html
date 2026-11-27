@@ -58,14 +58,17 @@
   </script>
   <!-- [2026.09] 이 화면(HtmlService)엔 파비콘이 아예 없어서, PWA로 "설치"하면 브라우저가
        고른 범용 아이콘이 붙었다 — netax.kr 홈페이지와 같은 남색바탕+금색 N 아이콘으로 맞춘다. -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2a41'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' font-weight='700' fill='%23c9a227' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E">
+  <!-- [2026.11.27] 아이콘을 브랜드 아이덴티티(C:\GitHub\NETAX\assets — 남색 바탕 NETAX 글자·금색 선) 로 바꿈.
+       예전 금색 N은 work 화면 아이콘을 베낀 것이었고, 폰이 같은 그림을 잘라 다시 깎아 PC와 모양이 달랐다(세무사님).
+       PC용(둥근 네모)·폰용(가장자리 잘려도 되는 꽉 찬 판)·아이폰용을 따로 둔다. -->
+  <link rel="icon" type="image/png" sizes="192x192" href="https://job.netax.kr/icon-192.png">
   <!-- [2026.09 버그수정] 실사용 지적 — "홈 화면에 추가"로 만든 아이콘이 제대로 안 잡혔다.
        위 favicon(데이터 URL SVG)만으로는 안드로이드 크롬의 "홈 화면에 추가"가 인식을 못 하고
        기본(범용) 아이콘으로 대체하는 경우가 많다 — 실제 아이콘 파일과 매니페스트가 있어야
        한다. job.netax.kr(이 저장소가 그대로 깃허브 페이지로도 서빙됨)에 실제 아이콘
        파일(icon.svg)과 manifest.json을 올려두고 여기서 참조한다. -->
   <link rel="manifest" href="https://job.netax.kr/manifest.json">
-  <link rel="icon" type="image/svg+xml" href="https://job.netax.kr/icon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://job.netax.kr/apple-touch-icon.png">
   <meta name="theme-color" content="#0D1B3D">
   <!-- [2026.09.16 되돌림] 위 폰트 불러오기(Noto Sans KR)를 넣었다가 바로 되돌렸다 — 배포
        직후 "로그인 후 화면이 완전히 먹통"이라는 심각한 신고가 들어왔다. 외부 도메인
