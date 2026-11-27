@@ -326,7 +326,7 @@ const DRIVE_TOOLS = [
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더에 저장된다.' },
         name: { type: 'string', description: '파일 이름(확장자 포함). 보고서는 정식 이름(예: "종합검토서.md", "개별검토서_자경감면.md", "자문보고서.md") — reportKind를 주면 GAS가 맞춰 준다' },
-        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
+        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '조사의견서', '소명서', '경정청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
         reportDetail: { type: 'string', description: '보고서 세부명칭(쟁점을 짧게, 예: 자경감면) — 개별검토서는 꼭, 다른 종류는 같은 종류가 둘 이상일 때만. 사건명·고객명·날짜는 넣지 않는다.' },
         content: { type: 'string', description: '파일에 저장할 내용 전체(마크다운 또는 일반 텍스트). 일부만 주지 말고 완성된 전체 내용을 줘야 한다.' },
         overwrite: { type: 'boolean', description: '세무서 제출용 검토조서(검토조서.md·검토조서_쟁점.md)를 같은 이름으로 갱신할 때만 true — 세무사님이 그 검토조서를 고치라고 하셨을 때만. 그 밖의 파일에는 쓰지 않는다.' }
@@ -342,7 +342,7 @@ const DRIVE_TOOLS = [
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더.' },
         title: { type: 'string', description: '문서 제목(보고서면 reportKind에 따라 GAS가 정식 이름으로 맞춘다)' },
-        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
+        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '조사의견서', '소명서', '경정청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
         reportDetail: { type: 'string', description: '보고서 세부명칭(쟁점을 짧게, 예: 자경감면) — 개별검토서는 꼭, 다른 종류는 같은 종류가 둘 이상일 때만. 사건명·고객명·날짜는 넣지 않는다.' },
         content: { type: 'string', description: '마크다운 형식 내용 전체(# 제목, ## 소제목, **굵게**, - 목록 지원)' }
       },
@@ -18727,10 +18727,14 @@ function handleDeleteReportFile(body) {
 // 옛 파일은 전부 "판단불가"(사람이 직접 종합/개별 중 골라 이름을 정해야 함)로 넘어가게 한다.
 const RW_DOCTYPE_FILENAME_LABELS_BY_CODE_ = {
   advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
-  progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서'
+  progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서',
+  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서' // [2026-11-27 ⑥]
 };
 function rw_guessDocTypeFromContent_(content) {
   const head = String(content || '').slice(0, 800);
+  if (/경정\s*청구서/.test(head)) return 'refund_claim'; // [2026-11-27 ⑥] 불복 낱말보다 먼저
+  if (/세무\s*조사\s*의견서|조사\s*의견서/.test(head)) return 'audit_opinion';
+  if (/^#\s*소명서|소명서\b/.test(head)) return 'explanation';
   if (head.indexOf('불복') !== -1 || head.indexOf('이의신청') !== -1 || head.indexOf('심사청구') !== -1 || head.indexOf('심판청구') !== -1) return 'appeal_petition';
   if (head.indexOf('번역') !== -1) return 'translation';
   if (head.indexOf('신고') !== -1 && head.indexOf('보고서') !== -1) return 'filing';
@@ -20131,10 +20135,46 @@ const WORK_EVIDENCE_TEMPLATES_ = {
 // 빈 배열로 둔다. caseClassification(사건개요의 "사건분류" 값)이 있으면 공통 목록에
 // 그 분류 전용 항목을 더한다 — 없거나 매칭 안 되면 공통 목록만 쓴다. 항목 형태는
 // casehandling.html의 chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
-function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, assetList, acqBundleAll, transferBundleAll) {
+// [2026-11-27 목적점검 3차 4절 ① — 세무사님 "권장대로 하자"] 자문 사건에도 받을 증빙 틀을 깐다(예전엔 「신고」만 — 이 시스템의 목적이 자문인데 거꾸로였다).
+//  다만 아직 하지 않은 거래에서 생기는 서류(양도 전 자문의 양도 계약서 등)는 「계약하면」 표시를 붙인다 — 받을 것이 아니라 거래를 하면 생기는 서류.
+//  고객 창구로는 예전처럼 세무사님이 「고객에게 보이기」를 누른 것만 나간다(제안:'규칙').
+const WORK_EVIDENCE_PENDING_LABELS_ = {
+  transfer: ['양도 매매계약서(양도가액·양도일)', '중개보수 등 필요경비 영수증'],
+  gift: ['증여계약서', '수증자 계좌 이체내역(현금증여 입증)']
+};
+// 불복·경정·조사처럼 세목 틀이 없는 사건은 그 사건 폴더의 의뢰서 「## 구비서류 체크」 목록을 그대로 쓴다(사건을 만들 때 의뢰서템플릿에서 복사된 것 — 세무사님이 고친 목록이면 그것을).
+//  「(NETAX 작성)」 줄은 우리가 만드는 서류라 받을 것에서 뺀다. 괄호 속 출처(의뢰인 보관 등)는 비고로
+function work_intakeChecklistLabels_(folderId) {
+  if (!folderId) return [];
+  try {
+    const it = DriveApp.getFolderById(String(folderId)).getFiles(), out = [], seen = {};
+    while (it.hasNext()) {
+      const f = it.next(), nm = f.getName();
+      if (!/^의뢰서[_ ].*\.(md|txt)$/i.test(nm)) continue;
+      const txt = f.getBlob().getDataAsString('UTF-8'), m = /^##\s*구비\s*서류[^\n]*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(txt);
+      if (!m) continue;
+      m[1].split(/\r?\n/).forEach(function (l) {
+        const x = /^\s*[-*]\s*\[[ xX]?\]\s*(.+?)\s*$/.exec(l); if (!x) return;
+        const full = x[1].trim(); if (/NETAX\s*작성/.test(full)) return;
+        const pm = /^(.*?)\s*\(([^()]*(?:보관|의뢰인|홈택스|은행|관청|세무서)[^()]*)\)\s*$/.exec(full);
+        const label = (pm ? pm[1] : full).trim().slice(0, 120); if (!label || seen[label]) return;
+        seen[label] = 1; out.push({ label: label, note: pm ? pm[2].trim() : '' });
+      });
+      if (out.length) break; // 의뢰서 하나면 충분
+    }
+    return out;
+  } catch (e) { return []; }
+}
+function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, assetList, acqBundleAll, transferBundleAll, folderId) {
   const template = WORK_EVIDENCE_TEMPLATES_[seMok];
-  const classificationOnlyLabels = (upType === '신고' && template && caseClassification && template.사건분류) ? (template.사건분류[caseClassification] || []) : [];
-  const labels = (upType === '신고' && template) ? (template.공통 || []).concat(classificationOnlyLabels) : [];
+  const upT = String(upType || '').trim(), useTpl = !!template && (upT === '신고' || upT === '자문');
+  if (!useTpl && upT && upT !== '상담' && folderId) { // [2026-11-27 ①] 불복·경정·조사 등 — 의뢰서 구비서류 체크
+    const ck = work_intakeChecklistLabels_(folderId), td = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    return ck.map(function (x, i) { return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: x.label, slotKey: 'ck:' + x.label, fromClassification: null, note: x.note ? '의뢰서 구비서류 — ' + x.note : '의뢰서 구비서류', status: '미확보', 요청일: td, 제안: '규칙' }; });
+  }
+  const classificationOnlyLabels = (useTpl && caseClassification && template.사건분류) ? (template.사건분류[caseClassification] || []) : [];
+  const labels = useTpl ? (template.공통 || []).concat(classificationOnlyLabels) : [];
+  const pendingSet = {}; if (upT === '자문') (WORK_EVIDENCE_PENDING_LABELS_[seMok] || []).forEach(function (l) { pendingSet[l] = 1; });
   // [2026.09 버그수정] 사건분류를 나중에 바꿔도(예: "미등기양도"→"일반과세" 정정) 예전 분류
   // 전용 항목이 증빙목록에 영원히 남아있던 문제 — 어느 라벨이 "이 사건분류 때문에" 생겼는지
   // classificationOnlyLabels로 표시해두고, 아래 work_updateCase가 사건분류가 실제로 바뀌었을
@@ -20182,7 +20222,8 @@ function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, asse
   }
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   return expandedLabels.map(function (entry, i) {
-    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: entry.label, slotKey: entry.slotKey, fromClassification: entry.fromClassification, note: '', status: '미확보', 요청일: today, 제안: '규칙' }; // [2026.11.12 계획서 ②] 세무사님이 「고객에게 보이기」를 누른 것만 고객 창구로
+    const base = String(entry.slotKey || entry.label).split('#')[0], pend = !!pendingSet[base]; // [2026-11-27 ①] 자문 — 거래를 하면 생기는 서류
+    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: entry.label, slotKey: entry.slotKey, fromClassification: entry.fromClassification, note: pend ? '계약하면 — 거래(계약)를 하면 생기는 서류(아직 하지 않은 거래면 지금 받을 것이 아님)' : '', status: '미확보', 요청일: today, 제안: '규칙', 계약하면: pend || undefined }; // [2026.11.12 계획서 ②] 세무사님이 「고객에게 보이기」를 누른 것만 고객 창구로
   });
 }
 
@@ -20607,6 +20648,9 @@ const REPORT_KINDS_ = [
   { code: 'summary', label: '요약보고서', use: '외부', detail: '선택' },
   { code: 'reference', label: '검토조서', use: '외부', detail: '선택' },
   { code: 'appeal_petition', label: '불복청구서', use: '외부', detail: '선택' },
+  { code: 'audit_opinion', label: '조사의견서', use: '외부', detail: '선택' }, // [2026-11-27 목적점검 3차 4절 ⑥ — 세무사님 "권장대로 하자"] 세무조사 중 조사반에 내는 의견서
+  { code: 'explanation', label: '소명서', use: '외부', detail: '선택' }, // 해명자료·자금출처 소명 요구에 답하는 문서
+  { code: 'refund_claim', label: '경정청구서', use: '외부', detail: '선택' }, // 국세기본법 §45의2 경정청구 이유서
   { code: 'translation', label: '번역서', use: '외부', detail: '선택' }
 ];
 // 종류 찾기 — 코드('review')·명칭('종합검토서')·파일 이름('개별검토서_자경감면.md') 무엇을 줘도 된다. 파일 이름은 정식 이름일 때만 알아본다.
@@ -20631,6 +20675,9 @@ function reportGuessKindFromName_(name) {
   if (/요약\s*보고서/.test(base)) add('summary');
   if (/검토\s*조서/.test(base)) add('reference');
   if (/(불복|심판|심사|이의신청)\s*청구서|청구취지/.test(base)) add('appeal_petition');
+  if (/조사\s*의견서/.test(base)) add('audit_opinion'); // [2026-11-27 ⑥]
+  if (/소명서/.test(base)) add('explanation');
+  if (/경정\s*청구서/.test(base)) add('refund_claim');
   if (/번역서/.test(base)) add('translation');
   const reportish = hits.length > 0 || /(검토|보고서|자문|의견서|청구서)/.test(base);
   return { kind: hits.length === 1 ? reportKindOf_(hits[0]) : null, reportish: reportish };
@@ -21199,7 +21246,7 @@ function work_updateCase0_(params) {
         if (!Array.isArray(currentEvidence)) currentEvidence = [];
         const seMokForTemplate = params.세목 !== undefined ? String(params.세목).trim() : row[col.세목];
         const upTypeForTemplate = params.업무유형 !== undefined ? String(params.업무유형).trim() : row[col.업무유형];
-        const templateItems = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate, overview.사건분류, overview.물건목록, overview.취득계약일괄, overview.양도계약일괄);
+        const templateItems = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate, overview.사건분류, overview.물건목록, overview.취득계약일괄, overview.양도계약일괄, (col.폴더ID != null && !currentEvidence.some(function (e) { return e && /^ck:/.test(String(e.slotKey || '')); }) ? row[col.폴더ID] : '') /* [2026-11-27 ①] 의뢰서 구비서류는 아직 안 깔렸을 때만 읽음(저장마다 드라이브를 읽지 않게) */);
         // [2026.09 버그수정] slotKey(물건 인덱스·그룹 번호 등 안정적 식별자)가 있으면 그것으로
         // 같은 슬롯을 알아보고 라벨만 최신으로 갱신한다(소재지 정정 등으로 라벨 문자열이 바뀌어도
         // 중복 생성되지 않는다) — 확보상태·비고는 그대로 유지. slotKey가 없는 옛 항목(이 수정
@@ -31133,8 +31180,8 @@ function caseProcEvidence_(c, body) {
   let list = Array.isArray(c.증빙목록) ? c.증빙목록 : [];
   let virtual = false;
   const ov = c.사건개요 || {};
-  if (!list.length && c.업무유형 === '신고' && WORK_EVIDENCE_TEMPLATES_[c.세목]) {
-    list = work_buildEvidenceFromTemplate_(c.세목, '신고', ov.사건분류, ov.물건목록, ov.취득계약일괄, ov.양도계약일괄);
+  if (!list.length && String(c.업무유형 || '').trim() && String(c.업무유형 || '').trim() !== '상담') { // [2026-11-27 ①] 자문도 세목 틀로, 불복·경정·조사는 의뢰서 구비서류로
+    list = work_buildEvidenceFromTemplate_(c.세목, String(c.업무유형 || '').trim(), ov.사건분류, ov.물건목록, ov.취득계약일괄, ov.양도계약일괄, c.폴더ID);
     virtual = true;
     lines.push('증빙목록이 아직 없어(처리개요를 처음 저장할 때 생김) 세목별 필요증빙 틀로 대조했습니다.');
   }

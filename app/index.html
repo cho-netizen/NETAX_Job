@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 04:29 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 04:37 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3134,7 +3134,7 @@ const THEME_CLASS = { appeal: 'doc-appeal', memo: 'doc-memo', translation: 'doc-
 // 아직 전용 테마가 없는 유형은 우선 기존 "청구서" 테마를 임시로 쓴다).
 const RW_DOC_TYPE_THEME_ = {
   review: 'memo', review_specific: 'memo', advisory: 'advisory', filing: 'filing',
-  reference: 'reference', progress: 'progress', appeal_petition: 'appeal', summary: 'summary', translation: 'translation'
+  reference: 'reference', progress: 'progress', appeal_petition: 'appeal', audit_opinion: 'appeal', explanation: 'appeal', refund_claim: 'appeal', summary: 'summary', translation: 'translation'
 };
 
 // [2026.09] 드라이브에서 파일을 열 때(예: 다른 화면에서 fileId로 바로 이 문서를 열었을 때)
@@ -3155,6 +3155,9 @@ function rwGuessDocTypeFromFilename_(name){
   if (name.includes('진행') && name.includes('보고서')) return 'progress';
   if (name.includes('요약') && name.includes('보고서')) return 'summary';
   if (name.includes('번역서') || name.includes('번역본')) return 'translation';
+  if (name.includes('경정청구서')) return 'refund_claim'; // [2026-11-27 ⑥] 아래 「청구서」보다 먼저
+  if (name.includes('조사의견서')) return 'audit_opinion';
+  if (name.includes('소명서')) return 'explanation';
   if (name.includes('청구서') || name.includes('이의신청') || name.includes('심사청구') || name.includes('심판청구') || name.includes('불복')) return 'appeal_petition';
   return null;
 }
@@ -51871,6 +51874,9 @@ document.addEventListener('click', function(e){ var x = e.target.closest && e.ta
       <button id="addReferenceOpt" title="세무서에 신고와 함께 내는 참고 문서(공문 개조식)">검토조서 만들기</button>
       <button id="addProgressOpt">진행보고서 만들기</button>
       <button id="addAppealOpt">불복청구서 만들기</button>
+      <button id="addAuditOpinionOpt" title="세무조사 중 조사반에 내는 납세자 의견서">조사의견서 만들기</button>
+      <button id="addExplanationOpt" title="해명자료·자금출처 소명 요구에 답하는 문서">소명서 만들기</button>
+      <button id="addRefundClaimOpt" title="국세기본법 §45의2 경정청구 이유서">경정청구서 만들기</button>
       <button id="addTranslationOpt">번역서 만들기</button>
       <button id="addSummaryOpt">요약보고서 만들기</button>
       <button id="addBlankOpt">빈 문서 만들기</button>
@@ -52162,7 +52168,7 @@ async function hydrateDocsFromIdb_(){
 
 // 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함.
 const RW_DOC_TYPE_SHORT_LABELS_ = {
-  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', summary: '요약', translation: '번역서'
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', summary: '요약', translation: '번역서'
 };
 // [2026.09.16 신규] 저장 파일명에 붙이는 전체 라벨 — rwGuessDocTypeFromFilename_이 파일명만
 // 보고 문서유형을 되짚어 추정할 때 기대하는 단어(예: filing은 "신고"+"보고서" 둘 다 있어야
@@ -52172,7 +52178,8 @@ const RW_DOC_TYPE_SHORT_LABELS_ = {
 // 구성요소 — saveToDrive에서 review_specific은 항상 세부명칭을 물어봄).
 const RW_DOC_TYPE_FILENAME_LABELS_ = {
   review: '종합검토서', review_specific: '개별검토서', advisory: '자문보고서', filing: '신고보고서', reference: '검토조서',
-  progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서'
+  progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서',
+  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서' // [2026-11-27 ⑥]
 };
 
 // ---------- 문서 선택 드롭다운 ----------
@@ -52370,7 +52377,7 @@ function showLoadErrorInEditor(fileId, message){
 // 고를 수 있는 작은 팝업으로 바꾼다(#rwDocTypeModal, .floating-panel과 같은 모양 재사용).
 // 프라미스를 돌려주므로 호출부(rwLoadFileById_, 이미 async 함수)에서 await로 받는다.
 function rwAskDocTypeForFile_(fileName){
-  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'translation', 'summary'];
+  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'audit_opinion', 'explanation', 'refund_claim', 'translation', 'summary'];
   return new Promise(function(resolve){
     const modal = document.getElementById('rwDocTypeModal');
     const body = document.getElementById('rwDocTypeBody');
@@ -52531,6 +52538,10 @@ function rwGuessDocType_(){
   if (!caseId) return 'review';
   var c = rwCases_.filter(function(x){ return x.id === caseId; })[0];
   if (!c) return 'review';
+  var upT_ = String(c.업무유형 || ''); // [2026-11-27 목적점검 3차 ⑥] 조사 대응 문서 종류
+  if (/경정\s*청구/.test(upT_)) return 'refund_claim';
+  if (/세무\s*조사/.test(upT_)) return 'audit_opinion';
+  if (/해명|소명|자금\s*출처/.test(upT_)) return 'explanation';
   if (c.세목 === 'objection') return 'appeal_petition';
   if (c.업무유형 === '신고') return 'filing';
   // [2026.09.18 신규] "상담을 자문과 상담으로 세분" — 검토서·보고서가 실제로 작성되는 쪽은
@@ -52895,6 +52906,22 @@ async function createNewDoc(kind){
         + '## 청구이유\n\n\n'
         + '## 증거서류\n\n'
     },
+    // [2026-11-27 목적점검 3차 ⑥] 조사 대응 문서 셋 — 드라이브 「보고서템플릿」의 같은 이름 틀이 먼저(없을 때만 아래 골격)
+    audit_opinion: {
+      promptDefault: '조사의견서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '조사의견서',
+      md: '# 세무조사 의견서\n\n- 납세자: ' + (c ? (c.고객명 || '') : '') + '\n- 조사 관서·조사반: \n- 조사 대상: \n- 제출일: ' + todayStr + '\n\n## 요지\n\n\n## 조사반이 문제 삼는 사항\n\n\n## 사실관계\n\n\n## 의견\n\n\n## 첨부\n\n'
+    },
+    explanation: {
+      promptDefault: '소명서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '소명서',
+      md: '# 소명서\n\n- 납세자: ' + (c ? (c.고객명 || '') : '') + '\n- 받는 곳: \n- 안내문: \n- 제출 기한: ' + (c && c.법정일 ? c.법정일 : '') + '\n- 제출일: ' + todayStr + '\n\n## 요구받은 사항\n\n\n## 소명 내용\n\n\n## 결론\n\n\n## 첨부\n\n'
+    },
+    refund_claim: {
+      promptDefault: '경정청구서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '경정청구서',
+      md: '# 경정청구서\n\n- 청구인: ' + (c ? (c.고객명 || '') : '') + '\n- 관할 세무서장: \n- 대상: \n- 청구일자: ' + todayStr + '\n' + (c && c.법정일 ? '- 청구기한: ' + c.법정일 + '\n' : '') + '\n## 청구 내용\n\n\n## 청구 이유\n\n\n## 증거서류\n\n'
+    },
     // [2026.09] 번역서(외부, 세무서 제출) — 영문 등 외국어 자료를 과세관청에 제출할 때 함께
     // 내는 한국어 번역문. 기존 (구)용역서와 별개인 "첨부서류 번역본" 테마(doc-translation,
     // 원본 서식 재현형 — 분석용 장치 없이 표・인용 위주)를 그대로 재사용한다.
@@ -52973,7 +53000,7 @@ async function createNewDoc(kind){
   if (kind === 'reference') mdContent = rwShapeReviewMemo_(mdContent, { semok: semokLabel, issue: rwIssue_, date: todayStr, client: c ? (c.고객명 || '') : '' });
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
-  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
+  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', audit_opinion: 'audit_opinion', explanation: 'explanation', refund_claim: 'refund_claim', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType, rwBaseline_: mdContent };
   if (c && c.id) newDoc.caseId = c.id; // [2026.11.25] 이 사건에서 만든 문서 — 저장 전에도 이 사건 문서 상자에 보임
@@ -53039,6 +53066,9 @@ function rwShapeReviewMemo_(md, o){
 }
 function addProgressDoc(){ createNewDoc('progress'); }
 function addAppealDoc(){ createNewDoc('appeal_petition'); }
+function addAuditOpinionDoc(){ createNewDoc('audit_opinion'); } // [2026-11-27 ⑥]
+function addExplanationDoc(){ createNewDoc('explanation'); }
+function addRefundClaimDoc(){ createNewDoc('refund_claim'); }
 function addTranslationDoc(){ createNewDoc('translation'); }
 function addSummaryDoc(){ createNewDoc('summary'); }
 
@@ -53721,6 +53751,9 @@ document.getElementById('addProgressOpt').addEventListener('click', () => {
 document.getElementById('addAppealOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   addAppealDoc();
+});
+[['addAuditOpinionOpt', addAuditOpinionDoc], ['addExplanationOpt', addExplanationDoc], ['addRefundClaimOpt', addRefundClaimDoc]].forEach(function(p){ // [2026-11-27 ⑥]
+  document.getElementById(p[0]).addEventListener('click', () => { document.getElementById('addPopup').classList.remove('show'); p[1](); });
 });
 document.getElementById('addTranslationOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
