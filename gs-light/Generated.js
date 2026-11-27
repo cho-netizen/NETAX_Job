@@ -1,6 +1,16 @@
 // 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js
 // 조회 시작점: work_getCases, client_getClients, client_getConsultLogs, booking_getBookings, jsonResponse, todoList_, ledgerView_, ledgerFlowBrief_, work_findCaseRow_, work_values_, caseProcRouteTax_, CP_SHEET_MEMO_ON_
-// 포함한 최상위 선언 266개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, client_ensureSheet_, work_getSheet_, ocrFileText_, tcOcrStoreFolder_, tcOcrBlob_, tcBlobText_, tcPptxText_, tc_docText_)
+// 포함한 최상위 선언 270개 (시트 쓰기가 들어 있는 것: getOrCreateSubfolder_, client_ensureSheet_, work_getSheet_, ocrFileText_, tcOcrStoreFolder_, tcOcrBlob_, tcBlobText_, tcPptxText_, tc_docText_)
+
+function akReadCase_(caseId) {
+  const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  return found ? work_readRow_(col, found.row) : null;
+}
+
+// [2026.11.12] 세무사님 "「답하실 것」에 뭐가 그리 많이 올라가 있는가?" → "권장대로" — 가상·모의·시험 사건은 알림(기한·멈춘 사건·미수)에서 뺀다.
+//  예전 /시험용|가상사건/ 은 「가상양도12」·「가상증여9」·「가상상속자문(○○○)_상속_자문」·「모의…」 같은 실제 이름을 못 걸러 진행 사건 전부가 「멈춘 사건」 한 줄씩 올라갔다.
+function awVirtual_(c) { const n = String(c && c.사건명 || ''), g = String(c && c.고객명 || ''), o = String(c && c.개요 || ''); return /시험용|가상사건|모의사건/.test(n + o) || /^(가상|모의|시험|테스트)/.test(n.trim()) || /^(가상|모의|시험|테스트)/.test(g.trim()); }
 
 // ============================================================
 // CaseLedger.js — 사건 장부: 사건의 모든 사실을 적는 단일 저장소 [2026.10.28 신설]
@@ -53,7 +63,7 @@ var LEDGER_ENUMS_ = {
 };
 
 // [2026.11.13 5차 다] 넥스가 고를 수 있는 역할이 열둘뿐이라 수용재결서·보상금 내역·건축물대장 같은 흔한 서류를 「기타」로 확정했다(실사건 9건) — 실사건에서 나온 종류를 더함
-var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
+var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '세무조사 통지서', '과세예고통지서', '납세고지서·결정통지서', '경정청구서', '불복 청구서·결정서', '확인서·문답서', '법인등기부', '정관', '주주명부', '재무제표', '기타']; // [2026-11-27 목적점검 3차] 조사·불복·가족법인 서류도 고를 역할이 있게(예전엔 「기타」밖에 없었음)
 
 function ledgerFolder_() {
   const root = getChiefManagerFolder_();
@@ -413,6 +423,28 @@ function ledgerNexOff_(caseId) { // 이 사건의 넥스 미리 읽기 스위치
   } catch (e) { return false; }
 }
 
+// [2026-11-27 목적점검 3차 F7] 넥스가 이 사건 물음을 실제로 먼저 볼 수 있나 — 차례(turn)를 「넥스」로 두는 조건을 깨우는 조건(cpNexQuestionWake_)과 맞춘다.
+//  예전엔 스위치만 보고 넥스 차례로 두어, 넥스가 깨지 않는 사건(가상·시험 사건, 진행 아닌 사건, AI 지휘 꺼짐)의 물음이 장부 「물어볼 것」에서 빠진 채 아무도 안 보는 곳에 남았다
+//  (가상전수양도: 서류 읽기 뒤 질문 4개가 모두 「넥스가 먼저 보는 물음」으로만 세어지고 답할 곳이 없었다 — 공통원칙 1절 「AI 없이 내가 직접 작업하는 것에 불편함이 없도록」)
+var LEDGER_NEXSKIP_MEMO_ = {};
+
+function ledgerNexSkip_(caseId, c) {
+  const k = String(caseId || ''), m = LEDGER_NEXSKIP_MEMO_[k];
+  if (m && Date.now() - m.at < 60000 && (!c || m.withCase)) return m.v;
+  let v = ledgerNexOff_(k) ? '이 사건은 넥스 미리 읽기 끔' : '';
+  if (!v) { try { if (String(lightProps_().getProperty('AI_LEAD') || '') === '끄기') v = 'AI 지휘 꺼짐'; } catch (e) {} }
+  if (!v) {
+    let cc = c || null;
+    if (!cc) { try { cc = typeof akReadCase_ === 'function' ? akReadCase_(k) : null; } catch (e) { cc = null; } }
+    if (cc) {
+      if (typeof awVirtual_ === 'function' && awVirtual_(cc)) v = '가상·시험 사건(넥스 선처리 안 함)';
+      else if (String(cc.상태 || '') !== '진행') v = '진행 중 사건이 아님(' + (cc.상태 || '상태 없음') + ')';
+    }
+  }
+  LEDGER_NEXSKIP_MEMO_[k] = { v: v, at: Date.now(), withCase: true };
+  return v;
+}
+
 // 이 질문이 세운 물음을 거둘 때 돌아갈 상태 — 질문 전에 값이 정해져 있었으면 그 값·상태로
 function ledgerQBack_(r) {
   const h = Array.isArray(r.hist) ? r.hist : [];
@@ -626,7 +658,7 @@ function ledgerQWrite0_(caseId, rem, dec, o) {
 // 읽기 — 열린 질문 목록(옛 remaining 모양, 질문 순서대로)과 질문 결정 지도(옛 decisions 모양). 닫힌 질문(칸 값이 정해짐)은 결정 'done'으로 보인다
 function ledgerQRead_(caseId) {
   const L = ledgerLoad_(caseId), items = [], dec = {};
-  const nexOff = ledgerNexOff_(caseId); // [2026.11.12 질문 정리 ①] 스위치 끈 사건은 모두 세무사님 차례
+  const nexOff = !!ledgerNexSkip_(caseId); // [2026.11.12 질문 정리 ①] 스위치 끈 사건은 모두 세무사님 차례 · [2026-11-27 F7] 넥스가 깨지 않는 사건(가상·진행 아님·AI 꺼짐)도
   Object.keys(L.rows).forEach(function (p) {
     const r = L.rows[p];
     Object.keys(r.qd || {}).forEach(function (id) { dec[id] = r.qd[id]; });
@@ -656,7 +688,7 @@ function ledgerQRead_(caseId) {
 // ── 화면·넥스용 한 묶음 ──
 function ledgerView_(c) {
   const rows = ledgerRows_(c.id), L = ledgerLoad_(c.id);
-  if (ledgerNexOff_(c.id)) rows.forEach(function (r) { if (r.turn) r.turn = '세무사님'; }); // [2026.11.12 질문 정리 ①]
+  if (ledgerNexSkip_(c.id, c)) rows.forEach(function (r) { if (r.turn) r.turn = '세무사님'; }); // [2026.11.12 질문 정리 ①] · [2026-11-27 F7] 넥스가 깨지 않는 사건도
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 세목: e.세목 || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
@@ -3241,6 +3273,7 @@ function caseProcDocTax_(c) {
 //  [2026.10.18] 작업관리 칸에 그런 말이 없어도 폴더 서류(경정청구서·수정신고 안내·당초신고 하위폴더·세무조사 통지·소명요구)가 있으면 같다
 function caseProcIsAmend_(c) {
   if (/경정|수정\s*신고|불복|심판|이의\s*신청|심사\s*청구/.test(String((c && c.업무유형) || '') + ' ' + String((c && c.사건명) || ''))) return true;
+  if (/^(세무\s*)?조사/.test(String((c && c.업무유형) || '').trim())) return true; // [2026-11-27 목적점검 3차] 업무유형이 세무조사인데 조사 통지서가 아직 안 읽히면 당초 신고서가 「발생문서 — 입력에서 뺌」으로 빠졌다(아래 서류 신호 s.audit와 같은 뜻)
   const s = caseProcDocSignals_(c);
   return !!(s.amend.length || s.audit.length);
 }

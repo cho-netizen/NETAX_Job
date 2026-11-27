@@ -43,10 +43,11 @@ var LEDGER_ENUMS_ = {
   transferCause: { codes: ['sale', 'expropriation', 'exchange', 'gift_burden', 'other'], ko: { sale: '매매', expropriation: '수용', exchange: '교환', gift_burden: '부담부증여', other: '기타' } }
 };
 // [2026.11.13 5차 다] 넥스가 고를 수 있는 역할이 열둘뿐이라 수용재결서·보상금 내역·건축물대장 같은 흔한 서류를 「기타」로 확정했다(실사건 9건) — 실사건에서 나온 종류를 더함
-var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '기타'];
+var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '세무조사 통지서', '과세예고통지서', '납세고지서·결정통지서', '경정청구서', '불복 청구서·결정서', '확인서·문답서', '법인등기부', '정관', '주주명부', '재무제표', '기타']; // [2026-11-27 목적점검 3차] 조사·불복·가족법인 서류도 고를 역할이 있게(예전엔 「기타」밖에 없었음)
 // [2026.11.13 5차 다] 파일 이름(없으면 첫머리)이 말하는 서류 종류 — 글자 판정이 이와 어긋나면 확정하지 않고 묻는다(건축물대장→「등기부」, 수용재결서→「토지대장」으로 확정되던 것)
 //  [이름 낱말, 판정 이름에 있어야 맞는 낱말, 이 종류의 이름]. 위에서 먼저 걸리는 것이 이긴다(수용재결서 안의 「토지」보다 「재결」이 먼저)
 var LEDGER_DOC_NAMED_ = [
+  [/분할\s*협의/, /분할|협의/, '상속재산분할협의서'], [/가족\s*관계\s*증명/, /가족/, '가족관계'], // [2026-11-27 목적점검 3차] 「상속재산분할협의서」가 아래 /협의서/에 걸려 「손실보상 협의서」로 보였다 — 먼저 건다
   [/재결서|수용\s*재결/, /재결/, '수용재결서'], [/보상\s*금?\s*협의|손실\s*보상.*협의|협의서/, /협의/, '손실보상 협의서'], [/수용\s*사실|수용\s*확인서/, /수용/, '수용사실 확인서'],
   [/보상\s*금\s*(내역|영수)/, /보상/, '보상금 내역·영수증'], [/입금\s*(의뢰|청구|통장)|입금통장|거래\s*내역|통장/, /통장|입금|거래|이체|은행/, '입금·통장 내역'],
   [/건축물\s*대장/, /건축물|대장/, '건축물대장'], [/토지\s*대장|임야\s*대장/, /토지\s*대장|임야|대장/, '토지대장'], [/중개\s*대상물|확인\s*설명서/, /중개|설명서/, '중개대상물 확인설명서'],
@@ -620,6 +621,7 @@ function ledgerInhInput_(c, L) {
   const input = { taxableEstateAmount: Math.max(0, gross - dg(row('i.debtAmount')) - dg(row('i.duesAmount'))) + pgH + pgO, appraisalFeeAmount: dg(row('i.appraisalFeeAmount')),
     hasSpouse: row('i.isSpouse') === true || row('i.isSpouse') === 'true', childCount: dg(row('i.childCount')), netFinancialAssets: fin,
     funeralCostAmount: dg(row('i.funeralAmount')), funeralNicheCostAmount: dg(row('i.nicheAmount')), isDecedentResident: true };
+  { const d0 = String(row('기준일') || c.기준일 || '').slice(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(d0)) input.dateOfDeath = d0; } // [2026-11-27 목적점검 3차] 상속개시일을 계산기에 — 증여(giftDate)와 달리 빠져, 옛 상속도 지금 기준 공제·율로 계산되고 배우자상속재산분할기한이 늘 비었다
   if (pgH + pgO) { input.priorGiftedAmountIncludedInEstate = pgH + pgO; if (pgH) input.giftToHeirsWithin10Years = pgH; if (pgO) input.nonHeirPriorGiftAmountTotal = pgO; }
   // [2026-11-10 공동상속 잇기] 상속인 줄(i.heir#.*)이 있으면 배우자 유무·자녀 수·배우자가 실제 받는 금액을 그 줄에서 — 운영 넥스 시험(박영수 상속)에서
   //  상속인 줄을 적었는데도 배우자공제가 빠진 숫자가 나옴. 장부 칸(i.isSpouse·i.childCount)에 값이 있으면 그것이 먼저.
@@ -1049,6 +1051,26 @@ function ledgerNexOff_(caseId) { // 이 사건의 넥스 미리 읽기 스위치
     return !!(o.nexPreread && o.nexPreread.off);
   } catch (e) { return false; }
 }
+// [2026-11-27 목적점검 3차 F7] 넥스가 이 사건 물음을 실제로 먼저 볼 수 있나 — 차례(turn)를 「넥스」로 두는 조건을 깨우는 조건(cpNexQuestionWake_)과 맞춘다.
+//  예전엔 스위치만 보고 넥스 차례로 두어, 넥스가 깨지 않는 사건(가상·시험 사건, 진행 아닌 사건, AI 지휘 꺼짐)의 물음이 장부 「물어볼 것」에서 빠진 채 아무도 안 보는 곳에 남았다
+//  (가상전수양도: 서류 읽기 뒤 질문 4개가 모두 「넥스가 먼저 보는 물음」으로만 세어지고 답할 곳이 없었다 — 공통원칙 1절 「AI 없이 내가 직접 작업하는 것에 불편함이 없도록」)
+var LEDGER_NEXSKIP_MEMO_ = {};
+function ledgerNexSkip_(caseId, c) {
+  const k = String(caseId || ''), m = LEDGER_NEXSKIP_MEMO_[k];
+  if (m && Date.now() - m.at < 60000 && (!c || m.withCase)) return m.v;
+  let v = ledgerNexOff_(k) ? '이 사건은 넥스 미리 읽기 끔' : '';
+  if (!v) { try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') v = 'AI 지휘 꺼짐'; } catch (e) {} }
+  if (!v) {
+    let cc = c || null;
+    if (!cc) { try { cc = typeof akReadCase_ === 'function' ? akReadCase_(k) : null; } catch (e) { cc = null; } }
+    if (cc) {
+      if (typeof awVirtual_ === 'function' && awVirtual_(cc)) v = '가상·시험 사건(넥스 선처리 안 함)';
+      else if (String(cc.상태 || '') !== '진행') v = '진행 중 사건이 아님(' + (cc.상태 || '상태 없음') + ')';
+    }
+  }
+  LEDGER_NEXSKIP_MEMO_[k] = { v: v, at: Date.now(), withCase: true };
+  return v;
+}
 // 넥스 차례 열린 질문 수(깨우기·밤 점검이 봄 — 장부 한 번 읽음)
 function ledgerNexTurnCount_(caseId) {
   try { const q = ledgerQRead_(caseId); return q.remaining.filter(function (it) { return it.turn === '넥스' && !(q.decisions[it.id] && q.decisions[it.id].d); }).length; } catch (e) { return 0; }
@@ -1332,7 +1354,7 @@ function ledgerQWrite0_(caseId, rem, dec, o) {
 // 읽기 — 열린 질문 목록(옛 remaining 모양, 질문 순서대로)과 질문 결정 지도(옛 decisions 모양). 닫힌 질문(칸 값이 정해짐)은 결정 'done'으로 보인다
 function ledgerQRead_(caseId) {
   const L = ledgerLoad_(caseId), items = [], dec = {};
-  const nexOff = ledgerNexOff_(caseId); // [2026.11.12 질문 정리 ①] 스위치 끈 사건은 모두 세무사님 차례
+  const nexOff = !!ledgerNexSkip_(caseId); // [2026.11.12 질문 정리 ①] 스위치 끈 사건은 모두 세무사님 차례 · [2026-11-27 F7] 넥스가 깨지 않는 사건(가상·진행 아님·AI 꺼짐)도
   Object.keys(L.rows).forEach(function (p) {
     const r = L.rows[p];
     Object.keys(r.qd || {}).forEach(function (id) { dec[id] = r.qd[id]; });
@@ -1379,7 +1401,7 @@ function ledgerOverlayState_(caseId, state) {
 // ── 화면·넥스용 한 묶음 ──
 function ledgerView_(c) {
   const rows = ledgerRows_(c.id), L = ledgerLoad_(c.id);
-  if (ledgerNexOff_(c.id)) rows.forEach(function (r) { if (r.turn) r.turn = '세무사님'; }); // [2026.11.12 질문 정리 ①]
+  if (ledgerNexSkip_(c.id, c)) rows.forEach(function (r) { if (r.turn) r.turn = '세무사님'; }); // [2026.11.12 질문 정리 ①] · [2026-11-27 F7] 넥스가 깨지 않는 사건도
   const by = {}; LEDGER_STATES_.forEach(function (s) { by[s] = []; });
   rows.forEach(function (r) { (by[r.state] || (by[r.state] = [])).push(r); });
   const calcs = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).slice(-12).map(function (e) { return { id: e.id, 구분: e.구분, 세목: e.세목 || '', 이름: e.안 ? e.안.이름 : '기본 저장본', 최종세액: e.최종세액, 계산일: e.계산일 }; }); // [2026.10.30] 안 이름·id도(⑥ 자문과 맞대어 보게)
@@ -2319,7 +2341,7 @@ function ledgerOvFromHypInner_(L) {
 // 의뢰서 등이 말한 거래(날짜·금액)를 계산기 칸의 서류 값과 맞댄다 — 다르면 서류 값으로 계산하되(세무사님 결정 10-29 권장안 3 "서류가 이기되, 다르다는 사실을 질문으로")
 //  'chk:가설.<칸>' 줄을 보류로 세운다: 사이드바 질문 목록에 보이고(계산은 막지 않음), 검토서 "추가로 확인할 사항"에 들어간다. 같아지거나 가설이 사라지면 GAS가 세운 줄은 내린다
 // [2026-11-13 4차 42] 의뢰 메모의 상속·증여 말(예금·장례비·시가·공시)도 — 같은 말이 세목마다 다른 칸이면 줄을 여럿 두고, 쓰는 곳이 사건(주·함께 보는) 세목에 맞는 줄을 고른다
-var LEDGER_HYP_CALC_ = [[/^(양도|매도|매각|잔금)/, 'c0.totalPrice', 'c0.date'], [/^(취득|매수)/, 'a0.acquisitionPrice', 'a0.acquisitionDate'], [/^증여/, 'g.giftAmount', '기준일'], [/^(사망|상속개시)/, '', '기준일'], [/^(대출|채무)/, 'i.debtAmount', ''],
+var LEDGER_HYP_CALC_ = [[/^(양도|매도|매각|잔금)/, 'c0.totalPrice', 'c0.date'], [/^(취득|매수)/, 'a0.acquisitionPrice', 'a0.acquisitionDate'], [/^분양/, 'a0.acquisitionPrice', ''] /* [2026-11-27 목적점검 3차 F2] 분양가는 취득가액 쪽 말(분양 계약일은 취득일이 아니라 날짜 길은 없음) — 메모에 새 집 취득 금액도 있으면 값이 둘이 되어 여쭌다 */, [/^증여/, 'g.giftAmount', '기준일'], [/^(사망|상속개시)/, '', '기준일'], [/^(대출|채무)/, 'i.debtAmount', ''],
   [/^금융/, 'i.financialAmount', ''], [/^장례/, 'i.funeralAmount', ''], [/^(시가|매매사례)/, 'i.realEstateAmount', ''], [/^(시가|매매사례|공시|기준시가)/, 'g.giftAmount', '']]; // 상속 부동산은 시가 말만(공시는 물건마다 달라 합치면 틀림), 증여는 시가·공시를 함께 띄워 여쭘(평가 방법 고르기)
 // 같은 말에 맞는 줄 중 이 사건 세목(taxes)에 맞는 줄 — 없으면 첫 줄
 function ledgerHypMapFor_(role, taxes, isDate) {
@@ -2329,8 +2351,8 @@ function ledgerHypMapFor_(role, taxes, isDate) {
 function ledgerKrw_(s) {
   s = String(s || '').replace(/\s+/g, '');
   const m = /^([\d,]+)원$/.exec(s); if (m) return Number(m[1].replace(/,/g, ''));
-  let n = 0, hit = false; const eok = /([\d,]+)억/.exec(s), cm = /억?([\d,]+)천만/.exec(s), man = /(?:억|천)?([\d,]+)만/.exec(s);
-  if (eok) { n += Number(eok[1].replace(/,/g, '')) * 100000000; hit = true; }
+  let n = 0, hit = false; const eok = /([\d,]+(?:\.\d+)?)억/.exec(s), cm = /억?([\d,]+)천만/.exec(s), man = /(?:억|천)?([\d,]+)만/.exec(s);
+  if (eok) { n += Math.round(Number(eok[1].replace(/,/g, '')) * 100000000); hit = true; } // [2026-11-27 목적점검 3차 F2] "6.2억" = 6억 2천만(예전엔 소수점 뒤 2억으로 읽힘)
   if (cm) { n += Number(cm[1].replace(/,/g, '')) * 10000000; hit = true; } else if (man && !/천만/.test(s)) { n += Number(man[1].replace(/,/g, '')) * 10000; hit = true; }
   else { const ch = /억([\d,]+)천원?$/.exec(s); if (ch) { n += Number(ch[1].replace(/,/g, '')) * 10000000; hit = true; } } // [2026-11-12 3차 ①] "6억8천"(만 없이 천) = 6억 8천만 — 예전엔 6억으로만 읽었다
   return hit ? n : NaN;
@@ -2682,9 +2704,12 @@ function ledgerEstimate_(c, input, by) {
       claims.filter(function (x) { return x.f === '물건'; }).slice(0, 4).forEach(function (x, i) { put('a' + i + '.assetLocation', x.v, (x.srcs || []).join('·')); });
       if (c.세목 === 'transfer' && want['c0.date'] && !want['기준일']) put('기준일', want['c0.date'].v, want['c0.date'].src);
     }
+    const multiHouse = (function () { const iss = claims.filter(function (x) { return x.f === '쟁점' && /일시적\s*2\s*주택|대체\s*주택|2\s*주택/.test(String(x.v)); })[0]; if (iss) return '쟁점 ' + iss.v; const ob = claims.filter(function (x) { return x.f === '물건'; }); return ob.length >= 2 ? '물건 ' + ob.length + '건' : ''; })();
     Object.keys(want).forEach(function (p) {
       if (settled(p)) { skipped.push(ledgerLabel_(p) + '(이미 ' + ledgerValueText_(p, rows[p].v) + ' — ' + (rows[p].state === '추정' ? '추정' : ((rows[p].src && rows[p].src.kind) || '') + ' 값') + ')'); return; }
       const w = want[p];
+      // [2026-11-27 목적점검 3차 F2] 메모가 집 둘 이상(일시적 2주택·대체주택·물건 둘 이상)을 말하면 「취득」 말이 어느 집 것인지 모른다 — 새 집 취득가·취득일이 파는 집(자산1) 칸에 추정으로 들어갔다(송파 양도·판교 12억 취득 메모). 넣지 않고 여쭌다
+      if (multiHouse && /^a0\.acquisition(Price|Date)$/.test(p)) { ops.push({ ask: true, path: p, label: ledgerLabel_(p), question: '의뢰 메모가 집을 둘 이상 말합니다(' + multiHouse + ') — 메모의 ' + [w.v].concat(w.alt).map(function (v) { return ledgerValueText_(p, v); }).join(' / ') + '이(가) 파는 집(자산1)의 ' + (/Date$/.test(p) ? '취득일' : '취득가액') + '인지, 다른 집 것인지 모릅니다. 파는 집 값이면 고르시고, 아니면 서류(취득 계약서·분양계약서)로 정합니다.', cands: [w.v].concat(w.alt).map(function (v) { return { v: v, src: w.src }; }), by: who }); return; }
       if (w.alt.length) { ops.push({ ask: true, path: p, label: ledgerLabel_(p), question: '의뢰서 등에 값이 여럿입니다 — ' + [w.v].concat(w.alt).map(function (v) { return ledgerValueText_(p, v); }).join(' / ') + '. 어느 값으로 추정할까요?', cands: [w.v].concat(w.alt).map(function (v) { return { v: v, src: w.src }; }), by: who }); return; }
       ops.push({ path: p, value: w.v, kind: '추정', estimate: true, by: who, file: String(w.src || '의뢰서 등').slice(0, 80), why: '의뢰서 등 가설 — 서류 확인 전 추정(서류가 들어오면 서류 값으로 바뀌고, 다르면 여쭘)' });
     });

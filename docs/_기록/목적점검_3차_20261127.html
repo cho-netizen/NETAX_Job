@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>목적점검 3차 2026-11-27</title>
+<style>
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;max-width:1040px;margin:24px auto;padding:0 16px;color:#1b2430;line-height:1.55;font-size:14.5px;background:#fff}
+h1{font-size:22px;color:#0f2a5c;border-bottom:3px solid #c9a227;padding-bottom:6px}
+h2{font-size:17px;color:#0f2a5c;margin-top:30px;border-left:5px solid #c9a227;padding-left:10px}
+h3{font-size:15px;color:#0f2a5c;margin:18px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:13.5px}
+th,td{border:1px solid #cfd6e0;padding:5px 8px;vertical-align:top}
+th{background:#eef2f8;white-space:nowrap}
+td.n{white-space:nowrap}
+code{font-size:12.5px;background:#f2f4f8;padding:0 3px;border-radius:3px}
+.bad{color:#b3261e;font-weight:700}.mid{color:#a0621d;font-weight:700}.ok{color:#1f7a3a;font-weight:700}
+.box{background:#f7f8fb;border:1px solid #dfe4ec;border-radius:6px;padding:10px 14px;margin:8px 0}
+blockquote{border-left:4px solid #c9a227;margin:8px 0;padding:4px 12px;color:#333;background:#fbf8ee}
+small{color:#555}
+.wrap{overflow-x:auto}
+</style></head><body>
+<h1>목적점검 3차 — 사건 하나를 끝까지 따라가며 일이 끊기는 곳</h1>
+<p><small>작성 2026-11-27 · 클라우드 세션(PC 세션에서 이어받음) · 가지 <code>claude/exciting-goldberg-l8fuel</code>(main 8087b35 위) · 고친 커밋 b8ae22e · main 올리기·clasp·배포는 하지 않음(세무사님 「커푸배」 때)</small></p>
+<blockquote>세무사님 원문: 「전수점검 다시하라」 / 「숲을 보지 못하고 나무잎파리만 붙들고 있는 것 같다. 이 시스템이 뭔지 무엇이 목적인지 누가 무엇을 위해서 개발하는 것인지에 대한 기본 전제를 전혀 생각하지 않고 있어」</blockquote>
+
+<div class="box"><b>잣대</b> — 이 시스템은 세무사님이 상속·증여·양도·세무조사·불복경정·가족법인 사건을 「상담 메모 → 서류 → 사실 장부 → 계산 → 자문 보고서 → 사후관리」까지 끝내는 연장입니다. 넥스는 대리인이고, 세무사님은 넥스 없이 GAS 도구만으로도 끝낼 수 있어야 합니다. 그래서 화면 낱낱이 아니라 <b>일이 다음 단계로 넘어가지 못하는 곳</b>만 보았습니다.</div>
+
+<div class="box"><b>한 줄 결론</b> — 가상 양도 자문 사건 길에서 가장 크게 끊긴 곳은 셋이었습니다.<br>
+① 서류를 읽고 생긴 물음이 「넥스 차례」로 숨어 넥스 없이는 답할 곳이 없었습니다(F7).<br>
+② 메모의 갈림길 사실(분양가·입주·이사)이 버려졌습니다. 그 대신 <b>새 집 취득가 12억이 파는 집 취득가액 「추정」으로 저절로 들어가</b> 시험 계산이 틀릴 수 있었습니다(F2).<br>
+③ 서류를 읽어도 장부 바탕(서류 사실)이 안 남았습니다(F8).<br>
+이 셋과 F4·F9는 고쳤고 시험했습니다. 다른 업무 다섯 가지에서는 더 큰 구조 문제가 나왔습니다. 대표적인 것이 불복·조사 사건에 「원 세목」을 둘 자리가 없는 것, 사건별 사후관리 자리가 없는 것입니다. 이런 것은 고치지 않고 권장안만 적었습니다.</div>
+
+<h2>1. 가상 양도 자문 사건(가상전수양도) — PC 세션이 찾은 F2~F9의 원인</h2>
+<p><small>줄 번호는 고친 뒤 기준입니다. 「시험」은 클라우드에서 서버 코드를 node에 올려 그 함수를 직접 돌린 것입니다(구글 서비스는 빈 흉내).</small></p>
+<div class="wrap"><table>
+<tr><th>번호</th><th>끊기는 모습</th><th>원인(코드 줄)</th><th>처리</th></tr>
+<tr><td class="n">F2</td><td>메모의 양도 15억·쟁점만 가설로 가고 분양가·입주일·이사일이 버려짐</td><td><code>Code.js</code> caseProcGraspMore_(49733~)의 원인 낱말에 분양·입주·전입·이사·거주가 없었습니다. 날짜는 일까지 있어야 했고, 「6.2억」은 소수점에서 끊겼습니다.<br>
+<b>시험에서 더 나온 것 1:</b> 「…12억에 매수<i>(줄 바꿈)</i>2026.11.22 판교로 이사」를 「매수 2026-11-22」로 이어 읽었습니다. 원인 낱말과 날짜 사이 빈칸에 줄 바꿈까지 허용했기 때문입니다.<br>
+<b>시험에서 더 나온 것 2:</b> 사건을 만들 때 <code>BgQueue.js:152</code>가 메모 가설을 계산 칸에 「추정」으로 바로 넣습니다. 그래서 새 집(판교) 「취득 12억」이 자산1(송파) 취득가액 추정이 되었습니다. 이 상태로 시험 계산을 하면 양도차익이 15억−12억으로 나옵니다.</td><td class="ok">고침·시험 통과 — 분양·입주·이사 시기가 사건개요 가설로 남습니다(계산 칸으로는 안 감). 소수점 억을 읽습니다. 줄을 넘어 잇지 않습니다. 메모가 집을 둘 이상 말하면(일시적 2주택 쟁점·물건 2건 이상) 취득가액·취득일은 추정으로 넣지 않고 여쭙니다. 분양가는 취득가액 쪽 말로 셉니다(새 집 값과 둘이 되면 여쭘).</td></tr>
+<tr><td class="n">F3</td><td>「서류 읽기」 한 단추가 칸 채우기·세액계산·서식까지 이어 도는가</td><td>GAS 길은 ①사건파악 → ②서류 정리 → 장부 적기에서 끝납니다(<code>Code.js</code> caseProcTool_ 「서류 읽기 도구는 여기까지」). 그 뒤에는 낱개 도구 단추만 둡니다(<code>aichat.html</code> nxAiCpToolRow_). 10-31 「묶음 해체」에 맞습니다.<br>
+다만 직결(시험 서비스) 길은 서비스가 ③ 칸 채우기 결과까지 보내면 화면이 ③까지 그립니다(<code>aichat.html</code> gasRunDirect_ 「sg.overview ? doStep('overview')」).</td><td class="mid">고치지 않음 — 운영에서 이어 돈 것이 보였다면 직결 서비스 판이 ③을 돌린 것입니다. [세무사님 몫] 아래 3절</td></tr>
+<tr><td class="n">F4</td><td>분양계약서가 「종류를 정하지 못한 서류」</td><td><code>Code.js:46500</code> 계약서 판별의 당사자 칸 이름에 「분양자·수분양자」가 없었습니다. 제목 뒤에 괄호·꺾쇠가 붙으면(「아파트 분양계약서(101동 1001호)」「[분양계약서]」) 제목 판별을 못 지나 이 줄로 오는데, 여기서 떨어졌습니다. 시험 여섯 모양 중 둘이 종류 없음으로 나왔습니다.</td><td class="ok">고침·시험 여섯 모양 모두 「분양(공급)계약서」. 실제 PDF 글은 클라우드에서 못 봐서 이 원인이 그 파일과 같은지는 [세무사님 몫]</td></tr>
+<tr><td class="n">F5</td><td>업무유형 「자문」이면 받을 증빙 틀이 없음</td><td><code>Code.js</code> work_buildEvidenceFromTemplate_(20107~20108)·31097·31106, <code>AnswerKey.js:244</code> — 「신고」일 때만 틀을 씁니다. 빈 칸·쟁점에서 생기는 받을 서류(caseFlowEvidence_)는 자문에도 생깁니다.</td><td class="mid">고치지 않음 — 받을 서류는 고객창구 점검표로 고객에게 나갑니다(<code>CaseLedger.js</code> portal_sync). 양도 전 자문이면 「양도 매매계약서」를 고객에게 달라고 하게 됩니다. 어떤 서류를 자문 틀에 넣을지는 세무사님이 정하실 일 → 4절 ①</td></tr>
+<tr><td class="n">F6</td><td>서류 당사자(가상갑동)가 등록 납세자와 다르면 계약서가 모두 「참고」</td><td><code>Code.js</code> tcContractNotParty_(26904) — 의도대로입니다(남의 계약서를 칸에 쓰지 않음). 납세자 후보 질문으로 가는데, 그 질문이 F7 때문에 숨었습니다.</td><td class="ok">F7을 고쳐 풀림</td></tr>
+<tr><td class="n">F7</td><td>「답하실 질문 3개 — 장부 ④ 물어볼 것에서」인데 장부에 ④가 없고 질문 4개가 모두 「넥스가 먼저 보는 물음」(숫자만)</td><td>① <code>CaseLedger.js</code> ledgerQTurnOf_·ledgerNexOff_, <code>Code.js</code> 32156 — GAS 물음은 미리 읽기 스위치만 보고 「넥스 차례」로 둡니다.<br>
+그런데 넥스가 실제로 깨는 조건(<code>Code.js</code> cpNexQuestionWake_)은 「진행 중 · 가상 아님 · 스위치 켬 · AI 지휘 켬」입니다. 그래서 가상 사건·진행 아닌 사건의 물음은 아무도 안 보는 곳에 남았습니다.<br>
+② <code>ledger.html</code> 352줄 — 넥스 차례 물음은 수만 한 줄로 보이고 답하는 단추가 없었습니다.<br>
+③ 안내 글의 「④ 물어볼 것」은 지금 장부에 없는 이름입니다(탭은 「칸 장부」).</td><td class="ok">고침·시험 통과 — 넥스가 깨지 않는 사건은 세무사님 차례가 됩니다(ledgerNexSkip_, 가상·진행 아님·AI 꺼짐). 진행 중 실제 사건은 그대로 넥스 차례입니다. 칸 장부에 「🤖 넥스가 먼저 보는 물음」도 표로 보이고 같은 단추로 바로 답합니다. 안내 글은 「칸 장부의 ❓ 물어볼 것」으로 고쳤습니다.</td></tr>
+<tr><td class="n">F8</td><td>서류 6장을 읽었는데 장부 맨 위가 「아직 서류 사실을 모은 적이 없습니다」</td><td>장부 바탕(서류 사실·맞대기)을 남기는 곳이 셋뿐입니다. 교차검증(③ 칸 채우기 안, <code>Code.js</code> 32148), 폴더 변동 감시, [서류 사실 다시 모으기] 단추입니다.<br>
+「서류 읽기」(①②)는 이 셋 어디에도 닿지 않습니다. ③도 270초를 넘기면 교차검증을 건너뛰고, 다시 모으도록 줄을 세우지도 않았습니다.</td><td class="ok">고침 — 서류 읽기 끝에 바로 모읍니다. 시간이 모자라면 다음 1분 틱에 모읍니다. ③에서 건너뛸 때도 줄을 세웁니다. (운영 실행으로는 아직 확인 못 함)</td></tr>
+<tr><td class="n">F9</td><td>머리줄 「질문 4」를 눌러도 아무 데로 안 감</td><td><code>script.html</code> nxLedgerStripRender_ — 「질문 N」이 누를 수 없는 빨간 글자였습니다. 「장부에서 답하기」 단추도 마지막에 보던 탭(보통 ⓪ 사건 흐름)을 열었습니다.</td><td class="ok">고침 — 둘 다 칸 장부의 물어볼 것으로 바로 내려갑니다(goToLedger_ ask)</td></tr>
+</table></div>
+
+<h3>넥스 길(이 사건 처리하자)</h3>
+<p>대화창 넥스는 <code>AiLeadLive.js</code> nxCaseChatGuide_ 지침에 따라 정해진 순서 없이 낱개 도구를 부릅니다(case_status → case_read → calc_fill → case_ledger → 판정·조회·시험 계산 → advice → report_parts). 물음은 case_ledger do=ask와 close_question으로 다룹니다.<br>
+위 F7은 대화 넥스가 아니라 <b>뒤에서 혼자 도는 물음 풀기</b>(cpNexQuestionWake_)의 문제입니다. 대화 넥스는 가상 사건에서도 물음을 볼 수 있습니다.<br>
+다만 F2의 「새 집 12억이 송파 취득가액 추정」은 넥스도 같은 장부를 읽으니 그 숫자로 계산했을 수 있습니다. 10:25에 시작한 넥스 일감 결과는 운영에서 보셔야 합니다 → 3절.</p>
+
+<h2>2. 다른 업무 — 같은 잣대로 따라간 것</h2>
+<p><small>조사 일꾼 둘이 코드를 읽어 찾은 것입니다. <b>「확인함」</b>은 제가 그 코드 줄을 다시 열어 맞는지 본 것입니다. 나머지는 일꾼 보고를 그대로 옮겼습니다(줄 번호는 고치기 전 기준이라 몇 줄 밀렸을 수 있음).</small></p>
+
+<h3>상속·증여</h3>
+<div class="wrap"><table>
+<tr><th>단계</th><th>끊기는 모습</th><th>원인</th><th>처리</th></tr>
+<tr><td>계산</td><td>장부 상속 계산(📒 시험 계산·넥스 계산)에 상속개시일이 안 들어감 → 옛 상속도 지금 기준 공제·율, 배우자상속재산분할기한 늘 빈칸</td><td><code>CaseLedger.js</code> ledgerInhInput_ — 증여는 giftDate를 넘기는데 상속은 날짜가 없음 <b>(확인함)</b></td><td class="ok">고침(기준일 → dateOfDeath). 엔진 회귀 174건 같음</td></tr>
+<tr><td>계산</td><td>장부 상속 계산이 화면 계산과 다름 — 간주상속재산(보험금·퇴직금)·금융채무 차감·추정상속(§15)이 빠짐</td><td><code>CaseLedger.js</code> 547~622 ↔ <code>Code.js</code> tc_ruleInheritanceFacts_(36716~)</td><td class="mid">고치지 않음 — 칸을 새로 만들고 세법 판단이 걸림 → 4절 ②</td></tr>
+<tr><td>장부</td><td>증여 「증여자와의 관계」를 「아버지」「부친」처럼 글로 적으면 말없이 「기타」로 계산(증여재산공제 0)</td><td><code>CaseLedger.js</code> 582 정규식, 이 칸이 고르기 칸 목록에 없음 <b>(확인함)</b></td><td class="mid">고치지 않음 — 「아버지」가 증여자를 말하는지 수증자를 말하는지 글만으로 갈리지 않음 → 4절 ③</td></tr>
+<tr><td>계산→보고서</td><td>사전증여 증여세액공제(§28)가 장부 계산에서 0원. 「이어 계산」으로 넣으면 경우(안)이 되어 보고서 최종세액에 안 들어감</td><td><code>CaseLedger.js</code> 623·811, <code>reportwriter.html</code> 1017</td><td class="mid">고치지 않음(중간 크기) → 4절 ②</td></tr>
+<tr><td>장부</td><td>상속인별 줄(i.heir#)을 시스템이 안 만들어 배우자공제가 늘 최소 5억, 상속인별 세액 없음</td><td><code>CaseLedger.js</code> 562~603, <code>ledger.html</code> 줄 더하기 목록</td><td class="mid">고치지 않음(중간)</td></tr>
+<tr><td>장부→화면</td><td>상속은 ⚡칸 채우기가 장부 값을 안 가져와 화면 계산과 📒 계산이 갈림</td><td><code>taxcalc.html</code> 17059 — 장부 쓰는 길과 화면 서류 규칙 길이 둘</td><td class="bad">구조 — 계산 입력을 한 길로 할지 정하실 일 → 4절 ②</td></tr>
+<tr><td>서류</td><td>「상속재산분할협의서」가 이름 판정에서 「손실보상 협의서」로 보임</td><td><code>CaseLedger.js</code> 50 /협의서/ <b>(확인함)</b></td><td class="ok">고침(분할협의서·가족관계증명서를 먼저 검)</td></tr>
+<tr><td>메모</td><td>「상속재산 10억」「보험금」「사전증여 1억(2018)」「인수채무 3억」이 추정으로 안 감</td><td><code>CaseLedger.js</code> LEDGER_HYP_CALC_</td><td class="mid">고치지 않음 — 사전증여인지 이번 증여인지 가르는 것은 판단</td></tr>
+<tr><td>사후관리</td><td>배우자분할기한·연부연납·가업영농 사후관리·10년 합산 끝나는 날을 사건에서 볼 곳이 없음</td><td><code>Followup.js</code>는 사건 사후관리가 아니라 개발용 할 일 목록. 사건 기한은 법정일·판정 기한·넥스 followup_note뿐</td><td class="bad">구조 → 4절 ④</td></tr>
+<tr><td>기한</td><td>상속 법정일이 국외 주소여도 6개월, 쉬는 날 안 미룸</td><td><code>Code.js</code> 19927·20316~</td><td class="mid">고치지 않음 — 국외 주소 여부는 사실 판단</td></tr>
+</table></div>
+
+<h3>세무조사·불복경정·가족법인</h3>
+<div class="wrap"><table>
+<tr><th>단계</th><th>끊기는 모습</th><th>원인</th><th>처리</th></tr>
+<tr><td>등록→계산→보고서</td><td>불복·조사 사건(세목 objection)에 「다투는 세목」을 골라도 아무 데도 안 쓰임. 장부에서 양도로 계산해 저장해도 ④·⑤ 결과에는 「대상 세목이 아님」, 저장본도 안 보임</td><td><code>casehandling.html</code> 157 objTaxItem(서버에서 읽는 곳 없음), <code>Code.js</code> 37221·29612</td><td class="bad">구조 — 세목 칸 하나가 「업무 종류」와 「원 세목」 두 뜻을 함께 짐 → 4절 ⑤</td></tr>
+<tr><td>등록→사후관리</td><td>이의신청 의뢰서로 등록하면 법정일이 「오늘+7일」 임시값. 결정통지 수령일이 기준일로 안 감</td><td><code>memo.html</code> 2179~2222(objection 대응표 없음), <code>Code.js</code> 20296~</td><td class="mid">고치지 않음 — 4절 ⑤와 같이 정할 것</td></tr>
+<tr><td>서류</td><td>양도 세목 + 업무유형 「세무조사」인데 조사 통지서가 아직 안 읽히면 당초 신고서가 「발생문서 — 입력에서 뺌」</td><td><code>Code.js</code> caseProcIsAmend_ 정규식에 조사 없음 <b>(확인함)</b></td><td class="ok">고침(업무유형이 조사면 경정·불복처럼)</td></tr>
+<tr><td>서류</td><td>못 정한 서류의 역할 후보에 조사 통지서·과세예고통지서·고지서·경정청구서·청구서·문답서·법인등기부·정관·주주명부·재무제표가 없어 「기타」뿐</td><td><code>CaseLedger.js</code> 46 LEDGER_DOC_ROLES_ <b>(확인함)</b></td><td class="ok">고침(고를 이름만 더함 — 칸으로 가는 규칙은 없음)</td></tr>
+<tr><td>보고서</td><td>조사 의견서·소명서·경정청구서·해명서 종류가 없어 「세무조사서」 같은 이름이 청구취지 틀로 나옴. 넥스가 의견서로 저장하면 거절됨</td><td><code>Code.js</code> REPORT_KINDS_(20572~), <code>AiLeadLive.js</code> 463</td><td class="mid">고치지 않음 — 어떤 종류를 둘지 정하실 일 → 4절 ⑥</td></tr>
+<tr><td>보고서</td><td>불복청구서 처분청·처분일·고지세액이 사건개요에 있어도 매번 빈칸</td><td><code>reportwriter.html</code> 1307~</td><td class="mid">고치지 않음(작음 — 4절 ⑤ 결정 뒤 같이)</td></tr>
+<tr><td>사후관리</td><td>이의신청 결정 뒤 심판청구 90일이 안 이어짐. 업무유형을 심판청구로 바꾸면 같은 기준일+90일로 이미 지난 날짜</td><td><code>Code.js</code> 21243~, <code>casehandling.html</code> 171</td><td class="bad">구조·세법(§61②·§68②) → 4절 ④</td></tr>
+<tr><td>가족법인</td><td>가족 지도 미래 설계가 늘 개인 간 증여로만 계산 — 받는 쪽이 법인이어도 개인 증여세</td><td><code>FamilyMap.js</code> 243·258~269</td><td class="mid">고치지 않음 — 법인 설계 계산(§45의5 등)은 세법·구조</td></tr>
+<tr><td>가족법인</td><td>업무유형 「가족법인·가업승계」가 자문으로 안 잡혀 경우별 계산 안내·자문 보고서 기본이 안 나옴</td><td><code>Code.js</code> caseProcIsAdvisory_(28132)</td><td class="mid">고치지 않음 — 업무유형 이름 목록을 정하신 뒤</td></tr>
+</table></div>
+
+<h2>2-1. PC 세션이 이어서 확인한 것(11-27 11시대)</h2>
+<div class="box">
+<ul>
+<li><b>화면 고침 실제로 눌러 봄</b> — 이 가지를 합친 화면을 흉내 서버(진짜 서버 코드)에 띄워, 진행 중 사건(물음 2개, 넥스 차례)에서 머리줄 <b>「질문 2」</b>를 누르니 칸 장부의 「🤖 넥스가 먼저 보는 물음 2」 표로 바로 내려갔고, 처리 시한 칸에 날짜를 넣고 「넣기」를 누르자 확정(주인 세무사님)으로 옮겨지고 머리줄이 「질문 1」로 줄었습니다. 보류 사건은 같은 물음이 「❓ 물어볼 것 2」(세무사님 차례)로 바로 보였습니다.</li>
+<li><b>회귀 다시</b> — 엔진 174건 숫자 바뀜 0 · 판정 20 · 가족 · 판정-장부 고리 · 넥스 도구 검문(82개) · 서버 화면 파일 점검 모두 통과(PC에서 드라이브 파일까지 있는 상태로).</li>
+<li><b>넥스 일감 결과</b> — 운영 대화 기록(_AI대화기록)에서 읽음: 일시적 2주택 특례 충족, 12억 초과분 과세 납부세액 12,996,878원(지방소득세 포함), 비과세 안 될 때 301,234,659원과 견줌. <b>송파 취득가액은 분양계약서의 6.2억</b>으로 넣어(새 집 12억 아님) 걱정하던 잘못은 일어나지 않았습니다. 여쭐 것 6가지를 묶어 물었고 보고서는 「쓰라고 하시면」으로 멈췄습니다. 납세자 이름은 「가상전수양도로 넣을까요?」라고 물었는데, 서류 당사자는 가상갑동이라 후보를 잘못 짚었습니다(검토대상).</li>
+<li><b>답하신 뒤 처리 안 된 항목</b> — 대시보드 「답하실 것」에 세무사님이 11-12에 답하신 항목 7개가 15일째 그대로였습니다. 그중 배우자상속공제 장례비(「법대로 하라」)는 지침 「상속_배우자상속공제」 판단 대기 두 곳을 고쳐 닫았습니다. 나머지(법인세·종합소득세 도구, work 은퇴, 의뢰서 연결, 국외자산 별지 11호, 같은 전화번호, 강정화 재입력)는 아래 4절과 함께 정할 일·만들 일로 남았습니다.</li>
+</ul>
+</div>
+
+<h2>3. 세무사님 몫(운영에서만 볼 수 있는 것)</h2>
+<ol>
+<li><b>넥스 일감 결과</b> — 10:25 「이 사건 처리하자」(가상전수양도) 넥스 대화의 끝 결과를 봐 주세요. 특히 송파 집 취득가액을 12억(새 집 값)으로 계산하지 않았는지 보시면 됩니다. 사건을 만들 때 그 추정이 이미 들어가 있었을 수 있습니다. 고친 판은 다음 사건부터 그 추정을 넣지 않고 여쭙니다. 이미 들어간 추정은 장부에서 지우거나 서류 값으로 바꾸셔야 합니다.</li>
+<li><b>분양계약서 PDF</b> — 그 파일을 고친 판으로 「서류 읽기」 해서 종류가 「분양(공급)계약서」로 나오는지 봐 주세요. 클라우드에서는 실제 글을 못 봤습니다.</li>
+<li><b>F3 직결 길</b> — 서류 읽기 상자에 「⚡→첫 결과 … 직결」 줄과 ③ 칸 채우기 줄이 같이 보였다면, 직결 서비스 판이 ③까지 돌린 것입니다. 그 판을 고칠지 정해 주세요.</li>
+<li><b>올리기</b> — 「커푸배」 하실 때 이 가지(b8ae22e)를 main에 합치고, clasp push·deploy(기존 배포 ID), <code>node tools/build-app.js</code>(이미 돌림), <code>node tools/mark-deployed.js</code> 순서로 하시면 됩니다.</li>
+</ol>
+
+<h2>4. 정하실 것(권장안)</h2>
+<ol>
+<li><b>자문 사건 받을 증빙 틀</b> — 권장: 자문도 신고와 같은 틀을 깝니다. 다만 아직 하지 않은 거래의 서류(양도 전 자문의 양도 계약서 등)는 「받을 것」이 아니라 「계약하면」으로 두어 고객창구로 나가지 않게 합니다. 불복·경정·조사 틀은 의뢰서 「구비서류 체크」를 그대로 씁니다.</li>
+<li><b>상속·증여 계산 길 하나로</b> — 권장: 장부 하나를 화면·넥스 계산의 입력으로 삼습니다(간주상속재산·금융채무·추정상속·사전증여 낸 세액 칸을 장부에 둠). 화면 서류 규칙 길은 장부에 적는 쪽으로 돌립니다. 큰 작업이라 따로 계획서로 하겠습니다.</li>
+<li><b>증여 관계 칸</b> — 권장: 고르기 칸(배우자·직계존속·직계비속·기타친족·기타)으로 바꾸고, 글로 들어오면 넣지 않고 여쭙니다.</li>
+<li><b>사건 사후관리 자리</b> — 권장: 사건마다 「기한 장부」(신고·납부·분할기한·연부연납·감면 사후관리·합산 끝·청구기한)를 두고, 대시보드·달력은 그것만 읽게 합니다. 지금은 법정일·판정 기한·넥스 메모 세 곳에 흩어져 있습니다.</li>
+<li><b>불복·조사 사건의 원 세목</b> — 권장: 세목 칸은 원 세목(양도·증여·상속·법인)으로 두고, 불복·조사·경정은 업무유형으로만 둡니다. 계산·보고서·기한이 그 둘을 함께 읽게 합니다.</li>
+<li><b>보고서 종류</b> — 조사 대응 의견서·소명서·경정청구서를 종류로 둘지 정해 주세요.</li>
+</ol>
+
+<h2>5. 고친 것과 시험</h2>
+<div class="wrap"><table>
+<tr><th>파일</th><th>바꾼 것</th></tr>
+<tr><td><code>Code.js</code></td><td>메모 가설(분양·입주·전입·이사·거주, 소수점 억, 줄 넘어 잇지 않음) · 서류 읽기 끝 장부 바탕 모으기와 시간 넘김 줄 세우기 · 넥스 차례 판정을 ledgerNexSkip_로 · 분양계약서 당사자 칸 · 업무유형 조사 → 당초 신고서 입력</td></tr>
+<tr><td><code>CaseLedger.js</code></td><td>ledgerNexSkip_ 새로 · ledgerQRead_·ledgerView_가 그것을 씀 · 분양가 → 취득가액 쪽 말 · 소수점 억 · 집 둘 이상이면 취득가액·취득일 추정 대신 여쭘 · 분할협의서·가족관계증명서 이름 판정 · 서류 역할 10개 더함 · 상속 계산에 상속개시일</td></tr>
+<tr><td>화면 <code>ledger.html</code>·<code>script.html</code>·<code>aichat.html</code>·<code>manual.html</code></td><td>넥스 차례 물음 표·바로 답하기 · 「질문 N」·「장부에서 답하기」 → 물어볼 것으로 · 「④ 물어볼 것」 글 바로잡음 · 장부 바탕 없을 때 안내 글. <code>app/index.html</code> 다시 조립</td></tr>
+</table></div>
+<p>시험 결과:</p>
+<ul>
+<li>서버 파일 모두 문법 검사 통과.</li>
+<li><code>node tools/build-app.js</code> 조립됨(7.55MB). <code>check-clasp-trim</code> 통과. 실명 의심 4곳은 고치기 전과 같습니다(원래 있던 것).</li>
+<li>엔진 회귀 174건 「숫자가 바뀐 경우 0건 · ✗ 0건」. 판정 회귀 20건, 가족 회귀, 판정-장부 고리, 넥스 도구 검문 모두 통과.</li>
+<li><code>sys-audit-check</code>·<code>knowhow-check</code>는 PC 드라이브 파일이 없어 고치기 전에도 같은 자리에서 멈춥니다.</li>
+<li>직접 돌려 본 것:
+  <ul>
+  <li>메모 3가지 → 가설·추정 결과(새 집 12억은 여쭘으로, 단일 거래 메모는 예전처럼 추정)</li>
+  <li>분양계약서 모양 6가지 → 모두 계약서</li>
+  <li>가상·진행·대기 사건 → 물음 차례(세무사님·넥스·세무사님)</li>
+  <li>분할협의서·보상금 협의서 이름 판정</li>
+  </ul></li>
+</ul>
+
+<h2>6. 끝내기 전 확인</h2>
+<ul>
+<li><b>무엇으로 따라가 봤나:</b> 위 함수들을 node에 올려 직접 돌렸습니다. 다시 돌려도 같은 결과입니다(시험 글은 정해 둔 가상 글). 회귀 도구는 저장소에 있는 것 그대로입니다.</li>
+<li><b>보지 못한 것:</b> 운영 화면(로그인), 실제 사건 PDF 글, 직결 서비스 판, 넥스 일감 결과.<br>
+F8은 코드 길로만 확인했습니다. 실제 서류 읽기에서 바탕이 모이는지는 운영에서 봐야 합니다.<br>
+화면 변경(넥스 물음 표, 질문 바로가기)은 조립만 했고 브라우저로 눌러 보지는 못했습니다(로그인이 필요해서).</li>
+<li><b>고치려던 것 말고 바뀐 것:</b> 없습니다. 조립 파일 <code>app/index.html</code>만 함께 다시 만들어졌습니다. 2절의 「고침」 넷(상속개시일·분할협의서·조사 업무유형·서류 역할)은 이번 잣대로 찾은 확실한 결함이라 함께 고쳤습니다.</li>
+</ul>
+</body></html>
