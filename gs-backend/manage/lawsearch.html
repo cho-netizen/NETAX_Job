@@ -220,6 +220,13 @@
       return;
     }
     lsCurrentCase = c;
+    // [2026.11.27 사용자 관점 점검] 「조문으로 찾아보기」 법령을 사건 세목에 맞춰 시작(상속 사건에서도 늘 「소득세법」이던 것) — 손으로 바꾼 뒤엔 그대로
+    try {
+      var artSel_ = document.getElementById('lsiArtLaw');
+      var lawFor_ = { inheritance: '상속세 및 증여세법', gift: '상속세 및 증여세법', transfer: '소득세법', objection: '국세기본법' }[String(c.세목 || '')];
+      if (artSel_ && lawFor_ && !artSel_.dataset.userSet && Array.prototype.some.call(artSel_.options, function(o){ return o.value === lawFor_; })) artSel_.value = lawFor_;
+      if (artSel_ && !artSel_.dataset.bound_){ artSel_.dataset.bound_ = '1'; artSel_.addEventListener('change', function(e){ if (e.isTrusted) artSel_.dataset.userSet = '1'; }); }
+    } catch (e) {}
     lsBodyEl.innerHTML =
       '<div class="card">' +
       '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">' + escapeHtml(c.사건명) + '</div>' +

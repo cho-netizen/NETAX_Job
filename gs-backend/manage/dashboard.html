@@ -475,8 +475,10 @@
       var today0 = (typeof workTodayStr_ === 'function') ? workTodayStr_() : new Date().toISOString().slice(0, 10);
       var needN = all.filter(function(b){ return b.status === '확정' && !b.caseId && kindOf(b) !== 'stale' && ((!b.result && b.reservedDate && b.reservedDate < today0) || (b.linkCandidates && b.linkCandidates.length)); }).length;
       var needHtml = needN ? '<div style="margin-top:6px;"><a href="#" data-bk-need="1" style="color:#b3261e; font-size:13px;">🟠 결과를 적거나 사건에 이을 확정 예약 ' + needN + '건 — 예약·상담에서 보기</a></div>' : '';
-      dashCardShow_(box, list.length > 0 || needN > 0);
-      if (!list.length){ box.innerHTML = needHtml; return; }
+      // [2026.11.27 사용자 관점 점검] 결과 적을 확정 예약 수는 맨 위 「예약 결과 적기」 칩이 이미 보임 — 이 카드는 이름대로 대기 신청만(같은 사실을 두 번 안 보임)
+      needHtml = '';
+      dashCardShow_(box, list.length > 0);
+      if (!list.length){ box.innerHTML = ''; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th></tr>';
       list.forEach(function(b){
         html += '<tr data-bk-row="' + b._rowIndex + '" style="cursor:pointer;" title="눌러서 예약·상담에서 승인·사건 시작"><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
@@ -517,7 +519,7 @@
         html += '<tr data-pay-case="' + esc(l.사건ID || '') + '" style="cursor:pointer;" title="' + (l.사건ID ? '눌러서 이 사건 개요로' : '눌러서 수금 화면으로') + '"><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
           (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + (l.사건ID ? '' : ' · 사건 미연결(수금 화면에서 사건을 연결할 수 있습니다)') + '">' + esc(l.수취증빙) +
           // [2026.10.29] 세무사님 "사건미연결이라는 메시지가 필요해 보인다" — 사건 없는 상담 영수증도 기록되게 하면서, 사건이 안 붙은 수금은 이 카드에서도 보이게
-          (l.사건ID ? '' : ' <span style="color:var(--sub); font-size:11px;">· 사건 미연결</span>') + '</td></tr>';
+          (l.사건ID ? '' : ' <span style="color:var(--sub); font-size:11px;">' + (l.수취증빙 ? '· ' : '') + '사건 미연결</span>') + '</td></tr>'; // [2026.11.27] 증빙 없으면 「· 」로 시작하던 것
       });
       html += '</table></div>' + noAmtLine;
       box.innerHTML = html;

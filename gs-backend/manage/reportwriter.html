@@ -364,9 +364,10 @@
     </div>
     <article class="doc-appeal" id="renderOut"></article>
     <div id="emptyState" style="display:none;">
-      불러온 문서가 없습니다.<br><br>
-      상단의 <b>＋ 파일 불러오기</b>로 .md 파일을 추가하거나,
-      <b>＋ 새 문서</b>로 빈 문서를 만들어 주세요.
+      <!-- [2026.11.27 사용자 관점 점검] 예전 글의 「＋ 파일 불러오기」「＋ 새 문서」 단추는 지금 없음 — 지금 단추 이름으로 -->
+      열린 문서가 없습니다.<br><br>
+      위 <b>＋</b>(문서 추가)를 누르면 문서 종류(종합검토서·개별검토서·자문보고서 …)를 골라 새로 만들거나 파일을 불러옵니다.<br>
+      이 사건의 의뢰서·상담기록은 왼쪽 위 <b>문서</b> 상자에서 고르면 열립니다.
     </div>
   </div>
 </div>
@@ -636,6 +637,10 @@ function refreshDocSelect(){
       caseGroup.appendChild(opt);
     });
     const hasAny = caseGroup.children.length > 0;
+    // [2026.11.27] 아무 문서도 안 연 채면 상자에 첫 문서(의뢰서)가 고른 것처럼 보이던 것 — 「문서 고르기」 자리 표시
+    if (hasAny && !Array.prototype.some.call(caseGroup.children, function(o){ return o.selected; })){
+      const ph = document.createElement('option'); ph.value = ''; ph.textContent = '— 문서 고르기 —'; ph.disabled = true; ph.selected = true; sel.appendChild(ph);
+    }
     if (hasAny) sel.appendChild(caseGroup);
     else {
       const opt = document.createElement('option');
@@ -854,7 +859,8 @@ async function rwLoadFileById_(fileId, loadOpts){
   } else {
     let docType = rwGuessDocTypeFromFilename_(name);
     // [2026.10.20] 설정 🧭 시스템 관리에서 연 지침 파일(마스터 프로필 등)은 보고서가 아니라 문서유형을 묻지 않는다(기본 모양)
-    if (!docType && !(loadOpts && loadOpts.noDocTypeAsk)) docType = await rwAskDocTypeForFile_(rawName);
+    // [2026.11.27] 의뢰서(의뢰서_○○)는 보고서가 아니라 문서유형을 묻지 않는다(기본 모양)
+    if (!docType && !(loadOpts && loadOpts.noDocTypeAsk) && !/^의뢰서[_ ]/.test(name)) docType = await rwAskDocTypeForFile_(rawName);
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
     doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content, rwDriveSaved_: content };
     if (docType) doc.docType = docType;
@@ -3321,7 +3327,7 @@ function rwRenderCaseReports_(caseId){
       // 사건 폴더 루트에 있는 .md 파일(예: 메모장의 "OOO사건.md") — 내부보고서 폴더 소속이
       // 아니라는 걸 알 수 있게 아이콘을 다르게 둔다.
       rootFiles.filter(function(f){ return /\.md$/i.test(f.name); }).forEach(function(f){
-        options.push({ fileId: f.id, name: f.name.replace(/\.md$/i, ''), icon: '🗒', title: '사건 폴더에 직접 있는 문서(예: 메모장에서 저장된 상담기록) — 편집' });
+        options.push({ fileId: f.id, name: f.name.replace(/\.md$/i, ''), icon: '🗒', title: '사건 폴더에 직접 있는 문서(예: 메모장에서 저장된 상담기록) — 편집', root: true });
       });
       rwCaseFileOptions_ = options;
       refreshDocSelect();
@@ -3331,8 +3337,11 @@ function rwRenderCaseReports_(caseId){
         //  — 처리개요 등에서 파일을 바로 여는 중(rwLoadingFileId_)이면 그 파일이 이 사건 꼬리표를 달고 열리므로 건드리지 않는다
         var curIsCase = rwDocVisibleForCase_(getSelected(), caseId);
         if (!curIsCase && !rwLoadingFileId_){
-          if (options.length){
-            var pick = options.filter(function(o){ return /종합검토서/.test(o.name); })[0] || options[0];
+          // [2026.11.27 사용자 관점 점검] 저절로 여는 것은 「보고서」 폴더 문서만 — 보고서가 아직 없는 새 사건에서 의뢰서(사건 폴더 바로 아래)를 열고
+          //  「문서유형을 골라주세요」를 띄우던 것. 의뢰서·상담기록은 문서 상자에서 고를 때만 연다.
+          var repOpts = options.filter(function(o){ return !o.root; });
+          if (repOpts.length){
+            var pick = repOpts.filter(function(o){ return /종합검토서/.test(o.name); })[0] || repOpts[0];
             rwLoadFileById_(pick.fileId);
           } else {
             selectedId = null;

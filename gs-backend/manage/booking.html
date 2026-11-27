@@ -168,7 +168,9 @@
           '<button type="button" class="btn danger" style="white-space:nowrap;" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
       } else if (b.status === '확정' && !b.caseId){
         // [2026.10.30] 예전 "예약 취소" 단추는 결과 적기의 "사무소취소"로 흡수(취소 문자는 거기서 고름)
-        actions = '<button type="button" class="' + (b._kind === 'needResult' ? 'save-btn' : 'btn') + '" style="white-space:nowrap;" onclick="bookingOpenResult_(' + b._rowIndex + ')">결과 적기</button>';
+        // [2026.11.27 사용자 관점 점검] 아직 오지 않은 예약에 「결과 적기」는 뜻이 안 맞음 — 그때 할 일(취소·일정변경) 이름으로
+        var upcoming_ = !(b.reservedDate && b.reservedDate < bookingTodayStr_()) && !b.result;
+        actions = '<button type="button" class="' + (b._kind === 'needResult' ? 'save-btn' : 'btn') + '" style="white-space:nowrap;" onclick="bookingOpenResult_(' + b._rowIndex + ')"' + (upcoming_ ? ' title="아직 오지 않은 예약 — 고객취소·사무소취소·일정변경을 적습니다"' : '') + '>' + (upcoming_ ? '취소·변경' : '결과 적기') + '</button>';
       }
       var caseCell = '-';
       if (b.caseId){
@@ -216,7 +218,7 @@
     overlay.className = 'modal-overlay';
     overlay.style.zIndex = '9990';
     overlay.innerHTML = '<div class="modal-panel" style="width:min(' + (width || 520) + 'px, 94vw);">' +
-      '<div class="modal-head"><span>' + esc(title) + '</span><button type="button" class="ghost-btn sm" data-bk-close="1">닫기</button></div>' +
+      '<div class="modal-head"><span>' + esc(title) + '</span><span class="modal-close" title="닫기" role="button" tabindex="0" data-bk-close="1">✕</span></div>' + // [2026.11.27] 다른 창과 같은 흰 ✕(남색 위 남색 「닫기」는 안 보였음)
       '<div class="modal-body" id="bkModalBody">' + bodyHtml + '</div></div>';
     document.body.appendChild(overlay);
     overlay.addEventListener('click', function(e){ if (e.target === overlay || e.target.closest('[data-bk-close]')) bookingCloseModal_(); });

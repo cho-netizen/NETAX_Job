@@ -63,7 +63,7 @@
       <button type="button" class="nxai-icon nxai-fold" id="nxAiPvShow" title="미리보기 칸 열기">«</button>
     </div>
     <div class="nxai-body" id="nxAiBody">
-      <div class="nxai-empty" id="nxAiEmpty">무엇이든 지시하세요 — 사건 자료 확인, 세액계산, 작업·고객 등록, 보고서 작성까지 job의 기능을 대신 실행합니다.<br>사건을 연결하면 그 사건 폴더를 기준으로 일합니다.</div>
+      <div class="nxai-empty" id="nxAiEmpty">무엇이든 지시하세요 — 사건 자료 확인, 세액계산, 작업·고객 등록, 보고서 작성까지 job의 기능을 대신 실행합니다.<br>사건 화면을 열면 그 사건 대화로 저절로 바뀌고, 그 사건 폴더를 기준으로 일합니다.</div>
     </div>
     <div class="nxai-attachbar" id="nxAiAttachBar"></div>
     <div class="nxai-input-row">
@@ -133,7 +133,7 @@
         <button type="button" role="menuitem" data-fab="nxPresentBtn">🖥 고객에게 보여주기</button>
       </div>
     </div>
-    <div class="nxai-pv-files" id="nxAiPvFiles"><div class="nxai-muted">사건을 연결하면 그 사건 폴더의 자료가 여기 보입니다.</div></div>
+    <div class="nxai-pv-files" id="nxAiPvFiles"><div class="nxai-muted">사건 화면을 열면(또는 넥스에게 사건 이름을 말하면) 그 사건 폴더의 자료가 여기 보입니다.</div></div>
     <div class="nxai-pv-view" id="nxAiPvView" hidden>
       <div class="nxai-pv-viewhead">
         <b id="nxAiPvName">—</b>
@@ -509,6 +509,11 @@
   .nxai.mode-side .nxai-head{ border-bottom-color:rgba(255,255,255,.14); }
   .nxai.mode-side .nxai-title{ color:var(--gold-light); font-size:13px; }
   .nxai.mode-side .nxai-case-chip{ font-size:11.5px; }
+  /* [2026.11.27 사용자 관점 점검] 옆 창(320px)에서 대화 제목·「💬 일반 대화/🔗 사건」 표시가 둘 다 「🤖…」「💬…」로 잘려 지금 어느 대화인지 안 보였음
+     — 옆 창에선 어느 대화인지 표시를 남은 폭 전부로(대화마다 사건 하나라 제목과 같은 사실, 제목 고치기는 ⤢ 크게에서) */
+  .nxai.mode-side .nxai-title{ display:none; }
+  .nxai.mode-side .nxai-head{ flex-wrap:wrap; row-gap:6px; }
+  .nxai.mode-side .nxai-case-chip{ order:-1; flex:1 1 100%; max-width:none; text-align:left; } /* 단추 다섯이 폭을 거의 다 써서 — 표시는 윗줄 한 줄 전부 */
   .nxai.mode-side .nxai-body{ padding:12px; }
   .nxai.mode-side .nxai-msg.ai{ background:#f0f2f6; }
   .nxai.mode-side .nxai-msg.me{ background:rgba(200,162,68,.22); color:#fff; max-width:100%; }
@@ -1170,7 +1175,7 @@
   }
   function nxAiPvRenderEmpty_(){
     nxAiPvFolder = null;
-    nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">사건을 연결하면 그 사건 폴더의 자료가 여기 보입니다.</div>';
+    nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">사건 화면을 열면(또는 넥스에게 사건 이름을 말하면) 그 사건 폴더의 자료가 여기 보입니다.</div>';
   }
 
   // where = {folderId} 또는 {path}

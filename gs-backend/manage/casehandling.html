@@ -1295,7 +1295,7 @@
         if (fa && fa.n != null) h += '<div style="margin-top:6px;">' + (fa.n ? '💰 금융거래 — 정하실 것 <b>' + fa.n + '곳</b> <span style="color:var(--sub);">(넥스 답 ' + (fa.nex || 0) + ' · GAS 답 ' + (fa.gas || 0) + ' · 빈칸 ' + (fa.빈칸 || 0) + ')</span>' : '💰 금융거래 — 정하실 것 없음') + btn('fin', '금융거래 창 ›') + '</div>';
         // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태
         var w = r.서류변동 || null;
-        if (w) h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(다음 틱·개요 새로 고침 때)') + '</div>';
+        if (w) h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(1분 안에 저절로·개요를 새로 열 때)') + '</div>';
         if (!h) h = '<div style="color:var(--sub);">GAS가 알려 드릴 새 사실이 없습니다.</div>';
         nowEl.innerHTML = h;
         // 🤖 넥스 줄 — 넥스가 남긴 말·넥스 미리 읽기 스위치·넥스 창(GAS 사실과 눈으로 갈림)

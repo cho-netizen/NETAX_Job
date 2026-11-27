@@ -82,7 +82,7 @@
   function tgRender_(){
     var f = document.getElementById('tgFieldFilter').value, list = TG_.items.filter(function(x){ return !f || x.분야 === f; });
     var tb = document.getElementById('tgRows');
-    if (!list.length){ tb.innerHTML = '<tr><td colspan="3" style="color:var(--sub);">사례가 없습니다 — 「새 사례」로 적거나, 사건 작업 머리줄 「건전세정 사례로」로 보내세요.</td></tr>'; return; }
+    if (!list.length){ tb.innerHTML = '<tr><td colspan="3" style="color:var(--sub); white-space:normal;">사례가 없습니다 — 「새 사례」로 적거나, 사건 작업 머리줄 「건전세정 사례로」로 보내세요.</td></tr>'; return; }
     tb.innerHTML = list.map(function(x){
       return '<tr data-tg-id="' + tgEsc_(x.id) + '" class="' + (TG_.cur && TG_.cur.id === x.id ? 'on' : '') + '"><td title="' + tgEsc_(x.제목) + '">' + tgEsc_(x.제목) + '</td><td>' + tgEsc_(x.분야) + '</td><td title="' + tgEsc_(x.적은날 + (x.적은이 ? ' · ' + x.적은이 : '')) + '">' + tgEsc_(String(x.적은날).slice(0, 10)) + '</td></tr>';
     }).join('');

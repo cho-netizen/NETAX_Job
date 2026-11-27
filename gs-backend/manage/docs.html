@@ -768,6 +768,8 @@
   function docsRenderEvidenceList_(c, source, containerId, submissionStatus){
     var box = document.getElementById(containerId);
     if (!box) return;
+    // [2026.11.27] 접힌 증빙 칸 제목의 건수도 같이 새로(추가·삭제 뒤 「아직 없음」이 남던 것)
+    try { var evSum_ = document.querySelector('#docsEvBox > summary'); if (evSum_){ var n_ = (c.증빙목록 || []).length; evSum_.innerHTML = '📋 ' + escapeHtml(c.사건명) + ' — 증빙' + (n_ ? ' ' + n_ + '건' : ' <span style="font-weight:400; color:var(--sub);">(자동확보·추가확보·요청자료 — 아직 없음, 눌러서 적기)</span>'); } } catch (e) {}
     var entries = (c.증빙목록 || []).filter(function(e){ return e.source === source; });
     if (!entries.length){ box.innerHTML = '<div class="log-empty">없습니다.</div>'; return; }
     box.innerHTML = '';
@@ -917,8 +919,11 @@
         addrAssetList.map(function(a, i){ return '<option value="' + i + '">' + escapeHtml(a.assetLocation || ('물건' + (i + 1))) + '</option>'; }).join('') +
         '</select><br>'
       : '';
+    // [2026.11.27 사용자 관점 점검] 증빙 칸(자동확보·추가확보·요청자료)이 비어 있으면 접어 둔다 — 새 사건에서 입력칸 세 줄이 위 절반을 차지해
+    //  정작 사건 폴더 파일 목록이 네 줄짜리 작은 상자로 밀렸음. 한 건이라도 있으면 예전처럼 펼친 채로
+    var evN_ = (c.증빙목록 || []).length;
     panel.innerHTML =
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 ' + escapeHtml(c.사건명) + ' — 증빙</div>' +
+      '<details id="docsEvBox"' + (evN_ ? ' open' : '') + '><summary style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px; cursor:pointer;">📋 ' + escapeHtml(c.사건명) + ' — 증빙' + (evN_ ? ' ' + evN_ + '건' : ' <span style="font-weight:400; color:var(--sub);">(자동확보·추가확보·요청자료 — 아직 없음, 눌러서 적기)</span>') + '</summary>' +
       '<div style="margin-bottom:14px;">' +
       '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">자동확보</div>' +
       addrPickerHtml +
@@ -943,7 +948,7 @@
       '<button type="button" id="docsEvReqAddBtn" class="save-btn">추가</button>' +
       '</div>' +
       '<div id="docsEvListRequested"></div>' +
-      '</div>';
+      '</div></details>';
 
     docsRenderEvidenceList_(c, 'auto', 'docsEvListAuto');
     docsRenderEvidenceList_(c, 'manual', 'docsEvListManual');
