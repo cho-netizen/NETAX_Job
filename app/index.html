@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 00:13 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 00:43 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -61323,20 +61323,28 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <textarea id="nxAiInput" rows="1" placeholder="메시지 입력 · / 명령" title="Enter 전송 · Shift+Enter 줄바꿈 · 이미지 붙여넣기 가능 · 「/」를 치면 명령 목록"></textarea>
       <button type="button" id="nxAiSend" class="nxai-send" title="보내기">➤</button>
     </div>
-    <div class="nxai-tools">
-      <button type="button" class="nxai-tool" id="nxAiAttachBtn" title="파일 첨부 (사건 자료 또는 내 컴퓨터)">📎</button>
-      <button type="button" class="nxai-tool" id="nxAiPasteBtn" title="클립보드 내용을 입력창에 붙여넣기 (외부조회 사이트에서 복사한 값을 바로 가져올 때)">📋</button>
-      <button type="button" class="nxai-tool" id="nxAiStrategyBtn" title="🧠 전략 검토 — 연결된 사건을 최고급 AI가 경우의 수별로 비교하고 더 나은 대안을 제시합니다(세액은 계산엔진으로 계산, 실행 전 예상 비용 확인)">🧠</button>
-      <button type="button" class="nxai-tool" id="nxAiClearBtn" title="입력창 비우기">✕</button>
-      <select id="nxAiGemTurns" class="nxai-model" title="🔮·⚖로 제미니에게 물어볼 때 직전 대화를 몇 개(턴) 같이 보낼지 (0=입력창 내용만)">
+    <!-- [2026.11.27] 세무사님 「지저분하다고 느끼는 지점이 바로 2줄로 넘어가는 것이다」 / 「2줄로 넘어갈때만 그렇게 해야 하는 것 아닌가?」 —
+         한 줄에 다 들어가면 지금 그대로, 넘어갈 때만(실제로 재서) ✕·🎤만 남기고 나머지는 「⋯」 판으로 접는다(nxAiToolsFit_). 단추 번호(id)·하는 일은 그대로 -->
+    <div class="nxai-tools" id="nxAiTools">
+      <button type="button" class="nxai-tool" id="nxAiClearBtn" title="입력창 비우기" style="order:4">✕</button>
+      <button type="button" class="nxai-tool" id="nxAiVoiceBtn" title="🎤 음성 입력 — PC는 NX 커넥터의 도우미 창에서 말하면 글자로 바뀌어 입력창에 들어옵니다. 휴대폰은 키보드의 🎤(음성입력)를 쓰세요" style="order:10">🎤</button>
+      <button type="button" class="nxai-tool nxai-tools-morebtn" id="nxAiToolsMore" title="한 줄에 못 들어간 도구 보기" aria-expanded="false" style="order:99">⋯</button>
+      <div class="nxai-tools-panel" id="nxAiToolsPanel" hidden>
+        <span class="nxai-tools-hd" data-g="1">넣기</span>
+        <span class="nxai-tools-hd" data-g="2">다르게 묻기</span>
+        <span class="nxai-tools-hd" data-g="3">AI 설정</span>
+      </div>
+      <button type="button" class="nxai-tool" id="nxAiAttachBtn" title="파일 첨부 (사건 자료 또는 내 컴퓨터)" style="order:1" data-g="1">📎</button>
+      <button type="button" class="nxai-tool" id="nxAiPasteBtn" title="클립보드 내용을 입력창에 붙여넣기 (외부조회 사이트에서 복사한 값을 바로 가져올 때)" style="order:2" data-g="1">📋</button>
+      <button type="button" class="nxai-tool" id="nxAiStrategyBtn" title="🧠 전략 검토 — 연결된 사건을 최고급 AI가 경우의 수별로 비교하고 더 나은 대안을 제시합니다(세액은 계산엔진으로 계산, 실행 전 예상 비용 확인)" style="order:3" data-g="2">🧠</button>
+      <select id="nxAiGemTurns" class="nxai-model" title="🔮·⚖로 제미니에게 물어볼 때 직전 대화를 몇 개(턴) 같이 보낼지 (0=입력창 내용만)" style="order:5" data-g="2">
         <option value="0">0턴</option><option value="1">1턴</option><option value="2">2턴</option><option value="3">3턴</option><option value="4">4턴</option><option value="5">5턴</option>
       </select>
-      <button type="button" class="nxai-tool" id="nxAiGemBtn" title="입력창 내용을 제미니(무료)에게 물어보기 — NX 외부조회 커넥터 확장프로그램 필요. 고객 개인정보는 넣지 마세요">🔮</button>
-      <button type="button" class="nxai-tool" id="nxAiBothBtn" title="같은 질문을 AI와 제미니에게 동시에 묻습니다 — 서로 답을 보지 않은 독립 의견을 받고 싶을 때(AI 쪽은 토큰 사용, NX 외부조회 커넥터 필요)">⚖</button>
-      <button type="button" class="nxai-tool" id="nxAiExtBtn" title="NX 외부조회 커넥터 미연결 — 클릭하면 다시 연결합니다">🔌</button>
-      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 — NX 커넥터가 있으면 도우미 창에서 다른 프로그램 창도 고를 수 있음(없으면 Win+Shift+S 후 입력창에 Ctrl+V)">📷</button>
-      <button type="button" class="nxai-tool" id="nxAiVoiceBtn" title="🎤 음성 입력 — PC는 NX 커넥터의 도우미 창에서 말하면 글자로 바뀌어 입력창에 들어옵니다. 휴대폰은 키보드의 🎤(음성입력)를 쓰세요">🎤</button>
-      <select id="nxAiModel" class="nxai-model" title="AI 모델 — F(고정)가 아니면 질문 내용에 따라 자동으로 바뀝니다(지금 값은 마지막으로 실제 쓰인 모델)">
+      <button type="button" class="nxai-tool" id="nxAiGemBtn" title="입력창 내용을 제미니(무료)에게 물어보기 — NX 외부조회 커넥터 확장프로그램 필요. 고객 개인정보는 넣지 마세요" style="order:6" data-g="2">🔮</button>
+      <button type="button" class="nxai-tool" id="nxAiBothBtn" title="같은 질문을 AI와 제미니에게 동시에 묻습니다 — 서로 답을 보지 않은 독립 의견을 받고 싶을 때(AI 쪽은 토큰 사용, NX 외부조회 커넥터 필요)" style="order:7" data-g="2">⚖</button>
+      <button type="button" class="nxai-tool" id="nxAiExtBtn" title="NX 외부조회 커넥터 미연결 — 클릭하면 다시 연결합니다" style="order:8" data-g="3">🔌</button>
+      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 — NX 커넥터가 있으면 도우미 창에서 다른 프로그램 창도 고를 수 있음(없으면 Win+Shift+S 후 입력창에 Ctrl+V)" style="order:9" data-g="1">📷</button>
+      <select id="nxAiModel" class="nxai-model" title="AI 모델 — F(고정)가 아니면 질문 내용에 따라 자동으로 바뀝니다(지금 값은 마지막으로 실제 쓰인 모델)" style="order:11" data-g="3">
         <option value="claude-sonnet-5">Sonnet 5</option>
         <option value="claude-opus-4-8">Opus 4.8</option>
         <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
@@ -61353,10 +61361,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
         </optgroup>
       </select>
-      <label class="nxai-tool" title="체크: 지금 고른 모델로 고정(F) / 해제: 질문 내용 보고 자동 전환(V)"><input type="checkbox" id="nxAiModelLock" hidden><span id="nxAiModelLockLabel" class="nxai-lock">V</span></label>
-      <label class="nxai-tool" title="어드바이저 — 답변 전에 다른 AI(오퍼스)에게 한 번 더 검토를 받습니다"><input type="checkbox" id="nxAiAdvisor" hidden><span id="nxAiAdvisorLabel" class="nxai-adv">+</span></label>
-      <span class="nxai-spacer"></span>
-      <button type="button" class="nxai-tool" id="nxAiSettingsBtn" title="AI 설정 (Alt+S)">⚙</button>
+      <label class="nxai-tool" title="체크: 지금 고른 모델로 고정(F) / 해제: 질문 내용 보고 자동 전환(V)" style="order:12" data-g="3"><input type="checkbox" id="nxAiModelLock" hidden><span id="nxAiModelLockLabel" class="nxai-lock">V</span></label>
+      <label class="nxai-tool" title="어드바이저 — 답변 전에 다른 AI(오퍼스)에게 한 번 더 검토를 받습니다" style="order:13" data-g="3"><input type="checkbox" id="nxAiAdvisor" hidden><span id="nxAiAdvisorLabel" class="nxai-adv">+</span></label>
+      <span class="nxai-spacer" style="order:14"></span>
+      <button type="button" class="nxai-tool" id="nxAiSettingsBtn" title="AI 설정 (Alt+S)" style="order:15" data-g="3">⚙</button>
     </div>
   </section>
 
@@ -61620,7 +61628,20 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-send{ flex-shrink:0; border:none; border-radius:9px; background:var(--gold); color:var(--navy); width:38px; height:38px; font-size:15px; cursor:pointer; }
   .nxai-send:hover{ background:var(--gold-light); }
   .nxai-send.stop{ background:var(--danger); color:#fff; }
-  .nxai-tools{ display:flex; align-items:center; gap:4px; padding:2px 10px 8px; flex-shrink:0; flex-wrap:wrap; }
+  .nxai-tools{ display:flex; align-items:center; gap:4px; padding:2px 10px 8px; flex-shrink:0; flex-wrap:wrap; position:relative; }
+  /* [2026.11.27] 두 줄로 넘어가면 중요한 것부터 한 줄에 들어가는 만큼만 보이고 나머지는 「⋯」 판으로(nxAiToolsFit_) — ✕·🎤는 늘 보임 */
+  .nxai-tools-morebtn{ display:none !important; }
+  .nxai-tools.fold{ flex-wrap:nowrap; }
+  .nxai-tools.fold .nxai-tools-morebtn{ display:inline-flex !important; font-weight:700; }
+  .nxai-tools-panel{ position:absolute; left:10px; right:10px; bottom:100%; margin-bottom:2px; display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; padding:8px 10px; background:#fff; color:var(--ink, #1b2333); border:1px solid var(--line); border-radius:9px; box-shadow:0 -4px 16px rgba(13,27,61,.14); z-index:31; }
+  .nxai-tools-panel[hidden]{ display:none; }
+  .nxai-tools-hd{ flex-basis:100%; font-size:11.5px; color:#6b7385; margin-top:2px; }
+  .nxai-tools-hd[hidden]{ display:none; }
+  .nxai-tools-panel .nxai-tools-hd[data-g="1"]{ order:100; } .nxai-tools-panel [data-g="1"]:not(.nxai-tools-hd){ order:101 !important; }
+  .nxai-tools-panel .nxai-tools-hd[data-g="2"]{ order:200; } .nxai-tools-panel [data-g="2"]:not(.nxai-tools-hd){ order:201 !important; }
+  .nxai-tools-panel .nxai-tools-hd[data-g="3"]{ order:300; } .nxai-tools-panel [data-g="3"]:not(.nxai-tools-hd){ order:301 !important; }
+  .nxai-tools-panel .nxai-tool{ font-size:17px; padding:5px 8px; }
+  html.nx-dark .nxai-tools-panel{ background:#1c2433; border-color:#2e384c; color:#e3e8f0; }
   .nxai-tool{ border:none; background:none; cursor:pointer; font-size:14px; padding:3px 6px; border-radius:6px; color:inherit; display:inline-flex; align-items:center; }
   .nxai-tool:hover{ background:rgba(127,127,127,.15); }
   .nxai-model{ font-size:12px; border:1px solid var(--line); border-radius:6px; padding:2px 4px; max-width:130px; }
@@ -63785,6 +63806,71 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       opts.onError('오류: ' + (err && err.message ? err.message : err));
     });
   }
+  // ============================================================
+  // [2026.11.27] 입력창 아래 도구 줄 — 세무사님 「지저분하다고 느끼는 지점이 바로 2줄로 넘어가는 것이다」 / 「2줄로 넘어갈때만 그렇게 해야」
+  //  / 「1줄안에 들어올때는 우선순위와 버튼크기에 따라 보여줄 수 있는 것은 보여주고」.
+  //  한 줄에 다 들어가면 그대로. 넘어가면 「⋯」을 내고, 덜 중요한 것부터 하나씩 판으로 옮겨 한 줄이 될 때까지(실제 크기로 잼). ✕·🎤는 늘 줄에.
+  //  창 폭이 바뀔 때마다 다시 잰다(넓어지면 판의 단추가 줄로 돌아옴). 단추는 같은 넥스 창 안에서 옮기므로 하는 일·연결은 그대로.
+  // ============================================================
+  function nxAiToolsPri_(){ // 중요한 차례 — 앞일수록 줄에 오래 남는다
+    var lab = function(id){ var x = nxAiEl_(id); return x ? x.closest('label') : null; };
+    return [nxAiEl_('nxAiAttachBtn'), nxAiEl_('nxAiModel'), lab('nxAiModelLock'), nxAiEl_('nxAiSettingsBtn'), nxAiEl_('nxAiPasteBtn'), nxAiEl_('nxAiStrategyBtn'),
+      nxAiEl_('nxAiCaptureBtn'), nxAiEl_('nxAiGemBtn'), nxAiEl_('nxAiBothBtn'), nxAiEl_('nxAiGemTurns'), lab('nxAiAdvisor'), nxAiEl_('nxAiExtBtn')].filter(Boolean);
+  }
+  function nxAiToolsWraps_(row){
+    var lo = Infinity, hi = -Infinity;
+    Array.prototype.forEach.call(row.children, function(el){
+      if (el.classList.contains('nxai-tools-panel') || el.classList.contains('nxai-spacer')) return;
+      var r = el.getBoundingClientRect(); if (!r.width || !r.height) return;
+      var mid = r.top + r.height / 2; if (mid < lo) lo = mid; if (mid > hi) hi = mid;
+    });
+    if (hi - lo > 10) return true; // 가운데 높이가 10px 넘게 다르면 두 줄
+    return row.scrollWidth > row.clientWidth + 1; // 접은 줄(줄바꿈 없음)은 옆으로 넘치는지로 잰다(시험에서 찾음: 접은 뒤엔 두 줄이 안 되고 옆으로 넘쳐 옮기지 않던 것)
+  }
+  var nxAiToolsBusy_ = false;
+  function nxAiToolsFit_(){
+    var row = nxAiEl_('nxAiTools'), panel = nxAiEl_('nxAiToolsPanel');
+    if (!row || !panel || nxAiToolsBusy_ || !row.offsetParent) return;
+    nxAiToolsBusy_ = true;
+    try {
+      var items = nxAiToolsPri_();
+      items.forEach(function(el){ if (el.parentNode !== row) row.appendChild(el); }); // 먼저 모두 줄로
+      row.classList.remove('fold');
+      if (nxAiToolsWraps_(row)){
+        row.classList.add('fold');
+        for (var i = items.length - 1; i >= 0 && nxAiToolsWraps_(row); i--) panel.appendChild(items[i]); // 덜 중요한 것부터 판으로
+        // 판 안에서는 원래 줄의 차례대로(묶음별) — 옮긴 차례(덜 중요한 것부터)로 거꾸로 보이지 않게
+        Array.prototype.slice.call(panel.querySelectorAll('[data-g]:not(.nxai-tools-hd)'))
+          .sort(function(a, b){ return (parseInt(a.style.order, 10) || 0) - (parseInt(b.style.order, 10) || 0); })
+          .forEach(function(el){ panel.appendChild(el); });
+      }
+      Array.prototype.forEach.call(panel.querySelectorAll('.nxai-tools-hd'), function(h){ h.hidden = !panel.querySelector('[data-g="' + h.getAttribute('data-g') + '"]:not(.nxai-tools-hd)'); });
+      if (!row.classList.contains('fold')) nxAiToolsOpen_(false);
+    } finally { nxAiToolsBusy_ = false; }
+  }
+  function nxAiToolsOpen_(on){
+    var panel = nxAiEl_('nxAiToolsPanel'), btn = nxAiEl_('nxAiToolsMore');
+    if (!panel) return;
+    // 판은 입력칸을 가리지 않게 입력칸 위로 띄운다(시험에서 찾음: 도구 줄 바로 위에 붙어 입력칸을 덮던 것)
+    if (on){ var ir = document.querySelector('#nxAi .nxai-input-row'); panel.style.marginBottom = ((ir ? ir.offsetHeight : 0) + 2) + 'px'; }
+    panel.hidden = !on;
+    if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  }
+  function nxAiToolsInit_(){
+    var row = nxAiEl_('nxAiTools'), panel = nxAiEl_('nxAiToolsPanel'), btn = nxAiEl_('nxAiToolsMore');
+    if (!row || !panel || !btn) return;
+    btn.addEventListener('click', function(e){ e.stopPropagation(); nxAiToolsOpen_(panel.hidden); });
+    // 판 안 단추를 누르면 그 일을 하고 판은 닫힘(고르기 상자·켜고 끄기는 고르는 동안 열어 둠)
+    panel.addEventListener('click', function(e){ e.stopPropagation(); var b = e.target.closest('button'); if (b) setTimeout(function(){ nxAiToolsOpen_(false); }, 0); });
+    document.addEventListener('click', function(e){ if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) nxAiToolsOpen_(false); });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !panel.hidden) nxAiToolsOpen_(false); });
+    var fitT = null;
+    var fit = function(){ if (window.requestAnimationFrame) requestAnimationFrame(nxAiToolsFit_); else nxAiToolsFit_(); clearTimeout(fitT); fitT = setTimeout(nxAiToolsFit_, 350); }; // 폭이 바뀌는 도중에 잰 값이 남지 않게 멈춘 뒤 한 번 더(시험에서 찾음: 넓은 화면→휴대폰으로 줄일 때 한 단추를 더 넣던 것)
+    if (typeof ResizeObserver !== 'undefined'){ var lastW = -1; new ResizeObserver(function(){ var w = row.clientWidth; if (w !== lastW){ lastW = w; fit(); } }).observe(row); }
+    window.addEventListener('resize', fit);
+    fit();
+  }
+
   // 멈춤 말풍선 — 까닭 + 「↻ 이어서 하기」(누르면 같은 말풍선에서 멈춘 단계부터 다시)
   function nxAiJobErrorUi_(bubble, msg, resume){
     if (!bubble) return;
@@ -68619,6 +68705,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiRefreshModelUi_();
 
     nxAiEl_('nxAiSettingsBtn').addEventListener('click', nxAiOpenSettings_);
+    nxAiToolsInit_();
     nxAiEl_('nxAiSettingsClose').addEventListener('click', nxAiCloseSettings_);
     nxAiEl_('nxAiSettingsSave').addEventListener('click', nxAiCloseSettings_);
     nxAiEl_('nxAiSettingsOverlay').addEventListener('click', function(e){ if (e.target.id === 'nxAiSettingsOverlay') nxAiCloseSettings_(); });
