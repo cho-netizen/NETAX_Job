@@ -593,7 +593,10 @@ const REPORT_KINDS_ = [
   { code: 'audit_opinion', label: '조사의견서', use: '외부', detail: '선택' }, // [2026-11-27 목적점검 3차 4절 ⑥ — 세무사님 "권장대로 하자"] 세무조사 중 조사반에 내는 의견서
   { code: 'explanation', label: '소명서', use: '외부', detail: '선택' }, // 해명자료·자금출처 소명 요구에 답하는 문서
   { code: 'refund_claim', label: '경정청구서', use: '외부', detail: '선택' }, // 국세기본법 §45의2 경정청구 이유서
-  { code: 'translation', label: '번역서', use: '외부', detail: '선택' }
+  { code: 'translation', label: '번역서', use: '외부', detail: '선택' },
+  // [2026-11-27] 세무조사 위임장·위임해지 — 조사사무처리규정 별지 제13호·제13-1호(Poa.js가 칸을 채워 만듦, 화면이 규정서식 모양으로 그림). 세무서 제출용
+  { code: 'poa', label: '위임장', use: '외부', detail: '선택' },
+  { code: 'poa_revoke', label: '위임해지', use: '외부', detail: '선택' }
 ];
 
 // 종류 찾기 — 코드('review')·명칭('종합검토서')·파일 이름('개별검토서_자경감면.md') 무엇을 줘도 된다. 파일 이름은 정식 이름일 때만 알아본다.

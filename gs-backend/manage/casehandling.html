@@ -1293,6 +1293,16 @@
         // [2026.11.27] 상속 사건 — 금융거래 「정하실 것」을 개요 「지금 할 일」에(금융거래 창을 열지 않아도 보이게). 세무사님 11-27 「이것을 대체 어떻게 사용하라는 것인가? 니가 한번 사용자의 입장에서 생각을 해 봐라」
         var fa = r.금융;
         if (fa && fa.n != null) h += '<div style="margin-top:6px;">' + (fa.n ? '💰 금융거래 — 정하실 것 <b>' + fa.n + '곳</b> <span style="color:var(--sub);">(넥스 답 ' + (fa.nex || 0) + ' · GAS 답 ' + (fa.gas || 0) + ' · 빈칸 ' + (fa.빈칸 || 0) + ')</span>' : '💰 금융거래 — 정하실 것 없음') + btn('fin', '금융거래 창 ›') + '</div>';
+        // [2026-11-27] 세무조사 위임장·위임해지 — 장부 「세무대리 위임」(Poa.js). 서명·제출 전이면 할 일로, 「제출했음」을 누르면 닫힘
+        var pa = r.위임;
+        if (pa && pa.ok && pa.상태 !== '없음') {
+          var paDone = pa.상태 === '해지됨' ? pa.위임해지제출일 : pa.위임장제출일;
+          h += '<div style="margin-top:6px;">📝 세무조사 위임 — <b>' + esc(pa.상태) + '</b>' + (pa.조사관서 ? ' · ' + esc(pa.조사관서) + (pa.조사세목 ? ' ' + esc(pa.조사세목) : '') : '')
+            + (pa.할일 ? ' · <span style="color:#b3261e;">' + esc(pa.할일) + ' 전</span>' + btn('poasub', '제출했음', ' data-revoke="' + (pa.상태 === '해지됨' ? '1' : '0') + '" title="서명·날인해 세무서에 내셨으면 누르세요 — 장부에 오늘 날짜로 적습니다"') : (paDone ? ' · 제출 ' + esc(paDone) : ''))
+            + btn('poawriter', '보고서 탭 ›', ' title="' + esc(pa.상태 === '해지됨' ? (pa.위임해지 || '위임해지') : (pa.위임장 || '위임장')) + ' — 보고서 탭 문서 상자에서 고르세요"') + '</div>';
+        } else if (pa && pa.ok && /조사/.test(String(c.업무유형 || ''))) {
+          h += '<div style="margin-top:6px;">📝 세무조사 위임장 — 아직 만들지 않았습니다' + btn('poawriter', '보고서 탭에서 「위임장 만들기」') + '</div>';
+        }
         // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태
         var w = r.서류변동 || null;
         if (w) h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(1분 안에 저절로·개요를 새로 열 때)') + '</div>';
@@ -1315,6 +1325,8 @@
           else if (k === 'ai'){ if (typeof window.nxOpenSideAI_ === 'function') window.nxOpenSideAI_(); try { if (typeof nxAiConv !== 'undefined' && nxAiConv.caseId !== c.id && typeof nxAiSwitchToCase_ === 'function') nxAiSwitchToCase_(c).then(function(m){ if (m && typeof nxAiToast_ === 'function') nxAiToast_(m); }); } catch (e) {} } // [2026-11-12 3차 35] 보던 사건이 넥스 창에 안 이어져 「사건 연결」을 다시 골라야 했다 → [2026-11-13 세무사님 "왜 채팅은 가져오지 않는가?"] 그 사건의 지난 대화까지 이어 열고(없으면 연결), 자료 칸도 그 사건으로 // 바로 펼치면 같은 클릭의 "바깥 누르면 접기"가 곧장 접는다 — 한 박자 늦게 펼치는 공용 함수로
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
           else if (k === 'fin'){ if (typeof window.nxFinMergeOpen_ === 'function') window.nxFinMergeOpen_(c.id, c.사건명 || c.고객명 || ''); }
+          else if (k === 'poawriter'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id); }
+          else if (k === 'poasub'){ var rv = b.getAttribute('data-revoke') === '1'; b.disabled = true; callGas('poa_submitted', { caseId: c.id, revoke: rv }).then(function(res){ if (!res || !res.ok){ b.disabled = false; alert((res && res.error) || '적지 못했습니다.'); return; } if (typeof window.nxAiToast_ === 'function') window.nxAiToast_((rv ? '위임해지' : '위임장') + ' 제출일을 장부에 적었습니다.'); loadNow(); }).catch(function(e){ b.disabled = false; alert('적지 못했습니다: ' + nxErrText_(e)); }); }
           else if ((k === 'scope' || k === 'read') && typeof goToDocsTool_ === 'function') goToDocsTool_(c, k); // [2026.10.31] 도구는 증빙확보에
         }); });
       }).catch(function(e){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다: ' + esc(e && e.message || e) + '</span>'; });

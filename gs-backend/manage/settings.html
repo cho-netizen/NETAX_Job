@@ -612,6 +612,15 @@
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
       '<input type="text" id="setTaxAgentPhone" style="width:130px;" placeholder="00 0000 0000"></div>' +
       '</div>' +
+      // [2026-11-27] 세무조사 위임장 세무대리인 칸(위임장 계획서 ㉣ 「권장대로」) — 상호·자격·사업장 주소
+      '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">상호 <span class="tc-x">세무조사 위임장 명단의 소속</span></label>' +
+      '<input type="text" id="setTaxAgentFirm" style="width:140px;" placeholder="이음세무컨설팅"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">자격</label>' +
+      '<input type="text" id="setTaxAgentQual" style="width:80px;" placeholder="세무사"></div>' +
+      '<div style="flex:1 1 280px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">사업장 주소 <span class="tc-x">세무조사 위임장의 사업장소재지(주소)</span></label>' +
+      '<input type="text" id="setTaxAgentAddr" style="width:100%; box-sizing:border-box;"></div>' +
+      '</div>' +
       // [2026.10.20 전자신고 대조] 전자신고 파일 머리 레코드 필수 값(사무소 고정값)
       '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;" title="양도 전자신고 — 관리번호와 둘 중 하나 필수">생년월일 <span class="tc-x">양도 전자신고 파일에 들어갑니다 — 관리번호와 둘 중 하나는 꼭 넣어야 합니다</span></label>' +
@@ -631,6 +640,9 @@
       document.getElementById('setTaxAgentPhone').value = res.taxAgentPhone || '';
       document.getElementById('setTaxAgentBirth').value = res.taxAgentBirth || '';
       document.getElementById('setHometaxUserId').value = res.hometaxUserId || '';
+      document.getElementById('setTaxAgentFirm').value = res.taxAgentFirm || '';
+      document.getElementById('setTaxAgentQual').value = res.taxAgentQual || '';
+      document.getElementById('setTaxAgentAddr').value = res.taxAgentAddr || '';
     }).catch(function(err){
       document.getElementById('setTaxAgentMsg').textContent = '불러오기 오류: ' + (err && err.message ? err.message : err);
     });
@@ -644,7 +656,10 @@
         taxAgentMgmtNo: document.getElementById('setTaxAgentMgmtNo').value,
         taxAgentPhone: document.getElementById('setTaxAgentPhone').value,
         taxAgentBirth: document.getElementById('setTaxAgentBirth').value.replace(/\D/g, ''),
-        hometaxUserId: document.getElementById('setHometaxUserId').value
+        hometaxUserId: document.getElementById('setHometaxUserId').value,
+        taxAgentFirm: document.getElementById('setTaxAgentFirm').value,
+        taxAgentQual: document.getElementById('setTaxAgentQual').value,
+        taxAgentAddr: document.getElementById('setTaxAgentAddr').value
       }).then(function(res){
         btn.disabled = false;
         if (res && res.success){

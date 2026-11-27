@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 04:49 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 08:44 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -2833,6 +2833,48 @@
   .doc-translation img{ display:block; margin:0 0 4mm 0; max-width:100%; height:auto; border:0.5pt solid #ccc; }
   .doc-translation a{ color:#0D1B3D; }
 
+  /* =========================================================
+     테마 5 : 규정서식 (조사사무처리규정 별지 제13호 위임장·제13-1호 위임해지)
+     [2026-11-27] 세무사님 「해당 양식을 넥스시스템으로 구현하자. 즉 md파일로 작성하고 규정서식에 맞게 랜더링하자」 /
+       「그래야 넥스가 위임,해임을 처리할 수 있다」 (계획서 총괄관리자/_기록/세무조사_위임장_넥스구현_계획서_20261127.html, 「권장대로 하자」)
+     md의 「칸: 값」 줄을 법제처 원본 PDF(A4)에서 잰 자리(mm)에 그대로 놓는다 — 쪽 하나 = .nxf-page(210×297mm), 테두리 상자 = .nxf-box.
+     자리 숫자는 모두 상자 위 끝에서 잰 거리(글줄 높이의 가운데에서 3mm 뺀 값)다.
+     ========================================================= */
+  .doc-form{ max-width:none; margin:0 auto; padding:0; background:transparent; color:#000; font-family:'Batang','바탕','Noto Serif KR',serif; font-size:11pt; word-break:keep-all; }
+  .doc-form .nxf-page{ position:relative; width:210mm; height:297mm; box-sizing:border-box; margin:0 auto 8mm; padding:0; background:#fff; box-shadow:0 0 14px rgba(0,0,0,0.18); overflow:hidden; }
+  .doc-form .nxf-src{ position:absolute; left:23.5mm; top:20.4mm; font-family:'Malgun Gothic','Noto Sans KR',sans-serif; font-size:8pt; line-height:4mm; }
+  .doc-form .nxf-box{ position:absolute; left:23.5mm; width:164.1mm; top:24.7mm; height:215.6mm; box-sizing:border-box; border:1.1pt solid #000; }
+  .doc-form .nxf-p2 .nxf-box{ top:20.1mm; height:226.2mm; }
+  .doc-form .nxf-box > *{ position:absolute; margin:0; }
+  .doc-form .nxf-ttl{ left:0; right:0; top:8.6mm; text-align:center; font-family:'Malgun Gothic','Noto Sans KR',sans-serif; font-weight:700; font-size:22pt; line-height:9mm; white-space:nowrap; }
+  .doc-form .nxf-p2 .nxf-ttl{ top:5.2mm; }
+  .doc-form .nxf-ttl .nxf-ttl-w{ letter-spacing:1.25em; margin-right:-0.85em; }
+  .doc-form .nxf-row{ left:2.8mm; right:2.8mm; height:6mm; line-height:6mm; white-space:nowrap; }
+  .doc-form .nxf-row .nxf-c2{ position:absolute; left:83.3mm; top:0; }
+  .doc-form .nxf-hint{ left:86.1mm; top:59.8mm; line-height:6mm; font-size:10.5pt; white-space:nowrap; }
+  .doc-form .nxf-stmt{ left:2.8mm; right:2.8mm; top:79.2mm; line-height:8.2mm; text-align:justify; text-indent:4.1mm; }
+  .doc-form .nxf-date{ left:0; right:0; top:113.5mm; line-height:6mm; text-align:center; white-space:pre; }
+  .doc-form .nxf-who{ left:61mm; right:2.8mm; top:129.5mm; line-height:8.5mm; }
+  .doc-form .nxf-who div{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .doc-form .nxf-seal{ position:absolute; left:71.9mm; display:inline-block; width:5.2mm; height:5.2mm; line-height:5.2mm; margin-top:1.6mm; border:0.7pt solid #000; border-radius:50%; font-size:7.5pt; text-align:center; font-family:'Malgun Gothic','Noto Sans KR',sans-serif; }
+  .doc-form .nxf-to{ left:14.2mm; top:177.2mm; line-height:6mm; white-space:nowrap; }
+  .doc-form .nxf-to b{ font-family:'Malgun Gothic','Noto Sans KR',sans-serif; font-weight:700; }
+  .doc-form .nxf-att{ left:2.8mm; top:186.3mm; line-height:6mm; }
+  .doc-form .nxf-rule{ left:0; right:0; top:196.4mm; border-top:0.8pt solid #000; }
+  .doc-form .nxf-foot{ left:2.8mm; right:2.8mm; top:197.8mm; line-height:7.1mm; font-size:10.5pt; padding-left:4.4mm; text-indent:-4.4mm; }
+  .doc-form .nxf-sub{ left:2.8mm; top:21mm; line-height:6mm; font-family:'Malgun Gothic','Noto Sans KR',sans-serif; font-weight:700; }
+  .doc-form table.nxf-tbl{ left:6.2mm; top:31.8mm; width:152.1mm; border-collapse:collapse; table-layout:fixed; font-size:10.5pt; }
+  .doc-form table.nxf-tbl th, .doc-form table.nxf-tbl td{ border:0.8pt solid #000; text-align:center; vertical-align:middle; padding:0 1mm; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-weight:400; }
+  .doc-form table.nxf-tbl th{ height:12.8mm; }
+  .doc-form table.nxf-tbl td{ height:15.6mm; }
+  .doc-form .nxf-p2 .nxf-rule{ top:205.6mm; }
+  .doc-form .nxf-p2 .nxf-foot{ top:209.9mm; line-height:6.4mm; }
+  .doc-form .nxf-v{ font-family:'Malgun Gothic','Noto Sans KR',sans-serif; font-size:10.5pt; }
+  .doc-form .nxf-need{ background:#fff4c2; color:#7a5c14; font-family:'Malgun Gothic','Noto Sans KR',sans-serif; font-size:9.5pt; padding:0 0.8mm; border-radius:1mm; }
+  /* 좁은 보기 칸(AI탭·증빙확보) — 쪽을 그대로 두고 칸 안에서 가로로 넘김 */
+  .doc-form.nx-md-view{ overflow-x:auto; padding:6px 0; }
+  @page nxform{ size:A4; margin:0; }
+
   /* ---------- 공통 : 페이지분리 ---------- */
   .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak, .doc-advisory .doc-pagebreak, .doc-filing .doc-pagebreak, .doc-progress .doc-pagebreak, .doc-reference .doc-pagebreak, .doc-summary .doc-pagebreak{
     break-before:page; page-break-before:always;
@@ -2868,6 +2910,11 @@
     .doc-reference .doc-pagebreak::before, .doc-reference .doc-pagebreak::after,
     .doc-summary .doc-pagebreak::before, .doc-summary .doc-pagebreak::after{ border-top:none; }
     @page{ size:A4; margin:30mm 25mm 25mm 25mm; } /* 위 30 우 25 아래 25 좌 25 - 인쇄 대화상자 "사용자 지정" 클릭시 이 값이 기본 입력되도록 함 */
+    /* [2026-11-27] 규정서식은 쪽 하나가 A4 한 장 그대로(여백도 서식 안에 있음) — 여백 0인 이름 붙은 쪽(nxform)으로 찍고 쪽마다 넘긴다 */
+    .doc-form{ box-shadow:none; margin:0; padding:0; }
+    .doc-form .nxf-page{ page:nxform; box-shadow:none; margin:0; break-after:page; page-break-after:always; zoom:1 !important; }
+    .doc-form .nxf-page:last-child{ break-after:auto; page-break-after:auto; }
+    .doc-form .nxf-need{ background:none; }
   }
 
   /* [2026.10.30] 인쇄용 PDF(작성관리 내려받기 "인쇄용 PDF") — 위 @media print와 같은 모양으로 문서를 다시 그릴 때 붙는 표시(.nx-pdfprint).
@@ -3127,14 +3174,15 @@
 
 <script>
 // 문서 종류 → 테마 클래스 / 파일 이름 → 문서 종류 (작성관리와 공용)
-const THEME_CLASS = { appeal: 'doc-appeal', memo: 'doc-memo', translation: 'doc-translation', advisory: 'doc-advisory', filing: 'doc-filing', progress: 'doc-progress', reference: 'doc-reference', summary: 'doc-summary' };
+const THEME_CLASS = { appeal: 'doc-appeal', memo: 'doc-memo', translation: 'doc-translation', advisory: 'doc-advisory', filing: 'doc-filing', progress: 'doc-progress', reference: 'doc-reference', summary: 'doc-summary', form: 'doc-form' };
 
 // 문서유형별 기본 인쇄 테마 — 내부(검토서)는 모양이 하나로 통일돼도 되지만, 외부로 나가는
 // 5종은 목적·수요자가 다 다르므로 각각 별도 테마를 쓴다(2026.09, 하나씩 만드는 중 —
 // 아직 전용 테마가 없는 유형은 우선 기존 "청구서" 테마를 임시로 쓴다).
 const RW_DOC_TYPE_THEME_ = {
   review: 'memo', review_specific: 'memo', advisory: 'advisory', filing: 'filing',
-  reference: 'reference', progress: 'progress', appeal_petition: 'appeal', audit_opinion: 'appeal', explanation: 'appeal', refund_claim: 'appeal', summary: 'summary', translation: 'translation'
+  reference: 'reference', progress: 'progress', appeal_petition: 'appeal', audit_opinion: 'appeal', explanation: 'appeal', refund_claim: 'appeal', summary: 'summary', translation: 'translation',
+  poa: 'form', poa_revoke: 'form' // [2026-11-27] 세무조사 위임장·위임해지 — 규정서식 모양
 };
 
 // [2026.09] 드라이브에서 파일을 열 때(예: 다른 화면에서 fileId로 바로 이 문서를 열었을 때)
@@ -3142,6 +3190,10 @@ const RW_DOC_TYPE_THEME_ = {
 // 유형 라벨로 시작하므로 대부분 여기서 바로 맞는다. 못 맞히면(옛날 파일 등) 사용자에게 직접 물어본다.
 function rwGuessDocTypeFromFilename_(name){
   if (!name) return null;
+  // [2026-11-27] 세무조사 위임장·위임해지 — 정식 이름이 「위임해지」·「위임장」으로 시작한다(다른 서류 이름 속 「상속인 위임장」 등은 아님)
+  const base0 = String(name).replace(/^.*[\\/]/, '');
+  if (/^위임해지/.test(base0)) return 'poa_revoke';
+  if (/^위임장/.test(base0)) return 'poa';
   // [2026.09.17 재설계] "검토서"만으로는 종합/개별 중 어느 쪽인지 알 수 없어졌다 — 이름에
   // 명확히 "종합검토서"/"개별검토서"라고 돼 있을 때만 자동 추정하고, 옛날식으로 그냥
   // "검토서"만 있으면 사람이 rwAskDocTypeForFile_에서 직접 고르게 null을 돌려준다.
@@ -3168,6 +3220,145 @@ function rwPurify_(html){
     return '<p style="color:#a33;">⚠ 안전 검사 도구(DOMPurify)를 불러오지 못해 글자로만 보여 드립니다 — 새로고침해 주세요.</p><pre style="white-space:pre-wrap;">' + nxMdEsc_(String(html || '').replace(/<[^>]*>/g, '')) + '</pre>';
   }
   return DOMPurify.sanitize(String(html || ''), { ADD_ATTR: ['target'] });
+}
+
+// ============================================================
+// [2026-11-27] 규정서식 그리개 — 세무조사 위임장(조사사무처리규정 별지 제13호)·위임해지(별지 제13-1호)
+//  세무사님 「md파일로 작성하고 규정서식에 맞게 랜더링하자」 / 「그래야 넥스가 위임,해임을 처리할 수 있다」
+//  md는 「칸: 값」 줄만 적는다(## 세무대리인 / ## 위임 내용(해지 내용) / ## 위임자 / ## 제출처 / ## 세무대리인 명단 표).
+//  규정 문장(「상기 세무대리인에게 … 위임합니다」)은 md에 적지 않고 여기서 칸 값을 끼워 규정 문구 그대로 쓴다 — 넥스가 문구를 고칠 길이 없게.
+//  읽을 수 없는 md(서식 머리·칸이 없음)면 null을 돌려주고, 부르는 쪽은 보통 보고서 모양으로 그린다.
+// ============================================================
+const NX_FORM_DEFS_ = {
+  poa: {
+    src: '■ 조사사무처리규정 [별지 제13호 서식]', title: '위임장', dateKey: ['위임일', '작성일', '날짜'],
+    verb: '을 위임합니다.', listTitle: '◦ 조사참여·의견진술 세무대리인 명단',
+    attach: '첨부 : 자격증 사본 각 1부.', foot2: '※ 상기 명단에 기재된 세무대리인 이외에는 세무조사에 참여하거나 의견을 진술할 수 없습니다.', foot1: true
+  },
+  poa_revoke: {
+    src: '■ 조사사무처리규정 [별지 제13-1호 서식]', title: '위임해지', dateKey: ['해지일', '작성일', '날짜'],
+    verb: '을 위임하였으나 이를 해지합니다.', listTitle: '◦ 조사참여·의견진술 세무대리인 해지 명단',
+    attach: '', foot2: '', foot1: false
+  }
+};
+// md에서 서식 종류 읽기 — 머리 주석(<!-- 서식: … 13-1 / 위임해지 -->) 또는 첫 제목(# 위임해지 / # 위임장)
+function nxFormKindOf_(src){
+  const s = String(src || '');
+  const c = /<!--\s*서식\s*[:：]([^>]*)-->/.exec(s);
+  if (c) { if (/13\s*-\s*1|13의1|위임\s*해지/.test(c[1])) return 'poa_revoke'; if (/13|위임장/.test(c[1])) return 'poa'; }
+  const h = /^\s*#\s+(.+)$/m.exec(s.replace(/<!--[\s\S]*?-->/g, ''));
+  if (h) { const t = h[1].replace(/\s+/g, ''); if (/^위임해지/.test(t)) return 'poa_revoke'; if (/^위임장/.test(t)) return 'poa'; }
+  return null;
+}
+function nxFormKey_(k){ return String(k || '').replace(/[\s()（）·]/g, ''); }
+// md → { kind, ag(세무대리인), job(조사), pr(위임자), sub(제출처), rows(명단) }
+function nxFormParse_(src){
+  const kind = nxFormKindOf_(src); if (!kind) return null;
+  const out = { kind: kind, ag: {}, job: {}, pr: {}, sub: {}, rows: [] };
+  let sec = null;
+  String(src || '').replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/).forEach(function(line){
+    const hm = /^\s*##+\s*(.+?)\s*$/.exec(line);
+    if (hm) {
+      const t = nxFormKey_(hm[1]);
+      sec = /명단/.test(t) ? 'rows' : /^세무대리인/.test(t) ? 'ag' : /^(위임|해지)내용|^조사/.test(t) ? 'job' : /^위임자/.test(t) ? 'pr' : /^제출처/.test(t) ? 'sub' : null;
+      return;
+    }
+    if (!sec) return;
+    if (sec === 'rows') {
+      if (!/^\s*\|/.test(line) || /^\s*\|[\s\-:|]+\|\s*$/.test(line)) return;
+      const cells = line.trim().replace(/^\||\|$/g, '').split('|').map(function(x){ return x.trim(); });
+      if (cells.some(function(x){ return /^순번$|^소\s*속$/.test(x); })) return; // 머리줄
+      out.rows.push(cells);
+      return;
+    }
+    const lm = /^\s*[-*]\s*([^:：]+?)\s*[:：]\s*(.*?)\s*$/.exec(line);
+    if (lm) out[sec][nxFormKey_(lm[1])] = lm[2];
+  });
+  return out;
+}
+function nxFormGet_(o, keys){ for (let i = 0; i < keys.length; i++) { const v = o[nxFormKey_(keys[i])]; if (v != null && String(v).trim() !== '') return String(v).trim(); } return ''; }
+// 값 → HTML(⚠[확인필요: …]는 노란 표시로). 비면 빈칸.
+function nxFormVal_(v){
+  if (!v) return '';
+  return nxMdEsc_(v).replace(/⚠\s*\[\s*확인\s*필요\s*[:：]?\s*([^\]]*)\]/g, function(m, x){ return '<span class="nxf-need">⚠ ' + (x || '확인 필요') + '</span>'; });
+}
+// 긴 값은 칸 안에 들어가게 글자를 줄인다(자리를 밀지 않도록)
+function nxFormFit_(html, raw, room){ const n = String(raw || '').length; if (n <= room) return html; const pt = Math.max(7, Math.floor(10.5 * room / n * 10) / 10); return '<span style="font-size:' + pt + 'pt">' + html + '</span>'; }
+function nxFormYmd_(s){ const m = /((?:19|20)\d{2})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})/.exec(String(s || '')); return m ? { y: m[1], m: String(+m[2]), d: String(+m[3]) } : null; }
+function nxFormDot_(s, blank){ const d = nxFormYmd_(s); return d ? d.y + '. ' + d.m + '. ' + d.d + '.' : (s && /⚠/.test(s) ? nxFormVal_(s) : blank); }
+function nxFormHtml_(src){
+  const f = nxFormParse_(src); if (!f) return null;
+  const D = NX_FORM_DEFS_[f.kind];
+  const ag = f.ag, job = f.job, pr = f.pr, sub = f.sub;
+  const V = function(o, keys){ return nxFormVal_(nxFormGet_(o, keys)); };
+  const v = function(o, keys){ return '<span class="nxf-v">' + V(o, keys) + '</span>'; };
+  // 조사 관서·기간·세목
+  const office = nxFormGet_(job, ['조사관서', '관서']);
+  let s0 = nxFormGet_(job, ['조사시작일', '시작일']), e0 = nxFormGet_(job, ['조사종료일', '종료일']);
+  const per = nxFormGet_(job, ['조사기간', '기간']);
+  if (per && /⚠/.test(per)) { if (!s0) s0 = per; }
+  else if (per && (!s0 || !e0)) { const p = per.split(/\s*(?:~|∼|－|부터|-\s(?=\d))\s*/); if (!s0) s0 = p[0] || ''; if (!e0) e0 = (p[1] || '').replace(/까지.*$/, ''); }
+  const tax = nxFormGet_(job, ['조사세목', '세목']);
+  const blankD = '202&nbsp;&nbsp;.&nbsp;&nbsp;&nbsp;.&nbsp;&nbsp;&nbsp;.';
+  const stmt = '상기 세무대리인에게 ' + (office ? '<span class="nxf-v">' + nxFormVal_(office) + '</span>' : '&emsp;&emsp;&ensp;지방국세청(세무서)') + '에서 '
+    + '<span class="nxf-v">' + nxFormDot_(s0, '') + '</span>' + (s0 ? '' : blankD) + '부터 '
+    + '<span class="nxf-v">' + nxFormDot_(e0, '') + '</span>' + (e0 ? '' : blankD) + '까지 실시하는 '
+    + (tax ? '<span class="nxf-v">' + nxFormVal_(tax) + '</span>' : '&emsp;&emsp;&emsp;&emsp;') + ' 조사와 관련하여 「국세기본법」 제81조의5에 따른 “조사에 참여하거나 의견을 진술할 수 있는 권한”' + D.verb;
+  const dt = nxFormYmd_(nxFormGet_(job, D.dateKey));
+  const dateLine = dt ? '<span class="nxf-v">' + dt.y + '</span>년&emsp;&ensp;<span class="nxf-v">' + dt.m + '</span>월&emsp;&ensp;<span class="nxf-v">' + dt.d + '</span>일'
+    : '&emsp;&emsp;&emsp;년&emsp;&emsp;&ensp;월&emsp;&emsp;&ensp;일';
+  const to = office && !/⚠/.test(office) ? '<b>' + nxFormVal_(office.replace(/장$/, '') + '장') + '</b>' : '<b>지방국세청장(세무서장)</b>';
+  const addrA = nxFormGet_(ag, ['사업장소재지(주소)', '주소', '사업장소재지']);
+  const addrP = nxFormGet_(pr, ['사업장소재지(주소)', '주소', '사업장소재지']);
+  const p1 = '<div class="nxf-page nxf-p1"><div class="nxf-src">' + D.src + '</div><div class="nxf-box">'
+    + '<div class="nxf-ttl"><span class="nxf-ttl-w">' + D.title + '</span> (2-1)</div>'
+    + '<div class="nxf-row" style="top:21.2mm">◦ 성&emsp;&ensp;명 : ' + v(ag, ['성명']) + '<span class="nxf-c2">◦ 전화번호 : ' + v(ag, ['전화번호', '전화']) + '</span></div>'
+    + '<div class="nxf-row" style="top:32.1mm">◦ 생년월일 : ' + v(ag, ['생년월일']) + '<span class="nxf-c2">◦ 사업자등록번호 : ' + v(ag, ['사업자등록번호']) + '</span></div>'
+    + '<div class="nxf-row" style="top:42.9mm">◦ 사업장소재지(주소) : <span class="nxf-v">' + nxFormFit_(nxFormVal_(addrA), addrA, 46) + '</span></div>'
+    + '<div class="nxf-row" style="top:53.8mm">◦ 자&emsp;&ensp;격 : ' + v(ag, ['자격']) + '<span class="nxf-c2">◦ 관&emsp;계 : ' + v(ag, ['관계']) + '</span></div>'
+    + '<div class="nxf-hint">(기장대행, 세무조정, 고문, 사외이사 등)</div>'
+    + '<div class="nxf-stmt">' + stmt + '</div>'
+    + '<div class="nxf-date">' + dateLine + '</div>'
+    + '<div class="nxf-who"><div>위 임 자</div>'
+    + '<div>사업장소재지(주소) : <span class="nxf-v">' + nxFormFit_(nxFormVal_(addrP), addrP, 21) + '</span></div>'
+    + '<div>법인명(상&emsp;호) : ' + v(pr, ['법인명(상호)', '상호', '법인명']) + '</div>'
+    + '<div>사업자(주민)등록번호 : ' + v(pr, ['사업자(주민)등록번호', '등록번호', '주민등록번호', '사업자등록번호']) + '</div>'
+    + '<div style="position:relative; overflow:visible;">대표자(성&emsp;명) : ' + v(pr, ['대표자(성명)', '성명', '대표자']) + '<span class="nxf-seal">인</span></div></div>'
+    + '<div class="nxf-to">' + to + '&ensp;귀하</div>'
+    + (D.attach ? '<div class="nxf-att">' + D.attach + '</div>' : '')
+    + (D.foot1 ? '<div class="nxf-rule"></div><div class="nxf-foot">※ 세무조사에 참여하거나 의견을 진술할 세무대리인은 이 위임장을 ' + (nxFormGet_(sub, ['조사과', '제출처', '부서']) ? v(sub, ['조사과', '제출처', '부서']) : '조사과') + '<br>(전화: ' + (nxFormGet_(sub, ['전화', '전화번호']) ? v(sub, ['전화', '전화번호']) : '&emsp;&emsp;&emsp;&ensp;') + ')로 제출하여 주시기 바랍니다.</div>' : '')
+    + '</div></div>';
+  const W = [13.7, 30.6, 24.7, 21.7, 37.7, 23.7];
+  let trs = '';
+  for (let i = 0; i < 10; i++) {
+    const r = f.rows[i] || [];
+    const no = r[0] && /^\d+$/.test(r[0]) ? r[0] : String(i + 1);
+    trs += '<tr><td>' + no + '</td>' + [1, 2, 3, 4, 5].map(function(j){ const t = r[j] || ''; return '<td title="' + nxMdEsc_(t) + '"><span class="nxf-v">' + nxFormVal_(t) + '</span></td>'; }).join('') + '</tr>';
+  }
+  const p2 = '<div class="nxf-page nxf-p2"><div class="nxf-box">'
+    + '<div class="nxf-ttl"><span class="nxf-ttl-w">' + D.title + '</span> (2-2)</div>'
+    + '<div class="nxf-sub">' + D.listTitle + '</div>'
+    + '<table class="nxf-tbl"><colgroup>' + W.map(function(w){ return '<col style="width:' + w + 'mm">'; }).join('') + '</colgroup>'
+    + '<thead><tr><th>순번</th><th>소&emsp;속</th><th>직위/직책</th><th>성&ensp;명</th><th>생년월일</th><th>자&ensp;격</th></tr></thead><tbody>' + trs + '</tbody></table>'
+    + (D.foot2 ? '<div class="nxf-rule"></div><div class="nxf-foot">' + D.foot2 + '</div>' : '')
+    + '</div></div>';
+  return p1 + p2;
+}
+
+// 보기 칸이 쪽(A4 210mm)보다 좁으면 쪽을 칸 너비에 맞춰 줄여 보인다(작성관리 미리보기·AI탭 보기 칸). 칸 너비가 바뀌면 다시 맞춤.
+//  인쇄·PDF는 늘 원래 크기(@media print에서 zoom 1, rwFormPdf_는 사본의 zoom을 걷음).
+function nxFormZoom_(out){
+  const PW = 793.7; // 210mm
+  const fit = function(){
+    const w = out.clientWidth, pages = out.querySelectorAll('.nxf-page');
+    const z = w && w < PW + 8 ? Math.max(0.3, (w - 8) / PW) : 1;
+    pages.forEach(function(p){ p.style.zoom = z === 1 ? '' : z.toFixed(3); });
+  };
+  fit();
+  if (typeof ResizeObserver !== 'undefined' && !out.__nxFormRO) {
+    out.__nxFormRO = new ResizeObserver(function(){ if (out.classList.contains('doc-form')) fit(); });
+    out.__nxFormRO.observe(out);
+  }
 }
 
 // ---------- 렌더링 ----------
@@ -3848,6 +4039,18 @@ async function nxMdRender(out, src, opts){
   opts = opts || {};
   src = String(src == null ? '' : src);
   const rich = opts.rich !== false;
+  // [2026-11-27] 규정서식(위임장·위임해지) — 칸을 서식 자리에 놓는 그리개로. 칸을 못 읽는 글이면 검토서 모양으로 그린다.
+  if (opts.theme === 'form' || (!opts.theme && nxFormKindOf_(src))) {
+    let fh = null;
+    try { fh = nxFormHtml_(src); } catch (err) { console.error('[규정서식 그리기 오류]', err); }
+    if (fh) {
+      out.className = 'doc-form' + (opts.extraClass ? ' ' + opts.extraClass : '');
+      out.innerHTML = rwPurify_(fh);
+      nxFormZoom_(out);
+      return { ok: true, form: true };
+    }
+    opts = Object.assign({}, opts, { theme: 'memo' });
+  }
   out.className = (THEME_CLASS[opts.theme] || 'doc-appeal') + (opts.extraClass ? ' ' + opts.extraClass : '');
   if (typeof marked === 'undefined' || !marked.parse) {
     out.innerHTML = nxMdFail_('마크다운 해석 도구(marked)를 불러오지 못해 원문으로 보여 드립니다 — 인터넷 연결을 확인하고 새로고침해 주세요.', src);
@@ -9076,6 +9279,16 @@ function nxMdOpenWindow(title, src, opts){
         // [2026.11.27] 상속 사건 — 금융거래 「정하실 것」을 개요 「지금 할 일」에(금융거래 창을 열지 않아도 보이게). 세무사님 11-27 「이것을 대체 어떻게 사용하라는 것인가? 니가 한번 사용자의 입장에서 생각을 해 봐라」
         var fa = r.금융;
         if (fa && fa.n != null) h += '<div style="margin-top:6px;">' + (fa.n ? '💰 금융거래 — 정하실 것 <b>' + fa.n + '곳</b> <span style="color:var(--sub);">(넥스 답 ' + (fa.nex || 0) + ' · GAS 답 ' + (fa.gas || 0) + ' · 빈칸 ' + (fa.빈칸 || 0) + ')</span>' : '💰 금융거래 — 정하실 것 없음') + btn('fin', '금융거래 창 ›') + '</div>';
+        // [2026-11-27] 세무조사 위임장·위임해지 — 장부 「세무대리 위임」(Poa.js). 서명·제출 전이면 할 일로, 「제출했음」을 누르면 닫힘
+        var pa = r.위임;
+        if (pa && pa.ok && pa.상태 !== '없음') {
+          var paDone = pa.상태 === '해지됨' ? pa.위임해지제출일 : pa.위임장제출일;
+          h += '<div style="margin-top:6px;">📝 세무조사 위임 — <b>' + esc(pa.상태) + '</b>' + (pa.조사관서 ? ' · ' + esc(pa.조사관서) + (pa.조사세목 ? ' ' + esc(pa.조사세목) : '') : '')
+            + (pa.할일 ? ' · <span style="color:#b3261e;">' + esc(pa.할일) + ' 전</span>' + btn('poasub', '제출했음', ' data-revoke="' + (pa.상태 === '해지됨' ? '1' : '0') + '" title="서명·날인해 세무서에 내셨으면 누르세요 — 장부에 오늘 날짜로 적습니다"') : (paDone ? ' · 제출 ' + esc(paDone) : ''))
+            + btn('poawriter', '보고서 탭 ›', ' title="' + esc(pa.상태 === '해지됨' ? (pa.위임해지 || '위임해지') : (pa.위임장 || '위임장')) + ' — 보고서 탭 문서 상자에서 고르세요"') + '</div>';
+        } else if (pa && pa.ok && /조사/.test(String(c.업무유형 || ''))) {
+          h += '<div style="margin-top:6px;">📝 세무조사 위임장 — 아직 만들지 않았습니다' + btn('poawriter', '보고서 탭에서 「위임장 만들기」') + '</div>';
+        }
         // [2026.10.28 감시] 세무사님 "사건폴더의 모든 파일을 모니터링해서 추가 변경된 것을 미리 읽도록" — GAS 감시 상태
         var w = r.서류변동 || null;
         if (w) h += '<div style="margin-top:4px; font-size:12px; color:var(--sub);">👁 사건 폴더 감시' + (w.마지막감시 ? ' — 마지막 대조 ' + esc(w.마지막감시) : ' — 아직 대조 전(1분 안에 저절로·개요를 새로 열 때)') + '</div>';
@@ -9098,6 +9311,8 @@ function nxMdOpenWindow(title, src, opts){
           else if (k === 'ai'){ if (typeof window.nxOpenSideAI_ === 'function') window.nxOpenSideAI_(); try { if (typeof nxAiConv !== 'undefined' && nxAiConv.caseId !== c.id && typeof nxAiSwitchToCase_ === 'function') nxAiSwitchToCase_(c).then(function(m){ if (m && typeof nxAiToast_ === 'function') nxAiToast_(m); }); } catch (e) {} } // [2026-11-12 3차 35] 보던 사건이 넥스 창에 안 이어져 「사건 연결」을 다시 골라야 했다 → [2026-11-13 세무사님 "왜 채팅은 가져오지 않는가?"] 그 사건의 지난 대화까지 이어 열고(없으면 연결), 자료 칸도 그 사건으로 // 바로 펼치면 같은 클릭의 "바깥 누르면 접기"가 곧장 접는다 — 한 박자 늦게 펼치는 공용 함수로
           else if (k === 'writer'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, r.검토서 && r.검토서.파일 ? { fileId: r.검토서.파일 } : undefined); }
           else if (k === 'fin'){ if (typeof window.nxFinMergeOpen_ === 'function') window.nxFinMergeOpen_(c.id, c.사건명 || c.고객명 || ''); }
+          else if (k === 'poawriter'){ if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id); }
+          else if (k === 'poasub'){ var rv = b.getAttribute('data-revoke') === '1'; b.disabled = true; callGas('poa_submitted', { caseId: c.id, revoke: rv }).then(function(res){ if (!res || !res.ok){ b.disabled = false; alert((res && res.error) || '적지 못했습니다.'); return; } if (typeof window.nxAiToast_ === 'function') window.nxAiToast_((rv ? '위임해지' : '위임장') + ' 제출일을 장부에 적었습니다.'); loadNow(); }).catch(function(e){ b.disabled = false; alert('적지 못했습니다: ' + nxErrText_(e)); }); }
           else if ((k === 'scope' || k === 'read') && typeof goToDocsTool_ === 'function') goToDocsTool_(c, k); // [2026.10.31] 도구는 증빙확보에
         }); });
       }).catch(function(e){ nowEl.innerHTML = '<span style="color:var(--sub);">현황을 보지 못했습니다: ' + esc(e && e.message || e) + '</span>'; });
@@ -51877,6 +52092,8 @@ document.addEventListener('click', function(e){ var x = e.target.closest && e.ta
       <button id="addAuditOpinionOpt" title="세무조사 중 조사반에 내는 납세자 의견서">조사의견서 만들기</button>
       <button id="addExplanationOpt" title="해명자료·자금출처 소명 요구에 답하는 문서">소명서 만들기</button>
       <button id="addRefundClaimOpt" title="국세기본법 §45의2 경정청구 이유서">경정청구서 만들기</button>
+      <button id="addPoaOpt" title="세무조사 위임장(조사사무처리규정 별지 제13호) — 사건을 고른 채 누르면 설정·고객관리·사전통지서로 칸을 채워 「보고서」 폴더에 저장">위임장 만들기</button>
+      <button id="addPoaRevokeOpt" title="세무조사 위임해지(조사사무처리규정 별지 제13-1호) — 앞서 낸 위임장의 조사·대리인을 이어 씀">위임해지 만들기</button>
       <button id="addTranslationOpt">번역서 만들기</button>
       <button id="addSummaryOpt">요약보고서 만들기</button>
       <button id="addBlankOpt">빈 문서 만들기</button>
@@ -52168,7 +52385,7 @@ async function hydrateDocsFromIdb_(){
 
 // 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함.
 const RW_DOC_TYPE_SHORT_LABELS_ = {
-  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', summary: '요약', translation: '번역서'
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', summary: '요약', translation: '번역서', poa: '위임장', poa_revoke: '위임해지'
 };
 // [2026.09.16 신규] 저장 파일명에 붙이는 전체 라벨 — rwGuessDocTypeFromFilename_이 파일명만
 // 보고 문서유형을 되짚어 추정할 때 기대하는 단어(예: filing은 "신고"+"보고서" 둘 다 있어야
@@ -52179,7 +52396,8 @@ const RW_DOC_TYPE_SHORT_LABELS_ = {
 const RW_DOC_TYPE_FILENAME_LABELS_ = {
   review: '종합검토서', review_specific: '개별검토서', advisory: '자문보고서', filing: '신고보고서', reference: '검토조서',
   progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서',
-  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서' // [2026-11-27 ⑥]
+  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', // [2026-11-27 ⑥]
+  poa: '위임장', poa_revoke: '위임해지' // [2026-11-27] 세무조사 위임장·위임해지(규정서식)
 };
 
 // ---------- 문서 선택 드롭다운 ----------
@@ -52377,7 +52595,7 @@ function showLoadErrorInEditor(fileId, message){
 // 고를 수 있는 작은 팝업으로 바꾼다(#rwDocTypeModal, .floating-panel과 같은 모양 재사용).
 // 프라미스를 돌려주므로 호출부(rwLoadFileById_, 이미 async 함수)에서 await로 받는다.
 function rwAskDocTypeForFile_(fileName){
-  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'audit_opinion', 'explanation', 'refund_claim', 'translation', 'summary'];
+  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'audit_opinion', 'explanation', 'refund_claim', 'poa', 'poa_revoke', 'translation', 'summary'];
   return new Promise(function(resolve){
     const modal = document.getElementById('rwDocTypeModal');
     const body = document.getElementById('rwDocTypeBody');
@@ -52922,6 +53140,16 @@ async function createNewDoc(kind){
       fallbackName: '경정청구서',
       md: '# 경정청구서\n\n- 청구인: ' + (c ? (c.고객명 || '') : '') + '\n- 관할 세무서장: \n- 대상: \n- 청구일자: ' + todayStr + '\n' + (c && c.법정일 ? '- 청구기한: ' + c.법정일 + '\n' : '') + '\n## 청구 내용\n\n\n## 청구 이유\n\n\n## 증거서류\n\n'
     },
+    // [2026-11-27] 세무조사 위임장·위임해지 — 사건을 고르지 않았을 때만 여기(드라이브 「보고서템플릿」 같은 이름 틀이 먼저).
+    //  사건을 고른 채 누르면 rwMakePoa_가 서버(Poa.js)에서 칸을 채워 「보고서」 폴더에 저장한 파일을 연다. 그리는 모양은 규정서식(mdrender.html)
+    poa: {
+      promptDefault: '위임장', fallbackName: '위임장',
+      md: '<!-- 서식: 조사사무처리규정 별지 제13호 위임장 -->\n# 위임장\n\n## 세무대리인\n- 성명: \n- 전화번호: \n- 생년월일: \n- 사업자등록번호: \n- 사업장소재지(주소): \n- 자격: 세무사\n- 관계: 세무조사 대리\n\n## 위임 내용\n- 조사관서: \n- 조사기간: \n- 조사세목: \n- 위임일: ' + todayStr + '\n\n## 위임자\n- 사업장소재지(주소): \n- 법인명(상호): \n- 사업자(주민)등록번호: \n- 대표자(성명): \n\n## 제출처\n- 조사과: \n- 전화: \n\n## 세무대리인 명단\n| 순번 | 소속 | 직위/직책 | 성명 | 생년월일 | 자격 |\n|---|---|---|---|---|---|\n| 1 | | 대표 | | | 세무사 |\n'
+    },
+    poa_revoke: {
+      promptDefault: '위임해지', fallbackName: '위임해지',
+      md: '<!-- 서식: 조사사무처리규정 별지 제13-1호 위임해지 -->\n# 위임해지\n\n## 세무대리인\n- 성명: \n- 전화번호: \n- 생년월일: \n- 사업자등록번호: \n- 사업장소재지(주소): \n- 자격: 세무사\n- 관계: 세무조사 대리\n\n## 해지 내용\n- 조사관서: \n- 조사기간: \n- 조사세목: \n- 해지일: ' + todayStr + '\n\n## 위임자\n- 사업장소재지(주소): \n- 법인명(상호): \n- 사업자(주민)등록번호: \n- 대표자(성명): \n\n## 세무대리인 명단\n| 순번 | 소속 | 직위/직책 | 성명 | 생년월일 | 자격 |\n|---|---|---|---|---|---|\n| 1 | | 대표 | | | 세무사 |\n'
+    },
     // [2026.09] 번역서(외부, 세무서 제출) — 영문 등 외국어 자료를 과세관청에 제출할 때 함께
     // 내는 한국어 번역문. 기존 (구)용역서와 별개인 "첨부서류 번역본" 테마(doc-translation,
     // 원본 서식 재현형 — 분석용 장치 없이 표・인용 위주)를 그대로 재사용한다.
@@ -53000,7 +53228,7 @@ async function createNewDoc(kind){
   if (kind === 'reference') mdContent = rwShapeReviewMemo_(mdContent, { semok: semokLabel, issue: rwIssue_, date: todayStr, client: c ? (c.고객명 || '') : '' });
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
-  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', audit_opinion: 'audit_opinion', explanation: 'explanation', refund_claim: 'refund_claim', translation: 'translation', summary: 'summary' };
+  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', audit_opinion: 'audit_opinion', explanation: 'explanation', refund_claim: 'refund_claim', translation: 'translation', summary: 'summary', poa: 'poa', poa_revoke: 'poa_revoke' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType, rwBaseline_: mdContent };
   if (c && c.id) newDoc.caseId = c.id; // [2026.11.25] 이 사건에서 만든 문서 — 저장 전에도 이 사건 문서 상자에 보임
@@ -53069,6 +53297,34 @@ function addAppealDoc(){ createNewDoc('appeal_petition'); }
 function addAuditOpinionDoc(){ createNewDoc('audit_opinion'); } // [2026-11-27 ⑥]
 function addExplanationDoc(){ createNewDoc('explanation'); }
 function addRefundClaimDoc(){ createNewDoc('refund_claim'); }
+// [2026-11-27] 세무조사 위임장·위임해지 — 세무사님 「그래야 넥스가 위임,해임을 처리할 수 있다」. 넥스 도구 poa_form과 같은 서버(Poa.js)를 부른다(10-22 넥스 도구 = 화면 도구).
+//  사건을 고른 채 누르면: 서버가 칸을 채워 「보고서」 폴더에 위임장.md(위임해지.md)로 저장·장부 「세무대리 위임」 기록 → 여기서 그 파일을 연다.
+//  이미 있으면 덮어쓰지 않고 세부명칭(조사가 둘 이상일 때)을 묻거나 있는 파일을 연다. 사건을 안 골랐으면 빈 틀(createNewDoc).
+async function rwMakePoa_(revoke){
+  const c = rwGetSelectedCase_();
+  const label = revoke ? '위임해지' : '위임장';
+  if (!c || !c.id) return createNewDoc(revoke ? 'poa_revoke' : 'poa');
+  showToast(label + ' 칸을 채우는 중…', 'info');
+  let r;
+  try { r = await callGas('poa_make', { caseId: c.id, revoke: !!revoke }); }
+  catch (err) { showToast(label + '을(를) 만들지 못했습니다: ' + (err && err.message ? err.message : err), 'error'); return; }
+  if (r && r.exists) {
+    const d = await nxPrompt_('「보고서」 폴더에 ' + r.name + '이(가) 이미 있습니다(덮어쓰지 않습니다).\n같은 사건에 조사가 둘 이상이면 세부명칭(예: 양도소득세)을 적어 따로 만드세요.\n비워 두고 확인을 누르면 있는 파일을 엽니다.', '');
+    if (d === null) return;
+    if (!String(d).trim()) { await rwLoadFileById_(r.fileId, { caseId: c.id }); return; }
+    try { r = await callGas('poa_make', { caseId: c.id, revoke: !!revoke, detail: String(d).trim() }); }
+    catch (err) { showToast(label + '을(를) 만들지 못했습니다: ' + (err && err.message ? err.message : err), 'error'); return; }
+  }
+  if (!r || !r.ok) { showToast((r && (r.error || r.message)) || (label + '을(를) 만들지 못했습니다.'), 'error'); return; }
+  try { rwRenderCaseReports_(c.id); } catch (e) {}
+  await rwLoadFileById_(r.fileId, { caseId: c.id });
+  const lines = [r.안내 || ''];
+  (r.알림 || []).forEach(function(x){ lines.push('· ' + x); });
+  if (r.확인할칸 && r.확인할칸.length) lines.push('· 채울 칸(노란 ⚠): ' + r.확인할칸.join(' / '));
+  if (typeof nxAlert_ === 'function') nxAlert_(lines.join('\n'), label); else showToast(lines[0], 'info');
+}
+function addPoaDoc(){ rwMakePoa_(false); }
+function addPoaRevokeDoc(){ rwMakePoa_(true); }
 function addTranslationDoc(){ createNewDoc('translation'); }
 function addSummaryDoc(){ createNewDoc('summary'); }
 
@@ -53752,7 +54008,7 @@ document.getElementById('addAppealOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   addAppealDoc();
 });
-[['addAuditOpinionOpt', addAuditOpinionDoc], ['addExplanationOpt', addExplanationDoc], ['addRefundClaimOpt', addRefundClaimDoc]].forEach(function(p){ // [2026-11-27 ⑥]
+[['addAuditOpinionOpt', addAuditOpinionDoc], ['addExplanationOpt', addExplanationDoc], ['addRefundClaimOpt', addRefundClaimDoc], ['addPoaOpt', addPoaDoc], ['addPoaRevokeOpt', addPoaRevokeDoc]].forEach(function(p){ // [2026-11-27 ⑥]
   document.getElementById(p[0]).addEventListener('click', () => { document.getElementById('addPopup').classList.remove('show'); p[1](); });
 });
 document.getElementById('addTranslationOpt').addEventListener('click', () => {
@@ -54418,6 +54674,7 @@ async function downloadAsPdf(){
     showToast('PDF 생성 라이브러리를 불러오지 못했습니다.', 'error');
     return;
   }
+  if (await rwFormPdf_('PDF')) return; // [2026-11-27] 규정서식(위임장 등)은 쪽마다 A4 한 장 그대로
   const target = document.getElementById('previewPane');
   showToast('PDF 만드는 중…', 'info');
   try{
@@ -54612,6 +54869,41 @@ async function rwSaveToFolder_(o){
 async function rwSavePdf_(pdf, d, label){
   return rwSaveToFolder_({ d: d, ext: 'pdf', mimeType: 'application/pdf', base64Data: rwArrayBufferToBase64_(pdf.output('arraybuffer')), label: label });
 }
+// [2026-11-27] 규정서식(조사사무처리규정 별지 제13호 위임장·제13-1호 위임해지) PDF — 보고서처럼 쪽을 잘라 여백을 두지 않고,
+//  그리개가 그린 쪽(.nxf-page, 210×297mm — 여백·테두리가 서식 안에 있음) 하나를 A4 한 장에 그대로 올린다(보기용·인쇄용 같은 모양).
+//  규정서식이 아니면 false(부르는 쪽이 원래 길로).
+async function rwFormPdf_(label){
+  const src = document.getElementById('renderOut');
+  if (!src || !src.classList.contains('doc-form')) return false;
+  const pages = src.querySelectorAll('.nxf-page');
+  if (!pages.length) return false;
+  showToast(label + ' 만드는 중…', 'info');
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute; left:0; top:0; z-index:-1; pointer-events:none; background:#fff;';
+  const wrap = document.createElement('div');
+  wrap.className = 'doc-form';
+  holder.appendChild(wrap);
+  document.body.appendChild(holder);
+  try {
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    for (let i = 0; i < pages.length; i++) {
+      const pg = pages[i].cloneNode(true);
+      pg.style.boxShadow = 'none'; pg.style.margin = '0'; pg.style.zoom = ''; // 보기 칸에 맞춰 줄인 배율은 걷고 A4 원래 크기로
+      wrap.innerHTML = ''; wrap.appendChild(pg);
+      const cv = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: -window.scrollY, scrollX: -window.scrollX });
+      if (i) pdf.addPage();
+      pdf.addImage(cv.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+    }
+    await rwSavePdf_(pdf, getSelected(), label);
+  } catch (err) {
+    showToast(label + ' 생성 실패: ' + nxErrText_(err), 'error');
+  } finally {
+    holder.remove();
+  }
+  return true;
+}
 
 // [2026.10.30] 인쇄용 PDF(보기용과 따로) — 세무사님 원문: "형식은 다르더라도 인쇄는 제대로 되어야 하는데 여백이 하나도 없게 인쇄가 되었었다 …
 //  여백을 조절할 수도 없이 pdf파일이 생성되었었다. 확인하여 그런 일이 생기지 않도록 해달라" / "pdf파일을 만들때 여백이 없도록 한 것은
@@ -54675,6 +54967,7 @@ async function downloadAsPrintPdf(){
   }
   const src = document.getElementById('renderOut');
   if (!src) return;
+  if (await rwFormPdf_('인쇄용 PDF')) return; // [2026-11-27] 규정서식은 쪽마다 A4 한 장 그대로(보고서 여백 30/25mm를 두지 않음)
   showToast('인쇄용 PDF 만드는 중…', 'info');
   const M = RW_PRINT_PDF_MARGIN_MM_, PW = 210, PH = 297;
   const CW = PW - M.left - M.right, CH = PH - M.top - M.bottom;
@@ -59991,6 +60284,15 @@ function rwAiApplyEdit_(id, content){
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
       '<input type="text" id="setTaxAgentPhone" style="width:130px;" placeholder="00 0000 0000"></div>' +
       '</div>' +
+      // [2026-11-27] 세무조사 위임장 세무대리인 칸(위임장 계획서 ㉣ 「권장대로」) — 상호·자격·사업장 주소
+      '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">상호 <span class="tc-x">세무조사 위임장 명단의 소속</span></label>' +
+      '<input type="text" id="setTaxAgentFirm" style="width:140px;" placeholder="이음세무컨설팅"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">자격</label>' +
+      '<input type="text" id="setTaxAgentQual" style="width:80px;" placeholder="세무사"></div>' +
+      '<div style="flex:1 1 280px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">사업장 주소 <span class="tc-x">세무조사 위임장의 사업장소재지(주소)</span></label>' +
+      '<input type="text" id="setTaxAgentAddr" style="width:100%; box-sizing:border-box;"></div>' +
+      '</div>' +
       // [2026.10.20 전자신고 대조] 전자신고 파일 머리 레코드 필수 값(사무소 고정값)
       '<div style="display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-end;">' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;" title="양도 전자신고 — 관리번호와 둘 중 하나 필수">생년월일 <span class="tc-x">양도 전자신고 파일에 들어갑니다 — 관리번호와 둘 중 하나는 꼭 넣어야 합니다</span></label>' +
@@ -60010,6 +60312,9 @@ function rwAiApplyEdit_(id, content){
       document.getElementById('setTaxAgentPhone').value = res.taxAgentPhone || '';
       document.getElementById('setTaxAgentBirth').value = res.taxAgentBirth || '';
       document.getElementById('setHometaxUserId').value = res.hometaxUserId || '';
+      document.getElementById('setTaxAgentFirm').value = res.taxAgentFirm || '';
+      document.getElementById('setTaxAgentQual').value = res.taxAgentQual || '';
+      document.getElementById('setTaxAgentAddr').value = res.taxAgentAddr || '';
     }).catch(function(err){
       document.getElementById('setTaxAgentMsg').textContent = '불러오기 오류: ' + (err && err.message ? err.message : err);
     });
@@ -60023,7 +60328,10 @@ function rwAiApplyEdit_(id, content){
         taxAgentMgmtNo: document.getElementById('setTaxAgentMgmtNo').value,
         taxAgentPhone: document.getElementById('setTaxAgentPhone').value,
         taxAgentBirth: document.getElementById('setTaxAgentBirth').value.replace(/\D/g, ''),
-        hometaxUserId: document.getElementById('setHometaxUserId').value
+        hometaxUserId: document.getElementById('setHometaxUserId').value,
+        taxAgentFirm: document.getElementById('setTaxAgentFirm').value,
+        taxAgentQual: document.getElementById('setTaxAgentQual').value,
+        taxAgentAddr: document.getElementById('setTaxAgentAddr').value
       }).then(function(res){
         btn.disabled = false;
         if (res && res.success){

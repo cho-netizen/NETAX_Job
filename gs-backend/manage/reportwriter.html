@@ -294,6 +294,8 @@
       <button id="addAuditOpinionOpt" title="세무조사 중 조사반에 내는 납세자 의견서">조사의견서 만들기</button>
       <button id="addExplanationOpt" title="해명자료·자금출처 소명 요구에 답하는 문서">소명서 만들기</button>
       <button id="addRefundClaimOpt" title="국세기본법 §45의2 경정청구 이유서">경정청구서 만들기</button>
+      <button id="addPoaOpt" title="세무조사 위임장(조사사무처리규정 별지 제13호) — 사건을 고른 채 누르면 설정·고객관리·사전통지서로 칸을 채워 「보고서」 폴더에 저장">위임장 만들기</button>
+      <button id="addPoaRevokeOpt" title="세무조사 위임해지(조사사무처리규정 별지 제13-1호) — 앞서 낸 위임장의 조사·대리인을 이어 씀">위임해지 만들기</button>
       <button id="addTranslationOpt">번역서 만들기</button>
       <button id="addSummaryOpt">요약보고서 만들기</button>
       <button id="addBlankOpt">빈 문서 만들기</button>
@@ -584,7 +586,7 @@ async function hydrateDocsFromIdb_(){
 
 // 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함.
 const RW_DOC_TYPE_SHORT_LABELS_ = {
-  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', summary: '요약', translation: '번역서'
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '검토조서', progress: '진행', appeal_petition: '불복청구', audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', summary: '요약', translation: '번역서', poa: '위임장', poa_revoke: '위임해지'
 };
 // [2026.09.16 신규] 저장 파일명에 붙이는 전체 라벨 — rwGuessDocTypeFromFilename_이 파일명만
 // 보고 문서유형을 되짚어 추정할 때 기대하는 단어(예: filing은 "신고"+"보고서" 둘 다 있어야
@@ -595,7 +597,8 @@ const RW_DOC_TYPE_SHORT_LABELS_ = {
 const RW_DOC_TYPE_FILENAME_LABELS_ = {
   review: '종합검토서', review_specific: '개별검토서', advisory: '자문보고서', filing: '신고보고서', reference: '검토조서',
   progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서',
-  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서' // [2026-11-27 ⑥]
+  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', // [2026-11-27 ⑥]
+  poa: '위임장', poa_revoke: '위임해지' // [2026-11-27] 세무조사 위임장·위임해지(규정서식)
 };
 
 // ---------- 문서 선택 드롭다운 ----------
@@ -793,7 +796,7 @@ function showLoadErrorInEditor(fileId, message){
 // 고를 수 있는 작은 팝업으로 바꾼다(#rwDocTypeModal, .floating-panel과 같은 모양 재사용).
 // 프라미스를 돌려주므로 호출부(rwLoadFileById_, 이미 async 함수)에서 await로 받는다.
 function rwAskDocTypeForFile_(fileName){
-  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'audit_opinion', 'explanation', 'refund_claim', 'translation', 'summary'];
+  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'audit_opinion', 'explanation', 'refund_claim', 'poa', 'poa_revoke', 'translation', 'summary'];
   return new Promise(function(resolve){
     const modal = document.getElementById('rwDocTypeModal');
     const body = document.getElementById('rwDocTypeBody');
@@ -1338,6 +1341,16 @@ async function createNewDoc(kind){
       fallbackName: '경정청구서',
       md: '# 경정청구서\n\n- 청구인: ' + (c ? (c.고객명 || '') : '') + '\n- 관할 세무서장: \n- 대상: \n- 청구일자: ' + todayStr + '\n' + (c && c.법정일 ? '- 청구기한: ' + c.법정일 + '\n' : '') + '\n## 청구 내용\n\n\n## 청구 이유\n\n\n## 증거서류\n\n'
     },
+    // [2026-11-27] 세무조사 위임장·위임해지 — 사건을 고르지 않았을 때만 여기(드라이브 「보고서템플릿」 같은 이름 틀이 먼저).
+    //  사건을 고른 채 누르면 rwMakePoa_가 서버(Poa.js)에서 칸을 채워 「보고서」 폴더에 저장한 파일을 연다. 그리는 모양은 규정서식(mdrender.html)
+    poa: {
+      promptDefault: '위임장', fallbackName: '위임장',
+      md: '<!-- 서식: 조사사무처리규정 별지 제13호 위임장 -->\n# 위임장\n\n## 세무대리인\n- 성명: \n- 전화번호: \n- 생년월일: \n- 사업자등록번호: \n- 사업장소재지(주소): \n- 자격: 세무사\n- 관계: 세무조사 대리\n\n## 위임 내용\n- 조사관서: \n- 조사기간: \n- 조사세목: \n- 위임일: ' + todayStr + '\n\n## 위임자\n- 사업장소재지(주소): \n- 법인명(상호): \n- 사업자(주민)등록번호: \n- 대표자(성명): \n\n## 제출처\n- 조사과: \n- 전화: \n\n## 세무대리인 명단\n| 순번 | 소속 | 직위/직책 | 성명 | 생년월일 | 자격 |\n|---|---|---|---|---|---|\n| 1 | | 대표 | | | 세무사 |\n'
+    },
+    poa_revoke: {
+      promptDefault: '위임해지', fallbackName: '위임해지',
+      md: '<!-- 서식: 조사사무처리규정 별지 제13-1호 위임해지 -->\n# 위임해지\n\n## 세무대리인\n- 성명: \n- 전화번호: \n- 생년월일: \n- 사업자등록번호: \n- 사업장소재지(주소): \n- 자격: 세무사\n- 관계: 세무조사 대리\n\n## 해지 내용\n- 조사관서: \n- 조사기간: \n- 조사세목: \n- 해지일: ' + todayStr + '\n\n## 위임자\n- 사업장소재지(주소): \n- 법인명(상호): \n- 사업자(주민)등록번호: \n- 대표자(성명): \n\n## 세무대리인 명단\n| 순번 | 소속 | 직위/직책 | 성명 | 생년월일 | 자격 |\n|---|---|---|---|---|---|\n| 1 | | 대표 | | | 세무사 |\n'
+    },
     // [2026.09] 번역서(외부, 세무서 제출) — 영문 등 외국어 자료를 과세관청에 제출할 때 함께
     // 내는 한국어 번역문. 기존 (구)용역서와 별개인 "첨부서류 번역본" 테마(doc-translation,
     // 원본 서식 재현형 — 분석용 장치 없이 표・인용 위주)를 그대로 재사용한다.
@@ -1416,7 +1429,7 @@ async function createNewDoc(kind){
   if (kind === 'reference') mdContent = rwShapeReviewMemo_(mdContent, { semok: semokLabel, issue: rwIssue_, date: todayStr, client: c ? (c.고객명 || '') : '' });
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
-  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', audit_opinion: 'audit_opinion', explanation: 'explanation', refund_claim: 'refund_claim', translation: 'translation', summary: 'summary' };
+  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', audit_opinion: 'audit_opinion', explanation: 'explanation', refund_claim: 'refund_claim', translation: 'translation', summary: 'summary', poa: 'poa', poa_revoke: 'poa_revoke' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType, rwBaseline_: mdContent };
   if (c && c.id) newDoc.caseId = c.id; // [2026.11.25] 이 사건에서 만든 문서 — 저장 전에도 이 사건 문서 상자에 보임
@@ -1485,6 +1498,34 @@ function addAppealDoc(){ createNewDoc('appeal_petition'); }
 function addAuditOpinionDoc(){ createNewDoc('audit_opinion'); } // [2026-11-27 ⑥]
 function addExplanationDoc(){ createNewDoc('explanation'); }
 function addRefundClaimDoc(){ createNewDoc('refund_claim'); }
+// [2026-11-27] 세무조사 위임장·위임해지 — 세무사님 「그래야 넥스가 위임,해임을 처리할 수 있다」. 넥스 도구 poa_form과 같은 서버(Poa.js)를 부른다(10-22 넥스 도구 = 화면 도구).
+//  사건을 고른 채 누르면: 서버가 칸을 채워 「보고서」 폴더에 위임장.md(위임해지.md)로 저장·장부 「세무대리 위임」 기록 → 여기서 그 파일을 연다.
+//  이미 있으면 덮어쓰지 않고 세부명칭(조사가 둘 이상일 때)을 묻거나 있는 파일을 연다. 사건을 안 골랐으면 빈 틀(createNewDoc).
+async function rwMakePoa_(revoke){
+  const c = rwGetSelectedCase_();
+  const label = revoke ? '위임해지' : '위임장';
+  if (!c || !c.id) return createNewDoc(revoke ? 'poa_revoke' : 'poa');
+  showToast(label + ' 칸을 채우는 중…', 'info');
+  let r;
+  try { r = await callGas('poa_make', { caseId: c.id, revoke: !!revoke }); }
+  catch (err) { showToast(label + '을(를) 만들지 못했습니다: ' + (err && err.message ? err.message : err), 'error'); return; }
+  if (r && r.exists) {
+    const d = await nxPrompt_('「보고서」 폴더에 ' + r.name + '이(가) 이미 있습니다(덮어쓰지 않습니다).\n같은 사건에 조사가 둘 이상이면 세부명칭(예: 양도소득세)을 적어 따로 만드세요.\n비워 두고 확인을 누르면 있는 파일을 엽니다.', '');
+    if (d === null) return;
+    if (!String(d).trim()) { await rwLoadFileById_(r.fileId, { caseId: c.id }); return; }
+    try { r = await callGas('poa_make', { caseId: c.id, revoke: !!revoke, detail: String(d).trim() }); }
+    catch (err) { showToast(label + '을(를) 만들지 못했습니다: ' + (err && err.message ? err.message : err), 'error'); return; }
+  }
+  if (!r || !r.ok) { showToast((r && (r.error || r.message)) || (label + '을(를) 만들지 못했습니다.'), 'error'); return; }
+  try { rwRenderCaseReports_(c.id); } catch (e) {}
+  await rwLoadFileById_(r.fileId, { caseId: c.id });
+  const lines = [r.안내 || ''];
+  (r.알림 || []).forEach(function(x){ lines.push('· ' + x); });
+  if (r.확인할칸 && r.확인할칸.length) lines.push('· 채울 칸(노란 ⚠): ' + r.확인할칸.join(' / '));
+  if (typeof nxAlert_ === 'function') nxAlert_(lines.join('\n'), label); else showToast(lines[0], 'info');
+}
+function addPoaDoc(){ rwMakePoa_(false); }
+function addPoaRevokeDoc(){ rwMakePoa_(true); }
 function addTranslationDoc(){ createNewDoc('translation'); }
 function addSummaryDoc(){ createNewDoc('summary'); }
 
@@ -2168,7 +2209,7 @@ document.getElementById('addAppealOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   addAppealDoc();
 });
-[['addAuditOpinionOpt', addAuditOpinionDoc], ['addExplanationOpt', addExplanationDoc], ['addRefundClaimOpt', addRefundClaimDoc]].forEach(function(p){ // [2026-11-27 ⑥]
+[['addAuditOpinionOpt', addAuditOpinionDoc], ['addExplanationOpt', addExplanationDoc], ['addRefundClaimOpt', addRefundClaimDoc], ['addPoaOpt', addPoaDoc], ['addPoaRevokeOpt', addPoaRevokeDoc]].forEach(function(p){ // [2026-11-27 ⑥]
   document.getElementById(p[0]).addEventListener('click', () => { document.getElementById('addPopup').classList.remove('show'); p[1](); });
 });
 document.getElementById('addTranslationOpt').addEventListener('click', () => {
@@ -2834,6 +2875,7 @@ async function downloadAsPdf(){
     showToast('PDF 생성 라이브러리를 불러오지 못했습니다.', 'error');
     return;
   }
+  if (await rwFormPdf_('PDF')) return; // [2026-11-27] 규정서식(위임장 등)은 쪽마다 A4 한 장 그대로
   const target = document.getElementById('previewPane');
   showToast('PDF 만드는 중…', 'info');
   try{
@@ -3028,6 +3070,41 @@ async function rwSaveToFolder_(o){
 async function rwSavePdf_(pdf, d, label){
   return rwSaveToFolder_({ d: d, ext: 'pdf', mimeType: 'application/pdf', base64Data: rwArrayBufferToBase64_(pdf.output('arraybuffer')), label: label });
 }
+// [2026-11-27] 규정서식(조사사무처리규정 별지 제13호 위임장·제13-1호 위임해지) PDF — 보고서처럼 쪽을 잘라 여백을 두지 않고,
+//  그리개가 그린 쪽(.nxf-page, 210×297mm — 여백·테두리가 서식 안에 있음) 하나를 A4 한 장에 그대로 올린다(보기용·인쇄용 같은 모양).
+//  규정서식이 아니면 false(부르는 쪽이 원래 길로).
+async function rwFormPdf_(label){
+  const src = document.getElementById('renderOut');
+  if (!src || !src.classList.contains('doc-form')) return false;
+  const pages = src.querySelectorAll('.nxf-page');
+  if (!pages.length) return false;
+  showToast(label + ' 만드는 중…', 'info');
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute; left:0; top:0; z-index:-1; pointer-events:none; background:#fff;';
+  const wrap = document.createElement('div');
+  wrap.className = 'doc-form';
+  holder.appendChild(wrap);
+  document.body.appendChild(holder);
+  try {
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    for (let i = 0; i < pages.length; i++) {
+      const pg = pages[i].cloneNode(true);
+      pg.style.boxShadow = 'none'; pg.style.margin = '0'; pg.style.zoom = ''; // 보기 칸에 맞춰 줄인 배율은 걷고 A4 원래 크기로
+      wrap.innerHTML = ''; wrap.appendChild(pg);
+      const cv = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: -window.scrollY, scrollX: -window.scrollX });
+      if (i) pdf.addPage();
+      pdf.addImage(cv.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+    }
+    await rwSavePdf_(pdf, getSelected(), label);
+  } catch (err) {
+    showToast(label + ' 생성 실패: ' + nxErrText_(err), 'error');
+  } finally {
+    holder.remove();
+  }
+  return true;
+}
 
 // [2026.10.30] 인쇄용 PDF(보기용과 따로) — 세무사님 원문: "형식은 다르더라도 인쇄는 제대로 되어야 하는데 여백이 하나도 없게 인쇄가 되었었다 …
 //  여백을 조절할 수도 없이 pdf파일이 생성되었었다. 확인하여 그런 일이 생기지 않도록 해달라" / "pdf파일을 만들때 여백이 없도록 한 것은
@@ -3091,6 +3168,7 @@ async function downloadAsPrintPdf(){
   }
   const src = document.getElementById('renderOut');
   if (!src) return;
+  if (await rwFormPdf_('인쇄용 PDF')) return; // [2026-11-27] 규정서식은 쪽마다 A4 한 장 그대로(보고서 여백 30/25mm를 두지 않음)
   showToast('인쇄용 PDF 만드는 중…', 'info');
   const M = RW_PRINT_PDF_MARGIN_MM_, PW = 210, PH = 297;
   const CW = PW - M.left - M.right, CH = PH - M.top - M.bottom;

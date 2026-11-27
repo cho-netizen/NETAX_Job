@@ -326,7 +326,7 @@ const DRIVE_TOOLS = [
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더에 저장된다.' },
         name: { type: 'string', description: '파일 이름(확장자 포함). 보고서는 정식 이름(예: "종합검토서.md", "개별검토서_자경감면.md", "자문보고서.md") — reportKind를 주면 GAS가 맞춰 준다' },
-        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '조사의견서', '소명서', '경정청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
+        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '조사의견서', '소명서', '경정청구서', '번역서', '위임장', '위임해지'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
         reportDetail: { type: 'string', description: '보고서 세부명칭(쟁점을 짧게, 예: 자경감면) — 개별검토서는 꼭, 다른 종류는 같은 종류가 둘 이상일 때만. 사건명·고객명·날짜는 넣지 않는다.' },
         content: { type: 'string', description: '파일에 저장할 내용 전체(마크다운 또는 일반 텍스트). 일부만 주지 말고 완성된 전체 내용을 줘야 한다.' },
         overwrite: { type: 'boolean', description: '세무서 제출용 검토조서(검토조서.md·검토조서_쟁점.md)를 같은 이름으로 갱신할 때만 true — 세무사님이 그 검토조서를 고치라고 하셨을 때만. 그 밖의 파일에는 쓰지 않는다.' }
@@ -342,7 +342,7 @@ const DRIVE_TOOLS = [
       properties: {
         path: { type: 'array', items: { type: 'string' }, description: '저장할 폴더의 경로(최상위부터). 생략하면 지금 사용자가 보고 있는 폴더.' },
         title: { type: 'string', description: '문서 제목(보고서면 reportKind에 따라 GAS가 정식 이름으로 맞춘다)' },
-        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '조사의견서', '소명서', '경정청구서', '번역서'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
+        reportKind: { type: 'string', enum: ['종합검토서', '개별검토서', '자문보고서', '신고보고서', '진행보고서', '요약보고서', '검토조서', '불복청구서', '조사의견서', '소명서', '경정청구서', '번역서', '위임장', '위임해지'], description: '보고서면 그 종류(사건이 연결된 대화에서) — 주면 GAS가 정식 이름 <보고서명칭_세부명칭>으로 사건 폴더 「보고서」에 저장한다. 내부보고서=종합검토서·개별검토서(사무소 안), 외부보고서=나머지(고객·세무서에 냄). 보고서가 아닌 글(서류 정리표·메모)이면 비운다.' },
         reportDetail: { type: 'string', description: '보고서 세부명칭(쟁점을 짧게, 예: 자경감면) — 개별검토서는 꼭, 다른 종류는 같은 종류가 둘 이상일 때만. 사건명·고객명·날짜는 넣지 않는다.' },
         content: { type: 'string', description: '마크다운 형식 내용 전체(# 제목, ## 소제목, **굵게**, - 목록 지원)' }
       },
@@ -5529,6 +5529,10 @@ function dispatchClientAction0_(body) {
   // [2026-11-27] 넥스 독립 업무처리(Standalone.js) — 사본·큰 압축 풀기·메일 본문/첨부·달력 넣기·밖으로 나간 횟수. 로그인 표가 있어야 닿는 길만
   if (typeof SF_ACTIONS_ !== 'undefined' && SF_ACTIONS_.indexOf(body.action) !== -1) {
     return jsonResponse(sf_dispatch_(body));
+  }
+  // [2026-11-27] 세무조사 위임장·위임해지(Poa.js) — 칸 채워 사건 「보고서」에 md 저장·장부 「세무대리 위임」·제출했음. 로그인 표가 있어야 닿는 길만
+  if (typeof POA_ACTIONS_ !== 'undefined' && POA_ACTIONS_.indexOf(body.action) !== -1) {
+    return jsonResponse(poa_dispatch_(body));
   }
   if (body.action === 'scan_cash_receipts') {
     return jsonResponse(handleScanCashReceipts(body));
@@ -18728,7 +18732,8 @@ function handleDeleteReportFile(body) {
 const RW_DOCTYPE_FILENAME_LABELS_BY_CODE_ = {
   advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
   progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서',
-  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서' // [2026-11-27 ⑥]
+  audit_opinion: '조사의견서', explanation: '소명서', refund_claim: '경정청구서', // [2026-11-27 ⑥]
+  poa: '위임장', poa_revoke: '위임해지' // [2026-11-27] 세무조사 위임장·위임해지(Poa.js)
 };
 function rw_guessDocTypeFromContent_(content) {
   const head = String(content || '').slice(0, 800);
@@ -20651,7 +20656,10 @@ const REPORT_KINDS_ = [
   { code: 'audit_opinion', label: '조사의견서', use: '외부', detail: '선택' }, // [2026-11-27 목적점검 3차 4절 ⑥ — 세무사님 "권장대로 하자"] 세무조사 중 조사반에 내는 의견서
   { code: 'explanation', label: '소명서', use: '외부', detail: '선택' }, // 해명자료·자금출처 소명 요구에 답하는 문서
   { code: 'refund_claim', label: '경정청구서', use: '외부', detail: '선택' }, // 국세기본법 §45의2 경정청구 이유서
-  { code: 'translation', label: '번역서', use: '외부', detail: '선택' }
+  { code: 'translation', label: '번역서', use: '외부', detail: '선택' },
+  // [2026-11-27] 세무조사 위임장·위임해지 — 조사사무처리규정 별지 제13호·제13-1호(Poa.js가 칸을 채워 만듦, 화면이 규정서식 모양으로 그림). 세무서 제출용
+  { code: 'poa', label: '위임장', use: '외부', detail: '선택' },
+  { code: 'poa_revoke', label: '위임해지', use: '외부', detail: '선택' }
 ];
 // 종류 찾기 — 코드('review')·명칭('종합검토서')·파일 이름('개별검토서_자경감면.md') 무엇을 줘도 된다. 파일 이름은 정식 이름일 때만 알아본다.
 function reportKindOf_(x) {
@@ -20678,6 +20686,8 @@ function reportGuessKindFromName_(name) {
   if (/조사\s*의견서/.test(base)) add('audit_opinion'); // [2026-11-27 ⑥]
   if (/소명서/.test(base)) add('explanation');
   if (/경정\s*청구서/.test(base)) add('refund_claim');
+  if (/^위임\s*해지/.test(base)) add('poa_revoke'); // [2026-11-27] 이름 맨 앞일 때만(다른 서류 이름 속 「상속인 위임장」 등은 아님)
+  else if (/^위임장/.test(base)) add('poa');
   if (/번역서/.test(base)) add('translation');
   const reportish = hits.length > 0 || /(검토|보고서|자문|의견서|청구서)/.test(base);
   return { kind: hits.length === 1 ? reportKindOf_(hits[0]) : null, reportish: reportish };
@@ -22540,7 +22550,8 @@ function toolUpdateWorkSubtaskStatus(input, contextPath) {
 // "세무대리인 정보" 입력화면 양쪽에서 이 두 함수만 호출한다.
 // [2026.10.20 전자신고 대조] taxAgentBirth(세무대리인 생년월일 — 양도 HEADER 27, 관리번호와 둘 중 하나 필수)·hometaxUserId(홈택스 사용자ID — 세 세목 HEADER 10·12) 추가.
 //  세무대리 대표자 주민등록번호는 민감 정보라 저장하지 않는다(화면이 파일 만들 때만 받고 지움).
-const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone', 'taxAgentBirth', 'hometaxUserId'];
+// [2026-11-27] 위임장 계획서 ㉣ 「권장대로」 — 사업장 주소·상호·자격(세무조사 위임장 세무대리인 칸, 다른 서식도 같은 값을 씀)
+const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone', 'taxAgentBirth', 'hometaxUserId', 'taxAgentAddr', 'taxAgentFirm', 'taxAgentQual'];
 function getTaxAgentSettings_() {
   const props = PropertiesService.getScriptProperties();
   const result = {};
@@ -29015,6 +29026,7 @@ function caseProcUserView_(c, body) {
   const slimCase = { id: c.id, 사건명: c.사건명, 고객명: c.고객명, 납세자: c.납세자, 세목: c.세목, 업무유형: c.업무유형, 기준일: c.기준일, 법정일: c.법정일, 폴더ID: c.폴더ID, 상태: c.상태, 사건개요: c.사건개요 || {}, 수정일: c.수정일, my_report_id: c.my_report_id };
   return { ok: true, 파일: (sv.readFiles && Array.isArray(sv.readFiles.list) ? sv.readFiles.list : []).map(function (f) { return { id: f.id, name: f.name }; }), 다음: next, 알림: alertsAll.filter(function (a) { return !isNexAlert(a); }).map(function (a) { return a.at + ' ' + a.text; }), 넥스알림: alertsAll.filter(isNexAlert).map(function (a) { return a.at + ' ' + a.text; }), 장부: ledgerN, 기록: (v.작업기록 || []).slice(-15), 단계: st, 계산: last ? { 날짜: last.계산일 || '', 세액: last.최종세액 } : null, 새서류: Array.isArray(v.새서류) ? v.새서류 : [], 서식: pdfInfo, 검토서: draftInfo, 보류: heldN, 남은질문: v.남은질문수 || 0,
     서류변동: watchS, // [2026.10.28 감시]
+    위임: (function () { try { return typeof poaStatus_ === 'function' ? poaStatus_(c.id) : null; } catch (e) { return null; } })(), // [2026-11-27] 세무조사 위임장 — 「지금 할 일」 서명·제출
     금융: typeof finAskSummaryFor_ === 'function' ? finAskSummaryFor_(c.id) : null, // [2026.11.27] 상속 사건 금융거래 「정하실 것」 수(1분 틱이 적어 둠) — 개요 「지금 할 일」
     읽을목록: { 방식: scope0 ? (scope0.mode === 'list' ? 'list' : 'dirs') : 'none', 켠수: scope0 && Array.isArray(scope0.files) ? scope0.files.length : null, 누가: scope0 ? (scope0.by || '') : '', 때: scope0 ? (scope0.at || '') : '', 새파일: newF }, // [2026.10.28 읽을 대상 ②] 화면이 ⚡ 처음 누를 때 목록이 없으면 체크 목록을 먼저 띄운다
     질문: (Array.isArray(sv.remaining) ? sv.remaining : []).slice(0, 80), 결정: sv.decisions || {}, 바탕: t6RecordForReader_(sv), 사건: slimCase, 저장때: sv.savedAt || '', 칸채움때: (sv.steps && sv.steps.overview && sv.steps.overview.at) || '' }; // [2026.10.27 H] 바탕 = 직결 요청에 실을 기록부(결정·읽을 범위·답 저장소·고침 기록…)

@@ -668,6 +668,16 @@ function commSeamList_() {
       if (typeof tcUnzip_ !== 'function') return '압축 풀기 함수(tcUnzip_)가 없음(서류 읽기와 같은 함수여야 함)';
       return '';
     } },
+    // [2026-11-27] 세무사님 「그래야 넥스가 위임,해임을 처리할 수 있다」 — 넥스 poa_form = 보고서 탭 「위임장 만들기」 = 같은 서버(Poa.js), 장부 「세무대리 위임」, 규정서식 그리개
+    { 길: '세무조사 위임장·위임해지(넥스 poa_form·보고서 탭 단추 → Poa.js → 사건 「보고서」 md·장부 poa.*)', fn: function () {
+      if (typeof poa_dispatch_ !== 'function' || typeof poaNexTool_ !== 'function') return 'Poa.js가 이 판에 없음(clasp push 필요)';
+      if (String(dispatchClientAction0_).indexOf('POA_ACTIONS_') === -1) return '서버 입구가 poa_ 묶음을 받지 않음';
+      if (leadTools().indexOf('poa_form') === -1) return '사건 대화 도구에 poa_form 없음';
+      if (typeof NR_READ_TOOLS_ !== 'undefined' && NR_READ_TOOLS_.test('poa_form')) return 'poa_form은 파일·장부에 쓰는 도구라 밤 넥스 읽기 도구에 넣지 않음';
+      if (!reportKindOf_('위임장') || !reportKindOf_('위임해지')) return '보고서 종류표에 위임장·위임해지 없음';
+      if (TAX_AGENT_SETTINGS_KEYS_.indexOf('taxAgentAddr') === -1) return '설정 세무대리인 정보에 사업장 주소 칸 없음';
+      return '';
+    } },
     // [2026-11-26] 세무사님 "도착 결과를 확인할 수 있게 하자" — 보낸 메시지 번호 → 1분 틱이 솔라피에 결과 묻기 → 영수증 목록·상담 기록·실패는 「답하실 것」+아침 묶음
     { 길: '영수증 문자 도착 확인(1분 틱 → 솔라피 결과 → 목록·상담 기록·실패 알림)', fn: function () {
       if (typeof receiptSms_trackTick_ !== 'function') return 'ReceiptSmsTrack.js가 이 판에 없음(clasp push 필요)';
