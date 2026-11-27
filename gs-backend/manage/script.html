@@ -112,11 +112,29 @@
     if (!touch) return false;
     // 기종도 본다(세무사님: 태블릿 화면 나누기처럼 크기·비율만 맞는 큰 기기에서 뜨면 안 됨) — 크롬이 알려 주는 기종명이
     // 있으면 갤럭시 Z플립(SM-F7…)일 때만. 기종명을 못 받는 브라우저면 아래 크기·비율 기준으로만 판단한다.
+    // [2026.11.28] 세무사님 "태블릿 팝업창에서 플립모드가 켜지도록 하자"(계획서 태블릿_플립화면_계획서_20261128 「권장대로 하자」) — 태블릿 팝업 창이면 크기와 상관없이 켠다.
+    //  예전 결정 「태블릿 화면 나누기처럼 크기·비율만 맞는 큰 기기에서 뜨면 안 됨」은 그대로: 화면 나누기는 창 한 변이 화면 끝까지 닿고, 팝업은 두 변 모두 작게 떠 있다.
+    if (nxTabletPopup_()) return true;
     if (window.nxDeviceModel && !/^SM-F7/i.test(window.nxDeviceModel)) return false;
     // 워치 화면(짧은 쪽 240 미만, 거의 정사각·원형)도 작은 정사각으로 본다(2026.10.22 — 150부터)
     function squareSmall(w, h){ var s = Math.min(w, h), l = Math.max(w, h); return s >= 150 && s <= 640 && l <= 760 && l / s <= 1.45; }
     // 화면 크기(screen) 값은 접고 펼칠 때 늦게 바뀌어(시험에서 펼친 크기인데 커버로 판정) 쓰지 않고 실제 창 크기만 본다.
     return squareSmall(window.innerWidth, window.innerHeight);
+  }
+  // 태블릿(화면 짧은 쪽 700 이상) 안에서 창 폭·높이가 모두 화면의 85% 이하면 팝업 창으로 본다. 화면 값은 태블릿에선 바뀌지 않으니 그대로 쓴다
+  //  (접는 폰에서 screen 값이 늦게 바뀌는 문제는 접는 폰 화면이 700에 못 미쳐 여기 오지 않음). 높이는 창 틀까지 잰 outerHeight가 있으면 큰 쪽 — 주소줄이 있는
+  //  크롬 탭에서 화면 나누기 창을 팝업으로 잘못 보지 않게. 설정 › 화면 「지금 창」 줄(nxWinInfo_)에 잰 값이 보인다.
+  function nxWinInfo_(){
+    var sw = screen.availWidth || screen.width || 0, sh = screen.availHeight || screen.height || 0;
+    var w = Math.max(window.innerWidth, window.outerWidth || 0), h = Math.max(window.innerHeight, window.outerHeight || 0);
+    return { sw: sw, sh: sh, w: w, h: h, tablet: Math.min(screen.width || 0, screen.height || 0) >= 700 };
+  }
+  function nxTabletPopup_(){
+    var o = nxLayoutOverride_(); if (o === 'pc' || o === 'tablet') return false;
+    var touch = false; try { touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
+    if (!touch) return false;
+    var i = nxWinInfo_();
+    return i.tablet && i.sw > 0 && i.sh > 0 && i.w <= i.sw * 0.85 && i.h <= i.sh * 0.85;
   }
   function nxApplyLayout_(){
     var st = nxLayoutStage_();
@@ -128,6 +146,9 @@
     var coverChanged = !!window.nxCover !== cover;
     window.nxCover = cover;
     document.body.classList.toggle('lay-cover', cover);
+    // [2026.11.28] 큰 창의 플립 화면(태블릿 팝업·태블릿 말하기 메뉴) — 짧은 쪽이 플립 커버화면보다 크면 글자를 키우고 가운데로 모은다(style.html lay-cover-big)
+    document.body.classList.toggle('lay-cover-big', cover && Math.min(window.innerWidth, window.innerHeight) > 480);
+    if (coverChanged && typeof nxFontZoomApply_ === 'function') nxFontZoomApply_(); // 위에서 글자 크기를 정할 땐 커버 여부가 바뀌기 전이었다
     document.body.classList.toggle('nx-talk-exit', cover && nxTalkForced_() && !nxCoverNatural_()); // [2026.11.14] 「↩ 원래 화면으로」 단추
     if (coverChanged && typeof nxCoverOnEnter_ === 'function') try{ nxCoverOnEnter_(cover); }catch(e){}
     if (coverChanged){ try{ document.dispatchEvent(new CustomEvent('nx-cover-change', { detail: cover })); }catch(e){} }
@@ -192,7 +213,12 @@
   })();
   var NX_FONT_KEY_ = 'nx_font_zoom';
   function nxFontZoomSaved_(){ var v = parseInt(nxLs_(NX_FONT_KEY_), 10); return (v >= 80 && v <= 150) ? v : 0; }
-  function nxFontZoomDefault_(){ var st = window.nxLayout || nxLayoutStage_(); if (st === 'tablet') return 115; if (st === 'phone' && !window.nxCover) return 110; return 100; }
+  function nxFontZoomDefault_(){
+    var st = window.nxLayout || nxLayoutStage_(); if (st === 'tablet') return 115; if (st === 'phone' && !window.nxCover) return 110;
+    // [2026.11.28] 큰 창의 플립 화면 — 짧은 쪽 480이면 100%, 800이면 150%(그 사이는 비례, 5단위)
+    if (window.nxCover){ var s = Math.min(window.innerWidth, window.innerHeight); if (s > 480) return Math.min(150, Math.round((100 + (s - 480) * 50 / 320) / 5) * 5); }
+    return 100;
+  }
   function nxFontZoomGet_(){ return nxFontZoomSaved_() || nxFontZoomDefault_(); }
   function nxFontZoomApply_(){ try { document.documentElement.style.setProperty('--nx-font-zoom', String(nxFontZoomGet_() / 100)); } catch (e) {} }
   function nxFontZoomSet_(pct){

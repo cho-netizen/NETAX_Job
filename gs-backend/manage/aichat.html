@@ -242,6 +242,16 @@
   .nxai-talk-mic{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
   .nxai-talk-cancel{ flex-shrink:0; align-self:stretch; height:48px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#fff; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer; }
   @keyframes nxaiTalkPulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.18); } }
+  /* [2026.11.28] 큰 창의 플립 화면(body.lay-cover-big) — 금색 칸이 화면 전체를 덮지 않게: 가운데 한 단, 마이크는 큰 둥근 단추, 물음·답 글은 크게 그 위에 */
+  body.lay-cover-big #nxAiTalk{ max-width:680px; margin:0 auto; gap:12px; padding:14px 16px; }
+  body.lay-cover-big .nxai-talk-q{ font-size:16px; max-height:4.8em; }
+  body.lay-cover-big .nxai-talk-a{ flex:1 1 auto; max-height:none; font-size:19px; }
+  body.lay-cover-big .nxai-talk-mic{ flex:0 0 auto; align-self:center; width:240px; height:240px; min-height:0; border-radius:50%; padding:18px; }
+  body.lay-cover-big .nxai-talk-a:empty ~ .nxai-talk-mic{ margin:auto 0; }
+  body.lay-cover-big .nxai-talk-ic{ font-size:64px; }
+  body.lay-cover-big .nxai-talk-md{ position:static; order:3; }
+  body.lay-cover-big .nxai-talk-ic{ order:1; } body.lay-cover-big .nxai-talk-mic .nxai-talk-st{ order:2; font-size:14px; }
+  body.lay-cover-big .nxai-talk-cancel{ max-width:360px; align-self:center; width:100%; }
 
   /* ===== 공통 ===== */
   .nxai{ --nxai-font:13.5px; display:flex; height:100%; min-height:0; width:100%; font-size:var(--nxai-font); }
@@ -427,6 +437,11 @@
   .nxai-preview{ width:42%; min-width:300px; max-width:720px; flex-shrink:0; border-left:1px solid var(--line); flex-direction:column; min-height:0; background:#fff; }
   /* 숨기면 칸 자체를 없앤다(머리줄 조각도 안 남게) — 다시 여는 버튼은 대화창 머리에 있다 */
   .nxai.mode-tab.pv-collapsed .nxai-preview{ display:none; }
+  /* [2026.11.28] 세무사님 "어라! 사건에 연결되지도 않았는데 사건자료와 미리보기창이 떠있네?" → 계획서(태블릿_플립화면_계획서_20261128) 「권장대로 하자」:
+     사건 없는 대화(관리)에서는 「사건 자료·미리보기」 칸을 접고 대화가 넓이를 다 쓴다(손으로 접은 기억은 그대로). 넥스가 파일·폴더를 열어 보여 주면 그때만 편다
+     — 파일만 열렸으면 「미리보기」 탭만(pv-viewonly). nxAiPvCaseGate_가 정한다. */
+  .nxai.mode-tab.pv-nocase .nxai-preview, .nxai.mode-tab.pv-nocase #nxAiPvShow, .nxai.pv-nocase #nxAiPhoneTabs [data-ph="files"]{ display:none !important; }
+  .nxai.pv-viewonly #nxAiPvTabFiles{ display:none; }
   /* 미리보기 아래 배치(위치 전환 아이콘 또는 태블릿 기본) — 숨기기/열기 버튼은 90도 돌려 위아래를 가리킨다 */
   .nxai.pv-at-bottom .nxai-preview{ width:auto; min-width:0; max-width:none; height:38%; min-height:160px; border-left:none; border-top:1px solid var(--line); }
   .nxai.pv-at-bottom #nxAiPvToggle, .nxai.pv-at-bottom #nxAiPvShow{ transform:rotate(90deg); }
@@ -1058,6 +1073,7 @@
   //  사건이 없는 대화면 빈 칸, 폴더 없는 사건이면 "폴더 없음" 글. 다른 사건에서 연 미리보기도 함께 닫는다.
   function nxAiPvSyncCase_(c){
     nxAiPvDropOtherCase_();
+    nxAiPvCaseGate_();
     var box = nxAiEl_('nxAiPvFiles');
     if (!nxAiConv.caseId){ nxAiPvRenderEmpty_(); return Promise.resolve(); }
     var convAt = nxAiConv;
@@ -1169,6 +1185,7 @@
     nxAiEl_('nxAi').classList.remove('pv-collapsed');
     nxAiLs_('nxAiPvHidden', '0');
     nxAiPhoneTab_('files');
+    nxAiPvCaseGate_();
   }
   // [2026.11.13 5차 바] 다른 사건에서 연 미리보기 파일은 사건을 바꾸면 닫는다 — 실사건(11-02) 넥스가 화면에 남아 있던 다른 사건의 「거래내역서.pdf」를 이 사건 자료로 읽음("그건 다른 사건자료이다")
   function nxAiPvDropOtherCase_(){
@@ -1182,6 +1199,18 @@
   function nxAiPvRenderEmpty_(){
     nxAiPvFolder = null;
     nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">사건 화면을 열면(또는 넥스에게 사건 이름을 말하면) 그 사건 폴더의 자료가 여기 보입니다.</div>';
+    nxAiPvCaseGate_();
+  }
+  // [2026.11.28] 사건 없는 대화면 자료 칸을 접는다(CSS pv-nocase). 사건이 있거나, 넥스가 폴더(nxAiPvFolder)·파일(nxAiPreviewFile)을 열어 둔 때만 편다.
+  function nxAiPvCaseGate_(){
+    var root = nxAiEl_('nxAi'); if (!root) return;
+    var noCase = !(nxAiConv && nxAiConv.caseId);
+    var hide = noCase && !nxAiPvFolder && !nxAiPreviewFile;
+    var viewOnly = noCase && !nxAiPvFolder && !!nxAiPreviewFile;
+    root.classList.toggle('pv-nocase', hide);
+    root.classList.toggle('pv-viewonly', viewOnly);
+    if (viewOnly){ nxAiEl_('nxAiPvFiles').hidden = true; nxAiEl_('nxAiPvView').hidden = false; nxAiEl_('nxAiPvTabView').classList.add('on'); nxAiEl_('nxAiPvTabFiles').classList.remove('on'); }
+    if (hide && root.classList.contains('ph-files')) nxAiPhoneTab_('chat');
   }
 
   // where = {folderId} 또는 {path}
@@ -1191,6 +1220,7 @@
     return callGas('listFolder', where).then(function(res){
       if (!res || res.error){ box.innerHTML = '<div class="nxai-muted">' + nxAiEsc_(res && res.error || '폴더를 열지 못했습니다.') + '</div>'; return; }
       nxAiPvFolder = { folderId: res.folderId, path: res.path || [] };
+      nxAiPvCaseGate_();
       // 사건 폴더 자체를 열었으면 그 경로를 대화에 기억(AI에게 넘기는 "현재 위치"로 씀)
       if (where.folderId && where.folderId === nxAiConv.caseFolderId) nxAiConv.casePath = res.path || null;
       nxAiPvRenderListing_(res);

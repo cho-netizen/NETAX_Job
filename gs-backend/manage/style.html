@@ -1170,6 +1170,12 @@
   body.lay-cover #view-dashboard .card > h3:first-child{ margin:-10px -12px 6px; padding:6px 12px; } /* 표지 배치는 카드 안 여백이 10·12px — 제목 띠를 그만큼만 끝까지 */
   body.lay-cover #view-dashboard .card h3 a,
   body.lay-cover #view-dashboard .card > div:has(> #dashCalRangeBefore){ display:none !important; }
+  /* [2026.11.28] 큰 창의 플립 화면(태블릿 팝업·태블릿 말하기 메뉴, body.lay-cover-big — script.html nxApplyLayout_) — 세무사님 "태블릿화면이 엉성하니까 태블릿에 맞게 조정해 주고"
+     → 계획서(태블릿_플립화면_계획서_20261128) 「권장대로 하자」: 글자는 창 크기에 맞춰 키우고(nxFontZoomDefault_), 내용은 가운데 한 단(폭 680)으로 모은다.
+     넥스 말하기 마이크(aichat.html)·녹음 큰 단추(consultmemo.html)가 화면 전체를 덮던 것은 각 화면에서 줄인다. */
+  body.lay-cover-big #view-dashboard .view-head, body.lay-cover-big #view-dashboard .view-body{ max-width:680px; margin-left:auto; margin-right:auto; box-sizing:border-box; }
+  /* 「↩ 원래 화면으로」(말하기 메뉴로 켠 때만)가 고객 카드 「다른 고객」·녹음 머리 오른쪽 글을 덮던 것 — 머리 오른쪽을 그만큼 비운다(플립 크기에도 같던 겹침) */
+  body.lay-cover.nx-talk-exit .cc-head, body.lay-cover.nx-talk-exit .cm-head{ padding-right:132px; }
 
   /* ===== [2026.10.08] 다크모드(설정 탭) ==========================================
      - 업무 화면들(#centerWork의 각 .view)은 색이 화면마다 직접 박혀 있어(630곳) 하나씩 바꾸면 빠지는

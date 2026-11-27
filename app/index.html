@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 12:56 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 15:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1468,6 +1468,12 @@
   body.lay-cover #view-dashboard .card > h3:first-child{ margin:-10px -12px 6px; padding:6px 12px; } /* 표지 배치는 카드 안 여백이 10·12px — 제목 띠를 그만큼만 끝까지 */
   body.lay-cover #view-dashboard .card h3 a,
   body.lay-cover #view-dashboard .card > div:has(> #dashCalRangeBefore){ display:none !important; }
+  /* [2026.11.28] 큰 창의 플립 화면(태블릿 팝업·태블릿 말하기 메뉴, body.lay-cover-big — script.html nxApplyLayout_) — 세무사님 "태블릿화면이 엉성하니까 태블릿에 맞게 조정해 주고"
+     → 계획서(태블릿_플립화면_계획서_20261128) 「권장대로 하자」: 글자는 창 크기에 맞춰 키우고(nxFontZoomDefault_), 내용은 가운데 한 단(폭 680)으로 모은다.
+     넥스 말하기 마이크(aichat.html)·녹음 큰 단추(consultmemo.html)가 화면 전체를 덮던 것은 각 화면에서 줄인다. */
+  body.lay-cover-big #view-dashboard .view-head, body.lay-cover-big #view-dashboard .view-body{ max-width:680px; margin-left:auto; margin-right:auto; box-sizing:border-box; }
+  /* 「↩ 원래 화면으로」(말하기 메뉴로 켠 때만)가 고객 카드 「다른 고객」·녹음 머리 오른쪽 글을 덮던 것 — 머리 오른쪽을 그만큼 비운다(플립 크기에도 같던 겹침) */
+  body.lay-cover.nx-talk-exit .cc-head, body.lay-cover.nx-talk-exit .cm-head{ padding-right:132px; }
 
   /* ===== [2026.10.08] 다크모드(설정 탭) ==========================================
      - 업무 화면들(#centerWork의 각 .view)은 색이 화면마다 직접 박혀 있어(630곳) 하나씩 바꾸면 빠지는
@@ -5664,6 +5670,9 @@ function nxMdOpenWindow(title, src, opts){
   @keyframes cmBlink{ 50%{ opacity:.2; } }
   .cm-brief{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
   .cm-btn{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  /* [2026.11.28] 큰 창의 플립 화면(body.lay-cover-big) — 가운데 한 단, 맨 위 큰 단추는 화면 1/3까지라 다른 고르기 단추가 한눈에 */
+  body.lay-cover-big .cm{ max-width:680px; margin:0 auto; }
+  body.lay-cover-big .cm-btn.big{ flex:0 0 auto; min-height:0; height:33%; max-height:260px; }
 </style>
 <script>
   var nxCm_ = { st: 'pick', rec: null, stream: null, chunks: [], id: '', mime: '', caseId: '', caseName: '', startedAt: 0,
@@ -6039,6 +6048,8 @@ function nxMdOpenWindow(title, src, opts){
   .cc-dday{ color:#ffb4b4; font-weight:700; }
   .cc-sum{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
   .cc-sum b{ color:var(--gold-light); }
+  /* [2026.11.28] 큰 창의 플립 화면(body.lay-cover-big) — 가운데 한 단 */
+  body.lay-cover-big .cc{ max-width:680px; margin:0 auto; }
 </style>
 <script>
   var nxCc_ = { clients: null, cases: null, cur: null, sums: {} };
@@ -59774,6 +59785,7 @@ function rwAiApplyEdit_(id, content){
         <option value="phone">폰 화면으로 고정</option>
       </select>
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
+      <div class="settings-tool-desc" id="settingsWinNow" style="margin-top:2px;"></div>
       <!-- [2026.11.11] 글자 크기 — 세무사님 "태블릿에서 가독성이 떨어져서 … 폰에서도 마찬가지다". 화면 전체 배율, 이 기기에만 기억. 기본값은 기기 배치별(PC 100·태블릿 115·폰 110). -->
       <div style="font-size:13px; margin:14px 0 6px;">글자 크기</div>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -60442,7 +60454,10 @@ function rwAiApplyEdit_(id, content){
     function refresh(){
       dark.checked = nxIsDark_();
       layout.value = nxLayoutOverride_();
-      now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
+      now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (window.nxCover ? '(플립 화면)' : '') + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
+      // [2026.11.28] 태블릿 팝업 판정에 쓰는 값 — 실제 갤럭시탭 팝업 크기를 이 줄로 보고 기준(85%)을 맞춘다
+      var wn = document.getElementById('settingsWinNow');
+      if (wn && typeof nxWinInfo_ === 'function'){ var i = nxWinInfo_(); wn.textContent = '지금 창 ' + i.w + '×' + i.h + ' / 화면 ' + i.sw + '×' + i.sh + (i.tablet ? (nxTabletPopup_() ? ' · 팝업 창으로 봄(플립 화면)' : ' · 팝업 아님') : ''); }
     }
     dark.addEventListener('change', function(){ nxSetDark_(dark.checked); });
     // [2026.11.11] 글자 크기 — 저장·적용은 script.html nxFontZoomSet_/nxFontZoomGet_
@@ -60953,6 +60968,8 @@ function rwAiApplyEdit_(id, content){
     });
     layout.addEventListener('change', function(){ nxSetLayoutOverride_(layout.value); refresh(); });
     document.addEventListener('nx-layout-change', refresh);
+    document.addEventListener('nx-cover-change', refresh);
+    window.addEventListener('resize', function(){ clearTimeout(refresh._t); refresh._t = setTimeout(refresh, 300); }); // [2026.11.28] 창 크기 줄이 팝업 크기를 바꿀 때마다 따라오게
     refresh();
   });
 </script>
@@ -62854,6 +62871,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-talk-mic{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
   .nxai-talk-cancel{ flex-shrink:0; align-self:stretch; height:48px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#fff; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer; }
   @keyframes nxaiTalkPulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.18); } }
+  /* [2026.11.28] 큰 창의 플립 화면(body.lay-cover-big) — 금색 칸이 화면 전체를 덮지 않게: 가운데 한 단, 마이크는 큰 둥근 단추, 물음·답 글은 크게 그 위에 */
+  body.lay-cover-big #nxAiTalk{ max-width:680px; margin:0 auto; gap:12px; padding:14px 16px; }
+  body.lay-cover-big .nxai-talk-q{ font-size:16px; max-height:4.8em; }
+  body.lay-cover-big .nxai-talk-a{ flex:1 1 auto; max-height:none; font-size:19px; }
+  body.lay-cover-big .nxai-talk-mic{ flex:0 0 auto; align-self:center; width:240px; height:240px; min-height:0; border-radius:50%; padding:18px; }
+  body.lay-cover-big .nxai-talk-a:empty ~ .nxai-talk-mic{ margin:auto 0; }
+  body.lay-cover-big .nxai-talk-ic{ font-size:64px; }
+  body.lay-cover-big .nxai-talk-md{ position:static; order:3; }
+  body.lay-cover-big .nxai-talk-ic{ order:1; } body.lay-cover-big .nxai-talk-mic .nxai-talk-st{ order:2; font-size:14px; }
+  body.lay-cover-big .nxai-talk-cancel{ max-width:360px; align-self:center; width:100%; }
 
   /* ===== 공통 ===== */
   .nxai{ --nxai-font:13.5px; display:flex; height:100%; min-height:0; width:100%; font-size:var(--nxai-font); }
@@ -63039,6 +63066,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-preview{ width:42%; min-width:300px; max-width:720px; flex-shrink:0; border-left:1px solid var(--line); flex-direction:column; min-height:0; background:#fff; }
   /* 숨기면 칸 자체를 없앤다(머리줄 조각도 안 남게) — 다시 여는 버튼은 대화창 머리에 있다 */
   .nxai.mode-tab.pv-collapsed .nxai-preview{ display:none; }
+  /* [2026.11.28] 세무사님 "어라! 사건에 연결되지도 않았는데 사건자료와 미리보기창이 떠있네?" → 계획서(태블릿_플립화면_계획서_20261128) 「권장대로 하자」:
+     사건 없는 대화(관리)에서는 「사건 자료·미리보기」 칸을 접고 대화가 넓이를 다 쓴다(손으로 접은 기억은 그대로). 넥스가 파일·폴더를 열어 보여 주면 그때만 편다
+     — 파일만 열렸으면 「미리보기」 탭만(pv-viewonly). nxAiPvCaseGate_가 정한다. */
+  .nxai.mode-tab.pv-nocase .nxai-preview, .nxai.mode-tab.pv-nocase #nxAiPvShow, .nxai.pv-nocase #nxAiPhoneTabs [data-ph="files"]{ display:none !important; }
+  .nxai.pv-viewonly #nxAiPvTabFiles{ display:none; }
   /* 미리보기 아래 배치(위치 전환 아이콘 또는 태블릿 기본) — 숨기기/열기 버튼은 90도 돌려 위아래를 가리킨다 */
   .nxai.pv-at-bottom .nxai-preview{ width:auto; min-width:0; max-width:none; height:38%; min-height:160px; border-left:none; border-top:1px solid var(--line); }
   .nxai.pv-at-bottom #nxAiPvToggle, .nxai.pv-at-bottom #nxAiPvShow{ transform:rotate(90deg); }
@@ -63670,6 +63702,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   //  사건이 없는 대화면 빈 칸, 폴더 없는 사건이면 "폴더 없음" 글. 다른 사건에서 연 미리보기도 함께 닫는다.
   function nxAiPvSyncCase_(c){
     nxAiPvDropOtherCase_();
+    nxAiPvCaseGate_();
     var box = nxAiEl_('nxAiPvFiles');
     if (!nxAiConv.caseId){ nxAiPvRenderEmpty_(); return Promise.resolve(); }
     var convAt = nxAiConv;
@@ -63781,6 +63814,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAi').classList.remove('pv-collapsed');
     nxAiLs_('nxAiPvHidden', '0');
     nxAiPhoneTab_('files');
+    nxAiPvCaseGate_();
   }
   // [2026.11.13 5차 바] 다른 사건에서 연 미리보기 파일은 사건을 바꾸면 닫는다 — 실사건(11-02) 넥스가 화면에 남아 있던 다른 사건의 「거래내역서.pdf」를 이 사건 자료로 읽음("그건 다른 사건자료이다")
   function nxAiPvDropOtherCase_(){
@@ -63794,6 +63828,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiPvRenderEmpty_(){
     nxAiPvFolder = null;
     nxAiEl_('nxAiPvFiles').innerHTML = '<div class="nxai-muted">사건 화면을 열면(또는 넥스에게 사건 이름을 말하면) 그 사건 폴더의 자료가 여기 보입니다.</div>';
+    nxAiPvCaseGate_();
+  }
+  // [2026.11.28] 사건 없는 대화면 자료 칸을 접는다(CSS pv-nocase). 사건이 있거나, 넥스가 폴더(nxAiPvFolder)·파일(nxAiPreviewFile)을 열어 둔 때만 편다.
+  function nxAiPvCaseGate_(){
+    var root = nxAiEl_('nxAi'); if (!root) return;
+    var noCase = !(nxAiConv && nxAiConv.caseId);
+    var hide = noCase && !nxAiPvFolder && !nxAiPreviewFile;
+    var viewOnly = noCase && !nxAiPvFolder && !!nxAiPreviewFile;
+    root.classList.toggle('pv-nocase', hide);
+    root.classList.toggle('pv-viewonly', viewOnly);
+    if (viewOnly){ nxAiEl_('nxAiPvFiles').hidden = true; nxAiEl_('nxAiPvView').hidden = false; nxAiEl_('nxAiPvTabView').classList.add('on'); nxAiEl_('nxAiPvTabFiles').classList.remove('on'); }
+    if (hide && root.classList.contains('ph-files')) nxAiPhoneTab_('chat');
   }
 
   // where = {folderId} 또는 {path}
@@ -63803,6 +63849,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return callGas('listFolder', where).then(function(res){
       if (!res || res.error){ box.innerHTML = '<div class="nxai-muted">' + nxAiEsc_(res && res.error || '폴더를 열지 못했습니다.') + '</div>'; return; }
       nxAiPvFolder = { folderId: res.folderId, path: res.path || [] };
+      nxAiPvCaseGate_();
       // 사건 폴더 자체를 열었으면 그 경로를 대화에 기억(AI에게 넘기는 "현재 위치"로 씀)
       if (where.folderId && where.folderId === nxAiConv.caseFolderId) nxAiConv.casePath = res.path || null;
       nxAiPvRenderListing_(res);
@@ -70943,11 +70990,29 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (!touch) return false;
     // 기종도 본다(세무사님: 태블릿 화면 나누기처럼 크기·비율만 맞는 큰 기기에서 뜨면 안 됨) — 크롬이 알려 주는 기종명이
     // 있으면 갤럭시 Z플립(SM-F7…)일 때만. 기종명을 못 받는 브라우저면 아래 크기·비율 기준으로만 판단한다.
+    // [2026.11.28] 세무사님 "태블릿 팝업창에서 플립모드가 켜지도록 하자"(계획서 태블릿_플립화면_계획서_20261128 「권장대로 하자」) — 태블릿 팝업 창이면 크기와 상관없이 켠다.
+    //  예전 결정 「태블릿 화면 나누기처럼 크기·비율만 맞는 큰 기기에서 뜨면 안 됨」은 그대로: 화면 나누기는 창 한 변이 화면 끝까지 닿고, 팝업은 두 변 모두 작게 떠 있다.
+    if (nxTabletPopup_()) return true;
     if (window.nxDeviceModel && !/^SM-F7/i.test(window.nxDeviceModel)) return false;
     // 워치 화면(짧은 쪽 240 미만, 거의 정사각·원형)도 작은 정사각으로 본다(2026.10.22 — 150부터)
     function squareSmall(w, h){ var s = Math.min(w, h), l = Math.max(w, h); return s >= 150 && s <= 640 && l <= 760 && l / s <= 1.45; }
     // 화면 크기(screen) 값은 접고 펼칠 때 늦게 바뀌어(시험에서 펼친 크기인데 커버로 판정) 쓰지 않고 실제 창 크기만 본다.
     return squareSmall(window.innerWidth, window.innerHeight);
+  }
+  // 태블릿(화면 짧은 쪽 700 이상) 안에서 창 폭·높이가 모두 화면의 85% 이하면 팝업 창으로 본다. 화면 값은 태블릿에선 바뀌지 않으니 그대로 쓴다
+  //  (접는 폰에서 screen 값이 늦게 바뀌는 문제는 접는 폰 화면이 700에 못 미쳐 여기 오지 않음). 높이는 창 틀까지 잰 outerHeight가 있으면 큰 쪽 — 주소줄이 있는
+  //  크롬 탭에서 화면 나누기 창을 팝업으로 잘못 보지 않게. 설정 › 화면 「지금 창」 줄(nxWinInfo_)에 잰 값이 보인다.
+  function nxWinInfo_(){
+    var sw = screen.availWidth || screen.width || 0, sh = screen.availHeight || screen.height || 0;
+    var w = Math.max(window.innerWidth, window.outerWidth || 0), h = Math.max(window.innerHeight, window.outerHeight || 0);
+    return { sw: sw, sh: sh, w: w, h: h, tablet: Math.min(screen.width || 0, screen.height || 0) >= 700 };
+  }
+  function nxTabletPopup_(){
+    var o = nxLayoutOverride_(); if (o === 'pc' || o === 'tablet') return false;
+    var touch = false; try { touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
+    if (!touch) return false;
+    var i = nxWinInfo_();
+    return i.tablet && i.sw > 0 && i.sh > 0 && i.w <= i.sw * 0.85 && i.h <= i.sh * 0.85;
   }
   function nxApplyLayout_(){
     var st = nxLayoutStage_();
@@ -70959,6 +71024,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var coverChanged = !!window.nxCover !== cover;
     window.nxCover = cover;
     document.body.classList.toggle('lay-cover', cover);
+    // [2026.11.28] 큰 창의 플립 화면(태블릿 팝업·태블릿 말하기 메뉴) — 짧은 쪽이 플립 커버화면보다 크면 글자를 키우고 가운데로 모은다(style.html lay-cover-big)
+    document.body.classList.toggle('lay-cover-big', cover && Math.min(window.innerWidth, window.innerHeight) > 480);
+    if (coverChanged && typeof nxFontZoomApply_ === 'function') nxFontZoomApply_(); // 위에서 글자 크기를 정할 땐 커버 여부가 바뀌기 전이었다
     document.body.classList.toggle('nx-talk-exit', cover && nxTalkForced_() && !nxCoverNatural_()); // [2026.11.14] 「↩ 원래 화면으로」 단추
     if (coverChanged && typeof nxCoverOnEnter_ === 'function') try{ nxCoverOnEnter_(cover); }catch(e){}
     if (coverChanged){ try{ document.dispatchEvent(new CustomEvent('nx-cover-change', { detail: cover })); }catch(e){} }
@@ -71023,7 +71091,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   })();
   var NX_FONT_KEY_ = 'nx_font_zoom';
   function nxFontZoomSaved_(){ var v = parseInt(nxLs_(NX_FONT_KEY_), 10); return (v >= 80 && v <= 150) ? v : 0; }
-  function nxFontZoomDefault_(){ var st = window.nxLayout || nxLayoutStage_(); if (st === 'tablet') return 115; if (st === 'phone' && !window.nxCover) return 110; return 100; }
+  function nxFontZoomDefault_(){
+    var st = window.nxLayout || nxLayoutStage_(); if (st === 'tablet') return 115; if (st === 'phone' && !window.nxCover) return 110;
+    // [2026.11.28] 큰 창의 플립 화면 — 짧은 쪽 480이면 100%, 800이면 150%(그 사이는 비례, 5단위)
+    if (window.nxCover){ var s = Math.min(window.innerWidth, window.innerHeight); if (s > 480) return Math.min(150, Math.round((100 + (s - 480) * 50 / 320) / 5) * 5); }
+    return 100;
+  }
   function nxFontZoomGet_(){ return nxFontZoomSaved_() || nxFontZoomDefault_(); }
   function nxFontZoomApply_(){ try { document.documentElement.style.setProperty('--nx-font-zoom', String(nxFontZoomGet_() / 100)); } catch (e) {} }
   function nxFontZoomSet_(pct){

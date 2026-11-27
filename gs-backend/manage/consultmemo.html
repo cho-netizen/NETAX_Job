@@ -34,6 +34,9 @@
   @keyframes cmBlink{ 50%{ opacity:.2; } }
   .cm-brief{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
   .cm-btn{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  /* [2026.11.28] 큰 창의 플립 화면(body.lay-cover-big) — 가운데 한 단, 맨 위 큰 단추는 화면 1/3까지라 다른 고르기 단추가 한눈에 */
+  body.lay-cover-big .cm{ max-width:680px; margin:0 auto; }
+  body.lay-cover-big .cm-btn.big{ flex:0 0 auto; min-height:0; height:33%; max-height:260px; }
 </style>
 <script>
   var nxCm_ = { st: 'pick', rec: null, stream: null, chunks: [], id: '', mime: '', caseId: '', caseName: '', startedAt: 0,
