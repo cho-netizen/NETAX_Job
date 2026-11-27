@@ -590,6 +590,9 @@ const REPORT_KINDS_ = [
   { code: 'summary', label: '요약보고서', use: '외부', detail: '선택' },
   { code: 'reference', label: '검토조서', use: '외부', detail: '선택' },
   { code: 'appeal_petition', label: '불복청구서', use: '외부', detail: '선택' },
+  { code: 'audit_opinion', label: '조사의견서', use: '외부', detail: '선택' }, // [2026-11-27 목적점검 3차 4절 ⑥ — 세무사님 "권장대로 하자"] 세무조사 중 조사반에 내는 의견서
+  { code: 'explanation', label: '소명서', use: '외부', detail: '선택' }, // 해명자료·자금출처 소명 요구에 답하는 문서
+  { code: 'refund_claim', label: '경정청구서', use: '외부', detail: '선택' }, // 국세기본법 §45의2 경정청구 이유서
   { code: 'translation', label: '번역서', use: '외부', detail: '선택' }
 ];
 

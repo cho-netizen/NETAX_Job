@@ -40,7 +40,11 @@ var LEDGER_ENUMS_ = {
   assetType: { codes: ['house', 'other', 'presale_right'], ko: { house: '주택·조합원입주권', other: '그 외 부동산', presale_right: '분양권' } },
   assetKind: { codes: ['land', 'building', 'land_building', 'stock', 'other'], ko: { land: '토지', building: '건물', land_building: '토지+건물', stock: '주식', other: '기타' } },
   'buyer.relation': { codes: ['none', 'sibling', 'lineal', 'spouse', 'relative'], ko: { none: '특수관계 없음', sibling: '형제자매', lineal: '직계존비속', spouse: '배우자', relative: '기타 친족' } },
-  transferCause: { codes: ['sale', 'expropriation', 'exchange', 'gift_burden', 'other'], ko: { sale: '매매', expropriation: '수용', exchange: '교환', gift_burden: '부담부증여', other: '기타' } }
+  transferCause: { codes: ['sale', 'expropriation', 'exchange', 'gift_burden', 'other'], ko: { sale: '매매', expropriation: '수용', exchange: '교환', gift_burden: '부담부증여', other: '기타' } },
+  // [2026-11-27 목적점검 3차 4절 ③ — 세무사님 "권장대로 하자"] 증여자와의 관계는 고르기 칸 — 「아버지」「부친」처럼 글로 적으면 말없이 「기타」(증여재산공제 0)로 계산되던 것.
+  //  「아버지」는 증여자가 아버지인지(직계존속) 수증자가 아버지인지(직계비속) 글만으로 갈리지 않아 짐작하지 않고 여쭌다
+  //  값은 사건개요 「관계(수증자 기준)」 고르기와 같은 글(화면·서류 규칙이 이미 쓰는 값) — 계산은 앞머리(배우자·직계존속·직계비속·기타친족·기타)와 「세대생략」 낱말로 읽는다
+  giftRelation: (function () { const L = ['배우자', '직계존속(1촌, 부모 등→자녀)', '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)', '직계비속(1촌, 자녀 등→부모)', '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)', '기타친족', '기타(상속인 아닌 자 등)'], ko = {}; L.forEach(function (x) { ko[x] = x; }); return { codes: L, ko: ko }; })()
 };
 // [2026.11.13 5차 다] 넥스가 고를 수 있는 역할이 열둘뿐이라 수용재결서·보상금 내역·건축물대장 같은 흔한 서류를 「기타」로 확정했다(실사건 9건) — 실사건에서 나온 종류를 더함
 var LEDGER_DOC_ROLES_ = ['양도계약서', '취득계약서', '증여계약서', '등기부', '등기신청서·등기필증', '건축물대장', '토지대장', '전소유자 분양계약서', '분양권 매매계약서', '중개대상물 확인설명서', '수용재결서', '손실보상 협의서', '보상금 내역·영수증', '수용사실 확인서', '입금·통장 내역', '취득세 영수증', '영수증', '장례비 영수증', '간편계산서', '감정평가서', '매매사례·공시가격', '신고서', '사망 서류', '상속재산분할협의서', '재산조회 회보서', '등초본', '가족관계', '공부 자료(조회)', '세무조사 통지서', '과세예고통지서', '납세고지서·결정통지서', '경정청구서', '불복 청구서·결정서', '확인서·문답서', '법인등기부', '정관', '주주명부', '재무제표', '기타']; // [2026-11-27 목적점검 3차] 조사·불복·가족법인 서류도 고를 역할이 있게(예전엔 「기타」밖에 없었음)
@@ -137,6 +141,7 @@ function ledgerEnumOf_(path) {
   if (/\.assetKind$/.test(p)) return 'assetKind';
   if (/\.buyer\d*\.relation$/.test(p)) return 'buyer.relation';
   if (/\.transferCause$/.test(p)) return 'transferCause';
+  if (/^g\d*\.giftRelation$/.test(p)) return 'giftRelation'; // [2026-11-27 ③]
   return '';
 }
 function ledgerNorm_(path, value) {
@@ -147,7 +152,7 @@ function ledgerNorm_(path, value) {
     if (spec.codes.indexOf(s) !== -1) return { v: s };
     const hit = ledgerEnumGuess_(en, s);
     if (hit) return { v: hit, note: '글 "' + s.slice(0, 30) + '" → ' + spec.ko[hit] };
-    return { error: ledgerLabel_(p) + '은(는) ' + spec.codes.map(function (c) { return c + '=' + spec.ko[c]; }).join(' · ') + ' 중 하나여야 합니다 — 받은 값: ' + s.slice(0, 40) };
+    return { error: ledgerLabel_(p) + '은(는) ' + spec.codes.map(function (c) { return c === spec.ko[c] ? c : c + '=' + spec.ko[c]; }).join(' · ') + ' 중 하나여야 합니다 — 받은 값: ' + s.slice(0, 40) + (en === 'giftRelation' ? ' (「아버지」 같은 부르는 말은 증여자인지 수증자인지 갈려 넣지 않습니다 — 수증자 기준으로 골라 주세요)' : '') };
   }
   if (/\.multiHouseCount$/.test(p)) { const n = (s.match(/\d+/) || [])[0]; return n ? { v: String(Number(n)) } : { error: '보유 주택 수는 숫자여야 합니다 — 받은 값: ' + s.slice(0, 30) }; }
   if (/\.(is[A-Z]\w*)$/.test(p)) { if (typeof value === 'boolean') return { v: value }; if (/^(true|1|예|켬|yes|해당|맞)/.test(s)) return { v: true }; if (/^(false|0|아니|끔|no|비해당|없)/.test(s)) return { v: false }; return { error: ledgerLabel_(p) + '은(는) 예/아니오 칸입니다 — 받은 값: ' + s.slice(0, 30) }; }
@@ -166,6 +171,16 @@ function ledgerNorm_(path, value) {
   return { v: (value !== null && typeof value === 'object') || typeof value === 'number' || typeof value === 'boolean' ? value : s }; // 숫자·참거짓은 모양 그대로(답 저장소에서 온 금액이 글자로 바뀌지 않게)
 }
 function ledgerEnumGuess_(en, s) {
+  if (en === 'giftRelation') { // [2026-11-27 ③] 분류 낱말만 받는다(가족 부르는 말은 방향이 갈려 짐작하지 않음 → 넣지 않고 여쭘)
+    const t = String(s || '').replace(/\s+/g, '');
+    const C = LEDGER_ENUMS_.giftRelation.codes, two = /2촌|세대생략|조부|손자|손녀/.test(t);
+    if (/^배우자/.test(t)) return C[0];
+    if (/^직계존속/.test(t)) return two ? C[2] : C[1];
+    if (/^직계비속/.test(t)) return two ? C[4] : C[3];
+    if (/^기타친족/.test(t)) return C[5];
+    if (/^기타(\(|$)|^타인|^친족아님|^특수관계없/.test(t)) return C[6];
+    return '';
+  }
   if (en === 'assetType') {
     if (/분양권/.test(s) && !/주택/.test(s)) return 'presale_right';
     if (/아님|아니|업무용|그\s*외|기타|비주택|토지|상가|오피스텔\s*\(업무/.test(s)) return 'other';
@@ -577,10 +592,12 @@ function ledgerGiftInput_(c, L, k) {
   const P = Number(k) > 0 ? 'g' + Number(k) + '.' : 'g.'; // [2026-11-10] 둘째 증여부터 g1.*·g2.*
   const row = function (p) { const ok = function (r) { return r && (r.state === '확정' || r.state === '추정'); }; let r = ledgerAliasRow_(L, p); if (!ok(r) && P === 'g.' && p.indexOf('g.') === 0) r = L.rows['g0.' + p.slice(2)]; return ok(r) ? r.v : ''; }; // [2026-11-10] 첫 증여를 g0.*로 적어도 받음(운영 넥스 시험에서 넥스가 g0.*로 적어 한 번 헛돎)
   const dg = function (x) { return Number(String(x == null ? '' : x).replace(/[^\d]/g, '')) || 0; };
-  const amt = dg(row(P + 'giftAmount')), rel = String(row(P + 'giftRelation') || '');
+  const amt = dg(row(P + 'giftAmount')), rel0 = String(row(P + 'giftRelation') || '');
+  // [2026-11-27 ③] 예전에 글로 들어간 관계(「아버지」 등)는 분류로 못 바꾸면 빈칸으로 본다(계산을 막고 여쭘) — 말없이 「기타」로 계산하지 않는다
+  const rel = rel0 ? ledgerEnumGuess_('giftRelation', rel0) : '';
   const gaps = []; if (!amt) gaps.push(P + 'giftAmount'); if (!rel) gaps.push(P + 'giftRelation');
   if (gaps.length) return { gaps: gaps };
-  const input = { giftAmount: amt, relation: /^배우자/.test(rel) ? '배우자' : /^직계존속/.test(rel) ? '직계존속' : /^직계비속/.test(rel) ? '직계비속' : /기타\s*친족/.test(rel) ? '기타친족' : '기타', isGenerationSkip: /2촌\s*이상|조부|손자|손녀|세대\s*생략/.test(rel), giftDate: row('기준일') || c.기준일 || undefined, isDoneeResident: true };
+  const input = { giftAmount: amt, relation: /^배우자/.test(rel) ? '배우자' : /^직계존속/.test(rel) ? '직계존속' : /^직계비속/.test(rel) ? '직계비속' : /기타\s*친족/.test(rel) ? '기타친족' : '기타', isGenerationSkip: /2촌\s*이상|조부|손자|손녀|세대\s*생략/.test(rel + ' ' + rel0), /* [2026-11-27 ③] 고른 값 또는 옛 글 — 예전과 같은 잣대 */ giftDate: row('기준일') || c.기준일 || undefined, isDoneeResident: true };
   if (dg(row(P + 'giftDebtAssumed'))) { input.debtAssumedAmount = dg(row(P + 'giftDebtAssumed')); const pv = String(row(P + 'giftDebtProven') == null ? '' : row(P + 'giftDebtProven')).trim(); input.isDebtObjectivelyProven = pv !== '' && !/없|아니|미입증|false|^0$/.test(pv); } // [2026-11-12 3차 ⑤ 세무사님 "모두 권장안대로"] 입증 칸이 비면 입증 없음 — 상증법 §47③ 본문(배우자·직계존비속 간 인수 채무는 인수되지 않은 것으로 추정, 객관적으로 인정될 때만 뺌). 예전엔 빈칸을 입증된 것으로 보고 뺐다
   if (dg(row(P + 'giftPriorAmount'))) input.priorGiftAmount = dg(row(P + 'giftPriorAmount'));
   if (dg(row(P + 'giftPriorPaidTax'))) input.priorPaidTax = dg(row(P + 'giftPriorPaidTax'));
