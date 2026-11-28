@@ -225,7 +225,7 @@ function nxJob_appendToConv_(job) {
   } else {
     text = '⚠ 넥스가 일하다 멈췄습니다: ' + (job.error || job.status) + ' — 지금까지 ' + (job.round || 0) + '단계·도구 ' + (job.toolN || 0) + '번. 질문과 한 일은 서버에 남아 있습니다(일감 ' + job.id + ').';
   }
-  msgs.push({ role: 'assistant', content: text, nxJob: job.id, nxJobState: job.status });
+  msgs.push({ role: 'assistant', content: text, nxJob: job.id, nxJobState: job.status, stat: job.status === 'done' ? nxReplyStat_(text) : undefined }); // [2026.11.28 채팅 기조] 답 성적
   const saved = ai_convSave({ bg: true, conversation: Object.assign({}, conv, { messages: msgs, baseUpdatedAt: '' }) });
   if (saved && saved.error) throw new Error(saved.error);
   job.appended = true;

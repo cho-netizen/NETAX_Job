@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-27 15:36 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-11-28 00:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -60003,6 +60003,13 @@ function rwAiApplyEdit_(id, content){
       <div style="display:flex; flex-wrap:wrap; gap:6px;"><button type="button" class="ghost-btn" id="stBtnNightReview">대상·지난 밤 결과 보기</button></div>
       <div id="stNightReviewOut" style="margin-top:8px;"></div>
     </div>
+    <!-- [2026.11.28 채팅 기조 8절 ⑥] 세무사님 "두가지 기조 모두 권장대로 하자" — 넥스 답이 다시 길어지면 보이게(검문). 지난 7일 새 답을 11-28 잰 기준과 견줌 -->
+    <div class="card" data-sttab="2" id="stReplyStatCard">
+      <h3>💬 넥스 답 성적</h3>
+      <div class="nx-help">채팅 기조(11-28 「채팅은 대화, 내용은 파일」) 뒤 넥스 답이 짧게 지켜지는지 봅니다 — 지난 7일 새 답의 가운데 길이·여섯 줄 넘는 답·표·제목·내부 글자를 11-28 기준(바꾸기 전 답 356개)과 견줍니다. 비용 없음.</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;"><button type="button" class="ghost-btn" id="stBtnReplyStat">성적 보기</button></div>
+      <div id="stReplyStatOut" style="margin-top:8px;"></div>
+    </div>
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
       <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 보고서 탭에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
@@ -60612,6 +60619,23 @@ function rwAiApplyEdit_(id, content){
         }).catch(function(err){ out.textContent = '밤 검토서 갱신 대상을 불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
       };
       b.addEventListener('click', draw);
+    })();
+    // [2026.11.28 채팅 기조 8절 ⑥] 💬 넥스 답 성적 — 서버 ai_reply_stats(2주 안에 바뀐 대화의 지난 7일 새 답 stat만 모음, 0원)
+    (function(){
+      var b = document.getElementById('stBtnReplyStat'), out = document.getElementById('stReplyStatOut'); if (!b || !out) return;
+      b.addEventListener('click', function(){
+        out.textContent = '넥스 답 성적을 모으는 중…';
+        callGas('ai_reply_stats', {}).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+          var n = r.now || {}, o = r.base || {};
+          var row = function(k, a, c, unit, goodLow){ var better = goodLow ? a < c : a > c; return '<tr><td>' + k + '</td><td style="text-align:right;">' + (r.n ? '<b>' + a + unit + '</b>' : '—') + '</td><td style="text-align:right; color:var(--muted);">' + c + unit + '</td><td style="text-align:center;">' + (r.n ? (better ? '나아짐' : (a === c ? '같음' : '⚠ 나빠짐')) : '') + '</td></tr>'; };
+          out.innerHTML = '<div style="font-size:12.5px; margin-bottom:4px;">지난 7일(' + escapeHtml(r.from || '') + '부터) 새 넥스 답 <b>' + (r.n || 0) + '개</b>' + (r.n ? '' : ' — 아직 새 답이 없습니다') + '</div>'
+            + '<table style="width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed;"><thead><tr><th style="text-align:left;">잰 것</th><th style="text-align:right; width:22%;">지난 7일</th><th style="text-align:right; width:22%;">11-28 기준</th><th style="width:18%;"></th></tr></thead><tbody>'
+            + row('한글 음절 가운데', n.syl || 0, o.syl, '', true) + row('줄 가운데', n.lines || 0, o.lines, '', true) + row('여섯 줄 넘는 답', n.over6 || 0, o.over6, '%', true)
+            + row('표가 든 답', n.table || 0, o.table, '%', true) + row('제목이 든 답', n.head || 0, o.head, '%', true) + row('내부 글자가 든 답', n.leak || 0, o.leak, '%', true)
+            + '</tbody></table>';
+        }).catch(function(err){ out.textContent = '성적을 모으지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
     })();
     // [2026.10.27 T6 4단계] 🧪 공유 정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){
@@ -62910,6 +62934,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-msg.me{ background:rgba(200,162,68,.22); color:var(--ink); border-top-right-radius:2px; align-self:flex-end; max-width:88%; }
   .nxai-msg.ai{ white-space:normal; }
   .nxai-md > div{ min-height:1.2em; }
+  .nxai-md .nxai-fold-btn{ margin-top:6px; font-size:12px; padding:2px 10px; } /* [2026.11.28 채팅 기조] 긴 답 접기 */
   .nxai-md .nxai-gap{ height:.55em; min-height:0; }
   .nxai-md .nxai-h{ font-weight:700; margin:.5em 0 .2em; }
   .nxai-md .nxai-h1{ font-size:1.18em; } .nxai-md .nxai-h2{ font-size:1.1em; } .nxai-md .nxai-h3, .nxai-md .nxai-h4{ font-size:1.02em; }
@@ -64429,7 +64454,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var text = typeof m.content === 'string' ? m.content : '';
       var el = nxAiAppendBubble_(m.role === 'assistant' ? 'assistant' : 'user', text);
       if (m.divider){ el.className = 'nxai-msg nxai-divider'; el.textContent = text; }
-      else if (m.role === 'assistant'){ el.innerHTML = '<div class="nxai-md">' + nxAiMd_(text) + '</div>'; }
+      else if (m.role === 'assistant'){ el.innerHTML = '<div class="nxai-md">' + (m.preread || text.indexOf('[⚡') === 0 ? nxAiMd_(text) : nxAiReplyHtml_(text)) + '</div>'; } // [2026.11.28 채팅 기조] 내부 글자 거르기·긴 답 접기
       if (ref) el._nxMsgRef = m; else el.classList.add('nxai-arch');
       // [2026.11.27 넥스 일감] 화면이 없는 사이 멈춘 일감을 서버가 대화에 적어 둔 줄 — 그 자리에서 「이어서 하기」
       if (ref && m.nxJob && m.nxJobState && m.nxJobState !== 'done' && !m._nxResumed){
@@ -64469,7 +64494,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         nxAiUsageFooter_(bubble, usage);
         // 서버가 이미 대화에 넣었으면(그 줄에 같은 일감 번호) 다시 넣지 않음 — 글이 같다고 같은 답으로 보지 않는다(시험에서 찾음: 앞 답과 글이 같으면 안 넣던 것)
         var have = conv.messages.some(function(m){ return m && m.nxJob === jobId && m.role === 'assistant'; });
-        if (!have){ var aiMsg = { role: 'assistant', content: reply, nxJob: jobId }; conv.messages.push(aiMsg); bubble._nxMsgRef = aiMsg; if (conv === nxAiConv) nxAiScheduleSave_(); else nxAiSaveOnceFor_(conv); }
+        if (!have){ var aiMsg = { role: 'assistant', content: reply, nxJob: jobId, stat: nxAiReplyStat_(reply) }; conv.messages.push(aiMsg); bubble._nxMsgRef = aiMsg; if (conv === nxAiConv) nxAiScheduleSave_(); else nxAiSaveOnceFor_(conv); }
       },
       onError: function(msg, resume){ nxAiJobErrorUi_(bubble, msg, resume); },
       onAbort: function(){ bubble.textContent = '⏹ 중단됨'; }
@@ -64484,6 +64509,46 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       opts.onError('오류: ' + (err && err.message ? err.message : err));
     }).then(function(){ delete nxAiJobWatching_[jobId]; nxAiAbort = null; nxAiSetBusy_(false); });
   }
+
+  // [2026.11.28 채팅 기조 8절 ③⑤⑥] 넥스 답을 화면에 그릴 때 —
+  //  ③ 내부 글자 거르기(안전망): updated: true·파일ID·저장본 번호·도구 이름이 새어 나오면 지우거나 쉬운 말로(첫째는 넥스 지시 [채팅 답] ⑦). 대화 기록 원문은 그대로.
+  //  ⑤ 긴 답 접기: 여섯 줄 넘는 답은 첫 단락만 보이고 「더 보기」(세무사님 ㉣ 권장대로 — 새 기조에선 거의 안 쓰이고 일반 물음의 긴 답·옛 대화용).
+  //  ⑥ 답 성적: 답마다 길이·줄·표·제목·내부 글자 수를 그 말(stat)에 남긴다 — 서버 nxReplyStat_와 같은 셈, 설정 › 시스템 관리 「넥스 답 성적」이 모아 본다.
+  var NXAI_LEAK_RE_ = /(updated:?\s*true|파일 ?ID|fileId|\btc_\d{6,}|\b(?:apply_document_edit|save_file_to_folder|read_drive_file|list_drive_folder|case_ledger|job_lookup|lookup_statute_article)\b)/g;
+  function nxAiReplyStat_(text){
+    var t = String(text || ''), lines = t.split(/\r?\n/).filter(function(l){ return l.trim(); });
+    var d = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); // 한국 날짜
+    return { d: d, s: (t.match(/[가-힣]/g) || []).length, l: lines.length,
+      t: lines.some(function(l){ return /^\s*\|.*\|\s*$/.test(l); }) ? 1 : 0,
+      h: lines.filter(function(l){ return /^\s*#{1,4}\s/.test(l); }).length,
+      k: (t.match(NXAI_LEAK_RE_) || []).length };
+  }
+  var NXAI_TOOL_WORD_ = { apply_document_edit: '문서 고치기', save_file_to_folder: '파일 저장', read_drive_file: '파일 읽기', list_drive_folder: '폴더 보기', case_ledger: '장부', job_lookup: '조회', lookup_statute_article: '조문 찾기' };
+  function nxAiLeakClean_(text){
+    return String(text || '')
+      .replace(/\s*\([^()\n]*(?:updated|파일 ?ID|fileId)[^()\n]*\)/gi, '')     // (updated: true, 파일ID 동일 — 정상 덮어쓰기 확인) 같은 괄호째
+      .replace(/`?updated:?\s*true`?/gi, '')
+      .replace(/\s*`?\btc_\d{6,}`?/g, '')                                          // 저장본 tc_1795765339480(1단계) → 저장본(1단계)
+      .replace(/\s*\(ID [a-z0-9][a-z0-9-]{7,}\)/gi, '')
+      .replace(/`?\b(apply_document_edit|save_file_to_folder|read_drive_file|list_drive_folder|case_ledger|job_lookup|lookup_statute_article)\b`?/g, function(m, w){ return NXAI_TOOL_WORD_[w] || w; })
+      .replace(/[ \t]+([,.])/g, '$1');
+  }
+  function nxAiReplyHtml_(text){
+    var t = nxAiLeakClean_(text);
+    var nonEmpty = t.split(/\r?\n/).filter(function(l){ return l.trim(); });
+    if (nonEmpty.length <= 6) return nxAiMd_(t);
+    var parts = t.split(/\n\s*\n/), first, rest;
+    if (parts.length > 1 && parts[0].split('\n').filter(function(l){ return l.trim(); }).length <= 6){ first = parts[0]; rest = parts.slice(1).join('\n\n'); }
+    else { var ls = t.split('\n'), cut = 0, seen = 0; for (; cut < ls.length && seen < 3; cut++) if (ls[cut].trim()) seen++; first = ls.slice(0, cut).join('\n'); rest = ls.slice(cut).join('\n'); }
+    var restN = rest.split(/\r?\n/).filter(function(l){ return l.trim(); }).length;
+    return nxAiMd_(first) + '<div class="nxai-fold-rest" hidden>' + nxAiMd_(rest) + '</div>'
+      + '<button type="button" class="nxai-btn nxai-fold-btn" data-n="' + restN + '">더 보기 (' + restN + '줄)</button>';
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest && e.target.closest('.nxai-fold-btn'); if (!b) return;
+    var rest = b.previousElementSibling; if (!rest || !rest.classList.contains('nxai-fold-rest')) return;
+    rest.hidden = !rest.hidden; b.textContent = rest.hidden ? '더 보기 (' + b.getAttribute('data-n') + '줄)' : '접기';
+  });
 
   // AI 답변의 마크다운(굵게·제목·목록·표·코드)을 화면용으로 바꾼다. 먼저 전부 이스케이프한 뒤
   // 정해진 기호만 태그로 바꾸므로, 답변 안에 HTML이 섞여 있어도 실행되지 않는다(안전).
@@ -64692,7 +64757,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     bubbleEl.innerHTML = '';
     var textPart = document.createElement('div');
     textPart.className = 'nxai-md';
-    textPart.innerHTML = nxAiMd_(replyText);
+    textPart.innerHTML = nxAiReplyHtml_(replyText); // [2026.11.28 채팅 기조] 내부 글자 거르기·긴 답 접기
     bubbleEl.appendChild(textPart);
 
     var links = document.createElement('div');
@@ -65487,6 +65552,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiTodayStr_(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
   // 실행 — 성공하면 { md: 화면에 보일 내용, note: 대화기록에 남길 한 줄, choices: [{label, run}] }, 못 하면 null(→ AI로)
+  // [2026.11.28 말하기 기조 7-3] 바로 처리 답을 처음부터 말 문장으로 — 표를 읽지 않는다(세무사님 "귀로만 듣는 대화라고 가정하고").
+  //  화면에는 지금 표(md) 그대로, 말하기 때만 say를 읽는다(nxAiRenderLocal_가 그 말에 붙이고 nxAiTalkReplyText_가 꺼냄). 금액·날짜는 읽기 직전 소리용으로 다듬는다(7-1).
+  var NXAI_SAY_CNT_ = ['영', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'];
+  function nxAiSayCnt_(n){ n = Number(n) || 0; return n <= 10 ? NXAI_SAY_CNT_[n] + ' ' : String(n); } // 「한 건」·「세 가지」 띄어 읽기, 11부터는 숫자 그대로
+  function nxAiSayName_(nm){ var s = String(nm || ''), m = /\(([^)]+)\)/.exec(s); return (m ? m[1] : s.split('_')[0]).trim(); }
+  function nxAiSayTime_(t){ var m = /^(\d{1,2}):(\d{2})/.exec(String(t || '')); if (!m) return String(t || ''); var h = +m[1], mi = +m[2]; return (h < 12 ? '오전 ' : '오후 ') + (h % 12 || 12) + '시' + (mi ? ' ' + mi + '분' : ''); }
+  function nxAiSayDate_(d){ var m = /(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(d || '')); return m ? (+m[2]) + '월 ' + (+m[3]) + '일' : String(d || ''); }
+  function nxAiSayFile_(f){ return String(f || '').replace(/\.[a-z0-9]{1,5}$/i, '').replace(/_/g, ' '); }
   function nxAiRunLocal_(intent, text){
     var VIEW_LABEL = function(v){ return NXAI_VIEW_LABELS_[v] || v; };
     // [2026.11.15 명령] 명령이 사건을 이미 정해 왔으면(사건 대화·목록에서 고름) 문장에서 다시 찾지 않는다
@@ -65529,7 +65602,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var upcoming = all.filter(function(b){ return b.status === '확정' && b.reservedDate >= today; });
         var md = '**승인 대기 ' + waiting.length + '건**' + (waiting.length ? '\n\n' + nxAiMdTable_(['신청일', '이름', '희망일시', '내용'], waiting.map(function(b){ return [b.date, b.name, b.reservedDate + ' ' + b.reservedTime, String(b.situation || '').slice(0, 40)]; })) : '')
           + '\n\n**확정된 앞으로의 예약 ' + upcoming.length + '건**' + (upcoming.length ? '\n\n' + nxAiMdTable_(['일시', '이름', '유형'], upcoming.map(function(b){ return [b.reservedDate + ' ' + b.reservedTime, b.name, b.type]; })) : '');
-        return { md: md, note: '[⚡바로 처리] 예약 조회 — 승인 대기 ' + waiting.length + '건, 앞으로 확정 ' + upcoming.length + '건' };
+        var upSorted = upcoming.slice().sort(function(a, b){ return String(a.reservedDate + a.reservedTime).localeCompare(String(b.reservedDate + b.reservedTime)); });
+        var say = '승인 기다리는 예약이 ' + (waiting.length ? nxAiSayCnt_(waiting.length) + '건' : '없고') + (waiting.length ? ', ' : ' ') + '확정 예약이 ' + (upcoming.length ? nxAiSayCnt_(upcoming.length) + '건입니다.' : '없습니다.')
+          + (upSorted.length ? ' 가장 가까운 것은 ' + nxAiSayDate_(upSorted[0].reservedDate) + ' ' + nxAiSayTime_(upSorted[0].reservedTime) + ' ' + upSorted[0].name + ' 님입니다.' : '');
+        return { say: say, md: md, note: '[⚡바로 처리] 예약 조회 — 승인 대기 ' + waiting.length + '건, 앞으로 확정 ' + upcoming.length + '건' };
       });
     }
     if (intent.kind === 'unpaid'){
@@ -65552,7 +65628,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           var md = '**' + c.성명 + '** — 기록 ' + logs.length + '건, 수금 ' + paid.length + '건 합계 **' + sum.toLocaleString('ko-KR') + '원**'
             + (logs.length ? '\n\n' + nxAiMdTable_(['날짜', '유형', '금액', '증빙', '내용'], logs.slice(0, 20).map(function(l){ return [l.날짜, l.유형, l.금액 ? Number(l.금액).toLocaleString('ko-KR') : '', l.수취증빙, String(l.내용 || '').slice(0, 40)]; })) : '')
             + (logs.length > 20 ? '\n\n(최근 20건만 표시)' : '');
-          return { md: md, note: '[⚡바로 처리] ' + c.성명 + ' 상담·수금 기록 ' + logs.length + '건(수금 합계 ' + sum.toLocaleString('ko-KR') + '원)' };
+          var last = paid.slice().sort(function(a, b){ return String(b.날짜).localeCompare(String(a.날짜)); })[0];
+          var say = c.성명 + ' 님 수금은 ' + (paid.length ? nxAiSayCnt_(paid.length) + '번, 모두 ' + sum + '원입니다.' + (last ? ' 마지막은 ' + String(last.날짜 || '').slice(0, 10) + ' ' + Number(last.금액 || 0) + '원입니다.' : '') : '기록이 없습니다.');
+          return { say: say, md: md, note: '[⚡바로 처리] ' + c.성명 + ' 상담·수금 기록 ' + logs.length + '건(수금 합계 ' + sum.toLocaleString('ko-KR') + '원)' };
         });
       });
     }
@@ -65568,7 +65646,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
             var done = items.filter(function(it){ return st[name(it)]; });
             var md = '**' + c.사건명 + '** 체크리스트 — ' + done.length + '/' + items.length + ' 확보\n\n'
               + items.map(function(it){ var n = name(it); return (st[n] ? '- ✅ ' : '- ⬜ ') + n; }).join('\n');
-            return { md: md, note: '[⚡바로 처리] ' + c.사건명 + ' 체크리스트 ' + done.length + '/' + items.length + ' 확보' };
+            var miss = items.filter(function(it){ return !st[name(it)]; });
+            var say = '받을 서류 ' + nxAiSayCnt_(items.length) + '가지 중 ' + nxAiSayCnt_(done.length) + '가지가 들어왔습니다.' + (miss.length ? ' 아직 없는 것은 ' + name(miss[0]) + (miss.length > 1 ? ' 등 ' + nxAiSayCnt_(miss.length) + '가지입니다.' : '입니다.') : '');
+            return { say: say, md: md, note: '[⚡바로 처리] ' + c.사건명 + ' 체크리스트 ' + done.length + '/' + items.length + ' 확보' };
           });
         }, '체크리스트');
       });
@@ -65582,7 +65662,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
             var md = '**' + cl.성명 + '**' + (cl.구분 ? ' (' + cl.구분 + ')' : '') + '\n\n'
               + nxAiMdTable_(['항목', '내용'], [['전화번호', String(cl.전화번호 || '').trim() || '-'], ['추가연락처', String(cl.추가연락처 || '').trim() || '-'], ['주소', String(cl.주소 || '').trim() || '-']].concat(cl.사업자번호 ? [['사업자번호', cl.사업자번호]] : []))
               + (cases.length ? '\n\n**관련 사건 ' + cases.length + '건**\n\n' + nxAiMdTable_(['사건', '상태', '법정일'], cases.map(function(k){ return [k.사건명 || k.고객명, k.상태, k.법정일 || '']; })) : '\n\n관련 사건 없음');
-            return { md: md, note: '[⚡바로 처리] ' + cl.성명 + ' 고객 정보·관련 사건 ' + cases.length + '건',
+            var tel = String(cl.전화번호 || '').trim();
+            var say = tel ? cl.성명 + ' 님 전화번호는 ' + tel + '입니다.' : cl.성명 + ' 님 전화번호는 적혀 있지 않습니다.';
+            if (cases.length) say += ' 관련 사건은 ' + nxAiSayCnt_(cases.length) + '건입니다.';
+            return { say: say, md: md, note: '[⚡바로 처리] ' + cl.성명 + ' 고객 정보·관련 사건 ' + cases.length + '건',
               choices: [{ label: '고객에서 열기', run: function(){ nxAiOpenJobView_('clientmanage', '', cl.id); return null; } }] };
           });
         };
@@ -65602,7 +65685,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           var md = '**' + (k.사건명 || k.고객명) + '**\n\n'
             + nxAiMdTable_(['항목', '내용'], [['상태', k.상태 || '-'], ['세목·업무', [({ transfer: '양도소득세', gift: '증여세', inheritance: '상속세' })[k.세목] || k.세목, k.업무유형].filter(Boolean).join(' · ') || '-'], ['담당자', k.담당자 || '-'], ['의뢰일', k.의뢰일 || '-'], ['법정일', k.법정일 || '-'], ['처리방향', String(k.처리방향 || '-').slice(0, 120)]])
             + (lines.length ? '\n\n**최근 작업일지**\n' + lines.map(function(s){ return '- ' + s.slice(0, 100); }).join('\n') : '');
-          return { md: md, note: '[⚡바로 처리] ' + (k.사건명 || '') + ' 진행상황 — ' + (k.상태 || '') + (k.법정일 ? ', 법정일 ' + k.법정일 : ''),
+          var say = nxAiSayName_(k.사건명 || k.고객명) + ' 님 사건은 ' + (k.상태 || '상태가 적혀 있지 않은') + (k.상태 ? ' 중입니다.' : ' 사건입니다.') + (k.법정일 ? ' 법정일은 ' + nxAiSayDate_(k.법정일) + '입니다.' : '')
+            + (lines.length ? ' 마지막 작업은 ' + String(lines[lines.length - 1]).slice(0, 40) + '입니다.' : '');
+          return { say: say, md: md, note: '[⚡바로 처리] ' + (k.사건명 || '') + ' 진행상황 — ' + (k.상태 || '') + (k.법정일 ? ', 법정일 ' + k.법정일 : ''),
             choices: [{ label: '개요 열기', run: function(){ nxAiOpenJobView_('casehandling', k.id); return null; } }] };
         }, '진행상황');
       });
@@ -65621,7 +65706,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           + '\n\n**오늘 법정일 ' + dueToday.length + '건**' + (dueToday.length ? '\n\n' + nxAiMdTable_(['사건', '상태'], dueToday.map(function(k){ return [k.사건명 || k.고객명, k.상태]; })) : '')
           + '\n\n**기한 지난 미완료 ' + over.length + '건**' + (over.length ? '\n\n' + nxAiMdTable_(['법정일', '사건'], over.slice(0, 10).map(function(k){ return ['⚠️ ' + k.법정일, k.사건명 || k.고객명]; })) : '')
           + (waiting.length ? '\n\n예약 승인 대기 ' + waiting.length + '건이 있습니다.' : '');
-        return { md: md, note: '[⚡바로 처리] 오늘 할 일 — 예약 ' + bk.length + ', 오늘 법정일 ' + dueToday.length + ', 기한 지남 ' + over.length + ', 승인 대기 ' + waiting.length };
+        var say = (bk.length ? '오늘 예약은 ' + nxAiSayCnt_(bk.length) + '건이고, 첫 예약은 ' + nxAiSayTime_(bk[0].reservedTime) + ' ' + bk[0].name + ' 님입니다.' : '오늘 예약은 없습니다.')
+          + (dueToday.length ? ' 오늘 법정일이 ' + nxAiSayCnt_(dueToday.length) + '건입니다.' : '') + (over.length ? ' 기한 지난 일이 ' + nxAiSayCnt_(over.length) + '건 있습니다.' : '')
+          + (!dueToday.length && !over.length ? ' 마감이나 기한 지난 일은 없습니다.' : '') + (waiting.length ? ' 승인 기다리는 예약이 ' + nxAiSayCnt_(waiting.length) + '건 있습니다.' : '');
+        return { say: say, md: md, note: '[⚡바로 처리] 오늘 할 일 — 예약 ' + bk.length + ', 오늘 법정일 ' + dueToday.length + ', 기한 지남 ' + over.length + ', 승인 대기 ' + waiting.length };
       });
     }
     if (intent.kind === 'deadlines' || intent.kind === 'active'){
@@ -65633,12 +65721,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var open = (res.cases || []).filter(function(c){ return c.상태 !== '완료'; });
         if (intent.kind === 'active'){
           var act = open.filter(function(c){ return c.상태 === '진행'; });
-          return { md: '**진행 중 ' + act.length + '건** (보류 ' + open.filter(function(c){ return c.상태 === '보류'; }).length + '건 별도)\n\n' + nxAiMdTable_(['사건', '법정일'], act.map(function(c){ return [c.사건명 || c.고객명, c.법정일 || '']; })),
+          var actDue = act.filter(function(c){ return c.법정일; }).sort(function(a, b){ return String(a.법정일).localeCompare(String(b.법정일)); })[0];
+          var sayA = '진행 중인 사건은 ' + nxAiSayCnt_(act.length) + '건입니다.' + (actDue ? ' 마감이 가장 가까운 것은 ' + nxAiSayName_(actDue.사건명 || actDue.고객명) + ' 님 사건으로, ' + nxAiSayDate_(actDue.법정일) + '입니다.' : '');
+          return { say: sayA, md: '**진행 중 ' + act.length + '건** (보류 ' + open.filter(function(c){ return c.상태 === '보류'; }).length + '건 별도)\n\n' + nxAiMdTable_(['사건', '법정일'], act.map(function(c){ return [c.사건명 || c.고객명, c.법정일 || '']; })),
             note: '[⚡바로 처리] 진행 중 사건 ' + act.length + '건' };
         }
         var due = open.filter(function(c){ return c.법정일 && c.법정일 <= limitStr; }).sort(function(a, b){ return String(a.법정일).localeCompare(String(b.법정일)); });
         var over = due.filter(function(c){ return c.법정일 < today; });
-        return { md: '**마감 임박·경과 ' + due.length + '건** (기한 지남 ' + over.length + '건, 오늘부터 14일 이내 포함)\n\n' + nxAiMdTable_(['법정일', '사건', '상태'], due.map(function(c){ return [(c.법정일 < today ? '⚠️ ' : '') + c.법정일, c.사건명 || c.고객명, c.상태]; })),
+        var sayD = due.length ? '마감 임박이 ' + nxAiSayCnt_(due.length) + '건' + (over.length ? ', 그중 기한 지난 것이 ' + nxAiSayCnt_(over.length) + '건' : '') + '입니다. 가장 급한 것은 ' + nxAiSayName_(due[0].사건명 || due[0].고객명) + ' 님 사건으로, ' + nxAiSayDate_(due[0].법정일) + '입니다.' : '2주 안에 마감인 일은 없습니다.';
+        return { say: sayD, md: '**마감 임박·경과 ' + due.length + '건** (기한 지남 ' + over.length + '건, 오늘부터 14일 이내 포함)\n\n' + nxAiMdTable_(['법정일', '사건', '상태'], due.map(function(c){ return [(c.법정일 < today ? '⚠️ ' : '') + c.법정일, c.사건명 || c.고객명, c.상태]; })),
           note: '[⚡바로 처리] 마감 임박 ' + due.length + '건(기한 지남 ' + over.length + '건)' };
       });
     }
@@ -65655,17 +65746,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
             var md = '**' + nm + '** — 최근 고친 문서 ' + r.files.length + '개' + (r.total ? '(폴더 안 파일 ' + r.total + '개 중)' : '') + '\n\n'
               + nxAiMdTable_(['고친 때', '파일', '자리'], r.files.map(function(f){ return [f.at, f.name, f.where]; }))
               + (r.dups && r.dups.length ? '\n\n**같은 이름 파일 ' + r.dups.length + '가지** — 하나만 남길지 확인해 주세요\n' + r.dups.map(function(d){ return '- ' + d.name + ' — ' + d.곳.join(' / '); }).join('\n') : '\n\n같은 이름으로 두 번 저장된 파일은 없습니다.');
-            return { md: md, note: '[⚡명령] ' + nm + ' 저장 확인 — 최근 ' + r.files.length + '개, 같은 이름 ' + ((r.dups || []).length) + '가지',
+            var f0 = r.files[0];
+            var say = f0 ? nxAiSayFile_(f0.name) + '이 ' + String(f0.at || '') + '에 저장되어 있습니다.' + (r.files.length > 1 ? ' 최근 고친 문서는 모두 ' + nxAiSayCnt_(r.files.length) + '개입니다.' : '') : '최근 고친 문서가 없습니다.';
+            return { say: say, md: md, note: '[⚡명령] ' + nm + ' 저장 확인 — 최근 ' + r.files.length + '개, 같은 이름 ' + ((r.dups || []).length) + '가지',
               choices: [{ label: '서류 화면에서 열기', run: function(){ nxAiOpenJobView_('docs', k.id); return null; } },
                 { label: '넥스에게 다시 저장시키기', run: function(){ if (!nxAiAbort) nxAiSendAI_('방금 쓴 문서가 저장되지 않았다. 다시 저장하고, 저장된 파일 이름과 자리를 알려 달라.', { noGem: true }); return null; } }] };
           });
           if (intent.kind === 'folder') return callGas('nx_cmd_folder_check', { caseId: k.id }).then(function(r){
             if (!r || r.success === false) throw new Error((r && (r.message || r.error)) || '폴더 연결을 확인하지 못했습니다.');
             var fix = { label: '폴더 만들기·다시 잇기', run: function(){ return callGas('ensure_case_folder', { id: k.id }).then(function(x){ if (x && x.success === false) throw new Error(x.message || '폴더를 잇지 못했습니다.'); nxAiCaseCache = null; return nxAiRunLocal_({ kind: 'folder', caseObj: Object.assign({}, k, { 폴더ID: (x && (x.folderId || x.폴더ID)) || k.폴더ID }) }, nm); }); } };
-            if (!r.linked) return { md: '**' + nm + '** — 사건 폴더가 **연결되어 있지 않습니다.** 아래 단추로 만들거나 다시 이을 수 있습니다.', note: '[⚡명령] ' + nm + ' 폴더 없음', choices: [fix] };
+            if (!r.linked) return { say: '사건 폴더가 연결되어 있지 않습니다. 펼친 화면에서 이어 주세요.', md: '**' + nm + '** — 사건 폴더가 **연결되어 있지 않습니다.** 아래 단추로 만들거나 다시 이을 수 있습니다.', note: '[⚡명령] ' + nm + ' 폴더 없음', choices: [fix] };
             // 사건 줄에 적힌 폴더가 지워졌거나 휴지통이면 「만들기·잇기」는 그 번호를 그대로 둔다(work_ensureCaseFolder) — 사건 목록에서 폴더를 다시 정하시게
             if (r.broken || r.trashed) return { md: '**' + nm + '** — 사건 줄에 폴더가 적혀 있지만 **열리지 않습니다**' + (r.trashed ? '(휴지통에 있음)' : '') + (r.message ? ' — ' + r.message : '') + '. 사건 목록에서 이 사건의 폴더를 다시 정해 주세요.', note: '[⚡명령] ' + nm + ' 폴더 열리지 않음', choices: [{ label: '사건 목록에서 열기', run: function(){ nxAiOpenJobView_('workmanage', k.id); return null; } }] };
-            return { md: '**' + nm + '** — 사건 폴더가 정상으로 연결되어 있습니다.\n\n' + nxAiMdTable_(['항목', '내용'], [['폴더', r.name], ['파일', r.files + '개'], ['하위 폴더', r.folders + '개' + (r.subs && r.subs.length ? ' (' + r.subs.join(', ') + ')' : '')]])
+            return { say: '사건 폴더는 잘 연결되어 있고, 파일은 ' + r.files + '개입니다.', md: '**' + nm + '** — 사건 폴더가 정상으로 연결되어 있습니다.\n\n' + nxAiMdTable_(['항목', '내용'], [['폴더', r.name], ['파일', r.files + '개'], ['하위 폴더', r.folders + '개' + (r.subs && r.subs.length ? ' (' + r.subs.join(', ') + ')' : '')]])
               + (nxAiConv.caseId === k.id ? '' : '\n\n지금 대화는 이 사건에 연결되어 있지 않습니다 — 오른쪽 사건 자료가 다른 사건이면 「이 사건 대화로」를 눌러 주세요.'),
               note: '[⚡명령] ' + nm + ' 폴더 정상 — 파일 ' + r.files + '개',
               choices: [{ label: '서류 화면에서 열기', run: function(){ nxAiOpenJobView_('docs', k.id); return null; } }].concat(nxAiConv.caseId === k.id ? [] : [{ label: '이 사건 대화로', run: function(){ return nxAiSwitchToCase_(k).then(function(m){ if (m) nxAiToast_(m); return null; }); } }]) };
@@ -65676,7 +65769,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
             var line = function(x){ return '- ' + (x.label || x.path) + (x.값 || x.v ? ' — ' + String(x.값 || x.v).slice(0, 60) : '') + (x.ask ? ' · ' + String(x.ask).slice(0, 80) : ''); };
             var sec = function(title, arr){ arr = arr || []; return '**' + title + ' ' + arr.length + '**' + (arr.length ? '\n' + arr.slice(0, 15).map(line).join('\n') + (arr.length > 15 ? '\n- …외 ' + (arr.length - 15) + '개(장부에서)' : '') : ''); };
             var md = '**' + nm + '** 장부에서\n\n' + sec('물어볼 것', by['물어볼것']) + '\n\n' + sec('받을 증빙', by['증빙받을것']) + '\n\n' + sec('잠정(추정) 값', by['추정']);
-            return { md: md, note: '[⚡명령] ' + nm + ' 확인할 것 — 물어볼 것 ' + (by['물어볼것'] || []).length + ', 받을 증빙 ' + (by['증빙받을것'] || []).length + ', 잠정 ' + (by['추정'] || []).length,
+            var q = by['물어볼것'] || [];
+            var say = q.length ? '정하실 것이 ' + nxAiSayCnt_(q.length) + '가지입니다. 첫째, ' + String(q[0].ask || q[0].label || q[0].path || '').slice(0, 60) + (/[.?]$/.test(String(q[0].ask || '')) ? '' : '입니다.') : '지금 정하실 것은 없습니다.' + ((by['증빙받을것'] || []).length ? ' 받을 서류는 ' + nxAiSayCnt_(by['증빙받을것'].length) + '가지 남았습니다.' : '');
+            return { say: say, md: md, note: '[⚡명령] ' + nm + ' 확인할 것 — 물어볼 것 ' + (by['물어볼것'] || []).length + ', 받을 증빙 ' + (by['증빙받을것'] || []).length + ', 잠정 ' + (by['추정'] || []).length,
               choices: [{ label: '장부 열기', run: function(){ nxAiOpenJobView_('ledger', k.id); return null; } }] };
           });
         }, what);
@@ -65695,6 +65790,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
   // 바로 처리 결과를 말풍선에 그린다(⚡ 표시 + 후보 고르기 버튼 + AI에게 묻기 버튼).
   function nxAiRenderLocal_(bubble, res, text){
+    if (res && res.say && bubble && bubble._nxMsgRef) bubble._nxMsgRef.say = String(res.say); // [2026.11.28 말하기 7-3] 말하기 때 읽을 말 문장
     bubble.innerHTML = '<div class="nxai-local-badge">' + nxAiEsc_(res.badge || bubble._nxBadge || '⚡ 바로 처리 · AI 미사용(토큰 0)') + '</div><div class="nxai-md">' + nxAiMd_(res.md) + '</div>';
     var links = document.createElement('div');
     links.className = 'nxai-links';
@@ -67301,7 +67397,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026.10.22 묶음 ㄱ1·ㄱ5] 사건 화면 "다음 할 일"이 같은 수를 읽게(한 곳의 같은 수) — 머리 "질문 1개" ↔ 본문 "여쭐 것 없음"이 어긋나던 것(가상양도7 표 20·34·39)
     if (st.screen) window.nxCpLive_ = { caseId: st.caseId, open: open, held: held.length, running: !!st.running, at: Date.now() };
     foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (nexTurn ? ' · 넥스가 먼저 보는 물음 ' + nexTurn + '건' : '') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(장부에 남고 종합검토서 "확인 필요 사항"으로)' : '') + (st.paused ? ' — [확인]으로 값을 고르면 반영합니다. 다음 도구는 위 단추에서 고르세요.' : ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.')
-      + (open && !st.screen ? '<br>💬 아래 입력창에 말로 답해도 됩니다: <b>"Q2 5억 2천만원 매매계약서"</b>, <b>"Q3 2024.3.5"</b>, <b>"Q4 보류"</b>, "남은 질문 보여줘"' : '') + '</div>';
+      + '</div>'; // [2026.11.28 채팅 기조] 「아래 입력창에 말로 답해도 됩니다: Q2 5억…」 형식 안내 걷음 — 말로 하시면 짧은 값은 바로 받고 나머지는 넥스가 받는다
     // [2026.10.31 처리개요 도구 정리 — 결정 ③ "권장안대로"] 화면에서 띄운 상자는 질문 카드를 접고 "답하실 질문 N개 → 📒 장부에서 답하기"만(답하는 문은 장부 한 곳). 폴더 만들기처럼 장부로 못 답하는 카드는 그대로 보인다
     if (st.screen && st.home){
       Object.keys(st.steps).forEach(function(k){ // 질문 카드는 단계마다(사건파악·증빙정리 등) 따로 있다 — 모든 단계에서 접는다
@@ -67712,12 +67808,21 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiCaseProcRenumber_(st);
     var live = nxAiCaseProcLive_(st);
     var listQ = /(질문|물어\s*볼\s*것|확인\s*할\s*것).{0,8}(뭐|목록|남|보여|알려)/.test(text);
+    // [2026.11.28 채팅 기조 8절 ①] 세무사님 판단·지시·긴 말은 처음부터 넥스에게 — 예전엔 「3주택에 대해서는 예규가 변경되지 않았다」 같은 판단 말씀을
+    //  Q8 답으로 잘못 잡고 "목록에서 고르는 질문이라 … [확인]을 눌러 주세요"·"말로 답하는 법"을 답 자리에 내서 같은 말을 세 번 다시 치시게 했다(11-24 대화 기록).
+    //  여기서는 값이 분명한 짧은 답(「Q2 5억」·「양도가액 5억 2천만원」)만 받는다. Q번호를 직접 적으신 말은 길어도 여기서 본다.
+    var plain = String(text || '').replace(/\s+/g, ' ').trim();
+    var hasQ = /(?:^|\s)(?:Q|q|질문)\s*\d{1,2}(?!\d)/.test(plain);
+    if (!listQ && !hasQ && (plain.length > 40 || /(하라|해라|해\s*줘|하자|합시다|해\s*주세요|업데이트|반영|고쳐|수정|검토|왜|인가\??$|는가\??$|아닌가|것이다|거잖아|잖아)/.test(plain))) return false;
     var sp = nxAiCpSplitReply_(text);
     var parts = sp.parts.length ? sp.parts : [String(text).trim()];
     var rs = listQ ? [{ matched: true, list: true }] : parts.map(function(s){ return Object.assign({ _clause: s }, nxAiCaseProcParseReply_(s, live, st.files, tax)); });
-    var hit = rs.filter(function(r){ return r.matched; });
+    // [2026.11.28 채팅 기조 8절 ①] 반영할 수 있는 토막(질문을 하나로 정했고, 값을 받았거나 보류·무시를 정한 것)만 센다 — 어느 질문인지 못 정했거나
+    //  목록·단추로만 받는 질문에 걸린 토막은 넥스에게 넘긴다(넥스가 장부에 바로 적는다 — 서버 [사건 장부] 지시).
+    var usable = function(r){ return r.list || (r.matched && r.it && !r.ambiguous && r.act !== 'need' && r.act !== 'button'); };
+    var hit = rs.filter(usable);
     var finishOnly = !listQ && sp.finish && !sp.parts.length && (st.waiting || st.paused); // "마무리해"만 — 남은 질문은 두고 마무리
-    // 어느 토막도 답으로 못 알아들음 — 넥스가 묻는 중·멈춘 중이면 넥스(AI)에게 열린 질문 목록과 함께 넘긴다(여기서 false를 돌려주면 nxAiSend_가 그렇게 한다)
+    // 반영할 토막이 하나도 없음 — 넥스가 묻는 중·멈춘 중이면 넥스(AI)에게 열린 질문 목록과 함께 넘긴다(여기서 false를 돌려주면 nxAiSend_가 그렇게 한다)
     if (!hit.length && !finishOnly) return false;
     var input = nxAiEl_('nxAiInput');
     input.value = ''; input.style.height = 'auto';
@@ -67730,9 +67835,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     bubble._nxMsgRef = aiMsg;
     nxAiConv.messages.push(aiMsg);
     var qline = function(x){ return 'Q' + x.q + ' ' + (NXAI_CP_KIND_[x.kind] || '') + ' ' + String(x.text || '').slice(0, 70) + (/^(보류|예정)$/.test(nxAiCaseProcDec_(st, x) || '') ? ' (보류 중)' : ''); };
-    var show = function(md, note){ aiMsg.content = '[⚡사건 처리 답] ' + md; nxAiRenderLocal_(bubble, { md: md, note: note || '[⚡사건 처리] 사이드바 답 풀이(AI 미사용)' }, text); nxAiCountFree_('local'); nxAiScheduleSave_(); };
-    var howTo = '\n\n말로 답하는 법: "Q번호 값 근거파일" — 예) "Q2 5억 2천만원 매매계약서", "Q3 2024.3.5", "Q4 보류", "Q5 무시". 질문 이름으로 "양도가액 5억"이라고 해도 됩니다.';
-    if (rs[0].list){ show(live.length ? '남은 질문 ' + live.length + '건입니다.\n\n' + live.map(function(x){ return '- ' + qline(x); }).join('\n') + howTo : '남은 질문이 없습니다 ✅'); return true; }
+    var show = function(md, note){ aiMsg.content = '[⚡사건 처리 답] ' + md; nxAiRenderLocal_(bubble, { md: md, note: note || '⚡ 바로 반영(넥스 미사용·0원)' }, text); nxAiCountFree_('local'); nxAiScheduleSave_(); };
+    // [2026.11.28 채팅 기조] 예전 「말로 답하는 법」 안내는 걷음 — 세무사님께 답하는 형식을 가르치지 않는다(「네가 나를 부려먹냐?」 11-24). 못 받은 말은 넥스가 받는다.
+    if (rs[0].list){ show(live.length ? '남은 질문 ' + live.length + '건입니다.\n\n' + live.map(function(x){ return '- ' + qline(x); }).join('\n') : '남은 질문이 없습니다.'); return true; }
     if (finishOnly){ show('답하신 값을 칸에 맞춥니다. 남은 질문(보류·받을 예정 ' + live.length + '건)은 장부에 남고 종합검토서 "확인 필요 사항"으로 갑니다 — 세액계산·서식·검토서는 아래 도구 단추로 하나씩 쓰세요.'); nxAiCpFinishWord_(st); return true; }
     // 토막별 결과 — 반영할 것(apply)·결정(decide)·못 알아들은 것(need/button/ambiguous/미매칭)으로 나눈다
     var lines = [], unparsed = [], applies = [], decided = [];
@@ -67740,31 +67845,29 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     rs.forEach(function(r){
       var clause = r._clause;
       if (!r.matched){ unparsed.push(clause); return; }
-      if (r.ambiguous){ unparsed.push(clause); lines.push('❓ "' + clause.slice(0, 60) + '" — 어느 질문인지 정하지 못함(' + r.ambiguous.map(function(x){ return 'Q' + x.q; }).join('·') + ')'); return; }
-      if (!r.it){ unparsed.push(clause); lines.push('❓ "' + clause.slice(0, 60) + '" — ' + (r.msg || '알아듣지 못함')); return; }
-      if (seen[r.it.id]){ lines.push('ℹ "' + clause.slice(0, 60) + '" — Q' + r.it.q + '은 앞 토막에서 이미 답함'); return; }
-      if (r.act === 'need' || r.act === 'button'){ unparsed.push(clause); lines.push('❓ Q' + r.it.q + ' "' + clause.slice(0, 60) + '" — ' + r.msg); if (r.it._el){ try { r.it._el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} } return; }
+      // [2026.11.28 채팅 기조] 못 받은 토막은 ❓ 줄을 늘어놓지 않고 넥스에게 넘긴다(넥스가 장부에 바로 적는다)
+      if (r.ambiguous || !r.it || r.act === 'need' || r.act === 'button'){ unparsed.push(clause); return; }
+      if (seen[r.it.id]) return;
       seen[r.it.id] = true;
       if (r.act === 'decide'){ decided.push(r); return; }
       applies.push(r);
     });
     decided.forEach(function(r){
       nxAiCaseProcDecide_(st, r.it, r.decide, r.note || '사이드바 답');
-      lines.push('Q' + r.it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '⏸ 보류(처리는 계속, 종합검토서 "추가로 확인할 사항"에 들어감)' : r.decide === '무시' ? '무시(다시 묻지 않음)' : '✅ ' + (r.shown || '확인함')));
+      lines.push('Q' + r.it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '보류' : r.decide === '무시' ? '무시' : (r.shown || '확인함')));
     });
     // 못 알아들은 토막은 넥스(AI)에게 — 열린 질문 목록과 함께(점검표 142 "GAS 규칙 못 알아들으면 넥스가"). 넥스가 바쁘면 이유를 보인다
     var handOff = function(){
       if (!unparsed.length) return;
       var joined = unparsed.join(' / ');
       if (nxAiAbort){ lines.push('⚠ 못 알아들은 말("' + joined.slice(0, 80) + '")은 넥스가 앞 말씀에 답하는 중이라 넘기지 못했습니다 — 끝난 뒤 다시 말씀해 주세요.'); return; }
-      lines.push('🤖 못 알아들은 말은 넥스에게 넘깁니다: "' + joined.slice(0, 120) + '"');
       setTimeout(function(){ nxAiSendAI_(joined, { noGem: true, displayText: '(넥스에게) ' + joined, cpHint: nxAiCpHint_(st, unparsed) }); }, 0);
     };
     var refreshKeys = ['basic', 'overview', 'calc', 'output'];
     var afterAll = function(){
       handOff();
       var n = applies.length + decided.length;
-      show((n ? '답 ' + n + '개를 반영했습니다.' : '반영한 답이 없습니다.') + (lines.length ? '\n\n' + lines.map(function(l){ return '- ' + l; }).join('\n') : '') + (applies.length ? '\n\n영향 받는 단계를 다시 맞춥니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.' : '') + (unparsed.length && !applies.length && !decided.length ? howTo : ''));
+      show((n ? '받았습니다.' : '넥스에게 넘겼습니다.') + (lines.length ? '\n' + lines.map(function(l){ return '- ' + l; }).join('\n') : ''));
       if (!applies.length) return (sp.finish ? nxAiCpFinishWord_(st) : null);
       // [2026.10.23 ㅅ5차·ㅅ12차] 답은 모아서 한 번만 맞춘다 — 멈춘 중(단추 대기)·넥스가 묻는 중 둘 다 같은 길(점검표 143)
       if (st.paused || st.waiting){ nxAiCpPausedRefresh_(st, refreshKeys); if (sp.finish) nxAiCpFinishWord_(st); return; }
@@ -67779,12 +67882,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var rfile = (/근거:\s*(.+?)(?:\(파일 \d+개\))?\s*$/.exec(String(r.src || '')) || [])[1] || '';
         var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
         nxAiCpQueueAnswer_(st, it, Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {}, { ans: { qid: it.id, how: '말로 답', nCands: rc.length || ((it.ask && it.ask.options) || []).length, pick: rpick, file: rfile } }), { shown: shown, noAuto: true, refreshKeys: refreshKeys });
-        lines.push('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 받았습니다 (' + r.src + ')');
+        lines.push('Q' + it.q + ' ' + r.label + ' ← ' + shown + ' (' + r.src + ')');
       });
       handOff();
       var open0 = nxAiCpOpenInputs_(st).open, nq = applies.length + decided.length;
-      show((nq ? '답 ' + nq + '개를 받았습니다.' : '반영한 답이 없습니다.') + (lines.length ? '\n\n' + lines.map(function(l){ return '- ' + l; }).join('\n') : '')
-        + (applies.length ? (sp.finish || !open0.length ? '\n\n한 번에 반영하고 세액계산으로 갑니다.' : '\n\n남은 질문 ' + open0.length + '개 — 다 답하시거나 "마무리해"라고 하시면 한 번에 반영하고 계산합니다.') : (unparsed.length && !decided.length ? howTo : '')));
+      // [2026.11.28 채팅 기조] 받은 값 줄과 남은 질문 수 한 줄만 — 「말로 답하는 법」·「반영한 답이 없습니다」는 걷음(못 받은 말은 넥스가 받는다)
+      show((nq ? '받았습니다.' : '넥스에게 넘겼습니다.') + (lines.length ? '\n' + lines.map(function(l){ return '- ' + l; }).join('\n') : '')
+        + (applies.length ? (sp.finish || !open0.length ? '\n한 번에 반영하고 세액계산으로 갑니다.' : '\n남은 질문 ' + open0.length + '개 — 다 답하시거나 "마무리해"라고 하시면 한 번에 반영하고 계산합니다.') : ''));
       if (sp.finish) nxAiCpFinishWord_(st);
       else if (applies.length && !open0.length) nxAiCpFlushAnswers_(st).then(function(){ return st.waiting ? st.resume() : null; }).catch(function(){});
       return true;
@@ -67801,7 +67905,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         return st.run('apply', Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {}, { ans: { qid: it.id, how: '말로 답', nCands: rc.length || ((it.ask && it.ask.options) || []).length, pick: rpick, file: rfile } })).then(function(res){
           if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
           var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
-          lines.push('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영 (' + r.src + ')');
+          lines.push('Q' + it.q + ' ' + r.label + ' ← ' + shown + ' (' + r.src + ')');
           if (st.paused || st.waiting){ st.decisions[it.id] = { d: 'done', at: nxAiTodayStr_(), text: it.text, note: '답 반영: ' + nxAiCpValueText_(r.value).slice(0, 80) }; if (/^(base|case:)/.test(String(r.target))) st.prNeedBasic = true; nxAiCpUpdateItem_(st, it); }
         }).catch(function(err){ applies = applies.filter(function(x){ return x !== r; }); lines.push('❌ Q' + it.q + ' 「' + r.label + '」 반영 실패: ' + (err && err.message || err) + ' — [확인] 버튼으로 다시 해 주세요.'); });
       });
@@ -69440,7 +69544,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           if (usage && usage.usd && convAtSend && convAtSend.caseId) nxAiCaseCostAlert_(thinking, convAtSend.caseId); // [2026.10.30 비용] 사건당 5,000원 넘으면 알림만
           // [2026.11.27 넥스 일감] 유료 질문 기록은 이제 서버가 적는다(멈춘 차례도 쓴 만큼) — 화면에서 또 적지 않음
           if (gemFail) thinking.insertAdjacentHTML('afterbegin', '<div class="nxai-local-badge" style="color:#7a5c14;background:#fff3e0">🔮 제미니 실패(' + nxAiEsc_(gemFail) + ') → 유료 AI 답변</div>');
-          var aiMsg = { role: 'assistant', content: reply };
+          var aiMsg = { role: 'assistant', content: reply, stat: nxAiReplyStat_(reply) }; // [2026.11.28 채팅 기조] 답 성적
           if (meta && meta.jobId) aiMsg.nxJob = meta.jobId; // 서버가 넣은 줄과 같은 답임을 알게(두 번 들어가지 않게)
           convAtSend.messages.push(aiMsg);
           thinking._nxMsgRef = aiMsg;
@@ -69524,7 +69628,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         settingsPayload: nxAiBuildSettingsPayload_(lastUser),
         onDone: function(reply, actions){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
-          var aiMsg = { role: 'assistant', content: reply };
+          var aiMsg = { role: 'assistant', content: reply, stat: nxAiReplyStat_(reply) };
           convAtSend.messages.push(aiMsg); thinking._nxMsgRef = aiMsg;
           if (convAtSend === nxAiConv) nxAiScheduleSave_(); else nxAiSaveOnceFor_(convAtSend);
         },
@@ -70279,7 +70383,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 같은 대화에 쌓인다. 답이 끝나면(진행 중 요청 없음 + 마지막 답 글자가 잠시 그대로) 그 답을 읽어 준다.
   // 읽기가 끝나면 한 번 더 듣는다(손 안 대고 이어 말하기) — 아무 말 없으면 멈춘다. 말하는 중에 누르면 멈춘다.
   // ============================================================
-  var nxAiTalk_ = { state: 'idle', rec: null, watch: null, seq: 0 };
+  var nxAiTalk_ = { state: 'idle', rec: null, watch: null, seq: 0, sayRun: 0, sayAt: 0, lastSay: null, rest: null, notes: null }; // [2026.11.28] 문장 단위 읽기·이어서·먼저 알림
   // 답변 방식 — 'voice'(핵심만 한두 문장으로 줄여 소리로) / 'text'(글자 답을 화면에, 읽지 않음). 이 기기에 기억.
   function nxAiTalkMode_(){ return nxAiLs_('nxAiTalkMode') === 'text' ? 'text' : 'voice'; }
   // [2026.11.27 플립 보완 G2] 지금 방식을 작은 아이콘(🔊/📝) 대신 글자로 늘 보인다 — 왼쪽 밀기로 말 없이 글 답으로 바뀌어
@@ -70319,8 +70423,34 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (/^(글로|문자로|글자로|화면으로)\s*(대답|답|보여|해|써)/.test(s)){ nxAiTalkSetMode_('text'); return '글로 답합니다'; }
     if (/^(관리로|관리 ?대화|일반 ?대화|사건 ?(연결 ?)?풀어|사건에서 나가)/.test(s) && typeof nxCoverCaseLeave_ === 'function'){ nxCoverCaseLeave_(); return true; }
     if (/^(다시 ?사건|사건으로 ?돌아|방금 ?사건)/.test(s) && typeof nxCoverCaseBack_ === 'function'){ nxCoverCaseBack_(); return true; }
+    // [2026.11.28 말하기 기조 7-5] 읽기를 다루는 짧은 말 — 넥스에게 보내지 않고 바로(0원)
+    if (/^(다시|뭐라고|다시 ?말해|다시 ?읽어)( ?(줘|주세요|해))?$/.test(s)){ var q0 = nxAiTalk_.lastSay || []; if (!q0.length) return '다시 읽을 말이 없습니다'; nxAiTalkSpeakList_(q0.slice(), 0); return true; }
+    if (/^(그만|됐어|멈춰|조용)( ?(해|해 ?줘|하세요))?$/.test(s)){ return '멈췄습니다'; }
+    if (/^(천천히|느리게|빨리|빠르게)( ?(읽어|해|말해)( ?줘)?)?$/.test(s)){
+      var rates = [0.85, 1.05, 1.25], cur = Number(nxAiLs_('nxAiTalkRate')) || 1.05, ix = rates.indexOf(cur); if (ix < 0) ix = 1;
+      ix = /^(천천히|느리게)/.test(s) ? Math.max(0, ix - 1) : Math.min(2, ix + 1); nxAiLs_('nxAiTalkRate', String(rates[ix]));
+      return ix === 0 ? '천천히 읽겠습니다' : ix === 2 ? '빠르게 읽겠습니다' : '보통 빠르기로 읽겠습니다';
+    }
+    if (/^(이어서|계속)( ?(읽어|해|말해)( ?줘)?)?$/.test(s)){
+      var q1 = nxAiTalk_.lastSay || [], at = nxAiTalk_.sayAt || 0;
+      if (at < q1.length){ nxAiTalkSpeakList_(q1.slice(), at); return true; }
+      if (nxAiTalk_.rest && nxAiTalk_.rest.length){ var r1 = nxAiTalk_.rest; nxAiTalk_.rest = null; nxAiTalkSpeakList_(r1, 0); return true; }
+      return '더 읽을 말이 없습니다';
+    }
+    // 7-6 화면 단추가 필요한 일을 말로 — 넥스가 「저장할까요?」로 남긴 수정안·실행 카드를 그대로 누른다
+    if (/^(응 ?)?(저장해|저장|실행해|실행|반영해)( ?줘| ?주세요)?$/.test(s)){
+      var sv = nxAiEl_('nxAiPvSaveProposal');
+      if (sv && sv.offsetParent !== null && !sv.disabled){ sv.click(); return '저장했습니다'; }
+      var btns = Array.prototype.slice.call(document.querySelectorAll('#nxAiBody .nxai-msg.ai button')).filter(function(b){ return /^\s*(✅\s*)?(실행|저장)/.test(b.textContent || '') && !b.disabled && b.offsetParent !== null; });
+      if (btns.length){ btns[btns.length - 1].click(); return '눌렀습니다'; }
+      return '누를 단추가 없습니다';
+    }
+    if (/^화면(에|으로) ?(보여|띄워)/.test(s)){ nxAiTalkSetMode_('text'); return '글로 답합니다'; }
+    // 7-8 넥스가 먼저 알린 것 — 「응」이면 하나씩 읽음
+    if (nxAiTalk_.notes && nxAiTalk_.notes.length && /^(응|네|그래|읽어|읽어 ?줘|들려 ?줘|말해 ?줘)$/.test(s)){ nxAiTalkSpeakList_(nxAiTalkSentences_(nxAiTalkSpeechText_(nxAiTalk_.notes.shift())).concat(nxAiTalk_.notes.length ? ['남은 알림이 ' + nxAiSayCntT_(nxAiTalk_.notes.length) + '개 있습니다.'] : []), 0); return true; }
     return false;
   }
+  function nxAiSayCntT_(n){ return typeof nxAiSayCnt_ === 'function' ? nxAiSayCnt_(n) : String(n); }
   function nxAiTalkSet_(state, status){
     nxAiTalk_.state = state;
     if (state === 'busy') nxAiTalkBeat_on_(status || '생각 중'); else nxAiTalkBeat_off_();
@@ -70331,13 +70461,43 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     st.textContent = status || { idle: '', listen: '듣는 중', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
     var cc = nxAiEl_('nxAiTalkCancel'); if (cc) cc.hidden = state !== 'listen';
   }
+  // [2026.11.28 말하기 기조 7-1] 읽기 직전 소리용 다듬기 — 넥스가 규칙을 어겨도 귀에 거슬리지 않게(채팅 화면 글은 그대로).
+  //  금액은 앞 세 자리 어림(3,681,942원 → 약 368만 원 · 209백만원 → 2억 900만 원), 날짜 2019.03.05 → 2019년 3월 5일, 50% → 50퍼센트, 1/2 → 2분의 1,
+  //  §20의3① → 20조의3 1항, 전화번호는 넷씩 끊어 쉼표로, 괄호·원문자·화살표는 쉼, 사건 이름 「갑(을)_불복_이의」 → 을 님 사건, 「정하실 것:」 같은 머리말·영어 도구 이름 지움.
+  function nxAiTalkWon_(n){
+    n = Math.round(Number(n) || 0);
+    if (n < 10000) return n.toLocaleString('ko-KR') + '원';
+    var manAll = n / 1e4, keep = Math.max(0, String(Math.floor(manAll)).length - 3);
+    var r = Math.round(manAll / Math.pow(10, keep)) * Math.pow(10, keep), e = Math.floor(r / 1e4), m = r % 1e4;
+    return (r * 1e4 === n ? '' : '약 ') + (e ? e + '억' + (m ? ' ' + m.toLocaleString('ko-KR') + '만' : '') : m.toLocaleString('ko-KR') + '만') + ' 원';
+  }
   function nxAiTalkSpeechText_(text){
     return String(text || '')
       .replace(/```[\s\S]*?```/g, ' ')
-      .replace(/\|/g, ' ').replace(/[#*_`>~]+/g, ' ')
+      .replace(/^\s*\|.*\|\s*$/gm, ' ')                                   // 표 줄은 읽지 않음
+      .replace(/^\s*(정하실 것|여쭐 것|확인할 것|참고)\s*[:：]\s*/gm, '')
       .replace(/https?:\/\/\S+/g, '링크')
+      .replace(/(\d{3})-(\d{3,4})-(\d{4})/g, '$1, $2, $3')
+      .replace(/(\d{1,3}(?:,\d{3})+|\d{5,})\s*원/g, function(m, d){ return nxAiTalkWon_(+d.replace(/,/g, '')); })
+      .replace(/(\d+)\s*백만\s*원?/g, function(m, d){ return nxAiTalkWon_(+d * 1e6); })
+      .replace(/(\d+)\.(\d)\s*억\s*원?/g, function(m, a, b){ return a + '억 ' + b + '천만 원'; })
+      .replace(/(\d{4})[.-](\d{1,2})[.-](\d{1,2})\.?/g, function(m, y, mo, d){ return y + '년 ' + (+mo) + '월 ' + (+d) + '일'; })
+      .replace(/(\d{1,2})\.(\d{1,2})일/g, function(m, mo, d){ return (+mo) + '월 ' + (+d) + '일'; })
+      .replace(/(\d+)\/(\d+)/g, function(m, a, b){ return b + '분의 ' + a; })
+      .replace(/(\d+(?:\.\d+)?)\s*%/g, '$1퍼센트')
+      .replace(/§\s*(\d+)(의\d+)?/g, function(m, a, b){ return a + '조' + (b || '') + ' '; })
+      .replace(/[\u2460-\u2473]/g, function(c){ return (c.charCodeAt(0) - 0x245F) + '항 '; })
+      .replace(/([가-힣]{1,10})\(([가-힣]{2,5})\)_[가-힣_]+/g, '$2 님 사건')
+      .replace(/\b[a-z]+(?:_[a-z]+)+\b/g, '')
+      .replace(/[#*_`>~|]+/g, ' ')
+      .replace(/[()\[\]·→※]/g, ', ')
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
-      .replace(/\s+/g, ' ').trim().slice(0, 700);
+      .replace(/\s*,\s*(,\s*)+/g, ', ').replace(/\s+([,.])/g, '$1')
+      .replace(/\s+/g, ' ').trim();
+  }
+  // 문장으로 나누기(7-7) — 마침표·물음표·느낌표·줄바꿈. 「2.5억」 같은 숫자 점에서는 끊지 않는다.
+  function nxAiTalkSentences_(text){
+    return String(text || '').split(/(?<=[.!?。])\s+|\n+/).map(function(x){ return x.trim(); }).filter(function(x){ return /[가-힣A-Za-z0-9]/.test(x); });
   }
   // [2026.10.15] 말 끝 판단 — work(chat.js) 음성모드의 실수를 반면교사로(세무사님 지시: 따라 하지 말고 같은 실수를 하지 말 것).
   //  work 실수 ① 음성모드를 켜면 답 뒤에도, 말이 없어도 끝없이 다시 들어 마이크가 계속 켜져 있었다
@@ -70398,7 +70558,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var interim = '';
         for (var i = ev.resultIndex; i < ev.results.length; i++){
           var chunk = ev.results[i][0].transcript;
-          if (ev.results[i].isFinal) sess.finalText += chunk; else interim += chunk;
+          if (ev.results[i].isFinal){
+            // [2026.11.28 말하기 기조 7-9] 일부 안드로이드 크롬은 이어 듣기에서 확정 토막마다 앞 말을 처음부터 다시 담아 보낸다 — 「협의협의협의 분할…」(채팅 기록 7번).
+            //  새 토막이 바로 앞 토막을 앞머리로 품으면 갈아 끼우고, 앞 토막 안에 이미 든 말이면 건너뛴다. 서로 다른 말이면 예전처럼 덧붙인다.
+            var lf = sess.lastFinal || '', ct = chunk.trim(), lt = lf.trim();
+            if (lt && ct.length > lt.length && ct.indexOf(lt) === 0 && sess.finalText.slice(-lf.length) === lf) sess.finalText = sess.finalText.slice(0, sess.finalText.length - lf.length) + chunk;
+            else if (lt && lt.indexOf(ct) === 0 && ct) { /* 이미 들은 앞부분 — 건너뜀 */ }
+            else sess.finalText += chunk;
+            sess.lastFinal = chunk;
+          } else interim += chunk;
         }
         sess.interim = interim;
         if (!shown()) return;
@@ -70419,6 +70587,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         // 브라우저가 혼자 끝냄 — 보내지 않는다(work 실수 ④). 들은 말을 붙여 둔 채 다시 켜고, 보내는 시점은 기다림 규칙·손 떼기만 정한다.
         if (sess.interim){ sess.finalText += sess.interim; sess.interim = ''; }
         if (sess.finalText && !/\s$/.test(sess.finalText)) sess.finalText += ' '; // 다시 켠 뒤 들은 말과 띄어 쓰기
+        sess.lastFinal = ''; // 새로 켠 듣기는 앞 토막과 겹치지 않는다(7-9)
         if (++sess.restarts > 40){ finish(!!shown()); return; } // 비정상 반복 방지
         setTimeout(startRec, 120);
       };
@@ -70471,7 +70640,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (!m || m.role !== 'assistant' || m.divider) return;
       var c = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.filter(function(b){ return b && b.type === 'text'; }).map(function(b){ return b.text; }).join('\n') : '');
       if (!String(c).trim()) return;
-      seen++; last = c;
+      seen++; last = m.say ? String(m.say) : c; // [2026.11.28 말하기 7-3] 바로 처리 답은 표 대신 말 문장
     });
     return (seen > aiCountBefore && last) ? String(last).trim() : nxAiTalkStripFoot_(fallback);
   }
@@ -70481,7 +70650,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiTalkA').textContent = '';
     // [2026.11.27 플립 보완 G2·G3] 답 방식·사건 드나들기 짧은 지시는 화면이 바로(넥스에게 안 보냄)
     var lc = nxAiTalkLocalCmd_(text);
-    if (lc){ nxAiTalkSet_('idle', typeof lc === 'string' ? lc : ''); return; }
+    // [2026.11.28 말하기 7-5] 「다시·이어서」처럼 읽기를 시작한 명령은 그대로 두고(바로 idle로 바꾸면 첫 문장 뒤 멈췄다 — 시험에서 찾음), 말로 답할 것은 소리로도
+    if (lc){
+      if (lc === true && nxAiTalk_.state === 'speak') return;
+      nxAiTalkSet_('idle', typeof lc === 'string' ? lc : '');
+      if (typeof lc === 'string' && nxAiTalkMode_() === 'voice' && !/^(소리로|글로) 답합니다$/.test(lc)) nxAiTalkSayShort_(lc);
+      return;
+    }
     nxAiTalkSet_('busy');
     var body = nxAiEl_('nxAiBody');
     var before = body.querySelectorAll('.nxai-msg.ai').length;
@@ -70493,6 +70668,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var input = nxAiEl_('nxAiInput');
     input.value = text;
     try { nxAiSend_(); } catch (e) { nxAiTalkSet_('idle', '보내지 못했습니다: ' + (e && e.message || e)); return; }
+    // [2026.11.28 말하기 기조 7-4] 넥스가 일하는 동안 먼저 한마디(0원) — 바로 처리로 알아듣는 말은 곧 답이 오므로 말하지 않는다.
+    //  들은 사건 이름을 넣어 받아쓰기가 틀렸으면 바로 알게. 20초가 지나도 답이 없으면 「아직 하고 있습니다」 한 번.
+    var quick = false; try { quick = typeof nxAiDetectLocal_ === 'function' && !!nxAiDetectLocal_(text); } catch (e) {}
+    var waitSaid = false;
+    if (!quick && nxAiTalkMode_() === 'voice' && nxAiAbort){
+      var cn = nxAiConv && nxAiConv.caseName ? (typeof nxAiSayName_ === 'function' ? nxAiSayName_(nxAiConv.caseName) : '') : '';
+      var w = /(계산|세액|세금|얼마)/.test(text) ? '장부 보고 계산하겠습니다' : /(검토서|보고서|반영|고쳐|수정|저장|작성)/.test(text) ? '검토서 고치겠습니다. 1분쯤 걸립니다' : '네, 찾아보겠습니다';
+      nxAiTalkSayShort_((cn ? cn + ' 님 사건으로 보겠습니다. ' : '') + w);
+      nxAiTalkSet_('busy');
+    }
     // 답이 끝났는지 지켜본다 — 진행 중 요청(nxAiAbort)이 없고, 새 답 말풍선 글자가 1.5초 동안 그대로면 끝.
     var lastText = null, stableTicks = 0, started = Date.now();
     clearInterval(nxAiTalk_.watch);
@@ -70504,6 +70689,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var pending = !b || nxAiAbort || /처리 중…$|생각 중|^…$/.test(t);
       if (!pending && t === lastText) stableTicks++; else stableTicks = 0;
       lastText = t;
+      if (!waitSaid && pending && !quick && nxAiTalkMode_() === 'voice' && Date.now() - started > 20000){ waitSaid = true; nxAiTalkSayShort_('아직 하고 있습니다'); nxAiTalkSet_('busy'); }
       if (stableTicks >= 3){
         clearInterval(nxAiTalk_.watch);
         if (mySeq === nxAiTalk_.seq) nxAiTalkAnswer_(text, nxAiTalkReplyText_(aiBefore, t), prev, mySeq);
@@ -70513,43 +70699,62 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
     }, 500);
   }
-  // 답이 다 나왔을 때 — 문자 답이면 화면에만, 음성 답이면 서버(ai_voice_brief)가 핵심만 한두 문장으로 줄인 것을 읽는다.
-  // 이미 아주 짧은 답(70자 이하·한 줄)은 줄이지 않고 그대로 읽는다(비용 0). 줄이기 실패하면 첫 문장만 읽는다.
-  // [2026.11.27 플립 보완 G5] 소리 답일 때 넥스는 첫 단락을 소리로 읽을 결론(80자 안쪽)으로 쓴다(Code.js [소리 답]) —
-  //  그 첫 단락이 140자 안쪽이면 줄이기 호출 없이 바로 읽는다(예전엔 답 뒤에 넥스를 한 번 더 불러 약 5~10초 더 걸림). 길면 예전처럼 줄여 읽는다.
+  // [2026.11.28 말하기 기조 7-2] 답이 다 나왔을 때 — 글로 답함이면 화면에만. 소리로 답함이면 새 채팅 기조로 이미 짧은 답을 그대로 읽는다.
+  //  다섯 문장이 넘거나 물음이 둘 넘으면 앞 세 문장(물음이 있으면 첫 물음까지)만 읽고 「나머지는 화면에 있습니다」 — 넥스를 한 번 더 불러 줄이던 것(ai_voice_brief)은 걷음(세무사님 ㉠ 권장대로).
+  //  「이어서」 하시면 나머지 문장을 읽는다.
   function nxAiTalkAnswer_(question, answer, prev, seq){
     // ⚡ 바로 처리 답은 앞에 「[⚡바로 처리] …」 기록 머리가 붙는다 — 읽을 때는 뗀다(화면엔 말풍선 글 그대로)
-    answer = String(answer || '').replace(/^\s*\[[^\]\n]*바로 처리\]\s*/, '');
+    answer = String(answer || '').replace(/^\s*\[[^\]\n]*(바로 처리|명령)[^\]\n]*\]\s*/, '');
     if (nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); return; }
-    var plain = nxAiTalkSpeechText_(answer);
-    if (plain.length <= 70 && answer.trim().indexOf('\n') === -1) return nxAiTalkSpeak_(plain);
-    var lead = nxAiTalkSpeechText_(String(answer).trim().split(/\n\s*\n/)[0]);
-    if (lead && lead.length <= 140) return nxAiTalkSpeak_(lead);
-    nxAiTalkSet_('busy', '핵심만 줄이는 중…');
-    callGas('ai_voice_brief', { question: question, answer: answer, prev: prev }).then(function(res){
-      if (seq !== nxAiTalk_.seq || nxAiTalk_.state !== 'busy') return;
-      var brief = res && res.text ? res.text : '';
-      if (!brief) throw new Error((res && res.error) || '요약 없음');
-      nxAiEl_('nxAiTalkA').textContent = brief;
-      nxAiTalkSpeak_(brief);
-    }).catch(function(){
-      if (seq !== nxAiTalk_.seq || nxAiTalk_.state !== 'busy') return;
-      var first = (plain.match(/^[^.!?。]*[.!?。]?/) || [plain])[0].slice(0, 90);
-      nxAiTalkSpeak_(first + ' 자세한 것은 화면을 펼쳐 확인해 주세요.');
-    });
+    var sents = nxAiTalkSentences_(nxAiTalkSpeechText_(answer.replace(/\n+/g, '\n')));
+    if (!sents.length){ nxAiTalkSet_('idle'); return; }
+    var asks = sents.filter(function(x){ return /[?]$|까요\.?$|습니까\.?$/.test(x); }).length;
+    nxAiTalk_.rest = null;
+    if (sents.length > 5 || asks > 1){
+      var cut = 3, qi = -1;
+      sents.some(function(x, i){ if (/[?]$|까요\.?$|습니까\.?$/.test(x)){ qi = i; return true; } return false; });
+      if (qi >= 0 && qi < 5) cut = qi + 1;
+      nxAiTalk_.rest = sents.slice(cut);
+      sents = sents.slice(0, cut).concat(['나머지는 화면에 있습니다.']);
+    }
+    nxAiTalkSpeakList_(sents, 0);
   }
-  function nxAiTalkSpeak_(text){
-    var say = nxAiTalkSpeechText_(text);
-    if (!say || !window.speechSynthesis){ nxAiTalkSet_('idle'); return; }
+  // 7-7 문장 단위로 읽기 — 누르면 그 문장에서 멈추고(「이어서」로 거기부터), 다 읽으면 한 번 더 듣는다. 빠르기는 「천천히·빨리」로 바꾼 값.
+  function nxAiTalkSpeakList_(list, from){
+    if (!window.speechSynthesis || !list || !list.length){ nxAiTalkSet_('idle'); return; }
     nxAiTalkStopRec_(); // 읽기 직전 마이크를 확실히 끈다 — AI 목소리를 다시 듣는 사고 방지(work 버그#6)
-    var u = new SpeechSynthesisUtterance(say);
-    u.lang = 'ko-KR'; u.rate = 1.05;
+    nxAiTalk_.lastSay = list; nxAiTalk_.sayAt = from || 0;
+    var my = ++nxAiTalk_.sayRun;
+    var rate = Number(nxAiLs_('nxAiTalkRate')) || 1.05;
     var ko = (speechSynthesis.getVoices() || []).filter(function(v){ return /^ko/i.test(v.lang); })[0];
-    if (ko) u.voice = ko;
-    u.onend = function(){ if (nxAiTalk_.state === 'speak') nxAiTalkListen_(true); };
-    u.onerror = function(){ if (nxAiTalk_.state === 'speak') nxAiTalkSet_('idle'); };
+    var next = function(){
+      if (my !== nxAiTalk_.sayRun || nxAiTalk_.state !== 'speak') return;
+      var i = nxAiTalk_.sayAt;
+      if (i >= list.length){ nxAiTalkListen_(true); return; }
+      var u = new SpeechSynthesisUtterance(list[i]);
+      u.lang = 'ko-KR'; u.rate = rate; if (ko) u.voice = ko;
+      u.onend = function(){ if (my !== nxAiTalk_.sayRun) return; nxAiTalk_.sayAt = i + 1; next(); };
+      u.onerror = function(){ if (my === nxAiTalk_.sayRun && nxAiTalk_.state === 'speak') nxAiTalkSet_('idle'); };
+      try { speechSynthesis.speak(u); } catch (e) { nxAiTalkSet_('idle'); }
+    };
     nxAiTalkSet_('speak');
-    try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { nxAiTalkSet_('idle'); }
+    try { speechSynthesis.cancel(); } catch (e) {}
+    nxAiEl_('nxAiTalkA').textContent = list.join(' ');
+    next();
+  }
+  function nxAiTalkSpeak_(text){ nxAiTalkSpeakList_(nxAiTalkSentences_(nxAiTalkSpeechText_(text)), 0); }
+  // 7-8 넥스가 먼저 쓴 글(미리 읽기 알림·밤 물음 풀기·밤 검토서 갱신) — 말하기 화면을 열 때 이 대화에 새로 쌓인 것이 있으면 한 문장만 알리고 「응」이면 하나씩
+  function nxAiTalkNotice_(){
+    try {
+      if (!window.nxCover || nxAiTalkMode_() !== 'voice' || !nxAiConv || !nxAiConv.messages || nxAiTalk_.state !== 'idle') return;
+      var key = 'nxAiTalkSeen_' + (nxAiConv.id || 'none'), ms = nxAiConv.messages, seen = Number(nxAiLs_(key)) || 0;
+      if (seen > ms.length) seen = 0;
+      var fresh = ms.slice(seen).filter(function(m){ return m && m.role === 'assistant' && (m.preread || /^🤖 넥스 (미리 읽기|물음 풀기)|밤 검토서/.test(String(m.content || ''))); });
+      nxAiLs_(key, String(ms.length));
+      if (!fresh.length) return;
+      nxAiTalk_.notes = fresh.map(function(m){ return String(m.content || '').replace(/^🤖 넥스 [^—]*—\s*/, ''); });
+      nxAiTalkSpeakList_(['넥스가 새로 남긴 알림이 ' + nxAiSayCntT_(fresh.length) + '개 있습니다. 들으시려면 「응」이라고 말씀하세요.'], 0);
+    } catch (e) {}
   }
   (function(){
     var mic = nxAiEl_('nxAiTalkMic');
@@ -70564,7 +70769,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       e.preventDefault();
       var s = nxAiTalk_.state;
       if (s === 'listen'){ if (nxAiTalk_.sess && nxAiTalk_.sess.finish) nxAiTalk_.sess.finish(true); return; }
-      if (s === 'speak'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (err) {} return; }
+      if (s === 'speak'){ nxAiTalk_.sayRun++; nxAiTalkSet_('idle', '멈췄습니다 — 「이어서」라고 하시면 거기부터 읽습니다'); try { speechSynthesis.cancel(); } catch (err) {} return; }
       if (s === 'busy') return;
       try { mic.setPointerCapture(e.pointerId); } catch (err) {}
       downAt = Date.now(); holding = true;
@@ -70612,7 +70817,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
     // 커버화면을 벗어나면(펼침) 듣기·읽기를 멈춘다
     document.addEventListener('nx-cover-change', function(){
-      if (window.nxCover) return;
+      if (window.nxCover){ setTimeout(nxAiTalkNotice_, 1500); return; } // [2026.11.28 말하기 7-8] 들어오면 넥스가 먼저 남긴 것 한 문장
       nxAiTalkStopRec_();
       try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
       clearInterval(nxAiTalk_.watch);

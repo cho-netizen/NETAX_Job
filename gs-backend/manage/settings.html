@@ -317,6 +317,13 @@
       <div style="display:flex; flex-wrap:wrap; gap:6px;"><button type="button" class="ghost-btn" id="stBtnNightReview">대상·지난 밤 결과 보기</button></div>
       <div id="stNightReviewOut" style="margin-top:8px;"></div>
     </div>
+    <!-- [2026.11.28 채팅 기조 8절 ⑥] 세무사님 "두가지 기조 모두 권장대로 하자" — 넥스 답이 다시 길어지면 보이게(검문). 지난 7일 새 답을 11-28 잰 기준과 견줌 -->
+    <div class="card" data-sttab="2" id="stReplyStatCard">
+      <h3>💬 넥스 답 성적</h3>
+      <div class="nx-help">채팅 기조(11-28 「채팅은 대화, 내용은 파일」) 뒤 넥스 답이 짧게 지켜지는지 봅니다 — 지난 7일 새 답의 가운데 길이·여섯 줄 넘는 답·표·제목·내부 글자를 11-28 기준(바꾸기 전 답 356개)과 견줍니다. 비용 없음.</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px;"><button type="button" class="ghost-btn" id="stBtnReplyStat">성적 보기</button></div>
+      <div id="stReplyStatOut" style="margin-top:8px;"></div>
+    </div>
     <div class="card sa-scope" data-sttab="2" id="stSysAdminCard">
       <h3>지침 파일</h3>
       <div class="nx-help">AI와 새벽 자기점검이 읽는 지침 파일들입니다. 눌러서 보고, 보고서 탭에서 고치고, 새 업무관리자 지침을 만들 수 있습니다. 고쳐 저장하면 직전 판이 같은 폴더 「_이전판」에 보관됩니다.</div>
@@ -926,6 +933,23 @@
         }).catch(function(err){ out.textContent = '밤 검토서 갱신 대상을 불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
       };
       b.addEventListener('click', draw);
+    })();
+    // [2026.11.28 채팅 기조 8절 ⑥] 💬 넥스 답 성적 — 서버 ai_reply_stats(2주 안에 바뀐 대화의 지난 7일 새 답 stat만 모음, 0원)
+    (function(){
+      var b = document.getElementById('stBtnReplyStat'), out = document.getElementById('stReplyStatOut'); if (!b || !out) return;
+      b.addEventListener('click', function(){
+        out.textContent = '넥스 답 성적을 모으는 중…';
+        callGas('ai_reply_stats', {}).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+          var n = r.now || {}, o = r.base || {};
+          var row = function(k, a, c, unit, goodLow){ var better = goodLow ? a < c : a > c; return '<tr><td>' + k + '</td><td style="text-align:right;">' + (r.n ? '<b>' + a + unit + '</b>' : '—') + '</td><td style="text-align:right; color:var(--muted);">' + c + unit + '</td><td style="text-align:center;">' + (r.n ? (better ? '나아짐' : (a === c ? '같음' : '⚠ 나빠짐')) : '') + '</td></tr>'; };
+          out.innerHTML = '<div style="font-size:12.5px; margin-bottom:4px;">지난 7일(' + escapeHtml(r.from || '') + '부터) 새 넥스 답 <b>' + (r.n || 0) + '개</b>' + (r.n ? '' : ' — 아직 새 답이 없습니다') + '</div>'
+            + '<table style="width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed;"><thead><tr><th style="text-align:left;">잰 것</th><th style="text-align:right; width:22%;">지난 7일</th><th style="text-align:right; width:22%;">11-28 기준</th><th style="width:18%;"></th></tr></thead><tbody>'
+            + row('한글 음절 가운데', n.syl || 0, o.syl, '', true) + row('줄 가운데', n.lines || 0, o.lines, '', true) + row('여섯 줄 넘는 답', n.over6 || 0, o.over6, '%', true)
+            + row('표가 든 답', n.table || 0, o.table, '%', true) + row('제목이 든 답', n.head || 0, o.head, '%', true) + row('내부 글자가 든 답', n.leak || 0, o.leak, '%', true)
+            + '</tbody></table>';
+        }).catch(function(err){ out.textContent = '성적을 모으지 못했습니다: ' + (err && err.message ? err.message : err); });
+      });
     })();
     // [2026.10.27 T6 4단계] 🧪 공유 정리 — 서버 t6_share_status(목록·점검) / t6_share_cleanup(완료·없는 사건의 공유 거두기). 세무사님도 직접 누른다
     (function(){

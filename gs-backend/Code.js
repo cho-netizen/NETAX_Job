@@ -12,7 +12,7 @@
  */
 
 // [2026.10.30 1단계 지시문 한 벌] 세무사님 원문(10-29): "내가 분명히 넥스를 나의 대리인이라고 하지 않았나? 그러면 내가 뭐하는 사람인지는 알고 있나?" — 예전 "개인 업무 보조 AI … 간결한 존댓말"을 대리인 신분으로
-const DEFAULT_SYSTEM_PROMPT = '너는 "넥스"다 — 이음세무컨설팅 조종호 세무사(국세청 37년·세무조사반장 25년)의 대리인이자 실무 파트너로, 세무사님의 일(상속·증여·양도 구조 설계, 비과세·감면 검토, 세무조사 대응, 불복·경정, 가족법인·가업승계 자문과 그 사후 신고)을 맡긴 범위 안에서 대신 한다. 사용자를 부를 때는 이름 대신 "세무사님"이라고 불러라. 실무적이고 정확한 존댓말로, 간단한 물음엔 간결히, 자문·검토·보고서는 필요한 만큼 충분히 답한다.';
+const DEFAULT_SYSTEM_PROMPT = '너는 "넥스"다 — 이음세무컨설팅 조종호 세무사(국세청 37년·세무조사반장 25년)의 대리인이자 실무 파트너로, 세무사님의 일(상속·증여·양도 구조 설계, 비과세·감면 검토, 세무조사 대응, 불복·경정, 가족법인·가업승계 자문과 그 사후 신고)을 맡긴 범위 안에서 대신 한다. 사용자를 부를 때는 이름 대신 "세무사님"이라고 불러라. 실무적이고 정확한 존댓말로 — 분석·자문·검토는 필요한 만큼 충분히 하되, 채팅 답은 짧게 쓰고 내용은 파일(검토서·보고서)에 둔다.';
 
 // 마스터 프로필(_NX_마스터프로필.md) — 기본 작업 폴더에 저장해둔 이 파일을 매 요청마다 새로
 // 읽어와서 DEFAULT_SYSTEM_PROMPT 뒤에 붙인다. 내용을 고칠 땐 이 파일만 드라이브에서 수정하면
@@ -4247,6 +4247,42 @@ function ai_convLoad(body) {
   }
 }
 
+// [2026.11.28 채팅 기조 8절 ⑥] 넥스 답 성적 — 답마다 길이·줄·표·제목·내부 글자를 세어 그 말에 stat으로 남기고(화면·서버 일감 둘 다),
+//  설정 › 시스템 관리에서 지난 7일 새 답의 가운데값을 11-28 잰 기준과 견준다. 다시 길어지면 보이게(검문). 화면 aichat.html nxAiReplyStat_와 같은 셈.
+const NX_REPLY_LEAK_RE_ = /(updated:?\s*true|파일 ?ID|fileId|\btc_\d{6,}|\b(?:apply_document_edit|save_file_to_folder|read_drive_file|list_drive_folder|case_ledger|job_lookup|lookup_statute_article)\b)/g;
+function nxReplyStat_(text) {
+  const t = String(text || '');
+  const lines = t.split(/\r?\n/).filter(function (l) { return l.trim(); });
+  return {
+    d: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'),
+    s: (t.match(/[가-힣]/g) || []).length,
+    l: lines.length,
+    t: lines.some(function (l) { return /^\s*\|.*\|\s*$/.test(l); }) ? 1 : 0,
+    h: lines.filter(function (l) { return /^\s*#{1,4}\s/.test(l); }).length,
+    k: (t.match(NX_REPLY_LEAK_RE_) || []).length
+  };
+}
+function ai_replyStats_() {
+  const folder = ai_convFolder_();
+  const since = new Date(Date.now() - 7 * 86400000), since14 = Utilities.formatDate(new Date(Date.now() - 14 * 86400000), 'Asia/Seoul', "yyyy-MM-dd");
+  const day7 = Utilities.formatDate(since, 'Asia/Seoul', 'yyyy-MM-dd');
+  const rows = [];
+  ai_convReadIndex_(folder).list.forEach(function (e) {
+    if (!e.fileId || String(e.updatedAt || '').slice(0, 10) < since14) return; // 2주 안에 바뀐 대화만 연다(옛 대화엔 성적이 없다)
+    try {
+      const conv = JSON.parse(DriveApp.getFileById(e.fileId).getBlob().getDataAsString('UTF-8'));
+      (conv.messages || []).forEach(function (m) { if (m && m.role === 'assistant' && m.stat && m.stat.d >= day7) rows.push(m.stat); });
+    } catch (err) { /* 못 연 대화는 건너뜀 */ }
+  });
+  const med = function (a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : 0; };
+  const pct = function (f) { return rows.length ? Math.round(100 * rows.filter(f).length / rows.length) : 0; };
+  return {
+    success: true, n: rows.length, from: day7,
+    now: { syl: med(rows.map(function (r) { return r.s; })), lines: med(rows.map(function (r) { return r.l; })), over6: pct(function (r) { return r.l > 6; }), table: pct(function (r) { return r.t; }), head: pct(function (r) { return r.h > 0; }), leak: pct(function (r) { return r.k > 0; }) },
+    base: { at: '2026-11-28', n: 356, syl: 444, lines: 12, over6: 79, table: 35, head: 52, leak: 25 } // 채팅 기조 계획서 2절(세무사님 물음에 대한 넥스 답 356개)
+  };
+}
+
 // body.conversation = { id?, title, caseId?, caseName?, caseFolderId?, messages:[{role, content}] }
 function ai_convSave(body) {
   const c = body.conversation || {};
@@ -5182,6 +5218,7 @@ function dispatchClientAction0_(body) {
   // [2026.10.08] job AI탭 대화 저장소(ai_conv* 위 설명 참고)
   if (body.action === 'ai_conv_list') return jsonResponse(ai_convList());
   if (body.action === 'ai_conv_load') return jsonResponse(ai_convLoad(body));
+  if (body.action === 'ai_reply_stats') return jsonResponse(ai_replyStats_()); // [2026.11.28 채팅 기조] 넥스 답 성적(설정 › 시스템 관리)
   if (body.action === 'ai_conv_save') return jsonResponse(ai_convSave(Object.assign({}, body, { bg: false }))); // [2026.11.13 5차 재점검 E] 화면 저장은 늘 세무사님 쪽(뒤 일 표시는 서버 안에서만)
   if (body.action === 'ai_conv_rename') return jsonResponse(ai_convRename(body));
   if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
@@ -5197,7 +5234,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'nx_cmd_folder_check') return jsonResponse(nxcmd_folderCheck(body));
   if (body.action === 'nx_cmd_save_check') return jsonResponse(nxcmd_saveCheck(body));
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
-  if (body.action === 'ai_voice_brief') return jsonResponse(ai_voiceBrief_(body)); // 커버화면 토킹모드 음성 답변(핵심만 최대 축약)
+  // [2026.11.28 말하기 기조] 'ai_voice_brief'(넥스 답을 가벼운 모델로 한 번 더 줄이기) 걷음 — 채팅 답이 짧아져 화면이 앞 세 문장을 읽는다(계획서 7-2, 세무사님 ㉠ 권장대로).
   // 커버화면 상담 음성메모(Consult.js) — 녹음 조각 받기 / 합쳐 저장·받아쓰기 예약 / 진행 상황
   // [2026.10.22 2차] 기기 3종 — 모든 기기 로그아웃·지문 로그인 열쇠·작업일지 한 줄·오늘 할 일·알림 답·이어 보기(토큰 0)
   if (body.action === 'sess_revoke_all') return jsonResponse(sessRevokeAll_());
@@ -5754,6 +5791,20 @@ function buildContextSystemPrompt(basePrompt, body) {
   let staticExtra = '';
   let dynamicExtra = '';
   const ctx = body.context || {};
+  // [2026.11.28 채팅 기조] 세무사님 "검토서나 보고서 작성 중에는 토킹모드처럼 핵심만 채팅하고 대부분은 파일에 잘 저장해 주면 되는데,
+  //  쓸데없이 주저주절 많이 보여줘서 읽기도 힘들고 어차피 파일에서 또 한번 읽어야 한다" / "두가지 기조 모두 권장대로 하자".
+  //  계획서 총괄관리자/_기록/채팅_대화기조_계획서_20261128.html 7절 그대로 — 모든 대화(좁은 창·넓은 창·사건 대화·명령)에 붙는다.
+  //  예전 좁은 창 [답변 스타일]·넓은 창 "충분히 분석해서 답하라"는 여기로 합침. 바뀌지 않는 글이라 캐시 앞부분에 둔다.
+  staticExtra += '\n\n[채팅 답] 채팅은 세무사님과의 대화다. 일의 내용은 파일에 두고, 채팅에는 대화만 쓴다.'
+    + '\n① 사건·문서 일이면 검토 내용·표·계산·근거·조문 인용은 그 파일(검토서·보고서)에 저장하고, 채팅에는 결론·바뀐 핵심·정하실 것만 쓴다. 파일에 넣은 내용을 채팅에 되풀이하지 않는다(저장한 파일은 화면이 미리보기 고리를 붙인다).'
+    + '\n② 첫 문장이 답이다 — 물음이면 결론, 시키신 일이면 했다·아직이다·못 했다. 일한 과정·도구 이야기로 시작하지 않는다.'
+    + '\n③ 보통 세 줄, 길어도 여섯 줄. 더 필요하면 파일로 보낸다. 사건·파일과 상관없는 일반 물음만 열두 줄까지 쓸 수 있고, 그때도 첫 단락이 결론이다.'
+    + '\n④ 세무사님이 판단·가정·결론을 말씀하시면 정한 것으로 받아 그대로 반영한다. 다시 확인할 것·반론·리스크 목록에 올리지 않는다. 어긋나 보이면 근거와 함께 한 줄로 한 번만 말씀드리고 말씀대로 한다.'
+    + '\n⑤ 시키신 일 안에서 고칠 수 있는 것은 고친 뒤 알린다 — "진행할까요?"로 멈추지 않는다. 여쭐 것은 서류·법령으로 네가 풀 수 없는 사실만, 항목별로 묶어 끝에 쓴다.'
+    + '\n⑥ 상태는 사실대로 다른 말로: "저장했습니다(파일 이름)" / "수정안만 올렸습니다 — 저장 전" / "못 했습니다 — 까닭". 도구 결과를 받은 것만 했다고 한다. 끝났는지 물으시면 첫 말을 "네" 또는 "아직입니다"로.'
+    + '\n⑦ 채팅에는 제목(#)·구분선·그림 문자·굵은 글 남발·도구 이름·파일 번호·저장본 번호·updated 같은 결과 글자를 쓰지 않는다. 표는 셋 넘는 것을 숫자로 견줄 때만, 다섯 줄 안, 칸에는 값만. 같은 금액은 한 번. 칭찬·맞장구·사과 머리말 없이 바로 답한다.'
+    + '\n⑧ 뜻이 애매할 때만 "○○로 알아들었습니다 — 맞습니까?" 한 줄로 되묻고, 애매하지 않으면 되묻지 않는다.'
+    + '\n보고서·검토서 파일 안의 모양은 이 규칙이 아니라 문서 규칙(마스터 프로필 5절)을 따른다. 넥스 미리 읽기 알림은 지금처럼 무엇이 왔나·값·정하실 것 세 문장.';
 
   // ---- 아래는 각 도구 자신의 description에 이미 담겨있는 "언제 어떻게 쓰는지" 설명은
   // 여기서 반복하지 않는다. 여기 남기는 건 도구 하나의 설명만으로는 알기 어려운,
@@ -5853,17 +5904,23 @@ function buildContextSystemPrompt(basePrompt, body) {
   // 충분히 분석해서 답하게 한다. 대화에 연결된 사건이 있으면 그 사건을 알려준다.
   if (ctx.currentView) {
     if (ctx.aiPanel === 'tab') {
-      dynamicExtra += '\n\n[현재 화면] 사용자는 업무 관리 앱(job)의 AI탭(전체 화면 대화)에서 묻고 있다. 필요한 만큼 충분히 분석해서 답하라.';
+      // [2026.11.28 채팅 기조] 예전 "필요한 만큼 충분히 분석해서 답하라"가 분석을 채팅에 펼치게 했다 — 분석은 충분히, 채팅은 [채팅 답]대로.
+      dynamicExtra += '\n\n[현재 화면] 사용자는 업무 관리 앱(job)의 AI탭(전체 화면 대화)에서 묻고 있다. 분석은 필요한 만큼 충분히 하되, 채팅 답은 [채팅 답] 규칙대로 쓴다.';
     } else {
-      dynamicExtra += '\n\n[현재 화면] 사용자는 지금 업무 관리 앱(job)의 "' + ctx.currentView + '" 화면을 보고 있다.';
-      dynamicExtra += '\n[답변 스타일] 이건 화면 옆 좁은 사이드바 대화다 — 물어본 것에만 짧고 간결하게 답하라. ' +
-        '개수·여부를 물었으면 숫자·결론부터 말하고, 표·전체 목록·추가 분석·안 물어본 주의사항은 사용자가 더 요청하기 전엔 먼저 나열하지 마라.';
+      dynamicExtra += '\n\n[현재 화면] 사용자는 지금 업무 관리 앱(job)의 "' + ctx.currentView + '" 화면을 보고 있다(화면 옆 좁은 대화창 — [채팅 답]을 더 짧게).';
     }
-    // [2026.11.27 플립 보완 G5] 접는 폰 커버화면 말하기(소리 답) — 세무사님 10-15 "음성답변모드에서는 … 대화기조에 맞는 핵심요약만 최대축약으로".
-    //  화면이 답의 첫 단락을 바로 소리로 읽는다(예전엔 답을 받은 뒤 넥스를 한 번 더 불러 줄였음 — 그만큼 늦었다).
+    // [2026.11.28 말하기 기조 둘째 판] 세무사님 "채팅 기조 변경 계획을 반영하여 토킹 기조 변경 계획을 수정하라" → "두가지 기조 모두 권장대로 하자".
+    //  예전 [소리 답](첫 단락만 소리용) 대신 — 채팅 답이 이미 짧으니 답 전체를 그대로 읽고, 귀에만 필요한 것을 덧붙인다(계획서 5절).
+    //  말하기 화면(플립 커버화면·태블릿 팝업·워치·메뉴 「넥스에게 말하기」)에서 「소리로 답함」일 때만.
     if (ctx.voiceTalk) {
-      dynamicExtra += '\n[소리 답] 사용자는 접는 폰 바깥 화면에서 말로 묻고 답을 소리로 듣는다. 첫 단락은 소리로 읽을 결론만 한두 문장(80자 안쪽, 표·기호·목록·괄호 설명 없이 말하듯)으로 쓰고, '
-        + '꼭 필요한 자세한 내용만 빈 줄 뒤에 이어 써라(그 부분은 화면에 글로만 남는다).';
+      dynamicExtra += '\n[말하기] 세무사님은 지금 화면을 보지 않고 귀로만 듣는다. [채팅 답] 규칙에 더해:'
+        + '\n① 금액은 "약 1억 9,600만 원"처럼 어림으로, 날짜는 "12월 31일", 비율은 "2분의 1"·"30퍼센트". 한 문장에 숫자 하나. 정확한 값은 파일에 둔다.'
+        + '\n② 보통 세 문장(약 15초), 많아야 다섯 문장. 여럿이면 개수를 먼저 말하고 중요한 것부터 셋까지. 여쭐 것은 가장 먼저 정해야 할 하나만, 예/아니오나 둘 중 하나로 답할 수 있게 묻고 다음 물음은 답을 받은 뒤에.'
+        + '\n③ 한 문장은 숨 한 번에 읽힐 만큼(30음절 안팎). 표·괄호·원문자·조 기호·영어·파일 이름은 쓰지 않는다. 조문은 꼭 필요할 때만 "소득세법 89조"처럼.'
+        + '\n④ 들은 이름·사건·금액은 답 속에 넣어 말한다("김철수 님 상속 신고 마감은 …").'
+        + '\n⑤ 화면 단추를 눌러야 끝나는 일(수정안 저장·실행 카드)은 끝에 "저장할까요?" 하나만 묻는다.'
+        + '\n⑥ 말하는 세액·금액은 계산 저장본·장부 값만 쓴다.'
+        + '\n세무사님이 "더"·"자세히"라고 하면 파일에 넣은 것 가운데 다음으로 중요한 것을 같은 규칙으로 말한다.';
     }
   }
   if (ctx.aiPanel) {
@@ -12748,40 +12805,6 @@ function ai_paidLogFile_() {
 }
 // [2026.10.09 토큰0 전수조사] 채팅 밖에서 직접 부르는 유료 AI(지침·템플릿 점검, 파일명 이름 찾기, 블로그 글감)도
 // 이번 달 사용액·유료 기록에 남겨 개선 후보 보고서가 볼 수 있게 한다(예전엔 이 비용이 어디에도 안 보였다).
-// [2026.10.15] 커버화면 토킹모드 "음성 답변" — 세무사님 지적: 글자 답을 그대로 읽으니 전혀 알아들을 수 없다.
-// 글자 답(⚡바로 처리 표·제미니 답·AI 답 무엇이든)을 직전 대화 흐름에 맞춰 "귀로 듣는 한두 문장"으로 줄인다.
-// 가벼운 모델(LIGHT_MODEL) 1회·짧은 지시문이라 비용이 아주 작고, 비용은 유료질문 기록(kind 'voice')에 남는다.
-function ai_voiceBrief_(body) {
-  const q = String(body.question || '').slice(0, 500);
-  const a = String(body.answer || '').slice(0, 6000);
-  if (!a.trim()) return { error: '줄일 답변이 없습니다.' };
-  const prev = (Array.isArray(body.prev) ? body.prev : []).slice(-4).map(function (m) {
-    return (m.role === 'user' ? '사용자: ' : '비서: ') + String(m.text || '').slice(0, 300);
-  }).join('\n');
-  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!apiKey) return { error: 'AI 열쇠가 설정되지 않았습니다.' };
-  const prompt = '너는 세무사의 업무 비서다. 세무사가 휴대폰 커버화면에서 말로 물었고, 아래 "글자 답변"을 소리로 들려줘야 한다. ' +
-    '글자 답변을 귀로 한 번에 알아듣게 최대한 줄여라.\n' +
-    '- 대화 흐름(직전 대화)에 맞춰 물은 것에 대한 결론과 핵심 숫자·이름·날짜만. 한 문장, 길어도 두 문장, 60자 안팎.\n' +
-    '- 말하듯이: 표·목록·기호·괄호·링크·이모지 금지. 날짜는 "10월 20일", 금액은 "1억 5천만 원"처럼 읽기 쉬운 말로.\n' +
-    '- 여러 건이면 건수와 가장 중요한 한두 건만 말하고 "나머지는 화면에 있습니다"로 끝내라.\n' +
-    '- 실행 승인·확인이 필요한 답이면 "화면을 펼쳐 확인해 주세요"로 끝내라.\n' +
-    '- 글자 답변에 없는 내용은 절대 만들지 마라. 줄인 문장만 출력하라.\n\n' +
-    (prev ? '[직전 대화]\n' + prev + '\n\n' : '') +
-    '[이번 질문]\n' + q + '\n\n[글자 답변]\n' + a;
-  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    payload: JSON.stringify({ model: LIGHT_MODEL, max_tokens: 200, messages: [{ role: 'user', content: cxMask_(prompt) }] }) // [2026.10.20 보안] 주민·전화·계좌 가림
-  });
-  let json;
-  try { json = JSON.parse(res.getContentText()); } catch (e) { return { error: '음성 요약 응답을 읽지 못했습니다.' }; }
-  ai_logDirect_(json, LIGHT_MODEL, 'voice', '토킹모드 음성 요약 — ' + q.slice(0, 40));
-  if (json.error) return { error: (json.error && json.error.message) || '음성 요약 실패' };
-  const text = ((json.content && json.content[0] && json.content[0].text) || '').trim();
-  return text ? { success: true, text: text } : { error: '음성 요약이 비었습니다.' };
-}
-
 function ai_logDirect_(json, model, kind, q) {
   try {
     if (!json || json.error || !MODEL_CONFIG[model]) return;
