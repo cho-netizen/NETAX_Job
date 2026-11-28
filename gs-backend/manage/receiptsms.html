@@ -154,6 +154,7 @@
     var first = phones.length ? phones[0].phone : '';
     var notes = [];
     if (r.수금 === '기록함') notes.push('이미 수금관리에 적힌 영수증입니다 — 문자만 보내고 수금은 다시 적지 않습니다.');
+    else if (r.서식 === false) notes.push('현금영수증 서식으로 읽히지 않아 수금관리에는 적지 않습니다(문자는 보냅니다).');
     else if (r.이사무소) notes.push('보내면 수금관리에 바로 적습니다' + (r.금액 !== '' ? '(' + won(r.금액) + ')' : '(금액을 못 읽어 「금액 확인 필요」로)') + '.');
     else notes.push('발행처가 「' + r.발행처 + '」로 읽혀 수금관리에는 적지 않습니다(문자는 보냅니다).');
     if (r.보냄) notes.push(r.보냄 + '에 이미 한 번 보낸 영수증입니다.');
@@ -192,6 +193,7 @@
       if (res.수금 === 'added') msg += ' 수금관리에 ' + (res.금액 !== '' ? won(res.금액) : '「금액 확인 필요」로') + ' 적었습니다.';
       else if (res.수금 === 'already') msg += ' (수금관리엔 이미 적혀 있음)';
       else if (res.수금 === 'not_office' || res.수금 === 'unknown') msg += ' 이 사무소 발행으로 읽히지 않아 수금관리엔 적지 않았습니다.';
+      else if (res.수금 === 'not_receipt') msg += ' 현금영수증 서식으로 읽히지 않아 수금관리엔 적지 않았습니다.';
       if (res.notes && res.notes.length) msg += ' ' + res.notes.join(' · ');
       say(msg);
       showDone(msg, res);

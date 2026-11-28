@@ -17947,14 +17947,23 @@ function runCashReceiptScan_() {
   let consultFolderId = '';
   try { const cf = getConsultSharedFolder_(); if (cf) consultFolderId = cf.getId(); } catch (err) { /* 못 찾으면 사건 없는 상담 영수증만 못 잡는다 */ }
 
-  let files;
+  let files = [];
   try {
-    const res = Drive.Files.list({
-      q: "name contains '현금영수증' and trashed = false",
-      fields: 'files(id,name,mimeType,modifiedTime,appProperties)',
-      pageSize: 200
-    });
-    files = res.files || [];
+    // [2026-11-28] 세무사님 "내가 수취한 수수료에 대한 현금영수증을 파일명에 현금영수증이라고 적지 않고 <양도비용~>이라고 적었더니
+    //  수금내역에 반영이 되지 않는구나" — 예전엔 이름에 「현금영수증」이 든 파일만 찾았다(「○○_양도비용_신고수수료.pdf」 500,000원 두 건 빠짐).
+    //  이름과 상관없이 드라이브 글자 색인에 이 사무소 사업자번호와 「현금영수증」이 함께 든 PDF·그림도 찾는다(receipt_scanQuery_).
+    //  발행처(receipt_logGroup_)와 서식(이름에 「현금영수증」이 없는 파일만, isCashReceipt) 판정은 그대로 한 번 더 거친다.
+    let pageToken = null, guard = 0;
+    do {
+      const res = Drive.Files.list({
+        q: receipt_scanQuery_(''),
+        fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,appProperties)',
+        pageSize: 200,
+        pageToken: pageToken || undefined
+      });
+      files = files.concat(res.files || []);
+      pageToken = res.nextPageToken || null;
+    } while (pageToken && ++guard < 10);
   } catch (err) {
     result.errors.push('드라이브 검색 실패: ' + err.message);
     return result;
@@ -17977,9 +17986,14 @@ function runCashReceiptScan_() {
     groups[key].push({ file: f, caseInfo: caseInfo });
   });
 
-  Object.keys(groups).forEach(function (key) {
+  // [2026-11-28] 글자 색인으로 찾는 파일이 늘어 처음 한 번은 읽을 것이 몰린다 — 4분이 지나면 남은 것은 표시 없이 두어 다음 훑기가 읽는다
+  const scanStart = Date.now();
+  result.deferred = 0;
+  const modOf = function (k) { return String((groups[k][0].file || {}).modifiedTime || ''); };
+  Object.keys(groups).sort(function (a, b) { return modOf(b) < modOf(a) ? -1 : modOf(b) > modOf(a) ? 1 : 0; }).forEach(function (key) { // 최근 것부터
     const group = groups[key];
     const primary = group[0];
+    if (Date.now() - scanStart > 240000) { result.deferred++; return; }
     try {
       // 드라이브 복사(OCR) 호출이 짧은 시간에 몰리면 "User rate limit exceeded"가 난다 — 파일 사이 간격을 둔다.
       Utilities.sleep(1500);
@@ -17999,6 +18013,15 @@ function runCashReceiptScan_() {
 // 돌려주는 값: 'added'(수금에 적음) · 'not_office'(다른 사업자 발행) · 'unknown'(발행처를 못 읽음)
 function receipt_logGroup_(group, extracted, result) {
   const primary = group[0];
+      // [2026-11-28] 이름에 「현금영수증」이 없는 파일(글자 색인으로 찾은 것)은 글자가 현금영수증 서식일 때만 —
+      //  위임장·보고서·세금계산서 PDF에도 이 사무소 사업자번호가 찍히므로, 그런 문서를 수금으로 적지 않는다.
+      if (!/현금영수증/.test(String(primary.file.name || '')) && !extracted.isCashReceipt) {
+        (result.notReceipt = result.notReceipt || []).push({ 파일: primary.file.name, 고객명: primary.caseInfo.고객명 });
+        group.forEach(function (item) {
+          try { Drive.Files.update({ appProperties: { netax_receipt_logged: 'not_receipt' } }, item.file.id); } catch (err) { /* 표시 실패하면 다음에 다시 읽을 뿐 */ }
+        });
+        return 'not_receipt';
+      }
       // [2026-11-19] 세무사님 "○○○ 상속세 신고사건에서 감정평가수수료 현금영수증이 우리사업장의 수금관리에 인식이 되어
       // 있네. 이런 문제가 생기지 않도록 수정하라" — 사건 폴더에는 고객이 남(감정평가법인·법무사 등)에게 낸 비용의 현금영수증
       // (공제·필요경비 증빙)도 들어 있는데, 파일 이름에 「현금영수증」만 있으면 발행처를 보지 않고 수금으로 기록했다
@@ -22719,7 +22742,27 @@ function extractReceiptAmountViaOCR_(fileId) {
   const r = parseReceiptText_(text);
   const who = receiptIssuer_(text);
   r.issuer = who.issuer; r.issuerBiz = who.issuerBiz; r.issuerName = who.issuerName;
+  r.isCashReceipt = receiptIsCashText_(text);
   return r;
+}
+// [2026-11-28] 글자가 현금영수증 서식인가 — 이름에 「현금영수증」이 없는 파일을 수금으로 적기 전에 본다(receipt_logGroup_).
+//  홈택스 현금영수증("현금영수증 … 거래정보 … 거래용도 소득공제/지출증빙"), 단말기·ARS 현금(소득공제/지출증빙) 영수증.
+//  납부서·고지서·세금계산서·위임장처럼 아래 안내문에 「현금영수증」 낱말만 있는 문서는 아니다(앞 300자 또는 거래용도 칸).
+function receiptIsCashText_(text) {
+  const t = String(text || '');
+  if (/납\s*부\s*(?:서|계\s*산\s*서)|고\s*지\s*서|위\s*임\s*장|세\s*금\s*계\s*산\s*서|신\s*고\s*서|명\s*세\s*서|증\s*명\s*서/.test(t.slice(0, 300))) return false;
+  // 영수증 꼴: 승인번호가 있고, 거래용도(소득공제/지출증빙) 칸 또는 「현금(소득공제)」 표시 또는 첫머리가 「현금영수증」
+  if (!/승\s*인\s*번\s*호/.test(t)) return false;
+  return /거\s*래\s*용\s*도\s*[:：]?\s*(?:소득공제|지출증빙)/.test(t) || /현\s*금\s*\(\s*(?:소득공제|지출증빙)\s*\)/.test(t) || /^\s*\[?\s*현\s*금\s*영\s*수\s*증/.test(t.slice(0, 80));
+}
+// [2026-11-28] 수금 훑기·영수증 문자 목록이 드라이브에서 영수증을 찾는 조건 — 이름에 「현금영수증」이 든 파일,
+//  또는 이름과 상관없이 드라이브 글자 색인에 이 사무소 사업자번호와 「현금영수증」이 함께 든 PDF·그림.
+//  extra: 앞에 붙일 조건(폴더 등, 'and'로 이음). pdfOnly: 영수증 문자는 PDF만.
+function receipt_scanQuery_(extra, pdfOnly) {
+  const mime = pdfOnly ? "mimeType = 'application/pdf'" : "(mimeType = 'application/pdf' or mimeType contains 'image/')";
+  const byText = "(fullText contains '" + RC_OFFICE_BIZ_ + "' and fullText contains '현금영수증' and " + mime + ')';
+  const byName = pdfOnly ? "(name contains '현금영수증' and mimeType = 'application/pdf')" : "name contains '현금영수증'";
+  return (extra ? extra + ' and ' : '') + '(' + byName + ' or ' + byText + ') and trashed = false';
 }
 
 // [2026.10.09] 서류 OCR 글자에서 특정인의 전화번호·주소·주민등록번호를 규칙으로 찾는다(AI 비용 0원).

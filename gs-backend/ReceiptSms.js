@@ -14,7 +14,8 @@
 
 var RSMS_SENT_PROP_ = 'netax_receipt_sms';      // 파일에 붙이는 「보냄」 표시(보낸 시각 yyyy-MM-dd HH:mm)
 var RSMS_MAX_IMAGE_BYTES_ = 200 * 1024;          // 솔라피 사진 문자 한도
-var RSMS_NAME_RE_ = /^(.+?)_현금영수증/;
+// [2026-11-28] 이름에 「현금영수증」이 없어도(「○○_양도비용_신고수수료」 등) 앞머리 「고객명_」을 고객명으로 — 영수증인지는 목록 조건(receipt_scanQuery_)·수금 기록 때 글자로 가린다
+var RSMS_NAME_RE_ = /^(.+?)_/;
 
 function receiptSms_doPost_(body) {
   switch (body.action) {
@@ -45,7 +46,7 @@ function receiptSms_checkFile_(fileId, folderIds) {
   if (!f || f.trashed) throw new Error('파일을 찾을 수 없습니다(휴지통으로 갔을 수 있습니다).');
   const inside = (f.parents || []).some(function (p) { return folderIds.indexOf(p) !== -1; });
   if (!inside) throw new Error('「1 상담사건」 폴더의 영수증만 보낼 수 있습니다.');
-  if (!RSMS_NAME_RE_.test(f.name)) throw new Error('파일 이름이 「고객명_현금영수증」 모양이 아닙니다: ' + f.name);
+  if (!RSMS_NAME_RE_.test(f.name)) throw new Error('파일 이름이 「고객명_…」 모양이 아닙니다: ' + f.name);
   return f;
 }
 
@@ -57,7 +58,7 @@ function receiptSms_when_(iso) {
 function receiptSms_list_() {
   const ids = receiptSms_folderIds_();
   if (!ids.length) return { success: false, message: '「1 상담사건」 폴더를 찾지 못했습니다.' };
-  const q = '(' + ids.map(function (id) { return "'" + id + "' in parents"; }).join(' or ') + ") and name contains '현금영수증' and mimeType = 'application/pdf' and trashed = false";
+  const q = receipt_scanQuery_('(' + ids.map(function (id) { return "'" + id + "' in parents"; }).join(' or ') + ')', true);
   const res = Drive.Files.list({ q: q, orderBy: 'createdTime desc', pageSize: 50, fields: 'files(id,name,createdTime,modifiedTime,appProperties)' });
   const files = (res.files || []).map(function (f) {
     const ap = f.appProperties || {};
@@ -67,7 +68,7 @@ function receiptSms_list_() {
       저장: receiptSms_when_(f.createdTime || f.modifiedTime),
       보냄: ap[RSMS_SENT_PROP_] || '',
       결과: ap[RSMS_SENT_PROP_] ? receiptSms_resView_(ap[RSMS_RES_PROP_]) : null, // [2026-11-26] 도착·실패·확인 중(예전에 보낸 것은 null)
-      수금: ap.netax_receipt_logged === 'true' ? '기록함' : (ap.netax_receipt_logged ? '이 사무소 발행 아님' : '')
+      수금: ap.netax_receipt_logged === 'true' ? '기록함' : ap.netax_receipt_logged === 'not_receipt' ? '현금영수증 아님' : (ap.netax_receipt_logged ? '이 사무소 발행 아님' : '')
     };
   });
   return { success: true, files: files };
@@ -131,6 +132,8 @@ function receiptSms_prepare_(body) {
       금액: ex.confident ? ex.amount : '', 날짜: ex.date || '', 판독확실: !!ex.confident,
       발행처: ex.issuer === 'office' ? '이음 세무컨설팅' : ex.issuer === 'other' ? ('다른 사업자' + (ex.issuerName ? '(' + ex.issuerName + ')' : '')) : '못 읽음',
       이사무소: ex.issuer === 'office',
+      서식: /현금영수증/.test(String(f.name)) || !!ex.isCashReceipt, // [2026-11-28] 이름에 「현금영수증」이 없으면 글자가 영수증 서식일 때만 수금에 적는다
+
       보냄: ap[RSMS_SENT_PROP_] || '',
       수금: ap.netax_receipt_logged === 'true' ? '기록함' : (ap.netax_receipt_logged ? '이 사무소 발행 아님' : ''),
       pdfBase64: Utilities.base64Encode(bytes)
@@ -267,7 +270,7 @@ function receiptSms_send_(body) {
     const fresh = Drive.Files.get(f.id, { fields: 'id,name,modifiedTime,appProperties' });
     const logged = (fresh.appProperties || {}).netax_receipt_logged;
     if (logged) {
-      out.수금 = logged === 'true' ? 'already' : 'not_office';
+      out.수금 = logged === 'true' ? 'already' : logged === 'not_receipt' ? 'not_receipt' : 'not_office';
     } else {
       const base = String(f.name).replace(/\.[^.]+$/, '');
       const sib = Drive.Files.list({ q: "'" + f.parents[0] + "' in parents and name contains '" + base.replace(/'/g, "\\'") + "' and trashed = false", fields: 'files(id,name,modifiedTime,appProperties)', pageSize: 20 });
